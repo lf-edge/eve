@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
         "github.com/zededa/go-provision/types"
+	"golang.org/x/crypto/ocsp"
 )
 
 var maxDelay = time.Second * 600	// 10 minutes
@@ -102,6 +103,23 @@ func main() {
 		   return false
 		}
 		defer resp.Body.Close()
+		connState := resp.TLS
+		if connState == nil {
+		        fmt.Println("no connection state")
+			return false
+		}
+
+		if connState.OCSPResponse == nil {
+		        fmt.Println("no OCSP response")
+			// XXX return false
+		} else {
+			// parse the ocsp response
+			log.Println("stapled check")
+			if !stapledCheck(connState) {
+			   fmt.Println("OCSP stapled check failed")
+			   return false
+			}
+		}
 
 		switch resp.StatusCode {
 		case http.StatusOK: 
@@ -160,6 +178,23 @@ func main() {
 		   return false
 		}
 		defer resp.Body.Close()
+		connState := resp.TLS
+		if connState == nil {
+		        fmt.Println("no connection state")
+			return false
+		}
+
+		if connState.OCSPResponse == nil {
+		        fmt.Println("no OCSP response")
+			// XXX return false
+		} else {
+			// parse the ocsp response
+			log.Println("stapled check")
+			if !stapledCheck(connState) {
+			   fmt.Println("OCSP stapled check failed")
+			   return false
+			}
+		}
 
 		switch resp.StatusCode {
 		case http.StatusOK: 
@@ -228,4 +263,26 @@ func main() {
 //        ("authentication-key = <map-server-key>", 
 //         "authentication-key = {}".format(ms_key)) ]
 	 
+}
+
+func stapledCheck(connState *tls.ConnectionState)(bool) {
+	server := connState.VerifiedChains[0][0]
+	issuer := connState.VerifiedChains[0][1]
+	log.Printf("Server: %v\n", server.Subject.CommonName)
+	log.Printf("Issuer: %v\n", issuer.Subject.CommonName)
+	resp, err := ocsp.ParseResponse(connState.OCSPResponse, issuer)
+	if err != nil {
+		log.Fatalln("error parsing response: ", err)
+		return false
+	}
+	if resp.Status == ocsp.Good {
+		log.Println("Certificate Status Good.")
+		return true
+	} else if resp.Status == ocsp.Unknown {
+		log.Println("Certificate Status Unknown")
+		return false
+	} else {
+		log.Println("Certificate Status Revoked")
+		return false
+	}
 }

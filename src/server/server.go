@@ -1,6 +1,7 @@
 package main
 
 import (
+        "bytes"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/sha256"
@@ -19,13 +20,14 @@ import (
 	"time"
 	"github.com/nanobox-io/golang-scribble"
         "github.com/zededa/go-provision/types"
+	"golang.org/x/crypto/ocsp"
 )
 
 // Assumes the config files are in dirName, which is /etc/zededa-server/
 // by default
 // The files are
-//  intermediate-ca-chain.pem	Intermediate and root CA cert
-//  server.cert.pem, server.key.pem	
+//  intermediate-server.cert.pem  server cert plus intermediate CA cert
+//  server.key.pem	
 //
 func main() {
 	args := os.Args[1:]
@@ -37,23 +39,84 @@ func main() {
 	   dirName = args[0]
 	}
 
-	serverCertName := dirName + "/server.cert.pem"
+	serverCertName := dirName + "/intermediate-server.cert.pem"
 	serverKeyName := dirName + "/server.key.pem"
-	rootCertName := dirName + "/intermediate-ca-chain.pem"
 
 	http.HandleFunc("/rest/self-register", SelfRegister)
 	http.HandleFunc("/rest/device-param", DeviceParam)
 
-	caCert, err := ioutil.ReadFile(rootCertName)
+	serverCert, err := tls.LoadX509KeyPair(serverCertName, serverKeyName)
 	if err != nil {
 		log.Fatal(err)
 	}
-	caCertPool := x509.NewCertPool()
-	caCertPool.AppendCertsFromPEM(caCert)
+	
+	getCertificate := func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+		fmt.Println("getCertificate called")
+		cert := serverCert
 
+		// Fetch and staple OCSP
+		// TODO: should cache OCSP responses
+		x509Cert := cert.Leaf
+		if cert.Leaf == nil {
+			// Above load drops parsed form
+			parsedCert, err := x509.ParseCertificate(cert.Certificate[0])
+			if err != nil {
+				log.Fatal(err)
+			}
+			x509Cert = parsedCert
+		}
+		if x509Cert.OCSPServer == nil {
+			log.Println("No OCSPServer in certificate")
+			return &cert, nil
+		}
+		ocspServer := x509Cert.OCSPServer[0]
+
+		if len(cert.Certificate) == 1 {
+			log.Println("No issuer in certificate")
+			return &cert, nil
+		}
+		x509Issuer, err := x509.ParseCertificate(cert.Certificate[1])
+		if err != nil {
+			log.Println(err)
+			return &cert, nil
+		}
+		ocspRequest, err := ocsp.CreateRequest(x509Cert, x509Issuer, nil)
+		if err != nil {
+			log.Println(err)
+			return &cert, nil
+		}
+		ocspRequestReader := bytes.NewReader(ocspRequest)
+		httpResponse, err := http.Post(ocspServer, "application/ocsp-request", ocspRequestReader)
+		if err != nil {
+			log.Println(err)
+			return &cert, nil
+		}
+		defer httpResponse.Body.Close()
+		ocspResponseBytes, err := ioutil.ReadAll(httpResponse.Body)
+		if err != nil {
+			log.Println(err)
+			return &cert, nil
+		}
+		// XXX parse http code?
+		ocspResponse, err := ocsp.ParseResponse(ocspResponseBytes, x509Issuer)
+		if err != nil {
+			log.Println(err)
+			return &cert, nil
+		}
+		// TODO: should maybe fail if the status was invalid or revoked
+		if ocspResponse.Status == ocsp.Good {
+			log.Println("Certificate Status Good.")
+		} else if ocspResponse.Status == ocsp.Unknown {
+			log.Println("Certificate Status Unknown")
+		} else {
+			log.Println("Certificate Status Revoked")
+		}
+		cert.OCSPStaple = ocspResponseBytes
+		return &cert, nil
+	}
 	// Setup HTTPS client
 	tlsConfig := &tls.Config{
-		RootCAs: caCertPool,
+		GetCertificate: getCertificate,
 		ClientAuth: tls.RequireAnyClientCert,
 		// PFS because we can but this will reject client with RSA
  		// certificates
@@ -87,6 +150,32 @@ func SelfRegister(w http.ResponseWriter, r *http.Request) {
          return
      }
      cert := r.TLS.PeerCertificates[0]
+     // Validating it is self-signed
+     if !cert.IsCA || !reflect.DeepEqual(cert.Issuer, cert.Subject) {
+	  fmt.Printf("provCert not self-signed: Issuer %s, Subject %s, IsCa %s\n",
+	  			cert.Issuer, cert.Subject, cert.IsCA)
+          http.Error(w, http.StatusText(http.StatusUnauthorized),
+ 	 	       http.StatusUnauthorized)
+          return
+     }
+     // validate it has not expired
+     now := time.Now()
+     if now.After(cert.NotAfter) {
+	  // XXX use log instead?
+	  fmt.Printf("provCert expired NotAfter %s, now %s\n",
+	  			cert.NotAfter, now)
+          http.Error(w, http.StatusText(http.StatusUnauthorized),
+ 	 	       http.StatusUnauthorized)
+	  return
+     }
+     if now.Before(cert.NotBefore) {
+	  fmt.Printf("provCert too early NotBefore %s, now %s\n",
+	  			cert.NotBefore, now)
+          http.Error(w, http.StatusText(http.StatusUnauthorized),
+ 	 	       http.StatusUnauthorized)
+	  return
+     }
+     
      hasher := sha256.New()
      hasher.Write(cert.Raw)
      provKey := base64.URLEncoding.EncodeToString(hasher.Sum(nil))
@@ -99,6 +188,9 @@ func SelfRegister(w http.ResponseWriter, r *http.Request) {
     db, err := scribble.New("/var/tmp/zededa-prov", nil)
     if err != nil {
       fmt.Println("scribble.New", err)
+      http.Error(w, http.StatusText(http.StatusInternalServerError),
+ 	       http.StatusInternalServerError)
+      return
     }
     prov := types.ProvisioningCert{}
     if err := db.Read("prov", provKey, &prov); err != nil {
@@ -114,14 +206,13 @@ func SelfRegister(w http.ResponseWriter, r *http.Request) {
     contentType := r.Header.Get("Content-Type")
     if contentType != "application/json" {
           fmt.Println("Incorrect Content-Type " + contentType)
-	  // XXX which code?
-          http.Error(w, http.StatusText(http.StatusLengthRequired),
- 	 	       http.StatusLengthRequired)
+          http.Error(w, http.StatusText(http.StatusUnsupportedMediaType),
+ 	 	       http.StatusUnsupportedMediaType)
 	  return
     }
     contentLength := r.Header.Get("Content-Length")
     if contentLength == "" {
-	  fmt.Println("no Content-Length")
+	  fmt.Println("No Content-Length field")
           http.Error(w, http.StatusText(http.StatusLengthRequired),
  	 	       http.StatusLengthRequired)
           return
@@ -135,7 +226,7 @@ func SelfRegister(w http.ResponseWriter, r *http.Request) {
     }
     // XXX what is the max device certificate length? Have up to 753
     if length > 4096 {
-	  fmt.Println("Too large Content-Length %d", length)
+	  fmt.Printf("Too large Content-Length %d\n", length)
           http.Error(w, http.StatusText(http.StatusRequestEntityTooLarge),
  	 	       http.StatusRequestEntityTooLarge)
           return
@@ -166,32 +257,50 @@ func SelfRegister(w http.ResponseWriter, r *http.Request) {
     deviceDb, err := scribble.New("/var/tmp/zededa-device", nil)
     if err != nil {
       fmt.Println("scribble.New", err)
+      http.Error(w, http.StatusText(http.StatusInternalServerError),
+ 	       http.StatusInternalServerError)
+      return
     }
     device := types.DeviceDb{}
     err = deviceDb.Read("ddb", deviceKey, &device)
-    if err == nil && device.UserName == userName &&
-       reflect.DeepEqual(device.DeviceCert, rc.PemCert) {
-    	// Re-registering the same key with same value
-	fmt.Println("Identical already exists in deviceDb since %s",
-			       device.RegTime)
-	device.ReRegisteredCount++
-	err = deviceDb.Write("ddb", deviceKey, device )
-	if err != nil {
-	      fmt.Println("deviceDb.Write", err)
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	return
-    }
     if err == nil {
-	fmt.Println("Different already exists in deviceDb since %s",
-			       device.RegTime)
-        http.Error(w, http.StatusText(http.StatusConflict),
+       if device.UserName == userName {
+       	  if reflect.DeepEqual(device.DeviceCert, rc.PemCert) {
+	      	// Re-registering the same key with same value
+		fmt.Printf("Identical device cert already exists in deviceDb since %s\n",
+		       device.RegTime)
+		// Update counter for reregistrations which indicate
+		// retransmissions/retries
+		device.ReRegisteredCount++
+		err = deviceDb.Write("ddb", deviceKey, device )
+		if err != nil {
+		      fmt.Println("deviceDb.Write", err)
+		      // Note we ignore error and ReRegisteredCount will not be
+		      // updated
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+	  } else {
+	  	fmt.Printf("Conflict: same hash but different certificate for deviceKey %s\n",
+		      deviceKey)
+		fmt.Printf("Old cert %v since %s, attempted cert %v\n",
+		       device.DeviceCert, device.RegTime, rc.PemCert)
+		http.Error(w, http.StatusText(http.StatusConflict),
  		       http.StatusConflict)
-	return
+          }
+       } else {
+          // Different userName
+	  fmt.Printf("Conflict: different userName for deviceKey %s\n",
+		      deviceKey)
+	  fmt.Printf("Old userName %v since %s, attempted userName %v\n",
+		       device.UserName, device.RegTime, userName)
+	  http.Error(w, http.StatusText(http.StatusConflict),
+ 		       http.StatusConflict)
+       }
+       return
     }
     if prov.RemainingUse == 0 {
-	  fmt.Printf("Already used. Registered at %s. LastUsed at %s\n",
+	  fmt.Printf("provCert already used. Registered at %s. LastUsed at %s\n",
 	  		       prov.RegTime, prov.LastUsedTime)
           http.Error(w, http.StatusText(http.StatusGone),
  	 	       http.StatusGone)
@@ -200,11 +309,15 @@ func SelfRegister(w http.ResponseWriter, r *http.Request) {
     deviceCert, err := x509.ParseCertificate(block.Bytes)
     if err != nil {
          fmt.Println("ParseCerticate", err)
+         http.Error(w, http.StatusText(http.StatusBadRequest),
+	       http.StatusBadRequest)
       	 return
     }
     publicDer, err := x509.MarshalPKIXPublicKey(deviceCert.PublicKey)
     if err != nil {
          fmt.Println("MarshalPKIXPublicKey", err)
+         http.Error(w, http.StatusText(http.StatusBadRequest),
+	       http.StatusBadRequest)
       	 return
     }
     // XXX remove? check content with Dino
@@ -265,6 +378,9 @@ func SelfRegister(w http.ResponseWriter, r *http.Request) {
     err = deviceDb.Write("ddb", deviceKey, device )
     if err != nil {
       fmt.Println("deviceDb.Write", err)
+      http.Error(w, http.StatusText(http.StatusInternalServerError),
+ 	       http.StatusInternalServerError)
+      return
     }
     
     // Created in deviceDb under userName, so we decrement the remaining uses
@@ -273,7 +389,8 @@ func SelfRegister(w http.ResponseWriter, r *http.Request) {
     err = db.Write("prov", provKey, prov)
     if err != nil {
       fmt.Println("db.Write", err)
-      return
+      // Note we ignore error and RemainingUse is not updated; but we did
+      // registed deviceCert. Alternative is to undo the deviceCert registration
     }
     w.Header().Set("Content-Type", "application/json")
     w.WriteHeader(http.StatusCreated)
@@ -288,6 +405,27 @@ func DeviceParam(w http.ResponseWriter, r *http.Request) {
          return
      }
      cert := r.TLS.PeerCertificates[0]
+
+     // XXX support rooted device certificates. Call validate on some chain?
+     // XXX should that be our own trust chain?
+     // Validating it is self-signed
+     if !cert.IsCA || !reflect.DeepEqual(cert.Issuer, cert.Subject) {
+	  fmt.Printf("deviceCert not self-signed: Issuer %s, Subject %s, IsCa %s\n",
+	  			cert.Issuer, cert.Subject, cert.IsCA)
+          http.Error(w, http.StatusText(http.StatusUnauthorized),
+ 	 	       http.StatusUnauthorized)
+          return
+     }
+     // validate it has not expired
+     now := time.Now()
+     if now.Before(cert.NotBefore) || now.After(cert.NotAfter) {
+     	  // XXX use log instead?
+	  fmt.Printf("deviceCert wrong time: NotBefore %s, NotAfter %s, now %s\n",
+	  			cert.NotBefore, cert.NotAfter, now)
+          http.Error(w, http.StatusText(http.StatusUnauthorized),
+ 	 	       http.StatusUnauthorized)
+	  return
+     }
      hasher := sha256.New()
      hasher.Write(cert.Raw)
      deviceKey := base64.URLEncoding.EncodeToString(hasher.Sum(nil))
@@ -299,6 +437,9 @@ func DeviceParam(w http.ResponseWriter, r *http.Request) {
      deviceDb, err := scribble.New("/var/tmp/zededa-device", nil)
      if err != nil {
         fmt.Println("scribble.New", err)
+        http.Error(w, http.StatusText(http.StatusInternalServerError),
+	       http.StatusInternalServerError)
+        return
      }
      device := types.DeviceDb{}
      if err := deviceDb.Read("ddb", deviceKey, &device); err != nil {
@@ -312,9 +453,11 @@ func DeviceParam(w http.ResponseWriter, r *http.Request) {
      device.ReadTime = time.Now()
      if err := deviceDb.Write("ddb", deviceKey, device ); err != nil {
         fmt.Println("deviceDb.Write", err)
+        http.Error(w, http.StatusText(http.StatusInternalServerError),
+	       http.StatusInternalServerError)
+        return
      }
      w.Header().Set("Content-Type", "application/json")
      w.Write(res)
-
 }
 
