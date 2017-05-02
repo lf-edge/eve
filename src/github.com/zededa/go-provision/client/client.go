@@ -22,8 +22,9 @@ var maxDelay = time.Second * 600 // 10 minutes
 // The files are
 //  root-certificate.pem	Fixed? Written if redirected. factory-root-cert?
 //  server			Fixed? Written if redirected. factory-root-cert?
-//  pc.cert.pem, pc.key.pem	Per device
-//  device.cert.pem, device.key.pem XXX written before we are called
+//  prov.cert.pem, prov.key.pem	Per device provisioning certificate/key
+//  device.cert.pem, device.key.pem Device certificate/key created before this
+//  		     		    client is started.
 //
 func main() {
 	args := os.Args[1:]
@@ -35,8 +36,8 @@ func main() {
 		dirName = args[0]
 	}
 
-	provCertName := dirName + "/pc.cert.pem"
-	provKeyName := dirName + "/pc.key.pem"
+	provCertName := dirName + "/prov.cert.pem"
+	provKeyName := dirName + "/prov.key.pem"
 	deviceCertName := dirName + "/device.cert.pem"
 	deviceKeyName := dirName + "/device.key.pem"
 	rootCertName := dirName + "/root-certificate.pem"
@@ -72,13 +73,15 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	serverName := strings.TrimSpace(string(server))
-
+	serverNameAndPort := strings.TrimSpace(string(server))
+	serverName := strings.Split(serverNameAndPort, ":")[0]
+	
 	// Returns true when done; false when retry
 	selfRegister := func() bool {
 		// Setup HTTPS client
 		tlsConfig := &tls.Config{
 			Certificates: []tls.Certificate{provCert},
+			ServerName:   serverName,
 			RootCAs:      caCertPool,
 			CipherSuites: []uint16{
 				tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
@@ -88,6 +91,8 @@ func main() {
 		}
 		tlsConfig.BuildNameToCertificate()
 
+		fmt.Printf("Connecting to %s\n", serverNameAndPort)
+		
 		transport := &http.Transport{TLSClientConfig: tlsConfig}
 		client := &http.Client{Transport: transport}
 		// XXX defer transport.Close()
@@ -96,7 +101,7 @@ func main() {
 		rc := types.RegisterCreate{PemCert: deviceCertPem}
 		b := new(bytes.Buffer)
 		json.NewEncoder(b).Encode(rc)
-		resp, err := client.Post("https://"+serverName+
+		resp, err := client.Post("https://"+serverNameAndPort+
 			"/rest/self-register", "application/json", b)
 		if err != nil {
 			fmt.Println(err)
@@ -157,6 +162,7 @@ func main() {
 		// Setup HTTPS client
 		tlsConfig := &tls.Config{
 			Certificates: []tls.Certificate{deviceCert},
+			ServerName:   serverName,
 			RootCAs:      caCertPool,
 			CipherSuites: []uint16{
 				tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
@@ -171,7 +177,7 @@ func main() {
 		// XXX defer transport.Close()
 		// defer client.Close()
 
-		resp, err := client.Get("https://" + serverName +
+		resp, err := client.Get("https://" + serverNameAndPort +
 			"/rest/device-param")
 		if err != nil {
 			fmt.Println(err)

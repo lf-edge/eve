@@ -61,7 +61,7 @@ func main() {
 			// Above load drops parsed form
 			parsedCert, err := x509.ParseCertificate(cert.Certificate[0])
 			if err != nil {
-				log.Fatal(err)
+				log.Fatal("x509.ParseCertificate", err)
 			}
 			x509Cert = parsedCert
 		}
@@ -77,30 +77,31 @@ func main() {
 		}
 		x509Issuer, err := x509.ParseCertificate(cert.Certificate[1])
 		if err != nil {
-			log.Println(err)
+			log.Println("x509.ParseCertificate 1", err)
 			return &cert, nil
 		}
 		ocspRequest, err := ocsp.CreateRequest(x509Cert, x509Issuer, nil)
 		if err != nil {
-			log.Println(err)
+			log.Println("ocsp.CreateRequest", err)
 			return &cert, nil
 		}
+		fmt.Printf("Connecting to OCSP at %s\n", ocspServer)
 		ocspRequestReader := bytes.NewReader(ocspRequest)
 		httpResponse, err := http.Post(ocspServer, "application/ocsp-request", ocspRequestReader)
 		if err != nil {
-			log.Println(err)
+			log.Println("http.Post ocsp", err)
 			return &cert, nil
 		}
 		defer httpResponse.Body.Close()
 		ocspResponseBytes, err := ioutil.ReadAll(httpResponse.Body)
 		if err != nil {
-			log.Println(err)
+			log.Println("ReadAll", err)
 			return &cert, nil
 		}
 		// XXX parse http code?
 		ocspResponse, err := ocsp.ParseResponse(ocspResponseBytes, x509Issuer)
 		if err != nil {
-			log.Println(err)
+			log.Println("ocsp.ParseResponse", err)
 			return &cert, nil
 		}
 		// TODO: should maybe fail if the status was invalid or revoked
@@ -131,7 +132,7 @@ func main() {
 	tlsConfig.BuildNameToCertificate()
 
 	server := &http.Server{
-		Addr:      ":8080",
+		Addr:      ":9069",
 		TLSConfig: tlsConfig,
 	}
 
