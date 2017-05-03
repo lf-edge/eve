@@ -48,3 +48,41 @@ type LispServerInfo struct {
 	NameOrIp   string
 	Credential string
 }
+
+type DeviceHwStatus struct {
+	// XXX add timestamp? which type?
+	Machine   string
+	Processor string
+	Platform  string
+	Memory    uint // Kbyte
+	Storage   uint // Kbyte
+}
+
+type DeviceSwStatus struct {
+	// XXX add timestamp?
+	ApplicationStatus []SwStatus
+}
+
+// Note that SwConfig might make private+cert, plus EID, or allow EID generation
+// Does that mean we need a cert in SwStatus?
+// SwConfig would have an 'Activate bool' instead of Activated
+// SwConfig would have a Url, DigestAlg, and Digest as well.
+type SwStatus struct {
+	EID         net.IP // If one assigned. UUID alternative?
+	Name        string
+	Version     string
+	Description string // optional
+	State       SwState
+	Activated   bool
+}
+
+// Type names from OMA-TS-LWM2M_SwMgmt-V1_0-20151201-C
+type SwState uint8
+
+const (
+	INITIAL          SwState = iota + 1
+	DOWNLOAD_STARTED         // Really download in progress
+	DOWNLOADED
+	DELIVERED // Package integrity verified
+	INSTALLED // Available to be activated
+)
