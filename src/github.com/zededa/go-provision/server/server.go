@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"github.com/nanobox-io/golang-scribble"
 	"github.com/zededa/go-provision/types"
@@ -50,69 +51,102 @@ func main() {
 		log.Fatal(err)
 	}
 
-	getCertificate := func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
-		fmt.Println("getCertificate called")
-		cert := serverCert
+	// seed oscpResponse and oscpResponseBytes using serverCert
+	var period int64 // periodic timer value
+	var ocspResponse *ocsp.Response
+	var ocspResponseBytes []byte
 
-		// Fetch and staple OCSP
-		// TODO: should cache OCSP responses
-		x509Cert := cert.Leaf
-		if cert.Leaf == nil {
-			// Above load drops parsed form
-			parsedCert, err := x509.ParseCertificate(cert.Certificate[0])
-			if err != nil {
-				log.Fatal("x509.ParseCertificate", err)
-			}
-			x509Cert = parsedCert
+	done := false
+	for !done {
+		var err error
+		ocspResponse, ocspResponseBytes, err =
+			getOcspResponseBytes(&serverCert)
+		if err != nil {
+			log.Println(err)
+			time.Sleep(5 * time.Second)
+			// XXX testing
+			period = 3600
+			done = true
+			continue
 		}
-		if x509Cert.OCSPServer == nil {
-			log.Println("No OCSPServer in certificate")
-			return &cert, nil
-		}
-		ocspServer := x509Cert.OCSPServer[0]
 
-		if len(cert.Certificate) == 1 {
-			log.Println("No issuer in certificate")
-			return &cert, nil
-		}
-		x509Issuer, err := x509.ParseCertificate(cert.Certificate[1])
-		if err != nil {
-			log.Println("x509.ParseCertificate 1", err)
-			return &cert, nil
-		}
-		ocspRequest, err := ocsp.CreateRequest(x509Cert, x509Issuer, nil)
-		if err != nil {
-			log.Println("ocsp.CreateRequest", err)
-			return &cert, nil
-		}
-		fmt.Printf("Connecting to OCSP at %s\n", ocspServer)
-		ocspRequestReader := bytes.NewReader(ocspRequest)
-		httpResponse, err := http.Post(ocspServer, "application/ocsp-request", ocspRequestReader)
-		if err != nil {
-			log.Println("http.Post ocsp", err)
-			return &cert, nil
-		}
-		defer httpResponse.Body.Close()
-		ocspResponseBytes, err := ioutil.ReadAll(httpResponse.Body)
-		if err != nil {
-			log.Println("ReadAll", err)
-			return &cert, nil
-		}
-		// XXX parse http code?
-		ocspResponse, err := ocsp.ParseResponse(ocspResponseBytes, x509Issuer)
-		if err != nil {
-			log.Println("ocsp.ParseResponse", err)
-			return &cert, nil
-		}
+		now := time.Now()
+		age := now.Unix() - ocspResponse.ProducedAt.Unix()
+		remain := ocspResponse.NextUpdate.Unix() - now.Unix()
+		log.Printf("OCSP age %d, remain %d\n", age, remain)
+		// Check again after half the remaining time
+		period = remain / 2
 		// TODO: should maybe fail if the status was invalid or revoked
 		if ocspResponse.Status == ocsp.Good {
 			log.Println("Certificate Status Good.")
+			done = true
 		} else if ocspResponse.Status == ocsp.Unknown {
 			log.Println("Certificate Status Unknown")
+			// XXX remove
+			done = true
 		} else {
 			log.Println("Certificate Status Revoked")
+			time.Sleep(5 * time.Second)
 		}
-		cert.OCSPStaple = ocspResponseBytes
+	}
+	log.Printf("Setup timer every %d seconds\n", period)
+
+	var periodicOcsp func()
+	var t *time.Timer
+
+	// XXX use this for initial assignment? Need a non-zero period in
+	// case the initial fails? But want one success before starting
+	// to serve requests.
+	// Channel to send "done" to caller? Plus 1,2,4,8 period until
+	// we have a response?
+	periodicOcsp = func() {
+		// If we get an updated success, then we use that for subsequent
+		// stapling
+		response, responseBytes, err :=
+			getOcspResponseBytes(&serverCert)
+		if err == nil {
+			// Have an updated response to staple
+			ocspResponse = response
+			ocspResponseBytes = responseBytes
+			now := time.Now()
+			age := now.Unix() - ocspResponse.ProducedAt.Unix()
+			remain := ocspResponse.NextUpdate.Unix() - now.Unix()
+			log.Printf("OCSP age %d, remain %d\n", age, remain)
+			// Check again after half the remaining time
+			period = remain / 2
+			if ocspResponse.Status == ocsp.Good {
+				log.Println("Certificate Status Good.")
+			} else if ocspResponse.Status == ocsp.Unknown {
+				log.Println("Certificate Status Unknown")
+			} else {
+				log.Println("Certificate Status Revoked")
+			}
+		}
+		t = time.AfterFunc(time.Duration(period)*time.Second,
+			periodicOcsp)
+	}
+	t = time.AfterFunc(time.Duration(period)*time.Second, periodicOcsp)
+	defer t.Stop()
+
+	getCertificate := func(hello *tls.ClientHelloInfo) (*tls.Certificate,
+		error) {
+		fmt.Println("getCertificate called")
+		cert := serverCert
+		now := time.Now()
+		if ocspResponseBytes != nil {
+			age := now.Unix() - ocspResponse.ProducedAt.Unix()
+			remain := ocspResponse.NextUpdate.Unix() - now.Unix()
+			log.Printf("OCSP age %d, remain %d\n", age, remain)
+			// TODO: should maybe fail if the status was invalid or revoked
+			if ocspResponse.Status == ocsp.Good {
+				log.Println("Certificate Status Good.")
+			} else if ocspResponse.Status == ocsp.Unknown {
+				log.Println("Certificate Status Unknown")
+			} else {
+				log.Println("Certificate Status Revoked")
+			}
+			cert.OCSPStaple = ocspResponseBytes
+		}
 		return &cert, nil
 	}
 	// Setup HTTPS client
@@ -140,6 +174,66 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+func getOcspResponseBytes(cert *tls.Certificate) (*ocsp.Response, []byte,
+	error) {
+	fmt.Println("getOcspResponseBytes called")
+	// Fetch OCSP
+	x509Cert := cert.Leaf
+	if cert.Leaf == nil {
+		// Above load drops parsed form
+		parsedCert, err := x509.ParseCertificate(cert.Certificate[0])
+		if err != nil {
+			log.Fatal("x509.ParseCertificate 0", err)
+		}
+		x509Cert = parsedCert
+	}
+	if x509Cert.OCSPServer == nil {
+		log.Println("No OCSPServer in certificate")
+		return nil, nil, errors.New("No OCSPServer in certificate")
+	}
+	ocspServer := x509Cert.OCSPServer[0]
+	// XXX hack
+	//	fmt.Printf("Connecting to XXX OCSP at %s\n", "http:" + strings.Split(ocspServer, ":")[1])
+	// ocspServer = "http:" + strings.Split(ocspServer, ":")[1]
+	// x509Cert.OCSPServer[0] = ocspServer
+
+	if len(cert.Certificate) == 1 {
+		log.Println("No issuer in certificate")
+		return nil, nil, errors.New("No issuer in certificate")
+	}
+	x509Issuer, err := x509.ParseCertificate(cert.Certificate[1])
+	if err != nil {
+		log.Println("x509.ParseCertificate 1", err)
+		return nil, nil, err
+	}
+	ocspRequest, err := ocsp.CreateRequest(x509Cert, x509Issuer, nil)
+	if err != nil {
+		log.Println("ocsp.CreateRequest", err)
+		return nil, nil, err
+	}
+	fmt.Printf("Connecting to OCSP at %s\n", ocspServer)
+	ocspRequestReader := bytes.NewReader(ocspRequest)
+	httpResponse, err := http.Post(ocspServer, "application/ocsp-request",
+		ocspRequestReader)
+	if err != nil {
+		log.Println("http.Post ocsp", err)
+		return nil, nil, err
+	}
+	defer httpResponse.Body.Close()
+	ocspResponseBytes, err := ioutil.ReadAll(httpResponse.Body)
+	if err != nil {
+		log.Println("getOcspResponseBytes", err)
+		return nil, nil, err
+	}
+	// XXX parse http return code?
+	ocspResponse, err := ocsp.ParseResponse(ocspResponseBytes, x509Issuer)
+	if err != nil {
+		log.Println("ocsp.ParseResponse", err)
+		return nil, nil, err
+	}
+	return ocspResponse, ocspResponseBytes, err
 }
 
 func SelfRegister(w http.ResponseWriter, r *http.Request) {
@@ -419,10 +513,18 @@ func DeviceParam(w http.ResponseWriter, r *http.Request) {
 	}
 	// validate it has not expired
 	now := time.Now()
-	if now.Before(cert.NotBefore) || now.After(cert.NotAfter) {
+	if now.Before(cert.NotBefore) {
 		// XXX use log instead?
-		fmt.Printf("deviceCert wrong time: NotBefore %s, NotAfter %s, now %s\n",
-			cert.NotBefore, cert.NotAfter, now)
+		fmt.Printf("deviceCert too new: NotBefore %s, now %s\n",
+			cert.NotBefore, now)
+		http.Error(w, http.StatusText(http.StatusUnauthorized),
+			http.StatusUnauthorized)
+		return
+	}
+	if now.After(cert.NotAfter) {
+		// XXX use log instead?
+		fmt.Printf("deviceCert too old: NotAfter %s, now %s\n",
+			cert.NotAfter, now)
 		http.Error(w, http.StatusText(http.StatusUnauthorized),
 			http.StatusUnauthorized)
 		return
