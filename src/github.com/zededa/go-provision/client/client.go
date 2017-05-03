@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/tls"
 	"crypto/x509"
@@ -23,17 +24,37 @@ var maxDelay = time.Second * 600 // 10 minutes
 //  root-certificate.pem	Fixed? Written if redirected. factory-root-cert?
 //  server			Fixed? Written if redirected. factory-root-cert?
 //  prov.cert.pem, prov.key.pem	Per device provisioning certificate/key
-//  device.cert.pem, device.key.pem Device certificate/key created before this
-//  		     		    client is started.
+//  		   		for selfRegister operation
+//  device.cert.pem,
+//  device.key.pem		Device certificate/key created before this
+//  		     		client is started.
+//  lisp.config			Written by lookupParam operation
+//  hwstatus XXX.json?		Uploaded by updateHwStatus operation
+//  swstatus XXX.json?		Uploaded by updateSwStatus operation
 //
 func main() {
 	args := os.Args[1:]
-	if len(args) > 1 {
+	if len(args) > 10 { // XXX
 		log.Fatal("Usage: " + os.Args[0] + "[<dirName>]")
 	}
 	dirName := "/etc/zededa/"
 	if len(args) > 0 {
 		dirName = args[0]
+	}
+	operations := map[string]bool{
+		"selfRegister":   false,
+		"lookupParam":    false,
+		"updateHwStatus": false,
+		"updateSwStatus": false,
+	}
+	if len(args) > 1 {
+		for _, op := range args[1:] {
+			operations[op] = true
+		}
+	} else {
+		// XXX for compat
+		operations["selfRegister"] = true
+		operations["lookupParam"] = true
 	}
 
 	provCertName := dirName + "/prov.cert.pem"
@@ -42,23 +63,36 @@ func main() {
 	deviceKeyName := dirName + "/device.key.pem"
 	rootCertName := dirName + "/root-certificate.pem"
 	serverFileName := dirName + "/server"
+	lispConfigFileName := dirName + "/lisp.config"
+	hwStatusFileName := dirName + "/hwstatus"
+	swStatusFileName := dirName + "/swstatus"
 
-	// Load provisioning cert
-	provCert, err := tls.LoadX509KeyPair(provCertName, provKeyName)
-	if err != nil {
-		log.Fatal(err)
+	var provCert, deviceCert tls.Certificate
+	var deviceCertPem []byte
+
+	if operations["selfRegister"] {
+		fmt.Println("Need provisioning cert for selfRegister")
+		var err error
+		provCert, err = tls.LoadX509KeyPair(provCertName, provKeyName)
+		if err != nil {
+			log.Fatal(err)
+		}
+		// Load device text cert for upload
+		deviceCertPem, err = ioutil.ReadFile(deviceCertName)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
-
-	// Load device cert
-	deviceCert, err := tls.LoadX509KeyPair(deviceCertName, deviceKeyName)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// Load text cert
-	deviceCertPem, err := ioutil.ReadFile(deviceCertName)
-	if err != nil {
-		log.Fatal(err)
+	if operations["lookupParam"] || operations["updateHwStatus"] ||
+		operations["updateSwStatus"] {
+		fmt.Println("Need device cert for all other operations")
+		// Load device cert
+		var err error
+		deviceCert, err = tls.LoadX509KeyPair(deviceCertName,
+			deviceKeyName)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	// Load CA cert
@@ -75,7 +109,7 @@ func main() {
 	}
 	serverNameAndPort := strings.TrimSpace(string(server))
 	serverName := strings.Split(serverNameAndPort, ":")[0]
-	
+
 	// Returns true when done; false when retry
 	selfRegister := func() bool {
 		// Setup HTTPS client
@@ -92,7 +126,7 @@ func main() {
 		tlsConfig.BuildNameToCertificate()
 
 		fmt.Printf("Connecting to %s\n", serverNameAndPort)
-		
+
 		transport := &http.Transport{TLSClientConfig: tlsConfig}
 		client := &http.Client{Transport: transport}
 		// XXX defer transport.Close()
@@ -136,8 +170,9 @@ func main() {
 			// Retry until fixed
 			return false
 		default:
-			fmt.Printf("self-register statuscode %d\n",
-				resp.StatusCode)
+			fmt.Printf("self-register statuscode %d %s\n",
+				resp.StatusCode,
+				http.StatusText(resp.StatusCode))
 			// XXX when should we not retry?
 			return false
 		}
@@ -206,8 +241,9 @@ func main() {
 		case http.StatusOK:
 			fmt.Printf("device-param StatusOK\n")
 		default:
-			fmt.Printf("device-param statuscode %d\n",
-				resp.StatusCode)
+			fmt.Printf("device-param statuscode %d %s\n",
+				resp.StatusCode,
+				http.StatusText(resp.StatusCode))
 			return false
 		}
 		contentType := resp.Header.Get("Content-Type")
@@ -227,48 +263,84 @@ func main() {
 		return true
 	}
 
-	done := false
-	var delay time.Duration
-
-	for !done {
-		time.Sleep(delay)
-		done = selfRegister()
-		delay = 2 * (delay + time.Second)
-		if delay > maxDelay {
-			delay = maxDelay
+	if operations["selfRegister"] {
+		done := false
+		var delay time.Duration
+		for !done {
+			time.Sleep(delay)
+			done = selfRegister()
+			delay = 2 * (delay + time.Second)
+			if delay > maxDelay {
+				delay = maxDelay
+			}
 		}
 	}
 
-	done = false
-	device := types.DeviceDb{}
-	delay = 0
-	for !done {
-		time.Sleep(delay)
-		done = lookupParam(&device)
-		delay = 2 * (delay + time.Second)
-		if delay > maxDelay {
-			delay = maxDelay
+	if operations["lookupParam"] {
+		done := false
+		var delay time.Duration
+		device := types.DeviceDb{}
+		for !done {
+			time.Sleep(delay)
+			done = lookupParam(&device)
+			delay = 2 * (delay + time.Second)
+			if delay > maxDelay {
+				delay = maxDelay
+			}
 		}
+
+		fmt.Printf("UserName %s\n", device.UserName)
+		// XXX add Redirect support and store + retry
+		// XXX try redirected once and then fall back to original; repeat
+		// XXX once redirect successful, then save server and rootCert
+		fmt.Printf("MapServers %s\n", device.LispMapServers)
+		fmt.Printf("Lisp IID %d\n", device.LispInstance)
+		fmt.Printf("EID %s\n", device.EID)
+		fmt.Printf("EID hash length %d\n", device.EIDHashLen)
+		// Should take ztp/lisp.config.zed and do the following replacements
+		f, err := os.Create(lispConfigFileName)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer f.Close()
+		w := bufio.NewWriter(f)
+		_, err = fmt.Fprintf(w, "instance-id = %v\n", device.LispInstance)
+		if err != nil {
+			log.Fatal(err)
+		}
+		_, err = fmt.Fprintf(w, "eid-prefix = %v/128\n", device.EID)
+		if err != nil {
+			log.Fatal(err)
+		}
+		for _, ms := range device.LispMapServers {
+			_, err = fmt.Fprintf(w, "dns-name = %v\n", ms.NameOrIp)
+			if err != nil {
+				log.Fatal(err)
+			}
+			_, err = fmt.Fprintf(w, "authentication-key = %v\n",
+				ms.Credential)
+			if err != nil {
+				log.Fatal(err)
+			}
+		}
+		w.Flush()
 	}
-
-	fmt.Printf("UserName %s\n", device.UserName)
-	// XXX add Redirect support and store + retry
-	// XXX try redirected once and then fall back to original; repeat
-	// XXX once redirect successful, then save server and rootCert
-	fmt.Printf("MapServers %s\n", device.LispMapServers)
-	fmt.Printf("Lisp IID %d\n", device.LispInstance)
-	fmt.Printf("EID %s\n", device.EID)
-	fmt.Printf("EID hash length %d\n", device.EIDHashLen)
-	// XXX save ouput
-	// XXX also save as a lisp.config file
-	// Should take ztp/lisp.config.zed and do the following replacements
-	//        ("instance-id = <iid>", "instance-id = {}".format(iid)),
-	//        ("eid-prefix = <eid-prefix4>", "eid-prefix = {}/32".format(eid4)),
-	//        ("eid-prefix = <eid-prefix6>", "eid-prefix = {}/128".format(eid6)),
-	//        ("dns-name = <map-server>", "dns-name = {}".format(ms)),
-	//        ("authentication-key = <map-server-key>",
-	//         "authentication-key = {}".format(ms_key)) ]
-
+	if operations["updateHwStatus"] {
+		// Load file for upload
+		_, err := ioutil.ReadFile(hwStatusFileName)
+		if err != nil {
+			log.Fatal(err)
+		}
+		// XXX post
+	}
+	if operations["updateSwStatus"] {
+		// Load file for upload
+		_, err := ioutil.ReadFile(swStatusFileName)
+		if err != nil {
+			log.Fatal(err)
+		}
+		// XXX post
+	}
 }
 
 func stapledCheck(connState *tls.ConnectionState) bool {
@@ -281,6 +353,14 @@ func stapledCheck(connState *tls.ConnectionState) bool {
 		log.Fatalln("error parsing response: ", err)
 		return false
 	}
+	// XXX check lifetime? does parser?
+	now := time.Now()
+	log.Printf("OCSP NextUpdate %s ProducedAt %s ThisUpdate %s now %s\n",
+		resp.NextUpdate, resp.ProducedAt,
+		resp.ThisUpdate, now)
+	age := now.Unix() - resp.ProducedAt.Unix()
+	remain := resp.NextUpdate.Unix() - now.Unix()
+	log.Printf("OCSP age %d, remain %d\n", age, remain)
 	if resp.Status == ocsp.Good {
 		log.Println("Certificate Status Good.")
 		return true
