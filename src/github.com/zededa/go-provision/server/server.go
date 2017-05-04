@@ -45,6 +45,8 @@ func main() {
 
 	http.HandleFunc("/rest/self-register", SelfRegister)
 	http.HandleFunc("/rest/device-param", DeviceParam)
+	http.HandleFunc("/rest/update-hw-status", UpdateHwStatus)
+	http.HandleFunc("/rest/update-sw-status", UpdateSwStatus)
 
 	serverCert, err := tls.LoadX509KeyPair(serverCertName, serverKeyName)
 	if err != nil {
@@ -562,4 +564,232 @@ func DeviceParam(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(res)
+}
+
+// XXX lots of commonality with UpdateSwStatus
+func UpdateHwStatus(w http.ResponseWriter, r *http.Request) {
+	fmt.Printf("Method %s Host %s Proto %s\n", r.Method, r.Host,
+		r.Proto)
+	if r.Method != http.MethodPost {
+		http.Error(w, http.StatusText(http.StatusMethodNotAllowed),
+			http.StatusMethodNotAllowed)
+		return
+	}
+	cert := r.TLS.PeerCertificates[0]
+
+	// XXX support rooted device certificates. Call validate on some chain?
+	// XXX should that be our own trust chain?
+	// Validating it is self-signed
+	if !cert.IsCA || !reflect.DeepEqual(cert.Issuer, cert.Subject) {
+		fmt.Printf("deviceCert not self-signed: Issuer %s, Subject %s, IsCa %s\n",
+			cert.Issuer, cert.Subject, cert.IsCA)
+		http.Error(w, http.StatusText(http.StatusUnauthorized),
+			http.StatusUnauthorized)
+		return
+	}
+	// validate it has not expired
+	now := time.Now()
+	if now.Before(cert.NotBefore) {
+		// XXX use log instead?
+		fmt.Printf("deviceCert too new: NotBefore %s, now %s\n",
+			cert.NotBefore, now)
+		http.Error(w, http.StatusText(http.StatusUnauthorized),
+			http.StatusUnauthorized)
+		return
+	}
+	if now.After(cert.NotAfter) {
+		// XXX use log instead?
+		fmt.Printf("deviceCert too old: NotAfter %s, now %s\n",
+			cert.NotAfter, now)
+		http.Error(w, http.StatusText(http.StatusUnauthorized),
+			http.StatusUnauthorized)
+		return
+	}
+	hasher := sha256.New()
+	hasher.Write(cert.Raw)
+	deviceKey := base64.URLEncoding.EncodeToString(hasher.Sum(nil))
+	fmt.Println("deviceKey:", deviceKey)
+
+	// Look up in device database
+	// a new or existing scribble driver, providing the directory
+	// where it will be writing to, and a qualified logger if desired
+	deviceDb, err := scribble.New("/var/tmp/zededa-device", nil)
+	if err != nil {
+		fmt.Println("scribble.New", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError),
+			http.StatusInternalServerError)
+		return
+	}
+	device := types.DeviceDb{}
+	if err := deviceDb.Read("ddb", deviceKey, &device); err != nil {
+		fmt.Println("deviceDb.Read", err)
+		http.Error(w, http.StatusText(http.StatusNotFound),
+			http.StatusNotFound)
+		return
+	}
+	contentType := r.Header.Get("Content-Type")
+	if contentType != "application/json" {
+		fmt.Println("Incorrect Content-Type " + contentType)
+		http.Error(w, http.StatusText(http.StatusUnsupportedMediaType),
+			http.StatusUnsupportedMediaType)
+		return
+	}
+	contentLength := r.Header.Get("Content-Length")
+	if contentLength == "" {
+		fmt.Println("No Content-Length field")
+		http.Error(w, http.StatusText(http.StatusLengthRequired),
+			http.StatusLengthRequired)
+		return
+	}
+	length, err := strconv.Atoi(contentLength)
+	if err != nil {
+		fmt.Println("Atoi", err)
+		http.Error(w, http.StatusText(http.StatusBadRequest),
+			http.StatusBadRequest)
+		return
+	}
+	// XXX which max length?
+	if length > 4096 {
+		fmt.Printf("Too large Content-Length %d\n", length)
+		http.Error(w, http.StatusText(http.StatusRequestEntityTooLarge),
+			http.StatusRequestEntityTooLarge)
+		return
+	}
+
+	// parsing DeviceHwStatus json payload
+	hwStatus := &types.DeviceHwStatus{}
+	if err := json.NewDecoder(r.Body).Decode(hwStatus); err != nil {
+		fmt.Printf("Error decoding body: %s\n", err)
+		http.Error(w, http.StatusText(http.StatusBadRequest),
+			http.StatusBadRequest)
+		return
+	}
+	if err := deviceDb.Write("hw-status", deviceKey, hwStatus); err != nil {
+		fmt.Println("deviceDb.Write", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError),
+			http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	// XXX created vs. updated?
+	w.WriteHeader(http.StatusCreated)
+}
+
+// XXX lots of commonality with UpdateHwStatus
+func UpdateSwStatus(w http.ResponseWriter, r *http.Request) {
+	fmt.Printf("Method %s Host %s Proto %s\n", r.Method, r.Host,
+		r.Proto)
+	if r.Method != http.MethodPost {
+		http.Error(w, http.StatusText(http.StatusMethodNotAllowed),
+			http.StatusMethodNotAllowed)
+		return
+	}
+	cert := r.TLS.PeerCertificates[0]
+
+	// XXX support rooted device certificates. Call validate on some chain?
+	// XXX should that be our own trust chain?
+	// Validating it is self-signed
+	if !cert.IsCA || !reflect.DeepEqual(cert.Issuer, cert.Subject) {
+		fmt.Printf("deviceCert not self-signed: Issuer %s, Subject %s, IsCa %s\n",
+			cert.Issuer, cert.Subject, cert.IsCA)
+		http.Error(w, http.StatusText(http.StatusUnauthorized),
+			http.StatusUnauthorized)
+		return
+	}
+	// validate it has not expired
+	now := time.Now()
+	if now.Before(cert.NotBefore) {
+		// XXX use log instead?
+		fmt.Printf("deviceCert too new: NotBefore %s, now %s\n",
+			cert.NotBefore, now)
+		http.Error(w, http.StatusText(http.StatusUnauthorized),
+			http.StatusUnauthorized)
+		return
+	}
+	if now.After(cert.NotAfter) {
+		// XXX use log instead?
+		fmt.Printf("deviceCert too old: NotAfter %s, now %s\n",
+			cert.NotAfter, now)
+		http.Error(w, http.StatusText(http.StatusUnauthorized),
+			http.StatusUnauthorized)
+		return
+	}
+	hasher := sha256.New()
+	hasher.Write(cert.Raw)
+	deviceKey := base64.URLEncoding.EncodeToString(hasher.Sum(nil))
+	fmt.Println("deviceKey:", deviceKey)
+
+	// Look up in device database
+	// a new or existing scribble driver, providing the directory
+	// where it will be writing to, and a qualified logger if desired
+	deviceDb, err := scribble.New("/var/tmp/zededa-device", nil)
+	if err != nil {
+		fmt.Println("scribble.New", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError),
+			http.StatusInternalServerError)
+		return
+	}
+	device := types.DeviceDb{}
+	if err := deviceDb.Read("ddb", deviceKey, &device); err != nil {
+		fmt.Println("deviceDb.Read", err)
+		http.Error(w, http.StatusText(http.StatusNotFound),
+			http.StatusNotFound)
+		return
+	}
+	contentType := r.Header.Get("Content-Type")
+	if contentType != "application/json" {
+		fmt.Println("Incorrect Content-Type " + contentType)
+		http.Error(w, http.StatusText(http.StatusUnsupportedMediaType),
+			http.StatusUnsupportedMediaType)
+		return
+	}
+	contentLength := r.Header.Get("Content-Length")
+	if contentLength == "" {
+		fmt.Println("No Content-Length field")
+		http.Error(w, http.StatusText(http.StatusLengthRequired),
+			http.StatusLengthRequired)
+		return
+	}
+	length, err := strconv.Atoi(contentLength)
+	if err != nil {
+		fmt.Println("Atoi", err)
+		http.Error(w, http.StatusText(http.StatusBadRequest),
+			http.StatusBadRequest)
+		return
+	}
+	// XXX which max length? How many applications?
+	if length > 4*4096 {
+		fmt.Printf("Too large Content-Length %d\n", length)
+		http.Error(w, http.StatusText(http.StatusRequestEntityTooLarge),
+			http.StatusRequestEntityTooLarge)
+		return
+	}
+
+	// parsing DeviceSwStatus json payload
+	swStatus := &types.DeviceSwStatus{}
+	if err := json.NewDecoder(r.Body).Decode(swStatus); err != nil {
+		fmt.Printf("Error decoding body: %s\n", err)
+		http.Error(w, http.StatusText(http.StatusBadRequest),
+			http.StatusBadRequest)
+		return
+	}
+	fmt.Printf("DeviceSwStatus contains %d applications\n",
+		len(swStatus.ApplicationStatus))
+	for _, s := range swStatus.ApplicationStatus {
+		fmt.Printf("SwStatus Name %s state %v activated %v\n",
+			s.Name, s.State, s.Activated)
+		if s.State == types.INSTALLED {
+			fmt.Printf("INSTALLED\n")
+		}
+	}
+
+	if err := deviceDb.Write("sw-status", deviceKey, swStatus); err != nil {
+		fmt.Println("deviceDb.Write", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError),
+			http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	// XXX created vs. updated?
+	w.WriteHeader(http.StatusCreated)
 }

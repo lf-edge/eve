@@ -108,14 +108,20 @@ if [ $WAIT == 1 ]; then
 fi
 
 echo "Uploading device (hardware) status"
-# XXX do we generate the parameters?
-# uname -m - machine
-# uname -p - processor
-# uname -i - hardware platform
-# Memory in MB: sudo dmidecode -t 17 | grep "Size.*MB" | awk '{s+=$2} END {print s}'
-# Or dmesg | grep -i 'memory.*available' | sed 's,.*/\([0-9]*[KMG]\) .*,\1,'
-# Or awk '/MemTotal/ {print $2}' /proc/meminfo
-# Disk df -klm --output=size / | tail -n +2
+machine=`uname -m`
+processor=`uname -p`
+platform=`uname -i`
+memory=`awk '/MemTotal/ {print $2}' /proc/meminfo`
+storage=`df -kl --output=size / | tail -n +2| awk '{print $1}'`
+cat >$DIR/hwstatus.json <<EOF
+{
+	"Machine": "$machine",
+	"Processor": "$processor",
+	"Platform": "$platform",
+	"Memory": $memory,
+	"Storage": $storage
+}
+EOF
 $BINDIR/client $DIR updateHwStatus
 
 if [ $WAIT == 1 ]; then
@@ -123,9 +129,24 @@ if [ $WAIT == 1 ]; then
 fi
 
 echo "Uploading software status"
-# XXX do we generate the parameters?
-# uname -o; name
-# uname -r, uname -v; version and additional info
+# Only report the Linux info for now
+name=`uname -o`
+version=`uname -r`
+description=`uname -v`
+cat >$DIR/swstatus.json <<EOF
+{
+	"ApplicationStatus": [
+		{
+			"EID": "::",
+			"Name": "$name",
+			"Version": "$version",
+			"Description": "$description",
+			"State": 5,
+			"Activated": true
+		}
+	]
+}
+EOF
 $BINDIR/client $DIR updateSwStatus
 
 echo "Initial setup done!"

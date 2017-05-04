@@ -29,8 +29,8 @@ var maxDelay = time.Second * 600 // 10 minutes
 //  device.key.pem		Device certificate/key created before this
 //  		     		client is started.
 //  lisp.config			Written by lookupParam operation
-//  hwstatus XXX.json?		Uploaded by updateHwStatus operation
-//  swstatus XXX.json?		Uploaded by updateSwStatus operation
+//  hwstatus.json		Uploaded by updateHwStatus operation
+//  swstatus.json		Uploaded by updateSwStatus operation
 //
 func main() {
 	args := os.Args[1:]
@@ -64,11 +64,12 @@ func main() {
 	rootCertName := dirName + "/root-certificate.pem"
 	serverFileName := dirName + "/server"
 	lispConfigFileName := dirName + "/lisp.config"
-	hwStatusFileName := dirName + "/hwstatus"
-	swStatusFileName := dirName + "/swstatus"
+	hwStatusFileName := dirName + "/hwstatus.json"
+	swStatusFileName := dirName + "/swstatus.json"
 
 	var provCert, deviceCert tls.Certificate
 	var deviceCertPem []byte
+	deviceCertSet := false
 
 	if operations["selfRegister"] {
 		fmt.Println("Need provisioning cert for selfRegister")
@@ -93,6 +94,7 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
+		deviceCertSet = true
 	}
 
 	// Load CA cert
@@ -109,6 +111,67 @@ func main() {
 	}
 	serverNameAndPort := strings.TrimSpace(string(server))
 	serverName := strings.Split(serverNameAndPort, ":")[0]
+
+	// Post something without a return. Validates OCSP
+	// Returns true when done; false when retry
+	myPost := func(client *http.Client, url string, b *bytes.Buffer) bool {
+		resp, err := client.Post("https://"+serverNameAndPort+url,
+			"application/json", b)
+		if err != nil {
+			fmt.Println(err)
+			return false
+		}
+		defer resp.Body.Close()
+		connState := resp.TLS
+		if connState == nil {
+			fmt.Println("no connection state")
+			return false
+		}
+
+		if connState.OCSPResponse == nil {
+			fmt.Println("no OCSP response")
+			// XXX return false
+		} else {
+			// parse the ocsp response
+			log.Println("stapled check")
+			if !stapledCheck(connState) {
+				fmt.Println("OCSP stapled check failed")
+				return false
+			}
+		}
+
+		// XXX is this url-specific?
+		switch resp.StatusCode {
+		case http.StatusOK:
+			fmt.Printf("%s StatusOK\n", url)
+		case http.StatusCreated:
+			fmt.Printf("%s StatusCreated\n", url)
+		case http.StatusConflict:
+			fmt.Printf("%s StatusConflict\n", url)
+			// Retry until fixed
+			return false
+		default:
+			fmt.Printf("%s statuscode %d %s\n",
+				url, resp.StatusCode,
+				http.StatusText(resp.StatusCode))
+			// XXX when should we not retry?
+			return false
+		}
+
+		contentType := resp.Header.Get("Content-Type")
+		if contentType != "application/json" {
+			fmt.Println("Incorrect Content-Type " + contentType)
+			return false
+		}
+		contents, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			fmt.Println(err)
+			return false
+		}
+		// XXX remove
+		fmt.Printf("%s\n", string(contents))
+		return true
+	}
 
 	// Returns true when done; false when retry
 	selfRegister := func() bool {
@@ -135,83 +198,11 @@ func main() {
 		rc := types.RegisterCreate{PemCert: deviceCertPem}
 		b := new(bytes.Buffer)
 		json.NewEncoder(b).Encode(rc)
-		resp, err := client.Post("https://"+serverNameAndPort+
-			"/rest/self-register", "application/json", b)
-		if err != nil {
-			fmt.Println(err)
-			return false
-		}
-		defer resp.Body.Close()
-		connState := resp.TLS
-		if connState == nil {
-			fmt.Println("no connection state")
-			return false
-		}
-
-		if connState.OCSPResponse == nil {
-			fmt.Println("no OCSP response")
-			// XXX return false
-		} else {
-			// parse the ocsp response
-			log.Println("stapled check")
-			if !stapledCheck(connState) {
-				fmt.Println("OCSP stapled check failed")
-				return false
-			}
-		}
-
-		switch resp.StatusCode {
-		case http.StatusOK:
-			fmt.Printf("self-register StatusOK\n")
-		case http.StatusCreated:
-			fmt.Printf("self-register StatusCreated\n")
-		case http.StatusConflict:
-			fmt.Printf("self-register StatusConflict\n")
-			// Retry until fixed
-			return false
-		default:
-			fmt.Printf("self-register statuscode %d %s\n",
-				resp.StatusCode,
-				http.StatusText(resp.StatusCode))
-			// XXX when should we not retry?
-			return false
-		}
-
-		contentType := resp.Header.Get("Content-Type")
-		if contentType != "application/json" {
-			fmt.Println("Incorrect Content-Type " + contentType)
-			return false
-		}
-		contents, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			fmt.Println(err)
-			return false
-		}
-		// XXX remove
-		fmt.Printf("%s\n", string(contents))
-		return true
+		return myPost(client, "/rest/self-register", b)
 	}
 
 	// Returns true when done; false when retry
-	lookupParam := func(device *types.DeviceDb) bool {
-		// Setup HTTPS client
-		tlsConfig := &tls.Config{
-			Certificates: []tls.Certificate{deviceCert},
-			ServerName:   serverName,
-			RootCAs:      caCertPool,
-			CipherSuites: []uint16{
-				tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-				tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256},
-			// TLS 1.2 because we can
-			MinVersion: tls.VersionTLS12,
-		}
-		tlsConfig.BuildNameToCertificate()
-
-		transport := &http.Transport{TLSClientConfig: tlsConfig}
-		client := &http.Client{Transport: transport}
-		// XXX defer transport.Close()
-		// defer client.Close()
-
+	lookupParam := func(client *http.Client, device *types.DeviceDb) bool {
 		resp, err := client.Get("https://" + serverNameAndPort +
 			"/rest/device-param")
 		if err != nil {
@@ -276,13 +267,34 @@ func main() {
 		}
 	}
 
+	if !deviceCertSet {
+		return
+	}
+	// Setup HTTPS client for deviceCert
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{deviceCert},
+		ServerName:   serverName,
+		RootCAs:      caCertPool,
+		CipherSuites: []uint16{
+			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256},
+		// TLS 1.2 because we can
+		MinVersion: tls.VersionTLS12,
+	}
+	tlsConfig.BuildNameToCertificate()
+
+	transport := &http.Transport{TLSClientConfig: tlsConfig}
+	client := &http.Client{Transport: transport}
+	// XXX defer transport.Close()
+	// defer client.Close()
+
 	if operations["lookupParam"] {
 		done := false
 		var delay time.Duration
 		device := types.DeviceDb{}
 		for !done {
 			time.Sleep(delay)
-			done = lookupParam(&device)
+			done = lookupParam(client, &device)
 			delay = 2 * (delay + time.Second)
 			if delay > maxDelay {
 				delay = maxDelay
@@ -327,19 +339,25 @@ func main() {
 	}
 	if operations["updateHwStatus"] {
 		// Load file for upload
-		_, err := ioutil.ReadFile(hwStatusFileName)
+		buf, err := ioutil.ReadFile(hwStatusFileName)
 		if err != nil {
 			log.Fatal(err)
 		}
-		// XXX post
+		// XXX if file is already json?
+		b := bytes.NewBuffer(buf)
+		// XXX add done loop
+		myPost(client, "/rest/update-hw-status", b)
 	}
 	if operations["updateSwStatus"] {
 		// Load file for upload
-		_, err := ioutil.ReadFile(swStatusFileName)
+		buf, err := ioutil.ReadFile(swStatusFileName)
 		if err != nil {
 			log.Fatal(err)
 		}
-		// XXX post
+		// XXX if file is already json?
+		b := bytes.NewBuffer(buf)
+		// XXX add done loop
+		myPost(client, "/rest/update-sw-status", b)
 	}
 }
 
