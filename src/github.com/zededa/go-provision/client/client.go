@@ -379,6 +379,10 @@ func stapledCheck(connState *tls.ConnectionState) bool {
 	age := now.Unix() - resp.ProducedAt.Unix()
 	remain := resp.NextUpdate.Unix() - now.Unix()
 	log.Printf("OCSP age %d, remain %d\n", age, remain)
+	if remain < 0 {
+		log.Println("OCSP expired.")
+		return false
+	}
 	if resp.Status == ocsp.Good {
 		log.Println("Certificate Status Good.")
 		return true

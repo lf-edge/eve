@@ -130,10 +130,14 @@ func main() {
 		cert := serverCert
 		now := time.Now()
 		if ocspResponseBytes != nil {
+			// We staple the cert we have even if it is not Good
 			age := now.Unix() - ocspResponse.ProducedAt.Unix()
 			remain := ocspResponse.NextUpdate.Unix() - now.Unix()
-			log.Printf("OCSP age %d, remain %d\n", age, remain)
-			// We staple the cert we have even if it is not Good
+			log.Printf("OCSP status %v, age %d, remain %d\n",
+					 ocspResponse.Status, age, remain)
+			if remain < 0 {
+				log.Println("OCSP expired - staple anyway.")
+			}
 			cert.OCSPStaple = ocspResponseBytes
 		}
 		return &cert, nil
