@@ -66,9 +66,6 @@ func main() {
 		if err != nil {
 			log.Println(err)
 			time.Sleep(5 * time.Second)
-			// XXX testing
-			period = 3600
-			done = true
 			continue
 		}
 
@@ -78,14 +75,12 @@ func main() {
 		log.Printf("OCSP age %d, remain %d\n", age, remain)
 		// Check again after half the remaining time
 		period = remain / 2
-		// TODO: should maybe fail if the status was invalid or revoked
 		if ocspResponse.Status == ocsp.Good {
 			log.Println("Certificate Status Good.")
 			done = true
 		} else if ocspResponse.Status == ocsp.Unknown {
 			log.Println("Certificate Status Unknown")
-			// XXX remove
-			done = true
+			time.Sleep(5 * time.Second)
 		} else {
 			log.Println("Certificate Status Revoked")
 			time.Sleep(5 * time.Second)
@@ -132,21 +127,13 @@ func main() {
 
 	getCertificate := func(hello *tls.ClientHelloInfo) (*tls.Certificate,
 		error) {
-		fmt.Println("getCertificate called")
 		cert := serverCert
 		now := time.Now()
 		if ocspResponseBytes != nil {
 			age := now.Unix() - ocspResponse.ProducedAt.Unix()
 			remain := ocspResponse.NextUpdate.Unix() - now.Unix()
 			log.Printf("OCSP age %d, remain %d\n", age, remain)
-			// TODO: should maybe fail if the status was invalid or revoked
-			if ocspResponse.Status == ocsp.Good {
-				log.Println("Certificate Status Good.")
-			} else if ocspResponse.Status == ocsp.Unknown {
-				log.Println("Certificate Status Unknown")
-			} else {
-				log.Println("Certificate Status Revoked")
-			}
+			// We staple the cert we have even if it is not Good
 			cert.OCSPStaple = ocspResponseBytes
 		}
 		return &cert, nil
@@ -180,14 +167,14 @@ func main() {
 
 func getOcspResponseBytes(cert *tls.Certificate) (*ocsp.Response, []byte,
 	error) {
-	fmt.Println("getOcspResponseBytes called")
 	// Fetch OCSP
 	x509Cert := cert.Leaf
 	if cert.Leaf == nil {
 		// Above load drops parsed form
 		parsedCert, err := x509.ParseCertificate(cert.Certificate[0])
 		if err != nil {
-			log.Fatal("x509.ParseCertificate 0", err)
+			log.Println("x509.ParseCertificate 0", err)
+			return nil, nil, err
 		}
 		x509Cert = parsedCert
 	}
@@ -196,11 +183,6 @@ func getOcspResponseBytes(cert *tls.Certificate) (*ocsp.Response, []byte,
 		return nil, nil, errors.New("No OCSPServer in certificate")
 	}
 	ocspServer := x509Cert.OCSPServer[0]
-	// XXX hack
-	//	fmt.Printf("Connecting to XXX OCSP at %s\n", "http:" + strings.Split(ocspServer, ":")[1])
-	// ocspServer = "http:" + strings.Split(ocspServer, ":")[1]
-	// x509Cert.OCSPServer[0] = ocspServer
-
 	if len(cert.Certificate) == 1 {
 		log.Println("No issuer in certificate")
 		return nil, nil, errors.New("No issuer in certificate")
@@ -298,8 +280,6 @@ func SelfRegister(w http.ResponseWriter, r *http.Request) {
 	}
 	userName := prov.UserName
 	// Check we have a reasonable content-length
-	fmt.Println("Content-Length", r.Header.Get("Content-Length"))
-	fmt.Println("Content-Type", r.Header.Get("Content-Type"))
 	contentType := r.Header.Get("Content-Type")
 	if contentType != "application/json" {
 		fmt.Println("Incorrect Content-Type " + contentType)
@@ -524,7 +504,6 @@ func DeviceParam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if now.After(cert.NotAfter) {
-		// XXX use log instead?
 		fmt.Printf("deviceCert too old: NotAfter %s, now %s\n",
 			cert.NotAfter, now)
 		http.Error(w, http.StatusText(http.StatusUnauthorized),
@@ -566,6 +545,7 @@ func DeviceParam(w http.ResponseWriter, r *http.Request) {
 	w.Write(res)
 }
 
+// XXX lots of commonality with above up to lookup of deviceKey
 // XXX lots of commonality with UpdateSwStatus
 func UpdateHwStatus(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("Method %s Host %s Proto %s\n", r.Method, r.Host,
@@ -590,7 +570,6 @@ func UpdateHwStatus(w http.ResponseWriter, r *http.Request) {
 	// validate it has not expired
 	now := time.Now()
 	if now.Before(cert.NotBefore) {
-		// XXX use log instead?
 		fmt.Printf("deviceCert too new: NotBefore %s, now %s\n",
 			cert.NotBefore, now)
 		http.Error(w, http.StatusText(http.StatusUnauthorized),
@@ -598,7 +577,6 @@ func UpdateHwStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if now.After(cert.NotAfter) {
-		// XXX use log instead?
 		fmt.Printf("deviceCert too old: NotAfter %s, now %s\n",
 			cert.NotAfter, now)
 		http.Error(w, http.StatusText(http.StatusUnauthorized),
@@ -699,7 +677,6 @@ func UpdateSwStatus(w http.ResponseWriter, r *http.Request) {
 	// validate it has not expired
 	now := time.Now()
 	if now.Before(cert.NotBefore) {
-		// XXX use log instead?
 		fmt.Printf("deviceCert too new: NotBefore %s, now %s\n",
 			cert.NotBefore, now)
 		http.Error(w, http.StatusText(http.StatusUnauthorized),
@@ -707,7 +684,6 @@ func UpdateSwStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if now.After(cert.NotAfter) {
-		// XXX use log instead?
 		fmt.Printf("deviceCert too old: NotAfter %s, now %s\n",
 			cert.NotAfter, now)
 		http.Error(w, http.StatusText(http.StatusUnauthorized),
@@ -778,9 +754,6 @@ func UpdateSwStatus(w http.ResponseWriter, r *http.Request) {
 	for _, s := range swStatus.ApplicationStatus {
 		fmt.Printf("SwStatus Name %s state %v activated %v\n",
 			s.Name, s.State, s.Activated)
-		if s.State == types.INSTALLED {
-			fmt.Printf("INSTALLED\n")
-		}
 	}
 
 	if err := deviceDb.Write("sw-status", deviceKey, swStatus); err != nil {

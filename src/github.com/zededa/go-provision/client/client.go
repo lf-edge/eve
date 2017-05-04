@@ -35,7 +35,8 @@ var maxDelay = time.Second * 600 // 10 minutes
 func main() {
 	args := os.Args[1:]
 	if len(args) > 10 { // XXX
-		log.Fatal("Usage: " + os.Args[0] + "[<dirName>]")
+		log.Fatal("Usage: " + os.Args[0] +
+			"[<dirName> [<operations>...]]")
 	}
 	dirName := "/etc/zededa/"
 	if len(args) > 0 {
@@ -112,7 +113,7 @@ func main() {
 	serverNameAndPort := strings.TrimSpace(string(server))
 	serverName := strings.Split(serverNameAndPort, ":")[0]
 
-	// Post something without a return. Validates OCSP
+	// Post something without a return type.
 	// Returns true when done; false when retry
 	myPost := func(client *http.Client, url string, b *bytes.Buffer) bool {
 		resp, err := client.Post("https://"+serverNameAndPort+url,
@@ -128,16 +129,14 @@ func main() {
 			return false
 		}
 
-		if connState.OCSPResponse == nil {
-			fmt.Println("no OCSP response")
-			// XXX return false
-		} else {
-			// parse the ocsp response
-			log.Println("stapled check")
-			if !stapledCheck(connState) {
+		if connState.OCSPResponse == nil ||
+			!stapledCheck(connState) {
+			if connState.OCSPResponse == nil {
+				fmt.Println("no OCSP response")
+			} else {
 				fmt.Println("OCSP stapled check failed")
-				return false
 			}
+			return false
 		}
 
 		// XXX is this url-specific?
@@ -154,7 +153,6 @@ func main() {
 			fmt.Printf("%s statuscode %d %s\n",
 				url, resp.StatusCode,
 				http.StatusText(resp.StatusCode))
-			// XXX when should we not retry?
 			return false
 		}
 
@@ -168,7 +166,6 @@ func main() {
 			fmt.Println(err)
 			return false
 		}
-		// XXX remove
 		fmt.Printf("%s\n", string(contents))
 		return true
 	}
@@ -192,9 +189,6 @@ func main() {
 
 		transport := &http.Transport{TLSClientConfig: tlsConfig}
 		client := &http.Client{Transport: transport}
-		// XXX defer transport.Close()
-		// defer client.Close()
-
 		rc := types.RegisterCreate{PemCert: deviceCertPem}
 		b := new(bytes.Buffer)
 		json.NewEncoder(b).Encode(rc)
@@ -216,16 +210,14 @@ func main() {
 			return false
 		}
 
-		if connState.OCSPResponse == nil {
-			fmt.Println("no OCSP response")
-			// XXX return false
-		} else {
-			// parse the ocsp response
-			log.Println("stapled check")
-			if !stapledCheck(connState) {
+		if connState.OCSPResponse == nil ||
+			!stapledCheck(connState) {
+			if connState.OCSPResponse == nil {
+				fmt.Println("no OCSP response")
+			} else {
 				fmt.Println("OCSP stapled check failed")
-				return false
 			}
+			return false
 		}
 
 		switch resp.StatusCode {
@@ -285,8 +277,6 @@ func main() {
 
 	transport := &http.Transport{TLSClientConfig: tlsConfig}
 	client := &http.Client{Transport: transport}
-	// XXX defer transport.Close()
-	// defer client.Close()
 
 	if operations["lookupParam"] {
 		done := false
@@ -343,10 +333,18 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		// XXX if file is already json?
+		// Input is in json format
 		b := bytes.NewBuffer(buf)
-		// XXX add done loop
-		myPost(client, "/rest/update-hw-status", b)
+		done := false
+		var delay time.Duration
+		for !done {
+			time.Sleep(delay)
+			done = myPost(client, "/rest/update-hw-status", b)
+			delay = 2 * (delay + time.Second)
+			if delay > maxDelay {
+				delay = maxDelay
+			}
+		}
 	}
 	if operations["updateSwStatus"] {
 		// Load file for upload
@@ -354,28 +352,30 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		// XXX if file is already json?
+		// Input is in json format
 		b := bytes.NewBuffer(buf)
-		// XXX add done loop
-		myPost(client, "/rest/update-sw-status", b)
+		done := false
+		var delay time.Duration
+		for !done {
+			time.Sleep(delay)
+			done = myPost(client, "/rest/update-sw-status", b)
+			delay = 2 * (delay + time.Second)
+			if delay > maxDelay {
+				delay = maxDelay
+			}
+		}
 	}
 }
 
 func stapledCheck(connState *tls.ConnectionState) bool {
-	server := connState.VerifiedChains[0][0]
+	// server := connState.VerifiedChains[0][0]
 	issuer := connState.VerifiedChains[0][1]
-	log.Printf("Server: %v\n", server.Subject.CommonName)
-	log.Printf("Issuer: %v\n", issuer.Subject.CommonName)
 	resp, err := ocsp.ParseResponse(connState.OCSPResponse, issuer)
 	if err != nil {
-		log.Fatalln("error parsing response: ", err)
+		log.Println("error parsing response: ", err)
 		return false
 	}
-	// XXX check lifetime? does parser?
 	now := time.Now()
-	log.Printf("OCSP NextUpdate %s ProducedAt %s ThisUpdate %s now %s\n",
-		resp.NextUpdate, resp.ProducedAt,
-		resp.ThisUpdate, now)
 	age := now.Unix() - resp.ProducedAt.Unix()
 	remain := resp.NextUpdate.Unix() - now.Unix()
 	log.Printf("OCSP age %d, remain %d\n", age, remain)
