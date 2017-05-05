@@ -54,10 +54,12 @@ func main() {
 	}
 
 	// seed oscpResponse and oscpResponseBytes using serverCert
-	var period int64 // periodic timer value
+	var ocspTimer int64 // periodic timer value
+	var timerBackoff int64 = 1
 	var ocspResponse *ocsp.Response
 	var ocspResponseBytes []byte
-
+	var lastOcspUpdate, lastOcspUse time.Time
+	
 	done := false
 	for !done {
 		var err error
@@ -74,10 +76,11 @@ func main() {
 		remain := ocspResponse.NextUpdate.Unix() - now.Unix()
 		log.Printf("OCSP age %d, remain %d\n", age, remain)
 		// Check again after half the remaining time
-		period = remain / 2
+		ocspTimer = remain / 2
 		if ocspResponse.Status == ocsp.Good {
 			log.Println("Certificate Status Good.")
 			done = true
+			lastOcspUpdate = now
 		} else if ocspResponse.Status == ocsp.Unknown {
 			log.Println("Certificate Status Unknown")
 			time.Sleep(5 * time.Second)
@@ -86,17 +89,23 @@ func main() {
 			time.Sleep(5 * time.Second)
 		}
 	}
-	log.Printf("Setup timer every %d seconds\n", period)
+	log.Printf("Setup timer every %d seconds\n", ocspTimer)
 
 	var periodicOcsp func()
 	var t *time.Timer
 
-	// XXX use this for initial assignment? Need a non-zero period in
+	// XXX use this for initial assignment? Need a non-zero ocspTimer in
 	// case the initial fails? But want one success before starting
 	// to serve requests.
-	// Channel to send "done" to caller? Plus 1,2,4,8 period until
+	// Channel to send "done" to caller? Plus 1,2,4,8 ocspTimer until
 	// we have a response?
 	periodicOcsp = func() {
+		// XXX update time based on lastOcspUse
+		if lastOcspUse.Before(lastOcspUpdate) {
+			timerBackoff *= 2
+			log.Printf("OCSP did get used. Backoff %d\n",
+				timerBackoff)
+		}
 		// If we get an updated success, then we use that for subsequent
 		// stapling
 		response, responseBytes, err :=
@@ -110,36 +119,64 @@ func main() {
 			remain := ocspResponse.NextUpdate.Unix() - now.Unix()
 			log.Printf("OCSP age %d, remain %d\n", age, remain)
 			// Check again after half the remaining time
-			period = remain / 2
+			ocspTimer = remain / 2
 			if ocspResponse.Status == ocsp.Good {
 				log.Println("Certificate Status Good.")
+				lastOcspUpdate = now
 			} else if ocspResponse.Status == ocsp.Unknown {
 				log.Println("Certificate Status Unknown")
 			} else {
 				log.Println("Certificate Status Revoked")
 			}
 		}
-		t = time.AfterFunc(time.Duration(period)*time.Second,
-			periodicOcsp)
+		t = time.AfterFunc(time.Duration(timerBackoff*ocspTimer) *
+		  time.Second, periodicOcsp)
 	}
-	t = time.AfterFunc(time.Duration(period)*time.Second, periodicOcsp)
+	t = time.AfterFunc(time.Duration(timerBackoff * ocspTimer) *
+		time.Second, periodicOcsp)
 	defer t.Stop()
 
+	// XXX could we instead update serverCert when we run the periodic
+	// function?
 	getCertificate := func(hello *tls.ClientHelloInfo) (*tls.Certificate,
 		error) {
 		cert := serverCert
 		now := time.Now()
-		if ocspResponseBytes != nil {
-			// We staple the cert we have even if it is not Good
-			age := now.Unix() - ocspResponse.ProducedAt.Unix()
-			remain := ocspResponse.NextUpdate.Unix() - now.Unix()
-			log.Printf("OCSP status %v, age %d, remain %d\n",
-					 ocspResponse.Status, age, remain)
-			if remain < 0 {
-				log.Println("OCSP expired - staple anyway.")
+		lastOcspUse = now
+		// We staple the cert we have even if it is not Good
+		age := now.Unix() - ocspResponse.ProducedAt.Unix()
+		remain := ocspResponse.NextUpdate.Unix() - now.Unix()
+		log.Printf("OCSP status %v, age %d, remain %d\n",
+				 ocspResponse.Status, age, remain)
+		if remain < 0 {
+			// Force update now. Reset timerBackoff.
+			log.Println("OCSP expired - force update.")
+			response, responseBytes, err :=
+				getOcspResponseBytes(&cert)
+			if err == nil {
+				// Have an updated response to staple
+				ocspResponse = response
+				ocspResponseBytes = responseBytes
+				now := time.Now()
+				age := now.Unix() - ocspResponse.ProducedAt.Unix()
+				remain := ocspResponse.NextUpdate.Unix() - now.Unix()
+				log.Printf("OCSP age %d, remain %d\n", age, remain)
+				// Check again after half the remaining time
+				ocspTimer = remain / 2
+				if ocspResponse.Status == ocsp.Good {
+					log.Println("Certificate Status Good.")
+					lastOcspUpdate = now
+				} else if ocspResponse.Status == ocsp.Unknown {
+					log.Println("Certificate Status Unknown")
+				} else {
+					log.Println("Certificate Status Revoked")
+				}
 			}
-			cert.OCSPStaple = ocspResponseBytes
+			timerBackoff = 1
+			t = time.AfterFunc(time.Duration(timerBackoff * ocspTimer) *
+				time.Second, periodicOcsp)
 		}
+		cert.OCSPStaple = ocspResponseBytes
 		return &cert, nil
 	}
 	// Setup HTTPS client
@@ -212,7 +249,7 @@ func getOcspResponseBytes(cert *tls.Certificate) (*ocsp.Response, []byte,
 	defer httpResponse.Body.Close()
 	ocspResponseBytes, err := ioutil.ReadAll(httpResponse.Body)
 	if err != nil {
-		log.Println("getOcspResponseBytes", err)
+		log.Println("getOcspResponseBytes ReadAll", err)
 		return nil, nil, err
 	}
 	// XXX parse http return code?
@@ -316,7 +353,7 @@ func SelfRegister(w http.ResponseWriter, r *http.Request) {
 	// parsing RegisterCreate json payload
 	rc := &types.RegisterCreate{}
 	if err := json.NewDecoder(r.Body).Decode(rc); err != nil {
-		fmt.Printf("Error decoding body: %s\n", err)
+		fmt.Printf("Error decoding RegisterCreate: %s\n", err)
 		http.Error(w, http.StatusText(http.StatusBadRequest),
 			http.StatusBadRequest)
 		return
@@ -641,7 +678,7 @@ func UpdateHwStatus(w http.ResponseWriter, r *http.Request) {
 	// parsing DeviceHwStatus json payload
 	hwStatus := &types.DeviceHwStatus{}
 	if err := json.NewDecoder(r.Body).Decode(hwStatus); err != nil {
-		fmt.Printf("Error decoding body: %s\n", err)
+		fmt.Printf("Error decoding DeviceHwStatus: %s\n", err)
 		http.Error(w, http.StatusText(http.StatusBadRequest),
 			http.StatusBadRequest)
 		return
@@ -748,7 +785,7 @@ func UpdateSwStatus(w http.ResponseWriter, r *http.Request) {
 	// parsing DeviceSwStatus json payload
 	swStatus := &types.DeviceSwStatus{}
 	if err := json.NewDecoder(r.Body).Decode(swStatus); err != nil {
-		fmt.Printf("Error decoding body: %s\n", err)
+		fmt.Printf("Error decoding DeviceSwStatus: %s\n", err)
 		http.Error(w, http.StatusText(http.StatusBadRequest),
 			http.StatusBadRequest)
 		return

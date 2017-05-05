@@ -54,6 +54,7 @@ type DeviceHwStatus struct {
 	Machine   string
 	Processor string
 	Platform  string
+	Compatible string
 	Memory    uint // Kbyte
 	Storage   uint // Kbyte
 }

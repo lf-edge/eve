@@ -73,7 +73,6 @@ func main() {
 	deviceCertSet := false
 
 	if operations["selfRegister"] {
-		fmt.Println("Need provisioning cert for selfRegister")
 		var err error
 		provCert, err = tls.LoadX509KeyPair(provCertName, provKeyName)
 		if err != nil {
@@ -87,7 +86,6 @@ func main() {
 	}
 	if operations["lookupParam"] || operations["updateHwStatus"] ||
 		operations["updateSwStatus"] {
-		fmt.Println("Need device cert for all other operations")
 		// Load device cert
 		var err error
 		deviceCert, err = tls.LoadX509KeyPair(deviceCertName,
@@ -204,6 +202,10 @@ func main() {
 			return false
 		}
 		defer resp.Body.Close()
+		// XXX can we use GetClientCertificate to inspect this once
+		// when connection comes up? Or do we not yet know the server
+		// cert in GetClientCertificate?
+		// XXX or call crypto/tls/Conn.Handshake and then check!
 		connState := resp.TLS
 		if connState == nil {
 			fmt.Println("no connection state")
@@ -385,12 +387,10 @@ func stapledCheck(connState *tls.ConnectionState) bool {
 	}
 	if resp.Status == ocsp.Good {
 		log.Println("Certificate Status Good.")
-		return true
 	} else if resp.Status == ocsp.Unknown {
 		log.Println("Certificate Status Unknown")
-		return false
 	} else {
 		log.Println("Certificate Status Revoked")
-		return false
 	}
+	return resp.Status == ocsp.Good
 }

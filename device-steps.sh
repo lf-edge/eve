@@ -6,7 +6,7 @@ BINDIR=/home/nordmark/go-provision/bin
 WAIT=1
 
 while [ $# != 0 ]; do
-    if [ '$1' = -w ]; then
+    if [ "$1" == -w ]; then
 	WAIT=0
     else
 	DIR=$1
@@ -111,6 +111,11 @@ echo "Uploading device (hardware) status"
 machine=`uname -m`
 processor=`uname -p`
 platform=`uname -i`
+if [ -f /proc/device-tree/compatible ]; then
+    compatible=`cat /proc/device-tree/compatible`
+else
+    compatible=""
+fi
 memory=`awk '/MemTotal/ {print $2}' /proc/meminfo`
 storage=`df -kl --output=size / | tail -n +2| awk '{print $1}'`
 cat >$DIR/hwstatus.json <<EOF
@@ -118,6 +123,7 @@ cat >$DIR/hwstatus.json <<EOF
 	"Machine": "$machine",
 	"Processor": "$processor",
 	"Platform": "$platform",
+	"Compatible": "$compatible",
 	"Memory": $memory,
 	"Storage": $storage
 }
