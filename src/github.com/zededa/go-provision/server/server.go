@@ -103,7 +103,7 @@ func main() {
 		// XXX update time based on lastOcspUse
 		if lastOcspUse.Before(lastOcspUpdate) {
 			timerBackoff *= 2
-			log.Printf("OCSP did get used. Backoff %d\n",
+			log.Printf("OCSP was not used. Backoff %d\n",
 				timerBackoff)
 		}
 		// If we get an updated success, then we use that for subsequent
