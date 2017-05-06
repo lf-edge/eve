@@ -13,6 +13,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -64,7 +65,9 @@ func main() {
 	deviceKeyName := dirName + "/device.key.pem"
 	rootCertName := dirName + "/root-certificate.pem"
 	serverFileName := dirName + "/server"
+	lispConfigTemplateFileName := dirName + "/lisp.config.zed"
 	lispConfigFileName := dirName + "/lisp.config"
+	lispConfigTmpFileName := dirName + "/lisp.config.tmp"
 	hwStatusFileName := dirName + "/hwstatus.json"
 	swStatusFileName := dirName + "/swstatus.json"
 
@@ -301,33 +304,48 @@ func main() {
 		fmt.Printf("Lisp IID %d\n", device.LispInstance)
 		fmt.Printf("EID %s\n", device.EID)
 		fmt.Printf("EID hash length %d\n", device.EIDHashLen)
-		// Should take ztp/lisp.config.zed and do the following replacements
-		f, err := os.Create(lispConfigFileName)
+
+		// XXX need to concat second map server info
+		// XXX eid4 == 0?
+		// XXX authentication-key??
+		r := strings.NewReplacer(
+			"instance-id = <iid>",
+			"instance-id = "+strconv.FormatUint(uint64(device.LispInstance), 10),
+			"eid-prefix = <eid-prefix4>",
+			"eid-prefix = 0.0.0.0/32", // XXX
+			"eid-prefix = <eid-prefix6>",
+			"eid-prefix = "+device.EID.String()+"/128",
+			"dns-name = <map-server>",
+			"dns-name = "+device.LispMapServers[0].NameOrIp,
+			"authentication-key = <map-server-key>",
+			"authentication-key = "+device.LispMapServers[0].Credential)
+		//
+		lispTemplate, err := ioutil.ReadFile(lispConfigTemplateFileName)
 		if err != nil {
 			log.Fatal(err)
 		}
-		defer f.Close()
-		w := bufio.NewWriter(f)
-		_, err = fmt.Fprintf(w, "instance-id = %v\n", device.LispInstance)
-		if err != nil {
-			log.Fatal(err)
-		}
-		_, err = fmt.Fprintf(w, "eid-prefix = %v/128\n", device.EID)
-		if err != nil {
-			log.Fatal(err)
-		}
-		for _, ms := range device.LispMapServers {
-			_, err = fmt.Fprintf(w, "dns-name = %v\n", ms.NameOrIp)
-			if err != nil {
-				log.Fatal(err)
+		lispConfig := r.Replace(string(lispTemplate))
+		for i, ms := range device.LispMapServers {
+			if i == 0 {
+				continue
 			}
-			_, err = fmt.Fprintf(w, "authentication-key = %v\n",
-				ms.Credential)
-			if err != nil {
-				log.Fatal(err)
-			}
+			addConfig := fmt.Sprintf("lisp map-resolver {\n"+
+				"    dns-name = %s\n}\nlisp map-server {\n"+
+				"    dns-name = %s\n"+
+				"    authentication-key = %s\n}\n",
+				ms.NameOrIp, ms.NameOrIp, ms.Credential)
+			lispConfig += addConfig
 		}
-		w.Flush()
+		// write to temp file and then rename to avois loss
+		err = ioutil.WriteFile(lispConfigTmpFileName,
+			[]byte(lispConfig), 0)
+		if err != nil {
+			log.Fatal(err)
+		}
+		err = os.Rename(lispConfigTmpFilename, lispConfigFileName)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 	if operations["updateHwStatus"] {
 		// Load file for upload
