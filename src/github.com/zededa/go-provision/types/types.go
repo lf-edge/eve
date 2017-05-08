@@ -42,6 +42,7 @@ type DeviceDb struct {
 	LispInstance   uint32
 	EID            net.IP
 	EIDHashLen     uint8
+	ZedServers     ZedServerConfig
 }
 
 type LispServerInfo struct {
@@ -51,12 +52,15 @@ type LispServerInfo struct {
 
 type DeviceHwStatus struct {
 	// XXX add timestamp? which type?
-	Machine   string
-	Processor string
-	Platform  string
-	Compatible string
-	Memory    uint // Kbyte
-	Storage   uint // Kbyte
+	Manufacturer	string
+	Model		string
+	Serial		string
+	Machine   	string
+	Processor 	string
+	Platform  	string
+	Compatible 	string
+	Memory    	uint // Kbyte
+	Storage   	uint // Kbyte
 }
 
 type DeviceSwStatus struct {
@@ -87,3 +91,13 @@ const (
 	DELIVERED // Package integrity verified
 	INSTALLED // Available to be activated
 )
+
+// Part of config handed to the device.
+// The EIDs in the overlay to which it should connect.
+// XXX change to name, IP; "zedcontrol" would be a name
+type ZedServerConfig struct {
+	ZedCloud       []net.IP
+	ZedLake        []net.IP
+}
+
+

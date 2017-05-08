@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"crypto/tls"
 	"crypto/x509"
@@ -20,8 +19,8 @@ import (
 
 var maxDelay = time.Second * 600 // 10 minutes
 
-// Assumes the config files are in dirName, which is /etc/zededa/ by default
-// The files are
+// Assumes the config files are in dirName, which is /usr/local/etc/zededa/
+// by default. The files are
 //  root-certificate.pem	Fixed? Written if redirected. factory-root-cert?
 //  server			Fixed? Written if redirected. factory-root-cert?
 //  prov.cert.pem, prov.key.pem	Per device provisioning certificate/key
@@ -30,6 +29,7 @@ var maxDelay = time.Second * 600 // 10 minutes
 //  device.key.pem		Device certificate/key created before this
 //  		     		client is started.
 //  lisp.config			Written by lookupParam operation
+//  XXX zed.json			Written by lookupParam operation; zed server EIDs
 //  hwstatus.json		Uploaded by updateHwStatus operation
 //  swstatus.json		Uploaded by updateSwStatus operation
 //
@@ -39,7 +39,7 @@ func main() {
 		log.Fatal("Usage: " + os.Args[0] +
 			"[<dirName> [<operations>...]]")
 	}
-	dirName := "/etc/zededa/"
+	dirName := "/usr/local/etc/zededa/"
 	if len(args) > 0 {
 		dirName = args[0]
 	}
@@ -311,10 +311,9 @@ func main() {
 		r := strings.NewReplacer(
 			"instance-id = <iid>",
 			"instance-id = "+strconv.FormatUint(uint64(device.LispInstance), 10),
-			"eid-prefix = <eid-prefix4>",
-			"eid-prefix = 0.0.0.0/32", // XXX
 			"eid-prefix = <eid-prefix6>",
 			"eid-prefix = "+device.EID.String()+"/128",
+			"<username>", device.UserName,
 			"dns-name = <map-server>",
 			"dns-name = "+device.LispMapServers[0].NameOrIp,
 			"authentication-key = <map-server-key>",
@@ -342,10 +341,11 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		err = os.Rename(lispConfigTmpFilename, lispConfigFileName)
+		err = os.Rename(lispConfigTmpFileName, lispConfigFileName)
 		if err != nil {
 			log.Fatal(err)
 		}
+		// XXX write zm.conf file with servers. Fix servers.
 	}
 	if operations["updateHwStatus"] {
 		// Load file for upload

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
@@ -24,29 +25,42 @@ import (
 	"time"
 )
 
-// Assumes the config files are in dirName, which is /etc/zededa-server/
-// by default
-// The files are
+var zedServerConfig types.ZedServerConfig
+
+// Assumes the config files are in dirName, which is
+// is /usr/local/etc/zededa-server/ by default. The files are
 //  intermediate-server.cert.pem  server cert plus intermediate CA cert
 //  server.key.pem
+//  zedserverconfig.json	ZedServerConfig sent to devices
+// Note that the IIDs and LISP passwords are random.
 //
 func main() {
 	args := os.Args[1:]
 	if len(args) > 1 {
 		log.Fatal("Usage: " + os.Args[0] + "[<dirName>]")
 	}
-	dirName := "/etc/zededa-server/"
+	dirName := "/usr/local/etc/zededa-server/"
 	if len(args) > 0 {
 		dirName = args[0]
 	}
 
 	serverCertName := dirName + "/intermediate-server.cert.pem"
 	serverKeyName := dirName + "/server.key.pem"
+	zedServerConfigFileName := dirName + "/zedserverconfig.json"
 
 	http.HandleFunc("/rest/self-register", SelfRegister)
 	http.HandleFunc("/rest/device-param", DeviceParam)
 	http.HandleFunc("/rest/update-hw-status", UpdateHwStatus)
 	http.HandleFunc("/rest/update-sw-status", UpdateSwStatus)
+
+	zcb, err := ioutil.ReadFile(zedServerConfigFileName)
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedServerConfig = types.ZedServerConfig{}
+	if err := json.Unmarshal(zcb, &zedServerConfig); err != nil {
+		log.Fatal("Error decoding ZedServerConfig:\n", err)
+	}
 
 	serverCert, err := tls.LoadX509KeyPair(serverCertName, serverKeyName)
 	if err != nil {
@@ -61,6 +75,8 @@ func main() {
 	var lastOcspUpdate, lastOcspUse time.Time
 	
 	done := false
+	// XXX ocsp01 not reachable
+	done = true; ocspTimer = 60000
 	for !done {
 		var err error
 		ocspResponse, ocspResponseBytes, err =
@@ -143,6 +159,10 @@ func main() {
 		cert := serverCert
 		now := time.Now()
 		lastOcspUse = now
+		// XXX needed if we don't require on startup
+		if ocspResponseBytes == nil {
+			return &cert, nil
+		}
 		// We staple the cert we have even if it is not Good
 		age := now.Unix() - ocspResponse.ProducedAt.Unix()
 		remain := ocspResponse.NextUpdate.Unix() - now.Unix()
@@ -451,7 +471,14 @@ func SelfRegister(w http.ResponseWriter, r *http.Request) {
 
 	// Form an EID based on the sha256 hash of the public key.
 	// Use the prefix and instanceId as input to the hash.
-	lispInstance := uint32(1277) // XXX should come from user's account info
+
+ 	// XXX lispInstance should come from user's account info
+	// XXX we make it a hash of the userName
+	hasher = sha256.New()
+	hasher.Write([]byte(userName))
+	sum := hasher.Sum(nil)
+	lispInstance := uint32(65536) + 256 * uint32(sum[0]) + uint32(sum[1])
+	fmt.Printf("lispInstance %v\n", lispInstance)
 
 	iidData := make([]byte, 4)
 	binary.BigEndian.PutUint32(iidData, lispInstance)
@@ -467,18 +494,31 @@ func SelfRegister(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("RAW SUM: (len %d) % 2x\n", len(sum), sum)
 		fmt.Printf("RAW2 SUM: % 2x\n", sha256.Sum256(publicDer))
 	}
-	hasher = sha256.New()
-	fmt.Printf("iidData % x\n", iidData)
-	hasher.Write(iidData)
-	fmt.Printf("eidPrefix % x\n", eidPrefix)
-	hasher.Write(eidPrefix)
-	hasher.Write(publicDer)
-	sum := hasher.Sum(nil)
+	// XXX old
+	if true {
+		hasher = sha256.New()
+		fmt.Printf("iidData % x\n", iidData)
+		hasher.Write(iidData)
+		fmt.Printf("eidPrefix % x\n", eidPrefix)
+		hasher.Write(eidPrefix)
+		hasher.Write(publicDer)
+		sum := hasher.Sum(nil)
+		fmt.Printf("SUM: (len %d) % 2x\n", len(sum), sum)
+		eid := net.IP(append(eidPrefix, sum...)[0:16])
+		fmt.Printf("EID: (len %d) %s\n", len(eid), eid)
+	}
+	/// XXX using hmac with zero length key
+	mac := hmac.New(sha256.New, []byte{})
+	mac.Write(iidData)
+	mac.Write(eidPrefix)
+	mac.Write(publicDer)
+	sum = mac.Sum(nil)
+	fmt.Printf("SUM: (len %d) % 2x\n", len(sum), sum)
 	// Truncate to get EidHashLen by taking the first EidHashLen/8 bytes
 	// from the left.
-	fmt.Printf("SUM: (len %d) % 2x\n", len(sum), sum)
 	eid := net.IP(append(eidPrefix, sum...)[0:16])
 	fmt.Printf("EID: (len %d) %s\n", len(eid), eid)
+	// XXX generate random Credential string
 	device = types.DeviceDb{
 		DeviceCert:      rc.PemCert,
 		DevicePublicKey: publicPem,
@@ -491,8 +531,8 @@ func SelfRegister(w http.ResponseWriter, r *http.Request) {
 		LispInstance: lispInstance,
 		EID:          eid,
 		EIDHashLen:   uint8(eidHashLen),
+		ZedServers:   zedServerConfig,
 	}
-
 	err = deviceDb.Write("ddb", deviceKey, device)
 	if err != nil {
 		fmt.Println("deviceDb.Write", err)
