@@ -73,10 +73,10 @@ func main() {
 	var ocspResponse *ocsp.Response
 	var ocspResponseBytes []byte
 	var lastOcspUpdate, lastOcspUse time.Time
-	
+
 	done := false
 	// XXX ocsp01 not reachable
-	done = true; ocspTimer = 60000
+	// done = true; ocspTimer = 60000
 	for !done {
 		var err error
 		ocspResponse, ocspResponseBytes, err =
@@ -145,10 +145,10 @@ func main() {
 				log.Println("Certificate Status Revoked")
 			}
 		}
-		t = time.AfterFunc(time.Duration(timerBackoff*ocspTimer) *
-		  time.Second, periodicOcsp)
+		t = time.AfterFunc(time.Duration(timerBackoff*ocspTimer)*
+			time.Second, periodicOcsp)
 	}
-	t = time.AfterFunc(time.Duration(timerBackoff * ocspTimer) *
+	t = time.AfterFunc(time.Duration(timerBackoff*ocspTimer)*
 		time.Second, periodicOcsp)
 	defer t.Stop()
 
@@ -167,7 +167,7 @@ func main() {
 		age := now.Unix() - ocspResponse.ProducedAt.Unix()
 		remain := ocspResponse.NextUpdate.Unix() - now.Unix()
 		log.Printf("OCSP status %v, age %d, remain %d\n",
-				 ocspResponse.Status, age, remain)
+			ocspResponse.Status, age, remain)
 		if remain < 0 {
 			// Force update now. Reset timerBackoff.
 			log.Println("OCSP expired - force update.")
@@ -193,7 +193,7 @@ func main() {
 				}
 			}
 			timerBackoff = 1
-			t = time.AfterFunc(time.Duration(timerBackoff * ocspTimer) *
+			t = time.AfterFunc(time.Duration(timerBackoff*ocspTimer)*
 				time.Second, periodicOcsp)
 		}
 		cert.OCSPStaple = ocspResponseBytes
@@ -472,12 +472,12 @@ func SelfRegister(w http.ResponseWriter, r *http.Request) {
 	// Form an EID based on the sha256 hash of the public key.
 	// Use the prefix and instanceId as input to the hash.
 
- 	// XXX lispInstance should come from user's account info
+	// XXX lispInstance should come from user's account info
 	// XXX we make it a hash of the userName
 	hasher = sha256.New()
 	hasher.Write([]byte(userName))
 	sum := hasher.Sum(nil)
-	lispInstance := uint32(65536) + 256 * uint32(sum[0]) + uint32(sum[1])
+	lispInstance := uint32(65536) + 256*uint32(sum[0]) + uint32(sum[1])
 	fmt.Printf("lispInstance %v\n", lispInstance)
 
 	iidData := make([]byte, 4)
@@ -494,39 +494,42 @@ func SelfRegister(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("RAW SUM: (len %d) % 2x\n", len(sum), sum)
 		fmt.Printf("RAW2 SUM: % 2x\n", sha256.Sum256(publicDer))
 	}
-	// XXX old
-	if true {
-		hasher = sha256.New()
-		fmt.Printf("iidData % x\n", iidData)
-		hasher.Write(iidData)
-		fmt.Printf("eidPrefix % x\n", eidPrefix)
-		hasher.Write(eidPrefix)
-		hasher.Write(publicDer)
-		sum := hasher.Sum(nil)
-		fmt.Printf("SUM: (len %d) % 2x\n", len(sum), sum)
-		eid := net.IP(append(eidPrefix, sum...)[0:16])
-		fmt.Printf("EID: (len %d) %s\n", len(eid), eid)
-	}
-	/// XXX using hmac with zero length key
-	mac := hmac.New(sha256.New, []byte{})
-	mac.Write(iidData)
-	mac.Write(eidPrefix)
-	mac.Write(publicDer)
-	sum = mac.Sum(nil)
+	// XXX new
+	hasher = sha256.New()
+	fmt.Printf("iidData % x\n", iidData)
+	hasher.Write(iidData)
+	fmt.Printf("eidPrefix % x\n", eidPrefix)
+	hasher.Write(eidPrefix)
+	hasher.Write(publicDer)
+	sum = hasher.Sum(nil)
 	fmt.Printf("SUM: (len %d) % 2x\n", len(sum), sum)
 	// Truncate to get EidHashLen by taking the first EidHashLen/8 bytes
 	// from the left.
 	eid := net.IP(append(eidPrefix, sum...)[0:16])
 	fmt.Printf("EID: (len %d) %s\n", len(eid), eid)
-	// XXX generate random Credential string
+	if false {
+		/// XXX using hmac with zero length key
+		mac := hmac.New(sha256.New, []byte{})
+		mac.Write(iidData)
+		mac.Write(eidPrefix)
+		mac.Write(publicDer)
+		sum = mac.Sum(nil)
+		fmt.Printf("SUM: (len %d) % 2x\n", len(sum), sum)
+		eid := net.IP(append(eidPrefix, sum...)[0:16])
+		fmt.Printf("EID: (len %d) %s\n", len(eid), eid)
+	}
+	// We generate different credentials for different users,
+	// using the fact that each user has a different lispInstance
+	credential1 := fmt.Sprintf("test1_%d", lispInstance)
+	credential2 := fmt.Sprintf("test2_%d", lispInstance)
 	device = types.DeviceDb{
 		DeviceCert:      rc.PemCert,
 		DevicePublicKey: publicPem,
 		UserName:        userName,
 		RegTime:         time.Now(),
 		LispMapServers: []types.LispServerInfo{
-			{"ms1.zededa.net", "test123"},
-			{"ms2.zededa.net", "test2345"},
+			{"ms1.zededa.net", credential1},
+			{"ms2.zededa.net", credential2},
 		},
 		LispInstance: lispInstance,
 		EID:          eid,

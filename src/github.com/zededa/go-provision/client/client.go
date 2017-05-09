@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/ecdsa"
+	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -296,48 +298,77 @@ func main() {
 			}
 		}
 
-		fmt.Printf("UserName %s\n", device.UserName)
 		// XXX add Redirect support and store + retry
 		// XXX try redirected once and then fall back to original; repeat
 		// XXX once redirect successful, then save server and rootCert
+
+		// Convert from IID and IPv6 EID to a string with
+		// [iid]eid, where the eid has includes leading zeros i.e.
+		// is a fixed 39 bytes long. The iid is printed as an integer.
+		p := device.EID
+		sigdata := fmt.Sprintf("[%d]%4x:%4x:%4x:%4x:%4x:%4x:%4x:%4x",
+			device.LispInstance,
+			(uint32(p[0])<<8)|uint32(p[0+1]),
+			(uint32(p[2])<<8)|uint32(p[2+1]),
+			(uint32(p[4])<<8)|uint32(p[4+1]),
+			(uint32(p[6])<<8)|uint32(p[6+1]),
+			(uint32(p[8])<<8)|uint32(p[8+1]),
+			(uint32(p[10])<<8)|uint32(p[10+1]),
+			(uint32(p[12])<<8)|uint32(p[12+1]),
+			(uint32(p[14])<<8)|uint32(p[14+1]))
+		fmt.Printf("sigdata %s\n", sigdata)
+
+		var signature string
+		switch deviceCert.PrivateKey.(type) {
+		default:
+			log.Fatal("Private Key RSA type not supported")
+		case *ecdsa.PrivateKey:
+			key := deviceCert.PrivateKey.(*ecdsa.PrivateKey)
+			r, s, err := ecdsa.Sign(rand.Reader, key,
+				[]byte(sigdata))
+			if err != nil {
+				log.Fatal("ecdsa.Sign", err)
+			}
+			sigres := r.Bytes()
+			sigres = append(sigres, s.Bytes()...)
+			fmt.Printf("SigRes: %v\n", sigres)
+			fmt.Printf("SigRes : %x\n", sigres)
+			signature = fmt.Sprintf("%x", sigres)
+		}
+		fmt.Printf("UserName %s\n", device.UserName)
 		fmt.Printf("MapServers %s\n", device.LispMapServers)
 		fmt.Printf("Lisp IID %d\n", device.LispInstance)
 		fmt.Printf("EID %s\n", device.EID)
 		fmt.Printf("EID hash length %d\n", device.EIDHashLen)
 
-		// XXX need to concat second map server info
-		// XXX eid4 == 0?
-		// XXX authentication-key??
-		r := strings.NewReplacer(
+		replacer := strings.NewReplacer(
 			"instance-id = <iid>",
-			"instance-id = "+strconv.FormatUint(uint64(device.LispInstance), 10),
+			"instance-id = "+
+				strconv.FormatUint(uint64(device.LispInstance),
+					10),
 			"eid-prefix = <eid-prefix6>",
 			"eid-prefix = "+device.EID.String()+"/128",
-			"<username>", device.UserName,
-			"dns-name = <map-server>",
-			"dns-name = "+device.LispMapServers[0].NameOrIp,
-			"authentication-key = <map-server-key>",
-			"authentication-key = "+device.LispMapServers[0].Credential)
-		//
+			"eid-prefix = '<username>'",
+			"eid-prefix = '"+device.UserName+"'")
 		lispTemplate, err := ioutil.ReadFile(lispConfigTemplateFileName)
 		if err != nil {
 			log.Fatal(err)
 		}
-		lispConfig := r.Replace(string(lispTemplate))
+		lispConfig := replacer.Replace(string(lispTemplate))
 		for i, ms := range device.LispMapServers {
-			if i == 0 {
-				continue
-			}
-			addConfig := fmt.Sprintf("lisp map-resolver {\n"+
-				"    dns-name = %s\n}\nlisp map-server {\n"+
-				"    dns-name = %s\n"+
-				"    authentication-key = %s\n}\n",
-				ms.NameOrIp, ms.NameOrIp, ms.Credential)
-			lispConfig += addConfig
+			item := strconv.Itoa(i + 1)
+			replacer := strings.NewReplacer(
+				"dns-name = <map-server-"+item+">",
+				"dns-name = "+ms.NameOrIp,
+				"authentication-key = <map-server-"+item+"-key>",
+				"authentication-key = "+ms.Credential,
+				"<signature>", signature,
+			)
+			lispConfig = replacer.Replace(string(lispConfig))
 		}
 		// write to temp file and then rename to avois loss
 		err = ioutil.WriteFile(lispConfigTmpFileName,
-			[]byte(lispConfig), 0)
+			[]byte(lispConfig), 0600)
 		if err != nil {
 			log.Fatal(err)
 		}

@@ -52,15 +52,15 @@ type LispServerInfo struct {
 
 type DeviceHwStatus struct {
 	// XXX add timestamp? which type?
-	Manufacturer	string
-	Model		string
-	Serial		string
-	Machine   	string
-	Processor 	string
-	Platform  	string
-	Compatible 	string
-	Memory    	uint // Kbyte
-	Storage   	uint // Kbyte
+	Manufacturer string
+	Model        string
+	Serial       string
+	Machine      string
+	Processor    string
+	Platform     string
+	Compatible   string
+	Memory       uint // Kbyte
+	Storage      uint // Kbyte
 }
 
 type DeviceSwStatus struct {
@@ -72,6 +72,8 @@ type DeviceSwStatus struct {
 // Does that mean we need a cert in SwStatus?
 // SwConfig would have an 'Activate bool' instead of Activated
 // SwConfig would have a Url, DigestAlg, and Digest as well.
+// Need to restucture, since a given EID/Name can have multiple versions.
+// Ditto for SwConfig.
 type SwStatus struct {
 	EID         net.IP // If one assigned. UUID alternative?
 	Name        string
@@ -96,8 +98,6 @@ const (
 // The EIDs in the overlay to which it should connect.
 // XXX change to name, IP; "zedcontrol" would be a name
 type ZedServerConfig struct {
-	ZedCloud       []net.IP
-	ZedLake        []net.IP
+	ZedCloud []net.IP
+	ZedLake  []net.IP
 }
-
-
