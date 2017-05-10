@@ -1,0 +1,13 @@
+Need ZedCloud EIDs in clients config.
+     Do not go into the LISP config.
+     Add "ZedControl" IP addresses - list
+     Later ZedLake IP addresses - list?
+
+lisp_directory = "/root/lispers.net/" if docker else "/home/pi/lispers.net/"
+
+What about /var/tmp? Just a mock up.
+Might want to have it survive reboot hence move to /var/zededa/device and
+/var/zededa/onboarding.
+
+
+
