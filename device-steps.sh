@@ -95,7 +95,7 @@ if [ ! -f $DIR/lisp.config ]; then
     fi
 fi
 
-echo "Starting domZ, ZedRouter and overlay network"
+echo "Starting overlay network"
 # Do something
 if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo

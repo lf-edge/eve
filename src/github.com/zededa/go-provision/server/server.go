@@ -318,7 +318,7 @@ func SelfRegister(w http.ResponseWriter, r *http.Request) {
 
 	hasher := sha256.New()
 	hasher.Write(cert.Raw)
-	provKey := base64.URLEncoding.EncodeToString(hasher.Sum(nil))
+	provKey := base64.StdEncoding.EncodeToString(hasher.Sum(nil))
 	fmt.Println("provKey:", provKey)
 
 	// Look up in database
@@ -389,7 +389,7 @@ func SelfRegister(w http.ResponseWriter, r *http.Request) {
 	}
 	hasher = sha256.New()
 	hasher.Write(block.Bytes)
-	deviceKey := base64.URLEncoding.EncodeToString(hasher.Sum(nil))
+	deviceKey := base64.StdEncoding.EncodeToString(hasher.Sum(nil))
 	fmt.Println("deviceKey:", deviceKey)
 
 	deviceDb, err := scribble.New("/var/tmp/zededa-device", nil)
@@ -492,7 +492,6 @@ func SelfRegister(w http.ResponseWriter, r *http.Request) {
 		hasher.Write(publicDer)
 		sum := hasher.Sum(nil)
 		fmt.Printf("RAW SUM: (len %d) % 2x\n", len(sum), sum)
-		fmt.Printf("RAW2 SUM: % 2x\n", sha256.Sum256(publicDer))
 	}
 	// XXX new
 	hasher = sha256.New()
@@ -596,7 +595,7 @@ func DeviceParam(w http.ResponseWriter, r *http.Request) {
 	}
 	hasher := sha256.New()
 	hasher.Write(cert.Raw)
-	deviceKey := base64.URLEncoding.EncodeToString(hasher.Sum(nil))
+	deviceKey := base64.StdEncoding.EncodeToString(hasher.Sum(nil))
 	fmt.Println("deviceKey:", deviceKey)
 
 	// Look up in device database
@@ -669,7 +668,7 @@ func UpdateHwStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	hasher := sha256.New()
 	hasher.Write(cert.Raw)
-	deviceKey := base64.URLEncoding.EncodeToString(hasher.Sum(nil))
+	deviceKey := base64.StdEncoding.EncodeToString(hasher.Sum(nil))
 	fmt.Println("deviceKey:", deviceKey)
 
 	// Look up in device database
@@ -776,7 +775,7 @@ func UpdateSwStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	hasher := sha256.New()
 	hasher.Write(cert.Raw)
-	deviceKey := base64.URLEncoding.EncodeToString(hasher.Sum(nil))
+	deviceKey := base64.StdEncoding.EncodeToString(hasher.Sum(nil))
 	fmt.Println("deviceKey:", deviceKey)
 
 	// Look up in device database

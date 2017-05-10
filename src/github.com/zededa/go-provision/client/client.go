@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"github.com/zededa/go-provision/types"
@@ -306,7 +307,7 @@ func main() {
 		// [iid]eid, where the eid has includes leading zeros i.e.
 		// is a fixed 39 bytes long. The iid is printed as an integer.
 		p := device.EID
-		sigdata := fmt.Sprintf("[%d]%4x:%4x:%4x:%4x:%4x:%4x:%4x:%4x",
+		sigdata := fmt.Sprintf("[%d]%04x:%04x:%04x:%04x:%04x:%04x:%04x:%04x",
 			device.LispInstance,
 			(uint32(p[0])<<8)|uint32(p[0+1]),
 			(uint32(p[2])<<8)|uint32(p[2+1]),
@@ -332,8 +333,10 @@ func main() {
 			sigres := r.Bytes()
 			sigres = append(sigres, s.Bytes()...)
 			fmt.Printf("SigRes: %v\n", sigres)
-			fmt.Printf("SigRes : %x\n", sigres)
-			signature = fmt.Sprintf("%x", sigres)
+			fmt.Printf("SigRes: % x\n", sigres)
+			fmt.Printf("SigRes (len %d): %x\n", len(sigres), sigres)
+			signature = base64.StdEncoding.EncodeToString(sigres)
+			fmt.Println("signature:", signature)
 		}
 		fmt.Printf("UserName %s\n", device.UserName)
 		fmt.Printf("MapServers %s\n", device.LispMapServers)

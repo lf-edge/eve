@@ -44,7 +44,7 @@ func main() {
 	}
 	hasher := sha256.New()
 	hasher.Write(block.Bytes)
-	provKey := base64.URLEncoding.EncodeToString(hasher.Sum(nil))
+	provKey := base64.StdEncoding.EncodeToString(hasher.Sum(nil))
 	fmt.Println("provKey:", provKey)
 
 	// a new or existing scribble driver, providing the directory

@@ -25,6 +25,8 @@ fi
 subject="/C=US/ST=California/L=Santa Clara/O=Zededa, Inc/CN=`basename $output_base`"
 openssl ecparam -genkey -name prime256v1 -out $output_key
 openssl req -new -sha256 -subj "$subject" -key $output_key -out $csr
+# Why needed on server?
+# openssl req -x509 -sha256 -subj "$subject" -days $lifetime -key $output_key -in $csr -out $output_cert
 openssl req -x509 -sha256 -days $lifetime -key $output_key -in $csr -out $output_cert
 rm $csr
 
