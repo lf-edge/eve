@@ -292,54 +292,53 @@ func SelfRegister(w http.ResponseWriter, r *http.Request) {
 	cert := r.TLS.PeerCertificates[0]
 	// Validating it is self-signed
 	if !cert.IsCA || !reflect.DeepEqual(cert.Issuer, cert.Subject) {
-		fmt.Printf("provCert not self-signed: Issuer %s, Subject %s, IsCa %s\n",
+		errStr := fmt.Sprintf("onboardingCert not self-signed: Issuer %s, Subject %s, IsCa %s\n",
 			cert.Issuer, cert.Subject, cert.IsCA)
-		http.Error(w, http.StatusText(http.StatusUnauthorized),
-			http.StatusUnauthorized)
+		log.Println(errStr)
+		http.Error(w, errStr, http.StatusUnauthorized)
 		return
 	}
 	// validate it has not expired
 	now := time.Now()
 	if now.After(cert.NotAfter) {
-		// XXX use log instead?
-		fmt.Printf("provCert expired NotAfter %s, now %s\n",
+		errStr := fmt.Sprintf("onboardingCert expired NotAfter %s, now %s\n",
 			cert.NotAfter, now)
-		http.Error(w, http.StatusText(http.StatusUnauthorized),
-			http.StatusUnauthorized)
+		log.Println(errStr)
+		http.Error(w, errStr, http.StatusUnauthorized)
 		return
 	}
 	if now.Before(cert.NotBefore) {
-		fmt.Printf("provCert too early NotBefore %s, now %s\n",
+		errStr := fmt.Sprintf("onboardingCert too early NotBefore %s, now %s\n",
 			cert.NotBefore, now)
-		http.Error(w, http.StatusText(http.StatusUnauthorized),
-			http.StatusUnauthorized)
+		log.Println(errStr)
+		http.Error(w, errStr, http.StatusUnauthorized)
 		return
 	}
 
 	hasher := sha256.New()
 	hasher.Write(cert.Raw)
-	provKey := base64.StdEncoding.EncodeToString(hasher.Sum(nil))
-	fmt.Println("provKey:", provKey)
+	onboardingKey := base64.URLEncoding.EncodeToString(hasher.Sum(nil))
+	fmt.Println("onboardingKey:", onboardingKey)
 
 	// Look up in database
 	// XXX create db and deviceDb and put in global vars!
 	// a new or existing scribble driver, providing the directory
 	// where it will be writing to, and a qualified logger if desired
-	db, err := scribble.New("/var/tmp/zededa-prov", nil)
+	db, err := scribble.New("/var/tmp/zededa-onboarding", nil)
 	if err != nil {
 		fmt.Println("scribble.New", err)
 		http.Error(w, http.StatusText(http.StatusInternalServerError),
 			http.StatusInternalServerError)
 		return
 	}
-	prov := types.ProvisioningCert{}
-	if err := db.Read("prov", provKey, &prov); err != nil {
+	onboarding := types.OnboardingCert{}
+	if err := db.Read("onboarding", onboardingKey, &onboarding); err != nil {
 		fmt.Println("db.Read", err)
 		http.Error(w, http.StatusText(http.StatusNotFound),
 			http.StatusNotFound)
 		return
 	}
-	userName := prov.UserName
+	userName := onboarding.UserName
 	// Check we have a reasonable content-length
 	contentType := r.Header.Get("Content-Type")
 	if contentType != "application/json" {
@@ -389,7 +388,7 @@ func SelfRegister(w http.ResponseWriter, r *http.Request) {
 	}
 	hasher = sha256.New()
 	hasher.Write(block.Bytes)
-	deviceKey := base64.StdEncoding.EncodeToString(hasher.Sum(nil))
+	deviceKey := base64.URLEncoding.EncodeToString(hasher.Sum(nil))
 	fmt.Println("deviceKey:", deviceKey)
 
 	deviceDb, err := scribble.New("/var/tmp/zededa-device", nil)
@@ -437,9 +436,9 @@ func SelfRegister(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	if prov.RemainingUse == 0 {
-		fmt.Printf("provCert already used. Registered at %s. LastUsed at %s\n",
-			prov.RegTime, prov.LastUsedTime)
+	if onboarding.RemainingUse == 0 {
+		fmt.Printf("onboardingCert already used. Registered at %s. LastUsed at %s\n",
+			onboarding.RegTime, onboarding.LastUsedTime)
 		http.Error(w, http.StatusText(http.StatusGone),
 			http.StatusGone)
 		return
@@ -544,9 +543,9 @@ func SelfRegister(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Created in deviceDb under userName, so we decrement the remaining uses
-	prov.RemainingUse--
-	prov.LastUsedTime = time.Now()
-	err = db.Write("prov", provKey, prov)
+	onboarding.RemainingUse--
+	onboarding.LastUsedTime = time.Now()
+	err = db.Write("onboarding", onboardingKey, onboarding)
 	if err != nil {
 		fmt.Println("db.Write", err)
 		// Note we ignore error and RemainingUse is not updated; but we did
@@ -570,32 +569,31 @@ func DeviceParam(w http.ResponseWriter, r *http.Request) {
 	// XXX should that be our own trust chain?
 	// Validating it is self-signed
 	if !cert.IsCA || !reflect.DeepEqual(cert.Issuer, cert.Subject) {
-		fmt.Printf("deviceCert not self-signed: Issuer %s, Subject %s, IsCa %s\n",
+		errStr := fmt.Sprintf("deviceCert not self-signed: Issuer %s, Subject %s, IsCa %s\n",
 			cert.Issuer, cert.Subject, cert.IsCA)
-		http.Error(w, http.StatusText(http.StatusUnauthorized),
-			http.StatusUnauthorized)
+		log.Println(errStr)
+		http.Error(w, errStr, http.StatusUnauthorized)
 		return
 	}
 	// validate it has not expired
 	now := time.Now()
 	if now.Before(cert.NotBefore) {
-		// XXX use log instead?
-		fmt.Printf("deviceCert too new: NotBefore %s, now %s\n",
+		errStr := fmt.Sprintf("deviceCert too early NotBefore %s, now %s\n",
 			cert.NotBefore, now)
-		http.Error(w, http.StatusText(http.StatusUnauthorized),
-			http.StatusUnauthorized)
+		log.Println(errStr)
+		http.Error(w, errStr, http.StatusUnauthorized)
 		return
 	}
 	if now.After(cert.NotAfter) {
-		fmt.Printf("deviceCert too old: NotAfter %s, now %s\n",
+		errStr := fmt.Sprintf("deviceCert expired NotAfter %s, now %s\n",
 			cert.NotAfter, now)
-		http.Error(w, http.StatusText(http.StatusUnauthorized),
-			http.StatusUnauthorized)
+		log.Println(errStr)
+		http.Error(w, errStr, http.StatusUnauthorized)
 		return
 	}
 	hasher := sha256.New()
 	hasher.Write(cert.Raw)
-	deviceKey := base64.StdEncoding.EncodeToString(hasher.Sum(nil))
+	deviceKey := base64.URLEncoding.EncodeToString(hasher.Sum(nil))
 	fmt.Println("deviceKey:", deviceKey)
 
 	// Look up in device database
@@ -644,31 +642,31 @@ func UpdateHwStatus(w http.ResponseWriter, r *http.Request) {
 	// XXX should that be our own trust chain?
 	// Validating it is self-signed
 	if !cert.IsCA || !reflect.DeepEqual(cert.Issuer, cert.Subject) {
-		fmt.Printf("deviceCert not self-signed: Issuer %s, Subject %s, IsCa %s\n",
+		errStr := fmt.Sprintf("deviceCert not self-signed: Issuer %s, Subject %s, IsCa %s\n",
 			cert.Issuer, cert.Subject, cert.IsCA)
-		http.Error(w, http.StatusText(http.StatusUnauthorized),
-			http.StatusUnauthorized)
+		log.Println(errStr)
+		http.Error(w, errStr, http.StatusUnauthorized)
 		return
 	}
 	// validate it has not expired
 	now := time.Now()
 	if now.Before(cert.NotBefore) {
-		fmt.Printf("deviceCert too new: NotBefore %s, now %s\n",
+		errStr := fmt.Sprintf("deviceCert too early NotBefore %s, now %s\n",
 			cert.NotBefore, now)
-		http.Error(w, http.StatusText(http.StatusUnauthorized),
-			http.StatusUnauthorized)
+		log.Println(errStr)
+		http.Error(w, errStr, http.StatusUnauthorized)
 		return
 	}
 	if now.After(cert.NotAfter) {
-		fmt.Printf("deviceCert too old: NotAfter %s, now %s\n",
+		errStr := fmt.Sprintf("deviceCert expired NotAfter %s, now %s\n",
 			cert.NotAfter, now)
-		http.Error(w, http.StatusText(http.StatusUnauthorized),
-			http.StatusUnauthorized)
+		log.Println(errStr)
+		http.Error(w, errStr, http.StatusUnauthorized)
 		return
 	}
 	hasher := sha256.New()
 	hasher.Write(cert.Raw)
-	deviceKey := base64.StdEncoding.EncodeToString(hasher.Sum(nil))
+	deviceKey := base64.URLEncoding.EncodeToString(hasher.Sum(nil))
 	fmt.Println("deviceKey:", deviceKey)
 
 	// Look up in device database
@@ -751,31 +749,31 @@ func UpdateSwStatus(w http.ResponseWriter, r *http.Request) {
 	// XXX should that be our own trust chain?
 	// Validating it is self-signed
 	if !cert.IsCA || !reflect.DeepEqual(cert.Issuer, cert.Subject) {
-		fmt.Printf("deviceCert not self-signed: Issuer %s, Subject %s, IsCa %s\n",
+		errStr := fmt.Sprintf("deviceCert not self-signed: Issuer %s, Subject %s, IsCa %s\n",
 			cert.Issuer, cert.Subject, cert.IsCA)
-		http.Error(w, http.StatusText(http.StatusUnauthorized),
-			http.StatusUnauthorized)
+		log.Println(errStr)
+		http.Error(w, errStr, http.StatusUnauthorized)
 		return
 	}
 	// validate it has not expired
 	now := time.Now()
 	if now.Before(cert.NotBefore) {
-		fmt.Printf("deviceCert too new: NotBefore %s, now %s\n",
+		errStr := fmt.Sprintf("deviceCert too early NotBefore %s, now %s\n",
 			cert.NotBefore, now)
-		http.Error(w, http.StatusText(http.StatusUnauthorized),
-			http.StatusUnauthorized)
+		log.Println(errStr)
+		http.Error(w, errStr, http.StatusUnauthorized)
 		return
 	}
 	if now.After(cert.NotAfter) {
-		fmt.Printf("deviceCert too old: NotAfter %s, now %s\n",
+		errStr := fmt.Sprintf("deviceCert expired NotAfter %s, now %s\n",
 			cert.NotAfter, now)
-		http.Error(w, http.StatusText(http.StatusUnauthorized),
-			http.StatusUnauthorized)
+		log.Println(errStr)
+		http.Error(w, errStr, http.StatusUnauthorized)
 		return
 	}
 	hasher := sha256.New()
 	hasher.Write(cert.Raw)
-	deviceKey := base64.StdEncoding.EncodeToString(hasher.Sum(nil))
+	deviceKey := base64.URLEncoding.EncodeToString(hasher.Sum(nil))
 	fmt.Println("deviceKey:", deviceKey)
 
 	// Look up in device database

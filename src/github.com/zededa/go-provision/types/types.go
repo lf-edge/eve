@@ -5,10 +5,10 @@ import (
 	"time"
 )
 
-// Database entry for provisioning certificate.
+// Database entry for onboarding certificate.
 // Provides a secure binding to the username under which it is registered.
 // Can be used to register RemainingUse different devices
-type ProvisioningCert struct {
+type OnboardingCert struct {
 	Cert         []byte
 	UserName     string
 	RegTime      time.Time
@@ -18,7 +18,7 @@ type ProvisioningCert struct {
 
 // Message payload for json to POST to /rest/self-register
 // Certificate is the PEM encoded device certificate.
-// The TLS exchange needs to be done using a registered Provisioning Certificate
+// The TLS exchange needs to be done using a registered Onboarding Certificate
 type RegisterCreate struct {
 	PemCert []byte
 }

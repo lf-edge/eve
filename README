@@ -1,43 +1,56 @@
 # go-provision
-Provisioning client and mock server in go
-
-Current version uses json over tls; plan is to add grpc APIs.
+Onboarding and provisioning client and mock server in go
 
 The overall flow is as follows:
-1. Generate a provisioning certificate (7 day lifetime)
+1. Install provisioning binaries and config files in /usr/local/bin/zededa
+and /usr/local/etc/zededa
+      scp -p prov01.priv.sc.zededa.net:/home/nordmark/go-provision/go-provision.linux_arm64.tar.gz /tmp
+OR
+      scp -p prov01.priv.sc.zededa.net:/home/nordmark/go-provision/go-provision.linux_x86_64.tar.gz /tmp
+
+      cd /usr/local/
+      sudo tar xf /tmp/go-provision.linux_*.tar.gz
+
+
+2. Generate an onboarding certificate (7 day lifetime) on the server and
+   register it with the server.
    Example:
-     ./generate-pc.sh /tmp/nordmark
-   Produces /tmp/nordmark.*.pem
-   
-2. Register the provisioning certicate with the mocked up database for
-   a user.
-   Example:
-     ./register erik@zededa.com /tmp/nordmark.cert.pem
-   Add a number as 3rd argument to have it be usable for N devices
+      ssh prov01.priv.sc.zededa.net
+      cd ~nordmark/go-provision
+      mkdir /tmp/`whoami`
+      ./generate-onboard.sh /tmp/`whoami`/onboard
+      ./bin/register myself@zededa.com /tmp/`whoami`/onboard.cert.pem 3
+   The above registration allows to use the onboarding certificate for 3 devices
+   Generate-onboard produces two /tmp/`whoami`/onboard.*.pem files.
+   Copy those files to your client device in /usr/local/etc/zededa/
+      scp -p prov01.priv.sc.zededa.net:/tmp/`whoami`/onboard.\*.pem /usr/local/etc/zededa
+      
+   Then remove the private onboarding key and cert on the prov01 server:
+      rm -rf /tmp/`whoami`/onboard*
 
 Above steps are supposed to be done as part of the user requesting an
 image for their device(s) at e.g. developer.zededa.com
 
-3. Create server config in /etc/zededa-server containing the following files
+
+3. Run through the provisioning steps on the device
+   /usr/local/bin/zededa/device-steps.sh -w
+   
+   Note that if the clocks are not in sync between the device and the prov01
+   server you'll see some errors and retries of the form:
+
+   device-param statuscode 401 Unauthorized
+   deviceCert too early NotBefore 2017-05-10 20:34:27 +0000 UTC, now 2017-05-10 13:33:42.990013239 -0700 PDT
+
+
+====
+
+Server config on prov01:
+1. Create server config in /usr/local/etc/zededa-server containing the following files
    intermediate-ca-chain.pem  server.cert.pem  server.key.pem
 
-4. Start the server on a laptop or server
+2. Start the server on a laptop or server
    Example:
-     ./server &
-     
-5. Log in to device and make it form a self-signed device certificate
-   (20 year lifetime)
-   Example:
-      mkdir /etc/zededa/
-      ./generate-dc.sh /etc/zededa/device
-   Creates /etc/zededa/device.*.pem
+	env -u https_proxy env -u http_proxy go-provision/bin/server 
 
-6. Add information from the "image" generation:
-      scp somewhere/run/nordmark1.cert.pem /etc/zededa/pc.cert.pem
-      scp somewhere/run/nordmark1.key.pem /etc/zededa/pc.key.pem
-      scp somewhere/root-certificate.pem /etc/zededa/root-certificate.pem
-      echo 'prov01.priv.sc.zededa.net' >/etc/zededa/server
 
-7. Run provisioning client
-      ./client /etc/zededa/
       

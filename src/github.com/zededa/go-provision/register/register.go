@@ -1,5 +1,5 @@
 // Call as register <username> <cert pem filename> [<maxCount>]
-// Record the username and pem file in the ProvisioningCert database
+// Record the username and pem file in the Onboarding certificate database
 
 package main
 
@@ -44,19 +44,19 @@ func main() {
 	}
 	hasher := sha256.New()
 	hasher.Write(block.Bytes)
-	provKey := base64.StdEncoding.EncodeToString(hasher.Sum(nil))
-	fmt.Println("provKey:", provKey)
+	onboardingKey := base64.URLEncoding.EncodeToString(hasher.Sum(nil))
+	fmt.Println("onboardingKey:", onboardingKey)
 
 	// a new or existing scribble driver, providing the directory
 	// where it will be writing to, and a qualified logger if desired
-	db, err := scribble.New("/var/tmp/zededa-prov", nil)
+	db, err := scribble.New("/var/tmp/zededa-onboarding", nil)
 	if err != nil {
 		fmt.Println("scribble.New", err)
 	}
 
-	// Add the ProvisioningCert to the database
-	err = db.Write("prov", provKey,
-		types.ProvisioningCert{Cert: certBuf, UserName: userName,
+	// Add the OnboardingCert to the database
+	err = db.Write("onboarding", onboardingKey,
+		types.OnboardingCert{Cert: certBuf, UserName: userName,
 			RegTime: time.Now(), RemainingUse: maxCount})
 	if err != nil {
 		fmt.Println("db.Write", err)

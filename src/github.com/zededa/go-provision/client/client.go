@@ -26,7 +26,7 @@ var maxDelay = time.Second * 600 // 10 minutes
 // by default. The files are
 //  root-certificate.pem	Fixed? Written if redirected. factory-root-cert?
 //  server			Fixed? Written if redirected. factory-root-cert?
-//  prov.cert.pem, prov.key.pem	Per device provisioning certificate/key
+//  onboard.cert.pem, onboard.key.pem	Per device onboarding certificate/key
 //  		   		for selfRegister operation
 //  device.cert.pem,
 //  device.key.pem		Device certificate/key created before this
@@ -62,8 +62,8 @@ func main() {
 		operations["lookupParam"] = true
 	}
 
-	provCertName := dirName + "/prov.cert.pem"
-	provKeyName := dirName + "/prov.key.pem"
+	provCertName := dirName + "/onboard.cert.pem"
+	provKeyName := dirName + "/onboard.key.pem"
 	deviceCertName := dirName + "/device.cert.pem"
 	deviceKeyName := dirName + "/device.key.pem"
 	rootCertName := dirName + "/root-certificate.pem"
@@ -143,6 +143,12 @@ func main() {
 			return false
 		}
 
+		contents, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			fmt.Println(err)
+			return false
+		}
+
 		// XXX is this url-specific?
 		switch resp.StatusCode {
 		case http.StatusOK:
@@ -152,22 +158,19 @@ func main() {
 		case http.StatusConflict:
 			fmt.Printf("%s StatusConflict\n", url)
 			// Retry until fixed
+			fmt.Printf("%s\n", string(contents))
 			return false
 		default:
 			fmt.Printf("%s statuscode %d %s\n",
 				url, resp.StatusCode,
 				http.StatusText(resp.StatusCode))
+			fmt.Printf("%s\n", string(contents))
 			return false
 		}
 
 		contentType := resp.Header.Get("Content-Type")
 		if contentType != "application/json" {
 			fmt.Println("Incorrect Content-Type " + contentType)
-			return false
-		}
-		contents, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			fmt.Println(err)
 			return false
 		}
 		fmt.Printf("%s\n", string(contents))
@@ -228,6 +231,11 @@ func main() {
 			return false
 		}
 
+		contents, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			fmt.Println(err)
+			return false
+		}
 		switch resp.StatusCode {
 		case http.StatusOK:
 			fmt.Printf("device-param StatusOK\n")
@@ -235,16 +243,12 @@ func main() {
 			fmt.Printf("device-param statuscode %d %s\n",
 				resp.StatusCode,
 				http.StatusText(resp.StatusCode))
+			fmt.Printf("%s\n", string(contents))
 			return false
 		}
 		contentType := resp.Header.Get("Content-Type")
 		if contentType != "application/json" {
 			fmt.Println("Incorrect Content-Type " + contentType)
-			return false
-		}
-		contents, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			fmt.Println(err)
 			return false
 		}
 		if err := json.Unmarshal(contents, &device); err != nil {

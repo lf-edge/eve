@@ -1,32 +1,32 @@
 #!/bin/bash
 
-DIR=/etc/zededa
-PROVDIR=/home/nordmark/go-provision
-BINDIR=/home/nordmark/go-provision/bin
+ETCDIR=/usr/local/etc/zededa
+BINDIR=/usr/local/bin/zededa
+PROVDIR=$BINDIR
 WAIT=1
 
 while [ $# != 0 ]; do
     if [ "$1" == -w ]; then
 	WAIT=0
     else
-	DIR=$1
+	ETCDIR=$1
     fi
     shift
 done
 
 echo "Configuration from factory/install:"
-(cd $DIR; ls -l)
+(cd $ETCDIR; ls -l)
 echo
 
-if [ ! \( -f $DIR/device.cert.pem -a -f $DIR/device.key.pem \) ]; then
+if [ ! \( -f $ETCDIR/device.cert.pem -a -f $ETCDIR/device.key.pem \) ]; then
     echo "Generating a device key pair and self-signed cert (using TPM/TEE if available)"
-    $PROVDIR/generate-dc.sh $DIR/device
+    $PROVDIR/generate-device.sh $ETCDIR/device
     SELF_REGISTER=1
 else
     echo "Using existing device key pair and self-signed cert"
     SELF_REGISTER=0
 fi
-if [ ! -f $DIR/server -o ! -f $DIR/root-certificate.pem ]; then
+if [ ! -f $ETCDIR/server -o ! -f $ETCDIR/root-certificate.pem ]; then
     echo "No server or root-certificate to connect to. Done"
     exit 0
 fi
@@ -38,12 +38,12 @@ fi
 # XXX should we harden/remove any Linux network services at this point?
 
 echo "Check for WiFi config"
-if [ -f $DIR/wifi_ssid ]; then
+if [ -f $ETCDIR/wifi_ssid ]; then
     echo -n "SSID: "
-    cat $DIR/wifi_ssid
-    if [ -f $DIR/wifi_credentials ]; then
+    cat $ETCDIR/wifi_ssid
+    if [ -f $ETCDIR/wifi_credentials ]; then
 	echo -n "Wifi credentials: "
-	cat $DIR/wifi_credentials
+	cat $ETCDIR/wifi_credentials
     fi
     # XXX actually configure wifi
 fi
@@ -52,9 +52,9 @@ if [ $WAIT == 1 ]; then
 fi
 
 echo "Check for NTP config"
-if [ -f $DIR/ntp-server ]; then
+if [ -f $ETCDIR/ntp-server ]; then
     echo -n "Using "
-    cat $DIR/ntp-server
+    cat $ETCDIR/ntp-server
     # XXX is ntp service running/installed?
     # XXX actually configure ntp
     # Ubuntu has /usr/bin/timedatectl; ditto Debian
@@ -62,7 +62,7 @@ if [ -f $DIR/ntp-server ]; then
     # Not installed on Ubuntu
     #
     if [ -f /usr/bin/ntpdate ]; then
-	/usr/bin/ntpdate `cat $DIR/ntp-server`
+	/usr/bin/ntpdate `cat $ETCDIR/ntp-server`
     elif [ -f /usr/bin/timedatectl ]; then
 	echo "NTP might already be running. Check"
 	/usr/bin/timedatectl status
@@ -77,19 +77,19 @@ fi
 
 if [ $SELF_REGISTER = 1 ]; then
     echo "Self-registering our device certificate"
-    if [ ! \( -f $DIR/prov.cert.pem -a -f $DIR/prov.key.pem \) ]; then
+    if [ ! \( -f $ETCDIR/onboard.cert.pem -a -f $ETCDIR/onboard.key.pem \) ]; then
 	echo "Missing provisioning certificate. Giving up"
 	exit 1
     fi
-    $BINDIR/client $DIR selfRegister
+    $BINDIR/client $ETCDIR selfRegister
     if [ $WAIT == 1 ]; then
 	echo; read -n 1 -s -p "Press any key to continue"; echo; echo
     fi
 fi
 
-if [ ! -f $DIR/lisp.config ]; then
+if [ ! -f $ETCDIR/lisp.config ]; then
     echo "Retrieving device and overlay network config"
-    $BINDIR/client $DIR lookupParam
+    $BINDIR/client $ETCDIR lookupParam
     if [ $WAIT == 1 ]; then
 	echo; read -n 1 -s -p "Press any key to continue"; echo; echo
     fi
@@ -118,7 +118,7 @@ else
 fi
 memory=`awk '/MemTotal/ {print $2}' /proc/meminfo`
 storage=`df -kl --output=size / | tail -n +2| awk '{print $1}'`
-cat >$DIR/hwstatus.json <<EOF
+cat >$ETCDIR/hwstatus.json <<EOF
 {
 	"Machine": "$machine",
 	"Processor": "$processor",
@@ -128,7 +128,7 @@ cat >$DIR/hwstatus.json <<EOF
 	"Storage": $storage
 }
 EOF
-$BINDIR/client $DIR updateHwStatus
+$BINDIR/client $ETCDIR updateHwStatus
 
 if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
@@ -139,7 +139,7 @@ echo "Uploading software status"
 name=`uname -o`
 version=`uname -r`
 description=`uname -v`
-cat >$DIR/swstatus.json <<EOF
+cat >$ETCDIR/swstatus.json <<EOF
 {
 	"ApplicationStatus": [
 		{
@@ -153,7 +153,7 @@ cat >$DIR/swstatus.json <<EOF
 	]
 }
 EOF
-$BINDIR/client $DIR updateSwStatus
+$BINDIR/client $ETCDIR updateSwStatus
 
 echo "Initial setup done!"
 
