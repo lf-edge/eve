@@ -34,7 +34,7 @@ func main() {
 	}
 	certBuf, err := ioutil.ReadFile(certFile)
 	if err != nil {
-		log.Fatal("ReadFile ", err)
+		log.Fatal("ReadFile: ", err)
 	}
 	// Want the sha256 sum of the DER of the private key as the name
 	block, _ := pem.Decode(certBuf)
