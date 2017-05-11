@@ -4,15 +4,18 @@ import (
 	"bytes"
 	"crypto/ecdsa"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"github.com/zededa/go-provision/types"
 	"golang.org/x/crypto/ocsp"
 	"io/ioutil"
 	"log"
+	"math/big"
 	"net/http"
 	"os"
 	"strconv"
@@ -321,26 +324,71 @@ func main() {
 			(uint32(p[10])<<8)|uint32(p[10+1]),
 			(uint32(p[12])<<8)|uint32(p[12+1]),
 			(uint32(p[14])<<8)|uint32(p[14+1]))
-		fmt.Printf("sigdata %s\n", sigdata)
+		fmt.Printf("sigdata (len %d) %s\n", len(sigdata), sigdata)
 
+		hasher := sha256.New()
+		hasher.Write([]byte(sigdata))
+		hash := hasher.Sum(nil)
+		fmt.Printf("hash (len %d) % x\n", len(hash), hash)
+		fmt.Printf("base64 hash %s\n",
+				   base64.StdEncoding.EncodeToString(hash))
+		
 		var signature string
 		switch deviceCert.PrivateKey.(type) {
 		default:
 			log.Fatal("Private Key RSA type not supported")
 		case *ecdsa.PrivateKey:
 			key := deviceCert.PrivateKey.(*ecdsa.PrivateKey)
-			r, s, err := ecdsa.Sign(rand.Reader, key,
-				[]byte(sigdata))
+			r, s, err := ecdsa.Sign(rand.Reader, key, hash)
 			if err != nil {
-				log.Fatal("ecdsa.Sign", err)
+				log.Fatal("ecdsa.Sign: ", err)
 			}
+			fmt.Printf("r.bytes %d s.bytes %d\n", len(r.Bytes()),
+				len(s.Bytes()))
 			sigres := r.Bytes()
 			sigres = append(sigres, s.Bytes()...)
-			fmt.Printf("SigRes: %v\n", sigres)
-			fmt.Printf("SigRes: % x\n", sigres)
-			fmt.Printf("SigRes (len %d): %x\n", len(sigres), sigres)
+			fmt.Printf("sigres (len %d): % x\n", len(sigres), sigres)
 			signature = base64.StdEncoding.EncodeToString(sigres)
 			fmt.Println("signature:", signature)
+		}
+		// XXX try verify. Delete this code
+		if true {
+		        sigres, err := base64.StdEncoding.DecodeString(signature)
+			if err != nil {
+				log.Fatal("DecodeString: ", err)
+			}
+			fmt.Printf("Decoded sigres (len %d): % x\n", len(sigres), sigres)
+			rbytes := sigres[0:32]
+			sbytes := sigres[32:]
+			fmt.Printf("Decoded r %d s %d\n", len(rbytes), len(sbytes))
+			r := new(big.Int)
+			s := new(big.Int)
+			r.SetBytes(rbytes)
+			s.SetBytes(sbytes)
+			fmt.Printf("Decoded r, s: %v, %v\n", r, s)
+			x509Cert := deviceCert.Leaf
+			if deviceCert.Leaf == nil {
+				block, _ := pem.Decode(deviceCertPem)
+				if block == nil || block.Type != "CERTIFICATE" {
+					log.Fatal("failed to decode PEM block containing certificate. Type " +
+			block.Type)
+				}
+				parsedCert, err := x509.ParseCertificate(block.Bytes)
+				if err != nil {
+					log.Fatal("x509.ParseCertificate: ", err)
+				}
+				x509Cert = parsedCert
+			}
+			switch x509Cert.PublicKey.(type) {
+			default:
+				log.Fatal("Public Key RSA type not supported")
+			case *ecdsa.PublicKey:
+				pubkey := x509Cert.PublicKey.(*ecdsa.PublicKey)
+				good := ecdsa.Verify(pubkey, hash, r, s)
+				if !good {
+					log.Fatal("ecdsa.Verify failed")
+				}
+			}
 		}
 		fmt.Printf("UserName %s\n", device.UserName)
 		fmt.Printf("MapServers %s\n", device.LispMapServers)
