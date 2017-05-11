@@ -9,13 +9,11 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
-	"encoding/pem"
 	"fmt"
 	"github.com/zededa/go-provision/types"
 	"golang.org/x/crypto/ocsp"
 	"io/ioutil"
 	"log"
-	"math/big"
 	"net/http"
 	"os"
 	"strconv"
@@ -350,45 +348,6 @@ func main() {
 			fmt.Printf("sigres (len %d): % x\n", len(sigres), sigres)
 			signature = base64.StdEncoding.EncodeToString(sigres)
 			fmt.Println("signature:", signature)
-		}
-		// XXX try verify. Delete this code
-		if true {
-		        sigres, err := base64.StdEncoding.DecodeString(signature)
-			if err != nil {
-				log.Fatal("DecodeString: ", err)
-			}
-			fmt.Printf("Decoded sigres (len %d): % x\n", len(sigres), sigres)
-			rbytes := sigres[0:32]
-			sbytes := sigres[32:]
-			fmt.Printf("Decoded r %d s %d\n", len(rbytes), len(sbytes))
-			r := new(big.Int)
-			s := new(big.Int)
-			r.SetBytes(rbytes)
-			s.SetBytes(sbytes)
-			fmt.Printf("Decoded r, s: %v, %v\n", r, s)
-			x509Cert := deviceCert.Leaf
-			if deviceCert.Leaf == nil {
-				block, _ := pem.Decode(deviceCertPem)
-				if block == nil || block.Type != "CERTIFICATE" {
-					log.Fatal("failed to decode PEM block containing certificate. Type " +
-			block.Type)
-				}
-				parsedCert, err := x509.ParseCertificate(block.Bytes)
-				if err != nil {
-					log.Fatal("x509.ParseCertificate: ", err)
-				}
-				x509Cert = parsedCert
-			}
-			switch x509Cert.PublicKey.(type) {
-			default:
-				log.Fatal("Public Key RSA type not supported")
-			case *ecdsa.PublicKey:
-				pubkey := x509Cert.PublicKey.(*ecdsa.PublicKey)
-				good := ecdsa.Verify(pubkey, hash, r, s)
-				if !good {
-					log.Fatal("ecdsa.Verify failed")
-				}
-			}
 		}
 		fmt.Printf("UserName %s\n", device.UserName)
 		fmt.Printf("MapServers %s\n", device.LispMapServers)
