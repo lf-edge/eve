@@ -302,14 +302,14 @@ func SelfRegister(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	if now.After(cert.NotAfter) {
 		errStr := fmt.Sprintf("onboardingCert expired NotAfter %s, now %s\n",
-			cert.NotAfter, now)
+			cert.NotAfter, now.UTC())
 		log.Println(errStr)
 		http.Error(w, errStr, http.StatusUnauthorized)
 		return
 	}
 	if now.Before(cert.NotBefore) {
 		errStr := fmt.Sprintf("onboardingCert too early NotBefore %s, now %s\n",
-			cert.NotBefore, now)
+			cert.NotBefore, now.UTC())
 		log.Println(errStr)
 		http.Error(w, errStr, http.StatusUnauthorized)
 		return
@@ -579,14 +579,14 @@ func DeviceParam(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	if now.Before(cert.NotBefore) {
 		errStr := fmt.Sprintf("deviceCert too early NotBefore %s, now %s\n",
-			cert.NotBefore, now)
+			cert.NotBefore, now.UTC())
 		log.Println(errStr)
 		http.Error(w, errStr, http.StatusUnauthorized)
 		return
 	}
 	if now.After(cert.NotAfter) {
 		errStr := fmt.Sprintf("deviceCert expired NotAfter %s, now %s\n",
-			cert.NotAfter, now)
+			cert.NotAfter, now.UTC())
 		log.Println(errStr)
 		http.Error(w, errStr, http.StatusUnauthorized)
 		return
@@ -652,14 +652,14 @@ func UpdateHwStatus(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	if now.Before(cert.NotBefore) {
 		errStr := fmt.Sprintf("deviceCert too early NotBefore %s, now %s\n",
-			cert.NotBefore, now)
+			cert.NotBefore, now.UTC())
 		log.Println(errStr)
 		http.Error(w, errStr, http.StatusUnauthorized)
 		return
 	}
 	if now.After(cert.NotAfter) {
 		errStr := fmt.Sprintf("deviceCert expired NotAfter %s, now %s\n",
-			cert.NotAfter, now)
+			cert.NotAfter, now.UTC())
 		log.Println(errStr)
 		http.Error(w, errStr, http.StatusUnauthorized)
 		return
@@ -759,14 +759,14 @@ func UpdateSwStatus(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	if now.Before(cert.NotBefore) {
 		errStr := fmt.Sprintf("deviceCert too early NotBefore %s, now %s\n",
-			cert.NotBefore, now)
+			cert.NotBefore, now.UTC())
 		log.Println(errStr)
 		http.Error(w, errStr, http.StatusUnauthorized)
 		return
 	}
 	if now.After(cert.NotAfter) {
 		errStr := fmt.Sprintf("deviceCert expired NotAfter %s, now %s\n",
-			cert.NotAfter, now)
+			cert.NotAfter, now.UTC())
 		log.Println(errStr)
 		http.Error(w, errStr, http.StatusUnauthorized)
 		return
