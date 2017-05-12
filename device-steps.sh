@@ -96,7 +96,32 @@ if [ ! -f $ETCDIR/lisp.config ]; then
 fi
 
 echo "Starting overlay network"
-# Do something
+if [ ! -d /usr/local/bin/lisp ]; then
+    echo "Missing /usr/local/bin/lisp directory. Giving up"
+    exit 1
+fi
+    
+cd /usr/local/bin/lisp
+./STOP-LISP
+sleep 5
+echo "Copy"
+cp ../../etc/zededa/lisp.config .
+echo "Diff"
+diff /usr/local/etc/zededa/lisp.config lisp.config
+eid=`grep "eid-prefix = fd" lisp.config | awk '{print $3}' | awk -F/ '{print $1}'`
+# Mostly gets the right interface
+intf=`ip addr show scope global up | grep BROADCAST | awk -F : '{print $2}'`
+# Take first from list
+first=`echo $intf | awk '{print $1}'`
+intf=$first
+
+echo "Starting LISP with EID" $eid "on" $intf
+
+sudo /sbin/ifconfig lo inet6 add $eid
+sudo ip route add 0::/0 via fe80::1 dev $intf
+sudo ip nei add fe80::1 lladdr 0:0:0:0:0:1 dev $intf
+sudo ip nei change fe80::1 lladdr 0:0:0:0:0:1 dev $intf
+./RESTART-LISP 8080 $intf
 if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
