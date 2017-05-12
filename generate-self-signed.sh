@@ -25,11 +25,14 @@ fi
 subject="/C=US/ST=California/L=Santa Clara/O=Zededa, Inc/CN=`basename $output_base`"
 openssl ecparam -genkey -name prime256v1 -out $output_key
 openssl req -new -sha256 -subj "$subject" -key $output_key -out $csr
-# Why needed on server?
-if [ `uname -r` == "3.16.0-4-amd64" ]; then
-    openssl req -x509 -sha256 -subj "$subject" -days $lifetime -key $output_key -in $csr -out $output_cert
-else
-    openssl req -x509 -sha256 -days $lifetime -key $output_key -in $csr -out $output_cert
-fi
+# Newer versions require subject - old one fail if it is there
+v=`openssl version | awk '{print $2}'`
+case $v in (1.0.*)
+	       openssl req -x509 -sha256 -days $lifetime -key $output_key -in $csr -out $output_cert
+	       ;;
+	   (*)
+	       openssl req -x509 -sha256 -subj "$subject" -days $lifetime -key $output_key -in $csr -out $output_cert
+	       ;;
+esac
 rm $csr
 
