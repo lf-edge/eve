@@ -6,6 +6,9 @@ DIR=`pwd`
 
 if /bin/true; then
     go install github.com/zededa/go-provision/{client,server,register}
+    if [ $? != 0 ]; then
+	exit $?
+    fi
     GOARCH=arm64 go build -v github.com/zededa/go-provision/client
     GOARCH=arm64 go build -v github.com/zededa/go-provision/server
     GOARCH=arm64 go build -v github.com/zededa/go-provision/register
