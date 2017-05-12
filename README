@@ -11,6 +11,16 @@ OR
       cd /usr/local/
       sudo tar xf /tmp/go-provision.linux_*.tar.gz
 
+   Install lisp in /usr/local/bin/lisp
+      mkdir /usr/local/bin/lisp
+      cd /usr/local/bin/lisp
+      wget https://www.dropbox.com/s/if22l9t0l0f3kt6/lispers.net-x86-release-0.373.tgz
+      tar xf lispers.net-x86-release-0.373.tgz
+      python -O /usr/local/bin/lisp/lispers.net-install-ubuntu.pyo
+      sudo apt-get install python-pip
+      sudo pip install ecdsa==0.13
+Check install with
+      python -O /usr/local/bin/lisp/lispers.net-test-install.pyo 
 
 2. Generate an onboarding certificate (7 day lifetime) on the server and
    register it with the server.
