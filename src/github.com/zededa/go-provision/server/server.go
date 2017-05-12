@@ -75,7 +75,7 @@ func main() {
 	var lastOcspUpdate, lastOcspUse time.Time
 
 	done := false
-	// XXX ocsp01 not reachable
+	// XXX If ocsp01 is not reachable uncomment next line
 	// done = true; ocspTimer = 60000
 	for !done {
 		var err error
@@ -152,8 +152,6 @@ func main() {
 		time.Second, periodicOcsp)
 	defer t.Stop()
 
-	// XXX could we instead update serverCert when we run the periodic
-	// function?
 	getCertificate := func(hello *tls.ClientHelloInfo) (*tls.Certificate,
 		error) {
 		cert := serverCert

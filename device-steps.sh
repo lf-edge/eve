@@ -87,9 +87,20 @@ if [ $SELF_REGISTER = 1 ]; then
     fi
 fi
 
+# XXX should we redo this? Also want zedserverconfig updated
 if [ ! -f $ETCDIR/lisp.config ]; then
     echo "Retrieving device and overlay network config"
     $BINDIR/client $ETCDIR lookupParam
+    echo "Retrieved overlay /etc/hosts with:"
+    cat $ETCDIR/zedserverconfig
+    # edit zedserverconfig into /etc/hosts
+    match=`awk '{print $2}' $ETCDIR/zedserverconfig| sort -u | awk 'BEGIN {m=""} { m = sprintf("%s|%s", m, $1) } END { m = substr(m, 2, length(m)); printf ".*:.*(%s)\n", m}'`
+    egrep -v $match /etc/hosts >/tmp/hosts.$$
+    cat $ETCDIR/zedserverconfig >>/tmp/hosts.$$
+    echo "New /etc/hosts:"
+    cat /tmp/hosts.$$
+    sudo cp /tmp/hosts.$$ /etc/hosts
+    rm -f /tmp/hosts.$$
     if [ $WAIT == 1 ]; then
 	echo; read -n 1 -s -p "Press any key to continue"; echo; echo
     fi
@@ -103,10 +114,7 @@ fi
     
 cd /usr/local/bin/lisp
 ./STOP-LISP
-sleep 5
-echo "Copy"
 cp ../../etc/zededa/lisp.config .
-echo "Diff"
 diff /usr/local/etc/zededa/lisp.config lisp.config
 eid=`grep "eid-prefix = fd" lisp.config | awk '{print $3}' | awk -F/ '{print $1}'`
 # Mostly gets the right interface

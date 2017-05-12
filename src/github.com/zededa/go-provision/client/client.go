@@ -33,7 +33,7 @@ var maxDelay = time.Second * 600 // 10 minutes
 //  device.key.pem		Device certificate/key created before this
 //  		     		client is started.
 //  lisp.config			Written by lookupParam operation
-//  XXX zed.json			Written by lookupParam operation; zed server EIDs
+//  zedserverconfig		Written by lookupParam operation; zed server EIDs
 //  hwstatus.json		Uploaded by updateHwStatus operation
 //  swstatus.json		Uploaded by updateSwStatus operation
 //
@@ -72,6 +72,7 @@ func main() {
 	lispConfigTemplateFileName := dirName + "/lisp.config.zed"
 	lispConfigFileName := dirName + "/lisp.config"
 	lispConfigTmpFileName := dirName + "/lisp.config.tmp"
+	zedserverConfigFileName := dirName + "/zedserverconfig"
 	hwStatusFileName := dirName + "/hwstatus.json"
 	swStatusFileName := dirName + "/swstatus.json"
 
@@ -390,7 +391,23 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		// XXX write zm.conf file with servers. Fix servers.
+		// write zedserverconfig file with hostname to EID mappings
+		f, err := os.Create(zedserverConfigFileName)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer f.Close()
+		for _, ne := range device.ZedServers.NamesToEids {
+			for _, eid := range ne.EIDs {
+			 	output := fmt.Sprintf("%-46v %s\n",
+				       eid, ne.HostName)
+				_, err := f.WriteString(output)
+				if err != nil {
+					log.Fatal(err)
+				}
+			}
+		}
+		f.Sync()
 	}
 	if operations["updateHwStatus"] {
 		// Load file for upload

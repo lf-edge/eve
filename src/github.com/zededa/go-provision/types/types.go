@@ -98,6 +98,10 @@ const (
 // The EIDs in the overlay to which it should connect.
 // XXX change to name, IP; "zedcontrol" would be a name
 type ZedServerConfig struct {
-	ZedCloud []net.IP
-	ZedLake  []net.IP
+	NamesToEids	[]NameToEid
+}
+
+type NameToEid struct {
+	HostName        string
+	EIDs		[]net.IP
 }
