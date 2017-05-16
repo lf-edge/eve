@@ -22,10 +22,21 @@ import (
 	"os"
 	"reflect"
 	"strconv"
+	"strings"
 	"time"
 )
 
 var zedServerConfig types.ZedServerConfig
+
+type ServerCertInfo struct {
+	serverCert tls.Certificate     
+	ocspTimer int64 // periodic timer value
+	timerBackoff int64 // initialized to 1
+	ocspResponse *ocsp.Response
+	ocspResponseBytes []byte
+	lastOcspUpdate, lastOcspUse time.Time
+	t *time.Timer
+}
 
 // Assumes the config files are in dirName, which is
 // is /usr/local/etc/zededa-server/ by default. The files are
@@ -44,8 +55,10 @@ func main() {
 		dirName = args[0]
 	}
 
-	serverCertName := dirName + "/intermediate-server.cert.pem"
-	serverKeyName := dirName + "/server.key.pem"
+	localServerCertName := dirName + "/intermediate-prov01.priv.sc.zededa.net.cert.pem"
+	localServerKeyName := dirName + "/prov01.priv.sc.zededa.net.key.pem"
+	globalServerCertName := dirName + "/intermediate-prov1.zededa.net.cert.pem"
+	globalServerKeyName := dirName + "/prov1.zededa.net.key.pem"
 	zedServerConfigFileName := dirName + "/zedserverconfig.json"
 
 	http.HandleFunc("/rest/self-register", SelfRegister)
@@ -62,139 +75,132 @@ func main() {
 		log.Fatal("Error decoding ZedServerConfig:\n", err)
 	}
 
-	serverCert, err := tls.LoadX509KeyPair(serverCertName, serverKeyName)
+	localServerCert, err := tls.LoadX509KeyPair(localServerCertName,
+			 localServerKeyName)
+	if err != nil {
+		log.Fatal(err)
+	}
+	globalServerCert, err := tls.LoadX509KeyPair(globalServerCertName,
+			  globalServerKeyName)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// seed oscpResponse and oscpResponseBytes using serverCert
-	var ocspTimer int64 // periodic timer value
-	var timerBackoff int64 = 1
-	var ocspResponse *ocsp.Response
-	var ocspResponseBytes []byte
-	var lastOcspUpdate, lastOcspUse time.Time
+	// Handling a local and a global cert for now
+	serverCertInfo := make([]ServerCertInfo, 2)
+	serverCertInfo[0] = ServerCertInfo{
+			  serverCert: globalServerCert, timerBackoff: 1}
+	serverCertInfo[1] = ServerCertInfo{
+			  serverCert: localServerCert, timerBackoff: 1}
+
+	getOcsp := func(sci *ServerCertInfo) bool {
+		done := false
+		response, responseBytes, err :=
+			getOcspResponseBytes(&sci.serverCert)
+		if err != nil {
+			log.Println(err)
+			return done
+		}
+		sci.ocspResponse = response
+		sci.ocspResponseBytes = responseBytes
+		now := time.Now()
+		age := now.Unix() - sci.ocspResponse.ProducedAt.Unix()
+		remain := sci.ocspResponse.NextUpdate.Unix() - now.Unix()
+		log.Printf("OCSP age %d, remain %d\n", age, remain)
+		// Check again after half the remaining time
+		sci.ocspTimer = remain / 2
+		if sci.ocspResponse.Status == ocsp.Good {
+			log.Println("Certificate Status Good.")
+			sci.ocspResponse = response
+			sci.ocspResponseBytes = responseBytes
+			done = true
+			sci.lastOcspUpdate = now
+		} else if sci.ocspResponse.Status == ocsp.Unknown {
+			log.Println("Certificate Status Unknown")
+		} else {
+			log.Println("Certificate Status Revoked")
+		}
+		return done
+	}
 
 	done := false
 	// XXX If ocsp01 is not reachable uncomment next line
-	// done = true; ocspTimer = 60000
+	// done = true;
+	serverCertInfo[0].ocspTimer = 60000; serverCertInfo[1].ocspTimer = 60000
 	for !done {
-		var err error
-		ocspResponse, ocspResponseBytes, err =
-			getOcspResponseBytes(&serverCert)
-		if err != nil {
-			log.Println(err)
+		done = getOcsp(&serverCertInfo[1]) &&
+			getOcsp(&serverCertInfo[0])
+		if !done {
 			time.Sleep(5 * time.Second)
-			continue
-		}
-
-		now := time.Now()
-		age := now.Unix() - ocspResponse.ProducedAt.Unix()
-		remain := ocspResponse.NextUpdate.Unix() - now.Unix()
-		log.Printf("OCSP age %d, remain %d\n", age, remain)
-		// Check again after half the remaining time
-		ocspTimer = remain / 2
-		if ocspResponse.Status == ocsp.Good {
-			log.Println("Certificate Status Good.")
+			// XXX prov1.zededa.net points at ocsp.zededa.net which doesn't exist
 			done = true
-			lastOcspUpdate = now
-		} else if ocspResponse.Status == ocsp.Unknown {
-			log.Println("Certificate Status Unknown")
-			time.Sleep(5 * time.Second)
-		} else {
-			log.Println("Certificate Status Revoked")
-			time.Sleep(5 * time.Second)
 		}
 	}
-	log.Printf("Setup timer every %d seconds\n", ocspTimer)
+	log.Printf("Setup global timer every %d seconds; local %d\n",
+			  serverCertInfo[0].ocspTimer,
+			  serverCertInfo[1].ocspTimer)
 
-	var periodicOcsp func()
-	var t *time.Timer
 
-	// XXX use this for initial assignment? Need a non-zero ocspTimer in
-	// case the initial fails? But want one success before starting
-	// to serve requests.
-	// Channel to send "done" to caller? Plus 1,2,4,8 ocspTimer until
-	// we have a response?
-	periodicOcsp = func() {
-		// XXX update time based on lastOcspUse
-		if lastOcspUse.Before(lastOcspUpdate) {
-			timerBackoff *= 2
+	var periodicOcsp func(sci *ServerCertInfo)
+	periodicOcsp = func(sci *ServerCertInfo) {
+		if sci.lastOcspUse.Before(sci.lastOcspUpdate) {
+			sci.timerBackoff *= 2
 			log.Printf("OCSP was not used. Backoff %d\n",
-				timerBackoff)
+				sci.timerBackoff)
 		}
 		// If we get an updated success, then we use that for subsequent
 		// stapling
-		response, responseBytes, err :=
-			getOcspResponseBytes(&serverCert)
-		if err == nil {
+		if done := getOcsp(sci); done {
 			// Have an updated response to staple
-			ocspResponse = response
-			ocspResponseBytes = responseBytes
-			now := time.Now()
-			age := now.Unix() - ocspResponse.ProducedAt.Unix()
-			remain := ocspResponse.NextUpdate.Unix() - now.Unix()
-			log.Printf("OCSP age %d, remain %d\n", age, remain)
-			// Check again after half the remaining time
-			ocspTimer = remain / 2
-			if ocspResponse.Status == ocsp.Good {
-				log.Println("Certificate Status Good.")
-				lastOcspUpdate = now
-			} else if ocspResponse.Status == ocsp.Unknown {
-				log.Println("Certificate Status Unknown")
-			} else {
-				log.Println("Certificate Status Revoked")
-			}
+			log.Printf("Got OCSP update\n")
 		}
-		t = time.AfterFunc(time.Duration(timerBackoff*ocspTimer)*
-			time.Second, periodicOcsp)
+		sci.t = time.AfterFunc(
+			time.Duration(sci.timerBackoff*sci.ocspTimer)*
+			time.Second, func(){periodicOcsp(sci)})
 	}
-	t = time.AfterFunc(time.Duration(timerBackoff*ocspTimer)*
-		time.Second, periodicOcsp)
-	defer t.Stop()
+	// Start the timers
+	for _, sci := range serverCertInfo {
+		sci.t = time.AfterFunc(
+			time.Duration(sci.timerBackoff*sci.ocspTimer)*
+			time.Second, func(){periodicOcsp(&sci)})
+		defer sci.t.Stop()
+	}
 
 	getCertificate := func(hello *tls.ClientHelloInfo) (*tls.Certificate,
 		error) {
-		cert := serverCert
+		fmt.Printf( "getCertificate server %s local %v remote %v\n",
+			    hello.ServerName,
+			    hello.Conn.LocalAddr(), hello.Conn.RemoteAddr());
+		var sci *ServerCertInfo
+		if strings.Contains(hello.ServerName, ".priv.") {
+			sci = &serverCertInfo[1]
+		} else {
+			sci = &serverCertInfo[0]
+		}
+		cert := sci.serverCert
 		now := time.Now()
-		lastOcspUse = now
-		// XXX needed if we don't require on startup
-		if ocspResponseBytes == nil {
+		sci.lastOcspUse = now
+		// In case we didn't require a response on startup
+		if sci.ocspResponseBytes == nil {
 			return &cert, nil
 		}
 		// We staple the cert we have even if it is not Good
-		age := now.Unix() - ocspResponse.ProducedAt.Unix()
-		remain := ocspResponse.NextUpdate.Unix() - now.Unix()
+		age := now.Unix() - sci.ocspResponse.ProducedAt.Unix()
+		remain := sci.ocspResponse.NextUpdate.Unix() - now.Unix()
 		log.Printf("OCSP status %v, age %d, remain %d\n",
-			ocspResponse.Status, age, remain)
+			sci.ocspResponse.Status, age, remain)
 		if remain < 0 {
 			// Force update now. Reset timerBackoff.
 			log.Println("OCSP expired - force update.")
-			response, responseBytes, err :=
-				getOcspResponseBytes(&cert)
-			if err == nil {
+			if getOcsp(sci) {
 				// Have an updated response to staple
-				ocspResponse = response
-				ocspResponseBytes = responseBytes
-				now := time.Now()
-				age := now.Unix() - ocspResponse.ProducedAt.Unix()
-				remain := ocspResponse.NextUpdate.Unix() - now.Unix()
-				log.Printf("OCSP age %d, remain %d\n", age, remain)
-				// Check again after half the remaining time
-				ocspTimer = remain / 2
-				if ocspResponse.Status == ocsp.Good {
-					log.Println("Certificate Status Good.")
-					lastOcspUpdate = now
-				} else if ocspResponse.Status == ocsp.Unknown {
-					log.Println("Certificate Status Unknown")
-				} else {
-					log.Println("Certificate Status Revoked")
-				}
 			}
-			timerBackoff = 1
-			t = time.AfterFunc(time.Duration(timerBackoff*ocspTimer)*
-				time.Second, periodicOcsp)
+			sci.timerBackoff = 1
+			sci.t = time.AfterFunc(
+				time.Duration(sci.timerBackoff*sci.ocspTimer)*
+				time.Second, func(){periodicOcsp(sci)})
 		}
-		cert.OCSPStaple = ocspResponseBytes
+		cert.OCSPStaple = sci.ocspResponseBytes
 		return &cert, nil
 	}
 	// Setup HTTPS client
@@ -218,7 +224,7 @@ func main() {
 		TLSConfig: tlsConfig,
 	}
 
-	err = server.ListenAndServeTLS(serverCertName, serverKeyName)
+	err = server.ListenAndServeTLS("", "")
 	if err != nil {
 		log.Fatal(err)
 	}
