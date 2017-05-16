@@ -118,7 +118,7 @@ cp ../../etc/zededa/lisp.config .
 diff /usr/local/etc/zededa/lisp.config lisp.config
 eid=`grep "eid-prefix = fd" lisp.config | awk '{print $3}' | awk -F/ '{print $1}'`
 # Mostly gets the right interface
-intf=`ip addr show scope global up | grep BROADCAST | awk -F : '{print $2}'`
+intf=`ip addr show scope global up | grep BROADCAST | grep -v docker0 | awk -F : '{print $2}'`
 # Take first from list
 first=`echo $intf | awk '{print $1}'`
 intf=$first
