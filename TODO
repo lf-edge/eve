@@ -1,9 +1,33 @@
-Need ZedCloud EIDs in clients config.
-     Do not go into the LISP config.
-     Add "ZedControl" IP addresses - list
-     Later ZedLake IP addresses - list?
+New zedmanager - no TLS
+    Has the hwupdate and swupdate clients.
+    Runs server as well (how?) PUSH of swconfig, GET of swstatus
+    (is there also a patch of swconfig? Use directory with /var/tmp/zededa/swconfig/<eidOrName>/<version>
+    SwConfig includes URL, DigestAlg, Digest (Eid, Name, Version also sent)
+    SwConfig has a type (Image, Disk - with location attribute, Resource? ACL?)
+    SwConfig has a signer (base64Url of cert? or pem?)
+    ZedManager/dom0 has root cert; need cert chain from somewhere...
+    XXX where, how do we get the peer cert chain and save it for verification?
+
+    XXX type=process? Install in /var/tmp/zededa/app/<EID>/<version> and assume
+    there is a ./run program? Works for the python apps.
+    Throwaway!
+
+Hierarchical structure?
+    SwConfig -> Components list
+        Each component has a URL, digest, digestalg?
+	Also displayName, version?? 
+    Signer, signature on all of SwConfig
+    Means two levels and not hierarchical.
+    Version and name in SwConfig. Means doing diffs when the version changes to
+    detect that component X did not change its digest. XXX should we have informative version strings for the components? Still compare the digest? Or compare both?
+
+==
+
+Move to /usr/local/etc/lisp
 
 lisp_directory = "/root/lispers.net/" if docker else "/home/pi/lispers.net/"
+
+===
 
 What about /var/tmp? Just a mock up.
 Might want to have it survive reboot hence move to /var/zededa/device and
