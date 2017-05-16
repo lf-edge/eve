@@ -63,8 +63,8 @@ func main() {
 		operations["lookupParam"] = true
 	}
 
-	provCertName := dirName + "/onboard.cert.pem"
-	provKeyName := dirName + "/onboard.key.pem"
+	onboardCertName := dirName + "/onboard.cert.pem"
+	onboardKeyName := dirName + "/onboard.key.pem"
 	deviceCertName := dirName + "/device.cert.pem"
 	deviceKeyName := dirName + "/device.key.pem"
 	rootCertName := dirName + "/root-certificate.pem"
@@ -76,13 +76,13 @@ func main() {
 	hwStatusFileName := dirName + "/hwstatus.json"
 	swStatusFileName := dirName + "/swstatus.json"
 
-	var provCert, deviceCert tls.Certificate
+	var onboardCert, deviceCert tls.Certificate
 	var deviceCertPem []byte
 	deviceCertSet := false
 
 	if operations["selfRegister"] {
 		var err error
-		provCert, err = tls.LoadX509KeyPair(provCertName, provKeyName)
+		onboardCert, err = tls.LoadX509KeyPair(onboardCertName, onboardKeyName)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -118,14 +118,16 @@ func main() {
 	}
 	serverNameAndPort := strings.TrimSpace(string(server))
 	serverName := strings.Split(serverNameAndPort, ":")[0]
-
+	// XXX for local testing
+	// serverNameAndPort = "localhost:9069"
+	
 	// Post something without a return type.
 	// Returns true when done; false when retry
 	myPost := func(client *http.Client, url string, b *bytes.Buffer) bool {
 		resp, err := client.Post("https://"+serverNameAndPort+url,
 			"application/json", b)
 		if err != nil {
-			fmt.Println(err)
+			fmt.Printf("client.Post: ", err)
 			return false
 		}
 		defer resp.Body.Close()
@@ -183,7 +185,7 @@ func main() {
 	selfRegister := func() bool {
 		// Setup HTTPS client
 		tlsConfig := &tls.Config{
-			Certificates: []tls.Certificate{provCert},
+			Certificates: []tls.Certificate{onboardCert},
 			ServerName:   serverName,
 			RootCAs:      caCertPool,
 			CipherSuites: []uint16{
