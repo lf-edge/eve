@@ -133,7 +133,7 @@ func main() {
 		defer resp.Body.Close()
 		connState := resp.TLS
 		if connState == nil {
-			fmt.Println("no connection state")
+			fmt.Println("no TLS connection state")
 			return false
 		}
 
@@ -153,7 +153,7 @@ func main() {
 			return false
 		}
 
-		// XXX is this url-specific?
+		// XXX Should this behavior be url-specific?
 		switch resp.StatusCode {
 		case http.StatusOK:
 			fmt.Printf("%s StatusOK\n", url)
@@ -215,13 +215,9 @@ func main() {
 			return false
 		}
 		defer resp.Body.Close()
-		// XXX can we use GetClientCertificate to inspect this once
-		// when connection comes up? Or do we not yet know the server
-		// cert in GetClientCertificate?
-		// XXX or call crypto/tls/Conn.Handshake and then check!
 		connState := resp.TLS
 		if connState == nil {
-			fmt.Println("no connection state")
+			log.Println("no TLS connection state")
 			return false
 		}
 
