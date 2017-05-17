@@ -126,14 +126,15 @@ func main() {
 	done := false
 	// XXX If ocsp01 is not reachable uncomment next line
 	// done = true;
-	serverCertInfo[0].ocspTimer = 60000; serverCertInfo[1].ocspTimer = 60000
+	// serverCertInfo[0].ocspTimer = 60000; serverCertInfo[1].ocspTimer = 60000
 	for !done {
-		done = getOcsp(&serverCertInfo[1]) &&
-			getOcsp(&serverCertInfo[0])
+		done1 := getOcsp(&serverCertInfo[0])
+		done2 := getOcsp(&serverCertInfo[1])
+		done = done1 && done2
 		if !done {
 			time.Sleep(5 * time.Second)
 			// XXX prov1.zededa.net points at ocsp.zededa.net which doesn't exist
-			done = true
+			// done = true
 		}
 	}
 	log.Printf("Setup global timer every %d seconds; local %d\n",
@@ -262,21 +263,28 @@ func getOcspResponseBytes(cert *tls.Certificate) (*ocsp.Response, []byte,
 		log.Println("ocsp.CreateRequest", err)
 		return nil, nil, err
 	}
-	fmt.Printf("Connecting to OCSP at %s\n", ocspServer)
+	fmt.Printf("Connecting to OCSP at %s for %v\n",
+		ocspServer, x509Cert.Subject)
 	ocspRequestReader := bytes.NewReader(ocspRequest)
-	httpResponse, err := http.Post(ocspServer, "application/ocsp-request",
+	resp, err := http.Post(ocspServer, "application/ocsp-request",
 		ocspRequestReader)
 	if err != nil {
 		log.Println("http.Post ocsp", err)
 		return nil, nil, err
 	}
-	defer httpResponse.Body.Close()
-	ocspResponseBytes, err := ioutil.ReadAll(httpResponse.Body)
+	defer resp.Body.Close()
+	fmt.Printf("HTTP resp code %d %s\n",
+		resp.StatusCode, http.StatusText(resp.StatusCode))
+	if resp.StatusCode != http.StatusOK {
+		log.Println("OCSP response code: ", resp.StatusCode)
+		return nil, nil, errors.New("OCSP get failed: " +
+			http.StatusText(resp.StatusCode))
+	}
+	ocspResponseBytes, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("getOcspResponseBytes ReadAll", err)
 		return nil, nil, err
 	}
-	// XXX parse http return code?
 	ocspResponse, err := ocsp.ParseResponse(ocspResponseBytes, x509Issuer)
 	if err != nil {
 		log.Println("ocsp.ParseResponse", err)
@@ -286,8 +294,8 @@ func getOcspResponseBytes(cert *tls.Certificate) (*ocsp.Response, []byte,
 }
 
 func SelfRegister(w http.ResponseWriter, r *http.Request) {
-	fmt.Printf("Method %s Host %s Proto %s\n", r.Method, r.Host,
-		r.Proto)
+	fmt.Printf("Method %s Host %s Proto %s URL %s\n", r.Method, r.Host,
+		r.Proto, r.URL)
 	if r.Method != http.MethodPost {
 		http.Error(w, http.StatusText(http.StatusMethodNotAllowed),
 			http.StatusMethodNotAllowed)
@@ -560,8 +568,8 @@ func SelfRegister(w http.ResponseWriter, r *http.Request) {
 }
 
 func DeviceParam(w http.ResponseWriter, r *http.Request) {
-	fmt.Printf("Method %s Host %s Proto %s\n", r.Method, r.Host,
-		r.Proto)
+	fmt.Printf("Method %s Host %s Proto %s URL %s\n", r.Method, r.Host,
+		r.Proto, r.URL)
 	if r.Method != http.MethodGet {
 		http.Error(w, http.StatusText(http.StatusMethodNotAllowed),
 			http.StatusMethodNotAllowed)
@@ -633,8 +641,8 @@ func DeviceParam(w http.ResponseWriter, r *http.Request) {
 // XXX lots of commonality with above up to lookup of deviceKey
 // XXX lots of commonality with UpdateSwStatus
 func UpdateHwStatus(w http.ResponseWriter, r *http.Request) {
-	fmt.Printf("Method %s Host %s Proto %s\n", r.Method, r.Host,
-		r.Proto)
+	fmt.Printf("Method %s Host %s Proto %s URL %s\n", r.Method, r.Host,
+		r.Proto, r.URL)
 	if r.Method != http.MethodPost {
 		http.Error(w, http.StatusText(http.StatusMethodNotAllowed),
 			http.StatusMethodNotAllowed)
@@ -740,8 +748,8 @@ func UpdateHwStatus(w http.ResponseWriter, r *http.Request) {
 
 // XXX lots of commonality with UpdateHwStatus
 func UpdateSwStatus(w http.ResponseWriter, r *http.Request) {
-	fmt.Printf("Method %s Host %s Proto %s\n", r.Method, r.Host,
-		r.Proto)
+	fmt.Printf("Method %s Host %s Proto %s URL %s\n", r.Method, r.Host,
+		r.Proto, r.URL)
 	if r.Method != http.MethodPost {
 		http.Error(w, http.StatusText(http.StatusMethodNotAllowed),
 			http.StatusMethodNotAllowed)
