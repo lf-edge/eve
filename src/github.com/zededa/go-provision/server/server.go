@@ -847,7 +847,7 @@ func UpdateSwStatus(w http.ResponseWriter, r *http.Request) {
 		len(swStatus.ApplicationStatus))
 	for _, s := range swStatus.ApplicationStatus {
 		fmt.Printf("SwStatus Name %s state %v activated %v\n",
-			s.Name, s.State, s.Activated)
+			s.DisplayName, s.State, s.Activated)
 	}
 
 	if err := deviceDb.Write("sw-status", deviceKey, swStatus); err != nil {

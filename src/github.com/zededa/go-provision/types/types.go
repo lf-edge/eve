@@ -52,39 +52,58 @@ type LispServerInfo struct {
 }
 
 type DeviceHwStatus struct {
-	// XXX add timestamp? which type?
-	Manufacturer string
-	Model        string
-	Serial       string
-	Machine      string
-	Processor    string
-	Platform     string
-	Compatible   string
-	Memory       uint // Kbyte
-	Storage      uint // Kbyte
+	// XXX add timestamp? for last update? when sent?
+	Manufacturer string // Optionally set in manufacturing
+	Model        string // Optionally set in manufacturing
+	Serial       string // Optionally set in manufacturing
+	Machine      string // From uname -m
+	Processor    string // From uname -p
+	Platform     string // From uname -i
+	Compatible   string // From device-tree's compatible node
+	Memory       uint   // Total memory in Kbyte
+	Storage      uint   // Total flash in Kbyte
+}
+
+type DeviceSwConfig struct {
+	// XXX add timestamp for last update? When sent?
+	ApplicationConfig []SwConfig
 }
 
 type DeviceSwStatus struct {
-	// XXX add timestamp?
+	// XXX add timestamp for last update? When sent?
 	ApplicationStatus []SwStatus
 }
 
-// Note that SwConfig might make private+cert, plus EID, or allow EID generation
-// Does that mean we need a cert in SwStatus?
-// SwConfig would have an 'Activate bool' instead of Activated
-// SwConfig would have a Url, DigestAlg, and Digest as well.
-// Need to restucture, since a given EID/Name can have multiple versions.
+// Actual state of sofware on device. Flows from device to ZedCloud.
+// Includes all software; applications and Zededa infrastructure
+// Need to restucture, since a given EID/DisplayName can have multiple versions.
 // Ditto for SwConfig.
 type SwStatus struct {
+	Infra       bool   // Set for Zededa software which does not have an EID
 	EID         net.IP // If one assigned. UUID alternative?
-	Name        string
+	DisplayName string
 	Version     string
 	Description string // optional
 	State       SwState
 	Activated   bool
 }
 
-// Type names from OMA-TS-LWM2M_SwMgmt-V1_0-20151201-C
+// Intended state of sofware on device. Flows from ZedCloud to device.
+// Includes all software; applications and Zededa infrastructure
+// Note that SwConfig might make private+cert, plus EID, or allow EID generation
+// Does that mean we need a cert in SwStatus? Or separate out EID allocation?
+// SwConfig would have a Url, DigestAlg, and Digest as well.
+type SwConfig struct {
+	Infra       bool   // Set for Zededa software which does not have an EID
+	EID         net.IP // If one assigned. UUID alternative?
+	DisplayName string
+	Version     string
+	Description string // optional
+	State       SwState
+	Activate    bool
+}
+
+// Enum names from OMA-TS-LWM2M_SwMgmt-V1_0-20151201-C
 type SwState uint8
 
 const (
@@ -97,7 +116,8 @@ const (
 
 // Part of config handed to the device.
 // The EIDs in the overlay to which it should connect.
-// XXX change to name, IP; "zedcontrol" would be a name
+// Think of this as /etc/hosts for the ZedManager - maps from names such as
+// "zedcontrol" amd "zedlake0" to EIDs in the management overlay.
 type ZedServerConfig struct {
 	NamesToEids []NameToEid
 }
