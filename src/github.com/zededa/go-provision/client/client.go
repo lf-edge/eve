@@ -14,6 +14,7 @@ import (
 	"golang.org/x/crypto/ocsp"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -120,7 +121,7 @@ func main() {
 	serverName := strings.Split(serverNameAndPort, ":")[0]
 	// XXX for local testing
 	// serverNameAndPort = "localhost:9069"
-	
+
 	// Post something without a return type.
 	// Returns true when done; false when retry
 	myPost := func(client *http.Client, url string, b *bytes.Buffer) bool {
@@ -328,8 +329,8 @@ func main() {
 		hash := hasher.Sum(nil)
 		fmt.Printf("hash (len %d) % x\n", len(hash), hash)
 		fmt.Printf("base64 hash %s\n",
-				   base64.StdEncoding.EncodeToString(hash))
-		
+			base64.StdEncoding.EncodeToString(hash))
+
 		var signature string
 		switch deviceCert.PrivateKey.(type) {
 		default:
@@ -397,8 +398,8 @@ func main() {
 		defer f.Close()
 		for _, ne := range device.ZedServers.NamesToEids {
 			for _, eid := range ne.EIDs {
-			 	output := fmt.Sprintf("%-46v %s\n",
-				       eid, ne.HostName)
+				output := fmt.Sprintf("%-46v %s\n",
+					eid, ne.HostName)
 				_, err := f.WriteString(output)
 				if err != nil {
 					log.Fatal(err)
@@ -406,6 +407,9 @@ func main() {
 			}
 		}
 		f.Sync()
+		// Determine whether NAT is in use
+		nat := !IsMyAddress(device.ClientAddr)
+		fmt.Printf("NAT %v, ClientAddr %v\n", nat, device.ClientAddr)
 	}
 	if operations["updateHwStatus"] {
 		// Load file for upload
@@ -445,6 +449,29 @@ func main() {
 			}
 		}
 	}
+}
+
+// IsMyAddress checks the IP address against the local IPs. Returns True if
+// there is a match.
+func IsMyAddress(addrString string) bool {
+	clientTCP, err := net.ResolveTCPAddr("tcp", addrString)
+	if err != nil {
+		return false
+	}
+	clientIP := clientTCP.IP
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return false
+	}
+	for _, address := range addrs {
+		if ipnet, ok := address.(*net.IPNet); ok &&
+			!ipnet.IP.IsLoopback() {
+			if bytes.Compare(ipnet.IP, clientIP) == 0 {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func stapledCheck(connState *tls.ConnectionState) bool {

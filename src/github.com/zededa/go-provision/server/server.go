@@ -29,13 +29,13 @@ import (
 var zedServerConfig types.ZedServerConfig
 
 type ServerCertInfo struct {
-	serverCert tls.Certificate     
-	ocspTimer int64 // periodic timer value
-	timerBackoff int64 // initialized to 1
-	ocspResponse *ocsp.Response
-	ocspResponseBytes []byte
+	serverCert                  tls.Certificate
+	ocspTimer                   int64 // periodic timer value
+	timerBackoff                int64 // initialized to 1
+	ocspResponse                *ocsp.Response
+	ocspResponseBytes           []byte
 	lastOcspUpdate, lastOcspUse time.Time
-	t *time.Timer
+	t                           *time.Timer
 }
 
 // Assumes the config files are in dirName, which is
@@ -76,12 +76,12 @@ func main() {
 	}
 
 	localServerCert, err := tls.LoadX509KeyPair(localServerCertName,
-			 localServerKeyName)
+		localServerKeyName)
 	if err != nil {
 		log.Fatal(err)
 	}
 	globalServerCert, err := tls.LoadX509KeyPair(globalServerCertName,
-			  globalServerKeyName)
+		globalServerKeyName)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -89,9 +89,9 @@ func main() {
 	// Handling a local and a global cert for now
 	serverCertInfo := make([]ServerCertInfo, 2)
 	serverCertInfo[0] = ServerCertInfo{
-			  serverCert: globalServerCert, timerBackoff: 1}
+		serverCert: globalServerCert, timerBackoff: 1}
 	serverCertInfo[1] = ServerCertInfo{
-			  serverCert: localServerCert, timerBackoff: 1}
+		serverCert: localServerCert, timerBackoff: 1}
 
 	getOcsp := func(sci *ServerCertInfo) bool {
 		done := false
@@ -138,9 +138,8 @@ func main() {
 		}
 	}
 	log.Printf("Setup global timer every %d seconds; local %d\n",
-			  serverCertInfo[0].ocspTimer,
-			  serverCertInfo[1].ocspTimer)
-
+		serverCertInfo[0].ocspTimer,
+		serverCertInfo[1].ocspTimer)
 
 	var periodicOcsp func(sci *ServerCertInfo)
 	periodicOcsp = func(sci *ServerCertInfo) {
@@ -157,21 +156,21 @@ func main() {
 		}
 		sci.t = time.AfterFunc(
 			time.Duration(sci.timerBackoff*sci.ocspTimer)*
-			time.Second, func(){periodicOcsp(sci)})
+				time.Second, func() { periodicOcsp(sci) })
 	}
 	// Start the timers
 	for _, sci := range serverCertInfo {
 		sci.t = time.AfterFunc(
 			time.Duration(sci.timerBackoff*sci.ocspTimer)*
-			time.Second, func(){periodicOcsp(&sci)})
+				time.Second, func() { periodicOcsp(&sci) })
 		defer sci.t.Stop()
 	}
 
 	getCertificate := func(hello *tls.ClientHelloInfo) (*tls.Certificate,
 		error) {
-		fmt.Printf( "getCertificate server %s local %v remote %v\n",
-			    hello.ServerName,
-			    hello.Conn.LocalAddr(), hello.Conn.RemoteAddr());
+		fmt.Printf("getCertificate server %s local %v remote %v\n",
+			hello.ServerName,
+			hello.Conn.LocalAddr(), hello.Conn.RemoteAddr())
 		var sci *ServerCertInfo
 		if strings.Contains(hello.ServerName, ".priv.") {
 			sci = &serverCertInfo[1]
@@ -199,7 +198,7 @@ func main() {
 			sci.timerBackoff = 1
 			sci.t = time.AfterFunc(
 				time.Duration(sci.timerBackoff*sci.ocspTimer)*
-				time.Second, func(){periodicOcsp(sci)})
+					time.Second, func() { periodicOcsp(sci) })
 		}
 		cert.OCSPStaple = sci.ocspResponseBytes
 		return &cert, nil
@@ -294,8 +293,8 @@ func getOcspResponseBytes(cert *tls.Certificate) (*ocsp.Response, []byte,
 }
 
 func SelfRegister(w http.ResponseWriter, r *http.Request) {
-	fmt.Printf("Method %s Host %s Proto %s URL %s\n", r.Method, r.Host,
-		r.Proto, r.URL)
+	fmt.Printf("Method %s Host %s Proto %s URL %s from %v\n",
+		r.Method, r.Host, r.Proto, r.URL, r.RemoteAddr)
 	if r.Method != http.MethodPost {
 		http.Error(w, http.StatusText(http.StatusMethodNotAllowed),
 			http.StatusMethodNotAllowed)
@@ -421,6 +420,7 @@ func SelfRegister(w http.ResponseWriter, r *http.Request) {
 				// Update counter for reregistrations which indicate
 				// retransmissions/retries
 				device.ReRegisteredCount++
+				device.ClientAddr = r.RemoteAddr
 				err = deviceDb.Write("ddb", deviceKey, device)
 				if err != nil {
 					fmt.Println("deviceDb.Write", err)
@@ -545,6 +545,7 @@ func SelfRegister(w http.ResponseWriter, r *http.Request) {
 		EID:          eid,
 		EIDHashLen:   uint8(eidHashLen),
 		ZedServers:   zedServerConfig,
+		ClientAddr:   r.RemoteAddr,
 	}
 	err = deviceDb.Write("ddb", deviceKey, device)
 	if err != nil {
@@ -568,8 +569,8 @@ func SelfRegister(w http.ResponseWriter, r *http.Request) {
 }
 
 func DeviceParam(w http.ResponseWriter, r *http.Request) {
-	fmt.Printf("Method %s Host %s Proto %s URL %s\n", r.Method, r.Host,
-		r.Proto, r.URL)
+	fmt.Printf("Method %s Host %s Proto %s URL %s from %v\n",
+		r.Method, r.Host, r.Proto, r.URL, r.RemoteAddr)
 	if r.Method != http.MethodGet {
 		http.Error(w, http.StatusText(http.StatusMethodNotAllowed),
 			http.StatusMethodNotAllowed)
@@ -641,8 +642,8 @@ func DeviceParam(w http.ResponseWriter, r *http.Request) {
 // XXX lots of commonality with above up to lookup of deviceKey
 // XXX lots of commonality with UpdateSwStatus
 func UpdateHwStatus(w http.ResponseWriter, r *http.Request) {
-	fmt.Printf("Method %s Host %s Proto %s URL %s\n", r.Method, r.Host,
-		r.Proto, r.URL)
+	fmt.Printf("Method %s Host %s Proto %s URL %s from %v\n",
+		r.Method, r.Host, r.Proto, r.URL, r.RemoteAddr)
 	if r.Method != http.MethodPost {
 		http.Error(w, http.StatusText(http.StatusMethodNotAllowed),
 			http.StatusMethodNotAllowed)
@@ -748,8 +749,8 @@ func UpdateHwStatus(w http.ResponseWriter, r *http.Request) {
 
 // XXX lots of commonality with UpdateHwStatus
 func UpdateSwStatus(w http.ResponseWriter, r *http.Request) {
-	fmt.Printf("Method %s Host %s Proto %s URL %s\n", r.Method, r.Host,
-		r.Proto, r.URL)
+	fmt.Printf("Method %s Host %s Proto %s URL %s from %v\n",
+		r.Method, r.Host, r.Proto, r.URL, r.RemoteAddr)
 	if r.Method != http.MethodPost {
 		http.Error(w, http.StatusText(http.StatusMethodNotAllowed),
 			http.StatusMethodNotAllowed)

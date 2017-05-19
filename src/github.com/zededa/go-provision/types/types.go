@@ -43,6 +43,7 @@ type DeviceDb struct {
 	EID            net.IP
 	EIDHashLen     uint8
 	ZedServers     ZedServerConfig
+	ClientAddr     string // To detect NATs
 }
 
 type LispServerInfo struct {
@@ -98,10 +99,10 @@ const (
 // The EIDs in the overlay to which it should connect.
 // XXX change to name, IP; "zedcontrol" would be a name
 type ZedServerConfig struct {
-	NamesToEids	[]NameToEid
+	NamesToEids []NameToEid
 }
 
 type NameToEid struct {
-	HostName        string
-	EIDs		[]net.IP
+	HostName string
+	EIDs     []net.IP
 }
