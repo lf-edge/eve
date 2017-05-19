@@ -176,8 +176,9 @@ cat >$ETCDIR/swstatus.json <<EOF
 {
 	"ApplicationStatus": [
 		{
+			"Infra": true,
 			"EID": "::",
-			"Name": "$name",
+			"DisplayName": "$name",
 			"Version": "$version",
 			"Description": "$description",
 			"State": 5,
