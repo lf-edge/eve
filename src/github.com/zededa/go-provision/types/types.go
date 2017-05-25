@@ -60,6 +60,7 @@ type DeviceHwStatus struct {
 	Processor    string // From uname -p
 	Platform     string // From uname -i
 	Compatible   string // From device-tree's compatible node
+	Cpus         uint   // nproc --all
 	Memory       uint   // Total memory in Kbyte
 	Storage      uint   // Total flash in Kbyte
 }
