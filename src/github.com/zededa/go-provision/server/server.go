@@ -626,6 +626,10 @@ func DeviceParam(w http.ResponseWriter, r *http.Request) {
 			http.StatusNotFound)
 		return
 	}
+	// Update ClientAddr since location could have changed; also ZedServers
+	device.ClientAddr = r.RemoteAddr
+	device.ZedServers = zedServerConfig
+
 	// XXX if device.Redirect == true, should we use diff code?
 	res, _ := json.Marshal(device)
 	device.ReadTime = time.Now()

@@ -115,13 +115,19 @@ fi
 cd /usr/local/bin/lisp
 ./STOP-LISP
 cp ../../etc/zededa/lisp.config .
-diff /usr/local/etc/zededa/lisp.config lisp.config
 eid=`grep "eid-prefix = fd" lisp.config | awk '{print $3}' | awk -F/ '{print $1}'`
 # Mostly gets the right interface
 intf=`ip addr show scope global up | grep BROADCAST | grep -v docker0 | awk -F : '{print $2}'`
 # Take first from list
 first=`echo $intf | awk '{print $1}'`
 intf=$first
+
+# Hack; edit in the interface
+sed "s/interface = wlan0/interface = $intf/" ../../etc/zededa/lisp.config >lisp.config
+echo "XXX diff:"
+diff /usr/local/etc/zededa/lisp.config lisp.config
+echo "XXX end diff"
+
 
 echo "Starting LISP with EID" $eid "on" $intf
 
