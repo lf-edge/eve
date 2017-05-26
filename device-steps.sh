@@ -117,10 +117,28 @@ cd /usr/local/bin/lisp
 cp ../../etc/zededa/lisp.config .
 eid=`grep "eid-prefix = fd" lisp.config | awk '{print $3}' | awk -F/ '{print $1}'`
 # Mostly gets the right interface
-intf=`ip addr show scope global up | grep BROADCAST | grep -v docker0 | awk -F : '{print $2}'`
-# Take first from list
-first=`echo $intf | awk '{print $1}'`
-intf=$first
+# XXX intf=`ip addr show scope global up | grep BROADCAST | grep -v docker0 | awk -F : '{print $2}'`
+
+# Find the interface based on the routes to the map servers
+# Take the first one for now
+ms=`grep dns-name //usr/local/bin/lisp/lisp.config | awk '{print $3}' | sort -u`
+for m in $ms; do
+    echo ms $ms
+    ips=`getent hosts $m | awk '{print $1}' | sort -u`
+    # Could get multiple ips
+    for ip in $ips; do
+	echo ip $ip
+	rt=`ip route get $ip`
+	echo rt $rt
+	intf=`echo $rt | sed 's/.* dev \([^ ]*\) .*/\1/'`
+	if [ "$intf" != "" ]; then
+	    break
+	fi
+    done
+    if [ "$intf" != "" ]; then
+	break
+    fi
+done
 
 # Hack; edit in the interface
 sed "s/interface = wlan0/interface = $intf/" ../../etc/zededa/lisp.config >lisp.config
