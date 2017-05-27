@@ -151,7 +151,7 @@ echo "XXX end diff"
 echo "Starting LISP with EID" $eid "on" $intf
 
 sudo /sbin/ifconfig lo inet6 add $eid
-sudo ip route add 0::/0 via fe80::1 dev $intf
+sudo ip route add fd00::/8 via fe80::1 src $eid dev $intf
 sudo ip nei add fe80::1 lladdr 0:0:0:0:0:1 dev $intf
 sudo ip nei change fe80::1 lladdr 0:0:0:0:0:1 dev $intf
 

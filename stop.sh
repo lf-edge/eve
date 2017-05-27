@@ -33,5 +33,5 @@ echo "EID: $eid"
 echo "INTF: $intf"
 
 sudo /sbin/ifconfig lo inet6 del $eid
-sudo ip route del 0::/0 via fe80::1 dev $intf
+sudo ip route del fd00::/8 via fe80::1 src $eid dev $intf
 sudo ip nei del fe80::1 lladdr 0:0:0:0:0:1 dev $intf
