@@ -1,0 +1,93 @@
+#
+# lispers.net lisp.config file, last changed: <sample>
+#
+# (1) Only commands between the first pair of dotted lines will be processed. 
+#
+# (2) Any lines you find prepended with "#>>>" are errors found during command 
+#     processing.
+#
+# (3) You may comment out lines by placing a "#" in the first column of any 
+#     line between the section between the first pair of dotted lines.
+#
+# (4) Note the modification timestamp above is auto generated after you have 
+#     saved this file and it has been processed.
+#
+# (5) Deleting configuration can be achieved by deleting lines and restarting
+#     the LISP component or by use of the LISP API.
+#
+# (6) The landing web page on any device provides detailed Command and API
+#     documentation.
+#
+# (7) Any name references must follow their definitions. Examples are 
+#     elp-names and rle-names when referred to in static map-cache entries.
+#
+# DO NOT WRITE TO ANY OTHER PART OF THIS FILE. YOU MUST ONLY ADD, CHANGE, OR
+# REMOVE LINES BETWEEN THE FIRST PAIR OF DOTTED LINES SECTION.
+#
+#-----------------------------------------------------------------------------
+lisp enable {
+    itr = yes
+    etr = yes
+    rtr = no
+    map-server = no
+    map-resolver = no
+    ddt-node = no
+}
+lisp debug {
+    core = no
+    itr = no
+    etr = no
+    rtr = no
+    map-server = no
+    map-resolver = no
+    ddt-node = no
+}
+lisp user-account {
+    username = root
+    password =
+    super-user = yes
+}
+lisp xtr-parameters {
+    rloc-probing = yes
+    data-plane-security = no
+    nat-traversal = yes
+    nonce-echoing = no
+    data-plane-logging = no
+    flow-logging = no
+}
+lisp map-resolver {
+    dns-name = <map-server-1>
+}
+lisp map-server {
+    dns-name = <map-server-1>
+    authentication-key = <map-server-1-key>
+}
+lisp map-resolver {
+    dns-name = <map-server-2>
+}
+lisp map-server {
+    dns-name = <map-server-2>
+    authentication-key = <map-server-2-key>
+}
+lisp json {
+    json-name = signature
+    json-string = { "signature" : "<signature>" }
+}
+lisp database-mapping {
+    prefix {
+        instance-id = <iid>
+        eid-prefix = <eid-prefix6>
+    }
+    prefix {
+        instance-id = <iid>
+        eid-prefix = '<username>'
+    }
+    rloc {
+        interface = wlan0
+    }
+    rloc {
+        json-name = signature
+	priority = 255
+    }
+}
+#-----------------------------------------------------------------------------#
