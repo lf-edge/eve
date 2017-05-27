@@ -3,6 +3,7 @@
 ETCDIR=/usr/local/etc/zededa
 BINDIR=/usr/local/bin/zededa
 PROVDIR=$BINDIR
+LISPDIR=/usr/local/bin/lisp
 WAIT=1
 
 while [ $# != 0 ]; do
@@ -107,21 +108,21 @@ if [ ! -f $ETCDIR/lisp.config ]; then
 fi
 
 echo "Starting overlay network"
-if [ ! -d /usr/local/bin/lisp ]; then
-    echo "Missing /usr/local/bin/lisp directory. Giving up"
+if [ ! -d $LISPDIR ]; then
+    echo "Missing $LISPDIR directory. Giving up"
     exit 1
 fi
     
-cd /usr/local/bin/lisp
-./STOP-LISP
-cp ../../etc/zededa/lisp.config .
+# Remove any old routes before we change $LISPDIR/lisp.config
+$BINDIR/stop.sh
+
+cd $LISPDIR
+cp $ETCDIR/lisp.config $LISPDIR/lisp.config
 eid=`grep "eid-prefix = fd" lisp.config | awk '{print $3}' | awk -F/ '{print $1}'`
-# Mostly gets the right interface
-# XXX intf=`ip addr show scope global up | grep BROADCAST | grep -v docker0 | awk -F : '{print $2}'`
 
 # Find the interface based on the routes to the map servers
 # Take the first one for now
-ms=`grep dns-name //usr/local/bin/lisp/lisp.config | awk '{print $3}' | sort -u`
+ms=`grep dns-name lisp.config | awk '{print $3}' | sort -u`
 for m in $ms; do
     echo ms $ms
     ips=`getent hosts $m | awk '{print $1}' | sort -u`
@@ -141,9 +142,9 @@ for m in $ms; do
 done
 
 # Hack; edit in the interface
-sed "s/interface = wlan0/interface = $intf/" ../../etc/zededa/lisp.config >lisp.config
+sed "s/interface = wlan0/interface = $intf/" $ETCDIR/lisp.config >$LISPDIR/lisp.config
 echo "XXX diff:"
-diff /usr/local/etc/zededa/lisp.config lisp.config
+diff $ETCDIR/lisp.config $LISPDIR/lisp.config
 echo "XXX end diff"
 
 
@@ -153,6 +154,7 @@ sudo /sbin/ifconfig lo inet6 add $eid
 sudo ip route add 0::/0 via fe80::1 dev $intf
 sudo ip nei add fe80::1 lladdr 0:0:0:0:0:1 dev $intf
 sudo ip nei change fe80::1 lladdr 0:0:0:0:0:1 dev $intf
+
 ./RESTART-LISP 8080 $intf
 if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
