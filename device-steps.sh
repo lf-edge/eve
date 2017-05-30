@@ -143,9 +143,9 @@ done
 
 # Hack; edit in the interface
 sed "s/interface = wlan0/interface = $intf/" $ETCDIR/lisp.config >$LISPDIR/lisp.config
-echo "XXX diff:"
-diff $ETCDIR/lisp.config $LISPDIR/lisp.config
-echo "XXX end diff"
+# echo "XXX diff:"
+# diff $ETCDIR/lisp.config $LISPDIR/lisp.config
+# echo "XXX end diff"
 
 
 echo "Starting LISP with EID" $eid "on" $intf
