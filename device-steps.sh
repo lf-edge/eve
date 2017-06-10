@@ -5,10 +5,12 @@ BINDIR=/usr/local/bin/zededa
 PROVDIR=$BINDIR
 LISPDIR=/usr/local/bin/lisp
 WAIT=1
-
+EID_IN_DOMU=0
 while [ $# != 0 ]; do
     if [ "$1" == -w ]; then
 	WAIT=0
+    elif [ "$1" == -x ]; then
+	EID_IN_DOMU=1
     else
 	ETCDIR=$1
     fi
@@ -47,6 +49,9 @@ if [ -f $ETCDIR/wifi_ssid ]; then
 	cat $ETCDIR/wifi_credentials
     fi
     # XXX actually configure wifi
+    # Requires a /etc/network/interfaces.d/wlan0.cfg
+    # and /etc/wpa_supplicant/wpa_supplicant.conf
+    # Assumes wpa packages are included. Would be in our image?
 fi
 if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
@@ -76,6 +81,9 @@ if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
 
+# XXX this should run in domZ aka ZedRouter on init.
+# Ideally just to WiFi setup in dom0 and do DHCP in domZ
+
 if [ $SELF_REGISTER = 1 ]; then
     echo "Self-registering our device certificate"
     if [ ! \( -f $ETCDIR/onboard.cert.pem -a -f $ETCDIR/onboard.key.pem \) ]; then
@@ -88,8 +96,8 @@ if [ $SELF_REGISTER = 1 ]; then
     fi
 fi
 
-# XXX should we redo this? Also want zedserverconfig updated
-if [ ! -f $ETCDIR/lisp.config ]; then
+# XXX We always redo this to get an updated zedserverconfig
+if [ /bin/true -o ! -f $ETCDIR/lisp.config ]; then
     echo "Retrieving device and overlay network config"
     $BINDIR/client $ETCDIR lookupParam
     echo "Retrieved overlay /etc/hosts with:"
@@ -116,49 +124,62 @@ fi
 # Remove any old routes before we change $LISPDIR/lisp.config
 $BINDIR/stop.sh
 
-cd $LISPDIR
-cp $ETCDIR/lisp.config $LISPDIR/lisp.config
-eid=`grep "eid-prefix = fd" lisp.config | awk '{print $3}' | awk -F/ '{print $1}'`
-
 # Find the interface based on the routes to the map servers
 # Take the first one for now
-ms=`grep dns-name lisp.config | awk '{print $3}' | sort -u`
+ms=`grep dns-name $ETCDIR/lisp.config | awk '{print $3}' | sort -u`
 for m in $ms; do
-    echo ms $ms
+    # echo ms $ms
     ips=`getent hosts $m | awk '{print $1}' | sort -u`
     # Could get multiple ips
     for ip in $ips; do
-	echo ip $ip
+	# echo ip $ip
 	rt=`ip route get $ip`
-	echo rt $rt
+	# echo rt $rt
 	intf=`echo $rt | sed 's/.* dev \([^ ]*\) .*/\1/'`
 	if [ "$intf" != "" ]; then
 	    break
 	fi
     done
     if [ "$intf" != "" ]; then
+	echo "Found interface $intf based on route to map servers"
 	break
     fi
 done
 
 # Hack; edit in the interface
 sed "s/interface = wlan0/interface = $intf/" $ETCDIR/lisp.config >$LISPDIR/lisp.config
-# echo "XXX diff:"
-# diff $ETCDIR/lisp.config $LISPDIR/lisp.config
-# echo "XXX end diff"
+chmod o+r $LISPDIR/lisp.config
+#echo "XXX diff:"
+#diff $ETCDIR/lisp.config $LISPDIR/lisp.config
+#echo "XXX end diff"
 
+eid=`grep "eid-prefix = fd" $ETCDIR/lisp.config | awk '{print $3}' | awk -F/ '{print $1}'`
 
 echo "Starting LISP with EID" $eid "on" $intf
 
-sudo /sbin/ifconfig lo inet6 add $eid
-sudo ip route add fd00::/8 via fe80::1 src $eid dev $intf
+# XXX try to get dnsmasq happy? Note /9 routes below
+ifconfig $intf inet6 add fd00::1/8 up
+if [ $EID_IN_DOMU == 0 ]; then
+    sudo /sbin/ifconfig lo inet6 add $eid
+    # sudo ip route add fd00::/8 via fe80::1 src $eid dev $intf
+    sudo ip route add fd00::/9 via fe80::1 src $eid dev $intf
+    sudo ip route add fd80::/9 via fe80::1 src $eid dev $intf
+else
+    # sudo ip route add fd00::/8 via fe80::1 dev $intf
+    sudo ip route add fd00::/9 via fe80::1 dev $intf
+    sudo ip route add fd80::/9 via fe80::1 dev $intf
+fi
 sudo ip nei add fe80::1 lladdr 0:0:0:0:0:1 dev $intf
 sudo ip nei change fe80::1 lladdr 0:0:0:0:0:1 dev $intf
+
+# In the domU case we need this in dom0
+# ip -6 route add $eid/128 dev bo1A
+
 # Copy device private key to lisp-sig.pem
 # XXX permissions 400 in $ETCDIR?
 sudo cp $ETCDIR/device.key.pem $LISPDIR/lisp-sig.pem
 
-./RESTART-LISP 8080 $intf
+(cd $LISPDIR; ./RESTART-LISP 8080 $intf)
 if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
