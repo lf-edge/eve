@@ -51,6 +51,9 @@ type LispServerInfo struct {
 	Credential string
 }
 
+// XXX rename to DeviceHwResources
+// XXX also add the measure free memory and storage as DeviceHwStatus
+// That new DeviceHwStatus should include the underlay information (set of IPv4, and IPv6 addresses)
 type DeviceHwStatus struct {
 	// XXX add timestamp? for last update? when sent?
 	Manufacturer string // Optionally set in manufacturing
@@ -67,11 +70,13 @@ type DeviceHwStatus struct {
 
 type DeviceSwConfig struct {
 	// XXX add timestamp for last update? When sent?
+	// XXX add hash for merkel tree
 	ApplicationConfig []SwConfig
 }
 
 type DeviceSwStatus struct {
 	// XXX add timestamp for last update? When sent?
+	// XXX add lastReceivedHash and currentHash for merkel tree
 	ApplicationStatus []SwStatus
 }
 
@@ -80,6 +85,7 @@ type DeviceSwStatus struct {
 // Need to restucture, since a given EID/DisplayName can have multiple versions.
 // Ditto for SwConfig.
 type SwStatus struct {
+	// XXX add lastReceivedHash and currentHash for merkel tree
 	Infra       bool   // Set for Zededa software which does not have an EID
 	EID         net.IP // If one assigned. UUID alternative?
 	DisplayName string
@@ -95,6 +101,7 @@ type SwStatus struct {
 // Does that mean we need a cert in SwStatus? Or separate out EID allocation?
 // SwConfig would have a Url, DigestAlg, and Digest as well.
 type SwConfig struct {
+	// XXX add hash for merkel tree
 	Infra       bool   // Set for Zededa software which does not have an EID
 	EID         net.IP // If one assigned. UUID alternative?
 	DisplayName string
