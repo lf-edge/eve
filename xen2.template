@@ -1,0 +1,29 @@
+name="ubuntu2"
+builder="pv"
+# 128-bit UUID for the domain as a hexadecimal number.
+# Use "uuidgen" to generate one if required.
+# The default behavior is to generate a new UUID each time the guest is started.
+#uuid = "XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
+
+# Kernel image to boot
+kernel = "/boot/vmlinuz"
+
+# Ramdisk (optional)
+#ramdisk = "/boot/initrd.img"
+
+# Initial memory allocation (MB)
+memory = 256
+
+# Maximum memory (MB)
+# If this is greater than `memory' then the slack will start ballooned
+# (this assumes guest kernel support for ballooning)
+#maxmem = 512
+
+# Number of VCPUS
+vcpus = 1
+
+extra="console=hvc0 root=/dev/xvda"
+disk=['/dev/loop5,raw,xvda,rw,backendtype=phy']
+serial="pty"
+boot="c"
+
