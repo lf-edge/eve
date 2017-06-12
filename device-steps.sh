@@ -148,6 +148,10 @@ done
 
 # Hack; edit in the interface
 sed "s/interface = wlan0/interface = $intf/" $ETCDIR/lisp.config >$LISPDIR/lisp.config
+if [ -f $LISPDIR/lisp.config.apps ]; then
+        echo "Appending lisp.config.apps"
+        cat $LISPDIR/lisp.config.apps >> $LISPDIR/lisp.config
+fi
 chmod o+r $LISPDIR/lisp.config
 #echo "XXX diff:"
 #diff $ETCDIR/lisp.config $LISPDIR/lisp.config
