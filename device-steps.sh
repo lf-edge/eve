@@ -161,27 +161,18 @@ eid=`grep "eid-prefix = fd" $ETCDIR/lisp.config | awk '{print $3}' | awk -F/ '{p
 
 echo "Starting LISP with EID" $eid "on" $intf
 
-# XXX try to get dnsmasq happy? Note /9 routes below
-ifconfig $intf inet6 add fd00::1/8 up
 if [ $EID_IN_DOMU == 0 ]; then
     sudo /sbin/ifconfig lo inet6 add $eid
-    # sudo ip route add fd00::/8 via fe80::1 src $eid dev $intf
-    sudo ip route add fd00::/9 via fe80::1 src $eid dev $intf
-    sudo ip route add fd80::/9 via fe80::1 src $eid dev $intf
+    sudo ip route add fd00::/8 via fe80::1 src $eid dev $intf
 else
-    # sudo ip route add fd00::/8 via fe80::1 dev $intf
-    sudo ip route add fd00::/9 via fe80::1 dev $intf
-    sudo ip route add fd80::/9 via fe80::1 dev $intf
+    sudo ip route add fd00::/8 via fe80::1 dev $intf
 fi
 sudo ip nei add fe80::1 lladdr 0:0:0:0:0:1 dev $intf
 sudo ip nei change fe80::1 lladdr 0:0:0:0:0:1 dev $intf
 
-# In the domU case we need this in dom0
-# ip -6 route add $eid/128 dev bo1A
-
-# Copy device private key to lisp-sig.pem
+# Copy device private key to lisp-sig.pem? Only needed on RTR!
 # XXX permissions 400 in $ETCDIR?
-sudo cp $ETCDIR/device.key.pem $LISPDIR/lisp-sig.pem
+# sudo cp $ETCDIR/device.key.pem $LISPDIR/lisp-sig.pem
 
 (cd $LISPDIR; ./RESTART-LISP 8080 $intf)
 if [ $WAIT == 1 ]; then
