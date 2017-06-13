@@ -1,5 +1,9 @@
 #!/bin/bash
 # Run this after reboot of host to prepare to run Xen domUs
+RUNDIR=/var/run/zededa/
+# XXX should we pick a directory?
+XENDIR=`pwd`
+# XXX also add a IMGDIR for the losetup??
 
 # Special hikey - turn off bright green led
 echo 'none' | sudo tee /sys/class/leds/user_led1/trigger
@@ -18,31 +22,48 @@ ip6tables -F
 
 sysctl -w net.ipv6.conf.all.forwarding=1
 
+service radvd start
+# XXX why is there no dnsmasq service? How do we create one?
+
 echo "Setup underlay NAT"
 # For all underlays
+# XXX should we just apply it to -i ${ULIFNAME} somehow?? -i not avail.
 iptables -t nat -A POSTROUTING -o $UPLINK -j MASQUERADE
 
-DHCPHOSTSDIR=dhcp-hostsdir
-DHCPOPTSDIR=dhcp-optsdir
-HOSTSDIR=hostsdir
-CONFDIR=confdir
+mkdir -p ${RUNDIR}
+DHCPHOSTSDIR=${RUNDIR}/dhcp-hostsdir
+DHCPOPTSDIR=${RUNDIR}/dhcp-optsdir
+HOSTSDIR=${RUNDIR}/hostsdir
+CONFDIR=${RUNDIR}/confdir
 # Underlay and overlay ACLs, respectively
-IPTABLESDIR=iptablesdir
-IP6TABLESDIR=ip6tablesdir
-mkdir ${DHCPHOSTSDIR}
-mkdir ${DHCPOPTSDIR}
-mkdir ${HOSTSDIR}
-mkdir ${CONFDIR}
-mkdir ${IPTABLESDIR}
-mkdir ${IP6TABLESDIR}
+IPTABLESDIR=${RUNDIR}/iptablesdir
+IP6TABLESDIR=${RUNDIR}/ip6tablesdir
+IPSETDIR=${RUNDIR}/ipset
 
-# We assume xen${APPNUM}.template exists with the blk and name etc
+# Start clean
+rm -rf ${DHCPHOSTSDIR} ${DHCPOPTSDIR} ${HOSTSDIR} ${CONFDIR} ${IPTABLESDIR} ${IP6TABLESDIR} ${IPSETDIR}
+mkdir ${DHCPHOSTSDIR} ${DHCPOPTSDIR} ${HOSTSDIR} ${CONFDIR} ${IPTABLESDIR} ${IP6TABLESDIR} ${IPSETDIR}
+
+
+# We assume ${XENDIR}/xen${APPNUM}.template exists with the blk and name etc
 # We will append the vif and uuid config to those templates
 
 # This belongs in ZedMgr
 echo "Setup disk loopback"
+if [ ! -f ubuntu-cloudimg.img ]; then
+    echo "Missing ubuntu-cloudimg.img"
+    exit 1
+fi
 losetup /dev/loop3 ubuntu-cloudimg.img
+if [ ! -f xxx-test.img ]; then
+    echo "Missing xxx-test.img"
+    exit 1
+fi
 losetup /dev/loop4 xxx-test.img 
+if [ ! -f two-cloudimg.img ]; then
+    echo "Missing two-cloudimg.img"
+    exit 1
+fi
 losetup /dev/loop5 two-cloudimg.img
 
 # Need to refactor to handle different number of underlays (0/1) and overlays (N)
@@ -51,7 +72,11 @@ setup_app() {
     OLNUM=$2
     OLADDR2=$3
     echo "setup_app: appnum ${APPNUM} olnum ${OLNUM} EID ${OLADDR2}"
-    
+    if [ ! -f ${XENDIR}/xen${APPNUM}.template ]; then
+	echo "Missing ${XENDIR}/xen${APPNUM}.template"
+	exit 1
+    fi
+
     UUID=`/usr/bin/uuidgen`
     OLIFNAME=bo${OLNUM}_${APPNUM}
     OLADDR1=fd00::${OLNUM}:${APPNUM}
@@ -80,9 +105,16 @@ setup_app() {
     echo "${ULMAC},id:*,${ULADDR2}" > ${DHCPHOSTSDIR}/dhcpv4.${APPNUM}
     # Brackets needed for IPv6
     echo "${OLMAC},[${OLADDR2}]" > ${DHCPHOSTSDIR}/dhcpv6.${OLNUM}_${APPNUM}
-    # Set up domain-search list for overlay. Use uuid.local
-    echo "tag:${OLIFNAME},option6:domain-search,${UUID}.local" >${DHCPOPTSDIR}/dhcpv6.${OLNUM}_${APPNUM}
+    # Enable radvd on interface
+    cat <<EOF >>/etc/radvd.conf
+interface ${OLIFNAME} {
+	IgnoreIfMissing on;
+	AdvSendAdvert on;
+	MaxRtrAdvInterval 1800;
+	AdvManagedFlag on;
+};
 
+EOF
     # Per overlay names?
     # We return a separate search option based on UUID as here.
     # Alternative would be to use separate namespace or separate dns server in
@@ -90,13 +122,16 @@ setup_app() {
     # guess the UUID for some other domU can lookup the EIDs (but not send to)
     # the in another IID.
 
+    # Set up domain-search list for overlay. Use uuid.local
+    echo "tag:${OLIFNAME},option6:domain-search,${UUID}.local" >${DHCPOPTSDIR}/dhcpv6.${OLNUM}_${APPNUM}
+
     # Create a hosts file with appended names. Assumes no trailing spaces in
     # /etc/hosts
     # XXX need the app names from the instance
     grep zed /etc/hosts | sed "s/$/.${UUID}.local/" >${HOSTSDIR}/hosts6.${OLNUM}_${APPNUM}
 
-    cp xen${APPNUM}.template xen${APPNUM}.cfg
-    cat <<EOF >>xen${APPNUM}.cfg
+    cp ${XENDIR}/xen${APPNUM}.template ${XENDIR}/xen${APPNUM}.cfg
+    cat <<EOF >>${XENDIR}/xen${APPNUM}.cfg
 # UUID
 uuid = "$UUID"
 
@@ -111,8 +146,6 @@ iptables -A FORWARD -i ${ULIFNAME} -m set --match-set ipv4.google.com dst -j ACC
 iptables -A FORWARD -o ${ULIFNAME} -m set --match-set ipv4.google.com src -j ACCEPT
 iptables -A FORWARD -i ${ULIFNAME} -m set --match-set ipv4.zededa.net dst -j ACCEPT
 iptables -A FORWARD -o ${ULIFNAME} -m set --match-set ipv4.zededa.net src -j ACCEPT
-iptables -A FORWARD -i ${ULIFNAME} -d 23.72.199.210 -j ACCEPT
-iptables -A FORWARD -o ${ULIFNAME} -s 23.72.199.210 -j ACCEPT
 iptables -A FORWARD -i ${ULIFNAME} -j DROP
 iptables -A FORWARD -o ${ULIFNAME} -j DROP
 EOF
@@ -123,8 +156,10 @@ EOF
     # Apply all eids to this each ${OLIFNAME}
     # XXX need to have a list per IID, or tagged with IIDs so we can grep
     # plus IID for OLIFNAME?
-    sed "s/eids/eids.${OLIFNAME}/" ipset.all-eids >ipset.all-eids.${OLIFNAME}
-    ipset restore -f ipset.all-eids.${OLIFNAME}
+    # Start clean
+    ipset destroy eids.${OLIFNAME} || /bin/true
+    sed "s/eids/eids.${OLIFNAME}/" ${IPSETDIR}/all-eids >${IPSETDIR}/all-eids.${OLIFNAME}
+    ipset restore -f ${IPSETDIR}/all-eids.${OLIFNAME}
     
     cat <<EOF >${IP6TABLESDIR}/ip6tables.${OLNUM}_${APPNUM}
 # First two rules assume there might be IPv6 underlay connectivity
@@ -139,19 +174,19 @@ EOF
     source ${IP6TABLESDIR}/ip6tables.${OLNUM}_${APPNUM}
 }
 
-echo "Create example ipset's"
+echo "Create underlay ipset's"
 # Note that we need to restart dnsmasq if we add to ${CONFDIR}
-ipset create ipv6.google.com hash:ip family inet6
-ipset create ipv4.google.com hash:ip family inet
-ipset create ipv6.zededa.net hash:ip family inet6
-ipset create ipv4.zededa.net hash:ip family inet
+ipset create ipv6.google.com hash:ip family inet6 || ipset flush ipv6.google.com
+ipset create ipv4.google.com hash:ip family inet || ipset flush ipv4.google.com
+ipset create ipv6.zededa.net hash:ip family inet6 || ipset flush ipv6.zededa.net
+ipset create ipv4.zededa.net hash:ip family inet || ipset flush ipv4.zededa.net
 cat <<EOF >${CONFDIR}/ipset.test.conf
 ipset=/google.com/ipv4.google.com,ipv6.google.com
 ipset=/zededa.net/ipv4.zededa.net,ipv6.zededa.net
 EOF
 
 # Stick all the EIDs in here for now. Need one per application bundle?
-ipset create eids hash:ip family inet6
+ipset create eids hash:ip family inet6 || ipset flush eids
 # zedcontrol
 ipset add eids fd45:efca:3607:4c1d:eace:a947:3464:d21e
 # bobo
@@ -167,28 +202,45 @@ ipset add eids fd00:82ff:a727:fb30:a4c2:f612:7efb:bac6
 # hikey app4
 ipset add eids fd31:447f:256b:b6dd:5c6c:addd:66b1:c760
 
-ipset save eids >ipset.all-eids
+ipset save eids >${IPSETDIR}/all-eids
+
+# Start clean
+rm -f /etc/radvd.conf
 
 # Application 1, overlay 1
 # XXX Using app1 EID
 setup_app 1 1 fd13:4e7f:e66d:2822:a5ce:f644:bebe:30ae
 
-# Application 2, overlay 1
+# Application 3, overlay 1
 # XXX Using app3 EID
-setup_app 2 1 fd00:82ff:a727:fb30:a4c2:f612:7efb:bac6
+setup_app 3 1 fd00:82ff:a727:fb30:a4c2:f612:7efb:bac6
 
-DEBUGOPTS="-d -q --log-dhcp"
-OPTS="--enable-ra --except-interface ${UPLINK} --no-ping"
-# XXX should we set --ra-param to set the max lifetime?
-# XXX makes no difference to set --ra-param=bo*,high,600,30000
-# XXX should we set --bogus-priv --stop-dns-rebind --rebind-localhost-ok --domain-needed
-OPTS="${OPTS} --bogus-priv --stop-dns-rebind --rebind-localhost-ok --domain-needed"
+# setup_add added radvd config; reload for sighup
+service radvd reload
 
-# XXX note that --bridge-interface=lo,bo* goes with a hack to get lo0 matches
-# what is a better hack? Really want per intf ra control even when there are
-# no prefixes.
+# XXX run dnsmasq as service as well
+ 
+# DEBUGOPTS="-d"
+DEBUGOPTS=""
 
-echo "Starting dnsmasq"
-echo /home/nordmark/dnsmasq-2.75/src/dnsmasq ${DEBUGOPTS} ${OPTS}  --hostsdir=${HOSTSDIR} --dhcp-hostsdir=${DHCPHOSTSDIR} --dhcp-optsdir=${DHCPOPTSDIR} --conf-dir=${CONFDIR} --dhcp-range=172.27.0.0,static,255.255.0.0,infinite --dhcp-range=::,static,defrtr,0,infinite --bridge-interface=lo,bo*
+# XXX having a shorter lifetime avoids issues with stale
+cat <<EOF >/etc/dnsmasq.conf
+log-queries
+log-dhcp
+no-hosts
+except-interface=${UPLINK}
+no-ping
+bogus-priv
+stop-dns-rebind
+rebind-localhost-ok
+domain-needed
+hostsdir=${HOSTSDIR}
+dhcp-hostsdir=${DHCPHOSTSDIR}
+dhcp-optsdir=${DHCPOPTSDIR}
+conf-dir=${CONFDIR}
+dhcp-range=172.27.0.0,static,255.255.0.0,infinite
+dhcp-range=::,static,0,infinite
+EOF
 
-/home/nordmark/dnsmasq-2.75/src/dnsmasq ${DEBUGOPTS} ${OPTS} --hostsdir=${HOSTSDIR} --dhcp-hostsdir=${DHCPHOSTSDIR} --dhcp-optsdir=${DHCPOPTSDIR} --conf-dir=${CONFDIR} --dhcp-range=172.27.0.0,static,255.255.0.0,infinite --dhcp-range=::,static,defrtr,0,infinite --bridge-interface=lo,bo*
+echo /home/nordmark/dnsmasq-2.75/src/dnsmasq${DEBUGOPTS}
+/home/nordmark/dnsmasq-2.75/src/dnsmasq ${DEBUGOPTS}
