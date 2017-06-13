@@ -7,7 +7,8 @@ LISPDIR=/usr/local/bin/lisp
 cd $LISPDIR
 ./STOP-LISP
 
-eid=`grep "eid-prefix = fd" lisp.config | awk '{print $3}' | awk -F/ '{print $1}'`
+#Pick first eid-prefix; others are for applications
+eid=`grep "eid-prefix = fd" lisp.config | awk '{print $3}' | awk -F/ '{print $1}' | head -1`
 
 # Find the interface based on the routes to the map servers
 # Take the first one for now
