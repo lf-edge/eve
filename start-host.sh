@@ -1,6 +1,6 @@
 #!/bin/bash
 # Run this after reboot of host to prepare to run Xen domUs
-RUNDIR=/var/run/zededa/
+RUNDIR=/var/run/zedrouter/
 # XXX should we pick a directory?
 XENDIR=`pwd`
 # XXX also add a IMGDIR for the losetup??
@@ -11,7 +11,6 @@ echo 'none' | sudo tee /sys/class/leds/user_led1/trigger
 # Could extract this from e.g. lisp.config
 UPLINK=wlan0
 
-# /usr/local/bin/zededa/stop.sh
 # Need to delete the default drop rules. Don't really need any lisp rules.
 iptables -t raw -D lisp -j DROP
 ip6tables -t raw -D lisp -j DROP
@@ -21,9 +20,6 @@ iptables -F
 ip6tables -F
 
 sysctl -w net.ipv6.conf.all.forwarding=1
-
-service radvd start
-# XXX why is there no dnsmasq service? How do we create one?
 
 echo "Setup underlay NAT"
 # For all underlays
@@ -77,6 +73,8 @@ setup_app() {
 	exit 1
     fi
 
+    # XXX would like to keep the same UUID as before to avoid issues
+    # with old lease resulting in old /etc/resolv.conf in domU
     UUID=`/usr/bin/uuidgen`
     OLIFNAME=bo${OLNUM}_${APPNUM}
     OLADDR1=fd00::${OLNUM}:${APPNUM}
@@ -98,13 +96,17 @@ setup_app() {
     echo ifconfig ${ULIFNAME} ${ULADDR1}/24 up
     ifconfig ${ULIFNAME} ${ULADDR1}/24 up
 
+    # XXX remove all changes to dnsmasq but one < 64 check.
     # XXX doesn't appear to be needed
     # XXX check if it solves the RA's not being sent!! NOT
     # XXX try again with /8 interface address
     # echo "dhcp-range=interface:${OLIFNAME},${OLADDR2},off-link,8" > ${CONFDIR}/dhcpv6.${OLNUM}_${APPNUM}.conf
-    echo "${ULMAC},id:*,${ULADDR2}" > ${DHCPHOSTSDIR}/dhcpv4.${APPNUM}
+    # echo "${ULMAC},id:*,${ULADDR2}" > ${DHCPHOSTSDIR}/dhcpv4.${APPNUM}
     # Brackets needed for IPv6
-    echo "${OLMAC},[${OLADDR2}]" > ${DHCPHOSTSDIR}/dhcpv6.${OLNUM}_${APPNUM}
+    # echo "${OLMAC},[${OLADDR2}]" > ${DHCPHOSTSDIR}/dhcpv6.${OLNUM}_${APPNUM}
+
+    # Start clean
+    pkill -u radvd -f radvd.${OLIFNAME}.conf
     # Enable radvd on interface
     cat <<EOF >>/etc/radvd.conf
 interface ${OLIFNAME} {
@@ -113,23 +115,71 @@ interface ${OLIFNAME} {
 	MaxRtrAdvInterval 1800;
 	AdvManagedFlag on;
 };
-
 EOF
-    # Per overlay names?
-    # We return a separate search option based on UUID as here.
-    # Alternative would be to use separate namespace or separate dns server in
-    # domZ based on the client interface. Risk is that a client who can
-    # guess the UUID for some other domU can lookup the EIDs (but not send to)
-    # the in another IID.
+    radvd -u radvd -C /etc/radvd.${OLIFNAME}.conf -p /var/run/radvd/radvd.${OLIFNAME}.pid
 
     # Set up domain-search list for overlay. Use uuid.local
-    echo "tag:${OLIFNAME},option6:domain-search,${UUID}.local" >${DHCPOPTSDIR}/dhcpv6.${OLNUM}_${APPNUM}
+    # XXX remove
+    # echo "tag:${OLIFNAME},option6:domain-search,${UUID}.local" >${DHCPOPTSDIR}/dhcpv6.${OLNUM}_${APPNUM}
 
     # Create a hosts file with appended names. Assumes no trailing spaces in
     # /etc/hosts
     # XXX need the app names from the instance
-    grep zed /etc/hosts | sed "s/$/.${UUID}.local/" >${HOSTSDIR}/hosts6.${OLNUM}_${APPNUM}
+    grep zed /etc/hosts >${HOSTSDIR}/hosts6.${OLNUM}_${APPNUM}
 
+    # Start clean
+    pkill -u nobody -f dnsmasq.${OLIFNAME}.conf 
+    pkill -u nobody -f dnsmasq.${ULIFNAME}.conf
+
+    # XXX having a shorter lifetime avoids issues with stale lease when uuid
+    # changes. Remove once we have a fixed UUID per app instance.
+    # XXX separate hostsdir per instance/interface means no UUID - just short names
+    LEASE_TIME=1h
+    cat <<EOF >/etc/dnsmasq.${OLIFNAME}.conf
+pid-file=/var/run/dnsmasq.${OLIFNAME}.pid
+interface=${OLIFNAME}
+except-interface=lo
+listen-address=${OLADDR1}
+bind-interfaces
+log-queries
+log-dhcp
+no-hosts
+addn-hosts=${HOSTSDIR}/hosts6.${OLNUM}_${APPNUM}
+no-ping
+bogus-priv
+stop-dns-rebind
+rebind-localhost-ok
+domain-needed
+# XXX needed? dhcp-range=${OLADDR2},off-link,8
+dhcp-host=${OLMAC},[${OLADDR2}]
+dhcp-range=::,static,0,${LEASE_TIME}
+EOF
+
+    cat <<EOF >/etc/dnsmasq.${ULIFNAME}.conf
+pid-file=/var/run/dnsmasq.${ULIFNAME}.pid
+interface=${ULIFNAME}
+except-interface=lo
+listen-address=${ULADDR1}
+bind-interfaces
+log-queries
+log-dhcp
+no-hosts
+no-ping
+bogus-priv
+stop-dns-rebind
+rebind-localhost-ok
+domain-needed
+# SHOULD be derived from underlay ACL
+ipset=/google.com/ipv4.google.com,ipv6.google.com
+ipset=/zededa.net/ipv4.zededa.net,ipv6.zededa.net
+dhcp-host=${ULMAC},id:*,${ULADDR2}
+dhcp-range=172.27.0.0,static,255.255.0.0,${LEASE_TIME}
+EOF
+
+    DMDIR=/home/nordmark/dnsmasq-2.75/src
+    ${DMDIR}/dnsmasq --conf-file=/etc/dnsmasq.${OLIFNAME}.conf
+    ${DMDIR}/dnsmasq --conf-file=/etc/dnsmasq.${ULIFNAME}.conf
+    
     cp ${XENDIR}/xen${APPNUM}.template ${XENDIR}/xen${APPNUM}.cfg
     cat <<EOF >>${XENDIR}/xen${APPNUM}.cfg
 # UUID
@@ -175,15 +225,15 @@ EOF
 }
 
 echo "Create underlay ipset's"
-# Note that we need to restart dnsmasq if we add to ${CONFDIR}
 ipset create ipv6.google.com hash:ip family inet6 || ipset flush ipv6.google.com
 ipset create ipv4.google.com hash:ip family inet || ipset flush ipv4.google.com
 ipset create ipv6.zededa.net hash:ip family inet6 || ipset flush ipv6.zededa.net
 ipset create ipv4.zededa.net hash:ip family inet || ipset flush ipv4.zededa.net
-cat <<EOF >${CONFDIR}/ipset.test.conf
-ipset=/google.com/ipv4.google.com,ipv6.google.com
-ipset=/zededa.net/ipv4.zededa.net,ipv6.zededa.net
-EOF
+# XXX remove
+# cat <<EOF >${CONFDIR}/ipset.test.conf
+# ipset=/google.com/ipv4.google.com,ipv6.google.com
+# ipset=/zededa.net/ipv4.zededa.net,ipv6.zededa.net
+# EOF
 
 # Stick all the EIDs in here for now. Need one per application bundle?
 ipset create eids hash:ip family inet6 || ipset flush eids
@@ -204,9 +254,6 @@ ipset add eids fd31:447f:256b:b6dd:5c6c:addd:66b1:c760
 
 ipset save eids >${IPSETDIR}/all-eids
 
-# Start clean
-rm -f /etc/radvd.conf
-
 # Application 1, overlay 1
 # XXX Using app1 EID
 setup_app 1 1 fd13:4e7f:e66d:2822:a5ce:f644:bebe:30ae
@@ -215,32 +262,3 @@ setup_app 1 1 fd13:4e7f:e66d:2822:a5ce:f644:bebe:30ae
 # XXX Using app3 EID
 setup_app 3 1 fd00:82ff:a727:fb30:a4c2:f612:7efb:bac6
 
-# setup_add added radvd config; reload for sighup
-service radvd reload
-
-# XXX run dnsmasq as service as well
- 
-# DEBUGOPTS="-d"
-DEBUGOPTS=""
-
-# XXX having a shorter lifetime avoids issues with stale
-cat <<EOF >/etc/dnsmasq.conf
-log-queries
-log-dhcp
-no-hosts
-except-interface=${UPLINK}
-no-ping
-bogus-priv
-stop-dns-rebind
-rebind-localhost-ok
-domain-needed
-hostsdir=${HOSTSDIR}
-dhcp-hostsdir=${DHCPHOSTSDIR}
-dhcp-optsdir=${DHCPOPTSDIR}
-conf-dir=${CONFDIR}
-dhcp-range=172.27.0.0,static,255.255.0.0,infinite
-dhcp-range=::,static,0,infinite
-EOF
-
-echo /home/nordmark/dnsmasq-2.75/src/dnsmasq${DEBUGOPTS}
-/home/nordmark/dnsmasq-2.75/src/dnsmasq ${DEBUGOPTS}
