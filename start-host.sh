@@ -90,7 +90,7 @@ setup_app() {
     # Start clean
     pkill -u radvd -f radvd.${OLIFNAME}.conf
     # Enable radvd on interface
-    cat <<EOF >>/etc/radvd.conf
+    cat <<EOF >>/etc/radvd.${OLIFNAME}.conf
 interface ${OLIFNAME} {
 	IgnoreIfMissing on;
 	AdvSendAdvert on;
