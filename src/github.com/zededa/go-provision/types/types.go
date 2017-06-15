@@ -1,6 +1,7 @@
 package types
 
 import (
+	"github.com/satori/go.uuid"
 	"net"
 	"time"
 )
@@ -133,4 +134,83 @@ type ZedServerConfig struct {
 type NameToEid struct {
 	HostName string
 	EIDs     []net.IP
+}
+
+// UUID plus version
+type UUIDandVersion struct {
+	UUID    uuid.UUID
+	Version string
+}
+
+// From draft-ietf-netmod-acl-model
+// XXX add ACLs - below?
+
+type OverlayNetwork struct {
+	IID       uint32
+	EID       net.IP
+	Signature string
+	// Additional LISP parameters?
+	// XXX ACLs?
+	ACLs []ACE
+	// XXX DNS?
+	NamesToEids []NameToEid
+}
+
+type UnderlayNetwork struct {
+	ACLs []ACE
+}
+
+type ACE struct {
+	Matches []ACEMatch
+	Actions []ACEAction
+}
+
+type ACEMatch struct {
+}
+
+// XXX default is accept ...
+// XXX add limits - unit? 10/s? 10/h? 10/d?
+type ACEAction struct {
+}
+
+// Indexed by UUID
+// If IsZedmanager is set we do not create boN but instead configure the EID
+// locally. This will go away once ZedManager runs in a domU like any
+// application.
+type AppNetworkConfig struct {
+	UUIDandVersion      UUIDandVersion
+	DisplayName         string
+	IsZedmanager        bool
+	OverlayNetworkList  []OverlayNetwork
+	UnderlayNetworkList []UnderlayNetwork
+}
+
+// Indexed by UUID
+type AppNetworkStatus struct {
+	UUIDandVersion UUIDandVersion
+	AppNum         int
+	PendingAdd     bool
+	PendingModify  bool
+	PendingDelete  bool
+	UlNum          int // Number of underlay interfaces
+	OlNum          int // Number of overlay interfaces
+	DisplayName    string
+	// XXX copy of config to check what's been set up?
+	IsZedmanager        bool
+	OverlayNetworkList  []OverlayNetwork
+	UnderlayNetworkList []UnderlayNetwork
+}
+
+// Do we want a DeviceNetworkStatus? DeviceNetworkConfig with the underlay
+// interfaces?
+type DeviceNetworkConfig struct {
+	Uplink string // ifname; should have multiple
+	// XXX WiFi credentials?? Should already be set?
+}
+
+type DeviceNetworkStatus struct {
+	Uplink          string // ifname; should have multiple
+	AppNumAllocator int
+	// XXX add all the uplink ifaddrs?
+	// XXX uplink publicAddr to determine NATed?
 }
