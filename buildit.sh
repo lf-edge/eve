@@ -5,13 +5,14 @@ export PATH=$GOPATH/bin:$GOROOT/bin:$PATH
 DIR=`pwd`
 
 if /bin/true; then
-    go install github.com/zededa/go-provision/{client,server,register}
+    go install github.com/zededa/go-provision/{client,server,register,zedrouter}
     if [ $? != 0 ]; then
 	exit $?
     fi
     GOARCH=arm64 go build -v github.com/zededa/go-provision/client
     GOARCH=arm64 go build -v github.com/zededa/go-provision/server
     GOARCH=arm64 go build -v github.com/zededa/go-provision/register
+    GOARCH=arm64 go build -v github.com/zededa/go-provision/zedrouter
     mv {client,server,register} bin/linux_arm64
 fi
 
