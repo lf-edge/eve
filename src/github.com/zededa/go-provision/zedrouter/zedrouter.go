@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/fsnotify/fsnotify"
-	"github.com/satori/go.uuid"
 	"github.com/vishvananda/netlink"
 	"github.com/zededa/go-provision/types"
 	"io/ioutil"
@@ -201,22 +200,11 @@ func main() {
 	}
 }
 
-// Need some initial state to track the progress with the AppNum and
-// creation of the configlets
-// struct plus var with collection; indexed by UUID?
-type app struct {
-	AppNum int
-}
-
-var apps map[uuid.UUID]app
-
 var globalConfig types.DeviceNetworkConfig
 var globalStatus types.DeviceNetworkStatus
 var globalStatusFilename string
 
 func handleInit(configFilename string, statusFilename string) {
-	apps = make(map[uuid.UUID]app)
-
 	globalStatusFilename = statusFilename
 
 	cb, err := ioutil.ReadFile(configFilename)
@@ -253,7 +241,8 @@ func writeGlobalStatus() {
 		log.Fatal(err, "json Marshal DeviceNetworkStatus")
 	}
 	// XXX perhaps create temp and rename to avoid loss?
-	err = ioutil.WriteFile(globalStatusFilename, b, os.ModePerm)
+	// XXX permissions?
+	err = ioutil.WriteFile(globalStatusFilename, b, 0644)
 	if err != nil {
 		log.Fatal(err, globalStatusFilename)
 	}
@@ -266,7 +255,8 @@ func writeAppNetworkStatus(status *types.AppNetworkStatus,
 		log.Fatal(err, "json Marshal AppNetworkStatus")
 	}
 	// XXX perhaps create temp and rename to avoid loss?
-	err = ioutil.WriteFile(statusFilename, b, os.ModePerm)
+	// XXX permissions?
+	err = ioutil.WriteFile(statusFilename, b, 0644)
 	if err != nil {
 		log.Fatal(err, statusFilename)
 	}
@@ -275,19 +265,10 @@ func writeAppNetworkStatus(status *types.AppNetworkStatus,
 func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 	fmt.Printf("handleCreate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
-	uuid := config.UUIDandVersion.UUID
 
-	fmt.Printf("pre app %v\n", apps[uuid])
-	if _, ok := apps[uuid]; ok {
-		log.Printf("apps[%v] already exists\n", uuid)
-		return
-	}
 	appNum := globalStatus.AppNumAllocator
 	globalStatus.AppNumAllocator += 1
 	writeGlobalStatus()
-
-	apps[uuid] = app{AppNum: appNum}
-	fmt.Printf("post app %v\n", apps[uuid])
 
 	status := types.AppNetworkStatus{
 		UUIDandVersion: config.UUIDandVersion,
@@ -428,15 +409,10 @@ func handleModify(statusFilename string, config types.AppNetworkConfig,
 	status types.AppNetworkStatus) {
 	fmt.Printf("handleModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
-	// What if we have no internal state? Restarted but Status
-	// (and configlets) still in place? Need to rebuild from status?
-	uuid := config.UUIDandVersion.UUID
 
-	fmt.Printf("pre app %v\n", apps[uuid])
-	if _, ok := apps[uuid]; !ok {
-		log.Printf("apps[%v] missing\n", uuid)
-		return
-	}
+	appNum := status.AppNum
+	fmt.Printf("handleModify appNum %d\n", appNum)
+
 	// Look for ACL and NametoEids changes in overlay
 	// XXX flag others as errors; need lastError in status?
 	// XXX flag change in olNum as error
@@ -459,20 +435,12 @@ func handleModify(statusFilename string, config types.AppNetworkConfig,
 func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 	fmt.Printf("handleDelete(%v) for %s\n",
 		status.UUIDandVersion, status.DisplayName)
-	// What if we have no internal state? Restarted but Status
-	// (and configlets) still in place? Need to rebuild from status?
-	uuid := status.UUIDandVersion.UUID
 
-	fmt.Printf("pre app %v\n", apps[uuid])
-	if _, ok := apps[uuid]; !ok {
-		log.Printf("apps[%v] missing\n", uuid)
-		return
-	}
 	appNum := status.AppNum
 	fmt.Printf("handleDelete appNum %d\n", appNum)
 
 	// Delete everything for overlay
-	// XXX need EID for route deletion?
+	// XXX need EID for route deletion? Only for IsZedmanager case
 	for i, _ := range status.OverlayNetworkList {
 		olNum := i + 1
 		fmt.Printf("handleDelete olNum %d\n", olNum)
