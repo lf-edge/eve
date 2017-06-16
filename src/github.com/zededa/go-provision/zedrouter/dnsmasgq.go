@@ -50,12 +50,8 @@ dhcp-range=172.27.0.0,static,255.255.0.0,infinite
 `
 
 // XXX would be more polite to return an error then to Fatal
-// XXX less args?
-// XXX fix addn-hosts - should we use a hostdir per overlay so we can add
-// one file per eid? Makes it more dynamic.
 func createDnsmasqOverlayConfiglet(cfgPathname string, olIfname string,
-     olAddr1 string, olAddr2 string, olMac string, hostsDir string,
-     olNum int, appNum int) {
+     olAddr1 string, olAddr2 string, olMac string, hostsDir string) {
 	file, err := os.Create(cfgPathname)
 	if err != nil {
 		log.Fatal("os.Create for ", cfgPathname, err)
@@ -67,9 +63,7 @@ func createDnsmasqOverlayConfiglet(cfgPathname string, olIfname string,
 	file.WriteString(fmt.Sprintf("interface=%s\n", olIfname))
 	file.WriteString(fmt.Sprintf("listen-address=%s\n", olAddr1))
 	file.WriteString(fmt.Sprintf("dhcp-host=%s,[%s]\n", olMac, olAddr2))
-	// addn-hosts=${HOSTSDIR}/hosts6.${OLNUM}_${APPNUM}
-	file.WriteString(fmt.Sprintf("addn-hosts=%s/hosts6.%d_%d\n",
-		hostsDir, olNum, appNum))
+	file.WriteString(fmt.Sprintf("hostsdir=%s\n", hostsDir))
 }
 
 // XXX would be more polite to return an error then to Fatal

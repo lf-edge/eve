@@ -14,23 +14,23 @@ import (
 )
 
 // XXX would be more polite to return an error then to Fatal
-func createHostsConfiglet(cfgDirname string, namesToEids []types.NameToEid) {
+func createHostsConfiglet(cfgDirname string, nameToEidList []types.NameToEid) {
+	fmt.Printf("createHostsConfiglet: dir %s nameToEidList %v\n",
+		cfgDirname, nameToEidList)
+		
 	err := os.Mkdir(cfgDirname, 0755)
 	if err != nil {
 		log.Fatal("os.Mkdir for ", cfgDirname, err)
 	}
 
-	for i, ne := range namesToEids {
-		fmt.Printf("createHostsConfiglet: %d name %s\n", i, ne.HostName)
-		
+	for _, ne := range nameToEidList {
 		cfgPathname := cfgDirname + "/" + ne.HostName
 		file, err := os.Create(cfgPathname)
 		if err != nil {
 			log.Fatal("os.Create for ", cfgPathname, err)
 		}
 		defer file.Close()
-		for j, eid := range ne.EIDs {
-			fmt.Printf("createHostsConfiglet: %d EID %s\n", j, eid)
+		for _, eid := range ne.EIDs {
 			file.WriteString(fmt.Sprintf("%s	%s\n",
 				eid, ne.HostName))
 		}

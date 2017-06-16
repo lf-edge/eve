@@ -25,18 +25,27 @@ import (
 )
 
 func main() {
-	// XXX make basedirName and rundirName be arguments
-	// XXX shouldn't this also be in /var/run to be clean
-	// after a crash/reboot? Want saved configs in /var/tmp...
-	basedirName := "/var/tmp/zedrouter"
-	rundirName := "/var/run/zedrouter"
-	configDir := basedirName + "/config"
-	statusDir := basedirName + "/status"
+	// XXX make baseDirname and runDirname be arguments??
+	// Keeping status in /var/run to be clean after a crash/reboot
+	baseDirname := "/var/tmp/zedrouter"
+	runDirname := "/var/run/zedrouter"
+	configDirname := baseDirname + "/config"
+	statusDirname := runDirname + "/status"
 
-	handleInit(configDir+"/global", statusDir+"/global", rundirName)
+	if _, err := os.Stat(runDirname); err != nil {
+		if err := os.Mkdir(runDirname, 0755); err != nil {
+			log.Fatal("Mkdir ", runDirname, err)
+		}
+	}
+	if _, err := os.Stat(statusDirname); err != nil {
+		if err := os.Mkdir(statusDirname, 0755); err != nil {
+			log.Fatal("Mkdir ", statusDirname, err)
+		}
+	}
+	handleInit(configDirname+"/global", statusDirname+"/global", runDirname)
 
 	fileChanges := make(chan string)
-	go WatchConfigStatus(configDir, statusDir, fileChanges)
+	go WatchConfigStatus(configDirname, statusDirname, fileChanges)
 	for {
 		change := <-fileChanges
 		// log.Println("fileChange:", change)
@@ -49,7 +58,7 @@ func main() {
 			continue
 		}
 		if operation == "D" {
-			statusFile := statusDir + "/" + fileName
+			statusFile := statusDirname + "/" + fileName
 			if _, err := os.Stat(statusFile); err != nil {
 				// File just vanished!
 				log.Printf("File disappeared <%s>\n", fileName)
@@ -73,14 +82,14 @@ func main() {
 				continue
 			}
 			fmt.Printf("handleDelete(%s)\n", fileName)
-			statusName := statusDir + "/" + fileName
+			statusName := statusDirname + "/" + fileName
 			handleDelete(statusName, status)
 			continue
 		}
 		if operation != "M" {
 			log.Fatal("Unknown operation from Watcher: ", operation)
 		}
-		configFile := configDir + "/" + fileName
+		configFile := configDirname + "/" + fileName
 		cb, err := ioutil.ReadFile(configFile)
 		if err != nil {
 			log.Printf("%s for %s\n", err, configFile)
@@ -98,11 +107,11 @@ func main() {
 				fileName, uuid.String())
 			continue
 		}
-		statusFile := statusDir + "/" + fileName
+		statusFile := statusDirname + "/" + fileName
 		if _, err := os.Stat(statusFile); err != nil {
 			// File does not exist in status hence new
 			fmt.Printf("handleCreate(%s)\n", fileName)
-			statusName := statusDir + "/" + fileName
+			statusName := statusDirname + "/" + fileName
 			handleCreate(statusName, config)
 			continue
 		}
@@ -135,7 +144,7 @@ func main() {
 			continue
 		}
 		fmt.Printf("handleModify(%s)\n", fileName)
-		statusName := statusDir + "/" + fileName
+		statusName := statusDirname + "/" + fileName
 		handleModify(statusName, config, status)
 	}
 }
@@ -148,13 +157,8 @@ var globalRunDirname string
 func handleInit(configFilename string, statusFilename string,
      runDirname string) {
 	globalStatusFilename = statusFilename
-
-	if _, err := os.Stat(runDirname); err != nil {
-		if err := os.Mkdir(runDirname, 0755); err != nil {
-			log.Fatal("Mkdir ", runDirname, err)
-		}
-	}
 	globalRunDirname = runDirname
+
 	cb, err := ioutil.ReadFile(configFilename)
 	if err != nil {
 		log.Printf("%s for %s\n", err, configFilename)
@@ -216,6 +220,10 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 	fmt.Printf("handleCreate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
+	// XXX need to reuse free AppNum's: will fail after 255
+	if globalStatus.AppNumAllocator >= 256 {
+		log.Fatal("Ran out of 256 AppNum's; please clear status/global")
+	}
 	appNum := globalStatus.AppNumAllocator
 	globalStatus.AppNumAllocator += 1
 	writeGlobalStatus()
@@ -393,7 +401,6 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		startRadvd(cfgPathname)
 
 		// Create a hosts file for the overlay based on NameToEidList
-		// XXX change from addn-hosts=${HOSTSDIR}/hosts6.${OLNUM}_${APPNUM}
 		// Directory is /var/run/zedrouter/hosts.${OLIFNAME}
 		// Each hostname in a separate file in directory to facilitate
 		// adds and deletes
@@ -406,8 +413,7 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		cfgPathname = "/etc/" + cfgFilename
 		stopDnsmasq(cfgFilename, false)
 		createDnsmasqOverlayConfiglet(cfgPathname, olIfname, olAddr1,
-			EID.String(), olMac,
-			"/var/run/zedrouter/hosts", olNum, appNum)
+			EID.String(), olMac, hostsDirpath)
 		startDnsmasq(cfgPathname)
 
 		// XXX create ipset with all the EIDs in ACL
