@@ -1,3 +1,6 @@
+// Copyright (c) 2017 Zededa, Inc.
+// All rights reserved.
+
 package types
 
 import (
@@ -128,7 +131,7 @@ const (
 // Think of this as /etc/hosts for the ZedManager - maps from names such as
 // "zedcontrol" amd "zedlake0" to EIDs in the management overlay.
 type ZedServerConfig struct {
-	NamesToEids []NameToEid
+	NameToEidList []NameToEid
 }
 
 type NameToEid struct {
@@ -152,8 +155,8 @@ type OverlayNetwork struct {
 	// Additional LISP parameters?
 	// XXX ACLs?
 	ACLs []ACE
-	// XXX DNS?
-	NamesToEids []NameToEid
+	// Used to populate DNS for the overlay
+	NameToEidList []NameToEid
 }
 
 type UnderlayNetwork struct {

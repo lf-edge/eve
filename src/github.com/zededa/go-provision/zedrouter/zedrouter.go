@@ -26,12 +26,15 @@ import (
 
 func main() {
 	// XXX make basedirName and rundirName be arguments
+	// XXX shouldn't this also be in /var/run to be clean
+	// after a crash/reboot? Want saved configs in /var/tmp...
 	basedirName := "/var/tmp/zedrouter"
-	// rundirName := "/var/run/zedrouter"
+	rundirName := "/var/run/zedrouter"
 	configDir := basedirName + "/config"
 	statusDir := basedirName + "/status"
 
-	handleInit(configDir+"/global", statusDir+"/global")
+	handleInit(configDir+"/global", statusDir+"/global", rundirName)
+
 	fileChanges := make(chan string)
 	go WatchConfigStatus(configDir, statusDir, fileChanges)
 	for {
@@ -140,10 +143,18 @@ func main() {
 var globalConfig types.DeviceNetworkConfig
 var globalStatus types.DeviceNetworkStatus
 var globalStatusFilename string
+var globalRunDirname string
 
-func handleInit(configFilename string, statusFilename string) {
+func handleInit(configFilename string, statusFilename string,
+     runDirname string) {
 	globalStatusFilename = statusFilename
 
+	if _, err := os.Stat(runDirname); err != nil {
+		if err := os.Mkdir(runDirname, 0755); err != nil {
+			log.Fatal("Mkdir ", runDirname, err)
+		}
+	}
+	globalRunDirname = runDirname
 	cb, err := ioutil.ReadFile(configFilename)
 	if err != nil {
 		log.Printf("%s for %s\n", err, configFilename)
@@ -289,12 +300,27 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 			fmt.Printf("RouteAdd fd00::/8 failed: %s\n", err)
 		}
 
+		// Use this name to name files
+		// XXX files might not be used!
+		olConfig := config.OverlayNetworkList[0]
+		olNum := 1
+		olIfname := "bo" + strconv.Itoa(olNum) + "_" +
+			strconv.Itoa(appNum)
+
 		// XXX ACLs for IsZedmanager? Apply to input/output
 		// XXX use an IpSet for the EIDs; overlay.$IID?
 		// Implies an input/output drop for fd00::/8 but that will
 		// affect application overlays unless applied to uplink only.
 
-		// XXX NameToEids to /etc/host? XXX easier in separate domU!
+		// XXX NOTE: this hosts file is not read!
+		// XXX easier when ZedManager is in separate domU!
+		// Create a hosts file for the overlay based on NameToEidList
+		// Directory is /var/run/zedrouter/hosts.${OLIFNAME}
+		// Each hostname in a separate file in directory to facilitate
+		// adds and deletes
+		hostsDirpath := globalRunDirname + "/hosts." + olIfname
+		deleteHostsConfiglet(hostsDirpath, false)
+		createHostsConfiglet(hostsDirpath, olConfig.NameToEidList)
 		
 		status.OverlayNetworkList = config.OverlayNetworkList
 		status.PendingAdd = false
@@ -366,10 +392,15 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		createRadvdConfiglet(cfgPathname, olIfname)
 		startRadvd(cfgPathname)
 
-		// XXX Create a hosts file for the overlay based on NameToEids
-		// XXX create directory. Each name in a separate file??
+		// Create a hosts file for the overlay based on NameToEidList
 		// XXX change from addn-hosts=${HOSTSDIR}/hosts6.${OLNUM}_${APPNUM}
-
+		// Directory is /var/run/zedrouter/hosts.${OLIFNAME}
+		// Each hostname in a separate file in directory to facilitate
+		// adds and deletes
+		hostsDirpath := globalRunDirname + "/hosts." + olIfname
+		deleteHostsConfiglet(hostsDirpath, false)
+		createHostsConfiglet(hostsDirpath, olConfig.NameToEidList)
+		
 		// Start clean
 		cfgFilename = "dnsmasq." + olIfname + ".conf"
 		cfgPathname = "/etc/" + cfgFilename
@@ -378,6 +409,13 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 			EID.String(), olMac,
 			"/var/run/zedrouter/hosts", olNum, appNum)
 		startDnsmasq(cfgPathname)
+
+		// XXX create ipset with all the EIDs in ACL
+		// XXX any other ACL support?
+		//    ipset create eids.${OLIFNAME} 
+
+		// XXX what else for overlay?
+		
 	}
 
 	for i, ulConfig := range config.UnderlayNetworkList {
@@ -433,6 +471,11 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		createDnsmasqUnderlayConfiglet(cfgPathname, ulIfname, ulAddr1,
 			ulAddr2, ulMac)
 		startDnsmasq(cfgPathname)
+
+		// XXX create iptables and ipset based on ACL
+		// XXX any other ACL support?
+
+		// XXX what else for underlay?
 	}
 	// Write out what we created to AppNetworkStatus
 	// XXX TBD to handle core dumps before this point? Cleanup based
@@ -441,8 +484,11 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 	writeAppNetworkStatus(&status, statusFilename)
 }
 
-// Note that modify will not touch the EID; just ACLs and NameToEids??
+// Note that modify will not touch the EID; just ACLs and NameToEidList
 // No change to olNum and ulNum either!
+// XXX should we allow the addition of interfaces?
+// XXX can we allow the deletion (keep bridge around but disable intf?)
+// Inifinite lease time means painful unless domU sees down...
 func handleModify(statusFilename string, config types.AppNetworkConfig,
 	status types.AppNetworkStatus) {
 	fmt.Printf("handleModify(%v) for %s\n",
@@ -454,7 +500,7 @@ func handleModify(statusFilename string, config types.AppNetworkConfig,
 	status.PendingModify = true
 	writeAppNetworkStatus(&status, statusFilename)
 
-	// Look for ACL and NametoEids changes in overlay
+	// Look for ACL and NametoEidList changes in overlay
 	// XXX flag others as errors; need lastError in status?
 	// XXX flag change in olNum as error
 	// XXX should we handle additions of overlays? Useful for bundle of
@@ -544,7 +590,13 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 		}		
 
 		// XXX delete ACLs?
-		// XXX delete hosts from /etc/host?
+
+		olNum := 1
+		olIfname := "bo" + strconv.Itoa(olNum) + "_" +
+			strconv.Itoa(appNum)
+		// delete overlay hosts file
+		hostsDirpath := globalRunDirname + "/hosts." + olIfname
+		deleteHostsConfiglet(hostsDirpath, true)
 	} else {
 		// Delete everything for overlay
 		for olNum := 1; olNum <= maxOlNum; olNum++ {
@@ -572,7 +624,10 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 			deleteDnsmasqConfiglet(cfgPathname)
 			
 			// XXX delete ACLs?
-			// XXX delete hosts from /etc/host?
+
+			// delete overlay hosts file
+			hostsDirpath := globalRunDirname + "/hosts." + olIfname
+			deleteHostsConfiglet(hostsDirpath, true)
 		}
 
 		// Delete everything in underlay

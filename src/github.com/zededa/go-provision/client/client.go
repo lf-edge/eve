@@ -396,7 +396,7 @@ func main() {
 			log.Fatal(err)
 		}
 		defer f.Close()
-		for _, ne := range device.ZedServers.NamesToEids {
+		for _, ne := range device.ZedServers.NameToEidList {
 			for _, eid := range ne.EIDs {
 				output := fmt.Sprintf("%-46v %s\n",
 					eid, ne.HostName)
