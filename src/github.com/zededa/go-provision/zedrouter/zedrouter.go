@@ -177,8 +177,9 @@ func writeGlobalStatus() {
 	if err != nil {
 		log.Fatal(err, "json Marshal DeviceNetworkStatus")
 	}
-	// XXX perhaps create temp and rename to avoid loss?
-	// XXX permissions?
+	// We assume a /var/run path hence we don't need to worry about
+	// partial writes/empty files due to a kernel crash.
+	// XXX which permissions?
 	err = ioutil.WriteFile(globalStatusFilename, b, 0644)
 	if err != nil {
 		log.Fatal(err, globalStatusFilename)
@@ -191,8 +192,9 @@ func writeAppNetworkStatus(status *types.AppNetworkStatus,
 	if err != nil {
 		log.Fatal(err, "json Marshal AppNetworkStatus")
 	}
-	// XXX perhaps create temp and rename to avoid loss?
-	// XXX permissions?
+	// We assume a /var/run path hence we don't need to worry about
+	// partial writes/empty files due to a kernel crash.
+	// XXX which permissions?
 	err = ioutil.WriteFile(statusFilename, b, 0644)
 	if err != nil {
 		log.Fatal(err, statusFilename)
@@ -207,6 +209,7 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 	globalStatus.AppNumAllocator += 1
 	writeGlobalStatus()
 
+	// Start by marking with PendingAdd
 	status := types.AppNetworkStatus{
 		UUIDandVersion: config.UUIDandVersion,
 		AppNum:         appNum,
@@ -216,6 +219,7 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		DisplayName:    config.DisplayName,
 		IsZedmanager:   config.IsZedmanager,
 	}
+	writeAppNetworkStatus(&status, statusFilename)
 
 	if config.IsZedmanager {
 		if len(config.OverlayNetworkList) != 1 ||
@@ -223,10 +227,9 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 			log.Println("Malformed IsZedmanager config; ignored")
 			return
 		}
-		writeAppNetworkStatus(&status, statusFilename)
 		
 		// Configure the EID on loopback and set up a default route
-		// for all
+		// for all fd00 EIDs
 		//    ip addr add ${EID}/128 dev lo
 		EID := config.OverlayNetworkList[0].EID
 		addr, err := netlink.ParseAddr(EID.String() + "/128")
@@ -259,6 +262,9 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		if via == nil {
 			log.Fatal("ParseIP fe80::1 failed: ", err)
 		}
+		// Need to do both an add and a change since we could have
+		// a FAILED neighbor entry from a previous run and a down
+		// uplink interface.
 		//    ip nei add fe80::1 lladdr 0:0:0:0:0:1 dev $intf
 		//    ip nei change fe80::1 lladdr 0:0:0:0:0:1 dev $intf
 		hw, err := net.ParseMAC("00:00:00:00:00:01")
@@ -295,7 +301,6 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		writeAppNetworkStatus(&status, statusFilename)
 		return
 	}
-	writeAppNetworkStatus(&status, statusFilename)
 	
 	for i, olConfig := range config.OverlayNetworkList {
 		olNum := i + 1
@@ -350,8 +355,8 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		if err := netlink.RouteAdd(&rt); err != nil {
 			fmt.Printf("RouteAdd %s failed: %s\n", EID, err)
 		}
+
 		// Write radvd configlet; start radvd
-		// XXX TODO define as a function
 		cfgFilename := "radvd." + olIfname + ".conf"
 		cfgPathname := "/etc/" + cfgFilename
 		pidPathname := "/var/run/radvd." + olIfname + ".pid"
@@ -359,33 +364,8 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		//    Start clean; kill just in case
 		//    pkill -u radvd -f radvd.${OLIFNAME}.conf
 		pkillUserArgs("radvd", cfgFilename, false)
-		
-		file, err := os.Create(cfgPathname)
-		if err != nil {
-			log.Fatal("os.Create for ", cfgPathname, err)
-		}
-		defer file.Close()
-		multiLine := `
-interface %s {
-	IgnoreIfMissing on;
-	AdvSendAdvert on;
-	MaxRtrAdvInterval 1800;
-	AdvManagedFlag on;
-};
-`
-		file.WriteString(fmt.Sprintf(multiLine, olIfname))
-		//    radvd -u radvd -C /etc/radvd.${OLIFNAME}.conf -p /var/run/radvd.${OLIFNAME}.pid
-		cmd := "nohup"
-		args := []string{
-			"radvd",
-			"-u",
-			"radvd",
-			"-C",
-			cfgPathname,
-			"-p",
-			pidPathname,
-		}
-		go exec.Command(cmd, args...).Output()
+		createRadvdConfigLet(cfgPathname, olIfname)
+		startRadvd(cfgPathname, pidPathname)
 
 		// Create a hosts file for the overlay based on NameToEids
 		// XXX TODO define as a function
@@ -469,6 +449,8 @@ func handleModify(statusFilename string, config types.AppNetworkConfig,
 	// Look for ACL and NametoEids changes in overlay
 	// XXX flag others as errors; need lastError in status?
 	// XXX flag change in olNum as error
+	// XXX should we handle additions of overlays? Useful for bundle of
+	// bundles?
 	for i, _ := range config.OverlayNetworkList {
 		olNum := i + 1
 		fmt.Printf("handleModify olNum %d\n", olNum)
@@ -557,7 +539,6 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 		// XXX delete hosts from /etc/host?
 	} else {
 		// Delete everything for overlay
-		// XXX need EID for route deletion? Only for IsZedmanager case
 		for olNum := 1; olNum <= maxOlNum; olNum++ {
 			fmt.Printf("handleDelete olNum %d\n", olNum)
 			olIfname := "bo" + strconv.Itoa(olNum) + "_" +
@@ -574,16 +555,12 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 			cfgPathname := "/etc/" + cfgFilename
 
 			pkillUserArgs("radvd", cfgFilename, true)
-			cmd := "rm"
-			args := []string{
-				"-f",
-				cfgPathname,
-				}
-			_, err := exec.Command(cmd, args...).Output()
-			if err != nil {
-				fmt.Printf("Command %v %v failed: %s\n",
-					cmd, args, err)
-			}
+			deleteRadvdConfigLet(cfgPathname)
+
+			// XXX delete dnsmasgq
+			
+			// XXX delete ACLs?
+			// XXX delete hosts from /etc/host?
 		}
 
 		// Delete everything in underlay
@@ -596,6 +573,11 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 			attrs.Name = ulIfname
 			uLink := &netlink.Bridge{LinkAttrs: attrs}
 			netlink.LinkDel(uLink)
+
+			// XXX delete dnsmasgq
+
+			// XXX delete ACLs?
+			// XXX delete hosts from /etc/host?
 		}
 	}
 	// Write out what we modified to AppNetworkStatus aka delete
