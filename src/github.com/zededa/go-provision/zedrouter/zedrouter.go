@@ -4,7 +4,7 @@
 // Process input changes from a config directory containing json encoded files
 // with AppNetworkConfig and compare against AppNetworkStatus in the status
 // dir.
-// Produce the updated configlets (for radvd, dnsmasgq, ip*tables, lisp.config,
+// Produce the updated configlets (for radvd, dnsmasq, ip*tables, lisp.config,
 // ipset, ip link/addr/route configuration) based on that and apply those
 // configlets.
 
@@ -359,22 +359,25 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		// Write radvd configlet; start radvd
 		cfgFilename := "radvd." + olIfname + ".conf"
 		cfgPathname := "/etc/" + cfgFilename
-		pidPathname := "/var/run/radvd." + olIfname + ".pid"
 
 		//    Start clean; kill just in case
 		//    pkill -u radvd -f radvd.${OLIFNAME}.conf
-		pkillUserArgs("radvd", cfgFilename, false)
-		createRadvdConfigLet(cfgPathname, olIfname)
-		startRadvd(cfgPathname, pidPathname)
+		stopRadvd(cfgFilename, false)
+		createRadvdConfiglet(cfgPathname, olIfname)
+		startRadvd(cfgPathname)
 
-		// Create a hosts file for the overlay based on NameToEids
-		// XXX TODO define as a function
-		
+		// XXX Create a hosts file for the overlay based on NameToEids
+		// XXX create directory. Each name in a separate file??
+		// XXX change from addn-hosts=${HOSTSDIR}/hosts6.${OLNUM}_${APPNUM}
+
 		// Start clean
 		cfgFilename = "dnsmasq." + olIfname + ".conf"
-		pkillUserArgs("nobody", cfgFilename, false)
-
-		// XXX add start; keep configdir for ipset? directory for addn-hosts?
+		cfgPathname = "/etc/" + cfgFilename
+		stopDnsmasq(cfgFilename, false)
+		createDnsmasqOverlayConfiglet(cfgPathname, olIfname, olAddr1,
+			EID.String(), olMac,
+			"/var/run/zedrouter/hosts", olNum, appNum)
+		startDnsmasq(cfgPathname)
 	}
 
 	for i, ulConfig := range config.UnderlayNetworkList {
@@ -424,7 +427,12 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 
 		// Start clean
 		cfgFilename := "dnsmasq." + ulIfname + ".conf"
-		pkillUserArgs("nobody", cfgFilename, false)
+		cfgPathname := "/etc/" + cfgFilename
+		stopDnsmasq(cfgFilename, false)
+
+		createDnsmasqUnderlayConfiglet(cfgPathname, ulIfname, ulAddr1,
+			ulAddr2, ulMac)
+		startDnsmasq(cfgPathname)
 	}
 	// Write out what we created to AppNetworkStatus
 	// XXX TBD to handle core dumps before this point? Cleanup based
@@ -551,13 +559,17 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 			// Start clean
 			netlink.LinkDel(oLink)
 
+			// radvd cleanup
 			cfgFilename := "radvd." + olIfname + ".conf"
 			cfgPathname := "/etc/" + cfgFilename
+			stopRadvd(cfgFilename, true)
+			deleteRadvdConfiglet(cfgPathname)
 
-			pkillUserArgs("radvd", cfgFilename, true)
-			deleteRadvdConfigLet(cfgPathname)
-
-			// XXX delete dnsmasgq
+			// dnsmasgq cleanup
+			cfgFilename = "dnsmasq." + olIfname + ".conf"
+			cfgPathname = "/etc/" + cfgFilename
+			stopDnsmasq(cfgFilename, true)
+			deleteDnsmasqConfiglet(cfgPathname)
 			
 			// XXX delete ACLs?
 			// XXX delete hosts from /etc/host?
@@ -574,7 +586,11 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 			uLink := &netlink.Bridge{LinkAttrs: attrs}
 			netlink.LinkDel(uLink)
 
-			// XXX delete dnsmasgq
+			// dnsmasgq cleanup
+			cfgFilename := "dnsmasq." + ulIfname + ".conf"
+			cfgPathname := "/etc/" + cfgFilename
+			stopDnsmasq(cfgFilename, true)
+			deleteDnsmasqConfiglet(cfgPathname)
 
 			// XXX delete ACLs?
 			// XXX delete hosts from /etc/host?
