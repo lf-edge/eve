@@ -37,6 +37,27 @@ func createHostsConfiglet(cfgDirname string, nameToEidList []types.NameToEid) {
 	}
 }
 
+func updateHostsConfiglet(cfgDirname string, nameToEidList []types.NameToEid) {
+	fmt.Printf("updateHostsConfiglet: dir %s nameToEidList %v\n",
+		cfgDirname, nameToEidList)
+		
+	for _, ne := range nameToEidList {
+		// XXX look for hosts which didn't change, and hosts which
+		// should be deleted
+		cfgPathname := cfgDirname + "/" + ne.HostName
+		file, err := os.Create(cfgPathname)
+		if err != nil {
+			log.Fatal("os.Create for ", cfgPathname, err)
+		}
+		defer file.Close()
+		for _, eid := range ne.EIDs {
+			file.WriteString(fmt.Sprintf("%s	%s\n",
+				eid, ne.HostName))
+			// XXX look for eids which should be deleted
+		}
+	}
+}
+
 func deleteHostsConfiglet(cfgDirname string, printOnError bool) {
 	cmd := "rm"
 	args := []string{

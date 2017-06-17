@@ -309,7 +309,7 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		}
 
 		// Use this name to name files
-		// XXX files might not be used!
+		// XXX files might not be used until ZedManager becomes	a domU
 		olConfig := config.OverlayNetworkList[0]
 		olNum := 1
 		olIfname := "bo" + strconv.Itoa(olNum) + "_" +
@@ -329,13 +329,16 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		hostsDirpath := globalRunDirname + "/hosts." + olIfname
 		deleteHostsConfiglet(hostsDirpath, false)
 		createHostsConfiglet(hostsDirpath, olConfig.NameToEidList)
-		
+
 		status.OverlayNetworkList = config.OverlayNetworkList
 		status.PendingAdd = false
 		writeAppNetworkStatus(&status, statusFilename)
 		return
 	}
 	
+	status.OverlayNetworkList = config.OverlayNetworkList
+	status.UnderlayNetworkList = config.UnderlayNetworkList
+
 	for i, olConfig := range config.OverlayNetworkList {
 		olNum := i + 1
 		fmt.Printf("olNum %d ACLs %v\n", olNum, olConfig.ACLs)
@@ -416,12 +419,19 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 			EID.String(), olMac, hostsDirpath)
 		startDnsmasq(cfgPathname)
 
-		// XXX create ipset with all the EIDs in ACL
-		// XXX any other ACL support?
+		// XXX create ipset with all the EIDs in ACL. XXX based on NameToEidList inside hosts?
+		// XXX unique "alleids" for ACE match?
 		//    ipset create eids.${OLIFNAME} 
 
-		// XXX what else for overlay?
+		createACLConfiglet(olIfname, olConfig.ACLs)
 		
+		// XXX create LISP configlets for IID and EID/signature		
+
+		// Add bridge parameters for Xen to Status
+		olStatus := &status.OverlayNetworkList[olNum-1]
+		olStatus.Bridge = olIfname
+		olStatus.Vif = "n" + olIfname
+		olStatus.Mac = olMac
 	}
 
 	for i, ulConfig := range config.UnderlayNetworkList {
@@ -478,23 +488,23 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 			ulAddr2, ulMac)
 		startDnsmasq(cfgPathname)
 
-		// XXX create iptables and ipset based on ACL
-		// XXX any other ACL support?
+		// Create iptables with optional ipset's based ACL
+		createACLConfiglet(ulIfname, ulConfig.ACLs)
 
-		// XXX what else for underlay?
+		// Add bridge parameters for Xen to Status
+		ulStatus := &status.UnderlayNetworkList[ulNum-1]
+		ulStatus.Bridge = ulIfname
+		ulStatus.Vif = "n" + ulIfname
+		ulStatus.Mac = ulMac
 	}
 	// Write out what we created to AppNetworkStatus
-	// XXX TBD to handle core dumps before this point? Cleanup based
-	// on Pending?
+	status.OverlayNetworkList = config.OverlayNetworkList
+	status.UnderlayNetworkList = config.UnderlayNetworkList
 	status.PendingAdd = false
 	writeAppNetworkStatus(&status, statusFilename)
 }
 
 // Note that modify will not touch the EID; just ACLs and NameToEidList
-// No change to olNum and ulNum either!
-// XXX should we allow the addition of interfaces?
-// XXX can we allow the deletion (keep bridge around but disable intf?)
-// Inifinite lease time means painful unless domU sees down...
 func handleModify(statusFilename string, config types.AppNetworkConfig,
 	status types.AppNetworkStatus) {
 	fmt.Printf("handleModify(%v) for %s\n",
@@ -503,28 +513,64 @@ func handleModify(statusFilename string, config types.AppNetworkConfig,
 	appNum := status.AppNum
 	fmt.Printf("handleModify appNum %d\n", appNum)
 
+	// Check for unsupported changes
+	if config.IsZedmanager != status.IsZedmanager {
+		log.Println("Unsupported: IsZedmanager changed for ",
+			config.UUIDandVersion)
+		return
+	}
+	// XXX should we allow the addition of interfaces?
+	// XXX can we allow the deletion (keep bridge around but disable intf?)
+	// Inifinite lease time means painful unless domU sees down...
+	if len(config.OverlayNetworkList) != status.OlNum {
+		log.Println("Unsupported: Changed number of overlays for ",
+			config.UUIDandVersion)
+		return
+	}
+	if len(config.UnderlayNetworkList) != status.UlNum {
+		log.Println("Unsupported: Changed number of underlays for ",
+			config.UUIDandVersion)
+		return
+	}
+
 	status.PendingModify = true
+	status.UUIDandVersion = config.UUIDandVersion
 	writeAppNetworkStatus(&status, statusFilename)
 
+	if config.IsZedmanager {
+		fmt.Printf("XXX need to implement modify for IsZedmanager\n")
+		return
+	}
+	
 	// Look for ACL and NametoEidList changes in overlay
 	// XXX flag others as errors; need lastError in status?
-	// XXX flag change in olNum as error
-	// XXX should we handle additions of overlays? Useful for bundle of
-	// bundles?
-	for i, _ := range config.OverlayNetworkList {
+	// XXX check for EID, IID and signature difference? Could push IID and
+	// signature to LISP configlet
+	for i, olConfig := range config.OverlayNetworkList {
 		olNum := i + 1
 		fmt.Printf("handleModify olNum %d\n", olNum)
+		olIfname := "bo" + strconv.Itoa(olNum) + "_" +
+			strconv.Itoa(appNum)
+
+		// Update hosts
+		hostsDirpath := globalRunDirname + "/hosts." + olIfname
+		updateHostsConfiglet(hostsDirpath, olConfig.NameToEidList)
+
+		// Update ACLs
+		updateACLConfiglet(olIfname, olConfig.ACLs)
 	}
 	// Look for ACL changes in underlay
-	// XXX flag others as errors; need lastError in status?
-	// XXX flag change in olNum as error
-	for i, _ := range config.UnderlayNetworkList {
+	for i, ulConfig := range config.UnderlayNetworkList {
 		ulNum := i + 1
 		fmt.Printf("handleModify ulNum %d\n", ulNum)
+		ulIfname := "bu" + strconv.Itoa(appNum)
+
+		// Update ACLs
+		updateACLConfiglet(ulIfname, ulConfig.ACLs)
 	}
 	// Write out what we modified to AppNetworkStatus
-	// XXX todo
-	status.UUIDandVersion = config.UUIDandVersion
+	status.OverlayNetworkList = config.OverlayNetworkList
+	status.UnderlayNetworkList = config.UnderlayNetworkList
 	status.PendingModify = false
 	writeAppNetworkStatus(&status, statusFilename)
 }
@@ -595,14 +641,18 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 			fmt.Printf("NeighDel fe80::1 failed: %s\n", err)
 		}		
 
-		// XXX delete ACLs?
-
 		olNum := 1
+		olStatus := &status.OverlayNetworkList[0]
 		olIfname := "bo" + strconv.Itoa(olNum) + "_" +
 			strconv.Itoa(appNum)
-		// delete overlay hosts file
+		// Delete overlay hosts file
 		hostsDirpath := globalRunDirname + "/hosts." + olIfname
 		deleteHostsConfiglet(hostsDirpath, true)
+
+		// Delete ACLs
+		deleteACLConfiglet(olIfname, olStatus.ACLs)
+
+		// XXX did we add to /etc/host when created? No
 	} else {
 		// Delete everything for overlay
 		for olNum := 1; olNum <= maxOlNum; olNum++ {
@@ -610,11 +660,11 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 			olIfname := "bo" + strconv.Itoa(olNum) + "_" +
 				strconv.Itoa(appNum)
 			fmt.Printf("Deleting olIfname %s\n", olIfname)
+
 			attrs := netlink.NewLinkAttrs()
 			attrs.Name = olIfname
 			oLink := &netlink.Bridge{LinkAttrs: attrs}
-	
-			// Start clean
+			// Remove link and associated addresses
 			netlink.LinkDel(oLink)
 
 			// radvd cleanup
@@ -629,11 +679,18 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 			stopDnsmasq(cfgFilename, true)
 			deleteDnsmasqConfiglet(cfgPathname)
 			
-			// XXX delete ACLs?
+			// Delete ACLs
+			// Need to check that index exists
+			if len(status.OverlayNetworkList) >= olNum {
+				olStatus := status.OverlayNetworkList[olNum-1]
+				deleteACLConfiglet(olIfname, olStatus.ACLs)
+			}
 
 			// delete overlay hosts file
 			hostsDirpath := globalRunDirname + "/hosts." + olIfname
 			deleteHostsConfiglet(hostsDirpath, true)
+
+			// XXX delete LISP configlets
 		}
 
 		// Delete everything in underlay
@@ -645,6 +702,7 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 			attrs := netlink.NewLinkAttrs()
 			attrs.Name = ulIfname
 			uLink := &netlink.Bridge{LinkAttrs: attrs}
+			// Remove link and associated addresses
 			netlink.LinkDel(uLink)
 
 			// dnsmasgq cleanup
@@ -653,8 +711,12 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 			stopDnsmasq(cfgFilename, true)
 			deleteDnsmasqConfiglet(cfgPathname)
 
-			// XXX delete ACLs?
-			// XXX delete hosts from /etc/host?
+			// Delete ACLs
+			// Need to check that index exists
+			if len(status.UnderlayNetworkList) >= ulNum {
+				ulStatus := status.UnderlayNetworkList[ulNum-1]
+				deleteACLConfiglet(ulIfname, ulStatus.ACLs)
+			}
 		}
 	}
 	// Write out what we modified to AppNetworkStatus aka delete

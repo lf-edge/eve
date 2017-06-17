@@ -67,7 +67,6 @@ func createDnsmasqOverlayConfiglet(cfgPathname string, olIfname string,
 }
 
 // XXX would be more polite to return an error then to Fatal
-// XXX less args?
 func createDnsmasqUnderlayConfiglet(cfgPathname string, ulIfname string,
      ulAddr1 string, ulAddr2 string, ulMac string) {
 	file, err := os.Create(cfgPathname)
