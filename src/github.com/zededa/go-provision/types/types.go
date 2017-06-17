@@ -145,9 +145,6 @@ type UUIDandVersion struct {
 	Version string
 }
 
-// From draft-ietf-netmod-acl-model
-// XXX add ACLs - below?
-
 type OverlayNetwork struct {
 	IID		uint32
 	EID		net.IP
@@ -169,6 +166,7 @@ type UnderlayNetwork struct {
 	Mac		string
 }
 
+// Similar support as in draft-ietf-netmod-acl-model
 type ACE struct {
 	Matches []ACEMatch
 	Actions []ACEAction
@@ -179,9 +177,9 @@ type ACE struct {
 // The host matching is suffix-matching thus zededa.net matches *.zededa.net.
 // Can envision adding "protocol", "port", and directionality at least
 // Value is always a string.
-// Always have a default reject rule at the end.
-// XXX How do we express an eid ipset using this syntax? Would need to limit
-// to "ip" matching and then manage the set.
+// There is an implicit reject rule at the end.
+// The "eidset" type is special for the overlay. Matches all the EID which
+// are part of the NameToEidList.
 type ACEMatch struct {
 	Type string
 	Value string     	
@@ -217,7 +215,7 @@ type AppNetworkStatus struct {
 	UlNum          int // Number of underlay interfaces
 	OlNum          int // Number of overlay interfaces
 	DisplayName    string
-	// XXX copy of config to check what's been set up?
+	// Copy from the AppNetworkConfig; used to delete when config is gone.
 	IsZedmanager        bool
 	OverlayNetworkList  []OverlayNetwork
 	UnderlayNetworkList []UnderlayNetwork
