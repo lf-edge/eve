@@ -149,18 +149,24 @@ type UUIDandVersion struct {
 // XXX add ACLs - below?
 
 type OverlayNetwork struct {
-	IID       uint32
-	EID       net.IP
-	Signature string
-	// Additional LISP parameters?
-	// XXX ACLs?
-	ACLs []ACE
-	// Used to populate DNS for the overlay
-	NameToEidList []NameToEid
+	IID		uint32
+	EID		net.IP
+	Signature	string
+	// Any additional LISP parameters?
+	ACLs		[]ACE
+	NameToEidList	[]NameToEid	// Used to populate DNS for the overlay
+	// Only used in Status
+	Bridge		string
+	Vif		string
+	Mac		string
 }
 
 type UnderlayNetwork struct {
-	ACLs []ACE
+	ACLs		[]ACE
+	// Only used in Status
+	Bridge		string
+	Vif		string
+	Mac		string
 }
 
 type ACE struct {
@@ -168,12 +174,25 @@ type ACE struct {
 	Actions []ACEAction
 }
 
+// The Type can be "ip" or "host" (aka domain name) for now. Matches remote.
+// For now these are bidirectional.
+// The host matching is suffix-matching thus zededa.net matches *.zededa.net.
+// Can envision adding "protocol", "port", and directionality at least
+// Value is always a string.
+// Always have a default reject rule at the end.
+// XXX How do we express an eid ipset using this syntax? Would need to limit
+// to "ip" matching and then manage the set.
 type ACEMatch struct {
+	Type string
+	Value string     	
 }
 
-// XXX default is accept ...
-// XXX add limits - unit? 10/s? 10/h? 10/d?
 type ACEAction struct {
+	Reject		bool	// Otherwise accept
+	Limit		bool	// Is limiter enabled?
+	LimitRate	int	// Packets per unit
+	LimitUnit	string	// "s", "m", "h", for second, minute, hour
+	LimitBurst	int	// Packets
 }
 
 // Indexed by UUID

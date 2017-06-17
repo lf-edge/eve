@@ -330,6 +330,9 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		deleteHostsConfiglet(hostsDirpath, false)
 		createHostsConfiglet(hostsDirpath, olConfig.NameToEidList)
 
+		// XXX create LISP configlets for IID and EID/signature		
+		createLispConfiglet(globalRunDirname, olConfig.IID,
+			olConfig.EID, olConfig.Signature)
 		status.OverlayNetworkList = config.OverlayNetworkList
 		status.PendingAdd = false
 		writeAppNetworkStatus(&status, statusFilename)
@@ -426,6 +429,8 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		createACLConfiglet(olIfname, olConfig.ACLs)
 		
 		// XXX create LISP configlets for IID and EID/signature		
+		createLispConfiglet(globalRunDirname, olConfig.IID,
+			olConfig.EID, olConfig.Signature)
 
 		// Add bridge parameters for Xen to Status
 		olStatus := &status.OverlayNetworkList[olNum-1]
@@ -652,6 +657,10 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 		// Delete ACLs
 		deleteACLConfiglet(olIfname, olStatus.ACLs)
 
+		// XXX delete LISP configlets
+		deleteLispConfiglet(globalRunDirname, olStatus.IID,
+			olStatus.EID, olStatus.Signature)
+
 		// XXX did we add to /etc/host when created? No
 	} else {
 		// Delete everything for overlay
@@ -679,18 +688,22 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 			stopDnsmasq(cfgFilename, true)
 			deleteDnsmasqConfiglet(cfgPathname)
 			
-			// Delete ACLs
 			// Need to check that index exists
 			if len(status.OverlayNetworkList) >= olNum {
 				olStatus := status.OverlayNetworkList[olNum-1]
+				// Delete ACLs
 				deleteACLConfiglet(olIfname, olStatus.ACLs)
+
+				// XXX delete LISP configlets
+				deleteLispConfiglet(globalRunDirname,
+					olStatus.IID, olStatus.EID,
+					olStatus.Signature)
 			}
 
 			// delete overlay hosts file
 			hostsDirpath := globalRunDirname + "/hosts." + olIfname
 			deleteHostsConfiglet(hostsDirpath, true)
 
-			// XXX delete LISP configlets
 		}
 
 		// Delete everything in underlay
