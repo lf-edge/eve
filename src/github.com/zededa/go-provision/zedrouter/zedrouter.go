@@ -153,11 +153,20 @@ var globalConfig types.DeviceNetworkConfig
 var globalStatus types.DeviceNetworkStatus
 var globalStatusFilename string
 var globalRunDirname string
+var lispRunDirname string
 
 func handleInit(configFilename string, statusFilename string,
      runDirname string) {
 	globalStatusFilename = statusFilename
 	globalRunDirname = runDirname
+
+	// XXX should this be in the lisp code?
+	lispRunDirname = runDirname + "/lisp"
+	if _, err := os.Stat(lispRunDirname); err != nil {
+		if err := os.Mkdir(lispRunDirname, 0755); err != nil {
+			log.Fatal("Mkdir ", lispRunDirname, err)
+		}
+	}
 
 	cb, err := ioutil.ReadFile(configFilename)
 	if err != nil {
@@ -330,9 +339,10 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		deleteHostsConfiglet(hostsDirpath, false)
 		createHostsConfiglet(hostsDirpath, olConfig.NameToEidList)
 
-		// XXX create LISP configlets for IID and EID/signature		
-		createLispConfiglet(globalRunDirname, olConfig.IID,
-			olConfig.EID, olConfig.Signature)
+		// Create LISP configlets for IID and EID/signature		
+		createLispConfiglet(lispRunDirname, true, olConfig.IID,
+			olConfig.EID, olConfig.Signature, globalConfig.Uplink,
+			olIfname)
 		status.OverlayNetworkList = config.OverlayNetworkList
 		status.PendingAdd = false
 		writeAppNetworkStatus(&status, statusFilename)
@@ -428,9 +438,10 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 
 		createACLConfiglet(olIfname, olConfig.ACLs)
 		
-		// XXX create LISP configlets for IID and EID/signature		
-		createLispConfiglet(globalRunDirname, olConfig.IID,
-			olConfig.EID, olConfig.Signature)
+		// Create LISP configlets for IID and EID/signature		
+		createLispConfiglet(lispRunDirname, false, olConfig.IID,
+			olConfig.EID, olConfig.Signature, globalConfig.Uplink,
+			olIfname)
 
 		// Add bridge parameters for Xen to Status
 		olStatus := &status.OverlayNetworkList[olNum-1]
@@ -657,9 +668,9 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 		// Delete ACLs
 		deleteACLConfiglet(olIfname, olStatus.ACLs)
 
-		// XXX delete LISP configlets
-		deleteLispConfiglet(globalRunDirname, olStatus.IID,
-			olStatus.EID, olStatus.Signature)
+		// Delete LISP configlets
+		deleteLispConfiglet(lispRunDirname, olStatus.IID,
+			olStatus.EID, globalConfig.Uplink)
 
 		// XXX did we add to /etc/host when created? No
 	} else {
@@ -694,10 +705,10 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 				// Delete ACLs
 				deleteACLConfiglet(olIfname, olStatus.ACLs)
 
-				// XXX delete LISP configlets
-				deleteLispConfiglet(globalRunDirname,
+				// Delete LISP configlets
+				deleteLispConfiglet(lispRunDirname,
 					olStatus.IID, olStatus.EID,
-					olStatus.Signature)
+					globalConfig.Uplink)
 			}
 
 			// delete overlay hosts file
