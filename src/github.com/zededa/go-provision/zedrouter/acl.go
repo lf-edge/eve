@@ -11,7 +11,6 @@ import (
 //	"os"
 //	"os/exec"
 	"github.com/zededa/go-provision/types"
-// XXX	"github.com/janeczku/go-ipset/ipset"
 )
 
 // XXX would be more polite to return an error then to Fatal
@@ -20,8 +19,9 @@ func createACLConfiglet(ifname string, ACLs []types.ACE) {
 	// XXX implement
 }
 
-func updateACLConfiglet(ifname string, ACLs []types.ACE) {
-	fmt.Printf("updateACLConfiglet: ifname %s, ACLs %v\n", ifname, ACLs)
+func updateACLConfiglet(ifname string, oldACLs []types.ACE, newACLs []types.ACE) {
+	fmt.Printf("updateACLConfiglet: ifname %s, oldACLs %v newACLs %v\n",
+		ifname, oldACLs, newACLs)
 	// XXX implement
 }
 

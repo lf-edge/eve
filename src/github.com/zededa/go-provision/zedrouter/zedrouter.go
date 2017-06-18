@@ -339,6 +339,10 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		deleteHostsConfiglet(hostsDirpath, false)
 		createHostsConfiglet(hostsDirpath, olConfig.NameToEidList)
 
+		// Default EID ipset
+		deleteEidIpsetConfiglet(olIfname, false)
+		createEidIpsetConfiglet(olIfname, olConfig.NameToEidList)
+
 		// Create LISP configlets for IID and EID/signature		
 		createLispConfiglet(lispRunDirname, true, olConfig.IID,
 			olConfig.EID, olConfig.Signature, globalConfig.Uplink,
@@ -423,6 +427,13 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		hostsDirpath := globalRunDirname + "/hosts." + olIfname
 		deleteHostsConfiglet(hostsDirpath, false)
 		createHostsConfiglet(hostsDirpath, olConfig.NameToEidList)
+
+		// Create default ipset with all the EIDs in NameToEidList
+		// Can be used in ACLs by specifying "alleids" as match.
+		// XXX unique "alleids" for ACE match?
+		//    ipset create eids.${OLIFNAME} 
+		deleteEidIpsetConfiglet(olIfname, false)
+		createEidIpsetConfiglet(olIfname, olConfig.NameToEidList)
 		
 		// Start clean
 		cfgFilename = "dnsmasq." + olIfname + ".conf"
@@ -431,10 +442,6 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		createDnsmasqOverlayConfiglet(cfgPathname, olIfname, olAddr1,
 			EID.String(), olMac, hostsDirpath)
 		startDnsmasq(cfgPathname)
-
-		// XXX create ipset with all the EIDs in ACL. XXX based on NameToEidList inside hosts?
-		// XXX unique "alleids" for ACE match?
-		//    ipset create eids.${OLIFNAME} 
 
 		createACLConfiglet(olIfname, olConfig.ACLs)
 		
@@ -567,22 +574,29 @@ func handleModify(statusFilename string, config types.AppNetworkConfig,
 		fmt.Printf("handleModify olNum %d\n", olNum)
 		olIfname := "bo" + strconv.Itoa(olNum) + "_" +
 			strconv.Itoa(appNum)
+		olStatus := status.OverlayNetworkList[olNum-1]
 
 		// Update hosts
 		hostsDirpath := globalRunDirname + "/hosts." + olIfname
-		updateHostsConfiglet(hostsDirpath, olConfig.NameToEidList)
+		updateHostsConfiglet(hostsDirpath, olStatus.NameToEidList,
+			olConfig.NameToEidList)
+
+		// Default EID ipset
+		updateEidIpsetConfiglet(olIfname, olStatus.NameToEidList,
+			olConfig.NameToEidList)
 
 		// Update ACLs
-		updateACLConfiglet(olIfname, olConfig.ACLs)
+		updateACLConfiglet(olIfname, olStatus.ACLs, olConfig.ACLs)
 	}
 	// Look for ACL changes in underlay
 	for i, ulConfig := range config.UnderlayNetworkList {
 		ulNum := i + 1
 		fmt.Printf("handleModify ulNum %d\n", ulNum)
 		ulIfname := "bu" + strconv.Itoa(appNum)
+		ulStatus := status.UnderlayNetworkList[ulNum-1]
 
 		// Update ACLs
-		updateACLConfiglet(ulIfname, ulConfig.ACLs)
+		updateACLConfiglet(ulIfname, ulStatus.ACLs, ulConfig.ACLs)
 	}
 	// Write out what we modified to AppNetworkStatus
 	status.OverlayNetworkList = config.OverlayNetworkList
@@ -665,6 +679,9 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 		hostsDirpath := globalRunDirname + "/hosts." + olIfname
 		deleteHostsConfiglet(hostsDirpath, true)
 
+		// Default EID ipset
+		deleteEidIpsetConfiglet(olIfname, true)
+
 		// Delete ACLs
 		deleteACLConfiglet(olIfname, olStatus.ACLs)
 
@@ -711,10 +728,12 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 					globalConfig.Uplink)
 			}
 
-			// delete overlay hosts file
+			// Delete overlay hosts file
 			hostsDirpath := globalRunDirname + "/hosts." + olIfname
 			deleteHostsConfiglet(hostsDirpath, true)
 
+			// Default EID ipset
+			deleteEidIpsetConfiglet(olIfname, true)
 		}
 
 		// Delete everything in underlay

@@ -8,8 +8,8 @@ package main
 import (
 	"fmt"       
 	"log"
+	"net"
 	"os"
-	"os/exec"
 	"github.com/zededa/go-provision/types"
 )
 
@@ -37,13 +37,44 @@ func createHostsConfiglet(cfgDirname string, nameToEidList []types.NameToEid) {
 	}
 }
 
-func updateHostsConfiglet(cfgDirname string, nameToEidList []types.NameToEid) {
-	fmt.Printf("updateHostsConfiglet: dir %s nameToEidList %v\n",
-		cfgDirname, nameToEidList)
-		
+// XXX move to a more generic place?
+func containsHostName(nameToEidList []types.NameToEid, hostname string) bool {
 	for _, ne := range nameToEidList {
-		// XXX look for hosts which didn't change, and hosts which
-		// should be deleted
+		if hostname == ne.HostName {
+			return true
+		}
+	}
+	return false
+}
+
+// XXX move to a more generic place?
+func containsEID(nameToEidList []types.NameToEid, EID net.IP) bool {
+	for _, ne := range nameToEidList {
+		for _, eid := range ne.EIDs {
+			if eid.Equal(EID) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func updateHostsConfiglet(cfgDirname string,
+     oldNameToEidList []types.NameToEid, newNameToEidList []types.NameToEid) {
+	fmt.Printf("updateHostsConfiglet: dir %s old %v, new %v\n",
+		cfgDirname, oldNameToEidList, newNameToEidList)
+		
+	// Look for hosts which should be deleted
+	for _, ne := range oldNameToEidList {
+		if !containsHostName(newNameToEidList, ne.HostName) {
+			cfgPathname := cfgDirname + "/" + ne.HostName
+			if err := os.Remove(cfgPathname); err != nil {
+				log.Println("os.Remove for ", cfgPathname, err)
+			}
+		}
+	}
+
+	for _, ne := range newNameToEidList {
 		cfgPathname := cfgDirname + "/" + ne.HostName
 		file, err := os.Create(cfgPathname)
 		if err != nil {
@@ -53,20 +84,15 @@ func updateHostsConfiglet(cfgDirname string, nameToEidList []types.NameToEid) {
 		for _, eid := range ne.EIDs {
 			file.WriteString(fmt.Sprintf("%s	%s\n",
 				eid, ne.HostName))
-			// XXX look for eids which should be deleted
 		}
 	}
 }
 
 func deleteHostsConfiglet(cfgDirname string, printOnError bool) {
-	cmd := "rm"
-	args := []string{
-		"-r",
-		cfgDirname,
-	}
-	_, err := exec.Command(cmd, args...).Output()
+	fmt.Printf("deleteHostsConfiglet: dir %s\n", cfgDirname)
+	err := os.RemoveAll(cfgDirname)
 	if err != nil && printOnError {
 		// XXX should this be log?
-		fmt.Printf("Command %v %v failed: %s\n", cmd, args, err)
+		fmt.Printf("RemoveAll %s failed: %s\n", cfgDirname, err)
 	}
 }

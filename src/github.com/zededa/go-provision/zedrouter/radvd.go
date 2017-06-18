@@ -34,15 +34,9 @@ func createRadvdConfiglet(cfgPathname string, olIfname string) {
 }
 
 func deleteRadvdConfiglet(cfgPathname string) {
-	cmd := "rm"
-	args := []string{
-		"-f",
-		cfgPathname,
-	}
-	_, err := exec.Command(cmd, args...).Output()
-	if err != nil {
+	if err := os.Remove(cfgPathname); err != nil {
 		// XXX should this be log?
-		fmt.Printf("Command %v %v failed: %s\n", cmd, args, err)
+		fmt.Printf("Remove %s failed: %s\n", cfgPathname, err)
 	}
 }
 
