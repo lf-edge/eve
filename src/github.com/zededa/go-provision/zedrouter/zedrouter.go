@@ -46,6 +46,9 @@ func main() {
 
 	fileChanges := make(chan string)
 	go WatchConfigStatus(configDirname, statusDirname, fileChanges)
+	// XXX can we feed in a "L" change when LISP needs to be restarted?
+	// Need to collapse multiple requests into one. Only useful on startiup
+	// with ReadDir above.
 	for {
 		change := <-fileChanges
 		// log.Println("fileChange:", change)
@@ -178,6 +181,11 @@ func handleInit(configFilename string, statusFilename string,
 			err, configFilename)
 		log.Fatal(err)
 	}
+	_, err = netlink.LinkByName(globalConfig.Uplink)
+	if err != nil {
+		log.Fatal("Uplink in config/global does not exist: ",
+			globalConfig.Uplink)
+	}
 	if _, err := os.Stat(statusFilename); err != nil {
 		// Create and write with initial values
 		globalStatus.Uplink = globalConfig.Uplink
@@ -193,6 +201,18 @@ func handleInit(configFilename string, statusFilename string,
 		log.Printf("%s DeviceNetworkStatus file: %s\n",
 			err, statusFilename)
 		log.Fatal(err)
+	}
+
+	// Setup initial iptables rules
+	iptablesInit()
+	// XXX also setup ip forwarding sysctl?
+
+	// XXX hack until we extract ipsets from acl config
+	if err := ipsetCreatePair("google.com"); err != nil {
+		log.Fatal("ipset create for google.com", err)
+	}
+	if err := ipsetCreatePair("zededa.net"); err != nil {
+		log.Fatal("ipset create for zededa.net", err)
 	}
 }
 
@@ -435,6 +455,9 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		deleteEidIpsetConfiglet(olIfname, false)
 		createEidIpsetConfiglet(olIfname, olConfig.NameToEidList)
 		
+		// Set up ACLs before we setup dnsmasq
+		createACLConfiglet(olIfname, olConfig.ACLs, 6)
+		
 		// Start clean
 		cfgFilename = "dnsmasq." + olIfname + ".conf"
 		cfgPathname = "/etc/" + cfgFilename
@@ -443,8 +466,6 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 			EID.String(), olMac, hostsDirpath)
 		startDnsmasq(cfgPathname)
 
-		createACLConfiglet(olIfname, olConfig.ACLs)
-		
 		// Create LISP configlets for IID and EID/signature		
 		createLispConfiglet(lispRunDirname, false, olConfig.IID,
 			olConfig.EID, olConfig.Signature, globalConfig.Uplink,
@@ -502,6 +523,9 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 			fmt.Printf("AddrAdd %s failed: %s\n", ulAddr1, err)
 		}
 
+		// Create iptables with optional ipset's based ACL
+		createACLConfiglet(ulIfname, ulConfig.ACLs, 4)
+
 		// Start clean
 		cfgFilename := "dnsmasq." + ulIfname + ".conf"
 		cfgPathname := "/etc/" + cfgFilename
@@ -510,9 +534,6 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		createDnsmasqUnderlayConfiglet(cfgPathname, ulIfname, ulAddr1,
 			ulAddr2, ulMac)
 		startDnsmasq(cfgPathname)
-
-		// Create iptables with optional ipset's based ACL
-		createACLConfiglet(ulIfname, ulConfig.ACLs)
 
 		// Add bridge parameters for Xen to Status
 		ulStatus := &status.UnderlayNetworkList[ulNum-1]
@@ -586,7 +607,7 @@ func handleModify(statusFilename string, config types.AppNetworkConfig,
 			olConfig.NameToEidList)
 
 		// Update ACLs
-		updateACLConfiglet(olIfname, olStatus.ACLs, olConfig.ACLs)
+		updateACLConfiglet(olIfname, olStatus.ACLs, olConfig.ACLs, 6)
 	}
 	// Look for ACL changes in underlay
 	for i, ulConfig := range config.UnderlayNetworkList {
@@ -596,7 +617,7 @@ func handleModify(statusFilename string, config types.AppNetworkConfig,
 		ulStatus := status.UnderlayNetworkList[ulNum-1]
 
 		// Update ACLs
-		updateACLConfiglet(ulIfname, ulStatus.ACLs, ulConfig.ACLs)
+		updateACLConfiglet(ulIfname, ulStatus.ACLs, ulConfig.ACLs, 4)
 	}
 	// Write out what we modified to AppNetworkStatus
 	status.OverlayNetworkList = config.OverlayNetworkList
@@ -683,7 +704,7 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 		deleteEidIpsetConfiglet(olIfname, true)
 
 		// Delete ACLs
-		deleteACLConfiglet(olIfname, olStatus.ACLs)
+		deleteACLConfiglet(olIfname, olStatus.ACLs, 6)
 
 		// Delete LISP configlets
 		deleteLispConfiglet(lispRunDirname, olStatus.IID,
@@ -720,7 +741,7 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 			if len(status.OverlayNetworkList) >= olNum {
 				olStatus := status.OverlayNetworkList[olNum-1]
 				// Delete ACLs
-				deleteACLConfiglet(olIfname, olStatus.ACLs)
+				deleteACLConfiglet(olIfname, olStatus.ACLs, 6)
 
 				// Delete LISP configlets
 				deleteLispConfiglet(lispRunDirname,
@@ -758,7 +779,7 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 			// Need to check that index exists
 			if len(status.UnderlayNetworkList) >= ulNum {
 				ulStatus := status.UnderlayNetworkList[ulNum-1]
-				deleteACLConfiglet(ulIfname, ulStatus.ACLs)
+				deleteACLConfiglet(ulIfname, ulStatus.ACLs, 4)
 			}
 		}
 	}

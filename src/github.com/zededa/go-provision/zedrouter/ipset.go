@@ -19,7 +19,7 @@ func createEidIpsetConfiglet(olIfname string, nameToEidList []types.NameToEid) {
 	fmt.Printf("createEidIpsetConfiglet: olifName %s nameToEidList %v\n",
 		olIfname, nameToEidList)
 	ipsetName := "eids." + olIfname	
-	if err := ipsetCreate(ipsetName); err != nil {
+	if err := ipsetCreate(ipsetName, 6); err != nil {
 		log.Fatal("ipset create for ", ipsetName, err)
 	}
 	for _, ne := range nameToEidList {
@@ -76,9 +76,27 @@ func deleteEidIpsetConfiglet(olIfname string, printOnError bool) {
 	}
 }
 
-func ipsetCreate(ipsetName string) error {
+func ipsetCreatePair(ipsetName string) error {
+	set4 := "ipv4." + ipsetName
+	set6 := "ipv6." + ipsetName
+	if err := ipsetCreate(set4, 4); err != nil {
+		return err
+	}
+	if err := ipsetCreate(set6, 6); err != nil {
+		return err
+	}
+	return nil
+}
+
+func ipsetCreate(ipsetName string, ipVer int) error {
 	cmd := "ipset"
-	args := []string{"create", ipsetName, "hash:ip", "family", "inet6"}
+	family := ""
+	if ipVer == 4 {
+		family = "inet"
+	} else if ipVer == 6 {
+		family = "inet6"
+	}
+	args := []string{"create", ipsetName, "hash:ip", "family", family}
 	if _, err := exec.Command(cmd, args...).Output(); err != nil {
 		return err
 	}
@@ -119,4 +137,13 @@ func ipsetDel(ipsetName string, member string) error {
 		return err
 	}
 	return nil
+}
+
+func ipsetExists(ipsetName string) bool {
+	cmd := "ipset"
+	args := []string{"list", ipsetName}
+	if _, err := exec.Command(cmd, args...).Output(); err != nil {
+		return false
+	}
+	return true
 }

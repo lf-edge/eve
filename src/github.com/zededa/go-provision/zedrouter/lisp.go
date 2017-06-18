@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"time"
 )
 
 // Need to fill in IID in 2 places
@@ -223,6 +224,9 @@ func updateLisp(lispRunDirname string, upLinkIfname string) {
 // XXX would like to limit number of restarts of LISP. Do at end of loop
 // main event loop in zedrouter.go??
 func restartLisp(lispRunDirname string, upLinkIfname string) {
+	fmt.Printf("XXX NOT restartLisp: %s %s\n", lispRunDirname, upLinkIfname)
+	return
+	
 	fmt.Printf("restartLisp: %s %s\n", lispRunDirname, upLinkIfname)
 	cmd := RestartCmd
 	args := []string{
@@ -233,6 +237,31 @@ func restartLisp(lispRunDirname string, upLinkIfname string) {
 	if err != nil {
 		log.Println("RESTART-LISP failed ", err)
 	}
+	iptablesLispFixup(true)
+}
+
+// Need to re-remove these rules after a re-start
+// Have to retry until LISP has added the rules.
+// XXX should we remove all the lisp rules?
+func iptablesLispFixup(retry bool) {
+	for i := 1; i < 10; i++ {
+		err := iptableCmd("-t",  "raw",  "-D",  "lisp",  "-j", "DROP")
+		if err == nil || !retry {
+			break
+		}
+		time.Sleep(1000 * time.Millisecond)
+	}
+	for i := 1; i < 10; i++ {
+		err := ip6tableCmd("-t",  "raw",  "-D",  "lisp",  "-j", "DROP")
+		if err == nil || !retry {
+			break
+		}
+		time.Sleep(1000 * time.Millisecond)
+	}
+	// LISP startup clobbers these as well
+	iptableCmd("-t", "nat", "-F", "POSTROUTING")
+	iptableCmd("-t", "nat", "-A", "POSTROUTING", "-o", globalConfig.Uplink,
+		"-j", "MASQUERADE")
 }
 
 // XXX need cwd change; get this error:
