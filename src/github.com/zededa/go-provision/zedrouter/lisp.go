@@ -224,9 +224,6 @@ func updateLisp(lispRunDirname string, upLinkIfname string) {
 // XXX would like to limit number of restarts of LISP. Do at end of loop
 // main event loop in zedrouter.go??
 func restartLisp(lispRunDirname string, upLinkIfname string) {
-	fmt.Printf("XXX NOT restartLisp: %s %s\n", lispRunDirname, upLinkIfname)
-	return
-	
 	fmt.Printf("restartLisp: %s %s\n", lispRunDirname, upLinkIfname)
 	cmd := RestartCmd
 	args := []string{

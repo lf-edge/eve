@@ -79,11 +79,23 @@ func deleteEidIpsetConfiglet(olIfname string, printOnError bool) {
 func ipsetCreatePair(ipsetName string) error {
 	set4 := "ipv4." + ipsetName
 	set6 := "ipv6." + ipsetName
-	if err := ipsetCreate(set4, 4); err != nil {
-		return err
+	if ipsetExists(set4) {
+		if err := ipsetFlush(set4); err != nil {
+			return err
+		}
+	} else {
+		if err := ipsetCreate(set4, 4); err != nil {
+			return err
+		}
 	}
-	if err := ipsetCreate(set6, 6); err != nil {
-		return err
+	if ipsetExists(set6) {
+		if err := ipsetFlush(set6); err != nil {
+			return err
+		}
+	} else {
+		if err := ipsetCreate(set6, 6); err != nil {
+			return err
+		}
 	}
 	return nil
 }
