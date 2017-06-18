@@ -104,8 +104,7 @@ func startDnsmasq(cfgPathname string) {
 	go exec.Command(cmd, args...).Output()
 }
 
-//    pkill -u radvd -f radvd.${OLIFNAME}.conf
+//    pkill -u nobody -f dnsmasq.${IFNAME}.conf
 func stopDnsmasq(cfgFilename string, printOnError bool) {
-	// XXX add dnsmasq to match?
 	pkillUserArgs("nobody", cfgFilename, printOnError)
 }

@@ -11,7 +11,7 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
-//	"os/exec"
+	"os/exec"
 	"strconv"
 )
 
@@ -108,6 +108,8 @@ lisp database-mapping {
 `
 const baseFilename = "/usr/local/etc/zededa/lisp.config.base"
 const destFilename = "/usr/local/bin/lisp/lisp.config"
+const RestartCmd =  "/usr/local/bin/lisp/RESTART-LISP"
+const StopCmd =  "/usr/local/bin/lisp/STOP-LISP"
 
 // We write files with the IID-specifics (and not EID) to files
 // in <globalRunDirname>/lisp/<iid>.
@@ -218,15 +220,28 @@ func updateLisp(lispRunDirname string, upLinkIfname string) {
 	restartLisp(lispRunDirname, upLinkIfname)
 }
 
-// XXX would like to limit number of restarts of LISP. Do at end of loop??
+// XXX would like to limit number of restarts of LISP. Do at end of loop
+// main event loop in zedrouter.go??
 func restartLisp(lispRunDirname string, upLinkIfname string) {
 	fmt.Printf("restartLisp: %s %s\n", lispRunDirname, upLinkIfname)
-	// XXX Implement
-
-	// XXX need LISP install pathname and uplink and 8080!
+	cmd := RestartCmd
+	args := []string{
+		"8080",
+		upLinkIfname,
+	}
+	_, err := exec.Command(cmd, args...).Output()
+	if err != nil {
+		log.Println("RESTART-LISP failed ", err)
+	}
 }
 
+// XXX need cwd change; get this error:
+// python: can't open file 'remove-lisp-locks.pyo': [Errno 2] No such file or directory
 func stopLisp(lispRunDirname string) {
 	fmt.Printf("stopLisp: %s\n", lispRunDirname)
-	// XXX Implement
+	cmd := StopCmd
+	_, err := exec.Command(cmd).Output()
+	if err != nil {
+		log.Println("STOP-LISP failed ", err)
+	}
 }

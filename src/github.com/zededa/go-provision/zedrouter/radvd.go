@@ -59,7 +59,6 @@ func startRadvd(cfgPathname string) {
 
 //    pkill -u radvd -f radvd.${OLIFNAME}.conf
 func stopRadvd(cfgFilename string, printOnError bool) {
-	// XXX add radvd to match?
 	pkillUserArgs("radvd", cfgFilename, printOnError)
 }
 
