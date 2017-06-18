@@ -175,7 +175,7 @@ type ACE struct {
 // The Type can be "ip" or "host" (aka domain name) for now. Matches remote.
 // For now these are bidirectional.
 // The host matching is suffix-matching thus zededa.net matches *.zededa.net.
-// Can envision adding "protocol", "port", and directionality at least
+// Can envision adding "protocol", "fport", "lport", and directionality at least
 // Value is always a string.
 // There is an implicit reject rule at the end.
 // The "eidset" type is special for the overlay. Matches all the EID which
@@ -186,7 +186,7 @@ type ACEMatch struct {
 }
 
 type ACEAction struct {
-	Reject		bool	// Otherwise accept
+	Drop		bool	// Otherwise accept
 	Limit		bool	// Is limiter enabled?
 	LimitRate	int	// Packets per unit
 	LimitUnit	string	// "s", "m", "h", for second, minute, hour
