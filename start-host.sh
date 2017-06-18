@@ -19,11 +19,19 @@ ip6tables -t raw -D lisp -j DROP
 iptables -F
 ip6tables -F
 
+# IPv4 in /etc/sysctl.d/99-sysctl.conf:net.ipv4.ip_forward=1
+# Edited that on hikey
 sysctl -w net.ipv6.conf.all.forwarding=1
 
 echo "Setup underlay NAT"
 # For all underlays
+# Can check exit value of iptables-save -t nat | grep MASQUERADE
+# to determine whether this is already present.
+# Or try a flush: iptables -t nat -F POSTROUTING
+# then add this
 iptables -t nat -A POSTROUTING -o $UPLINK -j MASQUERADE
+
+# XXX need to re-remove LISP rules after restart!
 
 mkdir -p ${RUNDIR}
 HOSTSDIR=${RUNDIR}/hostsdir
