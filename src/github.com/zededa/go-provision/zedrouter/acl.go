@@ -100,10 +100,14 @@ func aceToRules(ifname string, ace types.ACE, ipVer int) IptablesRuleList {
 		inArgs = append(inArgs, addIn...)
 	}
 	foundDrop := false
+	foundLimit := false
+	unlimitedInArgs := inArgs
+	unlimitedOutArgs := outArgs
 	for _, action := range ace.Actions {
 		if action.Drop {
 			foundDrop = true
 		} else if action.Limit {
+			foundLimit = true
 			// -m limit --limit 4/s --limit-burst 4
 			limit := strconv.Itoa(action.LimitRate) + "/" +
 			      action.LimitUnit
@@ -126,6 +130,14 @@ func aceToRules(ifname string, ace types.ACE, ipVer int) IptablesRuleList {
 	fmt.Printf("inArgs %v\n", inArgs)
 	rulesList := IptablesRuleList{}
 	rulesList = append(rulesList, outArgs, inArgs)
+	if foundLimit {
+		// Add separate DROP without the limit to count the excess
+		unlimitedOutArgs = append(unlimitedOutArgs, []string{"-j", "DROP"}...)
+		unlimitedInArgs = append(unlimitedInArgs, []string{"-j", "DROP"}...)
+		fmt.Printf("unlimitedOutArgs %v\n", unlimitedOutArgs)
+		fmt.Printf("unlimitedInArgs %v\n", unlimitedInArgs)
+		rulesList = append(rulesList, unlimitedOutArgs, unlimitedInArgs)
+	}	
 	return rulesList
 }
 
@@ -156,6 +168,8 @@ func updateACLConfiglet(ifname string, oldACLs []types.ACE, newACLs []types.ACE,
 		ifname, oldACLs, newACLs)
 	oldRules := aclToRules(ifname, oldACLs, ipVer)
 	newRules := aclToRules(ifname, newACLs, ipVer)
+	fmt.Printf("updateACLConfiglet: oldRules %v\n", oldRules)
+	fmt.Printf("updateACLConfiglet: newRules %v\n", newRules)
 	// Look for old which should be deleted
 	for _, rule := range oldRules {
 		if containsRule(newRules, rule) {
