@@ -146,35 +146,22 @@ for m in $ms; do
     fi
 done
 
-# Hack; edit in the interface
-sed "s/interface = wlan0/interface = $intf/" $ETCDIR/lisp.config >$LISPDIR/lisp.config
-if [ -f $LISPDIR/lisp.config.apps ]; then
-        echo "Appending lisp.config.apps"
-        cat $LISPDIR/lisp.config.apps >> $LISPDIR/lisp.config
-fi
-chmod o+r $LISPDIR/lisp.config
-#echo "XXX diff:"
-#diff $ETCDIR/lisp.config $LISPDIR/lisp.config
-#echo "XXX end diff"
+# XXX should we just create this based on intf?
+# more /var/tmp/zedrouter/config/global
+# {"Uplink":"wlan0"}
+cat <<EOF >//var/tmp/zedrouter/config/global
+{"Uplink":"$intf"}
+EOF
 
-eid=`grep "eid-prefix = fd" $ETCDIR/lisp.config | awk '{print $3}' | awk -F/ '{print $1}'`
-
-echo "Starting LISP with EID" $eid "on" $intf
-
-if [ $EID_IN_DOMU == 0 ]; then
-    sudo /sbin/ifconfig lo inet6 add $eid
-    sudo ip route add fd00::/8 via fe80::1 src $eid dev $intf
-else
-    sudo ip route add fd00::/8 via fe80::1 dev $intf
-fi
-sudo ip nei add fe80::1 lladdr 0:0:0:0:0:1 dev $intf
-sudo ip nei change fe80::1 lladdr 0:0:0:0:0:1 dev $intf
-
+# XXX Create all of the files in /var/tmp/zedrouter/config/
+# XXX or manually copy from the .acl files
+vi /
 # Copy device private key to lisp-sig.pem? Only needed on RTR!
 # XXX permissions 400 in $ETCDIR?
 # sudo cp $ETCDIR/device.key.pem $LISPDIR/lisp-sig.pem
 
-(cd $LISPDIR; ./RESTART-LISP 8080 $intf)
+echo "Starting ZedRouter"
+/usr/local/bin/zededa/zedrouter >&/var/log/zedrouter.log&
 if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
