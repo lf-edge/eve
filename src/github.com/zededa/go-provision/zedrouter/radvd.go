@@ -23,6 +23,7 @@ interface %s {
 };
 `
 
+// Create the radvd config file for the overlay
 // XXX would be more polite to return an error then to Fatal
 func createRadvdConfiglet(cfgPathname string, olIfname string) {
 	file, err := os.Create(cfgPathname)
@@ -35,8 +36,7 @@ func createRadvdConfiglet(cfgPathname string, olIfname string) {
 
 func deleteRadvdConfiglet(cfgPathname string) {
 	if err := os.Remove(cfgPathname); err != nil {
-		// XXX should this be log?
-		fmt.Printf("Remove %s failed: %s\n", cfgPathname, err)
+		log.Println("Remove ", cfgPathname, err)
 	}
 }
 

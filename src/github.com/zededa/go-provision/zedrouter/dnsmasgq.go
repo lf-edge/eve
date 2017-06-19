@@ -13,6 +13,7 @@ import (
 )
 
 // XXX TODO move ipset to be ACL dependent
+// XXX need configdir for that to have one ipset file for each set?
 const dnsmasqOverlayStatic=`
 except-interface=lo
 bind-interfaces
@@ -24,7 +25,7 @@ bogus-priv
 stop-dns-rebind
 rebind-localhost-ok
 domain-needed
-# SHOULD be derived from underlay ACL.
+# XXX SHOULD be derived from underlay ACL.
 # Needed here for underlay since queries for A RRs might come over IPv6
 ipset=/google.com/ipv4.google.com,ipv6.google.com
 ipset=/zededa.net/ipv4.zededa.net,ipv6.zededa.net
@@ -32,6 +33,7 @@ dhcp-range=::,static,0,infinite
 `
 
 // XXX TODO move ipset to be ACL dependent
+// XXX need configdir for that to have one ipset file for each set?
 const dnsmasqUnderlayStatic=`
 except-interface=lo
 bind-interfaces
@@ -43,12 +45,13 @@ bogus-priv
 stop-dns-rebind
 rebind-localhost-ok
 domain-needed
-# SHOULD be derived from underlay ACL
+# XXX SHOULD be derived from underlay ACL
 ipset=/google.com/ipv4.google.com,ipv6.google.com
 ipset=/zededa.net/ipv4.zededa.net,ipv6.zededa.net
 dhcp-range=172.27.0.0,static,255.255.0.0,infinite
 `
 
+// Create the dnsmasq configuration for the the overlay interface
 // XXX would be more polite to return an error then to Fatal
 func createDnsmasqOverlayConfiglet(cfgPathname string, olIfname string,
      olAddr1 string, olAddr2 string, olMac string, hostsDir string) {
@@ -66,6 +69,7 @@ func createDnsmasqOverlayConfiglet(cfgPathname string, olIfname string,
 	file.WriteString(fmt.Sprintf("hostsdir=%s\n", hostsDir))
 }
 
+// Create the dnsmasq configuration for the the underlay interface
 // XXX would be more polite to return an error then to Fatal
 func createDnsmasqUnderlayConfiglet(cfgPathname string, ulIfname string,
      ulAddr1 string, ulAddr2 string, ulMac string) {
@@ -84,8 +88,7 @@ func createDnsmasqUnderlayConfiglet(cfgPathname string, ulIfname string,
 
 func deleteDnsmasqConfiglet(cfgPathname string) {
 	if err := os.Remove(cfgPathname); err != nil {
-		// XXX should this be log?
-		fmt.Printf("Remove %s failed: %s\n", cfgPathname, err)
+		log.Println("Remove ", cfgPathname, err)
 	}
 }
 

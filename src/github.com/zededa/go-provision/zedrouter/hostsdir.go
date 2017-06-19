@@ -13,6 +13,7 @@ import (
 	"github.com/zededa/go-provision/types"
 )
 
+// Create the hosts file for the overlay DNS resolution
 // XXX would be more polite to return an error then to Fatal
 func createHostsConfiglet(cfgDirname string, nameToEidList []types.NameToEid) {
 	fmt.Printf("createHostsConfiglet: dir %s nameToEidList %v\n",
@@ -37,7 +38,6 @@ func createHostsConfiglet(cfgDirname string, nameToEidList []types.NameToEid) {
 	}
 }
 
-// XXX move to a more generic place?
 func containsHostName(nameToEidList []types.NameToEid, hostname string) bool {
 	for _, ne := range nameToEidList {
 		if hostname == ne.HostName {
@@ -47,7 +47,6 @@ func containsHostName(nameToEidList []types.NameToEid, hostname string) bool {
 	return false
 }
 
-// XXX move to a more generic place?
 func containsEID(nameToEidList []types.NameToEid, EID net.IP) bool {
 	for _, ne := range nameToEidList {
 		for _, eid := range ne.EIDs {
@@ -92,7 +91,6 @@ func deleteHostsConfiglet(cfgDirname string, printOnError bool) {
 	fmt.Printf("deleteHostsConfiglet: dir %s\n", cfgDirname)
 	err := os.RemoveAll(cfgDirname)
 	if err != nil && printOnError {
-		// XXX should this be log?
-		fmt.Printf("RemoveAll %s failed: %s\n", cfgDirname, err)
+		log.Println("RemoveAll ", cfgDirname, err)
 	}
 }

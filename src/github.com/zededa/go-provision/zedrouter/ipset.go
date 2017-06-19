@@ -76,6 +76,7 @@ func deleteEidIpsetConfiglet(olIfname string, printOnError bool) {
 	}
 }
 
+// If doesn't exist create the ipv4/ipv6 pair of sets.
 func ipsetCreatePair(ipsetName string) error {
 	set4 := "ipv4." + ipsetName
 	set6 := "ipv6." + ipsetName

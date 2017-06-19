@@ -65,7 +65,15 @@ func aceToRules(ifname string, ace types.ACE, ipVer int) IptablesRuleList {
 			addOut = []string{"-m", "--sport", match.Value}
 			addIn = []string{"-m", "--dport", match.Value}
 		case "host":
-			// XXX assumes set has already been created!
+			// Ensure the sets exists; create if not
+			// XXX need to feed it into dnsmasq as well; restart
+			// dnsmasq. SIGHUP?
+			// XXX want created bool to determine whether to restart
+			if err := ipsetCreatePair(match.Value); err != nil {
+				log.Println("ipset create for ",
+					match.Value, err)
+			}
+
 			var ipsetName string
 			if ipVer == 4 {
 				ipsetName = "ipv4." + match.Value
@@ -77,7 +85,7 @@ func aceToRules(ifname string, ace types.ACE, ipVer int) IptablesRuleList {
 			addIn = []string{"-m", "set", "--match-set",
 				ipsetName, "src"}
 		case "eidset":
-			// XXX only applies to IPv6 overlay
+			// The eidset only applies to IPv6 overlay
 			ipsetName := "eids." + ifname	
 			addOut = []string{"-m", "set", "--match-set",
 				ipsetName, "dst"}
@@ -162,13 +170,13 @@ func updateACLConfiglet(ifname string, oldACLs []types.ACE, newACLs []types.ACE,
 			ip6tableCmd(args...)
 		}
 	}
-	// Look for new which should be deleted
+	// Look for new which should be inserted
 	for _, rule := range newRules {
 		if containsRule(oldRules, rule) {
 			continue
 		}
 		fmt.Printf("modifyACLConfiglet: add rule %v\n", rule)
-		args := []string{"-A", "FORWARD"}
+		args := []string{"-I", "FORWARD"}
 		args = append(args, rule...)
 		if ipVer == 4 {
 			iptableCmd(args...)

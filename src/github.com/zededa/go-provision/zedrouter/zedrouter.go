@@ -46,9 +46,9 @@ func main() {
 
 	fileChanges := make(chan string)
 	go WatchConfigStatus(configDirname, statusDirname, fileChanges)
-	// XXX can we feed in a "L" change when LISP needs to be restarted?
-	// Need to collapse multiple requests into one. Only useful on startiup
-	// with ReadDir above.
+	// XXX can we feed in a "L" change when LISP needs to be restarted
+	// to avoid multiple restarts when we do the initial ReadDir of
+	// of the application configs?
 	for {
 		change := <-fileChanges
 		// log.Println("fileChange:", change)
@@ -205,14 +205,16 @@ func handleInit(configFilename string, statusFilename string,
 
 	// Setup initial iptables rules
 	iptablesInit()
-	// XXX also setup ip forwarding sysctl?
 
-	// XXX hack until we extract ipsets from acl config
-	if err := ipsetCreatePair("google.com"); err != nil {
-		log.Fatal("ipset create for google.com", err)
+	_, err = exec.Command("sysctl", "-w",
+		"net.ipv4.ip_forward=1").Output()
+	if err != nil {
+		log.Fatal("Failed setting ip_forward ", err)
 	}
-	if err := ipsetCreatePair("zededa.net"); err != nil {
-		log.Fatal("ipset create for zededa.net", err)
+	_, err = exec.Command("sysctl", "-w",
+		"net.ipv6.conf.all.forwarding=1").Output()
+	if err != nil {
+		log.Fatal("Failed setting ipv6.conf.all.forwarding ", err)
 	}
 }
 
@@ -450,8 +452,6 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 
 		// Create default ipset with all the EIDs in NameToEidList
 		// Can be used in ACLs by specifying "alleids" as match.
-		// XXX unique "alleids" for ACE match?
-		//    ipset create eids.${OLIFNAME} 
 		deleteEidIpsetConfiglet(olIfname, false)
 		createEidIpsetConfiglet(olIfname, olConfig.NameToEidList)
 		
@@ -709,8 +709,6 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 		// Delete LISP configlets
 		deleteLispConfiglet(lispRunDirname, olStatus.IID,
 			olStatus.EID, globalConfig.Uplink)
-
-		// XXX did we add to /etc/host when created? No
 	} else {
 		// Delete everything for overlay
 		for olNum := 1; olNum <= maxOlNum; olNum++ {

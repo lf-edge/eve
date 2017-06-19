@@ -18,7 +18,7 @@ import (
 
 // Need to fill in IID in 2 places
 // Use this for the Mgmt IID
-// XXX need to be able to set the ms name?
+// XXX need to be able to set the ms name? Not needed for demo
 const lispIIDtemplateMgmt=`
 lisp map-server {
     dns-name = ms1.zededa.net
@@ -53,7 +53,7 @@ lisp map-server {
 
 // Need to fill in (signature, IID, EID, IID, UplinkIfname)
 // Use this for the Mgmt IID/EID
-// XXX need to be able to set the username dummy?
+// XXX need to be able to set the username dummy? not needed for demo
 const lispEIDtemplateMgmt=`
 lisp json {
     json-name = signature
@@ -118,7 +118,7 @@ const StopCmd =  "/usr/local/bin/lisp/STOP-LISP"
 // <globalRunDirname>/lisp/<eid>.
 // We concatenate all of those to baseFilename and store the result
 // in destFilename
-
+//
 // XXX would be more polite to return an error then to Fatal
 func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 			EID net.IP, signature string, upLinkIfname string,
@@ -221,7 +221,7 @@ func updateLisp(lispRunDirname string, upLinkIfname string) {
 	restartLisp(lispRunDirname, upLinkIfname)
 }
 
-// XXX would like to limit number of restarts of LISP. Do at end of loop
+// XXX would like to limit number of restarts of LISP. Somehow do at end of loop
 // main event loop in zedrouter.go??
 func restartLisp(lispRunDirname string, upLinkIfname string) {
 	fmt.Printf("restartLisp: %s %s\n", lispRunDirname, upLinkIfname)
