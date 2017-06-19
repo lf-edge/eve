@@ -9,11 +9,12 @@ if /bin/true; then
     if [ $? != 0 ]; then
 	exit $?
     fi
+    cp -p bin/{client,server,register,zedrouter} bin/linux_x86_64/
     GOARCH=arm64 go build -v github.com/zededa/go-provision/client
     GOARCH=arm64 go build -v github.com/zededa/go-provision/server
     GOARCH=arm64 go build -v github.com/zededa/go-provision/register
     GOARCH=arm64 go build -v github.com/zededa/go-provision/zedrouter
-    mv {client,server,register} bin/linux_arm64
+    mv {client,server,register,zedrouter} bin/linux_arm64
 fi
 
 # Creating client tar files
@@ -26,7 +27,7 @@ mkdir -p $TMPDIR/etc/zededa $TMPDIR/bin/zededa
 cp -p README $TMPDIR/bin/zededa/
 cp -p etc/* $TMPDIR/etc/zededa
 cp -p *.sh $TMPDIR/bin/zededa
-cp -p bin/$TYPE/{client,server,register} $TMPDIR/bin/zededa
+cp -p bin/$TYPE/{client,server,register,zedrouter} $TMPDIR/bin/zededa
 (cd $TMPDIR; tar -cf $DIR/go-provision.$TYPE.tar.gz .)
 rm -rf $TMPDIR
 
@@ -36,7 +37,7 @@ mkdir -p $TMPDIR/etc/zededa $TMPDIR/bin/zededa
 cp -p README $TMPDIR/bin/zededa/
 cp -p etc/* $TMPDIR/etc/zededa
 cp -p *.sh $TMPDIR/bin/zededa
-cp -p bin/$TYPE/{client,server,register} $TMPDIR/bin/zededa
+cp -p bin/$TYPE/{client,server,register,zedrouter} $TMPDIR/bin/zededa
 (cd $TMPDIR; tar -cf $DIR/go-provision.$TYPE.tar.gz .)
 rm -rf $TMPDIR
 
