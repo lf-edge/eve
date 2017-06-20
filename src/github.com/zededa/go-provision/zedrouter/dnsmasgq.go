@@ -55,6 +55,7 @@ dhcp-range=172.27.0.0,static,255.255.0.0,infinite
 // XXX would be more polite to return an error then to Fatal
 func createDnsmasqOverlayConfiglet(cfgPathname string, olIfname string,
      olAddr1 string, olAddr2 string, olMac string, hostsDir string) {
+	fmt.Printf("createDnsmasqOverlayConfiglen: %s\n", olIfname)
 	file, err := os.Create(cfgPathname)
 	if err != nil {
 		log.Fatal("os.Create for ", cfgPathname, err)
@@ -73,6 +74,7 @@ func createDnsmasqOverlayConfiglet(cfgPathname string, olIfname string,
 // XXX would be more polite to return an error then to Fatal
 func createDnsmasqUnderlayConfiglet(cfgPathname string, ulIfname string,
      ulAddr1 string, ulAddr2 string, ulMac string) {
+	fmt.Printf("createDnsmasqUnderlayConfiglen: %s\n", ulIfname)
 	file, err := os.Create(cfgPathname)
 	if err != nil {
 		log.Fatal("os.Create for ", cfgPathname, err)
@@ -87,6 +89,7 @@ func createDnsmasqUnderlayConfiglet(cfgPathname string, ulIfname string,
 }
 
 func deleteDnsmasqConfiglet(cfgPathname string) {
+	fmt.Printf("deleteDnsmasqOverlayConfiglen: %s\n", cfgPathname)
 	if err := os.Remove(cfgPathname); err != nil {
 		log.Println("Remove ", cfgPathname, err)
 	}
@@ -98,6 +101,7 @@ func deleteDnsmasqConfiglet(cfgPathname string) {
 // or
 //    ${DMDIR}/dnsmasq --conf-file=/etc/dnsmasq.${ULIFNAME}.conf
 func startDnsmasq(cfgPathname string) {
+	fmt.Printf("startDnsmasq: %s\n", cfgPathname)
 	cmd := "nohup"
 	args := []string{
 		"/home/nordmark/dnsmasq-2.75/src/dnsmasq",
@@ -109,5 +113,6 @@ func startDnsmasq(cfgPathname string) {
 
 //    pkill -u nobody -f dnsmasq.${IFNAME}.conf
 func stopDnsmasq(cfgFilename string, printOnError bool) {
+	fmt.Printf("stopDnsmasq: %s\n", cfgFilename)
 	pkillUserArgs("nobody", cfgFilename, printOnError)
 }

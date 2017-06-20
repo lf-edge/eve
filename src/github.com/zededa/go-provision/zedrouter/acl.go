@@ -168,8 +168,6 @@ func updateACLConfiglet(ifname string, oldACLs []types.ACE, newACLs []types.ACE,
 		ifname, oldACLs, newACLs)
 	oldRules := aclToRules(ifname, oldACLs, ipVer)
 	newRules := aclToRules(ifname, newACLs, ipVer)
-	fmt.Printf("updateACLConfiglet: oldRules %v\n", oldRules)
-	fmt.Printf("updateACLConfiglet: newRules %v\n", newRules)
 	// Look for old which should be deleted
 	for _, rule := range oldRules {
 		if containsRule(newRules, rule) {

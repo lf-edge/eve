@@ -55,7 +55,6 @@ func main() {
 		parts := strings.Split(change, " ")
 		operation := parts[0]
 		fileName := parts[1]
-		// fmt.Printf("OP <%s> file <%s>\n", operation, fileName)
 		if !strings.HasSuffix(fileName, ".json") {
 			log.Printf("Ignoring file <%s>\n", fileName)
 			continue
@@ -84,7 +83,6 @@ func main() {
 					fileName, uuid.String())
 				continue
 			}
-			fmt.Printf("handleDelete(%s)\n", fileName)
 			statusName := statusDirname + "/" + fileName
 			handleDelete(statusName, status)
 			continue
@@ -113,7 +111,6 @@ func main() {
 		statusFile := statusDirname + "/" + fileName
 		if _, err := os.Stat(statusFile); err != nil {
 			// File does not exist in status hence new
-			fmt.Printf("handleCreate(%s)\n", fileName)
 			statusName := statusDirname + "/" + fileName
 			handleCreate(statusName, config)
 			continue
@@ -146,7 +143,6 @@ func main() {
 				fileName)
 			continue
 		}
-		fmt.Printf("handleModify(%s)\n", fileName)
 		statusName := statusDirname + "/" + fileName
 		handleModify(statusName, config, status)
 	}
