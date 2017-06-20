@@ -48,10 +48,9 @@ func main() {
 	go WatchConfigStatus(configDirname, statusDirname, fileChanges)
 	// XXX can we feed in a "L" change when LISP needs to be restarted
 	// to avoid multiple restarts when we do the initial ReadDir of
-	// of the application configs?
+	// of the application configs? Better to remove the raw lisp iptable
 	for {
 		change := <-fileChanges
-		// log.Println("fileChange:", change)
 		parts := strings.Split(change, " ")
 		operation := parts[0]
 		fileName := parts[1]
@@ -133,9 +132,27 @@ func main() {
 				fileName, uuid.String())
 			continue
 		}
-		// XXX look for pending* in status and repeat that operation.
-		// What do we do after that? Could have a new version? Or add
-		// after delete...
+		// Look for pending* in status and repeat that operation.
+		// XXX After that do a full ReadDir to restart ...
+		if status.PendingAdd {
+			statusName := statusDirname + "/" + fileName
+			handleCreate(statusName, config)
+			// XXX set something to rescan?
+			continue
+		}
+		if status.PendingDelete {
+			statusName := statusDirname + "/" + fileName
+			handleDelete(statusName, status)
+			// XXX set something to rescan?
+			continue
+		}
+		if status.PendingModify {
+			statusName := statusDirname + "/" + fileName
+			handleModify(statusName, config, status)
+			// XXX set something to rescan?
+			continue
+		}
+			
 		if config.UUIDandVersion.Version ==
 			status.UUIDandVersion.Version {
 			fmt.Printf("Same version %s for %s\n",
