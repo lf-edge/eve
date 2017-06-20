@@ -230,7 +230,6 @@ type DeviceNetworkConfig struct {
 
 type DeviceNetworkStatus struct {
 	Uplink          string // ifname; should have multiple
-	AppNumAllocator int
 	// XXX add all the uplink ifaddrs?
 	// XXX uplink publicAddr to determine NATed?
 }

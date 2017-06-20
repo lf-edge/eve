@@ -42,6 +42,8 @@ func main() {
 			log.Fatal("Mkdir ", statusDirname, err)
 		}
 	}
+	appNumAllocatorInit(statusDirname, configDirname)
+
 	handleInit(configDirname+"/global", statusDirname+"/global", runDirname)
 
 	fileChanges := make(chan string)
@@ -202,7 +204,6 @@ func handleInit(configFilename string, statusFilename string,
 	if _, err := os.Stat(statusFilename); err != nil {
 		// Create and write with initial values
 		globalStatus.Uplink = globalConfig.Uplink
-		globalStatus.AppNumAllocator = 1
 		writeGlobalStatus()
 	}
 	sb, err := ioutil.ReadFile(statusFilename)
@@ -264,13 +265,10 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 	fmt.Printf("handleCreate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
-	// XXX need to reuse free AppNum's: will fail after 255
-	if globalStatus.AppNumAllocator >= 256 {
-		log.Fatal("Ran out of 256 AppNum's; please clear status/global")
-	}
-	appNum := globalStatus.AppNumAllocator
-	globalStatus.AppNumAllocator += 1
-	writeGlobalStatus()
+	// Pick a local number to indentify the application instance
+	// Used for IP addresses as well bridge and file names.
+	appNum := appNumAllocate(config.UUIDandVersion.UUID,
+		config.IsZedmanager)
 
 	// Start by marking with PendingAdd
 	status := types.AppNetworkStatus{
@@ -353,7 +351,7 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		}
 
 		// Use this name to name files
-		// XXX files might not be used until ZedManager becomes	a domU
+		// XXX files might not be used until Zedmanager becomes	a domU
 		olConfig := config.OverlayNetworkList[0]
 		olNum := 1
 		olIfname := "bo" + strconv.Itoa(olNum) + "_" +
@@ -365,7 +363,7 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		// affect application overlays unless applied to uplink only.
 
 		// XXX NOTE: this hosts file is not read!
-		// XXX easier when ZedManager is in separate domU!
+		// XXX easier when Zedmanager is in separate domU!
 		// Create a hosts file for the overlay based on NameToEidList
 		// Directory is /var/run/zedrouter/hosts.${OLIFNAME}
 		// Each hostname in a separate file in directory to facilitate
@@ -415,6 +413,12 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		//    ip link add ${olIfname} type bridge
 		attrs = netlink.NewLinkAttrs()
 		attrs.Name = olIfname
+		bridgeMac := fmt.Sprintf("00:16:3e:02:%02x:%02x", olNum, appNum)
+		hw, err := net.ParseMAC(bridgeMac)
+		if err != nil {
+			log.Fatal("ParseMAC failed: ", bridgeMac, err)
+		}
+		attrs.HardwareAddr = hw
 		oLink = &netlink.Bridge{LinkAttrs: attrs}
 		if err := netlink.LinkAdd(oLink); err != nil {
 			fmt.Printf("LinkAdd on %s failed: %s\n", olIfname, err)
@@ -507,7 +511,7 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		ulAddr2 := "172.27." + strconv.Itoa(appNum) + ".2"
 		fmt.Printf("ulAddr1 %s ulAddr2 %s\n", ulAddr1, ulAddr2)
 		// Room to handle multiple underlays in 5th byte
-		ulMac := "00:16:3e:0:0:" + strconv.FormatInt(int64(appNum), 16)
+		ulMac := "00:16:3e:0:0:" + strconv.FormatInt(int64(appNum), 16)	
 		fmt.Printf("ulMac %s\n", ulMac)
 
 		// Start clean
@@ -519,6 +523,12 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		//    ip link add ${ulIfname} type bridge
 		attrs = netlink.NewLinkAttrs()
 		attrs.Name = ulIfname
+		bridgeMac := fmt.Sprintf("00:16:3e:04:00:%02x", appNum)
+		hw, err := net.ParseMAC(bridgeMac)
+		if err != nil {
+			log.Fatal("ParseMAC failed: ", bridgeMac, err)
+		}
+		attrs.HardwareAddr = hw
 		uLink = &netlink.Bridge{LinkAttrs: attrs}
 		if err := netlink.LinkAdd(uLink); err != nil {
 			fmt.Printf("LinkAdd on %s failed: %s\n", ulIfname, err)
@@ -601,8 +611,6 @@ func handleModify(statusFilename string, config types.AppNetworkConfig,
 	
 	// Look for ACL and NametoEidList changes in overlay
 	// XXX flag others as errors; need lastError in status?
-	// XXX check for EID, IID and signature difference? Could push IID and
-	// signature to LISP configlet
 	for i, olConfig := range config.OverlayNetworkList {
 		olNum := i + 1
 		fmt.Printf("handleModify olNum %d\n", olNum)
@@ -621,6 +629,19 @@ func handleModify(statusFilename string, config types.AppNetworkConfig,
 
 		// Update ACLs
 		updateACLConfiglet(olIfname, olStatus.ACLs, olConfig.ACLs, 6)
+
+		// XXX ip the ACL update resulted in new eid sets, then
+		// we need to restart dnsmasq (and update its ipset configs?
+		// XXX get a return value from updateAclConfiglet to indicate
+		// whether there were such changes?
+		
+		// Update any signature changes
+		// XXX should we check that EID didn't change?
+		// Create LISP configlets for IID and EID/signature		
+		createLispConfiglet(lispRunDirname, false, olConfig.IID,
+			olConfig.EID, olConfig.Signature, globalConfig.Uplink,
+			olIfname)
+
 	}
 	// Look for ACL changes in underlay
 	for i, ulConfig := range config.UnderlayNetworkList {
@@ -798,6 +819,7 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 	if err := os.Remove(statusFilename); err != nil {
 		log.Println("Failed to remove", statusFilename, err)
 	}
+	appNumFree(status.UUIDandVersion.UUID)
 }
 
 func pkillUserArgs(userName string, match string, printOnError bool) {
