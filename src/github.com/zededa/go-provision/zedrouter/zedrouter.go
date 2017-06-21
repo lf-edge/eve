@@ -226,7 +226,7 @@ func handleInit(configFilename string, statusFilename string,
 		log.Fatal("Failed setting ip_forward ", err)
 	}
 	_, err = exec.Command("sysctl", "-w",
-		"net.ipv6.conf.all.forwarding=1").Output()
+		"net.ipv6.conf.all.forwarding=0").Output()
 	if err != nil {
 		log.Fatal("Failed setting ipv6.conf.all.forwarding ", err)
 	}
@@ -354,7 +354,7 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		// XXX files might not be used until Zedmanager becomes	a domU
 		olConfig := config.OverlayNetworkList[0]
 		olNum := 1
-		olIfname := "bo" + strconv.Itoa(olNum) + "_" +
+		olIfname := "bo" + strconv.Itoa(olNum) + "x" +
 			strconv.Itoa(appNum)
 
 		// XXX ACLs for IsZedmanager? Apply to input/output
@@ -394,7 +394,7 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		fmt.Printf("olNum %d ACLs %v\n", olNum, olConfig.ACLs)
 
 		EID := olConfig.EID
-		olIfname := "bo" + strconv.Itoa(olNum) + "_" +
+		olIfname := "bo" + strconv.Itoa(olNum) + "x" +
 			strconv.Itoa(appNum)
 		fmt.Printf("olIfname %s\n", olIfname)
 		olAddr1 := "fd00::" + strconv.FormatInt(int64(olNum), 16) +
@@ -614,7 +614,7 @@ func handleModify(statusFilename string, config types.AppNetworkConfig,
 	for i, olConfig := range config.OverlayNetworkList {
 		olNum := i + 1
 		fmt.Printf("handleModify olNum %d\n", olNum)
-		olIfname := "bo" + strconv.Itoa(olNum) + "_" +
+		olIfname := "bo" + strconv.Itoa(olNum) + "x" +
 			strconv.Itoa(appNum)
 		olStatus := status.OverlayNetworkList[olNum-1]
 
@@ -728,7 +728,7 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 
 		olNum := 1
 		olStatus := &status.OverlayNetworkList[0]
-		olIfname := "bo" + strconv.Itoa(olNum) + "_" +
+		olIfname := "bo" + strconv.Itoa(olNum) + "x" +
 			strconv.Itoa(appNum)
 		// Delete overlay hosts file
 		hostsDirpath := globalRunDirname + "/hosts." + olIfname
@@ -747,7 +747,7 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 		// Delete everything for overlay
 		for olNum := 1; olNum <= maxOlNum; olNum++ {
 			fmt.Printf("handleDelete olNum %d\n", olNum)
-			olIfname := "bo" + strconv.Itoa(olNum) + "_" +
+			olIfname := "bo" + strconv.Itoa(olNum) + "x" +
 				strconv.Itoa(appNum)
 			fmt.Printf("Deleting olIfname %s\n", olIfname)
 
