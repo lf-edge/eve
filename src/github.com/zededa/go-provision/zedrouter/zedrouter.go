@@ -379,7 +379,7 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		// Create LISP configlets for IID and EID/signature		
 		createLispConfiglet(lispRunDirname, true, olConfig.IID,
 			olConfig.EID, olConfig.Signature, globalConfig.Uplink,
-			olIfname)
+			olIfname, olIfname)
 		status.OverlayNetworkList = config.OverlayNetworkList
 		status.PendingAdd = false
 		writeAppNetworkStatus(&status, statusFilename)
@@ -486,7 +486,7 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		// Create LISP configlets for IID and EID/signature		
 		createLispConfiglet(lispRunDirname, false, olConfig.IID,
 			olConfig.EID, olConfig.Signature, globalConfig.Uplink,
-			olIfname)
+			olIfname, olIfname)
 
 		// Add bridge parameters for Xen to Status
 		olStatus := &status.OverlayNetworkList[olNum-1]
@@ -640,7 +640,7 @@ func handleModify(statusFilename string, config types.AppNetworkConfig,
 		// Create LISP configlets for IID and EID/signature		
 		createLispConfiglet(lispRunDirname, false, olConfig.IID,
 			olConfig.EID, olConfig.Signature, globalConfig.Uplink,
-			olIfname)
+			olIfname, olIfname)
 
 	}
 	// Look for ACL changes in underlay

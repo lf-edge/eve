@@ -79,7 +79,8 @@ lisp database-mapping {
 }
 `
 
-// Need to fill in (tag, signature, IID, EID, IID, IID, IID, UplinkIfname, tag)
+// Need to fill in (tag, signature, IID, EID, IID, IID, IID, UplinkIfname, tag,
+// olifname, olifname, IID)
 // Use this for the application EIDs
 const lispEIDtemplate=`
 lisp json {
@@ -106,7 +107,13 @@ lisp database-mapping {
 	priority = 255
     }
 }
+lisp interface {
+    interface-name = overlay-%s
+    device = %s
+    instance-id = %d
+}
 `
+
 const baseFilename = "/usr/local/etc/zededa/lisp.config.base"
 const destFilename = "/usr/local/bin/lisp/lisp.config"
 const RestartCmd =  "/usr/local/bin/lisp/RESTART-LISP"
@@ -122,10 +129,10 @@ const StopCmd =  "/usr/local/bin/lisp/STOP-LISP"
 // XXX would be more polite to return an error then to Fatal
 func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 			EID net.IP, signature string, upLinkIfname string,
-			tag string) {
-	fmt.Printf("createLispConfiglet: %s %v %d %s %s %s %s\n",
+			tag string, olIfname string) {
+	fmt.Printf("createLispConfiglet: %s %v %d %s %s %s %s %s\n",
 		lispRunDirname, isMgmt, IID, EID, signature, upLinkIfname,
-		tag)
+		tag, olIfname)
 	cfgPathnameIID := lispRunDirname + "/" +
 		strconv.FormatUint(uint64(IID), 10)
 	file1, err := os.Create(cfgPathnameIID)
@@ -149,7 +156,7 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 			IID, IID, IID, IID))
 		file2.WriteString(fmt.Sprintf(lispEIDtemplate,
 			tag, signature, IID, EID, IID, IID, IID, upLinkIfname,
-			tag))
+			tag, olIfname, olIfname, IID))
 	}
 	updateLisp(lispRunDirname, upLinkIfname)
 }
