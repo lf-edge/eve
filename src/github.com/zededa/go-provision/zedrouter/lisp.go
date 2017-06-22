@@ -146,7 +146,14 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	}
 	defer file1.Close()
 
-	cfgPathnameEID := lispRunDirname + "/" + EID.String()
+	var cfgPathnameEID string
+	if isMgmt {
+		// LISP gets confused if the management "lisp interface"
+		// isn't first in the list. Force that for now.
+		cfgPathnameEID = lispRunDirname + "/0-" + EID.String()
+	}  else {
+		cfgPathnameEID = lispRunDirname + "/" + EID.String()
+	}
 	file2, err := os.Create(cfgPathnameEID)
 	if err != nil {
 		log.Fatal("os.Create for ", cfgPathnameEID, err)
@@ -236,6 +243,8 @@ func updateLisp(lispRunDirname string, upLinkIfname string) {
 
 // XXX would like to limit number of restarts of LISP. Somehow do at end of loop
 // main event loop in zedrouter.go??
+// XXX shouldn't need to restart unless we are removing or replacing something
+// Adds should be ok without
 func restartLisp(lispRunDirname string, upLinkIfname string) {
 	fmt.Printf("restartLisp: %s %s\n", lispRunDirname, upLinkIfname)
 	cmd := RestartCmd
