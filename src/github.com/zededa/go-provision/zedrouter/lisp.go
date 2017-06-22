@@ -51,7 +51,7 @@ lisp map-server {
 }
 `
 
-// Need to fill in (signature, IID, EID, IID, UplinkIfname)
+// Need to fill in (signature, IID, EID, IID, UplinkIfname, UplinkIfname, IID)
 // Use this for the Mgmt IID/EID
 // XXX need to be able to set the username dummy? not needed for demo
 const lispEIDtemplateMgmt=`
@@ -76,6 +76,11 @@ lisp database-mapping {
         json-name = signature
 	priority = 255
     }
+}
+lisp interface {
+	interface-name = test-uplink
+	device = %s
+	instance-id = %d
 }
 `
 
@@ -150,7 +155,8 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	if isMgmt {
 		file1.WriteString(fmt.Sprintf(lispIIDtemplateMgmt, IID, IID))
 		file2.WriteString(fmt.Sprintf(lispEIDtemplateMgmt,
-			signature, IID, EID, IID, upLinkIfname))
+			signature, IID, EID, IID, upLinkIfname, upLinkIfname,
+			IID))
 	} else {
 		file1.WriteString(fmt.Sprintf(lispIIDtemplate,
 			IID, IID, IID, IID))

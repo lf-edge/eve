@@ -351,6 +351,8 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		// Replaced RTA_PREFSRC with RTA_SRC
 		rt := netlink.Route{Dst: ipnet, LinkIndex: index,
 			Gw: via, Src: EID}
+		// XXX hikey ended up with a route without the src
+		// Could we have an issue with DAD delay?
 		if err := netlink.RouteAdd(&rt); err != nil {
 			fmt.Printf("RouteAdd fd00::/8 failed: %s\n", err)
 		}
