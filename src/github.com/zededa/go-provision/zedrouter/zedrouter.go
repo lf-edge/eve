@@ -226,10 +226,15 @@ func handleInit(configFilename string, statusFilename string,
 		log.Fatal("Failed setting ip_forward ", err)
 	}
 	_, err = exec.Command("sysctl", "-w",
-		"net.ipv6.conf.all.forwarding=0").Output()
+		"net.ipv6.conf.all.forwarding=1").Output()
 	if err != nil {
 		log.Fatal("Failed setting ipv6.conf.all.forwarding ", err)
 	}
+	// XXX also set these? pcap grabs it first in any case.
+	// net.bridge.bridge-nf-call-ip6tables = 0
+	// net.bridge.bridge-nf-call-iptables = 0
+	// net.bridge.bridge-nf-call-arptables = 0
+
 }
 
 func writeGlobalStatus() {
