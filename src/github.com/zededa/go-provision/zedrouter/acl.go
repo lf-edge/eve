@@ -45,6 +45,11 @@ func aclToRules(ifname string, ACLs []types.ACE, ipVer int) IptablesRuleList {
 	return rulesList
 }
 
+// XXX add an "isOverlay bool" (or overlay int != 0) which results in using
+// -i bo1x1 -d fd00::/8 -j NFLOG --nflog-group N
+// for all of the input rules. NOT -o ifname rules.
+// XXX note that if we have different EID ranges we need something else.
+// XXX should we send -d ::/0 to lispers.net? Or just the eid set?
 func aceToRules(ifname string, ace types.ACE, ipVer int) IptablesRuleList {
 	outArgs := []string{"-i", ifname}
 	inArgs := []string{"-o", ifname}
