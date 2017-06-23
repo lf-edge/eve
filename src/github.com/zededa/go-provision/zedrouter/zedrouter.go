@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"github.com/vishvananda/netlink"
 	"github.com/zededa/go-provision/types"
+	"github.com/zededa/go-provision/watch"
 	"io/ioutil"
 	"log"
 	"net"
@@ -47,7 +48,7 @@ func main() {
 	handleInit(configDirname+"/global", statusDirname+"/global", runDirname)
 
 	fileChanges := make(chan string)
-	go WatchConfigStatus(configDirname, statusDirname, fileChanges)
+	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
 	// XXX can we feed in a "L" change when LISP needs to be restarted
 	// to avoid multiple restarts when we do the initial ReadDir of
 	// of the application configs? Better to remove the raw lisp iptable
@@ -270,7 +271,7 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 	fmt.Printf("handleCreate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
-	// Pick a local number to indentify the application instance
+	// Pick a local number to identify the application instance
 	// Used for IP addresses as well bridge and file names.
 	appNum := appNumAllocate(config.UUIDandVersion.UUID,
 		config.IsZedmanager)
@@ -288,6 +289,8 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 	writeAppNetworkStatus(&status, statusFilename)
 
 	if config.IsZedmanager {
+		fmt.Printf("handleCreate: for %s IsZedmanager\n",
+			config.DisplayName)
 		if len(config.OverlayNetworkList) != 1 ||
 		   len(config.UnderlayNetworkList) != 0 {
 			log.Println("Malformed IsZedmanager config; ignored")
@@ -300,22 +303,22 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		EID := config.OverlayNetworkList[0].EID
 		addr, err := netlink.ParseAddr(EID.String() + "/128")
 		if err != nil {
-			fmt.Printf("ParseAddr %s failed: %s\n", EID, err)
+			log.Printf("ParseAddr %s failed: %s\n", EID, err)
 			return
 		}
 		lo, err := netlink.LinkByName("lo")
 		if err != nil {
-			fmt.Printf("LinkByname(lo) failed: %s\n", err)
+			log.Printf("LinkByname(lo) failed: %s\n", err)
 			return
 		}
 		if err := netlink.AddrAdd(lo, addr); err != nil {
-			fmt.Printf("AddrAdd %s failed: %s\n", EID, err)
+			log.Printf("AddrAdd %s failed: %s\n", EID, err)
 		}
 
 		//    ip route add fd00::/8 via fe80::1 src $eid dev $intf
 		upLink, err := netlink.LinkByName(globalConfig.Uplink)
 		if err != nil {
-			fmt.Printf("LinkByname(%s) failed: %s\n",
+			log.Printf("LinkByname(%s) failed: %s\n",
 				globalConfig.Uplink, err)
 		}
 		index := upLink.Attrs().Index
@@ -349,6 +352,8 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		// XXX needed fix in library for Src to work
 		// /home/nordmark/gocode/src/github.com/vishvananda/netlink/route_linux.go
 		// Replaced RTA_PREFSRC with RTA_SRC
+		// XXX is this working? Don't see SRC in the added route on bobo
+		// nor hikey
 		rt := netlink.Route{Dst: ipnet, LinkIndex: index,
 			Gw: via, Src: EID}
 		// XXX hikey ended up with a route without the src

@@ -152,18 +152,14 @@ type OverlayNetwork struct {
 	// Any additional LISP parameters?
 	ACLs		[]ACE
 	NameToEidList	[]NameToEid	// Used to populate DNS for the overlay
-	// Only used in Status
-	Bridge		string
-	Vif		string
-	Mac		string
+	// Only used in Status XXX create Status variant
+	VifInfo
 }
 
 type UnderlayNetwork struct {
 	ACLs		[]ACE
-	// Only used in Status
-	Bridge		string
-	Vif		string
-	Mac		string
+	// Only used in Status XXX create Status variant
+	VifInfo
 }
 
 // Similar support as in draft-ietf-netmod-acl-model
