@@ -59,6 +59,7 @@ type SignatureInfo struct {
 type DomainConfig struct {
 	UUIDandVersion  UUIDandVersion
 	DisplayName     string	// Use as name for domU? DisplayName+version?
+	AppNum		int	// From networking; makes the name unique
 	Kernel		string	// XXX default /boot/vmlinuz??
 	Ramdisk		string	// default none
 	Memory		int	// in kbytes; XXX round up to Mbytes for xen
