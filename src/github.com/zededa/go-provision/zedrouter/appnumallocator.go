@@ -131,7 +131,6 @@ func appNumAllocate(uuid uuid.UUID, isZedmanager bool) int {
 				break
 			}
 		}
-		// XXX should be zero!
 		if appNum == 0 {
 			fmt.Printf("Failed to find free appNum for %s. Reusing!\n", uuid)
 			// Unreserve first reserved

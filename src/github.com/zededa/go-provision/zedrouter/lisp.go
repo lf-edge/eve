@@ -13,7 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
-	"time"
+	"strings"
 )
 
 // Need to fill in IID in 2 places
@@ -51,7 +51,7 @@ lisp map-server {
 }
 `
 
-// Need to fill in (signature, IID, EID, IID, UplinkIfname, UplinkIfname, IID)
+// Need to fill in (signature, IID, EID, IID, UplinkIfname, olIfname, IID)
 // Use this for the Mgmt IID/EID
 // XXX need to be able to set the username dummy? not needed for demo
 const lispEIDtemplateMgmt=`
@@ -78,7 +78,7 @@ lisp database-mapping {
     }
 }
 lisp interface {
-	interface-name = test-uplink
+	interface-name = overlay-mgmt
 	device = %s
 	instance-id = %d
 }
@@ -131,7 +131,7 @@ const StopCmd =  "/usr/local/bin/lisp/STOP-LISP"
 // We concatenate all of those to baseFilename and store the result
 // in destFilename
 //
-// XXX would be more polite to return an error then to Fatal
+// Would be more polite to return an error then to Fatal
 func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 			EID net.IP, signature string, upLinkIfname string,
 			tag string, olIfname string) {
@@ -162,7 +162,7 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	if isMgmt {
 		file1.WriteString(fmt.Sprintf(lispIIDtemplateMgmt, IID, IID))
 		file2.WriteString(fmt.Sprintf(lispEIDtemplateMgmt,
-			signature, IID, EID, IID, upLinkIfname, upLinkIfname,
+			signature, IID, EID, IID, upLinkIfname, olIfname,
 			IID))
 	} else {
 		file1.WriteString(fmt.Sprintf(lispIIDtemplate,
@@ -174,12 +174,29 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	updateLisp(lispRunDirname, upLinkIfname)
 }
 
-func deleteLispConfiglet(lispRunDirname string, IID uint32,
+func updateLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
+			EID net.IP, signature string, upLinkIfname string,
+			tag string, olIfname string) {
+	fmt.Printf("updateLispConfiglet: %s %v %d %s %s %s %s %s\n",
+		lispRunDirname, isMgmt, IID, EID, signature, upLinkIfname,
+		tag, olIfname)
+	createLispConfiglet(lispRunDirname, isMgmt, IID, EID, signature,
+		upLinkIfname, tag, olIfname)
+}
+
+func deleteLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 			EID net.IP, upLinkIfname string) {
 	fmt.Printf("deleteLispConfiglet: %s %d %s %s\n",
 		lispRunDirname, IID, EID, upLinkIfname)
 
-	cfgPathnameEID := lispRunDirname + "/" + EID.String()
+	var cfgPathnameEID string
+	if isMgmt {
+		// LISP gets confused if the management "lisp interface"
+		// isn't first in the list. Force that for now.
+		cfgPathnameEID = lispRunDirname + "/0-" + EID.String()
+	}  else {
+		cfgPathnameEID = lispRunDirname + "/" + EID.String()
+	}
 	if err := os.Remove(cfgPathnameEID); err != nil {
 		log.Println("os.Remove ", cfgPathnameEID, err)
 	}
@@ -188,7 +205,6 @@ func deleteLispConfiglet(lispRunDirname string, IID uint32,
 	// can refer to it.
 	// cfgPathnameIID := lispRunDirname + "/" +
 	//	strconv.FormatUint(uint64(IID), 10)
-
 
 	updateLisp(lispRunDirname, upLinkIfname)
 }
@@ -218,7 +234,12 @@ func updateLisp(lispRunDirname string, upLinkIfname string) {
 		log.Println("ReadDir ", lispRunDirname, err)
 		return
 	}
+	eidCount := 0
 	for _, file := range files {
+		// The IID files are named by the IID hence an integer
+		if _, err := strconv.Atoi(file.Name()); err != nil {
+			eidCount += 1
+		}
 		filename := lispRunDirname + "/" + file.Name()
 		content, err := ioutil.ReadFile(filename)
 		if err != nil {
@@ -238,49 +259,72 @@ func updateLisp(lispRunDirname string, upLinkIfname string) {
 		log.Println("Rename ", tmpfile.Name(), destFilename, err)
 		return
 	}	
-	restartLisp(lispRunDirname, upLinkIfname)
+	// XXX determine the set of devices from the above config file
+        grep := exec.Command("grep", "device = ", destFilename)
+	awk := exec.Command("awk", "{print $NF}")
+	awk.Stdin, _ = grep.StdoutPipe()
+	if err := grep.Start(); err != nil {
+		log.Println("grep.Start failed: ", err)
+		return
+	}
+	intfs, err := awk.Output()
+	if err != nil {
+		log.Println("awk.Output failed: ", err)
+		return
+	}
+	_ = grep.Wait()
+	_ = awk.Wait()
+	devices := strings.TrimSpace(string(intfs))
+	devices = strings.Replace(devices, "\n", " ", -1)
+	fmt.Printf("updateLisp: found %d EIDs devices <%v>\n", eidCount, devices)
+
+	// Check how many EIDs we have configured. If none we stop lisp
+	if eidCount == 0 {
+		stopLisp(lispRunDirname)
+	} else {
+		restartLisp(lispRunDirname, upLinkIfname, devices)
+	}
 }
 
+// XXX can't restart-lisp until the domU's are booted otherwise it complains/crashes with PcapPyException: The interface went down
+// XXX can lisp wait until the interface is up? Otherwise have to split
+// and do the lisp.config after the activate=True and xl has created it.
+//
+// XXX cd `dirname $0` in STOP-LIST
+// XXX sudo -E in RESTART-LISP
+// XXX also crash with PcapPyException: "dbo1x0: SIOCETHTOOL(ETHTOOL_GET_TS_INFO) ioctl failed: No such device
+//
 // XXX would like to limit number of restarts of LISP. Somehow do at end of loop
 // main event loop in zedrouter.go??
 // XXX shouldn't need to restart unless we are removing or replacing something
-// Adds should be ok without
-func restartLisp(lispRunDirname string, upLinkIfname string) {
+// XXX also need to restart when adding an overlay interface
+// Adds should be ok without. How can we tell?
+func restartLisp(lispRunDirname string, upLinkIfname string, devices string) {
 	fmt.Printf("restartLisp: %s %s\n", lispRunDirname, upLinkIfname)
-	cmd := RestartCmd
 	args := []string{
+		RestartCmd,
 		"8080",
 		upLinkIfname,
 	}
-	_, err := exec.Command(cmd, args...).Output()
+	cmd := exec.Command(RestartCmd)
+	cmd.Args = args
+	env := os.Environ()
+	env = append(env, fmt.Sprintf("LISP_NO_IPTABLES="))
+	env = append(env, fmt.Sprintf("LISP_PCAP_LIST=\"%s\"", devices))
+	cmd.Env = env
+	_, err := cmd.Output()
 	if err != nil {
 		log.Println("RESTART-LISP failed ", err)
 	}
-	iptablesLispFixup(true)
+	fmt.Printf("restartLisp done\n")
+	iptablesLispFixup()
 }
 
-// Need to re-remove these rules after a re-start
-// Have to retry until LISP has added the rules.
-// XXX should we remove all the lisp rules?
-func iptablesLispFixup(retry bool) {
-	for i := 1; i < 10; i++ {
-		err := iptableCmd("-t",  "raw",  "-D",  "lisp",  "-j", "DROP")
-		if err == nil || !retry {
-			break
-		}
-		time.Sleep(1000 * time.Millisecond)
-	}
-	for i := 1; i < 10; i++ {
-		err := ip6tableCmd("-t",  "raw",  "-D",  "lisp",  "-j", "DROP")
-		if err == nil || !retry {
-			break
-		}
-		time.Sleep(1000 * time.Millisecond)
-	}
-	// LISP startup clobbers these as well
-	iptableCmd("-t", "nat", "-F", "POSTROUTING")
-	iptableCmd("-t", "nat", "-A", "POSTROUTING", "-o", globalConfig.Uplink,
-		"-j", "MASQUERADE")
+// lisp startup seems to clobber these rules even when we set LISP_NO_IPTABLES
+func iptablesLispFixup() {
+       iptableCmd("-t", "nat", "-F", "POSTROUTING")
+       iptableCmd("-t", "nat", "-A", "POSTROUTING", "-o", globalConfig.Uplink,
+               "-j", "MASQUERADE")
 }
 
 // XXX need cwd change; get this error:
@@ -292,4 +336,5 @@ func stopLisp(lispRunDirname string) {
 	if err != nil {
 		log.Println("STOP-LISP failed ", err)
 	}
+	fmt.Printf("stopLisp done\n")
 }

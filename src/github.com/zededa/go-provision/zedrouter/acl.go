@@ -16,12 +16,19 @@ import (
 type IptablesRuleList []IptablesRule
 type IptablesRule []string
 
-func createACLConfiglet(ifname string, ACLs []types.ACE, ipVer int) {
+
+func createACLConfiglet(ifname string, isMgmt bool, ACLs []types.ACE,
+     ipVer int, overlayIP string) {
 	fmt.Printf("createACLConfiglet: ifname %s, ACLs %v\n", ifname, ACLs)
-	rules := aclToRules(ifname, ACLs, ipVer)
+	rules := aclToRules(ifname, ACLs, ipVer, overlayIP)
 	for _, rule := range rules {
 		fmt.Printf("createACLConfiglet: rule %v\n", rule)
-		args := []string{"-A", "FORWARD"}
+		args := rulePrefix("-A", isMgmt, ipVer, rule)
+		if args == nil {
+			fmt.Printf("createACLConfiglet: skipping rule %v\n",
+				rule)
+			continue
+		}
 		args = append(args, rule...)
 		if ipVer == 4 {
 			iptableCmd(args...)
@@ -29,11 +36,28 @@ func createACLConfiglet(ifname string, ACLs []types.ACE, ipVer int) {
 			ip6tableCmd(args...)
 		}
 	}
+	if overlayIP != "" {
+		// Manually add rules so that lispers.net doesn't see and drop
+		// the packet on dbo1x0
+		ip6tableCmd("-A", "FORWARD", "-i", ifname, "-j", "DROP")
+	}
 }
 
 // Returns a list of iptables commands, witout the initial "-A FORWARD"
-func aclToRules(ifname string, ACLs []types.ACE, ipVer int) IptablesRuleList {
+func aclToRules(ifname string, ACLs []types.ACE, ipVer int,
+     overlayIP string) IptablesRuleList {
 	rulesList := IptablesRuleList{}
+	if overlayIP != "" {
+		// Need to allow local communication */
+		// Note that sufficient for src or dst to be local
+		rule1 := []string{"-i", ifname, "-m", "set", "--match-set",
+			"local.ipv6", "dst", "-j", "ACCEPT"}
+		rule2 := []string{"-i", ifname, "-m", "set", "--match-set",
+			"local.ipv6", "src", "-j", "ACCEPT"}
+		rule3 := []string{"-i", ifname, "-d", overlayIP, "-j", "ACCEPT"}
+		rule4 := []string{"-i", ifname, "-s", overlayIP, "-j", "ACCEPT"}
+		rulesList = append(rulesList, rule1, rule2, rule3, rule4)
+	}
 	for _, ace := range ACLs {
 		rules := aceToRules(ifname, ace, ipVer)
 		rulesList = append(rulesList, rules...)
@@ -45,14 +69,12 @@ func aclToRules(ifname string, ACLs []types.ACE, ipVer int) IptablesRuleList {
 	return rulesList
 }
 
-// XXX add an "isOverlay bool" (or overlay int != 0) which results in using
-// -i bo1x1 -d fd00::/8 -j NFLOG --nflog-group N
-// for all of the input rules. NOT -o ifname rules.
-// XXX note that if we have different EID ranges we need something else.
-// XXX should we send -d ::/0 to lispers.net? Or just the eid set?
 func aceToRules(ifname string, ace types.ACE, ipVer int) IptablesRuleList {
 	outArgs := []string{"-i", ifname}
 	inArgs := []string{"-o", ifname}
+	// XXX should we always add local match on eid if isOverlay?
+	// 	outArgs -s eid; inArgs -d eid
+	// but don't know eid here. See below.
 	for _, match := range ace.Matches {
 		addOut := []string{}
 		addIn := []string{}
@@ -91,11 +113,15 @@ func aceToRules(ifname string, ace types.ACE, ipVer int) IptablesRuleList {
 				ipsetName, "src"}
 		case "eidset":
 			// The eidset only applies to IPv6 overlay
+			// XXX shouldn't we require that both src and dst in set?
+			// Or always compare the eid for overlay above?
 			ipsetName := "eids." + ifname	
 			addOut = []string{"-m", "set", "--match-set",
-				ipsetName, "dst"}
-			addIn = []string{"-m", "set", "--match-set",
+				ipsetName, "dst", "-m", "set", "--match-set",
 				ipsetName, "src"}
+			addIn = []string{"-m", "set", "--match-set",
+				ipsetName, "src", "-m", "set", "--match-set",
+				ipsetName, "dst"}
 		default:
 			// XXX add more types; error if unknown.
 			log.Println("Unsupported ACE match type: ",
@@ -137,13 +163,43 @@ func aceToRules(ifname string, ace types.ACE, ipVer int) IptablesRuleList {
 	rulesList = append(rulesList, outArgs, inArgs)
 	if foundLimit {
 		// Add separate DROP without the limit to count the excess
-		unlimitedOutArgs = append(unlimitedOutArgs, []string{"-j", "DROP"}...)
-		unlimitedInArgs = append(unlimitedInArgs, []string{"-j", "DROP"}...)
+		unlimitedOutArgs = append(unlimitedOutArgs,
+			[]string{"-j", "DROP"}...)
+		unlimitedInArgs = append(unlimitedInArgs,
+			[]string{"-j", "DROP"}...)
 		fmt.Printf("unlimitedOutArgs %v\n", unlimitedOutArgs)
 		fmt.Printf("unlimitedInArgs %v\n", unlimitedInArgs)
 		rulesList = append(rulesList, unlimitedOutArgs, unlimitedInArgs)
 	}	
 	return rulesList
+}
+
+// Determine which rules to skip and what prefix/table to use
+func rulePrefix(operation string, isMgmt bool, ipVer int,
+     rule IptablesRule) IptablesRule {
+	prefix := []string{}
+	if isMgmt {
+		// XXX this is just for sending; not receiving
+		// XXX could have a rule for FORWARD -i lispers.net which
+		// only accepts set set of all local EIDs.
+		// Don't want -i rules for OUTPUT
+		if rule[0] != "-i" {
+			prefix = []string{operation, "OUTPUT"}
+		} else {
+			return nil
+		}
+	} else if ipVer == 6 {
+		// Don't want -o rules for ipv6 overlay PREROUTING entry
+		if rule[0] != "-o" {
+			prefix = []string{"-t", "raw", operation, "PREROUTING"}
+		} else {
+			return nil
+		}
+	} else {
+		// Underlay
+		prefix = []string{operation, "FORWARD"}
+	}
+	return prefix
 }
 
 func equalRule(r1 IptablesRule, r2 IptablesRule) bool {
@@ -167,19 +223,24 @@ func containsRule(set IptablesRuleList, member IptablesRule) bool {
 	return false
 }
 
-func updateACLConfiglet(ifname string, oldACLs []types.ACE, newACLs []types.ACE,
-     ipVer int) {
+func updateACLConfiglet(ifname string, isMgmt bool, oldACLs []types.ACE,
+     newACLs []types.ACE, ipVer int, overlayIP string) {
 	fmt.Printf("updateACLConfiglet: ifname %s, oldACLs %v newACLs %v\n",
 		ifname, oldACLs, newACLs)
-	oldRules := aclToRules(ifname, oldACLs, ipVer)
-	newRules := aclToRules(ifname, newACLs, ipVer)
+	oldRules := aclToRules(ifname, oldACLs, ipVer, overlayIP)
+	newRules := aclToRules(ifname, newACLs, ipVer, overlayIP)
 	// Look for old which should be deleted
 	for _, rule := range oldRules {
 		if containsRule(newRules, rule) {
 			continue
 		}
 		fmt.Printf("modifyACLConfiglet: delete rule %v\n", rule)
-		args := []string{"-D", "FORWARD"}
+		args := rulePrefix("-D", isMgmt, ipVer, rule)
+		if args == nil {
+			fmt.Printf("modifyACLConfiglet: skipping delete rule %v\n",
+				rule)
+			continue
+		}
 		args = append(args, rule...)
 		if ipVer == 4 {
 			iptableCmd(args...)
@@ -193,7 +254,12 @@ func updateACLConfiglet(ifname string, oldACLs []types.ACE, newACLs []types.ACE,
 			continue
 		}
 		fmt.Printf("modifyACLConfiglet: add rule %v\n", rule)
-		args := []string{"-I", "FORWARD"}
+		args := rulePrefix("-I", isMgmt, ipVer, rule)
+		if args == nil {
+			fmt.Printf("modifyACLConfiglet: skipping insert rule %v\n",
+				rule)
+			continue
+		}
 		args = append(args, rule...)
 		if ipVer == 4 {
 			iptableCmd(args...)
@@ -203,17 +269,27 @@ func updateACLConfiglet(ifname string, oldACLs []types.ACE, newACLs []types.ACE,
 	}
 }
 
-func deleteACLConfiglet(ifname string, ACLs []types.ACE, ipVer int) {
+func deleteACLConfiglet(ifname string, isMgmt bool, ACLs []types.ACE,
+     ipVer int, overlayIP string) {
 	fmt.Printf("deleteACLConfiglet: ifname %s ACLs %v\n", ifname, ACLs)
-	rules := aclToRules(ifname, ACLs, ipVer)
+	rules := aclToRules(ifname, ACLs, ipVer, overlayIP)
 	for _, rule := range rules {
 		fmt.Printf("deleteACLConfiglet: rule %v\n", rule)
-		args := []string{"-D", "FORWARD"}
+		args := rulePrefix("-D", isMgmt, ipVer, rule)
+		if args == nil {
+			fmt.Printf("deleteACLConfiglet: skipping rule %v\n",
+				rule)
+			continue
+		}
 		args = append(args, rule...)
 		if ipVer == 4 {
 			iptableCmd(args...)
 		} else if ipVer == 6 {
 			ip6tableCmd(args...)
 		}
+	}
+	if overlayIP != "" {
+		// Manually delete the manual add above
+		ip6tableCmd("-D", "FORWARD", "-i", ifname, "-j", "DROP")
 	}
 }

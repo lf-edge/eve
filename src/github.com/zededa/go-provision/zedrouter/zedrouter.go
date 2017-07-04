@@ -54,6 +54,7 @@ func main() {
 	// of the application configs? Better to remove the raw lisp iptable
 	for {
 		change := <-fileChanges
+		// fmt.Printf("XXX Change in dir: %v\n", change)
 		parts := strings.Split(change, " ")
 		operation := parts[0]
 		fileName := parts[1]
@@ -221,6 +222,9 @@ func handleInit(configFilename string, statusFilename string,
 	// Setup initial iptables rules
 	iptablesInit()
 
+	// ipsets which are independent of config
+	createDefaultIpset()
+
 	_, err = exec.Command("sysctl", "-w",
 		"net.ipv4.ip_forward=1").Output()
 	if err != nil {
@@ -231,11 +235,25 @@ func handleInit(configFilename string, statusFilename string,
 	if err != nil {
 		log.Fatal("Failed setting ipv6.conf.all.forwarding ", err)
 	}
-	// XXX also set these? pcap grabs it first in any case.
-	// net.bridge.bridge-nf-call-ip6tables = 0
-	// net.bridge.bridge-nf-call-iptables = 0
-	// net.bridge.bridge-nf-call-arptables = 0
-
+	// We use ip6tables for the bridge
+	_, err = exec.Command("sysctl", "-w",
+		"net.bridge.bridge-nf-call-ip6tables=1").Output()
+	if err != nil {
+		// XXX not in bobo's kernel
+		log.Println("Failed setting net.bridge-nf-call-ip6tables ", err)
+	}
+	_, err = exec.Command("sysctl", "-w",
+		"net.bridge.bridge-nf-call-iptables=1").Output()
+	if err != nil {
+		// XXX not in bobo's kernel
+		log.Println("Failed setting net.bridge-nf-call-iptables ", err)
+	}
+	_, err = exec.Command("sysctl", "-w",
+		"net.bridge.bridge-nf-call-arptables=1").Output()
+	if err != nil {
+		// XXX not in bobo's kernel
+		log.Println("Failed setting net.bridge-nf-call-arptables ", err)
+	}
 }
 
 func writeGlobalStatus() {
@@ -297,31 +315,64 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 			return
 		}
 		
-		// Configure the EID on loopback and set up a default route
+		// Use this olIfname to name files
+		// XXX some files might not be used until Zedmanager becomes
+		// a domU at which point IsZedMansger boolean won't be needed
+		olConfig := config.OverlayNetworkList[0]
+		olNum := 1
+		olIfname := "dbo" + strconv.Itoa(olNum) + "x" +
+			strconv.Itoa(appNum)
+
+		// Create olIfname dummy interface with EID and fd00::/8 route
+		// pointing at it.
+		
+		// Start clean
+		attrs := netlink.NewLinkAttrs()
+		attrs.Name = olIfname
+		oLink := &netlink.Dummy{LinkAttrs: attrs}
+		netlink.LinkDel(oLink)
+
+		//    ip link add ${olIfname} type dummy
+		attrs = netlink.NewLinkAttrs()
+		attrs.Name = olIfname
+		olIfMac := fmt.Sprintf("00:16:3e:02:%02x:%02x", olNum, appNum)
+		hw, err := net.ParseMAC(olIfMac)
+		if err != nil {
+			log.Fatal("ParseMAC failed: ", olIfMac, err)
+		}
+		attrs.HardwareAddr = hw
+		oLink = &netlink.Dummy{LinkAttrs: attrs}
+		if err := netlink.LinkAdd(oLink); err != nil {
+			fmt.Printf("LinkAdd on %s failed: %s\n", olIfname, err)
+		}
+
+		//    ip link set ${olIfname} up
+		if err := netlink.LinkSetUp(oLink); err != nil {
+			fmt.Printf("LinkSetUp on %s failed: %s\n",
+				olIfname, err)
+		}
+
+		//    ip link set ${olIfname} arp on
+		if err := netlink.LinkSetARPOn(oLink); err != nil {
+			fmt.Printf("LinkSetARPOn on %s failed: %s\n", olIfname,
+			err)
+		}
+
+		// Configure the EID on olIfname and set up a default route
 		// for all fd00 EIDs
-		//    ip addr add ${EID}/128 dev lo
+		//    ip addr add ${EID}/128 dev ${olIfname}
 		EID := config.OverlayNetworkList[0].EID
 		addr, err := netlink.ParseAddr(EID.String() + "/128")
 		if err != nil {
 			log.Printf("ParseAddr %s failed: %s\n", EID, err)
 			return
 		}
-		lo, err := netlink.LinkByName("lo")
-		if err != nil {
-			log.Printf("LinkByname(lo) failed: %s\n", err)
-			return
-		}
-		if err := netlink.AddrAdd(lo, addr); err != nil {
+		if err := netlink.AddrAdd(oLink, addr); err != nil {
 			log.Printf("AddrAdd %s failed: %s\n", EID, err)
 		}
 
 		//    ip route add fd00::/8 via fe80::1 src $eid dev $intf
-		upLink, err := netlink.LinkByName(globalConfig.Uplink)
-		if err != nil {
-			log.Printf("LinkByname(%s) failed: %s\n",
-				globalConfig.Uplink, err)
-		}
-		index := upLink.Attrs().Index
+		index := oLink.Attrs().Index
 		_, ipnet, err := net.ParseCIDR("fd00::/8")
 		if err != nil {
 			log.Fatal("ParseCIDR fd00::/8 failed:\n", err)
@@ -336,7 +387,7 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		// uplink interface.
 		//    ip nei add fe80::1 lladdr 0:0:0:0:0:1 dev $intf
 		//    ip nei change fe80::1 lladdr 0:0:0:0:0:1 dev $intf
-		hw, err := net.ParseMAC("00:00:00:00:00:01")
+		hw, err = net.ParseMAC("00:00:00:00:00:01")
 		if err != nil {
 			log.Fatal("ParseMAC failed: ", err)
 		}
@@ -350,6 +401,8 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		}		
 
 		// XXX needed fix in library for Src to work
+		// XXX do we need src when using dbo1x0? Route is out that
+		// interface.
 		// /home/nordmark/gocode/src/github.com/vishvananda/netlink/route_linux.go
 		// Replaced RTA_PREFSRC with RTA_SRC
 		// XXX is this working? Don't see SRC in the added route on bobo
@@ -361,18 +414,6 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		if err := netlink.RouteAdd(&rt); err != nil {
 			fmt.Printf("RouteAdd fd00::/8 failed: %s\n", err)
 		}
-
-		// Use this name to name files
-		// XXX files might not be used until Zedmanager becomes	a domU
-		olConfig := config.OverlayNetworkList[0]
-		olNum := 1
-		olIfname := "bo" + strconv.Itoa(olNum) + "x" +
-			strconv.Itoa(appNum)
-
-		// XXX ACLs for IsZedmanager? Apply to input/output
-		// XXX use an IpSet for the EIDs; overlay.$IID?
-		// Implies an input/output drop for fd00::/8 but that will
-		// affect application overlays unless applied to uplink only.
 
 		// XXX NOTE: this hosts file is not read!
 		// XXX easier when Zedmanager is in separate domU!
@@ -388,6 +429,9 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		deleteEidIpsetConfiglet(olIfname, false)
 		createEidIpsetConfiglet(olIfname, olConfig.NameToEidList)
 
+		// Set up ACLs
+		createACLConfiglet(olIfname, true, olConfig.ACLs, 6, "")
+
 		// Create LISP configlets for IID and EID/signature		
 		createLispConfiglet(lispRunDirname, true, olConfig.IID,
 			olConfig.EID, olConfig.Signature, globalConfig.Uplink,
@@ -395,6 +439,8 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		status.OverlayNetworkList = config.OverlayNetworkList
 		status.PendingAdd = false
 		writeAppNetworkStatus(&status, statusFilename)
+		fmt.Printf("handleCreate done for %s\n",
+			config.DisplayName)
 		return
 	}
 	
@@ -469,7 +515,7 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		//    pkill -u radvd -f radvd.${OLIFNAME}.conf
 		stopRadvd(cfgFilename, false)
 		createRadvdConfiglet(cfgPathname, olIfname)
-		startRadvd(cfgPathname)
+		startRadvd(cfgPathname, olIfname)
 
 		// Create a hosts file for the overlay based on NameToEidList
 		// Directory is /var/run/zedrouter/hosts.${OLIFNAME}
@@ -485,7 +531,7 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		createEidIpsetConfiglet(olIfname, olConfig.NameToEidList)
 		
 		// Set up ACLs before we setup dnsmasq
-		createACLConfiglet(olIfname, olConfig.ACLs, 6)
+		createACLConfiglet(olIfname, false, olConfig.ACLs, 6, olAddr1)
 		
 		// Start clean
 		cfgFilename = "dnsmasq." + olIfname + ".conf"
@@ -559,7 +605,7 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		}
 
 		// Create iptables with optional ipset's based ACL
-		createACLConfiglet(ulIfname, ulConfig.ACLs, 4)
+		createACLConfiglet(ulIfname, false, ulConfig.ACLs, 4, "")
 
 		// Start clean
 		cfgFilename := "dnsmasq." + ulIfname + ".conf"
@@ -581,6 +627,7 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 	status.UnderlayNetworkList = config.UnderlayNetworkList
 	status.PendingAdd = false
 	writeAppNetworkStatus(&status, statusFilename)
+	fmt.Printf("handleCreate done for %s\n", config.DisplayName)
 }
 
 // Note that modify will not touch the EID; just ACLs and NameToEidList
@@ -617,7 +664,25 @@ func handleModify(statusFilename string, config types.AppNetworkConfig,
 	writeAppNetworkStatus(&status, statusFilename)
 
 	if config.IsZedmanager {
-		fmt.Printf("XXX need to implement modify for IsZedmanager\n")
+		// XXX Which things can we update? NameToEid? ACLs?
+		olConfig := config.OverlayNetworkList[0]
+		olStatus := status.OverlayNetworkList[0]
+		olNum := 1
+		olIfname := "dbo" + strconv.Itoa(olNum) + "x" +
+			strconv.Itoa(appNum)
+		// Update hosts
+		hostsDirpath := globalRunDirname + "/hosts." + olIfname
+		updateHostsConfiglet(hostsDirpath, olStatus.NameToEidList,
+			olConfig.NameToEidList)
+
+		// Default EID ipset
+		updateEidIpsetConfiglet(olIfname, olStatus.NameToEidList,
+			olConfig.NameToEidList)
+
+		// Update ACLs
+		updateACLConfiglet(olIfname, true, olStatus.ACLs,
+			olConfig.ACLs, 6, "")
+		fmt.Printf("handleUpdate done for %s\n", config.DisplayName)
 		return
 	}
 	
@@ -629,6 +694,8 @@ func handleModify(statusFilename string, config types.AppNetworkConfig,
 		olIfname := "bo" + strconv.Itoa(olNum) + "x" +
 			strconv.Itoa(appNum)
 		olStatus := status.OverlayNetworkList[olNum-1]
+		olAddr1 := "fd00::" + strconv.FormatInt(int64(olNum), 16) +
+			":" + strconv.FormatInt(int64(appNum), 16)
 
 		// Update hosts
 		hostsDirpath := globalRunDirname + "/hosts." + olIfname
@@ -640,9 +707,10 @@ func handleModify(statusFilename string, config types.AppNetworkConfig,
 			olConfig.NameToEidList)
 
 		// Update ACLs
-		updateACLConfiglet(olIfname, olStatus.ACLs, olConfig.ACLs, 6)
+		updateACLConfiglet(olIfname, false, olStatus.ACLs,
+			olConfig.ACLs, 6, olAddr1)
 
-		// XXX ip the ACL update resulted in new eid sets, then
+		// XXX if the ACL update resulted in new eid sets, then
 		// we need to restart dnsmasq (and update its ipset configs?
 		// XXX get a return value from updateAclConfiglet to indicate
 		// whether there were such changes?
@@ -650,7 +718,7 @@ func handleModify(statusFilename string, config types.AppNetworkConfig,
 		// Update any signature changes
 		// XXX should we check that EID didn't change?
 		// Create LISP configlets for IID and EID/signature		
-		createLispConfiglet(lispRunDirname, false, olConfig.IID,
+		updateLispConfiglet(lispRunDirname, false, olConfig.IID,
 			olConfig.EID, olConfig.Signature, globalConfig.Uplink,
 			olIfname, olIfname)
 
@@ -663,13 +731,15 @@ func handleModify(statusFilename string, config types.AppNetworkConfig,
 		ulStatus := status.UnderlayNetworkList[ulNum-1]
 
 		// Update ACLs
-		updateACLConfiglet(ulIfname, ulStatus.ACLs, ulConfig.ACLs, 4)
+		updateACLConfiglet(ulIfname, false, ulStatus.ACLs,
+			ulConfig.ACLs, 4, "")
 	}
 	// Write out what we modified to AppNetworkStatus
 	status.OverlayNetworkList = config.OverlayNetworkList
 	status.UnderlayNetworkList = config.UnderlayNetworkList
 	status.PendingModify = false
 	writeAppNetworkStatus(&status, statusFilename)
+	fmt.Printf("handleUpdate done for %s\n", config.DisplayName)
 }
 
 // Need the olNum and ulNum to delete and EID route to delete
@@ -692,33 +762,32 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 			log.Println("Malformed IsZedmanager status; ignored")
 			return
 		}
+		olNum := 1
+		olStatus := &status.OverlayNetworkList[0]
+		olIfname := "dbo" + strconv.Itoa(olNum) + "x" +
+			strconv.Itoa(appNum)
+
 		// Delete the address from loopback
 		// Delete fd00::/8 route
 		// Delete fe80::1 neighbor
 
-		//    ip addr del ${EID}/128 dev lo
+		//    ip addr del ${EID}/128 dev ${olIfname}
 		EID := status.OverlayNetworkList[0].EID
 		addr, err := netlink.ParseAddr(EID.String() + "/128")
 		if err != nil {
 			fmt.Printf("ParseAddr %s failed: %s\n", EID, err)
 			return
 		}
-		lo, err := netlink.LinkByName("lo")
-		if err != nil {
-			fmt.Printf("LinkByname(lo) failed: %s\n", err)
-			return
-		}
-		if err := netlink.AddrDel(lo, addr); err != nil {
+		attrs := netlink.NewLinkAttrs()
+		attrs.Name = olIfname
+		oLink := &netlink.Dummy{LinkAttrs: attrs}
+		// XXX can we skip explicit deletes and just remove the oLink?
+		if err := netlink.AddrDel(oLink, addr); err != nil {
 			fmt.Printf("AddrDel %s failed: %s\n", EID, err)
 		}
 
 		//    ip route del fd00::/8 via fe80::1 src $eid dev $intf
-		upLink, err := netlink.LinkByName(globalConfig.Uplink)
-		if err != nil {
-			fmt.Printf("LinkByname(%s) failed: %s\n",
-				globalConfig.Uplink, err)
-		}
-		index := upLink.Attrs().Index
+		index := oLink.Attrs().Index
 		_, ipnet, err := net.ParseCIDR("fd00::/8")
 		if err != nil {
 			log.Fatal("ParseCIDR fd00::/8 failed:\n", err)
@@ -738,10 +807,9 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 			fmt.Printf("NeighDel fe80::1 failed: %s\n", err)
 		}		
 
-		olNum := 1
-		olStatus := &status.OverlayNetworkList[0]
-		olIfname := "bo" + strconv.Itoa(olNum) + "x" +
-			strconv.Itoa(appNum)
+		// Remove link and associated addresses
+		netlink.LinkDel(oLink)
+
 		// Delete overlay hosts file
 		hostsDirpath := globalRunDirname + "/hosts." + olIfname
 		deleteHostsConfiglet(hostsDirpath, true)
@@ -750,10 +818,10 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 		deleteEidIpsetConfiglet(olIfname, true)
 
 		// Delete ACLs
-		deleteACLConfiglet(olIfname, olStatus.ACLs, 6)
+		deleteACLConfiglet(olIfname, true, olStatus.ACLs, 6, "")
 
 		// Delete LISP configlets
-		deleteLispConfiglet(lispRunDirname, olStatus.IID,
+		deleteLispConfiglet(lispRunDirname, true, olStatus.IID,
 			olStatus.EID, globalConfig.Uplink)
 	} else {
 		// Delete everything for overlay
@@ -762,6 +830,8 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 			olIfname := "bo" + strconv.Itoa(olNum) + "x" +
 				strconv.Itoa(appNum)
 			fmt.Printf("Deleting olIfname %s\n", olIfname)
+			olAddr1 := "fd00::" + strconv.FormatInt(int64(olNum), 16) +
+				":" + strconv.FormatInt(int64(appNum), 16)
 
 			attrs := netlink.NewLinkAttrs()
 			attrs.Name = olIfname
@@ -785,13 +855,18 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 			if len(status.OverlayNetworkList) >= olNum {
 				olStatus := status.OverlayNetworkList[olNum-1]
 				// Delete ACLs
-				deleteACLConfiglet(olIfname, olStatus.ACLs, 6)
+				deleteACLConfiglet(olIfname, false,
+					olStatus.ACLs, 6, olAddr1)
 
 				// Delete LISP configlets
-				deleteLispConfiglet(lispRunDirname,
+				deleteLispConfiglet(lispRunDirname, false,
 					olStatus.IID, olStatus.EID,
 					globalConfig.Uplink)
+			} else {
+				log.Println("Missing status for overlay %d; can not clean up ACLs and LISP\n",
+					olNum)
 			}
+			
 
 			// Delete overlay hosts file
 			hostsDirpath := globalRunDirname + "/hosts." + olIfname
@@ -800,6 +875,9 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 			// Default EID ipset
 			deleteEidIpsetConfiglet(olIfname, true)
 		}
+
+		// XXX check if any IIDs are now unreferenced and delete them
+		// XXX requires looking at all of configDir and statusDir
 
 		// Delete everything in underlay
 		for ulNum := 1; ulNum <= maxUlNum; ulNum++ {
@@ -823,7 +901,11 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 			// Need to check that index exists
 			if len(status.UnderlayNetworkList) >= ulNum {
 				ulStatus := status.UnderlayNetworkList[ulNum-1]
-				deleteACLConfiglet(ulIfname, ulStatus.ACLs, 4)
+				deleteACLConfiglet(ulIfname, false,
+					ulStatus.ACLs, 4, "")
+			} else {
+				log.Println("Missing status for underlay %d; can not clean up ACLs\n",
+					ulNum)
 			}
 		}
 	}
@@ -832,6 +914,7 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 		log.Println("Failed to remove", statusFilename, err)
 	}
 	appNumFree(status.UUIDandVersion.UUID)
+	fmt.Printf("handleDelete done for %s\n", status.DisplayName)
 }
 
 func pkillUserArgs(userName string, match string, printOnError bool) {

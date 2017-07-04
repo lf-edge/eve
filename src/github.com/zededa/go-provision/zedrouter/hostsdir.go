@@ -14,7 +14,7 @@ import (
 )
 
 // Create the hosts file for the overlay DNS resolution
-// XXX would be more polite to return an error then to Fatal
+// Would be more polite to return an error then to Fatal
 func createHostsConfiglet(cfgDirname string, nameToEidList []types.NameToEid) {
 	fmt.Printf("createHostsConfiglet: dir %s nameToEidList %v\n",
 		cfgDirname, nameToEidList)
