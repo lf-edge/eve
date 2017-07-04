@@ -310,7 +310,9 @@ func restartLisp(lispRunDirname string, upLinkIfname string, devices string) {
 	cmd.Args = args
 	env := os.Environ()
 	env = append(env, fmt.Sprintf("LISP_NO_IPTABLES="))
-	env = append(env, fmt.Sprintf("LISP_PCAP_LIST=\"%s\"", devices))
+	// XXX results in race. Inefficient to have ITR pick up packets
+	// on nbo1xN, but it works since dropped due to no matching MAC.
+	// XXX env = append(env, fmt.Sprintf("LISP_PCAP_LIST=\"%s\"", devices))
 	cmd.Env = env
 	_, err := cmd.Output()
 	if err != nil {
@@ -320,11 +322,9 @@ func restartLisp(lispRunDirname string, upLinkIfname string, devices string) {
 	iptablesLispFixup()
 }
 
-// lisp startup seems to clobber these rules even when we set LISP_NO_IPTABLES
+// lisp startup seems to clobber the nat rule even when we set LISP_NO_IPTABLES
 func iptablesLispFixup() {
-       iptableCmd("-t", "nat", "-F", "POSTROUTING")
-       iptableCmd("-t", "nat", "-A", "POSTROUTING", "-o", globalConfig.Uplink,
-               "-j", "MASQUERADE")
+	iptablesInit()
 }
 
 // XXX need cwd change; get this error:

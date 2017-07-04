@@ -179,19 +179,26 @@ func rulePrefix(operation string, isMgmt bool, ipVer int,
      rule IptablesRule) IptablesRule {
 	prefix := []string{}
 	if isMgmt {
-		// XXX this is just for sending; not receiving
-		// XXX could have a rule for FORWARD -i lispers.net which
-		// only accepts set set of all local EIDs.
-		// Don't want -i rules for OUTPUT
-		if rule[0] != "-i" {
+		// Enforcing sending on OUTPUT. Enforcing receiving
+		// using FORWARD since packet FORWARDED from lispers.net
+		// interface.
+		if rule[0] == "-o" {
 			prefix = []string{operation, "OUTPUT"}
+		} else if rule[0] == "-i" {
+			prefix = []string{operation, "FORWARD"}
 		} else {
 			return nil
 		}
 	} else if ipVer == 6 {
-		// Don't want -o rules for ipv6 overlay PREROUTING entry
-		if rule[0] != "-o" {
+		// The input rules (from domU are applied to raw to intercept
+		// before lisp/pcap can pick them up.
+		// The output rules (to domU) are applied in forwarding path
+		// since packets are forwarded from lispers.net interface after
+		// decap.
+		if rule[0] == "-i" {
 			prefix = []string{"-t", "raw", operation, "PREROUTING"}
+		} else if rule[0] == "-o" {
+			prefix = []string{operation, "FORWARD"}
 		} else {
 			return nil
 		}
