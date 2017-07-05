@@ -51,7 +51,7 @@ type DeviceNetworkStatus struct {
 type OverlayNetwork struct {
 	IID		uint32
 	EID		net.IP
-	Signature	string
+	LispSignature	string
 	// Any additional LISP parameters?
 	ACLs		[]ACE
 	NameToEidList	[]NameToEid	// Used to populate DNS for the overlay

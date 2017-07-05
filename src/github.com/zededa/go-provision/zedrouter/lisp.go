@@ -133,10 +133,10 @@ const StopCmd =  "/usr/local/bin/lisp/STOP-LISP"
 //
 // Would be more polite to return an error then to Fatal
 func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
-			EID net.IP, signature string, upLinkIfname string,
+			EID net.IP, lispSignature string, upLinkIfname string,
 			tag string, olIfname string) {
 	fmt.Printf("createLispConfiglet: %s %v %d %s %s %s %s %s\n",
-		lispRunDirname, isMgmt, IID, EID, signature, upLinkIfname,
+		lispRunDirname, isMgmt, IID, EID, lispSignature, upLinkIfname,
 		tag, olIfname)
 	cfgPathnameIID := lispRunDirname + "/" +
 		strconv.FormatUint(uint64(IID), 10)
@@ -162,25 +162,25 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	if isMgmt {
 		file1.WriteString(fmt.Sprintf(lispIIDtemplateMgmt, IID, IID))
 		file2.WriteString(fmt.Sprintf(lispEIDtemplateMgmt,
-			signature, IID, EID, IID, upLinkIfname, olIfname,
+			lispSignature, IID, EID, IID, upLinkIfname, olIfname,
 			IID))
 	} else {
 		file1.WriteString(fmt.Sprintf(lispIIDtemplate,
 			IID, IID, IID, IID))
 		file2.WriteString(fmt.Sprintf(lispEIDtemplate,
-			tag, signature, IID, EID, IID, IID, IID, upLinkIfname,
-			tag, olIfname, olIfname, IID))
+			tag, lispSignature, IID, EID, IID, IID, IID,
+			upLinkIfname, tag, olIfname, olIfname, IID))
 	}
 	updateLisp(lispRunDirname, upLinkIfname)
 }
 
 func updateLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
-			EID net.IP, signature string, upLinkIfname string,
+			EID net.IP, lispSignature string, upLinkIfname string,
 			tag string, olIfname string) {
 	fmt.Printf("updateLispConfiglet: %s %v %d %s %s %s %s %s\n",
-		lispRunDirname, isMgmt, IID, EID, signature, upLinkIfname,
+		lispRunDirname, isMgmt, IID, EID, lispSignature, upLinkIfname,
 		tag, olIfname)
-	createLispConfiglet(lispRunDirname, isMgmt, IID, EID, signature,
+	createLispConfiglet(lispRunDirname, isMgmt, IID, EID, lispSignature,
 		upLinkIfname, tag, olIfname)
 }
 
