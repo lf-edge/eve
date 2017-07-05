@@ -1,9 +1,9 @@
 // Copyright (c) 2017 Zededa, Inc.
 // All rights reserved.
 
-// Manage Xen guest domains based on collection of DomainConfig structs
-// stored in /var/tmp/xenmgr/*.json and report on status in the collection of
-// DomainStatus structs stored in /var/run/xenmgr/*.json
+// Manage Xen guest domains based on the collection of DomainConfig structs
+// in /var/tmp/xenmgr/config/*.json and report on status in the
+// collection of DomainStatus structs in /var/run/xenmgr/status/*.json
 
 package main
 
@@ -22,7 +22,9 @@ import (
 
 var rwImgDirname string	// We store images here
 var xenDirname string	// We store xen cfg files here
-
+var imgCatalogDirname string // Read-only images named based on sha256 hash
+			// each in its own directory
+			
 func main() {
 	// XXX make baseDirname and runDirname be arguments??
 	// Keeping status in /var/run to be clean after a crash/reboot
@@ -30,8 +32,10 @@ func main() {
 	runDirname := "/var/run/xenmgr"
 	configDirname := baseDirname + "/config"
 	statusDirname := runDirname + "/status"
+	// XXX need to allocate a name for the copy in /img. Use uuid.N for AI?
 	rwImgDirname = runDirname + "/img"
 	xenDirname = runDirname + "/xen"
+	imgCatalogDirname = "/var/tmp/zedmanager/downloads"
 	
 	if _, err := os.Stat(runDirname); err != nil {
 		if err := os.Mkdir(runDirname, 0755); err != nil {
@@ -249,6 +253,3 @@ func handleDelete(statusFilename string, status types.DomainStatus) {
 	status.PendingDelete = false
 	writeDomainStatus(&status, statusFilename)
 }
-
-
-
