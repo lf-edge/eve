@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
@@ -497,14 +496,6 @@ func SelfRegister(w http.ResponseWriter, r *http.Request) {
 	eidPrefix := []byte{0xFD} // Hard-coded for Zededa management overlay
 	eidHashLen := 128 - len(eidPrefix)*8
 
-	// XXX temporary to get raw
-	if true {
-		hasher = sha256.New()
-		hasher.Write(publicDer)
-		sum := hasher.Sum(nil)
-		fmt.Printf("RAW SUM: (len %d) % 2x\n", len(sum), sum)
-	}
-	// XXX new
 	hasher = sha256.New()
 	fmt.Printf("iidData % x\n", iidData)
 	hasher.Write(iidData)
@@ -517,17 +508,6 @@ func SelfRegister(w http.ResponseWriter, r *http.Request) {
 	// from the left.
 	eid := net.IP(append(eidPrefix, sum...)[0:16])
 	fmt.Printf("EID: (len %d) %s\n", len(eid), eid)
-	if false {
-		/// XXX using hmac with zero length key
-		mac := hmac.New(sha256.New, []byte{})
-		mac.Write(iidData)
-		mac.Write(eidPrefix)
-		mac.Write(publicDer)
-		sum = mac.Sum(nil)
-		fmt.Printf("SUM: (len %d) % 2x\n", len(sum), sum)
-		eid := net.IP(append(eidPrefix, sum...)[0:16])
-		fmt.Printf("EID: (len %d) %s\n", len(eid), eid)
-	}
 	// We generate different credentials for different users,
 	// using the fact that each user has a different lispInstance
 	credential1 := fmt.Sprintf("test1_%d", lispInstance)
