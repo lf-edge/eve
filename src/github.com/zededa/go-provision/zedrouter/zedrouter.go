@@ -54,7 +54,6 @@ func main() {
 	// of the application configs? Better to remove the raw lisp iptable
 	for {
 		change := <-fileChanges
-		// fmt.Printf("XXX Change in dir: %v\n", change)
 		parts := strings.Split(change, " ")
 		operation := parts[0]
 		fileName := parts[1]
