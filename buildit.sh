@@ -13,7 +13,7 @@ if /bin/true; then
     for app in $APPS; do
     	cmdline="$cmdline github.com/zededa/go-provision/${app}"
     done
-    echo CMDLINE $cmdline
+    # echo CMDLINE $cmdline
     go install $cmdline
     if [ $? != 0 ]; then
 	exit $?
