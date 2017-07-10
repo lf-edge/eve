@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/satori/go.uuid"
 	"github.com/zededa/go-provision/types"
 	"golang.org/x/crypto/ocsp"
 	"io/ioutil"
@@ -33,8 +34,10 @@ var maxDelay = time.Second * 600 // 10 minutes
 //  device.cert.pem,
 //  device.key.pem		Device certificate/key created before this
 //  		     		client is started.
-//  lisp.config			Written by lookupParam operation
+//  TBD remove? lisp.config	Written by lookupParam operation
 //  zedserverconfig		Written by lookupParam operation; zed server EIDs
+//  zedrouterconfig.json	Written by lookupParam operation
+//  uuid			Written by lookupParam operation
 //  hwstatus.json		Uploaded by updateHwStatus operation
 //  swstatus.json		Uploaded by updateSwStatus operation
 //
@@ -74,6 +77,8 @@ func main() {
 	lispConfigFileName := dirName + "/lisp.config"
 	lispConfigTmpFileName := dirName + "/lisp.config.tmp"
 	zedserverConfigFileName := dirName + "/zedserverconfig"
+	zedrouterConfigFileName := dirName + "/zedrouterconfig.json"
+	uuidFileName := dirName + "/uuid"
 	hwStatusFileName := dirName + "/hwstatus.json"
 	swStatusFileName := dirName + "/swstatus.json"
 
@@ -410,6 +415,38 @@ func main() {
 		// Determine whether NAT is in use
 		nat := !IsMyAddress(device.ClientAddr)
 		fmt.Printf("NAT %v, ClientAddr %v\n", nat, device.ClientAddr)
+		// Write an AppNetworkConfig for the ZedManager application
+		// XXX displayname? Fixed "zedmanager"
+		devUUID := uuid.NewV4()
+		b := []byte(fmt.Sprintf("%s\n", devUUID))
+		err = ioutil.WriteFile(uuidFileName, b, 0644)
+		if err != nil {
+			log.Fatal(err, uuidFileName)
+		}
+		uv := types.UUIDandVersion{
+			UUID: devUUID,
+			Version: "0",
+		}
+		config := types.AppNetworkConfig{
+			UUIDandVersion: uv,
+			DisplayName: "zedmanager",
+			IsZedmanager: true,
+			}
+		olconf := make([]types.OverlayNetwork, 1)
+		config.OverlayNetworkList = olconf
+		olconf[0].IID = device.LispInstance
+		olconf[0].EID = device.EID
+		olconf[0].LispSignature = signature
+		olconf[0].NameToEidList = device.ZedServers.NameToEidList
+		acl := make([]types.ACE, 1)
+		olconf[0].ACLs = acl
+		matches := make([]types.ACEMatch, 1)
+		acl[0].Matches = matches
+		actions := make([]types.ACEAction, 1)
+		acl[0].Actions = actions
+		matches[0].Type = "eidset"
+		actions[0].Drop = false
+		writeNetworkConfig(&config, zedrouterConfigFileName)
 	}
 	if operations["updateHwStatus"] {
 		// Load file for upload
@@ -448,6 +485,19 @@ func main() {
 				delay = maxDelay
 			}
 		}
+	}
+}
+
+func writeNetworkConfig(config *types.AppNetworkConfig,
+	configFilename string) {
+	fmt.Printf("Writing AppNetworkConfig to %s\n", configFilename)
+	b, err := json.Marshal(config)
+	if err != nil {
+		log.Fatal(err, "json Marshal AppNetworkConfig")
+	}
+	err = ioutil.WriteFile(configFilename, b, 0644)
+	if err != nil {
+		log.Fatal(err, configFilename)
 	}
 }
 
