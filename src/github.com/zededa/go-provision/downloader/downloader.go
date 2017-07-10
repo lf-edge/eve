@@ -22,6 +22,24 @@ import (
 	"time"
 )
 
+//XXX fixme; need to write the code,
+// Input directory with config (URL, refcount, length, dstDir)
+// Output directory with status (URL, state, Last-Modified, lastErr, lastErrTime, retryCount)
+// refCount -> 0 means delete from dstDir? Who owns that? Separate mount.
+// Check length against Content-Length.
+
+// Should retrieve length somewhere first. Should that be in the catalogue?
+// Content-Length is set!
+// nordmark@bobo:~$ curl -I  https://cloud-images.ubuntu.com/releases/16.04/release/ubuntu-16.04-server-cloudimg-arm64-root.tar.gz
+// HTTP/1.1 200 OK
+// Date: Sat, 03 Jun 2017 04:28:38 GMT
+// Server: Apache
+// Last-Modified: Tue, 16 May 2017 15:31:53 GMT
+// ETag: "b15553f-54fa5defeec40"
+// Accept-Ranges: bytes
+// Content-Length: 185947455
+// Content-Type: application/x-gzip
+
 var maxDelay = time.Second * 600 // 10 minutes
 
 // Assumes the config files are in dirName, which is /usr/local/etc/zededa/
@@ -396,7 +414,7 @@ func main() {
 			log.Fatal(err)
 		}
 		defer f.Close()
-		for _, ne := range device.ZedServers.NamesToEids {
+		for _, ne := range device.ZedServers.NameToEidList {
 			for _, eid := range ne.EIDs {
 				output := fmt.Sprintf("%-46v %s\n",
 					eid, ne.HostName)
