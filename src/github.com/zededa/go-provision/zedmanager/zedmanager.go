@@ -237,7 +237,7 @@ func writeAppInstanceStatus(status *types.AppInstanceStatus,
 }
 
 func handleCreate(statusFilename string, config types.AppInstanceConfig) {
-	fmt.Printf("handleCreate(%v) for %s\n",
+	log.Printf("handleCreate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 	// Start by marking with PendingAdd
 	status := types.AppInstanceStatus{
@@ -250,13 +250,13 @@ func handleCreate(statusFilename string, config types.AppInstanceConfig) {
 	// XXX do work
 
 	writeAppInstanceStatus(&status, statusFilename)
-	fmt.Printf("handleCreate done for %s\n", config.DisplayName)
+	log.Printf("handleCreate done for %s\n", config.DisplayName)
 }
 
 // Note that modify will not touch the EID; just ACLs and NameToEidList
 func handleModify(statusFilename string, config types.AppInstanceConfig,
 	status types.AppInstanceStatus) {
-	fmt.Printf("handleModify(%v) for %s\n",
+	log.Printf("handleModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
 	status.PendingModify = true
@@ -267,11 +267,11 @@ func handleModify(statusFilename string, config types.AppInstanceConfig,
 	
 	status.PendingModify = false
 	writeAppInstanceStatus(&status, statusFilename)
-	fmt.Printf("handleUpdate done for %s\n", config.DisplayName)
+	log.Printf("handleUpdate done for %s\n", config.DisplayName)
 }
 
 func handleDelete(statusFilename string, status types.AppInstanceStatus) {
-	fmt.Printf("handleDelete(%v) for %s\n",
+	log.Printf("handleDelete(%v) for %s\n",
 		status.UUIDandVersion, status.DisplayName)
 
 	status.PendingDelete = true
@@ -284,5 +284,5 @@ func handleDelete(statusFilename string, status types.AppInstanceStatus) {
 	if err := os.Remove(statusFilename); err != nil {
 		log.Println("Failed to remove", statusFilename, err)
 	}
-	fmt.Printf("handleDelete done for %s\n", status.DisplayName)
+	log.Printf("handleDelete done for %s\n", status.DisplayName)
 }

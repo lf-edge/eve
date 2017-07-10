@@ -196,7 +196,7 @@ func writeEIDStatus(status *types.EIDStatus,
 }
 
 func handleCreate(statusFilename string, config types.EIDConfig) {
-	fmt.Printf("handleCreate(%v) for %s\n",
+	log.Printf("handleCreate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
 	// Start by marking with PendingAdd
@@ -209,6 +209,7 @@ func handleCreate(statusFilename string, config types.EIDConfig) {
 	// XXX do work
 	status.PendingAdd = false
 	writeEIDStatus(&status, statusFilename)
+	log.Printf("handleCreate done for %s\n", config.DisplayName)
 }
 
 // Need to compare what might have changed. If any content change
@@ -216,7 +217,7 @@ func handleCreate(statusFilename string, config types.EIDConfig) {
 // else. Such a version change would be e.g. due to an ACL change.
 func handleModify(statusFilename string, config types.EIDConfig,
 	status types.EIDStatus) {
-	fmt.Printf("handleModify(%v) for %s\n",
+	log.Printf("handleModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
 	status.PendingModify = true
@@ -224,11 +225,12 @@ func handleModify(statusFilename string, config types.EIDConfig,
 	// XXX Any work?
 	status.PendingModify = false
 	writeEIDStatus(&status, statusFilename)
+	log.Printf("handleModify done for %s\n", config.DisplayName)
 }
 
 // Need the olNum and ulNum to delete and EID route to delete
 func handleDelete(statusFilename string, status types.EIDStatus) {
-	fmt.Printf("handleDelete(%v) for %s\n",
+	log.Printf("handleDelete(%v) for %s\n",
 		status.UUIDandVersion, status.DisplayName)
 
 	status.PendingDelete = true
@@ -236,6 +238,7 @@ func handleDelete(statusFilename string, status types.EIDStatus) {
 	// XXX Do work?
 	status.PendingDelete = false
 	writeEIDStatus(&status, statusFilename)
+	log.Printf("handleDelete done for %s\n", status.DisplayName)
 }
 
 

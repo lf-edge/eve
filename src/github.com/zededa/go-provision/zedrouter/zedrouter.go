@@ -285,7 +285,7 @@ func writeAppNetworkStatus(status *types.AppNetworkStatus,
 }
 
 func handleCreate(statusFilename string, config types.AppNetworkConfig) {
-	fmt.Printf("handleCreate(%v) for %s\n",
+	log.Printf("handleCreate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
 	// Pick a local number to identify the application instance
@@ -438,7 +438,7 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		status.OverlayNetworkList = config.OverlayNetworkList
 		status.PendingAdd = false
 		writeAppNetworkStatus(&status, statusFilename)
-		fmt.Printf("handleCreate done for %s\n",
+		log.Printf("handleCreate done for %s\n",
 			config.DisplayName)
 		return
 	}
@@ -626,13 +626,13 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 	status.UnderlayNetworkList = config.UnderlayNetworkList
 	status.PendingAdd = false
 	writeAppNetworkStatus(&status, statusFilename)
-	fmt.Printf("handleCreate done for %s\n", config.DisplayName)
+	log.Printf("handleCreate done for %s\n", config.DisplayName)
 }
 
 // Note that modify will not touch the EID; just ACLs and NameToEidList
 func handleModify(statusFilename string, config types.AppNetworkConfig,
 	status types.AppNetworkStatus) {
-	fmt.Printf("handleModify(%v) for %s\n",
+	log.Printf("handleModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
 	appNum := status.AppNum
@@ -738,12 +738,12 @@ func handleModify(statusFilename string, config types.AppNetworkConfig,
 	status.UnderlayNetworkList = config.UnderlayNetworkList
 	status.PendingModify = false
 	writeAppNetworkStatus(&status, statusFilename)
-	fmt.Printf("handleUpdate done for %s\n", config.DisplayName)
+	log.Printf("handleUpdate done for %s\n", config.DisplayName)
 }
 
 // Need the olNum and ulNum to delete and EID route to delete
 func handleDelete(statusFilename string, status types.AppNetworkStatus) {
-	fmt.Printf("handleDelete(%v) for %s\n",
+	log.Printf("handleDelete(%v) for %s\n",
 		status.UUIDandVersion, status.DisplayName)
 
 	appNum := status.AppNum
@@ -913,7 +913,7 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 		log.Println("Failed to remove", statusFilename, err)
 	}
 	appNumFree(status.UUIDandVersion.UUID)
-	fmt.Printf("handleDelete done for %s\n", status.DisplayName)
+	log.Printf("handleDelete done for %s\n", status.DisplayName)
 }
 
 func pkillUserArgs(userName string, match string, printOnError bool) {
