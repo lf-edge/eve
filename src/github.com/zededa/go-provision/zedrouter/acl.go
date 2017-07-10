@@ -113,15 +113,12 @@ func aceToRules(ifname string, ace types.ACE, ipVer int) IptablesRuleList {
 				ipsetName, "src"}
 		case "eidset":
 			// The eidset only applies to IPv6 overlay
-			// XXX shouldn't we require that both src and dst in set?
-			// Or always compare the eid for overlay above?
+			// XXX shouldn we also check local EID?
 			ipsetName := "eids." + ifname	
 			addOut = []string{"-m", "set", "--match-set",
-				ipsetName, "dst", "-m", "set", "--match-set",
-				ipsetName, "src"}
-			addIn = []string{"-m", "set", "--match-set",
-				ipsetName, "src", "-m", "set", "--match-set",
 				ipsetName, "dst"}
+			addIn = []string{"-m", "set", "--match-set",
+				ipsetName, "src"}
 		default:
 			// XXX add more types; error if unknown.
 			log.Println("Unsupported ACE match type: ",
@@ -182,10 +179,14 @@ func rulePrefix(operation string, isMgmt bool, ipVer int,
 		// Enforcing sending on OUTPUT. Enforcing receiving
 		// using FORWARD since packet FORWARDED from lispers.net
 		// interface.
+		// XXX need to rewrite -o to -i and vice versa??
+		// Should match on dst for OUTPUT to dbo1x0
+		// and src for FORWARD to dbox1x0
 		if rule[0] == "-o" {
-			prefix = []string{operation, "OUTPUT"}
-		} else if rule[0] == "-i" {
 			prefix = []string{operation, "FORWARD"}
+		} else if rule[0] == "-i" {
+			prefix = []string{operation, "OUTPUT"}
+			rule[0] = "-o"
 		} else {
 			return nil
 		}

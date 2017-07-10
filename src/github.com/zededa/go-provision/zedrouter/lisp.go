@@ -323,6 +323,7 @@ func restartLisp(lispRunDirname string, upLinkIfname string, devices string) {
 }
 
 // lisp startup seems to clobber the nat rule even when we set LISP_NO_IPTABLES
+// XXX need to wait until lisp has started for this to work!
 func iptablesLispFixup() {
 	iptablesInit()
 }
