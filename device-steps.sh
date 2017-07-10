@@ -22,9 +22,8 @@ echo "Configuration from factory/install:"
 echo
 
 if [ ! \( -f $ETCDIR/device.cert.pem -a -f $ETCDIR/device.key.pem \) ]; then
-    echo "Generating a device key pair and self-signed cert (using TPM/TEE if available) plus device uuid"
+    echo "Generating a device key pair and self-signed cert (using TPM/TEE if available)"
     $PROVDIR/generate-device.sh $ETCDIR/device
-    uuidgen >$ETCDIR/uuid
     SELF_REGISTER=1
 else
     echo "Using existing device key pair and self-signed cert"
@@ -123,13 +122,13 @@ if [ ! -d $LISPDIR ]; then
 fi
     
 if [ $SELF_REGISTER = 1 ]; then
-	# XXX do this in zedmanager?
-	mkdir -p /var/tmp/zedmamager/config/
 	mkdir -p /var/tmp/zedrouter/config/
+	# XXX do the rest in zedmanager?
+	mkdir -p /var/tmp/zedmamager/config/
 	mkdir -p /var/tmp/xenmgr/config/
 	mkdir -p /var/tmp/identitymgr/config/
-	intf=`$BINDIR/find-uplink.sh $ETCDIR/lisp.config`
 
+	intf=`$BINDIR/find-uplink.sh $ETCDIR/lisp.config`
 	if [ "$intf" != "" ]; then
 		echo "Found interface $intf based on route to map servers"
 	else
@@ -140,17 +139,12 @@ if [ $SELF_REGISTER = 1 ]; then
 {"Uplink":"$intf"}
 EOF
 
-	# Create the device EID file in /var/tmp/zedrouter/config/
+	# Pick up the device EID zedrouter config file from $ETCDIR and put
+	# it in /var/tmp/zedrouter/config/
 	# Kicks off lispers.net when zedrouter starts
-	uuid=`uuidgen`
-	name="zed"`uname -n`
-	#Pick first eid-prefix; any others are for applications
-	eid=`grep "eid-prefix = fd" lisp.config | awk '{print $3}' | awk -F/ '{print $1}' | head -1`
-	iid=`grep "instance-id = " /usr/local/etc/zededa/lisp.config | awk '{print $3}' | awk -F/ '{print $1}' | head -1`
-	sig=`grep "json-string = { \"signature\""  /usr/local/etc/zededa/lisp.config | awk '{print $6}' | awk -F/ '{print $1}' | head -1`
-	cat <<EOF 
-{"UUIDandVersion":{"UUID":"$uuid","Version":"0"},"DisplayName":"$name", "IsZedmanager":true,"OverlayNetworkList":[{"IID":$iid, "EID":"$eid","Signature":"$sig","ACLs":[{"Matches":[{"Type":"eidset"}]}],"NameToEidList":[{"HostName":"zedhikey","EIDs":["fd07:cfa2:2b35:b8f6:d6f6:e9be:7d2a:fc93"]},{"HostName":"zedbobo","EIDs":["fdd5:79bf:7261:d9df:aea1:c8d2:842d:b99b"]},{"HostName":"zedcontrol","EIDs":["fd45:efca:3607:4c1d:eace:a947:3464:d21e"]},{"HostName":"zedlake","EIDs":["fd45:efca:3607:4c1d:eace:a947:3464:d21e"]}]}],"UnderlayNetworkList":null}
-EOF
+	uuid=`cat $ETCDIR/uuid`
+	cp $ETCDIR/zedrouterconfig.json /var/tmp/zedrouter/config/${uuid}.json
+	# XXX could do name="zed"`uname -n`
 fi
 
 echo "Starting ZedRouter"
@@ -167,7 +161,7 @@ if [ $WAIT == 1 ]; then
 fi
 
 echo "Starting ZedManager"
-/usr/local/bin/zededa/zedrouter >&/var/log/zedrouter.log&
+/usr/local/bin/zededa/zedmanager >&/var/log/zedmanager.log&
 # Do something
 if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
