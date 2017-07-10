@@ -1,3 +1,32 @@
+
+NOTE:
+ubuntu guest and zedrouter assumes bu is first in list of networks - becomes eth0
+
+zedrouter:
+ - move dnsmasq and radvd from /etc to /var/run/zedrouter/
+ - create domain name ipsets on the fly. Easy in handleCreate
+   Requires some care in handleModify
+ - handleModify's update to ACLs assumes there is no DROP rules since does -I
+   Need to generate new list of rules and then just apply them?
+   (Using save/restore for efficiency? Should we use restore for initial set
+   as well for efficiency?)
+
+xenmgr:
+ - How do we wait for state?
+ - How do we find out crashed? boot failures show up as "r"
+ - How do we always delete? Wait state to change after xl shutdown then xl destroy and wait again? Means a goroutine per UUID?
+   It could periodically look for status and update.
+   
+zedmanager:
+ - special handling of IsZedManager - do we create it's file on the fly
+   from onboarding? Don't pass to XenMgr.
+ - 1st read status from everybody and build collections in memory
+   Implies handle* for multiple input collections.
+   Should it produce status for ZedCloud?
+ - 2nd read config from ZedCloud
+   
+===
+
 Create DeviceSwStatus separate from DeviceSwResources
 Include uplink interfaces, available memory and disk
 NAT i.e. uplink global address? (From exchanges with ZedControl).
@@ -14,6 +43,7 @@ New zedmanager - no TLS
     SwConfig has a type (Image, Disk - with location attribute, Resource? ACL?)
     SwConfig has a signer (base64Url of cert? or pem?)
     ZedManager/dom0 has root cert; need cert chain from somewhere...
+
     XXX where, how do we get the peer cert chain and save it for verification?
 
     XXX type=process? Install in /var/tmp/zededa/app/<EID>/<version> and assume
