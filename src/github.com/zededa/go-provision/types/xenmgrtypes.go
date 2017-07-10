@@ -26,14 +26,16 @@ type DomainConfig struct {
 
 type DomainStatus struct {
 	UUIDandVersion  UUIDandVersion
+	AppNum		int
 	DisplayName	string	// Use as name for domU? DisplayName+version?
 	PendingAdd	bool
 	PendingModify	bool
 	PendingDelete	bool
+	DomainName	string	// Name of Xen domain
+	DomainId	int
 	DiskStatusList	[]DiskStatus
 }
 
-// XXX Move to networking pieces? Separate out networking from types.go
 type VifInfo struct {
 	Bridge		string
 	Vif		string
@@ -53,9 +55,8 @@ type DiskConfig struct {
 	// XXX   format=raw, vdev=hda, access=rw, target=/dev/vg/guest-volume
 	// ro as losetup --show -f -r /root/xxx-test.img
 	// auto-allocates
-	Format		string	// Default "raw"; could be raw, qcow, qcow2, vhd	Devtype		string	// Default ""; could be e.g. "cdrom"   
-	// XXX Vdev	string	// See above
-	// XXX Target	string	// See above
+	Format		string	// Default "raw"; could be raw, qcow, qcow2, vhd
+	Devtype		string	// Default ""; could be e.g. "cdrom"
 }
 
 // XXX do we need a DiskStatus with the allocated Target and Vdev?
@@ -64,7 +65,9 @@ type DiskConfig struct {
 type DiskStatus struct {
 	ImageSha256	string	// sha256 of immutable image
 	ReadOnly	bool
-	FileLocation	string	// Same as image of RO, otherwise private copy
+	FileLocation	string	// Location of Image
+	Format		string	// From config
+	Devtype		string	// From config
 	Vdev		string	// Allocated
-	Target		string	// Allocated
+	Target		string	// Allocated; private copy if RW; FileLocation if RO
 }
