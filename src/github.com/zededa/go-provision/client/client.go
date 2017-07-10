@@ -416,12 +416,28 @@ func main() {
 		nat := !IsMyAddress(device.ClientAddr)
 		fmt.Printf("NAT %v, ClientAddr %v\n", nat, device.ClientAddr)
 		// Write an AppNetworkConfig for the ZedManager application
-		// XXX displayname? Fixed "zedmanager"
-		devUUID := uuid.NewV4()
-		b := []byte(fmt.Sprintf("%s\n", devUUID))
-		err = ioutil.WriteFile(uuidFileName, b, 0644)
-		if err != nil {
-			log.Fatal(err, uuidFileName)
+		// XXX displayname? Fixed "zedmanager" string
+		var devUUID uuid.UUID
+		if _, err := os.Stat(uuidFileName); err != nil {
+			// Create and write with initial values
+			devUUID = uuid.NewV4()
+			b := []byte(fmt.Sprintf("%s\n", devUUID))
+			err = ioutil.WriteFile(uuidFileName, b, 0644)
+			if err != nil {
+				log.Fatal("WriteFile", err, uuidFileName)
+			}
+			fmt.Printf("Created UUID %s\n", devUUID)
+		} else {
+			b, err := ioutil.ReadFile(uuidFileName)
+			if err != nil {
+				log.Fatal("ReadFile", err, uuidFileName)
+			}
+			uuidStr := strings.TrimSpace(string(b))
+			devUUID, err = uuid.FromString(uuidStr)
+			if err != nil {
+				log.Fatal("uuid.FromString", err, string(b))
+			}
+			fmt.Printf("Read UUID %s\n", devUUID)
 		}
 		uv := types.UUIDandVersion{
 			UUID: devUUID,
