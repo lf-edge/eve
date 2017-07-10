@@ -7,7 +7,7 @@ export GOROOT=/usr/local/go
 export PATH=$GOPATH/bin:$GOROOT/bin:$PATH
 DIR=`pwd`
 
-APPS="client server register zedrouter xenmgr identitymgr"
+APPS="client server register zedrouter xenmgr identitymgr zedmanager"
 if /bin/true; then
     cmdline=""
     for app in $APPS; do

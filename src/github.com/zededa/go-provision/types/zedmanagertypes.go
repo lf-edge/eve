@@ -21,6 +21,8 @@ type AppInstanceConfig struct {
 	DisplayName         string
 	IsZedmanager        bool // XXX needed?
 	StorageInfoList	    []StorageInfo
+	// Assume it should be installed when present.
+	Activate     	    bool
 	// XXX EID per overlay network? Allocation?
 	OverlayNetworkList  []OverlayNetwork
 	UnderlayNetworkList []UnderlayNetwork
@@ -28,8 +30,14 @@ type AppInstanceConfig struct {
 
 // Indexed by UUIDandVersion as above
 type AppInstanceStatus struct {
-	UUIDandVersion UUIDandVersion
-	DisplayName    string
+	UUIDandVersion	UUIDandVersion
+	DisplayName	string
+	Activated	bool
+	PendingAdd	bool
+	PendingModify	bool
+	PendingDelete	bool
+	// XXX StorageStatus with downloading etc. Per unit or calculate min
+	// across all StorageStatus?
 }
 
 type StorageInfo struct {
@@ -46,7 +54,6 @@ type LocalStorageInfo struct {
 	StorageInfo
 	// XXX Used in status - move to separate LocalDiskInfo type?
 	Pathname	string
-	// loopbackname?
 }
 
 type SignatureInfo struct {
