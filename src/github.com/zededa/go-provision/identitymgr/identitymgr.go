@@ -40,6 +40,12 @@ func main() {
 		}
 	}
 
+	// XXX write emtpy config
+	config := types.EIDConfig{}
+	writeEIDConfig(&config, "/tmp/foo")
+	
+	// XXX FILENAME SHOULD BE UUID.OLNUM SINCE MULTIPLE OVERLAYS PER APP
+
 	// XXX this is common code except for the types used with json
 	
 	fileChanges := make(chan string)
@@ -157,6 +163,20 @@ func main() {
 		}
 		statusName := statusDirname + "/" + fileName
 		handleModify(statusName, config, status)
+	}
+}
+
+// XXX only used for initial layout of json
+func writeEIDConfig(config *types.EIDConfig,
+	configFilename string) {
+	fmt.Printf("XXX Writing empty config to %s\n", configFilename)
+	b, err := json.Marshal(config)
+	if err != nil {
+		log.Fatal(err, "json Marshal EIDConfig")
+	}
+	err = ioutil.WriteFile(configFilename, b, 0644)
+	if err != nil {
+		log.Fatal(err, configFilename)
 	}
 }
 
