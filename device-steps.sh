@@ -22,8 +22,9 @@ echo "Configuration from factory/install:"
 echo
 
 if [ ! \( -f $ETCDIR/device.cert.pem -a -f $ETCDIR/device.key.pem \) ]; then
-    echo "Generating a device key pair and self-signed cert (using TPM/TEE if available)"
+    echo "Generating a device key pair and self-signed cert (using TPM/TEE if available) plus device uuid"
     $PROVDIR/generate-device.sh $ETCDIR/device
+    uuidgen >$ETCDIR/uuid
     SELF_REGISTER=1
 else
     echo "Using existing device key pair and self-signed cert"
@@ -115,50 +116,42 @@ if [ /bin/true -o ! -f $ETCDIR/lisp.config ]; then
     fi
 fi
 
-echo "Starting overlay network"
+echo "Determining uplink interface"
 if [ ! -d $LISPDIR ]; then
     echo "Missing $LISPDIR directory. Giving up"
     exit 1
 fi
     
-# Remove any old routes before we change $LISPDIR/lisp.config
-$BINDIR/stop.sh
+if [ $SELF_REGISTER = 1 ]; then
+	# XXX do this in zedmanager?
+	mkdir -p /var/tmp/zedmamager/config/
+	mkdir -p /var/tmp/zedrouter/config/
+	mkdir -p /var/tmp/xenmgr/config/
+	mkdir -p /var/tmp/identitymgr/config/
+	intf=`$BINDIR/find-uplink.sh $ETCDIR/lisp.config`
 
-# Find the interface based on the routes to the map servers
-# Take the first one for now
-ms=`grep dns-name $ETCDIR/lisp.config | awk '{print $3}' | sort -u`
-for m in $ms; do
-    # echo ms $ms
-    ips=`getent hosts $m | awk '{print $1}' | sort -u`
-    # Could get multiple ips
-    for ip in $ips; do
-	# echo ip $ip
-	rt=`ip route get $ip`
-	# echo rt $rt
-	intf=`echo $rt | sed 's/.* dev \([^ ]*\) .*/\1/'`
 	if [ "$intf" != "" ]; then
-	    break
+		echo "Found interface $intf based on route to map servers"
+	else
+		echo "NOT Found interface based on route to map servers. Giving up"
+		exit 1    
 	fi
-    done
-    if [ "$intf" != "" ]; then
-	echo "Found interface $intf based on route to map servers"
-	break
-    fi
-done
-
-# XXX should we just create this based on intf?
-# more /var/tmp/zedrouter/config/global
-# {"Uplink":"wlan0"}
-cat <<EOF >//var/tmp/zedrouter/config/global
+	cat <<EOF >/var/tmp/zedrouter/config/global
 {"Uplink":"$intf"}
 EOF
 
-# XXX Create all of the files in /var/tmp/zedrouter/config/
-# XXX or manually copy from the .acl files
-vi /
-# Copy device private key to lisp-sig.pem? Only needed on RTR!
-# XXX permissions 400 in $ETCDIR?
-# sudo cp $ETCDIR/device.key.pem $LISPDIR/lisp-sig.pem
+	# Create the device EID file in /var/tmp/zedrouter/config/
+	# Kicks off lispers.net when zedrouter starts
+	uuid=`uuidgen`
+	name="zed"`uname -n`
+	#Pick first eid-prefix; any others are for applications
+	eid=`grep "eid-prefix = fd" lisp.config | awk '{print $3}' | awk -F/ '{print $1}' | head -1`
+	iid=`grep "instance-id = " /usr/local/etc/zededa/lisp.config | awk '{print $3}' | awk -F/ '{print $1}' | head -1`
+	sig=`grep "json-string = { \"signature\""  /usr/local/etc/zededa/lisp.config | awk '{print $6}' | awk -F/ '{print $1}' | head -1`
+	cat <<EOF 
+{"UUIDandVersion":{"UUID":"$uuid","Version":"0"},"DisplayName":"$name", "IsZedmanager":true,"OverlayNetworkList":[{"IID":$iid, "EID":"$eid","Signature":"$sig","ACLs":[{"Matches":[{"Type":"eidset"}]}],"NameToEidList":[{"HostName":"zedhikey","EIDs":["fd07:cfa2:2b35:b8f6:d6f6:e9be:7d2a:fc93"]},{"HostName":"zedbobo","EIDs":["fdd5:79bf:7261:d9df:aea1:c8d2:842d:b99b"]},{"HostName":"zedcontrol","EIDs":["fd45:efca:3607:4c1d:eace:a947:3464:d21e"]},{"HostName":"zedlake","EIDs":["fd45:efca:3607:4c1d:eace:a947:3464:d21e"]}]}],"UnderlayNetworkList":null}
+EOF
+fi
 
 echo "Starting ZedRouter"
 /usr/local/bin/zededa/zedrouter >&/var/log/zedrouter.log&
@@ -166,7 +159,15 @@ if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
 
+echo "Starting XenMgr"
+/usr/local/bin/zededa/xenmgr >&/var/log/xenmgr.log&
+# Do something
+if [ $WAIT == 1 ]; then
+    echo; read -n 1 -s -p "Press any key to continue"; echo; echo
+fi
+
 echo "Starting ZedManager"
+/usr/local/bin/zededa/zedrouter >&/var/log/zedrouter.log&
 # Do something
 if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
