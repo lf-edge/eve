@@ -88,7 +88,6 @@ func main() {
 	deviceKeyName := dirName + "/device.key.pem"
 	rootCertName := dirName + "/root-certificate.pem"
 	serverFileName := dirName + "/server"
-	lispConfigTemplateFileName := dirName + "/lisp.config.zed"
 	lispConfigFileName := dirName + "/lisp.config"
 	lispConfigTmpFileName := dirName + "/lisp.config.tmp"
 	zedserverConfigFileName := dirName + "/zedserverconfig"
