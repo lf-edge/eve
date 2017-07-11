@@ -18,7 +18,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -34,7 +33,6 @@ var maxDelay = time.Second * 600 // 10 minutes
 //  device.cert.pem,
 //  device.key.pem		Device certificate/key created before this
 //  		     		client is started.
-//  TBD remove? lisp.config	Written by lookupParam operation
 //  zedserverconfig		Written by lookupParam operation; zed server EIDs
 //  zedrouterconfig.json	Written by lookupParam operation
 //  uuid			Written by lookupParam operation
@@ -73,9 +71,6 @@ func main() {
 	deviceKeyName := dirName + "/device.key.pem"
 	rootCertName := dirName + "/root-certificate.pem"
 	serverFileName := dirName + "/server"
-	lispConfigTemplateFileName := dirName + "/lisp.config.zed"
-	lispConfigFileName := dirName + "/lisp.config"
-	lispConfigTmpFileName := dirName + "/lisp.config.tmp"
 	zedserverConfigFileName := dirName + "/zedserverconfig"
 	zedrouterConfigFileName := dirName + "/zedrouterconfig.json"
 	uuidFileName := dirName + "/uuid"
@@ -360,41 +355,6 @@ func main() {
 		fmt.Printf("EID %s\n", device.EID)
 		fmt.Printf("EID hash length %d\n", device.EIDHashLen)
 
-		replacer := strings.NewReplacer(
-			"instance-id = <iid>",
-			"instance-id = "+
-				strconv.FormatUint(uint64(device.LispInstance),
-					10),
-			"eid-prefix = <eid-prefix6>",
-			"eid-prefix = "+device.EID.String()+"/128",
-			"eid-prefix = '<username>'",
-			"eid-prefix = '"+device.UserName+"'")
-		lispTemplate, err := ioutil.ReadFile(lispConfigTemplateFileName)
-		if err != nil {
-			log.Fatal(err)
-		}
-		lispConfig := replacer.Replace(string(lispTemplate))
-		for i, ms := range device.LispMapServers {
-			item := strconv.Itoa(i + 1)
-			replacer := strings.NewReplacer(
-				"dns-name = <map-server-"+item+">",
-				"dns-name = "+ms.NameOrIp,
-				"authentication-key = <map-server-"+item+"-key>",
-				"authentication-key = "+ms.Credential,
-				"<signature>", signature,
-			)
-			lispConfig = replacer.Replace(string(lispConfig))
-		}
-		// write to temp file and then rename to avois loss
-		err = ioutil.WriteFile(lispConfigTmpFileName,
-			[]byte(lispConfig), 0600)
-		if err != nil {
-			log.Fatal(err)
-		}
-		err = os.Rename(lispConfigTmpFileName, lispConfigFileName)
-		if err != nil {
-			log.Fatal(err)
-		}
 		// write zedserverconfig file with hostname to EID mappings
 		f, err := os.Create(zedserverConfigFileName)
 		if err != nil {
@@ -412,11 +372,12 @@ func main() {
 			}
 		}
 		f.Sync()
+
 		// Determine whether NAT is in use
 		nat := !IsMyAddress(device.ClientAddr)
 		fmt.Printf("NAT %v, ClientAddr %v\n", nat, device.ClientAddr)
+
 		// Write an AppNetworkConfig for the ZedManager application
-		// XXX displayname? Fixed "zedmanager" string
 		var devUUID uuid.UUID
 		if _, err := os.Stat(uuidFileName); err != nil {
 			// Create and write with initial values
@@ -443,6 +404,7 @@ func main() {
 			UUID: devUUID,
 			Version: "0",
 		}
+		// XXX displayname? Using fixed "zedmanager" string
 		config := types.AppNetworkConfig{
 			UUIDandVersion: uv,
 			DisplayName: "zedmanager",

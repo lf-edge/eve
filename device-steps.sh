@@ -128,7 +128,7 @@ if [ $SELF_REGISTER = 1 ]; then
 	mkdir -p /var/tmp/xenmgr/config/
 	mkdir -p /var/tmp/identitymgr/config/
 
-	intf=`$BINDIR/find-uplink.sh $ETCDIR/lisp.config`
+	intf=`$BINDIR/find-uplink.sh $ETCDIR/lisp.config.base`
 	if [ "$intf" != "" ]; then
 		echo "Found interface $intf based on route to map servers"
 	else
