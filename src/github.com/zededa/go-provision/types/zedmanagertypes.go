@@ -23,7 +23,8 @@ type AppInstanceConfig struct {
 	StorageConfigList    []StorageConfig
 	// Assume StorageConfig should be installed when present in list
 	Activate     	    bool
-	// XXX EID per overlay network? Allocation?
+	// The allocation polcies (incl prefix) are common across all IIDs for now
+	EIDAllocation
 	OverlayNetworkList  []OverlayNetworkConfig
 	UnderlayNetworkList []UnderlayNetworkConfig
 }
