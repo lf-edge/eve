@@ -87,7 +87,7 @@ fi
 if [ $SELF_REGISTER = 1 ]; then
     echo "Self-registering our device certificate"
     if [ ! \( -f $ETCDIR/onboard.cert.pem -a -f $ETCDIR/onboard.key.pem \) ]; then
-	echo "Missing provisioning certificate. Giving up"
+	echo "Missing onboarding certificate. Giving up"
 	exit 1
     fi
     $BINDIR/client $ETCDIR selfRegister
@@ -145,7 +145,13 @@ EOF
 	uuid=`cat $ETCDIR/uuid`
 	cp $ETCDIR/zedrouterconfig.json /var/tmp/zedrouter/config/${uuid}.json
 	# XXX could do name="zed"`uname -n`
+	# Make sure we set the dom0 hostname, used by LISP nat traversal, to
+	# a unique string. Using the uuid
+	echo "Setting hostname to $uuid"
+	/bin/hostname $uuid
+	/bin/hostname >/etc/hostname
 fi
+
 
 echo "Starting ZedRouter"
 /usr/local/bin/zededa/zedrouter >&/var/log/zedrouter.log&
