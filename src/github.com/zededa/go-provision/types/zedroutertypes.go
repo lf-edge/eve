@@ -15,8 +15,8 @@ type AppNetworkConfig struct {
 	UUIDandVersion      UUIDandVersion
 	DisplayName         string
 	IsZedmanager        bool
-	OverlayNetworkList  []OverlayNetwork
-	UnderlayNetworkList []UnderlayNetwork
+	OverlayNetworkList  []OverlayNetworkConfig
+	UnderlayNetworkList []UnderlayNetworkConfig
 }
 
 // Indexed by UUID
@@ -31,8 +31,8 @@ type AppNetworkStatus struct {
 	DisplayName    string
 	// Copy from the AppNetworkConfig; used to delete when config is gone.
 	IsZedmanager        bool
-	OverlayNetworkList  []OverlayNetwork
-	UnderlayNetworkList []UnderlayNetwork
+	OverlayNetworkList  []OverlayNetworkStatus
+	UnderlayNetworkList []UnderlayNetworkStatus
 }
 
 // Do we want a DeviceNetworkStatus? DeviceNetworkConfig with the underlay
@@ -48,20 +48,26 @@ type DeviceNetworkStatus struct {
 	// XXX uplink publicAddr to determine NATed?
 }
 
-type OverlayNetwork struct {
+type OverlayNetworkConfig struct {
 	IID		uint32
 	EID		net.IP
 	LispSignature	string
 	// Any additional LISP parameters?
 	ACLs		[]ACE
 	NameToEidList	[]NameToEid	// Used to populate DNS for the overlay
-	// Only used in Status XXX create Status variant
+}
+
+type OverlayNetworkStatus struct {
+	OverlayNetworkConfig
 	VifInfo
 }
 
-type UnderlayNetwork struct {
+type UnderlayNetworkConfig struct {
 	ACLs		[]ACE
-	// Only used in Status XXX create Status variant
+}
+
+type UnderlayNetworkStatus struct {
+	UnderlayNetworkConfig
 	VifInfo
 }
 

@@ -410,7 +410,7 @@ func main() {
 			DisplayName: "zedmanager",
 			IsZedmanager: true,
 			}
-		olconf := make([]types.OverlayNetwork, 1)
+		olconf := make([]types.OverlayNetworkConfig, 1)
 		config.OverlayNetworkList = olconf
 		olconf[0].IID = device.LispInstance
 		olconf[0].EID = device.EID

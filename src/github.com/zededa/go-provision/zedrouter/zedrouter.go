@@ -435,7 +435,12 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		createLispConfiglet(lispRunDirname, true, olConfig.IID,
 			olConfig.EID, olConfig.LispSignature,
 			globalConfig.Uplink, olIfname, olIfname)
-		status.OverlayNetworkList = config.OverlayNetworkList
+		status.OverlayNetworkList = make([]types.OverlayNetworkStatus,
+			len(config.OverlayNetworkList))
+		for i, _ := range config.OverlayNetworkList {
+			status.OverlayNetworkList[i].OverlayNetworkConfig =
+			config.OverlayNetworkList[i]
+		}
 		status.PendingAdd = false
 		writeAppNetworkStatus(&status, statusFilename)
 		log.Printf("handleCreate done for %s\n",
@@ -443,8 +448,19 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		return
 	}
 	
-	status.OverlayNetworkList = config.OverlayNetworkList
-	status.UnderlayNetworkList = config.UnderlayNetworkList
+	// XXX func?
+	status.OverlayNetworkList = make([]types.OverlayNetworkStatus,
+		len(config.OverlayNetworkList))
+	for i, _ := range config.OverlayNetworkList {
+		status.OverlayNetworkList[i].OverlayNetworkConfig =
+		config.OverlayNetworkList[i]
+	}
+	status.UnderlayNetworkList = make([]types.UnderlayNetworkStatus,
+		len(config.UnderlayNetworkList))
+	for i, _ := range config.UnderlayNetworkList {
+		status.UnderlayNetworkList[i].UnderlayNetworkConfig =
+		config.UnderlayNetworkList[i]
+	}
 
 	for i, olConfig := range config.OverlayNetworkList {
 		olNum := i + 1
@@ -622,8 +638,18 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		ulStatus.Mac = ulMac
 	}
 	// Write out what we created to AppNetworkStatus
-	status.OverlayNetworkList = config.OverlayNetworkList
-	status.UnderlayNetworkList = config.UnderlayNetworkList
+	status.OverlayNetworkList = make([]types.OverlayNetworkStatus,
+		len(config.OverlayNetworkList))
+	for i, _ := range config.OverlayNetworkList {
+		status.OverlayNetworkList[i].OverlayNetworkConfig =
+		config.OverlayNetworkList[i]
+	}
+	status.UnderlayNetworkList = make([]types.UnderlayNetworkStatus,
+		len(config.UnderlayNetworkList))
+	for i, _ := range config.UnderlayNetworkList {
+		status.UnderlayNetworkList[i].UnderlayNetworkConfig =
+		config.UnderlayNetworkList[i]
+	}
 	status.PendingAdd = false
 	writeAppNetworkStatus(&status, statusFilename)
 	log.Printf("handleCreate done for %s\n", config.DisplayName)
@@ -734,8 +760,18 @@ func handleModify(statusFilename string, config types.AppNetworkConfig,
 			ulConfig.ACLs, 4, "")
 	}
 	// Write out what we modified to AppNetworkStatus
-	status.OverlayNetworkList = config.OverlayNetworkList
-	status.UnderlayNetworkList = config.UnderlayNetworkList
+	status.OverlayNetworkList = make([]types.OverlayNetworkStatus,
+		len(config.OverlayNetworkList))
+	for i, _ := range config.OverlayNetworkList {
+		status.OverlayNetworkList[i].OverlayNetworkConfig =
+		config.OverlayNetworkList[i]
+	}
+	status.UnderlayNetworkList = make([]types.UnderlayNetworkStatus,
+		len(config.UnderlayNetworkList))
+	for i, _ := range config.UnderlayNetworkList {
+		status.UnderlayNetworkList[i].UnderlayNetworkConfig =
+		config.UnderlayNetworkList[i]
+	}
 	status.PendingModify = false
 	writeAppNetworkStatus(&status, statusFilename)
 	log.Printf("handleUpdate done for %s\n", config.DisplayName)

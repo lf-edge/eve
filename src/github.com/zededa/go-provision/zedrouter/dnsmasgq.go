@@ -71,6 +71,8 @@ func createDnsmasqOverlayConfiglet(cfgPathname string, olIfname string,
 		olIfname))
 	file.WriteString(fmt.Sprintf("interface=%s\n", olIfname))
 	file.WriteString(fmt.Sprintf("listen-address=%s\n", olAddr1))
+	// XXX hostname should be uuid instead of displayname?
+	// Doesn't matter for app EID
 	file.WriteString(fmt.Sprintf("dhcp-host=%s,[%s],%s\n",
 		olMac, olAddr2, displayName))
 	file.WriteString(fmt.Sprintf("hostsdir=%s\n", hostsDir))
@@ -92,6 +94,8 @@ func createDnsmasqUnderlayConfiglet(cfgPathname string, ulIfname string,
 	file.WriteString(fmt.Sprintf("interface=%s\n", ulIfname))
 	file.WriteString(fmt.Sprintf("listen-address=%s\n", ulAddr1))
 	// XXX can add ,hostname after the IP address
+	// XXX hostname should be uuid instead of displayname?
+	// Doesn't matter for app EID
 	file.WriteString(fmt.Sprintf("dhcp-host=%s,id:*,%s,%s\n",
 		ulMac, ulAddr2, displayName))
 }

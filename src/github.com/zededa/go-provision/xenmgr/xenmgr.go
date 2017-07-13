@@ -238,12 +238,15 @@ func handleCreate(statusFilename string, config types.DomainConfig) {
 		len(config.DiskConfigList))
 	writeDomainStatus(&status, statusFilename)
 
+	// XXX defer this until activate; could be activate up front
 	filename := xenCfgFilename(config.AppNum)
 	file, err := os.Create(filename)
 	if err != nil {
 		log.Fatal("os.Create for ", filename, err)
 	}
 	defer file.Close()
+	// XXX split into configToStatus which allocates name etc and
+	// generateXenCfg(config, status, file); latter once activated
 	if err := configToStatusAndXencfg(config, &status, file); err != nil {
 		log.Printf("Failed to create DomainStatus from %v\n", config)
 		// XXX should we clear PendingAdd?
@@ -252,6 +255,7 @@ func handleCreate(statusFilename string, config types.DomainConfig) {
 		return
 	}
 	// Write any Location so that it can later be deleted based on status
+	// XXX need to calculate ds.Target even if we don't have a vif
 	writeDomainStatus(&status, statusFilename)
 
 	// Do we need to copy any rw files?
@@ -259,9 +263,8 @@ func handleCreate(statusFilename string, config types.DomainConfig) {
 		if !ds.ReadOnly {
 			log.Printf("Copy from %s to %s\n",
 				ds.FileLocation, ds.Target)
-			// XXX add preserve? when do we gc?
-			if _, err := os.Stat(ds.Target); err == nil {
-				log.Printf("XXX target exists - skip copy\n");
+			if _, err := os.Stat(ds.Target); err == nil && ds.Preserve {
+				log.Printf("Preserve and target exists - skip copy\n");
 			} else if err := cp(ds.Target, ds.FileLocation); err != nil {
 				log.Printf("Copy failed from %s to %s: %s\n",
 					ds.FileLocation, ds.Target, err)
@@ -340,6 +343,7 @@ func configToStatusAndXencfg(config types.DomainConfig,
 		ds := &status.DiskStatusList[i]
 		ds.ImageSha256 = dc.ImageSha256
 		ds.ReadOnly = dc.ReadOnly
+		ds.Preserve = dc.Preserve
 		ds.Format = dc.Format
 		ds.Devtype = dc.Devtype
 		// map from i=1 to xvda, 2 to xvdb etc
@@ -380,7 +384,7 @@ func configToStatusAndXencfg(config types.DomainConfig,
 			access = "ro"
 		}
 		oneDisk := fmt.Sprintf("'%s,%s,%s,%s'",
-			target, dc.Format, xv, access)
+			ds.Target, dc.Format, ds.Vdev, access)
 		fmt.Printf("Processing disk %d: %s\n", i, oneDisk)
 		if diskString == "" {
 			diskString = oneDisk
@@ -426,6 +430,10 @@ func cp(dst, src string) error {
 // Need to compare what might have changed. If any content change
 // then we need to reboot. Thus version by itself can change but nothing
 // else. Such a version change would be e.g. due to an ACL change.
+// XXX to save statusFilename when the gorouting is created.
+// XXX send "m" to channel
+// XXX channel handler looks at activate and starts/stops
+// XXX separate goroutine to run cp? Add "copy complete" status?
 func handleModify(statusFilename string, config types.DomainConfig,
 	status types.DomainStatus) {
 	log.Printf("handleModify(%v) for %s\n",

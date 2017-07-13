@@ -299,6 +299,7 @@ func updateLisp(lispRunDirname string, upLinkIfname string) {
 // XXX shouldn't need to restart unless we are removing or replacing something
 // XXX also need to restart when adding an overlay interface
 // Adds should be ok without. How can we tell?
+// XXX stop then modify then RUN-LISP. Do iptablesfixup before the run-lisp.
 func restartLisp(lispRunDirname string, upLinkIfname string, devices string) {
 	fmt.Printf("restartLisp: %s %s\n", lispRunDirname, upLinkIfname)
 	args := []string{
@@ -338,4 +339,5 @@ func stopLisp(lispRunDirname string) {
 		log.Println("STOP-LISP failed ", err)
 	}
 	fmt.Printf("stopLisp done\n")
+	// iptablesfixup?
 }
