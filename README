@@ -4,9 +4,10 @@ Onboarding and provisioning client and mock server in go
 The overall flow is as follows:
 1. Install provisioning binaries and config files in /usr/local/bin/zededa
 and /usr/local/etc/zededa
-      scp -p prov01.priv.sc.zededa.net:/home/nordmark/go-provision/go-provision.linux_arm64.tar.gz /tmp
+    # XXX check these are current
+      scp -p prov01.priv.sc.zededa.net:/home/nordmark/go-provision.linux_arm64.tar.gz /tmp
 OR
-      scp -p prov01.priv.sc.zededa.net:/home/nordmark/go-provision/go-provision.linux_x86_64.tar.gz /tmp
+      scp -p prov01.priv.sc.zededa.net:/home/nordmark/go-provision.linux_x86_64.tar.gz /tmp
 
       cd /usr/local/
       sudo tar xf /tmp/go-provision.linux_*.tar.gz
@@ -14,6 +15,7 @@ OR
    Install lisp in /usr/local/bin/lisp
       mkdir /usr/local/bin/lisp
       cd /usr/local/bin/lisp
+      # XXX not current
       wget https://www.dropbox.com/s/if22l9t0l0f3kt6/lispers.net-x86-release-0.373.tgz
       tar xf lispers.net-x86-release-0.373.tgz
       python -O /usr/local/bin/lisp/lispers.net-install-ubuntu.pyo
@@ -26,10 +28,10 @@ Check install with
    register it with the server.
    Example:
       ssh prov01.priv.sc.zededa.net
-      cd ~nordmark/go-provision
+      cd /usr/local/bin/zededa/
       mkdir /tmp/`whoami`
       ./generate-onboard.sh /tmp/`whoami`/onboard
-      ./bin/register myself@zededa.com /tmp/`whoami`/onboard.cert.pem 3
+      ./register myself@zededa.com /tmp/`whoami`/onboard.cert.pem 3
    The above registration allows to use the onboarding certificate for 3 devices
    Generate-onboard produces two /tmp/`whoami`/onboard.*.pem files.
    Copy those files to your client device in /usr/local/etc/zededa/
