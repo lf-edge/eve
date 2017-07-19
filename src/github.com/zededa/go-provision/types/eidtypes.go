@@ -22,7 +22,6 @@ type EIDConfig struct {
 	UUIDandVersion	UUIDandVersion
 	IID		uint32
 	DisplayName	string
-	// XXX IsZedmanager	bool	// XXX useful?
 	EIDAllocation
 	// When Allocate is false the ZedCloud provides these parameters.
 	// No work for IdentityMgr in that case.
@@ -38,12 +37,13 @@ type EIDStatus struct {
 	UUIDandVersion	UUIDandVersion
 	IID		uint32
 	DisplayName	string
-	ExportPrivate	bool
+	EIDAllocation
 	PendingAdd	bool
 	PendingModify	bool
 	PendingDelete	bool
 	EID		net.IP
 	LispSignature	string
 	PemCert		[]byte
+	PemPublicKey	[]byte
 	PemPrivateKey	[]byte	// If ExportPrivate. XXX or in separate type?
 }

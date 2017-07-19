@@ -6,6 +6,7 @@ package types
 import (
 	"net"
 	"time"
+	"github.com/satori/go.uuid"
 )
 
 // Database entry for onboarding certificate.
@@ -67,3 +68,15 @@ type NameToEid struct {
 	EIDs     []net.IP
 }
 
+// Temporary approach to pass application EIDs back to prov1.zededa.net
+// to add to map servers
+type EIDRegister struct {
+	AppCert		[]byte		// XXX not used on server
+	AppPublicKey	[]byte
+	UUID		uuid.UUID
+	DisplayName	string
+	IID		uint32
+	EID		net.IP
+	EIDHashLen	uint8
+	LispMapServers	[]LispServerInfo // XXX from here?
+}

@@ -64,6 +64,7 @@ func main() {
 	http.HandleFunc("/rest/device-param", DeviceParam)
 	http.HandleFunc("/rest/update-hw-status", UpdateHwStatus)
 	http.HandleFunc("/rest/update-sw-status", UpdateSwStatus)
+	http.HandleFunc("/rest/eid-register", EIDRegister)
 
 	zcb, err := ioutil.ReadFile(zedServerConfigFileName)
 	if err != nil {
@@ -493,20 +494,20 @@ func SelfRegister(w http.ResponseWriter, r *http.Request) {
 	iidData := make([]byte, 4)
 	binary.BigEndian.PutUint32(iidData, lispInstance)
 
-	eidPrefix := []byte{0xFD} // Hard-coded for Zededa management overlay
-	eidHashLen := 128 - len(eidPrefix)*8
+	eidAllocationPrefix := []byte{0xFD} // Hard-coded for Zededa management overlay
+	eidHashLen := 128 - len(eidAllocationPrefix)*8
 
 	hasher = sha256.New()
 	fmt.Printf("iidData % x\n", iidData)
 	hasher.Write(iidData)
-	fmt.Printf("eidPrefix % x\n", eidPrefix)
-	hasher.Write(eidPrefix)
+	fmt.Printf("eidAllocationPrefix % x\n", eidAllocationPrefix)
+	hasher.Write(eidAllocationPrefix)
 	hasher.Write(publicDer)
 	sum = hasher.Sum(nil)
 	fmt.Printf("SUM: (len %d) % 2x\n", len(sum), sum)
 	// Truncate to get EidHashLen by taking the first EidHashLen/8 bytes
 	// from the left.
-	eid := net.IP(append(eidPrefix, sum...)[0:16])
+	eid := net.IP(append(eidAllocationPrefix, sum...)[0:16])
 	fmt.Printf("EID: (len %d) %s\n", len(eid), eid)
 	// We generate different credentials for different users,
 	// using the fact that each user has a different lispInstance
@@ -842,5 +843,129 @@ func UpdateSwStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	// XXX created vs. updated?
+	w.WriteHeader(http.StatusCreated)
+}
+
+func EIDRegister(w http.ResponseWriter, r *http.Request) {
+	fmt.Printf("Method %s Host %s Proto %s URL %s from %v\n",
+		r.Method, r.Host, r.Proto, r.URL, r.RemoteAddr)
+	if r.Method != http.MethodPost {
+		http.Error(w, http.StatusText(http.StatusMethodNotAllowed),
+			http.StatusMethodNotAllowed)
+		return
+	}
+	cert := r.TLS.PeerCertificates[0]
+	// Validating it is self-signed
+	if !cert.IsCA || !reflect.DeepEqual(cert.Issuer, cert.Subject) {
+		errStr := fmt.Sprintf("onboardingCert not self-signed: Issuer %s, Subject %s, IsCa %s\n",
+			cert.Issuer, cert.Subject, cert.IsCA)
+		log.Println(errStr)
+		http.Error(w, errStr, http.StatusUnauthorized)
+		return
+	}
+	// validate it has not expired
+	now := time.Now()
+	if now.After(cert.NotAfter) {
+		errStr := fmt.Sprintf("deviceCert expired NotAfter %s, now %s\n",
+			cert.NotAfter, now.UTC())
+		log.Println(errStr)
+		http.Error(w, errStr, http.StatusUnauthorized)
+		return
+	}
+	if now.Before(cert.NotBefore) {
+		errStr := fmt.Sprintf("deviceCert too early NotBefore %s, now %s\n",
+			cert.NotBefore, now.UTC())
+		log.Println(errStr)
+		http.Error(w, errStr, http.StatusUnauthorized)
+		return
+	}
+
+	hasher := sha256.New()
+	hasher.Write(cert.Raw)
+	deviceKey := base64.URLEncoding.EncodeToString(hasher.Sum(nil))
+	fmt.Println("deviceKey:", deviceKey)
+
+	// Look up in device database
+	// a new or existing scribble driver, providing the directory
+	// where it will be writing to, and a qualified logger if desired
+	deviceDb, err := scribble.New("/var/tmp/zededa-device", nil)
+	if err != nil {
+		fmt.Println("scribble.New", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError),
+			http.StatusInternalServerError)
+		return
+	}
+	device := types.DeviceDb{}
+	if err := deviceDb.Read("ddb", deviceKey, &device); err != nil {
+		fmt.Println("deviceDb.Read", err)
+		http.Error(w, http.StatusText(http.StatusNotFound),
+			http.StatusNotFound)
+		return
+	}
+	contentType := r.Header.Get("Content-Type")
+	if contentType != "application/json" {
+		fmt.Println("Incorrect Content-Type " + contentType)
+		http.Error(w, http.StatusText(http.StatusUnsupportedMediaType),
+			http.StatusUnsupportedMediaType)
+		return
+	}
+	// Check we have a reasonable content-length
+	contentLength := r.Header.Get("Content-Length")
+	if contentLength == "" {
+		fmt.Println("No Content-Length field")
+		http.Error(w, http.StatusText(http.StatusLengthRequired),
+			http.StatusLengthRequired)
+		return
+	}
+	length, err := strconv.Atoi(contentLength)
+	if err != nil {
+		fmt.Println("Atoi", err)
+		http.Error(w, http.StatusText(http.StatusBadRequest),
+			http.StatusBadRequest)
+		return
+	}
+	// XXX what is the max length of the EIDRegister type?
+	if length > 1024 {
+		fmt.Printf("Too large Content-Length %d\n", length)
+		http.Error(w, http.StatusText(http.StatusRequestEntityTooLarge),
+			http.StatusRequestEntityTooLarge)
+		return
+	}
+
+	// parsing EIDRegister json payload
+	register := &types.EIDRegister{}
+	if err := json.NewDecoder(r.Body).Decode(register); err != nil {
+		fmt.Printf("Error decoding EIDRegister: %s\n", err)
+		http.Error(w, http.StatusText(http.StatusBadRequest),
+			http.StatusBadRequest)
+		return
+	}
+	// XXX write to /var/tmp/zededa-device/eid-app/.
+	// XXX read first. Should we update? zed-lispcontroller doesn't react
+	// to updates. A restart of a device will result in a re-register.
+	// XXX compare types?
+	// XXX get appKey
+	appKey := fmt.Sprintf("%s:%d", register.UUID, register.IID)
+	fmt.Println("appKey:", appKey)
+	oldRegister := types.EIDRegister{}
+	if err = deviceDb.Read("eid-app", appKey, &oldRegister); err == nil {
+		// XXX always says not equal. Print comparison of components
+		if !reflect.DeepEqual(register, oldRegister) {
+			log.Printf("EIDRegister changed for key %s\n", appKey)
+			http.Error(w, http.StatusText(http.StatusConflict),
+				http.StatusConflict)
+		} else {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+		}
+		return
+	}
+	if err := deviceDb.Write("eid-app", appKey, register); err != nil {
+		fmt.Println("deviceDb.Write", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError),
+			http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 }
