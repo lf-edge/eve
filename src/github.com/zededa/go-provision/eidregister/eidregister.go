@@ -84,14 +84,8 @@ func main() {
 		}
 	}
 
-	// XXX write emtpy config
-	config := types.EIDRegister{}
-	writeEIDRegister(&config, "/tmp/foo")
-	
-	// XXX FILENAME SHOULD BE UUID.OLNUM SINCE MULTIPLE OVERLAYS PER APP
-
 	// XXX this is common code except for the types used with json
-	
+	// and uuid/iid check
 	fileChanges := make(chan string)
 	go watch.WatchConfigStatus(inputDirname, outputDirname, fileChanges)
 	for {
@@ -121,10 +115,11 @@ func main() {
 					err, statusFile)
 				continue
 			}
-			uuid := status.UUIDandVersion.UUID
-			if uuid.String()+".json" != fileName {
-				log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-					fileName, uuid.String())
+			expect := fmt.Sprintf("%s:%d.json",
+				status.UUIDandVersion.UUID.String(), status.IID)
+			if expect != fileName {
+				log.Printf("Mismatch #1 between filename and contained uuid/iid: %s vs. %s\n",
+					fileName, expect)
 				continue
 			}
 			outputName := outputDirname + "/" + fileName
@@ -146,10 +141,11 @@ func main() {
 				err, configFile)
 			continue
 		}
-		uuid := config.UUIDandVersion.UUID
-		if uuid.String()+".json" != fileName {
-			log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-				fileName, uuid.String())
+		expect := fmt.Sprintf("%s:%d.json",
+			config.UUIDandVersion.UUID.String(), config.IID)
+		if expect != fileName {
+			log.Printf("Mismatch #2 between filename and contained uuid/iid: %s vs. %s\n",
+				fileName, expect)
 			continue
 		}
 		statusFile := outputDirname + "/" + fileName
@@ -171,10 +167,11 @@ func main() {
 				err, statusFile)
 			continue
 		}
-		uuid = status.UUIDandVersion.UUID
-		if uuid.String()+".json" != fileName {
-			log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-				fileName, uuid.String())
+		expect = fmt.Sprintf("%s:%d.json",
+			status.UUIDandVersion.UUID.String(), status.IID)
+		if expect != fileName {
+			log.Printf("Mismatch #3 between filename and contained uuid/iid: %s vs. %s\n",
+				fileName, expect)
 			continue
 		}
 		// Look for pending* in status and repeat that operation.
@@ -356,14 +353,11 @@ func handleCreate(outputFilename string, input types.EIDStatus) {
 		input.UUIDandVersion, input.DisplayName)
 
 	// Start by marking with PendingAdd
-	output := types.EIDStatus{
-		UUIDandVersion: input.UUIDandVersion,
-		PendingAdd:     true,
-		DisplayName:    input.DisplayName,
-	}
+	output := input
+	output.PendingAdd = true
 	// XXX or should we just wait to write this until we have
 	// an ack from the server?
-	writeEIDStatus(&output, outputFilename)
+	// writeEIDStatus(&output, outputFilename)
 	register := types.EIDRegister{
 		UUID: input.UUIDandVersion.UUID,
 		IID: input.IID,
@@ -373,6 +367,12 @@ func handleCreate(outputFilename string, input types.EIDStatus) {
 		EID: input.EID,
 		EIDHashLen: uint8(128 - 8 * len(input.AllocationPrefix)),
 	}
+	// XXX hardcode this to work with existing zed-lispiotcontroller
+	register.LispMapServers = make([]types.LispServerInfo, 2)
+	register.LispMapServers[0].NameOrIp = "ms1.zededa.net"
+	register.LispMapServers[0].Credential = fmt.Sprintf("test1_%d", input.IID)
+	register.LispMapServers[1].NameOrIp = "ms2.zededa.net"
+	register.LispMapServers[1].Credential = fmt.Sprintf("test2_%d", input.IID)
 	done := false
 	var delay time.Duration
 	// XXX need to give up or run this in a separate goroutine??

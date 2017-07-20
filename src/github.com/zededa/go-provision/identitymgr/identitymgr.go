@@ -49,10 +49,8 @@ func main() {
 		}
 	}
 
-	// XXX FILENAME SHOULD BE UUID.OLNUM SINCE MULTIPLE OVERLAYS PER APP
-
 	// XXX this is common code except for the types used with json
-	
+	// and uuid/iid check
 	fileChanges := make(chan string)
 	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
 	for {
@@ -82,10 +80,11 @@ func main() {
 					err, statusFile)
 				continue
 			}
-			uuid := status.UUIDandVersion.UUID
-			if uuid.String()+".json" != fileName {
-				log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-					fileName, uuid.String())
+			expect := fmt.Sprintf("%s:%d.json",
+				status.UUIDandVersion.UUID.String(), status.IID)
+			if expect != fileName {
+				log.Printf("Mismatch #1 between filename and contained uuid/iid: %s vs. %s\n",
+					fileName, expect)
 				continue
 			}
 			statusName := statusDirname + "/" + fileName
@@ -107,10 +106,11 @@ func main() {
 				err, configFile)
 			continue
 		}
-		uuid := config.UUIDandVersion.UUID
-		if uuid.String()+".json" != fileName {
-			log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-				fileName, uuid.String())
+		expect := fmt.Sprintf("%s:%d.json",
+			config.UUIDandVersion.UUID.String(), config.IID)
+		if expect != fileName {
+			log.Printf("Mismatch #2 between filename and contained uuid/iid: %s vs. %s\n",
+				fileName, expect)
 			continue
 		}
 		statusFile := statusDirname + "/" + fileName
@@ -132,10 +132,11 @@ func main() {
 				err, statusFile)
 			continue
 		}
-		uuid = status.UUIDandVersion.UUID
-		if uuid.String()+".json" != fileName {
-			log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-				fileName, uuid.String())
+		expect = fmt.Sprintf("%s:%d.json",
+			status.UUIDandVersion.UUID.String(), status.IID)
+		if expect != fileName {
+			log.Printf("Mismatch #3 between filename and contained uuid/iid: %s vs. %s\n",
+				fileName, expect)
 			continue
 		}
 		// Look for pending* in status and repeat that operation.
@@ -187,8 +188,8 @@ func writeEIDStatus(status *types.EIDStatus,
 }
 
 func handleCreate(statusFilename string, config types.EIDConfig) {
-	log.Printf("handleCreate(%v) for %s\n",
-		config.UUIDandVersion, config.DisplayName)
+	log.Printf("handleCreate(%v,%d) for %s\n",
+		config.UUIDandVersion, config.IID, config.DisplayName)
 
 	// Start by marking with PendingAdd
 	status := types.EIDStatus{
@@ -399,8 +400,8 @@ func encodePrivateKey(keypair *ecdsa.PrivateKey) ([]byte, error) {
 // else. Such a version change would be e.g. due to an ACL change.
 func handleModify(statusFilename string, config types.EIDConfig,
 	status types.EIDStatus) {
-	log.Printf("handleModify(%v) for %s\n",
-		config.UUIDandVersion, config.DisplayName)
+	log.Printf("handleModify(%v,%d) for %s\n",
+		config.UUIDandVersion, config.IID, config.DisplayName)
 
 	status.PendingModify = true
 	writeEIDStatus(&status, statusFilename)
@@ -412,8 +413,8 @@ func handleModify(statusFilename string, config types.EIDConfig,
 
 // Need the olNum and ulNum to delete and EID route to delete
 func handleDelete(statusFilename string, status types.EIDStatus) {
-	log.Printf("handleDelete(%v) for %s\n",
-		status.UUIDandVersion, status.DisplayName)
+	log.Printf("handleDelete(%v,%d) for %s\n",
+		status.UUIDandVersion, status.IID, status.DisplayName)
 
 	// No work to do other than deleting the status
 

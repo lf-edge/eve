@@ -925,7 +925,7 @@ func EIDRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// XXX what is the max length of the EIDRegister type?
-	if length > 1024 {
+	if length > 4096 {
 		fmt.Printf("Too large Content-Length %d\n", length)
 		http.Error(w, http.StatusText(http.StatusRequestEntityTooLarge),
 			http.StatusRequestEntityTooLarge)
@@ -950,7 +950,16 @@ func EIDRegister(w http.ResponseWriter, r *http.Request) {
 	oldRegister := types.EIDRegister{}
 	if err = deviceDb.Read("eid-app", appKey, &oldRegister); err == nil {
 		// XXX always says not equal. Print comparison of components
-		if !reflect.DeepEqual(register, oldRegister) {
+		// if !reflect.DeepEqual(register, oldRegister) {
+		if !reflect.DeepEqual(register.AppCert, oldRegister.AppCert) ||
+		   !reflect.DeepEqual(register.AppPublicKey,
+		   	oldRegister.AppPublicKey) ||
+		   register.UUID != oldRegister.UUID ||
+		   register.IID != oldRegister.IID ||
+		   !reflect.DeepEqual(register.EID, oldRegister.EID) ||
+		   register.EIDHashLen != oldRegister.EIDHashLen ||
+		   !reflect.DeepEqual(register.LispMapServers,
+			oldRegister.LispMapServers) {
 			log.Printf("EIDRegister changed for key %s\n", appKey)
 			http.Error(w, http.StatusText(http.StatusConflict),
 				http.StatusConflict)
