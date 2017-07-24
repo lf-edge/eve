@@ -14,6 +14,7 @@ type EIDAllocation struct {
 	Allocate	bool
 	ExportPrivate	bool	// Provide private key to ZedManager for mobility
 	AllocationPrefix []byte	// XXX normally 0xfd
+	AllocationPrefixLen int // XXX normally 8
 }
 
 // Indexed by UUID plus IID; version not included in index

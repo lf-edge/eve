@@ -23,8 +23,10 @@ type AppInstanceConfig struct {
 	StorageConfigList    []StorageConfig
 	// Assume StorageConfig should be installed when present in list
 	Activate     	    bool
-	// The allocation polcies (incl prefix) are common across all IIDs for now
+	// The allocation policies (incl prefix) are common across all IIDs for now
+	// XXX doesn't work with AWS
 	EIDAllocation
+	// XXX Need PemCert and PemPrivateKey for each overlay; include "Allocate" per overlay? LispSignature? Not calculated for Allocate=false case!
 	OverlayNetworkList  []OverlayNetworkConfig
 	UnderlayNetworkList []UnderlayNetworkConfig
 }

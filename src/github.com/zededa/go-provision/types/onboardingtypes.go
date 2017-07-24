@@ -47,6 +47,8 @@ type DeviceDb struct {
 	EID            net.IP
 	EIDHashLen     uint8
 	ZedServers     ZedServerConfig
+	EidAllocationPrefix	[]byte
+	EidAllocationPrefixLen	int
 	ClientAddr     string // To detect NATs
 }
 

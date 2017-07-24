@@ -1,31 +1,16 @@
-package main
+// Copyright (c) 2017 Zededa, Inc.
+// All rights reserved.
 
-import (
-	"bytes"
-	"crypto/ecdsa"
-	"crypto/rand"
-	"crypto/sha256"
-	"crypto/tls"
-	"crypto/x509"
-	"encoding/base64"
-	"encoding/json"
-	"fmt"
-	"github.com/zededa/go-provision/types"
-	"golang.org/x/crypto/ocsp"
-	"io/ioutil"
-	"log"
-	"net"
-	"net/http"
-	"os"
-	"strconv"
-	"strings"
-	"time"
-)
-
-//XXX fixme; need to write the code,
-// Input directory with config (URL, refcount, length, dstDir)
-// Output directory with status (URL, state, Last-Modified, lastErr, lastErrTime, retryCount)
-// refCount -> 0 means delete from dstDir? Who owns that? Separate mount.
+// Process input changes from a config directory containing json encoded files
+// with DownloaderConfig and compare against DownloaderStatus in the status
+// dir.
+// Tries to download the items in the config directory repeatedly until
+// there is a complete download. (XXX detect eof/short file or not?)
+// ZedManager can stop the download by removing from config directory.
+//
+// Input directory with config (URL, refcount, maxLength, dstDir)
+// Output directory with status (URL, refcount, state, ModTime, lastErr, lastErrTime, retryCount)
+// refCount -> 0 means delete from dstDir? Who owns dstDir? Separate mount.
 // Check length against Content-Length.
 
 // Should retrieve length somewhere first. Should that be in the catalogue?
@@ -40,479 +25,498 @@ import (
 // Content-Length: 185947455
 // Content-Type: application/x-gzip
 
-var maxDelay = time.Second * 600 // 10 minutes
+package main
 
-// Assumes the config files are in dirName, which is /usr/local/etc/zededa/
-// by default. The files are
-//  root-certificate.pem	Fixed? Written if redirected. factory-root-cert?
-//  server			Fixed? Written if redirected. factory-root-cert?
-//  onboard.cert.pem, onboard.key.pem	Per device onboarding certificate/key
-//  		   		for selfRegister operation
-//  device.cert.pem,
-//  device.key.pem		Device certificate/key created before this
-//  		     		client is started.
-//  lisp.config			Written by lookupParam operation
-//  zedserverconfig		Written by lookupParam operation; zed server EIDs
-//  hwstatus.json		Uploaded by updateHwStatus operation
-//  swstatus.json		Uploaded by updateSwStatus operation
-//
+import (
+	"encoding/json"
+	"fmt"
+	"github.com/zededa/go-provision/types"
+	"github.com/zededa/go-provision/watch"
+	"io/ioutil"
+	"log"
+	"os"
+	"os/exec"
+	"strings"
+	"time"
+)
+
 func main() {
-	args := os.Args[1:]
-	if len(args) > 10 { // XXX
-		log.Fatal("Usage: " + os.Args[0] +
-			"[<dirName> [<operations>...]]")
+	// XXX make baseDirname and runDirname be arguments??
+	// Keeping status in /var/run to be clean after a crash/reboot
+	baseDirname := "/var/tmp/downloader"
+	runDirname := "/var/run/downloader"
+	configDirname := baseDirname + "/config"
+	statusDirname := runDirname + "/status"
+	imgCatalogDirname = "/var/tmp/zedmanager/downloads"
+	pendingDirname := imgCatalogDirname + "/pending"
+	
+	if _, err := os.Stat(imgCatalogDirname); err != nil {
+		log.Fatal("Stat ", imgCatalogDirname, err)
 	}
-	dirName := "/usr/local/etc/zededa/"
-	if len(args) > 0 {
-		dirName = args[0]
-	}
-	operations := map[string]bool{
-		"selfRegister":   false,
-		"lookupParam":    false,
-		"updateHwStatus": false,
-		"updateSwStatus": false,
-	}
-	if len(args) > 1 {
-		for _, op := range args[1:] {
-			operations[op] = true
+	
+	if _, err := os.Stat(runDirname); err != nil {
+		if err := os.Mkdir(runDirname, 0755); err != nil {
+			log.Fatal("Mkdir ", runDirname, err)
 		}
-	} else {
-		// XXX for compat
-		operations["selfRegister"] = true
-		operations["lookupParam"] = true
+	}
+	if _, err := os.Stat(statusDirname); err != nil {
+		if err := os.Mkdir(statusDirname, 0755); err != nil {
+			log.Fatal("Mkdir ", statusDirname, err)
+		}
+	}
+	if _, err := os.Stat(pendingDirname); err != nil {
+		if err := os.Mkdir(pendingDirname, 0755); err != nil {
+			log.Fatal("Mkdir ", pendingDirname, err)
+		}
 	}
 
-	onboardCertName := dirName + "/onboard.cert.pem"
-	onboardKeyName := dirName + "/onboard.key.pem"
-	deviceCertName := dirName + "/device.cert.pem"
-	deviceKeyName := dirName + "/device.key.pem"
-	rootCertName := dirName + "/root-certificate.pem"
-	serverFileName := dirName + "/server"
-	lispConfigFileName := dirName + "/lisp.config"
-	lispConfigTmpFileName := dirName + "/lisp.config.tmp"
-	zedserverConfigFileName := dirName + "/zedserverconfig"
-	hwStatusFileName := dirName + "/hwstatus.json"
-	swStatusFileName := dirName + "/swstatus.json"
+	// XXX write emtpy config
+	config := types.DownloaderConfig{}
+	writeDownloaderConfig(&config, "/tmp/foo")
 
-	var onboardCert, deviceCert tls.Certificate
-	var deviceCertPem []byte
-	deviceCertSet := false
+	handleInit(configDirname+"/global", statusDirname+"/global")
 
-	if operations["selfRegister"] {
-		var err error
-		onboardCert, err = tls.LoadX509KeyPair(onboardCertName, onboardKeyName)
+	fileChanges := make(chan string)
+	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
+	for {
+		change := <-fileChanges
+		parts := strings.Split(change, " ")
+		operation := parts[0]
+		fileName := parts[1]
+		if !strings.HasSuffix(fileName, ".json") {
+			log.Printf("Ignoring file <%s>\n", fileName)
+			continue
+		}
+		if operation == "D" {
+			statusFile := statusDirname + "/" + fileName
+			if _, err := os.Stat(statusFile); err != nil {
+				// File just vanished!
+				log.Printf("File disappeared <%s>\n", fileName)
+				continue
+			}
+			sb, err := ioutil.ReadFile(statusFile)
+			if err != nil {
+				log.Printf("%s for %s\n", err, statusFile)
+				continue
+			}
+			status := types.DownloaderStatus{}
+			if err := json.Unmarshal(sb, &status); err != nil {
+				log.Printf("%s DownloaderStatus file: %s\n",
+					err, statusFile)
+				continue
+			}
+			name := status.Safename
+			if name+".json" != fileName {
+				log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
+					fileName, name)
+				continue
+			}
+			statusName := statusDirname + "/" + fileName
+			handleDelete(statusName, status)
+			continue
+		}
+		if operation != "M" {
+			log.Fatal("Unknown operation from Watcher: ", operation)
+		}
+		configFile := configDirname + "/" + fileName
+		cb, err := ioutil.ReadFile(configFile)
 		if err != nil {
-			log.Fatal(err)
+			log.Printf("%s for %s\n", err, configFile)
+			continue
 		}
-		// Load device text cert for upload
-		deviceCertPem, err = ioutil.ReadFile(deviceCertName)
+		config := types.DownloaderConfig{}
+		if err := json.Unmarshal(cb, &config); err != nil {
+			log.Printf("%s DownloaderConfig file: %s\n",
+				err, configFile)
+			continue
+		}
+		name := config.Safename
+		if name+".json" != fileName {
+			log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
+				fileName, name)
+			continue
+		}
+		statusFile := statusDirname + "/" + fileName
+		if _, err := os.Stat(statusFile); err != nil {
+			// File does not exist in status hence new
+			statusName := statusDirname + "/" + fileName
+			handleCreate(statusName, config)
+			continue
+		}
+		// Compare Version string
+		sb, err := ioutil.ReadFile(statusFile)
 		if err != nil {
-			log.Fatal(err)
+			log.Printf("%s for %s\n", err, statusFile)
+			continue
 		}
-	}
-	if operations["lookupParam"] || operations["updateHwStatus"] ||
-		operations["updateSwStatus"] {
-		// Load device cert
-		var err error
-		deviceCert, err = tls.LoadX509KeyPair(deviceCertName,
-			deviceKeyName)
-		if err != nil {
-			log.Fatal(err)
+		status := types.DownloaderStatus{}
+		if err = json.Unmarshal(sb, &status); err != nil {
+			log.Printf("%s DownloaderStatus file: %s\n",
+				err, statusFile)
+			continue
 		}
-		deviceCertSet = true
+		name = status.Safename
+		if name+".json" != fileName {
+			log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
+				fileName, name)
+			continue
+		}
+		// Look for pending* in status and repeat that operation.
+		// XXX After that do a full ReadDir to restart ...
+		if status.PendingAdd {
+			statusName := statusDirname + "/" + fileName
+			handleCreate(statusName, config)
+			// XXX set something to rescan?
+			continue
+		}
+		if status.PendingDelete {
+			statusName := statusDirname + "/" + fileName
+			handleDelete(statusName, status)
+			// XXX set something to rescan?
+			continue
+		}
+		if status.PendingModify {
+			statusName := statusDirname + "/" + fileName
+			handleModify(statusName, config, status)
+			// XXX set something to rescan?
+			continue
+		}
+			
+		// XXX handleModify detects changes by looking at RefCount
+		// Sanity check here or in handleModify?
+		if config.DownloadURL !=
+			status.DownloadURL {
+			fmt.Printf("URL changed - not allowed %s -> %s\n",
+				config.DownloadURL, status.DownloadURL)
+			continue
+		}
+		statusName := statusDirname + "/" + fileName
+		handleModify(statusName, config, status)
 	}
+}
 
-	// Load CA cert
-	caCert, err := ioutil.ReadFile(rootCertName)
+var globalConfig types.GlobalDownloadConfig
+var globalStatus types.GlobalDownloadStatus
+var globalStatusFilename string
+var imgCatalogDirname string
+
+func handleInit(configFilename string, statusFilename string) {
+	globalStatusFilename = statusFilename
+
+	// Read GlobalDownloadConfig to find MaxSpace
+	// Then determine currently used space and remaining.
+	cb, err := ioutil.ReadFile(configFilename)
 	if err != nil {
+		log.Printf("%s for %s\n", err, configFilename)
 		log.Fatal(err)
 	}
-	caCertPool := x509.NewCertPool()
-	caCertPool.AppendCertsFromPEM(caCert)
-
-	server, err := ioutil.ReadFile(serverFileName)
-	if err != nil {
+	if err := json.Unmarshal(cb, &globalConfig); err != nil {
+		log.Printf("%s GlobalDownloadConfig file: %s\n",
+			err, configFilename)
 		log.Fatal(err)
 	}
-	serverNameAndPort := strings.TrimSpace(string(server))
-	serverName := strings.Split(serverNameAndPort, ":")[0]
-	// XXX for local testing
-	// serverNameAndPort = "localhost:9069"
+	log.Printf("MaxSpace %d\n", globalConfig.MaxSpace)
+	
+	globalStatus.UsedSpace = 0
+	globalStatus.ReservedSpace = 0
+	updateRemainingSpace()
+	// XXX clean up /var/tmp/zedmanager/downloads/pending/?? ZedManager
+	// didn't pick them up and rename them?
 
-	// Post something without a return type.
-	// Returns true when done; false when retry
-	myPost := func(client *http.Client, url string, b *bytes.Buffer) bool {
-		resp, err := client.Post("https://"+serverNameAndPort+url,
-			"application/json", b)
-		if err != nil {
-			fmt.Printf("client.Post: ", err)
-			return false
-		}
-		defer resp.Body.Close()
-		connState := resp.TLS
-		if connState == nil {
-			fmt.Println("no TLS connection state")
-			return false
-		}
+	// XXX read /var/tmp/zedmanager/downloads/* and determine how much space
+	// is used. Place in GlobalDownloadStatus. Calculate remaining space.
+	// XXX create DownloaderStatus for the files we find? Don't have sha!
+	// XXX rename to sha256 name after verified. Done by zedmanager.
+	totalUsed := sizeFromDir(imgCatalogDirname)
+	// XXX round to kbytes? Or switch to int64 in bytes?
+	globalStatus.UsedSpace = uint((totalUsed + 1023) / 1024)
+	updateRemainingSpace()
+}
 
-		if connState.OCSPResponse == nil ||
-			!stapledCheck(connState) {
-			if connState.OCSPResponse == nil {
-				fmt.Println("no OCSP response")
-			} else {
-				fmt.Println("OCSP stapled check failed")
-			}
-			return false
-		}
-
-		contents, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			fmt.Println(err)
-			return false
-		}
-
-		// XXX Should this behavior be url-specific?
-		switch resp.StatusCode {
-		case http.StatusOK:
-			fmt.Printf("%s StatusOK\n", url)
-		case http.StatusCreated:
-			fmt.Printf("%s StatusCreated\n", url)
-		case http.StatusConflict:
-			fmt.Printf("%s StatusConflict\n", url)
-			// Retry until fixed
-			fmt.Printf("%s\n", string(contents))
-			return false
-		default:
-			fmt.Printf("%s statuscode %d %s\n",
-				url, resp.StatusCode,
-				http.StatusText(resp.StatusCode))
-			fmt.Printf("%s\n", string(contents))
-			return false
-		}
-
-		contentType := resp.Header.Get("Content-Type")
-		if contentType != "application/json" {
-			fmt.Println("Incorrect Content-Type " + contentType)
-			return false
-		}
-		fmt.Printf("%s\n", string(contents))
-		return true
+func sizeFromDir(dirname string) int64 {
+	var totalUsed int64 = 0     
+	locations, err := ioutil.ReadDir(dirname)
+	if err != nil {
+		log.Fatalf("ReadDir(%s) %s\n",
+			dirname, err)
 	}
-
-	// Returns true when done; false when retry
-	selfRegister := func() bool {
-		// Setup HTTPS client
-		tlsConfig := &tls.Config{
-			Certificates: []tls.Certificate{onboardCert},
-			ServerName:   serverName,
-			RootCAs:      caCertPool,
-			CipherSuites: []uint16{
-				tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-				tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256},
-			// TLS 1.2 because we can
-			MinVersion: tls.VersionTLS12,
-		}
-		tlsConfig.BuildNameToCertificate()
-
-		fmt.Printf("Connecting to %s\n", serverNameAndPort)
-
-		transport := &http.Transport{TLSClientConfig: tlsConfig}
-		client := &http.Client{Transport: transport}
-		rc := types.RegisterCreate{PemCert: deviceCertPem}
-		b := new(bytes.Buffer)
-		json.NewEncoder(b).Encode(rc)
-		return myPost(client, "/rest/self-register", b)
-	}
-
-	// Returns true when done; false when retry
-	lookupParam := func(client *http.Client, device *types.DeviceDb) bool {
-		resp, err := client.Get("https://" + serverNameAndPort +
-			"/rest/device-param")
-		if err != nil {
-			fmt.Println(err)
-			return false
-		}
-		defer resp.Body.Close()
-		connState := resp.TLS
-		if connState == nil {
-			log.Println("no TLS connection state")
-			return false
-		}
-
-		if connState.OCSPResponse == nil ||
-			!stapledCheck(connState) {
-			if connState.OCSPResponse == nil {
-				fmt.Println("no OCSP response")
-			} else {
-				fmt.Println("OCSP stapled check failed")
-			}
-			return false
-		}
-
-		contents, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			fmt.Println(err)
-			return false
-		}
-		switch resp.StatusCode {
-		case http.StatusOK:
-			fmt.Printf("device-param StatusOK\n")
-		default:
-			fmt.Printf("device-param statuscode %d %s\n",
-				resp.StatusCode,
-				http.StatusText(resp.StatusCode))
-			fmt.Printf("%s\n", string(contents))
-			return false
-		}
-		contentType := resp.Header.Get("Content-Type")
-		if contentType != "application/json" {
-			fmt.Println("Incorrect Content-Type " + contentType)
-			return false
-		}
-		if err := json.Unmarshal(contents, &device); err != nil {
-			fmt.Println(err)
-			return false
-		}
-		return true
-	}
-
-	if operations["selfRegister"] {
-		done := false
-		var delay time.Duration
-		for !done {
-			time.Sleep(delay)
-			done = selfRegister()
-			delay = 2 * (delay + time.Second)
-			if delay > maxDelay {
-				delay = maxDelay
-			}
+	for _, location := range locations {
+		filename := dirname + "/" + location.Name()
+		fmt.Printf("Looking in %s\n", filename)
+		if location.IsDir() {
+			size := sizeFromDir(filename)
+			fmt.Printf("Dir %s size %d\n", filename, size)
+			totalUsed += size
+		} else {
+			fmt.Printf("File %s Size %d\n", filename, location.Size())
+			totalUsed += location.Size()
 		}
 	}
+	return totalUsed
+}
 
-	if !deviceCertSet {
+func updateRemainingSpace() {
+	globalStatus.RemainingSpace = globalConfig.MaxSpace -
+		globalStatus.UsedSpace -
+		globalStatus.ReservedSpace
+	log.Printf("RemaingSpace %d, maxspace %d, usedspace %d, reserved %d\n",
+		globalStatus.RemainingSpace, globalConfig.MaxSpace,
+		globalStatus.UsedSpace,	globalStatus.ReservedSpace)
+	// Create and write
+	writeGlobalStatus()
+}
+
+func writeGlobalStatus() {
+	b, err := json.Marshal(globalStatus)
+	if err != nil {
+		log.Fatal(err, "json Marshal GlobalDownloadStatus")
+	}
+	// We assume a /var/run path hence we don't need to worry about
+	// partial writes/empty files due to a kernel crash.
+	// XXX which permissions?
+	err = ioutil.WriteFile(globalStatusFilename, b, 0644)
+	if err != nil {
+		log.Fatal(err, globalStatusFilename)
+	}
+}
+
+// XXX Only used for initial format of config json
+func writeDownloaderConfig(config *types.DownloaderConfig,
+	configFilename string) {
+	fmt.Printf("XXX Writing empty config to %s\n", configFilename)
+	b, err := json.Marshal(config)
+	if err != nil {
+		log.Fatal(err, "json Marshal DownloaderConfig")
+	}
+	err = ioutil.WriteFile(configFilename, b, 0644)
+	if err != nil {
+		log.Fatal(err, configFilename)
+	}
+}
+
+func writeDownloaderStatus(status *types.DownloaderStatus,
+	statusFilename string) {
+	b, err := json.Marshal(status)
+	if err != nil {
+		log.Fatal(err, "json Marshal DownloaderStatus")
+	}
+	// We assume a /var/run path hence we don't need to worry about
+	// partial writes/empty files due to a kernel crash.
+	// XXX which permissions?
+	err = ioutil.WriteFile(statusFilename, b, 0644)
+	if err != nil {
+		log.Fatal(err, statusFilename)
+	}
+}
+
+func handleCreate(statusFilename string, config types.DownloaderConfig) {
+	log.Printf("handleCreate(%v) for %s\n",
+		config.Safename, config.DownloadURL)
+	// Start by marking with PendingAdd
+	status := types.DownloaderStatus{
+		Safename:	config.Safename,
+		RefCount:	config.RefCount,
+		DownloadURL:	config.DownloadURL,
+		ImageSha256:	config.ImageSha256,
+		PendingAdd:     true,
+	}
+	writeDownloaderStatus(&status, statusFilename)
+	// Check if we have space
+	if config.MaxSize >= globalStatus.RemainingSpace {
+		errString := fmt.Sprintf("Would exceed remaining space %d vs %d\n",
+			config.MaxSize, globalStatus.RemainingSpace)
+		log.Println(errString)
+		status.Size = 0
+		status.LastErr = errString
+		status.LastErrTime = time.Now()
+		status.RetryCount += 1
+		status.State = types.INITIAL
+		writeDownloaderStatus(&status, statusFilename)
+		log.Printf("handleCreate failed for %s\n", config.DownloadURL)
 		return
 	}
-	// Setup HTTPS client for deviceCert
-	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{deviceCert},
-		ServerName:   serverName,
-		RootCAs:      caCertPool,
-		CipherSuites: []uint16{
-			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256},
-		// TLS 1.2 because we can
-		MinVersion: tls.VersionTLS12,
+	// Update reserved space. Keep reserved until doDelete
+	// XXX RefCount -> 0 should keep it reserved.
+	status.ReservedSpace = config.MaxSize
+	globalStatus.ReservedSpace += status.ReservedSpace
+	updateRemainingSpace()
+	
+	// If RefCount == 0 then we don't yet download.
+	if config.RefCount == 0 {
+		// XXX odd to treat as error.
+		errString := fmt.Sprintf("RefCount==0; download deferred for %s\n",
+			config.DownloadURL)
+		log.Println(errString)
+		status.Size = 0
+		status.LastErr = errString
+		status.LastErrTime = time.Now()
+		status.RetryCount += 1
+		status.State = types.INITIAL
+		writeDownloaderStatus(&status, statusFilename)
+		log.Printf("handleCreate deferred for %s\n", config.DownloadURL)
+		return
 	}
-	tlsConfig.BuildNameToCertificate()
-
-	transport := &http.Transport{TLSClientConfig: tlsConfig}
-	client := &http.Client{Transport: transport}
-
-	if operations["lookupParam"] {
-		done := false
-		var delay time.Duration
-		device := types.DeviceDb{}
-		for !done {
-			time.Sleep(delay)
-			done = lookupParam(client, &device)
-			delay = 2 * (delay + time.Second)
-			if delay > maxDelay {
-				delay = maxDelay
-			}
-		}
-
-		// XXX add Redirect support and store + retry
-		// XXX try redirected once and then fall back to original; repeat
-		// XXX once redirect successful, then save server and rootCert
-
-		// Convert from IID and IPv6 EID to a string with
-		// [iid]eid, where the eid has includes leading zeros i.e.
-		// is a fixed 39 bytes long. The iid is printed as an integer.
-		p := device.EID
-		sigdata := fmt.Sprintf("[%d]%04x:%04x:%04x:%04x:%04x:%04x:%04x:%04x",
-			device.LispInstance,
-			(uint32(p[0])<<8)|uint32(p[0+1]),
-			(uint32(p[2])<<8)|uint32(p[2+1]),
-			(uint32(p[4])<<8)|uint32(p[4+1]),
-			(uint32(p[6])<<8)|uint32(p[6+1]),
-			(uint32(p[8])<<8)|uint32(p[8+1]),
-			(uint32(p[10])<<8)|uint32(p[10+1]),
-			(uint32(p[12])<<8)|uint32(p[12+1]),
-			(uint32(p[14])<<8)|uint32(p[14+1]))
-		fmt.Printf("sigdata (len %d) %s\n", len(sigdata), sigdata)
-
-		hasher := sha256.New()
-		hasher.Write([]byte(sigdata))
-		hash := hasher.Sum(nil)
-		fmt.Printf("hash (len %d) % x\n", len(hash), hash)
-		fmt.Printf("base64 hash %s\n",
-			base64.StdEncoding.EncodeToString(hash))
-
-		var signature string
-		switch deviceCert.PrivateKey.(type) {
-		default:
-			log.Fatal("Private Key RSA type not supported")
-		case *ecdsa.PrivateKey:
-			key := deviceCert.PrivateKey.(*ecdsa.PrivateKey)
-			r, s, err := ecdsa.Sign(rand.Reader, key, hash)
-			if err != nil {
-				log.Fatal("ecdsa.Sign: ", err)
-			}
-			fmt.Printf("r.bytes %d s.bytes %d\n", len(r.Bytes()),
-				len(s.Bytes()))
-			sigres := r.Bytes()
-			sigres = append(sigres, s.Bytes()...)
-			fmt.Printf("sigres (len %d): % x\n", len(sigres), sigres)
-			signature = base64.StdEncoding.EncodeToString(sigres)
-			fmt.Println("signature:", signature)
-		}
-		fmt.Printf("UserName %s\n", device.UserName)
-		fmt.Printf("MapServers %s\n", device.LispMapServers)
-		fmt.Printf("Lisp IID %d\n", device.LispInstance)
-		fmt.Printf("EID %s\n", device.EID)
-		fmt.Printf("EID hash length %d\n", device.EIDHashLen)
-
-		replacer := strings.NewReplacer(
-			"instance-id = <iid>",
-			"instance-id = "+
-				strconv.FormatUint(uint64(device.LispInstance),
-					10),
-			"eid-prefix = <eid-prefix6>",
-			"eid-prefix = "+device.EID.String()+"/128",
-			"eid-prefix = '<username>'",
-			"eid-prefix = '"+device.UserName+"'")
-		lispTemplate, err := ioutil.ReadFile(lispConfigTemplateFileName)
-		if err != nil {
-			log.Fatal(err)
-		}
-		lispConfig := replacer.Replace(string(lispTemplate))
-		for i, ms := range device.LispMapServers {
-			item := strconv.Itoa(i + 1)
-			replacer := strings.NewReplacer(
-				"dns-name = <map-server-"+item+">",
-				"dns-name = "+ms.NameOrIp,
-				"authentication-key = <map-server-"+item+"-key>",
-				"authentication-key = "+ms.Credential,
-				"<signature>", signature,
-			)
-			lispConfig = replacer.Replace(string(lispConfig))
-		}
-		// write to temp file and then rename to avois loss
-		err = ioutil.WriteFile(lispConfigTmpFileName,
-			[]byte(lispConfig), 0600)
-		if err != nil {
-			log.Fatal(err)
-		}
-		err = os.Rename(lispConfigTmpFileName, lispConfigFileName)
-		if err != nil {
-			log.Fatal(err)
-		}
-		// write zedserverconfig file with hostname to EID mappings
-		f, err := os.Create(zedserverConfigFileName)
-		if err != nil {
-			log.Fatal(err)
-		}
-		defer f.Close()
-		for _, ne := range device.ZedServers.NameToEidList {
-			for _, eid := range ne.EIDs {
-				output := fmt.Sprintf("%-46v %s\n",
-					eid, ne.HostName)
-				_, err := f.WriteString(output)
-				if err != nil {
-					log.Fatal(err)
-				}
-			}
-		}
-		f.Sync()
-		// Determine whether NAT is in use
-		nat := !IsMyAddress(device.ClientAddr)
-		fmt.Printf("NAT %v, ClientAddr %v\n", nat, device.ClientAddr)
-	}
-	if operations["updateHwStatus"] {
-		// Load file for upload
-		buf, err := ioutil.ReadFile(hwStatusFileName)
-		if err != nil {
-			log.Fatal(err)
-		}
-		// Input is in json format
-		b := bytes.NewBuffer(buf)
-		done := false
-		var delay time.Duration
-		for !done {
-			time.Sleep(delay)
-			done = myPost(client, "/rest/update-hw-status", b)
-			delay = 2 * (delay + time.Second)
-			if delay > maxDelay {
-				delay = maxDelay
-			}
-		}
-	}
-	if operations["updateSwStatus"] {
-		// Load file for upload
-		buf, err := ioutil.ReadFile(swStatusFileName)
-		if err != nil {
-			log.Fatal(err)
-		}
-		// Input is in json format
-		b := bytes.NewBuffer(buf)
-		done := false
-		var delay time.Duration
-		for !done {
-			time.Sleep(delay)
-			done = myPost(client, "/rest/update-sw-status", b)
-			delay = 2 * (delay + time.Second)
-			if delay > maxDelay {
-				delay = maxDelay
-			}
-		}
-	}
+	doCreate(statusFilename, config, &status)
+	log.Printf("handleCreate done for %s\n", config.DownloadURL)
 }
 
-// IsMyAddress checks the IP address against the local IPs. Returns True if
-// there is a match.
-func IsMyAddress(addrString string) bool {
-	clientTCP, err := net.ResolveTCPAddr("tcp", addrString)
+func doCreate(statusFilename string, config types.DownloaderConfig,
+	status *types.DownloaderStatus) {
+	status.State = types.DOWNLOAD_STARTED
+	writeDownloaderStatus(status, statusFilename)
+	// Form unique filename in /var/tmp/zedmanager/downloads/pending/
+	// based on safename
+	destFilename := imgCatalogDirname + "/pending/" + config.Safename	
+	log.Printf("Downloading URL %s to %s\n",
+		config.DownloadURL, destFilename)
+
+	// XXX do work; should kick off goroutine to be able to cacel
+	// XXX invoke wget for now.
+	err := doWget(config.DownloadURL, destFilename)
 	if err != nil {
-		return false
+		// Delete file
+		doDelete(statusFilename, status)
+		status.Size = 0
+		status.LastErr = fmt.Sprintf("%v", err)
+		status.LastErrTime = time.Now()
+		status.RetryCount += 1
+		status.State = types.INITIAL
+		writeDownloaderStatus(status, statusFilename)
+		return
 	}
-	clientIP := clientTCP.IP
-	addrs, err := net.InterfaceAddrs()
+
+	info, err := os.Stat(destFilename)
 	if err != nil {
-		return false
+		// Delete file
+		doDelete(statusFilename, status)
+		status.Size = 0
+		status.LastErr = fmt.Sprintf("%v", err)
+		status.LastErrTime = time.Now()
+		status.RetryCount += 1
+		status.State = types.INITIAL
+		writeDownloaderStatus(status, statusFilename)
+		return
 	}
-	for _, address := range addrs {
-		if ipnet, ok := address.(*net.IPNet); ok &&
-			!ipnet.IP.IsLoopback() {
-			if bytes.Compare(ipnet.IP, clientIP) == 0 {
-				return true
-			}
-		}
+	// XXX Compare against MaxSize and reject? Already wasted the space?
+	status.Size = uint((info.Size() + 1023)/1024)
+	
+	if status.Size > config.MaxSize {
+		// Delete file
+		doDelete(statusFilename, status)
+		errString := fmt.Sprintf("Size exceeds MaxSize; %d vs. %d for %s\n",
+			status.Size, config.MaxSize, config.DownloadURL)
+		log.Println(errString)
+		status.Size = 0
+		status.LastErr = errString
+		status.LastErrTime = time.Now()
+		status.RetryCount += 1
+		status.State = types.INITIAL
+		writeDownloaderStatus(status, statusFilename)
+		log.Printf("handleCreate failed for %s\n", config.DownloadURL)
+		return
 	}
-	return false
+	
+	globalStatus.ReservedSpace -= status.ReservedSpace
+	status.ReservedSpace = 0
+	globalStatus.UsedSpace += status.Size
+	updateRemainingSpace()
+	
+	status.ModTime = time.Now()
+	// XXX keep status.RetryCount, LastErr, etc. Caller should look at State.
+	status.PendingAdd = false
+	status.State = types.DOWNLOADED
+	writeDownloaderStatus(status, statusFilename)
 }
 
-func stapledCheck(connState *tls.ConnectionState) bool {
-	// server := connState.VerifiedChains[0][0]
-	issuer := connState.VerifiedChains[0][1]
-	resp, err := ocsp.ParseResponse(connState.OCSPResponse, issuer)
+// XXX Should we set        --limit-rate=100k
+// XXX Can we safely try a continue?
+// XXX wget seems to have no way to limit download size for single file!
+func doWget(url string, destFilename string) error {
+	fmt.Printf("doWget %s %s\n", url, destFilename)     
+	cmd := "wget"
+	args := []string{
+		"-q",
+// XXX not safe	"-c",
+		"--tries=1",
+		"-O",
+		destFilename,
+		url,
+	}
+	_, err := exec.Command(cmd, args...).Output()
 	if err != nil {
-		log.Println("error parsing response: ", err)
-		return false
+		log.Println("wget failed ", err)
+		return err
 	}
-	now := time.Now()
-	age := now.Unix() - resp.ProducedAt.Unix()
-	remain := resp.NextUpdate.Unix() - now.Unix()
-	log.Printf("OCSP age %d, remain %d\n", age, remain)
-	if remain < 0 {
-		log.Println("OCSP expired.")
-		return false
+	fmt.Printf("wget done\n")
+	return nil
+}
+
+// Allow to cancel by setting RefCount = 0. Same as delete? RefCount 0->1
+// means download. Ignore other changes?
+func handleModify(statusFilename string, config types.DownloaderConfig,
+	status types.DownloaderStatus) {
+	log.Printf("handleModify(%v) for %s\n",
+		config.Safename, config.DownloadURL)
+
+	// XXX do work; look for refcnt -> 0 and delete; cancel any running
+	// download
+	// If RefCount from zero to non-zero then do install
+	if status.RefCount == 0 && config.RefCount != 0 {
+		log.Printf("handleModify installing %s\n", config.DownloadURL)
+		doCreate(statusFilename, config, &status)
+	} else if status.RefCount != 0 && config.RefCount == 0 {	
+		log.Printf("handleModify deleting %s\n", config.DownloadURL)
+		doDelete(statusFilename, &status)
 	}
-	if resp.Status == ocsp.Good {
-		log.Println("Certificate Status Good.")
-	} else if resp.Status == ocsp.Unknown {
-		log.Println("Certificate Status Unknown")
-	} else {
-		log.Println("Certificate Status Revoked")
+	status.RefCount = config.RefCount
+	status.PendingModify = false
+	writeDownloaderStatus(&status, statusFilename)
+	log.Printf("handleUpdate done for %s\n", config.DownloadURL)
+}
+
+func doDelete(statusFilename string, status *types.DownloaderStatus) {
+	log.Printf("doDelete(%v) for %s\n",
+		status.Safename, status.DownloadURL)
+	destFilename := imgCatalogDirname + "/pending/" + status.Safename	
+	if _, err := os.Stat(destFilename); err == nil {
+		// Remove file
+		if err := os.Remove(destFilename); err != nil {
+			log.Printf("Failed to remove %s: err %s\n",
+				destFilename, err)
+		}
 	}
-	return resp.Status == ocsp.Good
+	status.State = types.INITIAL
+	// XXX Asymmetric; handleCreate reserved on RefCount 0. We unreserve
+	// going back to RefCount 0. FIXed
+	globalStatus.UsedSpace -= status.Size
+	status.Size = 0
+	updateRemainingSpace()
+	writeDownloaderStatus(status, statusFilename)
+}
+
+// Need the olNum and ulNum to delete and EID route to delete
+func handleDelete(statusFilename string, status types.DownloaderStatus) {
+	log.Printf("handleDelete(%v) for %s\n",
+		status.Safename, status.DownloadURL)
+
+	status.PendingDelete = true
+	writeDownloaderStatus(&status, statusFilename)
+
+	globalStatus.ReservedSpace -= status.ReservedSpace
+	status.ReservedSpace = 0
+	globalStatus.UsedSpace -= status.Size
+	status.Size = 0
+	updateRemainingSpace()
+	writeDownloaderStatus(&status, statusFilename)
+	
+	doDelete(statusFilename, &status)
+
+	status.PendingDelete = false
+	writeDownloaderStatus(&status, statusFilename)
+
+	// Write out what we modified to DownloaderStatus aka delete
+	if err := os.Remove(statusFilename); err != nil {
+		log.Println("Failed to remove", statusFilename, err)
+	}
+	log.Printf("handleDelete done for %s\n", status.DownloadURL)
 }

@@ -324,6 +324,7 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 
 		// Create olIfname dummy interface with EID and fd00::/8 route
 		// pointing at it.
+		// XXX also a separate route for eidAllocationPrefix if global
 		
 		// Start clean
 		attrs := netlink.NewLinkAttrs()

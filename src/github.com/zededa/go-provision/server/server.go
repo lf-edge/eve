@@ -494,8 +494,14 @@ func SelfRegister(w http.ResponseWriter, r *http.Request) {
 	iidData := make([]byte, 4)
 	binary.BigEndian.PutUint32(iidData, lispInstance)
 
+	// XXX need to pass this prefix to device. Use it to setup route to dbo1x0
+	// XXX note that fd00::/8 route is used for all overlays. Might be
+	// ok if we just add the global address route. XXX refcnt in zedrouter
+	// XXX Also eidAllocationPrefixLen to allow arbitrary bit length
+	// XXX need different value for AWS
 	eidAllocationPrefix := []byte{0xFD} // Hard-coded for Zededa management overlay
-	eidHashLen := 128 - len(eidAllocationPrefix)*8
+	eidAllocationPrefixLen := len(eidAllocationPrefix)*8
+	eidHashLen := 128 - eidAllocationPrefixLen
 
 	hasher = sha256.New()
 	fmt.Printf("iidData % x\n", iidData)
@@ -526,6 +532,8 @@ func SelfRegister(w http.ResponseWriter, r *http.Request) {
 		EID:          eid,
 		EIDHashLen:   uint8(eidHashLen),
 		ZedServers:   zedServerConfig,
+		EidAllocationPrefix: eidAllocationPrefix,
+		EidAllocationPrefixLen: eidAllocationPrefixLen, // XXX client and zedrouter.
 		ClientAddr:   r.RemoteAddr,
 	}
 	err = deviceDb.Write("ddb", deviceKey, device)

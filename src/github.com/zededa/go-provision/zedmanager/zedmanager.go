@@ -34,37 +34,35 @@ func main() {
 	configDirname := baseDirname + "/config"
 	statusDirname := runDirname + "/status"
 
-	if _, err := os.Stat(configDirname); err != nil {
-		if err := os.Mkdir(configDirname, 0755); err != nil {
-			log.Fatal("Mkdir ", configDirname, err)
+	dirs := []string{
+		configDirname,
+		statusDirname,
+		"/var/tmp/identitymgr/status",
+		"/var/tmp/zedrouter/status",
+		"/var/tmp/xenmgr/status",
+		"/var/tmp/downloader/status",
+		"/var/tmp/verifier/status",
+		"/var/run/identitymgr/status",
+		"/var/run/zedrouter/status",
+		"/var/run/xenmgr/status",
+		"/var/run/downloader/status",
+		"/var/run/verifier/status",
+	}
+	for _, dir := range dirs {
+		if _, err := os.Stat(dir); err != nil {
+			if err := os.MkdirAll(dir, 0755); err != nil {
+				log.Fatal(err)
+			}
 		}
 	}
-	if _, err := os.Stat(runDirname); err != nil {
-		if err := os.Mkdir(runDirname, 0755); err != nil {
-			log.Fatal("Mkdir ", runDirname, err)
-		}
-	}
-	if _, err := os.Stat(statusDirname); err != nil {
-		if err := os.Mkdir(statusDirname, 0755); err != nil {
-			log.Fatal("Mkdir ", statusDirname, err)
-		}
-	}
-	// XXX Mkdir of whole list. Plus their config? Who starts last?
-	// XXX 	runDirname := "/var/run/identitymgr/status"
-	// XXX 	runDirname := "/var/run/zedrouter/status"
-	// XXX 	runDirname := "/var/run/xenmgr/status"
-	// XXX 	runDirname := "/var/run/downloader/status"
-	// XXX 	runDirname := "/var/run/verifier/status"
 
 	// XXX write emtpy config
 	config := types.AppInstanceConfig{}
 	writeAICConfig(&config, "/tmp/foo")
 
-	// XXX don't we need this early? Or when activating the zedrouter?
-	//	appNumAllocatorInit(statusDirname, configDirname)
-
 	handleInit(configDirname+"/global", statusDirname+"/global", runDirname)
 
+	// XXX need a 
 	// XXX need a fileChanges for each status as well + select
 	// XXX do we need a shadowStatus for each sub-service to detect create
 	// and delete? Thus configDirName = status, statusDirName = shadow
@@ -248,7 +246,9 @@ func handleCreate(statusFilename string, config types.AppInstanceConfig) {
 	}
 	writeAppInstanceStatus(&status, statusFilename)
 	// XXX do work
-
+	// XXX debug
+	writeAICConfig(&config, "/tmp/bar")
+	
 	writeAppInstanceStatus(&status, statusFilename)
 	log.Printf("handleCreate done for %s\n", config.DisplayName)
 }
