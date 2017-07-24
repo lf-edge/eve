@@ -382,6 +382,7 @@ func doCreate(statusFilename string, config types.DownloaderConfig,
 		status.RetryCount += 1
 		status.State = types.INITIAL
 		writeDownloaderStatus(status, statusFilename)
+		log.Printf("handleCreate failed for %s\n", config.DownloadURL)
 		return
 	}
 
@@ -395,6 +396,7 @@ func doCreate(statusFilename string, config types.DownloaderConfig,
 		status.RetryCount += 1
 		status.State = types.INITIAL
 		writeDownloaderStatus(status, statusFilename)
+		log.Printf("handleCreate failed for %s\n", config.DownloadURL)
 		return
 	}
 	// XXX Compare against MaxSize and reject? Already wasted the space?
@@ -494,7 +496,6 @@ func doDelete(statusFilename string, status *types.DownloaderStatus) {
 	writeDownloaderStatus(status, statusFilename)
 }
 
-// Need the olNum and ulNum to delete and EID route to delete
 func handleDelete(statusFilename string, status types.DownloaderStatus) {
 	log.Printf("handleDelete(%v) for %s\n",
 		status.Safename, status.DownloadURL)
