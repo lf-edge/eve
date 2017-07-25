@@ -82,3 +82,54 @@ func WatchConfigStatus(configDir string, statusDir string,
 	<-done
 }
 
+// Generates 'C' events for all existing and all creates/modify.
+// Generates 'D' events for all deletes.
+func WatchStatus(statusDir string, fileChanges chan<- string) {
+	w, err := fsnotify.NewWatcher()
+	if err != nil {
+		log.Fatal(err, ": NewWatcher")
+	}
+	defer w.Close()
+
+	done := make(chan bool)
+	go func() {
+		for {
+			select {
+			case event := <-w.Events:
+				baseName := path.Base(event.Name)
+				// log.Println("event:", event)
+				// We get create events when file is moved into
+				// the watched directory.
+				if event.Op &
+					(fsnotify.Write|fsnotify.Create) != 0 {
+					// log.Println("modified", baseName)
+					fileChanges <- "C " + baseName
+				} else if event.Op &
+					(fsnotify.Rename|fsnotify.Remove) != 0 {
+					// log.Println("deleted", baseName)
+					fileChanges <- "D " + baseName
+				}
+			case err := <-w.Errors:
+				log.Println("error:", err)
+			}
+		}
+	}()
+
+	err = w.Add(statusDir)
+	if err != nil {
+		log.Fatal(err, ": ", statusDir)
+	}
+	files, err := ioutil.ReadDir(statusDir)
+	if err != nil {
+		log.Fatal(err, ": ", statusDir)
+	}
+
+	for _, file := range files {
+		// log.Println("modified", file.Name())
+		fileChanges <- "C " + file.Name()
+	}
+
+	// Watch for changes
+	<-done
+}
+
