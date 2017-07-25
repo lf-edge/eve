@@ -202,6 +202,12 @@ func handleCreate(statusFilename string, config types.EIDConfig) {
 		LispSignature:	config.LispSignature,
 		PemCert:	config.PemCert,
 	}
+	// Default is 0xfd
+	if len(config.AllocationPrefix) == 0 {
+		config.AllocationPrefix = []byte{0xfd}
+		config.AllocationPrefixLen = 8 * len(config.AllocationPrefix)
+		status.EIDAllocation = config.EIDAllocation
+	}
 	// XXX defer write?
 	// writeEIDStatus(&status, statusFilename)
 	pemPrivateKey := config.PemPrivateKey
@@ -260,6 +266,7 @@ func handleCreate(statusFilename string, config types.EIDConfig) {
 			// XXX any error cleanup?
 			return
 		}
+		
 		eid := generateEID(config.IID, config.AllocationPrefix,
 			publicDer)
 		fmt.Printf("EID: (len %d) %s\n", len(eid), eid)
