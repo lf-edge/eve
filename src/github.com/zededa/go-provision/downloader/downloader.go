@@ -319,6 +319,7 @@ func handleCreate(statusFilename string, config types.DownloaderConfig) {
 		DownloadURL:	config.DownloadURL,
 		ImageSha256:	config.ImageSha256,
 		PendingAdd:     true,
+		// XXX reader should ignore INITIAL state if PendingAdd
 	}
 	writeDownloaderStatus(&status, statusFilename)
 	// Check if we have space
