@@ -23,11 +23,7 @@ type AppInstanceConfig struct {
 	StorageConfigList    []StorageConfig
 	// Assume StorageConfig should be installed when present in list
 	Activate     	    bool
-	// The allocation policies (incl prefix) are common across all IIDs for now
-	// XXX doesn't work with AWS
-	EIDAllocation
-	// XXX Need PemCert and PemPrivateKey for each overlay; include "Allocate" per overlay? LispSignature? Not calculated for Allocate=false case!
-	OverlayNetworkList  []OverlayNetworkConfig
+	OverlayNetworkList  []EIDOverlayConfig
 	UnderlayNetworkList []UnderlayNetworkConfig
 }
 
@@ -40,15 +36,22 @@ type AppInstanceStatus struct {
 	PendingModify	bool
 	PendingDelete	bool
 	StorageStatusList    []StorageStatus
+	EIDList		[]EIDStatus
 	// XXX common min across all StorageStatus?
 	// State		SwState
 	// XXX gather errors including from xl?
 	// Error		string	// Download or verify error
 }
 
+type EIDOverlayConfig struct {
+	EIDConfig
+	ACLs		[]ACE
+	NameToEidList	[]NameToEid	// Used to populate DNS for the overlay
+}
+
 type StorageConfig struct {
-	DownloadURL	string	// XXX is there a specific type?
-	MaxSize		uint	// XXX in kbytes
+	DownloadURL	string	// XXX is there a more specific type?
+	MaxSize		uint	// In kbytes
 	// XXX do we put SignatureInfo here? Or in the manifest? Or both?
 	// XXX this vs. ImageSha256?
 	// DigestAlg	string	// XXX is there a specific type for sha256 etc?
@@ -62,7 +65,7 @@ type StorageConfig struct {
 }
 
 type StorageStatus struct {
-	DownloadURL	string	// XXX is there a specific type?
+	DownloadURL	string	// XXX is there a more specific type?
 	ImageSha256	string	// sha256 of immutable image
 	State		SwState	// DOWNLOADED etc
 	Error		string	// Download or verify error
