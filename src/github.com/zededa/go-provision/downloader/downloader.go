@@ -41,7 +41,6 @@ import (
 )
 
 func main() {
-	// XXX make baseDirname and runDirname be arguments??
 	// Keeping status in /var/run to be clean after a crash/reboot
 	baseDirname := "/var/tmp/downloader"
 	runDirname := "/var/run/downloader"
@@ -223,12 +222,11 @@ func handleInit(configFilename string, statusFilename string) {
 	// XXX clean up /var/tmp/zedmanager/downloads/pending/?? ZedManager
 	// didn't pick them up and rename them?
 
-	// XXX read /var/tmp/zedmanager/downloads/* and determine how much space
+	// We read /var/tmp/zedmanager/downloads/* and determine how much space
 	// is used. Place in GlobalDownloadStatus. Calculate remaining space.
 	// XXX create DownloaderStatus for the files we find? Don't have sha!
 	// XXX rename to sha256 name after verified. Done by zedmanager.
 	totalUsed := sizeFromDir(imgCatalogDirname)
-	// XXX round to kbytes? Or switch to int64 in bytes?
 	globalStatus.UsedSpace = uint((totalUsed + 1023) / 1024)
 	updateRemainingSpace()
 }
@@ -321,7 +319,7 @@ func handleCreate(statusFilename string, config types.DownloaderConfig) {
 		PendingAdd:     true,
 		// XXX reader should ignore INITIAL state if PendingAdd
 	}
-	writeDownloaderStatus(&status, statusFilename)
+	// XXX easier than above writeDownloaderStatus(&status, statusFilename)
 	// Check if we have space
 	if config.MaxSize >= globalStatus.RemainingSpace {
 		errString := fmt.Sprintf("Would exceed remaining space %d vs %d\n",
@@ -366,8 +364,14 @@ func doCreate(statusFilename string, config types.DownloaderConfig,
 	status.State = types.DOWNLOAD_STARTED
 	writeDownloaderStatus(status, statusFilename)
 	// Form unique filename in /var/tmp/zedmanager/downloads/pending/
-	// based on safename
-	destFilename := imgCatalogDirname + "/pending/" + config.Safename	
+	// based on claimedSha256 and safename
+	destDirname := imgCatalogDirname + "/pending/" + config.ImageSha256
+	if _, err := os.Stat(destDirname); err != nil {
+		if err := os.Mkdir(destDirname, 0755); err != nil {
+			log.Fatal("Mkdir ", destDirname, err)
+		}
+	}
+	destFilename := destDirname + "/" + config.Safename	
 	log.Printf("Downloading URL %s to %s\n",
 		config.DownloadURL, destFilename)
 
@@ -461,6 +465,22 @@ func handleModify(statusFilename string, config types.DownloaderConfig,
 	log.Printf("handleModify(%v) for %s\n",
 		config.Safename, config.DownloadURL)
 
+	// If the sha changes, we treat it as a delete and recreate.
+	if status.ImageSha256 != config.ImageSha256 {
+		log.Printf("handleModify sha256 changed for %s\n",
+		config.DownloadURL)
+		doDelete(statusFilename, &status)
+		status := types.DownloaderStatus{
+			Safename:	config.Safename,
+			RefCount:	config.RefCount,
+			DownloadURL:	config.DownloadURL,
+			ImageSha256:	config.ImageSha256,
+		}
+		doCreate(statusFilename, config, &status)	
+		log.Printf("handleModify done for %s\n", config.DownloadURL)
+		return
+	}
+	
 	// XXX do work; look for refcnt -> 0 and delete; cancel any running
 	// download
 	// If RefCount from zero to non-zero then do install
@@ -474,7 +494,7 @@ func handleModify(statusFilename string, config types.DownloaderConfig,
 	status.RefCount = config.RefCount
 	status.PendingModify = false
 	writeDownloaderStatus(&status, statusFilename)
-	log.Printf("handleUpdate done for %s\n", config.DownloadURL)
+	log.Printf("handleModify done for %s\n", config.DownloadURL)
 }
 
 func doDelete(statusFilename string, status *types.DownloaderStatus) {

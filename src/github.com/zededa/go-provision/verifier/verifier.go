@@ -4,6 +4,15 @@
 // Process input changes from a config directory containing json encoded files
 // with VerifyImageConfig and compare against VerifyImageStatus in the status
 // dir.
+// Move the file from downloads/pending/<claimedsha>/<safename> to
+// to downloads/verifier/<claimedsha>/<safename> and make RO, then attempt to
+// verify sum.
+// Once sum is verified, move to downloads/verified/<sha>/safename.
+
+// XXX copies of same content at different URLs means duplicates in the final
+// directory, which results in a failure in xenmgr!
+
+// XXX TBD add a signature on the checksum. Verify against root CA.
 
 // XXX TBD add support for verifying the signatures on the meta-data (the AIC)
 
@@ -26,7 +35,6 @@ import (
 var imgCatalogDirname string
 
 func main() {
-	// XXX make baseDirname and runDirname be arguments??
 	// Keeping status in /var/run to be clean after a crash/reboot
 	baseDirname := "/var/tmp/verifier"
 	runDirname := "/var/run/verifier"
@@ -34,6 +42,8 @@ func main() {
 	statusDirname := runDirname + "/status"
 	imgCatalogDirname = "/var/tmp/zedmanager/downloads"
 	pendingDirname := imgCatalogDirname + "/pending"
+	verifierDirname := imgCatalogDirname + "/verifier"
+	verifiedDirname := imgCatalogDirname + "/verified"
 	
 	if _, err := os.Stat(imgCatalogDirname); err != nil {
 		log.Fatal("Stat ", imgCatalogDirname, err)
@@ -54,10 +64,16 @@ func main() {
 			log.Fatal("Mkdir ", pendingDirname, err)
 		}
 	}
-
-	// XXX write emtpy config
-	config := types.VerifyImageConfig{}
-	writeVerifyImageConfig(&config, "/tmp/foo")
+	if _, err := os.Stat(verifierDirname); err != nil {
+		if err := os.Mkdir(verifierDirname, 0700); err != nil {
+			log.Fatal("Mkdir ", verifierDirname, err)
+		}
+	}
+	if _, err := os.Stat(verifiedDirname); err != nil {
+		if err := os.Mkdir(verifiedDirname, 0700); err != nil {
+			log.Fatal("Mkdir ", verifiedDirname, err)
+		}
+	}
 
 	fileChanges := make(chan string)
 	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
@@ -178,20 +194,6 @@ func main() {
 	}
 }
 
-// XXX Only used for initial format of config json
-func writeVerifyImageConfig(config *types.VerifyImageConfig,
-	configFilename string) {
-	fmt.Printf("XXX Writing empty config to %s\n", configFilename)
-	b, err := json.Marshal(config)
-	if err != nil {
-		log.Fatal(err, "json Marshal VerifyImageConfig")
-	}
-	err = ioutil.WriteFile(configFilename, b, 0644)
-	if err != nil {
-		log.Fatal(err, configFilename)
-	}
-}
-
 func writeVerifyImageStatus(status *types.VerifyImageStatus,
 	statusFilename string) {
 	b, err := json.Marshal(status)
@@ -220,13 +222,34 @@ func handleCreate(statusFilename string, config types.VerifyImageConfig) {
 	}
 	writeVerifyImageStatus(&status, statusFilename)
 
-	// Form unique filename in /var/tmp/zedmanager/downloads/pending/
-	// based on safename
-	srcFilename := imgCatalogDirname + "/pending/" + config.Safename	
+	// Form the unique filename in /var/tmp/zedmanager/downloads/pending/
+	// based on the claimed Sha256 and safename, and the same name
+	// in downloads/verifier/
+	// Move to verifier directory which is RO
+	// XXX should have dom0 do this and/or have RO mounts
+	srcDirname := imgCatalogDirname + "/pending/" + config.ImageSha256
+	srcFilename := srcDirname + "/" + config.Safename	
+	destDirname := imgCatalogDirname + "/verifier/" + config.ImageSha256
+	destFilename := destDirname + "/" + config.Safename	
+	fmt.Printf("Move from %s to %s\n", srcFilename, destFilename)
+	if _, err := os.Stat(destDirname); err != nil {
+		if err := os.Mkdir(destDirname, 0700); err != nil {
+			log.Fatal("Mkdir ", destDirname, err)
+		}
+	}
+	if err := os.Rename(srcFilename, destFilename); err != nil {
+		log.Fatal("Rename ", destFilename, err)
+	}
+	if err := os.Chmod(destDirname, 0500); err != nil {
+		log.Fatal("Chmod ", destDirname, err)
+	}
+	if err := os.Chmod(destFilename, 0400); err != nil {
+		log.Fatal("Chmod ", destFilename, err)
+	}
 	log.Printf("Verifying URL %s file %s\n",
-		config.DownloadURL, srcFilename)
+		config.DownloadURL, destFilename)
 
-	f, err := os.Open(srcFilename)
+	f, err := os.Open(destFilename)
 	if err != nil {
 		status.LastErr = fmt.Sprintf("%v", err)
 		status.LastErrTime = time.Now()
@@ -260,6 +283,24 @@ func handleCreate(statusFilename string, config types.VerifyImageConfig) {
 		log.Printf("handleCreate failed for %s\n", config.DownloadURL)
 		return
 	}
+	// Move directory from downloads/verifier to downloads/verified
+	// XXX should have dom0 do this and/or have RO mounts
+	finalDirname := imgCatalogDirname + "/verified/" + config.ImageSha256
+	finalFilename := finalDirname + "/" + config.Safename
+	fmt.Printf("Move from %s to %s\n", destFilename, finalFilename)
+	if _, err := os.Stat(finalDirname); err != nil {
+		if err := os.Mkdir(finalDirname, 0700); err != nil {
+			log.Fatal("Mkdir ", destDirname, err)
+		}
+	}
+	if err := os.Rename(destFilename, finalFilename); err != nil {
+		log.Fatal("Rename ", destFilename, err)
+	}
+	if err := os.Chmod(finalDirname, 0500); err != nil {
+		log.Fatal("Chmod ", finalDirname, err)
+	}
+	
+
 	status.PendingAdd = false
 	status.State = types.DELIVERED
 	writeVerifyImageStatus(&status, statusFilename)
