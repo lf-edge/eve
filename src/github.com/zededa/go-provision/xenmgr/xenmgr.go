@@ -36,7 +36,7 @@ func main() {
 	statusDirname := runDirname + "/status"
 	rwImgDirname = baseDirname + "/img"	// XXX insufficient space in /var/run
 	xenDirname = runDirname + "/xen"
-	imgCatalogDirname = "/var/tmp/zedmanager/downloads"
+	imgCatalogDirname = "/var/tmp/zedmanager/downloads/verified"
 	
 	if _, err := os.Stat(runDirname); err != nil {
 		if err := os.Mkdir(runDirname, 0755); err != nil {
@@ -356,6 +356,9 @@ func configToStatusAndXencfg(config types.DomainConfig,
 			return err
 		}
 		// locationDir is a directory. Need to find single file inside
+		// XXX this can fail if same image downloaded from different
+		// URLs. Can reduce probability if ... basename instead of
+		// safename. But can we merge to common name somewhere?
 		locations, err := ioutil.ReadDir(locationDir)
 		if err != nil {
 			log.Printf("ReadDir(%s) %s\n",
