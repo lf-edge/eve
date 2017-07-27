@@ -259,7 +259,7 @@ func updateLisp(lispRunDirname string, upLinkIfname string) {
 		log.Println("Rename ", tmpfile.Name(), destFilename, err)
 		return
 	}	
-	// XXX determine the set of devices from the above config file
+	// Determine the set of devices from the above config file
         grep := exec.Command("grep", "device = ", destFilename)
 	awk := exec.Command("awk", "{print $NF}")
 	awk.Stdin, _ = grep.StdoutPipe()
