@@ -37,10 +37,11 @@ type AppInstanceStatus struct {
 	PendingDelete	bool
 	StorageStatusList    []StorageStatus
 	EIDList		[]EIDStatus
-	// XXX common min across all StorageStatus?
-	// State		SwState
-	// XXX gather errors including from xl?
-	// Error		string	// Download or verify error
+	// Mininum state across all steps and all StorageStatus.
+	// INITIAL implies error.
+	State		SwState
+	// All error strngs across all steps and all StorageStatus
+	Error		string
 }
 
 type EIDOverlayConfig struct {

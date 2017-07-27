@@ -82,7 +82,7 @@ func WatchConfigStatus(configDir string, statusDir string,
 	<-done
 }
 
-// Generates 'C' events for all existing and all creates/modify.
+// Generates 'M' events for all existing and all creates/modify.
 // Generates 'D' events for all deletes.
 func WatchStatus(statusDir string, fileChanges chan<- string) {
 	w, err := fsnotify.NewWatcher()
@@ -103,7 +103,7 @@ func WatchStatus(statusDir string, fileChanges chan<- string) {
 				if event.Op &
 					(fsnotify.Write|fsnotify.Create) != 0 {
 					// log.Println("modified", baseName)
-					fileChanges <- "C " + baseName
+					fileChanges <- "M " + baseName
 				} else if event.Op &
 					(fsnotify.Rename|fsnotify.Remove) != 0 {
 					// log.Println("deleted", baseName)
@@ -126,7 +126,7 @@ func WatchStatus(statusDir string, fileChanges chan<- string) {
 
 	for _, file := range files {
 		// log.Println("modified", file.Name())
-		fileChanges <- "C " + file.Name()
+		fileChanges <- "M " + file.Name()
 	}
 
 	// Watch for changes
