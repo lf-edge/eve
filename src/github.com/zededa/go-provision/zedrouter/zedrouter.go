@@ -26,7 +26,6 @@ import (
 )
 
 func main() {
-	// XXX make baseDirname and runDirname be arguments??
 	// Keeping status in /var/run to be clean after a crash/reboot
 	baseDirname := "/var/tmp/zedrouter"
 	runDirname := "/var/run/zedrouter"
@@ -402,7 +401,7 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 
 		// XXX needed fix in library for Src to work
 		// XXX do we need src when using dbo1x0? Route is out that
-		// interface.
+		// interface. CHECK
 		// /home/nordmark/gocode/src/github.com/vishvananda/netlink/route_linux.go
 		// Replaced RTA_PREFSRC with RTA_SRC
 		// XXX is this working? Don't see SRC in the added route on bobo
@@ -449,7 +448,7 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		return
 	}
 	
-	// XXX func?
+	// XXX introduce init function?
 	status.OverlayNetworkList = make([]types.OverlayNetworkStatus,
 		len(config.OverlayNetworkList))
 	for i, _ := range config.OverlayNetworkList {

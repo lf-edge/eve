@@ -329,8 +329,6 @@ func iptablesLispFixup() {
 	iptablesInit()
 }
 
-// XXX need cwd change; get this error:
-// python: can't open file 'remove-lisp-locks.pyo': [Errno 2] No such file or directory
 func stopLisp(lispRunDirname string) {
 	fmt.Printf("stopLisp: %s\n", lispRunDirname)
 	cmd := StopCmd
