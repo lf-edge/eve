@@ -294,6 +294,7 @@ func handleCreate(statusFilename string, config types.DomainConfig) {
 	}
 	log.Printf("created domainId %d for %s\n", domainId, status.DomainName)
 	status.DomainId = domainId
+	status.Activated = true
 	// XXX what do we do with console? Add the ability to send to a local
 	// file? Or vnc over mgmt overlay
 
