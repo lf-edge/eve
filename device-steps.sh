@@ -120,14 +120,34 @@ if [ ! -d $LISPDIR ]; then
     echo "Missing $LISPDIR directory. Giving up"
     exit 1
 fi
-    
-if [ $SELF_REGISTER = 1 ]; then
-	mkdir -p /var/tmp/zedrouter/config/
-	# XXX do the rest in zedmanager?
-	mkdir -p /var/tmp/zedmamager/config/
-	mkdir -p /var/tmp/xenmgr/config/
-	mkdir -p /var/tmp/identitymgr/config/
 
+# Remove internal config files
+if [ -f /var/tmp/zedrouter/config/global ]; then
+   cp -p /var/tmp/zedrouter/config/global $ETCDIR/network.config.global
+fi
+rm -rf /var/tmp/{zedrouter,xenmgr,downloader,verifier,identitymgr}/config/*
+
+# XXX allow restart? pkill? Clean up status?
+files=/var/run/{zedrouter,xenmgr,downloader,verifier,identitymgr}/status/*.json
+found=0
+for f in $files; do
+    if [ -f $f ]; then
+	echo "Found file: $f"
+	rm -f $f
+	found=1
+    fi
+done
+sleep 5
+pkill zedrouter
+pkill xenmgr
+pkill downloader
+pkill verifier
+pkill identitymgr
+pkill eidregister
+
+rm -rf /var/run/{zedrouter,xenmgr,downloader,verifier,identitymgr}/status/*.json
+
+if [ $SELF_REGISTER = 1 ]; then
 	intf=`$BINDIR/find-uplink.sh $ETCDIR/lisp.config.base`
 	if [ "$intf" != "" ]; then
 		echo "Found interface $intf based on route to map servers"
@@ -135,22 +155,26 @@ if [ $SELF_REGISTER = 1 ]; then
 		echo "NOT Found interface based on route to map servers. Giving up"
 		exit 1    
 	fi
-	cat <<EOF >/var/tmp/zedrouter/config/global
+	# XXX put in $ETCDIR first
+	cat <<EOF >$ETCDIR/network.config.global
 {"Uplink":"$intf"}
 EOF
 
-	# Pick up the device EID zedrouter config file from $ETCDIR and put
-	# it in /var/tmp/zedrouter/config/
-	# Kicks off lispers.net when zedrouter starts
-	uuid=`cat $ETCDIR/uuid`
-	cp $ETCDIR/zedrouterconfig.json /var/tmp/zedrouter/config/${uuid}.json
-	# XXX could do name="zed"`uname -n`
 	# Make sure we set the dom0 hostname, used by LISP nat traversal, to
 	# a unique string. Using the uuid
 	echo "Setting hostname to $uuid"
 	/bin/hostname $uuid
 	/bin/hostname >/etc/hostname
 fi
+
+mkdir -p /var/tmp/zedrouter/config/
+# Pick up the device EID zedrouter config file from $ETCDIR and put
+# it in /var/tmp/zedrouter/config/
+# This will result in starting lispers.net when zedrouter starts
+uuid=`cat $ETCDIR/uuid`
+cp $ETCDIR/zedrouterconfig.json /var/tmp/zedrouter/config/${uuid}.json
+
+cp $ETCDIR/network.config.global /var/tmp/zedrouter/config/global
 
 # Setup default amount of space for images
 mkdir -p /var/tmp/downloader/config/
