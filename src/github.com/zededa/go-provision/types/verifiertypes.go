@@ -20,10 +20,9 @@ import (
 // The key/index to this is the Safename which is allocated by ZedManager.
 // That is the filename in which we store the corresponding json files.
 type VerifyImageConfig struct {
-	Safename	string	// XXX Also refers to the filename in
-				// imgCatalogDirname + "/pending/"
+	Safename	string	// Also refers to the dirname in pending dir
 	DownloadURL	string	// For logging output
-	ImageSha256	string	// sha256 of immutable image XXX used?
+	ImageSha256	string	// sha256 of immutable image
 }
 
 // The key/index to this is the Safename which comes from VerifyImageConfig.
