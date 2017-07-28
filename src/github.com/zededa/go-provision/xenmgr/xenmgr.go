@@ -28,13 +28,12 @@ var imgCatalogDirname string // Read-only images named based on sha256 hash
 			// each in its own directory
 			
 func main() {
-	// XXX make baseDirname and runDirname be arguments??
 	// Keeping status in /var/run to be clean after a crash/reboot
 	baseDirname := "/var/tmp/xenmgr"
 	runDirname := "/var/run/xenmgr"
 	configDirname := baseDirname + "/config"
 	statusDirname := runDirname + "/status"
-	rwImgDirname = baseDirname + "/img"	// XXX insufficient space in /var/run
+	rwImgDirname = baseDirname + "/img"	// Note that /var/run is small
 	xenDirname = runDirname + "/xen"
 	imgCatalogDirname = "/var/tmp/zedmanager/downloads/verified"
 	
@@ -62,12 +61,7 @@ func main() {
 		log.Fatal("Stat ", imgCatalogDirname, err)
 	}
 
-	// XXX write emtpy config
-	config := types.DomainConfig{}
-	writeDomainConfig(&config, "/tmp/foo")
-	
 	// XXX this is common code except for the types used with json
-	
 	fileChanges := make(chan string)
 	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
 	for {
@@ -186,20 +180,6 @@ func main() {
 	}
 }
 
-// XXX Only used for initial format of config json
-func writeDomainConfig(config *types.DomainConfig,
-	configFilename string) {
-	fmt.Printf("XXX Writing empty config to %s\n", configFilename)
-	b, err := json.Marshal(config)
-	if err != nil {
-		log.Fatal(err, "json Marshal DomainConfig")
-	}
-	err = ioutil.WriteFile(configFilename, b, 0644)
-	if err != nil {
-		log.Fatal(err, configFilename)
-	}
-}
-
 func writeDomainStatus(status *types.DomainStatus,
 	statusFilename string) {
 	b, err := json.Marshal(status)
@@ -284,6 +264,7 @@ func handleCreate(statusFilename string, config types.DomainConfig) {
 	if err != nil {
 		log.Printf("xl create for %s: %s\n", status.DomainName, err)
 		status.PendingAdd = false
+		// XXX add error. Get more of error from xlCreate. Process in zedmanager
 		writeDomainStatus(&status, statusFilename)
 		return
 	}
@@ -495,7 +476,7 @@ func handleDelete(statusFilename string, status types.DomainStatus) {
 	for _, ds := range status.DiskStatusList {
 		if !ds.ReadOnly {
 			log.Printf("Delete copy at %s\n", ds.Target)
-			// XXX
+			// XXX even with Preserve set needs to remove here
 			if true {
 				log.Printf("XXX - skip remove\n");
 			} else if err := os.Remove(ds.Target); err != nil {
@@ -555,7 +536,7 @@ func xlCreate(domainName string, xenCfgFilename string)(int, error) {
 
 func xlStatus(domainName string, domainId int) error {
 	fmt.Printf("xlStatus %s %d\n", domainName, domainId)
-	// XXX xl list -l domainId returns json. XXX not state??
+	// XXX xl list -l domainId returns json. XXX but state not included!
 	cmd := "xl"
 	args := []string{
 		"list",
