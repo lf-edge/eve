@@ -103,12 +103,16 @@ func updateAIStatusUUID(uuidStr string) {
 		if changed {
 			log.Printf("updateAIStatusUUID status change for %s\n",
 				uuidStr)
+			AIS[uuidStr] = status
 			statusFilename := fmt.Sprintf("%s/%s.json",
 				zedmanagerStatusDirname, uuidStr)
 			writeAppInstanceStatus(&status, statusFilename)
 		}
 	} else {
-		doDelete(uuidStr)
+		log.Printf("updateAIStatusUUID for %s: Missing AI Config\n",
+				uuidStr)
+// XXX		doDelete(uuidStr)
+// XXX		delete(AIS, uuidStr)
 	}
 }
 
@@ -120,9 +124,10 @@ func doUpdate(uuidStr string, config types.AppInstanceConfig,
 	allErrors := ""
 	changed := false
 
+	// XXX add separate function to init?
 	if status.StorageStatusList == nil {
-		fmt.Printf("XXX allocating StorageStatus len %d\n",
-			len(config.StorageConfigList))
+		fmt.Printf("XXX allocating StorageStatus len %d for %s\n",
+			len(config.StorageConfigList), uuidStr)
 		status.StorageStatusList = make([]types.StorageStatus,
 			len(config.StorageConfigList))
 		for i, sc := range config.StorageConfigList {
@@ -150,6 +155,15 @@ func doUpdate(uuidStr string, config types.AppInstanceConfig,
 			return changed
 		}
 	}		
+
+	// XXX add separate function to init?
+	if status.EIDList == nil {
+		fmt.Printf("XXX allocating EIDStatus len %d for %s\n",
+			len(config.OverlayNetworkList), uuidStr)
+		status.EIDList = make([]types.EIDStatusDetails,
+			len(config.OverlayNetworkList))
+		changed = true
+	}
 	for i, sc := range config.StorageConfigList {
 		ss := &status.StorageStatusList[i]	    
 		safename := urlToSafename(sc.DownloadURL, sc.ImageSha256)
@@ -199,6 +213,7 @@ func doUpdate(uuidStr string, config types.AppInstanceConfig,
 		log.Printf("Waiting for all downloads for %s\n", uuidStr)
 		return changed
 	}
+	log.Printf("Done with downloads for %s\n", uuidStr)
 	minState = types.MAXSTATE
 	for i, sc := range config.StorageConfigList {
 		ss := &status.StorageStatusList[i]	    
@@ -244,9 +259,79 @@ func doUpdate(uuidStr string, config types.AppInstanceConfig,
 		log.Printf("Waiting for all verifications for %s\n", uuidStr)
 		return changed
 	}
-	// XXX eidconfig for each overlay
-	// XXX check eidstatus for each overlay; update AI status
-	// XXX Activate?
+	log.Printf("Done with verifications for %s\n", uuidStr)
+	// Make sure we have an EIDConfig for each overlay
+	for _, ec := range config.OverlayNetworkList {
+		MaybeAddEIDConfig(config.UUIDandVersion,
+			config.DisplayName, &ec)
+	}
+	// Check EIDStatus for each overlay; update AI status
+	eidsAllocated := true
+	for i, ec := range config.OverlayNetworkList {
+		key := fmt.Sprintf("%s:%d",
+			config.UUIDandVersion.UUID.String(), ec.IID)
+		es, err := LookupEIDStatus(config.UUIDandVersion, ec.IID)
+		if err != nil {
+			log.Printf("LookupEIDStatus %s failed %s\n",
+				key, err)
+			continue
+		}
+		status.EIDList[i] = es.EIDStatusDetails
+		if status.EIDList[i].EID == nil {
+			log.Printf("Missing EID for %s\n", key)
+			eidsAllocated = false
+		} else {
+			log.Printf("Found EID %v for %s\n",
+				status.EIDList[i].EID, key)
+			changed = true
+		}
+	}
+	if !eidsAllocated {
+		log.Printf("Waiting for all EID allocations for %s\n", uuidStr)
+		return changed
+	}
+	log.Printf("Done with EID allocations for %s\n", uuidStr)
+
+	// XXX would like to make a unique copy of !ReadOnly filesystems
+	// before the VM is activated. Here? In xenmgr? In a storagemgr?
+
+	// Defer networking and Xen setup until activated
+	if !config.Activate {
+		if status.Activated {
+			status.Activated = false
+			changed = true
+		}
+		log.Printf("Waiting for config.Activate for %s\n", uuidStr)
+		return changed
+	}
+	log.Printf("Have config.Activate for %s\n", uuidStr)
+	// Make sure we have an AppNetworkConfig
+	MaybeAddAppNetworkConfig(config)
+
+	// Check AppNetworkStatus
+	ns, err := LookupAppNetworkStatus(uuidStr)
+	if err != nil {
+		log.Printf("Waiting for all AppNetworkStatus for %s\n", uuidStr)
+		return changed
+	}
+	log.Printf("Done with AppNetworkStatus for %s\n", uuidStr)
+
+	// Make sure we have a DomainConfig
+	MaybeAddDomainConfig(config, ns)
+
+	// Check DomainStatus; XXX update AI status
+	_, err = LookupDomainStatus(uuidStr)
+	if err != nil {
+		log.Printf("Waiting for all DomainStatus for %s\n", uuidStr)
+		return changed
+	}
+	// XXX Look for xen errors.
+	log.Printf("Done with DomainStatus for %s\n", uuidStr)
+
+	if !status.Activated {
+		status.Activated = true
+		changed = true
+	}
 	log.Printf("doUpdate done for %s\n", uuidStr)
 	return changed
 }

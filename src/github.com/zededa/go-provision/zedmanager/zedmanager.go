@@ -4,9 +4,11 @@
 // Pull AppInstanceConfig from ZedCloud, drive config to Downloader, Verifier,
 // IdentityMgr, and Zedrouter. Collect status from those services and push
 // combined AppInstanceStatus to ZedCloud.
-// XXX initial code reads AppInstanceConfig from /var/tmp/zedmanager/config/*.json
-// and produces AppInstanceStatus in /var/run/zedmanager/status/*.json
-
+//
+// XXX Note that this initial code reads AppInstanceConfig from
+// /var/tmp/zedmanager/config/*.json and produces AppInstanceStatus in
+// /var/run/zedmanager/status/*.json.
+//
 // XXX Should we keep the local config and status dirs and have a separate
 // config downloader (which calls the Verifier), and status uploader?
 
@@ -69,7 +71,8 @@ func main() {
 	}
 
 	configChanges := make(chan string)
-	go watch.WatchConfigStatus(zedmanagerConfigDirname, zedmanagerStatusDirname, configChanges)
+	go watch.WatchConfigStatus(zedmanagerConfigDirname,
+		zedmanagerStatusDirname, configChanges)
 	verifierChanges := make(chan string)
 	go watch.WatchStatus(verifierStatusDirname, verifierChanges)
 	downloaderChanges := make(chan string)
@@ -84,25 +87,42 @@ func main() {
 	for {
 		select {
 		case change := <-downloaderChanges: {
-			status := types.DownloaderStatus{}
 			handleStatusEvent(change, downloaderStatusDirname,
-				&status,
+				&types.DownloaderStatus{},
 				handleDownloaderStatusModify,
 				handleDownloaderStatusDelete)
 			continue
 		}
 		case change := <-verifierChanges: {
-			status := types.VerifyImageStatus{}
 			handleStatusEvent(change, verifierStatusDirname,
-				&status,
+				&types.VerifyImageStatus{},
 				handleVerifyImageStatusModify,
 				handleVerifyImageStatusDelete)
 			continue
 		}
+		case change := <-identitymgrChanges: {
+			handleStatusEvent(change, identitymgrStatusDirname,
+				&types.EIDStatus{},
+				handleEIDStatusModify,
+				handleEIDStatusDelete)
+			continue
+		}
+		case change := <-zedrouterChanges: {
+			handleStatusEvent(change, zedrouterStatusDirname,
+				&types.AppNetworkStatus{},
+				handleAppNetworkStatusModify,
+				handleAppNetworkStatusDelete)
+			continue
+		}
+		case change := <-xenmgrChanges: {
+			handleStatusEvent(change, xenmgrStatusDirname,
+				&types.DomainStatus{},
+				handleDomainStatusModify,
+				handleDomainStatusDelete)
+			continue
+		}
 		// XXX generalize this code; struct with dirnames and comparator
 		case change := <-configChanges: {
-			// XXX remove Printf
-			// fmt.Printf("configChanges %v\n", change)
 			parts := strings.Split(change, " ")
 			operation := parts[0]
 			fileName := parts[1]
@@ -256,7 +276,7 @@ func handleCreate(statusFilename string, config types.AppInstanceConfig) {
 	// Start by marking with PendingAdd
 	status := types.AppInstanceStatus{
 		UUIDandVersion: config.UUIDandVersion,
-// XXX		PendingAdd:     true,
+// XXX remove field?		PendingAdd:     true,
 		DisplayName:    config.DisplayName,
 	}
 
@@ -267,11 +287,12 @@ func handleCreate(statusFilename string, config types.AppInstanceConfig) {
 			sc.DownloadURL, safename)
 		AddOrRefcountDownloaderConfig(safename, &sc)
 		// XXX presumably need an array to track which safenames
-		// this AIC has references to. Used in delete.
+		// this AIC has references to. To be used in delete.
 	}
 
-	addOrUpdateStatus(config.UUIDandVersion.UUID.String(), status)	
 	addOrUpdateConfig(config.UUIDandVersion.UUID.String(), config)	
+	// XXX initialize status Storage and EID here instead of in update
+	addOrUpdateStatus(config.UUIDandVersion.UUID.String(), status)	
 
 	// XXX is Pending* useful?
 	// Instead delete all of zedmanagerStatusDirname on restart?
@@ -321,7 +342,6 @@ type statusDeleteHandler func(statusFilename string)
 func handleStatusEvent(change string, statusDirname string, status interface{},
      statusCreateFunc statusCreateHandler,
      statusDeleteFunc statusDeleteHandler) {
-	// XXX fmt.Printf("handleStatusEvent for %#v %s\n", status, change)
 	parts := strings.Split(change, " ")
 	operation := parts[0]
 	fileName := parts[1]

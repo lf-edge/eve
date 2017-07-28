@@ -10,19 +10,24 @@ import (
 	"net"
 )
 
+// Parameters which determine whether and how the EID is allocated
 type EIDAllocation struct {
 	Allocate	bool
-	ExportPrivate	bool	// Provide private key to ZedManager for mobility
-	AllocationPrefix []byte	// XXX normally 0xfd
-	AllocationPrefixLen int // XXX normally 8
+	ExportPrivate	bool	// Provide private key to ZedManager
+	AllocationPrefix []byte	// Normally and default 0xfd
+	AllocationPrefixLen int // Normally and default 8
 }
 
 // Indexed by UUID plus IID; version not included in index
 // Implies a given App Instance can not have multiple interfaces to the same IID.
 type EIDConfig struct {
 	UUIDandVersion	UUIDandVersion
-	IID		uint32
 	DisplayName	string
+	EIDConfigDetails
+}
+
+type EIDConfigDetails struct {
+	IID		uint32
 	EIDAllocation
 	// When Allocate is false the ZedCloud provides these parameters.
 	// No work for IdentityMgr in that case.
@@ -30,14 +35,18 @@ type EIDConfig struct {
 	EID		net.IP
 	LispSignature	string
 	PemCert		[]byte
-	PemPrivateKey	[]byte	// If ExportPrivate. XXX or in separate type?
+	PemPrivateKey	[]byte
 }
 
 // Indexed by UUID plus IID. Version is not part of the index.
 type EIDStatus struct {
 	UUIDandVersion	UUIDandVersion
-	IID		uint32
 	DisplayName	string
+	EIDStatusDetails
+}
+
+type EIDStatusDetails struct {
+	IID		uint32
 	EIDAllocation
 	PendingAdd	bool
 	PendingModify	bool

@@ -36,7 +36,7 @@ type AppInstanceStatus struct {
 	PendingModify	bool
 	PendingDelete	bool
 	StorageStatusList    []StorageStatus
-	EIDList		[]EIDStatus
+	EIDList		[]EIDStatusDetails
 	// Mininum state across all steps and all StorageStatus.
 	// INITIAL implies error.
 	State		SwState
@@ -45,7 +45,7 @@ type AppInstanceStatus struct {
 }
 
 type EIDOverlayConfig struct {
-	EIDConfig
+	EIDConfigDetails
 	ACLs		[]ACE
 	NameToEidList	[]NameToEid	// Used to populate DNS for the overlay
 }
@@ -53,8 +53,8 @@ type EIDOverlayConfig struct {
 type StorageConfig struct {
 	DownloadURL	string	// XXX is there a more specific type?
 	MaxSize		uint	// In kbytes
-	// XXX do we put SignatureInfo here? Or in the manifest? Or both?
-	// XXX this vs. ImageSha256?
+	// XXX Add SignatureInfo for the sha256. Verifier should check.
+	// XXX Algorith agility? Alg vs. just ImageSha256?
 	// DigestAlg	string	// XXX is there a specific type for sha256 etc?
 	// Digest	string
 	ImageSha256	string	// sha256 of immutable image

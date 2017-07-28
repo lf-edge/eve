@@ -194,13 +194,15 @@ func handleCreate(statusFilename string, config types.EIDConfig) {
 	// Start by marking with PendingAdd
 	status := types.EIDStatus{
 		UUIDandVersion: config.UUIDandVersion,
-		IID:		config.IID,
 		DisplayName:    config.DisplayName,
-		EIDAllocation:	config.EIDAllocation,
-		PendingAdd:     true,
-		EID:		config.EID,
-		LispSignature:	config.LispSignature,
-		PemCert:	config.PemCert,
+		EIDStatusDetails: types.EIDStatusDetails{
+			IID:		config.IID,
+			EIDAllocation:	config.EIDAllocation,
+			PendingAdd:     true,
+			EID:		config.EID,
+			LispSignature:	config.LispSignature,
+			PemCert:	config.PemCert,
+		},
 	}
 	// Default is 0xfd
 	if len(config.AllocationPrefix) == 0 {
@@ -287,6 +289,8 @@ func handleCreate(statusFilename string, config types.EIDConfig) {
 	} else {
 		block, _ := pem.Decode(config.PemCert)
 		if block == nil || block.Type != "CERTIFICATE" {
+			// XXX core dump since block is nil
+			// XXX need PemCert in test input
 			log.Println("failed to decode PEM block containing certificate. Type " +
 				block.Type)
 			return
