@@ -48,9 +48,6 @@ func main() {
 	dirs := []string{
 		zedmanagerConfigDirname,
 		zedmanagerStatusDirname,
-// XXX depends on startup order
-// XXX 		"/var/tmp/zedmanager/downloads",
-// XXX		"/var/tmp/zedmanager/downloads/pending",
 		identitymgrConfigDirname,
 		zedrouterConfigDirname,
 		xenmgrConfigDirname,
@@ -64,7 +61,7 @@ func main() {
 	}
 	for _, dir := range dirs {
 		if _, err := os.Stat(dir); err != nil {
-			if err := os.MkdirAll(dir, 0755); err != nil {
+			if err := os.MkdirAll(dir, 0700); err != nil {
 				log.Fatal(err)
 			}
 		}

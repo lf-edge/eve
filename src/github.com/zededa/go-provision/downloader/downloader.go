@@ -49,23 +49,35 @@ func main() {
 	imgCatalogDirname = "/var/tmp/zedmanager/downloads"
 	pendingDirname := imgCatalogDirname + "/pending"
 	
-	if _, err := os.Stat(imgCatalogDirname); err != nil {
-		log.Fatal("Stat ", imgCatalogDirname, err)
+	if _, err := os.Stat(baseDirname); err != nil {
+		if err := os.Mkdir(baseDirname, 0755); err != nil {
+			log.Fatal(err)
+		}
 	}
-	
+	if _, err := os.Stat(configDirname); err != nil {
+		if err := os.Mkdir(configDirname, 0755); err != nil {
+			log.Fatal(err)
+		}
+	}
 	if _, err := os.Stat(runDirname); err != nil {
 		if err := os.Mkdir(runDirname, 0755); err != nil {
-			log.Fatal("Mkdir ", runDirname, err)
+			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(statusDirname); err != nil {
 		if err := os.Mkdir(statusDirname, 0755); err != nil {
-			log.Fatal("Mkdir ", statusDirname, err)
+			log.Fatal(err)
 		}
 	}
+	if _, err := os.Stat(imgCatalogDirname); err != nil {
+		if err := os.Mkdir(imgCatalogDirname, 0700); err != nil {
+			log.Fatal(err)
+		}
+	}
+	
 	if _, err := os.Stat(pendingDirname); err != nil {
-		if err := os.Mkdir(pendingDirname, 0755); err != nil {
-			log.Fatal("Mkdir ", pendingDirname, err)
+		if err := os.Mkdir(pendingDirname, 0700); err != nil {
+			log.Fatal(err)
 		}
 	}
 
@@ -352,7 +364,7 @@ func doCreate(statusFilename string, config types.DownloaderConfig,
 	destDirname := imgCatalogDirname + "/pending/" + config.ImageSha256
 	if _, err := os.Stat(destDirname); err != nil {
 		if err := os.Mkdir(destDirname, 0755); err != nil {
-			log.Fatal("Mkdir ", destDirname, err)
+			log.Fatal(err)
 		}
 	}
 	destFilename := destDirname + "/" + config.Safename	

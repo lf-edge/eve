@@ -45,33 +45,45 @@ func main() {
 	verifierDirname := imgCatalogDirname + "/verifier"
 	verifiedDirname := imgCatalogDirname + "/verified"
 	
-	if _, err := os.Stat(imgCatalogDirname); err != nil {
-		log.Fatal("Stat ", imgCatalogDirname, err)
+	if _, err := os.Stat(baseDirname); err != nil {
+		if err := os.Mkdir(baseDirname, 0755); err != nil {
+			log.Fatal(err)
+		}
 	}
-	
+	if _, err := os.Stat(configDirname); err != nil {
+		if err := os.Mkdir(configDirname, 0755); err != nil {
+			log.Fatal(err)
+		}
+	}
 	if _, err := os.Stat(runDirname); err != nil {
 		if err := os.Mkdir(runDirname, 0755); err != nil {
-			log.Fatal("Mkdir ", runDirname, err)
+			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(statusDirname); err != nil {
 		if err := os.Mkdir(statusDirname, 0755); err != nil {
-			log.Fatal("Mkdir ", statusDirname, err)
+			log.Fatal(err)
 		}
 	}
+	if _, err := os.Stat(imgCatalogDirname); err != nil {
+		if err := os.Mkdir(imgCatalogDirname, 0700); err != nil {
+			log.Fatal(err)
+		}
+	}
+	
 	if _, err := os.Stat(pendingDirname); err != nil {
-		if err := os.Mkdir(pendingDirname, 0755); err != nil {
-			log.Fatal("Mkdir ", pendingDirname, err)
+		if err := os.Mkdir(pendingDirname, 0700); err != nil {
+			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(verifierDirname); err != nil {
 		if err := os.Mkdir(verifierDirname, 0700); err != nil {
-			log.Fatal("Mkdir ", verifierDirname, err)
+			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(verifiedDirname); err != nil {
 		if err := os.Mkdir(verifiedDirname, 0700); err != nil {
-			log.Fatal("Mkdir ", verifiedDirname, err)
+			log.Fatal(err)
 		}
 	}
 
@@ -234,17 +246,17 @@ func handleCreate(statusFilename string, config types.VerifyImageConfig) {
 	fmt.Printf("Move from %s to %s\n", srcFilename, destFilename)
 	if _, err := os.Stat(destDirname); err != nil {
 		if err := os.Mkdir(destDirname, 0700); err != nil {
-			log.Fatal("Mkdir ", destDirname, err)
+			log.Fatal(err)
 		}
 	}
 	if err := os.Rename(srcFilename, destFilename); err != nil {
-		log.Fatal("Rename ", destFilename, err)
+		log.Fatal(err)
 	}
 	if err := os.Chmod(destDirname, 0500); err != nil {
-		log.Fatal("Chmod ", destDirname, err)
+		log.Fatal(err)
 	}
 	if err := os.Chmod(destFilename, 0400); err != nil {
-		log.Fatal("Chmod ", destFilename, err)
+		log.Fatal(err)
 	}
 	log.Printf("Verifying URL %s file %s\n",
 		config.DownloadURL, destFilename)
@@ -290,14 +302,14 @@ func handleCreate(statusFilename string, config types.VerifyImageConfig) {
 	fmt.Printf("Move from %s to %s\n", destFilename, finalFilename)
 	if _, err := os.Stat(finalDirname); err != nil {
 		if err := os.Mkdir(finalDirname, 0700); err != nil {
-			log.Fatal("Mkdir ", destDirname, err)
+			log.Fatal( err)
 		}
 	}
 	if err := os.Rename(destFilename, finalFilename); err != nil {
-		log.Fatal("Rename ", destFilename, err)
+		log.Fatal(err)
 	}
 	if err := os.Chmod(finalDirname, 0500); err != nil {
-		log.Fatal("Chmod ", finalDirname, err)
+		log.Fatal(err)
 	}
 	
 

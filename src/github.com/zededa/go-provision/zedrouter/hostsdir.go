@@ -21,14 +21,14 @@ func createHostsConfiglet(cfgDirname string, nameToEidList []types.NameToEid) {
 		
 	err := os.Mkdir(cfgDirname, 0755)
 	if err != nil {
-		log.Fatal("os.Mkdir for ", cfgDirname, err)
+		log.Fatal(err)
 	}
 
 	for _, ne := range nameToEidList {
 		cfgPathname := cfgDirname + "/" + ne.HostName
 		file, err := os.Create(cfgPathname)
 		if err != nil {
-			log.Fatal("os.Create for ", cfgPathname, err)
+			log.Fatal(err)
 		}
 		defer file.Close()
 		for _, eid := range ne.EIDs {
@@ -77,7 +77,7 @@ func updateHostsConfiglet(cfgDirname string,
 		cfgPathname := cfgDirname + "/" + ne.HostName
 		file, err := os.Create(cfgPathname)
 		if err != nil {
-			log.Fatal("os.Create for ", cfgPathname, err)
+			log.Fatal(err)
 		}
 		defer file.Close()
 		for _, eid := range ne.EIDs {

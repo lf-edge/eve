@@ -32,14 +32,24 @@ func main() {
 	configDirname := baseDirname + "/config"
 	statusDirname := runDirname + "/status"
 
+	if _, err := os.Stat(baseDirname); err != nil {
+		if err := os.Mkdir(baseDirname, 0755); err != nil {
+			log.Fatal(err)
+		}
+	}
+	if _, err := os.Stat(configDirname); err != nil {
+		if err := os.Mkdir(configDirname, 0755); err != nil {
+			log.Fatal(err)
+		}
+	}
 	if _, err := os.Stat(runDirname); err != nil {
 		if err := os.Mkdir(runDirname, 0755); err != nil {
-			log.Fatal("Mkdir ", runDirname, err)
+			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(statusDirname); err != nil {
 		if err := os.Mkdir(statusDirname, 0755); err != nil {
-			log.Fatal("Mkdir ", statusDirname, err)
+			log.Fatal(err)
 		}
 	}
 	appNumAllocatorInit(statusDirname, configDirname)
@@ -182,7 +192,7 @@ func handleInit(configFilename string, statusFilename string,
 	lispRunDirname = runDirname + "/lisp"
 	if _, err := os.Stat(lispRunDirname); err != nil {
 		if err := os.Mkdir(lispRunDirname, 0755); err != nil {
-			log.Fatal("Mkdir ", lispRunDirname, err)
+			log.Fatal(err)
 		}
 	}
 

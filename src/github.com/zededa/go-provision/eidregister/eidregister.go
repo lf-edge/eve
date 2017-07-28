@@ -71,14 +71,24 @@ func main() {
 	inputDirname := inputBaseDirname + "/status"
 	outputDirname := outputBaseDirname + "/status"
 	
-	if _, err := os.Stat(outputDirname); err != nil {
-		if err := os.Mkdir(outputDirname, 0755); err != nil {
-			log.Fatal("Mkdir ", outputDirname, err)
+	if _, err := os.Stat(inputBaseDirname); err != nil {
+		if err := os.Mkdir(inputBaseDirname, 0755); err != nil {
+			log.Fatal(err)
+		}
+	}
+	if _, err := os.Stat(outputBaseDirname); err != nil {
+		if err := os.Mkdir(outputBaseDirname, 0755); err != nil {
+			log.Fatal(err)
+		}
+	}
+	if _, err := os.Stat(inputDirname); err != nil {
+		if err := os.Mkdir(inputDirname, 0755); err != nil {
+			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(outputDirname); err != nil {
 		if err := os.Mkdir(outputDirname, 0755); err != nil {
-			log.Fatal("Mkdir ", outputDirname, err)
+			log.Fatal(err)
 		}
 	}
 

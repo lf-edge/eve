@@ -25,7 +25,7 @@ import (
 
 var rwImgDirname string	// We store images here
 var xenDirname string	// We store xen cfg files here
-var imgCatalogDirname string // Read-only images named based on sha256 hash
+var verifiedDirname string // Read-only images named based on sha256 hash
 			// each in its own directory
 			
 func main() {
@@ -36,32 +36,50 @@ func main() {
 	statusDirname := runDirname + "/status"
 	rwImgDirname = baseDirname + "/img"	// Note that /var/run is small
 	xenDirname = runDirname + "/xen"
-	imgCatalogDirname = "/var/tmp/zedmanager/downloads/verified"
+	imgCatalogDirname := "/var/tmp/zedmanager/downloads"
+	verifiedDirname = imgCatalogDirname + "/verified"
 	
+	if _, err := os.Stat(baseDirname); err != nil {
+		if err := os.Mkdir(baseDirname, 0755); err != nil {
+			log.Fatal(err)
+		}
+	}
+	if _, err := os.Stat(configDirname); err != nil {
+		if err := os.Mkdir(configDirname, 0755); err != nil {
+			log.Fatal(err)
+		}
+	}
 	if _, err := os.Stat(runDirname); err != nil {
 		if err := os.Mkdir(runDirname, 0755); err != nil {
-			log.Fatal("Mkdir ", runDirname, err)
+			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(statusDirname); err != nil {
 		if err := os.Mkdir(statusDirname, 0755); err != nil {
-			log.Fatal("Mkdir ", statusDirname, err)
+			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(rwImgDirname); err != nil {
-		if err := os.Mkdir(rwImgDirname, 0755); err != nil {
-			log.Fatal("Mkdir ", rwImgDirname, err)
+		if err := os.Mkdir(rwImgDirname, 0700); err != nil {
+			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(xenDirname); err != nil {
-		if err := os.Mkdir(xenDirname, 0755); err != nil {
-			log.Fatal("Mkdir ", xenDirname, err)
+		if err := os.Mkdir(xenDirname, 0700); err != nil {
+			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(imgCatalogDirname); err != nil {
-		log.Fatal("Stat ", imgCatalogDirname, err)
+		if err := os.Mkdir(imgCatalogDirname, 0700); err != nil {
+			log.Fatal(err)
+		}
 	}
-
+	if _, err := os.Stat(verifiedDirname); err != nil {
+		if err := os.Mkdir(verifiedDirname, 0700); err != nil {
+			log.Fatal(err)
+		}
+	}
+	
 	// XXX this is common code except for the types used with json
 	fileChanges := make(chan string)
 	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
@@ -336,7 +354,7 @@ func configToStatusAndXencfg(config types.DomainConfig,
 		// map from i=1 to xvda, 2 to xvdb etc
 		xv := "xvd" + string(int('a') + i )
 		ds.Vdev = xv
-		locationDir := imgCatalogDirname + "/" + dc.ImageSha256
+		locationDir := verifiedDirname + "/" + dc.ImageSha256
 		if _, err := os.Stat(locationDir); err != nil {
 			log.Printf("Missing directory: %s, %s\n",
 				locationDir, err)
