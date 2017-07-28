@@ -152,6 +152,33 @@ EOF
 	/bin/hostname >/etc/hostname
 fi
 
+# Setup default amount of space for images
+mkdir -p /var/tmp/downloader/config/
+echo '{"MaxSpace":1000000}' >/var/tmp/downloader/config/global 
+
+echo "Starting downloader"
+/usr/local/bin/zededa/downloader >&/var/log/downloader.log&
+if [ $WAIT == 1 ]; then
+    echo; read -n 1 -s -p "Press any key to continue"; echo; echo
+fi
+
+echo "Starting verifier"
+/usr/local/bin/zededa/verifier >&/var/log/verifier.log&
+if [ $WAIT == 1 ]; then
+    echo; read -n 1 -s -p "Press any key to continue"; echo; echo
+fi
+
+echo "Starting eidregister"
+/usr/local/bin/zededa/eidregister >&/var/log/eidregister.log&
+if [ $WAIT == 1 ]; then
+    echo; read -n 1 -s -p "Press any key to continue"; echo; echo
+fi
+
+echo "Starting identitymgr"
+/usr/local/bin/zededa/identitymgr >&/var/log/identitymgr.log&
+if [ $WAIT == 1 ]; then
+    echo; read -n 1 -s -p "Press any key to continue"; echo; echo
+fi
 
 echo "Starting ZedRouter"
 /usr/local/bin/zededa/zedrouter >&/var/log/zedrouter.log&
