@@ -163,7 +163,7 @@ func main() {
 			handleCreate(outputName, config)
 			continue
 		}
-		// Compare Version string
+		// Read and check statusFile
 		sb, err := ioutil.ReadFile(statusFile)
 		if err != nil {
 			log.Printf("%s for %s\n", err, statusFile)
@@ -203,13 +203,6 @@ func main() {
 			continue
 		}
 			
-		if config.UUIDandVersion.Version ==
-			status.UUIDandVersion.Version {
-			fmt.Printf("Same version %s for %s\n",
-				config.UUIDandVersion.Version,
-				fileName)
-			continue
-		}
 		outputName := outputDirname + "/" + fileName
 		handleModify(outputName, config, status)
 	}
@@ -391,6 +384,11 @@ func handleModify(outputFilename string, input types.EIDStatus,
 	log.Printf("handleModify(%v) for %s\n",
 		input.UUIDandVersion, input.DisplayName)
 
+	if input.UUIDandVersion.Version == output.UUIDandVersion.Version {
+		fmt.Printf("Same version %s for %s\n",
+			input.UUIDandVersion.Version, outputFilename)
+		return
+	}
 	output.PendingModify = true
 	writeEIDStatus(&output, outputFilename)
 	// XXX Any work?

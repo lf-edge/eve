@@ -464,9 +464,16 @@ func handleModify(statusFilename string, config types.DownloaderConfig,
 		config.Safename, config.DownloadURL)
 
 	// If the sha changes, we treat it as a delete and recreate.
-	if status.ImageSha256 != config.ImageSha256 {
-		log.Printf("handleModify sha256 changed for %s\n",
-		config.DownloadURL)
+	// Ditto if we had a failure.
+	if status.ImageSha256 != config.ImageSha256 || status.LastErr != "" {
+		reason := ""
+		if status.ImageSha256 != config.ImageSha256 {
+			reason = "sha256 changed"
+		} else {
+			reason = "recovering from previous error"
+		}
+		log.Printf("handleModify %s for %s\n",
+			reason, config.DownloadURL)
 		doDelete(statusFilename, &status)
 		status := types.DownloaderStatus{
 			Safename:	config.Safename,

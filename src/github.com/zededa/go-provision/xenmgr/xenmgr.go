@@ -148,7 +148,7 @@ func main() {
 			handleCreate(statusName, config)
 			continue
 		}
-		// Compare Version string
+		// Read and check statusFile
 		sb, err := ioutil.ReadFile(statusFile)
 		if err != nil {
 			log.Printf("%s for %s\n", err, statusFile)
@@ -184,14 +184,6 @@ func main() {
 			statusName := statusDirname + "/" + fileName
 			handleModify(statusName, config, status)
 			// XXX set something to rescan?
-			continue
-		}
-			
-		if config.UUIDandVersion.Version ==
-			status.UUIDandVersion.Version {
-			fmt.Printf("Same version %s for %s\n",
-				config.UUIDandVersion.Version,
-				fileName)
 			continue
 		}
 		statusName := statusDirname + "/" + fileName
@@ -244,6 +236,7 @@ func handleCreate(statusFilename string, config types.DomainConfig) {
 		log.Fatal("os.Create for ", filename, err)
 	}
 	defer file.Close()
+
 	// XXX split into configToStatus which allocates name etc and
 	// generateXenCfg(config, status, file); latter once activated
 	if err := configToStatusAndXencfg(config, &status, file); err != nil {
@@ -448,6 +441,13 @@ func handleModify(statusFilename string, config types.DomainConfig,
 	log.Printf("handleModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
+	// XXX check if we have status.LastErr != "" and delete and retry
+	// even if same version
+	if config.UUIDandVersion.Version == status.UUIDandVersion.Version {
+		fmt.Printf("Same version %s for %s\n",
+			config.UUIDandVersion.Version, statusFilename)
+		return
+	}
 	// XXX dump status
 	xlStatus(status.DomainName, status.DomainId)
 

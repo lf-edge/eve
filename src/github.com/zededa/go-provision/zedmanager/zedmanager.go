@@ -184,7 +184,7 @@ func main() {
 				handleCreate(statusName, config)
 				continue
 			}
-			// Compare Version string
+			// Read and check status
 			sb, err := ioutil.ReadFile(statusFile)
 			if err != nil {
 				log.Printf("%s for %s\n", err, statusFile)
@@ -220,14 +220,6 @@ func main() {
 				statusName := zedmanagerStatusDirname + "/" + fileName
 				handleModify(statusName, config, status)
 				// XXX set something to rescan?
-				continue
-			}
-				
-			if config.UUIDandVersion.Version ==
-				status.UUIDandVersion.Version {
-				fmt.Printf("Same version %s for %s\n",
-					config.UUIDandVersion.Version,
-					fileName)
 				continue
 			}
 			statusName := zedmanagerStatusDirname + "/" + fileName
@@ -303,6 +295,12 @@ func handleModify(statusFilename string, config types.AppInstanceConfig,
 	status types.AppInstanceStatus) {
 	log.Printf("handleModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
+
+	if config.UUIDandVersion.Version == status.UUIDandVersion.Version {
+		fmt.Printf("Same version %s for %s\n",
+			config.UUIDandVersion.Version, statusFilename)
+		return
+	}
 
 	status.PendingModify = true
 	status.UUIDandVersion = config.UUIDandVersion

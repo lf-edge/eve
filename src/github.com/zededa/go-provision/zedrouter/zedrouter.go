@@ -126,7 +126,7 @@ func main() {
 			handleCreate(statusName, config)
 			continue
 		}
-		// Compare Version string
+		// Read and check status
 		sb, err := ioutil.ReadFile(statusFile)
 		if err != nil {
 			log.Printf("%s for %s\n", err, statusFile)
@@ -162,14 +162,6 @@ func main() {
 			statusName := statusDirname + "/" + fileName
 			handleModify(statusName, config, status)
 			// XXX set something to rescan?
-			continue
-		}
-			
-		if config.UUIDandVersion.Version ==
-			status.UUIDandVersion.Version {
-			fmt.Printf("Same version %s for %s\n",
-				config.UUIDandVersion.Version,
-				fileName)
 			continue
 		}
 		statusName := statusDirname + "/" + fileName
@@ -670,6 +662,12 @@ func handleModify(statusFilename string, config types.AppNetworkConfig,
 	status types.AppNetworkStatus) {
 	log.Printf("handleModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
+
+	if config.UUIDandVersion.Version == status.UUIDandVersion.Version {
+		fmt.Printf("Same version %s for %s\n",
+			config.UUIDandVersion.Version, statusFilename)
+		return
+	}
 
 	appNum := status.AppNum
 	fmt.Printf("handleModify appNum %d\n", appNum)
