@@ -1,3 +1,11 @@
+zedmanager:
+ - Need handleDelete to clean up all dependent files
+ - Need modification for ACL and eidlist in handlezedrouter
+ 
+device-steps.sh:
+ - Need cleanup of dependent /var/run/*/config, however we have two global files
+   plus the IsZedmanager zedrouter/config; preserve zedmanager/config/
+ - XXX keep downloads directory in place as well
 
 NOTE:
 ubuntu guest and zedrouter assumes bu is first in list of networks - becomes eth0
@@ -17,7 +25,7 @@ xenmgr:
  - How do we always delete? Wait state to change after xl shutdown then xl destroy and wait again? Means a goroutine per UUID?
    It could periodically look for status and update.
    
-zedmanager:
+DONE zedmanager:
  - special handling of IsZedManager - do we create it's file on the fly
    from onboarding? Don't pass to XenMgr.
  - 1st read status from everybody and build collections in memory
