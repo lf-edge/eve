@@ -115,37 +115,73 @@ if [ /bin/true -o ! -f $ETCDIR/lisp.config ]; then
     fi
 fi
 
-echo "Determining uplink interface"
 if [ ! -d $LISPDIR ]; then
     echo "Missing $LISPDIR directory. Giving up"
     exit 1
 fi
 
-# Remove internal config files
 if [ -f /var/tmp/zedrouter/config/global ]; then
    cp -p /var/tmp/zedrouter/config/global $ETCDIR/network.config.global
 fi
-rm -rf /var/tmp/{zedrouter,xenmgr,downloader,verifier,identitymgr}/config/*
 
-# XXX allow restart? pkill? Clean up status?
-files=/var/run/{zedrouter,xenmgr,downloader,verifier,identitymgr}/status/*.json
-found=0
-for f in $files; do
-    if [ -f $f ]; then
-	echo "Found file: $f"
-	rm -f $f
-	found=1
+echo "Removing old stale files"
+# Remove internal config files
+pkill zedmanager
+rm -rf /var/run/zedmanager/status/*.json
+AGENTS="zedrouter xenmgr downloader verifier identitymgr eidregister"
+for AGENT in $AGENTS; do
+    if [ ! -d /var/tmp/$AGENT ]; then
+	continue
     fi
+    dir=/var/tmp/$AGENT/config
+    if [ ! -d $dir ]; then
+	continue
+    fi
+    echo "Looking in config $dir"
+    files=`ls $dir`
+    for f in $files; do
+	echo "Deleting config file: $dir/$f"
+	rm -f $dir/$f
+    done
 done
-sleep 5
-pkill zedrouter
-pkill xenmgr
-pkill downloader
-pkill verifier
-pkill identitymgr
-pkill eidregister
 
-rm -rf /var/run/{zedrouter,xenmgr,downloader,verifier,identitymgr}/status/*.json
+# Try to cleanup in case the agents are running or /var/run files are left over
+# If agents are running then the deletion of the /var/tmp/ files should
+# cleaned up all but /var/run/zedmanager/*.json
+
+# If agents are running wait for the status files to disappear
+for AGENT in $AGENTS; do
+    if [ ! -d /var/run/$AGENT ]; then
+	continue
+    fi
+    dir=/var/run/$AGENT/status
+    if [ ! -d $dir ]; then
+	continue
+    fi
+    echo "Looking in status $dir"
+    files=`ls $dir`
+    pid=`pgrep $AGENT`
+    if [ "$pid" != "" ]; then
+	while [	! -z "$files" ]; do
+	    echo Found: $files
+	    if [ "$files" == "global" ]; then
+		break
+	    fi
+	    echo "Waiting for $AGENT to clean up"
+	    sleep 3
+	    files=`ls $dir`
+	done
+    elif [ ! -z "$files" ]; then
+	for f in $files; do
+	    echo "Deleting status file: $dir/$f"
+	    rm -f $dir/$f
+	done
+    fi
+    pkill $AGENT
+done
+
+# XXX not needed?
+# rm -rf /var/run/{zedmanager,zedrouter,xenmgr,downloader,verifier,identitymgr}/status/*.json
 
 if [ $SELF_REGISTER = 1 ]; then
 	intf=`$BINDIR/find-uplink.sh $ETCDIR/lisp.config.base`
@@ -155,7 +191,7 @@ if [ $SELF_REGISTER = 1 ]; then
 		echo "NOT Found interface based on route to map servers. Giving up"
 		exit 1    
 	fi
-	# XXX put in $ETCDIR first
+	echo "Determining uplink interface"
 	cat <<EOF >$ETCDIR/network.config.global
 {"Uplink":"$intf"}
 EOF
@@ -178,7 +214,7 @@ cp $ETCDIR/network.config.global /var/tmp/zedrouter/config/global
 
 # Setup default amount of space for images
 mkdir -p /var/tmp/downloader/config/
-echo '{"MaxSpace":1000000}' >/var/tmp/downloader/config/global 
+echo '{"MaxSpace":2000000}' >/var/tmp/downloader/config/global 
 
 echo "Starting downloader"
 /usr/local/bin/zededa/downloader >&/var/log/downloader.log&
