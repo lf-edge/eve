@@ -133,8 +133,6 @@ func main() {
 		done = done1 && done2
 		if !done {
 			time.Sleep(5 * time.Second)
-			// XXX prov1.zededa.net points at ocsp.zededa.net which doesn't exist
-			// done = true
 		}
 	}
 	log.Printf("Setup global timer every %d seconds; local %d\n",
@@ -332,9 +330,6 @@ func SelfRegister(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("onboardingKey:", onboardingKey)
 
 	// Look up in database
-	// XXX create db and deviceDb and put in global vars!
-	// a new or existing scribble driver, providing the directory
-	// where it will be writing to, and a qualified logger if desired
 	db, err := scribble.New("/var/tmp/zededa-onboarding", nil)
 	if err != nil {
 		fmt.Println("scribble.New", err)
@@ -469,9 +464,6 @@ func SelfRegister(w http.ResponseWriter, r *http.Request) {
 			http.StatusBadRequest)
 		return
 	}
-	// XXX remove? check content with Dino
-	fmt.Printf("publicDer (len %d) % x\n", len(publicDer), publicDer)
-
 	// Form PEM for public key and print/store it
 	var publicKey = &pem.Block{
 		Type:  "PUBLIC KEY",
@@ -494,12 +486,8 @@ func SelfRegister(w http.ResponseWriter, r *http.Request) {
 	iidData := make([]byte, 4)
 	binary.BigEndian.PutUint32(iidData, lispInstance)
 
-	// XXX need to pass this prefix to device. Use it to setup route to dbo1x0
-	// XXX note that fd00::/8 route is used for all overlays. Might be
-	// ok if we just add the global address route. XXX refcnt in zedrouter
-	// XXX Also eidAllocationPrefixLen to allow arbitrary bit length
-	// XXX need different value for AWS
-	eidAllocationPrefix := []byte{0xFD} // Hard-coded for Zededa management overlay
+	// Hard-coded prefix for Zededa management overlay
+	eidAllocationPrefix := []byte{0xFD} 
 	eidAllocationPrefixLen := len(eidAllocationPrefix)*8
 	eidHashLen := 128 - eidAllocationPrefixLen
 
@@ -533,7 +521,7 @@ func SelfRegister(w http.ResponseWriter, r *http.Request) {
 		EIDHashLen:   uint8(eidHashLen),
 		ZedServers:   zedServerConfig,
 		EidAllocationPrefix: eidAllocationPrefix,
-		EidAllocationPrefixLen: eidAllocationPrefixLen, // XXX client and zedrouter.
+		EidAllocationPrefixLen: eidAllocationPrefixLen,
 		ClientAddr:   r.RemoteAddr,
 	}
 	err = deviceDb.Write("ddb", deviceKey, device)
@@ -948,11 +936,6 @@ func EIDRegister(w http.ResponseWriter, r *http.Request) {
 			http.StatusBadRequest)
 		return
 	}
-	// XXX write to /var/tmp/zededa-device/eid-app/.
-	// XXX read first. Should we update? zed-lispcontroller doesn't react
-	// to updates. A restart of a device will result in a re-register.
-	// XXX compare types?
-	// XXX get appKey
 	appKey := fmt.Sprintf("%s:%d", register.UUID, register.IID)
 	fmt.Println("appKey:", appKey)
 	oldRegister := types.EIDRegister{}
