@@ -73,12 +73,12 @@ type NameToEid struct {
 // Temporary approach to pass application EIDs back to prov1.zededa.net
 // to add to map servers
 type EIDRegister struct {
-	AppCert		[]byte		// XXX not used on server
+	AppCert		[]byte		// XXX not currently used on server
 	AppPublicKey	[]byte
 	UUID		uuid.UUID
 	DisplayName	string
 	IID		uint32
 	EID		net.IP
 	EIDHashLen	uint8
-	LispMapServers	[]LispServerInfo // XXX from here?
+	LispMapServers	[]LispServerInfo // XXX from here? Hard-coded for now
 }
