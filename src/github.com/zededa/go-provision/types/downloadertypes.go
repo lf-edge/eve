@@ -12,7 +12,7 @@ import (
 type DownloaderConfig struct {
 	Safename	string
 	DownloadURL	string	// XXX is there a more specific type?
-	MaxSize		uint	// XXX in kbytes
+	MaxSize		uint	// In kbytes
 	ImageSha256	string	// sha256 of immutable image XXX used?
 	RefCount	uint	// Zero means can delete file/cancel download
 }
