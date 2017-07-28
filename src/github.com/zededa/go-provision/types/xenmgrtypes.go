@@ -23,7 +23,7 @@ type DomainConfig struct {
 type FixedResources struct {
 	Kernel		string	// default ""
 	Ramdisk		string	// default ""
-	Memory		int	// in kbytes; XXX round up to Mbytes for xen
+	Memory		int	// in kbytes; XXX round up to Mbytes for xen?
 	MaxMem		int	// Default not set i.e. no balooning
 	VCpus		int	// default 1
 	// XXX Add CPU pinning
