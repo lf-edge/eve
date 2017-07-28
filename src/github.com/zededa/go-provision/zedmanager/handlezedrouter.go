@@ -16,7 +16,8 @@ import (
 // XXX change from string to UUID?
 var appNetworkConfig map[string]types.AppNetworkConfig
 
-func MaybeAddAppNetworkConfig(aiConfig types.AppInstanceConfig) {
+func MaybeAddAppNetworkConfig(aiConfig types.AppInstanceConfig,
+     aiStatus *types.AppInstanceStatus) {
 	key := aiConfig.UUIDandVersion.UUID.String()
 	displayName := aiConfig.DisplayName
 	log.Printf("MaybeAddAppNetworkConfig for %s displayName %s\n", key,
@@ -41,12 +42,13 @@ func MaybeAddAppNetworkConfig(aiConfig types.AppInstanceConfig) {
 			IsZedmanager: false,
 		}
 		nc.OverlayNetworkList = make([]types.OverlayNetworkConfig,
-			len(aiConfig.OverlayNetworkList))
-		for i, olc := range aiConfig.OverlayNetworkList {
+			len(aiStatus.EIDList))
+		for i, ols := range aiStatus.EIDList {
+			olc := &aiConfig.OverlayNetworkList[i]
 			ol := &nc.OverlayNetworkList[i]
-			ol.IID = olc.IID
-			ol.EID = olc.EID
-			ol.LispSignature = olc.LispSignature
+			ol.IID = ols.IID
+			ol.EID = ols.EID
+			ol.LispSignature = ols.LispSignature
 			ol.ACLs = olc.ACLs
 			ol.NameToEidList = olc.NameToEidList
 		}

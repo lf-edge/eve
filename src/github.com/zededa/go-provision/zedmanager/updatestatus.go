@@ -314,7 +314,7 @@ func doUpdate(uuidStr string, config types.AppInstanceConfig,
 	}
 	log.Printf("Have config.Activate for %s\n", uuidStr)
 	// Make sure we have an AppNetworkConfig
-	MaybeAddAppNetworkConfig(config)
+	MaybeAddAppNetworkConfig(config, status)
 
 	// Check AppNetworkStatus
 	ns, err := LookupAppNetworkStatus(uuidStr)
