@@ -33,9 +33,9 @@ type AppInstanceStatus struct {
 	UUIDandVersion	UUIDandVersion
 	DisplayName	string
 	Activated	bool
-	PendingAdd	bool
-	PendingModify	bool
-	PendingDelete	bool
+	PendingAdd	bool	// XXX delete
+	PendingModify	bool	// XXX delete
+	PendingDelete	bool	// XXX delete
 	StorageStatusList    []StorageStatus
 	EIDList		[]EIDStatusDetails
 	// Mininum state across all steps and all StorageStatus.
