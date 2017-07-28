@@ -64,8 +64,6 @@ func main() {
 	}
 	serverNameAndPort = strings.TrimSpace(string(server))
 	serverName = strings.Split(serverNameAndPort, ":")[0]
-	// XXX for local testing
-	// serverNameAndPort = "localhost:9069"
 
 	// Keeping status in /var/run to be clean after a crash/reboot
 	inputBaseDirname := "/var/run/identitymgr"
@@ -204,21 +202,6 @@ func main() {
 		}
 		outputName := outputDirname + "/" + fileName
 		handleModify(outputName, config, status)
-	}
-}
-
-// XXX might only be used for debug
-func writeEIDRegister(register *types.EIDRegister, registerFilename string) {
-	b, err := json.Marshal(register)
-	if err != nil {
-		log.Fatal(err, "json Marshal EIDRegister")
-	}
-	// We assume a /var/run path hence we don't need to worry about
-	// partial writes/empty files due to a kernel crash.
-	// XXX which permissions?
-	err = ioutil.WriteFile(registerFilename, b, 0644)
-	if err != nil {
-		log.Fatal(err, registerFilename)
 	}
 }
 
