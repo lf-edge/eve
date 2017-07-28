@@ -38,7 +38,10 @@ func main() {
 	}
 	// Want the sha256 sum of the DER of the private key as the name
 	block, _ := pem.Decode(certBuf)
-	if block == nil || block.Type != "CERTIFICATE" {
+	if block == nil {
+		log.Fatal("failed to decode PEM block containing certificate")
+	}
+	if block.Type != "CERTIFICATE" {
 		log.Fatal("failed to decode PEM block containing certificate. Type " +
 			block.Type)
 	}

@@ -288,9 +288,11 @@ func handleCreate(statusFilename string, config types.EIDConfig) {
 		}
 	} else {
 		block, _ := pem.Decode(config.PemCert)
-		if block == nil || block.Type != "CERTIFICATE" {
-			// XXX core dump since block is nil
-			// XXX need PemCert in test input
+		if block == nil {
+			log.Println("failed to decode PEM block containing certificate")
+			return
+		}
+		if block.Type != "CERTIFICATE" {
 			log.Println("failed to decode PEM block containing certificate. Type " +
 				block.Type)
 			return

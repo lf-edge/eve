@@ -385,7 +385,13 @@ func SelfRegister(w http.ResponseWriter, r *http.Request) {
 	}
 	// Check if the payload is a certificate in pem format and compute sha256
 	block, _ := pem.Decode(rc.PemCert)
-	if block == nil || block.Type != "CERTIFICATE" {
+	if block == nil {
+		fmt.Println("failed to decode PEM block containing certificate.")
+		http.Error(w, http.StatusText(http.StatusBadRequest),
+			http.StatusBadRequest)
+		return
+	}
+	if block.Type != "CERTIFICATE" {
 		fmt.Println("failed to decode PEM block containing certificate. Type " +
 			block.Type)
 		http.Error(w, http.StatusText(http.StatusBadRequest),
