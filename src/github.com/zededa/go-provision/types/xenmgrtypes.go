@@ -3,6 +3,10 @@
 
 package types
 
+import (
+	"time"
+)
+
 // The information XenManager needs to boot and halt domains
 // If the the version (in UUIDandVersion) changes then the domain needs to
 // halted and booted?? NO, because an ACL change from ZedControl would bump
@@ -41,6 +45,8 @@ type DomainStatus struct {
 	DomainName	string	// Name of Xen domain
 	DomainId	int
 	DiskStatusList	[]DiskStatus
+	LastErr		string	// Xen error
+	LastErrTime	time.Time
 }
 
 type VifInfo struct {

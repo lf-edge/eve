@@ -9,6 +9,7 @@ import (
 	"log"
 	"reflect"
 	"strings"
+	"time"
 )
 
 // Maps from UUID (key) to AIConfig and AIStatus
@@ -122,6 +123,7 @@ func doUpdate(uuidStr string, config types.AppInstanceConfig,
 
 	minState := types.MAXSTATE
 	allErrors := ""
+	var errorTime time.Time
 	changed := false
 
 	// XXX add separate function to init?
@@ -190,6 +192,8 @@ func doUpdate(uuidStr string, config types.AppInstanceConfig,
 			ss.Error = ds.LastErr
 			allErrors = appendError(allErrors, "downloader",
 				ds.LastErr)
+			ss.ErrorTime = ds.LastErrTime
+			errorTime = ds.LastErrTime
 			changed = true
 		case types.DOWNLOAD_STARTED:
 			// Nothing to do
@@ -204,6 +208,7 @@ func doUpdate(uuidStr string, config types.AppInstanceConfig,
 	}
 	status.State = minState
 	status.Error = allErrors
+	status.ErrorTime = errorTime
 	if minState == types.INITIAL {
 		log.Printf("Download error for %s\n", uuidStr)
 		return changed
@@ -241,6 +246,8 @@ func doUpdate(uuidStr string, config types.AppInstanceConfig,
 			ss.Error = vs.LastErr
 			allErrors = appendError(allErrors, "verifier",
 				vs.LastErr)
+			ss.ErrorTime = vs.LastErrTime
+			errorTime = vs.LastErrTime
 			changed = true
 		}
 	}
@@ -250,6 +257,7 @@ func doUpdate(uuidStr string, config types.AppInstanceConfig,
 	}
 	status.State = minState
 	status.Error = allErrors
+	status.ErrorTime = errorTime
 	if minState == types.INITIAL {
 		log.Printf("Verify error for %s\n", uuidStr)
 		return changed
@@ -311,7 +319,7 @@ func doUpdate(uuidStr string, config types.AppInstanceConfig,
 	// Check AppNetworkStatus
 	ns, err := LookupAppNetworkStatus(uuidStr)
 	if err != nil {
-		log.Printf("Waiting for all AppNetworkStatus for %s\n", uuidStr)
+		log.Printf("Waiting for AppNetworkStatus for %s\n", uuidStr)
 		return changed
 	}
 	log.Printf("Done with AppNetworkStatus for %s\n", uuidStr)
@@ -320,12 +328,25 @@ func doUpdate(uuidStr string, config types.AppInstanceConfig,
 	MaybeAddDomainConfig(config, ns)
 
 	// Check DomainStatus; XXX update AI status
-	_, err = LookupDomainStatus(uuidStr)
+	ds, err := LookupDomainStatus(uuidStr)
 	if err != nil {
-		log.Printf("Waiting for all DomainStatus for %s\n", uuidStr)
+		log.Printf("Waiting for DomainStatus for %s\n", uuidStr)
 		return changed
 	}
-	// XXX Look for xen errors.
+	// Look for xen errors.
+	if !ds.Activated {
+		if ds.LastErr != "" {
+			log.Printf("Received error from xenmgr for %s: %s\n",
+				uuidStr, ds.LastErr)
+			status.Error = ds.LastErr
+			status.ErrorTime = ds.LastErrTime
+			changed = true
+		}
+		log.Printf("Waiting for DomainStatus Activated for %s\n",
+			uuidStr)
+		return changed
+	}
+
 	log.Printf("Done with DomainStatus for %s\n", uuidStr)
 
 	if !status.Activated {

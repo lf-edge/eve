@@ -5,6 +5,7 @@ package types
 
 import (
 	"github.com/satori/go.uuid"
+	"time"
 )
 
 // UUID plus version
@@ -42,6 +43,7 @@ type AppInstanceStatus struct {
 	State		SwState
 	// All error strngs across all steps and all StorageStatus
 	Error		string
+	ErrorTime	time.Time
 }
 
 type EIDOverlayConfig struct {
@@ -70,8 +72,10 @@ type StorageStatus struct {
 	ImageSha256	string	// sha256 of immutable image
 	State		SwState	// DOWNLOADED etc
 	Error		string	// Download or verify error
+	ErrorTime	time.Time
 }
 
+// XXX Should we allow an arbitrary chain of certs?
 type SignatureInfo struct {
 	IntermediateCertPem	[]byte
 	SignerCertPem		[]byte

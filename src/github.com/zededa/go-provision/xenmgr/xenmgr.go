@@ -20,6 +20,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 )
 
 var rwImgDirname string	// We store images here
@@ -231,6 +232,8 @@ func handleCreate(statusFilename string, config types.DomainConfig) {
 		log.Printf("Failed to create DomainStatus from %v\n", config)
 		// XXX should we clear PendingAdd?
 		status.PendingAdd = false
+		status.LastErr = fmt.Sprintf("%v", err)
+		status.LastErrTime = time.Now()
 		writeDomainStatus(&status, statusFilename)
 		return
 	}
@@ -251,6 +254,8 @@ func handleCreate(statusFilename string, config types.DomainConfig) {
 				// XXX return? Cleanup status? Will never retry
 				// XXX should we clear PendingAdd?
 				status.PendingAdd = false
+				status.LastErr = fmt.Sprintf("%v", err)
+				status.LastErrTime = time.Now()
 				writeDomainStatus(&status, statusFilename)
 				return
 			}
@@ -264,7 +269,8 @@ func handleCreate(statusFilename string, config types.DomainConfig) {
 	if err != nil {
 		log.Printf("xl create for %s: %s\n", status.DomainName, err)
 		status.PendingAdd = false
-		// XXX add error. Get more of error from xlCreate. Process in zedmanager
+		status.LastErr = fmt.Sprintf("%v", err)
+		status.LastErrTime = time.Now()
 		writeDomainStatus(&status, statusFilename)
 		return
 	}
@@ -509,10 +515,12 @@ func xlCreate(domainName string, xenCfgFilename string)(int, error) {
 		"create",
 		xenCfgFilename,
 	}
-	_, err := exec.Command(cmd, args...).Output()
+	out, err := exec.Command(cmd, args...).CombinedOutput()
 	if err != nil {
 		log.Println("xl create failed ", err)
-		return 0, err
+		log.Println("xl create output ", out)
+		return 0, errors.New(fmt.Sprintf("xl create failed: %s\n",
+				string(out)))
 	}
 	fmt.Printf("xl create done\n")
 
@@ -520,7 +528,7 @@ func xlCreate(domainName string, xenCfgFilename string)(int, error) {
 		"domid",
 		domainName,
 	}
-	out, err := exec.Command(cmd, args...).Output()
+	out, err = exec.Command(cmd, args...).Output()
 	if err != nil {
 		log.Println("xl domid failed ", err)
 		return 0, err
