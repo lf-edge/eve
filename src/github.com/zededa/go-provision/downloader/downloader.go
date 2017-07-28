@@ -4,7 +4,7 @@
 // Process input changes from a config directory containing json encoded files
 // with DownloaderConfig and compare against DownloaderStatus in the status
 // dir.
-// Tries to download the items in the config directory repeatedly until
+// XXX NOT Tries to download the items in the config directory repeatedly until
 // there is a complete download. (XXX detect eof/short file or not?)
 // ZedManager can stop the download by removing from config directory.
 //
@@ -68,10 +68,6 @@ func main() {
 			log.Fatal("Mkdir ", pendingDirname, err)
 		}
 	}
-
-	// XXX write emtpy config
-	config := types.DownloaderConfig{}
-	writeDownloaderConfig(&config, "/tmp/foo")
 
 	handleInit(configDirname+"/global", statusDirname+"/global")
 
@@ -278,20 +274,6 @@ func writeGlobalStatus() {
 	}
 }
 
-// XXX Only used for initial format of config json
-func writeDownloaderConfig(config *types.DownloaderConfig,
-	configFilename string) {
-	fmt.Printf("XXX Writing empty config to %s\n", configFilename)
-	b, err := json.Marshal(config)
-	if err != nil {
-		log.Fatal(err, "json Marshal DownloaderConfig")
-	}
-	err = ioutil.WriteFile(configFilename, b, 0644)
-	if err != nil {
-		log.Fatal(err, configFilename)
-	}
-}
-
 func writeDownloaderStatus(status *types.DownloaderStatus,
 	statusFilename string) {
 	b, err := json.Marshal(status)
@@ -319,7 +301,9 @@ func handleCreate(statusFilename string, config types.DownloaderConfig) {
 		PendingAdd:     true,
 		// XXX reader should ignore INITIAL state if PendingAdd
 	}
-	// XXX easier than above writeDownloaderStatus(&status, statusFilename)
+	// XXX easier than above having reader ignore:
+	// writeDownloaderStatus(&status, statusFilename)
+	
 	// Check if we have space
 	if config.MaxSize >= globalStatus.RemainingSpace {
 		errString := fmt.Sprintf("Would exceed remaining space %d vs %d\n",
@@ -375,7 +359,7 @@ func doCreate(statusFilename string, config types.DownloaderConfig,
 	log.Printf("Downloading URL %s to %s\n",
 		config.DownloadURL, destFilename)
 
-	// XXX do work; should kick off goroutine to be able to cacel
+	// XXX do work; should kick off goroutine to be able to cancel
 	// XXX invoke wget for now.
 	err := doWget(config.DownloadURL, destFilename)
 	if err != nil {
@@ -428,8 +412,10 @@ func doCreate(statusFilename string, config types.DownloaderConfig,
 	globalStatus.UsedSpace += status.Size
 	updateRemainingSpace()
 	
+	// We do not clear any status.RetryCount, LastErr, etc. The caller
+	// should look at State == DOWNLOADED to determine it is done.
+
 	status.ModTime = time.Now()
-	// XXX keep status.RetryCount, LastErr, etc. Caller should look at State.
 	status.PendingAdd = false
 	status.State = types.DOWNLOADED
 	writeDownloaderStatus(status, statusFilename)
