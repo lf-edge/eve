@@ -1,6 +1,9 @@
 zedmanager:
  - Need handleDelete to clean up all dependent files
  - Need modification for ACL and eidlist in handlezedrouter
+
+zedrouter:
+ - Seems to re-add the iptables rules for each handleModify. CHECK
  
 device-steps.sh:
 DONE - Need cleanup of dependent /var/run/*/config, however we have two global files
