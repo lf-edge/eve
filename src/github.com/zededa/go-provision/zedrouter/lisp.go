@@ -286,20 +286,13 @@ func updateLisp(lispRunDirname string, upLinkIfname string) {
 	}
 }
 
-// XXX can't restart-lisp until the domU's are booted otherwise it complains/crashes with PcapPyException: The interface went down
-// XXX can lisp wait until the interface is up? Otherwise have to split
-// and do the lisp.config after the activate=True and xl has created it.
-//
-// XXX cd `dirname $0` in STOP-LIST
-// XXX sudo -E in RESTART-LISP
-// XXX also crash with PcapPyException: "dbo1x0: SIOCETHTOOL(ETHTOOL_GET_TS_INFO) ioctl failed: No such device
-//
+// XXX cd `dirname $0` in STOP-LISP
+// XXX sleep 10 in RESTART-LISP
 // XXX would like to limit number of restarts of LISP. Somehow do at end of loop
 // main event loop in zedrouter.go??
 // XXX shouldn't need to restart unless we are removing or replacing something
 // XXX also need to restart when adding an overlay interface
 // Adds should be ok without. How can we tell?
-// XXX stop then modify then RUN-LISP. Do iptablesfixup before the run-lisp.
 func restartLisp(lispRunDirname string, upLinkIfname string, devices string) {
 	fmt.Printf("restartLisp: %s %s\n", lispRunDirname, upLinkIfname)
 	args := []string{
@@ -311,31 +304,25 @@ func restartLisp(lispRunDirname string, upLinkIfname string, devices string) {
 	cmd.Args = args
 	env := os.Environ()
 	env = append(env, fmt.Sprintf("LISP_NO_IPTABLES="))
-	// XXX results in race. Inefficient to have ITR pick up packets
-	// on nbo1xN, but it works since dropped due to no matching MAC.
-	// XXX env = append(env, fmt.Sprintf("LISP_PCAP_LIST=\"%s\"", devices))
+	// XXX is this related to the hang with 0.389? Commenting out for now
+	// env = append(env, fmt.Sprintf("LISP_PCAP_LIST=\"%s\"", devices))
 	cmd.Env = env
 	_, err := cmd.Output()
 	if err != nil {
 		log.Println("RESTART-LISP failed ", err)
 	}
 	fmt.Printf("restartLisp done\n")
-	iptablesLispFixup()
-}
-
-// lisp startup seems to clobber the nat rule even when we set LISP_NO_IPTABLES
-// XXX need to wait until lisp has started for this to work!
-func iptablesLispFixup() {
-	iptablesInit()
 }
 
 func stopLisp(lispRunDirname string) {
 	fmt.Printf("stopLisp: %s\n", lispRunDirname)
-	cmd := StopCmd
-	_, err := exec.Command(cmd).Output()
+	cmd := exec.Command(StopCmd)
+	env := os.Environ()
+	env = append(env, fmt.Sprintf("LISP_NO_IPTABLES="))
+	cmd.Env = env
+	_, err := cmd.Output()
 	if err != nil {
 		log.Println("STOP-LISP failed ", err)
 	}
 	fmt.Printf("stopLisp done\n")
-	// iptablesfixup?
 }
