@@ -640,18 +640,6 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		ulStatus.Mac = ulMac
 	}
 	// Write out what we created to AppNetworkStatus
-	status.OverlayNetworkList = make([]types.OverlayNetworkStatus,
-		len(config.OverlayNetworkList))
-	for i, _ := range config.OverlayNetworkList {
-		status.OverlayNetworkList[i].OverlayNetworkConfig =
-		config.OverlayNetworkList[i]
-	}
-	status.UnderlayNetworkList = make([]types.UnderlayNetworkStatus,
-		len(config.UnderlayNetworkList))
-	for i, _ := range config.UnderlayNetworkList {
-		status.UnderlayNetworkList[i].UnderlayNetworkConfig =
-		config.UnderlayNetworkList[i]
-	}
 	status.PendingAdd = false
 	writeAppNetworkStatus(&status, statusFilename)
 	log.Printf("handleCreate done for %s\n", config.DisplayName)
