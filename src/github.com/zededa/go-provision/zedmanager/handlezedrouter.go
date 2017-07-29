@@ -30,7 +30,11 @@ func MaybeAddAppNetworkConfig(aiConfig types.AppInstanceConfig,
 	changed := false
 	if _, ok := appNetworkConfig[key]; ok {
 		fmt.Printf("appNetwork config already exists for %s\n", key)
+		// XXX Need semantic comparison! EID could have been set.
+		// XXX with eidsAllocated we should be able to just compare
+		// ACLs and EIDset
 		// XXX update ACLs etc; set changed
+		// changed = true
 	} else {
 		fmt.Printf("appNetwork config add for %s\n", key)
 		changed = true
@@ -111,8 +115,11 @@ func handleAppNetworkStatusModify(statusFilename string,
 			changed = true
 		}
 	} else {
-		if !status.IsZedmanager {
-			fmt.Printf("appNetwork status map add for %v\n", key)
+		// Is the add/change done?
+		if status.IsZedmanager {
+			fmt.Printf("Ignoring IsZedmanager appNetwork status for %v\n", key)
+		} else if !status.PendingAdd && !status.PendingModify {
+			fmt.Printf("status is not pending\n");
 			changed = true
 		}
 	}

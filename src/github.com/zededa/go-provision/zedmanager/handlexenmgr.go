@@ -119,8 +119,11 @@ func handleDomainStatusModify(statusFilename string,
 			changed = true
 		}
 	} else {
-		fmt.Printf("Domain map add for %v\n", key)
-		changed = true
+		// Is the add/change done?
+		if !status.PendingAdd && !status.PendingModify {
+			fmt.Printf("status is not pending\n");
+			changed = true
+		}
 	}
 	if changed {
 		domainStatus[key] = *status
