@@ -3,7 +3,7 @@ zedmanager:
  - Need modification for ACL and eidlist in handlezedrouter
  
 device-steps.sh:
- - Need cleanup of dependent /var/run/*/config, however we have two global files
+DONE - Need cleanup of dependent /var/run/*/config, however we have two global files
    plus the IsZedmanager zedrouter/config; preserve zedmanager/config/
  - XXX keep downloads directory in place as well
 
