@@ -189,14 +189,6 @@ func main() {
 			continue
 		}
 			
-		// XXX handleModify detects changes by looking at RefCount
-		// Sanity check here or in handleModify?
-		if config.DownloadURL !=
-			status.DownloadURL {
-			fmt.Printf("URL changed - not allowed %s -> %s\n",
-				config.DownloadURL, status.DownloadURL)
-			continue
-		}
 		statusName := statusDirname + "/" + fileName
 		handleModify(statusName, config, status)
 	}
@@ -463,6 +455,11 @@ func handleModify(statusFilename string, config types.DownloaderConfig,
 	log.Printf("handleModify(%v) for %s\n",
 		config.Safename, config.DownloadURL)
 
+	if config.DownloadURL != status.DownloadURL {
+		fmt.Printf("URL changed - not allowed %s -> %s\n",
+			config.DownloadURL, status.DownloadURL)
+		return
+	}
 	// If the sha changes, we treat it as a delete and recreate.
 	// Ditto if we had a failure.
 	if status.ImageSha256 != config.ImageSha256 || status.LastErr != "" {

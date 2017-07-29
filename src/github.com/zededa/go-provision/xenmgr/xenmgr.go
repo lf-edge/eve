@@ -432,7 +432,7 @@ func cp(dst, src string) error {
 // Need to compare what might have changed. If any content change
 // then we need to reboot. Thus version by itself can change but nothing
 // else. Such a version change would be e.g. due to an ACL change.
-// XXX to save statusFilename when the gorouting is created.
+// XXX to save statusFilename when the goroutine is created.
 // XXX send "m" to channel
 // XXX channel handler looks at activate and starts/stops
 // XXX separate goroutine to run cp? Add "copy complete" status?

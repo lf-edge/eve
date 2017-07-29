@@ -193,14 +193,6 @@ func main() {
 			continue
 		}
 			
-		// XXX handleModify detects changes by looking at RefCount
-		// Sanity check here or in handleModify?
-		if config.DownloadURL !=
-			status.DownloadURL {
-			fmt.Printf("URL changed - not allowed %s -> %s\n",
-				config.DownloadURL, status.DownloadURL)
-			continue
-		}
 		statusName := statusDirname + "/" + fileName
 		handleModify(statusName, config, status)
 	}
@@ -324,6 +316,12 @@ func handleModify(statusFilename string, config types.VerifyImageConfig,
 	log.Printf("handleModify(%v) for %s\n",
 		config.Safename, config.DownloadURL)
 
+	if config.DownloadURL != status.DownloadURL {
+		fmt.Printf("URL changed - not allowed %s -> %s\n",
+			config.DownloadURL, status.DownloadURL)
+		return
+	}
+	
 	// If identical we do nothing. Otherwise we do a delete and create.
 	if config.Safename == status.Safename &&
 	   config.DownloadURL == status.DownloadURL &&

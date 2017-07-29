@@ -329,8 +329,6 @@ func extractPublicPem(pk interface{}) ([]byte, []byte, error) {
 			pk, err)
 		return nil, nil, err
 	}
-	// XXX remove? check content
-	fmt.Printf("publicDer (len %d) % x\n", len(publicDer), publicDer)
 	// Form PEM for public key and print/store it
 	var publicKey = &pem.Block{
 		Type:  "PUBLIC KEY",
