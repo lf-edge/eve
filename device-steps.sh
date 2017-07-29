@@ -137,7 +137,7 @@ for AGENT in $AGENTS; do
     if [ ! -d $dir ]; then
 	continue
     fi
-    echo "Looking in config $dir"
+    # echo "Looking in config $dir"
     files=`ls $dir`
     for f in $files; do
 	echo "Deleting config file: $dir/$f"
@@ -158,7 +158,7 @@ for AGENT in $AGENTS; do
     if [ ! -d $dir ]; then
 	continue
     fi
-    echo "Looking in status $dir"
+    # echo "Looking in status $dir"
     files=`ls $dir`
     pid=`pgrep $AGENT`
     if [ "$pid" != "" ]; then
@@ -180,8 +180,11 @@ for AGENT in $AGENTS; do
     pkill $AGENT
 done
 
-# XXX not needed?
-# rm -rf /var/run/{zedmanager,zedrouter,xenmgr,downloader,verifier,identitymgr}/status/*.json
+echo "Removing old iptables/ip6tables rules"
+# Cleanup any remaining iptables rules from a failed run
+iptables -F
+ip6tables -F
+ip6tables -t raw -F
 
 if [ $SELF_REGISTER = 1 ]; then
 	intf=`$BINDIR/find-uplink.sh $ETCDIR/lisp.config.base`
