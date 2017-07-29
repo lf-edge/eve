@@ -172,6 +172,24 @@ func doUpdate(uuidStr string, config types.AppInstanceConfig,
 		fmt.Printf("Found StorageConfig URL %s safename %s\n",
 			sc.DownloadURL, safename)
 		
+		// XXX shortcut if image is already verified
+		// Doesn't get checked until after download. Order of reading
+		// files?
+		vs, err := LookupVerifyImageStatus(safename)
+		if err == nil && vs.State == types.DELIVERED {
+			log.Printf("XXX doUpdate found verified image for %s\n",
+				safename)
+			// XXX don't we need to have a refcnt? But against
+			// the verified image somehow?
+			if minState > vs.State {
+				minState = vs.State
+			}
+			if vs.State != ss.State {
+				ss.State = vs.State
+				changed = true
+			}
+			continue
+		}
 		ds, err := LookupDownloaderStatus(safename)
 		if err != nil {
 			log.Printf("LookupDownloaderStatus %s failed %v\n",
@@ -214,7 +232,7 @@ func doUpdate(uuidStr string, config types.AppInstanceConfig,
 		return changed
 	}
 	
-	if minState != types.DOWNLOADED {
+	if minState < types.DOWNLOADED {
 		log.Printf("Waiting for all downloads for %s\n", uuidStr)
 		return changed
 	}
@@ -263,7 +281,7 @@ func doUpdate(uuidStr string, config types.AppInstanceConfig,
 		return changed
 	}
 	
-	if minState != types.DELIVERED {
+	if minState < types.DELIVERED {
 		log.Printf("Waiting for all verifications for %s\n", uuidStr)
 		return changed
 	}
@@ -282,6 +300,7 @@ func doUpdate(uuidStr string, config types.AppInstanceConfig,
 		if err != nil {
 			log.Printf("LookupEIDStatus %s failed %s\n",
 				key, err)
+			eidsAllocated = false
 			continue
 		}
 		status.EIDList[i] = es.EIDStatusDetails
@@ -327,7 +346,7 @@ func doUpdate(uuidStr string, config types.AppInstanceConfig,
 	// Make sure we have a DomainConfig
 	MaybeAddDomainConfig(config, ns)
 
-	// Check DomainStatus; XXX update AI status
+	// Check DomainStatus; update AI status if error
 	ds, err := LookupDomainStatus(uuidStr)
 	if err != nil {
 		log.Printf("Waiting for DomainStatus for %s\n", uuidStr)

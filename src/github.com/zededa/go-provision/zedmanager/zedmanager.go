@@ -265,7 +265,6 @@ func handleCreate(statusFilename string, config types.AppInstanceConfig) {
 	// Start by marking with PendingAdd
 	status := types.AppInstanceStatus{
 		UUIDandVersion: config.UUIDandVersion,
-// XXX remove field?		PendingAdd:     true,
 		DisplayName:    config.DisplayName,
 	}
 
@@ -274,13 +273,23 @@ func handleCreate(statusFilename string, config types.AppInstanceConfig) {
 		safename := urlToSafename(sc.DownloadURL, sc.ImageSha256)
 		fmt.Printf("Found StorageConfig URL %s safename %s\n",
 			sc.DownloadURL, safename)
-		AddOrRefcountDownloaderConfig(safename, &sc)
-		// XXX presumably need an array to track which safenames
-		// this AIC has references to. To be used in delete.
+		// XXX shortcut if image is already verified
+		// State not present when we start.
+		vs, err := LookupVerifyImageStatus(safename)
+		if err == nil && vs.State == types.DELIVERED {
+			log.Printf("XXX handleCreate found verified image for %s\n",
+				safename)
+			// XXX don't we need to have a refcnt? But against
+			// the verified image somehow?
+		} else {
+			AddOrRefcountDownloaderConfig(safename, &sc)
+			// XXX presumably need an array to track which safenames
+			// this AIC has references to. To be used in delete.
+		}
 	}
 
 	addOrUpdateConfig(config.UUIDandVersion.UUID.String(), config)	
-	// XXX initialize status Storage and EID here instead of in update
+	// XXX initialize status Storage and EID arrays here instead of in update?
 	addOrUpdateStatus(config.UUIDandVersion.UUID.String(), status)	
 
 	// XXX is Pending* useful?
