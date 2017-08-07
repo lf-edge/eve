@@ -8,6 +8,7 @@ package types
 
 import (
 	"net"
+	"time"
 )
 
 // Parameters which determine whether and how the EID is allocated
@@ -56,4 +57,5 @@ type EIDStatusDetails struct {
 	PemCert		[]byte
 	PemPublicKey	[]byte
 	PemPrivateKey	[]byte	// If ExportPrivate. XXX or in separate type?
+	CreateTime	time.Time // When EID was created
 }

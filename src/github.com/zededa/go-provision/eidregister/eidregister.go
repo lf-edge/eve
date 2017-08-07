@@ -352,6 +352,7 @@ func handleCreate(outputFilename string, input types.EIDStatus) {
 		AppPublicKey: input.PemPublicKey,
 		EID: input.EID,
 		EIDHashLen: uint8(128 - 8 * len(input.AllocationPrefix)),
+		CreateTime: input.CreateTime,
 	}
 	// XXX hardcode this to work with existing zed-lispiotcontroller
 	register.LispMapServers = make([]types.LispServerInfo, 2)
@@ -400,6 +401,12 @@ func handleModify(outputFilename string, input types.EIDStatus,
 	output.PendingModify = true
 	writeEIDStatus(&output, outputFilename)
 	// XXX Any work in modify?
+	if output.CreateTime != input.CreateTime {
+		log.Printf("handleModify(%v) changed CreateTime for %s\n",
+			input.UUIDandVersion, input.DisplayName)
+		handleDelete(outputFilename, output)
+		handleCreate(outputFilename, input)
+	}
 	output.PendingModify = false
 	output.UUIDandVersion = input.UUIDandVersion
 	writeEIDStatus(&output, outputFilename)

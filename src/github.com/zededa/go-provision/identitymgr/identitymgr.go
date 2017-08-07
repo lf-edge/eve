@@ -275,7 +275,7 @@ func handleCreate(statusFilename string, config types.EIDConfig) {
 			publicDer)
 		fmt.Printf("EID: (len %d) %s\n", len(eid), eid)
 		status.EID = eid
-
+		status.CreateTime = time.Now()
 		signature, err := generateLispSignature(eid, config.IID, keypair)
 		if err != nil {
 			return

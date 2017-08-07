@@ -80,5 +80,6 @@ type EIDRegister struct {
 	IID		uint32
 	EID		net.IP
 	EIDHashLen	uint8
+	CreateTime	time.Time // When EID was created
 	LispMapServers	[]LispServerInfo // XXX from here? Hard-coded for now
 }

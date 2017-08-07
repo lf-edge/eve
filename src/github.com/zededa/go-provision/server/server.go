@@ -945,10 +945,14 @@ func EIDRegister(w http.ResponseWriter, r *http.Request) {
 	appKey := fmt.Sprintf("%s:%d", register.UUID, register.IID)
 	fmt.Println("appKey:", appKey)
 	oldRegister := types.EIDRegister{}
+	// Allow changes to CreateTime
 	if err = deviceDb.Read("eid-app", appKey, &oldRegister); err == nil {
+		if register.CreateTime != oldRegister.CreateTime {
+			log.Printf("EIDRegister different CreateTime for key %s\n",				appKey)
 		// XXX always says not equal. Print comparison of components
-		// if !reflect.DeepEqual(register, oldRegister) {
-		if !reflect.DeepEqual(register.AppCert, oldRegister.AppCert) ||
+		// else if !reflect.DeepEqual(register, oldRegister) {
+		} else if !reflect.DeepEqual(register.AppCert, oldRegister.AppCert) ||
+
 		   !reflect.DeepEqual(register.AppPublicKey,
 		   	oldRegister.AppPublicKey) ||
 		   register.UUID != oldRegister.UUID ||
@@ -957,14 +961,17 @@ func EIDRegister(w http.ResponseWriter, r *http.Request) {
 		   register.EIDHashLen != oldRegister.EIDHashLen ||
 		   !reflect.DeepEqual(register.LispMapServers,
 			oldRegister.LispMapServers) {
-			log.Printf("EIDRegister changed for key %s\n", appKey)
+			log.Printf("EIDRegister changed for key %s: IGNORED\n",
+				appKey)
 			http.Error(w, http.StatusText(http.StatusConflict),
 				http.StatusConflict)
+			return
 		} else {
+			// Unchanged
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
+			return
 		}
-		return
 	}
 	if err := deviceDb.Write("eid-app", appKey, register); err != nil {
 		fmt.Println("deviceDb.Write", err)
