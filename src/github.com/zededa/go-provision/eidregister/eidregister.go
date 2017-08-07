@@ -413,7 +413,6 @@ func handleModify(outputFilename string, input types.EIDStatus,
 	log.Printf("handleModify done for %s\n", input.DisplayName)
 }
 
-// Need the olNum and ulNum to delete and EID route to delete
 func handleDelete(outputFilename string, output types.EIDStatus) {
 	log.Printf("handleDelete(%v) for %s\n",
 		output.UUIDandVersion, output.DisplayName)

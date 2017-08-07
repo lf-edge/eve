@@ -464,7 +464,6 @@ func handleModify(statusFilename string, config types.DomainConfig,
 		config.UUIDandVersion, config.DisplayName)
 }
 
-// Need the olNum and ulNum to delete and EID route to delete
 func handleDelete(statusFilename string, status types.DomainStatus) {
 	log.Printf("handleDelete(%v) for %s\n",
 		status.UUIDandVersion, status.DisplayName)
