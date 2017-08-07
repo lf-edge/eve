@@ -31,6 +31,7 @@ type FixedResources struct {
 	MaxMem		int	// Default not set i.e. no balooning
 	VCpus		int	// default 1
 	// XXX Add CPU pinning
+	// XXX also device passthru?
 	ExtraArgs	string	// added to bootargs
 }
 

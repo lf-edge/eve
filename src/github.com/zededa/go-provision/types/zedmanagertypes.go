@@ -33,7 +33,7 @@ type AppInstanceStatus struct {
 	UUIDandVersion	UUIDandVersion
 	DisplayName	string
 	Activated	bool
-	PendingAdd	bool	// XXX delete
+	PendingAdd	bool	// XXX delete. Assumes hook in common diff code
 	PendingModify	bool	// XXX delete
 	PendingDelete	bool	// XXX delete
 	StorageStatusList    []StorageStatus

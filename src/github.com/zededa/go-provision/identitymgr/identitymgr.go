@@ -27,6 +27,7 @@ import (
 	"math/big"
 	"net"
 	"os"
+	"reflect"
 	"strings"
 	"time"
 )
@@ -183,7 +184,6 @@ func writeEIDStatus(status *types.EIDStatus,
 	}
 	// We assume a /var/run path hence we don't need to worry about
 	// partial writes/empty files due to a kernel crash.
-	// XXX which permissions?
 	err = ioutil.WriteFile(statusFilename, b, 0644)
 	if err != nil {
 		log.Fatal(err, statusFilename)
@@ -213,7 +213,6 @@ func handleCreate(statusFilename string, config types.EIDConfig) {
 		config.AllocationPrefixLen = 8 * len(config.AllocationPrefix)
 		status.EIDAllocation = config.EIDAllocation
 	}
-	// XXX defer write?
 	// writeEIDStatus(&status, statusFilename)
 	pemPrivateKey := config.PemPrivateKey
 
@@ -422,15 +421,22 @@ func handleModify(statusFilename string, config types.EIDConfig,
 			config.UUIDandVersion.Version, statusFilename)
 		return
 	}
+	// Reject any changes to EIDAllocation.
+	// XXX report internal error?
+	if !reflect.DeepEqual(status.EIDAllocation, config.EIDAllocation) {
+		log.Printf("handleModify(%v,%d) EIDAllocation changed for %s\n",
+			config.UUIDandVersion, config.IID, config.DisplayName)
+		return
+	}
 	status.PendingModify = true
 	writeEIDStatus(&status, statusFilename)
-	// XXX Any work?
+	// XXX Any work in modify?
 	status.PendingModify = false
+	status.UUIDandVersion = config.UUIDandVersion
 	writeEIDStatus(&status, statusFilename)
 	log.Printf("handleModify done for %s\n", config.DisplayName)
 }
 
-// Need the olNum and ulNum to delete and EID route to delete
 func handleDelete(statusFilename string, status types.EIDStatus) {
 	log.Printf("handleDelete(%v,%d) for %s\n",
 		status.UUIDandVersion, status.IID, status.DisplayName)

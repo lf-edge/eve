@@ -154,6 +154,10 @@ for AGENT in $AGENTS; do
     if [ ! -d /var/run/$AGENT ]; then
 	continue
     fi
+    if [ $AGENT == "verifier" ]; then
+	echo "Skipping check for /var/run/$AGENT/status"
+	continue
+    fi
     dir=/var/run/$AGENT/status
     if [ ! -d $dir ]; then
 	continue

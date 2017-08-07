@@ -263,7 +263,6 @@ func writeGlobalStatus() {
 	}
 	// We assume a /var/run path hence we don't need to worry about
 	// partial writes/empty files due to a kernel crash.
-	// XXX which permissions?
 	err = ioutil.WriteFile(globalStatusFilename, b, 0644)
 	if err != nil {
 		log.Fatal(err, globalStatusFilename)
@@ -278,7 +277,6 @@ func writeAppNetworkStatus(status *types.AppNetworkStatus,
 	}
 	// We assume a /var/run path hence we don't need to worry about
 	// partial writes/empty files due to a kernel crash.
-	// XXX which permissions?
 	err = ioutil.WriteFile(statusFilename, b, 0644)
 	if err != nil {
 		log.Fatal(err, statusFilename)

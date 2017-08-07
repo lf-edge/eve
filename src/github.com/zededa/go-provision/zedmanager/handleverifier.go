@@ -51,7 +51,6 @@ func writeVerifyImageConfig(config types.VerifyImageConfig,
 	}
 	// We assume a /var/run path hence we don't need to worry about
 	// partial writes/empty files due to a kernel crash.
-	// XXX which permissions?
 	err = ioutil.WriteFile(configFilename, b, 0644)
 	if err != nil {
 		log.Fatal(err, configFilename)
@@ -74,6 +73,12 @@ func handleVerifyImageStatusModify(statusFilename string,
 
 	log.Printf("handleVerifyImageStatusModify for %s\n",
 		status.Safename)
+	// Ignore if any Pending* flag is set
+	if status.PendingAdd || status.PendingModify || status.PendingDelete {
+		log.Printf("handleVerifyImageStatusModify skipped due to Pending* for %s\n",
+			status.Safename)
+		return
+	}
 
 	if verifierStatus == nil {
 		fmt.Printf("create verifier map\n")
@@ -101,10 +106,24 @@ func handleVerifyImageStatusModify(statusFilename string,
 
 func LookupVerifyImageStatus(safename string) (types.VerifyImageStatus, error) {
 	if m, ok := verifierStatus[safename]; ok {
+		log.Printf("LookupVerifyImageStatus: found based on safename %s\n",
+				safename)
 		return m, nil
 	} else {
 		return types.VerifyImageStatus{}, errors.New("No VerifyImageStatus")
 	}
+}
+
+func LookupVerifyImageStatusSha256(sha256 string) (types.VerifyImageStatus,
+     error) {
+	for _, m := range verifierStatus {     
+		if m.ImageSha256 == sha256 {
+			log.Printf("LookupVerifyImageStatusSha256: found based on sha256 %s safename %s\n",
+				sha256, m.Safename)
+			return m, nil
+		}
+	}
+	return types.VerifyImageStatus{}, errors.New("No VerifyImageStatus")
 }
 
 func handleVerifyImageStatusDelete(statusFilename string) {

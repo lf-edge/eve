@@ -82,7 +82,6 @@ func writeDomainConfig(config types.DomainConfig,
 	}
 	// We assume a /var/run path hence we don't need to worry about
 	// partial writes/empty files due to a kernel crash.
-	// XXX which permissions?
 	err = ioutil.WriteFile(configFilename, b, 0644)
 	if err != nil {
 		log.Fatal(err, configFilename)
@@ -106,29 +105,19 @@ func handleDomainStatusModify(statusFilename string,
 
 	key := status.UUIDandVersion.UUID.String()
 	log.Printf("handleDomainStatusModify for %s\n", key)
+	// Ignore if any Pending* flag is set
+	if status.PendingAdd || status.PendingModify || status.PendingDelete {
+		log.Printf("handleDomaintatusModify skipped due to Pending* for %s\n",
+			key)
+		return
+	}
 
 	if domainStatus == nil {
 		fmt.Printf("create Domain map\n")
 		domainStatus = make(map[string]types.DomainStatus)
 	}
-	changed := false
-	if _, ok := domainStatus[key]; ok {
-		// Is the add/change done?
-		if !status.PendingAdd && !status.PendingModify {
-			fmt.Printf("status is not pending\n");
-			changed = true
-		}
-	} else {
-		// Is the add/change done?
-		if !status.PendingAdd && !status.PendingModify {
-			fmt.Printf("status is not pending\n");
-			changed = true
-		}
-	}
-	if changed {
-		domainStatus[key] = *status
-		updateAIStatusUUID(status.UUIDandVersion.UUID.String())
-	}
+	domainStatus[key] = *status
+	updateAIStatusUUID(status.UUIDandVersion.UUID.String())
 	
 	log.Printf("handleDomainStatusModify done for %s\n",
 		key)

@@ -22,6 +22,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"reflect"
 	"strings"
 	"time"
 )
@@ -216,7 +217,6 @@ func writeEIDStatus(status *types.EIDStatus,
 	}
 	// We assume a /var/run path hence we don't need to worry about
 	// partial writes/empty files due to a kernel crash.
-	// XXX which permissions?
 	err = ioutil.WriteFile(statusFilename, b, 0644)
 	if err != nil {
 		log.Fatal(err, statusFilename)
@@ -389,10 +389,19 @@ func handleModify(outputFilename string, input types.EIDStatus,
 			input.UUIDandVersion.Version, outputFilename)
 		return
 	}
+	// Reject any changes to EIDAllocation.
+	// XXX report internal error?
+	if !reflect.DeepEqual(input.EIDAllocation, output.EIDAllocation) {
+		log.Printf("handleModify(%v,%d) EIDAllocation changed for %s\n",
+			input.UUIDandVersion, input.IID, input.DisplayName)
+		return
+	}
+	
 	output.PendingModify = true
 	writeEIDStatus(&output, outputFilename)
-	// XXX Any work?
+	// XXX Any work in modify?
 	output.PendingModify = false
+	output.UUIDandVersion = input.UUIDandVersion
 	writeEIDStatus(&output, outputFilename)
 	log.Printf("handleModify done for %s\n", input.DisplayName)
 }

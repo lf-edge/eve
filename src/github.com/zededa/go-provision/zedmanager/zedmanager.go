@@ -237,7 +237,6 @@ func writeAICStatus(status *types.AppInstanceStatus,
 	}
 	// We assume a /var/run path hence we don't need to worry about
 	// partial writes/empty files due to a kernel crash.
-	// XXX which permissions?
 	err = ioutil.WriteFile(statusFilename, b, 0644)
 	if err != nil {
 		log.Fatal(err, statusFilename)
@@ -252,7 +251,6 @@ func writeAppInstanceStatus(status *types.AppInstanceStatus,
 	}
 	// We assume a /var/run path hence we don't need to worry about
 	// partial writes/empty files due to a kernel crash.
-	// XXX which permissions?
 	err = ioutil.WriteFile(statusFilename, b, 0644)
 	if err != nil {
 		log.Fatal(err, statusFilename)
@@ -262,18 +260,16 @@ func writeAppInstanceStatus(status *types.AppInstanceStatus,
 func handleCreate(statusFilename string, config types.AppInstanceConfig) {
 	log.Printf("handleCreate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
-	// Start by marking with PendingAdd
-	status := types.AppInstanceStatus{
-		UUIDandVersion: config.UUIDandVersion,
-		DisplayName:    config.DisplayName,
-	}
 
 	// First ensure the downloader is aware of the needed downloads
+	// XXX note code duplication since we don't have a back pointer
+	// to avoid duplicate refcnt from same AIC
 	for _, sc := range config.StorageConfigList {
 		safename := urlToSafename(sc.DownloadURL, sc.ImageSha256)
 		fmt.Printf("Found StorageConfig URL %s safename %s\n",
 			sc.DownloadURL, safename)
 		// XXX shortcut if image is already verified
+		// XXX should lookup based on sha256??
 		// State not present when we start.
 		vs, err := LookupVerifyImageStatus(safename)
 		if err == nil && vs.State == types.DELIVERED {
@@ -281,22 +277,26 @@ func handleCreate(statusFilename string, config types.AppInstanceConfig) {
 				safename)
 			// XXX don't we need to have a refcnt? But against
 			// the verified image somehow?
-		} else {
-			AddOrRefcountDownloaderConfig(safename, &sc)
-			// XXX presumably need an array to track which safenames
-			// this AIC has references to. To be used in delete.
+			continue
 		}
+		vs, err = LookupVerifyImageStatusSha256(sc.ImageSha256)
+		if err == nil && vs.State == types.DELIVERED {
+			log.Printf("XXX handleCreate found verified image for sha %s\n",
+				sc.ImageSha256)
+			// XXX don't we need to have a refcnt? But
+			// against the verified image somehow?
+			continue
+		}
+		AddOrRefcountDownloaderConfig(safename, &sc)
+		// XXX presumably need an array to track which
+		// safenames this AIC has references to.
+		// To be used in delete.
 	}
 
 	addOrUpdateConfig(config.UUIDandVersion.UUID.String(), config)	
-	// XXX initialize status Storage and EID arrays here instead of in update?
-	addOrUpdateStatus(config.UUIDandVersion.UUID.String(), status)	
 
-	// XXX is Pending* useful?
-	// Instead delete all of zedmanagerStatusDirname on restart?
-	// XXX we are never clearing PendingAdd in this code; not setting it above
-	status.PendingAdd = false
-	// XXX writeAppInstanceStatus(&status, statusFilename)
+	// Note that the status is written as we handle updates from the
+	// other services
 	log.Printf("handleCreate done for %s\n", config.DisplayName)
 }
 
@@ -315,10 +315,9 @@ func handleModify(statusFilename string, config types.AppInstanceConfig,
 	status.UUIDandVersion = config.UUIDandVersion
 	writeAppInstanceStatus(&status, statusFilename)
 
-	// XXX do work
-	
-	status.PendingModify = false
-	writeAppInstanceStatus(&status, statusFilename)
+	addOrUpdateConfig(config.UUIDandVersion.UUID.String(), config)	
+	// Note that the status is written as we handle updates from the
+	// other services
 	log.Printf("handleUpdate done for %s\n", config.DisplayName)
 }
 
@@ -329,8 +328,13 @@ func handleDelete(statusFilename string, status types.AppInstanceStatus) {
 	status.PendingDelete = true
 	writeAppInstanceStatus(&status, statusFilename)
 
-	// XXX do work
 	// Need to delete the other pieces
+	// XXX note that we have AIS with the old config.
+	doDelete(status.UUIDandVersion.UUID.String(), status)
+	
+	// Note that the status is written as we handle updates from the
+	// other services
+	// XXX should move delete there!
 	
 	// Write out what we modified to AppInstanceStatus aka delete
 	// XXX defer until all children have it deleted! Avoids recreates

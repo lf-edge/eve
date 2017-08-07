@@ -48,6 +48,7 @@ func main() {
 	statusDirname := runDirname + "/status"
 	imgCatalogDirname = "/var/tmp/zedmanager/downloads"
 	pendingDirname := imgCatalogDirname + "/pending"
+	verifierDirname := imgCatalogDirname + "/verifier"
 	
 	if _, err := os.Stat(baseDirname); err != nil {
 		if err := os.Mkdir(baseDirname, 0755); err != nil {
@@ -73,6 +74,16 @@ func main() {
 		if err := os.Mkdir(imgCatalogDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
+	}
+	
+	// Remove any files which didn't make it past the verifier
+	if err := os.RemoveAll(pendingDirname); err != nil {
+		log.Fatal(err)
+	}
+	// Note that verifier owns this but we remove before looking
+	// for space used.
+	if err := os.RemoveAll(verifierDirname); err != nil {
+		log.Fatal(err)
 	}
 	
 	if _, err := os.Stat(pendingDirname); err != nil {
@@ -219,13 +230,9 @@ func handleInit(configFilename string, statusFilename string) {
 	globalStatus.UsedSpace = 0
 	globalStatus.ReservedSpace = 0
 	updateRemainingSpace()
-	// XXX clean up /var/tmp/zedmanager/downloads/pending/?? ZedManager
-	// didn't pick them up and rename them?
 
 	// We read /var/tmp/zedmanager/downloads/* and determine how much space
 	// is used. Place in GlobalDownloadStatus. Calculate remaining space.
-	// XXX create DownloaderStatus for the files we find? Don't have sha!
-	// XXX rename to sha256 name after verified. Done by zedmanager.
 	totalUsed := sizeFromDir(imgCatalogDirname)
 	globalStatus.UsedSpace = uint((totalUsed + 1023) / 1024)
 	updateRemainingSpace()
@@ -271,7 +278,6 @@ func writeGlobalStatus() {
 	}
 	// We assume a /var/run path hence we don't need to worry about
 	// partial writes/empty files due to a kernel crash.
-	// XXX which permissions?
 	err = ioutil.WriteFile(globalStatusFilename, b, 0644)
 	if err != nil {
 		log.Fatal(err, globalStatusFilename)
@@ -286,7 +292,6 @@ func writeDownloaderStatus(status *types.DownloaderStatus,
 	}
 	// We assume a /var/run path hence we don't need to worry about
 	// partial writes/empty files due to a kernel crash.
-	// XXX which permissions?
 	err = ioutil.WriteFile(statusFilename, b, 0644)
 	if err != nil {
 		log.Fatal(err, statusFilename)
@@ -303,16 +308,15 @@ func handleCreate(statusFilename string, config types.DownloaderConfig) {
 		DownloadURL:	config.DownloadURL,
 		ImageSha256:	config.ImageSha256,
 		PendingAdd:     true,
-		// XXX reader should ignore INITIAL state if PendingAdd
 	}
-	// XXX easier than above having reader ignore:
-	// writeDownloaderStatus(&status, statusFilename)
+	writeDownloaderStatus(&status, statusFilename)
 	
 	// Check if we have space
 	if config.MaxSize >= globalStatus.RemainingSpace {
 		errString := fmt.Sprintf("Would exceed remaining space %d vs %d\n",
 			config.MaxSize, globalStatus.RemainingSpace)
 		log.Println(errString)
+		status.PendingAdd = false
 		status.Size = 0
 		status.LastErr = errString
 		status.LastErrTime = time.Now()
@@ -334,6 +338,7 @@ func handleCreate(statusFilename string, config types.DownloaderConfig) {
 		errString := fmt.Sprintf("RefCount==0; download deferred for %s\n",
 			config.DownloadURL)
 		log.Println(errString)
+		status.PendingAdd = false
 		status.Size = 0
 		status.LastErr = errString
 		status.LastErrTime = time.Now()
@@ -369,6 +374,7 @@ func doCreate(statusFilename string, config types.DownloaderConfig,
 	if err != nil {
 		// Delete file
 		doDelete(statusFilename, status)
+		status.PendingAdd = false
 		status.Size = 0
 		status.LastErr = fmt.Sprintf("%v", err)
 		status.LastErrTime = time.Now()
@@ -383,6 +389,7 @@ func doCreate(statusFilename string, config types.DownloaderConfig,
 	if err != nil {
 		// Delete file
 		doDelete(statusFilename, status)
+		status.PendingAdd = false
 		status.Size = 0
 		status.LastErr = fmt.Sprintf("%v", err)
 		status.LastErrTime = time.Now()
@@ -401,6 +408,7 @@ func doCreate(statusFilename string, config types.DownloaderConfig,
 		errString := fmt.Sprintf("Size exceeds MaxSize; %d vs. %d for %s\n",
 			status.Size, config.MaxSize, config.DownloadURL)
 		log.Println(errString)
+		status.PendingAdd = false
 		status.Size = 0
 		status.LastErr = errString
 		status.LastErrTime = time.Now()
@@ -428,12 +436,16 @@ func doCreate(statusFilename string, config types.DownloaderConfig,
 // XXX Should we set        --limit-rate=100k
 // XXX Can we safely try a continue?
 // XXX wget seems to have no way to limit download size for single file!
+// XXX temporary options since store.zededa.net not in DNS
+// and wierd free.fr dns behavior with AAAA and A. Added  -4 --no-check-certificate
 func doWget(url string, destFilename string) error {
 	fmt.Printf("doWget %s %s\n", url, destFilename)     
 	cmd := "wget"
 	args := []string{
 		"-q",
 // XXX not safe	"-c",
+       	   	" -4",
+		"--no-check-certificate",
 		"--tries=1",
 		"-O",
 		destFilename,
@@ -489,13 +501,17 @@ func handleModify(statusFilename string, config types.DownloaderConfig,
 	if status.RefCount == 0 && config.RefCount != 0 {
 		log.Printf("handleModify installing %s\n", config.DownloadURL)
 		doCreate(statusFilename, config, &status)
+		status.RefCount = config.RefCount
+		status.PendingModify = false
+		writeDownloaderStatus(&status, statusFilename)
 	} else if status.RefCount != 0 && config.RefCount == 0 {	
 		log.Printf("handleModify deleting %s\n", config.DownloadURL)
 		doDelete(statusFilename, &status)
-	}
-	status.RefCount = config.RefCount
-	status.PendingModify = false
-	writeDownloaderStatus(&status, statusFilename)
+	} else {
+		status.RefCount = config.RefCount
+		status.PendingModify = false
+		writeDownloaderStatus(&status, statusFilename)
+	}	
 	log.Printf("handleModify done for %s\n", config.DownloadURL)
 }
 

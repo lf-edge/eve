@@ -78,7 +78,6 @@ func writeAppNetworkConfig(config types.AppNetworkConfig,
 	}
 	// We assume a /var/run path hence we don't need to worry about
 	// partial writes/empty files due to a kernel crash.
-	// XXX which permissions?
 	err = ioutil.WriteFile(configFilename, b, 0644)
 	if err != nil {
 		log.Fatal(err, configFilename)
@@ -102,31 +101,23 @@ func handleAppNetworkStatusModify(statusFilename string,
 
 	key := status.UUIDandVersion.UUID.String()
 	log.Printf("handleAppNetworkStatusModify for %s\n", key)
-
+	// Ignore if any Pending* flag is set
+	if status.PendingAdd || status.PendingModify || status.PendingDelete {
+		log.Printf("handleAppNetworkStatusModify skipped due to Pending* for %s\n",
+			key)
+		return
+	}
+	if status.IsZedmanager {
+		fmt.Printf("Ignoring IsZedmanager appNetwork status for %v\n",
+			key)
+		return
+	}
 	if appNetworkStatus == nil {
 		fmt.Printf("create appNetwork status map\n")
 		appNetworkStatus = make(map[string]types.AppNetworkStatus)
 	}
-	changed := false
-	if _, ok := appNetworkStatus[key]; ok {
-		// Is the add/change done?
-		if !status.PendingAdd && !status.PendingModify {
-			fmt.Printf("status is not pending\n");
-			changed = true
-		}
-	} else {
-		// Is the add/change done?
-		if status.IsZedmanager {
-			fmt.Printf("Ignoring IsZedmanager appNetwork status for %v\n", key)
-		} else if !status.PendingAdd && !status.PendingModify {
-			fmt.Printf("status is not pending\n");
-			changed = true
-		}
-	}
-	if changed {
-		appNetworkStatus[key] = *status
-		updateAIStatusUUID(status.UUIDandVersion.UUID.String())
-	}
+	appNetworkStatus[key] = *status
+	updateAIStatusUUID(status.UUIDandVersion.UUID.String())
 	
 	log.Printf("handleAppNetworkStatusModify done for %s\n",
 		key)

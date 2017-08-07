@@ -53,7 +53,6 @@ func writeEIDConfig(config types.EIDConfig,
 	}
 	// We assume a /var/run path hence we don't need to worry about
 	// partial writes/empty files due to a kernel crash.
-	// XXX which permissions?
 	err = ioutil.WriteFile(configFilename, b, 0644)
 	if err != nil {
 		log.Fatal(err, configFilename)
@@ -77,6 +76,12 @@ func handleEIDStatusModify(statusFilename string,
 	key := fmt.Sprintf("%s:%d",
 		status.UUIDandVersion.UUID.String(), status.IID)
 	log.Printf("handleEIDStatusModify for %s\n", key)
+	// Ignore if any Pending* flag is set
+	if status.PendingAdd || status.PendingModify || status.PendingDelete {
+		log.Printf("handleEIDStatusModify skipping due to Pending* for %s\n",
+			key)
+		return
+	}
 
 	if EIDStatus == nil {
 		fmt.Printf("create EID map\n")
@@ -85,7 +90,8 @@ func handleEIDStatusModify(statusFilename string,
 	changed := false
 	if m, ok := EIDStatus[key]; ok {
 		// Did an EID get assigned?
-		if !bytes.Equal(status.EID, m.EID) {
+		// XXX should be caught by Pending* check above
+		if true || !bytes.Equal(status.EID, m.EID) {
 			fmt.Printf("EID map changed from %v to %v\n",
 				m.EID, status.EID)
 			changed = true

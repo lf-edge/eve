@@ -21,6 +21,18 @@ import (
 
 func WatchConfigStatus(configDir string, statusDir string,
 	fileChanges chan<- string) {
+	watchConfigStatusImpl(configDir, statusDir, fileChanges, true)
+}
+
+// Like above but don't delete status just because config does not
+// initially exist.
+func WatchConfigStatusAllowInitialConfig(configDir string, statusDir string,
+	fileChanges chan<- string) {
+	watchConfigStatusImpl(configDir, statusDir, fileChanges, false)
+}
+
+func watchConfigStatusImpl(configDir string, statusDir string,
+	fileChanges chan<- string, initialDelete bool) {
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
 		log.Fatal(err, ": NewWatcher")
@@ -65,17 +77,19 @@ func WatchConfigStatus(configDir string, statusDir string,
 		fileChanges <- "M " + file.Name()
 	}
 
-	statusFiles, err := ioutil.ReadDir(statusDir)
-	if err != nil {
-		log.Fatal(err, ": ", statusDir)
-	}
+	if initialDelete {
+		statusFiles, err := ioutil.ReadDir(statusDir)
+		if err != nil {
+			log.Fatal(err, ": ", statusDir)
+		}
 
-	for _, file := range statusFiles {
-		fileName := configDir + "/" + file.Name()
-		if _, err := os.Stat(fileName); err != nil {
-			// File does not exist in configDir
-			// log.Println("deleted", file.Name())
-			fileChanges <- "D " + file.Name()
+		for _, file := range statusFiles {
+			fileName := configDir + "/" + file.Name()
+			if _, err := os.Stat(fileName); err != nil {
+				// File does not exist in configDir
+				// log.Println("deleted", file.Name())
+				fileChanges <- "D " + file.Name()
+			}
 		}
 	}
 	// Watch for changes

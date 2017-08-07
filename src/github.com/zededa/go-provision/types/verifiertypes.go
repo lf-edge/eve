@@ -32,7 +32,6 @@ type VerifyImageStatus struct {
 	PendingAdd	bool
 	PendingModify	bool
 	PendingDelete	bool
-	DownloadURL	string	// For logging
 	ImageSha256	string	// sha256 of immutable image
 	State		SwState	// DELIVERED, or INITIAL if failed
 	LastErr		string	// Verification error

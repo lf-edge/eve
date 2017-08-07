@@ -199,7 +199,6 @@ func writeDomainStatus(status *types.DomainStatus,
 	}
 	// We assume a /var/run path hence we don't need to worry about
 	// partial writes/empty files due to a kernel crash.
-	// XXX which permissions?
 	err = ioutil.WriteFile(statusFilename, b, 0644)
 	if err != nil {
 		log.Fatal(err, statusFilename)
@@ -459,6 +458,7 @@ func handleModify(statusFilename string, config types.DomainConfig,
 	// need to watch status using a go routine?
 	
 	status.PendingModify = false
+	status.UUIDandVersion = config.UUIDandVersion
 	writeDomainStatus(&status, statusFilename)
 	log.Printf("handleModify(%v) DONE for %s\n",
 		config.UUIDandVersion, config.DisplayName)

@@ -33,6 +33,7 @@ func addOrUpdateConfig(uuidStr string, config types.AppInstanceConfig) {
 	initMaps()
 
 	changed := false
+	added := false
 	if m, ok := AIC[uuidStr]; ok {
 		if reflect.DeepEqual(m, config) {
 			fmt.Printf("AI config changed for %s\n", uuidStr)
@@ -41,9 +42,38 @@ func addOrUpdateConfig(uuidStr string, config types.AppInstanceConfig) {
 	} else {
 		fmt.Printf("AI config add for %s\n", uuidStr)
 		changed = true
+		added = true
 	}
 	if changed {
 		AIC[uuidStr] = config
+	}
+	if added {
+		if _, ok := AIS[uuidStr]; !ok {
+			status := types.AppInstanceStatus{
+				UUIDandVersion: config.UUIDandVersion,
+				DisplayName:    config.DisplayName,
+			}
+
+			// XXX remove allocation below?
+			status.StorageStatusList = make([]types.StorageStatus,
+				len(config.StorageConfigList))
+			for i, sc := range config.StorageConfigList {
+				ss := &status.StorageStatusList[i]
+				ss.DownloadURL = sc.DownloadURL
+				ss.ImageSha256 = sc.ImageSha256
+			}
+			status.EIDList = make([]types.EIDStatusDetails,
+				len(config.OverlayNetworkList))
+
+			AIS[uuidStr] = status
+			statusFilename := fmt.Sprintf("%s/%s.json",
+				zedmanagerStatusDirname, uuidStr)
+			writeAppInstanceStatus(&status, statusFilename)
+		}
+	}
+
+
+	if changed {
 		updateAIStatusUUID(uuidStr)
 	}
 }
@@ -112,11 +142,13 @@ func updateAIStatusUUID(uuidStr string) {
 	} else {
 		log.Printf("updateAIStatusUUID for %s: Missing AI Config\n",
 				uuidStr)
-// XXX		doDelete(uuidStr)
+// XXX		doDelete(uuidStr, AIS)
 // XXX		delete(AIS, uuidStr)
 	}
 }
 
+// XXX also check for Activate being cleared!
+// XXX also check for state -> initial?
 func doUpdate(uuidStr string, config types.AppInstanceConfig,
      status *types.AppInstanceStatus) bool {
 	log.Printf("doUpdate for %s\n", uuidStr)
@@ -126,45 +158,46 @@ func doUpdate(uuidStr string, config types.AppInstanceConfig,
 	var errorTime time.Time
 	changed := false
 
-	// XXX add separate function to init?
-	if status.StorageStatusList == nil {
-		fmt.Printf("XXX allocating StorageStatus len %d for %s\n",
-			len(config.StorageConfigList), uuidStr)
-		status.StorageStatusList = make([]types.StorageStatus,
-			len(config.StorageConfigList))
-		for i, sc := range config.StorageConfigList {
-			ss := &status.StorageStatusList[i]
-			ss.DownloadURL = sc.DownloadURL
-			ss.ImageSha256 = sc.ImageSha256
-		}
-		changed = true
-	}
+	// XXX The existence of Config is interpreted to mean the
+	// AI should be INSTALLED. Activate is checked separately.
+	
+	// XXX move to function called doInstall. Separate doUninstall,
+	// doActivate, and doInactivate.
 	if len(config.StorageConfigList) != len(status.StorageStatusList) {
-		// XXX should be fatal?
-		log.Printf("Mismatch in storageConfig vs. Status length: %d vs %d\n", 
+		errString := fmt.Sprintf("Mismatch in storageConfig vs. Status length: %d vs %d\n", 
 			len(config.StorageConfigList),
 			len(status.StorageStatusList))
+		log.Println(errString)
+		status.Error = errString
+		status.ErrorTime = time.Now()
+		changed = true
 		return changed
 	}
 	for i, sc := range config.StorageConfigList {
 		ss := &status.StorageStatusList[i]	    
 		if ss.DownloadURL != sc.DownloadURL ||
 		   ss.ImageSha256 != sc.ImageSha256 {
-			// XXX should be fatal?
-			log.Printf("Mismatch in storageConfig vs. Status:\n\t%s\n\t%s\n\t%s\n\t%s\n\n", 
+			// XXX should be reported to zedcloud
+			errString := fmt.Sprintf("Mismatch in storageConfig vs. Status:\n\t%s\n\t%s\n\t%s\n\t%s\n\n", 
 				sc.DownloadURL, ss.DownloadURL,
 				sc.ImageSha256, ss.ImageSha256)
+			log.Println(errString)
+			status.Error = errString
+			status.ErrorTime = time.Now()
+			changed = true
 			return changed
 		}
 	}		
 
-	// XXX add separate function to init?
-	if status.EIDList == nil {
-		fmt.Printf("XXX allocating EIDStatus len %d for %s\n",
-			len(config.OverlayNetworkList), uuidStr)
-		status.EIDList = make([]types.EIDStatusDetails,
-			len(config.OverlayNetworkList))
+	if len(config.OverlayNetworkList) != len(status.EIDList) {
+		errString := fmt.Sprintf("Mismatch in OLList config vs. status length: %d vs %d\n", 
+			len(config.OverlayNetworkList),
+			len(status.EIDList))
+		log.Println(errString)
+		status.Error = errString
+		status.ErrorTime = time.Now()
 		changed = true
+		return changed
 	}
 	for i, sc := range config.StorageConfigList {
 		ss := &status.StorageStatusList[i]	    
@@ -173,12 +206,25 @@ func doUpdate(uuidStr string, config types.AppInstanceConfig,
 			sc.DownloadURL, safename)
 		
 		// XXX shortcut if image is already verified
-		// Doesn't get checked until after download. Order of reading
-		// files?
 		vs, err := LookupVerifyImageStatus(safename)
 		if err == nil && vs.State == types.DELIVERED {
 			log.Printf("XXX doUpdate found verified image for %s\n",
 				safename)
+			// XXX don't we need to have a refcnt? But against
+			// the verified image somehow?
+			if minState > vs.State {
+				minState = vs.State
+			}
+			if vs.State != ss.State {
+				ss.State = vs.State
+				changed = true
+			}
+			continue
+		}
+		vs, err = LookupVerifyImageStatusSha256(sc.ImageSha256)
+		if err == nil && vs.State == types.DELIVERED {
+			log.Printf("XXX doUpdate found verified image for sha256 %s\n",
+				sc.ImageSha256)
 			// XXX don't we need to have a refcnt? But against
 			// the verified image somehow?
 			if minState > vs.State {
@@ -325,6 +371,9 @@ func doUpdate(uuidStr string, config types.AppInstanceConfig,
 	// Defer networking and Xen setup until activated
 	if !config.Activate {
 		if status.Activated {
+			// XXX tear down xenmgr and then zedrouter
+			// XXX MaybeDeleteDomainConfig or an update with Activate = false??
+			// XXX then MaybeDeleteAppNetworkConfig
 			status.Activated = false
 			changed = true
 		}
@@ -380,7 +429,7 @@ func appendError(allErrors string, prefix string, lasterr string) string {
 	return fmt.Sprintf("%s%s: %s\n\n", allErrors, prefix, lasterr)
 }
 
-func doDelete(uuidStr string) {
+func doDelete(uuidStr string, status types.AppInstanceStatus) {
 	log.Printf("doDelete for %s\n", uuidStr)
 	// XXX TBD do work
 	log.Printf("doDelete done for %s\n", uuidStr)

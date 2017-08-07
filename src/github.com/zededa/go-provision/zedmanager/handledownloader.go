@@ -55,7 +55,6 @@ func writeDownloaderConfig(config types.DownloaderConfig,
 	}
 	// We assume a /var/run path hence we don't need to worry about
 	// partial writes/empty files due to a kernel crash.
-	// XXX which permissions?
 	err = ioutil.WriteFile(configFilename, b, 0644)
 	if err != nil {
 		log.Fatal(err, configFilename)
@@ -79,6 +78,12 @@ func handleDownloaderStatusModify(statusFilename string,
 	log.Printf("handleDownloaderStatusModify for %s\n",
 		status.Safename)
 
+	// Ignore if any Pending* flag is set
+	if status.PendingAdd || status.PendingModify || status.PendingDelete {
+		log.Printf("handleDownloaderStatusModify skipping due to Pending* for %s\n",
+			status.Safename)
+		return
+	}
 	if downloaderStatus == nil {
 		fmt.Printf("create downloader map\n")
 		downloaderStatus = make(map[string]types.DownloaderStatus)

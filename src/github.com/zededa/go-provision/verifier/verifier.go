@@ -7,14 +7,13 @@
 // Move the file from downloads/pending/<claimedsha>/<safename> to
 // to downloads/verifier/<claimedsha>/<safename> and make RO, then attempt to
 // verify sum.
-// Once sum is verified, move to downloads/verified/<sha>/safename.
-
-// XXX copies of same content at different URLs means duplicates in the final
-// directory, which results in a failure in xenmgr!
+// Once sum is verified, move to downloads/verified/<sha>/<safename>
+// Note that different URLs for same file will download to the same <sha>
+// directory. We delete duplicates assuming the file content will be the same.
 
 // XXX TBD add a signature on the checksum. Verify against root CA.
 
-// XXX TBD add support for verifying the signatures on the meta-data (the AIC)
+// XXX TBD separately add support for verifying the signatures on the meta-data (the AIC)
 
 package main
 
@@ -60,6 +59,10 @@ func main() {
 			log.Fatal(err)
 		}
 	}
+	if err := os.RemoveAll(statusDirname); err != nil {
+		log.Fatal(err)
+	}
+	
 	if _, err := os.Stat(statusDirname); err != nil {
 		if err := os.Mkdir(statusDirname, 0755); err != nil {
 			log.Fatal(err)
@@ -76,6 +79,10 @@ func main() {
 			log.Fatal(err)
 		}
 	}
+	// Remove any files which didn't make it past the verifier
+	if err := os.RemoveAll(verifierDirname); err != nil {
+		log.Fatal(err)
+	}
 	if _, err := os.Stat(verifierDirname); err != nil {
 		if err := os.Mkdir(verifierDirname, 0700); err != nil {
 			log.Fatal(err)
@@ -87,8 +94,12 @@ func main() {
 		}
 	}
 
+	// Creates statusDir entries for already verified files
+	handleInit(verifiedDirname, statusDirname, "")
+	
 	fileChanges := make(chan string)
-	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
+	go watch.WatchConfigStatusAllowInitialConfig(configDirname,
+		statusDirname, fileChanges)
 	for {
 		change := <-fileChanges
 		parts := strings.Split(change, " ")
@@ -198,6 +209,35 @@ func main() {
 	}
 }
 
+// Determine which files we have already verified and set status for them
+func handleInit(verifiedDirname string, statusDirname string,
+     parentDirname string) {
+	fmt.Printf("handleInit(%s, %s, %s)\n",
+		verifiedDirname, statusDirname,	parentDirname)
+	locations, err := ioutil.ReadDir(verifiedDirname)
+	if err != nil {
+		log.Fatalf("ReadDir(%s) %s\n",
+			verifiedDirname, err)
+	}
+	for _, location := range locations {
+		filename := verifiedDirname + "/" + location.Name()
+		fmt.Printf("handleInit: Looking in %s\n", filename)
+		if location.IsDir() {
+			handleInit(filename, statusDirname, location.Name())
+		} else {
+			status := types.VerifyImageStatus{
+				Safename:	location.Name(),
+				ImageSha256:	parentDirname,
+				State:		types.DELIVERED,
+			}
+			writeVerifyImageStatus(&status,
+				statusDirname + "/" + location.Name() + ".json")
+		}
+	}
+	fmt.Printf("handleInit done for %s, %s, %s\n",
+		verifiedDirname, statusDirname,	parentDirname)
+}
+
 func writeVerifyImageStatus(status *types.VerifyImageStatus,
 	statusFilename string) {
 	b, err := json.Marshal(status)
@@ -206,7 +246,6 @@ func writeVerifyImageStatus(status *types.VerifyImageStatus,
 	}
 	// We assume a /var/run path hence we don't need to worry about
 	// partial writes/empty files due to a kernel crash.
-	// XXX which permissions?
 	err = ioutil.WriteFile(statusFilename, b, 0644)
 	if err != nil {
 		log.Fatal(err, statusFilename)
@@ -219,7 +258,6 @@ func handleCreate(statusFilename string, config types.VerifyImageConfig) {
 	// Start by marking with PendingAdd
 	status := types.VerifyImageStatus{
 		Safename:	config.Safename,
-		DownloadURL:	config.DownloadURL,
 		ImageSha256:	config.ImageSha256,
 		PendingAdd:     true,
 		State:		types.DOWNLOADED,
@@ -292,10 +330,28 @@ func handleCreate(statusFilename string, config types.VerifyImageConfig) {
 	finalDirname := imgCatalogDirname + "/verified/" + config.ImageSha256
 	finalFilename := finalDirname + "/" + config.Safename
 	fmt.Printf("Move from %s to %s\n", destFilename, finalFilename)
-	if _, err := os.Stat(finalDirname); err != nil {
-		if err := os.Mkdir(finalDirname, 0700); err != nil {
-			log.Fatal( err)
+	// XXX change log.Fatal to something else?
+	if _, err := os.Stat(finalDirname); err == nil {
+		// Directory exists thus we have a sha256 collision presumably
+		// due to multiple safenames (i.e., URLs) for the same content.
+		// Delete existing to avoid wasting space.
+		locations, err := ioutil.ReadDir(finalDirname)
+		if err != nil {
+			log.Fatalf("ReadDir(%s) %s\n",
+				finalDirname, err)
 		}
+		for _, location := range locations {
+			log.Printf("Identical sha256 (%s) for safenames %s and %s; deleting old\n",
+				config.ImageSha256, location.Name(),
+				config.Safename)
+		}
+		
+		if err := os.RemoveAll(finalDirname); err != nil {
+			log.Fatal(err)
+		}
+	}
+	if err := os.Mkdir(finalDirname, 0700); err != nil {
+		log.Fatal( err)
 	}
 	if err := os.Rename(destFilename, finalFilename); err != nil {
 		log.Fatal(err)
@@ -316,15 +372,10 @@ func handleModify(statusFilename string, config types.VerifyImageConfig,
 	log.Printf("handleModify(%v) for %s\n",
 		config.Safename, config.DownloadURL)
 
-	if config.DownloadURL != status.DownloadURL {
-		fmt.Printf("URL changed - not allowed %s -> %s\n",
-			config.DownloadURL, status.DownloadURL)
-		return
-	}
-	
+	// Note no comparison on version
+
 	// If identical we do nothing. Otherwise we do a delete and create.
 	if config.Safename == status.Safename &&
-	   config.DownloadURL == status.DownloadURL &&
 	   config.ImageSha256 == status.ImageSha256 {
 		log.Printf("handleModify: no change for %s\n",
 			config.DownloadURL)
@@ -341,12 +392,11 @@ func handleModify(statusFilename string, config types.VerifyImageConfig,
 }
 
 func handleDelete(statusFilename string, status types.VerifyImageStatus) {
-	log.Printf("handleDelete(%v) for %s\n",
-		status.Safename, status.DownloadURL)
+	log.Printf("handleDelete(%v)\n", status.Safename)
 
 	// Write out what we modified to VerifyImageStatus aka delete
 	if err := os.Remove(statusFilename); err != nil {
 		log.Println("Failed to remove", statusFilename, err)
 	}
-	log.Printf("handleDelete done for %s\n", status.DownloadURL)
+	log.Printf("handleDelete done for %s\n", status.Safename)
 }

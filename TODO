@@ -1,4 +1,10 @@
+eidregister/server: reusing uuid for a newly allocated eid (Allocate=True)
+runs into issues; server fails it.
+
 zedmanager:
+ - Adding a config file after boot results in
+   AIC not found and then a handleModify, which does nothing.
+   XXX could be due to write vs. copy??
  - Need handleDelete to clean up all dependent files
  - Need modification for ACL and eidlist in handlezedrouter
 
