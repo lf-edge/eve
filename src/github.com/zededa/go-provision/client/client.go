@@ -128,7 +128,7 @@ func main() {
 		resp, err := client.Post("https://"+serverNameAndPort+url,
 			"application/json", b)
 		if err != nil {
-			fmt.Printf("client.Post: ", err)
+			fmt.Println(err)
 			return false
 		}
 		defer resp.Body.Close()
