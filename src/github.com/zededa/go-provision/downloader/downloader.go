@@ -443,10 +443,10 @@ func doWget(url string, destFilename string) error {
 	cmd := "wget"
 	args := []string{
 		"-q",
-// XXX not safe	"-c",
-       	   	" -4",
+		"-c",
+       	   	"-4",	// XXX due to getting IPv6 ULAs and not IPv4
 		"--no-check-certificate",
-		"--tries=1",
+		"--tries=3",
 		"-O",
 		destFilename,
 		url,
