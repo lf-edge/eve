@@ -464,6 +464,35 @@ func handleModify(statusFilename string, config types.DomainConfig,
 		config.UUIDandVersion, config.DisplayName)
 }
 
+var maxDelay = time.Second * 600 // 10 minutes
+
+// Used to wait both after shutdown and destroy
+func waitForDomainGone(status types.DomainStatus) bool {
+	gone := false
+	var delay time.Duration
+	for {
+		log.Printf("waitForDomainGone(%v) for %s: waiting for %v\n",
+			status.UUIDandVersion, status.DisplayName, delay)
+		time.Sleep(delay)
+		if err := xlStatus(status.DomainName, status.DomainId);
+		   err != nil {
+			log.Printf("waitForDomainGone(%v) for %s: domain is gone\n",
+				status.UUIDandVersion, status.DisplayName)
+				gone = true
+				break
+		} else {	   
+			delay = 2 * (delay + time.Second)
+			if delay > maxDelay {
+				// Give up
+				log.Printf("waitForDomainGone(%v) for %s: giving up\n",
+					status.UUIDandVersion, status.DisplayName)
+				break
+			}
+		}
+	}
+	return gone
+}
+
 func handleDelete(statusFilename string, status types.DomainStatus) {
 	log.Printf("handleDelete(%v) for %s\n",
 		status.UUIDandVersion, status.DisplayName)
@@ -474,22 +503,42 @@ func handleDelete(statusFilename string, status types.DomainStatus) {
 	status.PendingDelete = true
 	writeDomainStatus(&status, statusFilename)
 	if status.DomainId != 0 {
-		if err := xlShutdown(status.DomainName, status.DomainId); err != nil {
+		if err := xlShutdown(status.DomainName,
+		   status.DomainId); err != nil {
 			log.Printf("xl shutdown %s failed: %s\n",
 				status.DomainName, err)
-			// XXX shutdown never fails; how do we have a timeout
-			// and a deferred destroy without risk clobbering a
-			// new instance? Have to wait to report in status that
-			// it is gone in any case.
-			err := xlDestroy(status.DomainName, status.DomainId)
-			if err != nil {
-				log.Printf("xl shutdown %s failed: %s\n",
-					status.DomainName, err)
-			}
+		} else {
+			// Wait for the domain to go away
+			// XXX this should run in a goroutine
+			log.Printf("handleDelete(%v) for %s: waiting for domain to shutdown\n",
+				status.UUIDandVersion, status.DisplayName)
+		}				
+		gone := waitForDomainGone(status)
+		if gone {
+			status.DomainId = 0
 		}
-		status.DomainId = 0
-		writeDomainStatus(&status, statusFilename)
 	}
+	if status.DomainId != 0 {
+		err := xlDestroy(status.DomainName, status.DomainId)
+		if err != nil {
+			log.Printf("xl shutdown %s failed: %s\n",
+				status.DomainName, err)
+		}
+		// Even if destroy failed we wait again
+		log.Printf("handleDelete(%v) for %s: waiting for domain to be destroyed\n",
+				status.UUIDandVersion, status.DisplayName)
+				
+		gone := waitForDomainGone(status)
+		if gone {
+			status.DomainId = 0
+		}
+	}
+	// If everything failed we leave it marked as Activated
+	if status.DomainId == 0 {
+		status.Activated = false
+	}
+	writeDomainStatus(&status, statusFilename)
+
 	// Delete xen cfg file for good measure
 	filename := xenCfgFilename(status.AppNum)
 	if err := os.Remove(filename); err != nil {
@@ -500,10 +549,7 @@ func handleDelete(statusFilename string, status types.DomainStatus) {
 	for _, ds := range status.DiskStatusList {
 		if !ds.ReadOnly {
 			log.Printf("Delete copy at %s\n", ds.Target)
-			// XXX even with Preserve set needs to remove here
-			if true {
-				log.Printf("XXX - skip remove\n");
-			} else if err := os.Remove(ds.Target); err != nil {
+			if err := os.Remove(ds.Target); err != nil {
 				log.Printf("Remove failed %s: %s\n",
 					ds.Target, err)
 				// XXX return? Cleanup status?
