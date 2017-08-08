@@ -27,7 +27,6 @@ no-ping
 bogus-priv
 stop-dns-rebind
 rebind-localhost-ok
-domain-needed
 # XXX SHOULD be derived from underlay ACL.
 # Needed here for underlay since queries for A RRs might come over IPv6
 ipset=/google.com/ipv4.google.com,ipv6.google.com
@@ -48,7 +47,6 @@ no-ping
 bogus-priv
 stop-dns-rebind
 rebind-localhost-ok
-domain-needed
 # XXX SHOULD be derived from underlay ACL
 ipset=/google.com/ipv4.google.com,ipv6.google.com
 ipset=/zededa.net/ipv4.zededa.net,ipv6.zededa.net
