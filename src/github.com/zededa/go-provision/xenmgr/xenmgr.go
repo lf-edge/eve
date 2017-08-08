@@ -23,22 +23,22 @@ import (
 	"time"
 )
 
-var rwImgDirname string	// We store images here
-var xenDirname string	// We store xen cfg files here
+var rwImgDirname string    // We store images here
+var xenDirname string      // We store xen cfg files here
 var verifiedDirname string // Read-only images named based on sha256 hash
-			// each in its own directory
-			
+// each in its own directory
+
 func main() {
 	// Keeping status in /var/run to be clean after a crash/reboot
 	baseDirname := "/var/tmp/xenmgr"
 	runDirname := "/var/run/xenmgr"
 	configDirname := baseDirname + "/config"
 	statusDirname := runDirname + "/status"
-	rwImgDirname = baseDirname + "/img"	// Note that /var/run is small
+	rwImgDirname = baseDirname + "/img" // Note that /var/run is small
 	xenDirname = runDirname + "/xen"
 	imgCatalogDirname := "/var/tmp/zedmanager/downloads"
 	verifiedDirname = imgCatalogDirname + "/verified"
-	
+
 	if _, err := os.Stat(baseDirname); err != nil {
 		if err := os.Mkdir(baseDirname, 0755); err != nil {
 			log.Fatal(err)
@@ -79,7 +79,7 @@ func main() {
 			log.Fatal(err)
 		}
 	}
-	
+
 	// XXX this is common code except for the types used with json
 	fileChanges := make(chan string)
 	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
@@ -221,26 +221,15 @@ func handleCreate(statusFilename string, config types.DomainConfig) {
 		UUIDandVersion: config.UUIDandVersion,
 		PendingAdd:     true,
 		DisplayName:    config.DisplayName,
-		DomainName:	name,
-		AppNum:		config.AppNum,
+		DomainName:     name,
+		AppNum:         config.AppNum,
 	}
 	status.DiskStatusList = make([]types.DiskStatus,
 		len(config.DiskConfigList))
 	writeDomainStatus(&status, statusFilename)
 
-	// XXX defer this until activate; could be activate up front
-	filename := xenCfgFilename(config.AppNum)
-	file, err := os.Create(filename)
-	if err != nil {
-		log.Fatal("os.Create for ", filename, err)
-	}
-	defer file.Close()
-
-	// XXX split into configToStatus which allocates name etc and
-	// generateXenCfg(config, status, file); latter once activated
-	if err := configToStatusAndXencfg(config, &status, file); err != nil {
+	if err := configToStatus(config, &status); err != nil {
 		log.Printf("Failed to create DomainStatus from %v\n", config)
-		// XXX should we clear PendingAdd?
 		status.PendingAdd = false
 		status.LastErr = fmt.Sprintf("%v", err)
 		status.LastErrTime = time.Now()
@@ -248,51 +237,33 @@ func handleCreate(statusFilename string, config types.DomainConfig) {
 		return
 	}
 	// Write any Location so that it can later be deleted based on status
-	// XXX need to calculate ds.Target even if we don't have a vif
 	writeDomainStatus(&status, statusFilename)
 
-	// Do we need to copy any rw files?
+	// Do we need to copy any rw files? !Preserve ones are copied upon
+	// activation.
 	for _, ds := range status.DiskStatusList {
-		if !ds.ReadOnly {
-			log.Printf("Copy from %s to %s\n",
-				ds.FileLocation, ds.Target)
-			if _, err := os.Stat(ds.Target); err == nil && ds.Preserve {
-				log.Printf("Preserve and target exists - skip copy\n");
-			} else if err := cp(ds.Target, ds.FileLocation); err != nil {
-				log.Printf("Copy failed from %s to %s: %s\n",
-					ds.FileLocation, ds.Target, err)
-				// XXX return? Cleanup status? Will never retry
-				// XXX should we clear PendingAdd?
-				status.PendingAdd = false
-				status.LastErr = fmt.Sprintf("%v", err)
-				status.LastErrTime = time.Now()
-				writeDomainStatus(&status, statusFilename)
-				return
-			}
-			log.Printf("Copy DONE from %s to %s\n",
-				ds.FileLocation, ds.Target)
+		if ds.ReadOnly || !ds.Preserve {
+			continue
 		}
+		log.Printf("Copy from %s to %s\n", ds.FileLocation, ds.Target)
+		if _, err := os.Stat(ds.Target); err == nil && ds.Preserve {
+			log.Printf("Preserve and target exists - skip copy\n")
+		} else if err := cp(ds.Target, ds.FileLocation); err != nil {
+			log.Printf("Copy failed from %s to %s: %s\n",
+				ds.FileLocation, ds.Target, err)
+			status.PendingAdd = false
+			status.LastErr = fmt.Sprintf("%v", err)
+			status.LastErrTime = time.Now()
+			writeDomainStatus(&status, statusFilename)
+			return
+		}
+		log.Printf("Copy DONE from %s to %s\n",
+			ds.FileLocation, ds.Target)
 	}
-	// Invoke xl create; XXX how do we wait for it to complete?
-	// XXX report back state from xl list?
-	domainId, err := xlCreate(status.DomainName, filename)
-	if err != nil {
-		log.Printf("xl create for %s: %s\n", status.DomainName, err)
-		status.PendingAdd = false
-		status.LastErr = fmt.Sprintf("%v", err)
-		status.LastErrTime = time.Now()
-		writeDomainStatus(&status, statusFilename)
-		return
+
+	if config.Activate {
+		doActivate(config, &status)
 	}
-	log.Printf("created domainId %d for %s\n", domainId, status.DomainName)
-	status.DomainId = domainId
-	status.Activated = true
-	// XXX what do we do with console? Add the ability to send to a local
-	// file? Or vnc over mgmt overlay
-
-	// XXX have a go routine to watch xl status?
-	xlStatus(status.DomainName, status.DomainId)
-
 	// work done
 	status.PendingAdd = false
 	writeDomainStatus(&status, statusFilename)
@@ -300,43 +271,126 @@ func handleCreate(statusFilename string, config types.DomainConfig) {
 		config.UUIDandVersion, config.DisplayName)
 }
 
-// Produce DomainStatus and the xen cfg file based on the config
-// XXX or produce output to a string instead of file to make comparison
-// easier?
-func configToStatusAndXencfg(config types.DomainConfig,
-     status *types.DomainStatus, file *os.File) error {
-	file.WriteString("# This file is automatically generated by xenmgr\n")
-	file.WriteString(fmt.Sprintf("name = \"%s\"\n", status.DomainName))
-	file.WriteString(fmt.Sprintf("builder = \"pv\"\n"))
-	file.WriteString(fmt.Sprintf("uuid = \"%s\"\n",
-		config.UUIDandVersion.UUID))
-	file.WriteString(fmt.Sprintf("kernel = \"%s\"\n", config.Kernel))
-	if config.Ramdisk != "" {
-		file.WriteString(fmt.Sprintf("ramdisk = \"%s\"\n",
-			config.Ramdisk))
-	}
-	// Go from kbytes to mbytes
-	kbyte2mbyte := func (kbyte int) int {
-		return (kbyte+1023)/1024
-	}
-	file.WriteString(fmt.Sprintf("memory = %d\n",
-		kbyte2mbyte(config.Memory)))
-	if config.MaxMem != 0 {
-		file.WriteString(fmt.Sprintf("maxmem = %d\n",
-			kbyte2mbyte(config.MaxMem)))
-	}
-	file.WriteString(fmt.Sprintf("vcpus = %d\n", config.VCpus))
-	// XXX should add pinning somehow. Need status of available CPUs to
-	// zedcloud?
-	// XXX cpus=string
-	// XXX also device passthru?
-	// XXX note that qcow2 images might have partitions hence xvda1
-	extra := "console=hvc0 root=/dev/xvda1 " + config.ExtraArgs
-	file.WriteString(fmt.Sprintf("extra = \"%s\"\n", extra))
-	file.WriteString(fmt.Sprintf("serial = \"%s\"\n", "pty"))
-	file.WriteString(fmt.Sprintf("boot = \"%s\"\n", "c"))
+func doActivate(config types.DomainConfig, status *types.DomainStatus) {
+	log.Printf("doActivate(%v) for %s\n",
+		config.UUIDandVersion, config.DisplayName)
 
-	diskString := ""
+	// Do we need to copy any rw files? Preserve ones are copied upon
+	// creation
+	for _, ds := range status.DiskStatusList {
+		if ds.ReadOnly || ds.Preserve {
+			continue
+		}
+		log.Printf("Copy from %s to %s\n", ds.FileLocation, ds.Target)
+		if _, err := os.Stat(ds.Target); err == nil && ds.Preserve {
+			log.Printf("Preserve and target exists - skip copy\n")
+		} else if err := cp(ds.Target, ds.FileLocation); err != nil {
+			log.Printf("Copy failed from %s to %s: %s\n",
+				ds.FileLocation, ds.Target, err)
+			status.LastErr = fmt.Sprintf("%v", err)
+			status.LastErrTime = time.Now()
+			return
+		}
+		log.Printf("Copy DONE from %s to %s\n",
+			ds.FileLocation, ds.Target)
+	}
+
+	filename := xenCfgFilename(config.AppNum)
+	file, err := os.Create(filename)
+	if err != nil {
+		log.Fatal("os.Create for ", filename, err)
+	}
+	defer file.Close()
+
+	if err := configToXencfg(config, *status, file); err != nil {
+		log.Printf("Failed to create DomainStatus from %v\n", config)
+		status.LastErr = fmt.Sprintf("%v", err)
+		status.LastErrTime = time.Now()
+		return
+	}
+
+	// Invoke xl create
+	// XXX how do we wait for guest to boot?
+	domainId, err := xlCreate(status.DomainName, filename)
+	if err != nil {
+		log.Printf("xl create for %s: %s\n", status.DomainName, err)
+		status.LastErr = fmt.Sprintf("%v", err)
+		status.LastErrTime = time.Now()
+		return
+	}
+	log.Printf("created domainId %d for %s\n", domainId, status.DomainName)
+	status.DomainId = domainId
+	status.Activated = true
+
+	// XXX dump status to log
+	xlStatus(status.DomainName, status.DomainId)
+
+	log.Printf("doActivate(%v) done for %s\n",
+		config.UUIDandVersion, config.DisplayName)
+}
+
+// shutdown and wait for the domain to go away; if that fails destroy and wait
+// XXX this should run in a goroutine to prevent handling other operations
+// XXX one goroutine per UUIDandVersion to also handle copy and xlCreate?
+func doInactivate(status *types.DomainStatus) {
+	log.Printf("doInactivate(%v) for %s\n",
+		status.UUIDandVersion, status.DisplayName)
+	if status.DomainId != 0 {
+		if err := xlShutdown(status.DomainName,
+			status.DomainId); err != nil {
+			log.Printf("xl shutdown %s failed: %s\n",
+				status.DomainName, err)
+		} else {
+			// Wait for the domain to go away
+			log.Printf("handleDelete(%v) for %s: waiting for domain to shutdown\n",
+				status.UUIDandVersion, status.DisplayName)
+		}
+		gone := waitForDomainGone(*status)
+		if gone {
+			status.DomainId = 0
+		}
+	}
+	if status.DomainId != 0 {
+		err := xlDestroy(status.DomainName, status.DomainId)
+		if err != nil {
+			log.Printf("xl shutdown %s failed: %s\n",
+				status.DomainName, err)
+		}
+		// Even if destroy failed we wait again
+		log.Printf("handleDelete(%v) for %s: waiting for domain to be destroyed\n",
+			status.UUIDandVersion, status.DisplayName)
+
+		gone := waitForDomainGone(*status)
+		if gone {
+			status.DomainId = 0
+		}
+	}
+	// If everything failed we leave it marked as Activated
+	if status.DomainId == 0 {
+		status.Activated = false
+
+		// Do we need to delete any rw files that should
+		// not be preserved across reboots?
+		for _, ds := range status.DiskStatusList {
+			if !ds.ReadOnly && !ds.Preserve {
+				log.Printf("Delete copy at %s\n", ds.Target)
+				if err := os.Remove(ds.Target); err != nil {
+					log.Printf("Remove failed %s: %s\n",
+						ds.Target, err)
+					// XXX return? Cleanup status?
+				}
+			}
+		}
+	}
+
+	log.Printf("doInactivate(%v) done for %s\n",
+		status.UUIDandVersion, status.DisplayName)
+}
+
+// Produce DomainStatus based on the config
+func configToStatus(config types.DomainConfig, status *types.DomainStatus) error {
+	log.Printf("configToStatus(%v) for %s\n",
+		config.UUIDandVersion, config.DisplayName)
 	for i, dc := range config.DiskConfigList {
 		ds := &status.DiskStatusList[i]
 		ds.ImageSha256 = dc.ImageSha256
@@ -345,18 +399,18 @@ func configToStatusAndXencfg(config types.DomainConfig,
 		ds.Format = dc.Format
 		ds.Devtype = dc.Devtype
 		// map from i=1 to xvda, 2 to xvdb etc
-		xv := "xvd" + string(int('a') + i )
+		xv := "xvd" + string(int('a')+i)
 		ds.Vdev = xv
 		locationDir := verifiedDirname + "/" + dc.ImageSha256
+		log.Printf("configToStatus(%v) processing disk img %s for %s\n",
+			config.UUIDandVersion, locationDir, config.DisplayName)
 		if _, err := os.Stat(locationDir); err != nil {
 			log.Printf("Missing directory: %s, %s\n",
 				locationDir, err)
 			return err
 		}
 		// locationDir is a directory. Need to find single file inside
-		// XXX this can fail if same image downloaded from different
-		// URLs. Can reduce probability if ... basename instead of
-		// safename. But can we merge to common name somewhere?
+		// which the verifier ensures.
 		locations, err := ioutil.ReadDir(locationDir)
 		if err != nil {
 			log.Printf("ReadDir(%s) %s\n",
@@ -380,6 +434,49 @@ func configToStatusAndXencfg(config types.DomainConfig,
 			target = dstFilename
 		}
 		ds.Target = target
+	}
+	return nil
+}
+
+// Produce the xen cfg file based on the config and status created above
+// XXX or produce output to a string instead of file to make comparison
+// easier?
+func configToXencfg(config types.DomainConfig,
+	status types.DomainStatus, file *os.File) error {
+	file.WriteString("# This file is automatically generated by xenmgr\n")
+	file.WriteString(fmt.Sprintf("name = \"%s\"\n", status.DomainName))
+	file.WriteString(fmt.Sprintf("builder = \"pv\"\n"))
+	file.WriteString(fmt.Sprintf("uuid = \"%s\"\n",
+		config.UUIDandVersion.UUID))
+	file.WriteString(fmt.Sprintf("kernel = \"%s\"\n", config.Kernel))
+	if config.Ramdisk != "" {
+		file.WriteString(fmt.Sprintf("ramdisk = \"%s\"\n",
+			config.Ramdisk))
+	}
+	// Go from kbytes to mbytes
+	kbyte2mbyte := func(kbyte int) int {
+		return (kbyte + 1023) / 1024
+	}
+	file.WriteString(fmt.Sprintf("memory = %d\n",
+		kbyte2mbyte(config.Memory)))
+	if config.MaxMem != 0 {
+		file.WriteString(fmt.Sprintf("maxmem = %d\n",
+			kbyte2mbyte(config.MaxMem)))
+	}
+	file.WriteString(fmt.Sprintf("vcpus = %d\n", config.VCpus))
+	// XXX should add pinning somehow. Need status of available CPUs to
+	// zedcloud?
+	// XXX cpus=string
+	// XXX also device passthru?
+	// XXX note that qcow2 images might have partitions hence xvda1
+	extra := "console=hvc0 root=/dev/xvda1 " + config.ExtraArgs
+	file.WriteString(fmt.Sprintf("extra = \"%s\"\n", extra))
+	file.WriteString(fmt.Sprintf("serial = \"%s\"\n", "pty"))
+	file.WriteString(fmt.Sprintf("boot = \"%s\"\n", "c"))
+
+	diskString := ""
+	for i, dc := range config.DiskConfigList {
+		ds := status.DiskStatusList[i]
 		access := "rw"
 		if dc.ReadOnly {
 			access = "ro"
@@ -394,7 +491,7 @@ func configToStatusAndXencfg(config types.DomainConfig,
 		}
 	}
 	file.WriteString(fmt.Sprintf("disk = [%s]\n", diskString))
-	
+
 	vifString := ""
 	for _, net := range config.VifList {
 		oneVif := fmt.Sprintf("'bridge=%s,vifname=%s,mac=%s'",
@@ -429,25 +526,56 @@ func cp(dst, src string) error {
 }
 
 // Need to compare what might have changed. If any content change
-// then we need to reboot. Thus version by itself can change but nothing
-// else. Such a version change would be e.g. due to an ACL change.
+// then we need to reboot. Thus version can change but can't handle disk or
+// vif changes.
+// XXX should we reboot if there are such changes? Or reject with error?
 // XXX to save statusFilename when the goroutine is created.
-// XXX send "m" to channel
-// XXX channel handler looks at activate and starts/stops
 // XXX separate goroutine to run cp? Add "copy complete" status?
 func handleModify(statusFilename string, config types.DomainConfig,
 	status types.DomainStatus) {
 	log.Printf("handleModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
+	status.PendingModify = true
+	writeDomainStatus(&status, statusFilename)
+
+	// XXX should we check if there is an error?
+	if status.LastErr != "" {
+		log.Printf("handleModify(%v) existing error for %s\n",
+			config.UUIDandVersion, config.DisplayName)
+		status.PendingModify = false
+		writeDomainStatus(&status, statusFilename)
+		return
+	}
+	changed := false
+	if config.Activate && !status.Activated {
+		doActivate(config, &status)
+		changed = true
+	} else if !config.Activate && status.Activated {
+		doInactivate(&status)
+		changed = true
+	}
+	if changed {
+		status.PendingModify = false
+		writeDomainStatus(&status, statusFilename)
+		log.Printf("handleModify(%v) DONE for %s\n",
+			config.UUIDandVersion, config.DisplayName)
+		return
+	}
+
 	// XXX check if we have status.LastErr != "" and delete and retry
-	// even if same version
+	// even if same version. XXX won't the above Activate/Activated checks
+	// result in redoing things? Could have failures during copy i.e.
+	// before activation.
+
 	if config.UUIDandVersion.Version == status.UUIDandVersion.Version {
 		fmt.Printf("Same version %s for %s\n",
 			config.UUIDandVersion.Version, statusFilename)
+		status.PendingModify = false
+		writeDomainStatus(&status, statusFilename)
 		return
 	}
-	// XXX dump status
+	// XXX dump status to log
 	xlStatus(status.DomainName, status.DomainId)
 
 	status.PendingModify = true
@@ -456,7 +584,7 @@ func handleModify(statusFilename string, config types.DomainConfig,
 	// XXX create tmp xen cfg and diff against existing xen cfg
 	// If different then stop and start. XXX xl shutdown takes a while
 	// need to watch status using a go routine?
-	
+
 	status.PendingModify = false
 	status.UUIDandVersion = config.UUIDandVersion
 	writeDomainStatus(&status, statusFilename)
@@ -474,13 +602,12 @@ func waitForDomainGone(status types.DomainStatus) bool {
 		log.Printf("waitForDomainGone(%v) for %s: waiting for %v\n",
 			status.UUIDandVersion, status.DisplayName, delay)
 		time.Sleep(delay)
-		if err := xlStatus(status.DomainName, status.DomainId);
-		   err != nil {
+		if err := xlStatus(status.DomainName, status.DomainId); err != nil {
 			log.Printf("waitForDomainGone(%v) for %s: domain is gone\n",
 				status.UUIDandVersion, status.DisplayName)
-				gone = true
-				break
-		} else {	   
+			gone = true
+			break
+		} else {
 			delay = 2 * (delay + time.Second)
 			if delay > maxDelay {
 				// Give up
@@ -497,45 +624,14 @@ func handleDelete(statusFilename string, status types.DomainStatus) {
 	log.Printf("handleDelete(%v) for %s\n",
 		status.UUIDandVersion, status.DisplayName)
 
-	// XXX dump status
+	// XXX dump status to log
 	xlStatus(status.DomainName, status.DomainId)
 
 	status.PendingDelete = true
 	writeDomainStatus(&status, statusFilename)
-	if status.DomainId != 0 {
-		if err := xlShutdown(status.DomainName,
-		   status.DomainId); err != nil {
-			log.Printf("xl shutdown %s failed: %s\n",
-				status.DomainName, err)
-		} else {
-			// Wait for the domain to go away
-			// XXX this should run in a goroutine
-			log.Printf("handleDelete(%v) for %s: waiting for domain to shutdown\n",
-				status.UUIDandVersion, status.DisplayName)
-		}				
-		gone := waitForDomainGone(status)
-		if gone {
-			status.DomainId = 0
-		}
-	}
-	if status.DomainId != 0 {
-		err := xlDestroy(status.DomainName, status.DomainId)
-		if err != nil {
-			log.Printf("xl shutdown %s failed: %s\n",
-				status.DomainName, err)
-		}
-		// Even if destroy failed we wait again
-		log.Printf("handleDelete(%v) for %s: waiting for domain to be destroyed\n",
-				status.UUIDandVersion, status.DisplayName)
-				
-		gone := waitForDomainGone(status)
-		if gone {
-			status.DomainId = 0
-		}
-	}
-	// If everything failed we leave it marked as Activated
-	if status.DomainId == 0 {
-		status.Activated = false
+
+	if status.Activated {
+		doInactivate(&status)
 	}
 	writeDomainStatus(&status, statusFilename)
 
@@ -544,10 +640,11 @@ func handleDelete(statusFilename string, status types.DomainStatus) {
 	if err := os.Remove(filename); err != nil {
 		log.Println("Failed to remove", filename, err)
 	}
-	
-	// Do we need to delete any rw files?
+
+	// Do we need to delete any rw files that were not deleted during
+	// inactivation i.e. those preserved across reboots?
 	for _, ds := range status.DiskStatusList {
-		if !ds.ReadOnly {
+		if !ds.ReadOnly && ds.Preserve {
 			log.Printf("Delete copy at %s\n", ds.Target)
 			if err := os.Remove(ds.Target); err != nil {
 				log.Printf("Remove failed %s: %s\n",
@@ -572,8 +669,8 @@ func handleDelete(statusFilename string, status types.DomainStatus) {
 		status.UUIDandVersion, status.DisplayName)
 }
 
-func xlCreate(domainName string, xenCfgFilename string)(int, error) {
-	fmt.Printf("xlCreate %s %s\n", domainName, xenCfgFilename)     
+func xlCreate(domainName string, xenCfgFilename string) (int, error) {
+	fmt.Printf("xlCreate %s %s\n", domainName, xenCfgFilename)
 	cmd := "xl"
 	args := []string{
 		"create",
@@ -582,9 +679,9 @@ func xlCreate(domainName string, xenCfgFilename string)(int, error) {
 	out, err := exec.Command(cmd, args...).CombinedOutput()
 	if err != nil {
 		log.Println("xl create failed ", err)
-		log.Println("xl create output ", out)
+		log.Println("xl create output ", string(out))
 		return 0, errors.New(fmt.Sprintf("xl create failed: %s\n",
-				string(out)))
+			string(out)))
 	}
 	fmt.Printf("xl create done\n")
 
@@ -620,7 +717,7 @@ func xlStatus(domainName string, domainId int) error {
 		log.Println("xl list failed ", err)
 		return err
 	}
-	// XXX parse json to look at 
+	// XXX parse json to look at state?
 	fmt.Printf("xl list done. Result %s\n", string(res))
 	return nil
 }
