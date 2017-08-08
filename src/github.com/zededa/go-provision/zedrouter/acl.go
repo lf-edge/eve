@@ -39,7 +39,8 @@ func createACLConfiglet(ifname string, isMgmt bool, ACLs []types.ACE,
 	if overlayIP != "" {
 		// Manually add rules so that lispers.net doesn't see and drop
 		// the packet on dbo1x0
-		ip6tableCmd("-A", "FORWARD", "-i", ifname, "-j", "DROP")
+		ip6tableCmd("-A", "FORWARD", "-i", ifname, "-o", "dbo1x0",
+			"-j", "DROP")
 	}
 }
 
