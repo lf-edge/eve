@@ -308,12 +308,17 @@ func main() {
 		// XXX try redirected once and then fall back to original; repeat
 		// XXX once redirect successful, then save server and rootCert
 
+		// XXX update comment if we stay with this
 		// Convert from IID and IPv6 EID to a string with
 		// [iid]eid, where the eid has includes leading zeros i.e.
 		// is a fixed 39 bytes long. The iid is printed as an integer.
 		p := device.EID
-		sigdata := fmt.Sprintf("[%d]%04x:%04x:%04x:%04x:%04x:%04x:%04x:%04x",
-			device.LispInstance,
+		// XXX remove path not taken
+		fmtString := "[%d]%x:%x:%x:%x:%x:%x:%x:%x"
+		if false {
+			fmtString = "[%d]%04x:%04x:%04x:%04x:%04x:%04x:%04x:%04x"
+		}
+		sigdata := fmt.Sprintf(fmtString, device.LispInstance,
 			(uint32(p[0])<<8)|uint32(p[0+1]),
 			(uint32(p[2])<<8)|uint32(p[2+1]),
 			(uint32(p[4])<<8)|uint32(p[4+1]),
