@@ -1,11 +1,30 @@
-eidregister/server: reusing uuid for a newly allocated eid (Allocate=True)
+FIXED eidregister/server: reusing uuid for a newly allocated eid (Allocate=True)
 runs into issues; server fails it.
 
+xenmanager:
+DONE - delete file on delete (preserves dhcp lease file for unrelated AI)
+DONE - (busy) wait in handleDelete before above delete.
+DONE - pass Activate in DomainConfig? Copy file if !Activate
+DONE - check Preserve on handleModify with !Activate
+DONE - handleModify when Activate is set
+
+verifier:
+ - Add refcount against sha256.
+
+acl/iptables:
+DONE - local forwarding doesn't work due to
+   379 39416 DROP       all      bo1x1  *       ::/0                 ::/0          Since fd00::/8 route is out dbo1x0 sufficient to drop there.
+   We have a raw entry checking src/dst
+
+xenmgr - rename to domainmgr
+
 zedmanager:
- - Adding a config file after boot results in
-   AIC not found and then a handleModify, which does nothing.
-   XXX could be due to write vs. copy??
+FIXED  - Adding a config file after boot results in
+         AIC not found and then a handleModify, which does nothing.
+ - Set DomainConfig with Active=false
  - Need handleDelete to clean up all dependent files
+ 	use AIC for old config vs. AIS? Need flag "inactivating" somewhere.
+	In AIS?
  - Need modification for ACL and eidlist in handlezedrouter
 
 zedrouter:
@@ -13,8 +32,8 @@ zedrouter:
  
 device-steps.sh:
 DONE - Need cleanup of dependent /var/run/*/config, however we have two global files
-   plus the IsZedmanager zedrouter/config; preserve zedmanager/config/
- - XXX keep downloads directory in place as well
+       plus the IsZedmanager zedrouter/config; preserve zedmanager/config/
+DONE - keep downloads directory in place as well
 
 NOTE:
 ubuntu guest and zedrouter assumes bu is first in list of networks - becomes eth0
@@ -23,7 +42,7 @@ zedrouter:
  - move dnsmasq and radvd from /etc to /var/run/zedrouter/
  - create domain name ipsets on the fly. Easy in handleCreate
    Requires some care in handleModify
- - handleModify's update to ACLs assumes there is no DROP rules since does -I
+ - handleModify's update to ACLs assumes there is no DROP rules since does inserts new rules up front.
    Need to generate new list of rules and then just apply them?
    (Using save/restore for efficiency? Should we use restore for initial set
    as well for efficiency?)
