@@ -59,6 +59,13 @@ func main() {
 			log.Fatal(err)
 		}
 	}
+	// Remove any files from old guests which might have run
+	if err := os.RemoveAll(rwImgDirname); err != nil {
+		log.Fatal(err)
+	}
+	if err := os.RemoveAll(xenDirname); err != nil {
+		log.Fatal(err)
+	}
 	if _, err := os.Stat(rwImgDirname); err != nil {
 		if err := os.Mkdir(rwImgDirname, 0700); err != nil {
 			log.Fatal(err)
@@ -650,12 +657,6 @@ func handleDelete(statusFilename string, status types.DomainStatus) {
 				log.Printf("Remove failed %s: %s\n",
 					ds.Target, err)
 				// XXX return? Cleanup status?
-				// XXX cleanup rest instead of return?
-				// Means leaving an error somewhere?
-				// XXX should we clear PendingDelete?
-				status.PendingDelete = false
-				writeDomainStatus(&status, statusFilename)
-				return
 			}
 		}
 	}
