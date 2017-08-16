@@ -16,7 +16,7 @@ DONE - local forwarding doesn't work due to
    379 39416 DROP       all      bo1x1  *       ::/0                 ::/0          Since fd00::/8 route is out dbo1x0 sufficient to drop there.
    We have a raw entry checking src/dst
 
-xenmgr - rename to domainmgr
+DONE xenmgr - rename to domainmgr
 
 zedmanager:
 FIXED  - Adding a config file after boot results in
@@ -55,7 +55,7 @@ xenmgr:
    
 DONE zedmanager:
  - special handling of IsZedManager - do we create it's file on the fly
-   from onboarding? Don't pass to XenMgr.
+   from onboarding? Don't pass to DomainMgr.
  - 1st read status from everybody and build collections in memory
    Implies handle* for multiple input collections.
    Should it produce status for ZedCloud?

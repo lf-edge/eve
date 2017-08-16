@@ -366,12 +366,12 @@ func doUpdate(uuidStr string, config types.AppInstanceConfig,
 	log.Printf("Done with EID allocations for %s\n", uuidStr)
 
 	// XXX would like to make a unique copy of !ReadOnly filesystems
-	// before the VM is activated. Here? In xenmgr? In a storagemgr?
+	// before the VM is activated. Here? In domainmgr? In a storagemgr?
 
 	// Defer networking and Xen setup until activated
 	if !config.Activate {
 		if status.Activated {
-			// XXX tear down xenmgr and then zedrouter
+			// XXX tear down domainmgr and then zedrouter
 			// XXX MaybeDeleteDomainConfig or an update with Activate = false??
 			// XXX then MaybeDeleteAppNetworkConfig
 			status.Activated = false
@@ -404,7 +404,7 @@ func doUpdate(uuidStr string, config types.AppInstanceConfig,
 	// Look for xen errors.
 	if !ds.Activated {
 		if ds.LastErr != "" {
-			log.Printf("Received error from xenmgr for %s: %s\n",
+			log.Printf("Received error from domainmgr for %s: %s\n",
 				uuidStr, ds.LastErr)
 			status.Error = ds.LastErr
 			status.ErrorTime = ds.LastErrTime

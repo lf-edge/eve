@@ -68,7 +68,7 @@ func MaybeAddDomainConfig(aiConfig types.AppInstanceConfig,
 		}		
 		domainConfig[key] = dc
 		configFilename := fmt.Sprintf("%s/%s.json",
-			xenmgrConfigDirname, key)
+			domainmgrConfigDirname, key)
 		writeDomainConfig(domainConfig[key], configFilename)
 	}	
 	log.Printf("MaybeAddDomainConfig done for %s\n", key)

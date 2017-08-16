@@ -33,7 +33,7 @@ var (
 	zedmanagerStatusDirname = runDirname + "/status"
 	verifierConfigDirname = "/var/tmp/verifier/config"
 	downloaderConfigDirname = "/var/tmp/downloader/config"
-	xenmgrConfigDirname = "/var/tmp/xenmgr/config"
+	domainmgrConfigDirname = "/var/tmp/domainmgr/config"
 	zedrouterConfigDirname = "/var/tmp/zedrouter/config"
 	identitymgrConfigDirname = "/var/tmp/identitymgr/config"
 )
@@ -41,7 +41,7 @@ var (
 func main() {
 	verifierStatusDirname := "/var/run/verifier/status"
 	downloaderStatusDirname := "/var/run/downloader/status"
-	xenmgrStatusDirname := "/var/run/xenmgr/status"
+	domainmgrStatusDirname := "/var/run/domainmgr/status"
 	zedrouterStatusDirname := "/var/run/zedrouter/status"
 	identitymgrStatusDirname := "/var/run/identitymgr/status"
 
@@ -50,12 +50,12 @@ func main() {
 		zedmanagerStatusDirname,
 		identitymgrConfigDirname,
 		zedrouterConfigDirname,
-		xenmgrConfigDirname,
+		domainmgrConfigDirname,
 		downloaderConfigDirname,
 		verifierConfigDirname,
 		identitymgrStatusDirname,
 		zedrouterStatusDirname,
-		xenmgrStatusDirname,
+		domainmgrStatusDirname,
 		downloaderStatusDirname,
 		verifierStatusDirname,
 	}
@@ -78,8 +78,8 @@ func main() {
 	go watch.WatchStatus(identitymgrStatusDirname, identitymgrChanges)
 	zedrouterChanges := make(chan string)
 	go watch.WatchStatus(zedrouterStatusDirname, zedrouterChanges)
-	xenmgrChanges := make(chan string)
-	go watch.WatchStatus(xenmgrStatusDirname, xenmgrChanges)
+	domainmgrChanges := make(chan string)
+	go watch.WatchStatus(domainmgrStatusDirname, domainmgrChanges)
 
 	for {
 		select {
@@ -111,8 +111,8 @@ func main() {
 				handleAppNetworkStatusDelete)
 			continue
 		}
-		case change := <-xenmgrChanges: {
-			handleStatusEvent(change, xenmgrStatusDirname,
+		case change := <-domainmgrChanges: {
+			handleStatusEvent(change, domainmgrStatusDirname,
 				&types.DomainStatus{},
 				handleDomainStatusModify,
 				handleDomainStatusDelete)

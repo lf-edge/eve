@@ -128,7 +128,7 @@ echo "Removing old stale files"
 # Remove internal config files
 pkill zedmanager
 rm -rf /var/run/zedmanager/status/*.json
-AGENTS="zedrouter xenmgr downloader verifier identitymgr eidregister"
+AGENTS="zedrouter domainmgr downloader verifier identitymgr eidregister"
 for AGENT in $AGENTS; do
     if [ ! -d /var/tmp/$AGENT ]; then
 	continue
@@ -253,8 +253,8 @@ if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
 
-echo "Starting XenMgr"
-/usr/local/bin/zededa/xenmgr >&/var/log/xenmgr.log&
+echo "Starting DomainMgr"
+/usr/local/bin/zededa/domainmgr >&/var/log/domainmgr.log&
 # Do something
 if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
