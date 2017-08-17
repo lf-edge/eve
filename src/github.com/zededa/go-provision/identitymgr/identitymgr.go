@@ -360,25 +360,11 @@ func generateEID(iid uint32, allocationPrefix []byte, publicDer []byte) net.IP {
 // Generate the Lisp signature
 func generateLispSignature(eid net.IP, iid uint32,
 	keypair *ecdsa.PrivateKey) (string, error) {
-	// XXX update comment if we stay with this
+
 	// Convert from IID and IPv6 EID to a string with
-	// [iid]eid, where the eid has includes leading zeros i.e.
-	// is a fixed 39 bytes long. The iid is printed as an integer.
-	p := eid
-	// XXX remove path not taken
-	fmtString := "[%d]%x:%x:%x:%x:%x:%x:%x:%x"
-	if false {
-		fmtString = "[%d]%04x:%04x:%04x:%04x:%04x:%04x:%04x:%04x"
-	}
-	sigdata := fmt.Sprintf(fmtString, iid,
-		(uint32(p[0])<<8)|uint32(p[0+1]),
-		(uint32(p[2])<<8)|uint32(p[2+1]),
-		(uint32(p[4])<<8)|uint32(p[4+1]),
-		(uint32(p[6])<<8)|uint32(p[6+1]),
-		(uint32(p[8])<<8)|uint32(p[8+1]),
-		(uint32(p[10])<<8)|uint32(p[10+1]),
-		(uint32(p[12])<<8)|uint32(p[12+1]),
-		(uint32(p[14])<<8)|uint32(p[14+1]))
+	// [iid]eid, where the eid uses the textual format defined in
+	// RFC 5952. The iid is printed as an integer.
+	sigdata := fmt.Sprintf("[%d]%s", iid, eid.String())
 	fmt.Printf("sigdata (len %d) %s\n", len(sigdata), sigdata)
 
 	hasher := sha256.New()
