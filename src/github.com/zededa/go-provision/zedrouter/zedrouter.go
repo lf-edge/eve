@@ -426,7 +426,8 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 
 		// Default EID ipset
 		deleteEidIpsetConfiglet(olIfname, false)
-		createEidIpsetConfiglet(olIfname, olConfig.NameToEidList)
+		createEidIpsetConfiglet(olIfname, olConfig.NameToEidList,
+			  EID.String())
 
 		// Set up ACLs
 		createACLConfiglet(olIfname, true, olConfig.ACLs, 6, "")
@@ -543,7 +544,8 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		// Create default ipset with all the EIDs in NameToEidList
 		// Can be used in ACLs by specifying "alleids" as match.
 		deleteEidIpsetConfiglet(olIfname, false)
-		createEidIpsetConfiglet(olIfname, olConfig.NameToEidList)
+		createEidIpsetConfiglet(olIfname, olConfig.NameToEidList,
+			  EID.String())
 		
 		// Set up ACLs before we setup dnsmasq
 		createACLConfiglet(olIfname, false, olConfig.ACLs, 6, olAddr1)

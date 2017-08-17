@@ -37,9 +37,10 @@ func createDefaultIpset() {
 // Create an ipset called eids.<olIfname> with all the addresses from
 // the nameToEidList.
 // Would be more polite to return an error then to Fatal
-func createEidIpsetConfiglet(olIfname string, nameToEidList []types.NameToEid) {
-	fmt.Printf("createEidIpsetConfiglet: olifName %s nameToEidList %v\n",
-		olIfname, nameToEidList)
+func createEidIpsetConfiglet(olIfname string, nameToEidList []types.NameToEid,
+     myEid string) {
+	fmt.Printf("createEidIpsetConfiglet: olifName %s nameToEidList %v myEid %s\n",
+		olIfname, nameToEidList, myEid)
 	ipsetName := "eids." + olIfname	
 	if !ipsetExists(ipsetName) {
 		if err := ipsetCreate(ipsetName, "hash:ip", 6); err != nil {
@@ -57,6 +58,13 @@ func createEidIpsetConfiglet(olIfname string, nameToEidList []types.NameToEid) {
 				log.Println("ipset add ", ipsetName,
 					eid.String(), err)
 			}
+		}
+	}
+	if myEid != "" {
+		err := ipsetAdd(ipsetName, myEid)
+		if err != nil {
+			log.Println("ipset add ", ipsetName,
+				myEid, err)
 		}
 	}
 }
