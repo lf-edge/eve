@@ -11,6 +11,7 @@ import (
 	"github.com/zededa/go-provision/types"
 	"io/ioutil"
 	"log"
+	"os"
 )
 
 // Key is UUID:IID
@@ -43,6 +44,28 @@ func MaybeAddEIDConfig(UUIDandVersion types.UUIDandVersion,
 		writeEIDConfig(EIDConfig[key], configFilename)
 	}	
 	log.Printf("MaybeAddEIDConfig done for %s\n", key)
+}
+
+func MaybeRemoveEIDConfig(UUIDandVersion types.UUIDandVersion,
+     es *types.EIDStatusDetails) {
+	key := fmt.Sprintf("%s:%d", UUIDandVersion.UUID.String(), es.IID)
+	log.Printf("MaybeRemoveEIDConfig for %s\n", key)
+
+	if EIDConfig == nil {
+		fmt.Printf("create EID config map\n")
+		EIDConfig = make(map[string]types.EIDConfig)
+	}
+	if _, ok := EIDConfig[key]; !ok {
+		log.Printf("EID config missing for remove for %s\n", key)
+		return
+	}
+	delete(EIDConfig, key)
+	configFilename := fmt.Sprintf("%s/%s.json",
+		identitymgrConfigDirname, key)
+	if err := os.Remove(configFilename); err != nil {
+		log.Println("Failed to remove", configFilename, err)
+	}
+	log.Printf("MaybeRemoveEIDConfig done for %s\n", key)
 }
 
 func writeEIDConfig(config types.EIDConfig,
@@ -91,8 +114,9 @@ func handleEIDStatusModify(statusFilename string,
 	if m, ok := EIDStatus[key]; ok {
 		// Did an EID get assigned?
 		// XXX should be caught by Pending* check above
-		if true || !bytes.Equal(status.EID, m.EID) {
-			fmt.Printf("EID map changed from %v to %v\n",
+		// XXX Remove
+		if false || !bytes.Equal(status.EID, m.EID) {
+			fmt.Printf("XXX EID map changed from %v to %v\n",
 				m.EID, status.EID)
 			changed = true
 		}
@@ -129,7 +153,7 @@ func handleEIDStatusDelete(statusFilename string) {
 	} else {
 		fmt.Printf("EID map delete for %v\n", m.EID)
 		delete(EIDStatus, key)
-		updateAIStatusUUID(m.UUIDandVersion.UUID.String())
+		removeAIStatusUUID(m.UUIDandVersion.UUID.String())
 	}
 	log.Printf("handleEIDStatusDelete done for %s\n",
 		statusFilename)

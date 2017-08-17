@@ -10,6 +10,7 @@ import (
 	"github.com/zededa/go-provision/types"
 	"io/ioutil"
 	"log"
+	"os"
 )
 
 // Key is Safename string.
@@ -45,6 +46,27 @@ func AddOrRefcountDownloaderConfig(safename string, sc *types.StorageConfig) {
 	
 	log.Printf("AddOrRefcountDownloaderConfig done for %s\n",
 		safename)
+}
+
+func MaybeRemoveDownloaderConfig(safename string) {
+	log.Printf("MaybeRemoveDownloaderConfig for %s\n", safename)
+
+	if downloaderConfig == nil {
+		fmt.Printf("create Downloader config map\n")
+		downloaderConfig = make(map[string]types.DownloaderConfig)
+	}
+	if _, ok := downloaderConfig[safename]; !ok {
+		log.Printf("Downloader config missing for remove for %s\n",
+			safename)
+		return
+	}
+	delete(downloaderConfig, safename)
+	configFilename := fmt.Sprintf("%s/%s.json",
+		downloaderConfigDirname, safename)
+	if err := os.Remove(configFilename); err != nil {
+		log.Println("Failed to remove", configFilename, err)
+	}
+	log.Printf("MaybeRemoveDownloaderConfig done for %s\n", safename)
 }
 
 func writeDownloaderConfig(config types.DownloaderConfig,
@@ -102,7 +124,7 @@ func handleDownloaderStatusModify(statusFilename string,
 	}
 	if changed {
 		downloaderStatus[key] = *status
-		updateAIStatusSafename(key)
+		removeAIStatusSafename(key)
 	}
 	
 	log.Printf("handleDownloaderStatusModify done for %s\n",

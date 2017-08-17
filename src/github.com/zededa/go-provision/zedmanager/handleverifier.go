@@ -10,37 +10,67 @@ import (
 	"github.com/zededa/go-provision/types"
 	"io/ioutil"
 	"log"
+	"os"
 )
 
 // Key is Safename string.
-var verifierConfig map[string]types.VerifyImageConfig
+var verifyImageConfig map[string]types.VerifyImageConfig
 
 func MaybeAddVerifyImageConfig(safename string, sc *types.StorageConfig) {
 	log.Printf("MaybeAddVerifyImageConfig for %s\n",
 		safename)
 
-	if verifierConfig == nil {
+	if verifyImageConfig == nil {
 		fmt.Printf("create verifier config map\n")
-		verifierConfig = make(map[string]types.VerifyImageConfig)
+		verifyImageConfig = make(map[string]types.VerifyImageConfig)
 	}
 	key := safename
-	if _, ok := verifierConfig[key]; ok {
-		fmt.Printf("verifier config already exists for %s\n",
-			safename)
+	if m, ok := verifyImageConfig[key]; ok {
+		fmt.Printf("verifier config already exists refcnt %d for %s\n",
+			m.RefCount, safename)
+		m.RefCount += 1
 	} else {
 		fmt.Printf("verifier config add for %s\n", safename)
 		n := types.VerifyImageConfig{
 			Safename:	safename,
 			DownloadURL:	sc.DownloadURL,
 			ImageSha256:	sc.ImageSha256,
+			RefCount:	1,
 		}
-		verifierConfig[key] = n
-		configFilename := fmt.Sprintf("%s/%s.json",
-			verifierConfigDirname, safename)
-		writeVerifyImageConfig(verifierConfig[key], configFilename)
+		verifyImageConfig[key] = n
 	}
+	configFilename := fmt.Sprintf("%s/%s.json",
+		verifierConfigDirname, safename)
+	writeVerifyImageConfig(verifyImageConfig[key], configFilename)
 	log.Printf("AddOrRefcountVerifyImageConfig done for %s\n",
 		safename)
+}
+
+func MaybeRemoveVerifyImageConfigSha256(sha256 string) {
+	log.Printf("MaybeRemoveVerifyImageConfig for %s\n", sha256)
+
+	m, err := lookupVerifyImageStatusSha256Impl(sha256)
+	if err != nil {
+		log.Printf("VerifyImage config missing for remove for %s\n",
+			sha256)
+		return
+	}
+	m.RefCount -= 1
+	if m.RefCount != 0 {
+		log.Printf("MaybeRemoveVerifyImageConfig remaining RefCount %d for %s\n",
+			m.RefCount, sha256)
+		return
+	}
+	log.Printf("MaybeRemoveVerifyImageConfig RefCount zerp for %s\n",
+			sha256)
+	key := m.Safename
+	delete(verifyImageConfig, key)
+	configFilename := fmt.Sprintf("%s/%s.json",
+		verifierConfigDirname, key)
+	if err := os.Remove(configFilename); err != nil {
+		log.Println("Failed to remove", configFilename, err)
+	}
+	log.Printf("MaybeRemoveVerifyImageConfigSha256 done for %s\n", sha256)
 }
 
 func writeVerifyImageConfig(config types.VerifyImageConfig,
@@ -114,16 +144,26 @@ func LookupVerifyImageStatus(safename string) (types.VerifyImageStatus, error) {
 	}
 }
 
-func LookupVerifyImageStatusSha256(sha256 string) (types.VerifyImageStatus,
+func lookupVerifyImageStatusSha256Impl(sha256 string) (*types.VerifyImageStatus,
      error) {
-	for _, m := range verifierStatus {     
+	for _, m := range verifierStatus {
 		if m.ImageSha256 == sha256 {
-			log.Printf("LookupVerifyImageStatusSha256: found based on sha256 %s safename %s\n",
+			log.Printf("lookupVerifyImageStatusSha256Impl: found based on sha256 %s safename %s\n",
 				sha256, m.Safename)
-			return m, nil
+			return &m, nil
 		}
 	}
-	return types.VerifyImageStatus{}, errors.New("No VerifyImageStatus")
+	return nil, errors.New("No VerifyImageStatus")
+}
+
+func LookupVerifyImageStatusSha256(sha256 string) (types.VerifyImageStatus,
+     error) {
+	m, err := lookupVerifyImageStatusSha256Impl(sha256)
+	if err != nil {
+		return types.VerifyImageStatus{}, err
+	} else {
+		return *m, err
+	}
 }
 
 func handleVerifyImageStatusDelete(statusFilename string) {
@@ -137,7 +177,7 @@ func handleVerifyImageStatusDelete(statusFilename string) {
 	} else {
 		fmt.Printf("verifier map delete for %v\n", m.State)
 		delete(verifierStatus, key)
-		updateAIStatusSafename(key)
+		removeAIStatusSafename(key)
 	}
 	log.Printf("handleVerifyImageStatusDelete done for %s\n",
 		statusFilename)

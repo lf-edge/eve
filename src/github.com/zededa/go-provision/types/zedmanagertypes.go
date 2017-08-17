@@ -71,6 +71,8 @@ type StorageStatus struct {
 	DownloadURL	string	// XXX is there a more specific type?
 	ImageSha256	string	// sha256 of immutable image
 	State		SwState	// DOWNLOADED etc
+	HasDownloaderRef bool	// Reference against downloader to clean up
+	HasVerifierRef	 bool	// Reference against verifier to clean up
 	Error		string	// Download or verify error
 	ErrorTime	time.Time
 }

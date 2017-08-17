@@ -9,7 +9,7 @@ DONE - check Preserve on handleModify with !Activate
 DONE - handleModify when Activate is set
 
 verifier:
- - Add refcount against sha256.
+DONE - Add refcount against sha256.
 
 acl/iptables:
 DONE - local forwarding doesn't work due to
@@ -21,11 +21,9 @@ DONE xenmgr - rename to domainmgr
 zedmanager:
 FIXED  - Adding a config file after boot results in
          AIC not found and then a handleModify, which does nothing.
- - Set DomainConfig with Active=false
- - Need handleDelete to clean up all dependent files
- 	use AIC for old config vs. AIS? Need flag "inactivating" somewhere.
-	In AIS?
- - Need modification for ACL and eidlist in handlezedrouter
+DONE - Set DomainConfig with Active=false
+DONE - Need handleDelete to clean up all dependent files
+DONE - Need modification for ACL and eidlist in handlezedrouter
 
 zedrouter:
  - Seems to re-add the iptables rules for each handleModify. CHECK
@@ -50,16 +48,16 @@ zedrouter:
 xenmgr:
  - How do we wait for state?
  - How do we find out crashed? boot failures show up as "r"
- - How do we always delete? Wait state to change after xl shutdown then xl destroy and wait again? Means a goroutine per UUID?
+DONE - How do we always delete? Wait state to change after xl shutdown then xl destroy and wait again? Means a goroutine per UUID?
    It could periodically look for status and update.
    
 DONE zedmanager:
- - special handling of IsZedManager - do we create it's file on the fly
+N/A - special handling of IsZedManager - do we create it's file on the fly
    from onboarding? Don't pass to DomainMgr.
- - 1st read status from everybody and build collections in memory
+DONE - 1st read status from everybody and build collections in memory
    Implies handle* for multiple input collections.
    Should it produce status for ZedCloud?
- - 2nd read config from ZedCloud
+DONE - 2nd read config from ZedCloud/dir
    
 ===
 

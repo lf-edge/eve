@@ -10,6 +10,7 @@ import (
 	"github.com/zededa/go-provision/types"
 	"io/ioutil"
 	"log"
+	"os"
 )
 
 // Key is UUID
@@ -17,7 +18,7 @@ import (
 var domainConfig map[string]types.DomainConfig
 
 func MaybeAddDomainConfig(aiConfig types.AppInstanceConfig,
-     ns types.AppNetworkStatus) {
+     ns *types.AppNetworkStatus) {
 	key := aiConfig.UUIDandVersion.UUID.String()
 	displayName := aiConfig.DisplayName
 	log.Printf("MaybeAddDomainConfig for %s displayName %s\n", key,
@@ -29,7 +30,7 @@ func MaybeAddDomainConfig(aiConfig types.AppInstanceConfig,
 	}
 	changed := false
 	if m, ok := domainConfig[key]; ok {
-		// XXX any other change?
+		// XXX any other change? Compare nothing else changed?
 		if m.Activate != aiConfig.Activate {
 			fmt.Printf("Domain config: Activate changed %s\n", key)
 			changed = true
@@ -41,11 +42,15 @@ func MaybeAddDomainConfig(aiConfig types.AppInstanceConfig,
 		changed = true
 	}
 	if changed {		
+		AppNum := 0
+		if ns != nil {
+			AppNum = ns.AppNum
+		}
 		dc := types.DomainConfig{
 			UUIDandVersion: aiConfig.UUIDandVersion,
 			DisplayName: aiConfig.DisplayName,
 			Activate: aiConfig.Activate,
-			AppNum: ns.AppNum,
+			AppNum: AppNum,
 			FixedResources: aiConfig.FixedResources,
 		}
 		dc.DiskConfigList = make([]types.DiskConfig,
@@ -58,20 +63,42 @@ func MaybeAddDomainConfig(aiConfig types.AppInstanceConfig,
 			disk.Format = sc.Format
 			disk.Devtype = sc.Devtype
 		}		
-		dc.VifList = make([]types.VifInfo, ns.OlNum+ns.UlNum)
-		// Put UL before OL
-		for i, ul := range ns.UnderlayNetworkList {
-			dc.VifList[i] = ul.VifInfo
-		}		
-		for i, ol := range ns.OverlayNetworkList {
-			dc.VifList[i+ns.UlNum] = ol.VifInfo
-		}		
+		if ns != nil {
+			dc.VifList = make([]types.VifInfo, ns.OlNum+ns.UlNum)
+			// Put UL before OL
+			for i, ul := range ns.UnderlayNetworkList {
+				dc.VifList[i] = ul.VifInfo
+			}		
+			for i, ol := range ns.OverlayNetworkList {
+				dc.VifList[i+ns.UlNum] = ol.VifInfo
+			}
+		}
 		domainConfig[key] = dc
 		configFilename := fmt.Sprintf("%s/%s.json",
 			domainmgrConfigDirname, key)
 		writeDomainConfig(domainConfig[key], configFilename)
 	}	
 	log.Printf("MaybeAddDomainConfig done for %s\n", key)
+}
+
+func MaybeRemoveDomainConfig(uuidStr string) {
+	log.Printf("MaybeRemoveDomainConfig for %s\n", uuidStr)
+
+	if domainConfig == nil {
+		fmt.Printf("create Domain config map\n")
+		domainConfig = make(map[string]types.DomainConfig)
+	}
+	if _, ok := domainConfig[uuidStr]; !ok {
+		log.Printf("Domain config missing for remove for %s\n", uuidStr)
+		return
+	}
+	delete(domainConfig, uuidStr)
+	configFilename := fmt.Sprintf("%s/%s.json",
+		domainmgrConfigDirname, uuidStr)
+	if err := os.Remove(configFilename); err != nil {
+		log.Println("Failed to remove", configFilename, err)
+	}
+	log.Printf("MaybeRemoveDomainConfig done for %s\n", uuidStr)
 }
 
 func writeDomainConfig(config types.DomainConfig,
@@ -107,7 +134,7 @@ func handleDomainStatusModify(statusFilename string,
 	log.Printf("handleDomainStatusModify for %s\n", key)
 	// Ignore if any Pending* flag is set
 	if status.PendingAdd || status.PendingModify || status.PendingDelete {
-		log.Printf("handleDomaintatusModify skipped due to Pending* for %s\n",
+		log.Printf("handleDomainstatusModify skipped due to Pending* for %s\n",
 			key)
 		return
 	}
@@ -142,7 +169,7 @@ func handleDomainStatusDelete(statusFilename string) {
 	} else {
 		fmt.Printf("Domain map delete for %v\n", key)
 		delete(domainStatus, key)
-		updateAIStatusUUID(m.UUIDandVersion.UUID.String())
+		removeAIStatusUUID(m.UUIDandVersion.UUID.String())
 	}
 	log.Printf("handleDomainStatusDelete done for %s\n",
 		statusFilename)

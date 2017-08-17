@@ -10,6 +10,8 @@ import (
 	"github.com/zededa/go-provision/types"
 	"io/ioutil"
 	"log"
+	"os"
+	"reflect"
 )
 
 // Key is UUID
@@ -28,13 +30,43 @@ func MaybeAddAppNetworkConfig(aiConfig types.AppInstanceConfig,
 		appNetworkConfig = make(map[string]types.AppNetworkConfig)
 	}
 	changed := false
-	if _, ok := appNetworkConfig[key]; ok {
+	if m, ok := appNetworkConfig[key]; ok {
 		fmt.Printf("appNetwork config already exists for %s\n", key)
-		// XXX Need semantic comparison! EID could have been set.
-		// XXX with eidsAllocated we should be able to just compare
-		// ACLs and EIDset
-		// XXX update ACLs etc; set changed
-		// changed = true
+		if len(aiConfig.OverlayNetworkList) != len(m.OverlayNetworkList) {
+			log.Println("Unsupported: Changed number of overlays for ",
+				aiConfig.UUIDandVersion)
+			return
+		}
+		if len(aiConfig.UnderlayNetworkList) != len(m.UnderlayNetworkList) {
+			log.Println("Unsupported: Changed number of underlays for ",
+				aiConfig.UUIDandVersion)
+			return
+		}
+		for i, new := range aiConfig.OverlayNetworkList {
+			old := m.OverlayNetworkList[i]
+			if !reflect.DeepEqual(new.ACLs, old.ACLs) {
+				log.Printf("Over ACLs changed from %v to %v\n",
+					old.ACLs, new.ACLs)
+				changed = true
+				break
+			}
+			if !reflect.DeepEqual(new.NameToEidList,
+			   old.NameToEidList) {
+				log.Printf("NameToEidList changed from %v to %v\n",
+					old.NameToEidList, new.NameToEidList)
+				changed = true
+				break
+			}
+		}
+		for i, new := range aiConfig.UnderlayNetworkList {
+			old := m.UnderlayNetworkList[i]
+			if !reflect.DeepEqual(new.ACLs, old.ACLs) {
+				log.Printf("Under ACLs changed from %v to %v\n",
+					old.ACLs, new.ACLs)
+				changed = true
+				break
+			}
+		}
 	} else {
 		fmt.Printf("appNetwork config add for %s\n", key)
 		changed = true
@@ -68,6 +100,26 @@ func MaybeAddAppNetworkConfig(aiConfig types.AppInstanceConfig,
 		writeAppNetworkConfig(appNetworkConfig[key], configFilename)
 	}	
 	log.Printf("MaybeAddAppNetworkConfig done for %s\n", key)
+}
+
+func MaybeRemoveAppNetworkConfig(uuidStr string) {
+	log.Printf("MaybeRemoveAppNetworkConfig for %s\n", uuidStr)
+
+	if appNetworkConfig == nil {
+		fmt.Printf("create AppNetwork config map\n")
+		appNetworkConfig = make(map[string]types.AppNetworkConfig)
+	}
+	if _, ok := appNetworkConfig[uuidStr]; !ok {
+		log.Printf("AppNetwork config missing for remove for %s\n", uuidStr)
+		return
+	}
+	delete(appNetworkConfig, uuidStr)
+	configFilename := fmt.Sprintf("%s/%s.json",
+		zedrouterConfigDirname, uuidStr)
+	if err := os.Remove(configFilename); err != nil {
+		log.Println("Failed to remove", configFilename, err)
+	}
+	log.Printf("MaybeRemoveAppNetworkConfig done for %s\n", uuidStr)
 }
 
 func writeAppNetworkConfig(config types.AppNetworkConfig,
@@ -142,7 +194,7 @@ func handleAppNetworkStatusDelete(statusFilename string) {
 	} else {
 		fmt.Printf("appNetwork Status map delete for %v\n", key)
 		delete(appNetworkStatus, key)
-		updateAIStatusUUID(m.UUIDandVersion.UUID.String())
+		removeAIStatusUUID(m.UUIDandVersion.UUID.String())
 	}
 	log.Printf("handleAppNetworkStatusDelete done for %s\n",
 		statusFilename)

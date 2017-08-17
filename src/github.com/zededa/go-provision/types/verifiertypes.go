@@ -23,6 +23,7 @@ type VerifyImageConfig struct {
 	Safename	string	// Also refers to the dirname in pending dir
 	DownloadURL	string	// For logging output
 	ImageSha256	string	// sha256 of immutable image
+	RefCount	uint	// Zero means can delete file
 }
 
 // The key/index to this is the Safename which comes from VerifyImageConfig.
@@ -36,4 +37,5 @@ type VerifyImageStatus struct {
 	State		SwState	// DELIVERED, or INITIAL if failed
 	LastErr		string	// Verification error
 	LastErrTime	time.Time
+	RefCount	uint	// Zero means deleted
 }

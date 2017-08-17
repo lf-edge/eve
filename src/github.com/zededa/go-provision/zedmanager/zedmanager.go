@@ -261,38 +261,6 @@ func handleCreate(statusFilename string, config types.AppInstanceConfig) {
 	log.Printf("handleCreate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
-	// First ensure the downloader is aware of the needed downloads
-	// XXX note code duplication since we don't have a back pointer
-	// to avoid duplicate refcnt from same AIC
-	for _, sc := range config.StorageConfigList {
-		safename := urlToSafename(sc.DownloadURL, sc.ImageSha256)
-		fmt.Printf("Found StorageConfig URL %s safename %s\n",
-			sc.DownloadURL, safename)
-		// XXX shortcut if image is already verified
-		// XXX should lookup based on sha256??
-		// State not present when we start.
-		vs, err := LookupVerifyImageStatus(safename)
-		if err == nil && vs.State == types.DELIVERED {
-			log.Printf("XXX handleCreate found verified image for %s\n",
-				safename)
-			// XXX don't we need to have a refcnt? But against
-			// the verified image somehow?
-			continue
-		}
-		vs, err = LookupVerifyImageStatusSha256(sc.ImageSha256)
-		if err == nil && vs.State == types.DELIVERED {
-			log.Printf("XXX handleCreate found verified image for sha %s\n",
-				sc.ImageSha256)
-			// XXX don't we need to have a refcnt? But
-			// against the verified image somehow?
-			continue
-		}
-		AddOrRefcountDownloaderConfig(safename, &sc)
-		// XXX presumably need an array to track which
-		// safenames this AIC has references to.
-		// To be used in delete.
-	}
-
 	addOrUpdateConfig(config.UUIDandVersion.UUID.String(), config)	
 
 	// Note that the status is written as we handle updates from the
@@ -328,19 +296,7 @@ func handleDelete(statusFilename string, status types.AppInstanceStatus) {
 	status.PendingDelete = true
 	writeAppInstanceStatus(&status, statusFilename)
 
-	// Need to delete the other pieces
-	// XXX note that we have AIS with the old config.
-	doDelete(status.UUIDandVersion.UUID.String(), status)
-	
-	// Note that the status is written as we handle updates from the
-	// other services
-	// XXX should move delete there!
-	
-	// Write out what we modified to AppInstanceStatus aka delete
-	// XXX defer until all children have it deleted! Avoids recreates
-	if err := os.Remove(statusFilename); err != nil {
-		log.Println("Failed to remove", statusFilename, err)
-	}
+	removeConfig(status.UUIDandVersion.UUID.String())
 	log.Printf("handleDelete done for %s\n", status.DisplayName)
 }
 
