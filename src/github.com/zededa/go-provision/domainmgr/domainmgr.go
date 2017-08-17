@@ -740,7 +740,7 @@ func xlShutdown(domainName string, domainId int) error {
 }
 
 func xlDestroy(domainName string, domainId int) error {
-	fmt.Printf("xlDestroy %s %s\n", domainName, domainId)
+	fmt.Printf("xlDestroy %s %d\n", domainName, domainId)
 	cmd := "xl"
 	args := []string{
 		"destroy",
