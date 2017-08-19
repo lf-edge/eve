@@ -124,7 +124,7 @@ func handleDownloaderStatusModify(statusFilename string,
 	}
 	if changed {
 		downloaderStatus[key] = *status
-		removeAIStatusSafename(key)
+		updateAIStatusSafename(key)
 	}
 	
 	log.Printf("handleDownloaderStatusModify done for %s\n",
@@ -150,7 +150,7 @@ func handleDownloaderStatusDelete(statusFilename string) {
 	} else {
 		fmt.Printf("downloader map delete for %v\n", m.State)
 		delete(downloaderStatus, key)
-		updateAIStatusSafename(key)
+		removeAIStatusSafename(key)
 	}
 	log.Printf("handleDownloaderStatusDelete done for %s\n",
 		statusFilename)
