@@ -1,3 +1,29 @@
+ip6tables -L -nv | more
+Chain INPUT (policy ACCEPT 1087 packets, 132K bytes)
+ pkts bytes target     prot opt in     out     source               destination 
+        
+
+Chain FORWARD (policy ACCEPT 0 packets, 0 bytes)
+ pkts bytes target     prot opt in     out     source               destination 
+        
+    0     0 ACCEPT     all      *      dbo1x0  ::/0                 ::/0        
+         match-set eids.dbo1x0 src
+ 1098  114K DROP       all      *      dbo1x0  ::/0                 ::/0        
+
+The packets from domU's are forwarded out dbo1x0.
+Hence need to accept all source eids; union?
+root@25a0b275-df80-4660-9b82-977af7a0b152:~# ip6tables -I FORWARD -o dbo1x0 -m set --match-set eids.bo1x2 src -j ACCEPT
+
+packets sent by dom0/zedmanager hit the OUTPUT rule for dbo1x0 match-set.
+wORKAROUND:
+ip6tables -I FORWARD -o dbo1x0 -m set --match-set eids.bo1x2 src -j ACCEPT
+ip6tables -I FORWARD -o dbo1x0 -m set --match-set eids.bo1x1 src -j ACCEPT
+
+
+TODO remove local names from dnsmasq: have
+nordmark@ubuntu:~$ ping zedtest4
+PING zedtest4 (172.27.2.2) 56(84) bytes of data.
+
 FIXED eidregister/server: reusing uuid for a newly allocated eid (Allocate=True)
 runs into issues; server fails it.
 
@@ -26,7 +52,7 @@ DONE - Need handleDelete to clean up all dependent files
 DONE - Need modification for ACL and eidlist in handlezedrouter
 
 zedrouter:
- - Seems to re-add the iptables rules for each handleModify. CHECK
+NO - Seems to re-add the iptables rules for each handleModify. CHECK
  
 device-steps.sh:
 DONE - Need cleanup of dependent /var/run/*/config, however we have two global files
