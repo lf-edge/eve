@@ -1,0 +1,9 @@
+Package: zededa-provision
+Version: __VERSION__
+Section: base
+Priority: optional
+Architecture: __ARCH__
+Depends: xen-hypervisor-__ARCH__, python-pip, python2.7-dev, tcsh
+Maintainer:  Release Manager <release@zededa.com>
+Description: Zededa Provision Applications
+  Zededa Provisioning Applications.
