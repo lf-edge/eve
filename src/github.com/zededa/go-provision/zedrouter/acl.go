@@ -36,7 +36,8 @@ func createACLConfiglet(ifname string, isMgmt bool, ACLs []types.ACE,
 			ip6tableCmd(args...)
 		}
 	}
-	if overlayIP != "" {
+	// XXX isMgmt is painful; related to commenting out eidset accepts
+	if overlayIP != "" && !isMgmt {
 		// Manually add rules so that lispers.net doesn't see and drop
 		// the packet on dbo1x0
 		ip6tableCmd("-A", "FORWARD", "-i", ifname, "-o", "dbo1x0",
@@ -73,9 +74,6 @@ func aclToRules(ifname string, ACLs []types.ACE, ipVer int,
 func aceToRules(ifname string, ace types.ACE, ipVer int) IptablesRuleList {
 	outArgs := []string{"-i", ifname}
 	inArgs := []string{"-o", ifname}
-	// XXX should we always add local match on eid if isOverlay?
-	// 	outArgs -s eid; inArgs -d eid
-	// but don't know eid here. See below.
 	for _, match := range ace.Matches {
 		addOut := []string{}
 		addIn := []string{}
@@ -114,7 +112,7 @@ func aceToRules(ifname string, ace types.ACE, ipVer int) IptablesRuleList {
 				ipsetName, "src"}
 		case "eidset":
 			// The eidset only applies to IPv6 overlay
-			// XXX shouldn we also check local EID?
+			// Caller adds local EID to set
 			ipsetName := "eids." + ifname	
 			addOut = []string{"-m", "set", "--match-set",
 				ipsetName, "dst"}
@@ -180,11 +178,14 @@ func rulePrefix(operation string, isMgmt bool, ipVer int,
 		// Enforcing sending on OUTPUT. Enforcing receiving
 		// using FORWARD since packet FORWARDED from lispers.net
 		// interface.
-		// XXX need to rewrite -o to -i and vice versa??
-		// Should match on dst for OUTPUT to dbo1x0
-		// and src for FORWARD to dbox1x0
 		if rule[0] == "-o" {
-			prefix = []string{operation, "FORWARD"}
+			// XXX since domU traffic is forwarded out dbo1x0
+			// we can't have the forward rule (unless we create a
+			// set for all the EIDs)
+			// This special handling will go away when ZedManager
+			// is in a domU
+			// prefix = []string{operation, "FORWARD"}
+			return nil
 		} else if rule[0] == "-i" {
 			prefix = []string{operation, "OUTPUT"}
 			rule[0] = "-o"
