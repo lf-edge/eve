@@ -1,0 +1,16 @@
+#!/bin/sh
+
+# Get PIP
+cd /opt/zededa/lisp
+python get-pip.py
+
+# Install ecdsa python module
+pip install ecdsa==0.13
+
+# Install python modules required by LISP
+pip install -r pip-requirements.txt \
+    --allow-external pcappy \
+    --allow-unverified pcappy
+
+# Test LISP installation
+python lispers.net-test-install.pyo
