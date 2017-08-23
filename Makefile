@@ -61,7 +61,6 @@ url: pkg
 	@echo "*** Run wget http://<ip>:8000/$(PKG).deb && sudo gdebi -n $(PKG).deb"
 	@echo "*** OR run zupgrade http://<ip>:8000/$(PKG).deb"
 	@echo "***"
-	@cd $(OBJDIR) && python -m SimpleHTTPServer
 
 pkg: obj build
 	@cp -p README $(ETCDIR)
