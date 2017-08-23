@@ -47,9 +47,6 @@ SCRIPTS = \
 	generate-onboard.sh \
 	generate-self-signed.sh \
 	run-ocsp.sh \
-	start-host.sh \
-	start-xen.sh \
-	stop.sh \
 	zupgrade.sh
 
 .PHONY: all clean pkg obj install
