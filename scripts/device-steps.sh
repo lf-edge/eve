@@ -1,9 +1,12 @@
 #!/bin/bash
 
-ETCDIR=/usr/local/etc/zededa
-BINDIR=/usr/local/bin/zededa
+ETCDIR=/opt/zededa/etc
+BINDIR=/opt/zededa/bin
 PROVDIR=$BINDIR
-LISPDIR=/usr/local/bin/lisp
+LISPDIR=/opt/zededa/lisp
+
+PATH=$BINDIR:$PATH
+
 WAIT=1
 EID_IN_DOMU=0
 while [ $# != 0 ]; do
@@ -224,44 +227,44 @@ mkdir -p /var/tmp/downloader/config/
 echo '{"MaxSpace":2000000}' >/var/tmp/downloader/config/global 
 
 echo "Starting downloader"
-/usr/local/bin/zededa/downloader >&/var/log/downloader.log&
+downloader >&/var/log/downloader.log&
 if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
 
 echo "Starting verifier"
-/usr/local/bin/zededa/verifier >&/var/log/verifier.log&
+verifier >&/var/log/verifier.log&
 if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
 
 echo "Starting eidregister"
-/usr/local/bin/zededa/eidregister >&/var/log/eidregister.log&
+eidregister >&/var/log/eidregister.log&
 if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
 
 echo "Starting identitymgr"
-/usr/local/bin/zededa/identitymgr >&/var/log/identitymgr.log&
+identitymgr >&/var/log/identitymgr.log&
 if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
 
 echo "Starting ZedRouter"
-/usr/local/bin/zededa/zedrouter >&/var/log/zedrouter.log&
+zedrouter >&/var/log/zedrouter.log&
 if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
 
 echo "Starting DomainMgr"
-/usr/local/bin/zededa/domainmgr >&/var/log/domainmgr.log&
+domainmgr >&/var/log/domainmgr.log&
 # Do something
 if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
 
 echo "Starting ZedManager"
-/usr/local/bin/zededa/zedmanager >&/var/log/zedmanager.log&
+zedmanager >&/var/log/zedmanager.log&
 # Do something
 if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
@@ -319,5 +322,3 @@ EOF
 $BINDIR/client $ETCDIR updateSwStatus
 
 echo "Initial setup done!"
-
-
