@@ -34,6 +34,8 @@ var serverNameAndPort, serverName string
 var caCertPool *x509.CertPool
 
 func main() {
+	log.Printf("Starting eidregister\n")
+
 	args := os.Args[1:]
 	dirName := "/usr/local/etc/zededa/"
 	if len(args) > 0 {

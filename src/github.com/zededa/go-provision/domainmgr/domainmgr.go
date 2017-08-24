@@ -29,6 +29,8 @@ var verifiedDirname string // Read-only images named based on sha256 hash
 // each in its own directory
 
 func main() {
+	log.Printf("Starting domainmgr\n")
+
 	// Keeping status in /var/run to be clean after a crash/reboot
 	baseDirname := "/var/tmp/domainmgr"
 	runDirname := "/var/run/domainmgr"

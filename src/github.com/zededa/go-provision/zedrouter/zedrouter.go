@@ -26,6 +26,8 @@ import (
 )
 
 func main() {
+	log.Printf("Starting zedrouter\n")
+
 	// Keeping status in /var/run to be clean after a crash/reboot
 	baseDirname := "/var/tmp/zedrouter"
 	runDirname := "/var/run/zedrouter"

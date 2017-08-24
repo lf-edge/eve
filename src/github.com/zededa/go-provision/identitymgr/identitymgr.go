@@ -33,6 +33,8 @@ import (
 )
 
 func main() {
+	log.Printf("Starting identitymgr\n")
+	
 	// Keeping status in /var/run to be clean after a crash/reboot
 	baseDirname := "/var/tmp/identitymgr"
 	runDirname := "/var/run/identitymgr"

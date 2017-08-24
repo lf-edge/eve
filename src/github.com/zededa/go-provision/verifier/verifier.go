@@ -34,6 +34,8 @@ import (
 var imgCatalogDirname string
 
 func main() {
+	log.Printf("Starting verifier\n")
+	
 	// Keeping status in /var/run to be clean after a crash/reboot
 	baseDirname := "/var/tmp/verifier"
 	runDirname := "/var/run/verifier"

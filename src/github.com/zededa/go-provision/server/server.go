@@ -45,6 +45,8 @@ type ServerCertInfo struct {
 // Note that the IIDs and LISP passwords are random.
 //
 func main() {
+	log.Printf("Starting server\n")
+	
 	args := os.Args[1:]
 	if len(args) > 1 {
 		log.Fatal("Usage: " + os.Args[0] + "[<dirName>]")
