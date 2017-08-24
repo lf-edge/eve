@@ -1,28 +1,26 @@
-ip6tables -L -nv | more
-Chain INPUT (policy ACCEPT 1087 packets, 132K bytes)
- pkts bytes target     prot opt in     out     source               destination 
-        
-
-Chain FORWARD (policy ACCEPT 0 packets, 0 bytes)
- pkts bytes target     prot opt in     out     source               destination 
-        
-    0     0 ACCEPT     all      *      dbo1x0  ::/0                 ::/0        
-         match-set eids.dbo1x0 src
- 1098  114K DROP       all      *      dbo1x0  ::/0                 ::/0        
-
-The packets from domU's are forwarded out dbo1x0.
-Hence need to accept all source eids; union?
-root@25a0b275-df80-4660-9b82-977af7a0b152:~# ip6tables -I FORWARD -o dbo1x0 -m set --match-set eids.bo1x2 src -j ACCEPT
-
-packets sent by dom0/zedmanager hit the OUTPUT rule for dbo1x0 match-set.
-wORKAROUND:
-ip6tables -I FORWARD -o dbo1x0 -m set --match-set eids.bo1x2 src -j ACCEPT
-ip6tables -I FORWARD -o dbo1x0 -m set --match-set eids.bo1x1 src -j ACCEPT
-
+TODO dnsmasgq rename
+TODO verify signatures on image; root of trust?
 
 TODO remove local names from dnsmasq: have
 nordmark@ubuntu:~$ ping zedtest4
 PING zedtest4 (172.27.2.2) 56(84) bytes of data.
+XXX No option to dnsmasq to skip DHCP entries
+
+DONE ACL DROP remove... 
+DONE log.fmt when directory has been scanned?
+DONE dnsmasq - remove /var/lib/misc/dnsmasq.leases on boot
+DONE downloader runs ... sleep to wait for verifierStatus?
+DONE log.fmt when agent starts.
+
+===
+
+packets sent by dom0/zedmanager hit the OUTPUT rule for dbo1x0 match-set.
+Workaround:
+ip6tables -I FORWARD -o dbo1x0 -m set --match-set eids.bo1x2 src -j ACCEPT
+ip6tables -I FORWARD -o dbo1x0 -m set --match-set eids.bo1x1 src -j ACCEPT
+DONE by not having dbo1x0 ACLs
+
+==
 
 FIXED eidregister/server: reusing uuid for a newly allocated eid (Allocate=True)
 runs into issues; server fails it.
@@ -62,16 +60,17 @@ DONE - keep downloads directory in place as well
 NOTE:
 ubuntu guest and zedrouter assumes bu is first in list of networks - becomes eth0
 
-zedrouter:
- - move dnsmasq and radvd from /etc to /var/run/zedrouter/
- - create domain name ipsets on the fly. Easy in handleCreate
+TODO zedrouter:
+TODO move dnsmasq and radvd from /etc to /var/run/zedrouter/
+TODO create domain name ipsets on the fly. Easy in handleCreate
    Requires some care in handleModify
- - handleModify's update to ACLs assumes there is no DROP rules since does inserts new rules up front.
+TODO handleModify's update to ACLs assumes there is no DROP rules since does inserts new rules up front.
    Need to generate new list of rules and then just apply them?
    (Using save/restore for efficiency? Should we use restore for initial set
    as well for efficiency?)
 
 xenmgr:
+TODO xenmgr goroutines
  - How do we wait for state?
  - How do we find out crashed? boot failures show up as "r"
 DONE - How do we always delete? Wait state to change after xl shutdown then xl destroy and wait again? Means a goroutine per UUID?
@@ -87,7 +86,7 @@ DONE - 2nd read config from ZedCloud/dir
    
 ===
 
-Create DeviceSwStatus separate from DeviceSwResources
+TODO Create DeviceSwStatus separate from DeviceSwResources
 Include uplink interfaces, available memory and disk
 NAT i.e. uplink global address? (From exchanges with ZedControl).
 Trigger such exchange when local interface/address change.
