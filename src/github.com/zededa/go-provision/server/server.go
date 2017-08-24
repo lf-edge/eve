@@ -11,9 +11,6 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"github.com/nanobox-io/golang-scribble"
-	"github.com/zededa/go-provision/types"
-	"golang.org/x/crypto/ocsp"
 	"io/ioutil"
 	"log"
 	"net"
@@ -23,6 +20,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/zededa/go-provision/types"
+	"golang.org/x/crypto/ocsp"
 )
 
 var zedServerConfig types.ZedServerConfig
@@ -38,7 +38,7 @@ type ServerCertInfo struct {
 }
 
 // Assumes the config files are in dirName, which is
-// is /usr/local/etc/zededa-server/ by default. The files are
+// is /opt/zededa/etc/zededa-server/ by default. The files are
 //  intermediate-server.cert.pem  server cert plus intermediate CA cert
 //  server.key.pem
 //  zedserverconfig.json	ZedServerConfig sent to devices
@@ -49,7 +49,7 @@ func main() {
 	if len(args) > 1 {
 		log.Fatal("Usage: " + os.Args[0] + "[<dirName>]")
 	}
-	dirName := "/usr/local/etc/zededa-server/"
+	dirName := "/opt/zededa/etc/zededa-server/"
 	if len(args) > 0 {
 		dirName = args[0]
 	}
@@ -493,8 +493,8 @@ func SelfRegister(w http.ResponseWriter, r *http.Request) {
 	binary.BigEndian.PutUint32(iidData, lispInstance)
 
 	// Hard-coded prefix for Zededa management overlay
-	eidAllocationPrefix := []byte{0xFD} 
-	eidAllocationPrefixLen := len(eidAllocationPrefix)*8
+	eidAllocationPrefix := []byte{0xFD}
+	eidAllocationPrefixLen := len(eidAllocationPrefix) * 8
 	eidHashLen := 128 - eidAllocationPrefixLen
 
 	hasher = sha256.New()
@@ -522,13 +522,13 @@ func SelfRegister(w http.ResponseWriter, r *http.Request) {
 			{"ms1.zededa.net", credential1},
 			{"ms2.zededa.net", credential2},
 		},
-		LispInstance: lispInstance,
-		EID:          eid,
-		EIDHashLen:   uint8(eidHashLen),
-		ZedServers:   zedServerConfig,
-		EidAllocationPrefix: eidAllocationPrefix,
+		LispInstance:           lispInstance,
+		EID:                    eid,
+		EIDHashLen:             uint8(eidHashLen),
+		ZedServers:             zedServerConfig,
+		EidAllocationPrefix:    eidAllocationPrefix,
 		EidAllocationPrefixLen: eidAllocationPrefixLen,
-		ClientAddr:   r.RemoteAddr,
+		ClientAddr:             r.RemoteAddr,
 	}
 	err = deviceDb.Write("ddb", deviceKey, device)
 	if err != nil {
@@ -948,19 +948,19 @@ func EIDRegister(w http.ResponseWriter, r *http.Request) {
 	// Allow changes to CreateTime
 	if err = deviceDb.Read("eid-app", appKey, &oldRegister); err == nil {
 		if register.CreateTime != oldRegister.CreateTime {
-			log.Printf("EIDRegister different CreateTime for key %s\n",				appKey)
-		// XXX always says not equal. Print comparison of components
-		// else if !reflect.DeepEqual(register, oldRegister) {
+			log.Printf("EIDRegister different CreateTime for key %s\n", appKey)
+			// XXX always says not equal. Print comparison of components
+			// else if !reflect.DeepEqual(register, oldRegister) {
 		} else if !reflect.DeepEqual(register.AppCert, oldRegister.AppCert) ||
 
-		   !reflect.DeepEqual(register.AppPublicKey,
-		   	oldRegister.AppPublicKey) ||
-		   register.UUID != oldRegister.UUID ||
-		   register.IID != oldRegister.IID ||
-		   !reflect.DeepEqual(register.EID, oldRegister.EID) ||
-		   register.EIDHashLen != oldRegister.EIDHashLen ||
-		   !reflect.DeepEqual(register.LispMapServers,
-			oldRegister.LispMapServers) {
+			!reflect.DeepEqual(register.AppPublicKey,
+				oldRegister.AppPublicKey) ||
+			register.UUID != oldRegister.UUID ||
+			register.IID != oldRegister.IID ||
+			!reflect.DeepEqual(register.EID, oldRegister.EID) ||
+			register.EIDHashLen != oldRegister.EIDHashLen ||
+			!reflect.DeepEqual(register.LispMapServers,
+				oldRegister.LispMapServers) {
 			log.Printf("EIDRegister changed for key %s: IGNORED\n",
 				appKey)
 			http.Error(w, http.StatusText(http.StatusConflict),
