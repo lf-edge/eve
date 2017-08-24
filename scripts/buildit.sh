@@ -38,7 +38,7 @@ rm -rf $TMPDIR
 mkdir -p $TMPDIR/etc/zededa $TMPDIR/bin/zededa
 cp -p README $TMPDIR/bin/zededa/
 cp -p etc/* $TMPDIR/etc/zededa/
-cp -p *.sh $TMPDIR/bin/zededa/
+cp -p scripts/*.sh $TMPDIR/bin/zededa/
 cp -p bin/$TYPE/* $TMPDIR/bin/zededa/
 (cd $TMPDIR; tar -cf $DIR/go-provision.$TYPE.tar.gz .)
 rm -rf $TMPDIR
@@ -48,7 +48,7 @@ rm -rf $TMPDIR
 mkdir -p $TMPDIR/etc/zededa $TMPDIR/bin/zededa
 cp -p README $TMPDIR/bin/zededa/
 cp -p etc/* $TMPDIR/etc/zededa/
-cp -p *.sh $TMPDIR/bin/zededa/
+cp -p scripts/*.sh $TMPDIR/bin/zededa/
 cp -p bin/$TYPE/* $TMPDIR/bin/zededa/
 (cd $TMPDIR; tar -cf $DIR/go-provision.$TYPE.tar.gz .)
 rm -rf $TMPDIR
