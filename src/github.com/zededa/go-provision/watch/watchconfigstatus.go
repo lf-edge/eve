@@ -76,7 +76,8 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 		// log.Println("modified", file.Name())
 		fileChanges <- "M " + file.Name()
 	}
-
+	log.Printf("Initial ReadDir done for %s\n", configDir)
+	
 	if initialDelete {
 		statusFiles, err := ioutil.ReadDir(statusDir)
 		if err != nil {
@@ -91,6 +92,7 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 				fileChanges <- "D " + file.Name()
 			}
 		}
+		log.Printf("Initial deletes done for %s\n", statusDir)
 	}
 	// Watch for changes
 	<-done
@@ -142,6 +144,7 @@ func WatchStatus(statusDir string, fileChanges chan<- string) {
 		// log.Println("modified", file.Name())
 		fileChanges <- "M " + file.Name()
 	}
+	log.Printf("Initial ReadDir done for %s\n", statusDir)
 
 	// Watch for changes
 	<-done
