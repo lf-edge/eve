@@ -33,12 +33,12 @@ func main() {
 	statusDirname := runDirname + "/status"
 
 	if _, err := os.Stat(baseDirname); err != nil {
-		if err := os.Mkdir(baseDirname, 0755); err != nil {
+		if err := os.Mkdir(baseDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(configDirname); err != nil {
-		if err := os.Mkdir(configDirname, 0755); err != nil {
+		if err := os.Mkdir(configDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -46,9 +46,15 @@ func main() {
 		if err := os.Mkdir(runDirname, 0755); err != nil {
 			log.Fatal(err)
 		}
+	} else {
+		// dnsmasq needs to read as nobody
+		if err := os.Chmod(runDirname, 0755); err != nil {
+			log.Fatal(err)
+		}
 	}
+	
 	if _, err := os.Stat(statusDirname); err != nil {
-		if err := os.Mkdir(statusDirname, 0755); err != nil {
+		if err := os.Mkdir(statusDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -183,7 +189,7 @@ func handleInit(configFilename string, statusFilename string,
 	// XXX should this be in the lisp code?
 	lispRunDirname = runDirname + "/lisp"
 	if _, err := os.Stat(lispRunDirname); err != nil {
-		if err := os.Mkdir(lispRunDirname, 0755); err != nil {
+		if err := os.Mkdir(lispRunDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}

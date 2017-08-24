@@ -51,22 +51,22 @@ func main() {
 	verifierDirname := imgCatalogDirname + "/verifier"
 	
 	if _, err := os.Stat(baseDirname); err != nil {
-		if err := os.Mkdir(baseDirname, 0755); err != nil {
+		if err := os.Mkdir(baseDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(configDirname); err != nil {
-		if err := os.Mkdir(configDirname, 0755); err != nil {
+		if err := os.Mkdir(configDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(runDirname); err != nil {
-		if err := os.Mkdir(runDirname, 0755); err != nil {
+		if err := os.Mkdir(runDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(statusDirname); err != nil {
-		if err := os.Mkdir(statusDirname, 0755); err != nil {
+		if err := os.Mkdir(statusDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -360,7 +360,7 @@ func doCreate(statusFilename string, config types.DownloaderConfig,
 	// based on claimedSha256 and safename
 	destDirname := imgCatalogDirname + "/pending/" + config.ImageSha256
 	if _, err := os.Stat(destDirname); err != nil {
-		if err := os.Mkdir(destDirname, 0755); err != nil {
+		if err := os.Mkdir(destDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
