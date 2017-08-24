@@ -193,7 +193,15 @@ func handleInit(configFilename string, statusFilename string,
 			log.Fatal(err)
 		}
 	}
-
+	// XXX should this be in dnsmasq code?
+	// Need to make sure we don't have any stale leases
+	leasesFile := "/var/lib/misc/dnsmasq.leases"
+	if _, err := os.Stat(leasesFile); err == nil {
+		if err := os.Remove(leasesFile); err != nil {
+			log.Fatal(err)
+		}
+	}
+	
 	cb, err := ioutil.ReadFile(configFilename)
 	if err != nil {
 		log.Printf("%s for %s\n", err, configFilename)
