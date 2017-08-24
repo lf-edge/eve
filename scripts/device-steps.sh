@@ -205,16 +205,18 @@ EOF
 
 	# Make sure we set the dom0 hostname, used by LISP nat traversal, to
 	# a unique string. Using the uuid
+	uuid=`cat $ETCDIR/uuid`
 	echo "Setting hostname to $uuid"
 	/bin/hostname $uuid
 	/bin/hostname >/etc/hostname
+else
+	uuid=`cat $ETCDIR/uuid`
 fi
 
 mkdir -p /var/tmp/zedrouter/config/
 # Pick up the device EID zedrouter config file from $ETCDIR and put
 # it in /var/tmp/zedrouter/config/
 # This will result in starting lispers.net when zedrouter starts
-uuid=`cat $ETCDIR/uuid`
 cp $ETCDIR/zedrouterconfig.json /var/tmp/zedrouter/config/${uuid}.json
 
 cp $ETCDIR/network.config.global /var/tmp/zedrouter/config/global
