@@ -23,6 +23,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 )
 
 // Keeping status in /var/run to be clean after a crash/reboot
@@ -39,12 +40,14 @@ var (
 )
 
 func main() {
+	log.Printf("Starting zedmanager\n")
+
 	verifierStatusDirname := "/var/run/verifier/status"
 	downloaderStatusDirname := "/var/run/downloader/status"
 	domainmgrStatusDirname := "/var/run/domainmgr/status"
 	zedrouterStatusDirname := "/var/run/zedrouter/status"
 	identitymgrStatusDirname := "/var/run/identitymgr/status"
-
+	
 	dirs := []string{
 		zedmanagerConfigDirname,
 		zedmanagerStatusDirname,
@@ -67,9 +70,6 @@ func main() {
 		}
 	}
 
-	configChanges := make(chan string)
-	go watch.WatchConfigStatus(zedmanagerConfigDirname,
-		zedmanagerStatusDirname, configChanges)
 	verifierChanges := make(chan string)
 	go watch.WatchStatus(verifierStatusDirname, verifierChanges)
 	downloaderChanges := make(chan string)
@@ -80,7 +80,14 @@ func main() {
 	go watch.WatchStatus(zedrouterStatusDirname, zedrouterChanges)
 	domainmgrChanges := make(chan string)
 	go watch.WatchStatus(domainmgrStatusDirname, domainmgrChanges)
-
+	// XXX do we need to wait for the verifier to report initial status?
+	// Needed to avoid extra download
+	log.Printf("Waiting for verifier to report\n")
+	delay := time.Second * 5
+	time.Sleep(delay)
+	configChanges := make(chan string)
+	go watch.WatchConfigStatus(zedmanagerConfigDirname,
+		zedmanagerStatusDirname, configChanges)
 	for {
 		select {
 		case change := <-downloaderChanges: {
