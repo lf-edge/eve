@@ -37,7 +37,9 @@ func createACLConfiglet(ifname string, isMgmt bool, ACLs []types.ACE,
 		}
 	}
 	// XXX isMgmt is painful; related to commenting out eidset accepts
-	if overlayIP != "" && !isMgmt {
+	// XXX won't need this when zedmanager is in a separate domU
+	// Commenting out for now
+	if false && overlayIP != "" && !isMgmt {
 		// Manually add rules so that lispers.net doesn't see and drop
 		// the packet on dbo1x0
 		ip6tableCmd("-A", "FORWARD", "-i", ifname, "-o", "dbo1x0",
