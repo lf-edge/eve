@@ -287,7 +287,7 @@ func updateLisp(lispRunDirname string, upLinkIfname string) {
 }
 
 // XXX cd `dirname $0` in STOP-LISP
-// XXX sleep 10 in RESTART-LISP
+// XXX sleep 10 in RESTART-LISP; wait for kill
 // XXX would like to limit number of restarts of LISP. Somehow do at end of loop
 // main event loop in zedrouter.go??
 // XXX shouldn't need to restart unless we are removing or replacing something
@@ -304,8 +304,7 @@ func restartLisp(lispRunDirname string, upLinkIfname string, devices string) {
 	cmd.Args = args
 	env := os.Environ()
 	env = append(env, fmt.Sprintf("LISP_NO_IPTABLES="))
-	// XXX is this related to the hang with 0.389? Commenting out for now
-	// env = append(env, fmt.Sprintf("LISP_PCAP_LIST=\"%s\"", devices))
+	env = append(env, fmt.Sprintf("LISP_PCAP_LIST=\"%s\"", devices))
 	cmd.Env = env
 	_, err := cmd.Output()
 	if err != nil {
