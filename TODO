@@ -1,4 +1,7 @@
-TODO dnsmasgq rename
+TODO move device-steps to /opt
+TODO lisp wait for stopped
+TODO lisp cd in STOP-LISP
+
 TODO verify signatures on image; root of trust?
 
 TODO remove local names from dnsmasq: have
@@ -6,6 +9,7 @@ nordmark@ubuntu:~$ ping zedtest4
 PING zedtest4 (172.27.2.2) 56(84) bytes of data.
 XXX No option to dnsmasq to skip DHCP entries
 
+DONE dnsmasgq rename
 DONE ACL DROP remove... 
 DONE log.fmt when directory has been scanned?
 DONE dnsmasq - remove /var/lib/misc/dnsmasq.leases on boot
