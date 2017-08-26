@@ -80,7 +80,7 @@ build:
 		CGO_ENABLED=0 \
 		GOOS=linux \
 		GOARCH=$(ARCH) go build \
-			-o $(BINDIR)/$$app github.com/zededa/go-provision/$$app; \
+			-o $(BINDIR)/$$app github.com/zededa/go-provision/$$app || exit 1; \
 	done
 
 clean:
