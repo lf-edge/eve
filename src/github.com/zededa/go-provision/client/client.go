@@ -24,7 +24,7 @@ import (
 
 var maxDelay = time.Second * 600 // 10 minutes
 
-// Assumes the config files are in dirName, which is /usr/local/etc/zededa/
+// Assumes the config files are in dirName, which is /opt/zededa/etc
 // by default. The files are
 //  root-certificate.pem	Fixed? Written if redirected. factory-root-cert?
 //  server			Fixed? Written if redirected. factory-root-cert?
@@ -45,7 +45,7 @@ func main() {
 		log.Fatal("Usage: " + os.Args[0] +
 			"[<dirName> [<operations>...]]")
 	}
-	dirName := "/usr/local/etc/zededa/"
+	dirName := "/opt/zededa/etc"
 	if len(args) > 0 {
 		dirName = args[0]
 	}

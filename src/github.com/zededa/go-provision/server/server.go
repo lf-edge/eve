@@ -38,7 +38,7 @@ type ServerCertInfo struct {
 }
 
 // Assumes the config files are in dirName, which is
-// is /usr/local/etc/zededa-server/ by default. The files are
+// is /opt/zededa/etc/zededa-server/ by default. The files are
 //  intermediate-server.cert.pem  server cert plus intermediate CA cert
 //  server.key.pem
 //  zedserverconfig.json	ZedServerConfig sent to devices
@@ -51,7 +51,7 @@ func main() {
 	if len(args) > 1 {
 		log.Fatal("Usage: " + os.Args[0] + "[<dirName>]")
 	}
-	dirName := "/usr/local/etc/zededa-server/"
+	dirName := "/opt/zededa/etc/zededa-server/"
 	if len(args) > 0 {
 		dirName = args[0]
 	}

@@ -5,7 +5,7 @@
 // prov1.zededa.net which in turn registers them to the map servers
 // Reacts to the the collection of EIDStatus structs in
 // /var/run/identitymgr/status/*.json, and invokes /rest/eid-register
-// Reads config from arg1 or /usr/local/etc/zededa/
+// Reads config from arg1 or /opt/zededa/etc
 
 package main
 
@@ -37,7 +37,7 @@ func main() {
 	log.Printf("Starting eidregister\n")
 
 	args := os.Args[1:]
-	dirName := "/usr/local/etc/zededa/"
+	dirName := "/opt/zededa/etc"
 	if len(args) > 0 {
 		dirName = args[0]
 	}
