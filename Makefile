@@ -49,13 +49,12 @@ SCRIPTS = \
 	run-ocsp.sh \
 	zupgrade.sh
 
-INSTALL_DEVICE_FILE = install-device-list.mk
-INSTALL_DEVICE_LIST := $(shell cat $(INSTALL_DEVICE_FILE))
+include install-device-list.mk
 INSTALL_DEVICE_SCRIPT = install-zeddevice.sh
 INSTALL_SERVER := $(shell pgrep -f SimpleHTTPServer)
 
 ifndef INSTALL_SERVER
-	SERVER_CMD := @cd /opt/zededa/debian && python -m SimpleHTTPServer
+	SERVER_CMD := @cd /opt/zededa/debian && python -m SimpleHTTPServer &
 else
 	SERVER_CMD := @echo "HTTP server already running"
 endif
@@ -67,6 +66,7 @@ install: pkg
 	@echo "***"
 	@echo "*** Pushing zededa-provision debian package to device list"
 	@for deviceIP in $(INSTALL_DEVICE_LIST); do \
+		echo $$deviceIP; \
 		scp $(OBJDIR)/$(PKG).deb $$deviceIP:/tmp/.; \
 		scp scripts/$(INSTALL_DEVICE_SCRIPT) $$deviceIP:/tmp/.; \
 		ssh -t $$deviceIP 'sudo /tmp/$(INSTALL_DEVICE_SCRIPT) /tmp/$(PKG).deb; rm /tmp/$(PKG).deb; rm /tmp/$(INSTALL_DEVICE_SCRIPT)'; \
