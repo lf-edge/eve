@@ -1,6 +1,9 @@
 TODO move device-steps to /opt
 TODO lisp wait for stopped
 TODO lisp cd in STOP-LISP
+TODO lisp not picking up packets until manual restart
+
+TODO radvd set mtu to 1280
 
 TODO verify signatures on image; root of trust?
 

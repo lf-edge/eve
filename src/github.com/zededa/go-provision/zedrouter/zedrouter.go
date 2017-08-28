@@ -400,12 +400,8 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		// Need to do both an add and a change since we could have
 		// a FAILED neighbor entry from a previous run and a down
 		// uplink interface.
-		//    ip nei add fe80::1 lladdr 0:0:0:0:0:1 dev $intf
-		//    ip nei change fe80::1 lladdr 0:0:0:0:0:1 dev $intf
-		hw, err = net.ParseMAC("00:00:00:00:00:01")
-		if err != nil {
-			log.Fatal("ParseMAC failed: ", err)
-		}
+		//    ip nei add fe80::1 lladdr 00:16:3e:02:01:00 dev $intf
+		//    ip nei change fe80::1 lladdr 00:16:3e:02:01:00 dev $intf
 		neigh := netlink.Neigh{LinkIndex: index, IP: via,
 			HardwareAddr: hw, State: netlink.NUD_PERMANENT}
 		if err := netlink.NeighAdd(&neigh); err != nil {

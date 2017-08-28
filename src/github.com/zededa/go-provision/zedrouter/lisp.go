@@ -286,15 +286,14 @@ func updateLisp(lispRunDirname string, upLinkIfname string) {
 	}
 }
 
-// XXX cd `dirname $0` in STOP-LISP
-// XXX sleep 10 in RESTART-LISP; wait for kill
 // XXX would like to limit number of restarts of LISP. Somehow do at end of loop
 // main event loop in zedrouter.go??
 // XXX shouldn't need to restart unless we are removing or replacing something
 // XXX also need to restart when adding an overlay interface
 // Adds should be ok without. How can we tell?
 func restartLisp(lispRunDirname string, upLinkIfname string, devices string) {
-	fmt.Printf("restartLisp: %s %s\n", lispRunDirname, upLinkIfname)
+	fmt.Printf("restartLisp: %s %s %s\n",
+		lispRunDirname, upLinkIfname, devices)
 	args := []string{
 		RestartCmd,
 		"8080",
@@ -304,7 +303,7 @@ func restartLisp(lispRunDirname string, upLinkIfname string, devices string) {
 	cmd.Args = args
 	env := os.Environ()
 	env = append(env, fmt.Sprintf("LISP_NO_IPTABLES="))
-	env = append(env, fmt.Sprintf("LISP_PCAP_LIST=\"%s\"", devices))
+	env = append(env, fmt.Sprintf("LISP_PCAP_LIST=%s", devices))
 	cmd.Env = env
 	_, err := cmd.Output()
 	if err != nil {
