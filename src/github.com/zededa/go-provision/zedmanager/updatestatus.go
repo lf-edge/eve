@@ -36,9 +36,13 @@ func addOrUpdateConfig(uuidStr string, config types.AppInstanceConfig) {
 	changed := false
 	added := false
 	if m, ok := AIC[uuidStr]; ok {
-		if reflect.DeepEqual(m, config) {
+		// XXX or just compare version like elsewhere?
+		if !reflect.DeepEqual(m, config) {
 			fmt.Printf("AI config changed for %s\n", uuidStr)
 			changed = true
+			if m.UUIDandVersion.Version == config.UUIDandVersion.Version {
+				fmt.Printf("XXX AI config changed for %s but same version %s\n", uuidStr, config.UUIDandVersion.Version)
+			}
 		}
 	} else {
 		fmt.Printf("AI config add for %s\n", uuidStr)
