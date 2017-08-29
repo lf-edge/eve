@@ -263,6 +263,7 @@ func handleCreate(statusFilename string, config types.VerifyImageConfig) {
 		ImageSha256:	config.ImageSha256,
 		PendingAdd:     true,
 		State:		types.DOWNLOADED,
+		RefCount:	config.RefCount,
 	}
 	writeVerifyImageStatus(&status, statusFilename)
 
@@ -375,6 +376,9 @@ func handleModify(statusFilename string, config types.VerifyImageConfig,
 		config.Safename, config.DownloadURL)
 
 	// Note no comparison on version
+
+	// Always update RefCount
+	status.RefCount = config.RefCount
 
 	// If identical we do nothing. Otherwise we do a delete and create.
 	if config.Safename == status.Safename &&
