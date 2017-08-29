@@ -26,7 +26,7 @@ OBJDIR      := $(PWD)/bin/$(ARCH)
 PKGDIR      := $(OBJDIR)/$(PKG)/opt/zededa
 BINDIR      := $(PKGDIR)/bin
 ETCDIR      := $(PKGDIR)/etc
-LISPDIR     := $(PKGDIR)/lisp
+LISPDIR     := $(PKGDIR)/bin/lisp
 
 APPS = \
 	downloader 	\
