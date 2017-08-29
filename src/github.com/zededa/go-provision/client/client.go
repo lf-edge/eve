@@ -10,9 +10,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/satori/go.uuid"
-	"github.com/zededa/go-provision/types"
-	"golang.org/x/crypto/ocsp"
 	"io/ioutil"
 	"log"
 	"net"
@@ -20,6 +17,9 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/zededa/go-provision/types"
+	"golang.org/x/crypto/ocsp"
 )
 
 var maxDelay = time.Second * 600 // 10 minutes
@@ -308,12 +308,11 @@ func main() {
 		// XXX try redirected once and then fall back to original; repeat
 		// XXX once redirect successful, then save server and rootCert
 
-
 		// Convert from IID and IPv6 EID to a string with
 		// [iid]eid, where the eid uses the textual format defined in
 		// RFC 5952. The iid is printed as an integer.
 		sigdata := fmt.Sprintf("[%d]%s",
-			 device.LispInstance, device.EID.String())
+			device.LispInstance, device.EID.String())
 		fmt.Printf("sigdata (len %d) %s\n", len(sigdata), sigdata)
 
 		hasher := sha256.New()
@@ -393,15 +392,15 @@ func main() {
 			fmt.Printf("Read UUID %s\n", devUUID)
 		}
 		uv := types.UUIDandVersion{
-			UUID: devUUID,
+			UUID:    devUUID,
 			Version: "0",
 		}
 		// XXX displayname? Using fixed "zedmanager" string
 		config := types.AppNetworkConfig{
 			UUIDandVersion: uv,
-			DisplayName: "zedmanager",
-			IsZedmanager: true,
-			}
+			DisplayName:    "zedmanager",
+			IsZedmanager:   true,
+		}
 		olconf := make([]types.OverlayNetworkConfig, 1)
 		config.OverlayNetworkList = olconf
 		olconf[0].IID = device.LispInstance

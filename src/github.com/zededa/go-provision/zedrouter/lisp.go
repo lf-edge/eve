@@ -6,9 +6,9 @@
 package main
 
 import (
-	"fmt"       
-	"log"
+	"fmt"
 	"io/ioutil"
+	"log"
 	"net"
 	"os"
 	"os/exec"
@@ -19,7 +19,7 @@ import (
 // Need to fill in IID in 2 places
 // Use this for the Mgmt IID
 // XXX need to be able to set the ms name? Not needed for demo
-const lispIIDtemplateMgmt=`
+const lispIIDtemplateMgmt = `
 lisp map-server {
     dns-name = ms1.zededa.net
     authentication-key = test1_%d
@@ -35,7 +35,7 @@ lisp map-server {
 
 // Need to fill in IID in 4 places
 // Use this for the application IIDs
-const lispIIDtemplate=`
+const lispIIDtemplate = `
 lisp map-server {
     ms-name = ms-%d
     dns-name = ms1.zededa.net
@@ -54,7 +54,7 @@ lisp map-server {
 // Need to fill in (signature, IID, EID, IID, UplinkIfname, olIfname, IID)
 // Use this for the Mgmt IID/EID
 // XXX need to be able to set the username dummy? not needed for demo
-const lispEIDtemplateMgmt=`
+const lispEIDtemplateMgmt = `
 lisp json {
     json-name = signature
     json-string = { "signature" : "%s" }
@@ -87,7 +87,7 @@ lisp interface {
 // Need to fill in (tag, signature, IID, EID, IID, IID, IID, UplinkIfname, tag,
 // olifname, olifname, IID)
 // Use this for the application EIDs
-const lispEIDtemplate=`
+const lispEIDtemplate = `
 lisp json {
     json-name = signature-%s
     json-string = { "signature" : "%s" }
@@ -133,8 +133,8 @@ const StopCmd = "/opt/zededa/bin/lisp/STOP-LISP"
 //
 // Would be more polite to return an error then to Fatal
 func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
-			EID net.IP, lispSignature string, upLinkIfname string,
-			tag string, olIfname string) {
+	EID net.IP, lispSignature string, upLinkIfname string,
+	tag string, olIfname string) {
 	fmt.Printf("createLispConfiglet: %s %v %d %s %s %s %s %s\n",
 		lispRunDirname, isMgmt, IID, EID, lispSignature, upLinkIfname,
 		tag, olIfname)
@@ -151,7 +151,7 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 		// LISP gets confused if the management "lisp interface"
 		// isn't first in the list. Force that for now.
 		cfgPathnameEID = lispRunDirname + "/0-" + EID.String()
-	}  else {
+	} else {
 		cfgPathnameEID = lispRunDirname + "/" + EID.String()
 	}
 	file2, err := os.Create(cfgPathnameEID)
@@ -175,8 +175,8 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 }
 
 func updateLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
-			EID net.IP, lispSignature string, upLinkIfname string,
-			tag string, olIfname string) {
+	EID net.IP, lispSignature string, upLinkIfname string,
+	tag string, olIfname string) {
 	fmt.Printf("updateLispConfiglet: %s %v %d %s %s %s %s %s\n",
 		lispRunDirname, isMgmt, IID, EID, lispSignature, upLinkIfname,
 		tag, olIfname)
@@ -185,7 +185,7 @@ func updateLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 }
 
 func deleteLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
-			EID net.IP, upLinkIfname string) {
+	EID net.IP, upLinkIfname string) {
 	fmt.Printf("deleteLispConfiglet: %s %d %s %s\n",
 		lispRunDirname, IID, EID, upLinkIfname)
 
@@ -194,7 +194,7 @@ func deleteLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 		// LISP gets confused if the management "lisp interface"
 		// isn't first in the list. Force that for now.
 		cfgPathnameEID = lispRunDirname + "/0-" + EID.String()
-	}  else {
+	} else {
 		cfgPathnameEID = lispRunDirname + "/" + EID.String()
 	}
 	if err := os.Remove(cfgPathnameEID); err != nil {
@@ -209,7 +209,6 @@ func deleteLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	updateLisp(lispRunDirname, upLinkIfname)
 }
 
-
 func updateLisp(lispRunDirname string, upLinkIfname string) {
 	fmt.Printf("updateLisp: %s %s\n", lispRunDirname, upLinkIfname)
 
@@ -219,7 +218,7 @@ func updateLisp(lispRunDirname string, upLinkIfname string) {
 		return
 	}
 	defer os.Remove(tmpfile.Name())
-	
+
 	content, err := ioutil.ReadFile(baseFilename)
 	if err != nil {
 		log.Println("ReadFile ", baseFilename, err)
@@ -250,7 +249,7 @@ func updateLisp(lispRunDirname string, upLinkIfname string) {
 			log.Println("Write ", tmpfile.Name(), err)
 			return
 		}
-	}	
+	}
 	if err := tmpfile.Close(); err != nil {
 		log.Println("Close ", tmpfile.Name(), err)
 		return
@@ -258,9 +257,9 @@ func updateLisp(lispRunDirname string, upLinkIfname string) {
 	if err := os.Rename(tmpfile.Name(), destFilename); err != nil {
 		log.Println("Rename ", tmpfile.Name(), destFilename, err)
 		return
-	}	
+	}
 	// Determine the set of devices from the above config file
-        grep := exec.Command("grep", "device = ", destFilename)
+	grep := exec.Command("grep", "device = ", destFilename)
 	awk := exec.Command("awk", "{print $NF}")
 	awk.Stdin, _ = grep.StdoutPipe()
 	if err := grep.Start(); err != nil {
