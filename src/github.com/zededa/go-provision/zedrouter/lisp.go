@@ -120,9 +120,9 @@ lisp interface {
 `
 
 const baseFilename = "/opt/zededa/etc/lisp.config.base"
-const destFilename = "/opt/zededa/bin/lisp/lisp.config"
-const RestartCmd = "/opt/zededa/bin/lisp/RESTART-LISP"
-const StopCmd = "/opt/zededa/bin/lisp/STOP-LISP"
+const destFilename = "/opt/zededa/lisp/lisp.config"
+const RestartCmd = "/opt/zededa/lisp/RESTART-LISP"
+const StopCmd = "/opt/zededa/lisp/STOP-LISP"
 
 // We write files with the IID-specifics (and not EID) to files
 // in <globalRunDirname>/lisp/<iid>.
