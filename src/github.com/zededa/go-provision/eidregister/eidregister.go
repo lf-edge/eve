@@ -5,7 +5,7 @@
 // prov1.zededa.net which in turn registers them to the map servers
 // Reacts to the the collection of EIDStatus structs in
 // /var/run/identitymgr/status/*.json, and invokes /rest/eid-register
-// Reads config from arg1 or /usr/local/etc/zededa/
+// Reads config from arg1 or /opt/zededa/etc
 
 package main
 
@@ -15,9 +15,6 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
-	"github.com/zededa/go-provision/types"
-	"github.com/zededa/go-provision/watch"
-	"golang.org/x/crypto/ocsp"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -25,6 +22,10 @@ import (
 	"reflect"
 	"strings"
 	"time"
+
+	"github.com/zededa/go-provision/types"
+	"github.com/zededa/go-provision/watch"
+	"golang.org/x/crypto/ocsp"
 )
 
 var maxDelay = time.Second * 600 // 10 minutes
@@ -37,7 +38,7 @@ func main() {
 	log.Printf("Starting eidregister\n")
 
 	args := os.Args[1:]
-	dirName := "/usr/local/etc/zededa/"
+	dirName := "/opt/zededa/etc"
 	if len(args) > 0 {
 		dirName = args[0]
 	}
@@ -73,7 +74,7 @@ func main() {
 	outputBaseDirname := "/var/run/eidregister"
 	inputDirname := inputBaseDirname + "/status"
 	outputDirname := outputBaseDirname + "/status"
-	
+
 	if _, err := os.Stat(inputBaseDirname); err != nil {
 		if err := os.Mkdir(inputBaseDirname, 0700); err != nil {
 			log.Fatal(err)
@@ -205,7 +206,7 @@ func main() {
 			// XXX set something to rescan?
 			continue
 		}
-			
+
 		outputName := outputDirname + "/" + fileName
 		handleModify(outputName, config, status)
 	}
@@ -244,7 +245,7 @@ func myPost(client *http.Client, url string, b *bytes.Buffer) bool {
 
 	if connState.OCSPResponse == nil || !stapledCheck(connState) {
 		if connState.OCSPResponse == nil {
-		fmt.Println("no OCSP response")
+			fmt.Println("no OCSP response")
 		} else {
 			fmt.Println("OCSP stapled check failed")
 		}
@@ -347,14 +348,14 @@ func handleCreate(outputFilename string, input types.EIDStatus) {
 	// an ack from the server?
 	// writeEIDStatus(&output, outputFilename)
 	register := types.EIDRegister{
-		UUID: input.UUIDandVersion.UUID,
-		IID: input.IID,
-		DisplayName: input.DisplayName,
-		AppCert: input.PemCert,
+		UUID:         input.UUIDandVersion.UUID,
+		IID:          input.IID,
+		DisplayName:  input.DisplayName,
+		AppCert:      input.PemCert,
 		AppPublicKey: input.PemPublicKey,
-		EID: input.EID,
-		EIDHashLen: uint8(128 - 8 * len(input.AllocationPrefix)),
-		CreateTime: input.CreateTime,
+		EID:          input.EID,
+		EIDHashLen:   uint8(128 - 8*len(input.AllocationPrefix)),
+		CreateTime:   input.CreateTime,
 	}
 	// XXX hardcode this to work with existing zed-lispiotcontroller
 	register.LispMapServers = make([]types.LispServerInfo, 2)
@@ -399,7 +400,7 @@ func handleModify(outputFilename string, input types.EIDStatus,
 			input.UUIDandVersion, input.IID, input.DisplayName)
 		return
 	}
-	
+
 	output.PendingModify = true
 	writeEIDStatus(&output, outputFilename)
 	// XXX Any work in modify?
@@ -430,6 +431,3 @@ func handleDelete(outputFilename string, output types.EIDStatus) {
 	}
 	log.Printf("handleDelete done for %s\n", output.DisplayName)
 }
-
-
-
