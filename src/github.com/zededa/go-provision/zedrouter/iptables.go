@@ -35,5 +35,16 @@ func iptablesInit() {
 	iptableCmd("-t", "nat", "-F", "POSTROUTING")
 	iptableCmd("-t", "nat", "-A", "POSTROUTING", "-o", globalConfig.Uplink,
 		"-s", "172.27.0.0/16", "-j", "MASQUERADE")
+	// Prevent checksum offload getting in the way
+	iptableCmd("-F", "POSTROUTING", "-t", "mangle")
+	iptableCmd("-A", "POSTROUTING", "-t", "mangle", "-p", "tcp",
+		"-j", "CHECKSUM", "--checksum-fill")
+	iptableCmd("-A", "POSTROUTING", "-t", "mangle", "-p", "udp",
+		"-j", "CHECKSUM", "--checksum-fill")
+	ip6tableCmd("-F", "POSTROUTING", "-t", "mangle")
+	ip6tableCmd("-A", "POSTROUTING", "-t", "mangle", "-p", "tcp",
+		"-j", "CHECKSUM", "--checksum-fill")
+	ip6tableCmd("-A", "POSTROUTING", "-t", "mangle", "-p", "udp",
+		"-j", "CHECKSUM", "--checksum-fill")
 }
 
