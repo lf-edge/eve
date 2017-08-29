@@ -6,6 +6,7 @@ PKGNAME   := zededa-provision
 MAJOR_VER := 1
 MINOR_VER := 0
 ARCH        ?= amd64
+#ARCH        ?= arm64
 
 BUILD_DATE  := $(shell date +"%Y-%m-%d %H:%M %Z")
 GIT_VERSION := $(shell git describe --match v --abbrev=8 --always --dirty)
@@ -93,6 +94,7 @@ pkg: obj build
 	@cd $(OBJDIR) && dpkg-deb --build $(PKG)
 
 obj:
+	@rm -rf $(BINDIR) $(ETCDIR) $(LISPDIR)
 	@mkdir -p $(BINDIR) $(ETCDIR) $(LISPDIR)
 
 build:
