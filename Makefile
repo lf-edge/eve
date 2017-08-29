@@ -1,5 +1,5 @@
 #
-# Makefile for go-provision
+# Makefile for zededa-provision
 #
 
 PKGNAME   := zededa-provision
@@ -22,7 +22,7 @@ else
 PKG         := $(PKGNAME)_$(VERSION)-$(BRANCH_NAME)_$(ARCH)
 endif
 
-OBJDIR      := $(PWD)/obj/$(ARCH)
+OBJDIR      := $(PWD)/bin/$(ARCH)
 PKGDIR      := $(OBJDIR)/$(PKG)/opt/zededa
 BINDIR      := $(PKGDIR)/bin
 ETCDIR      := $(PKGDIR)/etc
@@ -49,11 +49,32 @@ SCRIPTS = \
 	run-ocsp.sh \
 	zupgrade.sh
 
+include install-device-list.mk
+INSTALL_DEVICE_SCRIPT = install-zeddevice.sh
+INSTALL_SERVER := $(shell pgrep -f SimpleHTTPServer)
+
+ifndef INSTALL_SERVER
+	SERVER_CMD := @cd /opt/zededa/debian && python -m SimpleHTTPServer &
+else
+	SERVER_CMD := @echo "HTTP server already running"
+endif
 .PHONY: all clean pkg obj install
 
 all: pkg
 
-url: pkg
+install: pkg
+	@echo "***"
+	@echo "*** Pushing zededa-provision debian package to device list"
+	@for deviceIP in $(INSTALL_DEVICE_LIST); do \
+		echo $$deviceIP; \
+		scp $(OBJDIR)/$(PKG).deb $$deviceIP:/tmp/.; \
+		scp scripts/$(INSTALL_DEVICE_SCRIPT) $$deviceIP:/tmp/.; \
+		ssh -t $$deviceIP 'sudo /tmp/$(INSTALL_DEVICE_SCRIPT) /tmp/$(PKG).deb; rm /tmp/$(PKG).deb; rm /tmp/$(INSTALL_DEVICE_SCRIPT)'; \
+	done
+	@echo "***"
+	@echo "*** Making zededa-provision debian package available for wget"
+	@sudo mkdir -p /opt/zededa/debian && sudo cp -p $(OBJDIR)/$(PKG).deb /opt/zededa/debian/.
+	$(SERVER_CMD)
 	@echo "***"
 	@echo "*** Run wget http://<ip>:8000/$(PKG).deb && sudo gdebi -n $(PKG).deb"
 	@echo "*** OR run zupgrade http://<ip>:8000/$(PKG).deb"
