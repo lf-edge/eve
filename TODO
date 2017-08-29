@@ -1,8 +1,13 @@
-TODO move device-steps to /opt
-TODO lisp wait for stopped
-TODO lisp cd in STOP-LISP
-TODO lisp not picking up packets until manual restart
+TODO zedrouter/radvd mtu 1280
+TODO zedrouter/radvd route for fd00::/8 and lower preference
+TODO rc.local /opt
 
+DONE move device-steps to /opt
+DONE lisp wait for stopped
+DONE lisp cd in STOP-LISP
+XXX TODO lisp not picking up packets until manual restart
+    added wait time
+    
 TODO radvd set mtu to 1280
 
 TODO verify signatures on image; root of trust?
