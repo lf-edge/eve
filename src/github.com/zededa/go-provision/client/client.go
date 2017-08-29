@@ -17,7 +17,7 @@ import (
 	"os"
 	"strings"
 	"time"
-
+	"github.com/satori/go.uuid"
 	"github.com/zededa/go-provision/types"
 	"golang.org/x/crypto/ocsp"
 )
