@@ -1,15 +1,19 @@
-TODO zedrouter/radvd mtu 1280
-TODO zedrouter/radvd route for fd00::/8 and lower preference
-TODO rc.local /opt
+TODO device-steps.sh - mode (from file or arg) to only run zedrouter for ctrl01?
+TODO wait - introduce second layer of interfaces to remove duplicate code
+
+DONE zedrouter/radvd mtu 1280
+	AdvLinkMTU  1280     
+DONE zedrouter/radvd route for fd00::/8 and lower preference
+     route fd00::/8 { xxx };
+DONE set mtu 1280 on dbo1x0
+DONE rc.local /opt
 
 DONE move device-steps to /opt
 DONE lisp wait for stopped
 DONE lisp cd in STOP-LISP
-XXX TODO lisp not picking up packets until manual restart
+DONE lisp not picking up packets until manual restart
     added wait time
     
-TODO radvd set mtu to 1280
-
 TODO verify signatures on image; root of trust?
 
 TODO remove local names from dnsmasq: have
