@@ -1,5 +1,5 @@
 #!/bin/sh
 
 # Uninstall python modules used by LISP
-cd /opt/zededa/lisp
+cd /opt/zededa/bin/lisp
 pip uninstall -y -r pip-requirements.txt

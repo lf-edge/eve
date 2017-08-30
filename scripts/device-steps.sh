@@ -3,7 +3,7 @@
 ETCDIR=/opt/zededa/etc
 BINDIR=/opt/zededa/bin
 PROVDIR=$BINDIR
-LISPDIR=/opt/zededa/lisp
+LISPDIR=/opt/zededa/bin/lisp
 
 PATH=$BINDIR:$PATH
 

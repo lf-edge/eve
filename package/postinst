@@ -1,8 +1,5 @@
 #!/bin/sh
 
-# Install ipset tool
-sudo apt-get install -y ipset
-
 # load br_netfilter module and make it persit through reboots
 modprobe br_netfilter
 echo "br_netfilter" >> /etc/modules
