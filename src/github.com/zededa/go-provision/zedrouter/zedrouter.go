@@ -361,6 +361,12 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 			fmt.Printf("LinkAdd on %s failed: %s\n", olIfname, err)
 		}
 
+		// ip link set ${olIfname} mtu 1280
+		if err := netlink.LinkSetMTU(oLink, 1280); err != nil {
+			fmt.Printf("LinkSetMTU on %s failed: %s\n",
+				olIfname, err)
+		}
+		
 		//    ip link set ${olIfname} up
 		if err := netlink.LinkSetUp(oLink); err != nil {
 			fmt.Printf("LinkSetUp on %s failed: %s\n",
