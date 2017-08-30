@@ -567,7 +567,8 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		cfgPathname = runDirname + cfgFilename
 		stopDnsmasq(cfgFilename, false)
 		createDnsmasqOverlayConfiglet(cfgPathname, olIfname, olAddr1,
-			EID.String(), olMac, hostsDirpath, config.DisplayName)
+			EID.String(), olMac, hostsDirpath,
+			config.UUIDandVersion.UUID.String())
 		startDnsmasq(cfgPathname)
 
 		// Create LISP configlets for IID and EID/signature		
@@ -642,7 +643,7 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		stopDnsmasq(cfgFilename, false)
 
 		createDnsmasqUnderlayConfiglet(cfgPathname, ulIfname, ulAddr1,
-			ulAddr2, ulMac, config.DisplayName)
+			ulAddr2, ulMac,	config.UUIDandVersion.UUID.String())
 		startDnsmasq(cfgPathname)
 
 		// Add bridge parameters for Xen to Status
