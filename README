@@ -26,6 +26,11 @@ Check install with
 
 2. Generate an onboarding certificate (7 day lifetime) on the server and
    register it with the server.
+   NOTE: For the device to be able to communicate with zedcontrol etc
+   it must be in IID 85865 and the IID is based on a hash of the username.
+   Thus the username below must be myself@zededa.net.
+   (Down the road we'll have the ability to pick a project with an associated
+   IID in the ZedCloud.)
    Example:
       ssh prov01.priv.sc.zededa.net
       cd /usr/local/bin/zededa/
