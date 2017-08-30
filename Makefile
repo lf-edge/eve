@@ -12,7 +12,8 @@ BUILD_DATE  := $(shell date +"%Y-%m-%d %H:%M %Z")
 GIT_VERSION := $(shell git describe --match v --abbrev=8 --always --dirty)
 BRANCH_NAME := $(shell git rev-parse --abbrev-ref HEAD)
 VERSION     := $(MAJOR_VER).$(MINOR_VER)-$(GIT_VERSION)
-LISPURL     := https://www.dropbox.com/s/589wwskox6jwyg2/lispers.net-x86-release-0.395.tgz
+LISPURL     := https://www.dropbox.com/s/2f7qrgljx1m3f08/lispers.net-x86-release-0.396.tgz
+# https://www.dropbox.com/s/589wwskox6jwyg2/lispers.net-x86-release-0.395.tgz
 
 # For future use
 #LDFLAGS     := -ldflags "-X=main.Version=$(VERSION) -X=main.Build=$(BUILD_DATE)"
