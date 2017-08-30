@@ -304,8 +304,8 @@ func restartLisp(lispRunDirname string, upLinkIfname string, devices string) {
 	env = append(env, fmt.Sprintf("LISP_NO_IPTABLES="))
 	env = append(env, fmt.Sprintf("LISP_PCAP_LIST=%s", devices))
 	// Make sure the ITR doesn't give up to early; maybe it should
-	// wait forever?
-	env = append(env, fmt.Sprintf("LISP_ITR_WAIT_TIME=%d", 600))
+	// wait forever? Will we be dead for this time?
+	env = append(env, fmt.Sprintf("LISP_ITR_WAIT_TIME=%d", 10))
 	cmd.Env = env
 	_, err := cmd.Output()
 	if err != nil {
