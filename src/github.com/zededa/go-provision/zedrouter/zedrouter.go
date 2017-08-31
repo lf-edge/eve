@@ -420,7 +420,7 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		// XXX do we need src when using dbo1x0? Route is out that
 		// interface. CHECK
 		rt := netlink.Route{Dst: ipnet, LinkIndex: index,
-			Gw: via, Src: EID}
+			Gw: via}
 		// Could we have an issue with DAD delay?
 		if err := netlink.RouteAdd(&rt); err != nil {
 			fmt.Printf("RouteAdd fd00::/8 failed: %s\n", err)

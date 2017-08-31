@@ -5,7 +5,7 @@ modprobe br_netfilter
 echo "br_netfilter" >> /etc/modules
 
 # Get PIP
-cd /opt/zededa/bin/lisp
+cd /opt/zededa/lisp
 python get-pip.py
 
 # Install ecdsa python module
