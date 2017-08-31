@@ -120,9 +120,9 @@ lisp interface {
 `
 
 const baseFilename = "/opt/zededa/etc/lisp.config.base"
-const destFilename = "/opt/zededa/bin/lisp/lisp.config"
-const RestartCmd = "/opt/zededa/bin/lisp/RESTART-LISP"
-const StopCmd = "/opt/zededa/bin/lisp/STOP-LISP"
+const destFilename = "/opt/zededa/lisp/lisp.config"
+const RestartCmd = "/opt/zededa/lisp/RESTART-LISP"
+const StopCmd = "/opt/zededa/lisp/STOP-LISP"
 
 // We write files with the IID-specifics (and not EID) to files
 // in <globalRunDirname>/lisp/<iid>.
@@ -303,6 +303,9 @@ func restartLisp(lispRunDirname string, upLinkIfname string, devices string) {
 	env := os.Environ()
 	env = append(env, fmt.Sprintf("LISP_NO_IPTABLES="))
 	env = append(env, fmt.Sprintf("LISP_PCAP_LIST=%s", devices))
+	// Make sure the ITR doesn't give up to early; maybe it should
+	// wait forever? Will we be dead for this time?
+	env = append(env, fmt.Sprintf("LISP_ITR_WAIT_TIME=%d", 10))
 	cmd.Env = env
 	_, err := cmd.Output()
 	if err != nil {

@@ -35,21 +35,23 @@ TMPDIR=/tmp/zededa-build.$$
 
 TYPE=linux_arm64
 rm -rf $TMPDIR
-mkdir -p $TMPDIR/etc/zededa $TMPDIR/bin/zededa
-cp -p README $TMPDIR/bin/zededa/
-cp -p etc/* $TMPDIR/etc/zededa/
-cp -p scripts/*.sh $TMPDIR/bin/zededa/
-cp -p bin/$TYPE/* $TMPDIR/bin/zededa/
+# Setup for untaring in /opt
+mkdir -p $TMPDIR/zededa/etc $TMPDIR/zededa/bin
+cp -p README $TMPDIR/zededa/bin/
+cp -p etc/* $TMPDIR/zededa/etc/
+cp -p scripts/*.sh $TMPDIR/zededa/bin/
+cp -p bin/$TYPE/* $TMPDIR/zededa/bin/
 (cd $TMPDIR; tar -cf $DIR/go-provision.$TYPE.tar.gz .)
 rm -rf $TMPDIR
 
 TYPE=linux_x86_64
 rm -rf $TMPDIR
-mkdir -p $TMPDIR/etc/zededa $TMPDIR/bin/zededa
-cp -p README $TMPDIR/bin/zededa/
-cp -p etc/* $TMPDIR/etc/zededa/
-cp -p scripts/*.sh $TMPDIR/bin/zededa/
-cp -p bin/$TYPE/* $TMPDIR/bin/zededa/
+# Setup for untaring in /opt
+mkdir -p $TMPDIR/zededa/etc $TMPDIR/zededa/bin
+cp -p README $TMPDIR/zededa/bin/
+cp -p etc/* $TMPDIR/zededa/etc/
+cp -p scripts/*.sh $TMPDIR/zededa/bin/
+cp -p bin/$TYPE/* $TMPDIR/zededa/bin/
 (cd $TMPDIR; tar -cf $DIR/go-provision.$TYPE.tar.gz .)
 rm -rf $TMPDIR
 

@@ -59,7 +59,7 @@ dhcp-range=172.27.0.0,static,255.255.0.0,infinite
 // Would be more polite to return an error then to Fatal
 func createDnsmasqOverlayConfiglet(cfgPathname string, olIfname string,
      olAddr1 string, olAddr2 string, olMac string, hostsDir string,
-     displayName string) {
+     hostName string) {
 	fmt.Printf("createDnsmasqOverlayConfiglen: %s\n", olIfname)
 	file, err := os.Create(cfgPathname)
 	if err != nil {
@@ -71,17 +71,15 @@ func createDnsmasqOverlayConfiglet(cfgPathname string, olIfname string,
 		olIfname))
 	file.WriteString(fmt.Sprintf("interface=%s\n", olIfname))
 	file.WriteString(fmt.Sprintf("listen-address=%s\n", olAddr1))
-	// XXX hostname should be uuid instead of displayname?
-	// Doesn't matter for app EID. dhcp client doesn't set hostname
 	file.WriteString(fmt.Sprintf("dhcp-host=%s,[%s],%s\n",
-		olMac, olAddr2, displayName))
+		olMac, olAddr2, hostName))
 	file.WriteString(fmt.Sprintf("hostsdir=%s\n", hostsDir))
 }
 
 // Create the dnsmasq configuration for the the underlay interface
 // Would be more polite to return an error then to Fatal
 func createDnsmasqUnderlayConfiglet(cfgPathname string, ulIfname string,
-     ulAddr1 string, ulAddr2 string, ulMac string, displayName string) {
+     ulAddr1 string, ulAddr2 string, ulMac string, hostName string) {
 	fmt.Printf("createDnsmasqUnderlayConfiglen: %s\n", ulIfname)
 	file, err := os.Create(cfgPathname)
 	if err != nil {
@@ -93,11 +91,8 @@ func createDnsmasqUnderlayConfiglet(cfgPathname string, ulIfname string,
 		ulIfname))
 	file.WriteString(fmt.Sprintf("interface=%s\n", ulIfname))
 	file.WriteString(fmt.Sprintf("listen-address=%s\n", ulAddr1))
-	// XXX can add ,hostname after the IP address
-	// XXX hostname should be uuid instead of displayname?
-	// Doesn't matter for app EID. dhcp client doesn't set hostname
 	file.WriteString(fmt.Sprintf("dhcp-host=%s,id:*,%s,%s\n",
-		ulMac, ulAddr2, displayName))
+		ulMac, ulAddr2, hostName))
 }
 
 func deleteDnsmasqConfiglet(cfgPathname string) {

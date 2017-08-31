@@ -56,9 +56,7 @@ type StorageConfig struct {
 	DownloadURL	string	// XXX is there a more specific type?
 	MaxSize		uint	// In kbytes
 	// XXX Add SignatureInfo for the sha256. Verifier should check.
-	// XXX Algorith agility? Alg vs. just ImageSha256?
-	// DigestAlg	string	// XXX is there a specific type for sha256 etc?
-	// Digest	string
+	SignatureInfo   SignatureInfo
 	ImageSha256	string	// sha256 of immutable image
 	ReadOnly	bool
 	Preserve	bool	// If set a rw disk will be preserved across
@@ -77,8 +75,9 @@ type StorageStatus struct {
 	ErrorTime	time.Time
 }
 
-// XXX Should we allow an arbitrary chain of certs?
+// The Intermediate can be a byte sequence of PEM certs
 type SignatureInfo struct {
-	IntermediateCertPem	[]byte
+	IntermediateCertsPem	[]byte
 	SignerCertPem		[]byte
+	Signature		[]byte
 }

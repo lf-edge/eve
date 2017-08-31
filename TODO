@@ -1,13 +1,27 @@
-TODO move device-steps to /opt
-TODO lisp wait for stopped
-TODO lisp cd in STOP-LISP
-TODO lisp not picking up packets until manual restart
+TODO add device mapping to support gpiotoled.
 
-TODO radvd set mtu to 1280
+TODO device-steps.sh - mode (from file or arg) to only run zedrouter for ctrl01?
+     Check we can create dbo1x0.
+     Also move ctrl01's code to /opt
+     
+TODO wait - introduce second layer of interfaces to remove duplicate code
 
+DONE zedrouter/radvd mtu 1280
+	AdvLinkMTU  1280     
+DONE zedrouter/radvd route for fd00::/8 and lower preference
+     route fd00::/8 { xxx };
+DONE set mtu 1280 on dbo1x0
+DONE rc.local /opt
+
+DONE move device-steps to /opt
+DONE lisp wait for stopped
+DONE lisp cd in STOP-LISP
+DONE lisp not picking up packets until manual restart
+    added wait time
+    
 TODO verify signatures on image; root of trust?
 
-TODO remove local names from dnsmasq: have
+XXX test TODO remove local names from dnsmasq: have
 nordmark@ubuntu:~$ ping zedtest4
 PING zedtest4 (172.27.2.2) 56(84) bytes of data.
 XXX No option to dnsmasq to skip DHCP entries
@@ -68,7 +82,7 @@ NOTE:
 ubuntu guest and zedrouter assumes bu is first in list of networks - becomes eth0
 
 TODO zedrouter:
-TODO move dnsmasq and radvd from /etc to /var/run/zedrouter/
+DONE move dnsmasq and radvd from /etc to /var/run/zedrouter/
 TODO create domain name ipsets on the fly. Easy in handleCreate
    Requires some care in handleModify
 TODO handleModify's update to ACLs assumes there is no DROP rules since does inserts new rules up front.

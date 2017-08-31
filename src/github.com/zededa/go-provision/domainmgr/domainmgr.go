@@ -427,9 +427,13 @@ func configToStatus(config types.DomainConfig, status *types.DomainStatus) error
 			return err
 		}
 		if len(locations) != 1 {
-			log.Printf("Multiple files in %s\n",
-				locationDir)
+			log.Printf("Multiple files in %s\n", locationDir)
 			return errors.New(fmt.Sprintf("Multiple files in %s\n",
+				locationDir))
+		}
+		if len(locations) == 0 {
+			log.Printf("No files in %s\n", locationDir)
+			return errors.New(fmt.Sprintf("No files in %s\n",
 				locationDir))
 		}
 		location := locationDir + "/" + locations[0].Name()

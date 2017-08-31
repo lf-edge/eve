@@ -24,13 +24,13 @@ import (
 	"strconv"
 	"strings"
 )
+var runDirname = "/var/run/zedrouter"
 
 func main() {
 	log.Printf("Starting zedrouter\n")
 
 	// Keeping status in /var/run to be clean after a crash/reboot
 	baseDirname := "/var/tmp/zedrouter"
-	runDirname := "/var/run/zedrouter"
 	configDirname := baseDirname + "/config"
 	statusDirname := runDirname + "/status"
 
@@ -66,9 +66,6 @@ func main() {
 
 	fileChanges := make(chan string)
 	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
-	// XXX can we feed in a "L" change when LISP needs to be restarted
-	// to avoid multiple restarts when we do the initial ReadDir of
-	// of the application configs? Better to remove the raw lisp iptable
 	for {
 		change := <-fileChanges
 		parts := strings.Split(change, " ")
@@ -361,6 +358,12 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 			fmt.Printf("LinkAdd on %s failed: %s\n", olIfname, err)
 		}
 
+		// ip link set ${olIfname} mtu 1280
+		if err := netlink.LinkSetMTU(oLink, 1280); err != nil {
+			fmt.Printf("LinkSetMTU on %s failed: %s\n",
+				olIfname, err)
+		}
+		
 		//    ip link set ${olIfname} up
 		if err := netlink.LinkSetUp(oLink); err != nil {
 			fmt.Printf("LinkSetUp on %s failed: %s\n",
@@ -412,15 +415,12 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		}		
 
 		// XXX needed fix in library for Src to work
-		// XXX do we need src when using dbo1x0? Route is out that
-		// interface. CHECK
 		// /home/nordmark/gocode/src/github.com/vishvananda/netlink/route_linux.go
 		// Replaced RTA_PREFSRC with RTA_SRC
-		// XXX is this working? Don't see SRC in the added route on bobo
-		// nor hikey
+		// XXX do we need src when using dbo1x0? Route is out that
+		// interface. CHECK
 		rt := netlink.Route{Dst: ipnet, LinkIndex: index,
 			Gw: via, Src: EID}
-		// XXX hikey ended up with a route without the src
 		// Could we have an issue with DAD delay?
 		if err := netlink.RouteAdd(&rt); err != nil {
 			fmt.Printf("RouteAdd fd00::/8 failed: %s\n", err)
@@ -537,7 +537,7 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 
 		// Write radvd configlet; start radvd
 		cfgFilename := "radvd." + olIfname + ".conf"
-		cfgPathname := "/etc/" + cfgFilename
+		cfgPathname := runDirname + cfgFilename
 
 		//    Start clean; kill just in case
 		//    pkill -u radvd -f radvd.${OLIFNAME}.conf
@@ -564,10 +564,11 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		
 		// Start clean
 		cfgFilename = "dnsmasq." + olIfname + ".conf"
-		cfgPathname = "/etc/" + cfgFilename
+		cfgPathname = runDirname + cfgFilename
 		stopDnsmasq(cfgFilename, false)
 		createDnsmasqOverlayConfiglet(cfgPathname, olIfname, olAddr1,
-			EID.String(), olMac, hostsDirpath, config.DisplayName)
+			EID.String(), olMac, hostsDirpath,
+			config.UUIDandVersion.UUID.String())
 		startDnsmasq(cfgPathname)
 
 		// Create LISP configlets for IID and EID/signature		
@@ -638,11 +639,11 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 
 		// Start clean
 		cfgFilename := "dnsmasq." + ulIfname + ".conf"
-		cfgPathname := "/etc/" + cfgFilename
+		cfgPathname := runDirname + cfgFilename
 		stopDnsmasq(cfgFilename, false)
 
 		createDnsmasqUnderlayConfiglet(cfgPathname, ulIfname, ulAddr1,
-			ulAddr2, ulMac, config.DisplayName)
+			ulAddr2, ulMac,	config.UUIDandVersion.UUID.String())
 		startDnsmasq(cfgPathname)
 
 		// Add bridge parameters for Xen to Status
@@ -884,13 +885,13 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 
 			// radvd cleanup
 			cfgFilename := "radvd." + olIfname + ".conf"
-			cfgPathname := "/etc/" + cfgFilename
+			cfgPathname := runDirname + cfgFilename
 			stopRadvd(cfgFilename, true)
 			deleteRadvdConfiglet(cfgPathname)
 
 			// dnsmasgq cleanup
 			cfgFilename = "dnsmasq." + olIfname + ".conf"
-			cfgPathname = "/etc/" + cfgFilename
+			cfgPathname = runDirname + cfgFilename
 			stopDnsmasq(cfgFilename, true)
 			deleteDnsmasqConfiglet(cfgPathname)
 			
@@ -936,7 +937,7 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 
 			// dnsmasgq cleanup
 			cfgFilename := "dnsmasq." + ulIfname + ".conf"
-			cfgPathname := "/etc/" + cfgFilename
+			cfgPathname := runDirname + cfgFilename
 			stopDnsmasq(cfgFilename, true)
 			deleteDnsmasqConfiglet(cfgPathname)
 
