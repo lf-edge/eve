@@ -284,6 +284,7 @@ fi
 memory=`awk '/MemTotal/ {print $2}' /proc/meminfo`
 storage=`df -kl --output=size / | tail -n +2| awk '{print $1}'`
 cpus=`nproc --all`
+# Add AdditionalInfoDevice to this
 cat >$ETCDIR/hwstatus.json <<EOF
 {
 	"Machine": "$machine",

@@ -51,13 +51,17 @@ lisp map-server {
 }
 `
 
-// Need to fill in (signature, IID, EID, IID, UplinkIfname, olIfname, IID)
+// Need to fill in (signature, additional, IID, EID, UplinkIfname, olIfname, IID)
 // Use this for the Mgmt IID/EID
-// XXX need to be able to set the username dummy? not needed for demo
 const lispEIDtemplateMgmt = `
 lisp json {
     json-name = signature
     json-string = { "signature" : "%s" }
+}
+
+lisp json {
+    json-name = additional-info
+    json-string = %s
 }
 
 lisp database-mapping {
@@ -65,15 +69,15 @@ lisp database-mapping {
         instance-id = %d
         eid-prefix = %s/128
     }
-    prefix {
-        instance-id = %d
-        eid-prefix = 'dummy@zededa.com'
-    }
     rloc {
         interface = %s
     }
     rloc {
         json-name = signature
+	priority = 255
+    }
+    rloc {
+        json-name = additional-info
 	priority = 255
     }
 }
@@ -84,13 +88,18 @@ lisp interface {
 }
 `
 
-// Need to fill in (tag, signature, IID, EID, IID, IID, IID, UplinkIfname, tag,
-// olifname, olifname, IID)
+// Need to fill in (tag, signature, tag, additional, IID, EID, IID,
+// UplinkIfname, tag, tag, olifname, olifname, IID)
 // Use this for the application EIDs
 const lispEIDtemplate = `
 lisp json {
     json-name = signature-%s
     json-string = { "signature" : "%s" }
+}
+
+lisp json {
+    json-name = additional-info-%s
+    json-string = %s
 }
 
 lisp database-mapping {
@@ -99,16 +108,15 @@ lisp database-mapping {
         eid-prefix = %s/128
 	ms-name = ms-%d
     }
-    prefix {
-        instance-id = %d
-        eid-prefix = 'dummy@zededa.com'
-        ms-name = ms-%d
-    }
     rloc {
         interface = %s
     }
     rloc {
         json-name = signature-%s
+	priority = 255
+    }
+    rloc {
+        json-name = additional-info-%s
 	priority = 255
     }
 }
@@ -134,10 +142,10 @@ const StopCmd = "/opt/zededa/lisp/STOP-LISP"
 // Would be more polite to return an error then to Fatal
 func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	EID net.IP, lispSignature string, upLinkIfname string,
-	tag string, olIfname string) {
-	fmt.Printf("createLispConfiglet: %s %v %d %s %s %s %s %s\n",
+	tag string, olIfname string, additionalInfo string) {
+	fmt.Printf("createLispConfiglet: %s %v %d %s %s %s %s %s %s\n",
 		lispRunDirname, isMgmt, IID, EID, lispSignature, upLinkIfname,
-		tag, olIfname)
+		tag, olIfname, additionalInfo)
 	cfgPathnameIID := lispRunDirname + "/" +
 		strconv.FormatUint(uint64(IID), 10)
 	file1, err := os.Create(cfgPathnameIID)
@@ -162,26 +170,26 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	if isMgmt {
 		file1.WriteString(fmt.Sprintf(lispIIDtemplateMgmt, IID, IID))
 		file2.WriteString(fmt.Sprintf(lispEIDtemplateMgmt,
-			lispSignature, IID, EID, IID, upLinkIfname, olIfname,
-			IID))
+			lispSignature, additionalInfo, IID, EID, 
+			upLinkIfname, olIfname,	IID))
 	} else {
 		file1.WriteString(fmt.Sprintf(lispIIDtemplate,
 			IID, IID, IID, IID))
 		file2.WriteString(fmt.Sprintf(lispEIDtemplate,
-			tag, lispSignature, IID, EID, IID, IID, IID,
-			upLinkIfname, tag, olIfname, olIfname, IID))
+			tag, lispSignature, tag, additionalInfo, IID, EID, IID,
+			upLinkIfname, tag, tag, olIfname, olIfname, IID))
 	}
 	updateLisp(lispRunDirname, upLinkIfname)
 }
 
 func updateLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	EID net.IP, lispSignature string, upLinkIfname string,
-	tag string, olIfname string) {
-	fmt.Printf("updateLispConfiglet: %s %v %d %s %s %s %s %s\n",
+	tag string, olIfname string, additionalInfo string) {
+	fmt.Printf("updateLispConfiglet: %s %v %d %s %s %s %s %s %s\n",
 		lispRunDirname, isMgmt, IID, EID, lispSignature, upLinkIfname,
-		tag, olIfname)
+		tag, olIfname, additionalInfo)
 	createLispConfiglet(lispRunDirname, isMgmt, IID, EID, lispSignature,
-		upLinkIfname, tag, olIfname)
+		upLinkIfname, tag, olIfname, additionalInfo)
 }
 
 func deleteLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,

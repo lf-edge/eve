@@ -296,6 +296,11 @@ func writeAppNetworkStatus(status *types.AppNetworkStatus,
 	}
 }
 
+// Track the device information so we can annotate the application EIDs
+var deviceEID net.IP
+var deviceIID uint32
+var additionalInfoDevice *types.AdditionalInfoDevice
+
 func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 	log.Printf("handleCreate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
@@ -414,14 +419,7 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 			fmt.Printf("NeighSet fe80::1 failed: %s\n", err)
 		}		
 
-		// XXX needed fix in library for Src to work
-		// /home/nordmark/gocode/src/github.com/vishvananda/netlink/route_linux.go
-		// Replaced RTA_PREFSRC with RTA_SRC
-		// XXX do we need src when using dbo1x0? Route is out that
-		// interface. CHECK
-		rt := netlink.Route{Dst: ipnet, LinkIndex: index,
-			Gw: via, Src: EID}
-		// Could we have an issue with DAD delay?
+		rt := netlink.Route{Dst: ipnet, LinkIndex: index, Gw: via}
 		if err := netlink.RouteAdd(&rt); err != nil {
 			fmt.Printf("RouteAdd fd00::/8 failed: %s\n", err)
 		}
@@ -444,10 +442,28 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		// Set up ACLs
 		createACLConfiglet(olIfname, true, olConfig.ACLs, 6, "")
 
+		// Save information about zedmanger EID
+		deviceEID = EID
+		deviceIID = olConfig.IID
+		additionalInfoDevice = olConfig.AdditionalInfoDevice
+		
+		// Format a json string with any additional info
+		additionalInfo := ""
+		if olConfig.AdditionalInfoDevice != nil {
+			b, err := json.Marshal(olConfig.AdditionalInfoDevice)
+			if err != nil {
+				log.Fatal(err, "json Marshal AdditionalInfoDevice")
+			}
+			additionalInfo = string(b)
+			fmt.Printf("Generated additional info device %s\n",
+				additionalInfo)
+		}
+		
 		// Create LISP configlets for IID and EID/signature		
 		createLispConfiglet(lispRunDirname, true, olConfig.IID,
 			olConfig.EID, olConfig.LispSignature,
-			globalConfig.Uplink, olIfname, olIfname)
+			globalConfig.Uplink, olIfname, olIfname,
+			additionalInfo)
 		status.OverlayNetworkList = make([]types.OverlayNetworkStatus,
 			len(config.OverlayNetworkList))
 		for i, _ := range config.OverlayNetworkList {
@@ -571,11 +587,29 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 			config.UUIDandVersion.UUID.String())
 		startDnsmasq(cfgPathname)
 
+		addInfoApp := types.AdditionalInfoApp {
+			DeviceEID: deviceEID,
+			DeviceIID: deviceIID,
+			DisplayName: config.DisplayName,
+		}
+		if additionalInfoDevice != nil {
+			addInfoApp.UnderlayIP = additionalInfoDevice.UnderlayIP
+			addInfoApp.Hostname = additionalInfoDevice.Hostname
+		}
+		b, err := json.Marshal(addInfoApp)
+		if err != nil {
+			log.Fatal(err, "json Marshal AdditionalInfoApp")
+		}
+		additionalInfo := string(b)
+		fmt.Printf("Generated additional info app %s\n",
+			additionalInfo)
+
 		// Create LISP configlets for IID and EID/signature		
 		createLispConfiglet(lispRunDirname, false, olConfig.IID,
 			olConfig.EID, olConfig.LispSignature,
-			globalConfig.Uplink, olIfname, olIfname)
-
+			globalConfig.Uplink, olIfname, olIfname,
+			additionalInfo)
+		
 		// Add bridge parameters for Xen to Status
 		olStatus := &status.OverlayNetworkList[olNum-1]
 		olStatus.Bridge = olIfname
@@ -659,6 +693,8 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 }
 
 // Note that modify will not touch the EID; just ACLs and NameToEidList
+// XXX should we check that nothing else has changed?
+// XXX If so flag other changes as errors; would need lastError in status.
 func handleModify(statusFilename string, config types.AppNetworkConfig,
 	status types.AppNetworkStatus) {
 	log.Printf("handleModify(%v) for %s\n",
@@ -679,9 +715,10 @@ func handleModify(statusFilename string, config types.AppNetworkConfig,
 			config.UUIDandVersion)
 		return
 	}
-	// XXX should we allow the addition of interfaces?
-	// XXX can we allow the deletion (keep bridge around but disable intf?)
-	// Inifinite lease time means painful unless domU sees down...
+	// XXX We could should we allow the addition of interfaces
+	// if the domU would find out through some hotplug event.
+	// But deletion is hard.
+	// For now don't allow any adds or deletes.
 	if len(config.OverlayNetworkList) != status.OlNum {
 		log.Println("Unsupported: Changed number of overlays for ",
 			config.UUIDandVersion)
@@ -698,7 +735,6 @@ func handleModify(statusFilename string, config types.AppNetworkConfig,
 	writeAppNetworkStatus(&status, statusFilename)
 
 	if config.IsZedmanager {
-		// XXX Which things can we update? NameToEid? ACLs?
 		olConfig := config.OverlayNetworkList[0]
 		olStatus := status.OverlayNetworkList[0]
 		olNum := 1
@@ -721,7 +757,6 @@ func handleModify(statusFilename string, config types.AppNetworkConfig,
 	}
 	
 	// Look for ACL and NametoEidList changes in overlay
-	// XXX flag others as errors; need lastError in status?
 	for i, olConfig := range config.OverlayNetworkList {
 		olNum := i + 1
 		fmt.Printf("handleModify olNum %d\n", olNum)
@@ -749,12 +784,32 @@ func handleModify(statusFilename string, config types.AppNetworkConfig,
 		// XXX get a return value from updateAclConfiglet to indicate
 		// whether there were such changes?
 		
+		// Format a json string with any additional info
+		addInfoApp := types.AdditionalInfoApp {
+			DisplayName: config.DisplayName,
+			DeviceEID: deviceEID,
+			DeviceIID: deviceIID,
+		}
+		if additionalInfoDevice != nil {
+			addInfoApp.UnderlayIP = additionalInfoDevice.UnderlayIP
+			addInfoApp.Hostname = additionalInfoDevice.Hostname
+		}
+		b, err := json.Marshal(addInfoApp)
+		if err != nil {
+			log.Fatal(err, "json Marshal AdditionalInfoApp")
+		}
+		additionalInfo := string(b)
+		fmt.Printf("Generated additional info app %s\n",
+			additionalInfo)
+
 		// Update any signature changes
 		// XXX should we check that EID didn't change?
+
 		// Create LISP configlets for IID and EID/signature		
 		updateLispConfiglet(lispRunDirname, false, olConfig.IID,
 			olConfig.EID, olConfig.LispSignature,
-			globalConfig.Uplink, olIfname, olIfname)
+			globalConfig.Uplink, olIfname, olIfname,
+			additionalInfo)
 
 	}
 	// Look for ACL changes in underlay
@@ -806,6 +861,11 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 			log.Println("Malformed IsZedmanager status; ignored")
 			return
 		}
+		// Remove global state for device
+		deviceEID = net.IP{}
+		deviceIID = 0
+		additionalInfoDevice = nil
+		
 		olNum := 1
 		olStatus := &status.OverlayNetworkList[0]
 		olIfname := "dbo" + strconv.Itoa(olNum) + "x" +

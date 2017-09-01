@@ -17,6 +17,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"github.com/RevH/ipinfo"
 	"github.com/satori/go.uuid"
 	"github.com/zededa/go-provision/types"
 	"golang.org/x/crypto/ocsp"
@@ -395,7 +396,22 @@ func main() {
 			UUID:    devUUID,
 			Version: "0",
 		}
-		// XXX displayname? Using fixed "zedmanager" string
+		// Determine location information and use as AdditionalInfo
+		// XXX later just get ClientAddr's IP address and
+		// have zedcloud do any geoloc etc lookups
+		var addInfoDevice *types.AdditionalInfoDevice
+		if myIP, err := ipinfo.MyIP(); err == nil {
+			addInfo := types.AdditionalInfoDevice{
+				UnderlayIP: myIP.IP,
+				Hostname: myIP.Hostname,
+				City: myIP.City,
+				Region: myIP.Region,
+				Country: myIP.Country,
+				Loc: myIP.Loc,
+				Org: myIP.Org,
+			}
+			addInfoDevice = &addInfo
+		}
 		config := types.AppNetworkConfig{
 			UUIDandVersion: uv,
 			DisplayName:    "zedmanager",
@@ -406,6 +422,7 @@ func main() {
 		olconf[0].IID = device.LispInstance
 		olconf[0].EID = device.EID
 		olconf[0].LispSignature = signature
+		olconf[0].AdditionalInfoDevice = addInfoDevice
 		olconf[0].NameToEidList = device.ZedServers.NameToEidList
 		acl := make([]types.ACE, 1)
 		olconf[0].ACLs = acl

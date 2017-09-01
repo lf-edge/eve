@@ -55,6 +55,8 @@ type OverlayNetworkConfig struct {
 	// Any additional LISP parameters?
 	ACLs		[]ACE
 	NameToEidList	[]NameToEid	// Used to populate DNS for the overlay
+	// Optional additional informat
+	AdditionalInfoDevice	*AdditionalInfoDevice
 }
 
 type OverlayNetworkStatus struct {
@@ -96,4 +98,26 @@ type ACEAction struct {
 	LimitRate	int	// Packets per unit
 	LimitUnit	string	// "s", "m", "h", for second, minute, hour
 	LimitBurst	int	// Packets
+}
+
+// Retrieved from geolocation service for device underlay connectivity
+// XXX separate out lat/long as floats to be able to use GPS?
+// XXX feed back to zedcloud in HwStatus
+type AdditionalInfoDevice struct {
+	UnderlayIP	string	// Underlay address
+	Hostname	string	// From reverse DNS
+	City		string
+	Region		string
+	Country		string
+	Loc		string	// Lat and long as string
+	Org		string	// From AS number
+}
+
+// Tie the Application EID back to the device
+type AdditionalInfoApp struct {
+	DisplayName	string
+	DeviceEID	net.IP
+	DeviceIID	uint32
+	UnderlayIP	string	// Underlay address
+	Hostname	string	// From reverse DNS
 }
