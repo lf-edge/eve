@@ -394,7 +394,7 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 			log.Printf("AddrAdd %s failed: %s\n", EID, err)
 		}
 
-		//    ip route add fd00::/8 via fe80::1 src $eid dev $intf
+		//    ip route add fd00::/8 via fe80::1 dev $intf
 		index := oLink.Attrs().Index
 		_, ipnet, err := net.ParseCIDR("fd00::/8")
 		if err != nil {
@@ -890,7 +890,7 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 			fmt.Printf("AddrDel %s failed: %s\n", EID, err)
 		}
 
-		//    ip route del fd00::/8 via fe80::1 src $eid dev $intf
+		//    ip route del fd00::/8 via fe80::1 dev $intf
 		index := oLink.Attrs().Index
 		_, ipnet, err := net.ParseCIDR("fd00::/8")
 		if err != nil {
@@ -900,8 +900,7 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 		if via == nil {
 			log.Fatal("ParseIP fe80::1 failed: ", err)
 		}
-		rt := netlink.Route{Dst: ipnet, LinkIndex: index,
-			Gw: via, Src: EID}
+		rt := netlink.Route{Dst: ipnet, LinkIndex: index, Gw: via}
 		if err := netlink.RouteDel(&rt); err != nil {
 			fmt.Printf("RouteDel fd00::/8 failed: %s\n", err)
 		}
