@@ -8,6 +8,7 @@ package main
 import (
 	"fmt"
 	"io/ioutil"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -225,17 +226,21 @@ func updateLisp(lispRunDirname string, upLinkIfname string) {
 		log.Println("TempFile ", err)
 		return
 	}
+	defer tmpfile.Close()
 	defer os.Remove(tmpfile.Name())
 
-	content, err := ioutil.ReadFile(baseFilename)
+	fmt.Printf("Copying from %s to %s\n", baseFilename, tmpfile.Name())	
+	s, err := os.Open(baseFilename)
 	if err != nil {
-		log.Println("ReadFile ", baseFilename, err)
+		log.Println("os.Open ", baseFilename, err)
 		return
 	}
-	if _, err := tmpfile.Write(content); err != nil {
-		log.Println("Write ", tmpfile.Name(), err)
+	var cnt int64
+	if cnt, err = io.Copy(tmpfile, s); err != nil {
+		log.Println("io.Copy ", baseFilename, err)
 		return
 	}
+	fmt.Printf("Copied %d bytes from %s\n", cnt, baseFilename)	
 	files, err := ioutil.ReadDir(lispRunDirname)
 	if err != nil {
 		log.Println("ReadDir ", lispRunDirname, err)
@@ -248,20 +253,25 @@ func updateLisp(lispRunDirname string, upLinkIfname string) {
 			eidCount += 1
 		}
 		filename := lispRunDirname + "/" + file.Name()
-		content, err := ioutil.ReadFile(filename)
+		fmt.Printf("Copying from %s to %s\n", filename, tmpfile.Name())	
+		s, err := os.Open(filename)
 		if err != nil {
-			log.Println("ReadFile ", filename, err)
+			log.Println("os.Open ", filename, err)
 			return
 		}
-		if _, err := tmpfile.Write(content); err != nil {
-			log.Println("Write ", tmpfile.Name(), err)
+		if cnt, err = io.Copy(tmpfile, s); err != nil {
+			log.Println("io.Copy ", filename, err)
 			return
 		}
+		fmt.Printf("Copied %d bytes from %s\n", cnt, filename)	
 	}
 	if err := tmpfile.Close(); err != nil {
 		log.Println("Close ", tmpfile.Name(), err)
 		return
 	}
+	// This seems safer; make sure it is stopped before rewriting file
+	stopLisp(lispRunDirname)
+	
 	if err := os.Rename(tmpfile.Name(), destFilename); err != nil {
 		log.Println("Rename ", tmpfile.Name(), destFilename, err)
 		return
