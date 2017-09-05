@@ -7,8 +7,8 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
 	"io"
+	"io/ioutil"
 	"log"
 	"net"
 	"os"
@@ -171,8 +171,8 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	if isMgmt {
 		file1.WriteString(fmt.Sprintf(lispIIDtemplateMgmt, IID, IID))
 		file2.WriteString(fmt.Sprintf(lispEIDtemplateMgmt,
-			lispSignature, additionalInfo, IID, EID, 
-			upLinkIfname, olIfname,	IID))
+			lispSignature, additionalInfo, IID, EID,
+			upLinkIfname, olIfname, IID))
 	} else {
 		file1.WriteString(fmt.Sprintf(lispIIDtemplate,
 			IID, IID, IID, IID))
@@ -229,7 +229,7 @@ func updateLisp(lispRunDirname string, upLinkIfname string) {
 	defer tmpfile.Close()
 	defer os.Remove(tmpfile.Name())
 
-	fmt.Printf("Copying from %s to %s\n", baseFilename, tmpfile.Name())	
+	fmt.Printf("Copying from %s to %s\n", baseFilename, tmpfile.Name())
 	s, err := os.Open(baseFilename)
 	if err != nil {
 		log.Println("os.Open ", baseFilename, err)
@@ -240,7 +240,7 @@ func updateLisp(lispRunDirname string, upLinkIfname string) {
 		log.Println("io.Copy ", baseFilename, err)
 		return
 	}
-	fmt.Printf("Copied %d bytes from %s\n", cnt, baseFilename)	
+	fmt.Printf("Copied %d bytes from %s\n", cnt, baseFilename)
 	files, err := ioutil.ReadDir(lispRunDirname)
 	if err != nil {
 		log.Println("ReadDir ", lispRunDirname, err)
@@ -253,7 +253,7 @@ func updateLisp(lispRunDirname string, upLinkIfname string) {
 			eidCount += 1
 		}
 		filename := lispRunDirname + "/" + file.Name()
-		fmt.Printf("Copying from %s to %s\n", filename, tmpfile.Name())	
+		fmt.Printf("Copying from %s to %s\n", filename, tmpfile.Name())
 		s, err := os.Open(filename)
 		if err != nil {
 			log.Println("os.Open ", filename, err)
@@ -263,7 +263,7 @@ func updateLisp(lispRunDirname string, upLinkIfname string) {
 			log.Println("io.Copy ", filename, err)
 			return
 		}
-		fmt.Printf("Copied %d bytes from %s\n", cnt, filename)	
+		fmt.Printf("Copied %d bytes from %s\n", cnt, filename)
 	}
 	if err := tmpfile.Close(); err != nil {
 		log.Println("Close ", tmpfile.Name(), err)
@@ -271,7 +271,7 @@ func updateLisp(lispRunDirname string, upLinkIfname string) {
 	}
 	// This seems safer; make sure it is stopped before rewriting file
 	stopLisp(lispRunDirname)
-	
+
 	if err := os.Rename(tmpfile.Name(), destFilename); err != nil {
 		log.Println("Rename ", tmpfile.Name(), destFilename, err)
 		return

@@ -10,7 +10,7 @@ import (
 	"os/exec"
 )
 
-func iptableCmd(args... string) error {
+func iptableCmd(args ...string) error {
 	cmd := "iptables"
 	_, err := exec.Command(cmd, args...).Output()
 	if err != nil {
@@ -20,7 +20,7 @@ func iptableCmd(args... string) error {
 	return nil
 }
 
-func ip6tableCmd(args... string) error {
+func ip6tableCmd(args ...string) error {
 	cmd := "ip6tables"
 	_, err := exec.Command(cmd, args...).Output()
 	if err != nil {
@@ -48,4 +48,3 @@ func iptablesInit() {
 	ip6tableCmd("-A", "POSTROUTING", "-t", "mangle", "-p", "udp",
 		"-j", "CHECKSUM", "--checksum-fill")
 }
-

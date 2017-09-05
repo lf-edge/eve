@@ -38,7 +38,6 @@ func (bits *Bitmap) Clear(i int)      { bits[i/8] &^= 1 << uint(7-i%8) }
 
 var AllocReservedAppNums Bitmap
 
-
 // Read the existing appNums out of statusDir
 // Store in reserved map since we will be asked to allocate them later.
 // Set bit in bitmap.
@@ -77,7 +76,7 @@ func appNumAllocatorInit(statusDir string, configDir string) {
 		appNum := status.AppNum
 		// If we have a config for the UUID we should mark it as
 		// allocated; otherwise mark it as reserved.
-		if _, err := os.Stat(configDir +"/" + fileName); err != nil {
+		if _, err := os.Stat(configDir + "/" + fileName); err != nil {
 			fmt.Printf("Reserving appNum %d for %s\n", appNum, uuid)
 			ReservedAppNum[uuid] = appNum
 		} else {
@@ -94,7 +93,7 @@ func appNumAllocatorInit(statusDir string, configDir string) {
 }
 
 func appNumAllocate(uuid uuid.UUID, isZedmanager bool) int {
-	// Do we already have a number?     
+	// Do we already have a number?
 	appNum, ok := AllocatedAppNum[uuid]
 	if ok {
 		fmt.Printf("Found allocated appNum %d for %s\n", appNum, uuid)
@@ -153,7 +152,7 @@ func appNumAllocate(uuid uuid.UUID, isZedmanager bool) int {
 }
 
 func appNumFree(uuid uuid.UUID) {
-	// Check that number exists in the allocated numbers     
+	// Check that number exists in the allocated numbers
 	appNum, ok := AllocatedAppNum[uuid]
 	reserved := false
 	if !ok {
@@ -165,14 +164,14 @@ func appNumFree(uuid uuid.UUID) {
 	}
 	if !AllocReservedAppNums.IsSet(appNum) {
 		panic(fmt.Sprintf("AllocReservedAppNums not set for %d\n",
-		appNum))
+			appNum))
 	}
 	// Need to handle a free of a reserved number in which case
 	// we have nothing to do since it remains reserved.
 	if reserved {
 		return
 	}
-	
+
 	_, ok = ReservedAppNum[uuid]
 	if ok {
 		panic(fmt.Sprintf("appNumFree: already in reserved %s\n", uuid))
