@@ -9,10 +9,10 @@
 package main
 
 import (
-	"crypto/sha256"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
@@ -34,13 +34,13 @@ import (
 
 func main() {
 	log.Printf("Starting identitymgr\n")
-	
+
 	// Keeping status in /var/run to be clean after a crash/reboot
 	baseDirname := "/var/tmp/identitymgr"
 	runDirname := "/var/run/identitymgr"
 	configDirname := baseDirname + "/config"
 	statusDirname := runDirname + "/status"
-	
+
 	if _, err := os.Stat(baseDirname); err != nil {
 		if err := os.Mkdir(baseDirname, 0700); err != nil {
 			log.Fatal(err)
@@ -53,7 +53,7 @@ func main() {
 	}
 	if _, err := os.Stat(runDirname); err != nil {
 		if err := os.Mkdir(runDirname, 0700); err != nil {
-			log.Fatal( err)
+			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(statusDirname); err != nil {
@@ -172,7 +172,7 @@ func main() {
 			// XXX set something to rescan?
 			continue
 		}
-			
+
 		statusName := statusDirname + "/" + fileName
 		handleModify(statusName, config, status)
 	}
@@ -201,12 +201,12 @@ func handleCreate(statusFilename string, config types.EIDConfig) {
 		UUIDandVersion: config.UUIDandVersion,
 		DisplayName:    config.DisplayName,
 		EIDStatusDetails: types.EIDStatusDetails{
-			IID:		config.IID,
-			EIDAllocation:	config.EIDAllocation,
-			PendingAdd:     true,
-			EID:		config.EID,
-			LispSignature:	config.LispSignature,
-			PemCert:	config.PemCert,
+			IID:           config.IID,
+			EIDAllocation: config.EIDAllocation,
+			PendingAdd:    true,
+			EID:           config.EID,
+			LispSignature: config.LispSignature,
+			PemCert:       config.PemCert,
 		},
 	}
 	// Default is 0xfd
@@ -229,7 +229,7 @@ func handleCreate(statusFilename string, config types.EIDConfig) {
 		}
 		// Give it a 20 year lifetime. XXX allow cloud to set lifetime?
 		notBefore := time.Now()
-		notAfter := notBefore.AddDate(20,0,0)
+		notAfter := notBefore.AddDate(20, 0, 0)
 		fmt.Printf("notAfter %v\n", notAfter)
 
 		// XXX allow cloud to set curve?
@@ -242,15 +242,15 @@ func handleCreate(statusFilename string, config types.EIDConfig) {
 		ct := x509.Certificate{
 			SerialNumber: serial,
 			Subject: pkix.Name{
-				Country: []string{"US"},
-				Province: []string{"CA"},
-				Locality: []string{"Santa Clara"},
+				Country:      []string{"US"},
+				Province:     []string{"CA"},
+				Locality:     []string{"Santa Clara"},
 				Organization: []string{"Zededa, Inc"},
-				CommonName: "Application Instance",
+				CommonName:   "Application Instance",
 			},
 			NotBefore: notBefore,
 			NotAfter:  notAfter,
-			IsCA: true,
+			IsCA:      true,
 			// XXX template.KeyUsage: x509.KeyUsageCertSign,
 			BasicConstraintsValid: true,
 		}
@@ -272,7 +272,7 @@ func handleCreate(statusFilename string, config types.EIDConfig) {
 			// XXX any error cleanup?
 			return
 		}
-		
+
 		eid := generateEID(config.IID, config.AllocationPrefix,
 			publicDer)
 		fmt.Printf("EID: (len %d) %s\n", len(eid), eid)
@@ -339,7 +339,7 @@ func extractPublicPem(pk interface{}) ([]byte, []byte, error) {
 	fmt.Printf("public %s\n", string(publicPem))
 	return publicPem, publicDer, nil
 }
-	
+
 // Generate the EID
 func generateEID(iid uint32, allocationPrefix []byte, publicDer []byte) net.IP {
 	iidData := make([]byte, 4)
@@ -381,7 +381,7 @@ func generateLispSignature(eid net.IP, iid uint32,
 		return "", err
 	}
 	fmt.Printf("r.bytes %d s.bytes %d\n", len(r.Bytes()),
-	len(s.Bytes()))
+		len(s.Bytes()))
 	sigres := r.Bytes()
 	sigres = append(sigres, s.Bytes()...)
 	fmt.Printf("sigres (len %d): % x\n", len(sigres), sigres)
@@ -442,6 +442,3 @@ func handleDelete(statusFilename string, status types.EIDStatus) {
 	}
 	log.Printf("handleDelete done for %s\n", status.DisplayName)
 }
-
-
-
