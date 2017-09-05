@@ -35,7 +35,7 @@ var imgCatalogDirname string
 
 func main() {
 	log.Printf("Starting verifier\n")
-	
+
 	// Keeping status in /var/run to be clean after a crash/reboot
 	baseDirname := "/var/tmp/verifier"
 	runDirname := "/var/run/verifier"
@@ -45,7 +45,7 @@ func main() {
 	pendingDirname := imgCatalogDirname + "/pending"
 	verifierDirname := imgCatalogDirname + "/verifier"
 	verifiedDirname := imgCatalogDirname + "/verified"
-	
+
 	if _, err := os.Stat(baseDirname); err != nil {
 		if err := os.Mkdir(baseDirname, 0700); err != nil {
 			log.Fatal(err)
@@ -64,7 +64,7 @@ func main() {
 	if err := os.RemoveAll(statusDirname); err != nil {
 		log.Fatal(err)
 	}
-	
+
 	if _, err := os.Stat(statusDirname); err != nil {
 		if err := os.Mkdir(statusDirname, 0700); err != nil {
 			log.Fatal(err)
@@ -75,7 +75,7 @@ func main() {
 			log.Fatal(err)
 		}
 	}
-	
+
 	if _, err := os.Stat(pendingDirname); err != nil {
 		if err := os.Mkdir(pendingDirname, 0700); err != nil {
 			log.Fatal(err)
@@ -98,7 +98,7 @@ func main() {
 
 	// Creates statusDir entries for already verified files
 	handleInit(verifiedDirname, statusDirname, "")
-	
+
 	fileChanges := make(chan string)
 	go watch.WatchConfigStatusAllowInitialConfig(configDirname,
 		statusDirname, fileChanges)
@@ -205,7 +205,7 @@ func main() {
 			// XXX set something to rescan?
 			continue
 		}
-			
+
 		statusName := statusDirname + "/" + fileName
 		handleModify(statusName, config, status)
 	}
@@ -273,9 +273,9 @@ func handleCreate(statusFilename string, config types.VerifyImageConfig) {
 	// Move to verifier directory which is RO
 	// XXX should have dom0 do this and/or have RO mounts
 	srcDirname := imgCatalogDirname + "/pending/" + config.ImageSha256
-	srcFilename := srcDirname + "/" + config.Safename	
+	srcFilename := srcDirname + "/" + config.Safename
 	destDirname := imgCatalogDirname + "/verifier/" + config.ImageSha256
-	destFilename := destDirname + "/" + config.Safename	
+	destFilename := destDirname + "/" + config.Safename
 	fmt.Printf("Move from %s to %s\n", srcFilename, destFilename)
 	if _, err := os.Stat(destDirname); err != nil {
 		if err := os.Mkdir(destDirname, 0700); err != nil {
@@ -301,10 +301,27 @@ func handleCreate(statusFilename string, config types.VerifyImageConfig) {
 		status.State = types.INITIAL
 		writeVerifyImageStatus(&status, statusFilename)
 		log.Printf("handleCreate failed for %s\n", config.DownloadURL)
-		return		
+		return
 	}
 	defer f.Close()
 
+	//Read the server certificate from config file
+	//decode and parse it to fetch the public key...
+	serverCertificate, err := config.certificateChain.serverCert
+
+	block, _ := pem.Decode(serverCertificate)
+        if block == nil {
+                panic("failed to decode serverCertificate")
+        }
+        cert, err := x509.ParseCertificate(block.Bytes)
+        if err != nil {
+                panic("failed to parse certificate: " + err.Error())
+        }
+
+	//Read the image signature from the config file...
+	imageSignature := config.imageSignature
+
+	//copmpute sha256 of the image...
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
 		status.LastErr = fmt.Sprintf("%v", err)
@@ -312,15 +329,57 @@ func handleCreate(statusFilename string, config types.VerifyImageConfig) {
 		status.State = types.INITIAL
 		writeVerifyImageStatus(&status, statusFilename)
 		log.Printf("handleCreate failed for %s\n", config.DownloadURL)
-		return		
+		return
 	}
 
-	got := fmt.Sprintf("%x", h.Sum(nil))
-	if got != config.ImageSha256 {
+	switch pub := cert.PublicKey.(type) {
+	case *rsa.PublicKey:
+
+                log.Println("pub is of type RSA:", pub)
+                err = rsa.VerifyPKCS1v15(pub, crypto.SHA256, imageHash, imageSignature)
+                if err != nil {
+                        log.Println("VerifyPKCS1v15 failed... ",err)
+			VerificationFailed (fmt.Sprint(err))
+                        os.Exit(1)
+                } else {
+                        log.Println("VerifyPKCS1v15 successful...")
+                }
+
+        case *dsa.PublicKey:
+
+                log.Println("pub is of type DSA: ",pub)
+
+        case *ecdsa.PublicKey:
+
+                log.Println("pub is of type ecdsa: ",pub)
+                imgSignature, err := base64.StdEncoding.DecodeString(string(imageSignature))
+                if err != nil {
+                        fmt.Println("DecodeString: ", err)
+                }
+                log.Printf("Decoded imgSignature (len %d): % x\n", len(imgSignature), imgSignature)
+                rbytes := imgSignature[0:32]
+                sbytes := imgSignature[32:]
+                log.Printf("Decoded r %d s %d\n", len(rbytes), len(sbytes))
+                r := new(big.Int)
+                s := new(big.Int)
+                r.SetBytes(rbytes)
+                s.SetBytes(sbytes)
+                log.Printf("Decoded r, s: %v, %v\n", r, s)
+		ok := ecdsa.Verify(pub, imageHash, r, s)
+		if !ok {
+			log.Printf("ecdsa.Verify failed")
+			VerificationFailed (fmt.Sprint(ecdsa.Verify failed))
+		}
+		log.Printf("Signature verified\n")
+
+        default:
+                panic("unknown type of public key")
+        }
+
+	func VerificationFailed (err string){
 		fmt.Printf("got      %s\n", got)
 		fmt.Printf("expected %s\n", config.ImageSha256)
-		status.LastErr = fmt.Sprintf("got %s expected %s",
-			got, config.ImageSha256)
+		status.LastErr = err
 		status.LastErrTime = time.Now()
 		status.PendingAdd = false
 		status.State = types.INITIAL
@@ -348,7 +407,7 @@ func handleCreate(statusFilename string, config types.VerifyImageConfig) {
 				config.ImageSha256, location.Name(),
 				config.Safename)
 		}
-		
+
 		if err := os.RemoveAll(finalDirname); err != nil {
 			log.Fatal(err)
 		}
@@ -362,7 +421,7 @@ func handleCreate(statusFilename string, config types.VerifyImageConfig) {
 	if err := os.Chmod(finalDirname, 0500); err != nil {
 		log.Fatal(err)
 	}
-	
+
 
 	status.PendingAdd = false
 	status.State = types.DELIVERED
@@ -387,7 +446,7 @@ func handleModify(statusFilename string, config types.VerifyImageConfig,
 			config.DownloadURL)
 		return
 	}
-	   
+
 	status.PendingModify = true
 	writeVerifyImageStatus(&status, statusFilename)
 	handleDelete(statusFilename, status)
