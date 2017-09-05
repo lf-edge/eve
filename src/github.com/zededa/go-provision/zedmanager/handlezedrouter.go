@@ -19,7 +19,7 @@ import (
 var appNetworkConfig map[string]types.AppNetworkConfig
 
 func MaybeAddAppNetworkConfig(aiConfig types.AppInstanceConfig,
-     aiStatus *types.AppInstanceStatus) {
+	aiStatus *types.AppInstanceStatus) {
 	key := aiConfig.UUIDandVersion.UUID.String()
 	displayName := aiConfig.DisplayName
 	log.Printf("MaybeAddAppNetworkConfig for %s displayName %s\n", key,
@@ -51,7 +51,7 @@ func MaybeAddAppNetworkConfig(aiConfig types.AppInstanceConfig,
 				break
 			}
 			if !reflect.DeepEqual(new.NameToEidList,
-			   old.NameToEidList) {
+				old.NameToEidList) {
 				log.Printf("NameToEidList changed from %v to %v\n",
 					old.NameToEidList, new.NameToEidList)
 				changed = true
@@ -74,8 +74,8 @@ func MaybeAddAppNetworkConfig(aiConfig types.AppInstanceConfig,
 	if changed {
 		nc := types.AppNetworkConfig{
 			UUIDandVersion: aiConfig.UUIDandVersion,
-			DisplayName: aiConfig.DisplayName,
-			IsZedmanager: false,
+			DisplayName:    aiConfig.DisplayName,
+			IsZedmanager:   false,
 		}
 		nc.OverlayNetworkList = make([]types.OverlayNetworkConfig,
 			len(aiStatus.EIDList))
@@ -98,7 +98,7 @@ func MaybeAddAppNetworkConfig(aiConfig types.AppInstanceConfig,
 		configFilename := fmt.Sprintf("%s/%s.json",
 			zedrouterConfigDirname, key)
 		writeAppNetworkConfig(appNetworkConfig[key], configFilename)
-	}	
+	}
 	log.Printf("MaybeAddAppNetworkConfig done for %s\n", key)
 }
 
@@ -141,7 +141,7 @@ func writeAppNetworkConfig(config types.AppNetworkConfig,
 var appNetworkStatus map[string]types.AppNetworkStatus
 
 func handleAppNetworkStatusModify(statusFilename string,
-     statusArg interface{}) {
+	statusArg interface{}) {
 	var status *types.AppNetworkStatus
 
 	switch statusArg.(type) {
@@ -170,7 +170,7 @@ func handleAppNetworkStatusModify(statusFilename string,
 	}
 	appNetworkStatus[key] = *status
 	updateAIStatusUUID(status.UUIDandVersion.UUID.String())
-	
+
 	log.Printf("handleAppNetworkStatusModify done for %s\n",
 		key)
 }

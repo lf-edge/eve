@@ -32,18 +32,18 @@ func AddOrRefcountDownloaderConfig(safename string, sc *types.StorageConfig) {
 	} else {
 		fmt.Printf("downloader config add for %s\n", safename)
 		n := types.DownloaderConfig{
-			Safename:	safename,
-			DownloadURL:	sc.DownloadURL,
-			MaxSize:	sc.MaxSize,
-			ImageSha256:	sc.ImageSha256,
-			RefCount:	1,
+			Safename:    safename,
+			DownloadURL: sc.DownloadURL,
+			MaxSize:     sc.MaxSize,
+			ImageSha256: sc.ImageSha256,
+			RefCount:    1,
 		}
 		downloaderConfig[key] = n
 	}
 	configFilename := fmt.Sprintf("%s/%s.json",
 		downloaderConfigDirname, safename)
 	writeDownloaderConfig(downloaderConfig[key], configFilename)
-	
+
 	log.Printf("AddOrRefcountDownloaderConfig done for %s\n",
 		safename)
 }
@@ -87,7 +87,7 @@ func writeDownloaderConfig(config types.DownloaderConfig,
 var downloaderStatus map[string]types.DownloaderStatus
 
 func handleDownloaderStatusModify(statusFilename string,
-     statusArg interface{}) {
+	statusArg interface{}) {
 	var status *types.DownloaderStatus
 
 	switch statusArg.(type) {
@@ -126,7 +126,7 @@ func handleDownloaderStatusModify(statusFilename string,
 		downloaderStatus[key] = *status
 		updateAIStatusSafename(key)
 	}
-	
+
 	log.Printf("handleDownloaderStatusModify done for %s\n",
 		status.Safename)
 }
@@ -155,5 +155,3 @@ func handleDownloaderStatusDelete(statusFilename string) {
 	log.Printf("handleDownloaderStatusDelete done for %s\n",
 		statusFilename)
 }
-
-

@@ -142,7 +142,7 @@ func updateAIStatusUUID(uuidStr string) {
 	config, ok := AIC[uuidStr]
 	if !ok {
 		log.Printf("updateAIStatusUUID for %s: Missing AI Config\n",
-				uuidStr)
+			uuidStr)
 		return
 	}
 	status, ok := AIS[uuidStr]
@@ -183,7 +183,7 @@ func removeAIStatusUUID(uuidStr string) {
 	if del {
 		log.Printf("removeAIStatusUUID remove done for %s\n",
 			uuidStr)
-		// Write out what we modified to AppInstanceStatus aka delete	
+		// Write out what we modified to AppInstanceStatus aka delete
 		statusFilename := fmt.Sprintf("%s/%s.json",
 			zedmanagerStatusDirname, uuidStr)
 		if err := os.Remove(statusFilename); err != nil {
@@ -213,7 +213,7 @@ func removeAIStatusSafename(safename string) {
 }
 
 func doUpdate(uuidStr string, config types.AppInstanceConfig,
-     status *types.AppInstanceStatus) bool {
+	status *types.AppInstanceStatus) bool {
 	log.Printf("doUpdate for %s\n", uuidStr)
 
 	// The existence of Config is interpreted to mean the
@@ -239,7 +239,7 @@ func doUpdate(uuidStr string, config types.AppInstanceConfig,
 }
 
 func doInstall(uuidStr string, config types.AppInstanceConfig,
-     status *types.AppInstanceStatus) (bool, bool) {
+	status *types.AppInstanceStatus) (bool, bool) {
 	log.Printf("doInstall for %s\n", uuidStr)
 	minState := types.MAXSTATE
 	allErrors := ""
@@ -247,7 +247,7 @@ func doInstall(uuidStr string, config types.AppInstanceConfig,
 	changed := false
 
 	if len(config.StorageConfigList) != len(status.StorageStatusList) {
-		errString := fmt.Sprintf("Mismatch in storageConfig vs. Status length: %d vs %d\n", 
+		errString := fmt.Sprintf("Mismatch in storageConfig vs. Status length: %d vs %d\n",
 			len(config.StorageConfigList),
 			len(status.StorageStatusList))
 		log.Println(errString)
@@ -257,11 +257,11 @@ func doInstall(uuidStr string, config types.AppInstanceConfig,
 		return changed, false
 	}
 	for i, sc := range config.StorageConfigList {
-		ss := &status.StorageStatusList[i]	    
+		ss := &status.StorageStatusList[i]
 		if ss.DownloadURL != sc.DownloadURL ||
-		   ss.ImageSha256 != sc.ImageSha256 {
+			ss.ImageSha256 != sc.ImageSha256 {
 			// Report to zedcloud
-			errString := fmt.Sprintf("Mismatch in storageConfig vs. Status:\n\t%s\n\t%s\n\t%s\n\t%s\n\n", 
+			errString := fmt.Sprintf("Mismatch in storageConfig vs. Status:\n\t%s\n\t%s\n\t%s\n\t%s\n\n",
 				sc.DownloadURL, ss.DownloadURL,
 				sc.ImageSha256, ss.ImageSha256)
 			log.Println(errString)
@@ -270,10 +270,10 @@ func doInstall(uuidStr string, config types.AppInstanceConfig,
 			changed = true
 			return changed, false
 		}
-	}		
+	}
 
 	if len(config.OverlayNetworkList) != len(status.EIDList) {
-		errString := fmt.Sprintf("Mismatch in OLList config vs. status length: %d vs %d\n", 
+		errString := fmt.Sprintf("Mismatch in OLList config vs. status length: %d vs %d\n",
 			len(config.OverlayNetworkList),
 			len(status.EIDList))
 		log.Println(errString)
@@ -283,11 +283,11 @@ func doInstall(uuidStr string, config types.AppInstanceConfig,
 		return changed, false
 	}
 	for i, sc := range config.StorageConfigList {
-		ss := &status.StorageStatusList[i]	    
+		ss := &status.StorageStatusList[i]
 		safename := urlToSafename(sc.DownloadURL, sc.ImageSha256)
 		fmt.Printf("Found StorageConfig URL %s safename %s\n",
 			sc.DownloadURL, safename)
-		
+
 		// Shortcut if image is already verified
 		vs, err := LookupVerifyImageStatus(safename)
 		if err == nil && vs.State == types.DELIVERED {
@@ -301,7 +301,7 @@ func doInstall(uuidStr string, config types.AppInstanceConfig,
 				ss.HasVerifierRef = true
 				changed = true
 			}
-		
+
 			if minState > vs.State {
 				minState = vs.State
 			}
@@ -384,7 +384,7 @@ func doInstall(uuidStr string, config types.AppInstanceConfig,
 		log.Printf("Download error for %s\n", uuidStr)
 		return changed, false
 	}
-	
+
 	if minState < types.DOWNLOADED {
 		log.Printf("Waiting for all downloads for %s\n", uuidStr)
 		return changed, false
@@ -392,11 +392,11 @@ func doInstall(uuidStr string, config types.AppInstanceConfig,
 	log.Printf("Done with downloads for %s\n", uuidStr)
 	minState = types.MAXSTATE
 	for i, sc := range config.StorageConfigList {
-		ss := &status.StorageStatusList[i]	    
+		ss := &status.StorageStatusList[i]
 		safename := urlToSafename(sc.DownloadURL, sc.ImageSha256)
 		fmt.Printf("Found StorageConfig URL %s safename %s\n",
 			sc.DownloadURL, safename)
-		
+
 		vs, err := LookupVerifyImageStatus(safename)
 		if err != nil {
 			log.Printf("LookupVerifyImageStatus %s failed %v\n",
@@ -433,7 +433,7 @@ func doInstall(uuidStr string, config types.AppInstanceConfig,
 		log.Printf("Verify error for %s\n", uuidStr)
 		return changed, false
 	}
-	
+
 	if minState < types.DELIVERED {
 		log.Printf("Waiting for all verifications for %s\n", uuidStr)
 		return changed, false
@@ -476,10 +476,10 @@ func doInstall(uuidStr string, config types.AppInstanceConfig,
 }
 
 func doActivate(uuidStr string, config types.AppInstanceConfig,
-     status *types.AppInstanceStatus) bool {
+	status *types.AppInstanceStatus) bool {
 	log.Printf("doActivate for %s\n", uuidStr)
 	changed := false
-	
+
 	// Make sure we have an AppNetworkConfig
 	MaybeAddAppNetworkConfig(config, status)
 
@@ -585,7 +585,7 @@ func doUninstall(uuidStr string, status *types.AppInstanceStatus) (bool, bool) {
 	log.Printf("doUninstall for %s\n", uuidStr)
 	changed := false
 	del := false
-	
+
 	// Remove the EIDConfig for each overlay
 	for _, es := range status.EIDList {
 		MaybeRemoveEIDConfig(status.UUIDandVersion, &es)
@@ -619,7 +619,7 @@ func doUninstall(uuidStr string, status *types.AppInstanceStatus) (bool, bool) {
 			ss.HasVerifierRef = false
 			changed = true
 		}
-		
+
 		_, err := LookupVerifyImageStatusSha256(ss.ImageSha256)
 		// XXX if additional refs it will not go away
 		if false && err == nil {
@@ -646,7 +646,7 @@ func doUninstall(uuidStr string, status *types.AppInstanceStatus) (bool, bool) {
 			ss.HasDownloaderRef = false
 			changed = true
 		}
-		
+
 		_, err := LookupDownloaderStatus(ss.ImageSha256)
 		// XXX if additional refs it will not go away
 		if false && err == nil {
@@ -675,4 +675,3 @@ func urlToSafename(url string, sha string) string {
 	safename := strings.Replace(url, "/", "_", -1) + "." + sha
 	return safename
 }
-
