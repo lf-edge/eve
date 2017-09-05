@@ -34,6 +34,8 @@ var maxDelay = time.Second * 600 // 10 minutes
 //  device.cert.pem,
 //  device.key.pem		Device certificate/key created before this
 //  		     		client is started.
+//  infra			If this file exists assume zedcontrol and do not
+//  				create ACLs
 //  zedserverconfig		Written by lookupParam operation; zed server EIDs
 //  zedrouterconfig.json	Written by lookupParam operation
 //  uuid			Written by lookupParam operation
@@ -72,6 +74,7 @@ func main() {
 	deviceKeyName := dirName + "/device.key.pem"
 	rootCertName := dirName + "/root-certificate.pem"
 	serverFileName := dirName + "/server"
+	infraFileName := dirName + "/infra"
 	zedserverConfigFileName := dirName + "/zedserverconfig"
 	zedrouterConfigFileName := dirName + "/zedrouterconfig.json"
 	uuidFileName := dirName + "/uuid"
@@ -123,6 +126,14 @@ func main() {
 	// XXX for local testing
 	// serverNameAndPort = "localhost:9069"
 
+	// If infraFileName exists then don't set ACLs to eidset; allow any
+	// EID to connect.
+	ACLPromisc := false
+	if _, err := os.Stat(infraFileName); err == nil {
+		fmt.Printf("Setting ACLPromisc\n")
+		ACLPromisc = true
+	}
+	
 	// Post something without a return type.
 	// Returns true when done; false when retry
 	myPost := func(client *http.Client, url string, b *bytes.Buffer) bool {
@@ -430,8 +441,12 @@ func main() {
 		acl[0].Matches = matches
 		actions := make([]types.ACEAction, 1)
 		acl[0].Actions = actions
-		matches[0].Type = "eidset"
-		actions[0].Drop = false
+		if ACLPromisc {
+			matches[0].Type = "ip"
+			matches[0].Value = "::/0"
+		} else {
+			matches[0].Type = "eidset"
+		}
 		writeNetworkConfig(&config, zedrouterConfigFileName)
 	}
 	if operations["updateHwStatus"] {
