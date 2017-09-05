@@ -48,11 +48,11 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 				// log.Println("event:", event)
 				// We get create events when file is moved into
 				// the watched directory.
-				if event.Op &
+				if event.Op&
 					(fsnotify.Write|fsnotify.Create) != 0 {
 					// log.Println("modified", baseName)
 					fileChanges <- "M " + baseName
-				} else if event.Op &
+				} else if event.Op&
 					(fsnotify.Rename|fsnotify.Remove) != 0 {
 					// log.Println("deleted", baseName)
 					fileChanges <- "D " + baseName
@@ -77,7 +77,7 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 		fileChanges <- "M " + file.Name()
 	}
 	log.Printf("Initial ReadDir done for %s\n", configDir)
-	
+
 	if initialDelete {
 		statusFiles, err := ioutil.ReadDir(statusDir)
 		if err != nil {
@@ -116,11 +116,11 @@ func WatchStatus(statusDir string, fileChanges chan<- string) {
 				// log.Println("event:", event)
 				// We get create events when file is moved into
 				// the watched directory.
-				if event.Op &
+				if event.Op&
 					(fsnotify.Write|fsnotify.Create) != 0 {
 					// log.Println("modified", baseName)
 					fileChanges <- "M " + baseName
-				} else if event.Op &
+				} else if event.Op&
 					(fsnotify.Rename|fsnotify.Remove) != 0 {
 					// log.Println("deleted", baseName)
 					fileChanges <- "D " + baseName
@@ -149,4 +149,3 @@ func WatchStatus(statusDir string, fileChanges chan<- string) {
 	// Watch for changes
 	<-done
 }
-
