@@ -80,6 +80,5 @@ const (
 	DOWNLOADED
 	DELIVERED // Package integrity verified
 	INSTALLED // Available to be activated
-	MAXSTATE //
+	MAXSTATE  //
 )
-

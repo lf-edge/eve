@@ -43,20 +43,20 @@ type DeviceNetworkConfig struct {
 }
 
 type DeviceNetworkStatus struct {
-	Uplink          string // ifname; should have multiple
+	Uplink string // ifname; should have multiple
 	// XXX add all the uplink ifaddrs?
 	// XXX uplink publicAddr to determine NATed?
 }
 
 type OverlayNetworkConfig struct {
-	IID		uint32
-	EID		net.IP
-	LispSignature	string
+	IID           uint32
+	EID           net.IP
+	LispSignature string
 	// Any additional LISP parameters?
-	ACLs		[]ACE
-	NameToEidList	[]NameToEid	// Used to populate DNS for the overlay
+	ACLs          []ACE
+	NameToEidList []NameToEid // Used to populate DNS for the overlay
 	// Optional additional informat
-	AdditionalInfoDevice	*AdditionalInfoDevice
+	AdditionalInfoDevice *AdditionalInfoDevice
 }
 
 type OverlayNetworkStatus struct {
@@ -65,7 +65,7 @@ type OverlayNetworkStatus struct {
 }
 
 type UnderlayNetworkConfig struct {
-	ACLs		[]ACE
+	ACLs []ACE
 }
 
 type UnderlayNetworkStatus struct {
@@ -88,36 +88,36 @@ type ACE struct {
 // The "eidset" type is special for the overlay. Matches all the EID which
 // are part of the NameToEidList.
 type ACEMatch struct {
-	Type string
-	Value string     	
+	Type  string
+	Value string
 }
 
 type ACEAction struct {
-	Drop		bool	// Otherwise accept
-	Limit		bool	// Is limiter enabled?
-	LimitRate	int	// Packets per unit
-	LimitUnit	string	// "s", "m", "h", for second, minute, hour
-	LimitBurst	int	// Packets
+	Drop       bool   // Otherwise accept
+	Limit      bool   // Is limiter enabled?
+	LimitRate  int    // Packets per unit
+	LimitUnit  string // "s", "m", "h", for second, minute, hour
+	LimitBurst int    // Packets
 }
 
 // Retrieved from geolocation service for device underlay connectivity
 // XXX separate out lat/long as floats to be able to use GPS?
 // XXX feed back to zedcloud in HwStatus
 type AdditionalInfoDevice struct {
-	UnderlayIP	string
-	Hostname	string	`json:",omitempty"` // From reverse DNS
-	City		string	`json:",omitempty"`
-	Region		string	`json:",omitempty"`
-	Country		string	`json:",omitempty"`
-	Loc		string	`json:",omitempty"` // Lat and long as string
-	Org		string	`json:",omitempty"` // From AS number
+	UnderlayIP string
+	Hostname   string `json:",omitempty"` // From reverse DNS
+	City       string `json:",omitempty"`
+	Region     string `json:",omitempty"`
+	Country    string `json:",omitempty"`
+	Loc        string `json:",omitempty"` // Lat and long as string
+	Org        string `json:",omitempty"` // From AS number
 }
 
 // Tie the Application EID back to the device
 type AdditionalInfoApp struct {
-	DisplayName	string
-	DeviceEID	net.IP
-	DeviceIID	uint32
-	UnderlayIP	string
-	Hostname	string	`json:",omitempty"` // From reverse DNS
+	DisplayName string
+	DeviceEID   net.IP
+	DeviceIID   uint32
+	UnderlayIP  string
+	Hostname    string `json:",omitempty"` // From reverse DNS
 }
