@@ -1,9 +1,24 @@
+TODO zedcontrol shouldn't have eids.dbo1x0 set rule. Needs to accept everybody?
+Workaround: ip6tables -F OUTPUT
+XXX was it needed?
+
+TODO are we accepting east-west traffic on mgmt iid?
+A: only those listed in zedrouter*.json.
+
 TODO add device mapping to support gpiotoled.
 TODO add cpu binding for rtos
 TODO what is needed for docker/rkt?
 
 TODO rename displayName to localDNSName?
      Should we allow for empty? Also used for xen domain.
+TODO should we have one name per overlay?
+TODO bundles of bundles vs. attach to overlay uuid?
+TODO domU needs to know which overlay is which and diff than IPv6 underlay.
+TODO domU needs routes for different overlays.
+
+TODO name for StorageConfig*?
+     Is both an Image description and aspects of the container for the image
+     ImageDeploymentConfig and ImageDeploymentStatus?
      
 TODO device-steps.sh - mode (from file or arg) to only run zedrouter for ctrl01?
      Check we can create dbo1x0.
@@ -27,6 +42,9 @@ DeviceSwStatus upload results in an ack containing the global address.
 
 
 ===
+
+DONE avoid empty additional strings:
+	`json:",omitempty"`
 
 DONE add location information in additional json RLOC
 
