@@ -104,13 +104,13 @@ type ACEAction struct {
 // XXX separate out lat/long as floats to be able to use GPS?
 // XXX feed back to zedcloud in HwStatus
 type AdditionalInfoDevice struct {
-	UnderlayIP	string	// Underlay address
-	Hostname	string	// From reverse DNS
-	City		string
-	Region		string
-	Country		string
-	Loc		string	// Lat and long as string
-	Org		string	// From AS number
+	UnderlayIP	string
+	Hostname	string	`json:",omitempty"` // From reverse DNS
+	City		string	`json:",omitempty"`
+	Region		string	`json:",omitempty"`
+	Country		string	`json:",omitempty"`
+	Loc		string	`json:",omitempty"` // Lat and long as string
+	Org		string	`json:",omitempty"` // From AS number
 }
 
 // Tie the Application EID back to the device
@@ -118,6 +118,6 @@ type AdditionalInfoApp struct {
 	DisplayName	string
 	DeviceEID	net.IP
 	DeviceIID	uint32
-	UnderlayIP	string	// Underlay address
-	Hostname	string	// From reverse DNS
+	UnderlayIP	string
+	Hostname	string	`json:",omitempty"` // From reverse DNS
 }
