@@ -10,6 +10,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/RevH/ipinfo"
+	"github.com/satori/go.uuid"
+	"github.com/zededa/go-provision/types"
+	"golang.org/x/crypto/ocsp"
 	"io/ioutil"
 	"log"
 	"net"
@@ -17,10 +21,6 @@ import (
 	"os"
 	"strings"
 	"time"
-	"github.com/RevH/ipinfo"
-	"github.com/satori/go.uuid"
-	"github.com/zededa/go-provision/types"
-	"golang.org/x/crypto/ocsp"
 )
 
 var maxDelay = time.Second * 600 // 10 minutes
@@ -133,7 +133,7 @@ func main() {
 		fmt.Printf("Setting ACLPromisc\n")
 		ACLPromisc = true
 	}
-	
+
 	// Post something without a return type.
 	// Returns true when done; false when retry
 	myPost := func(client *http.Client, url string, b *bytes.Buffer) bool {
@@ -414,12 +414,12 @@ func main() {
 		if myIP, err := ipinfo.MyIP(); err == nil {
 			addInfo := types.AdditionalInfoDevice{
 				UnderlayIP: myIP.IP,
-				Hostname: myIP.Hostname,
-				City: myIP.City,
-				Region: myIP.Region,
-				Country: myIP.Country,
-				Loc: myIP.Loc,
-				Org: myIP.Org,
+				Hostname:   myIP.Hostname,
+				City:       myIP.City,
+				Region:     myIP.Region,
+				Country:    myIP.Country,
+				Loc:        myIP.Loc,
+				Org:        myIP.Org,
 			}
 			addInfoDevice = &addInfo
 		}
