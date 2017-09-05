@@ -331,7 +331,7 @@ func handleCreate(statusFilename string, config types.VerifyImageConfig) {
 		log.Printf("handleCreate failed for %s\n", config.DownloadURL)
 		return
 	}
-
+	imageHash := fmt.Sprintf("%x", h.Sum(nil))
 	switch pub := cert.PublicKey.(type) {
 	case *rsa.PublicKey:
 
@@ -377,7 +377,7 @@ func handleCreate(statusFilename string, config types.VerifyImageConfig) {
         }
 
 	func VerificationFailed (err string){
-		fmt.Printf("got      %s\n", got)
+		fmt.Printf("got      %s\n", imageHash)
 		fmt.Printf("expected %s\n", config.ImageSha256)
 		status.LastErr = err
 		status.LastErrTime = time.Now()
