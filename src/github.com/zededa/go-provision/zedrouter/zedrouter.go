@@ -581,7 +581,7 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 
 		// Start clean
 		cfgFilename = "dnsmasq." + olIfname + ".conf"
-		cfgPathname = runDirname + cfgFilename
+		cfgPathname = runDirname + "/" + cfgFilename
 		stopDnsmasq(cfgFilename, false)
 		createDnsmasqOverlayConfiglet(cfgPathname, olIfname, olAddr1,
 			EID.String(), olMac, hostsDirpath,
@@ -674,7 +674,7 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 
 		// Start clean
 		cfgFilename := "dnsmasq." + ulIfname + ".conf"
-		cfgPathname := runDirname + cfgFilename
+		cfgPathname := runDirname + "/" + cfgFilename
 		stopDnsmasq(cfgFilename, false)
 
 		createDnsmasqUnderlayConfiglet(cfgPathname, ulIfname, ulAddr1,
@@ -949,9 +949,9 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 			stopRadvd(cfgFilename, true)
 			deleteRadvdConfiglet(cfgPathname)
 
-			// dnsmasgq cleanup
+			// dnsmasq cleanup
 			cfgFilename = "dnsmasq." + olIfname + ".conf"
-			cfgPathname = runDirname + cfgFilename
+			cfgPathname = runDirname + "/" + cfgFilename
 			stopDnsmasq(cfgFilename, true)
 			deleteDnsmasqConfiglet(cfgPathname)
 
@@ -994,9 +994,9 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 			// Remove link and associated addresses
 			netlink.LinkDel(uLink)
 
-			// dnsmasgq cleanup
+			// dnsmasq cleanup
 			cfgFilename := "dnsmasq." + ulIfname + ".conf"
-			cfgPathname := runDirname + cfgFilename
+			cfgPathname := runDirname + "/" + cfgFilename
 			stopDnsmasq(cfgFilename, true)
 			deleteDnsmasqConfiglet(cfgPathname)
 
