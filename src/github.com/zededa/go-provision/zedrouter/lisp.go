@@ -208,7 +208,7 @@ func deleteLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 		cfgPathnameEID = lispRunDirname + "/" + EID.String()
 	}
 	if err := os.Remove(cfgPathnameEID); err != nil {
-		log.Println("os.Remove ", cfgPathnameEID, err)
+		log.Println(err)
 	}
 
 	// XXX can't delete IID file unless refcnt since other EIDs
@@ -360,8 +360,7 @@ func stopLisp(lispRunDirname string) {
 		return
 	}
 	log.Printf("stopLisp done: output %s\n", string(stdoutStderr))
-	err = os.Remove(RLFilename)
-	if err != nil {
+	if err = os.Remove(RLFilename); err != nil {
 		log.Println(err)
 		return
 	}

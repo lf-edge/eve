@@ -187,7 +187,7 @@ func removeAIStatusUUID(uuidStr string) {
 		statusFilename := fmt.Sprintf("%s/%s.json",
 			zedmanagerStatusDirname, uuidStr)
 		if err := os.Remove(statusFilename); err != nil {
-			log.Println("Failed to remove", statusFilename, err)
+			log.Println(err)
 		}
 		delete(AIS, uuidStr)
 	}

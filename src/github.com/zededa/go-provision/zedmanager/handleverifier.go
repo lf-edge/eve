@@ -68,7 +68,7 @@ func MaybeRemoveVerifyImageConfigSha256(sha256 string) {
 	configFilename := fmt.Sprintf("%s/%s.json",
 		verifierConfigDirname, key)
 	if err := os.Remove(configFilename); err != nil {
-		log.Println("Failed to remove", configFilename, err)
+		log.Println(err)
 	}
 	log.Printf("MaybeRemoveVerifyImageConfigSha256 done for %s\n", sha256)
 }

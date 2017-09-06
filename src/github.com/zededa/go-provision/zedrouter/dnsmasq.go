@@ -98,7 +98,7 @@ func createDnsmasqUnderlayConfiglet(cfgPathname string, ulIfname string,
 func deleteDnsmasqConfiglet(cfgPathname string) {
 	fmt.Printf("deleteDnsmasqOverlayConfiglen: %s\n", cfgPathname)
 	if err := os.Remove(cfgPathname); err != nil {
-		log.Println("Remove ", cfgPathname, err)
+		log.Println(err)
 	}
 }
 

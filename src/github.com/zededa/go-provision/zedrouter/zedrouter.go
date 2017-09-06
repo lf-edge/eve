@@ -1014,7 +1014,7 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 	}
 	// Write out what we modified to AppNetworkStatus aka delete
 	if err := os.Remove(statusFilename); err != nil {
-		log.Println("Failed to remove", statusFilename, err)
+		log.Println(err)
 	}
 	appNumFree(status.UUIDandVersion.UUID)
 	log.Printf("handleDelete done for %s\n", status.DisplayName)

@@ -384,8 +384,7 @@ func doInactivate(status *types.DomainStatus) {
 			if !ds.ReadOnly && !ds.Preserve {
 				log.Printf("Delete copy at %s\n", ds.Target)
 				if err := os.Remove(ds.Target); err != nil {
-					log.Printf("Remove failed %s: %s\n",
-						ds.Target, err)
+					log.Println(err)
 					// XXX return? Cleanup status?
 				}
 			}
@@ -651,7 +650,7 @@ func handleDelete(statusFilename string, status types.DomainStatus) {
 	// Delete xen cfg file for good measure
 	filename := xenCfgFilename(status.AppNum)
 	if err := os.Remove(filename); err != nil {
-		log.Println("Failed to remove", filename, err)
+		log.Println(err)
 	}
 
 	// Do we need to delete any rw files that were not deleted during
@@ -660,8 +659,7 @@ func handleDelete(statusFilename string, status types.DomainStatus) {
 		if !ds.ReadOnly && ds.Preserve {
 			log.Printf("Delete copy at %s\n", ds.Target)
 			if err := os.Remove(ds.Target); err != nil {
-				log.Printf("Remove failed %s: %s\n",
-					ds.Target, err)
+				log.Println(err)
 				// XXX return? Cleanup status?
 			}
 		}
@@ -670,7 +668,7 @@ func handleDelete(statusFilename string, status types.DomainStatus) {
 	writeDomainStatus(&status, statusFilename)
 	// Write out what we modified to AppNetworkStatus aka delete
 	if err := os.Remove(statusFilename); err != nil {
-		log.Println("Failed to remove", statusFilename, err)
+		log.Println(err)
 	}
 	log.Printf("handleDelete(%v) DONE for %s\n",
 		status.UUIDandVersion, status.DisplayName)

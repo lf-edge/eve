@@ -64,7 +64,7 @@ func MaybeRemoveDownloaderConfig(safename string) {
 	configFilename := fmt.Sprintf("%s/%s.json",
 		downloaderConfigDirname, safename)
 	if err := os.Remove(configFilename); err != nil {
-		log.Println("Failed to remove", configFilename, err)
+		log.Println(err)
 	}
 	log.Printf("MaybeRemoveDownloaderConfig done for %s\n", safename)
 }

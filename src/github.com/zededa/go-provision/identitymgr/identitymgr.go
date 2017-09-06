@@ -438,7 +438,7 @@ func handleDelete(statusFilename string, status types.EIDStatus) {
 
 	// Write out what we modified aka delete
 	if err := os.Remove(statusFilename); err != nil {
-		log.Println("Failed to remove", statusFilename, err)
+		log.Println(err)
 	}
 	log.Printf("handleDelete done for %s\n", status.DisplayName)
 }
