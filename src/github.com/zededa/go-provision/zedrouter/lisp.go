@@ -362,7 +362,8 @@ func stopLisp(lispRunDirname string) {
 	log.Printf("stopLisp done: output %s\n", string(stdoutStderr))
 	err = os.Remove(RLFilename)
 	if err != nil {
-		log.Fatal("Remove", err, RLFilename)
+		log.Println(err)
 		return
 	}
+	log.Printf("Removed %s\n", RLFilename)
 }
