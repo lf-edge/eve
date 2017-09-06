@@ -1,6 +1,15 @@
-TODO zedcontrol shouldn't have eids.dbo1x0 set rule. Needs to accept everybody?
-Workaround: ip6tables -F OUTPUT
-XXX was it needed?
+DONE find uplink - remove -o from rule.
+xxx where do we use uplink? Also for lisp
+
+DONE dnsmasq add tar/
+DONE dnsmasq path
+
+DONE EID from gopi to hikey0x: fd7b:7e5b:b572:40cf:aee4:ae25:6751:f609
+DONE /etc/group for amd64 ubuntu domu - sudo group and nordmark/zededa groups
+
+DONE zedcontrol shouldn't have eids.dbo1x0 set rule. Needs to accept everybody?
+     Made it conditional on /opt/zededa/etc/infra file.
+     Workaround: ip6tables -F OUTPUT
 
 TODO are we accepting east-west traffic on mgmt iid?
 A: only those listed in zedrouter*.json.
