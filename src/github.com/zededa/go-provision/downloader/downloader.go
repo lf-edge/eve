@@ -453,12 +453,13 @@ func doWget(url string, destFilename string) error {
 		destFilename,
 		url,
 	}
-	_, err := exec.Command(cmd, args...).Output()
+	stdoutStderr, err := exec.Command(cmd, args...).CombinedOutput()
 	if err != nil {
 		log.Println("wget failed ", err)
+		log.Println("wget output ", string(stdoutStderr))
 		return err
 	}
-	fmt.Printf("wget done\n")
+	fmt.Printf("wget done: output %s\n", string(stdoutStderr))
 	return nil
 }
 

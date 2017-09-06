@@ -683,12 +683,12 @@ func xlCreate(domainName string, xenCfgFilename string) (int, error) {
 		"create",
 		xenCfgFilename,
 	}
-	out, err := exec.Command(cmd, args...).CombinedOutput()
+	stdoutStderr, err := exec.Command(cmd, args...).CombinedOutput()
 	if err != nil {
 		log.Println("xl create failed ", err)
-		log.Println("xl create output ", string(out))
+		log.Println("xl create output ", string(stdoutStderr))
 		return 0, errors.New(fmt.Sprintf("xl create failed: %s\n",
-			string(out)))
+			string(stdoutStderr)))
 	}
 	fmt.Printf("xl create done\n")
 
@@ -696,7 +696,7 @@ func xlCreate(domainName string, xenCfgFilename string) (int, error) {
 		"domid",
 		domainName,
 	}
-	out, err = exec.Command(cmd, args...).Output()
+	out, err := exec.Command(cmd, args...).Output()
 	if err != nil {
 		log.Println("xl domid failed ", err)
 		return 0, err
@@ -736,9 +736,10 @@ func xlShutdown(domainName string, domainId int) error {
 		"shutdown",
 		strconv.Itoa(domainId),
 	}
-	_, err := exec.Command(cmd, args...).Output()
+	stdoutStderr, err := exec.Command(cmd, args...).CombinedOutput()
 	if err != nil {
 		log.Println("xl shutdown failed ", err)
+		log.Println("xl shutdown output ", string(stdoutStderr))
 		return err
 	}
 	fmt.Printf("xl shutdown done\n")
@@ -752,9 +753,10 @@ func xlDestroy(domainName string, domainId int) error {
 		"destroy",
 		strconv.Itoa(domainId),
 	}
-	_, err := exec.Command(cmd, args...).Output()
+	stdoutStderr, err := exec.Command(cmd, args...).CombinedOutput()
 	if err != nil {
 		log.Println("xl destroy failed ", err)
+		log.Println("xl destroy output ", string(stdoutStderr))
 		return err
 	}
 	fmt.Printf("xl destroy done\n")
