@@ -22,9 +22,11 @@ type DeviceHwStatus struct {
 	Cpus         uint   // nproc --all
 	Memory       uint   // Total memory in Kbyte
 	Storage      uint   // Total flash in Kbyte
+	// XXX add AdditionalInfoDevice which has location etc
 }
 
-// XXX replace by actual SwConfig and SwStatus
+// XXX replace by actual AIConfig and AIStatus
+// XXX need special flags to report as AIStatus?
 type DeviceSwConfig struct {
 	// XXX add timestamp for last update? When sent?
 	// XXX add hash for merkel tree
@@ -78,6 +80,5 @@ const (
 	DOWNLOADED
 	DELIVERED // Package integrity verified
 	INSTALLED // Available to be activated
-	MAXSTATE //
+	MAXSTATE  //
 )
-

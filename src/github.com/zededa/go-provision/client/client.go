@@ -10,6 +10,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/RevH/ipinfo"
+	"github.com/satori/go.uuid"
+	"github.com/zededa/go-provision/types"
+	"golang.org/x/crypto/ocsp"
 	"io/ioutil"
 	"log"
 	"net"
@@ -17,9 +21,6 @@ import (
 	"os"
 	"strings"
 	"time"
-	"github.com/satori/go.uuid"
-	"github.com/zededa/go-provision/types"
-	"golang.org/x/crypto/ocsp"
 )
 
 var maxDelay = time.Second * 600 // 10 minutes
@@ -33,6 +34,8 @@ var maxDelay = time.Second * 600 // 10 minutes
 //  device.cert.pem,
 //  device.key.pem		Device certificate/key created before this
 //  		     		client is started.
+//  infra			If this file exists assume zedcontrol and do not
+//  				create ACLs
 //  zedserverconfig		Written by lookupParam operation; zed server EIDs
 //  zedrouterconfig.json	Written by lookupParam operation
 //  uuid			Written by lookupParam operation
@@ -71,6 +74,7 @@ func main() {
 	deviceKeyName := dirName + "/device.key.pem"
 	rootCertName := dirName + "/root-certificate.pem"
 	serverFileName := dirName + "/server"
+	infraFileName := dirName + "/infra"
 	zedserverConfigFileName := dirName + "/zedserverconfig"
 	zedrouterConfigFileName := dirName + "/zedrouterconfig.json"
 	uuidFileName := dirName + "/uuid"
@@ -121,6 +125,14 @@ func main() {
 	serverName := strings.Split(serverNameAndPort, ":")[0]
 	// XXX for local testing
 	// serverNameAndPort = "localhost:9069"
+
+	// If infraFileName exists then don't set ACLs to eidset; allow any
+	// EID to connect.
+	ACLPromisc := false
+	if _, err := os.Stat(infraFileName); err == nil {
+		fmt.Printf("Setting ACLPromisc\n")
+		ACLPromisc = true
+	}
 
 	// Post something without a return type.
 	// Returns true when done; false when retry
@@ -395,7 +407,22 @@ func main() {
 			UUID:    devUUID,
 			Version: "0",
 		}
-		// XXX displayname? Using fixed "zedmanager" string
+		// Determine location information and use as AdditionalInfo
+		// XXX later just get ClientAddr's IP address and
+		// have zedcloud do any geoloc etc lookups
+		var addInfoDevice *types.AdditionalInfoDevice
+		if myIP, err := ipinfo.MyIP(); err == nil {
+			addInfo := types.AdditionalInfoDevice{
+				UnderlayIP: myIP.IP,
+				Hostname:   myIP.Hostname,
+				City:       myIP.City,
+				Region:     myIP.Region,
+				Country:    myIP.Country,
+				Loc:        myIP.Loc,
+				Org:        myIP.Org,
+			}
+			addInfoDevice = &addInfo
+		}
 		config := types.AppNetworkConfig{
 			UUIDandVersion: uv,
 			DisplayName:    "zedmanager",
@@ -406,6 +433,7 @@ func main() {
 		olconf[0].IID = device.LispInstance
 		olconf[0].EID = device.EID
 		olconf[0].LispSignature = signature
+		olconf[0].AdditionalInfoDevice = addInfoDevice
 		olconf[0].NameToEidList = device.ZedServers.NameToEidList
 		acl := make([]types.ACE, 1)
 		olconf[0].ACLs = acl
@@ -413,8 +441,12 @@ func main() {
 		acl[0].Matches = matches
 		actions := make([]types.ACEAction, 1)
 		acl[0].Actions = actions
-		matches[0].Type = "eidset"
-		actions[0].Drop = false
+		if ACLPromisc {
+			matches[0].Type = "ip"
+			matches[0].Value = "::/0"
+		} else {
+			matches[0].Type = "eidset"
+		}
 		writeNetworkConfig(&config, zedrouterConfigFileName)
 	}
 	if operations["updateHwStatus"] {

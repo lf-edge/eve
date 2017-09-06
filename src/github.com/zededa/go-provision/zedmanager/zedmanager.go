@@ -28,14 +28,14 @@ import (
 
 // Keeping status in /var/run to be clean after a crash/reboot
 var (
-	baseDirname = "/var/tmp/zedmanager"
-	runDirname  = "/var/run/zedmanager"
-	zedmanagerConfigDirname = baseDirname + "/config"
-	zedmanagerStatusDirname = runDirname + "/status"
-	verifierConfigDirname = "/var/tmp/verifier/config"
-	downloaderConfigDirname = "/var/tmp/downloader/config"
-	domainmgrConfigDirname = "/var/tmp/domainmgr/config"
-	zedrouterConfigDirname = "/var/tmp/zedrouter/config"
+	baseDirname              = "/var/tmp/zedmanager"
+	runDirname               = "/var/run/zedmanager"
+	zedmanagerConfigDirname  = baseDirname + "/config"
+	zedmanagerStatusDirname  = runDirname + "/status"
+	verifierConfigDirname    = "/var/tmp/verifier/config"
+	downloaderConfigDirname  = "/var/tmp/downloader/config"
+	domainmgrConfigDirname   = "/var/tmp/domainmgr/config"
+	zedrouterConfigDirname   = "/var/tmp/zedrouter/config"
 	identitymgrConfigDirname = "/var/tmp/identitymgr/config"
 )
 
@@ -47,7 +47,7 @@ func main() {
 	domainmgrStatusDirname := "/var/run/domainmgr/status"
 	zedrouterStatusDirname := "/var/run/zedrouter/status"
 	identitymgrStatusDirname := "/var/run/identitymgr/status"
-	
+
 	dirs := []string{
 		zedmanagerConfigDirname,
 		zedmanagerStatusDirname,
@@ -90,57 +90,114 @@ func main() {
 		zedmanagerStatusDirname, configChanges)
 	for {
 		select {
-		case change := <-downloaderChanges: {
-			handleStatusEvent(change, downloaderStatusDirname,
-				&types.DownloaderStatus{},
-				handleDownloaderStatusModify,
-				handleDownloaderStatusDelete)
-			continue
-		}
-		case change := <-verifierChanges: {
-			handleStatusEvent(change, verifierStatusDirname,
-				&types.VerifyImageStatus{},
-				handleVerifyImageStatusModify,
-				handleVerifyImageStatusDelete)
-			continue
-		}
-		case change := <-identitymgrChanges: {
-			handleStatusEvent(change, identitymgrStatusDirname,
-				&types.EIDStatus{},
-				handleEIDStatusModify,
-				handleEIDStatusDelete)
-			continue
-		}
-		case change := <-zedrouterChanges: {
-			handleStatusEvent(change, zedrouterStatusDirname,
-				&types.AppNetworkStatus{},
-				handleAppNetworkStatusModify,
-				handleAppNetworkStatusDelete)
-			continue
-		}
-		case change := <-domainmgrChanges: {
-			handleStatusEvent(change, domainmgrStatusDirname,
-				&types.DomainStatus{},
-				handleDomainStatusModify,
-				handleDomainStatusDelete)
-			continue
-		}
-		// XXX generalize this code; struct with dirnames and comparator
-		case change := <-configChanges: {
-			parts := strings.Split(change, " ")
-			operation := parts[0]
-			fileName := parts[1]
-			if !strings.HasSuffix(fileName, ".json") {
-				log.Printf("Ignoring file <%s>\n", fileName)
+		case change := <-downloaderChanges:
+			{
+				handleStatusEvent(change, downloaderStatusDirname,
+					&types.DownloaderStatus{},
+					handleDownloaderStatusModify,
+					handleDownloaderStatusDelete)
 				continue
 			}
-			if operation == "D" {
-				statusFile := zedmanagerStatusDirname + "/" + fileName
-				if _, err := os.Stat(statusFile); err != nil {
-					// File just vanished!
-					log.Printf("File disappeared <%s>\n", fileName)
+		case change := <-verifierChanges:
+			{
+				handleStatusEvent(change, verifierStatusDirname,
+					&types.VerifyImageStatus{},
+					handleVerifyImageStatusModify,
+					handleVerifyImageStatusDelete)
+				continue
+			}
+		case change := <-identitymgrChanges:
+			{
+				handleStatusEvent(change, identitymgrStatusDirname,
+					&types.EIDStatus{},
+					handleEIDStatusModify,
+					handleEIDStatusDelete)
+				continue
+			}
+		case change := <-zedrouterChanges:
+			{
+				handleStatusEvent(change, zedrouterStatusDirname,
+					&types.AppNetworkStatus{},
+					handleAppNetworkStatusModify,
+					handleAppNetworkStatusDelete)
+				continue
+			}
+		case change := <-domainmgrChanges:
+			{
+				handleStatusEvent(change, domainmgrStatusDirname,
+					&types.DomainStatus{},
+					handleDomainStatusModify,
+					handleDomainStatusDelete)
+				continue
+			}
+		// XXX generalize this code; struct with dirnames and comparator
+		case change := <-configChanges:
+			{
+				parts := strings.Split(change, " ")
+				operation := parts[0]
+				fileName := parts[1]
+				if !strings.HasSuffix(fileName, ".json") {
+					log.Printf("Ignoring file <%s>\n", fileName)
 					continue
 				}
+				if operation == "D" {
+					statusFile := zedmanagerStatusDirname + "/" + fileName
+					if _, err := os.Stat(statusFile); err != nil {
+						// File just vanished!
+						log.Printf("File disappeared <%s>\n", fileName)
+						continue
+					}
+					sb, err := ioutil.ReadFile(statusFile)
+					if err != nil {
+						log.Printf("%s for %s\n", err, statusFile)
+						continue
+					}
+					status := types.AppInstanceStatus{}
+					if err := json.Unmarshal(sb, &status); err != nil {
+						log.Printf("%s AppInstanceStatus file: %s\n",
+							err, statusFile)
+						continue
+					}
+					uuid := status.UUIDandVersion.UUID
+					if uuid.String()+".json" != fileName {
+						log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
+							fileName, uuid.String())
+						continue
+					}
+					statusName := zedmanagerStatusDirname + "/" + fileName
+					handleDelete(statusName, status)
+					continue
+				}
+				if operation != "M" {
+					log.Fatal("Unknown operation from Watcher: ",
+						operation)
+				}
+				configFile := zedmanagerConfigDirname + "/" + fileName
+				cb, err := ioutil.ReadFile(configFile)
+				if err != nil {
+					log.Printf("%s for %s\n", err, configFile)
+					continue
+				}
+				config := types.AppInstanceConfig{}
+				if err := json.Unmarshal(cb, &config); err != nil {
+					log.Printf("%s AppInstanceConfig file: %s\n",
+						err, configFile)
+					continue
+				}
+				uuid := config.UUIDandVersion.UUID
+				if uuid.String()+".json" != fileName {
+					log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
+						fileName, uuid.String())
+					continue
+				}
+				statusFile := zedmanagerStatusDirname + "/" + fileName
+				if _, err := os.Stat(statusFile); err != nil {
+					// File does not exist in status hence new
+					statusName := zedmanagerStatusDirname + "/" + fileName
+					handleCreate(statusName, config)
+					continue
+				}
+				// Read and check status
 				sb, err := ioutil.ReadFile(statusFile)
 				if err != nil {
 					log.Printf("%s for %s\n", err, statusFile)
@@ -152,86 +209,35 @@ func main() {
 						err, statusFile)
 					continue
 				}
-				uuid := status.UUIDandVersion.UUID
+				uuid = status.UUIDandVersion.UUID
 				if uuid.String()+".json" != fileName {
 					log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
 						fileName, uuid.String())
 					continue
 				}
-				statusName := zedmanagerStatusDirname + "/" + fileName
-				handleDelete(statusName, status)
-				continue
-			}
-			if operation != "M" {
-				log.Fatal("Unknown operation from Watcher: ",
-					operation)
-			}
-			configFile := zedmanagerConfigDirname + "/" + fileName
-			cb, err := ioutil.ReadFile(configFile)
-			if err != nil {
-				log.Printf("%s for %s\n", err, configFile)
-				continue
-			}
-			config := types.AppInstanceConfig{}
-			if err := json.Unmarshal(cb, &config); err != nil {
-				log.Printf("%s AppInstanceConfig file: %s\n",
-					err, configFile)
-				continue
-			}
-			uuid := config.UUIDandVersion.UUID
-			if uuid.String()+".json" != fileName {
-				log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-					fileName, uuid.String())
-				continue
-			}
-			statusFile := zedmanagerStatusDirname + "/" + fileName
-			if _, err := os.Stat(statusFile); err != nil {
-				// File does not exist in status hence new
-				statusName := zedmanagerStatusDirname + "/" + fileName
-				handleCreate(statusName, config)
-				continue
-			}
-			// Read and check status
-			sb, err := ioutil.ReadFile(statusFile)
-			if err != nil {
-				log.Printf("%s for %s\n", err, statusFile)
-				continue
-			}
-			status := types.AppInstanceStatus{}
-			if err := json.Unmarshal(sb, &status); err != nil {
-				log.Printf("%s AppInstanceStatus file: %s\n",
-					err, statusFile)
-				continue
-			}
-			uuid = status.UUIDandVersion.UUID
-			if uuid.String()+".json" != fileName {
-				log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-					fileName, uuid.String())
-				continue
-			}
-			// Look for pending* in status and repeat that operation.
-			// XXX After that do a full ReadDir to restart ...
-			if status.PendingAdd {
-				statusName := zedmanagerStatusDirname + "/" + fileName
-				handleCreate(statusName, config)
-				// XXX set something to rescan?
-				continue
-			}
-			if status.PendingDelete {
-				statusName := zedmanagerStatusDirname + "/" + fileName
-				handleDelete(statusName, status)
-				// XXX set something to rescan?
-				continue
-			}
-			if status.PendingModify {
+				// Look for pending* in status and repeat that operation.
+				// XXX After that do a full ReadDir to restart ...
+				if status.PendingAdd {
+					statusName := zedmanagerStatusDirname + "/" + fileName
+					handleCreate(statusName, config)
+					// XXX set something to rescan?
+					continue
+				}
+				if status.PendingDelete {
+					statusName := zedmanagerStatusDirname + "/" + fileName
+					handleDelete(statusName, status)
+					// XXX set something to rescan?
+					continue
+				}
+				if status.PendingModify {
+					statusName := zedmanagerStatusDirname + "/" + fileName
+					handleModify(statusName, config, status)
+					// XXX set something to rescan?
+					continue
+				}
 				statusName := zedmanagerStatusDirname + "/" + fileName
 				handleModify(statusName, config, status)
-				// XXX set something to rescan?
-				continue
 			}
-			statusName := zedmanagerStatusDirname + "/" + fileName
-			handleModify(statusName, config, status)
-		}
 		}
 	}
 }
@@ -268,7 +274,7 @@ func handleCreate(statusFilename string, config types.AppInstanceConfig) {
 	log.Printf("handleCreate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
-	addOrUpdateConfig(config.UUIDandVersion.UUID.String(), config)	
+	addOrUpdateConfig(config.UUIDandVersion.UUID.String(), config)
 
 	// Note that the status is written as we handle updates from the
 	// other services
@@ -290,7 +296,7 @@ func handleModify(statusFilename string, config types.AppInstanceConfig,
 	status.UUIDandVersion = config.UUIDandVersion
 	writeAppInstanceStatus(&status, statusFilename)
 
-	addOrUpdateConfig(config.UUIDandVersion.UUID.String(), config)	
+	addOrUpdateConfig(config.UUIDandVersion.UUID.String(), config)
 	// Note that the status is written as we handle updates from the
 	// other services
 	log.Printf("handleUpdate done for %s\n", config.DisplayName)
@@ -311,8 +317,8 @@ type statusCreateHandler func(statusFilename string, status interface{})
 type statusDeleteHandler func(statusFilename string)
 
 func handleStatusEvent(change string, statusDirname string, status interface{},
-     statusCreateFunc statusCreateHandler,
-     statusDeleteFunc statusDeleteHandler) {
+	statusCreateFunc statusCreateHandler,
+	statusDeleteFunc statusDeleteHandler) {
 	parts := strings.Split(change, " ")
 	operation := parts[0]
 	fileName := parts[1]

@@ -7,6 +7,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net"
@@ -51,13 +52,17 @@ lisp map-server {
 }
 `
 
-// Need to fill in (signature, IID, EID, IID, UplinkIfname, olIfname, IID)
+// Need to fill in (signature, additional, IID, EID, UplinkIfname, olIfname, IID)
 // Use this for the Mgmt IID/EID
-// XXX need to be able to set the username dummy? not needed for demo
 const lispEIDtemplateMgmt = `
 lisp json {
     json-name = signature
     json-string = { "signature" : "%s" }
+}
+
+lisp json {
+    json-name = additional-info
+    json-string = %s
 }
 
 lisp database-mapping {
@@ -65,15 +70,15 @@ lisp database-mapping {
         instance-id = %d
         eid-prefix = %s/128
     }
-    prefix {
-        instance-id = %d
-        eid-prefix = 'dummy@zededa.com'
-    }
     rloc {
         interface = %s
     }
     rloc {
         json-name = signature
+	priority = 255
+    }
+    rloc {
+        json-name = additional-info
 	priority = 255
     }
 }
@@ -84,13 +89,18 @@ lisp interface {
 }
 `
 
-// Need to fill in (tag, signature, IID, EID, IID, IID, IID, UplinkIfname, tag,
-// olifname, olifname, IID)
+// Need to fill in (tag, signature, tag, additional, IID, EID, IID,
+// UplinkIfname, tag, tag, olifname, olifname, IID)
 // Use this for the application EIDs
 const lispEIDtemplate = `
 lisp json {
     json-name = signature-%s
     json-string = { "signature" : "%s" }
+}
+
+lisp json {
+    json-name = additional-info-%s
+    json-string = %s
 }
 
 lisp database-mapping {
@@ -99,16 +109,15 @@ lisp database-mapping {
         eid-prefix = %s/128
 	ms-name = ms-%d
     }
-    prefix {
-        instance-id = %d
-        eid-prefix = 'dummy@zededa.com'
-        ms-name = ms-%d
-    }
     rloc {
         interface = %s
     }
     rloc {
         json-name = signature-%s
+	priority = 255
+    }
+    rloc {
+        json-name = additional-info-%s
 	priority = 255
     }
 }
@@ -123,6 +132,7 @@ const baseFilename = "/opt/zededa/etc/lisp.config.base"
 const destFilename = "/opt/zededa/lisp/lisp.config"
 const RestartCmd = "/opt/zededa/lisp/RESTART-LISP"
 const StopCmd = "/opt/zededa/lisp/STOP-LISP"
+const RLFilename = "/opt/zededa/lisp/RL"
 
 // We write files with the IID-specifics (and not EID) to files
 // in <globalRunDirname>/lisp/<iid>.
@@ -134,10 +144,10 @@ const StopCmd = "/opt/zededa/lisp/STOP-LISP"
 // Would be more polite to return an error then to Fatal
 func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	EID net.IP, lispSignature string, upLinkIfname string,
-	tag string, olIfname string) {
-	fmt.Printf("createLispConfiglet: %s %v %d %s %s %s %s %s\n",
+	tag string, olIfname string, additionalInfo string) {
+	fmt.Printf("createLispConfiglet: %s %v %d %s %s %s %s %s %s\n",
 		lispRunDirname, isMgmt, IID, EID, lispSignature, upLinkIfname,
-		tag, olIfname)
+		tag, olIfname, additionalInfo)
 	cfgPathnameIID := lispRunDirname + "/" +
 		strconv.FormatUint(uint64(IID), 10)
 	file1, err := os.Create(cfgPathnameIID)
@@ -162,26 +172,26 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	if isMgmt {
 		file1.WriteString(fmt.Sprintf(lispIIDtemplateMgmt, IID, IID))
 		file2.WriteString(fmt.Sprintf(lispEIDtemplateMgmt,
-			lispSignature, IID, EID, IID, upLinkIfname, olIfname,
-			IID))
+			lispSignature, additionalInfo, IID, EID,
+			upLinkIfname, olIfname, IID))
 	} else {
 		file1.WriteString(fmt.Sprintf(lispIIDtemplate,
 			IID, IID, IID, IID))
 		file2.WriteString(fmt.Sprintf(lispEIDtemplate,
-			tag, lispSignature, IID, EID, IID, IID, IID,
-			upLinkIfname, tag, olIfname, olIfname, IID))
+			tag, lispSignature, tag, additionalInfo, IID, EID, IID,
+			upLinkIfname, tag, tag, olIfname, olIfname, IID))
 	}
 	updateLisp(lispRunDirname, upLinkIfname)
 }
 
 func updateLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	EID net.IP, lispSignature string, upLinkIfname string,
-	tag string, olIfname string) {
-	fmt.Printf("updateLispConfiglet: %s %v %d %s %s %s %s %s\n",
+	tag string, olIfname string, additionalInfo string) {
+	fmt.Printf("updateLispConfiglet: %s %v %d %s %s %s %s %s %s\n",
 		lispRunDirname, isMgmt, IID, EID, lispSignature, upLinkIfname,
-		tag, olIfname)
+		tag, olIfname, additionalInfo)
 	createLispConfiglet(lispRunDirname, isMgmt, IID, EID, lispSignature,
-		upLinkIfname, tag, olIfname)
+		upLinkIfname, tag, olIfname, additionalInfo)
 }
 
 func deleteLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
@@ -217,17 +227,21 @@ func updateLisp(lispRunDirname string, upLinkIfname string) {
 		log.Println("TempFile ", err)
 		return
 	}
+	defer tmpfile.Close()
 	defer os.Remove(tmpfile.Name())
 
-	content, err := ioutil.ReadFile(baseFilename)
+	fmt.Printf("Copying from %s to %s\n", baseFilename, tmpfile.Name())
+	s, err := os.Open(baseFilename)
 	if err != nil {
-		log.Println("ReadFile ", baseFilename, err)
+		log.Println("os.Open ", baseFilename, err)
 		return
 	}
-	if _, err := tmpfile.Write(content); err != nil {
-		log.Println("Write ", tmpfile.Name(), err)
+	var cnt int64
+	if cnt, err = io.Copy(tmpfile, s); err != nil {
+		log.Println("io.Copy ", baseFilename, err)
 		return
 	}
+	fmt.Printf("Copied %d bytes from %s\n", cnt, baseFilename)
 	files, err := ioutil.ReadDir(lispRunDirname)
 	if err != nil {
 		log.Println("ReadDir ", lispRunDirname, err)
@@ -240,20 +254,25 @@ func updateLisp(lispRunDirname string, upLinkIfname string) {
 			eidCount += 1
 		}
 		filename := lispRunDirname + "/" + file.Name()
-		content, err := ioutil.ReadFile(filename)
+		fmt.Printf("Copying from %s to %s\n", filename, tmpfile.Name())
+		s, err := os.Open(filename)
 		if err != nil {
-			log.Println("ReadFile ", filename, err)
+			log.Println("os.Open ", filename, err)
 			return
 		}
-		if _, err := tmpfile.Write(content); err != nil {
-			log.Println("Write ", tmpfile.Name(), err)
+		if cnt, err = io.Copy(tmpfile, s); err != nil {
+			log.Println("io.Copy ", filename, err)
 			return
 		}
+		fmt.Printf("Copied %d bytes from %s\n", cnt, filename)
 	}
 	if err := tmpfile.Close(); err != nil {
 		log.Println("Close ", tmpfile.Name(), err)
 		return
 	}
+	// This seems safer; make sure it is stopped before rewriting file
+	stopLisp(lispRunDirname)
+
 	if err := os.Rename(tmpfile.Name(), destFilename); err != nil {
 		log.Println("Rename ", tmpfile.Name(), destFilename, err)
 		return
@@ -291,13 +310,14 @@ func updateLisp(lispRunDirname string, upLinkIfname string) {
 // XXX also need to restart when adding an overlay interface
 // Adds should be ok without. How can we tell?
 func restartLisp(lispRunDirname string, upLinkIfname string, devices string) {
-	fmt.Printf("restartLisp: %s %s %s\n",
+	log.Printf("restartLisp: %s %s %s\n",
 		lispRunDirname, upLinkIfname, devices)
 	args := []string{
 		RestartCmd,
 		"8080",
 		upLinkIfname,
 	}
+	itrTimeout := 10
 	cmd := exec.Command(RestartCmd)
 	cmd.Args = args
 	env := os.Environ()
@@ -305,17 +325,27 @@ func restartLisp(lispRunDirname string, upLinkIfname string, devices string) {
 	env = append(env, fmt.Sprintf("LISP_PCAP_LIST=%s", devices))
 	// Make sure the ITR doesn't give up to early; maybe it should
 	// wait forever? Will we be dead for this time?
-	env = append(env, fmt.Sprintf("LISP_ITR_WAIT_TIME=%d", 10))
+	env = append(env, fmt.Sprintf("LISP_ITR_WAIT_TIME=%d", itrTimeout))
 	cmd.Env = env
 	_, err := cmd.Output()
 	if err != nil {
 		log.Println("RESTART-LISP failed ", err)
 	}
-	fmt.Printf("restartLisp done\n")
+	log.Printf("restartLisp done\n")
+
+	// Save the restart as a bash command called RL
+	const RLTemplate = "#!/bin/bash\n# Automatically generated by zedrouter\ncd `dirname $0`\nLISP_NO_IPTABLES=,LISP_PCAP_LIST='%s',LISP_ITR_WAIT_TIME=%d %s 8080 %s\n"
+	b := []byte(fmt.Sprintf(RLTemplate, devices, itrTimeout, RestartCmd,
+		upLinkIfname))
+	err = ioutil.WriteFile(RLFilename, b, 0744)
+	if err != nil {
+		log.Fatal("WriteFile", err, RLFilename)
+	}
+	fmt.Printf("Wrote %s\n", RLFilename)
 }
 
 func stopLisp(lispRunDirname string) {
-	fmt.Printf("stopLisp: %s\n", lispRunDirname)
+	log.Printf("stopLisp: %s\n", lispRunDirname)
 	cmd := exec.Command(StopCmd)
 	env := os.Environ()
 	env = append(env, fmt.Sprintf("LISP_NO_IPTABLES="))
@@ -324,5 +354,5 @@ func stopLisp(lispRunDirname string) {
 	if err != nil {
 		log.Println("STOP-LISP failed ", err)
 	}
-	fmt.Printf("stopLisp done\n")
+	log.Printf("stopLisp done\n")
 }

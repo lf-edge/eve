@@ -32,10 +32,10 @@ func MaybeAddVerifyImageConfig(safename string, sc *types.StorageConfig) {
 	} else {
 		fmt.Printf("verifier config add for %s\n", safename)
 		n := types.VerifyImageConfig{
-			Safename:	safename,
-			DownloadURL:	sc.DownloadURL,
-			ImageSha256:	sc.ImageSha256,
-			RefCount:	1,
+			Safename:    safename,
+			DownloadURL: sc.DownloadURL,
+			ImageSha256: sc.ImageSha256,
+			RefCount:    1,
 		}
 		verifyImageConfig[key] = n
 	}
@@ -62,7 +62,7 @@ func MaybeRemoveVerifyImageConfigSha256(sha256 string) {
 		return
 	}
 	log.Printf("MaybeRemoveVerifyImageConfig RefCount zerp for %s\n",
-			sha256)
+		sha256)
 	key := m.Safename
 	delete(verifyImageConfig, key)
 	configFilename := fmt.Sprintf("%s/%s.json",
@@ -91,7 +91,7 @@ func writeVerifyImageConfig(config types.VerifyImageConfig,
 var verifierStatus map[string]types.VerifyImageStatus
 
 func handleVerifyImageStatusModify(statusFilename string,
-     statusArg interface{}) {
+	statusArg interface{}) {
 	var status *types.VerifyImageStatus
 
 	switch statusArg.(type) {
@@ -137,7 +137,7 @@ func handleVerifyImageStatusModify(statusFilename string,
 func LookupVerifyImageStatus(safename string) (types.VerifyImageStatus, error) {
 	if m, ok := verifierStatus[safename]; ok {
 		log.Printf("LookupVerifyImageStatus: found based on safename %s\n",
-				safename)
+			safename)
 		return m, nil
 	} else {
 		return types.VerifyImageStatus{}, errors.New("No VerifyImageStatus")
@@ -145,7 +145,7 @@ func LookupVerifyImageStatus(safename string) (types.VerifyImageStatus, error) {
 }
 
 func lookupVerifyImageStatusSha256Impl(sha256 string) (*types.VerifyImageStatus,
-     error) {
+	error) {
 	for _, m := range verifierStatus {
 		if m.ImageSha256 == sha256 {
 			log.Printf("lookupVerifyImageStatusSha256Impl: found based on sha256 %s safename %s\n",
@@ -157,7 +157,7 @@ func lookupVerifyImageStatusSha256Impl(sha256 string) (*types.VerifyImageStatus,
 }
 
 func LookupVerifyImageStatusSha256(sha256 string) (types.VerifyImageStatus,
-     error) {
+	error) {
 	m, err := lookupVerifyImageStatusSha256Impl(sha256)
 	if err != nil {
 		return types.VerifyImageStatus{}, err
@@ -182,5 +182,3 @@ func handleVerifyImageStatusDelete(statusFilename string) {
 	log.Printf("handleVerifyImageStatusDelete done for %s\n",
 		statusFilename)
 }
-
-

@@ -11,6 +11,9 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"github.com/nanobox-io/golang-scribble"
+	"github.com/zededa/go-provision/types"
+	"golang.org/x/crypto/ocsp"
 	"io/ioutil"
 	"log"
 	"net"
@@ -20,9 +23,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"github.com/nanobox-io/golang-scribble"
-	"github.com/zededa/go-provision/types"
-	"golang.org/x/crypto/ocsp"
 )
 
 var zedServerConfig types.ZedServerConfig
@@ -46,7 +46,7 @@ type ServerCertInfo struct {
 //
 func main() {
 	log.Printf("Starting server\n")
-	
+
 	args := os.Args[1:]
 	if len(args) > 1 {
 		log.Fatal("Usage: " + os.Args[0] + "[<dirName>]")

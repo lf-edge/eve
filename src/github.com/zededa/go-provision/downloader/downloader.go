@@ -51,7 +51,7 @@ func main() {
 	imgCatalogDirname = "/var/tmp/zedmanager/downloads"
 	pendingDirname := imgCatalogDirname + "/pending"
 	verifierDirname := imgCatalogDirname + "/verifier"
-	
+
 	if _, err := os.Stat(baseDirname); err != nil {
 		if err := os.Mkdir(baseDirname, 0700); err != nil {
 			log.Fatal(err)
@@ -77,7 +77,7 @@ func main() {
 			log.Fatal(err)
 		}
 	}
-	
+
 	// Remove any files which didn't make it past the verifier
 	if err := os.RemoveAll(pendingDirname); err != nil {
 		log.Fatal(err)
@@ -87,7 +87,7 @@ func main() {
 	if err := os.RemoveAll(verifierDirname); err != nil {
 		log.Fatal(err)
 	}
-	
+
 	if _, err := os.Stat(pendingDirname); err != nil {
 		if err := os.Mkdir(pendingDirname, 0700); err != nil {
 			log.Fatal(err)
@@ -201,7 +201,7 @@ func main() {
 			// XXX set something to rescan?
 			continue
 		}
-			
+
 		statusName := statusDirname + "/" + fileName
 		handleModify(statusName, config, status)
 	}
@@ -228,7 +228,7 @@ func handleInit(configFilename string, statusFilename string) {
 		log.Fatal(err)
 	}
 	log.Printf("MaxSpace %d\n", globalConfig.MaxSpace)
-	
+
 	globalStatus.UsedSpace = 0
 	globalStatus.ReservedSpace = 0
 	updateRemainingSpace()
@@ -241,7 +241,7 @@ func handleInit(configFilename string, statusFilename string) {
 }
 
 func sizeFromDir(dirname string) int64 {
-	var totalUsed int64 = 0     
+	var totalUsed int64 = 0
 	locations, err := ioutil.ReadDir(dirname)
 	if err != nil {
 		log.Fatalf("ReadDir(%s) %s\n",
@@ -268,7 +268,7 @@ func updateRemainingSpace() {
 		globalStatus.ReservedSpace
 	log.Printf("RemaingSpace %d, maxspace %d, usedspace %d, reserved %d\n",
 		globalStatus.RemainingSpace, globalConfig.MaxSpace,
-		globalStatus.UsedSpace,	globalStatus.ReservedSpace)
+		globalStatus.UsedSpace, globalStatus.ReservedSpace)
 	// Create and write
 	writeGlobalStatus()
 }
@@ -305,14 +305,14 @@ func handleCreate(statusFilename string, config types.DownloaderConfig) {
 		config.Safename, config.DownloadURL)
 	// Start by marking with PendingAdd
 	status := types.DownloaderStatus{
-		Safename:	config.Safename,
-		RefCount:	config.RefCount,
-		DownloadURL:	config.DownloadURL,
-		ImageSha256:	config.ImageSha256,
-		PendingAdd:     true,
+		Safename:    config.Safename,
+		RefCount:    config.RefCount,
+		DownloadURL: config.DownloadURL,
+		ImageSha256: config.ImageSha256,
+		PendingAdd:  true,
 	}
 	writeDownloaderStatus(&status, statusFilename)
-	
+
 	// Check if we have space
 	if config.MaxSize >= globalStatus.RemainingSpace {
 		errString := fmt.Sprintf("Would exceed remaining space %d vs %d\n",
@@ -333,7 +333,7 @@ func handleCreate(statusFilename string, config types.DownloaderConfig) {
 	status.ReservedSpace = config.MaxSize
 	globalStatus.ReservedSpace += status.ReservedSpace
 	updateRemainingSpace()
-	
+
 	// If RefCount == 0 then we don't yet download.
 	if config.RefCount == 0 {
 		// XXX odd to treat as error.
@@ -366,7 +366,7 @@ func doCreate(statusFilename string, config types.DownloaderConfig,
 			log.Fatal(err)
 		}
 	}
-	destFilename := destDirname + "/" + config.Safename	
+	destFilename := destDirname + "/" + config.Safename
 	log.Printf("Downloading URL %s to %s\n",
 		config.DownloadURL, destFilename)
 
@@ -402,8 +402,8 @@ func doCreate(statusFilename string, config types.DownloaderConfig,
 		return
 	}
 	// XXX Compare against MaxSize and reject? Already wasted the space?
-	status.Size = uint((info.Size() + 1023)/1024)
-	
+	status.Size = uint((info.Size() + 1023) / 1024)
+
 	if status.Size > config.MaxSize {
 		// Delete file
 		doDelete(statusFilename, status)
@@ -420,12 +420,12 @@ func doCreate(statusFilename string, config types.DownloaderConfig,
 		log.Printf("handleCreate failed for %s\n", config.DownloadURL)
 		return
 	}
-	
+
 	globalStatus.ReservedSpace -= status.ReservedSpace
 	status.ReservedSpace = 0
 	globalStatus.UsedSpace += status.Size
 	updateRemainingSpace()
-	
+
 	// We do not clear any status.RetryCount, LastErr, etc. The caller
 	// should look at State == DOWNLOADED to determine it is done.
 
@@ -441,12 +441,12 @@ func doCreate(statusFilename string, config types.DownloaderConfig,
 // XXX temporary options since store.zededa.net not in DNS
 // and wierd free.fr dns behavior with AAAA and A. Added  -4 --no-check-certificate
 func doWget(url string, destFilename string) error {
-	fmt.Printf("doWget %s %s\n", url, destFilename)     
+	fmt.Printf("doWget %s %s\n", url, destFilename)
 	cmd := "wget"
 	args := []string{
 		"-q",
 		"-c",
-       	   	"-4",	// XXX due to getting IPv6 ULAs and not IPv4
+		"-4", // XXX due to getting IPv6 ULAs and not IPv4
 		"--no-check-certificate",
 		"--tries=3",
 		"-O",
@@ -487,16 +487,16 @@ func handleModify(statusFilename string, config types.DownloaderConfig,
 			reason, config.DownloadURL)
 		doDelete(statusFilename, &status)
 		status := types.DownloaderStatus{
-			Safename:	config.Safename,
-			RefCount:	config.RefCount,
-			DownloadURL:	config.DownloadURL,
-			ImageSha256:	config.ImageSha256,
+			Safename:    config.Safename,
+			RefCount:    config.RefCount,
+			DownloadURL: config.DownloadURL,
+			ImageSha256: config.ImageSha256,
 		}
-		doCreate(statusFilename, config, &status)	
+		doCreate(statusFilename, config, &status)
 		log.Printf("handleModify done for %s\n", config.DownloadURL)
 		return
 	}
-	
+
 	// XXX do work; look for refcnt -> 0 and delete; cancel any running
 	// download
 	// If RefCount from zero to non-zero then do install
@@ -506,21 +506,21 @@ func handleModify(statusFilename string, config types.DownloaderConfig,
 		status.RefCount = config.RefCount
 		status.PendingModify = false
 		writeDownloaderStatus(&status, statusFilename)
-	} else if status.RefCount != 0 && config.RefCount == 0 {	
+	} else if status.RefCount != 0 && config.RefCount == 0 {
 		log.Printf("handleModify deleting %s\n", config.DownloadURL)
 		doDelete(statusFilename, &status)
 	} else {
 		status.RefCount = config.RefCount
 		status.PendingModify = false
 		writeDownloaderStatus(&status, statusFilename)
-	}	
+	}
 	log.Printf("handleModify done for %s\n", config.DownloadURL)
 }
 
 func doDelete(statusFilename string, status *types.DownloaderStatus) {
 	log.Printf("doDelete(%v) for %s\n",
 		status.Safename, status.DownloadURL)
-	destFilename := imgCatalogDirname + "/pending/" + status.Safename	
+	destFilename := imgCatalogDirname + "/pending/" + status.Safename
 	if _, err := os.Stat(destFilename); err == nil {
 		// Remove file
 		if err := os.Remove(destFilename); err != nil {
@@ -550,7 +550,7 @@ func handleDelete(statusFilename string, status types.DownloaderStatus) {
 	status.Size = 0
 	updateRemainingSpace()
 	writeDownloaderStatus(&status, statusFilename)
-	
+
 	doDelete(statusFilename, &status)
 
 	status.PendingDelete = false

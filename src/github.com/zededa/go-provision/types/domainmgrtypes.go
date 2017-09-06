@@ -15,45 +15,45 @@ import (
 // is needed? For instance, ZedManager could remove the DomainConfig, what for
 // DomainStatus to be deleted, then re-create the DomainConfig.
 type DomainConfig struct {
-	UUIDandVersion  UUIDandVersion
-	DisplayName     string	// Use as name for domU? DisplayName+version?
-	Activate	bool	// Actually start the domU as opposed to prepare
-	AppNum		int	// From networking; makes the name unique
+	UUIDandVersion UUIDandVersion
+	DisplayName    string // Use as name for domU? DisplayName+version?
+	Activate       bool   // Actually start the domU as opposed to prepare
+	AppNum         int    // From networking; makes the name unique
 	FixedResources
-	DiskConfigList	[]DiskConfig
-	VifList		[]VifInfo
+	DiskConfigList []DiskConfig
+	VifList        []VifInfo
 }
 
 type FixedResources struct {
-	Kernel		string	// default ""
-	Ramdisk		string	// default ""
-	Memory		int	// in kbytes; XXX round up to Mbytes for xen?
-	MaxMem		int	// Default not set i.e. no balooning
-	VCpus		int	// default 1
+	Kernel  string // default ""
+	Ramdisk string // default ""
+	Memory  int    // in kbytes; XXX round up to Mbytes for xen?
+	MaxMem  int    // Default not set i.e. no balooning
+	VCpus   int    // default 1
 	// XXX Add CPU pinning
 	// XXX also device passthru?
-	ExtraArgs	string	// added to bootargs
+	ExtraArgs string // added to bootargs
 }
 
 type DomainStatus struct {
-	UUIDandVersion  UUIDandVersion
-	DisplayName	string
-	Activated	bool
-	AppNum		int
-	PendingAdd	bool
-	PendingModify	bool
-	PendingDelete	bool
-	DomainName	string	// Name of Xen domain
-	DomainId	int
-	DiskStatusList	[]DiskStatus
-	LastErr		string	// Xen error
-	LastErrTime	time.Time
+	UUIDandVersion UUIDandVersion
+	DisplayName    string
+	Activated      bool
+	AppNum         int
+	PendingAdd     bool
+	PendingModify  bool
+	PendingDelete  bool
+	DomainName     string // Name of Xen domain
+	DomainId       int
+	DiskStatusList []DiskStatus
+	LastErr        string // Xen error
+	LastErrTime    time.Time
 }
 
 type VifInfo struct {
-	Bridge		string
-	Vif		string
-	Mac		string
+	Bridge string
+	Vif    string
+	Mac    string
 }
 
 // XenManager will pass these to the xen xl config file
@@ -62,21 +62,21 @@ type VifInfo struct {
 // Note that vdev in general can be hd[x], xvd[x], sd[x] but here we only
 // use xvd
 type DiskConfig struct {
-	ImageSha256	string	// sha256 of immutable image
-	ReadOnly	bool
-	Preserve	bool	// If set a rw disk will be preserved across
-				// boots (acivate/inactivate)
-	Format		string	// Default "raw"; could be raw, qcow, qcow2, vhd
-	Devtype		string	// Default ""; could be e.g. "cdrom"
+	ImageSha256 string // sha256 of immutable image
+	ReadOnly    bool
+	Preserve    bool // If set a rw disk will be preserved across
+	// boots (acivate/inactivate)
+	Format  string // Default "raw"; could be raw, qcow, qcow2, vhd
+	Devtype string // Default ""; could be e.g. "cdrom"
 }
 
 type DiskStatus struct {
-	ImageSha256	string	// sha256 of immutable image
-	ReadOnly	bool
-	Preserve	bool
-	FileLocation	string	// Local location of Image
-	Format		string	// From config
-	Devtype		string	// From config
-	Vdev		string	// Allocated
-	Target		string	// Allocated; private copy if RW; FileLocation if RO
+	ImageSha256  string // sha256 of immutable image
+	ReadOnly     bool
+	Preserve     bool
+	FileLocation string // Local location of Image
+	Format       string // From config
+	Devtype      string // From config
+	Vdev         string // Allocated
+	Target       string // Allocated; private copy if RW; FileLocation if RO
 }

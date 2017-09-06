@@ -1,11 +1,54 @@
-TODO add device mapping to support gpiotoled.
+TODO zedcontrol shouldn't have eids.dbo1x0 set rule. Needs to accept everybody?
+Workaround: ip6tables -F OUTPUT
+XXX was it needed?
 
+TODO are we accepting east-west traffic on mgmt iid?
+A: only those listed in zedrouter*.json.
+
+TODO add device mapping to support gpiotoled.
+TODO add cpu binding for rtos
+TODO what is needed for docker/rkt?
+
+TODO rename displayName to localDNSName?
+     Should we allow for empty? Also used for xen domain.
+TODO should we have one name per overlay?
+TODO bundles of bundles vs. attach to overlay uuid?
+TODO domU needs to know which overlay is which and diff than IPv6 underlay.
+TODO domU needs routes for different overlays.
+
+TODO name for StorageConfig*?
+     Is both an Image description and aspects of the container for the image
+     ImageDeploymentConfig and ImageDeploymentStatus?
+     
 TODO device-steps.sh - mode (from file or arg) to only run zedrouter for ctrl01?
      Check we can create dbo1x0.
      Also move ctrl01's code to /opt
      
-TODO wait - introduce second layer of interfaces to remove duplicate code
+TODO wait code - introduce second layer of interfaces to remove duplicate code
 
+TODO create domain name ipsets on the fly. Easy in handleCreate
+   Requires some care in handleModify
+TODO handleModify's update to ACLs assumes there is no DROP rules since does inserts new rules up front.
+   Need to generate new list of rules and then just apply them?
+   (Using save/restore for efficiency? Should we use restore for initial set
+   as well for efficiency?)
+TODO xenmgr goroutines
+
+TODO Create DeviceSwStatus separate from DeviceSwResources
+Include uplink interfaces, available memory and disk
+NAT i.e. uplink global address? (From exchanges with ZedControl).
+Trigger such exchange when local interface/address change.
+DeviceSwStatus upload results in an ack containing the global address.
+
+
+===
+
+DONE avoid empty additional strings:
+	`json:",omitempty"`
+
+DONE add location information in additional json RLOC
+
+DONE remove Src for fd00::/8 route
 DONE zedrouter/radvd mtu 1280
 	AdvLinkMTU  1280     
 DONE zedrouter/radvd route for fd00::/8 and lower preference
@@ -19,13 +62,12 @@ DONE lisp cd in STOP-LISP
 DONE lisp not picking up packets until manual restart
     added wait time
     
-TODO verify signatures on image; root of trust?
-
-XXX test TODO remove local names from dnsmasq: have
-nordmark@ubuntu:~$ ping zedtest4
-PING zedtest4 (172.27.2.2) 56(84) bytes of data.
-XXX No option to dnsmasq to skip DHCP entries
-
+DONE remove local names from dnsmasq: have
+	nordmark@ubuntu:~$ ping zedtest4
+	PING zedtest4 (172.27.2.2) 56(84) bytes of data.
+	No option to dnsmasq to skip DHCP entries
+	Using uuid as dhcp hostname
+	
 DONE dnsmasgq rename
 DONE ACL DROP remove... 
 DONE log.fmt when directory has been scanned?
@@ -81,17 +123,9 @@ DONE - keep downloads directory in place as well
 NOTE:
 ubuntu guest and zedrouter assumes bu is first in list of networks - becomes eth0
 
-TODO zedrouter:
 DONE move dnsmasq and radvd from /etc to /var/run/zedrouter/
-TODO create domain name ipsets on the fly. Easy in handleCreate
-   Requires some care in handleModify
-TODO handleModify's update to ACLs assumes there is no DROP rules since does inserts new rules up front.
-   Need to generate new list of rules and then just apply them?
-   (Using save/restore for efficiency? Should we use restore for initial set
-   as well for efficiency?)
 
-xenmgr:
-TODO xenmgr goroutines
+xenmgr
  - How do we wait for state?
  - How do we find out crashed? boot failures show up as "r"
 DONE - How do we always delete? Wait state to change after xl shutdown then xl destroy and wait again? Means a goroutine per UUID?
@@ -107,11 +141,6 @@ DONE - 2nd read config from ZedCloud/dir
    
 ===
 
-TODO Create DeviceSwStatus separate from DeviceSwResources
-Include uplink interfaces, available memory and disk
-NAT i.e. uplink global address? (From exchanges with ZedControl).
-Trigger such exchange when local interface/address change.
-DeviceSwStatus upload results in an ack containing the global address.
 
 ===
 
