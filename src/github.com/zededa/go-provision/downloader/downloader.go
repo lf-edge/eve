@@ -453,12 +453,13 @@ func doWget(url string, destFilename string) error {
 		destFilename,
 		url,
 	}
-	_, err := exec.Command(cmd, args...).Output()
+	stdoutStderr, err := exec.Command(cmd, args...).CombinedOutput()
 	if err != nil {
 		log.Println("wget failed ", err)
+		log.Println("wget output ", string(stdoutStderr))
 		return err
 	}
-	fmt.Printf("wget done\n")
+	fmt.Printf("wget done: output %s\n", string(stdoutStderr))
 	return nil
 }
 
@@ -524,8 +525,7 @@ func doDelete(statusFilename string, status *types.DownloaderStatus) {
 	if _, err := os.Stat(destFilename); err == nil {
 		// Remove file
 		if err := os.Remove(destFilename); err != nil {
-			log.Printf("Failed to remove %s: err %s\n",
-				destFilename, err)
+			log.Println(err)
 		}
 	}
 	status.State = types.INITIAL
@@ -558,7 +558,7 @@ func handleDelete(statusFilename string, status types.DownloaderStatus) {
 
 	// Write out what we modified to DownloaderStatus aka delete
 	if err := os.Remove(statusFilename); err != nil {
-		log.Println("Failed to remove", statusFilename, err)
+		log.Println(err)
 	}
 	log.Printf("handleDelete done for %s\n", status.DownloadURL)
 }

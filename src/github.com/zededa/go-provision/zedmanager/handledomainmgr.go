@@ -96,7 +96,7 @@ func MaybeRemoveDomainConfig(uuidStr string) {
 	configFilename := fmt.Sprintf("%s/%s.json",
 		domainmgrConfigDirname, uuidStr)
 	if err := os.Remove(configFilename); err != nil {
-		log.Println("Failed to remove", configFilename, err)
+		log.Println(err)
 	}
 	log.Printf("MaybeRemoveDomainConfig done for %s\n", uuidStr)
 }

@@ -427,7 +427,7 @@ func handleDelete(outputFilename string, output types.EIDStatus) {
 	writeEIDStatus(&output, outputFilename)
 	// Write out what we modified aka delete
 	if err := os.Remove(outputFilename); err != nil {
-		log.Println("Failed to remove", outputFilename, err)
+		log.Println(err)
 	}
 	log.Printf("handleDelete done for %s\n", output.DisplayName)
 }

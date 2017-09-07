@@ -117,7 +117,7 @@ func MaybeRemoveAppNetworkConfig(uuidStr string) {
 	configFilename := fmt.Sprintf("%s/%s.json",
 		zedrouterConfigDirname, uuidStr)
 	if err := os.Remove(configFilename); err != nil {
-		log.Println("Failed to remove", configFilename, err)
+		log.Println(err)
 	}
 	log.Printf("MaybeRemoveAppNetworkConfig done for %s\n", uuidStr)
 }

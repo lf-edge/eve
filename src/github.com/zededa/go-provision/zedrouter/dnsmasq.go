@@ -98,12 +98,12 @@ func createDnsmasqUnderlayConfiglet(cfgPathname string, ulIfname string,
 func deleteDnsmasqConfiglet(cfgPathname string) {
 	fmt.Printf("deleteDnsmasqOverlayConfiglen: %s\n", cfgPathname)
 	if err := os.Remove(cfgPathname); err != nil {
-		log.Println("Remove ", cfgPathname, err)
+		log.Println(err)
 	}
 }
 
 // Run this:
-//    DMDIR=/home/nordmark/dnsmasq-2.75/src
+//    DMDIR=/opt/zededa/bin/
 //    ${DMDIR}/dnsmasq --conf-file=/etc/dnsmasq.${OLIFNAME}.conf
 // or
 //    ${DMDIR}/dnsmasq --conf-file=/etc/dnsmasq.${ULIFNAME}.conf
@@ -111,7 +111,7 @@ func startDnsmasq(cfgPathname string) {
 	fmt.Printf("startDnsmasq: %s\n", cfgPathname)
 	cmd := "nohup"
 	args := []string{
-		"/home/nordmark/dnsmasq-2.75/src/dnsmasq",
+		"/opt/zededa/bin/dnsmasq",
 		"-C",
 		cfgPathname,
 	}

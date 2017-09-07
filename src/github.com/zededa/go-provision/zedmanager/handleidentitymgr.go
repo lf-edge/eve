@@ -63,7 +63,7 @@ func MaybeRemoveEIDConfig(UUIDandVersion types.UUIDandVersion,
 	configFilename := fmt.Sprintf("%s/%s.json",
 		identitymgrConfigDirname, key)
 	if err := os.Remove(configFilename); err != nil {
-		log.Println("Failed to remove", configFilename, err)
+		log.Println(err)
 	}
 	log.Printf("MaybeRemoveEIDConfig done for %s\n", key)
 }

@@ -402,7 +402,7 @@ func handleDelete(statusFilename string, status types.VerifyImageStatus) {
 
 	// Write out what we modified to VerifyImageStatus aka delete
 	if err := os.Remove(statusFilename); err != nil {
-		log.Println("Failed to remove", statusFilename, err)
+		log.Println(err)
 	}
 	log.Printf("handleDelete done for %s\n", status.Safename)
 }

@@ -68,7 +68,7 @@ func updateHostsConfiglet(cfgDirname string,
 		if !containsHostName(newNameToEidList, ne.HostName) {
 			cfgPathname := cfgDirname + "/" + ne.HostName
 			if err := os.Remove(cfgPathname); err != nil {
-				log.Println("os.Remove for ", cfgPathname, err)
+				log.Println(err)
 			}
 		}
 	}
@@ -91,6 +91,6 @@ func deleteHostsConfiglet(cfgDirname string, printOnError bool) {
 	fmt.Printf("deleteHostsConfiglet: dir %s\n", cfgDirname)
 	err := os.RemoveAll(cfgDirname)
 	if err != nil && printOnError {
-		log.Println("RemoveAll ", cfgDirname, err)
+		log.Println(err)
 	}
 }

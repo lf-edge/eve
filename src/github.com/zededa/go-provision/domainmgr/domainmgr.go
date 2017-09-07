@@ -384,8 +384,7 @@ func doInactivate(status *types.DomainStatus) {
 			if !ds.ReadOnly && !ds.Preserve {
 				log.Printf("Delete copy at %s\n", ds.Target)
 				if err := os.Remove(ds.Target); err != nil {
-					log.Printf("Remove failed %s: %s\n",
-						ds.Target, err)
+					log.Println(err)
 					// XXX return? Cleanup status?
 				}
 			}
@@ -651,7 +650,7 @@ func handleDelete(statusFilename string, status types.DomainStatus) {
 	// Delete xen cfg file for good measure
 	filename := xenCfgFilename(status.AppNum)
 	if err := os.Remove(filename); err != nil {
-		log.Println("Failed to remove", filename, err)
+		log.Println(err)
 	}
 
 	// Do we need to delete any rw files that were not deleted during
@@ -660,8 +659,7 @@ func handleDelete(statusFilename string, status types.DomainStatus) {
 		if !ds.ReadOnly && ds.Preserve {
 			log.Printf("Delete copy at %s\n", ds.Target)
 			if err := os.Remove(ds.Target); err != nil {
-				log.Printf("Remove failed %s: %s\n",
-					ds.Target, err)
+				log.Println(err)
 				// XXX return? Cleanup status?
 			}
 		}
@@ -670,7 +668,7 @@ func handleDelete(statusFilename string, status types.DomainStatus) {
 	writeDomainStatus(&status, statusFilename)
 	// Write out what we modified to AppNetworkStatus aka delete
 	if err := os.Remove(statusFilename); err != nil {
-		log.Println("Failed to remove", statusFilename, err)
+		log.Println(err)
 	}
 	log.Printf("handleDelete(%v) DONE for %s\n",
 		status.UUIDandVersion, status.DisplayName)
@@ -683,12 +681,12 @@ func xlCreate(domainName string, xenCfgFilename string) (int, error) {
 		"create",
 		xenCfgFilename,
 	}
-	out, err := exec.Command(cmd, args...).CombinedOutput()
+	stdoutStderr, err := exec.Command(cmd, args...).CombinedOutput()
 	if err != nil {
 		log.Println("xl create failed ", err)
-		log.Println("xl create output ", string(out))
+		log.Println("xl create output ", string(stdoutStderr))
 		return 0, errors.New(fmt.Sprintf("xl create failed: %s\n",
-			string(out)))
+			string(stdoutStderr)))
 	}
 	fmt.Printf("xl create done\n")
 
@@ -696,7 +694,7 @@ func xlCreate(domainName string, xenCfgFilename string) (int, error) {
 		"domid",
 		domainName,
 	}
-	out, err = exec.Command(cmd, args...).Output()
+	out, err := exec.Command(cmd, args...).Output()
 	if err != nil {
 		log.Println("xl domid failed ", err)
 		return 0, err
@@ -736,9 +734,10 @@ func xlShutdown(domainName string, domainId int) error {
 		"shutdown",
 		strconv.Itoa(domainId),
 	}
-	_, err := exec.Command(cmd, args...).Output()
+	stdoutStderr, err := exec.Command(cmd, args...).CombinedOutput()
 	if err != nil {
 		log.Println("xl shutdown failed ", err)
+		log.Println("xl shutdown output ", string(stdoutStderr))
 		return err
 	}
 	fmt.Printf("xl shutdown done\n")
@@ -752,9 +751,10 @@ func xlDestroy(domainName string, domainId int) error {
 		"destroy",
 		strconv.Itoa(domainId),
 	}
-	_, err := exec.Command(cmd, args...).Output()
+	stdoutStderr, err := exec.Command(cmd, args...).CombinedOutput()
 	if err != nil {
 		log.Println("xl destroy failed ", err)
+		log.Println("xl destroy output ", string(stdoutStderr))
 		return err
 	}
 	fmt.Printf("xl destroy done\n")
