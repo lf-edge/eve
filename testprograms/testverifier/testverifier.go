@@ -287,8 +287,8 @@ func InvokeDeviceCodeForVerification (configDirname,imageDirname,certificateDirn
 
         hashe256 := sha256.New()
         hashe256.Write(diskImg)
-        signatureHash := hashe256.Sum(nil)
-        imgSha256 := fmt.Sprintf("%x", signatureHash)
+        imageHash := hashe256.Sum(nil)
+        imgSha256 := fmt.Sprintf("%x", imageHash)
         fmt.Println("imgSha256: ",imgSha256)
 
         //Read the signature from directory for now...later we will read it from config file...
@@ -302,7 +302,7 @@ func InvokeDeviceCodeForVerification (configDirname,imageDirname,certificateDirn
         switch pub := cert.PublicKey.(type) {
         case *rsa.PublicKey:
 
-                err = rsa.VerifyPKCS1v15(pub, crypto.SHA256, signatureHash, imgSig)
+                err = rsa.VerifyPKCS1v15(pub, crypto.SHA256, imageHash, imgSig)
                 if err != nil {
                         fmt.Println("VerifyPKCS1v15 failed...")
                 } else {
@@ -329,7 +329,7 @@ func InvokeDeviceCodeForVerification (configDirname,imageDirname,certificateDirn
                 r.SetBytes(rbytes)
                 s.SetBytes(sbytes)
                 fmt.Printf("Decoded r, s: %v, %v\n", r, s)
-		ok := ecdsa.Verify(pub, signatureHash, r, s)
+		ok := ecdsa.Verify(pub, imageHash, r, s)
 		if !ok {
 			fmt.Printf("ecdsa.Verify failed")
 		}
