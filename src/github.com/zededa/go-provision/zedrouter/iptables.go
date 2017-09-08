@@ -33,11 +33,7 @@ func ip6tableCmd(args ...string) error {
 func iptablesInit() {
 	// Avoid adding nat rule multiple times as we restart by flushing first
 	iptableCmd("-t", "nat", "-F", "POSTROUTING")
-	// XXX issue in VM where uplink determined by script
-	// somehow changes; ignore match on out interface for now
-	// iptableCmd("-t", "nat", "-A", "POSTROUTING", "-o", globalConfig.Uplink,
-	//	"-s", "172.27.0.0/16", "-j", "MASQUERADE")
-	iptableCmd("-t", "nat", "-A", "POSTROUTING",
+	iptableCmd("-t", "nat", "-A", "POSTROUTING", "-o", globalConfig.Uplink,
 		"-s", "172.27.0.0/16", "-j", "MASQUERADE")
 
 	// Prevent checksum offload getting in the way

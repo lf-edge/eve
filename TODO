@@ -59,11 +59,9 @@ DeviceSwStatus upload results in an ack containing the global address.
 
 ===
 
-DONE find uplink - remove -o from rule.
-xxx where do we use uplink? Also for lisp
-
-DONE dnsmasq add tar/
-DONE dnsmasq path
+DONE dnsmasq add tar file
+DONE dnsmasq path "/"
+DONE radvd path "/"
 
 DONE EID from gopi to hikey0x: fd7b:7e5b:b572:40cf:aee4:ae25:6751:f609
 DONE /etc/group for amd64 ubuntu domu - sudo group and nordmark/zededa groups
