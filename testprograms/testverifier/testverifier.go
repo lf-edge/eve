@@ -76,6 +76,8 @@ func main() {
 	imageDirname := baseDirname + "/pending"
 	certificateDirname := baseDirname+"/certificate"
 	configDirname := baseDirname+"/config"
+	rootCertDirname := "/opt/zededa/etc/"
+	rootCertFileName := rootCertDirname+"/root-certificate.pem"
 
         if _, err := os.Stat(baseDirname); err != nil {
                 if err := os.Mkdir(baseDirname, 0700); err != nil {
@@ -208,11 +210,11 @@ func main() {
 		}
 	}
 
-	InvokeDeviceCodeForVerification (configDirname,imageDirname,certificateDirname,signature)
+	InvokeDeviceCodeForVerification (configDirname,imageDirname,certificateDirname,rootCertFileName,signature)
 }
 func EndConfigFileCreation(configDirname string){
 
-	var certChain = []string{"intermediate.cert.pem","xyz"}
+	var certChain = []string{"intermediate.cert.pem"}
 	var sigKey = "server.cert.pem"
 	var downloadURL = "http://download.cirros-cloud.net/0.3.5/cirros-0.3.5-x86_64-disk.img"
 
@@ -245,7 +247,7 @@ func urlToSafename(url string, sha string) string {
 	safename := strings.Replace(url, "/", "_", -1) + "." + sha
 	return safename
 }
-func InvokeDeviceCodeForVerification (configDirname,imageDirname,certificateDirname string, signature []byte) {
+func InvokeDeviceCodeForVerification (configDirname,imageDirname,certificateDirname,rootCertFileName string, signature []byte) {
 	configFile := configDirname+"/testCf.json"
 	cb, err := ioutil.ReadFile(configFile)
 	if err != nil {
@@ -259,6 +261,8 @@ func InvokeDeviceCodeForVerification (configDirname,imageDirname,certificateDirn
 	//Read the server certificate
         //Decode it and parse it
         //And find out the puplic key and it's type
+	//we will use this certificate for both cert chain verification 
+        //and signature verification...
 
 	serverCertName := config.SignatureKey
         serverCertificate, err := ioutil.ReadFile(certificateDirname+"/"+serverCertName)
@@ -272,6 +276,48 @@ func InvokeDeviceCodeForVerification (configDirname,imageDirname,certificateDirn
         cert, err := x509.ParseCertificate(block.Bytes)
         if err != nil {
                 panic("failed to parse certificate: " + err.Error())
+        }
+
+	//Verify chain of certificates. Chain contains
+	//root, server, intermediate certificates ...
+
+	certificateNameInChain := config.CertificateChain
+
+	//Create the set of root certificates...
+	roots := x509.NewCertPool()
+
+	//read the root cerificates from /usr/local/etc/zededa...
+	rootCertificate, err := ioutil.ReadFile(rootCertFileName)
+	if err != nil {
+		fmt.Println(err)
+	}
+	ok := roots.AppendCertsFromPEM(rootCertificate)
+	if !ok {
+		panic("failed to parse root certificate")
+	}
+
+        length := len(certificateNameInChain)
+        fmt.Println("length: ",length)
+	for c := 0 ; c < length; c++ { 
+
+		fmt.Println(certificateNameInChain[c])
+		certNameFromChain, err := ioutil.ReadFile(certificateDirname+"/"+certificateNameInChain[c])
+		if err != nil {
+			fmt.Println(err)
+		}
+		
+		ok := roots.AppendCertsFromPEM(certNameFromChain)
+		if !ok {
+			panic("failed to parse root certificate")
+		}
+	}
+	opts := x509.VerifyOptions{
+                Roots:   roots,
+        }
+        if _, err := cert.Verify(opts); err != nil {
+                panic("failed to verify certificate: " + err.Error())
+        }else {
+                fmt.Println("certificate verified")
         }
 
         //read disk image from zedmanager/downloads/pending directory
