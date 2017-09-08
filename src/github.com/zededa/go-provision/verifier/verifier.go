@@ -19,6 +19,14 @@ package main
 
 import (
 	"crypto/sha256"
+	"crypto/x509"
+	"crypto"
+	"crypto/rsa"
+	"crypto/ecdsa"
+	"crypto/dsa"
+	"encoding/pem"
+	"math/big"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"github.com/zededa/go-provision/types"
@@ -305,23 +313,9 @@ func handleCreate(statusFilename string, config types.VerifyImageConfig) {
 	}
 	defer f.Close()
 
-	//Read the server certificate from config file
-	//decode and parse it to fetch the public key...
-	serverCertificate, err := config.certificateChain.serverCert
 
-	block, _ := pem.Decode(serverCertificate)
-        if block == nil {
-                panic("failed to decode serverCertificate")
-        }
-        cert, err := x509.ParseCertificate(block.Bytes)
-        if err != nil {
-                panic("failed to parse certificate: " + err.Error())
-        }
-
-	//Read the image signature from the config file...
-	imageSignature := config.imageSignature
-
-	//copmpute sha256 of the image...
+	//copmpute sha256 of the image and match it 
+	//with the one in config file...
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
 		status.LastErr = fmt.Sprintf("%v", err)
@@ -331,35 +325,142 @@ func handleCreate(statusFilename string, config types.VerifyImageConfig) {
 		log.Printf("handleCreate failed for %s\n", config.DownloadURL)
 		return
 	}
-	imageHash := fmt.Sprintf("%x", h.Sum(nil))
-	switch pub := cert.PublicKey.(type) {
-	case *rsa.PublicKey:
 
-                log.Println("pub is of type RSA:", pub)
-                err = rsa.VerifyPKCS1v15(pub, crypto.SHA256, imageHash, imageSignature)
+	imageHash := h.Sum(nil)
+	got := fmt.Sprintf("%x", h.Sum(nil))
+	if got != config.ImageSha256 {
+		fmt.Printf("got      %s\n", got)
+		fmt.Printf("expected %s\n", config.ImageSha256)
+		status.LastErr = fmt.Sprintf("got %s expected %s",
+			got, config.ImageSha256)
+		status.LastErrTime = time.Now()
+		status.PendingAdd = false
+		status.State = types.INITIAL
+		writeVerifyImageStatus(&status, statusFilename)
+		log.Printf("handleCreate failed for %s\n", config.DownloadURL)
+		return
+	}
+
+	//Read the server certificate
+        //Decode it and parse it
+        //And find out the puplic key and it's type
+	//we will use this certificate for both cert chain verification 
+        //and signature verification...
+
+	baseCertDirname := "/var/tmp/zedmanager/downloads"
+	certificateDirname := baseCertDirname+"/certificate"
+	rootCertDirname := "/opt/zededa/etc/"
+	rootCertFileName := rootCertDirname+"/root-certificate.pem"
+
+	serverCertName := config.SignatureKey
+        serverCertificate, err := ioutil.ReadFile(certificateDirname+"/"+serverCertName)
+        if err != nil {
+		readCertFailErr := fmt.Sprintf("unable to read the certificate")
+		UpdateStatusWhileVerifyingSignature(readCertFailErr)
+		fmt.Println(err)
+		return
+        }
+        block, _ := pem.Decode(serverCertificate)
+        if block == nil {
+		panic("failed to decode serverCertificate")
+		decodeFailedErr := fmt.Sprintf("unable to decode certificate")
+		UpdateStatusWhileVerifyingSignature(decodeFailedErr)
+		return
+        }
+        cert, err := x509.ParseCertificate(block.Bytes)
+        if err != nil {
+		panic("failed to parse certificate: " + err.Error())
+		parseFailedErr := fmt.Sprintf("unable to parse certificate")
+		UpdateStatusWhileVerifyingSignature(parseFailedErr)
+		return
+        }
+
+        //Verify chain of certificates. Chain contains
+	//root, server, intermediate certificates ...
+
+	certificateNameInChain := config.CertificateChain
+
+	//Create the set of root certificates...
+	roots := x509.NewCertPool()
+
+	//read the root cerificates from /opt/zededa/etc/...
+	rootCertificate, err := ioutil.ReadFile(rootCertFileName)
+	if err != nil {
+		fmt.Println(err)
+		unableToFindRootCertErr := fmt.Sprintf("failed to find root certificate")
+		UpdateStatusWhileVerifyingSignature(unableToFindRootCertErr)
+		return
+	}
+	ok := roots.AppendCertsFromPEM(rootCertificate)
+	if !ok {
+		panic("failed to parse root certificate")
+		rootParseFailedErr := fmt.Sprintf("failed to parse root certificate")
+		UpdateStatusWhileVerifyingSignature(rootParseFailedErr)
+		return
+	}
+
+        length := len(certificateNameInChain)
+	for c := 0 ; c < length; c++ { 
+
+		certNameFromChain, err := ioutil.ReadFile(certificateDirname+"/"+certificateNameInChain[c])
+		if err != nil {
+			fmt.Println(err)
+		}
+		
+		ok := roots.AppendCertsFromPEM(certNameFromChain)
+		if !ok {
+			panic("failed to parse root certificate")
+		}
+	}
+	opts := x509.VerifyOptions{
+                Roots:   roots,
+        }
+        if _, err := cert.Verify(opts); err != nil {
+                panic("failed to verify certificate: " + err.Error())
+		certChainVerificationErr := fmt.Sprintf("failed to verify certificate chain: ")
+		UpdateStatusWhileVerifyingSignature(certChainVerificationErr)
+		return
+        }else {
+                log.Println("certificate verified")
+        }
+
+        //Read the signature from config file...
+        imgSig := config.ImageSignature
+        if err != nil {
+                log.Println(err)
+		signatureNotFoundErr := fmt.Sprintf("image signature not found")
+		UpdateStatusWhileVerifyingSignature(signatureNotFoundErr)
+		return
+        }
+
+        switch pub := cert.PublicKey.(type) {
+        case *rsa.PublicKey:
+
+                err = rsa.VerifyPKCS1v15(pub, crypto.SHA256, imageHash, imgSig)
                 if err != nil {
-                        log.Println("VerifyPKCS1v15 failed... ",err)
-			VerificationFailed (fmt.Sprint(err))
-                        os.Exit(1)
+			log.Fatalf("VerifyPKCS1v15 failed...")
+			rsaSignatureVerificationFiledErr := fmt.Sprintf("rsa image signature verification failed")
+			UpdateStatusWhileVerifyingSignature(rsaSignatureVerificationFiledErr)
+
                 } else {
-                        log.Println("VerifyPKCS1v15 successful...")
+                        log.Printf("VerifyPKCS1v15 successful...")
                 }
 
         case *dsa.PublicKey:
 
-                log.Println("pub is of type DSA: ",pub)
+                log.Printf("pub is of type DSA: ",pub)
 
         case *ecdsa.PublicKey:
 
-                log.Println("pub is of type ecdsa: ",pub)
-                imgSignature, err := base64.StdEncoding.DecodeString(string(imageSignature))
+                log.Printf("pub is of type ecdsa: ",pub)
+                imgSignature, err := base64.StdEncoding.DecodeString(string(imgSig))
                 if err != nil {
                         fmt.Println("DecodeString: ", err)
                 }
                 log.Printf("Decoded imgSignature (len %d): % x\n", len(imgSignature), imgSignature)
                 rbytes := imgSignature[0:32]
                 sbytes := imgSignature[32:]
-                log.Printf("Decoded r %d s %d\n", len(rbytes), len(sbytes))
+                fmt.Printf("Decoded r %d s %d\n", len(rbytes), len(sbytes))
                 r := new(big.Int)
                 s := new(big.Int)
                 r.SetBytes(rbytes)
@@ -368,25 +469,27 @@ func handleCreate(statusFilename string, config types.VerifyImageConfig) {
 		ok := ecdsa.Verify(pub, imageHash, r, s)
 		if !ok {
 			log.Printf("ecdsa.Verify failed")
-			VerificationFailed (fmt.Sprint(ecdsa.Verify failed))
+			ecdsaSignatureVerificationFiledErr := fmt.Sprintf("ecdsa image signature verification failed ")
+			UpdateStatusWhileVerifyingSignature(ecdsaSignatureVerificationFiledErr)
+			return
 		}
 		log.Printf("Signature verified\n")
 
         default:
                 panic("unknown type of public key")
+		unknownPublicKeyTypeErr := fmt.Sprintf("unknown type of public key")
+		UpdateStatusWhileVerifyingSignature(unknownPublicKeyTypeErr)
+                return
         }
-
-	func VerificationFailed (err string){
-		fmt.Printf("got      %s\n", imageHash)
-		fmt.Printf("expected %s\n", config.ImageSha256)
-		status.LastErr = err
+        func UpdateStatusWhileVerifyingSignature (lastErr string){
+		status.LastErr = lastErr
 		status.LastErrTime = time.Now()
 		status.PendingAdd = false
 		status.State = types.INITIAL
 		writeVerifyImageStatus(&status, statusFilename)
 		log.Printf("handleCreate failed for %s\n", config.DownloadURL)
-		return
-	}
+        }
+	
 	// Move directory from downloads/verifier to downloads/verified
 	// XXX should have dom0 do this and/or have RO mounts
 	finalDirname := imgCatalogDirname + "/verified/" + config.ImageSha256
