@@ -1,15 +1,22 @@
-DONE find uplink - remove -o from rule.
-xxx where do we use uplink? Also for lisp
+TODO add dmidecode to HwStatus
+sudo dmidecode -t system
+dmidecode -s
+  system-manufacturer
+  system-product-name
+  system-version
+  system-serial-number
+  system-uuid
 
-DONE dnsmasq add tar/
-DONE dnsmasq path
-
-DONE EID from gopi to hikey0x: fd7b:7e5b:b572:40cf:aee4:ae25:6751:f609
-DONE /etc/group for amd64 ubuntu domu - sudo group and nordmark/zededa groups
-
-DONE zedcontrol shouldn't have eids.dbo1x0 set rule. Needs to accept everybody?
-     Made it conditional on /opt/zededa/etc/infra file.
-     Workaround: ip6tables -F OUTPUT
+Handle 0x0001, DMI type 1, 27 bytes
+System Information
+        Manufacturer: HP
+        Product Name: HP Spectre x360 Convertible 15-bl0XX
+        Version:  
+        Serial Number: 5CD70914V9
+        UUID: 37444335-3930-3431-5639-393439304435
+        Wake-up Type: Power Switch
+        SKU Number: Z4Z35UA#ABA
+        Family: 103C_5335KV HP Spectre
 
 TODO are we accepting east-west traffic on mgmt iid?
 A: only those listed in zedrouter*.json.
@@ -51,6 +58,19 @@ DeviceSwStatus upload results in an ack containing the global address.
 
 
 ===
+
+DONE find uplink - remove -o from rule.
+xxx where do we use uplink? Also for lisp
+
+DONE dnsmasq add tar/
+DONE dnsmasq path
+
+DONE EID from gopi to hikey0x: fd7b:7e5b:b572:40cf:aee4:ae25:6751:f609
+DONE /etc/group for amd64 ubuntu domu - sudo group and nordmark/zededa groups
+
+DONE zedcontrol shouldn't have eids.dbo1x0 set rule. Needs to accept everybody?
+     Made it conditional on /opt/zededa/etc/infra file.
+     Workaround: ip6tables -F OUTPUT
 
 DONE avoid empty additional strings:
 	`json:",omitempty"`
