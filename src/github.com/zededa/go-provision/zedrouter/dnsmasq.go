@@ -104,9 +104,9 @@ func deleteDnsmasqConfiglet(cfgPathname string) {
 
 // Run this:
 //    DMDIR=/opt/zededa/bin/
-//    ${DMDIR}/dnsmasq --conf-file=/etc/dnsmasq.${OLIFNAME}.conf
+//    ${DMDIR}/dnsmasq --conf-file=/var/run/zedrouter/dnsmasq.${OLIFNAME}.conf
 // or
-//    ${DMDIR}/dnsmasq --conf-file=/etc/dnsmasq.${ULIFNAME}.conf
+//    ${DMDIR}/dnsmasq --conf-file=/var/run/zedrouter/dnsmasq.${ULIFNAME}.conf
 func startDnsmasq(cfgPathname string) {
 	fmt.Printf("startDnsmasq: %s\n", cfgPathname)
 	cmd := "nohup"

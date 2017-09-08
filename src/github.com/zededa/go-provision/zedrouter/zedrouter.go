@@ -554,7 +554,7 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 
 		// Write radvd configlet; start radvd
 		cfgFilename := "radvd." + olIfname + ".conf"
-		cfgPathname := runDirname + cfgFilename
+		cfgPathname := runDirname + "/" + cfgFilename
 
 		//    Start clean; kill just in case
 		//    pkill -u radvd -f radvd.${OLIFNAME}.conf
@@ -945,7 +945,7 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 
 			// radvd cleanup
 			cfgFilename := "radvd." + olIfname + ".conf"
-			cfgPathname := runDirname + cfgFilename
+			cfgPathname := runDirname + "/" + cfgFilename
 			stopRadvd(cfgFilename, true)
 			deleteRadvdConfiglet(cfgPathname)
 

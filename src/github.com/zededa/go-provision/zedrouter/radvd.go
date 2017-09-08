@@ -51,7 +51,7 @@ func deleteRadvdConfiglet(cfgPathname string) {
 }
 
 // Run this:
-//    radvd -u radvd -C /etc/radvd.${OLIFNAME}.conf -p /var/run/radvd.${OLIFNAME}.pid
+//    radvd -u radvd -C /var/run/zedrouter/radvd.${OLIFNAME}.conf -p /var/run/radvd.${OLIFNAME}.pid
 func startRadvd(cfgPathname string, olIfname string) {
 	fmt.Printf("startRadvd: %s\n", cfgPathname)
 	pidPathname := "/var/run/radvd." + olIfname + ".pid"
