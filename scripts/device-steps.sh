@@ -284,7 +284,25 @@ fi
 memory=`awk '/MemTotal/ {print $2}' /proc/meminfo`
 storage=`df -kl --output=size / | tail -n +2| awk '{print $1}'`
 cpus=`nproc --all`
+# Try dmidecode which should work on Intel
+manufacturer=`dmidecode -s system-manufacturer`
+if [ "$manufacturer" != "" ]; then
+    productName=`dmidecode -s system-product-name`
+    version=`dmidecode -s system-version`
+    serialNumber=`dmidecode -s system-serial-number`
+    uuid=`dmidecode -s system-uuid`
+else
+    productName=""
+    version=""
+    serialNumber=""
+    uuid="00000000-0000-0000-0000-000000000000"
+fi
 # Add AdditionalInfoDevice to this
+if [ -f $ETCDIR/clientIP ]; then
+    publicIP=`cat $ETCDIR/clientIP`
+else
+    publicIP="0.0.0.0"
+fi
 cat >$ETCDIR/hwstatus.json <<EOF
 {
 	"Machine": "$machine",
@@ -293,7 +311,13 @@ cat >$ETCDIR/hwstatus.json <<EOF
 	"Compatible": "$compatible",
 	"Cpus": $cpus,
 	"Memory": $memory,
-	"Storage": $storage
+	"Storage": $storage,
+	"SystemManufacturer": "$manufacturer",
+	"SystemProductName": "$productName",
+	"SystemVersion": "$version",
+	"SystemSerialNumber": "$serialNumber",
+	"SystemUUID": "$uuid",
+	"PublicIP": "$publicIP"
 }
 EOF
 $BINDIR/client $ETCDIR updateHwStatus

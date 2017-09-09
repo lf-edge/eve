@@ -4,6 +4,7 @@
 package types
 
 import (
+	"github.com/satori/go.uuid"
 	"net"
 )
 
@@ -12,9 +13,6 @@ import (
 // That new DeviceHwStatus should include the underlay information (set of IPv4, and IPv6 addresses)
 type DeviceHwStatus struct {
 	// XXX add timestamp? for last update? when sent?
-	Manufacturer string // Optionally set in manufacturing
-	Model        string // Optionally set in manufacturing
-	Serial       string // Optionally set in manufacturing
 	Machine      string // From uname -m
 	Processor    string // From uname -p
 	Platform     string // From uname -i
@@ -22,7 +20,16 @@ type DeviceHwStatus struct {
 	Cpus         uint   // nproc --all
 	Memory       uint   // Total memory in Kbyte
 	Storage      uint   // Total flash in Kbyte
-	// XXX add AdditionalInfoDevice which has location etc
+	// From dmidecode
+	SystemManufacturer string
+	SystemProductName  string
+	SystemVersion      string
+	SystemSerialNumber string
+	SystemUUID         uuid.UUID
+	// From the server we talked to we get our own public IP
+	PublicIP net.IP
+	// XXX Add geolocation information in server based on PublicIP?
+	// XXX or add in client?
 }
 
 // XXX replace by actual AIConfig and AIStatus

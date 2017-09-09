@@ -1,25 +1,7 @@
-TODO add dmidecode to HwStatus
-sudo dmidecode -t system
-dmidecode -s
-  system-manufacturer
-  system-product-name
-  system-version
-  system-serial-number
-  system-uuid
+TODO kernel=Image is external to domU; how to specify external kernel which needs to be downloaded?
+Ditto for initrd?
+Q: target=kernel? plus "extKernel=true"?
 
-Handle 0x0001, DMI type 1, 27 bytes
-System Information
-        Manufacturer: HP
-        Product Name: HP Spectre x360 Convertible 15-bl0XX
-        Version:  
-        Serial Number: 5CD70914V9
-        UUID: 37444335-3930-3431-5639-393439304435
-        Wake-up Type: Power Switch
-        SKU Number: Z4Z35UA#ABA
-        Family: 103C_5335KV HP Spectre
-
-TODO are we accepting east-west traffic on mgmt iid?
-A: only those listed in zedrouter*.json.
 
 TODO add device mapping to support gpiotoled.
 TODO add cpu binding for rtos
@@ -52,12 +34,23 @@ TODO xenmgr goroutines
 
 TODO Create DeviceSwStatus separate from DeviceSwResources
 Include uplink interfaces, available memory and disk
-NAT i.e. uplink global address? (From exchanges with ZedControl).
+DONE NAT i.e. uplink global address? (From exchanges with ZedControl).
 Trigger such exchange when local interface/address change.
 DeviceSwStatus upload results in an ack containing the global address.
 
+TODO server geolocation of clientIP -> ddb or hwStatus?
 
 ===
+
+Q: are we accepting east-west traffic on mgmt iid?
+A: only those listed in zedrouter*.json.
+
+DONE add dmidecode output to HwStatus
+     dmidecode -s system-manufacturer
+	  system-product-name
+	  system-version
+	  system-serial-number
+	  system-uuid
 
 DONE dnsmasq add tar file
 DONE dnsmasq path "/"
