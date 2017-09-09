@@ -478,7 +478,6 @@ func main() {
 			log.Fatal("Error decoding DeviceHwStatus: ", err)
 		}
 		hwStatus.AdditionalInfoDevice = *addInfoDevice
-		fmt.Printf("hwStatus %v\n", hwStatus) // XXX remove
 		b = new(bytes.Buffer)
 		json.NewEncoder(b).Encode(hwStatus)
 
