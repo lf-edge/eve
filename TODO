@@ -38,9 +38,9 @@ DONE NAT i.e. uplink global address? (From exchanges with ZedControl).
 Trigger such exchange when local interface/address change.
 DeviceSwStatus upload results in an ack containing the global address.
 
-TODO server geolocation of clientIP -> ddb or hwStatus?
-
 ===
+
+DONE geolocation of clientIP -> hwStatus
 
 Q: are we accepting east-west traffic on mgmt iid?
 A: only those listed in zedrouter*.json.

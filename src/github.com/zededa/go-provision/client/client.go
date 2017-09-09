@@ -41,6 +41,7 @@ var maxDelay = time.Second * 600 // 10 minutes
 //  uuid			Written by lookupParam operation
 //  hwstatus.json		Uploaded by updateHwStatus operation
 //  swstatus.json		Uploaded by updateSwStatus operation
+//  clientIP			Written containing the public client IP
 //
 func main() {
 	args := os.Args[1:]
@@ -78,6 +79,7 @@ func main() {
 	zedserverConfigFileName := dirName + "/zedserverconfig"
 	zedrouterConfigFileName := dirName + "/zedrouterconfig.json"
 	uuidFileName := dirName + "/uuid"
+	clientIPFileName := dirName + "/clientIP"
 	hwStatusFileName := dirName + "/hwstatus.json"
 	swStatusFileName := dirName + "/swstatus.json"
 
@@ -303,6 +305,23 @@ func main() {
 	transport := &http.Transport{TLSClientConfig: tlsConfig}
 	client := &http.Client{Transport: transport}
 
+	var addInfoDevice *types.AdditionalInfoDevice
+	if operations["lookupParam"] || operations["updateHwStatus"] {
+		// Determine location information and use as AdditionalInfo
+		if myIP, err := ipinfo.MyIP(); err == nil {
+			addInfo := types.AdditionalInfoDevice{
+				UnderlayIP: myIP.IP,
+				Hostname:   myIP.Hostname,
+				City:       myIP.City,
+				Region:     myIP.Region,
+				Country:    myIP.Country,
+				Loc:        myIP.Loc,
+				Org:        myIP.Org,
+			}
+			addInfoDevice = &addInfo
+		}
+	}
+
 	if operations["lookupParam"] {
 		done := false
 		var delay time.Duration
@@ -377,10 +396,21 @@ func main() {
 		f.Sync()
 
 		// Determine whether NAT is in use
-		nat := !IsMyAddress(device.ClientAddr)
-		fmt.Printf("NAT %v, ClientAddr %v\n", nat, device.ClientAddr)
-
-		// Write an AppNetworkConfig for the ZedManager application
+		if publicIP, err := addrStringToIP(device.ClientAddr); err != nil {
+			log.Printf("Failed to convert %s, error %s\n",
+				device.ClientAddr, err)
+			// Remove any existing/old file
+			_ = os.Remove(clientIPFileName)
+		} else {
+			nat := !IsMyAddress(publicIP)
+			fmt.Printf("NAT %v, publicIP %v\n", nat, publicIP)
+			// Store clientIP in file for device-steps.sh
+			b := []byte(fmt.Sprintf("%s\n", publicIP))
+			err = ioutil.WriteFile(clientIPFileName, b, 0644)
+			if err != nil {
+				log.Fatal("WriteFile", err, clientIPFileName)
+			}
+		}
 		var devUUID uuid.UUID
 		if _, err := os.Stat(uuidFileName); err != nil {
 			// Create and write with initial values
@@ -407,22 +437,7 @@ func main() {
 			UUID:    devUUID,
 			Version: "0",
 		}
-		// Determine location information and use as AdditionalInfo
-		// XXX later just get ClientAddr's IP address and
-		// have zedcloud do any geoloc etc lookups
-		var addInfoDevice *types.AdditionalInfoDevice
-		if myIP, err := ipinfo.MyIP(); err == nil {
-			addInfo := types.AdditionalInfoDevice{
-				UnderlayIP: myIP.IP,
-				Hostname:   myIP.Hostname,
-				City:       myIP.City,
-				Region:     myIP.Region,
-				Country:    myIP.Country,
-				Loc:        myIP.Loc,
-				Org:        myIP.Org,
-			}
-			addInfoDevice = &addInfo
-		}
+		// Write an AppNetworkConfig for the ZedManager application
 		config := types.AppNetworkConfig{
 			UUIDandVersion: uv,
 			DisplayName:    "zedmanager",
@@ -455,8 +470,18 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		// Input is in json format
+		// Input is in json format; parse and add additionalInfo
 		b := bytes.NewBuffer(buf)
+		// parsing DeviceHwStatus json payload
+		hwStatus := &types.DeviceHwStatus{}
+		if err := json.NewDecoder(b).Decode(hwStatus); err != nil {
+			log.Fatal("Error decoding DeviceHwStatus: ", err)
+		}
+		hwStatus.AdditionalInfoDevice = *addInfoDevice
+		fmt.Printf("hwStatus %v\n", hwStatus) // XXX remove
+		b = new(bytes.Buffer)
+		json.NewEncoder(b).Encode(hwStatus)
+
 		done := false
 		var delay time.Duration
 		for !done {
@@ -502,14 +527,17 @@ func writeNetworkConfig(config *types.AppNetworkConfig,
 	}
 }
 
-// IsMyAddress checks the IP address against the local IPs. Returns True if
-// there is a match.
-func IsMyAddress(addrString string) bool {
+func addrStringToIP(addrString string) (net.IP, error) {
 	clientTCP, err := net.ResolveTCPAddr("tcp", addrString)
 	if err != nil {
-		return false
+		return net.IP{}, err
 	}
-	clientIP := clientTCP.IP
+	return clientTCP.IP, nil
+}
+
+// IsMyAddress checks the IP address against the local IPs. Returns True if
+// there is a match.
+func IsMyAddress(clientIP net.IP) bool {
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {
 		return false

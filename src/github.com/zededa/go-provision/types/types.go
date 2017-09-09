@@ -28,8 +28,9 @@ type DeviceHwStatus struct {
 	SystemUUID         uuid.UUID
 	// From the server we talked to we get our own public IP
 	PublicIP net.IP
-	// XXX Add geolocation information in server based on PublicIP?
-	// XXX or add in client?
+	// Geolocation information from client based on its public IP
+	// XXX could also be based on GPS?
+	AdditionalInfoDevice AdditionalInfoDevice
 }
 
 // XXX replace by actual AIConfig and AIStatus
