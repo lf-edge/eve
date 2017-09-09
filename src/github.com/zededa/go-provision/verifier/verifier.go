@@ -352,6 +352,17 @@ func handleCreate(statusFilename string, config types.VerifyImageConfig) {
 	rootCertDirname := "/opt/zededa/etc/"
 	rootCertFileName := rootCertDirname+"/root-certificate.pem"
 
+	//This func literal will take care of writing status during 
+	//cert chain and signature verification...
+	UpdateStatusWhileVerifyingSignature := func (lastErr string){
+		status.LastErr = lastErr
+		status.LastErrTime = time.Now()
+		status.PendingAdd = false
+		status.State = types.INITIAL
+		writeVerifyImageStatus(&status, statusFilename)
+		log.Printf("handleCreate failed for %s\n", config.DownloadURL)
+        }
+
 	serverCertName := config.SignatureKey
         serverCertificate, err := ioutil.ReadFile(certificateDirname+"/"+serverCertName)
         if err != nil {
@@ -409,7 +420,9 @@ func handleCreate(statusFilename string, config types.VerifyImageConfig) {
 		
 		ok := roots.AppendCertsFromPEM(certNameFromChain)
 		if !ok {
-			panic("failed to parse root certificate")
+			panic("failed to parse intermediate certificate")
+			intermediateCertParseFailedErr := fmt.Sprintf("failed to parse intermediate certificate")
+			UpdateStatusWhileVerifyingSignature(intermediateCertParseFailedErr)
 		}
 	}
 	opts := x509.VerifyOptions{
@@ -480,14 +493,6 @@ func handleCreate(statusFilename string, config types.VerifyImageConfig) {
 		unknownPublicKeyTypeErr := fmt.Sprintf("unknown type of public key")
 		UpdateStatusWhileVerifyingSignature(unknownPublicKeyTypeErr)
                 return
-        }
-        func UpdateStatusWhileVerifyingSignature (lastErr string){
-		status.LastErr = lastErr
-		status.LastErrTime = time.Now()
-		status.PendingAdd = false
-		status.State = types.INITIAL
-		writeVerifyImageStatus(&status, statusFilename)
-		log.Printf("handleCreate failed for %s\n", config.DownloadURL)
         }
 	
 	// Move directory from downloads/verifier to downloads/verified
