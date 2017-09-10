@@ -12,9 +12,19 @@ import (
 type DownloaderConfig struct {
 	Safename	string
 	DownloadURL	string	// XXX is there a more specific type?
+	Operation	string
+	TransportMethod	string	// Download Method S3/HTTP/SFTP etc.
+	Bucket		string
 	MaxSize		uint	// In kbytes
 	ImageSha256	string	// sha256 of immutable image XXX used?
 	RefCount	uint	// Zero means can delete file/cancel download
+}
+
+// Cert Object may contain multiple objects
+
+type CertConfig struct {
+	ServerCert	DownloaderConfig
+	CertChain	[]DownloaderConfig
 }
 
 // The key/index to this is the Safename which comes from DownloaderConfig.
