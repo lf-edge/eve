@@ -1350,86 +1350,7 @@ func handleCreate(config types.DownloaderConfig, statusFilename string, locDirna
 	status.State = types.DOWNLOAD_STARTED
 	writeDownloaderStatus(&status, statusFilename)
 
-	locFilename := locDirname + "/pending"
-
-	if config.ImageSha256 != "" {
-		locFilename = locFilename + "/" + config.ImageSha256
-	}
-
-	if _, err := os.Stat(locFilename); err != nil {
-
-		if err := os.MkdirAll(locFilename, 0755); err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	locFilename = locFilename + "/" + config.Safename
-
-	log.Printf("Downloading  %s to %s\n", config.DownloadURL, locFilename)
-
-	err := handleSyncOp(syncOp, locFilename, statusFilename, config, &status)
-
-	if err != nil {
-		// Delete file
-		doDelete(statusFilename, locDirname, &status)
-		status.PendingAdd = false
-		status.Size = 0
-		status.LastErr = fmt.Sprintf("%v", err)
-		status.LastErrTime = time.Now()
-		status.RetryCount += 1
-		status.State = types.INITIAL
-		writeDownloaderStatus(&status, statusFilename)
-		log.Printf("handleCreate failed for %s\n", config.DownloadURL)
-		return
-	}
-
-	info, err := os.Stat(locFilename)
-	if err != nil {
-		// Delete file
-		doDelete(statusFilename, locDirname, &status)
-		status.PendingAdd = false
-		status.Size = 0
-		status.LastErr = fmt.Sprintf("%v", err)
-		status.LastErrTime = time.Now()
-		status.RetryCount += 1
-		status.State = types.INITIAL
-		writeDownloaderStatus(&status, statusFilename)
-		log.Printf("handleCreate failed for %s\n", config.DownloadURL)
-		return
-	}
-	// XXX Compare against MaxSize and reject? Already wasted the space?
-	status.Size = uint((info.Size() + 1023)/1024)
-
-	if status.Size > config.MaxSize {
-		// Delete file
-		doDelete(statusFilename, locDirname, &status)
-		errString := fmt.Sprintf("Size exceeds MaxSize; %d vs. %d for %s\n",
-			status.Size, config.MaxSize, config.DownloadURL)
-		log.Println(errString)
-		status.PendingAdd = false
-		status.Size = 0
-		status.LastErr = errString
-		status.LastErrTime = time.Now()
-		status.RetryCount += 1
-		status.State = types.INITIAL
-		writeDownloaderStatus(&status, statusFilename)
-		log.Printf("handleCreate failed for %s\n", config.DownloadURL)
-		return
-	}
-
-	globalStatus.ReservedSpace -= status.ReservedSpace
-	status.ReservedSpace = 0
-	globalStatus.UsedSpace += status.Size
-	updateRemainingSpace()
-
-	log.Printf("handleCreate successful for %s\n", config.DownloadURL)
-	// We do not clear any status.RetryCount, LastErr, etc. The caller
-	// should look at State == DOWNLOADED to determine it is done.
-
-	status.ModTime = time.Now()
-	status.PendingAdd = false
-	status.State = types.DOWNLOADED
-	writeDownloaderStatus(&status, statusFilename)
+	go handleSyncOp(syncOp, locDirname, statusFilename, config, &status)
 }
 
 // XXX Should we set        --limit-rate=100k
@@ -1569,7 +1490,24 @@ func handleDelete(statusFilename string, locDirname string, status types.Downloa
 	log.Printf("handleDelete done for %s\n", status.DownloadURL)
 }
 
-func handleSyncOp(syncOp zedUpload.SyncOpType, locFilename string, statusFilename string, config types.DownloaderConfig, status *types.DownloaderStatus) (err error) {
+func handleSyncOp(syncOp zedUpload.SyncOpType, locDirname string, statusFilename string, config types.DownloaderConfig, status *types.DownloaderStatus) {
+
+	locFilename := locDirname + "/pending"
+
+	if config.ImageSha256 != "" {
+		locFilename = locFilename + "/" + config.ImageSha256
+	}
+
+	if _, err := os.Stat(locFilename); err != nil {
+
+		if err := os.MkdirAll(locFilename, 0755); err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	locFilename = locFilename + "/" + config.Safename
+
+	log.Printf("Downloading  %s to %s\n", config.DownloadURL, locFilename)
 
 	// Prepare the authentication Tuple
 	auth := &zedUpload.AuthInput{AuthType: "s3",
@@ -1579,19 +1517,105 @@ func handleSyncOp(syncOp zedUpload.SyncOpType, locFilename string, statusFilenam
 	region := "us-west-2"
 
 	// create Endpoint
-	dEndPoint,err := dCtx.NewSyncerDest(trType, region, config.Bucket, auth)
+	dEndPoint,_ := dCtx.NewSyncerDest(trType, region, config.Bucket, auth)
 
 	if dEndPoint != nil {
-		var resp = make(chan * zedUpload.DronaRequest);
+		var respChan = make(chan * zedUpload.DronaRequest);
 
 		// create Request
 		req := dEndPoint.NewRequest(syncOp, config.Safename, locFilename,
-			int64(config.MaxSize * 1024), true, resp)
+			int64(config.MaxSize * 1024), true, respChan)
 
 		if req != nil {
-			err = req.Post()
+			req.Post()
+		        select {
+		                case resp := <-respChan:
+		                        handleSyncResponse (resp, statusFilename, locDirname, config, status)
+		        }
+
 		}
 	}
-	return err
 }
 
+func handleSyncResponse( resp *zedUpload.DronaRequest, statusFilename string, locDirname string, config types.DownloaderConfig, status *types.DownloaderStatus) {
+
+	_, err := resp.GetUpStatus()
+
+	if err != nil {
+		// Delete file
+		doDelete(statusFilename, locDirname, status)
+		status.PendingAdd = false
+		status.Size = 0
+		status.LastErr = fmt.Sprintf("%v", err)
+		status.LastErrTime = time.Now()
+		status.RetryCount += 1
+		status.State = types.INITIAL
+		writeDownloaderStatus(status, statusFilename)
+		log.Printf("handleCreate failed for %s\n", status.DownloadURL)
+		return
+	}
+
+	locFilename := locDirname + "/pending"
+
+	if status.ImageSha256 != "" {
+		locFilename = locFilename + "/" + status.ImageSha256
+	}
+
+	if _, err := os.Stat(locFilename); err != nil {
+
+		if err := os.MkdirAll(locFilename, 0755); err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	locFilename = locFilename + "/" + status.Safename
+
+	info, err := os.Stat(locFilename)
+	if err != nil {
+		// Delete file
+		doDelete(statusFilename, locDirname, status)
+		status.PendingAdd = false
+		status.Size = 0
+		status.LastErr = fmt.Sprintf("%v", err)
+		status.LastErrTime = time.Now()
+		status.RetryCount += 1
+		status.State = types.INITIAL
+		writeDownloaderStatus(status, statusFilename)
+		log.Printf("handleCreate failed for %s\n", status.DownloadURL)
+		return
+	}
+
+	// XXX Compare against MaxSize and reject? Already wasted the space?
+	status.Size = uint((info.Size() + 1023)/1024)
+
+	if status.Size > config.MaxSize {
+		// Delete file
+		doDelete(statusFilename, locDirname, status)
+		errString := fmt.Sprintf("Size exceeds MaxSize; %d vs. %d for %s\n",
+			status.Size, config.MaxSize, status.DownloadURL)
+		log.Println(errString)
+		status.PendingAdd = false
+		status.Size = 0
+		status.LastErr = errString
+		status.LastErrTime = time.Now()
+		status.RetryCount += 1
+		status.State = types.INITIAL
+		writeDownloaderStatus(status, statusFilename)
+		log.Printf("handleCreate failed for %s\n", status.DownloadURL)
+		return
+	}
+
+	globalStatus.ReservedSpace -= status.ReservedSpace
+	status.ReservedSpace = 0
+	globalStatus.UsedSpace += status.Size
+	updateRemainingSpace()
+
+	log.Printf("handleCreate successful for %s\n", config.DownloadURL)
+	// We do not clear any status.RetryCount, LastErr, etc. The caller
+	// should look at State == DOWNLOADED to determine it is done.
+
+	status.ModTime = time.Now()
+	status.PendingAdd = false
+	status.State = types.DOWNLOADED
+	writeDownloaderStatus(status, statusFilename)
+}
