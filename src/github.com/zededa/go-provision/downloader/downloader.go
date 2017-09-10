@@ -1517,29 +1517,29 @@ func handleSyncOp(syncOp zedUpload.SyncOpType, locDirname string, statusFilename
 	region := "us-west-2"
 
 	// create Endpoint
-	dEndPoint,_ := dCtx.NewSyncerDest(trType, region, config.Bucket, auth)
+	dEndPoint,err := dCtx.NewSyncerDest(trType, region, config.Bucket, auth)
 
 	if dEndPoint != nil {
 		var respChan = make(chan * zedUpload.DronaRequest);
 
 		// create Request
 		req := dEndPoint.NewRequest(syncOp, config.Safename, locFilename,
-			int64(config.MaxSize * 1024), true, respChan)
+			int64(config.MaxSize / 1024), true, respChan)
 
 		if req != nil {
 			req.Post()
 		        select {
 		                case resp := <-respChan:
-		                        handleSyncResponse (resp, statusFilename, locDirname, config, status)
+					_, err = resp.GetUpStatus()
 		        }
 
 		}
 	}
+
+	handleSyncOpResponse (config, status, statusFilename, locDirname, err)
 }
 
-func handleSyncResponse( resp *zedUpload.DronaRequest, statusFilename string, locDirname string, config types.DownloaderConfig, status *types.DownloaderStatus) {
-
-	_, err := resp.GetUpStatus()
+func handleSyncOpResponse(config types.DownloaderConfig, status *types.DownloaderStatus, statusFilename string, locDirname string, err error) {
 
 	if err != nil {
 		// Delete file
