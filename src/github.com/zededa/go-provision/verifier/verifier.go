@@ -348,7 +348,7 @@ func handleCreate(statusFilename string, config types.VerifyImageConfig) {
         //and signature verification...
 
 	baseCertDirname := "/var/tmp/zedmanager/downloads"
-	certificateDirname := baseCertDirname+"/certificate"
+	certificateDirname := baseCertDirname+"/cert"
 	rootCertDirname := "/opt/zededa/etc/"
 	rootCertFileName := rootCertDirname+"/root-certificate.pem"
 
