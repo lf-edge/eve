@@ -8,18 +8,30 @@ import (
 	"net"
 )
 
+// Common interfaces for *Status and *Config
+type ZedConfig interface {
+	VerifyFilename(fileName string) bool
+}
+
+type ZedStatus interface {
+	VerifyFilename(fileName string) bool
+	CheckPendingAdd() bool
+	CheckPendingModify() bool
+	CheckPendingDelete() bool
+}
+
 // XXX rename to DeviceHwResources
 // XXX also add the measure free memory and storage as DeviceHwStatus
 // That new DeviceHwStatus should include the underlay information (set of IPv4, and IPv6 addresses)
 type DeviceHwStatus struct {
 	// XXX add timestamp? for last update? when sent?
-	Machine      string // From uname -m
-	Processor    string // From uname -p
-	Platform     string // From uname -i
-	Compatible   string // From device-tree's compatible node
-	Cpus         uint   // nproc --all
-	Memory       uint   // Total memory in Kbyte
-	Storage      uint   // Total flash in Kbyte
+	Machine    string // From uname -m
+	Processor  string // From uname -p
+	Platform   string // From uname -i
+	Compatible string // From device-tree's compatible node
+	Cpus       uint   // nproc --all
+	Memory     uint   // Total memory in Kbyte
+	Storage    uint   // Total flash in Kbyte
 	// From dmidecode
 	SystemManufacturer string
 	SystemProductName  string

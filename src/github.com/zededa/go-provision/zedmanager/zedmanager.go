@@ -153,10 +153,8 @@ type configModifyHandler func(statusFilename string, config interface{},
 type configDeleteHandler func(statusFilename string, status interface{})
 
 func handleConfigStatusEvent(change string,
-	configDirname string,
-	statusDirname string ,
-	config *types.AppInstanceConfig,	// XXX interface
-	status *types.AppInstanceStatus,	// XXX interface
+	configDirname string, statusDirname string,
+	config types.ZedConfig, status types.ZedStatus,
 	handleCreate configCreateHandler, handleModify configModifyHandler,
 	handleDelete configDeleteHandler) {
 
@@ -179,16 +177,12 @@ func handleConfigStatusEvent(change string,
 			log.Printf("%s for %s\n", err, statusFile)
 			return
 		}
-		status := types.AppInstanceStatus{}
-		if err := json.Unmarshal(sb, &status); err != nil {
+		if err := json.Unmarshal(sb, status); err != nil {
 			log.Printf("%s AppInstanceStatus file: %s\n",
 				err, statusFile)
 			return
 		}
-		uuid := status.UUIDandVersion.UUID
-		if uuid.String()+".json" != fileName {
-			log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-				fileName, uuid.String())
+		if !status.VerifyFilename(fileName) {
 			return
 		}
 		statusName := statusDirname + "/" + fileName
@@ -205,15 +199,12 @@ func handleConfigStatusEvent(change string,
 		log.Printf("%s for %s\n", err, configFile)
 		return
 	}
-	if err := json.Unmarshal(cb, &config); err != nil {
+	if err := json.Unmarshal(cb, config); err != nil {
 		log.Printf("%s AppInstanceConfig file: %s\n",
 			err, configFile)
 		return
 	}
-	uuid := config.UUIDandVersion.UUID
-	if uuid.String()+".json" != fileName {
-		log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-			fileName, uuid.String())
+	if !config.VerifyFilename(fileName) {
 		return
 	}
 	statusFile := statusDirname + "/" + fileName
@@ -229,32 +220,31 @@ func handleConfigStatusEvent(change string,
 		log.Printf("%s for %s\n", err, statusFile)
 		return
 	}
-	if err := json.Unmarshal(sb, &status); err != nil {
+	if err := json.Unmarshal(sb, status); err != nil {
 		log.Printf("%s AppInstanceStatus file: %s\n",
 			err, statusFile)
 		return
 	}
-	uuid = status.UUIDandVersion.UUID
-	if uuid.String()+".json" != fileName {
-		log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-			fileName, uuid.String())
+	if !status.VerifyFilename(fileName) {
 		return
 	}
+	// XXX make Pending* info functions... and a separate pending* boolean?
+	// XXX or leave unchanged?
 	// Look for pending* in status and repeat that operation.
 	// XXX After that do a full ReadDir to restart ...
-	if status.PendingAdd {
+	if status.CheckPendingAdd() {
 		statusName := statusDirname + "/" + fileName
 		handleCreate(statusName, config)
 		// XXX set something to rescan?
 		return
 	}
-	if status.PendingDelete {
+	if status.CheckPendingDelete() {
 		statusName := statusDirname + "/" + fileName
 		handleDelete(statusName, status)
 		// XXX set something to rescan?
 		return
 	}
-	if status.PendingModify {
+	if status.CheckPendingModify() {
 		statusName := statusDirname + "/" + fileName
 		handleModify(statusName, config, status)
 		// XXX set something to rescan?

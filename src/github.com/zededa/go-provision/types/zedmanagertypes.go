@@ -5,6 +5,7 @@ package types
 
 import (
 	"github.com/satori/go.uuid"
+	"log"
 	"time"
 )
 
@@ -28,6 +29,16 @@ type AppInstanceConfig struct {
 	UnderlayNetworkList []UnderlayNetworkConfig
 }
 
+func (config AppInstanceConfig) VerifyFilename(fileName string) bool {
+	uuid := config.UUIDandVersion.UUID
+	ret := uuid.String()+".json" != fileName
+	if ret {
+		log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
+			fileName, uuid.String())
+	}
+	return ret
+}
+
 // Indexed by UUIDandVersion as above
 type AppInstanceStatus struct {
 	UUIDandVersion    UUIDandVersion
@@ -44,6 +55,28 @@ type AppInstanceStatus struct {
 	// All error strngs across all steps and all StorageStatus
 	Error     string
 	ErrorTime time.Time
+}
+
+func (status AppInstanceStatus) VerifyFilename(fileName string) bool {
+	uuid := status.UUIDandVersion.UUID
+	ret := uuid.String()+".json" != fileName
+	if ret {
+		log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
+			fileName, uuid.String())
+	}
+	return ret
+}
+
+func (status AppInstanceStatus) CheckPendingAdd() bool {
+	return status.PendingAdd
+}
+
+func (status AppInstanceStatus) CheckPendingModify() bool {
+	return status.PendingModify
+}
+
+func (status AppInstanceStatus) CheckPendingDelete() bool {
+	return status.PendingDelete
 }
 
 type EIDOverlayConfig struct {
