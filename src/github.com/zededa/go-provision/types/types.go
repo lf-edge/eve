@@ -8,18 +8,6 @@ import (
 	"net"
 )
 
-// Common interfaces for *Status and *Config
-type ZedConfig interface {
-	VerifyFilename(fileName string) bool
-}
-
-type ZedStatus interface {
-	VerifyFilename(fileName string) bool
-	CheckPendingAdd() bool
-	CheckPendingModify() bool
-	CheckPendingDelete() bool
-}
-
 // XXX rename to DeviceHwResources
 // XXX also add the measure free memory and storage as DeviceHwStatus
 // That new DeviceHwStatus should include the underlay information (set of IPv4, and IPv6 addresses)

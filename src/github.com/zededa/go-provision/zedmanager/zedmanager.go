@@ -22,7 +22,6 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
-	"strings"
 	"time"
 )
 
@@ -92,7 +91,8 @@ func main() {
 		select {
 		case change := <-downloaderChanges:
 			{
-				handleStatusEvent(change, downloaderStatusDirname,
+				watch.HandleStatusEvent(change,
+					downloaderStatusDirname,
 					&types.DownloaderStatus{},
 					handleDownloaderStatusModify,
 					handleDownloaderStatusDelete)
@@ -100,7 +100,8 @@ func main() {
 			}
 		case change := <-verifierChanges:
 			{
-				handleStatusEvent(change, verifierStatusDirname,
+				watch.HandleStatusEvent(change,
+					verifierStatusDirname,
 					&types.VerifyImageStatus{},
 					handleVerifyImageStatusModify,
 					handleVerifyImageStatusDelete)
@@ -108,7 +109,8 @@ func main() {
 			}
 		case change := <-identitymgrChanges:
 			{
-				handleStatusEvent(change, identitymgrStatusDirname,
+				watch.HandleStatusEvent(change,
+					identitymgrStatusDirname,
 					&types.EIDStatus{},
 					handleEIDStatusModify,
 					handleEIDStatusDelete)
@@ -116,7 +118,8 @@ func main() {
 			}
 		case change := <-zedrouterChanges:
 			{
-				handleStatusEvent(change, zedrouterStatusDirname,
+				watch.HandleStatusEvent(change,
+					zedrouterStatusDirname,
 					&types.AppNetworkStatus{},
 					handleAppNetworkStatusModify,
 					handleAppNetworkStatusDelete)
@@ -124,16 +127,16 @@ func main() {
 			}
 		case change := <-domainmgrChanges:
 			{
-				handleStatusEvent(change, domainmgrStatusDirname,
+				watch.HandleStatusEvent(change,
+					domainmgrStatusDirname,
 					&types.DomainStatus{},
 					handleDomainStatusModify,
 					handleDomainStatusDelete)
 				continue
 			}
-		// XXX generalize this code; struct with dirnames and comparator
 		case change := <-configChanges:
 			{
-				handleConfigStatusEvent(change,
+				watch.HandleConfigStatusEvent(change,
 					zedmanagerConfigDirname,
 					zedmanagerStatusDirname,
 					&types.AppInstanceConfig{},
@@ -143,115 +146,6 @@ func main() {
 			}
 		}
 	}
-}
-
-// XXX move to watch? Need watchTypes.go or sufficient to declare types
-// with CAPS in watch.go?
-type configCreateHandler func(statusFilename string, config interface{})
-type configModifyHandler func(statusFilename string, config interface{},
-	status interface{})
-type configDeleteHandler func(statusFilename string, status interface{})
-
-func handleConfigStatusEvent(change string,
-	configDirname string, statusDirname string,
-	config types.ZedConfig, status types.ZedStatus,
-	handleCreate configCreateHandler, handleModify configModifyHandler,
-	handleDelete configDeleteHandler) {
-
-	parts := strings.Split(change, " ")
-	operation := parts[0]
-	fileName := parts[1]
-	if !strings.HasSuffix(fileName, ".json") {
-		log.Printf("Ignoring file <%s>\n", fileName)
-		return
-	}
-	if operation == "D" {
-		statusFile := statusDirname + "/" + fileName
-		if _, err := os.Stat(statusFile); err != nil {
-			// File just vanished!
-			log.Printf("File disappeared <%s>\n", fileName)
-			return
-		}
-		sb, err := ioutil.ReadFile(statusFile)
-		if err != nil {
-			log.Printf("%s for %s\n", err, statusFile)
-			return
-		}
-		if err := json.Unmarshal(sb, status); err != nil {
-			log.Printf("%s AppInstanceStatus file: %s\n",
-				err, statusFile)
-			return
-		}
-		if !status.VerifyFilename(fileName) {
-			return
-		}
-		statusName := statusDirname + "/" + fileName
-		handleDelete(statusName, status)
-		return
-	}
-	if operation != "M" {
-		log.Fatal("Unknown operation from Watcher: ",
-			operation)
-	}
-	configFile := configDirname + "/" + fileName
-	cb, err := ioutil.ReadFile(configFile)
-	if err != nil {
-		log.Printf("%s for %s\n", err, configFile)
-		return
-	}
-	if err := json.Unmarshal(cb, config); err != nil {
-		log.Printf("%s AppInstanceConfig file: %s\n",
-			err, configFile)
-		return
-	}
-	if !config.VerifyFilename(fileName) {
-		return
-	}
-	statusFile := statusDirname + "/" + fileName
-	if _, err := os.Stat(statusFile); err != nil {
-		// File does not exist in status hence new
-		statusName := statusDirname + "/" + fileName
-		handleCreate(statusName, config)
-		return
-	}
-	// Read and check status
-	sb, err := ioutil.ReadFile(statusFile)
-	if err != nil {
-		log.Printf("%s for %s\n", err, statusFile)
-		return
-	}
-	if err := json.Unmarshal(sb, status); err != nil {
-		log.Printf("%s AppInstanceStatus file: %s\n",
-			err, statusFile)
-		return
-	}
-	if !status.VerifyFilename(fileName) {
-		return
-	}
-	// XXX make Pending* info functions... and a separate pending* boolean?
-	// XXX or leave unchanged?
-	// Look for pending* in status and repeat that operation.
-	// XXX After that do a full ReadDir to restart ...
-	if status.CheckPendingAdd() {
-		statusName := statusDirname + "/" + fileName
-		handleCreate(statusName, config)
-		// XXX set something to rescan?
-		return
-	}
-	if status.CheckPendingDelete() {
-		statusName := statusDirname + "/" + fileName
-		handleDelete(statusName, status)
-		// XXX set something to rescan?
-		return
-	}
-	if status.CheckPendingModify() {
-		statusName := statusDirname + "/" + fileName
-		handleModify(statusName, config, status)
-		// XXX set something to rescan?
-		return
-	}
-	statusName := statusDirname + "/" + fileName
-	handleModify(statusName, config, status)
 }
 
 func writeAICStatus(status *types.AppInstanceStatus,
@@ -354,41 +248,4 @@ func handleDelete(statusFilename string, statusArg interface{}) {
 
 	removeConfig(status.UUIDandVersion.UUID.String())
 	log.Printf("handleDelete done for %s\n", status.DisplayName)
-}
-
-type statusCreateHandler func(statusFilename string, status interface{})
-type statusDeleteHandler func(statusFilename string)
-
-func handleStatusEvent(change string, statusDirname string, status interface{},
-	statusCreateFunc statusCreateHandler,
-	statusDeleteFunc statusDeleteHandler) {
-	parts := strings.Split(change, " ")
-	operation := parts[0]
-	fileName := parts[1]
-	if !strings.HasSuffix(fileName, ".json") {
-		log.Printf("Ignoring file <%s>\n", fileName)
-		return
-	}
-	// Remove .json from name */
-	name := strings.Split(fileName, ".")
-	if operation == "D" {
-		statusDeleteFunc(name[0])
-		return
-	}
-	if operation != "M" {
-		log.Fatal("Unknown operation from Watcher: ",
-			operation)
-	}
-	statusFile := statusDirname + "/" + fileName
-	cb, err := ioutil.ReadFile(statusFile)
-	if err != nil {
-		log.Printf("%s for %s\n", err, statusFile)
-		return
-	}
-	if err := json.Unmarshal(cb, status); err != nil {
-		log.Printf("%s file: %s\n",
-			err, statusFile)
-		return
-	}
-	statusCreateFunc(name[0], status)
 }
