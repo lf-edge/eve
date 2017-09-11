@@ -1,3 +1,13 @@
+TODO ethtool setup in domU for checksum? How to make permanent?
+	sudo ethtool -K eth1 tx-checksum-ipv6 off
+	Set default in (shared?) kernel?
+	Or can we force in dom0/ netback?
+Needed for x86 as well.
+TODO try with other mangle setup..
+
+TODO 20-30 second outage when we add/delete a domU/EID as reported by
+     ping6 zedcontrol
+     
 TODO kernel=Image is external to domU; how to specify external kernel which needs to be downloaded?
 Ditto for initrd?
 Q: target=kernel? plus "extKernel=true"?
@@ -10,17 +20,15 @@ TODO what is needed for docker/rkt?
 TODO rename displayName to localDNSName?
      Should we allow for empty? Also used for xen domain.
 TODO should we have one name per overlay?
-TODO bundles of bundles vs. attach to overlay uuid?
+
+DONE bundles of bundles vs. attach to overlay uuid?
+
 TODO domU needs to know which overlay is which and diff than IPv6 underlay.
-TODO domU needs routes for different overlays.
+TODO domU needs /128 routes for multiple IPv6 overlays?
 
 TODO name for StorageConfig*?
      Is both an Image description and aspects of the container for the image
      ImageDeploymentConfig and ImageDeploymentStatus?
-     
-TODO device-steps.sh - mode (from file or arg) to only run zedrouter for ctrl01?
-     Check we can create dbo1x0.
-     Also move ctrl01's code to /opt
      
 TODO wait code - introduce second layer of interfaces to remove duplicate code
 
@@ -40,6 +48,10 @@ DeviceSwStatus upload results in an ack containing the global address.
 
 ===
 
+DONE device-steps.sh - mode (from file or arg) to only run zedrouter for ctrl01?
+     Check we can create dbo1x0.
+     Also move ctrl01's code to /opt
+     
 DONE geolocation of clientIP -> hwStatus
 
 Q: are we accepting east-west traffic on mgmt iid?
