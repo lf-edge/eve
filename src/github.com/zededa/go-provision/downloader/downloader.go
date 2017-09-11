@@ -43,7 +43,7 @@ import (
 
 var (
 	certFrequency	time.Duration = 30
-	configFrequency	time.Duration = 10
+	configFrequency	time.Duration = 2
 	dCtx		*zedUpload.DronaCtx
 )
 
@@ -63,24 +63,26 @@ func main() {
 
         handleInit()
 
+	// schedule the periodic timers
+	triggerLatestConfig()
+	triggerLatestCert()
+
+	go checkImageUpdates()
+
 	go checkLatestCert()
 	go checkLatestConfig()
-	go checkImageUpdates()
 
 	go handleLatestCertUpdates()
 	go handleLatestConfigUpdates()
 
-	go handleCertUpdates()
-	go handleConfigUpdates()
+	handleCertUpdates()
+	handleConfigUpdates()
 
-	// schedule the periodic timers
-	triggerLatestConfig()
-	triggerLatestCert()
 }
 
 func triggerLatestCert() {
 
-	configDirname := "/var/tmp/downloader/latest.cert/config"
+	configDirname := "/var/run/downloader/latest.cert/config"
 
 	time.AfterFunc(certFrequency * time.Minute, triggerLatestCert)
 
@@ -105,7 +107,7 @@ func triggerLatestCert() {
 
 func triggerLatestConfig() {
 
-	configDirname := "/var/tmp/downloader/latest.config/config"
+	configDirname := "/var/run/downloader/latest.config/config"
 
 	time.AfterFunc(configFrequency * time.Minute, triggerLatestConfig)
 
@@ -129,9 +131,10 @@ func triggerLatestConfig() {
 
 func triggerConfigObjUpdates(configObj *types.DownloaderConfig) {
 
-	configDirname := "/var/tmp/downloader/config.obj"
+	configDirname := "/var/run/downloader/config.obj/config/"
 
 	safename := urlToSafename(configObj.DownloadURL, configObj.ImageSha256)
+
         config := types.DownloaderConfig{
 		Safename:		safename,
 		Operation:		configObj.Operation,
@@ -153,7 +156,7 @@ func triggerConfigObjUpdates(configObj *types.DownloaderConfig) {
 
 func triggerCertObjUpdates(certObj *types.CertConfig) {
 
-	configDirname := "/var/tmp/downloader/cert.obj"
+	configDirname := "/var/run/downloader/cert.obj/config/"
 
 	if err := os.MkdirAll(configDirname, 0755); err != nil {
 		log.Fatal(err)
@@ -173,7 +176,7 @@ func triggerCertObjUpdates(certObj *types.CertConfig) {
 		RefCount:		1,
 	}
 
-	configFilename := configDirname + "/" + safename + ".json"
+	configFilename := configDirname + safename + ".json"
 
         writeDownloaderConfig(&config, configFilename)
 
@@ -193,7 +196,7 @@ func triggerCertObjUpdates(certObj *types.CertConfig) {
 			RefCount:		1,
 		}
 
-		configFilename := configDirname + "/" + safename + ".json"
+		configFilename := configDirname + safename + ".json"
 
                 writeDownloaderConfig(&config, configFilename)
 	}
@@ -211,9 +214,9 @@ func checkImageUpdates() {
 
 func checkLatestCert() {
 
-	baseDirname := "/var/tmp/downloader/latest.cert"
+	baseDirname := "/var/run/downloader/latest.cert"
 	runDirname  := "/var/run/downloader/latest.cert"
-	locDirname  := "/var/tmp/zedmanager/downloads/latest.cert"
+	locDirname  := "/var/run/zedmanager/downloads/latest.cert"
 
 	log.Printf("starting cert downloader loop")
 	checkObjectUpdates(baseDirname, runDirname, locDirname)
@@ -221,9 +224,9 @@ func checkLatestCert() {
 
 func checkLatestConfig() {
 
-	baseDirname := "/var/tmp/downloader/latest.config"
+	baseDirname := "/var/run/downloader/latest.config"
 	runDirname  := "/var/run/downloader/latest.config"
-	locDirname  := "/var/tmp/zedmanager/downloads/latest.config"
+	locDirname  := "/var/run/zedmanager/downloads/latest.config"
 
 	log.Printf("starting config downloader loop")
 	checkObjectUpdates(baseDirname, runDirname, locDirname)
@@ -231,54 +234,54 @@ func checkLatestConfig() {
 
 func handleLatestCertUpdates() {
 
-	baseDirname := "/var/tmp/downloader/latest.cert"
+	baseDirname := "/var/run/downloader/latest.cert"
 	runDirname  := "/var/run/downloader/latest.cert"
-	locDirname  := "/var/tmp/zedmanager/downloads/latest.cert"
+	locDirname  := "/var/run/zedmanager/downloads/latest.cert"
 
 	processLatestCertObject (baseDirname, runDirname, locDirname)
 }
 
 func handleLatestConfigUpdates() {
 
-	baseDirname := "/var/tmp/downloader/latest.config"
+	baseDirname := "/var/run/downloader/latest.config"
 	runDirname  := "/var/run/downloader/latest.config"
-	locDirname  := "/var/tmp/zedmanager/downloads/latest.config"
+	locDirname  := "/var/run/zedmanager/downloads/latest.config"
 
 	processLatestConfigObject (baseDirname, runDirname, locDirname)
 }
 
 func handleCertUpdates() {
 
-	baseDirname := "/var/tmp/downloader/cert.obj"
+	baseDirname := "/var/run/downloader/cert.obj"
 	runDirname  := "/var/run/downloader/cert.obj"
-	locDirname  := "/var/tmp/zedmanager/downloads/cert-obj"
+	locDirname  := "/var/run/zedmanager/downloads/cert-obj"
 
 	checkObjectUpdates(baseDirname, runDirname, locDirname)
 }
 
 func handleConfigUpdates() {
 
-	baseDirname := "/var/tmp/downloader/config.obj"
+	baseDirname := "/var/run/downloader/config.obj"
 	runDirname  := "/var/run/downloader/config.obj"
-	locDirname  := "/var/tmp/zedmanager/downloads/config-obj"
+	locDirname  := "/var/run/zedmanager/downloads/config-obj"
 
 	checkObjectUpdates(baseDirname, runDirname, locDirname)
 }
 
 func processConfigUpdates() {
 
-	baseDirname := "/var/tmp/downloader/config.obj"
+	baseDirname := "/var/run/downloader/config.obj"
 	runDirname  := "/var/run/downloader/config.obj"
-	locDirname  := "/var/tmp/zedmanager/downloads/config.obj"
+	locDirname  := "/var/run/zedmanager/downloads/config.obj"
 
 	processConfigObject (baseDirname, runDirname, locDirname)
 }
 
 func processCertUpdates() {
 
-	baseDirname := "/var/tmp/downloader/cert.obj"
+	baseDirname := "/var/run/downloader/cert.obj"
 	runDirname  := "/var/run/downloader/cert.obj"
-	locDirname  := "/var/tmp/zedmanager/downloads/cert-obj"
+	locDirname  := "/var/run/zedmanager/downloads/cert-obj"
 
 	processCertObject (baseDirname, runDirname, locDirname)
 }
@@ -667,7 +670,6 @@ func  processLatestConfigObject (baseDirname string, runDirname string, locDirna
 			log.Fatal(err)
 		}
 	}
-
 	var fileChanges = make(chan string)
 
 	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
@@ -795,6 +797,8 @@ func  processLatestConfigObject (baseDirname string, runDirname string, locDirna
 			// trigger Config File Downloads
 			configHolder := types.DownloaderConfig{}
 			if err = json.Unmarshal(sb, &configHolder); err == nil {
+
+				log.Printf("<%s>\n", sb)
 				triggerConfigObjUpdates(&configHolder)
 			}
 
@@ -1141,7 +1145,14 @@ func  processConfigObject (baseDirname string, runDirname string, locDirname str
 }
 
 func urlToSafename(url string, sha string) string {
-        safename := strings.Replace(url, "/", "_", -1) + "." + sha
+
+	var safename string
+
+	if sha != "" {
+		safename = strings.Replace(url, "/", "_", -1) + "." + sha
+	} else {
+		safename = strings.Replace(url, "/", "_", -1)
+	}
         return safename
 }
 
@@ -1164,6 +1175,10 @@ func handleInit() {
 	locDirname := "/var/tmp/zedmanager/downloads/"
 
 	globalStatusFilename = statusFilename
+
+	if err := os.RemoveAll(runDirname); err != nil {
+		log.Fatal(err)
+	}
 
 	if _, err := os.Stat(statusDirname); err != nil {
 
@@ -1346,11 +1361,7 @@ func handleCreate(config types.DownloaderConfig, statusFilename string, locDirna
 		return
 	}
 
-	// update status to DOWNLOAD STARTED
-	status.State = types.DOWNLOAD_STARTED
-	writeDownloaderStatus(&status, statusFilename)
-
-	go handleSyncOp(syncOp, locDirname, statusFilename, config, &status)
+	handleSyncOp(syncOp, locDirname, statusFilename, config, &status)
 }
 
 // XXX Should we set        --limit-rate=100k
@@ -1492,6 +1503,10 @@ func handleDelete(statusFilename string, locDirname string, status types.Downloa
 
 func handleSyncOp(syncOp zedUpload.SyncOpType, locDirname string, statusFilename string, config types.DownloaderConfig, status *types.DownloaderStatus) {
 
+	// update status to DOWNLOAD STARTED
+	status.State = types.DOWNLOAD_STARTED
+	writeDownloaderStatus(status, statusFilename)
+
 	locFilename := locDirname + "/pending"
 
 	if config.ImageSha256 != "" {
@@ -1513,6 +1528,7 @@ func handleSyncOp(syncOp zedUpload.SyncOpType, locDirname string, statusFilename
 	auth := &zedUpload.AuthInput{AuthType: "s3",
 			 Uname :"AKIAJMEEPPJOBQCVW3BQ",
 			 Password:"nz0dXnc4Qc7z0PTsyIfIrM7bDNJWeLMvlUI2oJ2T"}
+
 	trType:= zedUpload.SyncAwsTr
 	region := "us-west-2"
 
@@ -1531,6 +1547,10 @@ func handleSyncOp(syncOp zedUpload.SyncOpType, locDirname string, statusFilename
 		        select {
 		                case resp := <-respChan:
 					_, err = resp.GetUpStatus()
+
+					if resp.IsError () == false {
+						err = nil
+					}
 		        }
 
 		}
@@ -1540,6 +1560,8 @@ func handleSyncOp(syncOp zedUpload.SyncOpType, locDirname string, statusFilename
 }
 
 func handleSyncOpResponse(config types.DownloaderConfig, status *types.DownloaderStatus, statusFilename string, locDirname string, err error) {
+
+	log.Printf("handleCreate Response for <%s> %s\n", config.DownloadURL, err)
 
 	if err != nil {
 		// Delete file
@@ -1551,7 +1573,7 @@ func handleSyncOpResponse(config types.DownloaderConfig, status *types.Downloade
 		status.RetryCount += 1
 		status.State = types.INITIAL
 		writeDownloaderStatus(status, statusFilename)
-		log.Printf("handleCreate failed for %s\n", status.DownloadURL)
+		log.Printf("handleCreate failed for %s, <%s>\n", status.DownloadURL, err)
 		return
 	}
 
@@ -1581,7 +1603,7 @@ func handleSyncOpResponse(config types.DownloaderConfig, status *types.Downloade
 		status.RetryCount += 1
 		status.State = types.INITIAL
 		writeDownloaderStatus(status, statusFilename)
-		log.Printf("handleCreate failed for %s\n", status.DownloadURL)
+		log.Printf("handleCreate failed for %s <%s>\n", status.DownloadURL, err)
 		return
 	}
 
@@ -1601,7 +1623,7 @@ func handleSyncOpResponse(config types.DownloaderConfig, status *types.Downloade
 		status.RetryCount += 1
 		status.State = types.INITIAL
 		writeDownloaderStatus(status, statusFilename)
-		log.Printf("handleCreate failed for %s\n", status.DownloadURL)
+		log.Printf("handleCreate failed for %s, <%s>\n", status.DownloadURL, err)
 		return
 	}
 
@@ -1610,7 +1632,7 @@ func handleSyncOpResponse(config types.DownloaderConfig, status *types.Downloade
 	globalStatus.UsedSpace += status.Size
 	updateRemainingSpace()
 
-	log.Printf("handleCreate successful for %s\n", config.DownloadURL)
+	log.Printf("handleCreate successful %s <%s>\n", config.DownloadURL, locDirname)
 	// We do not clear any status.RetryCount, LastErr, etc. The caller
 	// should look at State == DOWNLOADED to determine it is done.
 
