@@ -133,113 +133,135 @@ func main() {
 		// XXX generalize this code; struct with dirnames and comparator
 		case change := <-configChanges:
 			{
-				parts := strings.Split(change, " ")
-				operation := parts[0]
-				fileName := parts[1]
-				if !strings.HasSuffix(fileName, ".json") {
-					log.Printf("Ignoring file <%s>\n", fileName)
-					continue
-				}
-				if operation == "D" {
-					statusFile := zedmanagerStatusDirname + "/" + fileName
-					if _, err := os.Stat(statusFile); err != nil {
-						// File just vanished!
-						log.Printf("File disappeared <%s>\n", fileName)
-						continue
-					}
-					sb, err := ioutil.ReadFile(statusFile)
-					if err != nil {
-						log.Printf("%s for %s\n", err, statusFile)
-						continue
-					}
-					status := types.AppInstanceStatus{}
-					if err := json.Unmarshal(sb, &status); err != nil {
-						log.Printf("%s AppInstanceStatus file: %s\n",
-							err, statusFile)
-						continue
-					}
-					uuid := status.UUIDandVersion.UUID
-					if uuid.String()+".json" != fileName {
-						log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-							fileName, uuid.String())
-						continue
-					}
-					statusName := zedmanagerStatusDirname + "/" + fileName
-					handleDelete(statusName, status)
-					continue
-				}
-				if operation != "M" {
-					log.Fatal("Unknown operation from Watcher: ",
-						operation)
-				}
-				configFile := zedmanagerConfigDirname + "/" + fileName
-				cb, err := ioutil.ReadFile(configFile)
-				if err != nil {
-					log.Printf("%s for %s\n", err, configFile)
-					continue
-				}
-				config := types.AppInstanceConfig{}
-				if err := json.Unmarshal(cb, &config); err != nil {
-					log.Printf("%s AppInstanceConfig file: %s\n",
-						err, configFile)
-					continue
-				}
-				uuid := config.UUIDandVersion.UUID
-				if uuid.String()+".json" != fileName {
-					log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-						fileName, uuid.String())
-					continue
-				}
-				statusFile := zedmanagerStatusDirname + "/" + fileName
-				if _, err := os.Stat(statusFile); err != nil {
-					// File does not exist in status hence new
-					statusName := zedmanagerStatusDirname + "/" + fileName
-					handleCreate(statusName, config)
-					continue
-				}
-				// Read and check status
-				sb, err := ioutil.ReadFile(statusFile)
-				if err != nil {
-					log.Printf("%s for %s\n", err, statusFile)
-					continue
-				}
-				status := types.AppInstanceStatus{}
-				if err := json.Unmarshal(sb, &status); err != nil {
-					log.Printf("%s AppInstanceStatus file: %s\n",
-						err, statusFile)
-					continue
-				}
-				uuid = status.UUIDandVersion.UUID
-				if uuid.String()+".json" != fileName {
-					log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-						fileName, uuid.String())
-					continue
-				}
-				// Look for pending* in status and repeat that operation.
-				// XXX After that do a full ReadDir to restart ...
-				if status.PendingAdd {
-					statusName := zedmanagerStatusDirname + "/" + fileName
-					handleCreate(statusName, config)
-					// XXX set something to rescan?
-					continue
-				}
-				if status.PendingDelete {
-					statusName := zedmanagerStatusDirname + "/" + fileName
-					handleDelete(statusName, status)
-					// XXX set something to rescan?
-					continue
-				}
-				if status.PendingModify {
-					statusName := zedmanagerStatusDirname + "/" + fileName
-					handleModify(statusName, config, status)
-					// XXX set something to rescan?
-					continue
-				}
-				statusName := zedmanagerStatusDirname + "/" + fileName
-				handleModify(statusName, config, status)
+				handleConfigStatusEvent(change,
+					zedmanagerConfigDirname,
+					zedmanagerStatusDirname,
+					&types.AppInstanceConfig{},
+					&types.AppInstanceStatus{},
+					handleCreate, handleModify,
+					handleDelete)
 			}
 		}
 	}
+}
+
+// XXX move to watch? Need watchTypes.go or sufficient to declare types
+// with CAPS in watch.go?
+type configCreateHandler func(statusFilename string, config interface{})
+type configModifyHandler func(statusFilename string, config interface{},
+	status interface{})
+type configDeleteHandler func(statusFilename string, status interface{})
+
+func handleConfigStatusEvent(change string,
+	configDirname string,
+	statusDirname string ,
+	config *types.AppInstanceConfig,	// XXX interface
+	status *types.AppInstanceStatus,	// XXX interface
+	handleCreate configCreateHandler, handleModify configModifyHandler,
+	handleDelete configDeleteHandler) {
+
+	parts := strings.Split(change, " ")
+	operation := parts[0]
+	fileName := parts[1]
+	if !strings.HasSuffix(fileName, ".json") {
+		log.Printf("Ignoring file <%s>\n", fileName)
+		return
+	}
+	if operation == "D" {
+		statusFile := statusDirname + "/" + fileName
+		if _, err := os.Stat(statusFile); err != nil {
+			// File just vanished!
+			log.Printf("File disappeared <%s>\n", fileName)
+			return
+		}
+		sb, err := ioutil.ReadFile(statusFile)
+		if err != nil {
+			log.Printf("%s for %s\n", err, statusFile)
+			return
+		}
+		status := types.AppInstanceStatus{}
+		if err := json.Unmarshal(sb, &status); err != nil {
+			log.Printf("%s AppInstanceStatus file: %s\n",
+				err, statusFile)
+			return
+		}
+		uuid := status.UUIDandVersion.UUID
+		if uuid.String()+".json" != fileName {
+			log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
+				fileName, uuid.String())
+			return
+		}
+		statusName := statusDirname + "/" + fileName
+		handleDelete(statusName, status)
+		return
+	}
+	if operation != "M" {
+		log.Fatal("Unknown operation from Watcher: ",
+			operation)
+	}
+	configFile := configDirname + "/" + fileName
+	cb, err := ioutil.ReadFile(configFile)
+	if err != nil {
+		log.Printf("%s for %s\n", err, configFile)
+		return
+	}
+	if err := json.Unmarshal(cb, &config); err != nil {
+		log.Printf("%s AppInstanceConfig file: %s\n",
+			err, configFile)
+		return
+	}
+	uuid := config.UUIDandVersion.UUID
+	if uuid.String()+".json" != fileName {
+		log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
+			fileName, uuid.String())
+		return
+	}
+	statusFile := statusDirname + "/" + fileName
+	if _, err := os.Stat(statusFile); err != nil {
+		// File does not exist in status hence new
+		statusName := statusDirname + "/" + fileName
+		handleCreate(statusName, config)
+		return
+	}
+	// Read and check status
+	sb, err := ioutil.ReadFile(statusFile)
+	if err != nil {
+		log.Printf("%s for %s\n", err, statusFile)
+		return
+	}
+	if err := json.Unmarshal(sb, &status); err != nil {
+		log.Printf("%s AppInstanceStatus file: %s\n",
+			err, statusFile)
+		return
+	}
+	uuid = status.UUIDandVersion.UUID
+	if uuid.String()+".json" != fileName {
+		log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
+			fileName, uuid.String())
+		return
+	}
+	// Look for pending* in status and repeat that operation.
+	// XXX After that do a full ReadDir to restart ...
+	if status.PendingAdd {
+		statusName := statusDirname + "/" + fileName
+		handleCreate(statusName, config)
+		// XXX set something to rescan?
+		return
+	}
+	if status.PendingDelete {
+		statusName := statusDirname + "/" + fileName
+		handleDelete(statusName, status)
+		// XXX set something to rescan?
+		return
+	}
+	if status.PendingModify {
+		statusName := statusDirname + "/" + fileName
+		handleModify(statusName, config, status)
+		// XXX set something to rescan?
+		return
+	}
+	statusName := statusDirname + "/" + fileName
+	handleModify(statusName, config, status)
 }
 
 func writeAICStatus(status *types.AppInstanceStatus,
@@ -270,19 +292,42 @@ func writeAppInstanceStatus(status *types.AppInstanceStatus,
 	}
 }
 
-func handleCreate(statusFilename string, config types.AppInstanceConfig) {
+func handleCreate(statusFilename string, configArg interface{}) {
+	var config *types.AppInstanceConfig
+
+	switch configArg.(type) {
+	default:
+		log.Fatal("Can only handle AppInstanceConfig")
+	case *types.AppInstanceConfig:
+		config = configArg.(*types.AppInstanceConfig)
+	}
 	log.Printf("handleCreate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
-	addOrUpdateConfig(config.UUIDandVersion.UUID.String(), config)
+	addOrUpdateConfig(config.UUIDandVersion.UUID.String(), *config)
 
 	// Note that the status is written as we handle updates from the
 	// other services
 	log.Printf("handleCreate done for %s\n", config.DisplayName)
 }
 
-func handleModify(statusFilename string, config types.AppInstanceConfig,
-	status types.AppInstanceStatus) {
+func handleModify(statusFilename string, configArg interface{},
+	statusArg interface{}) {
+	var config *types.AppInstanceConfig
+	var status *types.AppInstanceStatus
+
+	switch configArg.(type) {
+	default:
+		log.Fatal("Can only handle AppInstanceConfig")
+	case *types.AppInstanceConfig:
+		config = configArg.(*types.AppInstanceConfig)
+	}
+	switch statusArg.(type) {
+	default:
+		log.Fatal("Can only handle AppInstanceStatus")
+	case *types.AppInstanceStatus:
+		status = statusArg.(*types.AppInstanceStatus)
+	}
 	log.Printf("handleModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
@@ -294,20 +339,28 @@ func handleModify(statusFilename string, config types.AppInstanceConfig,
 
 	status.PendingModify = true
 	status.UUIDandVersion = config.UUIDandVersion
-	writeAppInstanceStatus(&status, statusFilename)
+	writeAppInstanceStatus(status, statusFilename)
 
-	addOrUpdateConfig(config.UUIDandVersion.UUID.String(), config)
+	addOrUpdateConfig(config.UUIDandVersion.UUID.String(), *config)
 	// Note that the status is written as we handle updates from the
 	// other services
 	log.Printf("handleUpdate done for %s\n", config.DisplayName)
 }
 
-func handleDelete(statusFilename string, status types.AppInstanceStatus) {
+func handleDelete(statusFilename string, statusArg interface{}) {
+	var status *types.AppInstanceStatus
+
+	switch statusArg.(type) {
+	default:
+		log.Fatal("Can only handle AppInstanceStatus")
+	case *types.AppInstanceStatus:
+		status = statusArg.(*types.AppInstanceStatus)
+	}
 	log.Printf("handleDelete(%v) for %s\n",
 		status.UUIDandVersion, status.DisplayName)
 
 	status.PendingDelete = true
-	writeAppInstanceStatus(&status, statusFilename)
+	writeAppInstanceStatus(status, statusFilename)
 
 	removeConfig(status.UUIDandVersion.UUID.String())
 	log.Printf("handleDelete done for %s\n", status.DisplayName)
