@@ -42,7 +42,7 @@ import (
 )
 
 var (
-	certFrequency	time.Duration = 30
+	certFrequency	time.Duration = 10
 	configFrequency	time.Duration = 2
 	dCtx		*zedUpload.DronaCtx
 )
@@ -64,20 +64,19 @@ func main() {
         handleInit()
 
 	// schedule the periodic timers
-	triggerLatestConfig()
+
 	triggerLatestCert()
+	//triggerLatestConfig()
+
+
+	go checkLatestCert()
+
+	//go checkLatestConfig()
 
 	go checkImageUpdates()
 
-	go checkLatestCert()
-	go checkLatestConfig()
-
-	go handleLatestCertUpdates()
-	go handleLatestConfigUpdates()
-
 	handleCertUpdates()
-	handleConfigUpdates()
-
+	//handleConfigUpdates()
 }
 
 func triggerLatestCert() {
@@ -146,7 +145,7 @@ func triggerConfigObjUpdates(configObj *types.DownloaderConfig) {
 		RefCount:		1,
 	}
 
-	if err := os.MkdirAll(configDirname, 0755); err != nil {
+	if err := os.MkdirAll(configDirname, 0700); err != nil {
 		log.Fatal(err)
 	}
 	configFilename := configDirname + "/" + safename + ".json"
@@ -158,7 +157,7 @@ func triggerCertObjUpdates(certObj *types.CertConfig) {
 
 	configDirname := "/var/run/downloader/cert.obj/config/"
 
-	if err := os.MkdirAll(configDirname, 0755); err != nil {
+	if err := os.MkdirAll(configDirname, 0700); err != nil {
 		log.Fatal(err)
 	}
 
@@ -208,8 +207,17 @@ func checkImageUpdates() {
 	runDirname  := "/var/run/downloader"
 	locDirname  := "/var/tmp/zedmanager/downloads/"
 
-	log.Printf("starting image downloader loop")
-	checkObjectUpdates(baseDirname, runDirname, locDirname)
+	sanitizeDirs(baseDirname, runDirname, locDirname)
+
+	configDirname := baseDirname + "/config"
+	statusDirname := runDirname + "/status"
+	fileChanges   := make(chan string)
+
+	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
+        for {
+		change := <-fileChanges
+		handleObjectUpdates(baseDirname, runDirname, locDirname, change)
+	}
 }
 
 func checkLatestCert() {
@@ -218,8 +226,19 @@ func checkLatestCert() {
 	runDirname  := "/var/run/downloader/latest.cert"
 	locDirname  := "/var/run/zedmanager/downloads/latest.cert"
 
-	log.Printf("starting cert downloader loop")
-	checkObjectUpdates(baseDirname, runDirname, locDirname)
+	sanitizeDirs(baseDirname, runDirname, locDirname)
+
+	configDirname := baseDirname + "/config"
+	statusDirname := runDirname + "/status"
+	fileChanges   := make(chan string)
+
+	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
+
+        for {
+		change := <-fileChanges
+		handleObjectUpdates (baseDirname, runDirname, locDirname, change)
+		processLatestCerts (baseDirname, runDirname, locDirname, change)
+	}
 }
 
 func checkLatestConfig() {
@@ -228,26 +247,19 @@ func checkLatestConfig() {
 	runDirname  := "/var/run/downloader/latest.config"
 	locDirname  := "/var/run/zedmanager/downloads/latest.config"
 
-	log.Printf("starting config downloader loop")
-	checkObjectUpdates(baseDirname, runDirname, locDirname)
-}
+	sanitizeDirs(baseDirname, runDirname, locDirname)
 
-func handleLatestCertUpdates() {
+	configDirname := baseDirname + "/config"
+	statusDirname := runDirname + "/status"
+	fileChanges   := make(chan string)
 
-	baseDirname := "/var/run/downloader/latest.cert"
-	runDirname  := "/var/run/downloader/latest.cert"
-	locDirname  := "/var/run/zedmanager/downloads/latest.cert"
+	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
 
-	processLatestCertObject (baseDirname, runDirname, locDirname)
-}
-
-func handleLatestConfigUpdates() {
-
-	baseDirname := "/var/run/downloader/latest.config"
-	runDirname  := "/var/run/downloader/latest.config"
-	locDirname  := "/var/run/zedmanager/downloads/latest.config"
-
-	processLatestConfigObject (baseDirname, runDirname, locDirname)
+        for {
+		change := <-fileChanges
+		handleObjectUpdates (baseDirname, runDirname, locDirname, change)
+		processLatestConfigs (baseDirname, runDirname, locDirname, change)
+	}
 }
 
 func handleCertUpdates() {
@@ -256,7 +268,19 @@ func handleCertUpdates() {
 	runDirname  := "/var/run/downloader/cert.obj"
 	locDirname  := "/var/run/zedmanager/downloads/cert-obj"
 
-	checkObjectUpdates(baseDirname, runDirname, locDirname)
+	sanitizeDirs(baseDirname, runDirname, locDirname)
+
+	configDirname := baseDirname + "/config"
+	statusDirname := runDirname + "/status"
+	fileChanges   := make(chan string)
+
+	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
+
+        for {
+		change := <-fileChanges
+		handleObjectUpdates (baseDirname, runDirname, locDirname, change)
+		processCertObject (baseDirname, runDirname, locDirname, change)
+	}
 }
 
 func handleConfigUpdates() {
@@ -265,31 +289,28 @@ func handleConfigUpdates() {
 	runDirname  := "/var/run/downloader/config.obj"
 	locDirname  := "/var/run/zedmanager/downloads/config-obj"
 
-	checkObjectUpdates(baseDirname, runDirname, locDirname)
-}
-
-func processConfigUpdates() {
-
-	baseDirname := "/var/run/downloader/config.obj"
-	runDirname  := "/var/run/downloader/config.obj"
-	locDirname  := "/var/run/zedmanager/downloads/config.obj"
-
-	processConfigObject (baseDirname, runDirname, locDirname)
-}
-
-func processCertUpdates() {
-
-	baseDirname := "/var/run/downloader/cert.obj"
-	runDirname  := "/var/run/downloader/cert.obj"
-	locDirname  := "/var/run/zedmanager/downloads/cert-obj"
-
-	processCertObject (baseDirname, runDirname, locDirname)
-}
-
-func  checkObjectUpdates (baseDirname string, runDirname string, locDirname string) {
+	sanitizeDirs(baseDirname, runDirname, locDirname)
 
 	configDirname := baseDirname + "/config"
 	statusDirname := runDirname + "/status"
+	fileChanges   := make(chan string)
+
+
+	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
+
+        for {
+		change := <-fileChanges
+		handleObjectUpdates (baseDirname, runDirname, locDirname, change)
+		processConfigObject (baseDirname, runDirname, locDirname, change)
+	}
+}
+
+func  sanitizeDirs (baseDirname string, runDirname string, locDirname string) {
+
+	configDirname := baseDirname + "/config"
+	statusDirname := runDirname + "/status"
+
+	log.Printf("sanitizeDirs: %s\n", baseDirname)
 
 	if _, err := os.Stat(baseDirname); err != nil {
 
@@ -325,282 +346,241 @@ func  checkObjectUpdates (baseDirname string, runDirname string, locDirname stri
 			log.Fatal(err)
 		}
 	}
+}
 
-	var fileChanges = make(chan string)
+func handleObjectUpdates(baseDirname string, runDirname string, locDirname string, change string) {
 
-	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
+	configDirname := baseDirname + "/config"
+	statusDirname := runDirname + "/status"
 
-	for {
-		change := <-fileChanges
-		parts := strings.Split(change, " ")
-		operation := parts[0]
-		fileName := parts[1]
+	parts := strings.Split(change, " ")
 
-		log.Printf("Changed file <%s> %s\n", fileName, operation)
-		if !strings.HasSuffix(fileName, ".json") {
-			log.Printf("Ignoring file <%s>\n", fileName)
-			continue
-		}
+	operation := parts[0]
+	fileName  := parts[1]
 
-		if operation == "D" {
-			statusFile := statusDirname + "/" + fileName
-			if _, err := os.Stat(statusFile); err != nil {
-				// File just vanished!
-				log.Printf("File disappeared <%s>\n", fileName)
-				continue
-			}
-			sb, err := ioutil.ReadFile(statusFile)
-			if err != nil {
-				log.Printf("%s for %s\n", err, statusFile)
-				continue
-			}
-			status := types.DownloaderStatus{}
-			if err := json.Unmarshal(sb, &status); err != nil {
-				log.Printf("%s DownloaderStatus file: %s\n",
-					err, statusFile)
-				continue
-			}
-			name := status.Safename
-			if name+".json" != fileName {
-				log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
-					fileName, name)
-				continue
-			}
-			statusName := statusDirname + "/" + fileName
-			handleDelete(statusName, locDirname, status)
-			continue
-		}
+	log.Printf("handleOjectUpdates: changed file %s <%s>\n", fileName, operation)
 
-		/* only consider modified files */
-		if operation != "M" {
-			log.Fatal("Unknown operation from Watcher: ", operation)
-		}
+	if !strings.HasSuffix(fileName, ".json") {
+		log.Printf("Ignoring file <%s>\n", fileName)
+		return
+	}
 
-		configFile := configDirname + "/" + fileName
-		cb, err := ioutil.ReadFile(configFile)
-
-		if err != nil {
-			log.Printf("%s for %s\n", err, configFile)
-			continue
-		}
-		log.Printf("%s %s\n", configFile, cb)
-
-		config := types.DownloaderConfig{}
-		if err := json.Unmarshal(cb, &config); err != nil {
-			log.Printf("%s DownloaderConfig file: %s\n",
-				err, configFile)
-			continue
-		}
-
-		name := config.Safename
-
-		if name+".json" != fileName {
-			log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
-				fileName, name)
-			continue
-		}
-
+	if operation == "D" {
 		statusFile := statusDirname + "/" + fileName
 		if _, err := os.Stat(statusFile); err != nil {
-			// File does not exist in status hence new
-			statusFilename := statusDirname + "/" + fileName
-			//handleCreate(statusName, config)
-			handleCreate(config, statusFilename, locDirname)
-			continue
+			// File just vanished!
+			log.Printf("File disappeared <%s>\n", fileName)
+			return
 		}
-		// Compare Version string
 		sb, err := ioutil.ReadFile(statusFile)
 		if err != nil {
 			log.Printf("%s for %s\n", err, statusFile)
-			continue
+			return
 		}
-
 		status := types.DownloaderStatus{}
-		if err = json.Unmarshal(sb, &status); err != nil {
+		if err := json.Unmarshal(sb, &status); err != nil {
 			log.Printf("%s DownloaderStatus file: %s\n",
 				err, statusFile)
-			continue
+			return
 		}
-
-		name = status.Safename
+		name := status.Safename
 		if name+".json" != fileName {
 			log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
 				fileName, name)
-			continue
+			return
 		}
-
-		// Look for pending* in status and repeat that operation.
-		// XXX After that do a full ReadDir to restart ...
-		if status.PendingAdd {
-			statusFilename := statusDirname + "/" + fileName
-			//handleCreate(statusFileName, config)
-			// XXX set something to rescan?
-			handleCreate(config, statusFilename, locDirname)
-			continue
-		}
-		if status.PendingDelete {
-			statusFileName := statusDirname + "/" + fileName
-			handleDelete(statusFileName, locDirname, status)
-			// XXX set something to rescan?
-			continue
-		}
-		if status.PendingModify {
-			statusFileName := statusDirname + "/" + fileName
-			handleModify(statusFileName, locDirname, config, status)
-			// XXX set something to rescan?
-			continue
-		}
-
-		statusFilename := statusDirname + "/" + fileName
-		handleModify(statusFilename, locDirname, config, status)
+		statusName := statusDirname + "/" + fileName
+		handleDelete(statusName, locDirname, status)
+		return
 	}
+
+	/* only consider modified files */
+	if operation != "M" {
+		log.Fatal("Unknown operation from Watcher: ", operation)
+	}
+
+	configFile := configDirname + "/" + fileName
+	cb, err := ioutil.ReadFile(configFile)
+
+	if err != nil {
+		log.Printf("%s for %s\n", err, configFile)
+		return
+	}
+	log.Printf("%s %s\n", configFile, cb)
+
+	config := types.DownloaderConfig{}
+	if err := json.Unmarshal(cb, &config); err != nil {
+		log.Printf("%s DownloaderConfig file: %s\n",
+			err, configFile)
+		return
+	}
+
+	name := config.Safename
+
+	if name+".json" != fileName {
+		log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
+			fileName, name)
+		return
+	}
+
+	statusFile := statusDirname + "/" + fileName
+	if _, err := os.Stat(statusFile); err != nil {
+		// File does not exist in status hence new
+		statusFilename := statusDirname + "/" + fileName
+		//handleCreate(statusName, config)
+		handleCreate(config, statusFilename, locDirname)
+		return
+	}
+	// Compare Version string
+	sb, err := ioutil.ReadFile(statusFile)
+	if err != nil {
+		log.Printf("%s for %s\n", err, statusFile)
+		return
+	}
+
+	status := types.DownloaderStatus{}
+	if err = json.Unmarshal(sb, &status); err != nil {
+		log.Printf("%s DownloaderStatus file: %s\n",
+			err, statusFile)
+		return
+	}
+
+	name = status.Safename
+	if name+".json" != fileName {
+		log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
+			fileName, name)
+		return
+	}
+
+	// Look for pending* in status and repeat that operation.
+	// XXX After that do a full ReadDir to restart ...
+	if status.PendingAdd {
+		statusFilename := statusDirname + "/" + fileName
+		//handleCreate(statusFileName, config)
+		// XXX set something to rescan?
+		handleCreate(config, statusFilename, locDirname)
+		return
+	}
+	if status.PendingDelete {
+		statusFileName := statusDirname + "/" + fileName
+		handleDelete(statusFileName, locDirname, status)
+		// XXX set something to rescan?
+		return
+	}
+	if status.PendingModify {
+		statusFileName := statusDirname + "/" + fileName
+		handleModify(statusFileName, locDirname, config, status)
+		// XXX set something to rescan?
+		return
+	}
+
+	statusFilename := statusDirname + "/" + fileName
+	handleModify(statusFilename, locDirname, config, status)
 }
 
-func  processLatestCertObject (baseDirname string, runDirname string, locDirname string) {
+func processLatestCerts (baseDirname string, runDirname string, locDirname string, change string) {
 
 	configDirname := baseDirname + "/config"
 	statusDirname := runDirname + "/status"
 
-	if _, err := os.Stat(baseDirname); err != nil {
+	parts := strings.Split(change, " ")
+	operation := parts[0]
+	fileName := parts[1]
 
-		if err := os.MkdirAll(baseDirname, 0755); err != nil {
-			log.Fatal(err)
-		}
+	log.Printf("processLatestCerts: changed file %s <%s>\n", fileName, operation)
+
+	if !strings.HasSuffix(fileName, ".json") {
+		log.Printf("Ignoring file <%s>\n", fileName)
+		return
 	}
 
-	if _, err := os.Stat(runDirname); err != nil {
-
-		if err := os.MkdirAll(runDirname, 0755); err != nil {
-			log.Fatal(err)
+	if operation == "D" {
+		statusFile := statusDirname + "/" + fileName
+		if _, err := os.Stat(statusFile); err != nil {
+			// File just vanished!
+			log.Printf("File disappeared <%s>\n", fileName)
+			return
 		}
-	}
-
-	if _, err := os.Stat(configDirname); err != nil {
-
-		if err := os.MkdirAll(configDirname, 0755); err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	if _, err := os.Stat(statusDirname); err != nil {
-
-		if err := os.MkdirAll(statusDirname, 0755); err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	if _, err := os.Stat(locDirname); err != nil {
-
-		if err := os.MkdirAll(locDirname, 0700); err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	var fileChanges = make(chan string)
-
-	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
-
-	for {
-		change := <-fileChanges
-		parts := strings.Split(change, " ")
-		operation := parts[0]
-		fileName := parts[1]
-
-		log.Printf("Changed file <%s> %s\n", fileName, operation)
-
-		if !strings.HasSuffix(fileName, ".json") {
-			log.Printf("Ignoring file <%s>\n", fileName)
-			continue
-		}
-
-		if operation == "D" {
-			statusFile := statusDirname + "/" + fileName
-			if _, err := os.Stat(statusFile); err != nil {
-				// File just vanished!
-				log.Printf("File disappeared <%s>\n", fileName)
-				continue
-			}
-			sb, err := ioutil.ReadFile(statusFile)
-			if err != nil {
-				log.Printf("%s for %s\n", err, statusFile)
-				continue
-			}
-			status := types.DownloaderStatus{}
-			if err := json.Unmarshal(sb, &status); err != nil {
-				log.Printf("%s DownloaderStatus file: %s\n",
-					err, statusFile)
-				continue
-			}
-			name := status.Safename
-			if name+".json" != fileName {
-				log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
-					fileName, name)
-				continue
-			}
-			statusName := statusDirname + "/" + fileName
-			handleDelete(statusName, locDirname, status)
-			continue
-		}
-
-		/* only consider modified files */
-		if operation != "M" {
-			log.Fatal("Unknown operation from Watcher: ", operation)
-		}
-
-		configFile := configDirname + "/" + fileName
-		cb, err := ioutil.ReadFile(configFile)
-
+		sb, err := ioutil.ReadFile(statusFile)
 		if err != nil {
-			log.Printf("%s for %s\n", err, configFile)
-			continue
+			log.Printf("%s for %s\n", err, statusFile)
+			return
 		}
-		log.Printf("%s %s\n", configFile, cb)
-
-		config := types.DownloaderConfig{}
-		if err := json.Unmarshal(cb, &config); err != nil {
-			log.Printf("%s DownloaderConfig file: %s\n",
-				err, configFile)
-			continue
-		}
-
-		name := config.Safename
-		if name+".json" != fileName {
-			log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
-				fileName, name)
-			continue
-		}
-
-		statusFilename := statusDirname + "/" + fileName
-		if _, err := os.Stat(statusFilename); err != nil {
-			// File does not exist
-			continue
-		}
-
-		// Compare Version string
-		sb, err := ioutil.ReadFile(statusFilename)
-		if err != nil {
-			log.Printf("%s for %s\n", err, statusFilename)
-			continue
-		}
-
 		status := types.DownloaderStatus{}
-		if err = json.Unmarshal(sb, &status); err != nil {
+		if err := json.Unmarshal(sb, &status); err != nil {
 			log.Printf("%s DownloaderStatus file: %s\n",
-				err, statusFilename)
-			continue
+				err, statusFile)
+			return
 		}
-
-		name = status.Safename
+		name := status.Safename
 		if name+".json" != fileName {
 			log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
 				fileName, name)
-			continue
+			return
 		}
+		statusName := statusDirname + "/" + fileName
+		handleDelete(statusName, locDirname, status)
+		return
+	}
 
-		// latest config has been downloaded
-		if  status.State != types.DOWNLOADED {
-			continue
-		}
+	/* only consider modified files */
+	if operation != "M" {
+		log.Fatal("Unknown operation from Watcher: ", operation)
+	}
+
+	configFile := configDirname + "/" + fileName
+	cb, err := ioutil.ReadFile(configFile)
+
+	if err != nil {
+		log.Printf("%s for %s\n", err, configFile)
+		return
+	}
+
+	log.Printf("%s %s\n", configFile, cb)
+
+	config := types.DownloaderConfig{}
+	if err := json.Unmarshal(cb, &config); err != nil {
+		log.Printf("%s DownloaderConfig file: %s\n",
+			err, configFile)
+		return
+	}
+
+	name := config.Safename
+	if name+".json" != fileName {
+		log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
+			fileName, name)
+		return
+	}
+
+	statusFilename := statusDirname + "/" + fileName
+	if _, err := os.Stat(statusFilename); err != nil {
+		// File does not exist
+		return
+	}
+
+	// Compare Version string
+	sb, err := ioutil.ReadFile(statusFilename)
+	if err != nil {
+		log.Printf("%s for %s\n", err, statusFilename)
+		return
+	}
+
+	status := types.DownloaderStatus{}
+	if err = json.Unmarshal(sb, &status); err != nil {
+		log.Printf("%s DownloaderStatus file: %s\n",
+			err, statusFilename)
+		return
+	}
+
+	name = status.Safename
+	if name+".json" != fileName {
+		log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
+			fileName, name)
+		return
+	}
+
+	// latest config has been downloaded
+	if  status.State == types.DOWNLOADED {
 
 		// get the downloaded file
 		locFilename := locDirname + "/pending"
@@ -611,17 +591,27 @@ func  processLatestCertObject (baseDirname string, runDirname string, locDirname
 
 		locFilename = locFilename + "/" + status.Safename
 
-		if _, err := os.Stat(locFilename); err == nil {
+		log.Printf("%s\n", locFilename)
+
+		_, err := os.Stat(locFilename)
+		if  err == nil {
 
 			sb, err := ioutil.ReadFile(locFilename)
+
 			if err == nil {
+
+				log.Printf("<%s>\n", sb)
 
 				// XXX check if the file is already present
 				// if yes, do nothing
+				log.Printf("Readfile <%s> %s\n", locFilename, sb)
 
 				certHolder := types.CertConfig{}
-				if err = json.Unmarshal(sb, &certHolder); err == nil {
+				err = json.Unmarshal(sb, &certHolder)
+				if err == nil {
 					triggerCertObjUpdates(&certHolder)
+				} else {
+					log.Printf("Parsing <%s> failed %s\n", locFilename, err)
 				}
 			}
 		}
@@ -631,165 +621,129 @@ func  processLatestCertObject (baseDirname string, runDirname string, locDirname
 	}
 }
 
-func  processLatestConfigObject (baseDirname string, runDirname string, locDirname string) {
+func processLatestConfigs (baseDirname string, runDirname string, locDirname string, change string) {
 
 	configDirname := baseDirname + "/config"
 	statusDirname := runDirname + "/status"
 
-	if _, err := os.Stat(baseDirname); err != nil {
+	parts := strings.Split(change, " ")
 
-		if err := os.MkdirAll(baseDirname, 0755); err != nil {
-			log.Fatal(err)
-		}
+	operation := parts[0]
+	fileName  := parts[1]
+
+	log.Printf("processLatestConfigs: changed file %s <%s>\n", fileName, operation)
+
+	if !strings.HasSuffix(fileName, ".json") {
+		log.Printf("Ignoring file <%s>\n", fileName)
+		return
 	}
 
-	if _, err := os.Stat(runDirname); err != nil {
-
-		if err := os.MkdirAll(runDirname, 0755); err != nil {
-			log.Fatal(err)
+	if operation == "D" {
+		statusFile := statusDirname + "/" + fileName
+		if _, err := os.Stat(statusFile); err != nil {
+			// File just vanished!
+			log.Printf("File disappeared <%s>\n", fileName)
+			return
 		}
-	}
-
-	if _, err := os.Stat(configDirname); err != nil {
-
-		if err := os.MkdirAll(configDirname, 0755); err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	if _, err := os.Stat(statusDirname); err != nil {
-
-		if err := os.MkdirAll(statusDirname, 0755); err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	if _, err := os.Stat(locDirname); err != nil {
-
-		if err := os.MkdirAll(locDirname, 0700); err != nil {
-			log.Fatal(err)
-		}
-	}
-	var fileChanges = make(chan string)
-
-	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
-
-	for {
-		change := <-fileChanges
-		parts := strings.Split(change, " ")
-		operation := parts[0]
-		fileName := parts[1]
-
-		log.Printf("Changed file <%s> %s\n", fileName, operation)
-		if !strings.HasSuffix(fileName, ".json") {
-			log.Printf("Ignoring file <%s>\n", fileName)
-			continue
-		}
-
-		if operation == "D" {
-			statusFile := statusDirname + "/" + fileName
-			if _, err := os.Stat(statusFile); err != nil {
-				// File just vanished!
-				log.Printf("File disappeared <%s>\n", fileName)
-				continue
-			}
-			sb, err := ioutil.ReadFile(statusFile)
-			if err != nil {
-				log.Printf("%s for %s\n", err, statusFile)
-				continue
-			}
-			status := types.DownloaderStatus{}
-			if err := json.Unmarshal(sb, &status); err != nil {
-				log.Printf("%s DownloaderStatus file: %s\n",
-					err, statusFile)
-				continue
-			}
-			name := status.Safename
-			if name+".json" != fileName {
-				log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
-					fileName, name)
-				continue
-			}
-			statusName := statusDirname + "/" + fileName
-			handleDelete(statusName, locDirname, status)
-			continue
-		}
-
-		/* only consider modified files */
-		if operation != "M" {
-			log.Fatal("Unknown operation from Watcher: ", operation)
-		}
-
-		configFile := configDirname + "/" + fileName
-		cb, err := ioutil.ReadFile(configFile)
-
+		sb, err := ioutil.ReadFile(statusFile)
 		if err != nil {
-			log.Printf("%s for %s\n", err, configFile)
-			continue
+			log.Printf("%s for %s\n", err, statusFile)
+			return
 		}
-		log.Printf("%s %s\n", configFile, cb)
-
-		config := types.DownloaderConfig{}
-		if err := json.Unmarshal(cb, &config); err != nil {
-			log.Printf("%s DownloaderConfig file: %s\n",
-				err, configFile)
-			continue
-		}
-
-		name := config.Safename
-		if name+".json" != fileName {
-			log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
-				fileName, name)
-			continue
-		}
-
-		statusFilename := statusDirname + "/" + fileName
-		if _, err := os.Stat(statusFilename); err != nil {
-			// File does not exist
-			continue
-		}
-
-		// Compare Version string
-		sb, err := ioutil.ReadFile(statusFilename)
-		if err != nil {
-			log.Printf("%s for %s\n", err, statusFilename)
-			continue
-		}
-
 		status := types.DownloaderStatus{}
-		if err = json.Unmarshal(sb, &status); err != nil {
+		if err := json.Unmarshal(sb, &status); err != nil {
 			log.Printf("%s DownloaderStatus file: %s\n",
-				err, statusFilename)
-			continue
+				err, statusFile)
+			return
 		}
-
-		name = status.Safename
+		name := status.Safename
 		if name+".json" != fileName {
 			log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
 				fileName, name)
-			continue
+			return
 		}
+		statusName := statusDirname + "/" + fileName
+		handleDelete(statusName, locDirname, status)
+		return
+	}
 
-		// latest config has been downloaded
-		if  status.State != types.DOWNLOADED {
-			continue
-		}
+	/* only consider modified files */
+	if operation != "M" {
+		log.Fatal("Unknown operation from Watcher: ", operation)
+	}
 
-		locFilename := locDirname + "/pending"
+	configFile := configDirname + "/" + fileName
+	cb, err := ioutil.ReadFile(configFile)
 
-		if status.ImageSha256  != "" {
-			locFilename = locFilename + "/" + status.ImageSha256
-		}
+	if err != nil {
+		log.Printf("%s for %s\n", err, configFile)
+		return
+	}
+	log.Printf("%s %s\n", configFile, cb)
 
-		locFilename = locFilename + "/" + status.Safename
+	config := types.DownloaderConfig{}
+	if err := json.Unmarshal(cb, &config); err != nil {
+		log.Printf("%s DownloaderConfig file: %s\n",
+			err, configFile)
+		return
+	}
 
-		if _, err := os.Stat(locFilename); err == nil {
+	name := config.Safename
+	if name+".json" != fileName {
+		log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
+			fileName, name)
+		return
+	}
 
-			sb, err = ioutil.ReadFile(locFilename)
-			if err != nil {
-				log.Printf("%s for %s\n", err, locFilename)
-				continue
-			}
+	statusFilename := statusDirname + "/" + fileName
+	if _, err := os.Stat(statusFilename); err != nil {
+		// File does not exist
+		return
+	}
+
+	// Compare Version string
+	sb, err := ioutil.ReadFile(statusFilename)
+	if err != nil {
+		log.Printf("%s for %s\n", err, statusFilename)
+		return
+	}
+
+	status := types.DownloaderStatus{}
+	if err = json.Unmarshal(sb, &status); err != nil {
+		log.Printf("%s DownloaderStatus file: %s\n",
+			err, statusFilename)
+		return
+	}
+
+	name = status.Safename
+	if name+".json" != fileName {
+		log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
+			fileName, name)
+		return
+	}
+
+	// latest config has been downloaded
+	if  status.State != types.DOWNLOADED {
+		return
+	}
+
+	locFilename := locDirname + "/pending"
+
+	if status.ImageSha256  != "" {
+		locFilename = locFilename + "/" + status.ImageSha256
+	}
+
+	locFilename = locFilename + "/" + status.Safename
+
+	log.Printf("%s\n", locFilename)
+
+	if _, err := os.Stat(locFilename); err == nil {
+
+		sb, err = ioutil.ReadFile(locFilename)
+
+		if err == nil {
+
+			log.Printf("<%s>\n", sb)
 
 			// XXX check if the file is already present
 			// if yes, do nothing
@@ -798,160 +752,124 @@ func  processLatestConfigObject (baseDirname string, runDirname string, locDirna
 			configHolder := types.DownloaderConfig{}
 			if err = json.Unmarshal(sb, &configHolder); err == nil {
 
-				log.Printf("<%s>\n", sb)
 				triggerConfigObjUpdates(&configHolder)
 			}
-
 		}
 
-		// finally flush the object holder file
-		handleDelete(statusFilename, locDirname, status)
 	}
+
+	// finally flush the object holder file
+	handleDelete(statusFilename, locDirname, status)
 }
 
-func  processCertObject (baseDirname string, runDirname string, locDirname string) {
+func  processCertObject (baseDirname string, runDirname string, locDirname string, change string) {
 
 	configDirname := baseDirname + "/config"
 	statusDirname := runDirname + "/status"
 
-	if _, err := os.Stat(baseDirname); err != nil {
+	parts := strings.Split(change, " ")
 
-		if err := os.MkdirAll(baseDirname, 0755); err != nil {
-			log.Fatal(err)
-		}
+	operation := parts[0]
+	fileName  := parts[1]
+
+	log.Printf("processCertObject: changed file %s <%s>\n", fileName, operation)
+
+	if !strings.HasSuffix(fileName, ".json") {
+		log.Printf("Ignoring file <%s>\n", fileName)
+		return
 	}
 
-	if _, err := os.Stat(runDirname); err != nil {
-
-		if err := os.MkdirAll(runDirname, 0755); err != nil {
-			log.Fatal(err)
-		}
+	if operation == "D" {
+		return
 	}
 
-	if _, err := os.Stat(configDirname); err != nil {
-
-		if err := os.MkdirAll(configDirname, 0755); err != nil {
-			log.Fatal(err)
+/*
+	if operation == "D" {
+		statusFile := statusDirname + "/" + fileName
+		if _, err := os.Stat(statusFile); err != nil {
+			// File just vanished!
+			log.Printf("File disappeared <%s>\n", fileName)
+			return
 		}
-	}
-
-	if _, err := os.Stat(statusDirname); err != nil {
-
-		if err := os.MkdirAll(statusDirname, 0755); err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	if _, err := os.Stat(locDirname); err != nil {
-
-		if err := os.MkdirAll(locDirname, 0700); err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	var fileChanges = make(chan string)
-
-	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
-
-	for {
-		change := <-fileChanges
-		parts := strings.Split(change, " ")
-		operation := parts[0]
-		fileName := parts[1]
-
-		log.Printf("Changed file <%s> %s\n", fileName, operation)
-		if !strings.HasSuffix(fileName, ".json") {
-			log.Printf("Ignoring file <%s>\n", fileName)
-			continue
-		}
-
-		if operation == "D" {
-			statusFile := statusDirname + "/" + fileName
-			if _, err := os.Stat(statusFile); err != nil {
-				// File just vanished!
-				log.Printf("File disappeared <%s>\n", fileName)
-				continue
-			}
-			sb, err := ioutil.ReadFile(statusFile)
-			if err != nil {
-				log.Printf("%s for %s\n", err, statusFile)
-				continue
-			}
-			status := types.DownloaderStatus{}
-			if err := json.Unmarshal(sb, &status); err != nil {
-				log.Printf("%s DownloaderStatus file: %s\n",
-					err, statusFile)
-				continue
-			}
-			name := status.Safename
-			if name+".json" != fileName {
-				log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
-					fileName, name)
-				continue
-			}
-			statusName := statusDirname + "/" + fileName
-			handleDelete(statusName, locDirname, status)
-			continue
-		}
-
-		/* only consider modified files */
-		if operation != "M" {
-			log.Fatal("Unknown operation from Watcher: ", operation)
-		}
-
-		configFile := configDirname + "/" + fileName
-		cb, err := ioutil.ReadFile(configFile)
-
+		sb, err := ioutil.ReadFile(statusFile)
 		if err != nil {
-			log.Printf("%s for %s\n", err, configFile)
-			continue
+			log.Printf("%s for %s\n", err, statusFile)
+			return
 		}
-
-		config := types.DownloaderConfig{}
-		if err := json.Unmarshal(cb, &config); err != nil {
-			log.Printf("%s DownloaderConfig file: %s\n",
-				err, configFile)
-			continue
-		}
-
-		name := config.Safename
-		if name+".json" != fileName {
-			log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
-				fileName, name)
-			continue
-		}
-
-		statusFilename := statusDirname + "/" + fileName
-		if _, err := os.Stat(statusFilename); err != nil {
-			// File does not exist
-			continue
-		}
-
-		// Compare Version string
-		sb, err := ioutil.ReadFile(statusFilename)
-		if err != nil {
-			log.Printf("%s for %s\n", err, statusFilename)
-			continue
-		}
-
 		status := types.DownloaderStatus{}
-		if err = json.Unmarshal(sb, &status); err != nil {
+		if err := json.Unmarshal(sb, &status); err != nil {
 			log.Printf("%s DownloaderStatus file: %s\n",
-				err, statusFilename)
-			continue
+				err, statusFile)
+			return
 		}
-
-		name = status.Safename
+		name := status.Safename
 		if name+".json" != fileName {
 			log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
 				fileName, name)
-			continue
+			return
 		}
+		statusName := statusDirname + "/" + fileName
+		handleDelete(statusName, locDirname, status)
+		return
+	}
+*/
 
-		// latest cert has been downloaded
-		if  status.State != types.DOWNLOADED {
-			continue
-		}
+	/* only consider modified files */
+	if operation != "M" {
+		log.Fatal("Unknown operation from Watcher: ", operation)
+	}
+
+	configFile := configDirname + "/" + fileName
+	cb, err := ioutil.ReadFile(configFile)
+
+	if err != nil {
+		log.Printf("%s for %s\n", err, configFile)
+		return
+	}
+
+	config := types.DownloaderConfig{}
+	if err := json.Unmarshal(cb, &config); err != nil {
+		log.Printf("%s DownloaderConfig file: %s\n",
+			err, configFile)
+		return
+	}
+
+	name := config.Safename
+	if name+".json" != fileName {
+		log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
+			fileName, name)
+		return
+	}
+
+	statusFilename := statusDirname + "/" + fileName
+	if _, err := os.Stat(statusFilename); err != nil {
+		// File does not exist
+		return
+	}
+
+	// Compare Version string
+	sb, err := ioutil.ReadFile(statusFilename)
+	if err != nil {
+		log.Printf("%s for %s\n", err, statusFilename)
+		return
+	}
+
+	status := types.DownloaderStatus{}
+	if err = json.Unmarshal(sb, &status); err != nil {
+		log.Printf("%s DownloaderStatus file: %s\n",
+			err, statusFilename)
+		return
+	}
+
+	name = status.Safename
+	if name+".json" != fileName {
+		log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
+			fileName, name)
+		return
+	}
+
+	// latest cert has been downloaded
+	if  status.State == types.DOWNLOADED {
 
 		locFilename := locDirname + "/pending"
 
@@ -972,154 +890,117 @@ func  processCertObject (baseDirname string, runDirname string, locDirname strin
 
 		// finally flush the object holder files
 		handleDelete(statusFilename, locDirname, status)
-
 	}
-
 }
-func  processConfigObject (baseDirname string, runDirname string, locDirname string) {
+
+func  processConfigObject (baseDirname string, runDirname string, locDirname string, change string) {
 
 	configDirname := baseDirname + "/config"
 	statusDirname := runDirname + "/status"
 
-	if _, err := os.Stat(baseDirname); err != nil {
+	parts := strings.Split(change, " ")
 
-		if err := os.MkdirAll(baseDirname, 0755); err != nil {
-			log.Fatal(err)
-		}
+	operation := parts[0]
+	fileName  := parts[1]
+
+	log.Printf("processConfigObject: changed file %s <%s>\n", fileName, operation)
+
+	if !strings.HasSuffix(fileName, ".json") {
+		log.Printf("Ignoring file <%s>\n", fileName)
+		return
 	}
 
-	if _, err := os.Stat(runDirname); err != nil {
-
-		if err := os.MkdirAll(runDirname, 0755); err != nil {
-			log.Fatal(err)
-		}
+	if operation == "D" {
+		return
 	}
-
-	if _, err := os.Stat(configDirname); err != nil {
-
-		if err := os.MkdirAll(configDirname, 0755); err != nil {
-			log.Fatal(err)
+/*
+	if operation == "D" {
+		statusFile := statusDirname + "/" + fileName
+		if _, err := os.Stat(statusFile); err != nil {
+			// File just vanished!
+			log.Printf("File disappeared <%s>\n", fileName)
+			return
 		}
-	}
-
-	if _, err := os.Stat(statusDirname); err != nil {
-
-		if err := os.MkdirAll(statusDirname, 0755); err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	if _, err := os.Stat(locDirname); err != nil {
-
-		if err := os.MkdirAll(locDirname, 0700); err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	var fileChanges = make(chan string)
-
-	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
-
-	for {
-		change := <-fileChanges
-		parts := strings.Split(change, " ")
-		operation := parts[0]
-		fileName := parts[1]
-
-		log.Printf("Changed file <%s> %s\n", fileName, operation)
-		if !strings.HasSuffix(fileName, ".json") {
-			log.Printf("Ignoring file <%s>\n", fileName)
-			continue
-		}
-
-		if operation == "D" {
-			statusFile := statusDirname + "/" + fileName
-			if _, err := os.Stat(statusFile); err != nil {
-				// File just vanished!
-				log.Printf("File disappeared <%s>\n", fileName)
-				continue
-			}
-			sb, err := ioutil.ReadFile(statusFile)
-			if err != nil {
-				log.Printf("%s for %s\n", err, statusFile)
-				continue
-			}
-			status := types.DownloaderStatus{}
-			if err := json.Unmarshal(sb, &status); err != nil {
-				log.Printf("%s DownloaderStatus file: %s\n",
-					err, statusFile)
-				continue
-			}
-			name := status.Safename
-			if name+".json" != fileName {
-				log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
-					fileName, name)
-				continue
-			}
-			statusName := statusDirname + "/" + fileName
-			handleDelete(statusName, locDirname, status)
-			continue
-		}
-
-		/* only consider modified files */
-		if operation != "M" {
-			log.Fatal("Unknown operation from Watcher: ", operation)
-		}
-
-		configFile := configDirname + "/" + fileName
-		cb, err := ioutil.ReadFile(configFile)
-
+		sb, err := ioutil.ReadFile(statusFile)
 		if err != nil {
-			log.Printf("%s for %s\n", err, configFile)
-			continue
+			log.Printf("%s for %s\n", err, statusFile)
+			return
 		}
-		log.Printf("%s %s\n", configFile, cb)
-
-		config := types.DownloaderConfig{}
-		if err := json.Unmarshal(cb, &config); err != nil {
-			log.Printf("%s DownloaderConfig file: %s\n",
-				err, configFile)
-			continue
-		}
-
-		name := config.Safename
-		if name+".json" != fileName {
-			log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
-				fileName, name)
-			continue
-		}
-
-		statusFilename := statusDirname + "/" + fileName
-		if _, err := os.Stat(statusFilename); err != nil {
-			// File does not exist
-			continue
-		}
-
-		// Compare Version string
-		sb, err := ioutil.ReadFile(statusFilename)
-		if err != nil {
-			log.Printf("%s for %s\n", err, statusFilename)
-			continue
-		}
-
 		status := types.DownloaderStatus{}
-		if err = json.Unmarshal(sb, &status); err != nil {
+		if err := json.Unmarshal(sb, &status); err != nil {
 			log.Printf("%s DownloaderStatus file: %s\n",
-				err, statusFilename)
-			continue
-
+				err, statusFile)
+			return
 		}
-		name = status.Safename
+		name := status.Safename
 		if name+".json" != fileName {
 			log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
 				fileName, name)
-			continue
+			return
 		}
+		statusName := statusDirname + "/" + fileName
+		handleDelete(statusName, locDirname, status)
+		return
+	}
+*/
 
-		// latest config has been downloaded
-		if  status.State != types.DOWNLOADED {
-			continue
-		}
+	/* only consider modified files */
+	if operation != "M" {
+		log.Fatal("Unknown operation from Watcher: ", operation)
+	}
+
+	configFile := configDirname + "/" + fileName
+	cb, err := ioutil.ReadFile(configFile)
+
+	if err != nil {
+		log.Printf("%s for %s\n", err, configFile)
+		return
+	}
+	log.Printf("%s %s\n", configFile, cb)
+
+	config := types.DownloaderConfig{}
+	if err := json.Unmarshal(cb, &config); err != nil {
+		log.Printf("%s DownloaderConfig file: %s\n",
+			err, configFile)
+		return
+	}
+
+	name := config.Safename
+	if name+".json" != fileName {
+		log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
+			fileName, name)
+		return
+	}
+
+	statusFilename := statusDirname + "/" + fileName
+	if _, err := os.Stat(statusFilename); err != nil {
+		// File does not exist
+		return
+	}
+
+	// Compare Version string
+	sb, err := ioutil.ReadFile(statusFilename)
+	if err != nil {
+		log.Printf("%s for %s\n", err, statusFilename)
+		return
+	}
+
+	status := types.DownloaderStatus{}
+	if err = json.Unmarshal(sb, &status); err != nil {
+		log.Printf("%s DownloaderStatus file: %s\n",
+			err, statusFilename)
+		return
+
+	}
+	name = status.Safename
+	if name+".json" != fileName {
+		log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
+			fileName, name)
+		return
+	}
+
+	// latest config has been downloaded
+	if  status.State == types.DOWNLOADED {
 
 		locFilename := locDirname + "/pending"
 
@@ -1141,7 +1022,6 @@ func  processConfigObject (baseDirname string, runDirname string, locDirname str
 		// finally flush the object holder files
 		handleDelete(statusFilename, locDirname, status)
 	}
-
 }
 
 func urlToSafename(url string, sha string) string {
@@ -1238,9 +1118,9 @@ func updateRemainingSpace() {
 	globalStatus.RemainingSpace = globalConfig.MaxSpace -
 		globalStatus.UsedSpace -
 		globalStatus.ReservedSpace
-	log.Printf("RemaingSpace %d, maxspace %d, usedspace %d, reserved %d\n",
-		globalStatus.RemainingSpace, globalConfig.MaxSpace,
-		globalStatus.UsedSpace,	globalStatus.ReservedSpace)
+//	log.Printf("RemaingSpace %d, maxspace %d, usedspace %d, reserved %d\n",
+//		globalStatus.RemainingSpace, globalConfig.MaxSpace,
+//		globalStatus.UsedSpace,	globalStatus.ReservedSpace)
 	// Create and write
 	writeGlobalStatus()
 }
@@ -1287,6 +1167,8 @@ func writeDownloaderConfig(config *types.DownloaderConfig,
 }
 
 func writeFile(sFilename string, dFilename string) {
+
+	log.Printf("Writing %s to %s \n", sFilename, dFilename)
 
 	if _, err := os.Stat(sFilename); err == nil {
 
@@ -1443,8 +1325,7 @@ func handleModify(statusFilename string, locDirname string, config types.Downloa
 
 func doDelete(statusFilename string, locDirname string, status *types.DownloaderStatus) {
 
-	log.Printf("doDelete(%v) for %s\n",
-		status.Safename, status.DownloadURL)
+	log.Printf("doDelete(%v) for %s\n", status.Safename, status.DownloadURL)
 
 	locFilename := locDirname + "/pending"
 
@@ -1455,7 +1336,7 @@ func doDelete(statusFilename string, locDirname string, status *types.Downloader
 	if _, err := os.Stat(locFilename); err == nil {
 
 		locFilename := locFilename + "/" + status.Safename
-		log.Printf("Downloading  %s to %s\n", status.DownloadURL, locFilename)
+		log.Printf("Deleting %s\n", locFilename)
 
 		if _, err := os.Stat(locFilename); err == nil {
 
@@ -1476,8 +1357,8 @@ func doDelete(statusFilename string, locDirname string, status *types.Downloader
 }
 
 func handleDelete(statusFilename string, locDirname string, status types.DownloaderStatus) {
-	log.Printf("handleDelete(%v) for %s\n",
-		status.Safename, status.DownloadURL)
+	log.Printf("handleDelete(%v) for %s, %s\n",
+		status.Safename, status.DownloadURL, locDirname)
 
 	status.PendingDelete = true
 	writeDownloaderStatus(&status, statusFilename)
@@ -1498,7 +1379,7 @@ func handleDelete(statusFilename string, locDirname string, status types.Downloa
 	if err := os.Remove(statusFilename); err != nil {
 		log.Println("Failed to remove", statusFilename, err)
 	}
-	log.Printf("handleDelete done for %s\n", status.DownloadURL)
+	log.Printf("handleDelete done for %s, %s\n", status.DownloadURL, locDirname)
 }
 
 func handleSyncOp(syncOp zedUpload.SyncOpType, locDirname string, statusFilename string, config types.DownloaderConfig, status *types.DownloaderStatus) {
@@ -1561,7 +1442,7 @@ func handleSyncOp(syncOp zedUpload.SyncOpType, locDirname string, statusFilename
 
 func handleSyncOpResponse(config types.DownloaderConfig, status *types.DownloaderStatus, statusFilename string, locDirname string, err error) {
 
-	log.Printf("handleCreate Response for <%s> %s\n", config.DownloadURL, err)
+	log.Printf("handleCreate Response for <%s>\n", config.DownloadURL)
 
 	if err != nil {
 		// Delete file
