@@ -42,8 +42,8 @@ import (
 )
 
 var (
-	certFrequency	time.Duration = 10
-	configFrequency	time.Duration = 2
+	certFrequency	time.Duration = 60
+	configFrequency	time.Duration = 5
 	dCtx		*zedUpload.DronaCtx
 )
 
@@ -66,17 +66,17 @@ func main() {
 	// schedule the periodic timers
 
 	triggerLatestCert()
-	//triggerLatestConfig()
+	triggerLatestConfig()
 
 
 	go checkLatestCert()
 
-	//go checkLatestConfig()
+	go checkLatestConfig()
 
 	go checkImageUpdates()
 
 	handleCertUpdates()
-	//handleConfigUpdates()
+	handleConfigUpdates()
 }
 
 func triggerLatestCert() {
@@ -162,7 +162,7 @@ func triggerCertObjUpdates(certObj *types.CertConfig) {
 	}
 
 	// trigger server cert
-	safename := "server-cert.pem"
+	safename := "server.cert.pem"
 
         config := types.DownloaderConfig{
 		Safename:		safename,
@@ -182,7 +182,7 @@ func triggerCertObjUpdates(certObj *types.CertConfig) {
 	// now trigger the certificate chain
 	for _, cert := range certObj.CertChain {
 
-		safename := "intermetiate-cert.pem"
+		safename := "intermediate.cert.pem"
 
                 config := types.DownloaderConfig {
 			Safename:		safename,
@@ -310,7 +310,7 @@ func  sanitizeDirs (baseDirname string, runDirname string, locDirname string) {
 	configDirname := baseDirname + "/config"
 	statusDirname := runDirname + "/status"
 
-	log.Printf("sanitizeDirs: %s\n", baseDirname)
+	//log.Printf("sanitizeDirs: %s\n", baseDirname)
 
 	if _, err := os.Stat(baseDirname); err != nil {
 
@@ -358,7 +358,7 @@ func handleObjectUpdates(baseDirname string, runDirname string, locDirname strin
 	operation := parts[0]
 	fileName  := parts[1]
 
-	log.Printf("handleOjectUpdates: changed file %s <%s>\n", fileName, operation)
+	//log.Printf("handleOjectUpdates: changed file %s <%s>\n", fileName, operation)
 
 	if !strings.HasSuffix(fileName, ".json") {
 		log.Printf("Ignoring file <%s>\n", fileName)
@@ -406,7 +406,7 @@ func handleObjectUpdates(baseDirname string, runDirname string, locDirname strin
 		log.Printf("%s for %s\n", err, configFile)
 		return
 	}
-	log.Printf("%s %s\n", configFile, cb)
+	//log.Printf("%s %s\n", configFile, cb)
 
 	config := types.DownloaderConfig{}
 	if err := json.Unmarshal(cb, &config); err != nil {
@@ -487,7 +487,7 @@ func processLatestCerts (baseDirname string, runDirname string, locDirname strin
 	operation := parts[0]
 	fileName := parts[1]
 
-	log.Printf("processLatestCerts: changed file %s <%s>\n", fileName, operation)
+	//log.Printf("processLatestCerts: changed file %s <%s>\n", fileName, operation)
 
 	if !strings.HasSuffix(fileName, ".json") {
 		log.Printf("Ignoring file <%s>\n", fileName)
@@ -536,7 +536,7 @@ func processLatestCerts (baseDirname string, runDirname string, locDirname strin
 		return
 	}
 
-	log.Printf("%s %s\n", configFile, cb)
+	//log.Printf("%s %s\n", configFile, cb)
 
 	config := types.DownloaderConfig{}
 	if err := json.Unmarshal(cb, &config); err != nil {
@@ -591,7 +591,7 @@ func processLatestCerts (baseDirname string, runDirname string, locDirname strin
 
 		locFilename = locFilename + "/" + status.Safename
 
-		log.Printf("%s\n", locFilename)
+		//log.Printf("%s\n", locFilename)
 
 		_, err := os.Stat(locFilename)
 		if  err == nil {
@@ -600,11 +600,11 @@ func processLatestCerts (baseDirname string, runDirname string, locDirname strin
 
 			if err == nil {
 
-				log.Printf("<%s>\n", sb)
+				//log.Printf("<%s>\n", sb)
 
 				// XXX check if the file is already present
 				// if yes, do nothing
-				log.Printf("Readfile <%s> %s\n", locFilename, sb)
+				//log.Printf("Readfile <%s> %s\n", locFilename, sb)
 
 				certHolder := types.CertConfig{}
 				err = json.Unmarshal(sb, &certHolder)
@@ -631,7 +631,7 @@ func processLatestConfigs (baseDirname string, runDirname string, locDirname str
 	operation := parts[0]
 	fileName  := parts[1]
 
-	log.Printf("processLatestConfigs: changed file %s <%s>\n", fileName, operation)
+	//log.Printf("processLatestConfigs: changed file %s <%s>\n", fileName, operation)
 
 	if !strings.HasSuffix(fileName, ".json") {
 		log.Printf("Ignoring file <%s>\n", fileName)
@@ -679,7 +679,7 @@ func processLatestConfigs (baseDirname string, runDirname string, locDirname str
 		log.Printf("%s for %s\n", err, configFile)
 		return
 	}
-	log.Printf("%s %s\n", configFile, cb)
+	//log.Printf("%s %s\n", configFile, cb)
 
 	config := types.DownloaderConfig{}
 	if err := json.Unmarshal(cb, &config); err != nil {
@@ -735,7 +735,7 @@ func processLatestConfigs (baseDirname string, runDirname string, locDirname str
 
 	locFilename = locFilename + "/" + status.Safename
 
-	log.Printf("%s\n", locFilename)
+	//log.Printf("%s\n", locFilename)
 
 	if _, err := os.Stat(locFilename); err == nil {
 
@@ -743,7 +743,7 @@ func processLatestConfigs (baseDirname string, runDirname string, locDirname str
 
 		if err == nil {
 
-			log.Printf("<%s>\n", sb)
+			//log.Printf("<%s>\n", sb)
 
 			// XXX check if the file is already present
 			// if yes, do nothing
@@ -772,7 +772,7 @@ func  processCertObject (baseDirname string, runDirname string, locDirname strin
 	operation := parts[0]
 	fileName  := parts[1]
 
-	log.Printf("processCertObject: changed file %s <%s>\n", fileName, operation)
+	//log.Printf("processCertObject: changed file %s <%s>\n", fileName, operation)
 
 	if !strings.HasSuffix(fileName, ".json") {
 		log.Printf("Ignoring file <%s>\n", fileName)
@@ -782,37 +782,6 @@ func  processCertObject (baseDirname string, runDirname string, locDirname strin
 	if operation == "D" {
 		return
 	}
-
-/*
-	if operation == "D" {
-		statusFile := statusDirname + "/" + fileName
-		if _, err := os.Stat(statusFile); err != nil {
-			// File just vanished!
-			log.Printf("File disappeared <%s>\n", fileName)
-			return
-		}
-		sb, err := ioutil.ReadFile(statusFile)
-		if err != nil {
-			log.Printf("%s for %s\n", err, statusFile)
-			return
-		}
-		status := types.DownloaderStatus{}
-		if err := json.Unmarshal(sb, &status); err != nil {
-			log.Printf("%s DownloaderStatus file: %s\n",
-				err, statusFile)
-			return
-		}
-		name := status.Safename
-		if name+".json" != fileName {
-			log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
-				fileName, name)
-			return
-		}
-		statusName := statusDirname + "/" + fileName
-		handleDelete(statusName, locDirname, status)
-		return
-	}
-*/
 
 	/* only consider modified files */
 	if operation != "M" {
@@ -882,10 +851,17 @@ func  processCertObject (baseDirname string, runDirname string, locDirname strin
 		// now move the file to cert dir
 		if _, err := os.Stat(locFilename); err == nil {
 
-			certDir := "/var/tmp/zedmanager/cert"
-			certFilename := certDir + "/" + status.Safename
+			objDirname := "/var/tmp/zedmanager/cert"
 
-			writeFile(locFilename, certFilename)
+			if _, err := os.Stat(objDirname); err != nil {
+				if err := os.MkdirAll(objDirname, 0700); err != nil {
+					log.Fatal(err)
+				}
+			}
+
+			objFilename := objDirname + "/" + status.Safename
+
+			writeFile(locFilename, objFilename)
 		}
 
 		// finally flush the object holder files
@@ -903,7 +879,7 @@ func  processConfigObject (baseDirname string, runDirname string, locDirname str
 	operation := parts[0]
 	fileName  := parts[1]
 
-	log.Printf("processConfigObject: changed file %s <%s>\n", fileName, operation)
+	//log.Printf("processConfigObject: changed file %s <%s>\n", fileName, operation)
 
 	if !strings.HasSuffix(fileName, ".json") {
 		log.Printf("Ignoring file <%s>\n", fileName)
@@ -913,36 +889,6 @@ func  processConfigObject (baseDirname string, runDirname string, locDirname str
 	if operation == "D" {
 		return
 	}
-/*
-	if operation == "D" {
-		statusFile := statusDirname + "/" + fileName
-		if _, err := os.Stat(statusFile); err != nil {
-			// File just vanished!
-			log.Printf("File disappeared <%s>\n", fileName)
-			return
-		}
-		sb, err := ioutil.ReadFile(statusFile)
-		if err != nil {
-			log.Printf("%s for %s\n", err, statusFile)
-			return
-		}
-		status := types.DownloaderStatus{}
-		if err := json.Unmarshal(sb, &status); err != nil {
-			log.Printf("%s DownloaderStatus file: %s\n",
-				err, statusFile)
-			return
-		}
-		name := status.Safename
-		if name+".json" != fileName {
-			log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
-				fileName, name)
-			return
-		}
-		statusName := statusDirname + "/" + fileName
-		handleDelete(statusName, locDirname, status)
-		return
-	}
-*/
 
 	/* only consider modified files */
 	if operation != "M" {
@@ -956,7 +902,7 @@ func  processConfigObject (baseDirname string, runDirname string, locDirname str
 		log.Printf("%s for %s\n", err, configFile)
 		return
 	}
-	log.Printf("%s %s\n", configFile, cb)
+	//log.Printf("%s %s\n", configFile, cb)
 
 	config := types.DownloaderConfig{}
 	if err := json.Unmarshal(cb, &config); err != nil {
@@ -1013,10 +959,17 @@ func  processConfigObject (baseDirname string, runDirname string, locDirname str
 		// now copy the file to proper config dir
 		if _, err := os.Stat(locFilename); err == nil {
 
-			configDir := "/var/tmp/zedmanager/config"
-			configFilename := configDir + "/" + status.Safename
+			objDirname := "/var/tmp/zedmanager/config"
 
-			writeFile(locFilename, configFilename)
+			if _, err := os.Stat(objDirname); err != nil {
+				if err := os.MkdirAll(objDirname, 0700); err != nil {
+					log.Fatal(err)
+				}
+			}
+
+			objFilename := objDirname + "/" + status.Safename
+
+			writeFile(locFilename, objFilename)
 		}
 
 		// finally flush the object holder files
@@ -1031,7 +984,10 @@ func urlToSafename(url string, sha string) string {
 	if sha != "" {
 		safename = strings.Replace(url, "/", "_", -1) + "." + sha
 	} else {
-		safename = strings.Replace(url, "/", "_", -1)
+		names := strings.Split(url, "/")
+	        for _, name := range names {
+		    safename = name
+		}
 	}
         return safename
 }
@@ -1079,7 +1035,7 @@ func handleInit() {
 			err, configFilename)
 		log.Fatal(err)
 	}
-	log.Printf("MaxSpace %d\n", globalConfig.MaxSpace)
+	//log.Printf("MaxSpace %d\n", globalConfig.MaxSpace)
 
 	globalStatus.UsedSpace = 0
 	globalStatus.ReservedSpace = 0
@@ -1118,9 +1074,9 @@ func updateRemainingSpace() {
 	globalStatus.RemainingSpace = globalConfig.MaxSpace -
 		globalStatus.UsedSpace -
 		globalStatus.ReservedSpace
-//	log.Printf("RemaingSpace %d, maxspace %d, usedspace %d, reserved %d\n",
-//		globalStatus.RemainingSpace, globalConfig.MaxSpace,
-//		globalStatus.UsedSpace,	globalStatus.ReservedSpace)
+	log.Printf("RemaingSpace %d, maxspace %d, usedspace %d, reserved %d\n",
+		globalStatus.RemainingSpace, globalConfig.MaxSpace,
+		globalStatus.UsedSpace,	globalStatus.ReservedSpace)
 	// Create and write
 	writeGlobalStatus()
 }
@@ -1155,7 +1111,7 @@ func writeDownloaderStatus(status *types.DownloaderStatus,
 func writeDownloaderConfig(config *types.DownloaderConfig,
 	configFilename string) {
 
-	log.Printf("Writing the config file %s\n", configFilename)
+	//log.Printf("Writing the config file %s\n", configFilename)
 	b, err := json.Marshal(config)
 	if err != nil {
 		log.Fatal(err, "json Marshal DownloaderStatus")
@@ -1168,7 +1124,7 @@ func writeDownloaderConfig(config *types.DownloaderConfig,
 
 func writeFile(sFilename string, dFilename string) {
 
-	log.Printf("Writing %s to %s \n", sFilename, dFilename)
+	//log.Printf("Writing %s to %s \n", sFilename, dFilename)
 
 	if _, err := os.Stat(sFilename); err == nil {
 
@@ -1403,7 +1359,7 @@ func handleSyncOp(syncOp zedUpload.SyncOpType, locDirname string, statusFilename
 
 	locFilename = locFilename + "/" + config.Safename
 
-	log.Printf("Downloading  %s to %s\n", config.DownloadURL, locFilename)
+	log.Printf("Downloading %s to %s\n", config.DownloadURL, locFilename)
 
 	// Prepare the authentication Tuple
 	auth := &zedUpload.AuthInput{AuthType: "s3",
@@ -1419,9 +1375,12 @@ func handleSyncOp(syncOp zedUpload.SyncOpType, locDirname string, statusFilename
 	if dEndPoint != nil {
 		var respChan = make(chan * zedUpload.DronaRequest);
 
+		log.Printf("syncOp for <%s>/<%s>\n", config.Bucket, config.Safename)
+
 		// create Request
 		req := dEndPoint.NewRequest(syncOp, config.Safename, locFilename,
 			int64(config.MaxSize / 1024), true, respChan)
+
 
 		if req != nil {
 			req.Post()
@@ -1513,7 +1472,7 @@ func handleSyncOpResponse(config types.DownloaderConfig, status *types.Downloade
 	globalStatus.UsedSpace += status.Size
 	updateRemainingSpace()
 
-	log.Printf("handleCreate successful %s <%s>\n", config.DownloadURL, locDirname)
+	log.Printf("handleCreate successful <%s> <%s>\n", config.DownloadURL, locFilename)
 	// We do not clear any status.RetryCount, LastErr, etc. The caller
 	// should look at State == DOWNLOADED to determine it is done.
 
