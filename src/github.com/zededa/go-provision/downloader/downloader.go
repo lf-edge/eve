@@ -74,7 +74,7 @@ func main() {
 
 	go checkImageUpdates()
 
-	handleCertUpdates()
+	go handleCertUpdates()
 	handleConfigUpdates()
 }
 
@@ -268,8 +268,16 @@ func handleCertUpdates() {
 	baseDirname := "/var/run/downloader/cert.obj"
 	runDirname  := "/var/run/downloader/cert.obj"
 	locDirname  := "/var/run/zedmanager/downloads/cert-obj"
+	objDirname  := "/var/tmp/zedmanager/cert"
+
 
 	sanitizeDirs(baseDirname, runDirname, locDirname)
+
+	if _, err := os.Stat(objDirname); err != nil {
+		if err := os.MkdirAll(objDirname, 0700); err != nil {
+			log.Fatal(err)
+		}
+	}
 
 	configDirname := baseDirname + "/config"
 	statusDirname := runDirname + "/status"
@@ -280,7 +288,7 @@ func handleCertUpdates() {
         for {
 		change := <-fileChanges
 		handleObjectUpdates (baseDirname, runDirname, locDirname, change)
-		processCertObject (baseDirname, runDirname, locDirname, change)
+		processCertObject (baseDirname, runDirname, locDirname, objDirname, change)
 	}
 }
 
@@ -289,8 +297,15 @@ func handleConfigUpdates() {
 	baseDirname := "/var/run/downloader/config.obj"
 	runDirname  := "/var/run/downloader/config.obj"
 	locDirname  := "/var/run/zedmanager/downloads/config-obj"
+	objDirname  := "/var/tmp/zedmanager/config"
 
 	sanitizeDirs(baseDirname, runDirname, locDirname)
+
+	if _, err := os.Stat(objDirname); err != nil {
+		if err := os.MkdirAll(objDirname, 0700); err != nil {
+			log.Fatal(err)
+		}
+	}
 
 	configDirname := baseDirname + "/config"
 	statusDirname := runDirname + "/status"
@@ -302,7 +317,7 @@ func handleConfigUpdates() {
         for {
 		change := <-fileChanges
 		handleObjectUpdates (baseDirname, runDirname, locDirname, change)
-		processConfigObject (baseDirname, runDirname, locDirname, change)
+		processConfigObject (baseDirname, runDirname, locDirname, objDirname, change)
 	}
 }
 
@@ -347,7 +362,8 @@ func  sanitizeDirs (baseDirname string, runDirname string, locDirname string) {
 	}
 }
 
-func handleObjectUpdates(baseDirname string, runDirname string, locDirname string, change string) {
+func handleObjectUpdates(baseDirname string, runDirname string,
+	locDirname string, change string) {
 
 	configDirname := baseDirname + "/config"
 	statusDirname := runDirname  + "/status"
@@ -357,7 +373,7 @@ func handleObjectUpdates(baseDirname string, runDirname string, locDirname strin
 	operation := parts[0]
 	fileName  := parts[1]
 
-	//log.Printf("handleOjectUpdates: changed file %s <%s>\n", fileName, operation)
+	log.Printf("Changed file <%s> <%s>\n", fileName, operation)
 
 	if !strings.HasSuffix(fileName, ".json") {
 		log.Printf("Ignoring file <%s>\n", fileName)
@@ -494,8 +510,6 @@ func processLatestCerts (baseDirname string, runDirname string,
 	operation := parts[0]
 	fileName  := parts[1]
 
-	//log.Printf("processLatestCerts: changed file %s <%s>\n", fileName, operation)
-
 	if !strings.HasSuffix(fileName, ".json") {
 		log.Printf("Ignoring file <%s>\n", fileName)
 		return
@@ -517,8 +531,6 @@ func processLatestCerts (baseDirname string, runDirname string,
 		log.Printf("%s for %s\n", err, configFile)
 		return
 	}
-
-	//log.Printf("%s %s\n", configFile, cb)
 
 	config := types.DownloaderConfig{}
 	if err := json.Unmarshal(cb, &config); err != nil {
@@ -578,8 +590,6 @@ func processLatestCerts (baseDirname string, runDirname string,
 			sb, err := ioutil.ReadFile(locFilename)
 
 			if err == nil {
-
-				//log.Printf("<%s>\n", sb)
 
 				// XXX check if the file is already present
 				// if yes, do nothing
@@ -654,7 +664,6 @@ func processLatestConfigs (baseDirname string, runDirname string,
 		return
 	}
 
-	// Compare Version string
 	sb, err := ioutil.ReadFile(statusFilename)
 	if err != nil {
 		log.Printf("%s for %s\n", err, statusFilename)
@@ -676,48 +685,50 @@ func processLatestConfigs (baseDirname string, runDirname string,
 	}
 
 	// latest config has been downloaded
-	if  status.State != types.DOWNLOADED {
-		return
-	}
+	if  status.State == types.DOWNLOADED {
 
-	locFilename := locDirname + "/pending"
+		locFilename := locDirname + "/pending"
 
-	if status.ImageSha256  != "" {
-		locFilename = locFilename + "/" + status.ImageSha256
-	}
-
-	locFilename = locFilename + "/" + status.Safename
-
-	if _, err := os.Stat(locFilename); err == nil {
-
-		sb, err = ioutil.ReadFile(locFilename)
-
-		if err == nil {
-
-
-			// XXX check if the file is already present
-			// if yes, do nothing
-
-			//log.Printf("<%s>\n", sb)
-
-			// trigger Config File Downloads
-			configHolder := types.DownloaderConfig{}
-			if err = json.Unmarshal(sb, &configHolder); err == nil {
-
-				triggerConfigObjUpdates(&configHolder)
-			} else {
-				log.Printf("Parsing <%s> failed %s\n", locFilename, err)
-			}
+		if status.ImageSha256  != "" {
+			locFilename = locFilename + "/" + status.ImageSha256
 		}
 
-	}
+		locFilename = locFilename + "/" + status.Safename
 
-	// finally flush the object holder file
-	handleDelete(statusFilename, locDirname, status)
+		if _, err := os.Stat(locFilename); err == nil {
+
+			sb, err = ioutil.ReadFile(locFilename)
+
+			if err == nil {
+
+				// XXX check if the file is already present
+				// if yes, do nothing
+
+				//log.Printf("Read file <%s> <%s>\n", locFilename, sb)
+
+				// trigger Config File Downloads
+				configHolder := types.DownloaderConfig{}
+				if err = json.Unmarshal(sb, &configHolder); err == nil {
+
+					triggerConfigObjUpdates(&configHolder)
+				} else {
+					log.Printf("Parsing <%s> failed %s\n", locFilename, err)
+				}
+			} else {
+				log.Printf("Readfile <%s> err %s\n", locFilename, err)
+			}
+
+		} else {
+			log.Printf("Stat <%s> err %s\n", locFilename, err)
+		}
+
+		// finally flush the object holder file
+		handleDelete(statusFilename, locDirname, status)
+	}
 }
 
 func  processCertObject (baseDirname string, runDirname string,
-	locDirname string, change string) {
+	locDirname string, objDirname, change string) {
 
 	configDirname := baseDirname + "/config"
 	statusDirname := runDirname  + "/status"
@@ -726,8 +737,6 @@ func  processCertObject (baseDirname string, runDirname string,
 
 	operation := parts[0]
 	fileName  := parts[1]
-
-	//log.Printf("processCertObject: changed file %s <%s>\n", fileName, operation)
 
 	if !strings.HasSuffix(fileName, ".json") {
 		log.Printf("Ignoring file <%s>\n", fileName)
@@ -806,17 +815,12 @@ func  processCertObject (baseDirname string, runDirname string,
 		// now move the file to cert dir
 		if _, err := os.Stat(locFilename); err == nil {
 
-			objDirname := "/var/tmp/zedmanager/cert"
-
-			if _, err := os.Stat(objDirname); err != nil {
-				if err := os.MkdirAll(objDirname, 0700); err != nil {
-					log.Fatal(err)
-				}
-			}
-
+			// over write certificates, every time
 			objFilename := objDirname + "/" + status.Safename
 
 			writeFile(locFilename, objFilename)
+		} else {
+			log.Printf("<%s> file absent %s\n", locFilename, err)
 		}
 
 		// finally flush the object holder files
@@ -825,7 +829,7 @@ func  processCertObject (baseDirname string, runDirname string,
 }
 
 func  processConfigObject (baseDirname string, runDirname string,
-	locDirname string, change string) {
+	locDirname string, objDirname, change string) {
 
 	configDirname := baseDirname + "/config"
 	statusDirname := runDirname  + "/status"
@@ -913,17 +917,14 @@ func  processConfigObject (baseDirname string, runDirname string,
 		// now copy the file to proper config dir
 		if _, err := os.Stat(locFilename); err == nil {
 
-			objDirname := "/var/tmp/zedmanager/config"
-
-			if _, err := os.Stat(objDirname); err != nil {
-				if err := os.MkdirAll(objDirname, 0700); err != nil {
-					log.Fatal(err)
-				}
-			}
-
 			objFilename := objDirname + "/" + status.Safename
 
-			writeFile(locFilename, objFilename)
+			// if file is already present, skip
+			if _, err := os.Stat(objFilename); err != nil {
+				writeFile(locFilename, objFilename)
+			} else {
+				log.Printf("<%s> is present\n", objFilename)
+			}
 		}
 
 		// finally flush the object holder files
@@ -1080,6 +1081,8 @@ func writeDownloaderConfig(config *types.DownloaderConfig,
 }
 
 func writeFile(sFilename string, dFilename string) {
+
+	log.Printf("Writing <%s> file to <%s>\n", sFilename, dFilename)
 
 	if _, err := os.Stat(sFilename); err == nil {
 
@@ -1321,7 +1324,7 @@ func handleSyncOp(syncOp zedUpload.SyncOpType, locDirname string,
 
 	locFilename = locFilename + "/" + config.Safename
 
-	log.Printf("Downloading %s to %s\n", config.DownloadURL, locFilename)
+	log.Printf("Downloading <%s> to <%s>\n", config.DownloadURL, locFilename)
 
 	// Prepare the authentication Tuple
 	auth := &zedUpload.AuthInput{AuthType: "s3",
