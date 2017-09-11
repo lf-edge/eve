@@ -348,7 +348,7 @@ func handleCreate(statusFilename string, config types.VerifyImageConfig) {
         //and signature verification...
 
 	baseCertDirname := "/var/tmp/zedmanager/downloads"
-	certificateDirname := baseCertDirname+"/certificate"
+	certificateDirname := baseCertDirname+"/cert"
 	rootCertDirname := "/opt/zededa/etc/"
 	rootCertFileName := rootCertDirname+"/root-certificate.pem"
 
@@ -367,21 +367,22 @@ func handleCreate(statusFilename string, config types.VerifyImageConfig) {
         serverCertificate, err := ioutil.ReadFile(certificateDirname+"/"+serverCertName)
         if err != nil {
 		readCertFailErr := fmt.Sprintf("unable to read the certificate")
+		log.Println(readCertFailErr)
 		UpdateStatusWhileVerifyingSignature(readCertFailErr)
 		fmt.Println(err)
 		return
         }
         block, _ := pem.Decode(serverCertificate)
         if block == nil {
-		panic("failed to decode serverCertificate")
 		decodeFailedErr := fmt.Sprintf("unable to decode certificate")
+		log.Println(decodeFailedErr)
 		UpdateStatusWhileVerifyingSignature(decodeFailedErr)
 		return
         }
         cert, err := x509.ParseCertificate(block.Bytes)
         if err != nil {
-		panic("failed to parse certificate: " + err.Error())
 		parseFailedErr := fmt.Sprintf("unable to parse certificate")
+		log.Println(parseFailedErr)
 		UpdateStatusWhileVerifyingSignature(parseFailedErr)
 		return
         }
@@ -399,13 +400,14 @@ func handleCreate(statusFilename string, config types.VerifyImageConfig) {
 	if err != nil {
 		fmt.Println(err)
 		unableToFindRootCertErr := fmt.Sprintf("failed to find root certificate")
+		log.Println(unableToFindRootCertErr)
 		UpdateStatusWhileVerifyingSignature(unableToFindRootCertErr)
 		return
 	}
 	ok := roots.AppendCertsFromPEM(rootCertificate)
 	if !ok {
-		panic("failed to parse root certificate")
 		rootParseFailedErr := fmt.Sprintf("failed to parse root certificate")
+		log.Println(rootParseFailedErr)
 		UpdateStatusWhileVerifyingSignature(rootParseFailedErr)
 		return
 	}
@@ -420,17 +422,18 @@ func handleCreate(statusFilename string, config types.VerifyImageConfig) {
 		
 		ok := roots.AppendCertsFromPEM(certNameFromChain)
 		if !ok {
-			panic("failed to parse intermediate certificate")
 			intermediateCertParseFailedErr := fmt.Sprintf("failed to parse intermediate certificate")
+			log.Println(intermediateCertParseFailedErr)
 			UpdateStatusWhileVerifyingSignature(intermediateCertParseFailedErr)
+			return
 		}
 	}
 	opts := x509.VerifyOptions{
                 Roots:   roots,
         }
         if _, err := cert.Verify(opts); err != nil {
-                panic("failed to verify certificate: " + err.Error())
 		certChainVerificationErr := fmt.Sprintf("failed to verify certificate chain: ")
+		log.Println(certChainVerificationErr)
 		UpdateStatusWhileVerifyingSignature(certChainVerificationErr)
 		return
         }else {
@@ -454,6 +457,7 @@ func handleCreate(statusFilename string, config types.VerifyImageConfig) {
 			log.Fatalf("VerifyPKCS1v15 failed...")
 			rsaSignatureVerificationFiledErr := fmt.Sprintf("rsa image signature verification failed")
 			UpdateStatusWhileVerifyingSignature(rsaSignatureVerificationFiledErr)
+			return
 
                 } else {
                         log.Printf("VerifyPKCS1v15 successful...")
@@ -489,8 +493,8 @@ func handleCreate(statusFilename string, config types.VerifyImageConfig) {
 		log.Printf("Signature verified\n")
 
         default:
-                panic("unknown type of public key")
 		unknownPublicKeyTypeErr := fmt.Sprintf("unknown type of public key")
+		log.Println(unknownPublicKeyTypeErr)
 		UpdateStatusWhileVerifyingSignature(unknownPublicKeyTypeErr)
                 return
         }
