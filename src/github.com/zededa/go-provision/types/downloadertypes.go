@@ -4,6 +4,7 @@
 package types
 
 import (
+	"log"
 	"time"
 )
 
@@ -15,6 +16,16 @@ type DownloaderConfig struct {
 	MaxSize     uint   // In kbytes
 	ImageSha256 string // sha256 of immutable image XXX used?
 	RefCount    uint   // Zero means can delete file/cancel download
+}
+
+func (config DownloaderConfig) VerifyFilename(fileName string) bool {
+	name := config.Safename
+	ret := name+".json" != fileName
+	if ret {
+		log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
+			fileName, name)
+	}
+	return ret
 }
 
 // The key/index to this is the Safename which comes from DownloaderConfig.
@@ -35,6 +46,28 @@ type DownloaderStatus struct {
 	LastErr       string // Download error
 	LastErrTime   time.Time
 	RetryCount    int
+}
+
+func (status DownloaderStatus) VerifyFilename(fileName string) bool {
+	name := status.Safename
+	ret := name+".json" != fileName
+	if ret {
+		log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
+			fileName, name)
+	}
+	return ret
+}
+
+func (status DownloaderStatus) CheckPendingAdd() bool {
+	return status.PendingAdd
+}
+
+func (status DownloaderStatus) CheckPendingModify() bool {
+	return status.PendingModify
+}
+
+func (status DownloaderStatus) CheckPendingDelete() bool {
+	return status.PendingDelete
 }
 
 type GlobalDownloadConfig struct {

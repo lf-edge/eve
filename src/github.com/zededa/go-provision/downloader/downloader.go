@@ -36,7 +36,6 @@ import (
 	"log"
 	"os"
 	"os/exec"
-	"strings"
 	"time"
 )
 
@@ -100,110 +99,12 @@ func main() {
 	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
 	for {
 		change := <-fileChanges
-		parts := strings.Split(change, " ")
-		operation := parts[0]
-		fileName := parts[1]
-		if !strings.HasSuffix(fileName, ".json") {
-			log.Printf("Ignoring file <%s>\n", fileName)
-			continue
-		}
-		if operation == "D" {
-			statusFile := statusDirname + "/" + fileName
-			if _, err := os.Stat(statusFile); err != nil {
-				// File just vanished!
-				log.Printf("File disappeared <%s>\n", fileName)
-				continue
-			}
-			sb, err := ioutil.ReadFile(statusFile)
-			if err != nil {
-				log.Printf("%s for %s\n", err, statusFile)
-				continue
-			}
-			status := types.DownloaderStatus{}
-			if err := json.Unmarshal(sb, &status); err != nil {
-				log.Printf("%s DownloaderStatus file: %s\n",
-					err, statusFile)
-				continue
-			}
-			name := status.Safename
-			if name+".json" != fileName {
-				log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
-					fileName, name)
-				continue
-			}
-			statusName := statusDirname + "/" + fileName
-			handleDelete(statusName, status)
-			continue
-		}
-		if operation != "M" {
-			log.Fatal("Unknown operation from Watcher: ", operation)
-		}
-		configFile := configDirname + "/" + fileName
-		cb, err := ioutil.ReadFile(configFile)
-		if err != nil {
-			log.Printf("%s for %s\n", err, configFile)
-			continue
-		}
-		config := types.DownloaderConfig{}
-		if err := json.Unmarshal(cb, &config); err != nil {
-			log.Printf("%s DownloaderConfig file: %s\n",
-				err, configFile)
-			continue
-		}
-		name := config.Safename
-		if name+".json" != fileName {
-			log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
-				fileName, name)
-			continue
-		}
-		statusFile := statusDirname + "/" + fileName
-		if _, err := os.Stat(statusFile); err != nil {
-			// File does not exist in status hence new
-			statusName := statusDirname + "/" + fileName
-			handleCreate(statusName, config)
-			continue
-		}
-		// Compare Version string
-		sb, err := ioutil.ReadFile(statusFile)
-		if err != nil {
-			log.Printf("%s for %s\n", err, statusFile)
-			continue
-		}
-		status := types.DownloaderStatus{}
-		if err = json.Unmarshal(sb, &status); err != nil {
-			log.Printf("%s DownloaderStatus file: %s\n",
-				err, statusFile)
-			continue
-		}
-		name = status.Safename
-		if name+".json" != fileName {
-			log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
-				fileName, name)
-			continue
-		}
-		// Look for pending* in status and repeat that operation.
-		// XXX After that do a full ReadDir to restart ...
-		if status.PendingAdd {
-			statusName := statusDirname + "/" + fileName
-			handleCreate(statusName, config)
-			// XXX set something to rescan?
-			continue
-		}
-		if status.PendingDelete {
-			statusName := statusDirname + "/" + fileName
-			handleDelete(statusName, status)
-			// XXX set something to rescan?
-			continue
-		}
-		if status.PendingModify {
-			statusName := statusDirname + "/" + fileName
-			handleModify(statusName, config, status)
-			// XXX set something to rescan?
-			continue
-		}
-
-		statusName := statusDirname + "/" + fileName
-		handleModify(statusName, config, status)
+		watch.HandleConfigStatusEvent(change,
+			configDirname, statusDirname,
+			&types.DownloaderConfig{},
+			&types.DownloaderStatus{},
+			handleCreate, handleModify,
+			handleDelete)
 	}
 }
 
@@ -300,7 +201,15 @@ func writeDownloaderStatus(status *types.DownloaderStatus,
 	}
 }
 
-func handleCreate(statusFilename string, config types.DownloaderConfig) {
+func handleCreate(statusFilename string, configArg interface{}) {
+	var config *types.DownloaderConfig
+
+	switch configArg.(type) {
+	default:
+		log.Fatal("Can only handle DownloaderConfig")
+	case *types.DownloaderConfig:
+		config = configArg.(*types.DownloaderConfig)
+	}
 	log.Printf("handleCreate(%v) for %s\n",
 		config.Safename, config.DownloadURL)
 	// Start by marking with PendingAdd
@@ -350,7 +259,7 @@ func handleCreate(statusFilename string, config types.DownloaderConfig) {
 		log.Printf("handleCreate deferred for %s\n", config.DownloadURL)
 		return
 	}
-	doCreate(statusFilename, config, &status)
+	doCreate(statusFilename, *config, &status)
 	log.Printf("handleCreate done for %s\n", config.DownloadURL)
 }
 
@@ -465,8 +374,23 @@ func doWget(url string, destFilename string) error {
 
 // Allow to cancel by setting RefCount = 0. Same as delete? RefCount 0->1
 // means download. Ignore other changes?
-func handleModify(statusFilename string, config types.DownloaderConfig,
-	status types.DownloaderStatus) {
+func handleModify(statusFilename string, configArg interface{},
+	statusArg interface{}) {
+	var config *types.DownloaderConfig
+	var status *types.DownloaderStatus
+
+	switch configArg.(type) {
+	default:
+		log.Fatal("Can only handle DownloaderConfig")
+	case *types.DownloaderConfig:
+		config = configArg.(*types.DownloaderConfig)
+	}
+	switch statusArg.(type) {
+	default:
+		log.Fatal("Can only handle DownloaderStatus")
+	case *types.DownloaderStatus:
+		status = statusArg.(*types.DownloaderStatus)
+	}
 	log.Printf("handleModify(%v) for %s\n",
 		config.Safename, config.DownloadURL)
 
@@ -486,14 +410,14 @@ func handleModify(statusFilename string, config types.DownloaderConfig,
 		}
 		log.Printf("handleModify %s for %s\n",
 			reason, config.DownloadURL)
-		doDelete(statusFilename, &status)
+		doDelete(statusFilename, status)
 		status := types.DownloaderStatus{
 			Safename:    config.Safename,
 			RefCount:    config.RefCount,
 			DownloadURL: config.DownloadURL,
 			ImageSha256: config.ImageSha256,
 		}
-		doCreate(statusFilename, config, &status)
+		doCreate(statusFilename, *config, &status)
 		log.Printf("handleModify done for %s\n", config.DownloadURL)
 		return
 	}
@@ -503,17 +427,17 @@ func handleModify(statusFilename string, config types.DownloaderConfig,
 	// If RefCount from zero to non-zero then do install
 	if status.RefCount == 0 && config.RefCount != 0 {
 		log.Printf("handleModify installing %s\n", config.DownloadURL)
-		doCreate(statusFilename, config, &status)
+		doCreate(statusFilename, *config, status)
 		status.RefCount = config.RefCount
 		status.PendingModify = false
-		writeDownloaderStatus(&status, statusFilename)
+		writeDownloaderStatus(status, statusFilename)
 	} else if status.RefCount != 0 && config.RefCount == 0 {
 		log.Printf("handleModify deleting %s\n", config.DownloadURL)
-		doDelete(statusFilename, &status)
+		doDelete(statusFilename, status)
 	} else {
 		status.RefCount = config.RefCount
 		status.PendingModify = false
-		writeDownloaderStatus(&status, statusFilename)
+		writeDownloaderStatus(status, statusFilename)
 	}
 	log.Printf("handleModify done for %s\n", config.DownloadURL)
 }
@@ -537,24 +461,32 @@ func doDelete(statusFilename string, status *types.DownloaderStatus) {
 	writeDownloaderStatus(status, statusFilename)
 }
 
-func handleDelete(statusFilename string, status types.DownloaderStatus) {
+func handleDelete(statusFilename string, statusArg interface{}) {
+	var status *types.DownloaderStatus
+
+	switch statusArg.(type) {
+	default:
+		log.Fatal("Can only handle DownloaderStatus")
+	case *types.DownloaderStatus:
+		status = statusArg.(*types.DownloaderStatus)
+	}
 	log.Printf("handleDelete(%v) for %s\n",
 		status.Safename, status.DownloadURL)
 
 	status.PendingDelete = true
-	writeDownloaderStatus(&status, statusFilename)
+	writeDownloaderStatus(status, statusFilename)
 
 	globalStatus.ReservedSpace -= status.ReservedSpace
 	status.ReservedSpace = 0
 	globalStatus.UsedSpace -= status.Size
 	status.Size = 0
 	updateRemainingSpace()
-	writeDownloaderStatus(&status, statusFilename)
+	writeDownloaderStatus(status, statusFilename)
 
-	doDelete(statusFilename, &status)
+	doDelete(statusFilename, status)
 
 	status.PendingDelete = false
-	writeDownloaderStatus(&status, statusFilename)
+	writeDownloaderStatus(status, statusFilename)
 
 	// Write out what we modified to DownloaderStatus aka delete
 	if err := os.Remove(statusFilename); err != nil {
