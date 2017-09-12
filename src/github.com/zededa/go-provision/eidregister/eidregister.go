@@ -102,113 +102,11 @@ func main() {
 	go watch.WatchConfigStatus(inputDirname, outputDirname, fileChanges)
 	for {
 		change := <-fileChanges
-		parts := strings.Split(change, " ")
-		operation := parts[0]
-		fileName := parts[1]
-		if !strings.HasSuffix(fileName, ".json") {
-			log.Printf("Ignoring file <%s>\n", fileName)
-			continue
-		}
-		if operation == "D" {
-			statusFile := outputDirname + "/" + fileName
-			if _, err := os.Stat(statusFile); err != nil {
-				// File just vanished!
-				log.Printf("File disappeared <%s>\n", fileName)
-				continue
-			}
-			sb, err := ioutil.ReadFile(statusFile)
-			if err != nil {
-				log.Printf("%s for %s\n", err, statusFile)
-				continue
-			}
-			status := types.EIDStatus{}
-			if err := json.Unmarshal(sb, &status); err != nil {
-				log.Printf("%s EIDStatus file: %s\n",
-					err, statusFile)
-				continue
-			}
-			expect := fmt.Sprintf("%s:%d.json",
-				status.UUIDandVersion.UUID.String(), status.IID)
-			if expect != fileName {
-				log.Printf("Mismatch #1 between filename and contained uuid/iid: %s vs. %s\n",
-					fileName, expect)
-				continue
-			}
-			outputName := outputDirname + "/" + fileName
-			handleDelete(outputName, status)
-			continue
-		}
-		if operation != "M" {
-			log.Fatal("Unknown operation from Watcher: ", operation)
-		}
-		configFile := inputDirname + "/" + fileName
-		cb, err := ioutil.ReadFile(configFile)
-		if err != nil {
-			log.Printf("%s for %s\n", err, configFile)
-			continue
-		}
-		config := types.EIDStatus{}
-		if err := json.Unmarshal(cb, &config); err != nil {
-			log.Printf("%s EIDRegister file: %s\n",
-				err, configFile)
-			continue
-		}
-		expect := fmt.Sprintf("%s:%d.json",
-			config.UUIDandVersion.UUID.String(), config.IID)
-		if expect != fileName {
-			log.Printf("Mismatch #2 between filename and contained uuid/iid: %s vs. %s\n",
-				fileName, expect)
-			continue
-		}
-		statusFile := outputDirname + "/" + fileName
-		if _, err := os.Stat(statusFile); err != nil {
-			// File does not exist in status hence new
-			outputName := outputDirname + "/" + fileName
-			handleCreate(outputName, config)
-			continue
-		}
-		// Read and check statusFile
-		sb, err := ioutil.ReadFile(statusFile)
-		if err != nil {
-			log.Printf("%s for %s\n", err, statusFile)
-			continue
-		}
-		status := types.EIDStatus{}
-		if err := json.Unmarshal(sb, &status); err != nil {
-			log.Printf("%s EIDStatus file: %s\n",
-				err, statusFile)
-			continue
-		}
-		expect = fmt.Sprintf("%s:%d.json",
-			status.UUIDandVersion.UUID.String(), status.IID)
-		if expect != fileName {
-			log.Printf("Mismatch #3 between filename and contained uuid/iid: %s vs. %s\n",
-				fileName, expect)
-			continue
-		}
-		// Look for pending* in status and repeat that operation.
-		// XXX After that do a full ReadDir to restart ...
-		if status.PendingAdd {
-			outputName := outputDirname + "/" + fileName
-			handleCreate(outputName, config)
-			// XXX set something to rescan?
-			continue
-		}
-		if status.PendingDelete {
-			outputName := outputDirname + "/" + fileName
-			handleDelete(outputName, status)
-			// XXX set something to rescan?
-			continue
-		}
-		if status.PendingModify {
-			outputName := outputDirname + "/" + fileName
-			handleModify(outputName, config, status)
-			// XXX set something to rescan?
-			continue
-		}
-
-		outputName := outputDirname + "/" + fileName
-		handleModify(outputName, config, status)
+		watch.HandleConfigStatusEvent(change,
+			inputDirname, outputDirname,
+			&types.EIDConfig{},
+			&types.EIDStatus{},
+			handleCreate, handleModify, handleDelete)
 	}
 }
 
@@ -337,12 +235,20 @@ func registerEID(register *types.EIDRegister) bool {
 	return myPost(client, "/rest/eid-register", b)
 }
 
-func handleCreate(outputFilename string, input types.EIDStatus) {
+func handleCreate(outputFilename string, inputArg interface{}) {
+	var input *types.EIDStatus
+
+	switch inputArg.(type) {
+	default:
+		log.Fatal("Can only handle EIDStatus")
+	case *types.EIDStatus:
+		input = inputArg.(*types.EIDStatus)
+	}
 	log.Printf("handleCreate(%v) for %s\n",
 		input.UUIDandVersion, input.DisplayName)
 
 	// Start by marking with PendingAdd
-	output := input
+	output := *input
 	output.PendingAdd = true
 	// XXX or should we just wait to write this until we have
 	// an ack from the server?
@@ -383,8 +289,23 @@ func handleCreate(outputFilename string, input types.EIDStatus) {
 // Need to compare what might have changed. If any content change
 // then we need to reboot. Thus version by itself can change but nothing
 // else. Such a version change would be e.g. due to an ACL change.
-func handleModify(outputFilename string, input types.EIDStatus,
-	output types.EIDStatus) {
+func handleModify(outputFilename string, inputArg interface{},
+	outputArg interface{}) {
+	var input *types.EIDStatus
+	var output *types.EIDStatus
+
+	switch inputArg.(type) {
+	default:
+		log.Fatal("Can only handle EIDStatus")
+	case *types.EIDStatus:
+		input = inputArg.(*types.EIDStatus)
+	}
+	switch outputArg.(type) {
+	default:
+		log.Fatal("Can only handle EIDStatus")
+	case *types.EIDStatus:
+		output = outputArg.(*types.EIDStatus)
+	}
 	log.Printf("handleModify(%v) for %s\n",
 		input.UUIDandVersion, input.DisplayName)
 
@@ -402,7 +323,7 @@ func handleModify(outputFilename string, input types.EIDStatus,
 	}
 
 	output.PendingModify = true
-	writeEIDStatus(&output, outputFilename)
+	writeEIDStatus(output, outputFilename)
 	// XXX Any work in modify?
 	if output.CreateTime != input.CreateTime {
 		log.Printf("handleModify(%v) changed CreateTime for %s\n",
@@ -412,19 +333,27 @@ func handleModify(outputFilename string, input types.EIDStatus,
 	}
 	output.PendingModify = false
 	output.UUIDandVersion = input.UUIDandVersion
-	writeEIDStatus(&output, outputFilename)
+	writeEIDStatus(output, outputFilename)
 	log.Printf("handleModify done for %s\n", input.DisplayName)
 }
 
-func handleDelete(outputFilename string, output types.EIDStatus) {
+func handleDelete(outputFilename string, outputArg interface{}) {
+	var output *types.EIDStatus
+
+	switch outputArg.(type) {
+	default:
+		log.Fatal("Can only handle EIDStatus")
+	case *types.EIDStatus:
+		output = outputArg.(*types.EIDStatus)
+	}
 	log.Printf("handleDelete(%v) for %s\n",
 		output.UUIDandVersion, output.DisplayName)
 
 	output.PendingDelete = true
-	writeEIDStatus(&output, outputFilename)
+	writeEIDStatus(output, outputFilename)
 	// XXX Do work? Should we do an http.Delete?
 	output.PendingDelete = false
-	writeEIDStatus(&output, outputFilename)
+	writeEIDStatus(output, outputFilename)
 	// Write out what we modified aka delete
 	if err := os.Remove(outputFilename); err != nil {
 		log.Println(err)
