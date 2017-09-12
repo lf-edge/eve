@@ -30,8 +30,6 @@ TODO name for StorageConfig*?
      Is both an Image description and aspects of the container for the image
      ImageDeploymentConfig and ImageDeploymentStatus?
      
-TODO wait code - introduce second layer of interfaces to remove duplicate code
-
 TODO create domain name ipsets on the fly. Easy in handleCreate
    Requires some care in handleModify
 TODO handleModify's update to ACLs assumes there is no DROP rules since does inserts new rules up front.
@@ -47,6 +45,8 @@ Trigger such exchange when local interface/address change.
 DeviceSwStatus upload results in an ack containing the global address.
 
 ===
+
+DONE wait code - introduce second layer of interfaces to remove duplicate code
 
 DONE device-steps.sh - mode (from file or arg) to only run zedrouter for ctrl01?
      Check we can create dbo1x0.
