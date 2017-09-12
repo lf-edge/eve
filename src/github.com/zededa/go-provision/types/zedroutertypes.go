@@ -4,6 +4,7 @@
 package types
 
 import (
+	"log"
 	"net"
 )
 
@@ -17,6 +18,28 @@ type AppNetworkConfig struct {
 	IsZedmanager        bool
 	OverlayNetworkList  []OverlayNetworkConfig
 	UnderlayNetworkList []UnderlayNetworkConfig
+}
+
+func (config AppNetworkConfig) VerifyFilename(fileName string) bool {
+	uuid := config.UUIDandVersion.UUID
+	ret := uuid.String()+".json" != fileName
+	if ret {
+		log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
+			fileName, uuid.String())
+	}
+	return ret
+}
+
+func (status AppNetworkStatus) CheckPendingAdd() bool {
+	return status.PendingAdd
+}
+
+func (status AppNetworkStatus) CheckPendingModify() bool {
+	return status.PendingModify
+}
+
+func (status AppNetworkStatus) CheckPendingDelete() bool {
+	return status.PendingDelete
 }
 
 // Indexed by UUID
@@ -33,6 +56,16 @@ type AppNetworkStatus struct {
 	IsZedmanager        bool
 	OverlayNetworkList  []OverlayNetworkStatus
 	UnderlayNetworkList []UnderlayNetworkStatus
+}
+
+func (status AppNetworkStatus) VerifyFilename(fileName string) bool {
+	uuid := status.UUIDandVersion.UUID
+	ret := uuid.String()+".json" != fileName
+	if ret {
+		log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
+			fileName, uuid.String())
+	}
+	return ret
 }
 
 // Do we want a DeviceNetworkStatus? DeviceNetworkConfig with the underlay

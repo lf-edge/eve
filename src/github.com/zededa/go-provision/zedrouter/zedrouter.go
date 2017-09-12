@@ -22,7 +22,6 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
-	"strings"
 )
 
 var runDirname = "/var/run/zedrouter"
@@ -69,109 +68,11 @@ func main() {
 	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
 	for {
 		change := <-fileChanges
-		parts := strings.Split(change, " ")
-		operation := parts[0]
-		fileName := parts[1]
-		if !strings.HasSuffix(fileName, ".json") {
-			log.Printf("Ignoring file <%s>\n", fileName)
-			continue
-		}
-		if operation == "D" {
-			statusFile := statusDirname + "/" + fileName
-			if _, err := os.Stat(statusFile); err != nil {
-				// File just vanished!
-				log.Printf("File disappeared <%s>\n", fileName)
-				continue
-			}
-			sb, err := ioutil.ReadFile(statusFile)
-			if err != nil {
-				log.Printf("%s for %s\n", err, statusFile)
-				continue
-			}
-			status := types.AppNetworkStatus{}
-			if err := json.Unmarshal(sb, &status); err != nil {
-				log.Printf("%s AppNetworkStatus file: %s\n",
-					err, statusFile)
-				continue
-			}
-			uuid := status.UUIDandVersion.UUID
-			if uuid.String()+".json" != fileName {
-				log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-					fileName, uuid.String())
-				continue
-			}
-			statusName := statusDirname + "/" + fileName
-			handleDelete(statusName, status)
-			continue
-		}
-		if operation != "M" {
-			log.Fatal("Unknown operation from Watcher: ", operation)
-		}
-		configFile := configDirname + "/" + fileName
-		cb, err := ioutil.ReadFile(configFile)
-		if err != nil {
-			log.Printf("%s for %s\n", err, configFile)
-			continue
-		}
-		config := types.AppNetworkConfig{}
-		if err := json.Unmarshal(cb, &config); err != nil {
-			log.Printf("%s AppNetworkConfig file: %s\n",
-				err, configFile)
-			continue
-		}
-		uuid := config.UUIDandVersion.UUID
-		if uuid.String()+".json" != fileName {
-			log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-				fileName, uuid.String())
-			continue
-		}
-		statusFile := statusDirname + "/" + fileName
-		if _, err := os.Stat(statusFile); err != nil {
-			// File does not exist in status hence new
-			statusName := statusDirname + "/" + fileName
-			handleCreate(statusName, config)
-			continue
-		}
-		// Read and check status
-		sb, err := ioutil.ReadFile(statusFile)
-		if err != nil {
-			log.Printf("%s for %s\n", err, statusFile)
-			continue
-		}
-		status := types.AppNetworkStatus{}
-		if err := json.Unmarshal(sb, &status); err != nil {
-			log.Printf("%s AppNetworkStatus file: %s\n",
-				err, statusFile)
-			continue
-		}
-		uuid = status.UUIDandVersion.UUID
-		if uuid.String()+".json" != fileName {
-			log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-				fileName, uuid.String())
-			continue
-		}
-		// Look for pending* in status and repeat that operation.
-		// XXX After that do a full ReadDir to restart ...
-		if status.PendingAdd {
-			statusName := statusDirname + "/" + fileName
-			handleCreate(statusName, config)
-			// XXX set something to rescan?
-			continue
-		}
-		if status.PendingDelete {
-			statusName := statusDirname + "/" + fileName
-			handleDelete(statusName, status)
-			// XXX set something to rescan?
-			continue
-		}
-		if status.PendingModify {
-			statusName := statusDirname + "/" + fileName
-			handleModify(statusName, config, status)
-			// XXX set something to rescan?
-			continue
-		}
-		statusName := statusDirname + "/" + fileName
-		handleModify(statusName, config, status)
+		watch.HandleConfigStatusEvent(change,
+			configDirname, statusDirname,
+			&types.AppNetworkConfig{},
+			&types.AppNetworkStatus{},
+			handleCreate, handleModify, handleDelete)
 	}
 }
 
@@ -302,7 +203,15 @@ var deviceEID net.IP
 var deviceIID uint32
 var additionalInfoDevice *types.AdditionalInfoDevice
 
-func handleCreate(statusFilename string, config types.AppNetworkConfig) {
+func handleCreate(statusFilename string, configArg interface{}) {
+	var config *types.AppNetworkConfig
+
+	switch configArg.(type) {
+	default:
+		log.Fatal("Can only handle AppNetworkConfig")
+	case *types.AppNetworkConfig:
+		config = configArg.(*types.AppNetworkConfig)
+	}
 	log.Printf("handleCreate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
@@ -693,11 +602,26 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 	log.Printf("handleCreate done for %s\n", config.DisplayName)
 }
 
-// Note that modify will not touch the EID; just ACLs and NameToEidList
+// Note that handleModify will not touch the EID; just ACLs and NameToEidList
 // XXX should we check that nothing else has changed?
 // XXX If so flag other changes as errors; would need lastError in status.
-func handleModify(statusFilename string, config types.AppNetworkConfig,
-	status types.AppNetworkStatus) {
+func handleModify(statusFilename string, configArg interface{},
+	statusArg interface{}) {
+	var config *types.AppNetworkConfig
+	var status *types.AppNetworkStatus
+
+	switch configArg.(type) {
+	default:
+		log.Fatal("Can only handle AppNetworkConfig")
+	case *types.AppNetworkConfig:
+		config = configArg.(*types.AppNetworkConfig)
+	}
+	switch statusArg.(type) {
+	default:
+		log.Fatal("Can only handle AppNetworkStatus")
+	case *types.AppNetworkStatus:
+		status = statusArg.(*types.AppNetworkStatus)
+	}
 	log.Printf("handleModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
@@ -733,7 +657,7 @@ func handleModify(statusFilename string, config types.AppNetworkConfig,
 
 	status.PendingModify = true
 	status.UUIDandVersion = config.UUIDandVersion
-	writeAppNetworkStatus(&status, statusFilename)
+	writeAppNetworkStatus(status, statusFilename)
 
 	if config.IsZedmanager {
 		olConfig := config.OverlayNetworkList[0]
@@ -753,7 +677,7 @@ func handleModify(statusFilename string, config types.AppNetworkConfig,
 		// Update ACLs
 		updateACLConfiglet(olIfname, true, olStatus.ACLs,
 			olConfig.ACLs, 6, "")
-		fmt.Printf("handleUpdate done for %s\n", config.DisplayName)
+		fmt.Printf("handleModify done for %s\n", config.DisplayName)
 		return
 	}
 
@@ -838,12 +762,19 @@ func handleModify(statusFilename string, config types.AppNetworkConfig,
 			config.UnderlayNetworkList[i]
 	}
 	status.PendingModify = false
-	writeAppNetworkStatus(&status, statusFilename)
-	log.Printf("handleUpdate done for %s\n", config.DisplayName)
+	writeAppNetworkStatus(status, statusFilename)
+	log.Printf("handleModify done for %s\n", config.DisplayName)
 }
 
-// Need the olNum and ulNum to delete and EID route to delete
-func handleDelete(statusFilename string, status types.AppNetworkStatus) {
+func handleDelete(statusFilename string, statusArg interface{}) {
+	var status *types.AppNetworkStatus
+
+	switch statusArg.(type) {
+	default:
+		log.Fatal("Can only handle AppNetworkStatus")
+	case *types.AppNetworkStatus:
+		status = statusArg.(*types.AppNetworkStatus)
+	}
 	log.Printf("handleDelete(%v) for %s\n",
 		status.UUIDandVersion, status.DisplayName)
 
@@ -854,7 +785,7 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 		appNum, maxOlNum, maxUlNum)
 
 	status.PendingDelete = true
-	writeAppNetworkStatus(&status, statusFilename)
+	writeAppNetworkStatus(status, statusFilename)
 
 	if status.IsZedmanager {
 		if len(status.OverlayNetworkList) != 1 ||
