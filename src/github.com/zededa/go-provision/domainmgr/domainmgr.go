@@ -96,8 +96,8 @@ func main() {
 		change := <-fileChanges
 		watch.HandleConfigStatusEvent(change,
 			configDirname, statusDirname,
-			&types.AppNetworkConfig{},
-			&types.AppNetworkStatus{},
+			&types.DomainConfig{},
+			&types.DomainStatus{},
 			handleCreate, handleModify, handleDelete)
 	}
 }
