@@ -143,6 +143,7 @@ func main() {
 					&types.AppInstanceStatus{},
 					handleCreate, handleModify,
 					handleDelete)
+				continue
 			}
 		}
 	}
