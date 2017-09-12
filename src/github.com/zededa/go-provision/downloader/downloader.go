@@ -947,6 +947,20 @@ func urlToSafename(url string, sha string) string {
         return safename
 }
 
+func urlToFilename(url string) string {
+
+	var safename string
+
+	if (url != "") {
+		names := strings.Split(url, "/")
+		for _, name := range names {
+			safename = name
+		}
+	}
+
+        return safename
+}
+
 var globalConfig types.GlobalDownloadConfig
 var globalStatus types.GlobalDownloadStatus
 var globalStatusFilename string
@@ -1340,12 +1354,11 @@ func handleSyncOp(syncOp zedUpload.SyncOpType, locDirname string,
 	if dEndPoint != nil {
 		var respChan = make(chan * zedUpload.DronaRequest);
 
-		log.Printf("syncOp for <%s>/<%s>\n", config.Bucket, config.Safename)
+		log.Printf("syncOp for <%s>/<%s>\n", config.Bucket, urlToFilename(config.Safename))
 
 		// create Request
 		req := dEndPoint.NewRequest(syncOp, config.Safename, locFilename,
 			int64(config.MaxSize / 1024), true, respChan)
-
 
 		if req != nil {
 			req.Post()
