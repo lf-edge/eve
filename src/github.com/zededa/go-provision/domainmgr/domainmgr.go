@@ -94,109 +94,11 @@ func main() {
 	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
 	for {
 		change := <-fileChanges
-		parts := strings.Split(change, " ")
-		operation := parts[0]
-		fileName := parts[1]
-		if !strings.HasSuffix(fileName, ".json") {
-			log.Printf("Ignoring file <%s>\n", fileName)
-			continue
-		}
-		if operation == "D" {
-			statusFile := statusDirname + "/" + fileName
-			if _, err := os.Stat(statusFile); err != nil {
-				// File just vanished!
-				log.Printf("File disappeared <%s>\n", fileName)
-				continue
-			}
-			sb, err := ioutil.ReadFile(statusFile)
-			if err != nil {
-				log.Printf("%s for %s\n", err, statusFile)
-				continue
-			}
-			status := types.DomainStatus{}
-			if err := json.Unmarshal(sb, &status); err != nil {
-				log.Printf("%s DomainStatus file: %s\n",
-					err, statusFile)
-				continue
-			}
-			uuid := status.UUIDandVersion.UUID
-			if uuid.String()+".json" != fileName {
-				log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-					fileName, uuid.String())
-				continue
-			}
-			statusName := statusDirname + "/" + fileName
-			handleDelete(statusName, status)
-			continue
-		}
-		if operation != "M" {
-			log.Fatal("Unknown operation from Watcher: ", operation)
-		}
-		configFile := configDirname + "/" + fileName
-		cb, err := ioutil.ReadFile(configFile)
-		if err != nil {
-			log.Printf("%s for %s\n", err, configFile)
-			continue
-		}
-		config := types.DomainConfig{}
-		if err := json.Unmarshal(cb, &config); err != nil {
-			log.Printf("%s DomainConfig file: %s\n",
-				err, configFile)
-			continue
-		}
-		uuid := config.UUIDandVersion.UUID
-		if uuid.String()+".json" != fileName {
-			log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-				fileName, uuid.String())
-			continue
-		}
-		statusFile := statusDirname + "/" + fileName
-		if _, err := os.Stat(statusFile); err != nil {
-			// File does not exist in status hence new
-			statusName := statusDirname + "/" + fileName
-			handleCreate(statusName, config)
-			continue
-		}
-		// Read and check statusFile
-		sb, err := ioutil.ReadFile(statusFile)
-		if err != nil {
-			log.Printf("%s for %s\n", err, statusFile)
-			continue
-		}
-		status := types.DomainStatus{}
-		if err := json.Unmarshal(sb, &status); err != nil {
-			log.Printf("%s DomainStatus file: %s\n",
-				err, statusFile)
-			continue
-		}
-		uuid = status.UUIDandVersion.UUID
-		if uuid.String()+".json" != fileName {
-			log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-				fileName, uuid.String())
-			continue
-		}
-		// Look for pending* in status and repeat that operation.
-		// XXX After that do a full ReadDir to restart ...
-		if status.PendingAdd {
-			statusName := statusDirname + "/" + fileName
-			handleCreate(statusName, config)
-			// XXX set something to rescan?
-			continue
-		}
-		if status.PendingDelete {
-			statusName := statusDirname + "/" + fileName
-			handleDelete(statusName, status)
-			// XXX set something to rescan?
-			continue
-		}
-		if status.PendingModify {
-			statusName := statusDirname + "/" + fileName
-			handleModify(statusName, config, status)
-			// XXX set something to rescan?
-			continue
-		}
-		statusName := statusDirname + "/" + fileName
-		handleModify(statusName, config, status)
+		watch.HandleConfigStatusEvent(change,
+			configDirname, statusDirname,
+			&types.AppNetworkConfig{},
+			&types.AppNetworkStatus{},
+			handleCreate, handleModify, handleDelete)
 	}
 }
 
@@ -218,7 +120,15 @@ func xenCfgFilename(appNum int) string {
 	return xenDirname + "/xen" + strconv.Itoa(appNum) + ".cfg"
 }
 
-func handleCreate(statusFilename string, config types.DomainConfig) {
+func handleCreate(statusFilename string, configArg interface{}) {
+	var config *types.DomainConfig
+
+	switch configArg.(type) {
+	default:
+		log.Fatal("Can only handle DomainConfig")
+	case *types.DomainConfig:
+		config = configArg.(*types.DomainConfig)
+	}
 	log.Printf("handleCreate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
@@ -237,7 +147,7 @@ func handleCreate(statusFilename string, config types.DomainConfig) {
 		len(config.DiskConfigList))
 	writeDomainStatus(&status, statusFilename)
 
-	if err := configToStatus(config, &status); err != nil {
+	if err := configToStatus(*config, &status); err != nil {
 		log.Printf("Failed to create DomainStatus from %v\n", config)
 		status.PendingAdd = false
 		status.LastErr = fmt.Sprintf("%v", err)
@@ -271,7 +181,7 @@ func handleCreate(statusFilename string, config types.DomainConfig) {
 	}
 
 	if config.Activate {
-		doActivate(config, &status)
+		doActivate(*config, &status)
 	}
 	// work done
 	status.PendingAdd = false
@@ -543,33 +453,48 @@ func cp(dst, src string) error {
 // XXX should we reboot if there are such changes? Or reject with error?
 // XXX to save statusFilename when the goroutine is created.
 // XXX separate goroutine to run cp? Add "copy complete" status?
-func handleModify(statusFilename string, config types.DomainConfig,
-	status types.DomainStatus) {
+func handleModify(statusFilename string, configArg interface{},
+	statusArg interface{}) {
+	var config *types.DomainConfig
+	var status *types.DomainStatus
+
+	switch configArg.(type) {
+	default:
+		log.Fatal("Can only handle DomainConfig")
+	case *types.DomainConfig:
+		config = configArg.(*types.DomainConfig)
+	}
+	switch statusArg.(type) {
+	default:
+		log.Fatal("Can only handle DomainStatus")
+	case *types.DomainStatus:
+		status = statusArg.(*types.DomainStatus)
+	}
 	log.Printf("handleModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
 	status.PendingModify = true
-	writeDomainStatus(&status, statusFilename)
+	writeDomainStatus(status, statusFilename)
 
 	// XXX should we check if there is an error?
 	if status.LastErr != "" {
 		log.Printf("handleModify(%v) existing error for %s\n",
 			config.UUIDandVersion, config.DisplayName)
 		status.PendingModify = false
-		writeDomainStatus(&status, statusFilename)
+		writeDomainStatus(status, statusFilename)
 		return
 	}
 	changed := false
 	if config.Activate && !status.Activated {
-		doActivate(config, &status)
+		doActivate(*config, status)
 		changed = true
 	} else if !config.Activate && status.Activated {
-		doInactivate(&status)
+		doInactivate(status)
 		changed = true
 	}
 	if changed {
 		status.PendingModify = false
-		writeDomainStatus(&status, statusFilename)
+		writeDomainStatus(status, statusFilename)
 		log.Printf("handleModify(%v) DONE for %s\n",
 			config.UUIDandVersion, config.DisplayName)
 		return
@@ -584,14 +509,14 @@ func handleModify(statusFilename string, config types.DomainConfig,
 		fmt.Printf("Same version %s for %s\n",
 			config.UUIDandVersion.Version, statusFilename)
 		status.PendingModify = false
-		writeDomainStatus(&status, statusFilename)
+		writeDomainStatus(status, statusFilename)
 		return
 	}
 	// XXX dump status to log
 	xlStatus(status.DomainName, status.DomainId)
 
 	status.PendingModify = true
-	writeDomainStatus(&status, statusFilename)
+	writeDomainStatus(status, statusFilename)
 	// XXX Any work?
 	// XXX create tmp xen cfg and diff against existing xen cfg
 	// If different then stop and start. XXX xl shutdown takes a while
@@ -599,7 +524,7 @@ func handleModify(statusFilename string, config types.DomainConfig,
 
 	status.PendingModify = false
 	status.UUIDandVersion = config.UUIDandVersion
-	writeDomainStatus(&status, statusFilename)
+	writeDomainStatus(status, statusFilename)
 	log.Printf("handleModify(%v) DONE for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 }
@@ -632,7 +557,15 @@ func waitForDomainGone(status types.DomainStatus) bool {
 	return gone
 }
 
-func handleDelete(statusFilename string, status types.DomainStatus) {
+func handleDelete(statusFilename string, statusArg interface{}) {
+	var status *types.DomainStatus
+
+	switch statusArg.(type) {
+	default:
+		log.Fatal("Can only handle DomainStatus")
+	case *types.DomainStatus:
+		status = statusArg.(*types.DomainStatus)
+	}
 	log.Printf("handleDelete(%v) for %s\n",
 		status.UUIDandVersion, status.DisplayName)
 
@@ -640,12 +573,12 @@ func handleDelete(statusFilename string, status types.DomainStatus) {
 	xlStatus(status.DomainName, status.DomainId)
 
 	status.PendingDelete = true
-	writeDomainStatus(&status, statusFilename)
+	writeDomainStatus(status, statusFilename)
 
 	if status.Activated {
-		doInactivate(&status)
+		doInactivate(status)
 	}
-	writeDomainStatus(&status, statusFilename)
+	writeDomainStatus(status, statusFilename)
 
 	// Delete xen cfg file for good measure
 	filename := xenCfgFilename(status.AppNum)
@@ -665,7 +598,7 @@ func handleDelete(statusFilename string, status types.DomainStatus) {
 		}
 	}
 	status.PendingDelete = false
-	writeDomainStatus(&status, statusFilename)
+	writeDomainStatus(status, statusFilename)
 	// Write out what we modified to AppNetworkStatus aka delete
 	if err := os.Remove(statusFilename); err != nil {
 		log.Println(err)

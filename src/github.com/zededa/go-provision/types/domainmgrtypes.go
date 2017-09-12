@@ -4,6 +4,7 @@
 package types
 
 import (
+	"log"
 	"time"
 )
 
@@ -22,6 +23,16 @@ type DomainConfig struct {
 	FixedResources
 	DiskConfigList []DiskConfig
 	VifList        []VifInfo
+}
+
+func (config DomainConfig) VerifyFilename(fileName string) bool {
+	uuid := config.UUIDandVersion.UUID
+	ret := uuid.String()+".json" != fileName
+	if ret {
+		log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
+			fileName, uuid.String())
+	}
+	return ret
 }
 
 type FixedResources struct {
@@ -48,6 +59,28 @@ type DomainStatus struct {
 	DiskStatusList []DiskStatus
 	LastErr        string // Xen error
 	LastErrTime    time.Time
+}
+
+func (status DomainStatus) VerifyFilename(fileName string) bool {
+	uuid := status.UUIDandVersion.UUID
+	ret := uuid.String()+".json" != fileName
+	if ret {
+		log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
+			fileName, uuid.String())
+	}
+	return ret
+}
+
+func (status DomainStatus) CheckPendingAdd() bool {
+	return status.PendingAdd
+}
+
+func (status DomainStatus) CheckPendingModify() bool {
+	return status.PendingModify
+}
+
+func (status DomainStatus) CheckPendingDelete() bool {
+	return status.PendingDelete
 }
 
 type VifInfo struct {
