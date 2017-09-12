@@ -7,6 +7,8 @@
 package types
 
 import (
+	"fmt"
+	"log"
 	"net"
 	"time"
 )
@@ -39,6 +41,17 @@ type EIDConfigDetails struct {
 	PemPrivateKey []byte
 }
 
+func (config EIDConfig) VerifyFilename(fileName string) bool {
+	expect := fmt.Sprintf("%s:%d.json",
+		config.UUIDandVersion.UUID.String(), config.IID)
+	ret := expect != fileName
+	if ret {
+		log.Printf("Mismatch between filename and contained uuid/iid: %s vs. %s\n",
+			fileName, expect)
+	}
+	return ret
+}
+
 // Indexed by UUID plus IID. Version is not part of the index.
 type EIDStatus struct {
 	UUIDandVersion UUIDandVersion
@@ -58,4 +71,27 @@ type EIDStatusDetails struct {
 	PemPublicKey  []byte
 	PemPrivateKey []byte    // If ExportPrivate. XXX or in separate type?
 	CreateTime    time.Time // When EID was created
+}
+
+func (status EIDStatus) VerifyFilename(fileName string) bool {
+	expect := fmt.Sprintf("%s:%d.json",
+		status.UUIDandVersion.UUID.String(), status.IID)
+	ret := expect != fileName
+	if ret {
+		log.Printf("Mismatch between filename and contained uuid/iid: %s vs. %s\n",
+			fileName, expect)
+	}
+	return ret
+}
+
+func (status EIDStatus) CheckPendingAdd() bool {
+	return status.PendingAdd
+}
+
+func (status EIDStatus) CheckPendingModify() bool {
+	return status.PendingModify
+}
+
+func (status EIDStatus) CheckPendingDelete() bool {
+	return status.PendingDelete
 }
