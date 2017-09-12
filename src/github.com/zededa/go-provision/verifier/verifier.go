@@ -105,8 +105,8 @@ func main() {
 		change := <-fileChanges
 		watch.HandleConfigStatusEvent(change,
 			configDirname, statusDirname,
-			&types.AppNetworkConfig{},
-			&types.AppNetworkStatus{},
+			&types.VerifyImageConfig{},
+			&types.VerifyImageStatus{},
 			handleCreate, handleModify, handleDelete)
 	}
 }

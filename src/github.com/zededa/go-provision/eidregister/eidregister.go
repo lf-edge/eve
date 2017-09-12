@@ -104,7 +104,7 @@ func main() {
 		change := <-fileChanges
 		watch.HandleConfigStatusEvent(change,
 			inputDirname, outputDirname,
-			&types.EIDConfig{},
+			&types.EIDStatus{},
 			&types.EIDStatus{},
 			handleCreate, handleModify, handleDelete)
 	}
