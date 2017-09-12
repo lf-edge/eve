@@ -477,7 +477,9 @@ func main() {
 		if err := json.NewDecoder(b).Decode(hwStatus); err != nil {
 			log.Fatal("Error decoding DeviceHwStatus: ", err)
 		}
-		hwStatus.AdditionalInfoDevice = *addInfoDevice
+		if addInfoDevice != nil {
+			hwStatus.AdditionalInfoDevice = *addInfoDevice
+		}
 		b = new(bytes.Buffer)
 		json.NewEncoder(b).Encode(hwStatus)
 
