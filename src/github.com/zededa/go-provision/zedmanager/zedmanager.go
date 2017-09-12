@@ -228,7 +228,7 @@ func handleModify(statusFilename string, configArg interface{},
 	addOrUpdateConfig(config.UUIDandVersion.UUID.String(), *config)
 	// Note that the status is written as we handle updates from the
 	// other services
-	log.Printf("handleUpdate done for %s\n", config.DisplayName)
+	log.Printf("handleModify done for %s\n", config.DisplayName)
 }
 
 func handleDelete(statusFilename string, statusArg interface{}) {

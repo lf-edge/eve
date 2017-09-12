@@ -394,7 +394,7 @@ func handleModify(statusFilename string, config types.VerifyImageConfig,
 	handleCreate(statusFilename, config)
 	status.PendingModify = false
 	writeVerifyImageStatus(&status, statusFilename)
-	log.Printf("handleUpdate done for %s\n", config.DownloadURL)
+	log.Printf("handleModify done for %s\n", config.DownloadURL)
 }
 
 func handleDelete(statusFilename string, status types.VerifyImageStatus) {
