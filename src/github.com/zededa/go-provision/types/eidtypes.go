@@ -44,8 +44,8 @@ type EIDConfigDetails struct {
 func (config EIDConfig) VerifyFilename(fileName string) bool {
 	expect := fmt.Sprintf("%s:%d.json",
 		config.UUIDandVersion.UUID.String(), config.IID)
-	ret := expect != fileName
-	if ret {
+	ret := expect == fileName
+	if !ret {
 		log.Printf("Mismatch between filename and contained uuid/iid: %s vs. %s\n",
 			fileName, expect)
 	}
@@ -76,8 +76,8 @@ type EIDStatusDetails struct {
 func (status EIDStatus) VerifyFilename(fileName string) bool {
 	expect := fmt.Sprintf("%s:%d.json",
 		status.UUIDandVersion.UUID.String(), status.IID)
-	ret := expect != fileName
-	if ret {
+	ret := expect == fileName
+	if !ret {
 		log.Printf("Mismatch between filename and contained uuid/iid: %s vs. %s\n",
 			fileName, expect)
 	}

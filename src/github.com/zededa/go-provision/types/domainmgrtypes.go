@@ -27,8 +27,8 @@ type DomainConfig struct {
 
 func (config DomainConfig) VerifyFilename(fileName string) bool {
 	uuid := config.UUIDandVersion.UUID
-	ret := uuid.String()+".json" != fileName
-	if ret {
+	ret := uuid.String()+".json" == fileName
+	if !ret {
 		log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
 			fileName, uuid.String())
 	}
@@ -63,8 +63,8 @@ type DomainStatus struct {
 
 func (status DomainStatus) VerifyFilename(fileName string) bool {
 	uuid := status.UUIDandVersion.UUID
-	ret := uuid.String()+".json" != fileName
-	if ret {
+	ret := uuid.String()+".json" == fileName
+	if !ret {
 		log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
 			fileName, uuid.String())
 	}

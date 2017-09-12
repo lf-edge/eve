@@ -31,8 +31,8 @@ type AppInstanceConfig struct {
 
 func (config AppInstanceConfig) VerifyFilename(fileName string) bool {
 	uuid := config.UUIDandVersion.UUID
-	ret := uuid.String()+".json" != fileName
-	if ret {
+	ret := uuid.String()+".json" == fileName
+	if !ret {
 		log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
 			fileName, uuid.String())
 	}
@@ -59,8 +59,8 @@ type AppInstanceStatus struct {
 
 func (status AppInstanceStatus) VerifyFilename(fileName string) bool {
 	uuid := status.UUIDandVersion.UUID
-	ret := uuid.String()+".json" != fileName
-	if ret {
+	ret := uuid.String()+".json" == fileName
+	if !ret {
 		log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
 			fileName, uuid.String())
 	}

@@ -22,8 +22,8 @@ type AppNetworkConfig struct {
 
 func (config AppNetworkConfig) VerifyFilename(fileName string) bool {
 	uuid := config.UUIDandVersion.UUID
-	ret := uuid.String()+".json" != fileName
-	if ret {
+	ret := uuid.String()+".json" == fileName
+	if !ret {
 		log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
 			fileName, uuid.String())
 	}
@@ -60,8 +60,8 @@ type AppNetworkStatus struct {
 
 func (status AppNetworkStatus) VerifyFilename(fileName string) bool {
 	uuid := status.UUIDandVersion.UUID
-	ret := uuid.String()+".json" != fileName
-	if ret {
+	ret := uuid.String()+".json" == fileName
+	if !ret {
 		log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
 			fileName, uuid.String())
 	}

@@ -20,8 +20,8 @@ type DownloaderConfig struct {
 
 func (config DownloaderConfig) VerifyFilename(fileName string) bool {
 	name := config.Safename
-	ret := name+".json" != fileName
-	if ret {
+	ret := name+".json" == fileName
+	if !ret {
 		log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
 			fileName, name)
 	}
@@ -50,8 +50,8 @@ type DownloaderStatus struct {
 
 func (status DownloaderStatus) VerifyFilename(fileName string) bool {
 	name := status.Safename
-	ret := name+".json" != fileName
-	if ret {
+	ret := name+".json" == fileName
+	if !ret {
 		log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
 			fileName, name)
 	}
