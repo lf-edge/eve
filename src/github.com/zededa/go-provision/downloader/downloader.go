@@ -1357,7 +1357,7 @@ func handleSyncOp(syncOp zedUpload.SyncOpType, locDirname string,
 		log.Printf("syncOp for <%s>/<%s>\n", config.Bucket, urlToFilename(config.Safename))
 
 		// create Request
-		req := dEndPoint.NewRequest(syncOp, config.Safename, locFilename,
+		req := dEndPoint.NewRequest(syncOp, urlToFilename(config.DownloadURL), locFilename,
 			int64(config.MaxSize / 1024), true, respChan)
 
 		if req != nil {

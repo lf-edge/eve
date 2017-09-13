@@ -35,6 +35,7 @@ func AddOrRefcountDownloaderConfig(safename string, sc *types.StorageConfig) {
 			Safename:	safename,
 			DownloadURL:	sc.DownloadURL,
 			MaxSize:	sc.MaxSize,
+			Bucket:		sc.Bucket,
 			ImageSha256:	sc.ImageSha256,
 			RefCount:	1,
 		}
