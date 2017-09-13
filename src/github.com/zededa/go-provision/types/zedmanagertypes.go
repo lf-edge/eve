@@ -59,7 +59,11 @@ type StorageConfig struct {
 	Operation	string	// Operation Type (Download/Upload/Delete etc.)
 	TransportMethod	string	// Download method S3/HTTP/SFTP etc.
 	// XXX Add SignatureInfo for the sha256. Verifier should check.
-	SignatureInfo   SignatureInfo
+
+	CertificateChain 	[]string//name of intermediate certificates
+	ImageSignature		[]byte	//signature of image
+	SignatureKey		string	//certificate containing public key 
+
 	ImageSha256	string	// sha256 of immutable image
 	ReadOnly	bool
 	Preserve	bool	// If set a rw disk will be preserved across

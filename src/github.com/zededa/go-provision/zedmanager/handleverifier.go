@@ -36,6 +36,9 @@ func MaybeAddVerifyImageConfig(safename string, sc *types.StorageConfig) {
 			DownloadURL:	sc.DownloadURL,
 			ImageSha256:	sc.ImageSha256,
 			RefCount:	1,
+			CertificateChain: sc.CertificateChain,
+			ImageSignature:	sc.ImageSignature,
+			SignatureKey:	sc.SignatureKey,
 		}
 		verifyImageConfig[key] = n
 	}
