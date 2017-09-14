@@ -6,11 +6,11 @@
 package main
 
 import (
-	"fmt"       
+	"fmt"
+	"github.com/zededa/go-provision/types"
 	"log"
 	"net"
 	"os"
-	"github.com/zededa/go-provision/types"
 )
 
 // Create the hosts file for the overlay DNS resolution
@@ -18,7 +18,7 @@ import (
 func createHostsConfiglet(cfgDirname string, nameToEidList []types.NameToEid) {
 	fmt.Printf("createHostsConfiglet: dir %s nameToEidList %v\n",
 		cfgDirname, nameToEidList)
-		
+
 	err := os.Mkdir(cfgDirname, 0755)
 	if err != nil {
 		log.Fatal(err)
@@ -59,16 +59,16 @@ func containsEID(nameToEidList []types.NameToEid, EID net.IP) bool {
 }
 
 func updateHostsConfiglet(cfgDirname string,
-     oldNameToEidList []types.NameToEid, newNameToEidList []types.NameToEid) {
+	oldNameToEidList []types.NameToEid, newNameToEidList []types.NameToEid) {
 	fmt.Printf("updateHostsConfiglet: dir %s old %v, new %v\n",
 		cfgDirname, oldNameToEidList, newNameToEidList)
-		
+
 	// Look for hosts which should be deleted
 	for _, ne := range oldNameToEidList {
 		if !containsHostName(newNameToEidList, ne.HostName) {
 			cfgPathname := cfgDirname + "/" + ne.HostName
 			if err := os.Remove(cfgPathname); err != nil {
-				log.Println("os.Remove for ", cfgPathname, err)
+				log.Println(err)
 			}
 		}
 	}
@@ -91,6 +91,6 @@ func deleteHostsConfiglet(cfgDirname string, printOnError bool) {
 	fmt.Printf("deleteHostsConfiglet: dir %s\n", cfgDirname)
 	err := os.RemoveAll(cfgDirname)
 	if err != nil && printOnError {
-		log.Println("RemoveAll ", cfgDirname, err)
+		log.Println(err)
 	}
 }

@@ -9,10 +9,10 @@
 package main
 
 import (
-	"crypto/sha256"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
@@ -28,19 +28,18 @@ import (
 	"net"
 	"os"
 	"reflect"
-	"strings"
 	"time"
 )
 
 func main() {
 	log.Printf("Starting identitymgr\n")
-	
+
 	// Keeping status in /var/run to be clean after a crash/reboot
 	baseDirname := "/var/tmp/identitymgr"
 	runDirname := "/var/run/identitymgr"
 	configDirname := baseDirname + "/config"
 	statusDirname := runDirname + "/status"
-	
+
 	if _, err := os.Stat(baseDirname); err != nil {
 		if err := os.Mkdir(baseDirname, 0700); err != nil {
 			log.Fatal(err)
@@ -53,7 +52,7 @@ func main() {
 	}
 	if _, err := os.Stat(runDirname); err != nil {
 		if err := os.Mkdir(runDirname, 0700); err != nil {
-			log.Fatal( err)
+			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(statusDirname); err != nil {
@@ -68,113 +67,11 @@ func main() {
 	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
 	for {
 		change := <-fileChanges
-		parts := strings.Split(change, " ")
-		operation := parts[0]
-		fileName := parts[1]
-		if !strings.HasSuffix(fileName, ".json") {
-			log.Printf("Ignoring file <%s>\n", fileName)
-			continue
-		}
-		if operation == "D" {
-			statusFile := statusDirname + "/" + fileName
-			if _, err := os.Stat(statusFile); err != nil {
-				// File just vanished!
-				log.Printf("File disappeared <%s>\n", fileName)
-				continue
-			}
-			sb, err := ioutil.ReadFile(statusFile)
-			if err != nil {
-				log.Printf("%s for %s\n", err, statusFile)
-				continue
-			}
-			status := types.EIDStatus{}
-			if err := json.Unmarshal(sb, &status); err != nil {
-				log.Printf("%s EIDStatus file: %s\n",
-					err, statusFile)
-				continue
-			}
-			expect := fmt.Sprintf("%s:%d.json",
-				status.UUIDandVersion.UUID.String(), status.IID)
-			if expect != fileName {
-				log.Printf("Mismatch #1 between filename and contained uuid/iid: %s vs. %s\n",
-					fileName, expect)
-				continue
-			}
-			statusName := statusDirname + "/" + fileName
-			handleDelete(statusName, status)
-			continue
-		}
-		if operation != "M" {
-			log.Fatal("Unknown operation from Watcher: ", operation)
-		}
-		configFile := configDirname + "/" + fileName
-		cb, err := ioutil.ReadFile(configFile)
-		if err != nil {
-			log.Printf("%s for %s\n", err, configFile)
-			continue
-		}
-		config := types.EIDConfig{}
-		if err := json.Unmarshal(cb, &config); err != nil {
-			log.Printf("%s EIDConfig file: %s\n",
-				err, configFile)
-			continue
-		}
-		expect := fmt.Sprintf("%s:%d.json",
-			config.UUIDandVersion.UUID.String(), config.IID)
-		if expect != fileName {
-			log.Printf("Mismatch #2 between filename and contained uuid/iid: %s vs. %s\n",
-				fileName, expect)
-			continue
-		}
-		statusFile := statusDirname + "/" + fileName
-		if _, err := os.Stat(statusFile); err != nil {
-			// File does not exist in status hence new
-			statusName := statusDirname + "/" + fileName
-			handleCreate(statusName, config)
-			continue
-		}
-		// Read and check statusFile
-		sb, err := ioutil.ReadFile(statusFile)
-		if err != nil {
-			log.Printf("%s for %s\n", err, statusFile)
-			continue
-		}
-		status := types.EIDStatus{}
-		if err := json.Unmarshal(sb, &status); err != nil {
-			log.Printf("%s EIDStatus file: %s\n",
-				err, statusFile)
-			continue
-		}
-		expect = fmt.Sprintf("%s:%d.json",
-			status.UUIDandVersion.UUID.String(), status.IID)
-		if expect != fileName {
-			log.Printf("Mismatch #3 between filename and contained uuid/iid: %s vs. %s\n",
-				fileName, expect)
-			continue
-		}
-		// Look for pending* in status and repeat that operation.
-		// XXX After that do a full ReadDir to restart ...
-		if status.PendingAdd {
-			statusName := statusDirname + "/" + fileName
-			handleCreate(statusName, config)
-			// XXX set something to rescan?
-			continue
-		}
-		if status.PendingDelete {
-			statusName := statusDirname + "/" + fileName
-			handleDelete(statusName, status)
-			// XXX set something to rescan?
-			continue
-		}
-		if status.PendingModify {
-			statusName := statusDirname + "/" + fileName
-			handleModify(statusName, config, status)
-			// XXX set something to rescan?
-			continue
-		}
-			
-		statusName := statusDirname + "/" + fileName
-		handleModify(statusName, config, status)
+		watch.HandleConfigStatusEvent(change,
+			configDirname, statusDirname,
+			&types.EIDConfig{},
+			&types.EIDStatus{},
+			handleCreate, handleModify, handleDelete)
 	}
 }
 
@@ -192,7 +89,15 @@ func writeEIDStatus(status *types.EIDStatus,
 	}
 }
 
-func handleCreate(statusFilename string, config types.EIDConfig) {
+func handleCreate(statusFilename string, configArg interface{}) {
+	var config *types.EIDConfig
+
+	switch configArg.(type) {
+	default:
+		log.Fatal("Can only handle EIDConfig")
+	case *types.EIDConfig:
+		config = configArg.(*types.EIDConfig)
+	}
 	log.Printf("handleCreate(%v,%d) for %s\n",
 		config.UUIDandVersion, config.IID, config.DisplayName)
 
@@ -201,12 +106,12 @@ func handleCreate(statusFilename string, config types.EIDConfig) {
 		UUIDandVersion: config.UUIDandVersion,
 		DisplayName:    config.DisplayName,
 		EIDStatusDetails: types.EIDStatusDetails{
-			IID:		config.IID,
-			EIDAllocation:	config.EIDAllocation,
-			PendingAdd:     true,
-			EID:		config.EID,
-			LispSignature:	config.LispSignature,
-			PemCert:	config.PemCert,
+			IID:           config.IID,
+			EIDAllocation: config.EIDAllocation,
+			PendingAdd:    true,
+			EID:           config.EID,
+			LispSignature: config.LispSignature,
+			PemCert:       config.PemCert,
 		},
 	}
 	// Default is 0xfd
@@ -229,7 +134,7 @@ func handleCreate(statusFilename string, config types.EIDConfig) {
 		}
 		// Give it a 20 year lifetime. XXX allow cloud to set lifetime?
 		notBefore := time.Now()
-		notAfter := notBefore.AddDate(20,0,0)
+		notAfter := notBefore.AddDate(20, 0, 0)
 		fmt.Printf("notAfter %v\n", notAfter)
 
 		// XXX allow cloud to set curve?
@@ -242,15 +147,15 @@ func handleCreate(statusFilename string, config types.EIDConfig) {
 		ct := x509.Certificate{
 			SerialNumber: serial,
 			Subject: pkix.Name{
-				Country: []string{"US"},
-				Province: []string{"CA"},
-				Locality: []string{"Santa Clara"},
+				Country:      []string{"US"},
+				Province:     []string{"CA"},
+				Locality:     []string{"Santa Clara"},
 				Organization: []string{"Zededa, Inc"},
-				CommonName: "Application Instance",
+				CommonName:   "Application Instance",
 			},
 			NotBefore: notBefore,
 			NotAfter:  notAfter,
-			IsCA: true,
+			IsCA:      true,
 			// XXX template.KeyUsage: x509.KeyUsageCertSign,
 			BasicConstraintsValid: true,
 		}
@@ -272,7 +177,7 @@ func handleCreate(statusFilename string, config types.EIDConfig) {
 			// XXX any error cleanup?
 			return
 		}
-		
+
 		eid := generateEID(config.IID, config.AllocationPrefix,
 			publicDer)
 		fmt.Printf("EID: (len %d) %s\n", len(eid), eid)
@@ -339,7 +244,7 @@ func extractPublicPem(pk interface{}) ([]byte, []byte, error) {
 	fmt.Printf("public %s\n", string(publicPem))
 	return publicPem, publicDer, nil
 }
-	
+
 // Generate the EID
 func generateEID(iid uint32, allocationPrefix []byte, publicDer []byte) net.IP {
 	iidData := make([]byte, 4)
@@ -381,7 +286,7 @@ func generateLispSignature(eid net.IP, iid uint32,
 		return "", err
 	}
 	fmt.Printf("r.bytes %d s.bytes %d\n", len(r.Bytes()),
-	len(s.Bytes()))
+		len(s.Bytes()))
 	sigres := r.Bytes()
 	sigres = append(sigres, s.Bytes()...)
 	fmt.Printf("sigres (len %d): % x\n", len(sigres), sigres)
@@ -404,8 +309,23 @@ func encodePrivateKey(keypair *ecdsa.PrivateKey) ([]byte, error) {
 // Need to compare what might have changed. If any content change
 // then we need to reboot. Thus version by itself can change but nothing
 // else. Such a version change would be e.g. due to an ACL change.
-func handleModify(statusFilename string, config types.EIDConfig,
-	status types.EIDStatus) {
+func handleModify(statusFilename string, configArg interface{},
+	statusArg interface{}) {
+	var config *types.EIDConfig
+	var status *types.EIDStatus
+
+	switch configArg.(type) {
+	default:
+		log.Fatal("Can only handle EIDConfig")
+	case *types.EIDConfig:
+		config = configArg.(*types.EIDConfig)
+	}
+	switch statusArg.(type) {
+	default:
+		log.Fatal("Can only handle EIDStatus")
+	case *types.EIDStatus:
+		status = statusArg.(*types.EIDStatus)
+	}
 	log.Printf("handleModify(%v,%d) for %s\n",
 		config.UUIDandVersion, config.IID, config.DisplayName)
 
@@ -422,15 +342,23 @@ func handleModify(statusFilename string, config types.EIDConfig,
 		return
 	}
 	status.PendingModify = true
-	writeEIDStatus(&status, statusFilename)
+	writeEIDStatus(status, statusFilename)
 	// XXX Any work in modify?
 	status.PendingModify = false
 	status.UUIDandVersion = config.UUIDandVersion
-	writeEIDStatus(&status, statusFilename)
+	writeEIDStatus(status, statusFilename)
 	log.Printf("handleModify done for %s\n", config.DisplayName)
 }
 
-func handleDelete(statusFilename string, status types.EIDStatus) {
+func handleDelete(statusFilename string, statusArg interface{}) {
+	var status *types.EIDStatus
+
+	switch statusArg.(type) {
+	default:
+		log.Fatal("Can only handle EIDStatus")
+	case *types.EIDStatus:
+		status = statusArg.(*types.EIDStatus)
+	}
 	log.Printf("handleDelete(%v,%d) for %s\n",
 		status.UUIDandVersion, status.IID, status.DisplayName)
 
@@ -438,10 +366,7 @@ func handleDelete(statusFilename string, status types.EIDStatus) {
 
 	// Write out what we modified aka delete
 	if err := os.Remove(statusFilename); err != nil {
-		log.Println("Failed to remove", statusFilename, err)
+		log.Println(err)
 	}
 	log.Printf("handleDelete done for %s\n", status.DisplayName)
 }
-
-
-

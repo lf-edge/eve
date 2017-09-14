@@ -10,6 +10,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/RevH/ipinfo"
+	"github.com/satori/go.uuid"
+	"github.com/zededa/go-provision/types"
+	"golang.org/x/crypto/ocsp"
 	"io/ioutil"
 	"log"
 	"net"
@@ -17,10 +21,6 @@ import (
 	"os"
 	"strings"
 	"time"
-	"github.com/RevH/ipinfo"
-	"github.com/satori/go.uuid"
-	"github.com/zededa/go-provision/types"
-	"golang.org/x/crypto/ocsp"
 )
 
 var maxDelay = time.Second * 600 // 10 minutes
@@ -34,11 +34,14 @@ var maxDelay = time.Second * 600 // 10 minutes
 //  device.cert.pem,
 //  device.key.pem		Device certificate/key created before this
 //  		     		client is started.
+//  infra			If this file exists assume zedcontrol and do not
+//  				create ACLs
 //  zedserverconfig		Written by lookupParam operation; zed server EIDs
 //  zedrouterconfig.json	Written by lookupParam operation
 //  uuid			Written by lookupParam operation
 //  hwstatus.json		Uploaded by updateHwStatus operation
 //  swstatus.json		Uploaded by updateSwStatus operation
+//  clientIP			Written containing the public client IP
 //
 func main() {
 	args := os.Args[1:]
@@ -72,9 +75,11 @@ func main() {
 	deviceKeyName := dirName + "/device.key.pem"
 	rootCertName := dirName + "/root-certificate.pem"
 	serverFileName := dirName + "/server"
+	infraFileName := dirName + "/infra"
 	zedserverConfigFileName := dirName + "/zedserverconfig"
 	zedrouterConfigFileName := dirName + "/zedrouterconfig.json"
 	uuidFileName := dirName + "/uuid"
+	clientIPFileName := dirName + "/clientIP"
 	hwStatusFileName := dirName + "/hwstatus.json"
 	swStatusFileName := dirName + "/swstatus.json"
 
@@ -122,6 +127,14 @@ func main() {
 	serverName := strings.Split(serverNameAndPort, ":")[0]
 	// XXX for local testing
 	// serverNameAndPort = "localhost:9069"
+
+	// If infraFileName exists then don't set ACLs to eidset; allow any
+	// EID to connect.
+	ACLPromisc := false
+	if _, err := os.Stat(infraFileName); err == nil {
+		fmt.Printf("Setting ACLPromisc\n")
+		ACLPromisc = true
+	}
 
 	// Post something without a return type.
 	// Returns true when done; false when retry
@@ -292,6 +305,23 @@ func main() {
 	transport := &http.Transport{TLSClientConfig: tlsConfig}
 	client := &http.Client{Transport: transport}
 
+	var addInfoDevice *types.AdditionalInfoDevice
+	if operations["lookupParam"] || operations["updateHwStatus"] {
+		// Determine location information and use as AdditionalInfo
+		if myIP, err := ipinfo.MyIP(); err == nil {
+			addInfo := types.AdditionalInfoDevice{
+				UnderlayIP: myIP.IP,
+				Hostname:   myIP.Hostname,
+				City:       myIP.City,
+				Region:     myIP.Region,
+				Country:    myIP.Country,
+				Loc:        myIP.Loc,
+				Org:        myIP.Org,
+			}
+			addInfoDevice = &addInfo
+		}
+	}
+
 	if operations["lookupParam"] {
 		done := false
 		var delay time.Duration
@@ -366,10 +396,21 @@ func main() {
 		f.Sync()
 
 		// Determine whether NAT is in use
-		nat := !IsMyAddress(device.ClientAddr)
-		fmt.Printf("NAT %v, ClientAddr %v\n", nat, device.ClientAddr)
-
-		// Write an AppNetworkConfig for the ZedManager application
+		if publicIP, err := addrStringToIP(device.ClientAddr); err != nil {
+			log.Printf("Failed to convert %s, error %s\n",
+				device.ClientAddr, err)
+			// Remove any existing/old file
+			_ = os.Remove(clientIPFileName)
+		} else {
+			nat := !IsMyAddress(publicIP)
+			fmt.Printf("NAT %v, publicIP %v\n", nat, publicIP)
+			// Store clientIP in file for device-steps.sh
+			b := []byte(fmt.Sprintf("%s\n", publicIP))
+			err = ioutil.WriteFile(clientIPFileName, b, 0644)
+			if err != nil {
+				log.Fatal("WriteFile", err, clientIPFileName)
+			}
+		}
 		var devUUID uuid.UUID
 		if _, err := os.Stat(uuidFileName); err != nil {
 			// Create and write with initial values
@@ -396,22 +437,7 @@ func main() {
 			UUID:    devUUID,
 			Version: "0",
 		}
-		// Determine location information and use as AdditionalInfo
-		// XXX later just get ClientAddr's IP address and
-		// have zedcloud do any geoloc etc lookups
-		var addInfoDevice *types.AdditionalInfoDevice
-		if myIP, err := ipinfo.MyIP(); err == nil {
-			addInfo := types.AdditionalInfoDevice{
-				UnderlayIP: myIP.IP,
-				Hostname: myIP.Hostname,
-				City: myIP.City,
-				Region: myIP.Region,
-				Country: myIP.Country,
-				Loc: myIP.Loc,
-				Org: myIP.Org,
-			}
-			addInfoDevice = &addInfo
-		}
+		// Write an AppNetworkConfig for the ZedManager application
 		config := types.AppNetworkConfig{
 			UUIDandVersion: uv,
 			DisplayName:    "zedmanager",
@@ -430,8 +456,12 @@ func main() {
 		acl[0].Matches = matches
 		actions := make([]types.ACEAction, 1)
 		acl[0].Actions = actions
-		matches[0].Type = "eidset"
-		actions[0].Drop = false
+		if ACLPromisc {
+			matches[0].Type = "ip"
+			matches[0].Value = "::/0"
+		} else {
+			matches[0].Type = "eidset"
+		}
 		writeNetworkConfig(&config, zedrouterConfigFileName)
 	}
 	if operations["updateHwStatus"] {
@@ -440,8 +470,19 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		// Input is in json format
+		// Input is in json format; parse and add additionalInfo
 		b := bytes.NewBuffer(buf)
+		// parsing DeviceHwStatus json payload
+		hwStatus := &types.DeviceHwStatus{}
+		if err := json.NewDecoder(b).Decode(hwStatus); err != nil {
+			log.Fatal("Error decoding DeviceHwStatus: ", err)
+		}
+		if addInfoDevice != nil {
+			hwStatus.AdditionalInfoDevice = *addInfoDevice
+		}
+		b = new(bytes.Buffer)
+		json.NewEncoder(b).Encode(hwStatus)
+
 		done := false
 		var delay time.Duration
 		for !done {
@@ -487,14 +528,17 @@ func writeNetworkConfig(config *types.AppNetworkConfig,
 	}
 }
 
-// IsMyAddress checks the IP address against the local IPs. Returns True if
-// there is a match.
-func IsMyAddress(addrString string) bool {
+func addrStringToIP(addrString string) (net.IP, error) {
 	clientTCP, err := net.ResolveTCPAddr("tcp", addrString)
 	if err != nil {
-		return false
+		return net.IP{}, err
 	}
-	clientIP := clientTCP.IP
+	return clientTCP.IP, nil
+}
+
+// IsMyAddress checks the IP address against the local IPs. Returns True if
+// there is a match.
+func IsMyAddress(clientIP net.IP) bool {
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {
 		return false

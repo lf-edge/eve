@@ -18,7 +18,7 @@ import (
 var domainConfig map[string]types.DomainConfig
 
 func MaybeAddDomainConfig(aiConfig types.AppInstanceConfig,
-     ns *types.AppNetworkStatus) {
+	ns *types.AppNetworkStatus) {
 	key := aiConfig.UUIDandVersion.UUID.String()
 	displayName := aiConfig.DisplayName
 	log.Printf("MaybeAddDomainConfig for %s displayName %s\n", key,
@@ -41,16 +41,16 @@ func MaybeAddDomainConfig(aiConfig types.AppInstanceConfig,
 		fmt.Printf("Domain config add for %s\n", key)
 		changed = true
 	}
-	if changed {		
+	if changed {
 		AppNum := 0
 		if ns != nil {
 			AppNum = ns.AppNum
 		}
 		dc := types.DomainConfig{
 			UUIDandVersion: aiConfig.UUIDandVersion,
-			DisplayName: aiConfig.DisplayName,
-			Activate: aiConfig.Activate,
-			AppNum: AppNum,
+			DisplayName:    aiConfig.DisplayName,
+			Activate:       aiConfig.Activate,
+			AppNum:         AppNum,
 			FixedResources: aiConfig.FixedResources,
 		}
 		dc.DiskConfigList = make([]types.DiskConfig,
@@ -62,13 +62,13 @@ func MaybeAddDomainConfig(aiConfig types.AppInstanceConfig,
 			disk.Preserve = sc.Preserve
 			disk.Format = sc.Format
 			disk.Devtype = sc.Devtype
-		}		
+		}
 		if ns != nil {
 			dc.VifList = make([]types.VifInfo, ns.OlNum+ns.UlNum)
 			// Put UL before OL
 			for i, ul := range ns.UnderlayNetworkList {
 				dc.VifList[i] = ul.VifInfo
-			}		
+			}
 			for i, ol := range ns.OverlayNetworkList {
 				dc.VifList[i+ns.UlNum] = ol.VifInfo
 			}
@@ -77,7 +77,7 @@ func MaybeAddDomainConfig(aiConfig types.AppInstanceConfig,
 		configFilename := fmt.Sprintf("%s/%s.json",
 			domainmgrConfigDirname, key)
 		writeDomainConfig(domainConfig[key], configFilename)
-	}	
+	}
 	log.Printf("MaybeAddDomainConfig done for %s\n", key)
 }
 
@@ -96,7 +96,7 @@ func MaybeRemoveDomainConfig(uuidStr string) {
 	configFilename := fmt.Sprintf("%s/%s.json",
 		domainmgrConfigDirname, uuidStr)
 	if err := os.Remove(configFilename); err != nil {
-		log.Println("Failed to remove", configFilename, err)
+		log.Println(err)
 	}
 	log.Printf("MaybeRemoveDomainConfig done for %s\n", uuidStr)
 }
@@ -120,7 +120,7 @@ func writeDomainConfig(config types.DomainConfig,
 var domainStatus map[string]types.DomainStatus
 
 func handleDomainStatusModify(statusFilename string,
-     statusArg interface{}) {
+	statusArg interface{}) {
 	var status *types.DomainStatus
 
 	switch statusArg.(type) {
@@ -145,7 +145,7 @@ func handleDomainStatusModify(statusFilename string,
 	}
 	domainStatus[key] = *status
 	updateAIStatusUUID(status.UUIDandVersion.UUID.String())
-	
+
 	log.Printf("handleDomainStatusModify done for %s\n",
 		key)
 }

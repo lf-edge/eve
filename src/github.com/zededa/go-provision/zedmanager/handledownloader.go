@@ -44,7 +44,7 @@ func AddOrRefcountDownloaderConfig(safename string, sc *types.StorageConfig) {
 	configFilename := fmt.Sprintf("%s/%s.json",
 		downloaderConfigDirname, safename)
 	writeDownloaderConfig(downloaderConfig[key], configFilename)
-	
+
 	log.Printf("AddOrRefcountDownloaderConfig done for %s\n",
 		safename)
 }
@@ -65,7 +65,7 @@ func MaybeRemoveDownloaderConfig(safename string) {
 	configFilename := fmt.Sprintf("%s/%s.json",
 		downloaderConfigDirname, safename)
 	if err := os.Remove(configFilename); err != nil {
-		log.Println("Failed to remove", configFilename, err)
+		log.Println(err)
 	}
 	log.Printf("MaybeRemoveDownloaderConfig done for %s\n", safename)
 }
@@ -88,7 +88,7 @@ func writeDownloaderConfig(config types.DownloaderConfig,
 var downloaderStatus map[string]types.DownloaderStatus
 
 func handleDownloaderStatusModify(statusFilename string,
-     statusArg interface{}) {
+	statusArg interface{}) {
 	var status *types.DownloaderStatus
 
 	switch statusArg.(type) {
@@ -127,7 +127,7 @@ func handleDownloaderStatusModify(statusFilename string,
 		downloaderStatus[key] = *status
 		updateAIStatusSafename(key)
 	}
-	
+
 	log.Printf("handleDownloaderStatusModify done for %s\n",
 		status.Safename)
 }
@@ -156,5 +156,3 @@ func handleDownloaderStatusDelete(statusFilename string) {
 	log.Printf("handleDownloaderStatusDelete done for %s\n",
 		statusFilename)
 }
-
-

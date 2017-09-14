@@ -35,7 +35,6 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
-	"strings"
 	"time"
 )
 
@@ -112,110 +111,11 @@ func main() {
 		statusDirname, fileChanges)
 	for {
 		change := <-fileChanges
-		parts := strings.Split(change, " ")
-		operation := parts[0]
-		fileName := parts[1]
-		if !strings.HasSuffix(fileName, ".json") {
-			log.Printf("Ignoring file <%s>\n", fileName)
-			continue
-		}
-		if operation == "D" {
-			statusFile := statusDirname + "/" + fileName
-			if _, err := os.Stat(statusFile); err != nil {
-				// File just vanished!
-				log.Printf("File disappeared <%s>\n", fileName)
-				continue
-			}
-			sb, err := ioutil.ReadFile(statusFile)
-			if err != nil {
-				log.Printf("%s for %s\n", err, statusFile)
-				continue
-			}
-			status := types.VerifyImageStatus{}
-			if err := json.Unmarshal(sb, &status); err != nil {
-				log.Printf("%s VerifyImageStatus file: %s\n",
-					err, statusFile)
-				continue
-			}
-			name := status.Safename
-			if name+".json" != fileName {
-				log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
-					fileName, name)
-				continue
-			}
-			statusName := statusDirname + "/" + fileName
-			handleDelete(statusName, status)
-			continue
-		}
-		if operation != "M" {
-			log.Fatal("Unknown operation from Watcher: ", operation)
-		}
-		configFile := configDirname + "/" + fileName
-		cb, err := ioutil.ReadFile(configFile)
-		if err != nil {
-			log.Printf("%s for %s\n", err, configFile)
-			continue
-		}
-		config := types.VerifyImageConfig{}
-		if err := json.Unmarshal(cb, &config); err != nil {
-			log.Printf("%s VerifyImageConfig file: %s\n",
-				err, configFile)
-			continue
-		}
-		name := config.Safename
-		if name+".json" != fileName {
-			log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
-				fileName, name)
-			continue
-		}
-		statusFile := statusDirname + "/" + fileName
-		if _, err := os.Stat(statusFile); err != nil {
-			// File does not exist in status hence new
-			statusName := statusDirname + "/" + fileName
-			handleCreate(statusName, config)
-			continue
-		}
-		// Compare Version string
-		sb, err := ioutil.ReadFile(statusFile)
-		if err != nil {
-			log.Printf("%s for %s\n", err, statusFile)
-			continue
-		}
-		status := types.VerifyImageStatus{}
-		if err = json.Unmarshal(sb, &status); err != nil {
-			log.Printf("%s VerifyImageStatus file: %s\n",
-				err, statusFile)
-			continue
-		}
-		name = status.Safename
-		if name+".json" != fileName {
-			log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
-				fileName, name)
-			continue
-		}
-		// Look for pending* in status and repeat that operation.
-		// XXX After that do a full ReadDir to restart ...
-		if status.PendingAdd {
-			statusName := statusDirname + "/" + fileName
-			handleCreate(statusName, config)
-			// XXX set something to rescan?
-			continue
-		}
-		if status.PendingDelete {
-			statusName := statusDirname + "/" + fileName
-			handleDelete(statusName, status)
-			// XXX set something to rescan?
-			continue
-		}
-		if status.PendingModify {
-			statusName := statusDirname + "/" + fileName
-			handleModify(statusName, config, status)
-			// XXX set something to rescan?
-			continue
-		}
-
-		statusName := statusDirname + "/" + fileName
-		handleModify(statusName, config, status)
+		watch.HandleConfigStatusEvent(change,
+			configDirname, statusDirname,
+			&types.VerifyImageConfig{},
+			&types.VerifyImageStatus{},
+			handleCreate, handleModify, handleDelete)
 	}
 }
 
@@ -262,7 +162,15 @@ func writeVerifyImageStatus(status *types.VerifyImageStatus,
 	}
 }
 
-func handleCreate(statusFilename string, config types.VerifyImageConfig) {
+func handleCreate(statusFilename string, configArg interface{}) {
+	var config *types.VerifyImageConfig
+
+	switch configArg.(type) {
+	default:
+		log.Fatal("Can only handle VerifyImageConfig")
+	case *types.VerifyImageConfig:
+		config = configArg.(*types.VerifyImageConfig)
+	}
 	log.Printf("handleCreate(%v) for %s\n",
 		config.Safename, config.DownloadURL)
 	// Start by marking with PendingAdd
@@ -498,7 +406,7 @@ func handleCreate(statusFilename string, config types.VerifyImageConfig) {
 		UpdateStatusWhileVerifyingSignature(unknownPublicKeyTypeErr)
                 return
         }
-	
+
 	// Move directory from downloads/verifier to downloads/verified
 	// XXX should have dom0 do this and/or have RO mounts
 	finalDirname := imgCatalogDirname + "/verified/" + config.ImageSha256
@@ -541,8 +449,23 @@ func handleCreate(statusFilename string, config types.VerifyImageConfig) {
 	log.Printf("handleCreate done for %s\n", config.DownloadURL)
 }
 
-func handleModify(statusFilename string, config types.VerifyImageConfig,
-	status types.VerifyImageStatus) {
+func handleModify(statusFilename string, configArg interface{},
+	statusArg interface{}) {
+	var config *types.VerifyImageConfig
+	var status *types.VerifyImageStatus
+
+	switch configArg.(type) {
+	default:
+		log.Fatal("Can only handle VerifyImageConfig")
+	case *types.VerifyImageConfig:
+		config = configArg.(*types.VerifyImageConfig)
+	}
+	switch statusArg.(type) {
+	default:
+		log.Fatal("Can only handle VerifyImageStatus")
+	case *types.VerifyImageStatus:
+		status = statusArg.(*types.VerifyImageStatus)
+	}
 	log.Printf("handleModify(%v) for %s\n",
 		config.Safename, config.DownloadURL)
 
@@ -560,20 +483,28 @@ func handleModify(statusFilename string, config types.VerifyImageConfig,
 	}
 
 	status.PendingModify = true
-	writeVerifyImageStatus(&status, statusFilename)
+	writeVerifyImageStatus(status, statusFilename)
 	handleDelete(statusFilename, status)
 	handleCreate(statusFilename, config)
 	status.PendingModify = false
-	writeVerifyImageStatus(&status, statusFilename)
-	log.Printf("handleUpdate done for %s\n", config.DownloadURL)
+	writeVerifyImageStatus(status, statusFilename)
+	log.Printf("handleModify done for %s\n", config.DownloadURL)
 }
 
-func handleDelete(statusFilename string, status types.VerifyImageStatus) {
+func handleDelete(statusFilename string, statusArg interface{}) {
+	var status *types.VerifyImageStatus
+
+	switch statusArg.(type) {
+	default:
+		log.Fatal("Can only handle VerifyImageStatus")
+	case *types.VerifyImageStatus:
+		status = statusArg.(*types.VerifyImageStatus)
+	}
 	log.Printf("handleDelete(%v)\n", status.Safename)
 
 	// Write out what we modified to VerifyImageStatus aka delete
 	if err := os.Remove(statusFilename); err != nil {
-		log.Println("Failed to remove", statusFilename, err)
+		log.Println(err)
 	}
 	log.Printf("handleDelete done for %s\n", status.Safename)
 }

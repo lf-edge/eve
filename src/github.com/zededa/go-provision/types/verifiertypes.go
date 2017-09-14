@@ -8,6 +8,7 @@
 package types
 
 import (
+	"log"
 	"time"
 )
 
@@ -29,16 +30,48 @@ type VerifyImageConfig struct {
 	SignatureKey		string	//certificate containing public key 
 }
 
+func (config VerifyImageConfig) VerifyFilename(fileName string) bool {
+	name := config.Safename
+	ret := name+".json" == fileName
+	if !ret {
+		log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
+			fileName, name)
+	}
+	return ret
+}
+
 // The key/index to this is the Safename which comes from VerifyImageConfig.
 // That is the filename in which we store the corresponding json files.
 type VerifyImageStatus struct {
-	Safename	string
-	PendingAdd	bool
-	PendingModify	bool
-	PendingDelete	bool
-	ImageSha256	string	// sha256 of immutable image
-	State		SwState	// DELIVERED, or INITIAL if failed
-	LastErr		string	// Verification error
-	LastErrTime	time.Time
-	RefCount	uint	// Zero means deleted
+	Safename      string
+	PendingAdd    bool
+	PendingModify bool
+	PendingDelete bool
+	ImageSha256   string  // sha256 of immutable image
+	State         SwState // DELIVERED, or INITIAL if failed
+	LastErr       string  // Verification error
+	LastErrTime   time.Time
+	RefCount      uint // Zero means deleted
+}
+
+func (status VerifyImageStatus) VerifyFilename(fileName string) bool {
+	name := status.Safename
+	ret := name+".json" == fileName
+	if !ret {
+		log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
+			fileName, name)
+	}
+	return ret
+}
+
+func (status VerifyImageStatus) CheckPendingAdd() bool {
+	return status.PendingAdd
+}
+
+func (status VerifyImageStatus) CheckPendingModify() bool {
+	return status.PendingModify
+}
+
+func (status VerifyImageStatus) CheckPendingDelete() bool {
+	return status.PendingDelete
 }

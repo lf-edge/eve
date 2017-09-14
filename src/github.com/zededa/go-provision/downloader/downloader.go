@@ -920,11 +920,14 @@ func  processConfigObject (baseDirname string, runDirname string,
 			objFilename := objDirname + "/" + status.Safename
 
 			// if file is already present, skip
+/*
 			if _, err := os.Stat(objFilename); err != nil {
 				writeFile(locFilename, objFilename)
 			} else {
 				log.Printf("<%s> is present\n", objFilename)
 			}
+*/
+			writeFile(locFilename, objFilename)
 		}
 
 		// finally flush the object holder files
@@ -956,6 +959,18 @@ func urlToFilename(url string) string {
 		for _, name := range names {
 			safename = name
 		}
+/*
+	fileChanges := make(chan string)
+	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
+	for {
+		change := <-fileChanges
+		watch.HandleConfigStatusEvent(change,
+			configDirname, statusDirname,
+			&types.DownloaderConfig{},
+			&types.DownloaderStatus{},
+			handleCreate, handleModify,
+			handleDelete)
+*/
 	}
 
         return safename
@@ -988,6 +1003,13 @@ func handleInit() {
 	if _, err := os.Stat(statusDirname); err != nil {
 
 		if err := os.MkdirAll(statusDirname, 0700); err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	if _, err := os.Stat(locDirname); err != nil {
+
+		if err := os.MkdirAll(locDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -1042,13 +1064,13 @@ func sizeFromDir(dirname string) int64 {
 }
 
 func updateRemainingSpace() {
-	globalStatus.RemainingSpace = globalConfig.MaxSpace -
-		globalStatus.UsedSpace -
-		globalStatus.ReservedSpace
-	log.Printf("RemaingSpace %d, maxspace %d, usedspace %d, reserved %d\n",
-		globalStatus.RemainingSpace, globalConfig.MaxSpace,
-		globalStatus.UsedSpace,	globalStatus.ReservedSpace)
 
+	globalStatus.RemainingSpace = globalConfig.MaxSpace -
+		globalStatus.UsedSpace - globalStatus.ReservedSpace
+
+	log.Printf("RemaingSpace %d, maxspace %d, usedspace %d, reserved %d\n",
+	globalStatus.RemainingSpace, globalConfig.MaxSpace,
+	globalStatus.UsedSpace,	globalStatus.ReservedSpace)
 	// Create and write
 	writeGlobalStatus()
 }
@@ -1187,19 +1209,20 @@ func doWget(url string, destFilename string) error {
 	args := []string{
 		"-q",
 		"-c",
-		"-4",	// XXX due to getting IPv6 ULAs and not IPv4
+		"-4", // XXX due to getting IPv6 ULAs and not IPv4
 		"--no-check-certificate",
 		"--tries=3",
 		"-O",
 		destFilename,
 		url,
 	}
-	_, err := exec.Command(cmd, args...).Output()
+	stdoutStderr, err := exec.Command(cmd, args...).CombinedOutput()
 	if err != nil {
 		log.Println("wget failed ", err)
+		log.Println("wget output ", string(stdoutStderr))
 		return err
 	}
-	fmt.Printf("wget done\n")
+	fmt.Printf("wget done: output %s\n", string(stdoutStderr))
 	return nil
 }
 
@@ -1302,6 +1325,7 @@ func handleDelete(statusFilename string, locDirname string,
 	status.Size = 0
 
 	updateRemainingSpace()
+
 	writeDownloaderStatus(&status, statusFilename)
 
 	doDelete(statusFilename, locDirname, &status)
@@ -1311,7 +1335,7 @@ func handleDelete(statusFilename string, locDirname string,
 
 	// Write out what we modified to DownloaderStatus aka delete
 	if err := os.Remove(statusFilename); err != nil {
-		log.Println("Failed to remove", statusFilename, err)
+		log.Println(err)
 	}
 	log.Printf("handleDelete done for %s, %s\n", status.DownloadURL, locDirname)
 }

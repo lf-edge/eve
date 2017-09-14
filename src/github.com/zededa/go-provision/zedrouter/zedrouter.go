@@ -22,8 +22,8 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
-	"strings"
 )
+
 var runDirname = "/var/run/zedrouter"
 
 func main() {
@@ -54,7 +54,7 @@ func main() {
 			log.Fatal(err)
 		}
 	}
-	
+
 	if _, err := os.Stat(statusDirname); err != nil {
 		if err := os.Mkdir(statusDirname, 0700); err != nil {
 			log.Fatal(err)
@@ -68,109 +68,11 @@ func main() {
 	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
 	for {
 		change := <-fileChanges
-		parts := strings.Split(change, " ")
-		operation := parts[0]
-		fileName := parts[1]
-		if !strings.HasSuffix(fileName, ".json") {
-			log.Printf("Ignoring file <%s>\n", fileName)
-			continue
-		}
-		if operation == "D" {
-			statusFile := statusDirname + "/" + fileName
-			if _, err := os.Stat(statusFile); err != nil {
-				// File just vanished!
-				log.Printf("File disappeared <%s>\n", fileName)
-				continue
-			}
-			sb, err := ioutil.ReadFile(statusFile)
-			if err != nil {
-				log.Printf("%s for %s\n", err, statusFile)
-				continue
-			}
-			status := types.AppNetworkStatus{}
-			if err := json.Unmarshal(sb, &status); err != nil {
-				log.Printf("%s AppNetworkStatus file: %s\n",
-					err, statusFile)
-				continue
-			}
-			uuid := status.UUIDandVersion.UUID
-			if uuid.String()+".json" != fileName {
-				log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-					fileName, uuid.String())
-				continue
-			}
-			statusName := statusDirname + "/" + fileName
-			handleDelete(statusName, status)
-			continue
-		}
-		if operation != "M" {
-			log.Fatal("Unknown operation from Watcher: ", operation)
-		}
-		configFile := configDirname + "/" + fileName
-		cb, err := ioutil.ReadFile(configFile)
-		if err != nil {
-			log.Printf("%s for %s\n", err, configFile)
-			continue
-		}
-		config := types.AppNetworkConfig{}
-		if err := json.Unmarshal(cb, &config); err != nil {
-			log.Printf("%s AppNetworkConfig file: %s\n",
-				err, configFile)
-			continue
-		}
-		uuid := config.UUIDandVersion.UUID
-		if uuid.String()+".json" != fileName {
-			log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-				fileName, uuid.String())
-			continue
-		}
-		statusFile := statusDirname + "/" + fileName
-		if _, err := os.Stat(statusFile); err != nil {
-			// File does not exist in status hence new
-			statusName := statusDirname + "/" + fileName
-			handleCreate(statusName, config)
-			continue
-		}
-		// Read and check status
-		sb, err := ioutil.ReadFile(statusFile)
-		if err != nil {
-			log.Printf("%s for %s\n", err, statusFile)
-			continue
-		}
-		status := types.AppNetworkStatus{}
-		if err := json.Unmarshal(sb, &status); err != nil {
-			log.Printf("%s AppNetworkStatus file: %s\n",
-				err, statusFile)
-			continue
-		}
-		uuid = status.UUIDandVersion.UUID
-		if uuid.String()+".json" != fileName {
-			log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-				fileName, uuid.String())
-			continue
-		}
-		// Look for pending* in status and repeat that operation.
-		// XXX After that do a full ReadDir to restart ...
-		if status.PendingAdd {
-			statusName := statusDirname + "/" + fileName
-			handleCreate(statusName, config)
-			// XXX set something to rescan?
-			continue
-		}
-		if status.PendingDelete {
-			statusName := statusDirname + "/" + fileName
-			handleDelete(statusName, status)
-			// XXX set something to rescan?
-			continue
-		}
-		if status.PendingModify {
-			statusName := statusDirname + "/" + fileName
-			handleModify(statusName, config, status)
-			// XXX set something to rescan?
-			continue
-		}
-		statusName := statusDirname + "/" + fileName
-		handleModify(statusName, config, status)
+		watch.HandleConfigStatusEvent(change,
+			configDirname, statusDirname,
+			&types.AppNetworkConfig{},
+			&types.AppNetworkStatus{},
+			handleCreate, handleModify, handleDelete)
 	}
 }
 
@@ -181,7 +83,7 @@ var globalRunDirname string
 var lispRunDirname string
 
 func handleInit(configFilename string, statusFilename string,
-     runDirname string) {
+	runDirname string) {
 	globalStatusFilename = statusFilename
 	globalRunDirname = runDirname
 
@@ -200,7 +102,7 @@ func handleInit(configFilename string, statusFilename string,
 			log.Fatal(err)
 		}
 	}
-	
+
 	cb, err := ioutil.ReadFile(configFilename)
 	if err != nil {
 		log.Printf("%s for %s\n", err, configFilename)
@@ -301,7 +203,15 @@ var deviceEID net.IP
 var deviceIID uint32
 var additionalInfoDevice *types.AdditionalInfoDevice
 
-func handleCreate(statusFilename string, config types.AppNetworkConfig) {
+func handleCreate(statusFilename string, configArg interface{}) {
+	var config *types.AppNetworkConfig
+
+	switch configArg.(type) {
+	default:
+		log.Fatal("Can only handle AppNetworkConfig")
+	case *types.AppNetworkConfig:
+		config = configArg.(*types.AppNetworkConfig)
+	}
 	log.Printf("handleCreate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
@@ -326,11 +236,11 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		fmt.Printf("handleCreate: for %s IsZedmanager\n",
 			config.DisplayName)
 		if len(config.OverlayNetworkList) != 1 ||
-		   len(config.UnderlayNetworkList) != 0 {
+			len(config.UnderlayNetworkList) != 0 {
 			log.Println("Malformed IsZedmanager config; ignored")
 			return
 		}
-		
+
 		// Use this olIfname to name files
 		// XXX some files might not be used until Zedmanager becomes
 		// a domU at which point IsZedMansger boolean won't be needed
@@ -342,7 +252,7 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		// Create olIfname dummy interface with EID and fd00::/8 route
 		// pointing at it.
 		// XXX also a separate route for eidAllocationPrefix if global
-		
+
 		// Start clean
 		attrs := netlink.NewLinkAttrs()
 		attrs.Name = olIfname
@@ -368,7 +278,7 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 			fmt.Printf("LinkSetMTU on %s failed: %s\n",
 				olIfname, err)
 		}
-		
+
 		//    ip link set ${olIfname} up
 		if err := netlink.LinkSetUp(oLink); err != nil {
 			fmt.Printf("LinkSetUp on %s failed: %s\n",
@@ -378,7 +288,7 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		//    ip link set ${olIfname} arp on
 		if err := netlink.LinkSetARPOn(oLink); err != nil {
 			fmt.Printf("LinkSetARPOn on %s failed: %s\n", olIfname,
-			err)
+				err)
 		}
 
 		// Configure the EID on olIfname and set up a default route
@@ -414,10 +324,10 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 			HardwareAddr: hw, State: netlink.NUD_PERMANENT}
 		if err := netlink.NeighAdd(&neigh); err != nil {
 			fmt.Printf("NeighAdd fe80::1 failed: %s\n", err)
-		}		
+		}
 		if err := netlink.NeighSet(&neigh); err != nil {
 			fmt.Printf("NeighSet fe80::1 failed: %s\n", err)
-		}		
+		}
 
 		rt := netlink.Route{Dst: ipnet, LinkIndex: index, Gw: via}
 		if err := netlink.RouteAdd(&rt); err != nil {
@@ -437,7 +347,7 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		// Default EID ipset
 		deleteEidIpsetConfiglet(olIfname, false)
 		createEidIpsetConfiglet(olIfname, olConfig.NameToEidList,
-			  EID.String())
+			EID.String())
 
 		// Set up ACLs
 		createACLConfiglet(olIfname, true, olConfig.ACLs, 6, "")
@@ -446,7 +356,7 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		deviceEID = EID
 		deviceIID = olConfig.IID
 		additionalInfoDevice = olConfig.AdditionalInfoDevice
-		
+
 		// Format a json string with any additional info
 		additionalInfo := ""
 		if olConfig.AdditionalInfoDevice != nil {
@@ -458,8 +368,8 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 			fmt.Printf("Generated additional info device %s\n",
 				additionalInfo)
 		}
-		
-		// Create LISP configlets for IID and EID/signature		
+
+		// Create LISP configlets for IID and EID/signature
 		createLispConfiglet(lispRunDirname, true, olConfig.IID,
 			olConfig.EID, olConfig.LispSignature,
 			globalConfig.Uplink, olIfname, olIfname,
@@ -468,7 +378,7 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 			len(config.OverlayNetworkList))
 		for i, _ := range config.OverlayNetworkList {
 			status.OverlayNetworkList[i].OverlayNetworkConfig =
-			config.OverlayNetworkList[i]
+				config.OverlayNetworkList[i]
 		}
 		status.PendingAdd = false
 		writeAppNetworkStatus(&status, statusFilename)
@@ -476,19 +386,19 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 			config.DisplayName)
 		return
 	}
-	
+
 	// XXX introduce init function?
 	status.OverlayNetworkList = make([]types.OverlayNetworkStatus,
 		len(config.OverlayNetworkList))
 	for i, _ := range config.OverlayNetworkList {
 		status.OverlayNetworkList[i].OverlayNetworkConfig =
-		config.OverlayNetworkList[i]
+			config.OverlayNetworkList[i]
 	}
 	status.UnderlayNetworkList = make([]types.UnderlayNetworkStatus,
 		len(config.UnderlayNetworkList))
 	for i, _ := range config.UnderlayNetworkList {
 		status.UnderlayNetworkList[i].UnderlayNetworkConfig =
-		config.UnderlayNetworkList[i]
+			config.UnderlayNetworkList[i]
 	}
 
 	for i, olConfig := range config.OverlayNetworkList {
@@ -553,7 +463,7 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 
 		// Write radvd configlet; start radvd
 		cfgFilename := "radvd." + olIfname + ".conf"
-		cfgPathname := runDirname + cfgFilename
+		cfgPathname := runDirname + "/" + cfgFilename
 
 		//    Start clean; kill just in case
 		//    pkill -u radvd -f radvd.${OLIFNAME}.conf
@@ -573,23 +483,23 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		// Can be used in ACLs by specifying "alleids" as match.
 		deleteEidIpsetConfiglet(olIfname, false)
 		createEidIpsetConfiglet(olIfname, olConfig.NameToEidList,
-			  EID.String())
-		
+			EID.String())
+
 		// Set up ACLs before we setup dnsmasq
 		createACLConfiglet(olIfname, false, olConfig.ACLs, 6, olAddr1)
-		
+
 		// Start clean
 		cfgFilename = "dnsmasq." + olIfname + ".conf"
-		cfgPathname = runDirname + cfgFilename
+		cfgPathname = runDirname + "/" + cfgFilename
 		stopDnsmasq(cfgFilename, false)
 		createDnsmasqOverlayConfiglet(cfgPathname, olIfname, olAddr1,
 			EID.String(), olMac, hostsDirpath,
 			config.UUIDandVersion.UUID.String())
 		startDnsmasq(cfgPathname)
 
-		addInfoApp := types.AdditionalInfoApp {
-			DeviceEID: deviceEID,
-			DeviceIID: deviceIID,
+		addInfoApp := types.AdditionalInfoApp{
+			DeviceEID:   deviceEID,
+			DeviceIID:   deviceIID,
 			DisplayName: config.DisplayName,
 		}
 		if additionalInfoDevice != nil {
@@ -604,12 +514,12 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		fmt.Printf("Generated additional info app %s\n",
 			additionalInfo)
 
-		// Create LISP configlets for IID and EID/signature		
+		// Create LISP configlets for IID and EID/signature
 		createLispConfiglet(lispRunDirname, false, olConfig.IID,
 			olConfig.EID, olConfig.LispSignature,
 			globalConfig.Uplink, olIfname, olIfname,
 			additionalInfo)
-		
+
 		// Add bridge parameters for Xen to Status
 		olStatus := &status.OverlayNetworkList[olNum-1]
 		olStatus.Bridge = olIfname
@@ -633,7 +543,7 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 		ulAddr2 := "172.27." + strconv.Itoa(appNum) + ".2"
 		fmt.Printf("ulAddr1 %s ulAddr2 %s\n", ulAddr1, ulAddr2)
 		// Room to handle multiple underlays in 5th byte
-		ulMac := "00:16:3e:0:0:" + strconv.FormatInt(int64(appNum), 16)	
+		ulMac := "00:16:3e:0:0:" + strconv.FormatInt(int64(appNum), 16)
 		fmt.Printf("ulMac %s\n", ulMac)
 
 		// Start clean
@@ -673,11 +583,11 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 
 		// Start clean
 		cfgFilename := "dnsmasq." + ulIfname + ".conf"
-		cfgPathname := runDirname + cfgFilename
+		cfgPathname := runDirname + "/" + cfgFilename
 		stopDnsmasq(cfgFilename, false)
 
 		createDnsmasqUnderlayConfiglet(cfgPathname, ulIfname, ulAddr1,
-			ulAddr2, ulMac,	config.UUIDandVersion.UUID.String())
+			ulAddr2, ulMac, config.UUIDandVersion.UUID.String())
 		startDnsmasq(cfgPathname)
 
 		// Add bridge parameters for Xen to Status
@@ -692,11 +602,26 @@ func handleCreate(statusFilename string, config types.AppNetworkConfig) {
 	log.Printf("handleCreate done for %s\n", config.DisplayName)
 }
 
-// Note that modify will not touch the EID; just ACLs and NameToEidList
+// Note that handleModify will not touch the EID; just ACLs and NameToEidList
 // XXX should we check that nothing else has changed?
 // XXX If so flag other changes as errors; would need lastError in status.
-func handleModify(statusFilename string, config types.AppNetworkConfig,
-	status types.AppNetworkStatus) {
+func handleModify(statusFilename string, configArg interface{},
+	statusArg interface{}) {
+	var config *types.AppNetworkConfig
+	var status *types.AppNetworkStatus
+
+	switch configArg.(type) {
+	default:
+		log.Fatal("Can only handle AppNetworkConfig")
+	case *types.AppNetworkConfig:
+		config = configArg.(*types.AppNetworkConfig)
+	}
+	switch statusArg.(type) {
+	default:
+		log.Fatal("Can only handle AppNetworkStatus")
+	case *types.AppNetworkStatus:
+		status = statusArg.(*types.AppNetworkStatus)
+	}
 	log.Printf("handleModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
@@ -732,7 +657,7 @@ func handleModify(statusFilename string, config types.AppNetworkConfig,
 
 	status.PendingModify = true
 	status.UUIDandVersion = config.UUIDandVersion
-	writeAppNetworkStatus(&status, statusFilename)
+	writeAppNetworkStatus(status, statusFilename)
 
 	if config.IsZedmanager {
 		olConfig := config.OverlayNetworkList[0]
@@ -752,10 +677,10 @@ func handleModify(statusFilename string, config types.AppNetworkConfig,
 		// Update ACLs
 		updateACLConfiglet(olIfname, true, olStatus.ACLs,
 			olConfig.ACLs, 6, "")
-		fmt.Printf("handleUpdate done for %s\n", config.DisplayName)
+		fmt.Printf("handleModify done for %s\n", config.DisplayName)
 		return
 	}
-	
+
 	// Look for ACL and NametoEidList changes in overlay
 	for i, olConfig := range config.OverlayNetworkList {
 		olNum := i + 1
@@ -783,12 +708,12 @@ func handleModify(statusFilename string, config types.AppNetworkConfig,
 		// we need to restart dnsmasq (and update its ipset configs?
 		// XXX get a return value from updateAclConfiglet to indicate
 		// whether there were such changes?
-		
+
 		// Format a json string with any additional info
-		addInfoApp := types.AdditionalInfoApp {
+		addInfoApp := types.AdditionalInfoApp{
 			DisplayName: config.DisplayName,
-			DeviceEID: deviceEID,
-			DeviceIID: deviceIID,
+			DeviceEID:   deviceEID,
+			DeviceIID:   deviceIID,
 		}
 		if additionalInfoDevice != nil {
 			addInfoApp.UnderlayIP = additionalInfoDevice.UnderlayIP
@@ -805,7 +730,7 @@ func handleModify(statusFilename string, config types.AppNetworkConfig,
 		// Update any signature changes
 		// XXX should we check that EID didn't change?
 
-		// Create LISP configlets for IID and EID/signature		
+		// Create LISP configlets for IID and EID/signature
 		updateLispConfiglet(lispRunDirname, false, olConfig.IID,
 			olConfig.EID, olConfig.LispSignature,
 			globalConfig.Uplink, olIfname, olIfname,
@@ -828,21 +753,28 @@ func handleModify(statusFilename string, config types.AppNetworkConfig,
 		len(config.OverlayNetworkList))
 	for i, _ := range config.OverlayNetworkList {
 		status.OverlayNetworkList[i].OverlayNetworkConfig =
-		config.OverlayNetworkList[i]
+			config.OverlayNetworkList[i]
 	}
 	status.UnderlayNetworkList = make([]types.UnderlayNetworkStatus,
 		len(config.UnderlayNetworkList))
 	for i, _ := range config.UnderlayNetworkList {
 		status.UnderlayNetworkList[i].UnderlayNetworkConfig =
-		config.UnderlayNetworkList[i]
+			config.UnderlayNetworkList[i]
 	}
 	status.PendingModify = false
-	writeAppNetworkStatus(&status, statusFilename)
-	log.Printf("handleUpdate done for %s\n", config.DisplayName)
+	writeAppNetworkStatus(status, statusFilename)
+	log.Printf("handleModify done for %s\n", config.DisplayName)
 }
 
-// Need the olNum and ulNum to delete and EID route to delete
-func handleDelete(statusFilename string, status types.AppNetworkStatus) {
+func handleDelete(statusFilename string, statusArg interface{}) {
+	var status *types.AppNetworkStatus
+
+	switch statusArg.(type) {
+	default:
+		log.Fatal("Can only handle AppNetworkStatus")
+	case *types.AppNetworkStatus:
+		status = statusArg.(*types.AppNetworkStatus)
+	}
 	log.Printf("handleDelete(%v) for %s\n",
 		status.UUIDandVersion, status.DisplayName)
 
@@ -853,11 +785,11 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 		appNum, maxOlNum, maxUlNum)
 
 	status.PendingDelete = true
-	writeAppNetworkStatus(&status, statusFilename)
+	writeAppNetworkStatus(status, statusFilename)
 
 	if status.IsZedmanager {
 		if len(status.OverlayNetworkList) != 1 ||
-		   len(status.UnderlayNetworkList) != 0 {
+			len(status.UnderlayNetworkList) != 0 {
 			log.Println("Malformed IsZedmanager status; ignored")
 			return
 		}
@@ -865,7 +797,7 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 		deviceEID = net.IP{}
 		deviceIID = 0
 		additionalInfoDevice = nil
-		
+
 		olNum := 1
 		olStatus := &status.OverlayNetworkList[0]
 		olIfname := "dbo" + strconv.Itoa(olNum) + "x" +
@@ -908,7 +840,7 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 		neigh := netlink.Neigh{LinkIndex: index, IP: via}
 		if err := netlink.NeighDel(&neigh); err != nil {
 			fmt.Printf("NeighDel fe80::1 failed: %s\n", err)
-		}		
+		}
 
 		// Remove link and associated addresses
 		netlink.LinkDel(oLink)
@@ -944,16 +876,16 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 
 			// radvd cleanup
 			cfgFilename := "radvd." + olIfname + ".conf"
-			cfgPathname := runDirname + cfgFilename
+			cfgPathname := runDirname + "/" + cfgFilename
 			stopRadvd(cfgFilename, true)
 			deleteRadvdConfiglet(cfgPathname)
 
-			// dnsmasgq cleanup
+			// dnsmasq cleanup
 			cfgFilename = "dnsmasq." + olIfname + ".conf"
-			cfgPathname = runDirname + cfgFilename
+			cfgPathname = runDirname + "/" + cfgFilename
 			stopDnsmasq(cfgFilename, true)
 			deleteDnsmasqConfiglet(cfgPathname)
-			
+
 			// Need to check that index exists
 			if len(status.OverlayNetworkList) >= olNum {
 				olStatus := status.OverlayNetworkList[olNum-1]
@@ -969,7 +901,6 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 				log.Println("Missing status for overlay %d; can not clean up ACLs and LISP\n",
 					olNum)
 			}
-			
 
 			// Delete overlay hosts file
 			hostsDirpath := globalRunDirname + "/hosts." + olIfname
@@ -987,16 +918,16 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 			fmt.Printf("handleDelete ulNum %d\n", ulNum)
 			ulIfname := "bu" + strconv.Itoa(appNum)
 			fmt.Printf("Deleting ulIfname %s\n", ulIfname)
-	
+
 			attrs := netlink.NewLinkAttrs()
 			attrs.Name = ulIfname
 			uLink := &netlink.Bridge{LinkAttrs: attrs}
 			// Remove link and associated addresses
 			netlink.LinkDel(uLink)
 
-			// dnsmasgq cleanup
+			// dnsmasq cleanup
 			cfgFilename := "dnsmasq." + ulIfname + ".conf"
-			cfgPathname := runDirname + cfgFilename
+			cfgPathname := runDirname + "/" + cfgFilename
 			stopDnsmasq(cfgFilename, true)
 			deleteDnsmasqConfiglet(cfgPathname)
 
@@ -1014,7 +945,7 @@ func handleDelete(statusFilename string, status types.AppNetworkStatus) {
 	}
 	// Write out what we modified to AppNetworkStatus aka delete
 	if err := os.Remove(statusFilename); err != nil {
-		log.Println("Failed to remove", statusFilename, err)
+		log.Println(err)
 	}
 	appNumFree(status.UUIDandVersion.UUID)
 	log.Printf("handleDelete done for %s\n", status.DisplayName)

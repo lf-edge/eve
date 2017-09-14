@@ -18,7 +18,7 @@ import (
 var EIDConfig map[string]types.EIDConfig
 
 func MaybeAddEIDConfig(UUIDandVersion types.UUIDandVersion,
-     displayName string, ec *types.EIDOverlayConfig) {
+	displayName string, ec *types.EIDOverlayConfig) {
 	key := fmt.Sprintf("%s:%d", UUIDandVersion.UUID.String(), ec.IID)
 
 	log.Printf("MaybeAddEIDConfig for %s displayName %s\n", key,
@@ -33,21 +33,21 @@ func MaybeAddEIDConfig(UUIDandVersion types.UUIDandVersion,
 		// XXX check displayName and EIDConfigDetails didn't change?
 	} else {
 		fmt.Printf("EID config add for %s\n", key)
-		
+
 		EIDConfig[key] = types.EIDConfig{
-			UUIDandVersion: UUIDandVersion,
-			DisplayName: displayName,
+			UUIDandVersion:   UUIDandVersion,
+			DisplayName:      displayName,
 			EIDConfigDetails: ec.EIDConfigDetails,
 		}
 		configFilename := fmt.Sprintf("%s/%s.json",
 			identitymgrConfigDirname, key)
 		writeEIDConfig(EIDConfig[key], configFilename)
-	}	
+	}
 	log.Printf("MaybeAddEIDConfig done for %s\n", key)
 }
 
 func MaybeRemoveEIDConfig(UUIDandVersion types.UUIDandVersion,
-     es *types.EIDStatusDetails) {
+	es *types.EIDStatusDetails) {
 	key := fmt.Sprintf("%s:%d", UUIDandVersion.UUID.String(), es.IID)
 	log.Printf("MaybeRemoveEIDConfig for %s\n", key)
 
@@ -63,7 +63,7 @@ func MaybeRemoveEIDConfig(UUIDandVersion types.UUIDandVersion,
 	configFilename := fmt.Sprintf("%s/%s.json",
 		identitymgrConfigDirname, key)
 	if err := os.Remove(configFilename); err != nil {
-		log.Println("Failed to remove", configFilename, err)
+		log.Println(err)
 	}
 	log.Printf("MaybeRemoveEIDConfig done for %s\n", key)
 }
@@ -86,7 +86,7 @@ func writeEIDConfig(config types.EIDConfig,
 var EIDStatus map[string]types.EIDStatus
 
 func handleEIDStatusModify(statusFilename string,
-     statusArg interface{}) {
+	statusArg interface{}) {
 	var status *types.EIDStatus
 
 	switch statusArg.(type) {
@@ -128,7 +128,7 @@ func handleEIDStatusModify(statusFilename string,
 		EIDStatus[key] = *status
 		updateAIStatusUUID(status.UUIDandVersion.UUID.String())
 	}
-	
+
 	log.Printf("handleEIDStatusModify done for %s\n",
 		key)
 }

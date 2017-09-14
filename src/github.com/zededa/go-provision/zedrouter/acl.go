@@ -6,19 +6,18 @@
 package main
 
 import (
-	"fmt"       
+	"fmt"
+	"github.com/zededa/go-provision/types"
 	"log"
 	"strconv"
-	"github.com/zededa/go-provision/types"
 )
 
 // iptablesRule is the list of parmeters after the "-A", "FORWARD"
 type IptablesRuleList []IptablesRule
 type IptablesRule []string
 
-
 func createACLConfiglet(ifname string, isMgmt bool, ACLs []types.ACE,
-     ipVer int, overlayIP string) {
+	ipVer int, overlayIP string) {
 	fmt.Printf("createACLConfiglet: ifname %s, ACLs %v\n", ifname, ACLs)
 	rules := aclToRules(ifname, ACLs, ipVer, overlayIP)
 	for _, rule := range rules {
@@ -49,7 +48,7 @@ func createACLConfiglet(ifname string, isMgmt bool, ACLs []types.ACE,
 
 // Returns a list of iptables commands, witout the initial "-A FORWARD"
 func aclToRules(ifname string, ACLs []types.ACE, ipVer int,
-     overlayIP string) IptablesRuleList {
+	overlayIP string) IptablesRuleList {
 	rulesList := IptablesRuleList{}
 	if overlayIP != "" {
 		// Need to allow local communication */
@@ -115,7 +114,7 @@ func aceToRules(ifname string, ace types.ACE, ipVer int) IptablesRuleList {
 		case "eidset":
 			// The eidset only applies to IPv6 overlay
 			// Caller adds local EID to set
-			ipsetName := "eids." + ifname	
+			ipsetName := "eids." + ifname
 			addOut = []string{"-m", "set", "--match-set",
 				ipsetName, "dst"}
 			addIn = []string{"-m", "set", "--match-set",
@@ -139,7 +138,7 @@ func aceToRules(ifname string, ace types.ACE, ipVer int) IptablesRuleList {
 			foundLimit = true
 			// -m limit --limit 4/s --limit-burst 4
 			limit := strconv.Itoa(action.LimitRate) + "/" +
-			      action.LimitUnit
+				action.LimitUnit
 			burst := strconv.Itoa(action.LimitBurst)
 			add := []string{"-m", "limit", "--limit", limit,
 				"--limit-burst", burst}
@@ -168,13 +167,13 @@ func aceToRules(ifname string, ace types.ACE, ipVer int) IptablesRuleList {
 		fmt.Printf("unlimitedOutArgs %v\n", unlimitedOutArgs)
 		fmt.Printf("unlimitedInArgs %v\n", unlimitedInArgs)
 		rulesList = append(rulesList, unlimitedOutArgs, unlimitedInArgs)
-	}	
+	}
 	return rulesList
 }
 
 // Determine which rules to skip and what prefix/table to use
 func rulePrefix(operation string, isMgmt bool, ipVer int,
-     rule IptablesRule) IptablesRule {
+	rule IptablesRule) IptablesRule {
 	prefix := []string{}
 	if isMgmt {
 		// Enforcing sending on OUTPUT. Enforcing receiving
@@ -236,7 +235,7 @@ func containsRule(set IptablesRuleList, member IptablesRule) bool {
 }
 
 func updateACLConfiglet(ifname string, isMgmt bool, oldACLs []types.ACE,
-     newACLs []types.ACE, ipVer int, overlayIP string) {
+	newACLs []types.ACE, ipVer int, overlayIP string) {
 	fmt.Printf("updateACLConfiglet: ifname %s, oldACLs %v newACLs %v\n",
 		ifname, oldACLs, newACLs)
 	oldRules := aclToRules(ifname, oldACLs, ipVer, overlayIP)
@@ -282,7 +281,7 @@ func updateACLConfiglet(ifname string, isMgmt bool, oldACLs []types.ACE,
 }
 
 func deleteACLConfiglet(ifname string, isMgmt bool, ACLs []types.ACE,
-     ipVer int, overlayIP string) {
+	ipVer int, overlayIP string) {
 	fmt.Printf("deleteACLConfiglet: ifname %s ACLs %v\n", ifname, ACLs)
 	rules := aclToRules(ifname, ACLs, ipVer, overlayIP)
 	for _, rule := range rules {

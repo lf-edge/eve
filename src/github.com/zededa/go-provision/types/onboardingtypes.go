@@ -4,9 +4,9 @@
 package types
 
 import (
+	"github.com/satori/go.uuid"
 	"net"
 	"time"
-	"github.com/satori/go.uuid"
 )
 
 // Database entry for onboarding certificate.
@@ -42,14 +42,14 @@ type DeviceDb struct {
 	RedirectRootCert []byte
 	// LISP parameters; safe to have DNSname? Or list of IPs and credential
 	// strings.
-	LispMapServers []LispServerInfo
-	LispInstance   uint32
-	EID            net.IP
-	EIDHashLen     uint8
-	ZedServers     ZedServerConfig
-	EidAllocationPrefix	[]byte
-	EidAllocationPrefixLen	int
-	ClientAddr     string // To detect NATs
+	LispMapServers         []LispServerInfo
+	LispInstance           uint32
+	EID                    net.IP
+	EIDHashLen             uint8
+	ZedServers             ZedServerConfig
+	EidAllocationPrefix    []byte
+	EidAllocationPrefixLen int
+	ClientAddr             string // To detect NATs
 }
 
 type LispServerInfo struct {
@@ -73,13 +73,13 @@ type NameToEid struct {
 // Temporary approach to pass application EIDs back to prov1.zededa.net
 // to add to map servers
 type EIDRegister struct {
-	AppCert		[]byte		// XXX not currently used on server
-	AppPublicKey	[]byte
-	UUID		uuid.UUID
-	DisplayName	string
-	IID		uint32
-	EID		net.IP
-	EIDHashLen	uint8
-	CreateTime	time.Time // When EID was created
-	LispMapServers	[]LispServerInfo // XXX from here? Hard-coded for now
+	AppCert        []byte // XXX not currently used on server
+	AppPublicKey   []byte
+	UUID           uuid.UUID
+	DisplayName    string
+	IID            uint32
+	EID            net.IP
+	EIDHashLen     uint8
+	CreateTime     time.Time        // When EID was created
+	LispMapServers []LispServerInfo // XXX from here? Hard-coded for now
 }

@@ -41,6 +41,7 @@ cp -p README $TMPDIR/zededa/bin/
 cp -p etc/* $TMPDIR/zededa/etc/
 cp -p scripts/*.sh $TMPDIR/zededa/bin/
 cp -p bin/$TYPE/* $TMPDIR/zededa/bin/
+tar -C $TMPDIR/zededa/bin -xf $DIR/dnsmasq.$TYPE.tar.gz
 (cd $TMPDIR; tar -cf $DIR/go-provision.$TYPE.tar.gz .)
 rm -rf $TMPDIR
 
@@ -52,6 +53,7 @@ cp -p README $TMPDIR/zededa/bin/
 cp -p etc/* $TMPDIR/zededa/etc/
 cp -p scripts/*.sh $TMPDIR/zededa/bin/
 cp -p bin/$TYPE/* $TMPDIR/zededa/bin/
+tar -C $TMPDIR/zededa/bin -xf $DIR/dnsmasq.$TYPE.tar.gz
 (cd $TMPDIR; tar -cf $DIR/go-provision.$TYPE.tar.gz .)
 rm -rf $TMPDIR
 
