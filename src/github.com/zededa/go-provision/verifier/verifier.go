@@ -186,7 +186,7 @@ func handleCreate(statusFilename string, configArg interface{}) {
 	destFilename := destDirname + "/" + config.Safename	
 	fmt.Printf("Move from %s to %s\n", srcFilename, destFilename)
 	if _, err := os.Stat(destDirname); err != nil {
-		if err := os.Mkdir(destDirname, 0700); err != nil {
+		if err := os.MkdirAll(destDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
