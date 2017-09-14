@@ -212,8 +212,18 @@ EOF
 	echo "Setting hostname to $uuid"
 	/bin/hostname $uuid
 	/bin/hostname >/etc/hostname
+	# put the uuid in /etc/hosts to avoid complaints
+	echo "Adding $uuid to /etc/hosts"
+	echo "127.0.0.1 $uuid" >>/etc/hosts
 else
 	uuid=`cat $ETCDIR/uuid`
+	if ! `grep -s $uuid /etc/hosts`; then
+		# put the uuid in /etc/hosts to avoid complaints
+		echo "Adding $uuid to /etc/hosts"
+		echo "127.0.0.1 $uuid" >>/etc/hosts
+	else
+		echo "Found $uuid in /etc/hosts"
+	fi
 fi
 
 mkdir -p /var/tmp/zedrouter/config/
