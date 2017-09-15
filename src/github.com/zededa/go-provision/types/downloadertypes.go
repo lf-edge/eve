@@ -11,14 +11,16 @@ import (
 // The key/index to this is the Safename which is allocated by ZedManager.
 // That is the filename in which we store the corresponding json files.
 type DownloaderConfig struct {
-	Safename	string
-	DownloadURL	string	// XXX is there a more specific type?
-	Operation	string
+	Safename		string
+	DownloadURL		string	// XXX is there a more specific type?
+	Operation		string
 	TransportMethod	string	// Download Method S3/HTTP/SFTP etc.
-	Bucket		string
-	MaxSize		uint	// In kbytes
-	ImageSha256	string	// sha256 of immutable image XXX used?
-	RefCount	uint	// Zero means can delete file/cancel download
+	Bucket			string
+	MaxSize			uint	// In kbytes
+	ImageSha256		string	// sha256 of immutable image XXX used?
+	ObjDir			string	// Download Object Store
+	TargetObjDir	string	// Final Object Store
+	RefCount		uint	// Zero means can delete file/cancel download
 }
 
 func (config DownloaderConfig) VerifyFilename(fileName string) bool {
@@ -49,6 +51,8 @@ type DownloaderStatus struct {
 	RefCount      uint    // Zero means not downloaded
 	DownloadURL   string  // XXX is there a more specific type?
 	ImageSha256   string  // sha256 of immutable image
+	ObjDir        string  // Download Object store
+	TargetObjDir  string  // Target Object Store
 	State         SwState // DOWNLOADED etc
 	ReservedSpace uint    // Contribution to global ReservedSpace
 	Size          uint    // Once DOWNLOADED; less than MaxSize
