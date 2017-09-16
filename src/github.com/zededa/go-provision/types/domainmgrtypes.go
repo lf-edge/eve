@@ -35,15 +35,30 @@ func (config DomainConfig) VerifyFilename(fileName string) bool {
 	return ret
 }
 
+// Some of these items can be overridden by matching Targets in
+// StorageConfigList. For example, a Target of "kernel" means to set/override
+// the Kernel attribute below.
 type FixedResources struct {
-	Kernel  string // default ""
-	Ramdisk string // default ""
-	Memory  int    // in kbytes; XXX round up to Mbytes for xen?
-	MaxMem  int    // Default not set i.e. no balooning
-	VCpus   int    // default 1
-	// XXX Add CPU pinning
-	// XXX also device passthru?
-	ExtraArgs string // added to bootargs
+	Kernel     string // default ""
+	Ramdisk    string // default ""
+	Memory     int    // in kbytes; Rounded up to Mbytes for xen
+	MaxMem     int    // Default not set i.e. no ballooning
+	VCpus      int    // default 1
+	MaxCpus    int    // default VCpus
+	RootDev    string // default "/dev/xvda1"
+	ExtraArgs  string // added to bootargs
+	BootLoader string // default ""
+	// For CPU pinning
+	CPUs string // default "", list of "1,2"
+	// Needed for device passthru
+	DeviceTree string // default ""; sets device_tree
+	// Example: device_tree="guest-gpio.dtb"
+	DtDev []string // default nil; sets dtdev
+	// Example, DtDev=["/smb/gpio@f7020000","/smb/gpio@f8013000"]
+	IRQs []int // default nil; sets irqs
+	// Example, IRQs=[88,86]
+	IOMem []string // default nil; sets iomem
+	// Example, IOMem=["0xf7020,1","0xf8013,1"]
 }
 
 type DomainStatus struct {

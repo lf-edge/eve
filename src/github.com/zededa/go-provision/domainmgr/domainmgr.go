@@ -322,30 +322,10 @@ func configToStatus(config types.DomainConfig, status *types.DomainStatus) error
 		locationDir := verifiedDirname + "/" + dc.ImageSha256
 		log.Printf("configToStatus(%v) processing disk img %s for %s\n",
 			config.UUIDandVersion, locationDir, config.DisplayName)
-		if _, err := os.Stat(locationDir); err != nil {
-			log.Printf("Missing directory: %s, %s\n",
-				locationDir, err)
-			return err
-		}
-		// locationDir is a directory. Need to find single file inside
-		// which the verifier ensures.
-		locations, err := ioutil.ReadDir(locationDir)
+		location, err := locationFromDir(locationDir)
 		if err != nil {
-			log.Printf("ReadDir(%s) %s\n",
-				locationDir, err)
 			return err
 		}
-		if len(locations) != 1 {
-			log.Printf("Multiple files in %s\n", locationDir)
-			return errors.New(fmt.Sprintf("Multiple files in %s\n",
-				locationDir))
-		}
-		if len(locations) == 0 {
-			log.Printf("No files in %s\n", locationDir)
-			return errors.New(fmt.Sprintf("No files in %s\n",
-				locationDir))
-		}
-		location := locationDir + "/" + locations[0].Name()
 		ds.FileLocation = location
 		target := location
 		if !dc.ReadOnly {
@@ -370,10 +350,18 @@ func configToXencfg(config types.DomainConfig,
 	file.WriteString(fmt.Sprintf("builder = \"pv\"\n"))
 	file.WriteString(fmt.Sprintf("uuid = \"%s\"\n",
 		config.UUIDandVersion.UUID))
-	file.WriteString(fmt.Sprintf("kernel = \"%s\"\n", config.Kernel))
+	// XXX where do we override? 
+	if config.Kernel != "" {
+		file.WriteString(fmt.Sprintf("kernel = \"%s\"\n",
+			config.Kernel))
+	}
 	if config.Ramdisk != "" {
 		file.WriteString(fmt.Sprintf("ramdisk = \"%s\"\n",
 			config.Ramdisk))
+	}
+	if config.BootLoader != "" {
+		file.WriteString(fmt.Sprintf("bootloader = \"%s\"\n",
+			config.BootLoader))
 	}
 	// Go from kbytes to mbytes
 	kbyte2mbyte := func(kbyte int) int {
@@ -385,13 +373,61 @@ func configToXencfg(config types.DomainConfig,
 		file.WriteString(fmt.Sprintf("maxmem = %d\n",
 			kbyte2mbyte(config.MaxMem)))
 	}
-	file.WriteString(fmt.Sprintf("vcpus = %d\n", config.VCpus))
-	// XXX should add pinning somehow. Need status of available CPUs to
-	// zedcloud?
-	// XXX cpus=string
-	// XXX also device passthru?
-	// XXX note that qcow2 images might have partitions hence xvda1
-	extra := "console=hvc0 root=/dev/xvda1 " + config.ExtraArgs
+	vCpus := config.VCpus
+	if vCpus == 0 {
+		vCpus = 1
+	}
+	file.WriteString(fmt.Sprintf("vcpus = %d\n", vCpus))
+	maxCpus := config.MaxCpus
+	if maxCpus == 0 {
+		maxCpus = vCpus
+	}
+	file.WriteString(fmt.Sprintf("maxcpus = %d\n", maxCpus))
+	if config.CPUs != "" {
+		file.WriteString(fmt.Sprintf("cpus = \"%s\"\n", config.CPUs))
+	}
+	if config.DeviceTree != "" {
+		file.WriteString(fmt.Sprintf("device_tree = \"%s\"\n",
+			config.DeviceTree))
+	}
+	dtString := ""
+	for _, dt := range config.DtDev {
+		if dtString != "" {
+			dtString += ","
+		}
+		dtString += fmt.Sprintf("\"%s\"", dt)
+	}
+	if dtString != "" {
+		file.WriteString(fmt.Sprintf("dtdev = [%s]\n", dtString))
+	}
+	irqString := ""
+	for _, irq := range config.IRQs {
+		if irqString != "" {
+			irqString += ","
+		}
+		irqString += fmt.Sprintf("%d", irq)
+	}
+	if irqString != "" {
+		file.WriteString(fmt.Sprintf("irqs = [%s]\n", irqString))
+	}
+	imString := ""
+	for _, im := range config.IOMem {
+		if imString != "" {
+			imString += ","
+		}
+		imString += fmt.Sprintf("\"%s\"", im)
+	}
+	if imString != "" {
+		file.WriteString(fmt.Sprintf("iomem = [%s]\n", imString))
+	}
+	// Note that qcow2 images might have partitions hence xvda1 by default
+	if config.RootDev == "" {
+		file.WriteString(fmt.Sprintf("root = \"/dev/xvda1\"\n"))
+	} else {
+		file.WriteString(fmt.Sprintf("root = \"%s\"\n",
+			config.RootDev))
+	}
+	extra := "console=hvc0 " + config.ExtraArgs
 	file.WriteString(fmt.Sprintf("extra = \"%s\"\n", extra))
 	file.WriteString(fmt.Sprintf("serial = \"%s\"\n", "pty"))
 	file.WriteString(fmt.Sprintf("boot = \"%s\"\n", "c"))
@@ -692,4 +728,29 @@ func xlDestroy(domainName string, domainId int) error {
 	}
 	fmt.Printf("xl destroy done\n")
 	return nil
+}
+
+func locationFromDir(locationDir string) (string, error) {
+	if _, err := os.Stat(locationDir); err != nil {
+		log.Printf("Missing directory: %s, %s\n", locationDir, err)
+		return "", err
+	}
+	// locationDir is a directory. Need to find single file inside
+	// which the verifier ensures.
+	locations, err := ioutil.ReadDir(locationDir)
+	if err != nil {
+		log.Printf("ReadDir(%s) %s\n", locationDir, err)
+		return "", err
+	}
+	if len(locations) != 1 {
+		log.Printf("Multiple files in %s\n", locationDir)
+		return "", errors.New(fmt.Sprintf("Multiple files in %s\n",
+			locationDir))
+	}
+	if len(locations) == 0 {
+		log.Printf("No files in %s\n", locationDir)
+		return "", errors.New(fmt.Sprintf("No files in %s\n",
+			locationDir))
+	}
+	return locationDir + "/" + locations[0].Name(), nil
 }

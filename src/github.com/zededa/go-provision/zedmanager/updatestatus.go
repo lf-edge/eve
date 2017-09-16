@@ -227,7 +227,14 @@ func doUpdate(uuidStr string, config types.AppInstanceConfig,
 			changed = doInactivate(uuidStr, status)
 		} else {
 			// If we have a !ReadOnly disk this will create a copy
-			MaybeAddDomainConfig(config, nil)
+			err := MaybeAddDomainConfig(config, nil)
+			if err != nil {
+				log.Printf("Error from MaybeAddDomainConfig for %s: %s\n",
+					uuidStr, err)
+				status.Error = fmt.Sprintf("%s", err)
+				status.ErrorTime = time.Now()
+				changed = true
+			}
 		}
 		log.Printf("Waiting for config.Activate for %s\n", uuidStr)
 		return changed
@@ -492,7 +499,17 @@ func doActivate(uuidStr string, config types.AppInstanceConfig,
 	log.Printf("Done with AppNetworkStatus for %s\n", uuidStr)
 
 	// Make sure we have a DomainConfig
-	MaybeAddDomainConfig(config, &ns)
+	err = MaybeAddDomainConfig(config, &ns)
+	if err != nil {
+		log.Printf("Error from MaybeAddDomainConfig for %s: %s\n",
+			uuidStr, err)
+		status.Error = fmt.Sprintf("%s", err)
+		status.ErrorTime = time.Now()
+		changed = true
+		log.Printf("Waiting for DomainStatus Activated for %s\n",
+			uuidStr)
+		return changed
+	}
 
 	// Check DomainStatus; update AI status if error
 	ds, err := LookupDomainStatus(uuidStr)
