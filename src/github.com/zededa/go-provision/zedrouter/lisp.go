@@ -317,7 +317,7 @@ func restartLisp(lispRunDirname string, upLinkIfname string, devices string) {
 		"8080",
 		upLinkIfname,
 	}
-	itrTimeout := 10
+	itrTimeout := 1
 	cmd := exec.Command(RestartCmd)
 	cmd.Args = args
 	env := os.Environ()
