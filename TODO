@@ -1,30 +1,7 @@
-TODO Need extensions for
-kernel="Image.LED.DomU"
-device_tree="guest-gpio.dtb" XXX or guest-led.dtb
-dtdev=["/smb/gpio@f7020000","/smb/gpio@f8013000"]
-irqs=[88,86]
-iomem=["0xf7020,1","0xf8013,1"]
-
-StorageConfig with
-Target="disk","kernel","device_tree","initrd","ramdisk"
-Overrides any "kernel" config...
-Leave kernel empty if not set. Ditto for rest.
-
-XXX how do we do external refs to the dtb? URL? "ext_device_tree" and ditto
-for kernel?
-Add object to Storage aka Image ConfigList. Mark as RO. Should not be mounted.
-Reference is to sha256...
-RefKernel="<sha>"
-XenKernel="Image.LED.DomU" XXX not needed.
-Turns into kernel="/var/tmp/zedmanager/downloads/verified/<sha>/<safename>"
-etc?
-
-XXX need root=. Can default to "xvda1" for compat.
-root=/dev/xvda console=hvc0
-disk = ['alpine3.img,raw,xvda,rw']
-
 TODO service to mount second disk (with gpio-to-lead?) and "run=" in /proc/cmdline
-
+     In alpine img
+     Upload img + dtd's to store
+     
 TODO move state from DELIVERED to INSTALLED when all in place.
 Individual StorageStatus as well?
 
@@ -33,14 +10,9 @@ TODO use dmidecode to determine bios version etc. Put in SwStatus?
   bios-version
   bios-release-date
 
-TODO update Device Models for Software Installation with eid allocation
-example and references to github types.
-
 TODO? encrypted virtual disks? Useful if rw since contains customer data
 
-TODO add device mapping to support gpiotoled.
-TODO add cpu binding for rtos - freertos image?
-TODO what is needed for docker/rkt?
+TODO what is needed for docker/rkt? Two vdisks?
 
 TODO ethtool setup in domU for checksum? How to make permanent?
 	sudo ethtool -K eth1 tx-checksum-ipv6 off
@@ -54,10 +26,10 @@ TODO 20-30 second outage when we add/delete a domU/EID as reported by
 TODO loose ms1; RL requires RL on prov01.
 TODO hikey02 no packets. Enable ITR/dp logging on webpage and packet starts flowing
 
-TODO kernel=Image is external to domU; how to specify external kernel which needs to be downloaded?
-Ditto for initrd?
-Q: target=kernel? plus "extKernel=true"?
-
+TODO name for StorageConfig*?
+     Is both an Image description and aspects of the container for the image
+     ImageDeploymentConfig and ImageDeploymentStatus?
+     
 TODO rename displayName to localDNSName?
      Should we allow for empty? Also used for xen domain.
 TODO should we have one name per overlay?
@@ -65,10 +37,6 @@ TODO should we have one name per overlay?
 LATER domU needs to know which overlay is which and diff than IPv6 underlay.
 LATER domU needs /128 routes for multiple IPv6 overlays?
 
-TODO name for StorageConfig*?
-     Is both an Image description and aspects of the container for the image
-     ImageDeploymentConfig and ImageDeploymentStatus?
-     
 TODO create domain name ipsets on the fly. Easy in handleCreate
    Requires some care in handleModify
 TODO handleModify's update to ACLs assumes there is no DROP rules since does inserts new rules up front.
@@ -84,6 +52,28 @@ TODO Create DeviceSwStatus separate from DeviceSwResources
 DONE NAT i.e. uplink global address? (From exchanges with ZedControl).
 
 ===
+
+DONE update Device Models for Software Installation with eid allocation
+example and references to github types.
+
+DONE add device mapping to support gpiotoled.
+DONE add cpu binding for rtos - freertos image?
+
+DONE Need extensions for
+     kernel="Image.LED.DomU"
+     device_tree="guest-gpio.dtb" XXX or guest-led.dtb
+     dtdev=["/smb/gpio@f7020000","/smb/gpio@f8013000"]
+     irqs=[88,86]
+     iomem=["0xf7020,1","0xf8013,1"]
+
+DONE StorageConfig with
+     Target="disk","kernel","device_tree","initrd","ramdisk"
+     Overrides any "kernel" config...
+     Leave kernel empty if not set. Ditto for rest.
+
+DONE need root=. Can default to "xvda1" for compat.
+     root=/dev/xvda console=hvc0
+     disk = ['alpine3.img,raw,xvda,rw']
 
 DONE put uuid in /etc/hosts just like hostname.
 
