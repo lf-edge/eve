@@ -193,6 +193,17 @@ iptables -F
 ip6tables -F
 ip6tables -t raw -F
 
+echo "Saving any old log files"
+LOGGERS="zedmanager $AGENTS"
+for l in $LOGGERS; do
+    f=/var/log/$l.log
+    if [ -f $f ]; then
+	datetime=`stat -c %y $f | awk '{printf "%s-%s", $1, $2}'`
+	echo "Saving $f.$datetime"
+	mv $f $f.$datetime
+    fi
+done
+
 if [ $SELF_REGISTER = 1 ]; then
 	intf=`$BINDIR/find-uplink.sh $ETCDIR/lisp.config.base`
 	if [ "$intf" != "" ]; then
@@ -217,7 +228,8 @@ EOF
 	echo "127.0.0.1 $uuid" >>/etc/hosts
 else
 	uuid=`cat $ETCDIR/uuid`
-	if ! `grep -s $uuid /etc/hosts`; then
+	grep -s $uuid /etc/hosts >/dev/null
+	if [ !? == 1 ]; then
 		# put the uuid in /etc/hosts to avoid complaints
 		echo "Adding $uuid to /etc/hosts"
 		echo "127.0.0.1 $uuid" >>/etc/hosts
