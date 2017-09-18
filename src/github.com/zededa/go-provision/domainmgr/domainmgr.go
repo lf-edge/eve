@@ -98,7 +98,7 @@ func main() {
 			configDirname, statusDirname,
 			&types.DomainConfig{},
 			&types.DomainStatus{},
-			handleCreate, handleModify, handleDelete)
+			handleCreate, handleModify, handleDelete, nil)
 	}
 }
 

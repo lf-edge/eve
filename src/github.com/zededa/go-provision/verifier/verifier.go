@@ -107,7 +107,7 @@ func main() {
 			configDirname, statusDirname,
 			&types.VerifyImageConfig{},
 			&types.VerifyImageStatus{},
-			handleCreate, handleModify, handleDelete)
+			handleCreate, handleModify, handleDelete, nil)
 	}
 }
 

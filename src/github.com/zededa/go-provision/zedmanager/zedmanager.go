@@ -142,7 +142,7 @@ func main() {
 					&types.AppInstanceConfig{},
 					&types.AppInstanceStatus{},
 					handleCreate, handleModify,
-					handleDelete)
+					handleDelete, nil)
 				continue
 			}
 		}

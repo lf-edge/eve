@@ -64,6 +64,9 @@ func main() {
 
 	handleInit(configDirname+"/global", statusDirname+"/global", runDirname)
 
+	handleRestart(false)
+	var restartFn watch.ConfigRestartHandler = handleRestart
+
 	fileChanges := make(chan string)
 	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
 	for {
@@ -72,8 +75,14 @@ func main() {
 			configDirname, statusDirname,
 			&types.AppNetworkConfig{},
 			&types.AppNetworkStatus{},
-			handleCreate, handleModify, handleDelete)
+			handleCreate, handleModify, handleDelete,
+			&restartFn)
 	}
+}
+
+func handleRestart(done bool) {
+	log.Printf("handleRestart(%v)\n", done)
+	handleLispRestart(done)
 }
 
 var globalConfig types.DeviceNetworkConfig

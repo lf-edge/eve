@@ -29,16 +29,24 @@ type configCreateHandler func(statusFilename string, config interface{})
 type configModifyHandler func(statusFilename string, config interface{},
 	status interface{})
 type configDeleteHandler func(statusFilename string, status interface{})
+type ConfigRestartHandler func(bool)
 
 func HandleConfigStatusEvent(change string,
 	configDirname string, statusDirname string,
 	config ZedConfig, status ZedStatus,
 	handleCreate configCreateHandler, handleModify configModifyHandler,
-	handleDelete configDeleteHandler) {
+	handleDelete configDeleteHandler, handleRestart *ConfigRestartHandler) {
 
 	parts := strings.Split(change, " ")
 	operation := parts[0]
 	fileName := parts[1]
+	if operation == "R" {
+		log.Printf("Received restart <%s>\n", fileName)
+		if handleRestart != nil {
+			(*handleRestart)(true)
+		}
+		return
+	}
 	if !strings.HasSuffix(fileName, ".json") {
 		log.Printf("Ignoring file <%s>\n", fileName)
 		return
@@ -138,6 +146,10 @@ func HandleStatusEvent(change string, statusDirname string, status interface{},
 	parts := strings.Split(change, " ")
 	operation := parts[0]
 	fileName := parts[1]
+	if operation == "R" {
+		log.Printf("Received restart <%s>; ignored\n", fileName)
+		return
+	}
 	if !strings.HasSuffix(fileName, ".json") {
 		log.Printf("Ignoring file <%s>\n", fileName)
 		return

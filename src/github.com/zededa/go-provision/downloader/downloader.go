@@ -104,7 +104,7 @@ func main() {
 			&types.DownloaderConfig{},
 			&types.DownloaderStatus{},
 			handleCreate, handleModify,
-			handleDelete)
+			handleDelete, nil)
 	}
 }
 

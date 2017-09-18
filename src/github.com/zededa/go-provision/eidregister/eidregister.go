@@ -106,7 +106,7 @@ func main() {
 			inputDirname, outputDirname,
 			&types.EIDStatus{},
 			&types.EIDStatus{},
-			handleCreate, handleModify, handleDelete)
+			handleCreate, handleModify, handleDelete, nil)
 	}
 }
 

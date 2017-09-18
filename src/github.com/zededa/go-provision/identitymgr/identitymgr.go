@@ -71,7 +71,7 @@ func main() {
 			configDirname, statusDirname,
 			&types.EIDConfig{},
 			&types.EIDStatus{},
-			handleCreate, handleModify, handleDelete)
+			handleCreate, handleModify, handleDelete, nil)
 	}
 }
 
