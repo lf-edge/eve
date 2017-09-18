@@ -243,6 +243,7 @@ func updateLisp(lispRunDirname string, upLinkIfname string) {
 		log.Println("os.Open ", baseFilename, err)
 		return
 	}
+	defer s.Close()
 	var cnt int64
 	if cnt, err = io.Copy(tmpfile, s); err != nil {
 		log.Println("io.Copy ", baseFilename, err)
@@ -267,6 +268,7 @@ func updateLisp(lispRunDirname string, upLinkIfname string) {
 			log.Println("os.Open ", filename, err)
 			return
 		}
+		defer s.Close()
 		if cnt, err = io.Copy(tmpfile, s); err != nil {
 			log.Println("io.Copy ", filename, err)
 			return
@@ -284,6 +286,7 @@ func updateLisp(lispRunDirname string, upLinkIfname string) {
 		log.Println("Rename ", tmpfile.Name(), destFilename, err)
 		return
 	}
+
 	// Determine the set of devices from the above config file
 	grep := exec.Command("grep", "device = ", destFilename)
 	awk := exec.Command("awk", "{print $NF}")
