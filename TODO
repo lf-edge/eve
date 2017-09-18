@@ -1,3 +1,15 @@
+TODO try set checkpoint-map-cache
+Without; stop one domain; 35 seconds outtage for dom0 and domU
+64 bytes from zedhikey: icmp_seq=224 ttl=62 time=237 ms
+64 bytes from zedhikey: icmp_seq=259 ttl=62 time=353 ms
+With; start one domain; 35 seconds outtage for dom0 and domU
+With? stop one domain?
+43 seconds (but was other domain fully booted? CPU load?)
+Start one domain?
+32 seconds, 33 seconds
+Stop 43
+No benefit.
+
 TODO service to mount second disk (with gpio-to-lead?) and "run=" in /proc/cmdline
      In alpine img
      Upload img + dtd's to store
@@ -5,7 +17,7 @@ TODO service to mount second disk (with gpio-to-lead?) and "run=" in /proc/cmdli
 TODO move state from DELIVERED to INSTALLED when all in place.
 Individual StorageStatus as well?
 
-TODO use dmidecode to determine bios version etc. Put in SwStatus?
+TODO use dmidecode to determine bios version etc. Put in SwStatus? Or HwStatus?
   bios-vendor
   bios-version
   bios-release-date
@@ -53,6 +65,24 @@ DONE NAT i.e. uplink global address? (From exchanges with ZedControl).
 
 ===
 
+DONE handleRestart(done bool) as a hook to avoid multiple RESTART-LISP
+     during restart?
+     Set a deferLispRestart=true in handleRestart(false)
+     Call RestartLisp in handleRestart(true)
+DONE zedrouter needs to wait for zedmanager to have restarted ...
+     zedmanager waits for /var/run/verifier/status/restarted to appear
+     writes /var/tmp/zedrouter/config/restart
+     zedrouter waits for /var/tmp/zedrouter/config/restart to appear, then
+     'R' from wait
+     Generalize to write restarting to all but zedrouter?
+DONE add WaitForFile and use to sequence startup
+
+DONE device-steps save old logs
+     for f in /var/log/xxx*.log; do
+	     datetime=`stat -c %y $f | awk '{printf "%s-%s", $1, $2}'`
+	     mv $f $f.$datetime
+     done
+     
 DONE update Device Models for Software Installation with eid allocation
 example and references to github types.
 

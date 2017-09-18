@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 )
 
+var debug = true
+
 func WaitForFile(filename string) {
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -25,12 +27,18 @@ func WaitForFile(filename string) {
 		for {
 			select {
 			case <-stop:
-				// log.Println("stopping")
+				if debug {
+					log.Println("stopping")
+				}
 				return
 			case event := <-w.Events:
-				// log.Println("event:", event)
+				if debug {
+					log.Println("event:", event)
+				}
 				if event.Name != filename {
-					// log.Println("diff file:", event.Name)
+					if debug {
+						log.Println("diff file:", event.Name)
+					}
 					break
 				}
 				if event.Op & fsnotify.Create != 0 {
@@ -49,7 +57,9 @@ func WaitForFile(filename string) {
 	}
 	_, err = os.Stat(filename)
 	if err == nil {
-		// log.Println("found file:", filename)
+		if debug {
+			log.Println("found file:", filename)
+		}
 		stop <- true
 		return
 	}

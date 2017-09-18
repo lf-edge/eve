@@ -22,7 +22,6 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
-	"time"
 )
 
 // Keeping status in /var/run to be clean after a crash/reboot
@@ -79,11 +78,15 @@ func main() {
 	go watch.WatchStatus(zedrouterStatusDirname, zedrouterChanges)
 	domainmgrChanges := make(chan string)
 	go watch.WatchStatus(domainmgrStatusDirname, domainmgrChanges)
-	// XXX do we need to wait for the verifier to report initial status?
-	// Needed to avoid extra download
-	log.Printf("Waiting for verifier to report\n")
-	delay := time.Second * 5
-	time.Sleep(delay)
+	// Wait for the verifier to report initial status to avoid downloading
+	// a file which is already downloaded
+	waitFile := "/var/run/verifier/status/restarted"
+	log.Printf("Waiting for verifier to report in %s\n", waitFile)
+	watch.WaitForFile(waitFile)
+	log.Printf("Verifier reported in %s\n", waitFile)
+
+	var restartFn watch.ConfigRestartHandler = handleRestart
+
 	configChanges := make(chan string)
 	go watch.WatchConfigStatus(zedmanagerConfigDirname,
 		zedmanagerStatusDirname, configChanges)
@@ -142,10 +145,23 @@ func main() {
 					&types.AppInstanceConfig{},
 					&types.AppInstanceStatus{},
 					handleCreate, handleModify,
-					handleDelete, nil)
+					handleDelete, &restartFn)
 				continue
 			}
 		}
+	}
+}
+
+// Tell zedrouter to start once we've parsed all the inputs on restart
+func handleRestart(done bool) {
+	log.Printf("handleRestart(%v)\n", done)
+	if done {
+		restartFile := "/var/tmp/zedrouter/config/restart"
+		f, err := os.OpenFile(restartFile, os.O_RDONLY|os.O_CREATE, 0600)
+		if err != nil {
+			log.Fatal(err)
+		}
+		f.Close()
 	}
 }
 

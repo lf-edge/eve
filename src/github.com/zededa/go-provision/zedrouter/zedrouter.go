@@ -64,6 +64,13 @@ func main() {
 
 	handleInit(configDirname+"/global", statusDirname+"/global", runDirname)
 
+	// Wait for zedmanager having populated the intial files to
+	// reduce the number of LISP-RESTARTs
+	restartFile := "/var/tmp/zedrouter/config/restart"
+	log.Printf("Waiting for zedmanager to report in %s\n", restartFile)
+	watch.WaitForFile(restartFile)
+	log.Printf("Zedmanager reported in %s\n", restartFile)
+
 	handleRestart(false)
 	var restartFn watch.ConfigRestartHandler = handleRestart
 

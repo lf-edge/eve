@@ -224,7 +224,7 @@ func locationFromDir(locationDir string) (string, error) {
 	// which the verifier ensures.
 	locations, err := ioutil.ReadDir(locationDir)
 	if err != nil {
-		log.Printf("ReadDir(%s) %s\n", locationDir, err)
+		log.Println(err)
 		return "", err
 	}
 	if len(locations) != 1 {

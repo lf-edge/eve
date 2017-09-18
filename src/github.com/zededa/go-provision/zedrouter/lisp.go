@@ -251,7 +251,7 @@ func updateLisp(lispRunDirname string, upLinkIfname string) {
 	fmt.Printf("Copied %d bytes from %s\n", cnt, baseFilename)
 	files, err := ioutil.ReadDir(lispRunDirname)
 	if err != nil {
-		log.Println("ReadDir ", lispRunDirname, err)
+		log.Println(err)
 		return
 	}
 	eidCount := 0

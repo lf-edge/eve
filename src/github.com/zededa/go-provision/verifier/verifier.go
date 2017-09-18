@@ -60,15 +60,24 @@ func main() {
 			log.Fatal(err)
 		}
 	}
-	if err := os.RemoveAll(statusDirname); err != nil {
-		log.Fatal(err)
-	}
-	
 	if _, err := os.Stat(statusDirname); err != nil {
 		if err := os.Mkdir(statusDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
+	// Don't remove directory since there is a watch on it
+	locations, err := ioutil.ReadDir(statusDirname)
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, location := range locations {
+		filename := statusDirname + "/" + location.Name()
+		if err := os.RemoveAll(filename); err != nil {
+			log.Fatal(err)
+		}
+	}
+	
+		
 	if _, err := os.Stat(imgCatalogDirname); err != nil {
 		if err := os.Mkdir(imgCatalogDirname, 0700); err != nil {
 			log.Fatal(err)
@@ -118,8 +127,7 @@ func handleInit(verifiedDirname string, statusDirname string,
 		verifiedDirname, statusDirname,	parentDirname)
 	locations, err := ioutil.ReadDir(verifiedDirname)
 	if err != nil {
-		log.Fatalf("ReadDir(%s) %s\n",
-			verifiedDirname, err)
+		log.Fatal(err)
 	}
 	for _, location := range locations {
 		filename := verifiedDirname + "/" + location.Name()
@@ -138,6 +146,13 @@ func handleInit(verifiedDirname string, statusDirname string,
 	}
 	fmt.Printf("handleInit done for %s, %s, %s\n",
 		verifiedDirname, statusDirname,	parentDirname)
+	// Report to zedmanager that init is done
+	waitFile := "/var/run/verifier/status/restarted"
+	f, err := os.OpenFile(waitFile, os.O_RDONLY|os.O_CREATE, 0600)
+	if err != nil {
+		log.Fatal(err)
+	}
+	f.Close()
 }
 
 func writeVerifyImageStatus(status *types.VerifyImageStatus,
@@ -248,8 +263,7 @@ func handleCreate(statusFilename string, configArg interface{}) {
 		// Delete existing to avoid wasting space.
 		locations, err := ioutil.ReadDir(finalDirname)
 		if err != nil {
-			log.Fatalf("ReadDir(%s) %s\n",
-				finalDirname, err)
+			log.Fatal(err)
 		}
 		for _, location := range locations {
 			log.Printf("Identical sha256 (%s) for safenames %s and %s; deleting old\n",

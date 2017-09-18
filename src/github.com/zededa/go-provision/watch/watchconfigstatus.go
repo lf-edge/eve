@@ -72,7 +72,7 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 	}
 	files, err := ioutil.ReadDir(configDir)
 	if err != nil {
-		log.Fatal(err, ": ", configDir)
+		log.Fatal(err)
 	}
 
 	for _, file := range files {
@@ -84,7 +84,7 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 	if initialDelete {
 		statusFiles, err := ioutil.ReadDir(statusDir)
 		if err != nil {
-			log.Fatal(err, ": ", statusDir)
+			log.Fatal(err)
 		}
 
 		for _, file := range statusFiles {
@@ -143,7 +143,7 @@ func WatchStatus(statusDir string, fileChanges chan<- string) {
 	}
 	files, err := ioutil.ReadDir(statusDir)
 	if err != nil {
-		log.Fatal(err, ": ", statusDir)
+		log.Fatal(err)
 	}
 
 	for _, file := range files {

@@ -250,14 +250,23 @@ cp $ETCDIR/network.config.global /var/tmp/zedrouter/config/global
 mkdir -p /var/tmp/downloader/config/
 echo '{"MaxSpace":2000000}' >/var/tmp/downloader/config/global 
 
-echo "Starting downloader"
-downloader >&/var/log/downloader.log&
+rm -f /var/run/verifier/status/restarted
+rm -f /var/tmp/zedrouter/config/restart
+
+echo "Starting verifier"
+verifier >&/var/log/verifier.log&
 if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
 
-echo "Starting verifier"
-verifier >&/var/log/verifier.log&
+echo "Starting ZedManager"
+zedmanager >&/var/log/zedmanager.log&
+if [ $WAIT == 1 ]; then
+    echo; read -n 1 -s -p "Press any key to continue"; echo; echo
+fi
+
+echo "Starting downloader"
+downloader >&/var/log/downloader.log&
 if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
@@ -282,13 +291,6 @@ fi
 
 echo "Starting DomainMgr"
 domainmgr >&/var/log/domainmgr.log&
-# Do something
-if [ $WAIT == 1 ]; then
-    echo; read -n 1 -s -p "Press any key to continue"; echo; echo
-fi
-
-echo "Starting ZedManager"
-zedmanager >&/var/log/zedmanager.log&
 # Do something
 if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo

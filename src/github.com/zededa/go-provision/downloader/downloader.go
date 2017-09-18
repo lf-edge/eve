@@ -145,8 +145,7 @@ func sizeFromDir(dirname string) int64 {
 	var totalUsed int64 = 0
 	locations, err := ioutil.ReadDir(dirname)
 	if err != nil {
-		log.Fatalf("ReadDir(%s) %s\n",
-			dirname, err)
+		log.Fatal(err)
 	}
 	for _, location := range locations {
 		filename := dirname + "/" + location.Name()
