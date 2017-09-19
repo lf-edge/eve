@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 )
 
-var debug = true
+var debug = false
 
 func WaitForFile(filename string) {
 	w, err := fsnotify.NewWatcher()
