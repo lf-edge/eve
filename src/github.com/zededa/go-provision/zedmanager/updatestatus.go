@@ -477,6 +477,9 @@ func doInstall(uuidStr string, config types.AppInstanceConfig,
 		log.Printf("Waiting for all EID allocations for %s\n", uuidStr)
 		return changed, false
 	}
+	// Automatically move from DELIVERED to INSTALLED
+	status.State = types.INSTALLED
+	changed = true
 	log.Printf("Done with EID allocations for %s\n", uuidStr)
 	log.Printf("doInstall done for %s\n", uuidStr)
 	return changed, true
