@@ -65,7 +65,7 @@ func main() {
 	// schedule the periodic timers
 	triggerLatestCert()
 
-	triggerLatestConfig()
+	time.AfterFunc(2 * time.Minute, triggerLatestConfig)
 
 	go checkLatestCert()
 
@@ -730,7 +730,7 @@ func processLatestCertObject (config types.DownloaderConfig,
 		}
 
 		// finally flush the object holder file
-		//handleDelete(status, statusFilename)
+		handleDelete(status, statusFilename)
 	}
 }
 
@@ -769,7 +769,6 @@ func processObject (config types.DownloaderConfig, statusFilename string) {
 
 			if (config.VerifiedObjDir != "") {
 
-				// over write object, every time
 				objFilename := config.VerifiedObjDir + "/" + status.Safename
 
 				if _, err := os.Stat(config.VerifiedObjDir); err != nil {
@@ -779,14 +778,17 @@ func processObject (config types.DownloaderConfig, statusFilename string) {
 					}
 				}
 
-				writeFile(locFilename, objFilename)
+				// check the target object, if absent
+				if _, err := os.Stat(objFilename); err != nil {
+					writeFile(locFilename, objFilename)
+				}
 			}
 		} else {
 			log.Printf("<%s> file absent %s\n", locFilename, err)
 		}
 
 		// finally flush the holder object config/status files
-		// handleDelete(status, statusFilename)
+		handleDelete(status, statusFilename)
 	}
 }
 
