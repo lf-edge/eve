@@ -1,3 +1,6 @@
+TODO alpine add nordmark and zededa to image.
+     remove guest account? passwd?
+     
 TODO try set checkpoint-map-cache
 Without; stop one domain; 35 seconds outtage for dom0 and domU
 64 bytes from zedhikey: icmp_seq=224 ttl=62 time=237 ms
@@ -61,6 +64,10 @@ TODO Create DeviceSwStatus separate from DeviceSwResources
 DONE NAT i.e. uplink global address? (From exchanges with ZedControl).
 
 ===
+
+DONE alpine - dtb not having .dtb name?
+     simplify name in verfied/<sha256>/ to be original filename i.e. preserve
+     extension
 
 DONE move state from DELIVERED to INSTALLED when all in place.
 

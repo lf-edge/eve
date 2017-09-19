@@ -7,7 +7,8 @@
 // Move the file from downloads/pending/<claimedsha>/<safename> to
 // to downloads/verifier/<claimedsha>/<safename> and make RO, then attempt to
 // verify sum.
-// Once sum is verified, move to downloads/verified/<sha>/<safename>
+// Once sum is verified, move to downloads/verified/<sha>/<filename> where
+// the filename is the last part of the URL (after the last '/')
 // Note that different URLs for same file will download to the same <sha>
 // directory. We delete duplicates assuming the file content will be the same.
 
@@ -27,6 +28,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -254,7 +256,18 @@ func handleCreate(statusFilename string, configArg interface{}) {
 	// Move directory from downloads/verifier to downloads/verified
 	// XXX should have dom0 do this and/or have RO mounts
 	finalDirname := imgCatalogDirname + "/verified/" + config.ImageSha256
-	finalFilename := finalDirname + "/" + config.Safename
+	// Drop URL all but last part of URL. Note that '/' was converted
+	// to '_' in Safename
+	comp := strings.Split(config.Safename, "_")
+	last := comp[len(comp)-1]
+	// Drop "."sha256 tail part of Safename
+	i := strings.LastIndex(last, ".")
+	if i == -1 {
+		log.Fatal("Malformed safename with no .sha256",
+			config.Safename)
+	}
+	last = last[0:i]
+	finalFilename := finalDirname + "/" + last
 	fmt.Printf("Move from %s to %s\n", destFilename, finalFilename)
 	// XXX change log.Fatal to something else?
 	if _, err := os.Stat(finalDirname); err == nil {
