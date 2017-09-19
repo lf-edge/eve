@@ -67,7 +67,8 @@ func MaybeAddDomainConfig(aiConfig types.AppInstanceConfig,
 		}
 	}
 	dc.DiskConfigList = make([]types.DiskConfig, numDisks)
-	for i, sc := range aiConfig.StorageConfigList {
+	i := 0
+	for _, sc := range aiConfig.StorageConfigList {
 		// Check that file is verified
 		locationDir := verifiedDirname + "/" + sc.ImageSha256
 		location, err := locationFromDir(locationDir)
@@ -82,6 +83,7 @@ func MaybeAddDomainConfig(aiConfig types.AppInstanceConfig,
 			disk.Preserve = sc.Preserve
 			disk.Format = sc.Format
 			disk.Devtype = sc.Devtype
+			i++
 		case "kernel":
 			if dc.Kernel != "" {
 				log.Printf("Overriding kernel %s with URL %s location %s\n",
