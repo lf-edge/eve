@@ -14,9 +14,6 @@ TODO service to mount second disk (with gpio-to-lead?) and "run=" in /proc/cmdli
      In alpine img
      Upload img + dtd's to store
      
-TODO move state from DELIVERED to INSTALLED when all in place.
-Individual StorageStatus as well?
-
 TODO use dmidecode to determine bios version etc. Put in SwStatus? Or HwStatus?
   bios-vendor
   bios-version
@@ -64,6 +61,8 @@ TODO Create DeviceSwStatus separate from DeviceSwResources
 DONE NAT i.e. uplink global address? (From exchanges with ZedControl).
 
 ===
+
+DONE move state from DELIVERED to INSTALLED when all in place.
 
 DONE handleRestart(done bool) as a hook to avoid multiple RESTART-LISP
      during restart?
