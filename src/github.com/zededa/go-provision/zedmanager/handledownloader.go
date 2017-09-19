@@ -37,7 +37,7 @@ func AddOrRefcountDownloaderConfig(safename string, sc *types.StorageConfig) {
 			MaxSize:		sc.MaxSize,
 			Bucket:			sc.Bucket,
 			ImageSha256:	sc.ImageSha256,
-			ObjDir:			"/var/tmp/zedmanager/downloads",
+			DownloadObjDir:	"/var/tmp/zedmanager/downloads",
 			RefCount:		1,
 		}
 		downloaderConfig[key] = n

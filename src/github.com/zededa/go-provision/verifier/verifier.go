@@ -54,17 +54,17 @@ func main() {
 	verifiedDirname := imgCatalogDirname + "/verified"
 
 	if _, err := os.Stat(baseDirname); err != nil {
-		if err := os.Mkdir(baseDirname, 0700); err != nil {
+		if err := os.MkdirAll(baseDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(configDirname); err != nil {
-		if err := os.Mkdir(configDirname, 0700); err != nil {
+		if err := os.MkdirAll(configDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(runDirname); err != nil {
-		if err := os.Mkdir(runDirname, 0700); err != nil {
+		if err := os.MkdirAll(runDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -73,18 +73,18 @@ func main() {
 	}
 
 	if _, err := os.Stat(statusDirname); err != nil {
-		if err := os.Mkdir(statusDirname, 0700); err != nil {
+		if err := os.MkdirAll(statusDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(imgCatalogDirname); err != nil {
-		if err := os.Mkdir(imgCatalogDirname, 0700); err != nil {
+		if err := os.MkdirAll(imgCatalogDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
 
 	if _, err := os.Stat(pendingDirname); err != nil {
-		if err := os.Mkdir(pendingDirname, 0700); err != nil {
+		if err := os.MkdirAll(pendingDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -93,12 +93,12 @@ func main() {
 		log.Fatal(err)
 	}
 	if _, err := os.Stat(verifierDirname); err != nil {
-		if err := os.Mkdir(verifierDirname, 0700); err != nil {
+		if err := os.MkdirAll(verifierDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(verifiedDirname); err != nil {
-		if err := os.Mkdir(verifiedDirname, 0700); err != nil {
+		if err := os.MkdirAll(verifiedDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -194,7 +194,7 @@ func handleCreate(statusFilename string, configArg interface{}) {
 	destFilename := destDirname + "/" + config.Safename
 	fmt.Printf("Move from %s to %s\n", srcFilename, destFilename)
 	if _, err := os.Stat(destDirname); err != nil {
-		if err := os.Mkdir(destDirname, 0700); err != nil {
+		if err := os.MkdirAll(destDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -432,7 +432,7 @@ func handleCreate(statusFilename string, configArg interface{}) {
 			log.Fatal(err)
 		}
 	}
-	if err := os.Mkdir(finalDirname, 0700); err != nil {
+	if err := os.MkdirAll(finalDirname, 0700); err != nil {
 		log.Fatal( err)
 	}
 	if err := os.Rename(destFilename, finalFilename); err != nil {

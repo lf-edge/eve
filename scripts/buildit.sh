@@ -2,7 +2,7 @@
 # Assumes chown `whoami` /usr/local/go/pkg/; chgrp `whoami` /usr/local/go/pkg/
 # for cross-compile
 
-export GOPATH=/home/nordmark/gocode/:/home/nordmark/go-provision
+#export GOPATH=/home/nordmark/gocode/:/home/nordmark/go-provision
 export GOROOT=/usr/local/go
 export PATH=$GOPATH/bin:$GOROOT/bin:$PATH
 DIR=`pwd`

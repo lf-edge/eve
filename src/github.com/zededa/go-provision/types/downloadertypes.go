@@ -18,8 +18,8 @@ type DownloaderConfig struct {
 	Bucket			string
 	MaxSize			uint	// In kbytes
 	ImageSha256		string	// sha256 of immutable image XXX used?
-	ObjDir			string	// Download Object Store
-	TargetObjDir	string	// Final Object Store
+	DownloadObjDir	string	// Download Object Store
+	VerifiedObjDir	string	// Final Object Store
 	RefCount		uint	// Zero means can delete file/cancel download
 }
 
@@ -44,22 +44,22 @@ type CertConfig struct {
 // XXX if we build Status from downloads create tmpfilenames?
 // That is the filename in which we store the corresponding json files.
 type DownloaderStatus struct {
-	Safename      string
-	PendingAdd    bool
-	PendingModify bool
-	PendingDelete bool
-	RefCount      uint    // Zero means not downloaded
-	DownloadURL   string  // XXX is there a more specific type?
-	ImageSha256   string  // sha256 of immutable image
-	ObjDir        string  // Download Object store
-	TargetObjDir  string  // Target Object Store
-	State         SwState // DOWNLOADED etc
-	ReservedSpace uint    // Contribution to global ReservedSpace
-	Size          uint    // Once DOWNLOADED; less than MaxSize
-	ModTime       time.Time
-	LastErr       string // Download error
-	LastErrTime   time.Time
-	RetryCount    int
+	Safename		string
+	PendingAdd		bool
+	PendingModify	bool
+	PendingDelete	bool
+	RefCount		uint    // Zero means not downloaded
+	DownloadURL		string  // XXX is there a more specific type?
+	ImageSha256		string  // sha256 of immutable image
+	DownloadObjDir	string  // Download Object store
+	VerifiedObjDir	string  // Target Object Store
+	State			SwState // DOWNLOADED etc
+	ReservedSpace	uint    // Contribution to global ReservedSpace
+	Size			uint    // Once DOWNLOADED; less than MaxSize
+	ModTime			time.Time
+	LastErr			string // Download error
+	LastErrTime		time.Time
+	RetryCount		int
 }
 
 func (status DownloaderStatus) VerifyFilename(fileName string) bool {

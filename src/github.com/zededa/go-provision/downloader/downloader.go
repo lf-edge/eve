@@ -93,8 +93,8 @@ func triggerLatestCert() {
 		DownloadURL:		"https://s3-us-west-2.amazonaws.com/zededa-cert-repo/latest.cert.json",
 		MaxSize:			40,
 		Bucket:				"zededa-cert-repo",
-		ObjDir:				"/var/tmp/zedmanager/downloads/latest.cert",
-		TargetObjDir:		"/var/tmp/zedmanager/cert",
+		DownloadObjDir:		"/var/tmp/zedmanager/downloads/latest.cert",
+		VerifiedObjDir:		"/var/tmp/zedmanager/cert",
 		RefCount:			1,
 	}
 
@@ -120,8 +120,8 @@ func triggerLatestConfig() {
 		TransportMethod:	"s3",
 		MaxSize:			40,
 		Bucket:				"zededa-config-repo",
-		ObjDir:				"/var/tmp/zedmanager/downloads/latest.cfg",
-		TargetObjDir:		"/var/tmp/zedmanager/config",
+		DownloadObjDir:		"/var/tmp/zedmanager/downloads/latest.cfg",
+		VerifiedObjDir:		"/var/tmp/zedmanager/config",
 		RefCount:			1,
 	}
 
@@ -148,8 +148,8 @@ func triggerConfigObjUpdates(configObj *types.DownloaderConfig) {
 		TransportMethod:	configObj.TransportMethod,
 		MaxSize:			configObj.MaxSize,
 		Bucket:				configObj.Bucket,
-		ObjDir:				"/var/tmp/zedmanager/downloads/config.obj",
-		TargetObjDir:		"/var/tmp/zedmanager/config",
+		DownloadObjDir:		"/var/tmp/zedmanager/downloads/config.obj",
+		VerifiedObjDir:		"/var/tmp/zedmanager/config",
 		RefCount:			1,
 	}
 
@@ -181,8 +181,8 @@ func triggerCertObjUpdates(certObj *types.CertConfig) {
 		TransportMethod:	svrCert.TransportMethod,
 		MaxSize:			svrCert.MaxSize,
 		Bucket:				svrCert.Bucket,
-		ObjDir:				"/var/tmp/zedmanager/downloads/cert.obj",
-		TargetObjDir:		"/var/tmp/zedmanager/cert",
+		DownloadObjDir:		"/var/tmp/zedmanager/downloads/cert.obj",
+		VerifiedObjDir:		"/var/tmp/zedmanager/cert",
 		RefCount:			1,
 	}
 
@@ -203,8 +203,8 @@ func triggerCertObjUpdates(certObj *types.CertConfig) {
 			TransportMethod:	cert.TransportMethod,
 			MaxSize:			cert.MaxSize,
 			Bucket:				cert.Bucket,
-			ObjDir:				"/var/tmp/zedmanager/downloads/cert.obj",
-//			TargetObjDir:		"/var/tmp/zedmanager/cert",
+			DownloadObjDir:		"/var/tmp/zedmanager/downloads/cert.obj",
+			VerifiedObjDir:		"/var/tmp/zedmanager/cert",
 			RefCount:			1,
 		}
 
@@ -651,7 +651,7 @@ func processLatestConfigObject (config types.DownloaderConfig,
 	if  status.State == types.DOWNLOADED {
 
 		// get the downloaded file
-		locFilename := status.ObjDir + "/pending"
+		locFilename := status.DownloadObjDir + "/pending"
 
 		if status.ImageSha256  != "" {
 			locFilename = locFilename + "/" + status.ImageSha256
@@ -702,7 +702,7 @@ func processLatestCertObject (config types.DownloaderConfig,
 	if  status.State == types.DOWNLOADED {
 
 		// get the downloaded file
-		locFilename := status.ObjDir + "/pending"
+		locFilename := status.DownloadObjDir + "/pending"
 
 		if status.ImageSha256  != "" {
 			locFilename = locFilename + "/" + status.ImageSha256
@@ -730,13 +730,13 @@ func processLatestCertObject (config types.DownloaderConfig,
 		}
 
 		// finally flush the object holder file
-		handleDelete(status, statusFilename)
+		//handleDelete(status, statusFilename)
 	}
 }
 
 func processObject (config types.DownloaderConfig, statusFilename string) {
 
-	log.Printf("processOject <%s>\n", config.Safename)
+	log.Printf("processObject <%s>\n", config.Safename)
 
 	sb, err := ioutil.ReadFile(statusFilename)
 	if err != nil {
@@ -754,7 +754,7 @@ func processObject (config types.DownloaderConfig, statusFilename string) {
 	// latest object is downloaded
 	if  status.State == types.DOWNLOADED {
 
-		locFilename := config.ObjDir + "/pending"
+		locFilename := config.DownloadObjDir + "/pending"
 
 		if status.ImageSha256 != "" {
 			locFilename = locFilename + "/" + status.ImageSha256
@@ -767,14 +767,14 @@ func processObject (config types.DownloaderConfig, statusFilename string) {
 		// move the file to final directory
 		if _, err := os.Stat(locFilename); err == nil {
 
-			if (config.TargetObjDir != "") {
+			if (config.VerifiedObjDir != "") {
 
 				// over write object, every time
-				objFilename := config.TargetObjDir + "/" + status.Safename
+				objFilename := config.VerifiedObjDir + "/" + status.Safename
 
-				if _, err := os.Stat(config.TargetObjDir); err != nil {
+				if _, err := os.Stat(config.VerifiedObjDir); err != nil {
 
-					if err := os.MkdirAll(config.TargetObjDir, 0700); err != nil {
+					if err := os.MkdirAll(config.VerifiedObjDir, 0700); err != nil {
 						log.Fatal(err)
 					}
 				}
@@ -786,7 +786,7 @@ func processObject (config types.DownloaderConfig, statusFilename string) {
 		}
 
 		// finally flush the holder object config/status files
-		handleDelete(status, statusFilename)
+		// handleDelete(status, statusFilename)
 	}
 }
 
@@ -800,8 +800,8 @@ func handleCreate(config types.DownloaderConfig, statusFilename string) {
 		RefCount:		config.RefCount,
 		DownloadURL:	config.DownloadURL,
 		ImageSha256:	config.ImageSha256,
-		ObjDir:			config.ObjDir,
-		TargetObjDir:	config.TargetObjDir,
+		DownloadObjDir:	config.DownloadObjDir,
+		VerifiedObjDir:	config.VerifiedObjDir,
 		PendingAdd:		true,
 	}
 	writeDownloaderStatus(&status, statusFilename)
@@ -853,7 +853,7 @@ func handleCreate(config types.DownloaderConfig, statusFilename string) {
 func handleModify(config types.DownloaderConfig,
 	status types.DownloaderStatus, statusFilename string) {
 
-	locDirname := config.ObjDir
+	locDirname := config.DownloadObjDir
 
 	log.Printf("handleModify(%v) for %s\n",
 		config.Safename, config.DownloadURL)
@@ -939,7 +939,7 @@ func doDelete(statusFilename string, locDirname string, status *types.Downloader
 
 func handleDelete(status types.DownloaderStatus, statusFilename string) {
 
-	locDirname := status.ObjDir
+	locDirname := status.DownloadObjDir
 
 	log.Printf("handleDelete(%v) for %s, %s\n",
 		status.Safename, status.DownloadURL, locDirname)
@@ -975,8 +975,8 @@ func handleSyncOp(syncOp zedUpload.SyncOpType,
 
 	locDirname := "/var/tmp/downloader/downloads"
 
-	if config.ObjDir != "" {
-		locDirname = config.ObjDir
+	if config.DownloadObjDir != "" {
+		locDirname = config.DownloadObjDir
 	}
 
 	// update status to DOWNLOAD STARTED
@@ -1041,7 +1041,7 @@ func handleSyncOpResponse(config types.DownloaderConfig,
 	 status *types.DownloaderStatus, statusFilename string,
 	 err error) {
 
-	locDirname := config.ObjDir
+	locDirname := config.DownloadObjDir
 
 	if err != nil {
 		// Delete file
