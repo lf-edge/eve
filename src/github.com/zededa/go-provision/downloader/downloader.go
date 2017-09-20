@@ -1202,10 +1202,6 @@ func handleInit() {
 
 	globalStatusFilename = statusFilename
 
-	if err := os.RemoveAll(runDirname); err != nil {
-		log.Fatal(err)
-	}
-
 	if _, err := os.Stat(statusDirname); err != nil {
 
 		if err := os.MkdirAll(statusDirname, 0700); err != nil {
@@ -1246,6 +1242,7 @@ func handleInit() {
 	globalStatus.UsedSpace = uint((totalUsed + 1023) / 1024)
 	updateRemainingSpace()
 }
+
 func sizeFromDir(dirname string) int64 {
 	var totalUsed int64 = 0
 	locations, err := ioutil.ReadDir(dirname)
