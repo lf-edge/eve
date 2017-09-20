@@ -64,8 +64,7 @@ func main() {
 
 	// schedule the periodic timers
 	triggerLatestCert()
-
-	time.AfterFunc(2 * time.Minute, triggerLatestConfig)
+	triggerLatestConfig()
 
 	go checkLatestCert()
 
