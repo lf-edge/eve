@@ -68,9 +68,6 @@ func main() {
 			log.Fatal(err)
 		}
 	}
-	if err := os.RemoveAll(statusDirname); err != nil {
-		log.Fatal(err)
-	}
 
 	if _, err := os.Stat(statusDirname); err != nil {
 		if err := os.MkdirAll(statusDirname, 0700); err != nil {

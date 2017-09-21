@@ -370,11 +370,27 @@ func configToXencfg(config types.DomainConfig,
 	file.WriteString(fmt.Sprintf("builder = \"pv\"\n"))
 	file.WriteString(fmt.Sprintf("uuid = \"%s\"\n",
 		config.UUIDandVersion.UUID))
+	/*
 	file.WriteString(fmt.Sprintf("kernel = \"%s\"\n", config.Kernel))
 	if config.Ramdisk != "" {
 		file.WriteString(fmt.Sprintf("ramdisk = \"%s\"\n",
 			config.Ramdisk))
 	}
+	*/
+
+    if config.Kernel != "" {
+        file.WriteString(fmt.Sprintf("kernel = \"%s\"\n",
+            config.Kernel))
+    }
+    if config.Ramdisk != "" {
+        file.WriteString(fmt.Sprintf("ramdisk = \"%s\"\n",
+            config.Ramdisk))
+    }
+    if config.BootLoader != "" {
+        file.WriteString(fmt.Sprintf("bootloader = \"%s\"\n",
+            config.BootLoader))
+    }
+
 	// Go from kbytes to mbytes
 	kbyte2mbyte := func(kbyte int) int {
 		return (kbyte + 1023) / 1024

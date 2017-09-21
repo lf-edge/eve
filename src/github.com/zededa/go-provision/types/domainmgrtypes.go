@@ -38,6 +38,7 @@ func (config DomainConfig) VerifyFilename(fileName string) bool {
 type FixedResources struct {
 	Kernel  string // default ""
 	Ramdisk string // default ""
+	BootLoader string  // bootloader config
 	Memory  int    // in kbytes; XXX round up to Mbytes for xen?
 	MaxMem  int    // Default not set i.e. no balooning
 	VCpus   int    // default 1
