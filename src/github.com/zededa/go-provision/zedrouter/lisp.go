@@ -323,9 +323,12 @@ func handleLispRestart(done bool) {
 	if done {
 		if deferUpdate {
 			deferUpdate = false
-			updateLisp(deferLispRunDirname, deferUpLinkIfname)
-			deferLispRunDirname = ""
-			deferUpLinkIfname = ""
+			if deferLispRunDirname != "" {
+				updateLisp(deferLispRunDirname,
+					deferUpLinkIfname)
+				deferLispRunDirname = ""
+				deferUpLinkIfname = ""
+			}
 		}
 	} else {
 		deferUpdate = true
