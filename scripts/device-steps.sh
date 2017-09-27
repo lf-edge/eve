@@ -228,6 +228,10 @@ EOF
 	echo "127.0.0.1 $uuid" >>/etc/hosts
 else
 	uuid=`cat $ETCDIR/uuid`
+	# For safety in case the rootfs was duplicated and /etc/hostame wasn't
+	# updated
+	/bin/hostname $uuid
+	/bin/hostname >/etc/hostname
 	grep -s $uuid /etc/hosts >/dev/null
 	if [ !? == 1 ]; then
 		# put the uuid in /etc/hosts to avoid complaints

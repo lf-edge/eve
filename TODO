@@ -65,6 +65,9 @@ DONE NAT i.e. uplink global address? (From exchanges with ZedControl).
 
 ===
 
+DONE Cloning zedhikey04 didn't fix /etc/hostname
+     Fixed in device-steps.sh
+     
 DONE alpine - dtb not having .dtb name?
      simplify name in verfied/<sha256>/ to be original filename i.e. preserve
      extension
