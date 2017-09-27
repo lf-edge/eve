@@ -41,14 +41,20 @@ func HandleConfigStatusEvent(change string,
 	operation := parts[0]
 	fileName := parts[1]
 	if operation == "R" {
-		log.Printf("Received restart <%s>\n", fileName)
+		log.Printf("Received restart <%s> ingnored\n", fileName)
+		return
+	}
+	// XXX implicit assumption that this is last in ReadDir?
+	if fileName == "restart" && operation == "M" {
+		log.Printf("Found restart file\n")
 		if handleRestart != nil {
 			(*handleRestart)(true)
 		}
 		return
 	}
 	if !strings.HasSuffix(fileName, ".json") {
-		log.Printf("Ignoring file <%s>\n", fileName)
+		log.Printf("Ignoring file <%s> operation %s\n",
+			fileName, operation)
 		return
 	}
 	if operation == "D" {
@@ -139,10 +145,12 @@ func HandleConfigStatusEvent(change string,
 
 type statusCreateHandler func(statusFilename string, status interface{})
 type statusDeleteHandler func(statusFilename string)
+type StatusRestartHandler func(bool)
 
 func HandleStatusEvent(change string, statusDirname string, status interface{},
 	statusCreateFunc statusCreateHandler,
-	statusDeleteFunc statusDeleteHandler) {
+	statusDeleteFunc statusDeleteHandler,
+	handleRestart *StatusRestartHandler) {
 	parts := strings.Split(change, " ")
 	operation := parts[0]
 	fileName := parts[1]
@@ -150,8 +158,17 @@ func HandleStatusEvent(change string, statusDirname string, status interface{},
 		log.Printf("Received restart <%s>; ignored\n", fileName)
 		return
 	}
+	if fileName == "restarted" && operation == "M" {
+		log.Printf("Found restarted file\n")
+		if handleRestart != nil {
+			(*handleRestart)(true)
+		}
+		return
+	}
+
 	if !strings.HasSuffix(fileName, ".json") {
-		log.Printf("Ignoring file <%s>\n", fileName)
+		log.Printf("Ignoring file <%s> operation %s\n",
+			fileName, operation)
 		return
 	}
 	// Remove .json from name */

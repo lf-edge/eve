@@ -30,13 +30,14 @@ var verifiedDirname string // Read-only images named based on sha256 hash
 
 func main() {
 	log.Printf("Starting domainmgr\n")
+	watch.CleanupRestarted("domainmgr")
 
 	// Keeping status in /var/run to be clean after a crash/reboot
 	baseDirname := "/var/tmp/domainmgr"
 	runDirname := "/var/run/domainmgr"
 	configDirname := baseDirname + "/config"
 	statusDirname := runDirname + "/status"
-	rwImgDirname = baseDirname + "/img" // Note that /var/run is small
+	rwImgDirname = baseDirname + "/img" // Implicit preserve for dom0 reboot
 	xenDirname = runDirname + "/xen"
 	imgCatalogDirname := "/var/tmp/zedmanager/downloads"
 	verifiedDirname = imgCatalogDirname + "/verified"
@@ -60,10 +61,6 @@ func main() {
 		if err := os.Mkdir(statusDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
-	}
-	// Remove any files from old guests which might have run
-	if err := os.RemoveAll(rwImgDirname); err != nil {
-		log.Fatal(err)
 	}
 	if err := os.RemoveAll(xenDirname); err != nil {
 		log.Fatal(err)
@@ -89,21 +86,71 @@ func main() {
 		}
 	}
 
-	// XXX this is common code except for the types used with json
+	handleInit()
+	
+	var restartFn watch.ConfigRestartHandler = handleRestart
+
 	fileChanges := make(chan string)
 	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
 	for {
 		change := <-fileChanges
 		watch.HandleConfigStatusEvent(change,
 			configDirname, statusDirname,
-			&types.DomainConfig{},
-			&types.DomainStatus{},
-			handleCreate, handleModify, handleDelete, nil)
+			&types.DomainConfig{}, &types.DomainStatus{},
+			handleCreate, handleModify, handleDelete,
+			&restartFn)
+	}
+}
+
+// Clean up any unused files in rwImgDirname
+func handleRestart(done bool) {
+	log.Printf("handleRestart(%v)\n", done)
+	if done {
+		files, err := ioutil.ReadDir(rwImgDirname)
+		if err != nil {
+			log.Fatal(err)
+		}
+		for _, file := range files {
+			filename := rwImgDirname + "/" + file.Name()
+			log.Println("handleRestart found existing",
+				filename)
+			if !findTarget(filename) {
+				log.Println("handleRestart removing",
+					filename)
+				if err := os.Remove(filename); err != nil {
+					log.Println(err)
+				}
+			}
+		}
+	}
+}
+
+// Check if the filename is used as Target
+func findTarget(filename string) bool {
+	log.Printf("findTarget(%v)\n", filename)
+	for _, status := range domainStatusMap {
+		for _, ds := range status.DiskStatusList {
+			if filename == ds.Target {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// Map from UUID to the DomainStatus to be able to findTarget
+var domainStatusMap map[string]types.DomainStatus
+
+func handleInit() {
+	if domainStatusMap == nil {
+		fmt.Printf("create domainStatusMap\n")
+		domainStatusMap = make(map[string]types.DomainStatus)
 	}
 }
 
 func writeDomainStatus(status *types.DomainStatus,
 	statusFilename string) {
+	domainStatusMap[status.UUIDandVersion.UUID.String()] = *status
 	b, err := json.Marshal(status)
 	if err != nil {
 		log.Fatal(err, "json Marshal DomainStatus")
@@ -165,8 +212,12 @@ func handleCreate(statusFilename string, configArg interface{}) {
 			continue
 		}
 		log.Printf("Copy from %s to %s\n", ds.FileLocation, ds.Target)
-		if _, err := os.Stat(ds.Target); err == nil && ds.Preserve {
-			log.Printf("Preserve and target exists - skip copy\n")
+		if _, err := os.Stat(ds.Target); err == nil {
+			if ds.Preserve {
+				log.Printf("Preserve and target exists - skip copy\n")
+			} else {
+				log.Printf("Not preserve and target exists - assume rebooted and preserve\n")
+			}
 		} else if err := cp(ds.Target, ds.FileLocation); err != nil {
 			log.Printf("Copy failed from %s to %s: %s\n",
 				ds.FileLocation, ds.Target, err)
@@ -241,7 +292,7 @@ func doActivate(config types.DomainConfig, status *types.DomainStatus) {
 	status.DomainId = domainId
 	status.Activated = true
 
-	// XXX dump status to log
+	// XXX dumping status to log
 	xlStatus(status.DomainName, status.DomainId)
 
 	log.Printf("doActivate(%v) done for %s\n",
@@ -350,7 +401,6 @@ func configToXencfg(config types.DomainConfig,
 	file.WriteString(fmt.Sprintf("builder = \"pv\"\n"))
 	file.WriteString(fmt.Sprintf("uuid = \"%s\"\n",
 		config.UUIDandVersion.UUID))
-	// XXX where do we override? 
 	if config.Kernel != "" {
 		file.WriteString(fmt.Sprintf("kernel = \"%s\"\n",
 			config.Kernel))
@@ -512,7 +562,6 @@ func handleModify(statusFilename string, configArg interface{},
 	status.PendingModify = true
 	writeDomainStatus(status, statusFilename)
 
-	// XXX should we check if there is an error?
 	if status.LastErr != "" {
 		log.Printf("handleModify(%v) existing error for %s\n",
 			config.UUIDandVersion, config.DisplayName)
@@ -548,7 +597,7 @@ func handleModify(statusFilename string, configArg interface{},
 		writeDomainStatus(status, statusFilename)
 		return
 	}
-	// XXX dump status to log
+	// XXX dumping status to log
 	xlStatus(status.DomainName, status.DomainId)
 
 	status.PendingModify = true
@@ -605,7 +654,7 @@ func handleDelete(statusFilename string, statusArg interface{}) {
 	log.Printf("handleDelete(%v) for %s\n",
 		status.UUIDandVersion, status.DisplayName)
 
-	// XXX dump status to log
+	// XXX dumping status to log
 	xlStatus(status.DomainName, status.DomainId)
 
 	status.PendingDelete = true
@@ -636,6 +685,7 @@ func handleDelete(statusFilename string, statusArg interface{}) {
 	status.PendingDelete = false
 	writeDomainStatus(status, statusFilename)
 	// Write out what we modified to AppNetworkStatus aka delete
+	delete(domainStatusMap, status.UUIDandVersion.UUID.String())
 	if err := os.Remove(statusFilename); err != nil {
 		log.Println(err)
 	}
@@ -691,7 +741,7 @@ func xlStatus(domainName string, domainId int) error {
 		log.Println("xl list failed ", err)
 		return err
 	}
-	// XXX parse json to look at state?
+	// XXX parse json to look at state? Not currently included
 	fmt.Printf("xl list done. Result %s\n", string(res))
 	return nil
 }

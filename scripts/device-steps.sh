@@ -143,6 +143,8 @@ for AGENT in $AGENTS; do
     # echo "Looking in config $dir"
     files=`ls $dir`
     for f in $files; do
+	# Note that this deletes domainmgr config which, unlike a reboot,
+	# will remove the rootfs copy in /var/tmp/domainmgr/img/
 	echo "Deleting config file: $dir/$f"
 	rm -f $dir/$f
     done
@@ -171,12 +173,23 @@ for AGENT in $AGENTS; do
     if [ "$pid" != "" ]; then
 	while [	! -z "$files" ]; do
 	    echo Found: $files
-	    if [ "$files" == "global" ]; then
+	    wait=0
+	    for f in $files; do
+		if [ "$f" == "global" ]; then
+		    echo "Ignoring $f"
+		elif [ "$f" == "restarted" ]; then
+		    echo "Ignoring $f"
+		else
+		    wait=1
+		fi
+	    done
+	    if [ $wait == 1 ]; then
+		echo "Waiting for $AGENT to clean up"
+		sleep 3
+		files=`ls $dir`
+	    else
 		break
 	    fi
-	    echo "Waiting for $AGENT to clean up"
-	    sleep 3
-	    files=`ls $dir`
 	done
     elif [ ! -z "$files" ]; then
 	for f in $files; do

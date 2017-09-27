@@ -29,7 +29,6 @@ func (config DownloaderConfig) VerifyFilename(fileName string) bool {
 }
 
 // The key/index to this is the Safename which comes from DownloaderConfig.
-// XXX if we build Status from downloads create tmpfilenames?
 // That is the filename in which we store the corresponding json files.
 type DownloaderStatus struct {
 	Safename      string

@@ -36,6 +36,7 @@ var imgCatalogDirname string
 
 func main() {
 	log.Printf("Starting verifier\n")
+	watch.CleanupRestarted("verifier")
 	
 	// Keeping status in /var/run to be clean after a crash/reboot
 	baseDirname := "/var/tmp/verifier"
@@ -149,12 +150,7 @@ func handleInit(verifiedDirname string, statusDirname string,
 	fmt.Printf("handleInit done for %s, %s, %s\n",
 		verifiedDirname, statusDirname,	parentDirname)
 	// Report to zedmanager that init is done
-	waitFile := "/var/run/verifier/status/restarted"
-	f, err := os.OpenFile(waitFile, os.O_RDONLY|os.O_CREATE, 0600)
-	if err != nil {
-		log.Fatal(err)
-	}
-	f.Close()
+	watch.SignalRestarted("verifier")
 }
 
 func writeVerifyImageStatus(status *types.VerifyImageStatus,

@@ -39,6 +39,12 @@ var (
 
 func main() {
 	log.Printf("Starting zedmanager\n")
+	watch.CleanupRestarted("zedmanager")
+	watch.CleanupRestart("downloader")
+	watch.CleanupRestart("verifier")
+	watch.CleanupRestart("identitymgr")
+	watch.CleanupRestart("zedrouter")
+	watch.CleanupRestart("domainmgr")
 
 	verifierStatusDirname := "/var/run/verifier/status"
 	downloaderStatusDirname := "/var/run/downloader/status"
@@ -68,6 +74,9 @@ func main() {
 		}
 	}
 
+	// Tell ourselves to go ahead
+	watch.SignalRestart("zedmanager")
+	
 	verifierChanges := make(chan string)
 	go watch.WatchStatus(verifierStatusDirname, verifierChanges)
 	downloaderChanges := make(chan string)
@@ -78,6 +87,10 @@ func main() {
 	go watch.WatchStatus(zedrouterStatusDirname, zedrouterChanges)
 	domainmgrChanges := make(chan string)
 	go watch.WatchStatus(domainmgrStatusDirname, domainmgrChanges)
+	// XXX replace this with a handleVerifierRestarted function, which
+	// kicks identitymgr, which kicks zedrouter, which kicks domainmgr.
+	// XXX as we process config we might start downloads; should defer
+	// that until the verifier has restarted hence wait inline.
 	// Wait for the verifier to report initial status to avoid downloading
 	// a file which is already downloaded
 	waitFile := "/var/run/verifier/status/restarted"
@@ -85,7 +98,10 @@ func main() {
 	watch.WaitForFile(waitFile)
 	log.Printf("Verifier reported in %s\n", waitFile)
 
-	var restartFn watch.ConfigRestartHandler = handleRestart
+	var configRestartFn watch.ConfigRestartHandler = handleConfigRestart
+	var verifierRestartedFn watch.StatusRestartHandler = handleVerifierRestarted
+	var identitymgrRestartedFn watch.StatusRestartHandler = handleIdentitymgrRestarted
+	var zedrouterRestartedFn watch.StatusRestartHandler = handleZedrouterRestarted
 
 	configChanges := make(chan string)
 	go watch.WatchConfigStatus(zedmanagerConfigDirname,
@@ -98,7 +114,7 @@ func main() {
 					downloaderStatusDirname,
 					&types.DownloaderStatus{},
 					handleDownloaderStatusModify,
-					handleDownloaderStatusDelete)
+					handleDownloaderStatusDelete, nil)
 				continue
 			}
 		case change := <-verifierChanges:
@@ -107,7 +123,8 @@ func main() {
 					verifierStatusDirname,
 					&types.VerifyImageStatus{},
 					handleVerifyImageStatusModify,
-					handleVerifyImageStatusDelete)
+					handleVerifyImageStatusDelete,
+					&verifierRestartedFn)
 				continue
 			}
 		case change := <-identitymgrChanges:
@@ -116,7 +133,8 @@ func main() {
 					identitymgrStatusDirname,
 					&types.EIDStatus{},
 					handleEIDStatusModify,
-					handleEIDStatusDelete)
+					handleEIDStatusDelete,
+					&identitymgrRestartedFn)
 				continue
 			}
 		case change := <-zedrouterChanges:
@@ -125,7 +143,8 @@ func main() {
 					zedrouterStatusDirname,
 					&types.AppNetworkStatus{},
 					handleAppNetworkStatusModify,
-					handleAppNetworkStatusDelete)
+					handleAppNetworkStatusDelete,
+					&zedrouterRestartedFn)
 				continue
 			}
 		case change := <-domainmgrChanges:
@@ -134,7 +153,7 @@ func main() {
 					domainmgrStatusDirname,
 					&types.DomainStatus{},
 					handleDomainStatusModify,
-					handleDomainStatusDelete)
+					handleDomainStatusDelete, nil)
 				continue
 			}
 		case change := <-configChanges:
@@ -145,23 +164,52 @@ func main() {
 					&types.AppInstanceConfig{},
 					&types.AppInstanceStatus{},
 					handleCreate, handleModify,
-					handleDelete, &restartFn)
+					handleDelete, &configRestartFn)
 				continue
 			}
 		}
 	}
 }
 
-// Tell zedrouter to start once we've parsed all the inputs on restart
-func handleRestart(done bool) {
-	log.Printf("handleRestart(%v)\n", done)
+var configRestarted = false
+var verifierRestarted = false
+
+// Propagate a seqence of restart//restarted from the zedmanager config
+// and verifier status to identitymgr, then from identitymgr to zedrouter,
+// and finally from zedrouter to domainmgr.
+// This removes the need for extra downloads/verifications and extra copying
+// of the rootfs in domainmgr.
+func handleConfigRestart(done bool) {
+	log.Printf("handleConfigRestart(%v)\n", done)
 	if done {
-		restartFile := "/var/tmp/zedrouter/config/restart"
-		f, err := os.OpenFile(restartFile, os.O_RDONLY|os.O_CREATE, 0600)
-		if err != nil {
-			log.Fatal(err)
+		configRestarted = true
+		if verifierRestarted {
+			watch.SignalRestart("identitymgr")
 		}
-		f.Close()
+	}
+}
+
+func handleVerifierRestarted(done bool) {
+	log.Printf("handleVerifierRestarted(%v)\n", done)
+	if done {
+		verifierRestarted = true
+		if configRestarted {
+			watch.SignalRestart("identitymgr")
+		}
+	}
+}
+
+func handleIdentitymgrRestarted(done bool) {
+	log.Printf("handleIdentitymgrRestarted(%v)\n", done)
+	if done {
+		watch.SignalRestart("zedrouter")
+	}
+}
+
+func handleZedrouterRestarted(done bool) {
+	log.Printf("handleZedrouterRestarted(%v)\n", done)
+	if done {
+		watch.SignalRestart("domainmgr")
 	}
 }
 

@@ -28,6 +28,7 @@ var runDirname = "/var/run/zedrouter"
 
 func main() {
 	log.Printf("Starting zedrouter\n")
+	watch.CleanupRestarted("zedrouter")
 
 	// Keeping status in /var/run to be clean after a crash/reboot
 	baseDirname := "/var/tmp/zedrouter"
@@ -90,6 +91,11 @@ func main() {
 func handleRestart(done bool) {
 	log.Printf("handleRestart(%v)\n", done)
 	handleLispRestart(done)
+	if done {
+		// Since all work is done inline we can immediately say that
+		// we have restarted.
+		watch.SignalRestarted("zedrouter")
+	}
 }
 
 var globalConfig types.DeviceNetworkConfig

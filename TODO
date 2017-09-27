@@ -65,6 +65,9 @@ DONE NAT i.e. uplink global address? (From exchanges with ZedControl).
 
 ===
 
+DONE upon reboot treat existing images for domU's as implicit preserve
+     i.e. don't recreate from verified image.
+      
 DONE Cloning zedhikey04 didn't fix /etc/hostname
      Fixed in device-steps.sh
      

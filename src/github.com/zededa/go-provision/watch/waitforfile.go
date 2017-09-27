@@ -6,6 +6,7 @@
 package watch
 
 import (
+	"fmt"
 	"github.com/fsnotify/fsnotify"
 	"log"
 	"os"
@@ -65,4 +66,44 @@ func WaitForFile(filename string) {
 	}
 	<-done
 	stop <- true
+}
+
+func SignalRestart(agent string) {
+	log.Printf("SignalRestart(%v)\n", agent)
+	restartFile := fmt.Sprintf("/var/tmp/%s/config/restart", agent)
+	f, err := os.OpenFile(restartFile, os.O_RDONLY|os.O_CREATE, 0600)
+	if err != nil {
+		log.Fatal(err)
+	}
+	f.Close()
+}
+
+func SignalRestarted(agent string) {
+	log.Printf("SignalRestarted(%v)\n", agent)
+	restartedFile := fmt.Sprintf("/var/run/%s/status/restarted", agent)
+	f, err := os.OpenFile(restartedFile, os.O_RDONLY|os.O_CREATE, 0600)
+	if err != nil {
+		log.Fatal(err)
+	}
+	f.Close()
+}
+
+func CleanupRestart(agent string) {
+	log.Printf("CleanupRestart(%v)\n", agent)
+	restartFile := fmt.Sprintf("/var/tmp/%s/config/restart", agent)
+	if _, err := os.Stat(restartFile); err == nil {
+		if err = os.Remove(restartFile); err != nil {
+			log.Fatal(err)
+		}
+	}
+}
+
+func CleanupRestarted(agent string) {
+	log.Printf("CleanupRestarted(%v)\n", agent)
+	restartedFile := fmt.Sprintf("/var/run/%s/status/restarted", agent)
+	if _, err := os.Stat(restartedFile); err == nil {
+		if err = os.Remove(restartedFile); err != nil {
+			log.Fatal(err)
+		}
+	}
 }

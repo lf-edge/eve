@@ -41,6 +41,7 @@ import (
 
 func main() {
 	log.Printf("Starting downloader\n")
+	watch.CleanupRestarted("downloader")
 
 	// Keeping status in /var/run to be clean after a crash/reboot
 	baseDirname := "/var/tmp/downloader"

@@ -33,7 +33,8 @@ import (
 
 func main() {
 	log.Printf("Starting identitymgr\n")
-
+	watch.CleanupRestarted("identitymgr")
+	
 	// Keeping status in /var/run to be clean after a crash/reboot
 	baseDirname := "/var/tmp/identitymgr"
 	runDirname := "/var/run/identitymgr"
@@ -61,8 +62,9 @@ func main() {
 		}
 	}
 
-	// XXX this is common code except for the types used with json
-	// and uuid/iid check
+	// XXX need handleRestart based on restart file not readdir
+	var restartFn watch.ConfigRestartHandler = handleRestart
+
 	fileChanges := make(chan string)
 	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
 	for {
@@ -71,7 +73,16 @@ func main() {
 			configDirname, statusDirname,
 			&types.EIDConfig{},
 			&types.EIDStatus{},
-			handleCreate, handleModify, handleDelete, nil)
+			handleCreate, handleModify, handleDelete, &restartFn)
+	}
+}
+
+func handleRestart(done bool) {
+	log.Printf("handleRestart(%v)\n", done)
+	if done {
+		// Since all work is done inline we can immediately say that
+		// we have restarted.
+		watch.SignalRestarted("identitymgr")
 	}
 }
 
