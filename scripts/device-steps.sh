@@ -143,6 +143,8 @@ for AGENT in $AGENTS; do
     # echo "Looking in config $dir"
     files=`ls $dir`
     for f in $files; do
+	# Note that this deletes domainmgr config which, unlike a reboot,
+	# will remove the rootfs copy in /var/tmp/domainmgr/img/
 	echo "Deleting config file: $dir/$f"
 	rm -f $dir/$f
     done
@@ -171,12 +173,23 @@ for AGENT in $AGENTS; do
     if [ "$pid" != "" ]; then
 	while [	! -z "$files" ]; do
 	    echo Found: $files
-	    if [ "$files" == "global" ]; then
+	    wait=0
+	    for f in $files; do
+		if [ "$f" == "global" ]; then
+		    echo "Ignoring $f"
+		elif [ "$f" == "restarted" ]; then
+		    echo "Ignoring $f"
+		else
+		    wait=1
+		fi
+	    done
+	    if [ $wait == 1 ]; then
+		echo "Waiting for $AGENT to clean up"
+		sleep 3
+		files=`ls $dir`
+	    else
 		break
 	    fi
-	    echo "Waiting for $AGENT to clean up"
-	    sleep 3
-	    files=`ls $dir`
 	done
     elif [ ! -z "$files" ]; then
 	for f in $files; do
@@ -192,6 +205,17 @@ echo "Removing old iptables/ip6tables rules"
 iptables -F
 ip6tables -F
 ip6tables -t raw -F
+
+echo "Saving any old log files"
+LOGGERS="zedmanager $AGENTS"
+for l in $LOGGERS; do
+    f=/var/log/$l.log
+    if [ -f $f ]; then
+	datetime=`stat -c %y $f | awk '{printf "%s-%s", $1, $2}'`
+	echo "Saving $f.$datetime"
+	mv $f $f.$datetime
+    fi
+done
 
 if [ $SELF_REGISTER = 1 ]; then
 	intf=`$BINDIR/find-uplink.sh $ETCDIR/lisp.config.base`
@@ -212,8 +236,23 @@ EOF
 	echo "Setting hostname to $uuid"
 	/bin/hostname $uuid
 	/bin/hostname >/etc/hostname
+	# put the uuid in /etc/hosts to avoid complaints
+	echo "Adding $uuid to /etc/hosts"
+	echo "127.0.0.1 $uuid" >>/etc/hosts
 else
 	uuid=`cat $ETCDIR/uuid`
+	# For safety in case the rootfs was duplicated and /etc/hostame wasn't
+	# updated
+	/bin/hostname $uuid
+	/bin/hostname >/etc/hostname
+	grep -s $uuid /etc/hosts >/dev/null
+	if [ !? == 1 ]; then
+		# put the uuid in /etc/hosts to avoid complaints
+		echo "Adding $uuid to /etc/hosts"
+		echo "127.0.0.1 $uuid" >>/etc/hosts
+	else
+		echo "Found $uuid in /etc/hosts"
+	fi
 fi
 
 mkdir -p /var/tmp/zedrouter/config/
@@ -228,14 +267,23 @@ cp $ETCDIR/network.config.global /var/tmp/zedrouter/config/global
 mkdir -p /var/tmp/downloader/config/
 echo '{"MaxSpace":2000000}' >/var/tmp/downloader/config/global 
 
-echo "Starting downloader"
-downloader >&/var/log/downloader.log&
+rm -f /var/run/verifier/status/restarted
+rm -f /var/tmp/zedrouter/config/restart
+
+echo "Starting verifier"
+verifier >&/var/log/verifier.log&
 if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
 
-echo "Starting verifier"
-verifier >&/var/log/verifier.log&
+echo "Starting ZedManager"
+zedmanager >&/var/log/zedmanager.log&
+if [ $WAIT == 1 ]; then
+    echo; read -n 1 -s -p "Press any key to continue"; echo; echo
+fi
+
+echo "Starting downloader"
+downloader >&/var/log/downloader.log&
 if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
@@ -260,13 +308,6 @@ fi
 
 echo "Starting DomainMgr"
 domainmgr >&/var/log/domainmgr.log&
-# Do something
-if [ $WAIT == 1 ]; then
-    echo; read -n 1 -s -p "Press any key to continue"; echo; echo
-fi
-
-echo "Starting ZedManager"
-zedmanager >&/var/log/zedmanager.log&
 # Do something
 if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo

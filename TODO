@@ -1,3 +1,31 @@
+TODO alpine add nordmark and zededa to image.
+     remove guest account? passwd?
+     
+TODO try set checkpoint-map-cache
+Without; stop one domain; 35 seconds outtage for dom0 and domU
+64 bytes from zedhikey: icmp_seq=224 ttl=62 time=237 ms
+64 bytes from zedhikey: icmp_seq=259 ttl=62 time=353 ms
+With; start one domain; 35 seconds outtage for dom0 and domU
+With? stop one domain?
+43 seconds (but was other domain fully booted? CPU load?)
+Start one domain?
+32 seconds, 33 seconds
+Stop 43
+No benefit.
+
+TODO service to mount second disk (with gpio-to-lead?) and "run=" in /proc/cmdline
+     In alpine img
+     Upload img + dtd's to store
+     
+TODO use dmidecode to determine bios version etc. Put in SwStatus? Or HwStatus?
+  bios-vendor
+  bios-version
+  bios-release-date
+
+TODO? encrypted virtual disks? Useful if rw since contains customer data
+
+TODO what is needed for docker/rkt? Two vdisks?
+
 TODO ethtool setup in domU for checksum? How to make permanent?
 	sudo ethtool -K eth1 tx-checksum-ipv6 off
 	Set default in (shared?) kernel?
@@ -7,29 +35,20 @@ TODO try with other mangle setup..
 
 TODO 20-30 second outage when we add/delete a domU/EID as reported by
      ping6 zedcontrol
-     
-TODO kernel=Image is external to domU; how to specify external kernel which needs to be downloaded?
-Ditto for initrd?
-Q: target=kernel? plus "extKernel=true"?
-
-
-TODO add device mapping to support gpiotoled.
-TODO add cpu binding for rtos
-TODO what is needed for docker/rkt?
-
-TODO rename displayName to localDNSName?
-     Should we allow for empty? Also used for xen domain.
-TODO should we have one name per overlay?
-
-DONE bundles of bundles vs. attach to overlay uuid?
-
-TODO domU needs to know which overlay is which and diff than IPv6 underlay.
-TODO domU needs /128 routes for multiple IPv6 overlays?
+TODO loose ms1; RL requires RL on prov01.
+TODO hikey02 no packets. Enable ITR/dp logging on webpage and packet starts flowing
 
 TODO name for StorageConfig*?
      Is both an Image description and aspects of the container for the image
      ImageDeploymentConfig and ImageDeploymentStatus?
      
+TODO rename displayName to localDNSName?
+     Should we allow for empty? Also used for xen domain.
+TODO should we have one name per overlay?
+
+LATER domU needs to know which overlay is which and diff than IPv6 underlay.
+LATER domU needs /128 routes for multiple IPv6 overlays?
+
 TODO create domain name ipsets on the fly. Easy in handleCreate
    Requires some care in handleModify
 TODO handleModify's update to ACLs assumes there is no DROP rules since does inserts new rules up front.
@@ -39,12 +58,66 @@ TODO handleModify's update to ACLs assumes there is no DROP rules since does ins
 TODO xenmgr goroutines
 
 TODO Create DeviceSwStatus separate from DeviceSwResources
-Include uplink interfaces, available memory and disk
+     Include uplink interfaces, available memory and disk
+     Trigger such exchange when local interface/address change.
+     DeviceSwStatus upload results in an ack containing the global address.
 DONE NAT i.e. uplink global address? (From exchanges with ZedControl).
-Trigger such exchange when local interface/address change.
-DeviceSwStatus upload results in an ack containing the global address.
 
 ===
+
+DONE upon reboot treat existing images for domU's as implicit preserve
+     i.e. don't recreate from verified image.
+      
+DONE Cloning zedhikey04 didn't fix /etc/hostname
+     Fixed in device-steps.sh
+     
+DONE alpine - dtb not having .dtb name?
+     simplify name in verfied/<sha256>/ to be original filename i.e. preserve
+     extension
+
+DONE move state from DELIVERED to INSTALLED when all in place.
+
+DONE handleRestart(done bool) as a hook to avoid multiple RESTART-LISP
+     during restart?
+     Set a deferLispRestart=true in handleRestart(false)
+     Call RestartLisp in handleRestart(true)
+DONE zedrouter needs to wait for zedmanager to have restarted ...
+     zedmanager waits for /var/run/verifier/status/restarted to appear
+     writes /var/tmp/zedrouter/config/restart
+     zedrouter waits for /var/tmp/zedrouter/config/restart to appear, then
+     'R' from wait
+     Generalize to write restarting to all but zedrouter?
+DONE add WaitForFile and use to sequence startup
+
+DONE device-steps save old logs
+     for f in /var/log/xxx*.log; do
+	     datetime=`stat -c %y $f | awk '{printf "%s-%s", $1, $2}'`
+	     mv $f $f.$datetime
+     done
+     
+DONE update Device Models for Software Installation with eid allocation
+example and references to github types.
+
+DONE add device mapping to support gpiotoled.
+DONE add cpu binding for rtos - freertos image?
+
+DONE Need extensions for
+     kernel="Image.LED.DomU"
+     device_tree="guest-gpio.dtb" XXX or guest-led.dtb
+     dtdev=["/smb/gpio@f7020000","/smb/gpio@f8013000"]
+     irqs=[88,86]
+     iomem=["0xf7020,1","0xf8013,1"]
+
+DONE StorageConfig with
+     Target="disk","kernel","device_tree","initrd","ramdisk"
+     Overrides any "kernel" config...
+     Leave kernel empty if not set. Ditto for rest.
+
+DONE need root=. Can default to "xvda1" for compat.
+     root=/dev/xvda console=hvc0
+     disk = ['alpine3.img,raw,xvda,rw']
+
+DONE put uuid in /etc/hosts just like hostname.
 
 DONE wait code - introduce second layer of interfaces to remove duplicate code
 

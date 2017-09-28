@@ -19,6 +19,9 @@ import (
 	"path"
 )
 
+// Generates 'M' events for all existing and all creates/modify.
+// Generates 'D' events for all deletes.
+// Generates a 'R' event when the initial directories have been processed
 func WatchConfigStatus(configDir string, statusDir string,
 	fileChanges chan<- string) {
 	watchConfigStatusImpl(configDir, statusDir, fileChanges, true)
@@ -69,7 +72,7 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 	}
 	files, err := ioutil.ReadDir(configDir)
 	if err != nil {
-		log.Fatal(err, ": ", configDir)
+		log.Fatal(err)
 	}
 
 	for _, file := range files {
@@ -81,7 +84,7 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 	if initialDelete {
 		statusFiles, err := ioutil.ReadDir(statusDir)
 		if err != nil {
-			log.Fatal(err, ": ", statusDir)
+			log.Fatal(err)
 		}
 
 		for _, file := range statusFiles {
@@ -94,12 +97,15 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 		}
 		log.Printf("Initial deletes done for %s\n", statusDir)
 	}
+	// Hook to tell restart is done
+	fileChanges <- "R done"
 	// Watch for changes
 	<-done
 }
 
 // Generates 'M' events for all existing and all creates/modify.
 // Generates 'D' events for all deletes.
+// Generates a 'R' event when the initial directories have been processed
 func WatchStatus(statusDir string, fileChanges chan<- string) {
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -137,7 +143,7 @@ func WatchStatus(statusDir string, fileChanges chan<- string) {
 	}
 	files, err := ioutil.ReadDir(statusDir)
 	if err != nil {
-		log.Fatal(err, ": ", statusDir)
+		log.Fatal(err)
 	}
 
 	for _, file := range files {
@@ -145,6 +151,9 @@ func WatchStatus(statusDir string, fileChanges chan<- string) {
 		fileChanges <- "M " + file.Name()
 	}
 	log.Printf("Initial ReadDir done for %s\n", statusDir)
+
+	// Hook to tell restart is done
+	fileChanges <- "R done"
 
 	// Watch for changes
 	<-done

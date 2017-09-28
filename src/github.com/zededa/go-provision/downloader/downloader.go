@@ -49,6 +49,7 @@ var (
 func main() {
 
 	log.Printf("Starting downloader\n")
+	watch.CleanupRestarted("downloader")
 
 	ctx,err := zedUpload.NewDronaCtx("zdownloader", 0)
 
@@ -60,7 +61,7 @@ func main() {
 
 	dCtx = ctx
 
-    handleInit()
+	handleInit()
 
 	// schedule the periodic timers
 	triggerLatestCert()
@@ -236,7 +237,7 @@ func checkImageUpdates() {
 			&types.DownloaderStatus{},
 			handleImageCreate,
 			handleImageModify,
-			handleImageDelete)
+			handleImageDelete, nil)
 	}
 }
 
@@ -262,7 +263,7 @@ func checkLatestCert() {
 			&types.DownloaderStatus{},
 			handleLatestCertObjCreate,
 			handleLatestCertObjModify,
-			handleLatestConfigObjDelete)
+			handleLatestConfigObjDelete, nil)
 	}
 }
 
@@ -289,7 +290,7 @@ func checkLatestConfig() {
 			&types.DownloaderStatus{},
 			handleLatestConfigObjCreate,
 			handleLatestConfigObjModify,
-			handleLatestConfigObjDelete)
+			handleLatestConfigObjDelete, nil)
 	}
 }
 
@@ -316,7 +317,7 @@ func handleCertUpdates() {
 			&types.DownloaderStatus{},
 			handleCertObjCreate,
 			handleCertObjModify,
-			handleCertObjDelete)
+			handleCertObjDelete, nil)
 	}
 }
 
@@ -344,7 +345,7 @@ func handleConfigUpdates() {
 			&types.DownloaderStatus{},
 			handleConfigObjCreate,
 			handleConfigObjModify,
-			handleConfigObjDelete)
+			handleConfigObjDelete, nil)
 	}
 }
 
@@ -1246,8 +1247,7 @@ func sizeFromDir(dirname string) int64 {
 	var totalUsed int64 = 0
 	locations, err := ioutil.ReadDir(dirname)
 	if err != nil {
-		log.Fatalf("ReadDir(%s) %s\n",
-			dirname, err)
+		log.Fatal(err)
 	}
 	for _, location := range locations {
 		filename := dirname + "/" + location.Name()

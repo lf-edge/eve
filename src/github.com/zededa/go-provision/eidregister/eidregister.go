@@ -36,6 +36,7 @@ var caCertPool *x509.CertPool
 
 func main() {
 	log.Printf("Starting eidregister\n")
+	watch.CleanupRestarted("eidregister")
 
 	args := os.Args[1:]
 	dirName := "/opt/zededa/etc"
@@ -106,7 +107,7 @@ func main() {
 			inputDirname, outputDirname,
 			&types.EIDStatus{},
 			&types.EIDStatus{},
-			handleCreate, handleModify, handleDelete)
+			handleCreate, handleModify, handleDelete, nil)
 	}
 }
 

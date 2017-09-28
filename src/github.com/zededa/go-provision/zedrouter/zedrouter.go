@@ -28,6 +28,7 @@ var runDirname = "/var/run/zedrouter"
 
 func main() {
 	log.Printf("Starting zedrouter\n")
+	watch.CleanupRestarted("zedrouter")
 
 	// Keeping status in /var/run to be clean after a crash/reboot
 	baseDirname := "/var/tmp/zedrouter"
@@ -64,6 +65,16 @@ func main() {
 
 	handleInit(configDirname+"/global", statusDirname+"/global", runDirname)
 
+	// Wait for zedmanager having populated the intial files to
+	// reduce the number of LISP-RESTARTs
+	restartFile := "/var/tmp/zedrouter/config/restart"
+	log.Printf("Waiting for zedmanager to report in %s\n", restartFile)
+	watch.WaitForFile(restartFile)
+	log.Printf("Zedmanager reported in %s\n", restartFile)
+
+	handleRestart(false)
+	var restartFn watch.ConfigRestartHandler = handleRestart
+
 	fileChanges := make(chan string)
 	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
 	for {
@@ -72,7 +83,18 @@ func main() {
 			configDirname, statusDirname,
 			&types.AppNetworkConfig{},
 			&types.AppNetworkStatus{},
-			handleCreate, handleModify, handleDelete)
+			handleCreate, handleModify, handleDelete,
+			&restartFn)
+	}
+}
+
+func handleRestart(done bool) {
+	log.Printf("handleRestart(%v)\n", done)
+	handleLispRestart(done)
+	if done {
+		// Since all work is done inline we can immediately say that
+		// we have restarted.
+		watch.SignalRestarted("zedrouter")
 	}
 }
 

@@ -222,6 +222,13 @@ func deleteLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 func updateLisp(lispRunDirname string, upLinkIfname string) {
 	fmt.Printf("updateLisp: %s %s\n", lispRunDirname, upLinkIfname)
 
+	if deferUpdate {
+		log.Printf("updateLisp deferred\n")
+		deferLispRunDirname = lispRunDirname
+		deferUpLinkIfname = upLinkIfname
+		return
+	}
+
 	tmpfile, err := ioutil.TempFile("/tmp/", "lisp")
 	if err != nil {
 		log.Println("TempFile ", err)
@@ -236,6 +243,7 @@ func updateLisp(lispRunDirname string, upLinkIfname string) {
 		log.Println("os.Open ", baseFilename, err)
 		return
 	}
+	defer s.Close()
 	var cnt int64
 	if cnt, err = io.Copy(tmpfile, s); err != nil {
 		log.Println("io.Copy ", baseFilename, err)
@@ -244,7 +252,7 @@ func updateLisp(lispRunDirname string, upLinkIfname string) {
 	fmt.Printf("Copied %d bytes from %s\n", cnt, baseFilename)
 	files, err := ioutil.ReadDir(lispRunDirname)
 	if err != nil {
-		log.Println("ReadDir ", lispRunDirname, err)
+		log.Println(err)
 		return
 	}
 	eidCount := 0
@@ -260,6 +268,7 @@ func updateLisp(lispRunDirname string, upLinkIfname string) {
 			log.Println("os.Open ", filename, err)
 			return
 		}
+		defer s.Close()
 		if cnt, err = io.Copy(tmpfile, s); err != nil {
 			log.Println("io.Copy ", filename, err)
 			return
@@ -271,12 +280,13 @@ func updateLisp(lispRunDirname string, upLinkIfname string) {
 		return
 	}
 	// This seems safer; make sure it is stopped before rewriting file
-	stopLisp(lispRunDirname)
+	stopLisp()
 
 	if err := os.Rename(tmpfile.Name(), destFilename); err != nil {
 		log.Println("Rename ", tmpfile.Name(), destFilename, err)
 		return
 	}
+
 	// Determine the set of devices from the above config file
 	grep := exec.Command("grep", "device = ", destFilename)
 	awk := exec.Command("awk", "{print $NF}")
@@ -298,26 +308,42 @@ func updateLisp(lispRunDirname string, upLinkIfname string) {
 
 	// Check how many EIDs we have configured. If none we stop lisp
 	if eidCount == 0 {
-		stopLisp(lispRunDirname)
+		stopLisp()
 	} else {
-		restartLisp(lispRunDirname, upLinkIfname, devices)
+		restartLisp(upLinkIfname, devices)
 	}
 }
 
-// XXX would like to limit number of restarts of LISP. Somehow do at end of loop
-// main event loop in zedrouter.go??
-// XXX shouldn't need to restart unless we are removing or replacing something
-// XXX also need to restart when adding an overlay interface
-// Adds should be ok without. How can we tell?
-func restartLisp(lispRunDirname string, upLinkIfname string, devices string) {
-	log.Printf("restartLisp: %s %s %s\n",
-		lispRunDirname, upLinkIfname, devices)
+var deferUpdate = false
+var deferLispRunDirname = ""
+var deferUpLinkIfname = ""
+
+func handleLispRestart(done bool) {
+	log.Printf("handleLispRestart(%v)\n", done)
+	if done {
+		if deferUpdate {
+			deferUpdate = false
+			if deferLispRunDirname != "" {
+				updateLisp(deferLispRunDirname,
+					deferUpLinkIfname)
+				deferLispRunDirname = ""
+				deferUpLinkIfname = ""
+			}
+		}
+	} else {
+		deferUpdate = true
+	}
+}
+
+func restartLisp(upLinkIfname string, devices string) {
+	log.Printf("restartLisp: %s %s\n",
+		upLinkIfname, devices)
 	args := []string{
 		RestartCmd,
 		"8080",
 		upLinkIfname,
 	}
-	itrTimeout := 10
+	itrTimeout := 1
 	cmd := exec.Command(RestartCmd)
 	cmd.Args = args
 	env := os.Environ()
@@ -347,8 +373,8 @@ func restartLisp(lispRunDirname string, upLinkIfname string, devices string) {
 	fmt.Printf("Wrote %s\n", RLFilename)
 }
 
-func stopLisp(lispRunDirname string) {
-	log.Printf("stopLisp: %s\n", lispRunDirname)
+func stopLisp() {
+	log.Printf("stopLisp\n")
 	cmd := exec.Command(StopCmd)
 	env := os.Environ()
 	env = append(env, fmt.Sprintf("LISP_NO_IPTABLES="))

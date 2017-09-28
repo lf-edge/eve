@@ -54,6 +54,7 @@ lisp xtr-parameters {
     nonce-echoing = no
     data-plane-logging = no
     flow-logging = no
+    checkpoint-map-cache = no
 }
 lisp map-resolver {
     dns-name = ms1.zededa.net

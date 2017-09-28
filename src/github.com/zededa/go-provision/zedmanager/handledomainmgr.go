@@ -17,8 +17,11 @@ import (
 // XXX change from string to UUID?
 var domainConfig map[string]types.DomainConfig
 
+var imgCatalogDirname = "/var/tmp/zedmanager/downloads"
+var verifiedDirname = imgCatalogDirname + "/verified"
+
 func MaybeAddDomainConfig(aiConfig types.AppInstanceConfig,
-	ns *types.AppNetworkStatus) {
+	ns *types.AppNetworkStatus) error {
 	key := aiConfig.UUIDandVersion.UUID.String()
 	displayName := aiConfig.DisplayName
 	log.Printf("MaybeAddDomainConfig for %s displayName %s\n", key,
@@ -41,44 +44,88 @@ func MaybeAddDomainConfig(aiConfig types.AppInstanceConfig,
 		fmt.Printf("Domain config add for %s\n", key)
 		changed = true
 	}
-	if changed {
-		AppNum := 0
-		if ns != nil {
-			AppNum = ns.AppNum
+	if !changed {
+		log.Printf("MaybeAddDomainConfig done for %s\n", key)	
+		return nil
+	}
+	AppNum := 0
+	if ns != nil {
+		AppNum = ns.AppNum
+	}
+	dc := types.DomainConfig{
+		UUIDandVersion: aiConfig.UUIDandVersion,
+		DisplayName:    aiConfig.DisplayName,
+		Activate:       aiConfig.Activate,
+		AppNum:         AppNum,
+		FixedResources: aiConfig.FixedResources,
+	}
+	// Determine number of "disk" targets in list
+	numDisks := 0
+	for _, sc := range aiConfig.StorageConfigList {
+		if sc.Target == "" || sc.Target == "disk" {
+			numDisks++
 		}
-		dc := types.DomainConfig{
-			UUIDandVersion: aiConfig.UUIDandVersion,
-			DisplayName:    aiConfig.DisplayName,
-			Activate:       aiConfig.Activate,
-			AppNum:         AppNum,
-			FixedResources: aiConfig.FixedResources,
+	}
+	dc.DiskConfigList = make([]types.DiskConfig, numDisks)
+	i := 0
+	for _, sc := range aiConfig.StorageConfigList {
+		// Check that file is verified
+		locationDir := verifiedDirname + "/" + sc.ImageSha256
+		location, err := locationFromDir(locationDir)
+		if err != nil {
+			return err
 		}
-		dc.DiskConfigList = make([]types.DiskConfig,
-			len(aiConfig.StorageConfigList))
-		for i, sc := range aiConfig.StorageConfigList {
+		switch sc.Target {
+		case "", "disk":
 			disk := &dc.DiskConfigList[i]
 			disk.ImageSha256 = sc.ImageSha256
 			disk.ReadOnly = sc.ReadOnly
 			disk.Preserve = sc.Preserve
 			disk.Format = sc.Format
 			disk.Devtype = sc.Devtype
-		}
-		if ns != nil {
-			dc.VifList = make([]types.VifInfo, ns.OlNum+ns.UlNum)
-			// Put UL before OL
-			for i, ul := range ns.UnderlayNetworkList {
-				dc.VifList[i] = ul.VifInfo
+			i++
+		case "kernel":
+			if dc.Kernel != "" {
+				log.Printf("Overriding kernel %s with URL %s location %s\n",
+				dc.Kernel, sc.DownloadURL, location)
 			}
-			for i, ol := range ns.OverlayNetworkList {
-				dc.VifList[i+ns.UlNum] = ol.VifInfo
+			dc.Kernel = location
+		case "ramdisk":
+			if dc.Ramdisk != "" {
+				log.Printf("Overriding ramdisk %s with URL %s location %s\n",
+				dc.Ramdisk, sc.DownloadURL, location)
 			}
+			dc.Ramdisk = location
+		case "device_tree":
+			if dc.DeviceTree != "" {
+				log.Printf("Overriding device_tree %s with URL %s location %s\n",
+				dc.DeviceTree, sc.DownloadURL, location)
+			}
+			dc.DeviceTree = location
+		default:
+			err := errors.New(fmt.Sprintf(
+				"Unknown target %s", sc.Target))
+			log.Printf("Got error %v for %s\n", err, displayName)
+			return err
 		}
-		domainConfig[key] = dc
-		configFilename := fmt.Sprintf("%s/%s.json",
-			domainmgrConfigDirname, key)
-		writeDomainConfig(domainConfig[key], configFilename)
 	}
+	if ns != nil {
+		dc.VifList = make([]types.VifInfo, ns.OlNum+ns.UlNum)
+		// Put UL before OL
+		for i, ul := range ns.UnderlayNetworkList {
+			dc.VifList[i] = ul.VifInfo
+		}
+		for i, ol := range ns.OverlayNetworkList {
+			dc.VifList[i+ns.UlNum] = ol.VifInfo
+		}
+	}
+	domainConfig[key] = dc
+	configFilename := fmt.Sprintf("%s/%s.json",
+		domainmgrConfigDirname, key)
+	writeDomainConfig(domainConfig[key], configFilename)
+
 	log.Printf("MaybeAddDomainConfig done for %s\n", key)
+	return nil
 }
 
 func MaybeRemoveDomainConfig(uuidStr string) {
@@ -173,4 +220,29 @@ func handleDomainStatusDelete(statusFilename string) {
 	}
 	log.Printf("handleDomainStatusDelete done for %s\n",
 		statusFilename)
+}
+
+func locationFromDir(locationDir string) (string, error) {
+	if _, err := os.Stat(locationDir); err != nil {
+		log.Printf("Missing directory: %s, %s\n", locationDir, err)
+		return "", err
+	}
+	// locationDir is a directory. Need to find single file inside
+	// which the verifier ensures.
+	locations, err := ioutil.ReadDir(locationDir)
+	if err != nil {
+		log.Println(err)
+		return "", err
+	}
+	if len(locations) != 1 {
+		log.Printf("Multiple files in %s\n", locationDir)
+		return "", errors.New(fmt.Sprintf("Multiple files in %s\n",
+			locationDir))
+	}
+	if len(locations) == 0 {
+		log.Printf("No files in %s\n", locationDir)
+		return "", errors.New(fmt.Sprintf("No files in %s\n",
+			locationDir))
+	}
+	return locationDir + "/" + locations[0].Name(), nil
 }

@@ -18,12 +18,14 @@ type UUIDandVersion struct {
 // This is what we assume will come from the ZedControl for each
 // application instance. Note that we can have different versions
 // configured for the same UUID, hence the key is the UUIDandVersion
+// We assume the elements in StorageConfig should be installed, but activation
+// (advertize the EID in lisp and boot the guest) is driven by the Activate
+// attribute.
 type AppInstanceConfig struct {
-	UUIDandVersion    UUIDandVersion
-	DisplayName       string
-	FixedResources    // CPU etc
-	StorageConfigList []StorageConfig
-	// Assume StorageConfig should be installed when present in list
+	UUIDandVersion      UUIDandVersion
+	DisplayName         string
+	FixedResources      // CPU etc
+	StorageConfigList   []StorageConfig
 	Activate            bool
 	OverlayNetworkList  []EIDOverlayConfig
 	UnderlayNetworkList []UnderlayNetworkConfig
@@ -85,6 +87,11 @@ type EIDOverlayConfig struct {
 	NameToEidList []NameToEid // Used to populate DNS for the overlay
 }
 
+// If the Target is "" or "disk", then this becomes a vdisk for the domU
+// Other possible targets are:
+// - "kernel"
+// - "ramdisk"
+// - "device_tree"
 type StorageConfig struct {
 	DownloadURL	string	// XXX is there a more specific type?
 	MaxSize		uint	// In kbytes
@@ -102,6 +109,7 @@ type StorageConfig struct {
 				// boots (acivate/inactivate)
 	Format		string	// Default "raw"; could be raw, qcow, qcow2, vhd
 	Devtype		string	// Default ""; could be e.g. "cdrom"
+	Target        string // Default "" is interpreted as "disk"
 }
 
 type StorageStatus struct {

@@ -7,7 +7,8 @@
 // Move the file from downloads/pending/<claimedsha>/<safename> to
 // to downloads/verifier/<claimedsha>/<safename> and make RO, then attempt to
 // verify sum.
-// Once sum is verified, move to downloads/verified/<sha>/<safename>
+// Once sum is verified, move to downloads/verified/<sha>/<filename> where
+// the filename is the last part of the URL (after the last '/')
 // Note that different URLs for same file will download to the same <sha>
 // directory. We delete duplicates assuming the file content will be the same.
 
@@ -35,6 +36,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -43,12 +45,15 @@ var imgCatalogDirname string
 func main() {
 	log.Printf("Starting verifier\n")
 
+	watch.CleanupRestarted("verifier")
+
 	// Keeping status in /var/run to be clean after a crash/reboot
 	baseDirname := "/var/tmp/verifier"
 	runDirname := "/var/run/verifier"
 	configDirname := baseDirname + "/config"
 	statusDirname := runDirname + "/status"
 	imgCatalogDirname = "/var/tmp/zedmanager/downloads"
+
 	pendingDirname := imgCatalogDirname + "/pending"
 	verifierDirname := imgCatalogDirname + "/verifier"
 	verifiedDirname := imgCatalogDirname + "/verified"
@@ -58,6 +63,7 @@ func main() {
 			log.Fatal(err)
 		}
 	}
+
 	if _, err := os.Stat(configDirname); err != nil {
 		if err := os.MkdirAll(configDirname, 0700); err != nil {
 			log.Fatal(err)
@@ -74,6 +80,18 @@ func main() {
 			log.Fatal(err)
 		}
 	}
+	// Don't remove directory since there is a watch on it
+	locations, err := ioutil.ReadDir(statusDirname)
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, location := range locations {
+		filename := statusDirname + "/" + location.Name()
+		if err := os.RemoveAll(filename); err != nil {
+			log.Fatal(err)
+		}
+	}
+
 	if _, err := os.Stat(imgCatalogDirname); err != nil {
 		if err := os.MkdirAll(imgCatalogDirname, 0700); err != nil {
 			log.Fatal(err)
@@ -112,7 +130,7 @@ func main() {
 			configDirname, statusDirname,
 			&types.VerifyImageConfig{},
 			&types.VerifyImageStatus{},
-			handleCreate, handleModify, handleDelete)
+			handleCreate, handleModify, handleDelete, nil)
 	}
 }
 
@@ -123,8 +141,7 @@ func handleInit(verifiedDirname string, statusDirname string,
 		verifiedDirname, statusDirname,	parentDirname)
 	locations, err := ioutil.ReadDir(verifiedDirname)
 	if err != nil {
-		log.Fatalf("ReadDir(%s) %s\n",
-			verifiedDirname, err)
+		log.Fatal(err)
 	}
 	for _, location := range locations {
 		filename := verifiedDirname + "/" + location.Name()
@@ -143,6 +160,8 @@ func handleInit(verifiedDirname string, statusDirname string,
 	}
 	fmt.Printf("handleInit done for %s, %s, %s\n",
 		verifiedDirname, statusDirname,	parentDirname)
+	// Report to zedmanager that init is done
+	watch.SignalRestarted("verifier")
 }
 
 func writeVerifyImageStatus(status *types.VerifyImageStatus,
@@ -266,7 +285,7 @@ func handleCreate(statusFilename string, configArg interface{}) {
 		status.State = types.INITIAL
 		writeVerifyImageStatus(&status, statusFilename)
 		log.Printf("handleCreate failed for %s\n", config.DownloadURL)
-        }
+    }
 
 	serverCertName := config.SignatureKey
         serverCertificate, err := ioutil.ReadFile(certificateDirname+"/"+serverCertName)
@@ -407,7 +426,18 @@ func handleCreate(statusFilename string, configArg interface{}) {
 	// Move directory from downloads/verifier to downloads/verified
 	// XXX should have dom0 do this and/or have RO mounts
 	finalDirname := imgCatalogDirname + "/verified/" + config.ImageSha256
-	finalFilename := finalDirname + "/" + config.Safename
+	// Drop URL all but last part of URL. Note that '/' was converted
+	// to '_' in Safename
+	comp := strings.Split(config.Safename, "_")
+	last := comp[len(comp)-1]
+	// Drop "."sha256 tail part of Safename
+	i := strings.LastIndex(last, ".")
+	if i == -1 {
+		log.Fatal("Malformed safename with no .sha256",
+			config.Safename)
+	}
+	last = last[0:i]
+	finalFilename := finalDirname + "/" + last
 	fmt.Printf("Move from %s to %s\n", destFilename, finalFilename)
 	// XXX change log.Fatal to something else?
 	if _, err := os.Stat(finalDirname); err == nil {
@@ -416,8 +446,7 @@ func handleCreate(statusFilename string, configArg interface{}) {
 		// Delete existing to avoid wasting space.
 		locations, err := ioutil.ReadDir(finalDirname)
 		if err != nil {
-			log.Fatalf("ReadDir(%s) %s\n",
-				finalDirname, err)
+			log.Fatal(err)
 		}
 		for _, location := range locations {
 			log.Printf("Identical sha256 (%s) for safenames %s and %s; deleting old\n",

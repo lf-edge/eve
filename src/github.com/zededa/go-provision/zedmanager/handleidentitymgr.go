@@ -4,7 +4,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -111,15 +110,8 @@ func handleEIDStatusModify(statusFilename string,
 		EIDStatus = make(map[string]types.EIDStatus)
 	}
 	changed := false
-	if m, ok := EIDStatus[key]; ok {
-		// Did an EID get assigned?
-		// XXX should be caught by Pending* check above
-		// XXX Remove
-		if false || !bytes.Equal(status.EID, m.EID) {
-			fmt.Printf("XXX EID map changed from %v to %v\n",
-				m.EID, status.EID)
-			changed = true
-		}
+	if _, ok := EIDStatus[key]; ok {
+		fmt.Printf("Exists means no change for %v\n", status.EID)
 	} else {
 		fmt.Printf("EID map add for %v\n", status.EID)
 		changed = true

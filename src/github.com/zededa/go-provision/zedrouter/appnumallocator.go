@@ -47,7 +47,7 @@ func appNumAllocatorInit(statusDir string, configDir string) {
 
 	statusFiles, err := ioutil.ReadDir(statusDir)
 	if err != nil {
-		log.Fatal(err, ": ", statusDir)
+		log.Fatal(err)
 	}
 
 	for _, statusFile := range statusFiles {
