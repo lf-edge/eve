@@ -1,7 +1,20 @@
+TODO Onboarding time measurement
+
+TODO rloc { address = 192.168.1.1 } for case of two behind same NAT
+     Need global file - as json? Put in isZedmanager - upLinkIntf (list?)
+     and add upLinkAddrs (list). Or extract address inside zedrouter (and
+     detect changes)?
+     ip monitor address dev wlan0
+     findUplink - get all default routes? (doesn't work for infra with private
+     interface)
+     Make global file be [uplink1,uplink2],[ip1,ip2]; need handler in zedrouter
+     
+     
 TODO alpine add nordmark and zededa to image.
      remove guest account? passwd?
      
-TODO try set checkpoint-map-cache
+DONE try set checkpoint-map-cache
+     No difference
 Without; stop one domain; 35 seconds outtage for dom0 and domU
 64 bytes from zedhikey: icmp_seq=224 ttl=62 time=237 ms
 64 bytes from zedhikey: icmp_seq=259 ttl=62 time=353 ms
@@ -15,7 +28,6 @@ No benefit.
 
 TODO service to mount second disk (with gpio-to-lead?) and "run=" in /proc/cmdline
      In alpine img
-     Upload img + dtd's to store
      
 TODO use dmidecode to determine bios version etc. Put in SwStatus? Or HwStatus?
   bios-vendor
@@ -32,6 +44,10 @@ TODO ethtool setup in domU for checksum? How to make permanent?
 	Or can we force in dom0/ netback?
 Needed for x86 as well.
 TODO try with other mangle setup..
+This rule is hit:
+// XXX add ip6tables -t mangle -A FORWARD -p tcp -i bo1x2 -j CHECKSUM --checksum-fill
+but no connrefused for telnet.
+No nestat -s in Alpine
 
 TODO 20-30 second outage when we add/delete a domU/EID as reported by
      ping6 zedcontrol
