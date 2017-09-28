@@ -1,5 +1,7 @@
 #!/bin/bash
 
+echo "Starting device-steps.sh at" `date`
+
 ETCDIR=/opt/zededa/etc
 BINDIR=/opt/zededa/bin
 PROVDIR=$BINDIR
@@ -9,11 +11,14 @@ PATH=$BINDIR:$PATH
 
 WAIT=1
 EID_IN_DOMU=0
+MEASURE=0
 while [ $# != 0 ]; do
     if [ "$1" == -w ]; then
 	WAIT=0
     elif [ "$1" == -x ]; then
 	EID_IN_DOMU=1
+    elif [ "$1" == -m ]; then
+	MEASURE=1
     else
 	ETCDIR=$1
     fi
@@ -25,7 +30,7 @@ echo "Configuration from factory/install:"
 echo
 
 if [ ! \( -f $ETCDIR/device.cert.pem -a -f $ETCDIR/device.key.pem \) ]; then
-    echo "Generating a device key pair and self-signed cert (using TPM/TEE if available)"
+    echo "Generating a device key pair and self-signed cert (using TPM/TEE if available) at" `date`
     $PROVDIR/generate-device.sh $ETCDIR/device
     SELF_REGISTER=1
 else
@@ -88,7 +93,7 @@ fi
 # Ideally just to WiFi setup in dom0 and do DHCP in domZ
 
 if [ $SELF_REGISTER = 1 ]; then
-    echo "Self-registering our device certificate"
+    echo "Self-registering our device certificate at " `date`
     if [ ! \( -f $ETCDIR/onboard.cert.pem -a -f $ETCDIR/onboard.key.pem \) ]; then
 	echo "Missing onboarding certificate. Giving up"
 	exit 1
@@ -101,7 +106,7 @@ fi
 
 # XXX We always redo this to get an updated zedserverconfig
 if [ /bin/true -o ! -f $ETCDIR/lisp.config ]; then
-    echo "Retrieving device and overlay network config"
+    echo "Retrieving device and overlay network config at" `date`
     $BINDIR/client $ETCDIR lookupParam
     echo "Retrieved overlay /etc/hosts with:"
     cat $ETCDIR/zedserverconfig
@@ -270,50 +275,50 @@ echo '{"MaxSpace":2000000}' >/var/tmp/downloader/config/global
 rm -f /var/run/verifier/status/restarted
 rm -f /var/tmp/zedrouter/config/restart
 
-echo "Starting verifier"
+echo "Starting verifier at" `date`
 verifier >&/var/log/verifier.log&
 if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
 
-echo "Starting ZedManager"
+echo "Starting ZedManager at" `date`
 zedmanager >&/var/log/zedmanager.log&
 if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
 
-echo "Starting downloader"
+echo "Starting downloader at" `date`
 downloader >&/var/log/downloader.log&
 if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
 
-echo "Starting eidregister"
+echo "Starting eidregister at" `date`
 eidregister >&/var/log/eidregister.log&
 if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
 
-echo "Starting identitymgr"
+echo "Starting identitymgr at" `date`
 identitymgr >&/var/log/identitymgr.log&
 if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
 
-echo "Starting ZedRouter"
+echo "Starting ZedRouter at" `date`
 zedrouter >&/var/log/zedrouter.log&
 if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
 
-echo "Starting DomainMgr"
+echo "Starting DomainMgr at" `date`
 domainmgr >&/var/log/domainmgr.log&
 # Do something
 if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
 
-echo "Uploading device (hardware) status"
+echo "Uploading device (hardware) status at" `date`
 machine=`uname -m`
 processor=`uname -p`
 platform=`uname -i`
@@ -367,7 +372,7 @@ if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
 
-echo "Uploading software status"
+echo "Uploading software status at" `date`
 # Only report the Linux info for now
 name=`uname -o`
 version=`uname -r`
@@ -389,4 +394,8 @@ cat >$ETCDIR/swstatus.json <<EOF
 EOF
 $BINDIR/client $ETCDIR updateSwStatus
 
-echo "Initial setup done!"
+echo "Initial setup done at" `date`
+if [ $MEASURE == 1 ]; then
+    ping6 -c 3 -w 1000 zedcontrol
+    echo "Measurement done at" `date`
+fi
