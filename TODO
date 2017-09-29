@@ -13,19 +13,6 @@ TODO rloc { address = 192.168.1.1 } for case of two behind same NAT
 TODO alpine add nordmark and zededa to image.
      remove guest account? passwd?
      
-DONE try set checkpoint-map-cache
-     No difference
-Without; stop one domain; 35 seconds outtage for dom0 and domU
-64 bytes from zedhikey: icmp_seq=224 ttl=62 time=237 ms
-64 bytes from zedhikey: icmp_seq=259 ttl=62 time=353 ms
-With; start one domain; 35 seconds outtage for dom0 and domU
-With? stop one domain?
-43 seconds (but was other domain fully booted? CPU load?)
-Start one domain?
-32 seconds, 33 seconds
-Stop 43
-No benefit.
-
 TODO service to mount second disk (with gpio-to-lead?) and "run=" in /proc/cmdline
      In alpine img
      
@@ -38,16 +25,6 @@ TODO? encrypted virtual disks? Useful if rw since contains customer data
 
 TODO what is needed for docker/rkt? Two vdisks?
 
-TODO ethtool setup in domU for checksum? How to make permanent?
-	sudo ethtool -K eth1 tx-checksum-ipv6 off
-	Set default in (shared?) kernel?
-	Or can we force in dom0/ netback?
-Needed for x86 as well.
-TODO try with other mangle setup..
-This rule is hit:
-// XXX add ip6tables -t mangle -A FORWARD -p tcp -i bo1x2 -j CHECKSUM --checksum-fill
-but no connrefused for telnet.
-No nestat -s in Alpine
 
 TODO 20-30 second outage when we add/delete a domU/EID as reported by
      ping6 zedcontrol
@@ -80,6 +57,30 @@ TODO Create DeviceSwStatus separate from DeviceSwResources
 DONE NAT i.e. uplink global address? (From exchanges with ZedControl).
 
 ===
+
+DONE try set checkpoint-map-cache
+     No difference
+Without; stop one domain; 35 seconds outtage for dom0 and domU
+64 bytes from zedhikey: icmp_seq=224 ttl=62 time=237 ms
+64 bytes from zedhikey: icmp_seq=259 ttl=62 time=353 ms
+With; start one domain; 35 seconds outtage for dom0 and domU
+With? stop one domain?
+43 seconds (but was other domain fully booted? CPU load?)
+Start one domain?
+32 seconds, 33 seconds
+Stop 43
+No benefit.
+
+NOT ethtool setup in domU for checksum? How to make permanent?
+	sudo ethtool -K eth1 tx-checksum-ipv6 off
+	Set default in (shared?) kernel?
+	Or can we force in dom0/ netback?
+Needed for x86 as well.
+DONE try with other mangle setup..
+ip6tables -t mangle -A PREROUTING -p tcp -i bo1x1 -j CHECKSUM --checksum-fill
+ip6tables -t mangle -A PREROUTING -p tcp -i bo1x2 -j CHECKSUM --checksum-fill
+ip6tables -t mangle -A PREROUTING -p udp -i bo1x1 -j CHECKSUM --checksum-fill
+ip6tables -t mangle -A PREROUTING -p udp -i bo1x2 -j CHECKSUM --checksum-fill
 
 DONE upon reboot treat existing images for domU's as implicit preserve
      i.e. don't recreate from verified image.

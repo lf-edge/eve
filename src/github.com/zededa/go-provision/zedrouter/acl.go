@@ -35,6 +35,15 @@ func createACLConfiglet(ifname string, isMgmt bool, ACLs []types.ACE,
 			ip6tableCmd(args...)
 		}
 	}
+	if !isMgmt {
+		// Add mangle rules for IPv6 packets from the domU (overlay or
+		// underlay) since netfront/netback thinks there is checksum
+		// offload
+		ip6tableCmd("-t", "mangle", "-A", "PREROUTING", "-i", ifname,
+			"-p", "tcp", "-j", "CHECKSUM", "--checksum-fill")
+		ip6tableCmd("-t", "mangle", "-A", "PREROUTING", "-i", ifname,
+			"-p", "udp", "-j", "CHECKSUM", "--checksum-fill")
+	}
 	// XXX isMgmt is painful; related to commenting out eidset accepts
 	// XXX won't need this when zedmanager is in a separate domU
 	// Commenting out for now
@@ -299,7 +308,15 @@ func deleteACLConfiglet(ifname string, isMgmt bool, ACLs []types.ACE,
 			ip6tableCmd(args...)
 		}
 	}
-	if overlayIP != "" {
+	if !isMgmt {
+		// Remove mangle rules for IPv6 packets added above
+		ip6tableCmd("-t", "mangle", "-D", "PREROUTING", "-i", ifname,
+			"-p", "tcp", "-j", "CHECKSUM", "--checksum-fill")
+		ip6tableCmd("-t", "mangle", "-D", "PREROUTING", "-i", ifname,
+			"-p", "udp", "-j", "CHECKSUM", "--checksum-fill")
+	}
+	// XXX see above
+	if false && overlayIP != "" {
 		// Manually delete the manual add above
 		ip6tableCmd("-D", "FORWARD", "-i", ifname, "-j", "DROP")
 	}

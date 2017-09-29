@@ -601,6 +601,7 @@ func handleCreate(statusFilename string, configArg interface{}) {
 		}
 
 		// Create iptables with optional ipset's based ACL
+		// XXX Doesn't handle IPv6 underlay ACLs
 		createACLConfiglet(ulIfname, false, ulConfig.ACLs, 4, "")
 
 		// Start clean
