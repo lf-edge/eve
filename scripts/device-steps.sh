@@ -128,6 +128,9 @@ if [ ! -d $LISPDIR ]; then
     exit 1
 fi
 
+# Need a key for device-to-device map-requests
+cp -p $ETDDIR/device.key.pem $LISPDIR/lisp-sig.pem   
+
 if [ -f /var/tmp/zedrouter/config/global ]; then
    cp -p /var/tmp/zedrouter/config/global $ETCDIR/network.config.global
 fi
@@ -231,8 +234,9 @@ if [ $SELF_REGISTER = 1 ]; then
 		exit 1    
 	fi
 	echo "Determining uplink interface"
+# XXX this doesn't run on update; handle both formats in json?
 	cat <<EOF >$ETCDIR/network.config.global
-{"Uplink":"$intf"}
+{"Uplink":["$intf"]}
 EOF
 
 	# Make sure we set the dom0 hostname, used by LISP nat traversal, to

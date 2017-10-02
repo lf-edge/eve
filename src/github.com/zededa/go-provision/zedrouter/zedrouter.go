@@ -133,18 +133,39 @@ func handleInit(configFilename string, statusFilename string,
 	if err := json.Unmarshal(cb, &globalConfig); err != nil {
 		log.Printf("%s DeviceNetworkConfig file: %s\n",
 			err, configFilename)
-		log.Fatal(err)
+		// Try old format
+		var globalConfigV1 types.DeviceNetworkConfigV1
+		if err := json.Unmarshal(cb, &globalConfigV1); err != nil {
+			log.Printf("%s DeviceNetworkConfigV1 file: %s\n",
+				err, configFilename)
+			log.Fatal(err)
+		}
+		globalConfig.Uplink = make([]string, 1)
+		globalConfig.Uplink[0] = globalConfigV1.Uplink
 	}
-	_, err = netlink.LinkByName(globalConfig.Uplink)
-	if err != nil {
-		log.Fatal("Uplink in config/global does not exist: ",
-			globalConfig.Uplink)
+	for _, u := range globalConfig.Uplink {
+		link, err := netlink.LinkByName(u)
+		if err != nil {
+			log.Fatal("Uplink in config/global does not exist: ",
+				u)
+		}
+		addrs4, err := netlink.AddrList(link, netlink.FAMILY_V4)
+		addrs6, err := netlink.AddrList(link, netlink.FAMILY_V6)
+		fmt.Printf("UplinkAddrs v4 %d v6 %d\n", len(addrs4), len(addrs6))
+		globalStatus.UplinkAddrs = make([]net.IP,
+			len(addrs4) + len(addrs6))
+		for i, addr := range addrs4 {
+			globalStatus.UplinkAddrs[i] = addr.IP
+		}
+		for i, addr := range addrs6 {
+			// XXX check if link-local?		
+			globalStatus.UplinkAddrs[i + len(addrs4)] = addr.IP
+		}
 	}
-	if _, err := os.Stat(statusFilename); err != nil {
-		// Create and write with initial values
-		globalStatus.Uplink = globalConfig.Uplink
-		writeGlobalStatus()
-	}
+	globalStatus.Uplink = globalConfig.Uplink
+	// Create and write with initial values
+	writeGlobalStatus()
+
 	sb, err := ioutil.ReadFile(statusFilename)
 	if err != nil {
 		log.Printf("%s for %s\n", err, statusFilename)
@@ -394,7 +415,7 @@ func handleCreate(statusFilename string, configArg interface{}) {
 		// Create LISP configlets for IID and EID/signature
 		createLispConfiglet(lispRunDirname, true, olConfig.IID,
 			olConfig.EID, olConfig.LispSignature,
-			globalConfig.Uplink, olIfname, olIfname,
+			globalStatus, olIfname, olIfname,
 			additionalInfo)
 		status.OverlayNetworkList = make([]types.OverlayNetworkStatus,
 			len(config.OverlayNetworkList))
@@ -539,7 +560,7 @@ func handleCreate(statusFilename string, configArg interface{}) {
 		// Create LISP configlets for IID and EID/signature
 		createLispConfiglet(lispRunDirname, false, olConfig.IID,
 			olConfig.EID, olConfig.LispSignature,
-			globalConfig.Uplink, olIfname, olIfname,
+			globalStatus, olIfname, olIfname,
 			additionalInfo)
 
 		// Add bridge parameters for Xen to Status
@@ -756,7 +777,7 @@ func handleModify(statusFilename string, configArg interface{},
 		// Create LISP configlets for IID and EID/signature
 		updateLispConfiglet(lispRunDirname, false, olConfig.IID,
 			olConfig.EID, olConfig.LispSignature,
-			globalConfig.Uplink, olIfname, olIfname,
+			globalStatus, olIfname, olIfname,
 			additionalInfo)
 
 	}
@@ -880,7 +901,7 @@ func handleDelete(statusFilename string, statusArg interface{}) {
 
 		// Delete LISP configlets
 		deleteLispConfiglet(lispRunDirname, true, olStatus.IID,
-			olStatus.EID, globalConfig.Uplink)
+			olStatus.EID, globalStatus)
 	} else {
 		// Delete everything for overlay
 		for olNum := 1; olNum <= maxOlNum; olNum++ {
@@ -919,7 +940,7 @@ func handleDelete(statusFilename string, statusArg interface{}) {
 				// Delete LISP configlets
 				deleteLispConfiglet(lispRunDirname, false,
 					olStatus.IID, olStatus.EID,
-					globalConfig.Uplink)
+					globalStatus)
 			} else {
 				log.Println("Missing status for overlay %d; can not clean up ACLs and LISP\n",
 					olNum)

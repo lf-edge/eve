@@ -7,6 +7,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/zededa/go-provision/types"
 	"io"
 	"io/ioutil"
 	"log"
@@ -17,7 +18,7 @@ import (
 	"strings"
 )
 
-// Need to fill in IID in 2 places
+// Need to fill in IID in 3 places
 // Use this for the Mgmt IID
 // XXX need to be able to set the ms name? Not needed for demo
 const lispIIDtemplateMgmt = `
@@ -32,9 +33,16 @@ lisp map-server {
     authentication-key = test2_%d
     want-map-notify = yes
 }
+lisp map-cache {
+    prefix {
+        instance-id = %d
+        eid-prefix = fd00::/8
+        send-map-request = yes
+    }
+}
 `
 
-// Need to fill in IID in 4 places
+// Need to fill in IID in 5 places
 // Use this for the application IIDs
 const lispIIDtemplate = `
 lisp map-server {
@@ -50,9 +58,16 @@ lisp map-server {
     authentication-key = test2_%d
     want-map-notify = yes
 }
+lisp map-cache {
+    prefix {
+        instance-id = %d
+        eid-prefix = fd00::/8
+        send-map-request = yes
+    }
+}
 `
 
-// Need to fill in (signature, additional, IID, EID, UplinkIfname, olIfname, IID)
+// Need to fill in (signature, additional, olIfname, IID)
 // Use this for the Mgmt IID/EID
 const lispEIDtemplateMgmt = `
 lisp json {
@@ -65,32 +80,41 @@ lisp json {
     json-string = %s
 }
 
+lisp interface {
+    interface-name = overlay-mgmt
+    device = %s
+    instance-id = %d
+}
+`
+
+// Need to pass in (IID, EID, rlocs), where rlocs is a string with
+// sets of uplink info with:
+// rloc {
+//        interface = %s
+// }
+// rloc {
+//        address = %s
+// }
+const lispDBtemplateMgmt = `
 lisp database-mapping {
     prefix {
         instance-id = %d
         eid-prefix = %s/128
-    }
-    rloc {
-        interface = %s
+        signature-eid = yes
     }
     rloc {
         json-name = signature
-	priority = 255
+        priority = 255
     }
     rloc {
         json-name = additional-info
-	priority = 255
+        priority = 255
     }
-}
-lisp interface {
-	interface-name = overlay-mgmt
-	device = %s
-	instance-id = %d
+%s
 }
 `
 
-// Need to fill in (tag, signature, tag, additional, IID, EID, IID,
-// UplinkIfname, tag, tag, olifname, olifname, IID)
+// Need to fill in (tag, signature, tag, additional, olifname, olifname, IID)
 // Use this for the application EIDs
 const lispEIDtemplate = `
 lisp json {
@@ -103,28 +127,38 @@ lisp json {
     json-string = %s
 }
 
-lisp database-mapping {
-    prefix {
-        instance-id = %d
-        eid-prefix = %s/128
-	ms-name = ms-%d
-    }
-    rloc {
-        interface = %s
-    }
-    rloc {
-        json-name = signature-%s
-	priority = 255
-    }
-    rloc {
-        json-name = additional-info-%s
-	priority = 255
-    }
-}
 lisp interface {
     interface-name = overlay-%s
     device = %s
     instance-id = %d
+}
+`
+
+// Need to fill in (IID, EID, IID, tag, tag, rlocs) where
+// rlocs is a string with sets of uplink info with:
+// rloc {
+//        interface = %s
+// }
+// rloc {
+//        address = %s
+//        priority = %d
+// }
+const lispDBtemplate = `
+lisp database-mapping {
+    prefix {
+        instance-id = %d
+        eid-prefix = %s/128
+        ms-name = ms-%d
+    }
+    rloc {
+        json-name = signature-%s
+        priority = 255
+    }
+    rloc {
+        json-name = additional-info-%s
+        priority = 255
+    }
+%s
 }
 `
 
@@ -143,10 +177,11 @@ const RLFilename = "/opt/zededa/lisp/RL"
 //
 // Would be more polite to return an error then to Fatal
 func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
-	EID net.IP, lispSignature string, upLinkIfname string,
+	EID net.IP, lispSignature string,
+	globalStatus types.DeviceNetworkStatus,
 	tag string, olIfname string, additionalInfo string) {
-	fmt.Printf("createLispConfiglet: %s %v %d %s %s %s %s %s %s\n",
-		lispRunDirname, isMgmt, IID, EID, lispSignature, upLinkIfname,
+	fmt.Printf("createLispConfiglet: %s %v %d %s %v %s %s %s %s\n",
+		lispRunDirname, isMgmt, IID, EID, lispSignature, globalStatus,
 		tag, olIfname, additionalInfo)
 	cfgPathnameIID := lispRunDirname + "/" +
 		strconv.FormatUint(uint64(IID), 10)
@@ -169,35 +204,53 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 		log.Fatal("os.Create for ", cfgPathnameEID, err)
 	}
 	defer file2.Close()
+	rlocString := ""
+	for _, u := range globalStatus.Uplink {
+		one := fmt.Sprintf("    rloc {\n        interface = %s\n    }\n", u)
+		rlocString += one
+	}
+	for _, a := range globalStatus.UplinkAddrs {
+		prio := 0
+		if a.IsLinkLocalUnicast() {
+			prio = 1
+		}
+		one := fmt.Sprintf("    rloc {\n        address = %s\n        priority = %d\n    }\n", a, prio)
+		rlocString += one
+	}
 	if isMgmt {
-		file1.WriteString(fmt.Sprintf(lispIIDtemplateMgmt, IID, IID))
+		file1.WriteString(fmt.Sprintf(lispIIDtemplateMgmt, IID, IID,
+			IID))
 		file2.WriteString(fmt.Sprintf(lispEIDtemplateMgmt,
-			lispSignature, additionalInfo, IID, EID,
-			upLinkIfname, olIfname, IID))
+			lispSignature, additionalInfo, olIfname, IID))
+		file2.WriteString(fmt.Sprintf(lispDBtemplateMgmt,
+			IID, EID, rlocString))
 	} else {
 		file1.WriteString(fmt.Sprintf(lispIIDtemplate,
-			IID, IID, IID, IID))
+			IID, IID, IID, IID, IID))
 		file2.WriteString(fmt.Sprintf(lispEIDtemplate,
-			tag, lispSignature, tag, additionalInfo, IID, EID, IID,
-			upLinkIfname, tag, tag, olIfname, olIfname, IID))
+			tag, lispSignature, tag, additionalInfo, olIfname,
+			olIfname, IID))
+		file2.WriteString(fmt.Sprintf(lispDBtemplate,
+			IID, EID, IID, tag, tag, rlocString))
 	}
-	updateLisp(lispRunDirname, upLinkIfname)
+	updateLisp(lispRunDirname, globalStatus.Uplink)
 }
 
 func updateLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
-	EID net.IP, lispSignature string, upLinkIfname string,
+	EID net.IP, lispSignature string,
+ 	globalStatus types.DeviceNetworkStatus,
 	tag string, olIfname string, additionalInfo string) {
-	fmt.Printf("updateLispConfiglet: %s %v %d %s %s %s %s %s %s\n",
-		lispRunDirname, isMgmt, IID, EID, lispSignature, upLinkIfname,
+	fmt.Printf("updateLispConfiglet: %s %v %d %s %v %s %s %s %s\n",
+		lispRunDirname, isMgmt, IID, EID, lispSignature, globalStatus,
 		tag, olIfname, additionalInfo)
 	createLispConfiglet(lispRunDirname, isMgmt, IID, EID, lispSignature,
-		upLinkIfname, tag, olIfname, additionalInfo)
+		globalStatus, tag, olIfname, additionalInfo)
 }
 
 func deleteLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
-	EID net.IP, upLinkIfname string) {
-	fmt.Printf("deleteLispConfiglet: %s %d %s %s\n",
-		lispRunDirname, IID, EID, upLinkIfname)
+	EID net.IP, globalStatus types.DeviceNetworkStatus) {
+	fmt.Printf("deleteLispConfiglet: %s %d %s %v\n",
+		lispRunDirname, IID, EID, globalStatus)
 
 	var cfgPathnameEID string
 	if isMgmt {
@@ -216,16 +269,16 @@ func deleteLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	// cfgPathnameIID := lispRunDirname + "/" +
 	//	strconv.FormatUint(uint64(IID), 10)
 
-	updateLisp(lispRunDirname, upLinkIfname)
+	updateLisp(lispRunDirname, globalStatus.Uplink)
 }
 
-func updateLisp(lispRunDirname string, upLinkIfname string) {
-	fmt.Printf("updateLisp: %s %s\n", lispRunDirname, upLinkIfname)
+func updateLisp(lispRunDirname string, upLinkIfnames []string) {
+	fmt.Printf("updateLisp: %s %v\n", lispRunDirname, upLinkIfnames)
 
 	if deferUpdate {
 		log.Printf("updateLisp deferred\n")
 		deferLispRunDirname = lispRunDirname
-		deferUpLinkIfname = upLinkIfname
+		deferUpLinkIfnames = upLinkIfnames
 		return
 	}
 
@@ -310,13 +363,13 @@ func updateLisp(lispRunDirname string, upLinkIfname string) {
 	if eidCount == 0 {
 		stopLisp()
 	} else {
-		restartLisp(upLinkIfname, devices)
+		restartLisp(upLinkIfnames, devices)
 	}
 }
 
 var deferUpdate = false
 var deferLispRunDirname = ""
-var deferUpLinkIfname = ""
+var deferUpLinkIfnames []string = nil
 
 func handleLispRestart(done bool) {
 	log.Printf("handleLispRestart(%v)\n", done)
@@ -325,9 +378,9 @@ func handleLispRestart(done bool) {
 			deferUpdate = false
 			if deferLispRunDirname != "" {
 				updateLisp(deferLispRunDirname,
-					deferUpLinkIfname)
+					deferUpLinkIfnames)
 				deferLispRunDirname = ""
-				deferUpLinkIfname = ""
+				deferUpLinkIfnames = nil
 			}
 		}
 	} else {
@@ -335,13 +388,14 @@ func handleLispRestart(done bool) {
 	}
 }
 
-func restartLisp(upLinkIfname string, devices string) {
-	log.Printf("restartLisp: %s %s\n",
-		upLinkIfname, devices)
+func restartLisp(upLinkIfnames []string, devices string) {
+	log.Printf("restartLisp: %v %s\n",
+		upLinkIfnames, devices)
+	// XXX how to restart with multiple uplinks?
 	args := []string{
 		RestartCmd,
 		"8080",
-		upLinkIfname,
+		upLinkIfnames[0],
 	}
 	itrTimeout := 1
 	cmd := exec.Command(RestartCmd)
@@ -363,8 +417,9 @@ func restartLisp(upLinkIfname string, devices string) {
 
 	// Save the restart as a bash command called RL
 	const RLTemplate = "#!/bin/bash\n# Automatically generated by zedrouter\ncd `dirname $0`\nLISP_NO_IPTABLES=,LISP_PCAP_LIST='%s',LISP_ITR_WAIT_TIME=%d %s 8080 %s\n"
+	// XXX how to restart with multiple uplinks?
 	b := []byte(fmt.Sprintf(RLTemplate, devices, itrTimeout, RestartCmd,
-		upLinkIfname))
+		upLinkIfnames[0]))
 	err = ioutil.WriteFile(RLFilename, b, 0744)
 	if err != nil {
 		log.Fatal("WriteFile", err, RLFilename)

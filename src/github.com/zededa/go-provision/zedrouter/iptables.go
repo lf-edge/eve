@@ -33,9 +33,10 @@ func ip6tableCmd(args ...string) error {
 func iptablesInit() {
 	// Avoid adding nat rule multiple times as we restart by flushing first
 	iptableCmd("-t", "nat", "-F", "POSTROUTING")
-	iptableCmd("-t", "nat", "-A", "POSTROUTING", "-o", globalConfig.Uplink,
-		"-s", "172.27.0.0/16", "-j", "MASQUERADE")
-
+	for _, u := range globalConfig.Uplink {
+		iptableCmd("-t", "nat", "-A", "POSTROUTING", "-o", u,
+			"-s", "172.27.0.0/16", "-j", "MASQUERADE")
+	}
 	// Flush IPv6 mangle rules from previous run
 	ip6tableCmd("-F", "PREROUTING", "-t", "mangle")
 
