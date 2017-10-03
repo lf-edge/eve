@@ -52,7 +52,7 @@ func countNetDevs() int {
 		log.Fatal(err)
 		return 0
 	}
-	defer os.Close(fp)
+	defer fp.Close()
 	data := make([]byte, 32*1024)
 	lineSep := []byte{'\n'}
 	lines := 0
@@ -75,18 +75,19 @@ func pollSystemStatus() zmet.ZMetricMsg {
 
 	// allocate device metric message
 	dmm := new(zmet.ZMetricMsg_Dm)
-	dmm.CpuMetric = new(zmet.CpuMetric)
-	populateCpuMetrics(&dmm.CpuMetric)
+	dmm.Dm.Cpu = new(zmet.CpuMetric)
+	populateCpuMetrics(dmm.Dm.Cpu)
 
 	// allocate network metric message
-	dmm.MemoryMetric = new(zmet.MemoryMetric)
-	populateMemoryMetrics(&dmm.MemoryMetric)
+	dmm.Dm.Memory = new(zmet.MemoryMetric)
+	populateMemoryMetrics(dmm.Dm.Memory)
 
 	netdevs := countNetDevs()
 	fmt.Printf("We have %d interfaces\n", netdevs - 2)
-	dmm.NetworkMetric = make([]*zmet.NetworkMetric, netdevs)
-	populateNetworkMetrics(&dmm.network)
-
+	dmm.Dm.Network = make([]*zmet.NetworkMetric, netdevs)
+	for i:=0; i < netdevs; i++ {
+		populateNetworkMetrics(dmm.Dm.Network[i])
+	}
 	return *zmsg
 }
 
