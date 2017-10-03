@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-
+	"io/ioutil"
 	"github.com/golang/protobuf/proto"
 )
 
@@ -125,15 +125,12 @@ func DeviceCpuStorageStat() {
 func DeviceNetworkStat() {
 
 	counter := 0
-	networkStatCmd := exec.Command("cat", "/proc/net/dev")
-	stdout, err := networkStatCmd.Output()
+	netDetails,err := ioutil.ReadFile("/proc/net/dev") 
 	if err != nil {
-		println(err.Error())
-		return
+		fmt.Println(err)
 	}
-	//fmt.Println(string(stdout))
 
-	networkInfo := fmt.Sprintf("%s", stdout)
+	networkInfo := fmt.Sprintf("%s", netDetails)
 	splitNetworkInfo := strings.Split(networkInfo, "\n")
 	splitNetworkInfoLength := len(splitNetworkInfo)
 	length := splitNetworkInfoLength - 1
