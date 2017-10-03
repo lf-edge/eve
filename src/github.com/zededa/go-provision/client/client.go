@@ -283,6 +283,8 @@ func main() {
 			if delay > maxDelay {
 				delay = maxDelay
 			}
+			log.Printf("Retrying selfRegister in %d seconds\n",
+				delay)
 		}
 	}
 
@@ -333,6 +335,8 @@ func main() {
 			if delay > maxDelay {
 				delay = maxDelay
 			}
+			log.Printf("Retrying lookupParam in %d seconds\n",
+				delay)
 		}
 
 		// XXX add Redirect support and store + retry
@@ -492,6 +496,8 @@ func main() {
 			if delay > maxDelay {
 				delay = maxDelay
 			}
+			log.Printf("Retrying updateHwStatus in %d seconds\n",
+				delay)
 		}
 	}
 	if operations["updateSwStatus"] {
@@ -511,6 +517,8 @@ func main() {
 			if delay > maxDelay {
 				delay = maxDelay
 			}
+			log.Printf("Retrying updateSwStatus in %d seconds\n",
+				delay)
 		}
 	}
 }
