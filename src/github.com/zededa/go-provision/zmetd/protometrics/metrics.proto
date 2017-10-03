@@ -1,0 +1,44 @@
+syntax = "proto2";
+package protometrics;
+
+enum ZmetricTypes {
+  ZmNop = 0;
+  ZmDevice = 1;
+  ZmApp = 3;
+}
+
+message cpuMetric {
+  required  uint32 upTime = 2;
+  required  float cpuUtilization = 3;
+}
+
+message memoryMetric {
+ required  uint32 usedMem = 2;
+ required  float usedPercentage = 3;
+ required  uint32 maxMem = 4;
+}
+
+message networkMetric {
+ required  string devName = 1;
+ required  uint64 txBytes = 2;
+ required  uint64 rxBytes = 3;
+ required  uint64 txDrops = 4;
+ required  uint64 rxDrops = 5;
+ required  uint64 txRate = 6;  // pps
+ required  uint64 rxRate = 7;  // pps
+}
+
+message deviceMetric {
+ required  cpuMetric cpu = 1;
+ required  memoryMetric memory = 2;
+ repeated networkMetric network = 3;
+}
+
+message ZMetricMsg {
+ required  string devID = 1;
+ required  ZmetricTypes ztype = 2;
+
+  oneof MetricContent {
+  	deviceMetric dm = 3;
+   }
+}
