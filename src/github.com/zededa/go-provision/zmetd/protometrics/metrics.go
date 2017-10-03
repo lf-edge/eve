@@ -10,6 +10,7 @@ import (
 	"strings"
 	"io/ioutil"
 	"github.com/golang/protobuf/proto"
+	"time"
 )
 
 var networkStat [][]string
@@ -20,6 +21,15 @@ func main() {
 	DeviceCpuStorageStat()
 	DeviceNetworkStat()
 	MakeProtobufStructure()
+
+	ticker := time.NewTicker(time.Second  * 15)
+        for t := range ticker.C {
+
+		fmt.Println("Tick at", t)
+		DeviceCpuStorageStat()
+		DeviceNetworkStat()
+		MakeProtobufStructure()
+	}
 }
 
 func DeviceCpuStorageStat() {
