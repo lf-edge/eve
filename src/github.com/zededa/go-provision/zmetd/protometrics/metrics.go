@@ -11,10 +11,16 @@ import (
 	"io/ioutil"
 	"github.com/golang/protobuf/proto"
 	"time"
+	"net/http"
+	"bytes"
 )
 
 var networkStat [][]string
 var cpuStorageStat [][]string
+
+const (
+	statusURL string = "http://192.168.1.8:8088/api/v1/edgedevice/info"
+)
 
 func main() {
 
@@ -188,7 +194,7 @@ func MakeProtobufStructure() {
 
 	ReportDeviceMetric.Network = make([]*protometrics.NetworkMetric, len(networkStat)-2)
 
-	ReportMetricsToZedCloud.DevID = proto.String("101aff1")
+	ReportMetricsToZedCloud.DevID = proto.String("38455FA5-4132-4095-9AEF-F0A3CA242FA3")
 	ReportZmetric := new(protometrics.ZmetricTypes)
 	*ReportZmetric = protometrics.ZmetricTypes_ZmDevice
 	ReportMetricsToZedCloud.Ztype = ReportZmetric
@@ -246,6 +252,11 @@ func MakeProtobufStructure() {
 	data, err := proto.Marshal(ReportMetricsToZedCloud)
 	if err != nil {
 		fmt.Println("marshaling error: ", err)
+	}
+	_, err = http.Post(statusURL, "application/x-proto-binary",
+		bytes.NewBuffer(data))
+	if err != nil {
+		fmt.Println(err)
 	}
 
 	newTest := &protometrics.ZMetricMsg{}
