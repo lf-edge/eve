@@ -27,6 +27,7 @@ func main() {
 	DeviceCpuStorageStat()
 	DeviceNetworkStat()
 	MakeProtobufStructure()
+	MakeInfoProtoBuf()
 
 	ticker := time.NewTicker(time.Second  * 15)
         for t := range ticker.C {
@@ -35,6 +36,7 @@ func main() {
 		DeviceCpuStorageStat()
 		DeviceNetworkStat()
 		MakeProtobufStructure()
+		MakeInfoProtoBuf()
 	}
 }
 

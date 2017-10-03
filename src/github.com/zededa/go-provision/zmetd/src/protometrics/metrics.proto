@@ -1,0 +1,130 @@
+
+syntax = "proto2";
+
+package protometrics;
+
+enum ZInfoTypes {
+  ZiNop = 0;
+  ZiDevice = 1;
+  ZiHypervisor = 2;
+  ZiApp = 3;
+}
+
+// Manufacturing info, product name, model, version etc.
+message ZInfoManufacturer {
+  required string manufacturer = 1;
+  required string productName = 2;
+  required string version = 3;
+  required string serialNumber = 4;
+  required string UUID = 5;
+}
+
+message ZInfoNetwork {
+  required string IPAddr = 1;
+  required string gwAddr = 2;
+  required string macaddr = 3;
+  required string devname = 4; // eth0, eth1 etc.
+}
+
+enum ZPeripheralTypes {
+  ZpNone = 0;
+  ZpStorage = 1;
+  ZpNetwork = 2;
+}
+
+message ZinfoPeripheral {
+  required ZPeripheralTypes ztype = 1;
+  required bool pluggable = 2;
+  required ZInfoManufacturer minfo = 3;
+}
+
+message ZInfoSW {
+  required string swVersion = 2;
+  required string swHash = 3;
+}
+
+// Base device info, as discovered by Xen (or OS on bare metal)
+message ZInfoDevice {
+  required string machineArch = 4;
+  required string cpuArch = 5;
+  required string platform = 6;
+  required uint32 ncpu = 7;
+  required uint64 memory = 8;
+  required uint64 storage = 9;
+
+  repeated ZinfoPeripheral devices = 10;
+  required ZInfoManufacturer minfo = 11;
+
+  required ZInfoSW software = 12;
+  repeated ZInfoNetwork network = 13;
+}
+
+// Device info from DOM0 perspective, if it exists.
+message ZInfoHypervisor {
+  required uint32 ncpu = 3;
+  required uint64 memory = 4;
+  required uint64 storage = 5;
+
+  required ZInfoSW swVersion = 6;
+}
+
+message ZInfoApp {
+  required string AppID = 1;
+  required uint32 ncpu = 2;
+  required uint32 memory = 3;
+  required uint32 storage = 4;
+
+  required ZInfoSW swVersion = 5;
+}
+
+message ZInfoMsg {
+  required ZInfoTypes ztype = 1;
+  required string devId = 2;
+  oneof InfoContent {
+  	ZInfoDevice dinfo = 3;
+  	ZInfoHypervisor hinfo = 4;
+  	ZInfoApp ainfo = 5;
+   }
+}
+
+enum ZmetricTypes {
+  ZmNop = 0;
+  ZmDevice = 1;
+  ZmApp = 3;
+}
+
+message cpuMetric {
+  required  uint32 upTime = 2;
+  required  float cpuUtilization = 3;
+}
+
+message memoryMetric {
+ required  uint32 usedMem = 2;
+ required  float usedPercentage = 3;
+ required  uint32 maxMem = 4;
+}
+
+message networkMetric {
+ required  string devName = 1;
+ required  uint64 txBytes = 2;
+ required  uint64 rxBytes = 3;
+ required  uint64 txDrops = 4;
+ required  uint64 rxDrops = 5;
+ required  uint64 txRate = 6;  // pps
+ required  uint64 rxRate = 7;  // pps
+}
+
+message deviceMetric {
+ required  cpuMetric cpu = 1;
+ required  memoryMetric memory = 2;
+ repeated networkMetric network = 3;
+}
+
+message ZMetricMsg {
+ required  string devID = 1;
+ required  ZmetricTypes ztype = 2;
+
+  oneof MetricContent {
+  	deviceMetric dm = 3;
+   }
+}
