@@ -128,9 +128,6 @@ if [ ! -d $LISPDIR ]; then
     exit 1
 fi
 
-# Need a key for device-to-device map-requests
-cp -p $ETDDIR/device.key.pem $LISPDIR/lisp-sig.pem   
-
 if [ -f /var/tmp/zedrouter/config/global ]; then
    cp -p /var/tmp/zedrouter/config/global $ETCDIR/network.config.global
 fi
@@ -263,6 +260,9 @@ else
 		echo "Found $uuid in /etc/hosts"
 	fi
 fi
+
+# Need a key for device-to-device map-requests
+cp -p $ETCDIR/device.key.pem $LISPDIR/lisp-sig.pem   
 
 mkdir -p /var/tmp/zedrouter/config/
 # Pick up the device EID zedrouter config file from $ETCDIR and put
