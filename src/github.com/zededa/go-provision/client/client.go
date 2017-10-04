@@ -279,6 +279,9 @@ func main() {
 		for !done {
 			time.Sleep(delay)
 			done = selfRegister()
+			if done {
+				continue
+			}
 			delay = 2 * (delay + time.Second)
 			if delay > maxDelay {
 				delay = maxDelay
@@ -331,6 +334,9 @@ func main() {
 		for !done {
 			time.Sleep(delay)
 			done = lookupParam(client, &device)
+			if done {
+				continue
+			}
 			delay = 2 * (delay + time.Second)
 			if delay > maxDelay {
 				delay = maxDelay
@@ -492,6 +498,9 @@ func main() {
 		for !done {
 			time.Sleep(delay)
 			done = myPost(client, "/rest/update-hw-status", b)
+			if done {
+				continue
+			}
 			delay = 2 * (delay + time.Second)
 			if delay > maxDelay {
 				delay = maxDelay
@@ -513,6 +522,9 @@ func main() {
 		for !done {
 			time.Sleep(delay)
 			done = myPost(client, "/rest/update-sw-status", b)
+			if done {
+				continue
+			}
 			delay = 2 * (delay + time.Second)
 			if delay > maxDelay {
 				delay = maxDelay
