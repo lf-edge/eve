@@ -1,3 +1,6 @@
+TODO update rloc address when moving? Or add support to lisp.config to follow
+     the interface address? Need one per af
+     
 TODO alpine add nordmark and zededa to image.
      remove guest account? passwd?
      
