@@ -336,10 +336,8 @@ func handleCreate(statusFilename string, configArg interface{}) {
 		return
 	}
 
-        length := len(certificateNameInChain)
-	for c := 0 ; c < length; c++ { 
-
-		certNameFromChain, err := ioutil.ReadFile(certificateDirname+"/"+certificateNameInChain[c])
+	for _,certName := range certificateNameInChain {
+		certNameFromChain, err := ioutil.ReadFile(certificateDirname+"/"+certName)
 		if err != nil {
 			unableToReadCertDirErr := fmt.Sprintf("failed to read certificate Directory: %v",err)
 			log.Println(unableToReadCertDirErr)
