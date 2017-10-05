@@ -21,22 +21,23 @@ var cpuStorageStat [][]string
 const (
 	statusURL string = "http://192.168.1.8:8088/api/v1/edgedevice/info"
 )
+const (
+	metricsURL string = "http://192.168.1.8:8088/api/v1/edgedevice/metrics"
+)
 
 func main() {
 
 	DeviceCpuStorageStat()
 	DeviceNetworkStat()
 	MakeProtobufStructure()
-	MakeInfoProtoBuf()
 
-	ticker := time.NewTicker(time.Second  * 15)
+	ticker := time.NewTicker(time.Second  * 5)
         for t := range ticker.C {
 
 		fmt.Println("Tick at", t)
 		DeviceCpuStorageStat()
 		DeviceNetworkStat()
 		MakeProtobufStructure()
-		MakeInfoProtoBuf()
 	}
 }
 
@@ -196,7 +197,7 @@ func MakeProtobufStructure() {
 
 	ReportDeviceMetric.Network = make([]*protometrics.NetworkMetric, len(networkStat)-2)
 
-	ReportMetricsToZedCloud.DevID = proto.String("38455FA5-4132-4095-9AEF-F0A3CA242FA3")
+	ReportMetricsToZedCloud.DevID = proto.String("8f2238e7-948d-4601-a384-644c1b39467a")
 	ReportZmetric := new(protometrics.ZmetricTypes)
 	*ReportZmetric = protometrics.ZmetricTypes_ZmDevice
 	ReportMetricsToZedCloud.Ztype = ReportZmetric
@@ -222,7 +223,6 @@ func MakeProtobufStructure() {
 
 			//fmt.Println(networkStat[2][1])
 			networkDetails := new(protometrics.NetworkMetric)
-
 			networkDetails.DevName = proto.String(networkStat[net][1])
 
 			txBytes, _ := strconv.ParseUint(networkStat[net][10], 10, 0)
@@ -248,25 +248,106 @@ func MakeProtobufStructure() {
 
 	}
 
-	fmt.Println(ReportMetricsToZedCloud)
+	//fmt.Printf("%T", ReportMetricsToZedCloud)
 	fmt.Println(" ")
 
-	data, err := proto.Marshal(ReportMetricsToZedCloud)
+	var ReportInfo = &protometrics.ZInfoMsg{}
+	var cpu_count = 2
+	var memory_size = 200
+	var storage_size = 1000
+
+	appType := new(protometrics.ZInfoTypes)
+	*appType = protometrics.ZInfoTypes_ZiApp
+	ReportInfo.Ztype = appType
+	ReportInfo.DevId = proto.String("8f2238e7-948d-4601-a384-644c1b39467a")
+
+	ReportAppInfo := new(protometrics.ZInfoApp)
+	ReportAppInfo.AppID   = proto.String("8f2238e7-948d-4601-a384-644c1b39467")
+	ReportAppInfo.Ncpu    = proto.Uint32(uint32(cpu_count))
+	ReportAppInfo.Memory  = proto.Uint32(uint32(memory_size))
+	ReportAppInfo.Storage = proto.Uint32(uint32(storage_size))
+
+	ReportVerInfo := new(protometrics.ZInfoSW)
+	ReportVerInfo.SwVersion = proto.String("0.0.0.1")
+	ReportVerInfo.SwHash = proto.String("0.0.0.1")
+
+	ReportAppInfo.SwVersion = ReportVerInfo
+	ReportInfo.Ainfo = ReportAppInfo
+
+	fmt.Println(ReportInfo)
+	fmt.Println(" ")
+
+	SendInfoProtobufStrThroughHttp(ReportInfo)
+	SendMetricsProtobufStrThroughHttp(ReportMetricsToZedCloud)
+}
+
+
+func SendInfoProtobufStrThroughHttp (ReportInfo *protometrics.ZInfoMsg) {
+
+	var ReportInfoAndMetricsToZedCloud = &protometrics.ZMsg{}
+	var msgid = 1233
+
+	ReportInfoAndMetricsToZedCloud.Msgid = proto.Uint64(uint64(msgid))
+	infoType := new(protometrics.ZMsgType)
+	*infoType = protometrics.ZMsgType_ZInfo
+	ReportInfoAndMetricsToZedCloud.Ztype = infoType
+
+	ReportInfoAndMetricsToZedCloud.Info = ReportInfo
+	fmt.Println(ReportInfoAndMetricsToZedCloud)
+
+	data, err := proto.Marshal(ReportInfoAndMetricsToZedCloud)
 	if err != nil {
 		fmt.Println("marshaling error: ", err)
 	}
-	_, err = http.Post(statusURL, "application/x-proto-binary",
+	resp, err := http.Post(statusURL, "application/x-proto-binary",
 		bytes.NewBuffer(data))
 	if err != nil {
 		fmt.Println(err)
 	}
+	res, err := ioutil.ReadAll(resp .Body)
+	fmt.Println("response: ",res)
 
-	newTest := &protometrics.ZMetricMsg{}
+	newTest := &protometrics.ZMsg{}
 	err = proto.Unmarshal(data, newTest)
 	if err != nil {
 		log.Fatal("unmarshaling error: ", err)
 	}
 
 	log.Println(newTest)
+	
 
+}
+
+func SendMetricsProtobufStrThroughHttp (ReportMetricsToZedCloud *protometrics.ZMetricMsg) {
+
+	var ReportInfoAndMetricsToZedCloud = &protometrics.ZMsg{}
+	var msgid = 1234
+	ReportInfoAndMetricsToZedCloud.Msgid = proto.Uint64(uint64(msgid))
+
+	metricType := new(protometrics.ZMsgType)
+	*metricType = protometrics.ZMsgType_ZMetric
+	ReportInfoAndMetricsToZedCloud.Ztype = metricType
+	ReportInfoAndMetricsToZedCloud.Metric = ReportMetricsToZedCloud
+	fmt.Println(ReportInfoAndMetricsToZedCloud)
+
+	data, err := proto.Marshal(ReportInfoAndMetricsToZedCloud)
+	if err != nil {
+		fmt.Println("marshaling error: ", err)
+	}
+
+	resp1, err := http.Post(metricsURL, "application/x-proto-binary",
+		bytes.NewBuffer(data))
+	if err != nil {
+		fmt.Println(err)
+	}
+	res1, err := ioutil.ReadAll(resp1 .Body)
+	fmt.Println("response metric: ",res1)
+
+	newTest := &protometrics.ZMsg{}
+	err = proto.Unmarshal(data, newTest)
+	if err != nil {
+		log.Fatal("unmarshaling error: ", err)
+	}
+
+	log.Println(newTest)
 }
