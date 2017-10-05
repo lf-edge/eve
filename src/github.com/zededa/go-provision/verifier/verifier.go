@@ -341,7 +341,10 @@ func handleCreate(statusFilename string, configArg interface{}) {
 
 		certNameFromChain, err := ioutil.ReadFile(certificateDirname+"/"+certificateNameInChain[c])
 		if err != nil {
-			fmt.Println(err)
+			unableToReadCertDirErr := fmt.Sprintf("failed to read certificate Directory: %v",err)
+			log.Println(unableToReadCertDirErr)
+			UpdateStatusWhileVerifyingSignature(unableToReadCertDirErr)
+			return
 		}
 		
 		ok := roots.AppendCertsFromPEM(certNameFromChain)
@@ -366,13 +369,7 @@ func handleCreate(statusFilename string, configArg interface{}) {
 
         //Read the signature from config file...
         imgSig := config.ImageSignature
-        if err != nil {
-                log.Println(err)
-		signatureNotFoundErr := fmt.Sprintf("image signature not found")
-		UpdateStatusWhileVerifyingSignature(signatureNotFoundErr)
-		return
-        }
-
+        
         switch pub := cert.PublicKey.(type) {
         case *rsa.PublicKey:
 
@@ -387,16 +384,15 @@ func handleCreate(statusFilename string, configArg interface{}) {
                         log.Printf("VerifyPKCS1v15 successful...")
                 }
 
-        case *dsa.PublicKey:
-
-                log.Printf("pub is of type DSA: ",pub)
-
         case *ecdsa.PublicKey:
 
                 log.Printf("pub is of type ecdsa: ",pub)
                 imgSignature, err := base64.StdEncoding.DecodeString(string(imgSig))
                 if err != nil {
-                        fmt.Println("DecodeString: ", err)
+			decodingErr := fmt.Sprintf("DecodeString failed: %v ",err)
+			log.Println(decodingErr)
+			UpdateStatusWhileVerifyingSignature(decodingErr)
+			return
                 }
                 log.Printf("Decoded imgSignature (len %d): % x\n", len(imgSignature), imgSignature)
                 rbytes := imgSignature[0:32]
