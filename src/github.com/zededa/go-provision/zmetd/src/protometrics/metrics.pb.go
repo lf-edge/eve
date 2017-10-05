@@ -22,6 +22,7 @@ It has these top-level messages:
 	NetworkMetric
 	DeviceMetric
 	ZMetricMsg
+	ZMsg
 */
 package protometrics
 
@@ -140,6 +141,69 @@ func (x *ZmetricTypes) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*x = ZmetricTypes(value)
+	return nil
+}
+
+type ZMsgType int32
+
+const (
+	ZMsgType_Unknown        ZMsgType = 0
+	ZMsgType_AAA            ZMsgType = 1
+	ZMsgType_Tokens         ZMsgType = 2
+	ZMsgType_HelloWorldReq  ZMsgType = 3
+	ZMsgType_HelloWorldResp ZMsgType = 4
+	ZMsgType_DeviceReq      ZMsgType = 5
+	ZMsgType_DeviceResp     ZMsgType = 6
+	ZMsgType_ImageReq       ZMsgType = 7
+	ZMsgType_ImageResp      ZMsgType = 8
+	ZMsgType_ZMetric        ZMsgType = 9
+	ZMsgType_ZInfo          ZMsgType = 10
+	ZMsgType_Znotify        ZMsgType = 11
+)
+
+var ZMsgType_name = map[int32]string{
+	0:  "Unknown",
+	1:  "AAA",
+	2:  "Tokens",
+	3:  "HelloWorldReq",
+	4:  "HelloWorldResp",
+	5:  "DeviceReq",
+	6:  "DeviceResp",
+	7:  "ImageReq",
+	8:  "ImageResp",
+	9:  "ZMetric",
+	10: "ZInfo",
+	11: "Znotify",
+}
+var ZMsgType_value = map[string]int32{
+	"Unknown":        0,
+	"AAA":            1,
+	"Tokens":         2,
+	"HelloWorldReq":  3,
+	"HelloWorldResp": 4,
+	"DeviceReq":      5,
+	"DeviceResp":     6,
+	"ImageReq":       7,
+	"ImageResp":      8,
+	"ZMetric":        9,
+	"ZInfo":          10,
+	"Znotify":        11,
+}
+
+func (x ZMsgType) Enum() *ZMsgType {
+	p := new(ZMsgType)
+	*p = x
+	return p
+}
+func (x ZMsgType) String() string {
+	return proto.EnumName(ZMsgType_name, int32(x))
+}
+func (x *ZMsgType) UnmarshalJSON(data []byte) error {
+	value, err := proto.UnmarshalJSONEnum(ZMsgType_value, data, "ZMsgType")
+	if err != nil {
+		return err
+	}
+	*x = ZMsgType(value)
 	return nil
 }
 
@@ -698,8 +762,49 @@ func (m *ZMetricMsg) GetDm() *DeviceMetric {
 	return nil
 }
 
+type ZMsg struct {
+	Msgid            *uint64     `protobuf:"varint,1,req,name=msgid" json:"msgid,omitempty"`
+	Ztype            *ZMsgType   `protobuf:"varint,2,req,name=ztype,enum=protometrics.ZMsgType" json:"ztype,omitempty"`
+	Metric           *ZMetricMsg `protobuf:"bytes,11,opt,name=metric" json:"metric,omitempty"`
+	Info             *ZInfoMsg   `protobuf:"bytes,12,opt,name=info" json:"info,omitempty"`
+	XXX_unrecognized []byte      `json:"-"`
+}
+
+func (m *ZMsg) Reset()         { *m = ZMsg{} }
+func (m *ZMsg) String() string { return proto.CompactTextString(m) }
+func (*ZMsg) ProtoMessage()    {}
+
+func (m *ZMsg) GetMsgid() uint64 {
+	if m != nil && m.Msgid != nil {
+		return *m.Msgid
+	}
+	return 0
+}
+
+func (m *ZMsg) GetZtype() ZMsgType {
+	if m != nil && m.Ztype != nil {
+		return *m.Ztype
+	}
+	return ZMsgType_Unknown
+}
+
+func (m *ZMsg) GetMetric() *ZMetricMsg {
+	if m != nil {
+		return m.Metric
+	}
+	return nil
+}
+
+func (m *ZMsg) GetInfo() *ZInfoMsg {
+	if m != nil {
+		return m.Info
+	}
+	return nil
+}
+
 func init() {
 	proto.RegisterEnum("protometrics.ZInfoTypes", ZInfoTypes_name, ZInfoTypes_value)
 	proto.RegisterEnum("protometrics.ZPeripheralTypes", ZPeripheralTypes_name, ZPeripheralTypes_value)
 	proto.RegisterEnum("protometrics.ZmetricTypes", ZmetricTypes_name, ZmetricTypes_value)
+	proto.RegisterEnum("protometrics.ZMsgType", ZMsgType_name, ZMsgType_value)
 }

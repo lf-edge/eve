@@ -81,9 +81,9 @@ message ZInfoMsg {
   required ZInfoTypes ztype = 1;
   required string devId = 2;
   oneof InfoContent {
-  	ZInfoDevice dinfo = 3;
-  	ZInfoHypervisor hinfo = 4;
-  	ZInfoApp ainfo = 5;
+    ZInfoDevice dinfo = 3;
+    ZInfoHypervisor hinfo = 4;
+    ZInfoApp ainfo = 5;
    }
 }
 
@@ -125,6 +125,33 @@ message ZMetricMsg {
  required  ZmetricTypes ztype = 2;
 
   oneof MetricContent {
-  	deviceMetric dm = 3;
+    deviceMetric dm = 3;
    }
+}
+
+enum zMsgType {
+  Unknown = 0;
+  AAA = 1;
+  Tokens = 2;
+  HelloWorldReq = 3;
+  HelloWorldResp = 4;
+  DeviceReq = 5;
+  DeviceResp = 6;
+  ImageReq = 7;
+  ImageResp = 8;
+  ZMetric = 9;
+  ZInfo = 10;
+  Znotify = 11;
+}
+
+message zMsg {
+
+  required uint64 msgid = 1;
+  required zMsgType ztype = 2;
+  oneof MessageContent {
+
+    ZMetricMsg metric = 11;
+    ZInfoMsg info = 12;
+
+  }
 }
