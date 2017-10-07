@@ -16,6 +16,71 @@ import (
 type IptablesRuleList []IptablesRule
 type IptablesRule []string
 
+// Go through the list of ACEs and create dnsmasq ipset configuration
+// lines required for host matches
+func compileAceIpsets(ACLs []types.ACE) []string {
+    ipsets := []string{};
+
+    for _, ace := range ACLs {
+	for _, match := range ace.Matches {
+	    if match.Type == "host" {
+		ipsets = append(ipsets, match.Value)
+	    }
+	}
+    }
+    return ipsets
+}
+
+func compileOverlayIpsets(ollist []types.OverlayNetworkConfig) []string {
+    ipsets := []string{}
+    for _, olConfig := range ollist {
+	ipsets = append(ipsets, compileAceIpsets(olConfig.ACLs)...)
+    }
+    return ipsets
+}
+
+func compileUnderlayIpsets(ullist []types.UnderlayNetworkConfig) []string {
+    ipsets := []string{}
+    for _, ulConfig := range ullist {
+	ipsets = append(ipsets, compileAceIpsets(ulConfig.ACLs)...)
+    }
+    return ipsets
+}
+
+func compileAppInstanceIpsets(ollist []types.OverlayNetworkConfig,
+ullist []types.UnderlayNetworkConfig) []string {
+    ipsets := []string{}
+
+    ipsets = append(ipsets, compileOverlayIpsets(ollist)...)
+    ipsets = append(ipsets, compileUnderlayIpsets(ullist)...)
+    return ipsets
+}
+
+func compileOldOverlayIpsets(ollist []types.OverlayNetworkStatus) []string {
+    ipsets := []string{}
+    for _, olConfig := range ollist {
+	ipsets = append(ipsets, compileAceIpsets(olConfig.ACLs)...)
+    }
+    return ipsets
+}
+
+func compileOldUnderlayIpsets(ullist []types.UnderlayNetworkStatus) []string {
+    ipsets := []string{}
+    for _, ulConfig := range ullist {
+	ipsets = append(ipsets, compileAceIpsets(ulConfig.ACLs)...)
+    }
+    return ipsets
+}
+
+func compileOldAppInstanceIpsets(ollist []types.OverlayNetworkStatus,
+ullist []types.UnderlayNetworkStatus) []string {
+    ipsets := []string{}
+
+    ipsets = append(ipsets, compileOldOverlayIpsets(ollist)...)
+    ipsets = append(ipsets, compileOldUnderlayIpsets(ullist)...)
+    return ipsets
+}
+
 func createACLConfiglet(ifname string, isMgmt bool, ACLs []types.ACE,
 	ipVer int, overlayIP string) {
 	fmt.Printf("createACLConfiglet: ifname %s, ACLs %v\n", ifname, ACLs)
@@ -241,6 +306,33 @@ func containsRule(set IptablesRuleList, member IptablesRule) bool {
 		}
 	}
 	return false
+}
+
+func updateAppInstanceIpsets(newolConfig []types.OverlayNetworkConfig,
+                             newulConfig []types.UnderlayNetworkConfig,
+                             oldolConfig []types.OverlayNetworkStatus,
+                             oldulConfig []types.UnderlayNetworkStatus) ([]string, []string) {
+    staleIpsets := []string{}
+    newIpsetMap := make(map[string]bool)
+
+    newIpsets := compileAppInstanceIpsets(newolConfig, newulConfig)
+    oldIpsets := compileOldAppInstanceIpsets(oldolConfig, oldulConfig)
+
+    // Add all new ipsets in a map
+    for _, ipset := range newIpsets {
+        newIpsetMap[ipset] = true
+    }
+
+    // Check which of the old ipsets need to be removed
+    for _, ipset := range oldIpsets {
+
+        _, ok := newIpsetMap[ipset]
+        if !ok {
+            staleIpsets = append(staleIpsets, ipset)
+            log.Printf("XXXXX Marking ipset %s for deletion\n", ipset)
+        }
+    }
+    return newIpsets, staleIpsets
 }
 
 func updateACLConfiglet(ifname string, isMgmt bool, oldACLs []types.ACE,
