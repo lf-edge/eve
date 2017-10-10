@@ -167,9 +167,7 @@ func aceToRules(ifname string, ace types.ACE, ipVer int) IptablesRuleList {
 			addIn = []string{"-m", "--dport", match.Value}
 		case "host":
 			// Ensure the sets exists; create if not
-			// XXX need to feed it into dnsmasq as well; restart
-			// dnsmasq. SIGHUP?
-			// XXX want created bool to determine whether to restart
+			// need to feed it into dnsmasq as well; restart
 			if err := ipsetCreatePair(match.Value); err != nil {
 				log.Println("ipset create for ",
 					match.Value, err)
@@ -371,7 +369,10 @@ func updateACLConfiglet(ifname string, isMgmt bool, oldACLs []types.ACE,
 		}
 	}
 	// Look for new which should be inserted
-	for _, rule := range newRules {
+	numRules := len(newRules)
+	for numRules > 0 {
+		numRules--
+		rule := newRules[numRules]
 		if containsRule(oldRules, rule) {
 			continue
 		}
