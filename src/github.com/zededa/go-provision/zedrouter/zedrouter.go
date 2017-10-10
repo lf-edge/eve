@@ -756,10 +756,8 @@ func handleModify(statusFilename string, configArg interface{},
 		updateACLConfiglet(olIfname, false, olStatus.ACLs,
 			olConfig.ACLs, 6, olAddr1)
 
-		// if the ACL update resulted in new eid sets, then
-		// we need to restart dnsmasq (and update its ipset configs?
-		// get a return value from updateAclConfiglet to indicate
-		// whether there were such changes?
+		// updateAppInstanceIpsets told us whether there is a change
+		// to the set of ipsets, and that requires restarting dnsmasq
 		if restartDnsmasq {
 			cfgFilename := "dnsmasq." + olIfname + ".conf"
 			cfgPathname := runDirname + "/" + cfgFilename
@@ -833,7 +831,8 @@ func handleModify(statusFilename string, configArg interface{},
 
 	// Remove stale ipsets
 	// In case if there are any references to these ipsets from other
-	// domUs kernel would not remove it. ipset destroy command would just fail.
+	// domUs, then the kernel would not remove them.
+	// The ipset destroy command would just fail.
 	for _, ipset := range staleIpsets {
 		err := ipsetDestroy(fmt.Sprintf("ipv4.%s", ipset))
 		if err != nil {

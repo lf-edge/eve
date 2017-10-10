@@ -328,7 +328,6 @@ func updateAppInstanceIpsets(newolConfig []types.OverlayNetworkConfig,
 		_, ok := newIpsetMap[ipset]
 		if !ok {
 			staleIpsets = append(staleIpsets, ipset)
-			log.Printf("XXXXX Marking ipset %s for deletion\n", ipset)
 		}
 	}
 
@@ -369,6 +368,8 @@ func updateACLConfiglet(ifname string, isMgmt bool, oldACLs []types.ACE,
 		}
 	}
 	// Look for new which should be inserted
+	// We insert at the top in reverse order so that the relative order of the new rules 
+	// is preserved. Note that they are all added before any existing rules.
 	numRules := len(newRules)
 	for numRules > 0 {
 		numRules--
