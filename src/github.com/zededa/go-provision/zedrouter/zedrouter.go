@@ -153,13 +153,13 @@ func handleInit(configFilename string, statusFilename string,
 		addrs6, err := netlink.AddrList(link, netlink.FAMILY_V6)
 		fmt.Printf("UplinkAddrs v4 %d v6 %d\n", len(addrs4), len(addrs6))
 		globalStatus.UplinkAddrs = make([]net.IP,
-			len(addrs4) + len(addrs6))
+			len(addrs4)+len(addrs6))
 		for i, addr := range addrs4 {
 			globalStatus.UplinkAddrs[i] = addr.IP
 		}
 		for i, addr := range addrs6 {
-			// XXX check if link-local?		
-			globalStatus.UplinkAddrs[i + len(addrs4)] = addr.IP
+			// XXX check if link-local?
+			globalStatus.UplinkAddrs[i+len(addrs4)] = addr.IP
 		}
 	}
 	globalStatus.Uplink = globalConfig.Uplink
@@ -444,6 +444,9 @@ func handleCreate(statusFilename string, configArg interface{}) {
 			config.UnderlayNetworkList[i]
 	}
 
+	ipsets := compileAppInstanceIpsets(config.OverlayNetworkList,
+		config.UnderlayNetworkList)
+
 	for i, olConfig := range config.OverlayNetworkList {
 		olNum := i + 1
 		fmt.Printf("olNum %d ACLs %v\n", olNum, olConfig.ACLs)
@@ -537,7 +540,7 @@ func handleCreate(statusFilename string, configArg interface{}) {
 		stopDnsmasq(cfgFilename, false)
 		createDnsmasqOverlayConfiglet(cfgPathname, olIfname, olAddr1,
 			EID.String(), olMac, hostsDirpath,
-			config.UUIDandVersion.UUID.String())
+			config.UUIDandVersion.UUID.String(), ipsets)
 		startDnsmasq(cfgPathname)
 
 		addInfoApp := types.AdditionalInfoApp{
@@ -631,7 +634,7 @@ func handleCreate(statusFilename string, configArg interface{}) {
 		stopDnsmasq(cfgFilename, false)
 
 		createDnsmasqUnderlayConfiglet(cfgPathname, ulIfname, ulAddr1,
-			ulAddr2, ulMac, config.UUIDandVersion.UUID.String())
+			ulAddr2, ulMac, config.UUIDandVersion.UUID.String(), ipsets)
 		startDnsmasq(cfgPathname)
 
 		// Add bridge parameters for Xen to Status
@@ -725,6 +728,11 @@ func handleModify(statusFilename string, configArg interface{},
 		return
 	}
 
+	newIpsets, staleIpsets, restartDnsmasq := updateAppInstanceIpsets(config.OverlayNetworkList,
+		config.UnderlayNetworkList,
+		status.OverlayNetworkList,
+		status.UnderlayNetworkList)
+
 	// Look for ACL and NametoEidList changes in overlay
 	for i, olConfig := range config.OverlayNetworkList {
 		olNum := i + 1
@@ -748,10 +756,24 @@ func handleModify(statusFilename string, configArg interface{},
 		updateACLConfiglet(olIfname, false, olStatus.ACLs,
 			olConfig.ACLs, 6, olAddr1)
 
-		// XXX if the ACL update resulted in new eid sets, then
+		// if the ACL update resulted in new eid sets, then
 		// we need to restart dnsmasq (and update its ipset configs?
-		// XXX get a return value from updateAclConfiglet to indicate
+		// get a return value from updateAclConfiglet to indicate
 		// whether there were such changes?
+		if restartDnsmasq {
+			cfgFilename := "dnsmasq." + olIfname + ".conf"
+			cfgPathname := runDirname + "/" + cfgFilename
+			EID := olConfig.EID
+			olMac := "00:16:3e:1:" + strconv.FormatInt(int64(olNum), 16) +
+				":" + strconv.FormatInt(int64(appNum), 16)
+			stopDnsmasq(cfgFilename, false)
+			//remove old dnsmasq configuration file
+			os.Remove(cfgPathname)
+			createDnsmasqOverlayConfiglet(cfgPathname, olIfname, olAddr1,
+				EID.String(), olMac, hostsDirpath,
+				config.UUIDandVersion.UUID.String(), newIpsets)
+			startDnsmasq(cfgPathname)
+		}
 
 		// Format a json string with any additional info
 		addInfoApp := types.AdditionalInfoApp{
@@ -791,7 +813,38 @@ func handleModify(statusFilename string, configArg interface{},
 		// Update ACLs
 		updateACLConfiglet(ulIfname, false, ulStatus.ACLs,
 			ulConfig.ACLs, 4, "")
+
+		if restartDnsmasq {
+			//update underlay dnsmasq configuration
+			cfgFilename := "dnsmasq." + ulIfname + ".conf"
+			cfgPathname := runDirname + "/" + cfgFilename
+			ulAddr1 := "172.27." + strconv.Itoa(appNum) + ".1"
+			ulAddr2 := "172.27." + strconv.Itoa(appNum) + ".2"
+			ulMac := "00:16:3e:0:0:" + strconv.FormatInt(int64(appNum), 16)
+			stopDnsmasq(cfgFilename, false)
+			//remove old dnsmasq configuration file
+			os.Remove(cfgPathname)
+			createDnsmasqUnderlayConfiglet(cfgPathname, ulIfname, ulAddr1,
+				ulAddr2, ulMac,
+				config.UUIDandVersion.UUID.String(), newIpsets)
+			startDnsmasq(cfgPathname)
+		}
 	}
+
+	// Remove stale ipsets
+	// In case if there are any references to these ipsets from other
+	// domUs kernel would not remove it. ipset destroy command would just fail.
+	for _, ipset := range staleIpsets {
+		err := ipsetDestroy(fmt.Sprintf("ipv4.%s", ipset))
+		if err != nil {
+			log.Println("ipset destroy ipv4", ipset, err)
+		}
+		err = ipsetDestroy(fmt.Sprintf("ipv6.%s", ipset))
+		if err != nil {
+			log.Println("ipset destroy ipv6", ipset, err)
+		}
+	}
+
 	// Write out what we modified to AppNetworkStatus
 	status.OverlayNetworkList = make([]types.OverlayNetworkStatus,
 		len(config.OverlayNetworkList))
