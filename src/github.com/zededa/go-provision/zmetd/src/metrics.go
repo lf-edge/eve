@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"log"
+	//"log"
 	"os/exec"
 	"protometrics"
 	"regexp"
@@ -10,6 +10,7 @@ import (
 	"strings"
 	"io/ioutil"
 	"github.com/golang/protobuf/proto"
+	"github.com/shirou/gopsutil/net"
 	"time"
 	"net/http"
 	"bytes"
@@ -19,25 +20,30 @@ var networkStat [][]string
 var cpuStorageStat [][]string
 
 const (
-	statusURL string = "http://192.168.1.8:8088/api/v1/edgedevice/info"
+	statusURL string = "http://192.168.1.21:8088/api/v1/edgedevice/info"
 )
 const (
-	metricsURL string = "http://192.168.1.8:8088/api/v1/edgedevice/metrics"
+	metricsURL string = "http://192.168.1.21:8088/api/v1/edgedevice/metrics"
 )
 
 func main() {
 
 	DeviceCpuStorageStat()
 	DeviceNetworkStat()
-	MakeProtobufStructure()
-
+	MakeMetricsProtobufStructure()
+	MakeAppInfoProtobufStructure()
+	MakeDeviceInfoProtobufStructure()
+	MakeHypervisorInfoProtobufStructure()
 	ticker := time.NewTicker(time.Second  * 5)
         for t := range ticker.C {
 
 		fmt.Println("Tick at", t)
 		DeviceCpuStorageStat()
 		DeviceNetworkStat()
-		MakeProtobufStructure()
+		MakeMetricsProtobufStructure()
+		MakeAppInfoProtobufStructure()
+		MakeDeviceInfoProtobufStructure()
+		MakeHypervisorInfoProtobufStructure()
 	}
 }
 
@@ -187,7 +193,7 @@ func DeviceNetworkStat() {
 	}
 }
 
-func MakeProtobufStructure() {
+func MakeMetricsProtobufStructure() {
 
 	var ReportMetricsToZedCloud = &protometrics.ZMetricMsg{}
 
@@ -250,37 +256,146 @@ func MakeProtobufStructure() {
 
 	//fmt.Printf("%T", ReportMetricsToZedCloud)
 	fmt.Println(" ")
+	SendMetricsProtobufStrThroughHttp(ReportMetricsToZedCloud)
+}
+func MakeDeviceInfoProtobufStructure (){
 
 	var ReportInfo = &protometrics.ZInfoMsg{}
-	var cpu_count = 2
-	var memory_size = 200
-	var storage_size = 1000
+	var storage_size = 1
 
-	appType := new(protometrics.ZInfoTypes)
-	*appType = protometrics.ZInfoTypes_ZiApp
-	ReportInfo.Ztype = appType
-	ReportInfo.DevId = proto.String("8f2238e7-948d-4601-a384-644c1b39467a")
+	deviceType := new(protometrics.ZInfoTypes)
+	*deviceType 		= 	protometrics.ZInfoTypes_ZiDevice
+	ReportInfo.Ztype 	= 	deviceType
 
-	ReportAppInfo := new(protometrics.ZInfoApp)
-	ReportAppInfo.AppID   = proto.String("8f2238e7-948d-4601-a384-644c1b39467")
-	ReportAppInfo.Ncpu    = proto.Uint32(uint32(cpu_count))
-	ReportAppInfo.Memory  = proto.Uint32(uint32(memory_size))
-	ReportAppInfo.Storage = proto.Uint32(uint32(storage_size))
+	ReportInfo.DevId 	= 	proto.String("8f2238e7-948d-4601-a384-644c1b39467a")
 
-	ReportVerInfo := new(protometrics.ZInfoSW)
-	ReportVerInfo.SwVersion = proto.String("0.0.0.1")
-	ReportVerInfo.SwHash = proto.String("0.0.0.1")
+	ReportDeviceInfo := new(protometrics.ZInfoDevice)
+	ReportDeviceInfo.MachineArch 	= 	proto.String("32 bit")
+	ReportDeviceInfo.CpuArch    	= 	proto.String("x86")
+	ReportDeviceInfo.Platform  	= 	proto.String("ubuntu")
+	ReportDeviceInfo.Ncpu 		= 	proto.Uint32(uint32(storage_size))
+	ReportDeviceInfo.Memory 	= 	proto.Uint64(uint64(storage_size))
+	ReportDeviceInfo.Storage 	= 	proto.Uint64(uint64(storage_size))
 
-	ReportAppInfo.SwVersion = ReportVerInfo
-	ReportInfo.Ainfo = ReportAppInfo
+	ReportDeviceInfo.Devices = make([]*protometrics.ZinfoPeripheral, 1)
+	ReportDevicePeripheralInfo := new(protometrics.ZinfoPeripheral)
+
+	for index,_ := range ReportDeviceInfo.Devices {
+
+		PeripheralType 				:= 	new(protometrics.ZPeripheralTypes)
+		ReportDevicePeripheralManufacturerInfo 	:= 	new(protometrics.ZInfoManufacturer)
+		*PeripheralType 					= 	protometrics.ZPeripheralTypes_ZpNone
+		ReportDevicePeripheralInfo.Ztype 			= 	PeripheralType
+		ReportDevicePeripheralInfo.Pluggable 			= 	proto.Bool(false)
+		ReportDevicePeripheralManufacturerInfo.Manufacturer 	= 	proto.String("apple")
+		ReportDevicePeripheralManufacturerInfo.ProductName 	= 	proto.String("usb")
+		ReportDevicePeripheralManufacturerInfo.Version 		= 	proto.String("1.2")
+		ReportDevicePeripheralManufacturerInfo.SerialNumber 	= 	proto.String("1mnah34")
+		ReportDevicePeripheralManufacturerInfo.UUID		= 	proto.String("uyapple34")
+		ReportDevicePeripheralInfo.Minfo 			= 	ReportDevicePeripheralManufacturerInfo
+		ReportDeviceInfo.Devices[index] 			= 	ReportDevicePeripheralInfo
+		
+	}
+
+	ReportDeviceManufacturerInfo := new(protometrics.ZInfoManufacturer)
+	ReportDeviceManufacturerInfo.Manufacturer 	= 	proto.String("intel")
+	ReportDeviceManufacturerInfo.ProductName 	= 	proto.String("vbox")
+	ReportDeviceManufacturerInfo.Version 		= 	proto.String("1.2")
+	ReportDeviceManufacturerInfo.SerialNumber 	= 	proto.String("acmck11112c")
+	ReportDeviceManufacturerInfo.UUID		= 	proto.String("12345")
+	ReportDeviceInfo.Minfo 				= 	ReportDeviceManufacturerInfo
+
+	ReportDeviceSoftwareInfo := new(protometrics.ZInfoSW)
+	ReportDeviceSoftwareInfo.SwVersion 	= 	proto.String("1.1.2")
+	ReportDeviceSoftwareInfo.SwHash 	= 	proto.String("12awsxlnvme456")
+	ReportDeviceInfo.Software 		= 	ReportDeviceSoftwareInfo
+
+	//find all network related info...
+	interfaces,_ := net.Interfaces()
+	ReportDeviceInfo.Network = make([]*protometrics.ZInfoNetwork, len(interfaces))
+	for index,val := range interfaces {
+
+		ReportDeviceNetworkInfo := new(protometrics.ZInfoNetwork)
+		for ip := 0;  ip < len(val.Addrs)-1 ; ip++{
+			ReportDeviceNetworkInfo.IPAddr 		= 	proto.String(val.Addrs[0].Addr)
+		}
+
+		ReportDeviceNetworkInfo.GwAddr 		= 	proto.String("192.168.1.1")
+		ReportDeviceNetworkInfo.Macaddr		=	proto.String(val.HardwareAddr) 	
+		ReportDeviceNetworkInfo.Devname 	= 	proto.String(val.Name)
+		ReportDeviceInfo.Network[index] 	= 	ReportDeviceNetworkInfo
+	
+	}
+	ReportInfo.Dinfo = ReportDeviceInfo
+
 
 	fmt.Println(ReportInfo)
 	fmt.Println(" ")
 
 	SendInfoProtobufStrThroughHttp(ReportInfo)
-	SendMetricsProtobufStrThroughHttp(ReportMetricsToZedCloud)
 }
 
+func MakeHypervisorInfoProtobufStructure (){
+
+	var ReportInfo 		= 	&protometrics.ZInfoMsg{}
+	var cpu_count 		= 	2
+	var memory_size 	= 	200
+	var storage_size 	= 	1000
+
+	hypervisorType := new(protometrics.ZInfoTypes)
+	*hypervisorType 	= 	protometrics.ZInfoTypes_ZiHypervisor
+	ReportInfo.Ztype 	= 	hypervisorType
+
+	ReportInfo.DevId 	= 	proto.String("8f2238e7-948d-4601-a384-644c1b39467a")
+
+	ReportHypervisorInfo := new(protometrics.ZInfoHypervisor)
+	ReportHypervisorInfo.Ncpu 	= 	proto.Uint32(uint32(cpu_count))
+	ReportHypervisorInfo.Memory 	= 	proto.Uint64(uint64(memory_size))
+	ReportHypervisorInfo.Storage 	= 	proto.Uint64(uint64(storage_size))
+
+	ReportDeviceSoftwareInfo := new(protometrics.ZInfoSW)
+	ReportDeviceSoftwareInfo.SwVersion 	= 	proto.String("0.0.0.1")
+	ReportDeviceSoftwareInfo.SwHash 	=	proto.String("jdjduu123")
+	ReportHypervisorInfo.SwVersion 		= 	ReportDeviceSoftwareInfo
+
+	ReportInfo.Hinfo 	= 	ReportHypervisorInfo
+
+	fmt.Println(ReportInfo)
+	fmt.Println(" ")
+
+	SendInfoProtobufStrThroughHttp(ReportInfo)
+}
+
+func MakeAppInfoProtobufStructure (){
+
+	var ReportInfo 		= 	&protometrics.ZInfoMsg{}
+	var cpu_count 		= 	2
+	var memory_size 	= 	200
+	var storage_size 	= 	1000
+
+	appType := new(protometrics.ZInfoTypes)
+	*appType 		= 	protometrics.ZInfoTypes_ZiApp
+	ReportInfo.Ztype 	= 	appType
+	ReportInfo.DevId 	= 	proto.String("8f2238e7-948d-4601-a384-644c1b39467a")
+
+	ReportAppInfo := new(protometrics.ZInfoApp)
+	ReportAppInfo.AppID 	= 	proto.String("8f2238e7-948d-4601-a384-644c1b39467")
+	ReportAppInfo.Ncpu 	= 	proto.Uint32(uint32(cpu_count))
+	ReportAppInfo.Memory 	= 	proto.Uint32(uint32(memory_size))
+	ReportAppInfo.Storage 	= 	proto.Uint32(uint32(storage_size))
+
+	ReportVerInfo := new(protometrics.ZInfoSW)
+	ReportVerInfo.SwVersion 	= 	proto.String("0.0.0.1")
+	ReportVerInfo.SwHash 		=	proto.String("0.0.0.1")
+
+	ReportAppInfo.SwVersion 	= 	ReportVerInfo
+	ReportInfo.Ainfo 		= 	ReportAppInfo
+
+	fmt.Println(ReportInfo)
+	fmt.Println(" ")
+
+	SendInfoProtobufStrThroughHttp(ReportInfo)
+}
 
 func SendInfoProtobufStrThroughHttp (ReportInfo *protometrics.ZInfoMsg) {
 
@@ -307,13 +422,13 @@ func SendInfoProtobufStrThroughHttp (ReportInfo *protometrics.ZInfoMsg) {
 	res, err := ioutil.ReadAll(resp .Body)
 	fmt.Println("response: ",res)
 
-	newTest := &protometrics.ZMsg{}
+	/*newTest := &protometrics.ZMsg{}
 	err = proto.Unmarshal(data, newTest)
 	if err != nil {
 		log.Fatal("unmarshaling error: ", err)
 	}
 
-	log.Println(newTest)
+	log.Println(newTest)*/
 	
 
 }
@@ -343,11 +458,11 @@ func SendMetricsProtobufStrThroughHttp (ReportMetricsToZedCloud *protometrics.ZM
 	res1, err := ioutil.ReadAll(resp1 .Body)
 	fmt.Println("response metric: ",res1)
 
-	newTest := &protometrics.ZMsg{}
+	/*newTest := &protometrics.ZMsg{}
 	err = proto.Unmarshal(data, newTest)
 	if err != nil {
 		log.Fatal("unmarshaling error: ", err)
 	}
 
-	log.Println(newTest)
+	log.Println(newTest)*/
 }
