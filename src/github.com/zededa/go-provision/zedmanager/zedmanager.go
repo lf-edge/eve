@@ -103,6 +103,8 @@ func main() {
 	var identitymgrRestartedFn watch.StatusRestartHandler = handleIdentitymgrRestarted
 	var zedrouterRestartedFn watch.StatusRestartHandler = handleZedrouterRestarted
 
+	go metricsTimerTask()
+
 	configChanges := make(chan string)
 	go watch.WatchConfigStatus(zedmanagerConfigDirname,
 		zedmanagerStatusDirname, configChanges)
