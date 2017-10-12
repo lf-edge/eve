@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	//"log"
+	"log"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -20,10 +20,10 @@ var networkStat [][]string
 var cpuStorageStat [][]string
 
 const (
-	statusURL string = "http://192.168.1.21:8088/api/v1/edgedevice/info"
+	statusURL string = "http://192.168.1.21:9069/api/v1/edgedevice/info"
 )
 const (
-	metricsURL string = "http://192.168.1.21:8088/api/v1/edgedevice/metrics"
+	metricsURL string = "http://192.168.1.21:9069/api/v1/edgedevice/metrics"
 )
 
 func publishMetrics() {
@@ -245,15 +245,15 @@ func MakeMetricsProtobufStructure() {
 			ReportDeviceMetric.Network[net-2] = networkDetails
 			//fmt.Println(ReportDeviceMetric.Network[net-2])
 			//ReportMetrics.Dm = ReportDeviceMetric
+			ReportMetrics.MetricContent = new(zmet.ZMetricMsg_Dm)
 			if x, ok := ReportMetrics.GetMetricContent().(*zmet.ZMetricMsg_Dm); ok {
 				x.Dm = ReportDeviceMetric
 			}
-
 		}
 	}
 
 	//fmt.Printf("%T", ReportMetrics)
-	fmt.Println(" ")
+	log.Printf("%s\n", ReportMetrics)
 	SendMetricsProtobufStrThroughHttp(ReportMetrics)
 }
 
@@ -325,6 +325,7 @@ func MakeDeviceInfoProtobufStructure (){
 
 	}
 	//ReportInfo.Dinfo	=	ReportDeviceInfo
+	ReportInfo.InfoContent = new(zmet.ZInfoMsg_Dinfo)
 	if x, ok := ReportInfo.GetInfoContent().(*zmet.ZInfoMsg_Dinfo); ok {
 		x.Dinfo = ReportDeviceInfo
 	}
@@ -359,6 +360,7 @@ func MakeHypervisorInfoProtobufStructure (){
 	ReportHypervisorInfo.SwVersion		=	ReportDeviceSoftwareInfo
 
 	//ReportInfo.Hinfo	=	ReportHypervisorInfo
+	ReportInfo.InfoContent	=	new(zmet.ZInfoMsg_Hinfo)
 	if x, ok := ReportInfo.GetInfoContent().(*zmet.ZInfoMsg_Hinfo); ok {
 		x.Hinfo = ReportHypervisorInfo
 	}
@@ -393,6 +395,7 @@ func MakeAppInfoProtobufStructure (){
 
 	ReportAppInfo.SwVersion		=	ReportVerInfo
 	//ReportInfo.Ainfo			=	ReportAppInfo
+	ReportInfo.InfoContent		=	new(zmet.ZInfoMsg_Ainfo)
 	if x, ok := ReportInfo.GetInfoContent().(*zmet.ZInfoMsg_Ainfo); ok {
 		x.Ainfo = ReportAppInfo
 	}
@@ -409,13 +412,16 @@ func SendInfoProtobufStrThroughHttp (ReportInfo *zmet.ZInfoMsg) {
 	if err != nil {
 		fmt.Println("marshaling error: ", err)
 	}
+
 	resp, err := http.Post(statusURL, "application/x-proto-binary",
 		bytes.NewBuffer(data))
+
 	if err != nil {
-		fmt.Println(err)
+		log.Printf("Resp: Err:%v", err)
+	} else {
+		res, err := ioutil.ReadAll(resp.Body)
+		log.Printf("Resp : %s, %v", res, err)
 	}
-	res, err := ioutil.ReadAll(resp.Body)
-	fmt.Println("response: ",res)
 
 	/*newTest := &zmet.ZMsg{}
 	err = proto.Unmarshal(data, newTest)
@@ -433,13 +439,16 @@ func SendMetricsProtobufStrThroughHttp (ReportMetrics *zmet.ZMetricMsg) {
 		fmt.Println("marshaling error: ", err)
 	}
 
-	resp1, err := http.Post(metricsURL, "application/x-proto-binary",
+	resp, err := http.Post(metricsURL, "application/x-proto-binary",
 		bytes.NewBuffer(data))
+
 	if err != nil {
-		fmt.Println(err)
+		log.Printf("Resp: Err:%v", err)
+	} else {
+
+		res, err := ioutil.ReadAll(resp.Body)
+		log.Printf("Resp : %s, %v", res, err)
 	}
-	res1, err := ioutil.ReadAll(resp1.Body)
-	fmt.Println("response metric: ",res1)
 
 	/*newTest := &zmet.ZMsg{}
 	err = proto.Unmarshal(data, newTest)
