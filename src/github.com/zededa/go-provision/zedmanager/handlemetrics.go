@@ -10,8 +10,8 @@ import (
 	"io/ioutil"
 	"github.com/golang/protobuf/proto"
 	"github.com/shirou/gopsutil/net"
-	"shared/proto/zmet"
 	"zc/libs/zmsg"
+	"shared/proto/zmet"
 	"time"
 	"net/http"
 	"bytes"
@@ -245,10 +245,12 @@ func MakeMetricsProtobufStructure() {
 
 			ReportDeviceMetric.Network[net-2] = networkDetails
 			//fmt.Println(ReportDeviceMetric.Network[net-2])
-			ReportMetricsToZedCloud.Dm = ReportDeviceMetric
+			//ReportMetricsToZedCloud.Dm = ReportDeviceMetric
+			if x, ok := ReportMetricsToZedCloud.GetMetricContent().(*zmet.ZMetricMsg_Dm); ok {
+				x.Dm = ReportDeviceMetric
+			}
 
 		}
-
 	}
 
 	//fmt.Printf("%T", ReportMetricsToZedCloud)
@@ -257,7 +259,7 @@ func MakeMetricsProtobufStructure() {
 }
 func MakeDeviceInfoProtobufStructure (){
 
-	var ReportInfo = &zmsg.ZInfoMsg{}
+	var ReportInfo = &zmet.ZInfoMsg{}
 	var storage_size = 1
 
 	deviceType			:= new(zmet.ZInfoTypes)
@@ -322,7 +324,10 @@ func MakeDeviceInfoProtobufStructure (){
 		ReportDeviceInfo.Network[index]		=	ReportDeviceNetworkInfo
 
 	}
-	ReportInfo.Dinfo	=	ReportDeviceInfo
+	//ReportInfo.Dinfo	=	ReportDeviceInfo
+	if x, ok := ReportInfo.GetInfoContent().(*zmet.ZInfoMsg_Dinfo); ok {
+		x.Dinfo = ReportDeviceInfo
+	}
 
 	fmt.Println(ReportInfo)
 	fmt.Println(" ")
@@ -353,7 +358,10 @@ func MakeHypervisorInfoProtobufStructure (){
 	ReportDeviceSoftwareInfo.SwHash		=	*proto.String("jdjduu123")
 	ReportHypervisorInfo.SwVersion		=	ReportDeviceSoftwareInfo
 
-	ReportInfo.Hinfo	=	ReportHypervisorInfo
+	//ReportInfo.Hinfo	=	ReportHypervisorInfo
+	if x, ok := ReportInfo.GetInfoContent().(*zmet.ZInfoMsg_Hinfo); ok {
+		x.Hinfo = ReportHypervisorInfo
+	}
 
 	fmt.Println(ReportInfo)
 	fmt.Println(" ")
@@ -384,7 +392,10 @@ func MakeAppInfoProtobufStructure (){
 	ReportVerInfo.SwHash		=	*proto.String("0.0.0.1")
 
 	ReportAppInfo.SwVersion		=	ReportVerInfo
-	ReportInfo.Ainfo			=	ReportAppInfo
+	//ReportInfo.Ainfo			=	ReportAppInfo
+	if x, ok := ReportInfo.GetInfoContent().(*zmet.ZInfoMsg_Ainfo); ok {
+		x.Ainfo = ReportAppInfo
+	}
 
 	fmt.Println(ReportInfo)
 	fmt.Println(" ")
@@ -394,19 +405,21 @@ func MakeAppInfoProtobufStructure (){
 
 func SendInfoProtobufStrThroughHttp (ReportInfo *zmet.ZInfoMsg) {
 
-	var ReportInfoAndMetricsToZedCloud = &zmsg.ZMsg{}
-	var msgid = 1233
+	var msg		= &zmsg.ZMsg{}
+	var msgid	= 1233
 
-	ReportInfoAndMetricsToZedCloud.Msgid = *proto.Uint64(uint64(msgid))
+	msg.Msgid	=	*proto.Uint64(uint64(msgid))
+	infoType	:=	new(zmsg.ZMsgType)
+	*infoType	=	zmsg.ZMsgType_ZInfo
+	msg.Ztype	=	*infoType
 
-	infoType := new(zmsg.ZMsgType)
-	*infoType = zmsg.ZMsgType_ZInfo
+    if x, ok := msg.GetMessageContent().(*zmsg.ZMsg_Info); ok {
+		x.Info = ReportInfo
+	}
 
-	ReportInfoAndMetricsToZedCloud.Ztype	=	*infoType
-	ReportInfoAndMetricsToZedCloud.Info		=	*ReportInfo
-	fmt.Println(ReportInfoAndMetricsToZedCloud)
+	fmt.Println(msg)
 
-	data, err := proto.Marshal(ReportInfoAndMetricsToZedCloud)
+	data, err := proto.Marshal(msg)
 	if err != nil {
 		fmt.Println("marshaling error: ", err)
 	}
@@ -431,17 +444,21 @@ func SendInfoProtobufStrThroughHttp (ReportInfo *zmet.ZInfoMsg) {
 
 func SendMetricsProtobufStrThroughHttp (ReportMetricsToZedCloud *zmet.ZMetricMsg) {
 
-	var ReportInfoAndMetricsToZedCloud = &zmsg.ZMsg{}
+	var msg = &zmsg.ZMsg{}
 	var msgid = 1234
-	ReportInfoAndMetricsToZedCloud.Msgid = *proto.Uint64(uint64(msgid))
+	msg.Msgid = *proto.Uint64(uint64(msgid))
 
 	metricType := new(zmsg.ZMsgType)
 	*metricType = zmsg.ZMsgType_ZMetric
-	ReportInfoAndMetricsToZedCloud.Ztype	=	*metricType
-	ReportInfoAndMetricsToZedCloud.Metric	=	ReportMetricsToZedCloud
-	fmt.Println(ReportInfoAndMetricsToZedCloud)
+	msg.Ztype	=	*metricType
 
-	data, err := proto.Marshal(ReportInfoAndMetricsToZedCloud)
+	if x, ok := msg.GetMessageContent().(*zmsg.ZMsg_Metric); ok {
+		x.Metric = ReportMetricsToZedCloud
+	}
+
+	fmt.Println(msg)
+
+	data, err := proto.Marshal(msg)
 	if err != nil {
 		fmt.Println("marshaling error: ", err)
 	}
