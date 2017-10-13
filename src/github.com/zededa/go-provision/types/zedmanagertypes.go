@@ -9,6 +9,21 @@ import (
 	"time"
 )
 
+
+// top level config container
+type DeviceConfigResponse struct {
+	EdgeDeviceName		string
+	Config				EdgeDevConfig
+}
+
+type EdgeDevConfig struct {
+	Id					UUIDandVersion
+	ConfigSha256		string
+	ConfigSignature		string
+	Apps				[]AppInstanceConfig
+	UnderNetworkList	[]UnderlayNetworkConfig
+}
+
 // UUID plus version
 type UUIDandVersion struct {
 	UUID    uuid.UUID
@@ -120,3 +135,4 @@ type SignatureInfo struct {
 	SignerCertPem        []byte
 	Signature            []byte
 }
+
