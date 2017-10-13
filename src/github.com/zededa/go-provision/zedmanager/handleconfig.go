@@ -11,7 +11,7 @@ import (
 	"github.com/zededa/go-provision/types"
 	"shared/proto/zconfig"
 	//"errors"
-	//"log"
+	"log"
 	//"os"
 	"net/http"
 	"mime"
@@ -30,79 +30,76 @@ var activeVersion types.UUIDandVersion
 // for each of the above buckets
 
 func configTimerTask() {
-	ticker := time.NewTicker(time.Second  * 5)
+
+	getLatestConfig(nil);
+
+	ticker := time.NewTicker(time.Minute  * 30)
+
 	for t := range ticker.C {
 		fmt.Println("Tick at", t)
-		zDeviceConfigGet(nil);
+		getLatestConfig(nil);
 	}
 }
 
-func zDeviceConfigGet(deviceCert []byte) {
+func getLatestConfig(deviceCert []byte) {
 
 	resp, err := http.Get(configURL)
 	if err != nil {
 		fmt.Println(err)
 	}
 	fmt.Println(resp)
-	validateMessage(resp)
+	validateConfigMessage(resp)
 }
 
-func validateMessage(r *http.Response) error {
+func validateConfigMessage(r *http.Response) error {
 
-	ct := r.Header.Get("Content-Type")
+	var ctTypeStr = "Content-Type"
+	var ctTypeBinaryStr = "application/x-proto-binary"
 
+	var ct = r.Header.Get(ctTypeStr)
 	if ct == "" {
 		if r.Body == nil || r.ContentLength == 0 {
 			return nil
 		}
 	}
 
-	conentTypeBinary := "application/x-proto-binary"
-	mimeType, _,  err := mime.ParseMediaType(ct)
+	mimeType, _,err := mime.ParseMediaType(ct)
 
-	if err == nil && (mimeType == "application/x-proto-binary") {
-
-		return fmt.Errorf("Conent-Type specified (%s) must be %x",
-			 ct, conentTypeBinary)
-		return readMessage(r)
-	} else {
-		return fmt.Errorf("Conent-Type specified (%s) must be %x",
-			 ct, conentTypeBinary)
+	if err == nil && (mimeType == ctTypeBinaryStr) {
+		return readDeviceConfigMessage(r)
 	}
+
+	return fmt.Errorf("Conent-Type specified (%s) must be %x",
+		 ct, ctTypeBinaryStr)
 }
 
-func readMessage (r *http.Response) error {
+func readDeviceConfigMessage (r *http.Response) error {
 
-	b, err := ioutil.ReadAll(r.Body)
+	var configMsg = &zconfig.EdgeDeviceConfig{}
+
+	bytes, err := ioutil.ReadAll(r.Body)
 	if err != nil {
+		fmt.Println(err)
 		return err
 	}
 
-	 configMsg := &zconfig.EdgeDeviceConfig{}
-	 ret := proto.Unmarshal(b, configMsg)
-	if ret != nil {
-		return ret
+	err = proto.Unmarshal(bytes, configMsg)
+	if err != nil {
+		fmt.Println(err)
+		return err
 	}
 
-	return zDeviceCloudConfigParse(configMsg)
+	return parseDeviceConfigMessage(configMsg)
 }
 
-func zDeviceConfigVersionCheck(oldVersion types.UUIDandVersion, newVersion types.UUIDandVersion) bool {
-
-	// if they match return true
-	if (oldVersion.Version != newVersion.Version) {
-		return true
-	}
-	return false
-}
-
-func zDeviceCloudConfigParse(configMsg *zconfig.EdgeDeviceConfig) error {
+func parseDeviceConfigMessage(configMsg *zconfig.EdgeDeviceConfig) error {
 	var config types.DeviceConfigResponse
 
 	fmt.Println("%v\n", configMsg)
 	bytes, err := proto.MarshalMessageSetJSON(configMsg)
 	if err != nil {
 		fmt.Println(err)
+		return err
 	}
 	// we have the JAON now
 	fmt.Println("%v\n", bytes)
@@ -112,20 +109,34 @@ func zDeviceCloudConfigParse(configMsg *zconfig.EdgeDeviceConfig) error {
 		return err
 	}
 
-	return ConfigPublish(config.Config)
+	return publishDeviceConfig(config.Config)
 }
 
-func  ConfigPublish(config types.EdgeDevConfig)  error {
+func  publishDeviceConfig(config types.EdgeDevConfig)  error {
 
 	// if they match return
 	if (config.Id.Version == activeVersion.Version) {
+		fmt.Printf("Same version, skipping:%v\n", config.Id.Version)
 		return nil
 	}
+
 	activeVersion = config.Id
 
 	// create the App files
 	for app := range config.Apps {
-		fmt.Printf("App:%v\n", app)
+		//fmt.Printf("App:%v\n", config.Apps[app])
+
+		b, err := json.Marshal(config.Apps[app])
+		if err != nil {
+			log.Fatal(err, "json Marshal AppInstanceConfig" + config.Apps[app].DisplayName)
+		}
+
+		configFilename := zedmanagerConfigDirname + "/" + config.Apps[app].ConfigSha256 + ".json"
+
+		err = ioutil.WriteFile(configFilename, b, 0644)
+		if err != nil {
+			log.Fatal(err, configFilename)
+		}
 	}
 	return nil
 }

@@ -39,6 +39,8 @@ type UUIDandVersion struct {
 type AppInstanceConfig struct {
 	UUIDandVersion      UUIDandVersion
 	DisplayName         string
+	ConfigSha256        string
+	ConfigSignature     string
 	FixedResources      // CPU etc
 	StorageConfigList   []StorageConfig
 	Activate            bool
