@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"encoding/json"
 	"io/ioutil"
+	//"github.com/satori/go.uuid"
 	"github.com/golang/protobuf/proto"
 	"github.com/zededa/go-provision/types"
 	"shared/proto/zconfig"
@@ -18,9 +19,29 @@ import (
 	"time"
 )
 
-var configURL string = "http://192.168.1.15:9069/api/v1/edgedevice/testDevice/config"
+var configUrl string = "http://192.168.1.13:9069/api/v1/edgedevice/name/testDevice/config"
 
-var activeVersion types.UUIDandVersion
+var activeVersion	string
+
+func getCloudUrls () {
+
+	var urlCloudCfg	= &types.UrlCloudCfg{}
+	var configFile	= "/opt/zededa/etc/url-cfg.json"
+
+	if bytes, err := ioutil.ReadFile(configFile); err != nil {
+        log.Printf("Could not read configuration [%v]: %v", configFile, err)
+        return
+    } else {
+        if err := json.Unmarshal(bytes, urlCloudCfg); err != nil {
+            log.Printf("Failed to parse for external configuration: %v: error was: %v", string(bytes), err)
+            return
+        }
+    }
+
+	configUrl	= urlCloudCfg.ConfigUrl
+	statusUrl	= urlCloudCfg.StatusUrl
+	metricsUrl	= urlCloudCfg.MetricsUrl
+}
 
 // got a trigger for new config. check the present version and compare
 // if this is a new version, initiate update
@@ -31,9 +52,10 @@ var activeVersion types.UUIDandVersion
 
 func configTimerTask() {
 
+	fmt.Println("starting config getch timer task");
 	getLatestConfig(nil);
 
-	ticker := time.NewTicker(time.Minute  * 30)
+	ticker := time.NewTicker(time.Minute  * 3)
 
 	for t := range ticker.C {
 		fmt.Println("Tick at", t)
@@ -43,11 +65,14 @@ func configTimerTask() {
 
 func getLatestConfig(deviceCert []byte) {
 
-	resp, err := http.Get(configURL)
-	if err != nil {
+	resp, err := http.Get(configUrl)
+
+	if err != nil || resp == nil {
+		fmt.Println("invalid response")
 		fmt.Println(err)
+		return
 	}
-	fmt.Println(resp)
+	fmt.Println(resp.Body)
 	validateConfigMessage(resp)
 }
 
@@ -69,13 +94,14 @@ func validateConfigMessage(r *http.Response) error {
 		return readDeviceConfigMessage(r)
 	}
 
-	return fmt.Errorf("Conent-Type specified (%s) must be %x",
+	fmt.Println("Conent-Type specified (%s) must be %s", ct, ctTypeBinaryStr)
+	return fmt.Errorf("Conent-Type specified (%s) must be %s",
 		 ct, ctTypeBinaryStr)
 }
 
 func readDeviceConfigMessage (r *http.Response) error {
 
-	var configMsg = &zconfig.EdgeDeviceConfig{}
+	var configResp = &zconfig.EdgeDevConfResp{}
 
 	bytes, err := ioutil.ReadAll(r.Body)
 	if err != nil {
@@ -83,57 +109,39 @@ func readDeviceConfigMessage (r *http.Response) error {
 		return err
 	}
 
-	err = proto.Unmarshal(bytes, configMsg)
+	fmt.Println("%s", bytes)
+
+	err = proto.Unmarshal(bytes, configResp)
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println("failed unmarshalling %v", err)
 		return err
 	}
+	fmt.Println("%v", configResp)
 
-	return parseDeviceConfigMessage(configMsg)
+	return publishDeviceConfig(configResp.Config)
 }
 
-func parseDeviceConfigMessage(configMsg *zconfig.EdgeDeviceConfig) error {
-	var config types.DeviceConfigResponse
-
-	fmt.Println("%v\n", configMsg)
-	bytes, err := proto.MarshalMessageSetJSON(configMsg)
-	if err != nil {
-		fmt.Println(err)
-		return err
-	}
-	// we have the JAON now
-	fmt.Println("%v\n", bytes)
-
-	if err := json.Unmarshal(bytes, config); err != nil {
-		fmt.Println(err)
-		return err
-	}
-
-	return publishDeviceConfig(config.Config)
-}
-
-func  publishDeviceConfig(config types.EdgeDevConfig)  error {
+func  publishDeviceConfig(config *zconfig.EdgeDevConfig)  error {
 
 	// if they match return
-	if (config.Id.Version == activeVersion.Version) {
-		fmt.Printf("Same version, skipping:%v\n", config.Id.Version)
-		return nil
-	}
+	var devId  =  &zconfig.UUIDandVersion{};
 
-	activeVersion = config.Id
+	devId  = config.GetId()
+	if devId != nil {
+		if devId.Version == activeVersion {
+			fmt.Printf("Same version, skipping:%v\n", config.Id.Version)
+			return nil
+		}
+		activeVersion	= devId.Version
+	}
 
 	// create the App files
 	for app := range config.Apps {
-		//fmt.Printf("App:%v\n", config.Apps[app])
 
-		b, err := json.Marshal(config.Apps[app])
-		if err != nil {
-			log.Fatal(err, "json Marshal AppInstanceConfig" + config.Apps[app].DisplayName)
-		}
+		configFilename := zedmanagerConfigDirname + "/" + config.Apps[app].Uuidandversion + ".json"
 
-		configFilename := zedmanagerConfigDirname + "/" + config.Apps[app].ConfigSha256 + ".json"
-
-		err = ioutil.WriteFile(configFilename, b, 0644)
+		bytes, err := json.Marshal(config.Apps[app])
+		err = ioutil.WriteFile(configFilename, bytes, 0644)
 		if err != nil {
 			log.Fatal(err, configFilename)
 		}

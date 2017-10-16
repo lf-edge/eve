@@ -9,6 +9,11 @@ import (
 	"time"
 )
 
+type UrlCloudCfg struct {
+       ConfigUrl       string
+       MetricsUrl      string
+       StatusUrl       string
+}
 
 // top level config container
 type DeviceConfigResponse struct {

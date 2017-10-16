@@ -19,12 +19,8 @@ import (
 var networkStat [][]string
 var cpuStorageStat [][]string
 
-const (
-	statusURL string = "http://192.168.1.21:9069/api/v1/edgedevice/info"
-)
-const (
-	metricsURL string = "http://192.168.1.21:9069/api/v1/edgedevice/metrics"
-)
+var	statusUrl string = "http://192.168.1.21:9069/api/v1/edgedevice/info"
+var	metricsUrl string = "http://192.168.1.21:9069/api/v1/edgedevice/metrics"
 
 func publishMetrics() {
 	DeviceCpuStorageStat()
@@ -413,7 +409,7 @@ func SendInfoProtobufStrThroughHttp (ReportInfo *zmet.ZInfoMsg) {
 		fmt.Println("marshaling error: ", err)
 	}
 
-	resp, err := http.Post(statusURL, "application/x-proto-binary",
+	resp, err := http.Post(statusUrl, "application/x-proto-binary",
 		bytes.NewBuffer(data))
 
 	if err != nil {
@@ -439,7 +435,7 @@ func SendMetricsProtobufStrThroughHttp (ReportMetrics *zmet.ZMetricMsg) {
 		fmt.Println("marshaling error: ", err)
 	}
 
-	resp, err := http.Post(metricsURL, "application/x-proto-binary",
+	resp, err := http.Post(metricsUrl, "application/x-proto-binary",
 		bytes.NewBuffer(data))
 
 	if err != nil {
