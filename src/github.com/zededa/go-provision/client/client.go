@@ -208,6 +208,7 @@ func main() {
 				tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256},
 			// TLS 1.2 because we can
 			MinVersion: tls.VersionTLS12,
+			InsecureSkipVerify: true,
 		}
 		tlsConfig.BuildNameToCertificate()
 
@@ -218,13 +219,14 @@ func main() {
 		rc := types.RegisterCreate{PemCert: deviceCertPem}
 		b := new(bytes.Buffer)
 		json.NewEncoder(b).Encode(rc)
-		return myPost(client, "/rest/self-register", b)
+		return myPost(client, "/api/v1/edgedevice/register", b)
 	}
 
 	// Returns true when done; false when retry
 	lookupParam := func(client *http.Client, device *types.DeviceDb) bool {
-		resp, err := client.Get("https://" + serverNameAndPort +
-			"/rest/device-param")
+		//resp, err := client.Get("https://" + serverNameAndPort +
+			//"/rest/device-param")
+		resp, err := client.Get("https://" + serverNameAndPort +"/api/v1/edgedevice/config")
 		if err != nil {
 			fmt.Println(err)
 			return false
@@ -236,7 +238,7 @@ func main() {
 			return false
 		}
 
-		if connState.OCSPResponse == nil ||
+		/*if connState.OCSPResponse == nil ||
 			!stapledCheck(connState) {
 			if connState.OCSPResponse == nil {
 				fmt.Println("no OCSP response")
@@ -244,7 +246,7 @@ func main() {
 				fmt.Println("OCSP stapled check failed")
 			}
 			return false
-		}
+		}*/
 
 		contents, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
@@ -262,11 +264,17 @@ func main() {
 			return false
 		}
 		contentType := resp.Header.Get("Content-Type")
-		if contentType != "application/json" {
+		//if contentType != "application/json" {
+		if contentType != "application/x-proto-binary" {
 			fmt.Println("Incorrect Content-Type " + contentType)
 			return false
 		}
-		if err := json.Unmarshal(contents, &device); err != nil {
+		contents1,err := json.Marshal(contents)
+		if err!= nil{
+			log.Println("marshalling error",err)
+		}
+
+		if err := json.Unmarshal(contents1, &device); err != nil {
 			fmt.Println(err)
 			return false
 		}
