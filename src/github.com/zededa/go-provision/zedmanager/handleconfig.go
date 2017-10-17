@@ -138,7 +138,7 @@ func  publishDeviceConfig(config *zconfig.EdgeDevConfig)  error {
 	// create the App files
 	for app := range config.Apps {
 
-		configFilename := zedmanagerConfigDirname + "/" + config.Apps[app].Uuidandversion + ".json"
+		configFilename := zedmanagerConfigDirname + "/" + config.Apps[app].Uuidandversion.Uuid + ".json"
 
 		bytes, err := json.Marshal(config.Apps[app])
 		err = ioutil.WriteFile(configFilename, bytes, 0644)
