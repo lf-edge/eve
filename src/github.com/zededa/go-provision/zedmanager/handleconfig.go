@@ -25,15 +25,17 @@ var activeVersion	string
 
 func getCloudUrls () {
 
-	var urlCloudCfg	= &types.UrlCloudCfg{}
-	var configFile	= "/opt/zededa/etc/url-cfg.json"
+	var urlCloudCfg		= &types.UrlCloudCfg{}
+	var configFilename	= "/opt/zededa/etc/url-cfg.json"
 
-	if bytes, err := ioutil.ReadFile(configFile); err != nil {
-        log.Printf("Could not read configuration [%v]: %v", configFile, err)
+	if bytes, err := ioutil.ReadFile(configFilename); err != nil {
+        log.Printf("Could not read configuration [%v]: %v", configFilename, err)
+		writeCloudUrls()
         return
     } else {
         if err := json.Unmarshal(bytes, urlCloudCfg); err != nil {
-            log.Printf("Failed to parse for external configuration: %v: error was: %v", string(bytes), err)
+            log.Printf("Failed to parse %v: error was: %v", string(bytes), err)
+			writeCloudUrls()
             return
         }
     }
@@ -41,6 +43,26 @@ func getCloudUrls () {
 	configUrl	= urlCloudCfg.ConfigUrl
 	statusUrl	= urlCloudCfg.StatusUrl
 	metricsUrl	= urlCloudCfg.MetricsUrl
+}
+
+func writeCloudUrls() {
+
+	var urlCloudCfg		= &types.UrlCloudCfg{}
+	var configFilename	= "/opt/zededa/etc/url-cfg.json"
+
+	urlCloudCfg.ConfigUrl	=	configUrl
+	urlCloudCfg.StatusUrl	=	statusUrl
+	urlCloudCfg.MetricsUrl	=	metricsUrl
+
+	b, err := json.Marshal(urlCloudCfg)
+	if err != nil {
+		log.Fatal(err, "json Marshal cloudConfig")
+	}
+
+	err = ioutil.WriteFile(configFilename, b, 0644)
+	if err != nil {
+		log.Fatal(err, configFilename)
+	}
 }
 
 // got a trigger for new config. check the present version and compare
