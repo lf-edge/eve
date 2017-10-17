@@ -23,10 +23,10 @@ type DeviceConfigResponse struct {
 
 type EdgeDevConfig struct {
 	Id					UUIDandVersion
-	ConfigSha256		string
-	ConfigSignature		string
+	DevConfigSha256		string
+	DevConfigSignature	string
 	Apps				[]AppInstanceConfig
-	UnderNetworkList	[]UnderlayNetworkConfig
+	Networks			[]UnderlayNetworkConfig
 }
 
 // UUID plus version
