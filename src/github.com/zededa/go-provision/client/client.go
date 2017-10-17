@@ -21,6 +21,8 @@ import (
 	"os"
 	"strings"
 	"time"
+	"github.com/golang/protobuf/proto"
+	"shared/proto/zmet"
 )
 
 var maxDelay = time.Second * 600 // 10 minutes
@@ -85,6 +87,7 @@ func main() {
 
 	var onboardCert, deviceCert tls.Certificate
 	var deviceCertPem []byte
+	var onboardKeyData []byte
 	deviceCertSet := false
 
 	if operations["selfRegister"] {
@@ -98,6 +101,10 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
+		onboardKeyData, err = ioutil.ReadFile(onboardKeyName)
+                if err != nil {
+                        log.Fatal(err)
+                }
 	}
 	if operations["lookupParam"] || operations["updateHwStatus"] ||
 		operations["updateSwStatus"] {
@@ -140,7 +147,7 @@ func main() {
 	// Returns true when done; false when retry
 	myPost := func(client *http.Client, url string, b *bytes.Buffer) bool {
 		resp, err := client.Post("https://"+serverNameAndPort+url,
-			"application/json", b)
+			"application/x-proto-binary", b)
 		if err != nil {
 			fmt.Println(err)
 			return false
@@ -152,7 +159,7 @@ func main() {
 			return false
 		}
 
-		if connState.OCSPResponse == nil ||
+		/*if connState.OCSPResponse == nil ||
 			!stapledCheck(connState) {
 			if connState.OCSPResponse == nil {
 				fmt.Println("no OCSP response")
@@ -160,7 +167,7 @@ func main() {
 				fmt.Println("OCSP stapled check failed")
 			}
 			return false
-		}
+		}*/
 
 		contents, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
@@ -188,7 +195,8 @@ func main() {
 		}
 
 		contentType := resp.Header.Get("Content-Type")
-		if contentType != "application/json" {
+		//if contentType != "application/json" {
+		if contentType != "application/x-proto-binary" {
 			fmt.Println("Incorrect Content-Type " + contentType)
 			return false
 		}
@@ -216,10 +224,17 @@ func main() {
 
 		transport := &http.Transport{TLSClientConfig: tlsConfig}
 		client := &http.Client{Transport: transport}
-		rc := types.RegisterCreate{PemCert: deviceCertPem}
-		b := new(bytes.Buffer)
-		json.NewEncoder(b).Encode(rc)
-		return myPost(client, "/api/v1/edgedevice/register", b)
+		//rc := types.RegisterCreate{PemCert: deviceCertPem}
+		//b := new(bytes.Buffer)
+		//json.NewEncoder(b).Encode(rc)
+		var registerCreate = &zmet.ZRegisterMsg{}
+                registerCreate.OnBoardKey = *proto.String(string(onboardKeyData))
+                registerCreate.PemCert = deviceCertPem
+                b,err := proto.Marshal(registerCreate)
+                if err != nil {
+                        log.Println(err)
+                }
+		return myPost(client, "/api/v1/edgedevice/register", bytes.NewBuffer( b))
 	}
 
 	// Returns true when done; false when retry
