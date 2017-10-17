@@ -353,7 +353,7 @@ func MakeHypervisorInfoProtobufStructure (){
 	ReportDeviceSoftwareInfo := new(zmet.ZInfoSW)
 	ReportDeviceSoftwareInfo.SwVersion	=	*proto.String("0.0.0.1")
 	ReportDeviceSoftwareInfo.SwHash		=	*proto.String("jdjduu123")
-	ReportHypervisorInfo.SwVersion		=	ReportDeviceSoftwareInfo
+	ReportHypervisorInfo.Software		=	ReportDeviceSoftwareInfo
 
 	//ReportInfo.Hinfo	=	ReportHypervisorInfo
 	ReportInfo.InfoContent	=	new(zmet.ZInfoMsg_Hinfo)
@@ -389,7 +389,7 @@ func MakeAppInfoProtobufStructure (){
 	ReportVerInfo.SwVersion		=	*proto.String("0.0.0.1")
 	ReportVerInfo.SwHash		=	*proto.String("0.0.0.1")
 
-	ReportAppInfo.SwVersion		=	ReportVerInfo
+	ReportAppInfo.Software		=	ReportVerInfo
 	//ReportInfo.Ainfo			=	ReportAppInfo
 	ReportInfo.InfoContent		=	new(zmet.ZInfoMsg_Ainfo)
 	if x, ok := ReportInfo.GetInfoContent().(*zmet.ZInfoMsg_Ainfo); ok {
