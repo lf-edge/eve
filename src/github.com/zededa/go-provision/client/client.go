@@ -194,7 +194,7 @@ func main() {
 			return false
 		}
 
-		contentType := resp.Header.Get("Content-Type")
+		//contentType := resp.Header.Get("Content-Type")
 		//if contentType != "application/json" {
 		/*if contentType != "application/x-proto-binary" {
 			fmt.Println("Incorrect Content-Type " + contentType)
