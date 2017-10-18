@@ -10,6 +10,7 @@ import (
 	//"github.com/satori/go.uuid"
 	"github.com/golang/protobuf/proto"
 	"github.com/zededa/go-provision/types"
+	"shared/proto/devcommon"
 	"shared/proto/zconfig"
 	//"errors"
 	"log"
@@ -181,7 +182,7 @@ func  publishDeviceConfig(config *zconfig.EdgeDevConfig)  error {
 	fmt.Printf("%v\n", config)
 
 	// if they match return
-	var devId  =  &zconfig.UUIDandVersion{};
+	var devId  =  &devcommon.UUIDandVersion{};
 
 	devId  = config.GetId()
 	if devId != nil {
