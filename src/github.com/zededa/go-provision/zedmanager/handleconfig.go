@@ -19,17 +19,17 @@ import (
 	"time"
 )
 
-var configUrl string = "http://192.168.1.13:9069/api/v1/edgedevice/name/testDevice/config"
+var configUrl string = "http://192.168.1.8:9069/api/v1/edgedevice/config"
 
 var activeVersion	string
+var urlConfigFilename	= "/opt/zededa/etc/url-cfg.json"
 
 func getCloudUrls () {
 
 	var urlCloudCfg		= &types.UrlCloudCfg{}
-	var configFilename	= "/opt/zededa/etc/url-cfg.json"
 
-	if bytes, err := ioutil.ReadFile(configFilename); err != nil {
-        log.Printf("Could not read configuration [%v]: %v", configFilename, err)
+	if bytes, err := ioutil.ReadFile(urlConfigFilename); err != nil {
+        log.Printf("Could not read configuration [%v]: %v", urlConfigFilename, err)
 		writeCloudUrls()
         return
     } else {
@@ -48,7 +48,6 @@ func getCloudUrls () {
 func writeCloudUrls() {
 
 	var urlCloudCfg		= &types.UrlCloudCfg{}
-	var configFilename	= "/opt/zededa/etc/url-cfg.json"
 
 	urlCloudCfg.ConfigUrl	=	configUrl
 	urlCloudCfg.StatusUrl	=	statusUrl
@@ -59,9 +58,9 @@ func writeCloudUrls() {
 		log.Fatal(err, "json Marshal cloudConfig")
 	}
 
-	err = ioutil.WriteFile(configFilename, b, 0644)
+	err = ioutil.WriteFile(urlConfigFilename, b, 0644)
 	if err != nil {
-		log.Fatal(err, configFilename)
+		log.Fatal(err, urlConfigFilename)
 	}
 }
 
@@ -87,6 +86,8 @@ func configTimerTask() {
 
 func getLatestConfig(deviceCert []byte) {
 
+	fmt.Printf("config-url: %s\n", configUrl)
+
 	resp, err := http.Get(configUrl)
 
 	if err != nil || resp == nil {
@@ -94,14 +95,14 @@ func getLatestConfig(deviceCert []byte) {
 		fmt.Println(err)
 		return
 	}
-	fmt.Println(resp.Body)
 	validateConfigMessage(resp)
 }
 
 func validateConfigMessage(r *http.Response) error {
 
-	var ctTypeStr = "Content-Type"
-	var ctTypeBinaryStr = "application/x-proto-binary"
+	var ctTypeStr		= "Content-Type"
+	var ctTypeProtoStr	= "application/x-proto-binary"
+	var ctTypeJsonStr	= "application/json"
 
 	var ct = r.Header.Get(ctTypeStr)
 	if ct == "" {
@@ -112,16 +113,32 @@ func validateConfigMessage(r *http.Response) error {
 
 	mimeType, _,err := mime.ParseMediaType(ct)
 
-	if err == nil && (mimeType == ctTypeBinaryStr) {
-		return readDeviceConfigMessage(r)
+	if err != nil {
+		return fmt.Errorf("Conent-Type specified (%s) must be %s",
+			 ct, ctTypeProtoStr)
 	}
 
-	fmt.Println("Conent-Type specified (%s) must be %s", ct, ctTypeBinaryStr)
-	return fmt.Errorf("Conent-Type specified (%s) must be %s",
-		 ct, ctTypeBinaryStr)
+	switch mimeType {
+	case ctTypeProtoStr: {
+			return readDeviceConfigProtoMessage(r)
+		}
+	case ctTypeJsonStr: {
+			return readDeviceConfigJsonMessage(r)
+		}
+	default: {
+			fmt.Printf("Conent-Type specified (%s)\n", ct)
+			bytes, err := ioutil.ReadAll(r.Body)
+
+			if err != nil {
+				fmt.Printf("%s", bytes)
+			}
+			return fmt.Errorf("Conent-Type specified (%s) must be %s",
+				 ct, ctTypeProtoStr)
+		}
+	}
 }
 
-func readDeviceConfigMessage (r *http.Response) error {
+func readDeviceConfigProtoMessage (r *http.Response) error {
 
 	var configResp = &zconfig.EdgeDevConfResp{}
 
@@ -131,19 +148,37 @@ func readDeviceConfigMessage (r *http.Response) error {
 		return err
 	}
 
-	fmt.Println("%s", bytes)
-
 	err = proto.Unmarshal(bytes, configResp)
 	if err != nil {
 		fmt.Println("failed unmarshalling %v", err)
 		return err
 	}
-	fmt.Println("%v", configResp)
+
+	return publishDeviceConfig(configResp.Config)
+}
+
+func readDeviceConfigJsonMessage (r *http.Response) error {
+
+	var configResp = &zconfig.EdgeDevConfResp{}
+
+	bytes, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		fmt.Println(err)
+		return err
+	}
+
+	err = json.Unmarshal(bytes, configResp)
+	if err != nil {
+		fmt.Println("failed unmarshalling %v", err)
+		return err
+	}
 
 	return publishDeviceConfig(configResp.Config)
 }
 
 func  publishDeviceConfig(config *zconfig.EdgeDevConfig)  error {
+
+	fmt.Printf("%v\n", config)
 
 	// if they match return
 	var devId  =  &zconfig.UUIDandVersion{};
