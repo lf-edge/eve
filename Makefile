@@ -13,7 +13,7 @@ help:
 pkgs:
 	make -C pkg
 
-zededa-container/Dockerfile: pkgs
+zededa-container/Dockerfile: pkgs parse-pkgs.sh zededa-container/Dockerfile.template
 	./parse-pkgs.sh zededa-container/Dockerfile.template > zededa-container/Dockerfile
 
 zededa-container: zededa-container/Dockerfile
