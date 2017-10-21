@@ -1,6 +1,14 @@
-.PHONY: pkgs zededa-container
+.PHONY: pkgs zededa-container help
 
-all: supermicro.iso
+all: help
+
+help:
+	@echo zenbuild: LinuxKit/moby based Xen images composer
+	@echo
+	@echo amd64 targets:
+	@echo "   'make supermicro.iso' builds a bootable ISO"
+	@echo "   'make supermicro.img' builds a bootable raw disk image"
+
 
 pkgs:
 	make -C pkg
