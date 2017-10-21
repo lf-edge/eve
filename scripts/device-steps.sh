@@ -116,7 +116,7 @@ if [ /bin/true -o ! -f $ETCDIR/lisp.config ]; then
     cat $ETCDIR/zedserverconfig >>/tmp/hosts.$$
     echo "New /etc/hosts:"
     cat /tmp/hosts.$$
-    sudo cp /tmp/hosts.$$ /etc/hosts
+    cp /tmp/hosts.$$ /etc/hosts
     rm -f /tmp/hosts.$$
     if [ $WAIT == 1 ]; then
 	echo; read -n 1 -s -p "Press any key to continue"; echo; echo
