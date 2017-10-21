@@ -2,16 +2,16 @@ package main
 
 import (
 	"bytes"
-	"crypto/ecdsa"
+	/*"crypto/ecdsa"
 	"crypto/rand"
-	"crypto/sha256"
+	"crypto/sha256"*/
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/base64"
+	//"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/RevH/ipinfo"
-	"github.com/satori/go.uuid"
+	//"github.com/RevH/ipinfo"
+	//"github.com/satori/go.uuid"
 	"github.com/zededa/go-provision/types"
 	"golang.org/x/crypto/ocsp"
 	"io/ioutil"
@@ -57,9 +57,9 @@ func main() {
 	}
 	operations := map[string]bool{
 		"selfRegister":   false,
-		"lookupParam":    false,
+		/*"lookupParam":    false,
 		"updateHwStatus": false,
-		"updateSwStatus": false,
+		"updateSwStatus": false,*/
 	}
 	if len(args) > 1 {
 		for _, op := range args[1:] {
@@ -68,24 +68,25 @@ func main() {
 	} else {
 		// XXX for compat
 		operations["selfRegister"] = true
-		operations["lookupParam"] = true
+		//operations["lookupParam"] = true
 	}
 
 	onboardCertName := dirName + "/onboard.cert.pem"
 	onboardKeyName := dirName + "/onboard.key.pem"
 	deviceCertName := dirName + "/device.cert.pem"
-	deviceKeyName := dirName + "/device.key.pem"
+	//deviceKeyName := dirName + "/device.key.pem"
 	rootCertName := dirName + "/root-certificate.pem"
 	serverFileName := dirName + "/server"
-	infraFileName := dirName + "/infra"
-	zedserverConfigFileName := dirName + "/zedserverconfig"
+	//infraFileName := dirName + "/infra"
+	/*zedserverConfigFileName := dirName + "/zedserverconfig"
 	zedrouterConfigFileName := dirName + "/zedrouterconfig.json"
 	uuidFileName := dirName + "/uuid"
 	clientIPFileName := dirName + "/clientIP"
 	hwStatusFileName := dirName + "/hwstatus.json"
-	swStatusFileName := dirName + "/swstatus.json"
+	swStatusFileName := dirName + "/swstatus.json"*/
 
-	var onboardCert, deviceCert tls.Certificate
+	//var onboardCert, deviceCert tls.Certificate
+	var onboardCert tls.Certificate
 	var deviceCertPem []byte
 	var onboardKeyData []byte
 	deviceCertSet := false
@@ -106,7 +107,7 @@ func main() {
                         log.Fatal(err)
                 }
 	}
-	if operations["lookupParam"] || operations["updateHwStatus"] ||
+	/*if operations["lookupParam"] || operations["updateHwStatus"] ||
 		operations["updateSwStatus"] {
 		// Load device cert
 		var err error
@@ -116,7 +117,7 @@ func main() {
 			log.Fatal(err)
 		}
 		deviceCertSet = true
-	}
+	}*/
 
 	// Load CA cert
 	caCert, err := ioutil.ReadFile(rootCertName)
@@ -137,11 +138,11 @@ func main() {
 
 	// If infraFileName exists then don't set ACLs to eidset; allow any
 	// EID to connect.
-	ACLPromisc := false
+	/*ACLPromisc := false
 	if _, err := os.Stat(infraFileName); err == nil {
 		fmt.Printf("Setting ACLPromisc\n")
 		ACLPromisc = true
-	}
+	}*/
 
 	// Post something without a return type.
 	// Returns true when done; false when retry
@@ -238,7 +239,7 @@ func main() {
 	}
 
 	// Returns true when done; false when retry
-	lookupParam := func(client *http.Client, device *types.DeviceDb) bool {
+	/*lookupParam := func(client *http.Client, device *types.DeviceDb) bool {
 		//resp, err := client.Get("https://" + serverNameAndPort +
 			//"/rest/device-param")
 		resp, err := client.Get("https://" + serverNameAndPort +"/api/v1/edgedevice/config")
@@ -253,7 +254,7 @@ func main() {
 			return false
 		}
 
-		/*if connState.OCSPResponse == nil ||
+		if connState.OCSPResponse == nil ||
 			!stapledCheck(connState) {
 			if connState.OCSPResponse == nil {
 				fmt.Println("no OCSP response")
@@ -261,7 +262,7 @@ func main() {
 				fmt.Println("OCSP stapled check failed")
 			}
 			return false
-		}*/
+		}
 
 		contents, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
@@ -295,7 +296,7 @@ func main() {
 		}
 		return true
 	}
-
+	*/
 	if operations["selfRegister"] {
 		done := false
 		var delay time.Duration
@@ -313,7 +314,7 @@ func main() {
 		return
 	}
 	// Setup HTTPS client for deviceCert
-	tlsConfig := &tls.Config{
+	/*tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{deviceCert},
 		ServerName:   serverName,
 		RootCAs:      caCertPool,
@@ -535,7 +536,7 @@ func main() {
 				delay = maxDelay
 			}
 		}
-	}
+	}*/
 }
 
 func writeNetworkConfig(config *types.AppNetworkConfig,
