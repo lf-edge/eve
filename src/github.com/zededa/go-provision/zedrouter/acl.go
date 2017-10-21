@@ -160,11 +160,14 @@ func aceToRules(ifname string, ace types.ACE, ipVer int) IptablesRuleList {
 			addOut = []string{"-p", match.Value}
 			addIn = []string{"-p", match.Value}
 		case "fport":
-			addOut = []string{"-m", "--dport", match.Value}
-			addIn = []string{"-m", "--sport", match.Value}
+			// XXX TCP and UDP implicitly? required by iptables
+			// XXX need to add error checks and return to status
+			addOut = []string{"--dport", match.Value}
+			addIn = []string{"--sport", match.Value}
 		case "lport":
-			addOut = []string{"-m", "--sport", match.Value}
-			addIn = []string{"-m", "--dport", match.Value}
+			// XXX TCP and UDP implicitly? required
+			addOut = []string{"--sport", match.Value}
+			addIn = []string{"--dport", match.Value}
 		case "host":
 			// Ensure the sets exists; create if not
 			// need to feed it into dnsmasq as well; restart
