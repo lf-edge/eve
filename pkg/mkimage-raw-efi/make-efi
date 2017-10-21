@@ -1,0 +1,142 @@
+#!/bin/sh
+
+set -e
+# for debugging
+[ -n "$DEBUG" ] && set -x
+
+IMGFILE=$PWD/disk.img
+
+
+# we want everything except the final result to stderr
+( exec 1>&2;
+
+ESP_FILE=$PWD/boot.img
+ROOTFS_FILE=$PWD/rootfs.img
+
+
+# get the GRUB2 boot file name
+ARCH=`uname -m`
+case $ARCH in
+x86_64)
+  BOOTFILE=BOOTX64.EFI
+  LINUX_ENTRY=linuxefi
+  ;;
+aarch64)
+  BOOTFILE=BOOTAA64.EFI
+  LINUX_ENTRY=linux
+  ;;
+esac
+
+mkdir -p /tmp/efi
+cd /tmp/efi
+
+# input is a tarball on stdin with kernel and cmdline in /boot
+# output is an iso on stdout
+
+# extract. BSD tar auto recognises compression, unlike GNU tar
+# only if stdin is a tty, if so need files volume mounted...
+[ -t 0 ] || bsdtar xzf -
+
+KERNEL="./boot/kernel"
+XEN="./boot/xen.gz"
+CMDLINE_FILE="$(find . -name cmdline)"
+CMDLINE="$(cat $CMDLINE_FILE )"
+
+# PARTUUID for root
+PARTUUID=$(cat /proc/sys/kernel/random/uuid)
+
+cp /usr/local/share/$BOOTFILE .
+
+mkdir -p EFI/BOOT
+cat >> EFI/BOOT/grub.cfg <<EOF
+set timeout=5
+set gfxpayload=text
+menuentry 'LinuxKit ISO Image' {
+	multiboot2 /xen.gz
+	module2 /kernel console=tty0 ${CMDLINE} text
+}
+EOF
+
+#
+# calculate sizes
+ls -l / > /dev/stderr
+KERNEL_FILE_SIZE=$(stat -c %s "$KERNEL")
+XEN_FILE_SIZE=$(stat -c %s "$XEN")
+EFI_FILE_SIZE=$(stat -c %s "$BOOTFILE")
+
+# minimum headroom needed in ESP, in bytes
+# 511KiB headroom seems to be enough
+ESP_HEADROOM=$(( 1024 * 1024 ))
+
+# this is the minimum size of our EFI System Partition
+ESP_FILE_SIZE=$(( $KERNEL_FILE_SIZE + $XEN_FILE_SIZE + $EFI_FILE_SIZE + $ESP_HEADROOM ))
+
+# (x+1024)/1024*1024 rounds up to multiple of 1024KB, or 2048 sectors
+# some firmwares get confused if the partitions are not aligned on 2048 blocks
+# we will round up to the nearest multiple of 2048 blocks
+# since each block is 512 bytes, we want the size to be a multiple of
+# 2048 blocks * 512 bytes = 1048576 bytes = 1024KB
+ESP_FILE_SIZE_KB=$(( ( ($ESP_FILE_SIZE+1024) / 1024 ) / 1024 * 1024 ))
+# and for sectors
+ESP_FILE_SIZE_SECTORS=$(( $ESP_FILE_SIZE_KB * 2 ))
+
+ROOTFS_FILE_SIZE_KB=$(du -sk . | awk '{print $1}')
+
+ROOTFS_BLOCKSZ=4096
+ROOTFS_PART_HEADROOM_BLOCKS=16000
+ROOTFS_PART_BLOCKS=$(( $ROOTFS_FILE_SIZE_KB / 4 + $ROOTFS_PART_HEADROOM_BLOCKS ))
+ROOTFS_PART_SIZE=$(( $ROOTFS_PART_BLOCKS * $ROOTFS_BLOCKSZ ))
+ROOTFS_PART_SIZE_KB=$(( ( ($ROOTFS_PART_SIZE + 1024) / 1024 ) / 1024 * 1024 ))
+ROOTFS_PART_SECTORS=$(( $ROOTFS_PART_SIZE_KB * 2 ))
+
+
+# create a raw disk with an EFI boot partition
+# Stuff it into a FAT filesystem, making it as small as possible.
+mkfs.vfat -v -C $ESP_FILE $(( $ESP_FILE_SIZE_KB )) > /dev/null
+echo "mtools_skip_check=1" >> /etc/mtools.conf && \
+mmd -i $ESP_FILE ::/EFI
+mmd -i $ESP_FILE ::/EFI/BOOT
+mcopy -i $ESP_FILE $BOOTFILE ::/EFI/BOOT/
+mcopy -i $ESP_FILE EFI/BOOT/grub.cfg ::/EFI/BOOT/
+mcopy -i $ESP_FILE $KERNEL ::/
+mcopy -i $ESP_FILE $XEN ::/
+
+dd if=/dev/zero of=$ROOTFS_FILE bs=1024 count=$(( $ROOTFS_PART_SIZE_KB ))
+mkfs.ext4 -b 4096 -L zenix_rootfs -v $ROOTFS_FILE
+mount -o loop $ROOTFS_FILE /mnt
+cp -R . /mnt
+umount /mnt
+
+# now make our actual filesystem image
+# how big an image do we want?
+# it should be the size of our ESP file+1MB for BIOS boot + 1MB for MBR + 1MB for GPT
+ONEMB=$(( 1024 * 1024 ))
+SIZE_IN_BYTES=$(( $(stat -c %s "$ESP_FILE") + 4*$ONEMB + $ROOTFS_PART_SIZE_KB * 1024 ))
+
+# and make sure the ESP is bootable for BIOS mode
+# settings
+BLKSIZE=512
+MB_BLOCKS=$(( $SIZE_IN_BYTES / $ONEMB ))
+
+# make the image
+dd if=/dev/zero of=$IMGFILE bs=1M count=$MB_BLOCKS
+
+ESP_SECTOR_START=2048
+ESP_SECTOR_END=$(( $ESP_SECTOR_START + $ESP_FILE_SIZE_SECTORS - 1 ))
+ROOTFS_SECTOR_START=$(( $ESP_SECTOR_END + 1 ))
+ROOTFS_SECTOR_END=$(( $ROOTFS_SECTOR_START + $ROOTFS_PART_SECTORS - 1))
+
+# create the partitions - size of the ESP must match our image
+# and make sure the ESP is bootable for BIOS mode
+sgdisk --clear \
+       --new 1:$ESP_SECTOR_START:$ESP_SECTOR_END --typecode=1:ef00 --change-name=1:'EFI System' --partition-guid=1:$PARTUUID \
+       --new 2:$ROOTFS_SECTOR_START:$ROOTFS_SECTOR_END --typecode=2:fe00 --change-name=2:'zenix rootfs' \
+    --attributes 1:set:2 \
+     $IMGFILE
+
+# copy in our EFI System Partition image
+dd if=$ESP_FILE of=$IMGFILE bs=$BLKSIZE count=$ESP_FILE_SIZE_SECTORS conv=notrunc seek=$ESP_SECTOR_START
+dd if=$ROOTFS_FILE of=$IMGFILE bs=$BLKSIZE count=$ROOTFS_PART_SECTORS conv=notrunc seek=$ROOTFS_SECTOR_START
+
+)
+cat $IMGFILE

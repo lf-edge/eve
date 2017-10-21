@@ -1,0 +1,14 @@
+FROM zededa/ztools:6a3b197e7a349d15af7804db103da8a4c9011d1e-amd64 as ztools
+FROM TESTCERT_TAG as cert
+FROM XENTOOLS_TAG as xen-tools
+
+FROM alpine:3.6
+RUN apk add --no-cache \
+    yajl xz bash openssl iptables ip6tables \
+    coreutils dmidecode sudo libbz2 libuuid
+
+COPY --from=xen-tools / /
+COPY --from=ztools / /
+COPY --from=cert / /opt/zededa/etc
+
+CMD /opt/zededa/bin/device-steps.sh -w < /opt/zededa/etc/cert-input.txt
