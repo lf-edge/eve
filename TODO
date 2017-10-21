@@ -1,3 +1,9 @@
+TODO cleanup (or measure) /var/tmp/zedmanager/downloads/pending on boot?
+
+TODO different rates for transmit and receive
+
+TODO errors from iptables->acl->zedmanager status
+
 TODO update rloc address when moving? Or add support to lisp.config to follow
      the interface address? Need one per af
      
