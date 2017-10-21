@@ -4,11 +4,13 @@
 #
 # [1] A poor man is a man on a deadline.
 
-KERNEL_TAG=$(./findtag.sh pkg/kernel)
-XENTOOLS_TAG=$(./findtag.sh pkg/xen-tools)
-XEN_TAG=$(./findtag.sh pkg/xen)
-TESTCERT_TAG=$(./findtag.sh pkg/test-cert)
-ZEDEDA_TAG=$(./findtag.sh zededa-container)
+ARCH=amd64
+
+KERNEL_TAG=$(./findtag.sh pkg/kernel)-$ARCH
+XENTOOLS_TAG=$(./findtag.sh pkg/xen-tools)-$ARCH
+XEN_TAG=$(./findtag.sh pkg/xen)-$ARCH
+TESTCERT_TAG=$(./findtag.sh pkg/test-cert)-$ARCH
+ZEDEDA_TAG=$(./findtag.sh zededa-container)-$ARCH
 
 sed -e "s#KERNEL_TAG#"$KERNEL_TAG"#" \
     -e "s#XENTOOLS_TAG#"$XENTOOLS_TAG"#" \
