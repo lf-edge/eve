@@ -1,6 +1,6 @@
 FROM golang:1.9.1-alpine AS build
 
-ENV LISP_URL https://www.dropbox.com/s/sbepzkaizfabd3r/lispers.net-x86-release-0.409.tgz
+ENV LISP_URL https://www.dropbox.com/s/zc6lj8f57e5kk0z/lispers.net-x86-release-0.412.tgz
 
 RUN apk add --no-cache curl git gcc linux-headers libc-dev
 
@@ -33,7 +33,7 @@ RUN cd /opt/zededa/bin ; ln -s /go/bin/* .
 RUN mkdir /opt/zededa/lisp ; cd /opt/zededa/lisp ; curl --insecure -L $LISP_URL | gzip -dc | tar -xf -
 
 # Second stage of the build is creating a minimalistic container
-FROM alpine:latest
+FROM scratch
 COPY --from=build /opt/zededa /opt/zededa
 COPY --from=build /go/bin/* /opt/zededa/bin/
 WORKDIR /opt/zededa/bin
