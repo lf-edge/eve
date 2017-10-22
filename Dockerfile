@@ -1,6 +1,6 @@
 FROM golang:1.9.1-alpine AS build
 
-ENV LISP_URL https://www.dropbox.com/s/zc6lj8f57e5kk0z/lispers.net-x86-release-0.412.tgz
+ENV LISP_URL https://www.dropbox.com/s/lgoegpd78hujbp0/lispers.net-x86-release-0.415.tgz
 
 RUN apk add --no-cache curl git gcc linux-headers libc-dev
 
