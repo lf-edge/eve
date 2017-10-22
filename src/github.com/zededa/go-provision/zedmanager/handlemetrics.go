@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"io/ioutil"
+	"github.com/zededa/go-provision/types"
 	"github.com/golang/protobuf/proto"
 	"github.com/shirou/gopsutil/net"
 	"shared/proto/zmet"
@@ -21,15 +22,20 @@ var cpuStorageStat [][]string
 
 var	statusUrl string = "http://192.168.1.21:9069/api/v1/edgedevice/info"
 var	metricsUrl string = "http://192.168.1.21:9069/api/v1/edgedevice/metrics"
+var deviceId string = "8f2238e7-948d-4601-a384-644c1b39467a"
 
 func publishMetrics() {
 	DeviceCpuStorageStat()
 	DeviceNetworkStat()
 	MakeMetricsProtobufStructure()
+/*
+	MakeAppInfoProtobufStructure()
 	MakeAppInfoProtobufStructure()
 	MakeDeviceInfoProtobufStructure()
 	MakeHypervisorInfoProtobufStructure()
+*/
 }
+
 
 func metricsTimerTask() {
 	ticker := time.NewTicker(time.Second  * 5)
@@ -253,7 +259,7 @@ func MakeMetricsProtobufStructure() {
 	SendMetricsProtobufStrThroughHttp(ReportMetrics)
 }
 
-func MakeDeviceInfoProtobufStructure (){
+func MakeDeviceInfoProtobufStructure () {
 
 	var ReportInfo = &zmet.ZInfoMsg{}
 	var storage_size = 1
@@ -261,8 +267,7 @@ func MakeDeviceInfoProtobufStructure (){
 	deviceType			:= new(zmet.ZInfoTypes)
 	*deviceType			=	zmet.ZInfoTypes_ZiDevice
 	ReportInfo.Ztype	=	*deviceType
-
-	ReportInfo.DevId	=	*proto.String("8f2238e7-948d-4601-a384-644c1b39467a")
+	ReportInfo.DevId	=	*proto.String(deviceId)
 
 	ReportDeviceInfo	:=	new(zmet.ZInfoDevice)
 	ReportDeviceInfo.MachineArch	=	*proto.String("32 bit")
@@ -342,8 +347,7 @@ func MakeHypervisorInfoProtobufStructure (){
 	hypervisorType := new(zmet.ZInfoTypes)
 	*hypervisorType		=	zmet.ZInfoTypes_ZiHypervisor
 	ReportInfo.Ztype	=	*hypervisorType
-
-	ReportInfo.DevId	=	*proto.String("8f2238e7-948d-4601-a384-644c1b39467a")
+	ReportInfo.DevId	=	*proto.String(deviceId)
 
 	ReportHypervisorInfo := new(zmet.ZInfoHypervisor)
 	ReportHypervisorInfo.Ncpu		=	*proto.Uint32(uint32(cpu_count))
@@ -367,30 +371,31 @@ func MakeHypervisorInfoProtobufStructure (){
 	SendInfoProtobufStrThroughHttp(ReportInfo)
 }
 
-func MakeAppInfoProtobufStructure (){
+func publishAiInfoToCloud(aiConfig types.AppInstanceConfig,
+					aiStatus types.AppInstanceStatus) {
 
 	var ReportInfo		=	&zmet.ZInfoMsg{}
-	var cpu_count		=	2
-	var memory_size		=	200
-	var storage_size	=	1000
+	var uuidStr string	=	aiConfig.UUIDandVersion.UUID.String()
+	var sc				=	aiConfig.StorageConfigList[0]
 
 	appType := new(zmet.ZInfoTypes)
 	*appType			=	zmet.ZInfoTypes_ZiApp
 	ReportInfo.Ztype	=	*appType
-	ReportInfo.DevId	=	*proto.String("8f2238e7-948d-4601-a384-644c1b39467a")
+	ReportInfo.DevId	=	*proto.String(deviceId) // XXX: need proper deviceId
 
-	ReportAppInfo := new(zmet.ZInfoApp)
-	ReportAppInfo.AppID		=	*proto.String("8f2238e7-948d-4601-a384-644c1b39467")
-	ReportAppInfo.Ncpu		=	*proto.Uint32(uint32(cpu_count))
-	ReportAppInfo.Memory	=	*proto.Uint32(uint32(memory_size))
-	ReportAppInfo.Storage	=	*proto.Uint32(uint32(storage_size))
+	ReportAppInfo			:=	new(zmet.ZInfoApp)
+	ReportAppInfo.AppID		=	*proto.String(uuidStr)
+	ReportAppInfo.Ncpu		=	*proto.Uint32(uint32(aiConfig.FixedResources.VCpus))
+	ReportAppInfo.Memory	=	*proto.Uint32(uint32(aiConfig.FixedResources.Memory))
+	ReportAppInfo.Storage	=	*proto.Uint32(uint32(aiConfig.FixedResources.Memory)) // XXX
 
 	ReportVerInfo := new(zmet.ZInfoSW)
-	ReportVerInfo.SwVersion		=	*proto.String("0.0.0.1")
-	ReportVerInfo.SwHash		=	*proto.String("0.0.0.1")
+	ReportVerInfo.SwVersion		=	*proto.String(aiStatus.UUIDandVersion.Version)
+
+	ReportVerInfo.SwHash		=	*proto.String(sc.ImageSha256)
 
 	ReportAppInfo.Software		=	ReportVerInfo
-	//ReportInfo.Ainfo			=	ReportAppInfo
+
 	ReportInfo.InfoContent		=	new(zmet.ZInfoMsg_Ainfo)
 	if x, ok := ReportInfo.GetInfoContent().(*zmet.ZInfoMsg_Ainfo); ok {
 		x.Ainfo = ReportAppInfo

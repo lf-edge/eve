@@ -45,7 +45,7 @@ func MaybeAddDomainConfig(aiConfig types.AppInstanceConfig,
 		changed = true
 	}
 	if !changed {
-		log.Printf("MaybeAddDomainConfig done for %s\n", key)	
+		log.Printf("MaybeAddDomainConfig done for %s\n", key)
 		return nil
 	}
 	AppNum := 0

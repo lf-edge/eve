@@ -159,6 +159,7 @@ func updateAIStatusUUID(uuidStr string) {
 		statusFilename := fmt.Sprintf("%s/%s.json",
 			zedmanagerStatusDirname, uuidStr)
 		writeAppInstanceStatus(&status, statusFilename)
+		publishAiInfoToCloud(config, status)
 	}
 }
 
