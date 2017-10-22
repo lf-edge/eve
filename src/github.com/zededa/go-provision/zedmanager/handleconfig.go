@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"mime"
 	"time"
+	"crypto/tls"
 )
 
 var configUrl string = "http://192.168.1.8:9069/api/v1/edgedevice/config"
@@ -89,13 +90,25 @@ func getLatestConfig(deviceCert []byte) {
 
 	fmt.Printf("config-url: %s\n", configUrl)
 
-	resp, err := http.Get(configUrl)
+	/*resp, err := http.Get(configUrl)
 
 	if err != nil || resp == nil {
 		fmt.Println("invalid response")
 		fmt.Println(err)
 		return
-	}
+	}*/
+	client := &http.Client{
+                Transport: &http.Transport{
+                        TLSClientConfig: &tls.Config{
+                                InsecureSkipVerify: true,
+                        },
+                },
+        }
+        resp, err := client.Get("https://" + configUrl)
+        if err != nil {
+                log.Fatalf("Failed to get URL: %v", err)
+        }
+        defer resp.Body.Close()
 	validateConfigMessage(resp)
 }
 
