@@ -7,62 +7,55 @@ import (
 	"fmt"
 	"encoding/json"
 	"io/ioutil"
-	//"github.com/satori/go.uuid"
 	"github.com/golang/protobuf/proto"
-	"github.com/zededa/go-provision/types"
 	"shared/proto/devcommon"
 	"shared/proto/zconfig"
-	//"errors"
+	"strings"
 	"log"
-	//"os"
 	"net/http"
 	"mime"
 	"time"
 )
 
-var configUrl string = "http://192.168.1.8:9069/api/v1/edgedevice/config"
+var configApi		string	=	"api/v1/edgedevice/name"
+var	statusApi		string	=	"api/v1/edgedevice/info"
+var	metricsApi		string	=	"api/v1/edgedevice/metrics"
 
+var trMethod		string	=	"https"
+var serverName		string	=	"zedcloud.zededa.net"
+var deviceName		string	=	"testDevice"
+
+var deviceId		string
 var activeVersion	string
-var urlConfigFilename	= "/opt/zededa/etc/url-cfg.json"
+var configUrl		string
+var	statusUrl		string
+var	metricsUrl		string
+
+var deviceFilename		string	= "/opt/zededa/etc/device"
+var serverFilename		string	= "/opt/zededa/etc/server"
 
 func getCloudUrls () {
 
-	var urlCloudCfg		= &types.UrlCloudCfg{}
-
-	if bytes, err := ioutil.ReadFile(urlConfigFilename); err != nil {
-        log.Printf("Could not read configuration [%v]: %v", urlConfigFilename, err)
-		writeCloudUrls()
-        return
-    } else {
-        if err := json.Unmarshal(bytes, urlCloudCfg); err != nil {
-            log.Printf("Failed to parse %v: error was: %v", string(bytes), err)
-			writeCloudUrls()
-            return
-        }
-    }
-
-	configUrl	= urlCloudCfg.ConfigUrl
-	statusUrl	= urlCloudCfg.StatusUrl
-	metricsUrl	= urlCloudCfg.MetricsUrl
-}
-
-func writeCloudUrls() {
-
-	var urlCloudCfg		= &types.UrlCloudCfg{}
-
-	urlCloudCfg.ConfigUrl	=	configUrl
-	urlCloudCfg.StatusUrl	=	statusUrl
-	urlCloudCfg.MetricsUrl	=	metricsUrl
-
-	b, err := json.Marshal(urlCloudCfg)
+	// get the server name
+	bytes, err := ioutil.ReadFile(serverFilename)
 	if err != nil {
-		log.Fatal(err, "json Marshal cloudConfig")
+		err = ioutil.WriteFile(serverFilename, []byte(serverName), 0644)
+	} else {
+		strTrim := strings.TrimSpace(string(bytes))
+		serverName = strings.Split(strTrim, ":")[0]
 	}
 
-	err = ioutil.WriteFile(urlConfigFilename, b, 0644)
+	bytes, err = ioutil.ReadFile(deviceFilename)
 	if err != nil {
-		log.Fatal(err, urlConfigFilename)
+		ioutil.WriteFile(deviceFilename, []byte(deviceName), 0644)
+	} else {
+		strTrim := strings.TrimSpace(string(bytes))
+		deviceName = strTrim
 	}
+
+	configUrl	=	trMethod + "://" + serverName + "/" + configApi + deviceName +  "/config"
+	statusUrl	=	trMethod + "://" + serverName + "/" + statusApi
+	metricsUrl	=	trMethod + "://" + serverName + "/" + metricsApi
 }
 
 // got a trigger for new config. check the present version and compare
@@ -186,6 +179,8 @@ func  publishDeviceConfig(config *zconfig.EdgeDevConfig)  error {
 
 	devId  = config.GetId()
 	if devId != nil {
+		// store the device id
+		deviceId = devId.Uuid
 		if devId.Version == activeVersion {
 			fmt.Printf("Same version, skipping:%v\n", config.Id.Version)
 			return nil

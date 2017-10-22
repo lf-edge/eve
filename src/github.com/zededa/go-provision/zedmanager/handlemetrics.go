@@ -20,9 +20,6 @@ import (
 var networkStat [][]string
 var cpuStorageStat [][]string
 
-var	statusUrl string = "http://192.168.1.21:9069/api/v1/edgedevice/info"
-var	metricsUrl string = "http://192.168.1.21:9069/api/v1/edgedevice/metrics"
-var deviceId string = "8f2238e7-948d-4601-a384-644c1b39467a"
 
 func publishMetrics() {
 	DeviceCpuStorageStat()
@@ -200,7 +197,7 @@ func MakeMetricsProtobufStructure() {
 	ReportDeviceMetric.Memory	 = new(zmet.MemoryMetric)
 	ReportDeviceMetric.Network	 = make([]*zmet.NetworkMetric, len(networkStat)-2)
 
-	ReportMetrics.DevID = *proto.String("8f2238e7-948d-4601-a384-644c1b39467a")
+	ReportMetrics.DevID = *proto.String(deviceId)
 	ReportZmetric := new(zmet.ZmetricTypes)
 	*ReportZmetric = zmet.ZmetricTypes_ZmDevice
 
@@ -381,7 +378,7 @@ func publishAiInfoToCloud(aiConfig types.AppInstanceConfig,
 	appType := new(zmet.ZInfoTypes)
 	*appType			=	zmet.ZInfoTypes_ZiApp
 	ReportInfo.Ztype	=	*appType
-	ReportInfo.DevId	=	*proto.String(deviceId) // XXX: need proper deviceId
+	ReportInfo.DevId	=	*proto.String(deviceId)
 
 	ReportAppInfo			:=	new(zmet.ZInfoApp)
 	ReportAppInfo.AppID		=	*proto.String(uuidStr)
