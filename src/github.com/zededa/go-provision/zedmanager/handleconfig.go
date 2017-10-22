@@ -15,13 +15,14 @@ import (
 	"net/http"
 	"mime"
 	"time"
+	"crypto/tls"
 )
 
 var configApi		string	=	"api/v1/edgedevice/name"
 var	statusApi		string	=	"api/v1/edgedevice/info"
 var	metricsApi		string	=	"api/v1/edgedevice/metrics"
 
-var trMethod		string	=	"https"
+//var trMethod		string	=	"https"
 var serverName		string	=	"zedcloud.zededa.net"
 var deviceName		string	=	"testDevice"
 
@@ -53,9 +54,9 @@ func getCloudUrls () {
 		deviceName = strTrim
 	}
 
-	configUrl	=	trMethod + "://" + serverName + "/" + configApi + deviceName +  "/config"
-	statusUrl	=	trMethod + "://" + serverName + "/" + statusApi
-	metricsUrl	=	trMethod + "://" + serverName + "/" + metricsApi
+	configUrl	=	serverName + "/" + configApi + deviceName +  "/config"
+	statusUrl	=	serverName + "/" + statusApi
+	metricsUrl	=	serverName + "/" + metricsApi
 }
 
 // got a trigger for new config. check the present version and compare
@@ -82,13 +83,19 @@ func getLatestConfig(deviceCert []byte) {
 
 	fmt.Printf("config-url: %s\n", configUrl)
 
-	resp, err := http.Get(configUrl)
+	client := &http.Client {
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{
+					InsecureSkipVerify: true,
+				},
+			},
+        }
 
-	if err != nil || resp == nil {
-		fmt.Println("invalid response")
-		fmt.Println(err)
-		return
+	resp, err := client.Get("https://" + configUrl)
+	if err != nil {
+		log.Fatalf("Failed to get URL: %v", err)
 	}
+	defer resp.Body.Close()
 	validateConfigMessage(resp)
 }
 

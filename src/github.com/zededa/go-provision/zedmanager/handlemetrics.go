@@ -15,6 +15,7 @@ import (
 	"time"
 	"net/http"
 	"bytes"
+	"crypto/tls"
 )
 
 var networkStat [][]string
@@ -411,7 +412,21 @@ func SendInfoProtobufStrThroughHttp (ReportInfo *zmet.ZInfoMsg) {
 		fmt.Println("marshaling error: ", err)
 	}
 
-	resp, err := http.Post(statusUrl, "application/x-proto-binary",
+	client := &http.Client {
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{
+					InsecureSkipVerify: true,
+				},
+			},
+        }
+
+	resp, err := client.Post("https://"+statusUrl, "application/x-proto-binary", bytes.NewBuffer(data))
+	if err != nil {
+		fmt.Println(err)
+	}
+	defer resp.Body.Close()
+	log.Printf("response:",resp)
+	/*resp, err := http.Post(statusUrl, "application/x-proto-binary",
 		bytes.NewBuffer(data))
 
 	if err != nil {
@@ -419,7 +434,7 @@ func SendInfoProtobufStrThroughHttp (ReportInfo *zmet.ZInfoMsg) {
 	} else {
 		res, err := ioutil.ReadAll(resp.Body)
 		log.Printf("Resp : %s, %v", res, err)
-	}
+	}*/
 
 	/*newTest := &zmet.ZMsg{}
 	err = proto.Unmarshal(data, newTest)
@@ -437,7 +452,20 @@ func SendMetricsProtobufStrThroughHttp (ReportMetrics *zmet.ZMetricMsg) {
 		fmt.Println("marshaling error: ", err)
 	}
 
-	resp, err := http.Post(metricsUrl, "application/x-proto-binary",
+	client := &http.Client {
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{
+					InsecureSkipVerify: true,
+				},
+			},
+        }
+	resp, err := client.Post("https://"+metricsUrl, "application/x-proto-binary", bytes.NewBuffer(data))
+	if err != nil {
+		fmt.Println(err)
+	}
+	defer resp.Body.Close()
+	log.Printf("response:",resp)
+	/*resp, err := http.Post(metricsUrl, "application/x-proto-binary",
 		bytes.NewBuffer(data))
 
 	if err != nil {
@@ -447,7 +475,7 @@ func SendMetricsProtobufStrThroughHttp (ReportMetrics *zmet.ZMetricMsg) {
 		res, err := ioutil.ReadAll(resp.Body)
 		log.Printf("Resp : %s, %v", res, err)
 	}
-
+	*/
 	/*newTest := &zmet.ZMsg{}
 	err = proto.Unmarshal(data, newTest)
 	if err != nil {

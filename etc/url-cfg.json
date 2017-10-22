@@ -1,1 +1,1 @@
-{"ConfigUrl":"http:/zedcloud.zededa.net:9069/api/v1/edgedevice/name/testDevice/config","MetricsUrl":"http://zedcloud.zededa.net:9069/api/v1/edgedevice/metrics","StatusUrl":"http://zedcloud.zededa.net:9069/api/v1/edgedevice/info"}
+{"ConfigUrl":"zedcloud.zededa.net/api/v1/edgedevice/config","MetricsUrl":"zedcloud.zededa.net/api/v1/edgedevice/metrics","StatusUrl":"zedcloud.zededa.net/api/v1/edgedevice/info"}
