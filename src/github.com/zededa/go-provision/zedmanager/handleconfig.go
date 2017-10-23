@@ -93,9 +93,8 @@ func getLatestConfig(deviceCert []byte) {
 
 	resp, err := client.Get("https://" + configUrl)
 	if err != nil {
-		log.Fatalf("Failed to get URL: %v", err)
+		fmt.Printf("Failed to get URL: %v\n", err)
 	}
-	defer resp.Body.Close()
 	validateConfigMessage(resp)
 }
 

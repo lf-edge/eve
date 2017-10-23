@@ -424,7 +424,6 @@ func SendInfoProtobufStrThroughHttp (ReportInfo *zmet.ZInfoMsg) {
 	if err != nil {
 		fmt.Println(err)
 	}
-	defer resp.Body.Close()
 	log.Printf("response:",resp)
 	/*resp, err := http.Post(statusUrl, "application/x-proto-binary",
 		bytes.NewBuffer(data))
@@ -463,7 +462,6 @@ func SendMetricsProtobufStrThroughHttp (ReportMetrics *zmet.ZMetricMsg) {
 	if err != nil {
 		fmt.Println(err)
 	}
-	defer resp.Body.Close()
 	log.Printf("response:",resp)
 	/*resp, err := http.Post(metricsUrl, "application/x-proto-binary",
 		bytes.NewBuffer(data))
