@@ -1,5 +1,7 @@
 TODO cleanup (or measure) /var/tmp/zedmanager/downloads/pending on boot?
 
+TODO refcount on downloads. Do they drop to zero and it gets freed on rm of config?
+
 TODO different rates for transmit and receive
 
 TODO errors from iptables->acl->zedmanager status
@@ -7,7 +9,7 @@ TODO errors from iptables->acl->zedmanager status
 TODO update rloc address when moving? Or add support to lisp.config to follow
      the interface address? Need one per af
      
-TODO alpine add nordmark and zededa to image.
+DONE alpine add nordmark and zededa to image.
      remove guest account? passwd?
      
 TODO service to mount second disk (with gpio-to-lead?) and "run=" in /proc/cmdline
