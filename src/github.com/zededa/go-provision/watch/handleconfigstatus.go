@@ -36,10 +36,8 @@ func HandleConfigStatusEvent(change string,
 	config ZedConfig, status ZedStatus,
 	handleCreate configCreateHandler, handleModify configModifyHandler,
 	handleDelete configDeleteHandler, handleRestart *ConfigRestartHandler) {
-
-	parts := strings.Split(change, " ")
-	operation := parts[0]
-	fileName := parts[1]
+	operation := string(change[0])
+	fileName := string(change[2:])
 	if operation == "R" {
 		log.Printf("Received restart <%s> ingnored\n", fileName)
 		return
@@ -151,9 +149,8 @@ func HandleStatusEvent(change string, statusDirname string, status interface{},
 	statusCreateFunc statusCreateHandler,
 	statusDeleteFunc statusDeleteHandler,
 	handleRestart *StatusRestartHandler) {
-	parts := strings.Split(change, " ")
-	operation := parts[0]
-	fileName := parts[1]
+	operation := string(change[0])
+	fileName := string(change[2:])
 	if operation == "R" {
 		log.Printf("Received restart <%s>; ignored\n", fileName)
 		return
