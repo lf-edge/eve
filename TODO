@@ -9,6 +9,8 @@ TODO errors from iptables->acl->zedmanager status
 TODO update rloc address when moving? Or add support to lisp.config to follow
      the interface address? Need one per af
      
+TODO alpine config - enable ntp and add to acl
+
 DONE alpine add nordmark and zededa to image.
      remove guest account? passwd?
      
