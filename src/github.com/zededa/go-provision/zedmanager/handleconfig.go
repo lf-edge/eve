@@ -197,8 +197,10 @@ func  publishDeviceConfig(config *zconfig.EdgeDevConfig)  error {
 	}
 
 	// create the App files
-	if config.Apps != nil {
-		for app := range config.Apps {
+	Apps := config.GetApps()
+
+	if Apps != nil {
+		for app := range Apps {
 
 			var configFilename = zedmanagerConfigDirname + "/" +
 				 config.Apps[app].Uuidandversion.Uuid + ".json"
