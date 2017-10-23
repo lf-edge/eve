@@ -39,7 +39,7 @@ func HandleConfigStatusEvent(change string,
 	operation := string(change[0])
 	fileName := string(change[2:])
 	if operation == "R" {
-		log.Printf("Received restart <%s> ingnored\n", fileName)
+		log.Printf("Received restart <%s> ignored\n", fileName)
 		return
 	}
 	// XXX implicit assumption that this is last in ReadDir?
