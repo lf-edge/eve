@@ -145,13 +145,23 @@ for AGENT in $AGENTS; do
     if [ ! -d $dir ]; then
 	continue
     fi
-    # echo "Looking in config $dir"
-    files=`ls $dir`
-    for f in $files; do
-	# Note that this deletes domainmgr config which, unlike a reboot,
-	# will remove the rootfs copy in /var/tmp/domainmgr/img/
-	echo "Deleting config file: $dir/$f"
-	rm -f $dir/$f
+    # echo "XXX Looking in config $dir"
+    for f in $dir/*; do
+	# echo "XXX: f is $f"
+	if [ "$f" == "$dir/*" ]; then
+		# echo "XXX: skipping $dir"
+		break
+	fi
+	if [ "$f" == "$dir/global" ]; then
+	    echo "Ignoring $f"
+	elif [ "$f" == "$dir/restarted" ]; then
+	    echo "Ignoring $f"
+	else
+	    # Note that this deletes domainmgr config which, unlike a reboot,
+	    # will remove the rootfs copy in /var/tmp/domainmgr/img/
+	    echo "Deleting config file: $f"
+	    rm -f "$f"
+	fi
     done
 done
 
@@ -172,17 +182,20 @@ for AGENT in $AGENTS; do
     if [ ! -d $dir ]; then
 	continue
     fi
-    # echo "Looking in status $dir"
-    files=`ls $dir`
+    # echo "XXX Looking in status $dir"
     pid=`pgrep $AGENT`
     if [ "$pid" != "" ]; then
-	while [	! -z "$files" ]; do
-	    echo Found: $files
+	while /bin/true; do
 	    wait=0
-	    for f in $files; do
-		if [ "$f" == "global" ]; then
+	    for f in $dir/*; do
+		# echo "XXX: f is $f"
+		if [ "$f" == "$dir/*" ]; then
+		    # echo "XXX: skipping $dir"
+		    break
+		fi
+		if [ "$f" == "$dir/global" ]; then
 		    echo "Ignoring $f"
-		elif [ "$f" == "restarted" ]; then
+		elif [ "$f" == "$dir/restarted" ]; then
 		    echo "Ignoring $f"
 		else
 		    wait=1
@@ -191,15 +204,19 @@ for AGENT in $AGENTS; do
 	    if [ $wait == 1 ]; then
 		echo "Waiting for $AGENT to clean up"
 		sleep 3
-		files=`ls $dir`
 	    else
 		break
 	    fi
 	done
-    elif [ ! -z "$files" ]; then
-	for f in $files; do
-	    echo "Deleting status file: $dir/$f"
-	    rm -f $dir/$f
+    else
+	for f in $dir/*; do
+	    # echo "XXX: f is $f"
+	    if [ "$f" == "$dir/*" ]; then
+		# echo "XXX: skipping $dir"
+		break
+	    fi
+	    echo "Deleting status file: $f"
+	    rm -f "$f"
 	done
     fi
     pkill $AGENT
