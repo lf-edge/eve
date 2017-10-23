@@ -452,6 +452,8 @@ func doInstall(uuidStr string, config types.AppInstanceConfig,
 		MaybeAddEIDConfig(config.UUIDandVersion,
 			config.DisplayName, &ec)
 	}
+// XXX for demo
+/*
 	// Check EIDStatus for each overlay; update AI status
 	eidsAllocated := true
 	for i, ec := range config.OverlayNetworkList {
@@ -478,6 +480,7 @@ func doInstall(uuidStr string, config types.AppInstanceConfig,
 		log.Printf("Waiting for all EID allocations for %s\n", uuidStr)
 		return changed, false
 	}
+*/
 	// Automatically move from DELIVERED to INSTALLED
 	status.State = types.INSTALLED
 	changed = true
