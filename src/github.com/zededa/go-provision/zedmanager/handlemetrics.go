@@ -420,11 +420,11 @@ func SendInfoProtobufStrThroughHttp (ReportInfo *zmet.ZInfoMsg) {
 			},
         }
 
-	resp, err := client.Post("https://"+statusUrl, "application/x-proto-binary", bytes.NewBuffer(data))
+	_, err = client.Post("https://"+statusUrl, "application/x-proto-binary", bytes.NewBuffer(data))
 	if err != nil {
 		fmt.Println(err)
 	}
-	log.Printf("response:",resp)
+	//log.Printf("response:",resp)
 	/*resp, err := http.Post(statusUrl, "application/x-proto-binary",
 		bytes.NewBuffer(data))
 
@@ -458,11 +458,11 @@ func SendMetricsProtobufStrThroughHttp (ReportMetrics *zmet.ZMetricMsg) {
 				},
 			},
         }
-	resp, err := client.Post("https://"+metricsUrl, "application/x-proto-binary", bytes.NewBuffer(data))
+	_, err = client.Post("https://"+metricsUrl, "application/x-proto-binary", bytes.NewBuffer(data))
 	if err != nil {
 		fmt.Println(err)
 	}
-	log.Printf("response:",resp)
+	//log.Printf("response:",resp)
 	/*resp, err := http.Post(metricsUrl, "application/x-proto-binary",
 		bytes.NewBuffer(data))
 
