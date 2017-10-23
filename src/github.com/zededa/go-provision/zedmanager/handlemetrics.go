@@ -36,7 +36,7 @@ func publishMetrics() {
 
 
 func metricsTimerTask() {
-	ticker := time.NewTicker(time.Second  * 5)
+	ticker := time.NewTicker(time.Second  * 60)
 	for t := range ticker.C {
 		fmt.Println("Tick at", t)
 		publishMetrics();
