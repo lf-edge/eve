@@ -92,10 +92,12 @@ func getLatestConfig(deviceCert []byte) {
         }
 
 	resp, err := client.Get("https://" + configUrl)
+
 	if err != nil {
 		fmt.Printf("Failed to get URL: %v\n", err)
+	} else {
+		validateConfigMessage(resp)
 	}
-	validateConfigMessage(resp)
 }
 
 func validateConfigMessage(r *http.Response) error {
