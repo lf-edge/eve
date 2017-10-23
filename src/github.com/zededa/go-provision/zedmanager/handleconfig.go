@@ -54,7 +54,7 @@ func getCloudUrls () {
 		deviceName = strTrim
 	}
 
-	configUrl	=	serverName + "/" + configApi + deviceName +  "/config"
+	configUrl	=	serverName + "/" + configApi + "/" + deviceName +  "/config"
 	statusUrl	=	serverName + "/" + statusApi
 	metricsUrl	=	serverName + "/" + metricsApi
 }
