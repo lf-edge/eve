@@ -422,7 +422,7 @@ func configToXencfg(config types.DomainConfig,
 	kbyte2mbyte := func(kbyte int) int {
 		return (kbyte + 1023) / 1024
 	}
-	config.Memory = 196	// XXX
+	config.Memory = 200000	// XXX
 	file.WriteString(fmt.Sprintf("memory = %d\n",
 		kbyte2mbyte(config.Memory)))
 	if config.MaxMem != 0 {
