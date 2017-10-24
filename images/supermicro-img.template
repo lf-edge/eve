@@ -17,6 +17,7 @@ services:
      image: ZEDEDA_TAG
      binds:
       - /dev:/dev
+      - /etc/resolv.conf:/etc/resolv.conf
      net: host
      capabilities:
       - all
