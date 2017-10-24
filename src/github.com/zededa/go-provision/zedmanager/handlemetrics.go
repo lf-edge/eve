@@ -244,17 +244,17 @@ func MakeDeviceInfoProtobufStructure () {
 	var storage_size = 1
 
 	deviceType		:= new(zmet.ZInfoTypes)
-	*deviceType			=	zmet.ZInfoTypes_ZiDevice
+	*deviceType		=	zmet.ZInfoTypes_ZiDevice
 	ReportInfo.Ztype	=	*deviceType
 	ReportInfo.DevId	=	*proto.String(deviceId)
 
 	ReportDeviceInfo	:=	new(zmet.ZInfoDevice)
 	ReportDeviceInfo.MachineArch	=	*proto.String("32 bit")
-	ReportDeviceInfo.CpuArch		=	*proto.String("x86")
-	ReportDeviceInfo.Platform		=	*proto.String("ubuntu")
-	ReportDeviceInfo.Ncpu			=	*proto.Uint32(uint32(storage_size))
-	ReportDeviceInfo.Memory			=	*proto.Uint64(uint64(storage_size))
-	ReportDeviceInfo.Storage		=	*proto.Uint64(uint64(storage_size))
+	ReportDeviceInfo.CpuArch	=	*proto.String("x86")
+	ReportDeviceInfo.Platform	=	*proto.String("ubuntu")
+	ReportDeviceInfo.Ncpu		=	*proto.Uint32(uint32(storage_size))
+	ReportDeviceInfo.Memory		=	*proto.Uint64(uint64(storage_size))
+	ReportDeviceInfo.Storage	=	*proto.Uint64(uint64(storage_size))
 
 	ReportDeviceInfo.Devices	=	make([]*zmet.ZinfoPeripheral,	1)
 	ReportDevicePeripheralInfo	:=	new(zmet.ZinfoPeripheral)
@@ -331,7 +331,7 @@ func MakeHypervisorInfoProtobufStructure (){
 	ReportHypervisorInfo := new(zmet.ZInfoHypervisor)
 	ReportHypervisorInfo.Ncpu		=	*proto.Uint32(uint32(cpu_count))
 	ReportHypervisorInfo.Memory		=	*proto.Uint64(uint64(memory_size))
-	ReportHypervisorInfo.Storage	=	*proto.Uint64(uint64(storage_size))
+	ReportHypervisorInfo.Storage		=	*proto.Uint64(uint64(storage_size))
 
 	ReportDeviceSoftwareInfo := new(zmet.ZInfoSW)
 	ReportDeviceSoftwareInfo.SwVersion	=	*proto.String("0.0.0.1")
@@ -353,16 +353,16 @@ func publishAiInfoToCloud(aiConfig types.AppInstanceConfig,aiStatus types.AppIns
 
 	var ReportInfo		=	&zmet.ZInfoMsg{}
 	var uuidStr string	=	aiConfig.UUIDandVersion.UUID.String()
-	var sc				=	aiConfig.StorageConfigList[0]
+	var sc			=	aiConfig.StorageConfigList[0]
 
 	appType := new(zmet.ZInfoTypes)
-	*appType			=	zmet.ZInfoTypes_ZiApp
+	*appType		=	zmet.ZInfoTypes_ZiApp
 	ReportInfo.Ztype	=	*appType
 	ReportInfo.DevId	=	*proto.String(deviceId)
 
-	ReportAppInfo			:=	new(zmet.ZInfoApp)
-	ReportAppInfo.AppID		=	*proto.String(uuidStr)
-	ReportAppInfo.Ncpu		=	*proto.Uint32(uint32(aiConfig.FixedResources.VCpus))
+	ReportAppInfo		:=	new(zmet.ZInfoApp)
+	ReportAppInfo.AppID	=	*proto.String(uuidStr)
+	ReportAppInfo.Ncpu	=	*proto.Uint32(uint32(aiConfig.FixedResources.VCpus))
 	ReportAppInfo.Memory	=	*proto.Uint32(uint32(aiConfig.FixedResources.Memory))
 	ReportAppInfo.Storage	=	*proto.Uint32(uint32(aiConfig.FixedResources.Memory)) // XXX
 
