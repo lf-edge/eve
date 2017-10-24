@@ -261,18 +261,18 @@ func MakeDeviceInfoProtobufStructure () {
 
 	for	index,_	:=	range ReportDeviceInfo.Devices	{
 
-		PeripheralType								:=		new(zmet.ZPeripheralTypes)
+		PeripheralType					:=		new(zmet.ZPeripheralTypes)
 		ReportDevicePeripheralManufacturerInfo		:=		new(zmet.ZInfoManufacturer)
-		*PeripheralType										=		zmet.ZPeripheralTypes_ZpNone
-		ReportDevicePeripheralInfo.Ztype					=		*PeripheralType
-		ReportDevicePeripheralInfo.Pluggable				=		*proto.Bool(false)
+		*PeripheralType						=		zmet.ZPeripheralTypes_ZpNone
+		ReportDevicePeripheralInfo.Ztype			=		*PeripheralType
+		ReportDevicePeripheralInfo.Pluggable			=		*proto.Bool(false)
 		ReportDevicePeripheralManufacturerInfo.Manufacturer	=		*proto.String("apple")
 		ReportDevicePeripheralManufacturerInfo.ProductName	=		*proto.String("usb")
 		ReportDevicePeripheralManufacturerInfo.Version		=		*proto.String("1.2")
 		ReportDevicePeripheralManufacturerInfo.SerialNumber	=		*proto.String("1mnah34")
-		ReportDevicePeripheralManufacturerInfo.UUID			=		*proto.String("uyapple34")
-		ReportDevicePeripheralInfo.Minfo					=		ReportDevicePeripheralManufacturerInfo
-		ReportDeviceInfo.Devices[index]						=		ReportDevicePeripheralInfo
+		ReportDevicePeripheralManufacturerInfo.UUID		=		*proto.String("uyapple34")
+		ReportDevicePeripheralInfo.Minfo			=		ReportDevicePeripheralManufacturerInfo
+		ReportDeviceInfo.Devices[index]				=		ReportDevicePeripheralInfo
 	}
 
 	ReportDeviceManufacturerInfo	:=	new(zmet.ZInfoManufacturer)
@@ -280,13 +280,13 @@ func MakeDeviceInfoProtobufStructure () {
 	ReportDeviceManufacturerInfo.ProductName		=		*proto.String("vbox")
 	ReportDeviceManufacturerInfo.Version			=		*proto.String("1.2")
 	ReportDeviceManufacturerInfo.SerialNumber		=		*proto.String("acmck11112c")
-	ReportDeviceManufacturerInfo.UUID				=		*proto.String("12345")
-	ReportDeviceInfo.Minfo							=		ReportDeviceManufacturerInfo
+	ReportDeviceManufacturerInfo.UUID			=		*proto.String("12345")
+	ReportDeviceInfo.Minfo					=		ReportDeviceManufacturerInfo
 
 	ReportDeviceSoftwareInfo	:=	new(zmet.ZInfoSW)
 	ReportDeviceSoftwareInfo.SwVersion	=		*proto.String("1.1.2")
 	ReportDeviceSoftwareInfo.SwHash		=		*proto.String("12awsxlnvme456")
-	ReportDeviceInfo.Software			=		ReportDeviceSoftwareInfo
+	ReportDeviceInfo.Software		=		ReportDeviceSoftwareInfo
 
 	//find	all	network	related	info...
 	interfaces,_	:=	net.Interfaces()
