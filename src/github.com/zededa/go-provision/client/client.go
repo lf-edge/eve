@@ -303,10 +303,15 @@ func main() {
 		for !done {
 			time.Sleep(delay)
 			done = selfRegister()
+			if done {
+				continue
+			}
 			delay = 2 * (delay + time.Second)
 			if delay > maxDelay {
 				delay = maxDelay
 			}
+			log.Printf("Retrying selfRegister in %d seconds\n",
+				delay)
 		}
 	}
 
@@ -353,10 +358,15 @@ func main() {
 		for !done {
 			time.Sleep(delay)
 			done = lookupParam(client, &device)
+			if done {
+				continue
+			}
 			delay = 2 * (delay + time.Second)
 			if delay > maxDelay {
 				delay = maxDelay
 			}
+			log.Printf("Retrying lookupParam in %d seconds\n",
+				delay)
 		}
 
 		// XXX add Redirect support and store + retry
@@ -512,10 +522,15 @@ func main() {
 		for !done {
 			time.Sleep(delay)
 			done = myPost(client, "/rest/update-hw-status", b)
+			if done {
+				continue
+			}
 			delay = 2 * (delay + time.Second)
 			if delay > maxDelay {
 				delay = maxDelay
 			}
+			log.Printf("Retrying updateHwStatus in %d seconds\n",
+				delay)
 		}
 	}
 	if operations["updateSwStatus"] {
@@ -531,10 +546,15 @@ func main() {
 		for !done {
 			time.Sleep(delay)
 			done = myPost(client, "/rest/update-sw-status", b)
+			if done {
+				continue
+			}
 			delay = 2 * (delay + time.Second)
 			if delay > maxDelay {
 				delay = maxDelay
 			}
+			log.Printf("Retrying updateSwStatus in %d seconds\n",
+				delay)
 		}
 	}*/
 }

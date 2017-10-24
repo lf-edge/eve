@@ -696,6 +696,6 @@ func appendError(allErrors string, prefix string, lasterr string) string {
 }
 
 func urlToSafename(url string, sha string) string {
-	safename := strings.Replace(url, "/", "_", -1) + "." + sha
+	safename := strings.Replace(url, "/", " ", -1) + "." + sha
 	return safename
 }

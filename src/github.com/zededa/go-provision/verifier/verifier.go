@@ -253,8 +253,8 @@ func handleCreate(statusFilename string, configArg interface{}) {
 	// XXX should have dom0 do this and/or have RO mounts
 	finalDirname := imgCatalogDirname + "/verified/" + config.ImageSha256
 	// Drop URL all but last part of URL. Note that '/' was converted
-	// to '_' in Safename
-	comp := strings.Split(config.Safename, "_")
+	// to ' ' in Safename
+	comp := strings.Split(config.Safename, " ")
 	last := comp[len(comp)-1]
 	// Drop "."sha256 tail part of Safename
 	i := strings.LastIndex(last, ".")

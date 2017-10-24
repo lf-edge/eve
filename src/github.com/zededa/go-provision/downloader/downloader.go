@@ -455,7 +455,12 @@ func doDelete(statusFilename string, status *types.DownloaderStatus) {
 	status.State = types.INITIAL
 	// XXX Asymmetric; handleCreate reserved on RefCount 0. We unreserve
 	// going back to RefCount 0. FIXed
-	globalStatus.UsedSpace -= status.Size
+	// Rounding errors can make it go negative if we don't check
+	if status.Size > globalStatus.UsedSpace {
+		globalStatus.UsedSpace = 0
+	} else {
+		globalStatus.UsedSpace -= status.Size
+	}
 	status.Size = 0
 	updateRemainingSpace()
 	writeDownloaderStatus(status, statusFilename)
@@ -478,7 +483,12 @@ func handleDelete(statusFilename string, statusArg interface{}) {
 
 	globalStatus.ReservedSpace -= status.ReservedSpace
 	status.ReservedSpace = 0
-	globalStatus.UsedSpace -= status.Size
+	// Rounding errors can make it go negative if we don't check
+	if status.Size > globalStatus.UsedSpace {
+		globalStatus.UsedSpace = 0
+	} else {
+		globalStatus.UsedSpace -= status.Size
+	}
 	status.Size = 0
 	updateRemainingSpace()
 	writeDownloaderStatus(status, statusFilename)
