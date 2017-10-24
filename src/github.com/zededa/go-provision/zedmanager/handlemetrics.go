@@ -26,12 +26,6 @@ func publishMetrics() {
 	DeviceCpuStorageStat()
 	DeviceNetworkStat()
 	MakeMetricsProtobufStructure()
-/*
-	MakeAppInfoProtobufStructure()
-	MakeAppInfoProtobufStructure()
-	MakeDeviceInfoProtobufStructure()
-	MakeHypervisorInfoProtobufStructure()
-*/
 }
 
 
@@ -49,7 +43,6 @@ func DeviceCpuStorageStat() {
 	app0 := "sudo"
 	app := "xentop"
 	arg0 := "-b"
-	//arg1 := "-n"
 	arg4 := "-d"
 	arg5 := "1"
 	arg2 := "-i"
@@ -61,14 +54,12 @@ func DeviceCpuStorageStat() {
 		println(err.Error())
 		return
 	}
-	//fmt.Println(string(stdout))
 
 	xentopInfo := fmt.Sprintf("%s", stdout)
 
 	splitXentopInfo := strings.Split(xentopInfo, "\n")
 
 	splitXentopInfoLength := len(splitXentopInfo)
-	//fmt.Println("splitXentopInfoLength: ",splitXentopInfoLength)
 	var i int
 	var start int
 
@@ -96,9 +87,7 @@ func DeviceCpuStorageStat() {
 	}
 
 	length := splitXentopInfoLength - 1 - start
-	//var finalOutput [length] string
 	finalOutput := make([][]string, length)
-	//fmt.Println(len(finalOutput))
 
 	for j := start; j < splitXentopInfoLength-1; j++ {
 
@@ -107,7 +96,6 @@ func DeviceCpuStorageStat() {
 		finalOutput[j-start] = splitOutput.Split(str, -1)
 	}
 
-	//var cpuStorageStat [][]string
 	cpuStorageStat = make([][]string, length)
 
 	for i := range cpuStorageStat {
@@ -165,7 +153,6 @@ func DeviceNetworkStat() {
 		finalNetworStatOutput[j] = splitOutput.Split(str, -1)
 	}
 
-	//var networkStat [][]string
 	networkStat = make([][]string, length)
 
 	for i := range networkStat {
@@ -176,13 +163,11 @@ func DeviceNetworkStat() {
 
 		for out := 0; out < len(finalNetworStatOutput[f]); out++ {
 
-			//fmt.Println(finalNetworStatOutput[f][out])
 			matched, err := regexp.MatchString("[A-Za-z0-9]+", finalNetworStatOutput[f][out])
 			fmt.Sprint(err)
 			if matched {
 				counter++
 				networkStat[f][counter] = finalNetworStatOutput[f][out]
-				//fmt.Println("f : out: ",f,counter,networkStat[f][counter])
 			}
 		}
 		counter = 0
@@ -223,7 +208,6 @@ func MakeMetricsProtobufStructure() {
 
 		for net := 2; net < len(networkStat); net++ {
 
-			//fmt.Println(networkStat[2][1])
 			networkDetails := new(zmet.NetworkMetric)
 			networkDetails.DevName = *proto.String(networkStat[net][1])
 
@@ -243,8 +227,6 @@ func MakeMetricsProtobufStructure() {
 			networkDetails.RxRate = *proto.Uint64(rxRate)
 
 			ReportDeviceMetric.Network[net-2] = networkDetails
-			//fmt.Println(ReportDeviceMetric.Network[net-2])
-			//ReportMetrics.Dm = ReportDeviceMetric
 			ReportMetrics.MetricContent = new(zmet.ZMetricMsg_Dm)
 			if x, ok := ReportMetrics.GetMetricContent().(*zmet.ZMetricMsg_Dm); ok {
 				x.Dm = ReportDeviceMetric
@@ -252,7 +234,6 @@ func MakeMetricsProtobufStructure() {
 		}
 	}
 
-	//fmt.Printf("%T", ReportMetrics)
 	log.Printf("%s\n", ReportMetrics)
 	SendMetricsProtobufStrThroughHttp(ReportMetrics)
 }
@@ -262,7 +243,7 @@ func MakeDeviceInfoProtobufStructure () {
 	var ReportInfo = &zmet.ZInfoMsg{}
 	var storage_size = 1
 
-	deviceType			:= new(zmet.ZInfoTypes)
+	deviceType		:= new(zmet.ZInfoTypes)
 	*deviceType			=	zmet.ZInfoTypes_ZiDevice
 	ReportInfo.Ztype	=	*deviceType
 	ReportInfo.DevId	=	*proto.String(deviceId)
@@ -280,18 +261,18 @@ func MakeDeviceInfoProtobufStructure () {
 
 	for	index,_	:=	range ReportDeviceInfo.Devices	{
 
-		PeripheralType											:=		new(zmet.ZPeripheralTypes)
-		ReportDevicePeripheralManufacturerInfo					:=		new(zmet.ZInfoManufacturer)
-		*PeripheralType											=		zmet.ZPeripheralTypes_ZpNone
-		ReportDevicePeripheralInfo.Ztype						=		*PeripheralType
-		ReportDevicePeripheralInfo.Pluggable					=		*proto.Bool(false)
-		ReportDevicePeripheralManufacturerInfo.Manufacturer		=		*proto.String("apple")
-		ReportDevicePeripheralManufacturerInfo.ProductName		=		*proto.String("usb")
-		ReportDevicePeripheralManufacturerInfo.Version			=		*proto.String("1.2")
-		ReportDevicePeripheralManufacturerInfo.SerialNumber		=		*proto.String("1mnah34")
-		ReportDevicePeripheralManufacturerInfo.UUID				=		*proto.String("uyapple34")
-		ReportDevicePeripheralInfo.Minfo						=		ReportDevicePeripheralManufacturerInfo
-		ReportDeviceInfo.Devices[index]							=		ReportDevicePeripheralInfo
+		PeripheralType								:=		new(zmet.ZPeripheralTypes)
+		ReportDevicePeripheralManufacturerInfo		:=		new(zmet.ZInfoManufacturer)
+		*PeripheralType										=		zmet.ZPeripheralTypes_ZpNone
+		ReportDevicePeripheralInfo.Ztype					=		*PeripheralType
+		ReportDevicePeripheralInfo.Pluggable				=		*proto.Bool(false)
+		ReportDevicePeripheralManufacturerInfo.Manufacturer	=		*proto.String("apple")
+		ReportDevicePeripheralManufacturerInfo.ProductName	=		*proto.String("usb")
+		ReportDevicePeripheralManufacturerInfo.Version		=		*proto.String("1.2")
+		ReportDevicePeripheralManufacturerInfo.SerialNumber	=		*proto.String("1mnah34")
+		ReportDevicePeripheralManufacturerInfo.UUID			=		*proto.String("uyapple34")
+		ReportDevicePeripheralInfo.Minfo					=		ReportDevicePeripheralManufacturerInfo
+		ReportDeviceInfo.Devices[index]						=		ReportDevicePeripheralInfo
 	}
 
 	ReportDeviceManufacturerInfo	:=	new(zmet.ZInfoManufacturer)
@@ -357,7 +338,6 @@ func MakeHypervisorInfoProtobufStructure (){
 	ReportDeviceSoftwareInfo.SwHash		=	*proto.String("jdjduu123")
 	ReportHypervisorInfo.Software		=	ReportDeviceSoftwareInfo
 
-	//ReportInfo.Hinfo	=	ReportHypervisorInfo
 	ReportInfo.InfoContent	=	new(zmet.ZInfoMsg_Hinfo)
 	if x, ok := ReportInfo.GetInfoContent().(*zmet.ZInfoMsg_Hinfo); ok {
 		x.Hinfo = ReportHypervisorInfo
@@ -369,8 +349,7 @@ func MakeHypervisorInfoProtobufStructure (){
 	SendInfoProtobufStrThroughHttp(ReportInfo)
 }
 
-func publishAiInfoToCloud(aiConfig types.AppInstanceConfig,
-					aiStatus types.AppInstanceStatus) {
+func publishAiInfoToCloud(aiConfig types.AppInstanceConfig,aiStatus types.AppInstanceStatus) {
 
 	var ReportInfo		=	&zmet.ZInfoMsg{}
 	var uuidStr string	=	aiConfig.UUIDandVersion.UUID.String()
@@ -389,9 +368,7 @@ func publishAiInfoToCloud(aiConfig types.AppInstanceConfig,
 
 	ReportVerInfo := new(zmet.ZInfoSW)
 	ReportVerInfo.SwVersion		=	*proto.String(aiStatus.UUIDandVersion.Version)
-
 	ReportVerInfo.SwHash		=	*proto.String(sc.ImageSha256)
-
 	ReportAppInfo.Software		=	ReportVerInfo
 
 	ReportInfo.InfoContent		=	new(zmet.ZInfoMsg_Ainfo)
@@ -424,24 +401,6 @@ func SendInfoProtobufStrThroughHttp (ReportInfo *zmet.ZInfoMsg) {
 	if err != nil {
 		fmt.Println(err)
 	}
-	//log.Printf("response:",resp)
-	/*resp, err := http.Post(statusUrl, "application/x-proto-binary",
-		bytes.NewBuffer(data))
-
-	if err != nil {
-		log.Printf("Resp: Err:%v", err)
-	} else {
-		res, err := ioutil.ReadAll(resp.Body)
-		log.Printf("Resp : %s, %v", res, err)
-	}*/
-
-	/*newTest := &zmet.ZMsg{}
-	err = proto.Unmarshal(data, newTest)
-	if err != nil {
-		log.Fatal("unmarshaling error: ", err)
-	}
-
-	log.Println(newTest)*/
 }
 
 func SendMetricsProtobufStrThroughHttp (ReportMetrics *zmet.ZMetricMsg) {
@@ -462,23 +421,4 @@ func SendMetricsProtobufStrThroughHttp (ReportMetrics *zmet.ZMetricMsg) {
 	if err != nil {
 		fmt.Println(err)
 	}
-	//log.Printf("response:",resp)
-	/*resp, err := http.Post(metricsUrl, "application/x-proto-binary",
-		bytes.NewBuffer(data))
-
-	if err != nil {
-		log.Printf("Resp: Err:%v", err)
-	} else {
-
-		res, err := ioutil.ReadAll(resp.Body)
-		log.Printf("Resp : %s, %v", res, err)
-	}
-	*/
-	/*newTest := &zmet.ZMsg{}
-	err = proto.Unmarshal(data, newTest)
-	if err != nil {
-		log.Fatal("unmarshaling error: ", err)
-	}
-
-	log.Println(newTest)*/
 }
