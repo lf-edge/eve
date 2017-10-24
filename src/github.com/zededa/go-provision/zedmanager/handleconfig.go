@@ -198,6 +198,7 @@ func  publishDeviceConfig(config *zconfig.EdgeDevConfig)  error {
 
 	// create the App files
 	Apps := config.GetApps()
+
 	if Apps != nil {
 		for app := range Apps {
 

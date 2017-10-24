@@ -412,11 +412,17 @@ func configToXencfg(config types.DomainConfig,
 	if config.BootLoader != "" {
 		file.WriteString(fmt.Sprintf("bootloader = \"%s\"\n",
 			config.BootLoader))
+	} else {	// XXX
+		config.BootLoader = "/usr/lib/xen-4.6/bin/pygrub"
+		file.WriteString(fmt.Sprintf("bootloader = \"%s\"\n",
+			config.BootLoader))
 	}
+
 	// Go from kbytes to mbytes
 	kbyte2mbyte := func(kbyte int) int {
 		return (kbyte + 1023) / 1024
 	}
+	config.Memory = 200000	// XXX
 	file.WriteString(fmt.Sprintf("memory = %d\n",
 		kbyte2mbyte(config.Memory)))
 	if config.MaxMem != 0 {

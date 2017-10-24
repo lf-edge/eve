@@ -211,8 +211,12 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	}
 	for _, a := range globalStatus.UplinkAddrs {
 		prio := 0
+		// XXX don't generate IPv6 UDP checksum hence lower priority
+		// for now
 		if a.IsLinkLocalUnicast() {
-			prio = 1
+			prio = 2
+		} else if a.To4() == nil {
+			prio = 255
 		}
 		one := fmt.Sprintf("    rloc {\n        address = %s\n        priority = %d\n    }\n", a, prio)
 		rlocString += one

@@ -2,27 +2,27 @@
 Onboarding and provisioning client and mock server in go
 
 The overall flow is as follows:
-1. Install provisioning binaries and config files in /usr/local/bin/zededa
-and /usr/local/etc/zededa
+1. Install provisioning binaries and config files in /opt/zededa/bin
+and /opt/zededa/etc
     # XXX check these are current
       scp -p prov01.priv.sc.zededa.net:/home/nordmark/go-provision.linux_arm64.tar.gz /tmp
 OR
       scp -p prov01.priv.sc.zededa.net:/home/nordmark/go-provision.linux_x86_64.tar.gz /tmp
 
-      cd /usr/local/
+      cd /opt/
       sudo tar xf /tmp/go-provision.linux_*.tar.gz
 
-   Install lisp in /usr/local/bin/lisp
-      mkdir /usr/local/bin/lisp
-      cd /usr/local/bin/lisp
+   Install lisp in /opt/zededa/lisp
+      mkdir /opt/zededa/lisp
+      cd /opt/zededa/lisp
       # XXX not current
       wget https://www.dropbox.com/s/if22l9t0l0f3kt6/lispers.net-x86-release-0.373.tgz
       tar xf lispers.net-x86-release-0.373.tgz
-      python -O /usr/local/bin/lisp/lispers.net-install-ubuntu.pyo
+      python -O /opt/zededa/lisp/lispers.net-install-ubuntu.pyo
       sudo apt-get install python-pip
       sudo pip install ecdsa==0.13
 Check install with
-      python -O /usr/local/bin/lisp/lispers.net-test-install.pyo 
+      python -O /opt/zededa/lisp/lispers.net-test-install.pyo 
 
 2. Generate an onboarding certificate (7 day lifetime) on the server and
    register it with the server.
@@ -33,14 +33,14 @@ Check install with
    IID in the ZedCloud.)
    Example:
       ssh prov01.priv.sc.zededa.net
-      cd /usr/local/bin/zededa/
+      cd /opt/zededa/bin/
       mkdir /tmp/`whoami`
       ./generate-onboard.sh /tmp/`whoami`/onboard
       ./register myself@zededa.com /tmp/`whoami`/onboard.cert.pem 3
    The above registration allows to use the onboarding certificate for 3 devices
    Generate-onboard produces two /tmp/`whoami`/onboard.*.pem files.
-   Copy those files to your client device in /usr/local/etc/zededa/
-      scp -p prov01.priv.sc.zededa.net:/tmp/`whoami`/onboard.\*.pem /usr/local/etc/zededa
+   Copy those files to your client device in /opt/zededa/etc/
+      scp -p prov01.priv.sc.zededa.net:/tmp/`whoami`/onboard.\*.pem /opt/zededa/etc
       
    Then remove the private onboarding key and cert on the prov01 server:
       rm -rf /tmp/`whoami`/onboard*
@@ -50,7 +50,7 @@ image for their device(s) at e.g. developer.zededa.com
 
 
 3. Run through the provisioning steps on the device
-   /usr/local/bin/zededa/device-steps.sh -w
+   /opt/zededa/bin/device-steps.sh -w
    
    Note that if the clocks are not in sync between the device and the prov01
    server you'll see some errors and retries of the form:

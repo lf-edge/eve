@@ -116,7 +116,7 @@ if [ /bin/true -o ! -f $ETCDIR/lisp.config ]; then
     cat $ETCDIR/zedserverconfig >>/tmp/hosts.$$
     echo "New /etc/hosts:"
     cat /tmp/hosts.$$
-    sudo cp /tmp/hosts.$$ /etc/hosts
+    cp /tmp/hosts.$$ /etc/hosts
     rm -f /tmp/hosts.$$
     if [ $WAIT == 1 ]; then
 	echo; read -n 1 -s -p "Press any key to continue"; echo; echo
@@ -127,9 +127,6 @@ if [ ! -d $LISPDIR ]; then
     echo "Missing $LISPDIR directory. Giving up"
     exit 1
 fi
-
-# Need a key for device-to-device map-requests
-cp -p $ETDDIR/device.key.pem $LISPDIR/lisp-sig.pem   
 
 if [ -f /var/tmp/zedrouter/config/global ]; then
    cp -p /var/tmp/zedrouter/config/global $ETCDIR/network.config.global
@@ -148,13 +145,23 @@ for AGENT in $AGENTS; do
     if [ ! -d $dir ]; then
 	continue
     fi
-    # echo "Looking in config $dir"
-    files=`ls $dir`
-    for f in $files; do
-	# Note that this deletes domainmgr config which, unlike a reboot,
-	# will remove the rootfs copy in /var/tmp/domainmgr/img/
-	echo "Deleting config file: $dir/$f"
-	rm -f $dir/$f
+    # echo "XXX Looking in config $dir"
+    for f in $dir/*; do
+	# echo "XXX: f is $f"
+	if [ "$f" == "$dir/*" ]; then
+		# echo "XXX: skipping $dir"
+		break
+	fi
+	if [ "$f" == "$dir/global" ]; then
+	    echo "Ignoring $f"
+	elif [ "$f" == "$dir/restarted" ]; then
+	    echo "Ignoring $f"
+	else
+	    # Note that this deletes domainmgr config which, unlike a reboot,
+	    # will remove the rootfs copy in /var/tmp/domainmgr/img/
+	    echo "Deleting config file: $f"
+	    rm -f "$f"
+	fi
     done
 done
 
@@ -175,17 +182,20 @@ for AGENT in $AGENTS; do
     if [ ! -d $dir ]; then
 	continue
     fi
-    # echo "Looking in status $dir"
-    files=`ls $dir`
+    # echo "XXX Looking in status $dir"
     pid=`pgrep $AGENT`
     if [ "$pid" != "" ]; then
-	while [	! -z "$files" ]; do
-	    echo Found: $files
+	while /bin/true; do
 	    wait=0
-	    for f in $files; do
-		if [ "$f" == "global" ]; then
+	    for f in $dir/*; do
+		# echo "XXX: f is $f"
+		if [ "$f" == "$dir/*" ]; then
+		    # echo "XXX: skipping $dir"
+		    break
+		fi
+		if [ "$f" == "$dir/global" ]; then
 		    echo "Ignoring $f"
-		elif [ "$f" == "restarted" ]; then
+		elif [ "$f" == "$dir/restarted" ]; then
 		    echo "Ignoring $f"
 		else
 		    wait=1
@@ -194,15 +204,19 @@ for AGENT in $AGENTS; do
 	    if [ $wait == 1 ]; then
 		echo "Waiting for $AGENT to clean up"
 		sleep 3
-		files=`ls $dir`
 	    else
 		break
 	    fi
 	done
-    elif [ ! -z "$files" ]; then
-	for f in $files; do
-	    echo "Deleting status file: $dir/$f"
-	    rm -f $dir/$f
+    else
+	for f in $dir/*; do
+	    # echo "XXX: f is $f"
+	    if [ "$f" == "$dir/*" ]; then
+		# echo "XXX: skipping $dir"
+		break
+	    fi
+	    echo "Deleting status file: $f"
+	    rm -f "$f"
 	done
     fi
     pkill $AGENT
@@ -263,6 +277,9 @@ else
 		echo "Found $uuid in /etc/hosts"
 	fi
 fi
+
+# Need a key for device-to-device map-requests
+cp -p $ETCDIR/device.key.pem $LISPDIR/lisp-sig.pem   
 
 mkdir -p /var/tmp/zedrouter/config/
 # Pick up the device EID zedrouter config file from $ETCDIR and put
