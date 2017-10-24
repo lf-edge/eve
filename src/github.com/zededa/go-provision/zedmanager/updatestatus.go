@@ -452,6 +452,7 @@ func doInstall(uuidStr string, config types.AppInstanceConfig,
 		MaybeAddEIDConfig(config.UUIDandVersion,
 			config.DisplayName, &ec)
 	}
+
 	// Check EIDStatus for each overlay; update AI status
 	eidsAllocated := true
 	for i, ec := range config.OverlayNetworkList {

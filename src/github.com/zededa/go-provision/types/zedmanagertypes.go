@@ -46,7 +46,7 @@ type AppInstanceConfig struct {
 	DisplayName         string
 	ConfigSha256        string
 	ConfigSignature     string
-	FixedResources      // CPU etc
+	FixedResources      VmConfig// CPU etc
 	StorageConfigList   []StorageConfig
 	Activate            bool
 	OverlayNetworkList  []EIDOverlayConfig

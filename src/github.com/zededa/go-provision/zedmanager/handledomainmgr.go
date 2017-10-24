@@ -52,13 +52,15 @@ func MaybeAddDomainConfig(aiConfig types.AppInstanceConfig,
 	if ns != nil {
 		AppNum = ns.AppNum
 	}
+
 	dc := types.DomainConfig{
 		UUIDandVersion: aiConfig.UUIDandVersion,
 		DisplayName:    aiConfig.DisplayName,
 		Activate:       aiConfig.Activate,
 		AppNum:         AppNum,
-		FixedResources: aiConfig.FixedResources,
+		VmConfig:	aiConfig.FixedResources,
 	}
+
 	// Determine number of "disk" targets in list
 	numDisks := 0
 	for _, sc := range aiConfig.StorageConfigList {
