@@ -135,6 +135,7 @@ func handleInit(configFilename string, statusFilename string) {
 	globalStatus.ReservedSpace = 0
 	updateRemainingSpace()
 
+	// XXX how do we find out when verifier cleans up duplicates etc?
 	// We read /var/tmp/zedmanager/downloads/* and determine how much space
 	// is used. Place in GlobalDownloadStatus. Calculate remaining space.
 	totalUsed := sizeFromDir(imgCatalogDirname)
