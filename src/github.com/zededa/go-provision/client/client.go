@@ -7,7 +7,7 @@ import (
 	"crypto/sha256"*/
 	"crypto/tls"
 	"crypto/x509"
-	//"encoding/base64" //XXX will be required later for lookupParam
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	//"github.com/RevH/ipinfo" //XXX will be required later for lookupParam
@@ -194,12 +194,13 @@ func main() {
 		}
 
 		contentType := resp.Header.Get("Content-Type")
-		if (contentType != "application/x-proto-binary") || (contentType != "application/json") || (contentType != "text/plain"){
+		if strings.Contains (contentType, "application/x-proto-binary") || strings.Contains (contentType, "application/json") || strings.Contains(contentType, "text/plain"){
+			fmt.Printf("%s\n", string(contents))
+			return true
+		}else {
 			fmt.Println("Incorrect Content-Type " + contentType)
 			return false
 		}
-		fmt.Printf("%s\n", string(contents))
-		return true
 	}
 
 	// Returns true when done; false when retry
@@ -223,7 +224,7 @@ func main() {
 		client := &http.Client{Transport: transport}
 		var registerCreate = &zmet.ZRegisterMsg{}
                 registerCreate.OnBoardKey = *proto.String(string(onboardKeyData))
-                registerCreate.PemCert = deviceCertPem
+                registerCreate.PemCert = []byte(base64.StdEncoding.EncodeToString(deviceCertPem))
                 b,err := proto.Marshal(registerCreate)
                 if err != nil {
                         log.Println(err)
