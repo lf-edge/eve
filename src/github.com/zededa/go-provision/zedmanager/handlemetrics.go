@@ -13,9 +13,7 @@ import (
 	"github.com/shirou/gopsutil/net"
 	"shared/proto/zmet"
 	"time"
-	"net/http"
 	"bytes"
-	"crypto/tls"
 )
 
 var networkStat [][]string
@@ -106,7 +104,6 @@ func DeviceCpuStorageStat() {
 
 		for out := 0; out < len(finalOutput[f]); out++ {
 
-			//fmt.Println(finalOutput[f][out])
 			matched, err := regexp.MatchString("[A-Za-z0-9]+", finalOutput[f][out])
 			fmt.Sprint(err)
 			if matched {
@@ -116,11 +113,9 @@ func DeviceCpuStorageStat() {
 				} else if finalOutput[f][out] == "limit" {
 					counter++
 					cpuStorageStat[f][counter] = "no limit"
-					//fmt.Println("f : out: ",f,counter,cpuStorageStat[f][counter])
 				} else {
 					counter++
 					cpuStorageStat[f][counter] = finalOutput[f][out]
-					//fmt.Println("f : out: ",f,counter,cpuStorageStat[f][counter])
 				}
 			} else {
 
@@ -304,7 +299,6 @@ func MakeDeviceInfoProtobufStructure () {
 		ReportDeviceInfo.Network[index]		=	ReportDeviceNetworkInfo
 
 	}
-	//ReportInfo.Dinfo	=	ReportDeviceInfo
 	ReportInfo.InfoContent = new(zmet.ZInfoMsg_Dinfo)
 	if x, ok := ReportInfo.GetInfoContent().(*zmet.ZInfoMsg_Dinfo); ok {
 		x.Dinfo = ReportDeviceInfo
@@ -363,8 +357,9 @@ func publishAiInfoToCloud(aiConfig types.AppInstanceConfig,aiStatus types.AppIns
 	ReportAppInfo		:=	new(zmet.ZInfoApp)
 	ReportAppInfo.AppID	=	*proto.String(uuidStr)
 	ReportAppInfo.Ncpu	=	*proto.Uint32(uint32(aiConfig.FixedResources.VCpus))
+	// XXX:TBD should come from xen usage
 	ReportAppInfo.Memory	=	*proto.Uint32(uint32(aiConfig.FixedResources.Memory))
-	ReportAppInfo.Storage	=	*proto.Uint32(uint32(aiConfig.FixedResources.Memory)) // XXX
+	ReportAppInfo.Storage	=	*proto.Uint32(uint32(aiConfig.FixedResources.Memory))
 
 	ReportVerInfo := new(zmet.ZInfoSW)
 	ReportVerInfo.SwVersion		=	*proto.String(aiStatus.UUIDandVersion.Version)
@@ -389,15 +384,7 @@ func SendInfoProtobufStrThroughHttp (ReportInfo *zmet.ZInfoMsg) {
 		fmt.Println("marshaling error: ", err)
 	}
 
-	client := &http.Client {
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{
-					InsecureSkipVerify: true,
-				},
-			},
-        }
-
-	_, err = client.Post("https://"+statusUrl, "application/x-proto-binary", bytes.NewBuffer(data))
+	_, err = cloudClient.Post("https://"+statusUrl, "application/x-proto-binary", bytes.NewBuffer(data))
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -410,14 +397,7 @@ func SendMetricsProtobufStrThroughHttp (ReportMetrics *zmet.ZMetricMsg) {
 		fmt.Println("marshaling error: ", err)
 	}
 
-	client := &http.Client {
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{
-					InsecureSkipVerify: true,
-				},
-			},
-        }
-	_, err = client.Post("https://"+metricsUrl, "application/x-proto-binary", bytes.NewBuffer(data))
+	_, err = cloudClient.Post("https://"+metricsUrl, "application/x-proto-binary", bytes.NewBuffer(data))
 	if err != nil {
 		fmt.Println(err)
 	}

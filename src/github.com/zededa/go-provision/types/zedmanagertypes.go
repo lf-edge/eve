@@ -17,7 +17,6 @@ type UrlCloudCfg struct {
 
 // top level config container
 type DeviceConfigResponse struct {
-	EdgeDeviceName		string
 	Config				EdgeDevConfig
 }
 

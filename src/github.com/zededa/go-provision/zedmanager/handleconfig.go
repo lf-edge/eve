@@ -16,24 +16,38 @@ import (
 	"mime"
 	"time"
 	"crypto/tls"
+	"bytes"
 )
 
-var configApi		string	=	"api/v1/edgedevice/name"
-var	statusApi		string	=	"api/v1/edgedevice/info"
-var	metricsApi		string	=	"api/v1/edgedevice/metrics"
+const (
+        MaxReaderSmall      = 1 << 16 // 64k
+        MaxReaderMaxDefault = MaxReaderSmall
+        MaxReaderMedium     = 1 << 19 // 512k
+        MaxReaderHuge       = 1 << 21 // two megabytes
+	configTickTimeout   = 3 // in minutes
+)
 
-//var trMethod		string	=	"https"
-var serverName		string	=	"zedcloud.zededa.net"
-var deviceName		string	=	"testDevice"
+var configApi	string	= "api/v1/edgedevice/config"
+var statusApi	string	= "api/v1/edgedevice/info"
+var metricsApi	string	= "api/v1/edgedevice/metrics"
 
-var deviceId		string
+var serverName	string	= "zedcloud.zededa.net"
+
+
 var activeVersion	string
 var configUrl		string
-var	statusUrl		string
-var	metricsUrl		string
+var deviceId		string
+var metricsUrl		string
+var statusUrl		string
 
-var deviceFilename		string	= "/opt/zededa/etc/device"
-var serverFilename		string	= "/opt/zededa/etc/server"
+var serverFilename	string = "/opt/zededa/etc/server"
+
+var dirName		string = "/opt/zededa/etc"
+var deviceCertName	string = dirName + "/device.cert.pem"
+var deviceKeyName	string = dirName + "/device.key.pem"
+
+var deviceCert		tls.Certificate
+var cloudClient		*http.Client
 
 func getCloudUrls () {
 
@@ -46,17 +60,22 @@ func getCloudUrls () {
 		serverName = strings.Split(strTrim, ":")[0]
 	}
 
-	bytes, err = ioutil.ReadFile(deviceFilename)
-	if err != nil {
-		ioutil.WriteFile(deviceFilename, []byte(deviceName), 0644)
-	} else {
-		strTrim := strings.TrimSpace(string(bytes))
-		deviceName = strTrim
-	}
-
-	configUrl	=	serverName + "/" + configApi + "/" + deviceName +  "/config"
+	configUrl	=	serverName + "/" + configApi
 	statusUrl	=	serverName + "/" + statusApi
 	metricsUrl	=	serverName + "/" + metricsApi
+
+	deviceCert, err = tls.LoadX509KeyPair(deviceCertName, deviceKeyName)
+
+	if err != nil {
+	        log.Fatal(err)
+	}
+	cloudClient = &http.Client {
+	                Transport: &http.Transport {
+	                        TLSClientConfig: &tls.Config {
+	                                Certificates: []tls.Certificate{deviceCert},
+	                        },
+	                },
+		}
 }
 
 // got a trigger for new config. check the present version and compare
@@ -68,13 +87,13 @@ func getCloudUrls () {
 
 func configTimerTask() {
 
-	fmt.Println("starting config getch timer task");
+	fmt.Println("starting config fetch timer task");
 	getLatestConfig(nil);
 
-	ticker := time.NewTicker(time.Minute  * 3)
+	ticker := time.NewTicker(time.Minute  * configTickTimeout)
 
 	for t := range ticker.C {
-		fmt.Println("Tick at", t)
+		fmt.Println(t)
 		getLatestConfig(nil);
 	}
 }
@@ -82,19 +101,10 @@ func configTimerTask() {
 func getLatestConfig(deviceCert []byte) {
 
 	fmt.Printf("config-url: %s\n", configUrl)
-
-	client := &http.Client {
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{
-					InsecureSkipVerify: true,
-				},
-			},
-        }
-
-	resp, err := client.Get("https://" + configUrl)
+	resp, err := cloudClient.Get("https://" + configUrl)
 
 	if err != nil {
-		fmt.Printf("Failed to get URL: %v\n", err)
+		fmt.Printf("URL get fail: %v\n", err)
 	} else {
 		validateConfigMessage(resp)
 	}
@@ -107,17 +117,21 @@ func validateConfigMessage(r *http.Response) error {
 	var ctTypeJsonStr	= "application/json"
 
 	var ct = r.Header.Get(ctTypeStr)
+
 	if ct == "" {
 		if r.Body == nil || r.ContentLength == 0 {
-			return nil
+			return fmt.Errorf("Header content empty")
+		}
+
+		if r.ContentLength >= MaxReaderMaxDefault {
+			return bytes.ErrTooLarge
 		}
 	}
 
 	mimeType, _,err := mime.ParseMediaType(ct)
 
 	if err != nil {
-		return fmt.Errorf("Conent-Type specified (%s) must be %s",
-			 ct, ctTypeProtoStr)
+		return fmt.Errorf("Get Content-type error")
 	}
 
 	switch mimeType {
@@ -128,14 +142,7 @@ func validateConfigMessage(r *http.Response) error {
 			return readDeviceConfigJsonMessage(r)
 		}
 	default: {
-			fmt.Printf("Conent-Type specified (%s)\n", ct)
-			bytes, err := ioutil.ReadAll(r.Body)
-
-			if err != nil {
-				fmt.Printf("%s", bytes)
-			}
-			return fmt.Errorf("Conent-Type specified (%s) must be %s",
-				 ct, ctTypeProtoStr)
+			return fmt.Errorf("Conent-type not supported", mimeType)
 		}
 	}
 }
@@ -152,7 +159,7 @@ func readDeviceConfigProtoMessage (r *http.Response) error {
 
 	err = proto.Unmarshal(bytes, configResp)
 	if err != nil {
-		fmt.Println("failed unmarshalling %v", err)
+		fmt.Println("Unmarshalling failed: %v", err)
 		return err
 	}
 
@@ -171,7 +178,7 @@ func readDeviceConfigJsonMessage (r *http.Response) error {
 
 	err = json.Unmarshal(bytes, configResp)
 	if err != nil {
-		fmt.Println("failed unmarshalling %v", err)
+		fmt.Println("Unmarshalling failed, %v", err)
 		return err
 	}
 

@@ -2,16 +2,15 @@ package main
 
 import (
 	"bytes"
-	/*"crypto/ecdsa"
+	/*"crypto/ecdsa"  //XXX will be required later for lookupParam
 	"crypto/rand"
 	"crypto/sha256"*/
 	"crypto/tls"
 	"crypto/x509"
-	//"encoding/base64"
+	//"encoding/base64" //XXX will be required later for lookupParam
 	"encoding/json"
 	"fmt"
-	//"github.com/RevH/ipinfo"
-	//"github.com/satori/go.uuid"
+	//"github.com/RevH/ipinfo" //XXX will be required later for lookupParam
 	"github.com/zededa/go-provision/types"
 	"golang.org/x/crypto/ocsp"
 	"io/ioutil"
@@ -57,9 +56,7 @@ func main() {
 	}
 	operations := map[string]bool{
 		"selfRegister":   false,
-		/*"lookupParam":    false,
-		"updateHwStatus": false,
-		"updateSwStatus": false,*/
+		//"lookupParam":    false, //XXX we will add lookupParam when zedcloud is ready for this.
 	}
 	if len(args) > 1 {
 		for _, op := range args[1:] {
@@ -68,24 +65,24 @@ func main() {
 	} else {
 		// XXX for compat
 		operations["selfRegister"] = true
-		//operations["lookupParam"] = true
+		//operations["lookupParam"] = true //XXX we will add lookupParam when zedcloud is ready for this.
 	}
 
 	onboardCertName := dirName + "/onboard.cert.pem"
 	onboardKeyName := dirName + "/onboard.key.pem"
 	deviceCertName := dirName + "/device.cert.pem"
-	//deviceKeyName := dirName + "/device.key.pem"
+	//deviceKeyName := dirName + "/device.key.pem" //XXX will be used later in lookupParam.
 	rootCertName := dirName + "/root-certificate.pem"
 	serverFileName := dirName + "/server"
-	//infraFileName := dirName + "/infra"
-	/*zedserverConfigFileName := dirName + "/zedserverconfig"
+
+	//XXX commenting network related code for now....will add when cloud is ready.
+	/*infraFileName := dirName + "/infra"
+	zedserverConfigFileName := dirName + "/zedserverconfig"
 	zedrouterConfigFileName := dirName + "/zedrouterconfig.json"
 	uuidFileName := dirName + "/uuid"
-	clientIPFileName := dirName + "/clientIP"
-	hwStatusFileName := dirName + "/hwstatus.json"
-	swStatusFileName := dirName + "/swstatus.json"*/
+	clientIPFileName := dirName + "/clientIP"*/
 
-	//var onboardCert, deviceCert tls.Certificate
+	//var onboardCert, deviceCert tls.Certificate //XXX deviceceCert varaible will be used later in lookupParam.
 	var onboardCert tls.Certificate
 	var deviceCertPem []byte
 	var onboardKeyData []byte
@@ -107,8 +104,8 @@ func main() {
                         log.Fatal(err)
                 }
 	}
-	/*if operations["lookupParam"] || operations["updateHwStatus"] ||
-		operations["updateSwStatus"] {
+	//XXX we will add lookupParam when zedcloud is ready for this....commenting out for now
+	/*if operations["lookupParam"] {
 		// Load device cert
 		var err error
 		deviceCert, err = tls.LoadX509KeyPair(deviceCertName,
@@ -138,6 +135,7 @@ func main() {
 
 	// If infraFileName exists then don't set ACLs to eidset; allow any
 	// EID to connect.
+	//XXX commenting out for now...will use later.
 	/*ACLPromisc := false
 	if _, err := os.Stat(infraFileName); err == nil {
 		fmt.Printf("Setting ACLPromisc\n")
@@ -159,7 +157,7 @@ func main() {
 			fmt.Println("no TLS connection state")
 			return false
 		}
-
+	//XXX OSCP is not implemented in cloud side so commenting out it for now.
 		/*if connState.OCSPResponse == nil ||
 			!stapledCheck(connState) {
 			if connState.OCSPResponse == nil {
@@ -195,12 +193,11 @@ func main() {
 			return false
 		}
 
-		//contentType := resp.Header.Get("Content-Type")
-		//if contentType != "application/json" {
-		/*if contentType != "application/x-proto-binary" {
+		contentType := resp.Header.Get("Content-Type")
+		if (contentType != "application/x-proto-binary") || (contentType != "application/json") || (contentType != "text/plain"){
 			fmt.Println("Incorrect Content-Type " + contentType)
 			return false
-		}*/
+		}
 		fmt.Printf("%s\n", string(contents))
 		return true
 	}
@@ -217,7 +214,6 @@ func main() {
 				tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256},
 			// TLS 1.2 because we can
 			MinVersion: tls.VersionTLS12,
-			InsecureSkipVerify: true,
 		}
 		tlsConfig.BuildNameToCertificate()
 
@@ -225,9 +221,6 @@ func main() {
 
 		transport := &http.Transport{TLSClientConfig: tlsConfig}
 		client := &http.Client{Transport: transport}
-		//rc := types.RegisterCreate{PemCert: deviceCertPem}
-		//b := new(bytes.Buffer)
-		//json.NewEncoder(b).Encode(rc)
 		var registerCreate = &zmet.ZRegisterMsg{}
                 registerCreate.OnBoardKey = *proto.String(string(onboardKeyData))
                 registerCreate.PemCert = deviceCertPem
@@ -237,6 +230,7 @@ func main() {
                 }
 		return myPost(client, "/api/v1/edgedevice/register", bytes.NewBuffer( b))
 	}
+	//XXX we will add lookupParam when zedcloud is ready for this....commenting out for now.
 
 	// Returns true when done; false when retry
 	/*lookupParam := func(client *http.Client, device *types.DeviceDb) bool {
@@ -318,6 +312,9 @@ func main() {
 	if !deviceCertSet {
 		return
 	}
+	 //XXX we will add lookupParam when zedcloud is ready for this....commenting out for now.
+	//XXX we will uncomment network related code once zedcloud is ready.
+
 	// Setup HTTPS client for deviceCert
 	/*tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{deviceCert},
@@ -335,7 +332,7 @@ func main() {
 	client := &http.Client{Transport: transport}
 
 	var addInfoDevice *types.AdditionalInfoDevice
-	if operations["lookupParam"] || operations["updateHwStatus"] {
+	if operations["lookupParam"] {
 		// Determine location information and use as AdditionalInfo
 		if myIP, err := ipinfo.MyIP(); err == nil {
 			addInfo := types.AdditionalInfoDevice{
@@ -498,65 +495,7 @@ func main() {
 		}
 		writeNetworkConfig(&config, zedrouterConfigFileName)
 	}
-	if operations["updateHwStatus"] {
-		// Load file for upload
-		buf, err := ioutil.ReadFile(hwStatusFileName)
-		if err != nil {
-			log.Fatal(err)
-		}
-		// Input is in json format; parse and add additionalInfo
-		b := bytes.NewBuffer(buf)
-		// parsing DeviceHwStatus json payload
-		hwStatus := &types.DeviceHwStatus{}
-		if err := json.NewDecoder(b).Decode(hwStatus); err != nil {
-			log.Fatal("Error decoding DeviceHwStatus: ", err)
-		}
-		if addInfoDevice != nil {
-			hwStatus.AdditionalInfoDevice = *addInfoDevice
-		}
-		b = new(bytes.Buffer)
-		json.NewEncoder(b).Encode(hwStatus)
-
-		done := false
-		var delay time.Duration
-		for !done {
-			time.Sleep(delay)
-			done = myPost(client, "/rest/update-hw-status", b)
-			if done {
-				continue
-			}
-			delay = 2 * (delay + time.Second)
-			if delay > maxDelay {
-				delay = maxDelay
-			}
-			log.Printf("Retrying updateHwStatus in %d seconds\n",
-				delay)
-		}
-	}
-	if operations["updateSwStatus"] {
-		// Load file for upload
-		buf, err := ioutil.ReadFile(swStatusFileName)
-		if err != nil {
-			log.Fatal(err)
-		}
-		// Input is in json format
-		b := bytes.NewBuffer(buf)
-		done := false
-		var delay time.Duration
-		for !done {
-			time.Sleep(delay)
-			done = myPost(client, "/rest/update-sw-status", b)
-			if done {
-				continue
-			}
-			delay = 2 * (delay + time.Second)
-			if delay > maxDelay {
-				delay = maxDelay
-			}
-			log.Printf("Retrying updateSwStatus in %d seconds\n",
-				delay)
-		}
-	}*/
+  */
 }
 
 func writeNetworkConfig(config *types.AppNetworkConfig,
