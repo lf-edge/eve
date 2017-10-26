@@ -348,8 +348,8 @@ func doCreate(statusFilename string, config types.DownloaderConfig,
 // XXX Should we set        --limit-rate=100k
 // XXX Can we safely try a continue?
 // XXX wget seems to have no way to limit download size for single file!
-// XXX temporary options since store.zededa.net not in DNS
-// and wierd free.fr dns behavior with AAAA and A. Added  -4 --no-check-certificate
+// XXX temporary options since and wierd free.fr dns behavior with AAAA and A.
+// Added  -4 --no-check-certificate
 func doWget(url string, destFilename string) error {
 	fmt.Printf("doWget %s %s\n", url, destFilename)
 	cmd := "wget"
