@@ -394,6 +394,8 @@ func handleDelete(statusFilename string, statusArg interface{}) {
 	}
 	log.Printf("handleDelete(%v)\n", status.Safename)
 
+	doDelete(status)
+
 	// Write out what we modified to VerifyImageStatus aka delete
 	if err := os.Remove(statusFilename); err != nil {
 		log.Println(err)
