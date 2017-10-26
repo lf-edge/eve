@@ -17,6 +17,7 @@ import (
 	"time"
 	"crypto/tls"
 	"bytes"
+	"os"
 )
 
 const (
@@ -202,11 +203,63 @@ func  publishDeviceConfig(config *zconfig.EdgeDevConfig)  error {
 		}
 		activeVersion	= devId.Version
 	}
+	// get the current set of App files
+	curAppFilenames, err := ioutil.ReadDir(zedmanagerConfigDirname)
 
-	// create the App files
+	if  err != nil {
+		fmt.Printf("read dir %s fail, err: %v\n", zedmanagerConfigDirname, err)
+	}
+
 	Apps := config.GetApps()
 
-	if Apps != nil {
+	if Apps == nil {
+
+		// No valid Apps, in the new configuration
+		// delete all current App instancess
+
+		for idx :=	range curAppFilenames {
+
+			var curApp			=	curAppFilenames[idx]
+			var curAppFilename	=	curApp.Name()
+
+			// file type json
+			if strings.HasSuffix(curAppFilename, ".json") {
+
+				os.Remove(zedmanagerConfigDirname + "/" + curAppFilename)
+			}
+		}
+
+	} else {
+
+		// delete an app instance, if not present in the new set
+		for idx :=	range curAppFilenames {
+
+			curApp			:=	curAppFilenames[idx]
+			curAppFilename	:=	curApp.Name()
+
+			// file type json
+			if strings.HasSuffix(curAppFilename, ".json") {
+
+				found := false
+
+				for app := range Apps {
+
+					appFilename := Apps[app].Uuidandversion.Uuid + ".json"
+
+					if appFilename == curAppFilename {
+						found = true
+						break
+					}
+				}
+
+				// app instance not found, delete
+				if found == false {
+					os.Remove(zedmanagerConfigDirname + "/" + curAppFilename)
+				}
+			}
+		}
+
+		// add new App instancess
 		for app := range Apps {
 
 			var configFilename = zedmanagerConfigDirname + "/" +
@@ -219,5 +272,6 @@ func  publishDeviceConfig(config *zconfig.EdgeDevConfig)  error {
 			}
 		}
 	}
+
 	return nil
 }
