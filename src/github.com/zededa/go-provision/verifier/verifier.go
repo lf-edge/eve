@@ -204,6 +204,9 @@ func handleCreate(statusFilename string, configArg interface{}) {
 	// Move to verifier directory which is RO
 	// XXX should have dom0 do this and/or have RO mounts
 	fmt.Printf("Move from %s to %s\n", pendingFilename, verifierFilename)
+	if _, err := os.Stat(pendingFilename); err != nil {
+		log.Fatal(err)
+	}
 	if _, err := os.Stat(verifierDirname); err == nil {
 		if err := os.RemoveAll(verifierDirname); err != nil {
 			log.Fatal(err)
@@ -249,6 +252,7 @@ func handleCreate(statusFilename string, configArg interface{}) {
 		log.Printf("handleCreate failed for %s\n", config.DownloadURL)
 		return
 	}
+	f.Close()
 
 	got := fmt.Sprintf("%x", h.Sum(nil))
 	if got != config.ImageSha256 {
@@ -269,6 +273,9 @@ func handleCreate(statusFilename string, configArg interface{}) {
 	filename := safenameToFilename(config.Safename)
 	finalFilename := finalDirname + "/" + filename
 	fmt.Printf("Move from %s to %s\n", verifierFilename, finalFilename)
+	if _, err := os.Stat(verifierFilename); err != nil {
+		log.Fatal(err)
+	}
 	// XXX change log.Fatal to something else?
 	if _, err := os.Stat(finalDirname); err == nil {
 		// Directory exists thus we have a sha256 collision presumably
