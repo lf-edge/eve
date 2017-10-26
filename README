@@ -74,13 +74,13 @@ set GOROOT
 export GOROOT='/usr/local/go'
 
 // go-provision needs <zedcloud/src/shared>, for proto definition files
-// name the sand box as <WORK> env variable. here <demo> is the sandbox
+// name the sand box as <WORK> env variable. here "demo" is sandbox name
 
 export WORK=$HOME/demo
 mkdir -p $WORK
 
 // the sand box should contain both go-provision and zedcloud code base
-// check out the code, at <WORK> level, using following commands
+// check out the code, at $WORK level, using following commands
 
 cd $WORK
 git clone https://github.com/zededa/go-provision.git
@@ -90,20 +90,22 @@ git clone https://github.com/zededa/zedcloud.git
 
 // currently zedcloud compilation needs the github/golang/protobuf/proto
 // at $WORK/zedcloud level, for this do the following
+// this is only one time activity
 
 export GOPATH=$WORK/zedcloud
 go get -u github.com/golang/protobuf/proto
 
-// compile the zedcloud code
+// for zedcloud, set $GOPATH as follows
 
 export GOPATH=$HOME/.go
 export PATH=$PATH:$GOROOT/bin:$GOPATH/bin:
 export GOPATH=$GOPATH:$WORK/zedcloud
 
+//compile zedcloud code
 cd $WORK/zedcloud/src
 make
 
-// for go-provision compilation, please set the GOPATH as follows
+// for go-provision, set $GOPATH as follows
 
 export GOPATH=$HOME/.go
 export PATH=$PATH:$GOROOT/bin:$GOPATH/bin:
@@ -111,7 +113,7 @@ export PATH=$PATH:$GOROOT/bin:$GOPATH/bin:
 export WORK=$HOME/demo
 export GOPATH=$GOPATH:$WORK/go-provision:$WORK/zedcloud
 
-// for compilation of go-provision code,
+// compile go-provision code
 cd $WORK/go-provision
 ./scripts/buildit.sh
 
