@@ -6,10 +6,10 @@
 package main
 
 import (
+	"github.com/zededa/go-provision/wrap"
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
 )
 
 // XXX TODO move ipset to be ACL dependent
@@ -116,7 +116,7 @@ func startDnsmasq(cfgPathname string) {
 		"-C",
 		cfgPathname,
 	}
-	go exec.Command(cmd, args...).Output()
+	go wrap.Command(cmd, args...).Output()
 }
 
 //    pkill -u nobody -f dnsmasq.${IFNAME}.conf

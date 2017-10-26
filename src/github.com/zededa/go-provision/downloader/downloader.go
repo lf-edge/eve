@@ -32,10 +32,10 @@ import (
 	"fmt"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
+	"github.com/zededa/go-provision/wrap"
 	"io/ioutil"
 	"log"
 	"os"
-	"os/exec"
 	"time"
 )
 
@@ -363,7 +363,7 @@ func doWget(url string, destFilename string) error {
 		destFilename,
 		url,
 	}
-	stdoutStderr, err := exec.Command(cmd, args...).CombinedOutput()
+	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
 	if err != nil {
 		log.Println("wget failed ", err)
 		log.Println("wget output ", string(stdoutStderr))

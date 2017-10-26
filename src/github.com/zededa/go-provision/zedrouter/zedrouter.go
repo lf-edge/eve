@@ -16,11 +16,11 @@ import (
 	"github.com/vishvananda/netlink"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
+	"github.com/zededa/go-provision/wrap"
 	"io/ioutil"
 	"log"
 	"net"
 	"os"
-	"os/exec"
 	"strconv"
 )
 
@@ -183,30 +183,30 @@ func handleInit(configFilename string, statusFilename string,
 	// ipsets which are independent of config
 	createDefaultIpset()
 
-	_, err = exec.Command("sysctl", "-w",
+	_, err = wrap.Command("sysctl", "-w",
 		"net.ipv4.ip_forward=1").Output()
 	if err != nil {
 		log.Fatal("Failed setting ip_forward ", err)
 	}
-	_, err = exec.Command("sysctl", "-w",
+	_, err = wrap.Command("sysctl", "-w",
 		"net.ipv6.conf.all.forwarding=1").Output()
 	if err != nil {
 		log.Fatal("Failed setting ipv6.conf.all.forwarding ", err)
 	}
 	// We use ip6tables for the bridge
-	_, err = exec.Command("sysctl", "-w",
+	_, err = wrap.Command("sysctl", "-w",
 		"net.bridge.bridge-nf-call-ip6tables=1").Output()
 	if err != nil {
 		// XXX not in bobo's kernel
 		log.Println("Failed setting net.bridge-nf-call-ip6tables ", err)
 	}
-	_, err = exec.Command("sysctl", "-w",
+	_, err = wrap.Command("sysctl", "-w",
 		"net.bridge.bridge-nf-call-iptables=1").Output()
 	if err != nil {
 		// XXX not in bobo's kernel
 		log.Println("Failed setting net.bridge-nf-call-iptables ", err)
 	}
-	_, err = exec.Command("sysctl", "-w",
+	_, err = wrap.Command("sysctl", "-w",
 		"net.bridge.bridge-nf-call-arptables=1").Output()
 	if err != nil {
 		// XXX not in bobo's kernel
@@ -1055,7 +1055,7 @@ func pkillUserArgs(userName string, match string, printOnError bool) {
 		"-f",
 		match,
 	}
-	_, err := exec.Command(cmd, args...).Output()
+	_, err := wrap.Command(cmd, args...).Output()
 	if err != nil && printOnError {
 		fmt.Printf("Command %v %v failed: %s\n", cmd, args, err)
 	}
