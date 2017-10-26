@@ -176,6 +176,7 @@ for AGENT in $AGENTS; do
     fi
     if [ $AGENT == "verifier" ]; then
 	echo "Skipping check for /var/run/$AGENT/status"
+	pkill $AGENT
 	continue
     fi
     dir=/var/run/$AGENT/status
