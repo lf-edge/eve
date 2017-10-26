@@ -2,15 +2,16 @@ package main
 
 import (
 	"bytes"
-	/*"crypto/ecdsa"  //XXX will be required later for lookupParam
+	"crypto/ecdsa"
 	"crypto/rand"
-	"crypto/sha256"*/
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	//"github.com/RevH/ipinfo" //XXX will be required later for lookupParam
+	"github.com/satori/go.uuid"
+	"github.com/RevH/ipinfo"
 	"github.com/zededa/go-provision/types"
 	"golang.org/x/crypto/ocsp"
 	"io/ioutil"
@@ -56,7 +57,7 @@ func main() {
 	}
 	operations := map[string]bool{
 		"selfRegister":   false,
-		//"lookupParam":    false, //XXX we will add lookupParam when zedcloud is ready for this.
+		"lookupParam":    false, 
 	}
 	if len(args) > 1 {
 		for _, op := range args[1:] {
@@ -65,25 +66,22 @@ func main() {
 	} else {
 		// XXX for compat
 		operations["selfRegister"] = true
-		//operations["lookupParam"] = true //XXX we will add lookupParam when zedcloud is ready for this.
+		operations["lookupParam"] = true
 	}
 
 	onboardCertName := dirName + "/onboard.cert.pem"
 	onboardKeyName := dirName + "/onboard.key.pem"
 	deviceCertName := dirName + "/device.cert.pem"
-	//deviceKeyName := dirName + "/device.key.pem" //XXX will be used later in lookupParam.
+	deviceKeyName := dirName + "/device.key.pem" 
 	rootCertName := dirName + "/root-certificate.pem"
 	serverFileName := dirName + "/server"
-
-	//XXX commenting network related code for now....will add when cloud is ready.
-	/*infraFileName := dirName + "/infra"
+	infraFileName := dirName + "/infra"
 	zedserverConfigFileName := dirName + "/zedserverconfig"
 	zedrouterConfigFileName := dirName + "/zedrouterconfig.json"
 	uuidFileName := dirName + "/uuid"
-	clientIPFileName := dirName + "/clientIP"*/
+	clientIPFileName := dirName + "/clientIP"
 
-	//var onboardCert, deviceCert tls.Certificate //XXX deviceceCert varaible will be used later in lookupParam.
-	var onboardCert tls.Certificate
+	var onboardCert, deviceCert tls.Certificate
 	var deviceCertPem []byte
 	var onboardKeyData []byte
 	deviceCertSet := false
@@ -104,8 +102,7 @@ func main() {
                         log.Fatal(err)
                 }
 	}
-	//XXX we will add lookupParam when zedcloud is ready for this....commenting out for now
-	/*if operations["lookupParam"] {
+	if operations["lookupParam"] {
 		// Load device cert
 		var err error
 		deviceCert, err = tls.LoadX509KeyPair(deviceCertName,
@@ -114,7 +111,7 @@ func main() {
 			log.Fatal(err)
 		}
 		deviceCertSet = true
-	}*/
+	}
 
 	// Load CA cert
 	caCert, err := ioutil.ReadFile(rootCertName)
@@ -136,11 +133,11 @@ func main() {
 	// If infraFileName exists then don't set ACLs to eidset; allow any
 	// EID to connect.
 	//XXX commenting out for now...will use later.
-	/*ACLPromisc := false
+	ACLPromisc := false
 	if _, err := os.Stat(infraFileName); err == nil {
 		fmt.Printf("Setting ACLPromisc\n")
 		ACLPromisc = true
-	}*/
+	}
 
 	// Post something without a return type.
 	// Returns true when done; false when retry
@@ -157,7 +154,7 @@ func main() {
 			fmt.Println("no TLS connection state")
 			return false
 		}
-	//XXX OSCP is not implemented in cloud side so commenting out it for now.
+		//XXX OSCP is not implemented in cloud side so commenting out it for now.
 		/*if connState.OCSPResponse == nil ||
 			!stapledCheck(connState) {
 			if connState.OCSPResponse == nil {
@@ -231,13 +228,14 @@ func main() {
                 }
 		return myPost(client, "/api/v1/edgedevice/register", bytes.NewBuffer( b))
 	}
-	//XXX we will add lookupParam when zedcloud is ready for this....commenting out for now.
 
 	// Returns true when done; false when retry
-	/*lookupParam := func(client *http.Client, device *types.DeviceDb) bool {
-		//resp, err := client.Get("https://" + serverNameAndPort +
-			//"/rest/device-param")
-		resp, err := client.Get("https://" + serverNameAndPort +"/api/v1/edgedevice/config")
+	lookupParam := func(client *http.Client, device *types.DeviceDb) bool {
+
+		//XXX: FIXME hard-coded Server name and port
+		serverNameAndPort := "prov1.zededa.net:9069"
+
+		resp, err := client.Get("https://" + serverNameAndPort +"/rest/device-param")
 		if err != nil {
 			fmt.Println(err)
 			return false
@@ -248,15 +246,14 @@ func main() {
 			log.Println("no TLS connection state")
 			return false
 		}
-
 		if connState.OCSPResponse == nil ||
 			!stapledCheck(connState) {
 			if connState.OCSPResponse == nil {
-				fmt.Println("no OCSP response")
+				log.Println("no OCSP response")
 			} else {
-				fmt.Println("OCSP stapled check failed")
+				log.Println("OCSP stapled check failed")
 			}
-			return false
+			return  true // XXX:FIXME 
 		}
 
 		contents, err := ioutil.ReadAll(resp.Body)
@@ -272,26 +269,21 @@ func main() {
 				resp.StatusCode,
 				http.StatusText(resp.StatusCode))
 			fmt.Printf("%s\n", string(contents))
-			return false
+			return true // XXX:FIXME
 		}
 		contentType := resp.Header.Get("Content-Type")
-		//if contentType != "application/json" {
-		if contentType != "application/x-proto-binary" {
+		if contentType != "application/json" {
 			fmt.Println("Incorrect Content-Type " + contentType)
 			return false
 		}
-		contents1,err := json.Marshal(contents)
-		if err!= nil{
-			log.Println("marshalling error",err)
-		}
 
-		if err := json.Unmarshal(contents1, &device); err != nil {
+		if err := json.Unmarshal(contents, &device); err != nil {
 			fmt.Println(err)
 			return false
 		}
 		return true
 	}
-	*/
+
 	if operations["selfRegister"] {
 		done := false
 		var delay time.Duration
@@ -313,19 +305,18 @@ func main() {
 	if !deviceCertSet {
 		return
 	}
-	 //XXX we will add lookupParam when zedcloud is ready for this....commenting out for now.
-	//XXX we will uncomment network related code once zedcloud is ready.
 
 	// Setup HTTPS client for deviceCert
-	/*tlsConfig := &tls.Config{
+	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{deviceCert},
-		ServerName:   serverName,
+		ServerName:   "prov1.zededa.net", // XXX:FIXME
 		RootCAs:      caCertPool,
 		CipherSuites: []uint16{
 			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
 			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256},
 		// TLS 1.2 because we can
 		MinVersion: tls.VersionTLS12,
+		InsecureSkipVerify: true,
 	}
 	tlsConfig.BuildNameToCertificate()
 
@@ -496,7 +487,6 @@ func main() {
 		}
 		writeNetworkConfig(&config, zedrouterConfigFileName)
 	}
-  */
 }
 
 func writeNetworkConfig(config *types.AppNetworkConfig,
@@ -539,7 +529,12 @@ func IsMyAddress(clientIP net.IP) bool {
 }
 
 func stapledCheck(connState *tls.ConnectionState) bool {
-	// server := connState.VerifiedChains[0][0]
+
+	if connState.VerifiedChains == nil { // XXX:FIXME, lets keep this validation
+		log.Println("stapledCheck verified chains is nil")
+		return false
+	}
+
 	issuer := connState.VerifiedChains[0][1]
 	resp, err := ocsp.ParseResponse(connState.OCSPResponse, issuer)
 	if err != nil {
