@@ -25,6 +25,21 @@ while [ $# != 0 ]; do
     shift
 done
 
+# Make sure we have the required directories in place
+mkdir -p /var/tmp/domainmgr/config/
+mkdir -p /var/tmp/verifier/config/
+mkdir -p /var/tmp/downloader/config/
+mkdir -p /var/tmp/zedmanager/config/
+mkdir -p /var/tmp/identitymgr/config/
+mkdir -p /var/tmp/zedrouter/config/
+mkdir -p /var/run/domainmgr/status/
+mkdir -p /var/run/verifier/status/
+mkdir -p /var/run/downloader/status/
+mkdir -p /var/run/zedmanager/status/
+mkdir -p /var/run/eidregister/status/
+mkdir -p /var/run/zedrouter/status/
+mkdir -p /var/run/identitymgr/status/
+
 echo "Configuration from factory/install:"
 (cd $ETCDIR; ls -l)
 echo
