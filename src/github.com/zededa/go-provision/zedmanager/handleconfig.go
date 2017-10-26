@@ -9,7 +9,7 @@ import (
 	"io/ioutil"
 	"github.com/golang/protobuf/proto"
 	"shared/proto/devcommon"
-	"shared/proto/zconfig"
+	"shared/proto/deprecatedzconfig"
 	"strings"
 	"log"
 	"net/http"
@@ -150,7 +150,7 @@ func validateConfigMessage(r *http.Response) error {
 
 func readDeviceConfigProtoMessage (r *http.Response) error {
 
-	var configResp = &zconfig.EdgeDevConfResp{}
+	var config= &deprecatedzconfig.EdgeDevConfig{}
 
 	bytes, err := ioutil.ReadAll(r.Body)
 	if err != nil {
@@ -158,18 +158,18 @@ func readDeviceConfigProtoMessage (r *http.Response) error {
 		return err
 	}
 
-	err = proto.Unmarshal(bytes, configResp)
+	err = proto.Unmarshal(bytes, config)
 	if err != nil {
 		fmt.Println("Unmarshalling failed: %v", err)
 		return err
 	}
 
-	return publishDeviceConfig(configResp.Config)
+	return publishDeviceConfig(config)
 }
 
 func readDeviceConfigJsonMessage (r *http.Response) error {
 
-	var config = &zconfig.EdgeDevConfig{}
+	var config = &deprecatedzconfig.EdgeDevConfig{}
 
 	bytes, err := ioutil.ReadAll(r.Body)
 	if err != nil {
@@ -186,7 +186,7 @@ func readDeviceConfigJsonMessage (r *http.Response) error {
 	return publishDeviceConfig(config)
 }
 
-func  publishDeviceConfig(config *zconfig.EdgeDevConfig)  error {
+func  publishDeviceConfig(config *deprecatedzconfig.EdgeDevConfig)  error {
 
 	fmt.Printf("%v\n", config)
 
