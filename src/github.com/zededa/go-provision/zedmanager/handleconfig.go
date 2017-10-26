@@ -143,7 +143,7 @@ func validateConfigMessage(r *http.Response) error {
 			return readDeviceConfigJsonMessage(r)
 		}
 	default: {
-			return fmt.Errorf("Conent-type not supported", mimeType)
+			return fmt.Errorf("Content-type not supported", mimeType)
 		}
 	}
 }
