@@ -343,11 +343,10 @@ func MakeHypervisorInfoProtobufStructure (){
 	SendInfoProtobufStrThroughHttp(ReportInfo)
 }
 
-func publishAiInfoToCloud(aiConfig types.AppInstanceConfig,aiStatus types.AppInstanceStatus) {
+func publishAiInfoToCloud(aiStatus *types.AppInstanceStatus) {
 
 	var ReportInfo		=	&zmet.ZInfoMsg{}
-	var uuidStr string	=	aiConfig.UUIDandVersion.UUID.String()
-	var sc			=	aiConfig.StorageConfigList[0]
+	var uuidStr string	=	aiStatus.UUIDandVersion.UUID.String()
 
 	appType := new(zmet.ZInfoTypes)
 	*appType		=	zmet.ZInfoTypes_ZiApp
@@ -356,14 +355,19 @@ func publishAiInfoToCloud(aiConfig types.AppInstanceConfig,aiStatus types.AppIns
 
 	ReportAppInfo		:=	new(zmet.ZInfoApp)
 	ReportAppInfo.AppID	=	*proto.String(uuidStr)
-	ReportAppInfo.Ncpu	=	*proto.Uint32(uint32(aiConfig.FixedResources.VCpus))
-	// XXX:TBD should come from xen usage
-	ReportAppInfo.Memory	=	*proto.Uint32(uint32(aiConfig.FixedResources.Memory))
-	ReportAppInfo.Storage	=	*proto.Uint32(uint32(aiConfig.FixedResources.Memory))
 
-	ReportVerInfo := new(zmet.ZInfoSW)
+	// XXX:TBD should come from xen usage
+	ReportAppInfo.Ncpu		=	*proto.Uint32(uint32(0))
+	ReportAppInfo.Memory	=	*proto.Uint32(uint32(0))
+	ReportAppInfo.Storage	=	*proto.Uint32(uint32(0))
+
+	// XXX: should be multiple entries, one per storage item
+	sc							:=	aiStatus.StorageStatusList[0]
+	ReportVerInfo				:=	new(zmet.ZInfoSW)
 	ReportVerInfo.SwVersion		=	*proto.String(aiStatus.UUIDandVersion.Version)
 	ReportVerInfo.SwHash		=	*proto.String(sc.ImageSha256)
+
+	// XXX: this should be a list
 	ReportAppInfo.Software		=	ReportVerInfo
 
 	ReportInfo.InfoContent		=	new(zmet.ZInfoMsg_Ainfo)

@@ -243,6 +243,7 @@ func writeAppInstanceStatus(status *types.AppInstanceStatus,
 	if err != nil {
 		log.Fatal(err, statusFilename)
 	}
+	publishAiInfoToCloud(status)
 }
 
 func handleCreate(statusFilename string, configArg interface{}) {
