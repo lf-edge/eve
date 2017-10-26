@@ -29,6 +29,36 @@ echo "Configuration from factory/install:"
 (cd $ETCDIR; ls -l)
 echo
 
+# We need to try our best to setup time *before* we generate the certifiacte.
+# Otherwise it may have start date in the future
+echo "Check for NTP config"
+if [ -f $ETCDIR/ntp-server ]; then
+    echo -n "Using "
+    cat $ETCDIR/ntp-server
+    # XXX is ntp service running/installed?
+    # XXX actually configure ntp
+    # Ubuntu has /usr/bin/timedatectl; ditto Debian
+    # ntpdate pool.ntp.org
+    # Not installed on Ubuntu
+    #
+    if [ -f /usr/bin/ntpdate ]; then
+	/usr/bin/ntpdate `cat $ETCDIR/ntp-server`
+    elif [ -f /usr/bin/timedatectl ]; then
+	echo "NTP might already be running. Check"
+	/usr/bin/timedatectl status
+    else
+	echo "NTP not installed. Giving up"
+	exit 1
+    fi
+else
+   # last ditch attemp to sync up our clock
+   ntpd -d -q -n -p pool.ntp.org || :
+fi
+if [ $WAIT == 1 ]; then
+    echo; read -n 1 -s -p "Press any key to continue"; echo; echo
+fi
+
+
 if [ ! \( -f $ETCDIR/device.cert.pem -a -f $ETCDIR/device.key.pem \) ]; then
     echo "Generating a device key pair and self-signed cert (using TPM/TEE if available) at" `date`
     $PROVDIR/generate-device.sh $ETCDIR/device
@@ -60,30 +90,6 @@ if [ -f $ETCDIR/wifi_ssid ]; then
     # Requires a /etc/network/interfaces.d/wlan0.cfg
     # and /etc/wpa_supplicant/wpa_supplicant.conf
     # Assumes wpa packages are included. Would be in our image?
-fi
-if [ $WAIT == 1 ]; then
-    echo; read -n 1 -s -p "Press any key to continue"; echo; echo
-fi
-
-echo "Check for NTP config"
-if [ -f $ETCDIR/ntp-server ]; then
-    echo -n "Using "
-    cat $ETCDIR/ntp-server
-    # XXX is ntp service running/installed?
-    # XXX actually configure ntp
-    # Ubuntu has /usr/bin/timedatectl; ditto Debian
-    # ntpdate pool.ntp.org
-    # Not installed on Ubuntu
-    #
-    if [ -f /usr/bin/ntpdate ]; then
-	/usr/bin/ntpdate `cat $ETCDIR/ntp-server`
-    elif [ -f /usr/bin/timedatectl ]; then
-	echo "NTP might already be running. Check"
-	/usr/bin/timedatectl status
-    else
-	echo "NTP not installed. Giving up"
-	exit 1
-    fi
 fi
 if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
