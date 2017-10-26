@@ -169,7 +169,7 @@ func readDeviceConfigProtoMessage (r *http.Response) error {
 
 func readDeviceConfigJsonMessage (r *http.Response) error {
 
-	var configResp = &zconfig.EdgeDevConfResp{}
+	var config = &zconfig.EdgeDevConfig{}
 
 	bytes, err := ioutil.ReadAll(r.Body)
 	if err != nil {
@@ -177,13 +177,13 @@ func readDeviceConfigJsonMessage (r *http.Response) error {
 		return err
 	}
 
-	err = json.Unmarshal(bytes, configResp)
+	err = json.Unmarshal(bytes, config)
 	if err != nil {
 		fmt.Println("Unmarshalling failed, %v", err)
 		return err
 	}
 
-	return publishDeviceConfig(configResp.Config)
+	return publishDeviceConfig(config)
 }
 
 func  publishDeviceConfig(config *zconfig.EdgeDevConfig)  error {
