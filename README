@@ -69,8 +69,53 @@ Server config on prov01:
    Example:
 	env -u https_proxy env -u http_proxy go-provision/bin/server 
 
+// how to manage sand box for <go-provision>
+set GOROOT 
+export GOROOT='/usr/local/go'
 
- //config for x_86 appInstance without overlays.
+// go-provision needs <zedcloud/src/shared>, for proto definition files
+// name the sand box as <WORK> env variable. here <demo> is the sandbox
+
+export WORK=$HOME/demo
+mkdir -p $WORK
+
+// the sand box should contain both go-provision and zedcloud code base
+// check out the code, at <WORK> level, using following commands
+
+cd $WORK
+git clone https://github.com/zededa/go-provision.git
+git clone https://github.com/zededa/zedcloud.git
+
+// compile zedcloud before compiling go-provision
+
+// currently zedcloud compilation needs the github/golang/protobuf/proto
+// at $WORK/zedcloud level, for this do the following
+
+export GOPATH=$WORK/zedcloud
+go get -u github.com/golang/protobuf/proto
+
+// compile the zedcloud code
+
+export GOPATH=$HOME/.go
+export PATH=$PATH:$GOROOT/bin:$GOPATH/bin:
+export GOPATH=$GOPATH:$WORK/zedcloud
+
+cd $WORK/zedcloud/src
+make
+
+// for go-provision compilation, please set the GOPATH as follows
+
+export GOPATH=$HOME/.go
+export PATH=$PATH:$GOROOT/bin:$GOPATH/bin:
+
+export WORK=$HOME/demo
+export GOPATH=$GOPATH:$WORK/go-provision:$WORK/zedcloud
+
+// for compilation of go-provision code,
+cd $WORK/go-provision
+./scripts/buildit.sh
+
+//config for x_86 appInstance without overlays.
 
 {
   "UUIDandVersion": {
