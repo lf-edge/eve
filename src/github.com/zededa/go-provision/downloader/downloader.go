@@ -73,7 +73,7 @@ func main() {
 		}
 	}
 	if _, err := os.Stat(imgCatalogDirname); err != nil {
-		if err := os.Mkdir(imgCatalogDirname, 0700); err != nil {
+		if err := os.MkdirAll(imgCatalogDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
