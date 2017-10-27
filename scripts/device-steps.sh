@@ -142,6 +142,10 @@ echo "Removing old stale files"
 # Remove internal config files
 pkill zedmanager
 rm -rf /var/run/zedmanager/status/*.json
+# The following is a workaround for a racecondition between different agents
+mkdir -p /var/tmp/zedmanager/downloads
+chmod 700 /var/tmp/zedmanager /var/tmp/zedmanager/downloads
+
 AGENTS="zedrouter domainmgr downloader verifier identitymgr eidregister"
 for AGENT in $AGENTS; do
     if [ ! -d /var/tmp/$AGENT ]; then
