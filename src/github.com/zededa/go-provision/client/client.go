@@ -83,7 +83,6 @@ func main() {
 
 	var onboardCert, deviceCert tls.Certificate
 	var deviceCertPem []byte
-	var onboardKeyData []byte
 	deviceCertSet := false
 
 	if operations["selfRegister"] {
@@ -97,10 +96,6 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		onboardKeyData, err = ioutil.ReadFile(onboardKeyName)
-                if err != nil {
-                        log.Fatal(err)
-                }
 	}
 	if operations["lookupParam"] {
 		// Load device cert
@@ -125,6 +120,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	//XXX: FIXME hard-coded Server name and port for lookupParam
+	if operations["lookupParam"] {
+		server = []byte("prov1.zededa.net:9069")
+	}
 	serverNameAndPort := strings.TrimSpace(string(server))
 	serverName := strings.Split(serverNameAndPort, ":")[0]
 	// XXX for local testing
@@ -132,7 +131,6 @@ func main() {
 
 	// If infraFileName exists then don't set ACLs to eidset; allow any
 	// EID to connect.
-	//XXX commenting out for now...will use later.
 	ACLPromisc := false
 	if _, err := os.Stat(infraFileName); err == nil {
 		fmt.Printf("Setting ACLPromisc\n")
@@ -154,16 +152,19 @@ func main() {
 			fmt.Println("no TLS connection state")
 			return false
 		}
-		//XXX OSCP is not implemented in cloud side so commenting out it for now.
-		/*if connState.OCSPResponse == nil ||
+
+		if connState.OCSPResponse == nil ||
 			!stapledCheck(connState) {
 			if connState.OCSPResponse == nil {
 				fmt.Println("no OCSP response")
 			} else {
 				fmt.Println("OCSP stapled check failed")
 			}
-			return false
-		}*/
+			//XXX OSCP is not implemented in cloud side so
+			// commenting out it for now. Should be:
+			// return false
+			return true
+		}
 
 		contents, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
@@ -192,7 +193,7 @@ func main() {
 
 		contentType := resp.Header.Get("Content-Type")
 		if strings.Contains (contentType, "application/x-proto-binary") || strings.Contains (contentType, "application/json") || strings.Contains(contentType, "text/plain"){
-			fmt.Printf("%s\n", string(contents))
+			fmt.Printf("Received reply %s\n", string(contents))
 			return true
 		}else {
 			fmt.Println("Incorrect Content-Type " + contentType)
@@ -219,9 +220,9 @@ func main() {
 
 		transport := &http.Transport{TLSClientConfig: tlsConfig}
 		client := &http.Client{Transport: transport}
-		var registerCreate = &zmet.ZRegisterMsg{}
-                registerCreate.OnBoardKey = *proto.String(string(onboardKeyData))
-                registerCreate.PemCert = []byte(base64.StdEncoding.EncodeToString(deviceCertPem))
+		registerCreate := &zmet.ZRegisterMsg{
+			PemCert: []byte(base64.StdEncoding.EncodeToString(deviceCertPem)),
+		}
                 b,err := proto.Marshal(registerCreate)
                 if err != nil {
                         log.Println(err)
@@ -231,11 +232,8 @@ func main() {
 
 	// Returns true when done; false when retry
 	lookupParam := func(client *http.Client, device *types.DeviceDb) bool {
-
-		//XXX: FIXME hard-coded Server name and port
-		serverNameAndPort := "prov1.zededa.net:9069"
-
-		resp, err := client.Get("https://" + serverNameAndPort +"/rest/device-param")
+		resp, err := client.Get("https://" + serverNameAndPort +
+			"/rest/device-param")
 		if err != nil {
 			fmt.Println(err)
 			return false
@@ -253,7 +251,7 @@ func main() {
 			} else {
 				log.Println("OCSP stapled check failed")
 			}
-			return  true // XXX:FIXME 
+			return false
 		}
 
 		contents, err := ioutil.ReadAll(resp.Body)
@@ -264,12 +262,19 @@ func main() {
 		switch resp.StatusCode {
 		case http.StatusOK:
 			fmt.Printf("device-param StatusOK\n")
+		case http.StatusNotFound:
+			fmt.Printf("device-param StatusNotFound\n")
+ 			// XXX:FIXME
+			// New devices which are only registered in zedcloud
+			// will not have state in prov1 hence no EID for
+			// zedmanager until we add lookupParam to zedcloud
+			return true
 		default:
 			fmt.Printf("device-param statuscode %d %s\n",
 				resp.StatusCode,
 				http.StatusText(resp.StatusCode))
 			fmt.Printf("%s\n", string(contents))
-			return true // XXX:FIXME
+			return false
 		}
 		contentType := resp.Header.Get("Content-Type")
 		if contentType != "application/json" {
@@ -305,18 +310,16 @@ func main() {
 	if !deviceCertSet {
 		return
 	}
-
 	// Setup HTTPS client for deviceCert
 	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{deviceCert},
-		ServerName:   "prov1.zededa.net", // XXX:FIXME
+		ServerName:   serverName,
 		RootCAs:      caCertPool,
 		CipherSuites: []uint16{
 			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
 			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256},
 		// TLS 1.2 because we can
 		MinVersion: tls.VersionTLS12,
-		InsecureSkipVerify: true,
 	}
 	tlsConfig.BuildNameToCertificate()
 
@@ -356,6 +359,39 @@ func main() {
 			}
 			log.Printf("Retrying lookupParam in %d seconds\n",
 				delay)
+		}
+		var devUUID uuid.UUID
+		if _, err := os.Stat(uuidFileName); err != nil {
+			// Create and write with initial values
+			devUUID = uuid.NewV4()
+			b := []byte(fmt.Sprintf("%s\n", devUUID))
+			err = ioutil.WriteFile(uuidFileName, b, 0644)
+			if err != nil {
+				log.Fatal("WriteFile", err, uuidFileName)
+			}
+			fmt.Printf("Created UUID %s\n", devUUID)
+		} else {
+			b, err := ioutil.ReadFile(uuidFileName)
+			if err != nil {
+				log.Fatal("ReadFile", err, uuidFileName)
+			}
+			uuidStr := strings.TrimSpace(string(b))
+			devUUID, err = uuid.FromString(uuidStr)
+			if err != nil {
+				log.Fatal("uuid.FromString", err, string(b))
+			}
+			fmt.Printf("Read UUID %s\n", devUUID)
+		}
+		uv := types.UUIDandVersion{
+			UUID:    devUUID,
+			Version: "0",
+		}
+
+		// If we got a StatusNotFound the EID will be zero
+		if device.EID == nil {
+			log.Printf("Did not receive an EID\n")
+			os.Remove(zedserverConfigFileName)
+			return
 		}
 
 		// XXX add Redirect support and store + retry
@@ -434,32 +470,7 @@ func main() {
 				log.Fatal("WriteFile", err, clientIPFileName)
 			}
 		}
-		var devUUID uuid.UUID
-		if _, err := os.Stat(uuidFileName); err != nil {
-			// Create and write with initial values
-			devUUID = uuid.NewV4()
-			b := []byte(fmt.Sprintf("%s\n", devUUID))
-			err = ioutil.WriteFile(uuidFileName, b, 0644)
-			if err != nil {
-				log.Fatal("WriteFile", err, uuidFileName)
-			}
-			fmt.Printf("Created UUID %s\n", devUUID)
-		} else {
-			b, err := ioutil.ReadFile(uuidFileName)
-			if err != nil {
-				log.Fatal("ReadFile", err, uuidFileName)
-			}
-			uuidStr := strings.TrimSpace(string(b))
-			devUUID, err = uuid.FromString(uuidStr)
-			if err != nil {
-				log.Fatal("uuid.FromString", err, string(b))
-			}
-			fmt.Printf("Read UUID %s\n", devUUID)
-		}
-		uv := types.UUIDandVersion{
-			UUID:    devUUID,
-			Version: "0",
-		}
+
 		// Write an AppNetworkConfig for the ZedManager application
 		config := types.AppNetworkConfig{
 			UUIDandVersion: uv,
@@ -529,12 +540,6 @@ func IsMyAddress(clientIP net.IP) bool {
 }
 
 func stapledCheck(connState *tls.ConnectionState) bool {
-
-	if connState.VerifiedChains == nil { // XXX:FIXME, lets keep this validation
-		log.Println("stapledCheck verified chains is nil")
-		return false
-	}
-
 	issuer := connState.VerifiedChains[0][1]
 	resp, err := ocsp.ParseResponse(connState.OCSPResponse, issuer)
 	if err != nil {
