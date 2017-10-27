@@ -48,7 +48,7 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 			select {
 			case event := <-w.Events:
 				baseName := path.Base(event.Name)
-				// log.Println("event:", event)
+				log.Println("watchConfigStatus event:", event)
 				// We get create events when file is moved into
 				// the watched directory.
 				if event.Op&
@@ -61,7 +61,7 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 					fileChanges <- "D " + baseName
 				}
 			case err := <-w.Errors:
-				log.Println("error:", err)
+				log.Println("watchConfigStatus error:", err)
 			}
 		}
 	}()
@@ -76,7 +76,7 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 	}
 
 	for _, file := range files {
-		// log.Println("modified", file.Name())
+		log.Println("watchConfigStatus readdir modified", file.Name())
 		fileChanges <- "M " + file.Name()
 	}
 	log.Printf("Initial ReadDir done for %s\n", configDir)
@@ -91,7 +91,7 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 			fileName := configDir + "/" + file.Name()
 			if _, err := os.Stat(fileName); err != nil {
 				// File does not exist in configDir
-				// log.Println("deleted", file.Name())
+				log.Println("Initial delete", file.Name())
 				fileChanges <- "D " + file.Name()
 			}
 		}
@@ -119,7 +119,7 @@ func WatchStatus(statusDir string, fileChanges chan<- string) {
 			select {
 			case event := <-w.Events:
 				baseName := path.Base(event.Name)
-				// log.Println("event:", event)
+				log.Println("WatchStatus event:", event)
 				// We get create events when file is moved into
 				// the watched directory.
 				if event.Op&
@@ -132,7 +132,7 @@ func WatchStatus(statusDir string, fileChanges chan<- string) {
 					fileChanges <- "D " + baseName
 				}
 			case err := <-w.Errors:
-				log.Println("error:", err)
+				log.Println("WatchStatus error:", err)
 			}
 		}
 	}()
@@ -147,7 +147,7 @@ func WatchStatus(statusDir string, fileChanges chan<- string) {
 	}
 
 	for _, file := range files {
-		// log.Println("modified", file.Name())
+		log.Println("WatchStatus initial modified", file.Name())
 		fileChanges <- "M " + file.Name()
 	}
 	log.Printf("Initial ReadDir done for %s\n", statusDir)

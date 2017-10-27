@@ -1,3 +1,9 @@
+DONE create directories in device-steps.sh?
+
+TODO model change -> json
+
+TODO ntp to alpine images and ACL
+
 TODO cleanup (or measure) /var/tmp/zedmanager/downloads/pending on boot?
 
 TODO refcount on downloads. Do they drop to zero and it gets freed on rm of config?

@@ -25,9 +25,54 @@ while [ $# != 0 ]; do
     shift
 done
 
+# Make sure we have the required directories in place
+mkdir -p /var/tmp/domainmgr/config/
+mkdir -p /var/tmp/verifier/config/
+mkdir -p /var/tmp/downloader/config/
+mkdir -p /var/tmp/zedmanager/config/
+mkdir -p /var/tmp/identitymgr/config/
+mkdir -p /var/tmp/zedrouter/config/
+mkdir -p /var/run/domainmgr/status/
+mkdir -p /var/run/verifier/status/
+mkdir -p /var/run/downloader/status/
+mkdir -p /var/run/zedmanager/status/
+mkdir -p /var/run/eidregister/status/
+mkdir -p /var/run/zedrouter/status/
+mkdir -p /var/run/identitymgr/status/
+
 echo "Configuration from factory/install:"
 (cd $ETCDIR; ls -l)
 echo
+
+# We need to try our best to setup time *before* we generate the certifiacte.
+# Otherwise it may have start date in the future
+echo "Check for NTP config"
+if [ -f $ETCDIR/ntp-server ]; then
+    echo -n "Using "
+    cat $ETCDIR/ntp-server
+    # XXX is ntp service running/installed?
+    # XXX actually configure ntp
+    # Ubuntu has /usr/bin/timedatectl; ditto Debian
+    # ntpdate pool.ntp.org
+    # Not installed on Ubuntu
+    #
+    if [ -f /usr/bin/ntpdate ]; then
+	/usr/bin/ntpdate `cat $ETCDIR/ntp-server`
+    elif [ -f /usr/bin/timedatectl ]; then
+	echo "NTP might already be running. Check"
+	/usr/bin/timedatectl status
+    else
+	echo "NTP not installed. Giving up"
+	exit 1
+    fi
+else
+   # last ditch attemp to sync up our clock
+   ntpd -d -q -n -p pool.ntp.org || :
+fi
+if [ $WAIT == 1 ]; then
+    echo; read -n 1 -s -p "Press any key to continue"; echo; echo
+fi
+
 
 if [ ! \( -f $ETCDIR/device.cert.pem -a -f $ETCDIR/device.key.pem \) ]; then
     echo "Generating a device key pair and self-signed cert (using TPM/TEE if available) at" `date`
@@ -60,30 +105,6 @@ if [ -f $ETCDIR/wifi_ssid ]; then
     # Requires a /etc/network/interfaces.d/wlan0.cfg
     # and /etc/wpa_supplicant/wpa_supplicant.conf
     # Assumes wpa packages are included. Would be in our image?
-fi
-if [ $WAIT == 1 ]; then
-    echo; read -n 1 -s -p "Press any key to continue"; echo; echo
-fi
-
-echo "Check for NTP config"
-if [ -f $ETCDIR/ntp-server ]; then
-    echo -n "Using "
-    cat $ETCDIR/ntp-server
-    # XXX is ntp service running/installed?
-    # XXX actually configure ntp
-    # Ubuntu has /usr/bin/timedatectl; ditto Debian
-    # ntpdate pool.ntp.org
-    # Not installed on Ubuntu
-    #
-    if [ -f /usr/bin/ntpdate ]; then
-	/usr/bin/ntpdate `cat $ETCDIR/ntp-server`
-    elif [ -f /usr/bin/timedatectl ]; then
-	echo "NTP might already be running. Check"
-	/usr/bin/timedatectl status
-    else
-	echo "NTP not installed. Giving up"
-	exit 1
-    fi
 fi
 if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
@@ -136,6 +157,10 @@ echo "Removing old stale files"
 # Remove internal config files
 pkill zedmanager
 rm -rf /var/run/zedmanager/status/*.json
+# The following is a workaround for a racecondition between different agents
+mkdir -p /var/tmp/zedmanager/downloads
+chmod 700 /var/tmp/zedmanager /var/tmp/zedmanager/downloads
+
 AGENTS="zedrouter domainmgr downloader verifier identitymgr eidregister"
 for AGENT in $AGENTS; do
     if [ ! -d /var/tmp/$AGENT ]; then
@@ -176,6 +201,7 @@ for AGENT in $AGENTS; do
     fi
     if [ $AGENT == "verifier" ]; then
 	echo "Skipping check for /var/run/$AGENT/status"
+	pkill $AGENT
 	continue
     fi
     dir=/var/run/$AGENT/status

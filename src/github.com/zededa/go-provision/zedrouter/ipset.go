@@ -8,8 +8,8 @@ package main
 import (
 	"fmt"
 	"github.com/zededa/go-provision/types"
+	"github.com/zededa/go-provision/wrap"
 	"log"
-	"os/exec"
 )
 
 // Create local IPv6 ipset called "local.ipv6".
@@ -139,7 +139,7 @@ func ipsetCreate(ipsetName string, setType string, ipVer int) error {
 		family = "inet6"
 	}
 	args := []string{"create", ipsetName, setType, "family", family}
-	if _, err := exec.Command(cmd, args...).Output(); err != nil {
+	if _, err := wrap.Command(cmd, args...).Output(); err != nil {
 		return err
 	}
 	return nil
@@ -148,7 +148,7 @@ func ipsetCreate(ipsetName string, setType string, ipVer int) error {
 func ipsetDestroy(ipsetName string) error {
 	cmd := "ipset"
 	args := []string{"destroy", ipsetName}
-	if _, err := exec.Command(cmd, args...).Output(); err != nil {
+	if _, err := wrap.Command(cmd, args...).Output(); err != nil {
 		return err
 	}
 	return nil
@@ -157,7 +157,7 @@ func ipsetDestroy(ipsetName string) error {
 func ipsetFlush(ipsetName string) error {
 	cmd := "ipset"
 	args := []string{"flush", ipsetName}
-	if _, err := exec.Command(cmd, args...).Output(); err != nil {
+	if _, err := wrap.Command(cmd, args...).Output(); err != nil {
 		return err
 	}
 	return nil
@@ -166,7 +166,7 @@ func ipsetFlush(ipsetName string) error {
 func ipsetAdd(ipsetName string, member string) error {
 	cmd := "ipset"
 	args := []string{"add", ipsetName, member}
-	if _, err := exec.Command(cmd, args...).Output(); err != nil {
+	if _, err := wrap.Command(cmd, args...).Output(); err != nil {
 		return err
 	}
 	return nil
@@ -175,7 +175,7 @@ func ipsetAdd(ipsetName string, member string) error {
 func ipsetDel(ipsetName string, member string) error {
 	cmd := "ipset"
 	args := []string{"del", ipsetName, member}
-	if _, err := exec.Command(cmd, args...).Output(); err != nil {
+	if _, err := wrap.Command(cmd, args...).Output(); err != nil {
 		return err
 	}
 	return nil
@@ -184,7 +184,7 @@ func ipsetDel(ipsetName string, member string) error {
 func ipsetExists(ipsetName string) bool {
 	cmd := "ipset"
 	args := []string{"list", ipsetName}
-	if _, err := exec.Command(cmd, args...).Output(); err != nil {
+	if _, err := wrap.Command(cmd, args...).Output(); err != nil {
 		return false
 	}
 	return true

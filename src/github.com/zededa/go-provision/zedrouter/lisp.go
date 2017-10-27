@@ -8,12 +8,12 @@ package main
 import (
 	"fmt"
 	"github.com/zededa/go-provision/types"
+	"github.com/zededa/go-provision/wrap"
 	"io"
 	"io/ioutil"
 	"log"
 	"net"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 )
@@ -345,8 +345,8 @@ func updateLisp(lispRunDirname string, upLinkIfnames []string) {
 	}
 
 	// Determine the set of devices from the above config file
-	grep := exec.Command("grep", "device = ", destFilename)
-	awk := exec.Command("awk", "{print $NF}")
+	grep := wrap.Command("grep", "device = ", destFilename)
+	awk := wrap.Command("awk", "{print $NF}")
 	awk.Stdin, _ = grep.StdoutPipe()
 	if err := grep.Start(); err != nil {
 		log.Println("grep.Start failed: ", err)
@@ -402,7 +402,7 @@ func restartLisp(upLinkIfnames []string, devices string) {
 		upLinkIfnames[0],
 	}
 	itrTimeout := 1
-	cmd := exec.Command(RestartCmd)
+	cmd := wrap.Command(RestartCmd)
 	cmd.Args = args
 	env := os.Environ()
 	env = append(env, fmt.Sprintf("LISP_NO_IPTABLES="))
@@ -434,7 +434,7 @@ func restartLisp(upLinkIfnames []string, devices string) {
 
 func stopLisp() {
 	log.Printf("stopLisp\n")
-	cmd := exec.Command(StopCmd)
+	cmd := wrap.Command(StopCmd)
 	env := os.Environ()
 	env = append(env, fmt.Sprintf("LISP_NO_IPTABLES="))
 	cmd.Env = env

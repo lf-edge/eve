@@ -32,10 +32,10 @@ import (
 	"fmt"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
+	"github.com/zededa/go-provision/wrap"
 	"io/ioutil"
 	"log"
 	"os"
-	"os/exec"
 	"time"
 )
 
@@ -73,7 +73,7 @@ func main() {
 		}
 	}
 	if _, err := os.Stat(imgCatalogDirname); err != nil {
-		if err := os.Mkdir(imgCatalogDirname, 0700); err != nil {
+		if err := os.MkdirAll(imgCatalogDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -135,6 +135,7 @@ func handleInit(configFilename string, statusFilename string) {
 	globalStatus.ReservedSpace = 0
 	updateRemainingSpace()
 
+	// XXX how do we find out when verifier cleans up duplicates etc?
 	// We read /var/tmp/zedmanager/downloads/* and determine how much space
 	// is used. Place in GlobalDownloadStatus. Calculate remaining space.
 	totalUsed := sizeFromDir(imgCatalogDirname)
@@ -347,8 +348,8 @@ func doCreate(statusFilename string, config types.DownloaderConfig,
 // XXX Should we set        --limit-rate=100k
 // XXX Can we safely try a continue?
 // XXX wget seems to have no way to limit download size for single file!
-// XXX temporary options since store.zededa.net not in DNS
-// and wierd free.fr dns behavior with AAAA and A. Added  -4 --no-check-certificate
+// XXX temporary options since and wierd free.fr dns behavior with AAAA and A.
+// Added  -4 --no-check-certificate
 func doWget(url string, destFilename string) error {
 	fmt.Printf("doWget %s %s\n", url, destFilename)
 	cmd := "wget"
@@ -362,7 +363,7 @@ func doWget(url string, destFilename string) error {
 		destFilename,
 		url,
 	}
-	stdoutStderr, err := exec.Command(cmd, args...).CombinedOutput()
+	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
 	if err != nil {
 		log.Println("wget failed ", err)
 		log.Println("wget output ", string(stdoutStderr))

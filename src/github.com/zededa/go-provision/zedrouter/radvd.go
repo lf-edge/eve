@@ -6,10 +6,10 @@
 package main
 
 import (
+	"github.com/zededa/go-provision/wrap"
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
 )
 
 // Need to fill in the overlay inteface name
@@ -65,7 +65,7 @@ func startRadvd(cfgPathname string, olIfname string) {
 		"-p",
 		pidPathname,
 	}
-	go exec.Command(cmd, args...).Output()
+	go wrap.Command(cmd, args...).Output()
 }
 
 //    pkill -u radvd -f radvd.${OLIFNAME}.conf

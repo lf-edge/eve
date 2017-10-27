@@ -6,13 +6,13 @@
 package main
 
 import (
+	"github.com/zededa/go-provision/wrap"
 	"log"
-	"os/exec"
 )
 
 func iptableCmd(args ...string) error {
 	cmd := "iptables"
-	_, err := exec.Command(cmd, args...).Output()
+	_, err := wrap.Command(cmd, args...).Output()
 	if err != nil {
 		log.Println("iptables command failed: ", args, err)
 		return err
@@ -22,7 +22,7 @@ func iptableCmd(args ...string) error {
 
 func ip6tableCmd(args ...string) error {
 	cmd := "ip6tables"
-	_, err := exec.Command(cmd, args...).Output()
+	_, err := wrap.Command(cmd, args...).Output()
 	if err != nil {
 		log.Println("ip6tables command failed: ", args, err)
 		return err
