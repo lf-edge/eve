@@ -9,6 +9,25 @@ import (
 	"time"
 )
 
+type UrlCloudCfg struct {
+       ConfigUrl       string
+       MetricsUrl      string
+       StatusUrl       string
+}
+
+// top level config container
+type DeviceConfigResponse struct {
+	Config				EdgeDevConfig
+}
+
+type EdgeDevConfig struct {
+	Id					UUIDandVersion
+	DevConfigSha256		string
+	DevConfigSignature	string
+	Apps				[]AppInstanceConfig
+	Networks			[]UnderlayNetworkConfig
+}
+
 // UUID plus version
 type UUIDandVersion struct {
 	UUID    uuid.UUID
@@ -24,7 +43,9 @@ type UUIDandVersion struct {
 type AppInstanceConfig struct {
 	UUIDandVersion      UUIDandVersion
 	DisplayName         string
-	FixedResources      // CPU etc
+	ConfigSha256        string
+	ConfigSignature     string
+	FixedResources      VmConfig// CPU etc
 	StorageConfigList   []StorageConfig
 	Activate            bool
 	OverlayNetworkList  []EIDOverlayConfig
@@ -120,3 +141,4 @@ type SignatureInfo struct {
 	SignerCertPem        []byte
 	Signature            []byte
 }
+

@@ -69,5 +69,111 @@ Server config on prov01:
    Example:
 	env -u https_proxy env -u http_proxy go-provision/bin/server 
 
+// how to manage sand box for <go-provision>
+set GOROOT 
+export GOROOT='/usr/local/go'
 
-      
+// go-provision needs <zedcloud/src/shared>, for proto definition files
+// name the sand box as <WORK> env variable. here "demo" is sandbox name
+
+export WORK=$HOME/demo
+mkdir -p $WORK
+
+// the sand box should contain both go-provision and zedcloud code base
+// check out the code, at $WORK level, using following commands
+
+cd $WORK
+git clone https://github.com/zededa/go-provision.git
+git clone https://github.com/zededa/zedcloud.git
+
+// compile zedcloud before compiling go-provision
+
+// currently zedcloud compilation needs the github/golang/protobuf/proto
+// at $WORK/zedcloud level, for this do the following
+// this is only one time activity
+
+export GOPATH=$WORK/zedcloud
+go get -u github.com/golang/protobuf/proto
+
+// for zedcloud, set $GOPATH as follows
+
+export GOPATH=$HOME/.go
+export PATH=$PATH:$GOROOT/bin:$GOPATH/bin:
+export GOPATH=$GOPATH:$WORK/zedcloud
+
+//compile zedcloud code
+cd $WORK/zedcloud/src
+make
+
+// for go-provision, set $GOPATH as follows
+
+export GOPATH=$HOME/.go
+export PATH=$PATH:$GOROOT/bin:$GOPATH/bin:
+
+export WORK=$HOME/demo
+export GOPATH=$GOPATH:$WORK/go-provision:$WORK/zedcloud
+
+// compile go-provision code
+cd $WORK/go-provision
+./scripts/buildit.sh
+
+//config for x_86 appInstance without overlays.
+
+{
+  "UUIDandVersion": {
+    "UUID": "639d7e8e-2f2f-4d44-9924-6558e1cbc86f",
+    "Version": "2"
+  },
+  "DisplayName": "zedtest3",
+  "FixedResources": {
+    "Bootloader": "/usr/lib/xen-4.6/bin/pygrub",
+    "RootDev": "/dev/xvda",
+    "Ramdisk": "",
+    "Memory": 200000,
+    "MaxMem": 0,
+    "VCpus": 1,
+    "ExtraArgs": "mnt=/dev/xvdb run=/mnt/ledconsumer.py"
+  },
+  "StorageConfigList": [
+    {
+      "DownloadURL": "http://download.cirros-cloud.net/0.3.5/cirros-0.3.5-x86_64-disk.img",
+      "MaxSize": 440000,
+      "ImageSha256": "e137062a4dfbb4c225971b67781bc52183d14517170e16a3841d16f962ae7470",
+      "Format": "qcow2",
+      "Target": "disk"
+    }
+  ],
+  "Activate": true,
+  "OverlayNetworkList": [],
+  "UnderlayNetworkList": [
+    {
+      "ACLs": [
+        {
+          "Matches": [
+            {
+              "Type": "host",
+              "Value": "google.com"
+            }
+          ],
+          "Actions": [
+            {
+              "Limit": true,
+              "LimitRate": 10,
+              "LimitUnit": "m",
+              "LimitBurst": 40
+            }
+          ]
+        },
+        {
+          "Matches": [
+            {
+              "Type": "host",
+              "Value": "zededa.net"
+            }
+          ],
+          "Actions": null
+        }
+      ]
+    }
+  ]
+}
