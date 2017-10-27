@@ -1,0 +1,15 @@
+#!/bin/sh
+#
+# RESTART-LISP
+#
+# Call ./RUN-LISP and ./STOP-LISP under sudo. Pass parameters that RUN-LISP
+# requires. This is required because STOP-LISP kills all python processes
+# and RUN-LISP runs python processes, so we can't call STOP-LISP inside of
+# RUN-LISP. Calls must be done serially. When STOP-LISP returns, it
+# guarantees all processes are gone.
+#
+#------------------------------------------------------------------------------
+
+cd `dirname $0`
+./STOP-LISP
+./RUN-LISP $1 $2
