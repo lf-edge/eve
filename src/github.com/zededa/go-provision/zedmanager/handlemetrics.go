@@ -188,23 +188,18 @@ func MakeMetricsProtobufStructure() {
 
 		cpuTime, _ := strconv.ParseUint(cpuStorageStat[arr][3], 10, 0)
 		ReportDeviceMetric.Cpu.UpTime = *proto.Uint32(uint32(cpuTime))
-
 		cpuUsedInPercent, _ := strconv.ParseFloat(cpuStorageStat[arr][4], 10)
-		ReportDeviceMetric.Cpu.CpuUtilization = *proto.Float32(float32(cpuUsedInPercent))
+		ReportDeviceMetric.Cpu.CpuUtilization = *proto.Float64(float64(cpuUsedInPercent))
 
 		memory, _ := strconv.ParseUint(cpuStorageStat[arr][5], 10, 0)
 		ReportDeviceMetric.Memory.UsedMem = *proto.Uint32(uint32(memory))
-
 		memoryUsedInPercent, _ := strconv.ParseFloat(cpuStorageStat[arr][6], 10)
-		ReportDeviceMetric.Memory.UsedPercentage = *proto.Float32(float32(memoryUsedInPercent))
-
-		maxMemory, _ := strconv.ParseUint(cpuStorageStat[arr][7], 10, 0)
-		ReportDeviceMetric.Memory.MaxMem = *proto.Uint32(uint32(maxMemory))
+		ReportDeviceMetric.Memory.UsedPercentage = *proto.Float64(float64(memoryUsedInPercent))
 
 		for net := 2; net < len(networkStat); net++ {
 
 			networkDetails := new(zmet.NetworkMetric)
-			networkDetails.DevName = *proto.String(networkStat[net][1])
+			networkDetails.IName = *proto.String(networkStat[net][1])
 
 			txBytes, _ := strconv.ParseUint(networkStat[net][10], 10, 0)
 			networkDetails.TxBytes = *proto.Uint64(txBytes)
