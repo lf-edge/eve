@@ -20,7 +20,7 @@ type DomainConfig struct {
 	DisplayName    string // Use as name for domU? DisplayName+version?
 	Activate       bool   // Actually start the domU as opposed to prepare
 	AppNum         int    // From networking; makes the name unique
-	FixedResources
+	VmConfig
 	DiskConfigList []DiskConfig
 	VifList        []VifInfo
 }
@@ -38,7 +38,7 @@ func (config DomainConfig) VerifyFilename(fileName string) bool {
 // Some of these items can be overridden by matching Targets in
 // StorageConfigList. For example, a Target of "kernel" means to set/override
 // the Kernel attribute below.
-type FixedResources struct {
+type VmConfig struct {
 	Kernel     string // default ""
 	Ramdisk    string // default ""
 	Memory     int    // in kbytes; Rounded up to Mbytes for xen

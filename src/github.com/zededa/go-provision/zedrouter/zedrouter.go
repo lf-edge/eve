@@ -16,11 +16,11 @@ import (
 	"github.com/vishvananda/netlink"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
+	"github.com/zededa/go-provision/wrap"
 	"io/ioutil"
 	"log"
 	"net"
 	"os"
-	"os/exec"
 	"strconv"
 )
 
@@ -133,18 +133,39 @@ func handleInit(configFilename string, statusFilename string,
 	if err := json.Unmarshal(cb, &globalConfig); err != nil {
 		log.Printf("%s DeviceNetworkConfig file: %s\n",
 			err, configFilename)
-		log.Fatal(err)
+		// Try old format
+		var globalConfigV1 types.DeviceNetworkConfigV1
+		if err := json.Unmarshal(cb, &globalConfigV1); err != nil {
+			log.Printf("%s DeviceNetworkConfigV1 file: %s\n",
+				err, configFilename)
+			log.Fatal(err)
+		}
+		globalConfig.Uplink = make([]string, 1)
+		globalConfig.Uplink[0] = globalConfigV1.Uplink
 	}
-	_, err = netlink.LinkByName(globalConfig.Uplink)
-	if err != nil {
-		log.Fatal("Uplink in config/global does not exist: ",
-			globalConfig.Uplink)
+	for _, u := range globalConfig.Uplink {
+		link, err := netlink.LinkByName(u)
+		if err != nil {
+			log.Fatal("Uplink in config/global does not exist: ",
+				u)
+		}
+		addrs4, err := netlink.AddrList(link, netlink.FAMILY_V4)
+		addrs6, err := netlink.AddrList(link, netlink.FAMILY_V6)
+		fmt.Printf("UplinkAddrs v4 %d v6 %d\n", len(addrs4), len(addrs6))
+		globalStatus.UplinkAddrs = make([]net.IP,
+			len(addrs4)+len(addrs6))
+		for i, addr := range addrs4 {
+			globalStatus.UplinkAddrs[i] = addr.IP
+		}
+		for i, addr := range addrs6 {
+			// XXX check if link-local?
+			globalStatus.UplinkAddrs[i+len(addrs4)] = addr.IP
+		}
 	}
-	if _, err := os.Stat(statusFilename); err != nil {
-		// Create and write with initial values
-		globalStatus.Uplink = globalConfig.Uplink
-		writeGlobalStatus()
-	}
+	globalStatus.Uplink = globalConfig.Uplink
+	// Create and write with initial values
+	writeGlobalStatus()
+
 	sb, err := ioutil.ReadFile(statusFilename)
 	if err != nil {
 		log.Printf("%s for %s\n", err, statusFilename)
@@ -162,30 +183,30 @@ func handleInit(configFilename string, statusFilename string,
 	// ipsets which are independent of config
 	createDefaultIpset()
 
-	_, err = exec.Command("sysctl", "-w",
+	_, err = wrap.Command("sysctl", "-w",
 		"net.ipv4.ip_forward=1").Output()
 	if err != nil {
 		log.Fatal("Failed setting ip_forward ", err)
 	}
-	_, err = exec.Command("sysctl", "-w",
+	_, err = wrap.Command("sysctl", "-w",
 		"net.ipv6.conf.all.forwarding=1").Output()
 	if err != nil {
 		log.Fatal("Failed setting ipv6.conf.all.forwarding ", err)
 	}
 	// We use ip6tables for the bridge
-	_, err = exec.Command("sysctl", "-w",
+	_, err = wrap.Command("sysctl", "-w",
 		"net.bridge.bridge-nf-call-ip6tables=1").Output()
 	if err != nil {
 		// XXX not in bobo's kernel
 		log.Println("Failed setting net.bridge-nf-call-ip6tables ", err)
 	}
-	_, err = exec.Command("sysctl", "-w",
+	_, err = wrap.Command("sysctl", "-w",
 		"net.bridge.bridge-nf-call-iptables=1").Output()
 	if err != nil {
 		// XXX not in bobo's kernel
 		log.Println("Failed setting net.bridge-nf-call-iptables ", err)
 	}
-	_, err = exec.Command("sysctl", "-w",
+	_, err = wrap.Command("sysctl", "-w",
 		"net.bridge.bridge-nf-call-arptables=1").Output()
 	if err != nil {
 		// XXX not in bobo's kernel
@@ -394,7 +415,7 @@ func handleCreate(statusFilename string, configArg interface{}) {
 		// Create LISP configlets for IID and EID/signature
 		createLispConfiglet(lispRunDirname, true, olConfig.IID,
 			olConfig.EID, olConfig.LispSignature,
-			globalConfig.Uplink, olIfname, olIfname,
+			globalStatus, olIfname, olIfname,
 			additionalInfo)
 		status.OverlayNetworkList = make([]types.OverlayNetworkStatus,
 			len(config.OverlayNetworkList))
@@ -422,6 +443,9 @@ func handleCreate(statusFilename string, configArg interface{}) {
 		status.UnderlayNetworkList[i].UnderlayNetworkConfig =
 			config.UnderlayNetworkList[i]
 	}
+
+	ipsets := compileAppInstanceIpsets(config.OverlayNetworkList,
+		config.UnderlayNetworkList)
 
 	for i, olConfig := range config.OverlayNetworkList {
 		olNum := i + 1
@@ -516,7 +540,7 @@ func handleCreate(statusFilename string, configArg interface{}) {
 		stopDnsmasq(cfgFilename, false)
 		createDnsmasqOverlayConfiglet(cfgPathname, olIfname, olAddr1,
 			EID.String(), olMac, hostsDirpath,
-			config.UUIDandVersion.UUID.String())
+			config.UUIDandVersion.UUID.String(), ipsets)
 		startDnsmasq(cfgPathname)
 
 		addInfoApp := types.AdditionalInfoApp{
@@ -539,7 +563,7 @@ func handleCreate(statusFilename string, configArg interface{}) {
 		// Create LISP configlets for IID and EID/signature
 		createLispConfiglet(lispRunDirname, false, olConfig.IID,
 			olConfig.EID, olConfig.LispSignature,
-			globalConfig.Uplink, olIfname, olIfname,
+			globalStatus, olIfname, olIfname,
 			additionalInfo)
 
 		// Add bridge parameters for Xen to Status
@@ -601,6 +625,7 @@ func handleCreate(statusFilename string, configArg interface{}) {
 		}
 
 		// Create iptables with optional ipset's based ACL
+		// XXX Doesn't handle IPv6 underlay ACLs
 		createACLConfiglet(ulIfname, false, ulConfig.ACLs, 4, "")
 
 		// Start clean
@@ -609,7 +634,7 @@ func handleCreate(statusFilename string, configArg interface{}) {
 		stopDnsmasq(cfgFilename, false)
 
 		createDnsmasqUnderlayConfiglet(cfgPathname, ulIfname, ulAddr1,
-			ulAddr2, ulMac, config.UUIDandVersion.UUID.String())
+			ulAddr2, ulMac, config.UUIDandVersion.UUID.String(), ipsets)
 		startDnsmasq(cfgPathname)
 
 		// Add bridge parameters for Xen to Status
@@ -703,6 +728,11 @@ func handleModify(statusFilename string, configArg interface{},
 		return
 	}
 
+	newIpsets, staleIpsets, restartDnsmasq := updateAppInstanceIpsets(config.OverlayNetworkList,
+		config.UnderlayNetworkList,
+		status.OverlayNetworkList,
+		status.UnderlayNetworkList)
+
 	// Look for ACL and NametoEidList changes in overlay
 	for i, olConfig := range config.OverlayNetworkList {
 		olNum := i + 1
@@ -726,10 +756,22 @@ func handleModify(statusFilename string, configArg interface{},
 		updateACLConfiglet(olIfname, false, olStatus.ACLs,
 			olConfig.ACLs, 6, olAddr1)
 
-		// XXX if the ACL update resulted in new eid sets, then
-		// we need to restart dnsmasq (and update its ipset configs?
-		// XXX get a return value from updateAclConfiglet to indicate
-		// whether there were such changes?
+		// updateAppInstanceIpsets told us whether there is a change
+		// to the set of ipsets, and that requires restarting dnsmasq
+		if restartDnsmasq {
+			cfgFilename := "dnsmasq." + olIfname + ".conf"
+			cfgPathname := runDirname + "/" + cfgFilename
+			EID := olConfig.EID
+			olMac := "00:16:3e:1:" + strconv.FormatInt(int64(olNum), 16) +
+				":" + strconv.FormatInt(int64(appNum), 16)
+			stopDnsmasq(cfgFilename, false)
+			//remove old dnsmasq configuration file
+			os.Remove(cfgPathname)
+			createDnsmasqOverlayConfiglet(cfgPathname, olIfname, olAddr1,
+				EID.String(), olMac, hostsDirpath,
+				config.UUIDandVersion.UUID.String(), newIpsets)
+			startDnsmasq(cfgPathname)
+		}
 
 		// Format a json string with any additional info
 		addInfoApp := types.AdditionalInfoApp{
@@ -755,7 +797,7 @@ func handleModify(statusFilename string, configArg interface{},
 		// Create LISP configlets for IID and EID/signature
 		updateLispConfiglet(lispRunDirname, false, olConfig.IID,
 			olConfig.EID, olConfig.LispSignature,
-			globalConfig.Uplink, olIfname, olIfname,
+			globalStatus, olIfname, olIfname,
 			additionalInfo)
 
 	}
@@ -769,7 +811,39 @@ func handleModify(statusFilename string, configArg interface{},
 		// Update ACLs
 		updateACLConfiglet(ulIfname, false, ulStatus.ACLs,
 			ulConfig.ACLs, 4, "")
+
+		if restartDnsmasq {
+			//update underlay dnsmasq configuration
+			cfgFilename := "dnsmasq." + ulIfname + ".conf"
+			cfgPathname := runDirname + "/" + cfgFilename
+			ulAddr1 := "172.27." + strconv.Itoa(appNum) + ".1"
+			ulAddr2 := "172.27." + strconv.Itoa(appNum) + ".2"
+			ulMac := "00:16:3e:0:0:" + strconv.FormatInt(int64(appNum), 16)
+			stopDnsmasq(cfgFilename, false)
+			//remove old dnsmasq configuration file
+			os.Remove(cfgPathname)
+			createDnsmasqUnderlayConfiglet(cfgPathname, ulIfname, ulAddr1,
+				ulAddr2, ulMac,
+				config.UUIDandVersion.UUID.String(), newIpsets)
+			startDnsmasq(cfgPathname)
+		}
 	}
+
+	// Remove stale ipsets
+	// In case if there are any references to these ipsets from other
+	// domUs, then the kernel would not remove them.
+	// The ipset destroy command would just fail.
+	for _, ipset := range staleIpsets {
+		err := ipsetDestroy(fmt.Sprintf("ipv4.%s", ipset))
+		if err != nil {
+			log.Println("ipset destroy ipv4", ipset, err)
+		}
+		err = ipsetDestroy(fmt.Sprintf("ipv6.%s", ipset))
+		if err != nil {
+			log.Println("ipset destroy ipv6", ipset, err)
+		}
+	}
+
 	// Write out what we modified to AppNetworkStatus
 	status.OverlayNetworkList = make([]types.OverlayNetworkStatus,
 		len(config.OverlayNetworkList))
@@ -879,7 +953,7 @@ func handleDelete(statusFilename string, statusArg interface{}) {
 
 		// Delete LISP configlets
 		deleteLispConfiglet(lispRunDirname, true, olStatus.IID,
-			olStatus.EID, globalConfig.Uplink)
+			olStatus.EID, globalStatus)
 	} else {
 		// Delete everything for overlay
 		for olNum := 1; olNum <= maxOlNum; olNum++ {
@@ -918,7 +992,7 @@ func handleDelete(statusFilename string, statusArg interface{}) {
 				// Delete LISP configlets
 				deleteLispConfiglet(lispRunDirname, false,
 					olStatus.IID, olStatus.EID,
-					globalConfig.Uplink)
+					globalStatus)
 			} else {
 				log.Println("Missing status for overlay %d; can not clean up ACLs and LISP\n",
 					olNum)
@@ -981,7 +1055,7 @@ func pkillUserArgs(userName string, match string, printOnError bool) {
 		"-f",
 		match,
 	}
-	_, err := exec.Command(cmd, args...).Output()
+	_, err := wrap.Command(cmd, args...).Output()
 	if err != nil && printOnError {
 		fmt.Printf("Command %v %v failed: %s\n", cmd, args, err)
 	}

@@ -1,5 +1,7 @@
 #!/bin/bash
 
+echo "Starting device-steps.sh at" `date`
+
 ETCDIR=/opt/zededa/etc
 BINDIR=/opt/zededa/bin
 PROVDIR=$BINDIR
@@ -9,23 +11,71 @@ PATH=$BINDIR:$PATH
 
 WAIT=1
 EID_IN_DOMU=0
+MEASURE=0
 while [ $# != 0 ]; do
     if [ "$1" == -w ]; then
 	WAIT=0
     elif [ "$1" == -x ]; then
 	EID_IN_DOMU=1
+    elif [ "$1" == -m ]; then
+	MEASURE=1
     else
 	ETCDIR=$1
     fi
     shift
 done
 
+# Make sure we have the required directories in place
+mkdir -p /var/tmp/domainmgr/config/
+mkdir -p /var/tmp/verifier/config/
+mkdir -p /var/tmp/downloader/config/
+mkdir -p /var/tmp/zedmanager/config/
+mkdir -p /var/tmp/identitymgr/config/
+mkdir -p /var/tmp/zedrouter/config/
+mkdir -p /var/run/domainmgr/status/
+mkdir -p /var/run/verifier/status/
+mkdir -p /var/run/downloader/status/
+mkdir -p /var/run/zedmanager/status/
+mkdir -p /var/run/eidregister/status/
+mkdir -p /var/run/zedrouter/status/
+mkdir -p /var/run/identitymgr/status/
+
 echo "Configuration from factory/install:"
 (cd $ETCDIR; ls -l)
 echo
 
+# We need to try our best to setup time *before* we generate the certifiacte.
+# Otherwise it may have start date in the future
+echo "Check for NTP config"
+if [ -f $ETCDIR/ntp-server ]; then
+    echo -n "Using "
+    cat $ETCDIR/ntp-server
+    # XXX is ntp service running/installed?
+    # XXX actually configure ntp
+    # Ubuntu has /usr/bin/timedatectl; ditto Debian
+    # ntpdate pool.ntp.org
+    # Not installed on Ubuntu
+    #
+    if [ -f /usr/bin/ntpdate ]; then
+	/usr/bin/ntpdate `cat $ETCDIR/ntp-server`
+    elif [ -f /usr/bin/timedatectl ]; then
+	echo "NTP might already be running. Check"
+	/usr/bin/timedatectl status
+    else
+	echo "NTP not installed. Giving up"
+	exit 1
+    fi
+else
+   # last ditch attemp to sync up our clock
+   ntpd -d -q -n -p pool.ntp.org || :
+fi
+if [ $WAIT == 1 ]; then
+    echo; read -n 1 -s -p "Press any key to continue"; echo; echo
+fi
+
+
 if [ ! \( -f $ETCDIR/device.cert.pem -a -f $ETCDIR/device.key.pem \) ]; then
-    echo "Generating a device key pair and self-signed cert (using TPM/TEE if available)"
+    echo "Generating a device key pair and self-signed cert (using TPM/TEE if available) at" `date`
     $PROVDIR/generate-device.sh $ETCDIR/device
     SELF_REGISTER=1
 else
@@ -60,35 +110,11 @@ if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
 
-echo "Check for NTP config"
-if [ -f $ETCDIR/ntp-server ]; then
-    echo -n "Using "
-    cat $ETCDIR/ntp-server
-    # XXX is ntp service running/installed?
-    # XXX actually configure ntp
-    # Ubuntu has /usr/bin/timedatectl; ditto Debian
-    # ntpdate pool.ntp.org
-    # Not installed on Ubuntu
-    #
-    if [ -f /usr/bin/ntpdate ]; then
-	/usr/bin/ntpdate `cat $ETCDIR/ntp-server`
-    elif [ -f /usr/bin/timedatectl ]; then
-	echo "NTP might already be running. Check"
-	/usr/bin/timedatectl status
-    else
-	echo "NTP not installed. Giving up"
-	exit 1
-    fi
-fi
-if [ $WAIT == 1 ]; then
-    echo; read -n 1 -s -p "Press any key to continue"; echo; echo
-fi
-
 # XXX this should run in domZ aka ZedRouter on init.
 # Ideally just to WiFi setup in dom0 and do DHCP in domZ
 
 if [ $SELF_REGISTER = 1 ]; then
-    echo "Self-registering our device certificate"
+    echo "Self-registering our device certificate at " `date`
     if [ ! \( -f $ETCDIR/onboard.cert.pem -a -f $ETCDIR/onboard.key.pem \) ]; then
 	echo "Missing onboarding certificate. Giving up"
 	exit 1
@@ -101,7 +127,7 @@ fi
 
 # XXX We always redo this to get an updated zedserverconfig
 if [ /bin/true -o ! -f $ETCDIR/lisp.config ]; then
-    echo "Retrieving device and overlay network config"
+    echo "Retrieving device and overlay network config at" `date`
     $BINDIR/client $ETCDIR lookupParam
     echo "Retrieved overlay /etc/hosts with:"
     cat $ETCDIR/zedserverconfig
@@ -111,7 +137,7 @@ if [ /bin/true -o ! -f $ETCDIR/lisp.config ]; then
     cat $ETCDIR/zedserverconfig >>/tmp/hosts.$$
     echo "New /etc/hosts:"
     cat /tmp/hosts.$$
-    sudo cp /tmp/hosts.$$ /etc/hosts
+    cp /tmp/hosts.$$ /etc/hosts
     rm -f /tmp/hosts.$$
     if [ $WAIT == 1 ]; then
 	echo; read -n 1 -s -p "Press any key to continue"; echo; echo
@@ -131,6 +157,10 @@ echo "Removing old stale files"
 # Remove internal config files
 pkill zedmanager
 rm -rf /var/run/zedmanager/status/*.json
+# The following is a workaround for a racecondition between different agents
+mkdir -p /var/tmp/zedmanager/downloads
+chmod 700 /var/tmp/zedmanager /var/tmp/zedmanager/downloads
+
 AGENTS="zedrouter domainmgr downloader verifier identitymgr eidregister"
 for AGENT in $AGENTS; do
     if [ ! -d /var/tmp/$AGENT ]; then
@@ -140,13 +170,23 @@ for AGENT in $AGENTS; do
     if [ ! -d $dir ]; then
 	continue
     fi
-    # echo "Looking in config $dir"
-    files=`ls $dir`
-    for f in $files; do
-	# Note that this deletes domainmgr config which, unlike a reboot,
-	# will remove the rootfs copy in /var/tmp/domainmgr/img/
-	echo "Deleting config file: $dir/$f"
-	rm -f $dir/$f
+    # echo "XXX Looking in config $dir"
+    for f in $dir/*; do
+	# echo "XXX: f is $f"
+	if [ "$f" == "$dir/*" ]; then
+		# echo "XXX: skipping $dir"
+		break
+	fi
+	if [ "$f" == "$dir/global" ]; then
+	    echo "Ignoring $f"
+	elif [ "$f" == "$dir/restarted" ]; then
+	    echo "Ignoring $f"
+	else
+	    # Note that this deletes domainmgr config which, unlike a reboot,
+	    # will remove the rootfs copy in /var/tmp/domainmgr/img/
+	    echo "Deleting config file: $f"
+	    rm -f "$f"
+	fi
     done
 done
 
@@ -161,23 +201,27 @@ for AGENT in $AGENTS; do
     fi
     if [ $AGENT == "verifier" ]; then
 	echo "Skipping check for /var/run/$AGENT/status"
+	pkill $AGENT
 	continue
     fi
     dir=/var/run/$AGENT/status
     if [ ! -d $dir ]; then
 	continue
     fi
-    # echo "Looking in status $dir"
-    files=`ls $dir`
+    # echo "XXX Looking in status $dir"
     pid=`pgrep $AGENT`
     if [ "$pid" != "" ]; then
-	while [	! -z "$files" ]; do
-	    echo Found: $files
+	while /bin/true; do
 	    wait=0
-	    for f in $files; do
-		if [ "$f" == "global" ]; then
+	    for f in $dir/*; do
+		# echo "XXX: f is $f"
+		if [ "$f" == "$dir/*" ]; then
+		    # echo "XXX: skipping $dir"
+		    break
+		fi
+		if [ "$f" == "$dir/global" ]; then
 		    echo "Ignoring $f"
-		elif [ "$f" == "restarted" ]; then
+		elif [ "$f" == "$dir/restarted" ]; then
 		    echo "Ignoring $f"
 		else
 		    wait=1
@@ -186,15 +230,19 @@ for AGENT in $AGENTS; do
 	    if [ $wait == 1 ]; then
 		echo "Waiting for $AGENT to clean up"
 		sleep 3
-		files=`ls $dir`
 	    else
 		break
 	    fi
 	done
-    elif [ ! -z "$files" ]; then
-	for f in $files; do
-	    echo "Deleting status file: $dir/$f"
-	    rm -f $dir/$f
+    else
+	for f in $dir/*; do
+	    # echo "XXX: f is $f"
+	    if [ "$f" == "$dir/*" ]; then
+		# echo "XXX: skipping $dir"
+		break
+	    fi
+	    echo "Deleting status file: $f"
+	    rm -f "$f"
 	done
     fi
     pkill $AGENT
@@ -226,8 +274,9 @@ if [ $SELF_REGISTER = 1 ]; then
 		exit 1    
 	fi
 	echo "Determining uplink interface"
+# XXX this doesn't run on update; handle both formats in json?
 	cat <<EOF >$ETCDIR/network.config.global
-{"Uplink":"$intf"}
+{"Uplink":["$intf"]}
 EOF
 
 	# Make sure we set the dom0 hostname, used by LISP nat traversal, to
@@ -255,6 +304,9 @@ else
 	fi
 fi
 
+# Need a key for device-to-device map-requests
+cp -p $ETCDIR/device.key.pem $LISPDIR/lisp-sig.pem   
+
 mkdir -p /var/tmp/zedrouter/config/
 # Pick up the device EID zedrouter config file from $ETCDIR and put
 # it in /var/tmp/zedrouter/config/
@@ -270,50 +322,50 @@ echo '{"MaxSpace":2000000}' >/var/tmp/downloader/config/global
 rm -f /var/run/verifier/status/restarted
 rm -f /var/tmp/zedrouter/config/restart
 
-echo "Starting verifier"
+echo "Starting verifier at" `date`
 verifier >&/var/log/verifier.log&
 if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
 
-echo "Starting ZedManager"
+echo "Starting ZedManager at" `date`
 zedmanager >&/var/log/zedmanager.log&
 if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
 
-echo "Starting downloader"
+echo "Starting downloader at" `date`
 downloader >&/var/log/downloader.log&
 if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
 
-echo "Starting eidregister"
+echo "Starting eidregister at" `date`
 eidregister >&/var/log/eidregister.log&
 if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
 
-echo "Starting identitymgr"
+echo "Starting identitymgr at" `date`
 identitymgr >&/var/log/identitymgr.log&
 if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
 
-echo "Starting ZedRouter"
+echo "Starting ZedRouter at" `date`
 zedrouter >&/var/log/zedrouter.log&
 if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
 
-echo "Starting DomainMgr"
+echo "Starting DomainMgr at" `date`
 domainmgr >&/var/log/domainmgr.log&
 # Do something
 if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
 
-echo "Uploading device (hardware) status"
+echo "Uploading device (hardware) status at" `date`
 machine=`uname -m`
 processor=`uname -p`
 platform=`uname -i`
@@ -367,7 +419,7 @@ if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
 
-echo "Uploading software status"
+echo "Uploading software status at" `date`
 # Only report the Linux info for now
 name=`uname -o`
 version=`uname -r`
@@ -389,4 +441,8 @@ cat >$ETCDIR/swstatus.json <<EOF
 EOF
 $BINDIR/client $ETCDIR updateSwStatus
 
-echo "Initial setup done!"
+echo "Initial setup done at" `date`
+if [ $MEASURE == 1 ]; then
+    ping6 -c 3 -w 1000 zedcontrol
+    echo "Measurement done at" `date`
+fi

@@ -68,17 +68,20 @@ func (status AppNetworkStatus) VerifyFilename(fileName string) bool {
 	return ret
 }
 
-// Do we want a DeviceNetworkStatus? DeviceNetworkConfig with the underlay
-// interfaces?
+// Global network config and status
 type DeviceNetworkConfig struct {
-	Uplink string // ifname; should have multiple
-	// XXX WiFi credentials?? Should already be set?
+	Uplink []string // ifname; should have multiple
+}
+
+// Old version
+type DeviceNetworkConfigV1 struct {
+	Uplink string
 }
 
 type DeviceNetworkStatus struct {
-	Uplink string // ifname; should have multiple
-	// XXX add all the uplink ifaddrs?
-	// XXX uplink publicAddr to determine NATed?
+	Uplink []string // ifname; should have multiple
+	UplinkAddrs []net.IP
+	// XXX add uplink publicAddr to determine NATed?
 }
 
 type OverlayNetworkConfig struct {

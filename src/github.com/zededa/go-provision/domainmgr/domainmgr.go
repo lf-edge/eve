@@ -13,11 +13,11 @@ import (
 	"fmt"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
+	"github.com/zededa/go-provision/wrap"
 	"io"
 	"io/ioutil"
 	"log"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -704,7 +704,7 @@ func xlCreate(domainName string, xenCfgFilename string) (int, error) {
 		"create",
 		xenCfgFilename,
 	}
-	stdoutStderr, err := exec.Command(cmd, args...).CombinedOutput()
+	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
 	if err != nil {
 		log.Println("xl create failed ", err)
 		log.Println("xl create output ", string(stdoutStderr))
@@ -717,7 +717,7 @@ func xlCreate(domainName string, xenCfgFilename string) (int, error) {
 		"domid",
 		domainName,
 	}
-	out, err := exec.Command(cmd, args...).Output()
+	out, err := wrap.Command(cmd, args...).Output()
 	if err != nil {
 		log.Println("xl domid failed ", err)
 		return 0, err
@@ -740,7 +740,7 @@ func xlStatus(domainName string, domainId int) error {
 		"-l",
 		strconv.Itoa(domainId),
 	}
-	res, err := exec.Command(cmd, args...).Output()
+	res, err := wrap.Command(cmd, args...).Output()
 	if err != nil {
 		log.Println("xl list failed ", err)
 		return err
@@ -757,7 +757,7 @@ func xlShutdown(domainName string, domainId int) error {
 		"shutdown",
 		strconv.Itoa(domainId),
 	}
-	stdoutStderr, err := exec.Command(cmd, args...).CombinedOutput()
+	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
 	if err != nil {
 		log.Println("xl shutdown failed ", err)
 		log.Println("xl shutdown output ", string(stdoutStderr))
@@ -774,7 +774,7 @@ func xlDestroy(domainName string, domainId int) error {
 		"destroy",
 		strconv.Itoa(domainId),
 	}
-	stdoutStderr, err := exec.Command(cmd, args...).CombinedOutput()
+	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
 	if err != nil {
 		log.Println("xl destroy failed ", err)
 		log.Println("xl destroy output ", string(stdoutStderr))

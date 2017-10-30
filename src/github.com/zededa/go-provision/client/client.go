@@ -10,8 +10,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/RevH/ipinfo"
 	"github.com/satori/go.uuid"
+	"github.com/RevH/ipinfo"
 	"github.com/zededa/go-provision/types"
 	"golang.org/x/crypto/ocsp"
 	"io/ioutil"
@@ -21,6 +21,8 @@ import (
 	"os"
 	"strings"
 	"time"
+	"github.com/golang/protobuf/proto"
+	"shared/proto/zmet"
 )
 
 var maxDelay = time.Second * 600 // 10 minutes
@@ -55,9 +57,7 @@ func main() {
 	}
 	operations := map[string]bool{
 		"selfRegister":   false,
-		"lookupParam":    false,
-		"updateHwStatus": false,
-		"updateSwStatus": false,
+		"lookupParam":    false, 
 	}
 	if len(args) > 1 {
 		for _, op := range args[1:] {
@@ -72,7 +72,7 @@ func main() {
 	onboardCertName := dirName + "/onboard.cert.pem"
 	onboardKeyName := dirName + "/onboard.key.pem"
 	deviceCertName := dirName + "/device.cert.pem"
-	deviceKeyName := dirName + "/device.key.pem"
+	deviceKeyName := dirName + "/device.key.pem" 
 	rootCertName := dirName + "/root-certificate.pem"
 	serverFileName := dirName + "/server"
 	infraFileName := dirName + "/infra"
@@ -80,8 +80,6 @@ func main() {
 	zedrouterConfigFileName := dirName + "/zedrouterconfig.json"
 	uuidFileName := dirName + "/uuid"
 	clientIPFileName := dirName + "/clientIP"
-	hwStatusFileName := dirName + "/hwstatus.json"
-	swStatusFileName := dirName + "/swstatus.json"
 
 	var onboardCert, deviceCert tls.Certificate
 	var deviceCertPem []byte
@@ -99,8 +97,7 @@ func main() {
 			log.Fatal(err)
 		}
 	}
-	if operations["lookupParam"] || operations["updateHwStatus"] ||
-		operations["updateSwStatus"] {
+	if operations["lookupParam"] {
 		// Load device cert
 		var err error
 		deviceCert, err = tls.LoadX509KeyPair(deviceCertName,
@@ -123,6 +120,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	//XXX: FIXME hard-coded Server name and port for lookupParam
+	if operations["lookupParam"] {
+		server = []byte("prov1.zededa.net:9069")
+	}
 	serverNameAndPort := strings.TrimSpace(string(server))
 	serverName := strings.Split(serverNameAndPort, ":")[0]
 	// XXX for local testing
@@ -140,7 +141,7 @@ func main() {
 	// Returns true when done; false when retry
 	myPost := func(client *http.Client, url string, b *bytes.Buffer) bool {
 		resp, err := client.Post("https://"+serverNameAndPort+url,
-			"application/json", b)
+			"application/x-proto-binary", b)
 		if err != nil {
 			fmt.Println(err)
 			return false
@@ -159,7 +160,10 @@ func main() {
 			} else {
 				fmt.Println("OCSP stapled check failed")
 			}
-			return false
+			//XXX OSCP is not implemented in cloud side so
+			// commenting out it for now. Should be:
+			// return false
+			return true
 		}
 
 		contents, err := ioutil.ReadAll(resp.Body)
@@ -188,12 +192,13 @@ func main() {
 		}
 
 		contentType := resp.Header.Get("Content-Type")
-		if contentType != "application/json" {
+		if strings.Contains (contentType, "application/x-proto-binary") || strings.Contains (contentType, "application/json") || strings.Contains(contentType, "text/plain"){
+			fmt.Printf("Received reply %s\n", string(contents))
+			return true
+		}else {
 			fmt.Println("Incorrect Content-Type " + contentType)
 			return false
 		}
-		fmt.Printf("%s\n", string(contents))
-		return true
 	}
 
 	// Returns true when done; false when retry
@@ -215,10 +220,14 @@ func main() {
 
 		transport := &http.Transport{TLSClientConfig: tlsConfig}
 		client := &http.Client{Transport: transport}
-		rc := types.RegisterCreate{PemCert: deviceCertPem}
-		b := new(bytes.Buffer)
-		json.NewEncoder(b).Encode(rc)
-		return myPost(client, "/rest/self-register", b)
+		registerCreate := &zmet.ZRegisterMsg{
+			PemCert: []byte(base64.StdEncoding.EncodeToString(deviceCertPem)),
+		}
+                b,err := proto.Marshal(registerCreate)
+                if err != nil {
+                        log.Println(err)
+                }
+		return myPost(client, "/api/v1/edgedevice/register", bytes.NewBuffer( b))
 	}
 
 	// Returns true when done; false when retry
@@ -235,13 +244,12 @@ func main() {
 			log.Println("no TLS connection state")
 			return false
 		}
-
 		if connState.OCSPResponse == nil ||
 			!stapledCheck(connState) {
 			if connState.OCSPResponse == nil {
-				fmt.Println("no OCSP response")
+				log.Println("no OCSP response")
 			} else {
-				fmt.Println("OCSP stapled check failed")
+				log.Println("OCSP stapled check failed")
 			}
 			return false
 		}
@@ -254,6 +262,13 @@ func main() {
 		switch resp.StatusCode {
 		case http.StatusOK:
 			fmt.Printf("device-param StatusOK\n")
+		case http.StatusNotFound:
+			fmt.Printf("device-param StatusNotFound\n")
+ 			// XXX:FIXME
+			// New devices which are only registered in zedcloud
+			// will not have state in prov1 hence no EID for
+			// zedmanager until we add lookupParam to zedcloud
+			return true
 		default:
 			fmt.Printf("device-param statuscode %d %s\n",
 				resp.StatusCode,
@@ -266,6 +281,7 @@ func main() {
 			fmt.Println("Incorrect Content-Type " + contentType)
 			return false
 		}
+
 		if err := json.Unmarshal(contents, &device); err != nil {
 			fmt.Println(err)
 			return false
@@ -279,10 +295,15 @@ func main() {
 		for !done {
 			time.Sleep(delay)
 			done = selfRegister()
+			if done {
+				continue
+			}
 			delay = 2 * (delay + time.Second)
 			if delay > maxDelay {
 				delay = maxDelay
 			}
+			log.Printf("Retrying selfRegister in %d seconds\n",
+				delay)
 		}
 	}
 
@@ -306,7 +327,7 @@ func main() {
 	client := &http.Client{Transport: transport}
 
 	var addInfoDevice *types.AdditionalInfoDevice
-	if operations["lookupParam"] || operations["updateHwStatus"] {
+	if operations["lookupParam"] {
 		// Determine location information and use as AdditionalInfo
 		if myIP, err := ipinfo.MyIP(); err == nil {
 			addInfo := types.AdditionalInfoDevice{
@@ -329,10 +350,48 @@ func main() {
 		for !done {
 			time.Sleep(delay)
 			done = lookupParam(client, &device)
+			if done {
+				continue
+			}
 			delay = 2 * (delay + time.Second)
 			if delay > maxDelay {
 				delay = maxDelay
 			}
+			log.Printf("Retrying lookupParam in %d seconds\n",
+				delay)
+		}
+		var devUUID uuid.UUID
+		if _, err := os.Stat(uuidFileName); err != nil {
+			// Create and write with initial values
+			devUUID = uuid.NewV4()
+			b := []byte(fmt.Sprintf("%s\n", devUUID))
+			err = ioutil.WriteFile(uuidFileName, b, 0644)
+			if err != nil {
+				log.Fatal("WriteFile", err, uuidFileName)
+			}
+			fmt.Printf("Created UUID %s\n", devUUID)
+		} else {
+			b, err := ioutil.ReadFile(uuidFileName)
+			if err != nil {
+				log.Fatal("ReadFile", err, uuidFileName)
+			}
+			uuidStr := strings.TrimSpace(string(b))
+			devUUID, err = uuid.FromString(uuidStr)
+			if err != nil {
+				log.Fatal("uuid.FromString", err, string(b))
+			}
+			fmt.Printf("Read UUID %s\n", devUUID)
+		}
+		uv := types.UUIDandVersion{
+			UUID:    devUUID,
+			Version: "0",
+		}
+
+		// If we got a StatusNotFound the EID will be zero
+		if device.EID == nil {
+			log.Printf("Did not receive an EID\n")
+			os.Remove(zedserverConfigFileName)
+			return
 		}
 
 		// XXX add Redirect support and store + retry
@@ -411,32 +470,7 @@ func main() {
 				log.Fatal("WriteFile", err, clientIPFileName)
 			}
 		}
-		var devUUID uuid.UUID
-		if _, err := os.Stat(uuidFileName); err != nil {
-			// Create and write with initial values
-			devUUID = uuid.NewV4()
-			b := []byte(fmt.Sprintf("%s\n", devUUID))
-			err = ioutil.WriteFile(uuidFileName, b, 0644)
-			if err != nil {
-				log.Fatal("WriteFile", err, uuidFileName)
-			}
-			fmt.Printf("Created UUID %s\n", devUUID)
-		} else {
-			b, err := ioutil.ReadFile(uuidFileName)
-			if err != nil {
-				log.Fatal("ReadFile", err, uuidFileName)
-			}
-			uuidStr := strings.TrimSpace(string(b))
-			devUUID, err = uuid.FromString(uuidStr)
-			if err != nil {
-				log.Fatal("uuid.FromString", err, string(b))
-			}
-			fmt.Printf("Read UUID %s\n", devUUID)
-		}
-		uv := types.UUIDandVersion{
-			UUID:    devUUID,
-			Version: "0",
-		}
+
 		// Write an AppNetworkConfig for the ZedManager application
 		config := types.AppNetworkConfig{
 			UUIDandVersion: uv,
@@ -463,55 +497,6 @@ func main() {
 			matches[0].Type = "eidset"
 		}
 		writeNetworkConfig(&config, zedrouterConfigFileName)
-	}
-	if operations["updateHwStatus"] {
-		// Load file for upload
-		buf, err := ioutil.ReadFile(hwStatusFileName)
-		if err != nil {
-			log.Fatal(err)
-		}
-		// Input is in json format; parse and add additionalInfo
-		b := bytes.NewBuffer(buf)
-		// parsing DeviceHwStatus json payload
-		hwStatus := &types.DeviceHwStatus{}
-		if err := json.NewDecoder(b).Decode(hwStatus); err != nil {
-			log.Fatal("Error decoding DeviceHwStatus: ", err)
-		}
-		if addInfoDevice != nil {
-			hwStatus.AdditionalInfoDevice = *addInfoDevice
-		}
-		b = new(bytes.Buffer)
-		json.NewEncoder(b).Encode(hwStatus)
-
-		done := false
-		var delay time.Duration
-		for !done {
-			time.Sleep(delay)
-			done = myPost(client, "/rest/update-hw-status", b)
-			delay = 2 * (delay + time.Second)
-			if delay > maxDelay {
-				delay = maxDelay
-			}
-		}
-	}
-	if operations["updateSwStatus"] {
-		// Load file for upload
-		buf, err := ioutil.ReadFile(swStatusFileName)
-		if err != nil {
-			log.Fatal(err)
-		}
-		// Input is in json format
-		b := bytes.NewBuffer(buf)
-		done := false
-		var delay time.Duration
-		for !done {
-			time.Sleep(delay)
-			done = myPost(client, "/rest/update-sw-status", b)
-			delay = 2 * (delay + time.Second)
-			if delay > maxDelay {
-				delay = maxDelay
-			}
-		}
 	}
 }
 
@@ -555,7 +540,6 @@ func IsMyAddress(clientIP net.IP) bool {
 }
 
 func stapledCheck(connState *tls.ConnectionState) bool {
-	// server := connState.VerifiedChains[0][0]
 	issuer := connState.VerifiedChains[0][1]
 	resp, err := ocsp.ParseResponse(connState.OCSPResponse, issuer)
 	if err != nil {

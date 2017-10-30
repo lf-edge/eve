@@ -1,21 +1,27 @@
-TODO alpine add nordmark and zededa to image.
+DONE create directories in device-steps.sh?
+
+TODO model change -> json
+
+TODO ntp to alpine images and ACL
+
+TODO cleanup (or measure) /var/tmp/zedmanager/downloads/pending on boot?
+
+TODO refcount on downloads. Do they drop to zero and it gets freed on rm of config?
+
+TODO different rates for transmit and receive
+
+TODO errors from iptables->acl->zedmanager status
+
+TODO update rloc address when moving? Or add support to lisp.config to follow
+     the interface address? Need one per af
+     
+TODO alpine config - enable ntp and add to acl
+
+DONE alpine add nordmark and zededa to image.
      remove guest account? passwd?
      
-TODO try set checkpoint-map-cache
-Without; stop one domain; 35 seconds outtage for dom0 and domU
-64 bytes from zedhikey: icmp_seq=224 ttl=62 time=237 ms
-64 bytes from zedhikey: icmp_seq=259 ttl=62 time=353 ms
-With; start one domain; 35 seconds outtage for dom0 and domU
-With? stop one domain?
-43 seconds (but was other domain fully booted? CPU load?)
-Start one domain?
-32 seconds, 33 seconds
-Stop 43
-No benefit.
-
 TODO service to mount second disk (with gpio-to-lead?) and "run=" in /proc/cmdline
      In alpine img
-     Upload img + dtd's to store
      
 TODO use dmidecode to determine bios version etc. Put in SwStatus? Or HwStatus?
   bios-vendor
@@ -25,18 +31,6 @@ TODO use dmidecode to determine bios version etc. Put in SwStatus? Or HwStatus?
 TODO? encrypted virtual disks? Useful if rw since contains customer data
 
 TODO what is needed for docker/rkt? Two vdisks?
-
-TODO ethtool setup in domU for checksum? How to make permanent?
-	sudo ethtool -K eth1 tx-checksum-ipv6 off
-	Set default in (shared?) kernel?
-	Or can we force in dom0/ netback?
-Needed for x86 as well.
-TODO try with other mangle setup..
-
-TODO 20-30 second outage when we add/delete a domU/EID as reported by
-     ping6 zedcontrol
-TODO loose ms1; RL requires RL on prov01.
-TODO hikey02 no packets. Enable ITR/dp logging on webpage and packet starts flowing
 
 TODO name for StorageConfig*?
      Is both an Image description and aspects of the container for the image
@@ -64,6 +58,44 @@ TODO Create DeviceSwStatus separate from DeviceSwResources
 DONE NAT i.e. uplink global address? (From exchanges with ZedControl).
 
 ===
+
+DONE Onboarding time measurement
+
+DONE rloc { address = 192.168.1.1 } for case of two behind same NAT
+     Need global file - as json? Put in isZedmanager - upLinkIntf (list?)
+     and add upLinkAddrs (list). Or extract address inside zedrouter (and
+     detect changes)?
+     ip monitor address dev wlan0
+     findUplink - get all default routes? (doesn't work for infra with private
+     interface)
+     Make global file be [uplink1,uplink2],[ip1,ip2]; need handler in zedrouter
+DONE netlink: func AddrList(link Link, family int) ([]Addr, error)     
+     Assumes static set of uplink addresses.
+DONE     Filter out IPv6 link-locals somehow? prio=1 for link-locals
+
+DONE try set checkpoint-map-cache
+     No difference
+Without; stop one domain; 35 seconds outtage for dom0 and domU
+64 bytes from zedhikey: icmp_seq=224 ttl=62 time=237 ms
+64 bytes from zedhikey: icmp_seq=259 ttl=62 time=353 ms
+With; start one domain; 35 seconds outtage for dom0 and domU
+With? stop one domain?
+43 seconds (but was other domain fully booted? CPU load?)
+Start one domain?
+32 seconds, 33 seconds
+Stop 43
+No benefit.
+
+NOT ethtool setup in domU for checksum? How to make permanent?
+	sudo ethtool -K eth1 tx-checksum-ipv6 off
+	Set default in (shared?) kernel?
+	Or can we force in dom0/ netback?
+Needed for x86 as well.
+DONE try with other mangle setup..
+ip6tables -t mangle -A PREROUTING -p tcp -i bo1x1 -j CHECKSUM --checksum-fill
+ip6tables -t mangle -A PREROUTING -p tcp -i bo1x2 -j CHECKSUM --checksum-fill
+ip6tables -t mangle -A PREROUTING -p udp -i bo1x1 -j CHECKSUM --checksum-fill
+ip6tables -t mangle -A PREROUTING -p udp -i bo1x2 -j CHECKSUM --checksum-fill
 
 DONE upon reboot treat existing images for domU's as implicit preserve
      i.e. don't recreate from verified image.

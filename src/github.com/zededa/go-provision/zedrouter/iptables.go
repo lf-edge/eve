@@ -6,13 +6,13 @@
 package main
 
 import (
+	"github.com/zededa/go-provision/wrap"
 	"log"
-	"os/exec"
 )
 
 func iptableCmd(args ...string) error {
 	cmd := "iptables"
-	_, err := exec.Command(cmd, args...).Output()
+	_, err := wrap.Command(cmd, args...).Output()
 	if err != nil {
 		log.Println("iptables command failed: ", args, err)
 		return err
@@ -22,7 +22,7 @@ func iptableCmd(args ...string) error {
 
 func ip6tableCmd(args ...string) error {
 	cmd := "ip6tables"
-	_, err := exec.Command(cmd, args...).Output()
+	_, err := wrap.Command(cmd, args...).Output()
 	if err != nil {
 		log.Println("ip6tables command failed: ", args, err)
 		return err
@@ -33,10 +33,16 @@ func ip6tableCmd(args ...string) error {
 func iptablesInit() {
 	// Avoid adding nat rule multiple times as we restart by flushing first
 	iptableCmd("-t", "nat", "-F", "POSTROUTING")
-	iptableCmd("-t", "nat", "-A", "POSTROUTING", "-o", globalConfig.Uplink,
-		"-s", "172.27.0.0/16", "-j", "MASQUERADE")
+	for _, u := range globalConfig.Uplink {
+		iptableCmd("-t", "nat", "-A", "POSTROUTING", "-o", u,
+			"-s", "172.27.0.0/16", "-j", "MASQUERADE")
+	}
+	// Flush IPv6 mangle rules from previous run
+	ip6tableCmd("-F", "PREROUTING", "-t", "mangle")
 
-	// Prevent checksum offload getting in the way
+	// Add mangle rules for IPv6 packets from dom0 overlay
+	// since netfront/netback thinks there is checksum offload
+	// XXX not needed once we have disaggregated dom0
 	iptableCmd("-F", "POSTROUTING", "-t", "mangle")
 	iptableCmd("-A", "POSTROUTING", "-t", "mangle", "-p", "tcp",
 		"-j", "CHECKSUM", "--checksum-fill")

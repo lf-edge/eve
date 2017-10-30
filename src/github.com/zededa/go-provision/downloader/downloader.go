@@ -32,6 +32,7 @@ import (
 	"fmt"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
+	"github.com/zededa/go-provision/wrap"
 	"zc/libs/zedUpload"
 	"io/ioutil"
 	"log"
@@ -41,9 +42,7 @@ import (
 )
 
 var (
-	certFrequency	time.Duration = 60
-	configFrequency	time.Duration = 5
-	dCtx			*zedUpload.DronaCtx
+	dCtx	*zedUpload.DronaCtx
 )
 
 func main() {
@@ -63,155 +62,9 @@ func main() {
 
 	handleInit()
 
-	// schedule the periodic timers
-	triggerLatestCert()
-	triggerLatestConfig()
-
-	go checkLatestCert()
-
-	go checkLatestConfig()
-
-	go checkImageUpdates()
-
 	go handleCertUpdates()
 
-	handleConfigUpdates()
-}
-
-// trigger functions
-
-func triggerLatestCert() {
-
-	configDirname := "/var/tmp/downloader/latest.cert/config"
-
-	time.AfterFunc(certFrequency * time.Minute, triggerLatestCert)
-
-	config := types.DownloaderConfig {
-		Operation:			"download",
-		TransportMethod:	"s3",
-		Safename:			"latest.cert.json",
-		DownloadURL:		"https://s3-us-west-2.amazonaws.com/zededa-cert-repo/latest.cert.json",
-		MaxSize:			40,
-		Bucket:				"zededa-cert-repo",
-		DownloadObjDir:		"/var/tmp/zedmanager/downloads/latest.cert",
-		VerifiedObjDir:		"/var/tmp/zedmanager/cert",
-		RefCount:			1,
-	}
-
-	if err := os.MkdirAll(configDirname, 0755); err != nil {
-		log.Fatal(err)
-	}
-
-	configFilename := configDirname + "/latest.cert.json.json"
-
-	writeDownloaderConfig(&config, configFilename)
-}
-
-func triggerLatestConfig() {
-
-	configDirname := "/var/tmp/downloader/latest.cfg/config"
-
-	time.AfterFunc(configFrequency * time.Minute, triggerLatestConfig)
-
-	config := types.DownloaderConfig {
-		Operation:			"download",
-		Safename:			"latest.config.json",
-		DownloadURL:		"https://s3-us-west-2.amazonaws.com/zededa-config-repo/latest.config.json",
-		TransportMethod:	"s3",
-		MaxSize:			40,
-		Bucket:				"zededa-config-repo",
-		DownloadObjDir:		"/var/tmp/zedmanager/downloads/latest.cfg",
-		VerifiedObjDir:		"/var/tmp/zedmanager/config",
-		RefCount:			1,
-	}
-
-	if err := os.MkdirAll(configDirname, 0755); err != nil {
-		log.Fatal(err)
-	}
-
-	configFilename := configDirname + "/latest.config.json.json"
-
-	writeDownloaderConfig(&config, configFilename)
-}
-
-func triggerConfigObjUpdates(configObj *types.DownloaderConfig) {
-
-	configDirname := "/var/tmp/downloader/config.obj/config/"
-
-	safename := urlToSafename(configObj.DownloadURL, configObj.ImageSha256)
-
-	config := types.DownloaderConfig{
-		Safename:			safename,
-		Operation:			configObj.Operation,
-		DownloadURL:		configObj.DownloadURL,
-		ImageSha256:		configObj.ImageSha256,
-		TransportMethod:	configObj.TransportMethod,
-		MaxSize:			configObj.MaxSize,
-		Bucket:				configObj.Bucket,
-		DownloadObjDir:		"/var/tmp/zedmanager/downloads/config.obj",
-		VerifiedObjDir:		"/var/tmp/zedmanager/config",
-		RefCount:			1,
-	}
-
-	if err := os.MkdirAll(configDirname, 0700); err != nil {
-		log.Fatal(err)
-	}
-	configFilename := configDirname + "/" + safename + ".json"
-
-	writeDownloaderConfig(&config, configFilename)
-}
-
-func triggerCertObjUpdates(certObj *types.CertConfig) {
-
-	configDirname := "/var/tmp/downloader/cert.obj/config"
-
-	if err := os.MkdirAll(configDirname, 0700); err != nil {
-		log.Fatal(err)
-	}
-
-	// trigger server cert
-	svrCert  := certObj.ServerCert
-	safename := urlToFilename(svrCert.DownloadURL)
-
-	config := types.DownloaderConfig {
-		Safename:			safename,
-		Operation:			svrCert.Operation,
-		DownloadURL:		svrCert.DownloadURL,
-		ImageSha256:		svrCert.ImageSha256,
-		TransportMethod:	svrCert.TransportMethod,
-		MaxSize:			svrCert.MaxSize,
-		Bucket:				svrCert.Bucket,
-		DownloadObjDir:		"/var/tmp/zedmanager/downloads/cert.obj",
-		VerifiedObjDir:		"/var/tmp/zedmanager/cert",
-		RefCount:			1,
-	}
-
-	configFilename := configDirname + "/" + safename + ".json"
-
-	writeDownloaderConfig(&config, configFilename)
-
-	// now trigger the certificate chain
-	for _, cert := range certObj.CertChain {
-
-		safename := urlToFilename(cert.DownloadURL)
-
-        config := types.DownloaderConfig {
-			Safename:			safename,
-			Operation:			cert.Operation,
-			DownloadURL:		cert.DownloadURL,
-			ImageSha256:		cert.ImageSha256,
-			TransportMethod:	cert.TransportMethod,
-			MaxSize:			cert.MaxSize,
-			Bucket:				cert.Bucket,
-			DownloadObjDir:		"/var/tmp/zedmanager/downloads/cert.obj",
-			VerifiedObjDir:		"/var/tmp/zedmanager/cert",
-			RefCount:			1,
-		}
-
-		configFilename := configDirname + "/" + safename + ".json"
-
-		writeDownloaderConfig(&config, configFilename)
-	}
+	checkImageUpdates()
 }
 
 // Object handlers
@@ -241,59 +94,6 @@ func checkImageUpdates() {
 	}
 }
 
-func checkLatestCert() {
-
-	baseDirname := "/var/tmp/downloader/latest.cert"
-	runDirname  := "/var/run/downloader/latest.cert"
-
-	sanitizeDirs(baseDirname, runDirname)
-
-	configDirname := baseDirname + "/config"
-	statusDirname := runDirname + "/status"
-
-	fileChanges   := make(chan string)
-
-	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
-
-	for {
-		change := <-fileChanges
-
-		watch.HandleConfigStatusEvent(change, configDirname, statusDirname,
-			&types.DownloaderConfig{},
-			&types.DownloaderStatus{},
-			handleLatestCertObjCreate,
-			handleLatestCertObjModify,
-			handleLatestConfigObjDelete, nil)
-	}
-}
-
-func checkLatestConfig() {
-
-	baseDirname := "/var/tmp/downloader/latest.cfg"
-	runDirname  := "/var/run/downloader/latest.cfg"
-
-	sanitizeDirs(baseDirname, runDirname)
-
-	configDirname := baseDirname + "/config"
-	statusDirname := runDirname + "/status"
-	fileChanges   := make(chan string)
-
-	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
-
-    for {
-
-		change := <-fileChanges
-
-		watch.HandleConfigStatusEvent(change,
-			configDirname, statusDirname,
-			&types.DownloaderConfig{},
-			&types.DownloaderStatus{},
-			handleLatestConfigObjCreate,
-			handleLatestConfigObjModify,
-			handleLatestConfigObjDelete, nil)
-	}
-}
-
 func handleCertUpdates() {
 
 	baseDirname := "/var/tmp/downloader/cert.obj"
@@ -308,7 +108,6 @@ func handleCertUpdates() {
 	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
 
 	for {
-
 		change := <-fileChanges
 
 		watch.HandleConfigStatusEvent(change,
@@ -318,34 +117,6 @@ func handleCertUpdates() {
 			handleCertObjCreate,
 			handleCertObjModify,
 			handleCertObjDelete, nil)
-	}
-}
-
-func handleConfigUpdates() {
-
-	baseDirname := "/var/tmp/downloader/config.obj"
-	runDirname  := "/var/run/downloader/config.obj"
-
-	sanitizeDirs(baseDirname, runDirname)
-
-	configDirname := baseDirname + "/config"
-	statusDirname := runDirname + "/status"
-	fileChanges   := make(chan string)
-
-
-	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
-
-    for {
-
-		change := <-fileChanges
-
-		watch.HandleConfigStatusEvent(change,
-			configDirname, statusDirname,
-			&types.DownloaderConfig{},
-			&types.DownloaderStatus{},
-			handleConfigObjCreate,
-			handleConfigObjModify,
-			handleConfigObjDelete, nil)
 	}
 }
 
@@ -362,7 +133,7 @@ func handleImageCreate(statusFilename string, configArg interface{}) {
 		config = configArg.(*types.DownloaderConfig)
 	}
 
-	handleCreate(*config, statusFilename)
+	handleCreate (*config, statusFilename)
 }
 
 func handleImageModify(statusFilename string, configArg interface{},
@@ -387,7 +158,7 @@ func handleImageModify(statusFilename string, configArg interface{},
 		status = statusArg.(*types.DownloaderStatus)
 	}
 
-	handleModify(*config, *status, statusFilename)
+	handleModify (*config, *status, statusFilename)
 }
 
 func handleImageDelete(statusFilename string, statusArg interface{}) {
@@ -403,113 +174,7 @@ func handleImageDelete(statusFilename string, statusArg interface{}) {
 		status = statusArg.(*types.DownloaderStatus)
 	}
 
-	handleDelete(*status, statusFilename)
-}
-
-func handleLatestCertObjCreate(statusFilename string, configArg interface{}) {
-
-	var config *types.DownloaderConfig
-
-	switch configArg.(type) {
-
-	default:
-		log.Fatal("Can only handle DownloaderConfig")
-
-	case *types.DownloaderConfig:
-		config = configArg.(*types.DownloaderConfig)
-	}
-
-	handleCreate(*config, statusFilename)
-	processLatestCertObject (*config, statusFilename)
-}
-
-func handleLatestCertObjModify(statusFilename string, configArg interface{},
-	statusArg interface{}) {
-
-	var config *types.DownloaderConfig
-	var status *types.DownloaderStatus
-
-	switch configArg.(type) {
-
-	default:
-		log.Fatal("Can only handle DownloaderConfig")
-
-	case *types.DownloaderConfig:
-		config = configArg.(*types.DownloaderConfig)
-	}
-
-	switch statusArg.(type) {
-
-	default:
-		log.Fatal("Can only handle DownloaderStatus")
-
-	case *types.DownloaderStatus:
-		status = statusArg.(*types.DownloaderStatus)
-	}
-
-	handleModify(*config, *status, statusFilename)
-	processLatestCertObject (*config, statusFilename)
-}
-
-func handleLatestConfigObjCreate(statusFilename string, configArg interface{}) {
-
-	var config *types.DownloaderConfig
-
-	switch configArg.(type) {
-
-	default:
-		log.Fatal("Can only handle DownloaderConfig")
-
-	case *types.DownloaderConfig:
-		config = configArg.(*types.DownloaderConfig)
-	}
-
-	handleCreate(*config, statusFilename)
-	processLatestConfigObject (*config, statusFilename)
-}
-
-func handleLatestConfigObjModify(statusFilename string, configArg interface{},
-	statusArg interface{}) {
-
-	var config *types.DownloaderConfig
-	var status *types.DownloaderStatus
-
-	switch configArg.(type) {
-
-	default:
-		log.Fatal("Can only handle DownloaderConfig")
-
-	case *types.DownloaderConfig:
-		config = configArg.(*types.DownloaderConfig)
-	}
-
-	switch statusArg.(type) {
-
-	default:
-		log.Fatal("Can only handle DownloaderStatus")
-
-	case *types.DownloaderStatus:
-		status = statusArg.(*types.DownloaderStatus)
-	}
-
-	handleModify(*config, *status, statusFilename)
-	processLatestConfigObject (*config, statusFilename)
-}
-
-func handleLatestConfigObjDelete(statusFilename string, statusArg interface{}) {
-
-	var status *types.DownloaderStatus
-
-	switch statusArg.(type) {
-
-	default:
-		log.Fatal("Can only handle DownloaderStatus")
-
-	case *types.DownloaderStatus:
-		status = statusArg.(*types.DownloaderStatus)
-	}
-
-	handleDelete(*status, statusFilename)
+	handleDelete (*status, statusFilename)
 }
 
 func handleCertObjCreate(statusFilename string, configArg interface{}) {
@@ -525,7 +190,7 @@ func handleCertObjCreate(statusFilename string, configArg interface{}) {
 		config = configArg.(*types.DownloaderConfig)
 	}
 
-	handleCreate(*config, statusFilename)
+	handleCreate (*config, statusFilename)
 	processObject (*config, statusFilename)
 }
 
@@ -551,7 +216,7 @@ func handleCertObjModify(statusFilename string, configArg interface{},
 		status = statusArg.(*types.DownloaderStatus)
 	}
 
-	handleModify(*config, *status, statusFilename)
+	handleModify (*config, *status, statusFilename)
 	processObject (*config, statusFilename)
 }
 
@@ -568,170 +233,6 @@ func handleCertObjDelete(statusFilename string, statusArg interface{}) {
 	}
 
 	handleDelete(*status, statusFilename)
-}
-
-func handleConfigObjCreate(statusFilename string, configArg interface{}) {
-
-	var config *types.DownloaderConfig
-
-	switch configArg.(type) {
-
-	default:
-		log.Fatal("Can only handle DownloaderConfig")
-
-	case *types.DownloaderConfig:
-		config = configArg.(*types.DownloaderConfig)
-	}
-
-	handleCreate(*config, statusFilename)
-	processObject (*config, statusFilename)
-}
-
-func handleConfigObjModify(statusFilename string, configArg interface{},
-	statusArg interface{}) {
-
-	var config *types.DownloaderConfig
-	var status *types.DownloaderStatus
-
-	switch configArg.(type) {
-
-	default:
-		log.Fatal("Can only handle DownloaderConfig")
-
-	case *types.DownloaderConfig:
-		config = configArg.(*types.DownloaderConfig)
-	}
-
-	switch statusArg.(type) {
-
-	default:
-		log.Fatal("Can only handle DownloaderStatus")
-
-	case *types.DownloaderStatus:
-		status = statusArg.(*types.DownloaderStatus)
-	}
-
-	handleModify (*config, *status, statusFilename)
-	processObject(*config, statusFilename)
-}
-
-func handleConfigObjDelete(statusFilename string, statusArg interface{}) {
-
-	var status *types.DownloaderStatus
-
-	switch statusArg.(type) {
-
-	default:
-		log.Fatal("Can only handle DownloaderStatus")
-
-	case *types.DownloaderStatus:
-		status = statusArg.(*types.DownloaderStatus)
-	}
-
-	handleDelete(*status, statusFilename)
-}
-
-func processLatestConfigObject (config types.DownloaderConfig,
-	statusFilename string) {
-
-	sb, err := ioutil.ReadFile(statusFilename)
-	if err != nil {
-		log.Printf("%s for %s\n", err, statusFilename)
-		return
-	}
-
-	status := types.DownloaderStatus{}
-	if err = json.Unmarshal(sb, &status); err != nil {
-		log.Printf("%s DownloaderStatus file: %s\n",
-			err, statusFilename)
-		return
-	}
-
-	// latest cert has been downloaded
-	if  status.State == types.DOWNLOADED {
-
-		// get the downloaded file
-		locFilename := status.DownloadObjDir + "/pending"
-
-		if status.ImageSha256  != "" {
-			locFilename = locFilename + "/" + status.ImageSha256
-		}
-
-		locFilename = locFilename + "/" + status.Safename
-
-		if _, err := os.Stat(locFilename); err == nil {
-
-			sb, err := ioutil.ReadFile(locFilename)
-
-			if err == nil {
-
-				objHolder := types.DownloaderConfig{}
-				if err = json.Unmarshal(sb, &objHolder); err == nil {
-
-					triggerConfigObjUpdates(&objHolder)
-				} else {
-					log.Printf("Parsing <%s> failed %s\n", locFilename, err)
-				}
-			} else {
-				log.Printf("<%s> is absent\n", locFilename)
-			}
-		}
-
-		// finally flush the object holder file
-		handleDelete(status, statusFilename)
-	}
-}
-
-func processLatestCertObject (config types.DownloaderConfig,
-	statusFilename string) {
-
-	sb, err := ioutil.ReadFile(statusFilename)
-	if err != nil {
-		log.Printf("%s for %s\n", err, statusFilename)
-		return
-	}
-
-	status := types.DownloaderStatus{}
-	if err = json.Unmarshal(sb, &status); err != nil {
-		log.Printf("%s DownloaderStatus file: %s\n",
-			err, statusFilename)
-		return
-	}
-
-	// latest cert has been downloaded
-	if  status.State == types.DOWNLOADED {
-
-		// get the downloaded file
-		locFilename := status.DownloadObjDir + "/pending"
-
-		if status.ImageSha256  != "" {
-			locFilename = locFilename + "/" + status.ImageSha256
-		}
-
-		locFilename = locFilename + "/" + status.Safename
-
-		if _, err := os.Stat(locFilename); err == nil {
-
-			sb, err := ioutil.ReadFile(locFilename)
-
-			if err == nil {
-
-				objHolder := types.CertConfig{}
-
-				if err = json.Unmarshal(sb, &objHolder); err == nil {
-
-					triggerCertObjUpdates(&objHolder)
-				} else {
-					log.Printf("Parsing <%s> failed %s\n", locFilename, err)
-				}
-			} else {
-				log.Printf("<%s> is absent\n", locFilename)
-			}
-		}
-
-		// finally flush the object holder file
-		handleDelete(status, statusFilename)
-	}
 }
 
 func processObject (config types.DownloaderConfig, statusFilename string) {
@@ -761,8 +262,6 @@ func processObject (config types.DownloaderConfig, statusFilename string) {
 		}
 
 		locFilename = locFilename + "/" + status.Safename
-
-		// XXX: need to flush older config files, if any
 
 		// move the file to final directory
 		if _, err := os.Stat(locFilename); err == nil {
@@ -970,6 +469,283 @@ func handleDelete(status types.DownloaderStatus, statusFilename string) {
 	log.Printf("handleDelete done for %s, %s\n", status.DownloadURL, locDirname)
 }
 
+// helper functions
+
+var globalConfig types.GlobalDownloadConfig
+var globalStatus types.GlobalDownloadStatus
+var globalStatusFilename string
+
+func handleInit() {
+
+	baseDirname		:= "/var/tmp/downloader"
+	runDirname		:= "/var/run/downloader"
+
+	configDirname	:= baseDirname + "/config"
+	statusDirname	:= runDirname  + "/status"
+
+	configFilename	:= configDirname + "/global"
+	statusFilename	:= statusDirname + "/global"
+
+	locDirname		:= "/var/tmp/zedmanager/downloads/"
+
+	pendingDirname	:= locDirname + "/pending"
+	verifierDirname	:= locDirname + "/verifier"
+
+	if _, err := os.Stat(baseDirname); err != nil {
+		if err := os.Mkdir(baseDirname, 0700); err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	if _, err := os.Stat(runDirname); err != nil {
+		if err := os.Mkdir(runDirname, 0700); err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	if _, err := os.Stat(configDirname); err != nil {
+		if err := os.Mkdir(configDirname, 0700); err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	if _, err := os.Stat(statusDirname); err != nil {
+		if err := os.Mkdir(statusDirname, 0700); err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	if _, err := os.Stat(locDirname); err != nil {
+		if err := os.Mkdir(locDirname, 0700); err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	// Remove any files which didn't make it past the verifier
+	if err := os.RemoveAll(pendingDirname); err != nil {
+		log.Fatal(err)
+	}
+
+	// Note that verifier owns this but we remove before looking
+	// for space used.
+	if err := os.RemoveAll(verifierDirname); err != nil {
+		log.Fatal(err)
+	}
+
+	if _, err := os.Stat(pendingDirname); err != nil {
+		if err := os.Mkdir(pendingDirname, 0700); err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	// now start
+	globalStatusFilename = statusFilename
+
+	// Read GlobalDownloadConfig to find MaxSpace
+	// Then determine currently used space and remaining.
+	cb, err := ioutil.ReadFile(configFilename)
+	if err != nil {
+		log.Printf("%s for %s\n", err, configFilename)
+		log.Fatal(err)
+	}
+
+	if err := json.Unmarshal(cb, &globalConfig); err != nil {
+		log.Printf("%s GlobalDownloadConfig file: %s\n",
+			err, configFilename)
+		log.Fatal(err)
+	}
+
+	log.Printf("MaxSpace %d\n", globalConfig.MaxSpace)
+
+	globalStatus.UsedSpace = 0
+	globalStatus.ReservedSpace = 0
+	updateRemainingSpace()
+
+	// XXX how do we find out when verifier cleans up duplicates etc?
+	// We read /var/tmp/zedmanager/downloads/* and determine how much space
+	// is used. Place in GlobalDownloadStatus. Calculate remaining space.
+	totalUsed := sizeFromDir(locDirname)
+	globalStatus.UsedSpace = uint((totalUsed + 1023) / 1024)
+	updateRemainingSpace()
+}
+
+func sanitizeDirs (baseDirname string, runDirname string) {
+
+	configDirname := baseDirname + "/config"
+	statusDirname := runDirname  + "/status"
+
+	if _, err := os.Stat(baseDirname); err != nil {
+
+		if err := os.MkdirAll(baseDirname, 0755); err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	if _, err := os.Stat(runDirname); err != nil {
+
+		if err := os.MkdirAll(runDirname, 0755); err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	if _, err := os.Stat(configDirname); err != nil {
+
+		if err := os.MkdirAll(configDirname, 0755); err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	if _, err := os.Stat(statusDirname); err != nil {
+
+		if err := os.MkdirAll(statusDirname, 0755); err != nil {
+			log.Fatal(err)
+		}
+	}
+}
+
+func urlToSafename(url string, sha string) string {
+
+	var safename string
+
+	if sha != "" {
+		safename = strings.Replace(url, "/", "_", -1) + "." + sha
+	} else {
+		names := strings.Split(url, "/")
+	        for _, name := range names {
+		    safename = name
+		}
+	}
+    return safename
+}
+
+func urlToFilename(url string) string {
+
+	var safename string
+
+	if (url != "") {
+		names := strings.Split(url, "/")
+		for _, name := range names {
+			safename = name
+		}
+	}
+
+    return safename
+}
+
+func sizeFromDir(dirname string) int64 {
+	var totalUsed int64 = 0
+	locations, err := ioutil.ReadDir(dirname)
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, location := range locations {
+		filename := dirname + "/" + location.Name()
+		fmt.Printf("Looking in %s\n", filename)
+		if location.IsDir() {
+			size := sizeFromDir(filename)
+			fmt.Printf("Dir %s size %d\n", filename, size)
+			totalUsed += size
+		} else {
+			fmt.Printf("File %s Size %d\n", filename, location.Size())
+			totalUsed += location.Size()
+		}
+	}
+	return totalUsed
+}
+
+func updateRemainingSpace() {
+
+	globalStatus.RemainingSpace = globalConfig.MaxSpace -
+		globalStatus.UsedSpace - globalStatus.ReservedSpace
+
+	log.Printf("RemaingSpace %d, maxspace %d, usedspace %d, reserved %d\n",
+	globalStatus.RemainingSpace, globalConfig.MaxSpace,
+	globalStatus.UsedSpace,	globalStatus.ReservedSpace)
+	// Create and write
+	writeGlobalStatus()
+}
+
+func writeGlobalStatus() {
+
+	sb, err := json.Marshal(globalStatus)
+	if err != nil {
+		log.Fatal(err, "json Marshal GlobalDownloadStatus")
+	}
+	// We assume a /var/run path hence we don't need to worry about
+	// partial writes/empty files due to a kernel crash.
+	if err = ioutil.WriteFile(globalStatusFilename, sb, 0644); err != nil {
+		log.Fatal(err, globalStatusFilename)
+	}
+}
+
+func writeDownloaderStatus(status *types.DownloaderStatus,
+	statusFilename string) {
+	b, err := json.Marshal(status)
+	if err != nil {
+		log.Fatal(err, "json Marshal DownloaderStatus")
+	}
+	// We assume a /var/run path hence we don't need to worry about
+	// partial writes/empty files due to a kernel crash.
+	err = ioutil.WriteFile(statusFilename, b, 0644)
+	if err != nil {
+		log.Fatal(err, statusFilename)
+	}
+}
+
+func writeFile(sFilename string, dFilename string) {
+
+	log.Printf("Writing <%s> file to <%s>\n", sFilename, dFilename)
+
+	if _, err := os.Stat(sFilename); err == nil {
+		sb, err := ioutil.ReadFile(sFilename)
+		if err == nil {
+
+			if err = ioutil.WriteFile(dFilename, sb, 0644); err != nil {
+				log.Printf("Failed to write %s: err %s\n",
+				dFilename, err)
+			}
+		} else {
+			log.Printf("Failed to read %s: err %s\n",
+				sFilename)
+		}
+	} else {
+		log.Printf("Failed to stat %s: err %s\n",
+			sFilename, err)
+	}
+}
+
+// cloud storage interface functions/APIs
+
+// XXX Should we set        --limit-rate=100k
+// XXX Can we safely try a continue?
+// XXX wget seems to have no way to limit download size for single file!
+// XXX temporary options since and wierd free.fr dns behavior with AAAA and A.
+// Added  -4 --no-check-certificate
+func doWget(url string, destFilename string) error {
+
+	fmt.Printf("doWget %s %s\n", url, destFilename)
+
+	cmd := "wget"
+	args := []string{
+		"-q",
+		"-c",
+		"-4", // XXX due to getting IPv6 ULAs and not IPv4
+		"--no-check-certificate",
+		"--tries=3",
+		"-O",
+		destFilename,
+		url,
+	}
+	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
+	if err != nil {
+		log.Println("wget failed ", err)
+		log.Println("wget output ", string(stdoutStderr))
+		return err
+	}
+	fmt.Printf("wget done: output %s\n", string(stdoutStderr))
+	return nil
+}
+
 // Drona APIs for object Download
 
 func handleSyncOp(syncOp zedUpload.SyncOpType,
@@ -1032,7 +808,6 @@ func handleSyncOp(syncOp zedUpload.SyncOpType,
 						err = nil
 					}
 		        }
-
 		}
 	}
 
@@ -1116,229 +891,3 @@ func handleSyncOpResponse(config types.DownloaderConfig,
 	status.State = types.DOWNLOADED
 	writeDownloaderStatus(status, statusFilename)
 }
-
-// helper functions
-
-func sanitizeDirs (baseDirname string, runDirname string) {
-
-	configDirname := baseDirname + "/config"
-	statusDirname := runDirname  + "/status"
-
-	if _, err := os.Stat(baseDirname); err != nil {
-
-		if err := os.MkdirAll(baseDirname, 0755); err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	if _, err := os.Stat(runDirname); err != nil {
-
-		if err := os.MkdirAll(runDirname, 0755); err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	if _, err := os.Stat(configDirname); err != nil {
-
-		if err := os.MkdirAll(configDirname, 0755); err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	if _, err := os.Stat(statusDirname); err != nil {
-
-		if err := os.MkdirAll(statusDirname, 0755); err != nil {
-			log.Fatal(err)
-		}
-	}
-}
-
-func urlToSafename(url string, sha string) string {
-
-	var safename string
-
-	if sha != "" {
-		safename = strings.Replace(url, "/", "_", -1) + "." + sha
-	} else {
-		names := strings.Split(url, "/")
-	        for _, name := range names {
-		    safename = name
-		}
-	}
-        return safename
-}
-
-func urlToFilename(url string) string {
-
-	var safename string
-
-	if (url != "") {
-		names := strings.Split(url, "/")
-		for _, name := range names {
-			safename = name
-		}
-	}
-
-        return safename
-}
-
-var globalConfig types.GlobalDownloadConfig
-var globalStatus types.GlobalDownloadStatus
-var globalStatusFilename string
-var imgCatalogDirname string
-
-func handleInit() {
-
-	runDirname  := "/var/run/downloader"
-	baseDirname := "/var/tmp/downloader"
-
-	configDirname := baseDirname + "/config"
-	statusDirname := runDirname  + "/status"
-
-	configFilename := configDirname + "/global"
-	statusFilename := statusDirname + "/global"
-
-	locDirname := "/var/tmp/zedmanager/downloads/"
-
-	globalStatusFilename = statusFilename
-
-	if _, err := os.Stat(statusDirname); err != nil {
-
-		if err := os.MkdirAll(statusDirname, 0700); err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	if _, err := os.Stat(locDirname); err != nil {
-
-		if err := os.MkdirAll(locDirname, 0700); err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	// Read GlobalDownloadConfig to find MaxSpace
-	// Then determine currently used space and remaining.
-	cb, err := ioutil.ReadFile(configFilename)
-	if err != nil {
-		log.Printf("%s for %s\n", err, configFilename)
-		log.Fatal(err)
-	}
-
-	if err := json.Unmarshal(cb, &globalConfig); err != nil {
-		log.Printf("%s GlobalDownloadConfig file: %s\n",
-			err, configFilename)
-		log.Fatal(err)
-	}
-
-	log.Printf("MaxSpace %d\n", globalConfig.MaxSpace)
-
-	globalStatus.UsedSpace = 0
-	globalStatus.ReservedSpace = 0
-	updateRemainingSpace()
-
-	// We read /var/tmp/zedmanager/downloads/* and determine how much space
-	// is used. Place in GlobalDownloadStatus. Calculate remaining space.
-	totalUsed := sizeFromDir(locDirname)
-	globalStatus.UsedSpace = uint((totalUsed + 1023) / 1024)
-	updateRemainingSpace()
-}
-
-func sizeFromDir(dirname string) int64 {
-	var totalUsed int64 = 0
-	locations, err := ioutil.ReadDir(dirname)
-	if err != nil {
-		log.Fatal(err)
-	}
-	for _, location := range locations {
-		filename := dirname + "/" + location.Name()
-		fmt.Printf("Looking in %s\n", filename)
-		if location.IsDir() {
-			size := sizeFromDir(filename)
-			fmt.Printf("Dir %s size %d\n", filename, size)
-			totalUsed += size
-		} else {
-			fmt.Printf("File %s Size %d\n", filename, location.Size())
-			totalUsed += location.Size()
-		}
-	}
-	return totalUsed
-}
-
-func updateRemainingSpace() {
-
-	globalStatus.RemainingSpace = globalConfig.MaxSpace -
-		globalStatus.UsedSpace - globalStatus.ReservedSpace
-
-	log.Printf("RemaingSpace %d, maxspace %d, usedspace %d, reserved %d\n",
-	globalStatus.RemainingSpace, globalConfig.MaxSpace,
-	globalStatus.UsedSpace,	globalStatus.ReservedSpace)
-	// Create and write
-	writeGlobalStatus()
-}
-
-func writeGlobalStatus() {
-
-	sb, err := json.Marshal(globalStatus)
-	if err != nil {
-		log.Fatal(err, "json Marshal GlobalDownloadStatus")
-	}
-	// We assume a /var/run path hence we don't need to worry about
-	// partial writes/empty files due to a kernel crash.
-	if err = ioutil.WriteFile(globalStatusFilename, sb, 0644); err != nil {
-		log.Fatal(err, globalStatusFilename)
-	}
-}
-
-func writeDownloaderStatus(status *types.DownloaderStatus,
-	statusFilename string) {
-	b, err := json.Marshal(status)
-	if err != nil {
-		log.Fatal(err, "json Marshal DownloaderStatus")
-	}
-	// We assume a /var/run path hence we don't need to worry about
-	// partial writes/empty files due to a kernel crash.
-	err = ioutil.WriteFile(statusFilename, b, 0644)
-	if err != nil {
-		log.Fatal(err, statusFilename)
-	}
-}
-
-func writeDownloaderConfig(config *types.DownloaderConfig,
-	configFilename string) {
-
-	//log.Printf("Writing the config file %s\n", configFilename)
-	b, err := json.Marshal(config)
-	if err != nil {
-		log.Fatal(err, "json Marshal DownloaderStatus")
-	}
-	err = ioutil.WriteFile(configFilename, b, 0644)
-	if err != nil {
-		log.Fatal(err, configFilename)
-	}
-}
-
-func writeFile(sFilename string, dFilename string) {
-
-	log.Printf("Writing <%s> file to <%s>\n", sFilename, dFilename)
-
-	if _, err := os.Stat(sFilename); err == nil {
-
-		sb, err := ioutil.ReadFile(sFilename)
-		if err == nil {
-
-			if err = ioutil.WriteFile(dFilename, sb, 0644); err != nil {
-
-				log.Printf("Failed to write %s: err %s\n",
-					dFilename, err)
-			}
-		} else {
-			log.Printf("Failed to read %s: err %s\n",
-				sFilename)
-		}
-	} else {
-		log.Printf("Failed to stat %s: err %s\n",
-			sFilename, err)
-	}
-
-}
-
