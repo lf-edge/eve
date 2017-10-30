@@ -1,2 +1,4 @@
 # api
-Device API in protobufs and/pr json
+Device API in protobufs and/or json
+
+import as "github.com/zededa/api"
