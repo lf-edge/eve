@@ -9,6 +9,7 @@ LISPDIR=/opt/zededa/lisp
 
 PATH=$BINDIR:$PATH
 
+OLDFLAG=
 WAIT=1
 EID_IN_DOMU=0
 MEASURE=0
@@ -19,26 +20,13 @@ while [ $# != 0 ]; do
 	EID_IN_DOMU=1
     elif [ "$1" == -m ]; then
 	MEASURE=1
+    elif [ "$1" == -o ]; then
+	OLDFLAG=$1
     else
 	ETCDIR=$1
     fi
     shift
 done
-
-# Make sure we have the required directories in place
-mkdir -p /var/tmp/domainmgr/config/
-mkdir -p /var/tmp/verifier/config/
-mkdir -p /var/tmp/downloader/config/
-mkdir -p /var/tmp/zedmanager/config/
-mkdir -p /var/tmp/identitymgr/config/
-mkdir -p /var/tmp/zedrouter/config/
-mkdir -p /var/run/domainmgr/status/
-mkdir -p /var/run/verifier/status/
-mkdir -p /var/run/downloader/status/
-mkdir -p /var/run/zedmanager/status/
-mkdir -p /var/run/eidregister/status/
-mkdir -p /var/run/zedrouter/status/
-mkdir -p /var/run/identitymgr/status/
 
 echo "Configuration from factory/install:"
 (cd $ETCDIR; ls -l)
@@ -67,7 +55,7 @@ if [ -f $ETCDIR/ntp-server ]; then
     fi
 else
    # last ditch attemp to sync up our clock
-   ntpd -d -q -n -p pool.ntp.org || :
+   ntpd -d -q -n -p pool.ntp.org
 fi
 if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
@@ -119,7 +107,8 @@ if [ $SELF_REGISTER = 1 ]; then
 	echo "Missing onboarding certificate. Giving up"
 	exit 1
     fi
-    $BINDIR/client $ETCDIR selfRegister
+    echo $BINDIR/client $OLDFLAG -d $ETCDIR selfRegister
+    $BINDIR/client $OLDFLAG -d $ETCDIR selfRegister
     if [ $WAIT == 1 ]; then
 	echo; read -n 1 -s -p "Press any key to continue"; echo; echo
     fi
@@ -128,7 +117,8 @@ fi
 # XXX We always redo this to get an updated zedserverconfig
 if [ /bin/true -o ! -f $ETCDIR/lisp.config ]; then
     echo "Retrieving device and overlay network config at" `date`
-    $BINDIR/client $ETCDIR lookupParam
+    echo $BINDIR/client $OLDFLAG -d $ETCDIR lookupParam
+    $BINDIR/client $OLDFLAG -d $ETCDIR lookupParam
     echo "Retrieved overlay /etc/hosts with:"
     cat $ETCDIR/zedserverconfig
     # edit zedserverconfig into /etc/hosts
@@ -158,8 +148,12 @@ echo "Removing old stale files"
 pkill zedmanager
 rm -rf /var/run/zedmanager/status/*.json
 # The following is a workaround for a racecondition between different agents
-mkdir -p /var/tmp/zedmanager/downloads
-chmod 700 /var/tmp/zedmanager /var/tmp/zedmanager/downloads
+# Make sure we have the required directories in place
+DIRS="/var/tmp/domainmgr/config/ /var/tmp/verifier/config/ /var/tmp/downloader/config/ /var/tmp/zedmanager/config/ /var/tmp/identitymgr/config/ /var/tmp/zedrouter/config/ /var/run/domainmgr/status/ /var/run/verifier/status/ /var/run/downloader/status/ /var/run/zedmanager/status/ /var/run/eidregister/status/ /var/run/zedrouter/status/ /var/run/identitymgr/status/"
+for d in $DIRS; do
+    mkdir -p $d
+    chmod 700 $d `dirname $d`
+done
 
 AGENTS="zedrouter domainmgr downloader verifier identitymgr eidregister"
 for AGENT in $AGENTS; do
@@ -307,7 +301,6 @@ fi
 # Need a key for device-to-device map-requests
 cp -p $ETCDIR/device.key.pem $LISPDIR/lisp-sig.pem   
 
-mkdir -p /var/tmp/zedrouter/config/
 # Pick up the device EID zedrouter config file from $ETCDIR and put
 # it in /var/tmp/zedrouter/config/
 # This will result in starting lispers.net when zedrouter starts
@@ -316,7 +309,6 @@ cp $ETCDIR/zedrouterconfig.json /var/tmp/zedrouter/config/${uuid}.json
 cp $ETCDIR/network.config.global /var/tmp/zedrouter/config/global
 
 # Setup default amount of space for images
-mkdir -p /var/tmp/downloader/config/
 echo '{"MaxSpace":2000000}' >/var/tmp/downloader/config/global 
 
 rm -f /var/run/verifier/status/restarted
@@ -413,7 +405,8 @@ cat >$ETCDIR/hwstatus.json <<EOF
 	"PublicIP": "$publicIP"
 }
 EOF
-$BINDIR/client $ETCDIR updateHwStatus
+echo $BINDIR/client $OLDFLAG -d $ETCDIR updateHwStatus
+$BINDIR/client $OLDFLAG -d $ETCDIR updateHwStatus
 
 if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
@@ -439,7 +432,8 @@ cat >$ETCDIR/swstatus.json <<EOF
 	]
 }
 EOF
-$BINDIR/client $ETCDIR updateSwStatus
+echo $BINDIR/client $OLDFLAG -d $ETCDIR updateSwStatus
+$BINDIR/client $OLDFLAG -d $ETCDIR updateSwStatus
 
 echo "Initial setup done at" `date`
 if [ $MEASURE == 1 ]; then
