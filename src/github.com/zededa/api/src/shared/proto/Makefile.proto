@@ -1,0 +1,60 @@
+# Makefile
+#
+# Targets:
+# 	all: Builds the code
+# 	build: Builds the code
+# 	fmt: Formats the source files
+# 	clean: cleans the code
+#
+
+# Go parameters
+GOCMD=go
+GOBUILD=$(GOCMD) build
+GOCLEAN=$(GOCMD) clean
+GOTEST=$(GOCMD) test
+GOINSTALL=$(GOCMD) install
+GOFMT=gofmt -w
+
+# Package lists
+TOPLEVEL_PKG := .
+
+# include $(GOPATH)/src/shared/vendor/github.com/golang/protobuf/Make.protobuf
+
+PYTHONOUT=          ./pyproto
+
+PYINSTALLDIR= $(GOPATH)/bin
+
+SRCS=        *.proto
+
+#GENGO=          $(SRCS:.proto=.pb.go)
+
+GOSRCS=         $(SRCS:.proto=.pb.go)
+
+.PHONY:         all genproto
+
+all: build
+genproto:            $(GOSRCS)
+        @:
+
+$(GOSRCS):       $(SRCS)
+	protoc -I.:$(GOPATH)/src/shared/proto --go_out=$(GOPATH)/src $?
+	mkdir -p $(PYTHONOUT)
+	protoc -I.:$(GOPATH)/src/shared/proto --python_out=$(PYTHONOUT) $?
+
+cleanproto:
+	rm -f ./*.pb.go
+
+build: genproto
+	$(GOBUILD) $(GOSRCS)
+clean: cleanproto
+	$(GOCLEAN)
+	rm -rf $(PYTHONOUT)
+test: 
+	$(GOTEST)
+fmt: 
+	$(GOFMT)
+install: build
+	$(GOINSTALL)
+	mkdir -p $(PYINSTALLDIR)/python/$(basename $(notdir $(CURDIR)))
+	install $(CURDIR)/pyproto/* $(PYINSTALLDIR)/python/$(basename $(notdir $(CURDIR)))
+	touch $(PYINSTALLDIR)/python/$(basename $(notdir $(CURDIR)))/__init__.py

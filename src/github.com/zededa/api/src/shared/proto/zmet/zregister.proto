@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+option go_package  = "shared/proto/zmet";
+
+enum ZRegisterResult {
+        ZRegNone         = 0;
+        ZRegSuccess      = 1;
+        ZRegNotActive    = 2;
+        ZRegAlreadyDone  = 3;
+        ZRegDeviceNA     = 4;
+        ZRegFailed       = 5;
+}
+
+message ZRegisterResp {
+        ZRegisterResult result = 2;
+}
+
+message ZRegisterMsg {
+       string onBoardKey = 1;
+
+       bytes pemCert = 2;
+}

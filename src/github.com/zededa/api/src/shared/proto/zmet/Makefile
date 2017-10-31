@@ -1,0 +1,4 @@
+# Makefile
+#
+
+include ../Makefile.proto

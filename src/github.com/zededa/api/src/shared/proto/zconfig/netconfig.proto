@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+option java_package = "com.zededa.cloud.uservice.proto";
+option go_package = "shared/proto/zconfig";
+
+import "fw.proto";
+import "netcmn.proto";
+
+message NetworkConfig {
+	string id = 1;
+	NetworkType type = 5;
+	oneof netContent {
+		l2spec nl2 = 8;
+		lispspec nlisp = 9;
+		ipv4spec nv4 = 10;
+		ipv6spec nv6 = 11;
+	}
+}
+
+message NetworkAdapter {
+	// this is deviceName....
+	string name =1;
+	string id   =2;
+
+	string networkId =3;
+
+	// eid=lisp, v4=ipv4 etc...
+	string addr =4;
+	string hostname = 5;
+
+	// more configuration for getting addr
+	string lispsignature = 6;
+	bytes  pemcert = 7;
+	bytes  pemprivatekey = 8;
+
+	// firewall
+	repeated ACE acls = 40;
+}

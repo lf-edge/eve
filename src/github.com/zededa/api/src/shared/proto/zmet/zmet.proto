@@ -1,0 +1,180 @@
+syntax = "proto3";
+
+/*import "google/protobuf/timestamp.proto";*/
+option go_package  = "shared/proto/zmet";
+
+/*
+type ReportDeviceStatus struct {
+      
+     MessageType        string
+      UUIDandVersion         UUIDandVersion
+    AppNum                 int
+    UlNum                  int
+    OlNum                  int
+    OverlayNetworkList      []OverlayNetworkStatus
+    UnderlayNetworkList     []UnderlayNetworkStatus
+
+   DisplayName        string
+    StorageStatusList        []StorageStatus
+    EIDList            []EIDStatusDetails
+    State            SwState
+
+   DomainName        string
+    DomainId        int
+    DiskStatusList        []DiskStatus
+    LastErr            string
+    LastErrTime        time.Time
+
+   Safename        string
+    ImageSha256        string    
+
+   RetryCount        int
+
+   EIDStatusDetails
+}
+*/
+
+option java_package = "com.zededa.cloud.uservice.proto";
+
+/*
+ * Broadly there are two types
+ * Info : information that is discovered/rarely changes
+ * Metrics: information that gets updated periodically
+ * Protobuf definitions in this file follow the convention. 
+ */
+enum ZInfoTypes {
+  ZiNop = 0;
+  ZiDevice = 1;
+  ZiHypervisor = 2;
+  ZiApp = 3;
+}
+
+// Manufacturing info, product name, model, version etc.
+message ZInfoManufacturer {
+  string manufacturer = 1;
+  string productName = 2;
+  string version = 3;
+  string serialNumber = 4;
+  string UUID = 5;
+}
+
+message ZInfoNetwork {
+  string IPAddr = 1;
+  string gwAddr = 2;
+  string macAddr = 3;
+  string devName = 4; // eth0, eth1 etc.
+}
+
+enum ZPeripheralTypes {
+  ZpNone = 0;
+  ZpStorage = 1;
+  ZpNetwork = 2;
+}
+
+message ZinfoPeripheral {
+  ZPeripheralTypes ztype = 1;
+  bool pluggable = 2;
+  ZInfoManufacturer minfo = 3;
+}
+
+message ZInfoSW {
+  string swVersion = 2;
+  string swHash = 3;
+}
+
+// Base device info, as discovered by Xen (or OS on bare metal)
+message ZInfoDevice {
+  string machineArch = 4;
+  string cpuArch = 5;
+  string platform = 6;
+  uint32 ncpu = 7;
+  uint64 memory = 8;
+  uint64 storage = 9;
+
+  repeated ZinfoPeripheral devices = 10;
+  ZInfoManufacturer minfo = 11;
+
+  ZInfoSW software = 12;
+  repeated ZInfoNetwork network = 13;
+}
+
+// Device info from DOM0 perspective, if it exists.
+message ZInfoHypervisor {
+  uint32 ncpu = 3;
+  uint64 memory = 4;
+  uint64 storage = 5;
+
+  ZInfoSW software = 6;
+}
+
+message ZInfoApp {
+  string AppID = 1;
+  uint32 ncpu = 2;
+  uint32 memory = 3;
+  uint32 storage = 4;
+
+  ZInfoSW software = 5;
+}
+
+message ZInfoMsg {
+  ZInfoTypes ztype = 1;
+  string devId = 2;
+  oneof InfoContent {
+  	ZInfoDevice dinfo = 3;
+  	ZInfoHypervisor hinfo = 4;
+  	ZInfoApp ainfo = 5;
+   }
+}
+
+enum ZmetricTypes {
+  ZmNop = 0;
+  ZmDevice = 1;
+  ZmApp = 3;
+}
+
+message cpuMetric {
+  uint32 upTime = 2;
+  double cpuUtilization = 3;
+  double usr = 4;
+  double nice = 5;
+  double system = 6;
+  double io = 7;
+  double irq = 8;
+  double soft = 9;
+  double steal = 10;
+  double guest = 11;
+  double idle = 12;
+}
+
+message memoryMetric {
+  uint32 usedMem = 2;
+  uint32 availMem = 3;
+  double usedPercentage = 4;
+  double availPercentage = 5;
+}
+
+message networkMetric {
+  string iName = 1;
+  uint64 txBytes = 2;
+  uint64 rxBytes = 3;
+  uint64 txDrops = 4;
+  uint64 rxDrops = 5;
+  uint64 txRate = 6;  // pps
+  uint64 rxRate = 7;  // pps
+}
+
+message deviceMetric {
+  cpuMetric cpu = 1;
+  memoryMetric memory = 2;
+  repeated networkMetric network = 3;
+}
+
+message ZMetricMsg {
+  string devID = 1;
+  ZmetricTypes ztype = 2;
+  /*google.protobuf.Timestamp atTimeStamp = 3; */
+
+  oneof MetricContent {
+  	deviceMetric dm = 4;
+   }
+}
