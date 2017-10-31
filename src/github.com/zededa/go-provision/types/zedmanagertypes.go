@@ -117,7 +117,6 @@ type StorageConfig struct {
 	DownloadURL	string	// XXX is there a more specific type?
 	MaxSize		uint	// In kbytes
 	Bucket		string	// S3 Bucket Name
-	Operation	string	// Operation Type (Download/Upload/Delete etc.)
 	TransportMethod	string	// Download method S3/HTTP/SFTP etc.
 	// XXX Add SignatureInfo for the sha256. Verifier should check.
 	CertificateChain	[]string//name of intermediate certificates
