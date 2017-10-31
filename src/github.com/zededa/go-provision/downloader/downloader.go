@@ -50,17 +50,7 @@ func main() {
 	log.Printf("Starting downloader\n")
 	watch.CleanupRestarted("downloader")
 
-	ctx,err := zedUpload.NewDronaCtx("zdownloader", 0)
-
-	if ctx == nil {
-		log.Printf("context create fail %s\n", err)
-		log.Fatal(err)
-		return
-	}
-
-	dCtx = ctx
-
-	handleInit()
+	downloaderInit()
 
 	go handleCertUpdates()
 
@@ -191,7 +181,6 @@ func handleCertObjCreate(statusFilename string, configArg interface{}) {
 	}
 
 	handleCreate (*config, statusFilename)
-	processObject (*config, statusFilename)
 }
 
 func handleCertObjModify(statusFilename string, configArg interface{},
@@ -217,7 +206,6 @@ func handleCertObjModify(statusFilename string, configArg interface{},
 	}
 
 	handleModify (*config, *status, statusFilename)
-	processObject (*config, statusFilename)
 }
 
 func handleCertObjDelete(statusFilename string, statusArg interface{}) {
@@ -233,62 +221,6 @@ func handleCertObjDelete(statusFilename string, statusArg interface{}) {
 	}
 
 	handleDelete(*status, statusFilename)
-}
-
-func processObject (config types.DownloaderConfig, statusFilename string) {
-
-	log.Printf("processObject <%s>\n", config.Safename)
-
-	sb, err := ioutil.ReadFile(statusFilename)
-	if err != nil {
-		log.Printf("%s for %s\n", err, statusFilename)
-		return
-	}
-
-	status := types.DownloaderStatus{}
-	if err = json.Unmarshal(sb, &status); err != nil {
-		log.Printf("%s DownloaderStatus file: %s\n",
-			err, statusFilename)
-		return
-	}
-
-	// latest object is downloaded
-	if  status.State == types.DOWNLOADED {
-
-		locFilename := config.DownloadObjDir + "/pending"
-
-		if status.ImageSha256 != "" {
-			locFilename = locFilename + "/" + status.ImageSha256
-		}
-
-		locFilename = locFilename + "/" + status.Safename
-
-		// move the file to final directory
-		if _, err := os.Stat(locFilename); err == nil {
-
-			if (config.VerifiedObjDir != "") {
-
-				objFilename := config.VerifiedObjDir + "/" + status.Safename
-
-				if _, err := os.Stat(config.VerifiedObjDir); err != nil {
-
-					if err := os.MkdirAll(config.VerifiedObjDir, 0700); err != nil {
-						log.Fatal(err)
-					}
-				}
-
-				// check the target object, if absent
-				if _, err := os.Stat(objFilename); err != nil {
-					writeFile(locFilename, objFilename)
-				}
-			}
-		} else {
-			log.Printf("<%s> file absent %s\n", locFilename, err)
-		}
-
-		// finally flush the holder object config/status files
-		handleDelete(status, statusFilename)
-	}
 }
 
 func handleCreate(config types.DownloaderConfig, statusFilename string) {
@@ -475,7 +407,7 @@ var globalConfig types.GlobalDownloadConfig
 var globalStatus types.GlobalDownloadStatus
 var globalStatusFilename string
 
-func handleInit() {
+func downloaderInit() {
 
 	baseDirname		:= "/var/tmp/downloader"
 	runDirname		:= "/var/run/downloader"
@@ -567,6 +499,16 @@ func handleInit() {
 	totalUsed := sizeFromDir(locDirname)
 	globalStatus.UsedSpace = uint((totalUsed + 1023) / 1024)
 	updateRemainingSpace()
+
+	// create drona interface
+	ctx,err := zedUpload.NewDronaCtx("zdownloader", 0)
+
+	if ctx == nil {
+		log.Printf("context create fail %s\n", err)
+		log.Fatal(err)
+	}
+
+	dCtx = ctx
 }
 
 func sanitizeDirs (baseDirname string, runDirname string) {
@@ -779,10 +721,12 @@ func handleSyncOp(syncOp zedUpload.SyncOpType,
 	log.Printf("Downloading <%s> to <%s>\n", config.DownloadURL, locFilename)
 
 	// Prepare the authentication Tuple
+	// XXX:FIXME , will come as part of data store
 	auth := &zedUpload.AuthInput{AuthType: "s3",
 			 Uname :"AKIAJMEEPPJOBQCVW3BQ",
 			 Password:"nz0dXnc4Qc7z0PTsyIfIrM7bDNJWeLMvlUI2oJ2T"}
 
+	// XXX:FIXME , will come as part of data store
 	trType := zedUpload.SyncAwsTr
 	region := "us-west-2"
 
