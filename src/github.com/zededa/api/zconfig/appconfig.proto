@@ -1,9 +1,9 @@
 syntax = "proto3";
 
-option go_package  = "shared/proto/zconfig";
+option go_package  = "zconfig";
 option java_package = "com.zededa.cloud.uservice.proto";
 
-import "devcommon/devcommon.proto";
+import "devcommon.proto";
 import "storage.proto";
 import "vm.proto";
 import "netconfig.proto";

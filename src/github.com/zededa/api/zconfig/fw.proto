@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 option java_package = "com.zededa.cloud.uservice.proto";
-option go_package = "shared/proto/zconfig";
+option go_package = "zconfig";
 
 
 message ACEMatch {
@@ -14,11 +14,6 @@ message ACEAction {
 	uint32 limitrate = 3;
 	string limitunit = 4;
 	uint32 limitburst = 5;
-	bool allocate = 6;
-	bool exportprivate = 7;
-	bytes allocationprefix = 8;
-	uint32 allocationprefixlen = 9;
-	
 }
 message ACE {
 	repeated ACEMatch matches = 1;

@@ -1,9 +1,9 @@
 syntax = "proto3";
 
-option go_package  = "shared/proto/deprecatedzconfig";
+option go_package  = "deprecatedzconfig";
 option java_package = "com.zededa.cloud.uservice.proto";
 
-import "devcommon/devcommon.proto";
+import "devcommon.proto";
 import "network.proto";
 import "storage.proto";
 import "vm.proto";

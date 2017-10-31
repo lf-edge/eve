@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-option go_package  = "shared/proto/devcommon";
+option go_package  = "deprecatedzconfig";
 option java_package = "com.zededa.cloud.uservice.proto";
 
 message UUIDandVersion {

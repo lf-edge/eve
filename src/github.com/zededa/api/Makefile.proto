@@ -18,8 +18,6 @@ GOFMT=gofmt -w
 # Package lists
 TOPLEVEL_PKG := .
 
-# include $(GOPATH)/src/shared/vendor/github.com/golang/protobuf/Make.protobuf
-
 PYTHONOUT=          ./pyproto
 
 PYINSTALLDIR= $(GOPATH)/bin
@@ -36,10 +34,10 @@ all: build
 genproto:            $(GOSRCS)
         @:
 
-$(GOSRCS):       $(SRCS)
-	protoc -I.:$(GOPATH)/src/shared/proto --go_out=$(GOPATH)/src $?
+%.pb.go::       %.proto
+	protoc -I.:$(GOPATH) --go_out=. $?
 	mkdir -p $(PYTHONOUT)
-	protoc -I.:$(GOPATH)/src/shared/proto --python_out=$(PYTHONOUT) $?
+	protoc -I.:$(GOPATH) --python_out=$(PYTHONOUT) $?
 
 cleanproto:
 	rm -f ./*.pb.go

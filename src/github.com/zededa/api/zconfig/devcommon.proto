@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+option go_package  = "zconfig";
+option java_package = "com.zededa.cloud.uservice.proto";
+
+message UUIDandVersion {
+	string uuid = 1;
+	string version = 2;
+}
+

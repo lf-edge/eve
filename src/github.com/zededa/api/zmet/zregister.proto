@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-option go_package  = "shared/proto/zmet";
+option go_package  = "zmet";
 
 enum ZRegisterResult {
         ZRegNone         = 0;

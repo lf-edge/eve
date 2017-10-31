@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 /*import "google/protobuf/timestamp.proto";*/
-option go_package  = "shared/proto/zmet";
+option go_package  = "zmet";
 
 /*
 type ReportDeviceStatus struct {

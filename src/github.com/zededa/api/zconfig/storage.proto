@@ -2,7 +2,7 @@
 syntax = "proto3";
 
 option java_package = "com.zededa.cloud.uservice.proto";
-option go_package = "shared/proto/zconfig";
+option go_package = "zconfig";
 
 
 message SignatureInfo {
