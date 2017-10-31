@@ -163,6 +163,15 @@ func handleInit(verifiedDirname string, statusDirname string,
 	watch.SignalRestarted("verifier")
 }
 
+func updateVerifyErrStatus(status *types.VerifyImageStatus,
+	lastErr string, statusFilename string){
+	status.LastErr = lastErr
+	status.LastErrTime = time.Now()
+	status.PendingAdd = false
+	status.State = types.INITIAL
+	writeVerifyImageStatus(status, statusFilename)
+}
+
 func writeVerifyImageStatus(status *types.VerifyImageStatus,
 	statusFilename string) {
 	b, err := json.Marshal(status)
@@ -245,10 +254,8 @@ func handleCreate(statusFilename string, configArg interface{}) {
 
 	f, err := os.Open(verifierFilename)
 	if err != nil {
-		status.LastErr = fmt.Sprintf("%v", err)
-		status.LastErrTime = time.Now()
-		status.State = types.INITIAL
-		writeVerifyImageStatus(&status, statusFilename)
+		cerr := fmt.Sprintf("%v", err)
+		updateVerifyErrStatus(&status, cerr, statusFilename)
 		log.Printf("handleCreate failed for %s\n", config.DownloadURL)
 		return
 	}
@@ -259,10 +266,8 @@ func handleCreate(statusFilename string, configArg interface{}) {
 	//with the one in config file...
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
-		status.LastErr = fmt.Sprintf("%v", err)
-		status.LastErrTime = time.Now()
-		status.State = types.INITIAL
-		writeVerifyImageStatus(&status, statusFilename)
+		cerr := fmt.Sprintf("%v", err)
+		updateVerifyErrStatus(&status, cerr, statusFilename)
 		log.Printf("handleCreate failed for %s\n", config.DownloadURL)
 		return
 	}
@@ -273,21 +278,34 @@ func handleCreate(statusFilename string, configArg interface{}) {
 	if got != config.ImageSha256 {
 		fmt.Printf("got      %s\n", got)
 		fmt.Printf("expected %s\n", config.ImageSha256)
-		status.LastErr = fmt.Sprintf("got %s expected %s",
-			got, config.ImageSha256)
-		status.LastErrTime = time.Now()
+		cerr := fmt.Sprintf("got %s expected %s", got, config.ImageSha256)
 		status.PendingAdd = false
-		status.State = types.INITIAL
-		writeVerifyImageStatus(&status, statusFilename)
+		updateVerifyErrStatus(&status, cerr, statusFilename)
 		log.Printf("handleCreate failed for %s\n", config.DownloadURL)
 		return
 	}
 
+	if cerr := verifyObjectShaSignature(&status, config, imageHash, statusFilename); cerr != "" {
+		updateVerifyErrStatus(&status, cerr, statusFilename)
+	} else {
+		status.PendingAdd = false
+		status.State = types.DELIVERED
+		writeVerifyImageStatus(&status, statusFilename)
+		log.Printf("handleCreate done for %s\n", config.DownloadURL)
+	}
+	return
+}
+
+func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.VerifyImageConfig, imageHash []byte,
+		statusFilename string) string {
+
+	verifierDirname := imgCatalogDirname + "/verifier/" + config.ImageSha256
+	verifierFilename := verifierDirname + "/" + config.Safename
 	//Read the server certificate
-        //Decode it and parse it
-        //And find out the puplic key and it's type
+    //Decode it and parse it
+    //And find out the puplic key and it's type
 	//we will use this certificate for both cert chain verification 
-        //and signature verification...
+    //and signature verification...
 
 	baseCertDirname := "/var/tmp/zedmanager"
 	certificateDirname := baseCertDirname+"/cert"
@@ -296,40 +314,27 @@ func handleCreate(statusFilename string, configArg interface{}) {
 
 	//This func literal will take care of writing status during 
 	//cert chain and signature verification...
-	UpdateStatusWhileVerifyingSignature := func (lastErr string){
-		status.LastErr = lastErr
-		status.LastErrTime = time.Now()
-		status.PendingAdd = false
-		status.State = types.INITIAL
-		writeVerifyImageStatus(&status, statusFilename)
-		log.Printf("handleCreate failed for %s\n", config.DownloadURL)
-    }
 
 	serverCertName := config.SignatureKey
-        serverCertificate, err := ioutil.ReadFile(certificateDirname+"/"+serverCertName)
-        if err != nil {
-		readCertFailErr := fmt.Sprintf("unable to read the certificate")
-		log.Println(readCertFailErr)
-		UpdateStatusWhileVerifyingSignature(readCertFailErr)
-		fmt.Println(err)
-		return
-        }
-        block, _ := pem.Decode(serverCertificate)
-        if block == nil {
-		decodeFailedErr := fmt.Sprintf("unable to decode certificate")
-		log.Println(decodeFailedErr)
-		UpdateStatusWhileVerifyingSignature(decodeFailedErr)
-		return
-        }
-        cert, err := x509.ParseCertificate(block.Bytes)
-        if err != nil {
-		parseFailedErr := fmt.Sprintf("unable to parse certificate")
-		log.Println(parseFailedErr)
-		UpdateStatusWhileVerifyingSignature(parseFailedErr)
-		return
-        }
+	serverCertificate, err := ioutil.ReadFile(certificateDirname+"/"+serverCertName)
+	if err != nil {
+		cerr := fmt.Sprintf("unable to read the certificate")
+		return cerr
+	}
 
-        //Verify chain of certificates. Chain contains
+	block, _ := pem.Decode(serverCertificate)
+	if block == nil {
+		cerr := fmt.Sprintf("unable to decode certificate")
+		return cerr
+	}
+
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		cerr := fmt.Sprintf("unable to parse certificate")
+		return cerr
+	}
+
+	//Verify chain of certificates. Chain contains
 	//root, server, intermediate certificates ...
 
 	certificateNameInChain := config.CertificateChain
@@ -341,99 +346,79 @@ func handleCreate(statusFilename string, configArg interface{}) {
 	rootCertificate, err := ioutil.ReadFile(rootCertFileName)
 	if err != nil {
 		fmt.Println(err)
-		unableToFindRootCertErr := fmt.Sprintf("failed to find root certificate")
-		log.Println(unableToFindRootCertErr)
-		UpdateStatusWhileVerifyingSignature(unableToFindRootCertErr)
-		return
+		cerr := fmt.Sprintf("failed to find root certificate")
+		return cerr
 	}
-	ok := roots.AppendCertsFromPEM(rootCertificate)
-	if !ok {
-		rootParseFailedErr := fmt.Sprintf("failed to parse root certificate")
-		log.Println(rootParseFailedErr)
-		UpdateStatusWhileVerifyingSignature(rootParseFailedErr)
-		return
+
+	if ok := roots.AppendCertsFromPEM(rootCertificate); !ok {
+		cerr := fmt.Sprintf("failed to parse root certificate")
+		return cerr
 	}
 
 	for _,certName := range certificateNameInChain {
-		certNameFromChain, err := ioutil.ReadFile(certificateDirname+"/"+certName)
+
+		bytes, err := ioutil.ReadFile(certificateDirname+"/"+certName)
 		if err != nil {
-			unableToReadCertDirErr := fmt.Sprintf("failed to read certificate Directory: %v",err)
-			log.Println(unableToReadCertDirErr)
-			UpdateStatusWhileVerifyingSignature(unableToReadCertDirErr)
-			return
+			cerr := fmt.Sprintf("failed to read certificate Directory: %v",err)
+			return cerr
 		}
-		
-		ok := roots.AppendCertsFromPEM(certNameFromChain)
-		if !ok {
-			intermediateCertParseFailedErr := fmt.Sprintf("failed to parse intermediate certificate")
-			log.Println(intermediateCertParseFailedErr)
-			UpdateStatusWhileVerifyingSignature(intermediateCertParseFailedErr)
-			return
+
+		if ok := roots.AppendCertsFromPEM(bytes); !ok {
+			cerr := fmt.Sprintf("failed to parse intermediate certificate")
+			return cerr
 		}
 	}
-	opts := x509.VerifyOptions{
-                Roots:   roots,
-        }
-        if _, err := cert.Verify(opts); err != nil {
-		certChainVerificationErr := fmt.Sprintf("failed to verify certificate chain: ")
-		log.Println(certChainVerificationErr)
-		UpdateStatusWhileVerifyingSignature(certChainVerificationErr)
-		return
-        }else {
-                log.Println("certificate verified")
-        }
 
-        //Read the signature from config file...
-        imgSig := config.ImageSignature
-        
-        switch pub := cert.PublicKey.(type) {
-        case *rsa.PublicKey:
+	opts := x509.VerifyOptions{ Roots:   roots, }
+	if _, err := cert.Verify(opts); err != nil {
+		cerr := fmt.Sprintf("failed to verify certificate chain: ")
+		return cerr
+	}
 
-                err = rsa.VerifyPKCS1v15(pub, crypto.SHA256, imageHash, imgSig)
-                if err != nil {
-			log.Fatalf("VerifyPKCS1v15 failed...")
-			rsaSignatureVerificationFiledErr := fmt.Sprintf("rsa image signature verification failed")
-			UpdateStatusWhileVerifyingSignature(rsaSignatureVerificationFiledErr)
-			return
+	log.Println("certificate verified")
 
-                } else {
-                        log.Printf("VerifyPKCS1v15 successful...")
-                }
+	//Read the signature from config file...
+	imgSig := config.ImageSignature
 
-        case *ecdsa.PublicKey:
+	switch pub := cert.PublicKey.(type) {
 
-                log.Printf("pub is of type ecdsa: ",pub)
-                imgSignature, err := base64.StdEncoding.DecodeString(string(imgSig))
-                if err != nil {
-			decodingErr := fmt.Sprintf("DecodeString failed: %v ",err)
-			log.Println(decodingErr)
-			UpdateStatusWhileVerifyingSignature(decodingErr)
-			return
-                }
-                log.Printf("Decoded imgSignature (len %d): % x\n", len(imgSignature), imgSignature)
-                rbytes := imgSignature[0:32]
-                sbytes := imgSignature[32:]
-                fmt.Printf("Decoded r %d s %d\n", len(rbytes), len(sbytes))
-                r := new(big.Int)
-                s := new(big.Int)
-                r.SetBytes(rbytes)
-                s.SetBytes(sbytes)
-                log.Printf("Decoded r, s: %v, %v\n", r, s)
+	case *rsa.PublicKey:
+		err = rsa.VerifyPKCS1v15(pub, crypto.SHA256, imageHash, imgSig)
+		if err != nil {
+			cerr := fmt.Sprintf("rsa image signature verification failed")
+			return cerr
+		}
+		log.Println("VerifyPKCS1v15 successful...\n")
+
+	case *ecdsa.PublicKey:
+		log.Printf("pub is of type ecdsa: ",pub)
+		imgSignature, err := base64.StdEncoding.DecodeString(string(imgSig))
+		if err != nil {
+			cerr := fmt.Sprintf("DecodeString failed: %v ",err)
+			return cerr
+		}
+
+		log.Printf("Decoded imgSignature (len %d): % x\n",
+			 len(imgSignature), imgSignature)
+		rbytes := imgSignature[0:32]
+		sbytes := imgSignature[32:]
+		log.Printf("Decoded r %d s %d\n", len(rbytes), len(sbytes))
+		r := new(big.Int)
+		s := new(big.Int)
+		r.SetBytes(rbytes)
+		s.SetBytes(sbytes)
+		log.Printf("Decoded r, s: %v, %v\n", r, s)
 		ok := ecdsa.Verify(pub, imageHash, r, s)
 		if !ok {
-			log.Printf("ecdsa.Verify failed")
-			ecdsaSignatureVerificationFiledErr := fmt.Sprintf("ecdsa image signature verification failed ")
-			UpdateStatusWhileVerifyingSignature(ecdsaSignatureVerificationFiledErr)
-			return
+			cerr := fmt.Sprintf("ecdsa image signature verification failed ")
+			return cerr
 		}
 		log.Printf("Signature verified\n")
 
-        default:
-		unknownPublicKeyTypeErr := fmt.Sprintf("unknown type of public key")
-		log.Println(unknownPublicKeyTypeErr)
-		UpdateStatusWhileVerifyingSignature(unknownPublicKeyTypeErr)
-                return
-        }
+	default:
+		cerr := fmt.Sprintf("unknown type of public key")
+		return cerr
+	}
 
 	// Move directory from downloads/verifier to downloads/verified
 	// XXX should have dom0 do this and/or have RO mounts
@@ -463,8 +448,9 @@ func handleCreate(statusFilename string, configArg interface{}) {
 			log.Fatal(err)
 		}
 	}
+
 	if err := os.MkdirAll(finalDirname, 0700); err != nil {
-		log.Fatal( err)
+		log.Fatal(err)
 	}
 	if err := os.Rename(verifierFilename, finalFilename); err != nil {
 		log.Fatal(err)
@@ -472,15 +458,13 @@ func handleCreate(statusFilename string, configArg interface{}) {
 	if err := os.Chmod(finalDirname, 0500); err != nil {
 		log.Fatal(err)
 	}
+
 	// Clean up empty directory
 	if err := os.Remove(verifierDirname); err != nil {
 		log.Fatal(err)
 	}
 
-	status.PendingAdd = false
-	status.State = types.DELIVERED
-	writeVerifyImageStatus(&status, statusFilename)
-	log.Printf("handleCreate done for %s\n", config.DownloadURL)
+	return ""
 }
 
 // Remove initial part up to last '/' in URL. Note that '/' was converted
