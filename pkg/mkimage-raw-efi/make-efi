@@ -121,7 +121,7 @@ MB_BLOCKS=$(( $SIZE_IN_BYTES / $ONEMB ))
 # make the image
 dd if=/dev/zero of=$IMGFILE bs=1M count=$MB_BLOCKS
 
-ESP_SECTOR_START=2048
+ESP_SECTOR_START=4096
 ESP_SECTOR_END=$(( $ESP_SECTOR_START + $ESP_FILE_SIZE_SECTORS - 1 ))
 ROOTFS_SECTOR_START=$(( $ESP_SECTOR_END + 1 ))
 ROOTFS_SECTOR_END=$(( $ROOTFS_SECTOR_START + $ROOTFS_PART_SECTORS - 1))
@@ -129,12 +129,15 @@ ROOTFS_SECTOR_END=$(( $ROOTFS_SECTOR_START + $ROOTFS_PART_SECTORS - 1))
 # create the partitions - size of the ESP must match our image
 # and make sure the ESP is bootable for BIOS mode
 sgdisk --clear \
-       --new 1:$ESP_SECTOR_START:$ESP_SECTOR_END --typecode=1:ef00 --change-name=1:'EFI System' --partition-guid=1:$PARTUUID \
-       --new 2:$ROOTFS_SECTOR_START:$ROOTFS_SECTOR_END --typecode=2:fe00 --change-name=2:'zenix rootfs' \
+       --new 1:2048:4095 --typecode=1:ef02 --change-name=1:'BIOS Boot' --partition-guid=1:R \
+       --new 2:$ESP_SECTOR_START:$ESP_SECTOR_END --typecode=2:ef00 --change-name=2:'EFI System' --partition-guid=2:$PARTUUID \
+       --new 3:$ROOTFS_SECTOR_START:$ROOTFS_SECTOR_END --typecode=3:fe00 --change-name=3:'Zenix rootfs' \
     --attributes 1:set:2 \
      $IMGFILE
 
 # copy in our EFI System Partition image
+echo dd the boot.img into MBR
+echo dd the core.img into BIOS Boot partition
 dd if=$ESP_FILE of=$IMGFILE bs=$BLKSIZE count=$ESP_FILE_SIZE_SECTORS conv=notrunc seek=$ESP_SECTOR_START
 dd if=$ROOTFS_FILE of=$IMGFILE bs=$BLKSIZE count=$ROOTFS_PART_SECTORS conv=notrunc seek=$ROOTFS_SECTOR_START
 
