@@ -665,8 +665,6 @@ func writeFile(sFilename string, dFilename string) {
 // Added  -4 --no-check-certificate
 func doWget(url string, destFilename string) error {
 
-	fmt.Printf("doWget %s %s\n", url, destFilename)
-
 	cmd := "wget"
 	args := []string{
 		"-q",
@@ -678,20 +676,23 @@ func doWget(url string, destFilename string) error {
 		destFilename,
 		url,
 	}
+
 	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
+
 	if err != nil {
 		log.Println("wget failed ", err)
-		log.Println("wget output ", string(stdoutStderr))
-		return err
+	} else {
+		log.Printf("wget done: output %s\n", string(stdoutStderr))
 	}
-	fmt.Printf("wget done: output %s\n", string(stdoutStderr))
-	return nil
+	return err
 }
 
 // Drona APIs for object Download
 
 func handleSyncOp(syncOp zedUpload.SyncOpType,
 	 statusFilename string, config types.DownloaderConfig, status *types.DownloaderStatus) {
+
+	var err error
 
 	locDirname := "/var/tmp/downloader/downloads"
 
@@ -709,53 +710,57 @@ func handleSyncOp(syncOp zedUpload.SyncOpType,
 		locFilename = locFilename + "/" + config.ImageSha256
 	}
 
-	if _, err := os.Stat(locFilename); err != nil {
+	if _, err = os.Stat(locFilename); err != nil {
 
-		if err := os.MkdirAll(locFilename, 0755); err != nil {
+		if err = os.MkdirAll(locFilename, 0755); err != nil {
 			log.Fatal(err)
 		}
 	}
 
 	locFilename = locFilename + "/" + config.Safename
-
 	log.Printf("Downloading <%s> to <%s>\n", config.DownloadURL, locFilename)
 
-	// Prepare the authentication Tuple
-	// XXX:FIXME , will come as part of data store
-	auth := &zedUpload.AuthInput{AuthType: "s3",
-			 Uname :"AKIAJMEEPPJOBQCVW3BQ",
-			 Password:"nz0dXnc4Qc7z0PTsyIfIrM7bDNJWeLMvlUI2oJ2T"}
+	if config.TransportMethod == "s3" {
 
-	// XXX:FIXME , will come as part of data store
-	trType := zedUpload.SyncAwsTr
-	region := "us-west-2"
+		// Prepare the authentication Tuple
+		// XXX:FIXME , will come as part of data store
+		auth := &zedUpload.AuthInput{AuthType: "s3",
+				 Uname :"AKIAJMEEPPJOBQCVW3BQ",
+				 Password:"nz0dXnc4Qc7z0PTsyIfIrM7bDNJWeLMvlUI2oJ2T"}
 
-	// create Endpoint
-	dEndPoint,err := dCtx.NewSyncerDest(trType, region, config.Bucket, auth)
+		// XXX:FIXME , will come as part of data store
+		trType := zedUpload.SyncAwsTr
+		region := "us-west-2"
 
-	if dEndPoint != nil {
-		var respChan = make(chan * zedUpload.DronaRequest);
+		// create Endpoint
+		dEndPoint, err := dCtx.NewSyncerDest(trType, region, config.Bucket, auth)
 
-		log.Printf("syncOp for <%s>/<%s>\n", config.Bucket, urlToFilename(config.Safename))
+		if err == nil && dEndPoint != nil {
+			var respChan = make(chan * zedUpload.DronaRequest);
 
-		// create Request
-		req := dEndPoint.NewRequest(syncOp, urlToFilename(config.DownloadURL), locFilename,
-			int64(config.MaxSize / 1024), true, respChan)
+			log.Printf("syncOp for <%s>/<%s>\n", config.Bucket, urlToFilename(config.Safename))
 
-		if req != nil {
-			req.Post()
-		        select {
-		                case resp := <-respChan:
-					_, err = resp.GetUpStatus()
+			// create Request
+			req := dEndPoint.NewRequest(syncOp, urlToFilename(config.DownloadURL), locFilename,
+				int64(config.MaxSize / 1024), true, respChan)
 
-					if resp.IsError () == false {
-						err = nil
-					}
-		        }
+			if req != nil {
+				req.Post()
+			        select {
+			                case resp := <-respChan:
+						_, err = resp.GetUpStatus()
+
+						if resp.IsError () == false {
+							err = nil
+						}
+			        }
+			}
 		}
+	} else {
+		err = doWget(config.DownloadURL, locFilename)
 	}
 
-	handleSyncOpResponse (config, status, statusFilename, err)
+	handleSyncOpResponse(config, status, statusFilename, err)
 }
 
 func handleSyncOpResponse(config types.DownloaderConfig,
