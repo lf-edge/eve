@@ -30,7 +30,7 @@ RUN mkdir /grub-lib && \
   for patch in /patches/*.patch; do \
     echo "Applying $patch"; \
     patch -p1 < "$patch"; \
-  done && cp -r ../grub ../grub.bios && \
+  done && \
   ./autogen.sh && \
   ./configure --libdir=/grub-lib --with-platform=efi CFLAGS="-Os -Wno-unused-value" && \
   make -j "$(getconf _NPROCESSORS_ONLN)" && \
@@ -43,15 +43,7 @@ RUN mkdir /grub-lib && \
   aarch64) \
     ./grub-mkimage -O arm64-efi -d /grub-lib/grub/arm64-efi -o /grub-lib/BOOTAA64.EFI -p /EFI/BOOT ${GRUB_MODULES}; \
     ;; \
-  esac && \
-  cd ../grub.bios && echo Building BIOS version of grub && \
-  ./autogen.sh && \
-  ./configure --libdir=/grub-lib --target=i386 CFLAGS="-Os -Wno-unused-value" && \
-  make -j "$(getconf _NPROCESSORS_ONLN)" && \
-  make install && \
-  ./grub-mkimage -O i386-pc -d /grub-lib/grub/i386-pc -o /grub-lib/core.img -p /EFI/BOOT ${GRUB_MODULES} && \
-  find /grub-lib
-
+  esac
 
 FROM linuxkit/alpine:77287352db68b442534c0005edd6ff750c8189f3 AS make-img
 
