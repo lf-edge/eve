@@ -14,7 +14,5 @@ COPY --from=xen-tools / /
 COPY --from=ztools / /
 COPY --from=cert / /opt/zededa/etc
 
-COPY adc15f8c-d9f8-4bfc-b49d-f84603e6403b.json /opt/zededa/etc
-
 # FIXME: replace while loop with monit ASAP
 CMD ["/bin/ash", "-c", "/opt/zededa/bin/device-steps.sh -w < /opt/zededa/etc/cert-input.txt ; while [ true ] ; do sleep 10 ; done"]
