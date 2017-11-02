@@ -15,6 +15,7 @@ RUN ln -s libpcap.so.1 /usr/lib/libpcap.so
 COPY --from=xen-tools / /
 COPY --from=ztools / /
 COPY --from=cert / /opt/zededa/etc
+COPY --from=msvcs /vms /vms
 
 # FIXME: replace while loop with monit ASAP
 CMD ["/bin/ash", "-c", "/etc/init.d/xencommons start; /opt/zededa/bin/device-steps.sh -w < /opt/zededa/etc/cert-input.txt ; while [ true ] ; do sleep 10 ; done"]

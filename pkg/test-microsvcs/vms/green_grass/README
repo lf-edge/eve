@@ -1,0 +1,6 @@
+JSON needs to be copied into /var/tmp/zedmanager/config/
+
+After the domU comes up you can log in to observe things
+if you'd like (but not needed):
+  $ xl console 1
+  user zededa/ pw zededaIoT
