@@ -13,9 +13,10 @@ import (
 type DownloaderConfig struct {
 	Safename		string
 	DownloadURL		string	// XXX is there a more specific type?
-	Operation		string
 	TransportMethod	string	// Download Method S3/HTTP/SFTP etc.
-	Bucket			string
+	Dpath			string
+	ApiKey			string
+	Password		string
 	MaxSize			uint	// In kbytes
 	ImageSha256		string	// sha256 of immutable image XXX used?
 	DownloadObjDir	string	// Download Object Store

@@ -725,20 +725,20 @@ func handleSyncOp(syncOp zedUpload.SyncOpType,
 		// Prepare the authentication Tuple
 		// XXX:FIXME , will come as part of data store
 		auth := &zedUpload.AuthInput{AuthType: "s3",
-				 Uname :"AKIAJMEEPPJOBQCVW3BQ",
-				 Password:"nz0dXnc4Qc7z0PTsyIfIrM7bDNJWeLMvlUI2oJ2T"}
+				 Uname :config.ApiKey,
+				 Password:config.Password}
 
 		// XXX:FIXME , will come as part of data store
 		trType := zedUpload.SyncAwsTr
 		region := "us-west-2"
 
 		// create Endpoint
-		dEndPoint, err := dCtx.NewSyncerDest(trType, region, config.Bucket, auth)
+		dEndPoint, err := dCtx.NewSyncerDest(trType, region, config.Dpath, auth)
 
 		if err == nil && dEndPoint != nil {
 			var respChan = make(chan * zedUpload.DronaRequest);
 
-			log.Printf("syncOp for <%s>/<%s>\n", config.Bucket, urlToFilename(config.Safename))
+			log.Printf("syncOp for <%s>/<%s>\n", config.Dpath, urlToFilename(config.Safename))
 
 			// create Request
 			req := dEndPoint.NewRequest(syncOp, urlToFilename(config.DownloadURL), locFilename,

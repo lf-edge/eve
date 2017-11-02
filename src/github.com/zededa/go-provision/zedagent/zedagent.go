@@ -26,6 +26,7 @@ var (
 	runDirname               = "/var/run/zedmanager"
 	zedmanagerConfigDirname  = baseDirname + "/config"
 	zedmanagerStatusDirname  = runDirname + "/status"
+	zedagentConfigDirname    = "/var/tmp/zedagent/config"
 	downloaderConfigDirname  = "/var/tmp/downloader/config"
 	downloaderStatusDirname = "/var/run/downloader/status"
 )
@@ -35,6 +36,7 @@ func main() {
 	watch.CleanupRestarted("zedagent")
 
 	dirs := []string{
+		zedagentConfigDirname,
 		zedmanagerConfigDirname,
 		zedmanagerStatusDirname,
 		downloaderConfigDirname,

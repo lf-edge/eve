@@ -25,7 +25,7 @@ const (
         MaxReaderMaxDefault = MaxReaderSmall
         MaxReaderMedium     = 1 << 19 // 512k
         MaxReaderHuge       = 1 << 21 // two megabytes
-	configTickTimeout   = 3 // in minutes
+	configTickTimeout   = 1 // in minutes
 )
 
 var configApi	string	= "api/v1/edgedevice/config"
@@ -189,8 +189,7 @@ func readDeviceConfigJsonMessage (r *http.Response) error {
 
 func  publishDeviceConfig(config *zconfig.EdgeDevConfig)  error {
 
-	fmt.Printf("%v\n", config)
-
+	log.Printf("%v\n", config)
 	// if they match return
 	var devId  =  &devcommon.UUIDandVersion{};
 
@@ -208,7 +207,7 @@ func  publishDeviceConfig(config *zconfig.EdgeDevConfig)  error {
 	curAppFilenames, err := ioutil.ReadDir(zedmanagerConfigDirname)
 
 	if  err != nil {
-		fmt.Printf("read dir %s fail, err: %v\n", zedmanagerConfigDirname, err)
+		log.Printf("read dir %s fail, err: %v\n", zedmanagerConfigDirname, err)
 	}
 
 	Apps := config.GetApps()

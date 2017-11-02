@@ -10,9 +10,12 @@ import (
 )
 
 func parseConfig(config *zconfig.EdgeDevConfig) {
+
 	var appInstance = types.AppInstanceConfig{}
 
-	for _,cfgApp :=	range config.Apps {
+	Apps := config.GetApps()
+
+	for _,cfgApp :=	range Apps {
 
 		appInstance.UUIDandVersion.UUID,_		= uuid.FromString(cfgApp.Uuidandversion.Uuid)
 		appInstance.UUIDandVersion.Version		= cfgApp.Uuidandversion.Version
@@ -35,15 +38,22 @@ func parseConfig(config *zconfig.EdgeDevConfig) {
 			image := new(types.StorageConfig)
 			for _, ds :=	range config.Datastores {
 
-				if drive.Image.Id	== ds.Id {
+				if drive.Image.DsId	== ds.Id {
 
 					image.DownloadURL		= ds.Fqdn
 					image.TransportMethod	= ds.DType.String()
+					image.ApiKey			= ds.ApiKey
+					image.Password			= ds.Password
+					image.Dpath				= ds.Dpath
 					break
 				}
 			}
+
+			image.CertificateChain	= make([]string, 1)
 			image.Format			= drive.Image.Iformat.String()
 			image.ImageSignature	= drive.Image.Siginfo.Signature
+			image.SignatureKey		= drive.Image.Siginfo.Signercerturl
+			image.CertificateChain[0]	= drive.Image.Siginfo.Intercertsurl
 			image.ImageSha256		= drive.Image.Sha256
 			image.MaxSize			= uint(drive.Maxsize)
 			image.ReadOnly			= drive.Readonly
