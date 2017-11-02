@@ -19,12 +19,14 @@ zededa-container/Dockerfile: pkgs parse-pkgs.sh zededa-container/Dockerfile.temp
 zededa-container: zededa-container/Dockerfile
 	linuxkit pkg build --disable-content-trust zededa-container/
 
+.PHONY: images/supermicro-iso.yml
 images/supermicro-iso.yml: parse-pkgs.sh images/supermicro-iso.template
 	./parse-pkgs.sh images/supermicro-iso.template > images/supermicro-iso.yml
 
 supermicro.iso: zededa-container images/supermicro-iso.yml
 	./makeiso.sh images/supermicro-iso.yml supermicro.iso
 
+.PHONY: images/supermicro-img.yml
 images/supermicro-img.yml: parse-pkgs.sh images/supermicro-img.template
 	./parse-pkgs.sh images/supermicro-img.template > images/supermicro-img.yml
 
