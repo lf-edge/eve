@@ -51,9 +51,13 @@ mkdir -p EFI/BOOT
 cat >> EFI/BOOT/grub.cfg <<EOF
 set timeout=5
 set gfxpayload=text
-menuentry 'LinuxKit ISO Image' {
+menuentry 'LinuxKit Image' {
 	multiboot2 /xen.gz
 	module2 /kernel console=tty0 ${CMDLINE} text
+}
+menuentry 'LinuxKit Image on QEMU' {
+	multiboot2 /xen.gz clocksource=pit console=com1
+	module2 /kernel console=hvc0 clocksource=jiffies `echo ${CMDLINE} | sed -e 's#sdb#sda#'` text
 }
 EOF
 

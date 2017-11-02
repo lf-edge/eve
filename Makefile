@@ -1,4 +1,4 @@
-.PHONY: pkgs zededa-container help
+.PHONY: run pkgs zededa-container help
 
 all: help
 
@@ -12,6 +12,9 @@ help:
 
 pkgs:
 	make -C pkg
+
+run:
+	qemu-system-x86_64 --bios ./bios/OVMF.fd -m 4096 -cpu SandyBridge  -serial stdio  -hda ./supermicro.img
 
 zededa-container/Dockerfile: pkgs parse-pkgs.sh zededa-container/Dockerfile.template
 	./parse-pkgs.sh zededa-container/Dockerfile.template > zededa-container/Dockerfile

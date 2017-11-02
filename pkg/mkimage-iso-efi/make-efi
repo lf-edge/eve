@@ -41,6 +41,10 @@ menuentry 'LinuxKit ISO Image' {
 	multiboot2 /boot/xen.gz
 	module2 /boot/kernel console=tty0 ${CMDLINE} text
 }
+menuentry 'LinuxKit ISO Image on QEMU' {
+	multiboot2 /boot/xen.gz clocksource=pit console=com1
+	module2 /boot/kernel console=hvc0 clocksource=jiffies `echo ${CMDLINE} | sed -e 's#sdb#sda#'` text
+}
 "
 
 mkdir -p EFI/BOOT
