@@ -103,10 +103,6 @@ func main() {
 	var identitymgrRestartedFn watch.StatusRestartHandler = handleIdentitymgrRestarted
 	var zedrouterRestartedFn watch.StatusRestartHandler = handleZedrouterRestarted
 
-	getCloudUrls ()
-	go metricsTimerTask()
-	go configTimerTask()
-
 	configChanges := make(chan string)
 	go watch.WatchConfigStatus(zedmanagerConfigDirname,
 		zedmanagerStatusDirname, configChanges)
@@ -243,7 +239,6 @@ func writeAppInstanceStatus(status *types.AppInstanceStatus,
 	if err != nil {
 		log.Fatal(err, statusFilename)
 	}
-	publishAiInfoToCloud(status)
 }
 
 func handleCreate(statusFilename string, configArg interface{}) {
