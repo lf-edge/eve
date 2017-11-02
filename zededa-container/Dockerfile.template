@@ -15,4 +15,4 @@ COPY --from=ztools / /
 COPY --from=cert / /opt/zededa/etc
 
 # FIXME: replace while loop with monit ASAP
-CMD ["/bin/ash", "-c", "/opt/zededa/bin/device-steps.sh -w < /opt/zededa/etc/cert-input.txt ; while [ true ] ; do sleep 10 ; done"]
+CMD ["/bin/ash", "-c", "/etc/xen-start.sh; /opt/zededa/bin/device-steps.sh -w < /opt/zededa/etc/cert-input.txt ; while [ true ] ; do sleep 10 ; done"]

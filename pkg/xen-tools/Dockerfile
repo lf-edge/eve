@@ -32,4 +32,5 @@ RUN make && make install
 FROM scratch
 ENTRYPOINT []
 CMD []
+COPY xen-start.sh /etc/xen-start.sh
 COPY --from=kernel-build /out/ /
