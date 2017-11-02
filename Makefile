@@ -17,7 +17,7 @@ GOFMT=gofmt -w
 
 # Package lists
 TOPLEVEL_PKG := .
-DIRS := zmet zconfig deprecatedzconfig
+DIRS := devcommon zmet zconfig deprecatedzconfig
 
 BUILD_LIST = $(DIRS)
 CLEAN_LIST = $(DIRS:%=clean-%)
@@ -35,19 +35,27 @@ $(CLEAN_LIST):
 	$(MAKE) $(DEBUG) -C $(@:clean-%=%) clean
 
 $(TEST_LIST):
-	$(MAKE) $(DEBUG) -C $(@:test-%=%) clean
+	$(MAKE) $(DEBUG) -C $(@:test-%=%) test
 
 $(FMT_LIST):
-	$(MAKE) $(DEBUG) -C $(@:fmt-%=%) clean
+	$(MAKE) $(DEBUG) -C $(@:fmt-%=%) fmt
 
 $(INSTALL_LIST):
 	$(MAKE) -C $(@:install-%=%) install
 
+$(INIT_LIST):
+	$(MAKE) -C $(@:init-%=%) init
+
+$(GENERATE_LIST):
+	$(MAKE) -C $(@:generate-%=%) generate
+
 build: $(DIRS)
 clean: $(CLEAN_LIST)
 test: $(TEST_LIST)
-fmt: $(fmt_LIST)
+fmt: $(FMT_LIST)
 install: $(INSTALL_LIST)
+init: $(INIT_LIST)
+generate: $(GENERATE_LIST)
 
 #
 # Rules called from super
@@ -57,3 +65,5 @@ zc-clean: 	clean
 zc-test:	test 
 zc-format:	fmt
 zc-install:	install
+zc-init:	init
+zc-generate:	generate

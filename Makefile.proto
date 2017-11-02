@@ -13,14 +13,18 @@ GOBUILD=$(GOCMD) build
 GOCLEAN=$(GOCMD) clean
 GOTEST=$(GOCMD) test
 GOINSTALL=$(GOCMD) install
+GOGENERATE=$(GOCMD) generate
+GOGET=$(GOCMD) get
 GOFMT=gofmt -w
 
 # Package lists
 TOPLEVEL_PKG := .
+PKG := github.com/zededa/api/$(notdir $(CURDIR))
 
 PYTHONOUT=          ./pyproto
 
-PYINSTALLDIR= $(GOPATH)/bin
+GOPATH0 = $(firstword $(subst :, ,$(GOPATH)))
+PYINSTALLDIR= $(GOPATH0)/bin
 
 SRCS=        *.proto
 
@@ -34,8 +38,16 @@ all: build
 genproto:            $(GOSRCS)
         @:
 
+# XXX needed?
+generate:            $(GOSRCS)
+	$(GOGENERATE) -x $(PKG)
+
+# XXX should we add this to all?
+init:	
+	$(GOGET) ./...
+
 %.pb.go::       %.proto
-	protoc -I.:$(GOPATH) --go_out=. $?
+	protoc -I.:$(GOPATH) --gofast_out=. $?
 	mkdir -p $(PYTHONOUT)
 	protoc -I.:$(GOPATH) --python_out=$(PYTHONOUT) $?
 
@@ -52,7 +64,7 @@ test:
 fmt: 
 	$(GOFMT)
 install: build
-	$(GOINSTALL)
+	$(GOINSTALL) $(PKG)
 	mkdir -p $(PYINSTALLDIR)/python/$(basename $(notdir $(CURDIR)))
 	install $(CURDIR)/pyproto/* $(PYINSTALLDIR)/python/$(basename $(notdir $(CURDIR)))
 	touch $(PYINSTALLDIR)/python/$(basename $(notdir $(CURDIR)))/__init__.py
