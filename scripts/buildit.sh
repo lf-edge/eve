@@ -5,7 +5,7 @@
 export PATH=$GOPATH/bin:$GOROOT/bin:$PATH
 DIR=`pwd`
 
-APPS="downloader verifier client server register zedrouter domainmgr identitymgr zedmanager eidregister"
+APPS="downloader verifier client server register zedrouter domainmgr identitymgr zedmanager eidregister zedagent"
 if /bin/true; then
     cmdline=""
     for app in $APPS; do

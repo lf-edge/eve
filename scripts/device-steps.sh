@@ -365,6 +365,12 @@ if [ $WAIT == 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
 
+echo "Starting zedagent at" `date`
+zedagent >&/var/log/zedagent.log&
+if [ $WAIT == 1 ]; then
+    echo; read -n 1 -s -p "Press any key to continue"; echo; echo
+fi
+
 echo "Uploading device (hardware) status at" `date`
 machine=`uname -m`
 processor=`uname -p`
