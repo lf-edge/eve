@@ -38,7 +38,6 @@ func parseConfig(config *zconfig.EdgeDevConfig) {
 				if drive.Image.Id	== ds.Id {
 
 					image.DownloadURL		= ds.Fqdn
-					//image.TransportMethod	= zconfig.DsType_name [ds.DType]
 					image.TransportMethod	= ds.DType.String()
 					break
 				}
