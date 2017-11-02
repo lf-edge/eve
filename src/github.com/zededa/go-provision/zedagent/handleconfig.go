@@ -9,7 +9,7 @@ import (
 	"io/ioutil"
 	"github.com/golang/protobuf/proto"
 	"shared/proto/devcommon"
-	"shared/proto/deprecatedzconfig"
+	"shared/proto/zconfig"
 	"strings"
 	"log"
 	"net/http"
@@ -151,7 +151,7 @@ func validateConfigMessage(r *http.Response) error {
 
 func readDeviceConfigProtoMessage (r *http.Response) error {
 
-	var config= &deprecatedzconfig.EdgeDevConfig{}
+	var config= &zconfig.EdgeDevConfig{}
 
 	bytes, err := ioutil.ReadAll(r.Body)
 	if err != nil {
@@ -170,7 +170,7 @@ func readDeviceConfigProtoMessage (r *http.Response) error {
 
 func readDeviceConfigJsonMessage (r *http.Response) error {
 
-	var config = &deprecatedzconfig.EdgeDevConfig{}
+	var config = &zconfig.EdgeDevConfig{}
 
 	bytes, err := ioutil.ReadAll(r.Body)
 	if err != nil {
@@ -187,7 +187,7 @@ func readDeviceConfigJsonMessage (r *http.Response) error {
 	return publishDeviceConfig(config)
 }
 
-func  publishDeviceConfig(config *deprecatedzconfig.EdgeDevConfig)  error {
+func  publishDeviceConfig(config *zconfig.EdgeDevConfig)  error {
 
 	fmt.Printf("%v\n", config)
 
@@ -260,18 +260,8 @@ func  publishDeviceConfig(config *deprecatedzconfig.EdgeDevConfig)  error {
 			}
 		}
 
-		// add new App instancess
-		for app := range Apps {
-
-			var configFilename = zedmanagerConfigDirname + "/" +
-				 config.Apps[app].Uuidandversion.Uuid + ".json"
-
-			bytes, err := json.Marshal(config.Apps[app])
-			err = ioutil.WriteFile(configFilename, bytes, 0644)
-			if err != nil {
-				log.Println(err)
-			}
-		}
+		// publish the new config to zedmanager
+		parseConfig(config)
 	}
 
 	return nil
