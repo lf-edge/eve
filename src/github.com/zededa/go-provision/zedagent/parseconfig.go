@@ -1,12 +1,14 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"io/ioutil"
 	"encoding/json"
 	"github.com/satori/go.uuid"
 	"github.com/zededa/go-provision/types"
 	"shared/proto/zconfig"
+	"strings"
 )
 
 func parseConfig(config *zconfig.EdgeDevConfig) {
@@ -49,6 +51,11 @@ func parseConfig(config *zconfig.EdgeDevConfig) {
 				}
 			}
 
+			// XXX:FIXME certificate should be of variable length
+			// depending on the number of certifications in the chain
+			// this listcurrently contains the certUrls
+			// should be the sha/uuid of cert filenames
+
 			image.CertificateChain	= make([]string, 1)
 			image.Format			= drive.Image.Iformat.String()
 			image.ImageSignature	= drive.Image.Siginfo.Signature
@@ -65,6 +72,11 @@ func parseConfig(config *zconfig.EdgeDevConfig) {
 			idx++
 		}
 
+
+		// get the certs for image sha verification
+		getCerts (appInstance)
+
+		// write to zedmanager config directory
 		appFilename := cfgApp.Uuidandversion.Uuid
 		writeAppInstance (appInstance, appFilename)
 	}
@@ -81,4 +93,66 @@ func writeAppInstance (appInstance types.AppInstanceConfig, appFilename string) 
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+func getCerts (appInstance types.AppInstanceConfig) {
+
+	for _,image := range appInstance.StorageConfigList {
+
+		writeCertConfig (image, image.SignatureKey)
+
+		for _, certUrl := range image.CertificateChain {
+			writeCertConfig (image, certUrl)
+		}
+	}
+}
+
+func writeCertConfig (image types.StorageConfig, certUrl string) {
+
+	var baseCertDirname		= "/var/tmp/downloader/cert.obj"
+	var configCertDirname	= baseCertDirname + "/config"
+
+	var safename = urlToSafename(certUrl, "")
+
+	// XXX:FIXME dpath/key/pwd from image storage
+	// should be coming from Drive
+	// also the sha for the cert should be set
+	var config = &types.DownloaderConfig {
+			Safename:			safename,
+			DownloadURL:		certUrl,
+			MaxSize:			image.MaxSize,
+			TransportMethod:	image.TransportMethod,
+			Dpath:				"zededa-cert-repo",
+			ApiKey:				image.ApiKey,
+			Password:			image.Password,
+			ImageSha256:		"",
+			DownloadObjDir:		"/var/tmp/zedmanager/certs",
+			RefCount:			1,
+		}
+
+	bytes, err := json.Marshal(config)
+	if err != nil {
+		log.Fatal(err, "json Marshal certConfig")
+	}
+
+	configFilename := fmt.Sprintf("%s/%s.json", configCertDirname, safename)
+	err = ioutil.WriteFile(configFilename, bytes, 0644)
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func urlToSafename(url string, sha string) string {
+
+	var safename string
+
+	if sha != "" {
+		safename = strings.Replace(url, "/", "_", -1) + "." + sha
+	} else {
+		names := strings.Split(url, "/")
+	        for _, name := range names {
+		    safename = name
+		}
+	}
+    return safename
 }
