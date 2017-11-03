@@ -112,6 +112,8 @@ func parseConfig(config *zconfig.EdgeDevConfig) {
 			netx ++
 		}
 
+// XXX:FIXME will enable after testing
+/*
 		var ovnetx int = 0
 		appInstance.OverlayNetworkList = make([]types.EIDOverlayConfig,len(cfgApp.Interfaces))
 		for _,interfaces := range cfgApp.Interfaces {
@@ -153,6 +155,7 @@ func parseConfig(config *zconfig.EdgeDevConfig) {
 			appInstance.OverlayNetworkList[ovnetx] = *overlayNetworkDetails
 			ovnetx ++
 		}
+*/
 
 		// get the certs for image sha verification
 		getCerts (appInstance)
@@ -207,7 +210,8 @@ func writeCertConfig (image types.StorageConfig, certUrl string) {
 			ApiKey:				image.ApiKey,
 			Password:			image.Password,
 			ImageSha256:		"",
-			DownloadObjDir:		"/var/tmp/zedmanager/certs",
+			DownloadObjDir:		"/var/tmp/zedmanager/downloads/certs",
+			VerifiedObjDir:		"/var/tmp/zedmanager/certs",
 			RefCount:			1,
 		}
 

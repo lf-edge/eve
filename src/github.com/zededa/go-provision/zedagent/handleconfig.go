@@ -25,7 +25,7 @@ const (
         MaxReaderMaxDefault = MaxReaderSmall
         MaxReaderMedium     = 1 << 19 // 512k
         MaxReaderHuge       = 1 << 21 // two megabytes
-	configTickTimeout   = 1 // in minutes
+		configTickTimeout   = 3 // in minutes
 )
 
 var configApi	string	= "api/v1/edgedevice/config"
@@ -212,7 +212,7 @@ func  publishDeviceConfig(config *zconfig.EdgeDevConfig)  error {
 
 	Apps := config.GetApps()
 
-	if Apps == nil {
+	if len(Apps) == 0 {
 
 		// No valid Apps, in the new configuration
 		// delete all current App instancess

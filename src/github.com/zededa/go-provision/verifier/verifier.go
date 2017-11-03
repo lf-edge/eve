@@ -36,6 +36,7 @@ import (
 	"log"
 	"os"
 	"time"
+	"strings"
 )
 
 var imgCatalogDirname string
@@ -274,9 +275,9 @@ func handleCreate(statusFilename string, configArg interface{}) {
 
 	imageHash := h.Sum(nil)
 	got := fmt.Sprintf("%x", h.Sum(nil))
-	if got != config.ImageSha256 {
+	if got != strings.ToLower(config.ImageSha256){
 		fmt.Printf("got      %s\n", got)
-		fmt.Printf("expected %s\n", config.ImageSha256)
+		fmt.Printf("expected %s\n",strings.ToLower(config.ImageSha256))
 		cerr := fmt.Sprintf("got %s expected %s", got, config.ImageSha256)
 		status.PendingAdd = false
 		updateVerifyErrStatus(&status, cerr, statusFilename)
@@ -307,17 +308,17 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
     //and signature verification...
 
 	baseCertDirname := "/var/tmp/zedmanager"
-	certificateDirname := baseCertDirname+"/cert"
+	certificateDirname := baseCertDirname+"/certs"
 	rootCertDirname := "/opt/zededa/etc"
 	rootCertFileName := rootCertDirname+"/root-certificate.pem"
 
 	//This func literal will take care of writing status during 
 	//cert chain and signature verification...
 
-	serverCertName := config.SignatureKey
+	serverCertName := types.UrlToFilename(config.SignatureKey)
 	serverCertificate, err := ioutil.ReadFile(certificateDirname+"/"+serverCertName)
 	if err != nil {
-		cerr := fmt.Sprintf("unable to read the certificate")
+		cerr := fmt.Sprintf("unable to read the certificate %s", serverCertName)
 		return cerr
 	}
 
@@ -354,11 +355,13 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 		return cerr
 	}
 
-	for _,certName := range certificateNameInChain {
+	for _,certUrl := range certificateNameInChain {
+
+	    certName := types.UrlToFilename(certUrl)
 
 		bytes, err := ioutil.ReadFile(certificateDirname+"/"+certName)
 		if err != nil {
-			cerr := fmt.Sprintf("failed to read certificate Directory: %v",err)
+			cerr := fmt.Sprintf("failed to read certificate Directory: %v",certName)
 			return cerr
 		}
 

@@ -52,9 +52,9 @@ func main() {
 
 	downloaderInit()
 
-	go handleCertUpdates()
+	go checkImageUpdates()
 
-	checkImageUpdates()
+	handleCertUpdates()
 }
 
 // Object handlers
@@ -664,21 +664,28 @@ func handleSyncOp(syncOp zedUpload.SyncOpType,
 	 statusFilename string, config types.DownloaderConfig, status *types.DownloaderStatus) {
 
 	var err error
+	var locFilename string
 
 	locDirname := "/var/tmp/downloader/downloads"
 
-	if config.DownloadObjDir != "" {
-		locDirname = config.DownloadObjDir
+	// XXX:FIXME define a proper destination for certs
+	if config.VerifiedObjDir != "" {
+		locFilename = config.VerifiedObjDir
+	} else {
+		if config.DownloadObjDir != "" {
+			locDirname = config.DownloadObjDir
+		}
+		locFilename = locDirname + "/pending"
 	}
 
 	// update status to DOWNLOAD STARTED
 	status.State = types.DOWNLOAD_STARTED
 	writeDownloaderStatus(status, statusFilename)
 
-	locFilename := locDirname + "/pending"
 
 	if config.ImageSha256 != "" {
 		locFilename = locFilename + "/" + config.ImageSha256
+	} else {
 	}
 
 	if _, err = os.Stat(locFilename); err != nil {
@@ -688,7 +695,14 @@ func handleSyncOp(syncOp zedUpload.SyncOpType,
 		}
 	}
 
-	locFilename = locFilename + "/" + config.Safename
+	filename := types.SafenameToFilename(config.Safename)
+
+	if config.ImageSha256 != "" {
+		locFilename = locFilename + "/" + config.Safename
+	} else {
+		locFilename = locFilename + "/" + filename
+	}
+
 	log.Printf("Downloading <%s> to <%s>\n", config.DownloadURL, locFilename)
 
 	switch config.TransportMethod {
@@ -702,7 +716,6 @@ func handleSyncOp(syncOp zedUpload.SyncOpType,
 			trType := zedUpload.SyncAwsTr
 			// XXX:FIXME , will come as part of data store
 			region := "us-west-2"
-			filename := types.SafenameToFilename(config.Safename);
 
 			// create Endpoint
 			dEndPoint, err := dCtx.NewSyncerDest(trType, region, config.Dpath, auth)
@@ -739,14 +752,22 @@ func handleSyncOp(syncOp zedUpload.SyncOpType,
 	default:
 		log.Fatal("unsupported transport method")
 	}
-
 }
 
 func handleSyncOpResponse(config types.DownloaderConfig,
 	 status *types.DownloaderStatus, statusFilename string,
 	 err error) {
 
-	locDirname := config.DownloadObjDir
+	locDirname := "/var/tmp/downloader/downloads"
+
+	// XXX:FIXME 
+	if config.VerifiedObjDir != "" {
+		locDirname = config.VerifiedObjDir
+	} else {
+		if config.DownloadObjDir != "" {
+			locDirname = config.DownloadObjDir
+		}
+	}
 
 	if err != nil {
 		// Delete file
@@ -762,13 +783,25 @@ func handleSyncOpResponse(config types.DownloaderConfig,
 		return
 	}
 
-	locFilename := locDirname + "/pending"
+	// XXX:FIXME 
+	locFilename := locDirname
+
+	if config.VerifiedObjDir == "" {
+		locFilename = locDirname + "/pending"
+	}
+
 
 	if status.ImageSha256 != "" {
 		locFilename = locFilename + "/" + status.ImageSha256
 	}
 
-	locFilename = locFilename + "/" + status.Safename
+	filename := types.SafenameToFilename(config.Safename)
+
+	if config.ImageSha256 != "" {
+		locFilename = locFilename + "/" + config.Safename
+	} else {
+		locFilename = locFilename + "/" + filename
+	}
 
 	info, err := os.Stat(locFilename)
 	if err != nil {

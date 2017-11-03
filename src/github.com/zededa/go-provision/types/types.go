@@ -102,7 +102,7 @@ func UrlToSafename(url string, sha string) string {
 	} else {
 		names := strings.Split(url, "/")
 	        for _, name := range names {
-		    safename = name
+		    safename = name + ".sha"
 		}
 	}
     return safename
@@ -120,5 +120,11 @@ func SafenameToFilename(safename string) string {
 			safename)
 	}
 	last = last[0:i]
+	return last
+}
+
+func UrlToFilename(urlName string) string {
+	comp := strings.Split(urlName, "/")
+	last := comp[len(comp)-1]
 	return last
 }
