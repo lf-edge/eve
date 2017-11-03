@@ -65,6 +65,49 @@ func parseConfig(config *zconfig.EdgeDevConfig) {
 			idx++
 		}
 
+		var netx int = 0
+		appInstance.UnderlayNetworkList = make([]types.UnderlayNetworkConfig,len(cfgApp.Interfaces))
+			for _,interfaces := range cfgApp.Interfaces {
+				underlayNetworkDetails := new(types.UnderlayNetworkConfig)
+				for _,networks := range config.Networks {
+
+					if interfaces.NetworkId == networks.Id {
+
+						underlayNetworkDetails.ACLs = make([]types.ACE,len(interfaces.Acls))
+						var acx int = 0
+						for _,acl := range interfaces.Acls {
+
+							aceDetails := new(types.ACE)
+							aceDetails.Matches =  make([]types.ACEMatch,len(acl.Matches))
+							aceDetails.Actions = make([]types.ACEAction,len(acl.Actions))
+							var matx int = 0
+							for _,match := range acl.Matches {
+								aceMatchDetails := new(types.ACEMatch)
+								aceMatchDetails.Type = match.Type
+								aceMatchDetails.Value = match.Value
+								aceDetails.Matches[matx] = *aceMatchDetails
+								matx ++
+							}
+							var actx int = 0
+							for _,action := range acl.Actions {
+								aceActionDetails := new(types.ACEAction)
+								aceActionDetails.Limit = action.Limit
+								aceActionDetails.LimitRate =  int(action.Limitrate)
+								aceActionDetails.LimitUnit =  action.Limitunit
+								aceActionDetails.LimitBurst = int(action.Limitburst)
+								//aceActionDetails.Drop =
+								aceDetails.Actions[actx] = *aceActionDetails
+								actx ++
+							}
+							underlayNetworkDetails.ACLs[acx] =  *aceDetails
+							acx ++
+						}
+				}
+			}
+			appInstance.UnderlayNetworkList[netx] = *underlayNetworkDetails
+			netx ++
+		}
+
 		appFilename := cfgApp.Uuidandversion.Uuid
 		writeAppInstance (appInstance, appFilename)
 	}
