@@ -14,6 +14,16 @@ BRANCH_NAME := $(shell git rev-parse --abbrev-ref HEAD)
 VERSION     := $(MAJOR_VER).$(MINOR_VER)-$(GIT_VERSION)
 LISPURL     := https://www.dropbox.com/s/lgoegpd78hujbp0/lispers.net-x86-release-0.415.tgz
 
+# Go parameters
+GOCMD=go
+GOBUILD=$(GOCMD) build
+GOCLEAN=$(GOCMD) clean
+GOTEST=$(GOCMD) test
+GOINSTALL=$(GOCMD) install
+GOGENERATE=$(GOCMD) generate
+GOGET=$(GOCMD) get
+GOFMT=gofmt -w
+
 # For future use
 #LDFLAGS     := -ldflags "-X=main.Version=$(VERSION) -X=main.Build=$(BUILD_DATE)"
 
@@ -62,6 +72,9 @@ endif
 .PHONY: all clean pkg obj install
 
 all: pkg
+
+init:
+	$(GOGET) ./...
 
 install: pkg
 	@echo "***"
