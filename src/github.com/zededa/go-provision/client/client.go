@@ -440,6 +440,12 @@ func main() {
 	}
 
 	if operations["lookupParam"] {
+		if !oldFlag {
+			log.Printf("XXX lookupParam not yet supported using %s\n",
+				serverName)
+			os.Remove(zedrouterConfigFileName)
+			return
+		}
 		done := false
 		var delay time.Duration
 		device := types.DeviceDb{}
@@ -596,6 +602,11 @@ func main() {
 	}
 	// XXX remove later
 	if operations["updateHwStatus"] {
+		if !oldFlag {
+			log.Printf("XXX updateHwStatus not yet supported using %s\n",
+				serverName)
+			return
+		}
 		// Load file for upload
 		buf, err := ioutil.ReadFile(hwStatusFileName)
 		if err != nil {
@@ -632,6 +643,11 @@ func main() {
 	}
 	// XXX remove later
 	if operations["updateSwStatus"] {
+		if !oldFlag {
+			log.Printf("XXX updateSwStatus not yet supported using %s\n",
+				serverName)
+			return
+		}
 		// Load file for upload
 		buf, err := ioutil.ReadFile(swStatusFileName)
 		if err != nil {
