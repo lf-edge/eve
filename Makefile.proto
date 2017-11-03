@@ -42,10 +42,6 @@ genproto:            $(GOSRCS)
 generate:            $(GOSRCS)
 	$(GOGENERATE) -x $(PKG)
 
-# XXX should we add this to all?
-init:	
-	$(GOGET) ./...
-
 %.pb.go::       %.proto
 	protoc -I.:$(GOPATH) --gofast_out=. $?
 	mkdir -p $(PYTHONOUT)

@@ -25,8 +25,22 @@ TEST_LIST = $(DIRS:%=test-%)
 FMT_LIST = $(DIRS:%=fmt-%)
 INSTALL_LIST = $(DIRS:%=install-%)
 
+# Go parameters
+GOCMD=go
+GOBUILD=$(GOCMD) build
+GOCLEAN=$(GOCMD) clean
+GOTEST=$(GOCMD) test
+GOINSTALL=$(GOCMD) install
+GOGENERATE=$(GOCMD) generate
+GOGET=$(GOCMD) get
+
 .PHONY: srvs $(DIRS) $(BUILD_LIST) $(CLEAN_LIST)
 all: build
+
+init:	
+#	$(GOGET) ./...
+#	$(GOGET) -u github.com/golang/protobuf/protoc-gen-go
+	$(GOGET) -u github.com/gogo/protobuf/protoc-gen-gofast
 
 $(BUILD_LIST):
 	$(MAKE) $(DEBUG) -C $@ build
