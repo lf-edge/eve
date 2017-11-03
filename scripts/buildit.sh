@@ -4,7 +4,7 @@
 
 #export GOPATH=/home/nordmark/gocode/:/home/nordmark/go-provision:/home/nordmark/zedcloud
 #export GOROOT=/usr/local/go
-export PATH=$GOPATH/bin:$GOROOT/bin:$PATH
+#export PATH=$GOPATH/bin:$GOROOT/bin:$PATH
 DIR=`pwd`
 
 [ -d bin ] || mkdir bin
