@@ -1,4 +1,4 @@
-FROM zededa/ztools:6a3b197e7a349d15af7804db103da8a4c9011d1e-amd64 as ztools
+FROM zededa/ztools:dcb95c9b68f50215e3be1f2641b0fdbc775344ba-amd64 as ztools
 FROM TESTCERT_TAG as cert
 FROM XENTOOLS_TAG as xen-tools
 FROM TESTMSVCS_TAG as msvcs
