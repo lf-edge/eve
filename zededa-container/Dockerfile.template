@@ -5,7 +5,8 @@ FROM XENTOOLS_TAG as xen-tools
 FROM alpine:3.6
 RUN apk add --no-cache \
     yajl xz bash openssl iptables ip6tables \
-    coreutils dmidecode sudo libbz2 libuuid ipset libpcap
+    coreutils dmidecode sudo libbz2 libuuid ipset \
+    libpcap libaio pixman glib
 
 # The following enables pcappy to dlopen libpcap.so
 RUN ln -s libpcap.so.1 /usr/lib/libpcap.so
@@ -15,4 +16,4 @@ COPY --from=ztools / /
 COPY --from=cert / /opt/zededa/etc
 
 # FIXME: replace while loop with monit ASAP
-CMD ["/bin/ash", "-c", "/etc/xen-start.sh; /opt/zededa/bin/device-steps.sh -w < /opt/zededa/etc/cert-input.txt ; while [ true ] ; do sleep 10 ; done"]
+CMD ["/bin/ash", "-c", "/etc/init.d/xencommons start; /opt/zededa/bin/device-steps.sh -w < /opt/zededa/etc/cert-input.txt ; while [ true ] ; do sleep 10 ; done"]

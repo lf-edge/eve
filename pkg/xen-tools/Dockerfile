@@ -26,11 +26,11 @@ RUN set -e && for patch in /patches/*.patch; do \
 RUN mkdir -p /out
 
 WORKDIR /xen
-RUN ./configure --disable-xen --disable-qemu-traditional --disable-docs --prefix=/out/
-RUN make && make install
+RUN ./configure --disable-xen --disable-qemu-traditional --disable-docs --disable-stubdom
+RUN make && make dist
+RUN dist/install.sh /out
 
 FROM scratch
 ENTRYPOINT []
 CMD []
-COPY xen-start.sh /etc/xen-start.sh
 COPY --from=kernel-build /out/ /
