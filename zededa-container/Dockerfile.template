@@ -1,6 +1,7 @@
 FROM zededa/ztools:dcb95c9b68f50215e3be1f2641b0fdbc775344ba-amd64 as ztools
-FROM TESTCERT_TAG as cert
 FROM XENTOOLS_TAG as xen-tools
+FROM DNSMASQ_TAG as dnsmasq
+FROM TESTCERT_TAG as cert
 FROM TESTMSVCS_TAG as msvcs
 
 FROM alpine:3.6
@@ -14,6 +15,7 @@ RUN ln -s libpcap.so.1 /usr/lib/libpcap.so
 
 COPY --from=xen-tools / /
 COPY --from=ztools / /
+COPY --from=dnsmasq /usr/sbin/dnsmasq /opt/zededa/bin/dnsmasq
 COPY --from=cert / /opt/zededa/etc
 COPY --from=msvcs /vms /vms
 
