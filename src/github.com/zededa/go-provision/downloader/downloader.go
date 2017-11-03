@@ -34,6 +34,7 @@ import (
 	"github.com/zededa/go-provision/watch"
 	"github.com/zededa/go-provision/wrap"
 	"zc/libs/zedUpload"
+	"shared/proto/zconfig"
 	"io/ioutil"
 	"log"
 	"os"
@@ -690,47 +691,55 @@ func handleSyncOp(syncOp zedUpload.SyncOpType,
 	locFilename = locFilename + "/" + config.Safename
 	log.Printf("Downloading <%s> to <%s>\n", config.DownloadURL, locFilename)
 
-	if config.TransportMethod == "s3" {
+	switch config.TransportMethod {
+	case zconfig.DsType_DsS3.String() :
+		{
 
-		// Prepare the authentication Tuple
-		// XXX:FIXME , will come as part of data store
-		auth := &zedUpload.AuthInput{AuthType: "s3",
-				 Uname :config.ApiKey,
-				 Password:config.Password}
+			auth := &zedUpload.AuthInput{AuthType: "s3",
+					 Uname :config.ApiKey,
+					 Password:config.Password}
 
-		// XXX:FIXME , will come as part of data store
-		trType := zedUpload.SyncAwsTr
-		region := "us-west-2"
+			trType := zedUpload.SyncAwsTr
+			// XXX:FIXME , will come as part of data store
+			region := "us-west-2"
+			filename := types.SafenameToFilename(config.Safename);
 
-		// create Endpoint
-		dEndPoint, err := dCtx.NewSyncerDest(trType, region, config.Dpath, auth)
+			// create Endpoint
+			dEndPoint, err := dCtx.NewSyncerDest(trType, region, config.Dpath, auth)
 
-		if err == nil && dEndPoint != nil {
-			var respChan = make(chan * zedUpload.DronaRequest);
+			if err == nil && dEndPoint != nil {
+				var respChan = make(chan * zedUpload.DronaRequest);
 
-			log.Printf("syncOp for <%s>/<%s>\n", config.Dpath, types.SafenameToFilename(config.Safename))
+				log.Printf("syncOp for <%s>/<%s>\n", config.Dpath, filename)
 
-			// create Request
-			req := dEndPoint.NewRequest(syncOp, types.SafenameToFilename(config.DownloadURL), locFilename,
-				int64(config.MaxSize / 1024), true, respChan)
+				// create Request
+				req := dEndPoint.NewRequest(syncOp, filename, locFilename,
+					int64(config.MaxSize / 1024), true, respChan)
 
-			if req != nil {
-				req.Post()
-			        select {
-			                case resp := <-respChan:
-						_, err = resp.GetUpStatus()
+				if req != nil {
+					req.Post()
+				        select {
+				                case resp := <-respChan:
+							_, err = resp.GetUpStatus()
 
-						if resp.IsError () == false {
-							err = nil
-						}
-			        }
+							if resp.IsError () == false {
+								err = nil
+							}
+				        }
+				}
 			}
 		}
-	} else {
+		handleSyncOpResponse(config, status, statusFilename, err)
+		break
+
+	case zconfig.DsType_DsHttp.String() :
+	case zconfig.DsType_DsHttps.String() :
 		err = doWget(config.DownloadURL, locFilename)
+		handleSyncOpResponse(config, status, statusFilename, err)
+	default:
+		log.Fatal("unsupported transport method")
 	}
 
-	handleSyncOpResponse(config, status, statusFilename, err)
 }
 
 func handleSyncOpResponse(config types.DownloaderConfig,
