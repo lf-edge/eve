@@ -21,7 +21,7 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"shared/proto/zmet"
+	"github.com/zededa/api/zmet"
 	"strings"
 	"time"
 )

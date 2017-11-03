@@ -11,7 +11,7 @@ import (
 	"github.com/zededa/go-provision/types"
 	"github.com/golang/protobuf/proto"
 	"github.com/shirou/gopsutil/net"
-	"shared/proto/zmet"
+	"github.com/zededa/api/zmet"
 	"time"
 	"bytes"
 )
