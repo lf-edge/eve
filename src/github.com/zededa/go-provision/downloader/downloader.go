@@ -37,7 +37,6 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
-	"strings"
 	"time"
 )
 
@@ -545,35 +544,6 @@ func sanitizeDirs (baseDirname string, runDirname string) {
 	}
 }
 
-func urlToSafename(url string, sha string) string {
-
-	var safename string
-
-	if sha != "" {
-		safename = strings.Replace(url, "/", "_", -1) + "." + sha
-	} else {
-		names := strings.Split(url, "/")
-	        for _, name := range names {
-		    safename = name
-		}
-	}
-    return safename
-}
-
-func urlToFilename(url string) string {
-
-	var safename string
-
-	if (url != "") {
-		names := strings.Split(url, "/")
-		for _, name := range names {
-			safename = name
-		}
-	}
-
-    return safename
-}
-
 func sizeFromDir(dirname string) int64 {
 	var totalUsed int64 = 0
 	locations, err := ioutil.ReadDir(dirname)
@@ -738,10 +708,10 @@ func handleSyncOp(syncOp zedUpload.SyncOpType,
 		if err == nil && dEndPoint != nil {
 			var respChan = make(chan * zedUpload.DronaRequest);
 
-			log.Printf("syncOp for <%s>/<%s>\n", config.Dpath, urlToFilename(config.Safename))
+			log.Printf("syncOp for <%s>/<%s>\n", config.Dpath, types.SafenameToFilename(config.Safename))
 
 			// create Request
-			req := dEndPoint.NewRequest(syncOp, urlToFilename(config.DownloadURL), locFilename,
+			req := dEndPoint.NewRequest(syncOp, types.SafenameToFilename(config.DownloadURL), locFilename,
 				int64(config.MaxSize / 1024), true, respChan)
 
 			if req != nil {

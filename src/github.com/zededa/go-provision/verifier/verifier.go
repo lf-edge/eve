@@ -35,7 +35,6 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
-	"strings"
 	"time"
 )
 
@@ -423,7 +422,7 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 	// Move directory from downloads/verifier to downloads/verified
 	// XXX should have dom0 do this and/or have RO mounts
 	finalDirname := imgCatalogDirname + "/verified/" + config.ImageSha256
-	filename := safenameToFilename(config.Safename)
+	filename := types.SafenameToFilename(config.Safename)
 	finalFilename := finalDirname + "/" + filename
 	fmt.Printf("Move from %s to %s\n", verifierFilename, finalFilename)
 	if _, err := os.Stat(verifierFilename); err != nil {
@@ -466,22 +465,6 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 
 	return ""
 }
-
-// Remove initial part up to last '/' in URL. Note that '/' was converted
-// to ' ' in Safename
-func safenameToFilename(safename string) string {
-	comp := strings.Split(safename, " ")
-	last := comp[len(comp)-1]
-	// Drop "."sha256 tail part of Safename
-	i := strings.LastIndex(last, ".")
-	if i == -1 {
-		log.Fatal("Malformed safename with no .sha256",
-			safename)
-	}
-	last = last[0:i]
-	return last
-}
-
 func handleModify(statusFilename string, configArg interface{},
 	statusArg interface{}) {
 	var config *types.VerifyImageConfig

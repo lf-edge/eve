@@ -6,6 +6,8 @@ package types
 import (
 	"github.com/satori/go.uuid"
 	"net"
+	"log"
+	"strings"
 )
 
 // XXX rename to DeviceHwResources
@@ -90,3 +92,33 @@ const (
 	INSTALLED // Available to be activated
 	MAXSTATE  //
 )
+
+func UrlToSafename(url string, sha string) string {
+
+	var safename string
+
+	if sha != "" {
+		safename = strings.Replace(url, "/", " ", -1) + "." + sha
+	} else {
+		names := strings.Split(url, "/")
+	        for _, name := range names {
+		    safename = name
+		}
+	}
+    return safename
+}
+
+// Remove initial part up to last '/' in URL. Note that '/' was converted
+// to ' ' in Safename
+func SafenameToFilename(safename string) string {
+	comp := strings.Split(safename, " ")
+	last := comp[len(comp)-1]
+	// Drop "."sha256 tail part of Safename
+	i := strings.LastIndex(last, ".")
+	if i == -1 {
+		log.Fatal("Malformed safename with no .sha256",
+			safename)
+	}
+	last = last[0:i]
+	return last
+}

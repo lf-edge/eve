@@ -8,7 +8,6 @@ import (
 	"github.com/satori/go.uuid"
 	"github.com/zededa/go-provision/types"
 	"shared/proto/zconfig"
-	"strings"
 )
 
 func parseConfig(config *zconfig.EdgeDevConfig) {
@@ -194,7 +193,7 @@ func writeCertConfig (image types.StorageConfig, certUrl string) {
 	var baseCertDirname		= "/var/tmp/downloader/cert.obj"
 	var configCertDirname	= baseCertDirname + "/config"
 
-	var safename = urlToSafename(certUrl, "")
+	var safename = types.UrlToSafename(certUrl, "")
 
 	// XXX:FIXME dpath/key/pwd from image storage
 	// should be coming from Drive
@@ -222,19 +221,4 @@ func writeCertConfig (image types.StorageConfig, certUrl string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-}
-
-func urlToSafename(url string, sha string) string {
-
-	var safename string
-
-	if sha != "" {
-		safename = strings.Replace(url, "/", "_", -1) + "." + sha
-	} else {
-		names := strings.Split(url, "/")
-	        for _, name := range names {
-		    safename = name
-		}
-	}
-    return safename
 }
