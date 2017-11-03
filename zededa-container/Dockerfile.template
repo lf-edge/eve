@@ -18,4 +18,4 @@ COPY --from=cert / /opt/zededa/etc
 COPY --from=msvcs /vms /vms
 
 # FIXME: replace while loop with monit ASAP
-CMD ["/bin/ash", "-c", "/etc/init.d/xencommons start; /opt/zededa/bin/device-steps.sh -w < /opt/zededa/etc/cert-input.txt ; while [ true ] ; do sleep 10 ; done"]
+CMD ["/bin/ash", "-c", "/etc/init.d/xencommons start; /opt/zededa/bin/device-steps.sh -o -w < /opt/zededa/etc/cert-input.txt ; while [ true ] ; do sleep 10 ; done"]
