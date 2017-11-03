@@ -315,11 +315,11 @@ func doCreate(statusFilename string, config types.DownloaderConfig,
 	status.Size = uint((info.Size() + 1023) / 1024)
 
 	if status.Size > config.MaxSize {
-		// Delete file
-		doDelete(statusFilename, status)
 		errString := fmt.Sprintf("Size exceeds MaxSize; %d vs. %d for %s\n",
 			status.Size, config.MaxSize, config.DownloadURL)
 		log.Println(errString)
+		// Delete file
+		doDelete(statusFilename, status)
 		status.PendingAdd = false
 		status.Size = 0
 		status.LastErr = errString
