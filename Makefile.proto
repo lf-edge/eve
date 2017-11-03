@@ -38,7 +38,9 @@ all: build
 genproto:            $(GOSRCS)
         @:
 
-# XXX needed?
+init:	
+	$(GOGET) ./...
+
 generate:            $(GOSRCS)
 	$(GOGENERATE) -x $(PKG)
 

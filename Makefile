@@ -24,6 +24,8 @@ CLEAN_LIST = $(DIRS:%=clean-%)
 TEST_LIST = $(DIRS:%=test-%)
 FMT_LIST = $(DIRS:%=fmt-%)
 INSTALL_LIST = $(DIRS:%=install-%)
+GENERATE_LIST = $(DIRS:%=generate-%)
+INIT_LIST = $(DIRS:%=init-%)
 
 # Go parameters
 GOCMD=go
@@ -34,7 +36,7 @@ GOINSTALL=$(GOCMD) install
 GOGENERATE=$(GOCMD) generate
 GOGET=$(GOCMD) get
 
-.PHONY: srvs $(DIRS) $(BUILD_LIST) $(CLEAN_LIST)
+.PHONY: srvs $(DIRS) $(BUILD_LIST) $(CLEAN_LIST) $(TEST_LIST) $(GENERATE_LIST) $(INIT_LIST)
 all: build
 
 init:	
