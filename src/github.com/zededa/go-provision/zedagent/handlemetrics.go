@@ -357,10 +357,14 @@ func publishAiInfoToCloud(aiStatus *types.AppInstanceStatus) {
 	ReportAppInfo.Storage	=	*proto.Uint32(uint32(0))
 
 	// XXX: should be multiple entries, one per storage item
-	sc							:=	aiStatus.StorageStatusList[0]
-	ReportVerInfo				:=	new(zmet.ZInfoSW)
+	ReportVerInfo			:=	new(zmet.ZInfoSW)
+	if len(aiStatus.StorageStatusList) == 0 {
+		log.Printf("storage status detail is empty so ignoring")
+	}else{
+		sc			:=	aiStatus.StorageStatusList[0]
+		ReportVerInfo.SwHash	=	*proto.String(sc.ImageSha256)
+	}
 	ReportVerInfo.SwVersion		=	*proto.String(aiStatus.UUIDandVersion.Version)
-	ReportVerInfo.SwHash		=	*proto.String(sc.ImageSha256)
 
 	// XXX: this should be a list
 	ReportAppInfo.Software		=	ReportVerInfo
