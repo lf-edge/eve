@@ -29,7 +29,7 @@ RUN cd /opt/zededa/bin ; ln -s /go/bin/* .
 
 # Now building LISP
 FROM alpine:latest AS lisp
-ENV LISP_URL https://www.dropbox.com/s/lgoegpd78hujbp0/lispers.net-x86-release-0.415.tgz
+ENV LISP_URL https://www.dropbox.com/s/gw1gczw8z798q0a/lispers.net-x86-release-0.419.tgz
 RUN apk add --no-cache curl gcc linux-headers libc-dev python python-dev libffi-dev openssl-dev
 RUN mkdir /lisp ; cd /lisp ; curl --insecure -L $LISP_URL | gzip -dc | tar -xf -
 ADD scripts/lisp/RESTART-LISP \
