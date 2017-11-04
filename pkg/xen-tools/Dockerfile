@@ -26,7 +26,7 @@ RUN set -e && for patch in /patches/*.patch; do \
 RUN mkdir -p /out
 
 WORKDIR /xen
-RUN ./configure --disable-xen --disable-qemu-traditional --disable-docs --disable-stubdom
+RUN ./configure --prefix=/usr --disable-xen --disable-qemu-traditional --disable-docs --disable-stubdom
 RUN make && make dist
 RUN dist/install.sh /out
 
