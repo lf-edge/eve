@@ -1,0 +1,31 @@
+{
+	"comment": "",
+	"ignore": "test",
+	"package": [
+		{
+			"checksumSHA1": "yqF125xVSkmfLpIVGrLlfE05IUk=",
+			"path": "github.com/golang/protobuf/proto",
+			"revision": "1643683e1b54a9e88ad26d98f81400c8c9d9f4f9",
+			"revisionTime": "2017-10-21T04:39:52Z"
+		},
+		{
+			"checksumSHA1": "WWJa7pL/JQ8m9IeHaif65+WsVsQ=",
+			"path": "github.com/zededa/api/deprecatedzconfig",
+			"revision": "8e796ec4e91ba1c33697829658ea2712ef5fd6df",
+			"revisionTime": "2017-11-03T02:30:15Z"
+		},
+		{
+			"checksumSHA1": "pUofI2urOoJbnSwMq/g2mkf+RiM=",
+			"path": "github.com/zededa/api/devcommon",
+			"revision": "8e796ec4e91ba1c33697829658ea2712ef5fd6df",
+			"revisionTime": "2017-11-03T02:30:15Z"
+		},
+		{
+			"checksumSHA1": "Qqipq+6kI8Gf1tTA6wLrgV7nWy0=",
+			"path": "github.com/zededa/api/zmet",
+			"revision": "8e796ec4e91ba1c33697829658ea2712ef5fd6df",
+			"revisionTime": "2017-11-03T02:30:15Z"
+		}
+	],
+	"rootPath": "github.com/zededa/go-provision"
+}

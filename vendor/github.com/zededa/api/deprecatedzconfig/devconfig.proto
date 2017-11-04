@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+option go_package  = "deprecatedzconfig";
+option java_package = "com.zededa.cloud.uservice.proto";
+
+import "github.com/zededa/api/devcommon/devcommon.proto";
+import "appconfig.proto";
+import "network.proto";
+
+message EdgeDevConfig {
+	UUIDandVersion id = 1;
+	bytes devConfigSha256 = 2;
+	bytes devConfigSignature = 3;
+	repeated AppInstanceConfig apps   = 4;
+	repeated UnderlayNetwork networks = 5;
+}

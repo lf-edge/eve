@@ -1,7 +1,7 @@
 FROM golang:1.9.1-alpine AS build
 RUN apk add --no-cache git gcc linux-headers libc-dev util-linux
 
-ADD cmd/ lib/ /go/src/github.com/zededa/go-provision/
+ADD ./  /go/src/github.com/zededa/go-provision/
 ADD etc /opt/zededa/etc
 ADD README /opt/zededa/etc
 ADD scripts/device-steps.sh \
@@ -14,15 +14,7 @@ ADD scripts/device-steps.sh \
   /opt/zededa/bin/
 ADD examples/x86-ggc-1a0d85d9-5e83-4589-b56f-cedabc9a8c0d.json /tmp/gg.json
 
-RUN go get \
-  github.com/zededa/go-provision/downloader \
-  github.com/zededa/go-provision/verifier \
-  github.com/zededa/go-provision/client \
-  github.com/zededa/go-provision/zedrouter \
-  github.com/zededa/go-provision/domainmgr \
-  github.com/zededa/go-provision/identitymgr \
-  github.com/zededa/go-provision/zedmanager \
-  github.com/zededa/go-provision/eidregister
+RUN go get github.com/zededa/go-provision/cmd/...
 RUN cd /opt/zededa/bin ; ln -s /go/bin/* .
 
 RUN ash -c 'ID=`uuidgen | tr "[A-Z]" "[a-z]"` ; cat /tmp/gg.json | sed -e s"#1a0d85d9-5e83-4589-b56f-cedabc9a8c0d#${ID}#" > /opt/zededa/etc/${ID}.json'

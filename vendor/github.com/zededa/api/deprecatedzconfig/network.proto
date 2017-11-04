@@ -1,0 +1,73 @@
+syntax = "proto3";
+
+option java_package = "com.zededa.cloud.uservice.proto";
+option go_package = "deprecatedzconfig";
+
+
+message ACEMatch {
+	string type = 1;
+	string value = 2;
+}
+message ACEAction {
+	bool drop = 1;
+	bool limit = 2;
+	uint32 limitrate = 3;
+	string limitunit = 4;
+	uint32 limitburst = 5;
+	bool allocate = 6;
+	bool exportprivate = 7;
+	bytes allocationprefix = 8;
+	uint32 allocationprefixlen = 9;
+	
+}
+message ACE {
+	repeated ACEMatch matches = 1;
+	repeated ACEAction actions = 2;
+}
+
+message NameToEid {
+	string hostname = 1;
+	repeated string eids = 2;
+}
+
+message AdditionInfoDevice {
+	string underlayip = 1;
+	string hostname = 2;
+	string city = 3;
+	string region = 4;
+	string country = 5;
+	string loc = 6;
+	string org = 7;
+}
+message OverlayNetwork {
+	uint32 iid = 1;
+	string ip = 2;
+	string lispsignature = 3;
+	repeated ACE acls = 4;
+	repeated NameToEid nmtoeid =5;
+	AdditionInfoDevice addinfodev = 6;
+}
+
+message EIDAllocation {
+	bool allocate = 1;
+	bool exportprivate = 2;
+	bytes allocationprefix = 3;
+	uint32 allocationprefixlen = 4;
+}
+message EIDConfigDetails {
+	uint32 iid = 1;
+	EIDAllocation eidalloc = 2;
+	string eid = 3;
+	string lispsignature = 4;
+	bytes pemcert = 5;
+	bytes pemprivatekey = 6;
+}
+message EIDOverlayConfig {
+	EIDConfigDetails eidcfgdetails = 1;
+	repeated ACE acls = 2;
+	repeated NameToEid ntoeid = 3;
+}
+
+message UnderlayNetwork {
+	repeated ACE acls = 1;
+}
