@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+option java_package = "com.zededa.cloud.uservice.proto";
+option go_package = "zconfig";
+
+// import "fw.proto";
+
+message ipv4spec {
+	bool   dhcp = 2;
+
+	string subnet = 3;
+	string mask = 4;
+	string gateway = 5;
+	string domain = 6;
+	string ntp = 7;
+	repeated string dns = 8;
+}
+
+message ipv6spec {
+	bool   dhcp = 2;
+
+	string subnet = 3;
+	string mask = 4;
+	string gateway = 5;
+	string domain = 6;
+	string ntp = 7;;
+	repeated string dns = 8;
+}
+
+message NameToEid {
+	string hostname = 1;
+	repeated string eids = 2;
+}
+
+message EIDAllocation {
+	bool allocate = 1;
+	bool exportprivate = 2;
+	bytes allocationprefix = 3;
+	uint32 allocationprefixlen = 4;
+}
+message lispspec {
+	uint32 iid = 1;
+	EIDAllocation eidalloc = 2;
+
+	repeated NameToEid nmtoeid = 3;
+}
+
+message l2spec {
+}
+
+enum NetworkType {
+	NETWORKTYPENOOP = 0;
+	V4 = 4;
+	V6 = 6;
+	L2 = 2;
+	LISP = 10;
+}

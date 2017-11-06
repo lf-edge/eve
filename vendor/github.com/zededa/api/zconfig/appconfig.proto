@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+option go_package  = "zconfig";
+option java_package = "com.zededa.cloud.uservice.proto";
+
+import "github.com/zededa/api/devcommon/devcommon.proto";
+import "storage.proto";
+import "vm.proto";
+import "netconfig.proto";
+
+message AppInstanceConfig {
+	UUIDandVersion uuidandversion = 1;
+	string displayname = 2;
+	VmConfig fixedresources = 3;
+	repeated Drive drives = 4;
+	bool activate = 5;
+	repeated NetworkAdapter interfaces = 6;
+}
