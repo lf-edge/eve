@@ -6,27 +6,10 @@
 
 	It is generated from these files:
 		storage.proto
-		vm.proto
-		devconfig.proto
-		appconfig.proto
-		network.proto
 
 	It has these top-level messages:
 		SignatureInfo
 		StorageConfig
-		VmConfig
-		EdgeDevConfig
-		AppInstanceConfig
-		ACEMatch
-		ACEAction
-		ACE
-		NameToEid
-		AdditionInfoDevice
-		OverlayNetwork
-		EIDAllocation
-		EIDConfigDetails
-		EIDOverlayConfig
-		UnderlayNetwork
 */
 package deprecatedzconfig
 
