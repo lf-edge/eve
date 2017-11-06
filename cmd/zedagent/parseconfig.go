@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"github.com/satori/go.uuid"
 	"github.com/zededa/go-provision/types"
-	"shared/proto/zconfig"
+	"github.com/zededa/api/zconfig"
 )
 
 func parseConfig(config *zconfig.EdgeDevConfig) {
