@@ -4,16 +4,11 @@
 
 DIR=`pwd`
 
-APPS="downloader verifier client server register zedrouter domainmgr identitymgr zedmanager eidregister zedagent"
-#export GOROOT=/usr/local/go
-#export PATH=$GOPATH/bin:$GOROOT/bin:$PATH
-DIR=`pwd`
-
 [ -d bin ] || mkdir bin
 [ -d bin/linux_x86_64 ] || mkdir bin/linux_x86_64
 [ -d bin/linux_arm64 ] || mkdir bin/linux_arm64
 
-APPS="downloader verifier client server register zedrouter domainmgr identitymgr zedmanager eidregister"
+APPS="downloader verifier client server register zedrouter domainmgr identitymgr zedmanager eidregister zedagent"
 if /bin/true; then
     cmdline=""
     for app in $APPS; do
