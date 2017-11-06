@@ -74,6 +74,7 @@ func getCloudUrls () {
 	                Transport: &http.Transport {
 	                        TLSClientConfig: &tls.Config {
 	                                Certificates: []tls.Certificate{deviceCert},
+					InsecureSkipVerify:true, // XXX remove
 	                        },
 	                },
 		}
