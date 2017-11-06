@@ -6,8 +6,8 @@ option go_package = "zconfig";
 
 
 message SignatureInfo {
-	bytes intermediatecertspem = 1;
-	bytes signercertpem = 2;
+	string intercertsurl = 1;
+	string signercerturl = 2;
 	bytes signature = 3;
 }
 
@@ -76,12 +76,11 @@ enum DriveType {
 	NET     = 3;
 }
 
-
 message Drive {
-	Image downloadurl = 1;
-	uint32 maxsize = 2;
+	Image image = 1;
+	int64 maxsize = 2;
 	bool readonly = 5;
 	bool preserve = 6;
-	DriveType dtype = 8;
+	DriveType drvtype = 8;
 	Target target = 9;
 }
