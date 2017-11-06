@@ -2,10 +2,19 @@
 # Assumes chown `whoami` /usr/local/go/pkg/; chgrp `whoami` /usr/local/go/pkg/
 # for cross-compile
 
-export PATH=$GOPATH/bin:$GOROOT/bin:$PATH
 DIR=`pwd`
 
 APPS="downloader verifier client server register zedrouter domainmgr identitymgr zedmanager eidregister zedagent"
+#export GOROOT=/usr/local/go
+#export PATH=$GOPATH/bin:$GOROOT/bin:$PATH
+DIR=`pwd`
+
+[ -d bin ] || mkdir bin
+[ -d bin/linux_x86_64 ] || mkdir bin/linux_x86_64
+[ -d bin/linux_arm64 ] || mkdir bin/linux_arm64
+
+APPS="downloader verifier client server register zedrouter domainmgr identitymgr zedmanager eidregister"
+>>>>>>> origin/master
 if /bin/true; then
     cmdline=""
     for app in $APPS; do

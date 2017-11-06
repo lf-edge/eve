@@ -9,9 +9,11 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"flag"
 	"fmt"
-	"github.com/satori/go.uuid"
 	"github.com/RevH/ipinfo"
+	"github.com/golang/protobuf/proto"
+	"github.com/satori/go.uuid"
 	"github.com/zededa/go-provision/types"
 	"golang.org/x/crypto/ocsp"
 	"io/ioutil"
@@ -19,10 +21,9 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"github.com/zededa/api/zmet"
 	"strings"
 	"time"
-	"github.com/golang/protobuf/proto"
-	"shared/proto/zmet"
 )
 
 var maxDelay = time.Second * 600 // 10 minutes
@@ -31,6 +32,7 @@ var maxDelay = time.Second * 600 // 10 minutes
 // by default. The files are
 //  root-certificate.pem	Fixed? Written if redirected. factory-root-cert?
 //  server			Fixed? Written if redirected. factory-root-cert?
+//  oldserver			Used if -o; XXX remove later
 //  onboard.cert.pem, onboard.key.pem	Per device onboarding certificate/key
 //  		   		for selfRegister operation
 //  device.cert.pem,
@@ -41,45 +43,48 @@ var maxDelay = time.Second * 600 // 10 minutes
 //  zedserverconfig		Written by lookupParam operation; zed server EIDs
 //  zedrouterconfig.json	Written by lookupParam operation
 //  uuid			Written by lookupParam operation
-//  hwstatus.json		Uploaded by updateHwStatus operation
-//  swstatus.json		Uploaded by updateSwStatus operation
+//  hwstatus.json		Uploaded by updateHwStatus operation XXX remove
+//  swstatus.json		Uploaded by updateSwStatus operation XXX remvove
 //  clientIP			Written containing the public client IP
 //
 func main() {
-	args := os.Args[1:]
-	if len(args) > 10 { // XXX
-		log.Fatal("Usage: " + os.Args[0] +
-			"[<dirName> [<operations>...]]")
-	}
-	dirName := "/opt/zededa/etc"
-	if len(args) > 0 {
-		dirName = args[0]
-	}
+	oldPtr := flag.Bool("o", false, "Old use of prov01")
+	dirPtr := flag.String("d", "/opt/zededa/etc",
+		"Directory with certs etc")
+	flag.Parse()
+	oldFlag := *oldPtr
+	dirName := *dirPtr
+	args := flag.Args()
 	operations := map[string]bool{
 		"selfRegister":   false,
-		"lookupParam":    false, 
+		"lookupParam":    false,
+		"updateHwStatus": false, // XXX remove later
+		"updateSwStatus": false, // XXX remove later
 	}
-	if len(args) > 1 {
-		for _, op := range args[1:] {
+	for _, op := range args {
+		if _, ok := operations[op]; ok {
 			operations[op] = true
+		} else {
+			log.Printf("Unknown arg %s\n", op)
+			log.Fatal("Usage: " + os.Args[0] +
+				"[-o] [-d <dirName> [<operations>...]]")
 		}
-	} else {
-		// XXX for compat
-		operations["selfRegister"] = true
-		operations["lookupParam"] = true
 	}
 
 	onboardCertName := dirName + "/onboard.cert.pem"
 	onboardKeyName := dirName + "/onboard.key.pem"
 	deviceCertName := dirName + "/device.cert.pem"
-	deviceKeyName := dirName + "/device.key.pem" 
+	deviceKeyName := dirName + "/device.key.pem"
 	rootCertName := dirName + "/root-certificate.pem"
 	serverFileName := dirName + "/server"
+	oldServerFileName := dirName + "/oldserver"
 	infraFileName := dirName + "/infra"
 	zedserverConfigFileName := dirName + "/zedserverconfig"
 	zedrouterConfigFileName := dirName + "/zedrouterconfig.json"
 	uuidFileName := dirName + "/uuid"
 	clientIPFileName := dirName + "/clientIP"
+	hwStatusFileName := dirName + "/hwstatus.json" // XXX remove later
+	swStatusFileName := dirName + "/swstatus.json" // XXX remove later
 
 	var onboardCert, deviceCert tls.Certificate
 	var deviceCertPem []byte
@@ -97,7 +102,8 @@ func main() {
 			log.Fatal(err)
 		}
 	}
-	if operations["lookupParam"] {
+	if operations["lookupParam"] || operations["updateHwStatus"] ||
+		operations["updateSwStatus"] {
 		// Load device cert
 		var err error
 		deviceCert, err = tls.LoadX509KeyPair(deviceCertName,
@@ -120,9 +126,12 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	//XXX: FIXME hard-coded Server name and port for lookupParam
-	if operations["lookupParam"] {
-		server = []byte("prov1.zededa.net:9069")
+	//XXX: remove oldFlag later
+	if oldFlag {
+		server, err = ioutil.ReadFile(oldServerFileName)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 	serverNameAndPort := strings.TrimSpace(string(server))
 	serverName := strings.Split(serverNameAndPort, ":")[0]
@@ -192,13 +201,72 @@ func main() {
 		}
 
 		contentType := resp.Header.Get("Content-Type")
-		if strings.Contains (contentType, "application/x-proto-binary") || strings.Contains (contentType, "application/json") || strings.Contains(contentType, "text/plain"){
+		if strings.Contains(contentType, "application/x-proto-binary") || strings.Contains(contentType, "application/json") || strings.Contains(contentType, "text/plain") {
 			fmt.Printf("Received reply %s\n", string(contents))
 			return true
-		}else {
+		} else {
 			fmt.Println("Incorrect Content-Type " + contentType)
 			return false
 		}
+	}
+
+	// XXX remove later
+	oldMyPost := func(client *http.Client, url string, b *bytes.Buffer) bool {
+		resp, err := client.Post("https://"+serverNameAndPort+url,
+			"application/json", b)
+		if err != nil {
+			fmt.Println(err)
+			return false
+		}
+		defer resp.Body.Close()
+		connState := resp.TLS
+		if connState == nil {
+			fmt.Println("no TLS connection state")
+			return false
+		}
+
+		if connState.OCSPResponse == nil ||
+			!stapledCheck(connState) {
+			if connState.OCSPResponse == nil {
+				fmt.Println("no OCSP response")
+			} else {
+				fmt.Println("OCSP stapled check failed")
+			}
+			return false
+		}
+
+		contents, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			fmt.Println(err)
+			return false
+		}
+
+		// XXX Should this behavior be url-specific?
+		switch resp.StatusCode {
+		case http.StatusOK:
+			fmt.Printf("%s StatusOK\n", url)
+		case http.StatusCreated:
+			fmt.Printf("%s StatusCreated\n", url)
+		case http.StatusConflict:
+			fmt.Printf("%s StatusConflict\n", url)
+			// Retry until fixed
+			fmt.Printf("%s\n", string(contents))
+			return false
+		default:
+			fmt.Printf("%s statuscode %d %s\n",
+				url, resp.StatusCode,
+				http.StatusText(resp.StatusCode))
+			fmt.Printf("%s\n", string(contents))
+			return false
+		}
+
+		contentType := resp.Header.Get("Content-Type")
+		if contentType != "application/json" {
+			fmt.Println("Incorrect Content-Type " + contentType)
+			return false
+		}
+		fmt.Printf("%s\n", string(contents))
+		return true
 	}
 
 	// Returns true when done; false when retry
@@ -224,11 +292,36 @@ func main() {
 		registerCreate := &zmet.ZRegisterMsg{
 			PemCert: []byte(base64.StdEncoding.EncodeToString(deviceCertPem)),
 		}
-                b,err := proto.Marshal(registerCreate)
-                if err != nil {
-                        log.Println(err)
-                }
-		return myPost(client, "/api/v1/edgedevice/register", bytes.NewBuffer( b))
+		b, err := proto.Marshal(registerCreate)
+		if err != nil {
+			log.Println(err)
+		}
+		return myPost(client, "/api/v1/edgedevice/register", bytes.NewBuffer(b))
+	}
+
+	// XXX remove later
+	oldSelfRegister := func() bool {
+		// Setup HTTPS client
+		tlsConfig := &tls.Config{
+			Certificates: []tls.Certificate{onboardCert},
+			ServerName:   serverName,
+			RootCAs:      caCertPool,
+			CipherSuites: []uint16{
+				tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+				tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256},
+			// TLS 1.2 because we can
+			MinVersion: tls.VersionTLS12,
+		}
+		tlsConfig.BuildNameToCertificate()
+
+		fmt.Printf("Connecting to %s\n", serverNameAndPort)
+
+		transport := &http.Transport{TLSClientConfig: tlsConfig}
+		client := &http.Client{Transport: transport}
+		rc := types.RegisterCreate{PemCert: deviceCertPem}
+		b := new(bytes.Buffer)
+		json.NewEncoder(b).Encode(rc)
+		return oldMyPost(client, "/rest/self-register", b)
 	}
 
 	// Returns true when done; false when retry
@@ -248,9 +341,9 @@ func main() {
 		if connState.OCSPResponse == nil ||
 			!stapledCheck(connState) {
 			if connState.OCSPResponse == nil {
-				log.Println("no OCSP response")
+				fmt.Println("no OCSP response")
 			} else {
-				log.Println("OCSP stapled check failed")
+				fmt.Println("OCSP stapled check failed")
 			}
 			return false
 		}
@@ -265,7 +358,7 @@ func main() {
 			fmt.Printf("device-param StatusOK\n")
 		case http.StatusNotFound:
 			fmt.Printf("device-param StatusNotFound\n")
- 			// XXX:FIXME
+			// XXX:FIXME
 			// New devices which are only registered in zedcloud
 			// will not have state in prov1 hence no EID for
 			// zedmanager until we add lookupParam to zedcloud
@@ -282,7 +375,6 @@ func main() {
 			fmt.Println("Incorrect Content-Type " + contentType)
 			return false
 		}
-
 		if err := json.Unmarshal(contents, &device); err != nil {
 			fmt.Println(err)
 			return false
@@ -295,7 +387,11 @@ func main() {
 		var delay time.Duration
 		for !done {
 			time.Sleep(delay)
-			done = selfRegister()
+			if oldFlag {
+				done = oldSelfRegister()
+			} else {
+				done = selfRegister()
+			}
 			if done {
 				continue
 			}
@@ -304,7 +400,7 @@ func main() {
 				delay = maxDelay
 			}
 			log.Printf("Retrying selfRegister in %d seconds\n",
-				delay)
+				delay/time.Second)
 		}
 	}
 
@@ -328,7 +424,7 @@ func main() {
 	client := &http.Client{Transport: transport}
 
 	var addInfoDevice *types.AdditionalInfoDevice
-	if operations["lookupParam"] {
+	if operations["lookupParam"] || operations["updateHwStatus"] {
 		// Determine location information and use as AdditionalInfo
 		if myIP, err := ipinfo.MyIP(); err == nil {
 			addInfo := types.AdditionalInfoDevice{
@@ -345,6 +441,12 @@ func main() {
 	}
 
 	if operations["lookupParam"] {
+		if !oldFlag {
+			log.Printf("XXX lookupParam not yet supported using %s\n",
+				serverName)
+			os.Remove(zedrouterConfigFileName)
+			return
+		}
 		done := false
 		var delay time.Duration
 		device := types.DeviceDb{}
@@ -359,7 +461,7 @@ func main() {
 				delay = maxDelay
 			}
 			log.Printf("Retrying lookupParam in %d seconds\n",
-				delay)
+				delay/time.Second)
 		}
 		var devUUID uuid.UUID
 		if _, err := os.Stat(uuidFileName); err != nil {
@@ -499,6 +601,77 @@ func main() {
 		}
 		writeNetworkConfig(&config, zedrouterConfigFileName)
 	}
+	// XXX remove later
+	if operations["updateHwStatus"] {
+		if !oldFlag {
+			log.Printf("XXX updateHwStatus not yet supported using %s\n",
+				serverName)
+			return
+		}
+		// Load file for upload
+		buf, err := ioutil.ReadFile(hwStatusFileName)
+		if err != nil {
+			log.Fatal(err)
+		}
+		// Input is in json format; parse and add additionalInfo
+		b := bytes.NewBuffer(buf)
+		// parsing DeviceHwStatus json payload
+		hwStatus := &types.DeviceHwStatus{}
+		if err := json.NewDecoder(b).Decode(hwStatus); err != nil {
+			log.Fatal("Error decoding DeviceHwStatus: ", err)
+		}
+		if addInfoDevice != nil {
+			hwStatus.AdditionalInfoDevice = *addInfoDevice
+		}
+		b = new(bytes.Buffer)
+		json.NewEncoder(b).Encode(hwStatus)
+
+		done := false
+		var delay time.Duration
+		for !done {
+			time.Sleep(delay)
+			done = oldMyPost(client, "/rest/update-hw-status", b)
+			if done {
+				continue
+			}
+			delay = 2 * (delay + time.Second)
+			if delay > maxDelay {
+				delay = maxDelay
+			}
+			log.Printf("Retrying updateHwStatus in %d seconds\n",
+				delay/time.Second)
+		}
+	}
+	// XXX remove later
+	if operations["updateSwStatus"] {
+		if !oldFlag {
+			log.Printf("XXX updateSwStatus not yet supported using %s\n",
+				serverName)
+			return
+		}
+		// Load file for upload
+		buf, err := ioutil.ReadFile(swStatusFileName)
+		if err != nil {
+			log.Fatal(err)
+		}
+		// Input is in json format
+		b := bytes.NewBuffer(buf)
+		done := false
+		var delay time.Duration
+		for !done {
+			time.Sleep(delay)
+			done = oldMyPost(client, "/rest/update-sw-status", b)
+			if done {
+				continue
+			}
+			delay = 2 * (delay + time.Second)
+			if delay > maxDelay {
+				delay = maxDelay
+			}
+			log.Printf("Retrying updateSwStatus in %d seconds\n",
+				delay/time.Second)
+		}
+	}
 }
 
 func writeNetworkConfig(config *types.AppNetworkConfig,
@@ -550,17 +723,17 @@ func stapledCheck(connState *tls.ConnectionState) bool {
 	now := time.Now()
 	age := now.Unix() - resp.ProducedAt.Unix()
 	remain := resp.NextUpdate.Unix() - now.Unix()
-	log.Printf("OCSP age %d, remain %d\n", age, remain)
+	fmt.Printf("OCSP age %d, remain %d\n", age, remain)
 	if remain < 0 {
-		log.Println("OCSP expired.")
+		fmt.Println("OCSP expired.")
 		return false
 	}
 	if resp.Status == ocsp.Good {
-		log.Println("Certificate Status Good.")
+		fmt.Println("Certificate Status Good.")
 	} else if resp.Status == ocsp.Unknown {
-		log.Println("Certificate Status Unknown")
+		fmt.Println("Certificate Status Unknown")
 	} else {
-		log.Println("Certificate Status Revoked")
+		fmt.Println("Certificate Status Revoked")
 	}
 	return resp.Status == ocsp.Good
 }

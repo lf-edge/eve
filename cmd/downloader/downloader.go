@@ -823,10 +823,11 @@ func handleSyncOpResponse(config types.DownloaderConfig,
 
 	if status.Size > config.MaxSize {
 		// Delete file
-		doDelete(statusFilename, locDirname, status)
 		errString := fmt.Sprintf("Size exceeds MaxSize; %d vs. %d for %s\n",
 			status.Size, config.MaxSize, status.DownloadURL)
 		log.Println(errString)
+		// Delete file
+		doDelete(statusFilename, locDirname, status)
 		status.PendingAdd = false
 		status.Size = 0
 		status.LastErr = errString
