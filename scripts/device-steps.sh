@@ -155,7 +155,7 @@ for d in $DIRS; do
     chmod 700 $d `dirname $d`
 done
 
-AGENTS="zedrouter domainmgr downloader verifier identitymgr eidregister"
+AGENTS="zedrouter domainmgr downloader verifier identitymgr eidregister zedagent"
 for AGENT in $AGENTS; do
     if [ ! -d /var/tmp/$AGENT ]; then
 	continue
