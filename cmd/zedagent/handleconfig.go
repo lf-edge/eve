@@ -5,6 +5,7 @@ package main
 
 import (
 	"fmt"
+	"crypto/x509"
 	"encoding/json"
 	"io/ioutil"
 	"github.com/golang/protobuf/proto"
@@ -46,6 +47,7 @@ var serverFilename	string = "/opt/zededa/etc/server"
 var dirName		string = "/opt/zededa/etc"
 var deviceCertName	string = dirName + "/device.cert.pem"
 var deviceKeyName	string = dirName + "/device.key.pem"
+var rootCertName	string = dirName + "/root-certificate.pem"
 
 var deviceCert		tls.Certificate
 var cloudClient		*http.Client
@@ -66,17 +68,33 @@ func getCloudUrls () {
 	metricsUrl	=	serverName + "/" + metricsApi
 
 	deviceCert, err = tls.LoadX509KeyPair(deviceCertName, deviceKeyName)
-
 	if err != nil {
 	        log.Fatal(err)
 	}
-	cloudClient = &http.Client {
-	                Transport: &http.Transport {
-	                        TLSClientConfig: &tls.Config {
-	                                Certificates: []tls.Certificate{deviceCert},
-	                        },
-	                },
-		}
+	// Load CA cert
+	caCert, err := ioutil.ReadFile(rootCertName)
+	if err != nil {
+		log.Fatal(err)
+	}
+	caCertPool := x509.NewCertPool()
+	caCertPool.AppendCertsFromPEM(caCert)
+
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{deviceCert},
+		ServerName:   serverName,
+		RootCAs:      caCertPool,
+		CipherSuites: []uint16{
+			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256},
+		// TLS 1.2 because we can
+		MinVersion: tls.VersionTLS12,
+	}
+	tlsConfig.BuildNameToCertificate()
+
+	fmt.Printf("Connecting to %s\n", serverName)
+
+	transport := &http.Transport{TLSClientConfig: tlsConfig}
+	cloudClient = &http.Client{Transport: transport}
 }
 
 // got a trigger for new config. check the present version and compare
