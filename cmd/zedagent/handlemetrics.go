@@ -231,7 +231,7 @@ func MakeMetricsProtobufStructure() {
 func MakeDeviceInfoProtobufStructure () {
 
 	var ReportInfo = &zmet.ZInfoMsg{}
-	var storage_size = 1
+	var storage_size = 1	// XXX misnamed and not real data
 
 	deviceType		:= new(zmet.ZInfoTypes)
 	*deviceType		=	zmet.ZInfoTypes_ZiDevice
@@ -239,9 +239,11 @@ func MakeDeviceInfoProtobufStructure () {
 	ReportInfo.DevId	=	*proto.String(deviceId)
 
 	ReportDeviceInfo	:=	new(zmet.ZInfoDevice)
+	// XXX report real data from /proc and dmiinfo akin to device-steps
 	ReportDeviceInfo.MachineArch	=	*proto.String("32 bit")
 	ReportDeviceInfo.CpuArch	=	*proto.String("x86")
 	ReportDeviceInfo.Platform	=	*proto.String("ubuntu")
+	// XXX report real data instead of "1"
 	ReportDeviceInfo.Ncpu		=	*proto.Uint32(uint32(storage_size))
 	ReportDeviceInfo.Memory		=	*proto.Uint64(uint64(storage_size))
 	ReportDeviceInfo.Storage	=	*proto.Uint64(uint64(storage_size))
@@ -249,6 +251,7 @@ func MakeDeviceInfoProtobufStructure () {
 	ReportDeviceInfo.Devices	=	make([]*zmet.ZinfoPeripheral,	1)
 	ReportDevicePeripheralInfo	:=	new(zmet.ZinfoPeripheral)
 
+	// XXX report real data from /proc and dmiinfo akin to device-steps
 	for	index,_	:=	range ReportDeviceInfo.Devices	{
 
 		PeripheralType					:=		new(zmet.ZPeripheralTypes)
@@ -256,6 +259,7 @@ func MakeDeviceInfoProtobufStructure () {
 		*PeripheralType						=		zmet.ZPeripheralTypes_ZpNone
 		ReportDevicePeripheralInfo.Ztype			=		*PeripheralType
 		ReportDevicePeripheralInfo.Pluggable			=		*proto.Bool(false)
+		// XXX report real data from /proc and dmiinfo akin to device-steps
 		ReportDevicePeripheralManufacturerInfo.Manufacturer	=		*proto.String("apple")
 		ReportDevicePeripheralManufacturerInfo.ProductName	=		*proto.String("usb")
 		ReportDevicePeripheralManufacturerInfo.Version		=		*proto.String("1.2")
@@ -265,6 +269,7 @@ func MakeDeviceInfoProtobufStructure () {
 		ReportDeviceInfo.Devices[index]				=		ReportDevicePeripheralInfo
 	}
 
+	// XXX report real data from /proc and dmiinfo akin to device-steps
 	ReportDeviceManufacturerInfo	:=	new(zmet.ZInfoManufacturer)
 	ReportDeviceManufacturerInfo.Manufacturer		=		*proto.String("intel")
 	ReportDeviceManufacturerInfo.ProductName		=		*proto.String("vbox")
@@ -317,6 +322,7 @@ func MakeHypervisorInfoProtobufStructure (){
 	ReportInfo.Ztype	=	*hypervisorType
 	ReportInfo.DevId	=	*proto.String(deviceId)
 
+	// XXX report real data from /proc and dmiinfo akin to device-steps
 	ReportHypervisorInfo := new(zmet.ZInfoHypervisor)
 	ReportHypervisorInfo.Ncpu		=	*proto.Uint32(uint32(cpu_count))
 	ReportHypervisorInfo.Memory		=	*proto.Uint64(uint64(memory_size))
