@@ -32,9 +32,6 @@ var configApi	string	= "api/v1/edgedevice/config"
 var statusApi	string	= "api/v1/edgedevice/info"
 var metricsApi	string	= "api/v1/edgedevice/metrics"
 
-var serverName	string	= "zedcloud.zededa.net"
-
-
 var activeVersion	string
 var configUrl		string
 var deviceId		string
@@ -55,11 +52,10 @@ func getCloudUrls () {
 	// get the server name
 	bytes, err := ioutil.ReadFile(serverFilename)
 	if err != nil {
-		err = ioutil.WriteFile(serverFilename, []byte(serverName), 0644)
-	} else {
-		strTrim := strings.TrimSpace(string(bytes))
-		serverName = strings.Split(strTrim, ":")[0]
+		log.Fatal(err)
 	}
+	strTrim := strings.TrimSpace(string(bytes))
+	serverName := strings.Split(strTrim, ":")[0]
 
 	configUrl	=	serverName + "/" + configApi
 	statusUrl	=	serverName + "/" + statusApi
