@@ -115,20 +115,23 @@ if [ $SELF_REGISTER = 1 ]; then
 fi
 
 # XXX We always redo this to get an updated zedserverconfig
+rm -f $ETCDIR/zedserverconfig
 if [ /bin/true -o ! -f $ETCDIR/lisp.config ]; then
     echo "Retrieving device and overlay network config at" `date`
     echo $BINDIR/client $OLDFLAG -d $ETCDIR lookupParam
     $BINDIR/client $OLDFLAG -d $ETCDIR lookupParam
-    echo "Retrieved overlay /etc/hosts with:"
-    cat $ETCDIR/zedserverconfig
-    # edit zedserverconfig into /etc/hosts
-    match=`awk '{print $2}' $ETCDIR/zedserverconfig| sort -u | awk 'BEGIN {m=""} { m = sprintf("%s|%s", m, $1) } END { m = substr(m, 2, length(m)); printf ".*:.*(%s)\n", m}'`
-    egrep -v $match /etc/hosts >/tmp/hosts.$$
-    cat $ETCDIR/zedserverconfig >>/tmp/hosts.$$
-    echo "New /etc/hosts:"
-    cat /tmp/hosts.$$
-    cp /tmp/hosts.$$ /etc/hosts
-    rm -f /tmp/hosts.$$
+    if [ -f $ETCDIR/zedserverconfig ]; then
+	echo "Retrieved overlay /etc/hosts with:"
+	cat $ETCDIR/zedserverconfig
+	# edit zedserverconfig into /etc/hosts
+	match=`awk '{print $2}' $ETCDIR/zedserverconfig| sort -u | awk 'BEGIN {m=""} { m = sprintf("%s|%s", m, $1) } END { m = substr(m, 2, length(m)); printf ".*:.*(%s)\n", m}'`
+	egrep -v $match /etc/hosts >/tmp/hosts.$$
+	cat $ETCDIR/zedserverconfig >>/tmp/hosts.$$
+	echo "New /etc/hosts:"
+	cat /tmp/hosts.$$
+	cp /tmp/hosts.$$ /etc/hosts
+	rm -f /tmp/hosts.$$
+    fi
     if [ $WAIT == 1 ]; then
 	echo; read -n 1 -s -p "Press any key to continue"; echo; echo
     fi
@@ -260,6 +263,8 @@ for l in $LOGGERS; do
 done
 
 if [ $SELF_REGISTER = 1 ]; then
+	rm -f $ETCDIR/zedrouterconfig.json
+    
 	intf=`$BINDIR/find-uplink.sh $ETCDIR/lisp.config.base`
 	if [ "$intf" != "" ]; then
 		echo "Found interface $intf based on route to map servers"
@@ -304,7 +309,9 @@ cp -p $ETCDIR/device.key.pem $LISPDIR/lisp-sig.pem
 # Pick up the device EID zedrouter config file from $ETCDIR and put
 # it in /var/tmp/zedrouter/config/
 # This will result in starting lispers.net when zedrouter starts
-cp $ETCDIR/zedrouterconfig.json /var/tmp/zedrouter/config/${uuid}.json
+if [ -f $ETCDIR/zedrouterconfig.json ]; then
+	cp $ETCDIR/zedrouterconfig.json /var/tmp/zedrouter/config/${uuid}.json
+fi
 
 cp $ETCDIR/network.config.global /var/tmp/zedrouter/config/global
 
