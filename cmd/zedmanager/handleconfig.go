@@ -32,6 +32,7 @@ var configApi	string	= "api/v1/edgedevice/config"
 var statusApi	string	= "api/v1/edgedevice/info"
 var metricsApi	string	= "api/v1/edgedevice/metrics"
 
+// XXX remove global variables
 var activeVersion	string
 var configUrl		string
 var deviceId		string
@@ -44,6 +45,7 @@ var dirName		string = "/opt/zededa/etc"
 var deviceCertName	string = dirName + "/device.cert.pem"
 var deviceKeyName	string = dirName + "/device.key.pem"
 
+// XXX remove global variables
 var deviceCert		tls.Certificate
 var cloudClient		*http.Client
 
@@ -104,6 +106,7 @@ func getLatestConfig(deviceCert []byte) {
 	if err != nil {
 		fmt.Printf("URL get fail: %v\n", err)
 	} else {
+		// XXX don't have validate also parse and save!
 		validateConfigMessage(resp)
 	}
 }
@@ -154,7 +157,7 @@ func readDeviceConfigProtoMessage (r *http.Response) error {
 		fmt.Println(err)
 		return err
 	}
-
+	fmt.Printf("parsing proto %d bytes\n", len(bytes))
 	err = proto.Unmarshal(bytes, config)
 	if err != nil {
 		fmt.Println("Unmarshalling failed: %v", err)
@@ -174,6 +177,7 @@ func readDeviceConfigJsonMessage (r *http.Response) error {
 		return err
 	}
 
+	fmt.Printf("parsing json %d bytes\n", len(bytes))
 	err = json.Unmarshal(bytes, config)
 	if err != nil {
 		fmt.Println("Unmarshalling failed, %v", err)
@@ -185,7 +189,7 @@ func readDeviceConfigJsonMessage (r *http.Response) error {
 
 func  publishDeviceConfig(config *deprecatedzconfig.EdgeDevConfig)  error {
 
-	fmt.Printf("%v\n", config)
+	fmt.Printf("Publishing config %v\n", config)
 
 	// if they match return
 	var devId  =  &devcommon.UUIDandVersion{};
@@ -213,7 +217,7 @@ func  publishDeviceConfig(config *deprecatedzconfig.EdgeDevConfig)  error {
 
 		// No valid Apps, in the new configuration
 		// delete all current App instancess
-
+		fmt.Printf("No apps in config\n")
 		for idx :=	range curAppFilenames {
 
 			var curApp			=	curAppFilenames[idx]
@@ -221,7 +225,8 @@ func  publishDeviceConfig(config *deprecatedzconfig.EdgeDevConfig)  error {
 
 			// file type json
 			if strings.HasSuffix(curAppFilename, ".json") {
-
+				fmt.Printf("No apps in config; removing %s\n",
+					curAppFilename)
 				os.Remove(zedmanagerConfigDirname + "/" + curAppFilename)
 			}
 		}
@@ -251,6 +256,8 @@ func  publishDeviceConfig(config *deprecatedzconfig.EdgeDevConfig)  error {
 
 				// app instance not found, delete
 				if found == false {
+					fmt.Printf("Remove app config %s\n",
+						curAppFilename)
 					os.Remove(zedmanagerConfigDirname + "/" + curAppFilename)
 				}
 			}
@@ -261,7 +268,8 @@ func  publishDeviceConfig(config *deprecatedzconfig.EdgeDevConfig)  error {
 
 			var configFilename = zedmanagerConfigDirname + "/" +
 				 config.Apps[app].Uuidandversion.Uuid + ".json"
-
+			fmt.Printf("Add app config %s\n",
+				configFilename)
 			bytes, err := json.Marshal(config.Apps[app])
 			err = ioutil.WriteFile(configFilename, bytes, 0644)
 			if err != nil {
