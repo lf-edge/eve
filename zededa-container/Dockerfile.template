@@ -8,10 +8,12 @@ FROM alpine:3.6
 RUN apk add --no-cache \
     yajl xz bash openssl iptables ip6tables \
     coreutils dmidecode sudo libbz2 libuuid ipset \
-    libpcap libaio pixman glib wget radvd perl
+    libpcap libaio pixman glib wget radvd perl ethtool openssh-server
 
 # The following enables pcappy to dlopen libpcap.so
 RUN ln -s libpcap.so.1 /usr/lib/libpcap.so
+
+RUN ssh-keygen -A ; echo PermitRootLogin yes >> /etc/ssh/sshd_config ; sed -ie '/^root/s#^.*$#root:$6$Ndt1G5AYZFQ8rz7m$7vGZMKKotSYxwxk/.jMfuOCzxw0I3DNedygaQaLF7kYSYsLqiBHhmc8RJSXp8/VxSYPpgYSz/8fkv0hO6I4js.:17477:0:::::#' /etc/shadow
 
 COPY --from=xen-tools / /
 COPY --from=ztools / /
