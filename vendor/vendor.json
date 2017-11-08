@@ -9,6 +9,12 @@
 			"revisionTime": "2017-10-21T04:39:52Z"
 		},
 		{
+			"checksumSHA1": "45eIwDj97lg0OR6o8JmXXIm4iRQ=",
+			"path": "github.com/zededa/api",
+			"revision": "5e009d468730c5f453e747e0fa28cbfc766c96a6",
+			"revisionTime": "2017-11-08T18:18:53Z"
+		},
+		{
 			"checksumSHA1": "5kmWlGSpJse+ohltGxd6JY/C/fo=",
 			"path": "github.com/zededa/api/deprecatedzconfig",
 			"revision": "f6354aef9ddc721e4b47a2c7ae7d81e13337821d",
