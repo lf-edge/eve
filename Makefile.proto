@@ -23,9 +23,6 @@ PKG := github.com/zededa/api/$(notdir $(CURDIR))
 
 PYTHONOUT=          ./pyproto
 
-GOPATH0 = $(firstword $(subst :, ,$(GOPATH)))
-PYINSTALLDIR= $(GOPATH0)/bin
-
 SRCS=        *.proto
 
 #GENGO=          $(SRCS:.proto=.pb.go)
@@ -63,6 +60,3 @@ fmt:
 	$(GOFMT)
 install: build
 	$(GOINSTALL) $(PKG)
-	mkdir -p $(PYINSTALLDIR)/python/$(basename $(notdir $(CURDIR)))
-	install $(CURDIR)/pyproto/* $(PYINSTALLDIR)/python/$(basename $(notdir $(CURDIR)))
-	touch $(PYINSTALLDIR)/python/$(basename $(notdir $(CURDIR)))/__init__.py
