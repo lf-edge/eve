@@ -11,6 +11,6 @@ module Hello (Time : Mirage_time_lwt.S) = struct
         Time.sleep_ns (Duration.of_sec 1) >>= fun () ->
         loop (n-1)
     in
-    loop 4
+    loop 100000
 
 end
