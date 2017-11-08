@@ -181,6 +181,7 @@ func handleCertObjCreate(statusFilename string, configArg interface{}) {
 	}
 
 	handleCreate (*config, statusFilename)
+	processCertObject(*config, statusFilename)
 }
 
 func handleCertObjModify(statusFilename string, configArg interface{},
@@ -206,6 +207,7 @@ func handleCertObjModify(statusFilename string, configArg interface{},
 	}
 
 	handleModify (*config, *status, statusFilename)
+	processCertObject(*config, statusFilename)
 }
 
 func handleCertObjDelete(statusFilename string, statusArg interface{}) {
@@ -221,6 +223,53 @@ func handleCertObjDelete(statusFilename string, statusArg interface{}) {
 	}
 
 	handleDelete(*status, statusFilename)
+}
+
+// XXX:FIXME this should come through the verification cycle
+func processCertObject(config types.DownloaderConfig, statusFilename string) {
+
+	var status types.DownloaderStatus
+
+	if _, err := os.Stat(statusFilename); err != nil {
+		log.Printf("%s for %s\n", err, statusFilename)
+		return
+	}
+
+	cb, err := ioutil.ReadFile(statusFilename)
+	if err != nil {
+		log.Printf("%s for %s\n", err, statusFilename)
+		log.Fatal(err)
+	}
+
+	if err := json.Unmarshal(cb, &status); err != nil {
+		log.Printf("%s for  file: %s\n",
+			err, statusFilename)
+		log.Fatal(err)
+	}
+
+	// cert file has been downloaded, move
+	// from pending dir to certs directory
+	if status.State == types.DOWNLOADED {
+
+		var srcFile, dstFile string
+
+		if (config.ImageSha256 != "") {
+			srcFile = config.DownloadObjDir + "/pending" +
+				 config.ImageSha256 + "/" + config.Safename
+		} else {
+			srcFile = config.DownloadObjDir + "/pending/" +
+				 config.Safename
+		}
+		dstFile = config.VerifiedObjDir + types.SafenameToFilename(config.Safename)
+
+		// move to targetDir
+		os.Rename(srcFile, dstFile)
+
+		// update status
+		status.ModTime = time.Now()
+		status.State = types.INSTALLED
+		writeDownloaderStatus(&status, statusFilename)
+	}
 }
 
 func handleCreate(config types.DownloaderConfig, statusFilename string) {
@@ -668,15 +717,10 @@ func handleSyncOp(syncOp zedUpload.SyncOpType,
 
 	locDirname := "/var/tmp/downloader/downloads"
 
-	// XXX:FIXME define a proper destination for certs
-	if config.VerifiedObjDir != "" {
-		locFilename = config.VerifiedObjDir
-	} else {
-		if config.DownloadObjDir != "" {
-			locDirname = config.DownloadObjDir
-		}
-		locFilename = locDirname + "/pending"
+	if config.DownloadObjDir != "" {
+		locDirname = config.DownloadObjDir
 	}
+	locFilename = locDirname + "/pending"
 
 	// update status to DOWNLOAD STARTED
 	status.State = types.DOWNLOAD_STARTED
@@ -685,7 +729,6 @@ func handleSyncOp(syncOp zedUpload.SyncOpType,
 
 	if config.ImageSha256 != "" {
 		locFilename = locFilename + "/" + config.ImageSha256
-	} else {
 	}
 
 	if _, err = os.Stat(locFilename); err != nil {
@@ -697,11 +740,7 @@ func handleSyncOp(syncOp zedUpload.SyncOpType,
 
 	filename := types.SafenameToFilename(config.Safename)
 
-	if config.ImageSha256 != "" {
-		locFilename = locFilename + "/" + config.Safename
-	} else {
-		locFilename = locFilename + "/" + filename
-	}
+	locFilename = locFilename + "/" + config.Safename
 
 	log.Printf("Downloading <%s> to <%s>\n", config.DownloadURL, locFilename)
 
@@ -760,13 +799,8 @@ func handleSyncOpResponse(config types.DownloaderConfig,
 
 	locDirname := "/var/tmp/downloader/downloads"
 
-	// XXX:FIXME 
-	if config.VerifiedObjDir != "" {
-		locDirname = config.VerifiedObjDir
-	} else {
-		if config.DownloadObjDir != "" {
-			locDirname = config.DownloadObjDir
-		}
+	if config.DownloadObjDir != "" {
+		locDirname = config.DownloadObjDir
 	}
 
 	if err != nil {
@@ -783,25 +817,14 @@ func handleSyncOpResponse(config types.DownloaderConfig,
 		return
 	}
 
+	locFilename := locDirname + "/pending"
+
 	// XXX:FIXME 
-	locFilename := locDirname
-
-	if config.VerifiedObjDir == "" {
-		locFilename = locDirname + "/pending"
-	}
-
-
 	if status.ImageSha256 != "" {
 		locFilename = locFilename + "/" + status.ImageSha256
 	}
 
-	filename := types.SafenameToFilename(config.Safename)
-
-	if config.ImageSha256 != "" {
-		locFilename = locFilename + "/" + config.Safename
-	} else {
-		locFilename = locFilename + "/" + filename
-	}
+	locFilename = locFilename + "/" + config.Safename
 
 	info, err := os.Stat(locFilename)
 	if err != nil {

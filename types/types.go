@@ -100,10 +100,7 @@ func UrlToSafename(url string, sha string) string {
 	if sha != "" {
 		safename = strings.Replace(url, "/", " ", -1) + "." + sha
 	} else {
-		names := strings.Split(url, "/")
-	        for _, name := range names {
-		    safename = name + ".sha"
-		}
+		safename = strings.Replace(url, "/", " ", -1) + "." + "sha"
 	}
     return safename
 }
