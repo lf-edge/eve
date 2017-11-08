@@ -251,7 +251,8 @@ func processCertObject(config types.DownloaderConfig, statusFilename string) {
 	// from pending dir to certs directory
 	if status.State == types.DOWNLOADED {
 
-		var srcFile, dstFile string
+		var srcFile string
+		var  dstFile string = "/var/tmp/zedmanager/certs"
 
 		if (config.ImageSha256 != "") {
 			srcFile = config.DownloadObjDir + "/pending" +
@@ -260,7 +261,11 @@ func processCertObject(config types.DownloaderConfig, statusFilename string) {
 			srcFile = config.DownloadObjDir + "/pending/" +
 				 config.Safename
 		}
-		dstFile = config.VerifiedObjDir + types.SafenameToFilename(config.Safename)
+
+		if config.VerifiedObjDir != "" {
+			dstFile = config.VerifiedObjDir
+		}
+		dstFile = dstFile + types.SafenameToFilename(config.Safename)
 
 		// move to targetDir
 		os.Rename(srcFile, dstFile)

@@ -89,7 +89,7 @@ func getCloudUrls () {
 	}
 	tlsConfig.BuildNameToCertificate()
 
-	fmt.Printf("Connecting to %s\n", serverName)
+	log.Printf("Connecting to %s\n", serverName)
 
 	transport := &http.Transport{TLSClientConfig: tlsConfig}
 	cloudClient = &http.Client{Transport: transport}
@@ -174,10 +174,10 @@ func readDeviceConfigProtoMessage (r *http.Response) error {
 		fmt.Println(err)
 		return err
 	}
-	fmt.Printf("parsing proto %d bytes\n", len(bytes))
+	log.Printf("parsing proto %d bytes\n", len(bytes))
 	err = proto.Unmarshal(bytes, config)
 	if err != nil {
-		fmt.Println("Unmarshalling failed: %v", err)
+		log.Println("Unmarshalling failed: %v", err)
 		return err
 	}
 
@@ -194,10 +194,10 @@ func readDeviceConfigJsonMessage (r *http.Response) error {
 		return err
 	}
 
-	fmt.Printf("parsing json %d bytes\n", len(bytes))
+	log.Printf("parsing json %d bytes\n", len(bytes))
 	err = json.Unmarshal(bytes, config)
 	if err != nil {
-		fmt.Println("Unmarshalling failed, %v", err)
+		log.Println("Unmarshalling failed, %v", err)
 		return err
 	}
 
@@ -206,9 +206,8 @@ func readDeviceConfigJsonMessage (r *http.Response) error {
 
 func  publishDeviceConfig(config *zconfig.EdgeDevConfig)  error {
 
-	fmt.Printf("Publishing config %v\n", config)
+	log.Printf("Publishing config %v\n", config)
 
-	log.Printf("%v\n", config)
 	// if they match return
 	var devId  =  &devcommon.UUIDandVersion{};
 
@@ -217,7 +216,7 @@ func  publishDeviceConfig(config *zconfig.EdgeDevConfig)  error {
 		// store the device id
 		deviceId = devId.Uuid
 		if devId.Version == activeVersion {
-			fmt.Printf("Same version, skipping:%v\n", config.Id.Version)
+			log.Printf("Same version, skipping:%v\n", config.Id.Version)
 			return nil
 		}
 		activeVersion	= devId.Version
@@ -235,60 +234,63 @@ func  publishDeviceConfig(config *zconfig.EdgeDevConfig)  error {
 
 		// No valid Apps, in the new configuration
 		// delete all current App instancess
-		fmt.Printf("No apps in config\n")
-		for idx :=	range curAppFilenames {
+		log.Printf("No apps in new config\n")
+		if len(curAppFilenames) != 0 {
 
-			var curApp			=	curAppFilenames[idx]
-			var curAppFilename	=	curApp.Name()
+			for _, curApp := range curAppFilenames {
 
-			// file type json
-			if strings.HasSuffix(curAppFilename, ".json") {
-				fmt.Printf("No apps in config; removing %s\n",
-					curAppFilename)
-				os.Remove(zedmanagerConfigDirname + "/" + curAppFilename)
-			}
-		}
+				var curAppFilename	= curApp.Name()
 
-	} else {
-
-		// delete an app instance, if not present in the new set
-		for idx :=	range curAppFilenames {
-
-			curApp			:=	curAppFilenames[idx]
-			curAppFilename	:=	curApp.Name()
-
-			// file type json
-			if strings.HasSuffix(curAppFilename, ".json") {
-
-				found := false
-
-				for app := range Apps {
-
-					appFilename := Apps[app].Uuidandversion.Uuid + ".json"
-
-					if appFilename == curAppFilename {
-						found = true
-						break
-					}
-				}
-
-				// app instance not found, delete
-				if found == false {
-					fmt.Printf("Remove app config %s\n",
+				// file type json
+				if strings.HasSuffix(curAppFilename, ".json") {
+					log.Printf("No apps in config; removing %s\n",
 						curAppFilename)
 					os.Remove(zedmanagerConfigDirname + "/" + curAppFilename)
 				}
 			}
 		}
 
-		// add new App instancess
-		for app := range Apps {
+	} else {
+
+		// delete an app instance, if not present in the new set
+		if len(curAppFilenames) != 0 {
+
+			for _, curApp := range curAppFilenames {
+
+				curAppFilename	:=	curApp.Name()
+
+				// file type json
+				if strings.HasSuffix(curAppFilename, ".json") {
+
+					found := false
+
+					for _, app := range Apps {
+
+						appFilename := app.Uuidandversion.Uuid + ".json"
+
+						if appFilename == curAppFilename {
+							found = true
+							break
+						}
+					}
+
+					// app instance not found, delete
+					if found == false {
+						log.Printf("Remove app config %s\n",
+							curAppFilename)
+						os.Remove(zedmanagerConfigDirname + "/" + curAppFilename)
+					}
+				}
+			}
+		}
+
+		// add new App instances
+		for _, app := range Apps {
 
 			var configFilename = zedmanagerConfigDirname + "/" +
-				 config.Apps[app].Uuidandversion.Uuid + ".json"
-			fmt.Printf("Add app config %s\n",
-				configFilename)
-			bytes, err := json.Marshal(config.Apps[app])
+				 app.Uuidandversion.Uuid + ".json"
+			log.Printf("Add app config %s\n", configFilename)
+			bytes, err := json.Marshal(app)
 			err = ioutil.WriteFile(configFilename, bytes, 0644)
 			if err != nil {
 				log.Println(err)
