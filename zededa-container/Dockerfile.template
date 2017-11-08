@@ -22,4 +22,4 @@ COPY --from=cert / /opt/zededa/etc
 COPY --from=msvcs /vms /vms
 
 # FIXME: replace while loop with monit ASAP
-CMD ["/bin/ash", "-c", "/etc/init.d/xencommons start; /opt/zededa/bin/device-steps.sh -o -w < /opt/zededa/etc/cert-input.txt ; while [ true ] ; do sleep 10 ; done"]
+CMD ["/bin/ash", "-c", "ethtool -K eth0 gro off; ethtool -K eth1 gro off ; /usr/sbin/sshd ; XENCONSOLED_ARGS='--log=all --log-dir=/var/log/xen' /etc/init.d/xencommons start; echo 192.168.254.114 zedcloud-roman zedcloud-roman.zededa.net >> /etc/hosts ; cat /etc/hosts ; /opt/zededa/bin/device-steps.sh -w < /opt/zededa/etc/cert-input.txt ; while [ true ] ; do sleep 10 ; done"]
