@@ -9,22 +9,28 @@
 			"revisionTime": "2017-10-21T04:39:52Z"
 		},
 		{
-			"checksumSHA1": "WWJa7pL/JQ8m9IeHaif65+WsVsQ=",
+			"checksumSHA1": "5kmWlGSpJse+ohltGxd6JY/C/fo=",
 			"path": "github.com/zededa/api/deprecatedzconfig",
-			"revision": "8e796ec4e91ba1c33697829658ea2712ef5fd6df",
-			"revisionTime": "2017-11-03T02:30:15Z"
+			"revision": "f6354aef9ddc721e4b47a2c7ae7d81e13337821d",
+			"revisionTime": "2017-11-06T17:49:43Z"
 		},
 		{
 			"checksumSHA1": "pUofI2urOoJbnSwMq/g2mkf+RiM=",
 			"path": "github.com/zededa/api/devcommon",
-			"revision": "8e796ec4e91ba1c33697829658ea2712ef5fd6df",
-			"revisionTime": "2017-11-03T02:30:15Z"
+			"revision": "f6354aef9ddc721e4b47a2c7ae7d81e13337821d",
+			"revisionTime": "2017-11-06T17:49:43Z"
+		},
+		{
+			"checksumSHA1": "dEQ/YVfHoO97KXPehbPHhF/g2bc=",
+			"path": "github.com/zededa/api/zconfig",
+			"revision": "f6354aef9ddc721e4b47a2c7ae7d81e13337821d",
+			"revisionTime": "2017-11-06T17:49:43Z"
 		},
 		{
 			"checksumSHA1": "Qqipq+6kI8Gf1tTA6wLrgV7nWy0=",
 			"path": "github.com/zededa/api/zmet",
-			"revision": "8e796ec4e91ba1c33697829658ea2712ef5fd6df",
-			"revisionTime": "2017-11-03T02:30:15Z"
+			"revision": "f6354aef9ddc721e4b47a2c7ae7d81e13337821d",
+			"revisionTime": "2017-11-06T17:49:43Z"
 		}
 	],
 	"rootPath": "github.com/zededa/go-provision"

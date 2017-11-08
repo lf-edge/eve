@@ -49,7 +49,8 @@ APPS = \
 	domainmgr 	\
 	identitymgr	\
 	zedmanager 	\
-	eidregister
+	eidregister	\
+	zedagent
 
 SCRIPTS = \
 	device-steps.sh \

@@ -34,7 +34,7 @@ import (
 	"github.com/zededa/go-provision/watch"
 	"github.com/zededa/go-provision/wrap"
 	"zc/libs/zedUpload"
-	"shared/proto/zconfig"
+	"github.com/zededa/api/zconfig"
 	"io/ioutil"
 	"log"
 	"os"

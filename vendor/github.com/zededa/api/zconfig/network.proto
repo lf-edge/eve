@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+option java_package = "com.zededa.cloud.uservice.proto";
+option go_package = "zconfig";
+
+import "fw.proto";
+import "netcmn.proto";
+
+enum NetworkKind {
+	NETWORKKINGNOOP = 0;
+	UNDERLAY = 1;
+	OVERLAY = 2;
+}
+
+enum NetworkState {
+        NSTATENOOP = 0;
+        NARCHIVE   = 1;
+        NACTIVE    = 2;
+        NINACTIVE  = 3;
+}
+
+message NetworkParam {
+	string id = 1;
+	string name = 2;
+	string project = 3;
+	string desc = 4;
+	NetworkType type = 5;
+	NetworkKind kind = 6;
+	oneof netContent {
+		l2spec nl2 = 8;
+		lispspec nlisp = 9;
+		ipv4spec nv4 = 10;
+		ipv6spec nv6 = 11;
+	}
+	NetworkState state = 12; // serves no role here, should be removed
+}
+
+
+enum NetworkServiceSubType {
+        NETWORKNOOP  = 0;
+        NETWORKCREATE  = 1;
+        NETWORKARCHIVE = 2; 
+        NETWORKUPDATE  = 3;
+        NETWORKREAD    = 4;
+        NETWORKLIST    = 5;
+}
+
+message NetworkServiceReq {
+        NetworkServiceSubType subcmd = 1;
+        NetworkParam ninfo = 2;
+}
+
+enum NetworkServiceResult {
+        NETWORKNONE       = 0;
+        NETWORKOPSSUCCESS = 1;
+        NETWORKOPSFAILED  = 2;
+        NETWORKNOTFOUND   = 3;
+}
+
+message NetworkServiceResp {
+        NetworkServiceSubType subcmd = 1;
+        NetworkServiceResult result = 2;
+        repeated NetworkParam ninfo = 3;
+}
+
+message NetworkIf {
+	string name =1;
+	string id =2;
+
+	string networkId =3;
+
+	// eid=lisp, v4=ipv4 etc...
+	string addr =4;
+	string hostname = 5;
+
+	// more configuration for getting addr
+	string lispsignature = 6;
+	bytes pemcert = 7;
+	bytes pemprivatekey = 8;
+
+	// firewall
+	repeated ACE acls = 40;
+}

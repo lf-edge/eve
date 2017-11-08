@@ -5,6 +5,7 @@ package main
 
 import (
 	"fmt"
+	"crypto/x509"
 	"encoding/json"
 	"io/ioutil"
 	"github.com/golang/protobuf/proto"
@@ -32,9 +33,7 @@ var configApi	string	= "api/v1/edgedevice/config"
 var statusApi	string	= "api/v1/edgedevice/info"
 var metricsApi	string	= "api/v1/edgedevice/metrics"
 
-var serverName	string	= "zedcloud.zededa.net"
-
-
+// XXX remove global variables
 var activeVersion	string
 var configUrl		string
 var deviceId		string
@@ -46,7 +45,9 @@ var serverFilename	string = "/opt/zededa/etc/server"
 var dirName		string = "/opt/zededa/etc"
 var deviceCertName	string = dirName + "/device.cert.pem"
 var deviceKeyName	string = dirName + "/device.key.pem"
+var rootCertName	string = dirName + "/root-certificate.pem"
 
+// XXX remove global variables
 var deviceCert		tls.Certificate
 var cloudClient		*http.Client
 
@@ -55,29 +56,43 @@ func getCloudUrls () {
 	// get the server name
 	bytes, err := ioutil.ReadFile(serverFilename)
 	if err != nil {
-		err = ioutil.WriteFile(serverFilename, []byte(serverName), 0644)
-	} else {
-		strTrim := strings.TrimSpace(string(bytes))
-		serverName = strings.Split(strTrim, ":")[0]
+		log.Fatal(err)
 	}
+	strTrim := strings.TrimSpace(string(bytes))
+	serverName := strings.Split(strTrim, ":")[0]
 
 	configUrl	=	serverName + "/" + configApi
 	statusUrl	=	serverName + "/" + statusApi
 	metricsUrl	=	serverName + "/" + metricsApi
 
 	deviceCert, err = tls.LoadX509KeyPair(deviceCertName, deviceKeyName)
-
 	if err != nil {
 	        log.Fatal(err)
 	}
-	cloudClient = &http.Client {
-	                Transport: &http.Transport {
-	                        TLSClientConfig: &tls.Config {
-									InsecureSkipVerify:true,
-	                                Certificates: []tls.Certificate{deviceCert},
-	                        },
-	                },
-		}
+	// Load CA cert
+	caCert, err := ioutil.ReadFile(rootCertName)
+	if err != nil {
+		log.Fatal(err)
+	}
+	caCertPool := x509.NewCertPool()
+	caCertPool.AppendCertsFromPEM(caCert)
+
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{deviceCert},
+		ServerName:   serverName,
+		RootCAs:      caCertPool,
+		CipherSuites: []uint16{
+			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256},
+		// TLS 1.2 because we can
+		MinVersion: tls.VersionTLS12,
+	}
+	tlsConfig.BuildNameToCertificate()
+
+	fmt.Printf("Connecting to %s\n", serverName)
+
+	transport := &http.Transport{TLSClientConfig: tlsConfig}
+	cloudClient = &http.Client{Transport: transport}
 }
 
 // got a trigger for new config. check the present version and compare
@@ -108,6 +123,7 @@ func getLatestConfig(deviceCert []byte) {
 	if err != nil {
 		fmt.Printf("URL get fail: %v\n", err)
 	} else {
+		// XXX don't have validate also parse and save!
 		validateConfigMessage(resp)
 	}
 }
@@ -158,7 +174,7 @@ func readDeviceConfigProtoMessage (r *http.Response) error {
 		fmt.Println(err)
 		return err
 	}
-
+	fmt.Printf("parsing proto %d bytes\n", len(bytes))
 	err = proto.Unmarshal(bytes, config)
 	if err != nil {
 		fmt.Println("Unmarshalling failed: %v", err)
@@ -178,6 +194,7 @@ func readDeviceConfigJsonMessage (r *http.Response) error {
 		return err
 	}
 
+	fmt.Printf("parsing json %d bytes\n", len(bytes))
 	err = json.Unmarshal(bytes, config)
 	if err != nil {
 		fmt.Println("Unmarshalling failed, %v", err)
@@ -188,6 +205,8 @@ func readDeviceConfigJsonMessage (r *http.Response) error {
 }
 
 func  publishDeviceConfig(config *zconfig.EdgeDevConfig)  error {
+
+	fmt.Printf("Publishing config %v\n", config)
 
 	log.Printf("%v\n", config)
 	// if they match return
@@ -216,7 +235,7 @@ func  publishDeviceConfig(config *zconfig.EdgeDevConfig)  error {
 
 		// No valid Apps, in the new configuration
 		// delete all current App instancess
-
+		fmt.Printf("No apps in config\n")
 		for idx :=	range curAppFilenames {
 
 			var curApp			=	curAppFilenames[idx]
@@ -224,7 +243,8 @@ func  publishDeviceConfig(config *zconfig.EdgeDevConfig)  error {
 
 			// file type json
 			if strings.HasSuffix(curAppFilename, ".json") {
-
+				fmt.Printf("No apps in config; removing %s\n",
+					curAppFilename)
 				os.Remove(zedmanagerConfigDirname + "/" + curAppFilename)
 			}
 		}
@@ -254,13 +274,26 @@ func  publishDeviceConfig(config *zconfig.EdgeDevConfig)  error {
 
 				// app instance not found, delete
 				if found == false {
+					fmt.Printf("Remove app config %s\n",
+						curAppFilename)
 					os.Remove(zedmanagerConfigDirname + "/" + curAppFilename)
 				}
 			}
 		}
 
-		// publish the new config to zedmanager
-		parseConfig(config)
+		// add new App instancess
+		for app := range Apps {
+
+			var configFilename = zedmanagerConfigDirname + "/" +
+				 config.Apps[app].Uuidandversion.Uuid + ".json"
+			fmt.Printf("Add app config %s\n",
+				configFilename)
+			bytes, err := json.Marshal(config.Apps[app])
+			err = ioutil.WriteFile(configFilename, bytes, 0644)
+			if err != nil {
+				log.Println(err)
+			}
+		}
 	}
 
 	return nil

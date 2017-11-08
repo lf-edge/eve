@@ -481,7 +481,9 @@ func configToXencfg(config types.DomainConfig,
 		file.WriteString(fmt.Sprintf("root = \"%s\"\n",
 			config.RootDev))
 	}
-	extra := "console=hvc0 " + config.ExtraArgs
+	uuidStr := fmt.Sprintf("appuuid=%s ",
+		config.UUIDandVersion.UUID)
+	extra := "console=hvc0 " + uuidStr + config.ExtraArgs
 	file.WriteString(fmt.Sprintf("extra = \"%s\"\n", extra))
 	file.WriteString(fmt.Sprintf("serial = \"%s\"\n", "pty"))
 	file.WriteString(fmt.Sprintf("boot = \"%s\"\n", "c"))
