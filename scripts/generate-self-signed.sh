@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # Generate a self-signed ECC certificate.
 # first argument is lifetime in days
 # second argument is a basename for the output files

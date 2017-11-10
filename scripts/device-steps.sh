@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 echo "Starting device-steps.sh at" `date`
 

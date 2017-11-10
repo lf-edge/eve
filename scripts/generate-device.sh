@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # Generate a self-signed ECC certificate; 20 year lifetime
 # argument is a basename for the output files
 # Example: generate-dc.sh ../run/test
