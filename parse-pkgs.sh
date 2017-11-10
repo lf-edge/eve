@@ -5,7 +5,7 @@
 # [1] A poor man is a man on a deadline.
 #
 plugin_tag() {
-  if docker pull "$1" >/dev/null 2>&1 ; then
+  if (docker inspect "$1" || docker pull "$1") > /dev/null 2>&1 ; then
     echo $1
   else
     echo "WARNING: couldn't fetch $1 plugin - disabling it in the final build" >&2
