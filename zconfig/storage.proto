@@ -63,10 +63,11 @@ message Image {
 }
 
 enum Target {
-	Disk   = 0;
-	Kernel = 1;
-	Initrd = 2;
-	RamDisk = 3;
+	TgtUnknown = 0;
+	Disk   = 1;
+	Kernel = 2;
+	Initrd = 3;
+	RamDisk = 4;
 }
 
 enum DriveType {

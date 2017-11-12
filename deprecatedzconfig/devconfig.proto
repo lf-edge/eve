@@ -3,7 +3,7 @@ syntax = "proto3";
 option go_package  = "github.com/zededa/api/deprecatedzconfig";
 option java_package = "com.zededa.cloud.uservice.proto";
 
-import "github.com/zededa/api/devcommon/devcommon.proto";
+import "devcommon.proto";
 import "appconfig.proto";
 import "network.proto";
 
