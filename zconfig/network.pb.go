@@ -34,7 +34,7 @@ var NetworkKind_value = map[string]int32{
 func (x NetworkKind) String() string {
 	return proto.EnumName(NetworkKind_name, int32(x))
 }
-func (NetworkKind) EnumDescriptor() ([]byte, []int) { return fileDescriptor8, []int{0} }
+func (NetworkKind) EnumDescriptor() ([]byte, []int) { return fileDescriptor6, []int{0} }
 
 type NetworkState int32
 
@@ -61,7 +61,7 @@ var NetworkState_value = map[string]int32{
 func (x NetworkState) String() string {
 	return proto.EnumName(NetworkState_name, int32(x))
 }
-func (NetworkState) EnumDescriptor() ([]byte, []int) { return fileDescriptor8, []int{1} }
+func (NetworkState) EnumDescriptor() ([]byte, []int) { return fileDescriptor6, []int{1} }
 
 type NetworkServiceSubType int32
 
@@ -94,7 +94,7 @@ var NetworkServiceSubType_value = map[string]int32{
 func (x NetworkServiceSubType) String() string {
 	return proto.EnumName(NetworkServiceSubType_name, int32(x))
 }
-func (NetworkServiceSubType) EnumDescriptor() ([]byte, []int) { return fileDescriptor8, []int{2} }
+func (NetworkServiceSubType) EnumDescriptor() ([]byte, []int) { return fileDescriptor6, []int{2} }
 
 type NetworkServiceResult int32
 
@@ -121,7 +121,7 @@ var NetworkServiceResult_value = map[string]int32{
 func (x NetworkServiceResult) String() string {
 	return proto.EnumName(NetworkServiceResult_name, int32(x))
 }
-func (NetworkServiceResult) EnumDescriptor() ([]byte, []int) { return fileDescriptor8, []int{3} }
+func (NetworkServiceResult) EnumDescriptor() ([]byte, []int) { return fileDescriptor6, []int{3} }
 
 type NetworkParam struct {
 	Id      string      `protobuf:"bytes,1,opt,name=id" json:"id,omitempty"`
@@ -142,7 +142,7 @@ type NetworkParam struct {
 func (m *NetworkParam) Reset()                    { *m = NetworkParam{} }
 func (m *NetworkParam) String() string            { return proto.CompactTextString(m) }
 func (*NetworkParam) ProtoMessage()               {}
-func (*NetworkParam) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{0} }
+func (*NetworkParam) Descriptor() ([]byte, []int) { return fileDescriptor6, []int{0} }
 
 type isNetworkParam_NetContent interface {
 	isNetworkParam_NetContent()
@@ -370,7 +370,7 @@ type NetworkServiceReq struct {
 func (m *NetworkServiceReq) Reset()                    { *m = NetworkServiceReq{} }
 func (m *NetworkServiceReq) String() string            { return proto.CompactTextString(m) }
 func (*NetworkServiceReq) ProtoMessage()               {}
-func (*NetworkServiceReq) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{1} }
+func (*NetworkServiceReq) Descriptor() ([]byte, []int) { return fileDescriptor6, []int{1} }
 
 func (m *NetworkServiceReq) GetSubcmd() NetworkServiceSubType {
 	if m != nil {
@@ -395,7 +395,7 @@ type NetworkServiceResp struct {
 func (m *NetworkServiceResp) Reset()                    { *m = NetworkServiceResp{} }
 func (m *NetworkServiceResp) String() string            { return proto.CompactTextString(m) }
 func (*NetworkServiceResp) ProtoMessage()               {}
-func (*NetworkServiceResp) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{2} }
+func (*NetworkServiceResp) Descriptor() ([]byte, []int) { return fileDescriptor6, []int{2} }
 
 func (m *NetworkServiceResp) GetSubcmd() NetworkServiceSubType {
 	if m != nil {
@@ -436,7 +436,7 @@ type NetworkIf struct {
 func (m *NetworkIf) Reset()                    { *m = NetworkIf{} }
 func (m *NetworkIf) String() string            { return proto.CompactTextString(m) }
 func (*NetworkIf) ProtoMessage()               {}
-func (*NetworkIf) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{3} }
+func (*NetworkIf) Descriptor() ([]byte, []int) { return fileDescriptor6, []int{3} }
 
 func (m *NetworkIf) GetName() string {
 	if m != nil {
@@ -512,11 +512,11 @@ func init() {
 	proto.RegisterEnum("NetworkServiceResult", NetworkServiceResult_name, NetworkServiceResult_value)
 }
 
-func init() { proto.RegisterFile("network.proto", fileDescriptor8) }
+func init() { proto.RegisterFile("network.proto", fileDescriptor6) }
 
-var fileDescriptor8 = []byte{
+var fileDescriptor6 = []byte{
 	// 714 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x94, 0x54, 0x4d, 0x6f, 0x9b, 0x4a,
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x09, 0x6e, 0x88, 0x02, 0xff, 0x94, 0x54, 0x4d, 0x6f, 0x9b, 0x4a,
 	0x14, 0x0d, 0xe0, 0xcf, 0x6b, 0xec, 0x90, 0x79, 0xc9, 0x13, 0xca, 0x7b, 0xd1, 0xf3, 0x4b, 0xbb,
 	0xb0, 0x2c, 0x95, 0x48, 0x6e, 0x94, 0x5d, 0xa5, 0x12, 0x9b, 0x34, 0x56, 0x22, 0x6c, 0x0d, 0x38,
 	0x55, 0xbb, 0xc3, 0x30, 0x4e, 0x68, 0xcc, 0x40, 0x61, 0x70, 0x94, 0xac, 0xfb, 0x23, 0xfa, 0xc7,

@@ -8,11 +8,36 @@ import "appconfig.proto";
 import "netconfig.proto";
 import "storage.proto";
 
+
+message MapServer {
+        string NameOrIp   = 1;
+        string Credential = 2;
+}
+
+message ZedServer {
+        string HostName   = 1;
+        repeated string EID = 2;
+}
+
+message DeviceLispDetails {
+        repeated MapServer LispMapServers = 1;
+        uint32 LispInstance = 2;
+        string EID = 4;
+        int32 EIDHashLen = 5;
+        repeated ZedServer ZedServers = 6;
+        bytes EidAllocationPrefix = 8;
+        int32 EidAllocationPrefixLen = 9;
+        string ClientAddr = 10;
+}
+
 message EdgeDevConfig {
 	UUIDandVersion id = 1;
 	bytes devConfigSha256 = 2;
 	bytes devConfigSignature = 3;
+	
 	repeated AppInstanceConfig apps   = 4;
 	repeated NetworkConfig networks = 5;
 	repeated DatastoreConfig datastores = 6;
+
+	DeviceLispDetails lispInfo = 7;
 }

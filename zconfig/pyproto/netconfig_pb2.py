@@ -24,6 +24,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   serialized_pb=_b('\n\x0fnetconfig.proto\x1a\x08\x66w.proto\x1a\x0cnetcmn.proto\"\xad\x01\n\rNetworkConfig\x12\n\n\x02id\x18\x01 \x01(\t\x12\x1a\n\x04type\x18\x05 \x01(\x0e\x32\x0c.NetworkType\x12\x16\n\x03nl2\x18\x08 \x01(\x0b\x32\x07.l2specH\x00\x12\x1a\n\x05nlisp\x18\t \x01(\x0b\x32\t.lispspecH\x00\x12\x18\n\x03nv4\x18\n \x01(\x0b\x32\t.ipv4specH\x00\x12\x18\n\x03nv6\x18\x0b \x01(\x0b\x32\t.ipv6specH\x00\x42\x0c\n\nnetContent\"\xb0\x01\n\x0eNetworkAdapter\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\n\n\x02id\x18\x02 \x01(\t\x12\x11\n\tnetworkId\x18\x03 \x01(\t\x12\x0c\n\x04\x61\x64\x64r\x18\x04 \x01(\t\x12\x10\n\x08hostname\x18\x05 \x01(\t\x12\x15\n\rlispsignature\x18\x06 \x01(\t\x12\x0f\n\x07pemcert\x18\x07 \x01(\x0c\x12\x15\n\rpemprivatekey\x18\x08 \x01(\x0c\x12\x12\n\x04\x61\x63ls\x18( \x03(\x0b\x32\x04.ACEB@\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1dgithub.com/zededa/api/zconfigb\x06proto3')
   ,
   dependencies=[fw__pb2.DESCRIPTOR,netcmn__pb2.DESCRIPTOR,])
+_sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
 
 
@@ -41,42 +42,42 @@ _NETWORKCONFIG = _descriptor.Descriptor(
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None, file=DESCRIPTOR),
+      options=None),
     _descriptor.FieldDescriptor(
       name='type', full_name='NetworkConfig.type', index=1,
       number=5, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None, file=DESCRIPTOR),
+      options=None),
     _descriptor.FieldDescriptor(
       name='nl2', full_name='NetworkConfig.nl2', index=2,
       number=8, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None, file=DESCRIPTOR),
+      options=None),
     _descriptor.FieldDescriptor(
       name='nlisp', full_name='NetworkConfig.nlisp', index=3,
       number=9, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None, file=DESCRIPTOR),
+      options=None),
     _descriptor.FieldDescriptor(
       name='nv4', full_name='NetworkConfig.nv4', index=4,
       number=10, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None, file=DESCRIPTOR),
+      options=None),
     _descriptor.FieldDescriptor(
       name='nv6', full_name='NetworkConfig.nv6', index=5,
       number=11, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None, file=DESCRIPTOR),
+      options=None),
   ],
   extensions=[
   ],
@@ -110,63 +111,63 @@ _NETWORKADAPTER = _descriptor.Descriptor(
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None, file=DESCRIPTOR),
+      options=None),
     _descriptor.FieldDescriptor(
       name='id', full_name='NetworkAdapter.id', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None, file=DESCRIPTOR),
+      options=None),
     _descriptor.FieldDescriptor(
       name='networkId', full_name='NetworkAdapter.networkId', index=2,
       number=3, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None, file=DESCRIPTOR),
+      options=None),
     _descriptor.FieldDescriptor(
       name='addr', full_name='NetworkAdapter.addr', index=3,
       number=4, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None, file=DESCRIPTOR),
+      options=None),
     _descriptor.FieldDescriptor(
       name='hostname', full_name='NetworkAdapter.hostname', index=4,
       number=5, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None, file=DESCRIPTOR),
+      options=None),
     _descriptor.FieldDescriptor(
       name='lispsignature', full_name='NetworkAdapter.lispsignature', index=5,
       number=6, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None, file=DESCRIPTOR),
+      options=None),
     _descriptor.FieldDescriptor(
       name='pemcert', full_name='NetworkAdapter.pemcert', index=6,
       number=7, type=12, cpp_type=9, label=1,
       has_default_value=False, default_value=_b(""),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None, file=DESCRIPTOR),
+      options=None),
     _descriptor.FieldDescriptor(
       name='pemprivatekey', full_name='NetworkAdapter.pemprivatekey', index=7,
       number=8, type=12, cpp_type=9, label=1,
       has_default_value=False, default_value=_b(""),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None, file=DESCRIPTOR),
+      options=None),
     _descriptor.FieldDescriptor(
       name='acls', full_name='NetworkAdapter.acls', index=8,
       number=40, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None, file=DESCRIPTOR),
+      options=None),
   ],
   extensions=[
   ],
@@ -203,7 +204,6 @@ _NETWORKCONFIG.fields_by_name['nv6'].containing_oneof = _NETWORKCONFIG.oneofs_by
 _NETWORKADAPTER.fields_by_name['acls'].message_type = fw__pb2._ACE
 DESCRIPTOR.message_types_by_name['NetworkConfig'] = _NETWORKCONFIG
 DESCRIPTOR.message_types_by_name['NetworkAdapter'] = _NETWORKADAPTER
-_sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
 NetworkConfig = _reflection.GeneratedProtocolMessageType('NetworkConfig', (_message.Message,), dict(
   DESCRIPTOR = _NETWORKCONFIG,

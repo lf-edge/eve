@@ -40,7 +40,7 @@ var NetworkType_value = map[string]int32{
 func (x NetworkType) String() string {
 	return proto.EnumName(NetworkType_name, int32(x))
 }
-func (NetworkType) EnumDescriptor() ([]byte, []int) { return fileDescriptor7, []int{0} }
+func (NetworkType) EnumDescriptor() ([]byte, []int) { return fileDescriptor4, []int{0} }
 
 type Ipv4Spec struct {
 	Dhcp    bool     `protobuf:"varint,2,opt,name=dhcp" json:"dhcp,omitempty"`
@@ -55,7 +55,7 @@ type Ipv4Spec struct {
 func (m *Ipv4Spec) Reset()                    { *m = Ipv4Spec{} }
 func (m *Ipv4Spec) String() string            { return proto.CompactTextString(m) }
 func (*Ipv4Spec) ProtoMessage()               {}
-func (*Ipv4Spec) Descriptor() ([]byte, []int) { return fileDescriptor7, []int{0} }
+func (*Ipv4Spec) Descriptor() ([]byte, []int) { return fileDescriptor4, []int{0} }
 
 func (m *Ipv4Spec) GetDhcp() bool {
 	if m != nil {
@@ -119,7 +119,7 @@ type Ipv6Spec struct {
 func (m *Ipv6Spec) Reset()                    { *m = Ipv6Spec{} }
 func (m *Ipv6Spec) String() string            { return proto.CompactTextString(m) }
 func (*Ipv6Spec) ProtoMessage()               {}
-func (*Ipv6Spec) Descriptor() ([]byte, []int) { return fileDescriptor7, []int{1} }
+func (*Ipv6Spec) Descriptor() ([]byte, []int) { return fileDescriptor4, []int{1} }
 
 func (m *Ipv6Spec) GetDhcp() bool {
 	if m != nil {
@@ -178,7 +178,7 @@ type NameToEid struct {
 func (m *NameToEid) Reset()                    { *m = NameToEid{} }
 func (m *NameToEid) String() string            { return proto.CompactTextString(m) }
 func (*NameToEid) ProtoMessage()               {}
-func (*NameToEid) Descriptor() ([]byte, []int) { return fileDescriptor7, []int{2} }
+func (*NameToEid) Descriptor() ([]byte, []int) { return fileDescriptor4, []int{2} }
 
 func (m *NameToEid) GetHostname() string {
 	if m != nil {
@@ -204,7 +204,7 @@ type EIDAllocation struct {
 func (m *EIDAllocation) Reset()                    { *m = EIDAllocation{} }
 func (m *EIDAllocation) String() string            { return proto.CompactTextString(m) }
 func (*EIDAllocation) ProtoMessage()               {}
-func (*EIDAllocation) Descriptor() ([]byte, []int) { return fileDescriptor7, []int{3} }
+func (*EIDAllocation) Descriptor() ([]byte, []int) { return fileDescriptor4, []int{3} }
 
 func (m *EIDAllocation) GetAllocate() bool {
 	if m != nil {
@@ -243,7 +243,7 @@ type Lispspec struct {
 func (m *Lispspec) Reset()                    { *m = Lispspec{} }
 func (m *Lispspec) String() string            { return proto.CompactTextString(m) }
 func (*Lispspec) ProtoMessage()               {}
-func (*Lispspec) Descriptor() ([]byte, []int) { return fileDescriptor7, []int{4} }
+func (*Lispspec) Descriptor() ([]byte, []int) { return fileDescriptor4, []int{4} }
 
 func (m *Lispspec) GetIid() uint32 {
 	if m != nil {
@@ -272,7 +272,7 @@ type L2Spec struct {
 func (m *L2Spec) Reset()                    { *m = L2Spec{} }
 func (m *L2Spec) String() string            { return proto.CompactTextString(m) }
 func (*L2Spec) ProtoMessage()               {}
-func (*L2Spec) Descriptor() ([]byte, []int) { return fileDescriptor7, []int{5} }
+func (*L2Spec) Descriptor() ([]byte, []int) { return fileDescriptor4, []int{5} }
 
 func init() {
 	proto.RegisterType((*Ipv4Spec)(nil), "ipv4spec")
@@ -284,11 +284,11 @@ func init() {
 	proto.RegisterEnum("NetworkType", NetworkType_name, NetworkType_value)
 }
 
-func init() { proto.RegisterFile("netcmn.proto", fileDescriptor7) }
+func init() { proto.RegisterFile("netcmn.proto", fileDescriptor4) }
 
-var fileDescriptor7 = []byte{
+var fileDescriptor4 = []byte{
 	// 452 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xcc, 0x53, 0x4d, 0x6f, 0xd3, 0x40,
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x09, 0x6e, 0x88, 0x02, 0xff, 0xcc, 0x53, 0x4d, 0x6f, 0xd3, 0x40,
 	0x10, 0x25, 0x71, 0x70, 0xdc, 0x49, 0x03, 0xd6, 0x56, 0x42, 0x2b, 0x24, 0x44, 0x14, 0xf5, 0x10,
 	0xe5, 0xe0, 0xa0, 0x50, 0xf5, 0xc2, 0x05, 0x50, 0x73, 0xa8, 0xa8, 0x92, 0xc8, 0x44, 0x20, 0xb8,
 	0x6d, 0x76, 0xa7, 0xc9, 0xaa, 0xf6, 0xee, 0xca, 0xbb, 0x49, 0x3f, 0x7e, 0x0d, 0xff, 0x80, 0xbf,
