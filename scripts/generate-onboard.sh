@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # Generate a self-signed ECC certificate; 7 day lifetime
 # argument is a basename for the output files
 # Example: generate-pc.sh ../run/test

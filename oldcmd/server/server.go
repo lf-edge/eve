@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"flag"
 	"fmt"
 	"github.com/nanobox-io/golang-scribble"
 	"github.com/zededa/go-provision/types"
@@ -37,6 +38,8 @@ type ServerCertInfo struct {
 	t                           *time.Timer
 }
 
+var localFlag bool
+
 // Assumes the config files are in dirName, which is
 // is /usr/local/etc/zededa-server/ by default. The files are
 //  intermediate-server.cert.pem  server cert plus intermediate CA cert
@@ -46,18 +49,25 @@ type ServerCertInfo struct {
 //
 func main() {
 	log.Printf("Starting server\n")
-
-	args := os.Args[1:]
-	if len(args) > 1 {
-		log.Fatal("Usage: " + os.Args[0] + "[<dirName>]")
-	}
-	dirName := "/usr/local/etc/zededa-server/"
+	localPtr := flag.Bool("l", false, "Use local certs and map servers")
+	dirPtr := flag.String("d", "/usr/local/etc/zededa-server/",
+		"Directory with certs etc")
+	flag.Parse()
+	localFlag = *localPtr
+	dirName := *dirPtr
+	args := flag.Args()
 	if len(args) > 0 {
-		dirName = args[0]
+		log.Fatal("Usage: " + os.Args[0] + "[-l] [-d <dirName>]")
 	}
-
-	localServerCertName := dirName + "/intermediate-prov01.priv.sc.zededa.net.cert.pem"
-	localServerKeyName := dirName + "/prov01.priv.sc.zededa.net.key.pem"
+	var localServerCertName string
+	var localServerKeyName string
+	if localFlag {
+		localServerCertName = dirName + "/temporary-intermediate-prov.local.zededa.net.cert.pem"
+		localServerKeyName = dirName + "/prov.local.zededa.net.key.pem"
+	} else {
+		localServerCertName = dirName + "/intermediate-prov01.priv.sc.zededa.net.cert.pem"
+		localServerKeyName = dirName + "/prov01.priv.sc.zededa.net.key.pem"
+	}
 	globalServerCertName := dirName + "/intermediate-prov1.zededa.net.cert.pem"
 	globalServerKeyName := dirName + "/prov1.zededa.net.key.pem"
 	zedServerConfigFileName := dirName + "/zedserverconfig.json"
@@ -77,24 +87,45 @@ func main() {
 		log.Fatal("Error decoding ZedServerConfig:\n", err)
 	}
 
-	localServerCert, err := tls.LoadX509KeyPair(localServerCertName,
-		localServerKeyName)
-	if err != nil {
-		log.Fatal(err)
-	}
-	globalServerCert, err := tls.LoadX509KeyPair(globalServerCertName,
-		globalServerKeyName)
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	// Handling a local and a global cert for now
 	serverCertInfo := make([]ServerCertInfo, 2)
-	serverCertInfo[0] = ServerCertInfo{
-		serverCert: globalServerCert, timerBackoff: 1}
-	serverCertInfo[1] = ServerCertInfo{
-		serverCert: localServerCert, timerBackoff: 1}
-
+	count := 0
+	if _, err := os.Stat(globalServerCertName); err == nil {
+		if _, err := os.Stat(globalServerKeyName); err != nil {
+			log.Fatal("Global server cert and no key")
+		}
+		globalServerCert, err := tls.LoadX509KeyPair(
+			globalServerCertName, globalServerKeyName)
+		if err != nil {
+			log.Fatal(err)
+		}
+		serverCertInfo[count] = ServerCertInfo{
+			serverCert: globalServerCert, timerBackoff: 1}
+		count += 1
+	}
+	if _, err := os.Stat(localServerCertName); err == nil {
+		if _, err := os.Stat(localServerKeyName); err != nil {
+			log.Fatal("Local server cert and no key")
+		}
+		localServerCert, err := tls.LoadX509KeyPair(
+			localServerCertName, localServerKeyName)
+		if err != nil {
+			log.Fatal(err)
+		}
+		serverCertInfo[count] = ServerCertInfo{
+			serverCert: localServerCert, timerBackoff: 1}
+		count += 1
+	}
+	if count == 0 {
+		log.Printf("No server certs in %s or %s\n",
+			globalServerCertName, localServerCertName)
+		log.Fatal("Exiting")
+	}
+	// XXX make it always have two elements
+	if count == 1 {
+		serverCertInfo[1] = serverCertInfo[0]
+	}
+	
 	getOcsp := func(sci *ServerCertInfo) bool {
 		done := false
 		response, responseBytes, err :=
@@ -511,19 +542,31 @@ func SelfRegister(w http.ResponseWriter, r *http.Request) {
 	// from the left.
 	eid := net.IP(append(eidAllocationPrefix, sum...)[0:16])
 	fmt.Printf("EID: (len %d) %s\n", len(eid), eid)
+
 	// We generate different credentials for different users,
 	// using the fact that each user has a different lispInstance
-	credential1 := fmt.Sprintf("test1_%d", lispInstance)
-	credential2 := fmt.Sprintf("test2_%d", lispInstance)
+	var lispMapServers []types.LispServerInfo
+
+	// XXX using hard-coded names
+	if localFlag {
+		credential := fmt.Sprintf("test_%d", lispInstance)
+		lispMapServers = []types.LispServerInfo{
+			{"mrms.local.zededa.net", credential},
+		}
+	} else {
+		credential1 := fmt.Sprintf("test1_%d", lispInstance)
+		credential2 := fmt.Sprintf("test2_%d", lispInstance)
+		lispMapServers = []types.LispServerInfo{
+			{"ms1.zededa.net", credential1},
+			{"ms2.zededa.net", credential2},
+		}
+	}
 	device = types.DeviceDb{
 		DeviceCert:      rc.PemCert,
 		DevicePublicKey: publicPem,
 		UserName:        userName,
 		RegTime:         time.Now(),
-		LispMapServers: []types.LispServerInfo{
-			{"ms1.zededa.net", credential1},
-			{"ms2.zededa.net", credential2},
-		},
+		LispMapServers:	 lispMapServers,
 		LispInstance:           lispInstance,
 		EID:                    eid,
 		EIDHashLen:             uint8(eidHashLen),

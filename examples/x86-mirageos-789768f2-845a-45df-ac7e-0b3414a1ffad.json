@@ -1,0 +1,2 @@
+{"UUIDandVersion":{"UUID":"789768f2-845a-45df-ac7e-0b3414a1ffad","Version":"0"},"DisplayName":"hello_mirageos","Activate":true,"FixedResources":{"Kernel":"","BootLoader":"","RootDev":"","Ramdisk":"","Memory":256000,"MaxMem":0,"VCpus":1},"StorageConfigList":[{"DownloadURL":"https://store.zededa.net/hello.xen","MaxSize":10000,"ImageSha256":"b4cf2857aebb1873f776d2eb3816383861d922d69708fb8e556ec8f6fbc41f93","ReadOnly":false,"Preserve":true,"Format":"","Devtype":"","Target":"kernel"}]}
+

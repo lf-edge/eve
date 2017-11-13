@@ -1,0 +1,62 @@
+# Makefile
+#
+# Targets:
+# 	all: Builds the code
+# 	build: Builds the code
+# 	fmt: Formats the source files
+# 	clean: cleans the code
+#
+
+# Go parameters
+GOCMD=go
+GOBUILD=$(GOCMD) build
+GOCLEAN=$(GOCMD) clean
+GOTEST=$(GOCMD) test
+GOINSTALL=$(GOCMD) install
+GOGENERATE=$(GOCMD) generate
+GOGET=$(GOCMD) get
+GOFMT=gofmt -w
+
+# Package lists
+TOPLEVEL_PKG := .
+PKG := github.com/zededa/api/$(notdir $(CURDIR))
+
+PYTHONOUT=          ./pyproto
+
+SRCS=        *.proto
+
+#GENGO=          $(SRCS:.proto=.pb.go)
+
+GOSRCS=         $(SRCS:.proto=.pb.go)
+
+.PHONY:         all genproto
+
+all: build
+genproto:            $(GOSRCS)
+        @:
+
+init:	
+	$(GOGET) ./...
+
+generate:            $(GOSRCS)
+	$(GOGENERATE) -x $(PKG)
+
+%.pb.go::       %.proto
+	protoc -I.:$(GOPATH) --gofast_out=. $?
+	mkdir -p $(PYTHONOUT)
+	protoc -I.:$(GOPATH) --python_out=$(PYTHONOUT) $?
+
+cleanproto:
+	rm -f ./*.pb.go
+
+build: genproto
+	$(GOBUILD) $(GOSRCS)
+clean: cleanproto
+	$(GOCLEAN)
+	rm -rf $(PYTHONOUT)
+test: 
+	$(GOTEST)
+fmt: 
+	$(GOFMT)
+install: build
+	$(GOINSTALL) $(PKG)

@@ -15,22 +15,14 @@ ADD scripts/device-steps.sh \
 ADD examples/x86-ggc-1a0d85d9-5e83-4589-b56f-cedabc9a8c0d.json /tmp/gg.json
 
 RUN go get github.com/zededa/go-provision/cmd/...
+# this is taking care of on-boarding code that has to interact with LISP
+RUN go get github.com/zededa/go-provision/oldcmd/...
 RUN cd /opt/zededa/bin ; ln -s /go/bin/* .
 
 RUN ash -c 'ID=`uuidgen | tr "[A-Z]" "[a-z]"` ; cat /tmp/gg.json | sed -e s"#1a0d85d9-5e83-4589-b56f-cedabc9a8c0d#${ID}#" > /opt/zededa/etc/${ID}.json'
 
 # Now building LISP
-FROM alpine:latest AS lisp
-ENV LISP_URL https://www.dropbox.com/s/gw1gczw8z798q0a/lispers.net-x86-release-0.419.tgz
-RUN apk add --no-cache curl gcc linux-headers libc-dev python python-dev libffi-dev openssl-dev
-RUN mkdir /lisp ; cd /lisp ; curl --insecure -L $LISP_URL | gzip -dc | tar -xf -
-ADD scripts/lisp/RESTART-LISP \
-    scripts/lisp/RUN-LISP     \
-    scripts/lisp/STOP-LISP    \
-    scripts/lisp/pslisp       \
-  /lisp/
-RUN python /lisp/get-pip.py
-RUN pip install -r /lisp/pip-requirements.txt
+FROM zededa/lisp:latest AS lisp
 
 # Second stage of the build is creating a minimalistic container
 FROM scratch
