@@ -279,7 +279,6 @@ func main() {
 			CipherSuites: []uint16{
 				tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
 				tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256},
-			InsecureSkipVerify:true, // XXX remove
 			// TLS 1.2 because we can
 			MinVersion: tls.VersionTLS12,
 		}
@@ -440,6 +439,29 @@ func main() {
 		}
 	}
 
+	var devUUID uuid.UUID
+	if _, err := os.Stat(uuidFileName); err != nil {
+		// Create and write with initial values
+		devUUID = uuid.NewV4()
+		b := []byte(fmt.Sprintf("%s\n", devUUID))
+		err = ioutil.WriteFile(uuidFileName, b, 0644)
+		if err != nil {
+			log.Fatal("WriteFile", err, uuidFileName)
+		}
+		fmt.Printf("Created UUID %s\n", devUUID)
+	} else {
+		b, err := ioutil.ReadFile(uuidFileName)
+		if err != nil {
+			log.Fatal("ReadFile", err, uuidFileName)
+		}
+		uuidStr := strings.TrimSpace(string(b))
+		devUUID, err = uuid.FromString(uuidStr)
+		if err != nil {
+			log.Fatal("uuid.FromString", err, string(b))
+		}
+		fmt.Printf("Read UUID %s\n", devUUID)
+	}
+
 	if operations["lookupParam"] {
 		if !oldFlag {
 			log.Printf("XXX lookupParam not yet supported using %s\n",
@@ -462,32 +484,6 @@ func main() {
 			}
 			log.Printf("Retrying lookupParam in %d seconds\n",
 				delay/time.Second)
-		}
-		var devUUID uuid.UUID
-		if _, err := os.Stat(uuidFileName); err != nil {
-			// Create and write with initial values
-			devUUID = uuid.NewV4()
-			b := []byte(fmt.Sprintf("%s\n", devUUID))
-			err = ioutil.WriteFile(uuidFileName, b, 0644)
-			if err != nil {
-				log.Fatal("WriteFile", err, uuidFileName)
-			}
-			fmt.Printf("Created UUID %s\n", devUUID)
-		} else {
-			b, err := ioutil.ReadFile(uuidFileName)
-			if err != nil {
-				log.Fatal("ReadFile", err, uuidFileName)
-			}
-			uuidStr := strings.TrimSpace(string(b))
-			devUUID, err = uuid.FromString(uuidStr)
-			if err != nil {
-				log.Fatal("uuid.FromString", err, string(b))
-			}
-			fmt.Printf("Read UUID %s\n", devUUID)
-		}
-		uv := types.UUIDandVersion{
-			UUID:    devUUID,
-			Version: "0",
 		}
 
 		// If we got a StatusNotFound the EID will be zero
@@ -575,6 +571,10 @@ func main() {
 		}
 
 		// Write an AppNetworkConfig for the ZedManager application
+		uv := types.UUIDandVersion{
+			UUID:    devUUID,
+			Version: "0",
+		}
 		config := types.AppNetworkConfig{
 			UUIDandVersion: uv,
 			DisplayName:    "zedmanager",

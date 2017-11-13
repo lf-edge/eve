@@ -9,7 +9,6 @@ import (
 	"log"
 	"os"
 	"reflect"
-	"strings"
 	"time"
 )
 
@@ -125,7 +124,7 @@ func updateAIStatusSafename(safename string) {
 		fmt.Printf("found AIC for UUID %s\n",
 			config.UUIDandVersion.UUID)
 		for _, sc := range config.StorageConfigList {
-			safename2 := urlToSafename(sc.DownloadURL, sc.ImageSha256)
+			safename2 := types.UrlToSafename(sc.DownloadURL, sc.ImageSha256)
 			fmt.Printf("Found StorageConfig URL %s safename %s\n",
 				sc.DownloadURL, safename2)
 			if safename == safename2 {
@@ -201,7 +200,7 @@ func removeAIStatusSafename(safename string) {
 		fmt.Printf("found AIS for UUID %s\n",
 			status.UUIDandVersion.UUID)
 		for _, ss := range status.StorageStatusList {
-			safename2 := urlToSafename(ss.DownloadURL, ss.ImageSha256)
+			safename2 := types.UrlToSafename(ss.DownloadURL, ss.ImageSha256)
 			fmt.Printf("Found StorageStatus URL %s safename %s\n",
 				ss.DownloadURL, safename2)
 			if safename == safename2 {
@@ -291,7 +290,7 @@ func doInstall(uuidStr string, config types.AppInstanceConfig,
 	}
 	for i, sc := range config.StorageConfigList {
 		ss := &status.StorageStatusList[i]
-		safename := urlToSafename(sc.DownloadURL, sc.ImageSha256)
+		safename := types.UrlToSafename(sc.DownloadURL, sc.ImageSha256)
 		fmt.Printf("Found StorageConfig URL %s safename %s\n",
 			sc.DownloadURL, safename)
 
@@ -400,7 +399,7 @@ func doInstall(uuidStr string, config types.AppInstanceConfig,
 	minState = types.MAXSTATE
 	for i, sc := range config.StorageConfigList {
 		ss := &status.StorageStatusList[i]
-		safename := urlToSafename(sc.DownloadURL, sc.ImageSha256)
+		safename := types.UrlToSafename(sc.DownloadURL, sc.ImageSha256)
 		fmt.Printf("Found StorageConfig URL %s safename %s\n",
 			sc.DownloadURL, safename)
 
@@ -657,7 +656,7 @@ func doUninstall(uuidStr string, status *types.AppInstanceStatus) (bool, bool) {
 
 	removedAll = true
 	for _, ss := range status.StorageStatusList {
-		safename := urlToSafename(ss.DownloadURL, ss.ImageSha256)
+		safename := types.UrlToSafename(ss.DownloadURL, ss.ImageSha256)
 		fmt.Printf("Found StorageStatus URL %s safename %s\n",
 			ss.DownloadURL, safename)
 		// Decrease refcount if we had increased it
@@ -689,9 +688,4 @@ func doUninstall(uuidStr string, status *types.AppInstanceStatus) (bool, bool) {
 
 func appendError(allErrors string, prefix string, lasterr string) string {
 	return fmt.Sprintf("%s%s: %s\n\n", allErrors, prefix, lasterr)
-}
-
-func urlToSafename(url string, sha string) string {
-	safename := strings.Replace(url, "/", " ", -1) + "." + sha
-	return safename
 }

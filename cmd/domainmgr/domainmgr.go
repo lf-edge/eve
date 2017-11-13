@@ -43,22 +43,22 @@ func main() {
 	verifiedDirname = imgCatalogDirname + "/verified"
 
 	if _, err := os.Stat(baseDirname); err != nil {
-		if err := os.Mkdir(baseDirname, 0700); err != nil {
+		if err := os.MkdirAll(baseDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(configDirname); err != nil {
-		if err := os.Mkdir(configDirname, 0700); err != nil {
+		if err := os.MkdirAll(configDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(runDirname); err != nil {
-		if err := os.Mkdir(runDirname, 0700); err != nil {
+		if err := os.MkdirAll(runDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(statusDirname); err != nil {
-		if err := os.Mkdir(statusDirname, 0700); err != nil {
+		if err := os.MkdirAll(statusDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -66,12 +66,12 @@ func main() {
 		log.Fatal(err)
 	}
 	if _, err := os.Stat(rwImgDirname); err != nil {
-		if err := os.Mkdir(rwImgDirname, 0700); err != nil {
+		if err := os.MkdirAll(rwImgDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(xenDirname); err != nil {
-		if err := os.Mkdir(xenDirname, 0700); err != nil {
+		if err := os.MkdirAll(xenDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -81,7 +81,7 @@ func main() {
 		}
 	}
 	if _, err := os.Stat(verifiedDirname); err != nil {
-		if err := os.Mkdir(verifiedDirname, 0700); err != nil {
+		if err := os.MkdirAll(verifiedDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -401,18 +401,22 @@ func configToXencfg(config types.DomainConfig,
 	file.WriteString(fmt.Sprintf("builder = \"pv\"\n"))
 	file.WriteString(fmt.Sprintf("uuid = \"%s\"\n",
 		config.UUIDandVersion.UUID))
+
 	if config.Kernel != "" {
 		file.WriteString(fmt.Sprintf("kernel = \"%s\"\n",
 			config.Kernel))
 	}
+
 	if config.Ramdisk != "" {
 		file.WriteString(fmt.Sprintf("ramdisk = \"%s\"\n",
 			config.Ramdisk))
 	}
+
 	if config.BootLoader != "" {
 		file.WriteString(fmt.Sprintf("bootloader = \"%s\"\n",
 			config.BootLoader))
 	}
+
 	// Go from kbytes to mbytes
 	kbyte2mbyte := func(kbyte int) int {
 		return (kbyte + 1023) / 1024

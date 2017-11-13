@@ -32,10 +32,13 @@ func MaybeAddVerifyImageConfig(safename string, sc *types.StorageConfig) {
 	} else {
 		fmt.Printf("verifier config add for %s\n", safename)
 		n := types.VerifyImageConfig{
-			Safename:    safename,
-			DownloadURL: sc.DownloadURL,
-			ImageSha256: sc.ImageSha256,
-			RefCount:    1,
+			Safename:	safename,
+			DownloadURL:	sc.DownloadURL,
+			ImageSha256:	sc.ImageSha256,
+			RefCount:	1,
+			CertificateChain: sc.CertificateChain,
+			ImageSignature:	sc.ImageSignature,
+			SignatureKey:	sc.SignatureKey,
 		}
 		verifyImageConfig[key] = n
 	}

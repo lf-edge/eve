@@ -114,14 +114,23 @@ type EIDOverlayConfig struct {
 // - "ramdisk"
 // - "device_tree"
 type StorageConfig struct {
-	DownloadURL   string // XXX is there a more specific type?
-	MaxSize       uint   // In kbytes
-	SignatureInfo SignatureInfo
-	ImageSha256   string // sha256 of immutable image
-	ReadOnly      bool
-	Preserve      bool   // Disk will be preserved across inactive/activate
-	Format        string // Default "raw"; could be raw, qcow, qcow2, vhd
-	Devtype       string // Default ""; could be e.g. "cdrom"
+	DownloadURL	string	// XXX is there a more specific type?
+	MaxSize		uint	// In kbytes
+	TransportMethod	string	// Download method S3/HTTP/SFTP etc.
+	// XXX Add SignatureInfo for the sha256. Verifier should check.
+	CertificateChain	[]string//name of intermediate certificates
+	ImageSignature		[]byte	//signature of image
+	SignatureKey		string	//certificate containing public key 
+	ApiKey		string
+	Password	string
+	Dpath		string
+
+	ImageSha256	string	// sha256 of immutable image
+	ReadOnly	bool
+	Preserve	bool	// If set a rw disk will be preserved across
+				// boots (acivate/inactivate)
+	Format		string	// Default "raw"; could be raw, qcow, qcow2, vhd
+	Devtype		string	// Default ""; could be e.g. "cdrom"
 	Target        string // Default "" is interpreted as "disk"
 }
 

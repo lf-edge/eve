@@ -21,10 +21,13 @@ import (
 // The key/index to this is the Safename which is allocated by ZedManager.
 // That is the filename in which we store the corresponding json files.
 type VerifyImageConfig struct {
-	Safename    string // Also refers to the dirname in pending dir
-	DownloadURL string // For logging output
-	ImageSha256 string // sha256 of immutable image
-	RefCount    uint   // Zero means can delete file
+	Safename		string	// Also refers to the dirname in pending dir
+	DownloadURL		string	// For logging output
+	ImageSha256		string	// sha256 of immutable image
+	RefCount		uint	// Zero means can delete file
+	CertificateChain 	[]string//name of intermediate certificates
+	ImageSignature		[]byte	//signature of image
+	SignatureKey		string	//certificate containing public key 
 }
 
 func (config VerifyImageConfig) VerifyFilename(fileName string) bool {

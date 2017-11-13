@@ -30,6 +30,7 @@ var (
 	runDirname               = "/var/run/zedmanager"
 	zedmanagerConfigDirname  = baseDirname + "/config"
 	zedmanagerStatusDirname  = runDirname + "/status"
+	zedagentConfigDirname    = "/var/tmp/zedagent/config"
 	verifierConfigDirname    = "/var/tmp/verifier/config"
 	downloaderConfigDirname  = "/var/tmp/downloader/config"
 	domainmgrConfigDirname   = "/var/tmp/domainmgr/config"
@@ -45,6 +46,7 @@ func main() {
 	watch.CleanupRestart("identitymgr")
 	watch.CleanupRestart("zedrouter")
 	watch.CleanupRestart("domainmgr")
+	watch.CleanupRestart("zedagent")
 
 	verifierStatusDirname := "/var/run/verifier/status"
 	downloaderStatusDirname := "/var/run/downloader/status"
@@ -65,7 +67,9 @@ func main() {
 		domainmgrStatusDirname,
 		downloaderStatusDirname,
 		verifierStatusDirname,
+		zedagentConfigDirname,
 	}
+
 	for _, dir := range dirs {
 		if _, err := os.Stat(dir); err != nil {
 			if err := os.MkdirAll(dir, 0700); err != nil {
@@ -76,7 +80,7 @@ func main() {
 
 	// Tell ourselves to go ahead
 	watch.SignalRestart("zedmanager")
-	
+
 	verifierChanges := make(chan string)
 	go watch.WatchStatus(verifierStatusDirname, verifierChanges)
 	downloaderChanges := make(chan string)
@@ -102,10 +106,6 @@ func main() {
 	var verifierRestartedFn watch.StatusRestartHandler = handleVerifierRestarted
 	var identitymgrRestartedFn watch.StatusRestartHandler = handleIdentitymgrRestarted
 	var zedrouterRestartedFn watch.StatusRestartHandler = handleZedrouterRestarted
-
-	getCloudUrls ()
-	go metricsTimerTask()
-	go configTimerTask()
 
 	configChanges := make(chan string)
 	go watch.WatchConfigStatus(zedmanagerConfigDirname,
@@ -243,7 +243,6 @@ func writeAppInstanceStatus(status *types.AppInstanceStatus,
 	if err != nil {
 		log.Fatal(err, statusFilename)
 	}
-	publishAiInfoToCloud(status)
 }
 
 func handleCreate(statusFilename string, configArg interface{}) {
