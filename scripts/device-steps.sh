@@ -14,13 +14,13 @@ WAIT=1
 EID_IN_DOMU=0
 MEASURE=0
 while [ $# != 0 ]; do
-    if [ "$1" == -w ]; then
+    if [ "$1" = -w ]; then
 	WAIT=0
-    elif [ "$1" == -x ]; then
+    elif [ "$1" = -x ]; then
 	EID_IN_DOMU=1
-    elif [ "$1" == -m ]; then
+    elif [ "$1" = -m ]; then
 	MEASURE=1
-    elif [ "$1" == -o ]; then
+    elif [ "$1" = -o ]; then
 	OLDFLAG=$1
     else
 	ETCDIR=$1
@@ -57,7 +57,7 @@ else
    # last ditch attemp to sync up our clock
    ntpd -d -q -n -p pool.ntp.org
 fi
-if [ $WAIT == 1 ]; then
+if [ $WAIT = 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
 
@@ -75,7 +75,7 @@ if [ ! -f $ETCDIR/server -o ! -f $ETCDIR/root-certificate.pem ]; then
     exit 0
 fi
 
-if [ $WAIT == 1 ]; then
+if [ $WAIT = 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
 
@@ -94,7 +94,7 @@ if [ -f $ETCDIR/wifi_ssid ]; then
     # and /etc/wpa_supplicant/wpa_supplicant.conf
     # Assumes wpa packages are included. Would be in our image?
 fi
-if [ $WAIT == 1 ]; then
+if [ $WAIT = 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
 
@@ -109,7 +109,7 @@ if [ $SELF_REGISTER = 1 ]; then
     fi
     echo $BINDIR/client $OLDFLAG -d $ETCDIR selfRegister
     $BINDIR/client $OLDFLAG -d $ETCDIR selfRegister
-    if [ $WAIT == 1 ]; then
+    if [ $WAIT = 1 ]; then
 	echo; read -n 1 -s -p "Press any key to continue"; echo; echo
     fi
 fi
@@ -132,7 +132,7 @@ if [ /bin/true -o ! -f $ETCDIR/lisp.config ]; then
 	cp /tmp/hosts.$$ /etc/hosts
 	rm -f /tmp/hosts.$$
     fi
-    if [ $WAIT == 1 ]; then
+    if [ $WAIT = 1 ]; then
 	echo; read -n 1 -s -p "Press any key to continue"; echo; echo
     fi
 fi
@@ -170,13 +170,13 @@ for AGENT in $AGENTS; do
     # echo "XXX Looking in config $dir"
     for f in $dir/*; do
 	# echo "XXX: f is $f"
-	if [ "$f" == "$dir/*" ]; then
+	if [ "$f" = "$dir/*" ]; then
 		# echo "XXX: skipping $dir"
 		break
 	fi
-	if [ "$f" == "$dir/global" ]; then
+	if [ "$f" = "$dir/global" ]; then
 	    echo "Ignoring $f"
-	elif [ "$f" == "$dir/restarted" ]; then
+	elif [ "$f" = "$dir/restarted" ]; then
 	    echo "Ignoring $f"
 	else
 	    # Note that this deletes domainmgr config which, unlike a reboot,
@@ -196,7 +196,7 @@ for AGENT in $AGENTS; do
     if [ ! -d /var/run/$AGENT ]; then
 	continue
     fi
-    if [ $AGENT == "verifier" ]; then
+    if [ $AGENT = "verifier" ]; then
 	echo "Skipping check for /var/run/$AGENT/status"
 	pkill $AGENT
 	continue
@@ -212,19 +212,19 @@ for AGENT in $AGENTS; do
 	    wait=0
 	    for f in $dir/*; do
 		# echo "XXX: f is $f"
-		if [ "$f" == "$dir/*" ]; then
+		if [ "$f" = "$dir/*" ]; then
 		    # echo "XXX: skipping $dir"
 		    break
 		fi
-		if [ "$f" == "$dir/global" ]; then
+		if [ "$f" = "$dir/global" ]; then
 		    echo "Ignoring $f"
-		elif [ "$f" == "$dir/restarted" ]; then
+		elif [ "$f" = "$dir/restarted" ]; then
 		    echo "Ignoring $f"
 		else
 		    wait=1
 		fi
 	    done
-	    if [ $wait == 1 ]; then
+	    if [ $wait = 1 ]; then
 		echo "Waiting for $AGENT to clean up"
 		sleep 3
 	    else
@@ -234,7 +234,7 @@ for AGENT in $AGENTS; do
     else
 	for f in $dir/*; do
 	    # echo "XXX: f is $f"
-	    if [ "$f" == "$dir/*" ]; then
+	    if [ "$f" = "$dir/*" ]; then
 		# echo "XXX: skipping $dir"
 		break
 	    fi
@@ -294,7 +294,7 @@ else
 	/bin/hostname $uuid
 	/bin/hostname >/etc/hostname
 	grep -s $uuid /etc/hosts >/dev/null
-	if [ !? == 1 ]; then
+	if [ !? = 1 ]; then
 		# put the uuid in /etc/hosts to avoid complaints
 		echo "Adding $uuid to /etc/hosts"
 		echo "127.0.0.1 $uuid" >>/etc/hosts
@@ -322,51 +322,51 @@ rm -f /var/run/verifier/status/restarted
 rm -f /var/tmp/zedrouter/config/restart
 
 echo "Starting verifier at" `date`
-verifier >&/var/log/verifier.log&
-if [ $WAIT == 1 ]; then
+verifier >/var/log/verifier.log 2>&1 &
+if [ $WAIT = 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
 
 echo "Starting ZedManager at" `date`
-zedmanager >&/var/log/zedmanager.log&
-if [ $WAIT == 1 ]; then
+zedmanager >/var/log/zedmanager.log 2>&1 &
+if [ $WAIT = 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
 
 echo "Starting downloader at" `date`
-downloader >&/var/log/downloader.log&
-if [ $WAIT == 1 ]; then
+downloader >/var/log/downloader.log&
+if [ $WAIT = 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
 
 echo "Starting eidregister at" `date`
-eidregister >&/var/log/eidregister.log&
-if [ $WAIT == 1 ]; then
+eidregister >&/var/log/eidregister.log 2>&1 &
+if [ $WAIT = 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
 
 echo "Starting identitymgr at" `date`
-identitymgr >&/var/log/identitymgr.log&
-if [ $WAIT == 1 ]; then
+identitymgr >/var/log/identitymgr.log 2>&1 &
+if [ $WAIT = 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
 
 echo "Starting ZedRouter at" `date`
-zedrouter >&/var/log/zedrouter.log&
-if [ $WAIT == 1 ]; then
+zedrouter >/var/log/zedrouter.log 2>&1 &
+if [ $WAIT = 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
 
 echo "Starting DomainMgr at" `date`
-domainmgr >&/var/log/domainmgr.log&
+domainmgr >/var/log/domainmgr.log 2>&1 &
 # Do something
-if [ $WAIT == 1 ]; then
+if [ $WAIT = 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
 
 echo "Starting zedagent at" `date`
-zedagent >&/var/log/zedagent.log&
-if [ $WAIT == 1 ]; then
+zedagent >/var/log/zedagent.log 2>&1 &
+if [ $WAIT = 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
 
@@ -421,7 +421,7 @@ EOF
 echo $BINDIR/client $OLDFLAG -d $ETCDIR updateHwStatus
 $BINDIR/client $OLDFLAG -d $ETCDIR updateHwStatus
 
-if [ $WAIT == 1 ]; then
+if [ $WAIT = 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi
 
@@ -449,7 +449,7 @@ echo $BINDIR/client $OLDFLAG -d $ETCDIR updateSwStatus
 $BINDIR/client $OLDFLAG -d $ETCDIR updateSwStatus
 
 echo "Initial setup done at" `date`
-if [ $MEASURE == 1 ]; then
+if [ $MEASURE = 1 ]; then
     ping6 -c 3 -w 1000 zedcontrol
     echo "Measurement done at" `date`
 fi
