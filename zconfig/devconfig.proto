@@ -23,10 +23,10 @@ message DeviceLispDetails {
         repeated MapServer LispMapServers = 1;
         uint32 LispInstance = 2;
         string EID = 4;
-        int32 EIDHashLen = 5;
+        uint32 EIDHashLen = 5;
         repeated ZedServer ZedServers = 6;
         bytes EidAllocationPrefix = 8;
-        int32 EidAllocationPrefixLen = 9;
+        uint32 EidAllocationPrefixLen = 9;
         string ClientAddr = 10;
 }
 

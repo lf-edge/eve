@@ -22,6 +22,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   syntax='proto3',
   serialized_pb=_b('\n\x0fzregister.proto\"1\n\rZRegisterResp\x12 \n\x06result\x18\x02 \x01(\x0e\x32\x10.ZRegisterResult\"3\n\x0cZRegisterMsg\x12\x12\n\nonBoardKey\x18\x01 \x01(\t\x12\x0f\n\x07pemCert\x18\x02 \x01(\x0c*z\n\x0fZRegisterResult\x12\x0c\n\x08ZRegNone\x10\x00\x12\x0f\n\x0bZRegSuccess\x10\x01\x12\x11\n\rZRegNotActive\x10\x02\x12\x13\n\x0fZRegAlreadyDone\x10\x03\x12\x10\n\x0cZRegDeviceNA\x10\x04\x12\x0e\n\nZRegFailed\x10\x05\x42\x1cZ\x1agithub.com/zededa/api/zmetb\x06proto3')
 )
+_sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
 _ZREGISTERRESULT = _descriptor.EnumDescriptor(
   name='ZRegisterResult',
@@ -84,7 +85,7 @@ _ZREGISTERRESP = _descriptor.Descriptor(
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None, file=DESCRIPTOR),
+      options=None),
   ],
   extensions=[
   ],
@@ -115,14 +116,14 @@ _ZREGISTERMSG = _descriptor.Descriptor(
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None, file=DESCRIPTOR),
+      options=None),
     _descriptor.FieldDescriptor(
       name='pemCert', full_name='ZRegisterMsg.pemCert', index=1,
       number=2, type=12, cpp_type=9, label=1,
       has_default_value=False, default_value=_b(""),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None, file=DESCRIPTOR),
+      options=None),
   ],
   extensions=[
   ],
@@ -143,7 +144,6 @@ _ZREGISTERRESP.fields_by_name['result'].enum_type = _ZREGISTERRESULT
 DESCRIPTOR.message_types_by_name['ZRegisterResp'] = _ZREGISTERRESP
 DESCRIPTOR.message_types_by_name['ZRegisterMsg'] = _ZREGISTERMSG
 DESCRIPTOR.enum_types_by_name['ZRegisterResult'] = _ZREGISTERRESULT
-_sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
 ZRegisterResp = _reflection.GeneratedProtocolMessageType('ZRegisterResp', (_message.Message,), dict(
   DESCRIPTOR = _ZREGISTERRESP,
