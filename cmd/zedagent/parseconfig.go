@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"strings"
 	"io/ioutil"
 	"encoding/json"
 	"github.com/satori/go.uuid"
@@ -14,9 +15,15 @@ func parseConfig(config *zconfig.EdgeDevConfig) {
 
 	var appInstance = types.AppInstanceConfig{}
 
+	log.Println("Applying new config")
+
 	Apps := config.GetApps()
 
+
 	for _,cfgApp :=	range Apps {
+
+
+		log.Printf("%v\n", cfgApp)
 
 		appInstance.UUIDandVersion.UUID,_		= uuid.FromString(cfgApp.Uuidandversion.Uuid)
 		appInstance.UUIDandVersion.Version		= cfgApp.Uuidandversion.Version
@@ -25,7 +32,6 @@ func parseConfig(config *zconfig.EdgeDevConfig) {
 
 		appInstance.FixedResources.Kernel		= cfgApp.Fixedresources.Kernel
 		appInstance.FixedResources.Ramdisk		= cfgApp.Fixedresources.Ramdisk
-		appInstance.FixedResources.BootLoader	= cfgApp.Fixedresources.Bootloader
 		appInstance.FixedResources.MaxMem		= int(cfgApp.Fixedresources.Maxmem)
 		appInstance.FixedResources.Memory		= int(cfgApp.Fixedresources.Memory)
 		appInstance.FixedResources.RootDev		= cfgApp.Fixedresources.Rootdev
@@ -33,14 +39,20 @@ func parseConfig(config *zconfig.EdgeDevConfig) {
 
 		appInstance.StorageConfigList = make([]types.StorageConfig,len(cfgApp.Drives))
 
-		for idx,drive :=	range cfgApp.Drives {
+		var idx int = 0
+
+		for _,drive :=	range cfgApp.Drives {
+
+			found := false
 
 			image := new(types.StorageConfig)
 			for _, ds :=	range config.Datastores {
 
-				if drive.Image.DsId	== ds.Id {
+				if drive.Image != nil &&
+					drive.Image.DsId == ds.Id {
 
-					image.DownloadURL		= ds.Fqdn
+					found					= true
+					image.DownloadURL		= ds.Fqdn+"/"+ds.Dpath+"/"+drive.Image.Name
 					image.TransportMethod	= ds.DType.String()
 					image.ApiKey			= ds.ApiKey
 					image.Password			= ds.Password
@@ -49,13 +61,16 @@ func parseConfig(config *zconfig.EdgeDevConfig) {
 				}
 			}
 
+			if found == false { continue }
+
 			// XXX:FIXME certificate should be of variable length
-			// depending on the number of certifications in the chain
-			// this listcurrently contains the certUrls
+			// depending on the number of certificates in the chain
+			// this list, currently contains the certUrls
 			// should be the sha/uuid of cert filenames
+			//  proper DataStore Entries
 
 			image.CertificateChain	= make([]string, 1)
-			image.Format			= drive.Image.Iformat.String()
+			image.Format			= strings.ToLower(drive.Image.Iformat.String())
 			image.ImageSignature	= drive.Image.Siginfo.Signature
 			image.SignatureKey		= drive.Image.Siginfo.Signercerturl
 			image.CertificateChain[0]	= drive.Image.Siginfo.Intercertsurl
@@ -63,10 +78,15 @@ func parseConfig(config *zconfig.EdgeDevConfig) {
 			image.MaxSize			= uint(drive.Maxsize)
 			image.ReadOnly			= drive.Readonly
 			image.Preserve			= drive.Preserve
-			image.Target			= drive.Target.String()
-			image.Devtype			= drive.Drvtype.String()
+			image.Target			= strings.ToLower(drive.Target.String())
+			image.Devtype			= strings.ToLower(drive.Drvtype.String())
 
+			// XXX:FIXME, to be decided after consulting with erik
+			if image.Target == "disk" {
+				appInstance.FixedResources.BootLoader	= "/usr/lib/xen-4.6/bin/pygrub"
+			}
 			appInstance.StorageConfigList[idx] = *image
+			idx++
 		}
 
 		var netx int = 0
@@ -99,7 +119,7 @@ func parseConfig(config *zconfig.EdgeDevConfig) {
 							aceActionDetails.LimitRate	=  int(action.Limitrate)
 							aceActionDetails.LimitUnit	=  action.Limitunit
 							aceActionDetails.LimitBurst	= int(action.Limitburst)
-							//aceActionDetails.Drop =
+							// XXX:FIXME aceActionDetails.Drop = <TBD>
 							aceDetails.Actions[actx] = *aceActionDetails
 							actx ++
 						}

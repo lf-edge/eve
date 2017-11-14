@@ -265,7 +265,13 @@ func processCertObject(config types.DownloaderConfig, statusFilename string) {
 		if config.VerifiedObjDir != "" {
 			dstFile = config.VerifiedObjDir
 		}
-		dstFile = dstFile + types.SafenameToFilename(config.Safename)
+		if err := os.MkdirAll(dstFile, 0700); err != nil {
+			log.Printf("failed directory make");
+		}
+
+		dstFile = dstFile + "/" + types.SafenameToFilename(config.Safename)
+
+		log.Printf("wiriting %s to %s\n", srcFile, dstFile)
 
 		// move to targetDir
 		os.Rename(srcFile, dstFile)

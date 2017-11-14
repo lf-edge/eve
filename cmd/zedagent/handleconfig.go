@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"github.com/golang/protobuf/proto"
-	"github.com/zededa/api/devcommon"
 	"github.com/zededa/api/zconfig"
 	"strings"
 	"log"
@@ -85,6 +84,8 @@ func getCloudUrls () {
 			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
 			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256},
 		// TLS 1.2 because we can
+		// XXX:FIXME needed while testing
+		//InsecureSkipVerify: true,
 		MinVersion: tls.VersionTLS12,
 	}
 	tlsConfig.BuildNameToCertificate()
@@ -209,7 +210,7 @@ func  publishDeviceConfig(config *zconfig.EdgeDevConfig)  error {
 	log.Printf("Publishing config %v\n", config)
 
 	// if they match return
-	var devId  =  &devcommon.UUIDandVersion{};
+	var devId  =  &zconfig.UUIDandVersion{};
 
 	devId  = config.GetId()
 	if devId != nil {
@@ -285,17 +286,7 @@ func  publishDeviceConfig(config *zconfig.EdgeDevConfig)  error {
 		}
 
 		// add new App instances
-		for _, app := range Apps {
-
-			var configFilename = zedmanagerConfigDirname + "/" +
-				 app.Uuidandversion.Uuid + ".json"
-			log.Printf("Add app config %s\n", configFilename)
-			bytes, err := json.Marshal(app)
-			err = ioutil.WriteFile(configFilename, bytes, 0644)
-			if err != nil {
-				log.Println(err)
-			}
-		}
+		parseConfig(config)
 	}
 
 	return nil

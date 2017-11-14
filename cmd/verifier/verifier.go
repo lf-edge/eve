@@ -299,8 +299,18 @@ func handleCreate(statusFilename string, configArg interface{}) {
 func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.VerifyImageConfig, imageHash []byte,
 		statusFilename string) string {
 
+	// XXX:FIXME if Image Signature is absent, skip
+	// mark it as verified; implicitly assuming,
+	// if signature is filled in, marking this object
+	//  as valid may not hold good always!!!
+	if (config.ImageSignature == nil)  ||
+		(len(config.ImageSignature) == 0) {
+		return ""
+	}
+
 	verifierDirname := imgCatalogDirname + "/verifier/" + config.ImageSha256
 	verifierFilename := verifierDirname + "/" + config.Safename
+
 	//Read the server certificate
     //Decode it and parse it
     //And find out the puplic key and it's type
@@ -377,7 +387,7 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 		return cerr
 	}
 
-	log.Println("certificate verified")
+	log.Println("certificate options verified")
 
 	//Read the signature from config file...
 	imgSig := config.ImageSignature
