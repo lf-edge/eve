@@ -17,7 +17,7 @@ GOFMT=gofmt -w
 
 # Package lists
 TOPLEVEL_PKG := .
-DIRS := devcommon zmet zconfig deprecatedzconfig
+DIRS := zmet zconfig deprecatedzconfig
 
 BUILD_LIST = $(DIRS)
 CLEAN_LIST = $(DIRS:%=clean-%)

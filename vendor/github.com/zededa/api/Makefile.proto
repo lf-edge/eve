@@ -42,7 +42,7 @@ generate:            $(GOSRCS)
 	$(GOGENERATE) -x $(PKG)
 
 %.pb.go::       %.proto
-	protoc -I.:$(GOPATH) --gofast_out=. $?
+	protoc -I.:$(GOPATH) --go_out=. $?
 	mkdir -p $(PYTHONOUT)
 	protoc -I.:$(GOPATH) --python_out=$(PYTHONOUT) $?
 
