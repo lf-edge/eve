@@ -10,10 +10,14 @@ import (
 	"io/ioutil"
 	"github.com/zededa/go-provision/types"
 	"github.com/golang/protobuf/proto"
-	"github.com/shirou/gopsutil/net"
 	"github.com/zededa/api/zmet"
 	"time"
 	"bytes"
+	"github.com/matishsiao/goInfo"
+	"github.com/shirou/gopsutil/mem"
+	// "github.com/shirou/gopsutil/cpu" //XXX will use it later
+	"github.com/shirou/gopsutil/disk"
+	"github.com/shirou/gopsutil/net"
 )
 
 var networkStat [][]string
@@ -231,7 +235,6 @@ func MakeMetricsProtobufStructure() {
 func MakeDeviceInfoProtobufStructure () {
 
 	var ReportInfo = &zmet.ZInfoMsg{}
-	var storage_size = 1	// XXX misnamed and not real data
 
 	deviceType		:= new(zmet.ZInfoTypes)
 	*deviceType		=	zmet.ZInfoTypes_ZiDevice
@@ -239,14 +242,21 @@ func MakeDeviceInfoProtobufStructure () {
 	ReportInfo.DevId	=	*proto.String(deviceId)
 
 	ReportDeviceInfo	:=	new(zmet.ZInfoDevice)
-	// XXX report real data from /proc and dmiinfo akin to device-steps
-	ReportDeviceInfo.MachineArch	=	*proto.String("32 bit")
-	ReportDeviceInfo.CpuArch	=	*proto.String("x86")
-	ReportDeviceInfo.Platform	=	*proto.String("ubuntu")
-	// XXX report real data instead of "1"
-	ReportDeviceInfo.Ncpu		=	*proto.Uint32(uint32(storage_size))
-	ReportDeviceInfo.Memory		=	*proto.Uint64(uint64(storage_size))
-	ReportDeviceInfo.Storage	=	*proto.Uint64(uint64(storage_size))
+
+	ReportDeviceInfo.MachineArch	=	*proto.String(goInfo.GetInfo().Platform)
+	ReportDeviceInfo.CpuArch	=	*proto.String(goInfo.GetInfo().Platform)
+	ReportDeviceInfo.Platform	=	*proto.String(goInfo.GetInfo().Platform)
+	ReportDeviceInfo.Ncpu		=	*proto.Uint32(uint32(goInfo.GetInfo().CPUs))
+	ram, err := mem.VirtualMemory()
+	if err != nil {
+		log.Println(err)
+	}
+	ReportDeviceInfo.Memory     =   *proto.Uint64(uint64(ram.Total))
+	d,err := disk.Usage("/")
+	if err != nil {
+		log.Println(err)
+	}
+	ReportDeviceInfo.Storage    =   *proto.Uint64(uint64(d.Total))
 
 	ReportDeviceInfo.Devices	=	make([]*zmet.ZinfoPeripheral,	1)
 	ReportDevicePeripheralInfo	:=	new(zmet.ZinfoPeripheral)
@@ -260,27 +270,27 @@ func MakeDeviceInfoProtobufStructure () {
 		ReportDevicePeripheralInfo.Ztype			=		*PeripheralType
 		ReportDevicePeripheralInfo.Pluggable			=		*proto.Bool(false)
 		// XXX report real data from /proc and dmiinfo akin to device-steps
-		ReportDevicePeripheralManufacturerInfo.Manufacturer	=		*proto.String("apple")
-		ReportDevicePeripheralManufacturerInfo.ProductName	=		*proto.String("usb")
-		ReportDevicePeripheralManufacturerInfo.Version		=		*proto.String("1.2")
-		ReportDevicePeripheralManufacturerInfo.SerialNumber	=		*proto.String("1mnah34")
-		ReportDevicePeripheralManufacturerInfo.UUID		=		*proto.String("uyapple34")
+		ReportDevicePeripheralManufacturerInfo.Manufacturer	=		*proto.String(" ")
+		ReportDevicePeripheralManufacturerInfo.ProductName	=		*proto.String(" ")
+		ReportDevicePeripheralManufacturerInfo.Version		=		*proto.String(" ")
+		ReportDevicePeripheralManufacturerInfo.SerialNumber	=		*proto.String(" ")
+		ReportDevicePeripheralManufacturerInfo.UUID		=		*proto.String(" ")
 		ReportDevicePeripheralInfo.Minfo			=		ReportDevicePeripheralManufacturerInfo
 		ReportDeviceInfo.Devices[index]				=		ReportDevicePeripheralInfo
 	}
 
 	// XXX report real data from /proc and dmiinfo akin to device-steps
 	ReportDeviceManufacturerInfo	:=	new(zmet.ZInfoManufacturer)
-	ReportDeviceManufacturerInfo.Manufacturer		=		*proto.String("intel")
-	ReportDeviceManufacturerInfo.ProductName		=		*proto.String("vbox")
-	ReportDeviceManufacturerInfo.Version			=		*proto.String("1.2")
-	ReportDeviceManufacturerInfo.SerialNumber		=		*proto.String("acmck11112c")
-	ReportDeviceManufacturerInfo.UUID			=		*proto.String("12345")
+	ReportDeviceManufacturerInfo.Manufacturer		=		*proto.String(" ")
+	ReportDeviceManufacturerInfo.ProductName		=		*proto.String(" ")
+	ReportDeviceManufacturerInfo.Version			=		*proto.String(" ")
+	ReportDeviceManufacturerInfo.SerialNumber		=		*proto.String(" ")
+	ReportDeviceManufacturerInfo.UUID			=		*proto.String(" ")
 	ReportDeviceInfo.Minfo					=		ReportDeviceManufacturerInfo
 
 	ReportDeviceSoftwareInfo	:=	new(zmet.ZInfoSW)
-	ReportDeviceSoftwareInfo.SwVersion	=		*proto.String("1.1.2")
-	ReportDeviceSoftwareInfo.SwHash		=		*proto.String("12awsxlnvme456")
+	ReportDeviceSoftwareInfo.SwVersion	=		*proto.String(" ")
+	ReportDeviceSoftwareInfo.SwHash		=		*proto.String(" ")
 	ReportDeviceInfo.Software		=		ReportDeviceSoftwareInfo
 
 	//find	all	network	related	info...
@@ -293,7 +303,6 @@ func MakeDeviceInfoProtobufStructure () {
 			ReportDeviceNetworkInfo.IPAddr	=	*proto.String(val.Addrs[0].Addr)
 		}
 
-		ReportDeviceNetworkInfo.GwAddr		=	*proto.String("192.168.1.1")
 		ReportDeviceNetworkInfo.MacAddr		=	*proto.String(val.HardwareAddr)
 		ReportDeviceNetworkInfo.DevName		=	*proto.String(val.Name)
 		ReportDeviceInfo.Network[index]		=	ReportDeviceNetworkInfo
@@ -313,9 +322,6 @@ func MakeDeviceInfoProtobufStructure () {
 func MakeHypervisorInfoProtobufStructure (){
 
 	var ReportInfo		=	&zmet.ZInfoMsg{}
-	var cpu_count		=	2
-	var memory_size		=	200
-	var storage_size	=	1000
 
 	hypervisorType := new(zmet.ZInfoTypes)
 	*hypervisorType		=	zmet.ZInfoTypes_ZiHypervisor
@@ -324,13 +330,18 @@ func MakeHypervisorInfoProtobufStructure (){
 
 	// XXX report real data from /proc and dmiinfo akin to device-steps
 	ReportHypervisorInfo := new(zmet.ZInfoHypervisor)
-	ReportHypervisorInfo.Ncpu		=	*proto.Uint32(uint32(cpu_count))
-	ReportHypervisorInfo.Memory		=	*proto.Uint64(uint64(memory_size))
-	ReportHypervisorInfo.Storage		=	*proto.Uint64(uint64(storage_size))
+	ReportHypervisorInfo.Ncpu		=	*proto.Uint32(uint32(goInfo.GetInfo().CPUs))
+	memory, _ := strconv.ParseUint(cpuStorageStat[1][5], 10, 0)
+	ReportHypervisorInfo.Memory		=	*proto.Uint64(uint64(memory))
+	d,err := disk.Usage("/")
+	if err != nil {
+		log.Println(err)
+	}
+	ReportHypervisorInfo.Storage		=	*proto.Uint64(uint64(d.Total))
 
 	ReportDeviceSoftwareInfo := new(zmet.ZInfoSW)
-	ReportDeviceSoftwareInfo.SwVersion	=	*proto.String("0.0.0.1")
-	ReportDeviceSoftwareInfo.SwHash		=	*proto.String("jdjduu123")
+	ReportDeviceSoftwareInfo.SwVersion	=	*proto.String(" ")
+	ReportDeviceSoftwareInfo.SwHash		=	*proto.String(" ")
 	ReportHypervisorInfo.Software		=	ReportDeviceSoftwareInfo
 
 	ReportInfo.InfoContent	=	new(zmet.ZInfoMsg_Hinfo)
