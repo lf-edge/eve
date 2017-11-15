@@ -286,6 +286,7 @@ func  publishDeviceConfig(config *zconfig.EdgeDevConfig)  error {
 		}
 
 		// add new App instances
+		handleLookUpParam(config)
 		parseConfig(config)
 	}
 
