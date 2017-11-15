@@ -85,7 +85,7 @@ func getCloudUrls () {
 			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256},
 		// TLS 1.2 because we can
 		// XXX:FIXME needed while testing
-		//InsecureSkipVerify: true,
+		InsecureSkipVerify: true,
 		MinVersion: tls.VersionTLS12,
 	}
 	tlsConfig.BuildNameToCertificate()
@@ -122,8 +122,9 @@ func getLatestConfig(deviceCert []byte) {
 	resp, err := cloudClient.Get("https://" + configUrl)
 
 	if err != nil {
-		fmt.Printf("URL get fail: %v\n", err)
+		log.Printf("URL get fail: %v\n", err)
 	} else {
+		log.Println("got response for config from zedcloud: ",resp)
 		// XXX don't have validate also parse and save!
 		validateConfigMessage(resp)
 	}

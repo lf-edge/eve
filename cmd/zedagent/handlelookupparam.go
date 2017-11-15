@@ -41,13 +41,14 @@ import (
 func handleLookUpParam(devConfig *zconfig.EdgeDevConfig) {
 
 	dirName := "/opt/zededa/etc"
+	zedRouterConfigbaseDir := "/var/tmp/zedrouter/config/"
 	deviceCertName := dirName + "/device.cert.pem"
 	deviceKeyName := dirName + "/device.key.pem"
 	rootCertName := dirName + "/root-certificate.pem"
 	//serverFileName := dirName + "/server" //XXX FIXME
 	infraFileName := dirName + "/infra"
 	zedserverConfigFileName := dirName + "/zedserverconfig"
-	zedrouterConfigFileName := dirName + "/zedrouterconfig.json"
+	//zedrouterConfigFileName := dirName + "/zedrouterconfig.json" //XXX FIXME
 	uuidFileName := dirName + "/uuid"
 	clientIPFileName := dirName + "/clientIP"
 	//Fill DeviceDb struct with LispInfo config...
@@ -277,6 +278,7 @@ func handleLookUpParam(devConfig *zconfig.EdgeDevConfig) {
 		} else {
 			matches[0].Type = "eidset"
 		}
+		zedrouterConfigFileName := zedRouterConfigbaseDir+""+devUUID.String()+".json"
 		writeNetworkConfig(&config, zedrouterConfigFileName)
 	}
 

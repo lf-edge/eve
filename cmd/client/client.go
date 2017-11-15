@@ -281,7 +281,7 @@ func main() {
 				tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256},
 			// TLS 1.2 because we can
 			// XXX:FIXME needed while testing
-			//InsecureSkipVerify: true,
+			InsecureSkipVerify: true,
 			MinVersion: tls.VersionTLS12,
 		}
 		tlsConfig.BuildNameToCertificate()
