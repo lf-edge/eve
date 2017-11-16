@@ -93,7 +93,7 @@ func getCloudUrls () {
 	log.Printf("Connecting to %s\n", serverName)
 
 	transport := &http.Transport{TLSClientConfig: tlsConfig}
-	cloudClient = &http.Client{Transport: transport}
+	cloudClient = &http.Client{Transport: transport, Timeout: 90 * time.Second}
 }
 
 // got a trigger for new config. check the present version and compare
