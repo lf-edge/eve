@@ -179,7 +179,10 @@ func parseConfig(config *zconfig.EdgeDevConfig) {
 						overlayNetworkDetails.EIDConfigDetails.EIDAllocation.ExportPrivate = nlisp.Eidalloc.Exportprivate
 						overlayNetworkDetails.EIDConfigDetails.EIDAllocation.AllocationPrefix = nlisp.Eidalloc.Allocationprefix
 						overlayNetworkDetails.EIDConfigDetails.EIDAllocation.AllocationPrefixLen = int(nlisp.Eidalloc.Allocationprefixlen)
-
+						overlayNetworkDetails.EIDConfigDetails.EID = net.ParseIP(interfaces.Addr)
+						overlayNetworkDetails.EIDConfigDetails.LispSignature = interfaces.Lispsignature
+						overlayNetworkDetails.EIDConfigDetails.PemCert = interfaces.Pemcert
+						overlayNetworkDetails.EIDConfigDetails.PemPrivateKey = interfaces.Pemprivatekey
 						var nmtoeidx int = 0
 						overlayNetworkDetails.NameToEidList = make([]types.NameToEid,len(nlisp.Nmtoeid))
 						for _,nametoeid := range nlisp.Nmtoeid {
