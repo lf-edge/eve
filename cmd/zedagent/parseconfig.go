@@ -192,6 +192,7 @@ func parseConfig(config *zconfig.EdgeDevConfig) {
 							var eidx int = 0
 							for  _,eid := range nametoeid.Eids {
 								nameToEidDetails.EIDs[eidx] = net.ParseIP(eid)
+								eidx ++
 							}
 							overlayNetworkDetails.NameToEidList[nmtoeidx] = *nameToEidDetails
 							nmtoeidx ++

@@ -81,8 +81,10 @@ func handleLookUpParam(devConfig *zconfig.EdgeDevConfig) {
 		var eidx int = 0
 		for  _,eid := range zs.EID {
 			nameToEidInfo.EIDs[eidx] = net.ParseIP(eid)
+			eidx ++
 		}
 		device.ZedServers.NameToEidList[zsx] = *nameToEidInfo
+		zsx ++
 	}
 
 	var deviceCert tls.Certificate
