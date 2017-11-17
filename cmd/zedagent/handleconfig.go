@@ -6,7 +6,6 @@ package main
 import (
 	"fmt"
 	"crypto/x509"
-	"encoding/json"
 	"io/ioutil"
 	"github.com/golang/protobuf/proto"
 	"github.com/zededa/api/zconfig"
@@ -93,7 +92,7 @@ func getCloudUrls () {
 	log.Printf("Connecting to %s\n", serverName)
 
 	transport := &http.Transport{TLSClientConfig: tlsConfig}
-	cloudClient = &http.Client{Transport: transport, Timeout: 90 * time.Second}
+	cloudClient = &http.Client{Transport: transport, Timeout: 90 * time.Second} //XXX FIXME remove timeout...
 }
 
 // got a trigger for new config. check the present version and compare
@@ -134,7 +133,6 @@ func validateConfigMessage(r *http.Response) error {
 
 	var ctTypeStr		= "Content-Type"
 	var ctTypeProtoStr	= "application/x-proto-binary"
-	var ctTypeJsonStr	= "application/json"
 
 	var ct = r.Header.Get(ctTypeStr)
 
@@ -153,13 +151,9 @@ func validateConfigMessage(r *http.Response) error {
 	if err != nil {
 		return fmt.Errorf("Get Content-type error")
 	}
-
 	switch mimeType {
 	case ctTypeProtoStr: {
 			return readDeviceConfigProtoMessage(r)
-		}
-	case ctTypeJsonStr: {
-			return readDeviceConfigJsonMessage(r)
 		}
 	default: {
 			return fmt.Errorf("Content-type not supported", mimeType)
@@ -176,30 +170,11 @@ func readDeviceConfigProtoMessage (r *http.Response) error {
 		fmt.Println(err)
 		return err
 	}
+	log.Println(" proto bytes(config) received from cloud: ", fmt.Sprintf("%s",bytes))
 	log.Printf("parsing proto %d bytes\n", len(bytes))
 	err = proto.Unmarshal(bytes, config)
 	if err != nil {
 		log.Println("Unmarshalling failed: %v", err)
-		return err
-	}
-
-	return publishDeviceConfig(config)
-}
-
-func readDeviceConfigJsonMessage (r *http.Response) error {
-
-	var config = &zconfig.EdgeDevConfig{}
-
-	bytes, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		fmt.Println(err)
-		return err
-	}
-
-	log.Printf("parsing json %d bytes\n", len(bytes))
-	err = json.Unmarshal(bytes, config)
-	if err != nil {
-		log.Println("Unmarshalling failed, %v", err)
 		return err
 	}
 

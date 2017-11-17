@@ -33,8 +33,8 @@ import (
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
 	"github.com/zededa/go-provision/wrap"
-	//"github.com/zededa/shared/libs/zedUpload"
-	"zc/libs/zedUpload"
+	//"github.com/zededa/shared/libs/zedUpload" //XXX FIXME add me...
+	"zc/libs/zedUpload" //XXX FIXME remove me...
 	"github.com/zededa/api/zconfig"
 	"io/ioutil"
 	"log"
