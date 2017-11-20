@@ -247,6 +247,12 @@ func handleLookUpParam(devConfig *zconfig.EdgeDevConfig) {
 			DisplayName:    "zedmanager",
 			IsZedmanager:   true,
 		}
+		config.LispMapServers = make([]types.LispServerInfo,len(device.LispMapServers))
+		for count,lispMapServer := range device.LispMapServers {
+
+			config.LispMapServers[count] = lispMapServer
+		}
+
 		olconf := make([]types.OverlayNetworkConfig, 1)
 		config.OverlayNetworkList = olconf
 		olconf[0].IID = device.LispInstance

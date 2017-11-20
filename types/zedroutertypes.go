@@ -16,6 +16,7 @@ type AppNetworkConfig struct {
 	UUIDandVersion      UUIDandVersion
 	DisplayName         string
 	IsZedmanager        bool
+	LispMapServers		[]LispServerInfo
 	OverlayNetworkList  []OverlayNetworkConfig
 	UnderlayNetworkList []UnderlayNetworkConfig
 }
