@@ -17,7 +17,7 @@ type AppNetworkConfig struct {
 	DisplayName         string
 	IsZedmanager        bool
 	LispMapServers		[]LispServerInfo
-	OverlayNetworkList  []OverlayNetworkConfig
+	OverlayNetworkList	[]OverlayNetworkConfig
 	UnderlayNetworkList []UnderlayNetworkConfig
 }
 
