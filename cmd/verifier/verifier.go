@@ -263,8 +263,8 @@ func handleCreate(statusFilename string, configArg interface{}) {
 	defer f.Close()
 
 
-	//copmpute sha256 of the image and match it 
-	//with the one in config file...
+	// compute sha256 of the image and match it 
+	// with the one in config file...
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
 		cerr := fmt.Sprintf("%v", err)
@@ -288,13 +288,56 @@ func handleCreate(statusFilename string, configArg interface{}) {
 
 	if cerr := verifyObjectShaSignature(&status, config, imageHash, statusFilename); cerr != "" {
 		updateVerifyErrStatus(&status, cerr, statusFilename)
-	} else {
-		status.PendingAdd = false
-		status.State = types.DELIVERED
-		writeVerifyImageStatus(&status, statusFilename)
-		log.Printf("handleCreate done for %s\n", config.DownloadURL)
+		log.Printf("handleCreate failed for %s\n", config.DownloadURL)
+		return
 	}
-	return
+	// Move directory from downloads/verifier to downloads/verified
+	// XXX should have dom0 do this and/or have RO mounts
+	finalDirname := imgCatalogDirname + "/verified/" + config.ImageSha256
+	filename := types.SafenameToFilename(config.Safename)
+	finalFilename := finalDirname + "/" + filename
+	fmt.Printf("Move from %s to %s\n", verifierFilename, finalFilename)
+	if _, err := os.Stat(verifierFilename); err != nil {
+		log.Fatal(err)
+	}
+	// XXX change log.Fatal to something else?
+	if _, err := os.Stat(finalDirname); err == nil {
+		// Directory exists thus we have a sha256 collision presumably
+		// due to multiple safenames (i.e., URLs) for the same content.
+		// Delete existing to avoid wasting space.
+		locations, err := ioutil.ReadDir(finalDirname)
+		if err != nil {
+			log.Fatal(err)
+		}
+		for _, location := range locations {
+			log.Printf("Identical sha256 (%s) for safenames %s and %s; deleting old\n",
+				config.ImageSha256, location.Name(),
+				config.Safename)
+		}
+
+		if err := os.RemoveAll(finalDirname); err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	if err := os.MkdirAll(finalDirname, 0700); err != nil {
+		log.Fatal(err)
+	}
+	if err := os.Rename(verifierFilename, finalFilename); err != nil {
+		log.Fatal(err)
+	}
+	if err := os.Chmod(finalDirname, 0500); err != nil {
+		log.Fatal(err)
+	}
+
+	// Clean up empty directory
+	if err := os.Remove(verifierDirname); err != nil {
+		log.Fatal(err)
+	}
+	status.PendingAdd = false
+	status.State = types.DELIVERED
+	writeVerifyImageStatus(&status, statusFilename)
+	log.Printf("handleCreate done for %s\n", config.DownloadURL)
 }
 
 func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.VerifyImageConfig, imageHash []byte,
@@ -308,9 +351,6 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 		(len(config.ImageSignature) == 0) {
 		return ""
 	}
-
-	verifierDirname := imgCatalogDirname + "/verifier/" + config.ImageSha256
-	verifierFilename := verifierDirname + "/" + config.Safename
 
 	//Read the server certificate
     //Decode it and parse it
@@ -432,53 +472,9 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 		cerr := fmt.Sprintf("unknown type of public key")
 		return cerr
 	}
-
-	// Move directory from downloads/verifier to downloads/verified
-	// XXX should have dom0 do this and/or have RO mounts
-	finalDirname := imgCatalogDirname + "/verified/" + config.ImageSha256
-	filename := types.SafenameToFilename(config.Safename)
-	finalFilename := finalDirname + "/" + filename
-	fmt.Printf("Move from %s to %s\n", verifierFilename, finalFilename)
-	if _, err := os.Stat(verifierFilename); err != nil {
-		log.Fatal(err)
-	}
-	// XXX change log.Fatal to something else?
-	if _, err := os.Stat(finalDirname); err == nil {
-		// Directory exists thus we have a sha256 collision presumably
-		// due to multiple safenames (i.e., URLs) for the same content.
-		// Delete existing to avoid wasting space.
-		locations, err := ioutil.ReadDir(finalDirname)
-		if err != nil {
-			log.Fatal(err)
-		}
-		for _, location := range locations {
-			log.Printf("Identical sha256 (%s) for safenames %s and %s; deleting old\n",
-				config.ImageSha256, location.Name(),
-				config.Safename)
-		}
-
-		if err := os.RemoveAll(finalDirname); err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	if err := os.MkdirAll(finalDirname, 0700); err != nil {
-		log.Fatal(err)
-	}
-	if err := os.Rename(verifierFilename, finalFilename); err != nil {
-		log.Fatal(err)
-	}
-	if err := os.Chmod(finalDirname, 0500); err != nil {
-		log.Fatal(err)
-	}
-
-	// Clean up empty directory
-	if err := os.Remove(verifierDirname); err != nil {
-		log.Fatal(err)
-	}
-
 	return ""
 }
+
 func handleModify(statusFilename string, configArg interface{},
 	statusArg interface{}) {
 	var config *types.VerifyImageConfig
