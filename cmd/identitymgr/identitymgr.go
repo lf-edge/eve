@@ -35,7 +35,7 @@ func main() {
 	log.SetOutput(os.Stdout)
 	log.Printf("Starting identitymgr\n")
 	watch.CleanupRestarted("identitymgr")
-	
+
 	// Keeping status in /var/run to be clean after a crash/reboot
 	baseDirname := "/var/tmp/identitymgr"
 	runDirname := "/var/run/identitymgr"
