@@ -91,6 +91,7 @@ type OverlayNetworkConfig struct {
 	// Any additional LISP parameters?
 	ACLs          []ACE
 	NameToEidList []NameToEid // Used to populate DNS for the overlay
+	LispServers   []LispServerInfo
 	// Optional additional informat
 	AdditionalInfoDevice *AdditionalInfoDevice
 }

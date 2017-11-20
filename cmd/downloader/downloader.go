@@ -797,6 +797,7 @@ func handleSyncOp(syncOp zedUpload.SyncOpType,
 
 	case zconfig.DsType_DsHttp.String() :
 	case zconfig.DsType_DsHttps.String() :
+	case "":
 		err = doWget(config.DownloadURL, locFilename)
 		handleSyncOpResponse(config, status, statusFilename, err)
 	default:

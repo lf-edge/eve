@@ -106,6 +106,7 @@ type EIDOverlayConfig struct {
 	EIDConfigDetails
 	ACLs          []ACE
 	NameToEidList []NameToEid // Used to populate DNS for the overlay
+	LispServers   []LispServerInfo
 }
 
 // If the Target is "" or "disk", then this becomes a vdisk for the domU
