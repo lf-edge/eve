@@ -1,18 +1,29 @@
-FROM zededa/ztools:6a3b197e7a349d15af7804db103da8a4c9011d1e-amd64 as ztools
-FROM TESTCERT_TAG as cert
+FROM ZTOOLS_TAG as ztools
 FROM XENTOOLS_TAG as xen-tools
+FROM DNSMASQ_TAG as dnsmasq
+FROM TESTCERT_TAG as cert
+FROM TESTMSVCS_TAG as msvcs
 
 FROM alpine:3.6
 RUN apk add --no-cache \
     yajl xz bash openssl iptables ip6tables \
-    coreutils dmidecode sudo libbz2 libuuid ipset libpcap
+    coreutils dmidecode sudo libbz2 libuuid ipset \
+    libpcap libaio pixman glib wget radvd perl ethtool openssh-server
 
 # The following enables pcappy to dlopen libpcap.so
 RUN ln -s libpcap.so.1 /usr/lib/libpcap.so
 
+# FIXME: we really need to do a proper linuxkit sshd
+RUN ssh-keygen -A ; echo PermitRootLogin yes >> /etc/ssh/sshd_config ; sed -ie '/^root/s#^.*$#root:$6$Ndt1G5AYZFQ8rz7m$7vGZMKKotSYxwxk/.jMfuOCzxw0I3DNedygaQaLF7kYSYsLqiBHhmc8RJSXp8/VxSYPpgYSz/8fkv0hO6I4js.:17477:0:::::#' /etc/shadow
+
 COPY --from=xen-tools / /
 COPY --from=ztools / /
+COPY --from=dnsmasq /usr/sbin/dnsmasq /opt/zededa/bin/dnsmasq
 COPY --from=cert / /opt/zededa/etc
+COPY --from=msvcs /vms /vms
 
-# FIXME: replace while loop with monit ASAP
-CMD ["/bin/ash", "-c", "/opt/zededa/bin/device-steps.sh -w < /opt/zededa/etc/cert-input.txt ; while [ true ] ; do sleep 10 ; done"]
+# And now a few local tweaks
+COPY rootfs/ /
+
+# FIXME: replace with tini+monit ASAP
+CMD /init.sh

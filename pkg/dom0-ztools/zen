@@ -1,0 +1,9 @@
+#!/bin/sh
+
+case "$*" in
+  *enter*) ctr tasks exec -t --exec-id zen zededa-tools bash
+           ;;
+        *) echo "Welcome to Zenix!"
+           echo "  commands: enter"
+           ;;
+esac 

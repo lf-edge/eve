@@ -1,20 +1,44 @@
-#!/bin/bash
+#!/bin/sh
 # Poor man's[1] yml generator
 #
 #
 # [1] A poor man is a man on a deadline.
+#
+plugin_tag() {
+  if (docker inspect "$1" || docker pull "$1") > /dev/null 2>&1 ; then
+    echo $1
+  else
+    echo "WARNING: couldn't fetch $1 plugin - disabling it in the final build" >&2
+    echo scratch
+  fi
+}
 
 ARCH=amd64
 
 KERNEL_TAG=$(./findtag.sh pkg/kernel)-$ARCH
 XENTOOLS_TAG=$(./findtag.sh pkg/xen-tools)-$ARCH
 XEN_TAG=$(./findtag.sh pkg/xen)-$ARCH
+DNSMASQ_TAG=$(./findtag.sh pkg/dnsmasq)-$ARCH
 TESTCERT_TAG=$(./findtag.sh pkg/test-cert)-$ARCH
+TESTMSVCS_TAG=$(./findtag.sh pkg/test-microsvcs)-$ARCH
 ZEDEDA_TAG=$(./findtag.sh zededa-container)-$ARCH
+DOM0ZTOOLS_TAG=$(./findtag.sh pkg/dom0-ztools)-$ARCH
+
+# Plugin tags: the following tags will default to
+# 'scratch' Docker container if not available.
+# This is intended to make plugging extensions into
+# our build easier. WARNING: it also means if you're
+# not logged into the Docker hub you may see final
+# images lacking functionality.
+ZTOOLS_TAG=${ZTOOLS_TAG:-`plugin_tag zededa/ztools:latest`}
 
 sed -e "s#KERNEL_TAG#"$KERNEL_TAG"#" \
     -e "s#XENTOOLS_TAG#"$XENTOOLS_TAG"#" \
+    -e "s#DOM0ZTOOLS_TAG#"$DOM0ZTOOLS_TAG"#" \
     -e "s#XEN_TAG#"$XEN_TAG"#" \
+    -e "s#DNSMASQ_TAG#"$DNSMASQ_TAG"#" \
     -e "s#TESTCERT_TAG#"$TESTCERT_TAG"#" \
+    -e "s#TESTMSVCS_TAG#"$TESTMSVCS_TAG"#" \
     -e "s#ZEDEDA_TAG#"$ZEDEDA_TAG"#" \
+    -e "s#ZTOOLS_TAG#"$ZTOOLS_TAG"#" \
     $1
