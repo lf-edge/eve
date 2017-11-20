@@ -79,7 +79,7 @@ type DeviceNetworkConfigV1 struct {
 }
 
 type DeviceNetworkStatus struct {
-	Uplink []string // ifname; should have multiple
+	Uplink      []string // ifname; should have multiple
 	UplinkAddrs []net.IP
 	// XXX add uplink publicAddr to determine NATed?
 }
