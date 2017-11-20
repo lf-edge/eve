@@ -45,12 +45,11 @@ func handleLookUpParam(devConfig *zconfig.EdgeDevConfig) {
 	deviceCertName := dirName + "/device.cert.pem"
 	deviceKeyName := dirName + "/device.key.pem"
 	rootCertName := dirName + "/root-certificate.pem"
-	//serverFileName := dirName + "/server" //XXX FIXME
 	infraFileName := dirName + "/infra"
 	zedserverConfigFileName := dirName + "/zedserverconfig"
-	//zedrouterConfigFileName := dirName + "/zedrouterconfig.json" //XXX FIXME
 	uuidFileName := dirName + "/uuid"
 	clientIPFileName := dirName + "/clientIP"
+
 	//Fill DeviceDb struct with LispInfo config...
 	var device = types.DeviceDb{}
 
@@ -106,19 +105,6 @@ func handleLookUpParam(devConfig *zconfig.EdgeDevConfig) {
 	}
 	caCertPool := x509.NewCertPool()
 	caCertPool.AppendCertsFromPEM(caCert)
-	//XXX FIXME
-	/*server, err := ioutil.ReadFile(serverFileName)
-	if err != nil {
-		log.Fatal(err)
-	}*/
-	//XXX FIXME
-	//serverNameAndPort := strings.TrimSpace(string(server))
-	//serverName := strings.Split(serverNameAndPort, ":")[0]
-	// XXX for local testing
-	// serverNameAndPort = "localhost:9069"
-
-	// If infraFileName exists then don't set ACLs to eidset; allow any
-	// EID to connect.
 	ACLPromisc := false
 	if _, err := os.Stat(infraFileName); err == nil {
 		fmt.Printf("Setting ACLPromisc\n")

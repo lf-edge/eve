@@ -20,11 +20,11 @@ import (
 )
 
 const (
-        MaxReaderSmall      = 1 << 16 // 64k
-        MaxReaderMaxDefault = MaxReaderSmall
-        MaxReaderMedium     = 1 << 19 // 512k
-        MaxReaderHuge       = 1 << 21 // two megabytes
-		configTickTimeout   = 3 // in minutes
+		MaxReaderSmall      = 1 << 16 // 64k
+		MaxReaderMaxDefault = MaxReaderSmall
+		MaxReaderMedium     = 1 << 19 // 512k
+		MaxReaderHuge       = 1 << 21 // two megabytes
+		configTickTimeout   = 1 // in minutes
 )
 
 var configApi	string	= "api/v1/edgedevice/config"
@@ -170,7 +170,7 @@ func readDeviceConfigProtoMessage (r *http.Response) error {
 		fmt.Println(err)
 		return err
 	}
-	log.Println(" proto bytes(config) received from cloud: ", fmt.Sprintf("%s",bytes))
+	//log.Println(" proto bytes(config) received from cloud: ", fmt.Sprintf("%s",bytes))
 	log.Printf("parsing proto %d bytes\n", len(bytes))
 	err = proto.Unmarshal(bytes, config)
 	if err != nil {
