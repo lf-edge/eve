@@ -88,7 +88,7 @@ func main() {
 	}
 
 	handleInit()
-	
+
 	var restartFn watch.ConfigRestartHandler = handleRestart
 
 	fileChanges := make(chan string)
