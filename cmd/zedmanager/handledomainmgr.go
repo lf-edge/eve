@@ -58,7 +58,7 @@ func MaybeAddDomainConfig(aiConfig types.AppInstanceConfig,
 		DisplayName:    aiConfig.DisplayName,
 		Activate:       aiConfig.Activate,
 		AppNum:         AppNum,
-		VmConfig:	aiConfig.FixedResources,
+		VmConfig:       aiConfig.FixedResources,
 	}
 
 	// Determine number of "disk" targets in list
@@ -89,19 +89,19 @@ func MaybeAddDomainConfig(aiConfig types.AppInstanceConfig,
 		case "kernel":
 			if dc.Kernel != "" {
 				log.Printf("Overriding kernel %s with URL %s location %s\n",
-				dc.Kernel, sc.DownloadURL, location)
+					dc.Kernel, sc.DownloadURL, location)
 			}
 			dc.Kernel = location
 		case "ramdisk":
 			if dc.Ramdisk != "" {
 				log.Printf("Overriding ramdisk %s with URL %s location %s\n",
-				dc.Ramdisk, sc.DownloadURL, location)
+					dc.Ramdisk, sc.DownloadURL, location)
 			}
 			dc.Ramdisk = location
 		case "device_tree":
 			if dc.DeviceTree != "" {
 				log.Printf("Overriding device_tree %s with URL %s location %s\n",
-				dc.DeviceTree, sc.DownloadURL, location)
+					dc.DeviceTree, sc.DownloadURL, location)
 			}
 			dc.DeviceTree = location
 		default:
