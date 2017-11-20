@@ -88,6 +88,9 @@ func main() {
 	}
 	// Mark as PendingDelete and later purge such entries
 	for _, location := range locations {
+		if !strings.HasSuffix(location.Name(), ".json") {
+			continue
+		}
 		status := types.VerifyImageStatus{}
 		statusFile := statusDirname + "/" + location.Name()
 		cb, err := ioutil.ReadFile(statusFile)
@@ -95,10 +98,10 @@ func main() {
 			log.Printf("%s for %s\n", err, statusFile)
 			continue
 		}
-		if err := json.Unmarshal(cb, status); err != nil {
-			log.Printf("%s %T file: %s\n",
-				err, status, statusFile)
-			return
+		if err := json.Unmarshal(cb, &status); err != nil {
+			log.Printf("%s file: %s\n",
+				err, statusFile)
+			continue
 		}
 		status.PendingDelete = true
 		writeVerifyImageStatus(&status, statusFile)
@@ -132,8 +135,12 @@ func main() {
 
 	// Creates statusDir entries for already verified files
 	handleInit(verifiedDirname, statusDirname, "")
+
 	// Delete any still marked as PendingDelete
 	for _, location := range locations {
+		if !strings.HasSuffix(location.Name(), ".json") {
+			continue
+		}
 		status := types.VerifyImageStatus{}
 		statusFile := statusDirname + "/" + location.Name()
 		cb, err := ioutil.ReadFile(statusFile)
@@ -141,10 +148,10 @@ func main() {
 			log.Printf("%s for %s\n", err, statusFile)
 			continue
 		}
-		if err := json.Unmarshal(cb, status); err != nil {
-			log.Printf("%s %T file: %s\n",
-				err, status, statusFile)
-			return
+		if err := json.Unmarshal(cb, &status); err != nil {
+			log.Printf("%s file: %s\n",
+				err, statusFile)
+			continue
 		}
 		if status.PendingDelete {
 			log.Printf("still PendingDelete; delete %s\n",
