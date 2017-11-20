@@ -6,8 +6,8 @@
 package main
 
 import (
-	"github.com/zededa/go-provision/wrap"
 	"fmt"
+	"github.com/zededa/go-provision/wrap"
 	"log"
 	"os"
 )

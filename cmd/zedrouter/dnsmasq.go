@@ -6,8 +6,8 @@
 package main
 
 import (
-	"github.com/zededa/go-provision/wrap"
 	"fmt"
+	"github.com/zededa/go-provision/wrap"
 	"log"
 	"os"
 )
@@ -55,8 +55,8 @@ func createDnsmasqOverlayConfiglet(cfgPathname string, olIfname string,
 	defer file.Close()
 	file.WriteString(dnsmasqOverlayStatic)
 	for _, ipset := range ipsets {
-	    file.WriteString(fmt.Sprintf("ipset=/%s/ipv4.%s,ipv6.%s\n",
-	    				ipset, ipset, ipset))
+		file.WriteString(fmt.Sprintf("ipset=/%s/ipv4.%s,ipv6.%s\n",
+			ipset, ipset, ipset))
 	}
 	file.WriteString(fmt.Sprintf("pid-file=/var/run/dnsmasq.%s.pid\n",
 		olIfname))
@@ -79,8 +79,8 @@ func createDnsmasqUnderlayConfiglet(cfgPathname string, ulIfname string,
 	defer file.Close()
 	file.WriteString(dnsmasqUnderlayStatic)
 	for _, ipset := range ipsets {
-	    file.WriteString(fmt.Sprintf("ipset=/%s/ipv4.%s,ipv6.%s\n",
-	    				ipset, ipset, ipset))
+		file.WriteString(fmt.Sprintf("ipset=/%s/ipv4.%s,ipv6.%s\n",
+			ipset, ipset, ipset))
 	}
 	file.WriteString(fmt.Sprintf("pid-file=/var/run/dnsmasq.%s.pid\n",
 		ulIfname))
