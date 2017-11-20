@@ -14,6 +14,7 @@ import (
 	"github.com/RevH/ipinfo"
 	"github.com/golang/protobuf/proto"
 	"github.com/satori/go.uuid"
+	"github.com/zededa/api/zmet"
 	"github.com/zededa/go-provision/types"
 	"golang.org/x/crypto/ocsp"
 	"io/ioutil"
@@ -21,7 +22,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"github.com/zededa/api/zmet"
 	"strings"
 	"time"
 )
