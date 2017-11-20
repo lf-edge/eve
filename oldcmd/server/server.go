@@ -126,7 +126,7 @@ func main() {
 	if count == 1 {
 		serverCertInfo[1] = serverCertInfo[0]
 	}
-	
+
 	getOcsp := func(sci *ServerCertInfo) bool {
 		done := false
 		response, responseBytes, err :=
@@ -563,11 +563,11 @@ func SelfRegister(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	device = types.DeviceDb{
-		DeviceCert:      rc.PemCert,
-		DevicePublicKey: publicPem,
-		UserName:        userName,
-		RegTime:         time.Now(),
-		LispMapServers:	 lispMapServers,
+		DeviceCert:             rc.PemCert,
+		DevicePublicKey:        publicPem,
+		UserName:               userName,
+		RegTime:                time.Now(),
+		LispMapServers:         lispMapServers,
 		LispInstance:           lispInstance,
 		EID:                    eid,
 		EIDHashLen:             uint8(eidHashLen),
