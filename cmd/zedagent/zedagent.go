@@ -32,6 +32,7 @@ var (
 )
 
 func main() {
+	log.SetOutput(os.Stdout)
 	log.Printf("Starting zedagent\n")
 	watch.CleanupRestarted("zedagent")
 

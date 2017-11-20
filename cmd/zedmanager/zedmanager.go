@@ -39,6 +39,7 @@ var (
 )
 
 func main() {
+	log.SetOutput(os.Stdout)
 	log.Printf("Starting zedmanager\n")
 	watch.CleanupRestarted("zedmanager")
 	watch.CleanupRestart("downloader")

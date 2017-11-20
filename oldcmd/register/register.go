@@ -18,6 +18,7 @@ import (
 )
 
 func main() {
+	log.SetOutput(os.Stdout)
 	args := os.Args[1:]
 	if len(args) < 2 || len(args) > 3 {
 		log.Fatal("Usage: " + os.Args[0] + " <userName> <certFile> [N]")

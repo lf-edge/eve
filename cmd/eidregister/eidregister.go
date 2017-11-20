@@ -35,6 +35,7 @@ var serverNameAndPort, serverName string
 var caCertPool *x509.CertPool
 
 func main() {
+	log.SetOutput(os.Stdout)
 	log.Printf("Starting eidregister\n")
 	watch.CleanupRestarted("eidregister")
 

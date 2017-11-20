@@ -32,6 +32,7 @@ import (
 )
 
 func main() {
+	log.SetOutput(os.Stdout)
 	log.Printf("Starting identitymgr\n")
 	watch.CleanupRestarted("identitymgr")
 	

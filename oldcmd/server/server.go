@@ -48,6 +48,7 @@ var localFlag bool
 // Note that the IIDs and LISP passwords are random.
 //
 func main() {
+	log.SetOutput(os.Stdout)
 	log.Printf("Starting server\n")
 	localPtr := flag.Bool("l", false, "Use local certs and map servers")
 	dirPtr := flag.String("d", "/usr/local/etc/zededa-server/",

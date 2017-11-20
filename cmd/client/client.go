@@ -48,6 +48,7 @@ var maxDelay = time.Second * 600 // 10 minutes
 //  clientIP			Written containing the public client IP
 //
 func main() {
+	log.SetOutput(os.Stdout)
 	oldPtr := flag.Bool("o", false, "Old use of prov01")
 	dirPtr := flag.String("d", "/opt/zededa/etc",
 		"Directory with certs etc")

@@ -27,6 +27,7 @@ import (
 var runDirname = "/var/run/zedrouter"
 
 func main() {
+	log.SetOutput(os.Stdout)
 	log.Printf("Starting zedrouter\n")
 	watch.CleanupRestarted("zedrouter")
 

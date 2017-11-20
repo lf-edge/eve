@@ -46,7 +46,7 @@ var (
 )
 
 func main() {
-
+	log.SetOutput(os.Stdout)
 	log.Printf("Starting downloader\n")
 	watch.CleanupRestarted("downloader")
 

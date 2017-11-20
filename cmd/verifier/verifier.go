@@ -42,6 +42,7 @@ import (
 var imgCatalogDirname string
 
 func main() {
+	log.SetOutput(os.Stdout)
 	log.Printf("Starting verifier\n")
 
 	watch.CleanupRestarted("verifier")
