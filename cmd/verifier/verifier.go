@@ -19,24 +19,24 @@
 package main
 
 import (
+	"crypto"
+	"crypto/ecdsa"
+	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
-	"crypto"
-	"crypto/rsa"
-	"crypto/ecdsa"
-	"encoding/pem"
-	"math/big"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
 	"io"
 	"io/ioutil"
 	"log"
+	"math/big"
 	"os"
-	"time"
 	"strings"
+	"time"
 )
 
 var imgCatalogDirname string
@@ -165,7 +165,7 @@ func handleInit(verifiedDirname string, statusDirname string,
 }
 
 func updateVerifyErrStatus(status *types.VerifyImageStatus,
-	lastErr string, statusFilename string){
+	lastErr string, statusFilename string) {
 	status.LastErr = lastErr
 	status.LastErrTime = time.Now()
 	status.PendingAdd = false
@@ -262,8 +262,7 @@ func handleCreate(statusFilename string, configArg interface{}) {
 	}
 	defer f.Close()
 
-
-	// compute sha256 of the image and match it 
+	// compute sha256 of the image and match it
 	// with the one in config file...
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
@@ -276,9 +275,9 @@ func handleCreate(statusFilename string, configArg interface{}) {
 
 	imageHash := h.Sum(nil)
 	got := fmt.Sprintf("%x", h.Sum(nil))
-	if got != strings.ToLower(config.ImageSha256){
+	if got != strings.ToLower(config.ImageSha256) {
 		fmt.Printf("got      %s\n", got)
-		fmt.Printf("expected %s\n",strings.ToLower(config.ImageSha256))
+		fmt.Printf("expected %s\n", strings.ToLower(config.ImageSha256))
 		cerr := fmt.Sprintf("got %s expected %s", got, config.ImageSha256)
 		status.PendingAdd = false
 		updateVerifyErrStatus(&status, cerr, statusFilename)
@@ -341,33 +340,33 @@ func handleCreate(statusFilename string, configArg interface{}) {
 }
 
 func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.VerifyImageConfig, imageHash []byte,
-		statusFilename string) string {
+	statusFilename string) string {
 
 	// XXX:FIXME if Image Signature is absent, skip
 	// mark it as verified; implicitly assuming,
 	// if signature is filled in, marking this object
 	//  as valid may not hold good always!!!
-	if (config.ImageSignature == nil)  ||
+	if (config.ImageSignature == nil) ||
 		(len(config.ImageSignature) == 0) {
 		return ""
 	}
 
 	//Read the server certificate
-    //Decode it and parse it
-    //And find out the puplic key and it's type
-	//we will use this certificate for both cert chain verification 
-    //and signature verification...
+	//Decode it and parse it
+	//And find out the puplic key and it's type
+	//we will use this certificate for both cert chain verification
+	//and signature verification...
 
 	baseCertDirname := "/var/tmp/zedmanager"
-	certificateDirname := baseCertDirname+"/certs"
+	certificateDirname := baseCertDirname + "/certs"
 	rootCertDirname := "/opt/zededa/etc"
-	rootCertFileName := rootCertDirname+"/root-certificate.pem"
+	rootCertFileName := rootCertDirname + "/root-certificate.pem"
 
-	//This func literal will take care of writing status during 
+	//This func literal will take care of writing status during
 	//cert chain and signature verification...
 
 	serverCertName := types.UrlToFilename(config.SignatureKey)
-	serverCertificate, err := ioutil.ReadFile(certificateDirname+"/"+serverCertName)
+	serverCertificate, err := ioutil.ReadFile(certificateDirname + "/" + serverCertName)
 	if err != nil {
 		cerr := fmt.Sprintf("unable to read the certificate %s", serverCertName)
 		return cerr
@@ -406,13 +405,13 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 		return cerr
 	}
 
-	for _,certUrl := range certificateNameInChain {
+	for _, certUrl := range certificateNameInChain {
 
-	    certName := types.UrlToFilename(certUrl)
+		certName := types.UrlToFilename(certUrl)
 
-		bytes, err := ioutil.ReadFile(certificateDirname+"/"+certName)
+		bytes, err := ioutil.ReadFile(certificateDirname + "/" + certName)
 		if err != nil {
-			cerr := fmt.Sprintf("failed to read certificate Directory: %v",certName)
+			cerr := fmt.Sprintf("failed to read certificate Directory: %v", certName)
 			return cerr
 		}
 
@@ -422,7 +421,7 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 		}
 	}
 
-	opts := x509.VerifyOptions{ Roots:   roots, }
+	opts := x509.VerifyOptions{Roots: roots}
 	if _, err := cert.Verify(opts); err != nil {
 		cerr := fmt.Sprintf("failed to verify certificate chain: ")
 		return cerr
@@ -444,15 +443,15 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 		log.Println("VerifyPKCS1v15 successful...\n")
 
 	case *ecdsa.PublicKey:
-		log.Printf("pub is of type ecdsa: ",pub)
+		log.Printf("pub is of type ecdsa: ", pub)
 		imgSignature, err := base64.StdEncoding.DecodeString(string(imgSig))
 		if err != nil {
-			cerr := fmt.Sprintf("DecodeString failed: %v ",err)
+			cerr := fmt.Sprintf("DecodeString failed: %v ", err)
 			return cerr
 		}
 
 		log.Printf("Decoded imgSignature (len %d): % x\n",
-			 len(imgSignature), imgSignature)
+			len(imgSignature), imgSignature)
 		rbytes := imgSignature[0:32]
 		sbytes := imgSignature[32:]
 		log.Printf("Decoded r %d s %d\n", len(rbytes), len(sbytes))
