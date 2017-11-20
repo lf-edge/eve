@@ -30,6 +30,7 @@ var verifiedDirname string // Read-only images named based on sha256 hash
 
 func main() {
 	log.SetOutput(os.Stdout)
+	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
 	log.Printf("Starting domainmgr\n")
 	watch.CleanupRestarted("domainmgr")
 

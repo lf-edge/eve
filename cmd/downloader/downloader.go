@@ -47,6 +47,7 @@ var (
 
 func main() {
 	log.SetOutput(os.Stdout)
+	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
 	log.Printf("Starting downloader\n")
 	watch.CleanupRestarted("downloader")
 

@@ -43,6 +43,7 @@ var imgCatalogDirname string
 
 func main() {
 	log.SetOutput(os.Stdout)
+	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
 	log.Printf("Starting verifier\n")
 
 	watch.CleanupRestarted("verifier")
@@ -85,11 +86,22 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	// Mark as PendingDelete and later purge such entries
 	for _, location := range locations {
-		filename := statusDirname + "/" + location.Name()
-		if err := os.RemoveAll(filename); err != nil {
-			log.Fatal(err)
+		status := types.VerifyImageStatus{}
+		statusFile := statusDirname + "/" + location.Name()
+		cb, err := ioutil.ReadFile(statusFile)
+		if err != nil {
+			log.Printf("%s for %s\n", err, statusFile)
+			continue
 		}
+		if err := json.Unmarshal(cb, status); err != nil {
+			log.Printf("%s %T file: %s\n",
+				err, status, statusFile)
+			return
+		}
+		status.PendingDelete = true
+		writeVerifyImageStatus(&status, statusFile)
 	}
 
 	if _, err := os.Stat(imgCatalogDirname); err != nil {
@@ -120,6 +132,28 @@ func main() {
 
 	// Creates statusDir entries for already verified files
 	handleInit(verifiedDirname, statusDirname, "")
+	// Delete any still marked as PendingDelete
+	for _, location := range locations {
+		status := types.VerifyImageStatus{}
+		statusFile := statusDirname + "/" + location.Name()
+		cb, err := ioutil.ReadFile(statusFile)
+		if err != nil {
+			log.Printf("%s for %s\n", err, statusFile)
+			continue
+		}
+		if err := json.Unmarshal(cb, status); err != nil {
+			log.Printf("%s %T file: %s\n",
+				err, status, statusFile)
+			return
+		}
+		if status.PendingDelete {
+			log.Printf("still PendingDelete; delete %s\n",
+				statusFile)
+			if err := os.RemoveAll(statusFile); err != nil {
+				log.Fatal(err)
+			}
+		}
+	}
 
 	fileChanges := make(chan string)
 	go watch.WatchConfigStatusAllowInitialConfig(configDirname,

@@ -40,6 +40,7 @@ var (
 
 func main() {
 	log.SetOutput(os.Stdout)
+	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
 	log.Printf("Starting zedmanager\n")
 	watch.CleanupRestarted("zedmanager")
 	watch.CleanupRestart("downloader")

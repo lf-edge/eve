@@ -49,6 +49,7 @@ var maxDelay = time.Second * 600 // 10 minutes
 //
 func main() {
 	log.SetOutput(os.Stdout)
+	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
 	oldPtr := flag.Bool("o", false, "Old use of prov01")
 	dirPtr := flag.String("d", "/opt/zededa/etc",
 		"Directory with certs etc")

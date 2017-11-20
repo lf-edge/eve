@@ -36,6 +36,7 @@ var caCertPool *x509.CertPool
 
 func main() {
 	log.SetOutput(os.Stdout)
+	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
 	log.Printf("Starting eidregister\n")
 	watch.CleanupRestarted("eidregister")
 
