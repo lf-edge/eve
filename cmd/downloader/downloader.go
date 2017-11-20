@@ -30,11 +30,11 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/zededa/api/zconfig"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
 	"github.com/zededa/go-provision/wrap"
 	"github.com/zededa/shared/libs/zedUpload"
-	"github.com/zededa/api/zconfig"
 	"io/ioutil"
 	"log"
 	"os"
@@ -42,7 +42,7 @@ import (
 )
 
 var (
-	dCtx	*zedUpload.DronaCtx
+	dCtx *zedUpload.DronaCtx
 )
 
 func main() {
@@ -61,7 +61,7 @@ func main() {
 func checkImageUpdates() {
 
 	baseDirname := "/var/tmp/downloader"
-	runDirname  := "/var/run/downloader"
+	runDirname := "/var/run/downloader"
 
 	sanitizeDirs(baseDirname, runDirname)
 
@@ -87,13 +87,13 @@ func checkImageUpdates() {
 func handleCertUpdates() {
 
 	baseDirname := "/var/tmp/downloader/cert.obj"
-	runDirname  := "/var/run/downloader/cert.obj"
+	runDirname := "/var/run/downloader/cert.obj"
 
 	sanitizeDirs(baseDirname, runDirname)
 
 	configDirname := baseDirname + "/config"
 	statusDirname := runDirname + "/status"
-	fileChanges   := make(chan string)
+	fileChanges := make(chan string)
 
 	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
 
@@ -123,7 +123,7 @@ func handleImageCreate(statusFilename string, configArg interface{}) {
 		config = configArg.(*types.DownloaderConfig)
 	}
 
-	handleCreate (*config, statusFilename)
+	handleCreate(*config, statusFilename)
 }
 
 func handleImageModify(statusFilename string, configArg interface{},
@@ -148,7 +148,7 @@ func handleImageModify(statusFilename string, configArg interface{},
 		status = statusArg.(*types.DownloaderStatus)
 	}
 
-	handleModify (*config, *status, statusFilename)
+	handleModify(*config, *status, statusFilename)
 }
 
 func handleImageDelete(statusFilename string, statusArg interface{}) {
@@ -164,7 +164,7 @@ func handleImageDelete(statusFilename string, statusArg interface{}) {
 		status = statusArg.(*types.DownloaderStatus)
 	}
 
-	handleDelete (*status, statusFilename)
+	handleDelete(*status, statusFilename)
 }
 
 func handleCertObjCreate(statusFilename string, configArg interface{}) {
@@ -180,7 +180,7 @@ func handleCertObjCreate(statusFilename string, configArg interface{}) {
 		config = configArg.(*types.DownloaderConfig)
 	}
 
-	handleCreate (*config, statusFilename)
+	handleCreate(*config, statusFilename)
 	processCertObject(*config, statusFilename)
 }
 
@@ -206,7 +206,7 @@ func handleCertObjModify(statusFilename string, configArg interface{},
 		status = statusArg.(*types.DownloaderStatus)
 	}
 
-	handleModify (*config, *status, statusFilename)
+	handleModify(*config, *status, statusFilename)
 	processCertObject(*config, statusFilename)
 }
 
@@ -252,21 +252,21 @@ func processCertObject(config types.DownloaderConfig, statusFilename string) {
 	if status.State == types.DOWNLOADED {
 
 		var srcFile string
-		var  dstFile string = "/var/tmp/zedmanager/certs"
+		var dstFile string = "/var/tmp/zedmanager/certs"
 
-		if (config.ImageSha256 != "") {
+		if config.ImageSha256 != "" {
 			srcFile = config.DownloadObjDir + "/pending" +
-				 config.ImageSha256 + "/" + config.Safename
+				config.ImageSha256 + "/" + config.Safename
 		} else {
 			srcFile = config.DownloadObjDir + "/pending/" +
-				 config.Safename
+				config.Safename
 		}
 
 		if config.VerifiedObjDir != "" {
 			dstFile = config.VerifiedObjDir
 		}
 		if err := os.MkdirAll(dstFile, 0700); err != nil {
-			log.Printf("failed directory make");
+			log.Printf("failed directory make")
 		}
 
 		dstFile = dstFile + "/" + types.SafenameToFilename(config.Safename)
@@ -289,13 +289,13 @@ func handleCreate(config types.DownloaderConfig, statusFilename string) {
 
 	// Start by marking with PendingAdd
 	status := types.DownloaderStatus{
-		Safename:		config.Safename,
-		RefCount:		config.RefCount,
-		DownloadURL:	config.DownloadURL,
-		ImageSha256:	config.ImageSha256,
-		DownloadObjDir:	config.DownloadObjDir,
-		VerifiedObjDir:	config.VerifiedObjDir,
-		PendingAdd:		true,
+		Safename:       config.Safename,
+		RefCount:       config.RefCount,
+		DownloadURL:    config.DownloadURL,
+		ImageSha256:    config.ImageSha256,
+		DownloadObjDir: config.DownloadObjDir,
+		VerifiedObjDir: config.VerifiedObjDir,
+		PendingAdd:     true,
 	}
 	writeDownloaderStatus(&status, statusFilename)
 
@@ -359,7 +359,7 @@ func handleModify(config types.DownloaderConfig,
 	// If the sha changes, we treat it as a delete and recreate.
 	// Ditto if we had a failure.
 	if (status.ImageSha256 != "" && status.ImageSha256 != config.ImageSha256) ||
-		 status.LastErr != "" {
+		status.LastErr != "" {
 		reason := ""
 		if status.ImageSha256 != config.ImageSha256 {
 			reason = "sha256 changed"
@@ -401,7 +401,7 @@ func doDelete(statusFilename string, locDirname string, status *types.Downloader
 
 	locFilename := locDirname + "/pending"
 
-	if status.ImageSha256  != "" {
+	if status.ImageSha256 != "" {
 		locFilename = locFilename + "/" + status.ImageSha256
 	}
 
@@ -469,19 +469,19 @@ var globalStatusFilename string
 
 func downloaderInit() {
 
-	baseDirname		:= "/var/tmp/downloader"
-	runDirname		:= "/var/run/downloader"
+	baseDirname := "/var/tmp/downloader"
+	runDirname := "/var/run/downloader"
 
-	configDirname	:= baseDirname + "/config"
-	statusDirname	:= runDirname  + "/status"
+	configDirname := baseDirname + "/config"
+	statusDirname := runDirname + "/status"
 
-	configFilename	:= configDirname + "/global"
-	statusFilename	:= statusDirname + "/global"
+	configFilename := configDirname + "/global"
+	statusFilename := statusDirname + "/global"
 
-	locDirname		:= "/var/tmp/zedmanager/downloads/"
+	locDirname := "/var/tmp/zedmanager/downloads/"
 
-	pendingDirname	:= locDirname + "/pending"
-	verifierDirname	:= locDirname + "/verifier"
+	pendingDirname := locDirname + "/pending"
+	verifierDirname := locDirname + "/verifier"
 
 	if _, err := os.Stat(baseDirname); err != nil {
 		if err := os.Mkdir(baseDirname, 0700); err != nil {
@@ -561,7 +561,7 @@ func downloaderInit() {
 	updateRemainingSpace()
 
 	// create drona interface
-	ctx,err := zedUpload.NewDronaCtx("zdownloader", 0)
+	ctx, err := zedUpload.NewDronaCtx("zdownloader", 0)
 
 	if ctx == nil {
 		log.Printf("context create fail %s\n", err)
@@ -571,10 +571,10 @@ func downloaderInit() {
 	dCtx = ctx
 }
 
-func sanitizeDirs (baseDirname string, runDirname string) {
+func sanitizeDirs(baseDirname string, runDirname string) {
 
 	configDirname := baseDirname + "/config"
-	statusDirname := runDirname  + "/status"
+	statusDirname := runDirname + "/status"
 
 	if _, err := os.Stat(baseDirname); err != nil {
 
@@ -632,8 +632,8 @@ func updateRemainingSpace() {
 		globalStatus.UsedSpace - globalStatus.ReservedSpace
 
 	log.Printf("RemaingSpace %d, maxspace %d, usedspace %d, reserved %d\n",
-	globalStatus.RemainingSpace, globalConfig.MaxSpace,
-	globalStatus.UsedSpace,	globalStatus.ReservedSpace)
+		globalStatus.RemainingSpace, globalConfig.MaxSpace,
+		globalStatus.UsedSpace, globalStatus.ReservedSpace)
 	// Create and write
 	writeGlobalStatus()
 }
@@ -675,7 +675,7 @@ func writeFile(sFilename string, dFilename string) {
 
 			if err = ioutil.WriteFile(dFilename, sb, 0644); err != nil {
 				log.Printf("Failed to write %s: err %s\n",
-				dFilename, err)
+					dFilename, err)
 			}
 		} else {
 			log.Printf("Failed to read %s: err %s\n",
@@ -721,7 +721,7 @@ func doWget(url string, destFilename string) error {
 // Drona APIs for object Download
 
 func handleSyncOp(syncOp zedUpload.SyncOpType,
-	 statusFilename string, config types.DownloaderConfig, status *types.DownloaderStatus) {
+	statusFilename string, config types.DownloaderConfig, status *types.DownloaderStatus) {
 
 	var err error
 	var locFilename string
@@ -736,7 +736,6 @@ func handleSyncOp(syncOp zedUpload.SyncOpType,
 	// update status to DOWNLOAD STARTED
 	status.State = types.DOWNLOAD_STARTED
 	writeDownloaderStatus(status, statusFilename)
-
 
 	if config.ImageSha256 != "" {
 		locFilename = locFilename + "/" + config.ImageSha256
@@ -756,12 +755,12 @@ func handleSyncOp(syncOp zedUpload.SyncOpType,
 	log.Printf("Downloading <%s> to <%s>\n", config.DownloadURL, locFilename)
 
 	switch config.TransportMethod {
-	case zconfig.DsType_DsS3.String() :
+	case zconfig.DsType_DsS3.String():
 		{
 
 			auth := &zedUpload.AuthInput{AuthType: "s3",
-					 Uname :config.ApiKey,
-					 Password:config.Password}
+				Uname:    config.ApiKey,
+				Password: config.Password}
 
 			trType := zedUpload.SyncAwsTr
 			// XXX:FIXME , will come as part of data store
@@ -771,32 +770,32 @@ func handleSyncOp(syncOp zedUpload.SyncOpType,
 			dEndPoint, err := dCtx.NewSyncerDest(trType, region, config.Dpath, auth)
 
 			if err == nil && dEndPoint != nil {
-				var respChan = make(chan * zedUpload.DronaRequest);
+				var respChan = make(chan *zedUpload.DronaRequest)
 
 				log.Printf("syncOp for <%s>/<%s>\n", config.Dpath, filename)
 
 				// create Request
 				req := dEndPoint.NewRequest(syncOp, filename, locFilename,
-					int64(config.MaxSize / 1024), true, respChan)
+					int64(config.MaxSize/1024), true, respChan)
 
 				if req != nil {
 					req.Post()
-				        select {
-				                case resp := <-respChan:
-							_, err = resp.GetUpStatus()
+					select {
+					case resp := <-respChan:
+						_, err = resp.GetUpStatus()
 
-							if resp.IsError () == false {
-								err = nil
-							}
-				        }
+						if resp.IsError() == false {
+							err = nil
+						}
+					}
 				}
 			}
 		}
 		handleSyncOpResponse(config, status, statusFilename, err)
 		break
 
-	case zconfig.DsType_DsHttp.String() :
-	case zconfig.DsType_DsHttps.String() :
+	case zconfig.DsType_DsHttp.String():
+	case zconfig.DsType_DsHttps.String():
 	case "":
 		err = doWget(config.DownloadURL, locFilename)
 		handleSyncOpResponse(config, status, statusFilename, err)
@@ -806,8 +805,8 @@ func handleSyncOp(syncOp zedUpload.SyncOpType,
 }
 
 func handleSyncOpResponse(config types.DownloaderConfig,
-	 status *types.DownloaderStatus, statusFilename string,
-	 err error) {
+	status *types.DownloaderStatus, statusFilename string,
+	err error) {
 
 	locDirname := "/var/tmp/downloader/downloads"
 
@@ -831,7 +830,7 @@ func handleSyncOpResponse(config types.DownloaderConfig,
 
 	locFilename := locDirname + "/pending"
 
-	// XXX:FIXME 
+	// XXX:FIXME
 	if status.ImageSha256 != "" {
 		locFilename = locFilename + "/" + status.ImageSha256
 	}
@@ -854,7 +853,7 @@ func handleSyncOpResponse(config types.DownloaderConfig,
 	}
 
 	// XXX Compare against MaxSize and reject? Already wasted the space?
-	status.Size = uint((info.Size() + 1023)/1024)
+	status.Size = uint((info.Size() + 1023) / 1024)
 
 	if status.Size > config.MaxSize {
 		// Delete file
