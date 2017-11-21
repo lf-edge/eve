@@ -39,6 +39,9 @@ import (
 	"time"
 )
 
+// If this file is present we don't delete verified files in handleDelete
+const preserveFilename = "/var/tmp/verifier/config/preserve"
+
 var imgCatalogDirname string
 
 func main() {
@@ -616,12 +619,15 @@ func doDelete(status *types.VerifyImageStatus) {
 		}
 	}
 
-	if status.State == types.DELIVERED {
-		if _, err := os.Stat(finalDirname); err == nil {
+	_, err := os.Stat(finalDirname)
+	if err == nil && status.State == types.DELIVERED {
+		if _, err := os.Stat(preserveFilename); err == nil {
 			log.Printf("doDelete removing %s\n", finalDirname)
 			if err := os.RemoveAll(finalDirname); err != nil {
 				log.Fatal(err)
 			}
+		} else {
+			log.Printf("doDelete preserving %s\n", finalDirname)
 		}
 	}
 	log.Printf("doDelete(%v) done\n", status.Safename)
