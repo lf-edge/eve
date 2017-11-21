@@ -12,10 +12,6 @@
 // Note that different URLs for same file will download to the same <sha>
 // directory. We delete duplicates assuming the file content will be the same.
 
-// XXX TBD add a signature on the checksum. Verify against root CA.
-
-// XXX TBD separately add support for verifying the signatures on the meta-data (the AIC)
-
 package main
 
 import (
@@ -265,11 +261,6 @@ func handleCreate(statusFilename string, configArg interface{}) {
 	pendingFilename := pendingDirname + "/" + config.Safename
 	verifierDirname := imgCatalogDirname + "/verifier/" + config.ImageSha256
 	verifierFilename := verifierDirname + "/" + config.Safename
-
-	// Check if the verified result already exists; if so we're done
-	// XXX no, because can't get a config until the file is downloaded
-	// Instead push Status based on the initial content? But want
-	// a config with a refcount.
 
 	// Move to verifier directory which is RO
 	// XXX should have dom0 do this and/or have RO mounts

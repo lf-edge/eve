@@ -39,9 +39,6 @@ func addOrUpdateConfig(uuidStr string, config types.AppInstanceConfig) {
 		if !reflect.DeepEqual(m, config) {
 			fmt.Printf("AI config changed for %s\n", uuidStr)
 			changed = true
-			if m.UUIDandVersion.Version == config.UUIDandVersion.Version {
-				fmt.Printf("XXX AI config changed for %s but same version %s\n", uuidStr, config.UUIDandVersion.Version)
-			}
 		}
 	} else {
 		fmt.Printf("AI config add for %s\n", uuidStr)

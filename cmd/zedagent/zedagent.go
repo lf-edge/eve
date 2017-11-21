@@ -3,13 +3,6 @@
 
 // Pull AppInstanceConfig from ZedCloud, make it available for zedmanager
 // publish AppInstanceStatus to ZedCloud.
-//
-// XXX Note that this initial code reads AppInstanceConfig from
-// /var/tmp/zedmanager/config/*.json and produces AppInstanceStatus in
-// /var/run/zedmanager/status/*.json.
-//
-// XXX Should we keep the local config and status dirs and have a separate
-// config downloader (which calls the Verifier), and status uploader?
 
 package main
 

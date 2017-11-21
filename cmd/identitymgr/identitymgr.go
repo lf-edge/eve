@@ -64,7 +64,6 @@ func main() {
 		}
 	}
 
-	// XXX need handleRestart based on restart file not readdir
 	var restartFn watch.ConfigRestartHandler = handleRestart
 
 	fileChanges := make(chan string)

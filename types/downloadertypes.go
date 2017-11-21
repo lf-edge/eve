@@ -12,13 +12,13 @@ import (
 // That is the filename in which we store the corresponding json files.
 type DownloaderConfig struct {
 	Safename        string
-	DownloadURL     string // XXX is there a more specific type?
+	DownloadURL     string
 	TransportMethod string // Download Method S3/HTTP/SFTP etc.
 	Dpath           string
 	ApiKey          string
 	Password        string
 	MaxSize         uint   // In kbytes
-	ImageSha256     string // sha256 of immutable image XXX used?
+	ImageSha256     string // sha256 of immutable image
 	DownloadObjDir  string // Download Object Store
 	VerifiedObjDir  string // Final Object Store
 	RefCount        uint   // Zero means can delete file/cancel download
@@ -49,7 +49,7 @@ type DownloaderStatus struct {
 	PendingModify  bool
 	PendingDelete  bool
 	RefCount       uint    // Zero means not downloaded
-	DownloadURL    string  // XXX is there a more specific type?
+	DownloadURL    string
 	ImageSha256    string  // sha256 of immutable image
 	DownloadObjDir string  // Download Object store
 	VerifiedObjDir string  // Target Object Store

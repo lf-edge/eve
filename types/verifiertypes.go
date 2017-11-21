@@ -3,8 +3,6 @@
 
 // Types which feed in and out of the verifier
 
-// XXX Add types for verifying the signatures on the meta-data (the AIC) itself
-
 package types
 
 import (

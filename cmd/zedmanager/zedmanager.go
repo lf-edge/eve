@@ -1,16 +1,12 @@
 // Copyright (c) 2017 Zededa, Inc.
 // All rights reserved.
 
-// Pull AppInstanceConfig from ZedCloud, drive config to Downloader, Verifier,
-// IdentityMgr, and Zedrouter. Collect status from those services and push
-// combined AppInstanceStatus to ZedCloud.
+// Get AppInstanceConfig from zedagent, drive config to Downloader, Verifier,
+// IdentityMgr, and Zedrouter. Collect status from those services and make
+// the combined AppInstanceStatus available to zedagent.
 //
-// XXX Note that this initial code reads AppInstanceConfig from
-// /var/tmp/zedmanager/config/*.json and produces AppInstanceStatus in
-// /var/run/zedmanager/status/*.json.
-//
-// XXX Should we keep the local config and status dirs and have a separate
-// config downloader (which calls the Verifier), and status uploader?
+// This reads AppInstanceConfig from /var/tmp/zedmanager/config/*.json and
+// produces AppInstanceStatus in /var/run/zedmanager/status/*.json.
 
 package main
 
@@ -306,7 +302,6 @@ func handleModify(statusFilename string, configArg interface{},
 		return
 	}
 
-	status.PendingModify = true
 	status.UUIDandVersion = config.UUIDandVersion
 	writeAppInstanceStatus(status, statusFilename)
 
@@ -328,7 +323,6 @@ func handleDelete(statusFilename string, statusArg interface{}) {
 	log.Printf("handleDelete(%v) for %s\n",
 		status.UUIDandVersion, status.DisplayName)
 
-	status.PendingDelete = true
 	writeAppInstanceStatus(status, statusFilename)
 
 	removeConfig(status.UUIDandVersion.UUID.String())

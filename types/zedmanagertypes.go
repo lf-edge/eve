@@ -67,9 +67,6 @@ type AppInstanceStatus struct {
 	UUIDandVersion    UUIDandVersion
 	DisplayName       string
 	Activated         bool
-	PendingAdd        bool // XXX delete. Assumes hook in common diff code
-	PendingModify     bool // XXX delete
-	PendingDelete     bool // XXX delete
 	StorageStatusList []StorageStatus
 	EIDList           []EIDStatusDetails
 	// Mininum state across all steps and all StorageStatus.
@@ -91,15 +88,15 @@ func (status AppInstanceStatus) VerifyFilename(fileName string) bool {
 }
 
 func (status AppInstanceStatus) CheckPendingAdd() bool {
-	return status.PendingAdd
+	return false
 }
 
 func (status AppInstanceStatus) CheckPendingModify() bool {
-	return status.PendingModify
+	return false
 }
 
 func (status AppInstanceStatus) CheckPendingDelete() bool {
-	return status.PendingDelete
+	return false
 }
 
 type EIDOverlayConfig struct {
@@ -115,7 +112,7 @@ type EIDOverlayConfig struct {
 // - "ramdisk"
 // - "device_tree"
 type StorageConfig struct {
-	DownloadURL     string // XXX is there a more specific type?
+	DownloadURL     string
 	MaxSize         uint   // In kbytes
 	TransportMethod string // Download method S3/HTTP/SFTP etc.
 	// XXX Add SignatureInfo for the sha256. Verifier should check.
@@ -136,7 +133,7 @@ type StorageConfig struct {
 }
 
 type StorageStatus struct {
-	DownloadURL      string  // XXX is there a more specific type?
+	DownloadURL      string
 	ImageSha256      string  // sha256 of immutable image
 	State            SwState // DOWNLOADED etc
 	HasDownloaderRef bool    // Reference against downloader to clean up
