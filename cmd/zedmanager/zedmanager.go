@@ -21,7 +21,7 @@ import (
 )
 
 // Keeping status in /var/run to be clean after a crash/reboot
-var (
+const (
 	baseDirname              = "/var/tmp/zedmanager"
 	runDirname               = "/var/run/zedmanager"
 	zedmanagerConfigDirname  = baseDirname + "/config"
