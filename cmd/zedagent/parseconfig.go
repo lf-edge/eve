@@ -173,29 +173,39 @@ func parseConfig(config *zconfig.EdgeDevConfig) {
 							overlayNetworkDetails.ACLs[ovacx] =  *aceDetails
 							ovacx ++
 						}
-						nlisp := networks.GetNlisp()
-						overlayNetworkDetails.EIDConfigDetails.IID = nlisp.Iid
-						overlayNetworkDetails.EIDConfigDetails.EIDAllocation.Allocate = nlisp.Eidalloc.Allocate
-						overlayNetworkDetails.EIDConfigDetails.EIDAllocation.ExportPrivate = nlisp.Eidalloc.Exportprivate
-						overlayNetworkDetails.EIDConfigDetails.EIDAllocation.AllocationPrefix = nlisp.Eidalloc.Allocationprefix
-						overlayNetworkDetails.EIDConfigDetails.EIDAllocation.AllocationPrefixLen = int(nlisp.Eidalloc.Allocationprefixlen)
 						overlayNetworkDetails.EIDConfigDetails.EID = net.ParseIP(interfaces.Addr)
 						overlayNetworkDetails.EIDConfigDetails.LispSignature = interfaces.Lispsignature
 						overlayNetworkDetails.EIDConfigDetails.PemCert = interfaces.Pemcert
 						overlayNetworkDetails.EIDConfigDetails.PemPrivateKey = interfaces.Pemprivatekey
-						var nmtoeidx int = 0
-						overlayNetworkDetails.NameToEidList = make([]types.NameToEid,len(nlisp.Nmtoeid))
-						for _,nametoeid := range nlisp.Nmtoeid {
-							nameToEidDetails := new(types.NameToEid)
-							nameToEidDetails.HostName = nametoeid.Hostname
-							nameToEidDetails.EIDs = make ([]net.IP,len(nametoeid.Eids))
-							var eidx int = 0
-							for  _,eid := range nametoeid.Eids {
-								nameToEidDetails.EIDs[eidx] = net.ParseIP(eid)
-								eidx ++
+
+						nlisp := networks.GetNlisp()
+						if nlisp == nil {
+							log.Printf("No Nlisp in new config")
+						} else {
+							if nlisp.Eidalloc != nil {
+								overlayNetworkDetails.EIDConfigDetails.IID = nlisp.Iid
+								overlayNetworkDetails.EIDConfigDetails.EIDAllocation.Allocate = nlisp.Eidalloc.Allocate
+								overlayNetworkDetails.EIDConfigDetails.EIDAllocation.ExportPrivate = nlisp.Eidalloc.Exportprivate
+								overlayNetworkDetails.EIDConfigDetails.EIDAllocation.AllocationPrefix = nlisp.Eidalloc.Allocationprefix
+								overlayNetworkDetails.EIDConfigDetails.EIDAllocation.AllocationPrefixLen = int(nlisp.Eidalloc.Allocationprefixlen)
+
 							}
-							overlayNetworkDetails.NameToEidList[nmtoeidx] = *nameToEidDetails
-							nmtoeidx ++
+							if len(nlisp.Nmtoeid) != 0 {
+								var nmtoeidx int = 0
+								overlayNetworkDetails.NameToEidList = make([]types.NameToEid,len(nlisp.Nmtoeid))
+								for _,nametoeid := range nlisp.Nmtoeid {
+									nameToEidDetails := new(types.NameToEid)
+									nameToEidDetails.HostName = nametoeid.Hostname
+									nameToEidDetails.EIDs = make ([]net.IP,len(nametoeid.Eids))
+									var eidx int = 0
+									for  _,eid := range nametoeid.Eids {
+										nameToEidDetails.EIDs[eidx] = net.ParseIP(eid)
+										eidx ++
+									}
+									overlayNetworkDetails.NameToEidList[nmtoeidx] = *nameToEidDetails
+									nmtoeidx ++
+								}
+							}
 						}
 						appInstance.OverlayNetworkList[ovnetx] = *overlayNetworkDetails
 						ovnetx ++
