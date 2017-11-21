@@ -26,7 +26,6 @@ var (
 	runDirname               = "/var/run/zedmanager"
 	zedmanagerConfigDirname  = baseDirname + "/config"
 	zedmanagerStatusDirname  = runDirname + "/status"
-	zedagentConfigDirname    = "/var/tmp/zedagent/config"
 	verifierConfigDirname    = "/var/tmp/verifier/config"
 	downloaderConfigDirname  = "/var/tmp/downloader/config"
 	domainmgrConfigDirname   = "/var/tmp/domainmgr/config"
@@ -65,7 +64,6 @@ func main() {
 		domainmgrStatusDirname,
 		downloaderStatusDirname,
 		verifierStatusDirname,
-		zedagentConfigDirname,
 	}
 
 	for _, dir := range dirs {
