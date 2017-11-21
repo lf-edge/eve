@@ -407,12 +407,9 @@ func doDelete(statusFilename string, locDirname string, status *types.Downloader
 	}
 
 	if _, err := os.Stat(locFilename); err == nil {
-
 		locFilename := locFilename + "/" + status.Safename
-		log.Printf("Deleting %s\n", locFilename)
-
 		if _, err := os.Stat(locFilename); err == nil {
-
+			log.Printf("Deleting %s\n", locFilename)
 			// Remove file
 			if err := os.Remove(locFilename); err != nil {
 				log.Printf("Failed to remove %s: err %s\n",

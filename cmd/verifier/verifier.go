@@ -195,6 +195,7 @@ func handleInit(verifiedDirname string, statusDirname string,
 		} else {
 			// XXX can't we conflict in the status filemame?
 			// XXX add sha... ??
+			// safename := location.Name() + "." + parentDirName
 			status := types.VerifyImageStatus{
 				Safename:    location.Name(),
 				ImageSha256: parentDirname,
@@ -616,8 +617,8 @@ func doDelete(status *types.VerifyImageStatus) {
 	}
 
 	if status.State == types.DELIVERED {
-		log.Printf("doDelete removing %s\n", finalDirname)
 		if _, err := os.Stat(finalDirname); err == nil {
+			log.Printf("doDelete removing %s\n", finalDirname)
 			if err := os.RemoveAll(finalDirname); err != nil {
 				log.Fatal(err)
 			}

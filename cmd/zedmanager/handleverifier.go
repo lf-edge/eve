@@ -93,6 +93,13 @@ func writeVerifyImageConfig(config types.VerifyImageConfig,
 // Key is Safename string.
 var verifierStatus map[string]types.VerifyImageStatus
 
+func dumpVerifierStatus() {
+	for key, m := range verifierStatus {
+		log.Printf("\tverifierStatus[%v]: sha256 %s safename %s\n",
+			key, m.ImageSha256, m.Safename)
+	}
+}
+
 func handleVerifyImageStatusModify(statusFilename string,
 	statusArg interface{}) {
 	var status *types.VerifyImageStatus
@@ -131,6 +138,9 @@ func handleVerifyImageStatusModify(statusFilename string,
 	}
 	if changed {
 		verifierStatus[key] = *status
+		log.Printf("Added verifierStatus key %v sha %s safename %s\n",
+			key, status.ImageSha256, status.Safename)
+		dumpVerifierStatus()
 		updateAIStatusSafename(key)
 	}
 	log.Printf("handleVerifyImageStatusModify done for %s\n",
@@ -180,6 +190,8 @@ func handleVerifyImageStatusDelete(statusFilename string) {
 	} else {
 		fmt.Printf("verifier map delete for %v\n", m.State)
 		delete(verifierStatus, key)
+		log.Printf("Deleted verifierStatus key %v\n", key)
+		dumpVerifierStatus()
 		removeAIStatusSafename(key)
 	}
 	log.Printf("handleVerifyImageStatusDelete done for %s\n",
