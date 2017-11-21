@@ -200,6 +200,7 @@ func parseConfig(config *zconfig.EdgeDevConfig) {
 						appInstance.OverlayNetworkList[ovnetx] = *overlayNetworkDetails
 						ovnetx ++
 					}
+					break
 				}
 			}
 		}
