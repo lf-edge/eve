@@ -197,16 +197,16 @@ func handleInit(verifiedDirname string, statusDirname string,
 			handleInit(filename, statusDirname, location.Name())
 		} else {
 			// XXX should really re-verify the image on reboot/restart
-			// XXX can't we conflict in the status filemame?
-			// XXX add sha... ??
-			// safename := location.Name() + "." + parentDirName
+			// We don't know the URL; Pick a name which is unique
+			sha := parentDirname
+			safename := location.Name() + "." + sha
 			status := types.VerifyImageStatus{
-				Safename:    location.Name(),
-				ImageSha256: parentDirname,
+				Safename:    safename,
+				ImageSha256: sha,
 				State:       types.DELIVERED,
 			}
 			writeVerifyImageStatus(&status,
-				statusDirname+"/"+location.Name()+".json")
+				statusDirname+"/"+safename+".json")
 		}
 	}
 	fmt.Printf("handleInit done for %s, %s, %s\n",
