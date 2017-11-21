@@ -196,6 +196,7 @@ func handleInit(verifiedDirname string, statusDirname string,
 		if location.IsDir() {
 			handleInit(filename, statusDirname, location.Name())
 		} else {
+			// XXX should really re-verify the image on reboot/restart
 			// XXX can't we conflict in the status filemame?
 			// XXX add sha... ??
 			// safename := location.Name() + "." + parentDirName

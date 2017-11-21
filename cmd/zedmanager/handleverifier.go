@@ -153,7 +153,7 @@ func LookupVerifyImageStatus(safename string) (types.VerifyImageStatus, error) {
 			safename)
 		return m, nil
 	} else {
-		return types.VerifyImageStatus{}, errors.New("No VerifyImageStatus")
+		return types.VerifyImageStatus{}, errors.New("No VerifyImageStatus for safename")
 	}
 }
 
@@ -161,12 +161,10 @@ func lookupVerifyImageStatusSha256Impl(sha256 string) (*types.VerifyImageStatus,
 	error) {
 	for _, m := range verifierStatus {
 		if m.ImageSha256 == sha256 {
-			log.Printf("lookupVerifyImageStatusSha256Impl: found based on sha256 %s safename %s\n",
-				sha256, m.Safename)
 			return &m, nil
 		}
 	}
-	return nil, errors.New("No VerifyImageStatus")
+	return nil, errors.New("No VerifyImageStatus for sha")
 }
 
 func LookupVerifyImageStatusSha256(sha256 string) (types.VerifyImageStatus,
@@ -175,7 +173,26 @@ func LookupVerifyImageStatusSha256(sha256 string) (types.VerifyImageStatus,
 	if err != nil {
 		return types.VerifyImageStatus{}, err
 	} else {
-		return *m, err
+		log.Printf("LookupVerifyImageStatusSha256: found based on sha256 %s safename %s\n",
+			sha256, m.Safename)
+		return *m, nil
+	}
+}
+
+func LookupVerifyImageStatusAny(safename string,
+     sha256 string) (types.VerifyImageStatus, error) {
+	m0, err := LookupVerifyImageStatus(safename)
+	if err == nil {
+		return m0, nil
+	}	
+	m1, err := lookupVerifyImageStatusSha256Impl(sha256)
+	if err == nil {
+		log.Printf("LookupVerifyImageStatusAny: found based on sha %s\n",
+			sha256)
+		return *m1, nil
+	} else {
+		return types.VerifyImageStatus{},
+		       errors.New("No VerifyImageStatus for safename nor sha")
 	}
 }
 
