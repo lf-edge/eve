@@ -93,25 +93,39 @@ func main() {
 	go watch.WatchStatus(zedrouterStatusDirname, zedrouterChanges)
 	domainmgrChanges := make(chan string)
 	go watch.WatchStatus(domainmgrStatusDirname, domainmgrChanges)
-	// XXX replace this with a handleVerifierRestarted function, which
-	// kicks identitymgr, which kicks zedrouter, which kicks domainmgr.
-	// XXX as we process config we might start downloads; should defer
-	// that until the verifier has restarted hence wait inline.
-	// Wait for the verifier to report initial status to avoid downloading
-	// a file which is already downloaded
-	waitFile := "/var/run/verifier/status/restarted"
-	log.Printf("Waiting for verifier to report in %s\n", waitFile)
-	watch.WaitForFile(waitFile)
-	log.Printf("Verifier reported in %s\n", waitFile)
+	configChanges := make(chan string)
+	go watch.WatchConfigStatus(zedmanagerConfigDirname,
+		zedmanagerStatusDirname, configChanges)
 
 	var configRestartFn watch.ConfigRestartHandler = handleConfigRestart
 	var verifierRestartedFn watch.StatusRestartHandler = handleVerifierRestarted
 	var identitymgrRestartedFn watch.StatusRestartHandler = handleIdentitymgrRestarted
 	var zedrouterRestartedFn watch.StatusRestartHandler = handleZedrouterRestarted
 
-	configChanges := make(chan string)
-	go watch.WatchConfigStatus(zedmanagerConfigDirname,
-		zedmanagerStatusDirname, configChanges)
+	// First we process the verifierStatus to avoid downloading
+	// an image we already have in place
+	log.Printf("Handling initial verifier Status\n")
+	done := false
+	for !done {
+		select {
+		case change := <-verifierChanges:
+			{
+				watch.HandleStatusEvent(change,
+					verifierStatusDirname,
+					&types.VerifyImageStatus{},
+					handleVerifyImageStatusModify,
+					handleVerifyImageStatusDelete,
+					&verifierRestartedFn)
+				if verifierRestarted {
+					log.Printf("Verifier reported restarted\n")
+					done = true
+					break
+				}
+			}
+		}
+	}
+
+	log.Printf("Handling all inputs\n")
 	for {
 		select {
 		case change := <-downloaderChanges:
