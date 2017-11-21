@@ -24,18 +24,19 @@ import (
 	"strconv"
 )
 
-var runDirname = "/var/run/zedrouter"
+// Keeping status in /var/run to be clean after a crash/reboot
+const (
+	runDirname = "/var/run/zedrouter"
+	baseDirname = "/var/tmp/zedrouter"
+	configDirname = baseDirname + "/config"
+	statusDirname = runDirname + "/status"
+)
 
 func main() {
 	log.SetOutput(os.Stdout)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
 	log.Printf("Starting zedrouter\n")
 	watch.CleanupRestarted("zedrouter")
-
-	// Keeping status in /var/run to be clean after a crash/reboot
-	baseDirname := "/var/tmp/zedrouter"
-	configDirname := baseDirname + "/config"
-	statusDirname := runDirname + "/status"
 
 	if _, err := os.Stat(baseDirname); err != nil {
 		if err := os.Mkdir(baseDirname, 0700); err != nil {
