@@ -162,6 +162,9 @@ func main() {
 		}
 	}
 
+	// Report to zedmanager that init is done
+	watch.SignalRestarted("verifier")
+
 	fileChanges := make(chan string)
 	go watch.WatchConfigStatusAllowInitialConfig(configDirname,
 		statusDirname, fileChanges)
@@ -190,6 +193,8 @@ func handleInit(verifiedDirname string, statusDirname string,
 		if location.IsDir() {
 			handleInit(filename, statusDirname, location.Name())
 		} else {
+			// XXX can't we conflict in the status filemame?
+			// XXX add sha... ??
 			status := types.VerifyImageStatus{
 				Safename:    location.Name(),
 				ImageSha256: parentDirname,
@@ -201,8 +206,6 @@ func handleInit(verifiedDirname string, statusDirname string,
 	}
 	fmt.Printf("handleInit done for %s, %s, %s\n",
 		verifiedDirname, statusDirname, parentDirname)
-	// Report to zedmanager that init is done
-	watch.SignalRestarted("verifier")
 }
 
 func updateVerifyErrStatus(status *types.VerifyImageStatus,
