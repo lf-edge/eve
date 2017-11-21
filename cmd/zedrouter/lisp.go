@@ -18,46 +18,28 @@ import (
 	"strings"
 )
 
-// Need to fill in IID in 3 places
+// Template per map server. Pass in (dns-name, authentication-key)
 // Use this for the Mgmt IID
-// XXX need to be able to set the ms name? Not needed for demo
-const lispIIDtemplateMgmt = `
+const lispMStemplateMgmt = `
 lisp map-server {
-    dns-name = ms1.zededa.net
-    authentication-key = test1_%d
+    dns-name = %s
+    authentication-key = %s
     want-map-notify = yes
-}
-
-lisp map-server {
-    dns-name = ms2.zededa.net
-    authentication-key = test2_%d
-    want-map-notify = yes
-}
-lisp map-cache {
-    prefix {
-        instance-id = %d
-        eid-prefix = fd00::/8
-        send-map-request = yes
-    }
 }
 `
 
-// Need to fill in IID in 5 places
-// Use this for the application IIDs
-const lispIIDtemplate = `
+// Template per map server. Pass in (IID, dns-name, authentication-key)
+const lispMStemplate = `
 lisp map-server {
     ms-name = ms-%d
-    dns-name = ms1.zededa.net
-    authentication-key = test1_%d
+    dns-name = %s
+    authentication-key = %s
     want-map-notify = yes
 }
+`
 
-lisp map-server {
-    ms-name = ms-%d
-    dns-name = ms2.zededa.net
-    authentication-key = test2_%d
-    want-map-notify = yes
-}
+// Need to fill in IID in 1 place
+const lispIIDtemplate = `
 lisp map-cache {
     prefix {
         instance-id = %d
@@ -179,10 +161,11 @@ const RLFilename = "/opt/zededa/lisp/RL"
 func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	EID net.IP, lispSignature string,
 	globalStatus types.DeviceNetworkStatus,
-	tag string, olIfname string, additionalInfo string) {
-	fmt.Printf("createLispConfiglet: %s %v %d %s %v %s %s %s %s\n",
+	tag string, olIfname string, additionalInfo string,
+	lispServers []types.LispServerInfo) {
+	fmt.Printf("createLispConfiglet: %s %v %d %s %v %s %s %s %s %v\n",
 		lispRunDirname, isMgmt, IID, EID, lispSignature, globalStatus,
-		tag, olIfname, additionalInfo)
+		tag, olIfname, additionalInfo, lispServers)
 	cfgPathnameIID := lispRunDirname + "/" +
 		strconv.FormatUint(uint64(IID), 10)
 	file1, err := os.Create(cfgPathnameIID)
@@ -221,16 +204,22 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 		one := fmt.Sprintf("    rloc {\n        address = %s\n        priority = %d\n    }\n", a, prio)
 		rlocString += one
 	}
+	for _, ms := range lispServers {
+		if isMgmt {
+			file1.WriteString(fmt.Sprintf(lispMStemplateMgmt,
+				ms.NameOrIp, ms.Credential))
+		} else {
+			file1.WriteString(fmt.Sprintf(lispMStemplate,
+				IID, ms.NameOrIp, ms.Credential))
+		}
+	}
+	file1.WriteString(fmt.Sprintf(lispIIDtemplate, IID))
 	if isMgmt {
-		file1.WriteString(fmt.Sprintf(lispIIDtemplateMgmt, IID, IID,
-			IID))
 		file2.WriteString(fmt.Sprintf(lispEIDtemplateMgmt,
 			lispSignature, additionalInfo, olIfname, IID))
 		file2.WriteString(fmt.Sprintf(lispDBtemplateMgmt,
 			IID, EID, rlocString))
 	} else {
-		file1.WriteString(fmt.Sprintf(lispIIDtemplate,
-			IID, IID, IID, IID, IID))
 		file2.WriteString(fmt.Sprintf(lispEIDtemplate,
 			tag, lispSignature, tag, additionalInfo, olIfname,
 			olIfname, IID))
@@ -242,13 +231,14 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 
 func updateLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	EID net.IP, lispSignature string,
- 	globalStatus types.DeviceNetworkStatus,
-	tag string, olIfname string, additionalInfo string) {
-	fmt.Printf("updateLispConfiglet: %s %v %d %s %v %s %s %s %s\n",
+	globalStatus types.DeviceNetworkStatus,
+	tag string, olIfname string, additionalInfo string,
+	lispServers []types.LispServerInfo) {
+	fmt.Printf("updateLispConfiglet: %s %v %d %s %v %s %s %s %s %v\n",
 		lispRunDirname, isMgmt, IID, EID, lispSignature, globalStatus,
-		tag, olIfname, additionalInfo)
+		tag, olIfname, additionalInfo, lispServers)
 	createLispConfiglet(lispRunDirname, isMgmt, IID, EID, lispSignature,
-		globalStatus, tag, olIfname, additionalInfo)
+		globalStatus, tag, olIfname, additionalInfo, lispServers)
 }
 
 func deleteLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,

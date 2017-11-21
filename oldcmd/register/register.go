@@ -18,6 +18,8 @@ import (
 )
 
 func main() {
+	log.SetOutput(os.Stdout)
+	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
 	args := os.Args[1:]
 	if len(args) < 2 || len(args) > 3 {
 		log.Fatal("Usage: " + os.Args[0] + " <userName> <certFile> [N]")

@@ -27,6 +27,8 @@ import (
 var runDirname = "/var/run/zedrouter"
 
 func main() {
+	log.SetOutput(os.Stdout)
+	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
 	log.Printf("Starting zedrouter\n")
 	watch.CleanupRestarted("zedrouter")
 
@@ -416,7 +418,7 @@ func handleCreate(statusFilename string, configArg interface{}) {
 		createLispConfiglet(lispRunDirname, true, olConfig.IID,
 			olConfig.EID, olConfig.LispSignature,
 			globalStatus, olIfname, olIfname,
-			additionalInfo)
+			additionalInfo, olConfig.LispServers)
 		status.OverlayNetworkList = make([]types.OverlayNetworkStatus,
 			len(config.OverlayNetworkList))
 		for i, _ := range config.OverlayNetworkList {
@@ -564,7 +566,7 @@ func handleCreate(statusFilename string, configArg interface{}) {
 		createLispConfiglet(lispRunDirname, false, olConfig.IID,
 			olConfig.EID, olConfig.LispSignature,
 			globalStatus, olIfname, olIfname,
-			additionalInfo)
+			additionalInfo, olConfig.LispServers)
 
 		// Add bridge parameters for Xen to Status
 		olStatus := &status.OverlayNetworkList[olNum-1]
@@ -798,7 +800,7 @@ func handleModify(statusFilename string, configArg interface{},
 		updateLispConfiglet(lispRunDirname, false, olConfig.IID,
 			olConfig.EID, olConfig.LispSignature,
 			globalStatus, olIfname, olIfname,
-			additionalInfo)
+			additionalInfo, olConfig.LispServers)
 
 	}
 	// Look for ACL changes in underlay

@@ -39,9 +39,6 @@ func addOrUpdateConfig(uuidStr string, config types.AppInstanceConfig) {
 		if !reflect.DeepEqual(m, config) {
 			fmt.Printf("AI config changed for %s\n", uuidStr)
 			changed = true
-			if m.UUIDandVersion.Version == config.UUIDandVersion.Version {
-				fmt.Printf("XXX AI config changed for %s but same version %s\n", uuidStr, config.UUIDandVersion.Version)
-			}
 		}
 	} else {
 		fmt.Printf("AI config add for %s\n", uuidStr)
@@ -295,32 +292,10 @@ func doInstall(uuidStr string, config types.AppInstanceConfig,
 			sc.DownloadURL, safename)
 
 		// Shortcut if image is already verified
-		vs, err := LookupVerifyImageStatus(safename)
+		vs, err := LookupVerifyImageStatusAny(safename, sc.ImageSha256)
 		if err == nil && vs.State == types.DELIVERED {
-			log.Printf("doUpdate found verified image for %s\n",
-				safename)
-			// If we don't already have a RefCount add one
-			if !ss.HasVerifierRef {
-				log.Printf("doUpdate !HasVerifierRef vs.RefCount %d for %s\n",
-					vs.RefCount, safename)
-				vs.RefCount += 1
-				ss.HasVerifierRef = true
-				changed = true
-			}
-
-			if minState > vs.State {
-				minState = vs.State
-			}
-			if vs.State != ss.State {
-				ss.State = vs.State
-				changed = true
-			}
-			continue
-		}
-		vs, err = LookupVerifyImageStatusSha256(sc.ImageSha256)
-		if err == nil && vs.State == types.DELIVERED {
-			log.Printf("doUpdate found verified image for sha256 %s\n",
-				sc.ImageSha256)
+			log.Printf("doUpdate found verified image for %s sha %s\n",
+				safename, sc.ImageSha256)
 			// If we don't already have a RefCount add one
 			if !ss.HasVerifierRef {
 				log.Printf("doUpdate !HasVerifierRef vs.RefCount %d for %s\n",
@@ -403,10 +378,10 @@ func doInstall(uuidStr string, config types.AppInstanceConfig,
 		fmt.Printf("Found StorageConfig URL %s safename %s\n",
 			sc.DownloadURL, safename)
 
-		vs, err := LookupVerifyImageStatus(safename)
+		vs, err := LookupVerifyImageStatusAny(safename, sc.ImageSha256)
 		if err != nil {
-			log.Printf("LookupVerifyImageStatus %s failed %v\n",
-				safename, err)
+			log.Printf("LookupVerifyImageStatusAny %s sha %s failed %v\n",
+				safename, sc.ImageSha256, err)
 			continue
 		}
 		if minState > vs.State {
@@ -445,6 +420,8 @@ func doInstall(uuidStr string, config types.AppInstanceConfig,
 		return changed, false
 	}
 	log.Printf("Done with verifications for %s\n", uuidStr)
+	// XXX could allocate EIDs before we download for better parallelism
+	// with zedcloud
 	// Make sure we have an EIDConfig for each overlay
 	for _, ec := range config.OverlayNetworkList {
 		MaybeAddEIDConfig(config.UUIDandVersion,
