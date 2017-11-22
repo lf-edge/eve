@@ -7,7 +7,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"io/ioutil"
 	"github.com/zededa/go-provision/types"
 	"github.com/golang/protobuf/proto"
 	"github.com/zededa/api/zmet"
@@ -15,8 +14,9 @@ import (
 	"bytes"
 	"github.com/matishsiao/goInfo"
 	"github.com/shirou/gopsutil/mem"
-	// "github.com/shirou/gopsutil/cpu" //XXX will use it later
+	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/disk"
+	"github.com/shirou/gopsutil/host"
 	"github.com/shirou/gopsutil/net"
 )
 
@@ -26,15 +26,16 @@ var cpuStorageStat [][]string
 
 func publishMetrics() {
 	DeviceCpuStorageStat()
-	DeviceNetworkStat()
+	MakeDeviceInfoProtobufStructure()
+	MakeHypervisorInfoProtobufStructure()
 	MakeMetricsProtobufStructure()
 }
 
 
 func metricsTimerTask() {
-	ticker := time.NewTicker(time.Second  * 60)
+	ticker := time.NewTicker(time.Second  * 5)
 	for t := range ticker.C {
-		fmt.Println("Tick at", t)
+		log.Println("Tick at", t)
 		publishMetrics();
 	}
 }
@@ -129,50 +130,6 @@ func DeviceCpuStorageStat() {
 		counter = 0
 	}
 }
-
-func DeviceNetworkStat() {
-
-	counter := 0
-	netDetails,err := ioutil.ReadFile("/proc/net/dev")
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	networkInfo := fmt.Sprintf("%s", netDetails)
-	splitNetworkInfo := strings.Split(networkInfo, "\n")
-	splitNetworkInfoLength := len(splitNetworkInfo)
-	length := splitNetworkInfoLength - 1
-
-	finalNetworStatOutput := make([][]string, length)
-
-	for j := 0; j < splitNetworkInfoLength-1; j++ {
-
-		str := fmt.Sprintf(splitNetworkInfo[j])
-		splitOutput := regexp.MustCompile(" ")
-		finalNetworStatOutput[j] = splitOutput.Split(str, -1)
-	}
-
-	networkStat = make([][]string, length)
-
-	for i := range networkStat {
-		networkStat[i] = make([]string, 20)
-	}
-
-	for f := 0; f < length; f++ {
-
-		for out := 0; out < len(finalNetworStatOutput[f]); out++ {
-
-			matched, err := regexp.MatchString("[A-Za-z0-9]+", finalNetworStatOutput[f][out])
-			fmt.Sprint(err)
-			if matched {
-				counter++
-				networkStat[f][counter] = finalNetworStatOutput[f][out]
-			}
-		}
-		counter = 0
-	}
-}
-
 func MakeMetricsProtobufStructure() {
 
 	var ReportMetrics = &zmet.ZMetricMsg{}
@@ -180,7 +137,6 @@ func MakeMetricsProtobufStructure() {
 	ReportDeviceMetric := new(zmet.DeviceMetric)
 	ReportDeviceMetric.Cpu		 = new(zmet.CpuMetric)
 	ReportDeviceMetric.Memory	 = new(zmet.MemoryMetric)
-	ReportDeviceMetric.Network	 = make([]*zmet.NetworkMetric, len(networkStat)-2)
 
 	ReportMetrics.DevID = *proto.String(deviceId)
 	ReportZmetric := new(zmet.ZmetricTypes)
@@ -195,36 +151,51 @@ func MakeMetricsProtobufStructure() {
 		cpuUsedInPercent, _ := strconv.ParseFloat(cpuStorageStat[arr][4], 10)
 		ReportDeviceMetric.Cpu.CpuUtilization = *proto.Float64(float64(cpuUsedInPercent))
 
-		memory, _ := strconv.ParseUint(cpuStorageStat[arr][5], 10, 0)
-		ReportDeviceMetric.Memory.UsedMem = *proto.Uint32(uint32(memory))
-		memoryUsedInPercent, _ := strconv.ParseFloat(cpuStorageStat[arr][6], 10)
-		ReportDeviceMetric.Memory.UsedPercentage = *proto.Float64(float64(memoryUsedInPercent))
+		cpuDetail,err := cpu.Times(true)
+		if err != nil {
+			log.Println("error while fetching cpu related time: ",err)
+		}
+		for _,cpuStat := range cpuDetail {
+			ReportDeviceMetric.Cpu.Usr = cpuStat.User
+			ReportDeviceMetric.Cpu.Nice = cpuStat.Nice
+			ReportDeviceMetric.Cpu.System = cpuStat.System
+			ReportDeviceMetric.Cpu.Io = cpuStat.Irq
+			ReportDeviceMetric.Cpu.Irq = cpuStat.Irq
+			ReportDeviceMetric.Cpu.Soft = cpuStat.Softirq
+			ReportDeviceMetric.Cpu.Steal = cpuStat.Steal
+			ReportDeviceMetric.Cpu.Guest = cpuStat.Guest
+			ReportDeviceMetric.Cpu.Idle = cpuStat.Idle
+		}
+		//memory related info for dom0...XXX later we will add for domU also..
+		ram, err := mem.VirtualMemory()
+		if err != nil {
+			log.Println(err)
+		}
+		ReportDeviceMetric.Memory.UsedMem = uint32(ram.Used)
+		ReportDeviceMetric.Memory.AvailMem =uint32(ram.Available)
+		ReportDeviceMetric.Memory.UsedPercentage = ram.UsedPercent
+		ReportDeviceMetric.Memory.AvailPercentage = (100.0-(ram.UsedPercent))
 
-		for net := 2; net < len(networkStat); net++ {
-
+		//find network related info...
+		network,err := net.IOCounters(true)
+		if err != nil {
+			log.Println(err)
+		}
+		ReportDeviceMetric.Network = make([]*zmet.NetworkMetric, len(network))
+		for netx,networkInfo := range network {
 			networkDetails := new(zmet.NetworkMetric)
-			networkDetails.IName = *proto.String(networkStat[net][1])
-
-			txBytes, _ := strconv.ParseUint(networkStat[net][10], 10, 0)
-			networkDetails.TxBytes = *proto.Uint64(txBytes)
-			rxBytes, _ := strconv.ParseUint(networkStat[net][2], 10, 0)
-			networkDetails.RxBytes = *proto.Uint64(rxBytes)
-
-			txDrops, _ := strconv.ParseUint(networkStat[net][13], 10, 0)
-			networkDetails.TxDrops = *proto.Uint64(txDrops)
-			rxDrops, _ := strconv.ParseUint(networkStat[net][5], 10, 0)
-			networkDetails.RxDrops = *proto.Uint64(rxDrops)
-			// assume rx and tx rates 0 for now...
-			txRate, _ := strconv.ParseUint("0", 10, 0)
-			networkDetails.TxRate = *proto.Uint64(txRate)
-			rxRate, _ := strconv.ParseUint("0", 10, 0)
-			networkDetails.RxRate = *proto.Uint64(rxRate)
-
-			ReportDeviceMetric.Network[net-2] = networkDetails
-			ReportMetrics.MetricContent = new(zmet.ZMetricMsg_Dm)
-			if x, ok := ReportMetrics.GetMetricContent().(*zmet.ZMetricMsg_Dm); ok {
-				x.Dm = ReportDeviceMetric
-			}
+			networkDetails.IName = networkInfo.Name
+			networkDetails.TxBytes = networkInfo.PacketsSent
+			networkDetails.RxBytes = networkInfo.PacketsRecv
+			networkDetails.TxDrops = networkInfo.Dropout
+			networkDetails.RxDrops = networkInfo.Dropin
+			//networkDetails.TxRate = //XXX TBD
+			//networkDetails.RxRate = //XXX TBD
+			ReportDeviceMetric.Network[netx] = networkDetails
+		}
+		ReportMetrics.MetricContent = new(zmet.ZMetricMsg_Dm)
+		if x, ok := ReportMetrics.GetMetricContent().(*zmet.ZMetricMsg_Dm); ok {
+			x.Dm = ReportDeviceMetric
 		}
 	}
 
@@ -243,15 +214,36 @@ func MakeDeviceInfoProtobufStructure () {
 
 	ReportDeviceInfo	:=	new(zmet.ZInfoDevice)
 
-	ReportDeviceInfo.MachineArch	=	*proto.String(goInfo.GetInfo().Platform)
-	ReportDeviceInfo.CpuArch	=	*proto.String(goInfo.GetInfo().Platform)
-	ReportDeviceInfo.Platform	=	*proto.String(goInfo.GetInfo().Platform)
-	ReportDeviceInfo.Ncpu		=	*proto.Uint32(uint32(goInfo.GetInfo().CPUs))
+	machineCmd := exec.Command("uname","-m")
+    stdout, err := machineCmd.Output()
+    if err != nil {
+        log.Println(err.Error())
+    }
+    machineArch := fmt.Sprintf("%s", stdout)
+	ReportDeviceInfo.MachineArch	=	*proto.String(machineArch)
+
+	cpuCmd := exec.Command("uname","-p")
+	stdout, err = cpuCmd.Output()
+	if err != nil {
+		log.Println(err.Error())
+	}
+    cpuArch := fmt.Sprintf("%s", stdout)
+	ReportDeviceInfo.CpuArch	=	*proto.String(cpuArch)
+
+	platformCmd := exec.Command("uname","-p")
+    stdout, err = platformCmd.Output()
+    if err != nil {
+        log.Println(err.Error())
+    }
+    platform := fmt.Sprintf("%s", stdout)
+	ReportDeviceInfo.Platform	=	*proto.String(platform)
+
+	ReportDeviceInfo.Ncpu		=	*proto.Uint32(uint32(goInfo.GetInfo().CPUs)) //XXX FIXME
 	ram, err := mem.VirtualMemory()
 	if err != nil {
 		log.Println(err)
 	}
-	ReportDeviceInfo.Memory     =   *proto.Uint64(uint64(ram.Total))
+	ReportDeviceInfo.Memory     =   *proto.Uint64(uint64(ram.Total)) //XXX FIXME
 	d,err := disk.Usage("/")
 	if err != nil {
 		log.Println(err)
@@ -289,11 +281,15 @@ func MakeDeviceInfoProtobufStructure () {
 	ReportDeviceInfo.Minfo					=		ReportDeviceManufacturerInfo
 
 	ReportDeviceSoftwareInfo	:=	new(zmet.ZInfoSW)
-	ReportDeviceSoftwareInfo.SwVersion	=		*proto.String(" ")
-	ReportDeviceSoftwareInfo.SwHash		=		*proto.String(" ")
-	ReportDeviceInfo.Software		=		ReportDeviceSoftwareInfo
+	systemHost,err := host.Info()
+	if err != nil {
+		log.Println(err)
+	}
+	ReportDeviceSoftwareInfo.SwVersion	= systemHost.KernelVersion //XXX for now we are filling kernel version...
+	ReportDeviceSoftwareInfo.SwHash	 = *proto.String(" ")
+	ReportDeviceInfo.Software = ReportDeviceSoftwareInfo
 
-	//find	all	network	related	info...
+	//find all interface related info...
 	interfaces,_	:=	net.Interfaces()
 	ReportDeviceInfo.Network	=	make([]*zmet.ZInfoNetwork,	len(interfaces))
 	for	index,val	:=	range	interfaces	{
@@ -324,15 +320,22 @@ func MakeHypervisorInfoProtobufStructure (){
 	var ReportInfo		=	&zmet.ZInfoMsg{}
 
 	hypervisorType := new(zmet.ZInfoTypes)
-	*hypervisorType		=	zmet.ZInfoTypes_ZiHypervisor
-	ReportInfo.Ztype	=	*hypervisorType
-	ReportInfo.DevId	=	*proto.String(deviceId)
+	*hypervisorType = zmet.ZInfoTypes_ZiHypervisor
+	ReportInfo.Ztype = *hypervisorType
+	ReportInfo.DevId = *proto.String(deviceId)
 
-	// XXX report real data from /proc and dmiinfo akin to device-steps
 	ReportHypervisorInfo := new(zmet.ZInfoHypervisor)
-	ReportHypervisorInfo.Ncpu		=	*proto.Uint32(uint32(goInfo.GetInfo().CPUs))
-	memory, _ := strconv.ParseUint(cpuStorageStat[1][5], 10, 0)
-	ReportHypervisorInfo.Memory		=	*proto.Uint64(uint64(memory))
+	cpuInfo,err := cpu.Info()
+	if err != nil {
+		log.Println(err)
+	}
+	ReportHypervisorInfo.Ncpu = *proto.Uint32(uint32(len(cpuInfo)))
+
+	ram, err := mem.VirtualMemory()
+    if err != nil {
+        log.Println(err)
+    }
+	ReportHypervisorInfo.Memory		=	*proto.Uint64(uint64(ram.Total))
 	d,err := disk.Usage("/")
 	if err != nil {
 		log.Println(err)
