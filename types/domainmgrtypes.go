@@ -119,12 +119,12 @@ type DiskConfig struct {
 }
 
 type DiskStatus struct {
-	ImageSha256  string // sha256 of immutable image
-	ReadOnly     bool
-	Preserve     bool
-	FileLocation string // Local location of Image
-	Format       string // From config
-	Devtype      string // From config
-	Vdev         string // Allocated
-	Target       string // Allocated; private copy if RW; FileLocation if RO
+	ImageSha256        string // sha256 of immutable image
+	ReadOnly           bool
+	Preserve           bool
+	FileLocation       string // Local location of Image
+	Format             string // From config
+	Devtype            string // From config
+	Vdev               string // Allocated
+	ActiveFileLocation string // Allocated; private copy if RW; FileLocation if RO
 }

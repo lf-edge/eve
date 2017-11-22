@@ -114,7 +114,7 @@ func handleRestart(done bool) {
 			filename := rwImgDirname + "/" + file.Name()
 			log.Println("handleRestart found existing",
 				filename)
-			if !findTarget(filename) {
+			if !findActiveFileLocation(filename) {
 				log.Println("handleRestart removing",
 					filename)
 				if err := os.Remove(filename); err != nil {
@@ -125,12 +125,12 @@ func handleRestart(done bool) {
 	}
 }
 
-// Check if the filename is used as Target
-func findTarget(filename string) bool {
-	log.Printf("findTarget(%v)\n", filename)
+// Check if the filename is used as ActiveFileLocation
+func findActiveFileLocation(filename string) bool {
+	log.Printf("findActiveFileLocation(%v)\n", filename)
 	for _, status := range domainStatusMap {
 		for _, ds := range status.DiskStatusList {
-			if filename == ds.Target {
+			if filename == ds.ActiveFileLocation {
 				return true
 			}
 		}
@@ -138,7 +138,7 @@ func findTarget(filename string) bool {
 	return false
 }
 
-// Map from UUID to the DomainStatus to be able to findTarget
+// Map from UUID to the DomainStatus to be able to findActiveFileLocation
 var domainStatusMap map[string]types.DomainStatus
 
 func handleInit() {
@@ -211,16 +211,16 @@ func handleCreate(statusFilename string, configArg interface{}) {
 		if ds.ReadOnly || !ds.Preserve {
 			continue
 		}
-		log.Printf("Copy from %s to %s\n", ds.FileLocation, ds.Target)
-		if _, err := os.Stat(ds.Target); err == nil {
+		log.Printf("Copy from %s to %s\n", ds.FileLocation, ds.ActiveFileLocation)
+		if _, err := os.Stat(ds.ActiveFileLocation); err == nil {
 			if ds.Preserve {
 				log.Printf("Preserve and target exists - skip copy\n")
 			} else {
 				log.Printf("Not preserve and target exists - assume rebooted and preserve\n")
 			}
-		} else if err := cp(ds.Target, ds.FileLocation); err != nil {
+		} else if err := cp(ds.ActiveFileLocation, ds.FileLocation); err != nil {
 			log.Printf("Copy failed from %s to %s: %s\n",
-				ds.FileLocation, ds.Target, err)
+				ds.FileLocation, ds.ActiveFileLocation, err)
 			status.PendingAdd = false
 			status.LastErr = fmt.Sprintf("%v", err)
 			status.LastErrTime = time.Now()
@@ -228,7 +228,7 @@ func handleCreate(statusFilename string, configArg interface{}) {
 			return
 		}
 		log.Printf("Copy DONE from %s to %s\n",
-			ds.FileLocation, ds.Target)
+			ds.FileLocation, ds.ActiveFileLocation)
 	}
 
 	if config.Activate {
@@ -251,18 +251,18 @@ func doActivate(config types.DomainConfig, status *types.DomainStatus) {
 		if ds.ReadOnly || ds.Preserve {
 			continue
 		}
-		log.Printf("Copy from %s to %s\n", ds.FileLocation, ds.Target)
-		if _, err := os.Stat(ds.Target); err == nil && ds.Preserve {
+		log.Printf("Copy from %s to %s\n", ds.FileLocation, ds.ActiveFileLocation)
+		if _, err := os.Stat(ds.ActiveFileLocation); err == nil && ds.Preserve {
 			log.Printf("Preserve and target exists - skip copy\n")
-		} else if err := cp(ds.Target, ds.FileLocation); err != nil {
+		} else if err := cp(ds.ActiveFileLocation, ds.FileLocation); err != nil {
 			log.Printf("Copy failed from %s to %s: %s\n",
-				ds.FileLocation, ds.Target, err)
+				ds.FileLocation, ds.ActiveFileLocation, err)
 			status.LastErr = fmt.Sprintf("%v", err)
 			status.LastErrTime = time.Now()
 			return
 		}
 		log.Printf("Copy DONE from %s to %s\n",
-			ds.FileLocation, ds.Target)
+			ds.FileLocation, ds.ActiveFileLocation)
 	}
 
 	filename := xenCfgFilename(config.AppNum)
@@ -343,8 +343,8 @@ func doInactivate(status *types.DomainStatus) {
 		// not be preserved across reboots?
 		for _, ds := range status.DiskStatusList {
 			if !ds.ReadOnly && !ds.Preserve {
-				log.Printf("Delete copy at %s\n", ds.Target)
-				if err := os.Remove(ds.Target); err != nil {
+				log.Printf("Delete copy at %s\n", ds.ActiveFileLocation)
+				if err := os.Remove(ds.ActiveFileLocation); err != nil {
 					log.Println(err)
 					// XXX return? Cleanup status?
 				}
@@ -386,7 +386,7 @@ func configToStatus(config types.DomainConfig, status *types.DomainStatus) error
 				dc.Format)
 			target = dstFilename
 		}
-		ds.Target = target
+		ds.ActiveFileLocation = target
 	}
 	return nil
 }
@@ -496,7 +496,7 @@ func configToXencfg(config types.DomainConfig,
 			access = "ro"
 		}
 		oneDisk := fmt.Sprintf("'%s,%s,%s,%s'",
-			ds.Target, dc.Format, ds.Vdev, access)
+			ds.ActiveFileLocation, dc.Format, ds.Vdev, access)
 		fmt.Printf("Processing disk %d: %s\n", i, oneDisk)
 		if diskString == "" {
 			diskString = oneDisk
@@ -681,8 +681,8 @@ func handleDelete(statusFilename string, statusArg interface{}) {
 	// inactivation i.e. those preserved across reboots?
 	for _, ds := range status.DiskStatusList {
 		if !ds.ReadOnly && ds.Preserve {
-			log.Printf("Delete copy at %s\n", ds.Target)
-			if err := os.Remove(ds.Target); err != nil {
+			log.Printf("Delete copy at %s\n", ds.ActiveFileLocation)
+			if err := os.Remove(ds.ActiveFileLocation); err != nil {
 				log.Println(err)
 				// XXX return? Cleanup status?
 			}
