@@ -84,7 +84,7 @@ func parseConfig(config *zconfig.EdgeDevConfig) {
 
 			// XXX:FIXME, to be decided after consulting with erik
 			if image.Target == "disk" {
-				appInstance.FixedResources.BootLoader	= "/usr/lib/xen-4.6/bin/pygrub"
+				appInstance.FixedResources.BootLoader	= "/usr/bin/pygrub"
 			}
 			appInstance.StorageConfigList[idx] = *image
 			idx++
