@@ -15,10 +15,8 @@ import (
 
 // Keeping status in /var/run to be clean after a crash/reboot
 const (
-	baseDirname              = "/var/tmp/zedmanager"
-	runDirname               = "/var/run/zedmanager"
-	zedmanagerConfigDirname  = baseDirname + "/config"
-	zedmanagerStatusDirname  = runDirname + "/status"
+	zedmanagerConfigDirname  = "/var/tmp/zedmanager/config"
+	zedmanagerStatusDirname  = "/var/run/zedmanager/status"
 	downloaderConfigDirname  = "/var/tmp/downloader/config"
 	downloaderStatusDirname = "/var/run/downloader/status"
 )

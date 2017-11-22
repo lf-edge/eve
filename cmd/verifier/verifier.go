@@ -35,10 +35,22 @@ import (
 	"time"
 )
 
-// If this file is present we don't delete verified files in handleDelete
-const preserveFilename = "/var/tmp/verifier/config/preserve"
-
-var imgCatalogDirname string
+// Keeping status in /var/run to be clean after a crash/reboot
+const (
+	// If this file is present we don't delete verified files in handleDelete
+	preserveFilename = "/var/tmp/verifier/config/preserve"
+	baseDirname = "/var/tmp/verifier"
+	runDirname = "/var/run/verifier"
+	configDirname = baseDirname + "/config"
+	statusDirname = runDirname + "/status"
+	imgCatalogDirname = "/var/tmp/zedmanager/downloads"
+	pendingDirname = imgCatalogDirname + "/pending"
+	verifierDirname = imgCatalogDirname + "/verifier"
+	finalDirname = imgCatalogDirname + "/verified"
+	certificateDirname = "/var/tmp/zedmanager/certs"
+	rootCertDirname = "/opt/zededa/etc"
+	rootCertFileName = rootCertDirname + "/root-certificate.pem"
+)
 
 func main() {
 	log.SetOutput(os.Stdout)
@@ -46,17 +58,6 @@ func main() {
 	log.Printf("Starting verifier\n")
 
 	watch.CleanupRestarted("verifier")
-
-	// Keeping status in /var/run to be clean after a crash/reboot
-	baseDirname := "/var/tmp/verifier"
-	runDirname := "/var/run/verifier"
-	configDirname := baseDirname + "/config"
-	statusDirname := runDirname + "/status"
-	imgCatalogDirname = "/var/tmp/zedmanager/downloads"
-
-	pendingDirname := imgCatalogDirname + "/pending"
-	verifierDirname := imgCatalogDirname + "/verifier"
-	verifiedDirname := imgCatalogDirname + "/verified"
 
 	if _, err := os.Stat(baseDirname); err != nil {
 		if err := os.MkdirAll(baseDirname, 0700); err != nil {
@@ -126,14 +127,14 @@ func main() {
 			log.Fatal(err)
 		}
 	}
-	if _, err := os.Stat(verifiedDirname); err != nil {
-		if err := os.MkdirAll(verifiedDirname, 0700); err != nil {
+	if _, err := os.Stat(finalDirname); err != nil {
+		if err := os.MkdirAll(finalDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
 
 	// Creates statusDir entries for already verified files
-	handleInit(verifiedDirname, statusDirname, "")
+	handleInit(finalDirname, statusDirname, "")
 
 	// Delete any still marked as PendingDelete
 	for _, location := range locations {
@@ -178,16 +179,16 @@ func main() {
 }
 
 // Determine which files we have already verified and set status for them
-func handleInit(verifiedDirname string, statusDirname string,
+func handleInit(finalDirname string, statusDirname string,
 	parentDirname string) {
 	fmt.Printf("handleInit(%s, %s, %s)\n",
-		verifiedDirname, statusDirname, parentDirname)
-	locations, err := ioutil.ReadDir(verifiedDirname)
+		finalDirname, statusDirname, parentDirname)
+	locations, err := ioutil.ReadDir(finalDirname)
 	if err != nil {
 		log.Fatal(err)
 	}
 	for _, location := range locations {
-		filename := verifiedDirname + "/" + location.Name()
+		filename := finalDirname + "/" + location.Name()
 		fmt.Printf("handleInit: Looking in %s\n", filename)
 		if location.IsDir() {
 			handleInit(filename, statusDirname, location.Name())
@@ -206,7 +207,7 @@ func handleInit(verifiedDirname string, statusDirname string,
 		}
 	}
 	fmt.Printf("handleInit done for %s, %s, %s\n",
-		verifiedDirname, statusDirname, parentDirname)
+		finalDirname, statusDirname, parentDirname)
 }
 
 func updateVerifyErrStatus(status *types.VerifyImageStatus,
@@ -257,10 +258,10 @@ func handleCreate(statusFilename string, configArg interface{}) {
 	// based on the claimed Sha256 and safename, and the same name
 	// in downloads/verifier/. Form a shorter name for
 	// downloads/verified/.
-	pendingDirname := imgCatalogDirname + "/pending/" + config.ImageSha256
-	pendingFilename := pendingDirname + "/" + config.Safename
-	verifierDirname := imgCatalogDirname + "/verifier/" + config.ImageSha256
-	verifierFilename := verifierDirname + "/" + config.Safename
+	myPendingDirname := pendingDirname + "/" + config.ImageSha256
+	pendingFilename := myPendingDirname + "/" + config.Safename
+	myVerifierDirname := verifierDirname + "/" + config.ImageSha256
+	verifierFilename := myVerifierDirname + "/" + config.Safename
 
 	// Move to verifier directory which is RO
 	// XXX should have dom0 do this and/or have RO mounts
@@ -268,26 +269,26 @@ func handleCreate(statusFilename string, configArg interface{}) {
 	if _, err := os.Stat(pendingFilename); err != nil {
 		log.Fatal(err)
 	}
-	if _, err := os.Stat(verifierDirname); err == nil {
-		if err := os.RemoveAll(verifierDirname); err != nil {
+	if _, err := os.Stat(myVerifierDirname); err == nil {
+		if err := os.RemoveAll(myVerifierDirname); err != nil {
 			log.Fatal(err)
 		}
 	}
-	if err := os.MkdirAll(verifierDirname, 0700); err != nil {
+	if err := os.MkdirAll(myVerifierDirname, 0700); err != nil {
 		log.Fatal(err)
 	}
 
 	if err := os.Rename(pendingFilename, verifierFilename); err != nil {
 		log.Fatal(err)
 	}
-	if err := os.Chmod(verifierDirname, 0500); err != nil {
+	if err := os.Chmod(myVerifierDirname, 0500); err != nil {
 		log.Fatal(err)
 	}
 	if err := os.Chmod(verifierFilename, 0400); err != nil {
 		log.Fatal(err)
 	}
 	// Clean up empty directory
-	if err := os.Remove(pendingDirname); err != nil {
+	if err := os.Remove(myPendingDirname); err != nil {
 		log.Fatal(err)
 	}
 	log.Printf("Verifying URL %s file %s\n",
@@ -332,19 +333,19 @@ func handleCreate(statusFilename string, configArg interface{}) {
 	}
 	// Move directory from downloads/verifier to downloads/verified
 	// XXX should have dom0 do this and/or have RO mounts
-	finalDirname := imgCatalogDirname + "/verified/" + config.ImageSha256
+	myFinalDirname := finalDirname + "/" + config.ImageSha256
 	filename := types.SafenameToFilename(config.Safename)
-	finalFilename := finalDirname + "/" + filename
+	finalFilename := myFinalDirname + "/" + filename
 	fmt.Printf("Move from %s to %s\n", verifierFilename, finalFilename)
 	if _, err := os.Stat(verifierFilename); err != nil {
 		log.Fatal(err)
 	}
 	// XXX change log.Fatal to something else?
-	if _, err := os.Stat(finalDirname); err == nil {
+	if _, err := os.Stat(myFinalDirname); err == nil {
 		// Directory exists thus we have a sha256 collision presumably
 		// due to multiple safenames (i.e., URLs) for the same content.
 		// Delete existing to avoid wasting space.
-		locations, err := ioutil.ReadDir(finalDirname)
+		locations, err := ioutil.ReadDir(myFinalDirname)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -354,23 +355,23 @@ func handleCreate(statusFilename string, configArg interface{}) {
 				config.Safename)
 		}
 
-		if err := os.RemoveAll(finalDirname); err != nil {
+		if err := os.RemoveAll(myFinalDirname); err != nil {
 			log.Fatal(err)
 		}
 	}
 
-	if err := os.MkdirAll(finalDirname, 0700); err != nil {
+	if err := os.MkdirAll(myFinalDirname, 0700); err != nil {
 		log.Fatal(err)
 	}
 	if err := os.Rename(verifierFilename, finalFilename); err != nil {
 		log.Fatal(err)
 	}
-	if err := os.Chmod(finalDirname, 0500); err != nil {
+	if err := os.Chmod(myFinalDirname, 0500); err != nil {
 		log.Fatal(err)
 	}
 
 	// Clean up empty directory
-	if err := os.Remove(verifierDirname); err != nil {
+	if err := os.Remove(myVerifierDirname); err != nil {
 		log.Fatal(err)
 	}
 	status.PendingAdd = false
@@ -396,11 +397,6 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 	//And find out the puplic key and it's type
 	//we will use this certificate for both cert chain verification
 	//and signature verification...
-
-	baseCertDirname := "/var/tmp/zedmanager"
-	certificateDirname := baseCertDirname + "/certs"
-	rootCertDirname := "/opt/zededa/etc"
-	rootCertFileName := rootCertDirname + "/root-certificate.pem"
 
 	//This func literal will take care of writing status during
 	//cert chain and signature verification...
@@ -594,32 +590,32 @@ func handleDelete(statusFilename string, statusArg interface{}) {
 func doDelete(status *types.VerifyImageStatus) {
 	log.Printf("doDelete(%v)\n", status.Safename)
 
-	pendingDirname := imgCatalogDirname + "/pending/" + status.ImageSha256
-	verifierDirname := imgCatalogDirname + "/verifier/" + status.ImageSha256
-	finalDirname := imgCatalogDirname + "/verified/" + status.ImageSha256
+	myPendingDirname := pendingDirname + "/" + status.ImageSha256
+	myVerifierDirname := verifierDirname + "/" + status.ImageSha256
+	myFinalDirname := finalDirname + "/" + status.ImageSha256
 
-	if _, err := os.Stat(pendingDirname); err == nil {
-		log.Printf("doDelete removing %s\n", pendingDirname)
-		if err := os.RemoveAll(pendingDirname); err != nil {
+	if _, err := os.Stat(myPendingDirname); err == nil {
+		log.Printf("doDelete removing %s\n", myPendingDirname)
+		if err := os.RemoveAll(myPendingDirname); err != nil {
 			log.Fatal(err)
 		}
 	}
-	if _, err := os.Stat(verifierDirname); err == nil {
-		log.Printf("doDelete removing %s\n", verifierDirname)
-		if err := os.RemoveAll(verifierDirname); err != nil {
+	if _, err := os.Stat(myVerifierDirname); err == nil {
+		log.Printf("doDelete removing %s\n", myVerifierDirname)
+		if err := os.RemoveAll(myVerifierDirname); err != nil {
 			log.Fatal(err)
 		}
 	}
 
-	_, err := os.Stat(finalDirname)
+	_, err := os.Stat(myFinalDirname)
 	if err == nil && status.State == types.DELIVERED {
 		if _, err := os.Stat(preserveFilename); err == nil {
-			log.Printf("doDelete removing %s\n", finalDirname)
-			if err := os.RemoveAll(finalDirname); err != nil {
+			log.Printf("doDelete removing %s\n", myFinalDirname)
+			if err := os.RemoveAll(myFinalDirname); err != nil {
 				log.Fatal(err)
 			}
 		} else {
-			log.Printf("doDelete preserving %s\n", finalDirname)
+			log.Printf("doDelete preserving %s\n", myFinalDirname)
 		}
 	}
 	log.Printf("doDelete(%v) done\n", status.Safename)

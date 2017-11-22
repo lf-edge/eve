@@ -17,8 +17,17 @@ import (
 // XXX change from string to UUID?
 var domainConfig map[string]types.DomainConfig
 
-var imgCatalogDirname = "/var/tmp/zedmanager/downloads"
-var verifiedDirname = imgCatalogDirname + "/verified"
+const (
+	certBaseDirname = "/var/tmp/downloader/cert.obj"
+	certRunDirname = "/var/run/downloader/cert.obj"
+	certConfigDirname = certBaseDirname + "/config"
+	certStatusDirname = certRunDirname + "/status"
+	imgCatalogDirname = "/var/tmp/zedmanager/downloads"
+	pendingDirname = imgCatalogDirname + "/pending"
+	verifierDirname = imgCatalogDirname + "/verifier"
+	finalDirname = imgCatalogDirname + "/verified"
+	certificateDirname = "/var/tmp/zedmanager/certs"
+)
 
 func MaybeAddDomainConfig(aiConfig types.AppInstanceConfig,
 	ns *types.AppNetworkStatus) error {
@@ -72,7 +81,7 @@ func MaybeAddDomainConfig(aiConfig types.AppInstanceConfig,
 	i := 0
 	for _, sc := range aiConfig.StorageConfigList {
 		// Check that file is verified
-		locationDir := verifiedDirname + "/" + sc.ImageSha256
+		locationDir := finalDirname + "/" + sc.ImageSha256
 		location, err := locationFromDir(locationDir)
 		if err != nil {
 			return err
