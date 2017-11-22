@@ -17,8 +17,17 @@ import (
 // XXX change from string to UUID?
 var domainConfig map[string]types.DomainConfig
 
-var imgCatalogDirname = "/var/tmp/zedmanager/downloads"
-var verifiedDirname = imgCatalogDirname + "/verified"
+const (
+	certBaseDirname = "/var/tmp/downloader/cert.obj"
+	certRunDirname = "/var/run/downloader/cert.obj"
+	certConfigDirname = certBaseDirname + "/config"
+	certStatusDirname = certRunDirname + "/status"
+	imgCatalogDirname = "/var/tmp/zedmanager/downloads"
+	pendingDirname = imgCatalogDirname + "/pending"
+	verifierDirname = imgCatalogDirname + "/verifier"
+	finalDirname = imgCatalogDirname + "/verified"
+	certificateDirname = "/var/tmp/zedmanager/certs"
+)
 
 func MaybeAddDomainConfig(aiConfig types.AppInstanceConfig,
 	ns *types.AppNetworkStatus) error {
@@ -58,7 +67,7 @@ func MaybeAddDomainConfig(aiConfig types.AppInstanceConfig,
 		DisplayName:    aiConfig.DisplayName,
 		Activate:       aiConfig.Activate,
 		AppNum:         AppNum,
-		VmConfig:	aiConfig.FixedResources,
+		VmConfig:       aiConfig.FixedResources,
 	}
 
 	// Determine number of "disk" targets in list
@@ -72,7 +81,7 @@ func MaybeAddDomainConfig(aiConfig types.AppInstanceConfig,
 	i := 0
 	for _, sc := range aiConfig.StorageConfigList {
 		// Check that file is verified
-		locationDir := verifiedDirname + "/" + sc.ImageSha256
+		locationDir := finalDirname + "/" + sc.ImageSha256
 		location, err := locationFromDir(locationDir)
 		if err != nil {
 			return err
@@ -89,19 +98,19 @@ func MaybeAddDomainConfig(aiConfig types.AppInstanceConfig,
 		case "kernel":
 			if dc.Kernel != "" {
 				log.Printf("Overriding kernel %s with URL %s location %s\n",
-				dc.Kernel, sc.DownloadURL, location)
+					dc.Kernel, sc.DownloadURL, location)
 			}
 			dc.Kernel = location
 		case "ramdisk":
 			if dc.Ramdisk != "" {
 				log.Printf("Overriding ramdisk %s with URL %s location %s\n",
-				dc.Ramdisk, sc.DownloadURL, location)
+					dc.Ramdisk, sc.DownloadURL, location)
 			}
 			dc.Ramdisk = location
 		case "device_tree":
 			if dc.DeviceTree != "" {
 				log.Printf("Overriding device_tree %s with URL %s location %s\n",
-				dc.DeviceTree, sc.DownloadURL, location)
+					dc.DeviceTree, sc.DownloadURL, location)
 			}
 			dc.DeviceTree = location
 		default:

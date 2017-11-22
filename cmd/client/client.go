@@ -14,6 +14,7 @@ import (
 	"github.com/RevH/ipinfo"
 	"github.com/golang/protobuf/proto"
 	"github.com/satori/go.uuid"
+	"github.com/zededa/api/zmet"
 	"github.com/zededa/go-provision/types"
 	"golang.org/x/crypto/ocsp"
 	"io/ioutil"
@@ -21,7 +22,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"github.com/zededa/api/zmet"
 	"strings"
 	"time"
 )
@@ -48,6 +48,8 @@ var maxDelay = time.Second * 600 // 10 minutes
 //  clientIP			Written containing the public client IP
 //
 func main() {
+	log.SetOutput(os.Stdout)
+	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
 	oldPtr := flag.Bool("o", false, "Old use of prov01")
 	dirPtr := flag.String("d", "/opt/zededa/etc",
 		"Directory with certs etc")
@@ -280,8 +282,6 @@ func main() {
 				tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
 				tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256},
 			// TLS 1.2 because we can
-			// XXX:FIXME needed while testing
-			//InsecureSkipVerify: true,
 			MinVersion: tls.VersionTLS12,
 		}
 		tlsConfig.BuildNameToCertificate()
@@ -589,6 +589,15 @@ func main() {
 		olconf[0].LispSignature = signature
 		olconf[0].AdditionalInfoDevice = addInfoDevice
 		olconf[0].NameToEidList = device.ZedServers.NameToEidList
+		// XXX temporary to populate map servers
+		lispServers := make([]types.LispServerInfo, 2)
+		olconf[0].LispServers = lispServers
+		lispServers[0].NameOrIp = "ms1.zededa.net"
+		lispServers[0].Credential = fmt.Sprintf("test1_%d",
+			device.LispInstance)
+		lispServers[1].NameOrIp = "ms2.zededa.net"
+		lispServers[1].Credential = fmt.Sprintf("test2_%d",
+			device.LispInstance)
 		acl := make([]types.ACE, 1)
 		olconf[0].ACLs = acl
 		matches := make([]types.ACEMatch, 1)

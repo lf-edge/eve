@@ -48,6 +48,8 @@ var localFlag bool
 // Note that the IIDs and LISP passwords are random.
 //
 func main() {
+	log.SetOutput(os.Stdout)
+	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
 	log.Printf("Starting server\n")
 	localPtr := flag.Bool("l", false, "Use local certs and map servers")
 	dirPtr := flag.String("d", "/usr/local/etc/zededa-server/",
@@ -125,7 +127,7 @@ func main() {
 	if count == 1 {
 		serverCertInfo[1] = serverCertInfo[0]
 	}
-	
+
 	getOcsp := func(sci *ServerCertInfo) bool {
 		done := false
 		response, responseBytes, err :=
@@ -562,11 +564,11 @@ func SelfRegister(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	device = types.DeviceDb{
-		DeviceCert:      rc.PemCert,
-		DevicePublicKey: publicPem,
-		UserName:        userName,
-		RegTime:         time.Now(),
-		LispMapServers:	 lispMapServers,
+		DeviceCert:             rc.PemCert,
+		DevicePublicKey:        publicPem,
+		UserName:               userName,
+		RegTime:                time.Now(),
+		LispMapServers:         lispMapServers,
 		LispInstance:           lispInstance,
 		EID:                    eid,
 		EIDHashLen:             uint8(eidHashLen),

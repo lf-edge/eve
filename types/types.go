@@ -5,8 +5,8 @@ package types
 
 import (
 	"github.com/satori/go.uuid"
-	"net"
 	"log"
+	"net"
 	"strings"
 )
 
@@ -102,7 +102,7 @@ func UrlToSafename(url string, sha string) string {
 	} else {
 		safename = strings.Replace(url, "/", " ", -1) + "." + "sha"
 	}
-    return safename
+	return safename
 }
 
 // Remove initial part up to last '/' in URL. Note that '/' was converted

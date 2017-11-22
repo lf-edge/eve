@@ -191,6 +191,9 @@ done
 # If agents are running then the deletion of the /var/tmp/ files should
 # cleaned up all but /var/run/zedmanager/*.json
 
+# Add a tag to preserve any downloaded and verified files
+touch /var/tmp/verifier/config/preserve
+
 # If agents are running wait for the status files to disappear
 for AGENT in $AGENTS; do
     if [ ! -d /var/run/$AGENT ]; then
@@ -244,6 +247,9 @@ for AGENT in $AGENTS; do
     fi
     pkill $AGENT
 done
+
+# Remove the preserve tag
+rm /var/tmp/verifier/config/preserve
 
 echo "Removing old iptables/ip6tables rules"
 # Cleanup any remaining iptables rules from a failed run

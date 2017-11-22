@@ -23,24 +23,24 @@ import (
 	"time"
 )
 
-var rwImgDirname string    // We store images here
-var xenDirname string      // We store xen cfg files here
-var verifiedDirname string // Read-only images named based on sha256 hash
-// each in its own directory
+// Keeping status in /var/run to be clean after a crash/reboot
+const (
+	baseDirname = "/var/tmp/domainmgr"
+	runDirname = "/var/run/domainmgr"
+	configDirname = baseDirname + "/config"
+	statusDirname = runDirname + "/status"
+	rwImgDirname = baseDirname + "/img" // We store images here
+	xenDirname = runDirname + "/xen" // We store xen cfg files here
+	imgCatalogDirname = "/var/tmp/zedmanager/downloads"
+	// Read-only images named based on sha256 hash each in its own directory
+	verifiedDirname = imgCatalogDirname + "/verified"
+)
 
 func main() {
+	log.SetOutput(os.Stdout)
+	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
 	log.Printf("Starting domainmgr\n")
 	watch.CleanupRestarted("domainmgr")
-
-	// Keeping status in /var/run to be clean after a crash/reboot
-	baseDirname := "/var/tmp/domainmgr"
-	runDirname := "/var/run/domainmgr"
-	configDirname := baseDirname + "/config"
-	statusDirname := runDirname + "/status"
-	rwImgDirname = baseDirname + "/img" // Implicit preserve for dom0 reboot
-	xenDirname = runDirname + "/xen"
-	imgCatalogDirname := "/var/tmp/zedmanager/downloads"
-	verifiedDirname = imgCatalogDirname + "/verified"
 
 	if _, err := os.Stat(baseDirname); err != nil {
 		if err := os.MkdirAll(baseDirname, 0700); err != nil {
@@ -87,7 +87,7 @@ func main() {
 	}
 
 	handleInit()
-	
+
 	var restartFn watch.ConfigRestartHandler = handleRestart
 
 	fileChanges := make(chan string)

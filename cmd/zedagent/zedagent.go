@@ -3,13 +3,6 @@
 
 // Pull AppInstanceConfig from ZedCloud, make it available for zedmanager
 // publish AppInstanceStatus to ZedCloud.
-//
-// XXX Note that this initial code reads AppInstanceConfig from
-// /var/tmp/zedmanager/config/*.json and produces AppInstanceStatus in
-// /var/run/zedmanager/status/*.json.
-//
-// XXX Should we keep the local config and status dirs and have a separate
-// config downloader (which calls the Verifier), and status uploader?
 
 package main
 
@@ -21,22 +14,20 @@ import (
 )
 
 // Keeping status in /var/run to be clean after a crash/reboot
-var (
-	baseDirname              = "/var/tmp/zedmanager"
-	runDirname               = "/var/run/zedmanager"
-	zedmanagerConfigDirname  = baseDirname + "/config"
-	zedmanagerStatusDirname  = runDirname + "/status"
-	zedagentConfigDirname    = "/var/tmp/zedagent/config"
+const (
+	zedmanagerConfigDirname  = "/var/tmp/zedmanager/config"
+	zedmanagerStatusDirname  = "/var/run/zedmanager/status"
 	downloaderConfigDirname  = "/var/tmp/downloader/config"
 	downloaderStatusDirname = "/var/run/downloader/status"
 )
 
 func main() {
+	log.SetOutput(os.Stdout)
+	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
 	log.Printf("Starting zedagent\n")
 	watch.CleanupRestarted("zedagent")
 
 	dirs := []string{
-		zedagentConfigDirname,
 		zedmanagerConfigDirname,
 		zedmanagerStatusDirname,
 		downloaderConfigDirname,

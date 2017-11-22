@@ -11,17 +11,17 @@ import (
 // The key/index to this is the Safename which is allocated by ZedManager.
 // That is the filename in which we store the corresponding json files.
 type DownloaderConfig struct {
-	Safename		string
-	DownloadURL		string	// XXX is there a more specific type?
-	TransportMethod	string	// Download Method S3/HTTP/SFTP etc.
-	Dpath			string
-	ApiKey			string
-	Password		string
-	MaxSize			uint	// In kbytes
-	ImageSha256		string	// sha256 of immutable image XXX used?
-	DownloadObjDir	string	// Download Object Store
-	VerifiedObjDir	string	// Final Object Store
-	RefCount		uint	// Zero means can delete file/cancel download
+	Safename        string
+	DownloadURL     string
+	TransportMethod string // Download Method S3/HTTP/SFTP etc.
+	Dpath           string
+	ApiKey          string
+	Password        string
+	MaxSize         uint   // In kbytes
+	ImageSha256     string // sha256 of immutable image
+	DownloadObjDir  string // Download Object Store
+	VerifiedObjDir  string // Final Object Store
+	RefCount        uint   // Zero means can delete file/cancel download
 }
 
 func (config DownloaderConfig) VerifyFilename(fileName string) bool {
@@ -37,29 +37,29 @@ func (config DownloaderConfig) VerifyFilename(fileName string) bool {
 // Cert Object may contain multiple objects
 
 type CertConfig struct {
-	ServerCert	DownloaderConfig
-	CertChain	[]DownloaderConfig
+	ServerCert DownloaderConfig
+	CertChain  []DownloaderConfig
 }
 
 // The key/index to this is the Safename which comes from DownloaderConfig.
 // That is the filename in which we store the corresponding json files.
 type DownloaderStatus struct {
-	Safename		string
-	PendingAdd		bool
-	PendingModify	bool
-	PendingDelete	bool
-	RefCount		uint    // Zero means not downloaded
-	DownloadURL		string  // XXX is there a more specific type?
-	ImageSha256		string  // sha256 of immutable image
-	DownloadObjDir	string  // Download Object store
-	VerifiedObjDir	string  // Target Object Store
-	State			SwState // DOWNLOADED etc
-	ReservedSpace	uint    // Contribution to global ReservedSpace
-	Size			uint    // Once DOWNLOADED; less than MaxSize
-	ModTime			time.Time
-	LastErr			string // Download error
-	LastErrTime		time.Time
-	RetryCount		int
+	Safename       string
+	PendingAdd     bool
+	PendingModify  bool
+	PendingDelete  bool
+	RefCount       uint    // Zero means not downloaded
+	DownloadURL    string
+	ImageSha256    string  // sha256 of immutable image
+	DownloadObjDir string  // Download Object store
+	VerifiedObjDir string  // Target Object Store
+	State          SwState // DOWNLOADED etc
+	ReservedSpace  uint    // Contribution to global ReservedSpace
+	Size           uint    // Once DOWNLOADED; less than MaxSize
+	ModTime        time.Time
+	LastErr        string // Download error
+	LastErrTime    time.Time
+	RetryCount     int
 }
 
 func (status DownloaderStatus) VerifyFilename(fileName string) bool {

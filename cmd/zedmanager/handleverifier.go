@@ -32,13 +32,13 @@ func MaybeAddVerifyImageConfig(safename string, sc *types.StorageConfig) {
 	} else {
 		fmt.Printf("verifier config add for %s\n", safename)
 		n := types.VerifyImageConfig{
-			Safename:	safename,
-			DownloadURL:	sc.DownloadURL,
-			ImageSha256:	sc.ImageSha256,
-			RefCount:	1,
+			Safename:         safename,
+			DownloadURL:      sc.DownloadURL,
+			ImageSha256:      sc.ImageSha256,
+			RefCount:         1,
 			CertificateChain: sc.CertificateChain,
-			ImageSignature:	sc.ImageSignature,
-			SignatureKey:	sc.SignatureKey,
+			ImageSignature:   sc.ImageSignature,
+			SignatureKey:     sc.SignatureKey,
 		}
 		verifyImageConfig[key] = n
 	}
@@ -93,6 +93,13 @@ func writeVerifyImageConfig(config types.VerifyImageConfig,
 // Key is Safename string.
 var verifierStatus map[string]types.VerifyImageStatus
 
+func dumpVerifierStatus() {
+	for key, m := range verifierStatus {
+		log.Printf("\tverifierStatus[%v]: sha256 %s safename %s\n",
+			key, m.ImageSha256, m.Safename)
+	}
+}
+
 func handleVerifyImageStatusModify(statusFilename string,
 	statusArg interface{}) {
 	var status *types.VerifyImageStatus
@@ -131,6 +138,9 @@ func handleVerifyImageStatusModify(statusFilename string,
 	}
 	if changed {
 		verifierStatus[key] = *status
+		log.Printf("Added verifierStatus key %v sha %s safename %s\n",
+			key, status.ImageSha256, status.Safename)
+		dumpVerifierStatus()
 		updateAIStatusSafename(key)
 	}
 	log.Printf("handleVerifyImageStatusModify done for %s\n",
@@ -143,7 +153,7 @@ func LookupVerifyImageStatus(safename string) (types.VerifyImageStatus, error) {
 			safename)
 		return m, nil
 	} else {
-		return types.VerifyImageStatus{}, errors.New("No VerifyImageStatus")
+		return types.VerifyImageStatus{}, errors.New("No VerifyImageStatus for safename")
 	}
 }
 
@@ -151,12 +161,10 @@ func lookupVerifyImageStatusSha256Impl(sha256 string) (*types.VerifyImageStatus,
 	error) {
 	for _, m := range verifierStatus {
 		if m.ImageSha256 == sha256 {
-			log.Printf("lookupVerifyImageStatusSha256Impl: found based on sha256 %s safename %s\n",
-				sha256, m.Safename)
 			return &m, nil
 		}
 	}
-	return nil, errors.New("No VerifyImageStatus")
+	return nil, errors.New("No VerifyImageStatus for sha")
 }
 
 func LookupVerifyImageStatusSha256(sha256 string) (types.VerifyImageStatus,
@@ -165,7 +173,26 @@ func LookupVerifyImageStatusSha256(sha256 string) (types.VerifyImageStatus,
 	if err != nil {
 		return types.VerifyImageStatus{}, err
 	} else {
-		return *m, err
+		log.Printf("LookupVerifyImageStatusSha256: found based on sha256 %s safename %s\n",
+			sha256, m.Safename)
+		return *m, nil
+	}
+}
+
+func LookupVerifyImageStatusAny(safename string,
+     sha256 string) (types.VerifyImageStatus, error) {
+	m0, err := LookupVerifyImageStatus(safename)
+	if err == nil {
+		return m0, nil
+	}	
+	m1, err := lookupVerifyImageStatusSha256Impl(sha256)
+	if err == nil {
+		log.Printf("LookupVerifyImageStatusAny: found based on sha %s\n",
+			sha256)
+		return *m1, nil
+	} else {
+		return types.VerifyImageStatus{},
+		       errors.New("No VerifyImageStatus for safename nor sha")
 	}
 }
 
@@ -180,6 +207,8 @@ func handleVerifyImageStatusDelete(statusFilename string) {
 	} else {
 		fmt.Printf("verifier map delete for %v\n", m.State)
 		delete(verifierStatus, key)
+		log.Printf("Deleted verifierStatus key %v\n", key)
+		dumpVerifierStatus()
 		removeAIStatusSafename(key)
 	}
 	log.Printf("handleVerifyImageStatusDelete done for %s\n",

@@ -3,8 +3,6 @@
 
 // Types which feed in and out of the verifier
 
-// XXX Add types for verifying the signatures on the meta-data (the AIC) itself
-
 package types
 
 import (
@@ -21,13 +19,13 @@ import (
 // The key/index to this is the Safename which is allocated by ZedManager.
 // That is the filename in which we store the corresponding json files.
 type VerifyImageConfig struct {
-	Safename		string	// Also refers to the dirname in pending dir
-	DownloadURL		string	// For logging output
-	ImageSha256		string	// sha256 of immutable image
-	RefCount		uint	// Zero means can delete file
-	CertificateChain 	[]string//name of intermediate certificates
-	ImageSignature		[]byte	//signature of image
-	SignatureKey		string	//certificate containing public key 
+	Safename         string   // Also refers to the dirname in pending dir
+	DownloadURL      string   // For logging output
+	ImageSha256      string   // sha256 of immutable image
+	RefCount         uint     // Zero means can delete file
+	CertificateChain []string //name of intermediate certificates
+	ImageSignature   []byte   //signature of image
+	SignatureKey     string   //certificate containing public key
 }
 
 func (config VerifyImageConfig) VerifyFilename(fileName string) bool {
