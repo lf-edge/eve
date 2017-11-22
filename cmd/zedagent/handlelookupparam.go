@@ -247,7 +247,6 @@ func handleLookUpParam(devConfig *zconfig.EdgeDevConfig) {
 			DisplayName:    "zedmanager",
 			IsZedmanager:   true,
 		}
-		config.LispMapServers = device.LispMapServers
 
 		olconf := make([]types.OverlayNetworkConfig, 1)
 		config.OverlayNetworkList = olconf
@@ -256,6 +255,12 @@ func handleLookUpParam(devConfig *zconfig.EdgeDevConfig) {
 		olconf[0].LispSignature = signature
 		olconf[0].AdditionalInfoDevice = addInfoDevice
 		olconf[0].NameToEidList = device.ZedServers.NameToEidList
+		lispServers := make([]types.LispServerInfo, len(device.LispMapServers))
+		olconf[0].LispServers = lispServers
+		for count,lispMapServer := range device.LispMapServers {
+			lispServers[count].NameOrIp = lispMapServer.NameOrIp
+			lispServers[count].Credential = lispMapServer.Credential
+		}
 		acl := make([]types.ACE, 1)
 		olconf[0].ACLs = acl
 		matches := make([]types.ACEMatch, 1)
