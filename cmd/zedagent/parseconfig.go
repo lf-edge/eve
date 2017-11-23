@@ -64,28 +64,35 @@ func parseConfig(config *zconfig.EdgeDevConfig) {
 
 			if found == false { continue }
 
-			// XXX:FIXME certificate should be of variable length
-			// depending on the number of certificates in the chain
-			// this list, currently contains the certUrls
-			// should be the sha/uuid of cert filenames
-			//  proper DataStore Entries
-
-			image.CertificateChain	= make([]string, 1)
 			image.Format			= strings.ToLower(drive.Image.Iformat.String())
-			image.ImageSignature	= drive.Image.Siginfo.Signature
-			image.SignatureKey		= drive.Image.Siginfo.Signercerturl
-			image.CertificateChain[0]	= drive.Image.Siginfo.Intercertsurl
-			image.ImageSha256		= drive.Image.Sha256
 			image.MaxSize			= uint(drive.Maxsize)
 			image.ReadOnly			= drive.Readonly
 			image.Preserve			= drive.Preserve
 			image.Target			= strings.ToLower(drive.Target.String())
 			image.Devtype			= strings.ToLower(drive.Drvtype.String())
+			image.ImageSignature	= drive.Image.Siginfo.Signature
+			image.ImageSha256		= drive.Image.Sha256
 
-			// XXX:FIXME, to be decided after consulting with erik
+			// copy the certificates
+			if drive.Image.Siginfo.Signercerturl != "" {
+				image.SignatureKey		= drive.Image.Siginfo.Signercerturl
+			}
+
+			// XXX:FIXME certificate should be of variable length
+			// depending on the number of certificates in the chain
+			// this list, currently contains the certUrls
+			// should be the sha/uuid of cert filenames
+			// as proper DataStore Entries
+
+			if drive.Image.Siginfo.Intercertsurl != "" {
+				image.CertificateChain		= make([]string, 1)
+				image.CertificateChain[0]	= drive.Image.Siginfo.Intercertsurl
+			}
+
 			if image.Target == "disk" {
 				appInstance.FixedResources.BootLoader	= "/usr/bin/pygrub"
 			}
+
 			appInstance.StorageConfigList[idx] = *image
 			idx++
 		}
@@ -250,6 +257,10 @@ func getCerts (appInstance types.AppInstanceConfig) {
 }
 
 func writeCertConfig (image types.StorageConfig, certUrl string) {
+
+	if certUrl == "" {
+		return
+	}
 
 	var baseCertDirname		= "/var/tmp/downloader/cert.obj"
 	var configCertDirname	= baseCertDirname + "/config"
