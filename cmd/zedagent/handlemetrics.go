@@ -29,15 +29,13 @@ const (
 var cpuStorageStat [][]string
 
 func publishMetrics() {
-	DeviceCpuStorageStat()
-	MakeDeviceInfoProtobufStructure()
-	MakeHypervisorInfoProtobufStructure()
-	MakeMetricsProtobufStructure()
+	ExecuteXentopCmd()
+	PublishMetricsToZedCloud()
 }
 
 
 func metricsTimerTask() {
-	ticker := time.NewTicker(time.Second  * 5)
+	ticker := time.NewTicker(time.Second  * 60)
 	for t := range ticker.C {
 		log.Println("Tick at", t)
 		publishMetrics();
@@ -87,18 +85,19 @@ func GetDeviceManufacturerInfo () (string) {
 	wholeProductInfo := fmt.Sprint(productManufacturer +"/"+productName+"/"+productVersion+"/"+productSerial+"/"+productUuid)
 	return wholeProductInfo
 }
-func DeviceCpuStorageStat() {
+
+func ExecuteXentopCmd() {
 	count := 0
 	counter := 0
-	app0 := "sudo"
-	app := "xentop"
-	arg0 := "-b"
-	arg4 := "-d"
-	arg5 := "1"
-	arg2 := "-i"
-	arg3 := "2"
+	//app0 := "sudo"
+	arg1 := "xentop"
+	arg2 := "-b"
+	arg3 := "-d"
+	arg4 := "1"
+	arg5 := "-i"
+	arg6 := "2"
 
-	cmd1 := exec.Command(app0, app, arg0, arg4, arg5, arg2, arg3)
+	cmd1 := exec.Command(arg1, arg2, arg3, arg4, arg5, arg6)
 	stdout, err := cmd1.Output()
 	if err != nil {
 		println(err.Error())
@@ -177,7 +176,7 @@ func DeviceCpuStorageStat() {
 		counter = 0
 	}
 }
-func MakeMetricsProtobufStructure() {
+func PublishMetricsToZedCloud() {
 
 	var ReportMetrics = &zmet.ZMetricMsg{}
 
@@ -250,7 +249,7 @@ func MakeMetricsProtobufStructure() {
 	SendMetricsProtobufStrThroughHttp(ReportMetrics)
 }
 
-func MakeDeviceInfoProtobufStructure () {
+func PublishDeviceInfoToZedCloud () {
 
 	var ReportInfo = &zmet.ZInfoMsg{}
 
@@ -274,7 +273,7 @@ func MakeDeviceInfoProtobufStructure () {
 	if err != nil {
 		log.Println(err.Error())
 	}
-    cpuArch := fmt.Sprintf("%s", stdout)
+	cpuArch := fmt.Sprintf("%s", stdout)
 	ReportDeviceInfo.CpuArch	=	*proto.String(strings.TrimSpace(cpuArch))
 
 	platformCmd := exec.Command("uname","-p")
@@ -309,7 +308,6 @@ func MakeDeviceInfoProtobufStructure () {
 	ReportDeviceInfo.Devices = make([]*zmet.ZinfoPeripheral,1)
 	ReportDevicePeripheralInfo := new(zmet.ZinfoPeripheral)
 
-	// XXX report real data from /proc and dmiinfo akin to device-steps
 	for	index,_	:=	range ReportDeviceInfo.Devices	{
 
 		PeripheralType := new(zmet.ZPeripheralTypes)
@@ -338,7 +336,7 @@ func MakeDeviceInfoProtobufStructure () {
 		ReportDeviceManufacturerInfo.UUID = *proto.String(strings.TrimSpace(productDetails[4]))
 		ReportDeviceInfo.Minfo = ReportDeviceManufacturerInfo
 	}else{
-		log.Println("fill info for arm")
+		log.Println("fill manufacturer info for arm...") //XXX FIXME
 	}
 	ReportDeviceSoftwareInfo	:=	new(zmet.ZInfoSW)
 	systemHost,err := host.Info()
@@ -351,10 +349,10 @@ func MakeDeviceInfoProtobufStructure () {
 
 	globalUplinkFileName := configDirname+"/global"
 	cb, err := ioutil.ReadFile(globalUplinkFileName)
-    if err != nil {
-        log.Printf("%s for %s\n", err, globalUplinkFileName)
-        log.Fatal(err)
-    }
+	if err != nil {
+		log.Printf("%s for %s\n", err, globalUplinkFileName)
+		log.Fatal(err)
+	}
 	var globalConfig types.DeviceNetworkConfig
 	if err := json.Unmarshal(cb, &globalConfig); err != nil {
 		log.Printf("%s DeviceNetworkConfig file: %s\n",err, globalUplinkFileName)
@@ -389,7 +387,7 @@ func MakeDeviceInfoProtobufStructure () {
 	SendInfoProtobufStrThroughHttp(ReportInfo)
 }
 
-func MakeHypervisorInfoProtobufStructure (){
+func PublishHypervisorInfoToZedCloud (){
 
 	var ReportInfo = &zmet.ZInfoMsg{}
 
@@ -406,9 +404,9 @@ func MakeHypervisorInfoProtobufStructure (){
 	ReportHypervisorInfo.Ncpu = *proto.Uint32(uint32(len(cpuInfo)))
 
 	ram, err := mem.VirtualMemory()
-    if err != nil {
-        log.Println(err)
-    }
+	if err != nil {
+		log.Println(err)
+	}
 	ReportHypervisorInfo.Memory	 = *proto.Uint64(uint64(ram.Total))
 	d,err := disk.Usage("/")
 	if err != nil {
@@ -436,7 +434,7 @@ func MakeHypervisorInfoProtobufStructure (){
 	SendInfoProtobufStrThroughHttp(ReportInfo)
 }
 
-func publishAiInfoToCloud(aiStatus *types.AppInstanceStatus) {
+func PublishAppInfoToCloud(aiStatus *types.AppInstanceStatus) {
 
 	var ReportInfo = &zmet.ZInfoMsg{}
 	var uuidStr string = aiStatus.UUIDandVersion.UUID.String()

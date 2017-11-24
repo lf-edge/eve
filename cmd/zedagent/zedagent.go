@@ -89,10 +89,9 @@ func handleStatusModify(statusFilename string, configArg interface{},
 	case *types.AppInstanceStatus:
 		status = statusArg.(*types.AppInstanceStatus)
 	}
-	DeviceCpuStorageStat()
-	MakeDeviceInfoProtobufStructure()
-	MakeHypervisorInfoProtobufStructure()
-	publishAiInfoToCloud(status)
+	PublishDeviceInfoToZedCloud()
+	PublishHypervisorInfoToZedCloud()
+	PublishAppInfoToCloud(status)
 }
 
 func handleStatusDelete(statusFilename string, statusArg interface{}) {
@@ -104,8 +103,7 @@ func handleStatusDelete(statusFilename string, statusArg interface{}) {
 	case *types.AppInstanceStatus:
 		status = statusArg.(*types.AppInstanceStatus)
 	}
-	DeviceCpuStorageStat()
-	MakeDeviceInfoProtobufStructure()
-	MakeHypervisorInfoProtobufStructure()
-	publishAiInfoToCloud(status)
+	PublishDeviceInfoToZedCloud()
+	PublishHypervisorInfoToZedCloud()
+	PublishAppInfoToCloud(status)
 }
