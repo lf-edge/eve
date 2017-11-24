@@ -95,6 +95,7 @@ func parseConfig(config *zconfig.EdgeDevConfig) {
 			image.Devtype			= strings.ToLower(drive.Drvtype.String())
 
 			// XXX:FIXME, to be decided after consulting with erik
+			// XXX breaks for Arm. And 4.6 path can also break.
 			if image.Target == "disk" {
 				appInstance.FixedResources.BootLoader	= "/usr/lib/xen-4.6/bin/pygrub"
 			}
@@ -226,6 +227,7 @@ func getCerts (appInstance types.AppInstanceConfig) {
 
 func writeCertConfig (image types.StorageConfig, certUrl string) {
 
+	// XXX make into const
 	var baseCertDirname		= "/var/tmp/downloader/cert.obj"
 	var configCertDirname	= baseCertDirname + "/config"
 
