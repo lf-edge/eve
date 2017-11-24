@@ -16,7 +16,7 @@ type AppNetworkConfig struct {
 	UUIDandVersion      UUIDandVersion
 	DisplayName         string
 	IsZedmanager        bool
-	OverlayNetworkList	[]OverlayNetworkConfig
+	OverlayNetworkList  []OverlayNetworkConfig
 	UnderlayNetworkList []UnderlayNetworkConfig
 }
 
