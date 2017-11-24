@@ -12,6 +12,19 @@ import (
 	"net"
 )
 
+const (
+	certBaseDirname = "/var/tmp/downloader/cert.obj"
+	certRunDirname = "/var/run/downloader/cert.obj"
+	certConfigDirname = certBaseDirname + "/config"
+	certStatusDirname = certRunDirname + "/status"
+	imgCatalogDirname = "/var/tmp/zedmanager/downloads"
+	pendingDirname = imgCatalogDirname + "/pending"
+	verifierDirname = imgCatalogDirname + "/verifier"
+	finalDirname = imgCatalogDirname + "/verified"
+	certsDownloadDirname = imgCatalogDirname + "/certs" // XXX vs. cert.obj?
+	certificateDirname = "/var/tmp/zedmanager/certs"
+)
+
 func parseConfig(config *zconfig.EdgeDevConfig) {
 
 	var appInstance = types.AppInstanceConfig{}
@@ -279,9 +292,9 @@ func writeCertConfig (image types.StorageConfig, certUrl string) {
 			ApiKey:				image.ApiKey,
 			Password:			image.Password,
 			ImageSha256:		"",
-			DownloadObjDir:		"/var/tmp/zedmanager/downloads/certs",
-			VerifiedObjDir:		"/var/tmp/zedmanager/certs",
-			RefCount:			1,
+			DownloadObjDir:		certsDownloadDirname,
+			VerifiedObjDir:		certificateDirname,
+			RefCount:		1,
 		}
 
 	bytes, err := json.Marshal(config)

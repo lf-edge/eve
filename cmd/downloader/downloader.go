@@ -4,8 +4,6 @@
 // Process input changes from a config directory containing json encoded files
 // with DownloaderConfig and compare against DownloaderStatus in the status
 // dir.
-// XXX NOT Tries to download the items in the config directory repeatedly until
-// there is a complete download. (XXX detect eof/short file or not?)
 // ZedManager can stop the download by removing from config directory.
 //
 // Input directory with config (URL, refcount, maxLength, dstDir)
@@ -41,6 +39,23 @@ import (
 	"time"
 )
 
+const (
+	baseDirname = "/var/tmp/downloader"
+	runDirname = "/var/run/downloader"
+	configDirname = baseDirname + "/config"
+	statusDirname = runDirname + "/status"
+	certBaseDirname = "/var/tmp/downloader/cert.obj"
+	certRunDirname = "/var/run/downloader/cert.obj"
+	certConfigDirname = certBaseDirname + "/config"
+	certStatusDirname = certRunDirname + "/status"
+	imgCatalogDirname = "/var/tmp/zedmanager/downloads"
+	pendingDirname = imgCatalogDirname + "/pending"
+	verifierDirname = imgCatalogDirname + "/verifier"
+	finalDirname = imgCatalogDirname + "/verified"
+	certificateDirname = "/var/tmp/zedmanager/certs"
+)
+
+// XXX remove global variables
 var (
 	dCtx *zedUpload.DronaCtx
 )
@@ -60,14 +75,7 @@ func main() {
 
 // Object handlers
 func checkImageUpdates() {
-
-	baseDirname := "/var/tmp/downloader"
-	runDirname := "/var/run/downloader"
-
 	sanitizeDirs(baseDirname, runDirname)
-
-	configDirname := baseDirname + "/config"
-	statusDirname := runDirname + "/status"
 
 	fileChanges := make(chan string)
 
@@ -86,23 +94,18 @@ func checkImageUpdates() {
 }
 
 func handleCertUpdates() {
+	sanitizeDirs(certBaseDirname, certRunDirname)
 
-	baseDirname := "/var/tmp/downloader/cert.obj"
-	runDirname := "/var/run/downloader/cert.obj"
-
-	sanitizeDirs(baseDirname, runDirname)
-
-	configDirname := baseDirname + "/config"
-	statusDirname := runDirname + "/status"
 	fileChanges := make(chan string)
 
-	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
+	go watch.WatchConfigStatus(certConfigDirname, certStatusDirname,
+		fileChanges)
 
 	for {
 		change := <-fileChanges
 
 		watch.HandleConfigStatusEvent(change,
-			configDirname, statusDirname,
+			certConfigDirname, certStatusDirname,
 			&types.DownloaderConfig{},
 			&types.DownloaderStatus{},
 			handleCertObjCreate,
@@ -253,7 +256,7 @@ func processCertObject(config types.DownloaderConfig, statusFilename string) {
 	if status.State == types.DOWNLOADED {
 
 		var srcFile string
-		var dstFile string = "/var/tmp/zedmanager/certs"
+		var dstFile string = certificateDirname
 
 		if config.ImageSha256 != "" {
 			srcFile = config.DownloadObjDir + "/pending" +
@@ -348,7 +351,6 @@ func handleModify(config types.DownloaderConfig,
 	status types.DownloaderStatus, statusFilename string) {
 
 	locDirname := config.DownloadObjDir
-
 	log.Printf("handleModify(%v) for %s\n",
 		config.Safename, config.DownloadURL)
 
@@ -466,20 +468,8 @@ var globalStatus types.GlobalDownloadStatus
 var globalStatusFilename string
 
 func downloaderInit() {
-
-	baseDirname := "/var/tmp/downloader"
-	runDirname := "/var/run/downloader"
-
-	configDirname := baseDirname + "/config"
-	statusDirname := runDirname + "/status"
-
 	configFilename := configDirname + "/global"
 	statusFilename := statusDirname + "/global"
-
-	locDirname := "/var/tmp/zedmanager/downloads/"
-
-	pendingDirname := locDirname + "/pending"
-	verifierDirname := locDirname + "/verifier"
 
 	if _, err := os.Stat(baseDirname); err != nil {
 		if err := os.Mkdir(baseDirname, 0700); err != nil {
@@ -505,8 +495,8 @@ func downloaderInit() {
 		}
 	}
 
-	if _, err := os.Stat(locDirname); err != nil {
-		if err := os.Mkdir(locDirname, 0700); err != nil {
+	if _, err := os.Stat(imgCatalogDirname); err != nil {
+		if err := os.Mkdir(imgCatalogDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -554,7 +544,7 @@ func downloaderInit() {
 	// XXX how do we find out when verifier cleans up duplicates etc?
 	// We read /var/tmp/zedmanager/downloads/* and determine how much space
 	// is used. Place in GlobalDownloadStatus. Calculate remaining space.
-	totalUsed := sizeFromDir(locDirname)
+	totalUsed := sizeFromDir(imgCatalogDirname)
 	globalStatus.UsedSpace = uint((totalUsed + 1023) / 1024)
 	updateRemainingSpace()
 
@@ -569,35 +559,35 @@ func downloaderInit() {
 	dCtx = ctx
 }
 
-func sanitizeDirs(baseDirname string, runDirname string) {
+func sanitizeDirs(baseDir string, runDir string) {
 
-	configDirname := baseDirname + "/config"
-	statusDirname := runDirname + "/status"
+	configDir := baseDir + "/config"
+	statusDir := runDir + "/status"
 
-	if _, err := os.Stat(baseDirname); err != nil {
+	if _, err := os.Stat(baseDir); err != nil {
 
-		if err := os.MkdirAll(baseDirname, 0755); err != nil {
+		if err := os.MkdirAll(baseDir, 0755); err != nil {
 			log.Fatal(err)
 		}
 	}
 
-	if _, err := os.Stat(runDirname); err != nil {
+	if _, err := os.Stat(runDir); err != nil {
 
-		if err := os.MkdirAll(runDirname, 0755); err != nil {
+		if err := os.MkdirAll(runDir, 0755); err != nil {
 			log.Fatal(err)
 		}
 	}
 
-	if _, err := os.Stat(configDirname); err != nil {
+	if _, err := os.Stat(configDir); err != nil {
 
-		if err := os.MkdirAll(configDirname, 0755); err != nil {
+		if err := os.MkdirAll(configDir, 0755); err != nil {
 			log.Fatal(err)
 		}
 	}
 
-	if _, err := os.Stat(statusDirname); err != nil {
+	if _, err := os.Stat(statusDir); err != nil {
 
-		if err := os.MkdirAll(statusDirname, 0755); err != nil {
+		if err := os.MkdirAll(statusDir, 0755); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -687,11 +677,10 @@ func writeFile(sFilename string, dFilename string) {
 
 // cloud storage interface functions/APIs
 
-// XXX Should we set        --limit-rate=100k
-// XXX Can we safely try a continue?
-// XXX wget seems to have no way to limit download size for single file!
 // XXX temporary options since and wierd free.fr dns behavior with AAAA and A.
 // Added  -4 --no-check-certificate
+// XXX switch to curl? with --limit-rate 100k -C -
+// XXX should we use --cacart? Would assume we know the root CA.
 func doWget(url string, destFilename string) error {
 
 	cmd := "wget"
@@ -723,9 +712,8 @@ func handleSyncOp(syncOp zedUpload.SyncOpType,
 
 	var err error
 	var locFilename string
-
-	locDirname := "/var/tmp/downloader/downloads"
-
+	
+	locDirname := imgCatalogDirname
 	if config.DownloadObjDir != "" {
 		locDirname = config.DownloadObjDir
 	}
@@ -806,8 +794,7 @@ func handleSyncOpResponse(config types.DownloaderConfig,
 	status *types.DownloaderStatus, statusFilename string,
 	err error) {
 
-	locDirname := "/var/tmp/downloader/downloads"
-
+	locDirname := imgCatalogDirname
 	if config.DownloadObjDir != "" {
 		locDirname = config.DownloadObjDir
 	}

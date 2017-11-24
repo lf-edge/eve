@@ -133,13 +133,15 @@ type StorageConfig struct {
 }
 
 type StorageStatus struct {
-	DownloadURL      string
-	ImageSha256      string  // sha256 of immutable image
-	State            SwState // DOWNLOADED etc
-	HasDownloaderRef bool    // Reference against downloader to clean up
-	HasVerifierRef   bool    // Reference against verifier to clean up
-	Error            string  // Download or verify error
-	ErrorTime        time.Time
+	DownloadURL        string
+	ImageSha256        string  // sha256 of immutable image
+	Target		   string  // Default "" is interpreted as "disk"
+	State              SwState // DOWNLOADED etc
+	HasDownloaderRef   bool    // Reference against downloader to clean up
+	HasVerifierRef     bool    // Reference against verifier to clean up
+	ActiveFileLocation string  // Location of filestystem
+	Error              string  // Download or verify error
+	ErrorTime          time.Time
 }
 
 // The Intermediate can be a byte sequence of PEM certs

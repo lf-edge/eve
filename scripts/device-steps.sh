@@ -389,6 +389,7 @@ memory=`awk '/MemTotal/ {print $2}' /proc/meminfo`
 storage=`df -kl --output=size / | tail -n +2| awk '{print $1}'`
 cpus=`nproc --all`
 # Try dmidecode which should work on Intel
+# XXX or look for /sys/firmware/dmi
 manufacturer=`dmidecode -s system-manufacturer`
 if [ "$manufacturer" != "" ]; then
     productName=`dmidecode -s system-product-name`

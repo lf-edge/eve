@@ -73,11 +73,6 @@ type DeviceNetworkConfig struct {
 	Uplink []string // ifname; should have multiple
 }
 
-// Old version
-type DeviceNetworkConfigV1 struct {
-	Uplink string
-}
-
 type DeviceNetworkStatus struct {
 	Uplink      []string // ifname; should have multiple
 	UplinkAddrs []net.IP

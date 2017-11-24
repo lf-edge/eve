@@ -14,12 +14,9 @@ import (
 )
 
 // Keeping status in /var/run to be clean after a crash/reboot
-var (
-	baseDirname              = "/var/tmp/zedmanager"
-	runDirname               = "/var/run/zedmanager"
-	zedmanagerConfigDirname  = baseDirname + "/config"
-	zedmanagerStatusDirname  = runDirname + "/status"
-	zedagentConfigDirname    = "/var/tmp/zedagent/config"
+const (
+	zedmanagerConfigDirname  = "/var/tmp/zedmanager/config"
+	zedmanagerStatusDirname  = "/var/run/zedmanager/status"
 	downloaderConfigDirname  = "/var/tmp/downloader/config"
 	downloaderStatusDirname = "/var/run/downloader/status"
 )
@@ -31,7 +28,6 @@ func main() {
 	watch.CleanupRestarted("zedagent")
 
 	dirs := []string{
-		zedagentConfigDirname,
 		zedmanagerConfigDirname,
 		zedmanagerStatusDirname,
 		downloaderConfigDirname,
