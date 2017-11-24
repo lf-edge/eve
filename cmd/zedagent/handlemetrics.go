@@ -89,7 +89,6 @@ func GetDeviceManufacturerInfo () (string) {
 func ExecuteXentopCmd() {
 	count := 0
 	counter := 0
-	//app0 := "sudo"
 	arg1 := "xentop"
 	arg2 := "-b"
 	arg3 := "-d"
