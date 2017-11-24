@@ -34,24 +34,23 @@ func parseConfig(config *zconfig.EdgeDevConfig) {
 
 	Apps := config.GetApps()
 
-
 	for _,cfgApp :=	range Apps {
 
 
 		log.Printf("%v\n", cfgApp)
 
-		appInstance.UUIDandVersion.UUID,_		= uuid.FromString(cfgApp.Uuidandversion.Uuid)
-		appInstance.UUIDandVersion.Version		= cfgApp.Uuidandversion.Version
-		appInstance.DisplayName					= cfgApp.Displayname
-		appInstance.Activate					= cfgApp.Activate
+		appInstance.UUIDandVersion.UUID,_ = uuid.FromString(cfgApp.Uuidandversion.Uuid)
+		appInstance.UUIDandVersion.Version = cfgApp.Uuidandversion.Version
+		appInstance.DisplayName = cfgApp.Displayname
+		appInstance.Activate = cfgApp.Activate
 
-		appInstance.FixedResources.Kernel		= cfgApp.Fixedresources.Kernel
-		appInstance.FixedResources.BootLoader	= cfgApp.Fixedresources.Bootloader //XXX we will overwrite this for now...
-		appInstance.FixedResources.Ramdisk		= cfgApp.Fixedresources.Ramdisk
-		appInstance.FixedResources.MaxMem		= int(cfgApp.Fixedresources.Maxmem)
-		appInstance.FixedResources.Memory		= int(cfgApp.Fixedresources.Memory)
-		appInstance.FixedResources.RootDev		= cfgApp.Fixedresources.Rootdev
-		appInstance.FixedResources.VCpus		= int(cfgApp.Fixedresources.Vcpus)
+		appInstance.FixedResources.Kernel = cfgApp.Fixedresources.Kernel
+		appInstance.FixedResources.BootLoader = cfgApp.Fixedresources.Bootloader //XXX we will overwrite this for now...
+		appInstance.FixedResources.Ramdisk = cfgApp.Fixedresources.Ramdisk
+		appInstance.FixedResources.MaxMem = int(cfgApp.Fixedresources.Maxmem)
+		appInstance.FixedResources.Memory = int(cfgApp.Fixedresources.Memory)
+		appInstance.FixedResources.RootDev = cfgApp.Fixedresources.Rootdev
+		appInstance.FixedResources.VCpus = int(cfgApp.Fixedresources.Vcpus)
 
 		appInstance.StorageConfigList = make([]types.StorageConfig,len(cfgApp.Drives))
 
@@ -67,30 +66,30 @@ func parseConfig(config *zconfig.EdgeDevConfig) {
 				if drive.Image != nil &&
 					drive.Image.DsId == ds.Id {
 
-					found					= true
-					image.DownloadURL		= ds.Fqdn+"/"+ds.Dpath+"/"+drive.Image.Name
-					image.TransportMethod	= ds.DType.String()
-					image.ApiKey			= ds.ApiKey
-					image.Password			= ds.Password
-					image.Dpath				= ds.Dpath
+					found = true
+					image.DownloadURL = ds.Fqdn+"/"+ds.Dpath+"/"+drive.Image.Name
+					image.TransportMethod = ds.DType.String()
+					image.ApiKey = ds.ApiKey
+					image.Password = ds.Password
+					image.Dpath = ds.Dpath
 					break
 				}
 			}
 
 			if found == false { continue }
 
-			image.Format			= strings.ToLower(drive.Image.Iformat.String())
-			image.MaxSize			= uint(drive.Maxsize)
-			image.ReadOnly			= drive.Readonly
-			image.Preserve			= drive.Preserve
-			image.Target			= strings.ToLower(drive.Target.String())
-			image.Devtype			= strings.ToLower(drive.Drvtype.String())
-			image.ImageSignature	= drive.Image.Siginfo.Signature
-			image.ImageSha256		= drive.Image.Sha256
+			image.Format = strings.ToLower(drive.Image.Iformat.String())
+			image.MaxSize = uint(drive.Maxsize)
+			image.ReadOnly = drive.Readonly
+			image.Preserve = drive.Preserve
+			image.Target = strings.ToLower(drive.Target.String())
+			image.Devtype = strings.ToLower(drive.Drvtype.String())
+			image.ImageSignature = drive.Image.Siginfo.Signature
+			image.ImageSha256 = drive.Image.Sha256
 
 			// copy the certificates
 			if drive.Image.Siginfo.Signercerturl != "" {
-				image.SignatureKey		= drive.Image.Siginfo.Signercerturl
+				image.SignatureKey = drive.Image.Siginfo.Signercerturl
 			}
 
 			// XXX:FIXME certificate should be of variable length
@@ -100,8 +99,8 @@ func parseConfig(config *zconfig.EdgeDevConfig) {
 			// as proper DataStore Entries
 
 			if drive.Image.Siginfo.Intercertsurl != "" {
-				image.CertificateChain		= make([]string, 1)
-				image.CertificateChain[0]	= drive.Image.Siginfo.Intercertsurl
+				image.CertificateChain = make([]string, 1)
+				image.CertificateChain[0] = drive.Image.Siginfo.Intercertsurl
 			}
 
 			if image.Target == "disk" {
@@ -113,7 +112,7 @@ func parseConfig(config *zconfig.EdgeDevConfig) {
 				}else {
 					machineArch = fmt.Sprintf("%s", stdout)
 					if strings.Contains(strings.TrimSpace(machineArch), "x86") {
-						appInstance.FixedResources.BootLoader   = "/usr/bin/pygrub"
+						appInstance.FixedResources.BootLoader = "/usr/bin/pygrub"
 
 					}
 				}
@@ -153,23 +152,23 @@ func parseConfig(config *zconfig.EdgeDevConfig) {
 							var matx int = 0
 							for _,match := range acl.Matches {
 								aceMatchDetails := new(types.ACEMatch)
-								aceMatchDetails.Type		= match.Type
-								aceMatchDetails.Value		= match.Value
-								aceDetails.Matches[matx]	= *aceMatchDetails
+								aceMatchDetails.Type = match.Type
+								aceMatchDetails.Value = match.Value
+								aceDetails.Matches[matx] = *aceMatchDetails
 								matx ++
 							}
 							var actx int = 0
 							for _,action := range acl.Actions {
 								aceActionDetails := new(types.ACEAction)
-								aceActionDetails.Limit		= action.Limit
-								aceActionDetails.LimitRate	=  int(action.Limitrate)
-								aceActionDetails.LimitUnit	=  action.Limitunit
-								aceActionDetails.LimitBurst	= int(action.Limitburst)
+								aceActionDetails.Limit = action.Limit
+								aceActionDetails.LimitRate = int(action.Limitrate)
+								aceActionDetails.LimitUnit = action.Limitunit
+								aceActionDetails.LimitBurst = int(action.Limitburst)
 								// XXX:FIXME aceActionDetails.Drop = <TBD>
 								aceDetails.Actions[actx] = *aceActionDetails
 								actx ++
 							}
-							underlayNetworkDetails.ACLs[acx] =  *aceDetails
+							underlayNetworkDetails.ACLs[acx] = *aceDetails
 							acx ++
 						}
 						appInstance.UnderlayNetworkList[ulnetx] = *underlayNetworkDetails
@@ -183,7 +182,7 @@ func parseConfig(config *zconfig.EdgeDevConfig) {
 						for _,acl := range interfaces.Acls {
 
 							aceDetails := new(types.ACE)
-							aceDetails.Matches =  make([]types.ACEMatch,len(acl.Matches))
+							aceDetails.Matches = make([]types.ACEMatch,len(acl.Matches))
 							aceDetails.Actions = make([]types.ACEAction,len(acl.Actions))
 							var ovmatx int = 0
 							for _,match := range acl.Matches {
@@ -197,13 +196,13 @@ func parseConfig(config *zconfig.EdgeDevConfig) {
 							for _,action := range acl.Actions {
 								aceActionDetails := new(types.ACEAction)
 								aceActionDetails.Limit = action.Limit
-								aceActionDetails.LimitRate =  int(action.Limitrate)
-								aceActionDetails.LimitUnit =  action.Limitunit
+								aceActionDetails.LimitRate = int(action.Limitrate)
+								aceActionDetails.LimitUnit = action.Limitunit
 								aceActionDetails.LimitBurst = int(action.Limitburst)
 								aceDetails.Actions[ovactx] = *aceActionDetails
 								ovactx ++
 							}
-							overlayNetworkDetails.ACLs[ovacx] =  *aceDetails
+							overlayNetworkDetails.ACLs[ovacx] = *aceDetails
 							ovacx ++
 						}
 						overlayNetworkDetails.EIDConfigDetails.EID = net.ParseIP(interfaces.Addr)
@@ -298,17 +297,17 @@ func writeCertConfig (image types.StorageConfig, certUrl string) {
 	// should be coming from Drive
 	// also the sha for the cert should be set
 	var config = &types.DownloaderConfig {
-			Safename:			safename,
-			DownloadURL:		certUrl,
-			MaxSize:			image.MaxSize,
-			TransportMethod:	image.TransportMethod,
-			Dpath:				"zededa-cert-repo",
-			ApiKey:				image.ApiKey,
-			Password:			image.Password,
-			ImageSha256:		"",
-			DownloadObjDir:		certsDownloadDirname,
-			VerifiedObjDir:		certificateDirname,
-			RefCount:		1,
+			Safename: safename,
+			DownloadURL: certUrl,
+			MaxSize: image.MaxSize,
+			TransportMethod: image.TransportMethod,
+			Dpath: "zededa-cert-repo",
+			ApiKey: image.ApiKey,
+			Password: image.Password,
+			ImageSha256: "",
+			DownloadObjDir: certsDownloadDirname,
+			VerifiedObjDir: certificateDirname,
+			RefCount: 1,
 		}
 
 	bytes, err := json.Marshal(config)
