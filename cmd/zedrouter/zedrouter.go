@@ -136,15 +136,7 @@ func handleInit(configFilename string, statusFilename string,
 	if err := json.Unmarshal(cb, &globalConfig); err != nil {
 		log.Printf("%s DeviceNetworkConfig file: %s\n",
 			err, configFilename)
-		// Try old format
-		var globalConfigV1 types.DeviceNetworkConfigV1
-		if err := json.Unmarshal(cb, &globalConfigV1); err != nil {
-			log.Printf("%s DeviceNetworkConfigV1 file: %s\n",
-				err, configFilename)
-			log.Fatal(err)
-		}
-		globalConfig.Uplink = make([]string, 1)
-		globalConfig.Uplink[0] = globalConfigV1.Uplink
+		log.Fatal(err)
 	}
 	for _, u := range globalConfig.Uplink {
 		link, err := netlink.LinkByName(u)
