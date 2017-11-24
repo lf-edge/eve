@@ -288,6 +288,7 @@ func writeCertConfig (image types.StorageConfig, certUrl string) {
 		return
 	}
 
+	// XXX make into const
 	var baseCertDirname		= "/var/tmp/downloader/cert.obj"
 	var configCertDirname	= baseCertDirname + "/config"
 
