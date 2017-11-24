@@ -42,16 +42,26 @@ func metricsTimerTask() {
 	}
 }
 
-func ExecuteXlInfoCmd () (string) {
+func ExecuteXlInfoCmd () (map[string]string) {
 	xlCmd := exec.Command("xl","info")
 	stdout, err := xlCmd.Output()
 	if err != nil {
 		log.Println(err.Error())
 	}
 	xlInfo := fmt.Sprintf("%s",stdout)
-	return xlInfo
+	splitXlInfo := strings.Split(xlInfo, "\n")
+
+    dict := make(map[string]string,len(splitXlInfo)-1)
+    for _, str := range splitXlInfo {
+		res := strings.SplitN(str, ":",2)
+		if len(res) == 2 {
+			dict[strings.TrimSpace(res[0])] = strings.TrimSpace(res[1])
+		}
+	}
+	return dict
 }
-func GetDeviceManufacturerInfo () (string) {
+func GetDeviceManufacturerInfo () (string,string,string,string,string) {
+
 	dmidecodeNameCmd := exec.Command("dmidecode","-s","system-product-name")
 	pname, err := dmidecodeNameCmd.Output()
 	if err != nil {
@@ -77,13 +87,12 @@ func GetDeviceManufacturerInfo () (string) {
 	if err != nil {
 		log.Println(err.Error())
 	}
-	productManufacturer := fmt.Sprintf("%s",manufacturer)
-	productName := fmt.Sprintf("%s",pname)
-	productVersion := fmt.Sprintf("%s",version)
-	productSerial := fmt.Sprintf("%s",serial)
-	productUuid := fmt.Sprintf("%s",uuid)
-	wholeProductInfo := fmt.Sprint(productManufacturer +"/"+productName+"/"+productVersion+"/"+productSerial+"/"+productUuid)
-	return wholeProductInfo
+	productManufacturer := string(manufacturer)
+	productName := string(pname)
+	productVersion := string(version)
+	productSerial := string(serial)
+	productUuid := string(uuid)
+	return productManufacturer,productName,productVersion,productSerial,productUuid
 }
 
 func ExecuteXentopCmd() {
@@ -199,44 +208,46 @@ func PublishMetricsToZedCloud() {
 		cpuDetail,err := cpu.Times(true)
 		if err != nil {
 			log.Println("error while fetching cpu related time: ",err)
-		}
-		for _,cpuStat := range cpuDetail {
-			ReportDeviceMetric.Cpu.Usr = cpuStat.User
-			ReportDeviceMetric.Cpu.Nice = cpuStat.Nice
-			ReportDeviceMetric.Cpu.System = cpuStat.System
-			ReportDeviceMetric.Cpu.Io = cpuStat.Irq
-			ReportDeviceMetric.Cpu.Irq = cpuStat.Irq
-			ReportDeviceMetric.Cpu.Soft = cpuStat.Softirq
-			ReportDeviceMetric.Cpu.Steal = cpuStat.Steal
-			ReportDeviceMetric.Cpu.Guest = cpuStat.Guest
-			ReportDeviceMetric.Cpu.Idle = cpuStat.Idle
+		}else{
+			for _,cpuStat := range cpuDetail {
+				ReportDeviceMetric.Cpu.Usr = cpuStat.User
+				ReportDeviceMetric.Cpu.Nice = cpuStat.Nice
+				ReportDeviceMetric.Cpu.System = cpuStat.System
+				ReportDeviceMetric.Cpu.Io = cpuStat.Irq
+				ReportDeviceMetric.Cpu.Irq = cpuStat.Irq
+				ReportDeviceMetric.Cpu.Soft = cpuStat.Softirq
+				ReportDeviceMetric.Cpu.Steal = cpuStat.Steal
+				ReportDeviceMetric.Cpu.Guest = cpuStat.Guest
+				ReportDeviceMetric.Cpu.Idle = cpuStat.Idle
+			}
 		}
 		//memory related info for dom0...XXX later we will add for domU also..
 		ram, err := mem.VirtualMemory()
 		if err != nil {
 			log.Println(err)
+		}else {
+			ReportDeviceMetric.Memory.UsedMem = uint32(ram.Used)
+			ReportDeviceMetric.Memory.AvailMem =uint32(ram.Available)
+			ReportDeviceMetric.Memory.UsedPercentage = ram.UsedPercent
+			ReportDeviceMetric.Memory.AvailPercentage = (100.0-(ram.UsedPercent))
 		}
-		ReportDeviceMetric.Memory.UsedMem = uint32(ram.Used)
-		ReportDeviceMetric.Memory.AvailMem =uint32(ram.Available)
-		ReportDeviceMetric.Memory.UsedPercentage = ram.UsedPercent
-		ReportDeviceMetric.Memory.AvailPercentage = (100.0-(ram.UsedPercent))
-
 		//find network related info...
 		network,err := net.IOCounters(true)
 		if err != nil {
 			log.Println(err)
-		}
-		ReportDeviceMetric.Network = make([]*zmet.NetworkMetric, len(network))
-		for netx,networkInfo := range network {
-			networkDetails := new(zmet.NetworkMetric)
-			networkDetails.IName = networkInfo.Name
-			networkDetails.TxBytes = networkInfo.PacketsSent
-			networkDetails.RxBytes = networkInfo.PacketsRecv
-			networkDetails.TxDrops = networkInfo.Dropout
-			networkDetails.RxDrops = networkInfo.Dropin
-			//networkDetails.TxRate = //XXX TBD
-			//networkDetails.RxRate = //XXX TBD
-			ReportDeviceMetric.Network[netx] = networkDetails
+		}else {
+			ReportDeviceMetric.Network = make([]*zmet.NetworkMetric, len(network))
+			for netx,networkInfo := range network {
+				networkDetails := new(zmet.NetworkMetric)
+				networkDetails.IName = networkInfo.Name
+				networkDetails.TxBytes = networkInfo.PacketsSent
+				networkDetails.RxBytes = networkInfo.PacketsRecv
+				networkDetails.TxDrops = networkInfo.Dropout
+				networkDetails.RxDrops = networkInfo.Dropin
+				//networkDetails.TxRate = //XXX TBD
+				//networkDetails.RxRate = //XXX TBD
+				ReportDeviceMetric.Network[netx] = networkDetails
+			}
 		}
 		ReportMetrics.MetricContent = new(zmet.ZMetricMsg_Dm)
 		if x, ok := ReportMetrics.GetMetricContent().(*zmet.ZMetricMsg_Dm); ok {
@@ -259,80 +270,60 @@ func PublishDeviceInfoToZedCloud () {
 
 	ReportDeviceInfo := new(zmet.ZInfoDevice)
 
+	var machineArch string
 	machineCmd := exec.Command("uname","-m")
 	stdout, err := machineCmd.Output()
 	if err != nil {
 		log.Println(err.Error())
+	}else {
+		machineArch = fmt.Sprintf("%s", stdout)
+		ReportDeviceInfo.MachineArch = *proto.String(strings.TrimSpace(machineArch))
 	}
-	machineArch := fmt.Sprintf("%s", stdout)
-	ReportDeviceInfo.MachineArch = *proto.String(strings.TrimSpace(machineArch))
 
 	cpuCmd := exec.Command("uname","-p")
 	stdout, err = cpuCmd.Output()
 	if err != nil {
 		log.Println(err.Error())
+	}else {
+		cpuArch := fmt.Sprintf("%s", stdout)
+		ReportDeviceInfo.CpuArch	=	*proto.String(strings.TrimSpace(cpuArch))
 	}
-	cpuArch := fmt.Sprintf("%s", stdout)
-	ReportDeviceInfo.CpuArch	=	*proto.String(strings.TrimSpace(cpuArch))
 
 	platformCmd := exec.Command("uname","-p")
 	stdout, err = platformCmd.Output()
 	if err != nil {
 		log.Println(err.Error())
+	}else {
+		platform := fmt.Sprintf("%s", stdout)
+		ReportDeviceInfo.Platform = *proto.String(strings.TrimSpace(platform))
 	}
-	platform := fmt.Sprintf("%s", stdout)
-	ReportDeviceInfo.Platform = *proto.String(strings.TrimSpace(platform))
 
-	xlInfo := ExecuteXlInfoCmd()
-	splitXlInfo := strings.Split(xlInfo, "\n")
-
-	cpus := strings.Split(splitXlInfo[4],":")[1]
-
-	ncpus,err := strconv.ParseUint(strings.TrimSpace(cpus),10,32)
+	dict := ExecuteXlInfoCmd()
+	ncpus,err := strconv.ParseUint(dict["nr_cpus"],10,32)
 	if err != nil {
 		log.Println("error while converting ncpus to int: ",err)
+	} else {
+		ReportDeviceInfo.Ncpu = *proto.Uint32(uint32(ncpus))
 	}
-	ReportDeviceInfo.Ncpu = *proto.Uint32(uint32(ncpus))
-
-	virtualMem := strings.Split(splitXlInfo[12],":")[1]
-	totalMemory,_ := strconv.ParseUint(strings.TrimSpace(virtualMem),10,64)
+	totalMemory,_ := strconv.ParseUint(dict["total_memory"],10,64)
 	ReportDeviceInfo.Memory = *proto.Uint64(uint64(totalMemory))
 
 	d,err := disk.Usage("/")
 	if err != nil {
 		log.Println(err)
-	}
-	ReportDeviceInfo.Storage = *proto.Uint64(uint64(d.Total))
-
-	ReportDeviceInfo.Devices = make([]*zmet.ZinfoPeripheral,1)
-	ReportDevicePeripheralInfo := new(zmet.ZinfoPeripheral)
-
-	for	index,_	:=	range ReportDeviceInfo.Devices	{
-
-		PeripheralType := new(zmet.ZPeripheralTypes)
-		ReportDevicePeripheralManufacturerInfo := new(zmet.ZInfoManufacturer)
-		*PeripheralType = zmet.ZPeripheralTypes_ZpNone
-		ReportDevicePeripheralInfo.Ztype = *PeripheralType
-		ReportDevicePeripheralInfo.Pluggable = *proto.Bool(false)
-		// XXX report real data from /proc and dmiinfo akin to device-steps
-		ReportDevicePeripheralManufacturerInfo.Manufacturer = *proto.String(" ")
-		ReportDevicePeripheralManufacturerInfo.ProductName = *proto.String(" ")
-		ReportDevicePeripheralManufacturerInfo.Version = *proto.String(" ")
-		ReportDevicePeripheralManufacturerInfo.SerialNumber = *proto.String(" ")
-		ReportDevicePeripheralManufacturerInfo.UUID = *proto.String(" ")
-		ReportDevicePeripheralInfo.Minfo = ReportDevicePeripheralManufacturerInfo
-		ReportDeviceInfo.Devices[index] = ReportDevicePeripheralInfo
+	}else {
+		ReportDeviceInfo.Storage = *proto.Uint64(uint64(d.Total))
 	}
 
 	ReportDeviceManufacturerInfo := new(zmet.ZInfoManufacturer)
 	if strings.Contains(machineArch, "x86"){
-		manufacturerDetails := GetDeviceManufacturerInfo()
-		productDetails := strings.Split(manufacturerDetails, "/")
-		ReportDeviceManufacturerInfo.Manufacturer = *proto.String(strings.TrimSpace(productDetails[0]))
-		ReportDeviceManufacturerInfo.ProductName = *proto.String(strings.TrimSpace(productDetails[1]))
-		ReportDeviceManufacturerInfo.Version = *proto.String(strings.TrimSpace(productDetails[2]))
-		ReportDeviceManufacturerInfo.SerialNumber = *proto.String(strings.TrimSpace(productDetails[3]))
-		ReportDeviceManufacturerInfo.UUID = *proto.String(strings.TrimSpace(productDetails[4]))
+
+		productManufacturer,productName,productVersion,productSerial,productUuid := GetDeviceManufacturerInfo()
+		ReportDeviceManufacturerInfo.Manufacturer = *proto.String(strings.TrimSpace(productManufacturer))
+		ReportDeviceManufacturerInfo.ProductName = *proto.String(strings.TrimSpace(productName))
+		ReportDeviceManufacturerInfo.Version = *proto.String(strings.TrimSpace(productVersion))
+		ReportDeviceManufacturerInfo.SerialNumber = *proto.String(strings.TrimSpace(productSerial))
+		ReportDeviceManufacturerInfo.UUID = *proto.String(strings.TrimSpace(productUuid))
 		ReportDeviceInfo.Minfo = ReportDeviceManufacturerInfo
 	}else{
 		log.Println("fill manufacturer info for arm...") //XXX FIXME
@@ -355,23 +346,24 @@ func PublishDeviceInfoToZedCloud () {
 	var globalConfig types.DeviceNetworkConfig
 	if err := json.Unmarshal(cb, &globalConfig); err != nil {
 		log.Printf("%s DeviceNetworkConfig file: %s\n",err, globalUplinkFileName)
-	}
-	//read interface name from library
-	//and match it with uplink name from 
-	//global config...
-	interfaces,_ := net.Interfaces()
-    ReportDeviceInfo.Network = make([]*zmet.ZInfoNetwork,  len(globalConfig.Uplink))
-	for index, uplink := range globalConfig.Uplink {
-		for	_,interfaceDetail := range interfaces {
-			if uplink == interfaceDetail.Name {
-				ReportDeviceNetworkInfo := new(zmet.ZInfoNetwork)
-				for	ip := 0;ip < len(interfaceDetail.Addrs) - 1;ip++ {
-					ReportDeviceNetworkInfo.IPAddr = *proto.String(interfaceDetail.Addrs[0].Addr)
-				}
+	}else {
+		//read interface name from library
+		//and match it with uplink name from
+		//global config...
+		interfaces,_ := net.Interfaces()
+		ReportDeviceInfo.Network = make([]*zmet.ZInfoNetwork,  len(globalConfig.Uplink))
+		for index, uplink := range globalConfig.Uplink {
+			for	_,interfaceDetail := range interfaces {
+				if uplink == interfaceDetail.Name {
+					ReportDeviceNetworkInfo := new(zmet.ZInfoNetwork)
+					for	ip := 0;ip < len(interfaceDetail.Addrs) - 1;ip++ {
+						ReportDeviceNetworkInfo.IPAddr = *proto.String(interfaceDetail.Addrs[0].Addr)
+					}
 
-				ReportDeviceNetworkInfo.MacAddr	 = *proto.String(interfaceDetail.HardwareAddr)
-				ReportDeviceNetworkInfo.DevName	 = *proto.String(interfaceDetail.Name)
-				ReportDeviceInfo.Network[index]	 = ReportDeviceNetworkInfo
+					ReportDeviceNetworkInfo.MacAddr	 = *proto.String(interfaceDetail.HardwareAddr)
+					ReportDeviceNetworkInfo.DevName	 = *proto.String(interfaceDetail.Name)
+					ReportDeviceInfo.Network[index]	 = ReportDeviceNetworkInfo
+				}
 			}
 		}
 	}
@@ -399,25 +391,25 @@ func PublishHypervisorInfoToZedCloud (){
 	cpuInfo,err := cpu.Info()
 	if err != nil {
 		log.Println(err)
+	}else {
+		ReportHypervisorInfo.Ncpu = *proto.Uint32(uint32(len(cpuInfo)))
 	}
-	ReportHypervisorInfo.Ncpu = *proto.Uint32(uint32(len(cpuInfo)))
-
 	ram, err := mem.VirtualMemory()
 	if err != nil {
 		log.Println(err)
+	}else {
+		ReportHypervisorInfo.Memory	 = *proto.Uint64(uint64(ram.Total))
 	}
-	ReportHypervisorInfo.Memory	 = *proto.Uint64(uint64(ram.Total))
 	d,err := disk.Usage("/")
 	if err != nil {
 		log.Println(err)
+	}else {
+		ReportHypervisorInfo.Storage = *proto.Uint64(uint64(d.Total))
 	}
-	ReportHypervisorInfo.Storage = *proto.Uint64(uint64(d.Total))
-
 	ReportDeviceSoftwareInfo := new(zmet.ZInfoSW)
-	xlInfo := ExecuteXlInfoCmd()
-	splitXlInfo := strings.Split(xlInfo, "\n")
-	xenVersion := strings.Split(splitXlInfo[21],":")[1]
-	ReportDeviceSoftwareInfo.SwVersion = *proto.String(xenVersion)
+
+	dict := ExecuteXlInfoCmd()
+	ReportDeviceSoftwareInfo.SwVersion = *proto.String(dict["xen_version"])
 
 	ReportDeviceSoftwareInfo.SwHash = *proto.String(" ")
 	ReportHypervisorInfo.Software = ReportDeviceSoftwareInfo
@@ -433,7 +425,7 @@ func PublishHypervisorInfoToZedCloud (){
 	SendInfoProtobufStrThroughHttp(ReportInfo)
 }
 
-func PublishAppInfoToCloud(aiStatus *types.AppInstanceStatus) {
+func PublishAppInfoToZedCloud(aiStatus *types.AppInstanceStatus) {
 
 	var ReportInfo = &zmet.ZInfoMsg{}
 	var uuidStr string = aiStatus.UUIDandVersion.UUID.String()
