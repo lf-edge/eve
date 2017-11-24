@@ -10,6 +10,7 @@ import (
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/api/zconfig"
 	"net"
+	"os/exec"
 )
 
 const (
@@ -45,6 +46,7 @@ func parseConfig(config *zconfig.EdgeDevConfig) {
 		appInstance.Activate					= cfgApp.Activate
 
 		appInstance.FixedResources.Kernel		= cfgApp.Fixedresources.Kernel
+		appInstance.FixedResources.BootLoader	= cfgApp.Fixedresources.Bootloader //XXX we will overwrite this for now...
 		appInstance.FixedResources.Ramdisk		= cfgApp.Fixedresources.Ramdisk
 		appInstance.FixedResources.MaxMem		= int(cfgApp.Fixedresources.Maxmem)
 		appInstance.FixedResources.Memory		= int(cfgApp.Fixedresources.Memory)
@@ -103,7 +105,18 @@ func parseConfig(config *zconfig.EdgeDevConfig) {
 			}
 
 			if image.Target == "disk" {
-				appInstance.FixedResources.BootLoader	= "/usr/bin/pygrub"
+				var machineArch string
+				machineCmd := exec.Command("uname","-m")
+				stdout, err := machineCmd.Output()
+				if err != nil {
+					log.Println(err.Error())
+				}else {
+					machineArch = fmt.Sprintf("%s", stdout)
+					if strings.Contains(strings.TrimSpace(machineArch), "x86") {
+						appInstance.FixedResources.BootLoader   = "/usr/bin/pygrub"
+
+					}
+				}
 			}
 
 			appInstance.StorageConfigList[idx] = *image

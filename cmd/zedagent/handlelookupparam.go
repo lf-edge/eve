@@ -87,7 +87,6 @@ func handleLookUpParam(devConfig *zconfig.EdgeDevConfig) {
 	}
 
 	var deviceCert tls.Certificate
-	deviceCertSet := false
 
 	// Load device cert
 	var err error
@@ -96,7 +95,6 @@ func handleLookUpParam(devConfig *zconfig.EdgeDevConfig) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	deviceCertSet = true
 
 	// Load CA cert
 	caCert, err := ioutil.ReadFile(rootCertName)
@@ -109,10 +107,6 @@ func handleLookUpParam(devConfig *zconfig.EdgeDevConfig) {
 	if _, err := os.Stat(infraFileName); err == nil {
 		fmt.Printf("Setting ACLPromisc\n")
 		ACLPromisc = true
-	}
-
-	if !deviceCertSet {
-		return
 	}
 
 	var addInfoDevice *types.AdditionalInfoDevice
@@ -140,7 +134,7 @@ func handleLookUpParam(devConfig *zconfig.EdgeDevConfig) {
 			log.Fatal("WriteFile", err, uuidFileName)
 		}
 		fmt.Printf("Created UUID %s\n", devUUID)
-	} else {
+	}else {
 		b, err := ioutil.ReadFile(uuidFileName)
 		if err != nil {
 			log.Fatal("ReadFile", err, uuidFileName)
@@ -153,129 +147,129 @@ func handleLookUpParam(devConfig *zconfig.EdgeDevConfig) {
 		fmt.Printf("Read UUID %s\n", devUUID)
 	}
 
-		// If we got a StatusNotFound the EID will be zero
-		if device.EID == nil {
-			log.Printf("Did not receive an EID\n")
-			os.Remove(zedserverConfigFileName)
-			return
-		}
-
-		// XXX add Redirect support and store + retry
-		// XXX try redirected once and then fall back to original; repeat
-		// XXX once redirect successful, then save server and rootCert
-
-		// Convert from IID and IPv6 EID to a string with
-		// [iid]eid, where the eid uses the textual format defined in
-		// RFC 5952. The iid is printed as an integer.
-		sigdata := fmt.Sprintf("[%d]%s",
-			device.LispInstance, device.EID.String())
-		fmt.Printf("sigdata (len %d) %s\n", len(sigdata), sigdata)
-
-		hasher := sha256.New()
-		hasher.Write([]byte(sigdata))
-		hash := hasher.Sum(nil)
-		fmt.Printf("hash (len %d) % x\n", len(hash), hash)
-		fmt.Printf("base64 hash %s\n",
-			base64.StdEncoding.EncodeToString(hash))
-
-		var signature string
-		switch deviceCert.PrivateKey.(type) {
-		default:
-			log.Fatal("Private Key RSA type not supported")
-		case *ecdsa.PrivateKey:
-			key := deviceCert.PrivateKey.(*ecdsa.PrivateKey)
-			r, s, err := ecdsa.Sign(rand.Reader, key, hash)
-			if err != nil {
-				log.Fatal("ecdsa.Sign: ", err)
-			}
-			fmt.Printf("r.bytes %d s.bytes %d\n", len(r.Bytes()),
-				len(s.Bytes()))
-			sigres := r.Bytes()
-			sigres = append(sigres, s.Bytes()...)
-			fmt.Printf("sigres (len %d): % x\n", len(sigres), sigres)
-			signature = base64.StdEncoding.EncodeToString(sigres)
-			fmt.Println("signature:", signature)
-		}
-		fmt.Printf("UserName %s\n", device.UserName)
-		fmt.Printf("MapServers %s\n", device.LispMapServers)
-		fmt.Printf("Lisp IID %d\n", device.LispInstance)
-		fmt.Printf("EID %s\n", device.EID)
-		fmt.Printf("EID hash length %d\n", device.EIDHashLen)
-
-		// write zedserverconfig file with hostname to EID mappings
-		f, err := os.Create(zedserverConfigFileName)
-		if err != nil {
-			log.Fatal(err)
-		}
-		defer f.Close()
-		for _, ne := range device.ZedServers.NameToEidList {
-			for _, eid := range ne.EIDs {
-				output := fmt.Sprintf("%-46v %s\n",
-					eid, ne.HostName)
-				_, err := f.WriteString(output)
-				if err != nil {
-					log.Fatal(err)
-				}
-			}
-		}
-		f.Sync()
-
-		// Determine whether NAT is in use
-		if publicIP, err := addrStringToIP(device.ClientAddr); err != nil {
-			log.Printf("Failed to convert %s, error %s\n",
-				device.ClientAddr, err)
-			// Remove any existing/old file
-			_ = os.Remove(clientIPFileName)
-		} else {
-			nat := !IsMyAddress(publicIP)
-			fmt.Printf("NAT %v, publicIP %v\n", nat, publicIP)
-			// Store clientIP in file for device-steps.sh
-			b := []byte(fmt.Sprintf("%s\n", publicIP))
-			err = ioutil.WriteFile(clientIPFileName, b, 0644)
-			if err != nil {
-				log.Fatal("WriteFile", err, clientIPFileName)
-			}
-		}
-
-		// Write an AppNetworkConfig for the ZedManager application
-		uv := types.UUIDandVersion{
-			UUID:    devUUID,
-			Version: "0",
-		}
-		config := types.AppNetworkConfig{
-			UUIDandVersion: uv,
-			DisplayName:    "zedmanager",
-			IsZedmanager:   true,
-		}
-
-		olconf := make([]types.OverlayNetworkConfig, 1)
-		config.OverlayNetworkList = olconf
-		olconf[0].IID = device.LispInstance
-		olconf[0].EID = device.EID
-		olconf[0].LispSignature = signature
-		olconf[0].AdditionalInfoDevice = addInfoDevice
-		olconf[0].NameToEidList = device.ZedServers.NameToEidList
-		lispServers := make([]types.LispServerInfo, len(device.LispMapServers))
-		olconf[0].LispServers = lispServers
-		for count,lispMapServer := range device.LispMapServers {
-			lispServers[count].NameOrIp = lispMapServer.NameOrIp
-			lispServers[count].Credential = lispMapServer.Credential
-		}
-		acl := make([]types.ACE, 1)
-		olconf[0].ACLs = acl
-		matches := make([]types.ACEMatch, 1)
-		acl[0].Matches = matches
-		actions := make([]types.ACEAction, 1)
-		acl[0].Actions = actions
-		if ACLPromisc {
-			matches[0].Type = "ip"
-			matches[0].Value = "::/0"
-		} else {
-			matches[0].Type = "eidset"
-		}
-		zedrouterConfigFileName := zedRouterConfigbaseDir+""+devUUID.String()+".json"
-		writeNetworkConfig(&config, zedrouterConfigFileName)
+	// If we got a StatusNotFound the EID will be zero
+	if device.EID == nil {
+		log.Printf("Did not receive an EID\n")
+		os.Remove(zedserverConfigFileName)
+		return
 	}
+
+	// XXX add Redirect support and store + retry
+	// XXX try redirected once and then fall back to original; repeat
+	// XXX once redirect successful, then save server and rootCert
+
+	// Convert from IID and IPv6 EID to a string with
+	// [iid]eid, where the eid uses the textual format defined in
+	// RFC 5952. The iid is printed as an integer.
+	sigdata := fmt.Sprintf("[%d]%s",
+		device.LispInstance, device.EID.String())
+	fmt.Printf("sigdata (len %d) %s\n", len(sigdata), sigdata)
+
+	hasher := sha256.New()
+	hasher.Write([]byte(sigdata))
+	hash := hasher.Sum(nil)
+	fmt.Printf("hash (len %d) % x\n", len(hash), hash)
+	fmt.Printf("base64 hash %s\n",
+		base64.StdEncoding.EncodeToString(hash))
+
+	var signature string
+	switch deviceCert.PrivateKey.(type) {
+	default:
+		log.Fatal("Private Key RSA type not supported")
+	case *ecdsa.PrivateKey:
+		key := deviceCert.PrivateKey.(*ecdsa.PrivateKey)
+		r, s, err := ecdsa.Sign(rand.Reader, key, hash)
+		if err != nil {
+			log.Fatal("ecdsa.Sign: ", err)
+		}
+		fmt.Printf("r.bytes %d s.bytes %d\n", len(r.Bytes()),
+			len(s.Bytes()))
+		sigres := r.Bytes()
+		sigres = append(sigres, s.Bytes()...)
+		fmt.Printf("sigres (len %d): % x\n", len(sigres), sigres)
+		signature = base64.StdEncoding.EncodeToString(sigres)
+		fmt.Println("signature:", signature)
+	}
+	fmt.Printf("UserName %s\n", device.UserName)
+	fmt.Printf("MapServers %s\n", device.LispMapServers)
+	fmt.Printf("Lisp IID %d\n", device.LispInstance)
+	fmt.Printf("EID %s\n", device.EID)
+	fmt.Printf("EID hash length %d\n", device.EIDHashLen)
+
+	// write zedserverconfig file with hostname to EID mappings
+	f, err := os.Create(zedserverConfigFileName)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer f.Close()
+	for _, ne := range device.ZedServers.NameToEidList {
+		for _, eid := range ne.EIDs {
+			output := fmt.Sprintf("%-46v %s\n",
+				eid, ne.HostName)
+			_, err := f.WriteString(output)
+			if err != nil {
+				log.Fatal(err)
+			}
+		}
+	}
+	f.Sync()
+
+	// Determine whether NAT is in use
+	if publicIP, err := addrStringToIP(device.ClientAddr); err != nil {
+		log.Printf("Failed to convert %s, error %s\n",
+			device.ClientAddr, err)
+		// Remove any existing/old file
+		_ = os.Remove(clientIPFileName)
+	} else {
+		nat := !IsMyAddress(publicIP)
+		fmt.Printf("NAT %v, publicIP %v\n", nat, publicIP)
+		// Store clientIP in file for device-steps.sh
+		b := []byte(fmt.Sprintf("%s\n", publicIP))
+		err = ioutil.WriteFile(clientIPFileName, b, 0644)
+		if err != nil {
+			log.Fatal("WriteFile", err, clientIPFileName)
+		}
+	}
+
+	// Write an AppNetworkConfig for the ZedManager application
+	uv := types.UUIDandVersion{
+		UUID:    devUUID,
+		Version: "0",
+	}
+	config := types.AppNetworkConfig{
+		UUIDandVersion: uv,
+		DisplayName:    "zedmanager",
+		IsZedmanager:   true,
+	}
+
+	olconf := make([]types.OverlayNetworkConfig, 1)
+	config.OverlayNetworkList = olconf
+	olconf[0].IID = device.LispInstance
+	olconf[0].EID = device.EID
+	olconf[0].LispSignature = signature
+	olconf[0].AdditionalInfoDevice = addInfoDevice
+	olconf[0].NameToEidList = device.ZedServers.NameToEidList
+	lispServers := make([]types.LispServerInfo, len(device.LispMapServers))
+	olconf[0].LispServers = lispServers
+	for count,lispMapServer := range device.LispMapServers {
+		lispServers[count].NameOrIp = lispMapServer.NameOrIp
+		lispServers[count].Credential = lispMapServer.Credential
+	}
+	acl := make([]types.ACE, 1)
+	olconf[0].ACLs = acl
+	matches := make([]types.ACEMatch, 1)
+	acl[0].Matches = matches
+	actions := make([]types.ACEAction, 1)
+	acl[0].Actions = actions
+	if ACLPromisc {
+		matches[0].Type = "ip"
+		matches[0].Value = "::/0"
+	} else {
+		matches[0].Type = "eidset"
+	}
+	zedrouterConfigFileName := zedRouterConfigbaseDir+""+devUUID.String()+".json"
+	writeNetworkConfig(&config, zedrouterConfigFileName)
+}
 
 func writeNetworkConfig(config *types.AppNetworkConfig,
 	configFilename string) {
