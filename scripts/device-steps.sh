@@ -149,6 +149,11 @@ fi
 echo "Removing old stale files"
 # Remove internal config files
 pkill zedmanager
+if [ x$OLDFLAG = x ]; then
+	echo "Removing old zedmanager config files"
+	rm -rf /var/tmp/zedmanager/config/*.json
+fi
+echo "Removing old zedmanager status files"
 rm -rf /var/run/zedmanager/status/*.json
 # The following is a workaround for a racecondition between different agents
 # Make sure we have the required directories in place
