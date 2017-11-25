@@ -10,6 +10,9 @@ import (
 	"time"
 )
 
+// XXX more than images; rename type and clean up comments
+// XXX make clean that Cert/Key are names of them and not PEM content
+
 // Types for verifying the images.
 // For now we just verify the sha checksum.
 // For defense-in-depth we assume that the ZedManager with the help of
