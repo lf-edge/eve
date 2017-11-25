@@ -197,6 +197,8 @@ touch /var/tmp/verifier/config/preserve
 # If agents are running wait for the status files to disappear
 for AGENT in $AGENTS; do
     if [ ! -d /var/run/$AGENT ]; then
+	# Needed for zedagent
+	pkill $AGENT
 	continue
     fi
     if [ $AGENT = "verifier" ]; then
