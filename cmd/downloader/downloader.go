@@ -355,7 +355,7 @@ func handleModify(config types.DownloaderConfig,
 		config.Safename, config.DownloadURL)
 
 	if config.DownloadURL != status.DownloadURL {
-		fmt.Printf("URL changed - not allowed %s -> %s\n",
+		log.Printf("URL changed - not allowed %s -> %s\n",
 			config.DownloadURL, status.DownloadURL)
 		return
 	}
@@ -601,13 +601,13 @@ func sizeFromDir(dirname string) int64 {
 	}
 	for _, location := range locations {
 		filename := dirname + "/" + location.Name()
-		fmt.Printf("Looking in %s\n", filename)
+		log.Printf("Looking in %s\n", filename)
 		if location.IsDir() {
 			size := sizeFromDir(filename)
 			fmt.Printf("Dir %s size %d\n", filename, size)
 			totalUsed += size
 		} else {
-			fmt.Printf("File %s Size %d\n", filename, location.Size())
+			log.Printf("File %s Size %d\n", filename, location.Size())
 			totalUsed += location.Size()
 		}
 	}

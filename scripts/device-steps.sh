@@ -342,7 +342,7 @@ if [ $WAIT = 1 ]; then
 fi
 
 echo "Starting downloader at" `date`
-downloader >/var/log/downloader.log&
+downloader >/var/log/downloader.log 2>&1 &
 if [ $WAIT = 1 ]; then
     echo; read -n 1 -s -p "Press any key to continue"; echo; echo
 fi

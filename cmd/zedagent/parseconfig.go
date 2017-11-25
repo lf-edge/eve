@@ -9,6 +9,8 @@ import (
 	"github.com/satori/go.uuid"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/api/zconfig"
+	"net"
+	"os/exec"
 )
 
 const (
@@ -32,23 +34,23 @@ func parseConfig(config *zconfig.EdgeDevConfig) {
 
 	Apps := config.GetApps()
 
-
 	for _,cfgApp :=	range Apps {
 
 
 		log.Printf("%v\n", cfgApp)
 
-		appInstance.UUIDandVersion.UUID,_		= uuid.FromString(cfgApp.Uuidandversion.Uuid)
-		appInstance.UUIDandVersion.Version		= cfgApp.Uuidandversion.Version
-		appInstance.DisplayName					= cfgApp.Displayname
-		appInstance.Activate					= cfgApp.Activate
+		appInstance.UUIDandVersion.UUID,_ = uuid.FromString(cfgApp.Uuidandversion.Uuid)
+		appInstance.UUIDandVersion.Version = cfgApp.Uuidandversion.Version
+		appInstance.DisplayName = cfgApp.Displayname
+		appInstance.Activate = cfgApp.Activate
 
-		appInstance.FixedResources.Kernel		= cfgApp.Fixedresources.Kernel
-		appInstance.FixedResources.Ramdisk		= cfgApp.Fixedresources.Ramdisk
-		appInstance.FixedResources.MaxMem		= int(cfgApp.Fixedresources.Maxmem)
-		appInstance.FixedResources.Memory		= int(cfgApp.Fixedresources.Memory)
-		appInstance.FixedResources.RootDev		= cfgApp.Fixedresources.Rootdev
-		appInstance.FixedResources.VCpus		= int(cfgApp.Fixedresources.Vcpus)
+		appInstance.FixedResources.Kernel = cfgApp.Fixedresources.Kernel
+		appInstance.FixedResources.BootLoader = cfgApp.Fixedresources.Bootloader //XXX we will overwrite this for now...
+		appInstance.FixedResources.Ramdisk = cfgApp.Fixedresources.Ramdisk
+		appInstance.FixedResources.MaxMem = int(cfgApp.Fixedresources.Maxmem)
+		appInstance.FixedResources.Memory = int(cfgApp.Fixedresources.Memory)
+		appInstance.FixedResources.RootDev = cfgApp.Fixedresources.Rootdev
+		appInstance.FixedResources.VCpus = int(cfgApp.Fixedresources.Vcpus)
 
 		appInstance.StorageConfigList = make([]types.StorageConfig,len(cfgApp.Drives))
 
@@ -64,132 +66,63 @@ func parseConfig(config *zconfig.EdgeDevConfig) {
 				if drive.Image != nil &&
 					drive.Image.DsId == ds.Id {
 
-					found					= true
-					image.DownloadURL		= ds.Fqdn+"/"+ds.Dpath+"/"+drive.Image.Name
-					image.TransportMethod	= ds.DType.String()
-					image.ApiKey			= ds.ApiKey
-					image.Password			= ds.Password
-					image.Dpath				= ds.Dpath
+					found = true
+					image.DownloadURL = ds.Fqdn+"/"+ds.Dpath+"/"+drive.Image.Name
+					image.TransportMethod = ds.DType.String()
+					image.ApiKey = ds.ApiKey
+					image.Password = ds.Password
+					image.Dpath = ds.Dpath
 					break
 				}
 			}
 
 			if found == false { continue }
 
-			// XXX:FIXME certificate should be of variable length
-			// depending on the number of certificates in the chain
+			image.Format = strings.ToLower(drive.Image.Iformat.String())
+			image.MaxSize = uint(drive.Maxsize)
+			image.ReadOnly = drive.Readonly
+			image.Preserve = drive.Preserve
+			image.Target = strings.ToLower(drive.Target.String())
+			image.Devtype = strings.ToLower(drive.Drvtype.String())
+			image.ImageSignature = drive.Image.Siginfo.Signature
+			image.ImageSha256 = drive.Image.Sha256
+
+			// copy the certificates
+			if drive.Image.Siginfo.Signercerturl != "" {
+				image.SignatureKey = drive.Image.Siginfo.Signercerturl
+			}
+
+			// XXX:FIXME certificates can be many
 			// this list, currently contains the certUrls
 			// should be the sha/uuid of cert filenames
-			//  proper DataStore Entries
+			// as proper DataStore Entries
 
-			image.CertificateChain	= make([]string, 1)
-			image.Format			= strings.ToLower(drive.Image.Iformat.String())
-			image.ImageSignature	= drive.Image.Siginfo.Signature
-			image.SignatureKey		= drive.Image.Siginfo.Signercerturl
-			image.CertificateChain[0]	= drive.Image.Siginfo.Intercertsurl
-			image.ImageSha256		= drive.Image.Sha256
-			image.MaxSize			= uint(drive.Maxsize)
-			image.ReadOnly			= drive.Readonly
-			image.Preserve			= drive.Preserve
-			image.Target			= strings.ToLower(drive.Target.String())
-			image.Devtype			= strings.ToLower(drive.Drvtype.String())
-
-			// XXX:FIXME, to be decided after consulting with erik
-			// XXX breaks for Arm. And 4.6 path can also break.
-			if image.Target == "disk" {
-				appInstance.FixedResources.BootLoader	= "/usr/lib/xen-4.6/bin/pygrub"
+			if drive.Image.Siginfo.Intercertsurl != "" {
+				image.CertificateChain = make([]string, 1)
+				image.CertificateChain[0] = drive.Image.Siginfo.Intercertsurl
 			}
+
+			if image.Target == "disk" {
+				var machineArch string
+				machineCmd := exec.Command("uname","-m")
+				stdout, err := machineCmd.Output()
+				if err != nil {
+					log.Println(err.Error())
+				}else {
+					machineArch = fmt.Sprintf("%s", stdout)
+					if strings.Contains(strings.TrimSpace(machineArch), "x86") {
+						appInstance.FixedResources.BootLoader = "/usr/bin/pygrub"
+
+					}
+				}
+			}
+
 			appInstance.StorageConfigList[idx] = *image
 			idx++
 		}
 
-		var netx int = 0
-		appInstance.UnderlayNetworkList = make([]types.UnderlayNetworkConfig,len(cfgApp.Interfaces))
-		for _,interfaces := range cfgApp.Interfaces {
-			underlayNetworkDetails := new(types.UnderlayNetworkConfig)
-			for _,networks := range config.Networks {
-
-				if interfaces.NetworkId == networks.Id {
-
-					underlayNetworkDetails.ACLs = make([]types.ACE,len(interfaces.Acls))
-					var acx int = 0
-					for _,acl := range interfaces.Acls {
-
-						aceDetails := new(types.ACE)
-						aceDetails.Matches = make([]types.ACEMatch,len(acl.Matches))
-						aceDetails.Actions = make([]types.ACEAction,len(acl.Actions))
-						var matx int = 0
-						for _,match := range acl.Matches {
-							aceMatchDetails := new(types.ACEMatch)
-							aceMatchDetails.Type		= match.Type
-							aceMatchDetails.Value		= match.Value
-							aceDetails.Matches[matx]	= *aceMatchDetails
-							matx ++
-						}
-						var actx int = 0
-						for _,action := range acl.Actions {
-							aceActionDetails := new(types.ACEAction)
-							aceActionDetails.Limit		= action.Limit
-							aceActionDetails.LimitRate	=  int(action.Limitrate)
-							aceActionDetails.LimitUnit	=  action.Limitunit
-							aceActionDetails.LimitBurst	= int(action.Limitburst)
-							// XXX:FIXME aceActionDetails.Drop = <TBD>
-							aceDetails.Actions[actx] = *aceActionDetails
-							actx ++
-						}
-						underlayNetworkDetails.ACLs[acx] =  *aceDetails
-						acx ++
-					}
-				}
-			}
-			appInstance.UnderlayNetworkList[netx] = *underlayNetworkDetails
-			netx ++
-		}
-
-// XXX:FIXME will enable after testing
-/*
-		var ovnetx int = 0
-		appInstance.OverlayNetworkList = make([]types.EIDOverlayConfig,len(cfgApp.Interfaces))
-		for _,interfaces := range cfgApp.Interfaces {
-			overlayNetworkDetails := new(types.EIDOverlayConfig)
-			for _,networks := range config.Networks {
-
-				if interfaces.NetworkId == networks.Id {
-
-					overlayNetworkDetails.ACLs = make([]types.ACE,len(interfaces.Acls))
-					var ovacx int = 0
-					for _,acl := range interfaces.Acls {
-
-						aceDetails := new(types.ACE)
-						aceDetails.Matches =  make([]types.ACEMatch,len(acl.Matches))
-						aceDetails.Actions = make([]types.ACEAction,len(acl.Actions))
-						var ovmatx int = 0
-						for _,match := range acl.Matches {
-							aceMatchDetails := new(types.ACEMatch)
-							aceMatchDetails.Type = match.Type
-							aceMatchDetails.Value = match.Value
-							aceDetails.Matches[ovmatx] = *aceMatchDetails
-							ovmatx ++
-						}
-						var ovactx int = 0
-						for _,action := range acl.Actions {
-							aceActionDetails := new(types.ACEAction)
-							aceActionDetails.Limit = action.Limit
-							aceActionDetails.LimitRate =  int(action.Limitrate)
-							aceActionDetails.LimitUnit =  action.Limitunit
-							aceActionDetails.LimitBurst = int(action.Limitburst)
-							aceDetails.Actions[ovactx] = *aceActionDetails
-							ovactx ++
-						}
-						overlayNetworkDetails.ACLs[ovacx] =  *aceDetails
-						ovacx ++
-					}
-				}
-			}
-			appInstance.OverlayNetworkList[ovnetx] = *overlayNetworkDetails
-			ovnetx ++
-		}
-*/
+		// fill the overlay/underlay config
+		parseNetworkConfig (&appInstance, cfgApp, config.Networks)
 
 		// get the certs for image sha verification
 		getCerts (appInstance)
@@ -197,6 +130,184 @@ func parseConfig(config *zconfig.EdgeDevConfig) {
 		// write to zedmanager config directory
 		appFilename := cfgApp.Uuidandversion.Uuid
 		writeAppInstance (appInstance, appFilename)
+	}
+}
+
+func parseNetworkConfig (appInstance *types.AppInstanceConfig,
+						cfgApp *zconfig.AppInstanceConfig,
+						cfgNetworks []*zconfig.NetworkConfig) {
+
+	var ulMaxIdx int = 0
+	var olMaxIdx int = 0
+
+	// count the interfaces and allocate
+	for _,intfEnt := range cfgApp.Interfaces {
+		for _,netEnt := range cfgNetworks {
+
+			if intfEnt.NetworkId == netEnt.Id {
+
+				switch strings.ToLower(netEnt.Type.String()) {
+				// underlay interface
+				case "v4","v6": { ulMaxIdx++
+								break }
+				// overlay interface
+				case "lisp": {olMaxIdx++
+								break }
+				}
+			}
+		}
+	}
+
+	if ulMaxIdx != 0 {
+		appInstance.UnderlayNetworkList = make([]types.UnderlayNetworkConfig, ulMaxIdx)
+		parseUnderlayNetworkConfig(appInstance, cfgApp,  cfgNetworks)
+	}
+
+	if olMaxIdx != 0 {
+		appInstance.OverlayNetworkList = make([]types.EIDOverlayConfig, olMaxIdx)
+		parseOverlayNetworkConfig(appInstance, cfgApp, cfgNetworks)
+	}
+}
+
+func parseUnderlayNetworkConfig (appInstance *types.AppInstanceConfig,
+						cfgApp *zconfig.AppInstanceConfig,
+						cfgNetworks []*zconfig.NetworkConfig) {
+
+	var ulIdx int = 0
+
+	for _,intfEnt := range cfgApp.Interfaces {
+		for _,netEnt := range cfgNetworks {
+
+			if intfEnt.NetworkId == netEnt.Id &&
+				(strings.ToLower(netEnt.Type.String())  == "v4" ||
+				strings.ToLower(netEnt.Type.String())  == "v6") {
+
+					nv4 := netEnt.GetNv4() //XXX not required now...
+					if nv4 != nil{
+						booValNv4 := nv4.Dhcp
+						log.Println("booValNv4: ",booValNv4)
+					}
+					nv6 := netEnt.GetNv6() //XXX not required now...
+					if nv6 != nil {
+						booValNv6 := nv6.Dhcp
+						log.Println("booValNv6: ",booValNv6)
+					}
+
+					ulCfg := new(types.UnderlayNetworkConfig)
+					ulCfg.ACLs = make([]types.ACE,len(intfEnt.Acls))
+
+					for aclIdx, acl := range intfEnt.Acls {
+
+						aclCfg := new(types.ACE)
+						aclCfg.Matches = make([]types.ACEMatch,len(acl.Matches))
+						aclCfg.Actions = make([]types.ACEAction,len(acl.Actions))
+
+						for matchIdx, match := range acl.Matches {
+							matchCfg := new(types.ACEMatch)
+							matchCfg.Type  = match.Type
+							matchCfg.Value = match.Value
+							aclCfg.Matches[matchIdx] = *matchCfg
+						}
+
+						for actionIdx, action := range acl.Actions {
+							actionCfg := new(types.ACEAction)
+							actionCfg.Limit      = action.Limit
+							actionCfg.LimitRate  = int(action.Limitrate)
+							actionCfg.LimitUnit  = action.Limitunit
+							actionCfg.LimitBurst = int(action.Limitburst)
+							// XXX:FIXME actionCfg.Drop = <TBD>
+							aclCfg.Actions[actionIdx] = *actionCfg
+						}
+						ulCfg.ACLs[aclIdx] = *aclCfg
+					}
+					appInstance.UnderlayNetworkList[ulIdx] = *ulCfg
+					ulIdx ++
+				}
+		}
+	}
+}
+
+func parseOverlayNetworkConfig (appInstance *types.AppInstanceConfig,
+						cfgApp *zconfig.AppInstanceConfig,
+						cfgNetworks []*zconfig.NetworkConfig) {
+	var olIdx int = 0
+
+	for _,intfEnt := range cfgApp.Interfaces {
+		for _,netEnt := range cfgNetworks {
+
+			if intfEnt.NetworkId == netEnt.Id &&
+				strings.ToLower(netEnt.Type.String())  == "lisp" {
+
+				olCfg := new(types.EIDOverlayConfig)
+				olCfg.ACLs = make([]types.ACE,len(intfEnt.Acls))
+
+				for aclIdx, acl := range intfEnt.Acls {
+
+					aclCfg := new(types.ACE)
+					aclCfg.Matches = make([]types.ACEMatch,len(acl.Matches))
+					aclCfg.Actions = make([]types.ACEAction,len(acl.Actions))
+
+					for matchIdx, match := range acl.Matches {
+						matchCfg := new(types.ACEMatch)
+						matchCfg.Type  = match.Type
+						matchCfg.Value = match.Value
+						aclCfg.Matches[matchIdx] = *matchCfg
+					}
+
+					for actionIdx, action := range acl.Actions {
+						actionCfg := new(types.ACEAction)
+						actionCfg.Limit        = action.Limit
+						actionCfg.LimitRate    = int(action.Limitrate)
+						actionCfg.LimitUnit    = action.Limitunit
+						actionCfg.LimitBurst   = int(action.Limitburst)
+						aclCfg.Actions[actionIdx] = *actionCfg
+					}
+					olCfg.ACLs[aclIdx] = *aclCfg
+				}
+
+				olCfg.EIDConfigDetails.EID = net.ParseIP(intfEnt.Addr)
+				olCfg.EIDConfigDetails.LispSignature = intfEnt.Lispsignature
+				olCfg.EIDConfigDetails.PemCert       = intfEnt.Pemcert
+				olCfg.EIDConfigDetails.PemPrivateKey = intfEnt.Pemprivatekey
+
+				nlisp := netEnt.GetNlisp()
+
+				if nlisp != nil {
+
+					if nlisp.Eidalloc != nil {
+
+						olCfg.EIDConfigDetails.IID = nlisp.Iid
+						olCfg.EIDConfigDetails.EIDAllocation.Allocate = nlisp.Eidalloc.Allocate
+						olCfg.EIDConfigDetails.EIDAllocation.ExportPrivate = nlisp.Eidalloc.Exportprivate
+						olCfg.EIDConfigDetails.EIDAllocation.AllocationPrefix = nlisp.Eidalloc.Allocationprefix
+						olCfg.EIDConfigDetails.EIDAllocation.AllocationPrefixLen = int(nlisp.Eidalloc.Allocationprefixlen)
+					}
+
+					if len(nlisp.Nmtoeid) != 0 {
+
+						olCfg.NameToEidList = make([]types.NameToEid,len(nlisp.Nmtoeid))
+
+						for nameIdx, nametoeid := range nlisp.Nmtoeid {
+
+							nameCfg  := new(types.NameToEid)
+							nameCfg.HostName = nametoeid.Hostname
+							nameCfg.EIDs = make ([]net.IP,len(nametoeid.Eids))
+
+							for  eIdx, eid := range nametoeid.Eids {
+								nameCfg.EIDs[eIdx] = net.ParseIP(eid)
+							}
+
+							olCfg.NameToEidList[nameIdx] = *nameCfg
+						}
+					}
+				} else {
+					log.Printf("No Nlisp in for %v\n", netEnt.Id)
+				}
+
+				appInstance.OverlayNetworkList[olIdx] = *olCfg
+				olIdx ++
+			}
+		}
 	}
 }
 
@@ -227,6 +338,10 @@ func getCerts (appInstance types.AppInstanceConfig) {
 
 func writeCertConfig (image types.StorageConfig, certUrl string) {
 
+	if certUrl == "" {
+		return
+	}
+
 	// XXX make into const
 	var baseCertDirname		= "/var/tmp/downloader/cert.obj"
 	var configCertDirname	= baseCertDirname + "/config"
@@ -237,17 +352,17 @@ func writeCertConfig (image types.StorageConfig, certUrl string) {
 	// should be coming from Drive
 	// also the sha for the cert should be set
 	var config = &types.DownloaderConfig {
-			Safename:			safename,
-			DownloadURL:		certUrl,
-			MaxSize:			image.MaxSize,
-			TransportMethod:	image.TransportMethod,
-			Dpath:				"zededa-cert-repo",
-			ApiKey:				image.ApiKey,
-			Password:			image.Password,
-			ImageSha256:		"",
-			DownloadObjDir:		certsDownloadDirname,
-			VerifiedObjDir:		certificateDirname,
-			RefCount:		1,
+			Safename: safename,
+			DownloadURL: certUrl,
+			MaxSize: image.MaxSize,
+			TransportMethod: image.TransportMethod,
+			Dpath: "zededa-cert-repo",
+			ApiKey: image.ApiKey,
+			Password: image.Password,
+			ImageSha256: "",
+			DownloadObjDir: certsDownloadDirname,
+			VerifiedObjDir: certificateDirname,
+			RefCount: 1,
 		}
 
 	bytes, err := json.Marshal(config)
