@@ -36,7 +36,7 @@ func parseConfig(config *zconfig.EdgeDevConfig) {
 	for _,cfgApp :=	range Apps {
 
 
-		log.Printf("%v\n", cfgApp)
+		log.Printf("New/updated app instance %v\n", cfgApp)
 
 		appInstance.UUIDandVersion.UUID,_ = uuid.FromString(cfgApp.Uuidandversion.Uuid)
 		appInstance.UUIDandVersion.Version = cfgApp.Uuidandversion.Version
@@ -296,10 +296,10 @@ func parseOverlayNetworkConfig (appInstance *types.AppInstanceConfig,
 
 func writeAppInstance (appInstance types.AppInstanceConfig, appFilename string) {
 
-	log.Printf("%T\n",appInstance)
+	log.Printf("Writing app instance UUID %s\n", appFilename)
 	bytes, err := json.Marshal(appInstance)
 	if err != nil {
-		log.Fatal(err, "json Marshal VerifyImageStatus")
+		log.Fatal(err, "json Marshal AppInstanceConfig")
 	}
 	err = ioutil.WriteFile(zedmanagerConfigDirname+ "/" + appFilename+".json", bytes, 0644)
 	if err != nil {
