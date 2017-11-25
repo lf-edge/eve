@@ -12,13 +12,13 @@ import (
 	"fmt"
 	"github.com/RevH/ipinfo"
 	"github.com/satori/go.uuid"
+	"github.com/zededa/api/zconfig"
 	"github.com/zededa/go-provision/types"
 	"io/ioutil"
 	"log"
 	"net"
 	"os"
 	"strings"
-	"github.com/zededa/api/zconfig"
 )
 
 // Assumes the config files are in dirName, which is /opt/zededa/etc
@@ -60,30 +60,30 @@ func handleLookUpParam(devConfig *zconfig.EdgeDevConfig) {
 	device.EidAllocationPrefix = lispInfo.EidAllocationPrefix
 	device.EidAllocationPrefixLen = int(lispInfo.EidAllocationPrefixLen)
 	device.ClientAddr = lispInfo.ClientAddr
-	device.LispMapServers = make([]types.LispServerInfo,len(lispInfo.LispMapServers))
+	device.LispMapServers = make([]types.LispServerInfo, len(lispInfo.LispMapServers))
 	var lmsx int = 0
-	for  _,lms := range lispInfo.LispMapServers {
+	for _, lms := range lispInfo.LispMapServers {
 
 		lispServerDetail := new(types.LispServerInfo)
 		lispServerDetail.NameOrIp = lms.NameOrIp
 		lispServerDetail.Credential = lms.Credential
 		device.LispMapServers[lmsx] = *lispServerDetail
-		lmsx ++
+		lmsx++
 	}
-	device.ZedServers.NameToEidList = make([]types.NameToEid,len(lispInfo.ZedServers))
+	device.ZedServers.NameToEidList = make([]types.NameToEid, len(lispInfo.ZedServers))
 	var zsx int = 0
-	for _,zs := range lispInfo.ZedServers {
+	for _, zs := range lispInfo.ZedServers {
 
 		nameToEidInfo := new(types.NameToEid)
 		nameToEidInfo.HostName = zs.HostName
-		nameToEidInfo.EIDs = make ([]net.IP,len(zs.EID))
+		nameToEidInfo.EIDs = make([]net.IP, len(zs.EID))
 		var eidx int = 0
-		for  _,eid := range zs.EID {
+		for _, eid := range zs.EID {
 			nameToEidInfo.EIDs[eidx] = net.ParseIP(eid)
-			eidx ++
+			eidx++
 		}
 		device.ZedServers.NameToEidList[zsx] = *nameToEidInfo
-		zsx ++
+		zsx++
 	}
 
 	var deviceCert tls.Certificate
@@ -133,7 +133,7 @@ func handleLookUpParam(devConfig *zconfig.EdgeDevConfig) {
 			log.Fatal("WriteFile", err, uuidFileName)
 		}
 		fmt.Printf("Created UUID %s\n", devUUID)
-	}else {
+	} else {
 		b, err := ioutil.ReadFile(uuidFileName)
 		if err != nil {
 			log.Fatal("ReadFile", err, uuidFileName)
@@ -250,7 +250,7 @@ func handleLookUpParam(devConfig *zconfig.EdgeDevConfig) {
 	olconf[0].NameToEidList = device.ZedServers.NameToEidList
 	lispServers := make([]types.LispServerInfo, len(device.LispMapServers))
 	olconf[0].LispServers = lispServers
-	for count,lispMapServer := range device.LispMapServers {
+	for count, lispMapServer := range device.LispMapServers {
 		lispServers[count].NameOrIp = lispMapServer.NameOrIp
 		lispServers[count].Credential = lispMapServer.Credential
 	}
@@ -266,7 +266,7 @@ func handleLookUpParam(devConfig *zconfig.EdgeDevConfig) {
 	} else {
 		matches[0].Type = "eidset"
 	}
-	zedrouterConfigFileName := zedRouterConfigbaseDir+""+devUUID.String()+".json"
+	zedrouterConfigFileName := zedRouterConfigbaseDir + "" + devUUID.String() + ".json"
 	writeNetworkConfig(&config, zedrouterConfigFileName)
 }
 
@@ -308,4 +308,3 @@ func IsMyAddress(clientIP net.IP) bool {
 	}
 	return false
 }
-

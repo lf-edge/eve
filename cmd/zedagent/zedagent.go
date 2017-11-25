@@ -15,10 +15,10 @@ import (
 
 // Keeping status in /var/run to be clean after a crash/reboot
 const (
-	zedagentConfigDirname  = "/var/tmp/zedagent/config"
-	zedmanagerConfigDirname  = "/var/tmp/zedmanager/config"
-	zedmanagerStatusDirname  = "/var/run/zedmanager/status"
-	downloaderConfigDirname  = "/var/tmp/downloader/config"
+	zedagentConfigDirname   = "/var/tmp/zedagent/config"
+	zedmanagerConfigDirname = "/var/tmp/zedmanager/config"
+	zedmanagerStatusDirname = "/var/run/zedmanager/status"
+	downloaderConfigDirname = "/var/tmp/downloader/config"
 	downloaderStatusDirname = "/var/run/downloader/status"
 )
 
@@ -45,7 +45,7 @@ func main() {
 	// Tell ourselves to go ahead
 	watch.SignalRestart("zedagent")
 
-	getCloudUrls ()
+	getCloudUrls()
 	go metricsTimerTask()
 	// XXX pass configUrl as argument
 	go configTimerTask()

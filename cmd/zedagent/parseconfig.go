@@ -1,28 +1,28 @@
 package main
 
 import (
-	"fmt"
-	"log"
-	"strings"
-	"io/ioutil"
 	"encoding/json"
+	"fmt"
 	"github.com/satori/go.uuid"
-	"github.com/zededa/go-provision/types"
 	"github.com/zededa/api/zconfig"
+	"github.com/zededa/go-provision/types"
+	"io/ioutil"
+	"log"
 	"net"
+	"strings"
 )
 
 const (
-	certBaseDirname = "/var/tmp/downloader/cert.obj"
-	certRunDirname = "/var/run/downloader/cert.obj"
-	certConfigDirname = certBaseDirname + "/config"
-	certStatusDirname = certRunDirname + "/status"
-	imgCatalogDirname = "/var/tmp/zedmanager/downloads"
-	pendingDirname = imgCatalogDirname + "/pending"
-	verifierDirname = imgCatalogDirname + "/verifier"
-	finalDirname = imgCatalogDirname + "/verified"
+	certBaseDirname      = "/var/tmp/downloader/cert.obj"
+	certRunDirname       = "/var/run/downloader/cert.obj"
+	certConfigDirname    = certBaseDirname + "/config"
+	certStatusDirname    = certRunDirname + "/status"
+	imgCatalogDirname    = "/var/tmp/zedmanager/downloads"
+	pendingDirname       = imgCatalogDirname + "/pending"
+	verifierDirname      = imgCatalogDirname + "/verifier"
+	finalDirname         = imgCatalogDirname + "/verified"
 	certsDownloadDirname = imgCatalogDirname + "/certs" // XXX vs. cert.obj?
-	certificateDirname = "/var/tmp/zedmanager/certs"
+	certificateDirname   = "/var/tmp/zedmanager/certs"
 )
 
 func parseConfig(config *zconfig.EdgeDevConfig) {
@@ -33,12 +33,11 @@ func parseConfig(config *zconfig.EdgeDevConfig) {
 
 	Apps := config.GetApps()
 
-	for _,cfgApp :=	range Apps {
-
+	for _, cfgApp := range Apps {
 
 		log.Printf("New/updated app instance %v\n", cfgApp)
 
-		appInstance.UUIDandVersion.UUID,_ = uuid.FromString(cfgApp.Uuidandversion.Uuid)
+		appInstance.UUIDandVersion.UUID, _ = uuid.FromString(cfgApp.Uuidandversion.Uuid)
 		appInstance.UUIDandVersion.Version = cfgApp.Uuidandversion.Version
 		appInstance.DisplayName = cfgApp.Displayname
 		appInstance.Activate = cfgApp.Activate
@@ -51,22 +50,22 @@ func parseConfig(config *zconfig.EdgeDevConfig) {
 		appInstance.FixedResources.RootDev = cfgApp.Fixedresources.Rootdev
 		appInstance.FixedResources.VCpus = int(cfgApp.Fixedresources.Vcpus)
 
-		appInstance.StorageConfigList = make([]types.StorageConfig,len(cfgApp.Drives))
+		appInstance.StorageConfigList = make([]types.StorageConfig, len(cfgApp.Drives))
 
 		var idx int = 0
 
-		for _,drive :=	range cfgApp.Drives {
+		for _, drive := range cfgApp.Drives {
 
 			found := false
 
 			image := new(types.StorageConfig)
-			for _, ds :=	range config.Datastores {
+			for _, ds := range config.Datastores {
 
 				if drive.Image != nil &&
 					drive.Image.DsId == ds.Id {
 
 					found = true
-					image.DownloadURL = ds.Fqdn+"/"+ds.Dpath+"/"+drive.Image.Name
+					image.DownloadURL = ds.Fqdn + "/" + ds.Dpath + "/" + drive.Image.Name
 					image.TransportMethod = ds.DType.String()
 					image.ApiKey = ds.ApiKey
 					image.Password = ds.Password
@@ -75,7 +74,9 @@ func parseConfig(config *zconfig.EdgeDevConfig) {
 				}
 			}
 
-			if found == false { continue }
+			if found == false {
+				continue
+			}
 
 			image.Format = strings.ToLower(drive.Image.Iformat.String())
 			image.MaxSize = uint(drive.Maxsize)
@@ -105,37 +106,43 @@ func parseConfig(config *zconfig.EdgeDevConfig) {
 		}
 
 		// fill the overlay/underlay config
-		parseNetworkConfig (&appInstance, cfgApp, config.Networks)
+		parseNetworkConfig(&appInstance, cfgApp, config.Networks)
 
 		// get the certs for image sha verification
-		getCerts (appInstance)
+		getCerts(appInstance)
 
 		// write to zedmanager config directory
 		appFilename := cfgApp.Uuidandversion.Uuid
-		writeAppInstance (appInstance, appFilename)
+		writeAppInstance(appInstance, appFilename)
 	}
 }
 
-func parseNetworkConfig (appInstance *types.AppInstanceConfig,
-						cfgApp *zconfig.AppInstanceConfig,
-						cfgNetworks []*zconfig.NetworkConfig) {
+func parseNetworkConfig(appInstance *types.AppInstanceConfig,
+	cfgApp *zconfig.AppInstanceConfig,
+	cfgNetworks []*zconfig.NetworkConfig) {
 
 	var ulMaxIdx int = 0
 	var olMaxIdx int = 0
 
 	// count the interfaces and allocate
-	for _,intfEnt := range cfgApp.Interfaces {
-		for _,netEnt := range cfgNetworks {
+	for _, intfEnt := range cfgApp.Interfaces {
+		for _, netEnt := range cfgNetworks {
 
 			if intfEnt.NetworkId == netEnt.Id {
 
 				switch strings.ToLower(netEnt.Type.String()) {
 				// underlay interface
-				case "v4","v6": { ulMaxIdx++
-								break }
+				case "v4", "v6":
+					{
+						ulMaxIdx++
+						break
+					}
 				// overlay interface
-				case "lisp": {olMaxIdx++
-								break }
+				case "lisp":
+					{
+						olMaxIdx++
+						break
+					}
 				}
 			}
 		}
@@ -143,7 +150,7 @@ func parseNetworkConfig (appInstance *types.AppInstanceConfig,
 
 	if ulMaxIdx != 0 {
 		appInstance.UnderlayNetworkList = make([]types.UnderlayNetworkConfig, ulMaxIdx)
-		parseUnderlayNetworkConfig(appInstance, cfgApp,  cfgNetworks)
+		parseUnderlayNetworkConfig(appInstance, cfgApp, cfgNetworks)
 	}
 
 	if olMaxIdx != 0 {
@@ -152,97 +159,97 @@ func parseNetworkConfig (appInstance *types.AppInstanceConfig,
 	}
 }
 
-func parseUnderlayNetworkConfig (appInstance *types.AppInstanceConfig,
-						cfgApp *zconfig.AppInstanceConfig,
-						cfgNetworks []*zconfig.NetworkConfig) {
+func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
+	cfgApp *zconfig.AppInstanceConfig,
+	cfgNetworks []*zconfig.NetworkConfig) {
 
 	var ulIdx int = 0
 
-	for _,intfEnt := range cfgApp.Interfaces {
-		for _,netEnt := range cfgNetworks {
+	for _, intfEnt := range cfgApp.Interfaces {
+		for _, netEnt := range cfgNetworks {
 
 			if intfEnt.NetworkId == netEnt.Id &&
-				(strings.ToLower(netEnt.Type.String())  == "v4" ||
-				strings.ToLower(netEnt.Type.String())  == "v6") {
+				(strings.ToLower(netEnt.Type.String()) == "v4" ||
+					strings.ToLower(netEnt.Type.String()) == "v6") {
 
-					nv4 := netEnt.GetNv4() //XXX not required now...
-					if nv4 != nil{
-						booValNv4 := nv4.Dhcp
-						log.Println("booValNv4: ",booValNv4)
-					}
-					nv6 := netEnt.GetNv6() //XXX not required now...
-					if nv6 != nil {
-						booValNv6 := nv6.Dhcp
-						log.Println("booValNv6: ",booValNv6)
-					}
-
-					ulCfg := new(types.UnderlayNetworkConfig)
-					ulCfg.ACLs = make([]types.ACE,len(intfEnt.Acls))
-
-					for aclIdx, acl := range intfEnt.Acls {
-
-						aclCfg := new(types.ACE)
-						aclCfg.Matches = make([]types.ACEMatch,len(acl.Matches))
-						aclCfg.Actions = make([]types.ACEAction,len(acl.Actions))
-
-						for matchIdx, match := range acl.Matches {
-							matchCfg := new(types.ACEMatch)
-							matchCfg.Type  = match.Type
-							matchCfg.Value = match.Value
-							aclCfg.Matches[matchIdx] = *matchCfg
-						}
-
-						for actionIdx, action := range acl.Actions {
-							actionCfg := new(types.ACEAction)
-							actionCfg.Limit      = action.Limit
-							actionCfg.LimitRate  = int(action.Limitrate)
-							actionCfg.LimitUnit  = action.Limitunit
-							actionCfg.LimitBurst = int(action.Limitburst)
-							// XXX:FIXME actionCfg.Drop = <TBD>
-							aclCfg.Actions[actionIdx] = *actionCfg
-						}
-						ulCfg.ACLs[aclIdx] = *aclCfg
-					}
-					appInstance.UnderlayNetworkList[ulIdx] = *ulCfg
-					ulIdx ++
+				nv4 := netEnt.GetNv4() //XXX not required now...
+				if nv4 != nil {
+					booValNv4 := nv4.Dhcp
+					log.Println("booValNv4: ", booValNv4)
 				}
-		}
-	}
-}
+				nv6 := netEnt.GetNv6() //XXX not required now...
+				if nv6 != nil {
+					booValNv6 := nv6.Dhcp
+					log.Println("booValNv6: ", booValNv6)
+				}
 
-func parseOverlayNetworkConfig (appInstance *types.AppInstanceConfig,
-						cfgApp *zconfig.AppInstanceConfig,
-						cfgNetworks []*zconfig.NetworkConfig) {
-	var olIdx int = 0
-
-	for _,intfEnt := range cfgApp.Interfaces {
-		for _,netEnt := range cfgNetworks {
-
-			if intfEnt.NetworkId == netEnt.Id &&
-				strings.ToLower(netEnt.Type.String())  == "lisp" {
-
-				olCfg := new(types.EIDOverlayConfig)
-				olCfg.ACLs = make([]types.ACE,len(intfEnt.Acls))
+				ulCfg := new(types.UnderlayNetworkConfig)
+				ulCfg.ACLs = make([]types.ACE, len(intfEnt.Acls))
 
 				for aclIdx, acl := range intfEnt.Acls {
 
 					aclCfg := new(types.ACE)
-					aclCfg.Matches = make([]types.ACEMatch,len(acl.Matches))
-					aclCfg.Actions = make([]types.ACEAction,len(acl.Actions))
+					aclCfg.Matches = make([]types.ACEMatch, len(acl.Matches))
+					aclCfg.Actions = make([]types.ACEAction, len(acl.Actions))
 
 					for matchIdx, match := range acl.Matches {
 						matchCfg := new(types.ACEMatch)
-						matchCfg.Type  = match.Type
+						matchCfg.Type = match.Type
 						matchCfg.Value = match.Value
 						aclCfg.Matches[matchIdx] = *matchCfg
 					}
 
 					for actionIdx, action := range acl.Actions {
 						actionCfg := new(types.ACEAction)
-						actionCfg.Limit        = action.Limit
-						actionCfg.LimitRate    = int(action.Limitrate)
-						actionCfg.LimitUnit    = action.Limitunit
-						actionCfg.LimitBurst   = int(action.Limitburst)
+						actionCfg.Limit = action.Limit
+						actionCfg.LimitRate = int(action.Limitrate)
+						actionCfg.LimitUnit = action.Limitunit
+						actionCfg.LimitBurst = int(action.Limitburst)
+						// XXX:FIXME actionCfg.Drop = <TBD>
+						aclCfg.Actions[actionIdx] = *actionCfg
+					}
+					ulCfg.ACLs[aclIdx] = *aclCfg
+				}
+				appInstance.UnderlayNetworkList[ulIdx] = *ulCfg
+				ulIdx++
+			}
+		}
+	}
+}
+
+func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
+	cfgApp *zconfig.AppInstanceConfig,
+	cfgNetworks []*zconfig.NetworkConfig) {
+	var olIdx int = 0
+
+	for _, intfEnt := range cfgApp.Interfaces {
+		for _, netEnt := range cfgNetworks {
+
+			if intfEnt.NetworkId == netEnt.Id &&
+				strings.ToLower(netEnt.Type.String()) == "lisp" {
+
+				olCfg := new(types.EIDOverlayConfig)
+				olCfg.ACLs = make([]types.ACE, len(intfEnt.Acls))
+
+				for aclIdx, acl := range intfEnt.Acls {
+
+					aclCfg := new(types.ACE)
+					aclCfg.Matches = make([]types.ACEMatch, len(acl.Matches))
+					aclCfg.Actions = make([]types.ACEAction, len(acl.Actions))
+
+					for matchIdx, match := range acl.Matches {
+						matchCfg := new(types.ACEMatch)
+						matchCfg.Type = match.Type
+						matchCfg.Value = match.Value
+						aclCfg.Matches[matchIdx] = *matchCfg
+					}
+
+					for actionIdx, action := range acl.Actions {
+						actionCfg := new(types.ACEAction)
+						actionCfg.Limit = action.Limit
+						actionCfg.LimitRate = int(action.Limitrate)
+						actionCfg.LimitUnit = action.Limitunit
+						actionCfg.LimitBurst = int(action.Limitburst)
 						aclCfg.Actions[actionIdx] = *actionCfg
 					}
 					olCfg.ACLs[aclIdx] = *aclCfg
@@ -250,7 +257,7 @@ func parseOverlayNetworkConfig (appInstance *types.AppInstanceConfig,
 
 				olCfg.EIDConfigDetails.EID = net.ParseIP(intfEnt.Addr)
 				olCfg.EIDConfigDetails.LispSignature = intfEnt.Lispsignature
-				olCfg.EIDConfigDetails.PemCert       = intfEnt.Pemcert
+				olCfg.EIDConfigDetails.PemCert = intfEnt.Pemcert
 				olCfg.EIDConfigDetails.PemPrivateKey = intfEnt.Pemprivatekey
 
 				nlisp := netEnt.GetNlisp()
@@ -268,15 +275,15 @@ func parseOverlayNetworkConfig (appInstance *types.AppInstanceConfig,
 
 					if len(nlisp.Nmtoeid) != 0 {
 
-						olCfg.NameToEidList = make([]types.NameToEid,len(nlisp.Nmtoeid))
+						olCfg.NameToEidList = make([]types.NameToEid, len(nlisp.Nmtoeid))
 
 						for nameIdx, nametoeid := range nlisp.Nmtoeid {
 
-							nameCfg  := new(types.NameToEid)
+							nameCfg := new(types.NameToEid)
 							nameCfg.HostName = nametoeid.Hostname
-							nameCfg.EIDs = make ([]net.IP,len(nametoeid.Eids))
+							nameCfg.EIDs = make([]net.IP, len(nametoeid.Eids))
 
-							for  eIdx, eid := range nametoeid.Eids {
+							for eIdx, eid := range nametoeid.Eids {
 								nameCfg.EIDs[eIdx] = net.ParseIP(eid)
 							}
 
@@ -288,65 +295,65 @@ func parseOverlayNetworkConfig (appInstance *types.AppInstanceConfig,
 				}
 
 				appInstance.OverlayNetworkList[olIdx] = *olCfg
-				olIdx ++
+				olIdx++
 			}
 		}
 	}
 }
 
-func writeAppInstance (appInstance types.AppInstanceConfig, appFilename string) {
+func writeAppInstance(appInstance types.AppInstanceConfig, appFilename string) {
 
 	log.Printf("Writing app instance UUID %s\n", appFilename)
 	bytes, err := json.Marshal(appInstance)
 	if err != nil {
 		log.Fatal(err, "json Marshal AppInstanceConfig")
 	}
-	err = ioutil.WriteFile(zedmanagerConfigDirname+ "/" + appFilename+".json", bytes, 0644)
+	err = ioutil.WriteFile(zedmanagerConfigDirname+"/"+appFilename+".json", bytes, 0644)
 	if err != nil {
 		log.Fatal(err)
 	}
 }
 
-func getCerts (appInstance types.AppInstanceConfig) {
+func getCerts(appInstance types.AppInstanceConfig) {
 
-	for _,image := range appInstance.StorageConfigList {
+	for _, image := range appInstance.StorageConfigList {
 
-		writeCertConfig (image, image.SignatureKey)
+		writeCertConfig(image, image.SignatureKey)
 
 		for _, certUrl := range image.CertificateChain {
-			writeCertConfig (image, certUrl)
+			writeCertConfig(image, certUrl)
 		}
 	}
 }
 
-func writeCertConfig (image types.StorageConfig, certUrl string) {
+func writeCertConfig(image types.StorageConfig, certUrl string) {
 
 	if certUrl == "" {
 		return
 	}
 
 	// XXX make into const
-	var baseCertDirname		= "/var/tmp/downloader/cert.obj"
-	var configCertDirname	= baseCertDirname + "/config"
+	var baseCertDirname = "/var/tmp/downloader/cert.obj"
+	var configCertDirname = baseCertDirname + "/config"
 
 	var safename = types.UrlToSafename(certUrl, "")
 
 	// XXX:FIXME dpath/key/pwd from image storage
 	// should be coming from Drive
 	// also the sha for the cert should be set
-	var config = &types.DownloaderConfig {
-			Safename: safename,
-			DownloadURL: certUrl,
-			MaxSize: image.MaxSize,
-			TransportMethod: image.TransportMethod,
-			Dpath: "zededa-cert-repo",
-			ApiKey: image.ApiKey,
-			Password: image.Password,
-			ImageSha256: "",
-			DownloadObjDir: certsDownloadDirname,
-			VerifiedObjDir: certificateDirname,
-			RefCount: 1,
-		}
+	var config = &types.DownloaderConfig{
+		Safename:        safename,
+		DownloadURL:     certUrl,
+		MaxSize:         image.MaxSize,
+		TransportMethod: image.TransportMethod,
+		Dpath:           "zededa-cert-repo",
+		ApiKey:          image.ApiKey,
+		Password:        image.Password,
+		ImageSha256:     "",
+		DownloadObjDir:  certsDownloadDirname,
+		VerifiedObjDir:  certificateDirname,
+		RefCount:        1,
+	}
 
 	bytes, err := json.Marshal(config)
 	if err != nil {

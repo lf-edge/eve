@@ -4,51 +4,51 @@
 package main
 
 import (
-	"fmt"
+	"crypto/tls"
 	"crypto/x509"
-	"io/ioutil"
+	"fmt"
 	"github.com/golang/protobuf/proto"
 	"github.com/zededa/api/zconfig"
-	"strings"
+	"io/ioutil"
 	"log"
-	"net/http"
 	"mime"
-	"time"
-	"crypto/tls"
+	"net/http"
 	"os"
+	"strings"
+	"time"
 )
 
 const (
-		MaxReaderSmall      = 1 << 16 // 64k
-		MaxReaderMaxDefault = MaxReaderSmall
-		MaxReaderMedium     = 1 << 19 // 512k
-		MaxReaderHuge       = 1 << 21 // two megabytes
-		configTickTimeout   = 1 // in minutes
+	MaxReaderSmall      = 1 << 16 // 64k
+	MaxReaderMaxDefault = MaxReaderSmall
+	MaxReaderMedium     = 1 << 19 // 512k
+	MaxReaderHuge       = 1 << 21 // two megabytes
+	configTickTimeout   = 1       // in minutes
 )
 
-var configApi	string	= "api/v1/edgedevice/config"
-var statusApi	string	= "api/v1/edgedevice/info"
-var metricsApi	string	= "api/v1/edgedevice/metrics"
+var configApi string = "api/v1/edgedevice/config"
+var statusApi string = "api/v1/edgedevice/info"
+var metricsApi string = "api/v1/edgedevice/metrics"
 
 // XXX remove global variables
-var activeVersion	string
-var configUrl		string
-var deviceId		string
-var metricsUrl		string
-var statusUrl		string
+var activeVersion string
+var configUrl string
+var deviceId string
+var metricsUrl string
+var statusUrl string
 
-var serverFilename	string = "/opt/zededa/etc/server"
+var serverFilename string = "/opt/zededa/etc/server"
 
-var dirName		string = "/opt/zededa/etc"
-var deviceCertName	string = dirName + "/device.cert.pem"
-var deviceKeyName	string = dirName + "/device.key.pem"
-var rootCertName	string = dirName + "/root-certificate.pem"
+var dirName string = "/opt/zededa/etc"
+var deviceCertName string = dirName + "/device.cert.pem"
+var deviceKeyName string = dirName + "/device.key.pem"
+var rootCertName string = dirName + "/root-certificate.pem"
 
 // XXX remove global variables
-var deviceCert		tls.Certificate
-var cloudClient		*http.Client
+var deviceCert tls.Certificate
+var cloudClient *http.Client
 
-func getCloudUrls () {
+func getCloudUrls() {
 
 	// get the server name
 	bytes, err := ioutil.ReadFile(serverFilename)
@@ -58,13 +58,13 @@ func getCloudUrls () {
 	strTrim := strings.TrimSpace(string(bytes))
 	serverName := strings.Split(strTrim, ":")[0]
 
-	configUrl	=	serverName + "/" + configApi
-	statusUrl	=	serverName + "/" + statusApi
-	metricsUrl	=	serverName + "/" + metricsApi
+	configUrl = serverName + "/" + configApi
+	statusUrl = serverName + "/" + statusApi
+	metricsUrl = serverName + "/" + metricsApi
 
 	deviceCert, err = tls.LoadX509KeyPair(deviceCertName, deviceKeyName)
 	if err != nil {
-	        log.Fatal(err)
+		log.Fatal(err)
 	}
 	// Load CA cert
 	caCert, err := ioutil.ReadFile(rootCertName)
@@ -101,14 +101,14 @@ func getCloudUrls () {
 
 func configTimerTask() {
 
-	fmt.Println("starting config fetch timer task");
-	getLatestConfig(nil, configUrl);
+	fmt.Println("starting config fetch timer task")
+	getLatestConfig(nil, configUrl)
 
-	ticker := time.NewTicker(time.Minute  * configTickTimeout)
+	ticker := time.NewTicker(time.Minute * configTickTimeout)
 
 	for t := range ticker.C {
 		fmt.Println(t)
-		getLatestConfig(nil, configUrl);
+		getLatestConfig(nil, configUrl)
 	}
 }
 
@@ -136,8 +136,8 @@ func getLatestConfig(deviceCert []byte, configUrl string) {
 
 func validateConfigMessage(r *http.Response) error {
 
-	var ctTypeStr		= "Content-Type"
-	var ctTypeProtoStr	= "application/x-proto-binary"
+	var ctTypeStr = "Content-Type"
+	var ctTypeProtoStr = "application/x-proto-binary"
 
 	switch r.StatusCode {
 	case http.StatusOK:
@@ -153,22 +153,22 @@ func validateConfigMessage(r *http.Response) error {
 	if ct == "" {
 		return fmt.Errorf("No content-type")
 	}
-	mimeType, _,err := mime.ParseMediaType(ct)
+	mimeType, _, err := mime.ParseMediaType(ct)
 	if err != nil {
 		return fmt.Errorf("Get Content-type error")
 	}
 	switch mimeType {
 	case ctTypeProtoStr:
-		return nil	     
+		return nil
 	default:
 		return fmt.Errorf("Content-type %s not supported",
-		       mimeType)
+			mimeType)
 	}
 }
 
-func readDeviceConfigProtoMessage (r *http.Response) (*zconfig.EdgeDevConfig, error) {
+func readDeviceConfigProtoMessage(r *http.Response) (*zconfig.EdgeDevConfig, error) {
 
-	var config= &zconfig.EdgeDevConfig{}
+	var config = &zconfig.EdgeDevConfig{}
 
 	bytes, err := ioutil.ReadAll(r.Body)
 	if err != nil {
@@ -185,14 +185,14 @@ func readDeviceConfigProtoMessage (r *http.Response) (*zconfig.EdgeDevConfig, er
 	return config, nil
 }
 
-func  publishDeviceConfig(config *zconfig.EdgeDevConfig) {
+func publishDeviceConfig(config *zconfig.EdgeDevConfig) {
 
 	log.Printf("Publishing config %v\n", config)
 
 	// if they match return
-	var devId  =  &zconfig.UUIDandVersion{};
+	var devId = &zconfig.UUIDandVersion{}
 
-	devId  = config.GetId()
+	devId = config.GetId()
 	if devId != nil {
 		// store the device id
 		deviceId = devId.Uuid
@@ -200,14 +200,14 @@ func  publishDeviceConfig(config *zconfig.EdgeDevConfig) {
 			log.Printf("Same version, skipping:%v\n", config.Id.Version)
 			return
 		}
-		activeVersion	= devId.Version
+		activeVersion = devId.Version
 	}
 	handleLookUpParam(config)
 
 	// get the current set of App files
 	curAppFilenames, err := ioutil.ReadDir(zedmanagerConfigDirname)
 
-	if  err != nil {
+	if err != nil {
 		log.Printf("read dir %s fail, err: %v\n", zedmanagerConfigDirname, err)
 		curAppFilenames = nil
 	}
@@ -215,7 +215,7 @@ func  publishDeviceConfig(config *zconfig.EdgeDevConfig) {
 	Apps := config.GetApps()
 	// delete any app instances which are not present in the new set
 	for _, curApp := range curAppFilenames {
-		curAppFilename	:=	curApp.Name()
+		curAppFilename := curApp.Name()
 
 		// file type json
 		if strings.HasSuffix(curAppFilename, ".json") {
