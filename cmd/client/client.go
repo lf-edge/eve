@@ -19,6 +19,7 @@ import (
 	"golang.org/x/crypto/ocsp"
 	"io/ioutil"
 	"log"
+	"mime"
 	"net"
 	"net/http"
 	"os"
@@ -203,13 +204,25 @@ func main() {
 		}
 
 		contentType := resp.Header.Get("Content-Type")
-		if strings.Contains(contentType, "application/x-proto-binary") || strings.Contains(contentType, "application/json") || strings.Contains(contentType, "text/plain") {
-			fmt.Printf("Received reply %s\n", string(contents))
-			return true
-		} else {
-			fmt.Println("Incorrect Content-Type " + contentType)
+		if contentType == "" {
+			fmt.Printf("%s no content-type\n", url)
 			return false
 		}
+		mimeType, _, err := mime.ParseMediaType(contentType)
+		if err != nil {
+			fmt.Printf("%s ParseMediaType failed %v\n", url, err)
+			return false
+		}
+		switch mimeType {
+		case "application/x-proto-binary":
+		case "application/json":
+		case "text/plain":
+			fmt.Printf("Received reply %s\n", string(contents))
+		default:
+			fmt.Println("Incorrect Content-Type " + mimeType)
+			return false
+		}
+		return true
 	}
 
 	// XXX remove later
@@ -263,11 +276,22 @@ func main() {
 		}
 
 		contentType := resp.Header.Get("Content-Type")
-		if contentType != "application/json" {
-			fmt.Println("Incorrect Content-Type " + contentType)
+		if contentType == "" {
+			fmt.Printf("%s no content-type\n", url)
 			return false
 		}
-		fmt.Printf("%s\n", string(contents))
+		mimeType, _, err := mime.ParseMediaType(contentType)
+		if err != nil {
+			fmt.Printf("%s ParseMediaType failed %v\n", url, err)
+			return false
+		}
+		switch mimeType {
+		case "application/json":
+			fmt.Printf("%s\n", string(contents))
+		default:
+			fmt.Println("Incorrect Content-Type " + mimeType)
+			return false
+		}
 		return true
 	}
 
@@ -372,8 +396,20 @@ func main() {
 			return false
 		}
 		contentType := resp.Header.Get("Content-Type")
-		if contentType != "application/json" {
-			fmt.Println("Incorrect Content-Type " + contentType)
+		if contentType == "" {
+			fmt.Printf("device-param no content-type\n")
+			return false
+		}
+		mimeType, _, err := mime.ParseMediaType(contentType)
+		if err != nil {
+			fmt.Printf("device-param ParseMediaType failed %v\n", err)
+			return false
+		}
+		switch mimeType {
+		case "application/json":
+			break
+		default:
+			fmt.Println("Incorrect Content-Type " + mimeType)
 			return false
 		}
 		if err := json.Unmarshal(contents, &device); err != nil {
