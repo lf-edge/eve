@@ -47,6 +47,7 @@ func main() {
 
 	getCloudUrls ()
 	go metricsTimerTask()
+	// XXX pass configUrl as argument
 	go configTimerTask()
 
 	configChanges := make(chan string)

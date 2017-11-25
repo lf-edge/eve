@@ -26,6 +26,8 @@ const (
 	baseDirname = "/var/tmp/zedrouter"
 	configDirname = baseDirname + "/config"
 )
+
+// XXX remove global variable
 var cpuStorageStat [][]string
 
 func publishMetrics() {
@@ -474,10 +476,13 @@ func SendInfoProtobufStrThroughHttp (ReportInfo *zmet.ZInfoMsg) {
 		fmt.Println("marshaling error: ", err)
 	}
 
-	_, err = cloudClient.Post("https://"+statusUrl, "application/x-proto-binary", bytes.NewBuffer(data))
+	resp, err := cloudClient.Post("https://"+statusUrl,
+		"application/x-proto-binary", bytes.NewBuffer(data))
 	if err != nil {
 		fmt.Println(err)
+		return
 	}
+	defer resp.Body.Close()
 }
 
 func SendMetricsProtobufStrThroughHttp (ReportMetrics *zmet.ZMetricMsg) {
@@ -487,8 +492,11 @@ func SendMetricsProtobufStrThroughHttp (ReportMetrics *zmet.ZMetricMsg) {
 		fmt.Println("marshaling error: ", err)
 	}
 
-	_, err = cloudClient.Post("https://"+metricsUrl, "application/x-proto-binary", bytes.NewBuffer(data))
+	resp, err := cloudClient.Post("https://"+metricsUrl,
+		"application/x-proto-binary", bytes.NewBuffer(data))
 	if err != nil {
 		fmt.Println(err)
+		return
 	}
+	defer resp.Body.Close()
 }

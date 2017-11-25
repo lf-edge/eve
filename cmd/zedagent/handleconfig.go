@@ -103,28 +103,29 @@ func getCloudUrls () {
 func configTimerTask() {
 
 	fmt.Println("starting config fetch timer task");
-	getLatestConfig(nil);
+	getLatestConfig(nil, configUrl);
 
 	ticker := time.NewTicker(time.Minute  * configTickTimeout)
 
 	for t := range ticker.C {
 		fmt.Println(t)
-		getLatestConfig(nil);
+		getLatestConfig(nil, configUrl);
 	}
 }
 
-func getLatestConfig(deviceCert []byte) {
+func getLatestConfig(deviceCert []byte, configUrl string) {
 
 	fmt.Printf("config-url: %s\n", configUrl)
 	resp, err := cloudClient.Get("https://" + configUrl)
 
 	if err != nil {
 		log.Printf("URL get fail: %v\n", err)
-	} else {
-		log.Println("got response for config from zedcloud: ",resp)
-		// XXX don't have validate also parse and save!
-		validateConfigMessage(resp)
+		return
 	}
+	defer resp.Body.Close()
+	log.Println("got response for config from zedcloud: ",resp)
+	// XXX don't have validate also parse and save!
+	validateConfigMessage(resp)
 }
 
 func validateConfigMessage(r *http.Response) error {
