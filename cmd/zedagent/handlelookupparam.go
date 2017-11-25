@@ -89,8 +89,7 @@ func handleLookUpParam(devConfig *zconfig.EdgeDevConfig) {
 	var deviceCert tls.Certificate
 
 	// Load device cert
-	var err error
-	deviceCert, err = tls.LoadX509KeyPair(deviceCertName,
+	deviceCert, err := tls.LoadX509KeyPair(deviceCertName,
 		deviceKeyName)
 	if err != nil {
 		log.Fatal(err)
