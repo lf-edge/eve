@@ -12,6 +12,7 @@ import (
 	"github.com/shirou/gopsutil/net"
 	"github.com/zededa/api/zmet"
 	"github.com/zededa/go-provision/types"
+	"net/http"
 	"io/ioutil"
 	"log"
 	"os/exec"
@@ -474,6 +475,7 @@ func SendInfoProtobufStrThroughHttp(ReportInfo *zmet.ZInfoMsg) {
 		fmt.Println("marshaling error: ", err)
 	}
 
+	fmt.Printf("status-url: %s\n", statusUrl)
 	resp, err := cloudClient.Post("https://"+statusUrl,
 		"application/x-proto-binary", bytes.NewBuffer(data))
 	if err != nil {
@@ -481,6 +483,14 @@ func SendInfoProtobufStrThroughHttp(ReportInfo *zmet.ZInfoMsg) {
 		return
 	}
 	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case http.StatusOK:
+		fmt.Printf("SendInfoProtobufStrThroughHttp StatusOK\n")
+	default:
+		fmt.Printf("SendInfoProtobufStrThroughHttp statuscode %d %s\n",
+			resp.StatusCode, http.StatusText(resp.StatusCode))
+		fmt.Printf("received response %v\n", resp)
+	}
 }
 
 func SendMetricsProtobufStrThroughHttp(ReportMetrics *zmet.ZMetricMsg) {
@@ -490,6 +500,7 @@ func SendMetricsProtobufStrThroughHttp(ReportMetrics *zmet.ZMetricMsg) {
 		fmt.Println("marshaling error: ", err)
 	}
 
+	fmt.Printf("metrics-url: %s\n", metricsUrl)
 	resp, err := cloudClient.Post("https://"+metricsUrl,
 		"application/x-proto-binary", bytes.NewBuffer(data))
 	if err != nil {
@@ -497,4 +508,12 @@ func SendMetricsProtobufStrThroughHttp(ReportMetrics *zmet.ZMetricMsg) {
 		return
 	}
 	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case http.StatusOK:
+		fmt.Printf("SendMetricsProtobufStrThroughHttp StatusOK\n")
+	default:
+		fmt.Printf("SendMetricsProtobufStrThroughHttp statuscode %d %s\n",
+			resp.StatusCode, http.StatusText(resp.StatusCode))
+		fmt.Printf("received response %v\n", resp)
+	}
 }
