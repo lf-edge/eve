@@ -58,7 +58,7 @@ else
    ntpd -d -q -n -p pool.ntp.org
 fi
 if [ $WAIT = 1 ]; then
-    echo; read -n 1 -s -p "Press any key to continue"; echo; echo
+    echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
 
@@ -79,7 +79,7 @@ if [ ! -f $ETCDIR/server -o ! -f $ETCDIR/root-certificate.pem ]; then
 fi
 
 if [ $WAIT = 1 ]; then
-    echo; read -n 1 -s -p "Press any key to continue"; echo; echo
+    echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
 # XXX should we harden/remove any Linux network services at this point?
@@ -98,7 +98,7 @@ if [ -f $ETCDIR/wifi_ssid ]; then
     # Assumes wpa packages are included. Would be in our image?
 fi
 if [ $WAIT = 1 ]; then
-    echo; read -n 1 -s -p "Press any key to continue"; echo; echo
+    echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
 # XXX this should run in domZ aka ZedRouter on init.
@@ -115,7 +115,7 @@ if [ $SELF_REGISTER = 1 ]; then
     $BINDIR/client $OLDFLAG -d $ETCDIR selfRegister
     rm -f $ETCDIR/self-register-failed
     if [ $WAIT = 1 ]; then
-	echo; read -n 1 -s -p "Press any key to continue"; echo; echo
+	echo -n "Press any key to continue "; read dummy; echo; echo
     fi
 fi
 
@@ -138,7 +138,7 @@ if [ /bin/true -o ! -f $ETCDIR/lisp.config ]; then
 	rm -f /tmp/hosts.$$
     fi
     if [ $WAIT = 1 ]; then
-	echo; read -n 1 -s -p "Press any key to continue"; echo; echo
+	echo -n "Press any key to continue "; read dummy; echo; echo
     fi
 fi
 
@@ -342,50 +342,50 @@ rm -f /var/tmp/zedrouter/config/restart
 echo "Starting verifier at" `date`
 verifier >/var/log/verifier.log 2>&1 &
 if [ $WAIT = 1 ]; then
-    echo; read -n 1 -s -p "Press any key to continue"; echo; echo
+    echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
 echo "Starting ZedManager at" `date`
 zedmanager >/var/log/zedmanager.log 2>&1 &
 if [ $WAIT = 1 ]; then
-    echo; read -n 1 -s -p "Press any key to continue"; echo; echo
+    echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
 echo "Starting downloader at" `date`
 downloader >/var/log/downloader.log 2>&1 &
 if [ $WAIT = 1 ]; then
-    echo; read -n 1 -s -p "Press any key to continue"; echo; echo
+    echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
 echo "Starting eidregister at" `date`
-eidregister >&/var/log/eidregister.log 2>&1 &
+eidregister >/var/log/eidregister.log 2>&1 &
 if [ $WAIT = 1 ]; then
-    echo; read -n 1 -s -p "Press any key to continue"; echo; echo
+    echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
 echo "Starting identitymgr at" `date`
 identitymgr >/var/log/identitymgr.log 2>&1 &
 if [ $WAIT = 1 ]; then
-    echo; read -n 1 -s -p "Press any key to continue"; echo; echo
+    echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
 echo "Starting ZedRouter at" `date`
 zedrouter >/var/log/zedrouter.log 2>&1 &
 if [ $WAIT = 1 ]; then
-    echo; read -n 1 -s -p "Press any key to continue"; echo; echo
+    echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
 echo "Starting DomainMgr at" `date`
 domainmgr >/var/log/domainmgr.log 2>&1 &
 # Do something
 if [ $WAIT = 1 ]; then
-    echo; read -n 1 -s -p "Press any key to continue"; echo; echo
+    echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
 echo "Starting zedagent at" `date`
 zedagent >/var/log/zedagent.log 2>&1 &
 if [ $WAIT = 1 ]; then
-    echo; read -n 1 -s -p "Press any key to continue"; echo; echo
+    echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
 echo "Uploading device (hardware) status at" `date`
@@ -441,7 +441,7 @@ echo $BINDIR/client $OLDFLAG -d $ETCDIR updateHwStatus
 $BINDIR/client $OLDFLAG -d $ETCDIR updateHwStatus
 
 if [ $WAIT = 1 ]; then
-    echo; read -n 1 -s -p "Press any key to continue"; echo; echo
+    echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
 echo "Uploading software status at" `date`
