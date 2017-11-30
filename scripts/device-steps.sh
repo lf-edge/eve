@@ -66,6 +66,9 @@ if [ ! \( -f $ETCDIR/device.cert.pem -a -f $ETCDIR/device.key.pem \) ]; then
     echo "Generating a device key pair and self-signed cert (using TPM/TEE if available) at" `date`
     $PROVDIR/generate-device.sh $ETCDIR/device
     SELF_REGISTER=1
+elif [ -f $ETCDIR/self-register-failed ]; then
+    echo "self-register failed/killed/rebooted; redoing self-register"
+    SELF_REGISTER=1
 else
     echo "Using existing device key pair and self-signed cert"
     SELF_REGISTER=0
@@ -102,6 +105,7 @@ fi
 # Ideally just to WiFi setup in dom0 and do DHCP in domZ
 
 if [ $SELF_REGISTER = 1 ]; then
+    touch $ETCDIR/self-register-failed
     echo "Self-registering our device certificate at " `date`
     if [ ! \( -f $ETCDIR/onboard.cert.pem -a -f $ETCDIR/onboard.key.pem \) ]; then
 	echo "Missing onboarding certificate. Giving up"
@@ -109,6 +113,7 @@ if [ $SELF_REGISTER = 1 ]; then
     fi
     echo $BINDIR/client $OLDFLAG -d $ETCDIR selfRegister
     $BINDIR/client $OLDFLAG -d $ETCDIR selfRegister
+    rm -f $ETCDIR/self-register-failed
     if [ $WAIT = 1 ]; then
 	echo; read -n 1 -s -p "Press any key to continue"; echo; echo
     fi
