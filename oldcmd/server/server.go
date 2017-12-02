@@ -39,6 +39,8 @@ type ServerCertInfo struct {
 }
 
 var localFlag bool
+// Set from Makefile
+var Version = "No version specified"
 
 // Assumes the config files are in dirName, which is
 // is /usr/local/etc/zededa-server/ by default. The files are
@@ -51,10 +53,15 @@ func main() {
 	log.SetOutput(os.Stdout)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
 	log.Printf("Starting server\n")
+	versionPtr := flag.Bool("v", false, "Version")
 	localPtr := flag.Bool("l", false, "Use local certs and map servers")
 	dirPtr := flag.String("d", "/usr/local/etc/zededa-server/",
 		"Directory with certs etc")
 	flag.Parse()
+	if *versionPtr {
+		fmt.Printf("%s: %s\n", os.Args[0], Version)
+		return
+	}
 	localFlag = *localPtr
 	dirName := *dirPtr
 	args := flag.Args()

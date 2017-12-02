@@ -27,6 +27,9 @@ import (
 	"time"
 )
 
+// Set from Makefile
+var Version = "No version specified"
+
 var maxDelay = time.Second * 600 // 10 minutes
 
 // Assumes the config files are in dirName, which is /opt/zededa/etc
@@ -51,13 +54,19 @@ var maxDelay = time.Second * 600 // 10 minutes
 func main() {
 	log.SetOutput(os.Stdout)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
+	versionPtr := flag.Bool("v", false, "Version")
 	oldPtr := flag.Bool("o", false, "Old use of prov01")
 	dirPtr := flag.String("d", "/opt/zededa/etc",
 		"Directory with certs etc")
 	flag.Parse()
+	versionFlag := *versionPtr
 	oldFlag := *oldPtr
 	dirName := *dirPtr
 	args := flag.Args()
+	if versionFlag {
+		fmt.Printf("%s: %s\n", os.Args[0], Version)
+		return
+	}
 	operations := map[string]bool{
 		"selfRegister":   false,
 		"lookupParam":    false,

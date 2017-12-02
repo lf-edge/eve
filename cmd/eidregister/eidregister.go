@@ -14,6 +14,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -34,9 +35,18 @@ var deviceCert tls.Certificate
 var serverNameAndPort, serverName string
 var caCertPool *x509.CertPool
 
+// Set from Makefile
+var Version = "No version specified"
+
 func main() {
 	log.SetOutput(os.Stdout)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
+	versionPtr := flag.Bool("v", false, "Version")
+	flag.Parse()
+	if *versionPtr {
+		fmt.Printf("%s: %s\n", os.Args[0], Version)
+		return
+	}
 	log.Printf("Starting eidregister\n")
 	watch.CleanupRestarted("eidregister")
 

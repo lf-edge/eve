@@ -6,6 +6,8 @@ ETCDIR=/opt/zededa/etc
 BINDIR=/opt/zededa/bin
 PROVDIR=$BINDIR
 LISPDIR=/opt/zededa/lisp
+AGENTS="zedrouter domainmgr downloader verifier identitymgr eidregister zedagent"
+ALLAGENTS="zedmanager $AGENTS"
 
 PATH=$BINDIR:$PATH
 
@@ -32,6 +34,15 @@ echo "Configuration from factory/install:"
 (cd $ETCDIR; ls -l)
 echo
 
+echo "Update version info in $ETCDIR/version"
+cat $ETCDIR/version_tag >$ETCDIR/version
+for AGENT in $ALLAGENTS; do
+    $BINDIR/$AGENT -v >>$ETCDIR/version
+done
+
+echo "Combined version:"
+cat $ETCDIR/version
+
 # We need to try our best to setup time *before* we generate the certifiacte.
 # Otherwise it may have start date in the future
 echo "Check for NTP config"
@@ -53,9 +64,13 @@ if [ -f $ETCDIR/ntp-server ]; then
 	echo "NTP not installed. Giving up"
 	exit 1
     fi
-else
+elif [ -f /usr/bin/ntpdate ]; then
+    /usr/bin/ntpdate pool.ntp.org
+elif [ -f /usr/sbin/ntpd ]; then
    # last ditch attemp to sync up our clock
-   ntpd -d -q -n -p pool.ntp.org
+    /usr/sbin/ntpd -d -q -n -p pool.ntp.org
+else
+    echo "No ntpd"
 fi
 if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
@@ -168,7 +183,6 @@ for d in $DIRS; do
     chmod 700 $d `dirname $d`
 done
 
-AGENTS="zedrouter domainmgr downloader verifier identitymgr eidregister zedagent"
 for AGENT in $AGENTS; do
     if [ ! -d /var/tmp/$AGENT ]; then
 	continue
@@ -270,7 +284,7 @@ ip6tables -F
 ip6tables -t raw -F
 
 echo "Saving any old log files"
-LOGGERS="zedmanager $AGENTS"
+LOGGERS=$ALLAGENTS
 for l in $LOGGERS; do
     f=/var/log/$l.log
     if [ -f $f ]; then

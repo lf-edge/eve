@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/pem"
+	"flag"
 	"fmt"
 	"github.com/nanobox-io/golang-scribble"
 	"github.com/zededa/go-provision/types"
@@ -17,10 +18,19 @@ import (
 	"time"
 )
 
+// Set from Makefile
+var Version = "No version specified"
+
 func main() {
 	log.SetOutput(os.Stdout)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
-	args := os.Args[1:]
+	versionPtr := flag.Bool("v", false, "Version")
+	flag.Parse()
+	if *versionPtr {
+		fmt.Printf("%s: %s\n", os.Args[0], Version)
+		return
+	}
+	args := flag.Args()
 	if len(args) < 2 || len(args) > 3 {
 		log.Fatal("Usage: " + os.Args[0] + " <userName> <certFile> [N]")
 	}

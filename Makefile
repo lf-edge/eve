@@ -3,16 +3,15 @@
 #
 
 PKGNAME   := zededa-provision
-MAJOR_VER := 1
-MINOR_VER := 0
 ARCH        ?= amd64
 #ARCH        ?= arm64
 
-BUILD_DATE  := $(shell date +"%Y-%m-%d %H:%M %Z")
+GIT_TAG     := $(shell git tag)
+BUILD_DATE  := $(shell date -u +"%Y-%m-%d-%H:%M")
 GIT_VERSION := $(shell git describe --match v --abbrev=8 --always --dirty)
 BRANCH_NAME := $(shell git rev-parse --abbrev-ref HEAD)
-VERSION     := $(MAJOR_VER).$(MINOR_VER)-$(GIT_VERSION)
-LISPURL     := https://www.dropbox.com/s/gw1gczw8z798q0a/lispers.net-x86-release-0.419.tgz
+VERSION     := $(GIT_TAG)
+LISPURL     := https://www.dropbox.com/s/rca6xfmrwsbbvhb/lispers.net-x86-release-0.423.tgz
 
 # Go parameters
 GOCMD=go
@@ -24,13 +23,18 @@ GOGENERATE=$(GOCMD) generate
 GOGET=$(GOCMD) get
 GOFMT=gofmt -w
 
-# For future use
-#LDFLAGS     := -ldflags "-X=main.Version=$(VERSION) -X=main.Build=$(BUILD_DATE)"
+ifeq ($(PROD), 1)
+EXTRA_VERSION :=
+else
+EXTRA_VERSION := -$(GIT_VERSION)-$(BUILD_DATE)
+endif
 
 ifeq ($(BRANCH_NAME), master)
 PKG         := $(PKGNAME)_$(VERSION)_$(ARCH)
+BUILD_VERSION := $(VERSION)$(EXTRA_VERSION)
 else
 PKG         := $(PKGNAME)_$(VERSION)-$(BRANCH_NAME)_$(ARCH)
+BUILD_VERSION := $(VERSION)-$(GIT_BRANCH)$(EXTRA_VERSION)
 endif
 
 OBJDIR      := $(PWD)/bin/$(ARCH)
@@ -112,11 +116,14 @@ obj:
 	@mkdir -p $(BINDIR) $(ETCDIR) $(LISPDIR)
 
 build:
+	@echo Building version $(BUILD_VERSION)
+	@echo "all: $(BUILD_VERSION)" >etc/version_tag
 	@for app in $(APPS); do \
 		echo $$app; \
 		CGO_ENABLED=0 \
 		GOOS=linux \
 		GOARCH=$(ARCH) go build \
+			-ldflags -X=main.Version=$(BUILD_VERSION) \
 			-o $(BINDIR)/$$app github.com/zededa/go-provision/$$app || exit 1; \
 	done
 
