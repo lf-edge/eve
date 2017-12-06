@@ -199,6 +199,13 @@ func PublishMetricsToZedCloud() {
 
 	ReportMetrics.Ztype = *ReportZmetric
 
+	// Handle xentop failing above
+	if len(cpuStorageStat) == 0 {
+		log.Printf("No xentop? metrics: %s\n", ReportMetrics)
+		SendMetricsProtobufStrThroughHttp(ReportMetrics)
+		return
+	}
+	
 	for arr := 1; arr < 2; arr++ {
 
 		cpuTime, _ := strconv.ParseUint(cpuStorageStat[arr][3], 10, 0)
@@ -256,7 +263,7 @@ func PublishMetricsToZedCloud() {
 		}
 	}
 
-	log.Printf("%s\n", ReportMetrics)
+	log.Printf("Metrics: %s\n", ReportMetrics)
 	SendMetricsProtobufStrThroughHttp(ReportMetrics)
 }
 
