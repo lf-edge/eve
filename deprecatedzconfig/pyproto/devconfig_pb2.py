@@ -25,7 +25,6 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   serialized_pb=_b('\n\x0f\x64\x65vconfig.proto\x1a\x0f\x64\x65vcommon.proto\x1a\x0f\x61ppconfig.proto\x1a\rnetwork.proto\"\xa7\x01\n\rEdgeDevConfig\x12\x1b\n\x02id\x18\x01 \x01(\x0b\x32\x0f.UUIDandVersion\x12\x17\n\x0f\x64\x65vConfigSha256\x18\x02 \x01(\x0c\x12\x1a\n\x12\x64\x65vConfigSignature\x18\x03 \x01(\x0c\x12 \n\x04\x61pps\x18\x04 \x03(\x0b\x32\x12.AppInstanceConfig\x12\"\n\x08networks\x18\x05 \x03(\x0b\x32\x10.UnderlayNetworkBJ\n\x1f\x63om.zededa.cloud.uservice.protoZ\'github.com/zededa/api/deprecatedzconfigb\x06proto3')
   ,
   dependencies=[devcommon__pb2.DESCRIPTOR,appconfig__pb2.DESCRIPTOR,network__pb2.DESCRIPTOR,])
-_sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
 
 
@@ -43,35 +42,35 @@ _EDGEDEVCONFIG = _descriptor.Descriptor(
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='devConfigSha256', full_name='EdgeDevConfig.devConfigSha256', index=1,
       number=2, type=12, cpp_type=9, label=1,
       has_default_value=False, default_value=_b(""),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='devConfigSignature', full_name='EdgeDevConfig.devConfigSignature', index=2,
       number=3, type=12, cpp_type=9, label=1,
       has_default_value=False, default_value=_b(""),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='apps', full_name='EdgeDevConfig.apps', index=3,
       number=4, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='networks', full_name='EdgeDevConfig.networks', index=4,
       number=5, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -92,6 +91,7 @@ _EDGEDEVCONFIG.fields_by_name['id'].message_type = devcommon__pb2._UUIDANDVERSIO
 _EDGEDEVCONFIG.fields_by_name['apps'].message_type = appconfig__pb2._APPINSTANCECONFIG
 _EDGEDEVCONFIG.fields_by_name['networks'].message_type = network__pb2._UNDERLAYNETWORK
 DESCRIPTOR.message_types_by_name['EdgeDevConfig'] = _EDGEDEVCONFIG
+_sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
 EdgeDevConfig = _reflection.GeneratedProtocolMessageType('EdgeDevConfig', (_message.Message,), dict(
   DESCRIPTOR = _EDGEDEVCONFIG,

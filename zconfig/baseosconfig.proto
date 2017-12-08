@@ -6,9 +6,22 @@ option java_package = "com.zededa.cloud.uservice.proto";
 import "devcommon.proto";
 import "storage.proto";
 
+// OS version key and value pair
+message OSKeyTags {
+	string OSVerKey = 1;
+	string OSVerValue = 2;
+}
+
+// repeated key value tags compromising
+message OSVerDetails {
+	repeated OSKeyTags baseOSParams = 12;
+}
+
 message BaseOSConfig {
 	UUIDandVersion uuidandversion = 1;
-	string displayname = 2;
 	repeated Drive drives = 3;
 	bool activate = 4;
+
+	string baseOSVersion = 10;
+	OSVerDetails baseOSDetails = 11;
 }

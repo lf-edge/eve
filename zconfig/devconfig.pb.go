@@ -20,7 +20,7 @@ type MapServer struct {
 func (m *MapServer) Reset()                    { *m = MapServer{} }
 func (m *MapServer) String() string            { return proto.CompactTextString(m) }
 func (*MapServer) ProtoMessage()               {}
-func (*MapServer) Descriptor() ([]byte, []int) { return fileDescriptor3, []int{0} }
+func (*MapServer) Descriptor() ([]byte, []int) { return fileDescriptor2, []int{0} }
 
 func (m *MapServer) GetNameOrIp() string {
 	if m != nil {
@@ -44,7 +44,7 @@ type ZedServer struct {
 func (m *ZedServer) Reset()                    { *m = ZedServer{} }
 func (m *ZedServer) String() string            { return proto.CompactTextString(m) }
 func (*ZedServer) ProtoMessage()               {}
-func (*ZedServer) Descriptor() ([]byte, []int) { return fileDescriptor3, []int{1} }
+func (*ZedServer) Descriptor() ([]byte, []int) { return fileDescriptor2, []int{1} }
 
 func (m *ZedServer) GetHostName() string {
 	if m != nil {
@@ -74,7 +74,7 @@ type DeviceLispDetails struct {
 func (m *DeviceLispDetails) Reset()                    { *m = DeviceLispDetails{} }
 func (m *DeviceLispDetails) String() string            { return proto.CompactTextString(m) }
 func (*DeviceLispDetails) ProtoMessage()               {}
-func (*DeviceLispDetails) Descriptor() ([]byte, []int) { return fileDescriptor3, []int{2} }
+func (*DeviceLispDetails) Descriptor() ([]byte, []int) { return fileDescriptor2, []int{2} }
 
 func (m *DeviceLispDetails) GetLispMapServers() []*MapServer {
 	if m != nil {
@@ -146,7 +146,7 @@ type EdgeDevConfig struct {
 func (m *EdgeDevConfig) Reset()                    { *m = EdgeDevConfig{} }
 func (m *EdgeDevConfig) String() string            { return proto.CompactTextString(m) }
 func (*EdgeDevConfig) ProtoMessage()               {}
-func (*EdgeDevConfig) Descriptor() ([]byte, []int) { return fileDescriptor3, []int{3} }
+func (*EdgeDevConfig) Descriptor() ([]byte, []int) { return fileDescriptor2, []int{3} }
 
 func (m *EdgeDevConfig) GetId() *UUIDandVersion {
 	if m != nil {
@@ -211,9 +211,9 @@ func init() {
 	proto.RegisterType((*EdgeDevConfig)(nil), "EdgeDevConfig")
 }
 
-func init() { proto.RegisterFile("devconfig.proto", fileDescriptor3) }
+func init() { proto.RegisterFile("devconfig.proto", fileDescriptor2) }
 
-var fileDescriptor3 = []byte{
+var fileDescriptor2 = []byte{
 	// 534 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x74, 0x93, 0xd1, 0x6e, 0xda, 0x30,
 	0x14, 0x86, 0x45, 0xa0, 0x1d, 0x9c, 0x42, 0xdb, 0x79, 0xd2, 0x64, 0x55, 0xda, 0xca, 0xb8, 0x98,

@@ -24,7 +24,7 @@ type AppInstanceConfig struct {
 func (m *AppInstanceConfig) Reset()                    { *m = AppInstanceConfig{} }
 func (m *AppInstanceConfig) String() string            { return proto.CompactTextString(m) }
 func (*AppInstanceConfig) ProtoMessage()               {}
-func (*AppInstanceConfig) Descriptor() ([]byte, []int) { return fileDescriptor6, []int{0} }
+func (*AppInstanceConfig) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{0} }
 
 func (m *AppInstanceConfig) GetUuidandversion() *UUIDandVersion {
 	if m != nil {
@@ -72,9 +72,9 @@ func init() {
 	proto.RegisterType((*AppInstanceConfig)(nil), "AppInstanceConfig")
 }
 
-func init() { proto.RegisterFile("appconfig.proto", fileDescriptor6) }
+func init() { proto.RegisterFile("appconfig.proto", fileDescriptor5) }
 
-var fileDescriptor6 = []byte{
+var fileDescriptor5 = []byte{
 	// 300 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x5c, 0x90, 0x3d, 0x4f, 0xf3, 0x30,
 	0x14, 0x85, 0x95, 0xf6, 0x7d, 0xa3, 0xd6, 0x15, 0x8d, 0xc8, 0x14, 0x55, 0x02, 0x22, 0xa6, 0x4c,
