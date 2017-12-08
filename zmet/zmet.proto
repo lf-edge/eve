@@ -107,7 +107,7 @@ message ZInfoDevice {
 
   ZInfoSW software = 12;		// Deprecated;
   repeated ZInfoNetwork network = 13;
-  repeated ZInfoSW softwaraList = 14;	// Software Images in both partitions
+  repeated ZInfoSW softwareList = 14;	// Software Images in both partitions
 }
 
 // Device info from DOM0 perspective, if it exists.
