@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+option go_package  = "github.com/zededa/api/zconfig";
+option java_package = "com.zededa.cloud.uservice.proto";
+
+import "devcommon.proto";
+import "storage.proto";
+
+message BaseOSConfig {
+	UUIDandVersion uuidandversion = 1;
+	string displayname = 2;
+	repeated Drive drives = 3;
+	bool activate = 4;
+}

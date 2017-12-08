@@ -5,6 +5,7 @@ option java_package = "com.zededa.cloud.uservice.proto";
 
 import "devcommon.proto";
 import "appconfig.proto";
+import "baseosconfig.proto";
 import "netconfig.proto";
 import "storage.proto";
 
@@ -40,4 +41,5 @@ message EdgeDevConfig {
 	repeated DatastoreConfig datastores = 6;
 
 	DeviceLispDetails lispInfo = 7;
+	repeated BaseOSConfig base = 8;
 }

@@ -71,6 +71,15 @@ enum ZPeripheralTypes {
   ZpNetwork = 2;
 }
 
+enum ZSwState {
+  INVALID		= 0;
+  INITIAL		= 1;
+  DOWNLOAD_STARTED	= 2;
+  DOWNLOADED		= 3;
+  DELIVERED		= 4;
+  INSTALLED		= 5;
+}
+
 message ZinfoPeripheral {
   ZPeripheralTypes ztype = 1;
   bool pluggable = 2;
@@ -80,6 +89,8 @@ message ZinfoPeripheral {
 message ZInfoSW {
   string swVersion = 2;
   string swHash = 3;
+  ZSwState state = 4;
+  bool activated = 5;
 }
 
 // Base device info, as discovered by Xen (or OS on bare metal)
@@ -96,6 +107,7 @@ message ZInfoDevice {
 
   ZInfoSW software = 12;
   repeated ZInfoNetwork network = 13;
+  repeated ZInfoSW softwaraList = 14;
 }
 
 // Device info from DOM0 perspective, if it exists.
