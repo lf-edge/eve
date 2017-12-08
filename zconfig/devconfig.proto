@@ -41,5 +41,5 @@ message EdgeDevConfig {
 	repeated DatastoreConfig datastores = 6;
 
 	DeviceLispDetails lispInfo = 7;
-	repeated BaseOSConfig base = 8;
+	repeated BaseOSConfig base = 8;	// BaseOSImage config block
 }

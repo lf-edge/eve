@@ -73,11 +73,11 @@ enum ZPeripheralTypes {
 
 enum ZSwState {
   INVALID		= 0;
-  INITIAL		= 1;
-  DOWNLOAD_STARTED	= 2;
-  DOWNLOADED		= 3;
-  DELIVERED		= 4;
-  INSTALLED		= 5;
+  INITIAL		= 1;	// Config received
+  DOWNLOAD_STARTED	= 2;	// Download in-progress
+  DOWNLOADED		= 3;	// Download completed, verification in-progress
+  DELIVERED		= 4;	// Verification completed
+  INSTALLED		= 5;	// Installed, ready for activation
 }
 
 message ZinfoPeripheral {
@@ -89,8 +89,8 @@ message ZinfoPeripheral {
 message ZInfoSW {
   string swVersion = 2;
   string swHash = 3;
-  ZSwState state = 4;
-  bool activated = 5;
+  ZSwState state = 4;		// State of Software Image download/install
+  bool activated = 5;		// Activation flag
 }
 
 // Base device info, as discovered by Xen (or OS on bare metal)
@@ -105,9 +105,9 @@ message ZInfoDevice {
   repeated ZinfoPeripheral devices = 10;
   ZInfoManufacturer minfo = 11;
 
-  ZInfoSW software = 12;
+  ZInfoSW software = 12;		// Deprecated;
   repeated ZInfoNetwork network = 13;
-  repeated ZInfoSW softwaraList = 14;
+  repeated ZInfoSW softwaraList = 14;	// Software Images in both partitions
 }
 
 // Device info from DOM0 perspective, if it exists.
@@ -133,7 +133,7 @@ message ZInfoMsg {
   string devId = 2;
   oneof InfoContent {
   	ZInfoDevice dinfo = 3;
-  	ZInfoHypervisor hinfo = 4;
+  	ZInfoHypervisor hinfo = 4;	// Deprecated
   	ZInfoApp ainfo = 5;
    }
 }
