@@ -1,29 +1,29 @@
 package fib
 
 import (
-    "fmt"
+	"fmt"
+	"github.com/zededa/go-provision/types"
 	"net"
-    "github.com/zededa/go-provision/types"
 )
 
 var ifaceMap *types.InterfaceMap
-var eidMap   *types.EIDMap
+var eidMap *types.EIDMap
 
 func NewIfaceMap() *types.InterfaceMap {
-	return &types.InterfaceMap {
+	return &types.InterfaceMap{
 		InterfaceDB: make(map[string]types.Interface),
 	}
 }
 
 func NewEIDMap() *types.EIDMap {
-	return &types.EIDMap {
+	return &types.EIDMap{
 		EidEntries: make(map[uint32]types.EIDEntry),
 	}
 }
 
 func InitIfaceMaps() {
 	ifaceMap = NewIfaceMap()
-	eidMap   = NewEIDMap()
+	eidMap = NewEIDMap()
 }
 
 func LookupIfaceIID(name string) uint32 {

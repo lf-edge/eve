@@ -1,29 +1,30 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
-	"github.com/zededa/go-provision/dataplane/fib"
 	"github.com/zededa/go-provision/dataplane/etr"
-    "encoding/json"
-    "net"
-    "log"
+	"github.com/zededa/go-provision/dataplane/fib"
+	"log"
+	"net"
 	"os"
-	"time"
 	"os/signal"
 	"syscall"
+	"time"
 )
 
 const lispConfigDir = "/opt/zededa/lisp/"
 const configHolePath = lispConfigDir + "lisp-ipc-data-plane"
 const lispersDotNetItr = lispConfigDir + "lispers.net-itr"
-var   configPipe net.Listener
-var   puntChannel chan []byte
+
+var configPipe net.Listener
+var puntChannel chan []byte
 
 const (
-    MAPCACHETYPE = "map-cache"
-    DATABASEMAPPINGSTYPE = "database-mappings"
-    INTERFACESTYPE = "interfaces"
-    DECAPKEYSTYPE = "decap-keys"
+	MAPCACHETYPE         = "map-cache"
+	DATABASEMAPPINGSTYPE = "database-mappings"
+	INTERFACESTYPE       = "interfaces"
+	DECAPKEYSTYPE        = "decap-keys"
 )
 
 func main() {
@@ -42,19 +43,19 @@ func main() {
 	if _, err := os.Stat(configHolePath); err == nil {
 		if err = os.Remove(configHolePath); err != nil {
 			log.Fatal("Failed deleting the old lisp-ipc-data-plane socket: %s\n",
-						err)
+				err)
 			return
 		}
 		fmt.Println("Removed old lisp-ipc-data-plane socket")
 	}
 
 	configPipe, err := net.ListenUnixgram("unixgram",
-								&net.UnixAddr{configHolePath, "unixgram"})
+		&net.UnixAddr{configHolePath, "unixgram"})
 	if err != nil {
 		log.Fatal("Opening config hole: %s failed with err: %s\n",
-					configHolePath, err)
+			configHolePath, err)
 		fmt.Printf("Opening config hole: %s failed with err: %s\n",
-					configHolePath, err)
+			configHolePath, err)
 		return
 	}
 
@@ -66,27 +67,27 @@ func main() {
 func startPuntProcessor() {
 	var conn net.Conn
 	/**
-	 * Start a thread that connects to lispers.net-itr unix
-	 * dgram socket.
-	 *
-	 * This thread should keep re-trying till it can get a clint
-	 * connection to lispers.net-itr
+	* Start a thread that connects to lispers.net-itr unix
+	* dgram socket.
+	*
+	* This thread should keep re-trying till it can get a clint
+	* connection to lispers.net-itr
 	 */
 	puntChannel = make(chan []byte, 100)
 
 	for {
-	    fmt.Println("Trying for connection to lispers.net-itr")
-	    if _, err := os.Stat(lispersDotNetItr); err != nil {
+		fmt.Println("Trying for connection to lispers.net-itr")
+		if _, err := os.Stat(lispersDotNetItr); err != nil {
 			// lispers.net control plane has not created the server socket yet
 			// sleeping for 1 second before re-trying again
 			time.Sleep(5000 * time.Millisecond)
 			continue
-	    }
+		}
 
 		lconn, err := net.Dial("unix", lispersDotNetItr)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Client connection to %s cannot he opened: %s\n",
-						lispersDotNetItr, err)
+				lispersDotNetItr, err)
 			return
 		}
 		fmt.Printf("Connection established to %s\n", lispersDotNetItr)
@@ -104,7 +105,7 @@ func startPuntProcessor() {
 				// something bad happened while writing to lispers.net
 				// It could be temporary. We will keep going.
 				fmt.Fprintf(os.Stderr, "Error writing to punt channel %s: %s\n",
-							lispersDotNetItr, err)
+					lispersDotNetItr, err)
 			}
 		}
 	}(conn, puntChannel)

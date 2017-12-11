@@ -1,12 +1,12 @@
 package fib
 
 import (
-	"os"
-    "fmt"
+	"fmt"
+	"github.com/zededa/go-provision/types"
 	"net"
-	"time"
+	"os"
 	"syscall"
-    "github.com/zededa/go-provision/types"
+	"time"
 	//"github.com/google/gopacket"
 )
 
@@ -14,26 +14,27 @@ var cache *types.MapCacheTable
 var decaps *types.DecapTable
 
 var pktBuf []byte
+
 //var conn4  net.PacketConn
 //var conn6  net.PacketConn
 var fd4 int
 var fd6 int
 
 func newMapCache() *types.MapCacheTable {
-    return &types.MapCacheTable {
-	MapCache: make(map[types.MapCacheKey]*types.MapCacheEntry),
-    }
+	return &types.MapCacheTable{
+		MapCache: make(map[types.MapCacheKey]*types.MapCacheEntry),
+	}
 }
 
 func newDecapTable() *types.DecapTable {
-	return &types.DecapTable {
+	return &types.DecapTable{
 		DecapEntries: make(map[string]types.DecapKeys),
 	}
 }
 
 func InitMapCache() {
 	var err error
-    cache = newMapCache()
+	cache = newMapCache()
 
 	// Init buffered packet processing buffer
 	pktBuf = make([]byte, 65536)
@@ -57,14 +58,14 @@ func InitDecapTable() {
 }
 
 func makeMapCacheKey(iid uint32, eid net.IP) types.MapCacheKey {
-	return types.MapCacheKey {
+	return types.MapCacheKey{
 		IID: iid,
 		Eid: eid.String(),
 	}
 }
 
 func LookupAndAdd(iid uint32,
-				eid net.IP) (*types.MapCacheEntry, bool) {
+	eid net.IP) (*types.MapCacheEntry, bool) {
 	key := makeMapCacheKey(iid, eid)
 
 	// we take a read look and check if the entry that we are looking for
@@ -89,7 +90,7 @@ func LookupAndAdd(iid uint32,
 			punt = true
 			entry.LastPunt = time.Now()
 		}
-		return entry , punt
+		return entry, punt
 	}
 
 	// if the entry is not present already, we take write lock to map cache
@@ -104,12 +105,12 @@ func LookupAndAdd(iid uint32,
 	if ok {
 		return entry, false
 	} else {
-		resolveEntry := types.MapCacheEntry {
+		resolveEntry := types.MapCacheEntry{
 			InstanceId: iid,
-			Eid: eid,
-			Resolved: false,
-			PktBuffer: make(chan *types.BufferedPacket, 10),
-			LastPunt: time.Now(),
+			Eid:        eid,
+			Resolved:   false,
+			PktBuffer:  make(chan *types.BufferedPacket, 10),
+			LastPunt:   time.Now(),
 		}
 		cache.MapCache[key] = &resolveEntry
 		return &resolveEntry, true
@@ -134,7 +135,7 @@ func UpdateMapCacheEntry(iid uint32, eid net.IP, rlocs []types.Rloc) {
 				fmt.Println("Sending packet from buffered channel")
 				// Send the packet out now
 				CraftAndSendLispPacket(pkt.Packet, pktBuf, uint32(capLen), pkt.Hash32,
-										entry, entry.InstanceId, fd4, fd6)
+					entry, entry.InstanceId, fd4, fd6)
 			} else {
 				// channel might have been closed
 				return
@@ -150,11 +151,11 @@ func UpdateMapCacheEntry(iid uint32, eid net.IP, rlocs []types.Rloc) {
 	}
 }
 
-func compileRlocs(rlocs []types.Rloc) ([]types.Rloc, uint32){
+func compileRlocs(rlocs []types.Rloc) ([]types.Rloc, uint32) {
 	var highPrio uint32 = 0xFFFFFFFF
 	selectRlocs := []types.Rloc{}
 	var totWeight uint32 = 0
-	var wrStart   uint32 = 0
+	var wrStart uint32 = 0
 
 	// Find the highest priority available
 	for _, rloc := range rlocs {
@@ -196,7 +197,7 @@ func LookupAndUpdate(iid uint32, eid net.IP, rlocs []types.Rloc) *types.MapCache
 
 	fmt.Printf("Adding map-cache entry with key %d, %s\n", key.IID, key.Eid)
 
-	if ok  && (entry.Resolved == true) {
+	if ok && (entry.Resolved == true) {
 		// Delete the old map cache entry
 		// Another ITR thread might have taken a pointer to this entry
 		// and is still working on packet. If we start updating this entry,
@@ -219,14 +220,14 @@ func LookupAndUpdate(iid uint32, eid net.IP, rlocs []types.Rloc) *types.MapCache
 	// We will only use the highest priority rlocs and ignore rlocs with
 	// other priorities
 	selectRlocs, totWeight = compileRlocs(rlocs)
-	newEntry := types.MapCacheEntry {
-		InstanceId: iid,
-		Eid: eid,
-		Resolved: true,
-		Rlocs: selectRlocs,
+	newEntry := types.MapCacheEntry{
+		InstanceId:    iid,
+		Eid:           eid,
+		Resolved:      true,
+		Rlocs:         selectRlocs,
 		RlocTotWeight: totWeight,
-		PktBuffer: make(chan *types.BufferedPacket, 10),
-		LastPunt: time.Now(),
+		PktBuffer:     make(chan *types.BufferedPacket, 10),
+		LastPunt:      time.Now(),
 	}
 	cache.MapCache[key] = &newEntry
 	return &newEntry

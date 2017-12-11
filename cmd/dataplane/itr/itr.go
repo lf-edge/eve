@@ -2,24 +2,24 @@ package itr
 
 import (
 	"fmt"
-	"time"
-	"syscall"
 	"net"
+	"syscall"
+	"time"
 	//"sync"
-	"os"
 	"encoding/json"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pfring"
-	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/dataplane/fib"
+	"github.com/zededa/go-provision/types"
+	"os"
 )
 
 const SNAPLENGTH = 65536
 
 func StartItrThread(threadName string,
-					killChannel chan bool,
-					puntChannel chan []byte) {
+	killChannel chan bool,
+	puntChannel chan []byte) {
 	fmt.Println("Starting thread:", threadName)
 	// Kill channel will no longer be needed
 	// if we return from this function
@@ -28,7 +28,7 @@ func StartItrThread(threadName string,
 	ring := setupPacketCapture(threadName, SNAPLENGTH)
 	if ring == nil {
 		fmt.Fprintf(os.Stderr, "Packet capture setup for interface %s failed\n",
-					threadName)
+			threadName)
 	}
 	defer ring.Close()
 
@@ -37,7 +37,7 @@ func StartItrThread(threadName string,
 	//conn4, err := net.ListenPacket("ip4:udp", "0.0.0.0")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed creating IPv4 raw socket for %s: %s\n",
-					threadName, err)
+			threadName, err)
 		return
 	}
 	//defer conn4.Close()
@@ -46,7 +46,7 @@ func StartItrThread(threadName string,
 	//conn6, err := net.ListenPacket("ip6:udp", "")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed creating IPv6 raw socket for %s: %s\n",
-					threadName, err)
+			threadName, err)
 		return
 	}
 	//defer conn6.Close()
@@ -64,7 +64,7 @@ func setupPacketCapture(ifname string, snapLen uint32) *pfring.Ring {
 	ring, err := pfring.NewRing(ifname, SNAPLENGTH, pfring.FlagPromisc)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "PF_RING creation for interface %s failed: %s\n",
-					ifname, err)
+			ifname, err)
 		return nil
 	}
 
@@ -72,7 +72,7 @@ func setupPacketCapture(ifname string, snapLen uint32) *pfring.Ring {
 	err = ring.SetBPFFilter("ip6")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Setting ipv6 BPF filter on interface %s failed: %s\n",
-					ifname, err)
+			ifname, err)
 		ring.Close()
 		return nil
 	}
@@ -87,7 +87,7 @@ func setupPacketCapture(ifname string, snapLen uint32) *pfring.Ring {
 	err = ring.Enable()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed enabling PF_RING for interface %s: %s\n",
-					ifname, err)
+			ifname, err)
 		ring.Close()
 		return nil
 	}
@@ -95,12 +95,12 @@ func setupPacketCapture(ifname string, snapLen uint32) *pfring.Ring {
 }
 
 func startWorking(ifname string, ring *pfring.Ring,
-					killChannel chan bool, puntChannel chan []byte,
-					//conn4 net.PacketConn, conn6 net.PacketConn) {
-					fd4 int, fd6 int) {
+	killChannel chan bool, puntChannel chan []byte,
+	//conn4 net.PacketConn, conn6 net.PacketConn) {
+	fd4 int, fd6 int) {
 	var pktBuf [SNAPLENGTH]byte
 
-	iid  := fib.LookupIfaceIID(ifname)
+	iid := fib.LookupIfaceIID(ifname)
 	if iid == 0 {
 		fmt.Fprintf(os.Stderr, "Interface %s's IID cannot be found\n", ifname)
 		return
@@ -109,7 +109,7 @@ func startWorking(ifname string, ring *pfring.Ring,
 	// We need the EIDs attached to this interfaces for further processing
 	// Keep looking for them every 100ms
 	var eids []net.IP
-	eidLoop:
+eidLoop:
 	for {
 		time.Sleep(2 * time.Second)
 		select {
@@ -141,17 +141,17 @@ func startWorking(ifname string, ring *pfring.Ring,
 			//fmt.Println("Process a new packet.")
 
 			/*
-			ci, err := ring.ReadPacketDataToNoWait(pktBuf[:])
-			if err == pfring.NextNoPacketNonblocking {
-				//fmt.Println("No packet, socket is non blocking")
-				continue
-			}
+				ci, err := ring.ReadPacketDataToNoWait(pktBuf[:])
+				if err == pfring.NextNoPacketNonblocking {
+					//fmt.Println("No packet, socket is non blocking")
+					continue
+				}
 			*/
 			ci, err := ring.ReadPacketDataTo(pktBuf[fib.MAXHEADERLEN:])
 			if err != nil {
 				fmt.Fprintf(os.Stderr,
-				"Something wrong with packet capture from interface %s: %s\n",
-							ifname, err)
+					"Something wrong with packet capture from interface %s: %s\n",
+					ifname, err)
 				return
 			}
 
@@ -160,9 +160,9 @@ func startWorking(ifname string, ring *pfring.Ring,
 				// XXX May be add a per thread stat here
 				continue
 			}
-			packet := gopacket.NewPacket(pktBuf[fib.MAXHEADERLEN: ci.CaptureLength + fib.MAXHEADERLEN],
-										layers.LinkTypeEthernet,
-										gopacket.DecodeOptions{Lazy: true, NoCopy: true})
+			packet := gopacket.NewPacket(pktBuf[fib.MAXHEADERLEN:ci.CaptureLength+fib.MAXHEADERLEN],
+				layers.LinkTypeEthernet,
+				gopacket.DecodeOptions{Lazy: true, NoCopy: true})
 			ip6Layer := packet.Layer(layers.LayerTypeIPv6)
 			if ip6Layer == nil {
 				// XXX May be add a per thread stat here
@@ -196,35 +196,35 @@ func startWorking(ifname string, ring *pfring.Ring,
 			 * LSB 4 bytes of src addr (xor) LSB 4 bytes of dst addr (xor)
 			 * (src port << 16 | dst port)
 			 */
-			var srcAddrBytes uint32 = (uint32(srcAddr[12]) << 24 |
-								uint32(srcAddr[13]) << 16 |
-								uint32(srcAddr[14]) << 8 | uint32(srcAddr[15]))
-			var dstAddrBytes uint32 = (uint32(dstAddr[12]) << 24 |
-								uint32(dstAddr[13]) << 16 |
-								uint32(dstAddr[14]) << 8 | uint32(dstAddr[15]))
+			var srcAddrBytes uint32 = (uint32(srcAddr[12])<<24 |
+				uint32(srcAddr[13])<<16 |
+				uint32(srcAddr[14])<<8 | uint32(srcAddr[15]))
+			var dstAddrBytes uint32 = (uint32(dstAddr[12])<<24 |
+				uint32(dstAddr[13])<<16 |
+				uint32(dstAddr[14])<<8 | uint32(dstAddr[15]))
 			transportLayer := packet.TransportLayer()
 
 			// This is a byte array of the header
 			transportContents := transportLayer.LayerContents()
-			var ports uint32 = (uint32(transportContents[0]) << 24 |
-						uint32(transportContents[1]) << 16 |
-						uint32(transportContents[2]) << 8 |
-						uint32(transportContents[3]))
+			var ports uint32 = (uint32(transportContents[0])<<24 |
+				uint32(transportContents[1])<<16 |
+				uint32(transportContents[2])<<8 |
+				uint32(transportContents[3]))
 
 			var hash32 uint32 = srcAddrBytes ^ dstAddrBytes ^ ports
 
 			/*
-			fmt.Println("srcAddrBytes:", srcAddrBytes)
-			fmt.Println("dstAddrBytes:", dstAddrBytes)
-			fmt.Println("ports:", ports)
-			fmt.Println("hash32:", hash32)
+				fmt.Println("srcAddrBytes:", srcAddrBytes)
+				fmt.Println("dstAddrBytes:", dstAddrBytes)
+				fmt.Println("ports:", ports)
+				fmt.Println("hash32:", hash32)
 			*/
 
 			LookupAndSend(packet, pktBuf[:],
-						uint32(pktLen), iid, hash32,
-						ifname, srcAddr, dstAddr,
-						//puntChannel, conn4, conn6)
-						puntChannel, fd4, fd6)
+				uint32(pktLen), iid, hash32,
+				ifname, srcAddr, dstAddr,
+				//puntChannel, conn4, conn6)
+				puntChannel, fd4, fd6)
 		}
 	}
 }
@@ -233,16 +233,16 @@ func startWorking(ifname string, ring *pfring.Ring,
 // allocated buffer longer than the original packet length.
 // We currently use a buffer of length 64K bytes.
 func LookupAndSend(packet gopacket.Packet,
-					pktBuf []byte,
-					capLen uint32,
-					iid uint32,
-					hash32 uint32,
-					ifname string,
-					srcAddr net.IP,
-					dstAddr net.IP,
-					puntChannel chan []byte,
-					//conn4 net.PacketConn, conn6 net.PacketConn) {
-					fd4 int, fd6 int) {
+	pktBuf []byte,
+	capLen uint32,
+	iid uint32,
+	hash32 uint32,
+	ifname string,
+	srcAddr net.IP,
+	dstAddr net.IP,
+	puntChannel chan []byte,
+	//conn4 net.PacketConn, conn6 net.PacketConn) {
+	fd4 int, fd6 int) {
 	mapEntry, punt := fib.LookupAndAdd(iid, dstAddr)
 	if mapEntry.Resolved != true {
 		// Buffer the packet for processing later
@@ -250,7 +250,7 @@ func LookupAndSend(packet gopacket.Packet,
 		// Add packet to channel in a non blocking fashion.
 		// Buffered packet channel is only 10 entries long.
 		select {
-		case mapEntry.PktBuffer <- &types.BufferedPacket {
+		case mapEntry.PktBuffer <- &types.BufferedPacket{
 			Packet: packet,
 			Hash32: hash32,
 		}:
@@ -265,7 +265,7 @@ func LookupAndSend(packet gopacket.Packet,
 		 * iid, eid once again with read lock and check the resolution
 		 * status.
 		 *
-		 * If the map cache entry is resolved by now, we dequeue one 
+		 * If the map cache entry is resolved by now, we dequeue one
 		 * packet from the buffered packet channel and send it out.
 		 * This avoids the case where control thread has already sent
 		 * out all buffered packets and our packet sits in the buffered
@@ -279,8 +279,8 @@ func LookupAndSend(packet gopacket.Packet,
 				// Packet read is still in pktBuf buffer. It is safe to pass it's
 				// pointer.
 				fib.CraftAndSendLispPacket(pkt.Packet, pktBuf, capLen, pkt.Hash32,
-										mapEntry, iid, fd4, fd6)
-										//iid, conn4, conn6)
+					mapEntry, iid, fd4, fd6)
+				//iid, conn4, conn6)
 			default:
 				// We do not want to get blocked and keep waiting
 				// when there are no packets in the buffer channel.
@@ -289,21 +289,21 @@ func LookupAndSend(packet gopacket.Packet,
 	} else {
 		// Craft the LISP header, outer layers here and send packet out
 		fib.CraftAndSendLispPacket(packet, pktBuf, capLen, hash32, mapEntry,
-									iid, fd4, fd6)
-									//iid, conn4, conn6)
+			iid, fd4, fd6)
+		//iid, conn4, conn6)
 	}
 	if punt == true {
 		// We will have to put a punt request on the control
 		// module's channel
-		puntEntry := types.PuntEntry {
-			Deid: dstAddr,
-			Seid: srcAddr,
+		puntEntry := types.PuntEntry{
+			Deid:  dstAddr,
+			Seid:  srcAddr,
 			Iface: ifname,
 		}
 		puntMsg, err := json.Marshal(puntEntry)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Marshaling punt entry failed %s: %s\n",
-			puntEntry, err)
+				puntEntry, err)
 		} else {
 			puntChannel <- puntMsg
 			fmt.Println("Sending punt entry at", time.Now())
@@ -311,4 +311,3 @@ func LookupAndSend(packet gopacket.Packet,
 	}
 	return
 }
-

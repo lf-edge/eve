@@ -2,26 +2,26 @@ package fib
 
 import (
 	"fmt"
-	"net"
-	"os"
-	"syscall"
-	"math/rand"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/zededa/go-provision/types"
+	"math/rand"
+	"net"
+	"os"
+	"syscall"
 )
 
 const MAXHEADERLEN = 42
 const ETHHEADERLEN = 14
 
 func CraftAndSendLispPacket(packet gopacket.Packet,
-							 pktBuf []byte,
-							 capLen uint32,
-							 hash32 uint32,
-							 mapEntry *types.MapCacheEntry,
-							 iid uint32,
-						 	 //conn4 net.PacketConn, conn6 net.PacketConn) {
-							 fd4 int, fd6 int) {
+	pktBuf []byte,
+	capLen uint32,
+	hash32 uint32,
+	mapEntry *types.MapCacheEntry,
+	iid uint32,
+	//conn4 net.PacketConn, conn6 net.PacketConn) {
+	fd4 int, fd6 int) {
 	// XXX
 	// For now, we use the first Rloc entry from map cache.
 	// It has to be changed to load balance between available Rlocs
@@ -37,18 +37,18 @@ func CraftAndSendLispPacket(packet gopacket.Packet,
 		craftAndSendIPv6LispPacket(packet, pktBuf, capLen, hash32, mapEntry, iid, fd6)
 	case types.MAP_CACHE_FAMILY_UNKNOWN:
 		fmt.Fprintf(os.Stderr, "Unkown family found for rloc %s\n",
-					rloc.Rloc)
+			rloc.Rloc)
 	}
 }
 
 func craftAndSendIPv4LispPacket(packet gopacket.Packet,
-								pktBuf []byte,
-								capLen uint32,
-								hash32 uint32,
-								mapEntry *types.MapCacheEntry,
-								iid uint32,
-								//conn4 net.PacketConn) {
-								fd4 int) {
+	pktBuf []byte,
+	capLen uint32,
+	hash32 uint32,
+	mapEntry *types.MapCacheEntry,
+	iid uint32,
+	//conn4 net.PacketConn) {
+	fd4 int) {
 	// XXX calculate a hash and use it for load balancing accross entries
 	var rloc types.Rloc
 	totWeight := mapEntry.RlocTotWeight
@@ -72,34 +72,34 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 	// Should we have a static per-thread entry for this header?
 	// Can we have it globally and re-use?
 	srcAddr := net.ParseIP("0.0.0.0")
-	ip := &layers.IPv4 {
-		DstIP: rloc.Rloc,
-		SrcIP: srcAddr,
-		Flags: 0,
-		TTL: 64,
-		IHL: 5,
-		Version: 4,
+	ip := &layers.IPv4{
+		DstIP:    rloc.Rloc,
+		SrcIP:    srcAddr,
+		Flags:    0,
+		TTL:      64,
+		IHL:      5,
+		Version:  4,
 		Protocol: layers.IPProtocolUDP,
 	}
 
 	// XXX
 	// Should we have a static per-thread entry for this header?
 	// Can we have it globally and re-use?
-	var srcPort uint16  = 0xC000
+	var srcPort uint16 = 0xC000
 	srcPort = (srcPort | (uint16(hash32) & 0x3FFF))
 	//fmt.Println("hash32 is:", hash32)
 	//fmt.Println("Source port is:", srcPort)
-	udp := &layers.UDP {
+	udp := &layers.UDP{
 		// XXX Source port should be a hash from packet
 		// Hard coding for now.
 		SrcPort: layers.UDPPort(srcPort),
 		DstPort: 4341,
-		Length: uint16(16 + capLen - 14),
+		Length:  uint16(16 + capLen - 14),
 	}
 
 	udp.SetNetworkLayerForChecksum(ip)
 
-	// Create a custom LISP header 
+	// Create a custom LISP header
 	lispHdr := make([]byte, 8)
 	SetLispIID(lispHdr, iid)
 
@@ -108,9 +108,9 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 	SetLispNonce(lispHdr, uint32(nonce))
 
 	buf := gopacket.NewSerializeBuffer()
-	opts := gopacket.SerializeOptions {
+	opts := gopacket.SerializeOptions{
 		ComputeChecksums: false,
-		FixLengths: false,
+		FixLengths:       false,
 	}
 
 	if err := gopacket.SerializeLayers(buf, opts, ip, udp); err != nil {
@@ -126,17 +126,17 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 	//fmt.Println("Offset is", offset)
 
 	for i := 0; i < outerHdrLen; i++ {
-		pktBuf[i + offset] = outerHdr[i]
+		pktBuf[i+offset] = outerHdr[i]
 	}
 
 	// output slice starts after "offset" and the length of it
 	// will be len(outerHdr) + capture length - 14 (ethernet header)
-	outputSlice := pktBuf[offset: uint32(offset) + uint32(outerHdrLen) + capLen - 14]
+	outputSlice := pktBuf[offset : uint32(offset)+uint32(outerHdrLen)+capLen-14]
 
 	//_, err := conn4.WriteTo(buf.Bytes(), &net.IPAddr{IP: rloc.Rloc})
 	//_, err := conn4.WriteTo(outputSlice, &net.IPAddr{IP: rloc.Rloc})
 	v4Addr := rloc.Rloc.To4()
-	err := syscall.Sendto(fd4, outputSlice, 0, &syscall.SockaddrInet4 {
+	err := syscall.Sendto(fd4, outputSlice, 0, &syscall.SockaddrInet4{
 		Port: 0,
 		Addr: [4]byte{v4Addr[0], v4Addr[1], v4Addr[2], v4Addr[3]},
 	})
@@ -146,40 +146,40 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 }
 
 func craftAndSendIPv6LispPacket(packet gopacket.Packet,
-								pktBuf []byte,
-								capLen uint32,
-								hash32 uint32,
-								mapEntry *types.MapCacheEntry,
-								iid uint32,
-								//conn6 net.PacketConn) {
-								fd6 int) {
+	pktBuf []byte,
+	capLen uint32,
+	hash32 uint32,
+	mapEntry *types.MapCacheEntry,
+	iid uint32,
+	//conn6 net.PacketConn) {
+	fd6 int) {
 	rloc := mapEntry.Rlocs[0]
 	// XXX
 	// Should we have a static per-thread entry for this header?
 	// Can we have it globally and re-use?
 	srcAddr := net.ParseIP("")
-	ip := &layers.IPv6 {
-		Version: 6,
-		HopLimit: 64,
-		DstIP: rloc.Rloc,
-		SrcIP: srcAddr,
+	ip := &layers.IPv6{
+		Version:    6,
+		HopLimit:   64,
+		DstIP:      rloc.Rloc,
+		SrcIP:      srcAddr,
 		NextHeader: layers.IPProtocolUDP,
 	}
 
 	// XXX
 	// Should we have a static per-thread entry for this header?
 	// Can we have it globally and re-use?
-	udp := &layers.UDP {
+	udp := &layers.UDP{
 		// XXX Source port should be a hash from packet
 		// Hard coding for now.
 		SrcPort: 1434,
 		DstPort: 4341,
-		Length: uint16(16 + capLen - 14),
+		Length:  uint16(16 + capLen - 14),
 	}
 
 	udp.SetNetworkLayerForChecksum(ip)
 
-	// Create a custom LISP header 
+	// Create a custom LISP header
 	lispHdr := make([]byte, 8)
 	SetLispIID(lispHdr, iid)
 
@@ -196,7 +196,7 @@ func craftAndSendIPv6LispPacket(packet gopacket.Packet,
 	data := gopacket.Payload(payload)
 
 	buf := gopacket.NewSerializeBuffer()
-	opts := gopacket.SerializeOptions {
+	opts := gopacket.SerializeOptions{
 		//ComputeChecksums: true,
 		FixLengths: true,
 	}
@@ -214,9 +214,9 @@ func craftAndSendIPv6LispPacket(packet gopacket.Packet,
 	//fmt.Println("Offset is", offset)
 
 	for i := 0; i < outerHdrLen; i++ {
-		pktBuf[i + offset] = outerHdr[i]
+		pktBuf[i+offset] = outerHdr[i]
 	}
-	outputSlice := pktBuf[offset: uint32(offset) + uint32(outerHdrLen) + capLen - 14]
+	outputSlice := pktBuf[offset : uint32(offset)+uint32(outerHdrLen)+capLen-14]
 
 	//_, err := conn6.WriteTo(buf.Bytes(), &net.IPAddr{IP: rloc.Rloc})
 	v6Addr := rloc.Rloc.To16()
@@ -225,10 +225,10 @@ func craftAndSendIPv6LispPacket(packet gopacket.Packet,
 		destAddr[i] = v6Addr[i]
 	}
 
-	err := syscall.Sendto(fd6, outputSlice, 0, &syscall.SockaddrInet6 {
-		Port: 0,
+	err := syscall.Sendto(fd6, outputSlice, 0, &syscall.SockaddrInet6{
+		Port:   0,
 		ZoneId: 0,
-		Addr: destAddr,
+		Addr:   destAddr,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Packet send ERROR: %s", err)

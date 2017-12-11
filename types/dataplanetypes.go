@@ -1,4 +1,3 @@
-
 // Copyright (c) 2017 Zededa, Inc.
 // All rights reserved.
 
@@ -6,33 +5,33 @@ package types
 
 import (
 	//"log"
-	"time"
+	"github.com/google/gopacket"
 	"net"
 	"sync"
-	"github.com/google/gopacket"
+	"time"
 )
 
 const (
-	MAP_CACHE_FAMILY_IPV4 = 1
-	MAP_CACHE_FAMILY_IPV6 = 2
+	MAP_CACHE_FAMILY_IPV4    = 1
+	MAP_CACHE_FAMILY_IPV6    = 2
 	MAP_CACHE_FAMILY_UNKNOWN = 3
 )
 
 type Key struct {
-    KeyId uint32
-    Key   net.IP
+	KeyId uint32
+	Key   net.IP
 }
 
 type Rloc struct {
-    Rloc     net.IP
-    Priority uint32
-    Weight   uint32
+	Rloc     net.IP
+	Priority uint32
+	Weight   uint32
 	Family   uint32
-    Keys     []Key
+	Keys     []Key
 
 	// Weight range
-	WrLow    uint32
-	WrHigh   uint32
+	WrLow  uint32
+	WrHigh uint32
 }
 
 type BufferedPacket struct {
@@ -41,12 +40,12 @@ type BufferedPacket struct {
 }
 
 type MapCacheEntry struct {
-    InstanceId uint32
-    Eid        net.IP
-    Rlocs      []Rloc
-    Resolved   bool
-    PktBuffer  chan *BufferedPacket
-	LastPunt   time.Time
+	InstanceId    uint32
+	Eid           net.IP
+	Rlocs         []Rloc
+	Resolved      bool
+	PktBuffer     chan *BufferedPacket
+	LastPunt      time.Time
 	RlocTotWeight uint32
 }
 
@@ -56,8 +55,8 @@ type MapCacheKey struct {
 }
 
 type MapCacheTable struct {
-    LockMe   sync.RWMutex
-    MapCache map[MapCacheKey]*MapCacheEntry
+	LockMe   sync.RWMutex
+	MapCache map[MapCacheKey]*MapCacheEntry
 }
 
 type Interface struct {
@@ -86,12 +85,12 @@ type DecapKeys struct {
 }
 
 type DecapTable struct {
-	LockMe sync.RWMutex
+	LockMe       sync.RWMutex
 	DecapEntries map[string]DecapKeys
 }
 
 type PuntEntry struct {
-	Seid net.IP
-	Deid net.IP
+	Seid  net.IP
+	Deid  net.IP
 	Iface string
 }

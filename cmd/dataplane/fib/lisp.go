@@ -13,10 +13,10 @@ type LispHdr struct {
 
 func RegisterLispHeader() {
 	LispLayerType = gopacket.RegisterLayerType(2001,
-						gopacket.LayerTypeMetadata {
-							"LispLayerType",
-							gopacket.DecodeFunc(decodeLispLayer),
-						})
+		gopacket.LayerTypeMetadata{
+			"LispLayerType",
+			gopacket.DecodeFunc(decodeLispLayer),
+		})
 }
 
 func (l LispHdr) LayerType() gopacket.LayerType {
@@ -51,7 +51,7 @@ func SetLispIID(hdr []byte, iid uint32) {
 func GetLispIID(hdr []byte) uint32 {
 	var iid uint32 = 0
 
-	iid = uint32(hdr[4] << 16 | hdr[5] << 8 | hdr[6])
+	iid = uint32(hdr[4]<<16 | hdr[5]<<8 | hdr[6])
 	return iid
 }
 
@@ -69,7 +69,6 @@ func SetLispNonce(hdr []byte, nonce uint32) {
 func GetLispNonce(hdr []byte) uint32 {
 	var nonce uint32 = 0
 
-	nonce = uint32(hdr[1] << 16 | hdr[2] << 8 | hdr[3])
+	nonce = uint32(hdr[1]<<16 | hdr[2]<<8 | hdr[3])
 	return nonce
 }
-

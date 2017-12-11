@@ -1,11 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
-	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/dataplane/fib"
-    "encoding/json"
-    "net"
+	"github.com/zededa/go-provision/types"
+	"net"
 	"strconv"
 )
 
@@ -28,7 +28,7 @@ func parseRloc(rlocStr *Rloc) (types.Rloc, bool) {
 	// find the family of Rloc
 
 	family := types.MAP_CACHE_FAMILY_UNKNOWN
-	for i := 0 ; i < len(rlocStr.Rloc); i++ {
+	for i := 0; i < len(rlocStr.Rloc); i++ {
 		switch rlocStr.Rloc[i] {
 		case '.':
 			family = types.MAP_CACHE_FAMILY_IPV4
@@ -44,11 +44,11 @@ func parseRloc(rlocStr *Rloc) (types.Rloc, bool) {
 	// XXX We are not decoding the keys for now.
 	// Will have to add code for key handling in future.
 
-	rlocEntry := types.Rloc {
-		Rloc: rloc,
+	rlocEntry := types.Rloc{
+		Rloc:     rloc,
 		Priority: priority,
-		Weight: weight,
-		Family: uint32(family),
+		Weight:   weight,
+		Family:   uint32(family),
 	}
 	return rlocEntry, true
 }
@@ -145,7 +145,7 @@ func handleDatabaseMappings(msg []byte) {
 	}
 
 	for key, data := range tmpMap {
-		eidEntries = append(eidEntries, types.EIDEntry {
+		eidEntries = append(eidEntries, types.EIDEntry{
 			InstanceId: key,
 			Eids:       data,
 		})
@@ -162,7 +162,7 @@ func handleInterfaces(msg []byte) {
 		return
 	}
 	ifaces := []types.Interface{}
-	
+
 	if ifaces == nil {
 		fmt.Println("Allocation of Interface slice failed")
 		return
@@ -176,8 +176,8 @@ func handleInterfaces(msg []byte) {
 			continue
 		}
 		iid := uint32(x)
-		ifaces = append(ifaces, types.Interface {
-			Name: iface.Interface,
+		ifaces = append(ifaces, types.Interface{
+			Name:       iface.Interface,
 			InstanceId: iid,
 		})
 	}
@@ -206,7 +206,7 @@ func handleDecapKeys(msg []byte) {
 
 	// XXX We do not parse and store the decap keys for now.
 	// We will have to implement code for this in the future.
-	decapEntry := types.DecapKeys {
+	decapEntry := types.DecapKeys{
 		Rloc: rloc,
 	}
 	fib.UpdateDecapKeys(decapEntry)
