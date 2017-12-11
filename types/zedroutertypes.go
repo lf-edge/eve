@@ -73,13 +73,8 @@ type DeviceNetworkConfig struct {
 	Uplink []string // ifname; should have multiple
 }
 
-// Old version
-type DeviceNetworkConfigV1 struct {
-	Uplink string
-}
-
 type DeviceNetworkStatus struct {
-	Uplink []string // ifname; should have multiple
+	Uplink      []string // ifname; should have multiple
 	UplinkAddrs []net.IP
 	// XXX add uplink publicAddr to determine NATed?
 }
@@ -91,6 +86,7 @@ type OverlayNetworkConfig struct {
 	// Any additional LISP parameters?
 	ACLs          []ACE
 	NameToEidList []NameToEid // Used to populate DNS for the overlay
+	LispServers   []LispServerInfo
 	// Optional additional informat
 	AdditionalInfoDevice *AdditionalInfoDevice
 }

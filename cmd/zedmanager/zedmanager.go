@@ -1,21 +1,18 @@
 // Copyright (c) 2017 Zededa, Inc.
 // All rights reserved.
 
-// Pull AppInstanceConfig from ZedCloud, drive config to Downloader, Verifier,
-// IdentityMgr, and Zedrouter. Collect status from those services and push
-// combined AppInstanceStatus to ZedCloud.
+// Get AppInstanceConfig from zedagent, drive config to Downloader, Verifier,
+// IdentityMgr, and Zedrouter. Collect status from those services and make
+// the combined AppInstanceStatus available to zedagent.
 //
-// XXX Note that this initial code reads AppInstanceConfig from
-// /var/tmp/zedmanager/config/*.json and produces AppInstanceStatus in
-// /var/run/zedmanager/status/*.json.
-//
-// XXX Should we keep the local config and status dirs and have a separate
-// config downloader (which calls the Verifier), and status uploader?
+// This reads AppInstanceConfig from /var/tmp/zedmanager/config/*.json and
+// produces AppInstanceStatus in /var/run/zedmanager/status/*.json.
 
 package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
@@ -25,12 +22,11 @@ import (
 )
 
 // Keeping status in /var/run to be clean after a crash/reboot
-var (
+const (
 	baseDirname              = "/var/tmp/zedmanager"
 	runDirname               = "/var/run/zedmanager"
 	zedmanagerConfigDirname  = baseDirname + "/config"
 	zedmanagerStatusDirname  = runDirname + "/status"
-	zedagentConfigDirname    = "/var/tmp/zedagent/config"
 	verifierConfigDirname    = "/var/tmp/verifier/config"
 	downloaderConfigDirname  = "/var/tmp/downloader/config"
 	domainmgrConfigDirname   = "/var/tmp/domainmgr/config"
@@ -38,7 +34,18 @@ var (
 	identitymgrConfigDirname = "/var/tmp/identitymgr/config"
 )
 
+// Set from Makefile
+var Version = "No version specified"
+
 func main() {
+	log.SetOutput(os.Stdout)
+	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
+	versionPtr := flag.Bool("v", false, "Version")
+	flag.Parse()
+	if *versionPtr {
+		fmt.Printf("%s: %s\n", os.Args[0], Version)
+		return
+	}
 	log.Printf("Starting zedmanager\n")
 	watch.CleanupRestarted("zedmanager")
 	watch.CleanupRestart("downloader")
@@ -67,7 +74,6 @@ func main() {
 		domainmgrStatusDirname,
 		downloaderStatusDirname,
 		verifierStatusDirname,
-		zedagentConfigDirname,
 	}
 
 	for _, dir := range dirs {
@@ -91,25 +97,39 @@ func main() {
 	go watch.WatchStatus(zedrouterStatusDirname, zedrouterChanges)
 	domainmgrChanges := make(chan string)
 	go watch.WatchStatus(domainmgrStatusDirname, domainmgrChanges)
-	// XXX replace this with a handleVerifierRestarted function, which
-	// kicks identitymgr, which kicks zedrouter, which kicks domainmgr.
-	// XXX as we process config we might start downloads; should defer
-	// that until the verifier has restarted hence wait inline.
-	// Wait for the verifier to report initial status to avoid downloading
-	// a file which is already downloaded
-	waitFile := "/var/run/verifier/status/restarted"
-	log.Printf("Waiting for verifier to report in %s\n", waitFile)
-	watch.WaitForFile(waitFile)
-	log.Printf("Verifier reported in %s\n", waitFile)
+	configChanges := make(chan string)
+	go watch.WatchConfigStatus(zedmanagerConfigDirname,
+		zedmanagerStatusDirname, configChanges)
 
 	var configRestartFn watch.ConfigRestartHandler = handleConfigRestart
 	var verifierRestartedFn watch.StatusRestartHandler = handleVerifierRestarted
 	var identitymgrRestartedFn watch.StatusRestartHandler = handleIdentitymgrRestarted
 	var zedrouterRestartedFn watch.StatusRestartHandler = handleZedrouterRestarted
 
-	configChanges := make(chan string)
-	go watch.WatchConfigStatus(zedmanagerConfigDirname,
-		zedmanagerStatusDirname, configChanges)
+	// First we process the verifierStatus to avoid downloading
+	// an image we already have in place
+	log.Printf("Handling initial verifier Status\n")
+	done := false
+	for !done {
+		select {
+		case change := <-verifierChanges:
+			{
+				watch.HandleStatusEvent(change,
+					verifierStatusDirname,
+					&types.VerifyImageStatus{},
+					handleVerifyImageStatusModify,
+					handleVerifyImageStatusDelete,
+					&verifierRestartedFn)
+				if verifierRestarted {
+					log.Printf("Verifier reported restarted\n")
+					done = true
+					break
+				}
+			}
+		}
+	}
+
+	log.Printf("Handling all inputs\n")
 	for {
 		select {
 		case change := <-downloaderChanges:
@@ -290,7 +310,6 @@ func handleModify(statusFilename string, configArg interface{},
 		return
 	}
 
-	status.PendingModify = true
 	status.UUIDandVersion = config.UUIDandVersion
 	writeAppInstanceStatus(status, statusFilename)
 
@@ -312,7 +331,6 @@ func handleDelete(statusFilename string, statusArg interface{}) {
 	log.Printf("handleDelete(%v) for %s\n",
 		status.UUIDandVersion, status.DisplayName)
 
-	status.PendingDelete = true
 	writeAppInstanceStatus(status, statusFilename)
 
 	removeConfig(status.UUIDandVersion.UUID.String())

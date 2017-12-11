@@ -19,6 +19,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"encoding/pem"
+	"flag"
 	"fmt"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
@@ -31,15 +32,28 @@ import (
 	"time"
 )
 
+// Keeping status in /var/run to be clean after a crash/reboot
+const (
+	baseDirname = "/var/tmp/identitymgr"
+	runDirname = "/var/run/identitymgr"
+	configDirname = baseDirname + "/config"
+	statusDirname = runDirname + "/status"
+)
+
+// Set from Makefile
+var Version = "No version specified"
+
 func main() {
+	log.SetOutput(os.Stdout)
+	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
+	versionPtr := flag.Bool("v", false, "Version")
+	flag.Parse()
+	if *versionPtr {
+		fmt.Printf("%s: %s\n", os.Args[0], Version)
+		return
+	}
 	log.Printf("Starting identitymgr\n")
 	watch.CleanupRestarted("identitymgr")
-	
-	// Keeping status in /var/run to be clean after a crash/reboot
-	baseDirname := "/var/tmp/identitymgr"
-	runDirname := "/var/run/identitymgr"
-	configDirname := baseDirname + "/config"
-	statusDirname := runDirname + "/status"
 
 	if _, err := os.Stat(baseDirname); err != nil {
 		if err := os.Mkdir(baseDirname, 0700); err != nil {
@@ -62,7 +76,6 @@ func main() {
 		}
 	}
 
-	// XXX need handleRestart based on restart file not readdir
 	var restartFn watch.ConfigRestartHandler = handleRestart
 
 	fileChanges := make(chan string)

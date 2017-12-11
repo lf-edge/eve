@@ -3,17 +3,12 @@
 
 // Pull AppInstanceConfig from ZedCloud, make it available for zedmanager
 // publish AppInstanceStatus to ZedCloud.
-//
-// XXX Note that this initial code reads AppInstanceConfig from
-// /var/tmp/zedmanager/config/*.json and produces AppInstanceStatus in
-// /var/run/zedmanager/status/*.json.
-//
-// XXX Should we keep the local config and status dirs and have a separate
-// config downloader (which calls the Verifier), and status uploader?
 
 package main
 
 import (
+	"flag"
+	"fmt"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
 	"log"
@@ -21,17 +16,26 @@ import (
 )
 
 // Keeping status in /var/run to be clean after a crash/reboot
-var (
-	baseDirname              = "/var/tmp/zedmanager"
-	runDirname               = "/var/run/zedmanager"
-	zedmanagerConfigDirname  = baseDirname + "/config"
-	zedmanagerStatusDirname  = runDirname + "/status"
-	zedagentConfigDirname    = "/var/tmp/zedagent/config"
-	downloaderConfigDirname  = "/var/tmp/downloader/config"
+const (
+	zedagentConfigDirname   = "/var/tmp/zedagent/config"
+	zedmanagerConfigDirname = "/var/tmp/zedmanager/config"
+	zedmanagerStatusDirname = "/var/run/zedmanager/status"
+	downloaderConfigDirname = "/var/tmp/downloader/config"
 	downloaderStatusDirname = "/var/run/downloader/status"
 )
 
+// Set from Makefile
+var Version = "No version specified"
+
 func main() {
+	log.SetOutput(os.Stdout)
+	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
+	versionPtr := flag.Bool("v", false, "Version")
+	flag.Parse()
+	if *versionPtr {
+		fmt.Printf("%s: %s\n", os.Args[0], Version)
+		return
+	}
 	log.Printf("Starting zedagent\n")
 	watch.CleanupRestarted("zedagent")
 
@@ -52,8 +56,9 @@ func main() {
 	// Tell ourselves to go ahead
 	watch.SignalRestart("zedagent")
 
-	getCloudUrls ()
+	getCloudUrls()
 	go metricsTimerTask()
+	// XXX pass configUrl as argument
 	go configTimerTask()
 
 	configChanges := make(chan string)
@@ -98,9 +103,9 @@ func handleStatusModify(statusFilename string, configArg interface{},
 	case *types.AppInstanceStatus:
 		status = statusArg.(*types.AppInstanceStatus)
 	}
-	MakeDeviceInfoProtobufStructure()
-	MakeHypervisorInfoProtobufStructure()
-	publishAiInfoToCloud(status)
+	PublishDeviceInfoToZedCloud()
+	PublishHypervisorInfoToZedCloud()
+	PublishAppInfoToZedCloud(status)
 }
 
 func handleStatusDelete(statusFilename string, statusArg interface{}) {
@@ -112,7 +117,7 @@ func handleStatusDelete(statusFilename string, statusArg interface{}) {
 	case *types.AppInstanceStatus:
 		status = statusArg.(*types.AppInstanceStatus)
 	}
-	MakeDeviceInfoProtobufStructure()
-	MakeHypervisorInfoProtobufStructure()
-	publishAiInfoToCloud(status)
+	PublishDeviceInfoToZedCloud()
+	PublishHypervisorInfoToZedCloud()
+	PublishAppInfoToZedCloud(status)
 }

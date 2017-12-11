@@ -6,6 +6,8 @@ ETCDIR=/opt/zededa/etc
 BINDIR=/opt/zededa/bin
 PROVDIR=$BINDIR
 LISPDIR=/opt/zededa/lisp
+AGENTS="zedrouter domainmgr downloader verifier identitymgr eidregister zedagent"
+ALLAGENTS="zedmanager $AGENTS"
 
 PATH=$BINDIR:$PATH
 
@@ -32,6 +34,15 @@ echo "Configuration from factory/install:"
 (cd $ETCDIR; ls -l)
 echo
 
+echo "Update version info in $ETCDIR/version"
+cat $ETCDIR/version_tag >$ETCDIR/version
+for AGENT in $ALLAGENTS; do
+    $BINDIR/$AGENT -v >>$ETCDIR/version
+done
+
+echo "Combined version:"
+cat $ETCDIR/version
+
 # We need to try our best to setup time *before* we generate the certifiacte.
 # Otherwise it may have start date in the future
 echo "Check for NTP config"
@@ -53,18 +64,25 @@ if [ -f $ETCDIR/ntp-server ]; then
 	echo "NTP not installed. Giving up"
 	exit 1
     fi
-else
+elif [ -f /usr/bin/ntpdate ]; then
+    /usr/bin/ntpdate pool.ntp.org
+elif [ -f /usr/sbin/ntpd ]; then
    # last ditch attemp to sync up our clock
-   ntpd -d -q -n -p pool.ntp.org
+    /usr/sbin/ntpd -d -q -n -p pool.ntp.org
+else
+    echo "No ntpd"
 fi
 if [ $WAIT = 1 ]; then
-    echo; read -n 1 -s -p "Press any key to continue"; echo; echo
+    echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
 
 if [ ! \( -f $ETCDIR/device.cert.pem -a -f $ETCDIR/device.key.pem \) ]; then
     echo "Generating a device key pair and self-signed cert (using TPM/TEE if available) at" `date`
     $PROVDIR/generate-device.sh $ETCDIR/device
+    SELF_REGISTER=1
+elif [ -f $ETCDIR/self-register-failed ]; then
+    echo "self-register failed/killed/rebooted; redoing self-register"
     SELF_REGISTER=1
 else
     echo "Using existing device key pair and self-signed cert"
@@ -76,7 +94,7 @@ if [ ! -f $ETCDIR/server -o ! -f $ETCDIR/root-certificate.pem ]; then
 fi
 
 if [ $WAIT = 1 ]; then
-    echo; read -n 1 -s -p "Press any key to continue"; echo; echo
+    echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
 # XXX should we harden/remove any Linux network services at this point?
@@ -95,13 +113,14 @@ if [ -f $ETCDIR/wifi_ssid ]; then
     # Assumes wpa packages are included. Would be in our image?
 fi
 if [ $WAIT = 1 ]; then
-    echo; read -n 1 -s -p "Press any key to continue"; echo; echo
+    echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
 # XXX this should run in domZ aka ZedRouter on init.
 # Ideally just to WiFi setup in dom0 and do DHCP in domZ
 
 if [ $SELF_REGISTER = 1 ]; then
+    touch $ETCDIR/self-register-failed
     echo "Self-registering our device certificate at " `date`
     if [ ! \( -f $ETCDIR/onboard.cert.pem -a -f $ETCDIR/onboard.key.pem \) ]; then
 	echo "Missing onboarding certificate. Giving up"
@@ -109,8 +128,9 @@ if [ $SELF_REGISTER = 1 ]; then
     fi
     echo $BINDIR/client $OLDFLAG -d $ETCDIR selfRegister
     $BINDIR/client $OLDFLAG -d $ETCDIR selfRegister
+    rm -f $ETCDIR/self-register-failed
     if [ $WAIT = 1 ]; then
-	echo; read -n 1 -s -p "Press any key to continue"; echo; echo
+	echo -n "Press any key to continue "; read dummy; echo; echo
     fi
 fi
 
@@ -133,7 +153,7 @@ if [ /bin/true -o ! -f $ETCDIR/lisp.config ]; then
 	rm -f /tmp/hosts.$$
     fi
     if [ $WAIT = 1 ]; then
-	echo; read -n 1 -s -p "Press any key to continue"; echo; echo
+	echo -n "Press any key to continue "; read dummy; echo; echo
     fi
 fi
 
@@ -149,6 +169,11 @@ fi
 echo "Removing old stale files"
 # Remove internal config files
 pkill zedmanager
+if [ x$OLDFLAG = x ]; then
+	echo "Removing old zedmanager config files"
+	rm -rf /var/tmp/zedmanager/config/*.json
+fi
+echo "Removing old zedmanager status files"
 rm -rf /var/run/zedmanager/status/*.json
 # The following is a workaround for a racecondition between different agents
 # Make sure we have the required directories in place
@@ -158,7 +183,6 @@ for d in $DIRS; do
     chmod 700 $d `dirname $d`
 done
 
-AGENTS="zedrouter domainmgr downloader verifier identitymgr eidregister zedagent"
 for AGENT in $AGENTS; do
     if [ ! -d /var/tmp/$AGENT ]; then
 	continue
@@ -191,9 +215,14 @@ done
 # If agents are running then the deletion of the /var/tmp/ files should
 # cleaned up all but /var/run/zedmanager/*.json
 
+# Add a tag to preserve any downloaded and verified files
+touch /var/tmp/verifier/config/preserve
+
 # If agents are running wait for the status files to disappear
 for AGENT in $AGENTS; do
     if [ ! -d /var/run/$AGENT ]; then
+	# Needed for zedagent
+	pkill $AGENT
 	continue
     fi
     if [ $AGENT = "verifier" ]; then
@@ -245,6 +274,9 @@ for AGENT in $AGENTS; do
     pkill $AGENT
 done
 
+# Remove the preserve tag
+rm /var/tmp/verifier/config/preserve
+
 echo "Removing old iptables/ip6tables rules"
 # Cleanup any remaining iptables rules from a failed run
 iptables -F
@@ -252,7 +284,7 @@ ip6tables -F
 ip6tables -t raw -F
 
 echo "Saving any old log files"
-LOGGERS="zedmanager $AGENTS"
+LOGGERS=$ALLAGENTS
 for l in $LOGGERS; do
     f=/var/log/$l.log
     if [ -f $f ]; then
@@ -324,50 +356,50 @@ rm -f /var/tmp/zedrouter/config/restart
 echo "Starting verifier at" `date`
 verifier >/var/log/verifier.log 2>&1 &
 if [ $WAIT = 1 ]; then
-    echo; read -n 1 -s -p "Press any key to continue"; echo; echo
+    echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
 echo "Starting ZedManager at" `date`
 zedmanager >/var/log/zedmanager.log 2>&1 &
 if [ $WAIT = 1 ]; then
-    echo; read -n 1 -s -p "Press any key to continue"; echo; echo
+    echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
 echo "Starting downloader at" `date`
-downloader >/var/log/downloader.log&
+downloader >/var/log/downloader.log 2>&1 &
 if [ $WAIT = 1 ]; then
-    echo; read -n 1 -s -p "Press any key to continue"; echo; echo
+    echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
 echo "Starting eidregister at" `date`
-eidregister >&/var/log/eidregister.log 2>&1 &
+eidregister >/var/log/eidregister.log 2>&1 &
 if [ $WAIT = 1 ]; then
-    echo; read -n 1 -s -p "Press any key to continue"; echo; echo
+    echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
 echo "Starting identitymgr at" `date`
 identitymgr >/var/log/identitymgr.log 2>&1 &
 if [ $WAIT = 1 ]; then
-    echo; read -n 1 -s -p "Press any key to continue"; echo; echo
+    echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
 echo "Starting ZedRouter at" `date`
 zedrouter >/var/log/zedrouter.log 2>&1 &
 if [ $WAIT = 1 ]; then
-    echo; read -n 1 -s -p "Press any key to continue"; echo; echo
+    echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
 echo "Starting DomainMgr at" `date`
 domainmgr >/var/log/domainmgr.log 2>&1 &
 # Do something
 if [ $WAIT = 1 ]; then
-    echo; read -n 1 -s -p "Press any key to continue"; echo; echo
+    echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
 echo "Starting zedagent at" `date`
 zedagent >/var/log/zedagent.log 2>&1 &
 if [ $WAIT = 1 ]; then
-    echo; read -n 1 -s -p "Press any key to continue"; echo; echo
+    echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
 echo "Starting dataplane at" `date`
@@ -389,6 +421,7 @@ memory=`awk '/MemTotal/ {print $2}' /proc/meminfo`
 storage=`df -kl --output=size / | tail -n +2| awk '{print $1}'`
 cpus=`nproc --all`
 # Try dmidecode which should work on Intel
+# XXX or look for /sys/firmware/dmi
 manufacturer=`dmidecode -s system-manufacturer`
 if [ "$manufacturer" != "" ]; then
     productName=`dmidecode -s system-product-name`
@@ -428,7 +461,7 @@ echo $BINDIR/client $OLDFLAG -d $ETCDIR updateHwStatus
 $BINDIR/client $OLDFLAG -d $ETCDIR updateHwStatus
 
 if [ $WAIT = 1 ]; then
-    echo; read -n 1 -s -p "Press any key to continue"; echo; echo
+    echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
 echo "Uploading software status at" `date`

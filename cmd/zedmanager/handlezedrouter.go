@@ -57,6 +57,13 @@ func MaybeAddAppNetworkConfig(aiConfig types.AppInstanceConfig,
 				changed = true
 				break
 			}
+			if !reflect.DeepEqual(new.LispServers,
+				old.LispServers) {
+				log.Printf("LispServers changed from %v to %v\n",
+					old.LispServers, new.LispServers)
+				changed = true
+				break
+			}
 		}
 		for i, new := range aiConfig.UnderlayNetworkList {
 			old := m.UnderlayNetworkList[i]
@@ -87,6 +94,9 @@ func MaybeAddAppNetworkConfig(aiConfig types.AppInstanceConfig,
 			ol.LispSignature = ols.LispSignature
 			ol.ACLs = olc.ACLs
 			ol.NameToEidList = olc.NameToEidList
+			// XXX Default is to use the device list? Need device
+			// config for that.
+			ol.LispServers = olc.LispServers
 		}
 		nc.UnderlayNetworkList = make([]types.UnderlayNetworkConfig,
 			len(aiConfig.UnderlayNetworkList))

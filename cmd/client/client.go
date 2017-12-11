@@ -14,17 +14,21 @@ import (
 	"github.com/RevH/ipinfo"
 	"github.com/golang/protobuf/proto"
 	"github.com/satori/go.uuid"
+	"github.com/zededa/api/zmet"
 	"github.com/zededa/go-provision/types"
 	"golang.org/x/crypto/ocsp"
 	"io/ioutil"
 	"log"
+	"mime"
 	"net"
 	"net/http"
 	"os"
-	"github.com/zededa/api/zmet"
 	"strings"
 	"time"
 )
+
+// Set from Makefile
+var Version = "No version specified"
 
 var maxDelay = time.Second * 600 // 10 minutes
 
@@ -48,13 +52,21 @@ var maxDelay = time.Second * 600 // 10 minutes
 //  clientIP			Written containing the public client IP
 //
 func main() {
+	log.SetOutput(os.Stdout)
+	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
+	versionPtr := flag.Bool("v", false, "Version")
 	oldPtr := flag.Bool("o", false, "Old use of prov01")
 	dirPtr := flag.String("d", "/opt/zededa/etc",
 		"Directory with certs etc")
 	flag.Parse()
+	versionFlag := *versionPtr
 	oldFlag := *oldPtr
 	dirName := *dirPtr
 	args := flag.Args()
+	if versionFlag {
+		fmt.Printf("%s: %s\n", os.Args[0], Version)
+		return
+	}
 	operations := map[string]bool{
 		"selfRegister":   false,
 		"lookupParam":    false,
@@ -201,13 +213,25 @@ func main() {
 		}
 
 		contentType := resp.Header.Get("Content-Type")
-		if strings.Contains(contentType, "application/x-proto-binary") || strings.Contains(contentType, "application/json") || strings.Contains(contentType, "text/plain") {
-			fmt.Printf("Received reply %s\n", string(contents))
-			return true
-		} else {
-			fmt.Println("Incorrect Content-Type " + contentType)
+		if contentType == "" {
+			fmt.Printf("%s no content-type\n", url)
 			return false
 		}
+		mimeType, _, err := mime.ParseMediaType(contentType)
+		if err != nil {
+			fmt.Printf("%s ParseMediaType failed %v\n", url, err)
+			return false
+		}
+		switch mimeType {
+		case "application/x-proto-binary":
+		case "application/json":
+		case "text/plain":
+			fmt.Printf("Received reply %s\n", string(contents))
+		default:
+			fmt.Println("Incorrect Content-Type " + mimeType)
+			return false
+		}
+		return true
 	}
 
 	// XXX remove later
@@ -261,11 +285,22 @@ func main() {
 		}
 
 		contentType := resp.Header.Get("Content-Type")
-		if contentType != "application/json" {
-			fmt.Println("Incorrect Content-Type " + contentType)
+		if contentType == "" {
+			fmt.Printf("%s no content-type\n", url)
 			return false
 		}
-		fmt.Printf("%s\n", string(contents))
+		mimeType, _, err := mime.ParseMediaType(contentType)
+		if err != nil {
+			fmt.Printf("%s ParseMediaType failed %v\n", url, err)
+			return false
+		}
+		switch mimeType {
+		case "application/json":
+			fmt.Printf("%s\n", string(contents))
+		default:
+			fmt.Println("Incorrect Content-Type " + mimeType)
+			return false
+		}
 		return true
 	}
 
@@ -280,8 +315,6 @@ func main() {
 				tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
 				tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256},
 			// TLS 1.2 because we can
-			// XXX:FIXME needed while testing
-			//InsecureSkipVerify: true,
 			MinVersion: tls.VersionTLS12,
 		}
 		tlsConfig.BuildNameToCertificate()
@@ -372,8 +405,20 @@ func main() {
 			return false
 		}
 		contentType := resp.Header.Get("Content-Type")
-		if contentType != "application/json" {
-			fmt.Println("Incorrect Content-Type " + contentType)
+		if contentType == "" {
+			fmt.Printf("device-param no content-type\n")
+			return false
+		}
+		mimeType, _, err := mime.ParseMediaType(contentType)
+		if err != nil {
+			fmt.Printf("device-param ParseMediaType failed %v\n", err)
+			return false
+		}
+		switch mimeType {
+		case "application/json":
+			break
+		default:
+			fmt.Println("Incorrect Content-Type " + mimeType)
 			return false
 		}
 		if err := json.Unmarshal(contents, &device); err != nil {
@@ -589,6 +634,15 @@ func main() {
 		olconf[0].LispSignature = signature
 		olconf[0].AdditionalInfoDevice = addInfoDevice
 		olconf[0].NameToEidList = device.ZedServers.NameToEidList
+		// XXX temporary to populate map servers
+		lispServers := make([]types.LispServerInfo, 2)
+		olconf[0].LispServers = lispServers
+		lispServers[0].NameOrIp = "ms1.zededa.net"
+		lispServers[0].Credential = fmt.Sprintf("test1_%d",
+			device.LispInstance)
+		lispServers[1].NameOrIp = "ms2.zededa.net"
+		lispServers[1].Credential = fmt.Sprintf("test2_%d",
+			device.LispInstance)
 		acl := make([]types.ACE, 1)
 		olconf[0].ACLs = acl
 		matches := make([]types.ACEMatch, 1)

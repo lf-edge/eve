@@ -39,9 +39,6 @@ func addOrUpdateConfig(uuidStr string, config types.AppInstanceConfig) {
 		if !reflect.DeepEqual(m, config) {
 			fmt.Printf("AI config changed for %s\n", uuidStr)
 			changed = true
-			if m.UUIDandVersion.Version == config.UUIDandVersion.Version {
-				fmt.Printf("XXX AI config changed for %s but same version %s\n", uuidStr, config.UUIDandVersion.Version)
-			}
 		}
 	} else {
 		fmt.Printf("AI config add for %s\n", uuidStr)
@@ -64,6 +61,7 @@ func addOrUpdateConfig(uuidStr string, config types.AppInstanceConfig) {
 				ss := &status.StorageStatusList[i]
 				ss.DownloadURL = sc.DownloadURL
 				ss.ImageSha256 = sc.ImageSha256
+				ss.Target = sc.Target
 			}
 			status.EIDList = make([]types.EIDStatusDetails,
 				len(config.OverlayNetworkList))
@@ -125,9 +123,9 @@ func updateAIStatusSafename(safename string) {
 			config.UUIDandVersion.UUID)
 		for _, sc := range config.StorageConfigList {
 			safename2 := types.UrlToSafename(sc.DownloadURL, sc.ImageSha256)
-			fmt.Printf("Found StorageConfig URL %s safename %s\n",
-				sc.DownloadURL, safename2)
 			if safename == safename2 {
+				fmt.Printf("Found StorageConfig URL %s safename %s\n",
+					sc.DownloadURL, safename2)
 				updateAIStatusUUID(config.UUIDandVersion.UUID.String())
 				break
 			}
@@ -201,9 +199,9 @@ func removeAIStatusSafename(safename string) {
 			status.UUIDandVersion.UUID)
 		for _, ss := range status.StorageStatusList {
 			safename2 := types.UrlToSafename(ss.DownloadURL, ss.ImageSha256)
-			fmt.Printf("Found StorageStatus URL %s safename %s\n",
-				ss.DownloadURL, safename2)
 			if safename == safename2 {
+				fmt.Printf("Found StorageStatus URL %s safename %s\n",
+					ss.DownloadURL, safename2)
 				removeAIStatusUUID(status.UUIDandVersion.UUID.String())
 				break
 			}
@@ -295,32 +293,10 @@ func doInstall(uuidStr string, config types.AppInstanceConfig,
 			sc.DownloadURL, safename)
 
 		// Shortcut if image is already verified
-		vs, err := LookupVerifyImageStatus(safename)
+		vs, err := LookupVerifyImageStatusAny(safename, sc.ImageSha256)
 		if err == nil && vs.State == types.DELIVERED {
-			log.Printf("doUpdate found verified image for %s\n",
-				safename)
-			// If we don't already have a RefCount add one
-			if !ss.HasVerifierRef {
-				log.Printf("doUpdate !HasVerifierRef vs.RefCount %d for %s\n",
-					vs.RefCount, safename)
-				vs.RefCount += 1
-				ss.HasVerifierRef = true
-				changed = true
-			}
-
-			if minState > vs.State {
-				minState = vs.State
-			}
-			if vs.State != ss.State {
-				ss.State = vs.State
-				changed = true
-			}
-			continue
-		}
-		vs, err = LookupVerifyImageStatusSha256(sc.ImageSha256)
-		if err == nil && vs.State == types.DELIVERED {
-			log.Printf("doUpdate found verified image for sha256 %s\n",
-				sc.ImageSha256)
+			log.Printf("doUpdate found verified image for %s sha %s\n",
+				safename, sc.ImageSha256)
 			// If we don't already have a RefCount add one
 			if !ss.HasVerifierRef {
 				log.Printf("doUpdate !HasVerifierRef vs.RefCount %d for %s\n",
@@ -403,10 +379,10 @@ func doInstall(uuidStr string, config types.AppInstanceConfig,
 		fmt.Printf("Found StorageConfig URL %s safename %s\n",
 			sc.DownloadURL, safename)
 
-		vs, err := LookupVerifyImageStatus(safename)
+		vs, err := LookupVerifyImageStatusAny(safename, sc.ImageSha256)
 		if err != nil {
-			log.Printf("LookupVerifyImageStatus %s failed %v\n",
-				safename, err)
+			log.Printf("LookupVerifyImageStatusAny %s sha %s failed %v\n",
+				safename, sc.ImageSha256, err)
 			continue
 		}
 		if minState > vs.State {
@@ -425,6 +401,11 @@ func doInstall(uuidStr string, config types.AppInstanceConfig,
 				vs.LastErr)
 			ss.ErrorTime = vs.LastErrTime
 			errorTime = vs.LastErrTime
+			changed = true
+		default:
+			ss.ActiveFileLocation = finalDirname + "/" + vs.Safename
+			log.Printf("Update SSL ActiveFileLocation for %s: %s\n",
+				uuidStr, ss.ActiveFileLocation)
 			changed = true
 		}
 	}
@@ -445,6 +426,8 @@ func doInstall(uuidStr string, config types.AppInstanceConfig,
 		return changed, false
 	}
 	log.Printf("Done with verifications for %s\n", uuidStr)
+	// XXX could allocate EIDs before we download for better parallelism
+	// with zedcloud
 	// Make sure we have an EIDConfig for each overlay
 	for _, ec := range config.OverlayNetworkList {
 		MaybeAddEIDConfig(config.UUIDandVersion,
@@ -532,7 +515,29 @@ func doActivate(uuidStr string, config types.AppInstanceConfig,
 			uuidStr)
 		return changed
 	}
-
+	// Update ActiveFileLocation from DiskStatus
+	for _, disk := range ds.DiskStatusList {
+		// Need to lookup based on ImageSha256
+		found := false
+		for i, _ := range status.StorageStatusList {
+			ss := &status.StorageStatusList[i]
+			if ss.ImageSha256 == disk.ImageSha256 {
+				found = true
+				log.Printf("Found SSL ActiveFileLocation for %s: %s\n",
+					uuidStr, disk.ActiveFileLocation)
+				if ss.ActiveFileLocation != disk.ActiveFileLocation {
+					log.Printf("Update SSL ActiveFileLocation for %s: %s\n",
+						uuidStr, disk.ActiveFileLocation)
+					ss.ActiveFileLocation = disk.ActiveFileLocation
+					changed = true
+				}
+			}
+		}
+		if !found {
+			log.Printf("No SSL ActiveFileLocation for %s: %s\n",
+				uuidStr, disk.ActiveFileLocation)
+		}
+	}
 	log.Printf("Done with DomainStatus for %s\n", uuidStr)
 
 	if !status.Activated {
@@ -631,7 +636,8 @@ func doUninstall(uuidStr string, status *types.AppInstanceStatus) (bool, bool) {
 	log.Printf("Done with EID frees for %s\n", uuidStr)
 
 	removedAll := true
-	for _, ss := range status.StorageStatusList {
+	for i, _ := range status.StorageStatusList {
+		ss := &status.StorageStatusList[i]
 		// Decrease refcount if we had increased it
 		if ss.HasVerifierRef {
 			MaybeRemoveVerifyImageConfigSha256(ss.ImageSha256)
@@ -655,7 +661,8 @@ func doUninstall(uuidStr string, status *types.AppInstanceStatus) (bool, bool) {
 	log.Printf("Done with all verify removes for %s\n", uuidStr)
 
 	removedAll = true
-	for _, ss := range status.StorageStatusList {
+	for i, _ := range status.StorageStatusList {
+		ss := &status.StorageStatusList[i]
 		safename := types.UrlToSafename(ss.DownloadURL, ss.ImageSha256)
 		fmt.Printf("Found StorageStatus URL %s safename %s\n",
 			ss.DownloadURL, safename)
