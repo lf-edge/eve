@@ -8,7 +8,7 @@ DIR=`pwd`
 [ -d bin/linux_x86_64 ] || mkdir bin/linux_x86_64
 [ -d bin/linux_arm64 ] || mkdir bin/linux_arm64
 
-APPS="downloader verifier client server register zedrouter domainmgr identitymgr zedmanager eidregister zedagent"
+APPS="downloader verifier client server register zedrouter domainmgr identitymgr zedmanager eidregister zedagent dataplane"
 if /bin/true; then
     cmdline=""
     for app in $APPS; do
