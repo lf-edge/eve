@@ -84,7 +84,8 @@ func startPuntProcessor() {
 			continue
 		}
 
-		lconn, err := net.Dial("unix", lispersDotNetItr)
+		lconn, err := net.DialUnix("unixgram", nil,
+					&net.UnixAddr{lispersDotNetItr, "unixgram"})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Client connection to %s cannot he opened: %s\n",
 				lispersDotNetItr, err)
@@ -97,6 +98,7 @@ func startPuntProcessor() {
 
 	go func(conn net.Conn, puntChannel chan []byte) {
 		defer close(puntChannel)
+		defer conn.Close()
 		// Keep reading from punt channel and write punts to lispers.net-itr
 		for {
 			puntMsg := <-puntChannel
