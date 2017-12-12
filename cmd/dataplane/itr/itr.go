@@ -20,6 +20,7 @@ const SNAPLENGTH = 65536
 func StartItrThread(threadName string,
 	killChannel chan bool,
 	puntChannel chan []byte) {
+
 	fmt.Println("Starting thread:", threadName)
 	// Kill channel will no longer be needed
 	// if we return from this function
@@ -34,22 +35,18 @@ func StartItrThread(threadName string,
 
 	// create raw socket pair for sending LISP packets out
 	fd4, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
-	//conn4, err := net.ListenPacket("ip4:udp", "0.0.0.0")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed creating IPv4 raw socket for %s: %s\n",
 			threadName, err)
 		return
 	}
-	//defer conn4.Close()
 	defer syscall.Close(fd4)
 	fd6, err := syscall.Socket(syscall.AF_INET6, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
-	//conn6, err := net.ListenPacket("ip6:udp", "")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed creating IPv6 raw socket for %s: %s\n",
 			threadName, err)
 		return
 	}
-	//defer conn6.Close()
 	defer syscall.Close(fd6)
 
 	startWorking(threadName, ring, killChannel, puntChannel, fd4, fd6)
@@ -94,6 +91,7 @@ func setupPacketCapture(ifname string, snapLen uint32) *pfring.Ring {
 	return ring
 }
 
+// Start capturing and processing packets.
 func startWorking(ifname string, ring *pfring.Ring,
 	killChannel chan bool, puntChannel chan []byte,
 	//conn4 net.PacketConn, conn6 net.PacketConn) {
@@ -117,6 +115,8 @@ eidLoop:
 			fmt.Printf("ITR thread %s received terminate from control module.", ifname)
 			return
 		default:
+			// EID map database might not have come yet. Wait for before we start
+			// processing packets.
 			eids = fib.LookupIfaceEids(iid)
 			if eids != nil {
 				break eidLoop
@@ -138,8 +138,6 @@ eidLoop:
 			fmt.Printf("ITR thread %s received terminate from control module.", ifname)
 			return
 		default:
-			//fmt.Println("Process a new packet.")
-
 			/*
 				ci, err := ring.ReadPacketDataToNoWait(pktBuf[:])
 				if err == pfring.NextNoPacketNonblocking {
@@ -185,7 +183,9 @@ eidLoop:
 
 			if !matchFound {
 				// XXX May be add a per thread stat here
-				fmt.Fprintf(os.Stderr, "Input packet with source address %s does not have a matching EID of interface\n", srcAddr)
+				fmt.Fprintf(os.Stderr,
+				"Input packet with source address %s does not have matching EID of interface\n",
+				srcAddr)
 				continue
 			}
 
@@ -232,6 +232,10 @@ eidLoop:
 // This function expectes the parameter pktBuf to be a statically
 // allocated buffer longer than the original packet length.
 // We currently use a buffer of length 64K bytes.
+//
+// Perform lookup into mapcache database and forward if the lookup succeeds.
+// If not, buffer the packet and send a punt request to lispers.net for resolution.
+// Look for comments inside the function to understand more about what it does.
 func LookupAndSend(packet gopacket.Packet,
 	pktBuf []byte,
 	capLen uint32,

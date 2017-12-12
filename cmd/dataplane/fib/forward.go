@@ -20,8 +20,8 @@ func CraftAndSendLispPacket(packet gopacket.Packet,
 	hash32 uint32,
 	mapEntry *types.MapCacheEntry,
 	iid uint32,
-	//conn4 net.PacketConn, conn6 net.PacketConn) {
 	fd4 int, fd6 int) {
+
 	// XXX
 	// For now, we use the first Rloc entry from map cache.
 	// It has to be changed to load balance between available Rlocs
@@ -30,10 +30,8 @@ func CraftAndSendLispPacket(packet gopacket.Packet,
 	// Check the family and create appropriate IP header
 	switch rloc.Family {
 	case types.MAP_CACHE_FAMILY_IPV4:
-		//craftAndSendIPv4LispPacket(packet, pktBuf, capLen, mapEntry, iid, conn4)
 		craftAndSendIPv4LispPacket(packet, pktBuf, capLen, hash32, mapEntry, iid, fd4)
 	case types.MAP_CACHE_FAMILY_IPV6:
-		//craftAndSendIPv6LispPacket(packet, pktBuf, capLen, mapEntry, iid, conn6)
 		craftAndSendIPv6LispPacket(packet, pktBuf, capLen, hash32, mapEntry, iid, fd6)
 	case types.MAP_CACHE_FAMILY_UNKNOWN:
 		fmt.Fprintf(os.Stderr, "Unkown family found for rloc %s\n",
@@ -47,8 +45,8 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 	hash32 uint32,
 	mapEntry *types.MapCacheEntry,
 	iid uint32,
-	//conn4 net.PacketConn) {
 	fd4 int) {
+
 	// XXX calculate a hash and use it for load balancing accross entries
 	var rloc types.Rloc
 	totWeight := mapEntry.RlocTotWeight
@@ -104,7 +102,6 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 	SetLispIID(lispHdr, iid)
 
 	nonce := rand.Intn(0xffffff)
-	//fmt.Println("XXX Writing nonce", nonce)
 	SetLispNonce(lispHdr, uint32(nonce))
 
 	buf := gopacket.NewSerializeBuffer()
@@ -133,8 +130,6 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 	// will be len(outerHdr) + capture length - 14 (ethernet header)
 	outputSlice := pktBuf[offset : uint32(offset)+uint32(outerHdrLen)+capLen-14]
 
-	//_, err := conn4.WriteTo(buf.Bytes(), &net.IPAddr{IP: rloc.Rloc})
-	//_, err := conn4.WriteTo(outputSlice, &net.IPAddr{IP: rloc.Rloc})
 	v4Addr := rloc.Rloc.To4()
 	err := syscall.Sendto(fd4, outputSlice, 0, &syscall.SockaddrInet4{
 		Port: 0,
@@ -151,9 +146,27 @@ func craftAndSendIPv6LispPacket(packet gopacket.Packet,
 	hash32 uint32,
 	mapEntry *types.MapCacheEntry,
 	iid uint32,
-	//conn6 net.PacketConn) {
 	fd6 int) {
-	rloc := mapEntry.Rlocs[0]
+
+	// XXX calculate a hash and use it for load balancing accross entries
+	var rloc types.Rloc
+	totWeight := mapEntry.RlocTotWeight
+
+	// Get map cache slot from hash and weight
+	mapSlot := hash32 % totWeight
+	//fmt.Println("Slot selected is:", mapSlot)
+	//fmt.Println("Total weight is:", totWeight)
+
+	// get the map entry that this slot falls into
+	for _, rloc = range mapEntry.Rlocs {
+		//fmt.Println("Checking range", rloc.WrLow, rloc.WrHigh)
+		if (mapSlot < rloc.WrLow) || (mapSlot > rloc.WrHigh) {
+			continue
+		}
+		//fmt.Println("Range selected is:", rloc.WrLow, rloc.WrHigh)
+		break
+	}
+
 	// XXX
 	// Should we have a static per-thread entry for this header?
 	// Can we have it globally and re-use?

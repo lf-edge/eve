@@ -70,16 +70,21 @@ func startPuntProcessor() {
 	* Start a thread that connects to lispers.net-itr unix
 	* dgram socket.
 	*
-	* This thread should keep re-trying till it can get a clint
-	* connection to lispers.net-itr
-	 */
+	* This function (XXX may be thread) should keep re-trying till it can get a client
+	* connection to lispers.net-itr unix dgram socket.
+	*
+	* lispers.net-itr socket is created by Dino's lispers.net python control code.
+	*/
+
+	// We do not want data processing ITR threads to get blocked.
+	// Create a channel of 100 punts to provide sufficient buffering.
 	puntChannel = make(chan []byte, 100)
 
 	for {
 		fmt.Println("Trying for connection to lispers.net-itr")
 		if _, err := os.Stat(lispersDotNetItr); err != nil {
 			// lispers.net control plane has not created the server socket yet
-			// sleeping for 1 second before re-trying again
+			// sleeping for 5 second before re-trying again
 			time.Sleep(5000 * time.Millisecond)
 			continue
 		}
@@ -96,6 +101,11 @@ func startPuntProcessor() {
 		break
 	}
 
+	// Spawn a thread that reads the punt messages from other threads and then
+	// writes them to lispers.net-itr socket.
+	// Punt messages are expected to be in fully formatted json format. This avoids
+	// the need for other threads to send metadata describing the message type (and
+	// reduces a bit of complexity).
 	go func(conn net.Conn, puntChannel chan []byte) {
 		defer close(puntChannel)
 		defer conn.Close()
@@ -127,6 +137,7 @@ func registerSignalHandler() {
 				fib.ShowDecapKeys()
 				fib.ShowIfaceIIDs()
 				fib.ShowIfaceEIDs()
+				DumpThreadTable()
 			}
 		}
 	}()
@@ -134,7 +145,9 @@ func registerSignalHandler() {
 
 func handleConfig(c *net.UnixConn) {
 	defer c.Close()
-	buf := make([]byte, 1024)
+
+	// Create 8k bytes buffer for reading configuration messages.
+	buf := make([]byte, 8192)
 	for {
 		n, err := c.Read(buf[:])
 		if err != nil {
@@ -142,7 +155,6 @@ func handleConfig(c *net.UnixConn) {
 			c.Close()
 			return
 		} else {
-			fmt.Println(string(buf[0:n]))
 			handleLispMsg(buf[0:n])
 		}
 	}
@@ -160,13 +172,13 @@ func handleLispMsg(msg []byte) {
 
 	switch msgType.Type {
 	case MAPCACHETYPE:
-		fmt.Println("Got map-cache entry message")
+		fmt.Println("Processing map-cache entry message")
 		handleMapCache(msg)
 	case DATABASEMAPPINGSTYPE:
-		fmt.Println("Got database-mappings entry message")
+		fmt.Println("Processing database-mappings entry message")
 		handleDatabaseMappings(msg)
 	case INTERFACESTYPE:
-		fmt.Println("Got interfaces entry message")
+		fmt.Println("Processing interfaces entry message")
 		handleInterfaces(msg)
 	case DECAPKEYSTYPE:
 		handleDecapKeys(msg)

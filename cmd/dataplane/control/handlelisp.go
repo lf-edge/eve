@@ -105,6 +105,7 @@ func parseDatabaseMappings(databaseMappings DatabaseMappings) map[uint32][]net.I
 	for _, entry := range databaseMappings.Mappings {
 		fmt.Println("IID:", entry.InstanceId)
 		fmt.Println("Eid prefix:", entry.EidPrefix)
+		fmt.Println()
 
 		x, err := strconv.ParseUint(entry.InstanceId, 10, 32)
 		if err != nil {
@@ -169,8 +170,8 @@ func handleInterfaces(msg []byte) {
 	}
 
 	for _, iface := range interfaces.Interfaces {
-		fmt.Println("Interface:", iface.Interface)
-		fmt.Println("Instance id:", iface.InstanceId)
+		fmt.Println("Interface:", iface.Interface, ", Instance Id:", iface.InstanceId)
+		fmt.Println()
 		x, err := strconv.ParseUint(iface.InstanceId, 10, 32)
 		if err != nil {
 			continue

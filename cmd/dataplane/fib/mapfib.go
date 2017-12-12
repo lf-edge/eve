@@ -15,8 +15,7 @@ var decaps *types.DecapTable
 
 var pktBuf []byte
 
-//var conn4  net.PacketConn
-//var conn6  net.PacketConn
+// ipv4 and ipv6 raw sockets respectively
 var fd4 int
 var fd6 int
 
@@ -39,13 +38,11 @@ func InitMapCache() {
 	// Init buffered packet processing buffer
 	pktBuf = make([]byte, 65536)
 
-	// create raw sockets required
-	//conn4, err = net.ListenPacket("ip4:udp", "0.0.0.0")
+	// create required raw sockets
 	fd4, err = syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "FIB ipv4 raw socket creation failed.\n")
 	}
-	//conn6, err = net.ListenPacket("ip6:udp", "")
 	fd6, err = syscall.Socket(syscall.AF_INET6, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "FIB ipv6 raw socket creation failed.\n")
@@ -64,6 +61,8 @@ func makeMapCacheKey(iid uint32, eid net.IP) types.MapCacheKey {
 	}
 }
 
+// Do a lookup into map cache database. If a resolved entry is not found,
+// create and add an un-resolved entry for buffering packets.
 func LookupAndAdd(iid uint32,
 	eid net.IP) (*types.MapCacheEntry, bool) {
 	key := makeMapCacheKey(iid, eid)
@@ -86,6 +85,7 @@ func LookupAndAdd(iid uint32,
 		elapsed = (elapsed / 1000000)
 
 		// if elapsed time is greater than 30000ms send a punt request
+		// XXX Is 30 seconds for punt too high?
 		if elapsed >= 30000 {
 			punt = true
 			entry.LastPunt = time.Now()
@@ -117,6 +117,8 @@ func LookupAndAdd(iid uint32,
 	}
 }
 
+// Add/update map cache entry. Along with that process and send out and
+// buffered packets attached to this entry.
 func UpdateMapCacheEntry(iid uint32, eid net.IP, rlocs []types.Rloc) {
 	entry := LookupAndUpdate(iid, eid, rlocs)
 
@@ -124,6 +126,9 @@ func UpdateMapCacheEntry(iid uint32, eid net.IP, rlocs []types.Rloc) {
 		select {
 		case pkt, ok := <-entry.PktBuffer:
 			if ok {
+				// XXX Hmm.. This section of code might need some re-writing, but
+				// i'll keep it this way for now.
+
 				// send the packet out
 				pktBytes := pkt.Packet.Data()
 				capLen := len(pktBytes)
@@ -132,7 +137,6 @@ func UpdateMapCacheEntry(iid uint32, eid net.IP, rlocs []types.Rloc) {
 				// ipv6 (40) + UDP (8) + LISP (8) - ETHERNET (14) = 42
 				copy(pktBuf[42:], pktBytes)
 
-				fmt.Println("Sending packet from buffered channel")
 				// Send the packet out now
 				CraftAndSendLispPacket(pkt.Packet, pktBuf, uint32(capLen), pkt.Hash32,
 					entry, entry.InstanceId, fd4, fd6)
@@ -151,6 +155,9 @@ func UpdateMapCacheEntry(iid uint32, eid net.IP, rlocs []types.Rloc) {
 	}
 }
 
+// Compile the given rlocs according to their RLOCs and prepare a load
+// balance list.
+// XXX We only consider the highest priority RLOCs and ignore other priorities
 func compileRlocs(rlocs []types.Rloc) ([]types.Rloc, uint32) {
 	var highPrio uint32 = 0xFFFFFFFF
 	selectRlocs := []types.Rloc{}
@@ -174,6 +181,10 @@ func compileRlocs(rlocs []types.Rloc) ([]types.Rloc, uint32) {
 	}
 
 	// Assign weight ranges to each of the selected rlocs
+	// Each RLOC will get a weight range proportional to it's weight.
+	// For example if there are three RLOCs (say r1, r2, r3) with weights
+	// 10, 30, 60 respectively, then the weight ranges assigned to them will
+	// be (0 - 9), (10 - 39), (40 - 99) respectively.
 	for i, _ := range selectRlocs {
 		low := wrStart
 		high := low + selectRlocs[i].Weight - 1
@@ -187,6 +198,8 @@ func compileRlocs(rlocs []types.Rloc) ([]types.Rloc, uint32) {
 	return selectRlocs, totWeight
 }
 
+// Add/update map cache entry. Look at the comments inside this function to understand
+// more about what it does.
 func LookupAndUpdate(iid uint32, eid net.IP, rlocs []types.Rloc) *types.MapCacheEntry {
 	key := makeMapCacheKey(iid, eid)
 	cache.LockMe.Lock()
