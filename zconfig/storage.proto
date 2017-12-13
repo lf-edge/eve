@@ -4,6 +4,7 @@ syntax = "proto3";
 option java_package = "com.zededa.cloud.uservice.proto";
 option go_package = "github.com/zededa/api/zconfig";
 
+import "devcommon.proto";
 
 message SignatureInfo {
 	string intercertsurl = 1;
@@ -47,8 +48,8 @@ enum Format {
 }
 
 message Image {
-	string id = 100;
-	
+	string id = 100;		// deprecated
+	UUIDandVersion uuidandversion = 1;
 	// it could be relative path/name as well
 	string name = 2;
 

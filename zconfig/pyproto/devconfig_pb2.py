@@ -15,6 +15,7 @@ _sym_db = _symbol_database.Default()
 
 import devcommon_pb2 as devcommon__pb2
 import appconfig_pb2 as appconfig__pb2
+import baseosconfig_pb2 as baseosconfig__pb2
 import netconfig_pb2 as netconfig__pb2
 import storage_pb2 as storage__pb2
 
@@ -23,10 +24,9 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='devconfig.proto',
   package='',
   syntax='proto3',
-  serialized_pb=_b('\n\x0f\x64\x65vconfig.proto\x1a\x0f\x64\x65vcommon.proto\x1a\x0f\x61ppconfig.proto\x1a\x0fnetconfig.proto\x1a\rstorage.proto\"1\n\tMapServer\x12\x10\n\x08NameOrIp\x18\x01 \x01(\t\x12\x12\n\nCredential\x18\x02 \x01(\t\"*\n\tZedServer\x12\x10\n\x08HostName\x18\x01 \x01(\t\x12\x0b\n\x03\x45ID\x18\x02 \x03(\t\"\xdf\x01\n\x11\x44\x65viceLispDetails\x12\"\n\x0eLispMapServers\x18\x01 \x03(\x0b\x32\n.MapServer\x12\x14\n\x0cLispInstance\x18\x02 \x01(\r\x12\x0b\n\x03\x45ID\x18\x04 \x01(\t\x12\x12\n\nEIDHashLen\x18\x05 \x01(\r\x12\x1e\n\nZedServers\x18\x06 \x03(\x0b\x32\n.ZedServer\x12\x1b\n\x13\x45idAllocationPrefix\x18\x08 \x01(\x0c\x12\x1e\n\x16\x45idAllocationPrefixLen\x18\t \x01(\r\x12\x12\n\nClientAddr\x18\n \x01(\t\"\xf1\x01\n\rEdgeDevConfig\x12\x1b\n\x02id\x18\x01 \x01(\x0b\x32\x0f.UUIDandVersion\x12\x17\n\x0f\x64\x65vConfigSha256\x18\x02 \x01(\x0c\x12\x1a\n\x12\x64\x65vConfigSignature\x18\x03 \x01(\x0c\x12 \n\x04\x61pps\x18\x04 \x03(\x0b\x32\x12.AppInstanceConfig\x12 \n\x08networks\x18\x05 \x03(\x0b\x32\x0e.NetworkConfig\x12$\n\ndatastores\x18\x06 \x03(\x0b\x32\x10.DatastoreConfig\x12$\n\x08lispInfo\x18\x07 \x01(\x0b\x32\x12.DeviceLispDetailsB@\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1dgithub.com/zededa/api/zconfigb\x06proto3')
+  serialized_pb=_b('\n\x0f\x64\x65vconfig.proto\x1a\x0f\x64\x65vcommon.proto\x1a\x0f\x61ppconfig.proto\x1a\x12\x62\x61seosconfig.proto\x1a\x0fnetconfig.proto\x1a\rstorage.proto\"1\n\tMapServer\x12\x10\n\x08NameOrIp\x18\x01 \x01(\t\x12\x12\n\nCredential\x18\x02 \x01(\t\"*\n\tZedServer\x12\x10\n\x08HostName\x18\x01 \x01(\t\x12\x0b\n\x03\x45ID\x18\x02 \x03(\t\"\xdf\x01\n\x11\x44\x65viceLispDetails\x12\"\n\x0eLispMapServers\x18\x01 \x03(\x0b\x32\n.MapServer\x12\x14\n\x0cLispInstance\x18\x02 \x01(\r\x12\x0b\n\x03\x45ID\x18\x04 \x01(\t\x12\x12\n\nEIDHashLen\x18\x05 \x01(\r\x12\x1e\n\nZedServers\x18\x06 \x03(\x0b\x32\n.ZedServer\x12\x1b\n\x13\x45idAllocationPrefix\x18\x08 \x01(\x0c\x12\x1e\n\x16\x45idAllocationPrefixLen\x18\t \x01(\r\x12\x12\n\nClientAddr\x18\n \x01(\t\"\x8e\x02\n\rEdgeDevConfig\x12\x1b\n\x02id\x18\x01 \x01(\x0b\x32\x0f.UUIDandVersion\x12\x17\n\x0f\x64\x65vConfigSha256\x18\x02 \x01(\x0c\x12\x1a\n\x12\x64\x65vConfigSignature\x18\x03 \x01(\x0c\x12 \n\x04\x61pps\x18\x04 \x03(\x0b\x32\x12.AppInstanceConfig\x12 \n\x08networks\x18\x05 \x03(\x0b\x32\x0e.NetworkConfig\x12$\n\ndatastores\x18\x06 \x03(\x0b\x32\x10.DatastoreConfig\x12$\n\x08lispInfo\x18\x07 \x01(\x0b\x32\x12.DeviceLispDetails\x12\x1b\n\x04\x62\x61se\x18\x08 \x03(\x0b\x32\r.BaseOSConfigB@\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1dgithub.com/zededa/api/zconfigb\x06proto3')
   ,
-  dependencies=[devcommon__pb2.DESCRIPTOR,appconfig__pb2.DESCRIPTOR,netconfig__pb2.DESCRIPTOR,storage__pb2.DESCRIPTOR,])
-_sym_db.RegisterFileDescriptor(DESCRIPTOR)
+  dependencies=[devcommon__pb2.DESCRIPTOR,appconfig__pb2.DESCRIPTOR,baseosconfig__pb2.DESCRIPTOR,netconfig__pb2.DESCRIPTOR,storage__pb2.DESCRIPTOR,])
 
 
 
@@ -44,14 +44,14 @@ _MAPSERVER = _descriptor.Descriptor(
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='Credential', full_name='MapServer.Credential', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -64,8 +64,8 @@ _MAPSERVER = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=85,
-  serialized_end=134,
+  serialized_start=105,
+  serialized_end=154,
 )
 
 
@@ -82,14 +82,14 @@ _ZEDSERVER = _descriptor.Descriptor(
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='EID', full_name='ZedServer.EID', index=1,
       number=2, type=9, cpp_type=9, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -102,8 +102,8 @@ _ZEDSERVER = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=136,
-  serialized_end=178,
+  serialized_start=156,
+  serialized_end=198,
 )
 
 
@@ -120,56 +120,56 @@ _DEVICELISPDETAILS = _descriptor.Descriptor(
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='LispInstance', full_name='DeviceLispDetails.LispInstance', index=1,
       number=2, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='EID', full_name='DeviceLispDetails.EID', index=2,
       number=4, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='EIDHashLen', full_name='DeviceLispDetails.EIDHashLen', index=3,
       number=5, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='ZedServers', full_name='DeviceLispDetails.ZedServers', index=4,
       number=6, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='EidAllocationPrefix', full_name='DeviceLispDetails.EidAllocationPrefix', index=5,
       number=8, type=12, cpp_type=9, label=1,
       has_default_value=False, default_value=_b(""),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='EidAllocationPrefixLen', full_name='DeviceLispDetails.EidAllocationPrefixLen', index=6,
       number=9, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='ClientAddr', full_name='DeviceLispDetails.ClientAddr', index=7,
       number=10, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -182,8 +182,8 @@ _DEVICELISPDETAILS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=181,
-  serialized_end=404,
+  serialized_start=201,
+  serialized_end=424,
 )
 
 
@@ -200,49 +200,56 @@ _EDGEDEVCONFIG = _descriptor.Descriptor(
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='devConfigSha256', full_name='EdgeDevConfig.devConfigSha256', index=1,
       number=2, type=12, cpp_type=9, label=1,
       has_default_value=False, default_value=_b(""),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='devConfigSignature', full_name='EdgeDevConfig.devConfigSignature', index=2,
       number=3, type=12, cpp_type=9, label=1,
       has_default_value=False, default_value=_b(""),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='apps', full_name='EdgeDevConfig.apps', index=3,
       number=4, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='networks', full_name='EdgeDevConfig.networks', index=4,
       number=5, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='datastores', full_name='EdgeDevConfig.datastores', index=5,
       number=6, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='lispInfo', full_name='EdgeDevConfig.lispInfo', index=6,
       number=7, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='base', full_name='EdgeDevConfig.base', index=7,
+      number=8, type=11, cpp_type=10, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -255,8 +262,8 @@ _EDGEDEVCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=407,
-  serialized_end=648,
+  serialized_start=427,
+  serialized_end=697,
 )
 
 _DEVICELISPDETAILS.fields_by_name['LispMapServers'].message_type = _MAPSERVER
@@ -266,10 +273,12 @@ _EDGEDEVCONFIG.fields_by_name['apps'].message_type = appconfig__pb2._APPINSTANCE
 _EDGEDEVCONFIG.fields_by_name['networks'].message_type = netconfig__pb2._NETWORKCONFIG
 _EDGEDEVCONFIG.fields_by_name['datastores'].message_type = storage__pb2._DATASTORECONFIG
 _EDGEDEVCONFIG.fields_by_name['lispInfo'].message_type = _DEVICELISPDETAILS
+_EDGEDEVCONFIG.fields_by_name['base'].message_type = baseosconfig__pb2._BASEOSCONFIG
 DESCRIPTOR.message_types_by_name['MapServer'] = _MAPSERVER
 DESCRIPTOR.message_types_by_name['ZedServer'] = _ZEDSERVER
 DESCRIPTOR.message_types_by_name['DeviceLispDetails'] = _DEVICELISPDETAILS
 DESCRIPTOR.message_types_by_name['EdgeDevConfig'] = _EDGEDEVCONFIG
+_sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
 MapServer = _reflection.GeneratedProtocolMessageType('MapServer', (_message.Message,), dict(
   DESCRIPTOR = _MAPSERVER,

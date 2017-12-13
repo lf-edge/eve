@@ -20,9 +20,8 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='zmet.proto',
   package='',
   syntax='proto3',
-  serialized_pb=_b('\n\nzmet.proto\"s\n\x11ZInfoManufacturer\x12\x14\n\x0cmanufacturer\x18\x01 \x01(\t\x12\x13\n\x0bproductName\x18\x02 \x01(\t\x12\x0f\n\x07version\x18\x03 \x01(\t\x12\x14\n\x0cserialNumber\x18\x04 \x01(\t\x12\x0c\n\x04UUID\x18\x05 \x01(\t\"P\n\x0cZInfoNetwork\x12\x0e\n\x06IPAddr\x18\x01 \x01(\t\x12\x0e\n\x06gwAddr\x18\x02 \x01(\t\x12\x0f\n\x07macAddr\x18\x03 \x01(\t\x12\x0f\n\x07\x64\x65vName\x18\x04 \x01(\t\"i\n\x0fZinfoPeripheral\x12 \n\x05ztype\x18\x01 \x01(\x0e\x32\x11.ZPeripheralTypes\x12\x11\n\tpluggable\x18\x02 \x01(\x08\x12!\n\x05minfo\x18\x03 \x01(\x0b\x32\x12.ZInfoManufacturer\",\n\x07ZInfoSW\x12\x11\n\tswVersion\x18\x02 \x01(\t\x12\x0e\n\x06swHash\x18\x03 \x01(\t\"\xf6\x01\n\x0bZInfoDevice\x12\x13\n\x0bmachineArch\x18\x04 \x01(\t\x12\x0f\n\x07\x63puArch\x18\x05 \x01(\t\x12\x10\n\x08platform\x18\x06 \x01(\t\x12\x0c\n\x04ncpu\x18\x07 \x01(\r\x12\x0e\n\x06memory\x18\x08 \x01(\x04\x12\x0f\n\x07storage\x18\t \x01(\x04\x12!\n\x07\x64\x65vices\x18\n \x03(\x0b\x32\x10.ZinfoPeripheral\x12!\n\x05minfo\x18\x0b \x01(\x0b\x32\x12.ZInfoManufacturer\x12\x1a\n\x08software\x18\x0c \x01(\x0b\x32\x08.ZInfoSW\x12\x1e\n\x07network\x18\r \x03(\x0b\x32\r.ZInfoNetwork\"\\\n\x0fZInfoHypervisor\x12\x0c\n\x04ncpu\x18\x03 \x01(\r\x12\x0e\n\x06memory\x18\x04 \x01(\x04\x12\x0f\n\x07storage\x18\x05 \x01(\x04\x12\x1a\n\x08software\x18\x06 \x01(\x0b\x32\x08.ZInfoSW\"d\n\x08ZInfoApp\x12\r\n\x05\x41ppID\x18\x01 \x01(\t\x12\x0c\n\x04ncpu\x18\x02 \x01(\r\x12\x0e\n\x06memory\x18\x03 \x01(\r\x12\x0f\n\x07storage\x18\x04 \x01(\r\x12\x1a\n\x08software\x18\x05 \x01(\x0b\x32\x08.ZInfoSW\"\xa2\x01\n\x08ZInfoMsg\x12\x1a\n\x05ztype\x18\x01 \x01(\x0e\x32\x0b.ZInfoTypes\x12\r\n\x05\x64\x65vId\x18\x02 \x01(\t\x12\x1d\n\x05\x64info\x18\x03 \x01(\x0b\x32\x0c.ZInfoDeviceH\x00\x12!\n\x05hinfo\x18\x04 \x01(\x0b\x32\x10.ZInfoHypervisorH\x00\x12\x1a\n\x05\x61info\x18\x05 \x01(\x0b\x32\t.ZInfoAppH\x00\x42\r\n\x0bInfoContent\"\xb1\x01\n\tcpuMetric\x12\x0e\n\x06upTime\x18\x02 \x01(\r\x12\x16\n\x0e\x63puUtilization\x18\x03 \x01(\x01\x12\x0b\n\x03usr\x18\x04 \x01(\x01\x12\x0c\n\x04nice\x18\x05 \x01(\x01\x12\x0e\n\x06system\x18\x06 \x01(\x01\x12\n\n\x02io\x18\x07 \x01(\x01\x12\x0b\n\x03irq\x18\x08 \x01(\x01\x12\x0c\n\x04soft\x18\t \x01(\x01\x12\r\n\x05steal\x18\n \x01(\x01\x12\r\n\x05guest\x18\x0b \x01(\x01\x12\x0c\n\x04idle\x18\x0c \x01(\x01\"b\n\x0cmemoryMetric\x12\x0f\n\x07usedMem\x18\x02 \x01(\r\x12\x10\n\x08\x61vailMem\x18\x03 \x01(\r\x12\x16\n\x0eusedPercentage\x18\x04 \x01(\x01\x12\x17\n\x0f\x61vailPercentage\x18\x05 \x01(\x01\"\x82\x01\n\rnetworkMetric\x12\r\n\x05iName\x18\x01 \x01(\t\x12\x0f\n\x07txBytes\x18\x02 \x01(\x04\x12\x0f\n\x07rxBytes\x18\x03 \x01(\x04\x12\x0f\n\x07txDrops\x18\x04 \x01(\x04\x12\x0f\n\x07rxDrops\x18\x05 \x01(\x04\x12\x0e\n\x06txRate\x18\x06 \x01(\x04\x12\x0e\n\x06rxRate\x18\x07 \x01(\x04\"g\n\x0c\x64\x65viceMetric\x12\x17\n\x03\x63pu\x18\x01 \x01(\x0b\x32\n.cpuMetric\x12\x1d\n\x06memory\x18\x02 \x01(\x0b\x32\r.memoryMetric\x12\x1f\n\x07network\x18\x03 \x03(\x0b\x32\x0e.networkMetric\"g\n\nZMetricMsg\x12\r\n\x05\x64\x65vID\x18\x01 \x01(\t\x12\x1c\n\x05ztype\x18\x02 \x01(\x0e\x32\r.ZmetricTypes\x12\x1b\n\x02\x64m\x18\x04 \x01(\x0b\x32\r.deviceMetricH\x00\x42\x0f\n\rMetricContent*B\n\nZInfoTypes\x12\t\n\x05ZiNop\x10\x00\x12\x0c\n\x08ZiDevice\x10\x01\x12\x10\n\x0cZiHypervisor\x10\x02\x12\t\n\x05ZiApp\x10\x03*<\n\x10ZPeripheralTypes\x12\n\n\x06ZpNone\x10\x00\x12\r\n\tZpStorage\x10\x01\x12\r\n\tZpNetwork\x10\x02*2\n\x0cZmetricTypes\x12\t\n\x05ZmNop\x10\x00\x12\x0c\n\x08ZmDevice\x10\x01\x12\t\n\x05ZmApp\x10\x03\x42=\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1agithub.com/zededa/api/zmetb\x06proto3')
+  serialized_pb=_b('\n\nzmet.proto\"s\n\x11ZInfoManufacturer\x12\x14\n\x0cmanufacturer\x18\x01 \x01(\t\x12\x13\n\x0bproductName\x18\x02 \x01(\t\x12\x0f\n\x07version\x18\x03 \x01(\t\x12\x14\n\x0cserialNumber\x18\x04 \x01(\t\x12\x0c\n\x04UUID\x18\x05 \x01(\t\"P\n\x0cZInfoNetwork\x12\x0e\n\x06IPAddr\x18\x01 \x01(\t\x12\x0e\n\x06gwAddr\x18\x02 \x01(\t\x12\x0f\n\x07macAddr\x18\x03 \x01(\t\x12\x0f\n\x07\x64\x65vName\x18\x04 \x01(\t\"i\n\x0fZinfoPeripheral\x12 \n\x05ztype\x18\x01 \x01(\x0e\x32\x11.ZPeripheralTypes\x12\x11\n\tpluggable\x18\x02 \x01(\x08\x12!\n\x05minfo\x18\x03 \x01(\x0b\x32\x12.ZInfoManufacturer\"Y\n\x07ZInfoSW\x12\x11\n\tswVersion\x18\x02 \x01(\t\x12\x0e\n\x06swHash\x18\x03 \x01(\t\x12\x18\n\x05state\x18\x04 \x01(\x0e\x32\t.ZSwState\x12\x11\n\tactivated\x18\x05 \x01(\x08\"\x96\x02\n\x0bZInfoDevice\x12\x13\n\x0bmachineArch\x18\x04 \x01(\t\x12\x0f\n\x07\x63puArch\x18\x05 \x01(\t\x12\x10\n\x08platform\x18\x06 \x01(\t\x12\x0c\n\x04ncpu\x18\x07 \x01(\r\x12\x0e\n\x06memory\x18\x08 \x01(\x04\x12\x0f\n\x07storage\x18\t \x01(\x04\x12!\n\x07\x64\x65vices\x18\n \x03(\x0b\x32\x10.ZinfoPeripheral\x12!\n\x05minfo\x18\x0b \x01(\x0b\x32\x12.ZInfoManufacturer\x12\x1a\n\x08software\x18\x0c \x01(\x0b\x32\x08.ZInfoSW\x12\x1e\n\x07network\x18\r \x03(\x0b\x32\r.ZInfoNetwork\x12\x1e\n\x0csoftwareList\x18\x0e \x03(\x0b\x32\x08.ZInfoSW\"\\\n\x0fZInfoHypervisor\x12\x0c\n\x04ncpu\x18\x03 \x01(\r\x12\x0e\n\x06memory\x18\x04 \x01(\x04\x12\x0f\n\x07storage\x18\x05 \x01(\x04\x12\x1a\n\x08software\x18\x06 \x01(\x0b\x32\x08.ZInfoSW\"d\n\x08ZInfoApp\x12\r\n\x05\x41ppID\x18\x01 \x01(\t\x12\x0c\n\x04ncpu\x18\x02 \x01(\r\x12\x0e\n\x06memory\x18\x03 \x01(\r\x12\x0f\n\x07storage\x18\x04 \x01(\r\x12\x1a\n\x08software\x18\x05 \x01(\x0b\x32\x08.ZInfoSW\"\xa2\x01\n\x08ZInfoMsg\x12\x1a\n\x05ztype\x18\x01 \x01(\x0e\x32\x0b.ZInfoTypes\x12\r\n\x05\x64\x65vId\x18\x02 \x01(\t\x12\x1d\n\x05\x64info\x18\x03 \x01(\x0b\x32\x0c.ZInfoDeviceH\x00\x12!\n\x05hinfo\x18\x04 \x01(\x0b\x32\x10.ZInfoHypervisorH\x00\x12\x1a\n\x05\x61info\x18\x05 \x01(\x0b\x32\t.ZInfoAppH\x00\x42\r\n\x0bInfoContent\"\xb1\x01\n\tcpuMetric\x12\x0e\n\x06upTime\x18\x02 \x01(\r\x12\x16\n\x0e\x63puUtilization\x18\x03 \x01(\x01\x12\x0b\n\x03usr\x18\x04 \x01(\x01\x12\x0c\n\x04nice\x18\x05 \x01(\x01\x12\x0e\n\x06system\x18\x06 \x01(\x01\x12\n\n\x02io\x18\x07 \x01(\x01\x12\x0b\n\x03irq\x18\x08 \x01(\x01\x12\x0c\n\x04soft\x18\t \x01(\x01\x12\r\n\x05steal\x18\n \x01(\x01\x12\r\n\x05guest\x18\x0b \x01(\x01\x12\x0c\n\x04idle\x18\x0c \x01(\x01\"b\n\x0cmemoryMetric\x12\x0f\n\x07usedMem\x18\x02 \x01(\r\x12\x10\n\x08\x61vailMem\x18\x03 \x01(\r\x12\x16\n\x0eusedPercentage\x18\x04 \x01(\x01\x12\x17\n\x0f\x61vailPercentage\x18\x05 \x01(\x01\"\x82\x01\n\rnetworkMetric\x12\r\n\x05iName\x18\x01 \x01(\t\x12\x0f\n\x07txBytes\x18\x02 \x01(\x04\x12\x0f\n\x07rxBytes\x18\x03 \x01(\x04\x12\x0f\n\x07txDrops\x18\x04 \x01(\x04\x12\x0f\n\x07rxDrops\x18\x05 \x01(\x04\x12\x0e\n\x06txRate\x18\x06 \x01(\x04\x12\x0e\n\x06rxRate\x18\x07 \x01(\x04\"g\n\x0c\x64\x65viceMetric\x12\x17\n\x03\x63pu\x18\x01 \x01(\x0b\x32\n.cpuMetric\x12\x1d\n\x06memory\x18\x02 \x01(\x0b\x32\r.memoryMetric\x12\x1f\n\x07network\x18\x03 \x03(\x0b\x32\x0e.networkMetric\"g\n\nZMetricMsg\x12\r\n\x05\x64\x65vID\x18\x01 \x01(\t\x12\x1c\n\x05ztype\x18\x02 \x01(\x0e\x32\r.ZmetricTypes\x12\x1b\n\x02\x64m\x18\x04 \x01(\x0b\x32\r.deviceMetricH\x00\x42\x0f\n\rMetricContent*B\n\nZInfoTypes\x12\t\n\x05ZiNop\x10\x00\x12\x0c\n\x08ZiDevice\x10\x01\x12\x10\n\x0cZiHypervisor\x10\x02\x12\t\n\x05ZiApp\x10\x03*<\n\x10ZPeripheralTypes\x12\n\n\x06ZpNone\x10\x00\x12\r\n\tZpStorage\x10\x01\x12\r\n\tZpNetwork\x10\x02*h\n\x08ZSwState\x12\x0b\n\x07INVALID\x10\x00\x12\x0b\n\x07INITIAL\x10\x01\x12\x14\n\x10\x44OWNLOAD_STARTED\x10\x02\x12\x0e\n\nDOWNLOADED\x10\x03\x12\r\n\tDELIVERED\x10\x04\x12\r\n\tINSTALLED\x10\x05*2\n\x0cZmetricTypes\x12\t\n\x05ZmNop\x10\x00\x12\x0c\n\x08ZmDevice\x10\x01\x12\t\n\x05ZmApp\x10\x03\x42=\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1agithub.com/zededa/api/zmetb\x06proto3')
 )
-_sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
 _ZINFOTYPES = _descriptor.EnumDescriptor(
   name='ZInfoTypes',
@@ -49,8 +48,8 @@ _ZINFOTYPES = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=1599,
-  serialized_end=1665,
+  serialized_start=1676,
+  serialized_end=1742,
 )
 _sym_db.RegisterEnumDescriptor(_ZINFOTYPES)
 
@@ -76,12 +75,51 @@ _ZPERIPHERALTYPES = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=1667,
-  serialized_end=1727,
+  serialized_start=1744,
+  serialized_end=1804,
 )
 _sym_db.RegisterEnumDescriptor(_ZPERIPHERALTYPES)
 
 ZPeripheralTypes = enum_type_wrapper.EnumTypeWrapper(_ZPERIPHERALTYPES)
+_ZSWSTATE = _descriptor.EnumDescriptor(
+  name='ZSwState',
+  full_name='ZSwState',
+  filename=None,
+  file=DESCRIPTOR,
+  values=[
+    _descriptor.EnumValueDescriptor(
+      name='INVALID', index=0, number=0,
+      options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='INITIAL', index=1, number=1,
+      options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='DOWNLOAD_STARTED', index=2, number=2,
+      options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='DOWNLOADED', index=3, number=3,
+      options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='DELIVERED', index=4, number=4,
+      options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='INSTALLED', index=5, number=5,
+      options=None,
+      type=None),
+  ],
+  containing_type=None,
+  options=None,
+  serialized_start=1806,
+  serialized_end=1910,
+)
+_sym_db.RegisterEnumDescriptor(_ZSWSTATE)
+
+ZSwState = enum_type_wrapper.EnumTypeWrapper(_ZSWSTATE)
 _ZMETRICTYPES = _descriptor.EnumDescriptor(
   name='ZmetricTypes',
   full_name='ZmetricTypes',
@@ -103,8 +141,8 @@ _ZMETRICTYPES = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=1729,
-  serialized_end=1779,
+  serialized_start=1912,
+  serialized_end=1962,
 )
 _sym_db.RegisterEnumDescriptor(_ZMETRICTYPES)
 
@@ -116,6 +154,12 @@ ZiApp = 3
 ZpNone = 0
 ZpStorage = 1
 ZpNetwork = 2
+INVALID = 0
+INITIAL = 1
+DOWNLOAD_STARTED = 2
+DOWNLOADED = 3
+DELIVERED = 4
+INSTALLED = 5
 ZmNop = 0
 ZmDevice = 1
 ZmApp = 3
@@ -135,35 +179,35 @@ _ZINFOMANUFACTURER = _descriptor.Descriptor(
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='productName', full_name='ZInfoManufacturer.productName', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='version', full_name='ZInfoManufacturer.version', index=2,
       number=3, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='serialNumber', full_name='ZInfoManufacturer.serialNumber', index=3,
       number=4, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='UUID', full_name='ZInfoManufacturer.UUID', index=4,
       number=5, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -194,28 +238,28 @@ _ZINFONETWORK = _descriptor.Descriptor(
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='gwAddr', full_name='ZInfoNetwork.gwAddr', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='macAddr', full_name='ZInfoNetwork.macAddr', index=2,
       number=3, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='devName', full_name='ZInfoNetwork.devName', index=3,
       number=4, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -246,21 +290,21 @@ _ZINFOPERIPHERAL = _descriptor.Descriptor(
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='pluggable', full_name='ZinfoPeripheral.pluggable', index=1,
       number=2, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='minfo', full_name='ZinfoPeripheral.minfo', index=2,
       number=3, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -291,14 +335,28 @@ _ZINFOSW = _descriptor.Descriptor(
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='swHash', full_name='ZInfoSW.swHash', index=1,
       number=3, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='state', full_name='ZInfoSW.state', index=2,
+      number=4, type=14, cpp_type=8, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='activated', full_name='ZInfoSW.activated', index=3,
+      number=5, type=8, cpp_type=7, label=1,
+      has_default_value=False, default_value=False,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -312,7 +370,7 @@ _ZINFOSW = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=320,
-  serialized_end=364,
+  serialized_end=409,
 )
 
 
@@ -329,70 +387,77 @@ _ZINFODEVICE = _descriptor.Descriptor(
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='cpuArch', full_name='ZInfoDevice.cpuArch', index=1,
       number=5, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='platform', full_name='ZInfoDevice.platform', index=2,
       number=6, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='ncpu', full_name='ZInfoDevice.ncpu', index=3,
       number=7, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='memory', full_name='ZInfoDevice.memory', index=4,
       number=8, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='storage', full_name='ZInfoDevice.storage', index=5,
       number=9, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='devices', full_name='ZInfoDevice.devices', index=6,
       number=10, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='minfo', full_name='ZInfoDevice.minfo', index=7,
       number=11, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='software', full_name='ZInfoDevice.software', index=8,
       number=12, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='network', full_name='ZInfoDevice.network', index=9,
       number=13, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='softwareList', full_name='ZInfoDevice.softwareList', index=10,
+      number=14, type=11, cpp_type=10, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -405,8 +470,8 @@ _ZINFODEVICE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=367,
-  serialized_end=613,
+  serialized_start=412,
+  serialized_end=690,
 )
 
 
@@ -423,28 +488,28 @@ _ZINFOHYPERVISOR = _descriptor.Descriptor(
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='memory', full_name='ZInfoHypervisor.memory', index=1,
       number=4, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='storage', full_name='ZInfoHypervisor.storage', index=2,
       number=5, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='software', full_name='ZInfoHypervisor.software', index=3,
       number=6, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -457,8 +522,8 @@ _ZINFOHYPERVISOR = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=615,
-  serialized_end=707,
+  serialized_start=692,
+  serialized_end=784,
 )
 
 
@@ -475,35 +540,35 @@ _ZINFOAPP = _descriptor.Descriptor(
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='ncpu', full_name='ZInfoApp.ncpu', index=1,
       number=2, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='memory', full_name='ZInfoApp.memory', index=2,
       number=3, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='storage', full_name='ZInfoApp.storage', index=3,
       number=4, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='software', full_name='ZInfoApp.software', index=4,
       number=5, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -516,8 +581,8 @@ _ZINFOAPP = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=709,
-  serialized_end=809,
+  serialized_start=786,
+  serialized_end=886,
 )
 
 
@@ -534,35 +599,35 @@ _ZINFOMSG = _descriptor.Descriptor(
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='devId', full_name='ZInfoMsg.devId', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='dinfo', full_name='ZInfoMsg.dinfo', index=2,
       number=3, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='hinfo', full_name='ZInfoMsg.hinfo', index=3,
       number=4, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='ainfo', full_name='ZInfoMsg.ainfo', index=4,
       number=5, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -578,8 +643,8 @@ _ZINFOMSG = _descriptor.Descriptor(
       name='InfoContent', full_name='ZInfoMsg.InfoContent',
       index=0, containing_type=None, fields=[]),
   ],
-  serialized_start=812,
-  serialized_end=974,
+  serialized_start=889,
+  serialized_end=1051,
 )
 
 
@@ -596,77 +661,77 @@ _CPUMETRIC = _descriptor.Descriptor(
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='cpuUtilization', full_name='cpuMetric.cpuUtilization', index=1,
       number=3, type=1, cpp_type=5, label=1,
       has_default_value=False, default_value=float(0),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='usr', full_name='cpuMetric.usr', index=2,
       number=4, type=1, cpp_type=5, label=1,
       has_default_value=False, default_value=float(0),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='nice', full_name='cpuMetric.nice', index=3,
       number=5, type=1, cpp_type=5, label=1,
       has_default_value=False, default_value=float(0),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='system', full_name='cpuMetric.system', index=4,
       number=6, type=1, cpp_type=5, label=1,
       has_default_value=False, default_value=float(0),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='io', full_name='cpuMetric.io', index=5,
       number=7, type=1, cpp_type=5, label=1,
       has_default_value=False, default_value=float(0),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='irq', full_name='cpuMetric.irq', index=6,
       number=8, type=1, cpp_type=5, label=1,
       has_default_value=False, default_value=float(0),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='soft', full_name='cpuMetric.soft', index=7,
       number=9, type=1, cpp_type=5, label=1,
       has_default_value=False, default_value=float(0),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='steal', full_name='cpuMetric.steal', index=8,
       number=10, type=1, cpp_type=5, label=1,
       has_default_value=False, default_value=float(0),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='guest', full_name='cpuMetric.guest', index=9,
       number=11, type=1, cpp_type=5, label=1,
       has_default_value=False, default_value=float(0),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='idle', full_name='cpuMetric.idle', index=10,
       number=12, type=1, cpp_type=5, label=1,
       has_default_value=False, default_value=float(0),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -679,8 +744,8 @@ _CPUMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=977,
-  serialized_end=1154,
+  serialized_start=1054,
+  serialized_end=1231,
 )
 
 
@@ -697,28 +762,28 @@ _MEMORYMETRIC = _descriptor.Descriptor(
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='availMem', full_name='memoryMetric.availMem', index=1,
       number=3, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='usedPercentage', full_name='memoryMetric.usedPercentage', index=2,
       number=4, type=1, cpp_type=5, label=1,
       has_default_value=False, default_value=float(0),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='availPercentage', full_name='memoryMetric.availPercentage', index=3,
       number=5, type=1, cpp_type=5, label=1,
       has_default_value=False, default_value=float(0),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -731,8 +796,8 @@ _MEMORYMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1156,
-  serialized_end=1254,
+  serialized_start=1233,
+  serialized_end=1331,
 )
 
 
@@ -749,49 +814,49 @@ _NETWORKMETRIC = _descriptor.Descriptor(
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='txBytes', full_name='networkMetric.txBytes', index=1,
       number=2, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='rxBytes', full_name='networkMetric.rxBytes', index=2,
       number=3, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='txDrops', full_name='networkMetric.txDrops', index=3,
       number=4, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='rxDrops', full_name='networkMetric.rxDrops', index=4,
       number=5, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='txRate', full_name='networkMetric.txRate', index=5,
       number=6, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='rxRate', full_name='networkMetric.rxRate', index=6,
       number=7, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -804,8 +869,8 @@ _NETWORKMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1257,
-  serialized_end=1387,
+  serialized_start=1334,
+  serialized_end=1464,
 )
 
 
@@ -822,21 +887,21 @@ _DEVICEMETRIC = _descriptor.Descriptor(
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='memory', full_name='deviceMetric.memory', index=1,
       number=2, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='network', full_name='deviceMetric.network', index=2,
       number=3, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -849,8 +914,8 @@ _DEVICEMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1389,
-  serialized_end=1492,
+  serialized_start=1466,
+  serialized_end=1569,
 )
 
 
@@ -867,21 +932,21 @@ _ZMETRICMSG = _descriptor.Descriptor(
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='ztype', full_name='ZMetricMsg.ztype', index=1,
       number=2, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='dm', full_name='ZMetricMsg.dm', index=2,
       number=4, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -897,16 +962,18 @@ _ZMETRICMSG = _descriptor.Descriptor(
       name='MetricContent', full_name='ZMetricMsg.MetricContent',
       index=0, containing_type=None, fields=[]),
   ],
-  serialized_start=1494,
-  serialized_end=1597,
+  serialized_start=1571,
+  serialized_end=1674,
 )
 
 _ZINFOPERIPHERAL.fields_by_name['ztype'].enum_type = _ZPERIPHERALTYPES
 _ZINFOPERIPHERAL.fields_by_name['minfo'].message_type = _ZINFOMANUFACTURER
+_ZINFOSW.fields_by_name['state'].enum_type = _ZSWSTATE
 _ZINFODEVICE.fields_by_name['devices'].message_type = _ZINFOPERIPHERAL
 _ZINFODEVICE.fields_by_name['minfo'].message_type = _ZINFOMANUFACTURER
 _ZINFODEVICE.fields_by_name['software'].message_type = _ZINFOSW
 _ZINFODEVICE.fields_by_name['network'].message_type = _ZINFONETWORK
+_ZINFODEVICE.fields_by_name['softwareList'].message_type = _ZINFOSW
 _ZINFOHYPERVISOR.fields_by_name['software'].message_type = _ZINFOSW
 _ZINFOAPP.fields_by_name['software'].message_type = _ZINFOSW
 _ZINFOMSG.fields_by_name['ztype'].enum_type = _ZINFOTYPES
@@ -945,7 +1012,9 @@ DESCRIPTOR.message_types_by_name['deviceMetric'] = _DEVICEMETRIC
 DESCRIPTOR.message_types_by_name['ZMetricMsg'] = _ZMETRICMSG
 DESCRIPTOR.enum_types_by_name['ZInfoTypes'] = _ZINFOTYPES
 DESCRIPTOR.enum_types_by_name['ZPeripheralTypes'] = _ZPERIPHERALTYPES
+DESCRIPTOR.enum_types_by_name['ZSwState'] = _ZSWSTATE
 DESCRIPTOR.enum_types_by_name['ZmetricTypes'] = _ZMETRICTYPES
+_sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
 ZInfoManufacturer = _reflection.GeneratedProtocolMessageType('ZInfoManufacturer', (_message.Message,), dict(
   DESCRIPTOR = _ZINFOMANUFACTURER,

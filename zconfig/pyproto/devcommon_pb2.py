@@ -21,7 +21,6 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   syntax='proto3',
   serialized_pb=_b('\n\x0f\x64\x65vcommon.proto\"/\n\x0eUUIDandVersion\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x0f\n\x07version\x18\x02 \x01(\tB@\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1dgithub.com/zededa/api/zconfigb\x06proto3')
 )
-_sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
 
 
@@ -39,14 +38,14 @@ _UUIDANDVERSION = _descriptor.Descriptor(
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='version', full_name='UUIDandVersion.version', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -64,6 +63,7 @@ _UUIDANDVERSION = _descriptor.Descriptor(
 )
 
 DESCRIPTOR.message_types_by_name['UUIDandVersion'] = _UUIDANDVERSION
+_sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
 UUIDandVersion = _reflection.GeneratedProtocolMessageType('UUIDandVersion', (_message.Message,), dict(
   DESCRIPTOR = _UUIDANDVERSION,
