@@ -18,20 +18,18 @@ import (
 const SNAPLENGTH = 65536
 
 func StartItrThread(threadName string,
+	ring *pfring.Ring,
 	killChannel chan bool,
 	puntChannel chan []byte) {
 
 	fmt.Println("Starting thread:", threadName)
 	// Kill channel will no longer be needed
 	// if we return from this function
-	defer close(killChannel)
 
-	ring := setupPacketCapture(threadName, SNAPLENGTH)
 	if ring == nil {
 		fmt.Fprintf(os.Stderr, "Packet capture setup for interface %s failed\n",
 			threadName)
 	}
-	defer ring.Close()
 
 	// create raw socket pair for sending LISP packets out
 	fd4, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
@@ -56,7 +54,8 @@ func StartItrThread(threadName string,
 	return
 }
 
-func setupPacketCapture(ifname string, snapLen uint32) *pfring.Ring {
+// Opens up the pfing on interface and sets up packet capture.
+func SetupPacketCapture(ifname string, snapLen uint32) *pfring.Ring {
 	// create a new pf_ring to capture packets from our interface
 	ring, err := pfring.NewRing(ifname, SNAPLENGTH, pfring.FlagPromisc)
 	if err != nil {
@@ -153,6 +152,8 @@ eidLoop:
 				fmt.Fprintf(os.Stderr,
 					"Something wrong with packet capture from interface %s: %s\n",
 					ifname, err)
+					fmt.Fprintf(os.Stderr,
+					"May be we are asked to terminate after the hosting domU died.\n")
 				return
 			}
 

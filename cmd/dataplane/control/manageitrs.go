@@ -2,13 +2,19 @@ package main
 
 import (
 	"fmt"
+	"github.com/google/gopacket/pfring"
 	"github.com/zededa/go-provision/dataplane/itr"
 )
 
-var threadTable map[string]chan bool
+type ThreadEntry struct {
+	channel chan bool
+	ring   *pfring.Ring
+}
+
+var threadTable map[string]ThreadEntry
 
 func InitThreadTable() {
-	threadTable = make(map[string]chan bool)
+	threadTable = make(map[string]ThreadEntry)
 }
 
 func DumpThreadTable() {
@@ -26,19 +32,22 @@ func ManageItrThreads(interfaces Interfaces) {
 	}
 
 	// Kill ITR threads that are not needed with new configuration
-	for name, channel := range threadTable {
+	//for name, channel := range threadTable {
+	for name, entry := range threadTable {
 		// Check if this thread is needed with new configuration and send
 		// a kill signal if not.
 		if _, ok := tmpMap[name]; !ok {
 			// This thread has to die, break the bad news to it
 			fmt.Println("Sending kill signal to", name)
-			channel <- true
+			entry.channel <- true
 
 			// XXX
 			// Should we wait for the thread to actually exit?
 			// What would happen if the channel gets GC'd before the thread can read?
 			// Close the channel also.
-			close(channel)
+			close(entry.channel)
+			entry.ring.Disable()
+			entry.ring.Close()
 			delete(threadTable, name)
 		}
 	}
@@ -48,12 +57,16 @@ func ManageItrThreads(interfaces Interfaces) {
 		if _, ok := threadTable[name]; !ok {
 			// This ITR thread has to be given birth to. Find a mom!!
 			killChannel := make(chan bool, 1)
-			threadTable[name] = killChannel
 
 			// XXX
 			// Start the go thread here
+			ring := itr.SetupPacketCapture(name, 65536)
 			fmt.Println("Creating new ITR thread for", name)
-			go itr.StartItrThread(name, killChannel, puntChannel)
+			threadTable[name] = ThreadEntry{
+				channel: killChannel,
+				ring: ring,
+			}
+			go itr.StartItrThread(name, ring, killChannel, puntChannel)
 		}
 	}
 }
