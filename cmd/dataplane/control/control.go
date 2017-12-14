@@ -64,22 +64,7 @@ func main() {
 	handleConfig(configPipe)
 }
 
-func startPuntProcessor() {
-	var conn net.Conn
-	/**
-	* Start a thread that connects to lispers.net-itr unix
-	* dgram socket.
-	*
-	* This function (XXX may be thread) should keep re-trying till it can get a client
-	* connection to lispers.net-itr unix dgram socket.
-	*
-	* lispers.net-itr socket is created by Dino's lispers.net python control code.
-	*/
-
-	// We do not want data processing ITR threads to get blocked.
-	// Create a channel of 100 punts to provide sufficient buffering.
-	puntChannel = make(chan []byte, 100)
-
+func connectToLispersDotNet() net.Conn {
 	for {
 		fmt.Println("Trying for connection to lispers.net-itr")
 		if _, err := os.Stat(lispersDotNetItr); err != nil {
@@ -99,8 +84,31 @@ func startPuntProcessor() {
 			continue
 		}
 		fmt.Printf("Connection established to %s\n", lispersDotNetItr)
-		conn = lconn
-		break
+		return lconn
+	}
+	return nil
+}
+
+func startPuntProcessor() {
+	var conn net.Conn
+	/**
+	* Start a thread that connects to lispers.net-itr unix
+	* dgram socket.
+	*
+	* This function (XXX may be thread) should keep re-trying till it can get a client
+	* connection to lispers.net-itr unix dgram socket.
+	*
+	* lispers.net-itr socket is created by Dino's lispers.net python control code.
+	*/
+
+	// We do not want data processing ITR threads to get blocked.
+	// Create a channel of 100 punts to provide sufficient buffering.
+	puntChannel = make(chan []byte, 100)
+
+	conn = connectToLispersDotNet()
+	if conn == nil {
+		fmt.Fprintf(os.Stderr, "Connection to %s not possible.\n", lispersDotNetItr)
+		return
 	}
 
 	// Spawn a thread that reads the punt messages from other threads and then
@@ -120,6 +128,14 @@ func startPuntProcessor() {
 				// It could be temporary. We will keep going.
 				fmt.Fprintf(os.Stderr, "Error writing to punt channel %s: %s\n",
 					lispersDotNetItr, err)
+				fmt.Printf("Retrying connection to lispers.net-itr\n")
+				conn = connectToLispersDotNet()
+				if conn == nil {
+					fmt.Fprintf(os.Stderr, "Connection to %s not possible.\n", lispersDotNetItr)
+					return
+				}
+				// Try and write the punt request again
+				_, _ = conn.Write(puntMsg)
 			}
 		}
 	}(conn, puntChannel)

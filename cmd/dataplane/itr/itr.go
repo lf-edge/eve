@@ -93,7 +93,6 @@ func SetupPacketCapture(ifname string, snapLen uint32) *pfring.Ring {
 // Start capturing and processing packets.
 func startWorking(ifname string, ring *pfring.Ring,
 	killChannel chan bool, puntChannel chan []byte,
-	//conn4 net.PacketConn, conn6 net.PacketConn) {
 	fd4 int, fd6 int) {
 	var pktBuf [SNAPLENGTH]byte
 
@@ -237,7 +236,6 @@ eidLoop:
 			LookupAndSend(packet, pktBuf[:],
 				uint32(pktLen), iid, hash32,
 				ifname, srcAddr, dstAddr,
-				//puntChannel, conn4, conn6)
 				puntChannel, fd4, fd6)
 		}
 	}
@@ -259,7 +257,6 @@ func LookupAndSend(packet gopacket.Packet,
 	srcAddr net.IP,
 	dstAddr net.IP,
 	puntChannel chan []byte,
-	//conn4 net.PacketConn, conn6 net.PacketConn) {
 	fd4 int, fd6 int) {
 	mapEntry, punt := fib.LookupAndAdd(iid, dstAddr)
 	if mapEntry.Resolved != true {
