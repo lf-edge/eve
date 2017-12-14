@@ -135,6 +135,9 @@ eidLoop:
 	for {
 		select {
 		case <-killChannel:
+			// Channel becomes readable when it's closed.
+			// So we terminate the thread either when we see "true" coming in it or
+			// when the control thread closes our communication channel.
 			fmt.Printf("ITR thread %s received terminate from control module.", ifname)
 			return
 		default:
@@ -158,7 +161,8 @@ eidLoop:
 				// XXX May be add a per thread stat here
 				continue
 			}
-			packet := gopacket.NewPacket(pktBuf[fib.MAXHEADERLEN:ci.CaptureLength+fib.MAXHEADERLEN],
+			packet := gopacket.NewPacket(
+				pktBuf[fib.MAXHEADERLEN:ci.CaptureLength+fib.MAXHEADERLEN],
 				layers.LinkTypeEthernet,
 				gopacket.DecodeOptions{Lazy: true, NoCopy: true})
 			ip6Layer := packet.Layer(layers.LayerTypeIPv6)
@@ -204,12 +208,21 @@ eidLoop:
 				uint32(dstAddr[14])<<8 | uint32(dstAddr[15]))
 			transportLayer := packet.TransportLayer()
 
-			// This is a byte array of the header
-			transportContents := transportLayer.LayerContents()
-			var ports uint32 = (uint32(transportContents[0])<<24 |
-				uint32(transportContents[1])<<16 |
-				uint32(transportContents[2])<<8 |
-				uint32(transportContents[3]))
+			var ports uint32 = 0
+			if (ipHeader.NextHeader == layers.IPProtocolUDP) || 
+			(ipHeader.NextHeader == layers.IPProtocolTCP) {
+				// This is a byte array of the header
+				transportContents := transportLayer.LayerContents()
+
+				// XXX What do we do when there is no transport header? like PING
+				if transportContents != nil {
+					fmt.Println("XXXXX Transport contents:", transportContents)
+					ports = (uint32(transportContents[0])<<24 |
+					uint32(transportContents[1])<<16 |
+					uint32(transportContents[2])<<8 |
+					uint32(transportContents[3]))
+				}
+			}
 
 			var hash32 uint32 = srcAddrBytes ^ dstAddrBytes ^ ports
 
@@ -275,8 +288,9 @@ func LookupAndSend(packet gopacket.Packet,
 		 * out all buffered packets and our packet sits in the buffered
 		 * channel without being noticed.
 		 */
-		mapEntry, punt = fib.LookupAndAdd(iid, dstAddr)
+		 mapEntry, punt1 := fib.LookupAndAdd(iid, dstAddr)
 		if mapEntry.Resolved {
+			punt = punt1
 			select {
 			case pkt := <-mapEntry.PktBuffer:
 				// XXX Send this packet out
@@ -300,6 +314,7 @@ func LookupAndSend(packet gopacket.Packet,
 		// We will have to put a punt request on the control
 		// module's channel
 		puntEntry := types.PuntEntry{
+			Type: "discovery",
 			Deid:  dstAddr,
 			Seid:  srcAddr,
 			Iface: ifname,
@@ -310,7 +325,7 @@ func LookupAndSend(packet gopacket.Packet,
 				puntEntry, err)
 		} else {
 			puntChannel <- puntMsg
-			fmt.Println("Sending punt entry at", time.Now())
+			fmt.Println("Sending punt entry at", time.Now(), ":", string(puntMsg))
 		}
 	}
 	return

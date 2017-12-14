@@ -90,7 +90,8 @@ type DecapTable struct {
 }
 
 type PuntEntry struct {
-	Seid  net.IP
-	Deid  net.IP
-	Iface string
+	Type  string `json:"type"`
+	Seid  net.IP `json:"source-eid"`
+	Deid  net.IP `json:"dest-eid"`
+	Iface string `json:"interface"`
 }

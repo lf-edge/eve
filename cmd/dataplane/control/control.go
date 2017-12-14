@@ -92,9 +92,11 @@ func startPuntProcessor() {
 		lconn, err := net.DialUnix("unixgram", nil,
 					&net.UnixAddr{lispersDotNetItr, "unixgram"})
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Client connection to %s cannot he opened: %s\n",
+			fmt.Fprintf(os.Stderr, "Client connection to %s cannot be opened: %s\n",
 				lispersDotNetItr, err)
-			return
+			//return
+			time.Sleep(5000 * time.Millisecond)
+			continue
 		}
 		fmt.Printf("Connection established to %s\n", lispersDotNetItr)
 		conn = lconn

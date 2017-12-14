@@ -37,6 +37,8 @@ func ManageItrThreads(interfaces Interfaces) {
 			// XXX
 			// Should we wait for the thread to actually exit?
 			// What would happen if the channel gets GC'd before the thread can read?
+			// Close the channel also.
+			close(channel)
 			delete(threadTable, name)
 		}
 	}

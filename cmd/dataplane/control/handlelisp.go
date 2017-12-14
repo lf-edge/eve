@@ -12,6 +12,7 @@ import (
 func parseRloc(rlocStr *Rloc) (types.Rloc, bool) {
 	rloc := net.ParseIP(rlocStr.Rloc)
 	if rloc == nil {
+		fmt.Println("RLOC:", rlocStr.Rloc, "is invalid")
 		return types.Rloc{}, false
 	}
 	x, err := strconv.ParseUint(rlocStr.Priority, 10, 32)
@@ -56,12 +57,13 @@ func parseRloc(rlocStr *Rloc) (types.Rloc, bool) {
 func handleMapCache(msg []byte) {
 	var mapCache MapCacheEntry
 
+	fmt.Println(string(msg))
 	err := json.Unmarshal(msg, &mapCache)
 	if err != nil {
 		fmt.Println("Error:", err)
 		return
 	}
-	fmt.Println("map-cache is", mapCache)
+	//fmt.Println("map-cache is", mapCache)
 	fmt.Println("Opcode:", mapCache.Opcode)
 	fmt.Println("eid-prefix:", mapCache.EidPrefix)
 	fmt.Println("IID:", mapCache.InstanceId)
@@ -74,8 +76,14 @@ func handleMapCache(msg []byte) {
 		return
 	}
 	iid := uint32(x)
-	eid := net.ParseIP(mapCache.EidPrefix)
+	eid, ipNet, _ := net.ParseCIDR(mapCache.EidPrefix)
 	if eid == nil {
+		return
+	}
+	maskLen, _ := ipNet.Mask.Size()
+	if maskLen != 128 {
+		// We are not interested in prefixes shorter then 128
+		fmt.Println("Ignoring EID with mask length:", maskLen)
 		return
 	}
 
@@ -112,8 +120,9 @@ func parseDatabaseMappings(databaseMappings DatabaseMappings) map[uint32][]net.I
 			continue
 		}
 		iid := uint32(x)
-		eid := net.ParseIP(entry.EidPrefix)
-		if eid == nil {
+		eid, _, err := net.ParseCIDR(entry.EidPrefix)
+		//if eid == nil {
+		if err != nil {
 			continue
 		}
 		_, ok := tmpMap[iid]
@@ -172,7 +181,8 @@ func handleInterfaces(msg []byte) {
 	for _, iface := range interfaces.Interfaces {
 		fmt.Println("Interface:", iface.Interface, ", Instance Id:", iface.InstanceId)
 		fmt.Println()
-		x, err := strconv.ParseUint(iface.InstanceId, 10, 32)
+		//x, err := strconv.ParseUint(iface.InstanceId, 10, 32)
+		x := iface.InstanceId
 		if err != nil {
 			continue
 		}
