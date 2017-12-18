@@ -6,6 +6,7 @@ import (
 	"github.com/zededa/go-provision/dataplane/etr"
 	"github.com/zededa/go-provision/dataplane/fib"
 	"log"
+	"flag"
 	"net"
 	"os"
 	"os/signal"
@@ -20,6 +21,8 @@ const lispersDotNetItr = lispConfigDir + "lispers.net-itr"
 var configPipe net.Listener
 var puntChannel chan []byte
 
+var Version = "No version specified"
+
 const (
 	MAPCACHETYPE         = "map-cache"
 	DATABASEMAPPINGSTYPE = "database-mappings"
@@ -28,6 +31,15 @@ const (
 )
 
 func main() {
+	log.SetOutput(os.Stdout)
+	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
+	versionPtr := flag.Bool("v", false, "Version")
+	flag.Parse()
+	if *versionPtr {
+		fmt.Printf("%s: %s\n", os.Args[0], Version)
+		return
+	}
+
 	// Initialize databases
 	fib.InitIfaceMaps()
 	fib.InitMapCache()

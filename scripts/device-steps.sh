@@ -6,7 +6,7 @@ ETCDIR=/opt/zededa/etc
 BINDIR=/opt/zededa/bin
 PROVDIR=$BINDIR
 LISPDIR=/opt/zededa/lisp
-AGENTS="zedrouter domainmgr downloader verifier identitymgr eidregister zedagent"
+AGENTS="zedrouter domainmgr downloader verifier identitymgr eidregister zedagent dataplane"
 ALLAGENTS="zedmanager $AGENTS"
 
 PATH=$BINDIR:$PATH
