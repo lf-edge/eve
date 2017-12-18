@@ -2,7 +2,8 @@
 LINUXKIT_OPTS= --disable-content-trust
 
 PKGS = xen kernel xen-tools mkimage-iso-efi mkimage-raw-efi \
-	dnsmasq dom0-ztools test-cert test-microsvcs
+	dnsmasq dom0-ztools test-cert test-microsvcs \
+	qrexec-lib qrexec-dom0
 
 .PHONY: push force-push build forcebuild show-tag clean dockerfiles
 
