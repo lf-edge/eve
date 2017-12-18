@@ -155,7 +155,7 @@ func UpdateMapCacheEntry(iid uint32, eid net.IP, rlocs []types.Rloc) {
 	}
 }
 
-// Compile the given rlocs according to their RLOCs and prepare a load
+// Compile the given rlocs according to their priorities and prepare a load
 // balance list.
 // XXX We only consider the highest priority RLOCs and ignore other priorities
 func compileRlocs(rlocs []types.Rloc) ([]types.Rloc, uint32) {

@@ -55,6 +55,7 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 	mapSlot := hash32 % totWeight
 	//fmt.Println("Slot selected is:", mapSlot)
 	//fmt.Println("Total weight is:", totWeight)
+	//fmt.Println()
 
 	// get the map entry that this slot falls into
 	for _, rloc = range mapEntry.Rlocs {

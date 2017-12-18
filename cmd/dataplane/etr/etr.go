@@ -11,13 +11,15 @@ import (
 )
 
 func StartETR() bool {
+	fmt.Println("Starting ETR thread on port 4341")
 	// create a udp server socket and start listening on port 4341
-	server, err := net.ResolveUDPAddr("udp", ":4341")
+	// XXX Using ipv4 underlay for now. Will have to figure out v6 underlay case.
+	server, err := net.ResolveUDPAddr("udp4", ":4341")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error resolving ETR socket address\n")
 		return false
 	}
-	serverConn, err := net.ListenUDP("udp", server)
+	serverConn, err := net.ListenUDP("udp4", server)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to start ETR server on :4341: %s\n", err)
 		return false
@@ -26,7 +28,6 @@ func StartETR() bool {
 
 	// Create a raw socket for injecting decapsulated packets
 	fd6, err := syscall.Socket(syscall.AF_INET6, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
-	//conn, err := net.ListenPacket("ip6:udp", "")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Creating ETR raw socket for packet injection failed.\n")
 		return false
@@ -108,6 +109,7 @@ func verifyAndInject(fd6 int, buf []byte, n int) {
 		}
 	*/
 
+	//fmt.Println("Injecting decapsulated packet")
 	//_, err := conn.WriteTo(buf[8: n], &net.IPAddr{IP: ipHeader.DstIP})
 	err := syscall.Sendto(fd6, buf[8:n], 0, &syscall.SockaddrInet6{
 		Port:   0,

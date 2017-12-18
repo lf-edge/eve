@@ -25,6 +25,9 @@ func parseRloc(rlocStr *Rloc) (types.Rloc, bool) {
 		return types.Rloc{}, false
 	}
 	weight := uint32(x)
+	if weight == 0 {
+		weight = 1
+	}
 
 	// find the family of Rloc
 

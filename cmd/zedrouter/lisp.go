@@ -44,6 +44,7 @@ lisp map-cache {
     prefix {
         instance-id = %d
         eid-prefix = fd00::/8
+		send-map-request = yes
     }
 }
 `
@@ -65,7 +66,6 @@ lisp interface {
     interface-name = overlay-mgmt
     device = %s
     instance-id = %d
-	dynamic-eid = fd00::/8
 }
 `
 

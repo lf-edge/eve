@@ -188,8 +188,8 @@ eidLoop:
 			if !matchFound {
 				// XXX May be add a per thread stat here
 				fmt.Fprintf(os.Stderr,
-				"Input packet with source address %s does not have matching EID of interface\n",
-				srcAddr)
+				"Thread: %s: Input packet with source address %s does not have matching EID of interface\n",
+				ifname, srcAddr)
 				continue
 			}
 
