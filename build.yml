@@ -1,0 +1,18 @@
+# LinuxKit package build.
+#
+# Build with:
+# $ linuxkit pkg build -disable-content-trust -hash latest -force .
+#
+# Push to Docker Hub with:
+#
+# $ linuxkit pkg push -hash latest -force -disable-content-trust .
+#
+# Ideally the hash and force will be removed but they'll require
+# changes to linuxkit or the go-provision source build.
+#
+# "--disable-content-trust" also has to go, once we set up signing
+# of packages in zededa docker hub.
+
+org: zededa
+image: ztools
+network: yes

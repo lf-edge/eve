@@ -165,22 +165,10 @@
 			"revisionTime": "2017-11-13T23:54:33Z"
 		},
 		{
-			"checksumSHA1": "vG2EwaBKjgb+XShJIO9h9lyulLI=",
-			"path": "github.com/go-ini/ini",
-			"revision": "7e7da451323b6766da368f8a1e8ec9a88a16b4a0",
-			"revisionTime": "2017-11-14T01:13:26Z"
-		},
-		{
 			"checksumSHA1": "yqF125xVSkmfLpIVGrLlfE05IUk=",
 			"path": "github.com/golang/protobuf/proto",
-			"revision": "1643683e1b54a9e88ad26d98f81400c8c9d9f4f9",
-			"revisionTime": "2017-10-21T04:39:52Z"
-		},
-		{
-			"checksumSHA1": "0ZrwvB6KoGPj2PoDNSEJwxQ6Mog=",
-			"path": "github.com/jmespath/go-jmespath",
-			"revision": "bd40a432e4c76585ef6b72d3fd96fb9b6dc7b68d",
-			"revisionTime": "2016-08-03T19:07:31Z"
+			"revision": "1e59b77b52bf8e4b449a57e6f79f21226d571845",
+			"revisionTime": "2017-11-13T18:07:20Z"
 		},
 		{
 			"checksumSHA1": "KQhA4EQp4Ldwj9nJZnEURlE6aQw=",
@@ -213,22 +201,16 @@
 			"revisionTime": "2017-11-13T00:20:14Z"
 		},
 		{
-			"checksumSHA1": "w1b8ibnIXDjAuioV07IPoSLdtBs=",
-			"path": "github.com/zededa/api/devcommon",
-			"revision": "5e009d468730c5f453e747e0fa28cbfc766c96a6",
-			"revisionTime": "2017-11-08T18:18:53Z"
-		},
-		{
-			"checksumSHA1": "6xH7wOJd5LpauCO6VMqp7jaJ2FA=",
+			"checksumSHA1": "FFa/Tk84RHqqrMYgs7REMkQvrbc=",
 			"path": "github.com/zededa/api/zconfig",
-			"revision": "f8ca120a7a85aa05b3506666691c238a6703665e",
-			"revisionTime": "2017-11-13T00:20:14Z"
+			"revision": "0eee6f5211bf0220c3eb87ca6ec799a43ea52853",
+			"revisionTime": "2017-12-13T10:03:09Z"
 		},
 		{
-			"checksumSHA1": "CNcx60rtk1Glo1vX89a+SG48dbM=",
+			"checksumSHA1": "9eFXT0KS2CLqCJazUYzsQeiZJ1w=",
 			"path": "github.com/zededa/api/zmet",
-			"revision": "f8ca120a7a85aa05b3506666691c238a6703665e",
-			"revisionTime": "2017-11-13T00:20:14Z"
+			"revision": "0eee6f5211bf0220c3eb87ca6ec799a43ea52853",
+			"revisionTime": "2017-12-13T10:03:09Z"
 		},
 		{
 			"checksumSHA1": "oupvzx9NmzVj4Rp9aYfSuSlpv90=",
@@ -273,5 +255,5 @@
 			"revisionTime": "2017-09-21T17:41:56Z"
 		}
 	],
-	"rootPath": "github.com/zededa/go-provision"
+	"rootPath": "/home/nordmark/go-provision/src"
 }
