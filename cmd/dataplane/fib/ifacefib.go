@@ -1,7 +1,7 @@
 package fib
 
 import (
-	"fmt"
+	"log"
 	"github.com/zededa/go-provision/types"
 	"net"
 )
@@ -93,11 +93,11 @@ func ShowIfaceIIDs() {
 	defer ifaceMap.LockMe.RUnlock()
 
 	for key, data := range ifaceMap.InterfaceDB {
-		fmt.Println("Interface:", key)
-		fmt.Println("IID:", data.InstanceId)
-		fmt.Println()
+		log.Println("Interface:", key)
+		log.Println("IID:", data.InstanceId)
+		log.Println()
 	}
-	fmt.Println()
+	log.Println()
 }
 
 func ShowIfaceEIDs() {
@@ -105,12 +105,12 @@ func ShowIfaceEIDs() {
 	defer eidMap.LockMe.RUnlock()
 
 	for key, data := range eidMap.EidEntries {
-		fmt.Println("IID:", key)
-		fmt.Println("Eids:")
+		log.Println("IID:", key)
+		log.Println("Eids:")
 		for _, eid := range data.Eids {
-			fmt.Println(eid.String())
+			log.Println(eid.String())
 		}
-		fmt.Println()
+		log.Println()
 	}
-	fmt.Println()
+	log.Println()
 }

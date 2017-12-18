@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	"log"
 	"github.com/google/gopacket/pfring"
 	"github.com/zededa/go-provision/dataplane/itr"
 )
@@ -19,7 +19,7 @@ func InitThreadTable() {
 
 func DumpThreadTable() {
 	for name, _ := range threadTable {
-		fmt.Println(name)
+		log.Println(name)
 	}
 }
 
@@ -38,7 +38,7 @@ func ManageItrThreads(interfaces Interfaces) {
 		// a kill signal if not.
 		if _, ok := tmpMap[name]; !ok {
 			// This thread has to die, break the bad news to it
-			fmt.Println("Sending kill signal to", name)
+			log.Println("Sending kill signal to", name)
 			entry.channel <- true
 
 			// XXX
@@ -61,7 +61,7 @@ func ManageItrThreads(interfaces Interfaces) {
 			// XXX
 			// Start the go thread here
 			ring := itr.SetupPacketCapture(name, 65536)
-			fmt.Println("Creating new ITR thread for", name)
+			log.Println("Creating new ITR thread for", name)
 			threadTable[name] = ThreadEntry{
 				channel: killChannel,
 				ring: ring,

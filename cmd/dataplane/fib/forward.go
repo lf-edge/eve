@@ -1,13 +1,12 @@
 package fib
 
 import (
-	"fmt"
+	"log"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/zededa/go-provision/types"
 	"math/rand"
 	"net"
-	"os"
 	"syscall"
 )
 
@@ -34,7 +33,7 @@ func CraftAndSendLispPacket(packet gopacket.Packet,
 	case types.MAP_CACHE_FAMILY_IPV6:
 		craftAndSendIPv6LispPacket(packet, pktBuf, capLen, hash32, mapEntry, iid, fd6)
 	case types.MAP_CACHE_FAMILY_UNKNOWN:
-		fmt.Fprintf(os.Stderr, "Unkown family found for rloc %s\n",
+		log.Printf("Unkown family found for rloc %s\n",
 			rloc.Rloc)
 	}
 }
@@ -53,17 +52,17 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 
 	// Get map cache slot from hash and weight
 	mapSlot := hash32 % totWeight
-	//fmt.Println("Slot selected is:", mapSlot)
-	//fmt.Println("Total weight is:", totWeight)
-	//fmt.Println()
+	//log.Println("Slot selected is:", mapSlot)
+	//log.Println("Total weight is:", totWeight)
+	//log.Println()
 
 	// get the map entry that this slot falls into
 	for _, rloc = range mapEntry.Rlocs {
-		//fmt.Println("Checking range", rloc.WrLow, rloc.WrHigh)
+		//log.Println("Checking range", rloc.WrLow, rloc.WrHigh)
 		if (mapSlot < rloc.WrLow) || (mapSlot > rloc.WrHigh) {
 			continue
 		}
-		//fmt.Println("Range selected is:", rloc.WrLow, rloc.WrHigh)
+		//log.Println("Range selected is:", rloc.WrLow, rloc.WrHigh)
 		break
 	}
 
@@ -86,8 +85,8 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 	// Can we have it globally and re-use?
 	var srcPort uint16 = 0xC000
 	srcPort = (srcPort | (uint16(hash32) & 0x3FFF))
-	//fmt.Println("hash32 is:", hash32)
-	//fmt.Println("Source port is:", srcPort)
+	//log.Println("hash32 is:", hash32)
+	//log.Println("Source port is:", srcPort)
 	udp := &layers.UDP{
 		// XXX Source port should be a hash from packet
 		// Hard coding for now.
@@ -112,16 +111,16 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 	}
 
 	if err := gopacket.SerializeLayers(buf, opts, ip, udp); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed serializing packet: %s", err)
+		log.Printf("Failed serializing packet: %s", err)
 		return
 	}
 
 	outerHdr := buf.Bytes()
 	outerHdr = append(outerHdr, lispHdr...)
 	outerHdrLen := len(outerHdr)
-	//fmt.Println("Outer header length is", outerHdrLen)
+	//log.Println("Outer header length is", outerHdrLen)
 	offset := MAXHEADERLEN + ETHHEADERLEN - outerHdrLen
-	//fmt.Println("Offset is", offset)
+	//log.Println("Offset is", offset)
 
 	for i := 0; i < outerHdrLen; i++ {
 		pktBuf[i+offset] = outerHdr[i]
@@ -137,7 +136,7 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 		Addr: [4]byte{v4Addr[0], v4Addr[1], v4Addr[2], v4Addr[3]},
 	})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Packet send ERROR: %s", err)
+		log.Printf("Packet send ERROR: %s", err)
 	}
 }
 
@@ -155,16 +154,16 @@ func craftAndSendIPv6LispPacket(packet gopacket.Packet,
 
 	// Get map cache slot from hash and weight
 	mapSlot := hash32 % totWeight
-	//fmt.Println("Slot selected is:", mapSlot)
-	//fmt.Println("Total weight is:", totWeight)
+	//log.Println("Slot selected is:", mapSlot)
+	//log.Println("Total weight is:", totWeight)
 
 	// get the map entry that this slot falls into
 	for _, rloc = range mapEntry.Rlocs {
-		//fmt.Println("Checking range", rloc.WrLow, rloc.WrHigh)
+		//log.Println("Checking range", rloc.WrLow, rloc.WrHigh)
 		if (mapSlot < rloc.WrLow) || (mapSlot > rloc.WrHigh) {
 			continue
 		}
-		//fmt.Println("Range selected is:", rloc.WrLow, rloc.WrHigh)
+		//log.Println("Range selected is:", rloc.WrLow, rloc.WrHigh)
 		break
 	}
 
@@ -216,16 +215,16 @@ func craftAndSendIPv6LispPacket(packet gopacket.Packet,
 	}
 
 	if err := gopacket.SerializeLayers(buf, opts, ip, udp, data); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed serializing packet")
+		log.Printf("Failed serializing packet")
 		return
 	}
 
 	outerHdr := buf.Bytes()
 	outerHdr = append(outerHdr, lispHdr...)
 	outerHdrLen := len(outerHdr)
-	//fmt.Println("Outer header length is", outerHdrLen)
+	//log.Println("Outer header length is", outerHdrLen)
 	offset := MAXHEADERLEN + ETHHEADERLEN - outerHdrLen
-	//fmt.Println("Offset is", offset)
+	//log.Println("Offset is", offset)
 
 	for i := 0; i < outerHdrLen; i++ {
 		pktBuf[i+offset] = outerHdr[i]
@@ -245,6 +244,6 @@ func craftAndSendIPv6LispPacket(packet gopacket.Packet,
 		Addr:   destAddr,
 	})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Packet send ERROR: %s", err)
+		log.Printf("Packet send ERROR: %s", err)
 	}
 }

@@ -1,9 +1,8 @@
 package etr
 
 import (
-	"fmt"
+	"log"
 	"net"
-	"os"
 	"syscall"
 	//"github.com/google/gopacket"
 	//"github.com/google/gopacket/layers"
@@ -11,17 +10,17 @@ import (
 )
 
 func StartETR() bool {
-	fmt.Println("Starting ETR thread on port 4341")
+	log.Println("Starting ETR thread on port 4341")
 	// create a udp server socket and start listening on port 4341
 	// XXX Using ipv4 underlay for now. Will have to figure out v6 underlay case.
 	server, err := net.ResolveUDPAddr("udp4", ":4341")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error resolving ETR socket address\n")
+		log.Printf("Error resolving ETR socket address\n")
 		return false
 	}
 	serverConn, err := net.ListenUDP("udp4", server)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Unable to start ETR server on :4341: %s\n", err)
+		log.Printf("Unable to start ETR server on :4341: %s\n", err)
 		return false
 	}
 	defer serverConn.Close()
@@ -29,7 +28,7 @@ func StartETR() bool {
 	// Create a raw socket for injecting decapsulated packets
 	fd6, err := syscall.Socket(syscall.AF_INET6, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Creating ETR raw socket for packet injection failed.\n")
+		log.Printf("Creating ETR raw socket for packet injection failed.\n")
 		return false
 	}
 	defer syscall.Close(fd6)
@@ -39,9 +38,9 @@ func StartETR() bool {
 	// start processing packets. This loop should never end.
 	for {
 		n, _, err := serverConn.ReadFromUDP(buf)
-		fmt.Println("Received", n, "bytes in ETR")
+		log.Println("Received", n, "bytes in ETR")
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Fatal error during ETR processing\n")
+			log.Printf("Fatal error during ETR processing\n")
 			return false
 		}
 		verifyAndInject(fd6, buf, n)
@@ -53,12 +52,12 @@ func StartETR() bool {
 func verifyAndInject(fd6 int, buf []byte, n int) {
 	//var pktEid net.IP
 	iid := fib.GetLispIID(buf[0:8])
-	fmt.Println("IID of packet is:", iid)
-	fmt.Println("Inner packet is:")
+	log.Println("IID of packet is:", iid)
+	log.Println("Inner packet is:")
 	for _, b := range buf[8:n] {
-		fmt.Printf("0x%x ", b)
+		log.Printf("0x%x ", b)
 	}
-	fmt.Println()
+	log.Println()
 	var destAddr [16]byte
 	for i, _ := range destAddr {
 		destAddr[i] = buf[8+24+i]
@@ -69,13 +68,13 @@ func verifyAndInject(fd6 int, buf []byte, n int) {
 									layers.LinkTypeIPv6,
 									gopacket.Default)
 		if packet == nil {
-			fmt.Fprintf(os.Stderr, "Packet decode failure\n");
+			log.Printf("Packet decode failure\n");
 			return
 		}
 
 		ip6Layer := packet.Layer(layers.LayerTypeIPv6)
 		if ip6Layer == nil {
-			fmt.Fprintf(os.Stderr, "Extracting ipv6 header failed\n")
+			log.Printf("Extracting ipv6 header failed\n")
 			return
 		}
 
@@ -93,9 +92,9 @@ func verifyAndInject(fd6 int, buf []byte, n int) {
 			}
 		}
 		if matchFound == false {
-			fmt.Fprintf(os.Stderr,
+			log.Printf(
 			"Incoming packet is not destined to any of the EIDs belonging to us.\n")
-			fmt.Fprintf(os.Stderr,
+			log.Printf(
 			"Incoming packet is destined to %s.\n", destAddr)
 			return
 		}
@@ -109,7 +108,7 @@ func verifyAndInject(fd6 int, buf []byte, n int) {
 		}
 	*/
 
-	//fmt.Println("Injecting decapsulated packet")
+	//log.Println("Injecting decapsulated packet")
 	//_, err := conn.WriteTo(buf[8: n], &net.IPAddr{IP: ipHeader.DstIP})
 	err := syscall.Sendto(fd6, buf[8:n], 0, &syscall.SockaddrInet6{
 		Port:   0,
@@ -117,6 +116,6 @@ func verifyAndInject(fd6 int, buf []byte, n int) {
 		Addr:   destAddr,
 	})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed injecting ETR packet: %s.\n", err)
+		log.Printf("Failed injecting ETR packet: %s.\n", err)
 	}
 }

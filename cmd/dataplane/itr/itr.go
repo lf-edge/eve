@@ -1,18 +1,16 @@
 package itr
 
 import (
-	"fmt"
+	"log"
 	"net"
 	"syscall"
 	"time"
-	//"sync"
 	"encoding/json"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pfring"
 	"github.com/zededa/go-provision/dataplane/fib"
 	"github.com/zededa/go-provision/types"
-	"os"
 )
 
 const SNAPLENGTH = 65536
@@ -22,26 +20,26 @@ func StartItrThread(threadName string,
 	killChannel chan bool,
 	puntChannel chan []byte) {
 
-	fmt.Println("Starting thread:", threadName)
+	log.Println("Starting thread:", threadName)
 	// Kill channel will no longer be needed
 	// if we return from this function
 
 	if ring == nil {
-		fmt.Fprintf(os.Stderr, "Packet capture setup for interface %s failed\n",
+		log.Printf("Packet capture setup for interface %s failed\n",
 			threadName)
 	}
 
 	// create raw socket pair for sending LISP packets out
 	fd4, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed creating IPv4 raw socket for %s: %s\n",
+		log.Printf("Failed creating IPv4 raw socket for %s: %s\n",
 			threadName, err)
 		return
 	}
 	defer syscall.Close(fd4)
 	fd6, err := syscall.Socket(syscall.AF_INET6, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed creating IPv6 raw socket for %s: %s\n",
+		log.Printf("Failed creating IPv6 raw socket for %s: %s\n",
 			threadName, err)
 		return
 	}
@@ -59,7 +57,7 @@ func SetupPacketCapture(ifname string, snapLen uint32) *pfring.Ring {
 	// create a new pf_ring to capture packets from our interface
 	ring, err := pfring.NewRing(ifname, SNAPLENGTH, pfring.FlagPromisc)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "PF_RING creation for interface %s failed: %s\n",
+		log.Printf("PF_RING creation for interface %s failed: %s\n",
 			ifname, err)
 		return nil
 	}
@@ -67,7 +65,7 @@ func SetupPacketCapture(ifname string, snapLen uint32) *pfring.Ring {
 	// Capture ipv6 packets only
 	err = ring.SetBPFFilter("ip6")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Setting ipv6 BPF filter on interface %s failed: %s\n",
+		log.Print("Setting ipv6 BPF filter on interface %s failed: %s\n",
 			ifname, err)
 		ring.Close()
 		return nil
@@ -82,7 +80,7 @@ func SetupPacketCapture(ifname string, snapLen uint32) *pfring.Ring {
 	// Enable ring. Packet inflow starts after this.
 	err = ring.Enable()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed enabling PF_RING for interface %s: %s\n",
+		log.Printf("Failed enabling PF_RING for interface %s: %s\n",
 			ifname, err)
 		ring.Close()
 		return nil
@@ -98,7 +96,7 @@ func startWorking(ifname string, ring *pfring.Ring,
 
 	iid := fib.LookupIfaceIID(ifname)
 	if iid == 0 {
-		fmt.Fprintf(os.Stderr, "Interface %s's IID cannot be found\n", ifname)
+		log.Printf("Interface %s's IID cannot be found\n", ifname)
 		return
 	}
 
@@ -110,7 +108,7 @@ eidLoop:
 		time.Sleep(2 * time.Second)
 		select {
 		case <-killChannel:
-			fmt.Printf("ITR thread %s received terminate from control module.", ifname)
+			log.Printf("ITR thread %s received terminate from control module.", ifname)
 			return
 		default:
 			// EID map database might not have come yet. Wait for before we start
@@ -119,7 +117,7 @@ eidLoop:
 			if eids != nil {
 				break eidLoop
 			}
-			fmt.Println("Re-trying EID lookup for interface", ifname)
+			log.Println("Re-trying EID lookup for interface", ifname)
 			continue
 		}
 	}
@@ -136,22 +134,22 @@ eidLoop:
 			// Channel becomes readable when it's closed.
 			// So we terminate the thread either when we see "true" coming in it or
 			// when the control thread closes our communication channel.
-			fmt.Printf("ITR thread %s received terminate from control module.", ifname)
+			log.Printf("ITR thread %s received terminate from control module.", ifname)
 			return
 		default:
 			/*
 				ci, err := ring.ReadPacketDataToNoWait(pktBuf[:])
 				if err == pfring.NextNoPacketNonblocking {
-					//fmt.Println("No packet, socket is non blocking")
+					//log.Println("No packet, socket is non blocking")
 					continue
 				}
 			*/
 			ci, err := ring.ReadPacketDataTo(pktBuf[fib.MAXHEADERLEN:])
 			if err != nil {
-				fmt.Fprintf(os.Stderr,
+				log.Printf(
 					"Something wrong with packet capture from interface %s: %s\n",
 					ifname, err)
-					fmt.Fprintf(os.Stderr,
+					log.Printf(
 					"May be we are asked to terminate after the hosting domU died.\n")
 				return
 			}
@@ -187,7 +185,7 @@ eidLoop:
 
 			if !matchFound {
 				// XXX May be add a per thread stat here
-				fmt.Fprintf(os.Stderr,
+				log.Printf(
 				"Thread: %s: Input packet with source address %s does not have matching EID of interface\n",
 				ifname, srcAddr)
 				continue
@@ -216,7 +214,7 @@ eidLoop:
 
 				// XXX What do we do when there is no transport header? like PING
 				if transportContents != nil {
-					fmt.Println("XXXXX Transport contents:", transportContents)
+					log.Println("XXXXX Transport contents:", transportContents)
 					ports = (uint32(transportContents[0])<<24 |
 					uint32(transportContents[1])<<16 |
 					uint32(transportContents[2])<<8 |
@@ -227,10 +225,10 @@ eidLoop:
 			var hash32 uint32 = srcAddrBytes ^ dstAddrBytes ^ ports
 
 			/*
-				fmt.Println("srcAddrBytes:", srcAddrBytes)
-				fmt.Println("dstAddrBytes:", dstAddrBytes)
-				fmt.Println("ports:", ports)
-				fmt.Println("hash32:", hash32)
+				log.Println("srcAddrBytes:", srcAddrBytes)
+				log.Println("dstAddrBytes:", dstAddrBytes)
+				log.Println("ports:", ports)
+				log.Println("hash32:", hash32)
 			*/
 
 			LookupAndSend(packet, pktBuf[:],
@@ -270,7 +268,7 @@ func LookupAndSend(packet gopacket.Packet,
 			Hash32: hash32,
 		}:
 		default:
-			fmt.Println("Packet buffer channel full for EID", dstAddr)
+			log.Println("Packet buffer channel full for EID", dstAddr)
 		}
 
 		/**
@@ -319,11 +317,11 @@ func LookupAndSend(packet gopacket.Packet,
 		}
 		puntMsg, err := json.Marshal(puntEntry)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Marshaling punt entry failed %s: %s\n",
+			log.Printf("Marshaling punt entry failed %s: %s\n",
 				puntEntry, err)
 		} else {
 			puntChannel <- puntMsg
-			fmt.Println("Sending punt entry at", time.Now(), ":", string(puntMsg))
+			log.Println("Sending punt entry at", time.Now(), ":", string(puntMsg))
 		}
 	}
 	return

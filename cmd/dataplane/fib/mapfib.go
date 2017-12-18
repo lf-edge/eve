@@ -1,10 +1,9 @@
 package fib
 
 import (
-	"fmt"
+	"log"
 	"github.com/zededa/go-provision/types"
 	"net"
-	"os"
 	"syscall"
 	"time"
 	//"github.com/google/gopacket"
@@ -41,11 +40,11 @@ func InitMapCache() {
 	// create required raw sockets
 	fd4, err = syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "FIB ipv4 raw socket creation failed.\n")
+		log.Printf("FIB ipv4 raw socket creation failed.\n")
 	}
 	fd6, err = syscall.Socket(syscall.AF_INET6, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "FIB ipv6 raw socket creation failed.\n")
+		log.Printf("FIB ipv6 raw socket creation failed.\n")
 	}
 	// XXX We should close these sockets somewhere. Where?
 }
@@ -192,7 +191,7 @@ func compileRlocs(rlocs []types.Rloc) ([]types.Rloc, uint32) {
 
 		selectRlocs[i].WrLow = low
 		selectRlocs[i].WrHigh = high
-		fmt.Println("Adding weights:", low, high)
+		log.Println("Adding weights:", low, high)
 	}
 
 	return selectRlocs, totWeight
@@ -208,7 +207,7 @@ func LookupAndUpdate(iid uint32, eid net.IP, rlocs []types.Rloc) *types.MapCache
 	var selectRlocs []types.Rloc
 	var totWeight uint32
 
-	fmt.Printf("Adding map-cache entry with key %d, %s\n", key.IID, key.Eid)
+	log.Printf("Adding map-cache entry with key %d, %s\n", key.IID, key.Eid)
 
 	if ok && (entry.Resolved == true) {
 		// Delete the old map cache entry
@@ -267,15 +266,15 @@ func ShowMapCacheEntries() {
 	defer cache.LockMe.RUnlock()
 
 	for key, value := range cache.MapCache {
-		fmt.Println("Key IID:", key.IID)
-		fmt.Printf("Key Eid: %s\n", key.Eid)
-		fmt.Println("Rlocs:")
+		log.Println("Key IID:", key.IID)
+		log.Printf("Key Eid: %s\n", key.Eid)
+		log.Println("Rlocs:")
 		for _, rloc := range value.Rlocs {
-			fmt.Printf("%s\n", rloc.Rloc)
+			log.Printf("%s\n", rloc.Rloc)
 		}
-		fmt.Println()
+		log.Println()
 	}
-	fmt.Println()
+	log.Println()
 }
 
 func ShowDecapKeys() {
@@ -283,7 +282,7 @@ func ShowDecapKeys() {
 	defer decaps.LockMe.RUnlock()
 
 	for key, _ := range decaps.DecapEntries {
-		fmt.Println("Rloc:", key)
+		log.Println("Rloc:", key)
 	}
-	fmt.Println()
+	log.Println()
 }

@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"github.com/zededa/go-provision/dataplane/etr"
 	"github.com/zededa/go-provision/dataplane/fib"
 	"log"
@@ -36,7 +35,7 @@ func main() {
 	versionPtr := flag.Bool("v", false, "Version")
 	flag.Parse()
 	if *versionPtr {
-		fmt.Printf("%s: %s\n", os.Args[0], Version)
+		log.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
 
@@ -54,19 +53,19 @@ func main() {
 	// and other configuration
 	if _, err := os.Stat(configHolePath); err == nil {
 		if err = os.Remove(configHolePath); err != nil {
-			log.Fatal("Failed deleting the old lisp-ipc-data-plane socket: %s\n",
+			log.Printf("Failed deleting the old lisp-ipc-data-plane socket: %s\n",
 				err)
 			return
 		}
-		fmt.Println("Removed old lisp-ipc-data-plane socket")
+		log.Println("Removed old lisp-ipc-data-plane socket")
 	}
 
 	configPipe, err := net.ListenUnixgram("unixgram",
 		&net.UnixAddr{configHolePath, "unixgram"})
 	if err != nil {
-		log.Fatal("Opening config hole: %s failed with err: %s\n",
+		log.Printf("Opening config hole: %s failed with err: %s\n",
 			configHolePath, err)
-		fmt.Printf("Opening config hole: %s failed with err: %s\n",
+		log.Printf("Opening config hole: %s failed with err: %s\n",
 			configHolePath, err)
 		return
 	}
@@ -78,7 +77,7 @@ func main() {
 
 func connectToLispersDotNet() net.Conn {
 	for {
-		fmt.Println("Trying for connection to lispers.net-itr")
+		log.Println("Trying for connection to lispers.net-itr")
 		if _, err := os.Stat(lispersDotNetItr); err != nil {
 			// lispers.net control plane has not created the server socket yet
 			// sleeping for 5 second before re-trying again
@@ -89,13 +88,13 @@ func connectToLispersDotNet() net.Conn {
 		lconn, err := net.DialUnix("unixgram", nil,
 					&net.UnixAddr{lispersDotNetItr, "unixgram"})
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Client connection to %s cannot be opened: %s\n",
+			log.Printf("Client connection to %s cannot be opened: %s\n",
 				lispersDotNetItr, err)
 			//return
 			time.Sleep(5000 * time.Millisecond)
 			continue
 		}
-		fmt.Printf("Connection established to %s\n", lispersDotNetItr)
+		log.Printf("Connection established to %s\n", lispersDotNetItr)
 		return lconn
 	}
 	return nil
@@ -119,7 +118,7 @@ func startPuntProcessor() {
 
 	conn = connectToLispersDotNet()
 	if conn == nil {
-		fmt.Fprintf(os.Stderr, "Connection to %s not possible.\n", lispersDotNetItr)
+		log.Printf("Connection to %s not possible.\n", lispersDotNetItr)
 		return
 	}
 
@@ -138,12 +137,12 @@ func startPuntProcessor() {
 			if err != nil {
 				// something bad happened while writing to lispers.net
 				// It could be temporary. We will keep going.
-				fmt.Fprintf(os.Stderr, "Error writing to punt channel %s: %s\n",
+				log.Printf("Error writing to punt channel %s: %s\n",
 					lispersDotNetItr, err)
-				fmt.Printf("Retrying connection to lispers.net-itr\n")
+				log.Printf("Retrying connection to lispers.net-itr\n")
 				conn = connectToLispersDotNet()
 				if conn == nil {
-					fmt.Fprintf(os.Stderr, "Connection to %s not possible.\n", lispersDotNetItr)
+					log.Printf("Connection to %s not possible.\n", lispersDotNetItr)
 					return
 				}
 				// Try and write the punt request again
@@ -160,7 +159,7 @@ func registerSignalHandler() {
 	go func() {
 		for {
 			sig := <-sigs
-			fmt.Println("Received signal:", sig)
+			log.Println("Received signal:", sig)
 			switch sig {
 			case syscall.SIGUSR1:
 				fib.ShowMapCacheEntries()
@@ -195,20 +194,20 @@ func handleLispMsg(msg []byte) {
 	var msgType Type
 	err := json.Unmarshal(msg, &msgType)
 	if err != nil {
-		fmt.Println("Error processing JSON message")
-		fmt.Println("Error:", err)
+		log.Println("Error processing JSON message")
+		log.Println("Error:", err)
 		return
 	}
 
 	switch msgType.Type {
 	case MAPCACHETYPE:
-		fmt.Println("Processing map-cache entry message")
+		log.Println("Processing map-cache entry message")
 		handleMapCache(msg)
 	case DATABASEMAPPINGSTYPE:
-		fmt.Println("Processing database-mappings entry message")
+		log.Println("Processing database-mappings entry message")
 		handleDatabaseMappings(msg)
 	case INTERFACESTYPE:
-		fmt.Println("Processing interfaces entry message")
+		log.Println("Processing interfaces entry message")
 		handleInterfaces(msg)
 	case DECAPKEYSTYPE:
 		handleDecapKeys(msg)

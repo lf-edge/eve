@@ -2,7 +2,7 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
+	"log"
 	"github.com/zededa/go-provision/dataplane/fib"
 	"github.com/zededa/go-provision/types"
 	"net"
@@ -12,7 +12,7 @@ import (
 func parseRloc(rlocStr *Rloc) (types.Rloc, bool) {
 	rloc := net.ParseIP(rlocStr.Rloc)
 	if rloc == nil {
-		fmt.Println("RLOC:", rlocStr.Rloc, "is invalid")
+		log.Println("RLOC:", rlocStr.Rloc, "is invalid")
 		return types.Rloc{}, false
 	}
 	x, err := strconv.ParseUint(rlocStr.Priority, 10, 32)
@@ -60,17 +60,17 @@ func parseRloc(rlocStr *Rloc) (types.Rloc, bool) {
 func handleMapCache(msg []byte) {
 	var mapCache MapCacheEntry
 
-	fmt.Println(string(msg))
+	log.Println(string(msg))
 	err := json.Unmarshal(msg, &mapCache)
 	if err != nil {
-		fmt.Println("Error:", err)
+		log.Println("Error:", err)
 		return
 	}
-	//fmt.Println("map-cache is", mapCache)
-	fmt.Println("Opcode:", mapCache.Opcode)
-	fmt.Println("eid-prefix:", mapCache.EidPrefix)
-	fmt.Println("IID:", mapCache.InstanceId)
-	fmt.Println()
+	//log.Println("map-cache is", mapCache)
+	log.Println("Opcode:", mapCache.Opcode)
+	log.Println("eid-prefix:", mapCache.EidPrefix)
+	log.Println("IID:", mapCache.InstanceId)
+	log.Println()
 
 	rlocs := []types.Rloc{}
 
@@ -86,7 +86,7 @@ func handleMapCache(msg []byte) {
 	maskLen, _ := ipNet.Mask.Size()
 	if maskLen != 128 {
 		// We are not interested in prefixes shorter then 128
-		fmt.Println("Ignoring EID with mask length:", maskLen)
+		log.Println("Ignoring EID with mask length:", maskLen)
 		return
 	}
 
@@ -114,9 +114,9 @@ func parseDatabaseMappings(databaseMappings DatabaseMappings) map[uint32][]net.I
 	tmpMap := make(map[uint32][]net.IP)
 
 	for _, entry := range databaseMappings.Mappings {
-		fmt.Println("IID:", entry.InstanceId)
-		fmt.Println("Eid prefix:", entry.EidPrefix)
-		fmt.Println()
+		log.Println("IID:", entry.InstanceId)
+		log.Println("Eid prefix:", entry.EidPrefix)
+		log.Println()
 
 		x, err := strconv.ParseUint(entry.InstanceId, 10, 32)
 		if err != nil {
@@ -142,7 +142,7 @@ func handleDatabaseMappings(msg []byte) {
 
 	err := json.Unmarshal(msg, &databaseMappings)
 	if err != nil {
-		fmt.Println("Error:", err)
+		log.Println("Error:", err)
 		return
 	}
 
@@ -153,7 +153,7 @@ func handleDatabaseMappings(msg []byte) {
 	eidEntries := []types.EIDEntry{}
 
 	if eidEntries == nil {
-		fmt.Println("Allocation of EID entry slice failed")
+		log.Println("Allocation of EID entry slice failed")
 		return
 	}
 
@@ -171,19 +171,19 @@ func handleInterfaces(msg []byte) {
 
 	err := json.Unmarshal(msg, &interfaces)
 	if err != nil {
-		fmt.Println("Error:", err)
+		log.Println("Error:", err)
 		return
 	}
 	ifaces := []types.Interface{}
 
 	if ifaces == nil {
-		fmt.Println("Allocation of Interface slice failed")
+		log.Println("Allocation of Interface slice failed")
 		return
 	}
 
 	for _, iface := range interfaces.Interfaces {
-		fmt.Println("Interface:", iface.Interface, ", Instance Id:", iface.InstanceId)
-		fmt.Println()
+		log.Println("Interface:", iface.Interface, ", Instance Id:", iface.InstanceId)
+		log.Println()
 		//x, err := strconv.ParseUint(iface.InstanceId, 10, 32)
 		x := iface.InstanceId
 		if err != nil {
@@ -209,7 +209,7 @@ func handleDecapKeys(msg []byte) {
 
 	err := json.Unmarshal(msg, &decapMsg)
 	if err != nil {
-		fmt.Println("Error:", err)
+		log.Println("Error:", err)
 		return
 	}
 
