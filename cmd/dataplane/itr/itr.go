@@ -137,13 +137,6 @@ eidLoop:
 			log.Printf("ITR thread %s received terminate from control module.", ifname)
 			return
 		default:
-			/*
-				ci, err := ring.ReadPacketDataToNoWait(pktBuf[:])
-				if err == pfring.NextNoPacketNonblocking {
-					//log.Println("No packet, socket is non blocking")
-					continue
-				}
-			*/
 			ci, err := ring.ReadPacketDataTo(pktBuf[fib.MAXHEADERLEN:])
 			if err != nil {
 				log.Printf(
@@ -224,13 +217,6 @@ eidLoop:
 
 			var hash32 uint32 = srcAddrBytes ^ dstAddrBytes ^ ports
 
-			/*
-				log.Println("srcAddrBytes:", srcAddrBytes)
-				log.Println("dstAddrBytes:", dstAddrBytes)
-				log.Println("ports:", ports)
-				log.Println("hash32:", hash32)
-			*/
-
 			LookupAndSend(packet, pktBuf[:],
 				uint32(pktLen), iid, hash32,
 				ifname, srcAddr, dstAddr,
@@ -304,7 +290,6 @@ func LookupAndSend(packet gopacket.Packet,
 		// Craft the LISP header, outer layers here and send packet out
 		fib.CraftAndSendLispPacket(packet, pktBuf, capLen, hash32, mapEntry,
 			iid, fd4, fd6)
-		//iid, conn4, conn6)
 	}
 	if punt == true {
 		// We will have to put a punt request on the control

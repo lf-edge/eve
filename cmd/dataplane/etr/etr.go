@@ -13,12 +13,12 @@ func StartETR() bool {
 	log.Println("Starting ETR thread on port 4341")
 	// create a udp server socket and start listening on port 4341
 	// XXX Using ipv4 underlay for now. Will have to figure out v6 underlay case.
-	server, err := net.ResolveUDPAddr("udp4", ":4341")
+	etrServer, err := net.ResolveUDPAddr("udp4", ":4341")
 	if err != nil {
 		log.Printf("Error resolving ETR socket address\n")
 		return false
 	}
-	serverConn, err := net.ListenUDP("udp4", server)
+	serverConn, err := net.ListenUDP("udp4", etrServer)
 	if err != nil {
 		log.Printf("Unable to start ETR server on :4341: %s\n", err)
 		return false
@@ -60,6 +60,7 @@ func verifyAndInject(fd6 int, buf []byte, n int) {
 	log.Println()
 	var destAddr [16]byte
 	for i, _ := range destAddr {
+		// offset is lisp hdr size + start offset of ip addresses in v6 hdr
 		destAddr[i] = buf[8+24+i]
 		//pktEid[i] = destAddr[i]
 	}

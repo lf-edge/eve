@@ -28,9 +28,9 @@ func CraftAndSendLispPacket(packet gopacket.Packet,
 
 	// Get map cache slot from hash and weight
 	mapSlot := hash32 % totWeight
-	//log.Println("Slot selected is:", mapSlot)
-	//log.Println("Total weight is:", totWeight)
-	//log.Println()
+	log.Println("Slot selected is:", mapSlot)
+	log.Println("Total weight is:", totWeight)
+	log.Println()
 
 	// get the map entry that this slot falls into
 	for _, rloc = range mapEntry.Rlocs {
