@@ -9,6 +9,8 @@ import (
 	"strconv"
 )
 
+// Parse the json RLOC message and extract ip addresses along
+// with respective priorities and weights.
 func parseRloc(rlocStr *Rloc) (types.Rloc, bool) {
 	rloc := net.ParseIP(rlocStr.Rloc)
 	if rloc == nil {
@@ -57,6 +59,7 @@ func parseRloc(rlocStr *Rloc) (types.Rloc, bool) {
 	return rlocEntry, true
 }
 
+// Extract map cache message and add to our database
 func handleMapCache(msg []byte) {
 	var mapCache MapCacheEntry
 
@@ -184,7 +187,6 @@ func handleInterfaces(msg []byte) {
 	for _, iface := range interfaces.Interfaces {
 		log.Println("Interface:", iface.Interface, ", Instance Id:", iface.InstanceId)
 		log.Println()
-		//x, err := strconv.ParseUint(iface.InstanceId, 10, 32)
 		x := iface.InstanceId
 		if err != nil {
 			continue

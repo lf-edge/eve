@@ -124,7 +124,7 @@ func startPuntProcessor() {
 
 	// Spawn a thread that reads the punt messages from other threads and then
 	// writes them to lispers.net-itr socket.
-	// Punt messages are expected to be in fully formatted json format. This avoids
+	// Punt messages are expected to be fully formatted json messages. This avoids
 	// the need for other threads to send metadata describing the message type (and
 	// reduces a bit of complexity).
 	go func(conn net.Conn, puntChannel chan []byte) {

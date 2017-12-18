@@ -23,6 +23,11 @@ func DumpThreadTable() {
 	}
 }
 
+// Find the difference between running ITR threads and the threads
+// that need to be running according to new configuration.
+//
+// Kill the ITR threads that are no longer needed and create
+// newly required threads.
 func ManageItrThreads(interfaces Interfaces) {
 	tmpMap := make(map[string]bool)
 
@@ -42,9 +47,15 @@ func ManageItrThreads(interfaces Interfaces) {
 			entry.channel <- true
 
 			// XXX
-			// Should we wait for the thread to actually exit?
-			// What would happen if the channel gets GC'd before the thread can read?
-			// Close the channel also.
+			// ITR threads use pf_ring for packet capture.
+			// pf_ring packet read calls are blocking. If a thread is blocked
+			// and there are no packets coming in from the corresponding interface,
+			// it can never get unblocked and process messages from kill channel.
+			//
+			// We delete the pf_ring socket for now, so that the ITR thread blocking
+			// calls returns with error.
+			//
+			// We'll retain the kill channel mechanism for future optimizations.
 			close(entry.channel)
 			entry.ring.Disable()
 			entry.ring.Close()
@@ -58,7 +69,6 @@ func ManageItrThreads(interfaces Interfaces) {
 			// This ITR thread has to be given birth to. Find a mom!!
 			killChannel := make(chan bool, 1)
 
-			// XXX
 			// Start the go thread here
 			ring := itr.SetupPacketCapture(name, 65536)
 			log.Println("Creating new ITR thread for", name)

@@ -21,33 +21,9 @@ func CraftAndSendLispPacket(packet gopacket.Packet,
 	iid uint32,
 	fd4 int, fd6 int) {
 
-	// XXX
-	// For now, we use the first Rloc entry from map cache.
-	// It has to be changed to load balance between available Rlocs
-	rloc := mapEntry.Rlocs[0]
-
-	// Check the family and create appropriate IP header
-	switch rloc.Family {
-	case types.MAP_CACHE_FAMILY_IPV4:
-		craftAndSendIPv4LispPacket(packet, pktBuf, capLen, hash32, mapEntry, iid, fd4)
-	case types.MAP_CACHE_FAMILY_IPV6:
-		craftAndSendIPv6LispPacket(packet, pktBuf, capLen, hash32, mapEntry, iid, fd6)
-	case types.MAP_CACHE_FAMILY_UNKNOWN:
-		log.Printf("Unkown family found for rloc %s\n",
-			rloc.Rloc)
-	}
-}
-
-func craftAndSendIPv4LispPacket(packet gopacket.Packet,
-	pktBuf []byte,
-	capLen uint32,
-	hash32 uint32,
-	mapEntry *types.MapCacheEntry,
-	iid uint32,
-	fd4 int) {
+	var rloc types.Rloc
 
 	// XXX calculate a hash and use it for load balancing accross entries
-	var rloc types.Rloc
 	totWeight := mapEntry.RlocTotWeight
 
 	// Get map cache slot from hash and weight
@@ -65,6 +41,29 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 		//log.Println("Range selected is:", rloc.WrLow, rloc.WrHigh)
 		break
 	}
+
+	// Check the family and create appropriate IP header
+	switch rloc.Family {
+	case types.MAP_CACHE_FAMILY_IPV4:
+		//craftAndSendIPv4LispPacket(packet, pktBuf, capLen, hash32, mapEntry, iid, fd4)
+		craftAndSendIPv4LispPacket(packet, pktBuf, capLen, hash32, &rloc, iid, fd4)
+	case types.MAP_CACHE_FAMILY_IPV6:
+		//craftAndSendIPv6LispPacket(packet, pktBuf, capLen, hash32, mapEntry, iid, fd6)
+		craftAndSendIPv6LispPacket(packet, pktBuf, capLen, hash32, &rloc, iid, fd6)
+	case types.MAP_CACHE_FAMILY_UNKNOWN:
+		log.Printf("Unkown family found for rloc %s\n",
+			rloc.Rloc)
+	}
+}
+
+func craftAndSendIPv4LispPacket(packet gopacket.Packet,
+	pktBuf []byte,
+	capLen uint32,
+	hash32 uint32,
+	//mapEntry *types.MapCacheEntry,
+	rloc *types.Rloc,
+	iid uint32,
+	fd4 int) {
 
 	// XXX
 	// Should we have a static per-thread entry for this header?
@@ -144,28 +143,10 @@ func craftAndSendIPv6LispPacket(packet gopacket.Packet,
 	pktBuf []byte,
 	capLen uint32,
 	hash32 uint32,
-	mapEntry *types.MapCacheEntry,
+	//mapEntry *types.MapCacheEntry,
+	rloc *types.Rloc,
 	iid uint32,
 	fd6 int) {
-
-	// XXX calculate a hash and use it for load balancing accross entries
-	var rloc types.Rloc
-	totWeight := mapEntry.RlocTotWeight
-
-	// Get map cache slot from hash and weight
-	mapSlot := hash32 % totWeight
-	//log.Println("Slot selected is:", mapSlot)
-	//log.Println("Total weight is:", totWeight)
-
-	// get the map entry that this slot falls into
-	for _, rloc = range mapEntry.Rlocs {
-		//log.Println("Checking range", rloc.WrLow, rloc.WrHigh)
-		if (mapSlot < rloc.WrLow) || (mapSlot > rloc.WrHigh) {
-			continue
-		}
-		//log.Println("Range selected is:", rloc.WrLow, rloc.WrHigh)
-		break
-	}
 
 	// XXX
 	// Should we have a static per-thread entry for this header?
