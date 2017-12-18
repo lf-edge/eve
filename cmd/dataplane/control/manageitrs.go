@@ -1,14 +1,14 @@
 package main
 
 import (
-	"log"
 	"github.com/google/gopacket/pfring"
 	"github.com/zededa/go-provision/dataplane/itr"
+	"log"
 )
 
 type ThreadEntry struct {
 	channel chan bool
-	ring   *pfring.Ring
+	ring    *pfring.Ring
 }
 
 var threadTable map[string]ThreadEntry
@@ -74,7 +74,7 @@ func ManageItrThreads(interfaces Interfaces) {
 			log.Println("Creating new ITR thread for", name)
 			threadTable[name] = ThreadEntry{
 				channel: killChannel,
-				ring: ring,
+				ring:    ring,
 			}
 			go itr.StartItrThread(name, ring, killChannel, puntChannel)
 		}

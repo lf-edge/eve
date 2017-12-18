@@ -2,10 +2,10 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"github.com/zededa/go-provision/dataplane/etr"
 	"github.com/zededa/go-provision/dataplane/fib"
 	"log"
-	"flag"
 	"net"
 	"os"
 	"os/signal"
@@ -86,7 +86,7 @@ func connectToLispersDotNet() net.Conn {
 		}
 
 		lconn, err := net.DialUnix("unixgram", nil,
-					&net.UnixAddr{lispersDotNetItr, "unixgram"})
+			&net.UnixAddr{lispersDotNetItr, "unixgram"})
 		if err != nil {
 			log.Printf("Client connection to %s cannot be opened: %s\n",
 				lispersDotNetItr, err)
@@ -110,7 +110,7 @@ func startPuntProcessor() {
 	* connection to lispers.net-itr unix dgram socket.
 	*
 	* lispers.net-itr socket is created by Dino's lispers.net python control code.
-	*/
+	 */
 
 	// We do not want data processing ITR threads to get blocked.
 	// Create a channel of 100 punts to provide sufficient buffering.

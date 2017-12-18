@@ -1,16 +1,16 @@
 package itr
 
 import (
-	"log"
-	"net"
-	"syscall"
-	"time"
 	"encoding/json"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pfring"
 	"github.com/zededa/go-provision/dataplane/fib"
 	"github.com/zededa/go-provision/types"
+	"log"
+	"net"
+	"syscall"
+	"time"
 )
 
 const SNAPLENGTH = 65536
@@ -149,7 +149,7 @@ eidLoop:
 				log.Printf(
 					"Something wrong with packet capture from interface %s: %s\n",
 					ifname, err)
-					log.Printf(
+				log.Printf(
 					"May be we are asked to terminate after the hosting domU died.\n")
 				return
 			}
@@ -186,8 +186,8 @@ eidLoop:
 			if !matchFound {
 				// XXX May be add a per thread stat here
 				log.Printf(
-				"Thread: %s: Input packet with source address %s does not have matching EID of interface\n",
-				ifname, srcAddr)
+					"Thread: %s: Input packet with source address %s does not have matching EID of interface\n",
+					ifname, srcAddr)
 				continue
 			}
 
@@ -207,8 +207,8 @@ eidLoop:
 			transportLayer := packet.TransportLayer()
 
 			var ports uint32 = 0
-			if (ipHeader.NextHeader == layers.IPProtocolUDP) || 
-			(ipHeader.NextHeader == layers.IPProtocolTCP) {
+			if (ipHeader.NextHeader == layers.IPProtocolUDP) ||
+				(ipHeader.NextHeader == layers.IPProtocolTCP) {
 				// This is a byte array of the header
 				transportContents := transportLayer.LayerContents()
 
@@ -216,9 +216,9 @@ eidLoop:
 				if transportContents != nil {
 					log.Println("XXXXX Transport contents:", transportContents)
 					ports = (uint32(transportContents[0])<<24 |
-					uint32(transportContents[1])<<16 |
-					uint32(transportContents[2])<<8 |
-					uint32(transportContents[3]))
+						uint32(transportContents[1])<<16 |
+						uint32(transportContents[2])<<8 |
+						uint32(transportContents[3]))
 				}
 			}
 
@@ -284,7 +284,7 @@ func LookupAndSend(packet gopacket.Packet,
 		 * out all buffered packets and our packet sits in the buffered
 		 * channel without being noticed.
 		 */
-		 mapEntry, punt1 := fib.LookupAndAdd(iid, dstAddr)
+		mapEntry, punt1 := fib.LookupAndAdd(iid, dstAddr)
 		if mapEntry.Resolved {
 			punt = punt1
 			select {
@@ -310,7 +310,7 @@ func LookupAndSend(packet gopacket.Packet,
 		// We will have to put a punt request on the control
 		// module's channel
 		puntEntry := types.PuntEntry{
-			Type: "discovery",
+			Type:  "discovery",
 			Deid:  dstAddr,
 			Seid:  srcAddr,
 			Iface: ifname,

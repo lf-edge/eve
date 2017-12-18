@@ -1,8 +1,8 @@
 package fib
 
 import (
-	"log"
 	"github.com/zededa/go-provision/types"
+	"log"
 	"net"
 )
 

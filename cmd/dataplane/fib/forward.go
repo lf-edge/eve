@@ -1,10 +1,10 @@
 package fib
 
 import (
-	"log"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/zededa/go-provision/types"
+	"log"
 	"math/rand"
 	"net"
 	"syscall"

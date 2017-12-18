@@ -33,9 +33,9 @@ type DatabaseMappings struct {
 }
 
 type Interface struct {
-	Interface  string `json:"interface"`
+	Interface string `json:"interface"`
 	//InstanceId string `json:"instance-id"`
-	InstanceId int    `json:"instance-id"`
+	InstanceId int `json:"instance-id"`
 }
 
 type Interfaces struct {
