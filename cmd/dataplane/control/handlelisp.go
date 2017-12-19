@@ -99,6 +99,11 @@ func handleMapCache(msg []byte) {
 		return
 	}
 
+	// If rlocs are empty bail
+	if len(mapCache.Rlocs) == 0 {
+		return
+	}
+
 	// Parse Rloc entries and convert strings to net.IP
 	for _, rlocStr := range mapCache.Rlocs {
 		rlocEntry, ok := parseRloc(&rlocStr)
