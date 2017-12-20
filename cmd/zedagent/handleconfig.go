@@ -193,6 +193,7 @@ func publishDeviceConfig(config *zconfig.EdgeDevConfig) {
 	var devId = &zconfig.UUIDandVersion{}
 
 	devId = config.GetId()
+	handleLookUpParam(config)
 	if devId != nil {
 		// store the device id
 		deviceId = devId.Uuid
@@ -202,7 +203,6 @@ func publishDeviceConfig(config *zconfig.EdgeDevConfig) {
 		}
 		activeVersion = devId.Version
 	}
-	handleLookUpParam(config)
 
 	// get the current set of App files
 	curAppFilenames, err := ioutil.ReadDir(zedmanagerConfigDirname)
