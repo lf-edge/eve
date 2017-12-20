@@ -1,22 +1,31 @@
 # disable content trust for now
 LINUXKIT_OPTS= --disable-content-trust
 
-DIRS = $(dir $(shell find . -maxdepth 2 -mindepth 2 -type f -name build.yml))
-.PHONY: push force-push build forcebuild show-tag clean
+PKGS = xen kernel xen-tools mkimage-iso-efi mkimage-raw-efi \
+	dnsmasq dom0-ztools test-cert test-microsvcs \
+	qrexec-lib qrexec-dom0
 
-build:
-	@set -e; for d in $(DIRS); do linuxkit pkg build ${LINUXKIT_OPTS} "$$d"; done
+.PHONY: push force-push build forcebuild show-tag clean dockerfiles
+
+build: #dockerfiles
+	@set -e; for d in $(PKGS); do linuxkit pkg build ${LINUXKIT_OPTS} "$$d"; done
 
 push:
-	@set -e; for d in $(DIRS); do linuxkit pkg push ${LINUXKIT_OPTS} "$$d"; done
+	@set -e; for d in $(PKGS); do linuxkit pkg push ${LINUXKIT_OPTS} "$$d"; done
 
 forcepush:
-	@set -e; for d in $(DIRS); do linuxkit pkg push --force ${LINUXKIT_OPTS} "$$d"; done
+	@set -e; for d in $(PKGS); do linuxkit pkg push --force ${LINUXKIT_OPTS} "$$d"; done
 
 forcebuild:
-	@set -e; for d in $(DIRS); do linuxkit pkg build --force ${LINUXKIT_OPTS} "$$d"; done
+	@set -e; for d in $(PKGS); do linuxkit pkg build --force ${LINUXKIT_OPTS} "$$d"; done
 
 show-tag:
-	@set -e; for d in $(DIRS); do linuxkit pkg show-tag "$$d"; done
+	@set -e; for d in $(PKGS); do linuxkit pkg show-tag "$$d"; done
 
 clean:
+
+dockerfiles: $(addsuffix Dockerfile, $(PKGS)/)
+
+%: %.template FORCE
+	(cd ..; ./parse-pkgs.sh pkg/$< > pkg/$@)
+FORCE:
