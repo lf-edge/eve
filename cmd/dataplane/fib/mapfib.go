@@ -6,7 +6,7 @@ import (
 	"net"
 	"syscall"
 	"time"
-	//"github.com/google/gopacket"
+	"sync/atomic"
 )
 
 var cache *types.MapCacheTable
@@ -139,6 +139,11 @@ func UpdateMapCacheEntry(iid uint32, eid net.IP, rlocs []types.Rloc) {
 				// Send the packet out now
 				CraftAndSendLispPacket(pkt.Packet, pktBuf, uint32(capLen), pkt.Hash32,
 					entry, entry.InstanceId, fd4, fd6)
+				
+				// decrement buffered packet count and increment pkt, byte counts
+				atomic.AddUint64(&entry.BuffdPkts, ^uint64(0))
+				atomic.AddUint64(&entry.Packets, 1)
+				atomic.AddUint64(&entry.Bytes, uint64(capLen))
 			} else {
 				// channel might have been closed
 				return
@@ -206,6 +211,7 @@ func LookupAndUpdate(iid uint32, eid net.IP, rlocs []types.Rloc) *types.MapCache
 	entry, ok := cache.MapCache[key]
 	var selectRlocs []types.Rloc
 	var totWeight uint32
+	var packets, bytes, tailDrops, buffdPkts uint64
 
 	log.Printf("Adding map-cache entry with key %d, %s\n", key.IID, key.Eid)
 
@@ -217,6 +223,14 @@ func LookupAndUpdate(iid uint32, eid net.IP, rlocs []types.Rloc) *types.MapCache
 		// To avoid this, we delete the entry and add newly created entry.
 		// Since the ITR thread still has pointer to the old entry, it will not
 		// be garbage collected. Subsequent packets will hit updated entry.
+
+		// Before deleting the map cache entry copy statistics
+		// We do not have to do atomic operation, because we hold write lock
+		packets   = entry.Packets
+		bytes     = entry.Bytes
+		tailDrops = entry.TailDrops
+		buffdPkts = entry.BuffdPkts
+
 		delete(cache.MapCache, key)
 	} else if ok {
 		// Entry is in unresolved state. Update the RLOCs and mark the entry
@@ -240,6 +254,10 @@ func LookupAndUpdate(iid uint32, eid net.IP, rlocs []types.Rloc) *types.MapCache
 		RlocTotWeight: totWeight,
 		PktBuffer:     make(chan *types.BufferedPacket, 10),
 		LastPunt:      time.Now(),
+		Packets: packets,
+		Bytes: bytes,
+		TailDrops: tailDrops,
+		BuffdPkts: buffdPkts,
 	}
 	cache.MapCache[key] = &newEntry
 	return &newEntry
@@ -272,6 +290,10 @@ func ShowMapCacheEntries() {
 		for _, rloc := range value.Rlocs {
 			log.Printf("%s\n", rloc.Rloc)
 		}
+		log.Printf("Packets: %v\n", value.Packets)
+		log.Printf("Bytes: %v\n", value.Bytes)
+		log.Printf("TailDrops: %v\n", value.TailDrops)
+		log.Printf("BuffdPkts: %v\n", value.BuffdPkts)
 		log.Println()
 	}
 	log.Println()

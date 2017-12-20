@@ -11,6 +11,7 @@ import (
 	"net"
 	"syscall"
 	"time"
+	"sync/atomic"
 )
 
 const SNAPLENGTH = 65536
@@ -253,8 +254,10 @@ func LookupAndSend(packet gopacket.Packet,
 			Packet: packet,
 			Hash32: hash32,
 		}:
+			atomic.AddUint64(&mapEntry.BuffdPkts, 1)
 		default:
 			log.Println("Packet buffer channel full for EID", dstAddr)
+			atomic.AddUint64(&mapEntry.TailDrops, 1)
 		}
 
 		/**
@@ -280,7 +283,13 @@ func LookupAndSend(packet gopacket.Packet,
 				// pointer.
 				fib.CraftAndSendLispPacket(pkt.Packet, pktBuf, capLen, pkt.Hash32,
 					mapEntry, iid, fd4, fd6)
-				//iid, conn4, conn6)
+				// look golang atomic increment documentation to understand ^uint64(0)
+				// We are trying to decrement the counter here by 1
+				atomic.AddUint64(&mapEntry.BuffdPkts, ^uint64(0))
+
+				// Increment packet, byte counts
+				atomic.AddUint64(&mapEntry.Packets, 1)
+				atomic.AddUint64(&mapEntry.Bytes, uint64(capLen))
 			default:
 				// We do not want to get blocked and keep waiting
 				// when there are no packets in the buffer channel.
@@ -290,6 +299,8 @@ func LookupAndSend(packet gopacket.Packet,
 		// Craft the LISP header, outer layers here and send packet out
 		fib.CraftAndSendLispPacket(packet, pktBuf, capLen, hash32, mapEntry,
 			iid, fd4, fd6)
+		atomic.AddUint64(&mapEntry.Packets, 1)
+		atomic.AddUint64(&mapEntry.Bytes, uint64(capLen))
 	}
 	if punt == true {
 		// We will have to put a punt request on the control

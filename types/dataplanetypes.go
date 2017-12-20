@@ -47,6 +47,12 @@ type MapCacheEntry struct {
 	PktBuffer     chan *BufferedPacket
 	LastPunt      time.Time
 	RlocTotWeight uint32
+
+	// Packet statistics
+	Packets       uint64
+	Bytes         uint64
+	BuffdPkts     uint64
+	TailDrops     uint64
 }
 
 type MapCacheKey struct {
