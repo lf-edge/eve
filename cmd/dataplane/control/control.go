@@ -5,6 +5,7 @@ import (
 	"flag"
 	"github.com/zededa/go-provision/dataplane/etr"
 	"github.com/zededa/go-provision/dataplane/fib"
+	"github.com/zededa/go-provision/types"
 	"log"
 	"net"
 	"os"
@@ -120,6 +121,15 @@ func startPuntProcessor() {
 	if conn == nil {
 		log.Printf("Connection to %s not possible.\n", lispersDotNetItr)
 		return
+	}
+
+	// We could have restarted. We need to ask lispers.net for the databases again.
+	restartEntry := types.RestartEntry {
+		Type: "restart",
+	}
+	restartMsg, err := json.Marshal(restartEntry)
+	if err == nil {
+		puntChannel <- restartMsg
 	}
 
 	// Spawn a thread that reads the punt messages from other threads and then

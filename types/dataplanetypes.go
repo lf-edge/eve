@@ -95,3 +95,7 @@ type PuntEntry struct {
 	Deid  net.IP `json:"dest-eid"`
 	Iface string `json:"interface"`
 }
+
+type RestartEntry struct {
+	Type string `json:"type"`
+}
