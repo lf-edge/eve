@@ -53,11 +53,13 @@ func verifyAndInject(fd6 int, buf []byte, n int) {
 	//var pktEid net.IP
 	iid := fib.GetLispIID(buf[0:8])
 	log.Println("IID of packet is:", iid)
+	/*
 	log.Println("Inner packet is:")
 	for _, b := range buf[8:n] {
 		log.Printf("0x%x ", b)
 	}
 	log.Println()
+	*/
 	var destAddr [16]byte
 	for i, _ := range destAddr {
 		// offset is lisp hdr size + start offset of ip addresses in v6 hdr
@@ -109,7 +111,7 @@ func verifyAndInject(fd6 int, buf []byte, n int) {
 		}
 	*/
 
-	//log.Println("Injecting decapsulated packet")
+	log.Println("Injecting decapsulated packet")
 	//_, err := conn.WriteTo(buf[8: n], &net.IPAddr{IP: ipHeader.DstIP})
 	err := syscall.Sendto(fd6, buf[8:n], 0, &syscall.SockaddrInet6{
 		Port:   0,
