@@ -219,7 +219,7 @@ func handleLookUpParam(devConfig *zconfig.EdgeDevConfig) {
 		log.Println("error inreading file")
 	}
 	hostsString := string(hosts)
-	seperator := "$$$$$$$$$$$$$$$$$$$$$$$$$$$$"
+	seperator := "Dynamically Allocated Eid To Name List"
 	finalStaticHost := fmt.Sprintf("%s \n %s ",hostsString,seperator)
 	err = ioutil.WriteFile("/etc/hosts",[]byte(finalStaticHost),0644)
 
@@ -229,7 +229,7 @@ func handleLookUpParam(devConfig *zconfig.EdgeDevConfig) {
 		log.Println("error in reading seperator file")
 	}
 	seperatorFile := string(seperatorHosts)
-	splitSperator := strings.SplitAfter(seperatorFile, "$$$$$$$$$$$$$")
+	splitSperator := strings.SplitAfter(seperatorFile, "Dynamically Allocated Eid To Name List")
 
 	dynamicHosts,err := ioutil.ReadFile(zedserverConfigFileName)
 	if err != nil {
