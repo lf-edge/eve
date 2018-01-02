@@ -7,7 +7,7 @@ PKGS = xen kernel xen-tools mkimage-iso-efi mkimage-raw-efi \
 
 .PHONY: push force-push build forcebuild show-tag clean dockerfiles
 
-build: #dockerfiles
+build: dockerfiles
 	@set -e; for d in $(PKGS); do linuxkit pkg build ${LINUXKIT_OPTS} "$$d"; done
 
 push:
@@ -24,7 +24,7 @@ show-tag:
 
 clean:
 
-dockerfiles: $(addsuffix Dockerfile, $(PKGS)/)
+dockerfiles: $(addsuffix /Dockerfile, $(PKGS)/)
 
 %: %.template FORCE
 	(cd ..; ./parse-pkgs.sh pkg/$< > pkg/$@)
