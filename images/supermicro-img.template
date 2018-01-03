@@ -14,6 +14,15 @@ onboot:
     image: linuxkit/dhcpcd:d4408777ed6b6e6e562a5d4938fd09804324b33e
     command: ["/sbin/dhcpcd", "--nobackground", "-f", "/dhcpcd.conf", "-1"]
 services:
+   - name: wwan
+     image: WWAN_TAG
+     binds:
+      - /lib:/lib
+      - /dev:/dev
+      - /etc/resolv.conf:/etc/resolv.conf
+     net: host
+     capabilities:
+      - all
    - name: zededa-tools
      image: ZEDEDA_TAG
      binds:

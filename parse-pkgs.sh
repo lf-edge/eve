@@ -29,6 +29,7 @@ TESTMSVCS_TAG=$(linuxkit_tag pkg/test-microsvcs)-$ARCH
 ZEDEDA_TAG=$(linuxkit_tag zededa-container)-$ARCH
 DOM0ZTOOLS_TAG=$(linuxkit_tag pkg/dom0-ztools)-$ARCH
 QREXECLIB_TAG=$(linuxkit_tag pkg/qrexec-lib)-$ARCH
+WWAN_TAG=$(linuxkit_tag pkg/wwan)-$ARCH
 
 # Plugin tags: the following tags will default to
 # 'scratch' Docker container if not available.
@@ -48,4 +49,5 @@ sed -e "s#KERNEL_TAG#"$KERNEL_TAG"#" \
     -e "s#ZEDEDA_TAG#"$ZEDEDA_TAG"#" \
     -e "s#ZTOOLS_TAG#"$ZTOOLS_TAG"#" \
     -e "s#QREXECLIB_TAG#"$QREXECLIB_TAG"#" \
+    -e "s#WWAN_TAG#"$WWAN_TAG"#" \
     $1
