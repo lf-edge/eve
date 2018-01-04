@@ -1,7 +1,7 @@
 #!/bin/sh
 # Find the interface based on the routes to the map servers
 # For now we take the first one IP for the first map server which has a route 
-if [ "$1" == -d ]; then
+if [ "$1" = -d ]; then
     DEBUG=1
     shift
 fi
