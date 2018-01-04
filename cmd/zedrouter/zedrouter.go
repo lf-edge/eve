@@ -138,36 +138,18 @@ func handleInit(configFilename string, statusFilename string,
 		}
 	}
 
-	cb, err := ioutil.ReadFile(configFilename)
+	var err error
+	globalConfig, err = types.GetGlobalNetworkConfig(configFilename)
 	if err != nil {
 		log.Printf("%s for %s\n", err, configFilename)
 		log.Fatal(err)
 	}
-	if err := json.Unmarshal(cb, &globalConfig); err != nil {
-		log.Printf("%s DeviceNetworkConfig file: %s\n",
-			err, configFilename)
+	globalStatus, err = types.MakeGlobalNetworkStatus(globalConfig)
+	if err != nil {
+		log.Printf("%s from MakeGlobalNetworkStatus\n", err)
 		log.Fatal(err)
 	}
-	for _, u := range globalConfig.Uplink {
-		link, err := netlink.LinkByName(u)
-		if err != nil {
-			log.Fatal("Uplink in config/global does not exist: ",
-				u)
-		}
-		addrs4, err := netlink.AddrList(link, netlink.FAMILY_V4)
-		addrs6, err := netlink.AddrList(link, netlink.FAMILY_V6)
-		fmt.Printf("UplinkAddrs v4 %d v6 %d\n", len(addrs4), len(addrs6))
-		globalStatus.UplinkAddrs = make([]net.IP,
-			len(addrs4)+len(addrs6))
-		for i, addr := range addrs4 {
-			globalStatus.UplinkAddrs[i] = addr.IP
-		}
-		for i, addr := range addrs6 {
-			// XXX check if link-local?
-			globalStatus.UplinkAddrs[i+len(addrs4)] = addr.IP
-		}
-	}
-	globalStatus.Uplink = globalConfig.Uplink
+
 	// Create and write with initial values
 	writeGlobalStatus()
 

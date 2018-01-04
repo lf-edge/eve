@@ -305,9 +305,9 @@ if [ $SELF_REGISTER = 1 ]; then
 		exit 1    
 	fi
 	echo "Determining uplink interface"
-# XXX this doesn't run on update; handle both formats in json?
+# XXX this should be set from build, and include the FreeUplinks collection
 	cat <<EOF >$ETCDIR/network.config.global
-{"Uplink":["$intf"]}
+{"Uplink":["$intf"], "FreeUplinks":["$intf"]}
 EOF
 
 	# Make sure we set the dom0 hostname, used by LISP nat traversal, to
