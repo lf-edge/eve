@@ -23,6 +23,14 @@ services:
      net: host
      capabilities:
       - all
+   - name: wlan
+     image: WLAN_TAG
+     binds:
+      - /dev:/dev
+      - /etc/resolv.conf:/etc/resolv.conf
+     net: host
+     capabilities:
+      - all
    - name: zededa-tools
      image: ZEDEDA_TAG
      binds:
