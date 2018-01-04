@@ -229,6 +229,9 @@ func writeAppNetworkStatus(status *types.AppNetworkStatus,
 }
 
 // Track the device information so we can annotate the application EIDs
+// Note that when we start with zedrouter config files in place the
+// device one might be processed after application ones, in which case these
+// empty. This results in less additional info recorded in the map servers.
 var deviceEID net.IP
 var deviceIID uint32
 var additionalInfoDevice *types.AdditionalInfoDevice
