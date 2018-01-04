@@ -98,6 +98,12 @@ func GetGlobalNetworkConfig(configFilename string) (DeviceNetworkConfig, error) 
 	if err := json.Unmarshal(cb, &globalConfig); err != nil {
 		return DeviceNetworkConfig{}, err
 	}
+	// Workaround for old config with FreeUplinks not set
+	if len(globalConfig.FreeUplinks) == 0 {
+		fmt.Printf("Setting FreeUplinks from Uplink: %v\n",
+				globalConfig.Uplink)
+		globalConfig.FreeUplinks = globalConfig.Uplink
+	}
 	return globalConfig, nil
 }
 
