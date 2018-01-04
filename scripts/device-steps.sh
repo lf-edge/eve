@@ -120,6 +120,8 @@ fi
 # Ideally just to WiFi setup in dom0 and do DHCP in domZ
 
 if [ $SELF_REGISTER = 1 ]; then
+    rm -f $ETCDIR/zedrouterconfig.json
+    
     touch $ETCDIR/self-register-failed
     echo "Self-registering our device certificate at " `date`
     if [ ! \( -f $ETCDIR/onboard.cert.pem -a -f $ETCDIR/onboard.key.pem \) ]; then
@@ -295,8 +297,6 @@ for l in $LOGGERS; do
 done
 
 if [ $SELF_REGISTER = 1 ]; then
-	rm -f $ETCDIR/zedrouterconfig.json
-    
 	intf=`$BINDIR/find-uplink.sh $ETCDIR/lisp.config.base`
 	if [ "$intf" != "" ]; then
 		echo "Found interface $intf based on route to map servers"
