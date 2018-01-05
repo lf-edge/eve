@@ -175,7 +175,7 @@ func main() {
 	myPost := func(tlsConfig *tls.Config, retryCount int,
 		url string, b *bytes.Buffer) bool {
 		localAddr, err := types.GetLocalAddrAny(globalConfig,
-			globalStatus, retryCount)
+			globalStatus, retryCount, "")
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -270,7 +270,7 @@ func main() {
 	oldMyPost := func(tlsConfig *tls.Config, retryCount int,
 		url string, b *bytes.Buffer) bool {
 		localAddr, err := types.GetLocalAddrAny(globalConfig,
-			globalStatus, retryCount)
+			globalStatus, retryCount, "")
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -402,7 +402,7 @@ func main() {
 		device *types.DeviceDb) bool {
 		url := "/rest/device-param"
 		localAddr, err := types.GetLocalAddrAny(globalConfig,
-			globalStatus, retryCount)
+			globalStatus, retryCount, "")
 		if err != nil {
 			log.Fatal(err)
 		}

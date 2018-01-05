@@ -137,17 +137,71 @@ func MakeGlobalNetworkStatus(globalConfig DeviceNetworkConfig) (DeviceNetworkSta
 	return globalStatus, nil
 }
 
-// Pick from one of the uplinks
-func GetLocalAddrAny(globalConfig DeviceNetworkConfig, globalStatus DeviceNetworkStatus, pickNum int) (net.IP, error) {
-	// Count the number of addresses which apply
-	numAddrs := 0
-	for _, u := range globalConfig.Uplink {
-		addrs, _ := getInterfaceAddr(globalStatus, u)
-		numAddrs += len(addrs)
+// Pick one of the uplinks
+func GetUplinkAny(globalConfig DeviceNetworkConfig, globalStatus DeviceNetworkStatus, pickNum int) (string, error) {
+	if len(globalConfig.Uplink) == 0 {
+		return "", errors.New("GetUplinkAny has no uplink")
 	}
+	pickNum = pickNum % len(globalConfig.Uplink)
+	return globalConfig.Uplink[pickNum], nil
+}
+
+// Pick one of the free uplinks
+func GetUplinkFree(globalConfig DeviceNetworkConfig, globalStatus DeviceNetworkStatus, pickNum int) (string, error) {
+	if len(globalConfig.FreeUplinks) == 0 {
+		return "", errors.New("GetUplinkFree has no uplink")
+	}
+	pickNum = pickNum % len(globalConfig.FreeUplinks)
+	return globalConfig.FreeUplinks[pickNum], nil
+}
+
+// Return number of local IP addresses for all the uplinks, unless if
+// uplink is set in which case we could it.
+func CountLocalAddrAny(globalConfig DeviceNetworkConfig, globalStatus DeviceNetworkStatus, uplink string) int {
+	// Count the number of addresses which apply
+	if uplink != "" {
+		addrs, _ := getInterfaceAddr(globalStatus, uplink)
+		return len(addrs)
+	} else {
+		numAddrs := 0
+		for _, u := range globalConfig.Uplink {
+			addrs, _ := getInterfaceAddr(globalStatus, u)
+			numAddrs += len(addrs)
+		}
+		return numAddrs
+	}
+}
+
+// Return number of local IP addresses for all the free uplinks, unless if
+// uplink is set in which case we could it.
+func CountLocalAddrFree(globalConfig DeviceNetworkConfig, globalStatus DeviceNetworkStatus, uplink string) int {
+	// Count the number of addresses which apply
+	if uplink != "" {
+		addrs, _ := getInterfaceAddr(globalStatus, uplink)
+		return len(addrs)
+	} else {
+		numAddrs := 0
+		for _, u := range globalConfig.FreeUplinks {
+			addrs, _ := getInterfaceAddr(globalStatus, u)
+			numAddrs += len(addrs)
+		}
+		return numAddrs
+	}
+}
+
+// Pick from one all of the uplinks, unless if uplink is set in which we
+// pick from it
+func GetLocalAddrAny(globalConfig DeviceNetworkConfig, globalStatus DeviceNetworkStatus, pickNum int, uplink string) (net.IP, error) {
+	// Count the number of addresses which apply
+	numAddrs := CountLocalAddrAny(globalConfig, globalStatus, uplink)
+
 	// fmt.Printf("GetLocalAddrAny pick %d have %d\n", pickNum, numAddrs)
 	pickNum = pickNum % numAddrs
-	for _, u := range globalConfig.Uplink {
+	uplinks := globalConfig.Uplink
+	if uplink != "" {
+		uplinks = []string{uplink}
+	}
+	for _, u := range uplinks {
 		addrs, _ := getInterfaceAddr(globalStatus, u)
 		for _, a := range addrs {
 			if pickNum == 0 {
@@ -160,17 +214,19 @@ func GetLocalAddrAny(globalConfig DeviceNetworkConfig, globalStatus DeviceNetwor
 	return net.IP{}, errors.New("GetLocalAddrAny fell off end")
 }
 
-// Pick from one of the free uplinks
-func GetLocalAddrFree(globalConfig DeviceNetworkConfig, globalStatus DeviceNetworkStatus, pickNum int) (net.IP, error) {
+// Pick from one all of the free uplinks, unless if uplink is set in which we
+// pick from it
+func GetLocalAddrFree(globalConfig DeviceNetworkConfig, globalStatus DeviceNetworkStatus, pickNum int, uplink string) (net.IP, error) {
 	// Count the number of addresses which apply
-	numAddrs := 0
-	for _, u := range globalConfig.FreeUplinks {
-		addrs, _ := getInterfaceAddr(globalStatus, u)
-		numAddrs += len(addrs)
-	}
+	numAddrs := CountLocalAddrFree(globalConfig, globalStatus, uplink)
+
 	// fmt.Printf("GetLocalAddrFree pick %d have %d\n", pickNum, numAddrs)
 	pickNum = pickNum % numAddrs
-	for _, u := range globalConfig.FreeUplinks {
+	uplinks := globalConfig.FreeUplinks
+	if uplink != "" {
+		uplinks = []string{uplink}
+	}
+	for _, u := range uplinks {
 		addrs, _ := getInterfaceAddr(globalStatus, u)
 		for _, a := range addrs {
 			if pickNum == 0 {
