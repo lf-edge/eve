@@ -77,19 +77,16 @@ func main() {
 	go metricsTimerTask()
 	go configTimerTask()
 
-	configChanges := make(chan string)
-	go watch.WatchConfigStatus(zedmanagerConfigDirname,
-		zedmanagerStatusDirname, configChanges)
+	zedmanagerChanges := make(chan string)
+	go watch.WatchStatus(zedmanagerStatusDirname, zedmanagerChanges)
 	for {
 		select {
-		case change := <-configChanges:
+		case change := <-zedmanagerChanges:
 			{
-				watch.HandleConfigStatusEvent(change,
-					zedmanagerConfigDirname,
+				watch.HandleStatusEvent(change,
 					zedmanagerStatusDirname,
-					&types.AppInstanceConfig{},
 					&types.AppInstanceStatus{},
-					handleStatusCreate, handleStatusModify,
+					handleStatusModify,
 					handleStatusDelete, nil)
 				continue
 			}
@@ -97,22 +94,9 @@ func main() {
 	}
 }
 
-func handleStatusCreate(statusFilename string, configArg interface{}) {
-	var config *types.AppInstanceConfig
-
-	switch configArg.(type) {
-	default:
-		log.Fatal("Can only handle AppInstanceConfig")
-	case *types.AppInstanceConfig:
-		config = configArg.(*types.AppInstanceConfig)
-	}
-	log.Printf("handleCreate for %s\n", config.DisplayName)
-}
-
 var publishIteration = 0
 
-func handleStatusModify(statusFilename string, configArg interface{},
-	statusArg interface{}) {
+func handleStatusModify(statusFilename string, statusArg interface{}) {
 	var status *types.AppInstanceStatus
 
 	switch statusArg.(type) {
@@ -123,21 +107,13 @@ func handleStatusModify(statusFilename string, configArg interface{},
 	}
 	PublishDeviceInfoToZedCloud(publishIteration)
 	PublishHypervisorInfoToZedCloud(publishIteration)
-	PublishAppInfoToZedCloud(status, publishIteration)
+	PublishAppInfoToZedCloud(statusFilename, status, publishIteration)
 	publishIteration += 1
 }
 
-func handleStatusDelete(statusFilename string, statusArg interface{}) {
-	var status *types.AppInstanceStatus
-
-	switch statusArg.(type) {
-	default:
-		log.Fatal("Can only handle AppInstanceStatus")
-	case *types.AppInstanceStatus:
-		status = statusArg.(*types.AppInstanceStatus)
-	}
+func handleStatusDelete(statusFilename string) {
 	PublishDeviceInfoToZedCloud(publishIteration)
 	PublishHypervisorInfoToZedCloud(publishIteration)
-	PublishAppInfoToZedCloud(status, publishIteration)
+	PublishAppInfoToZedCloud(statusFilename, nil, publishIteration)
 	publishIteration += 1
 }

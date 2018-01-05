@@ -437,7 +437,16 @@ func PublishHypervisorInfoToZedCloud(iteration int) {
 	SendInfoProtobufStrThroughHttp(ReportInfo, iteration)
 }
 
-func PublishAppInfoToZedCloud(aiStatus *types.AppInstanceStatus, iteration int) {
+// XXX change caller filename to key which is uuid; not used for now
+func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
+     iteration int) {
+	fmt.Printf("PublishAppInfoToZedCloud uuid %s\n", uuid)
+	// XXX if it was deleted we publish nothing; do we need to delete from
+	// zedcloud?
+	if aiStatus == nil {
+		fmt.Printf("PublishAppInfoToZedCloud uuid %s deleted\n", uuid)
+		return
+	}
 
 	var ReportInfo = &zmet.ZInfoMsg{}
 	var uuidStr string = aiStatus.UUIDandVersion.UUID.String()
