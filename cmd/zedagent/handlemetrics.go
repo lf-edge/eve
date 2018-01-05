@@ -487,61 +487,62 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 	SendInfoProtobufStrThroughHttp(ReportInfo, iteration)
 }
 
-// Each iteration we try a different uplink. For each uplink we try all
-// its local IP addresses until we get a success.
+// This function is called per change, hence needs to try over all uplinks
+// send report on each uplink (XXX means iteration arg is not useful)
+// For each uplink we try different source IPs until we find a working one.
 func SendInfoProtobufStrThroughHttp(ReportInfo *zmet.ZInfoMsg, iteration int) {
 
 	data, err := proto.Marshal(ReportInfo)
 	if err != nil {
 		fmt.Println("marshaling error: ", err)
-	}
-
-	intf, err := types.GetUplinkAny(globalConfig, globalStatus, iteration)
-	if err != nil {
-		log.Fatal(err)
-	}
-	
-	addrCount := types.CountLocalAddrAny(globalConfig, globalStatus, intf)
-	// XXX makes logfile too long; debug flag?
-	log.Printf("Connecting to %s using intf %s interation %d #sources %d\n",
-		statusUrl, intf, iteration, addrCount)
-
-	for retryCount := 0; retryCount < addrCount; retryCount += 1 {
-		localAddr, err := types.GetLocalAddrAny(globalConfig,
-			globalStatus, retryCount, intf)
-		if err != nil {
-			log.Fatal(err)
-		}
-		localTCPAddr := net.TCPAddr{IP: localAddr}
-		// XXX makes logfile too long; debug flag?
-		fmt.Printf("Connecting to %s using intf %s source %v\n",
-			statusUrl, intf, localTCPAddr)
-		d := net.Dialer{LocalAddr: &localTCPAddr}
-		transport := &http.Transport{
-			TLSClientConfig: tlsConfig,
-			Dial:            d.Dial,
-		}
-		client := &http.Client{Transport: transport}
-
-		resp, err := client.Post("https://"+statusUrl,
-			"application/x-proto-binary", bytes.NewBuffer(data))
-		if err != nil {
-			fmt.Println(err)
-			continue
-		}
-		defer resp.Body.Close()
-		switch resp.StatusCode {
-		case http.StatusOK:
-			fmt.Printf("SendInfoProtobufStrThroughHttp StatusOK\n")
-		default:
-			fmt.Printf("SendInfoProtobufStrThroughHttp statuscode %d %s\n",
-				resp.StatusCode, http.StatusText(resp.StatusCode))
-			fmt.Printf("received response %v\n", resp)
-		}
 		return
 	}
-	log.Printf("All attempts to connect to %s using intf %s failed\n",
-		statusUrl, intf)
+
+	for i, intf := range globalConfig.Uplink {
+		addrCount := types.CountLocalAddrAny(globalConfig, globalStatus,
+			  intf)
+		// XXX makes logfile too long; debug flag?
+		log.Printf("Connecting to %s using intf %s i %d #sources %d\n",
+			statusUrl, intf, i, addrCount)
+
+		for retryCount := 0; retryCount < addrCount; retryCount += 1 {
+			localAddr, err := types.GetLocalAddrAny(globalConfig,
+				globalStatus, retryCount, intf)
+			if err != nil {
+				log.Fatal(err)
+			}
+			localTCPAddr := net.TCPAddr{IP: localAddr}
+			// XXX makes logfile too long; debug flag?
+			fmt.Printf("Connecting to %s using intf %s source %v\n",
+				statusUrl, intf, localTCPAddr)
+			d := net.Dialer{LocalAddr: &localTCPAddr}
+			transport := &http.Transport{
+				TLSClientConfig: tlsConfig,
+				Dial:            d.Dial,
+			}
+			client := &http.Client{Transport: transport}
+
+			resp, err := client.Post("https://"+statusUrl,
+				"application/x-proto-binary",
+				bytes.NewBuffer(data))
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+			defer resp.Body.Close()
+			switch resp.StatusCode {
+			case http.StatusOK:
+				fmt.Printf("SendInfoProtobufStrThroughHttp StatusOK\n")
+			default:
+				fmt.Printf("SendInfoProtobufStrThroughHttp statuscode %d %s\n",
+					resp.StatusCode, http.StatusText(resp.StatusCode))
+				fmt.Printf("received response %v\n", resp)
+			}
+			break
+		}
+		log.Printf("All attempts to connect to %s using intf %s failed\n",
+			statusUrl, intf)
+	}
 }
 
 // Each iteration we try a different uplink. For each uplink we try all
