@@ -31,13 +31,25 @@ func StartItrThread(threadName string,
 	}
 
 	// create raw socket pair for sending LISP packets out
-	fd4, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
+	fd4, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, syscall.IPPROTO_UDP)
 	if err != nil {
 		log.Printf("Failed creating IPv4 raw socket for %s: %s\n",
 			threadName, err)
 		return
 	}
 	defer syscall.Close(fd4)
+
+	//*****
+	err = syscall.SetsockoptInt(fd4, syscall.SOL_SOCKET, syscall.IP_MTU_DISCOVER, syscall.IP_PMTUDISC_DONT)
+	if err != nil {
+		log.Printf("Disabling path MTU discovery failed: %s.\n", err)
+	}
+	err = syscall.SetsockoptInt(fd4, syscall.IPPROTO_IP, syscall.IP_HDRINCL, 0)
+	if err != nil {
+		log.Printf("Disabling IP_HDRINCL failed: %s.\n", err)
+	}
+	//*****
+
 	fd6, err := syscall.Socket(syscall.AF_INET6, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
 	if err != nil {
 		log.Printf("Failed creating IPv6 raw socket for %s: %s\n",
@@ -77,6 +89,9 @@ func SetupPacketCapture(ifname string, snapLen uint32) *pfring.Ring {
 
 	// set the ring in readonly mode
 	ring.SetSocketMode(pfring.ReadOnly)
+
+	ring.SetPollWatermark(5)
+	ring.SetPollDuration(5)
 
 	// Enable ring. Packet inflow starts after this.
 	err = ring.Enable()
@@ -208,7 +223,7 @@ eidLoop:
 
 				// XXX What do we do when there is no transport header? like PING
 				if transportContents != nil {
-					log.Println("XXXXX Transport contents:", transportContents)
+					//log.Println("XXXXX Transport contents:", transportContents)
 					ports = (uint32(transportContents[0])<<24 |
 						uint32(transportContents[1])<<16 |
 						uint32(transportContents[2])<<8 |
@@ -218,6 +233,7 @@ eidLoop:
 
 			var hash32 uint32 = srcAddrBytes ^ dstAddrBytes ^ ports
 
+			log.Printf("XXXXX Packet capture length is %d\n", pktLen)
 			LookupAndSend(packet, pktBuf[:],
 				uint32(pktLen), iid, hash32,
 				ifname, srcAddr, dstAddr,

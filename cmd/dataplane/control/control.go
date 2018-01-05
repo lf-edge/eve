@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/json"
 	"flag"
-	"github.com/zededa/go-provision/dataplane/etr"
+	//"github.com/zededa/go-provision/dataplane/etr"
 	"github.com/zededa/go-provision/dataplane/fib"
 	"github.com/zededa/go-provision/types"
 	"log"
@@ -28,6 +28,7 @@ const (
 	DATABASEMAPPINGSTYPE = "database-mappings"
 	INTERFACESTYPE       = "interfaces"
 	DECAPKEYSTYPE        = "decap-keys"
+	ETRNATPORT           = "etr-nat-port"
 )
 
 func main() {
@@ -44,10 +45,13 @@ func main() {
 	fib.InitIfaceMaps()
 	fib.InitMapCache()
 	fib.InitDecapTable()
-	go etr.StartETR()
+	//go etr.StartETR()
 
 	// Initialize ITR thread management
 	InitThreadTable()
+
+	// Initialize ETR run status
+	InitEtrRunStatus()
 
 	// Start listening on the Unix domain socket "lisp-ipc-data-plane"
 	// lispers.net code uses this socket for sending eid to rloc maps
@@ -221,7 +225,10 @@ func handleLispMsg(msg []byte) {
 		handleInterfaces(msg)
 	case DECAPKEYSTYPE:
 		handleDecapKeys(msg)
+	case ETRNATPORT:
+		handleEtrNatPort(msg)
 	default:
+		log.Println(string(msg))
 		log.Println("Unknown message type received")
 	}
 }

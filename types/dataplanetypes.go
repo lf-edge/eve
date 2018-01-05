@@ -4,11 +4,11 @@
 package types
 
 import (
-	//"log"
-	"github.com/google/gopacket"
 	"net"
 	"sync"
 	"time"
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/pfring"
 )
 
 const (
@@ -104,4 +104,18 @@ type PuntEntry struct {
 
 type RestartEntry struct {
 	Type string `json:"type"`
+}
+
+type EtrRunStatus struct {
+	EphPort  int
+	Ring    *pfring.Ring
+	UdpConn *net.UDPConn
+
+	// Raw socket FD used by ETR packet capture thread
+	// for injecting decapsulated packets
+	RingFD   int
+
+	// Raw socket FD used by ETR packet thread that listens on UDP port 4341
+	// for injecting decapsulated packets
+	UdpFD    int
 }

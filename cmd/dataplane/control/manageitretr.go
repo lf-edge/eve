@@ -1,9 +1,12 @@
 package main
 
 import (
+	"log"
+	"syscall"
+	"github.com/zededa/go-provision/types"
 	"github.com/google/gopacket/pfring"
 	"github.com/zededa/go-provision/dataplane/itr"
-	"log"
+	"github.com/zededa/go-provision/dataplane/etr"
 )
 
 type ThreadEntry struct {
@@ -12,6 +15,11 @@ type ThreadEntry struct {
 }
 
 var threadTable map[string]ThreadEntry
+var etrRunStatus types.EtrRunStatus
+
+func InitEtrRunStatus() {
+	etrRunStatus = types.EtrRunStatus{-1, nil, nil, -1, -1}
+}
 
 func InitThreadTable() {
 	threadTable = make(map[string]ThreadEntry)
@@ -79,4 +87,31 @@ func ManageItrThreads(interfaces Interfaces) {
 			go itr.StartItrThread(name, ring, killChannel, puntChannel)
 		}
 	}
+}
+
+func ManageETRThread(port int) {
+	// return if the ephemeral port that we currently use is same
+	if etrRunStatus.EphPort == port {
+		return
+	}
+	// Destroy the previous ETR run state
+	if etrRunStatus.Ring != nil {
+		etrRunStatus.Ring.Disable()
+		etrRunStatus.Ring.Close()
+	}
+	if etrRunStatus.UdpConn != nil {
+		etrRunStatus.UdpConn.Close()
+	}
+	if etrRunStatus.RingFD != -1 {
+		syscall.Close(etrRunStatus.RingFD)
+	}
+	if etrRunStatus.UdpFD != -1 {
+		syscall.Close(etrRunStatus.UdpFD)
+	}
+	udpConn, ring, fd1, fd2 := etr.StartETR(port)
+	etrRunStatus.UdpConn = udpConn
+	etrRunStatus.Ring = ring
+	etrRunStatus.UdpFD  = fd1
+	etrRunStatus.RingFD = fd2
+	etrRunStatus.EphPort = port
 }

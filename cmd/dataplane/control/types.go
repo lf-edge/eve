@@ -46,3 +46,8 @@ type DecapKeys struct {
 	Rloc string `json:"rloc"`
 	Keys []Key  `json:"keys"`
 }
+
+type EtrNatPort struct {
+	Type string `json:"type"`
+	Port int `json:"port"`
+}

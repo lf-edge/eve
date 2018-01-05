@@ -51,7 +51,7 @@ func SetLispIID(hdr []byte, iid uint32) {
 func GetLispIID(hdr []byte) uint32 {
 	var iid uint32 = 0
 
-	iid = uint32(hdr[4]<<16 | hdr[5]<<8 | hdr[6])
+	iid = uint32(uint32(hdr[4])<<16 | uint32(hdr[5])<<8 | uint32(hdr[6]))
 	return iid
 }
 

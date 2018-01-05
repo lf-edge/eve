@@ -232,3 +232,21 @@ func handleDecapKeys(msg []byte) {
 	}
 	fib.UpdateDecapKeys(decapEntry)
 }
+
+func handleEtrNatPort(msg []byte) {
+	var etrNatPort EtrNatPort
+	log.Println(string(msg))
+
+	err := json.Unmarshal(msg, &etrNatPort)
+	if err != nil {
+		log.Println("Error:", err)
+		return
+	}
+	//port, err := strconv.ParseInt(etrNatPort.Port, 10, 32)
+	//if err != nil {
+	//	log.Printf("NAT port %s conversion to integer failed: %s\n",
+	//	etrNatPort.Port, err)
+	//	return
+	//}
+	ManageETRThread(etrNatPort.Port)
+}

@@ -262,7 +262,7 @@ func handleLookUpParam(devConfig *zconfig.EdgeDevConfig) {
 	// Write an AppNetworkConfig for the ZedManager application
 	uv := types.UUIDandVersion{
 		UUID:    devUUID,
-		Version: "0",
+		Version: devConfig.Id.String(),
 	}
 	config := types.AppNetworkConfig{
 		UUIDandVersion: uv,

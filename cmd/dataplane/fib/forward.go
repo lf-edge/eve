@@ -28,9 +28,11 @@ func CraftAndSendLispPacket(packet gopacket.Packet,
 
 	// Get map cache slot from hash and weight
 	mapSlot := hash32 % totWeight
+	/*
 	log.Println("Slot selected is:", mapSlot)
 	log.Println("Total weight is:", totWeight)
 	log.Println()
+	*/
 
 	// get the map entry that this slot falls into
 	for _, rloc = range mapEntry.Rlocs {
@@ -68,6 +70,7 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 	// XXX
 	// Should we have a static per-thread entry for this header?
 	// Can we have it globally and re-use?
+	/*
 	srcAddr := net.ParseIP("0.0.0.0")
 	ip := &layers.IPv4{
 		DstIP:    rloc.Rloc,
@@ -78,6 +81,7 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 		Version:  4,
 		Protocol: layers.IPProtocolUDP,
 	}
+	*/
 
 	// XXX
 	// Should we have a static per-thread entry for this header?
@@ -94,7 +98,7 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 		Length:  uint16(16 + capLen - 14),
 	}
 
-	udp.SetNetworkLayerForChecksum(ip)
+	//udp.SetNetworkLayerForChecksum(ip)
 
 	// Create a custom LISP header
 	lispHdr := make([]byte, 8)
@@ -109,7 +113,13 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 		FixLengths:       false,
 	}
 
+	/*
 	if err := gopacket.SerializeLayers(buf, opts, ip, udp); err != nil {
+		log.Printf("Failed serializing packet: %s", err)
+		return
+	}
+	*/
+	if err := gopacket.SerializeLayers(buf, opts, udp); err != nil {
 		log.Printf("Failed serializing packet: %s", err)
 		return
 	}
@@ -130,6 +140,7 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 	outputSlice := pktBuf[offset : uint32(offset)+uint32(outerHdrLen)+capLen-14]
 
 	v4Addr := rloc.Rloc.To4()
+	log.Printf("XXXXX Packet lenght is %d\n", len(outputSlice))
 	err := syscall.Sendto(fd4, outputSlice, 0, &syscall.SockaddrInet4{
 		Port: 0,
 		Addr: [4]byte{v4Addr[0], v4Addr[1], v4Addr[2], v4Addr[3]},
