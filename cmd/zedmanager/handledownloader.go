@@ -16,6 +16,8 @@ import (
 // Key is Safename string.
 var downloaderConfig map[string]types.DownloaderConfig
 
+var downloadIfName string
+
 func AddOrRefcountDownloaderConfig(safename string, sc *types.StorageConfig) {
 	log.Printf("AddOrRefcountDownloaderConfig for %s\n",
 		safename)
@@ -23,6 +25,19 @@ func AddOrRefcountDownloaderConfig(safename string, sc *types.StorageConfig) {
 	if downloaderConfig == nil {
 		fmt.Printf("create downloader config map\n")
 		downloaderConfig = make(map[string]types.DownloaderConfig)
+		// XXX introduce separate init function?
+		globalNetworkConfigFilename := "/var/tmp/zedrouter/config/global"
+		globalConfig, err := types.GetGlobalNetworkConfig(globalNetworkConfigFilename)
+		if err != nil {
+			log.Printf("%s for %s\n", err, globalNetworkConfigFilename)
+			log.Fatal(err)
+		}
+		if len(globalConfig.FreeUplinks) == 0 {
+			log.Fatal("No FreeUplinks")
+		}
+		downloadIfName = globalConfig.FreeUplinks[0]
+		log.Printf("Using interface %s for image download\n",
+			downloadIfName)
 	}
 	key := safename
 	if m, ok := downloaderConfig[key]; ok {
@@ -30,10 +45,12 @@ func AddOrRefcountDownloaderConfig(safename string, sc *types.StorageConfig) {
 			safename, m.RefCount)
 		m.RefCount += 1
 	} else {
-		fmt.Printf("downloader config add for %s\n", safename)
+		fmt.Printf("downloader config add for %s ifname %s\n",
+			safename, downloadIfName)
 		n := types.DownloaderConfig{
 			Safename:        safename,
 			DownloadURL:     sc.DownloadURL,
+			IfName:		 downloadIfName,
 			MaxSize:         sc.MaxSize,
 			TransportMethod: sc.TransportMethod,
 			Dpath:           sc.Dpath,

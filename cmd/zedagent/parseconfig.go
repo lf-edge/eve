@@ -344,6 +344,7 @@ func writeCertConfig(image types.StorageConfig, certUrl string) {
 	var config = &types.DownloaderConfig{
 		Safename:        safename,
 		DownloadURL:     certUrl,
+		// XXX set IfName to to the FreeUplink[0]? NO
 		MaxSize:         image.MaxSize,
 		TransportMethod: image.TransportMethod,
 		Dpath:           "zededa-cert-repo",
