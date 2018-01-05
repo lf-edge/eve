@@ -447,6 +447,7 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 		fmt.Printf("PublishAppInfoToZedCloud uuid %s deleted\n", uuid)
 		return
 	}
+	uuidStr := aiStatus.UUIDandVersion.Version
 	var ReportInfo = &zmet.ZInfoMsg{}
 
 	appType := new(zmet.ZInfoTypes)
@@ -455,7 +456,7 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 	ReportInfo.DevId = *proto.String(deviceId)
 
 	ReportAppInfo := new(zmet.ZInfoApp)
-	ReportAppInfo.AppID = *proto.String(uuid)
+	ReportAppInfo.AppID = *proto.String(uuidStr)
 
 	// XXX:TBD should come from xen usage
 	ReportAppInfo.Ncpu = *proto.Uint32(uint32(0))
