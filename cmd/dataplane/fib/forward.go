@@ -47,10 +47,8 @@ func CraftAndSendLispPacket(packet gopacket.Packet,
 	// Check the family and create appropriate IP header
 	switch rloc.Family {
 	case types.MAP_CACHE_FAMILY_IPV4:
-		//craftAndSendIPv4LispPacket(packet, pktBuf, capLen, hash32, mapEntry, iid, fd4)
 		craftAndSendIPv4LispPacket(packet, pktBuf, capLen, hash32, &rloc, iid, fd4)
 	case types.MAP_CACHE_FAMILY_IPV6:
-		//craftAndSendIPv6LispPacket(packet, pktBuf, capLen, hash32, mapEntry, iid, fd6)
 		craftAndSendIPv6LispPacket(packet, pktBuf, capLen, hash32, &rloc, iid, fd6)
 	case types.MAP_CACHE_FAMILY_UNKNOWN:
 		log.Printf("Unkown family found for rloc %s\n",
@@ -140,7 +138,7 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 	outputSlice := pktBuf[offset : uint32(offset)+uint32(outerHdrLen)+capLen-14]
 
 	v4Addr := rloc.Rloc.To4()
-	log.Printf("XXXXX Packet lenght is %d\n", len(outputSlice))
+	log.Printf("Writing %d bytes into ITR socket\n", len(outputSlice))
 	err := syscall.Sendto(fd4, outputSlice, 0, &syscall.SockaddrInet4{
 		Port: 0,
 		Addr: [4]byte{v4Addr[0], v4Addr[1], v4Addr[2], v4Addr[3]},

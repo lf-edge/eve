@@ -37,6 +37,10 @@ func StartItrThread(threadName string,
 			threadName, err)
 		return
 	}
+	err = syscall.SetsockoptInt(fd4, syscall.SOL_SOCKET, syscall.SO_SNDBUF, 65536)
+	if err != nil {
+		log.Printf("Thread %s: Setting socket buffer size failed: %s\n", threadName, err)
+	}
 	defer syscall.Close(fd4)
 
 	//*****
@@ -55,6 +59,10 @@ func StartItrThread(threadName string,
 		log.Printf("Failed creating IPv6 raw socket for %s: %s\n",
 			threadName, err)
 		return
+	}
+	err = syscall.SetsockoptInt(fd6, syscall.SOL_SOCKET, syscall.SO_SNDBUF, 65536)
+	if err != nil {
+		log.Printf("Thread %s: Setting socket buffer size failed: %s\n", threadName, err)
 	}
 	defer syscall.Close(fd6)
 
