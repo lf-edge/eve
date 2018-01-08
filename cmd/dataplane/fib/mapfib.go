@@ -38,9 +38,19 @@ func InitMapCache() {
 	pktBuf = make([]byte, 65536)
 
 	// create required raw sockets
-	fd4, err = syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
+	//fd4, err = syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
+	fd4, err = syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, syscall.IPPROTO_UDP)
 	if err != nil {
 		log.Printf("FIB ipv4 raw socket creation failed.\n")
+	}
+	err = syscall.SetsockoptInt(fd4, syscall.SOL_SOCKET, syscall.IP_MTU_DISCOVER,
+	syscall.IP_PMTUDISC_DONT)
+	if err != nil {
+		log.Printf("Disabling path mtu discovery failed.\n")
+	}
+	err = syscall.SetsockoptInt(fd4, syscall.IPPROTO_IP, syscall.IP_HDRINCL, 0)
+	if err != nil {
+		log.Printf("Disabling IP_HDRINCL failed.\n")
 	}
 	fd6, err = syscall.Socket(syscall.AF_INET6, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
 	if err != nil {
