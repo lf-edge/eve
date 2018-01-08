@@ -322,8 +322,7 @@ func handleCreate(statusFilename string, configArg interface{}) {
 		}
 
 		// ip link set ${olIfname} mtu 1280
-		//if err := netlink.LinkSetMTU(oLink, 1280); err != nil {
-		if err := netlink.LinkSetMTU(oLink, 1500); err != nil {
+		if err := netlink.LinkSetMTU(oLink, 1280); err != nil {
 			fmt.Printf("LinkSetMTU on %s failed: %s\n",
 				olIfname, err)
 		}

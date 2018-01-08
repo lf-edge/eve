@@ -194,7 +194,7 @@ func ProcessETRPkts(fd6 int, serverConn *net.UDPConn) bool {
 
 	for {
 		n, _, err := serverConn.ReadFromUDP(buf)
-		log.Println("Received", n, "bytes in ETR")
+		log.Println("XXXXX Received", n, "bytes in ETR")
 		if err != nil {
 			log.Printf("Fatal error during ETR processing\n")
 			return false
