@@ -1,17 +1,17 @@
 package itr
 
 import (
+	"log"
+	"net"
+	"syscall"
+	"time"
+	"sync/atomic"
 	"encoding/json"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pfring"
 	"github.com/zededa/go-provision/dataplane/fib"
 	"github.com/zededa/go-provision/types"
-	"log"
-	"net"
-	"syscall"
-	"time"
-	"sync/atomic"
 )
 
 const SNAPLENGTH = 65536
@@ -182,7 +182,8 @@ eidLoop:
 			packet := gopacket.NewPacket(
 				pktBuf[fib.MAXHEADERLEN:ci.CaptureLength+fib.MAXHEADERLEN],
 				layers.LinkTypeEthernet,
-				gopacket.DecodeOptions{Lazy: true, NoCopy: true})
+				//gopacket.DecodeOptions{Lazy: true, NoCopy: true})
+				gopacket.DecodeOptions{Lazy: false, NoCopy: true})
 			ip6Layer := packet.Layer(layers.LayerTypeIPv6)
 			if ip6Layer == nil {
 				// XXX May be add a per thread stat here

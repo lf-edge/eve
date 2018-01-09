@@ -87,6 +87,12 @@ func LookupAndAdd(iid uint32,
 		// to control plane. When it is decided to make a periodic punt
 		// return true for the punt status
 		punt := false
+		var puntInterval time.Duration = 30000
+
+		if entry.Resolved == false {
+			puntInterval = 5000
+		}
+
 		// elapsed time is in Nano seconds
 		elapsed := time.Since(entry.LastPunt)
 
@@ -95,7 +101,7 @@ func LookupAndAdd(iid uint32,
 
 		// if elapsed time is greater than 30000ms send a punt request
 		// XXX Is 30 seconds for punt too high?
-		if elapsed >= 30000 {
+		if elapsed >= puntInterval {
 			punt = true
 			entry.LastPunt = time.Now()
 		}
@@ -222,6 +228,7 @@ func LookupAndUpdate(iid uint32, eid net.IP, rlocs []types.Rloc) *types.MapCache
 	var selectRlocs []types.Rloc
 	var totWeight uint32
 	var packets, bytes, tailDrops, buffdPkts uint64
+	var lastPunt time.Time
 
 	log.Printf("Adding map-cache entry with key %d, %s\n", key.IID, key.Eid)
 
@@ -240,6 +247,7 @@ func LookupAndUpdate(iid uint32, eid net.IP, rlocs []types.Rloc) *types.MapCache
 		bytes     = entry.Bytes
 		tailDrops = entry.TailDrops
 		buffdPkts = entry.BuffdPkts
+		lastPunt  = entry.LastPunt
 
 		delete(cache.MapCache, key)
 	} else if ok {
@@ -263,7 +271,7 @@ func LookupAndUpdate(iid uint32, eid net.IP, rlocs []types.Rloc) *types.MapCache
 		Rlocs:         selectRlocs,
 		RlocTotWeight: totWeight,
 		PktBuffer:     make(chan *types.BufferedPacket, 10),
-		LastPunt:      time.Now(),
+		LastPunt:      lastPunt,
 		Packets: packets,
 		Bytes: bytes,
 		TailDrops: tailDrops,
