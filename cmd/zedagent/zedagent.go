@@ -27,6 +27,9 @@ const (
 // Set from Makefile
 var Version = "No version specified"
 
+var globalConfig types.DeviceNetworkConfig
+var globalStatus types.DeviceNetworkStatus
+
 func main() {
 	log.SetOutput(os.Stdout)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
@@ -53,27 +56,37 @@ func main() {
 		}
 	}
 
+	// Retrieve the uplink interfaces and their IP addresses
+	globalNetworkConfigFilename := "/var/tmp/zedrouter/config/global"
+	var err error
+	globalConfig, err = types.GetGlobalNetworkConfig(globalNetworkConfigFilename)
+	if err != nil {
+		log.Printf("%s for %s\n", err, globalNetworkConfigFilename)
+		log.Fatal(err)
+	}
+	globalStatus, err = types.MakeGlobalNetworkStatus(globalConfig)
+	if err != nil {
+		log.Printf("%s from MakeGlobalNetworkStatus\n", err)
+		log.Fatal(err)
+	}
+
 	// Tell ourselves to go ahead
 	watch.SignalRestart("zedagent")
 
 	getCloudUrls()
 	go metricsTimerTask()
-	// XXX pass configUrl as argument
 	go configTimerTask()
 
-	configChanges := make(chan string)
-	go watch.WatchConfigStatus(zedmanagerConfigDirname,
-		zedmanagerStatusDirname, configChanges)
+	zedmanagerChanges := make(chan string)
+	go watch.WatchStatus(zedmanagerStatusDirname, zedmanagerChanges)
 	for {
 		select {
-		case change := <-configChanges:
+		case change := <-zedmanagerChanges:
 			{
-				watch.HandleConfigStatusEvent(change,
-					zedmanagerConfigDirname,
+				watch.HandleStatusEvent(change,
 					zedmanagerStatusDirname,
-					&types.AppInstanceConfig{},
 					&types.AppInstanceStatus{},
-					handleStatusCreate, handleStatusModify,
+					handleStatusModify,
 					handleStatusDelete, nil)
 				continue
 			}
@@ -81,20 +94,9 @@ func main() {
 	}
 }
 
-func handleStatusCreate(statusFilename string, configArg interface{}) {
-	var config *types.AppInstanceConfig
+var publishIteration = 0
 
-	switch configArg.(type) {
-	default:
-		log.Fatal("Can only handle AppInstanceConfig")
-	case *types.AppInstanceConfig:
-		config = configArg.(*types.AppInstanceConfig)
-	}
-	log.Printf("handleCreate for %s\n", config.DisplayName)
-}
-
-func handleStatusModify(statusFilename string, configArg interface{},
-	statusArg interface{}) {
+func handleStatusModify(statusFilename string, statusArg interface{}) {
 	var status *types.AppInstanceStatus
 
 	switch statusArg.(type) {
@@ -103,21 +105,15 @@ func handleStatusModify(statusFilename string, configArg interface{},
 	case *types.AppInstanceStatus:
 		status = statusArg.(*types.AppInstanceStatus)
 	}
-	PublishDeviceInfoToZedCloud()
-	PublishHypervisorInfoToZedCloud()
-	PublishAppInfoToZedCloud(status)
+	PublishDeviceInfoToZedCloud(publishIteration)
+	PublishHypervisorInfoToZedCloud(publishIteration)
+	PublishAppInfoToZedCloud(statusFilename, status, publishIteration)
+	publishIteration += 1
 }
 
-func handleStatusDelete(statusFilename string, statusArg interface{}) {
-	var status *types.AppInstanceStatus
-
-	switch statusArg.(type) {
-	default:
-		log.Fatal("Can only handle AppInstanceStatus")
-	case *types.AppInstanceStatus:
-		status = statusArg.(*types.AppInstanceStatus)
-	}
-	PublishDeviceInfoToZedCloud()
-	PublishHypervisorInfoToZedCloud()
-	PublishAppInfoToZedCloud(status)
+func handleStatusDelete(statusFilename string) {
+	PublishDeviceInfoToZedCloud(publishIteration)
+	PublishHypervisorInfoToZedCloud(publishIteration)
+	PublishAppInfoToZedCloud(statusFilename, nil, publishIteration)
+	publishIteration += 1
 }

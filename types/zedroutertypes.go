@@ -4,6 +4,11 @@
 package types
 
 import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"github.com/vishvananda/netlink"
+	"io/ioutil"
 	"log"
 	"net"
 )
@@ -70,13 +75,180 @@ func (status AppNetworkStatus) VerifyFilename(fileName string) bool {
 
 // Global network config and status
 type DeviceNetworkConfig struct {
-	Uplink []string // ifname; should have multiple
+	Uplink      []string // ifname; all uplinks
+	FreeUplinks []string // subset used for image downloads
+}
+
+type NetworkUplink struct {
+	IfName string
+	Addrs  []net.IP
 }
 
 type DeviceNetworkStatus struct {
-	Uplink      []string // ifname; should have multiple
-	UplinkAddrs []net.IP
-	// XXX add uplink publicAddr to determine NATed?
+	UplinkStatus []NetworkUplink
+}
+
+// Parse the file with DeviceNetworkConfig
+func GetGlobalNetworkConfig(configFilename string) (DeviceNetworkConfig, error) {
+	var globalConfig DeviceNetworkConfig
+	cb, err := ioutil.ReadFile(configFilename)
+	if err != nil {
+		return DeviceNetworkConfig{}, err
+	}
+	if err := json.Unmarshal(cb, &globalConfig); err != nil {
+		return DeviceNetworkConfig{}, err
+	}
+	// Workaround for old config with FreeUplinks not set
+	if len(globalConfig.FreeUplinks) == 0 {
+		fmt.Printf("Setting FreeUplinks from Uplink: %v\n",
+				globalConfig.Uplink)
+		globalConfig.FreeUplinks = globalConfig.Uplink
+	}
+	return globalConfig, nil
+}
+
+// Calculate local IP addresses to make a DeviceNetworkStatus
+func MakeGlobalNetworkStatus(globalConfig DeviceNetworkConfig) (DeviceNetworkStatus, error) {
+	var globalStatus DeviceNetworkStatus
+	globalStatus.UplinkStatus = make([]NetworkUplink,
+		len(globalConfig.Uplink))
+	for ix, u := range globalConfig.Uplink {
+		globalStatus.UplinkStatus[ix].IfName = u
+		link, err := netlink.LinkByName(u)
+		if err != nil {
+			return DeviceNetworkStatus{}, errors.New(fmt.Sprintf("Uplink in config/global does not exist: %v", u))
+		}
+		addrs4, err := netlink.AddrList(link, netlink.FAMILY_V4)
+		addrs6, err := netlink.AddrList(link, netlink.FAMILY_V6)
+		globalStatus.UplinkStatus[ix].Addrs = make([]net.IP,
+			len(addrs4)+len(addrs6))
+		for i, addr := range addrs4 {
+			fmt.Printf("UplinkAddrs(%s) found IPv4 %v\n",
+				u, addr.IP)
+			globalStatus.UplinkStatus[ix].Addrs[i] = addr.IP
+		}
+		for i, addr := range addrs6 {
+			// We include link-locals since they can be used for LISP behind nats
+			fmt.Printf("UplinkAddrs(%s) found IPv6 %v\n",
+				u, addr.IP)
+			globalStatus.UplinkStatus[ix].Addrs[i+len(addrs4)] = addr.IP
+		}
+	}
+	return globalStatus, nil
+}
+
+// Pick one of the uplinks
+func GetUplinkAny(globalConfig DeviceNetworkConfig, globalStatus DeviceNetworkStatus, pickNum int) (string, error) {
+	if len(globalConfig.Uplink) == 0 {
+		return "", errors.New("GetUplinkAny has no uplink")
+	}
+	pickNum = pickNum % len(globalConfig.Uplink)
+	return globalConfig.Uplink[pickNum], nil
+}
+
+// Pick one of the free uplinks
+func GetUplinkFree(globalConfig DeviceNetworkConfig, globalStatus DeviceNetworkStatus, pickNum int) (string, error) {
+	if len(globalConfig.FreeUplinks) == 0 {
+		return "", errors.New("GetUplinkFree has no uplink")
+	}
+	pickNum = pickNum % len(globalConfig.FreeUplinks)
+	return globalConfig.FreeUplinks[pickNum], nil
+}
+
+// Return number of local IP addresses for all the uplinks, unless if
+// uplink is set in which case we could it.
+func CountLocalAddrAny(globalConfig DeviceNetworkConfig, globalStatus DeviceNetworkStatus, uplink string) int {
+	// Count the number of addresses which apply
+	if uplink != "" {
+		addrs, _ := getInterfaceAddr(globalStatus, uplink)
+		return len(addrs)
+	} else {
+		numAddrs := 0
+		for _, u := range globalConfig.Uplink {
+			addrs, _ := getInterfaceAddr(globalStatus, u)
+			numAddrs += len(addrs)
+		}
+		return numAddrs
+	}
+}
+
+// Return number of local IP addresses for all the free uplinks, unless if
+// uplink is set in which case we could it.
+func CountLocalAddrFree(globalConfig DeviceNetworkConfig, globalStatus DeviceNetworkStatus, uplink string) int {
+	// Count the number of addresses which apply
+	if uplink != "" {
+		addrs, _ := getInterfaceAddr(globalStatus, uplink)
+		return len(addrs)
+	} else {
+		numAddrs := 0
+		for _, u := range globalConfig.FreeUplinks {
+			addrs, _ := getInterfaceAddr(globalStatus, u)
+			numAddrs += len(addrs)
+		}
+		return numAddrs
+	}
+}
+
+// Pick from one all of the uplinks, unless if uplink is set in which we
+// pick from it
+func GetLocalAddrAny(globalConfig DeviceNetworkConfig, globalStatus DeviceNetworkStatus, pickNum int, uplink string) (net.IP, error) {
+	// Count the number of addresses which apply
+	numAddrs := CountLocalAddrAny(globalConfig, globalStatus, uplink)
+
+	// fmt.Printf("GetLocalAddrAny pick %d have %d\n", pickNum, numAddrs)
+	pickNum = pickNum % numAddrs
+	uplinks := globalConfig.Uplink
+	if uplink != "" {
+		uplinks = []string{uplink}
+	}
+	for _, u := range uplinks {
+		addrs, _ := getInterfaceAddr(globalStatus, u)
+		for _, a := range addrs {
+			if pickNum == 0 {
+				// fmt.Printf("GetLocalAddrAny returning %v\n", a)
+				return a, nil
+			}
+			pickNum -= 1
+		}
+	}
+	return net.IP{}, errors.New("GetLocalAddrAny fell off end")
+}
+
+// Pick from one all of the free uplinks, unless if uplink is set in which we
+// pick from it
+func GetLocalAddrFree(globalConfig DeviceNetworkConfig, globalStatus DeviceNetworkStatus, pickNum int, uplink string) (net.IP, error) {
+	// Count the number of addresses which apply
+	numAddrs := CountLocalAddrFree(globalConfig, globalStatus, uplink)
+
+	// fmt.Printf("GetLocalAddrFree pick %d have %d\n", pickNum, numAddrs)
+	pickNum = pickNum % numAddrs
+	uplinks := globalConfig.FreeUplinks
+	if uplink != "" {
+		uplinks = []string{uplink}
+	}
+	for _, u := range uplinks {
+		addrs, _ := getInterfaceAddr(globalStatus, u)
+		for _, a := range addrs {
+			if pickNum == 0 {
+				// fmt.Printf("GetLocalAddrFree returning %v\n", a)
+				return a, nil
+			}
+			pickNum -= 1
+		}
+	}
+	return net.IP{}, errors.New("GetLocalAddrFree fell off end")
+}
+
+func getInterfaceAddr(globalStatus DeviceNetworkStatus, ifname string) ([]net.IP, error) {
+	// fmt.Printf("getInterfaceAddr(%s)\n", ifname)
+	for _, u := range globalStatus.UplinkStatus {
+		if u.IfName == ifname {
+			// fmt.Printf("getInterfaceAddr(%s) returning %v\n",
+			//	ifname, u.Addrs)
+			return u.Addrs, nil
+		}
+	}
+	return []net.IP{}, errors.New("No good IP address")
 }
 
 type OverlayNetworkConfig struct {

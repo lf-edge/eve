@@ -9,9 +9,11 @@ import (
 	"fmt"
 	"github.com/golang/protobuf/proto"
 	"github.com/zededa/api/zconfig"
+	"github.com/zededa/go-provision/types"
 	"io/ioutil"
 	"log"
 	"mime"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -31,9 +33,10 @@ var statusApi string = "api/v1/edgedevice/info"
 var metricsApi string = "api/v1/edgedevice/metrics"
 
 // XXX remove global variables
-var activeVersion string
-var configUrl string
+// XXX shouldn't we know our own deviceId?
 var deviceId string
+// These URLs are effectively constants; depends on the server name
+var configUrl string
 var metricsUrl string
 var statusUrl string
 
@@ -44,9 +47,8 @@ var deviceCertName string = dirName + "/device.cert.pem"
 var deviceKeyName string = dirName + "/device.key.pem"
 var rootCertName string = dirName + "/root-certificate.pem"
 
-// XXX remove global variables
-var deviceCert tls.Certificate
-var cloudClient *http.Client
+// tlsConfig is initialized once i.e. effectively a constant
+var tlsConfig *tls.Config
 
 func getCloudUrls() {
 
@@ -62,7 +64,7 @@ func getCloudUrls() {
 	statusUrl = serverName + "/" + statusApi
 	metricsUrl = serverName + "/" + metricsApi
 
-	deviceCert, err = tls.LoadX509KeyPair(deviceCertName, deviceKeyName)
+	deviceCert, err := tls.LoadX509KeyPair(deviceCertName, deviceKeyName)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -74,7 +76,7 @@ func getCloudUrls() {
 	caCertPool := x509.NewCertPool()
 	caCertPool.AppendCertsFromPEM(caCert)
 
-	tlsConfig := &tls.Config{
+	tlsConfig = &tls.Config{
 		Certificates: []tls.Certificate{deviceCert},
 		ServerName:   serverName,
 		RootCAs:      caCertPool,
@@ -85,11 +87,6 @@ func getCloudUrls() {
 		MinVersion: tls.VersionTLS12,
 	}
 	tlsConfig.BuildNameToCertificate()
-
-	log.Printf("Connecting to %s\n", serverName)
-
-	transport := &http.Transport{TLSClientConfig: tlsConfig}
-	cloudClient = &http.Client{Transport: transport}
 }
 
 // got a trigger for new config. check the present version and compare
@@ -100,38 +97,67 @@ func getCloudUrls() {
 // for each of the above buckets
 
 func configTimerTask() {
-
+	iteration := 0     
 	fmt.Println("starting config fetch timer task")
-	getLatestConfig(nil, configUrl)
+	getLatestConfig(configUrl, iteration)
 
 	ticker := time.NewTicker(time.Minute * configTickTimeout)
 
 	for t := range ticker.C {
 		fmt.Println(t)
-		getLatestConfig(nil, configUrl)
+		iteration += 1
+		getLatestConfig(configUrl, iteration)
 	}
 }
 
-func getLatestConfig(deviceCert []byte, configUrl string) {
-
-	fmt.Printf("config-url: %s\n", configUrl)
-	resp, err := cloudClient.Get("https://" + configUrl)
-
+// Each iteration we try a different uplink. For each uplink we try all
+// its local IP addresses until we get a success.
+func getLatestConfig(configUrl string, iteration int) {
+	intf, err := types.GetUplinkAny(globalConfig, globalStatus, iteration)
 	if err != nil {
-		log.Printf("URL get fail: %v\n", err)
+		log.Fatal(err)
+	}
+	addrCount := types.CountLocalAddrAny(globalConfig, globalStatus, intf)
+	// XXX makes logfile too long; debug flag?
+	log.Printf("Connecting to %s using intf %s interation %d #sources %d\n",
+		configUrl, intf, iteration, addrCount)
+	for retryCount := 0; retryCount < addrCount; retryCount += 1 {
+		localAddr, err := types.GetLocalAddrAny(globalConfig,
+			globalStatus, retryCount, intf)
+		if err != nil {
+			log.Fatal(err)
+		}
+		localTCPAddr := net.TCPAddr{IP: localAddr}
+		// XXX makes logfile too long; debug flag?
+		fmt.Printf("Connecting to %s using intf %s source %v\n",
+			configUrl, intf, localTCPAddr)
+		d := net.Dialer{LocalAddr: &localTCPAddr}
+		transport := &http.Transport{
+			TLSClientConfig: tlsConfig,
+			Dial:            d.Dial,
+		}
+		client := &http.Client{Transport: transport}
+
+		resp, err := client.Get("https://" + configUrl)
+		if err != nil {
+			log.Printf("URL get fail: %v\n", err)
+			continue
+		}
+		defer resp.Body.Close()
+		if err := validateConfigMessage(resp); err != nil {
+			log.Println("validateConfigMessage: ", err)
+			return
+		}
+		config, err := readDeviceConfigProtoMessage(resp)
+		if err != nil {
+			log.Println("readDeviceConfigProtoMessage: ", err)
+			return
+		}
+		inhaleDeviceConfig(config)
 		return
 	}
-	defer resp.Body.Close()
-	if err := validateConfigMessage(resp); err != nil {
-		log.Println("validateConfigMessage: ", err)
-		return
-	}
-	config, err := readDeviceConfigProtoMessage(resp)
-	if err != nil {
-		log.Println("readDeviceConfigProtoMessage: ", err)
-		return
-	}
-	publishDeviceConfig(config)
+	log.Printf("All attempts to connect to %s using intf %s failed\n",
+		configUrl, intf)
 }
 
 func validateConfigMessage(r *http.Response) error {
@@ -185,9 +211,10 @@ func readDeviceConfigProtoMessage(r *http.Response) (*zconfig.EdgeDevConfig, err
 	return config, nil
 }
 
-func publishDeviceConfig(config *zconfig.EdgeDevConfig) {
+func inhaleDeviceConfig(config *zconfig.EdgeDevConfig) {
+	activeVersion := ""
 
-	log.Printf("Publishing config %v\n", config)
+	log.Printf("Inhaling config %v\n", config)
 
 	// if they match return
 	var devId = &zconfig.UUIDandVersion{}

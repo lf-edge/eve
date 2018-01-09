@@ -306,6 +306,7 @@ func handleCreate(config types.DownloaderConfig, statusFilename string) {
 		Safename:       config.Safename,
 		RefCount:       config.RefCount,
 		DownloadURL:    config.DownloadURL,
+		IfName:		config.IfName,
 		ImageSha256:    config.ImageSha256,
 		DownloadObjDir: config.DownloadObjDir,
 		VerifiedObjDir: config.VerifiedObjDir,
@@ -687,30 +688,51 @@ func writeFile(sFilename string, dFilename string) {
 
 // cloud storage interface functions/APIs
 
-// XXX temporary options since and wierd free.fr dns behavior with AAAA and A.
-// Added  -4 --no-check-certificate
-// XXX switch to curl? with --limit-rate 100k -C -
 // XXX should we use --cacart? Would assume we know the root CA.
-func doWget(url string, destFilename string) error {
-
-	cmd := "wget"
-	args := []string{
-		"-q",
-		"-c",
-		"-4", // XXX due to getting IPv6 ULAs and not IPv4
-		"--no-check-certificate",
-		"--tries=3",
-		"-O",
-		destFilename,
-		url,
+// XXX Set --limit-rate 100k
+// XXX continue based on filesize with: -C -
+// XXX --max-filesize <bytes> from MaxSize in DownLoaderConfig (kbytes)
+// XXX --interface ...
+// Note that support for --dns-interface is not compiled in
+func doCurl(url string, ifname string, destFilename string) error {
+	cmd := "curl"
+	args := []string{}
+	if ifname != "" {
+		args = []string{
+			"-q",
+			"-4", // XXX due to getting IPv6 ULAs and not IPv4
+			"--insecure",
+			"--retry",
+			"3",
+			"--silent",
+			"--show-error",
+			"--interface",
+			ifname,
+			"-o",
+			destFilename,
+			url,
+		}
+	} else {
+		args = []string{
+			"-q",
+			"-4", // XXX due to getting IPv6 ULAs and not IPv4
+			"--insecure",
+			"--retry",
+			"3",
+			"--silent",
+			"--show-error",
+			"-o",
+			destFilename,
+			url,
+		}
 	}
 
 	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
 
 	if err != nil {
-		log.Println("wget failed ", err)
+		log.Println("curl failed ", err)
 	} else {
-		log.Printf("wget done: output %s\n", string(stdoutStderr))
+		log.Printf("curl done: output %s\n", string(stdoutStderr))
 	}
 	return err
 }
@@ -793,7 +815,7 @@ func handleSyncOp(syncOp zedUpload.SyncOpType,
 	case zconfig.DsType_DsHttp.String():
 	case zconfig.DsType_DsHttps.String():
 	case "":
-		err = doWget(config.DownloadURL, locFilename)
+		err = doCurl(config.DownloadURL, config.IfName, locFilename)
 		handleSyncOpResponse(config, status, statusFilename, err)
 	default:
 		log.Fatal("unsupported transport method")

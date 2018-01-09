@@ -98,6 +98,18 @@ func main() {
 	hwStatusFileName := dirName + "/hwstatus.json" // XXX remove later
 	swStatusFileName := dirName + "/swstatus.json" // XXX remove later
 
+	globalNetworkConfigFilename := "/var/tmp/zedrouter/config/global"
+	globalConfig, err := types.GetGlobalNetworkConfig(globalNetworkConfigFilename)
+	if err != nil {
+		log.Printf("%s for %s\n", err, globalNetworkConfigFilename)
+		log.Fatal(err)
+	}
+	globalStatus, err := types.MakeGlobalNetworkStatus(globalConfig)
+	if err != nil {
+		log.Printf("%s from MakeGlobalNetworkStatus\n", err)
+		log.Fatal(err)
+	}
+
 	var onboardCert, deviceCert tls.Certificate
 	var deviceCertPem []byte
 	deviceCertSet := false
@@ -160,8 +172,28 @@ func main() {
 
 	// Post something without a return type.
 	// Returns true when done; false when retry
-	myPost := func(client *http.Client, url string, b *bytes.Buffer) bool {
-		resp, err := client.Post("https://"+serverNameAndPort+url,
+	myPost := func(tlsConfig *tls.Config, retryCount int,
+		url string, b *bytes.Buffer) bool {
+		localAddr, err := types.GetLocalAddrAny(globalConfig,
+			globalStatus, retryCount, "")
+		if err != nil {
+			log.Fatal(err)
+		}
+		localTCPAddr := net.TCPAddr{IP: localAddr}
+		fmt.Printf("Connecting to %s/%s using source %v\n",
+			serverNameAndPort, url, localTCPAddr)
+		d := net.Dialer{LocalAddr: &localTCPAddr}
+		transport := &http.Transport{
+			TLSClientConfig: tlsConfig,
+			Dial:            d.Dial,
+		}
+		client := &http.Client{Transport: transport}
+
+		// Should we distinguish retry due to inappropriate source
+		// IP ("no suitable address found") and retry due to server
+		// side response errors such as 401? In both cases
+		// we don't want to retry immediately
+		resp, err := client.Post("https://" + serverNameAndPort + url,
 			"application/x-proto-binary", b)
 		if err != nil {
 			fmt.Println(err)
@@ -235,8 +267,23 @@ func main() {
 	}
 
 	// XXX remove later
-	oldMyPost := func(client *http.Client, url string, b *bytes.Buffer) bool {
-		resp, err := client.Post("https://"+serverNameAndPort+url,
+	oldMyPost := func(tlsConfig *tls.Config, retryCount int,
+		url string, b *bytes.Buffer) bool {
+		localAddr, err := types.GetLocalAddrAny(globalConfig,
+			globalStatus, retryCount, "")
+		if err != nil {
+			log.Fatal(err)
+		}
+		localTCPAddr := net.TCPAddr{IP: localAddr}
+		fmt.Printf("Connecting to %s/%s using source %v\n",
+			serverNameAndPort, url, localTCPAddr)
+		d := net.Dialer{LocalAddr: &localTCPAddr}
+		transport := &http.Transport{
+			TLSClientConfig: tlsConfig,
+			Dial:            d.Dial,
+		}
+		client := &http.Client{Transport: transport}
+		resp, err := client.Post("https://" + serverNameAndPort + url,
 			"application/json", b)
 		if err != nil {
 			fmt.Println(err)
@@ -305,7 +352,7 @@ func main() {
 	}
 
 	// Returns true when done; false when retry
-	selfRegister := func() bool {
+	selfRegister := func(retryCount int) bool {
 		// Setup HTTPS client
 		tlsConfig := &tls.Config{
 			Certificates: []tls.Certificate{onboardCert},
@@ -319,10 +366,6 @@ func main() {
 		}
 		tlsConfig.BuildNameToCertificate()
 
-		fmt.Printf("Connecting to %s\n", serverNameAndPort)
-
-		transport := &http.Transport{TLSClientConfig: tlsConfig}
-		client := &http.Client{Transport: transport}
 		registerCreate := &zmet.ZRegisterMsg{
 			PemCert: []byte(base64.StdEncoding.EncodeToString(deviceCertPem)),
 		}
@@ -330,11 +373,11 @@ func main() {
 		if err != nil {
 			log.Println(err)
 		}
-		return myPost(client, "/api/v1/edgedevice/register", bytes.NewBuffer(b))
+		return myPost(tlsConfig, retryCount, "/api/v1/edgedevice/register", bytes.NewBuffer(b))
 	}
 
 	// XXX remove later
-	oldSelfRegister := func() bool {
+	oldSelfRegister := func(retryCount int) bool {
 		// Setup HTTPS client
 		tlsConfig := &tls.Config{
 			Certificates: []tls.Certificate{onboardCert},
@@ -348,20 +391,32 @@ func main() {
 		}
 		tlsConfig.BuildNameToCertificate()
 
-		fmt.Printf("Connecting to %s\n", serverNameAndPort)
-
-		transport := &http.Transport{TLSClientConfig: tlsConfig}
-		client := &http.Client{Transport: transport}
 		rc := types.RegisterCreate{PemCert: deviceCertPem}
 		b := new(bytes.Buffer)
 		json.NewEncoder(b).Encode(rc)
-		return oldMyPost(client, "/rest/self-register", b)
+		return oldMyPost(tlsConfig, retryCount, "/rest/self-register", b)
 	}
 
 	// Returns true when done; false when retry
-	lookupParam := func(client *http.Client, device *types.DeviceDb) bool {
-		resp, err := client.Get("https://" + serverNameAndPort +
-			"/rest/device-param")
+	lookupParam := func(tlsConfig *tls.Config, retryCount int,
+		device *types.DeviceDb) bool {
+		url := "/rest/device-param"
+		localAddr, err := types.GetLocalAddrAny(globalConfig,
+			globalStatus, retryCount, "")
+		if err != nil {
+			log.Fatal(err)
+		}
+		localTCPAddr := net.TCPAddr{IP: localAddr}
+		fmt.Printf("Connecting to %s/%s using source %v\n",
+			serverNameAndPort, url, localTCPAddr)
+		d := net.Dialer{LocalAddr: &localTCPAddr}
+		transport := &http.Transport{
+			TLSClientConfig: tlsConfig,
+			Dial:            d.Dial,
+		}
+		client := &http.Client{Transport: transport}
+
+		resp, err := client.Get("https://" + serverNameAndPort + url)
 		if err != nil {
 			fmt.Println(err)
 			return false
@@ -429,18 +484,20 @@ func main() {
 	}
 
 	if operations["selfRegister"] {
+		retryCount := 0
 		done := false
 		var delay time.Duration
 		for !done {
 			time.Sleep(delay)
 			if oldFlag {
-				done = oldSelfRegister()
+				done = oldSelfRegister(retryCount)
 			} else {
-				done = selfRegister()
+				done = selfRegister(retryCount)
 			}
 			if done {
 				continue
 			}
+			retryCount += 1
 			delay = 2 * (delay + time.Second)
 			if delay > maxDelay {
 				delay = maxDelay
@@ -465,9 +522,6 @@ func main() {
 		MinVersion: tls.VersionTLS12,
 	}
 	tlsConfig.BuildNameToCertificate()
-
-	transport := &http.Transport{TLSClientConfig: tlsConfig}
-	client := &http.Client{Transport: transport}
 
 	var addInfoDevice *types.AdditionalInfoDevice
 	if operations["lookupParam"] || operations["updateHwStatus"] {
@@ -516,15 +570,17 @@ func main() {
 			os.Remove(zedrouterConfigFileName)
 			return
 		}
+		retryCount := 0
 		done := false
 		var delay time.Duration
 		device := types.DeviceDb{}
 		for !done {
 			time.Sleep(delay)
-			done = lookupParam(client, &device)
+			done = lookupParam(tlsConfig, retryCount, &device)
 			if done {
 				continue
 			}
+			retryCount += 1
 			delay = 2 * (delay + time.Second)
 			if delay > maxDelay {
 				delay = maxDelay
@@ -683,13 +739,16 @@ func main() {
 		json.NewEncoder(b).Encode(hwStatus)
 
 		done := false
+		retryCount := 0
 		var delay time.Duration
 		for !done {
 			time.Sleep(delay)
-			done = oldMyPost(client, "/rest/update-hw-status", b)
+			done = oldMyPost(tlsConfig, retryCount,
+				"/rest/update-hw-status", b)
 			if done {
 				continue
 			}
+			retryCount += 1
 			delay = 2 * (delay + time.Second)
 			if delay > maxDelay {
 				delay = maxDelay
@@ -713,13 +772,16 @@ func main() {
 		// Input is in json format
 		b := bytes.NewBuffer(buf)
 		done := false
+		retryCount := 0
 		var delay time.Duration
 		for !done {
 			time.Sleep(delay)
-			done = oldMyPost(client, "/rest/update-sw-status", b)
+			done = oldMyPost(tlsConfig, retryCount,
+				"/rest/update-sw-status", b)
 			if done {
 				continue
 			}
+			retryCount += 1
 			delay = 2 * (delay + time.Second)
 			if delay > maxDelay {
 				delay = maxDelay

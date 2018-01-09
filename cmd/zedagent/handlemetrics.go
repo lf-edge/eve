@@ -9,9 +9,10 @@ import (
 	"github.com/shirou/gopsutil/disk"
 	"github.com/shirou/gopsutil/host"
 	"github.com/shirou/gopsutil/mem"
-	"github.com/shirou/gopsutil/net"
+	psutilnet "github.com/shirou/gopsutil/net"
 	"github.com/zededa/api/zmet"
 	"github.com/zededa/go-provision/types"
+	"net"
 	"net/http"
 	"io/ioutil"
 	"log"
@@ -27,19 +28,18 @@ const (
 	configDirname = baseDirname + "/config"
 )
 
-// XXX remove global variable
-var cpuStorageStat [][]string
-
-func publishMetrics() {
-	ExecuteXentopCmd()
-	PublishMetricsToZedCloud()
+func publishMetrics(iteration int) {
+	cpuStorageStat := ExecuteXentopCmd()
+	PublishMetricsToZedCloud(cpuStorageStat, iteration)
 }
 
 func metricsTimerTask() {
+	iteration := 0
 	ticker := time.NewTicker(time.Second * 60)
 	for t := range ticker.C {
 		log.Println("Tick at", t)
-		publishMetrics()
+		publishMetrics(iteration)
+		iteration += 1
 	}
 }
 
@@ -96,7 +96,9 @@ func GetDeviceManufacturerInfo() (string, string, string, string, string) {
 	return productManufacturer, productName, productVersion, productSerial, productUuid
 }
 
-func ExecuteXentopCmd() {
+func ExecuteXentopCmd() [][]string{
+	var cpuStorageStat [][]string
+
 	count := 0
 	counter := 0
 	arg1 := "xentop"
@@ -110,7 +112,7 @@ func ExecuteXentopCmd() {
 	stdout, err := cmd1.Output()
 	if err != nil {
 		println(err.Error())
-		return
+		return [][]string{}
 	}
 
 	xentopInfo := fmt.Sprintf("%s", stdout)
@@ -184,8 +186,10 @@ func ExecuteXentopCmd() {
 		}
 		counter = 0
 	}
+	return cpuStorageStat
 }
-func PublishMetricsToZedCloud() {
+
+func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 
 	var ReportMetrics = &zmet.ZMetricMsg{}
 
@@ -202,7 +206,7 @@ func PublishMetricsToZedCloud() {
 	// Handle xentop failing above
 	if len(cpuStorageStat) == 0 {
 		log.Printf("No xentop? metrics: %s\n", ReportMetrics)
-		SendMetricsProtobufStrThroughHttp(ReportMetrics)
+		SendMetricsProtobufStrThroughHttp(ReportMetrics, iteration)
 		return
 	}
 	
@@ -240,7 +244,7 @@ func PublishMetricsToZedCloud() {
 			ReportDeviceMetric.Memory.AvailPercentage = (100.0 - (ram.UsedPercent))
 		}
 		//find network related info...
-		network, err := net.IOCounters(true)
+		network, err := psutilnet.IOCounters(true)
 		if err != nil {
 			log.Println(err)
 		} else {
@@ -264,10 +268,10 @@ func PublishMetricsToZedCloud() {
 	}
 
 	log.Printf("Metrics: %s\n", ReportMetrics)
-	SendMetricsProtobufStrThroughHttp(ReportMetrics)
+	SendMetricsProtobufStrThroughHttp(ReportMetrics, iteration)
 }
 
-func PublishDeviceInfoToZedCloud() {
+func PublishDeviceInfoToZedCloud(iteration int) {
 
 	var ReportInfo = &zmet.ZInfoMsg{}
 
@@ -358,7 +362,7 @@ func PublishDeviceInfoToZedCloud() {
 		//read interface name from library
 		//and match it with uplink name from
 		//global config...
-		interfaces, _ := net.Interfaces()
+		interfaces, _ := psutilnet.Interfaces()
 		ReportDeviceInfo.Network = make([]*zmet.ZInfoNetwork, len(globalConfig.Uplink))
 		for index, uplink := range globalConfig.Uplink {
 			for _, interfaceDetail := range interfaces {
@@ -383,10 +387,10 @@ func PublishDeviceInfoToZedCloud() {
 	fmt.Println(ReportInfo)
 	fmt.Println(" ")
 
-	SendInfoProtobufStrThroughHttp(ReportInfo)
+	SendInfoProtobufStrThroughHttp(ReportInfo, iteration)
 }
 
-func PublishHypervisorInfoToZedCloud() {
+func PublishHypervisorInfoToZedCloud(iteration int) {
 
 	var ReportInfo = &zmet.ZInfoMsg{}
 
@@ -430,13 +434,21 @@ func PublishHypervisorInfoToZedCloud() {
 	fmt.Println(ReportInfo)
 	fmt.Println(" ")
 
-	SendInfoProtobufStrThroughHttp(ReportInfo)
+	SendInfoProtobufStrThroughHttp(ReportInfo, iteration)
 }
 
-func PublishAppInfoToZedCloud(aiStatus *types.AppInstanceStatus) {
-
+// XXX change caller filename to key which is uuid; not used for now
+func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
+     iteration int) {
+	fmt.Printf("PublishAppInfoToZedCloud uuid %s\n", uuid)
+	// XXX if it was deleted we publish nothing; do we need to delete from
+	// zedcloud?
+	if aiStatus == nil {
+		fmt.Printf("PublishAppInfoToZedCloud uuid %s deleted\n", uuid)
+		return
+	}
+	uuidStr := aiStatus.UUIDandVersion.Version
 	var ReportInfo = &zmet.ZInfoMsg{}
-	var uuidStr string = aiStatus.UUIDandVersion.UUID.String()
 
 	appType := new(zmet.ZInfoTypes)
 	*appType = zmet.ZInfoTypes_ZiApp
@@ -472,55 +484,119 @@ func PublishAppInfoToZedCloud(aiStatus *types.AppInstanceStatus) {
 	fmt.Println(ReportInfo)
 	fmt.Println(" ")
 
-	SendInfoProtobufStrThroughHttp(ReportInfo)
+	SendInfoProtobufStrThroughHttp(ReportInfo, iteration)
 }
 
-func SendInfoProtobufStrThroughHttp(ReportInfo *zmet.ZInfoMsg) {
+// This function is called per change, hence needs to try over all uplinks
+// send report on each uplink (XXX means iteration arg is not useful)
+// For each uplink we try different source IPs until we find a working one.
+func SendInfoProtobufStrThroughHttp(ReportInfo *zmet.ZInfoMsg, iteration int) {
 
 	data, err := proto.Marshal(ReportInfo)
 	if err != nil {
 		fmt.Println("marshaling error: ", err)
-	}
-
-	fmt.Printf("status-url: %s\n", statusUrl)
-	resp, err := cloudClient.Post("https://"+statusUrl,
-		"application/x-proto-binary", bytes.NewBuffer(data))
-	if err != nil {
-		fmt.Println(err)
 		return
 	}
-	defer resp.Body.Close()
-	switch resp.StatusCode {
-	case http.StatusOK:
-		fmt.Printf("SendInfoProtobufStrThroughHttp StatusOK\n")
-	default:
-		fmt.Printf("SendInfoProtobufStrThroughHttp statuscode %d %s\n",
-			resp.StatusCode, http.StatusText(resp.StatusCode))
-		fmt.Printf("received response %v\n", resp)
+
+	for i, intf := range globalConfig.Uplink {
+		addrCount := types.CountLocalAddrAny(globalConfig, globalStatus,
+			  intf)
+		// XXX makes logfile too long; debug flag?
+		log.Printf("Connecting to %s using intf %s i %d #sources %d\n",
+			statusUrl, intf, i, addrCount)
+
+		for retryCount := 0; retryCount < addrCount; retryCount += 1 {
+			localAddr, err := types.GetLocalAddrAny(globalConfig,
+				globalStatus, retryCount, intf)
+			if err != nil {
+				log.Fatal(err)
+			}
+			localTCPAddr := net.TCPAddr{IP: localAddr}
+			// XXX makes logfile too long; debug flag?
+			fmt.Printf("Connecting to %s using intf %s source %v\n",
+				statusUrl, intf, localTCPAddr)
+			d := net.Dialer{LocalAddr: &localTCPAddr}
+			transport := &http.Transport{
+				TLSClientConfig: tlsConfig,
+				Dial:            d.Dial,
+			}
+			client := &http.Client{Transport: transport}
+
+			resp, err := client.Post("https://"+statusUrl,
+				"application/x-proto-binary",
+				bytes.NewBuffer(data))
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+			defer resp.Body.Close()
+			switch resp.StatusCode {
+			case http.StatusOK:
+				fmt.Printf("SendInfoProtobufStrThroughHttp StatusOK\n")
+			default:
+				fmt.Printf("SendInfoProtobufStrThroughHttp statuscode %d %s\n",
+					resp.StatusCode, http.StatusText(resp.StatusCode))
+				fmt.Printf("received response %v\n", resp)
+			}
+			break
+		}
+		log.Printf("All attempts to connect to %s using intf %s failed\n",
+			statusUrl, intf)
 	}
 }
 
-func SendMetricsProtobufStrThroughHttp(ReportMetrics *zmet.ZMetricMsg) {
-
+// Each iteration we try a different uplink. For each uplink we try all
+// its local IP addresses until we get a success.
+func SendMetricsProtobufStrThroughHttp(ReportMetrics *zmet.ZMetricMsg,
+     iteration int) {
 	data, err := proto.Marshal(ReportMetrics)
 	if err != nil {
 		fmt.Println("marshaling error: ", err)
 	}
 
-	fmt.Printf("metrics-url: %s\n", metricsUrl)
-	resp, err := cloudClient.Post("https://"+metricsUrl,
-		"application/x-proto-binary", bytes.NewBuffer(data))
+	intf, err := types.GetUplinkAny(globalConfig, globalStatus, iteration)
 	if err != nil {
-		fmt.Println(err)
+		log.Fatal(err)
+	}
+	addrCount := types.CountLocalAddrAny(globalConfig, globalStatus, intf)
+	// XXX makes logfile too long; debug flag?
+	log.Printf("Connecting to %s using intf %s interation %d #sources %d\n",
+		metricsUrl, intf, iteration, addrCount)
+	
+	for retryCount := 0; retryCount < addrCount; retryCount += 1 {
+		localAddr, err := types.GetLocalAddrAny(globalConfig,
+			globalStatus, retryCount, intf)
+		if err != nil {
+			log.Fatal(err)
+		}
+		localTCPAddr := net.TCPAddr{IP: localAddr}
+		// XXX makes logfile too long; debug flag?
+		fmt.Printf("Connecting to %s using intf %s source %v\n",
+			metricsUrl, intf, localTCPAddr)
+		d := net.Dialer{LocalAddr: &localTCPAddr}
+		transport := &http.Transport{
+			TLSClientConfig: tlsConfig,
+			Dial:            d.Dial,
+		}
+		client := &http.Client{Transport: transport}
+
+		resp, err := client.Post("https://"+metricsUrl,
+			"application/x-proto-binary", bytes.NewBuffer(data))
+		if err != nil {
+			fmt.Println(err)
+			continue
+		}
+		defer resp.Body.Close()
+		switch resp.StatusCode {
+		case http.StatusOK:
+			fmt.Printf("SendMetricsProtobufStrThroughHttp StatusOK\n")
+		default:
+			fmt.Printf("SendMetricsProtobufStrThroughHttp statuscode %d %s\n",
+				resp.StatusCode, http.StatusText(resp.StatusCode))
+			fmt.Printf("received response %v\n", resp)
+		}
 		return
 	}
-	defer resp.Body.Close()
-	switch resp.StatusCode {
-	case http.StatusOK:
-		fmt.Printf("SendMetricsProtobufStrThroughHttp StatusOK\n")
-	default:
-		fmt.Printf("SendMetricsProtobufStrThroughHttp statuscode %d %s\n",
-			resp.StatusCode, http.StatusText(resp.StatusCode))
-		fmt.Printf("received response %v\n", resp)
-	}
+	log.Printf("All attempts to connect to %s using intf %s failed\n",
+		metricsUrl, intf)
 }
