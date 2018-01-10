@@ -543,7 +543,7 @@ func main() {
 	var devUUID uuid.UUID
 	if _, err := os.Stat(uuidFileName); err != nil {
 		// Create and write with initial values
-		devUUID = uuid.NewV4()
+		devUUID, err = uuid.NewV4()
 		b := []byte(fmt.Sprintf("%s\n", devUUID))
 		err = ioutil.WriteFile(uuidFileName, b, 0644)
 		if err != nil {
