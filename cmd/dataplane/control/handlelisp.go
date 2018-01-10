@@ -59,6 +59,20 @@ func parseRloc(rlocStr *Rloc) (types.Rloc, bool) {
 	return rlocEntry, true
 }
 
+func isAddressIPv6(eid string) bool {
+	for i := 0; i < len(eid); i++ {
+		switch eid[i] {
+		case ':':
+			return true
+		case '.':
+			return false
+		default:
+			continue
+		}
+	}
+	return false
+}
+
 // Extract map cache message and add to our database
 func handleMapCache(msg []byte) {
 	var mapCache MapCacheEntry
@@ -86,9 +100,18 @@ func handleMapCache(msg []byte) {
 	if eid == nil {
 		return
 	}
+	v6 := isAddressIPv6(mapCache.EidPrefix)
 	maskLen, _ := ipNet.Mask.Size()
-	if maskLen != 128 {
-		// We are not interested in prefixes shorter then 128
+
+	if (maskLen == 0) && v6 {
+		log.Printf("XXXXX Eid %s length is %d\n", mapCache.EidPrefix, maskLen)
+		for _, b := range eid {
+			log.Printf("%d:", b)
+		}
+		log.Println()
+	}
+	if (maskLen != 128) && ((maskLen != 0) || !v6) {
+		// We are not interested in prefixes shorter then 128 other than 0
 		log.Println("Ignoring EID with mask length:", maskLen)
 		return
 	}

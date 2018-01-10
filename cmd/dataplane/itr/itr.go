@@ -254,7 +254,7 @@ eidLoop:
 	}
 }
 
-// This function expectes the parameter pktBuf to be a statically
+// This function expects the parameter pktBuf to be a statically
 // allocated buffer longer than the original packet length.
 // We currently use a buffer of length 64K bytes.
 //
@@ -321,6 +321,14 @@ func LookupAndSend(packet gopacket.Packet,
 			default:
 				// We do not want to get blocked and keep waiting
 				// when there are no packets in the buffer channel.
+			}
+		} else {
+			// Look for the default route
+			defaultPrefix := net.ParseIP("::")
+			defaultMap, _ := fib.LookupAndAdd(iid, defaultPrefix)
+			if defaultMap.Resolved {
+				fib.CraftAndSendLispPacket(packet, pktBuf, capLen, hash32,
+					defaultMap, iid, fd4, fd6)
 			}
 		}
 	} else {
