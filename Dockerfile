@@ -1,7 +1,11 @@
 FROM golang:1.9.1-alpine AS build
-RUN apk add --no-cache git gcc linux-headers libc-dev util-linux
+ARG PF_RING_VERSION=6.6.0-stable
+RUN apk add --no-cache bison flex git gcc linux-headers libc-dev make util-linux
 
 ADD ./  /go/src/github.com/zededa/go-provision/
+ADD ./cmd/dataplane/itr  /go/src/github.com/zededa/go-provision/dataplane/itr
+ADD ./cmd/dataplane/etr  /go/src/github.com/zededa/go-provision/dataplane/etr
+ADD ./cmd/dataplane/fib  /go/src/github.com/zededa/go-provision/dataplane/fib
 ADD etc /opt/zededa/etc
 ADD README /opt/zededa/etc
 ADD scripts/device-steps.sh \
@@ -13,6 +17,8 @@ ADD scripts/device-steps.sh \
     scripts/zupgrade.sh \
   /opt/zededa/bin/
 ADD examples/x86-ggc-1a0d85d9-5e83-4589-b56f-cedabc9a8c0d.json /tmp/gg.json
+
+RUN mkdir -p /tmp/github; cd /tmp/github; git clone -b ${PF_RING_VERSION} https://github.com/ntop/PF_RING.git; cd PF_RING/userland; make install; cp ../kernel/linux/pf_ring.h /usr/include/linux
 
 RUN go get github.com/zededa/go-provision/cmd/...
 # this is taking care of on-boarding code that has to interact with LISP
@@ -28,6 +34,9 @@ FROM zededa/lisp:latest AS lisp
 FROM scratch
 COPY --from=build /opt/zededa /opt/zededa
 COPY --from=build /go/bin/* /opt/zededa/bin/
+COPY --from=build /usr/local/lib/* /opt/zededa/lib/
+COPY --from=build /usr/local/include/* /opt/zededa/include/
+COPY --from=build /usr/include/linux/pf_ring.h /opt/zededa/include/linux/
 COPY --from=lisp /lisp /opt/zededa/lisp/
 COPY --from=lisp /usr/bin/pydoc /usr/bin/smtpd.py /usr/bin/python* /usr/bin/
 COPY --from=lisp /usr/lib/libpython* /usr/lib/libffi.so* /usr/lib/
