@@ -27,6 +27,7 @@ It has these top-level messages:
 	MapServer
 	ZedServer
 	DeviceLispDetails
+	DeviceOpsCmd
 	EdgeDevConfig
 	UUIDandVersion
 	Ipv4Spec

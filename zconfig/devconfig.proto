@@ -30,6 +30,23 @@ message DeviceLispDetails {
         uint32 EidAllocationPrefixLen = 9;
         string ClientAddr = 10;
 }
+enum DeviceCmdType {
+	OpsInvalid = 0;
+	Reset      = 1;
+	Backup     = 2;
+}
+
+// Device Operational Commands Semantic
+// For rebooting device,  command=Reset, desiredState = on
+// For poweroff device,  command=Reset, desiredState = off
+// For backup at midnight, command=Backup, desiredState=n/a, opsTime = mm/dd/yy:hh:ss 
+//
+message DeviceOpsCmd {
+	DeviceCmdType command = 1;
+	uint32 counter = 2;
+	bool desriedState = 3;
+	string opsTime = 4;
+}
 
 message EdgeDevConfig {
 	UUIDandVersion id = 1;
@@ -42,4 +59,5 @@ message EdgeDevConfig {
 
 	DeviceLispDetails lispInfo = 7;
 	repeated BaseOSConfig base = 8;	// BaseOSImage config block
+	repeated DeviceOpsCmd operations = 9; // process in order
 }
