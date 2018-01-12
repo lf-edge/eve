@@ -31,6 +31,20 @@ message DeviceLispDetails {
         string ClientAddr = 10;
 }
 
+// Device Operational Commands Semantic
+// For rebooting device,  command=Reset, counter = counter+delta, desiredState = on
+// For poweroff device,  command=Reset, counter = counter+delta, desiredState = off
+// For backup at midnight, command=Backup, counter = counter+delta, desiredState=n/a, opsTime = mm/dd/yy:hh:ss 
+// Current implementation does support only single command outstanding for each type
+// In future can be extended to have more scheduled events
+//
+message DeviceOpsCmd {
+	uint32 counter = 2;
+	bool desriedState = 3;
+	// FIXME: change to timestamp, once we move to gogo proto
+	string opsTime = 4;
+}
+
 message EdgeDevConfig {
 	UUIDandVersion id = 1;
 	bytes devConfigSha256 = 2;
@@ -42,4 +56,6 @@ message EdgeDevConfig {
 
 	DeviceLispDetails lispInfo = 7;
 	repeated BaseOSConfig base = 8;	// BaseOSImage config block
+	DeviceOpsCmd reset = 9; 
+	DeviceOpsCmd backup = 10; 
 }
