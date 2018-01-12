@@ -136,11 +136,14 @@ func (m *DeviceLispDetails) GetClientAddr() string {
 // For rebooting device,  command=Reset, counter = counter+delta, desiredState = on
 // For poweroff device,  command=Reset, counter = counter+delta, desiredState = off
 // For backup at midnight, command=Backup, counter = counter+delta, desiredState=n/a, opsTime = mm/dd/yy:hh:ss
+// Current implementation does support only single command outstanding for each type
+// In future can be extended to have more scheduled events
 //
 type DeviceOpsCmd struct {
 	Counter      uint32 `protobuf:"varint,2,opt,name=counter" json:"counter,omitempty"`
 	DesriedState bool   `protobuf:"varint,3,opt,name=desriedState" json:"desriedState,omitempty"`
-	OpsTime      string `protobuf:"bytes,4,opt,name=opsTime" json:"opsTime,omitempty"`
+	// FIXME: change to timestamp, once we move to gogo proto
+	OpsTime string `protobuf:"bytes,4,opt,name=opsTime" json:"opsTime,omitempty"`
 }
 
 func (m *DeviceOpsCmd) Reset()                    { *m = DeviceOpsCmd{} }
