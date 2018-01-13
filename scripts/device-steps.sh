@@ -297,6 +297,10 @@ for l in $LOGGERS; do
 done
 
 if [ $SELF_REGISTER = 1 ]; then
+    # Do we have a file from the build?
+    if [ -f $ETCDIR/network.config.static ] ; then
+	cp $ETCDIR/network.config.static $ETCDIR/network.config.global
+    else
 	intf=`$BINDIR/find-uplink.sh $ETCDIR/lisp.config.base`
 	if [ "$intf" != "" ]; then
 		echo "Found interface $intf based on route to map servers"
@@ -309,30 +313,30 @@ if [ $SELF_REGISTER = 1 ]; then
 	cat <<EOF >$ETCDIR/network.config.global
 {"Uplink":["$intf"], "FreeUplinks":["$intf"]}
 EOF
-
-	# Make sure we set the dom0 hostname, used by LISP nat traversal, to
-	# a unique string. Using the uuid
-	uuid=`cat $ETCDIR/uuid`
-	echo "Setting hostname to $uuid"
-	/bin/hostname $uuid
-	/bin/hostname >/etc/hostname
+    fi
+    # Make sure we set the dom0 hostname, used by LISP nat traversal, to
+    # a unique string. Using the uuid
+    uuid=`cat $ETCDIR/uuid`
+    echo "Setting hostname to $uuid"
+    /bin/hostname $uuid
+    /bin/hostname >/etc/hostname
+    # put the uuid in /etc/hosts to avoid complaints
+    echo "Adding $uuid to /etc/hosts"
+    echo "127.0.0.1 $uuid" >>/etc/hosts
+else
+    uuid=`cat $ETCDIR/uuid`
+    # For safety in case the rootfs was duplicated and /etc/hostame wasn't
+    # updated
+    /bin/hostname $uuid
+    /bin/hostname >/etc/hostname
+    grep -s $uuid /etc/hosts >/dev/null
+    if [ !? = 1 ]; then
 	# put the uuid in /etc/hosts to avoid complaints
 	echo "Adding $uuid to /etc/hosts"
 	echo "127.0.0.1 $uuid" >>/etc/hosts
-else
-	uuid=`cat $ETCDIR/uuid`
-	# For safety in case the rootfs was duplicated and /etc/hostame wasn't
-	# updated
-	/bin/hostname $uuid
-	/bin/hostname >/etc/hostname
-	grep -s $uuid /etc/hosts >/dev/null
-	if [ !? = 1 ]; then
-		# put the uuid in /etc/hosts to avoid complaints
-		echo "Adding $uuid to /etc/hosts"
-		echo "127.0.0.1 $uuid" >>/etc/hosts
-	else
-		echo "Found $uuid in /etc/hosts"
-	fi
+    else
+	echo "Found $uuid in /etc/hosts"
+    fi
 fi
 
 # Need a key for device-to-device map-requests
