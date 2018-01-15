@@ -35,34 +35,6 @@ message NetworkParam {
 	NetworkState state = 12; // serves no role here, should be removed
 }
 
-
-enum NetworkServiceSubType {
-        NETWORKNOOP  = 0;
-        NETWORKCREATE  = 1;
-        NETWORKARCHIVE = 2; 
-        NETWORKUPDATE  = 3;
-        NETWORKREAD    = 4;
-        NETWORKLIST    = 5;
-}
-
-message NetworkServiceReq {
-        NetworkServiceSubType subcmd = 1;
-        NetworkParam ninfo = 2;
-}
-
-enum NetworkServiceResult {
-        NETWORKNONE       = 0;
-        NETWORKOPSSUCCESS = 1;
-        NETWORKOPSFAILED  = 2;
-        NETWORKNOTFOUND   = 3;
-}
-
-message NetworkServiceResp {
-        NetworkServiceSubType subcmd = 1;
-        NetworkServiceResult result = 2;
-        repeated NetworkParam ninfo = 3;
-}
-
 message NetworkIf {
 	string name =1;
 	string id =2;

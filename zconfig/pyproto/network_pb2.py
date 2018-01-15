@@ -22,7 +22,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='network.proto',
   package='',
   syntax='proto3',
-  serialized_pb=_b('\n\rnetwork.proto\x1a\x08\x66w.proto\x1a\x0cnetcmn.proto\"\x93\x02\n\x0cNetworkParam\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0f\n\x07project\x18\x03 \x01(\t\x12\x0c\n\x04\x64\x65sc\x18\x04 \x01(\t\x12\x1a\n\x04type\x18\x05 \x01(\x0e\x32\x0c.NetworkType\x12\x1a\n\x04kind\x18\x06 \x01(\x0e\x32\x0c.NetworkKind\x12\x16\n\x03nl2\x18\x08 \x01(\x0b\x32\x07.l2specH\x00\x12\x1a\n\x05nlisp\x18\t \x01(\x0b\x32\t.lispspecH\x00\x12\x18\n\x03nv4\x18\n \x01(\x0b\x32\t.ipv4specH\x00\x12\x18\n\x03nv6\x18\x0b \x01(\x0b\x32\t.ipv6specH\x00\x12\x1c\n\x05state\x18\x0c \x01(\x0e\x32\r.NetworkStateB\x0c\n\nnetContent\"Y\n\x11NetworkServiceReq\x12&\n\x06subcmd\x18\x01 \x01(\x0e\x32\x16.NetworkServiceSubType\x12\x1c\n\x05ninfo\x18\x02 \x01(\x0b\x32\r.NetworkParam\"\x81\x01\n\x12NetworkServiceResp\x12&\n\x06subcmd\x18\x01 \x01(\x0e\x32\x16.NetworkServiceSubType\x12%\n\x06result\x18\x02 \x01(\x0e\x32\x15.NetworkServiceResult\x12\x1c\n\x05ninfo\x18\x03 \x03(\x0b\x32\r.NetworkParam\"\xab\x01\n\tNetworkIf\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\n\n\x02id\x18\x02 \x01(\t\x12\x11\n\tnetworkId\x18\x03 \x01(\t\x12\x0c\n\x04\x61\x64\x64r\x18\x04 \x01(\t\x12\x10\n\x08hostname\x18\x05 \x01(\t\x12\x15\n\rlispsignature\x18\x06 \x01(\t\x12\x0f\n\x07pemcert\x18\x07 \x01(\x0c\x12\x15\n\rpemprivatekey\x18\x08 \x01(\x0c\x12\x12\n\x04\x61\x63ls\x18( \x03(\x0b\x32\x04.ACE*=\n\x0bNetworkKind\x12\x13\n\x0fNETWORKKINGNOOP\x10\x00\x12\x0c\n\x08UNDERLAY\x10\x01\x12\x0b\n\x07OVERLAY\x10\x02*H\n\x0cNetworkState\x12\x0e\n\nNSTATENOOP\x10\x00\x12\x0c\n\x08NARCHIVE\x10\x01\x12\x0b\n\x07NACTIVE\x10\x02\x12\r\n\tNINACTIVE\x10\x03*\x84\x01\n\x15NetworkServiceSubType\x12\x0f\n\x0bNETWORKNOOP\x10\x00\x12\x11\n\rNETWORKCREATE\x10\x01\x12\x12\n\x0eNETWORKARCHIVE\x10\x02\x12\x11\n\rNETWORKUPDATE\x10\x03\x12\x0f\n\x0bNETWORKREAD\x10\x04\x12\x0f\n\x0bNETWORKLIST\x10\x05*i\n\x14NetworkServiceResult\x12\x0f\n\x0bNETWORKNONE\x10\x00\x12\x15\n\x11NETWORKOPSSUCCESS\x10\x01\x12\x14\n\x10NETWORKOPSFAILED\x10\x02\x12\x13\n\x0fNETWORKNOTFOUND\x10\x03\x42@\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1dgithub.com/zededa/api/zconfigb\x06proto3')
+  serialized_pb=_b('\n\rnetwork.proto\x1a\x08\x66w.proto\x1a\x0cnetcmn.proto\"\x93\x02\n\x0cNetworkParam\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0f\n\x07project\x18\x03 \x01(\t\x12\x0c\n\x04\x64\x65sc\x18\x04 \x01(\t\x12\x1a\n\x04type\x18\x05 \x01(\x0e\x32\x0c.NetworkType\x12\x1a\n\x04kind\x18\x06 \x01(\x0e\x32\x0c.NetworkKind\x12\x16\n\x03nl2\x18\x08 \x01(\x0b\x32\x07.l2specH\x00\x12\x1a\n\x05nlisp\x18\t \x01(\x0b\x32\t.lispspecH\x00\x12\x18\n\x03nv4\x18\n \x01(\x0b\x32\t.ipv4specH\x00\x12\x18\n\x03nv6\x18\x0b \x01(\x0b\x32\t.ipv6specH\x00\x12\x1c\n\x05state\x18\x0c \x01(\x0e\x32\r.NetworkStateB\x0c\n\nnetContent\"\xab\x01\n\tNetworkIf\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\n\n\x02id\x18\x02 \x01(\t\x12\x11\n\tnetworkId\x18\x03 \x01(\t\x12\x0c\n\x04\x61\x64\x64r\x18\x04 \x01(\t\x12\x10\n\x08hostname\x18\x05 \x01(\t\x12\x15\n\rlispsignature\x18\x06 \x01(\t\x12\x0f\n\x07pemcert\x18\x07 \x01(\x0c\x12\x15\n\rpemprivatekey\x18\x08 \x01(\x0c\x12\x12\n\x04\x61\x63ls\x18( \x03(\x0b\x32\x04.ACE*=\n\x0bNetworkKind\x12\x13\n\x0fNETWORKKINGNOOP\x10\x00\x12\x0c\n\x08UNDERLAY\x10\x01\x12\x0b\n\x07OVERLAY\x10\x02*H\n\x0cNetworkState\x12\x0e\n\nNSTATENOOP\x10\x00\x12\x0c\n\x08NARCHIVE\x10\x01\x12\x0b\n\x07NACTIVE\x10\x02\x12\r\n\tNINACTIVE\x10\x03\x42@\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1dgithub.com/zededa/api/zconfigb\x06proto3')
   ,
   dependencies=[fw__pb2.DESCRIPTOR,netcmn__pb2.DESCRIPTOR,])
 
@@ -47,8 +47,8 @@ _NETWORKKIND = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=716,
-  serialized_end=777,
+  serialized_start=493,
+  serialized_end=554,
 )
 _sym_db.RegisterEnumDescriptor(_NETWORKKIND)
 
@@ -78,82 +78,12 @@ _NETWORKSTATE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=779,
-  serialized_end=851,
+  serialized_start=556,
+  serialized_end=628,
 )
 _sym_db.RegisterEnumDescriptor(_NETWORKSTATE)
 
 NetworkState = enum_type_wrapper.EnumTypeWrapper(_NETWORKSTATE)
-_NETWORKSERVICESUBTYPE = _descriptor.EnumDescriptor(
-  name='NetworkServiceSubType',
-  full_name='NetworkServiceSubType',
-  filename=None,
-  file=DESCRIPTOR,
-  values=[
-    _descriptor.EnumValueDescriptor(
-      name='NETWORKNOOP', index=0, number=0,
-      options=None,
-      type=None),
-    _descriptor.EnumValueDescriptor(
-      name='NETWORKCREATE', index=1, number=1,
-      options=None,
-      type=None),
-    _descriptor.EnumValueDescriptor(
-      name='NETWORKARCHIVE', index=2, number=2,
-      options=None,
-      type=None),
-    _descriptor.EnumValueDescriptor(
-      name='NETWORKUPDATE', index=3, number=3,
-      options=None,
-      type=None),
-    _descriptor.EnumValueDescriptor(
-      name='NETWORKREAD', index=4, number=4,
-      options=None,
-      type=None),
-    _descriptor.EnumValueDescriptor(
-      name='NETWORKLIST', index=5, number=5,
-      options=None,
-      type=None),
-  ],
-  containing_type=None,
-  options=None,
-  serialized_start=854,
-  serialized_end=986,
-)
-_sym_db.RegisterEnumDescriptor(_NETWORKSERVICESUBTYPE)
-
-NetworkServiceSubType = enum_type_wrapper.EnumTypeWrapper(_NETWORKSERVICESUBTYPE)
-_NETWORKSERVICERESULT = _descriptor.EnumDescriptor(
-  name='NetworkServiceResult',
-  full_name='NetworkServiceResult',
-  filename=None,
-  file=DESCRIPTOR,
-  values=[
-    _descriptor.EnumValueDescriptor(
-      name='NETWORKNONE', index=0, number=0,
-      options=None,
-      type=None),
-    _descriptor.EnumValueDescriptor(
-      name='NETWORKOPSSUCCESS', index=1, number=1,
-      options=None,
-      type=None),
-    _descriptor.EnumValueDescriptor(
-      name='NETWORKOPSFAILED', index=2, number=2,
-      options=None,
-      type=None),
-    _descriptor.EnumValueDescriptor(
-      name='NETWORKNOTFOUND', index=3, number=3,
-      options=None,
-      type=None),
-  ],
-  containing_type=None,
-  options=None,
-  serialized_start=988,
-  serialized_end=1093,
-)
-_sym_db.RegisterEnumDescriptor(_NETWORKSERVICERESULT)
-
-NetworkServiceResult = enum_type_wrapper.EnumTypeWrapper(_NETWORKSERVICERESULT)
 NETWORKKINGNOOP = 0
 UNDERLAY = 1
 OVERLAY = 2
@@ -161,16 +91,6 @@ NSTATENOOP = 0
 NARCHIVE = 1
 NACTIVE = 2
 NINACTIVE = 3
-NETWORKNOOP = 0
-NETWORKCREATE = 1
-NETWORKARCHIVE = 2
-NETWORKUPDATE = 3
-NETWORKREAD = 4
-NETWORKLIST = 5
-NETWORKNONE = 0
-NETWORKOPSSUCCESS = 1
-NETWORKOPSFAILED = 2
-NETWORKNOTFOUND = 3
 
 
 
@@ -278,89 +198,6 @@ _NETWORKPARAM = _descriptor.Descriptor(
 )
 
 
-_NETWORKSERVICEREQ = _descriptor.Descriptor(
-  name='NetworkServiceReq',
-  full_name='NetworkServiceReq',
-  filename=None,
-  file=DESCRIPTOR,
-  containing_type=None,
-  fields=[
-    _descriptor.FieldDescriptor(
-      name='subcmd', full_name='NetworkServiceReq.subcmd', index=0,
-      number=1, type=14, cpp_type=8, label=1,
-      has_default_value=False, default_value=0,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      options=None, file=DESCRIPTOR),
-    _descriptor.FieldDescriptor(
-      name='ninfo', full_name='NetworkServiceReq.ninfo', index=1,
-      number=2, type=11, cpp_type=10, label=1,
-      has_default_value=False, default_value=None,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      options=None, file=DESCRIPTOR),
-  ],
-  extensions=[
-  ],
-  nested_types=[],
-  enum_types=[
-  ],
-  options=None,
-  is_extendable=False,
-  syntax='proto3',
-  extension_ranges=[],
-  oneofs=[
-  ],
-  serialized_start=319,
-  serialized_end=408,
-)
-
-
-_NETWORKSERVICERESP = _descriptor.Descriptor(
-  name='NetworkServiceResp',
-  full_name='NetworkServiceResp',
-  filename=None,
-  file=DESCRIPTOR,
-  containing_type=None,
-  fields=[
-    _descriptor.FieldDescriptor(
-      name='subcmd', full_name='NetworkServiceResp.subcmd', index=0,
-      number=1, type=14, cpp_type=8, label=1,
-      has_default_value=False, default_value=0,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      options=None, file=DESCRIPTOR),
-    _descriptor.FieldDescriptor(
-      name='result', full_name='NetworkServiceResp.result', index=1,
-      number=2, type=14, cpp_type=8, label=1,
-      has_default_value=False, default_value=0,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      options=None, file=DESCRIPTOR),
-    _descriptor.FieldDescriptor(
-      name='ninfo', full_name='NetworkServiceResp.ninfo', index=2,
-      number=3, type=11, cpp_type=10, label=3,
-      has_default_value=False, default_value=[],
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      options=None, file=DESCRIPTOR),
-  ],
-  extensions=[
-  ],
-  nested_types=[],
-  enum_types=[
-  ],
-  options=None,
-  is_extendable=False,
-  syntax='proto3',
-  extension_ranges=[],
-  oneofs=[
-  ],
-  serialized_start=411,
-  serialized_end=540,
-)
-
-
 _NETWORKIF = _descriptor.Descriptor(
   name='NetworkIf',
   full_name='NetworkIf',
@@ -443,8 +280,8 @@ _NETWORKIF = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=543,
-  serialized_end=714,
+  serialized_start=320,
+  serialized_end=491,
 )
 
 _NETWORKPARAM.fields_by_name['type'].enum_type = netcmn__pb2._NETWORKTYPE
@@ -466,20 +303,11 @@ _NETWORKPARAM.fields_by_name['nv4'].containing_oneof = _NETWORKPARAM.oneofs_by_n
 _NETWORKPARAM.oneofs_by_name['netContent'].fields.append(
   _NETWORKPARAM.fields_by_name['nv6'])
 _NETWORKPARAM.fields_by_name['nv6'].containing_oneof = _NETWORKPARAM.oneofs_by_name['netContent']
-_NETWORKSERVICEREQ.fields_by_name['subcmd'].enum_type = _NETWORKSERVICESUBTYPE
-_NETWORKSERVICEREQ.fields_by_name['ninfo'].message_type = _NETWORKPARAM
-_NETWORKSERVICERESP.fields_by_name['subcmd'].enum_type = _NETWORKSERVICESUBTYPE
-_NETWORKSERVICERESP.fields_by_name['result'].enum_type = _NETWORKSERVICERESULT
-_NETWORKSERVICERESP.fields_by_name['ninfo'].message_type = _NETWORKPARAM
 _NETWORKIF.fields_by_name['acls'].message_type = fw__pb2._ACE
 DESCRIPTOR.message_types_by_name['NetworkParam'] = _NETWORKPARAM
-DESCRIPTOR.message_types_by_name['NetworkServiceReq'] = _NETWORKSERVICEREQ
-DESCRIPTOR.message_types_by_name['NetworkServiceResp'] = _NETWORKSERVICERESP
 DESCRIPTOR.message_types_by_name['NetworkIf'] = _NETWORKIF
 DESCRIPTOR.enum_types_by_name['NetworkKind'] = _NETWORKKIND
 DESCRIPTOR.enum_types_by_name['NetworkState'] = _NETWORKSTATE
-DESCRIPTOR.enum_types_by_name['NetworkServiceSubType'] = _NETWORKSERVICESUBTYPE
-DESCRIPTOR.enum_types_by_name['NetworkServiceResult'] = _NETWORKSERVICERESULT
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
 NetworkParam = _reflection.GeneratedProtocolMessageType('NetworkParam', (_message.Message,), dict(
@@ -488,20 +316,6 @@ NetworkParam = _reflection.GeneratedProtocolMessageType('NetworkParam', (_messag
   # @@protoc_insertion_point(class_scope:NetworkParam)
   ))
 _sym_db.RegisterMessage(NetworkParam)
-
-NetworkServiceReq = _reflection.GeneratedProtocolMessageType('NetworkServiceReq', (_message.Message,), dict(
-  DESCRIPTOR = _NETWORKSERVICEREQ,
-  __module__ = 'network_pb2'
-  # @@protoc_insertion_point(class_scope:NetworkServiceReq)
-  ))
-_sym_db.RegisterMessage(NetworkServiceReq)
-
-NetworkServiceResp = _reflection.GeneratedProtocolMessageType('NetworkServiceResp', (_message.Message,), dict(
-  DESCRIPTOR = _NETWORKSERVICERESP,
-  __module__ = 'network_pb2'
-  # @@protoc_insertion_point(class_scope:NetworkServiceResp)
-  ))
-_sym_db.RegisterMessage(NetworkServiceResp)
 
 NetworkIf = _reflection.GeneratedProtocolMessageType('NetworkIf', (_message.Message,), dict(
   DESCRIPTOR = _NETWORKIF,
