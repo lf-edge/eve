@@ -39,8 +39,6 @@ It has these top-level messages:
 	AppInstanceConfig
 	VmConfig
 	NetworkParam
-	NetworkServiceReq
-	NetworkServiceResp
 	NetworkIf
 	NetworkConfig
 	NetworkAdapter
