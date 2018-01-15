@@ -56,6 +56,6 @@ message EdgeDevConfig {
 
 	DeviceLispDetails lispInfo = 7;
 	repeated BaseOSConfig base = 8;	// BaseOSImage config block
-	DeviceOpsCmd reset = 9; 
+	DeviceOpsCmd reboot = 9; 
 	DeviceOpsCmd backup = 10; 
 }
