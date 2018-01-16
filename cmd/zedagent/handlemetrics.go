@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"github.com/golang/protobuf/proto"
 	"github.com/shirou/gopsutil/cpu"
@@ -14,7 +13,6 @@ import (
 	"github.com/zededa/go-provision/types"
 	"net"
 	"net/http"
-	"io/ioutil"
 	"log"
 	"os/exec"
 	"regexp"
@@ -349,33 +347,23 @@ func PublishDeviceInfoToZedCloud(iteration int) {
 	ReportDeviceSoftwareInfo.SwHash = *proto.String(" ")
 	ReportDeviceInfo.Software = ReportDeviceSoftwareInfo
 
-	globalUplinkFileName := configDirname + "/global"
-	cb, err := ioutil.ReadFile(globalUplinkFileName)
-	if err != nil {
-		log.Printf("%s for %s\n", err, globalUplinkFileName)
-		log.Fatal(err)
-	}
-	var globalConfig types.DeviceNetworkConfig
-	if err := json.Unmarshal(cb, &globalConfig); err != nil {
-		log.Printf("%s DeviceNetworkConfig file: %s\n", err, globalUplinkFileName)
-	} else {
-		//read interface name from library
-		//and match it with uplink name from
-		//global config...
-		interfaces, _ := psutilnet.Interfaces()
-		ReportDeviceInfo.Network = make([]*zmet.ZInfoNetwork, len(globalConfig.Uplink))
-		for index, uplink := range globalConfig.Uplink {
-			for _, interfaceDetail := range interfaces {
-				if uplink == interfaceDetail.Name {
-					ReportDeviceNetworkInfo := new(zmet.ZInfoNetwork)
-					for ip := 0; ip < len(interfaceDetail.Addrs)-1; ip++ {
-						ReportDeviceNetworkInfo.IPAddr = *proto.String(interfaceDetail.Addrs[0].Addr)
-					}
-
-					ReportDeviceNetworkInfo.MacAddr = *proto.String(interfaceDetail.HardwareAddr)
-					ReportDeviceNetworkInfo.DevName = *proto.String(interfaceDetail.Name)
-					ReportDeviceInfo.Network[index] = ReportDeviceNetworkInfo
+	//read interface name from library
+	//and match it with uplink name from
+	//global status...
+	interfaces, _ := psutilnet.Interfaces()
+	ReportDeviceInfo.Network = make([]*zmet.ZInfoNetwork,
+		len(globalStatus.UplinkStatus))
+	for index, uplink := range globalStatus.UplinkStatus {
+		for _, interfaceDetail := range interfaces {
+			if uplink.IfName == interfaceDetail.Name {
+				ReportDeviceNetworkInfo := new(zmet.ZInfoNetwork)
+				for ip := 0; ip < len(interfaceDetail.Addrs)-1; ip++ {
+					ReportDeviceNetworkInfo.IPAddr = *proto.String(interfaceDetail.Addrs[ip].Addr)
 				}
+
+				ReportDeviceNetworkInfo.MacAddr = *proto.String(interfaceDetail.HardwareAddr)
+				ReportDeviceNetworkInfo.DevName = *proto.String(interfaceDetail.Name)
+				ReportDeviceInfo.Network[index] = ReportDeviceNetworkInfo
 			}
 		}
 	}
@@ -498,16 +486,16 @@ func SendInfoProtobufStrThroughHttp(ReportInfo *zmet.ZInfoMsg, iteration int) {
 		return
 	}
 
-	for i, intf := range globalConfig.Uplink {
-		addrCount := types.CountLocalAddrAny(globalConfig, globalStatus,
-			  intf)
+	for i, uplink := range globalStatus.UplinkStatus {
+		intf := uplink.IfName
+		addrCount := types.CountLocalAddrAny(globalStatus, intf)
 		// XXX makes logfile too long; debug flag?
 		log.Printf("Connecting to %s using intf %s i %d #sources %d\n",
 			statusUrl, intf, i, addrCount)
 
 		for retryCount := 0; retryCount < addrCount; retryCount += 1 {
-			localAddr, err := types.GetLocalAddrAny(globalConfig,
-				globalStatus, retryCount, intf)
+			localAddr, err := types.GetLocalAddrAny(globalStatus,
+				retryCount, intf)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -554,18 +542,18 @@ func SendMetricsProtobufStrThroughHttp(ReportMetrics *zmet.ZMetricMsg,
 		fmt.Println("marshaling error: ", err)
 	}
 
-	intf, err := types.GetUplinkAny(globalConfig, globalStatus, iteration)
+	intf, err := types.GetUplinkAny(globalStatus, iteration)
 	if err != nil {
 		log.Fatal(err)
 	}
-	addrCount := types.CountLocalAddrAny(globalConfig, globalStatus, intf)
+	addrCount := types.CountLocalAddrAny(globalStatus, intf)
 	// XXX makes logfile too long; debug flag?
 	log.Printf("Connecting to %s using intf %s interation %d #sources %d\n",
 		metricsUrl, intf, iteration, addrCount)
 	
 	for retryCount := 0; retryCount < addrCount; retryCount += 1 {
-		localAddr, err := types.GetLocalAddrAny(globalConfig,
-			globalStatus, retryCount, intf)
+		localAddr, err := types.GetLocalAddrAny(globalStatus,
+			retryCount, intf)
 		if err != nil {
 			log.Fatal(err)
 		}

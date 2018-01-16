@@ -113,17 +113,17 @@ func configTimerTask() {
 // Each iteration we try a different uplink. For each uplink we try all
 // its local IP addresses until we get a success.
 func getLatestConfig(configUrl string, iteration int) {
-	intf, err := types.GetUplinkAny(globalConfig, globalStatus, iteration)
+	intf, err := types.GetUplinkAny(globalStatus, iteration)
 	if err != nil {
 		log.Fatal(err)
 	}
-	addrCount := types.CountLocalAddrAny(globalConfig, globalStatus, intf)
+	addrCount := types.CountLocalAddrAny(globalStatus, intf)
 	// XXX makes logfile too long; debug flag?
 	log.Printf("Connecting to %s using intf %s interation %d #sources %d\n",
 		configUrl, intf, iteration, addrCount)
 	for retryCount := 0; retryCount < addrCount; retryCount += 1 {
-		localAddr, err := types.GetLocalAddrAny(globalConfig,
-			globalStatus, retryCount, intf)
+		localAddr, err := types.GetLocalAddrAny(globalStatus,
+			retryCount, intf)
 		if err != nil {
 			log.Fatal(err)
 		}

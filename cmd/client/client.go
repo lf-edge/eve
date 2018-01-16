@@ -174,8 +174,8 @@ func main() {
 	// Returns true when done; false when retry
 	myPost := func(tlsConfig *tls.Config, retryCount int,
 		url string, b *bytes.Buffer) bool {
-		localAddr, err := types.GetLocalAddrAny(globalConfig,
-			globalStatus, retryCount, "")
+		localAddr, err := types.GetLocalAddrAny(globalStatus,
+			retryCount, "")
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -269,8 +269,8 @@ func main() {
 	// XXX remove later
 	oldMyPost := func(tlsConfig *tls.Config, retryCount int,
 		url string, b *bytes.Buffer) bool {
-		localAddr, err := types.GetLocalAddrAny(globalConfig,
-			globalStatus, retryCount, "")
+		localAddr, err := types.GetLocalAddrAny(globalStatus,
+			retryCount, "")
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -401,8 +401,8 @@ func main() {
 	lookupParam := func(tlsConfig *tls.Config, retryCount int,
 		device *types.DeviceDb) bool {
 		url := "/rest/device-param"
-		localAddr, err := types.GetLocalAddrAny(globalConfig,
-			globalStatus, retryCount, "")
+		localAddr, err := types.GetLocalAddrAny(globalStatus,
+			retryCount, "")
 		if err != nil {
 			log.Fatal(err)
 		}

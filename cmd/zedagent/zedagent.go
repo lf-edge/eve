@@ -56,6 +56,7 @@ func main() {
 		}
 	}
 
+	// XXX handle updates to globalStatus
 	// Retrieve the uplink interfaces and their IP addresses
 	globalNetworkConfigFilename := "/var/tmp/zedrouter/config/global"
 	var err error
