@@ -24,7 +24,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='devconfig.proto',
   package='',
   syntax='proto3',
-  serialized_pb=_b('\n\x0f\x64\x65vconfig.proto\x1a\x0f\x64\x65vcommon.proto\x1a\x0f\x61ppconfig.proto\x1a\x12\x62\x61seosconfig.proto\x1a\x0fnetconfig.proto\x1a\rstorage.proto\"1\n\tMapServer\x12\x10\n\x08NameOrIp\x18\x01 \x01(\t\x12\x12\n\nCredential\x18\x02 \x01(\t\"*\n\tZedServer\x12\x10\n\x08HostName\x18\x01 \x01(\t\x12\x0b\n\x03\x45ID\x18\x02 \x03(\t\"\xdf\x01\n\x11\x44\x65viceLispDetails\x12\"\n\x0eLispMapServers\x18\x01 \x03(\x0b\x32\n.MapServer\x12\x14\n\x0cLispInstance\x18\x02 \x01(\r\x12\x0b\n\x03\x45ID\x18\x04 \x01(\t\x12\x12\n\nEIDHashLen\x18\x05 \x01(\r\x12\x1e\n\nZedServers\x18\x06 \x03(\x0b\x32\n.ZedServer\x12\x1b\n\x13\x45idAllocationPrefix\x18\x08 \x01(\x0c\x12\x1e\n\x16\x45idAllocationPrefixLen\x18\t \x01(\r\x12\x12\n\nClientAddr\x18\n \x01(\t\"F\n\x0c\x44\x65viceOpsCmd\x12\x0f\n\x07\x63ounter\x18\x02 \x01(\r\x12\x14\n\x0c\x64\x65sriedState\x18\x03 \x01(\x08\x12\x0f\n\x07opsTime\x18\x04 \x01(\t\"\xcb\x02\n\rEdgeDevConfig\x12\x1b\n\x02id\x18\x01 \x01(\x0b\x32\x0f.UUIDandVersion\x12\x17\n\x0f\x64\x65vConfigSha256\x18\x02 \x01(\x0c\x12\x1a\n\x12\x64\x65vConfigSignature\x18\x03 \x01(\x0c\x12 \n\x04\x61pps\x18\x04 \x03(\x0b\x32\x12.AppInstanceConfig\x12 \n\x08networks\x18\x05 \x03(\x0b\x32\x0e.NetworkConfig\x12$\n\ndatastores\x18\x06 \x03(\x0b\x32\x10.DatastoreConfig\x12$\n\x08lispInfo\x18\x07 \x01(\x0b\x32\x12.DeviceLispDetails\x12\x1b\n\x04\x62\x61se\x18\x08 \x03(\x0b\x32\r.BaseOSConfig\x12\x1c\n\x05reset\x18\t \x01(\x0b\x32\r.DeviceOpsCmd\x12\x1d\n\x06\x62\x61\x63kup\x18\n \x01(\x0b\x32\r.DeviceOpsCmdB@\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1dgithub.com/zededa/api/zconfigb\x06proto3')
+  serialized_pb=_b('\n\x0f\x64\x65vconfig.proto\x1a\x0f\x64\x65vcommon.proto\x1a\x0f\x61ppconfig.proto\x1a\x12\x62\x61seosconfig.proto\x1a\x0fnetconfig.proto\x1a\rstorage.proto\"1\n\tMapServer\x12\x10\n\x08NameOrIp\x18\x01 \x01(\t\x12\x12\n\nCredential\x18\x02 \x01(\t\"*\n\tZedServer\x12\x10\n\x08HostName\x18\x01 \x01(\t\x12\x0b\n\x03\x45ID\x18\x02 \x03(\t\"\xdf\x01\n\x11\x44\x65viceLispDetails\x12\"\n\x0eLispMapServers\x18\x01 \x03(\x0b\x32\n.MapServer\x12\x14\n\x0cLispInstance\x18\x02 \x01(\r\x12\x0b\n\x03\x45ID\x18\x04 \x01(\t\x12\x12\n\nEIDHashLen\x18\x05 \x01(\r\x12\x1e\n\nZedServers\x18\x06 \x03(\x0b\x32\n.ZedServer\x12\x1b\n\x13\x45idAllocationPrefix\x18\x08 \x01(\x0c\x12\x1e\n\x16\x45idAllocationPrefixLen\x18\t \x01(\r\x12\x12\n\nClientAddr\x18\n \x01(\t\"F\n\x0c\x44\x65viceOpsCmd\x12\x0f\n\x07\x63ounter\x18\x02 \x01(\r\x12\x14\n\x0c\x64\x65sriedState\x18\x03 \x01(\x08\x12\x0f\n\x07opsTime\x18\x04 \x01(\t\"\xcc\x02\n\rEdgeDevConfig\x12\x1b\n\x02id\x18\x01 \x01(\x0b\x32\x0f.UUIDandVersion\x12\x17\n\x0f\x64\x65vConfigSha256\x18\x02 \x01(\x0c\x12\x1a\n\x12\x64\x65vConfigSignature\x18\x03 \x01(\x0c\x12 \n\x04\x61pps\x18\x04 \x03(\x0b\x32\x12.AppInstanceConfig\x12 \n\x08networks\x18\x05 \x03(\x0b\x32\x0e.NetworkConfig\x12$\n\ndatastores\x18\x06 \x03(\x0b\x32\x10.DatastoreConfig\x12$\n\x08lispInfo\x18\x07 \x01(\x0b\x32\x12.DeviceLispDetails\x12\x1b\n\x04\x62\x61se\x18\x08 \x03(\x0b\x32\r.BaseOSConfig\x12\x1d\n\x06reboot\x18\t \x01(\x0b\x32\r.DeviceOpsCmd\x12\x1d\n\x06\x62\x61\x63kup\x18\n \x01(\x0b\x32\r.DeviceOpsCmdB@\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1dgithub.com/zededa/api/zconfigb\x06proto3')
   ,
   dependencies=[devcommon__pb2.DESCRIPTOR,appconfig__pb2.DESCRIPTOR,baseosconfig__pb2.DESCRIPTOR,netconfig__pb2.DESCRIPTOR,storage__pb2.DESCRIPTOR,])
 
@@ -296,7 +296,7 @@ _EDGEDEVCONFIG = _descriptor.Descriptor(
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='reset', full_name='EdgeDevConfig.reset', index=8,
+      name='reboot', full_name='EdgeDevConfig.reboot', index=8,
       number=9, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
@@ -322,7 +322,7 @@ _EDGEDEVCONFIG = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=499,
-  serialized_end=830,
+  serialized_end=831,
 )
 
 _DEVICELISPDETAILS.fields_by_name['LispMapServers'].message_type = _MAPSERVER
@@ -333,7 +333,7 @@ _EDGEDEVCONFIG.fields_by_name['networks'].message_type = netconfig__pb2._NETWORK
 _EDGEDEVCONFIG.fields_by_name['datastores'].message_type = storage__pb2._DATASTORECONFIG
 _EDGEDEVCONFIG.fields_by_name['lispInfo'].message_type = _DEVICELISPDETAILS
 _EDGEDEVCONFIG.fields_by_name['base'].message_type = baseosconfig__pb2._BASEOSCONFIG
-_EDGEDEVCONFIG.fields_by_name['reset'].message_type = _DEVICEOPSCMD
+_EDGEDEVCONFIG.fields_by_name['reboot'].message_type = _DEVICEOPSCMD
 _EDGEDEVCONFIG.fields_by_name['backup'].message_type = _DEVICEOPSCMD
 DESCRIPTOR.message_types_by_name['MapServer'] = _MAPSERVER
 DESCRIPTOR.message_types_by_name['ZedServer'] = _ZEDSERVER
