@@ -104,7 +104,7 @@ func PbrRouteChange(change netlink.RouteUpdate) {
 	// table unless the Priority differs. Different
 	// LinkIndex, Src, Scope doesn't matter.
 	if rt.Dst != nil && rt.Dst.IP.IsLinkLocalUnicast() {
-		fmt.Printf("Forcing Priority to %v\n", rt.LinkIndex)
+		fmt.Printf("Forcing IPv6 priority to %v\n", rt.LinkIndex)
 		// Hack to make the kernel routes not appear identical
 		srt.Priority = rt.LinkIndex
 	}
@@ -210,10 +210,6 @@ func PbrLinkChange(change netlink.LinkUpdate) {
 				addrChangeFunc(ifname)
 			}
 		}
-	case syscall.RTM_SETLINK:
-		fmt.Printf("Link set index %d name %s\n",
-			change.Attrs().Index,
-			change.Attrs().Name)
 	}
 }
 
@@ -263,6 +259,7 @@ func IfindexToNameAdd(index int, name string) bool {
 	m, ok := ifindexToName[index]
 	if !ok {
 		// Note that we get RTM_NEWLINK even for link changes
+		// hence we don't print unless the entry is new
 		fmt.Printf("Link add index %d name %s\n", index, name)
 		ifindexToName[index] = name
 		// fmt.Printf("ifindexToName post add %v\n", ifindexToName)
@@ -442,7 +439,7 @@ func moveRoutesTable(srcTable int, ifindex int, dstTable int) {
 		// table unless the Priority differs. Different
 		// LinkIndex, Src, Scope doesn't matter.
 		if rt.Dst != nil && rt.Dst.IP.IsLinkLocalUnicast() {
-			fmt.Printf("Forcing Priority to %v\n",
+			fmt.Printf("Forcing IPv6 priority to %v\n",
 				rt.LinkIndex)
 			// Hack to make the kernel routes not appear identical
 			art.Priority = rt.LinkIndex
@@ -450,7 +447,6 @@ func moveRoutesTable(srcTable int, ifindex int, dstTable int) {
 		// Clear any RTNH_F_LINKDOWN etc flags since add doesn't
 		// like them
 		if rt.Flags != 0 {
-			fmt.Printf("flags %v\n", rt.Flags)
 			art.Flags = 0
 		}
 		log.Printf("moveRoutesTable(%d, %d, %d) adding %v\n",
