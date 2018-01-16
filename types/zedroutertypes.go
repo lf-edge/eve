@@ -81,6 +81,7 @@ type DeviceNetworkConfig struct {
 
 type NetworkUplink struct {
 	IfName string
+	Free   bool
 	Addrs  []net.IP
 }
 
@@ -110,13 +111,21 @@ func GetGlobalNetworkConfig(configFilename string) (DeviceNetworkConfig, error) 
 // Calculate local IP addresses to make a DeviceNetworkStatus
 func MakeGlobalNetworkStatus(globalConfig DeviceNetworkConfig) (DeviceNetworkStatus, error) {
 	var globalStatus DeviceNetworkStatus
+	var err error = nil
+	
 	globalStatus.UplinkStatus = make([]NetworkUplink,
 		len(globalConfig.Uplink))
 	for ix, u := range globalConfig.Uplink {
 		globalStatus.UplinkStatus[ix].IfName = u
+		for _, f := range globalConfig.FreeUplinks {
+			if f == u {
+				globalStatus.UplinkStatus[ix].Free = true
+				break
+			}
+		}
 		link, err := netlink.LinkByName(u)
 		if err != nil {
-			return DeviceNetworkStatus{}, errors.New(fmt.Sprintf("Uplink in config/global does not exist: %v", u))
+			err = errors.New(fmt.Sprintf("Uplink in config/global does not exist: %v", u))
 		}
 		addrs4, err := netlink.AddrList(link, netlink.FAMILY_V4)
 		addrs6, err := netlink.AddrList(link, netlink.FAMILY_V6)
@@ -134,7 +143,7 @@ func MakeGlobalNetworkStatus(globalConfig DeviceNetworkConfig) (DeviceNetworkSta
 			globalStatus.UplinkStatus[ix].Addrs[i+len(addrs4)] = addr.IP
 		}
 	}
-	return globalStatus, nil
+	return globalStatus, err
 }
 
 // Pick one of the uplinks

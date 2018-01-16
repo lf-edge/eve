@@ -188,12 +188,13 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	}
 	defer file2.Close()
 	rlocString := ""
-	// XXX limit to FreeUplinks; XXX free boolean in status
 	for _, u := range globalStatus.UplinkStatus {
-		one := fmt.Sprintf("    rloc {\n        interface = %s\n    }\n", u.IfName)
+		if !u.Free {
+			continue
+		}
+		one := fmt.Sprintf("    rloc {\n        interface = %s\n    }\n",
+			u.IfName)
 		rlocString += one
-	}
-	for _, u := range globalStatus.UplinkStatus {
 		for _, a := range u.Addrs {
 			prio := 0
 			// XXX We don't generate IPv6 UDP checksum hence lower

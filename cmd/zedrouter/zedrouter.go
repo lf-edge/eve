@@ -27,8 +27,8 @@ import (
 
 // Keeping status in /var/run to be clean after a crash/reboot
 const (
-	runDirname = "/var/run/zedrouter"
-	baseDirname = "/var/tmp/zedrouter"
+	runDirname    = "/var/run/zedrouter"
+	baseDirname   = "/var/tmp/zedrouter"
 	configDirname = baseDirname + "/config"
 	statusDirname = runDirname + "/status"
 )
@@ -85,19 +85,42 @@ func main() {
 	watch.WaitForFile(restartFile)
 	log.Printf("Zedmanager reported in %s\n", restartFile)
 
+	// This function is called when some uplink interface changes
+	// its IP address(es)
+	addrChangeFn := func(ifname string) {
+		log.Printf("Address change for %s\n", ifname)
+		globalStatus, _ = types.MakeGlobalNetworkStatus(globalConfig)
+		writeGlobalStatus()
+		// XXX need to update all - using all olStatus
+		// deleteLispConfiglet(lispRunDirname, true, olStatus.IID,
+		//	olStatus.EID, globalStatus)
+	}
+	
+	// XXX feed in updates to the uplinks from config/global
+	routeChanges, addrChanges, linkChanges := PbrInit(globalConfig.Uplink,
+		globalConfig.FreeUplinks, addrChangeFn)
+
 	handleRestart(false)
 	var restartFn watch.ConfigRestartHandler = handleRestart
 
 	fileChanges := make(chan string)
 	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
 	for {
-		change := <-fileChanges
-		watch.HandleConfigStatusEvent(change,
-			configDirname, statusDirname,
-			&types.AppNetworkConfig{},
-			&types.AppNetworkStatus{},
-			handleCreate, handleModify, handleDelete,
-			&restartFn)
+		select {
+		case change := <-fileChanges:
+			watch.HandleConfigStatusEvent(change,
+				configDirname, statusDirname,
+				&types.AppNetworkConfig{},
+				&types.AppNetworkStatus{},
+				handleCreate, handleModify, handleDelete,
+				&restartFn)
+		case change := <-routeChanges:
+			PbrRouteChange(change)
+		case change := <-addrChanges:
+			PbrAddrChange(change)
+		case change := <-linkChanges:
+			PbrLinkChange(change)
+		}
 	}
 }
 
