@@ -181,7 +181,7 @@ func handleInit(configFilename string, statusFilename string,
 	globalStatus, err = types.MakeGlobalNetworkStatus(globalConfig)
 	if err != nil {
 		log.Printf("%s from MakeGlobalNetworkStatus\n", err)
-		log.Fatal(err)
+		// Proceed even if some uplinks are missing
 	}
 
 	// Create and write with initial values
