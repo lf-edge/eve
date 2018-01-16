@@ -22,6 +22,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"reflect"
 	"strconv"
 )
 
@@ -87,13 +88,23 @@ func main() {
 
 	// This function is called when some uplink interface changes
 	// its IP address(es)
+	// XXX how do we collapse multiple changes into one?
+	// Set flag here and have default case in select which checks flag?
+	// Means infinite loop or timer-based polling
+	// Or just feed this into a separate channel? Or defer for lisp?
 	addrChangeFn := func(ifname string) {
-		log.Printf("Address change for %s\n", ifname)
-		globalStatus, _ = types.MakeGlobalNetworkStatus(globalConfig)
-		writeGlobalStatus()
-		// XXX need to update all - using all olStatus
-		// deleteLispConfiglet(lispRunDirname, true, olStatus.IID,
-		//	olStatus.EID, globalStatus)
+		newGlobalStatus, _ := types.MakeGlobalNetworkStatus(globalConfig)
+		if !reflect.DeepEqual(globalStatus, newGlobalStatus) {
+			log.Printf("Address change for %s\n", ifname)
+			log.Printf("From %v to %v\n", globalStatus, newGlobalStatus)
+			globalStatus = newGlobalStatus
+			writeGlobalStatus()
+			// XXX need to update all - using all olStatus
+			// deleteLispConfiglet(lispRunDirname, true, olStatus.IID,
+			//	olStatus.EID, globalStatus)
+		} else {
+			log.Printf("No address change for %s\n", ifname)
+		}
 	}
 	
 	// XXX feed in updates to the uplinks from config/global

@@ -149,25 +149,29 @@ func PbrRouteChange(change netlink.RouteUpdate) {
 // XXX lisp should react to global status change to
 // detect if different RLOCs on uplinks
 func PbrAddrChange(change netlink.AddrUpdate) {
+	changed := false     
 	if change.NewAddr {
-		added := IfindexToAddrsAdd(change.LinkIndex, change.LinkAddress)
-		if added {
+		changed := IfindexToAddrsAdd(change.LinkIndex,
+			change.LinkAddress)
+		if changed {
 			addSourceRule(change.LinkIndex, change.LinkAddress)
 		}
 	} else {
-		removed := IfindexToAddrsDel(change.LinkIndex,
+		changed := IfindexToAddrsDel(change.LinkIndex,
 			change.LinkAddress)
-		if removed {
+		if changed {
 			delSourceRule(change.LinkIndex, change.LinkAddress)
 		}
 	}
-	ifname, err := IfindexToName(change.LinkIndex)
-	if err != nil {
-		log.Printf("PbrAddrChange IfindexToName failed for %d: %s\n",
-			change.LinkIndex, err)
-	} else if isUplink(ifname) {
-		log.Printf("Address change for uplink: %v\n", change)
-		addrChangeFunc(ifname)
+	if changed {
+		ifname, err := IfindexToName(change.LinkIndex)
+		if err != nil {
+			log.Printf("PbrAddrChange IfindexToName failed for %d: %s\n",
+				change.LinkIndex, err)
+		} else if isUplink(ifname) {
+			log.Printf("Address change for uplink: %v\n", change)
+			addrChangeFunc(ifname)
+		}
 	}
 }
 
@@ -192,7 +196,7 @@ func PbrLinkChange(change netlink.LinkUpdate) {
 				moveRoutesTable(0, ifindex, FreeTable)
 			}
 			if isUplink(ifname) {
-				log.Printf("Link change for uplink: %\n", ifname)
+				log.Printf("Link change for uplink: %s\n", ifname)
 				addrChangeFunc(ifname)
 			}
 		}
@@ -206,7 +210,7 @@ func PbrLinkChange(change netlink.LinkUpdate) {
 			flushRoutesTable(MyTable, 0)
 			flushRules(ifindex)
 			if isUplink(ifname) {
-				log.Printf("Link change for uplink: %\n", ifname)
+				log.Printf("Link change for uplink: %s\n", ifname)
 				addrChangeFunc(ifname)
 			}
 		}
