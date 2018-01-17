@@ -145,9 +145,6 @@ func PbrRouteChange(change netlink.RouteUpdate) {
 }
 
 // Handle an IP address change
-// XXX use to update global status
-// XXX lisp should react to global status change to
-// detect if different RLOCs on uplinks
 func PbrAddrChange(change netlink.AddrUpdate) {
 	changed := false     
 	if change.NewAddr {
@@ -225,7 +222,7 @@ var freeUplinkList []string // The subset we add to FreeTable
 // Can be called to update the list.
 func setFreeUplinks(freeUplinks []string) {
 	log.Printf("setFreeUplinks(%v)\n", freeUplinks)
-	// Determine which ones was added;; moveRoutesTable
+	// Determine which ones were added; moveRoutesTable to add to free table
 	for _, new := range freeUplinks {
 		found := false
 		for _, old := range freeUplinkList {
@@ -240,7 +237,8 @@ func setFreeUplinks(freeUplinks []string) {
 			}
 		}
 	}
-	// XXX determine which ones was deleted; flushRoutesTable
+	// Determine which ones were deleted; flushRoutesTable to remove from
+	// free table
 	for _, old := range freeUplinkList {
 		found := false
 		for _, new := range freeUplinks {
@@ -435,8 +433,6 @@ func flushRoutesTable(table int, ifindex int) {
 	fmt.Printf("flushRoutesTable(%d, %d) - got %d\n", table, ifindex,
 		len(routes))
 	for _, rt := range routes {
-		fmt.Printf("flushRoutesTable: table %d index %d\n",
-			rt.Table, rt.LinkIndex)
 		if rt.Table != table {
 			continue
 		}
@@ -471,8 +467,6 @@ func moveRoutesTable(srcTable int, ifindex int, dstTable int) {
 	fmt.Printf("moveRoutesTable(%d, %d, %d) - got %d\n", srcTable, ifindex,
 		dstTable, len(routes))
 	for _, rt := range routes {
-		fmt.Printf("moveRoutesTable: table %d index %d\n",
-			rt.Table, rt.LinkIndex)
 		if rt.Table != srcTable {
 			continue
 		}
