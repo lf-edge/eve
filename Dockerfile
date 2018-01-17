@@ -34,7 +34,7 @@ FROM zededa/lisp:latest AS lisp
 FROM scratch
 COPY --from=build /opt/zededa /opt/zededa
 COPY --from=build /go/bin/* /opt/zededa/bin/
-COPY --from=build /usr/local/lib/* /opt/zededa/lib/
+COPY --from=build /usr/local/lib/* /usr/local/lib/
 COPY --from=build /usr/local/include/* /opt/zededa/include/
 COPY --from=build /usr/include/linux/pf_ring.h /opt/zededa/include/linux/
 COPY --from=lisp /lisp /opt/zededa/lisp/
