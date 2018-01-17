@@ -34,7 +34,7 @@ message DeviceLispDetails {
 // Device Operational Commands Semantic
 // For rebooting device,  command=Reset, counter = counter+delta, desiredState = on
 // For poweroff device,  command=Reset, counter = counter+delta, desiredState = off
-// For backup at midnight, command=Backup, counter = counter+delta, desiredState=n/a, opsTime = mm/dd/yy:hh:ss 
+// For backup at midnight, command=Backup, counter = counter+delta, desiredState=n/a, opsTime = mm/dd/yy:hh:ss
 // Current implementation does support only single command outstanding for each type
 // In future can be extended to have more scheduled events
 //
@@ -49,13 +49,17 @@ message EdgeDevConfig {
 	UUIDandVersion id = 1;
 	bytes devConfigSha256 = 2;
 	bytes devConfigSignature = 3;
-	
+
 	repeated AppInstanceConfig apps   = 4;
 	repeated NetworkConfig networks = 5;
 	repeated DatastoreConfig datastores = 6;
 
 	DeviceLispDetails lispInfo = 7;
 	repeated BaseOSConfig base = 8;	// BaseOSImage config block
-	DeviceOpsCmd reboot = 9; 
-	DeviceOpsCmd backup = 10; 
+	DeviceOpsCmd reboot = 9;
+	DeviceOpsCmd backup = 10;
+}
+
+message ConfigHash {
+	string configHash = 1;
 }
