@@ -222,9 +222,39 @@ func PbrLinkChange(change netlink.LinkUpdate) {
 var uplinkList []string     // All uplinks
 var freeUplinkList []string // The subset we add to FreeTable
 
-// Can be called to update the list. However, need to detect the changes
-// in zedrouter.go and and then have this moveRouteTable when updating XXX
+// Can be called to update the list.
 func setFreeUplinks(freeUplinks []string) {
+	log.Printf("setFreeUplinks(%v)\n", freeUplinks)
+	// Determine which ones was added;; moveRoutesTable
+	for _, new := range freeUplinks {
+		found := false
+		for _, old := range freeUplinkList {
+			if old == new {
+				found = true
+				break
+			}
+		}
+		if !found {
+			if ifindex, err := IfnameToIndex(new); err == nil {
+				moveRoutesTable(0, ifindex, FreeTable)
+			}
+		}
+	}
+	// XXX determine which ones was deleted; flushRoutesTable
+	for _, old := range freeUplinkList {
+		found := false
+		for _, new := range freeUplinks {
+			if old == new {
+				found = true
+				break
+			}
+		}
+		if !found {
+			if ifindex, err := IfnameToIndex(old); err == nil {
+				flushRoutesTable(FreeTable, ifindex)
+			}
+		}
+	}
 	freeUplinkList = freeUplinks
 }
 
@@ -307,6 +337,15 @@ func IfindexToName(index int) (string, error) {
 		return "", errors.New(fmt.Sprintf("Unknown ifindex %d", index))
 	}
 	return n, nil
+}
+
+func IfnameToIndex(ifname string) (int, error) {
+	for i, name := range ifindexToName {
+		if name == ifname {
+			return i, nil
+		}
+	}
+	return -1, errors.New(fmt.Sprintf("Unknown ifname %s", ifname))
 }
 
 // ===== map from ifindex to list of IP addresses

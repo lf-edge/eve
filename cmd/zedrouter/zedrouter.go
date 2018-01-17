@@ -1111,6 +1111,7 @@ func handleDNCModify(configFilename string,
 
 	log.Printf("handleDNCModify for %s\n", configFilename)
 
+	globalConfig = *config
 	newGlobalStatus, _ := types.MakeDeviceNetworkStatus(*config)
 	if !reflect.DeepEqual(globalStatus, newGlobalStatus) {
 		log.Printf("DeviceNetworkStatus change from %v to %v\n",
@@ -1122,7 +1123,10 @@ func handleDNCModify(configFilename string,
 		// XXX need to update all - using all olStatus
 		// deleteLispConfiglet(lispRunDirname, true, olStatus.IID,
 		//	olStatus.EID, globalStatus)
-	}
+
+		setUplinks(globalConfig.Uplink)
+		setFreeUplinks(globalConfig.FreeUplinks)
+}
 	log.Printf("handleDNCModify done for %s\n", configFilename)
 }
 
