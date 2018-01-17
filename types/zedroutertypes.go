@@ -90,7 +90,7 @@ type DeviceNetworkStatus struct {
 }
 
 // Parse the file with DeviceNetworkConfig
-func GetGlobalNetworkConfig(configFilename string) (DeviceNetworkConfig, error) {
+func GetDeviceNetworkConfig(configFilename string) (DeviceNetworkConfig, error) {
 	var globalConfig DeviceNetworkConfig
 	cb, err := ioutil.ReadFile(configFilename)
 	if err != nil {
@@ -109,7 +109,7 @@ func GetGlobalNetworkConfig(configFilename string) (DeviceNetworkConfig, error) 
 }
 
 // Calculate local IP addresses to make a DeviceNetworkStatus
-func MakeGlobalNetworkStatus(globalConfig DeviceNetworkConfig) (DeviceNetworkStatus, error) {
+func MakeDeviceNetworkStatus(globalConfig DeviceNetworkConfig) (DeviceNetworkStatus, error) {
 	var globalStatus DeviceNetworkStatus
 	var err error = nil
 	

@@ -179,7 +179,7 @@ echo "Removing old zedmanager status files"
 rm -rf /var/run/zedmanager/status/*.json
 # The following is a workaround for a racecondition between different agents
 # Make sure we have the required directories in place
-DIRS="/var/tmp/domainmgr/config/ /var/tmp/verifier/config/ /var/tmp/downloader/config/ /var/tmp/zedmanager/config/ /var/tmp/identitymgr/config/ /var/tmp/zedrouter/config/ /var/run/domainmgr/status/ /var/run/verifier/status/ /var/run/downloader/status/ /var/run/zedmanager/status/ /var/run/eidregister/status/ /var/run/zedrouter/status/ /var/run/identitymgr/status/"
+DIRS="/var/tmp/domainmgr/config/ /var/tmp/verifier/config/ /var/tmp/downloader/config/ /var/tmp/zedmanager/config/ /var/tmp/identitymgr/config/ /var/tmp/zedrouter/config/ /var/run/domainmgr/status/ /var/run/verifier/status/ /var/run/downloader/status/ /var/run/zedmanager/status/ /var/run/eidregister/status/ /var/run/zedrouter/status/ /var/run/identitymgr/status/ /var/run/zededa/DeviceNetworkConfig/ /var/run/zedrouter/DeviceNetworkStatus/"
 for d in $DIRS; do
     mkdir -p $d
     chmod 700 $d `dirname $d`
@@ -349,7 +349,7 @@ if [ -f $ETCDIR/zedrouterconfig.json ]; then
 	cp $ETCDIR/zedrouterconfig.json /var/tmp/zedrouter/config/${uuid}.json
 fi
 
-cp $ETCDIR/network.config.global /var/tmp/zedrouter/config/global
+cp $ETCDIR/network.config.global /var/run/zededa/DeviceNetworkConfig/global.json
 
 # Setup default amount of space for images
 echo '{"MaxSpace":2000000}' >/var/tmp/downloader/config/global 

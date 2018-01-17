@@ -151,13 +151,13 @@ func PbrRouteChange(change netlink.RouteUpdate) {
 func PbrAddrChange(change netlink.AddrUpdate) {
 	changed := false     
 	if change.NewAddr {
-		changed := IfindexToAddrsAdd(change.LinkIndex,
+		changed = IfindexToAddrsAdd(change.LinkIndex,
 			change.LinkAddress)
 		if changed {
 			addSourceRule(change.LinkIndex, change.LinkAddress)
 		}
 	} else {
-		changed := IfindexToAddrsDel(change.LinkIndex,
+		changed = IfindexToAddrsDel(change.LinkIndex,
 			change.LinkAddress)
 		if changed {
 			delSourceRule(change.LinkIndex, change.LinkAddress)
@@ -171,6 +171,8 @@ func PbrAddrChange(change netlink.AddrUpdate) {
 		} else if isUplink(ifname) {
 			log.Printf("Address change for uplink: %v\n", change)
 			addrChangeFunc(ifname)
+		} else {
+			log.Printf("Address change for non-uplink: %v\n", change)
 		}
 	}
 }
@@ -319,7 +321,8 @@ func IfindexToAddrsInit() {
 func IfindexToAddrsAdd(index int, addr net.IPNet) bool {
 	addrs, ok := ifindexToAddrs[index]
 	if !ok {
-		log.Printf("Link add index %d addr %s\n", index, addr)
+		log.Printf("IfindexToAddrsAdd add %v for %d\n",
+			addr, index)
 		ifindexToAddrs[index] = append(ifindexToAddrs[index], addr)
 		// fmt.Printf("ifindexToAddrs post add %v\n", ifindexToAddrs)
 		return true

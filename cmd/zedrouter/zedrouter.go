@@ -32,6 +32,8 @@ const (
 	baseDirname   = "/var/tmp/zedrouter"
 	configDirname = baseDirname + "/config"
 	statusDirname = runDirname + "/status"
+	DNCDirname    = "/var/run/zededa/DeviceNetworkConfig"
+	DNSDirname    = runDirname + "/DeviceNetworkStatus"
 )
 
 // Set from Makefile
@@ -75,9 +77,20 @@ func main() {
 			log.Fatal(err)
 		}
 	}
+	if _, err := os.Stat(DNCDirname); err != nil {
+		if err := os.MkdirAll(DNCDirname, 0700); err != nil {
+			log.Fatal(err)
+		}
+	}
+	if _, err := os.Stat(DNSDirname); err != nil {
+		if err := os.MkdirAll(DNSDirname, 0700); err != nil {
+			log.Fatal(err)
+		}
+	}
 	appNumAllocatorInit(statusDirname, configDirname)
 
-	handleInit(configDirname+"/global", statusDirname+"/global", runDirname)
+	handleInit(DNCDirname + "/global.json", DNSDirname + "/global.json",
+		runDirname)
 
 	// Wait for zedmanager having populated the intial files to
 	// reduce the number of LISP-RESTARTs
@@ -89,11 +102,10 @@ func main() {
 	// This function is called when some uplink interface changes
 	// its IP address(es)
 	// XXX how do we collapse multiple changes into one?
-	// Set flag here and have default case in select which checks flag?
-	// Means infinite loop or timer-based polling
 	// Or just feed this into a separate channel? Or defer for lisp?
 	addrChangeFn := func(ifname string) {
-		newGlobalStatus, _ := types.MakeGlobalNetworkStatus(globalConfig)
+		log.Printf("addrChangeFn(%s) called\n", ifname)
+		newGlobalStatus, _ := types.MakeDeviceNetworkStatus(globalConfig)
 		if !reflect.DeepEqual(globalStatus, newGlobalStatus) {
 			log.Printf("Address change for %s\n", ifname)
 			log.Printf("From %v to %v\n", globalStatus, newGlobalStatus)
@@ -107,24 +119,31 @@ func main() {
 		}
 	}
 	
-	// XXX feed in updates to the uplinks from config/global
 	routeChanges, addrChanges, linkChanges := PbrInit(globalConfig.Uplink,
 		globalConfig.FreeUplinks, addrChangeFn)
 
 	handleRestart(false)
 	var restartFn watch.ConfigRestartHandler = handleRestart
 
-	fileChanges := make(chan string)
-	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
+	configChanges := make(chan string)
+	go watch.WatchConfigStatus(configDirname, statusDirname, configChanges)
+	deviceConfigChanges := make(chan string)
+	go watch.WatchStatus(DNCDirname, deviceConfigChanges)
 	for {
 		select {
-		case change := <-fileChanges:
+		case change := <- configChanges:
 			watch.HandleConfigStatusEvent(change,
 				configDirname, statusDirname,
 				&types.AppNetworkConfig{},
 				&types.AppNetworkStatus{},
 				handleCreate, handleModify, handleDelete,
 				&restartFn)
+		case change := <- deviceConfigChanges:
+			watch.HandleStatusEvent(change,
+				DNCDirname,
+				&types.DeviceNetworkConfig{},
+				handleDNCModify, handleDNCDelete,
+				nil)
 		case change := <-routeChanges:
 			PbrRouteChange(change)
 		case change := <-addrChanges:
@@ -172,31 +191,21 @@ func handleInit(configFilename string, statusFilename string,
 		}
 	}
 
+	// Need initial globalStatus for iptablesInit
 	var err error
-	globalConfig, err = types.GetGlobalNetworkConfig(configFilename)
+	globalConfig, err = types.GetDeviceNetworkConfig(configFilename)
 	if err != nil {
 		log.Printf("%s for %s\n", err, configFilename)
 		log.Fatal(err)
 	}
-	globalStatus, err = types.MakeGlobalNetworkStatus(globalConfig)
+	globalStatus, err = types.MakeDeviceNetworkStatus(globalConfig)
 	if err != nil {
-		log.Printf("%s from MakeGlobalNetworkStatus\n", err)
+		log.Printf("%s from MakeDeviceNetworkStatus\n", err)
 		// Proceed even if some uplinks are missing
 	}
 
 	// Create and write with initial values
 	writeGlobalStatus()
-
-	sb, err := ioutil.ReadFile(statusFilename)
-	if err != nil {
-		log.Printf("%s for %s\n", err, statusFilename)
-		log.Fatal(err)
-	}
-	if err := json.Unmarshal(sb, &globalStatus); err != nil {
-		log.Printf("%s DeviceNetworkStatus file: %s\n",
-			err, statusFilename)
-		log.Fatal(err)
-	}
 
 	// Setup initial iptables rules
 	iptablesInit()
@@ -1083,4 +1092,48 @@ func pkillUserArgs(userName string, match string, printOnError bool) {
 	if err != nil && printOnError {
 		fmt.Printf("Command %v %v failed: %s\n", cmd, args, err)
 	}
+}
+
+func handleDNCModify(configFilename string,
+	configArg interface{}) {
+	var config *types.DeviceNetworkConfig
+
+	if configFilename != "global" {
+		fmt.Printf("handleDNSModify: ignoring %s\n", configFilename)
+		return
+	}
+	switch configArg.(type) {
+	default:
+		log.Fatal("Can only handle DeviceNetworkConfig")
+	case *types.DeviceNetworkConfig:
+		config = configArg.(*types.DeviceNetworkConfig)
+	}
+
+	log.Printf("handleDNCModify for %s\n", configFilename)
+
+	newGlobalStatus, _ := types.MakeDeviceNetworkStatus(*config)
+	if !reflect.DeepEqual(globalStatus, newGlobalStatus) {
+		log.Printf("DeviceNetworkStatus change from %v to %v\n",
+			globalStatus, newGlobalStatus)
+		globalStatus = newGlobalStatus
+		writeGlobalStatus()
+		// XXX feed in updates to the uplinks to pbr.go
+
+		// XXX need to update all - using all olStatus
+		// deleteLispConfiglet(lispRunDirname, true, olStatus.IID,
+		//	olStatus.EID, globalStatus)
+	}
+	log.Printf("handleDNCModify done for %s\n", configFilename)
+}
+
+func handleDNCDelete(configFilename string) {
+	log.Printf("handleDNCDelete for %s\n", configFilename)
+
+	if configFilename != "global" {
+		fmt.Printf("handleDNSDelete: ignoring %s\n", configFilename)
+		return
+	}
+	globalStatus = types.DeviceNetworkStatus{}
+	writeGlobalStatus()
+	log.Printf("handleDNCDelete done for %s\n", configFilename)
 }

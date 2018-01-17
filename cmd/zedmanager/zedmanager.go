@@ -32,10 +32,13 @@ const (
 	domainmgrConfigDirname   = "/var/tmp/domainmgr/config"
 	zedrouterConfigDirname   = "/var/tmp/zedrouter/config"
 	identitymgrConfigDirname = "/var/tmp/identitymgr/config"
+	DNSDirname		 = "/var/run/zedrouter/DeviceNetworkStatus"
 )
 
 // Set from Makefile
 var Version = "No version specified"
+
+var globalStatus types.DeviceNetworkStatus
 
 func main() {
 	log.SetOutput(os.Stdout)
@@ -100,6 +103,8 @@ func main() {
 	configChanges := make(chan string)
 	go watch.WatchConfigStatus(zedmanagerConfigDirname,
 		zedmanagerStatusDirname, configChanges)
+	deviceStatusChanges := make(chan string)
+	go watch.WatchStatus(DNSDirname, deviceStatusChanges)
 
 	var configRestartFn watch.ConfigRestartHandler = handleConfigRestart
 	var verifierRestartedFn watch.StatusRestartHandler = handleVerifierRestarted
@@ -190,6 +195,14 @@ func main() {
 					handleCreate, handleModify,
 					handleDelete, &configRestartFn)
 				continue
+			}
+		case change := <- deviceStatusChanges:
+			{
+				watch.HandleStatusEvent(change,
+					DNSDirname,
+					&types.DeviceNetworkStatus{},
+					handleDNSModify, handleDNSDelete,
+					nil)
 			}
 		}
 	}
@@ -335,4 +348,35 @@ func handleDelete(statusFilename string, statusArg interface{}) {
 
 	removeConfig(status.UUIDandVersion.UUID.String())
 	log.Printf("handleDelete done for %s\n", status.DisplayName)
+}
+
+func handleDNSModify(statusFilename string,
+	statusArg interface{}) {
+	var status *types.DeviceNetworkStatus
+
+	if statusFilename != "global" {
+		fmt.Printf("handleDNSModify: ignoring %s\n", statusFilename)
+		return
+	}
+	switch statusArg.(type) {
+	default:
+		log.Fatal("Can only handle DeviceNetworkStatus")
+	case *types.DeviceNetworkStatus:
+		status = statusArg.(*types.DeviceNetworkStatus)
+	}
+
+	log.Printf("handleDNSModify for %s\n", statusFilename)
+	globalStatus = *status
+	log.Printf("handleDNSModify done for %s\n", statusFilename)
+}
+
+func handleDNSDelete(statusFilename string) {
+	log.Printf("handleDNSDelete for %s\n", statusFilename)
+
+	if statusFilename != "global" {
+		fmt.Printf("handleDNSDelete: ignoring %s\n", statusFilename)
+		return
+	}
+	globalStatus = types.DeviceNetworkStatus{}
+	log.Printf("handleDNSDelete done for %s\n", statusFilename)
 }

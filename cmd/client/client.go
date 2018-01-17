@@ -99,14 +99,14 @@ func main() {
 	swStatusFileName := dirName + "/swstatus.json" // XXX remove later
 
 	globalNetworkConfigFilename := "/var/tmp/zedrouter/config/global"
-	globalConfig, err := types.GetGlobalNetworkConfig(globalNetworkConfigFilename)
+	globalConfig, err := types.GetDeviceNetworkConfig(globalNetworkConfigFilename)
 	if err != nil {
 		log.Printf("%s for %s\n", err, globalNetworkConfigFilename)
 		log.Fatal(err)
 	}
-	globalStatus, err := types.MakeGlobalNetworkStatus(globalConfig)
+	globalStatus, err := types.MakeDeviceNetworkStatus(globalConfig)
 	if err != nil {
-		log.Printf("%s from MakeGlobalNetworkStatus\n", err)
+		log.Printf("%s from MakeDeviceNetworkStatus\n", err)
 		log.Fatal(err)
 	}
 

@@ -25,18 +25,12 @@ func AddOrRefcountDownloaderConfig(safename string, sc *types.StorageConfig) {
 	if downloaderConfig == nil {
 		fmt.Printf("create downloader config map\n")
 		downloaderConfig = make(map[string]types.DownloaderConfig)
-		// XXX use globalStatus... rotate
-		globalNetworkConfigFilename := "/var/tmp/zedrouter/config/global"
-		globalConfig, err := types.GetGlobalNetworkConfig(globalNetworkConfigFilename)
-		if err != nil {
-			log.Printf("%s for %s\n", err, globalNetworkConfigFilename)
-			log.Fatal(err)
-		}
-		if len(globalConfig.FreeUplinks) == 0 {
+
+		var err error
+		// XXX rotate through the FreeUplinks?
+		if downloadIfName, err = types.GetUplinkFree(globalStatus, 0); err != nil {
 			log.Fatal("No FreeUplinks")
 		}
-		// XXX rotate through the FreeUplinks?
-		downloadIfName = globalConfig.FreeUplinks[0]
 		log.Printf("Using interface %s for image download\n",
 			downloadIfName)
 	}

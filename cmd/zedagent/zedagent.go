@@ -22,12 +22,12 @@ const (
 	zedmanagerStatusDirname = "/var/run/zedmanager/status"
 	downloaderConfigDirname = "/var/tmp/downloader/config"
 	downloaderStatusDirname = "/var/run/downloader/status"
+	DNSDirname		= "/var/run/zedrouter/DeviceNetworkStatus"
 )
 
 // Set from Makefile
 var Version = "No version specified"
 
-var globalConfig types.DeviceNetworkConfig
 var globalStatus types.DeviceNetworkStatus
 
 func main() {
@@ -56,21 +56,6 @@ func main() {
 		}
 	}
 
-	// XXX handle updates to globalStatus
-	// Retrieve the uplink interfaces and their IP addresses
-	globalNetworkConfigFilename := "/var/tmp/zedrouter/config/global"
-	var err error
-	globalConfig, err = types.GetGlobalNetworkConfig(globalNetworkConfigFilename)
-	if err != nil {
-		log.Printf("%s for %s\n", err, globalNetworkConfigFilename)
-		log.Fatal(err)
-	}
-	globalStatus, err = types.MakeGlobalNetworkStatus(globalConfig)
-	if err != nil {
-		log.Printf("%s from MakeGlobalNetworkStatus\n", err)
-		log.Fatal(err)
-	}
-
 	// Tell ourselves to go ahead
 	watch.SignalRestart("zedagent")
 
@@ -80,6 +65,8 @@ func main() {
 
 	zedmanagerChanges := make(chan string)
 	go watch.WatchStatus(zedmanagerStatusDirname, zedmanagerChanges)
+	deviceStatusChanges := make(chan string)
+	go watch.WatchStatus(DNSDirname, deviceStatusChanges)
 	for {
 		select {
 		case change := <-zedmanagerChanges:
@@ -91,6 +78,12 @@ func main() {
 					handleStatusDelete, nil)
 				continue
 			}
+		case change := <- deviceStatusChanges:
+			watch.HandleStatusEvent(change,
+				DNSDirname,
+				&types.DeviceNetworkStatus{},
+				handleDNSModify, handleDNSDelete,
+				nil)
 		}
 	}
 }
@@ -117,4 +110,35 @@ func handleStatusDelete(statusFilename string) {
 	PublishHypervisorInfoToZedCloud(publishIteration)
 	PublishAppInfoToZedCloud(statusFilename, nil, publishIteration)
 	publishIteration += 1
+}
+
+func handleDNSModify(statusFilename string,
+	statusArg interface{}) {
+	var status *types.DeviceNetworkStatus
+
+	if statusFilename != "global" {
+		fmt.Printf("handleDNSModify: ignoring %s\n", statusFilename)
+		return
+	}
+	switch statusArg.(type) {
+	default:
+		log.Fatal("Can only handle DeviceNetworkStatus")
+	case *types.DeviceNetworkStatus:
+		status = statusArg.(*types.DeviceNetworkStatus)
+	}
+
+	log.Printf("handleDNSModify for %s\n", statusFilename)
+	globalStatus = *status
+	log.Printf("handleDNSModify done for %s\n", statusFilename)
+}
+
+func handleDNSDelete(statusFilename string) {
+	log.Printf("handleDNSDelete for %s\n", statusFilename)
+
+	if statusFilename != "global" {
+		fmt.Printf("handleDNSDelete: ignoring %s\n", statusFilename)
+		return
+	}
+	globalStatus = types.DeviceNetworkStatus{}
+	log.Printf("handleDNSDelete done for %s\n", statusFilename)
 }
