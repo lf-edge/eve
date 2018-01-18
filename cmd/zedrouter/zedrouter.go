@@ -168,6 +168,9 @@ var globalStatusFilename string
 var globalRunDirname string
 var lispRunDirname string
 
+// XXX hack to avoid the pslisp hang on Erik's laptop
+var broken = false
+
 func handleInit(configFilename string, statusFilename string,
 	runDirname string) {
 	globalStatusFilename = statusFilename
@@ -225,20 +228,24 @@ func handleInit(configFilename string, statusFilename string,
 	_, err = wrap.Command("sysctl", "-w",
 		"net.bridge.bridge-nf-call-ip6tables=1").Output()
 	if err != nil {
-		// XXX not in bobo's kernel
-		log.Println("Failed setting net.bridge-nf-call-ip6tables ", err)
+		log.Fatal("Failed setting net.bridge-nf-call-ip6tables ", err)
 	}
 	_, err = wrap.Command("sysctl", "-w",
 		"net.bridge.bridge-nf-call-iptables=1").Output()
 	if err != nil {
-		// XXX not in bobo's kernel
-		log.Println("Failed setting net.bridge-nf-call-iptables ", err)
+		log.Fatal("Failed setting net.bridge-nf-call-iptables ", err)
 	}
 	_, err = wrap.Command("sysctl", "-w",
 		"net.bridge.bridge-nf-call-arptables=1").Output()
 	if err != nil {
-		// XXX not in bobo's kernel
-		log.Println("Failed setting net.bridge-nf-call-arptables ", err)
+		log.Fatal("Failed setting net.bridge-nf-call-arptables ", err)
+	}
+
+	// XXX hack to determine whether a real system or Erik's laptop
+	_, err = wrap.Command("xl", "list").Output()
+	if err != nil {
+		fmt.Printf("Command xl list failed: %s\n", err)
+		broken = true
 	}
 }
 

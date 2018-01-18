@@ -393,6 +393,17 @@ func restartLisp(upLinkStatus []types.NetworkUplink, devices string) {
 		log.Printf("Can not restart lisp with no uplinks\n")
 		return
 	}
+	// XXX hack to avoid hang in pslisp on Erik's laptop
+	if broken {
+		// Issue pkill -f lisp-core.pyo
+		log.Printf("Calling pkill -f lisp-core.pyo\n")
+		cmd := wrap.Command("pkill", "-f", "lisp-core.pyo")
+		stdoutStderr, err := cmd.CombinedOutput()
+		if err != nil {
+			log.Println("pkill failed ", err)
+			log.Printf("pkill output %s\n", string(stdoutStderr))
+		}
+	}
 	// XXX how to restart with multiple uplinks?
 	args := []string{
 		RestartCmd,
@@ -438,6 +449,18 @@ func restartLisp(upLinkStatus []types.NetworkUplink, devices string) {
 
 func stopLisp() {
 	log.Printf("stopLisp\n")
+	// XXX hack to avoid hang in pslisp on Erik's laptop
+	if broken {
+		// Issue pkill -f lisp-core.pyo
+		log.Printf("Calling pkill -f lisp-core.pyo\n")
+		cmd := wrap.Command("pkill", "-f", "lisp-core.pyo")
+		stdoutStderr, err := cmd.CombinedOutput()
+		if err != nil {
+			log.Println("pkill failed ", err)
+			log.Printf("pkill output %s\n", string(stdoutStderr))
+		}
+	}
+	
 	cmd := wrap.Command(StopCmd)
 	env := os.Environ()
 	env = append(env, fmt.Sprintf("LISP_NO_IPTABLES="))
