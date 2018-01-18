@@ -1,0 +1,3 @@
+org: zededa
+image: mkrootfs-ext4
+network: true

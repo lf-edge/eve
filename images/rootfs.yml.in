@@ -1,0 +1,46 @@
+kernel:
+  image: KERNEL_TAG
+  cmdline: "rootwait"
+init:
+  - GRUB_TAG
+  - XEN_TAG
+  - XENTOOLS_TAG
+  - DOM0ZTOOLS_TAG
+  - linuxkit/init:7804129bd06218b72c298139a25698a748d253c6
+  - linuxkit/runc:a1b564248a0d0b118c11e61db9f84ecf41dd2d2a
+  - linuxkit/containerd:417f83f7b8dc1fa36acf90effe44f99c7397480a
+  - linuxkit/getty:bf6872ce0a9f3ab519b3e502cc41ba3958bda2a6
+onboot:
+  - name: dhcpcd
+    image: linuxkit/dhcpcd:d4408777ed6b6e6e562a5d4938fd09804324b33e
+    command: ["/sbin/dhcpcd", "--nobackground", "-f", "/dhcpcd.conf", "-1"]
+services:
+   - name: wwan
+     image: WWAN_TAG
+     binds:
+      - /lib:/lib
+      - /dev:/dev
+      - /etc/resolv.conf:/etc/resolv.conf
+     net: host
+     capabilities:
+      - all
+   - name: wlan
+     image: WLAN_TAG
+     binds:
+      - /dev:/dev
+      - /etc/resolv.conf:/etc/resolv.conf
+     net: host
+     capabilities:
+      - all
+   - name: zededa-tools
+     image: ZEDEDA_TAG
+     binds:
+      - /dev:/dev
+      - /etc/resolv.conf:/etc/resolv.conf
+     net: host
+     capabilities:
+      - all
+trust:
+  org:
+    - linuxkit
+
