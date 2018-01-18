@@ -20,7 +20,7 @@ type UUIDandVersion struct {
 func (m *UUIDandVersion) Reset()                    { *m = UUIDandVersion{} }
 func (m *UUIDandVersion) String() string            { return proto.CompactTextString(m) }
 func (*UUIDandVersion) ProtoMessage()               {}
-func (*UUIDandVersion) Descriptor() ([]byte, []int) { return fileDescriptor3, []int{0} }
+func (*UUIDandVersion) Descriptor() ([]byte, []int) { return fileDescriptor1, []int{0} }
 
 func (m *UUIDandVersion) GetUuid() string {
 	if m != nil {
@@ -40,9 +40,9 @@ func init() {
 	proto.RegisterType((*UUIDandVersion)(nil), "UUIDandVersion")
 }
 
-func init() { proto.RegisterFile("devcommon.proto", fileDescriptor3) }
+func init() { proto.RegisterFile("devcommon.proto", fileDescriptor1) }
 
-var fileDescriptor3 = []byte{
+var fileDescriptor1 = []byte{
 	// 160 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x34, 0x8d, 0x3f, 0x0b, 0xc2, 0x30,
 	0x10, 0x47, 0xa9, 0x88, 0x62, 0x06, 0x85, 0x4e, 0xdd, 0x14, 0x17, 0x9d, 0xd2, 0xc1, 0xdd, 0x41,
