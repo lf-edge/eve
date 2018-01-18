@@ -540,11 +540,6 @@ func flushRules(ifindex int) {
 	}
 }
 
-var (
-	v4HostMask = net.CIDRMask(32, 32)
-	v6HostMask = net.CIDRMask(128, 128)
-)
-
 func addSourceRule(ifindex int, p net.IPNet) {
 	r := netlink.NewRule()
 	r.Table = FreeTable + ifindex
