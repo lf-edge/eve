@@ -1,0 +1,57 @@
+This patch allows to probe a partition for it's GPT part UUID.
+
+It is GPT specific, and it's use to Zenbuild to allow grub
+to discover its current partition UUID, and pass it to the
+kernel.
+
+This makes it possible to boot Linux with a UUID root
+without initrd.
+
+diff --git a/grub-core/commands/probe.c b/grub-core/commands/probe.c
+index cf2793e1d..db62a58c7 100644
+--- a/grub-core/commands/probe.c
++++ b/grub-core/commands/probe.c
+@@ -24,6 +24,7 @@
+ #include <grub/device.h>
+ #include <grub/disk.h>
+ #include <grub/partition.h>
++#include <grub/gpt_partition.h>
+ #include <grub/net.h>
+ #include <grub/fs.h>
+ #include <grub/file.h>
+@@ -45,6 +46,7 @@ static const struct grub_arg_option options[] =
+     {"fs",		'f', 0, N_("Determine filesystem type."), 0, 0},
+     {"fs-uuid",		'u', 0, N_("Determine filesystem UUID."), 0, 0},
+     {"label",		'l', 0, N_("Determine filesystem label."), 0, 0},
++    {"part-uuid",       'U', 0, N_("Determine partition UUID."), 0, 0},
+     {0, 0, 0, 0, 0, 0}
+   };
+ 
+@@ -98,6 +100,27 @@ grub_cmd_probe (grub_extcmd_context_t ctxt, int argc, char **args)
+       grub_device_close (dev);
+       return GRUB_ERR_NONE;
+     }
++  if (state[6].set)
++    {
++      char *uuid;
++      const char *partmap = "none";
++
++      if (dev->disk || dev->disk->partition)
++	partmap = dev->disk->partition->partmap->name;
++
++      if (grub_strcmp(partmap, "gpt") != 0)
++	grub_error (GRUB_ERR_NOT_IMPLEMENTED_YET,
++		    N_("not a GPT partition"));
++      if (grub_gpt_part_uuid (dev, &uuid))
++	return grub_errno;
++      if (state[0].set)
++	grub_env_set (state[0].arg, uuid);
++      else
++	grub_printf ("%s", uuid);
++      grub_free (uuid);
++      grub_device_close (dev);
++      return GRUB_ERR_NONE;
++    }
+   fs = grub_fs_probe (dev);
+   if (! fs)
+     return grub_errno;
