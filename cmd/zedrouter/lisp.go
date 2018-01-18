@@ -389,6 +389,10 @@ func handleLispRestart(done bool) {
 func restartLisp(upLinkStatus []types.NetworkUplink, devices string) {
 	log.Printf("restartLisp: %v %s\n",
 		upLinkStatus, devices)
+	if len(upLinkStatus) == 0 {
+		log.Printf("Can not restart lisp with no uplinks\n")
+		return
+	}
 	// XXX how to restart with multiple uplinks?
 	args := []string{
 		RestartCmd,

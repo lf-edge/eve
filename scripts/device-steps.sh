@@ -164,8 +164,12 @@ if [ ! -d $LISPDIR ]; then
     exit 1
 fi
 
-if [ -f /var/tmp/zedrouter/config/global ]; then
-   cp -p /var/tmp/zedrouter/config/global $ETCDIR/network.config.global
+# We use the factory network.config.static if we have one, otherwise
+# we reuse the DeviceNetworkConfig from a previous run
+if [ -f $ETCDIR/network.config.static ] ; then
+    cp $ETCDIR/network.config.static $ETCDIR/network.config.global
+elif [ -f /var/tmp/zededa/DeviceNetworkConfig/global.json ]; then
+    cp -p /var/tmp/zededa/DeviceNetworkConfig/global.json $ETCDIR/network.config.global
 fi
 
 echo "Removing old stale files"
@@ -179,7 +183,7 @@ echo "Removing old zedmanager status files"
 rm -rf /var/run/zedmanager/status/*.json
 # The following is a workaround for a racecondition between different agents
 # Make sure we have the required directories in place
-DIRS="/var/tmp/domainmgr/config/ /var/tmp/verifier/config/ /var/tmp/downloader/config/ /var/tmp/zedmanager/config/ /var/tmp/identitymgr/config/ /var/tmp/zedrouter/config/ /var/run/domainmgr/status/ /var/run/verifier/status/ /var/run/downloader/status/ /var/run/zedmanager/status/ /var/run/eidregister/status/ /var/run/zedrouter/status/ /var/run/identitymgr/status/ /var/run/zededa/DeviceNetworkConfig/ /var/run/zedrouter/DeviceNetworkStatus/"
+DIRS="/var/tmp/domainmgr/config/ /var/tmp/verifier/config/ /var/tmp/downloader/config/ /var/tmp/zedmanager/config/ /var/tmp/identitymgr/config/ /var/tmp/zedrouter/config/ /var/run/domainmgr/status/ /var/run/verifier/status/ /var/run/downloader/status/ /var/run/zedmanager/status/ /var/run/eidregister/status/ /var/run/zedrouter/status/ /var/run/identitymgr/status/ /var/tmp/zededa/DeviceNetworkConfig/ /var/run/zedrouter/DeviceNetworkStatus/"
 for d in $DIRS; do
     mkdir -p $d
     chmod 700 $d `dirname $d`
@@ -301,6 +305,7 @@ if [ $SELF_REGISTER = 1 ]; then
     if [ -f $ETCDIR/network.config.static ] ; then
 	cp $ETCDIR/network.config.static $ETCDIR/network.config.global
     else
+	echo "Determining uplink interface"
 	intf=`$BINDIR/find-uplink.sh $ETCDIR/lisp.config.base`
 	if [ "$intf" != "" ]; then
 		echo "Found interface $intf based on route to map servers"
@@ -308,8 +313,6 @@ if [ $SELF_REGISTER = 1 ]; then
 		echo "NOT Found interface based on route to map servers. Giving up"
 		exit 1    
 	fi
-	echo "Determining uplink interface"
-# XXX this should be set from build, and include the FreeUplinks collection
 	cat <<EOF >$ETCDIR/network.config.global
 {"Uplink":["$intf"], "FreeUplinks":["$intf"]}
 EOF
@@ -329,7 +332,7 @@ else
     # updated
     /bin/hostname $uuid
     /bin/hostname >/etc/hostname
-    grep -s $uuid /etc/hosts >/dev/null
+    grep -q $uuid /etc/hosts
     if [ !? = 1 ]; then
 	# put the uuid in /etc/hosts to avoid complaints
 	echo "Adding $uuid to /etc/hosts"
@@ -337,6 +340,26 @@ else
     else
 	echo "Found $uuid in /etc/hosts"
     fi
+    # Handle old file format
+    grep -q FreeUplinks $ETCDIR/network.config.global
+    if [ !? = 0 ]; then
+	echo "Found FreeUplinks in $ETCDIR/network.config.global"
+    else
+	echo "Determining uplink interface"
+	intf=`$BINDIR/find-uplink.sh $ETCDIR/lisp.config.base`
+	if [ "$intf" != "" ]; then
+		echo "Found interface $intf based on route to map servers"
+	else
+		echo "NOT Found interface based on route to map servers. Giving up"
+		exit 1    
+	fi
+	cat <<EOF >$ETCDIR/network.config.global
+{"Uplink":["$intf"], "FreeUplinks":["$intf"]}
+EOF
+    fi
+    # XXX
+    echo "Content of file is:"
+    cat $ETCDIR/network.config.global
 fi
 
 # Need a key for device-to-device map-requests
@@ -349,7 +372,7 @@ if [ -f $ETCDIR/zedrouterconfig.json ]; then
 	cp $ETCDIR/zedrouterconfig.json /var/tmp/zedrouter/config/${uuid}.json
 fi
 
-cp $ETCDIR/network.config.global /var/run/zededa/DeviceNetworkConfig/global.json
+cp $ETCDIR/network.config.global /var/tmp/zededa/DeviceNetworkConfig/global.json
 
 # Setup default amount of space for images
 echo '{"MaxSpace":2000000}' >/var/tmp/downloader/config/global 

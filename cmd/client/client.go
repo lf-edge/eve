@@ -98,7 +98,7 @@ func main() {
 	hwStatusFileName := dirName + "/hwstatus.json" // XXX remove later
 	swStatusFileName := dirName + "/swstatus.json" // XXX remove later
 
-	globalNetworkConfigFilename := "/var/tmp/zedrouter/config/global"
+	globalNetworkConfigFilename := "/var/tmp/zededa/DeviceNetworkConfig/global.json"
 	globalConfig, err := types.GetDeviceNetworkConfig(globalNetworkConfigFilename)
 	if err != nil {
 		log.Printf("%s for %s\n", err, globalNetworkConfigFilename)

@@ -32,7 +32,7 @@ const (
 	baseDirname   = "/var/tmp/zedrouter"
 	configDirname = baseDirname + "/config"
 	statusDirname = runDirname + "/status"
-	DNCDirname    = "/var/run/zededa/DeviceNetworkConfig"
+	DNCDirname    = "/var/tmp/zededa/DeviceNetworkConfig"
 	DNSDirname    = runDirname + "/DeviceNetworkStatus"
 )
 
@@ -290,7 +290,8 @@ var agentName = "zedrouter"
 // XXX make into generic function with myName as argument.
 func removeAppNetworkStatus(status *types.AppNetworkStatus) {
 	key := status.UUIDandVersion.UUID.String()
-	topic := "AppNetworkStatus" // XXX reflect to get name of type?
+	// topic := "AppNetworkStatus" // XXX reflect to get name of type?
+	topic := "status"
 	statusFilename := fmt.Sprintf("/var/run/%s/%s/%s.json",
 		agentName, topic, key)
 	if err := os.Remove(statusFilename); err != nil {

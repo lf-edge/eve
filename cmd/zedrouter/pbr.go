@@ -146,6 +146,9 @@ func PbrRouteChange(change netlink.RouteUpdate) {
 
 // Handle an IP address change
 func PbrAddrChange(change netlink.AddrUpdate) {
+	// XXX remove?
+	log.Printf("PbrAddrChange: new %v if %d addr %v\n", change.NewAddr,
+		change.LinkIndex, change.LinkAddress)
 	changed := false     
 	if change.NewAddr {
 		changed = IfindexToAddrsAdd(change.LinkIndex,
@@ -176,6 +179,15 @@ func PbrAddrChange(change netlink.AddrUpdate) {
 
 // Handle a link being added or deleted
 func PbrLinkChange(change netlink.LinkUpdate) {
+	// XXX remove?
+	switch change.Header.Type {
+	case syscall.RTM_NEWLINK:
+		log.Printf("PbrLinkChange: new if %d name %s\n",
+			change.Attrs().Index, change.Attrs().Name)
+	case syscall.RTM_DELLINK:
+		log.Printf("PbrLinkChange: del if %d name %s\n",
+			change.Attrs().Index, change.Attrs().Name)
+	}
 	ifindex := change.Attrs().Index
 	ifname := change.Attrs().Name
 	switch change.Header.Type {
@@ -183,10 +195,11 @@ func PbrLinkChange(change netlink.LinkUpdate) {
 		new := IfindexToNameAdd(ifindex, ifname)
 		if new {
 			// XXX any ordering issues?
+			log.Printf("PbrLinkChange: XXX any ordering issues?\n")
 			// Could we flush things we just added?
-			flushRoutesTable(FreeTable, ifindex)
-			MyTable := FreeTable + ifindex
-			flushRoutesTable(MyTable, 0)
+			// flushRoutesTable(FreeTable, ifindex)
+			// MyTable := FreeTable + ifindex
+			// flushRoutesTable(MyTable, 0)
 			flushRules(ifindex)
 
 			if isFreeUplink(ifname) {
@@ -294,16 +307,18 @@ func IfindexToNameAdd(index int, name string) bool {
 	if !ok {
 		// Note that we get RTM_NEWLINK even for link changes
 		// hence we don't print unless the entry is new
-		fmt.Printf("Link add index %d name %s\n", index, name)
+		fmt.Printf("IfindexToNameAdd index %d name %s\n", index, name)
 		ifindexToName[index] = name
 		// fmt.Printf("ifindexToName post add %v\n", ifindexToName)
 		return true
 	} else if m != name {
+		// We get this when the vifs are created with "vif*" names
+		// and then changed to "bu*" etc.
 		fmt.Printf("IfindexToNameAdd name mismatch %s vs %s for %d\n",
 			m, name, index)
 		ifindexToName[index] = name
 		// fmt.Printf("ifindexToName post add %v\n", ifindexToName)
-		return false // Rename
+		return false
 	} else {
 		return false
 	}
@@ -322,7 +337,7 @@ func IfindexToNameDel(index int, name string) bool {
 		// fmt.Printf("ifindexToName post delete %v\n", ifindexToName)
 		return true
 	} else {
-		fmt.Printf("Link del index %d name %s\n", index, name)
+		fmt.Printf("IfindexToNameDel index %d name %s\n", index, name)
 		delete(ifindexToName, index)
 		// fmt.Printf("ifindexToName post delete %v\n", ifindexToName)
 		return true
@@ -501,6 +516,9 @@ func moveRoutesTable(srcTable int, ifindex int, dstTable int) {
 // ==== manage the ip rules
 
 // Flush the rules we create. If ifindex is non-zero we also compare it
+// Otherwise we flush the FreeTable
+// XXX should we have a way to flush all on startup?
+// or flush an ifindex when we add it?
 func flushRules(ifindex int) {
 	rules, err := netlink.RuleList(syscall.AF_UNSPEC)
 	if err != nil {
@@ -514,8 +532,7 @@ func flushRules(ifindex int) {
 		if ifindex != 0 && r.Table != FreeTable+ifindex {
 			continue
 		}
-		log.Printf("flushRules(%d): table %d src %v\n",
-			ifindex, r.Table, r.Src)
+		log.Printf("flushRules: RuleDel %v\n", r)
 		if err := netlink.RuleDel(&r); err != nil {
 			log.Fatal("flushRules - RuleDel %v failed %s\n",
 				r, err)
