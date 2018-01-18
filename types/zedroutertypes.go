@@ -125,10 +125,14 @@ func MakeDeviceNetworkStatus(globalConfig DeviceNetworkConfig) (DeviceNetworkSta
 		}
 		link, err := netlink.LinkByName(u)
 		if err != nil {
+			log.Printf("MakeDeviceNetworkStatus LinkByName %u: %s\n", u, err)
 			err = errors.New(fmt.Sprintf("Uplink in config/global does not exist: %v", u))
+			continue
 		}
 		addrs4, err := netlink.AddrList(link, netlink.FAMILY_V4)
+		if err != nil { addrs4 = nil }
 		addrs6, err := netlink.AddrList(link, netlink.FAMILY_V6)
+		if err != nil { addrs6 = nil }
 		globalStatus.UplinkStatus[ix].Addrs = make([]net.IP,
 			len(addrs4)+len(addrs6))
 		for i, addr := range addrs4 {

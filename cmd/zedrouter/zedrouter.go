@@ -341,17 +341,18 @@ func updateLispConfiglets() {
 			olNum := i + 1
 			var olIfname string
 			if status.IsZedmanager {
-				olIfname = "bo" + strconv.Itoa(olNum) + "x" +
+				olIfname = "dbo" + strconv.Itoa(olNum) + "x" +
 					strconv.Itoa(status.AppNum)
 			} else {
-				olIfname = "dbo" + strconv.Itoa(olNum) + "x" +
+				olIfname = "bo" + strconv.Itoa(olNum) + "x" +
 					strconv.Itoa(status.AppNum)
 			}	
 			additionalInfo := generateAdditionalInfo(status,
 				olStatus.OverlayNetworkConfig)
+			log.Printf("updateLispConfiglets for %s isMgmt %v\n",
+				olIfname, status.IsZedmanager)
 			createLispConfiglet(lispRunDirname, status.IsZedmanager,
-				olStatus.IID,
-				olStatus.EID, olStatus.LispSignature,
+				olStatus.IID, olStatus.EID, olStatus.LispSignature,
 				globalStatus, olIfname, olIfname,
 				additionalInfo, olStatus.LispServers)
 		}
@@ -526,8 +527,8 @@ func handleCreate(statusFilename string, configArg interface{}) {
 		additionalInfo := generateAdditionalInfo(status, olConfig)
 
 		// Create LISP configlets for IID and EID/signature
-		createLispConfiglet(lispRunDirname, true, olConfig.IID,
-			olConfig.EID, olConfig.LispSignature,
+		createLispConfiglet(lispRunDirname, config.IsZedmanager,
+			olConfig.IID, olConfig.EID, olConfig.LispSignature,
 			globalStatus, olIfname, olIfname,
 			additionalInfo, olConfig.LispServers)
 		status.OverlayNetworkList = make([]types.OverlayNetworkStatus,
@@ -657,8 +658,8 @@ func handleCreate(statusFilename string, configArg interface{}) {
 
 		additionalInfo := generateAdditionalInfo(status, olConfig)
 		// Create LISP configlets for IID and EID/signature
-		createLispConfiglet(lispRunDirname, false, olConfig.IID,
-			olConfig.EID, olConfig.LispSignature,
+		createLispConfiglet(lispRunDirname, config.IsZedmanager,
+			olConfig.IID, olConfig.EID, olConfig.LispSignature,
 			globalStatus, olIfname, olIfname,
 			additionalInfo, olConfig.LispServers)
 
