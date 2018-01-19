@@ -32,7 +32,7 @@ type VmConfig struct {
 func (m *VmConfig) Reset()                    { *m = VmConfig{} }
 func (m *VmConfig) String() string            { return proto.CompactTextString(m) }
 func (*VmConfig) ProtoMessage()               {}
-func (*VmConfig) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{0} }
+func (*VmConfig) Descriptor() ([]byte, []int) { return fileDescriptor1, []int{0} }
 
 func (m *VmConfig) GetKernel() string {
 	if m != nil {
@@ -136,9 +136,9 @@ func init() {
 	proto.RegisterType((*VmConfig)(nil), "VmConfig")
 }
 
-func init() { proto.RegisterFile("vm.proto", fileDescriptor5) }
+func init() { proto.RegisterFile("vm.proto", fileDescriptor1) }
 
-var fileDescriptor5 = []byte{
+var fileDescriptor1 = []byte{
 	// 295 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x4c, 0x91, 0xbd, 0x4e, 0xec, 0x30,
 	0x10, 0x46, 0xb5, 0xff, 0x1b, 0xdf, 0x1b, 0x0a, 0x0b, 0x21, 0x17, 0x08, 0x22, 0x1a, 0x52, 0x25,

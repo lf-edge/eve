@@ -20,7 +20,7 @@ type ACEMatch struct {
 func (m *ACEMatch) Reset()                    { *m = ACEMatch{} }
 func (m *ACEMatch) String() string            { return proto.CompactTextString(m) }
 func (*ACEMatch) ProtoMessage()               {}
-func (*ACEMatch) Descriptor() ([]byte, []int) { return fileDescriptor3, []int{0} }
+func (*ACEMatch) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{0} }
 
 func (m *ACEMatch) GetType() string {
 	if m != nil {
@@ -51,7 +51,7 @@ type ACEAction struct {
 func (m *ACEAction) Reset()                    { *m = ACEAction{} }
 func (m *ACEAction) String() string            { return proto.CompactTextString(m) }
 func (*ACEAction) ProtoMessage()               {}
-func (*ACEAction) Descriptor() ([]byte, []int) { return fileDescriptor3, []int{1} }
+func (*ACEAction) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{1} }
 
 func (m *ACEAction) GetDrop() bool {
 	if m != nil {
@@ -124,7 +124,7 @@ type ACE struct {
 func (m *ACE) Reset()                    { *m = ACE{} }
 func (m *ACE) String() string            { return proto.CompactTextString(m) }
 func (*ACE) ProtoMessage()               {}
-func (*ACE) Descriptor() ([]byte, []int) { return fileDescriptor3, []int{2} }
+func (*ACE) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{2} }
 
 func (m *ACE) GetMatches() []*ACEMatch {
 	if m != nil {
@@ -148,7 +148,7 @@ type NameToEid struct {
 func (m *NameToEid) Reset()                    { *m = NameToEid{} }
 func (m *NameToEid) String() string            { return proto.CompactTextString(m) }
 func (*NameToEid) ProtoMessage()               {}
-func (*NameToEid) Descriptor() ([]byte, []int) { return fileDescriptor3, []int{3} }
+func (*NameToEid) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{3} }
 
 func (m *NameToEid) GetHostname() string {
 	if m != nil {
@@ -177,7 +177,7 @@ type AdditionInfoDevice struct {
 func (m *AdditionInfoDevice) Reset()                    { *m = AdditionInfoDevice{} }
 func (m *AdditionInfoDevice) String() string            { return proto.CompactTextString(m) }
 func (*AdditionInfoDevice) ProtoMessage()               {}
-func (*AdditionInfoDevice) Descriptor() ([]byte, []int) { return fileDescriptor3, []int{4} }
+func (*AdditionInfoDevice) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{4} }
 
 func (m *AdditionInfoDevice) GetUnderlayip() string {
 	if m != nil {
@@ -240,7 +240,7 @@ type OverlayNetwork struct {
 func (m *OverlayNetwork) Reset()                    { *m = OverlayNetwork{} }
 func (m *OverlayNetwork) String() string            { return proto.CompactTextString(m) }
 func (*OverlayNetwork) ProtoMessage()               {}
-func (*OverlayNetwork) Descriptor() ([]byte, []int) { return fileDescriptor3, []int{5} }
+func (*OverlayNetwork) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{5} }
 
 func (m *OverlayNetwork) GetIid() uint32 {
 	if m != nil {
@@ -294,7 +294,7 @@ type EIDAllocation struct {
 func (m *EIDAllocation) Reset()                    { *m = EIDAllocation{} }
 func (m *EIDAllocation) String() string            { return proto.CompactTextString(m) }
 func (*EIDAllocation) ProtoMessage()               {}
-func (*EIDAllocation) Descriptor() ([]byte, []int) { return fileDescriptor3, []int{6} }
+func (*EIDAllocation) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{6} }
 
 func (m *EIDAllocation) GetAllocate() bool {
 	if m != nil {
@@ -336,7 +336,7 @@ type EIDConfigDetails struct {
 func (m *EIDConfigDetails) Reset()                    { *m = EIDConfigDetails{} }
 func (m *EIDConfigDetails) String() string            { return proto.CompactTextString(m) }
 func (*EIDConfigDetails) ProtoMessage()               {}
-func (*EIDConfigDetails) Descriptor() ([]byte, []int) { return fileDescriptor3, []int{7} }
+func (*EIDConfigDetails) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{7} }
 
 func (m *EIDConfigDetails) GetIid() uint32 {
 	if m != nil {
@@ -389,7 +389,7 @@ type EIDOverlayConfig struct {
 func (m *EIDOverlayConfig) Reset()                    { *m = EIDOverlayConfig{} }
 func (m *EIDOverlayConfig) String() string            { return proto.CompactTextString(m) }
 func (*EIDOverlayConfig) ProtoMessage()               {}
-func (*EIDOverlayConfig) Descriptor() ([]byte, []int) { return fileDescriptor3, []int{8} }
+func (*EIDOverlayConfig) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{8} }
 
 func (m *EIDOverlayConfig) GetEidcfgdetails() *EIDConfigDetails {
 	if m != nil {
@@ -419,7 +419,7 @@ type UnderlayNetwork struct {
 func (m *UnderlayNetwork) Reset()                    { *m = UnderlayNetwork{} }
 func (m *UnderlayNetwork) String() string            { return proto.CompactTextString(m) }
 func (*UnderlayNetwork) ProtoMessage()               {}
-func (*UnderlayNetwork) Descriptor() ([]byte, []int) { return fileDescriptor3, []int{9} }
+func (*UnderlayNetwork) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{9} }
 
 func (m *UnderlayNetwork) GetAcls() []*ACE {
 	if m != nil {
@@ -441,9 +441,9 @@ func init() {
 	proto.RegisterType((*UnderlayNetwork)(nil), "UnderlayNetwork")
 }
 
-func init() { proto.RegisterFile("network.proto", fileDescriptor3) }
+func init() { proto.RegisterFile("network.proto", fileDescriptor5) }
 
-var fileDescriptor3 = []byte{
+var fileDescriptor5 = []byte{
 	// 720 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x94, 0x54, 0xcd, 0x6e, 0xd3, 0x4a,
 	0x14, 0x96, 0x9d, 0x34, 0x89, 0x4f, 0x9a, 0xde, 0xde, 0xe9, 0xd5, 0x95, 0x75, 0x75, 0x05, 0x91,

@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-/*import "google/protobuf/timestamp.proto";*/
+import "google/protobuf/timestamp.proto";
 option go_package  = "github.com/zededa/api/zmet";
 
 /*
@@ -90,7 +90,7 @@ message ZInfoSW {
   string swVersion = 2;
   string swHash = 3;
   ZSwState state = 4;		// State of Software Image download/install
-  bool activated = 5;		// Activation flag
+  bool activated = 5;		// Activation flag -- deprecated
 }
 
 // Base device info, as discovered by Xen (or OS on bare metal)
@@ -111,6 +111,7 @@ message ZInfoDevice {
 }
 
 // Device info from DOM0 perspective, if it exists.
+// The following is deprecated.
 message ZInfoHypervisor {
   uint32 ncpu = 3;
   uint64 memory = 4;
@@ -121,11 +122,18 @@ message ZInfoHypervisor {
 
 message ZInfoApp {
   string AppID = 1;
-  uint32 ncpu = 2;
-  uint32 memory = 3;
-  uint32 storage = 4;
+  uint32 ncpu = 2;          // deprecated
+  uint32 memory = 3;        // deprecated
+  uint32 storage = 4;       // deprecated
 
-  ZInfoSW software = 5;
+  ZInfoSW software = 5;     // deprecated
+
+  bool systemApp = 6;
+  string AppName = 7;
+  repeated ZInfoSW softwareList = 8;
+  bool activated = 9;
+  string error = 10;
+  google.protobuf.Timestamp errorTime = 11;
 }
 
 message ZInfoMsg {
@@ -136,6 +144,7 @@ message ZInfoMsg {
   	ZInfoHypervisor hinfo = 4;	// Deprecated
   	ZInfoApp ainfo = 5;
    }
+  google.protobuf.Timestamp atTimeStamp = 6;
 }
 
 enum ZmetricTypes {
@@ -175,8 +184,19 @@ message networkMetric {
   uint64 rxRate = 7;  // pps
 }
 
+message appCpuMetric {
+    uint32 cpuTotal = 2;
+    uint32 upTime = 3;
+}
+
 message deviceMetric {
   cpuMetric cpu = 1;
+  memoryMetric memory = 2;
+  repeated networkMetric network = 3;
+}
+
+message appMetric {
+  appCpuMetric cpu = 1;
   memoryMetric memory = 2;
   repeated networkMetric network = 3;
 }
@@ -184,9 +204,10 @@ message deviceMetric {
 message ZMetricMsg {
   string devID = 1;
   ZmetricTypes ztype = 2;
-  /*google.protobuf.Timestamp atTimeStamp = 3; */
+  google.protobuf.Timestamp atTimeStamp = 3;
 
   oneof MetricContent {
   	deviceMetric dm = 4;
+        appMetric    am = 5;
    }
 }

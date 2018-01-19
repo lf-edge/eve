@@ -34,7 +34,7 @@ var NetworkKind_value = map[string]int32{
 func (x NetworkKind) String() string {
 	return proto.EnumName(NetworkKind_name, int32(x))
 }
-func (NetworkKind) EnumDescriptor() ([]byte, []int) { return fileDescriptor7, []int{0} }
+func (NetworkKind) EnumDescriptor() ([]byte, []int) { return fileDescriptor8, []int{0} }
 
 type NetworkState int32
 
@@ -61,7 +61,7 @@ var NetworkState_value = map[string]int32{
 func (x NetworkState) String() string {
 	return proto.EnumName(NetworkState_name, int32(x))
 }
-func (NetworkState) EnumDescriptor() ([]byte, []int) { return fileDescriptor7, []int{1} }
+func (NetworkState) EnumDescriptor() ([]byte, []int) { return fileDescriptor8, []int{1} }
 
 type NetworkParam struct {
 	Id      string      `protobuf:"bytes,1,opt,name=id" json:"id,omitempty"`
@@ -82,7 +82,7 @@ type NetworkParam struct {
 func (m *NetworkParam) Reset()                    { *m = NetworkParam{} }
 func (m *NetworkParam) String() string            { return proto.CompactTextString(m) }
 func (*NetworkParam) ProtoMessage()               {}
-func (*NetworkParam) Descriptor() ([]byte, []int) { return fileDescriptor7, []int{0} }
+func (*NetworkParam) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{0} }
 
 type isNetworkParam_NetContent interface {
 	isNetworkParam_NetContent()
@@ -320,7 +320,7 @@ type NetworkIf struct {
 func (m *NetworkIf) Reset()                    { *m = NetworkIf{} }
 func (m *NetworkIf) String() string            { return proto.CompactTextString(m) }
 func (*NetworkIf) ProtoMessage()               {}
-func (*NetworkIf) Descriptor() ([]byte, []int) { return fileDescriptor7, []int{1} }
+func (*NetworkIf) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{1} }
 
 func (m *NetworkIf) GetName() string {
 	if m != nil {
@@ -392,9 +392,9 @@ func init() {
 	proto.RegisterEnum("NetworkState", NetworkState_name, NetworkState_value)
 }
 
-func init() { proto.RegisterFile("network.proto", fileDescriptor7) }
+func init() { proto.RegisterFile("network.proto", fileDescriptor8) }
 
-var fileDescriptor7 = []byte{
+var fileDescriptor8 = []byte{
 	// 520 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x54, 0x53, 0x4f, 0x6f, 0xda, 0x30,
 	0x14, 0x6f, 0x02, 0x14, 0xf2, 0x08, 0x5d, 0xe5, 0x5d, 0xac, 0x6e, 0xd5, 0xb2, 0x6e, 0x87, 0xa8,
