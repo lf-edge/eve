@@ -544,7 +544,8 @@ func SendMetricsProtobufStrThroughHttp(ReportMetrics *zmet.ZMetricMsg,
 
 	intf, err := types.GetUplinkAny(globalStatus, iteration)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("SendMetricsProtobufStrThroughHttp:", err)
+		return
 	}
 	addrCount := types.CountLocalAddrAny(globalStatus, intf)
 	// XXX makes logfile too long; debug flag?

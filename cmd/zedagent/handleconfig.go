@@ -115,7 +115,8 @@ func configTimerTask() {
 func getLatestConfig(configUrl string, iteration int) {
 	intf, err := types.GetUplinkAny(globalStatus, iteration)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("getLatestConfig:", err)
+		return
 	}
 	addrCount := types.CountLocalAddrAny(globalStatus, intf)
 	// XXX makes logfile too long; debug flag?
