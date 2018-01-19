@@ -189,6 +189,12 @@
 			"revisionTime": "2017-11-04T19:48:40Z"
 		},
 		{
+			"checksumSHA1": "eDQ6f1EsNf+frcRO/9XukSEchm8=",
+			"path": "github.com/satori/go.uuid",
+			"revision": "36e9d2ebbde5e3f13ab2e25625fd453271d6522e",
+			"revisionTime": "2018-01-03T17:44:51Z"
+		},
+		{
 			"checksumSHA1": "O5DZeA+c+rTRg1xcD4qcnQsoT6I=",
 			"path": "github.com/zededa/api",
 			"revision": "f8ca120a7a85aa05b3506666691c238a6703665e",
@@ -255,5 +261,5 @@
 			"revisionTime": "2017-09-21T17:41:56Z"
 		}
 	],
-	"rootPath": "/home/nordmark/go-provision/src"
+	"rootPath": "/home/nordmark/work/go-provision/src"
 }
