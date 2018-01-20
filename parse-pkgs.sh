@@ -23,6 +23,7 @@ ARCH=amd64
 KERNEL_TAG=$(linuxkit_tag pkg/kernel)-$ARCH
 XENTOOLS_TAG=$(linuxkit_tag pkg/xen-tools)-$ARCH
 XEN_TAG=$(linuxkit_tag pkg/xen)-$ARCH
+GRUB_TAG=$(linuxkit_tag pkg/grub)-$ARCH
 DNSMASQ_TAG=$(linuxkit_tag pkg/dnsmasq)-$ARCH
 TESTCERT_TAG=$(linuxkit_tag pkg/test-cert)-$ARCH
 TESTMSVCS_TAG=$(linuxkit_tag pkg/test-microsvcs)-$ARCH
@@ -52,4 +53,5 @@ sed -e "s#KERNEL_TAG#"$KERNEL_TAG"#" \
     -e "s#QREXECLIB_TAG#"$QREXECLIB_TAG"#" \
     -e "s#WWAN_TAG#"$WWAN_TAG"#" \
     -e "s#WLAN_TAG#"$WLAN_TAG"#" \
+    -e "s#GRUB_TAG#"$GRUB_TAG"#" \
     $1

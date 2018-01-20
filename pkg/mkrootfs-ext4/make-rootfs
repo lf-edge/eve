@@ -1,0 +1,67 @@
+#!/bin/sh
+#
+# mkrootfs -- Create a Zenix rootfs
+#
+# Input is a tarball containing the rootfs partition.
+# Output is a raw partition on stdout
+
+set -e
+[ -n "$DEBUG" ] && set -x
+
+IMGFILE=/rootfs.img
+
+# we want everything except the final result to stderr
+( exec 1>&2;
+
+  mkdir -p /tmp/rootfs
+  cd /tmp/rootfs
+
+  [ -t 0 ] || bsdtar xzf -
+
+  # This _filesystem_ UUID will be later reused as the _partition_
+  # UUID when creating the final image. This will allow us to have
+  # a static grub configuration.
+  ROOTFS_UUID=$(cat /proc/sys/kernel/random/uuid)
+
+  # In what can only be described as a horrible thing, create grub.cfg
+  # here. The only place we have to unpack the cmdline given by the
+  # yml image is here.
+  #
+  CMDLINE="$(cat boot/cmdline)"
+
+  mkdir -p EFI/BOOT
+  cat >> EFI/BOOT/grub.cfg <<EOF
+set timeout=5
+set gfxpayload=text
+
+probe --set partuuid -U \$root
+
+menuentry 'LinuxKit Image' {
+	multiboot2 /boot/xen.gz
+	module2 /boot/kernel console=tty0 ${CMDLINE} root=PARTUUID=\$partuuid text
+}
+
+menuentry 'LinuxKit Image on QEMU' {
+	multiboot2 /boot/xen.gz clocksource=pit console=com1
+	module2 /boot/kernel console=hvc0 clocksource=jiffies ${CMDLINE} root=PARTUUID=\$partuuid text
+}
+EOF
+
+  ROOTFS_BLOCKSZ=4096
+  ROOTFS_PART_HEADROOM_BLOCKS=16000
+  
+  ROOTFS_FILE_SIZE_KB=$(du -sk . | awk '{print $1}')
+  ROOTFS_PART_BLOCKS=$(( $ROOTFS_FILE_SIZE_KB / 4 + $ROOTFS_PART_HEADROOM_BLOCKS ))
+  ROOTFS_PART_SIZE=$(( $ROOTFS_PART_BLOCKS * $ROOTFS_BLOCKSZ ))
+  ROOTFS_PART_SIZE_KB=$(( ( ($ROOTFS_PART_SIZE + 1024) / 1024 ) / 1024 * 1024 ))
+  ROOTFS_PART_SECTORS=$(( $ROOTFS_PART_SIZE_KB * 2 ))
+
+  dd if=/dev/zero of=$IMGFILE bs=1024 count=$(( $ROOTFS_PART_SIZE_KB ))
+  mkfs.ext4 -b 4096 -L zenix_rootfs -U $ROOTFS_UUID -v $IMGFILE
+  mount -o loop $IMGFILE /mnt
+  cp -R /tmp/rootfs/* /mnt
+  umount /mnt
+
+)
+
+cat $IMGFILE

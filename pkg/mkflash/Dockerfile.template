@@ -1,0 +1,16 @@
+FROM GRUB_TAG as grub
+
+FROM linuxkit/alpine:77287352db68b442534c0005edd6ff750c8189f3
+RUN apk add --no-cache \
+  mtools \
+  dosfstools \
+  libarchive-tools \
+  sgdisk \
+  coreutils
+
+WORKDIR /
+COPY make-flash .
+COPY /efi-files /efifs
+COPY --from=grub / /efifs/
+
+ENTRYPOINT [ "/make-flash" ]

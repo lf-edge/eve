@@ -1,0 +1,4 @@
+org: zededa
+image: mkflash
+network: yes
+
