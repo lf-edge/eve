@@ -25,6 +25,7 @@ var Version = "No version specified"
 
 const (
 	MAPCACHETYPE         = "map-cache"
+	ENTIREMAPCACHE       = "entire-map-cache"
 	DATABASEMAPPINGSTYPE = "database-mappings"
 	INTERFACESTYPE       = "interfaces"
 	DECAPKEYSTYPE        = "decap-keys"
@@ -217,6 +218,9 @@ func handleLispMsg(msg []byte) {
 	case MAPCACHETYPE:
 		log.Println("Processing map-cache entry message")
 		handleMapCache(msg)
+	case ENTIREMAPCACHE:
+		log.Println("Processing Mapcache dump")
+		handleMapCacheTable(msg)
 	case DATABASEMAPPINGSTYPE:
 		log.Println("Processing database-mappings entry message")
 		handleDatabaseMappings(msg)

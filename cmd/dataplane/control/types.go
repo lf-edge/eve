@@ -23,6 +23,10 @@ type MapCacheEntry struct {
 	Rlocs      []Rloc `json:"rlocs"`
 }
 
+type EntireMapCache struct {
+	MapCaches []MapCacheEntry
+}
+
 type DatabaseMap struct {
 	InstanceId string `json:"instance-id"`
 	EidPrefix  string `json:"eid-prefix"`
@@ -34,8 +38,8 @@ type DatabaseMappings struct {
 
 type Interface struct {
 	Interface string `json:"interface"`
-	//InstanceId string `json:"instance-id"`
-	InstanceId int `json:"instance-id"`
+	InstanceId string `json:"instance-id"`
+	//InstanceId int `json:"instance-id"`
 }
 
 type Interfaces struct {

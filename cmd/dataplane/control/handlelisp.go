@@ -73,22 +73,7 @@ func isAddressIPv6(eid string) bool {
 	return false
 }
 
-// Extract map cache message and add to our database
-func handleMapCache(msg []byte) {
-	var mapCache MapCacheEntry
-
-	log.Println(string(msg))
-	err := json.Unmarshal(msg, &mapCache)
-	if err != nil {
-		log.Println("Error:", err)
-		return
-	}
-	//log.Println("map-cache is", mapCache)
-	log.Println("Opcode:", mapCache.Opcode)
-	log.Println("eid-prefix:", mapCache.EidPrefix)
-	log.Println("IID:", mapCache.InstanceId)
-	log.Println()
-
+func createMapCache(mapCache *MapCacheEntry) {
 	rlocs := []types.Rloc{}
 
 	x, err := strconv.ParseUint(mapCache.InstanceId, 10, 32)
@@ -139,6 +124,40 @@ func handleMapCache(msg []byte) {
 	// Add this map-cache entry to database
 	//fib.LookupAndUpdate(iid, eid, rlocs)
 	fib.UpdateMapCacheEntry(iid, eid, rlocs)
+}
+
+func handleMapCacheTable(msg []byte) {
+	var mapCacheTable EntireMapCache
+
+	err := json.Unmarshal(msg, &mapCacheTable)
+	if err != nil {
+		log.Println("Error:", err)
+		return
+	}
+
+	for _, mapCache := range mapCacheTable.MapCaches {
+		createMapCache(&mapCache)
+	}
+	return
+}
+
+// Extract map cache message and add to our database
+func handleMapCache(msg []byte) {
+	var mapCache MapCacheEntry
+
+	log.Println(string(msg))
+	err := json.Unmarshal(msg, &mapCache)
+	if err != nil {
+		log.Println("Error:", err)
+		return
+	}
+	//log.Println("map-cache is", mapCache)
+	log.Println("Opcode:", mapCache.Opcode)
+	log.Println("eid-prefix:", mapCache.EidPrefix)
+	log.Println("IID:", mapCache.InstanceId)
+	log.Println()
+	
+	createMapCache(&mapCache)
 }
 
 func parseDatabaseMappings(databaseMappings DatabaseMappings) map[uint32][]net.IP {
@@ -215,7 +234,8 @@ func handleInterfaces(msg []byte) {
 	for _, iface := range interfaces.Interfaces {
 		log.Println("Interface:", iface.Interface, ", Instance Id:", iface.InstanceId)
 		log.Println()
-		x := iface.InstanceId
+		//x := iface.InstanceId
+		x, err := strconv.ParseUint(iface.InstanceId, 10, 32)
 		if err != nil {
 			continue
 		}
