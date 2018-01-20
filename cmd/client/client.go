@@ -216,7 +216,6 @@ func main() {
 			//XXX OSCP is not implemented in cloud side so
 			// commenting out it for now. Should be:
 			// return false
-			return true
 		}
 
 		contents, err := ioutil.ReadAll(resp.Body)
