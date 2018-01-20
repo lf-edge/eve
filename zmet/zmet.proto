@@ -203,11 +203,11 @@ message appMetric {
 
 message ZMetricMsg {
   string devID = 1;
-  ZmetricTypes ztype = 2;
+  ZmetricTypes ztype = 2;  // deprecated
   google.protobuf.Timestamp atTimeStamp = 3;
 
   oneof MetricContent {
   	deviceMetric dm = 4;
-        appMetric    am = 5;
    }
+   repeated appMetric am = 5;
 }
