@@ -544,7 +544,7 @@ func SendMetricsProtobufStrThroughHttp(ReportMetrics *zmet.ZMetricMsg,
 
 	intf, err := types.GetUplinkAny(globalStatus, iteration)
 	if err != nil {
-		log.Printf("SendMetricsProtobufStrThroughHttp:", err)
+		log.Printf("SendMetricsProtobufStrThroughHttp: %s\n", err)
 		return
 	}
 	addrCount := types.CountLocalAddrAny(globalStatus, intf)

@@ -115,7 +115,7 @@ func configTimerTask() {
 func getLatestConfig(configUrl string, iteration int) {
 	intf, err := types.GetUplinkAny(globalStatus, iteration)
 	if err != nil {
-		log.Printf("getLatestConfig:", err)
+		log.Printf("getLatestConfig: %s\n", err)
 		return
 	}
 	addrCount := types.CountLocalAddrAny(globalStatus, intf)
