@@ -1,6 +1,6 @@
 kernel:
   image: KERNEL_TAG
-  cmdline: "rootwait"
+  cmdline: "rootdelay=3"
 init:
   - GRUB_TAG
   - XEN_TAG
