@@ -168,8 +168,8 @@ message cpuMetric {
 }
 
 message memoryMetric {
-  uint32 usedMem = 2;
-  uint32 availMem = 3;
+  uint32 usedMem = 2;            //in MB
+  uint32 availMem = 3;           //in MB
   double usedPercentage = 4;
   double availPercentage = 5;
 }
@@ -185,9 +185,9 @@ message networkMetric {
 }
 
 message appCpuMetric {
-    uint32 cpuTotal = 2;
-    uint32 cpuPercentage = 3;
-    uint32 upTime = 4;
+    uint32 cpuTotal = 2;          // in seconds
+    double cpuPercentage = 3;
+    google.protobuf.Timestamp upTime = 4;
 }
 
 message deviceMetric {
