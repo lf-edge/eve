@@ -196,9 +196,11 @@ message deviceMetric {
 }
 
 message appMetric {
-  appCpuMetric cpu = 1;
-  memoryMetric memory = 2;
-  repeated networkMetric network = 3;
+  string AppID  = 1;
+  string AppName = 2;
+  appCpuMetric cpu = 3;
+  memoryMetric memory = 4;
+  repeated networkMetric network = 5;
 }
 
 message ZMetricMsg {
