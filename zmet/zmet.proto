@@ -186,7 +186,8 @@ message networkMetric {
 
 message appCpuMetric {
     uint32 cpuTotal = 2;
-    uint32 upTime = 3;
+    uint32 cpuPercentage = 3;
+    uint32 upTime = 4;
 }
 
 message deviceMetric {
