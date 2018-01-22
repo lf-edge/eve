@@ -94,16 +94,26 @@ func checkImageUpdates() {
 	fileChanges := make(chan string)
 
 	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
+	deviceStatusChanges := make(chan string)
+	go watch.WatchStatus(DNSDirname, deviceStatusChanges)
 
 	for {
-		change := <-fileChanges
-
-		watch.HandleConfigStatusEvent(change, configDirname, statusDirname,
-			&types.DownloaderConfig{},
-			&types.DownloaderStatus{},
-			handleImageCreate,
-			handleImageModify,
-			handleImageDelete, nil)
+		select {
+		case change := <-fileChanges:
+			watch.HandleConfigStatusEvent(change, configDirname,
+				statusDirname,
+				&types.DownloaderConfig{},
+				&types.DownloaderStatus{},
+				handleImageCreate,
+				handleImageModify,
+				handleImageDelete, nil)
+		case change := <-deviceStatusChanges:
+			watch.HandleStatusEvent(change,
+				DNSDirname,
+				&types.DeviceNetworkStatus{},
+				handleDNSModify, handleDNSDelete,
+				nil)
+		}
 	}
 }
 
@@ -114,8 +124,6 @@ func handleCertUpdates() {
 
 	go watch.WatchConfigStatus(certConfigDirname, certStatusDirname,
 		fileChanges)
-	deviceStatusChanges := make(chan string)
-	go watch.WatchStatus(DNSDirname, deviceStatusChanges)
 
 	for {
 		select {
@@ -127,12 +135,6 @@ func handleCertUpdates() {
 				handleCertObjCreate,
 				handleCertObjModify,
 				handleCertObjDelete, nil)
-		case change := <-deviceStatusChanges:
-			watch.HandleStatusEvent(change,
-				DNSDirname,
-				&types.DeviceNetworkStatus{},
-				handleDNSModify, handleDNSDelete,
-				nil)
 		}
 	}
 }
