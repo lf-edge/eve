@@ -99,12 +99,12 @@ func main() {
 	swStatusFileName := dirName + "/swstatus.json" // XXX remove later
 
 	globalNetworkConfigFilename := "/var/tmp/zededa/DeviceNetworkConfig/global.json"
-	globalConfig, err := types.GetDeviceNetworkConfig(globalNetworkConfigFilename)
+	deviceNetworkConfig, err := types.GetDeviceNetworkConfig(globalNetworkConfigFilename)
 	if err != nil {
 		log.Printf("%s for %s\n", err, globalNetworkConfigFilename)
 		log.Fatal(err)
 	}
-	globalStatus, err := types.MakeDeviceNetworkStatus(globalConfig)
+	deviceNetworkStatus, err := types.MakeDeviceNetworkStatus(deviceNetworkConfig)
 	if err != nil {
 		log.Printf("%s from MakeDeviceNetworkStatus\n", err)
 		log.Fatal(err)
@@ -174,7 +174,7 @@ func main() {
 	// Returns true when done; false when retry
 	myPost := func(tlsConfig *tls.Config, retryCount int,
 		url string, b *bytes.Buffer) bool {
-		localAddr, err := types.GetLocalAddrAny(globalStatus,
+		localAddr, err := types.GetLocalAddrAny(deviceNetworkStatus,
 			retryCount, "")
 		if err != nil {
 			log.Fatal(err)
@@ -268,7 +268,7 @@ func main() {
 	// XXX remove later
 	oldMyPost := func(tlsConfig *tls.Config, retryCount int,
 		url string, b *bytes.Buffer) bool {
-		localAddr, err := types.GetLocalAddrAny(globalStatus,
+		localAddr, err := types.GetLocalAddrAny(deviceNetworkStatus,
 			retryCount, "")
 		if err != nil {
 			log.Fatal(err)
@@ -400,7 +400,7 @@ func main() {
 	lookupParam := func(tlsConfig *tls.Config, retryCount int,
 		device *types.DeviceDb) bool {
 		url := "/rest/device-param"
-		localAddr, err := types.GetLocalAddrAny(globalStatus,
+		localAddr, err := types.GetLocalAddrAny(deviceNetworkStatus,
 			retryCount, "")
 		if err != nil {
 			log.Fatal(err)

@@ -28,7 +28,7 @@ const (
 // Set from Makefile
 var Version = "No version specified"
 
-var globalStatus types.DeviceNetworkStatus
+var deviceNetworkStatus types.DeviceNetworkStatus
 
 func main() {
 	log.SetOutput(os.Stdout)
@@ -128,7 +128,7 @@ func handleDNSModify(statusFilename string,
 	}
 
 	log.Printf("handleDNSModify for %s\n", statusFilename)
-	globalStatus = *status
+	deviceNetworkStatus = *status
 	log.Printf("handleDNSModify done for %s\n", statusFilename)
 }
 
@@ -139,6 +139,6 @@ func handleDNSDelete(statusFilename string) {
 		fmt.Printf("handleDNSDelete: ignoring %s\n", statusFilename)
 		return
 	}
-	globalStatus = types.DeviceNetworkStatus{}
+	deviceNetworkStatus = types.DeviceNetworkStatus{}
 	log.Printf("handleDNSDelete done for %s\n", statusFilename)
 }

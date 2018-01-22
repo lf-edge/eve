@@ -278,8 +278,8 @@ func isFreeUplink(ifname string) bool {
 	return false
 }
 
-// Can be called to update the list. However, need to detect the changes
-// in zedrouter.go and call this... and somewhere update DeviceNetworkStatus
+// Can be called to to initial set and later update the list. However,
+// the caller needs to call updateListConfiglets after an update.
 func setUplinks(uplinks []string) {
 	uplinkList = uplinks
 }
