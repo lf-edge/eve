@@ -352,8 +352,8 @@ func PublishDeviceInfoToZedCloud(iteration int) {
 	//global status...
 	interfaces, _ := psutilnet.Interfaces()
 	ReportDeviceInfo.Network = make([]*zmet.ZInfoNetwork,
-		len(globalStatus.UplinkStatus))
-	for index, uplink := range globalStatus.UplinkStatus {
+		len(deviceNetworkStatus.UplinkStatus))
+	for index, uplink := range deviceNetworkStatus.UplinkStatus {
 		for _, interfaceDetail := range interfaces {
 			if uplink.IfName == interfaceDetail.Name {
 				ReportDeviceNetworkInfo := new(zmet.ZInfoNetwork)
@@ -486,15 +486,15 @@ func SendInfoProtobufStrThroughHttp(ReportInfo *zmet.ZInfoMsg, iteration int) {
 		return
 	}
 
-	for i, uplink := range globalStatus.UplinkStatus {
+	for i, uplink := range deviceNetworkStatus.UplinkStatus {
 		intf := uplink.IfName
-		addrCount := types.CountLocalAddrAny(globalStatus, intf)
+		addrCount := types.CountLocalAddrAny(deviceNetworkStatus, intf)
 		// XXX makes logfile too long; debug flag?
 		log.Printf("Connecting to %s using intf %s i %d #sources %d\n",
 			statusUrl, intf, i, addrCount)
 
 		for retryCount := 0; retryCount < addrCount; retryCount += 1 {
-			localAddr, err := types.GetLocalAddrAny(globalStatus,
+			localAddr, err := types.GetLocalAddrAny(deviceNetworkStatus,
 				retryCount, intf)
 			if err != nil {
 				log.Fatal(err)
@@ -542,18 +542,18 @@ func SendMetricsProtobufStrThroughHttp(ReportMetrics *zmet.ZMetricMsg,
 		fmt.Println("marshaling error: ", err)
 	}
 
-	intf, err := types.GetUplinkAny(globalStatus, iteration)
+	intf, err := types.GetUplinkAny(deviceNetworkStatus, iteration)
 	if err != nil {
 		log.Printf("SendMetricsProtobufStrThroughHttp: %s\n", err)
 		return
 	}
-	addrCount := types.CountLocalAddrAny(globalStatus, intf)
+	addrCount := types.CountLocalAddrAny(deviceNetworkStatus, intf)
 	// XXX makes logfile too long; debug flag?
 	log.Printf("Connecting to %s using intf %s interation %d #sources %d\n",
 		metricsUrl, intf, iteration, addrCount)
 	
 	for retryCount := 0; retryCount < addrCount; retryCount += 1 {
-		localAddr, err := types.GetLocalAddrAny(globalStatus,
+		localAddr, err := types.GetLocalAddrAny(deviceNetworkStatus,
 			retryCount, intf)
 		if err != nil {
 			log.Fatal(err)

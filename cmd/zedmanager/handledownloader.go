@@ -28,7 +28,7 @@ func AddOrRefcountDownloaderConfig(safename string, sc *types.StorageConfig) {
 
 		var err error
 		// XXX rotate through the FreeUplinks?
-		if downloadIfName, err = types.GetUplinkFree(globalStatus, 0); err != nil {
+		if downloadIfName, err = types.GetUplinkFree(deviceNetworkStatus, 0); err != nil {
 			log.Printf("No FreeUplinks - trying any uplink")
 			downloadIfName = ""
 		} else {
@@ -36,7 +36,7 @@ func AddOrRefcountDownloaderConfig(safename string, sc *types.StorageConfig) {
 				downloadIfName)
 		}
 	} else if downloadIfName == "" {
-		if downloadIfName, err := types.GetUplinkFree(globalStatus, 0); err != nil {
+		if downloadIfName, err := types.GetUplinkFree(deviceNetworkStatus, 0); err != nil {
 			log.Printf("No FreeUplinks - trying any uplink")
 			downloadIfName = ""
 		} else {
