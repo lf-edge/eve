@@ -818,7 +818,7 @@ func handleSyncOp(syncOp zedUpload.SyncOpType,
 			dEndPoint, err := dCtx.NewSyncerDest(trType, region, config.Dpath, auth)
 
 			if err == nil && dEndPoint != nil {
-				// XXX dEndPoint.WithSrcIpSelection(ipSrc)
+				dEndPoint.WithSrcIpSelection(ipSrc)
 				var respChan = make(chan *zedUpload.DronaRequest)
 
 				log.Printf("syncOp for <%s>/<%s>\n", config.Dpath, filename)
