@@ -165,6 +165,12 @@
 			"revisionTime": "2018-01-19T21:54:42Z"
 		},
 		{
+			"checksumSHA1": "RVA82cJMGI/yrXeRE4nP9JEiX1s=",
+			"path": "github.com/eriknordmark/netlink",
+			"revision": "8f49c47986ecd35341b0262f894915281a93b3a0",
+			"revisionTime": "2018-01-23T00:58:26Z"
+		},
+		{
 			"checksumSHA1": "jK0knSGdB7hA/Pvc0mQBYkYxN/8=",
 			"path": "github.com/go-ini/ini",
 			"revision": "32e4c1e6bc4e7d0d8451aa6b75200d19e37a536a",
@@ -205,6 +211,18 @@
 			"path": "github.com/satori/go.uuid",
 			"revision": "36e9d2ebbde5e3f13ab2e25625fd453271d6522e",
 			"revisionTime": "2018-01-03T17:44:51Z"
+		},
+		{
+			"checksumSHA1": "IhcRdAGtwckV0wquYtDXf/JjSRw=",
+			"path": "github.com/vishvananda/netlink/nl",
+			"revision": "5a988e882da75e9451a5a6b02eecd36df51606ed",
+			"revisionTime": "2018-01-19T05:27:08Z"
+		},
+		{
+			"checksumSHA1": "qf37dJzNS2iXycH62ukEw+cleZY=",
+			"path": "github.com/vishvananda/netns",
+			"revision": "be1fbeda19366dea804f00efff2dd73a1642fdcc",
+			"revisionTime": "2017-11-10T22:28:10Z"
 		},
 		{
 			"checksumSHA1": "O5DZeA+c+rTRg1xcD4qcnQsoT6I=",
@@ -289,6 +307,12 @@
 			"path": "golang.org/x/crypto/ssh",
 			"revision": "d94f6bc902c2970500950e88ab1a54a0c26bec48",
 			"revisionTime": "2018-01-22T19:45:19Z"
+		},
+		{
+			"checksumSHA1": "m0LbR1VvGELW+qpORm/o6lXwUSA=",
+			"path": "golang.org/x/sys/unix",
+			"revision": "af50095a40f9041b3b38960738837185c26e9419",
+			"revisionTime": "2018-01-19T16:06:40Z"
 		}
 	],
 	"rootPath": "/home/nordmark/work/go-provision/src"
