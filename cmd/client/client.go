@@ -98,16 +98,20 @@ func main() {
 	hwStatusFileName := dirName + "/hwstatus.json" // XXX remove later
 	swStatusFileName := dirName + "/swstatus.json" // XXX remove later
 
+	var hasDeviceNetworkStatus = false
+	var deviceNetworkStatus types.DeviceNetworkStatus
+
 	globalNetworkConfigFilename := "/var/tmp/zededa/DeviceNetworkConfig/global.json"
-	deviceNetworkConfig, err := types.GetDeviceNetworkConfig(globalNetworkConfigFilename)
-	if err != nil {
-		log.Printf("%s for %s\n", err, globalNetworkConfigFilename)
-		log.Fatal(err)
-	}
-	deviceNetworkStatus, err := types.MakeDeviceNetworkStatus(deviceNetworkConfig)
-	if err != nil {
-		log.Printf("%s from MakeDeviceNetworkStatus\n", err)
-		log.Fatal(err)
+	if _, err := os.Stat(globalNetworkConfigFilename); err == nil {
+		deviceNetworkConfig, err := types.GetDeviceNetworkConfig(globalNetworkConfigFilename)
+		if err != nil {
+			log.Fatal(err)
+		}
+		deviceNetworkStatus, err = types.MakeDeviceNetworkStatus(deviceNetworkConfig)
+		if err != nil {
+			log.Fatal(err)
+		}
+		hasDeviceNetworkStatus = true
 	}
 
 	var onboardCert, deviceCert tls.Certificate
@@ -174,10 +178,13 @@ func main() {
 	// Returns true when done; false when retry
 	myPost := func(tlsConfig *tls.Config, retryCount int,
 		url string, b *bytes.Buffer) bool {
-		localAddr, err := types.GetLocalAddrAny(deviceNetworkStatus,
-			retryCount, "")
-		if err != nil {
-			log.Fatal(err)
+		var localAddr net.IP
+		if hasDeviceNetworkStatus {
+			localAddr, err = types.GetLocalAddrAny(deviceNetworkStatus,
+				retryCount, "")
+			if err != nil {
+				log.Fatal(err)
+			}
 		}
 		localTCPAddr := net.TCPAddr{IP: localAddr}
 		fmt.Printf("Connecting to %s/%s using source %v\n",
@@ -193,7 +200,7 @@ func main() {
 		// IP ("no suitable address found") and retry due to server
 		// side response errors such as 401? In both cases
 		// we don't want to retry immediately
-		resp, err := client.Post("https://" + serverNameAndPort + url,
+		resp, err := client.Post("https://"+serverNameAndPort+url,
 			"application/x-proto-binary", b)
 		if err != nil {
 			fmt.Println(err)
@@ -268,10 +275,13 @@ func main() {
 	// XXX remove later
 	oldMyPost := func(tlsConfig *tls.Config, retryCount int,
 		url string, b *bytes.Buffer) bool {
-		localAddr, err := types.GetLocalAddrAny(deviceNetworkStatus,
-			retryCount, "")
-		if err != nil {
-			log.Fatal(err)
+		var localAddr net.IP
+		if hasDeviceNetworkStatus {
+			localAddr, err = types.GetLocalAddrAny(deviceNetworkStatus,
+				retryCount, "")
+			if err != nil {
+				log.Fatal(err)
+			}
 		}
 		localTCPAddr := net.TCPAddr{IP: localAddr}
 		fmt.Printf("Connecting to %s/%s using source %v\n",
@@ -282,7 +292,7 @@ func main() {
 			Dial:            d.Dial,
 		}
 		client := &http.Client{Transport: transport}
-		resp, err := client.Post("https://" + serverNameAndPort + url,
+		resp, err := client.Post("https://"+serverNameAndPort+url,
 			"application/json", b)
 		if err != nil {
 			fmt.Println(err)
@@ -400,10 +410,13 @@ func main() {
 	lookupParam := func(tlsConfig *tls.Config, retryCount int,
 		device *types.DeviceDb) bool {
 		url := "/rest/device-param"
-		localAddr, err := types.GetLocalAddrAny(deviceNetworkStatus,
-			retryCount, "")
-		if err != nil {
-			log.Fatal(err)
+		var localAddr net.IP
+		if hasDeviceNetworkStatus {
+			localAddr, err = types.GetLocalAddrAny(deviceNetworkStatus,
+				retryCount, "")
+			if err != nil {
+				log.Fatal(err)
+			}
 		}
 		localTCPAddr := net.TCPAddr{IP: localAddr}
 		fmt.Printf("Connecting to %s/%s using source %v\n",
