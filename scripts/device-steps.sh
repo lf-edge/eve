@@ -167,7 +167,8 @@ fi
 # We use the factory network.config.static if we have one, otherwise
 # we reuse the DeviceNetworkConfig from a previous run
 if [ -f $ETCDIR/network.config.static ] ; then
-    cp $ETCDIR/network.config.static $ETCDIR/network.config.global
+    cp -p $ETCDIR/network.config.static $ETCDIR/network.config.global
+    cp -p $ETCDIR/network.config.static /var/tmp/zededa/DeviceNetworkConfig/global.json 
 elif [ -f /var/tmp/zededa/DeviceNetworkConfig/global.json ]; then
     cp -p /var/tmp/zededa/DeviceNetworkConfig/global.json $ETCDIR/network.config.global
 fi
