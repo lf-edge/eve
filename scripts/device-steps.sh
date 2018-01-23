@@ -166,10 +166,13 @@ fi
 
 # We use the factory network.config.static if we have one, otherwise
 # we reuse the DeviceNetworkConfig from a previous run
+mkdir -p /var/tmp/zededa/DeviceNetworkConfig/
 if [ -f $ETCDIR/network.config.static ] ; then
+    echo "Using $ETCDIR/network.config.static"
     cp -p $ETCDIR/network.config.static $ETCDIR/network.config.global
     cp -p $ETCDIR/network.config.static /var/tmp/zededa/DeviceNetworkConfig/global.json 
 elif [ -f /var/tmp/zededa/DeviceNetworkConfig/global.json ]; then
+    echo "Using /var/tmp/zededa/DeviceNetworkConfig/global.json"
     cp -p /var/tmp/zededa/DeviceNetworkConfig/global.json $ETCDIR/network.config.global
 fi
 
@@ -361,6 +364,7 @@ EOF
     # XXX
     echo "Content of file is:"
     cat $ETCDIR/network.config.global
+    cp $ETCDIR/network.config.global /var/tmp/zededa/DeviceNetworkConfig/global.json
 fi
 
 # Need a key for device-to-device map-requests
@@ -372,8 +376,6 @@ cp -p $ETCDIR/device.key.pem $LISPDIR/lisp-sig.pem
 if [ -f $ETCDIR/zedrouterconfig.json ]; then
 	cp $ETCDIR/zedrouterconfig.json /var/tmp/zedrouter/config/${uuid}.json
 fi
-
-cp $ETCDIR/network.config.global /var/tmp/zededa/DeviceNetworkConfig/global.json
 
 # Setup default amount of space for images
 echo '{"MaxSpace":2000000}' >/var/tmp/downloader/config/global 
