@@ -57,20 +57,20 @@ func PbrInit(uplinks []string, freeUplinks []string, addrChangeFn addrChangeFnTy
 
 	// Need links to get name to ifindex? Or lookup each time?
 	linkchan := make(chan netlink.LinkUpdate)
-	linkopt := netlink.LinkSubscribeOptions{List: true}
+	linkopt := netlink.LinkSubscribeOptions{ListExisting: true}
 	if err := netlink.LinkSubscribeWithOptions(linkchan, nil,
 		linkopt); err != nil {
 		log.Fatal(err)
 	}
 
 	addrchan := make(chan netlink.AddrUpdate)
-	addropt := netlink.AddrSubscribeOptions{List: true}
+	addropt := netlink.AddrSubscribeOptions{ListExisting: true}
 	if err := netlink.AddrSubscribeWithOptions(addrchan, nil,
 		addropt); err != nil {
 		log.Fatal(err)
 	}
 	routechan := make(chan netlink.RouteUpdate)
-	rtopt := netlink.RouteSubscribeOptions{List: true}
+	rtopt := netlink.RouteSubscribeOptions{ListExisting: true}
 	if err := netlink.RouteSubscribeWithOptions(routechan, nil,
 		rtopt); err != nil {
 		log.Fatal(err)
