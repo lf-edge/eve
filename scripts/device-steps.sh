@@ -116,8 +116,17 @@ if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
-# XXX this should run in domZ aka ZedRouter on init.
-# Ideally just to WiFi setup in dom0 and do DHCP in domZ
+# We use the factory network.config.static if we have one, otherwise
+# we reuse the DeviceNetworkConfig from a previous run
+mkdir -p /var/tmp/zededa/DeviceNetworkConfig/
+if [ -f $ETCDIR/network.config.static ] ; then
+    echo "Using $ETCDIR/network.config.static"
+    cp -p $ETCDIR/network.config.static $ETCDIR/network.config.global
+    cp -p $ETCDIR/network.config.static /var/tmp/zededa/DeviceNetworkConfig/global.json 
+elif [ -f /var/tmp/zededa/DeviceNetworkConfig/global.json ]; then
+    echo "Using /var/tmp/zededa/DeviceNetworkConfig/global.json"
+    cp -p /var/tmp/zededa/DeviceNetworkConfig/global.json $ETCDIR/network.config.global
+fi
 
 if [ $SELF_REGISTER = 1 ]; then
     rm -f $ETCDIR/zedrouterconfig.json
@@ -162,18 +171,6 @@ fi
 if [ ! -d $LISPDIR ]; then
     echo "Missing $LISPDIR directory. Giving up"
     exit 1
-fi
-
-# We use the factory network.config.static if we have one, otherwise
-# we reuse the DeviceNetworkConfig from a previous run
-mkdir -p /var/tmp/zededa/DeviceNetworkConfig/
-if [ -f $ETCDIR/network.config.static ] ; then
-    echo "Using $ETCDIR/network.config.static"
-    cp -p $ETCDIR/network.config.static $ETCDIR/network.config.global
-    cp -p $ETCDIR/network.config.static /var/tmp/zededa/DeviceNetworkConfig/global.json 
-elif [ -f /var/tmp/zededa/DeviceNetworkConfig/global.json ]; then
-    echo "Using /var/tmp/zededa/DeviceNetworkConfig/global.json"
-    cp -p /var/tmp/zededa/DeviceNetworkConfig/global.json $ETCDIR/network.config.global
 fi
 
 echo "Removing old stale files"
