@@ -10,11 +10,6 @@ type Watcher struct {
 	BlinkCounter int
 }
 
-//func ExampleNewWatcher() {
-/*func main() {
-	var watch Watcher
-	watch.LedWatcher()
-}*/
 func (w *Watcher) LedWatcher(ledStatusDir string, fileChanges chan<- string) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
