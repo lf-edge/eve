@@ -16,7 +16,9 @@ pkgs:
 	make -C pkg
 
 run:
-	qemu-system-x86_64 --bios ./bios/OVMF.fd -m 4096 -cpu SandyBridge -serial mon:stdio -hda ./supermicro.img -redir tcp:2222::22
+	qemu-system-x86_64 --bios ./bios/OVMF.fd -m 4096 -cpu SandyBridge -serial mon:stdio -hda ./supermicro.img \
+				-net nic,vlan=0 -net user,id=eth0,vlan=0,net=192.168.1.0/24,dhcpstart=192.168.1.10,hostfwd=tcp::2222-:22 \
+				-net nic,vlan=1 -net user,id=eth1,vlan=1,net=192.168.2.0/24,dhcpstart=192.168.2.10
 
 zededa-container/Dockerfile: pkgs parse-pkgs.sh zededa-container/Dockerfile.template
 	./parse-pkgs.sh zededa-container/Dockerfile.template > zededa-container/Dockerfile
