@@ -1,6 +1,6 @@
 #!/bin/sh
-# SOS pattern ...
-# then off for 800ms
+# SOS pattern with 100 ms as basic time; 3X for dash and character spacing,
+# and 7X for word spacing.
 repeat=-1
 
 if [ $# != 0 ]; then
