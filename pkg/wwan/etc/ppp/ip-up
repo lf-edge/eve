@@ -15,7 +15,7 @@ parameters
        $6      the parameter specified by the 'ipparam' option to pppd
 __EOT__
 
-route del default
+# route del default
 route add default $1
 
 # this variable is only set if the usepeerdns pppd option is being used

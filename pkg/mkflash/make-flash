@@ -5,7 +5,7 @@ set -ex
 IMGFILE=$1
 
 ESP_FILE=/parts/efifs.img
-IMGA_FILE=/parts/image.img
+IMGA_FILE=/parts/rootfs.img
 
 #
 # Step 1: Extract partitions from stdin
