@@ -200,7 +200,7 @@ func PbrLinkChange(change netlink.LinkUpdate) {
 			// flushRoutesTable(FreeTable, ifindex)
 			// MyTable := FreeTable + ifindex
 			// flushRoutesTable(MyTable, 0)
-			flushRules(ifindex)
+			// flushRules(ifindex)
 
 			if isFreeUplink(ifname) {
 				log.Printf("PbrLinkChange moving to FreeTable %s\n",
