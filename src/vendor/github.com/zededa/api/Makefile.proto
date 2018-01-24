@@ -17,6 +17,8 @@ GOGENERATE=$(GOCMD) generate
 GOGET=$(GOCMD) get
 GOFMT=gofmt -w
 
+PROTOC=docker run --rm -v $(GOPATH):$(GOPATH) -w$(CURDIR) zededa/protoc:latest
+
 # Package lists
 TOPLEVEL_PKG := .
 PKG := github.com/zededa/api/$(notdir $(CURDIR))
@@ -42,9 +44,9 @@ generate:            $(GOSRCS)
 	$(GOGENERATE) -x $(PKG)
 
 %.pb.go::       %.proto
-	protoc -I.:$(GOPATH) --go_out=. $?
+	$(PROTOC) -I.:$(GOPATH) --go_out=. $?
 	mkdir -p $(PYTHONOUT)
-	protoc -I.:$(GOPATH) --python_out=$(PYTHONOUT) $?
+	$(PROTOC) -I.:$(GOPATH) --python_out=$(PYTHONOUT) $?
 
 cleanproto:
 	rm -f ./*.pb.go

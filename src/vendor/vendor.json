@@ -191,8 +191,14 @@
 		{
 			"checksumSHA1": "yqF125xVSkmfLpIVGrLlfE05IUk=",
 			"path": "github.com/golang/protobuf/proto",
-			"revision": "1e59b77b52bf8e4b449a57e6f79f21226d571845",
-			"revisionTime": "2017-11-13T18:07:20Z"
+			"revision": "c65a0412e71e8b9b3bfd22925720d23c0f054237",
+			"revisionTime": "2018-01-22T22:16:10Z"
+		},
+		{
+			"checksumSHA1": "O2ItP5rmfrgxPufhjJXbFlXuyL8=",
+			"path": "github.com/golang/protobuf/ptypes/timestamp",
+			"revision": "c65a0412e71e8b9b3bfd22925720d23c0f054237",
+			"revisionTime": "2018-01-22T22:16:10Z"
 		},
 		{
 			"checksumSHA1": "TW1TbIL4RRT4fpdvwVxph25vdKw=",
@@ -255,10 +261,10 @@
 			"revisionTime": "2017-11-10T22:28:10Z"
 		},
 		{
-			"checksumSHA1": "O5DZeA+c+rTRg1xcD4qcnQsoT6I=",
+			"checksumSHA1": "tVzhFPaNlVF/ORfRONIUFMifnnE=",
 			"path": "github.com/zededa/api",
-			"revision": "e960c28f7f5b84a770e9be195d3ac0ceb29a9664",
-			"revisionTime": "2018-01-18T05:05:32Z"
+			"revision": "6f020af40bb903859aefd26ac0b7578164436176",
+			"revisionTime": "2018-01-23T00:41:10Z"
 		},
 		{
 			"checksumSHA1": "7T6h9fWkmlDMjUQ9hlHBEJpan1w=",
@@ -267,16 +273,20 @@
 			"revisionTime": "2017-11-13T00:20:14Z"
 		},
 		{
-			"checksumSHA1": "FFa/Tk84RHqqrMYgs7REMkQvrbc=",
+			"checksumSHA1": "IRk8WoUzDz0TlfZBBuU6l2rZIVg=",
 			"path": "github.com/zededa/api/zconfig",
-			"revision": "0eee6f5211bf0220c3eb87ca6ec799a43ea52853",
-			"revisionTime": "2017-12-13T10:03:09Z"
+			"revision": "6f020af40bb903859aefd26ac0b7578164436176",
+			"revisionTime": "2018-01-23T00:41:10Z"
 		},
 		{
-			"checksumSHA1": "9eFXT0KS2CLqCJazUYzsQeiZJ1w=",
+			"checksumSHA1": "hzmmaMk2QQf9oDrT35zJGCECZHo=",
 			"path": "github.com/zededa/api/zmet",
-			"revision": "0eee6f5211bf0220c3eb87ca6ec799a43ea52853",
-			"revisionTime": "2017-12-13T10:03:09Z"
+			"revision": "6f020af40bb903859aefd26ac0b7578164436176",
+			"revisionTime": "2018-01-23T00:41:10Z"
+		},
+		{
+			"path": "github.com/zededa/api/zmetz",
+			"revision": ""
 		},
 		{
 			"checksumSHA1": "tXDhskPogTybtaECNodP5/URT1s=",
@@ -293,6 +303,12 @@
 		{
 			"checksumSHA1": "URj/PQDoC1/kvpC4XyFSzmlnBB0=",
 			"path": "github.com/zededa/shared/libs/zedUpload/awsutil",
+			"revision": "1d074bb9bb1f0d17b1c97f57459b84a67eff1382",
+			"revisionTime": "2018-01-21T04:36:45Z"
+		},
+		{
+			"checksumSHA1": "LwrZzPhZS8TxOG20grkkkoSJBL4=",
+			"path": "github.com/zededa/shared/libs/zedUpload/sftp",
 			"revision": "1d074bb9bb1f0d17b1c97f57459b84a67eff1382",
 			"revisionTime": "2018-01-21T04:36:45Z"
 		},
