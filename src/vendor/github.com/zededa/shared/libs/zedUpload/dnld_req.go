@@ -1,58 +1,58 @@
 package zedUpload
 
 import (
-	"sync"
-	"time"
-	"fmt"
 	"encoding/json"
-	"os"
+	"errors"
+	"fmt"
 	"io/ioutil"
 	"log"
-	"errors"
+	"os"
+	"sync"
+	"time"
 )
 
 var (
-	SyncUnsupport  = errors.New("Unsupported function")
-	SyncerRetry = errors.New("Retry - syncer full")
+	SyncUnsupport = errors.New("Unsupported function")
+	SyncerRetry   = errors.New("Retry - syncer full")
 )
 
 type DronaRequest struct {
-        sync.RWMutex
+	sync.RWMutex
 
-        // Optional, you can direct request for perticular server
-        syncEp    DronaEndPoint
-        operation SyncOpType
+	// Optional, you can direct request for perticular server
+	syncEp    DronaEndPoint
+	operation SyncOpType
 
-        // Object that needs to be downloaded
-        name    string
-        localName string
+	// Object that needs to be downloaded
+	name      string
+	localName string
 
-        // Location to where to download
-        objloc string
+	// Location to where to download
+	objloc string
 
-        // need size acknowledgement
-        ackback bool
+	// need size acknowledgement
+	ackback bool
 
-        // request is still in progress, this is just update
-        inprogress bool
+	// request is still in progress, this is just update
+	inprogress bool
 
-        // if size exceed this don't download
-        sizelimit int64
+	// if size exceed this don't download
+	sizelimit int64
 
-        // Filled by Drona, actual size
-        asize int64
+	// Filled by Drona, actual size
+	asize int64
 
-        // Status of Download, we convert here to string because this
-        // field is going to be json marshalled
-        status  string
+	// Status of Download, we convert here to string because this
+	// field is going to be json marshalled
+	status string
 
-        // result to be sent out
-        result chan *DronaRequest
+	// result to be sent out
+	result chan *DronaRequest
 
 	startTime, endTime time.Time
 
-        // Download counter
-        retry int
+	// Download counter
+	retry int
 }
 
 // Return object local name
@@ -72,7 +72,7 @@ func (req *DronaRequest) GetDnStatus() error {
 	return fmt.Errorf("Syncer Download Status on %s - error %s", req.name, req.status)
 }
 
-func (req *DronaRequest) GetUpStatus () (string, error) {
+func (req *DronaRequest) GetUpStatus() (string, error) {
 	req.Lock()
 	defer req.Unlock()
 	return req.objloc, fmt.Errorf("Syncer Download Status on %s - error %s", req.name, req.status)
@@ -126,18 +126,19 @@ type SyncMetaFile struct {
 	Operation SyncOpType
 
 	// Object that needs to be downloaded
-	Name    string
+	Name string
 
 	// Filled by Syncer, actual size
 	Asize int64
 
 	// Status of Download, we convert here to string because this
 	// field is going to be json marshalled
-	Status  string
+	Status string
 
 	EndTime   string
 	StartTime string
 }
+
 // helper function to write the metafile for the transcation that is
 // defined by this request
 func (req *DronaRequest) WriteMetaFile(metaloc string) error {
@@ -152,7 +153,7 @@ func (req *DronaRequest) WriteMetaFile(metaloc string) error {
 
 			wreq := &SyncMetaFile{
 				Operation: req.operation,
-				Name:    req.name,
+				Name:      req.name,
 				Asize:     req.asize,
 				Status:    req.status,
 				EndTime:   req.endTime.Format(time.RFC3339),
@@ -191,9 +192,9 @@ func ReadMetaFile(metaloc string) (error, *DronaRequest) {
 	}
 
 	dnResp := DronaRequest{operation: rreq.Operation,
-		name:    	rreq.Name,
-		asize:     	rreq.Asize,
-		status:    	rreq.Status}
+		name:   rreq.Name,
+		asize:  rreq.Asize,
+		status: rreq.Status}
 
 	return nil, &dnResp
 }
