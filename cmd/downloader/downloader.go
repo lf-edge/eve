@@ -789,6 +789,7 @@ func handleSyncOp(syncOp zedUpload.SyncOpType,
 	log.Printf("Downloading <%s> to <%s>\n", config.DownloadURL, locFilename)
 
 	var ipSrc net.IP
+	ipSrcSet := false
 	retryCount := 0 // XXX
 	if config.IfName != "" {
 		// XXX need to pick a random source
@@ -798,8 +799,9 @@ func handleSyncOp(syncOp zedUpload.SyncOpType,
 			retryCount, config.IfName)
 		if err != nil {
 			ipSrc = net.IP{}
+			ipSrcSet = true
 		}
-		fmt.Printf("Using IP source %v\n", ipSrc)
+		fmt.Printf("Using IP source %v intf %s\n", ipSrc, config.IfName)
 	} else {
 		// Use unspecified even if dCtx has an old source address
 		ipSrc = net.IP{}
@@ -820,7 +822,11 @@ func handleSyncOp(syncOp zedUpload.SyncOpType,
 			dEndPoint, err := dCtx.NewSyncerDest(trType, region, config.Dpath, auth)
 
 			if err == nil && dEndPoint != nil {
-				dEndPoint.WithSrcIpSelection(ipSrc)
+			
+				if ipSrcSet {
+					fmt.Printf("Using IP source %v\n", ipSrc)
+					dEndPoint.WithSrcIpSelection(ipSrc)
+				}
 				var respChan = make(chan *zedUpload.DronaRequest)
 
 				log.Printf("syncOp for <%s>/<%s>\n", config.Dpath, filename)
