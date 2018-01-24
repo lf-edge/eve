@@ -285,10 +285,6 @@
 			"revisionTime": "2018-01-23T00:41:10Z"
 		},
 		{
-			"path": "github.com/zededa/api/zmetz",
-			"revision": ""
-		},
-		{
 			"checksumSHA1": "tXDhskPogTybtaECNodP5/URT1s=",
 			"path": "github.com/zededa/shared",
 			"revision": "1d074bb9bb1f0d17b1c97f57459b84a67eff1382",
