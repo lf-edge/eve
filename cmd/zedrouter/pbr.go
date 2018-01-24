@@ -9,7 +9,7 @@ package main
 import (
 	"errors"
 	"fmt"
-	"github.com/eriknordmark/netlink"
+	"github.com/vishvananda/netlink"
 	"log"
 	"net"
 	"syscall"

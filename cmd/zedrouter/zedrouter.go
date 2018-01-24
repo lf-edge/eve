@@ -14,7 +14,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/eriknordmark/netlink"
+	"github.com/vishvananda/netlink"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
 	"github.com/zededa/go-provision/wrap"
