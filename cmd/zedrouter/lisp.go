@@ -405,10 +405,19 @@ func restartLisp(upLinkStatus []types.NetworkUplink, devices string) {
 		}
 	}
 	// XXX how to restart with multiple uplinks?
+	// Find first free uplink
+	uplink := upLinkStatus[0]
+	for _, u := range upLinkStatus {
+		if u.Free {
+			uplink = u
+			break
+		}
+	}
+
 	args := []string{
 		RestartCmd,
 		"8080",
-		upLinkStatus[0].IfName,
+		uplink.IfName,
 	}
 	itrTimeout := 1
 	cmd := wrap.Command(RestartCmd)
@@ -436,9 +445,9 @@ func restartLisp(upLinkStatus []types.NetworkUplink, devices string) {
 		"export LISP_PCAP_LIST='%s'\n" +
 		"export LISP_ITR_WAIT_TIME=%d\n" +
 		"%s 8080 %s\n"
-	// XXX how to restart with multiple uplinks?
+
 	b := []byte(fmt.Sprintf(RLTemplate, devices, itrTimeout, RestartCmd,
-		upLinkStatus[0].IfName))
+		uplink.IfName))
 	err = ioutil.WriteFile(RLFilename, b, 0744)
 	if err != nil {
 		log.Fatal("WriteFile", err, RLFilename)
@@ -460,7 +469,7 @@ func stopLisp() {
 			log.Printf("pkill output %s\n", string(stdoutStderr))
 		}
 	}
-	
+
 	cmd := wrap.Command(StopCmd)
 	env := os.Environ()
 	env = append(env, fmt.Sprintf("LISP_NO_IPTABLES="))
