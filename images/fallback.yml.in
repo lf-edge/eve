@@ -10,6 +10,7 @@ init:
   - linuxkit/runc:a1b564248a0d0b118c11e61db9f84ecf41dd2d2a
   - linuxkit/containerd:417f83f7b8dc1fa36acf90effe44f99c7397480a
   - linuxkit/getty:bf6872ce0a9f3ab519b3e502cc41ba3958bda2a6
+  - KMOD_PFRING_TAG
 onboot:
    - name: sysctl
      image: linuxkit/sysctl:4c1ef93bb5eb1a877318db4b2daa6768ed002e21

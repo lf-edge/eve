@@ -1,0 +1,50 @@
+#
+# Stage 1: Build kernel module.
+# Output is /lib/modules (+depmod) of all base kernel drivers + this one
+#
+FROM KERNEL_TAG AS ksrc
+FROM linuxkit/alpine:d307c8a386fa3f32cddda9409b9687e191cdd6f1 AS build
+RUN apk add \
+    attr-dev \
+    autoconf \
+    automake \
+    build-base \
+    file \
+    git \
+    libtirpc-dev \
+    libtool \
+    mpc1-dev \
+    mpfr-dev \
+    util-linux-dev \
+    linux-headers \
+    bison \
+    flex \
+    zlib-dev
+
+COPY --from=ksrc /kernel-dev.tar /
+RUN tar xf kernel-dev.tar
+
+# Also extract the kernel modules
+COPY --from=ksrc /kernel.tar /
+RUN tar xf kernel.tar
+
+ENV PF_BRANCH=6.6.0-stable
+ENV PF_REPO=https://github.com/ntop/PF_RING
+
+RUN git clone ${PF_REPO} && \
+    cd PF_RING && \
+    git checkout ${PF_BRANCH}
+
+WORKDIR /PF_RING/kernel
+# BUILD_KERNEL implies that only one kernel per pkg/kernel container is shipped.
+RUN for i in $(ls /lib/modules); do make all install DESTDIR=/out BUILD_KERNEL=$i; done
+
+#
+# Stage 2: Build final container
+#
+FROM scratch
+ENTRYPOINT []
+CMD []
+WORKDIR /
+COPY --from=build /out/ /
+COPY files/ /
