@@ -1,0 +1,4 @@
+#!/bin/sh
+
+insmod /lib/modules/$(uname -r)/kernel/net/pf_ring/pf_ring.ko
+

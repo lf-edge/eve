@@ -21,6 +21,7 @@ plugin_tag() {
 ARCH=amd64
 
 KERNEL_TAG=$(linuxkit_tag pkg/kernel)-$ARCH
+KMOD_PFRING_TAG=$(linuxkit_tag pkg/kmod_pfring)-$ARCH
 XENTOOLS_TAG=$(linuxkit_tag pkg/xen-tools)-$ARCH
 XEN_TAG=$(linuxkit_tag pkg/xen)-$ARCH
 GRUB_TAG=$(linuxkit_tag pkg/grub)-$ARCH
@@ -56,4 +57,5 @@ sed -e "s#KERNEL_TAG#"$KERNEL_TAG"#" \
     -e "s#WLAN_TAG#"$WLAN_TAG"#" \
     -e "s#GRUB_TAG#"$GRUB_TAG"#" \
     -e "s#SGDISK_TAG#"$SGDISK_TAG"#" \
+    -e "s#KMOD_PFRING_TAG#"$KMOD_PFRING_TAG"#" \
     $1
