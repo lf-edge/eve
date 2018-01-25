@@ -22,8 +22,8 @@ run:
 run-fallback:
 	qemu-system-x86_64 --bios ./bios/OVMF.fd -m 4096 -cpu SandyBridge -serial mon:stdio -hda fallback.img -redir tcp:2222::22
 
-zededa-container/Dockerfile: pkgs parse-pkgs.sh zededa-container/Dockerfile.template
-	./parse-pkgs.sh zededa-container/Dockerfile.template > zededa-container/Dockerfile
+zededa-container/Dockerfile: pkgs parse-pkgs.sh zededa-container/Dockerfile.in
+	./parse-pkgs.sh zededa-container/Dockerfile.in > zededa-container/Dockerfile
 
 zededa-container: zededa-container/Dockerfile
 	linuxkit pkg build --disable-content-trust zededa-container/

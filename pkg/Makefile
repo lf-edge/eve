@@ -26,6 +26,6 @@ clean:
 
 dockerfiles: $(addsuffix /Dockerfile, $(PKGS)/)
 
-%: %.template FORCE
+%: %.in FORCE
 	(cd ..; ./parse-pkgs.sh pkg/$< > pkg/$@)
 FORCE:
