@@ -26,12 +26,12 @@ import (
 
 // Keeping status in /var/run to be clean after a crash/reboot
 const (
-	baseDirname = "/var/tmp/domainmgr"
-	runDirname = "/var/run/domainmgr"
-	configDirname = baseDirname + "/config"
-	statusDirname = runDirname + "/status"
-	rwImgDirname = baseDirname + "/img" // We store images here
-	xenDirname = runDirname + "/xen" // We store xen cfg files here
+	baseDirname       = "/var/tmp/domainmgr"
+	runDirname        = "/var/run/domainmgr"
+	configDirname     = baseDirname + "/config"
+	statusDirname     = runDirname + "/status"
+	rwImgDirname      = baseDirname + "/img" // We store images here
+	xenDirname        = runDirname + "/xen"  // We store xen cfg files here
 	imgCatalogDirname = "/var/tmp/zedmanager/downloads"
 	// Read-only images named based on sha256 hash each in its own directory
 	verifiedDirname = imgCatalogDirname + "/verified"
@@ -301,6 +301,23 @@ func doActivate(config types.DomainConfig, status *types.DomainStatus) {
 	log.Printf("created domainId %d for %s\n", domainId, status.DomainName)
 	status.DomainId = domainId
 	status.Activated = true
+
+	// Disable offloads for all vifs
+	err = xlDisableVifOffload(status.DomainName, domainId,
+		len(config.VifList))
+	if err != nil {
+		// XXX continuing even if we get a failure?
+		log.Printf("xlDisableVifOffload for %s: %s\n",
+			status.DomainName, err)
+	}
+	err = xlUnpause(status.DomainName, domainId)
+	if err != nil {
+		// XXX shouldn't we destroy it?
+		log.Printf("xl unpause for %s: %s\n", status.DomainName, err)
+		status.LastErr = fmt.Sprintf("%v", err)
+		status.LastErrTime = time.Now()
+		return
+	}
 
 	// XXX dumping status to log
 	xlStatus(status.DomainName, status.DomainId)
@@ -709,12 +726,14 @@ func handleDelete(statusFilename string, statusArg interface{}) {
 		status.UUIDandVersion, status.DisplayName)
 }
 
+// Create in paused state; Need to call xlUnpause later
 func xlCreate(domainName string, xenCfgFilename string) (int, error) {
 	fmt.Printf("xlCreate %s %s\n", domainName, xenCfgFilename)
 	cmd := "xl"
 	args := []string{
 		"create",
 		xenCfgFilename,
+		"-p",
 	}
 	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
 	if err != nil {
@@ -759,6 +778,68 @@ func xlStatus(domainName string, domainId int) error {
 	}
 	// XXX parse json to look at state? Not currently included
 	fmt.Printf("xl list done. Result %s\n", string(res))
+	return nil
+}
+
+// Perform xenstore write to disable all of these for all VIFs
+// feature-sg, feature-gso-tcpv4, feature-gso-tcpv6, feature-ipv6-csum-offload
+func xlDisableVifOffload(domainName string, domainId int, vifCount int) error {
+	fmt.Printf("xlDisableVifOffload %s %d %d\n",
+		domainName, domainId, vifCount)
+	pref := "/local/domain"
+	for i := 0; i < vifCount; i += 1 {
+		varNames := []string{
+			fmt.Sprintf("%s/0/backend/vif/%d/%d/feature-sg",
+				pref, domainId, i),
+			fmt.Sprintf("%s/0/backend/vif/%d/%d/feature-gso-tcpv4",
+				pref, domainId, i),
+			fmt.Sprintf("%s/0/backend/vif/%d/%d/feature-gso-tcpv6",
+				pref, domainId, i),
+			fmt.Sprintf("%s/0/backend/vif/%d/%d/feature-ipv6-csum-offload",
+				pref, domainId, i),
+			fmt.Sprintf("%s/%d/device/vif/%d/feature-sg",
+				pref, domainId, i),
+			fmt.Sprintf("%s/%d/device/vif/%d/feature-gso-tcpv4",
+				pref, domainId, i),
+			fmt.Sprintf("%s/%d/device/vif/%d/feature-gso-tcpv6",
+				pref, domainId, i),
+			fmt.Sprintf("%s/%d/device/vif/%d/feature-ipv6-csum-offload",
+				pref, domainId, i),
+		}
+		for _, varName := range varNames {
+			cmd := "xenstore"
+			args := []string{
+				"write",
+				varName,
+				"0",
+			}
+			res, err := wrap.Command(cmd, args...).Output()
+			if err != nil {
+				log.Println("xenstore write failed ", err)
+				return err
+			}
+			fmt.Printf("xenstore write done. Result %s\n",
+				string(res))
+		}
+	}
+
+	fmt.Printf("xlDisableVifOffload done.\n")
+	return nil
+}
+
+func xlUnpause(domainName string, domainId int) error {
+	fmt.Printf("xlUnpause %s %d\n", domainName, domainId)
+	cmd := "xl"
+	args := []string{
+		"unpause",
+		strconv.Itoa(domainId),
+	}
+	res, err := wrap.Command(cmd, args...).Output()
+	if err != nil {
+		log.Println("xlUnpause failed ", err)
+		return err
+	}
+	fmt.Printf("xlUnpause done. Result %s\n", string(res))
 	return nil
 }
 
