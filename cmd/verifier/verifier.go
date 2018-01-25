@@ -277,7 +277,12 @@ func handleCreate(statusFilename string, configArg interface{}) {
 	// XXX should have dom0 do this and/or have RO mounts
 	fmt.Printf("Move from %s to %s\n", pendingFilename, verifierFilename)
 	if _, err := os.Stat(pendingFilename); err != nil {
-		log.Fatal(err)
+		// XXX hits sometimes
+		log.Printf("%s\n", err)
+		cerr := fmt.Sprintf("%v", err)
+		updateVerifyErrStatus(&status, cerr, statusFilename)
+		log.Printf("handleCreate failed for %s\n", config.DownloadURL)
+		return
 	}
 	if _, err := os.Stat(myVerifierDirname); err == nil {
 		if err := os.RemoveAll(myVerifierDirname); err != nil {

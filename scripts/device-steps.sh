@@ -304,7 +304,7 @@ done
 if [ $SELF_REGISTER = 1 ]; then
     # Do we have a file from the build?
     if [ -f $ETCDIR/network.config.static ] ; then
-	cp $ETCDIR/network.config.static $ETCDIR/network.config.global
+	cp -p $ETCDIR/network.config.static $ETCDIR/network.config.global
     else
 	echo "Determining uplink interface"
 	intf=`$BINDIR/find-uplink.sh $ETCDIR/lisp.config.base`
@@ -334,7 +334,7 @@ else
     /bin/hostname $uuid
     /bin/hostname >/etc/hostname
     grep -q $uuid /etc/hosts
-    if [ !? = 1 ]; then
+    if [ $? = 1 ]; then
 	# put the uuid in /etc/hosts to avoid complaints
 	echo "Adding $uuid to /etc/hosts"
 	echo "127.0.0.1 $uuid" >>/etc/hosts
@@ -343,7 +343,7 @@ else
     fi
     # Handle old file format
     grep -q FreeUplinks $ETCDIR/network.config.global
-    if [ !? = 0 ]; then
+    if [ $? = 0 ]; then
 	echo "Found FreeUplinks in $ETCDIR/network.config.global"
     else
 	echo "Determining uplink interface"
@@ -361,7 +361,7 @@ EOF
     # XXX
     echo "Content of file is:"
     cat $ETCDIR/network.config.global
-    cp $ETCDIR/network.config.global /var/tmp/zededa/DeviceNetworkConfig/global.json
+    cp -p $ETCDIR/network.config.global /var/tmp/zededa/DeviceNetworkConfig/global.json
 fi
 
 # Need a key for device-to-device map-requests
