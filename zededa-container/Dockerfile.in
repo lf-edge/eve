@@ -8,7 +8,7 @@ FROM alpine:3.6
 RUN apk add --no-cache \
     yajl xz bash openssl iptables ip6tables \
     coreutils dmidecode sudo libbz2 libuuid ipset \
-    libpcap libaio pixman glib wget radvd perl ethtool openssh-server
+    libpcap libaio pixman glib curl radvd perl ethtool openssh-server
 
 # The following enables pcappy to dlopen libpcap.so
 RUN ln -s libpcap.so.1 /usr/lib/libpcap.so
