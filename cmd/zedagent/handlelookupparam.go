@@ -21,6 +21,8 @@ import (
 	"strings"
 )
 
+const tmpDirname = "/var/tmp/zededa"
+
 // Assumes the config files are in dirName, which is /opt/zededa/etc
 // by default. The files are
 //  root-certificate.pem	Fixed? Written if redirected. factory-root-cert?
@@ -33,9 +35,8 @@ import (
 //  		     		client is started.
 //  infra			If this file exists assume zedcontrol and do not
 //  				create ACLs
-//  zedserverconfig		Written by lookupParam operation; zed server EIDs
-//  zedrouterconfig.json	Written by lookupParam operation
-//  uuid			Written by lookupParam operation
+//  /var/tmp/zededa/zedserverconfig Written by lookupParam operation; zed server EIDs
+//  /var/tmp/zededa/uuid	Written by lookupParam operation
 //
 func handleLookUpParam(devConfig *zconfig.EdgeDevConfig) {
 
@@ -45,8 +46,8 @@ func handleLookUpParam(devConfig *zconfig.EdgeDevConfig) {
 	deviceKeyName := dirName + "/device.key.pem"
 	rootCertName := dirName + "/root-certificate.pem"
 	infraFileName := dirName + "/infra"
-	zedserverConfigFileName := dirName + "/zedserverconfig"
-	uuidFileName := dirName + "/uuid"
+	zedserverConfigFileName := tmpDirname + "/zedserverconfig"
+	uuidFileName := tmpDirname + "/uuid"
 
 	//Fill DeviceDb struct with LispInfo config...
 	var device = types.DeviceDb{}

@@ -142,7 +142,7 @@ if [ $SELF_REGISTER = 1 ]; then
     fi
 fi
 
-# XXX We always redo this to get an updated zedserverconfig
+# We always redo this to get an updated zedserverconfig
 rm -f $TMPDIR/zedserverconfig
 if [ /bin/true -o ! -f $ETCDIR/lisp.config ]; then
     echo "Retrieving device and overlay network config at" `date`
