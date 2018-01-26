@@ -35,14 +35,16 @@ echo "Configuration from factory/install:"
 (cd $ETCDIR; ls -l)
 echo
 
-echo "Update version info in $ETCDIR/version"
-cat $ETCDIR/version_tag >$ETCDIR/version
+echo "Update version info in $TMPDIR/version"
+if [ -f $TMPDIR/version_tag ]; then
+    cat $TMPDIR/version_tag >$TMPDIR/version
+fi
 for AGENT in $ALLAGENTS; do
-    $BINDIR/$AGENT -v >>$ETCDIR/version
+    $BINDIR/$AGENT -v >>$TMPDIR/version
 done
 
 echo "Combined version:"
-cat $ETCDIR/version
+cat $TMPDIR/version
 
 # We need to try our best to setup time *before* we generate the certifiacte.
 # Otherwise it may have start date in the future
@@ -315,7 +317,11 @@ EOF
     fi
     # Make sure we set the dom0 hostname, used by LISP nat traversal, to
     # a unique string. Using the uuid
-    uuid=`cat $TMPDIR/uuid`
+    if [ -f $TMPDIR/uuid ]; then
+	uuid=`cat $TMPDIR/uuid`
+    else
+	uuid=`cat $ETCDIR/uuid`
+    fi
     echo "Setting hostname to $uuid"
     /bin/hostname $uuid
     /bin/hostname >/etc/hostname
@@ -323,7 +329,11 @@ EOF
     echo "Adding $uuid to /etc/hosts"
     echo "127.0.0.1 $uuid" >>/etc/hosts
 else
-    uuid=`cat $TMPDIR/uuid`
+    if [ -f $TMPDIR/uuid ]; then
+	uuid=`cat $TMPDIR/uuid`
+    else
+	uuid=`cat $ETCDIR/uuid`
+    fi
     # For safety in case the rootfs was duplicated and /etc/hostame wasn't
     # updated
     /bin/hostname $uuid
