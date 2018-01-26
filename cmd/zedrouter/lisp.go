@@ -197,12 +197,8 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 		rlocString += one
 		for _, a := range u.Addrs {
 			prio := 0
-			// XXX We don't generate IPv6 UDP checksum hence lower
-			// priority for now
 			if a.IsLinkLocalUnicast() {
 				prio = 2
-			} else if a.To4() == nil {
-				prio = 255
 			}
 			one := fmt.Sprintf("    rloc {\n        address = %s\n        priority = %d\n    }\n", a, prio)
 			rlocString += one
@@ -405,13 +401,30 @@ func restartLisp(upLinkStatus []types.NetworkUplink, devices string) {
 		}
 	}
 	// XXX how to restart with multiple uplinks?
-	// Find first free uplink
+	// Find first free uplink with a non-link-local IPv6, or an IPv4 address
 	uplink := upLinkStatus[0]
+	found := false
 	for _, u := range upLinkStatus {
-		if u.Free {
-			uplink = u
+		if !u.Free {
+			continue
+		}
+		if len(u.Addrs) == 0 {
+			continue
+		}
+		for _, a := range u.Addrs {
+			if !a.IsLinkLocalUnicast() {
+				uplink = u
+				found = true
+				break
+			}
+		}
+		if found {
 			break
 		}
+	}
+	if !found {
+		log.Printf("Can not restart lisp - no usable IP addresses on free uplinks\n")
+		return
 	}
 
 	args := []string{
