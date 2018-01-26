@@ -189,9 +189,24 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	defer file2.Close()
 	rlocString := ""
 	for _, u := range globalStatus.UplinkStatus {
+		// Skip interfaces which are not free or have no usable address
 		if !u.Free {
 			continue
 		}
+		if len(u.Addrs) == 0 {
+			continue
+		}
+		found := false
+		for _, a := range u.Addrs {
+			if !a.IsLinkLocalUnicast() {
+				found = true
+				break
+			}
+		}
+		if !found {
+			continue
+		}
+
 		one := fmt.Sprintf("    rloc {\n        interface = %s\n    }\n",
 			u.IfName)
 		rlocString += one
@@ -405,6 +420,7 @@ func restartLisp(upLinkStatus []types.NetworkUplink, devices string) {
 	uplink := upLinkStatus[0]
 	found := false
 	for _, u := range upLinkStatus {
+		// Skip interfaces which are not free or have no usable address
 		if !u.Free {
 			continue
 		}
