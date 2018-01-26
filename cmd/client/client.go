@@ -47,8 +47,6 @@ var maxDelay = time.Second * 600 // 10 minutes
 //  zedserverconfig		Written by lookupParam operation; zed server EIDs
 //  zedrouterconfig.json	Written by lookupParam operation
 //  uuid			Written by lookupParam operation
-//  hwstatus.json		Uploaded by updateHwStatus operation XXX remove
-//  swstatus.json		Uploaded by updateSwStatus operation XXX remvove
 //
 func main() {
 	log.SetOutput(os.Stdout)
@@ -69,8 +67,6 @@ func main() {
 	operations := map[string]bool{
 		"selfRegister":   false,
 		"lookupParam":    false,
-		"updateHwStatus": false, // XXX remove later
-		"updateSwStatus": false, // XXX remove later
 	}
 	for _, op := range args {
 		if _, ok := operations[op]; ok {
@@ -93,8 +89,6 @@ func main() {
 	zedserverConfigFileName := dirName + "/zedserverconfig"
 	zedrouterConfigFileName := dirName + "/zedrouterconfig.json"
 	uuidFileName := dirName + "/uuid"
-	hwStatusFileName := dirName + "/hwstatus.json" // XXX remove later
-	swStatusFileName := dirName + "/swstatus.json" // XXX remove later
 
 	var hasDeviceNetworkStatus = false
 	var deviceNetworkStatus types.DeviceNetworkStatus
@@ -128,8 +122,7 @@ func main() {
 			log.Fatal(err)
 		}
 	}
-	if operations["lookupParam"] || operations["updateHwStatus"] ||
-		operations["updateSwStatus"] {
+	if operations["lookupParam"] {
 		// Load device cert
 		var err error
 		deviceCert, err = tls.LoadX509KeyPair(deviceCertName,
@@ -534,7 +527,7 @@ func main() {
 	tlsConfig.BuildNameToCertificate()
 
 	var addInfoDevice *types.AdditionalInfoDevice
-	if operations["lookupParam"] || operations["updateHwStatus"] {
+	if operations["lookupParam"] {
 		// Determine location information and use as AdditionalInfo
 		if myIP, err := ipinfo.MyIP(); err == nil {
 			addInfo := types.AdditionalInfoDevice{
@@ -715,83 +708,6 @@ func main() {
 			matches[0].Type = "eidset"
 		}
 		writeNetworkConfig(&config, zedrouterConfigFileName)
-	}
-	// XXX remove later
-	if operations["updateHwStatus"] {
-		if !oldFlag {
-			log.Printf("XXX updateHwStatus not yet supported using %s\n",
-				serverName)
-			return
-		}
-		// Load file for upload
-		buf, err := ioutil.ReadFile(hwStatusFileName)
-		if err != nil {
-			log.Fatal(err)
-		}
-		// Input is in json format; parse and add additionalInfo
-		b := bytes.NewBuffer(buf)
-		// parsing DeviceHwStatus json payload
-		hwStatus := &types.DeviceHwStatus{}
-		if err := json.NewDecoder(b).Decode(hwStatus); err != nil {
-			log.Fatal("Error decoding DeviceHwStatus: ", err)
-		}
-		if addInfoDevice != nil {
-			hwStatus.AdditionalInfoDevice = *addInfoDevice
-		}
-		b = new(bytes.Buffer)
-		json.NewEncoder(b).Encode(hwStatus)
-
-		done := false
-		retryCount := 0
-		var delay time.Duration
-		for !done {
-			time.Sleep(delay)
-			done = oldMyPost(tlsConfig, retryCount,
-				"/rest/update-hw-status", b)
-			if done {
-				continue
-			}
-			retryCount += 1
-			delay = 2 * (delay + time.Second)
-			if delay > maxDelay {
-				delay = maxDelay
-			}
-			log.Printf("Retrying updateHwStatus in %d seconds\n",
-				delay/time.Second)
-		}
-	}
-	// XXX remove later
-	if operations["updateSwStatus"] {
-		if !oldFlag {
-			log.Printf("XXX updateSwStatus not yet supported using %s\n",
-				serverName)
-			return
-		}
-		// Load file for upload
-		buf, err := ioutil.ReadFile(swStatusFileName)
-		if err != nil {
-			log.Fatal(err)
-		}
-		// Input is in json format
-		b := bytes.NewBuffer(buf)
-		done := false
-		retryCount := 0
-		var delay time.Duration
-		for !done {
-			time.Sleep(delay)
-			done = oldMyPost(tlsConfig, retryCount,
-				"/rest/update-sw-status", b)
-			if done {
-				continue
-			}
-			retryCount += 1
-			delay = 2 * (delay + time.Second)
-			if delay > maxDelay {
-				delay = maxDelay
-			}
-			log.Printf("Retrying updateSwStatus in %d seconds\n",
-				delay/time.Second)
-		}
 	}
 }
 

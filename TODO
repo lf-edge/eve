@@ -1,3 +1,6 @@
+ARM: upload to cloud:
+    compatible=`cat /proc/device-tree/compatible`
+
 TODO rename displayName to localDNSName? NO
 TODO should have one name per overlay adapter; DnsName?
 
