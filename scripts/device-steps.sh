@@ -455,12 +455,6 @@ else
     serialNumber=""
     uuid="00000000-0000-0000-0000-000000000000"
 fi
-# Add AdditionalInfoDevice to this
-if [ -f $ETCDIR/clientIP ]; then
-    publicIP=`cat $ETCDIR/clientIP`
-else
-    publicIP="0.0.0.0"
-fi
 cat >$ETCDIR/hwstatus.json <<EOF
 {
 	"Machine": "$machine",
@@ -474,8 +468,7 @@ cat >$ETCDIR/hwstatus.json <<EOF
 	"SystemProductName": "$productName",
 	"SystemVersion": "$version",
 	"SystemSerialNumber": "$serialNumber",
-	"SystemUUID": "$uuid",
-	"PublicIP": "$publicIP"
+	"SystemUUID": "$uuid"
 }
 EOF
 echo $BINDIR/client $OLDFLAG -d $ETCDIR updateHwStatus

@@ -18,7 +18,7 @@ echo ubuntu >etc/hostname
 # onboard.cert.pem onboard.key.pem
 # lisp.config.base  root-certificate.pem  server
 
-rm opt/zededa/etc/{device.cert.pem,device.key.pem,hwstatus.json,swstatus.json,uuid,zedrouterconfig.json,zedserverconfig,clientIP,network.config.global}
+rm opt/zededa/etc/{device.cert.pem,device.key.pem,hwstatus.json,swstatus.json,uuid,zedrouterconfig.json,zedserverconfig,network.config.global}
 
 echo "Remaining files in opt/zededa/etc:"
 ls opt/zededa/etc

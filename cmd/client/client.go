@@ -49,7 +49,6 @@ var maxDelay = time.Second * 600 // 10 minutes
 //  uuid			Written by lookupParam operation
 //  hwstatus.json		Uploaded by updateHwStatus operation XXX remove
 //  swstatus.json		Uploaded by updateSwStatus operation XXX remvove
-//  clientIP			Written containing the public client IP
 //
 func main() {
 	log.SetOutput(os.Stdout)
@@ -94,7 +93,6 @@ func main() {
 	zedserverConfigFileName := dirName + "/zedserverconfig"
 	zedrouterConfigFileName := dirName + "/zedrouterconfig.json"
 	uuidFileName := dirName + "/uuid"
-	clientIPFileName := dirName + "/clientIP"
 	hwStatusFileName := dirName + "/hwstatus.json" // XXX remove later
 	swStatusFileName := dirName + "/swstatus.json" // XXX remove later
 
@@ -673,17 +671,9 @@ func main() {
 		if publicIP, err := addrStringToIP(device.ClientAddr); err != nil {
 			log.Printf("Failed to convert %s, error %s\n",
 				device.ClientAddr, err)
-			// Remove any existing/old file
-			_ = os.Remove(clientIPFileName)
 		} else {
 			nat := !IsMyAddress(publicIP)
 			fmt.Printf("NAT %v, publicIP %v\n", nat, publicIP)
-			// Store clientIP in file for device-steps.sh
-			b := []byte(fmt.Sprintf("%s\n", publicIP))
-			err = ioutil.WriteFile(clientIPFileName, b, 0644)
-			if err != nil {
-				log.Fatal("WriteFile", err, clientIPFileName)
-			}
 		}
 
 		// Write an AppNetworkConfig for the ZedManager application

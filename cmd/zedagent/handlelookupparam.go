@@ -36,7 +36,6 @@ import (
 //  zedserverconfig		Written by lookupParam operation; zed server EIDs
 //  zedrouterconfig.json	Written by lookupParam operation
 //  uuid			Written by lookupParam operation
-//  clientIP			Written containing the public client IP
 //
 func handleLookUpParam(devConfig *zconfig.EdgeDevConfig) {
 
@@ -48,7 +47,6 @@ func handleLookUpParam(devConfig *zconfig.EdgeDevConfig) {
 	infraFileName := dirName + "/infra"
 	zedserverConfigFileName := dirName + "/zedserverconfig"
 	uuidFileName := dirName + "/uuid"
-	clientIPFileName := dirName + "/clientIP"
 
 	//Fill DeviceDb struct with LispInfo config...
 	var device = types.DeviceDb{}
@@ -216,17 +214,9 @@ func handleLookUpParam(devConfig *zconfig.EdgeDevConfig) {
 	if publicIP, err := addrStringToIP(device.ClientAddr); err != nil {
 		log.Printf("Failed to convert %s, error %s\n",
 			device.ClientAddr, err)
-		// Remove any existing/old file
-		_ = os.Remove(clientIPFileName)
 	} else {
 		nat := !IsMyAddress(publicIP)
 		fmt.Printf("NAT %v, publicIP %v\n", nat, publicIP)
-		// Store clientIP in file for device-steps.sh
-		b := []byte(fmt.Sprintf("%s\n", publicIP))
-		err = ioutil.WriteFile(clientIPFileName, b, 0644)
-		if err != nil {
-			log.Fatal("WriteFile", err, clientIPFileName)
-		}
 	}
 
 	// Write an AppNetworkConfig for the ZedManager application
