@@ -121,11 +121,7 @@ fi
 mkdir -p /var/tmp/zededa/DeviceNetworkConfig/
 if [ -f $ETCDIR/network.config.static ] ; then
     echo "Using $ETCDIR/network.config.static"
-    cp -p $ETCDIR/network.config.static $ETCDIR/network.config.global
     cp -p $ETCDIR/network.config.static /var/tmp/zededa/DeviceNetworkConfig/global.json 
-elif [ -f /var/tmp/zededa/DeviceNetworkConfig/global.json ]; then
-    echo "Using /var/tmp/zededa/DeviceNetworkConfig/global.json"
-    cp -p /var/tmp/zededa/DeviceNetworkConfig/global.json $ETCDIR/network.config.global
 fi
 
 if [ $SELF_REGISTER = 1 ]; then
@@ -303,9 +299,7 @@ done
 
 if [ $SELF_REGISTER = 1 ]; then
     # Do we have a file from the build?
-    if [ -f $ETCDIR/network.config.static ] ; then
-	cp -p $ETCDIR/network.config.static $ETCDIR/network.config.global
-    else
+    if [ ! -f $ETCDIR/network.config.static ] ; then
 	echo "Determining uplink interface"
 	intf=`$BINDIR/find-uplink.sh $ETCDIR/lisp.config.base`
 	if [ "$intf" != "" ]; then
@@ -314,7 +308,7 @@ if [ $SELF_REGISTER = 1 ]; then
 		echo "NOT Found interface based on route to map servers. Giving up"
 		exit 1    
 	fi
-	cat <<EOF >$ETCDIR/network.config.global
+	cat <<EOF >/var/tmp/zededa/DeviceNetworkConfig/global.json
 {"Uplink":["$intf"], "FreeUplinks":["$intf"]}
 EOF
     fi
@@ -342,9 +336,9 @@ else
 	echo "Found $uuid in /etc/hosts"
     fi
     # Handle old file format
-    grep -q FreeUplinks $ETCDIR/network.config.global
+    grep -q FreeUplinks /var/tmp/zededa/DeviceNetworkConfig/global.json
     if [ $? = 0 ]; then
-	echo "Found FreeUplinks in $ETCDIR/network.config.global"
+	echo "Found FreeUplinks in /var/tmp/zededa/DeviceNetworkConfig/global.json"
     else
 	echo "Determining uplink interface"
 	intf=`$BINDIR/find-uplink.sh $ETCDIR/lisp.config.base`
@@ -354,14 +348,10 @@ else
 		echo "NOT Found interface based on route to map servers. Giving up"
 		exit 1    
 	fi
-	cat <<EOF >$ETCDIR/network.config.global
+	cat <<EOF >$/var/tmp/zededa/DeviceNetworkConfig/global.json
 {"Uplink":["$intf"], "FreeUplinks":["$intf"]}
 EOF
     fi
-    # XXX
-    echo "Content of file is:"
-    cat $ETCDIR/network.config.global
-    cp -p $ETCDIR/network.config.global /var/tmp/zededa/DeviceNetworkConfig/global.json
 fi
 
 # Need a key for device-to-device map-requests
