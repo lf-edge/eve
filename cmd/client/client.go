@@ -27,6 +27,8 @@ import (
 	"time"
 )
 
+const tmpDirname = "/var/tmp/zededa"
+
 // Set from Makefile
 var Version = "No version specified"
 
@@ -44,9 +46,9 @@ var maxDelay = time.Second * 600 // 10 minutes
 //  		     		client is started.
 //  infra			If this file exists assume zedcontrol and do not
 //  				create ACLs
-//  zedserverconfig		Written by lookupParam operation; zed server EIDs
-//  zedrouterconfig.json	Written by lookupParam operation
-//  uuid			Written by lookupParam operation
+//  /var/tmp/zededa/zedserverconfig		Written by lookupParam operation; zed server EIDs
+//  /var/tmp/zededa/zedrouterconfig.json	Written by lookupParam operation
+//  /var/tmp/zededa/uuid	Written by lookupParam operation
 //
 func main() {
 	log.SetOutput(os.Stdout)
@@ -86,9 +88,9 @@ func main() {
 	serverFileName := dirName + "/server"
 	oldServerFileName := dirName + "/oldserver"
 	infraFileName := dirName + "/infra"
-	zedserverConfigFileName := dirName + "/zedserverconfig"
-	zedrouterConfigFileName := dirName + "/zedrouterconfig.json"
-	uuidFileName := dirName + "/uuid"
+	zedserverConfigFileName := tmpDirname + "/zedserverconfig"
+	zedrouterConfigFileName := tmpDirname + "/zedrouterconfig.json"
+	uuidFileName := tmpDirname + "/uuid"
 
 	var hasDeviceNetworkStatus = false
 	var deviceNetworkStatus types.DeviceNetworkStatus

@@ -5,6 +5,7 @@ echo "Starting device-steps.sh at" `date`
 ETCDIR=/opt/zededa/etc
 BINDIR=/opt/zededa/bin
 PROVDIR=$BINDIR
+TMPDIR=/var/tmp/zededa
 LISPDIR=/opt/zededa/lisp
 AGENTS="zedrouter domainmgr downloader verifier identitymgr eidregister zedagent"
 ALLAGENTS="zedmanager $AGENTS"
@@ -125,7 +126,7 @@ if [ -f $ETCDIR/network.config.static ] ; then
 fi
 
 if [ $SELF_REGISTER = 1 ]; then
-    rm -f $ETCDIR/zedrouterconfig.json
+    rm -f $TMPDIR/zedrouterconfig.json
     
     touch $ETCDIR/self-register-failed
     echo "Self-registering our device certificate at " `date`
@@ -142,18 +143,18 @@ if [ $SELF_REGISTER = 1 ]; then
 fi
 
 # XXX We always redo this to get an updated zedserverconfig
-rm -f $ETCDIR/zedserverconfig
+rm -f $TMPDIR/zedserverconfig
 if [ /bin/true -o ! -f $ETCDIR/lisp.config ]; then
     echo "Retrieving device and overlay network config at" `date`
     echo $BINDIR/client $OLDFLAG -d $ETCDIR lookupParam
     $BINDIR/client $OLDFLAG -d $ETCDIR lookupParam
-    if [ -f $ETCDIR/zedserverconfig ]; then
+    if [ -f $TMPDIR/zedserverconfig ]; then
 	echo "Retrieved overlay /etc/hosts with:"
-	cat $ETCDIR/zedserverconfig
+	cat $TMPDIR/zedserverconfig
 	# edit zedserverconfig into /etc/hosts
-	match=`awk '{print $2}' $ETCDIR/zedserverconfig| sort -u | awk 'BEGIN {m=""} { m = sprintf("%s|%s", m, $1) } END { m = substr(m, 2, length(m)); printf ".*:.*(%s)\n", m}'`
+	match=`awk '{print $2}' $TMPDIR/zedserverconfig| sort -u | awk 'BEGIN {m=""} { m = sprintf("%s|%s", m, $1) } END { m = substr(m, 2, length(m)); printf ".*:.*(%s)\n", m}'`
 	egrep -v $match /etc/hosts >/tmp/hosts.$$
-	cat $ETCDIR/zedserverconfig >>/tmp/hosts.$$
+	cat $TMPDIR/zedserverconfig >>/tmp/hosts.$$
 	echo "New /etc/hosts:"
 	cat /tmp/hosts.$$
 	cp /tmp/hosts.$$ /etc/hosts
@@ -314,7 +315,7 @@ EOF
     fi
     # Make sure we set the dom0 hostname, used by LISP nat traversal, to
     # a unique string. Using the uuid
-    uuid=`cat $ETCDIR/uuid`
+    uuid=`cat $TMPDIR/uuid`
     echo "Setting hostname to $uuid"
     /bin/hostname $uuid
     /bin/hostname >/etc/hostname
@@ -322,7 +323,7 @@ EOF
     echo "Adding $uuid to /etc/hosts"
     echo "127.0.0.1 $uuid" >>/etc/hosts
 else
-    uuid=`cat $ETCDIR/uuid`
+    uuid=`cat $TMPDIR/uuid`
     # For safety in case the rootfs was duplicated and /etc/hostame wasn't
     # updated
     /bin/hostname $uuid
@@ -360,8 +361,8 @@ cp -p $ETCDIR/device.key.pem $LISPDIR/lisp-sig.pem
 # Pick up the device EID zedrouter config file from $ETCDIR and put
 # it in /var/tmp/zedrouter/config/
 # This will result in starting lispers.net when zedrouter starts
-if [ -f $ETCDIR/zedrouterconfig.json ]; then
-	cp $ETCDIR/zedrouterconfig.json /var/tmp/zedrouter/config/${uuid}.json
+if [ -f $TMPDIR/zedrouterconfig.json ]; then
+	cp $TMPDIR/zedrouterconfig.json /var/tmp/zedrouter/config/${uuid}.json
 fi
 
 # Setup default amount of space for images
