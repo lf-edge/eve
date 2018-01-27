@@ -38,6 +38,8 @@ echo
 echo "Update version info in $TMPDIR/version"
 if [ -f $TMPDIR/version_tag ]; then
     cat $TMPDIR/version_tag >$TMPDIR/version
+else
+    rm -f $TMPDIR/version
 fi
 for AGENT in $ALLAGENTS; do
     $BINDIR/$AGENT -v >>$TMPDIR/version
@@ -125,6 +127,10 @@ mkdir -p /var/tmp/zededa/DeviceNetworkConfig/
 if [ -f $ETCDIR/network.config.static ] ; then
     echo "Using $ETCDIR/network.config.static"
     cp -p $ETCDIR/network.config.static /var/tmp/zededa/DeviceNetworkConfig/global.json 
+fi
+
+if [ ! -f $TMPDIR/uuid -a -f $ETCDIR/uuid ]; then
+    cp -p $ETCDIR/uuid $TMPDIR/uuid
 fi
 
 if [ $SELF_REGISTER = 1 ]; then
