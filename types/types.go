@@ -4,9 +4,7 @@
 package types
 
 import (
-	"github.com/satori/go.uuid"
 	"log"
-	"net"
 	"strings"
 )
 
