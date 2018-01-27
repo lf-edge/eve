@@ -11,9 +11,9 @@ import (
 	psutilnet "github.com/shirou/gopsutil/net"
 	"github.com/zededa/api/zmet"
 	"github.com/zededa/go-provision/types"
+	"log"
 	"net"
 	"net/http"
-	"log"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -94,7 +94,7 @@ func GetDeviceManufacturerInfo() (string, string, string, string, string) {
 	return productManufacturer, productName, productVersion, productSerial, productUuid
 }
 
-func ExecuteXentopCmd() [][]string{
+func ExecuteXentopCmd() [][]string {
 	var cpuStorageStat [][]string
 
 	count := 0
@@ -207,7 +207,7 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 		SendMetricsProtobufStrThroughHttp(ReportMetrics, iteration)
 		return
 	}
-	
+
 	for arr := 1; arr < 2; arr++ {
 
 		cpuTime, _ := strconv.ParseUint(cpuStorageStat[arr][3], 10, 0)
@@ -427,7 +427,7 @@ func PublishHypervisorInfoToZedCloud(iteration int) {
 
 // XXX change caller filename to key which is uuid; not used for now
 func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
-     iteration int) {
+	iteration int) {
 	fmt.Printf("PublishAppInfoToZedCloud uuid %s\n", uuid)
 	// XXX if it was deleted we publish nothing; do we need to delete from
 	// zedcloud?
@@ -520,23 +520,28 @@ func SendInfoProtobufStrThroughHttp(ReportInfo *zmet.ZInfoMsg, iteration int) {
 			defer resp.Body.Close()
 			switch resp.StatusCode {
 			case http.StatusOK:
-				fmt.Printf("SendInfoProtobufStrThroughHttp StatusOK\n")
+				// XXX makes logfile too long; debug flag?
+				fmt.Printf("SendInfoProtobufStrThroughHttp to %s using intf %s source %v StatusOK\n",
+					statusUrl, intf, localTCPAddr)
+				fmt.Printf(" StatusOK\n")
+				return
 			default:
-				fmt.Printf("SendInfoProtobufStrThroughHttp statuscode %d %s\n",
+				fmt.Printf("SendInfoProtobufStrThroughHttp to %s using intf %s source %v statuscode %d %s\n",
+					statusUrl, intf, localTCPAddr,
 					resp.StatusCode, http.StatusText(resp.StatusCode))
 				fmt.Printf("received response %v\n", resp)
 			}
-			break
 		}
 		log.Printf("All attempts to connect to %s using intf %s failed\n",
 			statusUrl, intf)
 	}
+	log.Printf("All attempts to connect to %s failed\n", statusUrl)
 }
 
 // Each iteration we try a different uplink. For each uplink we try all
 // its local IP addresses until we get a success.
 func SendMetricsProtobufStrThroughHttp(ReportMetrics *zmet.ZMetricMsg,
-     iteration int) {
+	iteration int) {
 	data, err := proto.Marshal(ReportMetrics)
 	if err != nil {
 		fmt.Println("marshaling error: ", err)
@@ -551,7 +556,7 @@ func SendMetricsProtobufStrThroughHttp(ReportMetrics *zmet.ZMetricMsg,
 	// XXX makes logfile too long; debug flag?
 	log.Printf("Connecting to %s using intf %s interation %d #sources %d\n",
 		metricsUrl, intf, iteration, addrCount)
-	
+
 	for retryCount := 0; retryCount < addrCount; retryCount += 1 {
 		localAddr, err := types.GetLocalAddrAny(deviceNetworkStatus,
 			retryCount, intf)
@@ -562,6 +567,7 @@ func SendMetricsProtobufStrThroughHttp(ReportMetrics *zmet.ZMetricMsg,
 		// XXX makes logfile too long; debug flag?
 		fmt.Printf("Connecting to %s using intf %s source %v\n",
 			metricsUrl, intf, localTCPAddr)
+
 		d := net.Dialer{LocalAddr: &localTCPAddr}
 		transport := &http.Transport{
 			TLSClientConfig: tlsConfig,
@@ -578,13 +584,16 @@ func SendMetricsProtobufStrThroughHttp(ReportMetrics *zmet.ZMetricMsg,
 		defer resp.Body.Close()
 		switch resp.StatusCode {
 		case http.StatusOK:
-			fmt.Printf("SendMetricsProtobufStrThroughHttp StatusOK\n")
+			// XXX makes logfile too long; debug flag?
+			fmt.Printf("SendMetricsProtobufStrThroughHttp to %s using intf %s source %v StatusOK\n",
+				metricsUrl, intf, localTCPAddr)
+			return
 		default:
-			fmt.Printf("SendMetricsProtobufStrThroughHttp statuscode %d %s\n",
+			fmt.Printf("SendMetricsProtobufStrThroughHttp to %s using intf %s source %v  statuscode %d %s\n",
+				metricsUrl, intf, localTCPAddr,
 				resp.StatusCode, http.StatusText(resp.StatusCode))
 			fmt.Printf("received response %v\n", resp)
 		}
-		return
 	}
 	log.Printf("All attempts to connect to %s using intf %s failed\n",
 		metricsUrl, intf)
