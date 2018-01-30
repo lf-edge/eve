@@ -31,6 +31,8 @@ while [ $# != 0 ]; do
     shift
 done
 
+mkdir -p /var/tmp/zededa/
+
 echo "Configuration from factory/install:"
 (cd $ETCDIR; ls -l)
 echo
