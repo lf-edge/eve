@@ -7,7 +7,7 @@ BINDIR=/opt/zededa/bin
 PROVDIR=$BINDIR
 TMPDIR=/var/tmp/zededa
 LISPDIR=/opt/zededa/lisp
-AGENTS="zedrouter domainmgr downloader verifier identitymgr eidregister zedagent"
+AGENTS="ledmanager zedrouter domainmgr downloader verifier identitymgr eidregister zedagent"
 ALLAGENTS="zedmanager $AGENTS"
 
 PATH=$BINDIR:$PATH
@@ -105,7 +105,6 @@ if [ $WAIT = 1 ]; then
 fi
 
 # XXX should we harden/remove any Linux network services at this point?
-
 echo "Check for WiFi config"
 if [ -f $ETCDIR/wifi_ssid ]; then
     echo -n "SSID: "
@@ -151,7 +150,6 @@ if [ $SELF_REGISTER = 1 ]; then
 	echo -n "Press any key to continue "; read dummy; echo; echo
     fi
 fi
-
 # We always redo this to get an updated zedserverconfig
 rm -f $TMPDIR/zedserverconfig
 if [ /bin/true -o ! -f $ETCDIR/lisp.config ]; then
@@ -179,7 +177,6 @@ if [ ! -d $LISPDIR ]; then
     echo "Missing $LISPDIR directory. Giving up"
     exit 1
 fi
-
 echo "Removing old stale files"
 # Remove internal config files
 pkill zedmanager
@@ -191,7 +188,7 @@ echo "Removing old zedmanager status files"
 rm -rf /var/run/zedmanager/status/*.json
 # The following is a workaround for a racecondition between different agents
 # Make sure we have the required directories in place
-DIRS="/var/tmp/domainmgr/config/ /var/tmp/verifier/config/ /var/tmp/downloader/config/ /var/tmp/zedmanager/config/ /var/tmp/identitymgr/config/ /var/tmp/zedrouter/config/ /var/run/domainmgr/status/ /var/run/verifier/status/ /var/run/downloader/status/ /var/run/zedmanager/status/ /var/run/eidregister/status/ /var/run/zedrouter/status/ /var/run/identitymgr/status/ /var/tmp/zededa/DeviceNetworkConfig/ /var/run/zedrouter/DeviceNetworkStatus/"
+DIRS="/var/run/ledmanager/status/ /var/tmp/domainmgr/config/ /var/tmp/verifier/config/ /var/tmp/downloader/config/ /var/tmp/zedmanager/config/ /var/tmp/identitymgr/config/ /var/tmp/zedrouter/config/ /var/run/domainmgr/status/ /var/run/verifier/status/ /var/run/downloader/status/ /var/run/zedmanager/status/ /var/run/eidregister/status/ /var/run/zedrouter/status/ /var/run/identitymgr/status/ /var/tmp/zededa/DeviceNetworkConfig/ /var/run/zedrouter/DeviceNetworkStatus/"
 for d in $DIRS; do
     mkdir -p $d
     chmod 700 $d `dirname $d`
@@ -391,6 +388,13 @@ rm -f /var/tmp/zedrouter/config/restart
 
 echo "Starting verifier at" `date`
 verifier >/var/log/verifier.log 2>&1 &
+
+echo "Starting ledmanager at" `date`
+ledmanager >/var/log/ledmanager.log 2>&1 &
+if [ $WAIT = 1 ]; then
+    echo -n "Press any key to continue "; read dummy; echo; echo
+fi
+echo '{"BlinkCounter": 1}' > '/var/run/ledmanager/status/ledstatus.json'
 if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
@@ -443,3 +447,4 @@ if [ $MEASURE = 1 ]; then
     ping6 -c 3 -w 1000 zedcontrol
     echo "Measurement done at" `date`
 fi
+echo '{"BlinkCounter": 2}' > '/var/run/ledmanager/status/ledstatus.json'
