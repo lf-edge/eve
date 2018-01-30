@@ -9,24 +9,12 @@
 // Input directory with config (URL, refcount, maxLength, dstDir)
 // Output directory with status (URL, refcount, state, ModTime, lastErr, lastErrTime, retryCount)
 // refCount -> 0 means delete from dstDir? Who owns dstDir? Separate mount.
-// Check length against Content-Length.
-
-// Should retrieve length somewhere first. Should that be in the catalogue?
-// Content-Length is set!
-// nordmark@bobo:~$ curl -I  https://cloud-images.ubuntu.com/releases/16.04/release/ubuntu-16.04-server-cloudimg-arm64-root.tar.gz
-// HTTP/1.1 200 OK
-// Date: Sat, 03 Jun 2017 04:28:38 GMT
-// Server: Apache
-// Last-Modified: Tue, 16 May 2017 15:31:53 GMT
-// ETag: "b15553f-54fa5defeec40"
-// Accept-Ranges: bytes
-// Content-Length: 185947455
-// Content-Type: application/x-gzip
 
 package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"github.com/zededa/api/zconfig"
@@ -82,20 +70,35 @@ func main() {
 
 	downloaderInit()
 
-	go checkImageUpdates()
+	deviceStatusChanges := make(chan string)
+	go watch.WatchStatus(DNSDirname, deviceStatusChanges)
+
+	// First wait to have some free uplinks
+	for types.CountLocalAddrFree(deviceNetworkStatus, "") == 0 {
+		select {
+		case change := <-deviceStatusChanges:
+			watch.HandleStatusEvent(change,
+				DNSDirname,
+				&types.DeviceNetworkStatus{},
+				handleDNSModify, handleDNSDelete,
+				nil)
+		}
+	}
+	fmt.Printf("Have %d free uplinks addresses to use\n",
+		types.CountLocalAddrFree(deviceNetworkStatus, ""))
+
+	// XXX potential concurrency problem relative to handleCertUpdates?
+	go checkImageUpdates(deviceStatusChanges)
 
 	handleCertUpdates()
 }
 
 // Object handlers
-func checkImageUpdates() {
+func checkImageUpdates(deviceStatusChanges chan string) {
 	sanitizeDirs(baseDirname, runDirname)
 
 	fileChanges := make(chan string)
-
 	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
-	deviceStatusChanges := make(chan string)
-	go watch.WatchStatus(DNSDirname, deviceStatusChanges)
 
 	for {
 		select {
@@ -322,7 +325,7 @@ func handleCreate(config types.DownloaderConfig, statusFilename string) {
 		Safename:       config.Safename,
 		RefCount:       config.RefCount,
 		DownloadURL:    config.DownloadURL,
-		IfName:         config.IfName,
+		UseFreeUplinks: config.UseFreeUplinks,
 		ImageSha256:    config.ImageSha256,
 		DownloadObjDir: config.DownloadObjDir,
 		VerifiedObjDir: config.VerifiedObjDir,
@@ -710,6 +713,7 @@ func writeFile(sFilename string, dFilename string) {
 // XXX --max-filesize <bytes> from MaxSize in DownLoaderConfig (kbytes)
 // XXX --interface ...
 // Note that support for --dns-interface is not compiled in
+// Normally "ifname" is the source IP to be consistent with the S3 loop
 func doCurl(url string, ifname string, destFilename string) error {
 	cmd := "curl"
 	args := []string{}
@@ -748,16 +752,56 @@ func doCurl(url string, ifname string, destFilename string) error {
 	if err != nil {
 		log.Println("curl failed ", err)
 	} else {
-		log.Printf("curl done: output %s\n", string(stdoutStderr))
+		log.Printf("curl done: output <%s>\n", string(stdoutStderr))
 	}
 	return err
+}
+
+func doS3(syncOp zedUpload.SyncOpType,
+	apiKey string, password string, dpath string, maxsize uint,
+	ipSrc net.IP, filename string, locFilename string) error {
+	auth := &zedUpload.AuthInput{
+		AuthType: "s3",
+		Uname:    apiKey,
+		Password: password,
+	}
+
+	trType := zedUpload.SyncAwsTr
+	// XXX:FIXME , will come as part of data store
+	region := "us-west-2"
+
+	// create Endpoint
+	dEndPoint, err := dCtx.NewSyncerDest(trType, region, dpath, auth)
+	if err != nil {
+		fmt.Printf("NewSyncerDest failed: %s\n", err)
+		return err
+	}
+	dEndPoint.WithSrcIpSelection(ipSrc)
+	var respChan = make(chan *zedUpload.DronaRequest)
+
+	log.Printf("syncOp for <%s>/<%s>\n", dpath, filename)
+	// create Request
+	req := dEndPoint.NewRequest(syncOp, filename, locFilename,
+		int64(maxsize/1024), true, respChan)
+	if req == nil {
+		return errors.New("NewRequest failed")
+	}
+
+	req.Post()
+	resp := <-respChan
+	_, err = resp.GetUpStatus()
+	if resp.IsError() == false {
+		return nil
+	} else {
+		return err
+	}
 }
 
 // Drona APIs for object Download
 
 func handleSyncOp(syncOp zedUpload.SyncOpType,
-	statusFilename string, config types.DownloaderConfig, status *types.DownloaderStatus) {
-
+	statusFilename string, config types.DownloaderConfig,
+	status *types.DownloaderStatus) {
 	var err error
 	var locFilename string
 
@@ -786,73 +830,65 @@ func handleSyncOp(syncOp zedUpload.SyncOpType,
 
 	locFilename = locFilename + "/" + config.Safename
 
-	log.Printf("Downloading <%s> to <%s>\n", config.DownloadURL, locFilename)
+	log.Printf("Downloading <%s> to <%s> using %v freeuplink\n",
+		config.DownloadURL, locFilename, config.UseFreeUplinks)
 
-	var ipSrc net.IP
-	retryCount := 0 // XXX
-	if config.IfName != "" {
-		// XXX need to pick a random source
-		// until we find one which works.
-		// XXX put retryCount in status? Loop?
-		ipSrc, err = types.GetLocalAddrFree(deviceNetworkStatus,
-			retryCount, config.IfName)
-		if err != nil {
-			ipSrc = net.IP{}
-		}
-		fmt.Printf("Using IP source %v\n", ipSrc)
+	var addrCount int
+	if config.UseFreeUplinks {
+		addrCount = types.CountLocalAddrFree(deviceNetworkStatus, "")
+		fmt.Printf("Have %d free uplink addresses\n", addrCount)
 	} else {
-		// Use unspecified even if dCtx has an old source address
-		ipSrc = net.IP{}
+		addrCount = types.CountLocalAddrAny(deviceNetworkStatus, "")
+		fmt.Printf("Have %d any uplink add`resses\n", addrCount)
 	}
-	switch config.TransportMethod {
-	case zconfig.DsType_DsS3.String():
-		{
-
-			auth := &zedUpload.AuthInput{AuthType: "s3",
-				Uname:    config.ApiKey,
-				Password: config.Password}
-
-			trType := zedUpload.SyncAwsTr
-			// XXX:FIXME , will come as part of data store
-			region := "us-west-2"
-
-			// create Endpoint
-			dEndPoint, err := dCtx.NewSyncerDest(trType, region, config.Dpath, auth)
-
-			if err == nil && dEndPoint != nil {
-				dEndPoint.WithSrcIpSelection(ipSrc)
-				var respChan = make(chan *zedUpload.DronaRequest)
-
-				log.Printf("syncOp for <%s>/<%s>\n", config.Dpath, filename)
-
-				// create Request
-				req := dEndPoint.NewRequest(syncOp, filename, locFilename,
-					int64(config.MaxSize/1024), true, respChan)
-
-				if req != nil {
-					req.Post()
-					select {
-					case resp := <-respChan:
-						_, err = resp.GetUpStatus()
-
-						if resp.IsError() == false {
-							err = nil
-						}
-					}
-				}
-			}
+	// Loop through all interfaces until a success
+	for addrIndex := 0; addrIndex < addrCount; addrIndex += 1 {
+		var ipSrc net.IP
+		if config.UseFreeUplinks {
+			ipSrc, err = types.GetLocalAddrFree(deviceNetworkStatus,
+				addrIndex, "")
+		} else {
+			ipSrc, err = types.GetLocalAddrAny(deviceNetworkStatus,
+				addrIndex, "")
 		}
-		handleSyncOpResponse(config, status, statusFilename, err)
-		break
+		if err != nil {
+			fmt.Printf("GetLocalAddr failed: %s\n", err)
+			continue
+		}
+		fmt.Printf("Using IP source %v transport %v\n", ipSrc,
+			config.TransportMethod)
 
-	case zconfig.DsType_DsHttp.String():
-	case zconfig.DsType_DsHttps.String():
-	case "":
-		err = doCurl(config.DownloadURL, config.IfName, locFilename)
-		handleSyncOpResponse(config, status, statusFilename, err)
-	default:
-		log.Fatal("unsupported transport method")
+		switch config.TransportMethod {
+		case zconfig.DsType_DsS3.String():
+			err = doS3(syncOp, config.ApiKey, config.Password, config.Dpath,
+				config.MaxSize, ipSrc, filename, locFilename)
+			if err != nil {
+				fmt.Printf("Source IP %s failed: %s\n",
+					ipSrc.String(), err)
+			} else {
+				handleSyncOpResponse(config, status,
+					statusFilename, err)
+				return
+			}
+		case zconfig.DsType_DsHttp.String():
+		case zconfig.DsType_DsHttps.String():
+		case "":
+			err = doCurl(config.DownloadURL, ipSrc.String(),
+				locFilename)
+			if err != nil {
+				fmt.Printf("Source IP %s failed: %s\n",
+					ipSrc.String(), err)
+			} else {
+				handleSyncOpResponse(config, status,
+					statusFilename, err)
+				return
+			}
+		default:
+			log.Fatal("unsupported transport method")
+		}
 	}
+	fmt.Printf("All source IP addresses failed. Last %s\n", err)
+	handleSyncOpResponse(config, status, statusFilename, err)
 }
 
 func handleSyncOpResponse(config types.DownloaderConfig,
@@ -955,6 +991,8 @@ func handleDNSModify(statusFilename string,
 
 	log.Printf("handleDNSModify for %s\n", statusFilename)
 	deviceNetworkStatus = *status
+	fmt.Printf("handleDNSModify %d free uplinks addresses to use\n",
+		types.CountLocalAddrFree(deviceNetworkStatus, ""))
 	log.Printf("handleDNSModify done for %s\n", statusFilename)
 }
 

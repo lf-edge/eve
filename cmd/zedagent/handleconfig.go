@@ -35,6 +35,7 @@ var metricsApi string = "api/v1/edgedevice/metrics"
 // XXX remove global variables
 // XXX shouldn't we know our own deviceId?
 var deviceId string
+
 // These URLs are effectively constants; depends on the server name
 var configUrl string
 var metricsUrl string
@@ -97,7 +98,7 @@ func getCloudUrls() {
 // for each of the above buckets
 
 func configTimerTask() {
-	iteration := 0     
+	iteration := 0
 	fmt.Println("starting config fetch timer task")
 	getLatestConfig(configUrl, iteration)
 
@@ -145,7 +146,8 @@ func getLatestConfig(configUrl string, iteration int) {
 			continue
 		}
 		defer resp.Body.Close()
-		if err := validateConfigMessage(resp); err != nil {
+		if err := validateConfigMessage(configUrl, intf, localTCPAddr,
+			resp); err != nil {
 			log.Println("validateConfigMessage: ", err)
 			return
 		}
@@ -161,16 +163,20 @@ func getLatestConfig(configUrl string, iteration int) {
 		configUrl, intf)
 }
 
-func validateConfigMessage(r *http.Response) error {
+func validateConfigMessage(configUrl string, intf string,
+	localTCPAddr net.TCPAddr, r *http.Response) error {
 
 	var ctTypeStr = "Content-Type"
 	var ctTypeProtoStr = "application/x-proto-binary"
 
 	switch r.StatusCode {
 	case http.StatusOK:
-		fmt.Printf("validateConfigMessage StatusOK\n")
+		// XXX makes logfile too long; debug flag?
+		fmt.Printf("validateConfigMessage %s using intf %s source %v StatusOK\n",
+			configUrl, intf, localTCPAddr)
 	default:
-		fmt.Printf("validateConfigMessage statuscode %d %s\n",
+		fmt.Printf("validateConfigMessage %s using intf %s source %v statuscode %d %s\n",
+			configUrl, intf, localTCPAddr,
 			r.StatusCode, http.StatusText(r.StatusCode))
 		fmt.Printf("received response %v\n", r)
 		return fmt.Errorf("http status %d %s",

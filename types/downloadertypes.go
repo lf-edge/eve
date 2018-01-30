@@ -13,7 +13,7 @@ import (
 type DownloaderConfig struct {
 	Safename        string
 	DownloadURL     string
-	IfName		string // If set, restrict download to use this interface
+	UseFreeUplinks	bool
 	TransportMethod string // Download Method S3/HTTP/SFTP etc.
 	Dpath           string
 	ApiKey          string
@@ -51,7 +51,7 @@ type DownloaderStatus struct {
 	PendingDelete  bool
 	RefCount       uint    // Zero means not downloaded
 	DownloadURL    string
-	IfName	       string
+	UseFreeUplinks bool
 	ImageSha256    string  // sha256 of immutable image
 	DownloadObjDir string  // Download Object store
 	VerifiedObjDir string  // Target Object Store

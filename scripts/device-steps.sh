@@ -5,6 +5,7 @@ echo "Starting device-steps.sh at" `date`
 ETCDIR=/opt/zededa/etc
 BINDIR=/opt/zededa/bin
 PROVDIR=$BINDIR
+TMPDIR=/var/tmp/zededa
 LISPDIR=/opt/zededa/lisp
 AGENTS="zedrouter domainmgr downloader verifier identitymgr eidregister zedagent"
 ALLAGENTS="zedmanager $AGENTS"
@@ -30,18 +31,24 @@ while [ $# != 0 ]; do
     shift
 done
 
+mkdir -p /var/tmp/zededa/
+
 echo "Configuration from factory/install:"
 (cd $ETCDIR; ls -l)
 echo
 
-echo "Update version info in $ETCDIR/version"
-cat $ETCDIR/version_tag >$ETCDIR/version
+echo "Update version info in $TMPDIR/version"
+if [ -f $TMPDIR/version_tag ]; then
+    cat $TMPDIR/version_tag >$TMPDIR/version
+else
+    rm -f $TMPDIR/version
+fi
 for AGENT in $ALLAGENTS; do
-    $BINDIR/$AGENT -v >>$ETCDIR/version
+    $BINDIR/$AGENT -v >>$TMPDIR/version
 done
 
 echo "Combined version:"
-cat $ETCDIR/version
+cat $TMPDIR/version
 
 # We need to try our best to setup time *before* we generate the certifiacte.
 # Otherwise it may have start date in the future
@@ -116,11 +123,20 @@ if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
-# XXX this should run in domZ aka ZedRouter on init.
-# Ideally just to WiFi setup in dom0 and do DHCP in domZ
+# We use the factory network.config.static if we have one, otherwise
+# we reuse the DeviceNetworkConfig from a previous run
+mkdir -p /var/tmp/zededa/DeviceNetworkConfig/
+if [ -f $ETCDIR/network.config.static ] ; then
+    echo "Using $ETCDIR/network.config.static"
+    cp -p $ETCDIR/network.config.static /var/tmp/zededa/DeviceNetworkConfig/global.json 
+fi
+
+if [ ! -f $TMPDIR/uuid -a -f $ETCDIR/uuid ]; then
+    cp -p $ETCDIR/uuid $TMPDIR/uuid
+fi
 
 if [ $SELF_REGISTER = 1 ]; then
-    rm -f $ETCDIR/zedrouterconfig.json
+    rm -f $TMPDIR/zedrouterconfig.json
     
     touch $ETCDIR/self-register-failed
     echo "Self-registering our device certificate at " `date`
@@ -136,19 +152,19 @@ if [ $SELF_REGISTER = 1 ]; then
     fi
 fi
 
-# XXX We always redo this to get an updated zedserverconfig
-rm -f $ETCDIR/zedserverconfig
+# We always redo this to get an updated zedserverconfig
+rm -f $TMPDIR/zedserverconfig
 if [ /bin/true -o ! -f $ETCDIR/lisp.config ]; then
     echo "Retrieving device and overlay network config at" `date`
     echo $BINDIR/client $OLDFLAG -d $ETCDIR lookupParam
     $BINDIR/client $OLDFLAG -d $ETCDIR lookupParam
-    if [ -f $ETCDIR/zedserverconfig ]; then
+    if [ -f $TMPDIR/zedserverconfig ]; then
 	echo "Retrieved overlay /etc/hosts with:"
-	cat $ETCDIR/zedserverconfig
+	cat $TMPDIR/zedserverconfig
 	# edit zedserverconfig into /etc/hosts
-	match=`awk '{print $2}' $ETCDIR/zedserverconfig| sort -u | awk 'BEGIN {m=""} { m = sprintf("%s|%s", m, $1) } END { m = substr(m, 2, length(m)); printf ".*:.*(%s)\n", m}'`
+	match=`awk '{print $2}' $TMPDIR/zedserverconfig| sort -u | awk 'BEGIN {m=""} { m = sprintf("%s|%s", m, $1) } END { m = substr(m, 2, length(m)); printf ".*:.*(%s)\n", m}'`
 	egrep -v $match /etc/hosts >/tmp/hosts.$$
-	cat $ETCDIR/zedserverconfig >>/tmp/hosts.$$
+	cat $TMPDIR/zedserverconfig >>/tmp/hosts.$$
 	echo "New /etc/hosts:"
 	cat /tmp/hosts.$$
 	cp /tmp/hosts.$$ /etc/hosts
@@ -162,15 +178,6 @@ fi
 if [ ! -d $LISPDIR ]; then
     echo "Missing $LISPDIR directory. Giving up"
     exit 1
-fi
-
-# We use the factory network.config.static if we have one, otherwise
-# we reuse the DeviceNetworkConfig from a previous run
-if [ -f $ETCDIR/network.config.static ] ; then
-    cp -p $ETCDIR/network.config.static $ETCDIR/network.config.global
-    cp -p $ETCDIR/network.config.static /var/tmp/zededa/DeviceNetworkConfig/global.json 
-elif [ -f /var/tmp/zededa/DeviceNetworkConfig/global.json ]; then
-    cp -p /var/tmp/zededa/DeviceNetworkConfig/global.json $ETCDIR/network.config.global
 fi
 
 echo "Removing old stale files"
@@ -303,9 +310,7 @@ done
 
 if [ $SELF_REGISTER = 1 ]; then
     # Do we have a file from the build?
-    if [ -f $ETCDIR/network.config.static ] ; then
-	cp $ETCDIR/network.config.static $ETCDIR/network.config.global
-    else
+    if [ ! -f $ETCDIR/network.config.static ] ; then
 	echo "Determining uplink interface"
 	intf=`$BINDIR/find-uplink.sh $ETCDIR/lisp.config.base`
 	if [ "$intf" != "" ]; then
@@ -314,13 +319,17 @@ if [ $SELF_REGISTER = 1 ]; then
 		echo "NOT Found interface based on route to map servers. Giving up"
 		exit 1    
 	fi
-	cat <<EOF >$ETCDIR/network.config.global
+	cat <<EOF >/var/tmp/zededa/DeviceNetworkConfig/global.json
 {"Uplink":["$intf"], "FreeUplinks":["$intf"]}
 EOF
     fi
     # Make sure we set the dom0 hostname, used by LISP nat traversal, to
     # a unique string. Using the uuid
-    uuid=`cat $ETCDIR/uuid`
+    if [ -f $TMPDIR/uuid ]; then
+	uuid=`cat $TMPDIR/uuid`
+    else
+	uuid=`cat $ETCDIR/uuid`
+    fi
     echo "Setting hostname to $uuid"
     /bin/hostname $uuid
     /bin/hostname >/etc/hostname
@@ -328,13 +337,17 @@ EOF
     echo "Adding $uuid to /etc/hosts"
     echo "127.0.0.1 $uuid" >>/etc/hosts
 else
-    uuid=`cat $ETCDIR/uuid`
+    if [ -f $TMPDIR/uuid ]; then
+	uuid=`cat $TMPDIR/uuid`
+    else
+	uuid=`cat $ETCDIR/uuid`
+    fi
     # For safety in case the rootfs was duplicated and /etc/hostame wasn't
     # updated
     /bin/hostname $uuid
     /bin/hostname >/etc/hostname
     grep -q $uuid /etc/hosts
-    if [ !? = 1 ]; then
+    if [ $? = 1 ]; then
 	# put the uuid in /etc/hosts to avoid complaints
 	echo "Adding $uuid to /etc/hosts"
 	echo "127.0.0.1 $uuid" >>/etc/hosts
@@ -342,9 +355,9 @@ else
 	echo "Found $uuid in /etc/hosts"
     fi
     # Handle old file format
-    grep -q FreeUplinks $ETCDIR/network.config.global
-    if [ !? = 0 ]; then
-	echo "Found FreeUplinks in $ETCDIR/network.config.global"
+    grep -q FreeUplinks /var/tmp/zededa/DeviceNetworkConfig/global.json
+    if [ $? = 0 ]; then
+	echo "Found FreeUplinks in /var/tmp/zededa/DeviceNetworkConfig/global.json"
     else
 	echo "Determining uplink interface"
 	intf=`$BINDIR/find-uplink.sh $ETCDIR/lisp.config.base`
@@ -354,13 +367,10 @@ else
 		echo "NOT Found interface based on route to map servers. Giving up"
 		exit 1    
 	fi
-	cat <<EOF >$ETCDIR/network.config.global
+	cat <<EOF >$/var/tmp/zededa/DeviceNetworkConfig/global.json
 {"Uplink":["$intf"], "FreeUplinks":["$intf"]}
 EOF
     fi
-    # XXX
-    echo "Content of file is:"
-    cat $ETCDIR/network.config.global
 fi
 
 # Need a key for device-to-device map-requests
@@ -369,11 +379,9 @@ cp -p $ETCDIR/device.key.pem $LISPDIR/lisp-sig.pem
 # Pick up the device EID zedrouter config file from $ETCDIR and put
 # it in /var/tmp/zedrouter/config/
 # This will result in starting lispers.net when zedrouter starts
-if [ -f $ETCDIR/zedrouterconfig.json ]; then
-	cp $ETCDIR/zedrouterconfig.json /var/tmp/zedrouter/config/${uuid}.json
+if [ -f $TMPDIR/zedrouterconfig.json ]; then
+	cp $TMPDIR/zedrouterconfig.json /var/tmp/zedrouter/config/${uuid}.json
 fi
-
-cp $ETCDIR/network.config.global /var/tmp/zededa/DeviceNetworkConfig/global.json
 
 # Setup default amount of space for images
 echo '{"MaxSpace":2000000}' >/var/tmp/downloader/config/global 
@@ -429,85 +437,6 @@ zedagent >/var/log/zedagent.log 2>&1 &
 if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
-
-echo "Uploading device (hardware) status at" `date`
-machine=`uname -m`
-processor=`uname -p`
-platform=`uname -i`
-if [ -f /proc/device-tree/compatible ]; then
-    compatible=`cat /proc/device-tree/compatible`
-else
-    compatible=""
-fi
-memory=`awk '/MemTotal/ {print $2}' /proc/meminfo`
-storage=`df -kl --output=size / | tail -n +2| awk '{print $1}'`
-cpus=`nproc --all`
-# Try dmidecode which should work on Intel
-# XXX or look for /sys/firmware/dmi
-manufacturer=`dmidecode -s system-manufacturer`
-if [ "$manufacturer" != "" ]; then
-    productName=`dmidecode -s system-product-name`
-    version=`dmidecode -s system-version`
-    serialNumber=`dmidecode -s system-serial-number`
-    uuid=`dmidecode -s system-uuid`
-else
-    productName=""
-    version=""
-    serialNumber=""
-    uuid="00000000-0000-0000-0000-000000000000"
-fi
-# Add AdditionalInfoDevice to this
-if [ -f $ETCDIR/clientIP ]; then
-    publicIP=`cat $ETCDIR/clientIP`
-else
-    publicIP="0.0.0.0"
-fi
-cat >$ETCDIR/hwstatus.json <<EOF
-{
-	"Machine": "$machine",
-	"Processor": "$processor",
-	"Platform": "$platform",
-	"Compatible": "$compatible",
-	"Cpus": $cpus,
-	"Memory": $memory,
-	"Storage": $storage,
-	"SystemManufacturer": "$manufacturer",
-	"SystemProductName": "$productName",
-	"SystemVersion": "$version",
-	"SystemSerialNumber": "$serialNumber",
-	"SystemUUID": "$uuid",
-	"PublicIP": "$publicIP"
-}
-EOF
-echo $BINDIR/client $OLDFLAG -d $ETCDIR updateHwStatus
-$BINDIR/client $OLDFLAG -d $ETCDIR updateHwStatus
-
-if [ $WAIT = 1 ]; then
-    echo -n "Press any key to continue "; read dummy; echo; echo
-fi
-
-echo "Uploading software status at" `date`
-# Only report the Linux info for now
-name=`uname -o`
-version=`uname -r`
-description=`uname -v`
-cat >$ETCDIR/swstatus.json <<EOF
-{
-	"ApplicationStatus": [
-		{
-			"Infra": true,
-			"EID": "::",
-			"DisplayName": "$name",
-			"Version": "$version",
-			"Description": "$description",
-			"State": 5,
-			"Activated": true
-		}
-	]
-}
-EOF
-echo $BINDIR/client $OLDFLAG -d $ETCDIR updateSwStatus
-$BINDIR/client $OLDFLAG -d $ETCDIR updateSwStatus
 
 echo "Initial setup done at" `date`
 if [ $MEASURE = 1 ]; then

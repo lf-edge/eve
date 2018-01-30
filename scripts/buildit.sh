@@ -23,7 +23,8 @@ else
 	BUILD_VERSION=${VERSION}-${GIT_BRANCH}${EXTRA_VERSION}
 fi
 echo "Building version ${BUILD_VERSION}"
-echo "all: ${BUILD_VERSION}" >etc/version_tag
+mkdir -p var/tmp/zededa/
+echo "all: ${BUILD_VERSION}" >var/tmp/zededa/version_tag
 
 [ -d bin ] || mkdir bin
 [ -d bin/linux_x86_64 ] || mkdir bin/linux_x86_64

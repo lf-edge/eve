@@ -16,8 +16,6 @@ import (
 // Key is Safename string.
 var downloaderConfig map[string]types.DownloaderConfig
 
-var downloadIfName string
-
 func AddOrRefcountDownloaderConfig(safename string, sc *types.StorageConfig) {
 	log.Printf("AddOrRefcountDownloaderConfig for %s\n",
 		safename)
@@ -25,24 +23,6 @@ func AddOrRefcountDownloaderConfig(safename string, sc *types.StorageConfig) {
 	if downloaderConfig == nil {
 		fmt.Printf("create downloader config map\n")
 		downloaderConfig = make(map[string]types.DownloaderConfig)
-
-		var err error
-		// XXX rotate through the FreeUplinks?
-		if downloadIfName, err = types.GetUplinkFree(deviceNetworkStatus, 0); err != nil {
-			log.Printf("No FreeUplinks - trying any uplink")
-			downloadIfName = ""
-		} else {
-			log.Printf("Using interface %s for image download\n",
-				downloadIfName)
-		}
-	} else if downloadIfName == "" {
-		if downloadIfName, err := types.GetUplinkFree(deviceNetworkStatus, 0); err != nil {
-			log.Printf("No FreeUplinks - trying any uplink")
-			downloadIfName = ""
-		} else {
-			log.Printf("Using interface %s for image download\n",
-				downloadIfName)
-		}
 	}
 	key := safename
 	if m, ok := downloaderConfig[key]; ok {
@@ -50,12 +30,11 @@ func AddOrRefcountDownloaderConfig(safename string, sc *types.StorageConfig) {
 			safename, m.RefCount)
 		m.RefCount += 1
 	} else {
-		fmt.Printf("downloader config add for %s ifname %s\n",
-			safename, downloadIfName)
+		fmt.Printf("downloader config add for %s\n", safename)
 		n := types.DownloaderConfig{
 			Safename:        safename,
 			DownloadURL:     sc.DownloadURL,
-			IfName:		 downloadIfName,
+			UseFreeUplinks:	 true,
 			MaxSize:         sc.MaxSize,
 			TransportMethod: sc.TransportMethod,
 			Dpath:           sc.Dpath,

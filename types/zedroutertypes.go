@@ -125,7 +125,7 @@ func MakeDeviceNetworkStatus(globalConfig DeviceNetworkConfig) (DeviceNetworkSta
 		}
 		link, err := netlink.LinkByName(u)
 		if err != nil {
-			log.Printf("MakeDeviceNetworkStatus LinkByName %u: %s\n", u, err)
+			log.Printf("MakeDeviceNetworkStatus LinkByName %s: %s\n", u, err)
 			err = errors.New(fmt.Sprintf("Uplink in config/global does not exist: %v", u))
 			continue
 		}

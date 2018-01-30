@@ -117,7 +117,8 @@ obj:
 
 build:
 	@echo Building version $(BUILD_VERSION)
-	@echo "all: $(BUILD_VERSION)" >etc/version_tag
+	@mkdir -p var/tmp/zededa
+	@echo "all: $(BUILD_VERSION)" >var/tmp/zededa/version_tag
 	@for app in $(APPS); do \
 		echo $$app; \
 		CGO_ENABLED=0 \

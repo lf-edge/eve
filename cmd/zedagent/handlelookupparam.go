@@ -6,7 +6,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -21,22 +20,17 @@ import (
 	"strings"
 )
 
+const tmpDirname = "/var/tmp/zededa"
+
 // Assumes the config files are in dirName, which is /opt/zededa/etc
 // by default. The files are
-//  root-certificate.pem	Fixed? Written if redirected. factory-root-cert?
-//  server			Fixed? Written if redirected. factory-root-cert?
-//  oldserver			Used if -o; XXX remove later
-//  onboard.cert.pem, onboard.key.pem	Per device onboarding certificate/key
-//  		   		for selfRegister operation
 //  device.cert.pem,
 //  device.key.pem		Device certificate/key created before this
 //  		     		client is started.
 //  infra			If this file exists assume zedcontrol and do not
 //  				create ACLs
-//  zedserverconfig		Written by lookupParam operation; zed server EIDs
-//  zedrouterconfig.json	Written by lookupParam operation
-//  uuid			Written by lookupParam operation
-//  clientIP			Written containing the public client IP
+//  /var/tmp/zededa/zedserverconfig Written by us; zed server EIDs
+//  /var/tmp/zededa/uuid	Written by us
 //
 func handleLookUpParam(devConfig *zconfig.EdgeDevConfig) {
 
@@ -44,16 +38,18 @@ func handleLookUpParam(devConfig *zconfig.EdgeDevConfig) {
 	zedRouterConfigbaseDir := "/var/tmp/zedrouter/config/"
 	deviceCertName := dirName + "/device.cert.pem"
 	deviceKeyName := dirName + "/device.key.pem"
-	rootCertName := dirName + "/root-certificate.pem"
 	infraFileName := dirName + "/infra"
-	zedserverConfigFileName := dirName + "/zedserverconfig"
-	uuidFileName := dirName + "/uuid"
-	clientIPFileName := dirName + "/clientIP"
+	zedserverConfigFileName := tmpDirname + "/zedserverconfig"
+	uuidFileName := tmpDirname + "/uuid"
 
 	//Fill DeviceDb struct with LispInfo config...
 	var device = types.DeviceDb{}
 
+	log.Printf("handleLookupParam got config %v\n", devConfig)
 	lispInfo := devConfig.LispInfo
+	if lispInfo == nil {
+		log.Printf("handleLookupParam: missing lispInfo\n");
+	}
 	device.LispInstance = lispInfo.LispInstance
 	device.EID = net.ParseIP(lispInfo.EID)
 	device.EIDHashLen = uint8(lispInfo.EIDHashLen)
@@ -93,13 +89,6 @@ func handleLookUpParam(devConfig *zconfig.EdgeDevConfig) {
 		log.Fatal(err)
 	}
 
-	// Load CA cert
-	caCert, err := ioutil.ReadFile(rootCertName)
-	if err != nil {
-		log.Fatal(err)
-	}
-	caCertPool := x509.NewCertPool()
-	caCertPool.AppendCertsFromPEM(caCert)
 	ACLPromisc := false
 	if _, err := os.Stat(infraFileName); err == nil {
 		fmt.Printf("Setting ACLPromisc\n")
@@ -216,17 +205,9 @@ func handleLookUpParam(devConfig *zconfig.EdgeDevConfig) {
 	if publicIP, err := addrStringToIP(device.ClientAddr); err != nil {
 		log.Printf("Failed to convert %s, error %s\n",
 			device.ClientAddr, err)
-		// Remove any existing/old file
-		_ = os.Remove(clientIPFileName)
 	} else {
 		nat := !IsMyAddress(publicIP)
 		fmt.Printf("NAT %v, publicIP %v\n", nat, publicIP)
-		// Store clientIP in file for device-steps.sh
-		b := []byte(fmt.Sprintf("%s\n", publicIP))
-		err = ioutil.WriteFile(clientIPFileName, b, 0644)
-		if err != nil {
-			log.Fatal("WriteFile", err, clientIPFileName)
-		}
 	}
 
 	// Write an AppNetworkConfig for the ZedManager application
