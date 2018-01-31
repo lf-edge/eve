@@ -40,7 +40,7 @@ message DeviceLispDetails {
 //
 message DeviceOpsCmd {
 	uint32 counter = 2;
-	bool desriedState = 3;
+	bool desiredState = 3;
 	// FIXME: change to timestamp, once we move to gogo proto
 	string opsTime = 4;
 }
@@ -60,6 +60,11 @@ message EdgeDevConfig {
 	DeviceOpsCmd backup = 10;
 }
 
-message ConfigHash {
+message ConfigRequest {
 	string configHash = 1;
+}
+
+message ConfigResponse {
+	EdgeDevConfig config = 1
+	string configHash = 2;
 }
