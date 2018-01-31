@@ -130,6 +130,10 @@ type StorageConfig struct {
 	Format  string // Default "raw"; could be raw, qcow, qcow2, vhd
 	Devtype string // Default ""; could be e.g. "cdrom"
 	Target  string // Default "" is interpreted as "disk"
+
+	ObjType				string	// appImg/baseOsImg/cert ObjTypes
+	FinalObjDir			string	// installation dir, may differ from verified
+	NeedVerification	bool	// is verification needed
 }
 
 type StorageStatus struct {

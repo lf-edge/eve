@@ -20,9 +20,10 @@ type DownloaderConfig struct {
 	Password        string
 	MaxSize         uint   // In kbytes
 	ImageSha256     string // sha256 of immutable image
-	DownloadObjDir  string // Download Object Store
-	VerifiedObjDir  string // Final Object Store
+	FinalObjDir		string // final Object Store
+	ObjType			string // appImg/baseOs/Config/Cert Object
 	RefCount        uint   // Zero means can delete file/cancel download
+	NeedVerification bool // whether verification is needed
 }
 
 func (config DownloaderConfig) VerifyFilename(fileName string) bool {
@@ -50,11 +51,11 @@ type DownloaderStatus struct {
 	PendingModify  bool
 	PendingDelete  bool
 	RefCount       uint    // Zero means not downloaded
+	ObjType        string
 	DownloadURL    string
 	UseFreeUplinks bool
 	ImageSha256    string  // sha256 of immutable image
-	DownloadObjDir string  // Download Object store
-	VerifiedObjDir string  // Target Object Store
+	FinalObjDir    string  // Target Object Store
 	State          SwState // DOWNLOADED etc
 	ReservedSpace  uint    // Contribution to global ReservedSpace
 	Size           uint    // Once DOWNLOADED; less than MaxSize
@@ -62,6 +63,7 @@ type DownloaderStatus struct {
 	LastErr        string // Download error
 	LastErrTime    time.Time
 	RetryCount     int
+	NeedVerification bool
 }
 
 func (status DownloaderStatus) VerifyFilename(fileName string) bool {

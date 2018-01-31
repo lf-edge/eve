@@ -30,20 +30,30 @@ import (
 )
 
 const (
-	baseDirname        = "/var/tmp/downloader"
-	runDirname         = "/var/run/downloader"
-	configDirname      = baseDirname + "/config"
-	statusDirname      = runDirname + "/status"
-	certBaseDirname    = "/var/tmp/downloader/cert.obj"
-	certRunDirname     = "/var/run/downloader/cert.obj"
-	certConfigDirname  = certBaseDirname + "/config"
-	certStatusDirname  = certRunDirname + "/status"
-	imgCatalogDirname  = "/var/tmp/zedmanager/downloads"
-	pendingDirname     = imgCatalogDirname + "/pending"
-	verifierDirname    = imgCatalogDirname + "/verifier"
-	finalDirname       = imgCatalogDirname + "/verified"
-	certificateDirname = "/var/tmp/zedmanager/certs"
-	DNSDirname         = "/var/run/zedrouter/DeviceNetworkStatus"
+	appImgObj = "appImg.obj"
+	baseOsObj = "baseOs.obj"
+	certObj   = "cert.obj"
+
+	moduleName            = "downloader"
+	zedBaseDirname        = "/var/tmp"
+	zedRunDirname         = "/var/run"
+	baseDirname           = zedBaseDirname + "/" + moduleName
+	runDirname            = zedRunDirname + "/" + moduleName
+	certsDirname          = "/var/tmp/zedmanager/certs"
+	objectDownloadDirname = "/var/tmp/zedmanager/downloads"
+	DNSDirname            = "/var/run/zedrouter/DeviceNetworkStatus"
+
+	downloaderConfigDirname = baseDirname + "/config"
+	downloaderStatusDirname = runDirname + "/status"
+
+	appImgConfigDirname = baseDirname + "/" + appImgObj + "/config"
+	appImgStatusDirname = runDirname + "/" + appImgObj + "/status"
+
+	baseOsConfigDirname = baseDirname + "/" + baseOsObj + "/config"
+	baseOsStatusDirname = runDirname + "/" + baseOsObj + "/status"
+
+	certObjConfigDirname = baseDirname + "/" + certObj + "/config"
+	certObjStatusDirname = runDirname + "/" + certObj + "/status"
 )
 
 // XXX remove global variables
@@ -87,78 +97,90 @@ func main() {
 	fmt.Printf("Have %d free uplinks addresses to use\n",
 		types.CountLocalAddrFree(deviceNetworkStatus, ""))
 
-	// XXX potential concurrency problem relative to handleCertUpdates?
-	go checkImageUpdates(deviceStatusChanges)
+	appImgChanges := make(chan string)
+	baseOsChanges := make(chan string)
+	certObjChanges := make(chan string)
 
-	handleCertUpdates()
+	go watch.WatchConfigStatus(appImgConfigDirname,
+		appImgStatusDirname, appImgChanges)
+
+	go watch.WatchConfigStatus(baseOsConfigDirname,
+		baseOsStatusDirname, baseOsChanges)
+
+	go watch.WatchConfigStatus(certObjConfigDirname,
+		certObjStatusDirname, certObjChanges)
+
+	for {
+		select {
+
+		case change := <-deviceStatusChanges:
+			{
+				watch.HandleStatusEvent(change,
+					DNSDirname,
+					&types.DeviceNetworkStatus{},
+					handleDNSModify, handleDNSDelete,
+					nil)
+			}
+
+		case change := <-appImgChanges:
+			{
+				watch.HandleConfigStatusEvent(change,
+					appImgConfigDirname,
+					appImgStatusDirname,
+					&types.DownloaderConfig{},
+					&types.DownloaderStatus{},
+					handleObjectCreate,
+					handleObjectModify,
+					handleObjectDelete, nil)
+			}
+
+		case change := <-baseOsChanges:
+			{
+				watch.HandleConfigStatusEvent(change,
+					baseOsConfigDirname,
+					baseOsStatusDirname,
+					&types.DownloaderConfig{},
+					&types.DownloaderStatus{},
+					handleObjectCreate,
+					handleObjectModify,
+					handleObjectDelete, nil)
+			}
+		case change := <-certObjChanges:
+			{
+				watch.HandleConfigStatusEvent(change,
+					certObjConfigDirname,
+					certObjStatusDirname,
+					&types.DownloaderConfig{},
+					&types.DownloaderStatus{},
+					handleObjectCreate,
+					handleObjectModify,
+					handleObjectDelete, nil)
+			}
+		}
+	}
 }
 
 // Object handlers
-func checkImageUpdates(deviceStatusChanges chan string) {
-	sanitizeDirs(baseDirname, runDirname)
-
-	fileChanges := make(chan string)
-	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
-
-	for {
-		select {
-		case change := <-fileChanges:
-			watch.HandleConfigStatusEvent(change, configDirname,
-				statusDirname,
-				&types.DownloaderConfig{},
-				&types.DownloaderStatus{},
-				handleImageCreate,
-				handleImageModify,
-				handleImageDelete, nil)
-		case change := <-deviceStatusChanges:
-			watch.HandleStatusEvent(change,
-				DNSDirname,
-				&types.DeviceNetworkStatus{},
-				handleDNSModify, handleDNSDelete,
-				nil)
-		}
-	}
-}
-
-func handleCertUpdates() {
-	sanitizeDirs(certBaseDirname, certRunDirname)
-
-	fileChanges := make(chan string)
-
-	go watch.WatchConfigStatus(certConfigDirname, certStatusDirname,
-		fileChanges)
-
-	for {
-		select {
-		case change := <-fileChanges:
-			watch.HandleConfigStatusEvent(change,
-				certConfigDirname, certStatusDirname,
-				&types.DownloaderConfig{},
-				&types.DownloaderStatus{},
-				handleCertObjCreate,
-				handleCertObjModify,
-				handleCertObjDelete, nil)
-		}
-	}
-}
-
-func handleImageCreate(statusFilename string, configArg interface{}) {
+func handleObjectCreate(statusFilename string, configArg interface{}) {
 
 	var config *types.DownloaderConfig
 
 	switch configArg.(type) {
 
 	default:
-		log.Fatal("Can only handle DownloaderConfig")
+		log.Fatal("handleObjectCreate: Can only handle DownloaderConfig")
 
 	case *types.DownloaderConfig:
 		config = configArg.(*types.DownloaderConfig)
+		if config.ObjType == "" {
+			log.Fatal("handleObjectCreate: ObjType is not set")
+		}
 	}
 
 	handleCreate(*config, statusFilename)
 }
 
-func handleImageModify(statusFilename string, configArg interface{},
+func handleObjectModify(statusFilename string, configArg interface{},
 	statusArg interface{}) {
 
 	var config *types.DownloaderConfig
@@ -167,158 +189,51 @@ func handleImageModify(statusFilename string, configArg interface{},
 	switch configArg.(type) {
 
 	default:
-		log.Fatal("Can only handle DownloaderConfig")
+		log.Fatal("handleObjectModify: Can only handle DownloaderConfig")
 
 	case *types.DownloaderConfig:
 		config = configArg.(*types.DownloaderConfig)
+		if config.ObjType == "" {
+			log.Fatal("handleObjectCreate: ObjType is not set")
+		}
 	}
 
 	switch statusArg.(type) {
 	default:
-		log.Fatal("Can only handle DownloaderStatus")
+		log.Fatal("handleObjectModify: Can only handle DownloaderStatus")
 	case *types.DownloaderStatus:
 		status = statusArg.(*types.DownloaderStatus)
+		if status.ObjType == "" {
+			log.Fatal("handleObjectCreate: ObjType is not set")
+		}
 	}
 
 	handleModify(*config, *status, statusFilename)
 }
 
-func handleImageDelete(statusFilename string, statusArg interface{}) {
+func handleObjectDelete(statusFilename string, statusArg interface{}) {
 
 	var status *types.DownloaderStatus
 
 	switch statusArg.(type) {
 
 	default:
-		log.Fatal("Can only handle DownloaderStatus")
+		log.Fatal("handleObjectDelete: Can only handle DownloaderStatus")
 
 	case *types.DownloaderStatus:
 		status = statusArg.(*types.DownloaderStatus)
+		if status.ObjType == "" {
+			log.Fatal("handleObjectCreate: ObjType is not set")
+		}
 	}
 
 	handleDelete(*status, statusFilename)
-}
-
-func handleCertObjCreate(statusFilename string, configArg interface{}) {
-
-	var config *types.DownloaderConfig
-
-	switch configArg.(type) {
-
-	default:
-		log.Fatal("Can only handle DownloaderConfig")
-
-	case *types.DownloaderConfig:
-		config = configArg.(*types.DownloaderConfig)
-	}
-
-	handleCreate(*config, statusFilename)
-	processCertObject(*config, statusFilename)
-}
-
-func handleCertObjModify(statusFilename string, configArg interface{},
-	statusArg interface{}) {
-
-	var config *types.DownloaderConfig
-	var status *types.DownloaderStatus
-
-	switch configArg.(type) {
-
-	default:
-		log.Fatal("Can only handle DownloaderConfig")
-
-	case *types.DownloaderConfig:
-		config = configArg.(*types.DownloaderConfig)
-	}
-
-	switch statusArg.(type) {
-	default:
-		log.Fatal("Can only handle DownloaderStatus")
-	case *types.DownloaderStatus:
-		status = statusArg.(*types.DownloaderStatus)
-	}
-
-	handleModify(*config, *status, statusFilename)
-	processCertObject(*config, statusFilename)
-}
-
-func handleCertObjDelete(statusFilename string, statusArg interface{}) {
-	var status *types.DownloaderStatus
-
-	switch statusArg.(type) {
-
-	default:
-		log.Fatal("Can only handle DownloaderStatus")
-
-	case *types.DownloaderStatus:
-		status = statusArg.(*types.DownloaderStatus)
-	}
-
-	handleDelete(*status, statusFilename)
-}
-
-// XXX:FIXME this should come through the verification cycle
-func processCertObject(config types.DownloaderConfig, statusFilename string) {
-
-	var status types.DownloaderStatus
-
-	if _, err := os.Stat(statusFilename); err != nil {
-		log.Printf("%s for %s\n", err, statusFilename)
-		return
-	}
-
-	cb, err := ioutil.ReadFile(statusFilename)
-	if err != nil {
-		log.Printf("%s for %s\n", err, statusFilename)
-		log.Fatal(err)
-	}
-
-	if err := json.Unmarshal(cb, &status); err != nil {
-		log.Printf("%s for  file: %s\n",
-			err, statusFilename)
-		log.Fatal(err)
-	}
-
-	// cert file has been downloaded, move
-	// from pending dir to certs directory
-	if status.State == types.DOWNLOADED {
-
-		var srcFile string
-		var dstFile string = certificateDirname
-
-		if config.ImageSha256 != "" {
-			srcFile = config.DownloadObjDir + "/pending" +
-				config.ImageSha256 + "/" + config.Safename
-		} else {
-			srcFile = config.DownloadObjDir + "/pending/" +
-				config.Safename
-		}
-
-		if config.VerifiedObjDir != "" {
-			dstFile = config.VerifiedObjDir
-		}
-		if err := os.MkdirAll(dstFile, 0700); err != nil {
-			log.Printf("failed directory make")
-		}
-
-		dstFile = dstFile + "/" + types.SafenameToFilename(config.Safename)
-
-		log.Printf("wiriting %s to %s\n", srcFile, dstFile)
-
-		// move to targetDir
-		os.Rename(srcFile, dstFile)
-
-		// update status
-		status.ModTime = time.Now()
-		status.State = types.INSTALLED
-		writeDownloaderStatus(&status, statusFilename)
-	}
 }
 
 // TODO with a context to handle* we can pass in the dCtx in the context.
 func handleCreate(config types.DownloaderConfig, statusFilename string) {
 
-	var syncOp zedUpload.SyncOpType = zedUpload.SyncOpDownload
+	log.Printf("handleCreate: %s, %s\n", config.ObjType, config.DownloadURL)
 
 	// Start by marking with PendingAdd
 	status := types.DownloaderStatus{
@@ -327,8 +242,7 @@ func handleCreate(config types.DownloaderConfig, statusFilename string) {
 		DownloadURL:    config.DownloadURL,
 		UseFreeUplinks: config.UseFreeUplinks,
 		ImageSha256:    config.ImageSha256,
-		DownloadObjDir: config.DownloadObjDir,
-		VerifiedObjDir: config.VerifiedObjDir,
+		ObjType:        config.ObjType,
 		PendingAdd:     true,
 	}
 	writeDownloaderStatus(&status, statusFilename)
@@ -352,7 +266,7 @@ func handleCreate(config types.DownloaderConfig, statusFilename string) {
 	// Update reserved space. Keep reserved until doDelete
 	// XXX RefCount -> 0 should keep it reserved.
 	status.ReservedSpace = config.MaxSize
-	globalStatus.ReservedSpace += status.ReservedSpace
+	globalStatus.ReservedSpace = status.ReservedSpace
 	updateRemainingSpace()
 
 	// If RefCount == 0 then we don't yet download.
@@ -372,7 +286,7 @@ func handleCreate(config types.DownloaderConfig, statusFilename string) {
 		return
 	}
 
-	handleSyncOp(syncOp, statusFilename, config, &status)
+	handleSyncOp(statusFilename, config, &status)
 }
 
 // Allow to cancel by setting RefCount = 0. Same as delete? RefCount 0->1
@@ -380,7 +294,7 @@ func handleCreate(config types.DownloaderConfig, statusFilename string) {
 func handleModify(config types.DownloaderConfig,
 	status types.DownloaderStatus, statusFilename string) {
 
-	locDirname := config.DownloadObjDir
+	locDirname := objectDownloadDirname + "/" + config.ObjType
 	log.Printf("handleModify(%v) for %s\n",
 		config.Safename, config.DownloadURL)
 
@@ -432,6 +346,23 @@ func doDelete(statusFilename string, locDirname string, status *types.Downloader
 
 	log.Printf("doDelete(%v) for %s\n", status.Safename, status.DownloadURL)
 
+	// Delete the installed object
+	// XXX:FIXME, whether we really need to delete
+	// the installed object
+	if status.FinalObjDir != "" {
+		locFilename := status.FinalObjDir
+		if _, err := os.Stat(locFilename); err == nil {
+			locFilename := locFilename + "/" +
+				types.SafenameToFilename(status.Safename)
+			log.Printf("Deleting %s\n", locFilename)
+			if err := os.Remove(locFilename); err != nil {
+				log.Printf("Failed to remove %s: err %s\n",
+					locFilename, err)
+			}
+		}
+	}
+
+	// XXX:FIXME, delete from verifier/verfied !!
 	locFilename := locDirname + "/pending"
 
 	if status.ImageSha256 != "" {
@@ -462,7 +393,7 @@ func doDelete(statusFilename string, locDirname string, status *types.Downloader
 
 func handleDelete(status types.DownloaderStatus, statusFilename string) {
 
-	locDirname := status.DownloadObjDir
+	locDirname := objectDownloadDirname + "/" + status.ObjType
 
 	log.Printf("handleDelete(%v) for %s, %s\n",
 		status.Safename, status.DownloadURL, locDirname)
@@ -470,7 +401,7 @@ func handleDelete(status types.DownloaderStatus, statusFilename string) {
 	status.PendingDelete = true
 	writeDownloaderStatus(&status, statusFilename)
 
-	globalStatus.ReservedSpace -= status.ReservedSpace
+	globalStatus.ReservedSpace = 0
 	status.ReservedSpace = 0
 	globalStatus.UsedSpace -= status.Size
 	status.Size = 0
@@ -498,55 +429,11 @@ var globalStatus types.GlobalDownloadStatus
 var globalStatusFilename string
 
 func downloaderInit() {
-	configFilename := configDirname + "/global"
-	statusFilename := statusDirname + "/global"
 
-	if _, err := os.Stat(baseDirname); err != nil {
-		if err := os.Mkdir(baseDirname, 0700); err != nil {
-			log.Fatal(err)
-		}
-	}
+	initializeDirs()
 
-	if _, err := os.Stat(runDirname); err != nil {
-		if err := os.Mkdir(runDirname, 0700); err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	if _, err := os.Stat(configDirname); err != nil {
-		if err := os.Mkdir(configDirname, 0700); err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	if _, err := os.Stat(statusDirname); err != nil {
-		if err := os.Mkdir(statusDirname, 0700); err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	if _, err := os.Stat(imgCatalogDirname); err != nil {
-		if err := os.Mkdir(imgCatalogDirname, 0700); err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	// Remove any files which didn't make it past the verifier
-	if err := os.RemoveAll(pendingDirname); err != nil {
-		log.Fatal(err)
-	}
-
-	// Note that verifier owns this but we remove before looking
-	// for space used.
-	if err := os.RemoveAll(verifierDirname); err != nil {
-		log.Fatal(err)
-	}
-
-	if _, err := os.Stat(pendingDirname); err != nil {
-		if err := os.Mkdir(pendingDirname, 0700); err != nil {
-			log.Fatal(err)
-		}
-	}
+	configFilename := downloaderConfigDirname + "/global"
+	statusFilename := downloaderStatusDirname + "/global"
 
 	// now start
 	globalStatusFilename = statusFilename
@@ -574,7 +461,7 @@ func downloaderInit() {
 	// XXX how do we find out when verifier cleans up duplicates etc?
 	// We read /var/tmp/zedmanager/downloads/* and determine how much space
 	// is used. Place in GlobalDownloadStatus. Calculate remaining space.
-	totalUsed := sizeFromDir(imgCatalogDirname)
+	totalUsed := sizeFromDir(objectDownloadDirname)
 	globalStatus.UsedSpace = uint((totalUsed + 1023) / 1024)
 	updateRemainingSpace()
 
@@ -589,36 +476,96 @@ func downloaderInit() {
 	dCtx = ctx
 }
 
-func sanitizeDirs(baseDir string, runDir string) {
+func initializeDirs() {
 
-	configDir := baseDir + "/config"
-	statusDir := runDir + "/status"
+	objTypes := []string{appImgObj, baseOsObj, certObj}
 
-	if _, err := os.Stat(baseDir); err != nil {
-
-		if err := os.MkdirAll(baseDir, 0755); err != nil {
+	if _, err := os.Stat(certsDirname); err != nil {
+		if err := os.MkdirAll(certsDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
 
-	if _, err := os.Stat(runDir); err != nil {
+	// Remove any files which didn't make it past the verifier.
+	// Though verifier owns it, remove them for calculating the
+	// total available space
+	clearInProgressDownloadDirs(objTypes)
 
-		if err := os.MkdirAll(runDir, 0755); err != nil {
-			log.Fatal(err)
-		}
+	// create the object based config/status dirs
+	createConfigStatusDirs(moduleName, objTypes)
+
+	// create the object download directories
+	createDownloadDirs(objTypes)
+}
+
+// create module and object based config/status directories
+func createConfigStatusDirs(moduleName string, objTypes []string) {
+
+	jobDirs := []string{"config", "status"}
+	zedBaseDirs := []string{zedBaseDirname, zedRunDirname}
+	baseDirs := make([]string, len(zedBaseDirs))
+
+	log.Printf("Creating config/status dirs for %s\n", moduleName)
+
+	for idx, dir := range zedBaseDirs {
+		baseDirs[idx] = dir + "/" + moduleName
 	}
 
-	if _, err := os.Stat(configDir); err != nil {
+	for idx, baseDir := range baseDirs {
 
-		if err := os.MkdirAll(configDir, 0755); err != nil {
-			log.Fatal(err)
+		dirName := baseDir + "/" + jobDirs[idx]
+		if _, err := os.Stat(dirName); err != nil {
+			log.Printf("Create %s\n", dirName)
+			if err := os.MkdirAll(dirName, 0700); err != nil {
+				log.Fatal(err)
+			}
+		}
+
+		// Creating Object based holder dirs
+		for _, objType := range objTypes {
+			dirName := baseDir + "/" + objType + "/" + jobDirs[idx]
+			if _, err := os.Stat(dirName); err != nil {
+				log.Printf("Create %s\n", dirName)
+				if err := os.MkdirAll(dirName, 0700); err != nil {
+					log.Fatal(err)
+				}
+			}
 		}
 	}
+}
 
-	if _, err := os.Stat(statusDir); err != nil {
+// create object download directories
+func createDownloadDirs(objTypes []string) {
 
-		if err := os.MkdirAll(statusDir, 0755); err != nil {
-			log.Fatal(err)
+	workingDirTypes := []string{"pending", "verifier", "verified"}
+
+	// now create the download dirs
+	for _, objType := range objTypes {
+		for _, dirType := range workingDirTypes {
+			dirName := objectDownloadDirname + "/" + objType + "/" + dirType
+			if _, err := os.Stat(dirName); err != nil {
+				if err := os.MkdirAll(dirName, 0700); err != nil {
+					log.Fatal(err)
+				}
+			}
+		}
+	}
+}
+
+// clear in-progress object download directories
+func clearInProgressDownloadDirs(objTypes []string) {
+
+	inProgressDirTypes := []string{"pending", "verifier"}
+
+	// now create the download dirs
+	for _, objType := range objTypes {
+		for _, dirType := range inProgressDirTypes {
+			dirName := objectDownloadDirname + "/" + objType + "/" + dirType
+			if _, err := os.Stat(dirName); err == nil {
+				if err := os.RemoveAll(dirName); err != nil {
+					log.Fatal(err)
+				}
+			}
 		}
 	}
 }
@@ -799,16 +746,14 @@ func doS3(syncOp zedUpload.SyncOpType,
 
 // Drona APIs for object Download
 
-func handleSyncOp(syncOp zedUpload.SyncOpType,
-	statusFilename string, config types.DownloaderConfig,
+func handleSyncOp(statusFilename string, config types.DownloaderConfig,
 	status *types.DownloaderStatus) {
 	var err error
 	var locFilename string
 
-	locDirname := imgCatalogDirname
-	if config.DownloadObjDir != "" {
-		locDirname = config.DownloadObjDir
-	}
+	var syncOp zedUpload.SyncOpType = zedUpload.SyncOpDownload
+
+	locDirname := objectDownloadDirname + "/" + config.ObjType
 	locFilename = locDirname + "/pending"
 
 	// update status to DOWNLOAD STARTED
@@ -895,10 +840,7 @@ func handleSyncOpResponse(config types.DownloaderConfig,
 	status *types.DownloaderStatus, statusFilename string,
 	err error) {
 
-	locDirname := imgCatalogDirname
-	if config.DownloadObjDir != "" {
-		locDirname = config.DownloadObjDir
-	}
+	locDirname := objectDownloadDirname + "/" + config.ObjType
 
 	if err != nil {
 		// Delete file
@@ -910,7 +852,8 @@ func handleSyncOpResponse(config types.DownloaderConfig,
 		status.RetryCount += 1
 		status.State = types.INITIAL
 		writeDownloaderStatus(status, statusFilename)
-		log.Printf("handleCreate failed for %s, <%s>\n", status.DownloadURL, err)
+		log.Printf("handleCreate failed for %s, <%s>\n",
+			status.DownloadURL, err)
 		return
 	}
 
@@ -938,10 +881,14 @@ func handleSyncOpResponse(config types.DownloaderConfig,
 		return
 	}
 
+	globalStatus.ReservedSpace = 0
+	status.ReservedSpace = 0
+	updateRemainingSpace()
+
 	// XXX Compare against MaxSize and reject? Already wasted the space?
 	status.Size = uint((info.Size() + 1023) / 1024)
 
-	if status.Size > config.MaxSize {
+	if (config.MaxSize != 0) && (status.Size > config.MaxSize) {
 		// Delete file
 		errString := fmt.Sprintf("Size exceeds MaxSize; %d vs. %d for %s\n",
 			status.Size, config.MaxSize, status.DownloadURL)
@@ -959,12 +906,11 @@ func handleSyncOpResponse(config types.DownloaderConfig,
 		return
 	}
 
-	globalStatus.ReservedSpace -= status.ReservedSpace
-	status.ReservedSpace = 0
 	globalStatus.UsedSpace += status.Size
 	updateRemainingSpace()
 
-	log.Printf("handleCreate successful <%s> <%s>\n", config.DownloadURL, locFilename)
+	log.Printf("handleCreate successful <%s> <%s>\n",
+		config.DownloadURL, locFilename)
 	// We do not clear any status.RetryCount, LastErr, etc. The caller
 	// should look at State == DOWNLOADED to determine it is done.
 
