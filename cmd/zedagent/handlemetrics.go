@@ -580,8 +580,8 @@ func PublishDeviceInfoToZedCloud(iteration int) {
 			log.Println(err)
 		} else {
 			compatible := strings.TrimSpace(string(contents))
-			ReportDeviceManufacturerInfo.comptatible =
-				*proto.String(compatible)
+			log.Printf("XXX Found compatible %s\n", compatible)
+			ReportDeviceManufacturerInfo.comptatible = *proto.String(compatible)
 		}
 		ReportDeviceInfo.Minfo = ReportDeviceManufacturerInfo
 	}
@@ -604,7 +604,7 @@ func PublishDeviceInfoToZedCloud(iteration int) {
 		for _, interfaceDetail := range interfaces {
 			if uplink.IfName == interfaceDetail.Name {
 				ReportDeviceNetworkInfo := new(zmet.ZInfoNetwork)
-				ReportAppMetric.IPAddrs = make([]string, len(interfaceDetail.Addrs))
+				ReportDeviceNetworkInfo.IPAddrs = make([]string, len(interfaceDetail.Addrs))
 				for index, ip := range interfaceDetail.Addrs {
 					// For compatibility we putt he first in the deprecated singleton
 					if index == 0 {
