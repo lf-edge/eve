@@ -65,6 +65,6 @@ message ConfigRequest {
 }
 
 message ConfigResponse {
-	EdgeDevConfig config = 1
+	EdgeDevConfig config = 1;
 	string configHash = 2;
 }
