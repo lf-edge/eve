@@ -171,12 +171,6 @@
 			"revisionTime": "2018-01-22T23:09:42Z"
 		},
 		{
-			"checksumSHA1": "RVA82cJMGI/yrXeRE4nP9JEiX1s=",
-			"path": "github.com/eriknordmark/netlink",
-			"revision": "8f49c47986ecd35341b0262f894915281a93b3a0",
-			"revisionTime": "2018-01-23T00:58:26Z"
-		},
-		{
 			"checksumSHA1": "7NP1qUMF8Kx1y0zANxx0e+oq9Oo=",
 			"path": "github.com/fsnotify/fsnotify",
 			"revision": "c2828203cd70a50dcccfb2761f8b1f8ceef9a8e9",
@@ -363,5 +357,5 @@
 			"revisionTime": "2018-01-19T16:06:40Z"
 		}
 	],
-	"rootPath": "/home/nordmark/work/go-provision/src"
+	"rootPath": "/home/nordmark/work1/go-provision/src"
 }
