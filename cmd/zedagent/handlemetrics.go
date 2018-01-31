@@ -568,9 +568,9 @@ func PublishDeviceInfoToZedCloud(iteration int) {
 		ReportDeviceManufacturerInfo.UUID = *proto.String(strings.TrimSpace(productUuid))
 
 		biosVendor, biosVersion, biosReleaseDate := GetDeviceBios()
-		ReportDeviceManufacturerInfo.biosVendor = *proto.String(strings.TrimSpace(biosVendor))
-		ReportDeviceManufacturerInfo.biosVersion = *proto.String(strings.TrimSpace(biosVersion))
-		ReportDeviceManufacturerInfo.biosReleaseDate = *proto.String(strings.TrimSpace(biosReleaseDate))
+		ReportDeviceManufacturerInfo.BiosVendor = *proto.String(strings.TrimSpace(biosVendor))
+		ReportDeviceManufacturerInfo.BiosVersion = *proto.String(strings.TrimSpace(biosVersion))
+		ReportDeviceManufacturerInfo.BiosReleaseDate = *proto.String(strings.TrimSpace(biosReleaseDate))
 		ReportDeviceInfo.Minfo = ReportDeviceManufacturerInfo
 	}
 	if _, err := os.Stat(compatibleFile); err == nil {
@@ -581,7 +581,7 @@ func PublishDeviceInfoToZedCloud(iteration int) {
 		} else {
 			compatible := strings.TrimSpace(string(contents))
 			log.Printf("XXX Found compatible %s\n", compatible)
-			ReportDeviceManufacturerInfo.comptatible = *proto.String(compatible)
+			ReportDeviceManufacturerInfo.Compatible = *proto.String(compatible)
 		}
 		ReportDeviceInfo.Minfo = ReportDeviceManufacturerInfo
 	}
