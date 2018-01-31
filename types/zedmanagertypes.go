@@ -135,7 +135,7 @@ type StorageConfig struct {
 type StorageStatus struct {
 	DownloadURL        string
 	ImageSha256        string  // sha256 of immutable image
-	Target		   string  // Default "" is interpreted as "disk"
+	Target             string  // Default "" is interpreted as "disk"
 	State              SwState // DOWNLOADED etc
 	HasDownloaderRef   bool    // Reference against downloader to clean up
 	HasVerifierRef     bool    // Reference against verifier to clean up
