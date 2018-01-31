@@ -671,7 +671,7 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 			ReportSoftwareInfo.SwVersion = aiStatus.UUIDandVersion.Version
 			ReportSoftwareInfo.SwHash = sc.ImageSha256
 
-			//ReportSoftwareInfo.State = sc.State //XXX FIXME
+			ReportSoftwareInfo.State = zmet.ZSwState(sc.State)
 
 			ReportAppInfo.SoftwareList[idx] = ReportSoftwareInfo
 		}
