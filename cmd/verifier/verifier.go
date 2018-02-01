@@ -103,9 +103,9 @@ func main() {
 					appImgStatusDirname,
 					&types.VerifyImageConfig{},
 					&types.VerifyImageStatus{},
-					handleCreate,
-					handleModify,
-					handleDelete, nil)
+					handleAppImgObjCreate,
+					handleAppImgObjModify,
+					handleAppImgObjDelete, nil)
 			}
 		case change := <-baseOsChanges:
 			{
@@ -114,9 +114,9 @@ func main() {
 					baseOsStatusDirname,
 					&types.VerifyImageConfig{},
 					&types.VerifyImageStatus{},
-					handleCreate,
-					handleModify,
-					handleDelete, nil)
+					handleBaseOsObjCreate,
+					handleBaseOsObjModify,
+					handleBaseOsObjDelete, nil)
 			}
 		}
 	}
@@ -257,7 +257,6 @@ func populateInitialStatusFromVerified(objType string, objDirname string,
 			status := types.VerifyImageStatus{
 				Safename:    safename,
 				ImageSha256: sha,
-				ObjType:     objType,
 				State:       types.DELIVERED,
 			}
 
@@ -406,7 +405,7 @@ func writeVerifyObjectStatus(status *types.VerifyImageStatus,
 	}
 }
 
-func handleCreate(statusFilename string, configArg interface{}) {
+func handleAppImgObjCreate(statusFilename string, configArg interface{}) {
 	var config *types.VerifyImageConfig
 
 	switch configArg.(type) {
@@ -418,9 +417,26 @@ func handleCreate(statusFilename string, configArg interface{}) {
 
 	log.Printf("handleCreate(%v) for %s\n",
 		config.Safename, config.DownloadURL)
-	if config.ObjType == "" {
-		log.Fatal("handleCreate objType is not set")
+	handleCreate(appImgObj, statusFilename, config)
+}
+
+func handleBaseOsObjCreate(statusFilename string, configArg interface{}) {
+	var config *types.VerifyImageConfig
+
+	switch configArg.(type) {
+	default:
+		log.Fatal("Can only handle VerifyImageConfig")
+	case *types.VerifyImageConfig:
+		config = configArg.(*types.VerifyImageConfig)
 	}
+
+	log.Printf("handleCreate(%v) for %s\n",
+		config.Safename, config.DownloadURL)
+	handleCreate(baseOsObj, statusFilename, config)
+}
+
+func handleCreate(objType string, statusFilename string,
+	config *types.VerifyImageConfig) {
 
 	// Start by marking with PendingAdd
 	status := types.VerifyImageStatus{
@@ -428,26 +444,25 @@ func handleCreate(statusFilename string, configArg interface{}) {
 		ImageSha256: config.ImageSha256,
 		PendingAdd:  true,
 		State:       types.DOWNLOADED,
-		ObjType:     config.ObjType,
 		RefCount:    config.RefCount,
 	}
 	writeVerifyObjectStatus(&status, statusFilename)
 
-	if ret := markObjectAsVerifying(config, &status, statusFilename); ret != true {
+	if ret := markObjectAsVerifying(objType, config,
+		&status, statusFilename); ret != true {
 		log.Printf("handleCreate fail for %s\n", config.DownloadURL)
 		return
 	}
 
-	if ret := verifyObjectSha(config, &status, statusFilename); ret != true {
+	if ret := verifyObjectSha(objType, config, &status, statusFilename); ret != true {
 		log.Printf("handleCreate fail for %s\n", config.DownloadURL)
 		return
 	}
 
-	markObjectAsVerified(config, &status, statusFilename)
-
+	markObjectAsVerified(objType, config, &status, statusFilename)
 }
 
-func markObjectAsVerifying(config *types.VerifyImageConfig,
+func markObjectAsVerifying(objType string, config *types.VerifyImageConfig,
 	status *types.VerifyImageStatus, statusFilename string) bool {
 
 	// Form the unique filename in
@@ -456,7 +471,7 @@ func markObjectAsVerifying(config *types.VerifyImageConfig,
 	// in downloads/<objType>/verifier/. Form a shorter name for
 	// downloads/<objType/>verified/.
 
-	downloadDirname := objectDownloadDirname + "/" + config.ObjType
+	downloadDirname := objectDownloadDirname + "/" + objType
 	pendingDirname := downloadDirname + "/pending/" + status.ImageSha256
 	verifierDirname := downloadDirname + "/verifier/" + status.ImageSha256
 
@@ -508,10 +523,10 @@ func markObjectAsVerifying(config *types.VerifyImageConfig,
 	return true
 }
 
-func verifyObjectSha(config *types.VerifyImageConfig,
+func verifyObjectSha(objType string, config *types.VerifyImageConfig,
 	status *types.VerifyImageStatus, statusFilename string) bool {
 
-	downloadDirname := objectDownloadDirname + "/" + config.ObjType
+	downloadDirname := objectDownloadDirname + "/" + objType
 	verifierDirname := downloadDirname + "/verifier/" + status.ImageSha256
 	verifierFilename := verifierDirname + "/" + config.Safename
 
@@ -533,7 +548,7 @@ func verifyObjectSha(config *types.VerifyImageConfig,
 	if _, err := io.Copy(h, f); err != nil {
 		cerr := fmt.Sprintf("%v", err)
 		updateVerifyErrStatus(status, cerr, statusFilename)
-		log.Printf("%s for %v\n", cerr, config.DownloadURL)
+		log.Printf("%s for %s\n", cerr, config.DownloadURL)
 		return false
 	}
 
@@ -546,7 +561,7 @@ func verifyObjectSha(config *types.VerifyImageConfig,
 			got, config.ImageSha256)
 		status.PendingAdd = false
 		updateVerifyErrStatus(status, cerr, statusFilename)
-		log.Printf("Sha validation failed for %s\n", config.DownloadURL)
+		log.Printf("%s for %s\n", cerr, config.DownloadURL)
 		return false
 	}
 
@@ -690,10 +705,10 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 	return ""
 }
 
-func markObjectAsVerified(config *types.VerifyImageConfig,
+func markObjectAsVerified(objType string, config *types.VerifyImageConfig,
 	status *types.VerifyImageStatus, statusFilename string) {
 
-	downloadDirname := objectDownloadDirname + "/" + config.ObjType
+	downloadDirname := objectDownloadDirname + "/" + objType
 	verifierDirname := downloadDirname + "/verifier/" + status.ImageSha256
 	verifiedDirname := downloadDirname + "/verified/" + config.ImageSha256
 
@@ -756,7 +771,7 @@ func markObjectAsVerified(config *types.VerifyImageConfig,
 	log.Printf("handleCreate done for %s\n", config.DownloadURL)
 }
 
-func handleModify(statusFilename string, configArg interface{},
+func handleAppImgObjModify(statusFilename string, configArg interface{},
 	statusArg interface{}) {
 	var config *types.VerifyImageConfig
 	var status *types.VerifyImageStatus
@@ -767,17 +782,40 @@ func handleModify(statusFilename string, configArg interface{},
 	case *types.VerifyImageConfig:
 		config = configArg.(*types.VerifyImageConfig)
 	}
+
 	switch statusArg.(type) {
 	default:
 		log.Fatal("Can only handle VerifyImageStatus")
 	case *types.VerifyImageStatus:
 		status = statusArg.(*types.VerifyImageStatus)
 	}
-	log.Printf("handleModify(%v) for %s\n",
-		config.Safename, config.DownloadURL)
-	if (config.ObjType == "") || (status.ObjType == "") {
-		log.Fatal("handleModify objType is not set")
+	handleModify(appImgObj, statusFilename, config, status)
+}
+
+func handleBaseOsObjModify(statusFilename string, configArg interface{},
+	statusArg interface{}) {
+	var config *types.VerifyImageConfig
+	var status *types.VerifyImageStatus
+
+	switch configArg.(type) {
+	default:
+		log.Fatal("Can only handle VerifyImageConfig")
+	case *types.VerifyImageConfig:
+		config = configArg.(*types.VerifyImageConfig)
 	}
+
+	switch statusArg.(type) {
+	default:
+		log.Fatal("Can only handle VerifyImageStatus")
+	case *types.VerifyImageStatus:
+		status = statusArg.(*types.VerifyImageStatus)
+	}
+	handleModify(baseOsObj, statusFilename, config, status)
+}
+
+func handleModify(objType string, statusFilename string,
+	config *types.VerifyImageConfig,
+	status *types.VerifyImageStatus) {
 	// Note no comparison on version
 
 	// Always update RefCount
@@ -786,7 +824,7 @@ func handleModify(statusFilename string, configArg interface{},
 	if status.RefCount == 0 {
 		status.PendingModify = true
 		writeVerifyObjectStatus(status, statusFilename)
-		doDelete(status)
+		doDelete(objType, status)
 		status.PendingModify = false
 		status.State = 0 // XXX INITIAL implies failure
 		writeVerifyObjectStatus(status, statusFilename)
@@ -804,14 +842,14 @@ func handleModify(statusFilename string, configArg interface{},
 
 	status.PendingModify = true
 	writeVerifyObjectStatus(status, statusFilename)
-	handleDelete(statusFilename, status)
-	handleCreate(statusFilename, config)
+	handleDelete(objType, statusFilename, status)
+	handleCreate(objType, statusFilename, config)
 	status.PendingModify = false
 	writeVerifyObjectStatus(status, statusFilename)
 	log.Printf("handleModify done for %s\n", config.DownloadURL)
 }
 
-func handleDelete(statusFilename string, statusArg interface{}) {
+func handleAppImgObjDelete(statusFilename string, statusArg interface{}) {
 	var status *types.VerifyImageStatus
 
 	switch statusArg.(type) {
@@ -822,11 +860,27 @@ func handleDelete(statusFilename string, statusArg interface{}) {
 	}
 
 	log.Printf("handleDelete(%v)\n", status.Safename)
-	if status.ObjType == "" {
-		log.Fatal("handleDelete objType is not set")
+	handleDelete(appImgObj, statusFilename, status)
+}
+
+func handleBaseOsObjDelete(statusFilename string, statusArg interface{}) {
+	var status *types.VerifyImageStatus
+
+	switch statusArg.(type) {
+	default:
+		log.Fatal("Can only handle VerifyImageStatus")
+	case *types.VerifyImageStatus:
+		status = statusArg.(*types.VerifyImageStatus)
 	}
 
-	doDelete(status)
+	log.Printf("handleDelete(%v)\n", status.Safename)
+	handleDelete(baseOsObj, statusFilename, status)
+}
+
+func handleDelete(objType string, statusFilename string,
+	status *types.VerifyImageStatus) {
+
+	doDelete(objType, status)
 
 	// Write out what we modified to VerifyImageStatus aka delete
 	if err := os.Remove(statusFilename); err != nil {
@@ -839,10 +893,10 @@ func handleDelete(statusFilename string, statusArg interface{}) {
 // Only if it verified (state DELIVERED) do we delete the final. Needed
 // to avoid deleting a different verified file with same sha as this claimed
 // to have
-func doDelete(status *types.VerifyImageStatus) {
+func doDelete(objType string, status *types.VerifyImageStatus) {
 	log.Printf("doDelete(%v)\n", status.Safename)
 
-	downloadDirname := objectDownloadDirname + "/" + status.ObjType
+	downloadDirname := objectDownloadDirname + "/" + objType
 	pendingDirname := downloadDirname + "/pending/" + status.ImageSha256
 	verifierDirname := downloadDirname + "/verifier/" + status.ImageSha256
 	verifiedDirname := downloadDirname + "/verified/" + status.ImageSha256

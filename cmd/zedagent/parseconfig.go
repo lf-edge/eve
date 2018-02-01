@@ -28,12 +28,17 @@ func parseConfig(config *zconfig.EdgeDevConfig) {
 func validateConfig(config *zconfig.EdgeDevConfig) bool {
 
 	//XXX:FIXME, check if any validation required
+
+	// Check the drives entries  MaxSize
+	// for baseOs/App has non-zero value
+
 	return true
 }
 
 func parseBaseOsConfig(config *zconfig.EdgeDevConfig) {
 
 	log.Println("Applying Base Os config")
+	finalObjDir := ""
 
 	cfgOsList := config.GetBase()
 
@@ -81,6 +86,18 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) {
 			baseOs.StorageConfigList = make([]types.StorageConfig, imageCount)
 			parseStorageConfigList(config, baseOsObj, baseOs.StorageConfigList,
 				cfgOs.Drives)
+		}
+
+		// XXX:FIXME put the finalObjDir value, 
+		// by calling bootloader API to fetch
+		// the unused partition
+		if cfgOs.Activate == true {
+
+			log.Printf("baseOs Activate flag is set")
+
+			for _, sc := range baseOs.StorageConfigList {
+				sc.FinalObjDir = finalObjDir
+			}
 		}
 
 		baseOsList[idx] = *baseOs
@@ -200,8 +217,6 @@ func parseStorageConfigList(config *zconfig.EdgeDevConfig, objType string,
 		image.Devtype = strings.ToLower(drive.Drvtype.String())
 		image.ImageSignature = drive.Image.Siginfo.Signature
 		image.ImageSha256 = drive.Image.Sha256
-		image.ObjType = objType
-		image.NeedVerification = true
 
 		// copy the certificates
 		if drive.Image.Siginfo.Signercerturl != "" {
@@ -486,7 +501,7 @@ func getCertObjects(uuidAndVersion types.UUIDandVersion,
 		zedagentCertObjConfigDirname, certConfigFilename)
 
 	// certs object holder
-	// each storageConfigList entry is a 
+	// each storageConfigList entry is a
 	// certificate object
 	config.UUIDandVersion = uuidAndVersion
 	config.ConfigSha256 = sha256
@@ -529,15 +544,13 @@ func getCertObjConfig(config types.CertObjConfig,
 		// Shouldn't we specify "any" to have the downloader try all?
 		// Or pass an array of the IfNames for all the uplinks?
 		// XXX:FIXME hardcoding MaxSize as 10KB
-		MaxSize:          10,
-		TransportMethod:  image.TransportMethod,
-		Dpath:            "zededa-cert-repo",
-		ApiKey:           image.ApiKey,
-		Password:         image.Password,
-		ImageSha256:      "",
-		ObjType:          certObj,
-		NeedVerification: false,
-		FinalObjDir:      certsDirname,
+		MaxSize:         10,
+		TransportMethod: image.TransportMethod,
+		Dpath:           "zededa-cert-repo",
+		ApiKey:          image.ApiKey,
+		Password:        image.Password,
+		ImageSha256:     "",
+		FinalObjDir:     certsDirname,
 	}
 	config.StorageConfigList[idx] = *drive
 }

@@ -50,19 +50,16 @@ func createDownloaderConfig(objType string, safename string,
 		m.RefCount += 1
 	} else {
 		n := types.DownloaderConfig{
-			Safename:         safename,
-			DownloadURL:      sc.DownloadURL,
-			UseFreeUplinks:   true,
-			MaxSize:          sc.MaxSize,
-			TransportMethod:  sc.TransportMethod,
-			Dpath:            sc.Dpath,
-			ApiKey:           sc.ApiKey,
-			Password:         sc.Password,
-			ImageSha256:      sc.ImageSha256,
-			ObjType:          objType,
-			FinalObjDir:      sc.FinalObjDir,
-			NeedVerification: sc.NeedVerification,
-			RefCount:         1,
+			Safename:        safename,
+			DownloadURL:     sc.DownloadURL,
+			UseFreeUplinks:  true,
+			MaxSize:         sc.MaxSize,
+			TransportMethod: sc.TransportMethod,
+			Dpath:           sc.Dpath,
+			ApiKey:          sc.ApiKey,
+			Password:        sc.Password,
+			ImageSha256:     sc.ImageSha256,
+			RefCount:        1,
 		}
 		downloaderConfigMap[key] = n
 	}
@@ -192,7 +189,7 @@ func checkStorageDownloadStatus(objType string, uuidStr string,
 
 		log.Printf("check Storage Download for %s\n", safename)
 
-		if sc.NeedVerification {
+		if sc.ImageSha256 != "" {
 			// Shortcut if image is already verified
 			vs, err := lookupVerificationStatusAny(objType,
 				safename, sc.ImageSha256)
@@ -256,7 +253,7 @@ func checkStorageDownloadStatus(objType string, uuidStr string,
 		case types.DOWNLOADED:
 
 			// if verification is needed
-			if sc.NeedVerification {
+			if sc.ImageSha256 != "" {
 				// start verifier for this object
 				if !ss.HasVerifierRef {
 					createVerifierConfig(objType, safename, &sc)
@@ -317,7 +314,7 @@ func installDownloadedObject(objType string, safename string,
 		return
 
 	case types.DOWNLOADED:
-		if config.NeedVerification != false {
+		if config.ImageSha256 != "" != false {
 			log.Printf("installDownloadedObject for %s, Pending verification\n",
 				key)
 			return

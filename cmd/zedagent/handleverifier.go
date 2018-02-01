@@ -56,7 +56,6 @@ func createVerifierConfig(objType string, safename string,
 			CertificateChain: sc.CertificateChain,
 			ImageSignature:   sc.ImageSignature,
 			SignatureKey:     sc.SignatureKey,
-			ObjType:          objType,
 			RefCount:         1,
 		}
 		verifierConfigMap[key] = n

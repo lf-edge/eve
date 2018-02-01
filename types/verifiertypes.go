@@ -26,7 +26,6 @@ type VerifyImageConfig struct {
 	DownloadURL      string   // For logging output
 	ImageSha256      string   // sha256 of immutable image
 	RefCount         uint     // Zero means can delete file
-	ObjType          string
 	CertificateChain []string //name of intermediate certificates
 	ImageSignature   []byte   //signature of image
 	SignatureKey     string   //certificate containing public key
@@ -50,7 +49,6 @@ type VerifyImageStatus struct {
 	PendingModify bool
 	PendingDelete bool
 	ImageSha256   string  // sha256 of immutable image
-	ObjType       string
 	State         SwState // DELIVERED, or INITIAL if failed
 	LastErr       string  // Verification error
 	LastErrTime   time.Time

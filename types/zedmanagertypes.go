@@ -132,9 +132,7 @@ type StorageConfig struct {
 	Devtype string // Default ""; could be e.g. "cdrom"
 	Target  string // Default "" is interpreted as "disk"
 
-	ObjType				string	// appImg/baseOsImg/cert ObjTypes
-	FinalObjDir			string	// installation dir, may differ from verified
-	NeedVerification	bool	// is verification needed
+	FinalObjDir string // installation dir, may differ from verified
 }
 
 type StorageStatus struct {
