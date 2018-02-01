@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"github.com/zededa/go-provision/types"
 )
 
 const (
@@ -81,23 +82,30 @@ func HandleLedBlink(change string) {
 		time.Sleep(time.Second * 1)
 	}
 
-	var watch = Watcher{}
+	var countBlink = types.LedBlinkCounter{}
 	cb, err := ioutil.ReadFile(ledStatusFileName)
 	if err != nil {
 		log.Printf("%s for %s\n", err, ledStatusFileName)
 	}
-	if err := json.Unmarshal(cb, &watch); err != nil {
+	if err := json.Unmarshal(cb, &countBlink); err != nil {
 		log.Printf("%s %T file: %s\n",
-			err, watch, ledStatusFileName)
+			err, countBlink, ledStatusFileName)
 	}
-	blinkCount := watch.BlinkCounter
+	blinkCount := countBlink.BlinkCounter
 
 	if oldBlinkCount == uint64(blinkCount) {
 		log.Println("same event: ", blinkCount, oldBlinkCount)
 		return
 	}
 	log.Println("blinkCount: ", blinkCount)
-	b, err := json.Marshal(watch)
+	//This is just a dummy code
+	//we need to add the code
+	//that will trigger the actual
+	//LED blink on devices...
+
+	//for now we are just writing
+	//the blinkCounter in a file...
+	b, err := json.Marshal(countBlink)
 	if err != nil {
 		log.Fatal(err, "json Marshal ledwatcher")
 	}
@@ -105,6 +113,6 @@ func HandleLedBlink(change string) {
 	if err != nil {
 		log.Fatal("err: ", err, testFile)
 	}
-	oldBlinkCount = uint64(watch.BlinkCounter)
+	oldBlinkCount = uint64(countBlink.BlinkCounter)
 	count++
 }

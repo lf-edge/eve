@@ -7,9 +7,8 @@ import (
 )
 
 type Watcher struct {
-	BlinkCounter int
-}
 
+}
 func (w *Watcher) LedWatcher(ledStatusDir string, fileChanges chan<- string) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {

@@ -6,6 +6,7 @@ package main
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"fmt"
 	"github.com/golang/protobuf/proto"
 	"github.com/zededa/api/zconfig"
@@ -31,6 +32,8 @@ const (
 var configApi string = "api/v1/edgedevice/config"
 var statusApi string = "api/v1/edgedevice/info"
 var metricsApi string = "api/v1/edgedevice/metrics"
+
+var ledStatusDirName string = "/var/run/ledmanager/status"
 
 // XXX remove global variables
 // XXX shouldn't we know our own deviceId?
@@ -90,6 +93,21 @@ func getCloudUrls() {
 	tlsConfig.BuildNameToCertificate()
 }
 
+func UpdateLedManagerStatusFile(count int) {
+	ledStatusFileName := ledStatusDirName + "/ledstatus.json"
+	blinkCount := types.LedBlinkCounter{
+		BlinkCounter: count,
+	}
+	b, err := json.Marshal(blinkCount)
+	if err != nil {
+		log.Fatal(err, "json Marshal blinkCount")
+	}
+	err = ioutil.WriteFile(ledStatusFileName, b, 0644)
+	if err != nil {
+		log.Fatal("err: ", err, ledStatusFileName)
+	}
+}
+
 // got a trigger for new config. check the present version and compare
 // if this is a new version, initiate update
 //  compare the old version config with the new one
@@ -139,23 +157,30 @@ func getLatestConfig(configUrl string, iteration int) {
 			Dial:            d.Dial,
 		}
 		client := &http.Client{Transport: transport}
-
 		resp, err := client.Get("https://" + configUrl)
 		if err != nil {
 			log.Printf("URL get fail: %v\n", err)
 			continue
 		}
 		defer resp.Body.Close()
+
 		if err := validateConfigMessage(configUrl, intf, localTCPAddr,
 			resp); err != nil {
 			log.Println("validateConfigMessage: ", err)
 			return
 		}
+
+		//inform ledmanager about cloud connectivity...
+		UpdateLedManagerStatusFile(3)
+
 		config, err := readDeviceConfigProtoMessage(resp)
 		if err != nil {
 			log.Println("readDeviceConfigProtoMessage: ", err)
 			return
 		}
+		//inform ledmanager about config received from cloud...
+		UpdateLedManagerStatusFile(4)
+
 		inhaleDeviceConfig(config)
 		return
 	}
