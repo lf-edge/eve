@@ -13,6 +13,7 @@ type UrlCloudCfg struct {
 	ConfigUrl  string
 	MetricsUrl string
 	StatusUrl  string
+	LogUrl     string
 }
 
 // top level config container

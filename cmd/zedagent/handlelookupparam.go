@@ -48,7 +48,7 @@ func handleLookUpParam(devConfig *zconfig.EdgeDevConfig) {
 	log.Printf("handleLookupParam got config %v\n", devConfig)
 	lispInfo := devConfig.LispInfo
 	if lispInfo == nil {
-		log.Printf("handleLookupParam: missing lispInfo\n");
+		log.Printf("handleLookupParam: missing lispInfo\n")
 		return
 	}
 	device.LispInstance = lispInfo.LispInstance

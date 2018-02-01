@@ -20,8 +20,8 @@ type DownloaderConfig struct {
 	Password        string
 	MaxSize         uint   // In kbytes
 	ImageSha256     string // sha256 of immutable image
-	FinalObjDir		string // final Object Store
-	ObjType			string // appImg/baseOs/Config/Cert Object
+	FinalObjDir     string // final Object Store
+	ObjType         string // appImg/baseOs/Config/Cert Object
 	RefCount        uint   // Zero means can delete file/cancel download
 	NeedVerification bool // whether verification is needed
 }
