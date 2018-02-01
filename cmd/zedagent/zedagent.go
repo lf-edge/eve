@@ -109,14 +109,12 @@ func handleStatusModify(statusFilename string, statusArg interface{}) {
 		status = statusArg.(*types.AppInstanceStatus)
 	}
 	PublishDeviceInfoToZedCloud(publishIteration)
-	PublishHypervisorInfoToZedCloud(publishIteration)
 	PublishAppInfoToZedCloud(statusFilename, status, publishIteration)
 	publishIteration += 1
 }
 
 func handleStatusDelete(statusFilename string) {
 	PublishDeviceInfoToZedCloud(publishIteration)
-	PublishHypervisorInfoToZedCloud(publishIteration)
 	PublishAppInfoToZedCloud(statusFilename, nil, publishIteration)
 	publishIteration += 1
 }
