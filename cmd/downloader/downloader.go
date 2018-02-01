@@ -885,7 +885,7 @@ func handleSyncOpResponse(config types.DownloaderConfig,
 	// XXX Compare against MaxSize and reject? Already wasted the space?
 	status.Size = uint((info.Size() + 1023) / 1024)
 
-	if (config.MaxSize != 0) && (status.Size > config.MaxSize) {
+	if status.Size > config.MaxSize {
 		// Delete file
 		errString := fmt.Sprintf("Size exceeds MaxSize; %d vs. %d for %s\n",
 			status.Size, config.MaxSize, status.DownloadURL)
