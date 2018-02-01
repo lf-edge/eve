@@ -364,7 +364,7 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 					ReportDeviceMetric.Cpu.Idle = cpuStat.Idle
 				}
 			}
-			//memory related info for dom0...XXX later we will add for domU also..
+			// Memory related info for dom0
 			ram, err := mem.VirtualMemory()
 			if err != nil {
 				log.Println(err)
@@ -424,7 +424,6 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 		} else {
 
 			if len(cpuStorageStat) > 2 {
-				log.Println("domu has been spawned....so we will report it's metrics")
 				ReportAppMetric := new(zmet.AppMetric)
 				ReportAppMetric.Cpu = new(zmet.AppCpuMetric)
 				ReportAppMetric.Memory = new(zmet.MemoryMetric)
@@ -433,14 +432,15 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 
 				for xl := 0; xl < len(xlListOutput); xl++ {
 					if xlListOutput[xl][0] == cpuStorageStat[arr][1] {
-						// XXX AppID should be AppNum from DomainStatus.
-						// But why to we need it in the report?
+						// AppID is the domainId number from xen.
+						// Should it be AppNum from DomainStatus?
 						ReportAppMetric.AppID = xlListOutput[xl][1]
 					}
 				}
 
-				appCpuUpTime, _ := strconv.ParseUint(cpuStorageStat[arr][3], 10, 0) //XXX FIXME
-				ReportAppMetric.Cpu.CpuTotal = *proto.Uint32(uint32(appCpuUpTime))  //XXX FIXME TBD
+				appCpuTotal, _ := strconv.ParseUint(cpuStorageStat[arr][3], 10, 0)
+				ReportAppMetric.Cpu.CpuTotal = *proto.Uint32(uint32(appCpuTotal))
+				// XXX add ReportAppMetric.Cpu.UpTime - does zedmanager need to track boot time?
 				appCpuUsedInPercent, _ := strconv.ParseFloat(cpuStorageStat[arr][4], 10)
 				ReportAppMetric.Cpu.CpuPercentage = *proto.Float64(float64(appCpuUsedInPercent))
 
@@ -580,7 +580,6 @@ func PublishDeviceInfoToZedCloud(iteration int) {
 			log.Println(err)
 		} else {
 			compatible := strings.TrimSpace(string(contents))
-			log.Printf("XXX Found compatible %s\n", compatible)
 			ReportDeviceManufacturerInfo.Compatible = *proto.String(compatible)
 		}
 		ReportDeviceInfo.Minfo = ReportDeviceManufacturerInfo
@@ -594,9 +593,8 @@ func PublishDeviceInfoToZedCloud(iteration int) {
 	ReportDeviceSoftwareInfo.SwHash = *proto.String(" ")
 	ReportDeviceInfo.Software = ReportDeviceSoftwareInfo
 
-	//read interface name from library
-	//and match it with uplink name from
-	//global status...
+	// Read interface name from library and match it with uplink name from
+	// global status. Only report the uplinks.
 	interfaces, _ := psutilnet.Interfaces()
 	ReportDeviceInfo.Network = make([]*zmet.ZInfoNetwork,
 		len(deviceNetworkStatus.UplinkStatus))
@@ -651,8 +649,8 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 
 	xlListOutput := ExecuteXlListCmd()
 	for xl := 0; xl < len(xlListOutput); xl++ {
-		// XXX We use DomainName elsewhere
-		// AppID should be AppNum from DomainStatus. But why to we need it in the report?
+		// AppID is the domainId number from xen.
+		// Should it instead be AppNum from DomainStatus?
 		if strings.Contains(xlListOutput[xl][0], aiStatus.DisplayName) {
 			ReportAppInfo.AppID = xlListOutput[xl][1]
 		}
