@@ -657,8 +657,13 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 	ReportAppInfo.AppName = aiStatus.DisplayName
 	ReportAppInfo.Activated = aiStatus.Activated
 	ReportAppInfo.Error = aiStatus.Error
-	errTime, _ := ptypes.TimestampProto(aiStatus.ErrorTime)
-	ReportAppInfo.ErrorTime = errTime
+
+	if (aiStatus.ErrorTime).IsZero() {
+		log.Println("ErrorTime is empty")
+	} else {
+		errTime, _ := ptypes.TimestampProto(aiStatus.ErrorTime)
+		ReportAppInfo.ErrorTime = errTime
+	}
 
 	if len(aiStatus.StorageStatusList) == 0 {
 		log.Printf("storage status detail is empty so ignoring")
