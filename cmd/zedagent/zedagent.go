@@ -112,12 +112,12 @@ func main() {
 	}
 	log.Printf("Starting zedagent\n")
 	watch.CleanupRestarted("zedagent")
-	watch.SignalRestart("zedagent")
 
 	// Tell ourselves to go ahead
 	// initialize the module specifig stuff
 	handleInit()
 
+	watch.SignalRestart("zedagent")
 	var restartFn watch.ConfigRestartHandler = handleRestart
 
 	restartChanges := make(chan string)
