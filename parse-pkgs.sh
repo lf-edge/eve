@@ -33,7 +33,7 @@ DOM0ZTOOLS_TAG=$(linuxkit_tag pkg/dom0-ztools)-$ARCH
 QREXECLIB_TAG=$(linuxkit_tag pkg/qrexec-lib)-$ARCH
 WWAN_TAG=$(linuxkit_tag pkg/wwan)-$ARCH
 WLAN_TAG=$(linuxkit_tag pkg/wlan)-$ARCH
-SGDISK_TAG=$(linuxkit_tag pkg/sgdisk)-$ARCH
+GPTTOOLS_TAG=$(linuxkit_tag pkg/gpt-tools)-$ARCH
 
 # Plugin tags: the following tags will default to
 # 'scratch' Docker container if not available.
@@ -56,6 +56,6 @@ sed -e "s#KERNEL_TAG#"$KERNEL_TAG"#" \
     -e "s#WWAN_TAG#"$WWAN_TAG"#" \
     -e "s#WLAN_TAG#"$WLAN_TAG"#" \
     -e "s#GRUB_TAG#"$GRUB_TAG"#" \
-    -e "s#SGDISK_TAG#"$SGDISK_TAG"#" \
+    -e "s#GPTTOOLS_TAG#"$GPTTOOLS_TAG"#" \
     -e "s#KMOD_PFRING_TAG#"$KMOD_PFRING_TAG"#" \
     $1

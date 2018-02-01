@@ -1,0 +1,154 @@
+#!/bin/sh
+ZX="Zenix"
+
+set -e
+
+#
+# How do you get the root dev from a container? With the next two
+# functions.
+#
+
+makewords() {
+    awk '{print $0}' RS=' ' < $1
+}
+
+rdev () {
+    uuid=$(makewords /proc/cmdline | grep PARTUUID | awk -F = '{print $3}')
+    dev=$(lsblk -l -o name,PARTUUID | awk -v uuid="$uuid" '$2==uuid {print $1}')
+    echo $dev
+}
+
+rootdev=$(echo "/dev/"$(rdev))
+rootdsk=$(echo "/dev/"$(lsblk -no pkname ${rootdev}))
+
+usage() {
+    echo "${ZX} Boot Control and Administration API tool."
+    echo
+    echo "Usage:"
+    echo "       $(basename "$0") {partdev|partstate} <LABEL>"
+    echo "       $(basename "$0") set_partstate <LABEL> <STATE>"
+    echo "       $(basename "$0") {curpart|reset|watchdog}"
+    echo
+    echo "Commands:"
+    echo "    partdev: return device of partion LABEL."
+    echo "    partstate: return state of partition LABEL."
+    echo "    set_partstate: Set state of partition LABEL to STATE."
+    echo "    curpart: return label of current root partition."
+    echo "    watchdog: signal ${ZX} that the system is alive."
+    echo "    reset: reboot the machine with a certain hurry."
+    echo
+    echo "<IMAGE> can be IMGA, IMG, or any other GPT partition label."
+    echo "<STATE> can be either 'active', or 'unused', or 'updating'."
+    echo "A partition can be in 'inprogress' state -- indicating either"
+    echo "a current attempt at updating into it or a failure to do so"
+    echo "in the past -- but such state cannot be set by this tool"
+    echo
+
+    exit 1
+}
+
+partno() {
+    cgpt find -l $1 -n ${rootdsk}
+}
+
+#
+# CURPART: get partition label of current root
+#
+curpart() {
+    if [ ! $# -eq 0 ]; then
+	usage
+    fi
+    lsblk -o PARTLABEL -n ${rootdev}
+}
+
+#
+# PARTDEV: get device from partition label
+#
+partdev() {
+    if [ ! $# -eq 1 ]; then
+	usage
+    fi
+    cgpt find -l $1 ${rootdsk}
+}
+
+#
+# PARTSTATE <LABEL>: get state from partition label
+#
+partstate() {
+    if [ ! $# -eq 1 ]; then
+	usage
+    fi
+    pn=$(partno $1)
+    attr=$(cgpt show -i ${pn} -A ${rootdsk})
+    case ${attr} in
+	0x102) state="active" ;;
+	0x13) state="updating" ;;
+	0x3) state="inprogress" ;;
+	0x0) state="unused" ;;
+	*) state="INVALID" ;;
+    esac
+    echo ${state}
+}
+
+#
+# SETPARTSTATE <LABEL> <STATE>: set partition state
+#
+set_partstate() {
+    if [ ! $# -eq 2 ]; then
+	usage
+    fi
+
+    pn=$(partno $1)
+    case $2 in
+	"active") attr=0x102 ;;
+	"updating") attr=0x13 ;;
+	"unused") attr=0 ;;
+	*)
+	    echo "Unknown state '$2'";
+	    exit 2;
+	    ;;
+    esac
+
+    cgpt add -i ${pn} -A ${attr} ${rootdsk}
+}
+
+#
+# WATCHDOG: call to signal system still alive.
+#
+watchdog() {
+    if [ ! $# -eq 0 ]; then
+	usage
+    fi
+
+    # Not implemented yet.
+}
+
+#
+# RESET: shutdown and restart
+#
+reset() {
+    if [ ! $# -eq 0 ]; then
+	usage
+    fi
+
+    # Warning, this does not really play nice with init
+    reboot -f now
+}
+
+if [ $# -eq 0 ]; then
+    usage
+fi
+
+cmd=$1
+shift 1
+
+case $cmd in
+    curpart) curpart ;;
+    partdev) partdev "$@" ;;
+    partstate) partstate "$@" ;;
+    set_partstate) set_partstate "$@" ;;
+    watchdog) watchdog ;;
+    reset) reset ;;
+    
+    *) usage ;;
+esac
