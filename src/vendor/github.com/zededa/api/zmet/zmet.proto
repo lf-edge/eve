@@ -3,37 +3,6 @@ syntax = "proto3";
 import "google/protobuf/timestamp.proto";
 option go_package  = "github.com/zededa/api/zmet";
 
-/*
-type ReportDeviceStatus struct {
-      
-     MessageType        string
-      UUIDandVersion         UUIDandVersion
-    AppNum                 int
-    UlNum                  int
-    OlNum                  int
-    OverlayNetworkList      []OverlayNetworkStatus
-    UnderlayNetworkList     []UnderlayNetworkStatus
-
-   DisplayName        string
-    StorageStatusList        []StorageStatus
-    EIDList            []EIDStatusDetails
-    State            SwState
-
-   DomainName        string
-    DomainId        int
-    DiskStatusList        []DiskStatus
-    LastErr            string
-    LastErrTime        time.Time
-
-   Safename        string
-    ImageSha256        string    
-
-   RetryCount        int
-
-   EIDStatusDetails
-}
-*/
-
 option java_package = "com.zededa.cloud.uservice.proto";
 
 /*
@@ -50,21 +19,28 @@ enum ZInfoTypes {
 }
 
 // Manufacturing info, product name, model, version etc.
+// From dmidecode on Intel
 message ZInfoManufacturer {
   string manufacturer = 1;
   string productName = 2;
   string version = 3;
   string serialNumber = 4;
   string UUID = 5;
+  string compatible = 6;	// From /proc/device-tree/compatible on ARM
+  string biosVendor = 7;
+  string biosVersion = 8;
+  string biosReleaseDate = 9;
 }
 
 message ZInfoNetwork {
-  string IPAddr = 1;
-  string gwAddr = 2;
+  string IPAddr = 1; // Deprecated. Returning first address for now
+  string gwAddr = 2; // Deprecated; routing is richer than a single gateway
   string macAddr = 3;
   string devName = 4; // eth0, eth1 etc.
+  repeated string IPAddrs = 5; // All IP addresses
 }
 
+// Deprecate since we can't determine it on the device
 enum ZPeripheralTypes {
   ZpNone = 0;
   ZpStorage = 1;
@@ -80,6 +56,7 @@ enum ZSwState {
   INSTALLED		= 5;	// Installed, ready for activation
 }
 
+// Deprecate since we can't determine it on the device
 message ZinfoPeripheral {
   ZPeripheralTypes ztype = 1;
   bool pluggable = 2;
@@ -102,6 +79,7 @@ message ZInfoDevice {
   uint64 memory = 8;
   uint64 storage = 9;
 
+  // Deprecate since we can't determine it on the device
   repeated ZinfoPeripheral devices = 10;
   ZInfoManufacturer minfo = 11;
 
@@ -180,8 +158,12 @@ message networkMetric {
   uint64 rxBytes = 3;
   uint64 txDrops = 4;
   uint64 rxDrops = 5;
-  uint64 txRate = 6;  // pps
-  uint64 rxRate = 7;  // pps
+  uint64 txRate = 6;  // deprecate
+  uint64 rxRate = 7;  // deprecate
+  uint64 txPkts = 8;
+  uint64 rxPkts = 9;
+  uint64 txErrors = 10;
+  uint64 rxErrors = 11;
 }
 
 message appCpuMetric {
