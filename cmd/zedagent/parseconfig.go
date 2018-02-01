@@ -201,11 +201,11 @@ func parseStorageConfigList(config *zconfig.EdgeDevConfig, objType string,
 		image.ImageSignature = drive.Image.Siginfo.Signature
 		image.ImageSha256 = drive.Image.Sha256
 		image.ObjType = objType
+		image.NeedVerification = true
 
 		// copy the certificates
 		if drive.Image.Siginfo.Signercerturl != "" {
 			image.SignatureKey = drive.Image.Siginfo.Signercerturl
-			image.NeedVerification = true
 		}
 
 		// XXX:FIXME certificates can be many
