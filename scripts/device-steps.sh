@@ -186,6 +186,9 @@ if [ x$OLDFLAG = x ]; then
 fi
 echo "Removing old zedmanager status files"
 rm -rf /var/run/zedmanager/status/*.json
+
+echo "Removing old ledmanager status files"
+rm -rf /var/run/ledmanager/status/*.json
 # The following is a workaround for a racecondition between different agents
 # Make sure we have the required directories in place
 DIRS="/var/run/ledmanager/status/ /var/tmp/domainmgr/config/ /var/tmp/verifier/config/ /var/tmp/downloader/config/ /var/tmp/zedmanager/config/ /var/tmp/identitymgr/config/ /var/tmp/zedrouter/config/ /var/run/domainmgr/status/ /var/run/verifier/status/ /var/run/downloader/status/ /var/run/zedmanager/status/ /var/run/eidregister/status/ /var/run/zedrouter/status/ /var/run/identitymgr/status/ /var/tmp/zededa/DeviceNetworkConfig/ /var/run/zedrouter/DeviceNetworkStatus/"
@@ -386,15 +389,14 @@ echo '{"MaxSpace":2000000}' >/var/tmp/downloader/config/global
 rm -f /var/run/verifier/status/restarted
 rm -f /var/tmp/zedrouter/config/restart
 
-echo "Starting verifier at" `date`
-verifier >/var/log/verifier.log 2>&1 &
-
 echo "Starting ledmanager at" `date`
 ledmanager >/var/log/ledmanager.log 2>&1 &
 if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
-echo '{"BlinkCounter": 1}' > '/var/run/ledmanager/status/ledstatus.json'
+
+echo "Starting verifier at" `date`
+verifier >/var/log/verifier.log 2>&1 &
 if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
@@ -447,4 +449,4 @@ if [ $MEASURE = 1 ]; then
     ping6 -c 3 -w 1000 zedcontrol
     echo "Measurement done at" `date`
 fi
-echo '{"BlinkCounter": 2}' > '/var/run/ledmanager/status/ledstatus.json'
+echo '{"BlinkCounter": 1}' > '/var/run/ledmanager/status/ledstatus.json'

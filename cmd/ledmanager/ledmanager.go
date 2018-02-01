@@ -1,7 +1,8 @@
 package main
 
 import (
-	"github.com/zededa/go-provision/watch"
+	"flag"
+	"fmt"
 	"encoding/json"
 	"io/ioutil"
 	"log"
@@ -17,11 +18,24 @@ const (
 var count uint64
 var oldBlinkCount uint64
 
+// Set from Makefile
+var Version = "No version specified"
+
 func main() {
+
+	log.SetOutput(os.Stdout)
+	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
+	versionPtr := flag.Bool("v", false, "Version")
+	flag.Parse()
+	if *versionPtr {
+		fmt.Printf("%s: %s\n", os.Args[0], Version)
+		return
+	}
+	log.Printf("Starting ledmanager\n")
+
 	ledChanges := make(chan string)
-	//var w Watcher
-	//go w.LedWatcher(ledStatusDirName, ledChanges)
-	go watch.WatchStatus(ledStatusDirName, ledChanges)
+	var w Watcher
+	go w.LedWatcher(ledStatusDirName, ledChanges)
 	log.Println("called watcher...")
 	for {
 		select {
@@ -29,23 +43,13 @@ func main() {
 			{
 				log.Println("change: ", change)
 				HandleLedBlink(change)
-				//HandleLedManagerRestart()
 				continue
 			}
 		}
 	}
 }
-func HandleLedManagerRestart() {
-	log.Printf("handleLedmanagerRestarted")
-	done := true
-	if done {
-		watch.SignalRestart("zedmanager")
-	}
-
-}
 func HandleLedBlink(change string) {
 
-	log.Println("just canhge: ", change)
 	ledStatusFileName := ledStatusDirName + "/ledstatus.json"
 	testFile := "/var/run/ledmanager/blink.json"
 
