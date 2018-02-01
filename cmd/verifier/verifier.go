@@ -129,13 +129,13 @@ func handleInit() {
 	// create the directories
 	initializeDirs()
 
-	// clear work in progress objects
+	// mark all status file to PendingDelete
 	handleInitWorkinProgressObjects()
 
 	// recreate status files for verified objects
 	handleInitVerifiedObjects()
 
-	// delete status files marked pending delete
+	// delete status files marked PendingDelete
 	handleInitMarkedDeletePendingObjects()
 
 	log.Println("handleInit done")
@@ -153,8 +153,8 @@ func initializeDirs() {
 	}
 
 	// Remove any files which didn't make it past the verifier.
-	// Though verifier owns it, remove them for calculating the
-	// total available space
+	// useful for calculating total available space in
+	// downloader context
 	clearInProgressDownloadDirs(objTypes)
 
 	// create the object based config/status dirs
@@ -163,6 +163,11 @@ func initializeDirs() {
 	// create the object download directories
 	createDownloadDirs(objTypes)
 }
+
+// Mark all existing Status as PendingDelete.
+// If they correspond to verified files (in the ... function)
+// they will be recreated without PendingDelete. Finally,
+//  in ... we will delete anything which still has PendingDelete set.
 
 func handleInitWorkinProgressObjects() {
 
@@ -195,11 +200,6 @@ func handleInitWorkinProgressObjects() {
 						err, statusFile)
 					continue
 				}
-				// if the object is still not verified
-				if status.State != types.DELIVERED {
-					status.PendingDelete = true
-					writeVerifyObjectStatus(&status, statusFile)
-				}
 			}
 		}
 	}
@@ -216,17 +216,18 @@ func handleInitVerifiedObjects() {
 		verifiedDirname := objectDownloadDirname + "/" + objType + "/verified"
 
 		if _, err := os.Stat(verifiedDirname); err == nil {
-			handleVerifiedObjectsExtended(objType, verifiedDirname,
+			populateInitialStatusFromVerified(objType, verifiedDirname,
 				statusDirname, "")
 		}
 	}
 }
 
-// recursive scanning
-func handleVerifiedObjectsExtended(objType string, objDirname string,
+// recursive scanning for verified objects,
+// to recreate the status files
+func populateInitialStatusFromVerified(objType string, objDirname string,
 	statusDirname string, parentDirname string) {
 
-	log.Printf("handleInit(%s, %s, %s)\n", objDirname,
+	log.Printf("populateInitialStatusFromVerified(%s, %s, %s)\n", objDirname,
 		statusDirname, parentDirname)
 
 	locations, err := ioutil.ReadDir(objDirname)
@@ -240,21 +241,18 @@ func handleVerifiedObjectsExtended(objType string, objDirname string,
 		filename := objDirname + "/" + location.Name()
 
 		if location.IsDir() {
-			log.Printf("handleInit: Looking in %s\n", filename)
+			log.Printf("populateInitialStatusFromVerified: Looking in %s\n", filename)
 			if _, err := os.Stat(filename); err == nil {
-				handleVerifiedObjectsExtended(objType, filename,
+				populateInitialStatusFromVerified(objType, filename,
 					statusDirname, location.Name())
 			}
 		} else {
-			log.Printf("handleInit: processing %s\n", filename)
-			safename := location.Name()
+			log.Printf("populateInitialStatusFromVerified: Processing %s\n", filename)
 
 			// XXX should really re-verify the image on reboot/restart
 			// We don't know the URL; Pick a name which is unique
 			sha := parentDirname
-			if sha != "" {
-				safename += "." + sha
-			}
+			safename := location.Name() + "." + sha
 
 			status := types.VerifyImageStatus{
 				Safename:    safename,
@@ -410,20 +408,19 @@ func writeVerifyObjectStatus(status *types.VerifyImageStatus,
 
 func handleCreate(statusFilename string, configArg interface{}) {
 	var config *types.VerifyImageConfig
-	var ret bool
 
 	switch configArg.(type) {
 	default:
 		log.Fatal("Can only handle VerifyImageConfig")
 	case *types.VerifyImageConfig:
 		config = configArg.(*types.VerifyImageConfig)
-		if config.ObjType == "" {
-			log.Fatal("handleCreate objType is not set")
-		}
 	}
 
 	log.Printf("handleCreate(%v) for %s\n",
 		config.Safename, config.DownloadURL)
+	if config.ObjType == "" {
+		log.Fatal("handleCreate objType is not set")
+	}
 
 	// Start by marking with PendingAdd
 	status := types.VerifyImageStatus{
@@ -436,27 +433,18 @@ func handleCreate(statusFilename string, configArg interface{}) {
 	}
 	writeVerifyObjectStatus(&status, statusFilename)
 
-	ret = markObjectAsVerifying(config, &status, statusFilename)
-	if ret != true {
+	if ret := markObjectAsVerifying(config, &status, statusFilename); ret != true {
 		log.Printf("handleCreate fail for %s\n", config.DownloadURL)
 		return
 	}
 
-	ret = verifyObjectSha(config, &status, statusFilename)
-	if ret != true {
+	if ret := verifyObjectSha(config, &status, statusFilename); ret != true {
 		log.Printf("handleCreate fail for %s\n", config.DownloadURL)
 		return
 	}
 
-	ret = markObjectAsVerified(config, &status, statusFilename)
-	if ret != true {
-		log.Printf("handleCreate fail for %s\n", config.DownloadURL)
-	} else {
-		status.PendingAdd = false
-		status.State = types.DELIVERED
-		writeVerifyObjectStatus(&status, statusFilename)
-		log.Printf("handleCreate done for %s\n", config.DownloadURL)
-	}
+	markObjectAsVerified(config, &status, statusFilename)
+
 }
 
 func markObjectAsVerifying(config *types.VerifyImageConfig,
@@ -530,23 +518,22 @@ func verifyObjectSha(config *types.VerifyImageConfig,
 	log.Printf("Verifying URL %s file %s\n",
 		config.DownloadURL, verifierFilename)
 
-	fd, err := os.Open(verifierFilename)
+	f, err := os.Open(verifierFilename)
 	if err != nil {
 		cerr := fmt.Sprintf("%v", err)
 		updateVerifyErrStatus(status, cerr, statusFilename)
-		log.Printf("File read failed for %s, %v\n", config.DownloadURL, err)
+		log.Printf("%s for %s\n", cerr, config.DownloadURL)
 		return false
 	}
-	defer fd.Close()
+	defer f.Close()
 
 	// compute sha256 of the image and match it
 	// with the one in config file...
 	h := sha256.New()
-	if _, err := io.Copy(h, fd); err != nil {
+	if _, err := io.Copy(h, f); err != nil {
 		cerr := fmt.Sprintf("%v", err)
 		updateVerifyErrStatus(status, cerr, statusFilename)
-		log.Printf("Sha computation failed for %s, %v\n",
-			config.DownloadURL, err)
+		log.Printf("%s for %v\n", cerr, config.DownloadURL)
 		return false
 	}
 
@@ -704,7 +691,7 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 }
 
 func markObjectAsVerified(config *types.VerifyImageConfig,
-	status *types.VerifyImageStatus, statusFilename string) bool {
+	status *types.VerifyImageStatus, statusFilename string) {
 
 	downloadDirname := objectDownloadDirname + "/" + config.ObjType
 	verifierDirname := downloadDirname + "/verifier/" + status.ImageSha256
@@ -762,7 +749,11 @@ func markObjectAsVerified(config *types.VerifyImageConfig,
 	if err := os.RemoveAll(verifierDirname); err != nil {
 		log.Fatal(err)
 	}
-	return true
+
+	status.PendingAdd = false
+	status.State = types.DELIVERED
+	writeVerifyObjectStatus(status, statusFilename)
+	log.Printf("handleCreate done for %s\n", config.DownloadURL)
 }
 
 func handleModify(statusFilename string, configArg interface{},
@@ -775,22 +766,18 @@ func handleModify(statusFilename string, configArg interface{},
 		log.Fatal("Can only handle VerifyImageConfig")
 	case *types.VerifyImageConfig:
 		config = configArg.(*types.VerifyImageConfig)
-		if config.ObjType == "" {
-			log.Fatal("handleCreate objType is not set")
-		}
 	}
 	switch statusArg.(type) {
 	default:
 		log.Fatal("Can only handle VerifyImageStatus")
 	case *types.VerifyImageStatus:
 		status = statusArg.(*types.VerifyImageStatus)
-		if status.ObjType == "" {
-			log.Fatal("handleCreate objType is not set")
-		}
 	}
 	log.Printf("handleModify(%v) for %s\n",
 		config.Safename, config.DownloadURL)
-
+	if (config.ObjType == "") || (status.ObjType == "") {
+		log.Fatal("handleModify objType is not set")
+	}
 	// Note no comparison on version
 
 	// Always update RefCount
@@ -832,11 +819,12 @@ func handleDelete(statusFilename string, statusArg interface{}) {
 		log.Fatal("Can only handle VerifyImageStatus")
 	case *types.VerifyImageStatus:
 		status = statusArg.(*types.VerifyImageStatus)
-		if status.ObjType == "" {
-			log.Fatal("handleDelete: objType is not set")
-		}
 	}
+
 	log.Printf("handleDelete(%v)\n", status.Safename)
+	if status.ObjType == "" {
+		log.Fatal("handleDelete objType is not set")
+	}
 
 	doDelete(status)
 

@@ -172,11 +172,12 @@ func handleObjectCreate(statusFilename string, configArg interface{}) {
 
 	case *types.DownloaderConfig:
 		config = configArg.(*types.DownloaderConfig)
-		if config.ObjType == "" {
-			log.Fatal("handleObjectCreate: ObjType is not set")
-		}
 	}
 
+	log.Printf("handleObjectCreate: %s\n", config.DownloadURL)
+	if config.ObjType == "" {
+		log.Fatal("handleObjectCreate: ObjType is not set")
+	}
 	handleCreate(*config, statusFilename)
 }
 
@@ -193,9 +194,6 @@ func handleObjectModify(statusFilename string, configArg interface{},
 
 	case *types.DownloaderConfig:
 		config = configArg.(*types.DownloaderConfig)
-		if config.ObjType == "" {
-			log.Fatal("handleObjectCreate: ObjType is not set")
-		}
 	}
 
 	switch statusArg.(type) {
@@ -203,11 +201,14 @@ func handleObjectModify(statusFilename string, configArg interface{},
 		log.Fatal("handleObjectModify: Can only handle DownloaderStatus")
 	case *types.DownloaderStatus:
 		status = statusArg.(*types.DownloaderStatus)
-		if status.ObjType == "" {
-			log.Fatal("handleObjectCreate: ObjType is not set")
-		}
 	}
 
+	log.Printf("handleObjectModify(%v) for %s\n",
+		config.Safename, config.DownloadURL)
+
+	if (config.ObjType == "") || ( status.ObjType == "") {
+		log.Fatal("handleObjectModify: ObjType is not set")
+	}
 	handleModify(*config, *status, statusFilename)
 }
 
@@ -222,18 +223,19 @@ func handleObjectDelete(statusFilename string, statusArg interface{}) {
 
 	case *types.DownloaderStatus:
 		status = statusArg.(*types.DownloaderStatus)
-		if status.ObjType == "" {
-			log.Fatal("handleObjectCreate: ObjType is not set")
-		}
 	}
 
+	log.Printf("handleObjectDelete(%v) for %s\n",
+		status.Safename, status.DownloadURL)
+
+	if status.ObjType == "" {
+		log.Fatal("handleObjectDelete: ObjType is not set")
+	}
 	handleDelete(*status, statusFilename)
 }
 
 // TODO with a context to handle* we can pass in the dCtx in the context.
 func handleCreate(config types.DownloaderConfig, statusFilename string) {
-
-	log.Printf("handleCreate: %s, %s\n", config.ObjType, config.DownloadURL)
 
 	// Start by marking with PendingAdd
 	status := types.DownloaderStatus{
@@ -295,8 +297,6 @@ func handleModify(config types.DownloaderConfig,
 	status types.DownloaderStatus, statusFilename string) {
 
 	locDirname := objectDownloadDirname + "/" + config.ObjType
-	log.Printf("handleModify(%v) for %s\n",
-		config.Safename, config.DownloadURL)
 
 	if config.DownloadURL != status.DownloadURL {
 		log.Printf("URL changed - not allowed %s -> %s\n",
@@ -394,9 +394,6 @@ func doDelete(statusFilename string, locDirname string, status *types.Downloader
 func handleDelete(status types.DownloaderStatus, statusFilename string) {
 
 	locDirname := objectDownloadDirname + "/" + status.ObjType
-
-	log.Printf("handleDelete(%v) for %s, %s\n",
-		status.Safename, status.DownloadURL, locDirname)
 
 	status.PendingDelete = true
 	writeDownloaderStatus(&status, statusFilename)
@@ -784,7 +781,7 @@ func handleSyncOp(statusFilename string, config types.DownloaderConfig,
 		fmt.Printf("Have %d free uplink addresses\n", addrCount)
 	} else {
 		addrCount = types.CountLocalAddrAny(deviceNetworkStatus, "")
-		fmt.Printf("Have %d any uplink add`resses\n", addrCount)
+		fmt.Printf("Have %d any uplink addresses\n", addrCount)
 	}
 	// Loop through all interfaces until a success
 	for addrIndex := 0; addrIndex < addrCount; addrIndex += 1 {

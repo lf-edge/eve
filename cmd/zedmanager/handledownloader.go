@@ -48,7 +48,7 @@ func AddOrRefcountDownloaderConfig(safename string, sc *types.StorageConfig) {
 		downloaderConfig[key] = n
 	}
 	configFilename := fmt.Sprintf("%s/%s.json",
-		downloaderConfigDirname, safename)
+		downloaderAppImgObjConfigDirname, safename)
 	writeDownloaderConfig(downloaderConfig[key], configFilename)
 
 	log.Printf("AddOrRefcountDownloaderConfig done for %s\n",
@@ -69,7 +69,7 @@ func MaybeRemoveDownloaderConfig(safename string) {
 	}
 	delete(downloaderConfig, safename)
 	configFilename := fmt.Sprintf("%s/%s.json",
-		downloaderConfigDirname, safename)
+		downloaderAppImgObjConfigDirname, safename)
 	if err := os.Remove(configFilename); err != nil {
 		log.Println(err)
 	}
