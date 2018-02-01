@@ -528,7 +528,8 @@ func getCertObjConfig(config types.CertObjConfig,
 		// XXX set IfName to to the FreeUplink[0]? NO
 		// Shouldn't we specify "any" to have the downloader try all?
 		// Or pass an array of the IfNames for all the uplinks?
-		MaxSize:          image.MaxSize,
+		// XXX:FIXME hardcoding MaxSize as 10KB
+		MaxSize:          10,
 		TransportMethod:  image.TransportMethod,
 		Dpath:            "zededa-cert-repo",
 		ApiKey:           image.ApiKey,
