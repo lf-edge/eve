@@ -171,12 +171,6 @@
 			"revisionTime": "2018-01-22T23:09:42Z"
 		},
 		{
-			"checksumSHA1": "RVA82cJMGI/yrXeRE4nP9JEiX1s=",
-			"path": "github.com/eriknordmark/netlink",
-			"revision": "8f49c47986ecd35341b0262f894915281a93b3a0",
-			"revisionTime": "2018-01-23T00:58:26Z"
-		},
-		{
 			"checksumSHA1": "7NP1qUMF8Kx1y0zANxx0e+oq9Oo=",
 			"path": "github.com/fsnotify/fsnotify",
 			"revision": "c2828203cd70a50dcccfb2761f8b1f8ceef9a8e9",
@@ -189,16 +183,41 @@
 			"revisionTime": "2017-11-19T05:34:21Z"
 		},
 		{
-			"checksumSHA1": "yqF125xVSkmfLpIVGrLlfE05IUk=",
+			"checksumSHA1": "CkKjyrCOethydl6d20AkBORNUFo=",
+			"path": "github.com/golang/protobuf",
+			"revision": "925541529c1fa6821df4e44ce2723319eb2be768",
+			"revisionTime": "2018-01-25T21:43:03Z"
+		},
+		{
+			"checksumSHA1": "WX1+2gktHcBmE9MGwFSGs7oqexU=",
 			"path": "github.com/golang/protobuf/proto",
-			"revision": "c65a0412e71e8b9b3bfd22925720d23c0f054237",
-			"revisionTime": "2018-01-22T22:16:10Z"
+			"revision": "925541529c1fa6821df4e44ce2723319eb2be768",
+			"revisionTime": "2018-01-25T21:43:03Z"
+		},
+		{
+			"checksumSHA1": "R68wxVo8XphojTvETH9noTW6uec=",
+			"path": "github.com/golang/protobuf/ptypes",
+			"revision": "925541529c1fa6821df4e44ce2723319eb2be768",
+			"revisionTime": "2018-01-25T21:43:03Z",
+			"tree": true
+		},
+		{
+			"checksumSHA1": "UB9scpDxeFjQe5tEthuR4zCLRu4=",
+			"path": "github.com/golang/protobuf/ptypes/any",
+			"revision": "925541529c1fa6821df4e44ce2723319eb2be768",
+			"revisionTime": "2018-01-25T21:43:03Z"
+		},
+		{
+			"checksumSHA1": "hUjAj0dheFVDl84BAnSWj9qy2iY=",
+			"path": "github.com/golang/protobuf/ptypes/duration",
+			"revision": "925541529c1fa6821df4e44ce2723319eb2be768",
+			"revisionTime": "2018-01-25T21:43:03Z"
 		},
 		{
 			"checksumSHA1": "O2ItP5rmfrgxPufhjJXbFlXuyL8=",
 			"path": "github.com/golang/protobuf/ptypes/timestamp",
-			"revision": "c65a0412e71e8b9b3bfd22925720d23c0f054237",
-			"revisionTime": "2018-01-22T22:16:10Z"
+			"revision": "925541529c1fa6821df4e44ce2723319eb2be768",
+			"revisionTime": "2018-01-25T21:43:03Z"
 		},
 		{
 			"checksumSHA1": "TW1TbIL4RRT4fpdvwVxph25vdKw=",
@@ -263,8 +282,8 @@
 		{
 			"checksumSHA1": "tVzhFPaNlVF/ORfRONIUFMifnnE=",
 			"path": "github.com/zededa/api",
-			"revision": "6f020af40bb903859aefd26ac0b7578164436176",
-			"revisionTime": "2018-01-23T00:41:10Z"
+			"revision": "99767383d4be075fccece84d9d32f86a2cff4d8c",
+			"revisionTime": "2018-01-31T10:55:19Z"
 		},
 		{
 			"checksumSHA1": "7T6h9fWkmlDMjUQ9hlHBEJpan1w=",

@@ -49,6 +49,7 @@ func handleLookUpParam(devConfig *zconfig.EdgeDevConfig) {
 	lispInfo := devConfig.LispInfo
 	if lispInfo == nil {
 		log.Printf("handleLookupParam: missing lispInfo\n");
+		return
 	}
 	device.LispInstance = lispInfo.LispInstance
 	device.EID = net.ParseIP(lispInfo.EID)

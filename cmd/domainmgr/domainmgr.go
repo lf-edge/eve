@@ -201,6 +201,7 @@ func handleCreate(statusFilename string, configArg interface{}) {
 		DisplayName:    config.DisplayName,
 		DomainName:     name,
 		AppNum:         config.AppNum,
+		VifList:        config.VifList,
 	}
 	status.DiskStatusList = make([]types.DiskStatus,
 		len(config.DiskConfigList))

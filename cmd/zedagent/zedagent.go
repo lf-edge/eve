@@ -22,7 +22,8 @@ const (
 	zedmanagerStatusDirname = "/var/run/zedmanager/status"
 	downloaderConfigDirname = "/var/tmp/downloader/config"
 	downloaderStatusDirname = "/var/run/downloader/status"
-	DNSDirname		= "/var/run/zedrouter/DeviceNetworkStatus"
+	DNSDirname              = "/var/run/zedrouter/DeviceNetworkStatus"
+	domainStatusDirname     = "/var/run/domainmgr/status"
 )
 
 // Set from Makefile
@@ -67,6 +68,8 @@ func main() {
 	go watch.WatchStatus(zedmanagerStatusDirname, zedmanagerChanges)
 	deviceStatusChanges := make(chan string)
 	go watch.WatchStatus(DNSDirname, deviceStatusChanges)
+	domainStatusChanges := make(chan string)
+	go watch.WatchStatus(domainStatusDirname, domainStatusChanges)
 	for {
 		select {
 		case change := <-zedmanagerChanges:
@@ -78,11 +81,17 @@ func main() {
 					handleStatusDelete, nil)
 				continue
 			}
-		case change := <- deviceStatusChanges:
+		case change := <-deviceStatusChanges:
 			watch.HandleStatusEvent(change,
 				DNSDirname,
 				&types.DeviceNetworkStatus{},
 				handleDNSModify, handleDNSDelete,
+				nil)
+		case change := <-domainStatusChanges:
+			watch.HandleStatusEvent(change,
+				domainStatusDirname,
+				&types.DomainStatus{},
+				handleDomainStatusModify, handleDomainStatusDelete,
 				nil)
 		}
 	}
