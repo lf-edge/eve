@@ -72,6 +72,7 @@ type DomainStatus struct {
 	DomainName     string // Name of Xen domain
 	DomainId       int
 	DiskStatusList []DiskStatus
+	VifList        []VifInfo
 	LastErr        string // Xen error
 	LastErrTime    time.Time
 }

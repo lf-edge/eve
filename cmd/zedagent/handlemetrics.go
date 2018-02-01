@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/golang/protobuf/proto"
+	"github.com/golang/protobuf/ptypes"
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/disk"
 	"github.com/shirou/gopsutil/host"
@@ -94,6 +95,107 @@ func GetDeviceManufacturerInfo() (string, string, string, string, string) {
 	return productManufacturer, productName, productVersion, productSerial, productUuid
 }
 
+// Key is UUID
+var domainStatus map[string]types.DomainStatus
+
+// Key is DomainName; value is arrive of interfacenames
+var appInterfaceAndNameList map[string][]string
+
+func handleDomainStatusModify(statusFilename string,
+	statusArg interface{}) {
+	var status *types.DomainStatus
+
+	switch statusArg.(type) {
+	default:
+		log.Fatal("Can only handle DomainStatus")
+	case *types.DomainStatus:
+		status = statusArg.(*types.DomainStatus)
+	}
+
+	key := status.UUIDandVersion.UUID.String()
+	log.Printf("handleDomainStatusModify for %s\n", key)
+	// Ignore if any Pending* flag is set
+	if status.PendingAdd || status.PendingModify || status.PendingDelete {
+		log.Printf("handleDomainstatusModify skipped due to Pending* for %s\n",
+			key)
+		return
+	}
+
+	if domainStatus == nil {
+		fmt.Printf("create Domain map\n")
+		domainStatus = make(map[string]types.DomainStatus)
+	}
+	domainStatus[key] = *status
+	if appInterfaceAndNameList == nil {
+		appInterfaceAndNameList = make(map[string][]string)
+	}
+	var interfaceList []string
+	for _, vif := range status.VifList {
+		interfaceList = append(interfaceList, vif.Bridge)
+	}
+	appInterfaceAndNameList[status.DomainName] = interfaceList
+	log.Printf("handleDomainStatusModidy appIntf %s %v\n", status.DomainName, interfaceList)
+	log.Printf("handleDomainStatusModify done for %s\n", key)
+}
+
+func handleDomainStatusDelete(statusFilename string) {
+	log.Printf("handleDomainStatusDelete for %s\n", statusFilename)
+	key := statusFilename
+	if m, ok := domainStatus[key]; !ok {
+		log.Printf("handleDomainStatusDelete for %s - not found\n",
+			key)
+	} else {
+		if _, ok := appInterfaceAndNameList[m.DomainName]; ok {
+			fmt.Printf("appInterfaceAndnameList for %v\n", m.DomainName)
+			delete(appInterfaceAndNameList, m.DomainName)
+		}
+		fmt.Printf("Domain map delete for %v\n", key)
+		delete(domainStatus, key)
+	}
+	log.Printf("handleDomainStatusDelete done for %s\n",
+		statusFilename)
+}
+
+// XXX do lookup on name instead of returning whole list?
+func ReadAppInterfaceName() map[string][]string {
+	return appInterfaceAndNameList
+}
+
+func ExecuteXlListCmd() [][]string {
+
+	cmd := exec.Command("xl", "list")
+	stdout, err := cmd.Output()
+	if err != nil {
+		println(err.Error())
+	}
+
+	xlList := fmt.Sprintf("%s", stdout)
+	splitXlList := strings.Split(xlList, "\n")
+	var xlListWithEmptyVal []interface{}
+	for _, val := range splitXlList {
+		if val != "" {
+			xlListWithEmptyVal = append(xlListWithEmptyVal, strings.Split(val, " "))
+		}
+	}
+
+	xlListOutput := make([][]string, len(xlListWithEmptyVal)-1)
+	for col := range xlListOutput {
+		xlListOutput[col] = make([]string, 6)
+	}
+	var count int
+	for idx1, xl := range xlListWithEmptyVal {
+
+		count = 0
+		for _, xlVal := range xl.([]string) {
+			if xlVal != "" && idx1 != 0 {
+				xlListOutput[idx1-1][count] = xlVal
+				count++
+			}
+		}
+	}
+	return xlListOutput
+}
+
 func ExecuteXentopCmd() [][]string {
 	var cpuStorageStat [][]string
 
@@ -105,9 +207,10 @@ func ExecuteXentopCmd() [][]string {
 	arg4 := "1"
 	arg5 := "-i"
 	arg6 := "2"
+	arg7 := "-f"
 
-	cmd1 := exec.Command(arg1, arg2, arg3, arg4, arg5, arg6)
-	stdout, err := cmd1.Output()
+	cmd := exec.Command(arg1, arg2, arg3, arg4, arg5, arg6, arg7)
+	stdout, err := cmd.Output()
 	if err != nil {
 		println(err.Error())
 		return [][]string{}
@@ -200,6 +303,7 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 	*ReportZmetric = zmet.ZmetricTypes_ZmDevice
 
 	ReportMetrics.Ztype = *ReportZmetric
+	ReportMetrics.AtTimeStamp = ptypes.TimestampNow()
 
 	// Handle xentop failing above
 	if len(cpuStorageStat) == 0 {
@@ -208,63 +312,159 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 		return
 	}
 
-	for arr := 1; arr < 2; arr++ {
-
-		cpuTime, _ := strconv.ParseUint(cpuStorageStat[arr][3], 10, 0)
-		ReportDeviceMetric.Cpu.UpTime = *proto.Uint32(uint32(cpuTime))
-		cpuUsedInPercent, _ := strconv.ParseFloat(cpuStorageStat[arr][4], 10)
-		ReportDeviceMetric.Cpu.CpuUtilization = *proto.Float64(float64(cpuUsedInPercent))
-
-		cpuDetail, err := cpu.Times(true)
-		if err != nil {
-			log.Println("error while fetching cpu related time: ", err)
-		} else {
-			for _, cpuStat := range cpuDetail {
-				ReportDeviceMetric.Cpu.Usr = cpuStat.User
-				ReportDeviceMetric.Cpu.Nice = cpuStat.Nice
-				ReportDeviceMetric.Cpu.System = cpuStat.System
-				ReportDeviceMetric.Cpu.Io = cpuStat.Irq
-				ReportDeviceMetric.Cpu.Irq = cpuStat.Irq
-				ReportDeviceMetric.Cpu.Soft = cpuStat.Softirq
-				ReportDeviceMetric.Cpu.Steal = cpuStat.Steal
-				ReportDeviceMetric.Cpu.Guest = cpuStat.Guest
-				ReportDeviceMetric.Cpu.Idle = cpuStat.Idle
+	xlListOutput := ExecuteXlListCmd()
+	if len(xlListOutput) == 0 {
+		log.Printf("No xlList? metrics: %s\n", ReportMetrics)
+		SendMetricsProtobufStrThroughHttp(ReportMetrics, iteration)
+		return
+	}
+	var countApp int
+	countApp = 0
+	ReportMetrics.Am = make([]*zmet.AppMetric, len(cpuStorageStat)-2)
+	for arr := 1; arr < len(cpuStorageStat); arr++ {
+		if strings.Contains(cpuStorageStat[arr][1], "Domain-0") {
+			cpuTime, _ := strconv.ParseUint(cpuStorageStat[arr][3], 10, 0)
+			ReportDeviceMetric.Cpu.UpTime = *proto.Uint32(uint32(cpuTime))
+			cpuUsedInPercent, _ := strconv.ParseFloat(cpuStorageStat[arr][4], 10)
+			ReportDeviceMetric.Cpu.CpuUtilization = *proto.Float64(float64(cpuUsedInPercent))
+			cpuDetail, err := cpu.Times(true)
+			if err != nil {
+				log.Println("error while fetching cpu related time: ", err)
+			} else {
+				for _, cpuStat := range cpuDetail {
+					ReportDeviceMetric.Cpu.Usr = cpuStat.User
+					ReportDeviceMetric.Cpu.Nice = cpuStat.Nice
+					ReportDeviceMetric.Cpu.System = cpuStat.System
+					ReportDeviceMetric.Cpu.Io = cpuStat.Irq
+					ReportDeviceMetric.Cpu.Irq = cpuStat.Irq
+					ReportDeviceMetric.Cpu.Soft = cpuStat.Softirq
+					ReportDeviceMetric.Cpu.Steal = cpuStat.Steal
+					ReportDeviceMetric.Cpu.Guest = cpuStat.Guest
+					ReportDeviceMetric.Cpu.Idle = cpuStat.Idle
+				}
 			}
-		}
-		//memory related info for dom0...XXX later we will add for domU also..
-		ram, err := mem.VirtualMemory()
-		if err != nil {
-			log.Println(err)
-		} else {
-			ReportDeviceMetric.Memory.UsedMem = uint32(ram.Used)
-			ReportDeviceMetric.Memory.AvailMem = uint32(ram.Available)
-			ReportDeviceMetric.Memory.UsedPercentage = ram.UsedPercent
-			ReportDeviceMetric.Memory.AvailPercentage = (100.0 - (ram.UsedPercent))
-		}
-		//find network related info...
-		network, err := psutilnet.IOCounters(true)
-		if err != nil {
-			log.Println(err)
-		} else {
-			ReportDeviceMetric.Network = make([]*zmet.NetworkMetric, len(network))
-			for netx, networkInfo := range network {
-				networkDetails := new(zmet.NetworkMetric)
-				networkDetails.IName = networkInfo.Name
-				networkDetails.TxBytes = networkInfo.PacketsSent
-				networkDetails.RxBytes = networkInfo.PacketsRecv
-				networkDetails.TxDrops = networkInfo.Dropout
-				networkDetails.RxDrops = networkInfo.Dropin
-				//networkDetails.TxRate = //XXX TBD
-				//networkDetails.RxRate = //XXX TBD
-				ReportDeviceMetric.Network[netx] = networkDetails
+			//memory related info for dom0...XXX later we will add for domU also..
+			ram, err := mem.VirtualMemory()
+			if err != nil {
+				log.Println(err)
+			} else {
+				ReportDeviceMetric.Memory.UsedMem = uint32(ram.Used)
+				ReportDeviceMetric.Memory.AvailMem = uint32(ram.Available)
+				ReportDeviceMetric.Memory.UsedPercentage = ram.UsedPercent
+				ReportDeviceMetric.Memory.AvailPercentage = (100.0 - (ram.UsedPercent))
 			}
-		}
-		ReportMetrics.MetricContent = new(zmet.ZMetricMsg_Dm)
-		if x, ok := ReportMetrics.GetMetricContent().(*zmet.ZMetricMsg_Dm); ok {
-			x.Dm = ReportDeviceMetric
+			//find network related info...
+			network, err := psutilnet.IOCounters(true)
+			if err != nil {
+				log.Println(err)
+			} else {
+				// XXX should we restrict this to the uplinks (plus dbo1x0 for dom0 "app")
+				// for now?
+				ReportDeviceMetric.Network = make([]*zmet.NetworkMetric, len(network))
+				for netx, networkInfo := range network {
+					networkDetails := new(zmet.NetworkMetric)
+					networkDetails.IName = networkInfo.Name
+					// XXX should add TxPkts and RxPkts to zmet.proto
+					// networkDetails.TxPkts = networkInfo.PacketsSent
+					// networkDetails.RxPkts = networkInfo.PacketsRecv
+					networkDetails.TxBytes = networkInfo.BytesSent
+					networkDetails.RxBytes = networkInfo.BytesRecv
+					networkDetails.TxDrops = networkInfo.Dropout
+					networkDetails.RxDrops = networkInfo.Dropin
+					// XXX add Errors to zmet.proto
+					// networkDetails.TxErrors = networkInfo.Errout
+					// networkDetails.RxErrors = networkInfo.Errin
+					//networkDetails.TxRate = //XXX TBD deprecate in zmet.proto
+					//networkDetails.RxRate = //XXX TBD deprecate in zmet.proto
+					ReportDeviceMetric.Network[netx] = networkDetails
+				}
+				log.Println("network metrics: ", ReportDeviceMetric.Network)
+			}
+			ReportMetrics.MetricContent = new(zmet.ZMetricMsg_Dm)
+			if x, ok := ReportMetrics.GetMetricContent().(*zmet.ZMetricMsg_Dm); ok {
+				x.Dm = ReportDeviceMetric
+			}
+		} else {
+
+			if len(cpuStorageStat) > 2 {
+				log.Println("domu has been spawned....so we will report it's metrics")
+				ReportAppMetric := new(zmet.AppMetric)
+				ReportAppMetric.Cpu = new(zmet.AppCpuMetric)
+				ReportAppMetric.Memory = new(zmet.MemoryMetric)
+
+				ReportAppMetric.AppName = cpuStorageStat[arr][1]
+
+				for xl := 0; xl < len(xlListOutput); xl++ {
+					if xlListOutput[xl][0] == cpuStorageStat[arr][1] {
+						// XXX set App name somewhere?
+						// XXX AppID should be AppNum from DomainStatus.
+						// But why to we need it in the report?
+						ReportAppMetric.AppID = xlListOutput[xl][1]
+					}
+				}
+
+				appCpuUpTime, _ := strconv.ParseUint(cpuStorageStat[arr][3], 10, 0) //XXX FIXME
+				ReportAppMetric.Cpu.CpuTotal = *proto.Uint32(uint32(appCpuUpTime))  //XXX FIXME TBD
+				appCpuUsedInPercent, _ := strconv.ParseFloat(cpuStorageStat[arr][4], 10)
+				ReportAppMetric.Cpu.CpuPercentage = *proto.Float64(float64(appCpuUsedInPercent))
+
+				totalAppMemory, _ := strconv.ParseUint(cpuStorageStat[arr][5], 10, 0)
+				usedAppMemoryPercent, _ := strconv.ParseFloat(cpuStorageStat[arr][6], 10)
+				usedMemory := (float64(totalAppMemory) * (usedAppMemoryPercent)) / 100
+				availableMemory := float64(totalAppMemory) - usedMemory
+				availableAppMemoryPercent := 100 - usedAppMemoryPercent
+
+				ReportAppMetric.Memory.UsedMem = uint32(usedMemory)
+				ReportAppMetric.Memory.AvailMem = uint32(availableMemory)
+				ReportAppMetric.Memory.UsedPercentage = float64(usedAppMemoryPercent)
+				ReportAppMetric.Memory.AvailPercentage = float64(availableAppMemoryPercent)
+
+				//XXX FIXME network info for domu...
+				appInterfaceList := ReadAppInterfaceName()
+				if len(appInterfaceList) != 0 {
+					for appName, interfaceArr := range appInterfaceList {
+						if appName == strings.TrimSpace(cpuStorageStat[arr][1]) {
+							network, err := psutilnet.IOCounters(true)
+							if err != nil {
+								log.Println(err)
+							} else {
+								ReportAppMetric.Network = make([]*zmet.NetworkMetric, len(interfaceArr))
+								for index, interfaceName := range interfaceArr {
+									for _, networkInfo := range network {
+										if interfaceName == networkInfo.Name {
+											networkDetails := new(zmet.NetworkMetric)
+											networkDetails.IName = networkInfo.Name
+											// Note that the packets received on bu* and bo* where sent
+											// by the domU and vice versa, hence we swap here
+											// XXX should add TxPkts and RxPkts to zmet.proto
+											// networkDetails.TxPkts = networkInfo.PacketsRecv
+											// networkDetails.RxPkts = networkInfo.PacketsSent
+											networkDetails.TxBytes = networkInfo.BytesRecv
+											networkDetails.RxBytes = networkInfo.BytesSent
+											networkDetails.TxDrops = networkInfo.Dropin
+											networkDetails.RxDrops = networkInfo.Dropout
+											// XXX add Errors to zmet.proto
+											// networkDetails.TxErrors = networkInfo.Errin
+											// networkDetails.RxErrors = networkInfo.Errout
+											//networkDetails.TxRate = //XXX TBD deprecate in zmet.proto
+											//networkDetails.RxRate = //XXX TBD deprecate in zmet.proto
+
+											ReportAppMetric.Network[index] = networkDetails
+										}
+									}
+								}
+							}
+						}
+
+					}
+				}
+				ReportMetrics.Am[countApp] = ReportAppMetric
+				log.Println("metrics per app is: ", ReportMetrics.Am[countApp])
+				countApp++
+			}
+
 		}
 	}
-
 	log.Printf("Metrics: %s\n", ReportMetrics)
 	SendMetricsProtobufStrThroughHttp(ReportMetrics, iteration)
 }
@@ -336,6 +536,7 @@ func PublishDeviceInfoToZedCloud(iteration int) {
 		ReportDeviceManufacturerInfo.UUID = *proto.String(strings.TrimSpace(productUuid))
 		ReportDeviceInfo.Minfo = ReportDeviceManufacturerInfo
 	} else {
+		// XXX add compatible string for arm to zmet.proto
 		log.Println("fill manufacturer info for arm...") //XXX FIXME
 	}
 	ReportDeviceSoftwareInfo := new(zmet.ZInfoSW)
@@ -435,7 +636,6 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 		fmt.Printf("PublishAppInfoToZedCloud uuid %s deleted\n", uuid)
 		return
 	}
-	uuidStr := aiStatus.UUIDandVersion.Version
 	var ReportInfo = &zmet.ZInfoMsg{}
 
 	appType := new(zmet.ZInfoTypes)
@@ -444,26 +644,38 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 	ReportInfo.DevId = *proto.String(deviceId)
 
 	ReportAppInfo := new(zmet.ZInfoApp)
-	ReportAppInfo.AppID = *proto.String(uuidStr)
 
-	// XXX:TBD should come from xen usage
-	ReportAppInfo.Ncpu = *proto.Uint32(uint32(0))
-	ReportAppInfo.Memory = *proto.Uint32(uint32(0))
-	//ReportAppInfo.Storage	=	*proto.Uint32(uint32(0)) //XXX FIXME TBD
+	xlListOutput := ExecuteXlListCmd()
+	for xl := 0; xl < len(xlListOutput); xl++ {
+		// XXX We use DomainName elsewhere
+		// AppID should be AppNum from DomainStatus. But why to we need it in the report?
+		if strings.Contains(xlListOutput[xl][0], aiStatus.DisplayName) {
+			ReportAppInfo.AppID = xlListOutput[xl][1]
+		}
+	}
+	//ReportAppInfo.SystemApp = //XXX FIXME TBD
+	ReportAppInfo.AppName = aiStatus.DisplayName
+	ReportAppInfo.Activated = aiStatus.Activated
+	ReportAppInfo.Error = aiStatus.Error
+	errTime, _ := ptypes.TimestampProto(aiStatus.ErrorTime)
+	ReportAppInfo.ErrorTime = errTime
 
-	// XXX: should be multiple entries, one per storage item
-	ReportVerInfo := new(zmet.ZInfoSW)
 	if len(aiStatus.StorageStatusList) == 0 {
 		log.Printf("storage status detail is empty so ignoring")
 	} else {
-		sc := aiStatus.StorageStatusList[0]
-		ReportVerInfo.SwHash = *proto.String(sc.ImageSha256)
+
+		ReportAppInfo.SoftwareList = make([]*zmet.ZInfoSW, len(aiStatus.StorageStatusList))
+		for idx, sc := range aiStatus.StorageStatusList {
+
+			ReportSoftwareInfo := new(zmet.ZInfoSW)
+			ReportSoftwareInfo.SwVersion = aiStatus.UUIDandVersion.Version
+			ReportSoftwareInfo.SwHash = sc.ImageSha256
+
+			ReportSoftwareInfo.State = zmet.ZSwState(sc.State)
+
+			ReportAppInfo.SoftwareList[idx] = ReportSoftwareInfo
+		}
 	}
-	ReportVerInfo.SwVersion = *proto.String(aiStatus.UUIDandVersion.Version)
-
-	// XXX: this should be a list
-	ReportAppInfo.Software = ReportVerInfo
-
 	ReportInfo.InfoContent = new(zmet.ZInfoMsg_Ainfo)
 	if x, ok := ReportInfo.GetInfoContent().(*zmet.ZInfoMsg_Ainfo); ok {
 		x.Ainfo = ReportAppInfo
@@ -476,7 +688,7 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 }
 
 // This function is called per change, hence needs to try over all uplinks
-// send report on each uplink (XXX means iteration arg is not useful)
+// send report on each uplink (This means the iteration arg is not useful)
 // For each uplink we try different source IPs until we find a working one.
 func SendInfoProtobufStrThroughHttp(ReportInfo *zmet.ZInfoMsg, iteration int) {
 

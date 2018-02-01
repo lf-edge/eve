@@ -102,7 +102,7 @@ func GetDeviceNetworkConfig(configFilename string) (DeviceNetworkConfig, error) 
 	// Workaround for old config with FreeUplinks not set
 	if len(globalConfig.FreeUplinks) == 0 {
 		fmt.Printf("Setting FreeUplinks from Uplink: %v\n",
-				globalConfig.Uplink)
+			globalConfig.Uplink)
 		globalConfig.FreeUplinks = globalConfig.Uplink
 	}
 	return globalConfig, nil
@@ -112,7 +112,7 @@ func GetDeviceNetworkConfig(configFilename string) (DeviceNetworkConfig, error) 
 func MakeDeviceNetworkStatus(globalConfig DeviceNetworkConfig) (DeviceNetworkStatus, error) {
 	var globalStatus DeviceNetworkStatus
 	var err error = nil
-	
+
 	globalStatus.UplinkStatus = make([]NetworkUplink,
 		len(globalConfig.Uplink))
 	for ix, u := range globalConfig.Uplink {
@@ -130,9 +130,13 @@ func MakeDeviceNetworkStatus(globalConfig DeviceNetworkConfig) (DeviceNetworkSta
 			continue
 		}
 		addrs4, err := netlink.AddrList(link, netlink.FAMILY_V4)
-		if err != nil { addrs4 = nil }
+		if err != nil {
+			addrs4 = nil
+		}
 		addrs6, err := netlink.AddrList(link, netlink.FAMILY_V6)
-		if err != nil { addrs6 = nil }
+		if err != nil {
+			addrs6 = nil
+		}
 		globalStatus.UplinkStatus[ix].Addrs = make([]net.IP,
 			len(addrs4)+len(addrs6))
 		for i, addr := range addrs4 {
@@ -151,7 +155,7 @@ func MakeDeviceNetworkStatus(globalConfig DeviceNetworkConfig) (DeviceNetworkSta
 }
 
 // Pick one of the uplinks
-func GetUplinkAny(globalStatus DeviceNetworkStatus, pickNum int)(string, error) {
+func GetUplinkAny(globalStatus DeviceNetworkStatus, pickNum int) (string, error) {
 	if len(globalStatus.UplinkStatus) == 0 {
 		return "", errors.New("GetUplinkAny has no uplink")
 	}
@@ -163,7 +167,9 @@ func GetUplinkAny(globalStatus DeviceNetworkStatus, pickNum int)(string, error) 
 func GetUplinkFree(globalStatus DeviceNetworkStatus, pickNum int) (string, error) {
 	count := 0
 	for _, us := range globalStatus.UplinkStatus {
-		if us.Free { count += 1 }
+		if us.Free {
+			count += 1
+		}
 	}
 	if count == 0 {
 		return "", errors.New("GetUplinkFree has no uplink")
@@ -171,7 +177,7 @@ func GetUplinkFree(globalStatus DeviceNetworkStatus, pickNum int) (string, error
 	pickNum = pickNum % count
 	for _, us := range globalStatus.UplinkStatus {
 		if us.Free {
-			if pickNum == 0 { 
+			if pickNum == 0 {
 				return us.IfName, nil
 			}
 			pickNum -= 1
