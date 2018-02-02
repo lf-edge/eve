@@ -13,6 +13,7 @@ type UrlCloudCfg struct {
 	ConfigUrl  string
 	MetricsUrl string
 	StatusUrl  string
+	LogUrl     string
 }
 
 // top level config container
@@ -130,6 +131,8 @@ type StorageConfig struct {
 	Format  string // Default "raw"; could be raw, qcow, qcow2, vhd
 	Devtype string // Default ""; could be e.g. "cdrom"
 	Target  string // Default "" is interpreted as "disk"
+
+	FinalObjDir string // installation dir, may differ from verified
 }
 
 type StorageStatus struct {

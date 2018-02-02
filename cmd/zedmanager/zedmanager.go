@@ -23,6 +23,9 @@ import (
 
 // Keeping status in /var/run to be clean after a crash/reboot
 const (
+	appImgObj  = "appImg.obj"
+	moduleName = "zedmanager"
+
 	baseDirname              = "/var/tmp/zedmanager"
 	runDirname               = "/var/run/zedmanager"
 	zedmanagerConfigDirname  = baseDirname + "/config"
@@ -32,7 +35,10 @@ const (
 	domainmgrConfigDirname   = "/var/tmp/domainmgr/config"
 	zedrouterConfigDirname   = "/var/tmp/zedrouter/config"
 	identitymgrConfigDirname = "/var/tmp/identitymgr/config"
-	DNSDirname		 = "/var/run/zedrouter/DeviceNetworkStatus"
+	DNSDirname               = "/var/run/zedrouter/DeviceNetworkStatus"
+
+	downloaderAppImgObjConfigDirname = "/var/tmp/downloader/" + appImgObj + "/config"
+	verifierAppImgObjConfigDirname   = "/var/tmp/verifier/" + appImgObj + "/config"
 )
 
 // Set from Makefile
@@ -64,6 +70,9 @@ func main() {
 	zedrouterStatusDirname := "/var/run/zedrouter/status"
 	identitymgrStatusDirname := "/var/run/identitymgr/status"
 
+	downloaderAppImgObjStatusDirname := "/var/run/downloader/" + appImgObj + "/status"
+	verifierAppImgObjStatusDirname := "/var/run/verifier/" + appImgObj + "/status"
+
 	dirs := []string{
 		zedmanagerConfigDirname,
 		zedmanagerStatusDirname,
@@ -71,11 +80,15 @@ func main() {
 		zedrouterConfigDirname,
 		domainmgrConfigDirname,
 		downloaderConfigDirname,
+		downloaderAppImgObjConfigDirname,
 		verifierConfigDirname,
+		verifierAppImgObjConfigDirname,
 		identitymgrStatusDirname,
 		zedrouterStatusDirname,
 		domainmgrStatusDirname,
+		downloaderAppImgObjStatusDirname,
 		downloaderStatusDirname,
+		verifierAppImgObjStatusDirname,
 		verifierStatusDirname,
 	}
 
@@ -90,10 +103,12 @@ func main() {
 	// Tell ourselves to go ahead
 	watch.SignalRestart("zedmanager")
 
+	verifierRestartChanges := make(chan string)
+	go watch.WatchStatus(verifierStatusDirname, verifierRestartChanges)
 	verifierChanges := make(chan string)
-	go watch.WatchStatus(verifierStatusDirname, verifierChanges)
+	go watch.WatchStatus(verifierAppImgObjStatusDirname, verifierChanges)
 	downloaderChanges := make(chan string)
-	go watch.WatchStatus(downloaderStatusDirname, downloaderChanges)
+	go watch.WatchStatus(downloaderAppImgObjStatusDirname, downloaderChanges)
 	identitymgrChanges := make(chan string)
 	go watch.WatchStatus(identitymgrStatusDirname, identitymgrChanges)
 	zedrouterChanges := make(chan string)
@@ -112,12 +127,25 @@ func main() {
 	var zedrouterRestartedFn watch.StatusRestartHandler = handleZedrouterRestarted
 
 	// First we process the verifierStatus to avoid downloading
-	// an image we already have in place
+	// an image we already have in place.
+	// Note that the "restarted" file appears in /var/run/verifier/status
+	// while the individual status appears in /var/run/verifier/appImg.obj/status
+	// XXX should we fix that in verifier?
 	log.Printf("Handling initial verifier Status\n")
 	done := false
 	for !done {
 		select {
 		case change := <-verifierChanges:
+			{
+				watch.HandleStatusEvent(change,
+					verifierAppImgObjStatusDirname,
+					&types.VerifyImageStatus{},
+					handleVerifyImageStatusModify,
+					handleVerifyImageStatusDelete,
+					&verifierRestartedFn)
+				continue
+			}
+		case change := <-verifierRestartChanges:
 			{
 				watch.HandleStatusEvent(change,
 					verifierStatusDirname,
@@ -137,10 +165,20 @@ func main() {
 	log.Printf("Handling all inputs\n")
 	for {
 		select {
+		case change := <-verifierRestartChanges:
+			{
+				watch.HandleStatusEvent(change,
+					verifierStatusDirname,
+					&types.VerifyImageStatus{},
+					handleVerifyImageStatusModify,
+					handleVerifyImageStatusDelete,
+					&verifierRestartedFn)
+				continue
+			}
 		case change := <-downloaderChanges:
 			{
 				watch.HandleStatusEvent(change,
-					downloaderStatusDirname,
+					downloaderAppImgObjStatusDirname,
 					&types.DownloaderStatus{},
 					handleDownloaderStatusModify,
 					handleDownloaderStatusDelete, nil)
@@ -149,7 +187,7 @@ func main() {
 		case change := <-verifierChanges:
 			{
 				watch.HandleStatusEvent(change,
-					verifierStatusDirname,
+					verifierAppImgObjStatusDirname,
 					&types.VerifyImageStatus{},
 					handleVerifyImageStatusModify,
 					handleVerifyImageStatusDelete,
@@ -196,7 +234,7 @@ func main() {
 					handleDelete, &configRestartFn)
 				continue
 			}
-		case change := <- deviceStatusChanges:
+		case change := <-deviceStatusChanges:
 			{
 				watch.HandleStatusEvent(change,
 					DNSDirname,

@@ -20,8 +20,7 @@ type DownloaderConfig struct {
 	Password        string
 	MaxSize         uint   // In kbytes
 	ImageSha256     string // sha256 of immutable image
-	DownloadObjDir  string // Download Object Store
-	VerifiedObjDir  string // Final Object Store
+	FinalObjDir     string // final Object Store
 	RefCount        uint   // Zero means can delete file/cancel download
 }
 
@@ -53,8 +52,6 @@ type DownloaderStatus struct {
 	DownloadURL    string
 	UseFreeUplinks bool
 	ImageSha256    string  // sha256 of immutable image
-	DownloadObjDir string  // Download Object store
-	VerifiedObjDir string  // Target Object Store
 	State          SwState // DOWNLOADED etc
 	ReservedSpace  uint    // Contribution to global ReservedSpace
 	Size           uint    // Once DOWNLOADED; less than MaxSize

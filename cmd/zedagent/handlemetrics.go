@@ -25,8 +25,6 @@ import (
 )
 
 const (
-	baseDirname    = "/var/tmp/zedrouter"
-	configDirname  = baseDirname + "/config"
 	compatibleFile = "/proc/device-tree/compatible"
 )
 
@@ -500,7 +498,7 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 	SendMetricsProtobufStrThroughHttp(ReportMetrics, iteration)
 }
 
-func PublishDeviceInfoToZedCloud(iteration int) {
+func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus, iteration int) {
 
 	var ReportInfo = &zmet.ZInfoMsg{}
 
@@ -592,6 +590,19 @@ func PublishDeviceInfoToZedCloud(iteration int) {
 	ReportDeviceSoftwareInfo.SwVersion = systemHost.KernelVersion //XXX for now we are filling kernel version...
 	ReportDeviceSoftwareInfo.SwHash = *proto.String(" ")
 	ReportDeviceInfo.Software = ReportDeviceSoftwareInfo
+
+	// Report BaseOs Status
+	ReportDeviceInfo.SoftwareList = make([]*zmet.ZInfoSW, len(baseOsStatus))
+	var idx int = 0
+	for _, value := range baseOsStatus {
+		ReportDeviceSoftwareInfo := new(zmet.ZInfoSW)
+		ReportDeviceSoftwareInfo.SwVersion = value.BaseOsVersion
+		ReportDeviceSoftwareInfo.SwHash = value.ConfigSha256
+		ReportDeviceSoftwareInfo.State = zmet.ZSwState(value.State)
+		ReportDeviceSoftwareInfo.Activated = value.Activated
+		ReportDeviceInfo.SoftwareList[idx] = ReportDeviceSoftwareInfo
+		idx++
+	}
 
 	// Read interface name from library and match it with uplink name from
 	// global status. Only report the uplinks.

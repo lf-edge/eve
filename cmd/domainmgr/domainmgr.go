@@ -26,13 +26,15 @@ import (
 
 // Keeping status in /var/run to be clean after a crash/reboot
 const (
+	appImgObj  = "appImg.obj"
+
 	baseDirname       = "/var/tmp/domainmgr"
 	runDirname        = "/var/run/domainmgr"
 	configDirname     = baseDirname + "/config"
 	statusDirname     = runDirname + "/status"
 	rwImgDirname      = baseDirname + "/img" // We store images here
 	xenDirname        = runDirname + "/xen"  // We store xen cfg files here
-	imgCatalogDirname = "/var/tmp/zedmanager/downloads"
+	imgCatalogDirname = "/var/tmp/zedmanager/downloads/" + appImgObj
 	// Read-only images named based on sha256 hash each in its own directory
 	verifiedDirname = imgCatalogDirname + "/verified"
 )
