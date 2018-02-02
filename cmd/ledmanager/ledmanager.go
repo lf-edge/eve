@@ -54,8 +54,6 @@ func main() {
 	log.Printf("Starting ledmanager\n")
 
 	ledChanges := make(chan string)
-	//var w Watcher
-	//go w.LedWatcher(ledStatusDirName, ledChanges)
 	go watch.WatchStatus(ledStatusDirName, ledChanges)
 	log.Println("called watcher...")
 	for {
@@ -98,7 +96,6 @@ func HandleLedBlink(change string) {
 	log.Println("value of count: ", count)
 	if count > 0 {
 		log.Println("value of count: ", count)
-		//time.Sleep(time.Second * 1)
 		time.Sleep(1200 * time.Millisecond)
 	}
 
@@ -122,7 +119,6 @@ func HandleLedBlink(change string) {
 	for i := 0; i < blinkCount; i++ {
 		ExecuteDDCmd()
 		time.Sleep(200 * time.Millisecond)
-		//time.Sleep(time.Second * 4)
 	}
 
 	oldBlinkCount = uint64(countBlink.BlinkCounter)
