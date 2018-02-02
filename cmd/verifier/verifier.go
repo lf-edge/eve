@@ -83,6 +83,7 @@ func main() {
 	handleInit()
 
 	// Report to zedmanager that init is done
+	// XXX should we write this in each directory?
 	watch.SignalRestarted("verifier")
 
 	appImgChanges := make(chan string)

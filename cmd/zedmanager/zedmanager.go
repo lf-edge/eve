@@ -127,11 +127,24 @@ func main() {
 	var zedrouterRestartedFn watch.StatusRestartHandler = handleZedrouterRestarted
 
 	// First we process the verifierStatus to avoid downloading
-	// an image we already have in place
+	// an image we already have in place.
+	// Note that the "restarted" file appears in /var/run/verifier/status
+	// while the individual status appears in /var/run/verifier/appImg.obj/status
+	// XXX should we fix that in verifier?
 	log.Printf("Handling initial verifier Status\n")
 	done := false
 	for !done {
 		select {
+		case change := <-verifierChanges:
+			{
+				watch.HandleStatusEvent(change,
+					verifierAppImgObjStatusDirname,
+					&types.VerifyImageStatus{},
+					handleVerifyImageStatusModify,
+					handleVerifyImageStatusDelete,
+					&verifierRestartedFn)
+				continue
+			}
 		case change := <-verifierRestartChanges:
 			{
 				watch.HandleStatusEvent(change,
