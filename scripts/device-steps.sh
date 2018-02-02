@@ -395,6 +395,8 @@ if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
+echo '{"BlinkCounter": 1}' > '/var/run/ledmanager/status/ledstatus.json'
+
 echo "Starting verifier at" `date`
 verifier >/var/log/verifier.log 2>&1 &
 if [ $WAIT = 1 ]; then
@@ -449,4 +451,3 @@ if [ $MEASURE = 1 ]; then
     ping6 -c 3 -w 1000 zedcontrol
     echo "Measurement done at" `date`
 fi
-echo '{"BlinkCounter": 1}' > '/var/run/ledmanager/status/ledstatus.json'
