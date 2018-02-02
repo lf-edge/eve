@@ -345,7 +345,7 @@ func createConfigStatusDirs(moduleName string, objTypes []string) {
 	}
 }
 
-// app instance event watch to capture tranisions
+// app instance event watch to capture transitions
 // and publish to zedCloud
 
 var publishIteration = 0
