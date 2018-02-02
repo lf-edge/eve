@@ -1,15 +1,17 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
-	"encoding/json"
+	"github.com/zededa/go-provision/types"
+	"github.com/zededa/go-provision/watch"
 	"io/ioutil"
 	"log"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
-	"github.com/zededa/go-provision/types"
 )
 
 const (
@@ -35,8 +37,9 @@ func main() {
 	log.Printf("Starting ledmanager\n")
 
 	ledChanges := make(chan string)
-	var w Watcher
-	go w.LedWatcher(ledStatusDirName, ledChanges)
+	//var w Watcher
+	//go w.LedWatcher(ledStatusDirName, ledChanges)
+	go watch.WatchStatus(ledStatusDirName, ledChanges)
 	log.Println("called watcher...")
 	for {
 		select {
@@ -52,7 +55,6 @@ func main() {
 func HandleLedBlink(change string) {
 
 	ledStatusFileName := ledStatusDirName + "/ledstatus.json"
-	testFile := "/var/run/ledmanager/blink.json"
 
 	operation := string(change[0])
 	fileName := string(change[2:])
@@ -79,7 +81,8 @@ func HandleLedBlink(change string) {
 	log.Println("value of count: ", count)
 	if count > 0 {
 		log.Println("value of count: ", count)
-		time.Sleep(time.Second * 1)
+		//time.Sleep(time.Second * 1)
+		time.Sleep(1200 * time.Millisecond)
 	}
 
 	var countBlink = types.LedBlinkCounter{}
@@ -98,21 +101,25 @@ func HandleLedBlink(change string) {
 		return
 	}
 	log.Println("blinkCount: ", blinkCount)
-	//This is just a dummy code
-	//we need to add the code
-	//that will trigger the actual
-	//LED blink on devices...
 
-	//for now we are just writing
-	//the blinkCounter in a file...
-	b, err := json.Marshal(countBlink)
-	if err != nil {
-		log.Fatal(err, "json Marshal ledwatcher")
+	for i := 0; i < blinkCount; i++ {
+		ExecuteDDCmd()
+		time.Sleep(200 * time.Millisecond)
+		//time.Sleep(time.Second * 4)
 	}
-	err = ioutil.WriteFile(testFile, b, 0644)
-	if err != nil {
-		log.Fatal("err: ", err, testFile)
-	}
+
 	oldBlinkCount = uint64(countBlink.BlinkCounter)
 	count++
+}
+
+func ExecuteDDCmd() {
+
+	cmd := exec.Command("sudo", "dd", "if=/dev/sda", "of=/dev/null", "bs=4M", "count=22")
+	stdout, err := cmd.Output()
+	if err != nil {
+		println("error: ", err.Error())
+	}
+
+	ddInfo := fmt.Sprintf("%s", stdout)
+	log.Println("ddinfo: ", ddInfo)
 }

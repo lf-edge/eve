@@ -7,8 +7,8 @@ import (
 )
 
 type Watcher struct {
-
 }
+
 func (w *Watcher) LedWatcher(ledStatusDir string, fileChanges chan<- string) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
