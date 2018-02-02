@@ -12,6 +12,7 @@ var _ = proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
 
+// XXX is this used? Not in client.go
 type ZRegisterResult int32
 
 const (
@@ -45,6 +46,7 @@ func (x ZRegisterResult) String() string {
 }
 func (ZRegisterResult) EnumDescriptor() ([]byte, []int) { return fileDescriptor1, []int{0} }
 
+// XXX is this used? Not in client.go
 type ZRegisterResp struct {
 	Result ZRegisterResult `protobuf:"varint,2,opt,name=result,enum=ZRegisterResult" json:"result,omitempty"`
 }
