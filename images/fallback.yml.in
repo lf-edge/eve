@@ -44,6 +44,7 @@ services:
      net: host
      capabilities:
       - all
+     pid: host
 trust:
   org:
     - linuxkit
