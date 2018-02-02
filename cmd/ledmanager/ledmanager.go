@@ -1,3 +1,20 @@
+// Copyright (c) 2018 Zededa, Inc.
+// All rights reserved.
+
+//watcher tells ledmanager about
+//change in ledmanager status file,
+//which contains number of times
+//LED has to blink on any device
+//ledmanager notify each event by
+//triggering blink on device.
+//number of blink is equal to
+//blink counter received by status
+//file...
+//After each blink we will take
+//pause of 200ms.
+//After end of each event we will take
+//pause of 1200ms...
+
 package main
 
 import (
