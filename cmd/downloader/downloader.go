@@ -381,7 +381,7 @@ func handleCreate(objType string, config types.DownloaderConfig,
 	// Update reserved space. Keep reserved until doDelete
 	// XXX RefCount -> 0 should keep it reserved.
 	status.ReservedSpace = config.MaxSize
-	globalStatus.ReservedSpace = status.ReservedSpace
+	globalStatus.ReservedSpace += status.ReservedSpace
 	updateRemainingSpace()
 
 	// If RefCount == 0 then we don't yet download.
@@ -495,7 +495,7 @@ func handleDelete(objType string, status types.DownloaderStatus, statusFilename 
 	status.PendingDelete = true
 	writeDownloaderStatus(&status, statusFilename)
 
-	globalStatus.ReservedSpace = 0
+	globalStatus.ReservedSpace -= status.ReservedSpace
 	status.ReservedSpace = 0
 	globalStatus.UsedSpace -= status.Size
 	status.Size = 0
@@ -975,10 +975,6 @@ func handleSyncOpResponse(objType string, config types.DownloaderConfig,
 		return
 	}
 
-	globalStatus.ReservedSpace = 0
-	status.ReservedSpace = 0
-	updateRemainingSpace()
-
 	// XXX Compare against MaxSize and reject? Already wasted the space?
 	status.Size = uint((info.Size() + 1023) / 1024)
 
@@ -1000,6 +996,8 @@ func handleSyncOpResponse(objType string, config types.DownloaderConfig,
 		return
 	}
 
+	globalStatus.ReservedSpace -= status.ReservedSpace
+	status.ReservedSpace = 0
 	globalStatus.UsedSpace += status.Size
 	updateRemainingSpace()
 
