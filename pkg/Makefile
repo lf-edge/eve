@@ -1,7 +1,7 @@
 # disable content trust for now
 LINUXKIT_OPTS= --disable-content-trust
 
-PKGS = grub xen kernel kmod_pfring xen-tools dnsmasq sgdisk dom0-ztools	\
+PKGS = grub xen kernel kmod_pfring xen-tools dnsmasq gpt-tools dom0-ztools	\
 	test-cert test-microsvcs qrexec-lib qrexec-dom0 wwan wlan	\
 	mkrootfs-ext4 mkflash
 

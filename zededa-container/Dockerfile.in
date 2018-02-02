@@ -3,12 +3,14 @@ FROM XENTOOLS_TAG as xen-tools
 FROM DNSMASQ_TAG as dnsmasq
 FROM TESTCERT_TAG as cert
 FROM TESTMSVCS_TAG as msvcs
+FROM GPTTOOLS_TAG as gpttools
 
 FROM alpine:3.6
 RUN apk add --no-cache \
     yajl xz bash openssl iptables ip6tables \
     coreutils dmidecode sudo libbz2 libuuid ipset \
-    libpcap libaio pixman glib curl radvd perl ethtool openssh-server
+    libpcap libaio pixman glib curl radvd perl ethtool \
+    openssh-server util-linux
 
 # The following enables pcappy to dlopen libpcap.so
 RUN ln -s libpcap.so.1 /usr/lib/libpcap.so
@@ -18,6 +20,7 @@ RUN ssh-keygen -A ; echo PermitRootLogin yes >> /etc/ssh/sshd_config ; sed -ie '
 
 COPY --from=xen-tools / /
 COPY --from=ztools / /
+COPY --from=gpttools / /
 COPY --from=dnsmasq /usr/sbin/dnsmasq /opt/zededa/bin/dnsmasq
 COPY --from=cert / /opt/zededa/etc
 COPY --from=msvcs /vms /vms
