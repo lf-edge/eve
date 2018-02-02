@@ -292,16 +292,16 @@
 			"revisionTime": "2017-11-13T00:20:14Z"
 		},
 		{
-			"checksumSHA1": "IRk8WoUzDz0TlfZBBuU6l2rZIVg=",
+			"checksumSHA1": "EgZruwuiH8GWXcdVXNJewiTJkOM=",
 			"path": "github.com/zededa/api/zconfig",
-			"revision": "6f020af40bb903859aefd26ac0b7578164436176",
-			"revisionTime": "2018-01-23T00:41:10Z"
+			"revision": "38b8991a5f42b198accfdf17c118fde8d47ca282",
+			"revisionTime": "2018-02-01T19:20:37Z"
 		},
 		{
-			"checksumSHA1": "hzmmaMk2QQf9oDrT35zJGCECZHo=",
+			"checksumSHA1": "4OpUEyacWRT/l3UTU9CFuFLIVjE=",
 			"path": "github.com/zededa/api/zmet",
-			"revision": "6f020af40bb903859aefd26ac0b7578164436176",
-			"revisionTime": "2018-01-23T00:41:10Z"
+			"revision": "38b8991a5f42b198accfdf17c118fde8d47ca282",
+			"revisionTime": "2018-02-01T19:20:37Z"
 		},
 		{
 			"checksumSHA1": "tXDhskPogTybtaECNodP5/URT1s=",
@@ -382,5 +382,5 @@
 			"revisionTime": "2018-01-19T16:06:40Z"
 		}
 	],
-	"rootPath": "/home/nordmark/tmp/go-provision/src"
+	"rootPath": "/home/nordmark/work/go-provision/src"
 }
