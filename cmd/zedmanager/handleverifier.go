@@ -100,17 +100,9 @@ func dumpVerifierStatus() {
 	}
 }
 
-func handleVerifyImageStatusModify(statusFilename string,
+func handleVerifyImageStatusModify(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
-	var status *types.VerifyImageStatus
-
-	switch statusArg.(type) {
-	default:
-		log.Fatal("Can only handle VerifyImageStatus")
-	case *types.VerifyImageStatus:
-		status = statusArg.(*types.VerifyImageStatus)
-	}
-
+	status := statusArg.(*types.VerifyImageStatus)
 	log.Printf("handleVerifyImageStatusModify for %s\n",
 		status.Safename)
 	// Ignore if any Pending* flag is set
@@ -196,7 +188,7 @@ func LookupVerifyImageStatusAny(safename string,
 	}
 }
 
-func handleVerifyImageStatusDelete(statusFilename string) {
+func handleVerifyImageStatusDelete(ctxArg interface{}, statusFilename string) {
 	log.Printf("handleVerifyImageStatusDelete for %s\n",
 		statusFilename)
 

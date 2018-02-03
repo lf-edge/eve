@@ -43,6 +43,10 @@ const (
 // Set from Makefile
 var Version = "No version specified"
 
+// Dummy since we don't have anything to pass
+type dummyContext struct {
+}
+
 func main() {
 	log.SetOutput(os.Stdout)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
@@ -82,7 +86,7 @@ func main() {
 	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
 	for {
 		change := <-fileChanges
-		watch.HandleConfigStatusEvent(change,
+		watch.HandleConfigStatusEvent(change, dummyContext{},
 			configDirname, statusDirname,
 			&types.EIDConfig{},
 			&types.EIDStatus{},
@@ -90,7 +94,7 @@ func main() {
 	}
 }
 
-func handleRestart(done bool) {
+func handleRestart(ctxArg interface{}, done bool) {
 	log.Printf("handleRestart(%v)\n", done)
 	if done {
 		// Since all work is done inline we can immediately say that
@@ -113,15 +117,9 @@ func writeEIDStatus(status *types.EIDStatus,
 	}
 }
 
-func handleCreate(statusFilename string, configArg interface{}) {
-	var config *types.EIDConfig
-
-	switch configArg.(type) {
-	default:
-		log.Fatal("Can only handle EIDConfig")
-	case *types.EIDConfig:
-		config = configArg.(*types.EIDConfig)
-	}
+func handleCreate(ctxArg interface{}, statusFilename string,
+	configArg interface{}) {
+	config := configArg.(*types.EIDConfig)
 	log.Printf("handleCreate(%v,%d) for %s\n",
 		config.UUIDandVersion, config.IID, config.DisplayName)
 
@@ -333,23 +331,10 @@ func encodePrivateKey(keypair *ecdsa.PrivateKey) ([]byte, error) {
 // Need to compare what might have changed. If any content change
 // then we need to reboot. Thus version by itself can change but nothing
 // else. Such a version change would be e.g. due to an ACL change.
-func handleModify(statusFilename string, configArg interface{},
+func handleModify(ctxArg interface{}, statusFilename string, configArg interface{},
 	statusArg interface{}) {
-	var config *types.EIDConfig
-	var status *types.EIDStatus
-
-	switch configArg.(type) {
-	default:
-		log.Fatal("Can only handle EIDConfig")
-	case *types.EIDConfig:
-		config = configArg.(*types.EIDConfig)
-	}
-	switch statusArg.(type) {
-	default:
-		log.Fatal("Can only handle EIDStatus")
-	case *types.EIDStatus:
-		status = statusArg.(*types.EIDStatus)
-	}
+	config := configArg.(*types.EIDConfig)
+	status := statusArg.(*types.EIDStatus)
 	log.Printf("handleModify(%v,%d) for %s\n",
 		config.UUIDandVersion, config.IID, config.DisplayName)
 
@@ -374,15 +359,9 @@ func handleModify(statusFilename string, configArg interface{},
 	log.Printf("handleModify done for %s\n", config.DisplayName)
 }
 
-func handleDelete(statusFilename string, statusArg interface{}) {
-	var status *types.EIDStatus
-
-	switch statusArg.(type) {
-	default:
-		log.Fatal("Can only handle EIDStatus")
-	case *types.EIDStatus:
-		status = statusArg.(*types.EIDStatus)
-	}
+func handleDelete(ctxArg interface{}, statusFilename string,
+	statusArg interface{}) {
+	status := statusArg.(*types.EIDStatus)
 	log.Printf("handleDelete(%v,%d) for %s\n",
 		status.UUIDandVersion, status.IID, status.DisplayName)
 

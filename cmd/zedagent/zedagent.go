@@ -101,6 +101,10 @@ var Version = "No version specified"
 var verifierRestarted = false
 var deviceNetworkStatus types.DeviceNetworkStatus
 
+// Dummy since we don't have anything to pass
+type dummyContext struct {
+}
+
 func main() {
 	log.SetOutput(os.Stdout)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
@@ -142,7 +146,7 @@ func main() {
 	for !done {
 		select {
 		case change := <-verifierRestartChanges:
-			watch.HandleStatusEvent(change,
+			watch.HandleStatusEvent(change, dummyContext{},
 				verifierStatusDirname,
 				&types.VerifyImageStatus{},
 				handleBaseOsVerifierStatusModify,
@@ -197,7 +201,7 @@ func main() {
 
 		case change := <-restartChanges:
 			// restart only, place holder
-			watch.HandleConfigStatusEvent(change,
+			watch.HandleConfigStatusEvent(change, dummyContext{},
 				zedagentConfigDirname, zedagentStatusDirname,
 				&types.AppInstanceConfig{},
 				&types.AppInstanceStatus{},
@@ -206,7 +210,7 @@ func main() {
 				handleAppInstanceStatusDelete, &restartFn)
 
 		case change := <-appInstanceStatusChanges:
-			go watch.HandleConfigStatusEvent(change,
+			go watch.HandleConfigStatusEvent(change, dummyContext{},
 				zedmanagerConfigDirname,
 				zedmanagerStatusDirname,
 				&types.AppInstanceConfig{},
@@ -216,7 +220,7 @@ func main() {
 				handleAppInstanceStatusDelete, nil)
 
 		case change := <-baseOsConfigStatusChanges:
-			go watch.HandleConfigStatusEvent(change,
+			go watch.HandleConfigStatusEvent(change, dummyContext{},
 				zedagentBaseOsConfigDirname,
 				zedagentBaseOsStatusDirname,
 				&types.BaseOsConfig{},
@@ -226,7 +230,7 @@ func main() {
 				handleBaseOsDelete, nil)
 
 		case change := <-certObjConfigStatusChanges:
-			go watch.HandleConfigStatusEvent(change,
+			go watch.HandleConfigStatusEvent(change, dummyContext{},
 				zedagentCertObjConfigDirname,
 				zedagentCertObjStatusDirname,
 				&types.CertObjConfig{},
@@ -236,34 +240,34 @@ func main() {
 				handleCertObjDelete, nil)
 
 		case change := <-baseOsDownloaderChanges:
-			go watch.HandleStatusEvent(change,
+			go watch.HandleStatusEvent(change, dummyContext{},
 				downloaderBaseOsStatusDirname,
 				&types.DownloaderStatus{},
 				handleBaseOsDownloadStatusModify,
 				handleBaseOsDownloadStatusDelete, nil)
 
 		case change := <-baseOsVerifierChanges:
-			go watch.HandleStatusEvent(change,
+			go watch.HandleStatusEvent(change, dummyContext{},
 				verifierBaseOsStatusDirname,
 				&types.VerifyImageStatus{},
 				handleBaseOsVerifierStatusModify,
 				handleBaseOsVerifierStatusDelete, nil)
 
 		case change := <-certObjDownloaderChanges:
-			go watch.HandleStatusEvent(change,
+			go watch.HandleStatusEvent(change, dummyContext{},
 				downloaderCertObjStatusDirname,
 				&types.DownloaderStatus{},
 				handleCertObjDownloadStatusModify,
 				handleCertObjDownloadStatusDelete, nil)
 
 		case change := <-deviceStatusChanges:
-			watch.HandleStatusEvent(change,
+			watch.HandleStatusEvent(change, dummyContext{},
 				DNSDirname,
 				&types.DeviceNetworkStatus{},
 				handleDNSModify, handleDNSDelete,
 				nil)
 		case change := <-domainStatusChanges:
-			watch.HandleStatusEvent(change,
+			watch.HandleStatusEvent(change, dummyContext{},
 				domainStatusDirname,
 				&types.DomainStatus{},
 				handleDomainStatusModify, handleDomainStatusDelete,
@@ -275,14 +279,14 @@ func main() {
 // signal zedmanager, to restart
 // it would take care of orchestrating
 // all other module restart
-func handleRestart(done bool) {
+func handleRestart(ctxArg interface{}, done bool) {
 	log.Printf("handleRestart(%v)\n", done)
 	if done {
 		watch.SignalRestart("zedmanager")
 	}
 }
 
-func handleVerifierRestarted(done bool) {
+func handleVerifierRestarted(ctxArg interface{}, done bool) {
 	log.Printf("handleVerifierRestarted(%v)\n", done)
 	if done {
 		verifierRestarted = true
@@ -350,70 +354,42 @@ func createConfigStatusDirs(moduleName string, objTypes []string) {
 
 var publishIteration = 0
 
-func handleAppInstanceStatusCreate(statusFilename string,
+func handleAppInstanceStatusCreate(ctxArg interface{}, statusFilename string,
 	configArg interface{}) {
-
-	var config *types.AppInstanceConfig
-
-	switch configArg.(type) {
-	default:
-		log.Fatal("Can only handle AppInstanceConfig")
-	case *types.AppInstanceConfig:
-		config = configArg.(*types.AppInstanceConfig)
-	}
+	config := configArg.(*types.AppInstanceConfig)
 	log.Printf("handleAppInstanceStatusCreate for %s\n", config.DisplayName)
 }
 
-func handleAppInstanceStatusModify(statusFilename string,
+func handleAppInstanceStatusModify(ctxArg interface{}, statusFilename string,
 	configArg interface{}, statusArg interface{}) {
-	var status *types.AppInstanceStatus
-
-	switch statusArg.(type) {
-	default:
-		log.Fatal("Can only handle AppInstanceStatus")
-	case *types.AppInstanceStatus:
-		status = statusArg.(*types.AppInstanceStatus)
-	}
+	status := statusArg.(*types.AppInstanceStatus)
 	uuidStr := status.UUIDandVersion.UUID.String()
 	PublishAppInfoToZedCloud(uuidStr, status, publishIteration)
 	publishIteration += 1
 }
 
-func handleAppInstanceStatusDelete(statusFilename string,
+func handleAppInstanceStatusDelete(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
-	var status *types.AppInstanceStatus
-	switch statusArg.(type) {
-	default:
-		log.Fatal("Can only handle AppInstanceStatus")
-	case *types.AppInstanceStatus:
-		status = statusArg.(*types.AppInstanceStatus)
-	}
+	status := statusArg.(*types.AppInstanceStatus)
 	uuidStr := status.UUIDandVersion.UUID.String()
 	PublishAppInfoToZedCloud(uuidStr, status, publishIteration)
 	publishIteration += 1
 }
 
-func handleDNSModify(statusFilename string,
+func handleDNSModify(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
-	var status *types.DeviceNetworkStatus
+	status := statusArg.(*types.DeviceNetworkStatus)
 
 	if statusFilename != "global" {
 		fmt.Printf("handleDNSModify: ignoring %s\n", statusFilename)
 		return
 	}
-	switch statusArg.(type) {
-	default:
-		log.Fatal("Can only handle DeviceNetworkStatus")
-	case *types.DeviceNetworkStatus:
-		status = statusArg.(*types.DeviceNetworkStatus)
-	}
-
 	log.Printf("handleDNSModify for %s\n", statusFilename)
 	deviceNetworkStatus = *status
 	log.Printf("handleDNSModify done for %s\n", statusFilename)
 }
 
-func handleDNSDelete(statusFilename string) {
+func handleDNSDelete(ctxArg interface{}, statusFilename string) {
 	log.Printf("handleDNSDelete for %s\n", statusFilename)
 
 	if statusFilename != "global" {
@@ -426,16 +402,9 @@ func handleDNSDelete(statusFilename string) {
 
 // base os config/status event handlers
 // base os config create event
-func handleBaseOsCreate(statusFilename string, configArg interface{}) {
-
-	var config *types.BaseOsConfig
-
-	switch configArg.(type) {
-	default:
-		log.Fatal("Can only handle BaseOsConfig")
-	case *types.BaseOsConfig:
-		config = configArg.(*types.BaseOsConfig)
-	}
+func handleBaseOsCreate(ctxArg interface{}, statusFilename string,
+	configArg interface{}) {
+	config := configArg.(*types.BaseOsConfig)
 	uuidStr := config.UUIDandVersion.UUID.String()
 
 	log.Printf("handleBaseOsCreate for %s\n", uuidStr)
@@ -445,27 +414,11 @@ func handleBaseOsCreate(statusFilename string, configArg interface{}) {
 }
 
 // base os config modify event
-func handleBaseOsModify(statusFilename string,
+func handleBaseOsModify(ctxArg interface{}, statusFilename string,
 	configArg interface{}, statusArg interface{}) {
-
-	var config *types.BaseOsConfig
-	var status *types.BaseOsStatus
-
-	switch configArg.(type) {
-	default:
-		log.Fatal("Can only handle BaseOsConfig")
-	case *types.BaseOsConfig:
-		config = configArg.(*types.BaseOsConfig)
-	}
-
+	config := configArg.(*types.BaseOsConfig)
+	status := statusArg.(*types.BaseOsStatus)
 	uuidStr := config.UUIDandVersion.UUID.String()
-
-	switch statusArg.(type) {
-	default:
-		log.Fatal("Can only handle BaseOsStatus")
-	case *types.BaseOsStatus:
-		status = statusArg.(*types.BaseOsStatus)
-	}
 
 	log.Printf("handleBaseOsModify for %s\n", status.BaseOsVersion)
 	if config.UUIDandVersion.Version == status.UUIDandVersion.Version {
@@ -484,20 +437,11 @@ func handleBaseOsModify(statusFilename string,
 }
 
 // base os config delete event
-func handleBaseOsDelete(statusFilename string,
+func handleBaseOsDelete(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
-
-	var status *types.BaseOsStatus
-
-	switch statusArg.(type) {
-	default:
-		log.Fatal("Can only handle BaseOsStatus")
-	case *types.BaseOsStatus:
-		status = statusArg.(*types.BaseOsStatus)
-	}
+	status := statusArg.(*types.BaseOsStatus)
 
 	log.Printf("handleBaseOsDelete for %s\n", status.BaseOsVersion)
-
 	removeBaseOsConfig(status.UUIDandVersion.UUID.String())
 	PublishDeviceInfoToZedCloud(baseOsStatusMap, publishIteration)
 	publishIteration += 1
@@ -505,17 +449,9 @@ func handleBaseOsDelete(statusFilename string,
 
 // certificate config/status event handlers
 // certificate config create event
-func handleCertObjCreate(statusFilename string, configArg interface{}) {
-
-	var config *types.CertObjConfig
-
-	switch configArg.(type) {
-	default:
-		log.Fatal("Can only handle CertObjConfig")
-	case *types.CertObjConfig:
-		config = configArg.(*types.CertObjConfig)
-	}
-
+func handleCertObjCreate(ctxArg interface{}, statusFilename string,
+	configArg interface{}) {
+	config := configArg.(*types.CertObjConfig)
 	uuidStr := config.UUIDandVersion.UUID.String()
 
 	log.Printf("handleCertObjCreate for %s\n", uuidStr)
@@ -523,27 +459,11 @@ func handleCertObjCreate(statusFilename string, configArg interface{}) {
 }
 
 // certificate config modify event
-func handleCertObjModify(statusFilename string,
+func handleCertObjModify(ctxArg interface{}, statusFilename string,
 	configArg interface{}, statusArg interface{}) {
-
-	var config *types.CertObjConfig
-	var status *types.CertObjStatus
-
-	switch configArg.(type) {
-	default:
-		log.Fatal("Can only handle CertObjConfig")
-	case *types.CertObjConfig:
-		config = configArg.(*types.CertObjConfig)
-	}
-
+	config := configArg.(*types.CertObjConfig)
+	status := statusArg.(*types.CertObjStatus)
 	uuidStr := config.UUIDandVersion.UUID.String()
-
-	switch statusArg.(type) {
-	default:
-		log.Fatal("Can only handle CertObjStatus")
-	case *types.CertObjStatus:
-		status = statusArg.(*types.CertObjStatus)
-	}
 
 	log.Printf("handleCertObjModify for %s\n", uuidStr)
 
@@ -561,16 +481,9 @@ func handleCertObjModify(statusFilename string,
 }
 
 // certificate config delete event
-func handleCertObjDelete(statusFilename string, statusArg interface{}) {
-
-	var status *types.CertObjStatus
-
-	switch statusArg.(type) {
-	default:
-		log.Fatal("Can only handle CertObjStatus")
-	case *types.CertObjStatus:
-		status = statusArg.(*types.CertObjStatus)
-	}
+func handleCertObjDelete(ctxArg interface{}, statusFilename string,
+	statusArg interface{}) {
+	status := statusArg.(*types.CertObjStatus)
 	uuidStr := status.UUIDandVersion.UUID.String()
 
 	log.Printf("handleCertObjDelete for %s\n", uuidStr)
@@ -579,17 +492,9 @@ func handleCertObjDelete(statusFilename string, statusArg interface{}) {
 }
 
 // base os download status change event
-func handleBaseOsDownloadStatusModify(statusFilename string,
+func handleBaseOsDownloadStatusModify(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
-
-	var status *types.DownloaderStatus
-
-	switch statusArg.(type) {
-	default:
-		log.Fatal("Can only handle DownloaderStatus")
-	case *types.DownloaderStatus:
-		status = statusArg.(*types.DownloaderStatus)
-	}
+	status := statusArg.(*types.DownloaderStatus)
 
 	log.Printf("handleBaseOsDownloadStatusModify for %s\n",
 		status.Safename)
@@ -597,7 +502,7 @@ func handleBaseOsDownloadStatusModify(statusFilename string,
 }
 
 // base os download status delete event
-func handleBaseOsDownloadStatusDelete(statusFilename string) {
+func handleBaseOsDownloadStatusDelete(ctxArg interface{}, statusFilename string) {
 
 	log.Printf("handleBaseOsDownloadStatusDelete for %s\n",
 		statusFilename)
@@ -605,16 +510,9 @@ func handleBaseOsDownloadStatusDelete(statusFilename string) {
 }
 
 // base os verification status change event
-func handleBaseOsVerifierStatusModify(statusFilename string,
+func handleBaseOsVerifierStatusModify(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
-	var status *types.VerifyImageStatus
-
-	switch statusArg.(type) {
-	default:
-		log.Fatal("Can only handle VerifyImageStatus")
-	case *types.VerifyImageStatus:
-		status = statusArg.(*types.VerifyImageStatus)
-	}
+	status := statusArg.(*types.VerifyImageStatus)
 
 	log.Printf("handleBaseOsVeriferStatusModify for %s\n",
 		status.Safename)
@@ -622,7 +520,7 @@ func handleBaseOsVerifierStatusModify(statusFilename string,
 }
 
 // base os verification status delete event
-func handleBaseOsVerifierStatusDelete(statusFilename string) {
+func handleBaseOsVerifierStatusDelete(ctxArg interface{}, statusFilename string) {
 
 	log.Printf("handleBaseOsVeriferStatusDelete for %s\n",
 		statusFilename)
@@ -630,17 +528,9 @@ func handleBaseOsVerifierStatusDelete(statusFilename string) {
 }
 
 // cerificate download status change event
-func handleCertObjDownloadStatusModify(statusFilename string,
+func handleCertObjDownloadStatusModify(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
-
-	var status *types.DownloaderStatus
-
-	switch statusArg.(type) {
-	default:
-		log.Fatal("Can only handle DownloaderStatus")
-	case *types.DownloaderStatus:
-		status = statusArg.(*types.DownloaderStatus)
-	}
+	status := statusArg.(*types.DownloaderStatus)
 
 	log.Printf("handleCertObjDownloadStatusModify for %s\n",
 		status.Safename)
@@ -648,7 +538,7 @@ func handleCertObjDownloadStatusModify(statusFilename string,
 }
 
 // cerificate download status delete event
-func handleCertObjDownloadStatusDelete(statusFilename string) {
+func handleCertObjDownloadStatusDelete(ctxArg interface{}, statusFilename string) {
 
 	log.Printf("handleCertObjDownloadStatusDelete for %s\n",
 		statusFilename)
