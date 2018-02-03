@@ -27,7 +27,6 @@ import (
 	"log"
 	"os"
 	"os/exec"
-	"strings"
 	"time"
 )
 
@@ -35,8 +34,7 @@ const (
 	ledStatusDirName = "/var/run/ledmanager/status/"
 )
 
-var count uint64
-var oldBlinkCount uint64
+var blinkCount int
 
 // Set from Makefile
 var Version = "No version specified"
@@ -56,73 +54,82 @@ func main() {
 	ledChanges := make(chan string)
 	go watch.WatchStatus(ledStatusDirName, ledChanges)
 	log.Println("called watcher...")
+
+	go TriggerBlinkOnDevice()
+
 	for {
 		select {
 		case change := <-ledChanges:
 			{
 				log.Println("change: ", change)
-				HandleLedBlink(change)
-				continue
+				watch.HandleStatusEvent(change,
+					ledStatusDirName,
+					&types.LedBlinkCounter{},
+					handleLedBlinkModify, handleLedBlinkDelete,
+					nil)
 			}
 		}
 	}
 }
-func HandleLedBlink(change string) {
 
-	ledStatusFileName := ledStatusDirName + "/ledstatus.json"
+func handleLedBlinkModify(statusFilename string,
+	statusArg interface{}) {
+	var status *types.LedBlinkCounter
 
-	operation := string(change[0])
-	fileName := string(change[2:])
-
-	if !strings.HasSuffix(fileName, ".json") {
-		log.Printf("Ignoring file <%s> operation %s\n",
-			fileName, operation)
+	if statusFilename != "ledstatus" {
+		fmt.Printf("handleDNSModify: ignoring %s\n", statusFilename)
 		return
 	}
-	if operation == "D" {
-		err := os.Remove(ledStatusFileName)
+	switch statusArg.(type) {
+	default:
+		log.Fatal("Can only handle LedBlinkCounter")
+	case *types.LedBlinkCounter:
+		status = statusArg.(*types.LedBlinkCounter)
+	}
 
-		if err != nil {
-			log.Println(err)
-			return
+	log.Printf("handleLedBlinkModify for %s\n", statusFilename)
+	blinkCount = status.BlinkCounter
+	log.Println("value of blinkCount: ",blinkCount)
+	log.Printf("handleLedBlinkModify done for %s\n", statusFilename)
+}
+
+func handleLedBlinkDelete(statusFilename string) {
+	log.Printf("handleLedBlinkDelete for %s\n", statusFilename)
+
+	if statusFilename != "ledstatus" {
+		fmt.Printf("handleLedBlinkDelete: ignoring %s\n", statusFilename)
+		return
+	}
+	// deviceNetworkStatus = types.LedBlinkCounter{}
+	UpdateLedManagerStatusFile(0)
+	log.Printf("handleDNSDelete done for %s\n", statusFilename)
+}
+
+func UpdateLedManagerStatusFile(count int) {
+	ledStatusFileName := ledStatusDirName + "/ledstatus.json"
+	blinkCounter := types.LedBlinkCounter{
+		BlinkCounter: count,
+	}
+	b, err := json.Marshal(blinkCounter)
+	if err != nil {
+		log.Fatal(err, "json Marshal blinkCount")
+	}
+	err = ioutil.WriteFile(ledStatusFileName, b, 0644)
+	if err != nil {
+		log.Fatal("err: ", err, ledStatusFileName)
+	}
+}
+
+
+func TriggerBlinkOnDevice() {
+	for{
+		for i := 0; i < blinkCount; i++ {
+			ExecuteDDCmd()
+			time.Sleep(200 * time.Millisecond)
 		}
-	}
-
-	if operation != "M" {
-		log.Fatal("Unknown operation from Watcher: ",
-			operation)
-	}
-
-	log.Println("value of count: ", count)
-	if count > 0 {
-		log.Println("value of count: ", count)
+		log.Println(" ")
 		time.Sleep(1200 * time.Millisecond)
 	}
-
-	var countBlink = types.LedBlinkCounter{}
-	cb, err := ioutil.ReadFile(ledStatusFileName)
-	if err != nil {
-		log.Printf("%s for %s\n", err, ledStatusFileName)
-	}
-	if err := json.Unmarshal(cb, &countBlink); err != nil {
-		log.Printf("%s %T file: %s\n",
-			err, countBlink, ledStatusFileName)
-	}
-	blinkCount := countBlink.BlinkCounter
-
-	if oldBlinkCount == uint64(blinkCount) {
-		log.Println("same event: ", blinkCount, oldBlinkCount)
-		return
-	}
-	log.Println("blinkCount: ", blinkCount)
-
-	for i := 0; i < blinkCount; i++ {
-		ExecuteDDCmd()
-		time.Sleep(200 * time.Millisecond)
-	}
-
-	oldBlinkCount = uint64(countBlink.BlinkCounter)
-	count++
 }
 
 func ExecuteDDCmd() {
@@ -136,3 +143,4 @@ func ExecuteDDCmd() {
 	ddInfo := fmt.Sprintf("%s", stdout)
 	log.Println("ddinfo: ", ddInfo)
 }
+
