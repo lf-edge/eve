@@ -91,17 +91,9 @@ func writeDownloaderConfig(config types.DownloaderConfig,
 // Key is Safename string.
 var downloaderStatus map[string]types.DownloaderStatus
 
-func handleDownloaderStatusModify(statusFilename string,
+func handleDownloaderStatusModify(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
-	var status *types.DownloaderStatus
-
-	switch statusArg.(type) {
-	default:
-		log.Fatal("Can only handle DownloaderStatus")
-	case *types.DownloaderStatus:
-		status = statusArg.(*types.DownloaderStatus)
-	}
-
+	status := statusArg.(*types.DownloaderStatus)
 	log.Printf("handleDownloaderStatusModify for %s\n",
 		status.Safename)
 
@@ -144,7 +136,7 @@ func LookupDownloaderStatus(safename string) (types.DownloaderStatus, error) {
 	}
 }
 
-func handleDownloaderStatusDelete(statusFilename string) {
+func handleDownloaderStatusDelete(ctxArg interface{}, statusFilename string) {
 	log.Printf("handleDownloaderStatusDelete for %s\n",
 		statusFilename)
 

@@ -38,6 +38,10 @@ var caCertPool *x509.CertPool
 // Set from Makefile
 var Version = "No version specified"
 
+// Dummy since we don't have anything to pass
+type dummyContext struct {
+}
+
 func main() {
 	log.SetOutput(os.Stdout)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
@@ -109,13 +113,11 @@ func main() {
 		}
 	}
 
-	// XXX this is common code except for the types used with json
-	// and uuid/iid check
 	fileChanges := make(chan string)
 	go watch.WatchConfigStatus(inputDirname, outputDirname, fileChanges)
 	for {
 		change := <-fileChanges
-		watch.HandleConfigStatusEvent(change,
+		watch.HandleConfigStatusEvent(change, dummyContext{},
 			inputDirname, outputDirname,
 			&types.EIDStatus{},
 			&types.EIDStatus{},
@@ -248,15 +250,9 @@ func registerEID(register *types.EIDRegister) bool {
 	return myPost(client, "/rest/eid-register", b)
 }
 
-func handleCreate(outputFilename string, inputArg interface{}) {
-	var input *types.EIDStatus
-
-	switch inputArg.(type) {
-	default:
-		log.Fatal("Can only handle EIDStatus")
-	case *types.EIDStatus:
-		input = inputArg.(*types.EIDStatus)
-	}
+func handleCreate(ctxArg interface{}, outputFilename string,
+	inputArg interface{}) {
+	input := inputArg.(*types.EIDStatus)
 	log.Printf("handleCreate(%v) for %s\n",
 		input.UUIDandVersion, input.DisplayName)
 
@@ -302,23 +298,10 @@ func handleCreate(outputFilename string, inputArg interface{}) {
 // Need to compare what might have changed. If any content change
 // then we need to reboot. Thus version by itself can change but nothing
 // else. Such a version change would be e.g. due to an ACL change.
-func handleModify(outputFilename string, inputArg interface{},
+func handleModify(ctxArg interface{}, outputFilename string, inputArg interface{},
 	outputArg interface{}) {
-	var input *types.EIDStatus
-	var output *types.EIDStatus
-
-	switch inputArg.(type) {
-	default:
-		log.Fatal("Can only handle EIDStatus")
-	case *types.EIDStatus:
-		input = inputArg.(*types.EIDStatus)
-	}
-	switch outputArg.(type) {
-	default:
-		log.Fatal("Can only handle EIDStatus")
-	case *types.EIDStatus:
-		output = outputArg.(*types.EIDStatus)
-	}
+	input := inputArg.(*types.EIDStatus)
+	output := outputArg.(*types.EIDStatus)
 	log.Printf("handleModify(%v) for %s\n",
 		input.UUIDandVersion, input.DisplayName)
 
@@ -341,8 +324,8 @@ func handleModify(outputFilename string, inputArg interface{},
 	if output.CreateTime != input.CreateTime {
 		log.Printf("handleModify(%v) changed CreateTime for %s\n",
 			input.UUIDandVersion, input.DisplayName)
-		handleDelete(outputFilename, output)
-		handleCreate(outputFilename, input)
+		handleDelete(ctxArg, outputFilename, output)
+		handleCreate(ctxArg, outputFilename, input)
 	}
 	output.PendingModify = false
 	output.UUIDandVersion = input.UUIDandVersion
@@ -350,15 +333,9 @@ func handleModify(outputFilename string, inputArg interface{},
 	log.Printf("handleModify done for %s\n", input.DisplayName)
 }
 
-func handleDelete(outputFilename string, outputArg interface{}) {
-	var output *types.EIDStatus
-
-	switch outputArg.(type) {
-	default:
-		log.Fatal("Can only handle EIDStatus")
-	case *types.EIDStatus:
-		output = outputArg.(*types.EIDStatus)
-	}
+func handleDelete(ctxArg interface{}, outputFilename string,
+	outputArg interface{}) {
+	output := outputArg.(*types.EIDStatus)
 	log.Printf("handleDelete(%v) for %s\n",
 		output.UUIDandVersion, output.DisplayName)
 

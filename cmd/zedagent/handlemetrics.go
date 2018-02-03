@@ -121,17 +121,9 @@ var domainStatus map[string]types.DomainStatus
 // Key is DomainName; value is arrive of interfacenames
 var appInterfaceAndNameList map[string][]string
 
-func handleDomainStatusModify(statusFilename string,
+func handleDomainStatusModify(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
-	var status *types.DomainStatus
-
-	switch statusArg.(type) {
-	default:
-		log.Fatal("Can only handle DomainStatus")
-	case *types.DomainStatus:
-		status = statusArg.(*types.DomainStatus)
-	}
-
+	status := statusArg.(*types.DomainStatus)
 	key := status.UUIDandVersion.UUID.String()
 	log.Printf("handleDomainStatusModify for %s\n", key)
 	// Ignore if any Pending* flag is set
@@ -158,7 +150,7 @@ func handleDomainStatusModify(statusFilename string,
 	log.Printf("handleDomainStatusModify done for %s\n", key)
 }
 
-func handleDomainStatusDelete(statusFilename string) {
+func handleDomainStatusDelete(ctxArg interface{}, statusFilename string) {
 	log.Printf("handleDomainStatusDelete for %s\n", statusFilename)
 	key := statusFilename
 	if m, ok := domainStatus[key]; !ok {

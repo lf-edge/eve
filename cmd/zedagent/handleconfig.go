@@ -33,7 +33,7 @@ var statusApi string = "api/v1/edgedevice/info"
 var metricsApi string = "api/v1/edgedevice/metrics"
 
 // XXX remove global variables
-// XXX shouldn't we know our own deviceId?
+// XXX shouldn't we know our own deviceId? Get from some global struct?
 var deviceId string
 
 // These URLs are effectively constants; depends on the server name
@@ -41,12 +41,13 @@ var configUrl string
 var metricsUrl string
 var statusUrl string
 
-var serverFilename string = "/opt/zededa/etc/server"
-
-var dirName string = "/opt/zededa/etc"
-var deviceCertName string = dirName + "/device.cert.pem"
-var deviceKeyName string = dirName + "/device.key.pem"
-var rootCertName string = dirName + "/root-certificate.pem"
+const (
+	serverFilename string = "/opt/zededa/etc/server"
+	dirName string = "/opt/zededa/etc"
+	deviceCertName string = dirName + "/device.cert.pem"
+	deviceKeyName string = dirName + "/device.key.pem"
+	rootCertName string = dirName + "/root-certificate.pem"
+)
 
 // tlsConfig is initialized once i.e. effectively a constant
 var tlsConfig *tls.Config

@@ -150,17 +150,9 @@ func writeAppNetworkConfig(config types.AppNetworkConfig,
 // XXX change from string to UUID?
 var appNetworkStatus map[string]types.AppNetworkStatus
 
-func handleAppNetworkStatusModify(statusFilename string,
+func handleAppNetworkStatusModify(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
-	var status *types.AppNetworkStatus
-
-	switch statusArg.(type) {
-	default:
-		log.Fatal("Can only handle AppNetworkStatus")
-	case *types.AppNetworkStatus:
-		status = statusArg.(*types.AppNetworkStatus)
-	}
-
+	status := statusArg.(*types.AppNetworkStatus)
 	key := status.UUIDandVersion.UUID.String()
 	log.Printf("handleAppNetworkStatusModify for %s\n", key)
 	// Ignore if any Pending* flag is set
@@ -193,7 +185,7 @@ func LookupAppNetworkStatus(uuidStr string) (types.AppNetworkStatus, error) {
 	}
 }
 
-func handleAppNetworkStatusDelete(statusFilename string) {
+func handleAppNetworkStatusDelete(ctxArg interface{}, statusFilename string) {
 	log.Printf("handleAppNetworkStatusDelete for %s\n",
 		statusFilename)
 

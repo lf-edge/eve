@@ -67,6 +67,10 @@ const (
 // Set from Makefile
 var Version = "No version specified"
 
+// Any state used by handlers goes here
+type verifierContext struct {
+}
+
 func main() {
 	log.SetOutput(os.Stdout)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
@@ -86,6 +90,9 @@ func main() {
 	// XXX should we write this in each directory?
 	watch.SignalRestarted("verifier")
 
+	// Any state needed by handler functions
+	ctx := verifierContext{}
+
 	appImgChanges := make(chan string)
 	baseOsChanges := make(chan string)
 
@@ -99,7 +106,7 @@ func main() {
 		select {
 		case change := <-appImgChanges:
 			{
-				watch.HandleConfigStatusEvent(change,
+				watch.HandleConfigStatusEvent(change, &ctx,
 					appImgConfigDirname,
 					appImgStatusDirname,
 					&types.VerifyImageConfig{},
@@ -110,7 +117,7 @@ func main() {
 			}
 		case change := <-baseOsChanges:
 			{
-				watch.HandleConfigStatusEvent(change,
+				watch.HandleConfigStatusEvent(change, &ctx,
 					baseOsConfigDirname,
 					baseOsStatusDirname,
 					&types.VerifyImageConfig{},
@@ -406,37 +413,27 @@ func writeVerifyObjectStatus(status *types.VerifyImageStatus,
 	}
 }
 
-func handleAppImgObjCreate(statusFilename string, configArg interface{}) {
-	var config *types.VerifyImageConfig
-
-	switch configArg.(type) {
-	default:
-		log.Fatal("Can only handle VerifyImageConfig")
-	case *types.VerifyImageConfig:
-		config = configArg.(*types.VerifyImageConfig)
-	}
+func handleAppImgObjCreate(ctxArg interface{}, statusFilename string,
+	configArg interface{}) {
+	config := configArg.(*types.VerifyImageConfig)
+	ctx := ctxArg.(*verifierContext)
 
 	log.Printf("handleCreate(%v) for %s\n",
 		config.Safename, config.DownloadURL)
-	handleCreate(appImgObj, statusFilename, config)
+	handleCreate(ctx, appImgObj, statusFilename, config)
 }
 
-func handleBaseOsObjCreate(statusFilename string, configArg interface{}) {
-	var config *types.VerifyImageConfig
-
-	switch configArg.(type) {
-	default:
-		log.Fatal("Can only handle VerifyImageConfig")
-	case *types.VerifyImageConfig:
-		config = configArg.(*types.VerifyImageConfig)
-	}
+func handleBaseOsObjCreate(ctxArg interface{}, statusFilename string,
+	configArg interface{}) {
+	config := configArg.(*types.VerifyImageConfig)
+	ctx := ctxArg.(*verifierContext)
 
 	log.Printf("handleCreate(%v) for %s\n",
 		config.Safename, config.DownloadURL)
-	handleCreate(baseOsObj, statusFilename, config)
+	handleCreate(ctx, baseOsObj, statusFilename, config)
 }
 
-func handleCreate(objType string, statusFilename string,
+func handleCreate(ctx *verifierContext, objType string, statusFilename string,
 	config *types.VerifyImageConfig) {
 
 	// Start by marking with PendingAdd
@@ -772,49 +769,23 @@ func markObjectAsVerified(objType string, config *types.VerifyImageConfig,
 	log.Printf("handleCreate done for %s\n", config.DownloadURL)
 }
 
-func handleAppImgObjModify(statusFilename string, configArg interface{},
-	statusArg interface{}) {
-	var config *types.VerifyImageConfig
-	var status *types.VerifyImageStatus
-
-	switch configArg.(type) {
-	default:
-		log.Fatal("Can only handle VerifyImageConfig")
-	case *types.VerifyImageConfig:
-		config = configArg.(*types.VerifyImageConfig)
-	}
-
-	switch statusArg.(type) {
-	default:
-		log.Fatal("Can only handle VerifyImageStatus")
-	case *types.VerifyImageStatus:
-		status = statusArg.(*types.VerifyImageStatus)
-	}
-	handleModify(appImgObj, statusFilename, config, status)
+func handleAppImgObjModify(ctxArg interface{}, statusFilename string,
+	configArg interface{}, statusArg interface{}) {
+	config := configArg.(*types.VerifyImageConfig)
+	status := statusArg.(*types.VerifyImageStatus)
+	ctx := ctxArg.(*verifierContext)
+	handleModify(ctx, appImgObj, statusFilename, config, status)
 }
 
-func handleBaseOsObjModify(statusFilename string, configArg interface{},
-	statusArg interface{}) {
-	var config *types.VerifyImageConfig
-	var status *types.VerifyImageStatus
-
-	switch configArg.(type) {
-	default:
-		log.Fatal("Can only handle VerifyImageConfig")
-	case *types.VerifyImageConfig:
-		config = configArg.(*types.VerifyImageConfig)
-	}
-
-	switch statusArg.(type) {
-	default:
-		log.Fatal("Can only handle VerifyImageStatus")
-	case *types.VerifyImageStatus:
-		status = statusArg.(*types.VerifyImageStatus)
-	}
-	handleModify(baseOsObj, statusFilename, config, status)
+func handleBaseOsObjModify(ctxArg interface{}, statusFilename string,
+	configArg interface{}, statusArg interface{}) {
+	config := configArg.(*types.VerifyImageConfig)
+	status := statusArg.(*types.VerifyImageStatus)
+	ctx := ctxArg.(*verifierContext)
+	handleModify(ctx, baseOsObj, statusFilename, config, status)
 }
 
-func handleModify(objType string, statusFilename string,
+func handleModify(ctx *verifierContext, objType string, statusFilename string,
 	config *types.VerifyImageConfig,
 	status *types.VerifyImageStatus) {
 	// Note no comparison on version
@@ -843,42 +814,32 @@ func handleModify(objType string, statusFilename string,
 
 	status.PendingModify = true
 	writeVerifyObjectStatus(status, statusFilename)
-	handleDelete(objType, statusFilename, status)
-	handleCreate(objType, statusFilename, config)
+	handleDelete(ctx, objType, statusFilename, status)
+	handleCreate(ctx, objType, statusFilename, config)
 	status.PendingModify = false
 	writeVerifyObjectStatus(status, statusFilename)
 	log.Printf("handleModify done for %s\n", config.DownloadURL)
 }
 
-func handleAppImgObjDelete(statusFilename string, statusArg interface{}) {
-	var status *types.VerifyImageStatus
-
-	switch statusArg.(type) {
-	default:
-		log.Fatal("Can only handle VerifyImageStatus")
-	case *types.VerifyImageStatus:
-		status = statusArg.(*types.VerifyImageStatus)
-	}
+func handleAppImgObjDelete(ctxArg interface{}, statusFilename string,
+	statusArg interface{}) {
+	status := statusArg.(*types.VerifyImageStatus)
+	ctx := ctxArg.(*verifierContext)
 
 	log.Printf("handleDelete(%v)\n", status.Safename)
-	handleDelete(appImgObj, statusFilename, status)
+	handleDelete(ctx, appImgObj, statusFilename, status)
 }
 
-func handleBaseOsObjDelete(statusFilename string, statusArg interface{}) {
-	var status *types.VerifyImageStatus
-
-	switch statusArg.(type) {
-	default:
-		log.Fatal("Can only handle VerifyImageStatus")
-	case *types.VerifyImageStatus:
-		status = statusArg.(*types.VerifyImageStatus)
-	}
+func handleBaseOsObjDelete(ctxArg interface{}, statusFilename string,
+	statusArg interface{}) {
+	status := statusArg.(*types.VerifyImageStatus)
+	ctx := ctxArg.(*verifierContext)
 
 	log.Printf("handleDelete(%v)\n", status.Safename)
-	handleDelete(baseOsObj, statusFilename, status)
+	handleDelete(ctx, baseOsObj, statusFilename, status)
 }
 
-func handleDelete(objType string, statusFilename string,
+func handleDelete(ctx *verifierContext, objType string, statusFilename string,
 	status *types.VerifyImageStatus) {
 
 	doDelete(objType, status)
