@@ -122,8 +122,9 @@ func UpdateLedManagerStatusFile(count int) {
 
 
 func TriggerBlinkOnDevice() {
+	counter := blinkCount
 	for{
-		for i := 0; i < blinkCount; i++ {
+		for i := 0; i < counter; i++ {
 			ExecuteDDCmd()
 			time.Sleep(200 * time.Millisecond)
 		}
