@@ -72,37 +72,36 @@ func main() {
 	}
 }
 
-func handleLedBlinkModify(statusFilename string,
-	statusArg interface{}) {
-	var status *types.LedBlinkCounter
+func handleLedBlinkModify(configFilename string,
+	configArg interface{}) {
+	var config *types.LedBlinkCounter
 
-	if statusFilename != "ledstatus" {
-		fmt.Printf("handleDNSModify: ignoring %s\n", statusFilename)
+	if configFilename != "ledconfig" {
+		fmt.Printf("handleLedBlinkModify: ignoring %s\n", configFilename)
 		return
 	}
-	switch statusArg.(type) {
+	switch configArg.(type) {
 	default:
 		log.Fatal("Can only handle LedBlinkCounter")
 	case *types.LedBlinkCounter:
-		status = statusArg.(*types.LedBlinkCounter)
+		config = configArg.(*types.LedBlinkCounter)
 	}
 
-	log.Printf("handleLedBlinkModify for %s\n", statusFilename)
-	blinkCount = status.BlinkCounter
+	log.Printf("handleLedBlinkModify for %s\n", configFilename)
+	blinkCount = config.BlinkCounter
 	log.Println("value of blinkCount: ", blinkCount)
-	log.Printf("handleLedBlinkModify done for %s\n", statusFilename)
+	log.Printf("handleLedBlinkModify done for %s\n", configFilename)
 }
 
-func handleLedBlinkDelete(statusFilename string) {
-	log.Printf("handleLedBlinkDelete for %s\n", statusFilename)
+func handleLedBlinkDelete(configFilename string) {
+	log.Printf("handleLedBlinkDelete for %s\n", configFilename)
 
-	if statusFilename != "ledstatus" {
-		fmt.Printf("handleLedBlinkDelete: ignoring %s\n", statusFilename)
+	if configFilename != "ledconfig" {
+		fmt.Printf("handleLedBlinkDelete: ignoring %s\n", configFilename)
 		return
 	}
-	// deviceNetworkStatus = types.LedBlinkCounter{}
 	UpdateLedManagerConfigFile(0)
-	log.Printf("handleDNSDelete done for %s\n", statusFilename)
+	log.Printf("handleDNSDelete done for %s\n", configFilename)
 }
 
 func UpdateLedManagerConfigFile(count int) {
@@ -121,13 +120,14 @@ func UpdateLedManagerConfigFile(count int) {
 }
 
 func TriggerBlinkOnDevice() {
-	counter := blinkCount
+	var counter int
 	for {
+		counter = blinkCount
+		log.Println("Number of times LED will blink: ", counter)
 		for i := 0; i < counter; i++ {
 			ExecuteDDCmd()
 			time.Sleep(200 * time.Millisecond)
 		}
-		log.Println(" ")
 		time.Sleep(1200 * time.Millisecond)
 	}
 }
