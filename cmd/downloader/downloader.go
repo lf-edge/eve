@@ -21,8 +21,7 @@ import (
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
 	"github.com/zededa/go-provision/wrap"
-	//"github.com/zededa/shared/libs/zedUpload"
-	"zc/libs/zedUpload"
+	"github.com/zededa/shared/libs/zedUpload"
 	"io/ioutil"
 	"log"
 	"net"
@@ -777,7 +776,7 @@ func doS3(syncOp zedUpload.SyncOpType,
 		fmt.Printf("NewSyncerDest failed: %s\n", err)
 		return err
 	}
-	//dEndPoint.WithSrcIpSelection(ipSrc)
+	dEndPoint.WithSrcIpSelection(ipSrc)
 	var respChan = make(chan *zedUpload.DronaRequest)
 
 	log.Printf("syncOp for <%s>/<%s>\n", dpath, filename)
