@@ -34,6 +34,10 @@ const (
 	ledConfigDirName = "/var/tmp/ledmanager/config"
 )
 
+// Dummy since we don't have anything to pass to LED
+type dummyContext struct {
+}
+
 var blinkCount int
 
 // Set from Makefile
@@ -62,7 +66,7 @@ func main() {
 		case change := <-ledChanges:
 			{
 				log.Println("change: ", change)
-				watch.HandleStatusEvent(change,
+				watch.HandleStatusEvent(change, dummyContext{},
 					ledConfigDirName,
 					&types.LedBlinkCounter{},
 					handleLedBlinkModify, handleLedBlinkDelete,
@@ -72,7 +76,7 @@ func main() {
 	}
 }
 
-func handleLedBlinkModify(configFilename string,
+func handleLedBlinkModify(ctxArg interface{}, configFilename string,
 	configArg interface{}) {
 	var config *types.LedBlinkCounter
 
@@ -93,7 +97,7 @@ func handleLedBlinkModify(configFilename string,
 	log.Printf("handleLedBlinkModify done for %s\n", configFilename)
 }
 
-func handleLedBlinkDelete(configFilename string) {
+func handleLedBlinkDelete(ctxArg interface{}, configFilename string) {
 	log.Printf("handleLedBlinkDelete for %s\n", configFilename)
 
 	if configFilename != "ledconfig" {

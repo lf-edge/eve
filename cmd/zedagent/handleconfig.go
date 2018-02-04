@@ -138,7 +138,7 @@ func getLatestConfig(configUrl string, iteration int) {
 		log.Printf("getLatestConfig: %s\n", err)
 		return
 	}
-	UpdateLedManagerConfigFile(2)
+	UpdateLedManagerConfigFile(2) //XXX FIXME Just for testing...
 	addrCount := types.CountLocalAddrAny(deviceNetworkStatus, intf)
 	// XXX makes logfile too long; debug flag?
 	log.Printf("Connecting to %s using intf %s interation %d #sources %d\n",
