@@ -23,6 +23,9 @@ import (
 
 // Keeping status in /var/run to be clean after a crash/reboot
 const (
+	appImgObj  = "appImg.obj"
+	moduleName = "zedmanager"
+
 	baseDirname              = "/var/tmp/zedmanager"
 	runDirname               = "/var/run/zedmanager"
 	zedmanagerConfigDirname  = baseDirname + "/config"
@@ -32,11 +35,24 @@ const (
 	domainmgrConfigDirname   = "/var/tmp/domainmgr/config"
 	zedrouterConfigDirname   = "/var/tmp/zedrouter/config"
 	identitymgrConfigDirname = "/var/tmp/identitymgr/config"
-	DNSDirname		 = "/var/run/zedrouter/DeviceNetworkStatus"
+	DNSDirname               = "/var/run/zedrouter/DeviceNetworkStatus"
+
+	downloaderAppImgObjConfigDirname = "/var/tmp/downloader/" + appImgObj + "/config"
+	verifierAppImgObjConfigDirname   = "/var/tmp/verifier/" + appImgObj + "/config"
 )
 
 // Set from Makefile
 var Version = "No version specified"
+
+// Dummy since we don't have anything to pass to DNS
+type dummyContext struct {
+}
+
+// State used by handlers
+type zedmanagerContext struct {
+	configRestarted   bool
+	verifierRestarted bool
+}
 
 var deviceNetworkStatus types.DeviceNetworkStatus
 
@@ -64,6 +80,9 @@ func main() {
 	zedrouterStatusDirname := "/var/run/zedrouter/status"
 	identitymgrStatusDirname := "/var/run/identitymgr/status"
 
+	downloaderAppImgObjStatusDirname := "/var/run/downloader/" + appImgObj + "/status"
+	verifierAppImgObjStatusDirname := "/var/run/verifier/" + appImgObj + "/status"
+
 	dirs := []string{
 		zedmanagerConfigDirname,
 		zedmanagerStatusDirname,
@@ -71,11 +90,15 @@ func main() {
 		zedrouterConfigDirname,
 		domainmgrConfigDirname,
 		downloaderConfigDirname,
+		downloaderAppImgObjConfigDirname,
 		verifierConfigDirname,
+		verifierAppImgObjConfigDirname,
 		identitymgrStatusDirname,
 		zedrouterStatusDirname,
 		domainmgrStatusDirname,
+		downloaderAppImgObjStatusDirname,
 		downloaderStatusDirname,
+		verifierAppImgObjStatusDirname,
 		verifierStatusDirname,
 	}
 
@@ -90,10 +113,15 @@ func main() {
 	// Tell ourselves to go ahead
 	watch.SignalRestart("zedmanager")
 
+	// Any state needed by handler functions
+	ctx := zedmanagerContext{}
+
+	verifierRestartChanges := make(chan string)
+	go watch.WatchStatus(verifierStatusDirname, verifierRestartChanges)
 	verifierChanges := make(chan string)
-	go watch.WatchStatus(verifierStatusDirname, verifierChanges)
+	go watch.WatchStatus(verifierAppImgObjStatusDirname, verifierChanges)
 	downloaderChanges := make(chan string)
-	go watch.WatchStatus(downloaderStatusDirname, downloaderChanges)
+	go watch.WatchStatus(downloaderAppImgObjStatusDirname, downloaderChanges)
 	identitymgrChanges := make(chan string)
 	go watch.WatchStatus(identitymgrStatusDirname, identitymgrChanges)
 	zedrouterChanges := make(chan string)
@@ -112,20 +140,33 @@ func main() {
 	var zedrouterRestartedFn watch.StatusRestartHandler = handleZedrouterRestarted
 
 	// First we process the verifierStatus to avoid downloading
-	// an image we already have in place
+	// an image we already have in place.
+	// Note that the "restarted" file appears in /var/run/verifier/status
+	// while the individual status appears in /var/run/verifier/appImg.obj/status
+	// XXX should we fix that in verifier?
 	log.Printf("Handling initial verifier Status\n")
 	done := false
 	for !done {
 		select {
 		case change := <-verifierChanges:
 			{
-				watch.HandleStatusEvent(change,
+				watch.HandleStatusEvent(change, &ctx,
+					verifierAppImgObjStatusDirname,
+					&types.VerifyImageStatus{},
+					handleVerifyImageStatusModify,
+					handleVerifyImageStatusDelete,
+					&verifierRestartedFn)
+				continue
+			}
+		case change := <-verifierRestartChanges:
+			{
+				watch.HandleStatusEvent(change, &ctx,
 					verifierStatusDirname,
 					&types.VerifyImageStatus{},
 					handleVerifyImageStatusModify,
 					handleVerifyImageStatusDelete,
 					&verifierRestartedFn)
-				if verifierRestarted {
+				if ctx.verifierRestarted {
 					log.Printf("Verifier reported restarted\n")
 					done = true
 					break
@@ -137,10 +178,20 @@ func main() {
 	log.Printf("Handling all inputs\n")
 	for {
 		select {
+		case change := <-verifierRestartChanges:
+			{
+				watch.HandleStatusEvent(change, &ctx,
+					verifierStatusDirname,
+					&types.VerifyImageStatus{},
+					handleVerifyImageStatusModify,
+					handleVerifyImageStatusDelete,
+					&verifierRestartedFn)
+				continue
+			}
 		case change := <-downloaderChanges:
 			{
-				watch.HandleStatusEvent(change,
-					downloaderStatusDirname,
+				watch.HandleStatusEvent(change, &ctx,
+					downloaderAppImgObjStatusDirname,
 					&types.DownloaderStatus{},
 					handleDownloaderStatusModify,
 					handleDownloaderStatusDelete, nil)
@@ -148,8 +199,8 @@ func main() {
 			}
 		case change := <-verifierChanges:
 			{
-				watch.HandleStatusEvent(change,
-					verifierStatusDirname,
+				watch.HandleStatusEvent(change, &ctx,
+					verifierAppImgObjStatusDirname,
 					&types.VerifyImageStatus{},
 					handleVerifyImageStatusModify,
 					handleVerifyImageStatusDelete,
@@ -158,7 +209,7 @@ func main() {
 			}
 		case change := <-identitymgrChanges:
 			{
-				watch.HandleStatusEvent(change,
+				watch.HandleStatusEvent(change, &ctx,
 					identitymgrStatusDirname,
 					&types.EIDStatus{},
 					handleEIDStatusModify,
@@ -168,7 +219,7 @@ func main() {
 			}
 		case change := <-zedrouterChanges:
 			{
-				watch.HandleStatusEvent(change,
+				watch.HandleStatusEvent(change, &ctx,
 					zedrouterStatusDirname,
 					&types.AppNetworkStatus{},
 					handleAppNetworkStatusModify,
@@ -178,7 +229,7 @@ func main() {
 			}
 		case change := <-domainmgrChanges:
 			{
-				watch.HandleStatusEvent(change,
+				watch.HandleStatusEvent(change, &ctx,
 					domainmgrStatusDirname,
 					&types.DomainStatus{},
 					handleDomainStatusModify,
@@ -187,7 +238,7 @@ func main() {
 			}
 		case change := <-configChanges:
 			{
-				watch.HandleConfigStatusEvent(change,
+				watch.HandleConfigStatusEvent(change, &ctx,
 					zedmanagerConfigDirname,
 					zedmanagerStatusDirname,
 					&types.AppInstanceConfig{},
@@ -196,9 +247,9 @@ func main() {
 					handleDelete, &configRestartFn)
 				continue
 			}
-		case change := <- deviceStatusChanges:
+		case change := <-deviceStatusChanges:
 			{
-				watch.HandleStatusEvent(change,
+				watch.HandleStatusEvent(change, dummyContext{},
 					DNSDirname,
 					&types.DeviceNetworkStatus{},
 					handleDNSModify, handleDNSDelete,
@@ -208,42 +259,43 @@ func main() {
 	}
 }
 
-var configRestarted = false
-var verifierRestarted = false
-
 // Propagate a seqence of restart//restarted from the zedmanager config
 // and verifier status to identitymgr, then from identitymgr to zedrouter,
 // and finally from zedrouter to domainmgr.
 // This removes the need for extra downloads/verifications and extra copying
 // of the rootfs in domainmgr.
-func handleConfigRestart(done bool) {
+func handleConfigRestart(ctxArg interface{}, done bool) {
+	ctx := ctxArg.(*zedmanagerContext)
+
 	log.Printf("handleConfigRestart(%v)\n", done)
 	if done {
-		configRestarted = true
-		if verifierRestarted {
+		ctx.configRestarted = true
+		if ctx.verifierRestarted {
 			watch.SignalRestart("identitymgr")
 		}
 	}
 }
 
-func handleVerifierRestarted(done bool) {
+func handleVerifierRestarted(ctxArg interface{}, done bool) {
+	ctx := ctxArg.(*zedmanagerContext)
+
 	log.Printf("handleVerifierRestarted(%v)\n", done)
 	if done {
-		verifierRestarted = true
-		if configRestarted {
+		ctx.verifierRestarted = true
+		if ctx.configRestarted {
 			watch.SignalRestart("identitymgr")
 		}
 	}
 }
 
-func handleIdentitymgrRestarted(done bool) {
+func handleIdentitymgrRestarted(ctxArg interface{}, done bool) {
 	log.Printf("handleIdentitymgrRestarted(%v)\n", done)
 	if done {
 		watch.SignalRestart("zedrouter")
 	}
 }
 
-func handleZedrouterRestarted(done bool) {
+func handleZedrouterRestarted(ctxArg interface{}, done bool) {
 	log.Printf("handleZedrouterRestarted(%v)\n", done)
 	if done {
 		watch.SignalRestart("domainmgr")
@@ -278,15 +330,10 @@ func writeAppInstanceStatus(status *types.AppInstanceStatus,
 	}
 }
 
-func handleCreate(statusFilename string, configArg interface{}) {
-	var config *types.AppInstanceConfig
+func handleCreate(ctxArg interface{}, statusFilename string,
+	configArg interface{}) {
+	config := configArg.(*types.AppInstanceConfig)
 
-	switch configArg.(type) {
-	default:
-		log.Fatal("Can only handle AppInstanceConfig")
-	case *types.AppInstanceConfig:
-		config = configArg.(*types.AppInstanceConfig)
-	}
 	log.Printf("handleCreate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
@@ -297,23 +344,10 @@ func handleCreate(statusFilename string, configArg interface{}) {
 	log.Printf("handleCreate done for %s\n", config.DisplayName)
 }
 
-func handleModify(statusFilename string, configArg interface{},
-	statusArg interface{}) {
-	var config *types.AppInstanceConfig
-	var status *types.AppInstanceStatus
-
-	switch configArg.(type) {
-	default:
-		log.Fatal("Can only handle AppInstanceConfig")
-	case *types.AppInstanceConfig:
-		config = configArg.(*types.AppInstanceConfig)
-	}
-	switch statusArg.(type) {
-	default:
-		log.Fatal("Can only handle AppInstanceStatus")
-	case *types.AppInstanceStatus:
-		status = statusArg.(*types.AppInstanceStatus)
-	}
+func handleModify(ctxArg interface{}, statusFilename string,
+	configArg interface{}, statusArg interface{}) {
+	config := configArg.(*types.AppInstanceConfig)
+	status := statusArg.(*types.AppInstanceStatus)
 	log.Printf("handleModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
@@ -332,15 +366,9 @@ func handleModify(statusFilename string, configArg interface{},
 	log.Printf("handleModify done for %s\n", config.DisplayName)
 }
 
-func handleDelete(statusFilename string, statusArg interface{}) {
-	var status *types.AppInstanceStatus
-
-	switch statusArg.(type) {
-	default:
-		log.Fatal("Can only handle AppInstanceStatus")
-	case *types.AppInstanceStatus:
-		status = statusArg.(*types.AppInstanceStatus)
-	}
+func handleDelete(ctxArg interface{}, statusFilename string,
+	statusArg interface{}) {
+	status := statusArg.(*types.AppInstanceStatus)
 	log.Printf("handleDelete(%v) for %s\n",
 		status.UUIDandVersion, status.DisplayName)
 
@@ -350,27 +378,20 @@ func handleDelete(statusFilename string, statusArg interface{}) {
 	log.Printf("handleDelete done for %s\n", status.DisplayName)
 }
 
-func handleDNSModify(statusFilename string,
+func handleDNSModify(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
-	var status *types.DeviceNetworkStatus
+	status := statusArg.(*types.DeviceNetworkStatus)
 
 	if statusFilename != "global" {
 		fmt.Printf("handleDNSModify: ignoring %s\n", statusFilename)
 		return
 	}
-	switch statusArg.(type) {
-	default:
-		log.Fatal("Can only handle DeviceNetworkStatus")
-	case *types.DeviceNetworkStatus:
-		status = statusArg.(*types.DeviceNetworkStatus)
-	}
-
 	log.Printf("handleDNSModify for %s\n", statusFilename)
 	deviceNetworkStatus = *status
 	log.Printf("handleDNSModify done for %s\n", statusFilename)
 }
 
-func handleDNSDelete(statusFilename string) {
+func handleDNSDelete(ctxArg interface{}, statusFilename string) {
 	log.Printf("handleDNSDelete for %s\n", statusFilename)
 
 	if statusFilename != "global" {

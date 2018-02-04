@@ -28,6 +28,7 @@ import (
 
 // Keeping status in /var/run to be clean after a crash/reboot
 const (
+	agentName     = "zedrouter"
 	runDirname    = "/var/run/zedrouter"
 	baseDirname   = "/var/tmp/zedrouter"
 	configDirname = baseDirname + "/config"
@@ -38,6 +39,13 @@ const (
 
 // Set from Makefile
 var Version = "No version specified"
+
+type zedrouterContext struct {
+}
+
+// Dummy since we don't have anything to pass
+type dummyContext struct {
+}
 
 func main() {
 	log.SetOutput(os.Stdout)
@@ -121,7 +129,7 @@ func main() {
 		deviceNetworkConfig.Uplink, deviceNetworkConfig.FreeUplinks,
 		addrChangeFn)
 
-	handleRestart(false)
+	handleRestart(dummyContext{}, false)
 	var restartFn watch.ConfigRestartHandler = handleRestart
 
 	configChanges := make(chan string)
@@ -131,14 +139,14 @@ func main() {
 	for {
 		select {
 		case change := <- configChanges:
-			watch.HandleConfigStatusEvent(change,
+			watch.HandleConfigStatusEvent(change, dummyContext{},
 				configDirname, statusDirname,
 				&types.AppNetworkConfig{},
 				&types.AppNetworkStatus{},
 				handleCreate, handleModify, handleDelete,
 				&restartFn)
 		case change := <- deviceConfigChanges:
-			watch.HandleStatusEvent(change,
+			watch.HandleStatusEvent(change, dummyContext{},
 				DNCDirname,
 				&types.DeviceNetworkConfig{},
 				handleDNCModify, handleDNCDelete,
@@ -153,7 +161,7 @@ func main() {
 	}
 }
 
-func handleRestart(done bool) {
+func handleRestart(ctxArg interface{}, done bool) {
 	log.Printf("handleRestart(%v)\n", done)
 	handleLispRestart(done)
 	if done {
@@ -292,9 +300,6 @@ func writeAppNetworkStatus(status *types.AppNetworkStatus,
 	}
 }
 
-// XXX move up
-var agentName = "zedrouter"
-
 // XXX make into generic function with myName as argument.
 func removeAppNetworkStatus(status *types.AppNetworkStatus) {
 	key := status.UUIDandVersion.UUID.String()
@@ -378,15 +383,9 @@ var deviceEID net.IP
 var deviceIID uint32
 var additionalInfoDevice *types.AdditionalInfoDevice
 
-func handleCreate(statusFilename string, configArg interface{}) {
-	var config *types.AppNetworkConfig
-
-	switch configArg.(type) {
-	default:
-		log.Fatal("Can only handle AppNetworkConfig")
-	case *types.AppNetworkConfig:
-		config = configArg.(*types.AppNetworkConfig)
-	}
+func handleCreate(ctxArg interface{}, statusFilename string,
+	configArg interface{}) {
+	config := configArg.(*types.AppNetworkConfig)
 	log.Printf("handleCreate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
@@ -757,23 +756,10 @@ func handleCreate(statusFilename string, configArg interface{}) {
 // Note that handleModify will not touch the EID; just ACLs and NameToEidList
 // XXX should we check that nothing else has changed?
 // XXX If so flag other changes as errors; would need lastError in status.
-func handleModify(statusFilename string, configArg interface{},
+func handleModify(ctxArg interface{}, statusFilename string, configArg interface{},
 	statusArg interface{}) {
-	var config *types.AppNetworkConfig
-	var status *types.AppNetworkStatus
-
-	switch configArg.(type) {
-	default:
-		log.Fatal("Can only handle AppNetworkConfig")
-	case *types.AppNetworkConfig:
-		config = configArg.(*types.AppNetworkConfig)
-	}
-	switch statusArg.(type) {
-	default:
-		log.Fatal("Can only handle AppNetworkStatus")
-	case *types.AppNetworkStatus:
-		status = statusArg.(*types.AppNetworkStatus)
-	}
+	config := configArg.(*types.AppNetworkConfig)
+	status := statusArg.(*types.AppNetworkStatus)
 	log.Printf("handleModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
@@ -951,15 +937,9 @@ func handleModify(statusFilename string, configArg interface{},
 	log.Printf("handleModify done for %s\n", config.DisplayName)
 }
 
-func handleDelete(statusFilename string, statusArg interface{}) {
-	var status *types.AppNetworkStatus
-
-	switch statusArg.(type) {
-	default:
-		log.Fatal("Can only handle AppNetworkStatus")
-	case *types.AppNetworkStatus:
-		status = statusArg.(*types.AppNetworkStatus)
-	}
+func handleDelete(ctxArg interface{}, statusFilename string,
+	statusArg interface{}) {
+	status := statusArg.(*types.AppNetworkStatus)
 	log.Printf("handleDelete(%v) for %s\n",
 		status.UUIDandVersion, status.DisplayName)
 
@@ -1149,21 +1129,15 @@ func pkillUserArgs(userName string, match string, printOnError bool) {
 	}
 }
 
-func handleDNCModify(configFilename string,
+func handleDNCModify(ctxArg interface{}, configFilename string,
 	configArg interface{}) {
-	var config *types.DeviceNetworkConfig
+	config := configArg.(*types.DeviceNetworkConfig)
 
+	// XXX from context with manufacturerModel
 	if configFilename != "global" {
 		fmt.Printf("handleDNSModify: ignoring %s\n", configFilename)
 		return
 	}
-	switch configArg.(type) {
-	default:
-		log.Fatal("Can only handle DeviceNetworkConfig")
-	case *types.DeviceNetworkConfig:
-		config = configArg.(*types.DeviceNetworkConfig)
-	}
-
 	log.Printf("handleDNCModify for %s\n", configFilename)
 
 	deviceNetworkConfig = *config
@@ -1181,7 +1155,7 @@ func handleDNCModify(configFilename string,
 	log.Printf("handleDNCModify done for %s\n", configFilename)
 }
 
-func handleDNCDelete(configFilename string) {
+func handleDNCDelete(ctxArg interface{}, configFilename string) {
 	log.Printf("handleDNCDelete for %s\n", configFilename)
 
 	if configFilename != "global" {

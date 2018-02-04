@@ -36,7 +36,7 @@ var metricsApi string = "api/v1/edgedevice/metrics"
 var ledConfigDirName string = "/var/tmp/ledmanager/config"
 
 // XXX remove global variables
-// XXX shouldn't we know our own deviceId?
+// XXX shouldn't we know our own deviceId? Get from some global struct?
 var deviceId string
 
 // These URLs are effectively constants; depends on the server name
@@ -44,12 +44,13 @@ var configUrl string
 var metricsUrl string
 var statusUrl string
 
-var serverFilename string = "/opt/zededa/etc/server"
-
-var dirName string = "/opt/zededa/etc"
-var deviceCertName string = dirName + "/device.cert.pem"
-var deviceKeyName string = dirName + "/device.key.pem"
-var rootCertName string = dirName + "/root-certificate.pem"
+const (
+	serverFilename string = "/opt/zededa/etc/server"
+	dirName string = "/opt/zededa/etc"
+	deviceCertName string = dirName + "/device.cert.pem"
+	deviceKeyName string = dirName + "/device.key.pem"
+	rootCertName string = dirName + "/root-certificate.pem"
+)
 
 // tlsConfig is initialized once i.e. effectively a constant
 var tlsConfig *tls.Config
@@ -117,13 +118,13 @@ func UpdateLedManagerConfigFile(count int) {
 
 func configTimerTask() {
 	iteration := 0
-	fmt.Println("starting config fetch timer task")
+	log.Println("starting config fetch timer task")
 	getLatestConfig(configUrl, iteration)
 
 	ticker := time.NewTicker(time.Minute * configTickTimeout)
 
 	for t := range ticker.C {
-		fmt.Println(t)
+		log.Println(t)
 		iteration += 1
 		getLatestConfig(configUrl, iteration)
 	}
@@ -264,11 +265,22 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig) {
 	}
 	handleLookUpParam(config)
 
+	// delete old app configs, if any
+	checkCurrentAppFiles(config)
+
+	// delete old base os configs, if any
+	checkCurrentBaseOsFiles(config)
+
+	// add new App instances
+	parseConfig(config)
+}
+
+func checkCurrentAppFiles(config *zconfig.EdgeDevConfig) {
+
 	// get the current set of App files
 	curAppFilenames, err := ioutil.ReadDir(zedmanagerConfigDirname)
-
 	if err != nil {
-		log.Printf("read dir %s fail, err: %v\n", zedmanagerConfigDirname, err)
+		log.Printf("%v for %s\n", err, zedmanagerConfigDirname)
 		curAppFilenames = nil
 	}
 
@@ -297,6 +309,40 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig) {
 			}
 		}
 	}
-	// add new App instances
-	parseConfig(config)
+}
+
+func checkCurrentBaseOsFiles(config *zconfig.EdgeDevConfig) {
+
+	// get the current set of baseOs files
+	curBaseOsFilenames, err := ioutil.ReadDir(zedagentBaseOsConfigDirname)
+	if err != nil {
+		log.Printf("%v for %s\n", err, zedagentBaseOsConfigDirname)
+		curBaseOsFilenames = nil
+	}
+
+	baseOses := config.GetBase()
+	// delete any baseOs config which is not present in the new set
+	for _, curBaseOs := range curBaseOsFilenames {
+		curBaseOsFilename := curBaseOs.Name()
+
+		// file type json
+		if strings.HasSuffix(curBaseOsFilename, ".json") {
+			found := false
+			for _, baseOs := range baseOses {
+				baseOsFilename := baseOs.Uuidandversion.Uuid + ".json"
+				if baseOsFilename == curBaseOsFilename {
+					found = true
+					break
+				}
+			}
+			// baseOS instance not found, delete
+			if !found {
+				log.Printf("Remove baseOs config %s\n", curBaseOsFilename)
+				err := os.Remove(zedagentBaseOsConfigDirname + "/" + curBaseOsFilename)
+				if err != nil {
+					log.Printf("Old config:%v\n", err)
+				}
+			}
+		}
+	}
 }

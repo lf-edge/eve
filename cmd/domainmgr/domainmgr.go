@@ -26,19 +26,25 @@ import (
 
 // Keeping status in /var/run to be clean after a crash/reboot
 const (
+	appImgObj  = "appImg.obj"
+
 	baseDirname       = "/var/tmp/domainmgr"
 	runDirname        = "/var/run/domainmgr"
 	configDirname     = baseDirname + "/config"
 	statusDirname     = runDirname + "/status"
 	rwImgDirname      = baseDirname + "/img" // We store images here
 	xenDirname        = runDirname + "/xen"  // We store xen cfg files here
-	imgCatalogDirname = "/var/tmp/zedmanager/downloads"
+	imgCatalogDirname = "/var/tmp/zedmanager/downloads/" + appImgObj
 	// Read-only images named based on sha256 hash each in its own directory
 	verifiedDirname = imgCatalogDirname + "/verified"
 )
 
 // Set from Makefile
 var Version = "No version specified"
+
+// Dummy since we don't have anything to pass
+type dummyContext struct {
+}
 
 func main() {
 	log.SetOutput(os.Stdout)
@@ -104,7 +110,7 @@ func main() {
 	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
 	for {
 		change := <-fileChanges
-		watch.HandleConfigStatusEvent(change,
+		watch.HandleConfigStatusEvent(change, dummyContext{},
 			configDirname, statusDirname,
 			&types.DomainConfig{}, &types.DomainStatus{},
 			handleCreate, handleModify, handleDelete,
@@ -113,7 +119,7 @@ func main() {
 }
 
 // Clean up any unused files in rwImgDirname
-func handleRestart(done bool) {
+func handleRestart(ctxArg interface{}, done bool) {
 	log.Printf("handleRestart(%v)\n", done)
 	if done {
 		files, err := ioutil.ReadDir(rwImgDirname)
@@ -177,15 +183,9 @@ func xenCfgFilename(appNum int) string {
 	return xenDirname + "/xen" + strconv.Itoa(appNum) + ".cfg"
 }
 
-func handleCreate(statusFilename string, configArg interface{}) {
-	var config *types.DomainConfig
-
-	switch configArg.(type) {
-	default:
-		log.Fatal("Can only handle DomainConfig")
-	case *types.DomainConfig:
-		config = configArg.(*types.DomainConfig)
-	}
+func handleCreate(ctxArg interface{}, statusFilename string,
+	configArg interface{}) {
+	config := configArg.(*types.DomainConfig)
 	log.Printf("handleCreate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
@@ -340,7 +340,7 @@ func doInactivate(status *types.DomainStatus) {
 				status.DomainName, err)
 		} else {
 			// Wait for the domain to go away
-			log.Printf("handleDelete(%v) for %s: waiting for domain to shutdown\n",
+			log.Printf("doInactivate(%v) for %s: waiting for domain to shutdown\n",
 				status.UUIDandVersion, status.DisplayName)
 		}
 		gone := waitForDomainGone(*status)
@@ -355,7 +355,7 @@ func doInactivate(status *types.DomainStatus) {
 				status.DomainName, err)
 		}
 		// Even if destroy failed we wait again
-		log.Printf("handleDelete(%v) for %s: waiting for domain to be destroyed\n",
+		log.Printf("doInactivate(%v) for %s: waiting for domain to be destroyed\n",
 			status.UUIDandVersion, status.DisplayName)
 
 		gone := waitForDomainGone(*status)
@@ -573,23 +573,10 @@ func cp(dst, src string) error {
 // XXX should we reboot if there are such changes? Or reject with error?
 // XXX to save statusFilename when the goroutine is created.
 // XXX separate goroutine to run cp? Add "copy complete" status?
-func handleModify(statusFilename string, configArg interface{},
+func handleModify(ctxArg interface{}, statusFilename string, configArg interface{},
 	statusArg interface{}) {
-	var config *types.DomainConfig
-	var status *types.DomainStatus
-
-	switch configArg.(type) {
-	default:
-		log.Fatal("Can only handle DomainConfig")
-	case *types.DomainConfig:
-		config = configArg.(*types.DomainConfig)
-	}
-	switch statusArg.(type) {
-	default:
-		log.Fatal("Can only handle DomainStatus")
-	case *types.DomainStatus:
-		status = statusArg.(*types.DomainStatus)
-	}
+	config := configArg.(*types.DomainConfig)
+	status := statusArg.(*types.DomainStatus)
 	log.Printf("handleModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
@@ -676,15 +663,9 @@ func waitForDomainGone(status types.DomainStatus) bool {
 	return gone
 }
 
-func handleDelete(statusFilename string, statusArg interface{}) {
-	var status *types.DomainStatus
-
-	switch statusArg.(type) {
-	default:
-		log.Fatal("Can only handle DomainStatus")
-	case *types.DomainStatus:
-		status = statusArg.(*types.DomainStatus)
-	}
+func handleDelete(ctxArg interface{}, statusFilename string,
+	statusArg interface{}) {
+	status := statusArg.(*types.DomainStatus)
 	log.Printf("handleDelete(%v) for %s\n",
 		status.UUIDandVersion, status.DisplayName)
 

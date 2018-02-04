@@ -32,22 +32,21 @@ func AddOrRefcountDownloaderConfig(safename string, sc *types.StorageConfig) {
 	} else {
 		fmt.Printf("downloader config add for %s\n", safename)
 		n := types.DownloaderConfig{
-			Safename:        safename,
-			DownloadURL:     sc.DownloadURL,
-			UseFreeUplinks:	 true,
-			MaxSize:         sc.MaxSize,
-			TransportMethod: sc.TransportMethod,
-			Dpath:           sc.Dpath,
-			ApiKey:          sc.ApiKey,
-			Password:        sc.Password,
-			ImageSha256:     sc.ImageSha256,
-			DownloadObjDir:  imgCatalogDirname,
-			RefCount:        1,
+			Safename:         safename,
+			DownloadURL:      sc.DownloadURL,
+			UseFreeUplinks:   true,
+			MaxSize:          sc.MaxSize,
+			TransportMethod:  sc.TransportMethod,
+			Dpath:            sc.Dpath,
+			ApiKey:           sc.ApiKey,
+			Password:         sc.Password,
+			ImageSha256:      sc.ImageSha256,
+			RefCount:         1,
 		}
 		downloaderConfig[key] = n
 	}
 	configFilename := fmt.Sprintf("%s/%s.json",
-		downloaderConfigDirname, safename)
+		downloaderAppImgObjConfigDirname, safename)
 	writeDownloaderConfig(downloaderConfig[key], configFilename)
 
 	log.Printf("AddOrRefcountDownloaderConfig done for %s\n",
@@ -68,7 +67,7 @@ func MaybeRemoveDownloaderConfig(safename string) {
 	}
 	delete(downloaderConfig, safename)
 	configFilename := fmt.Sprintf("%s/%s.json",
-		downloaderConfigDirname, safename)
+		downloaderAppImgObjConfigDirname, safename)
 	if err := os.Remove(configFilename); err != nil {
 		log.Println(err)
 	}
@@ -92,17 +91,9 @@ func writeDownloaderConfig(config types.DownloaderConfig,
 // Key is Safename string.
 var downloaderStatus map[string]types.DownloaderStatus
 
-func handleDownloaderStatusModify(statusFilename string,
+func handleDownloaderStatusModify(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
-	var status *types.DownloaderStatus
-
-	switch statusArg.(type) {
-	default:
-		log.Fatal("Can only handle DownloaderStatus")
-	case *types.DownloaderStatus:
-		status = statusArg.(*types.DownloaderStatus)
-	}
-
+	status := statusArg.(*types.DownloaderStatus)
 	log.Printf("handleDownloaderStatusModify for %s\n",
 		status.Safename)
 
@@ -145,7 +136,7 @@ func LookupDownloaderStatus(safename string) (types.DownloaderStatus, error) {
 	}
 }
 
-func handleDownloaderStatusDelete(statusFilename string) {
+func handleDownloaderStatusDelete(ctxArg interface{}, statusFilename string) {
 	log.Printf("handleDownloaderStatusDelete for %s\n",
 		statusFilename)
 

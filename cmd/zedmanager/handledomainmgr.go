@@ -18,14 +18,10 @@ import (
 var domainConfig map[string]types.DomainConfig
 
 const (
-	certBaseDirname = "/var/tmp/downloader/cert.obj"
-	certRunDirname = "/var/run/downloader/cert.obj"
-	certConfigDirname = certBaseDirname + "/config"
-	certStatusDirname = certRunDirname + "/status"
-	imgCatalogDirname = "/var/tmp/zedmanager/downloads"
-	pendingDirname = imgCatalogDirname + "/pending"
-	verifierDirname = imgCatalogDirname + "/verifier"
-	finalDirname = imgCatalogDirname + "/verified"
+	imgCatalogDirname  = "/var/tmp/zedmanager/downloads/" + appImgObj
+	pendingDirname     = imgCatalogDirname + "/pending"
+	verifierDirname    = imgCatalogDirname + "/verifier"
+	finalDirname       = imgCatalogDirname + "/verified"
 	certificateDirname = "/var/tmp/zedmanager/certs"
 )
 
@@ -177,17 +173,9 @@ func writeDomainConfig(config types.DomainConfig,
 // XXX change from string to UUID?
 var domainStatus map[string]types.DomainStatus
 
-func handleDomainStatusModify(statusFilename string,
+func handleDomainStatusModify(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
-	var status *types.DomainStatus
-
-	switch statusArg.(type) {
-	default:
-		log.Fatal("Can only handle DomainStatus")
-	case *types.DomainStatus:
-		status = statusArg.(*types.DomainStatus)
-	}
-
+	status := statusArg.(*types.DomainStatus)
 	key := status.UUIDandVersion.UUID.String()
 	log.Printf("handleDomainStatusModify for %s\n", key)
 	// Ignore if any Pending* flag is set
@@ -216,7 +204,7 @@ func LookupDomainStatus(uuidStr string) (types.DomainStatus, error) {
 	}
 }
 
-func handleDomainStatusDelete(statusFilename string) {
+func handleDomainStatusDelete(ctxArg interface{}, statusFilename string) {
 	log.Printf("handleDomainStatusDelete for %s\n",
 		statusFilename)
 

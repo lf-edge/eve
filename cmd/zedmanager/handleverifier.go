@@ -43,7 +43,7 @@ func MaybeAddVerifyImageConfig(safename string, sc *types.StorageConfig) {
 		verifyImageConfig[key] = n
 	}
 	configFilename := fmt.Sprintf("%s/%s.json",
-		verifierConfigDirname, safename)
+		verifierAppImgObjConfigDirname, safename)
 	writeVerifyImageConfig(verifyImageConfig[key], configFilename)
 	log.Printf("AddOrRefcountVerifyImageConfig done for %s\n",
 		safename)
@@ -69,7 +69,7 @@ func MaybeRemoveVerifyImageConfigSha256(sha256 string) {
 	key := m.Safename
 	delete(verifyImageConfig, key)
 	configFilename := fmt.Sprintf("%s/%s.json",
-		verifierConfigDirname, key)
+		verifierAppImgObjConfigDirname, key)
 	if err := os.Remove(configFilename); err != nil {
 		log.Println(err)
 	}
@@ -100,17 +100,9 @@ func dumpVerifierStatus() {
 	}
 }
 
-func handleVerifyImageStatusModify(statusFilename string,
+func handleVerifyImageStatusModify(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
-	var status *types.VerifyImageStatus
-
-	switch statusArg.(type) {
-	default:
-		log.Fatal("Can only handle VerifyImageStatus")
-	case *types.VerifyImageStatus:
-		status = statusArg.(*types.VerifyImageStatus)
-	}
-
+	status := statusArg.(*types.VerifyImageStatus)
 	log.Printf("handleVerifyImageStatusModify for %s\n",
 		status.Safename)
 	// Ignore if any Pending* flag is set
@@ -180,11 +172,11 @@ func LookupVerifyImageStatusSha256(sha256 string) (types.VerifyImageStatus,
 }
 
 func LookupVerifyImageStatusAny(safename string,
-     sha256 string) (types.VerifyImageStatus, error) {
+	sha256 string) (types.VerifyImageStatus, error) {
 	m0, err := LookupVerifyImageStatus(safename)
 	if err == nil {
 		return m0, nil
-	}	
+	}
 	m1, err := lookupVerifyImageStatusSha256Impl(sha256)
 	if err == nil {
 		log.Printf("LookupVerifyImageStatusAny: found based on sha %s\n",
@@ -192,11 +184,11 @@ func LookupVerifyImageStatusAny(safename string,
 		return *m1, nil
 	} else {
 		return types.VerifyImageStatus{},
-		       errors.New("No VerifyImageStatus for safename nor sha")
+			errors.New("No VerifyImageStatus for safename nor sha")
 	}
 }
 
-func handleVerifyImageStatusDelete(statusFilename string) {
+func handleVerifyImageStatusDelete(ctxArg interface{}, statusFilename string) {
 	log.Printf("handleVerifyImageStatusDelete for %s\n",
 		statusFilename)
 
