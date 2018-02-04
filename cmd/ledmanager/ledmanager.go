@@ -31,7 +31,7 @@ import (
 )
 
 const (
-	ledStatusDirName = "/var/run/ledmanager/status/"
+	ledConfigDirName = "/var/tmp/ledmanager/config"
 )
 
 var blinkCount int
@@ -52,7 +52,7 @@ func main() {
 	log.Printf("Starting ledmanager\n")
 
 	ledChanges := make(chan string)
-	go watch.WatchStatus(ledStatusDirName, ledChanges)
+	go watch.WatchStatus(ledConfigDirName, ledChanges)
 	log.Println("called watcher...")
 
 	go TriggerBlinkOnDevice()
@@ -63,7 +63,7 @@ func main() {
 			{
 				log.Println("change: ", change)
 				watch.HandleStatusEvent(change,
-					ledStatusDirName,
+					ledConfigDirName,
 					&types.LedBlinkCounter{},
 					handleLedBlinkModify, handleLedBlinkDelete,
 					nil)
@@ -89,7 +89,7 @@ func handleLedBlinkModify(statusFilename string,
 
 	log.Printf("handleLedBlinkModify for %s\n", statusFilename)
 	blinkCount = status.BlinkCounter
-	log.Println("value of blinkCount: ",blinkCount)
+	log.Println("value of blinkCount: ", blinkCount)
 	log.Printf("handleLedBlinkModify done for %s\n", statusFilename)
 }
 
@@ -101,12 +101,12 @@ func handleLedBlinkDelete(statusFilename string) {
 		return
 	}
 	// deviceNetworkStatus = types.LedBlinkCounter{}
-	UpdateLedManagerStatusFile(0)
+	UpdateLedManagerConfigFile(0)
 	log.Printf("handleDNSDelete done for %s\n", statusFilename)
 }
 
-func UpdateLedManagerStatusFile(count int) {
-	ledStatusFileName := ledStatusDirName + "/ledstatus.json"
+func UpdateLedManagerConfigFile(count int) {
+	ledConfigFileName := ledConfigDirName + "/ledconfig.json"
 	blinkCounter := types.LedBlinkCounter{
 		BlinkCounter: count,
 	}
@@ -114,16 +114,15 @@ func UpdateLedManagerStatusFile(count int) {
 	if err != nil {
 		log.Fatal(err, "json Marshal blinkCount")
 	}
-	err = ioutil.WriteFile(ledStatusFileName, b, 0644)
+	err = ioutil.WriteFile(ledConfigFileName, b, 0644)
 	if err != nil {
-		log.Fatal("err: ", err, ledStatusFileName)
+		log.Fatal("err: ", err, ledConfigFileName)
 	}
 }
 
-
 func TriggerBlinkOnDevice() {
 	counter := blinkCount
-	for{
+	for {
 		for i := 0; i < counter; i++ {
 			ExecuteDDCmd()
 			time.Sleep(200 * time.Millisecond)
@@ -144,4 +143,3 @@ func ExecuteDDCmd() {
 	ddInfo := fmt.Sprintf("%s", stdout)
 	log.Println("ddinfo: ", ddInfo)
 }
-

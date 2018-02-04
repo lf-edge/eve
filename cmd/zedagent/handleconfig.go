@@ -33,7 +33,7 @@ var configApi string = "api/v1/edgedevice/config"
 var statusApi string = "api/v1/edgedevice/info"
 var metricsApi string = "api/v1/edgedevice/metrics"
 
-var ledStatusDirName string = "/var/run/ledmanager/status"
+var ledConfigDirName string = "/var/tmp/ledmanager/config"
 
 // XXX remove global variables
 // XXX shouldn't we know our own deviceId?
@@ -93,8 +93,8 @@ func getCloudUrls() {
 	tlsConfig.BuildNameToCertificate()
 }
 
-func UpdateLedManagerStatusFile(count int) {
-	ledStatusFileName := ledStatusDirName + "/ledstatus.json"
+func UpdateLedManagerConfigFile(count int) {
+	ledConfigFileName := ledConfigDirName + "/ledconfig.json"
 	blinkCount := types.LedBlinkCounter{
 		BlinkCounter: count,
 	}
@@ -102,9 +102,9 @@ func UpdateLedManagerStatusFile(count int) {
 	if err != nil {
 		log.Fatal(err, "json Marshal blinkCount")
 	}
-	err = ioutil.WriteFile(ledStatusFileName, b, 0644)
+	err = ioutil.WriteFile(ledConfigFileName, b, 0644)
 	if err != nil {
-		log.Fatal("err: ", err, ledStatusFileName)
+		log.Fatal("err: ", err, ledConfigFileName)
 	}
 }
 
@@ -137,7 +137,7 @@ func getLatestConfig(configUrl string, iteration int) {
 		log.Printf("getLatestConfig: %s\n", err)
 		return
 	}
-	UpdateLedManagerStatusFile(2)
+	UpdateLedManagerConfigFile(2)
 	addrCount := types.CountLocalAddrAny(deviceNetworkStatus, intf)
 	// XXX makes logfile too long; debug flag?
 	log.Printf("Connecting to %s using intf %s interation %d #sources %d\n",
@@ -172,7 +172,7 @@ func getLatestConfig(configUrl string, iteration int) {
 		}
 
 		//inform ledmanager about cloud connectivity...
-		UpdateLedManagerStatusFile(3)
+		UpdateLedManagerConfigFile(3)
 
 		config, err := readDeviceConfigProtoMessage(resp)
 		if err != nil {
@@ -180,7 +180,7 @@ func getLatestConfig(configUrl string, iteration int) {
 			return
 		}
 		//inform ledmanager about config received from cloud...
-		UpdateLedManagerStatusFile(4)
+		UpdateLedManagerConfigFile(4)
 
 		inhaleDeviceConfig(config)
 		return

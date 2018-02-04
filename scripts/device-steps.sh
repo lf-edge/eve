@@ -187,11 +187,11 @@ fi
 echo "Removing old zedmanager status files"
 rm -rf /var/run/zedmanager/status/*.json
 
-echo "Removing old ledmanager status files"
-rm -rf /var/run/ledmanager/status/*.json
+echo "Removing old ledmanager config files"
+rm -rf /var/tmp/ledmanager/config/*.json
 # The following is a workaround for a racecondition between different agents
 # Make sure we have the required directories in place
-DIRS="/var/run/ledmanager/status/ /var/tmp/domainmgr/config/ /var/tmp/verifier/config/ /var/tmp/downloader/config/ /var/tmp/zedmanager/config/ /var/tmp/identitymgr/config/ /var/tmp/zedrouter/config/ /var/run/domainmgr/status/ /var/run/verifier/status/ /var/run/downloader/status/ /var/run/zedmanager/status/ /var/run/eidregister/status/ /var/run/zedrouter/status/ /var/run/identitymgr/status/ /var/tmp/zededa/DeviceNetworkConfig/ /var/run/zedrouter/DeviceNetworkStatus/"
+DIRS="/var/tmp/ledmanager/config/ /var/tmp/domainmgr/config/ /var/tmp/verifier/config/ /var/tmp/downloader/config/ /var/tmp/zedmanager/config/ /var/tmp/identitymgr/config/ /var/tmp/zedrouter/config/ /var/run/domainmgr/status/ /var/run/verifier/status/ /var/run/downloader/status/ /var/run/zedmanager/status/ /var/run/eidregister/status/ /var/run/zedrouter/status/ /var/run/identitymgr/status/ /var/tmp/zededa/DeviceNetworkConfig/ /var/run/zedrouter/DeviceNetworkStatus/"
 for d in $DIRS; do
     mkdir -p $d
     chmod 700 $d `dirname $d`
@@ -395,7 +395,7 @@ if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
-echo '{"BlinkCounter": 1}' > '/var/run/ledmanager/status/ledstatus.json'
+echo '{"BlinkCounter": 1}' > '/var/tmp/ledmanager/config/ledconfig.json'
 
 echo "Starting verifier at" `date`
 verifier >/var/log/verifier.log 2>&1 &
