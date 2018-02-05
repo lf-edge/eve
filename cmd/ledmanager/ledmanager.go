@@ -34,11 +34,12 @@ const (
 	ledConfigDirName = "/var/tmp/ledmanager/config"
 )
 
-// Dummy since we don't have anything to pass to LED
-type dummyContext struct {
+// State passed to handlers
+type ledManagerContext struct {
+	countChange chan int
 }
 
-var blinkCount int
+var debug bool
 
 // Set from Makefile
 var Version = "No version specified"
@@ -48,7 +49,9 @@ func main() {
 	log.SetOutput(os.Stdout)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
 	versionPtr := flag.Bool("v", false, "Version")
+	debugPtr := flag.Bool("d", false, "Debug")
 	flag.Parse()
+	debug = *debugPtr
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
@@ -59,14 +62,18 @@ func main() {
 	go watch.WatchStatus(ledConfigDirName, ledChanges)
 	log.Println("called watcher...")
 
-	go TriggerBlinkOnDevice()
+	// Any state needed by handler functions
+	ctx := ledManagerContext{}
+	ctx.countChange = make(chan int)
+	go TriggerBlinkOnDevice(ctx.countChange)
 
 	for {
 		select {
 		case change := <-ledChanges:
 			{
 				log.Println("change: ", change)
-				watch.HandleStatusEvent(change, dummyContext{},
+
+				watch.HandleStatusEvent(change, &ctx,
 					ledConfigDirName,
 					&types.LedBlinkCounter{},
 					handleLedBlinkModify, handleLedBlinkDelete,
@@ -78,36 +85,35 @@ func main() {
 
 func handleLedBlinkModify(ctxArg interface{}, configFilename string,
 	configArg interface{}) {
-	var config *types.LedBlinkCounter
+	config := configArg.(*types.LedBlinkCounter)
+	ctx := ctxArg.(*ledManagerContext)
 
 	if configFilename != "ledconfig" {
 		fmt.Printf("handleLedBlinkModify: ignoring %s\n", configFilename)
 		return
 	}
-	switch configArg.(type) {
-	default:
-		log.Fatal("Can only handle LedBlinkCounter")
-	case *types.LedBlinkCounter:
-		config = configArg.(*types.LedBlinkCounter)
-	}
 
 	log.Printf("handleLedBlinkModify for %s\n", configFilename)
-	blinkCount = config.BlinkCounter
-	log.Println("value of blinkCount: ", blinkCount)
+	log.Println("value of blinkCount: ", config.BlinkCounter)
+	ctx.countChange <- config.BlinkCounter
 	log.Printf("handleLedBlinkModify done for %s\n", configFilename)
 }
 
 func handleLedBlinkDelete(ctxArg interface{}, configFilename string) {
 	log.Printf("handleLedBlinkDelete for %s\n", configFilename)
+	ctx := ctxArg.(*ledManagerContext)
 
 	if configFilename != "ledconfig" {
 		fmt.Printf("handleLedBlinkDelete: ignoring %s\n", configFilename)
 		return
 	}
+	// XXX or should we tell the blink go routine to exit?
+	ctx.countChange <- 0
 	UpdateLedManagerConfigFile(0)
-	log.Printf("handleDNSDelete done for %s\n", configFilename)
+	log.Printf("handleLedBlinkDelete done for %s\n", configFilename)
 }
 
+// Used by callers to change the behavior or the LED
 func UpdateLedManagerConfigFile(count int) {
 	ledConfigFileName := ledConfigDirName + "/ledconfig.json"
 	blinkCounter := types.LedBlinkCounter{
@@ -123,11 +129,22 @@ func UpdateLedManagerConfigFile(count int) {
 	}
 }
 
-func TriggerBlinkOnDevice() {
+func TriggerBlinkOnDevice(countChange chan int) {
 	var counter int
 	for {
-		counter = blinkCount
-		log.Println("Number of times LED will blink: ", counter)
+		select {
+		case counter = <-countChange:
+			log.Printf("Received counter update: %d\n",
+				counter)
+		default:
+			if debug {
+				log.Printf("Unchanged counter: %d\n",
+					counter)
+			}
+		}
+		if debug {
+			log.Println("Number of times LED will blink: ", counter)
+		}
 		for i := 0; i < counter; i++ {
 			ExecuteDDCmd()
 			time.Sleep(200 * time.Millisecond)
@@ -136,14 +153,15 @@ func TriggerBlinkOnDevice() {
 	}
 }
 
+// Should be tuned so that the LED lights up for 100ms
 func ExecuteDDCmd() {
-
-	cmd := exec.Command("sudo", "dd", "if=/dev/sda", "of=/dev/null", "bs=4M", "count=22")
+	cmd := exec.Command("dd", "if=/dev/sda", "of=/dev/null", "bs=4M", "count=22")
 	stdout, err := cmd.Output()
 	if err != nil {
-		println("error: ", err.Error())
+		log.Println("dd error: ", err)
+		return
 	}
-
-	ddInfo := fmt.Sprintf("%s", stdout)
-	log.Println("ddinfo: ", ddInfo)
+	if debug {
+		log.Printf("ddinfo: %s\n", stdout)
+	}
 }
