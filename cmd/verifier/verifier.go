@@ -50,7 +50,7 @@ const (
 	persistDir	      = "/persist"
 	objectDownloadDirname = persistDir + "/downloads"
 
-	rootCertDirname    = "/opt/zededa/etc"
+	rootCertDirname    = "/config"
 	rootCertFileName   = rootCertDirname + "/root-certificate.pem"
 	certificateDirname = "/var/tmp/zedmanager/certs"
 
@@ -621,7 +621,7 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 	//Create the set of root certificates...
 	roots := x509.NewCertPool()
 
-	//read the root cerificates from /opt/zededa/etc/...
+	// Read the root cerificates from /config
 	rootCertificate, err := ioutil.ReadFile(rootCertFileName)
 	if err != nil {
 		fmt.Println(err)

@@ -32,9 +32,9 @@ const (
 	runDirname        = "/var/run/domainmgr"
 	configDirname     = baseDirname + "/config"
 	statusDirname     = runDirname + "/status"
-	rwImgDirname      = baseDirname + "/img" // We store images here
-	xenDirname        = runDirname + "/xen"  // We store xen cfg files here
 	persistDir	  = "/persist"
+	rwImgDirname      = persistDir + "/img" // We store images here
+	xenDirname        = runDirname + "/xen"  // We store xen cfg files here
 	downloadDirname   = persistDir + "/downloads"
 	imgCatalogDirname = downloadDirname + "/" + appImgObj
 	// Read-only images named based on sha256 hash each in its own directory

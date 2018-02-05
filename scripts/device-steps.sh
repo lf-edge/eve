@@ -42,10 +42,18 @@ mkdir -p $TMPDIR
 if [ ! -d $ETCDIR -a -d /opt/zededa/etc ]; then
     echo "Moving from /opt/zededa/etc to $ETCDIR"
     mv /opt/zededa/etc $ETCDIR
-    if [ -d /var/tmp/zedmanager/downloads ]; then
-	    echo "Cleaning up old download dir: /var/tmp/zedmanager/downloads"
-	    rm -rf /var/tmp/zedmanager/downloads
-    fi
+elif [ -d /opt/zededa/etc ]; then
+    echo "Updating from /opt/zededa/etc to $ETCDIR"
+    cp -p /opt/zededa/etc/* $ETCDIR
+    rmdir -f /opt/zededa/etc
+fi
+if [ -d /var/tmp/zedmanager/downloads ]; then
+    echo "Cleaning up old download dir: /var/tmp/zedmanager/downloads"
+    rm -rf /var/tmp/zedmanager/downloads
+fi
+if [ -d /var/tmp/domainmgr/img ]; then
+    echo "Removing old domU img dir: /var/tmp/domainmgr/img"
+    rm -rf /var/tmp/domainmgr/img
 fi
 
 if [ $CLEANUP = 1 -a -d $PERSISTDIR/downloads ]; then
@@ -241,11 +249,11 @@ for AGENTDIR in $AGENTDIRS; do
     if [ ! -d $dir ]; then
 	continue
     fi
-    # echo "XXX Looking in config $dir"
+    echo "XXX Looking in config $dir"
     for f in $dir/*; do
-	# echo "XXX: f is $f"
+	echo "XXX: f is $f"
 	if [ "$f" = "$dir/*" ]; then
-		# echo "XXX: skipping $dir"
+		echo "XXX: skipping $dir"
 		break
 	fi
 	if [ "$f" = "$dir/global" ]; then
@@ -254,7 +262,7 @@ for AGENTDIR in $AGENTDIRS; do
 	    echo "Ignoring $f"
 	else
 	    # Note that this deletes domainmgr config which, unlike a reboot,
-	    # will remove the rootfs copy in /var/tmp/domainmgr/img/
+	    # will remove the rootfs copy in /persist/img/
 	    echo "Deleting config file: $f"
 	    rm -f "$f"
 	fi
@@ -265,8 +273,10 @@ done
 # If agents are running then the deletion of the /var/tmp/ files should
 # cleaned up all but /var/run/zedmanager/*.json
 
-# Add a tag to preserve any downloaded and verified files
-touch /var/tmp/verifier/config/preserve
+if [ $CLEANUP = 0 ]; then
+    # Add a tag to preserve any downloaded and verified files
+    touch /var/tmp/verifier/config/preserve
+fi
 
 # If agents are running wait for the status files to disappear
 for AGENTDIR in $AGENTDIRS; do
@@ -281,7 +291,7 @@ for AGENTDIR in $AGENTDIRS; do
 	pkill $AGENT
 	continue
     fi
-    if [ $AGENT = "verifier" ]; then
+    if [ $AGENT = "verifier" -a $CLEANUP = 0 ]; then
 	echo "Skipping check for /var/run/$AGENTDIR/status"
 	pkill $AGENT
 	continue
@@ -290,15 +300,15 @@ for AGENTDIR in $AGENTDIRS; do
     if [ ! -d $dir ]; then
 	continue
     fi
-    # echo "XXX Looking in status $dir"
+    echo "XXX Looking in status $dir"
     pid=`pgrep $AGENT`
     if [ "$pid" != "" ]; then
 	while /bin/true; do
 	    wait=0
 	    for f in $dir/*; do
-		# echo "XXX: f is $f"
+		echo "XXX: f is $f"
 		if [ "$f" = "$dir/*" ]; then
-		    # echo "XXX: skipping $dir"
+		    echo "XXX: skipping $dir"
 		    break
 		fi
 		if [ "$f" = "$dir/global" ]; then
@@ -318,9 +328,9 @@ for AGENTDIR in $AGENTDIRS; do
 	done
     else
 	for f in $dir/*; do
-	    # echo "XXX: f is $f"
+	    echo "XXX: f is $f"
 	    if [ "$f" = "$dir/*" ]; then
-		# echo "XXX: skipping $dir"
+		echo "XXX: skipping $dir"
 		break
 	    fi
 	    echo "Deleting status file: $f"
@@ -332,8 +342,10 @@ for AGENT in $AGENTS; do
     pkill $AGENT
 done
 
-# Remove the preserve tag
-rm /var/tmp/verifier/config/preserve
+if [ $CLEANUP = 0 ]; then
+    # Remove the preserve tag
+    rm /var/tmp/verifier/config/preserve
+fi
 
 echo "Removing old iptables/ip6tables rules"
 # Cleanup any remaining iptables rules from a failed run

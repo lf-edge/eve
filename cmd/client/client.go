@@ -34,7 +34,7 @@ var Version = "No version specified"
 
 var maxDelay = time.Second * 600 // 10 minutes
 
-// Assumes the config files are in dirName, which is /opt/zededa/etc
+// Assumes the config files are in identityDirname, which is /config
 // by default. The files are
 //  root-certificate.pem	Fixed? Written if redirected. factory-root-cert?
 //  server			Fixed? Written if redirected. factory-root-cert?
@@ -55,12 +55,12 @@ func main() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
 	versionPtr := flag.Bool("v", false, "Version")
 	oldPtr := flag.Bool("o", false, "Old use of prov01")
-	dirPtr := flag.String("d", "/opt/zededa/etc",
+	dirPtr := flag.String("d", "/config",
 		"Directory with certs etc")
 	flag.Parse()
 	versionFlag := *versionPtr
 	oldFlag := *oldPtr
-	dirName := *dirPtr
+	identityDirname := *dirPtr
 	args := flag.Args()
 	if versionFlag {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
@@ -76,18 +76,18 @@ func main() {
 		} else {
 			log.Printf("Unknown arg %s\n", op)
 			log.Fatal("Usage: " + os.Args[0] +
-				"[-o] [-d <dirName> [<operations>...]]")
+				"[-o] [-d <identityDirname> [<operations>...]]")
 		}
 	}
 
-	onboardCertName := dirName + "/onboard.cert.pem"
-	onboardKeyName := dirName + "/onboard.key.pem"
-	deviceCertName := dirName + "/device.cert.pem"
-	deviceKeyName := dirName + "/device.key.pem"
-	rootCertName := dirName + "/root-certificate.pem"
-	serverFileName := dirName + "/server"
-	oldServerFileName := dirName + "/oldserver"
-	infraFileName := dirName + "/infra"
+	onboardCertName := identityDirname + "/onboard.cert.pem"
+	onboardKeyName := identityDirname + "/onboard.key.pem"
+	deviceCertName := identityDirname + "/device.cert.pem"
+	deviceKeyName := identityDirname + "/device.key.pem"
+	rootCertName := identityDirname + "/root-certificate.pem"
+	serverFileName := identityDirname + "/server"
+	oldServerFileName := identityDirname + "/oldserver"
+	infraFileName := identityDirname + "/infra"
 	zedserverConfigFileName := tmpDirname + "/zedserverconfig"
 	zedrouterConfigFileName := tmpDirname + "/zedrouterconfig.json"
 	uuidFileName := tmpDirname + "/uuid"

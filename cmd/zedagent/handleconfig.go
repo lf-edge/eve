@@ -33,8 +33,6 @@ var configApi string = "api/v1/edgedevice/config"
 var statusApi string = "api/v1/edgedevice/info"
 var metricsApi string = "api/v1/edgedevice/metrics"
 
-var ledConfigDirName string = "/var/tmp/ledmanager/config"
-
 // XXX remove global variables
 // XXX shouldn't we know our own deviceId? Get from some global struct?
 var deviceId string
@@ -45,11 +43,14 @@ var metricsUrl string
 var statusUrl string
 
 const (
-	serverFilename string = "/opt/zededa/etc/server"
-	dirName string = "/opt/zededa/etc"
-	deviceCertName string = dirName + "/device.cert.pem"
-	deviceKeyName string = dirName + "/device.key.pem"
-	rootCertName string = dirName + "/root-certificate.pem"
+	identityDirname   = "/config"
+	serverFilename    = identityDirname + "/server"
+	deviceCertName    = identityDirname + "/device.cert.pem"
+	deviceKeyName     = identityDirname + "/device.key.pem"
+	rootCertName      = identityDirname + "/root-certificate.pem"
+
+	ledConfigDirName  = "/var/tmp/ledmanager/config"
+	ledConfigFileName = ledConfigDirName + "/ledconfig.json"
 )
 
 // tlsConfig is initialized once i.e. effectively a constant
@@ -95,7 +96,6 @@ func getCloudUrls() {
 }
 
 func UpdateLedManagerConfigFile(count int) {
-	ledConfigFileName := ledConfigDirName + "/ledconfig.json"
 	blinkCount := types.LedBlinkCounter{
 		BlinkCounter: count,
 	}
