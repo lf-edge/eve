@@ -297,6 +297,7 @@ func installDownloadedObjects(objType string, uuidStr string,
 func installDownloadedObject(objType string, safename string,
 	config types.StorageConfig, status *types.StorageStatus) {
 
+	var ret bool
 	var srcFilename string = objectDownloadDirname + "/" + objType
 
 	key := formLookupKey(objType, safename)
@@ -349,23 +350,22 @@ func installDownloadedObject(objType string, safename string,
 
 		var dstFilename string = config.FinalObjDir
 
-		// create the destination directory
-		if _, err := os.Stat(dstFilename); err == nil {
-			if err := os.MkdirAll(dstFilename, 0700); err != nil {
-				log.Fatal("installDownloadedObject for %s, Failed directory make %s\n", key, dstFilename)
-			}
+		switch  (objType) {
+		case certObj:
+			ret = installCertObject(srcFilename, dstFilename, safename)
+
+		case baseOsObj:
+			ret = installBaseOsObject(srcFilename, dstFilename)
+
+		default:
+			log.Printf("installDownloadedObject(), unsuported Object\n")
 		}
-
-		dstFilename = dstFilename + "/" + types.SafenameToFilename(safename)
-
-		log.Printf("installDownloadedObject for %s, writing %s to %s\n",
-			key, srcFilename, dstFilename)
-
-		os.Rename(srcFilename, dstFilename)
 	}
 
-	status.State = types.INSTALLED
-	log.Printf("installDownloadedObject for %s, installation done\n", key)
+	if ret == true {
+		status.State = types.INSTALLED
+		log.Printf("installDownloadedObject for %s, installation done\n", key)
+	}
 }
 
 func writeDownloaderConfig(config types.DownloaderConfig, configFilename string) {

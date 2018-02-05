@@ -26,6 +26,7 @@ type BaseOsConfig struct {
 	ConfigSignature   string
 	OsParams          []OsVerParams
 	StorageConfigList []StorageConfig
+	PartitionLabel    string
 	Activate          bool
 }
 
@@ -47,6 +48,8 @@ type BaseOsStatus struct {
 	Activated         bool
 	OsParams          []OsVerParams
 	StorageStatusList []StorageStatus
+	PartitionLabel    string
+
 	// Mininum state across all steps/StorageStatus.
 	// INITIAL implies error.
 	State SwState

@@ -10,6 +10,7 @@ import (
 	"github.com/zededa/go-provision/types"
 	"log"
 	"os"
+	"os/exec"
 	"reflect"
 	"time"
 )
@@ -110,6 +111,26 @@ func addOrUpdateBaseOsConfig(uuidStr string, config types.BaseOsConfig) {
 	}
 }
 
+func baseOsConfigGet(uuidStr string) *types.BaseOsConfig {
+
+	config, ok := baseOsConfigMap[uuidStr]
+	if !ok {
+		log.Printf("baseOsHandleConfigGet for %s, Config absent\n", uuidStr)
+		return nil
+	}
+	return &config
+}
+
+func baseOsStatusGet(uuidStr string) *types.BaseOsStatus {
+
+	status, ok := baseOsStatusMap[uuidStr]
+	if !ok {
+		log.Printf("baseOsHandleStatusGet for %s, Config absent\n", uuidStr)
+		return nil
+	}
+	return &status
+}
+
 func baseOsHandleStatusUpdate(uuidStr string) {
 
 	config, ok := baseOsConfigMap[uuidStr]
@@ -166,6 +187,25 @@ func doBaseOsActivate(uuidStr string, config types.BaseOsConfig,
 	// XXX:FIXME, flip the currently active baseOs
 	// to backup and adjust the baseOS
 	// state accordingly
+	//check the partition label of the current root...
+
+	//check PartitionLabel the one we got is really unused?
+	partStateCmd := exec.Command("zboot", "partstate", config.PartitionLabel)
+	stdout, err := partStateCmd.Output()
+	if err != nil {
+		log.Println(err.Error())
+	}
+	partitionState := fmt.Sprintf("%s", stdout)
+	//if partitionState unsed then change status to updating...
+	if partitionState == "unused" {
+		statusCmd := exec.Command("zboot", "set_partstate", config.PartitionLabel, "updating")
+		stdout, err := statusCmd.Output()
+		if err != nil {
+			log.Println(err.Error())
+		}
+		log.Println(stdout)
+
+	}
 
 	if status.State == types.INSTALLED {
 		if status.Activated == false {
@@ -444,4 +484,25 @@ func doBaseOsUninstall(uuidStr string, status *types.BaseOsStatus) (bool, bool) 
 	log.Printf("doBaseOsUninstall for %s, Done\n", uuidStr)
 
 	return changed, del
+}
+
+func installBaseOsObject(srcFilename string, dstFilename string) bool {
+
+	// zboot partdev IMGA
+	devCmd := exec.Command("zboot", "partdev", dstFilename)
+	stdout,err0 := devCmd.Output()
+	if  err0 != nil {
+		log.Println(err0.Error())
+		return false
+	}
+
+	// write to flash Device 
+	devName := fmt.Sprintf("%s", stdout)
+	ddCmd := exec.Command("dd", "if=" +srcFilename,  "of=" + devName)
+	if _,err1 := ddCmd.Output(); err1 != nil {
+		log.Println(err1.Error())
+		return false
+	}
+
+	return true
 }
