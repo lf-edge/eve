@@ -45,7 +45,7 @@ if [ ! -d $ETCDIR -a -d /opt/zededa/etc ]; then
 elif [ -d /opt/zededa/etc ]; then
     echo "Updating from /opt/zededa/etc to $ETCDIR"
     cp -p /opt/zededa/etc/* $ETCDIR
-    rmdir -f /opt/zededa/etc
+    rmdir /opt/zededa/etc
 fi
 if [ -d /var/tmp/zedmanager/downloads ]; then
     echo "Cleaning up old download dir: /var/tmp/zedmanager/downloads"
