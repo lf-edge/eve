@@ -208,6 +208,10 @@ func handleInitWorkinProgressObjects() {
 						err, statusFile)
 					continue
 				}
+				log.Printf("Marking with PendingDelete: %s\n",
+					statusFile)
+				status.PendingDelete = true
+				writeVerifyObjectStatus(&status, statusFile)
 			}
 		}
 	}
