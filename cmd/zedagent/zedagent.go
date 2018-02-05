@@ -122,7 +122,7 @@ func main() {
 	handleInit()
 
 	watch.SignalRestart("zedagent")
-	var restartFn watch.ConfigRestartHandler = handleRestart
+	var restartFn watch.StatusRestartHandler = handleRestart
 
 	restartChanges := make(chan string)
 	appInstanceStatusChanges := make(chan string)
@@ -165,8 +165,7 @@ func main() {
 	go configTimerTask()
 
 	// app instance status event watcher
-	go watch.WatchConfigStatus(zedmanagerConfigDirname,
-		zedmanagerStatusDirname, appInstanceStatusChanges)
+	go watch.WatchStatus(zedmanagerStatusDirname, appInstanceStatusChanges)
 
 	// base os config/status event handler
 	go watch.WatchConfigStatus(zedagentBaseOsConfigDirname,
@@ -189,8 +188,7 @@ func main() {
 		certObjDownloaderChanges)
 
 	// for restart flag handling
-	go watch.WatchConfigStatus(zedagentConfigDirname,
-		zedagentStatusDirname, restartChanges)
+	go watch.WatchStatus(zedagentStatusDirname, restartChanges)
 
 	deviceStatusChanges := make(chan string)
 	go watch.WatchStatus(DNSDirname, deviceStatusChanges)
@@ -201,21 +199,16 @@ func main() {
 
 		case change := <-restartChanges:
 			// restart only, place holder
-			watch.HandleConfigStatusEvent(change, dummyContext{},
-				zedagentConfigDirname, zedagentStatusDirname,
-				&types.AppInstanceConfig{},
+			watch.HandleStatusEvent(change, dummyContext{},
+				zedagentStatusDirname,
 				&types.AppInstanceStatus{},
-				handleAppInstanceStatusCreate,
 				handleAppInstanceStatusModify,
 				handleAppInstanceStatusDelete, &restartFn)
 
 		case change := <-appInstanceStatusChanges:
-			go watch.HandleConfigStatusEvent(change, dummyContext{},
-				zedmanagerConfigDirname,
+			go watch.HandleStatusEvent(change, dummyContext{},
 				zedmanagerStatusDirname,
-				&types.AppInstanceConfig{},
 				&types.AppInstanceStatus{},
-				handleAppInstanceStatusCreate,
 				handleAppInstanceStatusModify,
 				handleAppInstanceStatusDelete, nil)
 
@@ -354,25 +347,20 @@ func createConfigStatusDirs(moduleName string, objTypes []string) {
 
 var publishIteration = 0
 
-func handleAppInstanceStatusCreate(ctxArg interface{}, statusFilename string,
-	configArg interface{}) {
-	config := configArg.(*types.AppInstanceConfig)
-	log.Printf("handleAppInstanceStatusCreate for %s\n", config.DisplayName)
-}
-
 func handleAppInstanceStatusModify(ctxArg interface{}, statusFilename string,
-	configArg interface{}, statusArg interface{}) {
+	statusArg interface{}) {
 	status := statusArg.(*types.AppInstanceStatus)
 	uuidStr := status.UUIDandVersion.UUID.String()
 	PublishAppInfoToZedCloud(uuidStr, status, publishIteration)
 	publishIteration += 1
 }
 
-func handleAppInstanceStatusDelete(ctxArg interface{}, statusFilename string,
-	statusArg interface{}) {
-	status := statusArg.(*types.AppInstanceStatus)
-	uuidStr := status.UUIDandVersion.UUID.String()
-	PublishAppInfoToZedCloud(uuidStr, status, publishIteration)
+func handleAppInstanceStatusDelete(ctxArg interface{}, statusFilename string) {
+	// XXX is statusFilename == key aka UUIDstr?     
+	// XXX no status - need delete support
+	// status := statusArg.(*types.AppInstanceStatus)
+	uuidStr := statusFilename
+	PublishAppInfoToZedCloud(uuidStr, nil, publishIteration)
 	publishIteration += 1
 }
 
