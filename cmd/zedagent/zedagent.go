@@ -60,7 +60,8 @@ const (
 	runDirname     = zedRunDirname + "/" + moduleName
 
 	certsDirname          = "/var/tmp/zedmanager/certs"
-	objectDownloadDirname = "/var/tmp/zedmanager/downloads"
+	persistDir	      = "/persist"
+	objectDownloadDirname = persistDir + "/downloads"
 
 	downloaderBaseDirname = zedBaseDirname + "/" + downloaderModulename
 	downloaderRunDirname  = zedRunDirname + "/" + downloaderModulename

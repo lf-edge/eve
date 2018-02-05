@@ -40,7 +40,8 @@ const (
 	baseDirname           = zedBaseDirname + "/" + moduleName
 	runDirname            = zedRunDirname + "/" + moduleName
 	certsDirname          = "/var/tmp/zedmanager/certs"
-	objectDownloadDirname = "/var/tmp/zedmanager/downloads"
+	persistDir	      = "/persist"
+	objectDownloadDirname = persistDir + "/downloads"
 	DNSDirname            = "/var/run/zedrouter/DeviceNetworkStatus"
 
 	downloaderConfigDirname = baseDirname + "/config"
@@ -464,7 +465,7 @@ func downloaderInit() *zedUpload.DronaCtx {
 	updateRemainingSpace()
 
 	// XXX how do we find out when verifier cleans up duplicates etc?
-	// We read /var/tmp/zedmanager/downloads/* and determine how much space
+	// We read objectDownloadDirname/* and determine how much space
 	// is used. Place in GlobalDownloadStatus. Calculate remaining space.
 	totalUsed := sizeFromDir(objectDownloadDirname)
 	globalStatus.UsedSpace = uint((totalUsed + 1023) / 1024)

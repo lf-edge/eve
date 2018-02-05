@@ -18,11 +18,12 @@ import (
 var domainConfig map[string]types.DomainConfig
 
 const (
-	imgCatalogDirname  = "/var/tmp/zedmanager/downloads/" + appImgObj
-	pendingDirname     = imgCatalogDirname + "/pending"
-	verifierDirname    = imgCatalogDirname + "/verifier"
-	finalDirname       = imgCatalogDirname + "/verified"
-	certificateDirname = "/var/tmp/zedmanager/certs"
+	persistDir	      = "/persist"
+	objectDownloadDirname = persistDir + "/downloads"
+	imgCatalogDirname     = objectDownloadDirname + "/" + appImgObj
+	pendingDirname        = imgCatalogDirname + "/pending"
+	verifierDirname       = imgCatalogDirname + "/verifier"
+	finalDirname          = imgCatalogDirname + "/verified"
 )
 
 func MaybeAddDomainConfig(aiConfig types.AppInstanceConfig,

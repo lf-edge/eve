@@ -4,11 +4,10 @@
 // Process input changes from a config directory containing json encoded files
 // with VerifyImageConfig and compare against VerifyImageStatus in the status
 // dir.
-// Move the file from downloads/pending/<claimedsha>/<safename> to
-// to downloads/verifier/<claimedsha>/<safename> and make RO, then attempt to
-// verify sum.
-// Once sum is verified, move to downloads/verified/<sha>/<filename> where
-// the filename is the last part of the URL (after the last '/')
+// Move the file from objectDownloadDirname/pending/<claimedsha>/<safename> to
+// to objectDownloadDirname/verifier/<claimedsha>/<safename> and make RO,
+// then attempt to verify sum.
+// Once sum is verified, move to objectDownloadDirname/verified/<sha>/<filename>// where the filename is the last part of the URL (after the last '/')
 // Note that different URLs for same file will download to the same <sha>
 // directory. We delete duplicates assuming the file content will be the same.
 
@@ -48,7 +47,8 @@ const (
 	runDirname            = zedRunDirname + "/" + moduleName
 	configDirname         = baseDirname + "/config"
 	statusDirname         = runDirname + "/status"
-	objectDownloadDirname = "/var/tmp/zedmanager/downloads"
+	persistDir	      = "/persist"
+	objectDownloadDirname = persistDir + "/downloads"
 
 	rootCertDirname    = "/opt/zededa/etc"
 	rootCertFileName   = rootCertDirname + "/root-certificate.pem"
@@ -464,10 +464,10 @@ func markObjectAsVerifying(objType string, config *types.VerifyImageConfig,
 	status *types.VerifyImageStatus, statusFilename string) bool {
 
 	// Form the unique filename in
-	// /var/tmp/zedmanager/downloads/<objType>/pending/
+	// objectDownloadDirname/<objType>/pending/
 	// based on the claimed Sha256 and safename, and the same name
-	// in downloads/<objType>/verifier/. Form a shorter name for
-	// downloads/<objType/>verified/.
+	// in objectDownloadDirname/<objType>/verifier/. Form a shorter name for
+	// objectDownloadDirname/<objType/>verified/.
 
 	downloadDirname := objectDownloadDirname + "/" + objType
 	pendingDirname := downloadDirname + "/pending/" + status.ImageSha256
@@ -713,7 +713,8 @@ func markObjectAsVerified(objType string, config *types.VerifyImageConfig,
 	verifierFilename := verifierDirname + "/" + config.Safename
 	verifiedFilename := verifiedDirname + "/" + config.Safename
 
-	// Move directory from downloads/verifier to downloads/verified
+	// Move directory from objectDownloadDirname/verifier to
+	// objectDownloadDirname/verified
 	// XXX should have dom0 do this and/or have RO mounts
 	filename := types.SafenameToFilename(config.Safename)
 	verifiedFilename = verifiedDirname + "/" + filename

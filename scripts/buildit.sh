@@ -59,6 +59,7 @@ TMPDIR=/tmp/zededa-build.$$
 TYPE=linux_arm64
 rm -rf $TMPDIR
 # Setup for untaring in /opt
+# zenbuild will move /opt/zededa/etc to /config
 mkdir -p $TMPDIR/zededa/etc $TMPDIR/zededa/bin
 cp -p README $TMPDIR/zededa/bin/
 cp -p etc/* $TMPDIR/zededa/etc/

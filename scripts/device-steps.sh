@@ -2,7 +2,9 @@
 
 echo "Starting device-steps.sh at" `date`
 
-ETCDIR=/opt/zededa/etc
+# This is really CONFIGDIR; ETCDIR across reboots is TMPDIR
+ETCDIR=/config
+PERSISTDIR=/persist
 BINDIR=/opt/zededa/bin
 PROVDIR=$BINDIR
 TMPDIR=/var/tmp/zededa
@@ -16,6 +18,7 @@ OLDFLAG=
 WAIT=1
 EID_IN_DOMU=0
 MEASURE=0
+CLEANUP=0
 while [ $# != 0 ]; do
     if [ "$1" = -w ]; then
 	WAIT=0
@@ -25,14 +28,31 @@ while [ $# != 0 ]; do
 	MEASURE=1
     elif [ "$1" = -o ]; then
 	OLDFLAG=$1
+    elif [ "$1" = -c ]; then
+	CLEANUP=1
     else
 	ETCDIR=$1
     fi
     shift
 done
 
-mkdir -p /var/tmp/zededa/
+mkdir -p $TMPDIR
 
+# XXX need to do this move in zenbuild?
+if [ ! -d $ETCDIR -a -d /opt/zededa/etc ]; then
+    echo "Moving from /opt/zededa/etc to $ETCDIR"
+    mv /opt/zededa/etc $ETCDIR
+    if [ -d /var/tmp/zedmanager/downloads ]; then
+	    echo "Cleaning up old download dir: /var/tmp/zedmanager/downloads"
+	    rm -rf /var/tmp/zedmanager/downloads
+    fi
+fi
+
+if [ $CLEANUP = 1 -a -d $PERSISTDIR/downloads ]; then
+    echo "Cleaning up download dir $PERSISTDIR/downloads"
+    rm -rf $PERSISTDIR/downloads
+fi
+    
 echo "Configuration from factory/install:"
 (cd $ETCDIR; ls -l)
 echo
@@ -75,7 +95,7 @@ elif [ -f /usr/bin/ntpdate ]; then
     /usr/bin/ntpdate pool.ntp.org
 elif [ -f /usr/sbin/ntpd ]; then
    # last ditch attemp to sync up our clock
-    /usr/sbin/ntpd -d -q -n -p pool.ntp.org
+    /usr/sbin/ntpd -q -n pool.ntp.org
 else
     echo "No ntpd"
 fi
@@ -88,7 +108,7 @@ if [ ! \( -f $ETCDIR/device.cert.pem -a -f $ETCDIR/device.key.pem \) ]; then
     echo "Generating a device key pair and self-signed cert (using TPM/TEE if available) at" `date`
     $PROVDIR/generate-device.sh $ETCDIR/device
     SELF_REGISTER=1
-elif [ -f $ETCDIR/self-register-failed ]; then
+elif [ -f $TMPDIR/self-register-failed ]; then
     echo "self-register failed/killed/rebooted; redoing self-register"
     SELF_REGISTER=1
 else
@@ -124,10 +144,10 @@ fi
 
 # We use the factory network.config.static if we have one, otherwise
 # we reuse the DeviceNetworkConfig from a previous run
-mkdir -p /var/tmp/zededa/DeviceNetworkConfig/
+mkdir -p $TMPDIR/DeviceNetworkConfig/
 if [ -f $ETCDIR/network.config.static ] ; then
     echo "Using $ETCDIR/network.config.static"
-    cp -p $ETCDIR/network.config.static /var/tmp/zededa/DeviceNetworkConfig/global.json 
+    cp -p $ETCDIR/network.config.static $TMPDIR/DeviceNetworkConfig/global.json 
 fi
 
 if [ ! -f $TMPDIR/uuid -a -f $ETCDIR/uuid ]; then
@@ -137,7 +157,7 @@ fi
 if [ $SELF_REGISTER = 1 ]; then
     rm -f $TMPDIR/zedrouterconfig.json
     
-    touch $ETCDIR/self-register-failed
+    touch $TMPDIR/self-register-failed
     echo "Self-registering our device certificate at " `date`
     if [ ! \( -f $ETCDIR/onboard.cert.pem -a -f $ETCDIR/onboard.key.pem \) ]; then
 	echo "Missing onboarding certificate. Giving up"
@@ -145,7 +165,7 @@ if [ $SELF_REGISTER = 1 ]; then
     fi
     echo $BINDIR/client $OLDFLAG -d $ETCDIR selfRegister
     $BINDIR/client $OLDFLAG -d $ETCDIR selfRegister
-    rm -f $ETCDIR/self-register-failed
+    rm -f $TMPDIR/self-register-failed
     if [ $WAIT = 1 ]; then
 	echo -n "Press any key to continue "; read dummy; echo; echo
     fi
@@ -189,19 +209,35 @@ rm -rf /var/run/zedmanager/status/*.json
 
 echo "Removing old ledmanager config files"
 rm -rf /var/tmp/ledmanager/config/*.json
+
 # The following is a workaround for a racecondition between different agents
 # Make sure we have the required directories in place
-DIRS="/var/tmp/ledmanager/config/ /var/tmp/domainmgr/config/ /var/tmp/verifier/config/ /var/tmp/downloader/config/ /var/tmp/zedmanager/config/ /var/tmp/identitymgr/config/ /var/tmp/zedrouter/config/ /var/run/domainmgr/status/ /var/run/verifier/status/ /var/run/downloader/status/ /var/run/zedmanager/status/ /var/run/eidregister/status/ /var/run/zedrouter/status/ /var/run/identitymgr/status/ /var/tmp/zededa/DeviceNetworkConfig/ /var/run/zedrouter/DeviceNetworkStatus/"
+DIRS="$ETCDIR $PERSISTDIR $TMPDIR /var/tmp/ledmanager/config/ /var/tmp/domainmgr/config/ /var/tmp/verifier/config/ /var/tmp/downloader/config/ /var/tmp/zedmanager/config/ /var/tmp/identitymgr/config/ /var/tmp/zedrouter/config/ /var/run/domainmgr/status/ /var/run/verifier/status/ /var/run/downloader/status/ /var/run/zedmanager/status/ /var/run/eidregister/status/ /var/run/zedrouter/status/ /var/run/identitymgr/status/ /var/tmp/zededa/DeviceNetworkConfig/ /var/run/zedrouter/DeviceNetworkStatus/"
 for d in $DIRS; do
-    mkdir -p $d
-    chmod 700 $d `dirname $d`
+    d1=`dirname $d`
+    if [ ! -d $d1 ]; then
+	mkdir -p $d1
+	chmod 700 $d1
+    fi
+    if [ ! -d $d ]; then
+	mkdir -p $d
+	chmod 700 $d
+    fi
 done
 
-for AGENT in $AGENTS; do
-    if [ ! -d /var/tmp/$AGENT ]; then
+# Some agents have multiple config and status files
+AGENTDIRSS="$AGENTS verifier/appImg.obj verifier/baseOs.obj downloader/appImg.obj downloader/baseOs.obj downloader/cert.obj"
+for AGENTDIR in $AGENTDIRS; do
+    d=`dirname AGENTDIR`
+    if [ $d != '.' ]; then
+	AGENT=$d
+    else
+	AGENT=$AGENTDIR
+    fi
+    if [ ! -d /var/tmp/$AGENTDIR ]; then
 	continue
     fi
-    dir=/var/tmp/$AGENT/config
+    dir=/var/tmp/$AGENTDIR/config
     if [ ! -d $dir ]; then
 	continue
     fi
@@ -233,18 +269,24 @@ done
 touch /var/tmp/verifier/config/preserve
 
 # If agents are running wait for the status files to disappear
-for AGENT in $AGENTS; do
+for AGENTDIR in $AGENTDIRS; do
+    d=`dirname AGENTDIR`
+    if [ $d != '.' ]; then
+	AGENT=$d
+    else
+	AGENT=$AGENTDIR
+    fi
     if [ ! -d /var/run/$AGENT ]; then
 	# Needed for zedagent
 	pkill $AGENT
 	continue
     fi
     if [ $AGENT = "verifier" ]; then
-	echo "Skipping check for /var/run/$AGENT/status"
+	echo "Skipping check for /var/run/$AGENTDIR/status"
 	pkill $AGENT
 	continue
     fi
-    dir=/var/run/$AGENT/status
+    dir=/var/run/$AGENTDIR/status
     if [ ! -d $dir ]; then
 	continue
     fi
@@ -285,6 +327,8 @@ for AGENT in $AGENTS; do
 	    rm -f "$f"
 	done
     fi
+done
+for AGENT in $AGENTS; do
     pkill $AGENT
 done
 
@@ -319,7 +363,7 @@ if [ $SELF_REGISTER = 1 ]; then
 		echo "NOT Found interface based on route to map servers. Giving up"
 		exit 1    
 	fi
-	cat <<EOF >/var/tmp/zededa/DeviceNetworkConfig/global.json
+	cat <<EOF >$TMPDIR/DeviceNetworkConfig/global.json
 {"Uplink":["$intf"], "FreeUplinks":["$intf"]}
 EOF
     fi
@@ -355,9 +399,9 @@ else
 	echo "Found $uuid in /etc/hosts"
     fi
     # Handle old file format
-    grep -q FreeUplinks /var/tmp/zededa/DeviceNetworkConfig/global.json
+    grep -q FreeUplinks $TMPDIR/DeviceNetworkConfig/global.json
     if [ $? = 0 ]; then
-	echo "Found FreeUplinks in /var/tmp/zededa/DeviceNetworkConfig/global.json"
+	echo "Found FreeUplinks in $TMPDIR/DeviceNetworkConfig/global.json"
     else
 	echo "Determining uplink interface"
 	intf=`$BINDIR/find-uplink.sh $ETCDIR/lisp.config.base`
@@ -367,7 +411,7 @@ else
 		echo "NOT Found interface based on route to map servers. Giving up"
 		exit 1    
 	fi
-	cat <<EOF >$/var/tmp/zededa/DeviceNetworkConfig/global.json
+	cat <<EOF >$TMPDIR/DeviceNetworkConfig/global.json
 {"Uplink":["$intf"], "FreeUplinks":["$intf"]}
 EOF
     fi
