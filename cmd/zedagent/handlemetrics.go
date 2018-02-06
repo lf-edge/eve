@@ -35,6 +35,8 @@ func publishMetrics(iteration int) {
 
 func metricsTimerTask() {
 	iteration := 0
+	log.Println("starting report metrics timer task")
+	publishMetrics(iteration)
 	ticker := time.NewTicker(time.Second * 60)
 	for t := range ticker.C {
 		log.Println("Tick at", t)
