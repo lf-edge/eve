@@ -215,9 +215,6 @@ fi
 echo "Removing old zedmanager status files"
 rm -rf /var/run/zedmanager/status/*.json
 
-echo "Removing old ledmanager config files"
-rm -rf /var/tmp/ledmanager/config/*.json
-
 # The following is a workaround for a racecondition between different agents
 # Make sure we have the required directories in place
 DIRS="$ETCDIR $PERSISTDIR $TMPDIR /var/tmp/ledmanager/config/ /var/tmp/domainmgr/config/ /var/tmp/verifier/config/ /var/tmp/downloader/config/ /var/tmp/zedmanager/config/ /var/tmp/identitymgr/config/ /var/tmp/zedrouter/config/ /var/run/domainmgr/status/ /var/run/verifier/status/ /var/run/downloader/status/ /var/run/zedmanager/status/ /var/run/eidregister/status/ /var/run/zedrouter/status/ /var/run/identitymgr/status/ /var/tmp/zededa/DeviceNetworkConfig/ /var/run/zedrouter/DeviceNetworkStatus/"
@@ -234,14 +231,15 @@ for d in $DIRS; do
 done
 
 # Some agents have multiple config and status files
-AGENTDIRSS="$AGENTS verifier/appImg.obj verifier/baseOs.obj downloader/appImg.obj downloader/baseOs.obj downloader/cert.obj"
+AGENTDIRS="$AGENTS verifier/appImg.obj verifier/baseOs.obj downloader/appImg.obj downloader/baseOs.obj downloader/cert.obj"
 for AGENTDIR in $AGENTDIRS; do
-    d=`dirname AGENTDIR`
+    d=`dirname $AGENTDIR`
     if [ $d != '.' ]; then
 	AGENT=$d
     else
 	AGENT=$AGENTDIR
     fi
+    # echo "XXX Looking in config $AGENTDIR for $AGENT"
     if [ ! -d /var/tmp/$AGENTDIR ]; then
 	continue
     fi
@@ -249,11 +247,11 @@ for AGENTDIR in $AGENTDIRS; do
     if [ ! -d $dir ]; then
 	continue
     fi
-    echo "XXX Looking in config $dir"
+    # echo "XXX Looking in config $dir"
     for f in $dir/*; do
-	echo "XXX: f is $f"
+	# echo "XXX: f is $f"
 	if [ "$f" = "$dir/*" ]; then
-		echo "XXX: skipping $dir"
+		# echo "XXX: skipping $dir"
 		break
 	fi
 	if [ "$f" = "$dir/global" ]; then
@@ -280,12 +278,13 @@ fi
 
 # If agents are running wait for the status files to disappear
 for AGENTDIR in $AGENTDIRS; do
-    d=`dirname AGENTDIR`
+    d=`dirname $AGENTDIR`
     if [ $d != '.' ]; then
 	AGENT=$d
     else
 	AGENT=$AGENTDIR
     fi
+    # echo "XXX Looking in status $AGENTDIR for $AGENT"
     if [ ! -d /var/run/$AGENT ]; then
 	# Needed for zedagent
 	pkill $AGENT
@@ -300,15 +299,15 @@ for AGENTDIR in $AGENTDIRS; do
     if [ ! -d $dir ]; then
 	continue
     fi
-    echo "XXX Looking in status $dir"
+    # echo "XXX Looking in status $dir"
     pid=`pgrep $AGENT`
     if [ "$pid" != "" ]; then
 	while /bin/true; do
 	    wait=0
 	    for f in $dir/*; do
-		echo "XXX: f is $f"
+		# echo "XXX: f is $f"
 		if [ "$f" = "$dir/*" ]; then
-		    echo "XXX: skipping $dir"
+		    # echo "XXX: skipping $dir"
 		    break
 		fi
 		if [ "$f" = "$dir/global" ]; then
@@ -328,9 +327,9 @@ for AGENTDIR in $AGENTDIRS; do
 	done
     else
 	for f in $dir/*; do
-	    echo "XXX: f is $f"
+	    # echo "XXX: f is $f"
 	    if [ "$f" = "$dir/*" ]; then
-		echo "XXX: skipping $dir"
+		# echo "XXX: skipping $dir"
 		break
 	    fi
 	    echo "Deleting status file: $f"
@@ -443,6 +442,7 @@ fi
 echo '{"MaxSpace":2000000}' >/var/tmp/downloader/config/global 
 
 rm -f /var/run/verifier/status/restarted
+rm -f /var/run/verifier/*/status/restarted
 rm -f /var/tmp/zedrouter/config/restart
 
 echo "Starting ledmanager at" `date`
