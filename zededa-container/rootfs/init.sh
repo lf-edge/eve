@@ -13,6 +13,6 @@ ethtool -K eth1 gro off
 XENCONSOLED_ARGS='--log=all --log-dir=/var/log/xen' /etc/init.d/xencommons start
 
 # This is an optional component - only run it if it is there
-/opt/zededa/bin/device-steps.sh -w < /opt/zededa/etc/cert-input.txt || :
+/opt/zededa/bin/device-steps.sh -w < /config/cert-input.txt || :
 
-tail -f /var/log/*
+tail -f /var/log/*.log
