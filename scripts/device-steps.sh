@@ -217,7 +217,7 @@ rm -rf /var/run/zedmanager/status/*.json
 
 # The following is a workaround for a racecondition between different agents
 # Make sure we have the required directories in place
-DIRS="$ETCDIR $PERSISTDIR $TMPDIR /var/tmp/ledmanager/config/ /var/tmp/domainmgr/config/ /var/tmp/verifier/config/ /var/tmp/downloader/config/ /var/tmp/zedmanager/config/ /var/tmp/identitymgr/config/ /var/tmp/zedrouter/config/ /var/run/domainmgr/status/ /var/run/verifier/status/ /var/run/downloader/status/ /var/run/zedmanager/status/ /var/run/eidregister/status/ /var/run/zedrouter/status/ /var/run/identitymgr/status/ /var/tmp/zededa/DeviceNetworkConfig/ /var/run/zedrouter/DeviceNetworkStatus/"
+DIRS="$ETCDIR $PERSISTDIR $TMPDIR /var/tmp/ledmanager/config/ /var/tmp/domainmgr/config/ /var/tmp/verifier/config/ /var/tmp/downloader/config/ /var/tmp/zedmanager/config/ /var/tmp/identitymgr/config/ /var/tmp/zedrouter/config/ /var/run/domainmgr/status/ /var/run/downloader/status/ /var/run/zedmanager/status/ /var/run/eidregister/status/ /var/run/zedrouter/status/ /var/run/identitymgr/status/ /var/tmp/zededa/DeviceNetworkConfig/ /var/run/zedrouter/DeviceNetworkStatus/"
 for d in $DIRS; do
     d1=`dirname $d`
     if [ ! -d $d1 ]; then
@@ -290,7 +290,7 @@ for AGENTDIR in $AGENTDIRS; do
 	pkill $AGENT
 	continue
     fi
-    if [ $AGENT = "verifier" -a $CLEANUP = 0 ]; then
+    if [ $AGENT = "verifier" ]; then
 	echo "Skipping check for /var/run/$AGENTDIR/status"
 	pkill $AGENT
 	continue
@@ -441,7 +441,6 @@ fi
 # Setup default amount of space for images
 echo '{"MaxSpace":2000000}' >/var/tmp/downloader/config/global 
 
-rm -f /var/run/verifier/status/restarted
 rm -f /var/run/verifier/*/status/restarted
 rm -f /var/tmp/zedrouter/config/restart
 
