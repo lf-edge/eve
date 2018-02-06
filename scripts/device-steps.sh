@@ -102,8 +102,9 @@ if [ -f $ETCDIR/ntp-server ]; then
 elif [ -f /usr/bin/ntpdate ]; then
     /usr/bin/ntpdate pool.ntp.org
 elif [ -f /usr/sbin/ntpd ]; then
-   # last ditch attemp to sync up our clock
-    /usr/sbin/ntpd -q -n pool.ntp.org
+    # last ditch attemp to sync up our clock
+    # '-p' means peer in some distros; pidfile in others
+    /usr/sbin/ntpd -q -n -p pool.ntp.org
 else
     echo "No ntpd"
 fi
