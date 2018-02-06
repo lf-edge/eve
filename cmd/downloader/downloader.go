@@ -57,6 +57,11 @@ const (
 	certObjStatusDirname = runDirname + "/" + certObj + "/status"
 )
 
+// Go doesn't like this as a constant
+var (
+	downloaderObjTypes   = []string{appImgObj, baseOsObj, certObj}
+)
+
 // Set from Makefile
 var Version = "No version specified"
 
@@ -80,7 +85,9 @@ func main() {
 		return
 	}
 	log.Printf("Starting downloader\n")
-	watch.CleanupRestarted("downloader")
+	for _, ot := range downloaderObjTypes {
+		watch.CleanupRestartedObj("downloader", ot)
+	}
 
 	// Any state needed by handler functions
 	ctx := downloaderContext{}
@@ -484,8 +491,6 @@ func downloaderInit() *zedUpload.DronaCtx {
 
 func initializeDirs() {
 
-	objTypes := []string{appImgObj, baseOsObj, certObj}
-
 	if _, err := os.Stat(certsDirname); err != nil {
 		if err := os.MkdirAll(certsDirname, 0700); err != nil {
 			log.Fatal(err)
@@ -495,13 +500,13 @@ func initializeDirs() {
 	// Remove any files which didn't make it past the verifier.
 	// Though verifier owns it, remove them for calculating the
 	// total available space
-	clearInProgressDownloadDirs(objTypes)
+	clearInProgressDownloadDirs(downloaderObjTypes)
 
 	// create the object based config/status dirs
-	createConfigStatusDirs(moduleName, objTypes)
+	createConfigStatusDirs(moduleName, downloaderObjTypes)
 
 	// create the object download directories
-	createDownloadDirs(objTypes)
+	createDownloadDirs(downloaderObjTypes)
 }
 
 // create module and object based config/status directories

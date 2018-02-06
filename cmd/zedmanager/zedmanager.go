@@ -67,7 +67,9 @@ func main() {
 	}
 	log.Printf("Starting zedmanager\n")
 	watch.CleanupRestarted("zedmanager")
+	// XXX either we don't need this, or we need it for each objType
 	watch.CleanupRestart("downloader")
+	// XXX either we don't need this, or we need it for each objType
 	watch.CleanupRestart("verifier")
 	watch.CleanupRestart("identitymgr")
 	watch.CleanupRestart("zedrouter")
@@ -116,8 +118,6 @@ func main() {
 	// Any state needed by handler functions
 	ctx := zedmanagerContext{}
 
-	verifierRestartChanges := make(chan string)
-	go watch.WatchStatus(verifierStatusDirname, verifierRestartChanges)
 	verifierChanges := make(chan string)
 	go watch.WatchStatus(verifierAppImgObjStatusDirname, verifierChanges)
 	downloaderChanges := make(chan string)
@@ -141,9 +141,6 @@ func main() {
 
 	// First we process the verifierStatus to avoid downloading
 	// an image we already have in place.
-	// Note that the "restarted" file appears in /var/run/verifier/status
-	// while the individual status appears in /var/run/verifier/appImg.obj/status
-	// XXX should we fix that in verifier?
 	log.Printf("Handling initial verifier Status\n")
 	done := false
 	for !done {
@@ -152,16 +149,6 @@ func main() {
 			{
 				watch.HandleStatusEvent(change, &ctx,
 					verifierAppImgObjStatusDirname,
-					&types.VerifyImageStatus{},
-					handleVerifyImageStatusModify,
-					handleVerifyImageStatusDelete,
-					&verifierRestartedFn)
-				continue
-			}
-		case change := <-verifierRestartChanges:
-			{
-				watch.HandleStatusEvent(change, &ctx,
-					verifierStatusDirname,
 					&types.VerifyImageStatus{},
 					handleVerifyImageStatusModify,
 					handleVerifyImageStatusDelete,
@@ -178,16 +165,6 @@ func main() {
 	log.Printf("Handling all inputs\n")
 	for {
 		select {
-		case change := <-verifierRestartChanges:
-			{
-				watch.HandleStatusEvent(change, &ctx,
-					verifierStatusDirname,
-					&types.VerifyImageStatus{},
-					handleVerifyImageStatusModify,
-					handleVerifyImageStatusDelete,
-					&verifierRestartedFn)
-				continue
-			}
 		case change := <-downloaderChanges:
 			{
 				watch.HandleStatusEvent(change, &ctx,
@@ -259,7 +236,7 @@ func main() {
 	}
 }
 
-// Propagate a seqence of restart//restarted from the zedmanager config
+// Propagate a seqence of restart/restarted from the zedmanager config
 // and verifier status to identitymgr, then from identitymgr to zedrouter,
 // and finally from zedrouter to domainmgr.
 // This removes the need for extra downloads/verifications and extra copying

@@ -64,6 +64,11 @@ const (
 	baseOsStatusDirname = runDirname + "/" + baseOsObj + "/status"
 )
 
+// Go doesn't like this as a constant
+var (
+	verifierObjTypes    = []string{appImgObj, baseOsObj}
+)
+
 // Set from Makefile
 var Version = "No version specified"
 
@@ -82,13 +87,15 @@ func main() {
 	}
 	log.Printf("Starting verifier\n")
 
-	watch.CleanupRestarted("verifier")
-
+	for _, ot := range verifierObjTypes {
+		watch.CleanupRestartedObj("verifier", ot)
+	}
 	handleInit()
 
 	// Report to zedmanager that init is done
-	// XXX should we write this in each directory?
-	watch.SignalRestarted("verifier")
+	for _, ot := range verifierObjTypes {
+		watch.SignalRestartedObj("verifier", ot)
+	}
 
 	// Any state needed by handler functions
 	ctx := verifierContext{}
@@ -150,9 +157,6 @@ func handleInit() {
 }
 
 func initializeDirs() {
-
-	objTypes := []string{appImgObj, baseOsObj}
-
 	// first the certs directory
 	if _, err := os.Stat(certificateDirname); err != nil {
 		if err := os.MkdirAll(certificateDirname, 0700); err != nil {
@@ -163,13 +167,13 @@ func initializeDirs() {
 	// Remove any files which didn't make it past the verifier.
 	// useful for calculating total available space in
 	// downloader context
-	clearInProgressDownloadDirs(objTypes)
+	clearInProgressDownloadDirs(verifierObjTypes)
 
 	// create the object based config/status dirs
-	createConfigStatusDirs(moduleName, objTypes)
+	createConfigStatusDirs(moduleName, verifierObjTypes)
 
 	// create the object download directories
-	createDownloadDirs(objTypes)
+	createDownloadDirs(verifierObjTypes)
 }
 
 // Mark all existing Status as PendingDelete.
@@ -178,10 +182,7 @@ func initializeDirs() {
 //  in ... we will delete anything which still has PendingDelete set.
 
 func handleInitWorkinProgressObjects() {
-
-	objTypes := []string{appImgObj, baseOsObj}
-
-	for _, objType := range objTypes {
+	for _, objType := range verifierObjTypes {
 		statusDirname := runDirname + "/" + objType + "/status"
 		if _, err := os.Stat(statusDirname); err == nil {
 
@@ -219,10 +220,7 @@ func handleInitWorkinProgressObjects() {
 
 // recreate status files for verified objects
 func handleInitVerifiedObjects() {
-
-	var objTypes = []string{appImgObj, baseOsObj}
-
-	for _, objType := range objTypes {
+	for _, objType := range verifierObjTypes {
 
 		statusDirname := runDirname + "/" + objType + "/status"
 		verifiedDirname := objectDownloadDirname + "/" + objType + "/verified"
@@ -280,10 +278,7 @@ func populateInitialStatusFromVerified(objType string, objDirname string,
 
 // remove the status files marked as pending delete
 func handleInitMarkedDeletePendingObjects() {
-
-	objTypes := []string{appImgObj, baseOsObj}
-
-	for _, objType := range objTypes {
+	for _, objType := range verifierObjTypes {
 		statusDirname := runDirname + "/" + objType + "/status"
 		if _, err := os.Stat(statusDirname); err == nil {
 
