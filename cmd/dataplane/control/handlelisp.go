@@ -1,12 +1,12 @@
 package main
 
 import (
-	"encoding/json"
-	"github.com/zededa/go-provision/dataplane/fib"
-	"github.com/zededa/go-provision/types"
 	"log"
 	"net"
 	"strconv"
+	"encoding/json"
+	"github.com/zededa/go-provision/types"
+	"github.com/zededa/go-provision/dataplane/fib"
 )
 
 // Parse the json RLOC message and extract ip addresses along
@@ -47,6 +47,35 @@ func parseRloc(rlocStr *Rloc) (types.Rloc, bool) {
 		return types.Rloc{}, false
 	}
 
+	//keys := make([]types.Key, len(rlocStr.Keys))
+	// Max number of keys per RLOC can only be 3. Look at RFC 8061 lisp header
+	keys := make([]types.Key, 3)
+
+	//for i, key := range rlocStr.Keys {
+	for _, key := range rlocStr.Keys {
+		keyId, err := strconv.ParseUint(key.KeyId, 10, 32)
+		if err != nil {
+			continue
+		}
+
+		if (len(key.EncKey) != CRYPTO_KEY_LEN) ||
+		(len(key.IcvKey[8:]) != CRYPTO_KEY_LEN) {
+			log.Printf(
+				"Error: Encap Key lengths should be 32, found encrypt key len %d & icv key length %d and encap key %s, icv key %s\n",
+				len(key.EncKey), len(key.IcvKey[8:]), key.EncKey, key.IcvKey[8:])
+			continue
+		}
+
+		//keys[i] = types.Key {
+		keys[keyId - 1] = types.Key {
+			KeyId: uint32(keyId),
+			EncKey: []byte(key.EncKey),
+			IcvKey: []byte(key.IcvKey[8:]),
+		}
+		log.Printf("Adding enc key %s\n", keys[keyId - 1].EncKey)
+		log.Printf("Adding icv key %s\n", keys[keyId - 1].IcvKey)
+	}
+
 	// XXX We are not decoding the keys for now.
 	// Will have to add code for key handling in future.
 
@@ -54,6 +83,8 @@ func parseRloc(rlocStr *Rloc) (types.Rloc, bool) {
 		Rloc:     rloc,
 		Priority: priority,
 		Weight:   weight,
+		KeyCount: uint32(len(rlocStr.Keys)),
+		Keys:     keys,
 		Family:   uint32(family),
 	}
 	return rlocEntry, true
@@ -268,12 +299,39 @@ func handleDecapKeys(msg []byte) {
 		return
 	}
 
-	// XXX We do not parse and store the decap keys for now.
-	// We will have to implement code for this in the future.
+	keys := make([]types.DKey, len(decapMsg.Keys))
+
+	//for i, key := range decapMsg.Keys {
+	for _, key := range decapMsg.Keys {
+		keyId, err := strconv.ParseUint(key.KeyId, 10, 32)
+		if err != nil {
+			continue
+		}
+		if (len(key.DecKey) != CRYPTO_KEY_LEN) ||
+		(len(key.IcvKey[8:]) != CRYPTO_KEY_LEN) {
+			log.Printf("XXXXX Decap-key is %s\n", key.DecKey)
+			log.Printf("XXXXX ICV-key is %s\n", key.IcvKey[8:])
+			log.Printf(
+				"Error: Decap Key lengths should be 32, found encrypt ",
+				"key len %d & icv key length %d\n",
+				len(key.DecKey), len(key.IcvKey[8:]))
+			continue
+		}
+		keys[keyId - 1] = types.DKey {
+			KeyId: uint32(keyId),
+			DecKey: []byte(key.DecKey),
+			IcvKey: []byte(key.IcvKey[8:]),
+		}
+		log.Printf("Adding Decap key[%d] %s\n", keyId - 1, keys[keyId - 1].DecKey)
+		log.Printf("Adding Decap icv[%d] %s\n", keyId - 1, keys[keyId - 1].IcvKey)
+	}
+
+	// Parse and store the decap keys.
 	decapEntry := types.DecapKeys{
 		Rloc: rloc,
+		Keys: keys,
 	}
-	fib.UpdateDecapKeys(decapEntry)
+	fib.UpdateDecapKeys(&decapEntry)
 }
 
 func handleEtrNatPort(msg []byte) {

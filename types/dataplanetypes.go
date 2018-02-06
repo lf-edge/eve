@@ -15,11 +15,27 @@ const (
 	MAP_CACHE_FAMILY_IPV4    = 1
 	MAP_CACHE_FAMILY_IPV6    = 2
 	MAP_CACHE_FAMILY_UNKNOWN = 3
+	// max header len is ip6 hdr len (40) +
+	// udp (8) + lisp (8) - eth hdr (14) + crypto iv len (16)
+	MAXHEADERLEN             = 58
+	ETHHEADERLEN             = 14
+	UDPHEADERLEN             = 8
+	ICVLEN                   = 20
+	IVLEN                    = 16
+	IP4HEADERLEN             = 20
 )
 
 type Key struct {
-	KeyId uint32
-	Key   net.IP
+	KeyId  uint32
+	EncKey []byte
+	IcvKey []byte
+}
+
+// Decrypt key information
+type DKey struct {
+	KeyId  uint32
+	DecKey []byte
+	IcvKey []byte
 }
 
 type Rloc struct {
@@ -27,6 +43,7 @@ type Rloc struct {
 	Priority uint32
 	Weight   uint32
 	Family   uint32
+	KeyCount uint32
 	Keys     []Key
 
 	// Weight range
@@ -87,12 +104,12 @@ type EIDMap struct {
 
 type DecapKeys struct {
 	Rloc net.IP
-	Keys []Key
+	Keys []DKey
 }
 
 type DecapTable struct {
 	LockMe       sync.RWMutex
-	DecapEntries map[string]DecapKeys
+	DecapEntries map[string]*DecapKeys
 }
 
 type PuntEntry struct {
@@ -118,4 +135,15 @@ type EtrRunStatus struct {
 	// Raw socket FD used by ETR packet thread that listens on UDP port 4341
 	// for injecting decapsulated packets
 	UdpFD    int
+}
+
+type ITRLocalData struct {
+	// crypto initialization vector data (IV)
+	IvHigh uint64
+	IvLow  uint64
+	IvArray []byte
+
+	// Raw sockets for sending out LISP encapsulted packets
+	Fd4    int
+	Fd6    int
 }

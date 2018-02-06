@@ -49,7 +49,7 @@ lisp user-account {
 }
 lisp xtr-parameters {
     rloc-probing = yes
-    data-plane-security = no
+    data-plane-security = yes
     nat-traversal = yes
     nonce-echoing = no
     data-plane-logging = no

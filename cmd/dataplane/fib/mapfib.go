@@ -1,12 +1,13 @@
 package fib
 
 import (
-	"github.com/zededa/go-provision/types"
 	"log"
 	"net"
 	"syscall"
 	"time"
+	"math/rand"
 	"sync/atomic"
+	"github.com/zededa/go-provision/types"
 )
 
 var cache *types.MapCacheTable
@@ -26,7 +27,7 @@ func newMapCache() *types.MapCacheTable {
 
 func newDecapTable() *types.DecapTable {
 	return &types.DecapTable{
-		DecapEntries: make(map[string]types.DecapKeys),
+		DecapEntries: make(map[string]*types.DecapKeys),
 	}
 }
 
@@ -137,6 +138,19 @@ func LookupAndAdd(iid uint32,
 func UpdateMapCacheEntry(iid uint32, eid net.IP, rlocs []types.Rloc) {
 	entry := LookupAndUpdate(iid, eid, rlocs)
 
+
+	// Create a temporary IV to work with
+	rand.Seed(time.Now().UnixNano())
+	ivHigh := rand.Uint64()
+	ivLow  := rand.Uint64()
+
+	itrLocalData := new(types.ITRLocalData)
+	itrLocalData.Fd4 = fd4
+	itrLocalData.Fd6 = fd6
+	itrLocalData.IvHigh = ivHigh
+	itrLocalData.IvLow  = ivLow
+	itrLocalData.IvArray = GenerateIVByteArray(ivHigh, ivLow)
+
 	for {
 		select {
 		case pkt, ok := <-entry.PktBuffer:
@@ -148,13 +162,13 @@ func UpdateMapCacheEntry(iid uint32, eid net.IP, rlocs []types.Rloc) {
 				pktBytes := pkt.Packet.Data()
 				capLen := len(pktBytes)
 
-				// copy packet bytes into pktBuf at an offset of 42 bytes
-				// ipv6 (40) + UDP (8) + LISP (8) - ETHERNET (14) = 42
-				copy(pktBuf[42:], pktBytes)
+				// copy packet bytes into pktBuf at an offset of MAXHEADERLEN bytes
+				// ipv6 (40) + UDP (8) + LISP (8) - ETHERNET (14) + LISP IV (16) = 58
+				copy(pktBuf[types.MAXHEADERLEN:], pktBytes)
 
 				// Send the packet out now
 				CraftAndSendLispPacket(pkt.Packet, pktBuf, uint32(capLen), pkt.Hash32,
-					entry, entry.InstanceId, fd4, fd6)
+					entry, entry.InstanceId, itrLocalData, fd4, fd6)
 				
 				// decrement buffered packet count and increment pkt, byte counts
 				atomic.AddUint64(&entry.BuffdPkts, ^uint64(0))
@@ -290,11 +304,22 @@ func DeleteMapCacheEntry(iid uint32, eid net.IP) {
 	// collected later
 }
 
-func UpdateDecapKeys(entry types.DecapKeys) {
+func UpdateDecapKeys(entry *types.DecapKeys) {
 	decaps.LockMe.Lock()
 	defer decaps.LockMe.Unlock()
 	key := entry.Rloc.String()
 	decaps.DecapEntries[key] = entry
+}
+
+func LookupDecapKeys(ip net.IP) *types.DecapKeys {
+	decaps.LockMe.RLock()
+	defer decaps.LockMe.RUnlock()
+	key := ip.String()
+	decapKeys, ok := decaps.DecapEntries[key]
+	if ok {
+		return decapKeys
+	}
+	return nil
 }
 
 func ShowMapCacheEntries() {
@@ -306,7 +331,15 @@ func ShowMapCacheEntries() {
 		log.Printf("Key Eid: %s\n", key.Eid)
 		log.Println("Rlocs:")
 		for _, rloc := range value.Rlocs {
-			log.Printf("%s\n", rloc.Rloc)
+			log.Printf("	%s\n", rloc.Rloc)
+			for _, key := range rloc.Keys {
+				keyId := key.KeyId
+				if keyId == 0 {
+					continue
+				}
+				log.Printf("		key[%d].EncKey: %x\n", keyId, key.EncKey)
+				log.Printf("		key[%d].IcvKey: %x\n", keyId, key.IcvKey)
+			}
 		}
 		log.Printf("Packets: %v\n", value.Packets)
 		log.Printf("Bytes: %v\n", value.Bytes)
@@ -321,8 +354,16 @@ func ShowDecapKeys() {
 	decaps.LockMe.RLock()
 	defer decaps.LockMe.RUnlock()
 
-	for key, _ := range decaps.DecapEntries {
-		log.Println("Rloc:", key)
+	for rloc, entry := range decaps.DecapEntries {
+		log.Println("Rloc:", rloc)
+		for _, key := range entry.Keys {
+			keyId := key.KeyId
+			if keyId == 0 {
+				continue
+			}
+			log.Printf("	key[%d].Deckey: %x\n", keyId, key.DecKey)
+			log.Printf("	key[%d].Icvkey: %x\n", keyId, key.IcvKey)
+		}
 	}
 	log.Println()
 }

@@ -1,12 +1,21 @@
 package main
 
+const CRYPTO_KEY_LEN = 32
+
 type Type struct {
 	Type string `json:"type"`
 }
 
 type Key struct {
-	KeyId string `json:"key-id"`
-	Key   string `json:"key"`
+	KeyId  string `json:"key-id"`
+	EncKey string `json:"encrypt-key"`
+	IcvKey string `json:"icv-key"`
+}
+
+type DKey struct {
+	KeyId  string `json:"key-id"`
+	DecKey string `json:"decrypt-key"`
+	IcvKey string `json:"icv-key"`
 }
 
 type Rloc struct {
@@ -48,7 +57,7 @@ type Interfaces struct {
 
 type DecapKeys struct {
 	Rloc string `json:"rloc"`
-	Keys []Key  `json:"keys"`
+	Keys []DKey  `json:"keys"`
 }
 
 type EtrNatPort struct {

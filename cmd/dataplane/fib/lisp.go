@@ -2,6 +2,7 @@ package fib
 
 import (
 	"github.com/google/gopacket"
+	"log"
 )
 
 var LispLayerType gopacket.LayerType
@@ -34,6 +35,19 @@ func (l LispHdr) LayerPayload() []byte {
 func decodeLispLayer(data []byte, p gopacket.PacketBuilder) error {
 	p.AddLayer(&LispHdr{data[:2], data[2:]})
 	return p.NextDecoder(gopacket.LayerTypePayload)
+}
+
+func SetLispKeyId(hdr []byte, keyId byte) {
+	if keyId > 3 {
+		log.Printf("Invalid Lisp crypto key id %v\n", keyId)
+		return
+	}
+	hdr[0] = byte(hdr[0] | keyId)
+}
+
+func GetLispKeyId(hdr []byte) byte {
+	keyId := byte(hdr[0] & 0x03)
+	return keyId
 }
 
 func SetLispIID(hdr []byte, iid uint32) {

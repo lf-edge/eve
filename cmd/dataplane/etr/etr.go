@@ -4,13 +4,16 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"bytes"
 	"syscall"
 	"io/ioutil"
 	"encoding/json"
-	"github.com/zededa/go-provision/types"
+	"crypto/aes"
+	"crypto/cipher"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pfring"
+	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/dataplane/fib"
 )
 
@@ -62,66 +65,83 @@ func StartETR(ephPort int) (*net.UDPConn, *pfring.Ring, int, int) {
 	return serverConn, ring, fd1, fd2
 }
 
-func verifyAndInject(fd6 int, buf []byte, n int) bool {
+func verifyAndInject(fd6 int,
+	buf []byte, n int,
+	decapKeys *types.DecapKeys) bool {
 	//var pktEid net.IP
 	iid := fib.GetLispIID(buf[0:8])
 	if iid == uint32(0xFFFFFF) {
 		return true
 	}
 	log.Println("IID of packet is:", iid)
+	packetOffset   := 8
+	destAddrOffset := 24
+
+	//useCrypto := false
+	keyId := fib.GetLispKeyId(buf[0:8])
+	if keyId != 0 {
+		log.Printf("XXXXX Using KeyId %d\n", keyId)
+		//useCrypto = true
+		destAddrOffset += aes.BlockSize
+		packetOffset   += aes.BlockSize
+
+		if decapKeys == nil {
+			return false
+		}
+
+		// compute and compare ICV of packet
+		icvKey := decapKeys.Keys[keyId - 1].IcvKey
+		if icvKey == nil {
+			log.Printf("ETR Key id %d had nil ICV key value\n", keyId)
+			return false
+		}
+		icv := fib.ComputeICV(buf[0: n - types.ICVLEN], icvKey)
+		pktIcv := buf[n - types.ICVLEN: n]
+
+		if !bytes.Equal(icv, pktIcv) {
+			log.Printf("Pkt ICV %x and calculated ICV %x do not match.\n", pktIcv, icv)
+			return false
+		}
+		log.Println("XXXXX ICVs match")
+
+		// Decrypt the packet before sending out
+		// read the IV from packet buffer
+		ivArray := buf[8: packetOffset]
+
+		packet := buf[packetOffset: n - types.ICVLEN]
+
+		cryptoLen := n - packetOffset - types.ICVLEN
+		if cryptoLen % 16 != 0 {
+			log.Printf("XXXXX Crypto packet length is %d\n", cryptoLen)
+			return false
+		}
+
+		if len(decapKeys.Keys) == 0 {
+			log.Printf("ETR does not have decap keys from lispers.net yet\n")
+			return false
+		}
+
+		// Always use key 1
+		key := decapKeys.Keys[keyId - 1].DecKey
+
+		// This should happen once. May be make it part of the database entry
+		block, err := aes.NewCipher(key)
+		if err != nil {
+			log.Println("Error: creating key:", err)
+			return false
+		}
+		mode := cipher.NewCBCDecrypter(block, ivArray)
+		mode.CryptBlocks(packet, packet)
+	}
 
 	var destAddr [16]byte
 	for i, _ := range destAddr {
 		// offset is lisp hdr size + start offset of ip addresses in v6 hdr
-		destAddr[i] = buf[8+24+i]
+		destAddr[i] = buf[8 + destAddrOffset + i]
 		//pktEid[i] = destAddr[i]
 	}
-	/*
-		packet := gopacket.NewPacket(buf[8: n],
-									layers.LinkTypeIPv6,
-									gopacket.Default)
-		if packet == nil {
-			log.Printf("Packet decode failure\n");
-			return
-		}
 
-		ip6Layer := packet.Layer(layers.LayerTypeIPv6)
-		if ip6Layer == nil {
-			log.Printf("Extracting ipv6 header failed\n")
-			return
-		}
-
-		ipHeader := ip6Layer.(*layers.IPv6)
-		dstAddr := ipHeader.DstIP
-	*/
-
-	/*
-		eids := fib.LookupIfaceEids(iid)
-		matchFound := false
-
-		for _, eid := range eids {
-			if pktEid.Equal(eid) == true {
-				matchFound = true
-			}
-		}
-		if matchFound == false {
-			log.Printf(
-			"Incoming packet is not destined to any of the EIDs belonging to us.\n")
-			log.Printf(
-			"Incoming packet is destined to %s.\n", destAddr)
-			return
-		}
-	*/
-
-	/*
-		v6Addr := ipHeader.DstIP.To16()
-		var destAddr [16]byte
-		for i, _ := range destAddr {
-			destAddr[i] = v6Addr[i]
-		}
-	*/
-
-	err := syscall.Sendto(fd6, buf[8:n], 0, &syscall.SockaddrInet6{
+	err := syscall.Sendto(fd6, buf[packetOffset: n], 0, &syscall.SockaddrInet6{
 		Port:   0,
 		ZoneId: 0,
 		Addr:   destAddr,
@@ -176,8 +196,9 @@ func SetupEtrPktCapture(ephemeralPort int) *pfring.Ring {
 	filter := fmt.Sprintf("udp dst port %d and udp src port 4341", ephemeralPort)
 	ring.SetBPFFilter(filter)
 
-	ring.SetPollWatermark(5)
-	ring.SetPollDuration(5)
+	ring.SetPollWatermark(1)
+	// set a poll duration of 1 hour
+	ring.SetPollDuration(60 * 60 * 1000)
 
 	err = ring.Enable()
 	if err != nil {
@@ -193,13 +214,14 @@ func ProcessETRPkts(fd6 int, serverConn *net.UDPConn) bool {
 	log.Printf("Started processing captured packets in ETR\n")
 
 	for {
-		n, _, err := serverConn.ReadFromUDP(buf)
+		n, saddr, err := serverConn.ReadFromUDP(buf)
 		log.Println("XXXXX Received", n, "bytes in ETR")
 		if err != nil {
 			log.Printf("Fatal error during ETR processing\n")
 			return false
 		}
-		ok := verifyAndInject(fd6, buf, n)
+		decapKeys := fib.LookupDecapKeys(saddr.IP)
+		ok := verifyAndInject(fd6, buf, n, decapKeys)
 		if ok == false {
 			log.Printf("Failed injecting ETR packet from port 4341\n")
 		}
@@ -217,17 +239,34 @@ func ProcessCapturedPkts(fd6 int, ring *pfring.Ring) {
 			log.Printf("It could be the ring closure leading to this.\n")
 			return
 		}
-		log.Printf("XXXXX Captured ETR packet\n")
 		capLen := ci.CaptureLength
+		log.Printf("XXXXX Captured ETR packet of length %d\n", capLen)
 		packet := gopacket.NewPacket(
 			pktBuf[:capLen],
 			layers.LinkTypeEthernet,
-			gopacket.DecodeOptions{Lazy: true, NoCopy: true})
+			gopacket.DecodeOptions{Lazy: false, NoCopy: true})
 
 		appLayer := packet.ApplicationLayer()
 		payload := appLayer.Payload()
+
+		var srcIP net.IP
+		if ipLayer := packet.Layer(layers.LayerTypeIPv4); ipLayer != nil {
+			// ipv4 underlay
+			ipHdr := ipLayer.(*layers.IPv4)
+			srcIP = ipHdr.SrcIP
+		} else if ip6Layer := packet.Layer(layers.LayerTypeIPv6); ip6Layer != nil {
+			// ipv6 underlay
+			ip6Hdr := ipLayer.(*layers.IPv6)
+			srcIP = ip6Hdr.SrcIP
+		} else {
+			// We do not need this packet
+			return
+		}
+
+		decapKeys := fib.LookupDecapKeys(srcIP)
+
 		//log.Println(payload)
-		ok := verifyAndInject(fd6, payload, len(payload))
+		ok := verifyAndInject(fd6, payload, len(payload), decapKeys)
 		if ok == false {
 			log.Printf("Failed injecting ETR packet from ephemeral port\n")
 		}
