@@ -22,7 +22,7 @@ COPY --from=xen-tools / /
 COPY --from=ztools / /
 COPY --from=gpttools / /
 COPY --from=dnsmasq /usr/sbin/dnsmasq /opt/zededa/bin/dnsmasq
-COPY --from=cert / /opt/zededa/etc
+COPY --from=cert / /config
 COPY --from=msvcs /vms /vms
 
 # And now a few local tweaks
