@@ -60,7 +60,7 @@ const (
 	runDirname     = zedRunDirname + "/" + moduleName
 
 	certsDirname          = "/var/tmp/zedmanager/certs"
-	persistDir	      = "/persist"
+	persistDir            = "/persist"
 	objectDownloadDirname = persistDir + "/downloads"
 
 	downloaderBaseDirname = zedBaseDirname + "/" + downloaderModulename
@@ -357,7 +357,7 @@ func handleAppInstanceStatusModify(ctxArg interface{}, statusFilename string,
 }
 
 func handleAppInstanceStatusDelete(ctxArg interface{}, statusFilename string) {
-	// XXX is statusFilename == key aka UUIDstr?     
+	// XXX is statusFilename == key aka UUIDstr?
 	// XXX no status - need delete support
 	// status := statusArg.(*types.AppInstanceStatus)
 	uuidStr := statusFilename

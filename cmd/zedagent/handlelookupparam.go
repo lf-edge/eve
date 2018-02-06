@@ -21,13 +21,13 @@ import (
 )
 
 const (
-	infraFileName 	      	= identityDirname + "/infra"
+	infraFileName = identityDirname + "/infra"
 
-	tmpDirname	      	= "/var/tmp/zededa"
+	tmpDirname              = "/var/tmp/zededa"
 	zedserverConfigFileName = tmpDirname + "/zedserverconfig"
-	uuidFileName 		= tmpDirname + "/uuid"
+	uuidFileName            = tmpDirname + "/uuid"
 
-	zedRouterConfigbaseDir  = "/var/tmp/zedrouter/config/"
+	zedRouterConfigbaseDir = "/var/tmp/zedrouter/config/"
 )
 
 // Assumes the config files are in identityDirname, which is /config. Files are:

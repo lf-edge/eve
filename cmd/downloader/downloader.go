@@ -40,7 +40,7 @@ const (
 	baseDirname           = zedBaseDirname + "/" + moduleName
 	runDirname            = zedRunDirname + "/" + moduleName
 	certsDirname          = "/var/tmp/zedmanager/certs"
-	persistDir	      = "/persist"
+	persistDir            = "/persist"
 	objectDownloadDirname = persistDir + "/downloads"
 	DNSDirname            = "/var/run/zedrouter/DeviceNetworkStatus"
 
@@ -59,7 +59,7 @@ const (
 
 // Go doesn't like this as a constant
 var (
-	downloaderObjTypes   = []string{appImgObj, baseOsObj, certObj}
+	downloaderObjTypes = []string{appImgObj, baseOsObj, certObj}
 )
 
 // Set from Makefile

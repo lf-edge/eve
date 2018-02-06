@@ -47,7 +47,7 @@ const (
 	runDirname            = zedRunDirname + "/" + moduleName
 	configDirname         = baseDirname + "/config"
 	statusDirname         = runDirname + "/status"
-	persistDir	      = "/persist"
+	persistDir            = "/persist"
 	objectDownloadDirname = persistDir + "/downloads"
 
 	rootCertDirname    = "/config"
@@ -66,7 +66,7 @@ const (
 
 // Go doesn't like this as a constant
 var (
-	verifierObjTypes    = []string{appImgObj, baseOsObj}
+	verifierObjTypes = []string{appImgObj, baseOsObj}
 )
 
 // Set from Makefile

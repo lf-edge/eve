@@ -26,15 +26,15 @@ import (
 
 // Keeping status in /var/run to be clean after a crash/reboot
 const (
-	appImgObj  = "appImg.obj"
+	appImgObj = "appImg.obj"
 
 	baseDirname       = "/var/tmp/domainmgr"
 	runDirname        = "/var/run/domainmgr"
 	configDirname     = baseDirname + "/config"
 	statusDirname     = runDirname + "/status"
-	persistDir	  = "/persist"
+	persistDir        = "/persist"
 	rwImgDirname      = persistDir + "/img" // We store images here
-	xenDirname        = runDirname + "/xen"  // We store xen cfg files here
+	xenDirname        = runDirname + "/xen" // We store xen cfg files here
 	downloadDirname   = persistDir + "/downloads"
 	imgCatalogDirname = downloadDirname + "/" + appImgObj
 	// Read-only images named based on sha256 hash each in its own directory

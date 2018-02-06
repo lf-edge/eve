@@ -146,13 +146,13 @@ lisp database-mapping {
 
 const (
 	identityDirname = "/config"
-	baseFilename  	= identityDirname + "/lisp.config.base"
+	baseFilename    = identityDirname + "/lisp.config.base"
 
-	lispDirname   = "/opt/zededa/lisp"
-	destFilename  = lispDirname + "/lisp.config"
-	RestartCmd    = lispDirname + "/RESTART-LISP"
-	StopCmd       = lispDirname + "/STOP-LISP"
-	RLFilename    = lispDirname + "/RL"
+	lispDirname  = "/opt/zededa/lisp"
+	destFilename = lispDirname + "/lisp.config"
+	RestartCmd   = lispDirname + "/RESTART-LISP"
+	StopCmd      = lispDirname + "/STOP-LISP"
+	RLFilename   = lispDirname + "/RL"
 )
 
 // We write files with the IID-specifics (and not EID) to files

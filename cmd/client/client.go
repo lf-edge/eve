@@ -67,8 +67,8 @@ func main() {
 		return
 	}
 	operations := map[string]bool{
-		"selfRegister":   false,
-		"lookupParam":    false,
+		"selfRegister": false,
+		"lookupParam":  false,
 	}
 	for _, op := range args {
 		if _, ok := operations[op]; ok {

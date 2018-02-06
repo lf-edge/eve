@@ -18,7 +18,7 @@ import (
 var domainConfig map[string]types.DomainConfig
 
 const (
-	persistDir	      = "/persist"
+	persistDir            = "/persist"
 	objectDownloadDirname = persistDir + "/downloads"
 	imgCatalogDirname     = objectDownloadDirname + "/" + appImgObj
 	pendingDirname        = imgCatalogDirname + "/pending"

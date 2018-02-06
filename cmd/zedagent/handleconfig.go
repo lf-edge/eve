@@ -43,11 +43,11 @@ var metricsUrl string
 var statusUrl string
 
 const (
-	identityDirname   = "/config"
-	serverFilename    = identityDirname + "/server"
-	deviceCertName    = identityDirname + "/device.cert.pem"
-	deviceKeyName     = identityDirname + "/device.key.pem"
-	rootCertName      = identityDirname + "/root-certificate.pem"
+	identityDirname = "/config"
+	serverFilename  = identityDirname + "/server"
+	deviceCertName  = identityDirname + "/device.cert.pem"
+	deviceKeyName   = identityDirname + "/device.key.pem"
+	rootCertName    = identityDirname + "/root-certificate.pem"
 
 	ledConfigDirName  = "/var/tmp/ledmanager/config"
 	ledConfigFileName = ledConfigDirName + "/ledconfig.json"
