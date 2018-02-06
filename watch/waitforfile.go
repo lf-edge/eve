@@ -135,11 +135,11 @@ func cleanupRestartedImpl(agent string, objType string) {
 }
 
 func SignalRestart(agent string) {
-	signalRestartedImpl(agent, "")
+	signalRestartImpl(agent, "")
 }
 
 func SignalRestartObj(agent string, objType string) {
-	signalRestartedImpl(agent, objType)
+	signalRestartImpl(agent, objType)
 }
 
 func SignalRestarted(agent string) {
@@ -153,7 +153,8 @@ func SignalRestartedObj(agent string, objType string) {
 func CleanupRestart(agent string) {
 	cleanupRestartImpl(agent, "")
 }
-func CleanupRetart(agent string, objType string) {
+
+func CleanupRestartObj(agent string, objType string) {
 	cleanupRestartImpl(agent, objType)
 }
 
