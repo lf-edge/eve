@@ -371,8 +371,8 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 			} else {
 				// Only report stats for the uplinks plus dbo1x0
 				// Latter will move to a system app when we disaggregate
-				ReportDeviceMetric.Network = make([]*zmet.NetworkMetric, len(deviceNetworkStatus.UplinkStatus)+1)
 				// Build list of uplinks + dbo1x0
+				countDeviceInterfaces := 0
 				reportNames := func() []string {
 					var names []string
 					names = append(names, "dbo1x0")
@@ -382,10 +382,21 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 					return names
 				}
 				ifNames := reportNames()
-				for index, ifName := range ifNames {
-					var ni *psutilnet.IOCountersStat
+
+				countNoOfInterfaceToReport := 0
+				for _, ifName := range ifNames {
 					for _, networkInfo := range network {
 						if ifName == networkInfo.Name {
+							countNoOfInterfaceToReport++
+						}
+					}
+				}
+				ReportDeviceMetric.Network = make([]*zmet.NetworkMetric, countNoOfInterfaceToReport)
+
+				for _, ifName := range ifNames {
+					var ni *psutilnet.IOCountersStat
+					for _, networkInfo := range network {
+						if (ifName == networkInfo.Name) && (countDeviceInterfaces < countNoOfInterfaceToReport) {
 							ni = &networkInfo
 							break
 						}
@@ -403,7 +414,10 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 					networkDetails.RxDrops = ni.Dropin
 					networkDetails.TxErrors = ni.Errout
 					networkDetails.RxErrors = ni.Errin
-					ReportDeviceMetric.Network[index] = networkDetails
+					if networkDetails != nil {
+						ReportDeviceMetric.Network[countDeviceInterfaces] = networkDetails
+						countDeviceInterfaces++
+					}
 				}
 				log.Println("network metrics: ", ReportDeviceMetric.Network)
 			}

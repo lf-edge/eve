@@ -88,7 +88,7 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) {
 				cfgOs.Drives)
 		}
 
-		// XXX:FIXME put the finalObjDir value, 
+		// XXX:FIXME put the finalObjDir value,
 		// by calling bootloader API to fetch
 		// the unused partition
 		if cfgOs.Activate == true {
@@ -538,7 +538,7 @@ func getCertObjConfig(config types.CertObjConfig,
 	// also the sha for the cert should be set
 	// XXX:FIXME hardcoding MaxSize as 100KB
 	var drive = &types.StorageConfig{
-		DownloadURL: certUrl,
+		DownloadURL:     certUrl,
 		MaxSize:         100,
 		TransportMethod: image.TransportMethod,
 		Dpath:           "zededa-cert-repo",
