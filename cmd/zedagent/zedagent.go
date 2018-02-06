@@ -87,9 +87,6 @@ const (
 	downloaderBaseOsStatusDirname  = downloaderRunDirname + "/" + baseOsObj + "/status"
 	downloaderCertObjStatusDirname = downloaderRunDirname + "/" + certObj + "/status"
 
-	// verifier restart status holder
-	verifierStatusDirname = verifierRunDirname + "/status"
-
 	// base os verifier status holder
 	verifierBaseOsConfigDirname = verifierBaseDirname + "/" + baseOsObj + "/config"
 	verifierBaseOsStatusDirname = verifierRunDirname + "/" + baseOsObj + "/status"
@@ -132,13 +129,12 @@ func main() {
 	baseOsVerifierChanges := make(chan string)
 	certObjConfigStatusChanges := make(chan string)
 	certObjDownloaderChanges := make(chan string)
-	verifierRestartChanges := make(chan string)
 
 	var verifierRestartedFn watch.StatusRestartHandler = handleVerifierRestarted
 
-	// verification restart status watcher
-	go watch.WatchStatus(verifierStatusDirname,
-		verifierRestartChanges)
+	// baseOs verification status watcher
+	go watch.WatchStatus(verifierBaseOsStatusDirname,
+		baseOsVerifierChanges)
 
 	// First we process the verifierStatus to avoid downloading
 	// an base image we already have in place
@@ -146,9 +142,9 @@ func main() {
 	done := false
 	for !done {
 		select {
-		case change := <-verifierRestartChanges:
+		case change := <-baseOsVerifierChanges:
 			watch.HandleStatusEvent(change, dummyContext{},
-				verifierStatusDirname,
+				verifierBaseOsStatusDirname,
 				&types.VerifyImageStatus{},
 				handleBaseOsVerifierStatusModify,
 				handleBaseOsVerifierStatusDelete,
@@ -179,10 +175,6 @@ func main() {
 	// baseOs download status watcher
 	go watch.WatchStatus(downloaderBaseOsStatusDirname,
 		baseOsDownloaderChanges)
-
-	// baseOs verification status watcher
-	go watch.WatchStatus(verifierBaseOsStatusDirname,
-		baseOsVerifierChanges)
 
 	// certificate download status watcher
 	go watch.WatchStatus(downloaderCertObjStatusDirname,
