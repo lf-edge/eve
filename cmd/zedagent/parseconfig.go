@@ -20,7 +20,8 @@ const (
 	MaxBaseOsCount = 2
 	// XXX:FIXME typically this should be stored in a persistent config
 	// across boot parition
-	rebootConfigFilename = "/opt/zededa/etc/rebootConfig"
+	rebootConfigDirname = "/var/tmp/zededa"
+	rebootConfigFilename = "/var/tmp/zededa/rebootConfig"
 )
 
 var immediate int = 10 // take a 10 second delay
@@ -723,6 +724,11 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd) {
 		rebootTimer = time.NewTimer(time.Second * duration)
 
 		go handleReboot()
+	}
+
+	// create the directory, if not present
+	if err := os.MkdirAll(rebootConfigDirname, 0700); err != nil {
+		log.Fatal(err)
 	}
 
 	// store current config, persistently
