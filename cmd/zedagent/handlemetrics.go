@@ -38,8 +38,8 @@ func metricsTimerTask() {
 	ticker := time.NewTicker(time.Second * 60)
 	for t := range ticker.C {
 		log.Println("Tick at", t)
-		publishMetrics(iteration)
 		iteration += 1
+		publishMetrics(iteration)
 	}
 }
 
