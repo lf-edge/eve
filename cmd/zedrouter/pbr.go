@@ -50,6 +50,8 @@ func PbrInit(uplinks []string, freeUplinks []string, addrChangeFn addrChangeFnTy
 	freeRule.Src = prefix
 	freeRule.Table = FreeTable
 	freeRule.Family = syscall.AF_INET
+	// Avoid duplicate rules
+	_ = netlink.RuleDel(freeRule)
 	err = netlink.RuleAdd(freeRule)
 	if err != nil {
 		log.Fatal(err)
@@ -149,7 +151,7 @@ func PbrAddrChange(change netlink.AddrUpdate) {
 	// XXX remove?
 	log.Printf("PbrAddrChange: new %v if %d addr %v\n", change.NewAddr,
 		change.LinkIndex, change.LinkAddress)
-	changed := false     
+	changed := false
 	if change.NewAddr {
 		changed = IfindexToAddrsAdd(change.LinkIndex,
 			change.LinkAddress)
@@ -552,6 +554,8 @@ func addSourceRule(ifindex int, p net.IPNet) {
 		r.Src = &net.IPNet{IP: p.IP, Mask: net.CIDRMask(128, 128)}
 	}
 	log.Printf("addSourceRule: RuleAdd %v\n", r)
+	// Avoid duplicate rules
+	_ = netlink.RuleDel(r)
 	if err := netlink.RuleAdd(r); err != nil {
 		log.Printf("RuleAdd %v failed with %s\n", r, err)
 		return
