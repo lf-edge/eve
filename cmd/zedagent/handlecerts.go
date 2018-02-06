@@ -331,3 +331,21 @@ func writeCertObjStatus(status *types.CertObjStatus, statusFilename string) {
 		log.Fatal(err)
 	}
 }
+
+func installCertObject(srcFilename string, dstFilename string, safename string) bool {
+
+	// create the destination directory
+	if _, err := os.Stat(dstFilename); err != nil {
+		if err := os.MkdirAll(dstFilename, 0700); err != nil {
+			log.Fatal("installCertObject %v for %s\n", err, dstFilename)
+		}
+	}
+
+	dstFilename = dstFilename + "/" + types.SafenameToFilename(safename)
+
+	log.Printf("installCertObject() writing %s to %s\n",
+		srcFilename, dstFilename)
+
+	os.Rename(srcFilename, dstFilename)
+	return true
+}

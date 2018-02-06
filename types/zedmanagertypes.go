@@ -133,6 +133,7 @@ type StorageConfig struct {
 	Target  string // Default "" is interpreted as "disk"
 
 	FinalObjDir string // installation dir, may differ from verified
+	PartitionLabel string
 }
 
 type StorageStatus struct {

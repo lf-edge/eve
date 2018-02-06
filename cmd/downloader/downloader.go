@@ -135,6 +135,19 @@ func main() {
 					nil)
 			}
 
+		case change := <-certObjChanges:
+			{
+				watch.HandleConfigStatusEvent(change, &ctx,
+					certObjConfigDirname,
+					certObjStatusDirname,
+					&types.DownloaderConfig{},
+					&types.DownloaderStatus{},
+					handleCertObjCreate,
+					handleCertObjModify,
+					handleCertObjDelete, nil)
+				continue
+			}
+
 		case change := <-appImgChanges:
 			{
 				watch.HandleConfigStatusEvent(change, &ctx,
@@ -145,6 +158,7 @@ func main() {
 					handleAppImgObjCreate,
 					handleAppImgObjModify,
 					handleAppImgObjDelete, nil)
+				continue
 			}
 
 		case change := <-baseOsChanges:
@@ -157,17 +171,7 @@ func main() {
 					handleBaseOsObjCreate,
 					handleBaseOsObjModify,
 					handleBaseOsObjDelete, nil)
-			}
-		case change := <-certObjChanges:
-			{
-				watch.HandleConfigStatusEvent(change, &ctx,
-					certObjConfigDirname,
-					certObjStatusDirname,
-					&types.DownloaderConfig{},
-					&types.DownloaderStatus{},
-					handleCertObjCreate,
-					handleCertObjModify,
-					handleCertObjDelete, nil)
+				continue
 			}
 		}
 	}
