@@ -38,14 +38,14 @@ done
 
 mkdir -p $TMPDIR
 
-# XXX need to do this move in zenbuild?
+# The docker build moves this to /config
 if [ ! -d $ETCDIR -a -d /opt/zededa/etc ]; then
     echo "Moving from /opt/zededa/etc to $ETCDIR"
     mv /opt/zededa/etc $ETCDIR
 elif [ -d /opt/zededa/etc ]; then
-    echo "Updating from /opt/zededa/etc to $ETCDIR"
-    cp -p /opt/zededa/etc/* $ETCDIR
-    rmdir /opt/zededa/etc
+    echo "Updating from /opt/zededa/etc to $ETCDIR:"
+    (cd /opt/zededa/etc/; tar cf - . ) | (cd $ETCDIR; tar xfv -)
+    rm -rf /opt/zededa/etc
 fi
 if [ -d /var/tmp/zedmanager/downloads ]; then
     echo "Cleaning up old download dir: /var/tmp/zedmanager/downloads"

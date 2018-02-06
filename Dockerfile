@@ -25,7 +25,8 @@ FROM zededa/lisp:latest AS lisp
 
 # Second stage of the build is creating a minimalistic container
 FROM scratch
-COPY --from=build /opt/zededa /opt/zededa
+COPY --from=build /opt/zededa/bin /opt/zededa/bin
+COPY --from=build /config /config
 COPY --from=build /go/bin/* /opt/zededa/bin/
 COPY --from=lisp /lisp /opt/zededa/lisp/
 COPY --from=lisp /usr/bin/pydoc /usr/bin/smtpd.py /usr/bin/python* /usr/bin/
