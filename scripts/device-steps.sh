@@ -38,14 +38,14 @@ done
 
 mkdir -p $TMPDIR
 
-# XXX need to do this move in zenbuild?
+# The docker build moves this to /config
 if [ ! -d $ETCDIR -a -d /opt/zededa/etc ]; then
     echo "Moving from /opt/zededa/etc to $ETCDIR"
     mv /opt/zededa/etc $ETCDIR
 elif [ -d /opt/zededa/etc ]; then
-    echo "Updating from /opt/zededa/etc to $ETCDIR"
-    cp -p /opt/zededa/etc/* $ETCDIR
-    rmdir /opt/zededa/etc
+    echo "Updating from /opt/zededa/etc to $ETCDIR:"
+    (cd /opt/zededa/etc/; tar cf - . ) | (cd $ETCDIR; tar xfv -)
+    rm -rf /opt/zededa/etc
 fi
 if [ -d /var/tmp/zedmanager/downloads ]; then
     echo "Cleaning up old download dir: /var/tmp/zedmanager/downloads"
@@ -102,8 +102,9 @@ if [ -f $ETCDIR/ntp-server ]; then
 elif [ -f /usr/bin/ntpdate ]; then
     /usr/bin/ntpdate pool.ntp.org
 elif [ -f /usr/sbin/ntpd ]; then
-   # last ditch attemp to sync up our clock
-    /usr/sbin/ntpd -q -n pool.ntp.org
+    # last ditch attemp to sync up our clock
+    # '-p' means peer in some distros; pidfile in others
+    /usr/sbin/ntpd -q -n -p pool.ntp.org
 else
     echo "No ntpd"
 fi
