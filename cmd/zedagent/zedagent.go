@@ -157,6 +157,23 @@ func main() {
 		}
 	}
 
+	deviceStatusChanges := make(chan string)
+	go watch.WatchStatus(DNSDirname, deviceStatusChanges)
+
+	// Wait to have some uplinks
+	for types.CountLocalAddrAny(deviceNetworkStatus, "") == 0 {
+		select {
+		case change := <-deviceStatusChanges:
+			watch.HandleStatusEvent(change, dummyContext{},
+				DNSDirname,
+				&types.DeviceNetworkStatus{},
+				handleDNSModify, handleDNSDelete,
+				nil)
+		}
+	}
+	fmt.Printf("Have %d uplinks addresses to use\n",
+		types.CountLocalAddrAny(deviceNetworkStatus, ""))
+
 	// start the metrics/config fetch tasks
 	go metricsTimerTask()
 	go configTimerTask()
@@ -183,8 +200,6 @@ func main() {
 	// for restart flag handling
 	go watch.WatchStatus(zedagentStatusDirname, restartChanges)
 
-	deviceStatusChanges := make(chan string)
-	go watch.WatchStatus(DNSDirname, deviceStatusChanges)
 	domainStatusChanges := make(chan string)
 	go watch.WatchStatus(domainStatusDirname, domainStatusChanges)
 	for {
