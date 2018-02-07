@@ -96,8 +96,9 @@ func main() {
 	deviceStatusChanges := make(chan string)
 	go watch.WatchStatus(DNSDirname, deviceStatusChanges)
 
-	// First wait to have some free uplinks
-	for types.CountLocalAddrFree(deviceNetworkStatus, "") == 0 {
+	// First wait to have some uplinks with addresses
+	// Looking at any uplinks since we can do baseOS download over all
+	for types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus) == 0 {
 		select {
 		case change := <-deviceStatusChanges:
 			watch.HandleStatusEvent(change, dummyContext{},
@@ -108,7 +109,7 @@ func main() {
 		}
 	}
 	fmt.Printf("Have %d free uplinks addresses to use\n",
-		types.CountLocalAddrFree(deviceNetworkStatus, ""))
+		types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus))
 
 	appImgChanges := make(chan string)
 	baseOsChanges := make(chan string)
@@ -941,8 +942,9 @@ func handleDNSModify(ctxArg interface{}, statusFilename string,
 
 	log.Printf("handleDNSModify for %s\n", statusFilename)
 	deviceNetworkStatus = *status
-	fmt.Printf("handleDNSModify %d free uplinks addresses to use\n",
-		types.CountLocalAddrFree(deviceNetworkStatus, ""))
+	fmt.Printf("handleDNSModify %d free uplinks addresses; %d any\n",
+		types.CountLocalAddrFree(deviceNetworkStatus, ""),
+		types.CountLocalAddrAny(deviceNetworkStatus, ""))
 	log.Printf("handleDNSModify done for %s\n", statusFilename)
 }
 

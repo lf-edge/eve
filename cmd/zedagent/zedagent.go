@@ -87,9 +87,6 @@ const (
 	downloaderBaseOsStatusDirname  = downloaderRunDirname + "/" + baseOsObj + "/status"
 	downloaderCertObjStatusDirname = downloaderRunDirname + "/" + certObj + "/status"
 
-	// verifier restart status holder
-	verifierStatusDirname = verifierRunDirname + "/status"
-
 	// base os verifier status holder
 	verifierBaseOsConfigDirname = verifierBaseDirname + "/" + baseOsObj + "/config"
 	verifierBaseOsStatusDirname = verifierRunDirname + "/" + baseOsObj + "/status"
@@ -132,13 +129,12 @@ func main() {
 	baseOsVerifierChanges := make(chan string)
 	certObjConfigStatusChanges := make(chan string)
 	certObjDownloaderChanges := make(chan string)
-	verifierRestartChanges := make(chan string)
 
 	var verifierRestartedFn watch.StatusRestartHandler = handleVerifierRestarted
 
-	// verification restart status watcher
-	go watch.WatchStatus(verifierStatusDirname,
-		verifierRestartChanges)
+	// baseOs verification status watcher
+	go watch.WatchStatus(verifierBaseOsStatusDirname,
+		baseOsVerifierChanges)
 
 	// First we process the verifierStatus to avoid downloading
 	// an base image we already have in place
@@ -146,9 +142,9 @@ func main() {
 	done := false
 	for !done {
 		select {
-		case change := <-verifierRestartChanges:
+		case change := <-baseOsVerifierChanges:
 			watch.HandleStatusEvent(change, dummyContext{},
-				verifierStatusDirname,
+				verifierBaseOsStatusDirname,
 				&types.VerifyImageStatus{},
 				handleBaseOsVerifierStatusModify,
 				handleBaseOsVerifierStatusDelete,
@@ -159,6 +155,29 @@ func main() {
 				break
 			}
 		}
+	}
+
+	deviceStatusChanges := make(chan string)
+	go watch.WatchStatus(DNSDirname, deviceStatusChanges)
+
+	waited := false
+	// Wait to have some uplinks with usable addresses
+	for types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus) == 0 {
+		waited = true
+		select {
+		case change := <-deviceStatusChanges:
+			watch.HandleStatusEvent(change, dummyContext{},
+				DNSDirname,
+				&types.DeviceNetworkStatus{},
+				handleDNSModify, handleDNSDelete,
+				nil)
+		}
+	}
+	fmt.Printf("Have %d uplinks addresses to use\n",
+		types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus))
+	if waited {
+		// Inform ledmanager that we have uplink addresses
+		types.UpdateLedManagerConfig(2)
 	}
 
 	// start the metrics/config fetch tasks
@@ -180,10 +199,6 @@ func main() {
 	go watch.WatchStatus(downloaderBaseOsStatusDirname,
 		baseOsDownloaderChanges)
 
-	// baseOs verification status watcher
-	go watch.WatchStatus(verifierBaseOsStatusDirname,
-		baseOsVerifierChanges)
-
 	// certificate download status watcher
 	go watch.WatchStatus(downloaderCertObjStatusDirname,
 		certObjDownloaderChanges)
@@ -191,8 +206,6 @@ func main() {
 	// for restart flag handling
 	go watch.WatchStatus(zedagentStatusDirname, restartChanges)
 
-	deviceStatusChanges := make(chan string)
-	go watch.WatchStatus(DNSDirname, deviceStatusChanges)
 	domainStatusChanges := make(chan string)
 	go watch.WatchStatus(domainStatusDirname, domainStatusChanges)
 	for {

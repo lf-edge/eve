@@ -78,134 +78,9 @@ done
 echo "Combined version:"
 cat $TMPDIR/version
 
-# We need to try our best to setup time *before* we generate the certifiacte.
-# Otherwise it may have start date in the future
-echo "Check for NTP config"
-if [ -f $ETCDIR/ntp-server ]; then
-    echo -n "Using "
-    cat $ETCDIR/ntp-server
-    # XXX is ntp service running/installed?
-    # XXX actually configure ntp
-    # Ubuntu has /usr/bin/timedatectl; ditto Debian
-    # ntpdate pool.ntp.org
-    # Not installed on Ubuntu
-    #
-    if [ -f /usr/bin/ntpdate ]; then
-	/usr/bin/ntpdate `cat $ETCDIR/ntp-server`
-    elif [ -f /usr/bin/timedatectl ]; then
-	echo "NTP might already be running. Check"
-	/usr/bin/timedatectl status
-    else
-	echo "NTP not installed. Giving up"
-	exit 1
-    fi
-elif [ -f /usr/bin/ntpdate ]; then
-    /usr/bin/ntpdate pool.ntp.org
-elif [ -f /usr/sbin/ntpd ]; then
-    # last ditch attemp to sync up our clock
-    # '-p' means peer in some distros; pidfile in others
-    /usr/sbin/ntpd -q -n -p pool.ntp.org
-else
-    echo "No ntpd"
-fi
-if [ $WAIT = 1 ]; then
-    echo -n "Press any key to continue "; read dummy; echo; echo
-fi
+echo "Handling restart case at" `date`
+# XXX should we check if zedmanager is running?
 
-
-if [ ! \( -f $ETCDIR/device.cert.pem -a -f $ETCDIR/device.key.pem \) ]; then
-    echo "Generating a device key pair and self-signed cert (using TPM/TEE if available) at" `date`
-    $PROVDIR/generate-device.sh $ETCDIR/device
-    SELF_REGISTER=1
-elif [ -f $TMPDIR/self-register-failed ]; then
-    echo "self-register failed/killed/rebooted; redoing self-register"
-    SELF_REGISTER=1
-else
-    echo "Using existing device key pair and self-signed cert"
-    SELF_REGISTER=0
-fi
-if [ ! -f $ETCDIR/server -o ! -f $ETCDIR/root-certificate.pem ]; then
-    echo "No server or root-certificate to connect to. Done"
-    exit 0
-fi
-
-if [ $WAIT = 1 ]; then
-    echo -n "Press any key to continue "; read dummy; echo; echo
-fi
-
-# XXX should we harden/remove any Linux network services at this point?
-echo "Check for WiFi config"
-if [ -f $ETCDIR/wifi_ssid ]; then
-    echo -n "SSID: "
-    cat $ETCDIR/wifi_ssid
-    if [ -f $ETCDIR/wifi_credentials ]; then
-	echo -n "Wifi credentials: "
-	cat $ETCDIR/wifi_credentials
-    fi
-    # XXX actually configure wifi
-    # Requires a /etc/network/interfaces.d/wlan0.cfg
-    # and /etc/wpa_supplicant/wpa_supplicant.conf
-    # Assumes wpa packages are included. Would be in our image?
-fi
-if [ $WAIT = 1 ]; then
-    echo -n "Press any key to continue "; read dummy; echo; echo
-fi
-
-# We use the factory network.config.static if we have one, otherwise
-# we reuse the DeviceNetworkConfig from a previous run
-mkdir -p $TMPDIR/DeviceNetworkConfig/
-if [ -f $ETCDIR/network.config.static ] ; then
-    echo "Using $ETCDIR/network.config.static"
-    cp -p $ETCDIR/network.config.static $TMPDIR/DeviceNetworkConfig/global.json 
-fi
-
-if [ ! -f $TMPDIR/uuid -a -f $ETCDIR/uuid ]; then
-    cp -p $ETCDIR/uuid $TMPDIR/uuid
-fi
-
-if [ $SELF_REGISTER = 1 ]; then
-    rm -f $TMPDIR/zedrouterconfig.json
-    
-    touch $TMPDIR/self-register-failed
-    echo "Self-registering our device certificate at " `date`
-    if [ ! \( -f $ETCDIR/onboard.cert.pem -a -f $ETCDIR/onboard.key.pem \) ]; then
-	echo "Missing onboarding certificate. Giving up"
-	exit 1
-    fi
-    echo $BINDIR/client $OLDFLAG -d $ETCDIR selfRegister
-    $BINDIR/client $OLDFLAG -d $ETCDIR selfRegister
-    rm -f $TMPDIR/self-register-failed
-    if [ $WAIT = 1 ]; then
-	echo -n "Press any key to continue "; read dummy; echo; echo
-    fi
-fi
-# We always redo this to get an updated zedserverconfig
-rm -f $TMPDIR/zedserverconfig
-if [ /bin/true -o ! -f $ETCDIR/lisp.config ]; then
-    echo "Retrieving device and overlay network config at" `date`
-    echo $BINDIR/client $OLDFLAG -d $ETCDIR lookupParam
-    $BINDIR/client $OLDFLAG -d $ETCDIR lookupParam
-    if [ -f $TMPDIR/zedserverconfig ]; then
-	echo "Retrieved overlay /etc/hosts with:"
-	cat $TMPDIR/zedserverconfig
-	# edit zedserverconfig into /etc/hosts
-	match=`awk '{print $2}' $TMPDIR/zedserverconfig| sort -u | awk 'BEGIN {m=""} { m = sprintf("%s|%s", m, $1) } END { m = substr(m, 2, length(m)); printf ".*:.*(%s)\n", m}'`
-	egrep -v $match /etc/hosts >/tmp/hosts.$$
-	cat $TMPDIR/zedserverconfig >>/tmp/hosts.$$
-	echo "New /etc/hosts:"
-	cat /tmp/hosts.$$
-	cp /tmp/hosts.$$ /etc/hosts
-	rm -f /tmp/hosts.$$
-    fi
-    if [ $WAIT = 1 ]; then
-	echo -n "Press any key to continue "; read dummy; echo; echo
-    fi
-fi
-
-if [ ! -d $LISPDIR ]; then
-    echo "Missing $LISPDIR directory. Giving up"
-    exit 1
-fi
 echo "Removing old stale files"
 # Remove internal config files
 pkill zedmanager
@@ -213,6 +88,7 @@ if [ x$OLDFLAG = x ]; then
 	echo "Removing old zedmanager config files"
 	rm -rf /var/tmp/zedmanager/config/*.json
 fi
+
 echo "Removing old zedmanager status files"
 rm -rf /var/run/zedmanager/status/*.json
 
@@ -347,11 +223,7 @@ if [ $CLEANUP = 0 ]; then
     rm /var/tmp/verifier/config/preserve
 fi
 
-echo "Removing old iptables/ip6tables rules"
-# Cleanup any remaining iptables rules from a failed run
-iptables -F
-ip6tables -F
-ip6tables -t raw -F
+echo "Handling restart done at" `date`
 
 echo "Saving any old log files"
 LOGGERS=$ALLAGENTS
@@ -363,6 +235,157 @@ for l in $LOGGERS; do
 	mv $f $f.$datetime
     fi
 done
+
+# BlinkCounter 1 means we have started; might not yet have IP addresses
+# client/selfRegister and zedagent update this when the found at least
+# one free uplink with IP address(s)
+echo '{"BlinkCounter": 1}' > '/var/tmp/ledmanager/config/ledconfig.json'
+
+# If ledmanager is already running we don't have to start it.
+# TBD: Should we start it earlier before wwan and wlan services?
+pgrep ledmanager >/dev/null
+if [ $? != 0 ]; then
+    echo "Starting ledmanager at" `date`
+    ledmanager >/var/log/ledmanager.log 2>&1 &
+    if [ $WAIT = 1 ]; then
+	echo -n "Press any key to continue "; read dummy; echo; echo
+    fi
+fi
+
+# We need to try our best to setup time *before* we generate the certifiacte.
+# Otherwise it may have start date in the future
+echo "Check for NTP config"
+if [ -f $ETCDIR/ntp-server ]; then
+    echo -n "Using "
+    cat $ETCDIR/ntp-server
+    # XXX is ntp service running/installed?
+    # XXX actually configure ntp
+    # Ubuntu has /usr/bin/timedatectl; ditto Debian
+    # ntpdate pool.ntp.org
+    # Not installed on Ubuntu
+    #
+    if [ -f /usr/bin/ntpdate ]; then
+	/usr/bin/ntpdate `cat $ETCDIR/ntp-server`
+    elif [ -f /usr/bin/timedatectl ]; then
+	echo "NTP might already be running. Check"
+	/usr/bin/timedatectl status
+    else
+	echo "NTP not installed. Giving up"
+	exit 1
+    fi
+elif [ -f /usr/bin/ntpdate ]; then
+    /usr/bin/ntpdate pool.ntp.org
+elif [ -f /usr/sbin/ntpd ]; then
+    # last ditch attemp to sync up our clock
+    # '-p' means peer in some distros; pidfile in others
+    /usr/sbin/ntpd -q -n -p pool.ntp.org
+else
+    echo "No ntpd"
+fi
+if [ $WAIT = 1 ]; then
+    echo -n "Press any key to continue "; read dummy; echo; echo
+fi
+
+
+if [ ! \( -f $ETCDIR/device.cert.pem -a -f $ETCDIR/device.key.pem \) ]; then
+    echo "Generating a device key pair and self-signed cert (using TPM/TEE if available) at" `date`
+    $PROVDIR/generate-device.sh $ETCDIR/device
+    SELF_REGISTER=1
+elif [ -f $TMPDIR/self-register-failed ]; then
+    echo "self-register failed/killed/rebooted; redoing self-register"
+    SELF_REGISTER=1
+else
+    echo "Using existing device key pair and self-signed cert"
+    SELF_REGISTER=0
+fi
+if [ ! -f $ETCDIR/server -o ! -f $ETCDIR/root-certificate.pem ]; then
+    echo "No server or root-certificate to connect to. Done"
+    exit 0
+fi
+
+if [ $WAIT = 1 ]; then
+    echo -n "Press any key to continue "; read dummy; echo; echo
+fi
+
+# XXX should we harden/remove any Linux network services at this point?
+echo "Check for WiFi config"
+if [ -f $ETCDIR/wifi_ssid ]; then
+    echo -n "SSID: "
+    cat $ETCDIR/wifi_ssid
+    if [ -f $ETCDIR/wifi_credentials ]; then
+	echo -n "Wifi credentials: "
+	cat $ETCDIR/wifi_credentials
+    fi
+    # XXX actually configure wifi
+    # Requires a /etc/network/interfaces.d/wlan0.cfg
+    # and /etc/wpa_supplicant/wpa_supplicant.conf
+    # Assumes wpa packages are included. Would be in our image?
+fi
+if [ $WAIT = 1 ]; then
+    echo -n "Press any key to continue "; read dummy; echo; echo
+fi
+
+# We use the factory network.config.static if we have one, otherwise
+# we reuse the DeviceNetworkConfig from a previous run
+mkdir -p $TMPDIR/DeviceNetworkConfig/
+if [ -f $ETCDIR/network.config.static ] ; then
+    echo "Using $ETCDIR/network.config.static"
+    cp -p $ETCDIR/network.config.static $TMPDIR/DeviceNetworkConfig/global.json 
+fi
+
+if [ ! -f $TMPDIR/uuid -a -f $ETCDIR/uuid ]; then
+    cp -p $ETCDIR/uuid $TMPDIR/uuid
+fi
+
+if [ $SELF_REGISTER = 1 ]; then
+    rm -f $TMPDIR/zedrouterconfig.json
+    
+    touch $TMPDIR/self-register-failed
+    echo "Self-registering our device certificate at " `date`
+    if [ ! \( -f $ETCDIR/onboard.cert.pem -a -f $ETCDIR/onboard.key.pem \) ]; then
+	echo "Missing onboarding certificate. Giving up"
+	exit 1
+    fi
+    echo $BINDIR/client $OLDFLAG -d $ETCDIR selfRegister
+    $BINDIR/client $OLDFLAG -d $ETCDIR selfRegister
+    rm -f $TMPDIR/self-register-failed
+    if [ $WAIT = 1 ]; then
+	echo -n "Press any key to continue "; read dummy; echo; echo
+    fi
+fi
+# We always redo this to get an updated zedserverconfig
+rm -f $TMPDIR/zedserverconfig
+if [ /bin/true -o ! -f $ETCDIR/lisp.config ]; then
+    echo "Retrieving device and overlay network config at" `date`
+    echo $BINDIR/client $OLDFLAG -d $ETCDIR lookupParam
+    $BINDIR/client $OLDFLAG -d $ETCDIR lookupParam
+    if [ -f $TMPDIR/zedserverconfig ]; then
+	echo "Retrieved overlay /etc/hosts with:"
+	cat $TMPDIR/zedserverconfig
+	# edit zedserverconfig into /etc/hosts
+	match=`awk '{print $2}' $TMPDIR/zedserverconfig| sort -u | awk 'BEGIN {m=""} { m = sprintf("%s|%s", m, $1) } END { m = substr(m, 2, length(m)); printf ".*:.*(%s)\n", m}'`
+	egrep -v $match /etc/hosts >/tmp/hosts.$$
+	cat $TMPDIR/zedserverconfig >>/tmp/hosts.$$
+	echo "New /etc/hosts:"
+	cat /tmp/hosts.$$
+	cp /tmp/hosts.$$ /etc/hosts
+	rm -f /tmp/hosts.$$
+    fi
+    if [ $WAIT = 1 ]; then
+	echo -n "Press any key to continue "; read dummy; echo; echo
+    fi
+fi
+
+if [ ! -d $LISPDIR ]; then
+    echo "Missing $LISPDIR directory. Giving up"
+    exit 1
+fi
+
+echo "Removing old iptables/ip6tables rules"
+# Cleanup any remaining iptables rules from a failed run
+iptables -F
+ip6tables -F
+ip6tables -t raw -F
 
 if [ $SELF_REGISTER = 1 ]; then
     # Do we have a file from the build?
@@ -444,14 +467,6 @@ echo '{"MaxSpace":2000000}' >/var/tmp/downloader/config/global
 
 rm -f /var/run/verifier/*/status/restarted
 rm -f /var/tmp/zedrouter/config/restart
-
-echo "Starting ledmanager at" `date`
-ledmanager >/var/log/ledmanager.log 2>&1 &
-if [ $WAIT = 1 ]; then
-    echo -n "Press any key to continue "; read dummy; echo; echo
-fi
-
-echo '{"BlinkCounter": 1}' > '/var/tmp/ledmanager/config/ledconfig.json'
 
 echo "Starting verifier at" `date`
 verifier >/var/log/verifier.log 2>&1 &

@@ -100,7 +100,6 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) {
 				cfgOs.Drives)
 		}
 
-
 		// XXX:FIXME put the finalObjDir value,
 		// by calling bootloader API to fetch
 		// the unused partition
