@@ -37,14 +37,22 @@ func initVerifierMaps() {
 }
 
 func createVerifierConfig(objType string, safename string,
-	sc *types.StorageConfig) {
+	sc *types.StorageConfig) bool {
 
 	initVerifierMaps()
+
+	// check the certificate files, if not present,
+	// we can not start verification
+	if ret := checkCertsForObject(sc); ret == false {
+		log.Printf("createVerifierConfig for %s, Cert Objects are still not installed\n",
+			safename)
+		return false
+	}
 
 	key := formLookupKey(objType, safename)
 
 	if m, ok := verifierConfigMap[key]; ok {
-		log.Printf("downloader config exists for %s refcount %d\n",
+		log.Printf("verifier config exists for %s refcount %d\n",
 			safename, m.RefCount)
 		m.RefCount += 1
 	} else {
@@ -68,6 +76,7 @@ func createVerifierConfig(objType string, safename string,
 
 	log.Printf("createVerifierConfig done for %s\n",
 		safename)
+	return true
 }
 
 func updateVerifierStatus(objType string, status *types.VerifyImageStatus) {
@@ -263,4 +272,40 @@ func writeVerifierConfig(config types.VerifyImageConfig, configFilename string) 
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+// check whether the cert files are installed
+func checkCertsForObject(sc *types.StorageConfig) bool {
+
+	var idx int = 0
+	// count the number of cerificates in this object
+	if sc.SignatureKey != "" {
+		idx++
+	}
+	for _, certUrl := range sc.CertificateChain {
+		if certUrl != "" {
+			idx++
+		}
+	}
+	// if no cerificates, return
+	if idx == 0 {
+		return true
+	}
+
+	if sc.SignatureKey != "" {
+		safename := types.UrlToSafename(sc.SignatureKey, "")
+		filename := certificateDirname + "/" + types.SafenameToFilename(safename)
+		if _, err := os.Stat(filename); err != nil {
+			return false
+		}
+	}
+
+	for _, certUrl := range sc.CertificateChain {
+		safename := types.UrlToSafename(certUrl, "")
+		filename := certificateDirname + "/" + types.SafenameToFilename(safename)
+		if _, err := os.Stat(filename); err != nil {
+			return false
+		}
+	}
+	return true
 }

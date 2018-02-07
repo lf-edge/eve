@@ -20,8 +20,7 @@ const (
 	MaxBaseOsCount = 2
 	// XXX:FIXME typically this should be stored in a persistent config
 	// across boot parition
-	rebootConfigDirname = "/var/tmp/zededa"
-	rebootConfigFilename = "/var/tmp/zededa/rebootConfig"
+	rebootConfigFilename = persistDir + "/rebootConfig"
 )
 
 var immediate int = 10 // take a 10 second delay
@@ -136,15 +135,15 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) {
 }
 
 func isInstallCandidate(baseOsCount int,
-		baseOs *types.BaseOsConfig) bool {
+	baseOs *types.BaseOsConfig) bool {
 
 	uuidStr := baseOs.UUIDandVersion.UUID.String()
 
 	curBaseOsConfig := baseOsConfigGet(uuidStr)
 	curBaseOsStatus := baseOsStatusGet(uuidStr)
 
-	if (curBaseOsStatus != nil &&
-		curBaseOsStatus.Activated == true) {
+	if curBaseOsStatus != nil &&
+		curBaseOsStatus.Activated == true {
 		return false
 	}
 
@@ -154,14 +153,14 @@ func isInstallCandidate(baseOsCount int,
 	}
 
 	// only one baseOs Config
-	if (curBaseOsConfig.PartitionLabel == "" &&
-		  baseOsCount == 1) {
+	if curBaseOsConfig.PartitionLabel == "" &&
+		baseOsCount == 1 {
 		return true
 	}
 
 	// Activate Flag is flipped
-	if (curBaseOsConfig.Activate == false &&
-		baseOs.Activate == true) {
+	if curBaseOsConfig.Activate == false &&
+		baseOs.Activate == true {
 		return true
 	}
 
@@ -174,9 +173,9 @@ func getActivePartition() string {
 	if err != nil {
 		log.Println(err.Error())
 	}
-    partitionLabel := string(stdout)
-    log.Println("geActivePartition() ",partitionLabel)
-    return strings.TrimSpace(partitionLabel)
+	partitionLabel := string(stdout)
+	log.Println("geActivePartition() ", partitionLabel)
+	return strings.TrimSpace(partitionLabel)
 }
 
 //check the partition label of the current root and find unused Partition...
@@ -193,7 +192,7 @@ func getUnusedPartition() string {
 		log.Println("unknown partition type")
 		return ""
 	}
-    log.Println("getUnusedPartition() ",partitionLabel)
+	log.Println("getUnusedPartition() ", partitionLabel)
 	return partitionLabel
 }
 
@@ -754,11 +753,6 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd) {
 		rebootTimer = time.NewTimer(time.Second * duration)
 
 		go handleReboot()
-	}
-
-	// create the directory, if not present
-	if err := os.MkdirAll(rebootConfigDirname, 0700); err != nil {
-		log.Fatal(err)
 	}
 
 	// store current config, persistently

@@ -256,9 +256,10 @@ func checkStorageDownloadStatus(objType string, uuidStr string,
 			if sc.ImageSha256 != "" {
 				// start verifier for this object
 				if !ss.HasVerifierRef {
-					createVerifierConfig(objType, safename, &sc)
-					ss.HasVerifierRef = true
-					changed = true
+					if ret := createVerifierConfig(objType, safename, &sc); ret == true {
+						ss.HasVerifierRef = true
+						changed = true
+					}
 				}
 			}
 		}
@@ -287,7 +288,7 @@ func installDownloadedObjects(objType string, uuidStr string,
 			ret = false
 		}
 	}
-	log.Printf("installDownloadedObjects for %s, Done %d\n", key, ret)
+	log.Printf("installDownloadedObjects for %s, Done %v\n", key, ret)
 	return ret
 }
 
@@ -341,7 +342,7 @@ func installDownloadedObject(objType string, safename string,
 
 	// ensure the file is present
 	if _, err := os.Stat(srcFilename); err != nil {
-		log.Fatal("installDownloadedObject for %s, %s file absent(%s)\n",
+		log.Fatal("installDownloadedObject for %s, %s file absent(%v)\n",
 			key, srcFilename, err)
 	}
 
@@ -358,7 +359,7 @@ func installDownloadedObject(objType string, safename string,
 			ret = installBaseOsObject(srcFilename, dstFilename)
 
 		default:
-			log.Printf("installDownloadedObject(), unsuported Object\n")
+			log.Printf("installDownloadedObject(), Unsuported Object Type %v\n", objType)
 		}
 	}
 

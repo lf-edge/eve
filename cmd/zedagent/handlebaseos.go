@@ -496,8 +496,8 @@ func installBaseOsObject(srcFilename string, dstFilename string) bool {
 		log.Println(err0.Error())
 		return false
 	}
-    devName := string(stdout)
-    devName = strings.TrimSpace(devName)
+	devName := string(stdout)
+	devName = strings.TrimSpace(devName)
 
 	// unzip the source file
 	if strings.HasSuffix(srcFilename, ".gz") {
