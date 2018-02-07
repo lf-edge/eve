@@ -100,8 +100,8 @@ const (
 var Version = "No version specified"
 
 // XXX use a context for verifierRestarted
-
 var verifierRestarted = false
+
 var deviceNetworkStatus types.DeviceNetworkStatus
 
 // Dummy since we don't have anything to pass
