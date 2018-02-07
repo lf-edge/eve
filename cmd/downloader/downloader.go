@@ -39,7 +39,6 @@ const (
 	zedRunDirname         = "/var/run"
 	baseDirname           = zedBaseDirname + "/" + moduleName
 	runDirname            = zedRunDirname + "/" + moduleName
-	certsDirname          = "/var/tmp/zedmanager/certs"
 	persistDir            = "/persist"
 	objectDownloadDirname = persistDir + "/downloads"
 	DNSDirname            = "/var/run/zedrouter/DeviceNetworkStatus"
