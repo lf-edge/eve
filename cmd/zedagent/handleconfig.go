@@ -6,7 +6,6 @@ package main
 import (
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
 	"fmt"
 	"github.com/golang/protobuf/proto"
 	"github.com/zededa/api/zconfig"
@@ -48,9 +47,6 @@ const (
 	deviceCertName  = identityDirname + "/device.cert.pem"
 	deviceKeyName   = identityDirname + "/device.key.pem"
 	rootCertName    = identityDirname + "/root-certificate.pem"
-
-	ledConfigDirName  = "/var/tmp/ledmanager/config"
-	ledConfigFileName = ledConfigDirName + "/ledconfig.json"
 )
 
 // tlsConfig is initialized once i.e. effectively a constant
@@ -95,20 +91,6 @@ func getCloudUrls() {
 	tlsConfig.BuildNameToCertificate()
 }
 
-func UpdateLedManagerConfigFile(count int) {
-	blinkCount := types.LedBlinkCounter{
-		BlinkCounter: count,
-	}
-	b, err := json.Marshal(blinkCount)
-	if err != nil {
-		log.Fatal(err, "json Marshal blinkCount")
-	}
-	err = ioutil.WriteFile(ledConfigFileName, b, 0644)
-	if err != nil {
-		log.Fatal("err: ", err, ledConfigFileName)
-	}
-}
-
 // got a trigger for new config. check the present version and compare
 // if this is a new version, initiate update
 //  compare the old version config with the new one
@@ -138,7 +120,6 @@ func getLatestConfig(configUrl string, iteration int) {
 		log.Printf("getLatestConfig: %s\n", err)
 		return
 	}
-	UpdateLedManagerConfigFile(2) //XXX FIXME Just for testing...
 	addrCount := types.CountLocalAddrAny(deviceNetworkStatus, intf)
 	// XXX makes logfile too long; debug flag?
 	log.Printf("Connecting to %s using intf %s interation %d #sources %d\n",
@@ -166,22 +147,22 @@ func getLatestConfig(configUrl string, iteration int) {
 		}
 		defer resp.Body.Close()
 
+		// Inform ledmanager about cloud connectivity
+		types.UpdateLedManagerConfig(3)
+
 		if err := validateConfigMessage(configUrl, intf, localTCPAddr,
 			resp); err != nil {
 			log.Println("validateConfigMessage: ", err)
 			return
 		}
 
-		//inform ledmanager about cloud connectivity...
-		UpdateLedManagerConfigFile(3)
-
 		config, err := readDeviceConfigProtoMessage(resp)
 		if err != nil {
 			log.Println("readDeviceConfigProtoMessage: ", err)
 			return
 		}
-		//inform ledmanager about config received from cloud...
-		UpdateLedManagerConfigFile(4)
+		// Inform ledmanager about config received from cloud
+		types.UpdateLedManagerConfig(4)
 
 		inhaleDeviceConfig(config)
 		return

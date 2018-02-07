@@ -18,12 +18,10 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
-	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
@@ -109,24 +107,9 @@ func handleLedBlinkDelete(ctxArg interface{}, configFilename string) {
 	}
 	// XXX or should we tell the blink go routine to exit?
 	ctx.countChange <- 0
-	UpdateLedManagerConfigFile(0)
+	// Update our own input... XXX need something different when pubsub
+	types.UpdateLedManagerConfig(0)
 	log.Printf("handleLedBlinkDelete done for %s\n", configFilename)
-}
-
-// Used by callers to change the behavior or the LED
-func UpdateLedManagerConfigFile(count int) {
-	ledConfigFileName := ledConfigDirName + "/ledconfig.json"
-	blinkCounter := types.LedBlinkCounter{
-		BlinkCounter: count,
-	}
-	b, err := json.Marshal(blinkCounter)
-	if err != nil {
-		log.Fatal(err, "json Marshal blinkCount")
-	}
-	err = ioutil.WriteFile(ledConfigFileName, b, 0644)
-	if err != nil {
-		log.Fatal("err: ", err, ledConfigFileName)
-	}
 }
 
 func TriggerBlinkOnDevice(countChange chan int) {

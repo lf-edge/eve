@@ -160,8 +160,10 @@ func main() {
 	deviceStatusChanges := make(chan string)
 	go watch.WatchStatus(DNSDirname, deviceStatusChanges)
 
-	// Wait to have some uplinks
-	for types.CountLocalAddrAny(deviceNetworkStatus, "") == 0 {
+	waited := false
+	// Wait to have some uplinks with usable addresses
+	for types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus) == 0 {
+		waited = true
 		select {
 		case change := <-deviceStatusChanges:
 			watch.HandleStatusEvent(change, dummyContext{},
@@ -172,7 +174,11 @@ func main() {
 		}
 	}
 	fmt.Printf("Have %d uplinks addresses to use\n",
-		types.CountLocalAddrAny(deviceNetworkStatus, ""))
+		types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus))
+	if waited {
+		// Inform ledmanager that we have uplink addresses
+		types.UpdateLedManagerConfig(2)
+	}
 
 	// start the metrics/config fetch tasks
 	go metricsTimerTask()

@@ -106,6 +106,12 @@ func main() {
 			log.Fatal(err)
 		}
 		hasDeviceNetworkStatus = true
+		addrCount := types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
+		fmt.Printf("Have %d uplinks addresses to use\n", addrCount)
+		if addrCount != 0 {
+			// Inform ledmanager that we have uplink addresses
+			types.UpdateLedManagerConfig(2)
+		}
 	}
 
 	var onboardCert, deviceCert tls.Certificate
@@ -215,8 +221,13 @@ func main() {
 			}
 			//XXX OSCP is not implemented in cloud side so
 			// commenting out it for now. Should be:
+			// Inform ledmanager about broken cloud connectivity
+			// types.UpdateLedManagerConfig(10)
 			// return false
 		}
+
+		// Inform ledmanager about cloud connectivity
+		types.UpdateLedManagerConfig(3)
 
 		contents, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
@@ -224,13 +235,18 @@ func main() {
 			return false
 		}
 
-		// XXX Should this behavior be url-specific?
 		switch resp.StatusCode {
 		case http.StatusOK:
+			// Inform ledmanager about existence in cloud
+			types.UpdateLedManagerConfig(4)
 			fmt.Printf("%s StatusOK\n", url)
 		case http.StatusCreated:
+			// Inform ledmanager about existence in cloud
+			types.UpdateLedManagerConfig(4)
 			fmt.Printf("%s StatusCreated\n", url)
 		case http.StatusConflict:
+			// Inform ledmanager about brokenness
+			types.UpdateLedManagerConfig(10)
 			fmt.Printf("%s StatusConflict\n", url)
 			// Retry until fixed
 			fmt.Printf("%s\n", string(contents))
@@ -305,8 +321,12 @@ func main() {
 			} else {
 				fmt.Println("OCSP stapled check failed")
 			}
+			// Inform ledmanager about broken cloud connectivity
+			types.UpdateLedManagerConfig(10)
 			return false
 		}
+		// Inform ledmanager about cloud connectivity
+		types.UpdateLedManagerConfig(3)
 
 		contents, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
@@ -314,13 +334,18 @@ func main() {
 			return false
 		}
 
-		// XXX Should this behavior be url-specific?
 		switch resp.StatusCode {
 		case http.StatusOK:
+			// Inform ledmanager about existence in cloud
+			types.UpdateLedManagerConfig(4)
 			fmt.Printf("%s StatusOK\n", url)
 		case http.StatusCreated:
+			// Inform ledmanager about existence in cloud
+			types.UpdateLedManagerConfig(4)
 			fmt.Printf("%s StatusCreated\n", url)
 		case http.StatusConflict:
+			// Inform ledmanager about brokenness
+			types.UpdateLedManagerConfig(10)
 			fmt.Printf("%s StatusConflict\n", url)
 			// Retry until fixed
 			fmt.Printf("%s\n", string(contents))
@@ -439,8 +464,13 @@ func main() {
 			} else {
 				fmt.Println("OCSP stapled check failed")
 			}
+			// Inform ledmanager about brokenness
+			types.UpdateLedManagerConfig(10)
 			return false
 		}
+
+		// Inform ledmanager about connectivity to cloud
+		types.UpdateLedManagerConfig(3)
 
 		contents, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
@@ -449,6 +479,8 @@ func main() {
 		}
 		switch resp.StatusCode {
 		case http.StatusOK:
+			// Inform ledmanager about device existence in cloud
+			types.UpdateLedManagerConfig(4)
 			fmt.Printf("device-param StatusOK\n")
 		case http.StatusNotFound:
 			fmt.Printf("device-param StatusNotFound\n")
