@@ -52,7 +52,7 @@ const (
 
 	rootCertDirname    = "/config"
 	rootCertFileName   = rootCertDirname + "/root-certificate.pem"
-	certificateDirname = "/var/tmp/zedmanager/certs"
+	certificateDirname = persistDir + "/certs"
 
 	// If this file is present we don't delete verified files in handleDelete
 	preserveFilename = configDirname + "/preserve"

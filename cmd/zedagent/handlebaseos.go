@@ -208,11 +208,11 @@ func doBaseOsActivate(uuidStr string, config types.BaseOsConfig,
 
 	}
 
-	if status.State == types.INSTALLED {
-		if status.Activated == false {
-			status.Activated = true
-			changed = true
-		}
+	// if it is installed, flip the activated status
+	if (status.State == types.INSTALLED) ||
+		(status.Activated == false) {
+		status.Activated = true
+		changed = true
 	}
 
 	return changed
@@ -496,7 +496,8 @@ func installBaseOsObject(srcFilename string, dstFilename string) bool {
 		log.Println(err0.Error())
 		return false
 	}
-	devName := fmt.Sprintf("%s", stdout)
+    devName := string(stdout)
+    devName = strings.TrimSpace(devName)
 
 	// unzip the source file
 	if strings.HasSuffix(srcFilename, ".gz") {
@@ -512,6 +513,8 @@ func installBaseOsObject(srcFilename string, dstFilename string) bool {
 			return false
 		}
 	}
+
+	log.Printf("installBaseOsObject() %s to %s\n", srcFilename, devName)
 
 	// write to flash Device
 	ddCmd := exec.Command("dd", "if="+srcFilename, "of="+devName, "bs=8m")

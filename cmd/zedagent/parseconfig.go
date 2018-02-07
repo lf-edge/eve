@@ -49,11 +49,11 @@ func validateConfig(config *zconfig.EdgeDevConfig) bool {
 func parseBaseOsConfig(config *zconfig.EdgeDevConfig) {
 
 	log.Println("Applying Base Os config")
-	finalObjDir := ""
 
 	cfgOsList := config.GetBase()
+	baseOsCount := len(cfgOsList)
 
-	if len(cfgOsList) == 0 {
+	if baseOsCount == 0 {
 		return
 	}
 
@@ -99,28 +99,22 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) {
 				cfgOs.Drives)
 		}
 
-		uuidStr := baseOs.UUIDandVersion.UUID.String()
-
-		curBaseOsConfig := baseOsConfigGet(uuidStr)
-		//curBaseOsStatus := baseOsStatusGet(uuidStr)
 
 		// XXX:FIXME put the finalObjDir value,
 		// by calling bootloader API to fetch
 		// the unused partition
-		if (curBaseOsConfig == nil) ||
-			(curBaseOsConfig.Activate == false) {
+		if ret := isInstallCandidate(baseOsCount, baseOs); ret == true {
 
-			if cfgOs.Activate == true {
+			uuidStr := baseOs.UUIDandVersion.UUID.String()
+			log.Printf("baseOs %s, Activate flag is set", uuidStr)
 
-				log.Printf("baseOs Activate flag is set")
+			baseOs.PartitionLabel = getUnusedPartition()
 
-				baseOs.PartitionLabel = getUnusedPartition()
+			finalObjDir := baseOs.PartitionLabel
 
-				finalObjDir = baseOs.PartitionLabel
-
-				for _, sc := range baseOs.StorageConfigList {
-					sc.FinalObjDir = finalObjDir
-				}
+			// only one entry for now
+			for _, sc := range baseOs.StorageConfigList {
+				sc.FinalObjDir = finalObjDir
 			}
 		}
 
@@ -141,19 +135,54 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) {
 	}
 }
 
-func getUsedPartition() string {
+func isInstallCandidate(baseOsCount int,
+		baseOs *types.BaseOsConfig) bool {
+
+	uuidStr := baseOs.UUIDandVersion.UUID.String()
+
+	curBaseOsConfig := baseOsConfigGet(uuidStr)
+	curBaseOsStatus := baseOsStatusGet(uuidStr)
+
+	if (curBaseOsStatus != nil &&
+		curBaseOsStatus.Activated == true) {
+		return false
+	}
+
+	// new Config
+	if curBaseOsConfig == nil {
+		return true
+	}
+
+	// only one baseOs Config
+	if (curBaseOsConfig.PartitionLabel == "" &&
+		  baseOsCount == 1) {
+		return true
+	}
+
+	// Activate Flag is flipped
+	if (curBaseOsConfig.Activate == false &&
+		baseOs.Activate == true) {
+		return true
+	}
+
+	return false
+}
+
+func getActivePartition() string {
 	curpartCmd := exec.Command("zboot", "curpart")
 	stdout, err := curpartCmd.Output()
 	if err != nil {
 		log.Println(err.Error())
 	}
-	return fmt.Sprintf("%s", stdout)
+    partitionLabel := string(stdout)
+    log.Println("geActivePartition() ",partitionLabel)
+    return strings.TrimSpace(partitionLabel)
 }
 
 //check the partition label of the current root and find unused Partition...
 func getUnusedPartition() string {
 
-	partitionLabel := getUsedPartition()
+	partitionLabel := getActivePartition()
 
 	switch partitionLabel {
 	case "IMGA":
@@ -162,7 +191,9 @@ func getUnusedPartition() string {
 		partitionLabel = "IMGA"
 	default:
 		log.Println("unknown partition type")
+		return ""
 	}
+    log.Println("getUnusedPartition() ",partitionLabel)
 	return partitionLabel
 }
 
@@ -594,7 +625,7 @@ func getCertObjConfig(config types.CertObjConfig,
 		ApiKey:          image.ApiKey,
 		Password:        image.Password,
 		ImageSha256:     "",
-		FinalObjDir:     certsDirname,
+		FinalObjDir:     certificateDirname,
 	}
 	config.StorageConfigList[idx] = *drive
 }

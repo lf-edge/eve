@@ -495,11 +495,6 @@ func downloaderInit() *zedUpload.DronaCtx {
 
 func initializeDirs() {
 
-	if _, err := os.Stat(certsDirname); err != nil {
-		if err := os.MkdirAll(certsDirname, 0700); err != nil {
-			log.Fatal(err)
-		}
-	}
 
 	// Remove any files which didn't make it past the verifier.
 	// Though verifier owns it, remove them for calculating the

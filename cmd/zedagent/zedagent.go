@@ -59,9 +59,9 @@ const (
 	baseDirname    = zedBaseDirname + "/" + moduleName
 	runDirname     = zedRunDirname + "/" + moduleName
 
-	certsDirname          = "/var/tmp/zedmanager/certs"
 	persistDir            = "/persist"
 	objectDownloadDirname = persistDir + "/downloads"
+	certificateDirname    = persistDir + "/certs"
 
 	downloaderBaseDirname = zedBaseDirname + "/" + downloaderModulename
 	downloaderRunDirname  = zedRunDirname + "/" + downloaderModulename
@@ -305,6 +305,13 @@ func initializeDirs() {
 	createConfigStatusDirs(zedagentModulename, zedagentObjTypes)
 	createConfigStatusDirs(zedmanagerModulename, noObjTypes)
 	createConfigStatusDirs(verifierModulename, zedagentVerifierObjTypes)
+
+	// create certificate holder directory
+	if _, err := os.Stat(certificateDirname); err != nil {
+		if err := os.MkdirAll(certificateDirname, 0700); err != nil {
+			log.Fatal(err)
+		}
+	}
 }
 
 // create module and object based config/status directories
