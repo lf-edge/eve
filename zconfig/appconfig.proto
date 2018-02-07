@@ -16,6 +16,8 @@ message AppInstanceConfig {
 	VmConfig fixedresources = 3;
 	repeated Drive drives = 4;
 	bool activate = 5;
+	// XXX At some point in time we should merge NetworkAdapter and
+	// Adapter
 	repeated NetworkAdapter interfaces = 6;
 	repeated Adapter adapters = 7;	// I/O adapters to assign to app
 }
