@@ -7,6 +7,8 @@ import "devcommon.proto";
 import "storage.proto";
 import "vm.proto";
 import "netconfig.proto";
+// XXX import "zededa/api/zmet/zmet.proto";
+// import "zmet/zmet.proto";
 
 message AppInstanceConfig {
 	UUIDandVersion uuidandversion = 1;
@@ -15,4 +17,23 @@ message AppInstanceConfig {
 	repeated Drive drives = 4;
 	bool activate = 5;
 	repeated NetworkAdapter interfaces = 6;
+	repeated Adapter adapters = 7;	// I/O adapters to assign to app
 }
+
+// Adapter bundles corresponding to a subset of what is in ZioBundle
+message Adapter {
+  ZioType type = 1;
+  string name = 2;	// Short hand name such as "com" from bundle
+  // Future will have type-specific oneof definitions as needed
+}
+
+// XXX duplicate of definition in zmet.proto
+// Types of I/O adapters that can be assigned to applications
+enum ZioType {
+  ZioNop = 0;
+  ZioEth = 1;		// Includes WiFi?
+  ZioUSB = 2;
+  ZioCOM = 3;		// Com ports
+  ZioOther = 255;
+}
+
