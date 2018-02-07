@@ -350,9 +350,10 @@ func doInstall(uuidStr string, config types.AppInstanceConfig,
 		case types.DOWNLOADED:
 			// Kick verifier to start if it hasn't already
 			if !ss.HasVerifierRef {
-				MaybeAddVerifyImageConfig(safename, &sc)
-				ss.HasVerifierRef = true
-				changed = true
+				if ret := MaybeAddVerifyImageConfig(safename, &sc); ret == true {
+					ss.HasVerifierRef = true
+					changed = true
+				}
 			}
 		}
 	}

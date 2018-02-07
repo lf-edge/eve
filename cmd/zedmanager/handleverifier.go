@@ -16,9 +16,17 @@ import (
 // Key is Safename string.
 var verifyImageConfig map[string]types.VerifyImageConfig
 
-func MaybeAddVerifyImageConfig(safename string, sc *types.StorageConfig) {
+func MaybeAddVerifyImageConfig(safename string, sc *types.StorageConfig) bool {
 	log.Printf("MaybeAddVerifyImageConfig for %s\n",
 		safename)
+
+	// check the certificate files, if not present,
+	// we can not start verification
+	if ret := checkCertsForObject(safename, sc); ret == false {
+		log.Printf("createVerifierConfig for %s, Certs are still not installed\n",
+			safename)
+		return ret
+	}
 
 	if verifyImageConfig == nil {
 		fmt.Printf("create verifier config map\n")
@@ -47,6 +55,7 @@ func MaybeAddVerifyImageConfig(safename string, sc *types.StorageConfig) {
 	writeVerifyImageConfig(verifyImageConfig[key], configFilename)
 	log.Printf("AddOrRefcountVerifyImageConfig done for %s\n",
 		safename)
+	return true
 }
 
 func MaybeRemoveVerifyImageConfigSha256(sha256 string) {
@@ -205,4 +214,49 @@ func handleVerifyImageStatusDelete(ctxArg interface{}, statusFilename string) {
 	}
 	log.Printf("handleVerifyImageStatusDelete done for %s\n",
 		statusFilename)
+}
+
+// check whether the cert files are installed
+func checkCertsForObject(safename string, sc *types.StorageConfig) bool {
+
+	var cidx int = 0
+
+	// count the number of cerificates in this object
+	if sc.SignatureKey != "" {
+		cidx++
+	}
+	for _, certUrl := range sc.CertificateChain {
+		if certUrl != "" {
+			cidx++
+		}
+	}
+	// if no cerificates, return
+	if cidx == 0 {
+		log.Printf("checkCertsForObject() for %s, no certificates configured\n",
+			safename)
+		return true
+	}
+
+	if sc.SignatureKey != "" {
+		safename := types.UrlToSafename(sc.SignatureKey, "")
+		filename := certificateDirname + "/" +
+			types.SafenameToFilename(safename)
+		if _, err := os.Stat(filename); err != nil {
+			log.Printf("checkCertsForObject() for %s, %v\n", filename, err)
+			return false
+		}
+	}
+
+	for _, certUrl := range sc.CertificateChain {
+		if certUrl != "" {
+			safename := types.UrlToSafename(certUrl, "")
+			filename := certificateDirname + "/" +
+				types.SafenameToFilename(safename)
+			if _, err := os.Stat(filename); err != nil {
+				log.Printf("checkCertsForObject() for %s, %v\n", filename, err)
+				return false
+			}
+		}
+	}
+	return true
 }

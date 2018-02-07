@@ -24,6 +24,7 @@ import (
 // Keeping status in /var/run to be clean after a crash/reboot
 const (
 	appImgObj  = "appImg.obj"
+	certObj    = "cert.obj"
 	moduleName = "zedmanager"
 
 	baseDirname              = "/var/tmp/zedmanager"
@@ -36,6 +37,7 @@ const (
 	zedrouterConfigDirname   = "/var/tmp/zedrouter/config"
 	identitymgrConfigDirname = "/var/tmp/identitymgr/config"
 	DNSDirname               = "/var/run/zedrouter/DeviceNetworkStatus"
+	certificateDirname       = persistDir + "/certs"
 
 	downloaderAppImgObjConfigDirname = "/var/tmp/downloader/" + appImgObj + "/config"
 	verifierAppImgObjConfigDirname   = "/var/tmp/verifier/" + appImgObj + "/config"
@@ -84,6 +86,7 @@ func main() {
 
 	downloaderAppImgObjStatusDirname := "/var/run/downloader/" + appImgObj + "/status"
 	verifierAppImgObjStatusDirname := "/var/run/verifier/" + appImgObj + "/status"
+	zedagentCertObjStatusDirname := "/var/run/zedagent/" + certObj + "/status"
 
 	dirs := []string{
 		zedmanagerConfigDirname,
@@ -102,6 +105,7 @@ func main() {
 		downloaderStatusDirname,
 		verifierAppImgObjStatusDirname,
 		verifierStatusDirname,
+		zedagentCertObjStatusDirname,
 	}
 
 	for _, dir := range dirs {
@@ -133,6 +137,9 @@ func main() {
 		zedmanagerStatusDirname, configChanges)
 	deviceStatusChanges := make(chan string)
 	go watch.WatchStatus(DNSDirname, deviceStatusChanges)
+	zedagentCertObjStatusChanges := make(chan string)
+	go watch.WatchStatus(zedagentCertObjStatusDirname,
+		zedagentCertObjStatusChanges)
 
 	var configRestartFn watch.ConfigRestartHandler = handleConfigRestart
 	var verifierRestartedFn watch.StatusRestartHandler = handleVerifierRestarted
@@ -165,6 +172,16 @@ func main() {
 	log.Printf("Handling all inputs\n")
 	for {
 		select {
+		// handle cert ObjectsChanges
+		case change := <-zedagentCertObjStatusChanges:
+			{
+				watch.HandleStatusEvent(change, &ctx,
+					zedagentCertObjStatusDirname,
+					&types.CertObjStatus{},
+					handleCertObjStatusModify,
+					handleCertObjStatusDelete, nil)
+				continue
+			}
 		case change := <-downloaderChanges:
 			{
 				watch.HandleStatusEvent(change, &ctx,

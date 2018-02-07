@@ -43,10 +43,10 @@ func createVerifierConfig(objType string, safename string,
 
 	// check the certificate files, if not present,
 	// we can not start verification
-	if ret := checkCertsForObject(sc); ret == false {
-		log.Printf("createVerifierConfig for %s, Cert Objects are still not installed\n",
+	if ret := checkCertsForObject(safename, sc); ret == false {
+		log.Printf("createVerifierConfig for %s, Certs are still not installed\n",
 			safename)
-		return false
+		return ret
 	}
 
 	key := formLookupKey(objType, safename)
@@ -275,36 +275,45 @@ func writeVerifierConfig(config types.VerifyImageConfig, configFilename string) 
 }
 
 // check whether the cert files are installed
-func checkCertsForObject(sc *types.StorageConfig) bool {
+func checkCertsForObject(safename string, sc *types.StorageConfig) bool {
 
-	var idx int = 0
+	var cidx int = 0
+
 	// count the number of cerificates in this object
 	if sc.SignatureKey != "" {
-		idx++
+		cidx++
 	}
 	for _, certUrl := range sc.CertificateChain {
 		if certUrl != "" {
-			idx++
+			cidx++
 		}
 	}
 	// if no cerificates, return
-	if idx == 0 {
+	if cidx == 0 {
+		log.Printf("checkCertsForObject() for %s, no certificates configured\n",
+			safename)
 		return true
 	}
 
 	if sc.SignatureKey != "" {
 		safename := types.UrlToSafename(sc.SignatureKey, "")
-		filename := certificateDirname + "/" + types.SafenameToFilename(safename)
+		filename := certificateDirname + "/" +
+			types.SafenameToFilename(safename)
 		if _, err := os.Stat(filename); err != nil {
+			log.Printf("checkCertsForObject() for %s, %v\n", filename, err)
 			return false
 		}
 	}
 
 	for _, certUrl := range sc.CertificateChain {
-		safename := types.UrlToSafename(certUrl, "")
-		filename := certificateDirname + "/" + types.SafenameToFilename(safename)
-		if _, err := os.Stat(filename); err != nil {
-			return false
+		if certUrl != "" {
+			safename := types.UrlToSafename(certUrl, "")
+			filename := certificateDirname + "/" +
+				types.SafenameToFilename(safename)
+			if _, err := os.Stat(filename); err != nil {
+				log.Printf("checkCertsForObject() for %s, %v\n", filename, err)
+				return false
+			}
 		}
 	}
 	return true

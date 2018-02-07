@@ -590,22 +590,22 @@ func getCertObjects(uuidAndVersion types.UUIDandVersion,
 	for _, image := range drives {
 
 		if image.SignatureKey != "" {
-			getCertObjConfig(*config, image, image.SignatureKey, cidx)
+			getCertObjConfig(config, image, image.SignatureKey, cidx)
 			cidx++
 		}
 
 		for _, certUrl := range image.CertificateChain {
 			if certUrl != "" {
-				getCertObjConfig(*config, image, certUrl, cidx)
+				getCertObjConfig(config, image, certUrl, cidx)
 				cidx++
 			}
 		}
 	}
 
-	writeCertObjConfig(*config, configFilename)
+	writeCertObjConfig(config, configFilename)
 }
 
-func getCertObjConfig(config types.CertObjConfig,
+func getCertObjConfig(config *types.CertObjConfig,
 	image types.StorageConfig, certUrl string, idx int) {
 
 	if certUrl == "" {
@@ -691,7 +691,7 @@ func validateAppInstanceConfig(appInstance types.AppInstanceConfig) bool {
 	return true
 }
 
-func writeCertObjConfig(config types.CertObjConfig, configFilename string) {
+func writeCertObjConfig(config *types.CertObjConfig, configFilename string) {
 
 	bytes, err := json.Marshal(config)
 	if err != nil {
