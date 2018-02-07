@@ -36,6 +36,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/zededa/go-provision/assignableadapters"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
 	"log"
@@ -179,8 +180,15 @@ func main() {
 		// Inform ledmanager that we have uplink addresses
 		types.UpdateLedManagerConfig(2)
 	}
+	// XXX should we make sure we have the model -> AssignableDevices
+	// before we call metricsTimerTask?
+	model := "default"
+	// XXX model := hardware.HardwareModel()
+	aa := types.AssignableAdapters{}
+	aaChanges, aaFunc, aaCtx := assignabledevices.Init(&aa, model)
 
 	// start the metrics/config fetch tasks
+	// XXX pass in &aa = *types.AssignableDevices
 	go metricsTimerTask()
 	go configTimerTask()
 
@@ -279,6 +287,8 @@ func main() {
 				&types.DomainStatus{},
 				handleDomainStatusModify, handleDomainStatusDelete,
 				nil)
+		case change := <-aaChanges:
+			aaFunc(&aaCtx, change)
 		}
 	}
 }
