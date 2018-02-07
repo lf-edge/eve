@@ -47,6 +47,11 @@ type zedrouterContext struct {
 type dummyContext struct {
 }
 
+// Context for handleDNCModify
+type DNCContext struct {
+	usableAddressCount int
+}
+
 func main() {
 	log.SetOutput(os.Stdout)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
@@ -97,8 +102,11 @@ func main() {
 	}
 	appNumAllocatorInit(statusDirname, configDirname)
 
-	handleInit(DNCDirname + "/global.json", DNSDirname + "/global.json",
+	handleInit(DNCDirname+"/global.json", DNSDirname+"/global.json",
 		runDirname)
+
+	DNCctx := DNCContext{}
+	DNCctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
 
 	// Wait for zedmanager having populated the intial files to
 	// reduce the number of LISP-RESTARTs
@@ -115,16 +123,15 @@ func main() {
 		log.Printf("addrChangeFn(%s) called\n", ifname)
 		new, _ := types.MakeDeviceNetworkStatus(deviceNetworkConfig)
 		if !reflect.DeepEqual(deviceNetworkStatus, new) {
-			log.Printf("Address change for %s\n", ifname)
-			log.Printf("From %v to %v\n", deviceNetworkStatus, new)
+			log.Printf("Address change for %s from %v to %v\n",
+				ifname, deviceNetworkStatus, new)
 			deviceNetworkStatus = new
-			updateDeviceNetworkStatus()
-			updateLispConfiglets()
+			doDNSUpdate(&DNCctx)
 		} else {
 			log.Printf("No address change for %s\n", ifname)
 		}
 	}
-	
+
 	routeChanges, addrChanges, linkChanges := PbrInit(
 		deviceNetworkConfig.Uplink, deviceNetworkConfig.FreeUplinks,
 		addrChangeFn)
@@ -138,15 +145,15 @@ func main() {
 	go watch.WatchStatus(DNCDirname, deviceConfigChanges)
 	for {
 		select {
-		case change := <- configChanges:
+		case change := <-configChanges:
 			watch.HandleConfigStatusEvent(change, dummyContext{},
 				configDirname, statusDirname,
 				&types.AppNetworkConfig{},
 				&types.AppNetworkStatus{},
 				handleCreate, handleModify, handleDelete,
 				&restartFn)
-		case change := <- deviceConfigChanges:
-			watch.HandleStatusEvent(change, dummyContext{},
+		case change := <-deviceConfigChanges:
+			watch.HandleStatusEvent(change, &DNCctx,
 				DNCDirname,
 				&types.DeviceNetworkConfig{},
 				handleDNCModify, handleDNCDelete,
@@ -347,7 +354,7 @@ func generateAdditionalInfo(status types.AppNetworkStatus, olConfig types.Overla
 	}
 	return additionalInfo
 }
-		
+
 func updateLispConfiglets() {
 	for _, status := range appNetworkStatus {
 		for i, olStatus := range status.OverlayNetworkList {
@@ -359,7 +366,7 @@ func updateLispConfiglets() {
 			} else {
 				olIfname = "bo" + strconv.Itoa(olNum) + "x" +
 					strconv.Itoa(status.AppNum)
-			}	
+			}
 			additionalInfo := generateAdditionalInfo(status,
 				olStatus.OverlayNetworkConfig)
 			log.Printf("updateLispConfiglets for %s isMgmt %v\n",
@@ -1132,6 +1139,7 @@ func pkillUserArgs(userName string, match string, printOnError bool) {
 func handleDNCModify(ctxArg interface{}, configFilename string,
 	configArg interface{}) {
 	config := configArg.(*types.DeviceNetworkConfig)
+	ctx := ctxArg.(*DNCContext)
 
 	// XXX from context with manufacturerModel
 	if configFilename != "global" {
@@ -1146,23 +1154,54 @@ func handleDNCModify(ctxArg interface{}, configFilename string,
 		log.Printf("DeviceNetworkStatus change from %v to %v\n",
 			deviceNetworkStatus, new)
 		deviceNetworkStatus = new
-		updateDeviceNetworkStatus()
-		updateLispConfiglets()
-
-		setUplinks(deviceNetworkConfig.Uplink)
-		setFreeUplinks(deviceNetworkConfig.FreeUplinks)
+		doDNSUpdate(ctx)
 	}
 	log.Printf("handleDNCModify done for %s\n", configFilename)
 }
 
 func handleDNCDelete(ctxArg interface{}, configFilename string) {
 	log.Printf("handleDNCDelete for %s\n", configFilename)
+	ctx := ctxArg.(*DNCContext)
 
 	if configFilename != "global" {
 		fmt.Printf("handleDNSDelete: ignoring %s\n", configFilename)
 		return
 	}
-	deviceNetworkStatus = types.DeviceNetworkStatus{}
-	updateDeviceNetworkStatus()
+	new := types.DeviceNetworkStatus{}
+	if !reflect.DeepEqual(deviceNetworkStatus, new) {
+		log.Printf("DeviceNetworkStatus change from %v to %v\n",
+			deviceNetworkStatus, new)
+		deviceNetworkStatus = new
+		doDNSUpdate(ctx)
+	}
 	log.Printf("handleDNCDelete done for %s\n", configFilename)
+}
+
+func doDNSUpdate(ctx *DNCContext) {
+	// Did we loose all usable addresses or gain the first usable
+	// address?
+	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
+	if newAddrCount == 0 && ctx.usableAddressCount != 0 {
+		log.Printf("DeviceNetworkStatus from %d to %d addresses\n",
+			newAddrCount, ctx.usableAddressCount)
+		// Inform ledmanager that we have no addresses
+		types.UpdateLedManagerConfig(1)
+	} else if newAddrCount != 0 && ctx.usableAddressCount == 0 {
+		log.Printf("DeviceNetworkStatus from %d to %d addresses\n",
+			newAddrCount, ctx.usableAddressCount)
+		// Inform ledmanager that we have uplink addresses
+		types.UpdateLedManagerConfig(2)
+	}
+	ctx.usableAddressCount = newAddrCount
+	updateDeviceNetworkStatus()
+	updateLispConfiglets()
+
+	setUplinks(deviceNetworkConfig.Uplink)
+	setFreeUplinks(deviceNetworkConfig.FreeUplinks)
+	// XXX check if FreeUplinks changed; add/delete
+	// XXX need to redo this when FreeUplinks changes
+	// for _, u := range deviceNetworkConfig.FreeUplinks {
+	//	iptableCmd("-t", "nat", "-A", "POSTROUTING", "-o", u,
+	//		"-s", "172.27.0.0/16", "-j", "MASQUERADE")
+	//}
 }
