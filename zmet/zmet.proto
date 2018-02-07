@@ -14,18 +14,18 @@ option java_package = "com.zededa.cloud.uservice.proto";
 enum ZInfoTypes {
   ZiNop = 0;
   ZiDevice = 1;
-  ZiHypervisor = 2;
+  ZiHypervisor = 2;	// Deprecated
   ZiApp = 3;
 }
 
 // Manufacturing info, product name, model, version etc.
-// From dmidecode on Intel
+// From dmidecode/BIOS on Intel
 message ZInfoManufacturer {
   string manufacturer = 1;
   string productName = 2;
   string version = 3;
   string serialNumber = 4;
-  string UUID = 5;
+  string UUID = 5;		// From BIOS; different than device UUID
   string compatible = 6;	// From /proc/device-tree/compatible on ARM
   string biosVendor = 7;
   string biosVersion = 8;
@@ -86,6 +86,7 @@ message ZInfoDevice {
   ZInfoSW software = 12;		// Deprecated;
   repeated ZInfoNetwork network = 13;
   repeated ZInfoSW softwareList = 14;	// Software Images in both partitions
+  repeated ZioBundle assignableAdapters = 15;
 }
 
 // Device info from DOM0 perspective, if it exists.
@@ -124,6 +125,26 @@ message ZInfoMsg {
    }
   google.protobuf.Timestamp atTimeStamp = 6;
 }
+
+// XXX duplicate of definition in appconfig.proto
+// Types of I/O adapters that can be assigned to applications
+enum ZioType {
+  ZioNop = 0;
+  ZioEth = 1;		// Includes WiFi?
+  ZioUSB = 2;
+  ZioCOM = 3;		// Com ports
+  ZioOther = 255;
+}
+
+// Information about assignable I/O adapter bundles
+message ZioBundle {
+  ZioType type = 1;
+  string name = 2;		// Short hand name such as "com"
+  repeated string members = 3;	// E.g., "com1", "com2"
+  string usedByUUID = 4;
+}
+
+// Metrics from devices and applications
 
 enum ZmetricTypes {
   ZmNop = 0;
