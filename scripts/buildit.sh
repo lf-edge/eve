@@ -30,7 +30,7 @@ echo "all: ${BUILD_VERSION}" >var/tmp/zededa/version_tag
 [ -d bin/linux_x86_64 ] || mkdir bin/linux_x86_64
 [ -d bin/linux_arm64 ] || mkdir bin/linux_arm64
 
-APPS="ledmanager downloader verifier client server register zedrouter domainmgr identitymgr zedmanager eidregister zedagent"
+APPS="ledmanager downloader verifier client server register zedrouter domainmgr identitymgr zedmanager eidregister zedagent hardwaremodel"
 if /bin/true; then
     cmdline=""
     for app in $APPS; do

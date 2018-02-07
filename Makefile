@@ -54,7 +54,9 @@ APPS = \
 	identitymgr	\
 	zedmanager 	\
 	eidregister	\
-	zedagent
+	zedagent	\
+	ledmanager	\
+	hardwaremodel
 
 SCRIPTS = \
 	device-steps.sh \

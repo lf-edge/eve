@@ -37,6 +37,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/zededa/go-provision/assignableadapters"
+	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
 	"log"
@@ -97,6 +98,9 @@ const (
 
 // Set from Makefile
 var Version = "No version specified"
+
+// XXX use a context for verifierRestarted
+
 var verifierRestarted = false
 var deviceNetworkStatus types.DeviceNetworkStatus
 
@@ -137,6 +141,12 @@ func main() {
 	go watch.WatchStatus(verifierBaseOsStatusDirname,
 		baseOsVerifierChanges)
 
+	// Pick up (mostly static) AssignableDevices before we call
+	// metricsTimerTask
+	model := hardware.HardwareModel()
+	aa := types.AssignableAdapters{}
+	aaChanges, aaFunc, aaCtx := assignabledevices.Init(&aa, model)
+
 	// First we process the verifierStatus to avoid downloading
 	// an base image we already have in place
 	log.Printf("Handling initial verifier Status\n")
@@ -155,6 +165,8 @@ func main() {
 				done = true
 				break
 			}
+		case change := <-aaChanges:
+			aaFunc(&aaCtx, change)
 		}
 	}
 
@@ -172,6 +184,8 @@ func main() {
 				&types.DeviceNetworkStatus{},
 				handleDNSModify, handleDNSDelete,
 				nil)
+		case change := <-aaChanges:
+			aaFunc(&aaCtx, change)
 		}
 	}
 	fmt.Printf("Have %d uplinks addresses to use\n",
@@ -180,12 +194,6 @@ func main() {
 		// Inform ledmanager that we have uplink addresses
 		types.UpdateLedManagerConfig(2)
 	}
-	// XXX should we make sure we have the model -> AssignableDevices
-	// before we call metricsTimerTask?
-	model := "default"
-	// XXX model := hardware.HardwareModel()
-	aa := types.AssignableAdapters{}
-	aaChanges, aaFunc, aaCtx := assignabledevices.Init(&aa, model)
 
 	// start the metrics/config fetch tasks
 	// XXX pass in &aa = *types.AssignableDevices
