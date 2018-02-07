@@ -29,13 +29,13 @@ message Adapter {
   // Future will have type-specific oneof definitions as needed
 }
 
-// XXX duplicate of definition in zmet.proto
+// XXX duplicate of definition in zmet.proto with uniq names (ZCio vs Zio)
 // Types of I/O adapters that can be assigned to applications
 enum ZioType {
-  ZioNop = 0;
-  ZioEth = 1;		// Includes WiFi?
-  ZioUSB = 2;
-  ZioCOM = 3;		// Com ports
-  ZioOther = 255;
+  ZCioNop = 0;
+  ZCioEth = 1;		// Includes WiFi?
+  ZCioUSB = 2;
+  ZCioCOM = 3;		// Com ports
+  ZCioOther = 255;
 }
 
