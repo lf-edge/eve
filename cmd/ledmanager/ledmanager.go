@@ -20,6 +20,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
 	"log"
@@ -37,13 +38,14 @@ type ledManagerContext struct {
 	countChange chan int
 }
 
+type Blink200msFunc func()
+
 var debug bool
 
 // Set from Makefile
 var Version = "No version specified"
 
 func main() {
-
 	log.SetOutput(os.Stdout)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
 	versionPtr := flag.Bool("v", false, "Version")
@@ -56,6 +58,19 @@ func main() {
 	}
 	log.Printf("Starting ledmanager\n")
 
+	model := hardware.HardwareModel()
+	fmt.Printf("Got HardwareModel %s\n", model)
+
+	var blinkFunc Blink200msFunc
+	// XXX case insensitive matching?
+	// XXX add table when we have more hardware models
+	if model == "Supermicro.SYS-E100-9APP" {
+		blinkFunc = ExecuteDDCmd
+	} else {
+		log.Printf("No blink function for %s\n", model)
+		blinkFunc = DummyCmd
+	}
+
 	ledChanges := make(chan string)
 	go watch.WatchStatus(ledConfigDirName, ledChanges)
 	log.Println("called watcher...")
@@ -63,7 +78,7 @@ func main() {
 	// Any state needed by handler functions
 	ctx := ledManagerContext{}
 	ctx.countChange = make(chan int)
-	go TriggerBlinkOnDevice(ctx.countChange)
+	go TriggerBlinkOnDevice(ctx.countChange, blinkFunc)
 
 	for {
 		select {
@@ -112,7 +127,7 @@ func handleLedBlinkDelete(ctxArg interface{}, configFilename string) {
 	log.Printf("handleLedBlinkDelete done for %s\n", configFilename)
 }
 
-func TriggerBlinkOnDevice(countChange chan int) {
+func TriggerBlinkOnDevice(countChange chan int, blinkFunc Blink200msFunc) {
 	var counter int
 	for {
 		select {
@@ -129,14 +144,18 @@ func TriggerBlinkOnDevice(countChange chan int) {
 			log.Println("Number of times LED will blink: ", counter)
 		}
 		for i := 0; i < counter; i++ {
-			ExecuteDDCmd()
+			blinkFunc()
 			time.Sleep(200 * time.Millisecond)
 		}
 		time.Sleep(1200 * time.Millisecond)
 	}
 }
 
-// Should be tuned so that the LED lights up for 100ms
+func DummyCmd() {
+	time.Sleep(200 * time.Millisecond)
+}
+
+// Should be tuned so that the LED lights up for 200ms
 func ExecuteDDCmd() {
 	cmd := exec.Command("dd", "if=/dev/sda", "of=/dev/null", "bs=4M", "count=22")
 	stdout, err := cmd.Output()

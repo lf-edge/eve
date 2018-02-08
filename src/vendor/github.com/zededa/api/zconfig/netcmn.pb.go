@@ -40,6 +40,7 @@ It has these top-level messages:
 	Image
 	Drive
 	AppInstanceConfig
+	Adapter
 	NetworkParam
 	NetworkIf
 	NetworkConfig

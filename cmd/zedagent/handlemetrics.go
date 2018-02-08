@@ -174,41 +174,16 @@ func ReadAppInterfaceName(appName string) []string {
 	return appInterfaceAndNameList[appName]
 }
 
-func ExecuteXlListCmd() [][]string {
-
-	cmd := exec.Command("xl", "list")
-	stdout, err := cmd.Output()
-	if err != nil {
-		println(err.Error())
-	}
-
-	xlList := fmt.Sprintf("%s", stdout)
-	splitXlList := strings.Split(xlList, "\n")
-	var xlListWithEmptyVal []interface{}
-	for _, val := range splitXlList {
-		if val != "" {
-			xlListWithEmptyVal = append(xlListWithEmptyVal, strings.Split(val, " "))
+func LookupDomainStatus(domainName string) *types.DomainStatus {
+	for _, ds := range domainStatus {
+		if strings.Compare(ds.DomainName, domainName) == 0 {
+			return &ds
 		}
 	}
-
-	xlListOutput := make([][]string, len(xlListWithEmptyVal)-1)
-	for col := range xlListOutput {
-		xlListOutput[col] = make([]string, 6)
-	}
-	var count int
-	for idx1, xl := range xlListWithEmptyVal {
-
-		count = 0
-		for _, xlVal := range xl.([]string) {
-			if xlVal != "" && idx1 != 0 {
-				xlListOutput[idx1-1][count] = xlVal
-				count++
-			}
-		}
-	}
-	return xlListOutput
+	return nil
 }
 
+// XXX can we use libxenstat? /usr/local/lib/libxenstat.so on hikey
 func ExecuteXentopCmd() [][]string {
 	var cpuStorageStat [][]string
 
@@ -325,14 +300,7 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 		return
 	}
 
-	xlListOutput := ExecuteXlListCmd()
-	if len(xlListOutput) == 0 {
-		log.Printf("No xlList? metrics: %s\n", ReportMetrics)
-		SendMetricsProtobufStrThroughHttp(ReportMetrics, iteration)
-		return
-	}
-	var countApp int
-	countApp = 0
+	countApp := 0
 	ReportMetrics.Am = make([]*zmet.AppMetric, len(cpuStorageStat)-2)
 	for arr := 1; arr < len(cpuStorageStat); arr++ {
 		if strings.Contains(cpuStorageStat[arr][1], "Domain-0") {
@@ -434,14 +402,14 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 				ReportAppMetric.Cpu = new(zmet.AppCpuMetric)
 				ReportAppMetric.Memory = new(zmet.MemoryMetric)
 
-				ReportAppMetric.AppName = cpuStorageStat[arr][1]
-
-				for xl := 0; xl < len(xlListOutput); xl++ {
-					if xlListOutput[xl][0] == cpuStorageStat[arr][1] {
-						// AppID is the domainId number from xen.
-						// Should it be AppNum from DomainStatus?
-						ReportAppMetric.AppID = xlListOutput[xl][1]
-					}
+				domainName := cpuStorageStat[arr][1]
+				ds := LookupDomainStatus(domainName)
+				if ds == nil {
+					log.Printf("Did not find status for domainName %s\n",
+						domainName)
+				} else {
+					ReportAppMetric.AppName = ds.DisplayName
+					ReportAppMetric.AppID = ds.UUIDandVersion.UUID.String()
 				}
 
 				appCpuTotal, _ := strconv.ParseUint(cpuStorageStat[arr][3], 10, 0)
@@ -666,14 +634,7 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 
 	ReportAppInfo := new(zmet.ZInfoApp)
 
-	xlListOutput := ExecuteXlListCmd()
-	for xl := 0; xl < len(xlListOutput); xl++ {
-		// AppID is the domainId number from xen.
-		// Should it instead be AppNum from DomainStatus?
-		if strings.Contains(xlListOutput[xl][0], aiStatus.DisplayName) {
-			ReportAppInfo.AppID = xlListOutput[xl][1]
-		}
-	}
+	ReportAppInfo.AppID = aiStatus.UUIDandVersion.UUID.String()
 	ReportAppInfo.SystemApp = false
 	ReportAppInfo.AppName = aiStatus.DisplayName
 	ReportAppInfo.Activated = aiStatus.Activated

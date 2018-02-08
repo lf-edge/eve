@@ -107,7 +107,7 @@ func main() {
 				nil)
 		}
 	}
-	fmt.Printf("Have %d free uplinks addresses to use\n",
+	fmt.Printf("Have %d uplinks addresses to use\n",
 		types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus))
 
 	appImgChanges := make(chan string)
@@ -941,7 +941,7 @@ func handleDNSModify(ctxArg interface{}, statusFilename string,
 
 	log.Printf("handleDNSModify for %s\n", statusFilename)
 	deviceNetworkStatus = *status
-	fmt.Printf("handleDNSModify %d free uplinks addresses; %d any\n",
+	fmt.Printf("handleDNSModify %d free uplinks addresses; %d any %d\n",
 		types.CountLocalAddrFree(deviceNetworkStatus, ""),
 		types.CountLocalAddrAny(deviceNetworkStatus, ""))
 	log.Printf("handleDNSModify done for %s\n", statusFilename)
