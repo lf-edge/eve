@@ -80,10 +80,9 @@ func StartItrThread(threadName string,
 	itrLocalData.Fd6 = fd6
 	itrLocalData.IvHigh = ivHigh
 	itrLocalData.IvLow  = ivLow
-	itrLocalData.IvArray = fib.GenerateIVByteArray(ivHigh, ivLow)
 
 	startWorking(threadName, ring, killChannel, puntChannel,
-		itrLocalData, fd4, fd6)
+		itrLocalData)
 
 	// If startWorking returns, it means the control thread wants
 	// this thread to die.
@@ -133,7 +132,7 @@ func SetupPacketCapture(ifname string, snapLen uint32) *pfring.Ring {
 // Start capturing and processing packets.
 func startWorking(ifname string, ring *pfring.Ring,
 	killChannel chan bool, puntChannel chan []byte,
-	itrLocalData *types.ITRLocalData, fd4 int, fd6 int) {
+	itrLocalData *types.ITRLocalData) {
 	var pktBuf [SNAPLENGTH]byte
 
 	iid := fib.LookupIfaceIID(ifname)
@@ -264,7 +263,7 @@ eidLoop:
 			LookupAndSend(packet, pktBuf[:],
 				uint32(pktLen), iid, hash32,
 				ifname, srcAddr, dstAddr,
-				puntChannel, itrLocalData, fd4, fd6)
+				puntChannel, itrLocalData)
 		}
 	}
 }
@@ -285,8 +284,7 @@ func LookupAndSend(packet gopacket.Packet,
 	srcAddr net.IP,
 	dstAddr net.IP,
 	puntChannel chan []byte,
-	itrLocalData *types.ITRLocalData,
-	fd4 int, fd6 int) {
+	itrLocalData *types.ITRLocalData) {
 	mapEntry, punt := fib.LookupAndAdd(iid, dstAddr)
 	if mapEntry.Resolved != true {
 		// Buffer the packet for processing later
@@ -334,7 +332,7 @@ func LookupAndSend(packet gopacket.Packet,
 
 				// Encapsulate and send packet out
 				fib.CraftAndSendLispPacket(pkt.Packet, pktBuf, capLen, pkt.Hash32,
-					mapEntry, iid, itrLocalData, fd4, fd6)
+					mapEntry, iid, itrLocalData)
 
 				// look golang atomic increment documentation to understand ^uint64(0)
 				// We are trying to decrement the counter here by 1
@@ -353,13 +351,13 @@ func LookupAndSend(packet gopacket.Packet,
 			defaultMap, _ := fib.LookupAndAdd(iid, defaultPrefix)
 			if defaultMap.Resolved {
 				fib.CraftAndSendLispPacket(packet, pktBuf, capLen, hash32,
-					defaultMap, iid, itrLocalData, fd4, fd6)
+					defaultMap, iid, itrLocalData)
 			}
 		}
 	} else {
 		// Craft the LISP header, outer layers here and send packet out
 		fib.CraftAndSendLispPacket(packet, pktBuf, capLen, hash32, mapEntry,
-			iid, itrLocalData, fd4, fd6)
+			iid, itrLocalData)
 		atomic.AddUint64(&mapEntry.Packets, 1)
 		atomic.AddUint64(&mapEntry.Bytes, uint64(capLen))
 	}

@@ -21,8 +21,7 @@ func CraftAndSendLispPacket(packet gopacket.Packet,
 	hash32 uint32,
 	mapEntry *types.MapCacheEntry,
 	iid uint32,
-	itrLocalData *types.ITRLocalData,
-	fd4 int, fd6 int) {
+	itrLocalData *types.ITRLocalData) {
 
 	var rloc types.Rloc
 
@@ -31,19 +30,12 @@ func CraftAndSendLispPacket(packet gopacket.Packet,
 
 	// Get map cache slot from hash and weight
 	mapSlot := hash32 % totWeight
-	/*
-	log.Println("Slot selected is:", mapSlot)
-	log.Println("Total weight is:", totWeight)
-	log.Println()
-	*/
 
 	// get the map Rloc entry that has the weight slow we are interested
 	for _, rloc = range mapEntry.Rlocs {
-		//log.Println("Checking range", rloc.WrLow, rloc.WrHigh)
 		if (mapSlot < rloc.WrLow) || (mapSlot > rloc.WrHigh) {
 			continue
 		}
-		//log.Println("Range selected is:", rloc.WrLow, rloc.WrHigh)
 		break
 	}
 
@@ -51,10 +43,10 @@ func CraftAndSendLispPacket(packet gopacket.Packet,
 	switch rloc.Family {
 	case types.MAP_CACHE_FAMILY_IPV4:
 		craftAndSendIPv4LispPacket(packet, pktBuf, capLen,
-			hash32, &rloc, iid, itrLocalData, fd4)
+			hash32, &rloc, iid, itrLocalData)
 	case types.MAP_CACHE_FAMILY_IPV6:
 		craftAndSendIPv6LispPacket(packet, pktBuf, capLen,
-			hash32, &rloc, iid, itrLocalData, fd6)
+			hash32, &rloc, iid, itrLocalData)
 	case types.MAP_CACHE_FAMILY_UNKNOWN:
 		log.Printf("Unkown family found for rloc %s\n",
 			rloc.Rloc)
@@ -75,13 +67,13 @@ func encryptPayload(
 		var remainder uint32 = 0
 
 		packet := payload[:payloadLen]
-		log.Printf("XXXXX Before crypto payloadLen is %d\n", payloadLen)
 
 		// Pad the payload if it's length is not a multiple of 16.
 		if (payloadLen % aes.BlockSize) != 0 {
 			remainder = (payloadLen % aes.BlockSize)
 			packet = payload[:payloadLen + aes.BlockSize - remainder]
-			log.Printf("XXXXX Padded packet with %d bytes\n", aes.BlockSize - remainder)
+			log.Printf("XXXXX Padded packet with %d bytes\n",
+				aes.BlockSize - remainder)
 
 			// Now fill the padding with zeroes
 			for i := payloadLen; i < uint32(len(packet)); i++ {
@@ -89,13 +81,14 @@ func encryptPayload(
 			}
 		}
 
-		// XXX Check with Dino, how his code treats IV. String(ascii) or binary
-		// convert the IV into byte array
+		// XXX Check with Dino, how his code treats IV.
+		// String(ascii) or binary?
+		// For now, convert the IV into byte array
 
 		// Write IV into packet
-		for i, b := range ivArray {
-			packet[i] = b
-		}
+		//for i, b := range ivArray {
+		//	packet[i] = b
+		//}
 
 		// the below block value can be stored in map-cache entry for efficiency
 		block, err := aes.NewCipher(encKey)
@@ -110,10 +103,11 @@ func encryptPayload(
 		return true, (aes.BlockSize - remainder)
 }
 
-func GenerateIVByteArray(ivHigh uint64, ivLow uint64) []byte {
-		// XXX write individual bytes from ivHigh and ivLow into IV byte array
+func GenerateIVByteArray(ivHigh uint64, ivLow uint64, ivArray []byte) []byte {
+		// XXX Suggest if there is a better way of doing this.
+
+		// Write individual bytes from ivHigh and ivLow into IV byte array
 		// Doesn't look good, but couldn't find a more elegant way of doing it.
-		ivArray := make([]byte, 16)
 		for i := 0; i < 8; i++ {
 			ivArray[i] = byte((ivHigh >> uint((8 - i - 1)* 8)) & 0xff)
 		}
@@ -123,7 +117,8 @@ func GenerateIVByteArray(ivHigh uint64, ivLow uint64) []byte {
 		return ivArray
 }
 
-func GetIVArray(itrLocalData *types.ITRLocalData) []byte {
+// Get IV as a byte array
+func GetIVArray(itrLocalData *types.ITRLocalData, ivArray []byte) []byte {
 	ivHigh := itrLocalData.IvHigh
 	ivLow  := itrLocalData.IvLow
 	itrLocalData.IvLow += 1
@@ -138,8 +133,7 @@ func GetIVArray(itrLocalData *types.ITRLocalData) []byte {
 		itrLocalData.IvHigh = ivHigh
 		itrLocalData.IvLow  = ivLow
 	}
-	itrLocalData.IvArray = GenerateIVByteArray(ivHigh, ivLow)
-	return itrLocalData.IvArray
+	return GenerateIVByteArray(ivHigh, ivLow, ivArray)
 }
 
 func craftAndSendIPv4LispPacket(packet gopacket.Packet,
@@ -149,9 +143,9 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 	//mapEntry *types.MapCacheEntry,
 	rloc *types.Rloc,
 	iid uint32,
-	itrLocalData *types.ITRLocalData,
-	fd4 int) {
+	itrLocalData *types.ITRLocalData) {
 
+	var fd4       int = itrLocalData.Fd4
 	var useCrypto bool = false
 	var keyId     byte = 0
 	var padLen    uint32 = 0
@@ -196,7 +190,8 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 
 		ok := false
 		ok, padLen = encryptPayload(pktBuf[offsetStart: offsetEnd], payloadLen,
-				encKey, GetIVArray(itrLocalData))
+		encKey, GetIVArray(itrLocalData,
+		pktBuf[offsetStart: offsetStart + types.IVLEN]))
 		if ok == false {
 			keyId = 0
 			useCrypto = false
@@ -319,9 +314,9 @@ func craftAndSendIPv6LispPacket(packet gopacket.Packet,
 	//mapEntry *types.MapCacheEntry,
 	rloc *types.Rloc,
 	iid uint32,
-	itrLocalData *types.ITRLocalData,
-	fd6 int) {
+	itrLocalData *types.ITRLocalData) {
 
+	var fd6 int = itrLocalData.Fd6
 	// XXX
 	// Should we have a static per-thread entry for this header?
 	// Can we have it globally and re-use?

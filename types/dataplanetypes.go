@@ -141,7 +141,6 @@ type ITRLocalData struct {
 	// crypto initialization vector data (IV)
 	IvHigh uint64
 	IvLow  uint64
-	IvArray []byte
 
 	// Raw sockets for sending out LISP encapsulted packets
 	Fd4    int

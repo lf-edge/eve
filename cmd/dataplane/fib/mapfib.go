@@ -149,7 +149,6 @@ func UpdateMapCacheEntry(iid uint32, eid net.IP, rlocs []types.Rloc) {
 	itrLocalData.Fd6 = fd6
 	itrLocalData.IvHigh = ivHigh
 	itrLocalData.IvLow  = ivLow
-	itrLocalData.IvArray = GenerateIVByteArray(ivHigh, ivLow)
 
 	for {
 		select {
@@ -168,7 +167,7 @@ func UpdateMapCacheEntry(iid uint32, eid net.IP, rlocs []types.Rloc) {
 
 				// Send the packet out now
 				CraftAndSendLispPacket(pkt.Packet, pktBuf, uint32(capLen), pkt.Hash32,
-					entry, entry.InstanceId, itrLocalData, fd4, fd6)
+					entry, entry.InstanceId, itrLocalData)
 				
 				// decrement buffered packet count and increment pkt, byte counts
 				atomic.AddUint64(&entry.BuffdPkts, ^uint64(0))

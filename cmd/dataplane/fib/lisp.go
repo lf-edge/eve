@@ -1,41 +1,8 @@
 package fib
 
 import (
-	"github.com/google/gopacket"
 	"log"
 )
-
-var LispLayerType gopacket.LayerType
-
-type LispHdr struct {
-	Hdr     []byte
-	Payload []byte
-}
-
-func RegisterLispHeader() {
-	LispLayerType = gopacket.RegisterLayerType(2001,
-		gopacket.LayerTypeMetadata{
-			"LispLayerType",
-			gopacket.DecodeFunc(decodeLispLayer),
-		})
-}
-
-func (l LispHdr) LayerType() gopacket.LayerType {
-	return LispLayerType
-}
-
-func (l LispHdr) LayerContents() []byte {
-	return l.Hdr
-}
-
-func (l LispHdr) LayerPayload() []byte {
-	return l.Payload
-}
-
-func decodeLispLayer(data []byte, p gopacket.PacketBuilder) error {
-	p.AddLayer(&LispHdr{data[:2], data[2:]})
-	return p.NextDecoder(gopacket.LayerTypePayload)
-}
 
 func SetLispKeyId(hdr []byte, keyId byte) {
 	if keyId > 3 {
