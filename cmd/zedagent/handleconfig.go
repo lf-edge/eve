@@ -132,7 +132,7 @@ func getLatestConfig(configUrl string, iteration int) {
 		}
 		localTCPAddr := net.TCPAddr{IP: localAddr}
 		// XXX makes logfile too long; debug flag?
-		fmt.Printf("Connecting to %s using intf %s source %v\n",
+		log.Printf("Connecting to %s using intf %s source %v\n",
 			configUrl, intf, localTCPAddr)
 		d := net.Dialer{LocalAddr: &localTCPAddr}
 		transport := &http.Transport{
@@ -180,13 +180,13 @@ func validateConfigMessage(configUrl string, intf string,
 	switch r.StatusCode {
 	case http.StatusOK:
 		// XXX makes logfile too long; debug flag?
-		fmt.Printf("validateConfigMessage %s using intf %s source %v StatusOK\n",
+		log.Printf("validateConfigMessage %s using intf %s source %v StatusOK\n",
 			configUrl, intf, localTCPAddr)
 	default:
-		fmt.Printf("validateConfigMessage %s using intf %s source %v statuscode %d %s\n",
+		log.Printf("validateConfigMessage %s using intf %s source %v statuscode %d %s\n",
 			configUrl, intf, localTCPAddr,
 			r.StatusCode, http.StatusText(r.StatusCode))
-		fmt.Printf("received response %v\n", r)
+		log.Printf("received response %v\n", r)
 		return fmt.Errorf("http status %d %s",
 			r.StatusCode, http.StatusText(r.StatusCode))
 	}

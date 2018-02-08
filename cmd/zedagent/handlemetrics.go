@@ -136,7 +136,7 @@ func handleDomainStatusModify(ctxArg interface{}, statusFilename string,
 	}
 
 	if domainStatus == nil {
-		fmt.Printf("create Domain map\n")
+		log.Printf("create Domain map\n")
 		domainStatus = make(map[string]types.DomainStatus)
 	}
 	domainStatus[key] = *status
@@ -160,10 +160,10 @@ func handleDomainStatusDelete(ctxArg interface{}, statusFilename string) {
 			key)
 	} else {
 		if _, ok := appInterfaceAndNameList[m.DomainName]; ok {
-			fmt.Printf("appInterfaceAndnameList for %v\n", m.DomainName)
+			log.Printf("appInterfaceAndnameList for %v\n", m.DomainName)
 			delete(appInterfaceAndNameList, m.DomainName)
 		}
-		fmt.Printf("Domain map delete for %v\n", key)
+		log.Printf("Domain map delete for %v\n", key)
 		delete(domainStatus, key)
 	}
 	log.Printf("handleDomainStatusDelete done for %s\n",
@@ -618,11 +618,11 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus, ite
 // XXX change caller filename to key which is uuid; not used for now
 func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 	iteration int) {
-	fmt.Printf("PublishAppInfoToZedCloud uuid %s\n", uuid)
+	log.Printf("PublishAppInfoToZedCloud uuid %s\n", uuid)
 	// XXX if it was deleted we publish nothing; do we need to delete from
 	// zedcloud?
 	if aiStatus == nil {
-		fmt.Printf("PublishAppInfoToZedCloud uuid %s deleted\n", uuid)
+		log.Printf("PublishAppInfoToZedCloud uuid %s deleted\n", uuid)
 		return
 	}
 	var ReportInfo = &zmet.ZInfoMsg{}
@@ -700,7 +700,7 @@ func SendInfoProtobufStrThroughHttp(ReportInfo *zmet.ZInfoMsg, iteration int) {
 			}
 			localTCPAddr := net.TCPAddr{IP: localAddr}
 			// XXX makes logfile too long; debug flag?
-			fmt.Printf("Connecting to %s using intf %s source %v\n",
+			log.Printf("Connecting to %s using intf %s source %v\n",
 				statusUrl, intf, localTCPAddr)
 			d := net.Dialer{LocalAddr: &localTCPAddr}
 			transport := &http.Transport{
@@ -720,15 +720,15 @@ func SendInfoProtobufStrThroughHttp(ReportInfo *zmet.ZInfoMsg, iteration int) {
 			switch resp.StatusCode {
 			case http.StatusOK:
 				// XXX makes logfile too long; debug flag?
-				fmt.Printf("SendInfoProtobufStrThroughHttp to %s using intf %s source %v StatusOK\n",
+				log.Printf("SendInfoProtobufStrThroughHttp to %s using intf %s source %v StatusOK\n",
 					statusUrl, intf, localTCPAddr)
-				fmt.Printf(" StatusOK\n")
+				log.Printf(" StatusOK\n")
 				return
 			default:
-				fmt.Printf("SendInfoProtobufStrThroughHttp to %s using intf %s source %v statuscode %d %s\n",
+				log.Printf("SendInfoProtobufStrThroughHttp to %s using intf %s source %v statuscode %d %s\n",
 					statusUrl, intf, localTCPAddr,
 					resp.StatusCode, http.StatusText(resp.StatusCode))
-				fmt.Printf("received response %v\n", resp)
+				log.Printf("received response %v\n", resp)
 			}
 		}
 		log.Printf("All attempts to connect to %s using intf %s failed\n",
@@ -764,7 +764,7 @@ func SendMetricsProtobufStrThroughHttp(ReportMetrics *zmet.ZMetricMsg,
 		}
 		localTCPAddr := net.TCPAddr{IP: localAddr}
 		// XXX makes logfile too long; debug flag?
-		fmt.Printf("Connecting to %s using intf %s source %v\n",
+		log.Printf("Connecting to %s using intf %s source %v\n",
 			metricsUrl, intf, localTCPAddr)
 
 		d := net.Dialer{LocalAddr: &localTCPAddr}
@@ -784,14 +784,14 @@ func SendMetricsProtobufStrThroughHttp(ReportMetrics *zmet.ZMetricMsg,
 		switch resp.StatusCode {
 		case http.StatusOK:
 			// XXX makes logfile too long; debug flag?
-			fmt.Printf("SendMetricsProtobufStrThroughHttp to %s using intf %s source %v StatusOK\n",
+			log.Printf("SendMetricsProtobufStrThroughHttp to %s using intf %s source %v StatusOK\n",
 				metricsUrl, intf, localTCPAddr)
 			return
 		default:
-			fmt.Printf("SendMetricsProtobufStrThroughHttp to %s using intf %s source %v  statuscode %d %s\n",
+			log.Printf("SendMetricsProtobufStrThroughHttp to %s using intf %s source %v  statuscode %d %s\n",
 				metricsUrl, intf, localTCPAddr,
 				resp.StatusCode, http.StatusText(resp.StatusCode))
-			fmt.Printf("received response %v\n", resp)
+			log.Printf("received response %v\n", resp)
 		}
 	}
 	log.Printf("All attempts to connect to %s using intf %s failed\n",

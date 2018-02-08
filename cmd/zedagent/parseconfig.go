@@ -109,11 +109,11 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) {
 
 			baseOs.PartitionLabel = getUnusedPartition()
 
-			finalObjDir := baseOs.PartitionLabel
-
 			// only one entry for now
-			for _, sc := range baseOs.StorageConfigList {
-				sc.FinalObjDir = finalObjDir
+			if baseOs.PartitionLabel != "" {
+				for _, sc := range baseOs.StorageConfigList {
+					sc.FinalObjDir = baseOs.PartitionLabel
+				}
 			}
 		}
 
@@ -174,7 +174,15 @@ func getActivePartition() string {
 		log.Println(err.Error())
 	}
 	partitionLabel := string(stdout)
-	log.Println("geActivePartition() ", partitionLabel)
+	switch partitionLabel {
+	case "IMGA":
+		break
+	case "IMGB":
+		break
+	default:
+		partitionLabel = ""
+	}
+	log.Println("geActivePartition(): ", partitionLabel)
 	return strings.TrimSpace(partitionLabel)
 }
 
@@ -189,10 +197,9 @@ func getUnusedPartition() string {
 	case "IMGB":
 		partitionLabel = "IMGA"
 	default:
-		log.Println("unknown partition type")
-		return ""
+		partitionLabel = ""
 	}
-	log.Println("getUnusedPartition() ", partitionLabel)
+	log.Println("getUnusedPartition(): ", partitionLabel)
 	return partitionLabel
 }
 

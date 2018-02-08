@@ -218,14 +218,11 @@ func checkStorageVerifierStatus(objType string, uuidStr string,
 		ss := &status[i]
 
 		safename := types.UrlToSafename(sc.DownloadURL, sc.ImageSha256)
-		log.Printf("checkStorageVerifierStatus for %s, Found StorageConfig URL %s safename %s\n",
-			key, sc.DownloadURL, safename)
 
 		vs, err := lookupVerificationStatusAny(objType, safename, sc.ImageSha256)
-
 		if err != nil {
-			log.Printf("checkStorageVerifierStatus for %s, Verifier Status Map is absent %s sha %s %v\n",
-				key, safename, sc.ImageSha256, err)
+			log.Printf("%s, %v\n", safename, err)
+			minState = types.DOWNLOADED
 			continue
 		}
 		if minState > vs.State {
@@ -237,7 +234,7 @@ func checkStorageVerifierStatus(objType string, uuidStr string,
 		}
 		switch vs.State {
 		case types.INITIAL:
-			log.Printf("checkStorageVerifierStatus for %s, verifier error verifier for %s: %s\n",
+			log.Printf("%s, verifier error for %s: %s\n",
 				key, safename, vs.LastErr)
 			ss.Error = vs.LastErr
 			allErrors = appendError(allErrors, "verifier",
@@ -248,7 +245,7 @@ func checkStorageVerifierStatus(objType string, uuidStr string,
 		default:
 			ss.ActiveFileLocation = objectDownloadDirname + "/" + objType + "/" + vs.Safename
 
-			log.Printf("checkStorageVerifierStatus for %s, Update SSL ActiveFileLocation for %s: %s\n",
+			log.Printf("%s, Update SSL ActiveFileLocation for %s: %s\n",
 				key, uuidStr, ss.ActiveFileLocation)
 			changed = true
 		}

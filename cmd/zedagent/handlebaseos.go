@@ -16,6 +16,9 @@ import (
 	"time"
 )
 
+const (
+	partitionMapFilename = persistDir + "/partitionMap"
+)
 // zedagent publishes these config/status files
 // and also the consumer
 var baseOsConfigMap map[string]types.BaseOsConfig
@@ -199,13 +202,14 @@ func doBaseOsActivate(uuidStr string, config types.BaseOsConfig,
 	partitionState := fmt.Sprintf("%s", stdout)
 	//if partitionState unsed then change status to updating...
 	if partitionState == "unused" {
+		// XXX:FIXME, store baseOs parition assignment info
+		//storePartitionInfo(config)
 		statusCmd := exec.Command("zboot", "set_partstate", config.PartitionLabel, "updating")
 		stdout, err := statusCmd.Output()
 		if err != nil {
 			log.Println(err.Error())
 		}
 		log.Println(stdout)
-
 	}
 
 	// if it is installed, flip the activated status
@@ -277,7 +281,10 @@ func doBaseOsInstall(uuidStr string, config types.BaseOsConfig,
 		changed = true
 	}
 
-	log.Printf("doBaseOsInstall for %s, Done %d\n", uuidStr, changed)
+	statusFilename := fmt.Sprintf("%s/%s.json",
+		zedagentBaseOsStatusDirname, uuidStr)
+	writeBaseOsStatus(status, statusFilename)
+	log.Printf("doBaseOsInstall for %s, Done %v\n", uuidStr, changed)
 	return changed, true
 }
 
@@ -286,10 +293,6 @@ func checkBaseOsStorageDownloadStatus(uuidStr string,
 	status *types.BaseOsStatus) (bool, bool) {
 
 	changed, minState, allErrors, errorTime := checkStorageDownloadStatus(baseOsObj, uuidStr, config.StorageConfigList, status.StorageStatusList)
-
-	if minState == types.MAXSTATE {
-		minState = types.DOWNLOADED
-	}
 
 	status.State = minState
 	status.Error = allErrors
@@ -305,7 +308,7 @@ func checkBaseOsStorageDownloadStatus(uuidStr string,
 		return changed, false
 	}
 
-	log.Printf("checkBseOsStroageDownloadStatus for %s, Downloads done\n", uuidStr)
+	log.Printf("checkBaseOsStorageDownloadStatus for %s, Downloads done\n", uuidStr)
 	return changed, true
 }
 
@@ -315,10 +318,6 @@ func checkBaseOsVerificationStatus(uuidStr string,
 	changed, minState, allErrors, errorTime := checkStorageVerifierStatus(baseOsObj,
 		uuidStr, config.StorageConfigList, status.StorageStatusList)
 
-	if minState == types.MAXSTATE {
-		// Odd; no StorageConfig in list
-		minState = types.DELIVERED
-	}
 	status.State = minState
 	status.Error = allErrors
 	status.ErrorTime = errorTime
@@ -489,15 +488,24 @@ func doBaseOsUninstall(uuidStr string, status *types.BaseOsStatus) (bool, bool) 
 
 func installBaseOsObject(srcFilename string, dstFilename string) bool {
 
-	// zboot partdev IMGA
+	log.Printf("installBaseOsObject: to %s\n", dstFilename)
+	if dstFilename == "" {
+		log.Printf("installBaseOsObject: unssigned deestination partition\n")
+		return false
+	}
+
+	// zboot partdev unsed partition
 	devCmd := exec.Command("zboot", "partdev", dstFilename)
 	stdout, err0 := devCmd.Output()
 	if err0 != nil {
-		log.Println(err0.Error())
+		log.Println("installBaseOsObject: ", err0.Error())
 		return false
+
 	}
 	devName := string(stdout)
 	devName = strings.TrimSpace(devName)
+
+	log.Printf("installBaseOsObject: write to %s\n", devName)
 
 	// unzip the source file
 	if strings.HasSuffix(srcFilename, ".gz") {

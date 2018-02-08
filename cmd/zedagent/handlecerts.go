@@ -133,7 +133,7 @@ func certObjHandleStatusUpdate(uuidStr string) {
 func doCertObjStatusUpdate(uuidStr string, config types.CertObjConfig,
 	status *types.CertObjStatus) bool {
 
-	log.Printf("doCertObjUpdate for %s\n", uuidStr)
+	log.Printf("doCertObjStatusUpdate for %s\n", uuidStr)
 
 	changed, proceed := doCertObjInstall(uuidStr, config, status)
 	if !proceed {
@@ -141,6 +141,8 @@ func doCertObjStatusUpdate(uuidStr string, config types.CertObjConfig,
 	}
 
 	log.Printf("doCertObjStatusUpdate for %s, Done\n", uuidStr)
+	// call baseOs to pick up the certs
+	baseOsHandleStatusUpdate(uuidStr)
 	return changed
 }
 
@@ -190,7 +192,11 @@ func doCertObjInstall(uuidStr string, config types.CertObjConfig,
 		status.State = types.INSTALLED
 		changed = true
 	}
-	log.Printf("doCertObjInstall for %s, Done %d\n", uuidStr, changed)
+
+	statusFilename := fmt.Sprintf("%s/%s.json",
+		zedagentCertObjStatusDirname, uuidStr)
+	writeCertObjStatus(status, statusFilename)
+	log.Printf("doCertObjInstall for %s, Done %v\n", uuidStr, changed)
 	return changed, true
 }
 
@@ -204,8 +210,10 @@ func checkCertObjStorageDownloadStatus(uuidStr string,
 	status.Error = allErrors
 	status.ErrorTime = errorTime
 
+	log.Printf("checkCertObjDownloaStatus %s, %v\n", uuidStr, minState)
+
 	if minState == types.INITIAL {
-		log.Printf("checkCertObjDownloadStatus for %s, Download erro\n", uuidStr)
+		log.Printf("checkCertObjDownloadStatus for %s, Download error\n", uuidStr)
 		return changed, false
 	}
 
@@ -337,13 +345,13 @@ func installCertObject(srcFilename string, dstFilename string, safename string) 
 	// create the destination directory
 	if _, err := os.Stat(dstFilename); err != nil {
 		if err := os.MkdirAll(dstFilename, 0700); err != nil {
-			log.Fatal("installCertObject %v for %s\n", err, dstFilename)
+			log.Fatal("installCertObject: ", err, dstFilename)
 		}
 	}
 
 	dstFilename = dstFilename + "/" + types.SafenameToFilename(safename)
 
-	log.Printf("installCertObject() writing %s to %s\n",
+	log.Printf("installCertObject: writing %s to %s\n",
 		srcFilename, dstFilename)
 
 	os.Rename(srcFilename, dstFilename)

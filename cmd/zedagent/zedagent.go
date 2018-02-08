@@ -173,7 +173,7 @@ func main() {
 				nil)
 		}
 	}
-	fmt.Printf("Have %d uplinks addresses to use\n",
+	log.Printf("Have %d uplinks addresses to use\n",
 		types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus))
 	if waited {
 		// Inform ledmanager that we have uplink addresses
@@ -219,25 +219,8 @@ func main() {
 				handleAppInstanceStatusModify,
 				handleAppInstanceStatusDelete, &restartFn)
 
-		case change := <-appInstanceStatusChanges:
-			go watch.HandleStatusEvent(change, dummyContext{},
-				zedmanagerStatusDirname,
-				&types.AppInstanceStatus{},
-				handleAppInstanceStatusModify,
-				handleAppInstanceStatusDelete, nil)
-
-		case change := <-baseOsConfigStatusChanges:
-			go watch.HandleConfigStatusEvent(change, dummyContext{},
-				zedagentBaseOsConfigDirname,
-				zedagentBaseOsStatusDirname,
-				&types.BaseOsConfig{},
-				&types.BaseOsStatus{},
-				handleBaseOsCreate,
-				handleBaseOsModify,
-				handleBaseOsDelete, nil)
-
 		case change := <-certObjConfigStatusChanges:
-			go watch.HandleConfigStatusEvent(change, dummyContext{},
+			watch.HandleConfigStatusEvent(change, dummyContext{},
 				zedagentCertObjConfigDirname,
 				zedagentCertObjStatusDirname,
 				&types.CertObjConfig{},
@@ -246,22 +229,39 @@ func main() {
 				handleCertObjModify,
 				handleCertObjDelete, nil)
 
+		case change := <-appInstanceStatusChanges:
+			watch.HandleStatusEvent(change, dummyContext{},
+				zedmanagerStatusDirname,
+				&types.AppInstanceStatus{},
+				handleAppInstanceStatusModify,
+				handleAppInstanceStatusDelete, nil)
+
+		case change := <-baseOsConfigStatusChanges:
+			watch.HandleConfigStatusEvent(change, dummyContext{},
+				zedagentBaseOsConfigDirname,
+				zedagentBaseOsStatusDirname,
+				&types.BaseOsConfig{},
+				&types.BaseOsStatus{},
+				handleBaseOsCreate,
+				handleBaseOsModify,
+				handleBaseOsDelete, nil)
+
 		case change := <-baseOsDownloaderChanges:
-			go watch.HandleStatusEvent(change, dummyContext{},
+			watch.HandleStatusEvent(change, dummyContext{},
 				downloaderBaseOsStatusDirname,
 				&types.DownloaderStatus{},
 				handleBaseOsDownloadStatusModify,
 				handleBaseOsDownloadStatusDelete, nil)
 
 		case change := <-baseOsVerifierChanges:
-			go watch.HandleStatusEvent(change, dummyContext{},
+			watch.HandleStatusEvent(change, dummyContext{},
 				verifierBaseOsStatusDirname,
 				&types.VerifyImageStatus{},
 				handleBaseOsVerifierStatusModify,
 				handleBaseOsVerifierStatusDelete, nil)
 
 		case change := <-certObjDownloaderChanges:
-			go watch.HandleStatusEvent(change, dummyContext{},
+			watch.HandleStatusEvent(change, dummyContext{},
 				downloaderCertObjStatusDirname,
 				&types.DownloaderStatus{},
 				handleCertObjDownloadStatusModify,
@@ -400,7 +400,7 @@ func handleDNSModify(ctxArg interface{}, statusFilename string,
 	status := statusArg.(*types.DeviceNetworkStatus)
 
 	if statusFilename != "global" {
-		fmt.Printf("handleDNSModify: ignoring %s\n", statusFilename)
+		log.Printf("handleDNSModify: ignoring %s\n", statusFilename)
 		return
 	}
 	log.Printf("handleDNSModify for %s\n", statusFilename)
@@ -412,7 +412,7 @@ func handleDNSDelete(ctxArg interface{}, statusFilename string) {
 	log.Printf("handleDNSDelete for %s\n", statusFilename)
 
 	if statusFilename != "global" {
-		fmt.Printf("handleDNSDelete: ignoring %s\n", statusFilename)
+		log.Printf("handleDNSDelete: ignoring %s\n", statusFilename)
 		return
 	}
 	deviceNetworkStatus = types.DeviceNetworkStatus{}
