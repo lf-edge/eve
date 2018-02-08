@@ -29,6 +29,7 @@ message DeviceLispDetails {
         bytes EidAllocationPrefix = 8;
         uint32 EidAllocationPrefixLen = 9;
         string ClientAddr = 10;
+	bool experimental = 20;
 }
 
 // Device Operational Commands Semantic
