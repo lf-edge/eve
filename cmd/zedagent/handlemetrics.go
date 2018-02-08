@@ -541,13 +541,6 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 			}
 		}
 	}
-	// XXX convert to Zinfo
-	log.Printf("Publish AA %d\n", len(aa.IoBundleList))
-	for _, a := range aa.IoBundleList {
-		fmt.Printf("AA: type %v, name %s, members %v, used %v, lookup %v, PL %s, PS %s, X <%s>\n",
-			a.Type, a.Name, a.Members, a.UsedByUUID, a.Lookup,
-			a.PciLong, a.PciShort, a.XenCfg)
-	}
 	// Report AssignableAdapters
 	ReportDeviceInfo.AssignableAdapters = make([]*zmet.ZioBundle, len(aa.IoBundleList))
 	for i, b := range aa.IoBundleList {
@@ -574,7 +567,6 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 	}
 }
 
-// XXX change caller filename to key which is uuid; not used for now
 // This function is called per change, hence needs to try over all uplinks
 // send report on each uplink.
 func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,

@@ -411,7 +411,7 @@ func handleAppInstanceStatusModify(ctxArg interface{}, statusFilename string,
 
 func handleAppInstanceStatusDelete(ctxArg interface{}, statusFilename string) {
 	// XXX is statusFilename == key aka UUIDstr?
-	// XXX no status - need delete support
+	// XXX no status - need to report delete somehow when instance gone
 	// status := statusArg.(*types.AppInstanceStatus)
 	ctx := ctxArg.(*appInstanceContext)
 	uuidStr := statusFilename
