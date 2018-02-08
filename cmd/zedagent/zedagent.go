@@ -164,7 +164,7 @@ func main() {
 	verifierCtx := verifierContext{}
 	aiCtx := appInstanceContext{}
 	devCtx := deviceInstanceContext{assignableAdapters: &aa}
-	
+
 	// First we process the verifierStatus to avoid downloading
 	// an base image we already have in place
 	log.Printf("Handling initial verifier Status\n")
