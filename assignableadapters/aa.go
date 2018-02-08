@@ -1,15 +1,17 @@
 // Copyright (c) 2018 Zededa, Inc.
 // All rights reserved.
 
-// Package to get initial (and updates) to AssignableDevices for our model.
+// Package to get initial (and updates) to AssignableAdapters for our model.
 // Usage:
-//       changes, func, ctx := assignabledevices.Init(aa, model)
+//	model := hardware.GetHardwareModel()
+//	aa := types.AssignableAdapters{}
+//      changes, func, ctx := assignableadapters.Init(&aa, model)
 // Then in select loop:
 //       event := changes { func(&ctx, event) }
 // The aa is updated initially and when there is a change. On delete it
 // is set to its default value.
 
-package assignabledevices
+package assignableadapters
 
 import (
 	"fmt"

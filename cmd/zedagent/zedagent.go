@@ -154,12 +154,11 @@ func main() {
 	go watch.WatchStatus(verifierBaseOsStatusDirname,
 		baseOsVerifierChanges)
 
-	// Pick up (mostly static) AssignableAdapters before we call
-	// metricsTimerTask
+	// Pick up (mostly static) AssignableAdapters before we report
+	// any device info
 	model := hardware.GetHardwareModel()
 	aa := types.AssignableAdapters{}
-	// XXX rename assignabledevices package to assignableadapters
-	aaChanges, aaFunc, aaCtx := assignabledevices.Init(&aa, model)
+	aaChanges, aaFunc, aaCtx := assignableadapters.Init(&aa, model)
 	aaDone := false
 
 	verifierCtx := verifierContext{}
