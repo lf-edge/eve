@@ -146,6 +146,7 @@ func main() {
 	model := hardware.GetHardwareModel()
 	aa := types.AssignableAdapters{}
 	aaChanges, aaFunc, aaCtx := assignabledevices.Init(&aa, model)
+	aaDone := false
 
 	// First we process the verifierStatus to avoid downloading
 	// an base image we already have in place
@@ -167,6 +168,7 @@ func main() {
 			}
 		case change := <-aaChanges:
 			aaFunc(&aaCtx, change)
+			aaDone = true
 		}
 	}
 
@@ -175,7 +177,8 @@ func main() {
 
 	waited := false
 	// Wait to have some uplinks with usable addresses
-	for types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus) == 0 {
+	for types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus) == 0 ||
+		!aaDone {
 		waited = true
 		select {
 		case change := <-deviceStatusChanges:
@@ -186,6 +189,7 @@ func main() {
 				nil)
 		case change := <-aaChanges:
 			aaFunc(&aaCtx, change)
+			aaDone = true
 		}
 	}
 	fmt.Printf("Have %d uplinks addresses to use\n",
@@ -196,8 +200,7 @@ func main() {
 	}
 
 	// start the metrics/config fetch tasks
-	// XXX pass in &aa = *types.AssignableDevices
-	go metricsTimerTask()
+	go metricsTimerTask(&aa)
 	go configTimerTask()
 
 	// app instance status event watcher

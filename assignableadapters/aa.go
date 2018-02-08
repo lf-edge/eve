@@ -44,8 +44,8 @@ func processEvent(ctx *context, event string) {
 		handleAAModify, handleAADelete, nil)
 }
 
-func handleAAModify(ctxArg interface{}, key string, statusArg interface{}) {
-	status := statusArg.(*types.AssignableAdapters)
+func handleAAModify(ctxArg interface{}, key string, configArg interface{}) {
+	config := configArg.(*types.AssignableAdapters)
 	ctx := ctxArg.(*context)
 	// Only care about my model
 	if key != ctx.model {
@@ -53,7 +53,7 @@ func handleAAModify(ctxArg interface{}, key string, statusArg interface{}) {
 		return
 	}
 	log.Printf("handleAAModify for %s\n", key)
-	ctx.aa = status
+	*ctx.aa = *config
 	log.Printf("handleAAModify done for %s\n", key)
 }
 

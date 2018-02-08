@@ -23,20 +23,20 @@ import (
 	"time"
 )
 
-func publishMetrics(iteration int) {
+func publishMetrics(aa *types.AssignableAdapters, iteration int) {
 	cpuStorageStat := ExecuteXentopCmd()
-	PublishMetricsToZedCloud(cpuStorageStat, iteration)
+	PublishMetricsToZedCloud(cpuStorageStat, aa, iteration)
 }
 
-func metricsTimerTask() {
+func metricsTimerTask(aa *types.AssignableAdapters) {
 	iteration := 0
 	log.Println("starting report metrics timer task")
-	publishMetrics(iteration)
+	publishMetrics(aa, iteration)
 	ticker := time.NewTicker(time.Second * 60)
 	for t := range ticker.C {
 		log.Println("Tick at", t)
 		iteration += 1
-		publishMetrics(iteration)
+		publishMetrics(aa, iteration)
 	}
 }
 
@@ -245,8 +245,16 @@ func ExecuteXentopCmd() [][]string {
 	return cpuStorageStat
 }
 
-func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
+func PublishMetricsToZedCloud(cpuStorageStat [][]string,
+	aa *types.AssignableAdapters, iteration int) {
 
+	// XXX convert to Zinfo
+	log.Printf("PublishMetricsToZedCloud AA %d\n", len(aa.IoBundleList))
+	for _, a := range aa.IoBundleList {
+		fmt.Printf("AA: type %v, name %s, members %v, used %v, lookup %v, PL %s, PS %s, X <%s>\n",
+			a.Type, a.Name, a.Members, a.UsedByUUID, a.Lookup,
+			a.PciLong, a.PciShort, a.XenCfg)
+	}
 	var ReportMetrics = &zmet.ZMetricMsg{}
 
 	ReportDeviceMetric := new(zmet.DeviceMetric)
