@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
@@ -416,8 +417,10 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 	SendMetricsProtobufStrThroughHttp(ReportMetrics, iteration)
 }
 
+// This function is called per change, hence needs to try over all uplinks
+// send report on each uplink.
 func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
-	aa *types.AssignableAdapters, iteration int) {
+	aa *types.AssignableAdapters) {
 
 	var ReportInfo = &zmet.ZInfoMsg{}
 
@@ -564,10 +567,16 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 	fmt.Println(ReportInfo)
 	fmt.Println(" ")
 
-	SendInfoProtobufStrThroughHttp(ReportInfo, iteration)
+	err = SendInfoProtobufStrThroughHttp(ReportInfo)
+	if err != nil {
+		// XXX reschedule doing this again later somehow
+		log.Printf("PublishDeviceInfoToZedCloud: %s\n", err)
+	}
 }
 
 // XXX change caller filename to key which is uuid; not used for now
+// This function is called per change, hence needs to try over all uplinks
+// send report on each uplink.
 func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 	iteration int) {
 	fmt.Printf("PublishAppInfoToZedCloud uuid %s\n", uuid)
@@ -623,18 +632,21 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 	fmt.Println(ReportInfo)
 	fmt.Println(" ")
 
-	SendInfoProtobufStrThroughHttp(ReportInfo, iteration)
+	err := SendInfoProtobufStrThroughHttp(ReportInfo)
+	if err != nil {
+		// XXX reschedule doing this again later somehow
+		log.Printf("PublishDeviceInfoToZedCloud: %s\n", err)
+	}
 }
 
 // This function is called per change, hence needs to try over all uplinks
-// send report on each uplink (This means the iteration arg is not useful)
+// send report on each uplink.
 // For each uplink we try different source IPs until we find a working one.
-func SendInfoProtobufStrThroughHttp(ReportInfo *zmet.ZInfoMsg, iteration int) {
+func SendInfoProtobufStrThroughHttp(ReportInfo *zmet.ZInfoMsg) error {
 
 	data, err := proto.Marshal(ReportInfo)
 	if err != nil {
-		fmt.Println("marshaling error: ", err)
-		return
+		log.Fatal("SendInfoProtobufStr proto marshaling error: ", err)
 	}
 
 	for i, uplink := range deviceNetworkStatus.UplinkStatus {
@@ -675,7 +687,7 @@ func SendInfoProtobufStrThroughHttp(ReportInfo *zmet.ZInfoMsg, iteration int) {
 				fmt.Printf("SendInfoProtobufStrThroughHttp to %s using intf %s source %v StatusOK\n",
 					statusUrl, intf, localTCPAddr)
 				fmt.Printf(" StatusOK\n")
-				return
+				return nil
 			default:
 				fmt.Printf("SendInfoProtobufStrThroughHttp to %s using intf %s source %v statuscode %d %s\n",
 					statusUrl, intf, localTCPAddr,
@@ -686,7 +698,9 @@ func SendInfoProtobufStrThroughHttp(ReportInfo *zmet.ZInfoMsg, iteration int) {
 		log.Printf("All attempts to connect to %s using intf %s failed\n",
 			statusUrl, intf)
 	}
-	log.Printf("All attempts to connect to %s failed\n", statusUrl)
+	errStr := fmt.Sprintf("All attempts to connect to %s failed\n", statusUrl)
+	log.Printf(errStr)
+	return errors.New(errStr)
 }
 
 // Each iteration we try a different uplink. For each uplink we try all
@@ -695,7 +709,7 @@ func SendMetricsProtobufStrThroughHttp(ReportMetrics *zmet.ZMetricMsg,
 	iteration int) {
 	data, err := proto.Marshal(ReportMetrics)
 	if err != nil {
-		fmt.Println("marshaling error: ", err)
+		log.Fatal("SendInfoProtobufStr proto marshaling error: ", err)
 	}
 
 	intf, err := types.GetUplinkAny(deviceNetworkStatus, iteration)

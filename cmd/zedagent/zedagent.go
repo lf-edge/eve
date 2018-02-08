@@ -116,8 +116,7 @@ type appInstanceContext struct {
 }
 
 // Information for handleBaseOsCreate/Modify/Delete
-type deviceInstanceContext struct {
-	publishIteration   int
+type deviceContext struct {
 	assignableAdapters *types.AssignableAdapters
 }
 
@@ -163,7 +162,7 @@ func main() {
 
 	verifierCtx := verifierContext{}
 	aiCtx := appInstanceContext{}
-	devCtx := deviceInstanceContext{assignableAdapters: &aa}
+	devCtx := deviceContext{assignableAdapters: &aa}
 
 	// First we process the verifierStatus to avoid downloading
 	// an base image we already have in place
@@ -215,6 +214,9 @@ func main() {
 		// Inform ledmanager that we have uplink addresses
 		types.UpdateLedManagerConfig(2)
 	}
+
+	// Publish initial device info. Retries all addresses on all uplinks.
+	PublishDeviceInfoToZedCloud(baseOsStatusMap, devCtx.assignableAdapters)
 
 	// start the metrics/config fetch tasks
 	go metricsTimerTask()
@@ -446,14 +448,12 @@ func handleDNSDelete(ctxArg interface{}, statusFilename string) {
 func handleBaseOsCreate(ctxArg interface{}, statusFilename string,
 	configArg interface{}) {
 	config := configArg.(*types.BaseOsConfig)
-	ctx := ctxArg.(*deviceInstanceContext)
+	ctx := ctxArg.(*deviceContext)
 	uuidStr := config.UUIDandVersion.UUID.String()
 
 	log.Printf("handleBaseOsCreate for %s\n", uuidStr)
 	addOrUpdateBaseOsConfig(uuidStr, *config)
-	PublishDeviceInfoToZedCloud(baseOsStatusMap, ctx.assignableAdapters,
-		ctx.publishIteration)
-	ctx.publishIteration += 1
+	PublishDeviceInfoToZedCloud(baseOsStatusMap, ctx.assignableAdapters)
 }
 
 // base os config modify event
@@ -461,7 +461,7 @@ func handleBaseOsModify(ctxArg interface{}, statusFilename string,
 	configArg interface{}, statusArg interface{}) {
 	config := configArg.(*types.BaseOsConfig)
 	status := statusArg.(*types.BaseOsStatus)
-	ctx := ctxArg.(*deviceInstanceContext)
+	ctx := ctxArg.(*deviceContext)
 	uuidStr := config.UUIDandVersion.UUID.String()
 
 	log.Printf("handleBaseOsModify for %s\n", status.BaseOsVersion)
@@ -476,22 +476,18 @@ func handleBaseOsModify(ctxArg interface{}, statusFilename string,
 	writeBaseOsStatus(status, statusFilename)
 
 	addOrUpdateBaseOsConfig(uuidStr, *config)
-	PublishDeviceInfoToZedCloud(baseOsStatusMap, ctx.assignableAdapters,
-		ctx.publishIteration)
-	ctx.publishIteration += 1
+	PublishDeviceInfoToZedCloud(baseOsStatusMap, ctx.assignableAdapters)
 }
 
 // base os config delete event
 func handleBaseOsDelete(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
 	status := statusArg.(*types.BaseOsStatus)
-	ctx := ctxArg.(*deviceInstanceContext) // XXX name?
+	ctx := ctxArg.(*deviceContext)
 
 	log.Printf("handleBaseOsDelete for %s\n", status.BaseOsVersion)
 	removeBaseOsConfig(status.UUIDandVersion.UUID.String())
-	PublishDeviceInfoToZedCloud(baseOsStatusMap, ctx.assignableAdapters,
-		ctx.publishIteration)
-	ctx.publishIteration += 1
+	PublishDeviceInfoToZedCloud(baseOsStatusMap, ctx.assignableAdapters)
 }
 
 // certificate config/status event handlers
