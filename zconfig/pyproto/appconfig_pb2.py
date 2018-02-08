@@ -24,13 +24,13 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='appconfig.proto',
   package='',
   syntax='proto3',
-  serialized_pb=_b('\n\x0f\x61ppconfig.proto\x1a\x0f\x64\x65vcommon.proto\x1a\rstorage.proto\x1a\x08vm.proto\x1a\x0fnetconfig.proto\"\xdf\x01\n\x11\x41ppInstanceConfig\x12\'\n\x0euuidandversion\x18\x01 \x01(\x0b\x32\x0f.UUIDandVersion\x12\x13\n\x0b\x64isplayname\x18\x02 \x01(\t\x12!\n\x0e\x66ixedresources\x18\x03 \x01(\x0b\x32\t.VmConfig\x12\x16\n\x06\x64rives\x18\x04 \x03(\x0b\x32\x06.Drive\x12\x10\n\x08\x61\x63tivate\x18\x05 \x01(\x08\x12#\n\ninterfaces\x18\x06 \x03(\x0b\x32\x0f.NetworkAdapter\x12\x1a\n\x08\x61\x64\x61pters\x18\x07 \x03(\x0b\x32\x08.Adapter\"/\n\x07\x41\x64\x61pter\x12\x16\n\x04type\x18\x01 \x01(\x0e\x32\x08.ZioType\x12\x0c\n\x04name\x18\x02 \x01(\t*M\n\x07ZioType\x12\x0b\n\x07ZCioNop\x10\x00\x12\x0b\n\x07ZCioEth\x10\x01\x12\x0b\n\x07ZCioUSB\x10\x02\x12\x0b\n\x07ZCioCOM\x10\x03\x12\x0e\n\tZCioOther\x10\xff\x01\x42@\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1dgithub.com/zededa/api/zconfigb\x06proto3')
+  serialized_pb=_b('\n\x0f\x61ppconfig.proto\x1a\x0f\x64\x65vcommon.proto\x1a\rstorage.proto\x1a\x08vm.proto\x1a\x0fnetconfig.proto\"\xdf\x01\n\x11\x41ppInstanceConfig\x12\'\n\x0euuidandversion\x18\x01 \x01(\x0b\x32\x0f.UUIDandVersion\x12\x13\n\x0b\x64isplayname\x18\x02 \x01(\t\x12!\n\x0e\x66ixedresources\x18\x03 \x01(\x0b\x32\t.VmConfig\x12\x16\n\x06\x64rives\x18\x04 \x03(\x0b\x32\x06.Drive\x12\x10\n\x08\x61\x63tivate\x18\x05 \x01(\x08\x12#\n\ninterfaces\x18\x06 \x03(\x0b\x32\x0f.NetworkAdapter\x12\x1a\n\x08\x61\x64\x61pters\x18\x07 \x03(\x0b\x32\x08.Adapter\"0\n\x07\x41\x64\x61pter\x12\x17\n\x04type\x18\x01 \x01(\x0e\x32\t.ZCioType\x12\x0c\n\x04name\x18\x02 \x01(\t*N\n\x08ZCioType\x12\x0b\n\x07ZCioNop\x10\x00\x12\x0b\n\x07ZCioEth\x10\x01\x12\x0b\n\x07ZCioUSB\x10\x02\x12\x0b\n\x07ZCioCOM\x10\x03\x12\x0e\n\tZCioOther\x10\xff\x01\x42@\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1dgithub.com/zededa/api/zconfigb\x06proto3')
   ,
   dependencies=[devcommon__pb2.DESCRIPTOR,storage__pb2.DESCRIPTOR,vm__pb2.DESCRIPTOR,netconfig__pb2.DESCRIPTOR,])
 
-_ZIOTYPE = _descriptor.EnumDescriptor(
-  name='ZioType',
-  full_name='ZioType',
+_ZCIOTYPE = _descriptor.EnumDescriptor(
+  name='ZCioType',
+  full_name='ZCioType',
   filename=None,
   file=DESCRIPTOR,
   values=[
@@ -57,12 +57,12 @@ _ZIOTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=353,
-  serialized_end=430,
+  serialized_start=354,
+  serialized_end=432,
 )
-_sym_db.RegisterEnumDescriptor(_ZIOTYPE)
+_sym_db.RegisterEnumDescriptor(_ZCIOTYPE)
 
-ZioType = enum_type_wrapper.EnumTypeWrapper(_ZIOTYPE)
+ZCioType = enum_type_wrapper.EnumTypeWrapper(_ZCIOTYPE)
 ZCioNop = 0
 ZCioEth = 1
 ZCioUSB = 2
@@ -178,7 +178,7 @@ _ADAPTER = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=304,
-  serialized_end=351,
+  serialized_end=352,
 )
 
 _APPINSTANCECONFIG.fields_by_name['uuidandversion'].message_type = devcommon__pb2._UUIDANDVERSION
@@ -186,10 +186,10 @@ _APPINSTANCECONFIG.fields_by_name['fixedresources'].message_type = vm__pb2._VMCO
 _APPINSTANCECONFIG.fields_by_name['drives'].message_type = storage__pb2._DRIVE
 _APPINSTANCECONFIG.fields_by_name['interfaces'].message_type = netconfig__pb2._NETWORKADAPTER
 _APPINSTANCECONFIG.fields_by_name['adapters'].message_type = _ADAPTER
-_ADAPTER.fields_by_name['type'].enum_type = _ZIOTYPE
+_ADAPTER.fields_by_name['type'].enum_type = _ZCIOTYPE
 DESCRIPTOR.message_types_by_name['AppInstanceConfig'] = _APPINSTANCECONFIG
 DESCRIPTOR.message_types_by_name['Adapter'] = _ADAPTER
-DESCRIPTOR.enum_types_by_name['ZioType'] = _ZIOTYPE
+DESCRIPTOR.enum_types_by_name['ZCioType'] = _ZCIOTYPE
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
 AppInstanceConfig = _reflection.GeneratedProtocolMessageType('AppInstanceConfig', (_message.Message,), dict(
