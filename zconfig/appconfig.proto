@@ -24,14 +24,14 @@ message AppInstanceConfig {
 
 // Adapter bundles corresponding to a subset of what is in ZioBundle
 message Adapter {
-  ZioType type = 1;
+  ZCioType type = 1;
   string name = 2;	// Short hand name such as "com" from bundle
   // Future will have type-specific oneof definitions as needed
 }
 
 // XXX duplicate of definition in zmet.proto with uniq names (ZCio vs Zio)
 // Types of I/O adapters that can be assigned to applications
-enum ZioType {
+enum ZCioType {
   ZCioNop = 0;
   ZCioEth = 1;		// Includes WiFi?
   ZCioUSB = 2;
