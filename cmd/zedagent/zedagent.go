@@ -143,7 +143,7 @@ func main() {
 
 	// Pick up (mostly static) AssignableDevices before we call
 	// metricsTimerTask
-	model := hardware.HardwareModel()
+	model := hardware.GetHardwareModel()
 	aa := types.AssignableAdapters{}
 	aaChanges, aaFunc, aaCtx := assignabledevices.Init(&aa, model)
 

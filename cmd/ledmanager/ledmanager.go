@@ -2,7 +2,7 @@
 // All rights reserved.
 
 //watcher tells ledmanager about
-//change in ledmanager status file,
+//change in ledmanager config file,
 //which contains number of times
 //LED has to blink on any device
 //ledmanager notify each event by
@@ -58,7 +58,7 @@ func main() {
 	}
 	log.Printf("Starting ledmanager\n")
 
-	model := hardware.HardwareModel()
+	model := hardware.GetHardwareModel()
 	fmt.Printf("Got HardwareModel %s\n", model)
 
 	var blinkFunc Blink200msFunc

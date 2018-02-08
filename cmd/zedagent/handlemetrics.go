@@ -11,21 +11,16 @@ import (
 	"github.com/shirou/gopsutil/mem"
 	psutilnet "github.com/shirou/gopsutil/net"
 	"github.com/zededa/api/zmet"
+	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/types"
-	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
-	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
-)
-
-const (
-	compatibleFile = "/proc/device-tree/compatible"
 )
 
 func publishMetrics(iteration int) {
@@ -62,59 +57,6 @@ func ExecuteXlInfoCmd() map[string]string {
 		}
 	}
 	return dict
-}
-
-func GetDeviceManufacturerInfo() (string, string, string, string, string) {
-
-	dmidecodeNameCmd := exec.Command("dmidecode", "-s", "system-product-name")
-	pname, err := dmidecodeNameCmd.Output()
-	if err != nil {
-		log.Println(err.Error())
-	}
-	dmidecodeManuCmd := exec.Command("dmidecode", "-s", "system-manufacturer")
-	manufacturer, err := dmidecodeManuCmd.Output()
-	if err != nil {
-		log.Println(err.Error())
-	}
-	dmidecodeVersionCmd := exec.Command("dmidecode", "-s", "system-version")
-	version, err := dmidecodeVersionCmd.Output()
-	if err != nil {
-		log.Println(err.Error())
-	}
-	dmidecodeSerialCmd := exec.Command("dmidecode", "-s", "system-serial-number")
-	serial, err := dmidecodeSerialCmd.Output()
-	if err != nil {
-		log.Println(err.Error())
-	}
-	dmidecodeUuidCmd := exec.Command("dmidecode", "-s", "system-uuid")
-	uuid, err := dmidecodeUuidCmd.Output()
-	if err != nil {
-		log.Println(err.Error())
-	}
-	productManufacturer := string(manufacturer)
-	productName := string(pname)
-	productVersion := string(version)
-	productSerial := string(serial)
-	productUuid := string(uuid)
-	return productManufacturer, productName, productVersion, productSerial, productUuid
-}
-
-// Returns BIOS vendor, version, release-date
-func GetDeviceBios() (string, string, string) {
-
-	vendor, err := exec.Command("dmidecode", "-s", "bios-vendor").Output()
-	if err != nil {
-		log.Println(err.Error())
-	}
-	version, err := exec.Command("dmidecode", "-s", "bios-version").Output()
-	if err != nil {
-		log.Println(err.Error())
-	}
-	releaseDate, err := exec.Command("dmidecode", "-s", "bios-release-date").Output()
-	if err != nil {
-		log.Println(err.Error())
-	}
-	return string(vendor), string(version), string(releaseDate)
 }
 
 // Key is UUID
@@ -564,38 +506,29 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus, ite
 
 	ReportDeviceManufacturerInfo := new(zmet.ZInfoManufacturer)
 	if strings.Contains(machineArch, "x86") {
-		// XXX should we save manufacturer and product name and use it
-		// to check for capabilities elsewhere? Have e.g. "Supermicro/SYS-E100-9APP"
-		productManufacturer, productName, productVersion, productSerial, productUuid := GetDeviceManufacturerInfo()
+		productManufacturer, productName, productVersion, productSerial, productUuid := hardware.GetDeviceManufacturerInfo()
 		ReportDeviceManufacturerInfo.Manufacturer = *proto.String(strings.TrimSpace(productManufacturer))
 		ReportDeviceManufacturerInfo.ProductName = *proto.String(strings.TrimSpace(productName))
 		ReportDeviceManufacturerInfo.Version = *proto.String(strings.TrimSpace(productVersion))
 		ReportDeviceManufacturerInfo.SerialNumber = *proto.String(strings.TrimSpace(productSerial))
 		ReportDeviceManufacturerInfo.UUID = *proto.String(strings.TrimSpace(productUuid))
 
-		biosVendor, biosVersion, biosReleaseDate := GetDeviceBios()
+		biosVendor, biosVersion, biosReleaseDate := hardware.GetDeviceBios()
 		ReportDeviceManufacturerInfo.BiosVendor = *proto.String(strings.TrimSpace(biosVendor))
 		ReportDeviceManufacturerInfo.BiosVersion = *proto.String(strings.TrimSpace(biosVersion))
 		ReportDeviceManufacturerInfo.BiosReleaseDate = *proto.String(strings.TrimSpace(biosReleaseDate))
-		ReportDeviceInfo.Minfo = ReportDeviceManufacturerInfo
 	}
-	if _, err := os.Stat(compatibleFile); err == nil {
-		// No dmidecode on ARM. Can only report compatible string
-		contents, err := ioutil.ReadFile(compatibleFile)
-		if err != nil {
-			log.Println(err)
-		} else {
-			compatible := strings.TrimSpace(string(contents))
-			ReportDeviceManufacturerInfo.Compatible = *proto.String(compatible)
-		}
-		ReportDeviceInfo.Minfo = ReportDeviceManufacturerInfo
-	}
+	compatible := hardware.GetCompatible()
+	ReportDeviceManufacturerInfo.Compatible = *proto.String(compatible)
+	ReportDeviceInfo.Minfo = ReportDeviceManufacturerInfo
 	ReportDeviceSoftwareInfo := new(zmet.ZInfoSW)
 	systemHost, err := host.Info()
 	if err != nil {
 		log.Println(err)
+	} else {
+		//XXX for now we are filling kernel version...
+		ReportDeviceSoftwareInfo.SwVersion = systemHost.KernelVersion
 	}
-	ReportDeviceSoftwareInfo.SwVersion = systemHost.KernelVersion //XXX for now we are filling kernel version...
 	ReportDeviceSoftwareInfo.SwHash = *proto.String(" ")
 	ReportDeviceInfo.Software = ReportDeviceSoftwareInfo
 
