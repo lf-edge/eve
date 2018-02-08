@@ -90,7 +90,9 @@ func verifyAndInject(fd6 int,
 		}
 
 		// compute and compare ICV of packet
-		icvKey := decapKeys.Keys[keyId - 1].IcvKey
+		// Always use key 1
+		key := decapKeys.Keys[keyId - 1]
+		icvKey := key.IcvKey
 		if icvKey == nil {
 			log.Printf("ETR Key id %d had nil ICV key value\n", keyId)
 			return false
@@ -106,7 +108,7 @@ func verifyAndInject(fd6 int,
 
 		// Decrypt the packet before sending out
 		// read the IV from packet buffer
-		ivArray := buf[8: packetOffset]
+		ivArray := buf[types.LISPHEADERLEN: packetOffset]
 
 		packet := buf[packetOffset: n - types.ICVLEN]
 
@@ -121,15 +123,15 @@ func verifyAndInject(fd6 int,
 			return false
 		}
 
-		// Always use key 1
-		key := decapKeys.Keys[keyId - 1].DecKey
+		//decKey := key.DecKey
 
 		// This should happen once. May be make it part of the database entry
-		block, err := aes.NewCipher(key)
-		if err != nil {
-			log.Println("Error: creating key:", err)
-			return false
-		}
+		//block, err := aes.NewCipher(decKey)
+		//if err != nil {
+		//	log.Println("Error: creating decrypt key:", err)
+		//	return false
+		//}
+		block := key.DecBlock
 		mode := cipher.NewCBCDecrypter(block, ivArray)
 		mode.CryptBlocks(packet, packet)
 	}

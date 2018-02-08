@@ -7,6 +7,7 @@ import (
 	"net"
 	"sync"
 	"time"
+	"crypto/cipher"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/pfring"
 )
@@ -23,12 +24,15 @@ const (
 	ICVLEN                   = 20
 	IVLEN                    = 16
 	IP4HEADERLEN             = 20
+	LISPHEADERLEN            = 8
 )
 
 type Key struct {
 	KeyId  uint32
 	EncKey []byte
 	IcvKey []byte
+
+	EncBlock cipher.Block
 }
 
 // Decrypt key information
@@ -36,6 +40,8 @@ type DKey struct {
 	KeyId  uint32
 	DecKey []byte
 	IcvKey []byte
+
+	DecBlock cipher.Block
 }
 
 type Rloc struct {

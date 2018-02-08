@@ -62,7 +62,7 @@ func CraftAndSendLispPacket(packet gopacket.Packet,
 // after the packet.
 func encryptPayload(
 	payload []byte, payloadLen uint32,
-	encKey []byte, ivArray []byte) (bool, uint32) {
+	encKey []byte, block cipher.Block, ivArray []byte) (bool, uint32) {
 
 		var remainder uint32 = 0
 
@@ -91,12 +91,12 @@ func encryptPayload(
 		//}
 
 		// the below block value can be stored in map-cache entry for efficiency
-		block, err := aes.NewCipher(encKey)
-		if err != nil {
-			log.Printf("Error: Creating new AES encryption block from key: %x: %s\n",
-			encKey, err)
-			return false, 0
-		}
+		//block, err := aes.NewCipher(encKey)
+		//if err != nil {
+		//	log.Printf("Error: Creating new AES encryption block from key: %x: %s\n",
+		//	encKey, err)
+		//	return false, 0
+		//}
 
 		mode := cipher.NewCBCEncrypter(block, packet[:aes.BlockSize])
 		mode.CryptBlocks(packet[aes.BlockSize:], packet[aes.BlockSize:])
@@ -190,8 +190,8 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 
 		ok := false
 		ok, padLen = encryptPayload(pktBuf[offsetStart: offsetEnd], payloadLen,
-		encKey, GetIVArray(itrLocalData,
-		pktBuf[offsetStart: offsetStart + types.IVLEN]))
+			encKey, key.EncBlock,
+			GetIVArray(itrLocalData, pktBuf[offsetStart: offsetStart + types.IVLEN]))
 		if ok == false {
 			keyId = 0
 			useCrypto = false

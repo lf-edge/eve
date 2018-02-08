@@ -4,6 +4,7 @@ import (
 	"log"
 	"net"
 	"strconv"
+	"crypto/aes"
 	"encoding/json"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/dataplane/fib"
@@ -66,11 +67,22 @@ func parseRloc(rlocStr *Rloc) (types.Rloc, bool) {
 			continue
 		}
 
+		encKey := []byte(key.EncKey)
+		// XXX lispers.net is sending 8 zeroes in the front
+		icvKey := []byte(key.IcvKey[8:])
+		encBlock, err := aes.NewCipher(encKey)
+		if err != nil {
+			log.Printf("Creating of Cipher block for ecnryption key %s failed\n",
+				key.EncKey)
+			continue
+		}
+
 		//keys[i] = types.Key {
 		keys[keyId - 1] = types.Key {
 			KeyId: uint32(keyId),
-			EncKey: []byte(key.EncKey),
-			IcvKey: []byte(key.IcvKey[8:]),
+			EncKey: encKey,
+			IcvKey: icvKey,
+			EncBlock: encBlock,
 		}
 		log.Printf("Adding enc key %s\n", keys[keyId - 1].EncKey)
 		log.Printf("Adding icv key %s\n", keys[keyId - 1].IcvKey)
@@ -317,10 +329,20 @@ func handleDecapKeys(msg []byte) {
 				len(key.DecKey), len(key.IcvKey[8:]))
 			continue
 		}
+		decKey := []byte(key.DecKey)
+		// XXX lispers.net sends 8 zeroes in the beginning
+		icvKey := []byte(key.IcvKey[8:])
+		decBlock, err := aes.NewCipher(decKey)
+		if err != nil {
+			log.Printf("Creating of Cipher block for decryption key %s failed\n",
+				key.DecKey)
+			continue
+		}
 		keys[keyId - 1] = types.DKey {
 			KeyId: uint32(keyId),
-			DecKey: []byte(key.DecKey),
-			IcvKey: []byte(key.IcvKey[8:]),
+			DecKey: decKey,
+			IcvKey: icvKey,
+			DecBlock: decBlock,
 		}
 		log.Printf("Adding Decap key[%d] %s\n", keyId - 1, keys[keyId - 1].DecKey)
 		log.Printf("Adding Decap icv[%d] %s\n", keyId - 1, keys[keyId - 1].IcvKey)
