@@ -23,20 +23,20 @@ import (
 	"time"
 )
 
-func publishMetrics(aa *types.AssignableAdapters, iteration int) {
+func publishMetrics(iteration int) {
 	cpuStorageStat := ExecuteXentopCmd()
-	PublishMetricsToZedCloud(cpuStorageStat, aa, iteration)
+	PublishMetricsToZedCloud(cpuStorageStat, iteration)
 }
 
-func metricsTimerTask(aa *types.AssignableAdapters) {
+func metricsTimerTask() {
 	iteration := 0
 	log.Println("starting report metrics timer task")
-	publishMetrics(aa, iteration)
+	publishMetrics(iteration)
 	ticker := time.NewTicker(time.Second * 60)
 	for t := range ticker.C {
 		log.Println("Tick at", t)
 		iteration += 1
-		publishMetrics(aa, iteration)
+		publishMetrics(iteration)
 	}
 }
 
@@ -220,16 +220,8 @@ func ExecuteXentopCmd() [][]string {
 	return cpuStorageStat
 }
 
-func PublishMetricsToZedCloud(cpuStorageStat [][]string,
-	aa *types.AssignableAdapters, iteration int) {
+func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 
-	// XXX convert to Zinfo
-	log.Printf("PublishMetricsToZedCloud AA %d\n", len(aa.IoBundleList))
-	for _, a := range aa.IoBundleList {
-		fmt.Printf("AA: type %v, name %s, members %v, used %v, lookup %v, PL %s, PS %s, X <%s>\n",
-			a.Type, a.Name, a.Members, a.UsedByUUID, a.Lookup,
-			a.PciLong, a.PciShort, a.XenCfg)
-	}
 	var ReportMetrics = &zmet.ZMetricMsg{}
 
 	ReportDeviceMetric := new(zmet.DeviceMetric)
@@ -424,7 +416,8 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string,
 	SendMetricsProtobufStrThroughHttp(ReportMetrics, iteration)
 }
 
-func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus, iteration int) {
+func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
+	aa *types.AssignableAdapters, iteration int) {
 
 	var ReportInfo = &zmet.ZInfoMsg{}
 
@@ -545,6 +538,24 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus, ite
 			}
 		}
 	}
+	// XXX convert to Zinfo
+	log.Printf("Publish AA %d\n", len(aa.IoBundleList))
+	for _, a := range aa.IoBundleList {
+		fmt.Printf("AA: type %v, name %s, members %v, used %v, lookup %v, PL %s, PS %s, X <%s>\n",
+			a.Type, a.Name, a.Members, a.UsedByUUID, a.Lookup,
+			a.PciLong, a.PciShort, a.XenCfg)
+	}
+	// Report AssignableAdapters
+	ReportDeviceInfo.AssignableAdapters = make([]*zmet.ZioBundle, len(aa.IoBundleList))
+	for i, b := range aa.IoBundleList {
+		reportAA := new(zmet.ZioBundle)
+		reportAA.Type = zmet.ZioType(b.Type)
+		reportAA.Name = b.Name
+		reportAA.Members = b.Members
+		reportAA.UsedByUUID = b.UsedByUUID // XXX or get from DomainStatus?
+		ReportDeviceInfo.AssignableAdapters[i] = reportAA
+	}
+
 	ReportInfo.InfoContent = new(zmet.ZInfoMsg_Dinfo)
 	if x, ok := ReportInfo.GetInfoContent().(*zmet.ZInfoMsg_Dinfo); ok {
 		x.Dinfo = ReportDeviceInfo
