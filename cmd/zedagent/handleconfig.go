@@ -173,18 +173,19 @@ func getLatestConfig(configUrl string, iteration int) {
 			// continue
 		}
 
-		// Inform ledmanager about cloud connectivity
-		types.UpdateLedManagerConfig(3)
-
 		if err := validateConfigMessage(configUrl, intf, localTCPAddr,
 			resp); err != nil {
 			log.Println("validateConfigMessage: ", err)
+			// Inform ledmanager about cloud connectivity
+			types.UpdateLedManagerConfig(3)
 			return
 		}
 
 		config, err := readDeviceConfigProtoMessage(resp)
 		if err != nil {
 			log.Println("readDeviceConfigProtoMessage: ", err)
+			// Inform ledmanager about cloud connectivity
+			types.UpdateLedManagerConfig(3)
 			return
 		}
 		// Inform ledmanager about config received from cloud
@@ -246,7 +247,7 @@ func readDeviceConfigProtoMessage(r *http.Response) (*zconfig.EdgeDevConfig, err
 		return nil, err
 	}
 	//log.Println(" proto bytes(config) received from cloud: ", fmt.Sprintf("%s",bytes))
-	log.Printf("parsing proto %d bytes\n", len(bytes))
+	//log.Printf("parsing proto %d bytes\n", len(bytes))
 	err = proto.Unmarshal(bytes, config)
 	if err != nil {
 		log.Println("Unmarshalling failed: %v", err)
