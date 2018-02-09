@@ -688,9 +688,10 @@ func SendInfoProtobufStrThroughHttp(ReportInfo *zmet.ZInfoMsg, iteration int) {
 	for i, uplink := range deviceNetworkStatus.UplinkStatus {
 		intf := uplink.IfName
 		addrCount := types.CountLocalAddrAny(deviceNetworkStatus, intf)
-		// XXX makes logfile too long; debug flag?
-		log.Printf("Connecting to %s using intf %s i %d #sources %d\n",
-			statusUrl, intf, i, addrCount)
+		if debug {
+			log.Printf("Connecting to %s using intf %s i %d #sources %d\n",
+				statusUrl, intf, i, addrCount)
+		}
 
 		for retryCount := 0; retryCount < addrCount; retryCount += 1 {
 			localAddr, err := types.GetLocalAddrAny(deviceNetworkStatus,
@@ -699,9 +700,10 @@ func SendInfoProtobufStrThroughHttp(ReportInfo *zmet.ZInfoMsg, iteration int) {
 				log.Fatal(err)
 			}
 			localTCPAddr := net.TCPAddr{IP: localAddr}
-			// XXX makes logfile too long; debug flag?
-			fmt.Printf("Connecting to %s using intf %s source %v\n",
-				statusUrl, intf, localTCPAddr)
+			if debug {
+				fmt.Printf("Connecting to %s using intf %s source %v\n",
+					statusUrl, intf, localTCPAddr)
+			}
 			d := net.Dialer{LocalAddr: &localTCPAddr}
 			transport := &http.Transport{
 				TLSClientConfig: tlsConfig,
@@ -739,10 +741,10 @@ func SendInfoProtobufStrThroughHttp(ReportInfo *zmet.ZInfoMsg, iteration int) {
 
 			switch resp.StatusCode {
 			case http.StatusOK:
-				// XXX makes logfile too long; debug flag?
-				fmt.Printf("SendInfoProtobufStrThroughHttp to %s using intf %s source %v StatusOK\n",
-					statusUrl, intf, localTCPAddr)
-				fmt.Printf(" StatusOK\n")
+				if debug {
+					fmt.Printf("SendInfoProtobufStrThroughHttp to %s using intf %s source %v StatusOK\n",
+						statusUrl, intf, localTCPAddr)
+				}
 				return
 			default:
 				fmt.Printf("SendInfoProtobufStrThroughHttp to %s using intf %s source %v statuscode %d %s\n",
@@ -772,10 +774,10 @@ func SendMetricsProtobufStrThroughHttp(ReportMetrics *zmet.ZMetricMsg,
 		return
 	}
 	addrCount := types.CountLocalAddrAny(deviceNetworkStatus, intf)
-	// XXX makes logfile too long; debug flag?
-	log.Printf("Connecting to %s using intf %s interation %d #sources %d\n",
-		metricsUrl, intf, iteration, addrCount)
-
+	if debug {
+		log.Printf("Connecting to %s using intf %s interation %d #sources %d\n",
+			metricsUrl, intf, iteration, addrCount)
+	}
 	for retryCount := 0; retryCount < addrCount; retryCount += 1 {
 		localAddr, err := types.GetLocalAddrAny(deviceNetworkStatus,
 			retryCount, intf)
@@ -783,10 +785,10 @@ func SendMetricsProtobufStrThroughHttp(ReportMetrics *zmet.ZMetricMsg,
 			log.Fatal(err)
 		}
 		localTCPAddr := net.TCPAddr{IP: localAddr}
-		// XXX makes logfile too long; debug flag?
-		fmt.Printf("Connecting to %s using intf %s source %v\n",
-			metricsUrl, intf, localTCPAddr)
-
+		if debug {
+			fmt.Printf("Connecting to %s using intf %s source %v\n",
+				metricsUrl, intf, localTCPAddr)
+		}
 		d := net.Dialer{LocalAddr: &localTCPAddr}
 		transport := &http.Transport{
 			TLSClientConfig: tlsConfig,
@@ -822,9 +824,10 @@ func SendMetricsProtobufStrThroughHttp(ReportMetrics *zmet.ZMetricMsg,
 		}
 		switch resp.StatusCode {
 		case http.StatusOK:
-			// XXX makes logfile too long; debug flag?
-			fmt.Printf("SendMetricsProtobufStrThroughHttp to %s using intf %s source %v StatusOK\n",
-				metricsUrl, intf, localTCPAddr)
+			if debug {
+				fmt.Printf("SendMetricsProtobufStrThroughHttp to %s using intf %s source %v StatusOK\n",
+					metricsUrl, intf, localTCPAddr)
+			}
 			return
 		default:
 			fmt.Printf("SendMetricsProtobufStrThroughHttp to %s using intf %s source %v  statuscode %d %s\n",

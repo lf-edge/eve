@@ -34,7 +34,8 @@ var statusApi string = "api/v1/edgedevice/info"
 var metricsApi string = "api/v1/edgedevice/metrics"
 
 // XXX remove global variables
-// XXX shouldn't we know our own deviceId? Get from some global struct?
+// XXX shouldn't we know our own device UUID? Get from some global struct?
+// Or read from uuid file?
 var deviceId string
 
 // These URLs are effectively constants; depends on the server name
@@ -122,9 +123,10 @@ func getLatestConfig(configUrl string, iteration int) {
 		return
 	}
 	addrCount := types.CountLocalAddrAny(deviceNetworkStatus, intf)
-	// XXX makes logfile too long; debug flag?
-	log.Printf("Connecting to %s using intf %s interation %d #sources %d\n",
-		configUrl, intf, iteration, addrCount)
+	if debug {
+		log.Printf("Connecting to %s using intf %s interation %d #sources %d\n",
+			configUrl, intf, iteration, addrCount)
+	}
 	for retryCount := 0; retryCount < addrCount; retryCount += 1 {
 		localAddr, err := types.GetLocalAddrAny(deviceNetworkStatus,
 			retryCount, intf)
@@ -132,9 +134,10 @@ func getLatestConfig(configUrl string, iteration int) {
 			log.Fatal(err)
 		}
 		localTCPAddr := net.TCPAddr{IP: localAddr}
-		// XXX makes logfile too long; debug flag?
-		fmt.Printf("Connecting to %s using intf %s source %v\n",
-			configUrl, intf, localTCPAddr)
+		if debug {
+			fmt.Printf("Connecting to %s using intf %s source %v\n",
+				configUrl, intf, localTCPAddr)
+		}
 		d := net.Dialer{LocalAddr: &localTCPAddr}
 		transport := &http.Transport{
 			TLSClientConfig: tlsConfig,
@@ -201,9 +204,10 @@ func validateConfigMessage(configUrl string, intf string,
 
 	switch r.StatusCode {
 	case http.StatusOK:
-		// XXX makes logfile too long; debug flag?
-		fmt.Printf("validateConfigMessage %s using intf %s source %v StatusOK\n",
-			configUrl, intf, localTCPAddr)
+		if debug {
+			fmt.Printf("validateConfigMessage %s using intf %s source %v StatusOK\n",
+				configUrl, intf, localTCPAddr)
+		}
 	default:
 		fmt.Printf("validateConfigMessage %s using intf %s source %v statuscode %d %s\n",
 			configUrl, intf, localTCPAddr,
