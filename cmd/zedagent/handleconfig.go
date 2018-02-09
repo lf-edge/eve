@@ -10,6 +10,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/zededa/api/zconfig"
 	"github.com/zededa/go-provision/types"
+	"golang.org/x/crypto/ocsp"
 	"io/ioutil"
 	"log"
 	"mime"
@@ -146,6 +147,27 @@ func getLatestConfig(configUrl string, iteration int) {
 			continue
 		}
 		defer resp.Body.Close()
+		connState := resp.TLS
+		if connState == nil {
+			log.Println("no TLS connection state")
+			continue
+		}
+
+		if connState.OCSPResponse == nil ||
+			!stapledCheck(connState) {
+			if connState.OCSPResponse == nil {
+				log.Printf("no OCSP response for %s\n",
+					configUrl)
+			} else {
+				log.Printf("OCSP stapled check failed for %s\n",
+					configUrl)
+			}
+			//XXX OSCP is not implemented in cloud side so
+			// commenting out it for now. Should be:
+			// Inform ledmanager about broken cloud connectivity
+			// types.UpdateLedManagerConfig(10)
+			// continue
+		}
 
 		// Inform ledmanager about cloud connectivity
 		types.UpdateLedManagerConfig(3)
@@ -326,4 +348,33 @@ func checkCurrentBaseOsFiles(config *zconfig.EdgeDevConfig) {
 			}
 		}
 	}
+}
+
+func stapledCheck(connState *tls.ConnectionState) bool {
+	issuer := connState.VerifiedChains[0][1]
+	resp, err := ocsp.ParseResponse(connState.OCSPResponse, issuer)
+	if err != nil {
+		log.Println("error parsing response: ", err)
+		return false
+	}
+	now := time.Now()
+	age := now.Unix() - resp.ProducedAt.Unix()
+	remain := resp.NextUpdate.Unix() - now.Unix()
+	if debug {
+		log.Printf("OCSP age %d, remain %d\n", age, remain)
+	}
+	if remain < 0 {
+		log.Println("OCSP expired.")
+		return false
+	}
+	if resp.Status == ocsp.Good {
+		if debug {
+			log.Println("Certificate Status Good.")
+		}
+	} else if resp.Status == ocsp.Unknown {
+		log.Println("Certificate Status Unknown")
+	} else {
+		log.Println("Certificate Status Revoked")
+	}
+	return resp.Status == ocsp.Good
 }

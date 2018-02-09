@@ -717,6 +717,26 @@ func SendInfoProtobufStrThroughHttp(ReportInfo *zmet.ZInfoMsg, iteration int) {
 				continue
 			}
 			defer resp.Body.Close()
+			connState := resp.TLS
+			if connState == nil {
+				log.Println("no TLS connection state")
+				continue
+			}
+
+			if connState.OCSPResponse == nil ||
+				!stapledCheck(connState) {
+				if connState.OCSPResponse == nil {
+					log.Printf("no OCSP response for %s\n",
+						configUrl)
+				} else {
+					log.Printf("OCSP stapled check failed for %s\n",
+						configUrl)
+				}
+				//XXX OSCP is not implemented in cloud side so
+				// commenting out it for now. Should be:
+				// continue
+			}
+
 			switch resp.StatusCode {
 			case http.StatusOK:
 				// XXX makes logfile too long; debug flag?
@@ -781,6 +801,25 @@ func SendMetricsProtobufStrThroughHttp(ReportMetrics *zmet.ZMetricMsg,
 			continue
 		}
 		defer resp.Body.Close()
+		connState := resp.TLS
+		if connState == nil {
+			log.Println("no TLS connection state")
+			continue
+		}
+
+		if connState.OCSPResponse == nil ||
+			!stapledCheck(connState) {
+			if connState.OCSPResponse == nil {
+				log.Printf("no OCSP response for %s\n",
+					metricsUrl)
+			} else {
+				log.Printf("OCSP stapled check failed for %s\n",
+					metricsUrl)
+			}
+			//XXX OSCP is not implemented in cloud side so
+			// commenting out it for now. Should be:
+			// continue
+		}
 		switch resp.StatusCode {
 		case http.StatusOK:
 			// XXX makes logfile too long; debug flag?
