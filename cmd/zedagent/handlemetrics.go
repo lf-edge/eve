@@ -117,6 +117,28 @@ func GetDeviceBios() (string, string, string) {
 	return string(vendor), string(version), string(releaseDate)
 }
 
+//Returns boolean depending upon the existence of domain
+var domainId int
+
+func verifyDomainExists() bool {
+	var id int
+	id = domainId
+	cmd := exec.Command("xl", "list", strconv.Itoa(id))
+	stdout, err := cmd.Output()
+	if err != nil {
+		log.Println(err.Error())
+	}
+
+	xlList := string(stdout)
+	var flag bool
+	if len(strings.TrimSpace(xlList)) == 0 {
+		flag = false
+	} else {
+		flag = true
+	}
+	return flag
+}
+
 // Key is UUID
 var domainStatus map[string]types.DomainStatus
 
@@ -134,6 +156,8 @@ func handleDomainStatusModify(ctxArg interface{}, statusFilename string,
 			key)
 		return
 	}
+	domainId = status.DomainId
+	log.Println("value of domainId: ", domainId)
 
 	if domainStatus == nil {
 		fmt.Printf("create Domain map\n")
@@ -637,11 +661,17 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 	ReportAppInfo.AppID = aiStatus.UUIDandVersion.UUID.String()
 	ReportAppInfo.SystemApp = false
 	ReportAppInfo.AppName = aiStatus.DisplayName
-	ReportAppInfo.Activated = aiStatus.Activated
+
+	if aiStatus.Activated {
+		exists := verifyDomainExists()
+		if exists {
+			ReportAppInfo.Activated = exists
+		}
+	}
 	ReportAppInfo.Error = aiStatus.Error
 
 	if (aiStatus.ErrorTime).IsZero() {
-		log.Println("ErrorTime is empty")
+		log.Println("ErrorTime is empty...so do not fill it")
 	} else {
 		errTime, _ := ptypes.TimestampProto(aiStatus.ErrorTime)
 		ReportAppInfo.ErrorTime = errTime
