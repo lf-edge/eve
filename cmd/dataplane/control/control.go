@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"flag"
-	//"github.com/zededa/go-provision/dataplane/etr"
 	"github.com/zededa/go-provision/dataplane/fib"
 	"github.com/zededa/go-provision/types"
 	"log"
@@ -46,7 +45,6 @@ func main() {
 	fib.InitIfaceMaps()
 	fib.InitMapCache()
 	fib.InitDecapTable()
-	//go etr.StartETR()
 
 	// Initialize ITR thread management
 	InitThreadTable()
@@ -78,6 +76,11 @@ func main() {
 
 	registerSignalHandler()
 	startPuntProcessor()
+
+	// Initialize and start stats thread
+	InitAndStartStatsThread(puntChannel)
+
+	// This function should not return.
 	handleConfig(configPipe)
 }
 
@@ -121,10 +124,14 @@ func startPuntProcessor() {
 	// We do not want data processing ITR threads to get blocked.
 	// Create a channel of 100 punts to provide sufficient buffering.
 	puntChannel = make(chan []byte, 100)
+	if puntChannel == nil {
+		log.Fatal("Control thread's punt channel could not be allocated.\n")
+		return
+	}
 
 	conn = connectToLispersDotNet()
 	if conn == nil {
-		log.Printf("Connection to %s not possible.\n", lispersDotNetItr)
+		log.Fatal("Connection to %s not possible.\n", lispersDotNetItr)
 		return
 	}
 
@@ -165,6 +172,10 @@ func startPuntProcessor() {
 			}
 		}
 	}(conn, puntChannel)
+}
+
+func InitAndStartStatsThread(puntChannel chan []byte) {
+	go fib.StatsThread(puntChannel)
 }
 
 func registerSignalHandler() {

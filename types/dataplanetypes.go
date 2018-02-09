@@ -40,7 +40,6 @@ type DKey struct {
 	KeyId  uint32
 	DecKey []byte
 	IcvKey []byte
-
 	DecBlock cipher.Block
 }
 
@@ -55,6 +54,11 @@ type Rloc struct {
 	// Weight range
 	WrLow  uint32
 	WrHigh uint32
+
+	// Packet statistics
+	Packets       uint64
+	Bytes         uint64
+	LastPktTime   time.Time
 }
 
 type BufferedPacket struct {

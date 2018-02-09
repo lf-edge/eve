@@ -11,6 +11,7 @@ import (
 	"log"
 	"math/rand"
 	"net"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -23,8 +24,6 @@ func CraftAndSendLispPacket(packet gopacket.Packet,
 	iid uint32,
 	itrLocalData *types.ITRLocalData) {
 
-	var rloc types.Rloc
-
 	// XXX calculate a hash and use it for load balancing accross entries
 	totWeight := mapEntry.RlocTotWeight
 
@@ -32,24 +31,27 @@ func CraftAndSendLispPacket(packet gopacket.Packet,
 	mapSlot := hash32 % totWeight
 
 	// get the map Rloc entry that has the weight slow we are interested
-	for _, rloc = range mapEntry.Rlocs {
+	rlocIndex := 0
+	for i, rloc := range mapEntry.Rlocs {
 		if (mapSlot < rloc.WrLow) || (mapSlot > rloc.WrHigh) {
 			continue
 		}
+		rlocIndex = i
 		break
 	}
+	rlocPtr := &mapEntry.Rlocs[rlocIndex]
 
 	// Check the family and create appropriate IP header
-	switch rloc.Family {
+	switch rlocPtr.Family {
 	case types.MAP_CACHE_FAMILY_IPV4:
 		craftAndSendIPv4LispPacket(packet, pktBuf, capLen,
-			hash32, &rloc, iid, itrLocalData)
+			hash32, rlocPtr, iid, itrLocalData)
 	case types.MAP_CACHE_FAMILY_IPV6:
 		craftAndSendIPv6LispPacket(packet, pktBuf, capLen,
-			hash32, &rloc, iid, itrLocalData)
+			hash32, rlocPtr, iid, itrLocalData)
 	case types.MAP_CACHE_FAMILY_UNKNOWN:
 		log.Printf("Unkown family found for rloc %s\n",
-			rloc.Rloc)
+			rlocPtr.Rloc)
 	}
 }
 
@@ -286,7 +288,13 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 	})
 	if err != nil {
 		log.Printf("Packet send ERROR: %s", err)
+		return
 	}
+
+	// Increment RLOC packet & byte count statistics
+	totalBytes := offsetEnd - uint32(offset) - uint32(types.UDPHEADERLEN)
+	atomic.AddUint64(&rloc.Packets, 1)
+	atomic.AddUint64(&rloc.Bytes, uint64(totalBytes))
 }
 
 func ComputeICV(buf []byte, icvKey []byte) []byte {

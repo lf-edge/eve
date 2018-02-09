@@ -329,7 +329,9 @@ func ShowMapCacheEntries() {
 		log.Printf("Key Eid: %s\n", key.Eid)
 		log.Println("Rlocs:")
 		for _, rloc := range value.Rlocs {
-			log.Printf("	%s\n", rloc.Rloc)
+			log.Printf("	RLOC: %s\n", rloc.Rloc)
+			log.Printf("	RLOC Packets: %v\n", atomic.LoadUint64(&rloc.Packets))
+			log.Printf("	RLOC Bytes: %v\n", atomic.LoadUint64(&rloc.Bytes))
 			for _, key := range rloc.Keys {
 				keyId := key.KeyId
 				if keyId == 0 {
@@ -364,4 +366,16 @@ func ShowDecapKeys() {
 		}
 	}
 	log.Println()
+}
+
+func StatsThread(puntChannel chan []byte) {
+	log.Printf("Starting statistics thread.\n")
+	for {
+		// We collect and transport statistic to lispers.net every 30 seconds
+		time.Sleep(30 * time.Second)
+
+		// take read lock of map cache table
+		// and go through each entry while preparing statistics message
+		log.Printf("XXXXX Stats cycle\n")
+	}
 }
