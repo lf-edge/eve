@@ -214,6 +214,8 @@ func main() {
 		connState := resp.TLS
 		if connState == nil {
 			fmt.Println("no TLS connection state")
+			// Inform ledmanager about broken cloud connectivity
+			types.UpdateLedManagerConfig(10)
 			return false
 		}
 
@@ -316,6 +318,8 @@ func main() {
 		connState := resp.TLS
 		if connState == nil {
 			fmt.Println("no TLS connection state")
+			// Inform ledmanager about broken cloud connectivity
+			types.UpdateLedManagerConfig(10)
 			return false
 		}
 
@@ -460,6 +464,8 @@ func main() {
 		connState := resp.TLS
 		if connState == nil {
 			log.Println("no TLS connection state")
+			// Inform ledmanager about broken cloud connectivity
+			types.UpdateLedManagerConfig(10)
 			return false
 		}
 		if connState.OCSPResponse == nil ||
@@ -559,6 +565,8 @@ func main() {
 		connState := resp.TLS
 		if connState == nil {
 			fmt.Println("no TLS connection state")
+			// Inform ledmanager about broken cloud connectivity
+			types.UpdateLedManagerConfig(10)
 			return false
 		}
 

@@ -152,6 +152,8 @@ func getLatestConfig(configUrl string, iteration int) {
 		connState := resp.TLS
 		if connState == nil {
 			log.Println("no TLS connection state")
+			// Inform ledmanager about broken cloud connectivity
+			types.UpdateLedManagerConfig(10)
 			continue
 		}
 
