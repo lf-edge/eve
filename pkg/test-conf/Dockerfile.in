@@ -1,0 +1,20 @@
+FROM ZEDEDA_TAG as zededa
+
+FROM linuxkit/alpine:77287352db68b442534c0005edd6ff750c8189f3
+RUN apk add --no-cache \
+  mtools \
+  dosfstools
+ADD make-config /
+
+#
+# Copy Configuration
+#
+
+# Copy local conf
+COPY /conf /conf
+
+# Copy ztools conf
+COPY --from=zededa /config /conf/
+
+WORKDIR /
+ENTRYPOINT [ "/make-config" ]

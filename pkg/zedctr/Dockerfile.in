@@ -1,7 +1,6 @@
 FROM ZTOOLS_TAG as ztools
 FROM XENTOOLS_TAG as xen-tools
 FROM DNSMASQ_TAG as dnsmasq
-FROM TESTCERT_TAG as cert
 FROM TESTMSVCS_TAG as msvcs
 FROM GPTTOOLS_TAG as gpttools
 
@@ -22,7 +21,6 @@ COPY --from=xen-tools / /
 COPY --from=ztools / /
 COPY --from=gpttools / /
 COPY --from=dnsmasq /usr/sbin/dnsmasq /opt/zededa/bin/dnsmasq
-COPY --from=cert / /config
 COPY --from=msvcs /vms /vms
 
 # And now a few local tweaks
