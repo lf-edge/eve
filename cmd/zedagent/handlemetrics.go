@@ -118,25 +118,15 @@ func GetDeviceBios() (string, string, string) {
 }
 
 //Returns boolean depending upon the existence of domain
-var domainId int
-
-func verifyDomainExists() bool {
-	var id int
-	id = domainId
-	cmd := exec.Command("xl", "list", strconv.Itoa(id))
-	stdout, err := cmd.Output()
+func verifyDomainExists(domainId int) bool {
+	cmd := exec.Command("xl", "list", strconv.Itoa(domainId))
+	_, err := cmd.Output()
 	if err != nil {
 		log.Println(err.Error())
-	}
-
-	xlList := string(stdout)
-	var flag bool
-	if len(strings.TrimSpace(xlList)) == 0 {
-		flag = false
+		return false
 	} else {
-		flag = true
+		return true
 	}
-	return flag
 }
 
 // Key is UUID
@@ -156,9 +146,6 @@ func handleDomainStatusModify(ctxArg interface{}, statusFilename string,
 			key)
 		return
 	}
-	domainId = status.DomainId
-	log.Println("value of domainId: ", domainId)
-
 	if domainStatus == nil {
 		fmt.Printf("create Domain map\n")
 		domainStatus = make(map[string]types.DomainStatus)
@@ -200,7 +187,7 @@ func ReadAppInterfaceName(appName string) []string {
 
 func LookupDomainStatus(domainName string) *types.DomainStatus {
 	for _, ds := range domainStatus {
-		if strings.Compare(ds.DomainName, domainName) == 0 {
+		if strings.Contains(ds.DomainName, domainName) {
 			return &ds
 		}
 	}
@@ -662,12 +649,14 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 	ReportAppInfo.SystemApp = false
 	ReportAppInfo.AppName = aiStatus.DisplayName
 
-	if aiStatus.Activated {
-		exists := verifyDomainExists()
-		if exists {
-			ReportAppInfo.Activated = exists
-		}
+	ds := LookupDomainStatus(aiStatus.DisplayName+".")
+	if ds == nil {
+		log.Printf("Did not find status(DomainId) for domainName %s\n",
+			aiStatus.DisplayName)
+	} else {
+		ReportAppInfo.Activated = aiStatus.Activated && ds != nil && verifyDomainExists(ds.DomainId)
 	}
+
 	ReportAppInfo.Error = aiStatus.Error
 
 	if (aiStatus.ErrorTime).IsZero() {
