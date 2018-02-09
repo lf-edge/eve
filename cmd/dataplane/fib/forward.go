@@ -1,11 +1,6 @@
 package fib
 
 import (
-	"log"
-	"net"
-	"time"
-	"syscall"
-	"math/rand"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/hmac"
@@ -13,6 +8,11 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/zededa/go-provision/types"
+	"log"
+	"math/rand"
+	"net"
+	"syscall"
+	"time"
 )
 
 func CraftAndSendLispPacket(packet gopacket.Packet,
@@ -64,63 +64,63 @@ func encryptPayload(
 	payload []byte, payloadLen uint32,
 	encKey []byte, block cipher.Block, ivArray []byte) (bool, uint32) {
 
-		var remainder uint32 = 0
+	var remainder uint32 = 0
 
-		packet := payload[:payloadLen]
+	packet := payload[:payloadLen]
 
-		// Pad the payload if it's length is not a multiple of 16.
-		if (payloadLen % aes.BlockSize) != 0 {
-			remainder = (payloadLen % aes.BlockSize)
-			packet = payload[:payloadLen + aes.BlockSize - remainder]
-			log.Printf("XXXXX Padded packet with %d bytes\n",
-				aes.BlockSize - remainder)
+	// Pad the payload if it's length is not a multiple of 16.
+	if (payloadLen % aes.BlockSize) != 0 {
+		remainder = (payloadLen % aes.BlockSize)
+		packet = payload[:payloadLen+aes.BlockSize-remainder]
+		log.Printf("XXXXX Padded packet with %d bytes\n",
+			aes.BlockSize-remainder)
 
-			// Now fill the padding with zeroes
-			for i := payloadLen; i < uint32(len(packet)); i++ {
-				packet[i] = 0
-			}
+		// Now fill the padding with zeroes
+		for i := payloadLen; i < uint32(len(packet)); i++ {
+			packet[i] = 0
 		}
+	}
 
-		// XXX Check with Dino, how his code treats IV.
-		// String(ascii) or binary?
-		// For now, convert the IV into byte array
+	// XXX Check with Dino, how his code treats IV.
+	// String(ascii) or binary?
+	// For now, convert the IV into byte array
 
-		// Write IV into packet
-		//for i, b := range ivArray {
-		//	packet[i] = b
-		//}
+	// Write IV into packet
+	//for i, b := range ivArray {
+	//	packet[i] = b
+	//}
 
-		// the below block value can be stored in map-cache entry for efficiency
-		//block, err := aes.NewCipher(encKey)
-		//if err != nil {
-		//	log.Printf("Error: Creating new AES encryption block from key: %x: %s\n",
-		//	encKey, err)
-		//	return false, 0
-		//}
+	// the below block value can be stored in map-cache entry for efficiency
+	//block, err := aes.NewCipher(encKey)
+	//if err != nil {
+	//	log.Printf("Error: Creating new AES encryption block from key: %x: %s\n",
+	//	encKey, err)
+	//	return false, 0
+	//}
 
-		mode := cipher.NewCBCEncrypter(block, packet[:aes.BlockSize])
-		mode.CryptBlocks(packet[aes.BlockSize:], packet[aes.BlockSize:])
-		return true, (aes.BlockSize - remainder)
+	mode := cipher.NewCBCEncrypter(block, packet[:aes.BlockSize])
+	mode.CryptBlocks(packet[aes.BlockSize:], packet[aes.BlockSize:])
+	return true, (aes.BlockSize - remainder)
 }
 
 func GenerateIVByteArray(ivHigh uint64, ivLow uint64, ivArray []byte) []byte {
-		// XXX Suggest if there is a better way of doing this.
+	// XXX Suggest if there is a better way of doing this.
 
-		// Write individual bytes from ivHigh and ivLow into IV byte array
-		// Doesn't look good, but couldn't find a more elegant way of doing it.
-		for i := 0; i < 8; i++ {
-			ivArray[i] = byte((ivHigh >> uint((8 - i - 1)* 8)) & 0xff)
-		}
-		for i := 0; i < 8; i++ {
-			ivArray[8 + i] = byte((ivLow >> uint((8 - i - 1)* 8)) & 0xff)
-		}
-		return ivArray
+	// Write individual bytes from ivHigh and ivLow into IV byte array
+	// Doesn't look good, but couldn't find a more elegant way of doing it.
+	for i := 0; i < 8; i++ {
+		ivArray[i] = byte((ivHigh >> uint((8-i-1)*8)) & 0xff)
+	}
+	for i := 0; i < 8; i++ {
+		ivArray[8+i] = byte((ivLow >> uint((8-i-1)*8)) & 0xff)
+	}
+	return ivArray
 }
 
 // Get IV as a byte array
 func GetIVArray(itrLocalData *types.ITRLocalData, ivArray []byte) []byte {
 	ivHigh := itrLocalData.IvHigh
-	ivLow  := itrLocalData.IvLow
+	ivLow := itrLocalData.IvLow
 	itrLocalData.IvLow += 1
 
 	if itrLocalData.IvLow == 0 {
@@ -128,10 +128,10 @@ func GetIVArray(itrLocalData *types.ITRLocalData, ivArray []byte) []byte {
 		// allocate a new IV
 		rand.Seed(time.Now().UnixNano())
 		ivHigh = rand.Uint64()
-		ivLow  = rand.Uint64()
+		ivLow = rand.Uint64()
 
 		itrLocalData.IvHigh = ivHigh
-		itrLocalData.IvLow  = ivLow
+		itrLocalData.IvLow = ivLow
 	}
 	return GenerateIVByteArray(ivHigh, ivLow, ivArray)
 }
@@ -145,26 +145,26 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 	iid uint32,
 	itrLocalData *types.ITRLocalData) {
 
-	var fd4       int = itrLocalData.Fd4
+	var fd4 int = itrLocalData.Fd4
 	var useCrypto bool = false
-	var keyId     byte = 0
-	var padLen    uint32 = 0
-	var icvKey    []byte
+	var keyId byte = 0
+	var padLen uint32 = 0
+	var icvKey []byte
 
 	// XXX
 	// Should we have a static per-thread entry for this header?
 	// Can we have it globally and re-use?
 	/*
-	srcAddr := net.ParseIP("0.0.0.0")
-	ip := &layers.IPv4{
-		DstIP:    rloc.Rloc,
-		SrcIP:    srcAddr,
-		Flags:    0,
-		TTL:      64,
-		IHL:      5,
-		Version:  4,
-		Protocol: layers.IPProtocolUDP,
-	}
+		srcAddr := net.ParseIP("0.0.0.0")
+		ip := &layers.IPv4{
+			DstIP:    rloc.Rloc,
+			SrcIP:    srcAddr,
+			Flags:    0,
+			TTL:      64,
+			IHL:      5,
+			Version:  4,
+			Protocol: layers.IPProtocolUDP,
+		}
 	*/
 
 	// Check if the RLOC expects encryption
@@ -180,18 +180,18 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 		// use keyid 1 for now
 		keyId = 1
 
-		key := rloc.Keys[keyId - 1]
+		key := rloc.Keys[keyId-1]
 		encKey := key.EncKey
 		icvKey = key.IcvKey
 
 		offsetStart := types.MAXHEADERLEN + types.ETHHEADERLEN - uint32(aes.BlockSize)
-		offsetEnd   := types.MAXHEADERLEN + capLen
+		offsetEnd := types.MAXHEADERLEN + capLen
 		payloadLen := offsetEnd - offsetStart
 
 		ok := false
-		ok, padLen = encryptPayload(pktBuf[offsetStart: offsetEnd], payloadLen,
+		ok, padLen = encryptPayload(pktBuf[offsetStart:offsetEnd], payloadLen,
 			encKey, key.EncBlock,
-			GetIVArray(itrLocalData, pktBuf[offsetStart: offsetStart + types.IVLEN]))
+			GetIVArray(itrLocalData, pktBuf[offsetStart:offsetStart+types.IVLEN]))
 		if ok == false {
 			keyId = 0
 			useCrypto = false
@@ -243,10 +243,10 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 	}
 
 	/*
-	if err := gopacket.SerializeLayers(buf, opts, ip, udp); err != nil {
-		log.Printf("Failed serializing packet: %s", err)
-		return
-	}
+		if err := gopacket.SerializeLayers(buf, opts, ip, udp); err != nil {
+			log.Printf("Failed serializing packet: %s", err)
+			return
+		}
 	*/
 	if err := gopacket.SerializeLayers(buf, opts, udp); err != nil {
 		log.Printf("Failed serializing packet: %s", err)
@@ -273,10 +273,10 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 		offsetEnd = offsetEnd + aes.BlockSize + padLen + 20
 
 		// We do not compute ICV for the outer UDP header
-		computeAndWriteICV(pktBuf[offset + 8: offsetEnd], icvKey)
+		computeAndWriteICV(pktBuf[offset+8:offsetEnd], icvKey)
 	}
 	//outputSlice := pktBuf[offset : uint32(offset)+uint32(outerHdrLen)+capLen-14]
-	outputSlice := pktBuf[offset : offsetEnd]
+	outputSlice := pktBuf[offset:offsetEnd]
 
 	v4Addr := rloc.Rloc.To4()
 	log.Printf("Writing %d bytes into ITR socket\n", len(outputSlice))
@@ -298,12 +298,12 @@ func ComputeICV(buf []byte, icvKey []byte) []byte {
 
 func computeAndWriteICV(packet []byte, icvKey []byte) {
 	pktLen := len(packet)
-	icv := ComputeICV(packet[: pktLen - types.ICVLEN], icvKey)
+	icv := ComputeICV(packet[:pktLen-types.ICVLEN], icvKey)
 
 	// Write ICV to packet
 	startIdx := pktLen - types.ICVLEN
 	for i, b := range icv {
-		packet[startIdx + i] = b
+		packet[startIdx+i] = b
 	}
 }
 

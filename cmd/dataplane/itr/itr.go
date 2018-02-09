@@ -1,18 +1,18 @@
 package itr
 
 import (
-	"log"
-	"net"
-	"syscall"
-	"time"
-	"math/rand"
-	"sync/atomic"
 	"encoding/json"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pfring"
 	"github.com/zededa/go-provision/dataplane/fib"
 	"github.com/zededa/go-provision/types"
+	"log"
+	"math/rand"
+	"net"
+	"sync/atomic"
+	"syscall"
+	"time"
 )
 
 const SNAPLENGTH = 65536
@@ -47,7 +47,7 @@ func StartItrThread(threadName string,
 
 	//*****
 	err = syscall.SetsockoptInt(fd4, syscall.SOL_SOCKET,
-	syscall.IP_MTU_DISCOVER, syscall.IP_PMTUDISC_DONT)
+		syscall.IP_MTU_DISCOVER, syscall.IP_PMTUDISC_DONT)
 	//err = syscall.SetsockoptInt(fd4, syscall.SOL_SOCKET, syscall.IP_MTU_DISCOVER, 5)
 	if err != nil {
 		log.Printf("Disabling path MTU discovery failed: %s.\n", err)
@@ -70,16 +70,15 @@ func StartItrThread(threadName string,
 	}
 	defer syscall.Close(fd6)
 
-
 	rand.Seed(time.Now().UnixNano())
 	ivHigh := rand.Uint64()
-	ivLow  := rand.Uint64()
+	ivLow := rand.Uint64()
 
 	itrLocalData := new(types.ITRLocalData)
 	itrLocalData.Fd4 = fd4
 	itrLocalData.Fd6 = fd6
 	itrLocalData.IvHigh = ivHigh
-	itrLocalData.IvLow  = ivLow
+	itrLocalData.IvLow = ivLow
 
 	startWorking(threadName, ring, killChannel, puntChannel,
 		itrLocalData)
@@ -194,7 +193,7 @@ eidLoop:
 				continue
 			}
 			packet := gopacket.NewPacket(
-				pktBuf[types.MAXHEADERLEN: ci.CaptureLength + types.MAXHEADERLEN],
+				pktBuf[types.MAXHEADERLEN:ci.CaptureLength+types.MAXHEADERLEN],
 				layers.LinkTypeEthernet,
 				//gopacket.DecodeOptions{Lazy: true, NoCopy: true})
 				gopacket.DecodeOptions{Lazy: false, NoCopy: true})

@@ -1,13 +1,13 @@
 package fib
 
 import (
+	"github.com/zededa/go-provision/types"
 	"log"
+	"math/rand"
 	"net"
+	"sync/atomic"
 	"syscall"
 	"time"
-	"math/rand"
-	"sync/atomic"
-	"github.com/zededa/go-provision/types"
 )
 
 var cache *types.MapCacheTable
@@ -45,7 +45,7 @@ func InitMapCache() {
 		log.Printf("FIB ipv4 raw socket creation failed.\n")
 	}
 	err = syscall.SetsockoptInt(fd4, syscall.SOL_SOCKET, syscall.IP_MTU_DISCOVER,
-	syscall.IP_PMTUDISC_DONT)
+		syscall.IP_PMTUDISC_DONT)
 	if err != nil {
 		log.Printf("Disabling path mtu discovery failed.\n")
 	}
@@ -138,17 +138,16 @@ func LookupAndAdd(iid uint32,
 func UpdateMapCacheEntry(iid uint32, eid net.IP, rlocs []types.Rloc) {
 	entry := LookupAndUpdate(iid, eid, rlocs)
 
-
 	// Create a temporary IV to work with
 	rand.Seed(time.Now().UnixNano())
 	ivHigh := rand.Uint64()
-	ivLow  := rand.Uint64()
+	ivLow := rand.Uint64()
 
 	itrLocalData := new(types.ITRLocalData)
 	itrLocalData.Fd4 = fd4
 	itrLocalData.Fd6 = fd6
 	itrLocalData.IvHigh = ivHigh
-	itrLocalData.IvLow  = ivLow
+	itrLocalData.IvLow = ivLow
 
 	for {
 		select {
@@ -168,7 +167,7 @@ func UpdateMapCacheEntry(iid uint32, eid net.IP, rlocs []types.Rloc) {
 				// Send the packet out now
 				CraftAndSendLispPacket(pkt.Packet, pktBuf, uint32(capLen), pkt.Hash32,
 					entry, entry.InstanceId, itrLocalData)
-				
+
 				// decrement buffered packet count and increment pkt, byte counts
 				atomic.AddUint64(&entry.BuffdPkts, ^uint64(0))
 				atomic.AddUint64(&entry.Packets, 1)
@@ -256,11 +255,11 @@ func LookupAndUpdate(iid uint32, eid net.IP, rlocs []types.Rloc) *types.MapCache
 
 		// Before deleting the map cache entry copy statistics
 		// We do not have to do atomic operation, because we hold write lock
-		packets   = entry.Packets
-		bytes     = entry.Bytes
+		packets = entry.Packets
+		bytes = entry.Bytes
 		tailDrops = entry.TailDrops
 		buffdPkts = entry.BuffdPkts
-		lastPunt  = entry.LastPunt
+		lastPunt = entry.LastPunt
 
 		delete(cache.MapCache, key)
 	} else if ok {
@@ -285,10 +284,10 @@ func LookupAndUpdate(iid uint32, eid net.IP, rlocs []types.Rloc) *types.MapCache
 		RlocTotWeight: totWeight,
 		PktBuffer:     make(chan *types.BufferedPacket, 10),
 		LastPunt:      lastPunt,
-		Packets: packets,
-		Bytes: bytes,
-		TailDrops: tailDrops,
-		BuffdPkts: buffdPkts,
+		Packets:       packets,
+		Bytes:         bytes,
+		TailDrops:     tailDrops,
+		BuffdPkts:     buffdPkts,
 	}
 	cache.MapCache[key] = &newEntry
 	return &newEntry

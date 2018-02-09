@@ -1,12 +1,12 @@
 package main
 
 import (
+	"github.com/google/gopacket/pfring"
+	"github.com/zededa/go-provision/dataplane/etr"
+	"github.com/zededa/go-provision/dataplane/itr"
+	"github.com/zededa/go-provision/types"
 	"log"
 	"syscall"
-	"github.com/zededa/go-provision/types"
-	"github.com/google/gopacket/pfring"
-	"github.com/zededa/go-provision/dataplane/itr"
-	"github.com/zededa/go-provision/dataplane/etr"
 )
 
 type ThreadEntry struct {
@@ -111,7 +111,7 @@ func ManageETRThread(port int) {
 	udpConn, ring, fd1, fd2 := etr.StartETR(port)
 	etrRunStatus.UdpConn = udpConn
 	etrRunStatus.Ring = ring
-	etrRunStatus.UdpFD  = fd1
+	etrRunStatus.UdpFD = fd1
 	etrRunStatus.RingFD = fd2
 	etrRunStatus.EphPort = port
 }

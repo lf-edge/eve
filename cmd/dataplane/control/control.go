@@ -129,7 +129,7 @@ func startPuntProcessor() {
 	}
 
 	// We could have restarted. We need to ask lispers.net for the databases again.
-	restartEntry := types.RestartEntry {
+	restartEntry := types.RestartEntry{
 		Type: "restart",
 	}
 	restartMsg, err := json.Marshal(restartEntry)

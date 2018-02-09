@@ -1,13 +1,13 @@
 package main
 
 import (
+	"crypto/aes"
+	"encoding/json"
+	"github.com/zededa/go-provision/dataplane/fib"
+	"github.com/zededa/go-provision/types"
 	"log"
 	"net"
 	"strconv"
-	"crypto/aes"
-	"encoding/json"
-	"github.com/zededa/go-provision/types"
-	"github.com/zededa/go-provision/dataplane/fib"
 )
 
 // Parse the json RLOC message and extract ip addresses along
@@ -60,7 +60,7 @@ func parseRloc(rlocStr *Rloc) (types.Rloc, bool) {
 		}
 
 		if (len(key.EncKey) != CRYPTO_KEY_LEN) ||
-		(len(key.IcvKey[8:]) != CRYPTO_KEY_LEN) {
+			(len(key.IcvKey[8:]) != CRYPTO_KEY_LEN) {
 			log.Printf(
 				"Error: Encap Key lengths should be 32, found encrypt key len %d & icv key length %d and encap key %s, icv key %s\n",
 				len(key.EncKey), len(key.IcvKey[8:]), key.EncKey, key.IcvKey[8:])
@@ -78,14 +78,14 @@ func parseRloc(rlocStr *Rloc) (types.Rloc, bool) {
 		}
 
 		//keys[i] = types.Key {
-		keys[keyId - 1] = types.Key {
-			KeyId: uint32(keyId),
-			EncKey: encKey,
-			IcvKey: icvKey,
+		keys[keyId-1] = types.Key{
+			KeyId:    uint32(keyId),
+			EncKey:   encKey,
+			IcvKey:   icvKey,
 			EncBlock: encBlock,
 		}
-		log.Printf("Adding enc key %s\n", keys[keyId - 1].EncKey)
-		log.Printf("Adding icv key %s\n", keys[keyId - 1].IcvKey)
+		log.Printf("Adding enc key %s\n", keys[keyId-1].EncKey)
+		log.Printf("Adding icv key %s\n", keys[keyId-1].IcvKey)
 	}
 
 	// XXX We are not decoding the keys for now.
@@ -199,7 +199,7 @@ func handleMapCache(msg []byte) {
 	log.Println("eid-prefix:", mapCache.EidPrefix)
 	log.Println("IID:", mapCache.InstanceId)
 	log.Println()
-	
+
 	createMapCache(&mapCache)
 }
 
@@ -320,7 +320,7 @@ func handleDecapKeys(msg []byte) {
 			continue
 		}
 		if (len(key.DecKey) != CRYPTO_KEY_LEN) ||
-		(len(key.IcvKey[8:]) != CRYPTO_KEY_LEN) {
+			(len(key.IcvKey[8:]) != CRYPTO_KEY_LEN) {
 			log.Printf("XXXXX Decap-key is %s\n", key.DecKey)
 			log.Printf("XXXXX ICV-key is %s\n", key.IcvKey[8:])
 			log.Printf(
@@ -338,14 +338,14 @@ func handleDecapKeys(msg []byte) {
 				key.DecKey)
 			continue
 		}
-		keys[keyId - 1] = types.DKey {
-			KeyId: uint32(keyId),
-			DecKey: decKey,
-			IcvKey: icvKey,
+		keys[keyId-1] = types.DKey{
+			KeyId:    uint32(keyId),
+			DecKey:   decKey,
+			IcvKey:   icvKey,
 			DecBlock: decBlock,
 		}
-		log.Printf("Adding Decap key[%d] %s\n", keyId - 1, keys[keyId - 1].DecKey)
-		log.Printf("Adding Decap icv[%d] %s\n", keyId - 1, keys[keyId - 1].IcvKey)
+		log.Printf("Adding Decap key[%d] %s\n", keyId-1, keys[keyId-1].DecKey)
+		log.Printf("Adding Decap icv[%d] %s\n", keyId-1, keys[keyId-1].IcvKey)
 	}
 
 	// Parse and store the decap keys.

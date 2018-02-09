@@ -46,7 +46,7 @@ type DatabaseMappings struct {
 }
 
 type Interface struct {
-	Interface string `json:"interface"`
+	Interface  string `json:"interface"`
 	InstanceId string `json:"instance-id"`
 	//InstanceId int `json:"instance-id"`
 }
@@ -57,10 +57,10 @@ type Interfaces struct {
 
 type DecapKeys struct {
 	Rloc string `json:"rloc"`
-	Keys []DKey  `json:"keys"`
+	Keys []DKey `json:"keys"`
 }
 
 type EtrNatPort struct {
 	Type string `json:"type"`
-	Port int `json:"port"`
+	Port int    `json:"port"`
 }

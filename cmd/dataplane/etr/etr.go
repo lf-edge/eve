@@ -1,20 +1,20 @@
 package etr
 
 import (
-	"fmt"
-	"log"
-	"net"
 	"bytes"
-	"syscall"
-	"io/ioutil"
-	"encoding/json"
 	"crypto/aes"
 	"crypto/cipher"
+	"encoding/json"
+	"fmt"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pfring"
-	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/dataplane/fib"
+	"github.com/zededa/go-provision/types"
+	"io/ioutil"
+	"log"
+	"net"
+	"syscall"
 )
 
 const uplinkFileName = "/var/tmp/zedrouter/config/global"
@@ -74,7 +74,7 @@ func verifyAndInject(fd6 int,
 		return true
 	}
 	log.Println("IID of packet is:", iid)
-	packetOffset   := 8
+	packetOffset := 8
 	destAddrOffset := 24
 
 	//useCrypto := false
@@ -83,7 +83,7 @@ func verifyAndInject(fd6 int,
 		log.Printf("XXXXX Using KeyId %d\n", keyId)
 		//useCrypto = true
 		destAddrOffset += aes.BlockSize
-		packetOffset   += aes.BlockSize
+		packetOffset += aes.BlockSize
 
 		if decapKeys == nil {
 			return false
@@ -91,14 +91,14 @@ func verifyAndInject(fd6 int,
 
 		// compute and compare ICV of packet
 		// Always use key 1
-		key := decapKeys.Keys[keyId - 1]
+		key := decapKeys.Keys[keyId-1]
 		icvKey := key.IcvKey
 		if icvKey == nil {
 			log.Printf("ETR Key id %d had nil ICV key value\n", keyId)
 			return false
 		}
-		icv := fib.ComputeICV(buf[0: n - types.ICVLEN], icvKey)
-		pktIcv := buf[n - types.ICVLEN: n]
+		icv := fib.ComputeICV(buf[0:n-types.ICVLEN], icvKey)
+		pktIcv := buf[n-types.ICVLEN : n]
 
 		if !bytes.Equal(icv, pktIcv) {
 			log.Printf("Pkt ICV %x and calculated ICV %x do not match.\n", pktIcv, icv)
@@ -108,12 +108,12 @@ func verifyAndInject(fd6 int,
 
 		// Decrypt the packet before sending out
 		// read the IV from packet buffer
-		ivArray := buf[types.LISPHEADERLEN: packetOffset]
+		ivArray := buf[types.LISPHEADERLEN:packetOffset]
 
-		packet := buf[packetOffset: n - types.ICVLEN]
+		packet := buf[packetOffset : n-types.ICVLEN]
 
 		cryptoLen := n - packetOffset - types.ICVLEN
-		if cryptoLen % 16 != 0 {
+		if cryptoLen%16 != 0 {
 			log.Printf("XXXXX Crypto packet length is %d\n", cryptoLen)
 			return false
 		}
@@ -139,11 +139,11 @@ func verifyAndInject(fd6 int,
 	var destAddr [16]byte
 	for i, _ := range destAddr {
 		// offset is lisp hdr size + start offset of ip addresses in v6 hdr
-		destAddr[i] = buf[8 + destAddrOffset + i]
+		destAddr[i] = buf[8+destAddrOffset+i]
 		//pktEid[i] = destAddr[i]
 	}
 
-	err := syscall.Sendto(fd6, buf[packetOffset: n], 0, &syscall.SockaddrInet6{
+	err := syscall.Sendto(fd6, buf[packetOffset:n], 0, &syscall.SockaddrInet6{
 		Port:   0,
 		ZoneId: 0,
 		Addr:   destAddr,
@@ -177,9 +177,9 @@ func SetupEtrPktCapture(ephemeralPort int) *pfring.Ring {
 	// Later in future all interfaces in the list will have to be opened
 	// for packet capture.
 	/*
-	for _, u := range globalConfig.Uplink {
-		// open for packet capture
-	}
+		for _, u := range globalConfig.Uplink {
+			// open for packet capture
+		}
 	*/
 
 	upLink := globalConfig.Uplink[0]
@@ -187,7 +187,7 @@ func SetupEtrPktCapture(ephemeralPort int) *pfring.Ring {
 	ring, err := pfring.NewRing(upLink, 65536, pfring.FlagPromisc)
 	if err != nil {
 		log.Printf("ETR packet capture on interface %s failed: %s\n",
-		upLink, err)
+			upLink, err)
 		return nil
 	}
 
