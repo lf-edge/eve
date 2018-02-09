@@ -118,6 +118,18 @@ func GetDeviceBios() (string, string, string) {
 	return string(vendor), string(version), string(releaseDate)
 }
 
+//Returns boolean depending upon the existence of domain
+func verifyDomainExists(domainId int) bool {
+	cmd := exec.Command("xl", "list", strconv.Itoa(domainId))
+	_, err := cmd.Output()
+	if err != nil {
+		log.Println(err.Error())
+		return false
+	} else {
+		return true
+	}
+}
+
 // Key is UUID
 var domainStatus map[string]types.DomainStatus
 
@@ -135,7 +147,6 @@ func handleDomainStatusModify(ctxArg interface{}, statusFilename string,
 			key)
 		return
 	}
-
 	if domainStatus == nil {
 		fmt.Printf("create Domain map\n")
 		domainStatus = make(map[string]types.DomainStatus)
@@ -178,6 +189,15 @@ func ReadAppInterfaceName(appName string) []string {
 func LookupDomainStatus(domainName string) *types.DomainStatus {
 	for _, ds := range domainStatus {
 		if strings.Compare(ds.DomainName, domainName) == 0 {
+			return &ds
+		}
+	}
+	return nil
+}
+
+func LookupDomainStatusUUID(uuid string) *types.DomainStatus {
+	for _, ds := range domainStatus {
+		if strings.Compare(ds.UUIDandVersion.UUID.String(), uuid) == 0 {
 			return &ds
 		}
 	}
@@ -646,11 +666,19 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 	ReportAppInfo.AppID = aiStatus.UUIDandVersion.UUID.String()
 	ReportAppInfo.SystemApp = false
 	ReportAppInfo.AppName = aiStatus.DisplayName
-	ReportAppInfo.Activated = aiStatus.Activated
+
+	ds := LookupDomainStatusUUID(aiStatus.UUIDandVersion.UUID.String())
+	if ds == nil {
+		log.Printf("Did not find status(DomainId) for domainUUID %s\n",
+			aiStatus.UUIDandVersion.UUID.String())
+	} else {
+		ReportAppInfo.Activated = aiStatus.Activated && verifyDomainExists(ds.DomainId)
+	}
+
 	ReportAppInfo.Error = aiStatus.Error
 
 	if (aiStatus.ErrorTime).IsZero() {
-		log.Println("ErrorTime is empty")
+		log.Println("ErrorTime is empty...so do not fill it")
 	} else {
 		errTime, _ := ptypes.TimestampProto(aiStatus.ErrorTime)
 		ReportAppInfo.ErrorTime = errTime
