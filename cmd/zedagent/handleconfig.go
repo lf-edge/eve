@@ -99,7 +99,8 @@ func getCloudUrls() {
 // delete if some thing is not present in the old config
 // for the new config create entries in the zMgerConfig Dir
 // for each of the above buckets
-
+// XXX should the timers be randomized to avoid self-synchronization across
+// potentially lots of devices?
 func configTimerTask() {
 	iteration := 0
 	log.Println("starting config fetch timer task")

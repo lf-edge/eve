@@ -33,6 +33,8 @@ func publishMetrics(iteration int) {
 	PublishMetricsToZedCloud(cpuStorageStat, iteration)
 }
 
+// XXX should the timers be randomized to avoid self-synchronization across
+// potentially lots of devices?
 func metricsTimerTask() {
 	iteration := 0
 	log.Println("starting report metrics timer task")
