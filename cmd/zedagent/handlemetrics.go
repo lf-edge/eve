@@ -187,7 +187,16 @@ func ReadAppInterfaceName(appName string) []string {
 
 func LookupDomainStatus(domainName string) *types.DomainStatus {
 	for _, ds := range domainStatus {
-		if strings.Contains(ds.DomainName, domainName) {
+		if strings.Compare(ds.DomainName, domainName) == 0 {
+			return &ds
+		}
+	}
+	return nil
+}
+
+func LookupDomainStatusUUID(uuid string) *types.DomainStatus {
+	for _, ds := range domainStatus {
+		if strings.Compare(ds.UUIDandVersion.UUID.String(), uuid) == 0 {
 			return &ds
 		}
 	}
@@ -649,12 +658,12 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 	ReportAppInfo.SystemApp = false
 	ReportAppInfo.AppName = aiStatus.DisplayName
 
-	ds := LookupDomainStatus(aiStatus.DisplayName+".")
+	ds := LookupDomainStatusUUID(aiStatus.UUIDandVersion.UUID.String())
 	if ds == nil {
-		log.Printf("Did not find status(DomainId) for domainName %s\n",
-			aiStatus.DisplayName)
+		log.Printf("Did not find status(DomainId) for domainUUID %s\n",
+			aiStatus.UUIDandVersion.UUID.String())
 	} else {
-		ReportAppInfo.Activated = aiStatus.Activated && ds != nil && verifyDomainExists(ds.DomainId)
+		ReportAppInfo.Activated = aiStatus.Activated && verifyDomainExists(ds.DomainId)
 	}
 
 	ReportAppInfo.Error = aiStatus.Error
