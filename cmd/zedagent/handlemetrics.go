@@ -38,8 +38,7 @@ func metricsTimerTask() {
 	log.Println("starting report metrics timer task")
 	publishMetrics(iteration)
 	ticker := time.NewTicker(time.Second * 60)
-	for t := range ticker.C {
-		log.Println("Tick at", t)
+	for range ticker.C {
 		iteration += 1
 		publishMetrics(iteration)
 	}
@@ -389,7 +388,10 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 						countDeviceInterfaces++
 					}
 				}
-				log.Println("network metrics: ", ReportDeviceMetric.Network)
+				if debug {
+					log.Println("network metrics: ",
+						ReportDeviceMetric.Network)
+				}
 			}
 			ReportMetrics.MetricContent = new(zmet.ZMetricMsg_Dm)
 			if x, ok := ReportMetrics.GetMetricContent().(*zmet.ZMetricMsg_Dm); ok {
@@ -464,13 +466,18 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 					}
 				}
 				ReportMetrics.Am[countApp] = ReportAppMetric
-				log.Println("metrics per app is: ", ReportMetrics.Am[countApp])
+				if debug {
+					log.Println("metrics per app is: ",
+						ReportMetrics.Am[countApp])
+				}
 				countApp++
 			}
 
 		}
 	}
-	log.Printf("Metrics: %s\n", ReportMetrics)
+	if debug {
+		log.Printf("Metrics: %s\n", ReportMetrics)
+	}
 	SendMetricsProtobufStrThroughHttp(ReportMetrics, iteration)
 }
 
@@ -750,7 +757,10 @@ func SendInfoProtobufStrThroughHttp(ReportInfo *zmet.ZInfoMsg, iteration int) {
 				fmt.Printf("SendInfoProtobufStrThroughHttp to %s using intf %s source %v statuscode %d %s\n",
 					statusUrl, intf, localTCPAddr,
 					resp.StatusCode, http.StatusText(resp.StatusCode))
-				fmt.Printf("received response %v\n", resp)
+				if debug {
+					fmt.Printf("received response %v\n",
+						resp)
+				}
 			}
 		}
 		log.Printf("All attempts to connect to %s using intf %s failed\n",
@@ -832,8 +842,11 @@ func SendMetricsProtobufStrThroughHttp(ReportMetrics *zmet.ZMetricMsg,
 		default:
 			fmt.Printf("SendMetricsProtobufStrThroughHttp to %s using intf %s source %v  statuscode %d %s\n",
 				metricsUrl, intf, localTCPAddr,
-				resp.StatusCode, http.StatusText(resp.StatusCode))
-			fmt.Printf("received response %v\n", resp)
+				resp.StatusCode,
+				http.StatusText(resp.StatusCode))
+			if debug {
+				fmt.Printf("received response %v\n", resp)
+			}
 		}
 	}
 	log.Printf("All attempts to connect to %s using intf %s failed\n",

@@ -107,8 +107,7 @@ func configTimerTask() {
 
 	ticker := time.NewTicker(time.Minute * configTickTimeout)
 
-	for t := range ticker.C {
-		log.Println(t)
+	for range ticker.C {
 		iteration += 1
 		getLatestConfig(configUrl, iteration)
 	}
@@ -212,7 +211,9 @@ func validateConfigMessage(configUrl string, intf string,
 		fmt.Printf("validateConfigMessage %s using intf %s source %v statuscode %d %s\n",
 			configUrl, intf, localTCPAddr,
 			r.StatusCode, http.StatusText(r.StatusCode))
-		fmt.Printf("received response %v\n", r)
+		if debug {
+			fmt.Printf("received response %v\n", r)
+		}
 		return fmt.Errorf("http status %d %s",
 			r.StatusCode, http.StatusText(r.StatusCode))
 	}
