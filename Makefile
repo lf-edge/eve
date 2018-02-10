@@ -38,7 +38,7 @@ supermicro.img: zededa-container images/supermicro-img.yml
 	./makeraw.sh images/supermicro-img.yml supermicro.img
 
 rootfs.img: zededa-container images/fallback.yml
-	./makerootfs.sh images/fallback.yml rootfs.img
+	./makerootfs.sh images/fallback.yml squash rootfs.img
 
 fallback.img: rootfs.img
 	tar c rootfs.img | ./makeflash.sh -C $@

@@ -3,7 +3,7 @@ LINUXKIT_OPTS= --disable-content-trust
 
 PKGS = grub xen kernel kmod_pfring xen-tools dnsmasq gpt-tools dom0-ztools	\
 	test-cert test-microsvcs qrexec-lib qrexec-dom0 wwan wlan	\
-	mkrootfs-ext4 mkflash
+	mkrootfs-ext4 mkrootfs-squash mkflash
 
 .PHONY: push force-push build forcebuild show-tag clean dockerfiles
 
