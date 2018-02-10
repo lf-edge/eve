@@ -498,7 +498,8 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 		}
 	}
 	if debug {
-		log.Printf("Metrics: %s\n", ReportMetrics)
+		log.Printf("PublishMetricsToZedCloud sending %s\n",
+			ReportMetrics)
 	}
 	SendMetricsProtobufStrThroughHttp(ReportMetrics, iteration)
 }
@@ -645,15 +646,11 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus, ite
 }
 
 // XXX change caller filename to key which is uuid; not used for now
+// When aiStatus is nil it means a delete and we send a message
+// containing only the UUID to inform zedcloud about the delete.
 func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 	iteration int) {
 	fmt.Printf("PublishAppInfoToZedCloud uuid %s\n", uuid)
-	// XXX if it was deleted we publish nothing; do we need to delete from
-	// zedcloud?
-	if aiStatus == nil {
-		fmt.Printf("PublishAppInfoToZedCloud uuid %s deleted\n", uuid)
-		return
-	}
 	var ReportInfo = &zmet.ZInfoMsg{}
 
 	appType := new(zmet.ZInfoTypes)
@@ -663,41 +660,37 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 
 	ReportAppInfo := new(zmet.ZInfoApp)
 
-	ReportAppInfo.AppID = aiStatus.UUIDandVersion.UUID.String()
+	ReportAppInfo.AppID = uuid
 	ReportAppInfo.SystemApp = false
-	ReportAppInfo.AppName = aiStatus.DisplayName
+	if aiStatus != nil {
+		ReportAppInfo.AppName = aiStatus.DisplayName
+		ds := LookupDomainStatusUUID(uuid)
+		if ds == nil {
+			log.Printf("Did not find DomainStaus for UUID %s\n",
+				uuid)
+		} else {
+			ReportAppInfo.Activated = aiStatus.Activated && verifyDomainExists(ds.DomainId)
+		}
 
-	ds := LookupDomainStatusUUID(aiStatus.UUIDandVersion.UUID.String())
-	if ds == nil {
-		log.Printf("Did not find status(DomainId) for domainUUID %s\n",
-			aiStatus.UUIDandVersion.UUID.String())
-	} else {
-		ReportAppInfo.Activated = aiStatus.Activated && verifyDomainExists(ds.DomainId)
-	}
+		ReportAppInfo.Error = aiStatus.Error
+		if (aiStatus.ErrorTime).IsZero() {
+			log.Println("ErrorTime is empty...so do not fill it")
+		} else {
+			errTime, _ := ptypes.TimestampProto(aiStatus.ErrorTime)
+			ReportAppInfo.ErrorTime = errTime
+		}
 
-	ReportAppInfo.Error = aiStatus.Error
-
-	if (aiStatus.ErrorTime).IsZero() {
-		log.Println("ErrorTime is empty...so do not fill it")
-	} else {
-		errTime, _ := ptypes.TimestampProto(aiStatus.ErrorTime)
-		ReportAppInfo.ErrorTime = errTime
-	}
-
-	if len(aiStatus.StorageStatusList) == 0 {
-		log.Printf("storage status detail is empty so ignoring")
-	} else {
-
-		ReportAppInfo.SoftwareList = make([]*zmet.ZInfoSW, len(aiStatus.StorageStatusList))
-		for idx, sc := range aiStatus.StorageStatusList {
-
-			ReportSoftwareInfo := new(zmet.ZInfoSW)
-			ReportSoftwareInfo.SwVersion = aiStatus.UUIDandVersion.Version
-			ReportSoftwareInfo.SwHash = sc.ImageSha256
-
-			ReportSoftwareInfo.State = zmet.ZSwState(sc.State)
-
-			ReportAppInfo.SoftwareList[idx] = ReportSoftwareInfo
+		if len(aiStatus.StorageStatusList) == 0 {
+			log.Printf("storage status detail is empty so ignoring")
+		} else {
+			ReportAppInfo.SoftwareList = make([]*zmet.ZInfoSW, len(aiStatus.StorageStatusList))
+			for idx, sc := range aiStatus.StorageStatusList {
+				ReportSoftwareInfo := new(zmet.ZInfoSW)
+				ReportSoftwareInfo.SwVersion = aiStatus.UUIDandVersion.Version
+				ReportSoftwareInfo.SwHash = sc.ImageSha256
+				ReportSoftwareInfo.State = zmet.ZSwState(sc.State)
+				ReportAppInfo.SoftwareList[idx] = ReportSoftwareInfo
+			}
 		}
 	}
 	ReportInfo.InfoContent = new(zmet.ZInfoMsg_Ainfo)
@@ -705,8 +698,7 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 		x.Ainfo = ReportAppInfo
 	}
 
-	fmt.Println(ReportInfo)
-	fmt.Println(" ")
+	fmt.Printf("PublishAppInfoToZedCloud sending %v\n", ReportInfo)
 
 	SendInfoProtobufStrThroughHttp(ReportInfo, iteration)
 }

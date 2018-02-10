@@ -375,8 +375,6 @@ func handleAppInstanceStatusModify(ctxArg interface{}, statusFilename string,
 
 func handleAppInstanceStatusDelete(ctxArg interface{}, statusFilename string) {
 	// XXX is statusFilename == key aka UUIDstr?
-	// XXX no status - need delete support
-	// status := statusArg.(*types.AppInstanceStatus)
 	uuidStr := statusFilename
 	PublishAppInfoToZedCloud(uuidStr, nil, publishIteration)
 	publishIteration += 1
