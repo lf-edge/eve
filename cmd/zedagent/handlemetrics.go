@@ -182,8 +182,8 @@ func handleDomainStatusDelete(ctxArg interface{}, statusFilename string) {
 		statusFilename)
 }
 
-func ReadAppInterfaceName(appName string) []string {
-	return appInterfaceAndNameList[appName]
+func ReadAppInterfaceName(domainName string) []string {
+	return appInterfaceAndNameList[domainName]
 }
 
 func LookupDomainStatus(domainName string) *types.DomainStatus {
@@ -335,10 +335,17 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 	ReportMetrics.Am = make([]*zmet.AppMetric, len(cpuStorageStat)-2)
 	for arr := 1; arr < len(cpuStorageStat); arr++ {
 		if strings.Contains(cpuStorageStat[arr][1], "Domain-0") {
+			// XXX switch to devCpuMetric; cpuTotal/upTime/bootTime
 			cpuTime, _ := strconv.ParseUint(cpuStorageStat[arr][3], 10, 0)
-			ReportDeviceMetric.Cpu.UpTime = *proto.Uint32(uint32(cpuTime))
-			cpuUsedInPercent, _ := strconv.ParseFloat(cpuStorageStat[arr][4], 10)
-			ReportDeviceMetric.Cpu.CpuUtilization = *proto.Float64(float64(cpuUsedInPercent))
+			// XXX fixme
+			ReportDeviceMetric.Compute.CpuTotal = *proto.Uint64(uint64(cpuTime))
+			// XXX fixme
+			ReportDeviceMetric.Compute.UpTime = *proto.Uint64(uint64(cpuTime))
+			// XXX fixme
+			BootTime := time.Now()
+			bootTime, _ := ptypes.TimestampProto(BootTime)
+			ReportDeviceMetric.Compute.BootTime = bootTime
+
 			// Memory related info for dom0
 			ram, err := mem.VirtualMemory()
 			if err != nil {
@@ -499,6 +506,12 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 
 		}
 	}
+	// XXX add zedcloudMetric; XXX need to record fail/success per intf
+	// XXX add file with zedcloudmetric fail(intf), pass(intf), get(intf)
+	// and init (or have get return empty if intf doesn't exist?)
+
+	// XXX add diskMetric; XXX need to determine devices. Hard in container
+
 	if debug {
 		log.Printf("PublishMetricsToZedCloud sending %s\n",
 			ReportMetrics)
@@ -557,6 +570,7 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus, ite
 	totalMemory, _ := strconv.ParseUint(dict["total_memory"], 10, 64)
 	ReportDeviceInfo.Memory = *proto.Uint64(uint64(totalMemory))
 
+	// XXX other disks/partitions?
 	d, err := disk.Usage("/")
 	if err != nil {
 		log.Println(err)
@@ -622,10 +636,18 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus, ite
 	for index, uplink := range deviceNetworkStatus.UplinkStatus {
 		for _, interfaceDetail := range interfaces {
 			if uplink.IfName == interfaceDetail.Name {
+				// XXX parse /var/lib/dhcp/dhclient.<ifName>.leases
+				// XXX need to determine current lease
+				// XXX not in container!! udhcpd?
 				ReportDeviceNetworkInfo := new(zmet.ZInfoNetwork)
 				ReportDeviceNetworkInfo.IPAddrs = make([]string, len(interfaceDetail.Addrs))
 				for index, ip := range interfaceDetail.Addrs {
-					// For compatibility we putt he first in the deprecated singleton
+					// For compatibility we put he first in the deprecated singleton
+					// XXX do we need net.InterfaceAddr?
+					fmt.Printf("Intf %s addr/N %v\n",
+						interfaceDetail.Name,
+						ip)
+					// XXX Note CIDR notation with /N
 					if index == 0 {
 						ReportDeviceNetworkInfo.IPAddr = *proto.String(ip.Addr)
 					}
@@ -635,9 +657,23 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus, ite
 				ReportDeviceNetworkInfo.MacAddr = *proto.String(interfaceDetail.HardwareAddr)
 				ReportDeviceNetworkInfo.DevName = *proto.String(interfaceDetail.Name)
 				ReportDeviceInfo.Network[index] = ReportDeviceNetworkInfo
+				// XXX fill in defaultRouters from dhcp
+				// XXX or from ip route:
+				// ip route show dev wlp59s0 exact 0.0.0.0/0
+				// XXX fill in ZInfoDNS dns
+				// XXX Can't read per-interface file
 			}
 		}
 	}
+	// Fill in global ZInfoDNS dns from /etc/resolv.conf
+	// Note that "domain" is returned in search.
+	// XXX DNSdomain not filled in
+	dc := dnsReadConfig("/etc/resolv.conf")
+	fmt.Printf("resolv.conf servers %v\n", dc.servers)
+	fmt.Printf("resolv.conf search %v\n", dc.search)
+	ReportDeviceInfo.Dns.DNSservers = dc.servers
+	ReportDeviceInfo.Dns.DNSsearch = dc.search
+
 	ReportInfo.InfoContent = new(zmet.ZInfoMsg_Dinfo)
 	if x, ok := ReportInfo.GetInfoContent().(*zmet.ZInfoMsg_Dinfo); ok {
 		x.Dinfo = ReportDeviceInfo
@@ -693,6 +729,14 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 				ReportSoftwareInfo.SwVersion = aiStatus.UUIDandVersion.Version
 				ReportSoftwareInfo.SwHash = sc.ImageSha256
 				ReportSoftwareInfo.State = zmet.ZSwState(sc.State)
+				ReportSoftwareInfo.Target = sc.Target
+				for _, disk := range ds.DiskStatusList {
+					if disk.ImageSha256 == sc.ImageSha256 {
+						ReportSoftwareInfo.Vdev = disk.Vdev
+						break
+					}
+				}
+				
 				ReportAppInfo.SoftwareList[idx] = ReportSoftwareInfo
 			}
 		}
