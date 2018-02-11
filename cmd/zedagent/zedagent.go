@@ -103,11 +103,15 @@ var deviceNetworkStatus types.DeviceNetworkStatus
 type dummyContext struct {
 }
 
+var debug = false
+
 func main() {
 	log.SetOutput(os.Stdout)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
 	versionPtr := flag.Bool("v", false, "Version")
+	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
+	debug = *debugPtr
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
@@ -388,8 +392,6 @@ func handleAppInstanceStatusModify(ctxArg interface{}, statusFilename string,
 
 func handleAppInstanceStatusDelete(ctxArg interface{}, statusFilename string) {
 	// XXX is statusFilename == key aka UUIDstr?
-	// XXX no status - need delete support
-	// status := statusArg.(*types.AppInstanceStatus)
 	uuidStr := statusFilename
 	PublishAppInfoToZedCloud(uuidStr, nil, publishIteration)
 	publishIteration += 1

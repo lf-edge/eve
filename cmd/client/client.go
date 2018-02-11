@@ -55,11 +55,13 @@ func main() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
 	versionPtr := flag.Bool("v", false, "Version")
 	oldPtr := flag.Bool("o", false, "Old use of prov01")
+	forcePtr := flag.Bool("f", false, "Force using onboarding cert")
 	dirPtr := flag.String("d", "/config",
 		"Directory with certs etc")
 	flag.Parse()
 	versionFlag := *versionPtr
 	oldFlag := *oldPtr
+	forceOnboardingCert := *forcePtr
 	identityDirname := *dirPtr
 	args := flag.Args()
 	if versionFlag {
@@ -69,6 +71,7 @@ func main() {
 	operations := map[string]bool{
 		"selfRegister": false,
 		"lookupParam":  false,
+		"ping":         false,
 	}
 	for _, op := range args {
 		if _, ok := operations[op]; ok {
@@ -118,7 +121,8 @@ func main() {
 	var deviceCertPem []byte
 	deviceCertSet := false
 
-	if operations["selfRegister"] {
+	if operations["selfRegister"] ||
+		(operations["ping"] && forceOnboardingCert) {
 		var err error
 		onboardCert, err = tls.LoadX509KeyPair(onboardCertName, onboardKeyName)
 		if err != nil {
@@ -130,7 +134,8 @@ func main() {
 			log.Fatal(err)
 		}
 	}
-	if operations["lookupParam"] {
+	if operations["lookupParam"] ||
+		(operations["ping"] && !forceOnboardingCert) {
 		// Load device cert
 		var err error
 		deviceCert, err = tls.LoadX509KeyPair(deviceCertName,
@@ -209,6 +214,8 @@ func main() {
 		connState := resp.TLS
 		if connState == nil {
 			fmt.Println("no TLS connection state")
+			// Inform ledmanager about broken cloud connectivity
+			types.UpdateLedManagerConfig(10)
 			return false
 		}
 
@@ -311,6 +318,8 @@ func main() {
 		connState := resp.TLS
 		if connState == nil {
 			fmt.Println("no TLS connection state")
+			// Inform ledmanager about broken cloud connectivity
+			types.UpdateLedManagerConfig(10)
 			return false
 		}
 
@@ -455,6 +464,8 @@ func main() {
 		connState := resp.TLS
 		if connState == nil {
 			log.Println("no TLS connection state")
+			// Inform ledmanager about broken cloud connectivity
+			types.UpdateLedManagerConfig(10)
 			return false
 		}
 		if connState.OCSPResponse == nil ||
@@ -520,36 +531,92 @@ func main() {
 		return true
 	}
 
-	if operations["selfRegister"] {
-		retryCount := 0
-		done := false
-		var delay time.Duration
-		for !done {
-			time.Sleep(delay)
-			if oldFlag {
-				done = oldSelfRegister(retryCount)
+	// Get something without a return type; used by ping
+	// Returns true when done; false when retry
+	myGet := func(tlsConfig *tls.Config, url string, retryCount int) bool {
+		var localAddr net.IP
+		if hasDeviceNetworkStatus {
+			localAddr, err = types.GetLocalAddrAny(deviceNetworkStatus,
+				retryCount, "")
+			if err != nil {
+				log.Fatal(err)
+			}
+		}
+		localTCPAddr := net.TCPAddr{IP: localAddr}
+		fmt.Printf("Connecting to %s/%s using source %v\n",
+			serverNameAndPort, url, localTCPAddr)
+		d := net.Dialer{LocalAddr: &localTCPAddr}
+		transport := &http.Transport{
+			TLSClientConfig: tlsConfig,
+			Dial:            d.Dial,
+		}
+		client := &http.Client{Transport: transport}
+
+		// Should we distinguish retry due to inappropriate source
+		// IP ("no suitable address found") and retry due to server
+		// side response errors such as 401? In both cases
+		// we don't want to retry immediately
+		resp, err := client.Get("https://" + serverNameAndPort + url)
+		if err != nil {
+			fmt.Println(err)
+			return false
+		}
+		defer resp.Body.Close()
+		connState := resp.TLS
+		if connState == nil {
+			fmt.Println("no TLS connection state")
+			// Inform ledmanager about broken cloud connectivity
+			types.UpdateLedManagerConfig(10)
+			return false
+		}
+
+		if connState.OCSPResponse == nil ||
+			!stapledCheck(connState) {
+			if connState.OCSPResponse == nil {
+				fmt.Println("no OCSP response")
 			} else {
-				done = selfRegister(retryCount)
+				fmt.Println("OCSP stapled check failed")
 			}
-			if done {
-				continue
-			}
-			retryCount += 1
-			delay = 2 * (delay + time.Second)
-			if delay > maxDelay {
-				delay = maxDelay
-			}
-			log.Printf("Retrying selfRegister in %d seconds\n",
-				delay/time.Second)
+			//XXX OSCP is not implemented in cloud side so
+			// commenting out it for now. Should be:
+			// Inform ledmanager about broken cloud connectivity
+			// types.UpdateLedManagerConfig(10)
+			// return false
+		}
+		contents, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			fmt.Println(err)
+			return false
+		}
+		switch resp.StatusCode {
+		case http.StatusOK:
+			fmt.Printf("%s StatusOK\n", url)
+			return true
+		case http.StatusCreated:
+			fmt.Printf("%s StatusCreated\n", url)
+			return false
+		default:
+			fmt.Printf("%s statuscode %d %s\n",
+				url, resp.StatusCode,
+				http.StatusText(resp.StatusCode))
+			fmt.Printf("%s\n", string(contents))
+			return false
 		}
 	}
 
-	if !deviceCertSet {
-		return
+	// Setup HTTPS client for deviceCert unless force
+	var cert tls.Certificate
+	if forceOnboardingCert {
+		fmt.Printf("Using onboarding cert\n")
+		cert = onboardCert
+	} else if deviceCertSet {
+		fmt.Printf("Using device cert\n")
+		cert = deviceCert
+	} else {
+		log.Fatalf("No device certificate for %v\n", operations)
 	}
-	// Setup HTTPS client for deviceCert
 	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{deviceCert},
+		Certificates: []tls.Certificate{cert},
 		ServerName:   serverName,
 		RootCAs:      caCertPool,
 		CipherSuites: []uint16{
@@ -578,27 +645,80 @@ func main() {
 	}
 
 	var devUUID uuid.UUID
-	if _, err := os.Stat(uuidFileName); err != nil {
-		// Create and write with initial values
-		// XXX ignoring any error
-		devUUID, _ = uuid.NewV4()
-		b := []byte(fmt.Sprintf("%s\n", devUUID))
-		err = ioutil.WriteFile(uuidFileName, b, 0644)
-		if err != nil {
-			log.Fatal("WriteFile", err, uuidFileName)
+
+	if operations["lookupParam"] || operations["selfRegister"] {
+		if _, err := os.Stat(uuidFileName); err != nil {
+			// Create and write with initial values
+			// XXX ignoring any error
+			devUUID, _ = uuid.NewV4()
+			b := []byte(fmt.Sprintf("%s\n", devUUID))
+			err = ioutil.WriteFile(uuidFileName, b, 0644)
+			if err != nil {
+				log.Fatal("WriteFile", err, uuidFileName)
+			}
+			fmt.Printf("Created UUID %s\n", devUUID)
+		} else {
+			b, err := ioutil.ReadFile(uuidFileName)
+			if err != nil {
+				log.Fatal("ReadFile", err, uuidFileName)
+			}
+			uuidStr := strings.TrimSpace(string(b))
+			devUUID, err = uuid.FromString(uuidStr)
+			if err != nil {
+				log.Fatal("uuid.FromString", err, string(b))
+			}
+			fmt.Printf("Read UUID %s\n", devUUID)
 		}
-		fmt.Printf("Created UUID %s\n", devUUID)
-	} else {
-		b, err := ioutil.ReadFile(uuidFileName)
-		if err != nil {
-			log.Fatal("ReadFile", err, uuidFileName)
+	}
+
+	if operations["ping"] {
+		if oldFlag {
+			log.Printf("XXX ping not supported using %s\n",
+				serverName)
+			return
 		}
-		uuidStr := strings.TrimSpace(string(b))
-		devUUID, err = uuid.FromString(uuidStr)
-		if err != nil {
-			log.Fatal("uuid.FromString", err, string(b))
+		url := "/api/v1/edgedevice/ping"
+		retryCount := 0
+		done := false
+		var delay time.Duration
+		for !done {
+			time.Sleep(delay)
+			done = myGet(tlsConfig, url, retryCount)
+			if done {
+				continue
+			}
+			retryCount += 1
+			delay = 2 * (delay + time.Second)
+			if delay > maxDelay {
+				delay = maxDelay
+			}
+			log.Printf("Retrying ping in %d seconds\n",
+				delay/time.Second)
 		}
-		fmt.Printf("Read UUID %s\n", devUUID)
+	}
+
+	if operations["selfRegister"] {
+		retryCount := 0
+		done := false
+		var delay time.Duration
+		for !done {
+			time.Sleep(delay)
+			if oldFlag {
+				done = oldSelfRegister(retryCount)
+			} else {
+				done = selfRegister(retryCount)
+			}
+			if done {
+				continue
+			}
+			retryCount += 1
+			delay = 2 * (delay + time.Second)
+			if delay > maxDelay {
+				delay = maxDelay
+			}
+			log.Printf("Retrying selfRegister in %d seconds\n",
+				delay/time.Second)
+		}
 	}
 
 	if operations["lookupParam"] {

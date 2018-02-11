@@ -132,6 +132,8 @@ type StorageConfig struct {
 	Devtype string // Default ""; could be e.g. "cdrom"
 	Target  string // Default "" is interpreted as "disk"
 
+	// XXX FinalObjDir shouldn't be setable from the cloud. Local to
+	// device.
 	FinalObjDir string // installation dir, may differ from verified
 }
 

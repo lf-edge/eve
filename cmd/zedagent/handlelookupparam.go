@@ -115,7 +115,7 @@ func handleLookUpParam(devConfig *zconfig.EdgeDevConfig) {
 	var devUUID uuid.UUID
 	if _, err := os.Stat(uuidFileName); err != nil {
 		// Create and write with initial values
-		// XXX ignoring any error
+		// Ignoring any error
 		devUUID, _ = uuid.NewV4()
 		b := []byte(fmt.Sprintf("%s\n", devUUID))
 		err = ioutil.WriteFile(uuidFileName, b, 0644)

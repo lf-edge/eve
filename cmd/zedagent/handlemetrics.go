@@ -33,13 +33,14 @@ func publishMetrics(iteration int) {
 	PublishMetricsToZedCloud(cpuStorageStat, iteration)
 }
 
+// XXX should the timers be randomized to avoid self-synchronization across
+// potentially lots of devices?
 func metricsTimerTask() {
 	iteration := 0
 	log.Println("starting report metrics timer task")
 	publishMetrics(iteration)
 	ticker := time.NewTicker(time.Second * 60)
-	for t := range ticker.C {
-		log.Println("Tick at", t)
+	for range ticker.C {
 		iteration += 1
 		publishMetrics(iteration)
 	}
@@ -117,6 +118,18 @@ func GetDeviceBios() (string, string, string) {
 	return string(vendor), string(version), string(releaseDate)
 }
 
+//Returns boolean depending upon the existence of domain
+func verifyDomainExists(domainId int) bool {
+	cmd := exec.Command("xl", "list", strconv.Itoa(domainId))
+	_, err := cmd.Output()
+	if err != nil {
+		log.Println(err.Error())
+		return false
+	} else {
+		return true
+	}
+}
+
 // Key is UUID
 var domainStatus map[string]types.DomainStatus
 
@@ -134,7 +147,6 @@ func handleDomainStatusModify(ctxArg interface{}, statusFilename string,
 			key)
 		return
 	}
-
 	if domainStatus == nil {
 		log.Printf("create Domain map\n")
 		domainStatus = make(map[string]types.DomainStatus)
@@ -177,6 +189,15 @@ func ReadAppInterfaceName(appName string) []string {
 func LookupDomainStatus(domainName string) *types.DomainStatus {
 	for _, ds := range domainStatus {
 		if strings.Compare(ds.DomainName, domainName) == 0 {
+			return &ds
+		}
+	}
+	return nil
+}
+
+func LookupDomainStatusUUID(uuid string) *types.DomainStatus {
+	for _, ds := range domainStatus {
+		if strings.Compare(ds.UUIDandVersion.UUID.String(), uuid) == 0 {
 			return &ds
 		}
 	}
@@ -389,7 +410,10 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 						countDeviceInterfaces++
 					}
 				}
-				log.Println("network metrics: ", ReportDeviceMetric.Network)
+				if debug {
+					log.Println("network metrics: ",
+						ReportDeviceMetric.Network)
+				}
 			}
 			ReportMetrics.MetricContent = new(zmet.ZMetricMsg_Dm)
 			if x, ok := ReportMetrics.GetMetricContent().(*zmet.ZMetricMsg_Dm); ok {
@@ -464,13 +488,19 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 					}
 				}
 				ReportMetrics.Am[countApp] = ReportAppMetric
-				log.Println("metrics per app is: ", ReportMetrics.Am[countApp])
+				if debug {
+					log.Println("metrics per app is: ",
+						ReportMetrics.Am[countApp])
+				}
 				countApp++
 			}
 
 		}
 	}
-	log.Printf("Metrics: %s\n", ReportMetrics)
+	if debug {
+		log.Printf("PublishMetricsToZedCloud sending %s\n",
+			ReportMetrics)
+	}
 	SendMetricsProtobufStrThroughHttp(ReportMetrics, iteration)
 }
 
@@ -616,15 +646,11 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus, ite
 }
 
 // XXX change caller filename to key which is uuid; not used for now
+// When aiStatus is nil it means a delete and we send a message
+// containing only the UUID to inform zedcloud about the delete.
 func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 	iteration int) {
-	log.Printf("PublishAppInfoToZedCloud uuid %s\n", uuid)
-	// XXX if it was deleted we publish nothing; do we need to delete from
-	// zedcloud?
-	if aiStatus == nil {
-		log.Printf("PublishAppInfoToZedCloud uuid %s deleted\n", uuid)
-		return
-	}
+	fmt.Printf("PublishAppInfoToZedCloud uuid %s\n", uuid)
 	var ReportInfo = &zmet.ZInfoMsg{}
 
 	appType := new(zmet.ZInfoTypes)
@@ -634,33 +660,37 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 
 	ReportAppInfo := new(zmet.ZInfoApp)
 
-	ReportAppInfo.AppID = aiStatus.UUIDandVersion.UUID.String()
+	ReportAppInfo.AppID = uuid
 	ReportAppInfo.SystemApp = false
-	ReportAppInfo.AppName = aiStatus.DisplayName
-	ReportAppInfo.Activated = aiStatus.Activated
-	ReportAppInfo.Error = aiStatus.Error
+	if aiStatus != nil {
+		ReportAppInfo.AppName = aiStatus.DisplayName
+		ds := LookupDomainStatusUUID(uuid)
+		if ds == nil {
+			log.Printf("Did not find DomainStaus for UUID %s\n",
+				uuid)
+		} else {
+			ReportAppInfo.Activated = aiStatus.Activated && verifyDomainExists(ds.DomainId)
+		}
 
-	if (aiStatus.ErrorTime).IsZero() {
-		log.Println("ErrorTime is empty")
-	} else {
-		errTime, _ := ptypes.TimestampProto(aiStatus.ErrorTime)
-		ReportAppInfo.ErrorTime = errTime
-	}
+		ReportAppInfo.Error = aiStatus.Error
+		if (aiStatus.ErrorTime).IsZero() {
+			log.Println("ErrorTime is empty...so do not fill it")
+		} else {
+			errTime, _ := ptypes.TimestampProto(aiStatus.ErrorTime)
+			ReportAppInfo.ErrorTime = errTime
+		}
 
-	if len(aiStatus.StorageStatusList) == 0 {
-		log.Printf("storage status detail is empty so ignoring")
-	} else {
-
-		ReportAppInfo.SoftwareList = make([]*zmet.ZInfoSW, len(aiStatus.StorageStatusList))
-		for idx, sc := range aiStatus.StorageStatusList {
-
-			ReportSoftwareInfo := new(zmet.ZInfoSW)
-			ReportSoftwareInfo.SwVersion = aiStatus.UUIDandVersion.Version
-			ReportSoftwareInfo.SwHash = sc.ImageSha256
-
-			ReportSoftwareInfo.State = zmet.ZSwState(sc.State)
-
-			ReportAppInfo.SoftwareList[idx] = ReportSoftwareInfo
+		if len(aiStatus.StorageStatusList) == 0 {
+			log.Printf("storage status detail is empty so ignoring")
+		} else {
+			ReportAppInfo.SoftwareList = make([]*zmet.ZInfoSW, len(aiStatus.StorageStatusList))
+			for idx, sc := range aiStatus.StorageStatusList {
+				ReportSoftwareInfo := new(zmet.ZInfoSW)
+				ReportSoftwareInfo.SwVersion = aiStatus.UUIDandVersion.Version
+				ReportSoftwareInfo.SwHash = sc.ImageSha256
+				ReportSoftwareInfo.State = zmet.ZSwState(sc.State)
+				ReportAppInfo.SoftwareList[idx] = ReportSoftwareInfo
+			}
 		}
 	}
 	ReportInfo.InfoContent = new(zmet.ZInfoMsg_Ainfo)
@@ -668,8 +698,7 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 		x.Ainfo = ReportAppInfo
 	}
 
-	fmt.Println(ReportInfo)
-	fmt.Println(" ")
+	fmt.Printf("PublishAppInfoToZedCloud sending %v\n", ReportInfo)
 
 	SendInfoProtobufStrThroughHttp(ReportInfo, iteration)
 }
@@ -688,9 +717,10 @@ func SendInfoProtobufStrThroughHttp(ReportInfo *zmet.ZInfoMsg, iteration int) {
 	for i, uplink := range deviceNetworkStatus.UplinkStatus {
 		intf := uplink.IfName
 		addrCount := types.CountLocalAddrAny(deviceNetworkStatus, intf)
-		// XXX makes logfile too long; debug flag?
-		log.Printf("Connecting to %s using intf %s i %d #sources %d\n",
-			statusUrl, intf, i, addrCount)
+		if debug {
+			log.Printf("Connecting to %s using intf %s i %d #sources %d\n",
+				statusUrl, intf, i, addrCount)
+		}
 
 		for retryCount := 0; retryCount < addrCount; retryCount += 1 {
 			localAddr, err := types.GetLocalAddrAny(deviceNetworkStatus,
@@ -699,9 +729,10 @@ func SendInfoProtobufStrThroughHttp(ReportInfo *zmet.ZInfoMsg, iteration int) {
 				log.Fatal(err)
 			}
 			localTCPAddr := net.TCPAddr{IP: localAddr}
-			// XXX makes logfile too long; debug flag?
-			log.Printf("Connecting to %s using intf %s source %v\n",
-				statusUrl, intf, localTCPAddr)
+			if debug {
+				fmt.Printf("Connecting to %s using intf %s source %v\n",
+					statusUrl, intf, localTCPAddr)
+			}
 			d := net.Dialer{LocalAddr: &localTCPAddr}
 			transport := &http.Transport{
 				TLSClientConfig: tlsConfig,
@@ -717,18 +748,41 @@ func SendInfoProtobufStrThroughHttp(ReportInfo *zmet.ZInfoMsg, iteration int) {
 				continue
 			}
 			defer resp.Body.Close()
+			connState := resp.TLS
+			if connState == nil {
+				log.Println("no TLS connection state")
+				continue
+			}
+
+			if connState.OCSPResponse == nil ||
+				!stapledCheck(connState) {
+				if connState.OCSPResponse == nil {
+					log.Printf("no OCSP response for %s\n",
+						configUrl)
+				} else {
+					log.Printf("OCSP stapled check failed for %s\n",
+						configUrl)
+				}
+				//XXX OSCP is not implemented in cloud side so
+				// commenting out it for now. Should be:
+				// continue
+			}
+
 			switch resp.StatusCode {
 			case http.StatusOK:
-				// XXX makes logfile too long; debug flag?
-				log.Printf("SendInfoProtobufStrThroughHttp to %s using intf %s source %v StatusOK\n",
-					statusUrl, intf, localTCPAddr)
-				log.Printf(" StatusOK\n")
+				if debug {
+					fmt.Printf("SendInfoProtobufStrThroughHttp to %s using intf %s source %v StatusOK\n",
+						statusUrl, intf, localTCPAddr)
+				}
 				return
 			default:
 				log.Printf("SendInfoProtobufStrThroughHttp to %s using intf %s source %v statuscode %d %s\n",
 					statusUrl, intf, localTCPAddr,
 					resp.StatusCode, http.StatusText(resp.StatusCode))
-				log.Printf("received response %v\n", resp)
+				if debug {
+					fmt.Printf("received response %v\n",
+						resp)
+				}
 			}
 		}
 		log.Printf("All attempts to connect to %s using intf %s failed\n",
@@ -752,10 +806,10 @@ func SendMetricsProtobufStrThroughHttp(ReportMetrics *zmet.ZMetricMsg,
 		return
 	}
 	addrCount := types.CountLocalAddrAny(deviceNetworkStatus, intf)
-	// XXX makes logfile too long; debug flag?
-	log.Printf("Connecting to %s using intf %s interation %d #sources %d\n",
-		metricsUrl, intf, iteration, addrCount)
-
+	if debug {
+		log.Printf("Connecting to %s using intf %s interation %d #sources %d\n",
+			metricsUrl, intf, iteration, addrCount)
+	}
 	for retryCount := 0; retryCount < addrCount; retryCount += 1 {
 		localAddr, err := types.GetLocalAddrAny(deviceNetworkStatus,
 			retryCount, intf)
@@ -763,10 +817,10 @@ func SendMetricsProtobufStrThroughHttp(ReportMetrics *zmet.ZMetricMsg,
 			log.Fatal(err)
 		}
 		localTCPAddr := net.TCPAddr{IP: localAddr}
-		// XXX makes logfile too long; debug flag?
-		log.Printf("Connecting to %s using intf %s source %v\n",
-			metricsUrl, intf, localTCPAddr)
-
+		if debug {
+			fmt.Printf("Connecting to %s using intf %s source %v\n",
+				metricsUrl, intf, localTCPAddr)
+		}
 		d := net.Dialer{LocalAddr: &localTCPAddr}
 		transport := &http.Transport{
 			TLSClientConfig: tlsConfig,
@@ -781,17 +835,40 @@ func SendMetricsProtobufStrThroughHttp(ReportMetrics *zmet.ZMetricMsg,
 			continue
 		}
 		defer resp.Body.Close()
+		connState := resp.TLS
+		if connState == nil {
+			log.Println("no TLS connection state")
+			continue
+		}
+
+		if connState.OCSPResponse == nil ||
+			!stapledCheck(connState) {
+			if connState.OCSPResponse == nil {
+				log.Printf("no OCSP response for %s\n",
+					metricsUrl)
+			} else {
+				log.Printf("OCSP stapled check failed for %s\n",
+					metricsUrl)
+			}
+			//XXX OSCP is not implemented in cloud side so
+			// commenting out it for now. Should be:
+			// continue
+		}
 		switch resp.StatusCode {
 		case http.StatusOK:
-			// XXX makes logfile too long; debug flag?
-			log.Printf("SendMetricsProtobufStrThroughHttp to %s using intf %s source %v StatusOK\n",
-				metricsUrl, intf, localTCPAddr)
+			if debug {
+				fmt.Printf("SendMetricsProtobufStrThroughHttp to %s using intf %s source %v StatusOK\n",
+					metricsUrl, intf, localTCPAddr)
+			}
 			return
 		default:
 			log.Printf("SendMetricsProtobufStrThroughHttp to %s using intf %s source %v  statuscode %d %s\n",
 				metricsUrl, intf, localTCPAddr,
-				resp.StatusCode, http.StatusText(resp.StatusCode))
-			log.Printf("received response %v\n", resp)
+				resp.StatusCode,
+				http.StatusText(resp.StatusCode))
+			if debug {
+				fmt.Printf("received response %v\n", resp)
+			}
 		}
 	}
 	log.Printf("All attempts to connect to %s using intf %s failed\n",

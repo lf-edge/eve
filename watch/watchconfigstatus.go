@@ -48,7 +48,8 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 			select {
 			case event := <-w.Events:
 				baseName := path.Base(event.Name)
-				log.Println("watchConfigStatus event:", event)
+				// log.Println("watchConfigStatus event:", event)
+
 				// We get create events when file is moved into
 				// the watched directory.
 				if event.Op&
@@ -119,7 +120,8 @@ func WatchStatus(statusDir string, fileChanges chan<- string) {
 			select {
 			case event := <-w.Events:
 				baseName := path.Base(event.Name)
-				log.Println("WatchStatus event:", event)
+				// log.Println("WatchStatus event:", event)
+
 				// We get create events when file is moved into
 				// the watched directory.
 				if event.Op&
