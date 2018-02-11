@@ -290,7 +290,6 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 	ReportZmetric := new(zmet.ZmetricTypes)
 	*ReportZmetric = zmet.ZmetricTypes_ZmDevice
 
-	ReportMetrics.Ztype = *ReportZmetric
 	ReportMetrics.AtTimeStamp = ptypes.TimestampNow()
 
 	// Handle xentop failing above
@@ -300,6 +299,17 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 		return
 	}
 
+	cpus, err := cpu.Info()
+	ncpus := 1
+	if err != nil {
+		fmt.Printf("cpu: %s\n", err)
+	} else {
+		fmt.Printf("got %d cpus\n", len(cpus))
+		ncpus = len(cpus)
+	}
+	// XXX
+	fmt.Printf("found ncpus %d\n", ncpus)
+
 	countApp := 0
 	ReportMetrics.Am = make([]*zmet.AppMetric, len(cpuStorageStat)-2)
 	for arr := 1; arr < len(cpuStorageStat); arr++ {
@@ -308,22 +318,6 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 			ReportDeviceMetric.Cpu.UpTime = *proto.Uint32(uint32(cpuTime))
 			cpuUsedInPercent, _ := strconv.ParseFloat(cpuStorageStat[arr][4], 10)
 			ReportDeviceMetric.Cpu.CpuUtilization = *proto.Float64(float64(cpuUsedInPercent))
-			cpuDetail, err := cpu.Times(true)
-			if err != nil {
-				log.Println("error while fetching cpu related time: ", err)
-			} else {
-				for _, cpuStat := range cpuDetail {
-					ReportDeviceMetric.Cpu.Usr = cpuStat.User
-					ReportDeviceMetric.Cpu.Nice = cpuStat.Nice
-					ReportDeviceMetric.Cpu.System = cpuStat.System
-					ReportDeviceMetric.Cpu.Io = cpuStat.Irq
-					ReportDeviceMetric.Cpu.Irq = cpuStat.Irq
-					ReportDeviceMetric.Cpu.Soft = cpuStat.Softirq
-					ReportDeviceMetric.Cpu.Steal = cpuStat.Steal
-					ReportDeviceMetric.Cpu.Guest = cpuStat.Guest
-					ReportDeviceMetric.Cpu.Idle = cpuStat.Idle
-				}
-			}
 			// Memory related info for dom0
 			ram, err := mem.VirtualMemory()
 			if err != nil {
@@ -407,6 +401,8 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 				if ds == nil {
 					log.Printf("Did not find status for domainName %s\n",
 						domainName)
+					// XXX note that it is included in the
+					// stats without a name and uuid
 				} else {
 					ReportAppMetric.AppName = ds.DisplayName
 					ReportAppMetric.AppID = ds.UUIDandVersion.UUID.String()
@@ -414,7 +410,13 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 
 				appCpuTotal, _ := strconv.ParseUint(cpuStorageStat[arr][3], 10, 0)
 				ReportAppMetric.Cpu.CpuTotal = *proto.Uint32(uint32(appCpuTotal))
-				// XXX add ReportAppMetric.Cpu.UpTime - does zedmanager need to track boot time?
+				if (ds.BootTime).IsZero() {
+					// If never booted
+					log.Println("BootTime is empty")
+				} else {
+					bootTime, _ := ptypes.TimestampProto(ds.BootTime)
+					ReportAppMetric.Cpu.BootTime = bootTime
+				}
 				appCpuUsedInPercent, _ := strconv.ParseFloat(cpuStorageStat[arr][4], 10)
 				ReportAppMetric.Cpu.CpuPercentage = *proto.Float64(float64(appCpuUsedInPercent))
 
@@ -474,6 +476,8 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 	SendMetricsProtobufStrThroughHttp(ReportMetrics, iteration)
 }
 
+const mbyte = 1024 * 1024
+
 func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus, iteration int) {
 
 	var ReportInfo = &zmet.ZInfoMsg{}
@@ -527,7 +531,7 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus, ite
 	if err != nil {
 		log.Println(err)
 	} else {
-		ReportDeviceInfo.Storage = *proto.Uint64(uint64(d.Total))
+		ReportDeviceInfo.Storage = *proto.Uint64(uint64(d.Total/mbyte))
 	}
 
 	ReportDeviceManufacturerInfo := new(zmet.ZInfoManufacturer)
