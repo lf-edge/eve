@@ -21,7 +21,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='zmet.proto',
   package='',
   syntax='proto3',
-  serialized_pb=_b('\n\nzmet.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xc9\x01\n\x11ZInfoManufacturer\x12\x14\n\x0cmanufacturer\x18\x01 \x01(\t\x12\x13\n\x0bproductName\x18\x02 \x01(\t\x12\x0f\n\x07version\x18\x03 \x01(\t\x12\x14\n\x0cserialNumber\x18\x04 \x01(\t\x12\x0c\n\x04UUID\x18\x05 \x01(\t\x12\x12\n\ncompatible\x18\x06 \x01(\t\x12\x12\n\nbiosVendor\x18\x07 \x01(\t\x12\x13\n\x0b\x62iosVersion\x18\x08 \x01(\t\x12\x17\n\x0f\x62iosReleaseDate\x18\t \x01(\t\"a\n\x0cZInfoNetwork\x12\x0e\n\x06IPAddr\x18\x01 \x01(\t\x12\x0e\n\x06gwAddr\x18\x02 \x01(\t\x12\x0f\n\x07macAddr\x18\x03 \x01(\t\x12\x0f\n\x07\x64\x65vName\x18\x04 \x01(\t\x12\x0f\n\x07IPAddrs\x18\x05 \x03(\t\"i\n\x0fZinfoPeripheral\x12 \n\x05ztype\x18\x01 \x01(\x0e\x32\x11.ZPeripheralTypes\x12\x11\n\tpluggable\x18\x02 \x01(\x08\x12!\n\x05minfo\x18\x03 \x01(\x0b\x32\x12.ZInfoManufacturer\"Y\n\x07ZInfoSW\x12\x11\n\tswVersion\x18\x02 \x01(\t\x12\x0e\n\x06swHash\x18\x03 \x01(\t\x12\x18\n\x05state\x18\x04 \x01(\x0e\x32\t.ZSwState\x12\x11\n\tactivated\x18\x05 \x01(\x08\"\xbe\x02\n\x0bZInfoDevice\x12\x13\n\x0bmachineArch\x18\x04 \x01(\t\x12\x0f\n\x07\x63puArch\x18\x05 \x01(\t\x12\x10\n\x08platform\x18\x06 \x01(\t\x12\x0c\n\x04ncpu\x18\x07 \x01(\r\x12\x0e\n\x06memory\x18\x08 \x01(\x04\x12\x0f\n\x07storage\x18\t \x01(\x04\x12!\n\x07\x64\x65vices\x18\n \x03(\x0b\x32\x10.ZinfoPeripheral\x12!\n\x05minfo\x18\x0b \x01(\x0b\x32\x12.ZInfoManufacturer\x12\x1a\n\x08software\x18\x0c \x01(\x0b\x32\x08.ZInfoSW\x12\x1e\n\x07network\x18\r \x03(\x0b\x32\r.ZInfoNetwork\x12\x1e\n\x0csoftwareList\x18\x0e \x03(\x0b\x32\x08.ZInfoSW\x12&\n\x12\x61ssignableAdapters\x18\x0f \x03(\x0b\x32\n.ZioBundle\"\\\n\x0fZInfoHypervisor\x12\x0c\n\x04ncpu\x18\x03 \x01(\r\x12\x0e\n\x06memory\x18\x04 \x01(\x04\x12\x0f\n\x07storage\x18\x05 \x01(\x04\x12\x1a\n\x08software\x18\x06 \x01(\x0b\x32\x08.ZInfoSW\"\xf9\x01\n\x08ZInfoApp\x12\r\n\x05\x41ppID\x18\x01 \x01(\t\x12\x0c\n\x04ncpu\x18\x02 \x01(\r\x12\x0e\n\x06memory\x18\x03 \x01(\r\x12\x0f\n\x07storage\x18\x04 \x01(\r\x12\x1a\n\x08software\x18\x05 \x01(\x0b\x32\x08.ZInfoSW\x12\x11\n\tsystemApp\x18\x06 \x01(\x08\x12\x0f\n\x07\x41ppName\x18\x07 \x01(\t\x12\x1e\n\x0csoftwareList\x18\x08 \x03(\x0b\x32\x08.ZInfoSW\x12\x11\n\tactivated\x18\t \x01(\x08\x12\r\n\x05\x65rror\x18\n \x01(\t\x12-\n\terrorTime\x18\x0b \x01(\x0b\x32\x1a.google.protobuf.Timestamp\"\xd3\x01\n\x08ZInfoMsg\x12\x1a\n\x05ztype\x18\x01 \x01(\x0e\x32\x0b.ZInfoTypes\x12\r\n\x05\x64\x65vId\x18\x02 \x01(\t\x12\x1d\n\x05\x64info\x18\x03 \x01(\x0b\x32\x0c.ZInfoDeviceH\x00\x12!\n\x05hinfo\x18\x04 \x01(\x0b\x32\x10.ZInfoHypervisorH\x00\x12\x1a\n\x05\x61info\x18\x05 \x01(\x0b\x32\t.ZInfoAppH\x00\x12/\n\x0b\x61tTimeStamp\x18\x06 \x01(\x0b\x32\x1a.google.protobuf.TimestampB\r\n\x0bInfoContent\"V\n\tZioBundle\x12\x16\n\x04type\x18\x01 \x01(\x0e\x32\x08.ZioType\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0f\n\x07members\x18\x03 \x03(\t\x12\x12\n\nusedByUUID\x18\x04 \x01(\t\"\xb1\x01\n\tcpuMetric\x12\x0e\n\x06upTime\x18\x02 \x01(\r\x12\x16\n\x0e\x63puUtilization\x18\x03 \x01(\x01\x12\x0b\n\x03usr\x18\x04 \x01(\x01\x12\x0c\n\x04nice\x18\x05 \x01(\x01\x12\x0e\n\x06system\x18\x06 \x01(\x01\x12\n\n\x02io\x18\x07 \x01(\x01\x12\x0b\n\x03irq\x18\x08 \x01(\x01\x12\x0c\n\x04soft\x18\t \x01(\x01\x12\r\n\x05steal\x18\n \x01(\x01\x12\r\n\x05guest\x18\x0b \x01(\x01\x12\x0c\n\x04idle\x18\x0c \x01(\x01\"b\n\x0cmemoryMetric\x12\x0f\n\x07usedMem\x18\x02 \x01(\r\x12\x10\n\x08\x61vailMem\x18\x03 \x01(\r\x12\x16\n\x0eusedPercentage\x18\x04 \x01(\x01\x12\x17\n\x0f\x61vailPercentage\x18\x05 \x01(\x01\"\xc6\x01\n\rnetworkMetric\x12\r\n\x05iName\x18\x01 \x01(\t\x12\x0f\n\x07txBytes\x18\x02 \x01(\x04\x12\x0f\n\x07rxBytes\x18\x03 \x01(\x04\x12\x0f\n\x07txDrops\x18\x04 \x01(\x04\x12\x0f\n\x07rxDrops\x18\x05 \x01(\x04\x12\x0e\n\x06txRate\x18\x06 \x01(\x04\x12\x0e\n\x06rxRate\x18\x07 \x01(\x04\x12\x0e\n\x06txPkts\x18\x08 \x01(\x04\x12\x0e\n\x06rxPkts\x18\t \x01(\x04\x12\x10\n\x08txErrors\x18\n \x01(\x04\x12\x10\n\x08rxErrors\x18\x0b \x01(\x04\"c\n\x0c\x61ppCpuMetric\x12\x10\n\x08\x63puTotal\x18\x02 \x01(\r\x12\x15\n\rcpuPercentage\x18\x03 \x01(\x01\x12*\n\x06upTime\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\"g\n\x0c\x64\x65viceMetric\x12\x17\n\x03\x63pu\x18\x01 \x01(\x0b\x32\n.cpuMetric\x12\x1d\n\x06memory\x18\x02 \x01(\x0b\x32\r.memoryMetric\x12\x1f\n\x07network\x18\x03 \x03(\x0b\x32\x0e.networkMetric\"\x87\x01\n\tappMetric\x12\r\n\x05\x41ppID\x18\x01 \x01(\t\x12\x0f\n\x07\x41ppName\x18\x02 \x01(\t\x12\x1a\n\x03\x63pu\x18\x03 \x01(\x0b\x32\r.appCpuMetric\x12\x1d\n\x06memory\x18\x04 \x01(\x0b\x32\r.memoryMetric\x12\x1f\n\x07network\x18\x05 \x03(\x0b\x32\x0e.networkMetric\"\xb0\x01\n\nZMetricMsg\x12\r\n\x05\x64\x65vID\x18\x01 \x01(\t\x12\x1c\n\x05ztype\x18\x02 \x01(\x0e\x32\r.ZmetricTypes\x12/\n\x0b\x61tTimeStamp\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x1b\n\x02\x64m\x18\x04 \x01(\x0b\x32\r.deviceMetricH\x00\x12\x16\n\x02\x61m\x18\x05 \x03(\x0b\x32\n.appMetricB\x0f\n\rMetricContent*B\n\nZInfoTypes\x12\t\n\x05ZiNop\x10\x00\x12\x0c\n\x08ZiDevice\x10\x01\x12\x10\n\x0cZiHypervisor\x10\x02\x12\t\n\x05ZiApp\x10\x03*<\n\x10ZPeripheralTypes\x12\n\n\x06ZpNone\x10\x00\x12\r\n\tZpStorage\x10\x01\x12\r\n\tZpNetwork\x10\x02*h\n\x08ZSwState\x12\x0b\n\x07INVALID\x10\x00\x12\x0b\n\x07INITIAL\x10\x01\x12\x14\n\x10\x44OWNLOAD_STARTED\x10\x02\x12\x0e\n\nDOWNLOADED\x10\x03\x12\r\n\tDELIVERED\x10\x04\x12\r\n\tINSTALLED\x10\x05*H\n\x07ZioType\x12\n\n\x06ZioNop\x10\x00\x12\n\n\x06ZioEth\x10\x01\x12\n\n\x06ZioUSB\x10\x02\x12\n\n\x06ZioCOM\x10\x03\x12\r\n\x08ZioOther\x10\xff\x01*2\n\x0cZmetricTypes\x12\t\n\x05ZmNop\x10\x00\x12\x0c\n\x08ZmDevice\x10\x01\x12\t\n\x05ZmApp\x10\x03\x42=\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1agithub.com/zededa/api/zmetb\x06proto3')
+  serialized_pb=_b('\n\nzmet.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xc9\x01\n\x11ZInfoManufacturer\x12\x14\n\x0cmanufacturer\x18\x01 \x01(\t\x12\x13\n\x0bproductName\x18\x02 \x01(\t\x12\x0f\n\x07version\x18\x03 \x01(\t\x12\x14\n\x0cserialNumber\x18\x04 \x01(\t\x12\x0c\n\x04UUID\x18\x05 \x01(\t\x12\x12\n\ncompatible\x18\x06 \x01(\t\x12\x12\n\nbiosVendor\x18\x07 \x01(\t\x12\x13\n\x0b\x62iosVersion\x18\x08 \x01(\t\x12\x17\n\x0f\x62iosReleaseDate\x18\t \x01(\t\"\x91\x01\n\x0cZInfoNetwork\x12\x0e\n\x06IPAddr\x18\x01 \x01(\t\x12\x0e\n\x06gwAddr\x18\x02 \x01(\t\x12\x0f\n\x07macAddr\x18\x03 \x01(\t\x12\x0f\n\x07\x64\x65vName\x18\x04 \x01(\t\x12\x0f\n\x07IPAddrs\x18\x05 \x03(\t\x12\x16\n\x0e\x64\x65\x66\x61ultRouters\x18\x06 \x03(\t\x12\x16\n\x03\x64ns\x18\x07 \x01(\x0b\x32\t.ZInfoDNS\"D\n\x08ZInfoDNS\x12\x12\n\nDNSservers\x18\x01 \x03(\t\x12\x11\n\tDNSdomain\x18\x02 \x01(\t\x12\x11\n\tDNSsearch\x18\x03 \x03(\t\"i\n\x0fZinfoPeripheral\x12 \n\x05ztype\x18\x01 \x01(\x0e\x32\x11.ZPeripheralTypes\x12\x11\n\tpluggable\x18\x02 \x01(\x08\x12!\n\x05minfo\x18\x03 \x01(\x0b\x32\x12.ZInfoManufacturer\"w\n\x07ZInfoSW\x12\x11\n\tswVersion\x18\x02 \x01(\t\x12\x0e\n\x06swHash\x18\x03 \x01(\t\x12\x18\n\x05state\x18\x04 \x01(\x0e\x32\t.ZSwState\x12\x11\n\tactivated\x18\x05 \x01(\x08\x12\x0e\n\x06target\x18\x06 \x01(\t\x12\x0c\n\x04vdev\x18\x07 \x01(\t\"\xd6\x02\n\x0bZInfoDevice\x12\x13\n\x0bmachineArch\x18\x04 \x01(\t\x12\x0f\n\x07\x63puArch\x18\x05 \x01(\t\x12\x10\n\x08platform\x18\x06 \x01(\t\x12\x0c\n\x04ncpu\x18\x07 \x01(\r\x12\x0e\n\x06memory\x18\x08 \x01(\x04\x12\x0f\n\x07storage\x18\t \x01(\x04\x12!\n\x07\x64\x65vices\x18\n \x03(\x0b\x32\x10.ZinfoPeripheral\x12!\n\x05minfo\x18\x0b \x01(\x0b\x32\x12.ZInfoManufacturer\x12\x1a\n\x08software\x18\x0c \x01(\x0b\x32\x08.ZInfoSW\x12\x1e\n\x07network\x18\r \x03(\x0b\x32\r.ZInfoNetwork\x12\x1e\n\x0csoftwareList\x18\x0e \x03(\x0b\x32\x08.ZInfoSW\x12&\n\x12\x61ssignableAdapters\x18\x0f \x03(\x0b\x32\n.ZioBundle\x12\x16\n\x03\x64ns\x18\x10 \x01(\x0b\x32\t.ZInfoDNS\"\\\n\x0fZInfoHypervisor\x12\x0c\n\x04ncpu\x18\x03 \x01(\r\x12\x0e\n\x06memory\x18\x04 \x01(\x04\x12\x0f\n\x07storage\x18\x05 \x01(\x04\x12\x1a\n\x08software\x18\x06 \x01(\x0b\x32\x08.ZInfoSW\"\xf9\x01\n\x08ZInfoApp\x12\r\n\x05\x41ppID\x18\x01 \x01(\t\x12\x0c\n\x04ncpu\x18\x02 \x01(\r\x12\x0e\n\x06memory\x18\x03 \x01(\r\x12\x0f\n\x07storage\x18\x04 \x01(\r\x12\x1a\n\x08software\x18\x05 \x01(\x0b\x32\x08.ZInfoSW\x12\x11\n\tsystemApp\x18\x06 \x01(\x08\x12\x0f\n\x07\x41ppName\x18\x07 \x01(\t\x12\x1e\n\x0csoftwareList\x18\x08 \x03(\x0b\x32\x08.ZInfoSW\x12\x11\n\tactivated\x18\t \x01(\x08\x12\r\n\x05\x65rror\x18\n \x01(\t\x12-\n\terrorTime\x18\x0b \x01(\x0b\x32\x1a.google.protobuf.Timestamp\"\xd3\x01\n\x08ZInfoMsg\x12\x1a\n\x05ztype\x18\x01 \x01(\x0e\x32\x0b.ZInfoTypes\x12\r\n\x05\x64\x65vId\x18\x02 \x01(\t\x12\x1d\n\x05\x64info\x18\x03 \x01(\x0b\x32\x0c.ZInfoDeviceH\x00\x12!\n\x05hinfo\x18\x04 \x01(\x0b\x32\x10.ZInfoHypervisorH\x00\x12\x1a\n\x05\x61info\x18\x05 \x01(\x0b\x32\t.ZInfoAppH\x00\x12/\n\x0b\x61tTimeStamp\x18\x06 \x01(\x0b\x32\x1a.google.protobuf.TimestampB\r\n\x0bInfoContent\"V\n\tZioBundle\x12\x16\n\x04type\x18\x01 \x01(\x0e\x32\x08.ZioType\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0f\n\x07members\x18\x03 \x03(\t\x12\x12\n\nusedByUUID\x18\x04 \x01(\t\"\xb1\x01\n\tcpuMetric\x12\x0e\n\x06upTime\x18\x02 \x01(\r\x12\x16\n\x0e\x63puUtilization\x18\x03 \x01(\x01\x12\x0b\n\x03usr\x18\x04 \x01(\x01\x12\x0c\n\x04nice\x18\x05 \x01(\x01\x12\x0e\n\x06system\x18\x06 \x01(\x01\x12\n\n\x02io\x18\x07 \x01(\x01\x12\x0b\n\x03irq\x18\x08 \x01(\x01\x12\x0c\n\x04soft\x18\t \x01(\x01\x12\r\n\x05steal\x18\n \x01(\x01\x12\r\n\x05guest\x18\x0b \x01(\x01\x12\x0c\n\x04idle\x18\x0c \x01(\x01\"b\n\x0cmemoryMetric\x12\x0f\n\x07usedMem\x18\x02 \x01(\r\x12\x10\n\x08\x61vailMem\x18\x03 \x01(\r\x12\x16\n\x0eusedPercentage\x18\x04 \x01(\x01\x12\x17\n\x0f\x61vailPercentage\x18\x05 \x01(\x01\"\xc6\x01\n\rnetworkMetric\x12\r\n\x05iName\x18\x01 \x01(\t\x12\x0f\n\x07txBytes\x18\x02 \x01(\x04\x12\x0f\n\x07rxBytes\x18\x03 \x01(\x04\x12\x0f\n\x07txDrops\x18\x04 \x01(\x04\x12\x0f\n\x07rxDrops\x18\x05 \x01(\x04\x12\x0e\n\x06txRate\x18\x06 \x01(\x04\x12\x0e\n\x06rxRate\x18\x07 \x01(\x04\x12\x0e\n\x06txPkts\x18\x08 \x01(\x04\x12\x0e\n\x06rxPkts\x18\t \x01(\x04\x12\x10\n\x08txErrors\x18\n \x01(\x04\x12\x10\n\x08rxErrors\x18\x0b \x01(\x04\"\xa5\x01\n\x0ezedcloudMetric\x12\x0e\n\x06ifName\x18\x01 \x01(\t\x12\x10\n\x08\x66\x61ilures\x18\x02 \x01(\x04\x12\x0f\n\x07success\x18\x03 \x01(\x04\x12/\n\x0blastFailure\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12/\n\x0blastSuccess\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\"\x91\x01\n\x0c\x61ppCpuMetric\x12\x10\n\x08\x63puTotal\x18\x02 \x01(\r\x12\x15\n\rcpuPercentage\x18\x03 \x01(\x01\x12*\n\x06upTime\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12,\n\x08\x62ootTime\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\"^\n\x0c\x64\x65vCpuMetric\x12\x10\n\x08\x63puTotal\x18\x01 \x01(\x04\x12\x0e\n\x06upTime\x18\x02 \x01(\x04\x12,\n\x08\x62ootTime\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\"\xc5\x01\n\x0c\x64\x65viceMetric\x12\x17\n\x03\x63pu\x18\x01 \x01(\x0b\x32\n.cpuMetric\x12\x1d\n\x06memory\x18\x02 \x01(\x0b\x32\r.memoryMetric\x12\x1f\n\x07network\x18\x03 \x03(\x0b\x32\x0e.networkMetric\x12!\n\x08zedcloud\x18\x04 \x03(\x0b\x32\x0f.zedcloudMetric\x12\x1e\n\x07\x63ompute\x18\x05 \x01(\x0b\x32\r.devCpuMetric\x12\x19\n\x04\x64isk\x18\x06 \x03(\x0b\x32\x0b.diskMetric\"{\n\ndiskMetric\x12\x0c\n\x04\x64isk\x18\x01 \x01(\t\x12\x11\n\tmountPath\x18\x02 \x01(\t\x12\x11\n\treadBytes\x18\x03 \x01(\x04\x12\x12\n\nwriteBytes\x18\x04 \x01(\x04\x12\x11\n\treadCount\x18\x05 \x01(\x04\x12\x12\n\nwriteCount\x18\x06 \x01(\x04\"\x87\x01\n\tappMetric\x12\r\n\x05\x41ppID\x18\x01 \x01(\t\x12\x0f\n\x07\x41ppName\x18\x02 \x01(\t\x12\x1a\n\x03\x63pu\x18\x03 \x01(\x0b\x32\r.appCpuMetric\x12\x1d\n\x06memory\x18\x04 \x01(\x0b\x32\r.memoryMetric\x12\x1f\n\x07network\x18\x05 \x03(\x0b\x32\x0e.networkMetric\"\xb0\x01\n\nZMetricMsg\x12\r\n\x05\x64\x65vID\x18\x01 \x01(\t\x12\x1c\n\x05ztype\x18\x02 \x01(\x0e\x32\r.ZmetricTypes\x12/\n\x0b\x61tTimeStamp\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x1b\n\x02\x64m\x18\x04 \x01(\x0b\x32\r.deviceMetricH\x00\x12\x16\n\x02\x61m\x18\x05 \x03(\x0b\x32\n.appMetricB\x0f\n\rMetricContent*B\n\nZInfoTypes\x12\t\n\x05ZiNop\x10\x00\x12\x0c\n\x08ZiDevice\x10\x01\x12\x10\n\x0cZiHypervisor\x10\x02\x12\t\n\x05ZiApp\x10\x03*<\n\x10ZPeripheralTypes\x12\n\n\x06ZpNone\x10\x00\x12\r\n\tZpStorage\x10\x01\x12\r\n\tZpNetwork\x10\x02*h\n\x08ZSwState\x12\x0b\n\x07INVALID\x10\x00\x12\x0b\n\x07INITIAL\x10\x01\x12\x14\n\x10\x44OWNLOAD_STARTED\x10\x02\x12\x0e\n\nDOWNLOADED\x10\x03\x12\r\n\tDELIVERED\x10\x04\x12\r\n\tINSTALLED\x10\x05*H\n\x07ZioType\x12\n\n\x06ZioNop\x10\x00\x12\n\n\x06ZioEth\x10\x01\x12\n\n\x06ZioUSB\x10\x02\x12\n\n\x06ZioCOM\x10\x03\x12\r\n\x08ZioOther\x10\xff\x01*2\n\x0cZmetricTypes\x12\t\n\x05ZmNop\x10\x00\x12\x0c\n\x08ZmDevice\x10\x01\x12\t\n\x05ZmApp\x10\x03\x42=\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1agithub.com/zededa/api/zmetb\x06proto3')
   ,
   dependencies=[google_dot_protobuf_dot_timestamp__pb2.DESCRIPTOR,])
 
@@ -50,8 +50,8 @@ _ZINFOTYPES = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=2521,
-  serialized_end=2587,
+  serialized_start=3225,
+  serialized_end=3291,
 )
 _sym_db.RegisterEnumDescriptor(_ZINFOTYPES)
 
@@ -77,8 +77,8 @@ _ZPERIPHERALTYPES = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=2589,
-  serialized_end=2649,
+  serialized_start=3293,
+  serialized_end=3353,
 )
 _sym_db.RegisterEnumDescriptor(_ZPERIPHERALTYPES)
 
@@ -116,8 +116,8 @@ _ZSWSTATE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=2651,
-  serialized_end=2755,
+  serialized_start=3355,
+  serialized_end=3459,
 )
 _sym_db.RegisterEnumDescriptor(_ZSWSTATE)
 
@@ -151,8 +151,8 @@ _ZIOTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=2757,
-  serialized_end=2829,
+  serialized_start=3461,
+  serialized_end=3533,
 )
 _sym_db.RegisterEnumDescriptor(_ZIOTYPE)
 
@@ -178,8 +178,8 @@ _ZMETRICTYPES = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=2831,
-  serialized_end=2881,
+  serialized_start=3535,
+  serialized_end=3585,
 )
 _sym_db.RegisterEnumDescriptor(_ZMETRICTYPES)
 
@@ -337,6 +337,20 @@ _ZINFONETWORK = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='defaultRouters', full_name='ZInfoNetwork.defaultRouters', index=5,
+      number=6, type=9, cpp_type=9, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='dns', full_name='ZInfoNetwork.dns', index=6,
+      number=7, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -349,8 +363,53 @@ _ZINFONETWORK = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=251,
-  serialized_end=348,
+  serialized_start=252,
+  serialized_end=397,
+)
+
+
+_ZINFODNS = _descriptor.Descriptor(
+  name='ZInfoDNS',
+  full_name='ZInfoDNS',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='DNSservers', full_name='ZInfoDNS.DNSservers', index=0,
+      number=1, type=9, cpp_type=9, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='DNSdomain', full_name='ZInfoDNS.DNSdomain', index=1,
+      number=2, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='DNSsearch', full_name='ZInfoDNS.DNSsearch', index=2,
+      number=3, type=9, cpp_type=9, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=399,
+  serialized_end=467,
 )
 
 
@@ -394,8 +453,8 @@ _ZINFOPERIPHERAL = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=350,
-  serialized_end=455,
+  serialized_start=469,
+  serialized_end=574,
 )
 
 
@@ -434,6 +493,20 @@ _ZINFOSW = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='target', full_name='ZInfoSW.target', index=4,
+      number=6, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='vdev', full_name='ZInfoSW.vdev', index=5,
+      number=7, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -446,8 +519,8 @@ _ZINFOSW = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=457,
-  serialized_end=546,
+  serialized_start=576,
+  serialized_end=695,
 )
 
 
@@ -542,6 +615,13 @@ _ZINFODEVICE = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='dns', full_name='ZInfoDevice.dns', index=12,
+      number=16, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -554,8 +634,8 @@ _ZINFODEVICE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=549,
-  serialized_end=867,
+  serialized_start=698,
+  serialized_end=1040,
 )
 
 
@@ -606,8 +686,8 @@ _ZINFOHYPERVISOR = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=869,
-  serialized_end=961,
+  serialized_start=1042,
+  serialized_end=1134,
 )
 
 
@@ -707,8 +787,8 @@ _ZINFOAPP = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=964,
-  serialized_end=1213,
+  serialized_start=1137,
+  serialized_end=1386,
 )
 
 
@@ -776,8 +856,8 @@ _ZINFOMSG = _descriptor.Descriptor(
       name='InfoContent', full_name='ZInfoMsg.InfoContent',
       index=0, containing_type=None, fields=[]),
   ],
-  serialized_start=1216,
-  serialized_end=1427,
+  serialized_start=1389,
+  serialized_end=1600,
 )
 
 
@@ -828,8 +908,8 @@ _ZIOBUNDLE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1429,
-  serialized_end=1515,
+  serialized_start=1602,
+  serialized_end=1688,
 )
 
 
@@ -929,8 +1009,8 @@ _CPUMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1518,
-  serialized_end=1695,
+  serialized_start=1691,
+  serialized_end=1868,
 )
 
 
@@ -981,8 +1061,8 @@ _MEMORYMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1697,
-  serialized_end=1795,
+  serialized_start=1870,
+  serialized_end=1968,
 )
 
 
@@ -1082,8 +1162,67 @@ _NETWORKMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1798,
-  serialized_end=1996,
+  serialized_start=1971,
+  serialized_end=2169,
+)
+
+
+_ZEDCLOUDMETRIC = _descriptor.Descriptor(
+  name='zedcloudMetric',
+  full_name='zedcloudMetric',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='ifName', full_name='zedcloudMetric.ifName', index=0,
+      number=1, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='failures', full_name='zedcloudMetric.failures', index=1,
+      number=2, type=4, cpp_type=4, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='success', full_name='zedcloudMetric.success', index=2,
+      number=3, type=4, cpp_type=4, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='lastFailure', full_name='zedcloudMetric.lastFailure', index=3,
+      number=4, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='lastSuccess', full_name='zedcloudMetric.lastSuccess', index=4,
+      number=5, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=2172,
+  serialized_end=2337,
 )
 
 
@@ -1115,6 +1254,13 @@ _APPCPUMETRIC = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='bootTime', full_name='appCpuMetric.bootTime', index=3,
+      number=5, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -1127,8 +1273,53 @@ _APPCPUMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1998,
-  serialized_end=2097,
+  serialized_start=2340,
+  serialized_end=2485,
+)
+
+
+_DEVCPUMETRIC = _descriptor.Descriptor(
+  name='devCpuMetric',
+  full_name='devCpuMetric',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='cpuTotal', full_name='devCpuMetric.cpuTotal', index=0,
+      number=1, type=4, cpp_type=4, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='upTime', full_name='devCpuMetric.upTime', index=1,
+      number=2, type=4, cpp_type=4, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='bootTime', full_name='devCpuMetric.bootTime', index=2,
+      number=3, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=2487,
+  serialized_end=2581,
 )
 
 
@@ -1160,6 +1351,27 @@ _DEVICEMETRIC = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='zedcloud', full_name='deviceMetric.zedcloud', index=3,
+      number=4, type=11, cpp_type=10, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='compute', full_name='deviceMetric.compute', index=4,
+      number=5, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='disk', full_name='deviceMetric.disk', index=5,
+      number=6, type=11, cpp_type=10, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -1172,8 +1384,74 @@ _DEVICEMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2099,
-  serialized_end=2202,
+  serialized_start=2584,
+  serialized_end=2781,
+)
+
+
+_DISKMETRIC = _descriptor.Descriptor(
+  name='diskMetric',
+  full_name='diskMetric',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='disk', full_name='diskMetric.disk', index=0,
+      number=1, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='mountPath', full_name='diskMetric.mountPath', index=1,
+      number=2, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='readBytes', full_name='diskMetric.readBytes', index=2,
+      number=3, type=4, cpp_type=4, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='writeBytes', full_name='diskMetric.writeBytes', index=3,
+      number=4, type=4, cpp_type=4, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='readCount', full_name='diskMetric.readCount', index=4,
+      number=5, type=4, cpp_type=4, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='writeCount', full_name='diskMetric.writeCount', index=5,
+      number=6, type=4, cpp_type=4, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=2783,
+  serialized_end=2906,
 )
 
 
@@ -1231,8 +1509,8 @@ _APPMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2205,
-  serialized_end=2340,
+  serialized_start=2909,
+  serialized_end=3044,
 )
 
 
@@ -1293,10 +1571,11 @@ _ZMETRICMSG = _descriptor.Descriptor(
       name='MetricContent', full_name='ZMetricMsg.MetricContent',
       index=0, containing_type=None, fields=[]),
   ],
-  serialized_start=2343,
-  serialized_end=2519,
+  serialized_start=3047,
+  serialized_end=3223,
 )
 
+_ZINFONETWORK.fields_by_name['dns'].message_type = _ZINFODNS
 _ZINFOPERIPHERAL.fields_by_name['ztype'].enum_type = _ZPERIPHERALTYPES
 _ZINFOPERIPHERAL.fields_by_name['minfo'].message_type = _ZINFOMANUFACTURER
 _ZINFOSW.fields_by_name['state'].enum_type = _ZSWSTATE
@@ -1306,6 +1585,7 @@ _ZINFODEVICE.fields_by_name['software'].message_type = _ZINFOSW
 _ZINFODEVICE.fields_by_name['network'].message_type = _ZINFONETWORK
 _ZINFODEVICE.fields_by_name['softwareList'].message_type = _ZINFOSW
 _ZINFODEVICE.fields_by_name['assignableAdapters'].message_type = _ZIOBUNDLE
+_ZINFODEVICE.fields_by_name['dns'].message_type = _ZINFODNS
 _ZINFOHYPERVISOR.fields_by_name['software'].message_type = _ZINFOSW
 _ZINFOAPP.fields_by_name['software'].message_type = _ZINFOSW
 _ZINFOAPP.fields_by_name['softwareList'].message_type = _ZINFOSW
@@ -1325,10 +1605,17 @@ _ZINFOMSG.oneofs_by_name['InfoContent'].fields.append(
   _ZINFOMSG.fields_by_name['ainfo'])
 _ZINFOMSG.fields_by_name['ainfo'].containing_oneof = _ZINFOMSG.oneofs_by_name['InfoContent']
 _ZIOBUNDLE.fields_by_name['type'].enum_type = _ZIOTYPE
+_ZEDCLOUDMETRIC.fields_by_name['lastFailure'].message_type = google_dot_protobuf_dot_timestamp__pb2._TIMESTAMP
+_ZEDCLOUDMETRIC.fields_by_name['lastSuccess'].message_type = google_dot_protobuf_dot_timestamp__pb2._TIMESTAMP
 _APPCPUMETRIC.fields_by_name['upTime'].message_type = google_dot_protobuf_dot_timestamp__pb2._TIMESTAMP
+_APPCPUMETRIC.fields_by_name['bootTime'].message_type = google_dot_protobuf_dot_timestamp__pb2._TIMESTAMP
+_DEVCPUMETRIC.fields_by_name['bootTime'].message_type = google_dot_protobuf_dot_timestamp__pb2._TIMESTAMP
 _DEVICEMETRIC.fields_by_name['cpu'].message_type = _CPUMETRIC
 _DEVICEMETRIC.fields_by_name['memory'].message_type = _MEMORYMETRIC
 _DEVICEMETRIC.fields_by_name['network'].message_type = _NETWORKMETRIC
+_DEVICEMETRIC.fields_by_name['zedcloud'].message_type = _ZEDCLOUDMETRIC
+_DEVICEMETRIC.fields_by_name['compute'].message_type = _DEVCPUMETRIC
+_DEVICEMETRIC.fields_by_name['disk'].message_type = _DISKMETRIC
 _APPMETRIC.fields_by_name['cpu'].message_type = _APPCPUMETRIC
 _APPMETRIC.fields_by_name['memory'].message_type = _MEMORYMETRIC
 _APPMETRIC.fields_by_name['network'].message_type = _NETWORKMETRIC
@@ -1341,6 +1628,7 @@ _ZMETRICMSG.oneofs_by_name['MetricContent'].fields.append(
 _ZMETRICMSG.fields_by_name['dm'].containing_oneof = _ZMETRICMSG.oneofs_by_name['MetricContent']
 DESCRIPTOR.message_types_by_name['ZInfoManufacturer'] = _ZINFOMANUFACTURER
 DESCRIPTOR.message_types_by_name['ZInfoNetwork'] = _ZINFONETWORK
+DESCRIPTOR.message_types_by_name['ZInfoDNS'] = _ZINFODNS
 DESCRIPTOR.message_types_by_name['ZinfoPeripheral'] = _ZINFOPERIPHERAL
 DESCRIPTOR.message_types_by_name['ZInfoSW'] = _ZINFOSW
 DESCRIPTOR.message_types_by_name['ZInfoDevice'] = _ZINFODEVICE
@@ -1351,8 +1639,11 @@ DESCRIPTOR.message_types_by_name['ZioBundle'] = _ZIOBUNDLE
 DESCRIPTOR.message_types_by_name['cpuMetric'] = _CPUMETRIC
 DESCRIPTOR.message_types_by_name['memoryMetric'] = _MEMORYMETRIC
 DESCRIPTOR.message_types_by_name['networkMetric'] = _NETWORKMETRIC
+DESCRIPTOR.message_types_by_name['zedcloudMetric'] = _ZEDCLOUDMETRIC
 DESCRIPTOR.message_types_by_name['appCpuMetric'] = _APPCPUMETRIC
+DESCRIPTOR.message_types_by_name['devCpuMetric'] = _DEVCPUMETRIC
 DESCRIPTOR.message_types_by_name['deviceMetric'] = _DEVICEMETRIC
+DESCRIPTOR.message_types_by_name['diskMetric'] = _DISKMETRIC
 DESCRIPTOR.message_types_by_name['appMetric'] = _APPMETRIC
 DESCRIPTOR.message_types_by_name['ZMetricMsg'] = _ZMETRICMSG
 DESCRIPTOR.enum_types_by_name['ZInfoTypes'] = _ZINFOTYPES
@@ -1375,6 +1666,13 @@ ZInfoNetwork = _reflection.GeneratedProtocolMessageType('ZInfoNetwork', (_messag
   # @@protoc_insertion_point(class_scope:ZInfoNetwork)
   ))
 _sym_db.RegisterMessage(ZInfoNetwork)
+
+ZInfoDNS = _reflection.GeneratedProtocolMessageType('ZInfoDNS', (_message.Message,), dict(
+  DESCRIPTOR = _ZINFODNS,
+  __module__ = 'zmet_pb2'
+  # @@protoc_insertion_point(class_scope:ZInfoDNS)
+  ))
+_sym_db.RegisterMessage(ZInfoDNS)
 
 ZinfoPeripheral = _reflection.GeneratedProtocolMessageType('ZinfoPeripheral', (_message.Message,), dict(
   DESCRIPTOR = _ZINFOPERIPHERAL,
@@ -1446,6 +1744,13 @@ networkMetric = _reflection.GeneratedProtocolMessageType('networkMetric', (_mess
   ))
 _sym_db.RegisterMessage(networkMetric)
 
+zedcloudMetric = _reflection.GeneratedProtocolMessageType('zedcloudMetric', (_message.Message,), dict(
+  DESCRIPTOR = _ZEDCLOUDMETRIC,
+  __module__ = 'zmet_pb2'
+  # @@protoc_insertion_point(class_scope:zedcloudMetric)
+  ))
+_sym_db.RegisterMessage(zedcloudMetric)
+
 appCpuMetric = _reflection.GeneratedProtocolMessageType('appCpuMetric', (_message.Message,), dict(
   DESCRIPTOR = _APPCPUMETRIC,
   __module__ = 'zmet_pb2'
@@ -1453,12 +1758,26 @@ appCpuMetric = _reflection.GeneratedProtocolMessageType('appCpuMetric', (_messag
   ))
 _sym_db.RegisterMessage(appCpuMetric)
 
+devCpuMetric = _reflection.GeneratedProtocolMessageType('devCpuMetric', (_message.Message,), dict(
+  DESCRIPTOR = _DEVCPUMETRIC,
+  __module__ = 'zmet_pb2'
+  # @@protoc_insertion_point(class_scope:devCpuMetric)
+  ))
+_sym_db.RegisterMessage(devCpuMetric)
+
 deviceMetric = _reflection.GeneratedProtocolMessageType('deviceMetric', (_message.Message,), dict(
   DESCRIPTOR = _DEVICEMETRIC,
   __module__ = 'zmet_pb2'
   # @@protoc_insertion_point(class_scope:deviceMetric)
   ))
 _sym_db.RegisterMessage(deviceMetric)
+
+diskMetric = _reflection.GeneratedProtocolMessageType('diskMetric', (_message.Message,), dict(
+  DESCRIPTOR = _DISKMETRIC,
+  __module__ = 'zmet_pb2'
+  # @@protoc_insertion_point(class_scope:diskMetric)
+  ))
+_sym_db.RegisterMessage(diskMetric)
 
 appMetric = _reflection.GeneratedProtocolMessageType('appMetric', (_message.Message,), dict(
   DESCRIPTOR = _APPMETRIC,
