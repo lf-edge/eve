@@ -37,7 +37,19 @@ message ZInfoNetwork {
   string gwAddr = 2; // Deprecated; routing is richer than a single gateway
   string macAddr = 3;
   string devName = 4; // eth0, eth1 etc.
-  repeated string IPAddrs = 5; // All IP addresses
+  repeated string IPAddrs = 5; // All IP addresses with /N for subnet
+  repeated string defaultRouters = 6; // If DHCP assigned
+  ZInfoDNS dns = 7; // If DHCP assigned
+}
+
+// This is used both to represent the information we receive from DHCP
+// for each interface, and the information the device is using
+// (from /etc/resolv.conf). The latter could be different than what's received
+// from DHCP on all the interfaces
+message ZInfoDNS {
+  repeated string DNSservers = 1;
+  string DNSdomain = 2;
+  repeated string DNSsearch = 3;
 }
 
 // Deprecate since we can't determine it on the device
@@ -47,6 +59,7 @@ enum ZPeripheralTypes {
   ZpNetwork = 2;
 }
 
+// Enum names from OMA-TS-LWM2M_SwMgmt-V1_0-20151201-C
 enum ZSwState {
   INVALID		= 0;
   INITIAL		= 1;	// Config received
@@ -68,6 +81,8 @@ message ZInfoSW {
   string swHash = 3;
   ZSwState state = 4;		// State of Software Image download/install
   bool activated = 5;		// Activation flag -- deprecated
+  string target = 6;		// E.g., "disk", "kernel", "device-tree"
+  string vdev = 7;		// E.g., "xvda"
 }
 
 // Base device info, as discovered by Xen (or OS on bare metal)
@@ -76,17 +91,17 @@ message ZInfoDevice {
   string cpuArch = 5;
   string platform = 6;
   uint32 ncpu = 7;
-  uint64 memory = 8;
-  uint64 storage = 9;
+  uint64 memory = 8;	// in Mbytes
+  uint64 storage = 9;	// in MBytes
 
-  // Deprecate since we can't determine it on the device
-  repeated ZinfoPeripheral devices = 10;
+  repeated ZinfoPeripheral devices = 10; // Deprecated
   ZInfoManufacturer minfo = 11;
 
   ZInfoSW software = 12;		// Deprecated;
   repeated ZInfoNetwork network = 13;
   repeated ZInfoSW softwareList = 14;	// Software Images in both partitions
   repeated ZioBundle assignableAdapters = 15;
+  ZInfoDNS dns = 16; // What is used in resolv.conf
 }
 
 // Device info from DOM0 perspective, if it exists.
@@ -152,7 +167,7 @@ enum ZmetricTypes {
   ZmApp = 3;
 }
 
-message cpuMetric {
+message cpuMetric { // Deprecated
   uint32 upTime = 2;
   double cpuUtilization = 3;
   double usr = 4;
@@ -167,16 +182,16 @@ message cpuMetric {
 }
 
 message memoryMetric {
-  uint32 usedMem = 2;            //in MB
-  uint32 availMem = 3;           //in MB
+  uint32 usedMem = 2;            //in MBytes
+  uint32 availMem = 3;           //in MBytes
   double usedPercentage = 4;
   double availPercentage = 5;
 }
 
 message networkMetric {
-  string iName = 1;
-  uint64 txBytes = 2;
-  uint64 rxBytes = 3;
+  string iName = 1;	// interface name
+  uint64 txBytes = 2;	// in bytes
+  uint64 rxBytes = 3;	// in bytes
   uint64 txDrops = 4;
   uint64 rxDrops = 5;
   uint64 txRate = 6;  // deprecate
@@ -187,16 +202,49 @@ message networkMetric {
   uint64 rxErrors = 11;
 }
 
+// Failures and successes for commuication to zedcloud
+// for each uplink interface
+message zedcloudMetric {
+    string ifName = 1;	// interface name
+    uint64 failures = 2;
+    uint64 success = 3;
+    google.protobuf.Timestamp lastFailure = 4;
+    google.protobuf.Timestamp lastSuccess = 5;
+}
+
 message appCpuMetric {
-    uint32 cpuTotal = 2;          // in seconds
-    double cpuPercentage = 3;
-    google.protobuf.Timestamp upTime = 4;
+    uint32 cpuTotal = 2;		// in seconds
+    double cpuPercentage = 3;		// deprecated
+    google.protobuf.Timestamp upTime = 4; // deprecated
+    google.protobuf.Timestamp bootTime = 5;
+}
+
+// We report both upTime in seconds and bootTime. Allows to determine
+// large clock skew. Difference betweem cpuTotal and upTime is the amount
+// of idle.
+message devCpuMetric {
+    uint64 cpuTotal = 1;	// in seconds
+    uint64 upTime = 2;		// in seconds
+    google.protobuf.Timestamp bootTime = 3;
 }
 
 message deviceMetric {
-  cpuMetric cpu = 1;
+  cpuMetric cpu = 1;	// deprecated - use appCpuMetric
   memoryMetric memory = 2;
   repeated networkMetric network = 3;
+  repeated zedcloudMetric zedcloud = 4;
+  devCpuMetric compute = 5;
+  repeated diskMetric disk = 6;
+}
+
+// For each partition; counts since boot
+message diskMetric {
+  string disk = 1;		// E.g., "mmcblk0p2"
+  string mountPath = 2;		// E.g., "/config"
+  uint64 readBytes = 3;		// In MB
+  uint64 writeBytes = 4;	// In MB
+  uint64 readCount = 5;		// Number of ops
+  uint64 writeCount = 6;	// Number of ops
 }
 
 message appMetric {
