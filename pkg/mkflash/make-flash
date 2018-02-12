@@ -22,7 +22,7 @@ echo $IMAGE_SIZE
 # aligned on 2048 blocks we will round up to the nearest multiple of
 # 2048 blocks since each block is 512 bytes, we want the size to be
 # a multiple of 2048 blocks * 512 bytes = 1048576 bytes = 1024KB
-IMAGE_SIZE_KB=$(( ( ($IMAGE_SIZE + 1024) / 1024 ) / 1024 * 1024 ))
+IMAGE_SIZE_KB=$(( ( ($IMAGE_SIZE + 1024) / 1024 * 1024 ) / 1024 ))
 IMAGE_SIZE_SECTORS=$(( 2 * $IMAGE_SIZE_KB ))
 echo $IMAGE_SIZE_SECTORS
 
@@ -32,6 +32,8 @@ echo $IMAGE_SIZE_SECTORS
 
 # Minimum headroom for in ESP, in bytes.
 ESP_HEADROOM=$((1024 * 1024))
+
+GRUB_SIZE=$((512 * 1024))
 
 # Calculate partition size. There's not much in it.
 ESP_FILE_SIZE=$(($GRUB_SIZE + $ESP_HEADROOM))
@@ -80,7 +82,6 @@ IMGB_SECTOR_END=$(( $IMGB_SECTOR_START + $IMAGE_SIZE_SECTORS - 1))
 sgdisk --new 3:$IMGB_SECTOR_START:$IMGB_SECTOR_END \
        --typecode=3:5dfbf5f4-2848-4bac-aa5e-0d9a20b745a6 \
        --change-name=3:'IMGB' $IMGFILE
-
 
 # Copy EFI fs to EFI partition
 dd if=$ESP_FILE of=$IMGFILE bs=512 count=$ESP_FILE_SIZE_SECTORS \

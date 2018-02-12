@@ -17,7 +17,7 @@ RUN apk add \
 # because python is not available
 RUN ln -s python3 /usr/bin/python
 
-ENV GRUB_MODULES="part_gpt fat ext2 iso9660 gzio linux acpi normal cpio crypto disk boot crc64 gpt \
+ENV GRUB_MODULES="part_gpt fat ext2 iso9660 squash4 gzio linux acpi normal cpio crypto disk boot crc64 gpt \
 search_disk_uuid verify xzio xfs video multiboot2 gfxterm efi_gop efi_uga gptprio chain probe reboot "
 ENV GRUB_COMMIT=6782f6d431d22b4e9ab14e94d263795c7991e160
 
