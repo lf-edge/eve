@@ -495,11 +495,7 @@ func main() {
 			fmt.Printf("device-param StatusOK\n")
 		case http.StatusNotFound:
 			fmt.Printf("device-param StatusNotFound\n")
-			// XXX:FIXME
-			// New devices which are only registered in zedcloud
-			// will not have state in prov1 hence no EID for
-			// zedmanager until we add lookupParam to zedcloud
-			return true
+			return false
 		default:
 			fmt.Printf("device-param statuscode %d %s\n",
 				resp.StatusCode,
@@ -606,7 +602,7 @@ func main() {
 
 	// Setup HTTPS client for deviceCert unless force
 	var cert tls.Certificate
-	if forceOnboardingCert {
+	if forceOnboardingCert || operations["selfRegister"] {
 		fmt.Printf("Using onboarding cert\n")
 		cert = onboardCert
 	} else if deviceCertSet {
