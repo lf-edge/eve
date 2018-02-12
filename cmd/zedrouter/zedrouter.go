@@ -418,6 +418,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 			config.DisplayName)
 		if len(config.OverlayNetworkList) != 1 ||
 			len(config.UnderlayNetworkList) != 0 {
+			// XXX send to cloud?
 			log.Println("Malformed IsZedmanager config; ignored")
 			return
 		}
@@ -478,10 +479,12 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		EID := config.OverlayNetworkList[0].EID
 		addr, err := netlink.ParseAddr(EID.String() + "/128")
 		if err != nil {
+			// XXX send to cloud?
 			log.Printf("ParseAddr %s failed: %s\n", EID, err)
 			return
 		}
 		if err := netlink.AddrAdd(oLink, addr); err != nil {
+			// XXX fatal?
 			log.Printf("AddrAdd %s failed: %s\n", EID, err)
 		}
 
