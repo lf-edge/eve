@@ -6,6 +6,7 @@ Package zmet is a generated protocol buffer package.
 
 It is generated from these files:
 	zmet.proto
+	zregister.proto
 
 It has these top-level messages:
 	ZInfoManufacturer
@@ -28,6 +29,8 @@ It has these top-level messages:
 	DiskMetric
 	AppMetric
 	ZMetricMsg
+	ZRegisterResp
+	ZRegisterMsg
 */
 package zmet
 
