@@ -37,16 +37,15 @@ func initVerifierMaps() {
 }
 
 func createVerifierConfig(objType string, safename string,
-	sc *types.StorageConfig) bool {
+	sc *types.StorageConfig) error {
 
 	initVerifierMaps()
 
 	// check the certificate files, if not present,
 	// we can not start verification
-	if ret := checkCertsForObject(safename, sc); ret == false {
-		log.Printf("createVerifierConfig for %s, Certs are still not installed\n",
-			safename)
-		return ret
+	if err := checkCertsForObject(safename, sc); err != nil {
+		log.Printf("%v for %s\n", err, safename)
+		return err
 	}
 
 	key := formLookupKey(objType, safename)
@@ -76,7 +75,7 @@ func createVerifierConfig(objType string, safename string,
 
 	log.Printf("createVerifierConfig done for %s\n",
 		safename)
-	return true
+	return nil
 }
 
 func updateVerifierStatus(objType string, status *types.VerifyImageStatus) {
@@ -272,7 +271,7 @@ func writeVerifierConfig(config types.VerifyImageConfig, configFilename string) 
 }
 
 // check whether the cert files are installed
-func checkCertsForObject(safename string, sc *types.StorageConfig) bool {
+func checkCertsForObject(safename string, sc *types.StorageConfig) error {
 
 	var cidx int = 0
 
@@ -289,7 +288,7 @@ func checkCertsForObject(safename string, sc *types.StorageConfig) bool {
 	if cidx == 0 {
 		log.Printf("checkCertsForObject() for %s, no certificates configured\n",
 			safename)
-		return true
+		return nil
 	}
 
 	if sc.SignatureKey != "" {
@@ -298,7 +297,7 @@ func checkCertsForObject(safename string, sc *types.StorageConfig) bool {
 			types.SafenameToFilename(safename)
 		if _, err := os.Stat(filename); err != nil {
 			log.Printf("checkCertsForObject() for %s, %v\n", filename, err)
-			return false
+			return err
 		}
 	}
 
@@ -309,9 +308,9 @@ func checkCertsForObject(safename string, sc *types.StorageConfig) bool {
 				types.SafenameToFilename(safename)
 			if _, err := os.Stat(filename); err != nil {
 				log.Printf("checkCertsForObject() for %s, %v\n", filename, err)
-				return false
+				return err
 			}
 		}
 	}
-	return true
+	return nil
 }

@@ -20,6 +20,7 @@ const (
 	MaxBaseOsCount = 2
 	// XXX:FIXME typically this should be stored in a persistent config
 	// across boot parition
+	rebootInitCount      = 1000
 	rebootConfigFilename = persistDir + "/rebootConfig"
 )
 
@@ -99,21 +100,26 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) {
 				cfgOs.Drives)
 		}
 
+		// get old Partition Label, if any
+		uuidStr := baseOs.UUIDandVersion.UUID.String()
+		baseOs.PartitionLabel = getPersitanceParitionInfo(uuidStr)
+
 		// XXX:FIXME put the finalObjDir value,
 		// by calling bootloader API to fetch
 		// the unused partition
-		if ret := isInstallCandidate(baseOsCount, baseOs); ret == true {
+		if baseOs.PartitionLabel == "" {
+			if ret := isInstallCandidate(uuidStr, baseOs, baseOsCount); ret == true {
 
-			uuidStr := baseOs.UUIDandVersion.UUID.String()
-			log.Printf("baseOs %s, Activate flag is set", uuidStr)
+				uuidStr := baseOs.UUIDandVersion.UUID.String()
+				log.Printf("baseOs %s, Activate flag is set", uuidStr)
+				baseOs.PartitionLabel = getUnusedPartition()
+			}
+		}
 
-			baseOs.PartitionLabel = getUnusedPartition()
-
-			// only one entry for now
-			if baseOs.PartitionLabel != "" {
-				for _, sc := range baseOs.StorageConfigList {
-					sc.FinalObjDir = baseOs.PartitionLabel
-				}
+		// only one entry for now
+		if baseOs.PartitionLabel != "" {
+			for _, sc := range baseOs.StorageConfigList {
+				sc.FinalObjDir = baseOs.PartitionLabel
 			}
 		}
 
@@ -134,10 +140,36 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) {
 	}
 }
 
-func isInstallCandidate(baseOsCount int,
-	baseOs *types.BaseOsConfig) bool {
+func getPersitanceParitionInfo(uuidStr string) string {
 
-	uuidStr := baseOs.UUIDandVersion.UUID.String()
+	var partitionInfo = &types.PartitionInfo{}
+
+	filename := persistDir + "/" + uuidStr + ".json"
+	if _, err := os.Stat(filename); err == nil {
+		bytes, err := ioutil.ReadFile(filename)
+		if err == nil {
+			err = json.Unmarshal(bytes, partitionInfo)
+		}
+		return partitionInfo.PartitionLabel
+	}
+	return ""
+}
+
+func setPersitanceParitionInfo(uuidStr string, config types.BaseOsConfig) {
+
+	var partitionInfo = &types.PartitionInfo{}
+
+	partitionInfo.UUIDandVersion = config.UUIDandVersion
+	partitionInfo.PartitionLabel = config.PartitionLabel
+
+	filename := persistDir + "/" + uuidStr + ".json"
+	bytes, err := json.Marshal(partitionInfo)
+	if err == nil {
+		err = ioutil.WriteFile(filename, bytes, 0644)
+	}
+}
+func isInstallCandidate(uuidStr string, baseOs *types.BaseOsConfig,
+	baseOsCount int) bool {
 
 	curBaseOsConfig := baseOsConfigGet(uuidStr)
 	curBaseOsStatus := baseOsStatusGet(uuidStr)
@@ -743,11 +775,12 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd) {
 			err = json.Unmarshal(bytes, rebootConfig)
 		}
 	}
+
+	// if not first time,
 	// counter value has changed
 	// means new reboot event
-	if (reboot.Counter != 1000) &&
-		((rebootConfig == nil) ||
-			(rebootConfig.Counter != reboot.Counter)) {
+	if (rebootConfig != nil) &&
+		(rebootConfig.Counter != reboot.Counter) {
 
 		//timer was started, stop now
 		if rebootTimer != nil {
@@ -755,7 +788,7 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd) {
 		}
 
 		// start the timer again
-		// XXX:FIXME, need to handle the sheduled time
+		// XXX:FIXME, need to handle the scheduled time
 		duration := time.Duration(immediate)
 		rebootTimer = time.NewTimer(time.Second * duration)
 
@@ -779,6 +812,7 @@ func scheduleBackup(backup *zconfig.DeviceOpsCmd) {
 func handleReboot() {
 
 	rebootConfig := &zconfig.DeviceOpsCmd{}
+	var state bool
 
 	<-rebootTimer.C
 
@@ -788,26 +822,36 @@ func handleReboot() {
 		if err == nil {
 			err = json.Unmarshal(bytes, rebootConfig)
 		}
+		state = rebootConfig.DesiredState
 	}
 
-	if rebootConfig == nil {
-		return
-	}
+	execReboot(state)
+}
+
+func execReboot(state bool) {
 
 	// XXX:FIXME perform graceful service stop/ state backup
 
-	switch rebootConfig.DesiredState {
+	// do a sync
+	log.Printf("Doing a sync..\n")
+	syscall.Sync()
+
+	switch state {
 
 	case true:
 		log.Printf("Rebooting...\n")
 		rebootCmd := exec.Command("zboot", "reset")
 		_, err := rebootCmd.Output()
 		if err != nil {
-			log.Println(err.Error())
+			log.Println(err)
 		}
 
 	case false:
-		log.Printf("Powering Off...\n")
-		syscall.Shutdown(0, 0)
+		log.Printf("Powering Off..\n")
+		poweroffCmd := exec.Command("poweroff")
+		_, err := poweroffCmd.Output()
+		if err != nil {
+			log.Println(err)
+		}
 	}
 }

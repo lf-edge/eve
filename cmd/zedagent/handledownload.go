@@ -252,9 +252,12 @@ func checkStorageDownloadStatus(objType string, uuidStr string,
 			if sc.ImageSha256 != "" {
 				// start verifier for this object
 				if !ss.HasVerifierRef {
-					if ret := createVerifierConfig(objType, safename, &sc); ret == true {
+					err := createVerifierConfig(objType, safename, &sc)
+					if err == nil {
 						ss.HasVerifierRef = true
 						changed = true
+					} else {
+						allErrors = appendError(allErrors, "downloader", err.Error())
 					}
 				}
 			}
@@ -299,7 +302,7 @@ func installDownloadedObjects(objType string, uuidStr string,
 func installDownloadedObject(objType string, safename string,
 	config types.StorageConfig, status *types.StorageStatus) {
 
-	var ret bool
+	var ret error
 	var srcFilename string = objectDownloadDirname + "/" + objType
 
 	key := formLookupKey(objType, safename)
@@ -356,7 +359,7 @@ func installDownloadedObject(objType string, safename string,
 		}
 	}
 
-	if ret == true {
+	if ret == nil {
 		status.State = types.INSTALLED
 		log.Printf("installDownloadedObject for %s, installation done\n", key)
 	}

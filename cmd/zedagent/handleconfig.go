@@ -318,6 +318,8 @@ func checkCurrentAppFiles(config *zconfig.EdgeDevConfig) {
 				if err != nil {
 					log.Println("Old config: ", err)
 				}
+				// also remove the certifiates holder config
+				os.Remove(zedagentCertObjConfigDirname + "/" + curAppFilename)
 			}
 		}
 	}
@@ -354,6 +356,8 @@ func checkCurrentBaseOsFiles(config *zconfig.EdgeDevConfig) {
 				if err != nil {
 					log.Printf("Old config:%v\n", err)
 				}
+				// also remove the certifiates holder config
+				os.Remove(zedagentCertObjConfigDirname + "/" + curBaseOsFilename)
 			}
 		}
 	}

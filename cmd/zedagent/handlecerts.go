@@ -340,7 +340,7 @@ func writeCertObjStatus(status *types.CertObjStatus, statusFilename string) {
 	}
 }
 
-func installCertObject(srcFilename string, dstFilename string, safename string) bool {
+func installCertObject(srcFilename string, dstFilename string, safename string) error {
 
 	// create the destination directory
 	if _, err := os.Stat(dstFilename); err != nil {
@@ -354,6 +354,6 @@ func installCertObject(srcFilename string, dstFilename string, safename string) 
 	log.Printf("installCertObject: writing %s to %s\n",
 		srcFilename, dstFilename)
 
-	os.Rename(srcFilename, dstFilename)
-	return true
+	err := os.Rename(srcFilename, dstFilename)
+	return err
 }

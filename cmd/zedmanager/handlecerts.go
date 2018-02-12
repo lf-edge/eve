@@ -14,15 +14,10 @@ var certObjStatus map[string]types.CertObjStatus
 
 func handleCertObjStatusModify(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
-	var status *types.CertObjStatus
-
-	switch statusArg.(type) {
-	default:
-		log.Fatal("Can only handle CertObjStatus")
-	case *types.CertObjStatus:
-		status = statusArg.(*types.CertObjStatus)
+	status := statusArg.(*types.CertObjStatus)
+	if status == nil {
+		return
 	}
-
 	uuidStr := status.UUIDandVersion.UUID.String()
 
 	log.Printf("handlCertObjStatusModify for %s\n", uuidStr)

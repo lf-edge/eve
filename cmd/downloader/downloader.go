@@ -127,52 +127,41 @@ func main() {
 		select {
 
 		case change := <-deviceStatusChanges:
-			{
-				watch.HandleStatusEvent(change, dummyContext{},
-					DNSDirname,
-					&types.DeviceNetworkStatus{},
-					handleDNSModify, handleDNSDelete,
-					nil)
-			}
+			watch.HandleStatusEvent(change, dummyContext{},
+				DNSDirname,
+				&types.DeviceNetworkStatus{},
+				handleDNSModify, handleDNSDelete,
+				nil)
 
 		case change := <-certObjChanges:
-			{
-				watch.HandleConfigStatusEvent(change, &ctx,
-					certObjConfigDirname,
-					certObjStatusDirname,
-					&types.DownloaderConfig{},
-					&types.DownloaderStatus{},
-					handleCertObjCreate,
-					handleCertObjModify,
-					handleCertObjDelete, nil)
-				continue
-			}
+			watch.HandleConfigStatusEvent(change, &ctx,
+				certObjConfigDirname,
+				certObjStatusDirname,
+				&types.DownloaderConfig{},
+				&types.DownloaderStatus{},
+				handleCertObjCreate,
+				handleCertObjModify,
+				handleCertObjDelete, nil)
 
 		case change := <-appImgChanges:
-			{
-				watch.HandleConfigStatusEvent(change, &ctx,
-					appImgConfigDirname,
-					appImgStatusDirname,
-					&types.DownloaderConfig{},
-					&types.DownloaderStatus{},
-					handleAppImgObjCreate,
-					handleAppImgObjModify,
-					handleAppImgObjDelete, nil)
-				continue
-			}
+			watch.HandleConfigStatusEvent(change, &ctx,
+				appImgConfigDirname,
+				appImgStatusDirname,
+				&types.DownloaderConfig{},
+				&types.DownloaderStatus{},
+				handleAppImgObjCreate,
+				handleAppImgObjModify,
+				handleAppImgObjDelete, nil)
 
 		case change := <-baseOsChanges:
-			{
-				watch.HandleConfigStatusEvent(change, &ctx,
-					baseOsConfigDirname,
-					baseOsStatusDirname,
-					&types.DownloaderConfig{},
-					&types.DownloaderStatus{},
-					handleBaseOsObjCreate,
-					handleBaseOsObjModify,
-					handleBaseOsObjDelete, nil)
-				continue
-			}
+			watch.HandleConfigStatusEvent(change, &ctx,
+				baseOsConfigDirname,
+				baseOsStatusDirname,
+				&types.DownloaderConfig{},
+				&types.DownloaderStatus{},
+				handleBaseOsObjCreate,
+				handleBaseOsObjModify,
+				handleBaseOsObjDelete, nil)
 		}
 	}
 }
@@ -494,7 +483,6 @@ func downloaderInit() *zedUpload.DronaCtx {
 }
 
 func initializeDirs() {
-
 
 	// Remove any files which didn't make it past the verifier.
 	// Though verifier owns it, remove them for calculating the

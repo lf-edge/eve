@@ -6,6 +6,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"github.com/zededa/go-provision/types"
 	"log"
@@ -19,6 +20,7 @@ import (
 const (
 	partitionMapFilename = persistDir + "/partitionMap"
 )
+
 // zedagent publishes these config/status files
 // and also the consumer
 var baseOsConfigMap map[string]types.BaseOsConfig
@@ -88,6 +90,7 @@ func addOrUpdateBaseOsConfig(uuidStr string, config types.BaseOsConfig) {
 			UUIDandVersion: config.UUIDandVersion,
 			BaseOsVersion:  config.BaseOsVersion,
 			ConfigSha256:   config.ConfigSha256,
+			PartitionLabel: config.PartitionLabel,
 		}
 
 		status.StorageStatusList = make([]types.StorageStatus,
@@ -132,7 +135,26 @@ func baseOsStatusGet(uuidStr string) *types.BaseOsStatus {
 		log.Printf("baseOsHandleStatusGet for %s, Config absent\n", uuidStr)
 		return nil
 	}
+	status.Activated = getActivatedStatus(uuidStr, status)
 	return &status
+}
+
+func getActivatedStatus(uuidStr string, status types.BaseOsStatus) bool {
+
+	if status.PartitionLabel != "" {
+		partStateCmd := exec.Command("zboot", "partstate", status.PartitionLabel)
+		ret, err := partStateCmd.Output()
+		if err != nil {
+			return false
+		}
+
+		partState := string(ret)
+		partState = strings.TrimSpace(partState)
+		if partState == status.PartitionLabel {
+			return true
+		}
+	}
+	return false
 }
 
 func baseOsHandleStatusUpdate(uuidStr string) {
@@ -199,24 +221,26 @@ func doBaseOsActivate(uuidStr string, config types.BaseOsConfig,
 	if err != nil {
 		log.Println(err.Error())
 	}
-	partitionState := fmt.Sprintf("%s", stdout)
+	partitionState := string(stdout)
 	//if partitionState unsed then change status to updating...
 	if partitionState == "unused" {
 		// XXX:FIXME, store baseOs parition assignment info
 		//storePartitionInfo(config)
-		statusCmd := exec.Command("zboot", "set_partstate", config.PartitionLabel, "updating")
+		statusCmd := exec.Command("zboot", "set_partstate",
+			config.PartitionLabel, "updating")
 		stdout, err := statusCmd.Output()
 		if err != nil {
-			log.Println(err.Error())
+			log.Fatal(err)
 		}
 		log.Println(stdout)
 	}
 
 	// if it is installed, flip the activated status
-	if (status.State == types.INSTALLED) ||
-		(status.Activated == false) {
+	if status.State == types.INSTALLED ||
+		status.Activated == false {
 		status.Activated = true
 		changed = true
+		execReboot(true)
 	}
 
 	return changed
@@ -486,20 +510,39 @@ func doBaseOsUninstall(uuidStr string, status *types.BaseOsStatus) (bool, bool) 
 	return changed, del
 }
 
-func installBaseOsObject(srcFilename string, dstFilename string) bool {
+func installBaseOsObject(srcFilename string, dstFilename string) error {
 
 	log.Printf("installBaseOsObject: to %s\n", dstFilename)
+
 	if dstFilename == "" {
-		log.Printf("installBaseOsObject: unssigned deestination partition\n")
-		return false
+		log.Printf("installBaseOsObject: unssigned destination partition\n")
+		err := errors.New("no destination partition")
+		return err
 	}
+
+	// unzip the source file
+	if strings.HasSuffix(srcFilename, ".gz") {
+		zipCmd := exec.Command("gunzip", srcFilename)
+		_, err := zipCmd.Output()
+		if err != nil {
+			log.Println(err)
+			return err
+		}
+		srcFilename = strings.Split(srcFilename, ".gz")[0]
+		if _, err := os.Stat(srcFilename); err != nil {
+			log.Println(err)
+			return err
+		}
+	}
+
+	log.Printf("installBaseOsObject %s to %s\n", srcFilename, dstFilename)
 
 	// zboot partdev unsed partition
 	devCmd := exec.Command("zboot", "partdev", dstFilename)
-	stdout, err0 := devCmd.Output()
-	if err0 != nil {
-		log.Println("installBaseOsObject: ", err0.Error())
-		return false
+	stdout, err := devCmd.Output()
+	if err != nil {
+		log.Fatal("installBaseOsObject: ", err)
+		return err
 
 	}
 	devName := string(stdout)
@@ -507,29 +550,12 @@ func installBaseOsObject(srcFilename string, dstFilename string) bool {
 
 	log.Printf("installBaseOsObject: write to %s\n", devName)
 
-	// unzip the source file
-	if strings.HasSuffix(srcFilename, ".gz") {
-		zipCmd := exec.Command("gunzip", srcFilename)
-		_, err := zipCmd.Output()
-		if err0 != nil {
-			log.Println(err.Error())
-			return false
-		}
-		srcFilename = strings.Split(srcFilename, ".gz")[0]
-		if _, err := os.Stat(srcFilename); err != nil {
-			log.Println(err.Error())
-			return false
-		}
-	}
-
-	log.Printf("installBaseOsObject() %s to %s\n", srcFilename, devName)
-
 	// write to flash Device
 	ddCmd := exec.Command("dd", "if="+srcFilename, "of="+devName, "bs=8m")
-	if _, err1 := ddCmd.Output(); err1 != nil {
-		log.Println(err1.Error())
-		return false
+	if _, err := ddCmd.Output(); err != nil {
+		log.Fatal(err)
+		return err
 	}
 
-	return true
+	return nil
 }

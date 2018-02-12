@@ -30,33 +30,27 @@ echo "all: ${BUILD_VERSION}" >var/tmp/zededa/version_tag
 [ -d bin/linux_x86_64 ] || mkdir bin/linux_x86_64
 [ -d bin/linux_arm64 ] || mkdir bin/linux_arm64
 
-export GOPATH=$DIR
-for mod in github.com/golang/protobuf/proto \
-	       github.com/fsnotify/fsnotify \
-               github.com/satori/go.uuid \
-               golang.org/x/crypto/ocsp \
-               github.com/nanobox-io/golang-scribble \
-               github.com/vishvananda/netlink \
-               github.com/RevH/ipinfo \
-               github.com/shirou/gopsutil/net \
-			   github.com/aws/aws-sdk-go/aws \
-			   github.com/pkg/sftp
-do
-    echo $mod
-    go get -u $mod
-done
-
-# Use ../api sandbox for shared proto files
-export GOPATH=$GOPATH:$DIR/../api
-
-APPS="downloader verifier client server register zedrouter domainmgr identitymgr zedmanager eidregister zedagent"
-cmdline=""
-for app in $APPS; do
-    echo $app
-    cmdline="github.com/zededa/go-provision/${app}"
-    CGO_ENABLED=0 GOARCH=amd64 GOOS=linux go build -o bin/linux_x86_64/${app} $cmdline
-    CGO_ENABLED=0 GOARCH=arm64 GOOS=linux go build -o bin/linux_arm64/${app} $cmdline
-done
+APPS="ledmanager downloader verifier client server register zedrouter domainmgr identitymgr zedmanager eidregister zedagent"
+if /bin/true; then
+    cmdline=""
+    for app in $APPS; do
+    	cmdline="$cmdline github.com/zededa/go-provision/${app}"
+    done
+    # echo CMDLINE $cmdline
+    go install -v -ldflags -X=main.Version=${BUILD_VERSION} $cmdline
+    if [ $? != 0 ]; then
+	exit $?
+    fi
+    for app in $APPS; do
+	cp -p bin/${app} bin/linux_x86_64/
+    done
+    # Assumes chown `whoami` /usr/local/go/pkg/; chgrp `whoami` /usr/local/go/pkg/
+    GOARCH=arm64 go install -v -ldflags -X=main.Version=${BUILD_VERSION} $cmdline
+    # Go install puts them in bin/linux_arm64
+    # for app in $APPS; do
+    #	    mv ${app} bin/linux_arm64
+    # done
+fi
 
 # Creating client tar files
 TMPDIR=/tmp/zededa-build.$$
