@@ -28,6 +28,11 @@ const (
 	compatibleFile = "/proc/device-tree/compatible"
 )
 
+// Remember the set of names of the disks and partitions
+var savedDisks []string
+// Also report usage for these paths
+var reportPaths = []string{"/", "/config", "/persist"}
+
 func publishMetrics(iteration int) {
 	cpuStorageStat := ExecuteXentopCmd()
 	PublishMetricsToZedCloud(cpuStorageStat, iteration)
@@ -510,7 +515,40 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 	// XXX add file with zedcloudmetric fail(intf), pass(intf), get(intf)
 	// and init (or have get return empty if intf doesn't exist?)
 
-	// XXX add diskMetric; XXX need to determine devices. Hard in container
+	// Add DiskMetric
+	// XXX should we get a new list of disks each time?
+	// XXX can we use part, err = disk.Partitions(false)
+	// and then p.MountPoint for the usage?
+	for _, d := range savedDisks {
+		fmt.Printf("Found disk/partition %s\n", d)
+		size := partitionSize(d)
+		fmt.Printf("Disk/partition %s size %d\n", d, size)
+		metric := zmet.DiskMetric{Disk: d, Total: size}
+		stat, err := disk.IOCounters(d)
+		if err == nil {
+			metric.ReadBytes = stat[d].ReadBytes/mbyte
+			metric.WriteBytes = stat[d].WriteBytes/mbyte
+			metric.ReadCount = stat[d].ReadCount
+			metric.WriteCount = stat[d].WriteCount
+		}
+		// XXX do we have a mountpath? Combine with paths below if same?
+		ReportMetrics.Disk = append(ReportMetrics.Disk, metric)
+	}
+	for _, path := range reportPaths {
+		u, err := disk.Usage(path)
+		if err != nil {
+			fmt.Printf("disk.Usage: %s\n", err)
+			continue
+		}
+		fmt.Printf("Path %s total %d used %d free %d\n",
+			path, u.Total, u.Used, u.Free)
+		metric := zmet.DiskMetric{MountPath: path,
+			Total: u.Total,
+			Used: u.Used,
+			Free: u.Free,
+		}
+		ReportMetrics.Disk = append(ReportMetrics.Disk, metric)
+	}
 
 	if debug {
 		log.Printf("PublishMetricsToZedCloud sending %s\n",
@@ -570,12 +608,32 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus, ite
 	totalMemory, _ := strconv.ParseUint(dict["total_memory"], 10, 64)
 	ReportDeviceInfo.Memory = *proto.Uint64(uint64(totalMemory))
 
-	// XXX other disks/partitions?
 	d, err := disk.Usage("/")
 	if err != nil {
 		log.Println(err)
 	} else {
 		ReportDeviceInfo.Storage = *proto.Uint64(uint64(d.Total/mbyte))
+	}
+	// Find all disks and partitions
+	disks := findDisksPartitions()
+	savedDisks = disks // Save for stats
+	for _, disk := range disks {
+		fmt.Printf("Found disk/partition %s\n", disk)
+		size := partitionSize(disk)
+		fmt.Printf("Disk/partition %s size %d\n", disk, size)
+		ReportDeviceInfo.StorageList = append(ReportDeviceInfo.StorageList,
+			zmet.ZInfoStorage{Device: disk, Total: size})
+	}
+	for _, path := range reportPaths {
+		u, err := disk.Usage(path)
+		if err != nil {
+			fmt.Printf("disk.Usage: %s\n", err)
+			continue
+		}
+		fmt.Printf("Path %s total %d used %d free %d\n",
+			path, u.Total, u.Used, u.Free)
+		ReportDeviceInfo.StorageList = append(ReportDeviceInfo.StorageList,
+			zmet.ZInfoStorage{MountPath: path, Total: u.Total})
 	}
 
 	ReportDeviceManufacturerInfo := new(zmet.ZInfoManufacturer)
@@ -636,9 +694,11 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus, ite
 	for index, uplink := range deviceNetworkStatus.UplinkStatus {
 		for _, interfaceDetail := range interfaces {
 			if uplink.IfName == interfaceDetail.Name {
-				// XXX parse /var/lib/dhcp/dhclient.<ifName>.leases
-				// XXX need to determine current lease
-				// XXX not in container!! udhcpd?
+				// XXX need alpine wwan and wlan lease file
+				// (not in container) and parse it
+				// XXX Does udhcpc have such a file??
+				// Or install /usr/share/udhcpc/default.script
+				// to get the data?
 				ReportDeviceNetworkInfo := new(zmet.ZInfoNetwork)
 				ReportDeviceNetworkInfo.IPAddrs = make([]string, len(interfaceDetail.Addrs))
 				for index, ip := range interfaceDetail.Addrs {
@@ -921,4 +981,29 @@ func SendMetricsProtobufStrThroughHttp(ReportMetrics *zmet.ZMetricMsg,
 	}
 	log.Printf("All attempts to connect to %s using intf %s failed\n",
 		metricsUrl, intf)
+}
+
+// Return an array of names like "sda", "sdb1"
+func findDisksPartitions() []string {
+	out, err := exec.Command("lsblk", "-nlo", "NAME").Output()
+	if err != nil {
+		log.Println(err)
+		return nil
+	}
+	return strings.Split(string(out), "\n")
+}
+
+// Given "sdb1" return the size of the partition; "sdb" to size of disk
+func partitionSize(part string) uint64 {
+	out, err := exec.Command("lsblk", "-nbdo", "SIZE", "/dev/"+part).Output()
+	if err != nil {
+		log.Println(err)
+		return 0
+	}
+	val, err := strconv.ParseUint(string(out), 10, 64)
+	if err != nil {
+		log.Println(err)
+		return 0
+	}
+	return val
 }
