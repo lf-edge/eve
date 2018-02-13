@@ -324,8 +324,7 @@ func handleDecapKeys(msg []byte) {
 			log.Printf("XXXXX Decap-key is %s\n", key.DecKey)
 			log.Printf("XXXXX ICV-key is %s\n", key.IcvKey[8:])
 			log.Printf(
-				"Error: Decap Key lengths should be 32, found encrypt ",
-				"key len %d & icv key length %d\n",
+				"Error: Decap/ICV Key lengths should be 32, found encrypt key len %d & icv key length %d\n",
 				len(key.DecKey), len(key.IcvKey[8:]))
 			continue
 		}

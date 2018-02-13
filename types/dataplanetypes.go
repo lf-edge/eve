@@ -58,7 +58,7 @@ type Rloc struct {
 	// Packet statistics
 	Packets       uint64
 	Bytes         uint64
-	LastPktTime   time.Time
+	LastPktTime   int64
 }
 
 type BufferedPacket struct {
@@ -131,6 +131,24 @@ type PuntEntry struct {
 
 type RestartEntry struct {
 	Type string `json:"type"`
+}
+
+type RlocStatsEntry struct {
+	Rloc string `json:"rloc"`
+	PacketCount uint64 `json:"packet-count"`
+	ByteCount   uint64 `json:"byte-count"`
+	SecondsSinceLastPkt int64 `json:"seconds-last-packet"`
+}
+
+type EidStatsEntry struct {
+	InstanceId string `json:"instance-id"`
+	EidPrefix string `json:"eid-prefix"`
+	Rlocs     []RlocStatsEntry `json:"rlocs"`
+}
+
+type EncapStatistics struct {
+	Type string `json:"type"`
+	Entries []EidStatsEntry `json:"entries"`
 }
 
 type EtrRunStatus struct {

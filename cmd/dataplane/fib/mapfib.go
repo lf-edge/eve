@@ -1,10 +1,12 @@
 package fib
 
 import (
+	"encoding/json"
 	"github.com/zededa/go-provision/types"
 	"log"
 	"math/rand"
 	"net"
+	"strconv"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -74,7 +76,7 @@ func makeMapCacheKey(iid uint32, eid net.IP) types.MapCacheKey {
 // Do a lookup into map cache database. If a resolved entry is not found,
 // create and add an un-resolved entry for buffering packets.
 func LookupAndAdd(iid uint32,
-	eid net.IP) (*types.MapCacheEntry, bool) {
+	eid net.IP, timeStamp time.Time) (*types.MapCacheEntry, bool) {
 	key := makeMapCacheKey(iid, eid)
 
 	// we take a read look and check if the entry that we are looking for
@@ -95,7 +97,8 @@ func LookupAndAdd(iid uint32,
 		}
 
 		// elapsed time is in Nano seconds
-		elapsed := time.Since(entry.LastPunt)
+		//elapsed := time.Since(entry.LastPunt)
+		elapsed := timeStamp.Sub(entry.LastPunt)
 
 		// convert elapsed time to milli seconds
 		elapsed = (elapsed / 1000000)
@@ -104,7 +107,8 @@ func LookupAndAdd(iid uint32,
 		// XXX Is 30 seconds for punt too high?
 		if elapsed >= puntInterval {
 			punt = true
-			entry.LastPunt = time.Now()
+			//entry.LastPunt = time.Now()
+			entry.LastPunt = timeStamp
 		}
 		return entry, punt
 	}
@@ -149,6 +153,7 @@ func UpdateMapCacheEntry(iid uint32, eid net.IP, rlocs []types.Rloc) {
 	itrLocalData.IvHigh = ivHigh
 	itrLocalData.IvLow = ivLow
 
+	timeStamp := time.Now()
 	for {
 		select {
 		case pkt, ok := <-entry.PktBuffer:
@@ -165,8 +170,8 @@ func UpdateMapCacheEntry(iid uint32, eid net.IP, rlocs []types.Rloc) {
 				copy(pktBuf[types.MAXHEADERLEN:], pktBytes)
 
 				// Send the packet out now
-				CraftAndSendLispPacket(pkt.Packet, pktBuf, uint32(capLen), pkt.Hash32,
-					entry, entry.InstanceId, itrLocalData)
+				CraftAndSendLispPacket(pkt.Packet, pktBuf, uint32(capLen), timeStamp,
+					pkt.Hash32, entry, entry.InstanceId, itrLocalData)
 
 				// decrement buffered packet count and increment pkt, byte counts
 				atomic.AddUint64(&entry.BuffdPkts, ^uint64(0))
@@ -377,5 +382,51 @@ func StatsThread(puntChannel chan []byte) {
 		// take read lock of map cache table
 		// and go through each entry while preparing statistics message
 		log.Printf("XXXXX Stats cycle\n")
+
+		cache.LockMe.RLock()
+
+		var encapStatistics types.EncapStatistics
+		encapStatistics.Type = "statistics"
+
+		for key, value := range cache.MapCache {
+			//log.Println("Key IID:", key.IID)
+			//log.Printf("Key Eid: %s\n", key.Eid)
+			//log.Println("Rlocs:")
+
+			var eidStats types.EidStatsEntry
+			eidStats.InstanceId = strconv.FormatUint(uint64(key.IID), 10)
+			eidStats.EidPrefix = key.Eid
+			for _, rloc := range value.Rlocs {
+				//log.Printf("	RLOC: %s\n", rloc.Rloc)
+				//log.Printf("	RLOC Packets: %v\n", atomic.LoadUint64(&rloc.Packets))
+				//log.Printf("	RLOC Bytes: %v\n", atomic.LoadUint64(&rloc.Bytes))
+
+				var rlocStats types.RlocStatsEntry
+				rlocStats.Rloc = rloc.Rloc.String()
+				rlocStats.PacketCount = atomic.LoadUint64(&rloc.Packets)
+				rlocStats.ByteCount = atomic.LoadUint64(&rloc.Bytes)
+				currUnixSecs := time.Now().Unix()
+				lastPktSecs  := atomic.LoadInt64(&rloc.LastPktTime)
+				rlocStats.SecondsSinceLastPkt = currUnixSecs - lastPktSecs
+
+				eidStats.Rlocs = append(eidStats.Rlocs, rlocStats)
+			}
+			/*
+			log.Printf("Packets: %v\n", value.Packets)
+			log.Printf("Bytes: %v\n", value.Bytes)
+			log.Printf("TailDrops: %v\n", value.TailDrops)
+			log.Printf("BuffdPkts: %v\n", value.BuffdPkts)
+			log.Println()
+			*/
+			encapStatistics.Entries = append(encapStatistics.Entries, eidStats)
+		}
+		statsMsg, err := json.Marshal(encapStatistics)
+		log.Println(string(statsMsg))
+		if err != nil {
+			log.Printf("Error: Encoding encap statistics\n")
+		} else {
+			puntChannel <- statsMsg
+		}
+		cache.LockMe.RUnlock()
 	}
 }

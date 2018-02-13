@@ -260,7 +260,7 @@ eidLoop:
 
 			log.Printf("XXXXX Packet capture length is %d\n", pktLen)
 			LookupAndSend(packet, pktBuf[:],
-				uint32(pktLen), iid, hash32,
+				uint32(pktLen), ci.Timestamp, iid, hash32,
 				ifname, srcAddr, dstAddr,
 				puntChannel, itrLocalData)
 		}
@@ -277,6 +277,7 @@ eidLoop:
 func LookupAndSend(packet gopacket.Packet,
 	pktBuf []byte,
 	capLen uint32,
+	timeStamp time.Time,
 	iid uint32,
 	hash32 uint32,
 	ifname string,
@@ -284,7 +285,10 @@ func LookupAndSend(packet gopacket.Packet,
 	dstAddr net.IP,
 	puntChannel chan []byte,
 	itrLocalData *types.ITRLocalData) {
-	mapEntry, punt := fib.LookupAndAdd(iid, dstAddr)
+
+	// Look for the map-cache entry required
+	mapEntry, punt := fib.LookupAndAdd(iid, dstAddr, timeStamp)
+
 	if mapEntry.Resolved != true {
 		// Buffer the packet for processing later
 
@@ -314,7 +318,7 @@ func LookupAndSend(packet gopacket.Packet,
 		 * out all buffered packets and our packet sits in the buffered
 		 * channel without being noticed.
 		 */
-		mapEntry, punt1 := fib.LookupAndAdd(iid, dstAddr)
+		mapEntry, punt1 := fib.LookupAndAdd(iid, dstAddr, timeStamp)
 		if mapEntry.Resolved {
 			punt = punt1
 			select {
@@ -330,8 +334,8 @@ func LookupAndSend(packet gopacket.Packet,
 				copy(pktBuf[types.MAXHEADERLEN:], pktBytes)
 
 				// Encapsulate and send packet out
-				fib.CraftAndSendLispPacket(pkt.Packet, pktBuf, capLen, pkt.Hash32,
-					mapEntry, iid, itrLocalData)
+				fib.CraftAndSendLispPacket(pkt.Packet, pktBuf, capLen, timeStamp,
+					pkt.Hash32, mapEntry, iid, itrLocalData)
 
 				// look golang atomic increment documentation to understand ^uint64(0)
 				// We are trying to decrement the counter here by 1
@@ -347,16 +351,16 @@ func LookupAndSend(packet gopacket.Packet,
 		} else {
 			// Look for the default route
 			defaultPrefix := net.ParseIP("::")
-			defaultMap, _ := fib.LookupAndAdd(iid, defaultPrefix)
+			defaultMap, _ := fib.LookupAndAdd(iid, defaultPrefix, timeStamp)
 			if defaultMap.Resolved {
-				fib.CraftAndSendLispPacket(packet, pktBuf, capLen, hash32,
-					defaultMap, iid, itrLocalData)
+				fib.CraftAndSendLispPacket(packet, pktBuf, capLen, timeStamp,
+					hash32, defaultMap, iid, itrLocalData)
 			}
 		}
 	} else {
 		// Craft the LISP header, outer layers here and send packet out
-		fib.CraftAndSendLispPacket(packet, pktBuf, capLen, hash32, mapEntry,
-			iid, itrLocalData)
+		fib.CraftAndSendLispPacket(packet, pktBuf, capLen, timeStamp,
+			hash32, mapEntry, iid, itrLocalData)
 		atomic.AddUint64(&mapEntry.Packets, 1)
 		atomic.AddUint64(&mapEntry.Bytes, uint64(capLen))
 	}

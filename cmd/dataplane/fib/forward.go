@@ -19,6 +19,7 @@ import (
 func CraftAndSendLispPacket(packet gopacket.Packet,
 	pktBuf []byte,
 	capLen uint32,
+	timeStamp time.Time,
 	hash32 uint32,
 	mapEntry *types.MapCacheEntry,
 	iid uint32,
@@ -44,10 +45,10 @@ func CraftAndSendLispPacket(packet gopacket.Packet,
 	// Check the family and create appropriate IP header
 	switch rlocPtr.Family {
 	case types.MAP_CACHE_FAMILY_IPV4:
-		craftAndSendIPv4LispPacket(packet, pktBuf, capLen,
+		craftAndSendIPv4LispPacket(packet, pktBuf, capLen, timeStamp,
 			hash32, rlocPtr, iid, itrLocalData)
 	case types.MAP_CACHE_FAMILY_IPV6:
-		craftAndSendIPv6LispPacket(packet, pktBuf, capLen,
+		craftAndSendIPv6LispPacket(packet, pktBuf, capLen, timeStamp,
 			hash32, rlocPtr, iid, itrLocalData)
 	case types.MAP_CACHE_FAMILY_UNKNOWN:
 		log.Printf("Unkown family found for rloc %s\n",
@@ -65,6 +66,11 @@ func CraftAndSendLispPacket(packet gopacket.Packet,
 func encryptPayload(
 	payload []byte, payloadLen uint32,
 	encKey []byte, block cipher.Block, ivArray []byte) (bool, uint32) {
+
+	if len(encKey) == 0 {
+		log.Printf("Invalid encrypt key lenght: %s\n", len(encKey))
+		return false, 0
+	}
 
 	var remainder uint32 = 0
 
@@ -141,6 +147,7 @@ func GetIVArray(itrLocalData *types.ITRLocalData, ivArray []byte) []byte {
 func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 	pktBuf []byte,
 	capLen uint32,
+	timeStamp time.Time,
 	hash32 uint32,
 	//mapEntry *types.MapCacheEntry,
 	rloc *types.Rloc,
@@ -274,7 +281,7 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 		// add IV length
 		offsetEnd = offsetEnd + aes.BlockSize + padLen + 20
 
-		// We do not compute ICV for the outer UDP header
+		// We do not include outer UDP header for ICV computation
 		computeAndWriteICV(pktBuf[offset+8:offsetEnd], icvKey)
 	}
 	//outputSlice := pktBuf[offset : uint32(offset)+uint32(outerHdrLen)+capLen-14]
@@ -292,9 +299,12 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 	}
 
 	// Increment RLOC packet & byte count statistics
-	totalBytes := offsetEnd - uint32(offset) - uint32(types.UDPHEADERLEN)
+	totalBytes := offsetEnd - uint32(offset) + types.IP4HEADERLEN
 	atomic.AddUint64(&rloc.Packets, 1)
 	atomic.AddUint64(&rloc.Bytes, uint64(totalBytes))
+	// Atomically store time stamp
+	unixSeconds := timeStamp.Unix()
+	atomic.StoreInt64(&rloc.LastPktTime, unixSeconds)
 }
 
 func ComputeICV(buf []byte, icvKey []byte) []byte {
@@ -318,6 +328,7 @@ func computeAndWriteICV(packet []byte, icvKey []byte) {
 func craftAndSendIPv6LispPacket(packet gopacket.Packet,
 	pktBuf []byte,
 	capLen uint32,
+	timeStamp time.Time,
 	hash32 uint32,
 	//mapEntry *types.MapCacheEntry,
 	rloc *types.Rloc,
