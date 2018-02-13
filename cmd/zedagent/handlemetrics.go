@@ -61,6 +61,18 @@ func ExecuteXlInfoCmd() map[string]string {
 	return dict
 }
 
+//Returns boolean depending upon the existence of domain
+func verifyDomainExists(domainId int) bool {
+	cmd := exec.Command("xl", "list", strconv.Itoa(domainId))
+	_, err := cmd.Output()
+	if err != nil {
+		log.Println(err.Error())
+		return false
+	} else {
+		return true
+	}
+}
+
 // Key is UUID
 var domainStatus map[string]types.DomainStatus
 
@@ -718,7 +730,7 @@ func SendInfoProtobufStrThroughHttp(ReportInfo *zmet.ZInfoMsg) error {
 					fmt.Printf("SendInfoProtobufStrThroughHttp to %s using intf %s source %v StatusOK\n",
 						statusUrl, intf, localTCPAddr)
 				}
-				return
+				return nil
 			default:
 				fmt.Printf("SendInfoProtobufStrThroughHttp to %s using intf %s source %v statuscode %d %s\n",
 					statusUrl, intf, localTCPAddr,
