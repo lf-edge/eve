@@ -281,7 +281,7 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 		fmt.Printf("got %d cpus\n", len(cpus))
 		ncpus = len(cpus)
 	}
-	// XXX
+	// XXX should we keep this around to convert idle?
 	fmt.Printf("found ncpus %d\n", ncpus)
 
 	countApp := 0
@@ -569,15 +569,15 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 	// Find all disks and partitions
 	disks := findDisksPartitions()
 	savedDisks = disks // Save for stats
-	var storageList []zmet.ZInfoStorage
 
 	for _, disk := range disks {
 		size := partitionSize(disk)
 		if debug {
 			fmt.Printf("Disk/partition %s size %d\n", disk, size)
 		}
-		storageList = append(storageList,
-			zmet.ZInfoStorage{Device: disk, Total: size})
+		is := zmet.ZInfoStorage{Device: disk, Total: size}
+		ReportDeviceInfo.StorageList = append(ReportDeviceInfo.StorageList,
+			&is)
 	}
 	for _, path := range reportPaths {
 		u, err := disk.Usage(path)
@@ -590,15 +590,9 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 			fmt.Printf("Path %s total %d used %d free %d\n",
 				path, u.Total, u.Used, u.Free)
 		}
-		storageList = append(storageList,
-			zmet.ZInfoStorage{MountPath: path, Total: u.Total})
-	}
-	fmt.Printf("Have %d elements for StorageList\n", len(storageList))
-	ReportDeviceInfo.StorageList = make([]*zmet.ZInfoStorage,
-		len(storageList))
-
-	for i, sl := range storageList {
-		ReportDeviceInfo.StorageList[i] = &sl
+		is := zmet.ZInfoStorage{MountPath: path, Total: u.Total}
+		ReportDeviceInfo.StorageList = append(ReportDeviceInfo.StorageList,
+			&is)
 	}
 
 	ReportDeviceManufacturerInfo := new(zmet.ZInfoManufacturer)
