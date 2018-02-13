@@ -107,8 +107,8 @@ message ZInfoDevice {
 
 // Per filesystem/partition information
 message ZInfoStorage {
-  string path = 1;	// E.g., "/", or "/config"
-  string partition = 2;	// E.g., "sda3"
+  string device = 1;	// E.g., "sda3"
+  string mountPath = 2;	// E.g., "/", or "/config"
   uint64 total = 3;	// in MBytes
 }
 
@@ -253,6 +253,9 @@ message diskMetric {
   uint64 writeBytes = 4;	// In MB
   uint64 readCount = 5;		// Number of ops
   uint64 writeCount = 6;	// Number of ops
+  uint64 total = 7;		// in MBytes; if we know the mountpath
+  uint64 used = 8;		// in MBytes; if we know the mountpath
+  uint64 free = 9;		// in MBytes; if we know the mountpath
 }
 
 message appMetric {
