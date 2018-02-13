@@ -120,11 +120,15 @@ type deviceContext struct {
 	assignableAdapters *types.AssignableAdapters
 }
 
+var debug = false
+
 func main() {
 	log.SetOutput(os.Stdout)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
 	versionPtr := flag.Bool("v", false, "Version")
+	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
+	debug = *debugPtr
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
@@ -410,9 +414,7 @@ func handleAppInstanceStatusModify(ctxArg interface{}, statusFilename string,
 }
 
 func handleAppInstanceStatusDelete(ctxArg interface{}, statusFilename string) {
-	// XXX is statusFilename == key aka UUIDstr?
-	// XXX no status - need to report delete somehow when instance gone
-	// status := statusArg.(*types.AppInstanceStatus)
+	// statusFilename == key aka UUIDstr?
 	ctx := ctxArg.(*appInstanceContext)
 	uuidStr := statusFilename
 	PublishAppInfoToZedCloud(uuidStr, nil, ctx.publishIteration)

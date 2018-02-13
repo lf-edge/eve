@@ -87,8 +87,6 @@ func main() {
 		select {
 		case change := <-ledChanges:
 			{
-				log.Println("change: ", change)
-
 				watch.HandleStatusEvent(change, &ctx,
 					ledConfigDirName,
 					&types.LedBlinkCounter{},
@@ -99,6 +97,9 @@ func main() {
 	}
 }
 
+// Supress work and logging if no change
+var oldCounter = 0
+
 func handleLedBlinkModify(ctxArg interface{}, configFilename string,
 	configArg interface{}) {
 	config := configArg.(*types.LedBlinkCounter)
@@ -108,7 +109,11 @@ func handleLedBlinkModify(ctxArg interface{}, configFilename string,
 		fmt.Printf("handleLedBlinkModify: ignoring %s\n", configFilename)
 		return
 	}
-
+	// Supress work and logging if no change
+	if config.BlinkCounter == oldCounter {
+		return
+	}
+	oldCounter = config.BlinkCounter
 	log.Printf("handleLedBlinkModify for %s\n", configFilename)
 	log.Println("value of blinkCount: ", config.BlinkCounter)
 	ctx.countChange <- config.BlinkCounter
