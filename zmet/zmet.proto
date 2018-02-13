@@ -102,7 +102,7 @@ message ZInfoDevice {
   repeated ZInfoSW softwareList = 14;	// Software Images in both partitions
   repeated ZioBundle assignableAdapters = 15;
   ZInfoDNS dns = 16; // What is used in resolv.conf
-  ZInfoStorage storageList = 17;
+  repeated ZInfoStorage storageList = 17;
 }
 
 // Per filesystem/partition information
