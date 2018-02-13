@@ -54,7 +54,7 @@ message Image {
 	string name = 2;
 
 	string sha256 = 3;
-
+	int64 size = 7;
 	Format iformat = 4;
 
 	// if its signed image
