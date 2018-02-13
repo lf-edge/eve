@@ -61,7 +61,7 @@ func StartEtrNat(ephPort int) (*pfring.Ring, int) {
 		ring.Disable()
 		ring.Close()
 		log.Fatal("Creating second ETR raw socket for packet injection failed: %s\n",
-		err)
+			err)
 		return nil, -1
 	}
 	go ProcessCapturedPkts(fd, ring)

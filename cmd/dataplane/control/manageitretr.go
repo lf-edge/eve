@@ -11,7 +11,7 @@ import (
 
 type ThreadEntry struct {
 	killChannel chan bool
-	ring    *pfring.Ring
+	ring        *pfring.Ring
 }
 
 var threadTable map[string]ThreadEntry
@@ -81,7 +81,7 @@ func ManageItrThreads(interfaces Interfaces) {
 			log.Println("Creating new ITR thread for", name)
 			threadTable[name] = ThreadEntry{
 				killChannel: killChannel,
-				ring:    ring,
+				ring:        ring,
 			}
 			go itr.StartItrThread(name, ring, killChannel, puntChannel)
 		}

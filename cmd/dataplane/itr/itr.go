@@ -41,7 +41,8 @@ func StartItrThread(threadName string,
 	}
 	err = syscall.SetsockoptInt(fd4, syscall.SOL_SOCKET, syscall.SO_SNDBUF, 65536)
 	if err != nil {
-		log.Printf("Thread %s: Setting socket buffer size failed: %s\n", threadName, err)
+		log.Printf("Thread %s: Setting socket buffer size failed: %s\n",
+			threadName, err)
 	}
 	defer syscall.Close(fd4)
 

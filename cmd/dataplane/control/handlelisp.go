@@ -173,7 +173,7 @@ func handleMapCacheTable(msg []byte) {
 	err := json.Unmarshal(msg, &mapCacheTable)
 	if err != nil {
 		log.Fatal("handleMapCacheTable: Error: Unknown json message format: %s: %s",
-		string(msg), err)
+			string(msg), err)
 		return
 	}
 
@@ -191,15 +191,15 @@ func handleMapCache(msg []byte) {
 	err := json.Unmarshal(msg, &mapCache)
 	if err != nil {
 		log.Fatal("handleMapCache: Error: Unknown json message format: %s: %s",
-		string(msg), err)
+			string(msg), err)
 		return
 	}
 	/*
-	//log.Println("map-cache is", mapCache)
-	log.Println("Opcode:", mapCache.Opcode)
-	log.Println("eid-prefix:", mapCache.EidPrefix)
-	log.Println("IID:", mapCache.InstanceId)
-	log.Println()
+		//log.Println("map-cache is", mapCache)
+		log.Println("Opcode:", mapCache.Opcode)
+		log.Println("eid-prefix:", mapCache.EidPrefix)
+		log.Println("IID:", mapCache.InstanceId)
+		log.Println()
 	*/
 
 	createMapCache(&mapCache)
@@ -210,9 +210,9 @@ func parseDatabaseMappings(databaseMappings DatabaseMappings) map[uint32][]net.I
 
 	for _, entry := range databaseMappings.Mappings {
 		/*
-		log.Println("IID:", entry.InstanceId)
-		log.Println("Eid prefix:", entry.EidPrefix)
-		log.Println()
+			log.Println("IID:", entry.InstanceId)
+			log.Println("Eid prefix:", entry.EidPrefix)
+			log.Println()
 		*/
 
 		x, err := strconv.ParseUint(entry.InstanceId, 10, 32)
@@ -240,7 +240,7 @@ func handleDatabaseMappings(msg []byte) {
 	err := json.Unmarshal(msg, &databaseMappings)
 	if err != nil {
 		log.Fatal("handleDatabaseMappings: Error: Unknown json message format: %s: %s",
-		string(msg), err)
+			string(msg), err)
 		return
 	}
 
@@ -270,7 +270,7 @@ func handleInterfaces(msg []byte) {
 	err := json.Unmarshal(msg, &interfaces)
 	if err != nil {
 		log.Fatal("handleInterfaces: Error: Unknown json message format: %s: %s",
-		string(msg), err)
+			string(msg), err)
 		return
 	}
 	ifaces := []types.Interface{}
@@ -309,7 +309,7 @@ func handleDecapKeys(msg []byte) {
 	err := json.Unmarshal(msg, &decapMsg)
 	if err != nil {
 		log.Fatal("handleDecapKeys: Error: Unknown json message format: %s: %s",
-		string(msg), err)
+			string(msg), err)
 		return
 	}
 
@@ -369,7 +369,7 @@ func handleEtrNatPort(msg []byte) {
 	err := json.Unmarshal(msg, &etrNatPort)
 	if err != nil {
 		log.Fatal("handleEtrNatPort: Error: Unknown json message format: %s: %s",
-		string(msg), err)
+			string(msg), err)
 		return
 	}
 	//port, err := strconv.ParseInt(etrNatPort.Port, 10, 32)

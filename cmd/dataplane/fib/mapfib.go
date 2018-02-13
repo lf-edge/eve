@@ -407,7 +407,7 @@ func StatsThread(puntChannel chan []byte) {
 				rlocStats.PacketCount = atomic.LoadUint64(&rloc.Packets)
 				rlocStats.ByteCount = atomic.LoadUint64(&rloc.Bytes)
 				currUnixSecs := time.Now().Unix()
-				lastPktSecs  := atomic.LoadInt64(&rloc.LastPktTime)
+				lastPktSecs := atomic.LoadInt64(&rloc.LastPktTime)
 				rlocStats.SecondsSinceLastPkt = currUnixSecs - lastPktSecs
 
 				eidStats.Rlocs = append(eidStats.Rlocs, rlocStats)
