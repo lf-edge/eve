@@ -92,7 +92,7 @@ message ZInfoDevice {
   string platform = 6;
   uint32 ncpu = 7;
   uint64 memory = 8;	// in Mbytes
-  uint64 storage = 9;	// in MBytes
+  uint64 storage = 9;	// in MBytes for the currently active image filesystem
 
   repeated ZinfoPeripheral devices = 10; // Deprecated
   ZInfoManufacturer minfo = 11;
@@ -102,6 +102,14 @@ message ZInfoDevice {
   repeated ZInfoSW softwareList = 14;	// Software Images in both partitions
   repeated ZioBundle assignableAdapters = 15;
   ZInfoDNS dns = 16; // What is used in resolv.conf
+  ZInfoStorage storageList = 17;
+}
+
+// Per filesystem/partition information
+message ZInfoStorage {
+  string device = 1;	// E.g., "sda3"
+  string mountPath = 2;	// E.g., "/", or "/config"
+  uint64 total = 3;	// in MBytes
 }
 
 // Device info from DOM0 perspective, if it exists.
@@ -245,6 +253,9 @@ message diskMetric {
   uint64 writeBytes = 4;	// In MB
   uint64 readCount = 5;		// Number of ops
   uint64 writeCount = 6;	// Number of ops
+  uint64 total = 7;		// in MBytes; if we know the mountpath
+  uint64 used = 8;		// in MBytes; if we know the mountpath
+  uint64 free = 9;		// in MBytes; if we know the mountpath
 }
 
 message appMetric {
