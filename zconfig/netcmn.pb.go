@@ -12,7 +12,6 @@ It is generated from these files:
 	devcommon.proto
 	storage.proto
 	appconfig.proto
-	network.proto
 	netconfig.proto
 	baseosconfig.proto
 
@@ -41,8 +40,6 @@ It has these top-level messages:
 	Drive
 	AppInstanceConfig
 	Adapter
-	NetworkParam
-	NetworkIf
 	NetworkConfig
 	NetworkAdapter
 	OSKeyTags
