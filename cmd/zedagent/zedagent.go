@@ -184,6 +184,9 @@ func main() {
 		types.UpdateLedManagerConfig(2)
 	}
 
+	// Publish our device info
+	PublishDeviceInfoToZedCloud(baseOsStatusMap, 9999)
+
 	// start the metrics/config fetch tasks
 	go metricsTimerTask()
 	go configTimerTask()

@@ -30,6 +30,7 @@ const (
 
 // Remember the set of names of the disks and partitions
 var savedDisks []string
+
 // Also report usage for these paths
 var reportPaths = []string{"/", "/config", "/persist"}
 
@@ -309,8 +310,8 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 	var ReportMetrics = &zmet.ZMetricMsg{}
 
 	ReportDeviceMetric := new(zmet.DeviceMetric)
-	ReportDeviceMetric.Cpu = new(zmet.CpuMetric)
 	ReportDeviceMetric.Memory = new(zmet.MemoryMetric)
+	ReportDeviceMetric.Compute = new(zmet.DevCpuMetric)
 
 	ReportMetrics.DevID = *proto.String(deviceId)
 	ReportZmetric := new(zmet.ZmetricTypes)
@@ -340,13 +341,12 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 	ReportMetrics.Am = make([]*zmet.AppMetric, len(cpuStorageStat)-2)
 	for arr := 1; arr < len(cpuStorageStat); arr++ {
 		if strings.Contains(cpuStorageStat[arr][1], "Domain-0") {
-			// XXX switch to devCpuMetric; cpuTotal/upTime/bootTime
 			cpuTime, _ := strconv.ParseUint(cpuStorageStat[arr][3], 10, 0)
-			// XXX fixme
+			// XXX fixme need correct value
 			ReportDeviceMetric.Compute.CpuTotal = *proto.Uint64(uint64(cpuTime))
-			// XXX fixme
+			// XXX fixme need correct value
 			ReportDeviceMetric.Compute.UpTime = *proto.Uint64(uint64(cpuTime))
-			// XXX fixme
+			// XXX fixme need correct value
 			BootTime := time.Now()
 			bootTime, _ := ptypes.TimestampProto(BootTime)
 			ReportDeviceMetric.Compute.BootTime = bootTime
@@ -420,6 +420,46 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 					log.Println("network metrics: ",
 						ReportDeviceMetric.Network)
 				}
+			}
+			// XXX add zedcloudMetric; XXX need to record fail/success per intf
+			// XXX add file with zedcloudmetric fail(intf), pass(intf), get(intf)
+			// and init (or have get return empty if intf doesn't exist?)
+
+			// Add DiskMetric
+			// XXX should we get a new list of disks each time?
+			// XXX can we use part, err = disk.Partitions(false)
+			// and then p.MountPoint for the usage?
+			for _, d := range savedDisks {
+				size := partitionSize(d)
+				if debug {
+					fmt.Printf("Disk/partition %s size %d\n",
+						d, size)
+				}
+				metric := zmet.DiskMetric{Disk: d, Total: size}
+				stat, err := disk.IOCounters(d)
+				if err == nil {
+					metric.ReadBytes = stat[d].ReadBytes / mbyte
+					metric.WriteBytes = stat[d].WriteBytes / mbyte
+					metric.ReadCount = stat[d].ReadCount
+					metric.WriteCount = stat[d].WriteCount
+				}
+				// XXX do we have a mountpath? Combine with paths below if same?
+				ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
+			}
+			for _, path := range reportPaths {
+				u, err := disk.Usage(path)
+				if err != nil {
+					fmt.Printf("disk.Usage: %s\n", err)
+					continue
+				}
+				fmt.Printf("Path %s total %d used %d free %d\n",
+					path, u.Total, u.Used, u.Free)
+				metric := zmet.DiskMetric{MountPath: path,
+					Total: u.Total,
+					Used:  u.Used,
+					Free:  u.Free,
+				}
+				ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
 			}
 			ReportMetrics.MetricContent = new(zmet.ZMetricMsg_Dm)
 			if x, ok := ReportMetrics.GetMetricContent().(*zmet.ZMetricMsg_Dm); ok {
@@ -511,44 +551,6 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 
 		}
 	}
-	// XXX add zedcloudMetric; XXX need to record fail/success per intf
-	// XXX add file with zedcloudmetric fail(intf), pass(intf), get(intf)
-	// and init (or have get return empty if intf doesn't exist?)
-
-	// Add DiskMetric
-	// XXX should we get a new list of disks each time?
-	// XXX can we use part, err = disk.Partitions(false)
-	// and then p.MountPoint for the usage?
-	for _, d := range savedDisks {
-		fmt.Printf("Found disk/partition %s\n", d)
-		size := partitionSize(d)
-		fmt.Printf("Disk/partition %s size %d\n", d, size)
-		metric := zmet.DiskMetric{Disk: d, Total: size}
-		stat, err := disk.IOCounters(d)
-		if err == nil {
-			metric.ReadBytes = stat[d].ReadBytes/mbyte
-			metric.WriteBytes = stat[d].WriteBytes/mbyte
-			metric.ReadCount = stat[d].ReadCount
-			metric.WriteCount = stat[d].WriteCount
-		}
-		// XXX do we have a mountpath? Combine with paths below if same?
-		ReportMetrics.Disk = append(ReportMetrics.Disk, metric)
-	}
-	for _, path := range reportPaths {
-		u, err := disk.Usage(path)
-		if err != nil {
-			fmt.Printf("disk.Usage: %s\n", err)
-			continue
-		}
-		fmt.Printf("Path %s total %d used %d free %d\n",
-			path, u.Total, u.Used, u.Free)
-		metric := zmet.DiskMetric{MountPath: path,
-			Total: u.Total,
-			Used: u.Used,
-			Free: u.Free,
-		}
-		ReportMetrics.Disk = append(ReportMetrics.Disk, metric)
-	}
 
 	if debug {
 		log.Printf("PublishMetricsToZedCloud sending %s\n",
@@ -612,16 +614,19 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus, ite
 	if err != nil {
 		log.Println(err)
 	} else {
-		ReportDeviceInfo.Storage = *proto.Uint64(uint64(d.Total/mbyte))
+		ReportDeviceInfo.Storage = *proto.Uint64(uint64(d.Total / mbyte))
 	}
 	// Find all disks and partitions
 	disks := findDisksPartitions()
 	savedDisks = disks // Save for stats
+	var storageList []zmet.ZInfoStorage
+
 	for _, disk := range disks {
-		fmt.Printf("Found disk/partition %s\n", disk)
 		size := partitionSize(disk)
-		fmt.Printf("Disk/partition %s size %d\n", disk, size)
-		ReportDeviceInfo.StorageList = append(ReportDeviceInfo.StorageList,
+		if debug {
+			fmt.Printf("Disk/partition %s size %d\n", disk, size)
+		}
+		storageList = append(storageList,
 			zmet.ZInfoStorage{Device: disk, Total: size})
 	}
 	for _, path := range reportPaths {
@@ -630,10 +635,20 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus, ite
 			fmt.Printf("disk.Usage: %s\n", err)
 			continue
 		}
-		fmt.Printf("Path %s total %d used %d free %d\n",
-			path, u.Total, u.Used, u.Free)
-		ReportDeviceInfo.StorageList = append(ReportDeviceInfo.StorageList,
+		
+		if debug {
+			fmt.Printf("Path %s total %d used %d free %d\n",
+				path, u.Total, u.Used, u.Free)
+		}
+		storageList = append(storageList,
 			zmet.ZInfoStorage{MountPath: path, Total: u.Total})
+	}
+	fmt.Printf("Have %d elements for StorageList\n", len(storageList))
+	ReportDeviceInfo.StorageList = make([]*zmet.ZInfoStorage,
+		len(storageList))
+
+	for i, sl := range storageList {
+		ReportDeviceInfo.StorageList[i] = &sl
 	}
 
 	ReportDeviceManufacturerInfo := new(zmet.ZInfoManufacturer)
@@ -731,6 +746,7 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus, ite
 	dc := dnsReadConfig("/etc/resolv.conf")
 	fmt.Printf("resolv.conf servers %v\n", dc.servers)
 	fmt.Printf("resolv.conf search %v\n", dc.search)
+	ReportDeviceInfo.Dns = new(zmet.ZInfoDNS)
 	ReportDeviceInfo.Dns.DNSservers = dc.servers
 	ReportDeviceInfo.Dns.DNSsearch = dc.search
 
@@ -739,8 +755,7 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus, ite
 		x.Dinfo = ReportDeviceInfo
 	}
 
-	fmt.Println(ReportInfo)
-	fmt.Println(" ")
+	fmt.Printf("PublishDeviceInfoToZedCloud sending %v\n", ReportInfo)
 
 	SendInfoProtobufStrThroughHttp(ReportInfo, iteration)
 }
@@ -790,13 +805,15 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 				ReportSoftwareInfo.SwHash = sc.ImageSha256
 				ReportSoftwareInfo.State = zmet.ZSwState(sc.State)
 				ReportSoftwareInfo.Target = sc.Target
-				for _, disk := range ds.DiskStatusList {
-					if disk.ImageSha256 == sc.ImageSha256 {
-						ReportSoftwareInfo.Vdev = disk.Vdev
-						break
+				if ds != nil {
+					for _, disk := range ds.DiskStatusList {
+						if disk.ImageSha256 == sc.ImageSha256 {
+							ReportSoftwareInfo.Vdev = disk.Vdev
+							break
+						}
 					}
 				}
-				
+
 				ReportAppInfo.SoftwareList[idx] = ReportSoftwareInfo
 			}
 		}
@@ -990,7 +1007,13 @@ func findDisksPartitions() []string {
 		log.Println(err)
 		return nil
 	}
-	return strings.Split(string(out), "\n")
+	res := strings.Split(string(out), "\n")
+	// Remove part after last CR
+	// XXX
+	fmt.Printf("Got %d diskparts: %v\n", len(res), res)
+	res = res[:len(res)-1]
+	fmt.Printf("Returning %d diskparts: %v\n", len(res), res)
+	return res
 }
 
 // Given "sdb1" return the size of the partition; "sdb" to size of disk
@@ -1000,7 +1023,8 @@ func partitionSize(part string) uint64 {
 		log.Println(err)
 		return 0
 	}
-	val, err := strconv.ParseUint(string(out), 10, 64)
+	res := strings.Split(string(out), "\n")
+	val, err := strconv.ParseUint(res[0], 10, 64)
 	if err != nil {
 		log.Println(err)
 		return 0
