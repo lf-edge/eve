@@ -19,50 +19,54 @@ import (
 
 const uplinkFileName = "/var/tmp/zedrouter/config/global"
 
-func StartETR(ephPort int) (*net.UDPConn, *pfring.Ring, int, int) {
+func StartEtrNonNat() {
 	log.Println("Starting ETR thread on port 4341")
-	log.Printf("Starting ETR thread on ephemeral port %d\n", ephPort)
-
 	// create a udp server socket and start listening on port 4341
 	// XXX Using ipv4 underlay for now. Will have to figure out v6 underlay case.
 	etrServer, err := net.ResolveUDPAddr("udp4", ":4341")
 	if err != nil {
-		log.Printf("Error resolving ETR socket address: %s\n", err)
-		return nil, nil, -1, -1
+		log.Fatal("Error resolving ETR socket address: %s\n", err)
+		return
 	}
 	serverConn, err := net.ListenUDP("udp4", etrServer)
 	if err != nil {
-		log.Printf("Unable to start ETR server on :4341: %s\n", err)
-		return nil, nil, -1, -1
+		log.Fatal("Unable to start ETR server on :4341: %s\n", err)
+		return
 	}
 
 	// Create a raw socket for injecting decapsulated packets
-	fd1, err := syscall.Socket(syscall.AF_INET6, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
+	fd, err := syscall.Socket(syscall.AF_INET6, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
 	if err != nil {
-		log.Printf("Creating ETR raw socket for packet injection failed: %s\n", err)
 		serverConn.Close()
-		return nil, nil, -1, -1
+		log.Fatal("Creating ETR raw socket for packet injection failed: %s\n", err)
+		return
 	}
 
 	// start processing packets. This loop should never end.
-	go ProcessETRPkts(fd1, serverConn)
+	go ProcessETRPkts(fd, serverConn)
+}
+
+//func StartETR(ephPort int) (*net.UDPConn, *pfring.Ring, int, int) {
+func StartEtrNat(ephPort int) (*pfring.Ring, int) {
+	log.Println("Starting ETR thread on port 4341")
 
 	ring := SetupEtrPktCapture(ephPort)
 	if ring == nil {
-		log.Printf("Unable to create ETR packet capture.\n")
-		return serverConn, nil, fd1, -1
+		log.Fatal("Unable to create ETR packet capture.\n")
+		return nil, -1
 	}
 
-	fd2, err := syscall.Socket(syscall.AF_INET6, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
+	fd, err := syscall.Socket(syscall.AF_INET6, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
 	if err != nil {
-		log.Printf("Creating second ETR raw socket for packet injection failed: %s\n", err)
 		ring.Disable()
 		ring.Close()
-		return serverConn, nil, fd1, -1
+		log.Fatal("Creating second ETR raw socket for packet injection failed: %s\n",
+		err)
+		return nil, -1
 	}
-	go ProcessCapturedPkts(fd2, ring)
+	go ProcessCapturedPkts(fd, ring)
 
-	return serverConn, ring, fd1, fd2
+	return ring, fd
 }
 
 func verifyAndInject(fd6 int,

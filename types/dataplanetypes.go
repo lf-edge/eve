@@ -154,15 +154,10 @@ type EncapStatistics struct {
 type EtrRunStatus struct {
 	EphPort  int
 	Ring    *pfring.Ring
-	UdpConn *net.UDPConn
 
 	// Raw socket FD used by ETR packet capture thread
 	// for injecting decapsulated packets
 	RingFD   int
-
-	// Raw socket FD used by ETR packet thread that listens on UDP port 4341
-	// for injecting decapsulated packets
-	UdpFD    int
 }
 
 type ITRLocalData struct {

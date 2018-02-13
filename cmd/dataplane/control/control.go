@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"github.com/zededa/go-provision/dataplane/etr"
 	"github.com/zededa/go-provision/dataplane/fib"
 	"github.com/zededa/go-provision/types"
 	"log"
@@ -21,15 +22,6 @@ var configPipe net.Listener
 var puntChannel chan []byte
 
 var Version = "No version specified"
-
-const (
-	MAPCACHETYPE         = "map-cache"
-	ENTIREMAPCACHE       = "entire-map-cache"
-	DATABASEMAPPINGSTYPE = "database-mappings"
-	INTERFACESTYPE       = "interfaces"
-	DECAPKEYSTYPE        = "decap-keys"
-	ETRNATPORT           = "etr-nat-port"
-)
 
 func main() {
 	log.SetOutput(os.Stdout)
@@ -76,6 +68,9 @@ func main() {
 
 	registerSignalHandler()
 	startPuntProcessor()
+
+	// Start ETR thread that listens on port 4341 for Non-NAT packets
+	etr.StartEtrNonNat()
 
 	// Initialize and start stats thread
 	InitAndStartStatsThread(puntChannel)
@@ -167,6 +162,22 @@ func startPuntProcessor() {
 					log.Printf("Connection to %s not possible.\n", lispersDotNetItr)
 					return
 				}
+				// This could be an indication that lispers.net has restarted.
+				// Lets flush all entries in the map-cache database (deleting all
+				// all map-cache entries).
+				//
+				// After re-start lispers.net will not know about the map-cache
+				// entries that dataplane has. This can lead to stale entries living
+				// in data plane, unless lispers.net sends explicit deletes.
+				// It is required to explicitly tell lispers.net about the entries
+				// that we have.
+
+				// XXX May be this is not needed. lispers.net already has a
+				// check pointing mechanism that stores the state.
+				// Check with Dino if this is needed and how this case can be handled
+				// gracefully without interrupting the current moving traffic.
+				fib.FlushMapCache()
+
 				// Try and write the punt request again
 				_, _ = conn.Write(puntMsg)
 			}

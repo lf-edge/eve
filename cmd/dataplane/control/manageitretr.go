@@ -10,7 +10,7 @@ import (
 )
 
 type ThreadEntry struct {
-	channel chan bool
+	killChannel chan bool
 	ring    *pfring.Ring
 }
 
@@ -18,7 +18,7 @@ var threadTable map[string]ThreadEntry
 var etrRunStatus types.EtrRunStatus
 
 func InitEtrRunStatus() {
-	etrRunStatus = types.EtrRunStatus{-1, nil, nil, -1, -1}
+	etrRunStatus = types.EtrRunStatus{-1, nil, -1}
 }
 
 func InitThreadTable() {
@@ -45,14 +45,13 @@ func ManageItrThreads(interfaces Interfaces) {
 	}
 
 	// Kill ITR threads that are not needed with new configuration
-	//for name, channel := range threadTable {
 	for name, entry := range threadTable {
 		// Check if this thread is needed with new configuration and send
 		// a kill signal if not.
 		if _, ok := tmpMap[name]; !ok {
 			// This thread has to die, break the bad news to it
 			log.Println("Sending kill signal to", name)
-			entry.channel <- true
+			entry.killChannel <- true
 
 			// XXX
 			// ITR threads use pf_ring for packet capture.
@@ -64,7 +63,7 @@ func ManageItrThreads(interfaces Interfaces) {
 			// calls returns with error.
 			//
 			// We'll retain the kill channel mechanism for future optimizations.
-			close(entry.channel)
+			close(entry.killChannel)
 			entry.ring.Disable()
 			entry.ring.Close()
 			delete(threadTable, name)
@@ -81,7 +80,7 @@ func ManageItrThreads(interfaces Interfaces) {
 			ring := itr.SetupPacketCapture(name, 65536)
 			log.Println("Creating new ITR thread for", name)
 			threadTable[name] = ThreadEntry{
-				channel: killChannel,
+				killChannel: killChannel,
 				ring:    ring,
 			}
 			go itr.StartItrThread(name, ring, killChannel, puntChannel)
@@ -95,23 +94,18 @@ func ManageETRThread(port int) {
 		return
 	}
 	// Destroy the previous ETR run state
+
+	// NAT etr packet capture
 	if etrRunStatus.Ring != nil {
 		etrRunStatus.Ring.Disable()
 		etrRunStatus.Ring.Close()
 	}
-	if etrRunStatus.UdpConn != nil {
-		etrRunStatus.UdpConn.Close()
-	}
+
 	if etrRunStatus.RingFD != -1 {
 		syscall.Close(etrRunStatus.RingFD)
 	}
-	if etrRunStatus.UdpFD != -1 {
-		syscall.Close(etrRunStatus.UdpFD)
-	}
-	udpConn, ring, fd1, fd2 := etr.StartETR(port)
-	etrRunStatus.UdpConn = udpConn
+	ring, fd := etr.StartEtrNat(port)
 	etrRunStatus.Ring = ring
-	etrRunStatus.UdpFD = fd1
-	etrRunStatus.RingFD = fd2
+	etrRunStatus.RingFD = fd
 	etrRunStatus.EphPort = port
 }

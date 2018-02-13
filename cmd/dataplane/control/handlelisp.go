@@ -15,16 +15,19 @@ import (
 func parseRloc(rlocStr *Rloc) (types.Rloc, bool) {
 	rloc := net.ParseIP(rlocStr.Rloc)
 	if rloc == nil {
+		// XXX Should we log.Fatal here?
 		log.Println("RLOC:", rlocStr.Rloc, "is invalid")
 		return types.Rloc{}, false
 	}
 	x, err := strconv.ParseUint(rlocStr.Priority, 10, 32)
 	if err != nil {
+		// XXX Should we log.Fatal here?
 		return types.Rloc{}, false
 	}
 	priority := uint32(x)
 	x, err = strconv.ParseUint(rlocStr.Weight, 10, 32)
 	if err != nil {
+		// XXX Should we log.Fatal here?
 		return types.Rloc{}, false
 	}
 	weight := uint32(x)
@@ -45,6 +48,7 @@ func parseRloc(rlocStr *Rloc) (types.Rloc, bool) {
 	}
 	if family == types.MAP_CACHE_FAMILY_UNKNOWN {
 		// This ip address is not correct
+		// XXX Should we log.Fatal here?
 		return types.Rloc{}, false
 	}
 
@@ -56,6 +60,7 @@ func parseRloc(rlocStr *Rloc) (types.Rloc, bool) {
 	for _, key := range rlocStr.Keys {
 		keyId, err := strconv.ParseUint(key.KeyId, 10, 32)
 		if err != nil {
+			// XXX Should we log.Fatal here?
 			continue
 		}
 
@@ -64,6 +69,7 @@ func parseRloc(rlocStr *Rloc) (types.Rloc, bool) {
 			log.Printf(
 				"Error: Encap Key lengths should be 32, found encrypt key len %d & icv key length %d and encap key %s, icv key %s\n",
 				len(key.EncKey), len(key.IcvKey[8:]), key.EncKey, key.IcvKey[8:])
+			// XXX Should we log.Fatal here?
 			continue
 		}
 
@@ -74,6 +80,7 @@ func parseRloc(rlocStr *Rloc) (types.Rloc, bool) {
 		if err != nil {
 			log.Printf("Creating of Cipher block for ecnryption key %s failed\n",
 				key.EncKey)
+			// XXX Should we log.Fatal here?
 			continue
 		}
 
@@ -102,16 +109,10 @@ func parseRloc(rlocStr *Rloc) (types.Rloc, bool) {
 	return rlocEntry, true
 }
 
-func isAddressIPv6(eid string) bool {
-	for i := 0; i < len(eid); i++ {
-		switch eid[i] {
-		case ':':
-			return true
-		case '.':
-			return false
-		default:
-			continue
-		}
+func isAddressIPv6(eid net.IP) bool {
+
+	if eid.To4() == nil {
+		return true
 	}
 	return false
 }
@@ -126,20 +127,16 @@ func createMapCache(mapCache *MapCacheEntry) {
 	iid := uint32(x)
 	eid, ipNet, _ := net.ParseCIDR(mapCache.EidPrefix)
 	if eid == nil {
+		// XXX Should we log.Fatal here?
 		return
 	}
-	v6 := isAddressIPv6(mapCache.EidPrefix)
+	v6 := isAddressIPv6(eid)
 	maskLen, _ := ipNet.Mask.Size()
 
-	if (maskLen == 0) && v6 {
-		log.Printf("XXXXX Eid %s length is %d\n", mapCache.EidPrefix, maskLen)
-		for _, b := range eid {
-			log.Printf("%d:", b)
-		}
-		log.Println()
-	}
 	if (maskLen != 128) && ((maskLen != 0) || !v6) {
-		// We are not interested in prefixes shorter then 128 other than 0
+		// We are not interested in prefixes shorter than 128 except 0 prefix length
+		// If we do not find a more specific route (prefix length 128), we forward
+		// our packets to the default route.
 		log.Println("Ignoring EID with mask length:", maskLen)
 		return
 	}
@@ -159,6 +156,7 @@ func createMapCache(mapCache *MapCacheEntry) {
 	for _, rlocStr := range mapCache.Rlocs {
 		rlocEntry, ok := parseRloc(&rlocStr)
 		if !ok {
+			// XXX Should we log.Fatal here?
 			continue
 		}
 		rlocs = append(rlocs, rlocEntry)
@@ -174,7 +172,8 @@ func handleMapCacheTable(msg []byte) {
 
 	err := json.Unmarshal(msg, &mapCacheTable)
 	if err != nil {
-		log.Println("Error:", err)
+		log.Fatal("handleMapCacheTable: Error: Unknown json message format: %s: %s",
+		string(msg), err)
 		return
 	}
 
@@ -188,17 +187,20 @@ func handleMapCacheTable(msg []byte) {
 func handleMapCache(msg []byte) {
 	var mapCache MapCacheEntry
 
-	log.Println(string(msg))
+	log.Printf("Handling the following map-cache message:\n%s\n", string(msg))
 	err := json.Unmarshal(msg, &mapCache)
 	if err != nil {
-		log.Println("Error:", err)
+		log.Fatal("handleMapCache: Error: Unknown json message format: %s: %s",
+		string(msg), err)
 		return
 	}
+	/*
 	//log.Println("map-cache is", mapCache)
 	log.Println("Opcode:", mapCache.Opcode)
 	log.Println("eid-prefix:", mapCache.EidPrefix)
 	log.Println("IID:", mapCache.InstanceId)
 	log.Println()
+	*/
 
 	createMapCache(&mapCache)
 }
@@ -207,9 +209,11 @@ func parseDatabaseMappings(databaseMappings DatabaseMappings) map[uint32][]net.I
 	tmpMap := make(map[uint32][]net.IP)
 
 	for _, entry := range databaseMappings.Mappings {
+		/*
 		log.Println("IID:", entry.InstanceId)
 		log.Println("Eid prefix:", entry.EidPrefix)
 		log.Println()
+		*/
 
 		x, err := strconv.ParseUint(entry.InstanceId, 10, 32)
 		if err != nil {
@@ -235,7 +239,8 @@ func handleDatabaseMappings(msg []byte) {
 
 	err := json.Unmarshal(msg, &databaseMappings)
 	if err != nil {
-		log.Println("Error:", err)
+		log.Fatal("handleDatabaseMappings: Error: Unknown json message format: %s: %s",
+		string(msg), err)
 		return
 	}
 
@@ -264,7 +269,8 @@ func handleInterfaces(msg []byte) {
 
 	err := json.Unmarshal(msg, &interfaces)
 	if err != nil {
-		log.Println("Error:", err)
+		log.Fatal("handleInterfaces: Error: Unknown json message format: %s: %s",
+		string(msg), err)
 		return
 	}
 	ifaces := []types.Interface{}
@@ -302,7 +308,8 @@ func handleDecapKeys(msg []byte) {
 
 	err := json.Unmarshal(msg, &decapMsg)
 	if err != nil {
-		log.Println("Error:", err)
+		log.Fatal("handleDecapKeys: Error: Unknown json message format: %s: %s",
+		string(msg), err)
 		return
 	}
 
@@ -361,7 +368,8 @@ func handleEtrNatPort(msg []byte) {
 
 	err := json.Unmarshal(msg, &etrNatPort)
 	if err != nil {
-		log.Println("Error:", err)
+		log.Fatal("handleEtrNatPort: Error: Unknown json message format: %s: %s",
+		string(msg), err)
 		return
 	}
 	//port, err := strconv.ParseInt(etrNatPort.Port, 10, 32)

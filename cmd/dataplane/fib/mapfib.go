@@ -73,6 +73,10 @@ func makeMapCacheKey(iid uint32, eid net.IP) types.MapCacheKey {
 	}
 }
 
+// This function will delete all map-cache entries that we have.
+func FlushMapCache() {
+}
+
 // Do a lookup into map cache database. If a resolved entry is not found,
 // create and add an un-resolved entry for buffering packets.
 func LookupAndAdd(iid uint32,
@@ -337,6 +341,7 @@ func ShowMapCacheEntries() {
 			log.Printf("	RLOC: %s\n", rloc.Rloc)
 			log.Printf("	RLOC Packets: %v\n", atomic.LoadUint64(&rloc.Packets))
 			log.Printf("	RLOC Bytes: %v\n", atomic.LoadUint64(&rloc.Bytes))
+			log.Printf("	RLOC Keys:\n")
 			for _, key := range rloc.Keys {
 				keyId := key.KeyId
 				if keyId == 0 {
@@ -381,7 +386,6 @@ func StatsThread(puntChannel chan []byte) {
 
 		// take read lock of map cache table
 		// and go through each entry while preparing statistics message
-		log.Printf("XXXXX Stats cycle\n")
 
 		cache.LockMe.RLock()
 
@@ -397,9 +401,6 @@ func StatsThread(puntChannel chan []byte) {
 			eidStats.InstanceId = strconv.FormatUint(uint64(key.IID), 10)
 			eidStats.EidPrefix = key.Eid
 			for _, rloc := range value.Rlocs {
-				//log.Printf("	RLOC: %s\n", rloc.Rloc)
-				//log.Printf("	RLOC Packets: %v\n", atomic.LoadUint64(&rloc.Packets))
-				//log.Printf("	RLOC Bytes: %v\n", atomic.LoadUint64(&rloc.Bytes))
 
 				var rlocStats types.RlocStatsEntry
 				rlocStats.Rloc = rloc.Rloc.String()
@@ -411,13 +412,6 @@ func StatsThread(puntChannel chan []byte) {
 
 				eidStats.Rlocs = append(eidStats.Rlocs, rlocStats)
 			}
-			/*
-			log.Printf("Packets: %v\n", value.Packets)
-			log.Printf("Bytes: %v\n", value.Bytes)
-			log.Printf("TailDrops: %v\n", value.TailDrops)
-			log.Printf("BuffdPkts: %v\n", value.BuffdPkts)
-			log.Println()
-			*/
 			encapStatistics.Entries = append(encapStatistics.Entries, eidStats)
 		}
 		statsMsg, err := json.Marshal(encapStatistics)

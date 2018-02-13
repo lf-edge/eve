@@ -2,6 +2,16 @@ package main
 
 const CRYPTO_KEY_LEN = 32
 
+// These message type definitions should be in sync with lispers.net
+const (
+	MAPCACHETYPE         = "map-cache"
+	ENTIREMAPCACHE       = "entire-map-cache"
+	DATABASEMAPPINGSTYPE = "database-mappings"
+	INTERFACESTYPE       = "interfaces"
+	DECAPKEYSTYPE        = "decap-keys"
+	ETRNATPORT           = "etr-nat-port"
+)
+
 type Type struct {
 	Type string `json:"type"`
 }
