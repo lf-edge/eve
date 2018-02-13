@@ -307,7 +307,7 @@ func installDownloadedObject(objType string, safename string,
 
 	key := formLookupKey(objType, safename)
 
-	log.Printf("installDownloadedObject for %s, %v\n", key, status.State)
+	log.Printf("installDownloadedObject %s for %s, %v\n", objType, safename, status.State)
 
 	// if the object is in downloaded state,
 	// pick from pending directory
@@ -357,6 +357,8 @@ func installDownloadedObject(objType string, safename string,
 		default:
 			log.Printf("%s, Unsupported Object Type %v\n", safename, objType)
 		}
+	} else {
+		log.Printf("%s, final dir not set %v\n", safename, objType)
 	}
 
 	if ret == nil {

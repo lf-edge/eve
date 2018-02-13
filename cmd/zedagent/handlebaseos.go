@@ -17,10 +17,6 @@ import (
 	"time"
 )
 
-const (
-	partitionMapFilename = persistDir + "/partitionMap"
-)
-
 // zedagent publishes these config/status files
 // and also the consumer
 var baseOsConfigMap map[string]types.BaseOsConfig
@@ -93,6 +89,8 @@ func addOrUpdateBaseOsConfig(uuidStr string, config types.BaseOsConfig) {
 			PartitionLabel: config.PartitionLabel,
 		}
 
+		status.Activated = getActivationStatus(uuidStr, status)
+
 		status.StorageStatusList = make([]types.StorageStatus,
 			len(config.StorageConfigList))
 
@@ -135,22 +133,26 @@ func baseOsStatusGet(uuidStr string) *types.BaseOsStatus {
 		log.Printf("baseOsHandleStatusGet for %s, Config absent\n", uuidStr)
 		return nil
 	}
-	status.Activated = getActivatedStatus(uuidStr, status)
 	return &status
 }
 
-func getActivatedStatus(uuidStr string, status types.BaseOsStatus) bool {
+func getActivationStatus(uuidStr string, status types.BaseOsStatus) bool {
+
+	log.Printf("getActivationStatus: partitionLabel %s\n", status.PartitionLabel)
 
 	if status.PartitionLabel != "" {
 		partStateCmd := exec.Command("zboot", "partstate", status.PartitionLabel)
 		ret, err := partStateCmd.Output()
 		if err != nil {
+			log.Printf("getActivationStatus: err %v\n", err)
 			return false
 		}
 
+		log.Printf("getActivationStatus: state  %s\n", ret)
+
 		partState := string(ret)
 		partState = strings.TrimSpace(partState)
-		if partState == status.PartitionLabel {
+		if partState == "active" {
 			return true
 		}
 	}
@@ -165,20 +167,20 @@ func baseOsHandleStatusUpdate(uuidStr string) {
 		return
 	}
 
-	status, ok := baseOsStatusMap[uuidStr]
-	if !ok {
+	status := baseOsStatusGet(uuidStr)
+	if status == nil {
 		log.Printf("baseOsHandleStatusUpdate for %s, Status absent\n", uuidStr)
 		return
 	}
 
-	changed := doBaseOsStatusUpdate(uuidStr, config, &status)
+	changed := doBaseOsStatusUpdate(uuidStr, config, status)
 
 	if changed {
 		log.Printf("baseOsHandleStatusUpdate for %s, Status changed\n", uuidStr)
-		baseOsStatusMap[uuidStr] = status
+		baseOsStatusMap[uuidStr] = *status
 		statusFilename := fmt.Sprintf("%s/%s.json",
 			zedagentBaseOsStatusDirname, uuidStr)
-		writeBaseOsStatus(&status, statusFilename)
+		writeBaseOsStatus(status, statusFilename)
 	}
 }
 
@@ -192,13 +194,17 @@ func doBaseOsStatusUpdate(uuidStr string, config types.BaseOsConfig,
 		return changed
 	}
 
-	if !config.Activate {
+	if config.Activate == false {
 		log.Printf("doBaseOsStatusUpdate for %s, Activate is not set\n", uuidStr)
 		changed = doBaseOsInactivate(uuidStr, status)
 		return changed
 	}
 
-	log.Printf("doBaseOsStatusUpdate for %s, Activate is set\n", uuidStr)
+	if status.Activated == true {
+		log.Printf("doBaseOsStatusUpdate for %s, is already activated\n", uuidStr)
+		return false
+	}
+
 	changed = doBaseOsActivate(uuidStr, config, status)
 	log.Printf("doBaseOsStatusUpdate done for %s\n", uuidStr)
 	return changed
@@ -207,8 +213,15 @@ func doBaseOsStatusUpdate(uuidStr string, config types.BaseOsConfig,
 func doBaseOsActivate(uuidStr string, config types.BaseOsConfig,
 	status *types.BaseOsStatus) bool {
 
-	log.Printf("doBaseOsActivate for %s\n", uuidStr)
+	log.Printf("doBaseOsActivate for %s, partition %s\n",
+		 uuidStr, config.PartitionLabel)
 	changed := false
+
+	if config.PartitionLabel != "IMGA" &&
+		config.PartitionLabel != "IMGB" {
+		log.Printf("doBaseOsActivate for %s, partition not set\n", uuidStr)
+		return changed
+	}
 
 	// XXX:FIXME, flip the currently active baseOs
 	// to backup and adjust the baseOS
@@ -217,20 +230,29 @@ func doBaseOsActivate(uuidStr string, config types.BaseOsConfig,
 
 	//check PartitionLabel the one we got is really unused?
 	partStateCmd := exec.Command("zboot", "partstate", config.PartitionLabel)
-	stdout, err := partStateCmd.Output()
+	ret, err := partStateCmd.Output()
 	if err != nil {
-		log.Println(err.Error())
+		log.Printf("doBaseOsActivate: %s, partStateCmd %v\n", uuidStr, err)
+		return changed
 	}
-	partitionState := string(stdout)
+
+	log.Printf("doBaseOsActivate: %s, partState %v\n", uuidStr, ret)
+	partitionState := string(ret)
+	partitionState = strings.TrimSpace(partitionState)
+
 	//if partitionState unsed then change status to updating...
 	if partitionState == "unused" {
+
+		log.Printf("doBaseOsActivate: %s, updating boot-state %s\n",
+			 uuidStr, partitionState)
 		// XXX:FIXME, store baseOs parition assignment info
 		//storePartitionInfo(config)
 		statusCmd := exec.Command("zboot", "set_partstate",
 			config.PartitionLabel, "updating")
 		stdout, err := statusCmd.Output()
 		if err != nil {
-			log.Fatal(err)
+			log.Printf("doBaseOsActivate: set_partstate %s\n", err)
+			return changed
 		}
 		log.Println(stdout)
 	}
@@ -240,7 +262,7 @@ func doBaseOsActivate(uuidStr string, config types.BaseOsConfig,
 		status.Activated == false {
 		status.Activated = true
 		changed = true
-		execReboot(true)
+		startExecReboot()
 	}
 
 	return changed
@@ -297,6 +319,10 @@ func doBaseOsInstall(uuidStr string, config types.BaseOsConfig,
 		return changed || verifychange, false
 	}
 
+	for _, sc := range config.StorageConfigList {
+		sc.FinalObjDir = config.PartitionLabel
+	}
+
 	// install the objects at appropriate place
 	if ret := installDownloadedObjects(baseOsObj, uuidStr, config.StorageConfigList,
 		status.StorageStatusList); ret == true {
@@ -304,6 +330,7 @@ func doBaseOsInstall(uuidStr string, config types.BaseOsConfig,
 		status.State = types.INSTALLED
 		changed = true
 	}
+
 
 	statusFilename := fmt.Sprintf("%s/%s.json",
 		zedagentBaseOsStatusDirname, uuidStr)
@@ -512,7 +539,7 @@ func doBaseOsUninstall(uuidStr string, status *types.BaseOsStatus) (bool, bool) 
 
 func installBaseOsObject(srcFilename string, dstFilename string) error {
 
-	log.Printf("installBaseOsObject: to %s\n", dstFilename)
+	log.Printf("installBaseOsObject: %s to %s\n", srcFilename, dstFilename)
 
 	if dstFilename == "" {
 		log.Printf("installBaseOsObject: unssigned destination partition\n")
@@ -520,42 +547,48 @@ func installBaseOsObject(srcFilename string, dstFilename string) error {
 		return err
 	}
 
+	// XXX:FIXME, currently, cloud gives a zipped file, without ".gz"
+	if strings.HasSuffix(srcFilename, ".gz") == false {
+		os.Rename(srcFilename, srcFilename + ".gz")
+		srcFilename = srcFilename + ".gz"
+	}
+
 	// unzip the source file
-	if strings.HasSuffix(srcFilename, ".gz") {
+	if strings.HasSuffix(srcFilename, ".gz") == true {
 		zipCmd := exec.Command("gunzip", srcFilename)
 		_, err := zipCmd.Output()
 		if err != nil {
-			log.Println(err)
+			log.Printf("installBaseOsObject: %s %v\n",
+				 srcFilename, err)
 			return err
 		}
 		srcFilename = strings.Split(srcFilename, ".gz")[0]
 		if _, err := os.Stat(srcFilename); err != nil {
-			log.Println(err)
+			log.Printf("installBaseOsObject: %s %v\n",
+				srcFilename, err)
 			return err
 		}
 	}
 
 	log.Printf("installBaseOsObject %s to %s\n", srcFilename, dstFilename)
 
-	// zboot partdev unsed partition
+	// zboot partdev unused partition
 	devCmd := exec.Command("zboot", "partdev", dstFilename)
-	stdout, err := devCmd.Output()
+	ret, err := devCmd.Output()
 	if err != nil {
-		log.Fatal("installBaseOsObject: ", err)
+		log.Printf("installBaseOsObject: %s devCmd %v\n", dstFilename, err)
 		return err
-
 	}
-	devName := string(stdout)
+
+	devName := string(ret)
 	devName = strings.TrimSpace(devName)
 
 	log.Printf("installBaseOsObject: write to %s\n", devName)
-
 	// write to flash Device
-	ddCmd := exec.Command("dd", "if="+srcFilename, "of="+devName, "bs=8m")
+	ddCmd := exec.Command("dd", "if="+srcFilename, "of="+devName, "bs=8M")
 	if _, err := ddCmd.Output(); err != nil {
-		log.Fatal(err)
+		log.Printf("installBaseOsObject: %s write %v\n", devName, err)
 		return err
 	}
-
 	return nil
 }

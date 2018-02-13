@@ -1,4 +1,5 @@
 FROM golang:1.9.1-alpine AS build
+RUN apk update
 RUN apk add --no-cache git gcc linux-headers libc-dev util-linux
 
 ADD ./  /go/src/github.com/zededa/go-provision/

@@ -356,8 +356,10 @@ func checkCurrentBaseOsFiles(config *zconfig.EdgeDevConfig) {
 				if err != nil {
 					log.Printf("Old config:%v\n", err)
 				}
-				// also remove the certifiates holder config
+				// remove the certificates holder config
 				os.Remove(zedagentCertObjConfigDirname + "/" + curBaseOsFilename)
+				// also remove the partition info holder config
+				os.Remove(configDir + "/" + curBaseOsFilename)
 			}
 		}
 	}

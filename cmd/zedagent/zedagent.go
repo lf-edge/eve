@@ -59,6 +59,7 @@ const (
 	baseDirname    = zedBaseDirname + "/" + moduleName
 	runDirname     = zedRunDirname + "/" + moduleName
 
+	configDir             = "/config"
 	persistDir            = "/persist"
 	objectDownloadDirname = persistDir + "/downloads"
 	certificateDirname    = persistDir + "/certs"
