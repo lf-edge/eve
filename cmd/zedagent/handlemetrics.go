@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
@@ -11,12 +12,11 @@ import (
 	"github.com/shirou/gopsutil/mem"
 	psutilnet "github.com/shirou/gopsutil/net"
 	"github.com/zededa/api/zmet"
+	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/types"
-	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
-	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -69,59 +69,6 @@ func ExecuteXlInfoCmd() map[string]string {
 		}
 	}
 	return dict
-}
-
-func GetDeviceManufacturerInfo() (string, string, string, string, string) {
-
-	dmidecodeNameCmd := exec.Command("dmidecode", "-s", "system-product-name")
-	pname, err := dmidecodeNameCmd.Output()
-	if err != nil {
-		log.Println(err.Error())
-	}
-	dmidecodeManuCmd := exec.Command("dmidecode", "-s", "system-manufacturer")
-	manufacturer, err := dmidecodeManuCmd.Output()
-	if err != nil {
-		log.Println(err.Error())
-	}
-	dmidecodeVersionCmd := exec.Command("dmidecode", "-s", "system-version")
-	version, err := dmidecodeVersionCmd.Output()
-	if err != nil {
-		log.Println(err.Error())
-	}
-	dmidecodeSerialCmd := exec.Command("dmidecode", "-s", "system-serial-number")
-	serial, err := dmidecodeSerialCmd.Output()
-	if err != nil {
-		log.Println(err.Error())
-	}
-	dmidecodeUuidCmd := exec.Command("dmidecode", "-s", "system-uuid")
-	uuid, err := dmidecodeUuidCmd.Output()
-	if err != nil {
-		log.Println(err.Error())
-	}
-	productManufacturer := string(manufacturer)
-	productName := string(pname)
-	productVersion := string(version)
-	productSerial := string(serial)
-	productUuid := string(uuid)
-	return productManufacturer, productName, productVersion, productSerial, productUuid
-}
-
-// Returns BIOS vendor, version, release-date
-func GetDeviceBios() (string, string, string) {
-
-	vendor, err := exec.Command("dmidecode", "-s", "bios-vendor").Output()
-	if err != nil {
-		log.Println(err.Error())
-	}
-	version, err := exec.Command("dmidecode", "-s", "bios-version").Output()
-	if err != nil {
-		log.Println(err.Error())
-	}
-	releaseDate, err := exec.Command("dmidecode", "-s", "bios-release-date").Output()
-	if err != nil {
-		log.Println(err.Error())
-	}
-	return string(vendor), string(version), string(releaseDate)
 }
 
 //Returns boolean depending upon the existence of domain
@@ -561,7 +508,10 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 
 const mbyte = 1024 * 1024
 
-func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus, iteration int) {
+// This function is called per change, hence needs to try over all uplinks
+// send report on each uplink.
+func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
+	aa *types.AssignableAdapters) {
 
 	var ReportInfo = &zmet.ZInfoMsg{}
 
@@ -653,38 +603,29 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus, ite
 
 	ReportDeviceManufacturerInfo := new(zmet.ZInfoManufacturer)
 	if strings.Contains(machineArch, "x86") {
-		// XXX should we save manufacturer and product name and use it
-		// to check for capabilities elsewhere? Have e.g. "Supermicro/SYS-E100-9APP"
-		productManufacturer, productName, productVersion, productSerial, productUuid := GetDeviceManufacturerInfo()
+		productManufacturer, productName, productVersion, productSerial, productUuid := hardware.GetDeviceManufacturerInfo()
 		ReportDeviceManufacturerInfo.Manufacturer = *proto.String(strings.TrimSpace(productManufacturer))
 		ReportDeviceManufacturerInfo.ProductName = *proto.String(strings.TrimSpace(productName))
 		ReportDeviceManufacturerInfo.Version = *proto.String(strings.TrimSpace(productVersion))
 		ReportDeviceManufacturerInfo.SerialNumber = *proto.String(strings.TrimSpace(productSerial))
 		ReportDeviceManufacturerInfo.UUID = *proto.String(strings.TrimSpace(productUuid))
 
-		biosVendor, biosVersion, biosReleaseDate := GetDeviceBios()
+		biosVendor, biosVersion, biosReleaseDate := hardware.GetDeviceBios()
 		ReportDeviceManufacturerInfo.BiosVendor = *proto.String(strings.TrimSpace(biosVendor))
 		ReportDeviceManufacturerInfo.BiosVersion = *proto.String(strings.TrimSpace(biosVersion))
 		ReportDeviceManufacturerInfo.BiosReleaseDate = *proto.String(strings.TrimSpace(biosReleaseDate))
-		ReportDeviceInfo.Minfo = ReportDeviceManufacturerInfo
 	}
-	if _, err := os.Stat(compatibleFile); err == nil {
-		// No dmidecode on ARM. Can only report compatible string
-		contents, err := ioutil.ReadFile(compatibleFile)
-		if err != nil {
-			log.Println(err)
-		} else {
-			compatible := strings.TrimSpace(string(contents))
-			ReportDeviceManufacturerInfo.Compatible = *proto.String(compatible)
-		}
-		ReportDeviceInfo.Minfo = ReportDeviceManufacturerInfo
-	}
+	compatible := hardware.GetCompatible()
+	ReportDeviceManufacturerInfo.Compatible = *proto.String(compatible)
+	ReportDeviceInfo.Minfo = ReportDeviceManufacturerInfo
 	ReportDeviceSoftwareInfo := new(zmet.ZInfoSW)
 	systemHost, err := host.Info()
 	if err != nil {
 		log.Println(err)
+	} else {
+		//XXX for now we are filling kernel version...
+		ReportDeviceSoftwareInfo.SwVersion = systemHost.KernelVersion
 	}
-	ReportDeviceSoftwareInfo.SwVersion = systemHost.KernelVersion //XXX for now we are filling kernel version...
 	ReportDeviceSoftwareInfo.SwHash = *proto.String(" ")
 	ReportDeviceInfo.Software = ReportDeviceSoftwareInfo
 
@@ -750,6 +691,17 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus, ite
 	ReportDeviceInfo.Dns.DNSservers = dc.servers
 	ReportDeviceInfo.Dns.DNSsearch = dc.search
 
+	// Report AssignableAdapters
+	ReportDeviceInfo.AssignableAdapters = make([]*zmet.ZioBundle, len(aa.IoBundleList))
+	for i, b := range aa.IoBundleList {
+		reportAA := new(zmet.ZioBundle)
+		reportAA.Type = zmet.ZioType(b.Type)
+		reportAA.Name = b.Name
+		reportAA.Members = b.Members
+		reportAA.UsedByUUID = b.UsedByUUID // XXX or get from DomainStatus?
+		ReportDeviceInfo.AssignableAdapters[i] = reportAA
+	}
+
 	ReportInfo.InfoContent = new(zmet.ZInfoMsg_Dinfo)
 	if x, ok := ReportInfo.GetInfoContent().(*zmet.ZInfoMsg_Dinfo); ok {
 		x.Dinfo = ReportDeviceInfo
@@ -757,10 +709,15 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus, ite
 
 	fmt.Printf("PublishDeviceInfoToZedCloud sending %v\n", ReportInfo)
 
-	SendInfoProtobufStrThroughHttp(ReportInfo, iteration)
+	err = SendInfoProtobufStrThroughHttp(ReportInfo)
+	if err != nil {
+		// XXX reschedule doing this again later somehow
+		log.Printf("PublishDeviceInfoToZedCloud: %s\n", err)
+	}
 }
 
-// XXX change caller filename to key which is uuid; not used for now
+// This function is called per change, hence needs to try over all uplinks
+// send report on each uplink.
 // When aiStatus is nil it means a delete and we send a message
 // containing only the UUID to inform zedcloud about the delete.
 func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
@@ -825,18 +782,21 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 
 	fmt.Printf("PublishAppInfoToZedCloud sending %v\n", ReportInfo)
 
-	SendInfoProtobufStrThroughHttp(ReportInfo, iteration)
+	err := SendInfoProtobufStrThroughHttp(ReportInfo)
+	if err != nil {
+		// XXX reschedule doing this again later somehow
+		log.Printf("PublishDeviceInfoToZedCloud: %s\n", err)
+	}
 }
 
 // This function is called per change, hence needs to try over all uplinks
-// send report on each uplink (This means the iteration arg is not useful)
+// send report on each uplink.
 // For each uplink we try different source IPs until we find a working one.
-func SendInfoProtobufStrThroughHttp(ReportInfo *zmet.ZInfoMsg, iteration int) {
+func SendInfoProtobufStrThroughHttp(ReportInfo *zmet.ZInfoMsg) error {
 
 	data, err := proto.Marshal(ReportInfo)
 	if err != nil {
-		fmt.Println("marshaling error: ", err)
-		return
+		log.Fatal("SendInfoProtobufStr proto marshaling error: ", err)
 	}
 
 	for i, uplink := range deviceNetworkStatus.UplinkStatus {
@@ -899,7 +859,7 @@ func SendInfoProtobufStrThroughHttp(ReportInfo *zmet.ZInfoMsg, iteration int) {
 					fmt.Printf("SendInfoProtobufStrThroughHttp to %s using intf %s source %v StatusOK\n",
 						statusUrl, intf, localTCPAddr)
 				}
-				return
+				return nil
 			default:
 				fmt.Printf("SendInfoProtobufStrThroughHttp to %s using intf %s source %v statuscode %d %s\n",
 					statusUrl, intf, localTCPAddr,
@@ -913,7 +873,9 @@ func SendInfoProtobufStrThroughHttp(ReportInfo *zmet.ZInfoMsg, iteration int) {
 		log.Printf("All attempts to connect to %s using intf %s failed\n",
 			statusUrl, intf)
 	}
-	log.Printf("All attempts to connect to %s failed\n", statusUrl)
+	errStr := fmt.Sprintf("All attempts to connect to %s failed\n", statusUrl)
+	log.Printf(errStr)
+	return errors.New(errStr)
 }
 
 // Each iteration we try a different uplink. For each uplink we try all
@@ -922,7 +884,7 @@ func SendMetricsProtobufStrThroughHttp(ReportMetrics *zmet.ZMetricMsg,
 	iteration int) {
 	data, err := proto.Marshal(ReportMetrics)
 	if err != nil {
-		fmt.Println("marshaling error: ", err)
+		log.Fatal("SendInfoProtobufStr proto marshaling error: ", err)
 	}
 
 	intf, err := types.GetUplinkAny(deviceNetworkStatus, iteration)
