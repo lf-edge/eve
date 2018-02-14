@@ -16,6 +16,7 @@ import (
 	"github.com/shirou/gopsutil/host"
 	"github.com/shirou/gopsutil/mem"
 	psutilnet "github.com/shirou/gopsutil/net"
+	"github.com/vishvananda/netlink"
 	"github.com/zededa/api/zmet"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/types"
@@ -27,6 +28,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -359,7 +361,7 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 	for ifname, cm := range cms {
 		metric := zmet.ZedcloudMetric{IfName: ifname,
 			Failures: cm.FailureCount,
-			Success: cm.SuccessCount,
+			Success:  cm.SuccessCount,
 		}
 		if !cm.LastFailure.IsZero() {
 			lf, _ := ptypes.TimestampProto(cm.LastFailure)
@@ -667,11 +669,6 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 	for _, uplink := range deviceNetworkStatus.UplinkStatus {
 		for _, interfaceDetail := range interfaces {
 			if uplink.IfName == interfaceDetail.Name {
-				// XXX need alpine wwan and wlan lease file
-				// (not in container) and parse it
-				// XXX Does udhcpc have such a file??
-				// Install /usr/share/udhcpc/default.script
-				// to get the data about the leases?
 				ReportDeviceNetworkInfo := new(zmet.ZInfoNetwork)
 				ReportDeviceNetworkInfo.IPAddrs = make([]string, len(interfaceDetail.Addrs))
 				for index, ip := range interfaceDetail.Addrs {
@@ -688,12 +685,24 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 
 				ReportDeviceNetworkInfo.MacAddr = *proto.String(interfaceDetail.HardwareAddr)
 				ReportDeviceNetworkInfo.DevName = *proto.String(interfaceDetail.Name)
-				// XXX fill in defaultRouters from dhcp
-				// XXX or from ip route:
-				// ip route show dev wlp59s0 exact 0.0.0.0/0
-				// XXX try netlink.RouteListFiltered
+				// Default routers from kernel whether or
+				// not we are using DHCP
+				drs := getDefaultRouters(interfaceDetail.Name)
+				ReportDeviceNetworkInfo.DefaultRouters = make([]string, len(drs))
+				for index, dr := range drs {
+					if debug {
+						fmt.Printf("got dr: %v\n", dr)
+					}
+					ReportDeviceNetworkInfo.DefaultRouters[index] = *proto.String(dr)
+				}
+
 				// XXX fill in ZInfoDNS dns
-				// XXX Can't read per-interface file
+				// XXX need alpine wwan and wlan lease file
+				// (not in container) and parse it
+				// XXX Does udhcpc have such a file??
+				// Install /usr/share/udhcpc/default.script
+				// to get the data about the leases?
+
 				ReportDeviceInfo.Network = append(ReportDeviceInfo.Network,
 					ReportDeviceNetworkInfo)
 			}
@@ -1056,4 +1065,38 @@ func getCpuSecs() uint64 {
 	// Idle time is measured for each CPU hence need to scale
 	// to figure out how much CPU was used
 	return uptime - (idle / ncpus)
+}
+
+func getDefaultRouters(ifname string) []string {
+	var res []string
+	link, err := netlink.LinkByName(ifname)
+	if err != nil {
+		fmt.Printf("getDefaultRouters failed to find %s: %s\n",
+			ifname, err)
+		return res
+	}
+	ifindex := link.Attrs().Index
+	table := syscall.RT_TABLE_MAIN
+	// Note that a default route is represented as nil Dst
+	filter := netlink.Route{Table: table, LinkIndex: ifindex, Dst: nil}
+	fflags := netlink.RT_FILTER_TABLE
+	fflags |= netlink.RT_FILTER_OIF
+	fflags |= netlink.RT_FILTER_DST
+	routes, err := netlink.RouteListFiltered(syscall.AF_UNSPEC,
+		&filter, fflags)
+	if err != nil {
+		log.Fatal("getDefaultRouters RouteList failed: %v\n", err)
+	}
+	// fmt.Printf("getDefaultRouters(%s) - got %d\n", ifname, len(routes))
+	for _, rt := range routes {
+		if rt.Table != table {
+			continue
+		}
+		if ifindex != 0 && rt.LinkIndex != ifindex {
+			continue
+		}
+		// log.Printf("getDefaultRouters route dest %v\n", rt.Dst)
+		res = append(res, rt.Gw.String())
+	}
+	return res
 }
