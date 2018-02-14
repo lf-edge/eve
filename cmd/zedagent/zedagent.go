@@ -207,6 +207,10 @@ func main() {
 				&types.DeviceNetworkStatus{},
 				handleDNSModify, handleDNSDelete,
 				nil)
+			// XXX trigger sending of device since IP/DNS could have
+			// changed
+			PublishDeviceInfoToZedCloud(baseOsStatusMap,
+				devCtx.assignableAdapters)
 		case change := <-aaChanges:
 			aaFunc(&aaCtx, change)
 			aaDone = true
