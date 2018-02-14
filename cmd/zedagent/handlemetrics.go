@@ -1,3 +1,8 @@
+// Copyright (c) 2017-2018 Zededa, Inc.
+// All rights reserved.
+
+// Push info and metrics to zedcloud
+
 package main
 
 import (
@@ -347,9 +352,26 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 				ReportDeviceMetric.Network)
 		}
 	}
-	// XXX add zedcloudMetric; XXX need to record fail/success per intf
-	// XXX add file with zedcloudmetric fail(intf), pass(intf), get(intf)
-	// and init (or have get return empty if intf doesn't exist?)
+	cms := getCloudMetrics()
+	if debug {
+		fmt.Printf("Sending CloudMetrics %v\n", cms)
+	}
+	for ifname, cm := range cms {
+		metric := zmet.ZedcloudMetric{IfName: ifname,
+			Failures: cm.FailureCount,
+			Success: cm.SuccessCount,
+		}
+		if !cm.LastFailure.IsZero() {
+			lf, _ := ptypes.TimestampProto(cm.LastFailure)
+			metric.LastFailure = lf
+		}
+		if !cm.LastSuccess.IsZero() {
+			ls, _ := ptypes.TimestampProto(cm.LastSuccess)
+			metric.LastSuccess = ls
+		}
+		ReportDeviceMetric.Zedcloud = append(ReportDeviceMetric.Zedcloud,
+			&metric)
+	}
 
 	// Add DiskMetric
 	// XXX should we get a new list of disks each time?
@@ -850,6 +872,10 @@ func SendInfoProtobufStrThroughHttp(ReportInfo *zmet.ZInfoMsg) error {
 				// continue
 			}
 
+			// Even if we get e.g., a 404 we consider the
+			// connection a success
+			zedCloudSuccess(intf)
+
 			switch resp.StatusCode {
 			case http.StatusOK:
 				if debug {
@@ -869,6 +895,7 @@ func SendInfoProtobufStrThroughHttp(ReportInfo *zmet.ZInfoMsg) error {
 		}
 		log.Printf("All attempts to connect to %s using intf %s failed\n",
 			statusUrl, intf)
+		zedCloudFailure(intf)
 	}
 	errStr := fmt.Sprintf("All attempts to connect to %s failed\n", statusUrl)
 	log.Printf(errStr)
@@ -938,6 +965,10 @@ func SendMetricsProtobufStrThroughHttp(ReportMetrics *zmet.ZMetricMsg,
 			// commenting out it for now. Should be:
 			// continue
 		}
+		// Even if we get e.g., a 404 we consider the connection a
+		// success
+		zedCloudSuccess(intf)
+
 		switch resp.StatusCode {
 		case http.StatusOK:
 			if debug {
@@ -957,6 +988,7 @@ func SendMetricsProtobufStrThroughHttp(ReportMetrics *zmet.ZMetricMsg,
 	}
 	log.Printf("All attempts to connect to %s using intf %s failed\n",
 		metricsUrl, intf)
+	zedCloudFailure(intf)
 }
 
 // Return an array of names like "sda", "sdb1"

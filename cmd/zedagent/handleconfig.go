@@ -175,6 +175,8 @@ func getLatestConfig(configUrl string, iteration int) {
 			// types.UpdateLedManagerConfig(10)
 			// continue
 		}
+		// Even if we get a 404 we consider the connection a success
+		zedCloudSuccess(intf)
 
 		if err := validateConfigMessage(configUrl, intf, localTCPAddr,
 			resp); err != nil {
@@ -199,6 +201,7 @@ func getLatestConfig(configUrl string, iteration int) {
 	}
 	log.Printf("All attempts to connect to %s using intf %s failed\n",
 		configUrl, intf)
+	zedCloudFailure(intf)
 }
 
 func validateConfigMessage(configUrl string, intf string,
