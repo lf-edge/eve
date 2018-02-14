@@ -101,6 +101,8 @@ func getCloudUrls() {
 // for each of the above buckets
 // XXX should the timers be randomized to avoid self-synchronization across
 // potentially lots of devices?
+// Combine with being able to change the timer intervals - generate at random
+// times between .3x and 1x
 func configTimerTask() {
 	iteration := 0
 	log.Println("starting config fetch timer task")

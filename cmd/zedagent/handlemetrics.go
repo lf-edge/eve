@@ -14,6 +14,7 @@ import (
 	"github.com/zededa/api/zmet"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/types"
+	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -41,6 +42,8 @@ func publishMetrics(iteration int) {
 
 // XXX should the timers be randomized to avoid self-synchronization across
 // potentially lots of devices?
+// Combine with being able to change the timer intervals - generate at random
+// times between .3x and 1x
 func metricsTimerTask() {
 	iteration := 0
 	log.Println("starting report metrics timer task")
@@ -266,6 +269,143 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 
 	ReportMetrics.AtTimeStamp = ptypes.TimestampNow()
 
+	info, err := host.Info()
+	if err != nil {
+		log.Fatal("host.Info(): %s\n", err)
+	}
+	if debug {
+		fmt.Printf("uptime %d = %d days\n",
+			info.Uptime, info.Uptime/(3600*24))
+		fmt.Printf("Booted at %v\n", time.Unix(int64(info.BootTime), 0).UTC())
+	}
+	cpuSecs := getCpuSecs()
+	if debug && info.Uptime != 0 {
+		fmt.Printf("uptime %d cpuSecs %d, percent used %d\n",
+			info.Uptime, cpuSecs, (100*cpuSecs)/info.Uptime)
+	}
+
+	ReportDeviceMetric.Compute.CpuTotal = *proto.Uint64(cpuSecs)
+	ReportDeviceMetric.Compute.UpTime = *proto.Uint64(info.Uptime)
+	bootTime, _ := ptypes.TimestampProto(
+		time.Unix(int64(info.BootTime), 0).UTC())
+	ReportDeviceMetric.Compute.BootTime = bootTime
+
+	// Memory related info for dom0
+	ram, err := mem.VirtualMemory()
+	if err != nil {
+		log.Printf("mem.VirtualMemory: %s\n", err)
+	} else {
+		ReportDeviceMetric.Memory.UsedMem = uint32(ram.Used)
+		ReportDeviceMetric.Memory.AvailMem = uint32(ram.Available)
+		ReportDeviceMetric.Memory.UsedPercentage = ram.UsedPercent
+		ReportDeviceMetric.Memory.AvailPercentage =
+			(100.0 - (ram.UsedPercent))
+	}
+	//find network related info...
+	network, err := psutilnet.IOCounters(true)
+	if err != nil {
+		log.Println(err)
+	} else {
+		// Only report stats for the uplinks plus dbo1x0
+		// Latter will move to a system app when we disaggregate
+		// Build list of uplinks + dbo1x0
+		countDeviceInterfaces := 0
+		reportNames := func() []string {
+			var names []string
+			names = append(names, "dbo1x0")
+			for _, uplink := range deviceNetworkStatus.UplinkStatus {
+				names = append(names, uplink.IfName)
+			}
+			return names
+		}
+		ifNames := reportNames()
+
+		countNoOfInterfaceToReport := 0
+		for _, ifName := range ifNames {
+			for _, networkInfo := range network {
+				if ifName == networkInfo.Name {
+					countNoOfInterfaceToReport++
+				}
+			}
+		}
+		ReportDeviceMetric.Network = make([]*zmet.NetworkMetric, countNoOfInterfaceToReport)
+
+		for _, ifName := range ifNames {
+			var ni *psutilnet.IOCountersStat
+			for _, networkInfo := range network {
+				if (ifName == networkInfo.Name) && (countDeviceInterfaces < countNoOfInterfaceToReport) {
+					ni = &networkInfo
+					break
+				}
+			}
+			if ni == nil {
+				continue
+			}
+			networkDetails := new(zmet.NetworkMetric)
+			networkDetails.IName = ni.Name
+			networkDetails.TxPkts = ni.PacketsSent
+			networkDetails.RxPkts = ni.PacketsRecv
+			networkDetails.TxBytes = ni.BytesSent
+			networkDetails.RxBytes = ni.BytesRecv
+			networkDetails.TxDrops = ni.Dropout
+			networkDetails.RxDrops = ni.Dropin
+			networkDetails.TxErrors = ni.Errout
+			networkDetails.RxErrors = ni.Errin
+			if networkDetails != nil {
+				ReportDeviceMetric.Network[countDeviceInterfaces] = networkDetails
+				countDeviceInterfaces++
+			}
+		}
+		if debug {
+			log.Println("network metrics: ",
+				ReportDeviceMetric.Network)
+		}
+	}
+	// XXX add zedcloudMetric; XXX need to record fail/success per intf
+	// XXX add file with zedcloudmetric fail(intf), pass(intf), get(intf)
+	// and init (or have get return empty if intf doesn't exist?)
+
+	// Add DiskMetric
+	// XXX should we get a new list of disks each time?
+	// XXX can we use part, err = disk.Partitions(false)
+	// and then p.MountPoint for the usage?
+	for _, d := range savedDisks {
+		size := partitionSize(d)
+		if debug {
+			fmt.Printf("Disk/partition %s size %d\n",
+				d, size)
+		}
+		metric := zmet.DiskMetric{Disk: d, Total: size}
+		stat, err := disk.IOCounters(d)
+		if err == nil {
+			metric.ReadBytes = stat[d].ReadBytes / mbyte
+			metric.WriteBytes = stat[d].WriteBytes / mbyte
+			metric.ReadCount = stat[d].ReadCount
+			metric.WriteCount = stat[d].WriteCount
+		}
+		// XXX do we have a mountpath? Combine with paths below if same?
+		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
+	}
+	for _, path := range reportPaths {
+		u, err := disk.Usage(path)
+		if err != nil {
+			fmt.Printf("disk.Usage: %s\n", err)
+			continue
+		}
+		fmt.Printf("Path %s total %d used %d free %d\n",
+			path, u.Total, u.Used, u.Free)
+		metric := zmet.DiskMetric{MountPath: path,
+			Total: u.Total,
+			Used:  u.Used,
+			Free:  u.Free,
+		}
+		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
+	}
+	ReportMetrics.MetricContent = new(zmet.ZMetricMsg_Dm)
+	if x, ok := ReportMetrics.GetMetricContent().(*zmet.ZMetricMsg_Dm); ok {
+		x.Dm = ReportDeviceMetric
+	}
+
 	// Handle xentop failing above
 	if len(cpuStorageStat) == 0 {
 		log.Printf("No xentop? metrics: %s\n", ReportMetrics)
@@ -273,144 +413,12 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 		return
 	}
 
-	cpus, err := cpu.Info()
-	ncpus := 1
-	if err != nil {
-		fmt.Printf("cpu: %s\n", err)
-	} else {
-		fmt.Printf("got %d cpus\n", len(cpus))
-		ncpus = len(cpus)
-	}
-	// XXX should we keep this around to convert idle?
-	fmt.Printf("found ncpus %d\n", ncpus)
-
 	countApp := 0
 	ReportMetrics.Am = make([]*zmet.AppMetric, len(cpuStorageStat)-2)
 	for arr := 1; arr < len(cpuStorageStat); arr++ {
 		if strings.Contains(cpuStorageStat[arr][1], "Domain-0") {
-			cpuTime, _ := strconv.ParseUint(cpuStorageStat[arr][3], 10, 0)
-			// XXX fixme need correct value
-			ReportDeviceMetric.Compute.CpuTotal = *proto.Uint64(uint64(cpuTime))
-			// XXX fixme need correct value
-			ReportDeviceMetric.Compute.UpTime = *proto.Uint64(uint64(cpuTime))
-			// XXX fixme need correct value
-			BootTime := time.Now()
-			bootTime, _ := ptypes.TimestampProto(BootTime)
-			ReportDeviceMetric.Compute.BootTime = bootTime
-
-			// Memory related info for dom0
-			ram, err := mem.VirtualMemory()
-			if err != nil {
-				log.Println(err)
-			} else {
-				ReportDeviceMetric.Memory.UsedMem = uint32(ram.Used)
-				ReportDeviceMetric.Memory.AvailMem = uint32(ram.Available)
-				ReportDeviceMetric.Memory.UsedPercentage = ram.UsedPercent
-				ReportDeviceMetric.Memory.AvailPercentage = (100.0 - (ram.UsedPercent))
-			}
-			//find network related info...
-			network, err := psutilnet.IOCounters(true)
-			if err != nil {
-				log.Println(err)
-			} else {
-				// Only report stats for the uplinks plus dbo1x0
-				// Latter will move to a system app when we disaggregate
-				// Build list of uplinks + dbo1x0
-				countDeviceInterfaces := 0
-				reportNames := func() []string {
-					var names []string
-					names = append(names, "dbo1x0")
-					for _, uplink := range deviceNetworkStatus.UplinkStatus {
-						names = append(names, uplink.IfName)
-					}
-					return names
-				}
-				ifNames := reportNames()
-
-				countNoOfInterfaceToReport := 0
-				for _, ifName := range ifNames {
-					for _, networkInfo := range network {
-						if ifName == networkInfo.Name {
-							countNoOfInterfaceToReport++
-						}
-					}
-				}
-				ReportDeviceMetric.Network = make([]*zmet.NetworkMetric, countNoOfInterfaceToReport)
-
-				for _, ifName := range ifNames {
-					var ni *psutilnet.IOCountersStat
-					for _, networkInfo := range network {
-						if (ifName == networkInfo.Name) && (countDeviceInterfaces < countNoOfInterfaceToReport) {
-							ni = &networkInfo
-							break
-						}
-					}
-					if ni == nil {
-						continue
-					}
-					networkDetails := new(zmet.NetworkMetric)
-					networkDetails.IName = ni.Name
-					networkDetails.TxPkts = ni.PacketsSent
-					networkDetails.RxPkts = ni.PacketsRecv
-					networkDetails.TxBytes = ni.BytesSent
-					networkDetails.RxBytes = ni.BytesRecv
-					networkDetails.TxDrops = ni.Dropout
-					networkDetails.RxDrops = ni.Dropin
-					networkDetails.TxErrors = ni.Errout
-					networkDetails.RxErrors = ni.Errin
-					if networkDetails != nil {
-						ReportDeviceMetric.Network[countDeviceInterfaces] = networkDetails
-						countDeviceInterfaces++
-					}
-				}
-				if debug {
-					log.Println("network metrics: ",
-						ReportDeviceMetric.Network)
-				}
-			}
-			// XXX add zedcloudMetric; XXX need to record fail/success per intf
-			// XXX add file with zedcloudmetric fail(intf), pass(intf), get(intf)
-			// and init (or have get return empty if intf doesn't exist?)
-
-			// Add DiskMetric
-			// XXX should we get a new list of disks each time?
-			// XXX can we use part, err = disk.Partitions(false)
-			// and then p.MountPoint for the usage?
-			for _, d := range savedDisks {
-				size := partitionSize(d)
-				if debug {
-					fmt.Printf("Disk/partition %s size %d\n",
-						d, size)
-				}
-				metric := zmet.DiskMetric{Disk: d, Total: size}
-				stat, err := disk.IOCounters(d)
-				if err == nil {
-					metric.ReadBytes = stat[d].ReadBytes / mbyte
-					metric.WriteBytes = stat[d].WriteBytes / mbyte
-					metric.ReadCount = stat[d].ReadCount
-					metric.WriteCount = stat[d].WriteCount
-				}
-				// XXX do we have a mountpath? Combine with paths below if same?
-				ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
-			}
-			for _, path := range reportPaths {
-				u, err := disk.Usage(path)
-				if err != nil {
-					fmt.Printf("disk.Usage: %s\n", err)
-					continue
-				}
-				fmt.Printf("Path %s total %d used %d free %d\n",
-					path, u.Total, u.Used, u.Free)
-				metric := zmet.DiskMetric{MountPath: path,
-					Total: u.Total,
-					Used:  u.Used,
-					Free:  u.Free,
-				}
-				ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
-			}
-			ReportMetrics.MetricContent = new(zmet.ZMetricMsg_Dm)
-			if x, ok := ReportMetrics.GetMetricContent().(*zmet.ZMetricMsg_Dm); ok {
-				x.Dm = ReportDeviceMetric
+			if debug {
+				log.Printf("Nothing to report for Domain-0\n")
 			}
 		} else {
 
@@ -426,6 +434,9 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 						domainName)
 					// XXX note that it is included in the
 					// stats without a name and uuid
+					// XXX ignore and report next time?
+					// Avoid nil checks
+					ds = &types.DomainStatus{}
 				} else {
 					ReportAppMetric.AppName = ds.DisplayName
 					ReportAppMetric.AppID = ds.UUIDandVersion.UUID.String()
@@ -433,7 +444,7 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 
 				appCpuTotal, _ := strconv.ParseUint(cpuStorageStat[arr][3], 10, 0)
 				ReportAppMetric.Cpu.CpuTotal = *proto.Uint32(uint32(appCpuTotal))
-				if (ds.BootTime).IsZero() {
+				if ds.BootTime.IsZero() {
 					// If never booted
 					log.Println("BootTime is empty")
 				} else {
@@ -551,14 +562,20 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 	}
 
 	dict := ExecuteXlInfoCmd()
-	ncpus, err := strconv.ParseUint(dict["nr_cpus"], 10, 32)
-	if err != nil {
-		log.Println("error while converting ncpus to int: ", err)
-	} else {
-		ReportDeviceInfo.Ncpu = *proto.Uint32(uint32(ncpus))
+	if dict != nil {
+		// Note that this is the set of physical CPUs which is different
+		// than the set of CPUs assigned to dom0
+		ncpus, err := strconv.ParseUint(dict["nr_cpus"], 10, 32)
+		if err != nil {
+			log.Println("error while converting ncpus to int: ", err)
+		} else {
+			ReportDeviceInfo.Ncpu = *proto.Uint32(uint32(ncpus))
+		}
+		totalMemory, err := strconv.ParseUint(dict["total_memory"], 10, 64)
+		if err == nil {
+			ReportDeviceInfo.Memory = *proto.Uint64(uint64(totalMemory))
+		}
 	}
-	totalMemory, _ := strconv.ParseUint(dict["total_memory"], 10, 64)
-	ReportDeviceInfo.Memory = *proto.Uint64(uint64(totalMemory))
 
 	d, err := disk.Usage("/")
 	if err != nil {
@@ -585,7 +602,7 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 			fmt.Printf("disk.Usage: %s\n", err)
 			continue
 		}
-		
+
 		if debug {
 			fmt.Printf("Path %s total %d used %d free %d\n",
 				path, u.Total, u.Used, u.Free)
@@ -734,6 +751,9 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 		if ds == nil {
 			log.Printf("Did not find DomainStaus for UUID %s\n",
 				uuid)
+			// XXX should we reschedule when we have a domainStatus?
+			// Avoid nil checks
+			ds = &types.DomainStatus{}
 		} else {
 			ReportAppInfo.Activated = aiStatus.Activated && verifyDomainExists(ds.DomainId)
 		}
@@ -756,12 +776,10 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 				ReportSoftwareInfo.SwHash = sc.ImageSha256
 				ReportSoftwareInfo.State = zmet.ZSwState(sc.State)
 				ReportSoftwareInfo.Target = sc.Target
-				if ds != nil {
-					for _, disk := range ds.DiskStatusList {
-						if disk.ImageSha256 == sc.ImageSha256 {
-							ReportSoftwareInfo.Vdev = disk.Vdev
-							break
-						}
+				for _, disk := range ds.DiskStatusList {
+					if disk.ImageSha256 == sc.ImageSha256 {
+						ReportSoftwareInfo.Vdev = disk.Vdev
+						break
 					}
 				}
 
@@ -986,4 +1004,42 @@ func partitionSize(part string) uint64 {
 		return 0
 	}
 	return val
+}
+
+// Returns the number of CPU seconds since boot
+func getCpuSecs() uint64 {
+	contents, err := ioutil.ReadFile("/proc/uptime")
+	if err != nil {
+		log.Fatal("/proc/uptime: %s\n", err)
+	}
+	lines := strings.Split(string(contents), "\n")
+
+	var idle uint64
+	var uptime uint64
+	for _, line := range lines {
+		fields := strings.Fields(line)
+		for i, f := range fields {
+			val, err := strconv.ParseFloat(f, 64)
+			if err != nil {
+				fmt.Println("Error: ", f, err)
+			} else {
+				switch i {
+				case 0:
+					uptime = uint64(val)
+				case 1:
+					idle = uint64(val)
+				}
+			}
+		}
+	}
+	cpus, err := cpu.Info()
+	if err != nil {
+		fmt.Printf("cpu.Info: %s\n", err)
+		// Assume 1 CPU
+		return uptime - idle
+	}
+	ncpus := uint64(len(cpus))
+	// Idle time is measured for each CPU hence need to scale
+	// to figure out how much CPU was used
+	return uptime - (idle / ncpus)
 }
