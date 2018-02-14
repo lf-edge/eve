@@ -419,8 +419,8 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 				if ds == nil {
 					log.Printf("Did not find status for domainName %s\n",
 						domainName)
-					// XXX note that it is included in the
-					// stats without a name and uuid
+					// Note that it is included in the
+					// metrics without a name and uuid.
 					// XXX ignore and report next time?
 					// Avoid nil checks
 					ds = &types.DomainStatus{}
@@ -583,7 +583,7 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 	}
 	for _, path := range reportPaths {
 		u, err := disk.Usage(path)
-		if err != nil {	
+		if err != nil {
 			// Happens e.g., if we don't have a /persist
 			log.Printf("disk.Usage: %s\n", err)
 			continue
@@ -648,17 +648,16 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 				// XXX need alpine wwan and wlan lease file
 				// (not in container) and parse it
 				// XXX Does udhcpc have such a file??
-				// Or install /usr/share/udhcpc/default.script
-				// to get the data?
+				// Install /usr/share/udhcpc/default.script
+				// to get the data about the leases?
 				ReportDeviceNetworkInfo := new(zmet.ZInfoNetwork)
 				ReportDeviceNetworkInfo.IPAddrs = make([]string, len(interfaceDetail.Addrs))
 				for index, ip := range interfaceDetail.Addrs {
 					// For compatibility we put he first in the deprecated singleton
-					// XXX do we need net.InterfaceAddr?
 					fmt.Printf("Intf %s addr/N %v\n",
 						interfaceDetail.Name,
 						ip)
-					// XXX Note CIDR notation with /N
+					// Note CIDR notation with /N
 					if index == 0 {
 						ReportDeviceNetworkInfo.IPAddr = *proto.String(ip.Addr)
 					}
@@ -670,6 +669,7 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 				// XXX fill in defaultRouters from dhcp
 				// XXX or from ip route:
 				// ip route show dev wlp59s0 exact 0.0.0.0/0
+				// XXX try netlink.RouteListFiltered
 				// XXX fill in ZInfoDNS dns
 				// XXX Can't read per-interface file
 				ReportDeviceInfo.Network = append(ReportDeviceInfo.Network,
@@ -678,8 +678,8 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 		}
 	}
 	// Fill in global ZInfoDNS dns from /etc/resolv.conf
-	// Note that "domain" is returned in search.
-	// XXX DNSdomain not filled in
+	// Note that "domain" is returned in search, hence DNSdomain is
+	// not filled in.
 	dc := dnsReadConfig("/etc/resolv.conf")
 	fmt.Printf("resolv.conf servers %v\n", dc.servers)
 	fmt.Printf("resolv.conf search %v\n", dc.search)
