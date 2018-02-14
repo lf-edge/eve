@@ -103,6 +103,8 @@ message ZInfoDevice {
   repeated ZioBundle assignableAdapters = 15;
   ZInfoDNS dns = 16; // What is used in resolv.conf
   repeated ZInfoStorage storageList = 17;
+
+  google.protobuf.Timestamp bootTime = 18;
 }
 
 // Per filesystem/partition information
@@ -136,6 +138,8 @@ message ZInfoApp {
   bool activated = 9;
   string error = 10;
   google.protobuf.Timestamp errorTime = 11;
+
+    google.protobuf.Timestamp bootTime = 12;
 }
 
 message ZInfoMsg {
@@ -224,16 +228,14 @@ message appCpuMetric {
     uint32 cpuTotal = 2;		// in seconds
     double cpuPercentage = 3;		// deprecated
     google.protobuf.Timestamp upTime = 4; // deprecated
-    google.protobuf.Timestamp bootTime = 5;
 }
 
-// We report both upTime in seconds and bootTime. Allows to determine
+// We report both upTime in seconds and bootTime (in info). Allows to determine
 // large clock skew. Difference betweem cpuTotal and upTime is the amount
 // of idle.
 message devCpuMetric {
     uint64 cpuTotal = 1;	// in seconds
     uint64 upTime = 2;		// in seconds
-    google.protobuf.Timestamp bootTime = 3;
 }
 
 message deviceMetric {
