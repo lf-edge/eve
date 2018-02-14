@@ -309,7 +309,6 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 		// Only report stats for the uplinks plus dbo1x0
 		// Latter will move to a system app when we disaggregate
 		// Build list of uplinks + dbo1x0
-		countDeviceInterfaces := 0
 		reportNames := func() []string {
 			var names []string
 			names = append(names, "dbo1x0")
@@ -319,21 +318,10 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 			return names
 		}
 		ifNames := reportNames()
-
-		countNoOfInterfaceToReport := 0
-		for _, ifName := range ifNames {
-			for _, networkInfo := range network {
-				if ifName == networkInfo.Name {
-					countNoOfInterfaceToReport++
-				}
-			}
-		}
-		ReportDeviceMetric.Network = make([]*zmet.NetworkMetric, countNoOfInterfaceToReport)
-
 		for _, ifName := range ifNames {
 			var ni *psutilnet.IOCountersStat
 			for _, networkInfo := range network {
-				if (ifName == networkInfo.Name) && (countDeviceInterfaces < countNoOfInterfaceToReport) {
+				if ifName == networkInfo.Name {
 					ni = &networkInfo
 					break
 				}
@@ -351,10 +339,8 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 			networkDetails.RxDrops = ni.Dropin
 			networkDetails.TxErrors = ni.Errout
 			networkDetails.RxErrors = ni.Errin
-			if networkDetails != nil {
-				ReportDeviceMetric.Network[countDeviceInterfaces] = networkDetails
-				countDeviceInterfaces++
-			}
+			ReportDeviceMetric.Network = append(ReportDeviceMetric.Network,
+				networkDetails)
 		}
 		if debug {
 			log.Println("network metrics: ",
@@ -389,7 +375,8 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 	for _, path := range reportPaths {
 		u, err := disk.Usage(path)
 		if err != nil {
-			fmt.Printf("disk.Usage: %s\n", err)
+			// Happens e.g., if we don't have a /persist
+			log.Printf("disk.Usage: %s\n", err)
 			continue
 		}
 		fmt.Printf("Path %s total %d used %d free %d\n",
@@ -468,36 +455,34 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 				appInterfaceList := ReadAppInterfaceName(strings.TrimSpace(cpuStorageStat[arr][1]))
 				network, err := psutilnet.IOCounters(true)
 				if err != nil {
-					log.Println(err)
-				} else if len(appInterfaceList) != 0 {
-					ReportAppMetric.Network = make([]*zmet.NetworkMetric, len(appInterfaceList))
-					for index, ifName := range appInterfaceList {
-						var ni *psutilnet.IOCountersStat
-						for _, networkInfo := range network {
-							if ifName == networkInfo.Name {
-								ni = &networkInfo
-								break
-							}
+					log.Fatalf("psutilnet.IOCounters: %s\n", err)
+				}
+				for _, ifName := range appInterfaceList {
+					var ni *psutilnet.IOCountersStat
+					for _, networkInfo := range network {
+						if ifName == networkInfo.Name {
+							ni = &networkInfo
+							break
 						}
-						if ni == nil {
-							continue
-						}
-						networkDetails := new(zmet.NetworkMetric)
-						networkDetails.IName = ni.Name
-						// Note that the packets received on bu* and bo* where sent
-						// by the domU and vice versa, hence we swap here
-						networkDetails.TxPkts = ni.PacketsRecv
-						networkDetails.RxPkts = ni.PacketsSent
-						networkDetails.TxBytes = ni.BytesRecv
-						networkDetails.RxBytes = ni.BytesSent
-						networkDetails.TxDrops = ni.Dropin
-						networkDetails.RxDrops = ni.Dropout
-						networkDetails.TxErrors = ni.Errin
-						networkDetails.RxErrors = ni.Errout
-
-						ReportAppMetric.Network[index] = networkDetails
-
 					}
+					if ni == nil {
+						continue
+					}
+					networkDetails := new(zmet.NetworkMetric)
+					networkDetails.IName = ni.Name
+					// Note that the packets received on bu* and bo* where sent
+					// by the domU and vice versa, hence we swap here
+					networkDetails.TxPkts = ni.PacketsRecv
+					networkDetails.RxPkts = ni.PacketsSent
+					networkDetails.TxBytes = ni.BytesRecv
+					networkDetails.RxBytes = ni.BytesSent
+					networkDetails.TxDrops = ni.Dropin
+					networkDetails.RxDrops = ni.Dropout
+					networkDetails.TxErrors = ni.Errin
+					networkDetails.RxErrors = ni.Errout
+
+					ReportAppMetric.Network = append(ReportAppMetric.Network,
+						networkDetails)
 				}
 				ReportMetrics.Am[countApp] = ReportAppMetric
 				if debug {
@@ -579,7 +564,7 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 
 	d, err := disk.Usage("/")
 	if err != nil {
-		log.Println(err)
+		log.Printf("disk.Usage: %s\n", err)
 	} else {
 		ReportDeviceInfo.Storage = *proto.Uint64(uint64(d.Total / mbyte))
 	}
@@ -598,8 +583,9 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 	}
 	for _, path := range reportPaths {
 		u, err := disk.Usage(path)
-		if err != nil {
-			fmt.Printf("disk.Usage: %s\n", err)
+		if err != nil {	
+			// Happens e.g., if we don't have a /persist
+			log.Printf("disk.Usage: %s\n", err)
 			continue
 		}
 
@@ -656,9 +642,7 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 	// Read interface name from library and match it with uplink name from
 	// global status. Only report the uplinks.
 	interfaces, _ := psutilnet.Interfaces()
-	ReportDeviceInfo.Network = make([]*zmet.ZInfoNetwork,
-		len(deviceNetworkStatus.UplinkStatus))
-	for index, uplink := range deviceNetworkStatus.UplinkStatus {
+	for _, uplink := range deviceNetworkStatus.UplinkStatus {
 		for _, interfaceDetail := range interfaces {
 			if uplink.IfName == interfaceDetail.Name {
 				// XXX need alpine wwan and wlan lease file
@@ -683,12 +667,13 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 
 				ReportDeviceNetworkInfo.MacAddr = *proto.String(interfaceDetail.HardwareAddr)
 				ReportDeviceNetworkInfo.DevName = *proto.String(interfaceDetail.Name)
-				ReportDeviceInfo.Network[index] = ReportDeviceNetworkInfo
 				// XXX fill in defaultRouters from dhcp
 				// XXX or from ip route:
 				// ip route show dev wlp59s0 exact 0.0.0.0/0
 				// XXX fill in ZInfoDNS dns
 				// XXX Can't read per-interface file
+				ReportDeviceInfo.Network = append(ReportDeviceInfo.Network,
+					ReportDeviceNetworkInfo)
 			}
 		}
 	}
@@ -982,11 +967,8 @@ func findDisksPartitions() []string {
 		return nil
 	}
 	res := strings.Split(string(out), "\n")
-	// Remove part after last CR
-	// XXX
-	fmt.Printf("Got %d diskparts: %v\n", len(res), res)
+	// Remove blank/empty string after last CR
 	res = res[:len(res)-1]
-	fmt.Printf("Returning %d diskparts: %v\n", len(res), res)
 	return res
 }
 
