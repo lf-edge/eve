@@ -5,8 +5,11 @@
 // Simple file i/o and string manipulation, to avoid
 // depending on strconv and bufio and strings.
 
-// package net
-package main
+// Cloned from net package so we can export and reuse the parsing of
+// /etc/resolv.conf
+package netclone
+
+// Was: package net
 
 import (
 	"bytes"
@@ -331,7 +334,6 @@ func foreachField(x []byte, fn func(field []byte) error) error {
 func bytesIndexByte(s []byte, c byte) int {
 	return bytes.IndexByte(s, c)
 }
-
 
 // stringsHasSuffix is strings.HasSuffix. It reports whether s ends in
 // suffix.

@@ -20,6 +20,7 @@ import (
 	"github.com/zededa/api/zmet"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/types"
+	"github.com/zededa/go-provision/netclone"
 	"io/ioutil"
 	"log"
 	"net"
@@ -711,12 +712,12 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 	// Fill in global ZInfoDNS dns from /etc/resolv.conf
 	// Note that "domain" is returned in search, hence DNSdomain is
 	// not filled in.
-	dc := dnsReadConfig("/etc/resolv.conf")
-	fmt.Printf("resolv.conf servers %v\n", dc.servers)
-	fmt.Printf("resolv.conf search %v\n", dc.search)
+	dc := netclone.DnsReadConfig("/etc/resolv.conf")
+	fmt.Printf("resolv.conf servers %v\n", dc.Servers)
+	fmt.Printf("resolv.conf search %v\n", dc.Search)
 	ReportDeviceInfo.Dns = new(zmet.ZInfoDNS)
-	ReportDeviceInfo.Dns.DNSservers = dc.servers
-	ReportDeviceInfo.Dns.DNSsearch = dc.search
+	ReportDeviceInfo.Dns.DNSservers = dc.Servers
+	ReportDeviceInfo.Dns.DNSsearch = dc.Search
 
 	// Report AssignableAdapters
 	ReportDeviceInfo.AssignableAdapters = make([]*zmet.ZioBundle, len(aa.IoBundleList))

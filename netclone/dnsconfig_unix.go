@@ -6,8 +6,13 @@
 
 // Read system DNS config from /etc/resolv.conf
 
-// package net
-package main
+// Cloned from net package so we can export and reuse the parsing of
+// /etc/resolv.conf
+// Exporting the DnsReadConfig() and the Servers and Search fields in
+// the struct
+package netclone
+
+// Was: package net
 
 import (
 	"net"
@@ -22,8 +27,8 @@ var (
 )
 
 type dnsConfig struct {
-	servers    []string      // server addresses (in host:port form) to use
-	search     []string      // rooted suffixes to append to local name
+	Servers    []string      // server addresses (in host:port form) to use
+	Search     []string      // rooted suffixes to append to local name
 	ndots      int           // number of dots in name to trigger absolute lookup
 	timeout    time.Duration // wait before giving up on a query, including retries
 	attempts   int           // lost packets before giving up on server
@@ -36,7 +41,7 @@ type dnsConfig struct {
 }
 
 // See resolv.conf(5) on a Linux machine.
-func dnsReadConfig(filename string) *dnsConfig {
+func DnsReadConfig(filename string) *dnsConfig {
 	conf := &dnsConfig{
 		ndots:    1,
 		timeout:  5 * time.Second,
@@ -44,8 +49,8 @@ func dnsReadConfig(filename string) *dnsConfig {
 	}
 	file, err := open(filename)
 	if err != nil {
-		conf.servers = defaultNS
-		conf.search = dnsDefaultSearch()
+		conf.Servers = defaultNS
+		conf.Search = dnsDefaultSearch()
 		conf.err = err
 		return conf
 	}
@@ -53,8 +58,8 @@ func dnsReadConfig(filename string) *dnsConfig {
 	if fi, err := file.file.Stat(); err == nil {
 		conf.mtime = fi.ModTime()
 	} else {
-		conf.servers = defaultNS
-		conf.search = dnsDefaultSearch()
+		conf.Servers = defaultNS
+		conf.Search = dnsDefaultSearch()
 		conf.err = err
 		return conf
 	}
@@ -69,24 +74,24 @@ func dnsReadConfig(filename string) *dnsConfig {
 		}
 		switch f[0] {
 		case "nameserver": // add one name server
-			if len(f) > 1 && len(conf.servers) < 3 { // small, but the standard limit
+			if len(f) > 1 && len(conf.Servers) < 3 { // small, but the standard limit
 				// One more check: make sure server name is
 				// just an IP address. Otherwise we need DNS
 				// to look it up.
 				if net.ParseIP(f[1]) != nil {
-					conf.servers = append(conf.servers, net.JoinHostPort(f[1], "53"))
+					conf.Servers = append(conf.Servers, net.JoinHostPort(f[1], "53"))
 				}
 			}
 
 		case "domain": // set search path to just this domain
 			if len(f) > 1 {
-				conf.search = []string{ensureRooted(f[1])}
+				conf.Search = []string{ensureRooted(f[1])}
 			}
 
 		case "search": // set search path to given servers
-			conf.search = make([]string, len(f)-1)
-			for i := 0; i < len(conf.search); i++ {
-				conf.search[i] = ensureRooted(f[i+1])
+			conf.Search = make([]string, len(f)-1)
+			for i := 0; i < len(conf.Search); i++ {
+				conf.Search[i] = ensureRooted(f[i+1])
 			}
 
 		case "options": // magic options
@@ -129,17 +134,17 @@ func dnsReadConfig(filename string) *dnsConfig {
 			conf.unknownOpt = true
 		}
 	}
-	if len(conf.servers) == 0 {
-		conf.servers = defaultNS
+	if len(conf.Servers) == 0 {
+		conf.Servers = defaultNS
 	}
-	if len(conf.search) == 0 {
-		conf.search = dnsDefaultSearch()
+	if len(conf.Search) == 0 {
+		conf.Search = dnsDefaultSearch()
 	}
 	return conf
 }
 
 // serverOffset returns an offset that can be used to determine
-// indices of servers in c.servers when making queries.
+// indices of servers in c.Servers when making queries.
 // When the rotate option is enabled, this offset increases.
 // Otherwise it is always 0.
 func (c *dnsConfig) serverOffset() uint32 {
