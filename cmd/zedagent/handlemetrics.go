@@ -404,8 +404,10 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 			log.Printf("disk.Usage: %s\n", err)
 			continue
 		}
-		fmt.Printf("Path %s total %d used %d free %d\n",
-			path, u.Total, u.Used, u.Free)
+		if debug {
+			fmt.Printf("Path %s total %d used %d free %d\n",
+				path, u.Total, u.Used, u.Free)
+		}
 		metric := zmet.DiskMetric{MountPath: path,
 			Total: u.Total,
 			Used:  u.Used,
