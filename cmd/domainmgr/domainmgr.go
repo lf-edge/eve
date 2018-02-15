@@ -777,7 +777,10 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 	}
 	if changed {
 		// XXX could we also have changes in the IoBundle?
-		// Need to update the UsedByUUID if so
+		// Need to update the UsedByUUID if so since we reserved
+		// the IoBundle in handleCreate before activating.
+		// XXX currently those reservations are only changed
+		// in handleDelete
 		status.PendingModify = false
 		writeDomainStatus(status, statusFilename)
 		log.Printf("handleModify(%v) DONE for %s\n",
