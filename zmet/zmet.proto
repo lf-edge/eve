@@ -140,7 +140,7 @@ message ZInfoApp {
   google.protobuf.Timestamp errorTime = 11;
 
     google.protobuf.Timestamp bootTime = 12;
-  repeated ZioBundle assigedAdapters = 15;
+  repeated ZioBundle assignedAdapters = 13;
 }
 
 message ZInfoMsg {
