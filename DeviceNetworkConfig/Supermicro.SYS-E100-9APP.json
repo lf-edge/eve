@@ -1,0 +1,4 @@
+{
+  "Uplink":["eth0","ppp0"],
+  "FreeUplinks":["eth0"]
+}
