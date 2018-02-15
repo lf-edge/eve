@@ -741,6 +741,10 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 		ds := LookupDomainStatusIoBundle(ib.Type, ib.Name)
 		if ds != nil {
 			reportAA.UsedByUUID = ds.UUIDandVersion.UUID.String()
+		} else if types.IsUplink(deviceNetworkStatus, ib.Name) {
+			log.Printf("Reporting uplink as used %d %s: %v\n",
+				ib.Type, ib.Name, err)
+			reportAA.UsedByUUID = deviceId
 		}
 		ReportDeviceInfo.AssignableAdapters = append(ReportDeviceInfo.AssignableAdapters,
 			reportAA)

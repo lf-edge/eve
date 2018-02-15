@@ -42,6 +42,7 @@ const (
 	imgCatalogDirname = downloadDirname + "/" + appImgObj
 	// Read-only images named based on sha256 hash each in its own directory
 	verifiedDirname = imgCatalogDirname + "/verified"
+	DNSDirname      = "/var/run/zedrouter/DeviceNetworkStatus"
 )
 
 // Really a constant
@@ -49,6 +50,12 @@ var nilUUID = uuid.UUID{}
 
 // Set from Makefile
 var Version = "No version specified"
+
+var deviceNetworkStatus types.DeviceNetworkStatus
+
+// Dummy used when we don't have anything to pass
+type dummyContext struct {
+}
 
 // Information for handleDomainCreate/Modify/Delete
 type domainContext struct {
@@ -135,6 +142,9 @@ func main() {
 	}
 	fmt.Printf("Have %d assignable adapters\n", len(aa.IoBundleList))
 
+	networkStatusChanges := make(chan string)
+	go watch.WatchStatus(DNSDirname, networkStatusChanges)
+
 	for {
 		select {
 		case change := <-fileChanges:
@@ -143,6 +153,12 @@ func main() {
 				&types.DomainConfig{}, &types.DomainStatus{},
 				handleCreate, handleModify, handleDelete,
 				&restartFn)
+		case change := <-networkStatusChanges:
+			watch.HandleStatusEvent(change, dummyContext{},
+				DNSDirname,
+				&types.DeviceNetworkStatus{},
+				handleDNSModify, handleDNSDelete,
+				nil)
 		case change := <-aaChanges:
 			aaFunc(&aaCtx, change)
 		}
@@ -303,7 +319,6 @@ func doActivate(config types.DomainConfig, status *types.DomainStatus,
 			log.Fatalf("doActivate IoBundle disappeared %d %s for %s\n",
 				adapter.Type, adapter.Name, status.DomainName)
 		}
-		// XXX somewhere mark the uplinks as owned by zedrouter!
 		if ib.UsedByUUID != config.UUIDandVersion.UUID {
 			log.Fatalf("doActivate IoBundle stolen by %s: %d %s for %s\n",
 				ib.UsedByUUID, adapter.Type, adapter.Name,
@@ -535,6 +550,11 @@ func configToStatus(config types.DomainConfig, aa *types.AssignableAdapters,
 	for _, adapter := range config.IoAdapterList {
 		fmt.Printf("configToStatus processing adapter %d %s\n",
 			adapter.Type, adapter.Name)
+		if types.IsUplink(deviceNetworkStatus, adapter.Name) {
+			return errors.New(fmt.Sprintf("Adapter %d %s is an uplink\n",
+				adapter.Type, adapter.Name))
+		}
+
 		// Lookup to make sure adapter exists on this device
 		ib := types.LookupIoBundle(aa, adapter.Type, adapter.Name)
 		if ib == nil {
@@ -1143,4 +1163,28 @@ func pciAssignableRem(long string) error {
 	}
 	fmt.Printf("xl pci-assignable-rem done\n")
 	return nil
+}
+
+func handleDNSModify(ctxArg interface{}, statusFilename string,
+	statusArg interface{}) {
+	status := statusArg.(*types.DeviceNetworkStatus)
+
+	if statusFilename != "global" {
+		fmt.Printf("handleDNSModify: ignoring %s\n", statusFilename)
+		return
+	}
+	log.Printf("handleDNSModify for %s\n", statusFilename)
+	deviceNetworkStatus = *status
+	log.Printf("handleDNSModify done for %s\n", statusFilename)
+}
+
+func handleDNSDelete(ctxArg interface{}, statusFilename string) {
+	log.Printf("handleDNSDelete for %s\n", statusFilename)
+
+	if statusFilename != "global" {
+		fmt.Printf("handleDNSDelete: ignoring %s\n", statusFilename)
+		return
+	}
+	deviceNetworkStatus = types.DeviceNetworkStatus{}
+	log.Printf("handleDNSDelete done for %s\n", statusFilename)
 }
