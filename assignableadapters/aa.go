@@ -51,7 +51,8 @@ func handleAAModify(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*context)
 	// Only care about my model
 	if key != ctx.model {
-		fmt.Printf("handleAAModify: ignoring %s\n", key)
+		fmt.Printf("handleAAModify: ignoring %s, expecting %s\n",
+			key, ctx.model)
 		return
 	}
 	log.Printf("handleAAModify for %s\n", key)
@@ -64,7 +65,8 @@ func handleAADelete(ctxArg interface{}, key string) {
 	ctx := ctxArg.(*context)
 	// Only care about my model
 	if key != ctx.model {
-		fmt.Printf("handleAADelete: ignoring %s\n", key)
+		fmt.Printf("handleAADelete: ignoring %s, expecting %s\n",
+			key, ctx.model)
 		return
 	}
 	ctx.aa = &types.AssignableAdapters{}

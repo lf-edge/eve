@@ -160,6 +160,7 @@ func main() {
 	// Pick up (mostly static) AssignableAdapters before we report
 	// any device info
 	model := hardware.GetHardwareModel()
+	log.Printf("HardwareModel %s\n", model)
 	aa := types.AssignableAdapters{}
 	aaChanges, aaFunc, aaCtx := assignableadapters.Init(&aa, model)
 	aaDone := false
