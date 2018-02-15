@@ -15,6 +15,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/vishvananda/netlink"
+	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
 	"github.com/zededa/go-provision/wrap"
@@ -50,6 +51,7 @@ type dummyContext struct {
 // Context for handleDNCModify
 type DNCContext struct {
 	usableAddressCount int
+	manufacturerModel  string
 }
 
 func main() {
@@ -107,6 +109,7 @@ func main() {
 
 	DNCctx := DNCContext{}
 	DNCctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
+	DNCctx.manufacturerModel = hardware.GetHardwareModel()
 
 	// Wait for zedmanager having populated the intial files to
 	// reduce the number of LISP-RESTARTs
@@ -1144,9 +1147,9 @@ func handleDNCModify(ctxArg interface{}, configFilename string,
 	config := configArg.(*types.DeviceNetworkConfig)
 	ctx := ctxArg.(*DNCContext)
 
-	// XXX from context with manufacturerModel
-	if configFilename != "global" {
-		fmt.Printf("handleDNSModify: ignoring %s\n", configFilename)
+	if configFilename != ctx.manufacturerModel {
+		fmt.Printf("handleDNSModify: ignoring %s - expecting %s\n",
+			configFilename, ctx.manufacturerModel)
 		return
 	}
 	log.Printf("handleDNCModify for %s\n", configFilename)
