@@ -15,6 +15,7 @@ package types
 
 import (
 	"github.com/satori/go.uuid"
+	"strings"
 )
 
 type AssignableAdapters struct {
@@ -48,7 +49,7 @@ const (
 // Returns nil if not found
 func LookupIoBundle(aa *AssignableAdapters, ioType IoType, name string) *IoBundle {
 	for i, b := range aa.IoBundleList {
-		if b.Type == ioType && b.Name == name {
+		if b.Type == ioType && strings.EqualFold(b.Name, name) {
 			return &aa.IoBundleList[i]
 		}
 	}
