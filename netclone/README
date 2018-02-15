@@ -1,0 +1,3 @@
+Cloned from go net package so we can export and reuse the parsing of
+/etc/resolv.conf. Done by renaming dnsReadConfig() to DnsReadConfig()
+and export some fields in the struct.

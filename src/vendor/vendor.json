@@ -294,14 +294,14 @@
 		{
 			"checksumSHA1": "3obkuXeVlrzEUiUAJp8rBGDIIQY=",
 			"path": "github.com/zededa/api/zconfig",
-			"revision": "01ea97811236895b8d38f720636d3a8b02b9f40e",
-			"revisionTime": "2018-02-13T19:21:15Z"
+			"revision": "551176be58c81406c7102bc394999fdfeb1ed55f",
+			"revisionTime": "2018-02-14T23:45:17Z"
 		},
 		{
-			"checksumSHA1": "eeQRlrDB1NssmWetxtjMg3i0BxI=",
+			"checksumSHA1": "+E+03sBs9nU2BzyuJvz1sQNeMZY=",
 			"path": "github.com/zededa/api/zmet",
-			"revision": "01ea97811236895b8d38f720636d3a8b02b9f40e",
-			"revisionTime": "2018-02-13T19:21:15Z"
+			"revision": "551176be58c81406c7102bc394999fdfeb1ed55f",
+			"revisionTime": "2018-02-14T23:45:17Z"
 		},
 		{
 			"checksumSHA1": "tXDhskPogTybtaECNodP5/URT1s=",

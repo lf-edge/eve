@@ -72,6 +72,7 @@ type DomainStatus struct {
 	PendingDelete  bool
 	DomainName     string // Name of Xen domain
 	DomainId       int
+	BootTime       time.Time
 	DiskStatusList []DiskStatus
 	VifList        []VifInfo
 	IoAdapterList  []IoAdapter
