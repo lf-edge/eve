@@ -724,14 +724,21 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 	// We also exclude current uplinks. Note that this routine
 	// is called when the uplinks change (to also report any change in
 	// the uplink IP addresses etc.))
-	for _, b := range aa.IoBundleList {
-		// XXX If PCI device check if it exists in hardware/kernel
+	for i, _ := range aa.IoBundleList {
+		ib := &aa.IoBundleList[i]
+		// For a PCI device we check if it exists in hardware/kernel
+		_, _, err := types.IoBundleToPci(ib)
+		if err != nil {
+			log.Printf("Not reporting non-existent PCI device %d %s: %v\n",
+				ib.Type, ib.Name, err)
+			continue
+		}
 		reportAA := new(zmet.ZioBundle)
-		reportAA.Type = zmet.ZioType(b.Type)
-		reportAA.Name = b.Name
-		reportAA.Members = b.Members
+		reportAA.Type = zmet.ZioType(ib.Type)
+		reportAA.Name = ib.Name
+		reportAA.Members = ib.Members
 		// lookup domains to see what is in use
-		ds := LookupDomainStatusIoBundle(b.Type, b.Name)
+		ds := LookupDomainStatusIoBundle(ib.Type, ib.Name)
 		if ds != nil {
 			reportAA.UsedByUUID = ds.UUIDandVersion.UUID.String()
 		}

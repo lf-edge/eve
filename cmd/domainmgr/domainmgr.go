@@ -309,9 +309,9 @@ func doActivate(config types.DomainConfig, status *types.DomainStatus,
 				ib.UsedByUUID, adapter.Type, adapter.Name,
 				status.DomainName)
 		}
-		long, short, err := ioBundleToPci(ib, adapter.Name)
+		long, short, err := types.IoBundleToPci(ib)
 		if err != nil {
-			log.Printf("ioBundleToPci failed: %v\n", err)
+			log.Printf("IoBundleToPci failed: %v\n", err)
 			status.LastErr = fmt.Sprintf("%v", err)
 			status.LastErrTime = time.Now()
 			return
@@ -476,9 +476,9 @@ func doInactivate(status *types.DomainStatus, aa *types.AssignableAdapters) {
 				ib.UsedByUUID, adapter.Type, adapter.Name,
 				status.DomainName)
 		}
-		long, short, err := ioBundleToPci(ib, adapter.Name)
+		long, short, err := types.IoBundleToPci(ib)
 		if err != nil {
-			log.Printf("ioBundleToPci failed: %v\n", err)
+			log.Printf("IoBundleToPci failed: %v\n", err)
 			status.LastErr = fmt.Sprintf("%v", err)
 			status.LastErrTime = time.Now()
 			return
@@ -546,9 +546,9 @@ func configToStatus(config types.DomainConfig, aa *types.AssignableAdapters,
 				adapter.Type, adapter.Name, ib.UsedByUUID))
 		}
 		// Does it exist?
-		_, _, err := ioBundleToPci(ib, adapter.Name)
+		_, _, err := types.IoBundleToPci(ib)
 		if err != nil {
-			log.Printf("ioBundleToPci failed: %v\n", err)
+			log.Printf("IoBundleToPci failed: %v\n", err)
 			return err
 		}
 		ib.UsedByUUID = config.UUIDandVersion.UUID
@@ -697,7 +697,7 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 				ib.UsedByUUID, adapter.Type, adapter.Name,
 				status.DomainName)
 		}
-		cfg := ioBundleToCfg(ib, adapter.Name)
+		cfg := ioBundleToCfg(ib)
 		fmt.Printf("Adding io adapter config <%s>\n", cfg)
 		file.WriteString(fmt.Sprintf("%s\n", cfg))
 	}
@@ -1093,17 +1093,11 @@ func locationFromDir(locationDir string) (string, error) {
 }
 
 // Return the string to add to the xen.cfg file
-func ioBundleToCfg(ib *types.IoBundle, name string) string {
-	var short string
-	if ib.Lookup {
-		var err error
-		_, short, err = ifNameToPci(name)
-		if err != nil {
-			// XXX remove
-			log.Fatal("ifnameToPci failed: %v\n", err)
-		}
-	} else if ib.PciShort != "" {
-		short = ib.PciShort
+func ioBundleToCfg(ib *types.IoBundle) string {
+	_, short, err := types.IoBundleToPci(ib)
+	if err != nil {
+		// XXX remove
+		log.Fatal("ifnameToPci failed: %v\n", err)
 	}
 	if short != "" {
 		// XXX need to produce list in caller when multiple devices!

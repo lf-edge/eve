@@ -28,6 +28,8 @@ const (
 	compatibleFile = "/proc/device-tree/compatible"
 )
 
+// XXX Note that this function (and the ones below) log if there is an
+// error. That's impolite for a library to do.
 func GetHardwareModel() string {
 	model := ""
 	product := ""

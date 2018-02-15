@@ -4,12 +4,11 @@
 // Read the symlinks in /sys/class/net/*/device to print a mapping
 // from ifname to PCI-ID
 
-package main
+package types
 
 import (
 	"errors"
 	"fmt"
-	"github.com/zededa/go-provision/types"
 	"os"
 	"path"
 	"regexp"
@@ -56,14 +55,14 @@ func pciLongExists(long string) bool {
 
 }
 
-// Returns the long and short PCI IDs. 
+// Returns the long and short PCI IDs.
 // Check if PCI ID exists on system. Returns null strings for non-PCI
 // devices since we can't check if they exist.
-func ioBundleToPci(ib *types.IoBundle, name string) (string, string, error) {
+func IoBundleToPci(ib *IoBundle) (string, string, error) {
 	var long, short string
 	if ib.Lookup {
 		var err error
-		long, short, err = ifNameToPci(name)
+		long, short, err = ifNameToPci(ib.Name)
 		if err != nil {
 			return "", "", err
 		}
