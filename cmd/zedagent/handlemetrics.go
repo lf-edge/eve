@@ -659,6 +659,10 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 		ReportDeviceSoftwareInfo.SwVersion = value.BaseOsVersion
 		ReportDeviceSoftwareInfo.SwHash = value.ConfigSha256
 		ReportDeviceSoftwareInfo.State = zmet.ZSwState(value.State)
+		// XXX should we track "inprogress" as well as "active" i.e. get
+		// the state from zboot?
+		// Should we expand the message to also have the partition
+		// and tag (sda2 and IMGA)?
 		ReportDeviceSoftwareInfo.Activated = value.Activated
 		ReportDeviceInfo.SoftwareList[idx] = ReportDeviceSoftwareInfo
 		idx++
