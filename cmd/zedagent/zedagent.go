@@ -192,8 +192,8 @@ func main() {
 		}
 	}
 
-	deviceStatusChanges := make(chan string)
-	go watch.WatchStatus(DNSDirname, deviceStatusChanges)
+	networkStatusChanges := make(chan string)
+	go watch.WatchStatus(DNSDirname, networkStatusChanges)
 
 	log.Printf("Waiting until we have some uplinks with usable addresses\n")
 	waited := false
@@ -201,16 +201,12 @@ func main() {
 		!aaDone {
 		waited = true
 		select {
-		case change := <-deviceStatusChanges:
+		case change := <-networkStatusChanges:
 			watch.HandleStatusEvent(change, dummyContext{},
 				DNSDirname,
 				&types.DeviceNetworkStatus{},
 				handleDNSModify, handleDNSDelete,
 				nil)
-			// XXX trigger sending of device since IP/DNS could have
-			// changed
-			PublishDeviceInfoToZedCloud(baseOsStatusMap,
-				devCtx.assignableAdapters)
 		case change := <-aaChanges:
 			aaFunc(&aaCtx, change)
 			aaDone = true
@@ -313,12 +309,15 @@ func main() {
 				handleCertObjDownloadStatusModify,
 				handleCertObjDownloadStatusDelete, nil)
 
-		case change := <-deviceStatusChanges:
+		case change := <-networkStatusChanges:
 			watch.HandleStatusEvent(change, dummyContext{},
 				DNSDirname,
 				&types.DeviceNetworkStatus{},
 				handleDNSModify, handleDNSDelete,
 				nil)
+			// IP/DNS in device info could have changed
+			PublishDeviceInfoToZedCloud(baseOsStatusMap,
+				devCtx.assignableAdapters)
 		case change := <-domainStatusChanges:
 			watch.HandleStatusEvent(change, dummyContext{},
 				domainStatusDirname,

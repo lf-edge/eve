@@ -131,8 +131,8 @@ func main() {
 	configChanges := make(chan string)
 	go watch.WatchConfigStatus(zedmanagerConfigDirname,
 		zedmanagerStatusDirname, configChanges)
-	deviceStatusChanges := make(chan string)
-	go watch.WatchStatus(DNSDirname, deviceStatusChanges)
+	networkStatusChanges := make(chan string)
+	go watch.WatchStatus(DNSDirname, networkStatusChanges)
 
 	var configRestartFn watch.ConfigRestartHandler = handleConfigRestart
 	var verifierRestartedFn watch.StatusRestartHandler = handleVerifierRestarted
@@ -224,7 +224,7 @@ func main() {
 					handleDelete, &configRestartFn)
 				continue
 			}
-		case change := <-deviceStatusChanges:
+		case change := <-networkStatusChanges:
 			{
 				watch.HandleStatusEvent(change, dummyContext{},
 					DNSDirname,
