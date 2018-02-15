@@ -11,8 +11,6 @@ package types
 // The information is normally read from a hardware model specific
 // file on boot.
 
-// XXX rename file to assignableadapters.go??
-
 import (
 	"github.com/satori/go.uuid"
 	"strings"
