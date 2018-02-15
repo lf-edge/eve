@@ -1092,28 +1092,6 @@ func locationFromDir(locationDir string) (string, error) {
 	return locationDir + "/" + locations[0].Name(), nil
 }
 
-// Returns the long and short PCI IDs
-// Check if PCI ID exists on system
-func ioBundleToPci(ib *types.IoBundle, name string) (string, string, error) {
-	var long, short string
-	if ib.Lookup {
-		var err error
-		long, short, err = ifNameToPci(name)
-		if err != nil {
-			return "", "", err
-		}
-	} else if ib.PciShort != "" {
-		long = ib.PciLong
-		short = ib.PciShort
-	}
-	if short != "" {
-		if !pciLongExists(long) {
-			return "", "", errors.New(fmt.Sprintf("PCI device does not exist", long))
-		}
-	}
-	return long, short, nil
-}
-
 // Return the string to add to the xen.cfg file
 func ioBundleToCfg(ib *types.IoBundle, name string) string {
 	var short string

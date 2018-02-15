@@ -164,6 +164,18 @@ func LookupDomainStatusUUID(uuid string) *types.DomainStatus {
 	return nil
 }
 
+// Look for a DomainStatus which is using the IoBundle
+func LookupDomainStatusIoBundle(ioType types.IoType, name string) *types.DomainStatus {
+	for _, ds := range domainStatus {
+		for _, b := range ds.IoAdapterList {
+			if b.Type == ioType && strings.EqualFold(b.Name, name) {
+				return &ds
+			}
+		}
+	}
+	return nil
+}
+
 // XXX can we use libxenstat? /usr/local/lib/libxenstat.so on hikey
 func ExecuteXentopCmd() [][]string {
 	var cpuStorageStat [][]string
@@ -708,14 +720,23 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 	ReportDeviceInfo.Dns.DNSsearch = dc.Search
 
 	// Report AssignableAdapters
-	ReportDeviceInfo.AssignableAdapters = make([]*zmet.ZioBundle, len(aa.IoBundleList))
-	for i, b := range aa.IoBundleList {
+	// We exclude adapters which do not currently exist.
+	// We also exclude current uplinks. Note that this routine
+	// is called when the uplinks change (to also report any change in
+	// the uplink IP addresses etc.))
+	for _, b := range aa.IoBundleList {
+		// XXX If PCI device check if it exists in hardware/kernel
 		reportAA := new(zmet.ZioBundle)
 		reportAA.Type = zmet.ZioType(b.Type)
 		reportAA.Name = b.Name
 		reportAA.Members = b.Members
-		reportAA.UsedByUUID = b.UsedByUUID.String() // XXX or get from DomainStatus?
-		ReportDeviceInfo.AssignableAdapters[i] = reportAA
+		// lookup domains to see what is in use
+		ds := LookupDomainStatusIoBundle(b.Type, b.Name)
+		if ds != nil {
+			reportAA.UsedByUUID = ds.UUIDandVersion.UUID.String()
+		}
+		ReportDeviceInfo.AssignableAdapters = append(ReportDeviceInfo.AssignableAdapters,
+			reportAA)
 	}
 
 	info, err := host.Info()

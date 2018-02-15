@@ -9,6 +9,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"github.com/zededa/go-provision/types"
 	"os"
 	"path"
 	"regexp"
@@ -53,4 +54,27 @@ func pciLongExists(long string) bool {
 	_, err := os.Stat(path)
 	return err == nil
 
+}
+
+// Returns the long and short PCI IDs. 
+// Check if PCI ID exists on system. Returns null strings for non-PCI
+// devices since we can't check if they exist.
+func ioBundleToPci(ib *types.IoBundle, name string) (string, string, error) {
+	var long, short string
+	if ib.Lookup {
+		var err error
+		long, short, err = ifNameToPci(name)
+		if err != nil {
+			return "", "", err
+		}
+	} else if ib.PciShort != "" {
+		long = ib.PciLong
+		short = ib.PciShort
+	}
+	if short != "" {
+		if !pciLongExists(long) {
+			return "", "", errors.New(fmt.Sprintf("PCI device does not exist", long))
+		}
+	}
+	return long, short, nil
 }
