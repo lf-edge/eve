@@ -309,6 +309,7 @@ func doActivate(config types.DomainConfig, status *types.DomainStatus,
 		}
 		long, short, err := ioBundleToPci(ib, adapter.Name)
 		if err != nil {
+			log.Printf("ioBundleToPci failed: %v\n", err)
 			status.LastErr = fmt.Sprintf("%v", err)
 			status.LastErrTime = time.Now()
 			return
@@ -465,6 +466,7 @@ func doInactivate(status *types.DomainStatus, aa *types.AssignableAdapters) {
 		}
 		long, short, err := ioBundleToPci(ib, adapter.Name)
 		if err != nil {
+			log.Printf("ioBundleToPci failed: %v\n", err)
 			status.LastErr = fmt.Sprintf("%v", err)
 			status.LastErrTime = time.Now()
 			return
@@ -532,6 +534,7 @@ func configToStatus(config types.DomainConfig, aa *types.AssignableAdapters,
 		// Does it exist?
 		_, _, err := ioBundleToPci(ib, adapter.Name)
 		if err != nil {
+			log.Printf("ioBundleToPci failed: %v\n", err)
 			return err
 		}
 		ib.UsedByUUID = config.UUIDandVersion.UUID
