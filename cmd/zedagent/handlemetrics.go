@@ -33,10 +33,6 @@ import (
 	"time"
 )
 
-const (
-	compatibleFile = "/proc/device-tree/compatible"
-)
-
 // Remember the set of names of the disks and partitions
 var savedDisks []string
 
