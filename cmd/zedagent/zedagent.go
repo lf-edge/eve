@@ -1,4 +1,4 @@
-// Copyright (c) 2017 Zededa, Inc.
+// Copyright (c) 2017-2018 Zededa, Inc.
 // All rights reserved.
 
 // zedAgent interfaces with zedcloud for
@@ -195,8 +195,8 @@ func main() {
 	deviceStatusChanges := make(chan string)
 	go watch.WatchStatus(DNSDirname, deviceStatusChanges)
 
+	log.Printf("Waiting until we have some uplinks with usable addresses\n")
 	waited := false
-	// Wait to have some uplinks with usable addresses
 	for types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus) == 0 ||
 		!aaDone {
 		waited = true

@@ -304,6 +304,7 @@ func doActivate(config types.DomainConfig, status *types.DomainStatus) {
 	log.Printf("created domainId %d for %s\n", domainId, status.DomainName)
 	status.DomainId = domainId
 	status.Activated = true
+	status.BootTime = time.Now()
 
 	// Disable offloads for all vifs
 	err = xlDisableVifOffload(status.DomainName, domainId,
