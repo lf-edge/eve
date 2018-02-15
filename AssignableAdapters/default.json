@@ -1,0 +1,3 @@
+{ "IoBundleList": [
+    { "Type": 1, "Name": "eth0", "Members": [ "eth0" ], "Lookup": true }
+] }
