@@ -295,6 +295,8 @@ func doActivate(config types.DomainConfig, status *types.DomainStatus,
 
 	// Assign any I/O devices
 	for _, adapter := range config.IoAdapterList {
+		fmt.Printf("doActivate processing adapter %d %s\n",
+			adapter.Type, adapter.Name)
 		ib := types.LookupIoBundle(aa, adapter.Type, adapter.Name)
 		// We reserved it in handleCreate so nobody could have stolen it
 		if ib == nil {
@@ -453,6 +455,8 @@ func doInactivate(status *types.DomainStatus, aa *types.AssignableAdapters) {
 	}
 	// Unassign any pci devices but keep UsedByUUID set and keep in status
 	for _, adapter := range status.IoAdapterList {
+		fmt.Printf("doInactivate processing adapter %d %s\n",
+			adapter.Type, adapter.Name)
 		ib := types.LookupIoBundle(aa, adapter.Type, adapter.Name)
 		// We reserved it in handleCreate so nobody could have stolen it
 		if ib == nil {
@@ -521,6 +525,8 @@ func configToStatus(config types.DomainConfig, aa *types.AssignableAdapters,
 		ds.ActiveFileLocation = target
 	}
 	for _, adapter := range config.IoAdapterList {
+		fmt.Printf("configToStatus processing adapter %d %s\n",
+			adapter.Type, adapter.Name)
 		// Lookup to make sure adapter exists on this device
 		ib := types.LookupIoBundle(aa, adapter.Type, adapter.Name)
 		if ib == nil {
@@ -670,6 +676,8 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 	file.WriteString(fmt.Sprintf("vif = [%s]\n", vifString))
 
 	for _, adapter := range config.IoAdapterList {
+		fmt.Printf("configToXenCfg processing adapter %d %s\n",
+			adapter.Type, adapter.Name)
 		ib := types.LookupIoBundle(aa, adapter.Type, adapter.Name)
 		// We reserved it in handleCreate so nobody could have stolen it
 		if ib == nil {
@@ -682,6 +690,7 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 				status.DomainName)
 		}
 		cfg := ioBundleToCfg(ib, adapter.Name)
+		fmt.Printf("Adding io adapter config <%s>\n", cfg)
 		file.WriteString(fmt.Sprintf("%s\n", cfg))
 	}
 	return nil
@@ -824,6 +833,8 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 
 	// Look for any adapters used by us and clear UsedByUUID
 	for _, adapter := range status.IoAdapterList {
+		fmt.Printf("handleDelete processing adapter %d %s\n",
+			adapter.Type, adapter.Name)
 		ib := types.LookupIoBundle(ctx.assignableAdapters,
 			adapter.Type, adapter.Name)
 		// We reserved it in handleCreate so nobody could have stolen it
@@ -1071,7 +1082,12 @@ func ioBundleToPci(ib *types.IoBundle, name string) (string, string, error) {
 func ioBundleToCfg(ib *types.IoBundle, name string) string {
 	var short string
 	if ib.Lookup {
-		_, short, _ = ifNameToPci(name)
+		var err error
+		_, short, err = ifNameToPci(name)
+		if err != nil {
+			// XXX remove
+			log.Fatal("ifnameToPci failed: %v\n", err)
+		}
 	} else if ib.PciShort != "" {
 		short = ib.PciShort
 	}
