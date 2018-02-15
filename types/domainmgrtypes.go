@@ -23,6 +23,7 @@ type DomainConfig struct {
 	VmConfig
 	DiskConfigList []DiskConfig
 	VifList        []VifInfo
+	IoAdapterList  []IoAdapter
 }
 
 func (config DomainConfig) VerifyFilename(fileName string) bool {
@@ -73,6 +74,7 @@ type DomainStatus struct {
 	DomainId       int
 	DiskStatusList []DiskStatus
 	VifList        []VifInfo
+	IoAdapterList  []IoAdapter
 	LastErr        string // Xen error
 	LastErrTime    time.Time
 }

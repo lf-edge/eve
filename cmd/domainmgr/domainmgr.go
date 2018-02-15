@@ -12,6 +12,9 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/satori/go.uuid"
+	"github.com/zededa/go-provision/assignableadapters"
+	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
 	"github.com/zededa/go-provision/wrap"
@@ -41,11 +44,15 @@ const (
 	verifiedDirname = imgCatalogDirname + "/verified"
 )
 
+// Really a constant
+var nilUUID = uuid.UUID{}
+
 // Set from Makefile
 var Version = "No version specified"
 
-// Dummy since we don't have anything to pass
-type dummyContext struct {
+// Information for handleDomainCreate/Modify/Delete
+type domainContext struct {
+	assignableAdapters *types.AssignableAdapters
 }
 
 func main() {
@@ -110,13 +117,35 @@ func main() {
 
 	fileChanges := make(chan string)
 	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
+
+	// Pick up (mostly static) AssignableAdapters before we process
+	// any DomainConfig
+	model := hardware.GetHardwareModel()
+	aa := types.AssignableAdapters{}
+	aaChanges, aaFunc, aaCtx := assignableadapters.Init(&aa, model)
+	aaDone := false
+	domainCtx := domainContext{assignableAdapters: &aa}
+
+	for !aaDone {
+		select {
+		case change := <-aaChanges:
+			aaFunc(&aaCtx, change)
+			aaDone = true
+		}
+	}
+	fmt.Printf("Have %d assignable adapters\n", len(aa.IoBundleList))
+
 	for {
-		change := <-fileChanges
-		watch.HandleConfigStatusEvent(change, dummyContext{},
-			configDirname, statusDirname,
-			&types.DomainConfig{}, &types.DomainStatus{},
-			handleCreate, handleModify, handleDelete,
-			&restartFn)
+		select {
+		case change := <-fileChanges:
+			watch.HandleConfigStatusEvent(change, &domainCtx,
+				configDirname, statusDirname,
+				&types.DomainConfig{}, &types.DomainStatus{},
+				handleCreate, handleModify, handleDelete,
+				&restartFn)
+		case change := <-aaChanges:
+			aaFunc(&aaCtx, change)
+		}
 	}
 }
 
@@ -188,6 +217,7 @@ func xenCfgFilename(appNum int) string {
 func handleCreate(ctxArg interface{}, statusFilename string,
 	configArg interface{}) {
 	config := configArg.(*types.DomainConfig)
+	ctx := ctxArg.(*domainContext)
 	log.Printf("handleCreate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
@@ -207,7 +237,8 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		len(config.DiskConfigList))
 	writeDomainStatus(&status, statusFilename)
 
-	if err := configToStatus(*config, &status); err != nil {
+	if err := configToStatus(*config, ctx.assignableAdapters,
+		&status); err != nil {
 		log.Printf("Failed to create DomainStatus from %v\n", config)
 		status.PendingAdd = false
 		status.LastErr = fmt.Sprintf("%v", err)
@@ -215,6 +246,9 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		writeDomainStatus(&status, statusFilename)
 		return
 	}
+	// We now have reserved all of the IoAdapters
+	status.IoAdapterList = config.IoAdapterList
+
 	// Write any Location so that it can later be deleted based on status
 	writeDomainStatus(&status, statusFilename)
 
@@ -245,7 +279,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 	}
 
 	if config.Activate {
-		doActivate(*config, &status)
+		doActivate(*config, &status, ctx.assignableAdapters)
 	}
 	// work done
 	status.PendingAdd = false
@@ -254,9 +288,42 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		config.UUIDandVersion, config.DisplayName)
 }
 
-func doActivate(config types.DomainConfig, status *types.DomainStatus) {
+func doActivate(config types.DomainConfig, status *types.DomainStatus,
+	aa *types.AssignableAdapters) {
 	log.Printf("doActivate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
+
+	// Assign any I/O devices
+	for _, adapter := range config.IoAdapterList {
+		ib := types.LookupIoBundle(aa, adapter.Type, adapter.Name)
+		// We reserved it in handleCreate so nobody could have stolen it
+		if ib == nil {
+			log.Fatalf("doActivate IoBundle disappeared %d %s for %s\n",
+				adapter.Type, adapter.Name, status.DomainName)
+		}
+		// XXX somewhere mark the uplinks as owned by zedrouter!
+		if ib.UsedByUUID != config.UUIDandVersion.UUID {
+			log.Fatalf("doActivate IoBundle stolen by %s: %d %s for %s\n",
+				ib.UsedByUUID, adapter.Type, adapter.Name,
+				status.DomainName)
+		}
+		long, short, err := ioBundleToPci(ib, adapter.Name)
+		if err != nil {
+			status.LastErr = fmt.Sprintf("%v", err)
+			status.LastErrTime = time.Now()
+			return
+		}
+		if short != "" {
+			fmt.Printf("Assigning %s %s to %s\n",
+				long, short, status.DomainName)
+			err := pciAssignableAdd(long)
+			if err != nil {
+				status.LastErr = fmt.Sprintf("%v", err)
+				status.LastErrTime = time.Now()
+				return
+			}
+		}
+	}
 
 	// Do we need to copy any rw files? Preserve ones are copied upon
 	// creation
@@ -285,7 +352,7 @@ func doActivate(config types.DomainConfig, status *types.DomainStatus) {
 	}
 	defer file.Close()
 
-	if err := configToXencfg(config, *status, file); err != nil {
+	if err := configToXencfg(config, *status, aa, file); err != nil {
 		log.Printf("Failed to create DomainStatus from %v\n", config)
 		status.LastErr = fmt.Sprintf("%v", err)
 		status.LastErrTime = time.Now()
@@ -293,7 +360,6 @@ func doActivate(config types.DomainConfig, status *types.DomainStatus) {
 	}
 
 	// Invoke xl create
-	// XXX how do we wait for guest to boot?
 	domainId, err := xlCreate(status.DomainName, filename)
 	if err != nil {
 		log.Printf("xl create for %s: %s\n", status.DomainName, err)
@@ -332,7 +398,7 @@ func doActivate(config types.DomainConfig, status *types.DomainStatus) {
 // shutdown and wait for the domain to go away; if that fails destroy and wait
 // XXX this should run in a goroutine to prevent handling other operations
 // XXX one goroutine per UUIDandVersion to also handle copy and xlCreate?
-func doInactivate(status *types.DomainStatus) {
+func doInactivate(status *types.DomainStatus, aa *types.AssignableAdapters) {
 	log.Printf("doInactivate(%v) for %s\n",
 		status.UUIDandVersion, status.DisplayName)
 	if status.DomainId != 0 {
@@ -366,18 +432,50 @@ func doInactivate(status *types.DomainStatus) {
 		}
 	}
 	// If everything failed we leave it marked as Activated
-	if status.DomainId == 0 {
-		status.Activated = false
+	if status.DomainId != 0 {
+		log.Printf("doInactivate(%v) done for %s\n",
+			status.UUIDandVersion, status.DisplayName)
+	}
+	status.Activated = false
 
-		// Do we need to delete any rw files that should
-		// not be preserved across reboots?
-		for _, ds := range status.DiskStatusList {
-			if !ds.ReadOnly && !ds.Preserve {
-				log.Printf("Delete copy at %s\n", ds.ActiveFileLocation)
-				if err := os.Remove(ds.ActiveFileLocation); err != nil {
-					log.Println(err)
-					// XXX return? Cleanup status?
-				}
+	// Do we need to delete any rw files that should
+	// not be preserved across reboots?
+	for _, ds := range status.DiskStatusList {
+		if !ds.ReadOnly && !ds.Preserve {
+			log.Printf("Delete copy at %s\n", ds.ActiveFileLocation)
+			if err := os.Remove(ds.ActiveFileLocation); err != nil {
+				log.Println(err)
+				// XXX return? Cleanup status?
+			}
+		}
+	}
+	// Unassign any pci devices but keep UsedByUUID set and keep in status
+	for _, adapter := range status.IoAdapterList {
+		ib := types.LookupIoBundle(aa, adapter.Type, adapter.Name)
+		// We reserved it in handleCreate so nobody could have stolen it
+		if ib == nil {
+			log.Fatalf("doActivate IoBundle disappeared %d %s for %s\n",
+				adapter.Type, adapter.Name, status.DomainName)
+		}
+		if ib.UsedByUUID != status.UUIDandVersion.UUID {
+			log.Fatalf("doActivate IoBundle not ours by %s: %d %s for %s\n",
+				ib.UsedByUUID, adapter.Type, adapter.Name,
+				status.DomainName)
+		}
+		long, short, err := ioBundleToPci(ib, adapter.Name)
+		if err != nil {
+			status.LastErr = fmt.Sprintf("%v", err)
+			status.LastErrTime = time.Now()
+			return
+		}
+		if short != "" {
+			fmt.Printf("Removing %s %s from %s\n",
+				long, short, status.DomainName)
+			err := pciAssignableRem(long)
+			if err != nil {
+				status.LastErr = fmt.Sprintf("%v", err)
+				status.LastErrTime = time.Now()
+				return
 			}
 		}
 	}
@@ -387,7 +485,8 @@ func doInactivate(status *types.DomainStatus) {
 }
 
 // Produce DomainStatus based on the config
-func configToStatus(config types.DomainConfig, status *types.DomainStatus) error {
+func configToStatus(config types.DomainConfig, aa *types.AssignableAdapters,
+	status *types.DomainStatus) error {
 	log.Printf("configToStatus(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 	for i, dc := range config.DiskConfigList {
@@ -418,14 +517,32 @@ func configToStatus(config types.DomainConfig, status *types.DomainStatus) error
 		}
 		ds.ActiveFileLocation = target
 	}
+	for _, adapter := range config.IoAdapterList {
+		// Lookup to make sure adapter exists on this device
+		ib := types.LookupIoBundle(aa, adapter.Type, adapter.Name)
+		if ib == nil {
+			return errors.New(fmt.Sprintf("Unknown adapter %d %s\n",
+				adapter.Type, adapter.Name))
+		}
+		if ib.UsedByUUID != nilUUID {
+			return errors.New(fmt.Sprintf("Adapter %d %s used by %s\n",
+				adapter.Type, adapter.Name, ib.UsedByUUID))
+		}
+		// Does it exist?
+		_, _, err := ioBundleToPci(ib, adapter.Name)
+		if err != nil {
+			return err
+		}
+		ib.UsedByUUID = config.UUIDandVersion.UUID
+	}
 	return nil
 }
 
 // Produce the xen cfg file based on the config and status created above
 // XXX or produce output to a string instead of file to make comparison
 // easier?
-func configToXencfg(config types.DomainConfig,
-	status types.DomainStatus, file *os.File) error {
+func configToXencfg(config types.DomainConfig, status types.DomainStatus,
+	aa *types.AssignableAdapters, file *os.File) error {
 	file.WriteString("# This file is automatically generated by domainmgr\n")
 	file.WriteString(fmt.Sprintf("name = \"%s\"\n", status.DomainName))
 	file.WriteString(fmt.Sprintf("builder = \"pv\"\n"))
@@ -547,6 +664,22 @@ func configToXencfg(config types.DomainConfig,
 		}
 	}
 	file.WriteString(fmt.Sprintf("vif = [%s]\n", vifString))
+
+	for _, adapter := range config.IoAdapterList {
+		ib := types.LookupIoBundle(aa, adapter.Type, adapter.Name)
+		// We reserved it in handleCreate so nobody could have stolen it
+		if ib == nil {
+			log.Fatalf("configToXencfg IoBundle disappeared %d %s for %s\n",
+				adapter.Type, adapter.Name, status.DomainName)
+		}
+		if ib.UsedByUUID != config.UUIDandVersion.UUID {
+			log.Fatalf("configToXencfg IoBundle not ours %s: %d %s for %s\n",
+				ib.UsedByUUID, adapter.Type, adapter.Name,
+				status.DomainName)
+		}
+		cfg := ioBundleToCfg(ib, adapter.Name)
+		file.WriteString(fmt.Sprintf("%s\n", cfg))
+	}
 	return nil
 }
 
@@ -579,6 +712,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 	statusArg interface{}) {
 	config := configArg.(*types.DomainConfig)
 	status := statusArg.(*types.DomainStatus)
+	ctx := ctxArg.(*domainContext)
 	log.Printf("handleModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
@@ -594,13 +728,15 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 	}
 	changed := false
 	if config.Activate && !status.Activated {
-		doActivate(*config, status)
+		doActivate(*config, status, ctx.assignableAdapters)
 		changed = true
 	} else if !config.Activate && status.Activated {
-		doInactivate(status)
+		doInactivate(status, ctx.assignableAdapters)
 		changed = true
 	}
 	if changed {
+		// XXX could we also have changes in the IoBundle?
+		// Need to update the UsedByUUID if so
 		status.PendingModify = false
 		writeDomainStatus(status, statusFilename)
 		log.Printf("handleModify(%v) DONE for %s\n",
@@ -668,6 +804,7 @@ func waitForDomainGone(status types.DomainStatus) bool {
 func handleDelete(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
 	status := statusArg.(*types.DomainStatus)
+	ctx := ctxArg.(*domainContext)
 	log.Printf("handleDelete(%v) for %s\n",
 		status.UUIDandVersion, status.DisplayName)
 
@@ -678,8 +815,26 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 	writeDomainStatus(status, statusFilename)
 
 	if status.Activated {
-		doInactivate(status)
+		doInactivate(status, ctx.assignableAdapters)
 	}
+
+	// Look for any adapters used by us and clear UsedByUUID
+	for _, adapter := range status.IoAdapterList {
+		ib := types.LookupIoBundle(ctx.assignableAdapters,
+			adapter.Type, adapter.Name)
+		// We reserved it in handleCreate so nobody could have stolen it
+		if ib == nil {
+			log.Fatalf("handleDelete IoBundle disappeared %d %s for %s\n",
+				adapter.Type, adapter.Name, status.DomainName)
+		}
+		if ib.UsedByUUID != status.UUIDandVersion.UUID {
+			log.Fatalf("handleDelete IoBundle not ours %s: %d %s for %s\n",
+				ib.UsedByUUID, adapter.Type, adapter.Name,
+				status.DomainName)
+		}
+		ib.UsedByUUID = nilUUID
+	}
+
 	writeDomainStatus(status, statusFilename)
 
 	// Delete xen cfg file for good measure
@@ -753,7 +908,7 @@ func xlStatus(domainName string, domainId int) error {
 	args := []string{
 		"list",
 		"-l",
-		strconv.Itoa(domainId),
+		domainName,
 	}
 	res, err := wrap.Command(cmd, args...).Output()
 	if err != nil {
@@ -816,7 +971,7 @@ func xlUnpause(domainName string, domainId int) error {
 	cmd := "xl"
 	args := []string{
 		"unpause",
-		strconv.Itoa(domainId),
+		domainName,
 	}
 	res, err := wrap.Command(cmd, args...).Output()
 	if err != nil {
@@ -832,7 +987,7 @@ func xlShutdown(domainName string, domainId int) error {
 	cmd := "xl"
 	args := []string{
 		"shutdown",
-		strconv.Itoa(domainId),
+		domainName,
 	}
 	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
 	if err != nil {
@@ -849,7 +1004,7 @@ func xlDestroy(domainName string, domainId int) error {
 	cmd := "xl"
 	args := []string{
 		"destroy",
-		strconv.Itoa(domainId),
+		domainName,
 	}
 	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
 	if err != nil {
@@ -884,4 +1039,80 @@ func locationFromDir(locationDir string) (string, error) {
 			locationDir))
 	}
 	return locationDir + "/" + locations[0].Name(), nil
+}
+
+// Returns the long and short PCI IDs
+// Check if PCI ID exists on system
+func ioBundleToPci(ib *types.IoBundle, name string) (string, string, error) {
+	var long, short string
+	if ib.Lookup {
+		var err error
+		long, short, err = ifNameToPci(name)
+		if err != nil {
+			return "", "", err
+		}
+	} else if ib.PciShort != "" {
+		long = ib.PciLong
+		short = ib.PciShort
+	}
+	if short != "" {
+		if !pciLongExists(long) {
+			return "", "", errors.New(fmt.Sprintf("PCI device does not exist", long))
+		}
+	}
+	return long, short, nil
+}
+
+// Return the string to add to the xen.cfg file
+func ioBundleToCfg(ib *types.IoBundle, name string) string {
+	var short string
+	if ib.Lookup {
+		_, short, _ = ifNameToPci(name)
+	} else if ib.PciShort != "" {
+		short = ib.PciShort
+	}
+	if short != "" {
+		// XXX need to produce list in caller when multiple devices!
+		// XXX or does xl concatenate?
+		return fmt.Sprintf("pci = [ '%s' ]\n", short)
+	} else {
+		return ib.XenCfg
+	}
+}
+
+func pciAssignableAdd(long string) error {
+	fmt.Printf("pciAssignableAdd %s\n", long)
+	cmd := "xl"
+	args := []string{
+		"pci-assignable-add",
+		long,
+	}
+	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
+	if err != nil {
+		errStr := fmt.Sprintf("xl pci-assignable-add failed: %s\n",
+			string(stdoutStderr))
+		log.Println(errStr)
+		return errors.New(errStr)
+	}
+	fmt.Printf("xl pci-assignable-add done\n")
+	return nil
+}
+
+func pciAssignableRem(long string) error {
+	fmt.Printf("pciAssignableRem %s\n", long)
+	cmd := "xl"
+	args := []string{
+		"pci-assignable-rem",
+		"-r",
+		long,
+	}
+	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
+	if err != nil {
+		errStr := fmt.Sprintf("xl pci-assignable-rem failed: %s\n",
+			string(stdoutStderr))
+		log.Println(errStr)
+		return errors.New(errStr)
+	}
+	fmt.Printf("xl pci-assignable-rem done\n")
+	return nil
 }

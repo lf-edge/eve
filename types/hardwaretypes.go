@@ -11,15 +11,21 @@ package types
 // The information is normally read from a hardware model specific
 // file on boot.
 
+// XXX rename file to assignableadapters.go??
+
+import (
+	"github.com/satori/go.uuid"
+)
+
 type AssignableAdapters struct {
 	IoBundleList []IoBundle
 }
 
 type IoBundle struct {
 	Type       IoType
-	Name       string   // Short hand name such as "com"
-	Members    []string // E.g., "com1", "com2"
-	UsedByUUID string   // UUID for application
+	Name       string    // Short hand name such as "com"
+	Members    []string  // E.g., "com1", "com2"
+	UsedByUUID uuid.UUID // UUID for application
 
 	// Local information not reported to cloud
 	Lookup   bool   // Look up name to find PCI
@@ -38,3 +44,13 @@ const (
 	IoCom   IoType = 3
 	IoOther IoType = 255
 )
+
+// Returns nil if not found
+func LookupIoBundle(aa *AssignableAdapters, ioType IoType, name string) *IoBundle {
+	for i, b := range aa.IoBundleList {
+		if b.Type == ioType && b.Name == name {
+			return &aa.IoBundleList[i]
+		}
+	}
+	return nil
+}

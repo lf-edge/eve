@@ -581,7 +581,7 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 		reportAA.Type = zmet.ZioType(b.Type)
 		reportAA.Name = b.Name
 		reportAA.Members = b.Members
-		reportAA.UsedByUUID = b.UsedByUUID // XXX or get from DomainStatus?
+		reportAA.UsedByUUID = b.UsedByUUID.String() // XXX or get from DomainStatus?
 		ReportDeviceInfo.AssignableAdapters[i] = reportAA
 	}
 
