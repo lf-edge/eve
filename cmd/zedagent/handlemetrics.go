@@ -19,8 +19,8 @@ import (
 	"github.com/vishvananda/netlink"
 	"github.com/zededa/api/zmet"
 	"github.com/zededa/go-provision/hardware"
-	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/netclone"
+	"github.com/zededa/go-provision/types"
 	"io/ioutil"
 	"log"
 	"net"
@@ -294,9 +294,6 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 
 	ReportDeviceMetric.Compute.CpuTotal = *proto.Uint64(cpuSecs)
 	ReportDeviceMetric.Compute.UpTime = *proto.Uint64(info.Uptime)
-	bootTime, _ := ptypes.TimestampProto(
-		time.Unix(int64(info.BootTime), 0).UTC())
-	ReportDeviceMetric.Compute.BootTime = bootTime
 
 	// Memory related info for dom0
 	ram, err := mem.VirtualMemory()
@@ -458,13 +455,6 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 
 				appCpuTotal, _ := strconv.ParseUint(cpuStorageStat[arr][3], 10, 0)
 				ReportAppMetric.Cpu.CpuTotal = *proto.Uint32(uint32(appCpuTotal))
-				if ds.BootTime.IsZero() {
-					// If never booted
-					log.Println("BootTime is empty")
-				} else {
-					bootTime, _ := ptypes.TimestampProto(ds.BootTime)
-					ReportAppMetric.Cpu.BootTime = bootTime
-				}
 				appCpuUsedInPercent, _ := strconv.ParseFloat(cpuStorageStat[arr][4], 10)
 				ReportAppMetric.Cpu.CpuPercentage = *proto.Float64(float64(appCpuUsedInPercent))
 
@@ -732,6 +722,19 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 		ReportDeviceInfo.AssignableAdapters[i] = reportAA
 	}
 
+	info, err := host.Info()
+	if err != nil {
+		log.Fatal("host.Info(): %s\n", err)
+	}
+	if debug {
+		fmt.Printf("uptime %d = %d days\n",
+			info.Uptime, info.Uptime/(3600*24))
+		fmt.Printf("Booted at %v\n", time.Unix(int64(info.BootTime), 0).UTC())
+	}
+	bootTime, _ := ptypes.TimestampProto(
+		time.Unix(int64(info.BootTime), 0).UTC())
+	ReportDeviceInfo.BootTime = bootTime
+
 	ReportInfo.InfoContent = new(zmet.ZInfoMsg_Dinfo)
 	if x, ok := ReportInfo.GetInfoContent().(*zmet.ZInfoMsg_Dinfo); ok {
 		x.Dinfo = ReportDeviceInfo
@@ -805,7 +808,15 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 				ReportAppInfo.SoftwareList[idx] = ReportSoftwareInfo
 			}
 		}
+		if ds.BootTime.IsZero() {
+			// If never booted or we didn't find a DomainStatus
+			log.Println("BootTime is empty")
+		} else {
+			bootTime, _ := ptypes.TimestampProto(ds.BootTime)
+			ReportAppInfo.BootTime = bootTime
+		}
 	}
+
 	ReportInfo.InfoContent = new(zmet.ZInfoMsg_Ainfo)
 	if x, ok := ReportInfo.GetInfoContent().(*zmet.ZInfoMsg_Ainfo); ok {
 		x.Ainfo = ReportAppInfo
