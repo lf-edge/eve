@@ -700,6 +700,9 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 	}
 	file.WriteString(fmt.Sprintf("vif = [%s]\n", vifString))
 
+	// Gather all PCI assignments into a single line
+	var pciAssignments []string
+
 	for _, adapter := range config.IoAdapterList {
 		fmt.Printf("configToXenCfg processing adapter %d %s\n",
 			adapter.Type, adapter.Name)
@@ -714,8 +717,28 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 				ib.UsedByUUID, adapter.Type, adapter.Name,
 				status.DomainName)
 		}
-		cfg := ioBundleToCfg(ib)
-		fmt.Printf("Adding io adapter config <%s>\n", cfg)
+		if ib.Lookup && ib.PciShort == "" {
+			log.Fatal("configToXencfg lookup missing: %d %s\n",
+				ib.Type, ib.Name)
+		}
+		if ib.PciShort != "" {
+			pciAssignments = append(pciAssignments, ib.PciShort)
+		} else {
+			fmt.Printf("Adding io adapter config <%s>\n", ib.XenCfg)
+			file.WriteString(fmt.Sprintf("%s\n", ib.XenCfg))
+		}
+	}
+	if len(pciAssignments) != 0 {
+		fmt.Printf("PCI assignments %v\n", pciAssignments)
+		cfg := fmt.Sprintf("pci = [ ")
+		for i, pa := range pciAssignments {
+			if i != 0 {
+				cfg = cfg + ", "
+			}
+			cfg = cfg + fmt.Sprintf("'%s'", pa)
+		}				
+		cfg = cfg + "]"
+		fmt.Printf("Adding pci config <%s>\n", cfg)
 		file.WriteString(fmt.Sprintf("%s\n", cfg))
 	}
 	return nil
@@ -1112,23 +1135,6 @@ func locationFromDir(locationDir string) (string, error) {
 			locationDir))
 	}
 	return locationDir + "/" + locations[0].Name(), nil
-}
-
-// Return the string to add to the xen.cfg file
-// Either a PCI assignment or a verbatim config string
-func ioBundleToCfg(ib *types.IoBundle) string {
-	// If ib.Lookup we set PciShort and PciLong when we acquired it
-	if ib.Lookup && ib.PciShort == "" {
-		log.Fatal("ioBundleToCfg lookup missing: %d %s\n",
-			ib.Type, ib.Name)
-	}
-	if ib.PciShort != "" {
-		// XXX need to produce list in caller when multiple devices!
-		// XXX or does xl concatenate?
-		return fmt.Sprintf("pci = [ '%s' ]\n", ib.PciShort)
-	} else {
-		return ib.XenCfg
-	}
 }
 
 func pciAssignableAdd(long string) error {
