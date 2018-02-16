@@ -112,7 +112,7 @@ func handleDomainStatusModify(ctxArg interface{}, statusFilename string,
 		return
 	}
 	if domainStatus == nil {
-		fmt.Printf("create Domain map\n")
+		log.Printf("create Domain map\n")
 		domainStatus = make(map[string]types.DomainStatus)
 	}
 	domainStatus[key] = *status
@@ -136,10 +136,10 @@ func handleDomainStatusDelete(ctxArg interface{}, statusFilename string) {
 			key)
 	} else {
 		if _, ok := appInterfaceAndNameList[m.DomainName]; ok {
-			fmt.Printf("appInterfaceAndnameList for %v\n", m.DomainName)
+			log.Printf("appInterfaceAndnameList for %v\n", m.DomainName)
 			delete(appInterfaceAndNameList, m.DomainName)
 		}
-		fmt.Printf("Domain map delete for %v\n", key)
+		log.Printf("Domain map delete for %v\n", key)
 		delete(domainStatus, key)
 	}
 	log.Printf("handleDomainStatusDelete done for %s\n",
@@ -911,7 +911,7 @@ func SendInfoProtobufStrThroughHttp(ReportInfo *zmet.ZInfoMsg) error {
 				}
 				return nil
 			default:
-				fmt.Printf("SendInfoProtobufStrThroughHttp to %s using intf %s source %v statuscode %d %s\n",
+				log.Printf("SendInfoProtobufStrThroughHttp to %s using intf %s source %v statuscode %d %s\n",
 					statusUrl, intf, localTCPAddr,
 					resp.StatusCode, http.StatusText(resp.StatusCode))
 				if debug {
@@ -1004,7 +1004,7 @@ func SendMetricsProtobufStrThroughHttp(ReportMetrics *zmet.ZMetricMsg,
 			}
 			return
 		default:
-			fmt.Printf("SendMetricsProtobufStrThroughHttp to %s using intf %s source %v  statuscode %d %s\n",
+			log.Printf("SendMetricsProtobufStrThroughHttp to %s using intf %s source %v  statuscode %d %s\n",
 				metricsUrl, intf, localTCPAddr,
 				resp.StatusCode,
 				http.StatusText(resp.StatusCode))

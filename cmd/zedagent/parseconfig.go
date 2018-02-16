@@ -12,16 +12,26 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
+	"os"
+	"os/exec"
 	"strings"
+	"syscall"
+	"time"
 )
 
 const (
-	MaxBaseOsCount = 2
+	MaxBaseOsCount       = 2
+	rebootConfigFilename = configDir + "/rebootConfig"
+	partitionMapFilename = configDir + "/partitionMap"
 )
+
+var immediate int = 30 // take a 10 second delay
+var rebootTimer *time.Timer
 
 func parseConfig(config *zconfig.EdgeDevConfig) {
 
 	log.Println("Applying new config")
+	parseOpCmds(config)
 	if validateConfig(config) == true {
 		parseBaseOsConfig(config)
 		parseAppInstanceConfig(config)
@@ -41,11 +51,11 @@ func validateConfig(config *zconfig.EdgeDevConfig) bool {
 func parseBaseOsConfig(config *zconfig.EdgeDevConfig) {
 
 	log.Println("Applying Base Os config")
-	finalObjDir := ""
 
 	cfgOsList := config.GetBase()
+	baseOsCount := len(cfgOsList)
 
-	if len(cfgOsList) == 0 {
+	if baseOsCount == 0 {
 		return
 	}
 
@@ -87,20 +97,9 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) {
 
 		if imageCount != 0 {
 			baseOs.StorageConfigList = make([]types.StorageConfig, imageCount)
+			getPartitionInfo(baseOs, baseOsCount)
 			parseStorageConfigList(config, baseOsObj, baseOs.StorageConfigList,
-				cfgOs.Drives)
-		}
-
-		// XXX:FIXME put the finalObjDir value,
-		// by calling bootloader API to fetch
-		// the unused partition
-		if cfgOs.Activate == true {
-
-			log.Printf("baseOs Activate flag is set")
-
-			for _, sc := range baseOs.StorageConfigList {
-				sc.FinalObjDir = finalObjDir
-			}
+				cfgOs.Drives, baseOs.PartitionLabel)
 		}
 
 		baseOsList[idx] = *baseOs
@@ -118,6 +117,61 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) {
 	if validateBaseOsConfig(baseOsList) == true {
 		createBaseOsConfig(baseOsList)
 	}
+}
+
+func getPartitionInfo(baseOs *types.BaseOsConfig, baseOsCount int) {
+
+	// get old Partition Label, if any
+	uuidStr := baseOs.UUIDandVersion.UUID.String()
+	baseOs.PartitionLabel = getPersitentPartitionInfo(uuidStr)
+
+	// XXX:FIXME put the finalObjDir value,
+	// by calling bootloader API to fetch
+	// the unused partition
+	if baseOs.PartitionLabel == "" {
+		if ret := isInstallCandidate(uuidStr, baseOs, baseOsCount); ret == true {
+
+			uuidStr := baseOs.UUIDandVersion.UUID.String()
+			ret, _ := isOtherPartitionStateUnused()
+			if ret == true {
+				baseOs.PartitionLabel = getOtherPartition()
+				setPersitentPartitionInfo(uuidStr, baseOs)
+			}
+		}
+	}
+
+	log.Printf("%s, Partition info %s\n", uuidStr, baseOs.PartitionLabel)
+}
+
+func isInstallCandidate(uuidStr string, baseOs *types.BaseOsConfig,
+	baseOsCount int) bool {
+
+	curBaseOsConfig := baseOsConfigGet(uuidStr)
+	curBaseOsStatus := baseOsStatusGet(uuidStr)
+
+	if curBaseOsStatus != nil &&
+		curBaseOsStatus.Activated == true {
+		return false
+	}
+
+	// new Config
+	if curBaseOsConfig == nil {
+		return true
+	}
+
+	// only one baseOs Config
+	if curBaseOsConfig.PartitionLabel == "" &&
+		baseOsCount == 1 {
+		return true
+	}
+
+	// Activate Flag is flipped
+	if curBaseOsConfig.Activate == false &&
+		baseOs.Activate == true {
+		return true
+	}
+
+	return false
 }
 
 func parseAppInstanceConfig(config *zconfig.EdgeDevConfig) {
@@ -162,7 +216,7 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig) {
 		if imageCount != 0 {
 			appInstance.StorageConfigList = make([]types.StorageConfig, imageCount)
 			parseStorageConfigList(config, appImgObj, appInstance.StorageConfigList,
-				cfgApp.Drives)
+				cfgApp.Drives, "")
 		}
 
 		// fill the overlay/underlay config
@@ -184,7 +238,7 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig) {
 
 func parseStorageConfigList(config *zconfig.EdgeDevConfig, objType string,
 	storageList []types.StorageConfig,
-	drives []*zconfig.Drive) {
+	drives []*zconfig.Drive, partitionLabel string) {
 
 	var idx int = 0
 
@@ -220,6 +274,7 @@ func parseStorageConfigList(config *zconfig.EdgeDevConfig, objType string,
 		image.Devtype = strings.ToLower(drive.Drvtype.String())
 		image.ImageSignature = drive.Image.Siginfo.Signature
 		image.ImageSha256 = drive.Image.Sha256
+		image.ImageSha256 = drive.Image.Sha256
 
 		// copy the certificates
 		if drive.Image.Siginfo.Signercerturl != "" {
@@ -236,6 +291,7 @@ func parseStorageConfigList(config *zconfig.EdgeDevConfig, objType string,
 			image.CertificateChain[0] = drive.Image.Siginfo.Intercertsurl
 		}
 
+		image.FinalObjDir = partitionLabel
 		storageList[idx] = *image
 		idx++
 	}
@@ -514,22 +570,22 @@ func getCertObjects(uuidAndVersion types.UUIDandVersion,
 	for _, image := range drives {
 
 		if image.SignatureKey != "" {
-			getCertObjConfig(*config, image, image.SignatureKey, cidx)
+			getCertObjConfig(config, image, image.SignatureKey, cidx)
 			cidx++
 		}
 
 		for _, certUrl := range image.CertificateChain {
 			if certUrl != "" {
-				getCertObjConfig(*config, image, certUrl, cidx)
+				getCertObjConfig(config, image, certUrl, cidx)
 				cidx++
 			}
 		}
 	}
 
-	writeCertObjConfig(*config, configFilename)
+	writeCertObjConfig(config, configFilename)
 }
 
-func getCertObjConfig(config types.CertObjConfig,
+func getCertObjConfig(config *types.CertObjConfig,
 	image types.StorageConfig, certUrl string, idx int) {
 
 	if certUrl == "" {
@@ -548,7 +604,7 @@ func getCertObjConfig(config types.CertObjConfig,
 		ApiKey:          image.ApiKey,
 		Password:        image.Password,
 		ImageSha256:     "",
-		FinalObjDir:     certsDirname,
+		FinalObjDir:     certificateDirname,
 	}
 	config.StorageConfigList[idx] = *drive
 }
@@ -615,7 +671,7 @@ func validateAppInstanceConfig(appInstance types.AppInstanceConfig) bool {
 	return true
 }
 
-func writeCertObjConfig(config types.CertObjConfig, configFilename string) {
+func writeCertObjConfig(config *types.CertObjConfig, configFilename string) {
 
 	bytes, err := json.Marshal(config)
 	if err != nil {
@@ -627,5 +683,138 @@ func writeCertObjConfig(config types.CertObjConfig, configFilename string) {
 	err = ioutil.WriteFile(configFilename, bytes, 0644)
 	if err != nil {
 		log.Fatal(err)
+	}
+}
+
+func parseOpCmds(config *zconfig.EdgeDevConfig) {
+
+	scheduleReboot(config.GetReboot())
+	scheduleBackup(config.GetBackup())
+}
+
+func scheduleReboot(reboot *zconfig.DeviceOpsCmd) {
+
+	if reboot == nil {
+
+		// stop the timer
+		if rebootTimer != nil {
+			rebootTimer.Stop()
+		}
+		// remove the existing file
+		os.Remove(rebootConfigFilename)
+		return
+	}
+
+	log.Printf("Reboot Config: %v\n", reboot)
+
+	rebootConfig := &zconfig.DeviceOpsCmd{}
+
+	// read old reboot config
+	if _, err := os.Stat(rebootConfigFilename); err == nil {
+		bytes, err := ioutil.ReadFile(rebootConfigFilename)
+		if err == nil {
+			err = json.Unmarshal(bytes, rebootConfig)
+		}
+	}
+
+	// if not first time,
+	// counter value has changed
+	// means new reboot event
+	if (rebootConfig != nil) &&
+		(rebootConfig.Counter != reboot.Counter) {
+
+		//timer was started, stop now
+		if rebootTimer != nil {
+			rebootTimer.Stop()
+		}
+
+		// start the timer again
+		// XXX:FIXME, need to handle the scheduled time
+		duration := time.Duration(immediate)
+		rebootTimer = time.NewTimer(time.Second * duration)
+
+		log.Printf("Scheduling for reboot %d %d\n", rebootConfig.Counter, reboot.Counter)
+
+		go handleReboot()
+	}
+
+	// store current config, persistently
+	bytes, err := json.Marshal(reboot)
+	if err == nil {
+		ioutil.WriteFile(rebootConfigFilename, bytes, 0644)
+	}
+}
+
+func scheduleBackup(backup *zconfig.DeviceOpsCmd) {
+
+	// XXX:FIXME  handle baackup semantics
+	log.Printf("Backup Config: %v\n", backup)
+}
+
+// the timer channel handler
+func handleReboot() {
+
+	rebootConfig := &zconfig.DeviceOpsCmd{}
+	var state bool
+
+	<-rebootTimer.C
+
+	// read reboot config
+	if _, err := os.Stat(rebootConfigFilename); err == nil {
+		bytes, err := ioutil.ReadFile(rebootConfigFilename)
+		if err == nil {
+			err = json.Unmarshal(bytes, rebootConfig)
+		}
+		state = rebootConfig.DesiredState
+	}
+
+	execReboot(state)
+}
+
+func startExecReboot() {
+
+	log.Printf("startExecReboot: scheduling exec reboot\n")
+
+	//timer was started, stop now
+	if rebootTimer != nil {
+		rebootTimer.Stop()
+	}
+
+	// start the timer again
+	// XXX:FIXME, need to handle the scheduled time
+	duration := time.Duration(immediate)
+	rebootTimer = time.NewTimer(time.Second * duration)
+
+	go handleExecReboot()
+}
+
+func handleExecReboot() {
+
+	<-rebootTimer.C
+
+	execReboot(true)
+}
+
+func execReboot(state bool) {
+
+	// XXX:FIXME perform graceful service stop/ state backup
+
+	// do a sync
+	log.Printf("Doing a sync..\n")
+	syscall.Sync()
+
+	switch state {
+
+	case true:
+		log.Printf("Rebooting...\n")
+		zbootReset()
+
+	case false:
+		log.Printf("Powering Off..\n")
+		poweroffCmd := exec.Command("poweroff")
+		_, err := poweroffCmd.Output()
+		if err != nil {
+			log.Println(err)
+		}
 	}
 }

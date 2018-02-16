@@ -37,14 +37,21 @@ func initVerifierMaps() {
 }
 
 func createVerifierConfig(objType string, safename string,
-	sc *types.StorageConfig) {
+	sc *types.StorageConfig) error {
 
 	initVerifierMaps()
+
+	// check the certificate files, if not present,
+	// we can not start verification
+	if err := checkCertsForObject(safename, sc); err != nil {
+		log.Printf("%v for %s\n", err, safename)
+		return err
+	}
 
 	key := formLookupKey(objType, safename)
 
 	if m, ok := verifierConfigMap[key]; ok {
-		log.Printf("downloader config exists for %s refcount %d\n",
+		log.Printf("verifier config exists for %s refcount %d\n",
 			safename, m.RefCount)
 		m.RefCount += 1
 	} else {
@@ -68,6 +75,7 @@ func createVerifierConfig(objType string, safename string,
 
 	log.Printf("createVerifierConfig done for %s\n",
 		safename)
+	return nil
 }
 
 func updateVerifierStatus(objType string, status *types.VerifyImageStatus) {
@@ -209,14 +217,11 @@ func checkStorageVerifierStatus(objType string, uuidStr string,
 		ss := &status[i]
 
 		safename := types.UrlToSafename(sc.DownloadURL, sc.ImageSha256)
-		log.Printf("checkStorageVerifierStatus for %s, Found StorageConfig URL %s safename %s\n",
-			key, sc.DownloadURL, safename)
 
 		vs, err := lookupVerificationStatusAny(objType, safename, sc.ImageSha256)
-
 		if err != nil {
-			log.Printf("checkStorageVerifierStatus for %s, Verifier Status Map is absent %s sha %s %v\n",
-				key, safename, sc.ImageSha256, err)
+			log.Printf("%s, %v\n", safename, err)
+			minState = types.DOWNLOADED
 			continue
 		}
 		if minState > vs.State {
@@ -228,7 +233,7 @@ func checkStorageVerifierStatus(objType string, uuidStr string,
 		}
 		switch vs.State {
 		case types.INITIAL:
-			log.Printf("checkStorageVerifierStatus for %s, verifier error verifier for %s: %s\n",
+			log.Printf("%s, verifier error for %s: %s\n",
 				key, safename, vs.LastErr)
 			ss.Error = vs.LastErr
 			allErrors = appendError(allErrors, "verifier",
@@ -239,7 +244,7 @@ func checkStorageVerifierStatus(objType string, uuidStr string,
 		default:
 			ss.ActiveFileLocation = objectDownloadDirname + "/" + objType + "/" + vs.Safename
 
-			log.Printf("checkStorageVerifierStatus for %s, Update SSL ActiveFileLocation for %s: %s\n",
+			log.Printf("%s, Update SSL ActiveFileLocation for %s: %s\n",
 				key, uuidStr, ss.ActiveFileLocation)
 			changed = true
 		}
@@ -263,4 +268,49 @@ func writeVerifierConfig(config types.VerifyImageConfig, configFilename string) 
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+// check whether the cert files are installed
+func checkCertsForObject(safename string, sc *types.StorageConfig) error {
+
+	var cidx int = 0
+
+	// count the number of cerificates in this object
+	if sc.SignatureKey != "" {
+		cidx++
+	}
+	for _, certUrl := range sc.CertificateChain {
+		if certUrl != "" {
+			cidx++
+		}
+	}
+	// if no cerificates, return
+	if cidx == 0 {
+		log.Printf("checkCertsForObject() for %s, no certificates configured\n",
+			safename)
+		return nil
+	}
+
+	if sc.SignatureKey != "" {
+		safename := types.UrlToSafename(sc.SignatureKey, "")
+		filename := certificateDirname + "/" +
+			types.SafenameToFilename(safename)
+		if _, err := os.Stat(filename); err != nil {
+			log.Printf("checkCertsForObject() for %s, %v\n", filename, err)
+			return err
+		}
+	}
+
+	for _, certUrl := range sc.CertificateChain {
+		if certUrl != "" {
+			safename := types.UrlToSafename(certUrl, "")
+			filename := certificateDirname + "/" +
+				types.SafenameToFilename(safename)
+			if _, err := os.Stat(filename); err != nil {
+				log.Printf("checkCertsForObject() for %s, %v\n", filename, err)
+				return err
+			}
+		}
+	}
+	return nil
 }
