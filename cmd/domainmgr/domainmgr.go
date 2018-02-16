@@ -304,6 +304,7 @@ func doActivate(config types.DomainConfig, status *types.DomainStatus) {
 	log.Printf("created domainId %d for %s\n", domainId, status.DomainName)
 	status.DomainId = domainId
 	status.Activated = true
+	status.BootTime = time.Now()
 
 	// Disable offloads for all vifs
 	err = xlDisableVifOffload(status.DomainName, domainId,
@@ -325,6 +326,10 @@ func doActivate(config types.DomainConfig, status *types.DomainStatus) {
 	// XXX dumping status to log
 	xlStatus(status.DomainName, status.DomainId)
 
+	domainId, err = xlDomid(status.DomainName, status.DomainId)
+	if err == nil && domainId != status.DomainId {
+		status.DomainId = domainId
+	}
 	log.Printf("doActivate(%v) done for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 }
@@ -335,6 +340,10 @@ func doActivate(config types.DomainConfig, status *types.DomainStatus) {
 func doInactivate(status *types.DomainStatus) {
 	log.Printf("doInactivate(%v) for %s\n",
 		status.UUIDandVersion, status.DisplayName)
+	domainId, err := xlDomid(status.DomainName, status.DomainId)
+	if err == nil && domainId != status.DomainId {
+		status.DomainId = domainId
+	}
 	if status.DomainId != 0 {
 		if err := xlShutdown(status.DomainName,
 			status.DomainId); err != nil {
@@ -748,12 +757,13 @@ func xlCreate(domainName string, xenCfgFilename string) (int, error) {
 
 func xlStatus(domainName string, domainId int) error {
 	fmt.Printf("xlStatus %s %d\n", domainName, domainId)
-	// XXX xl list -l domainId returns json. XXX but state not included!
+	// XXX xl list -l domainName returns json. XXX but state not included!
+	// Note that state is not very useful anyhow
 	cmd := "xl"
 	args := []string{
 		"list",
 		"-l",
-		strconv.Itoa(domainId),
+		domainName,
 	}
 	res, err := wrap.Command(cmd, args...).Output()
 	if err != nil {
@@ -763,6 +773,33 @@ func xlStatus(domainName string, domainId int) error {
 	// XXX parse json to look at state? Not currently included
 	fmt.Printf("xl list done. Result %s\n", string(res))
 	return nil
+}
+
+// If we have a domain reboot issue the domainId
+// can change.
+func xlDomid(domainName string, domainId int) (int, error) {
+	fmt.Printf("xlDomid %s %d\n", domainName, domainId)
+	cmd := "xl"
+	args := []string{
+		"domid",
+		domainName,
+	}
+	out, err := wrap.Command(cmd, args...).Output()
+	if err != nil {
+		log.Println("xl domid failed ", err)
+		return domainId, err
+	}
+	res := strings.TrimSpace(string(out))
+	domainId2, err := strconv.Atoi(res)
+	if err != nil {
+		log.Printf("xl domid not integer %s: failed %s\n", res, err)
+		return domainId, err
+	}
+	if domainId2 != domainId {
+		log.Printf("Warning: domainid changed from %d to %d for %s\n",
+			domainId, domainId2, domainName)
+	}
+	return domainId2, err
 }
 
 // Perform xenstore write to disable all of these for all VIFs
@@ -816,7 +853,7 @@ func xlUnpause(domainName string, domainId int) error {
 	cmd := "xl"
 	args := []string{
 		"unpause",
-		strconv.Itoa(domainId),
+		domainName,
 	}
 	res, err := wrap.Command(cmd, args...).Output()
 	if err != nil {
@@ -832,7 +869,7 @@ func xlShutdown(domainName string, domainId int) error {
 	cmd := "xl"
 	args := []string{
 		"shutdown",
-		strconv.Itoa(domainId),
+		domainName,
 	}
 	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
 	if err != nil {
@@ -849,7 +886,7 @@ func xlDestroy(domainName string, domainId int) error {
 	cmd := "xl"
 	args := []string{
 		"destroy",
-		strconv.Itoa(domainId),
+		domainName,
 	}
 	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
 	if err != nil {

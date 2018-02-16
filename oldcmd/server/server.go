@@ -1,3 +1,6 @@
+// Copyright (c) 2017 Zededa, Inc.
+// All rights reserved.
+
 package main
 
 import (
@@ -39,6 +42,7 @@ type ServerCertInfo struct {
 }
 
 var localFlag bool
+
 // Set from Makefile
 var Version = "No version specified"
 
@@ -677,7 +681,6 @@ func DeviceParam(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(res)
 }
-
 
 func EIDRegister(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("Method %s Host %s Proto %s URL %s from %v\n",

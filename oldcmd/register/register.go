@@ -1,3 +1,6 @@
+// Copyright (c) 2017 Zededa, Inc.
+// All rights reserved.
+
 // Call as register <username> <cert pem filename> [<maxCount>]
 // Record the username and pem file in the Onboarding certificate database
 

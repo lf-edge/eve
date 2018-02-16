@@ -215,12 +215,12 @@ func doUpdate(uuidStr string, config types.AppInstanceConfig,
 
 	// The existence of Config is interpreted to mean the
 	// AI should be INSTALLED. Activate is checked separately.
-	changed, proceed := doInstall(uuidStr, config, status)
-	if !proceed {
+	changed, done := doInstall(uuidStr, config, status)
+	if !done {
 		return changed
 	}
 	if !config.Activate {
-		if status.Activated {
+		if status.Activated || status.ActivateInprogress {
 			changed = doInactivate(uuidStr, status)
 		} else {
 			// If we have a !ReadOnly disk this will create a copy
@@ -475,6 +475,9 @@ func doActivate(uuidStr string, config types.AppInstanceConfig,
 	log.Printf("doActivate for %s\n", uuidStr)
 	changed := false
 
+	// Track that we have cleanup work in case something fails
+	status.ActivateInprogress = true
+
 	// Make sure we have an AppNetworkConfig
 	MaybeAddAppNetworkConfig(config, status)
 
@@ -545,6 +548,7 @@ func doActivate(uuidStr string, config types.AppInstanceConfig,
 
 	if !status.Activated {
 		status.Activated = true
+		status.ActivateInprogress = false
 		changed = true
 	}
 	log.Printf("doActivate done for %s\n", uuidStr)
@@ -556,7 +560,7 @@ func doRemove(uuidStr string, status *types.AppInstanceStatus) (bool, bool) {
 
 	changed := false
 	del := false
-	if status.Activated {
+	if status.Activated || status.ActivateInprogress {
 		changed = doInactivate(uuidStr, status)
 	}
 	if !status.Activated {
@@ -604,6 +608,7 @@ func doInactivate(uuidStr string, status *types.AppInstanceStatus) bool {
 	log.Printf("Done with AppNetworkStatus removal for %s\n", uuidStr)
 
 	status.Activated = false
+	status.ActivateInprogress = false
 	log.Printf("doInactivate done for %s\n", uuidStr)
 	return changed
 }

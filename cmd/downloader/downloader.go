@@ -92,14 +92,14 @@ func main() {
 	ctx := downloaderContext{}
 	ctx.dCtx = downloaderInit()
 
-	deviceStatusChanges := make(chan string)
-	go watch.WatchStatus(DNSDirname, deviceStatusChanges)
+	networkStatusChanges := make(chan string)
+	go watch.WatchStatus(DNSDirname, networkStatusChanges)
 
 	// First wait to have some uplinks with addresses
 	// Looking at any uplinks since we can do baseOS download over all
 	for types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus) == 0 {
 		select {
-		case change := <-deviceStatusChanges:
+		case change := <-networkStatusChanges:
 			watch.HandleStatusEvent(change, dummyContext{},
 				DNSDirname,
 				&types.DeviceNetworkStatus{},
@@ -126,7 +126,7 @@ func main() {
 	for {
 		select {
 
-		case change := <-deviceStatusChanges:
+		case change := <-networkStatusChanges:
 			watch.HandleStatusEvent(change, dummyContext{},
 				DNSDirname,
 				&types.DeviceNetworkStatus{},
