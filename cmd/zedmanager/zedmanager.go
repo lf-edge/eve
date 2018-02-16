@@ -24,6 +24,7 @@ import (
 // Keeping status in /var/run to be clean after a crash/reboot
 const (
 	appImgObj  = "appImg.obj"
+	certObj    = "cert.obj"
 	moduleName = "zedmanager"
 
 	baseDirname              = "/var/tmp/zedmanager"
@@ -36,6 +37,7 @@ const (
 	zedrouterConfigDirname   = "/var/tmp/zedrouter/config"
 	identitymgrConfigDirname = "/var/tmp/identitymgr/config"
 	DNSDirname               = "/var/run/zedrouter/DeviceNetworkStatus"
+	certificateDirname       = persistDir + "/certs"
 
 	downloaderAppImgObjConfigDirname = "/var/tmp/downloader/" + appImgObj + "/config"
 	verifierAppImgObjConfigDirname   = "/var/tmp/verifier/" + appImgObj + "/config"
@@ -84,6 +86,7 @@ func main() {
 
 	downloaderAppImgObjStatusDirname := "/var/run/downloader/" + appImgObj + "/status"
 	verifierAppImgObjStatusDirname := "/var/run/verifier/" + appImgObj + "/status"
+	zedagentCertObjStatusDirname := "/var/run/zedagent/" + certObj + "/status"
 
 	dirs := []string{
 		zedmanagerConfigDirname,
@@ -102,6 +105,7 @@ func main() {
 		downloaderStatusDirname,
 		verifierAppImgObjStatusDirname,
 		verifierStatusDirname,
+		zedagentCertObjStatusDirname,
 	}
 
 	for _, dir := range dirs {
@@ -133,6 +137,9 @@ func main() {
 		zedmanagerStatusDirname, configChanges)
 	networkStatusChanges := make(chan string)
 	go watch.WatchStatus(DNSDirname, networkStatusChanges)
+	zedagentCertObjStatusChanges := make(chan string)
+	go watch.WatchStatus(zedagentCertObjStatusDirname,
+		zedagentCertObjStatusChanges)
 
 	var configRestartFn watch.ConfigRestartHandler = handleConfigRestart
 	var verifierRestartedFn watch.StatusRestartHandler = handleVerifierRestarted
@@ -165,6 +172,15 @@ func main() {
 	log.Printf("Handling all inputs\n")
 	for {
 		select {
+		// handle cert ObjectsChanges
+		case change := <-zedagentCertObjStatusChanges:
+			{
+				watch.HandleStatusEvent(change, &ctx,
+					zedagentCertObjStatusDirname,
+					&types.CertObjStatus{},
+					handleCertObjStatusModify,
+					handleCertObjStatusDelete, nil)
+			}
 		case change := <-downloaderChanges:
 			{
 				watch.HandleStatusEvent(change, &ctx,
@@ -172,7 +188,6 @@ func main() {
 					&types.DownloaderStatus{},
 					handleDownloaderStatusModify,
 					handleDownloaderStatusDelete, nil)
-				continue
 			}
 		case change := <-verifierChanges:
 			{
@@ -182,7 +197,6 @@ func main() {
 					handleVerifyImageStatusModify,
 					handleVerifyImageStatusDelete,
 					&verifierRestartedFn)
-				continue
 			}
 		case change := <-identitymgrChanges:
 			{
@@ -192,7 +206,6 @@ func main() {
 					handleEIDStatusModify,
 					handleEIDStatusDelete,
 					&identitymgrRestartedFn)
-				continue
 			}
 		case change := <-zedrouterChanges:
 			{
@@ -202,7 +215,6 @@ func main() {
 					handleAppNetworkStatusModify,
 					handleAppNetworkStatusDelete,
 					&zedrouterRestartedFn)
-				continue
 			}
 		case change := <-domainmgrChanges:
 			{
@@ -211,7 +223,6 @@ func main() {
 					&types.DomainStatus{},
 					handleDomainStatusModify,
 					handleDomainStatusDelete, nil)
-				continue
 			}
 		case change := <-configChanges:
 			{
@@ -222,7 +233,6 @@ func main() {
 					&types.AppInstanceStatus{},
 					handleCreate, handleModify,
 					handleDelete, &configRestartFn)
-				continue
 			}
 		case change := <-networkStatusChanges:
 			{

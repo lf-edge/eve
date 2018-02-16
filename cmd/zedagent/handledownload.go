@@ -66,10 +66,7 @@ func createDownloaderConfig(objType string, safename string,
 
 	configFilename := fmt.Sprintf("%s/%s/config/%s.json",
 		downloaderBaseDirname, objType, safename)
-
 	writeDownloaderConfig(downloaderConfigMap[key], configFilename)
-
-	log.Printf("createDownloaderConfig for %s, Done\n", key)
 }
 
 func updateDownloaderStatus(objType string, status *types.DownloaderStatus) {
@@ -187,7 +184,7 @@ func checkStorageDownloadStatus(objType string, uuidStr string,
 
 		safename := types.UrlToSafename(sc.DownloadURL, sc.ImageSha256)
 
-		log.Printf("check Storage Download for %s\n", safename)
+		log.Printf("checkStorageDownloadStatus for %s\n", safename)
 
 		if sc.ImageSha256 != "" {
 			// Shortcut if image is already verified
@@ -195,12 +192,11 @@ func checkStorageDownloadStatus(objType string, uuidStr string,
 				safename, sc.ImageSha256)
 
 			if err == nil && vs.State == types.DELIVERED {
-				log.Printf("Verifier status for %s, Found verified object, sha %s\n",
-					sc.DownloadURL, sc.ImageSha256)
+				log.Printf(" %s, exists verified with sha %s\n",
+					safename, sc.ImageSha256)
 				// If we don't already have a RefCount add one
 				if !ss.HasVerifierRef {
-					log.Printf("Verifier Status for %s !HasVerifierRef, RefCount %d\n",
-						sc.DownloadURL, vs.RefCount)
+					log.Printf("%s, !HasVerifierRef\n", safename)
 					vs.RefCount += 1
 					ss.HasVerifierRef = true
 					changed = true
@@ -217,8 +213,7 @@ func checkStorageDownloadStatus(objType string, uuidStr string,
 		}
 
 		if !ss.HasDownloaderRef {
-			log.Printf("Download status for %s, !HasDownloaderRef\n",
-				sc.DownloadURL)
+			log.Printf("%s, !HasDownloaderRef\n", safename)
 			createDownloaderConfig(objType, safename, &sc)
 			ss.HasDownloaderRef = true
 			changed = true
@@ -226,8 +221,8 @@ func checkStorageDownloadStatus(objType string, uuidStr string,
 
 		ds, err := lookupDownloaderStatus(objType, safename)
 		if err != nil {
-			log.Printf("Download Status Map for %s, is absent %s \n",
-				safename, err)
+			log.Printf("%s, %s \n", safename, err)
+			minState = types.DOWNLOAD_STARTED
 			continue
 		}
 
@@ -241,7 +236,7 @@ func checkStorageDownloadStatus(objType string, uuidStr string,
 
 		switch ds.State {
 		case types.INITIAL:
-			log.Printf("Download Status Map for %s, Downloader error, %s\n",
+			log.Printf("%s, Downloader status error, %s\n",
 				key, ds.LastErr)
 			ss.Error = ds.LastErr
 			allErrors = appendError(allErrors, "downloader",
@@ -252,16 +247,25 @@ func checkStorageDownloadStatus(objType string, uuidStr string,
 			// Nothing to do
 		case types.DOWNLOADED:
 
+			log.Printf("%s, Downloaded\n", safename)
 			// if verification is needed
 			if sc.ImageSha256 != "" {
 				// start verifier for this object
 				if !ss.HasVerifierRef {
-					createVerifierConfig(objType, safename, &sc)
-					ss.HasVerifierRef = true
-					changed = true
+					err := createVerifierConfig(objType, safename, &sc)
+					if err == nil {
+						ss.HasVerifierRef = true
+						changed = true
+					} else {
+						allErrors = appendError(allErrors, "downloader", err.Error())
+					}
 				}
 			}
 		}
+	}
+
+	if minState == types.MAXSTATE {
+		minState = types.DOWNLOADED
 	}
 
 	return changed, minState, allErrors, errorTime
@@ -287,7 +291,8 @@ func installDownloadedObjects(objType string, uuidStr string,
 			ret = false
 		}
 	}
-	log.Printf("installDownloadedObjects for %s, Done %d\n", key, ret)
+
+	log.Printf("installDownloadedObjects for %s, Done %v\n", key, ret)
 	return ret
 }
 
@@ -297,11 +302,12 @@ func installDownloadedObjects(objType string, uuidStr string,
 func installDownloadedObject(objType string, safename string,
 	config types.StorageConfig, status *types.StorageStatus) {
 
+	var ret error
 	var srcFilename string = objectDownloadDirname + "/" + objType
 
 	key := formLookupKey(objType, safename)
 
-	log.Printf("installDownloadedObject for %s, %v\n", key, status.State)
+	log.Printf("installDownloadedObject %s for %s, %v\n", objType, safename, status.State)
 
 	// if the object is in downloaded state,
 	// pick from pending directory
@@ -310,38 +316,30 @@ func installDownloadedObject(objType string, safename string,
 	switch status.State {
 
 	case types.INSTALLED:
-		log.Printf("installDownloadedObject for %s, already installed\n", key)
+		log.Printf("%s, Already installed\n", key)
 		return
 
 	case types.DOWNLOADED:
-		if config.ImageSha256 != "" != false {
-			log.Printf("installDownloadedObject for %s, Pending verification\n",
-				key)
+		if config.ImageSha256 != "" {
+			log.Printf("%s, Pending verification\n", key)
 			return
 		}
-		srcFilename += "/pending"
+		srcFilename += "/pending/" + safename
 		break
 
 	case types.DELIVERED:
-		log.Printf("installDownloadedObject for %s, verified\n", key)
-		srcFilename += "/verified"
+		srcFilename += "/verified/" + config.ImageSha256 + "/" +
+			types.SafenameToFilename(safename)
 		break
 
 	default:
-		log.Printf("installDownloadedObject for %s, still not ready (%d)\n", key, status.State)
+		log.Printf("%s, still not ready (%d)\n", key, status.State)
 		return
 	}
 
-	if config.ImageSha256 != "" {
-		srcFilename = srcFilename + "/" + config.ImageSha256
-	}
-
-	srcFilename = srcFilename + "/" + safename
-
 	// ensure the file is present
 	if _, err := os.Stat(srcFilename); err != nil {
-		log.Fatal("installDownloadedObject for %s, %s file absent(%s)\n",
-			key, srcFilename, err)
+		log.Fatal(err)
 	}
 
 	// move to final installation point
@@ -349,23 +347,24 @@ func installDownloadedObject(objType string, safename string,
 
 		var dstFilename string = config.FinalObjDir
 
-		// create the destination directory
-		if _, err := os.Stat(dstFilename); err == nil {
-			if err := os.MkdirAll(dstFilename, 0700); err != nil {
-				log.Fatal("installDownloadedObject for %s, Failed directory make %s\n", key, dstFilename)
-			}
+		switch objType {
+		case certObj:
+			ret = installCertObject(srcFilename, dstFilename, safename)
+
+		case baseOsObj:
+			ret = installBaseOsObject(srcFilename, dstFilename)
+
+		default:
+			log.Printf("%s, Unsupported Object Type %v\n", safename, objType)
 		}
-
-		dstFilename = dstFilename + "/" + types.SafenameToFilename(safename)
-
-		log.Printf("installDownloadedObject for %s, writing %s to %s\n",
-			key, srcFilename, dstFilename)
-
-		os.Rename(srcFilename, dstFilename)
+	} else {
+		log.Printf("%s, final dir not set %v\n", safename, objType)
 	}
 
-	status.State = types.INSTALLED
-	log.Printf("installDownloadedObject for %s, installation done\n", key)
+	if ret == nil {
+		status.State = types.INSTALLED
+		log.Printf("installDownloadedObject for %s, installation done\n", key)
+	}
 }
 
 func writeDownloaderConfig(config types.DownloaderConfig, configFilename string) {

@@ -26,6 +26,7 @@ type BaseOsConfig struct {
 	ConfigSignature   string
 	OsParams          []OsVerParams
 	StorageConfigList []StorageConfig
+	PartitionLabel    string
 	Activate          bool
 }
 
@@ -47,6 +48,8 @@ type BaseOsStatus struct {
 	Activated         bool
 	OsParams          []OsVerParams
 	StorageStatusList []StorageStatus
+	PartitionLabel    string
+
 	// Mininum state across all steps/StorageStatus.
 	// INITIAL implies error.
 	State SwState
@@ -133,3 +136,10 @@ func (status CertObjStatus) CheckPendingModify() bool {
 func (status CertObjStatus) CheckPendingDelete() bool {
 	return false
 }
+
+// Indexed by UUIDandVersion as above
+type  PartitionInfo struct {
+	UUIDandVersion    UUIDandVersion
+	PartitionLabel    string
+}
+

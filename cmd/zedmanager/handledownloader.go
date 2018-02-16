@@ -32,16 +32,16 @@ func AddOrRefcountDownloaderConfig(safename string, sc *types.StorageConfig) {
 	} else {
 		fmt.Printf("downloader config add for %s\n", safename)
 		n := types.DownloaderConfig{
-			Safename:         safename,
-			DownloadURL:      sc.DownloadURL,
-			UseFreeUplinks:   true,
-			MaxSize:          sc.MaxSize,
-			TransportMethod:  sc.TransportMethod,
-			Dpath:            sc.Dpath,
-			ApiKey:           sc.ApiKey,
-			Password:         sc.Password,
-			ImageSha256:      sc.ImageSha256,
-			RefCount:         1,
+			Safename:        safename,
+			DownloadURL:     sc.DownloadURL,
+			UseFreeUplinks:  true,
+			MaxSize:         sc.MaxSize,
+			TransportMethod: sc.TransportMethod,
+			Dpath:           sc.Dpath,
+			ApiKey:          sc.ApiKey,
+			Password:        sc.Password,
+			ImageSha256:     sc.ImageSha256,
+			RefCount:        1,
 		}
 		downloaderConfig[key] = n
 	}
