@@ -307,6 +307,7 @@ func handleVerifierRestarted(ctxArg interface{}, done bool) {
 
 func handleInit() {
 
+	partitionInit()
 	initializeDirs()
 	initMaps()
 	getCloudUrls()

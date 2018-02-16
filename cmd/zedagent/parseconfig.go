@@ -18,9 +18,6 @@ import (
 
 const (
 	MaxBaseOsCount = 2
-	// XXX:FIXME typically this should be stored in a persistent config
-	// across boot parition
-	rebootInitCount      = 1000
 	rebootConfigFilename = configDir + "/rebootConfig"
 	partitionMapFilename = configDir + "/partitionMap"
 )
@@ -120,6 +117,7 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) {
 }
 
 func getPartitionInfo(baseOs *types.BaseOsConfig, baseOsCount int) {
+
 	// get old Partition Label, if any
 	uuidStr := baseOs.UUIDandVersion.UUID.String()
 	baseOs.PartitionLabel = getPersitentPartitionInfo(uuidStr)
@@ -131,44 +129,15 @@ func getPartitionInfo(baseOs *types.BaseOsConfig, baseOsCount int) {
 		if ret := isInstallCandidate(uuidStr, baseOs, baseOsCount); ret == true {
 
 			uuidStr := baseOs.UUIDandVersion.UUID.String()
-			baseOs.PartitionLabel = getUnusedPartition()
-			setPersitentPartitionInfo(uuidStr, baseOs)
+			ret, _ := isOtherPartitionStateUnused()
+			if ret == true {
+				baseOs.PartitionLabel = getOtherPartition()
+				setPersitentPartitionInfo(uuidStr, baseOs)
+			}
 		}
 	}
 
 	log.Printf("%s, Partition info %s\n", uuidStr, baseOs.PartitionLabel)
-}
-func getPersitentPartitionInfo(uuidStr string) string {
-
-	var partitionInfo = &types.PartitionInfo{}
-
-	filename := configDir + "/" + uuidStr + ".json"
-	if _, err := os.Stat(filename); err == nil {
-		bytes, err := ioutil.ReadFile(filename)
-		if err == nil {
-			err = json.Unmarshal(bytes, partitionInfo)
-		}
-		return partitionInfo.PartitionLabel
-	}
-	return ""
-}
-
-func setPersitentPartitionInfo(uuidStr string, config *types.BaseOsConfig) {
-
-	log.Printf("%s, set partition %s\n", uuidStr, config.PartitionLabel)
-
-	if config.PartitionLabel != "" {
-
-		var partitionInfo = &types.PartitionInfo{}
-		partitionInfo.UUIDandVersion = config.UUIDandVersion
-		partitionInfo.PartitionLabel = config.PartitionLabel
-
-		filename := configDir + "/" + uuidStr + ".json"
-		bytes, err := json.Marshal(partitionInfo)
-		if err == nil {
-			err = ioutil.WriteFile(filename, bytes, 0644)
-		}
-	}
 }
 
 func isInstallCandidate(uuidStr string, baseOs *types.BaseOsConfig,
@@ -200,44 +169,6 @@ func isInstallCandidate(uuidStr string, baseOs *types.BaseOsConfig,
 	}
 
 	return false
-}
-
-func getActivePartition() string {
-	curpartCmd := exec.Command("zboot", "curpart")
-	ret, err := curpartCmd.Output()
-	if err != nil {
-		log.Println(err)
-	}
-	partitionLabel := string(ret)
-	log.Println("geActivePartition(): ", partitionLabel)
-	partitionLabel = strings.TrimSpace(partitionLabel)
-	switch partitionLabel {
-	case "IMGA":
-		break
-	case "IMGB":
-		break
-	default:
-		partitionLabel = ""
-	}
-	log.Println("geActivePartition(): ", partitionLabel)
-	return partitionLabel
-}
-
-//check the partition label of the current root and find unused Partition...
-func getUnusedPartition() string {
-
-	partitionLabel := getActivePartition()
-
-	switch partitionLabel {
-	case "IMGA":
-		partitionLabel = "IMGB"
-	case "IMGB":
-		partitionLabel = "IMGA"
-	default:
-		partitionLabel = ""
-	}
-	log.Println("getUnusedPartition(): ", partitionLabel)
-	return partitionLabel
 }
 
 func parseAppInstanceConfig(config *zconfig.EdgeDevConfig) {
@@ -873,11 +804,7 @@ func execReboot(state bool) {
 
 	case true:
 		log.Printf("Rebooting...\n")
-		rebootCmd := exec.Command("zboot", "reset")
-		_, err := rebootCmd.Output()
-		if err != nil {
-			log.Println(err)
-		}
+		zbootReset()
 
 	case false:
 		log.Printf("Powering Off..\n")

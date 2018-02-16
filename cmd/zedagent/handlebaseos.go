@@ -130,7 +130,7 @@ func baseOsStatusGet(uuidStr string) *types.BaseOsStatus {
 
 	status, ok := baseOsStatusMap[uuidStr]
 	if !ok {
-		log.Printf("baseOsHandleStatusGet for %s, Config absent\n", uuidStr)
+		log.Printf("baseOsStatusGet for %s, Status absent\n", uuidStr)
 		return nil
 	}
 	return &status
@@ -139,41 +139,29 @@ func baseOsStatusGet(uuidStr string) *types.BaseOsStatus {
 func getActivationStatus(uuidStr string, status types.BaseOsStatus) bool {
 
 	log.Printf("getActivationStatus: partitionLabel %s\n", status.PartitionLabel)
-
-	if status.PartitionLabel != "" {
-		partStateCmd := exec.Command("zboot", "partstate", status.PartitionLabel)
-		ret, err := partStateCmd.Output()
-		if err != nil {
-			log.Printf("getActivationStatus: err %v\n", err)
-			return false
-		}
-
-		log.Printf("getActivationStatus: state  %s\n", ret)
-
-		partState := string(ret)
-		partState = strings.TrimSpace(partState)
-		if partState == "active" {
-			return true
-		}
+	if ret, _ := isCurrentPartition(status.PartitionLabel); ret == false {
+		return ret
 	}
-	return false
+	ret, err := isCurrentPartitionStateActive()
+	if err != nil {
+		log.Printf("getActivationStatus: partitionState %s, %v\n", ret, err)
+	}
+	return ret
 }
 
 func baseOsHandleStatusUpdate(uuidStr string) {
 
-	config, ok := baseOsConfigMap[uuidStr]
-	if !ok {
-		log.Printf("baseOsHandleStatusUpdate for %s, Config absent\n", uuidStr)
+	config := baseOsConfigGet(uuidStr)
+	if config == nil {
 		return
 	}
 
 	status := baseOsStatusGet(uuidStr)
 	if status == nil {
-		log.Printf("baseOsHandleStatusUpdate for %s, Status absent\n", uuidStr)
 		return
 	}
 
-	changed := doBaseOsStatusUpdate(uuidStr, config, status)
+	changed := doBaseOsStatusUpdate(uuidStr, *config, status)
 
 	if changed {
 		log.Printf("baseOsHandleStatusUpdate for %s, Status changed\n", uuidStr)
@@ -217,44 +205,18 @@ func doBaseOsActivate(uuidStr string, config types.BaseOsConfig,
 		 uuidStr, config.PartitionLabel)
 	changed := false
 
-	if config.PartitionLabel != "IMGA" &&
-		config.PartitionLabel != "IMGB" {
-		log.Printf("doBaseOsActivate for %s, partition not set\n", uuidStr)
+	// check the partition label of the current root...
+	// check PartitionLabel the one we got is really unused?
+	// if partitionState unsed then change status to updating...
+	if ret, _ := isOtherPartition(config.PartitionLabel); ret == false {
 		return changed
 	}
 
-	// XXX:FIXME, flip the currently active baseOs
-	// to backup and adjust the baseOS
-	// state accordingly
-	//check the partition label of the current root...
-
-	//check PartitionLabel the one we got is really unused?
-	partStateCmd := exec.Command("zboot", "partstate", config.PartitionLabel)
-	ret, err := partStateCmd.Output()
-	if err != nil {
-		log.Printf("doBaseOsActivate: %s, partStateCmd %v\n", uuidStr, err)
-		return changed
-	}
-
-	log.Printf("doBaseOsActivate: %s, partState %v\n", uuidStr, ret)
-	partitionState := string(ret)
-	partitionState = strings.TrimSpace(partitionState)
-
-	//if partitionState unsed then change status to updating...
-	if partitionState == "unused" {
-
-		log.Printf("doBaseOsActivate: %s, updating boot-state %s\n",
-			 uuidStr, partitionState)
-		// XXX:FIXME, store baseOs parition assignment info
-		//storePartitionInfo(config)
-		statusCmd := exec.Command("zboot", "set_partstate",
-			config.PartitionLabel, "updating")
-		stdout, err := statusCmd.Output()
-		if err != nil {
-			log.Printf("doBaseOsActivate: set_partstate %s\n", err)
+	if ret,_ := isOtherPartitionStateUnused(); ret == true {
+		if ret, err := setPartitionStateUpdating(config.PartitionLabel); ret == false {
+			log.Printf("doBaseOsActivate: %s %v\n", uuidStr, err)
 			return changed
 		}
-		log.Println(stdout)
 	}
 
 	// if it is installed, flip the activated status
@@ -570,25 +532,6 @@ func installBaseOsObject(srcFilename string, dstFilename string) error {
 		}
 	}
 
-	log.Printf("installBaseOsObject %s to %s\n", srcFilename, dstFilename)
-
-	// zboot partdev unused partition
-	devCmd := exec.Command("zboot", "partdev", dstFilename)
-	ret, err := devCmd.Output()
-	if err != nil {
-		log.Printf("installBaseOsObject: %s devCmd %v\n", dstFilename, err)
-		return err
-	}
-
-	devName := string(ret)
-	devName = strings.TrimSpace(devName)
-
-	log.Printf("installBaseOsObject: write to %s\n", devName)
-	// write to flash Device
-	ddCmd := exec.Command("dd", "if="+srcFilename, "of="+devName, "bs=8M")
-	if _, err := ddCmd.Output(); err != nil {
-		log.Printf("installBaseOsObject: %s write %v\n", devName, err)
-		return err
-	}
-	return nil
+	_, err := zbootWriteToPartition(srcFilename, dstFilename)
+	return err
 }
