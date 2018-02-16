@@ -8,6 +8,9 @@ MKFLASH_TAG="$(linuxkit pkg show-tag pkg/mkflash)-amd64"
 if [ "$1" = "-C" ]; then
     IMAGE=$2
     dd if=/dev/zero of=$IMAGE count=$(( 1536 * 1024 )) bs=1024
+    # If we're a non-root user, the bind mount gets permissions sensitive.
+    # So we go docker^Wcowboy style
+    chmod ugo+w $IMAGE
 else
     IMAGE=$1
 fi
