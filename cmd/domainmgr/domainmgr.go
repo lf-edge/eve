@@ -255,11 +255,14 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 
 	if err := configToStatus(*config, ctx.assignableAdapters,
 		&status); err != nil {
-		log.Printf("Failed to create DomainStatus from %v\n", config)
+		log.Printf("Failed to create DomainStatus from %v: %s\n",
+			config, err)
 		status.PendingAdd = false
 		status.LastErr = fmt.Sprintf("%v", err)
 		status.LastErrTime = time.Now()
 		writeDomainStatus(&status, statusFilename)
+		cleanupAdapters(ctx, config.IoAdapterList,
+			config.UUIDandVersion.UUID)
 		return
 	}
 	// We now have reserved all of the IoAdapters
@@ -302,6 +305,26 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 	writeDomainStatus(&status, statusFilename)
 	log.Printf("handleCreate(%v) DONE for %s\n",
 		config.UUIDandVersion, config.DisplayName)
+}
+
+func cleanupAdapters(ctx *domainContext, ioAdapterList []types.IoAdapter,
+	myUuid uuid.UUID) {
+	// Look for any adapters used by us and clear UsedByUUID
+	for _, adapter := range ioAdapterList {
+		fmt.Printf("cleanupAdapters processing adapter %d %s\n",
+			adapter.Type, adapter.Name)
+		ib := types.LookupIoBundle(ctx.assignableAdapters,
+			adapter.Type, adapter.Name)
+		if ib == nil {
+			continue
+		}
+		if ib.UsedByUUID != myUuid {
+			continue
+		}
+		fmt.Printf("cleanupAdapters clearing uuid for adapter %d %s\n",
+			adapter.Type, adapter.Name)
+		ib.UsedByUUID = nilUUID
+	}
 }
 
 func doActivate(config types.DomainConfig, status *types.DomainStatus,
@@ -566,6 +589,9 @@ func configToStatus(config types.DomainConfig, aa *types.AssignableAdapters,
 			log.Printf("IoBundleToPci failed: %v\n", err)
 			return err
 		}
+		fmt.Printf("configToStatus setting uuid %s for adapter %d %s\n",
+			config.UUIDandVersion.UUID.String(),
+			adapter.Type, adapter.Name)
 		ib.UsedByUUID = config.UUIDandVersion.UUID
 		ib.PciLong = long
 		ib.PciShort = short
@@ -736,7 +762,7 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 				cfg = cfg + ", "
 			}
 			cfg = cfg + fmt.Sprintf("'%s'", pa)
-		}				
+		}
 		cfg = cfg + "]"
 		fmt.Printf("Adding pci config <%s>\n", cfg)
 		file.WriteString(fmt.Sprintf("%s\n", cfg))
@@ -883,25 +909,9 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 	}
 
 	// Look for any adapters used by us and clear UsedByUUID
-	for _, adapter := range status.IoAdapterList {
-		fmt.Printf("handleDelete processing adapter %d %s\n",
-			adapter.Type, adapter.Name)
-		ib := types.LookupIoBundle(ctx.assignableAdapters,
-			adapter.Type, adapter.Name)
-		// We reserved it in handleCreate so nobody could have stolen it
-		if ib == nil {
-			log.Fatalf("handleDelete IoBundle disappeared %d %s for %s\n",
-				adapter.Type, adapter.Name, status.DomainName)
-		}
-		if ib.UsedByUUID != status.UUIDandVersion.UUID {
-			log.Fatalf("handleDelete IoBundle not ours %s: %d %s for %s\n",
-				ib.UsedByUUID, adapter.Type, adapter.Name,
-				status.DomainName)
-		}
-		ib.UsedByUUID = nilUUID
-		// XXX the above nil must reach zedagent before the delete
-		// of the object
-	}
+	// XXX zedagent might assume that the setting to nil arrives before
+	// the delete of the DomainStatus. Check
+	cleanupAdapters(ctx, status.IoAdapterList, status.UUIDandVersion.UUID)
 
 	writeDomainStatus(status, statusFilename)
 
