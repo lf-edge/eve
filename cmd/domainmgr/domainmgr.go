@@ -324,17 +324,14 @@ func doActivate(config types.DomainConfig, status *types.DomainStatus,
 				ib.UsedByUUID, adapter.Type, adapter.Name,
 				status.DomainName)
 		}
-		long, short, err := types.IoBundleToPci(ib)
-		if err != nil {
-			log.Printf("IoBundleToPci failed: %v\n", err)
-			status.LastErr = fmt.Sprintf("%v", err)
-			status.LastErrTime = time.Now()
-			return
+		if ib.Lookup && ib.PciShort == "" {
+			log.Fatal("doActivate lookup missing: %d %s for %s\n",
+				adapter.Type, adapter.Name, status.DomainName)
 		}
-		if short != "" {
+		if ib.PciShort != "" {
 			fmt.Printf("Assigning %s %s to %s\n",
-				long, short, status.DomainName)
-			err := pciAssignableAdd(long)
+				ib.PciLong, ib.PciShort, status.DomainName)
+			err := pciAssignableAdd(ib.PciLong)
 			if err != nil {
 				status.LastErr = fmt.Sprintf("%v", err)
 				status.LastErrTime = time.Now()
@@ -483,25 +480,22 @@ func doInactivate(status *types.DomainStatus, aa *types.AssignableAdapters) {
 		ib := types.LookupIoBundle(aa, adapter.Type, adapter.Name)
 		// We reserved it in handleCreate so nobody could have stolen it
 		if ib == nil {
-			log.Fatalf("doActivate IoBundle disappeared %d %s for %s\n",
+			log.Fatalf("doInactivate IoBundle disappeared %d %s for %s\n",
 				adapter.Type, adapter.Name, status.DomainName)
 		}
 		if ib.UsedByUUID != status.UUIDandVersion.UUID {
-			log.Fatalf("doActivate IoBundle not ours by %s: %d %s for %s\n",
+			log.Fatalf("doInactivate IoBundle not ours by %s: %d %s for %s\n",
 				ib.UsedByUUID, adapter.Type, adapter.Name,
 				status.DomainName)
 		}
-		long, short, err := types.IoBundleToPci(ib)
-		if err != nil {
-			log.Printf("IoBundleToPci failed: %v\n", err)
-			status.LastErr = fmt.Sprintf("%v", err)
-			status.LastErrTime = time.Now()
-			return
+		if ib.Lookup && ib.PciShort == "" {
+			log.Fatal("doInactivate lookup missing: %d %s for %s\n",
+				adapter.Type, adapter.Name, status.DomainName)
 		}
-		if short != "" {
+		if ib.PciShort != "" {
 			fmt.Printf("Removing %s %s from %s\n",
-				long, short, status.DomainName)
-			err := pciAssignableRem(long)
+				ib.PciLong, ib.PciShort, status.DomainName)
+			err := pciAssignableRem(ib.PciLong)
 			if err != nil {
 				status.LastErr = fmt.Sprintf("%v", err)
 				status.LastErrTime = time.Now()
@@ -566,12 +560,15 @@ func configToStatus(config types.DomainConfig, aa *types.AssignableAdapters,
 				adapter.Type, adapter.Name, ib.UsedByUUID))
 		}
 		// Does it exist?
-		_, _, err := types.IoBundleToPci(ib)
+		// Then save the PCI ID before we assign it away
+		long, short, err := types.IoBundleToPci(ib)
 		if err != nil {
 			log.Printf("IoBundleToPci failed: %v\n", err)
 			return err
 		}
 		ib.UsedByUUID = config.UUIDandVersion.UUID
+		ib.PciLong = long
+		ib.PciShort = short
 	}
 	return nil
 }
@@ -879,6 +876,8 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 				status.DomainName)
 		}
 		ib.UsedByUUID = nilUUID
+		// XXX the above nil must reach zedagent before the delete
+		// of the object
 	}
 
 	writeDomainStatus(status, statusFilename)
@@ -1116,16 +1115,17 @@ func locationFromDir(locationDir string) (string, error) {
 }
 
 // Return the string to add to the xen.cfg file
+// Either a PCI assignment or a verbatim config string
 func ioBundleToCfg(ib *types.IoBundle) string {
-	_, short, err := types.IoBundleToPci(ib)
-	if err != nil {
-		// XXX remove
-		log.Fatal("ifnameToPci failed: %v\n", err)
+	// If ib.Lookup we set PciShort and PciLong when we acquired it
+	if ib.Lookup && ib.PciShort == "" {
+		log.Fatal("ioBundleToCfg lookup missing: %d %s\n",
+			ib.Type, ib.Name)
 	}
-	if short != "" {
+	if ib.PciShort != "" {
 		// XXX need to produce list in caller when multiple devices!
 		// XXX or does xl concatenate?
-		return fmt.Sprintf("pci = [ '%s' ]\n", short)
+		return fmt.Sprintf("pci = [ '%s' ]\n", ib.PciShort)
 	} else {
 		return ib.XenCfg
 	}
