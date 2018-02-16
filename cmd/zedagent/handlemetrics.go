@@ -847,6 +847,16 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 			bootTime, _ := ptypes.TimestampProto(ds.BootTime)
 			ReportAppInfo.BootTime = bootTime
 		}
+
+		// Note that we don't have the members handy here.
+		for _, ib := range ds.IoAdapterList {
+			reportAA := new(zmet.ZioBundle)
+			reportAA.Type = zmet.ZioType(ib.Type)
+			reportAA.Name = ib.Name
+			reportAA.UsedByUUID = ds.UUIDandVersion.UUID.String()
+			ReportAppInfo.AssignedAdapters = append(ReportAppInfo.AssignedAdapters,
+				reportAA)
+		}
 	}
 
 	ReportInfo.InfoContent = new(zmet.ZInfoMsg_Ainfo)
