@@ -1,4 +1,4 @@
 {
-  "Uplink":["eth0","ppp0"],
-  "FreeUplinks":["eth0"]
+    "Uplink":["eth0","ppp0","eth1"],
+    "FreeUplinks":["eth0","eth1"]
 }
