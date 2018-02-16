@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	MaxBaseOsCount = 2
+	MaxBaseOsCount       = 2
 	rebootConfigFilename = configDir + "/rebootConfig"
 	partitionMapFilename = configDir + "/partitionMap"
 )

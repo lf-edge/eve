@@ -202,7 +202,7 @@ func doBaseOsActivate(uuidStr string, config types.BaseOsConfig,
 	status *types.BaseOsStatus) bool {
 
 	log.Printf("doBaseOsActivate for %s, partition %s\n",
-		 uuidStr, config.PartitionLabel)
+		uuidStr, config.PartitionLabel)
 	changed := false
 
 	// check the partition label of the current root...
@@ -212,7 +212,7 @@ func doBaseOsActivate(uuidStr string, config types.BaseOsConfig,
 		return changed
 	}
 
-	if ret,_ := isOtherPartitionStateUnused(); ret == true {
+	if ret, _ := isOtherPartitionStateUnused(); ret == true {
 		if ret, err := setPartitionStateUpdating(config.PartitionLabel); ret == false {
 			log.Printf("doBaseOsActivate: %s %v\n", uuidStr, err)
 			return changed
@@ -292,7 +292,6 @@ func doBaseOsInstall(uuidStr string, config types.BaseOsConfig,
 		status.State = types.INSTALLED
 		changed = true
 	}
-
 
 	statusFilename := fmt.Sprintf("%s/%s.json",
 		zedagentBaseOsStatusDirname, uuidStr)
@@ -511,7 +510,7 @@ func installBaseOsObject(srcFilename string, dstFilename string) error {
 
 	// XXX:FIXME, currently, cloud gives a zipped file, without ".gz"
 	if strings.HasSuffix(srcFilename, ".gz") == false {
-		os.Rename(srcFilename, srcFilename + ".gz")
+		os.Rename(srcFilename, srcFilename+".gz")
 		srcFilename = srcFilename + ".gz"
 	}
 
@@ -521,7 +520,7 @@ func installBaseOsObject(srcFilename string, dstFilename string) error {
 		_, err := zipCmd.Output()
 		if err != nil {
 			log.Printf("installBaseOsObject: %s %v\n",
-				 srcFilename, err)
+				srcFilename, err)
 			return err
 		}
 		srcFilename = strings.Split(srcFilename, ".gz")[0]

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/zededa/go-provision/types"
+	"io"
 	"io/ioutil"
 	"log"
 	"os"
@@ -340,20 +341,49 @@ func writeCertObjStatus(status *types.CertObjStatus, statusFilename string) {
 	}
 }
 
-func installCertObject(srcFilename string, dstFilename string, safename string) error {
+func installCertObject(srcFilename string, dstDirname string, safename string) error {
 
 	// create the destination directory
-	if _, err := os.Stat(dstFilename); err != nil {
-		if err := os.MkdirAll(dstFilename, 0700); err != nil {
-			log.Fatal("installCertObject: ", err, dstFilename)
+	if _, err := os.Stat(dstDirname); err != nil {
+		if err := os.MkdirAll(dstDirname, 0700); err != nil {
+			log.Fatal("installCertObject: ", err, dstDirname)
 		}
 	}
 
-	dstFilename = dstFilename + "/" + types.SafenameToFilename(safename)
+	dstFilename := dstDirname + "/" + types.SafenameToFilename(safename)
 
-	log.Printf("installCertObject: writing %s to %s\n",
-		srcFilename, dstFilename)
+	if _, err := os.Stat(dstFilename); err != nil {
 
-	err := os.Rename(srcFilename, dstFilename)
-	return err
+		log.Printf("installCertObject: writing %s to %s\n",
+			srcFilename, dstFilename)
+
+		// XXX:FIXME its copy, not move
+		// need to refactor the certs placement properly
+		// this should be on safename or, holder object uuid context
+		_, err := copyFile(srcFilename, dstFilename)
+		return err
+	}
+	return nil
+}
+
+func copyFile(srcFilename string, dstFilename string) (bool, error) {
+
+	in, err := os.Open(srcFilename)
+	if err != nil {
+		return false, err
+	}
+	defer in.Close()
+
+	out, err := os.Create(dstFilename)
+	if err != nil {
+		return false, err
+	}
+	defer out.Close()
+
+	if _, err = io.Copy(out, in); err != nil {
+		return false, err
+	}
+
+	err = out.Sync()
+	return true, err
 }

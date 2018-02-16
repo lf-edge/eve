@@ -107,7 +107,7 @@ func configTimerTask() {
 	inProgressState, _ := isCurrentPartitionStateInProgress()
 
 	log.Printf("Config Fetch Task, curPart:%s, inProgress:%v\n",
-		curPart,  inProgressState)
+		curPart, inProgressState)
 	getLatestConfig(configUrl, iteration, &inProgressState)
 
 	ticker := time.NewTicker(time.Minute * configTickTimeout)
@@ -117,7 +117,6 @@ func configTimerTask() {
 		getLatestConfig(configUrl, iteration, &inProgressState)
 	}
 }
-
 
 // Each iteration we try a different uplink. For each uplink we try all
 // its local IP addresses until we get a success.

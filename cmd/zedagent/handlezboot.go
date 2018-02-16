@@ -1,3 +1,8 @@
+// Copyright (c) 2017 Zededa, Inc.
+// All rights reserved.
+
+// zboot APIs for IMGA  & IMGB
+
 package main
 
 import (
@@ -12,6 +17,11 @@ import (
 	"strings"
 )
 
+const (
+	tmpDir        = "/var/tmp/zededa"
+	imgAPartition = tmpDir + "/IMGAPart"
+	imgBPartition = tmpDir + "/IMGBPart"
+)
 
 // reset routine
 func zbootReset() {
@@ -34,9 +44,12 @@ func getCurrentPartition() string {
 	partName := string(ret)
 	partName = strings.TrimSpace(partName)
 	switch partName {
-	case "IMGA": partName = "IMGA"
-	case "IMGB": partName = "IMGB"
-	default: partName = ""
+	case "IMGA":
+		partName = "IMGA"
+	case "IMGB":
+		partName = "IMGB"
+	default:
+		partName = ""
 	}
 	//log.Printf("zboot curpart: %s\n", partName)
 	return partName
@@ -47,9 +60,12 @@ func getOtherPartition() string {
 	partName := getCurrentPartition()
 
 	switch partName {
-	case "IMGA": partName = "IMGB"
-	case "IMGB": partName = "IMGA"
-	default: partName = ""
+	case "IMGA":
+		partName = "IMGB"
+	case "IMGB":
+		partName = "IMGA"
+	default:
+		partName = ""
 	}
 	//log.Printf("zboot otherpart: %s\n", partName)
 	return partName
@@ -77,10 +93,10 @@ func validatePartitionState(partState string) (bool, error) {
 }
 
 func isCurrentPartition(partName string) (bool, error) {
-	if ret, err := validatePartitionName(partName);ret == false {
+	if ret, err := validatePartitionName(partName); ret == false {
 		return ret, err
 	}
-    curPartName := getCurrentPartition()
+	curPartName := getCurrentPartition()
 	if curPartName != partName {
 		return false, nil
 	}
@@ -88,10 +104,10 @@ func isCurrentPartition(partName string) (bool, error) {
 }
 
 func isOtherPartition(partName string) (bool, error) {
-	if ret, err := validatePartitionName(partName);ret == false {
+	if ret, err := validatePartitionName(partName); ret == false {
 		return ret, err
 	}
-    otherPartName := getOtherPartition()
+	otherPartName := getOtherPartition()
 	if otherPartName != partName {
 		return false, nil
 	}
@@ -101,7 +117,7 @@ func isOtherPartition(partName string) (bool, error) {
 //  get/set api routines
 func getPartitionState(partName string) (string, error) {
 
-	if ret, err := validatePartitionName(partName);ret == false {
+	if ret, err := validatePartitionName(partName); ret == false {
 		return "", err
 	}
 
@@ -118,11 +134,11 @@ func getPartitionState(partName string) (string, error) {
 
 func isPartitionState(partName string, partState string) (bool, error) {
 
-	if ret, err := validatePartitionName(partName);ret == false {
+	if ret, err := validatePartitionName(partName); ret == false {
 		return ret, err
 	}
 
-	if ret, err := validatePartitionState(partState);ret == false {
+	if ret, err := validatePartitionState(partState); ret == false {
 		return ret, err
 	}
 
@@ -144,7 +160,7 @@ func isPartitionState(partName string, partState string) (bool, error) {
 
 func setPartitionState(partName string, partState string) (bool, error) {
 
-	if ret, err := validatePartitionName(partName);ret == false {
+	if ret, err := validatePartitionName(partName); ret == false {
 		return ret, err
 	}
 
@@ -154,9 +170,9 @@ func setPartitionState(partName string, partState string) (bool, error) {
 
 	setPartStateCmd := exec.Command("zboot", "set_partstate",
 		partName, partState)
-	if _, err := setPartStateCmd.Output();err != nil {
+	if _, err := setPartStateCmd.Output(); err != nil {
 		log.Printf("zboot partstate %s %s: err %v\n",
-			 partName, partState, err)
+			partName, partState, err)
 		return false, err
 	}
 	return true, nil
@@ -164,7 +180,7 @@ func setPartitionState(partName string, partState string) (bool, error) {
 
 func getPartitionDevname(partName string) (string, error) {
 
-	if ret, err := validatePartitionName(partName);ret == false {
+	if ret, err := validatePartitionName(partName); ret == false {
 		return "", err
 	}
 	getPartDevCmd := exec.Command("zboot", "partdev", partName)
@@ -321,19 +337,22 @@ func setPersitentPartitionInfo(uuidStr string, config *types.BaseOsConfig) {
 func zbootWriteToPartition(srcFilename string, partName string) (bool, error) {
 
 	if ret, err := isOtherPartition(partName); ret == false {
-		return ret, err 
+		return ret, err
 	}
 
 	if ret, _ := isOtherPartitionStateUnused(); ret == false {
-		errStr := fmt.Sprintf("not an Unused partition %s", partName)
+		errStr := fmt.Sprintf("not an unused partition %s", partName)
 		err := errors.New(errStr)
-		return false, err 
+		return false, err
 	}
 
-	devName, err := getPartitionDevname(partName) 
+	devName, err := getPartitionDevname(partName)
 	if err != nil || devName == "" {
-		return false, err 
+		return false, err
 	}
+
+	// XXX:FIXME checkpoint, make sure, only one write to a partition
+	// cleanup, if it fails, or the attached baseOs config is deleted
 
 	ddCmd := exec.Command("dd", "if="+srcFilename, "of="+devName, "bs=8M")
 	if _, err := ddCmd.Output(); err != nil {
@@ -355,12 +374,12 @@ func partitionInit() (bool, error) {
 		log.Printf("Mark other partition %s, unused\n", otherPart)
 		if ret, err := setOtherPartitionStateUnused(); ret == false {
 			errStr := fmt.Sprintf("Marking other partition %s unused, %v\n",
-					otherPart, err)
+				otherPart, err)
 			err = errors.New(errStr)
 			return ret, err
 		}
 	}
-	return true, nil 
+	return true, nil
 }
 
 func markPartitionStateActive() (bool, error) {
@@ -378,8 +397,8 @@ func markPartitionStateActive() (bool, error) {
 
 	log.Printf("Check other partition %s, active\n", otherPart)
 	if ret, err := isOtherPartitionStateActive(); ret == false {
-		errStr :=fmt.Sprintf("Other partition %s, is not active %v\n",
-				otherPart, err)
+		errStr := fmt.Sprintf("Other partition %s, is not active %v\n",
+			otherPart, err)
 		err = errors.New(errStr)
 		return ret, err
 	}
@@ -387,7 +406,7 @@ func markPartitionStateActive() (bool, error) {
 	log.Printf("Mark other partition %s, unused\n", otherPart)
 	if ret, err := setOtherPartitionStateUnused(); ret == false {
 		errStr := fmt.Sprintf("Marking other partition %s unused, %v\n",
-				otherPart, err)
+			otherPart, err)
 		err = errors.New(errStr)
 		return ret, err
 	}
