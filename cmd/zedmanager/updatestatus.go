@@ -325,6 +325,7 @@ func doInstall(uuidStr string, config types.AppInstanceConfig,
 		if err != nil {
 			log.Printf("LookupDownloaderStatus %s failed %v\n",
 				safename, err)
+			minState = types.DOWNLOAD_STARTED
 			continue
 		}
 		if minState > ds.State {
@@ -383,6 +384,7 @@ func doInstall(uuidStr string, config types.AppInstanceConfig,
 		if err != nil {
 			log.Printf("LookupVerifyImageStatusAny %s sha %s failed %v\n",
 				safename, sc.ImageSha256, err)
+			minState = types.DOWNLOADED
 			continue
 		}
 		if minState > vs.State {

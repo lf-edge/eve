@@ -6,6 +6,7 @@ import (
 	"github.com/zededa/go-provision/dataplane/etr"
 	"github.com/zededa/go-provision/dataplane/fib"
 	"github.com/zededa/go-provision/types"
+	"github.com/zededa/go-provision/watch"
 	"log"
 	"net"
 	"os"
@@ -14,9 +15,16 @@ import (
 	"time"
 )
 
-const lispConfigDir = "/opt/zededa/lisp/"
-const configHolePath = lispConfigDir + "lisp-ipc-data-plane"
-const lispersDotNetItr = lispConfigDir + "lispers.net-itr"
+const (
+	lispConfigDir = "/opt/zededa/lisp/"
+	configHolePath = lispConfigDir + "lisp-ipc-data-plane"
+	lispersDotNetItr = lispConfigDir + "lispers.net-itr"
+	dnsDirname = "/var/run/zedrouter/DeviceNetworkStatus"
+)
+
+// Dummy since we don't have anything to pass
+type dummyContext struct {
+}
 
 var configPipe net.Listener
 var puntChannel chan []byte
@@ -42,7 +50,7 @@ func main() {
 	InitThreadTable()
 
 	// Initialize ETR run status
-	InitEtrRunStatus()
+	etr.InitETRStatus()
 
 	// Start listening on the Unix domain socket "lisp-ipc-data-plane"
 	// lispers.net code uses this socket for sending eid to rloc maps
@@ -69,7 +77,11 @@ func main() {
 	registerSignalHandler()
 	startPuntProcessor()
 
+	etr.InitETRStatus()
+
 	// Start ETR thread that listens on port 4341 for Non-NAT packets
+	// Thread that handles NAT piercing will be started by handleEtrNatPort
+	// function when lispers.net sends us the ephemeral NAT port information.
 	etr.StartEtrNonNat()
 
 	// Initialize and start stats thread
@@ -209,19 +221,59 @@ func registerSignalHandler() {
 	}()
 }
 
+var deviceNetworkStatus types.DeviceNetworkStatus
+
+func handleDNSModify(ctxArg interface{}, statusFilename string,
+	statusArg interface{}) {
+	status := statusArg.(*types.DeviceNetworkStatus)
+
+	if statusFilename != "global" {
+		log.Printf("ETR: handleDNSModify: ignoring %s\n", statusFilename)
+		return
+	}
+	log.Printf("ETR: handleDNSModify for %s\n", statusFilename)
+	deviceNetworkStatus = *status
+	log.Printf("ETR: handleDNSModify done for %s\n", statusFilename)
+}
+
+func handleDNSDelete(ctxArg interface{}, statusFilename string) {
+	log.Printf("ETR: handleDNSDelete for %s\n", statusFilename)
+
+	if statusFilename != "global" {
+		log.Printf("ETR: handleDNSDelete: ignoring %s\n", statusFilename)
+		return
+	}
+	deviceNetworkStatus = types.DeviceNetworkStatus{}
+	log.Printf("ETR: handleDNSDelete done for %s\n", statusFilename)
+}
+
 func handleConfig(c *net.UnixConn) {
 	defer c.Close()
+
+	deviceStatusChanges := make(chan string)
+	go watch.WatchStatus(dnsDirname, deviceStatusChanges)
 
 	// Create 8k bytes buffer for reading configuration messages.
 	buf := make([]byte, 8192)
 	for {
-		n, err := c.Read(buf[:])
-		if err != nil {
-			log.Printf("Error reading from client: %s\n", err)
-			c.Close()
-			return
-		} else {
-			handleLispMsg(buf[0:n])
+		select {
+		case change := <-deviceStatusChanges:
+			watch.HandleStatusEvent(change, dummyContext{},
+				dnsDirname,
+				&types.DeviceNetworkStatus{},
+				handleDNSModify, handleDNSDelete,
+				nil)
+			log.Println("XXXXX Detected a change in DeviceNetworkStatus")
+			ManageEtrDNS(deviceNetworkStatus)
+		default:
+			n, err := c.Read(buf[:])
+			if err != nil {
+				log.Printf("Error reading from client: %s\n", err)
+				c.Close()
+				return
+			} else {
+				handleLispMsg(buf[0:n])
+			}
 		}
 	}
 }

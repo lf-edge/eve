@@ -13,15 +13,14 @@ import (
 type DownloaderConfig struct {
 	Safename        string
 	DownloadURL     string
-	IfName		string // If set, restrict download to use this interface
+	UseFreeUplinks  bool
 	TransportMethod string // Download Method S3/HTTP/SFTP etc.
 	Dpath           string
 	ApiKey          string
 	Password        string
 	MaxSize         uint   // In kbytes
 	ImageSha256     string // sha256 of immutable image
-	DownloadObjDir  string // Download Object Store
-	VerifiedObjDir  string // Final Object Store
+	FinalObjDir     string // final Object Store
 	RefCount        uint   // Zero means can delete file/cancel download
 }
 
@@ -49,12 +48,10 @@ type DownloaderStatus struct {
 	PendingAdd     bool
 	PendingModify  bool
 	PendingDelete  bool
-	RefCount       uint    // Zero means not downloaded
+	RefCount       uint // Zero means not downloaded
 	DownloadURL    string
-	IfName	       string
+	UseFreeUplinks bool
 	ImageSha256    string  // sha256 of immutable image
-	DownloadObjDir string  // Download Object store
-	VerifiedObjDir string  // Target Object Store
 	State          SwState // DOWNLOADED etc
 	ReservedSpace  uint    // Contribution to global ReservedSpace
 	Size           uint    // Once DOWNLOADED; less than MaxSize

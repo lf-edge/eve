@@ -33,7 +33,9 @@ func ip6tableCmd(args ...string) error {
 func iptablesInit() {
 	// Avoid adding nat rule multiple times as we restart by flushing first
 	iptableCmd("-t", "nat", "-F", "POSTROUTING")
-	for _, u := range globalConfig.Uplink {
+	// Assumes ip rule for all underlay interfaces
+	// XXX need to redo this when FreeUplinks changes
+	for _, u := range deviceNetworkConfig.FreeUplinks {
 		iptableCmd("-t", "nat", "-A", "POSTROUTING", "-o", u,
 			"-s", "172.27.0.0/16", "-j", "MASQUERADE")
 	}

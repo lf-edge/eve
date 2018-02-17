@@ -16,8 +16,6 @@ import (
 // Key is Safename string.
 var downloaderConfig map[string]types.DownloaderConfig
 
-var downloadIfName string
-
 func AddOrRefcountDownloaderConfig(safename string, sc *types.StorageConfig) {
 	log.Printf("AddOrRefcountDownloaderConfig for %s\n",
 		safename)
@@ -25,19 +23,6 @@ func AddOrRefcountDownloaderConfig(safename string, sc *types.StorageConfig) {
 	if downloaderConfig == nil {
 		fmt.Printf("create downloader config map\n")
 		downloaderConfig = make(map[string]types.DownloaderConfig)
-		// XXX introduce separate init function?
-		globalNetworkConfigFilename := "/var/tmp/zedrouter/config/global"
-		globalConfig, err := types.GetGlobalNetworkConfig(globalNetworkConfigFilename)
-		if err != nil {
-			log.Printf("%s for %s\n", err, globalNetworkConfigFilename)
-			log.Fatal(err)
-		}
-		if len(globalConfig.FreeUplinks) == 0 {
-			log.Fatal("No FreeUplinks")
-		}
-		downloadIfName = globalConfig.FreeUplinks[0]
-		log.Printf("Using interface %s for image download\n",
-			downloadIfName)
 	}
 	key := safename
 	if m, ok := downloaderConfig[key]; ok {
@@ -45,25 +30,23 @@ func AddOrRefcountDownloaderConfig(safename string, sc *types.StorageConfig) {
 			safename, m.RefCount)
 		m.RefCount += 1
 	} else {
-		fmt.Printf("downloader config add for %s ifname %s\n",
-			safename, downloadIfName)
+		fmt.Printf("downloader config add for %s\n", safename)
 		n := types.DownloaderConfig{
-			Safename:        safename,
-			DownloadURL:     sc.DownloadURL,
-			IfName:		 downloadIfName,
-			MaxSize:         sc.MaxSize,
-			TransportMethod: sc.TransportMethod,
-			Dpath:           sc.Dpath,
-			ApiKey:          sc.ApiKey,
-			Password:        sc.Password,
-			ImageSha256:     sc.ImageSha256,
-			DownloadObjDir:  imgCatalogDirname,
-			RefCount:        1,
+			Safename:         safename,
+			DownloadURL:      sc.DownloadURL,
+			UseFreeUplinks:   true,
+			MaxSize:          sc.MaxSize,
+			TransportMethod:  sc.TransportMethod,
+			Dpath:            sc.Dpath,
+			ApiKey:           sc.ApiKey,
+			Password:         sc.Password,
+			ImageSha256:      sc.ImageSha256,
+			RefCount:         1,
 		}
 		downloaderConfig[key] = n
 	}
 	configFilename := fmt.Sprintf("%s/%s.json",
-		downloaderConfigDirname, safename)
+		downloaderAppImgObjConfigDirname, safename)
 	writeDownloaderConfig(downloaderConfig[key], configFilename)
 
 	log.Printf("AddOrRefcountDownloaderConfig done for %s\n",
@@ -84,7 +67,7 @@ func MaybeRemoveDownloaderConfig(safename string) {
 	}
 	delete(downloaderConfig, safename)
 	configFilename := fmt.Sprintf("%s/%s.json",
-		downloaderConfigDirname, safename)
+		downloaderAppImgObjConfigDirname, safename)
 	if err := os.Remove(configFilename); err != nil {
 		log.Println(err)
 	}
@@ -108,17 +91,9 @@ func writeDownloaderConfig(config types.DownloaderConfig,
 // Key is Safename string.
 var downloaderStatus map[string]types.DownloaderStatus
 
-func handleDownloaderStatusModify(statusFilename string,
+func handleDownloaderStatusModify(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
-	var status *types.DownloaderStatus
-
-	switch statusArg.(type) {
-	default:
-		log.Fatal("Can only handle DownloaderStatus")
-	case *types.DownloaderStatus:
-		status = statusArg.(*types.DownloaderStatus)
-	}
-
+	status := statusArg.(*types.DownloaderStatus)
 	log.Printf("handleDownloaderStatusModify for %s\n",
 		status.Safename)
 
@@ -161,7 +136,7 @@ func LookupDownloaderStatus(safename string) (types.DownloaderStatus, error) {
 	}
 }
 
-func handleDownloaderStatusDelete(statusFilename string) {
+func handleDownloaderStatusDelete(ctxArg interface{}, statusFilename string) {
 	log.Printf("handleDownloaderStatusDelete for %s\n",
 		statusFilename)
 

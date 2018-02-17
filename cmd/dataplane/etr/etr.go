@@ -4,20 +4,34 @@ import (
 	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
-	"encoding/json"
+	//"encoding/json"
 	"fmt"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pfring"
 	"github.com/zededa/go-provision/dataplane/fib"
 	"github.com/zededa/go-provision/types"
-	"io/ioutil"
+	//"github.com/zededa/go-provision/watch"
+	//"io/ioutil"
 	"log"
 	"net"
 	"syscall"
 )
 
-const uplinkFileName = "/var/tmp/zedrouter/config/global"
+// Status and metadata of different ETR threads currently running
+var etrTable types.EtrTable
+
+const (
+	uplinkFileName = "/var/run/zedrouter/DeviceNetworkStatus/global.json"
+	etrNatPortMatch = "udp dst port %d and udp src port 4341"
+)
+
+var deviceNetworkStatus types.DeviceNetworkStatus
+
+func InitETRStatus() {
+	etrTable.EphPort  = -1
+	etrTable.EtrTable = make(map[string]*types.EtrRunStatus)
+}
 
 func StartEtrNonNat() {
 	log.Println("Starting ETR thread on port 4341")
@@ -46,11 +60,104 @@ func StartEtrNonNat() {
 	go ProcessETRPkts(fd, serverConn)
 }
 
-//func StartETR(ephPort int) (*net.UDPConn, *pfring.Ring, int, int) {
-func StartEtrNat(ephPort int) (*pfring.Ring, int) {
-	log.Println("Starting ETR thread on port 4341")
+func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
+	ipv4Found, ipv6Found := false, false
+	ipv4Addr, ipv6Addr := net.IP{}, net.IP{}
 
-	ring := SetupEtrPktCapture(ephPort)
+	links := types.GetUplinkFreeNoLocal(deviceNetworkStatus)
+
+	// collect the interfaces that are still valid
+	// Create newly required ETR instances
+	validList := make(map[string]bool)
+	for _, link := range links {
+		validList[link.IfName] = true
+
+		// Find the next ipv4, ipv6 uplink addresses to be used by ITRs.
+		for _, addr := range link.Addrs {
+			log.Printf("XXXXX Checking link %s address %s.\n", link.IfName, addr.String())
+			if (ipv6Found == true) && (ipv4Found == true) {
+				break
+			}
+			// ipv6 case
+			if addr.To4() == nil {
+				if ipv6Found == true {
+					continue
+				}
+				ipv6Addr = addr
+				ipv6Found = true
+			} else {
+				// This address is ipv4
+				if ipv4Found == true {
+					continue
+				}
+				ipv4Addr = addr
+				ipv4Found = true
+			}
+		}
+
+		// Check if this uplink present in the current etr table.
+		// If not, start capturing packets from this new uplink.
+		_, ok := etrTable.EtrTable[link.IfName]
+		if ok == false {
+			// Create new ETR thread
+			ring, fd := StartEtrNat(etrTable.EphPort, link.IfName)
+			etrTable.EtrTable[link.IfName] = &types.EtrRunStatus{
+				IfName: link.IfName,
+				Ring: ring,
+				RingFD: fd,
+			}
+			log.Printf("XXXXX Creating ETR thread for UP link %s\n", link.IfName)
+		}
+	}
+
+	// find the interfaces to be deleted
+	for key, link := range etrTable.EtrTable {
+		if _, ok := validList[key]; ok == false {
+			syscall.Close(link.RingFD)
+			link.Ring.Disable()
+			link.Ring.Close()
+			delete(etrTable.EtrTable, key)
+		}
+	}
+
+	log.Printf("XXXXX Setting Uplink v4 addr %s, v6 addr %s\n", ipv4Addr, ipv6Addr)
+	fib.SetUplinkAddrs(ipv4Addr, ipv6Addr)
+}
+
+// Handle ETR's ephemeral port message from lispers.net
+func HandleEtrEphPort(ephPort int) {
+	// Check if the ephemeral port has changed
+	if ephPort == etrTable.EphPort {
+		return
+	}
+	etrTable.EphPort = ephPort
+
+	// Destroy all old threads and create new ETR threads
+	for ifName, link := range etrTable.EtrTable {
+		// Delete the old ring and raw socket
+		//link.Ring.Disable()
+		//link.Ring.Close()
+		//syscall.Close(link.RingFD)
+
+		// Remove the old BPF filter
+		link.Ring.RemoveBPFFilter()
+
+		// Add the new BPF filter with new eph port match
+		filter := fmt.Sprintf(etrNatPortMatch, ephPort)
+		link.Ring.SetBPFFilter(filter)
+		//link.Ring.Enable()
+
+		//link.Ring, link.RingFD = StartEtrNat(ephPort, ifName)
+		// Add it back, just in case
+		//etrTable.EtrTable[ifName] = link
+		log.Printf("XXXXX Destroying and re-creating ETR for %s\n", ifName)
+	}
+}
+
+//func StartETR(ephPort int) (*net.UDPConn, *pfring.Ring, int, int) {
+func StartEtrNat(ephPort int, upLink string) (*pfring.Ring, int) {
+
+	ring := SetupEtrPktCapture(ephPort, upLink)
 	if ring == nil {
 		log.Fatal("Unable to create ETR packet capture.\n")
 		return nil, -1
@@ -72,6 +179,7 @@ func StartEtrNat(ephPort int) (*pfring.Ring, int) {
 func verifyAndInject(fd6 int,
 	buf []byte, n int,
 	decapKeys *types.DecapKeys) bool {
+
 	//var pktEid net.IP
 	iid := fib.GetLispIID(buf[0:8])
 	if iid == uint32(0xFFFFFF) {
@@ -159,35 +267,7 @@ func verifyAndInject(fd6 int,
 	return true
 }
 
-func SetupEtrPktCapture(ephemeralPort int) *pfring.Ring {
-	var globalConfig types.DeviceNetworkConfig
-
-	// Get the interface on which to listen for packets.
-	// Current uplink interface information is stored in
-	// /var/tmp/zedrouter/config/global
-	cb, err := ioutil.ReadFile(uplinkFileName)
-	if err != nil {
-		log.Printf("%s for %s\n", err, uplinkFileName)
-		return nil
-	}
-	if err := json.Unmarshal(cb, &globalConfig); err != nil {
-		log.Printf("%s DeviceNetworkConfig file: %s\n",
-			err, uplinkFileName)
-		return nil
-	}
-
-	// XXX hack hack
-	// We open only the first interface in list for packet capture.
-	// Later in future all interfaces in the list will have to be opened
-	// for packet capture.
-	/*
-		for _, u := range globalConfig.Uplink {
-			// open for packet capture
-		}
-	*/
-
-	upLink := globalConfig.Uplink[0]
-
+func SetupEtrPktCapture(ephemeralPort int, upLink string) *pfring.Ring {
 	ring, err := pfring.NewRing(upLink, 65536, pfring.FlagPromisc)
 	if err != nil {
 		log.Printf("ETR packet capture on interface %s failed: %s\n",
@@ -199,7 +279,8 @@ func SetupEtrPktCapture(ephemeralPort int) *pfring.Ring {
 	ring.SetDirection(pfring.ReceiveOnly)
 	ring.SetSocketMode(pfring.ReadOnly)
 
-	filter := fmt.Sprintf("udp dst port %d and udp src port 4341", ephemeralPort)
+	//filter := fmt.Sprintf("udp dst port %d and udp src port 4341", ephemeralPort)
+	filter := fmt.Sprintf(etrNatPortMatch, ephemeralPort)
 	ring.SetBPFFilter(filter)
 
 	ring.SetPollWatermark(1)
@@ -253,7 +334,13 @@ func ProcessCapturedPkts(fd6 int, ring *pfring.Ring) {
 			gopacket.DecodeOptions{Lazy: false, NoCopy: true})
 
 		appLayer := packet.ApplicationLayer()
+		if appLayer == nil {
+			continue
+		}
 		payload := appLayer.Payload()
+		if payload == nil {
+			continue
+		}
 
 		var srcIP net.IP
 		if ipLayer := packet.Layer(layers.LayerTypeIPv4); ipLayer != nil {

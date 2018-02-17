@@ -8,6 +8,7 @@ ADD ./cmd/dataplane/etr  /go/src/github.com/zededa/go-provision/dataplane/etr
 ADD ./cmd/dataplane/fib  /go/src/github.com/zededa/go-provision/dataplane/fib
 ADD etc /opt/zededa/etc
 ADD README /opt/zededa/etc
+ADD etc /config
 ADD scripts/device-steps.sh \
     scripts/find-uplink.sh \
     scripts/generate-device.sh \
@@ -25,14 +26,15 @@ RUN go get github.com/zededa/go-provision/cmd/...
 RUN go get github.com/zededa/go-provision/oldcmd/...
 RUN cd /opt/zededa/bin ; ln -s /go/bin/* .
 
-RUN ash -c 'ID=`uuidgen | tr "[A-Z]" "[a-z]"` ; cat /tmp/gg.json | sed -e s"#1a0d85d9-5e83-4589-b56f-cedabc9a8c0d#${ID}#" > /opt/zededa/etc/${ID}.json'
+RUN ash -c 'ID=`uuidgen | tr "[A-Z]" "[a-z]"` ; cat /tmp/gg.json | sed -e s"#1a0d85d9-5e83-4589-b56f-cedabc9a8c0d#${ID}#" > /config/${ID}.json'
 
 # Now building LISP
 FROM zededa/lisp:latest AS lisp
 
 # Second stage of the build is creating a minimalistic container
 FROM scratch
-COPY --from=build /opt/zededa /opt/zededa
+COPY --from=build /opt/zededa/bin /opt/zededa/bin
+COPY --from=build /config /config
 COPY --from=build /go/bin/* /opt/zededa/bin/
 COPY --from=build /usr/local/lib/* /usr/local/lib/
 COPY --from=build /usr/local/include/* /opt/zededa/include/

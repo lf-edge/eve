@@ -42,7 +42,7 @@ func WaitForFile(filename string) {
 					}
 					break
 				}
-				if event.Op & fsnotify.Create != 0 {
+				if event.Op&fsnotify.Create != 0 {
 					done <- true
 				}
 			case err := <-w.Errors:
@@ -68,9 +68,15 @@ func WaitForFile(filename string) {
 	stop <- true
 }
 
-func SignalRestart(agent string) {
-	log.Printf("SignalRestart(%v)\n", agent)
-	restartFile := fmt.Sprintf("/var/tmp/%s/config/restart", agent)
+func signalRestartImpl(agent string, objType string) {
+	log.Printf("SignalRestart(%s, %s)\n", agent, objType)
+	var restartFile string
+	if objType != "" {
+		restartFile = fmt.Sprintf("/var/tmp/%s/%s/config/restart",
+			agent, objType)
+	} else {
+		restartFile = fmt.Sprintf("/var/tmp/%s/config/restart", agent)
+	}
 	f, err := os.OpenFile(restartFile, os.O_RDONLY|os.O_CREATE, 0600)
 	if err != nil {
 		log.Fatal(err)
@@ -78,9 +84,16 @@ func SignalRestart(agent string) {
 	f.Close()
 }
 
-func SignalRestarted(agent string) {
-	log.Printf("SignalRestarted(%v)\n", agent)
-	restartedFile := fmt.Sprintf("/var/run/%s/status/restarted", agent)
+func signalRestartedImpl(agent string, objType string) {
+	log.Printf("SignalRestarted(%s, %s)\n", agent, objType)
+	var restartedFile string
+	if objType != "" {
+		restartedFile = fmt.Sprintf("/var/run/%s/%s/status/restarted",
+			agent, objType)
+	} else {
+		restartedFile = fmt.Sprintf("/var/run/%s/status/restarted",
+			agent)
+	}
 	f, err := os.OpenFile(restartedFile, os.O_RDONLY|os.O_CREATE, 0600)
 	if err != nil {
 		log.Fatal(err)
@@ -88,9 +101,15 @@ func SignalRestarted(agent string) {
 	f.Close()
 }
 
-func CleanupRestart(agent string) {
-	log.Printf("CleanupRestart(%v)\n", agent)
-	restartFile := fmt.Sprintf("/var/tmp/%s/config/restart", agent)
+func cleanupRestartImpl(agent string, objType string) {
+	log.Printf("CleanupRestart(%s, %s)\n", agent, objType)
+	var restartFile string
+	if objType != "" {
+		restartFile = fmt.Sprintf("/var/tmp/%s/%s/config/restart",
+			agent, objType)
+	} else {
+		restartFile = fmt.Sprintf("/var/tmp/%s/config/restart", agent)
+	}
 	if _, err := os.Stat(restartFile); err == nil {
 		if err = os.Remove(restartFile); err != nil {
 			log.Fatal(err)
@@ -98,12 +117,51 @@ func CleanupRestart(agent string) {
 	}
 }
 
-func CleanupRestarted(agent string) {
-	log.Printf("CleanupRestarted(%v)\n", agent)
-	restartedFile := fmt.Sprintf("/var/run/%s/status/restarted", agent)
+func cleanupRestartedImpl(agent string, objType string) {
+	log.Printf("CleanupRestarted(%s, %s)\n", agent, objType)
+	var restartedFile string
+	if objType != "" {
+		restartedFile = fmt.Sprintf("/var/run/%s/%s/status/restarted",
+			agent, objType)
+	} else {
+		restartedFile = fmt.Sprintf("/var/run/%s/status/restarted",
+			agent)
+	}
 	if _, err := os.Stat(restartedFile); err == nil {
 		if err = os.Remove(restartedFile); err != nil {
 			log.Fatal(err)
 		}
 	}
+}
+
+func SignalRestart(agent string) {
+	signalRestartImpl(agent, "")
+}
+
+func SignalRestartObj(agent string, objType string) {
+	signalRestartImpl(agent, objType)
+}
+
+func SignalRestarted(agent string) {
+	signalRestartedImpl(agent, "")
+}
+
+func SignalRestartedObj(agent string, objType string) {
+	signalRestartedImpl(agent, objType)
+}
+
+func CleanupRestart(agent string) {
+	cleanupRestartImpl(agent, "")
+}
+
+func CleanupRestartObj(agent string, objType string) {
+	cleanupRestartImpl(agent, objType)
+}
+
+func CleanupRestarted(agent string) {
+	cleanupRestartedImpl(agent, "")
+}
+
+func CleanupRestartedObj(agent string, objType string) {
+	cleanupRestartedImpl(agent, objType)
 }

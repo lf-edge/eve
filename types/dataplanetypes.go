@@ -24,6 +24,7 @@ const (
 	ICVLEN                   = 20
 	IVLEN                    = 16
 	IP4HEADERLEN             = 20
+	IP6HEADERLEN             = 40
 	LISPHEADERLEN            = 8
 )
 
@@ -85,6 +86,16 @@ type MapCacheEntry struct {
 type MapCacheKey struct {
 	IID uint32
 	Eid string
+}
+
+type UplinkAddress struct {
+	Ipv4 net.IP
+	Ipv6 net.IP
+}
+
+type Uplinks struct {
+	sync.RWMutex
+	UpLinks *UplinkAddress
 }
 
 type MapCacheTable struct {
@@ -152,12 +163,19 @@ type EncapStatistics struct {
 }
 
 type EtrRunStatus struct {
-	EphPort  int
+	// Name of the interface to capture packets from
+	IfName   string
+	// ETR Natted packet capture ring
 	Ring    *pfring.Ring
-
 	// Raw socket FD used by ETR packet capture thread
 	// for injecting decapsulated packets
 	RingFD   int
+}
+
+type EtrTable struct {
+	// Destination ephemeral port 
+	EphPort   int
+	EtrTable  map[string]*EtrRunStatus
 }
 
 type ITRLocalData struct {

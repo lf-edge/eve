@@ -42,13 +42,12 @@ func NewAwsCtx(id, secret, region string, hctx *http.Client) *S3ctx {
 	// regions
 	cfg.WithRegion(region)
 
-	// FIXME: Someday we need to figure out how to do SSL, with certs
 	if hctx != nil {
 		cfg.WithHTTPClient(hctx)
-	} else {
-		cfg.WithDisableSSL(true)
 	}
 
+	// FIXME: We need figoure out how to do this with SSL verification
+	cfg.WithDisableSSL(true)
 	ctx.ss3 = s3.New(session.New(), cfg)
 	ctx.up = s3manager.NewUploaderWithClient(ctx.ss3)
 	ctx.dn = s3manager.NewDownloaderWithClient(ctx.ss3)

@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/aes"
 	"encoding/json"
+	"github.com/zededa/go-provision/dataplane/etr"
 	"github.com/zededa/go-provision/dataplane/fib"
 	"github.com/zededa/go-provision/types"
 	"log"
@@ -350,8 +351,10 @@ func handleDecapKeys(msg []byte) {
 			IcvKey:   icvKey,
 			DecBlock: decBlock,
 		}
-		log.Printf("Adding Decap key[%d] %s\n", keyId-1, keys[keyId-1].DecKey)
-		log.Printf("Adding Decap icv[%d] %s\n", keyId-1, keys[keyId-1].IcvKey)
+		log.Printf("Adding Decap key[%d] %s for Rloc %s\n",
+			keyId-1, keys[keyId-1].DecKey, decapMsg.Rloc)
+		log.Printf("Adding Decap icv[%d] %s for Rloc %s\n",
+			keyId-1, keys[keyId-1].IcvKey, decapMsg.Rloc)
 	}
 
 	// Parse and store the decap keys.
@@ -372,11 +375,6 @@ func handleEtrNatPort(msg []byte) {
 			string(msg), err)
 		return
 	}
-	//port, err := strconv.ParseInt(etrNatPort.Port, 10, 32)
-	//if err != nil {
-	//	log.Printf("NAT port %s conversion to integer failed: %s\n",
-	//	etrNatPort.Port, err)
-	//	return
-	//}
-	ManageETRThread(etrNatPort.Port)
+	//ManageETRThread(etrNatPort.Port)
+	etr.HandleEtrEphPort(etrNatPort.Port)
 }

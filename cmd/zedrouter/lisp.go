@@ -144,11 +144,16 @@ lisp database-mapping {
 }
 `
 
-const baseFilename = "/opt/zededa/etc/lisp.config.base"
-const destFilename = "/opt/zededa/lisp/lisp.config"
-const RestartCmd = "/opt/zededa/lisp/RESTART-LISP"
-const StopCmd = "/opt/zededa/lisp/STOP-LISP"
-const RLFilename = "/opt/zededa/lisp/RL"
+const (
+	identityDirname = "/config"
+	baseFilename    = identityDirname + "/lisp.config.base"
+
+	lispDirname  = "/opt/zededa/lisp"
+	destFilename = lispDirname + "/lisp.config"
+	RestartCmd   = lispDirname + "/RESTART-LISP"
+	StopCmd      = lispDirname + "/STOP-LISP"
+	RLFilename   = lispDirname + "/RL"
+)
 
 // We write files with the IID-specifics (and not EID) to files
 // in <globalRunDirname>/lisp/<iid>.
@@ -189,18 +194,31 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	defer file2.Close()
 	rlocString := ""
 	for _, u := range globalStatus.UplinkStatus {
-		one := fmt.Sprintf("    rloc {\n        interface = %s\n    }\n", u.IfName)
+		// Skip interfaces which are not free or have no usable address
+		if !u.Free {
+			continue
+		}
+		if len(u.Addrs) == 0 {
+			continue
+		}
+		found := false
+		for _, a := range u.Addrs {
+			if !a.IsLinkLocalUnicast() {
+				found = true
+				break
+			}
+		}
+		if !found {
+			continue
+		}
+
+		one := fmt.Sprintf("    rloc {\n        interface = %s\n    }\n",
+			u.IfName)
 		rlocString += one
-	}
-	for _, u := range globalStatus.UplinkStatus {
 		for _, a := range u.Addrs {
 			prio := 0
-			// XXX We don't generate IPv6 UDP checksum hence lower
-			// priority for now
 			if a.IsLinkLocalUnicast() {
 				prio = 2
-			} else if a.To4() == nil {
-				prio = 255
 			}
 			one := fmt.Sprintf("    rloc {\n        address = %s\n        priority = %d\n    }\n", a, prio)
 			rlocString += one
@@ -387,11 +405,53 @@ func handleLispRestart(done bool) {
 func restartLisp(upLinkStatus []types.NetworkUplink, devices string) {
 	log.Printf("restartLisp: %v %s\n",
 		upLinkStatus, devices)
+	if len(upLinkStatus) == 0 {
+		log.Printf("Can not restart lisp with no uplinks\n")
+		return
+	}
+	// XXX hack to avoid hang in pslisp on Erik's laptop
+	if broken {
+		// Issue pkill -f lisp-core.pyo
+		log.Printf("Calling pkill -f lisp-core.pyo\n")
+		cmd := wrap.Command("pkill", "-f", "lisp-core.pyo")
+		stdoutStderr, err := cmd.CombinedOutput()
+		if err != nil {
+			log.Println("pkill failed ", err)
+			log.Printf("pkill output %s\n", string(stdoutStderr))
+		}
+	}
 	// XXX how to restart with multiple uplinks?
+	// Find first free uplink with a non-link-local IPv6, or an IPv4 address
+	uplink := upLinkStatus[0]
+	found := false
+	for _, u := range upLinkStatus {
+		// Skip interfaces which are not free or have no usable address
+		if !u.Free {
+			continue
+		}
+		if len(u.Addrs) == 0 {
+			continue
+		}
+		for _, a := range u.Addrs {
+			if !a.IsLinkLocalUnicast() {
+				uplink = u
+				found = true
+				break
+			}
+		}
+		if found {
+			break
+		}
+	}
+	if !found {
+		log.Printf("Can not restart lisp - no usable IP addresses on free uplinks\n")
+		return
+	}
+
 	args := []string{
 		RestartCmd,
 		"8080",
-		upLinkStatus[0].IfName,
+		uplink.IfName,
 	}
 	itrTimeout := 1
 	cmd := wrap.Command(RestartCmd)
@@ -419,9 +479,9 @@ func restartLisp(upLinkStatus []types.NetworkUplink, devices string) {
 		"export LISP_PCAP_LIST='%s'\n" +
 		"export LISP_ITR_WAIT_TIME=%d\n" +
 		"%s 8080 %s\n"
-	// XXX how to restart with multiple uplinks?
+
 	b := []byte(fmt.Sprintf(RLTemplate, devices, itrTimeout, RestartCmd,
-		upLinkStatus[0].IfName))
+		uplink.IfName))
 	err = ioutil.WriteFile(RLFilename, b, 0744)
 	if err != nil {
 		log.Fatal("WriteFile", err, RLFilename)
@@ -432,6 +492,18 @@ func restartLisp(upLinkStatus []types.NetworkUplink, devices string) {
 
 func stopLisp() {
 	log.Printf("stopLisp\n")
+	// XXX hack to avoid hang in pslisp on Erik's laptop
+	if broken {
+		// Issue pkill -f lisp-core.pyo
+		log.Printf("Calling pkill -f lisp-core.pyo\n")
+		cmd := wrap.Command("pkill", "-f", "lisp-core.pyo")
+		stdoutStderr, err := cmd.CombinedOutput()
+		if err != nil {
+			log.Println("pkill failed ", err)
+			log.Printf("pkill output %s\n", string(stdoutStderr))
+		}
+	}
+
 	cmd := wrap.Command(StopCmd)
 	env := os.Environ()
 	env = append(env, fmt.Sprintf("LISP_NO_IPTABLES="))

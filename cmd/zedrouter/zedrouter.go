@@ -22,19 +22,35 @@ import (
 	"log"
 	"net"
 	"os"
+	"reflect"
 	"strconv"
 )
 
 // Keeping status in /var/run to be clean after a crash/reboot
 const (
-	runDirname = "/var/run/zedrouter"
-	baseDirname = "/var/tmp/zedrouter"
+	agentName     = "zedrouter"
+	runDirname    = "/var/run/zedrouter"
+	baseDirname   = "/var/tmp/zedrouter"
 	configDirname = baseDirname + "/config"
 	statusDirname = runDirname + "/status"
+	DNCDirname    = "/var/tmp/zededa/DeviceNetworkConfig"
+	DNSDirname    = runDirname + "/DeviceNetworkStatus"
 )
 
 // Set from Makefile
 var Version = "No version specified"
+
+type zedrouterContext struct {
+}
+
+// Dummy since we don't have anything to pass
+type dummyContext struct {
+}
+
+// Context for handleDNCModify
+type DNCContext struct {
+	usableAddressCount int
+}
 
 func main() {
 	log.SetOutput(os.Stdout)
@@ -74,9 +90,23 @@ func main() {
 			log.Fatal(err)
 		}
 	}
+	if _, err := os.Stat(DNCDirname); err != nil {
+		if err := os.MkdirAll(DNCDirname, 0700); err != nil {
+			log.Fatal(err)
+		}
+	}
+	if _, err := os.Stat(DNSDirname); err != nil {
+		if err := os.MkdirAll(DNSDirname, 0700); err != nil {
+			log.Fatal(err)
+		}
+	}
 	appNumAllocatorInit(statusDirname, configDirname)
 
-	handleInit(configDirname+"/global", statusDirname+"/global", runDirname)
+	handleInit(DNCDirname+"/global.json", DNSDirname+"/global.json",
+		runDirname)
+
+	DNCctx := DNCContext{}
+	DNCctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
 
 	// Wait for zedmanager having populated the intial files to
 	// reduce the number of LISP-RESTARTs
@@ -85,23 +115,60 @@ func main() {
 	watch.WaitForFile(restartFile)
 	log.Printf("Zedmanager reported in %s\n", restartFile)
 
-	handleRestart(false)
+	// This function is called when some uplink interface changes
+	// its IP address(es)
+	// XXX Do we need to collapse multiple changes into one?
+	// Or just feed this into a separate channel? Or defer for lisp?
+	addrChangeFn := func(ifname string) {
+		log.Printf("addrChangeFn(%s) called\n", ifname)
+		new, _ := types.MakeDeviceNetworkStatus(deviceNetworkConfig)
+		if !reflect.DeepEqual(deviceNetworkStatus, new) {
+			log.Printf("Address change for %s from %v to %v\n",
+				ifname, deviceNetworkStatus, new)
+			deviceNetworkStatus = new
+			doDNSUpdate(&DNCctx)
+		} else {
+			log.Printf("No address change for %s\n", ifname)
+		}
+	}
+
+	routeChanges, addrChanges, linkChanges := PbrInit(
+		deviceNetworkConfig.Uplink, deviceNetworkConfig.FreeUplinks,
+		addrChangeFn)
+
+	handleRestart(dummyContext{}, false)
 	var restartFn watch.ConfigRestartHandler = handleRestart
 
-	fileChanges := make(chan string)
-	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
+	configChanges := make(chan string)
+	go watch.WatchConfigStatus(configDirname, statusDirname, configChanges)
+	deviceConfigChanges := make(chan string)
+	go watch.WatchStatus(DNCDirname, deviceConfigChanges)
 	for {
-		change := <-fileChanges
-		watch.HandleConfigStatusEvent(change,
-			configDirname, statusDirname,
-			&types.AppNetworkConfig{},
-			&types.AppNetworkStatus{},
-			handleCreate, handleModify, handleDelete,
-			&restartFn)
+		select {
+		case change := <-configChanges:
+			watch.HandleConfigStatusEvent(change, dummyContext{},
+				configDirname, statusDirname,
+				&types.AppNetworkConfig{},
+				&types.AppNetworkStatus{},
+				handleCreate, handleModify, handleDelete,
+				&restartFn)
+		case change := <-deviceConfigChanges:
+			watch.HandleStatusEvent(change, &DNCctx,
+				DNCDirname,
+				&types.DeviceNetworkConfig{},
+				handleDNCModify, handleDNCDelete,
+				nil)
+		case change := <-routeChanges:
+			PbrRouteChange(change)
+		case change := <-addrChanges:
+			PbrAddrChange(change)
+		case change := <-linkChanges:
+			PbrLinkChange(change)
+		}
 	}
 }
 
-func handleRestart(done bool) {
+func handleRestart(ctxArg interface{}, done bool) {
 	log.Printf("handleRestart(%v)\n", done)
 	handleLispRestart(done)
 	if done {
@@ -111,15 +178,18 @@ func handleRestart(done bool) {
 	}
 }
 
-var globalConfig types.DeviceNetworkConfig
-var globalStatus types.DeviceNetworkStatus
-var globalStatusFilename string
+var deviceNetworkConfig types.DeviceNetworkConfig
+var deviceNetworkStatus types.DeviceNetworkStatus
+var deviceNetworkStatusFilename string
 var globalRunDirname string
 var lispRunDirname string
 
+// XXX hack to avoid the pslisp hang on Erik's laptop
+var broken = false
+
 func handleInit(configFilename string, statusFilename string,
 	runDirname string) {
-	globalStatusFilename = statusFilename
+	deviceNetworkStatusFilename = statusFilename
 	globalRunDirname = runDirname
 
 	// XXX should this be in the lisp code?
@@ -138,31 +208,21 @@ func handleInit(configFilename string, statusFilename string,
 		}
 	}
 
+	// Need initial deviceNetworkStatus for iptablesInit
 	var err error
-	globalConfig, err = types.GetGlobalNetworkConfig(configFilename)
+	deviceNetworkConfig, err = types.GetDeviceNetworkConfig(configFilename)
 	if err != nil {
 		log.Printf("%s for %s\n", err, configFilename)
 		log.Fatal(err)
 	}
-	globalStatus, err = types.MakeGlobalNetworkStatus(globalConfig)
+	deviceNetworkStatus, err = types.MakeDeviceNetworkStatus(deviceNetworkConfig)
 	if err != nil {
-		log.Printf("%s from MakeGlobalNetworkStatus\n", err)
-		log.Fatal(err)
+		log.Printf("%s from MakeDeviceNetworkStatus\n", err)
+		// Proceed even if some uplinks are missing
 	}
 
 	// Create and write with initial values
-	writeGlobalStatus()
-
-	sb, err := ioutil.ReadFile(statusFilename)
-	if err != nil {
-		log.Printf("%s for %s\n", err, statusFilename)
-		log.Fatal(err)
-	}
-	if err := json.Unmarshal(sb, &globalStatus); err != nil {
-		log.Printf("%s DeviceNetworkStatus file: %s\n",
-			err, statusFilename)
-		log.Fatal(err)
-	}
+	updateDeviceNetworkStatus()
 
 	// Setup initial iptables rules
 	iptablesInit()
@@ -184,38 +244,57 @@ func handleInit(configFilename string, statusFilename string,
 	_, err = wrap.Command("sysctl", "-w",
 		"net.bridge.bridge-nf-call-ip6tables=1").Output()
 	if err != nil {
-		// XXX not in bobo's kernel
-		log.Println("Failed setting net.bridge-nf-call-ip6tables ", err)
+		log.Fatal("Failed setting net.bridge-nf-call-ip6tables ", err)
 	}
 	_, err = wrap.Command("sysctl", "-w",
 		"net.bridge.bridge-nf-call-iptables=1").Output()
 	if err != nil {
-		// XXX not in bobo's kernel
-		log.Println("Failed setting net.bridge-nf-call-iptables ", err)
+		log.Fatal("Failed setting net.bridge-nf-call-iptables ", err)
 	}
 	_, err = wrap.Command("sysctl", "-w",
 		"net.bridge.bridge-nf-call-arptables=1").Output()
 	if err != nil {
-		// XXX not in bobo's kernel
-		log.Println("Failed setting net.bridge-nf-call-arptables ", err)
+		log.Fatal("Failed setting net.bridge-nf-call-arptables ", err)
+	}
+
+	// XXX hack to determine whether a real system or Erik's laptop
+	_, err = wrap.Command("xl", "list").Output()
+	if err != nil {
+		fmt.Printf("Command xl list failed: %s\n", err)
+		broken = true
 	}
 }
 
-func writeGlobalStatus() {
-	b, err := json.Marshal(globalStatus)
+func updateDeviceNetworkStatus() {
+	b, err := json.Marshal(deviceNetworkStatus)
 	if err != nil {
 		log.Fatal(err, "json Marshal DeviceNetworkStatus")
 	}
 	// We assume a /var/run path hence we don't need to worry about
 	// partial writes/empty files due to a kernel crash.
-	err = ioutil.WriteFile(globalStatusFilename, b, 0644)
+	err = ioutil.WriteFile(deviceNetworkStatusFilename, b, 0644)
 	if err != nil {
-		log.Fatal(err, globalStatusFilename)
+		log.Fatal(err, deviceNetworkStatusFilename)
 	}
 }
 
+// Key is UUID
+var appNetworkStatus map[string]types.AppNetworkStatus
+
+// XXX rename to update? Remove statusFilename?
+//	statusFilename := fmt.Sprintf("/var/run/%s/%s/%s.json",
+//		agentName, topic, key)
+// XXX introduce separate baseDir whch is /var/run (or /var/run/zededa)??
 func writeAppNetworkStatus(status *types.AppNetworkStatus,
 	statusFilename string) {
+
+	if appNetworkStatus == nil {
+		fmt.Printf("create appNetwork status map\n")
+		appNetworkStatus = make(map[string]types.AppNetworkStatus)
+	}
+	key := status.UUIDandVersion.UUID.String()
+	appNetworkStatus[key] = *status
+
 	b, err := json.Marshal(status)
 	if err != nil {
 		log.Fatal(err, "json Marshal AppNetworkStatus")
@@ -228,23 +307,92 @@ func writeAppNetworkStatus(status *types.AppNetworkStatus,
 	}
 }
 
+// XXX make into generic function with myName as argument.
+func removeAppNetworkStatus(status *types.AppNetworkStatus) {
+	key := status.UUIDandVersion.UUID.String()
+	// topic := "AppNetworkStatus" // XXX reflect to get name of type?
+	topic := "status"
+	statusFilename := fmt.Sprintf("/var/run/%s/%s/%s.json",
+		agentName, topic, key)
+	if err := os.Remove(statusFilename); err != nil {
+		log.Println(err)
+	}
+	// pubsub.UnpublishStatus(agentName, topic, key)
+}
+
+// Format a json string with any additional info
+func generateAdditionalInfo(status types.AppNetworkStatus, olConfig types.OverlayNetworkConfig) string {
+	additionalInfo := ""
+	if status.IsZedmanager {
+		if olConfig.AdditionalInfoDevice != nil {
+			b, err := json.Marshal(olConfig.AdditionalInfoDevice)
+			if err != nil {
+				log.Fatal(err, "json Marshal AdditionalInfoDevice")
+			}
+			additionalInfo = string(b)
+			fmt.Printf("Generated additional info device %s\n",
+				additionalInfo)
+		}
+	} else {
+		// Combine subset of the device and application information
+		addInfoApp := types.AdditionalInfoApp{
+			DeviceEID:   deviceEID,
+			DeviceIID:   deviceIID,
+			DisplayName: status.DisplayName,
+		}
+		if additionalInfoDevice != nil {
+			addInfoApp.UnderlayIP = additionalInfoDevice.UnderlayIP
+			addInfoApp.Hostname = additionalInfoDevice.Hostname
+		}
+		b, err := json.Marshal(addInfoApp)
+		if err != nil {
+			log.Fatal(err, "json Marshal AdditionalInfoApp")
+		}
+		additionalInfo = string(b)
+		fmt.Printf("Generated additional info app %s\n",
+			additionalInfo)
+	}
+	return additionalInfo
+}
+
+func updateLispConfiglets() {
+	for _, status := range appNetworkStatus {
+		for i, olStatus := range status.OverlayNetworkList {
+			olNum := i + 1
+			var olIfname string
+			if status.IsZedmanager {
+				olIfname = "dbo" + strconv.Itoa(olNum) + "x" +
+					strconv.Itoa(status.AppNum)
+			} else {
+				olIfname = "bo" + strconv.Itoa(olNum) + "x" +
+					strconv.Itoa(status.AppNum)
+			}
+			additionalInfo := generateAdditionalInfo(status,
+				olStatus.OverlayNetworkConfig)
+			log.Printf("updateLispConfiglets for %s isMgmt %v\n",
+				olIfname, status.IsZedmanager)
+			createLispConfiglet(lispRunDirname, status.IsZedmanager,
+				olStatus.IID, olStatus.EID, olStatus.LispSignature,
+				deviceNetworkStatus, olIfname, olIfname,
+				additionalInfo, olStatus.LispServers)
+		}
+	}
+}
+
 // Track the device information so we can annotate the application EIDs
 // Note that when we start with zedrouter config files in place the
 // device one might be processed after application ones, in which case these
 // empty. This results in less additional info recorded in the map servers.
+// XXX note that this only works well when the IsZedmanager AppNetworkConfig
+// arrives first so that these fields are filled in before other
+// AppNetworkConfig entries are processed.
 var deviceEID net.IP
 var deviceIID uint32
 var additionalInfoDevice *types.AdditionalInfoDevice
 
-func handleCreate(statusFilename string, configArg interface{}) {
-	var config *types.AppNetworkConfig
-
-	switch configArg.(type) {
-	default:
-		log.Fatal("Can only handle AppNetworkConfig")
-	case *types.AppNetworkConfig:
-		config = configArg.(*types.AppNetworkConfig)
-	}
+func handleCreate(ctxArg interface{}, statusFilename string,
+	configArg interface{}) {
+	config := configArg.(*types.AppNetworkConfig)
 	log.Printf("handleCreate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
@@ -270,6 +418,7 @@ func handleCreate(statusFilename string, configArg interface{}) {
 			config.DisplayName)
 		if len(config.OverlayNetworkList) != 1 ||
 			len(config.UnderlayNetworkList) != 0 {
+			// XXX send to cloud?
 			log.Println("Malformed IsZedmanager config; ignored")
 			return
 		}
@@ -330,10 +479,12 @@ func handleCreate(statusFilename string, configArg interface{}) {
 		EID := config.OverlayNetworkList[0].EID
 		addr, err := netlink.ParseAddr(EID.String() + "/128")
 		if err != nil {
+			// XXX send to cloud?
 			log.Printf("ParseAddr %s failed: %s\n", EID, err)
 			return
 		}
 		if err := netlink.AddrAdd(oLink, addr); err != nil {
+			// XXX fatal?
 			log.Printf("AddrAdd %s failed: %s\n", EID, err)
 		}
 
@@ -385,27 +536,17 @@ func handleCreate(statusFilename string, configArg interface{}) {
 		// Set up ACLs
 		createACLConfiglet(olIfname, true, olConfig.ACLs, 6, "")
 
-		// Save information about zedmanger EID
+		// Save information about zedmanger EID and additional info
 		deviceEID = EID
 		deviceIID = olConfig.IID
 		additionalInfoDevice = olConfig.AdditionalInfoDevice
 
-		// Format a json string with any additional info
-		additionalInfo := ""
-		if olConfig.AdditionalInfoDevice != nil {
-			b, err := json.Marshal(olConfig.AdditionalInfoDevice)
-			if err != nil {
-				log.Fatal(err, "json Marshal AdditionalInfoDevice")
-			}
-			additionalInfo = string(b)
-			fmt.Printf("Generated additional info device %s\n",
-				additionalInfo)
-		}
+		additionalInfo := generateAdditionalInfo(status, olConfig)
 
 		// Create LISP configlets for IID and EID/signature
-		createLispConfiglet(lispRunDirname, true, olConfig.IID,
-			olConfig.EID, olConfig.LispSignature,
-			globalStatus, olIfname, olIfname,
+		createLispConfiglet(lispRunDirname, config.IsZedmanager,
+			olConfig.IID, olConfig.EID, olConfig.LispSignature,
+			deviceNetworkStatus, olIfname, olIfname,
 			additionalInfo, olConfig.LispServers)
 		status.OverlayNetworkList = make([]types.OverlayNetworkStatus,
 			len(config.OverlayNetworkList))
@@ -420,7 +561,6 @@ func handleCreate(statusFilename string, configArg interface{}) {
 		return
 	}
 
-	// XXX introduce init function?
 	status.OverlayNetworkList = make([]types.OverlayNetworkStatus,
 		len(config.OverlayNetworkList))
 	for i, _ := range config.OverlayNetworkList {
@@ -533,27 +673,11 @@ func handleCreate(statusFilename string, configArg interface{}) {
 			config.UUIDandVersion.UUID.String(), ipsets)
 		startDnsmasq(cfgPathname)
 
-		addInfoApp := types.AdditionalInfoApp{
-			DeviceEID:   deviceEID,
-			DeviceIID:   deviceIID,
-			DisplayName: config.DisplayName,
-		}
-		if additionalInfoDevice != nil {
-			addInfoApp.UnderlayIP = additionalInfoDevice.UnderlayIP
-			addInfoApp.Hostname = additionalInfoDevice.Hostname
-		}
-		b, err := json.Marshal(addInfoApp)
-		if err != nil {
-			log.Fatal(err, "json Marshal AdditionalInfoApp")
-		}
-		additionalInfo := string(b)
-		fmt.Printf("Generated additional info app %s\n",
-			additionalInfo)
-
+		additionalInfo := generateAdditionalInfo(status, olConfig)
 		// Create LISP configlets for IID and EID/signature
-		createLispConfiglet(lispRunDirname, false, olConfig.IID,
-			olConfig.EID, olConfig.LispSignature,
-			globalStatus, olIfname, olIfname,
+		createLispConfiglet(lispRunDirname, config.IsZedmanager,
+			olConfig.IID, olConfig.EID, olConfig.LispSignature,
+			deviceNetworkStatus, olIfname, olIfname,
 			additionalInfo, olConfig.LispServers)
 
 		// Add bridge parameters for Xen to Status
@@ -642,23 +766,10 @@ func handleCreate(statusFilename string, configArg interface{}) {
 // Note that handleModify will not touch the EID; just ACLs and NameToEidList
 // XXX should we check that nothing else has changed?
 // XXX If so flag other changes as errors; would need lastError in status.
-func handleModify(statusFilename string, configArg interface{},
+func handleModify(ctxArg interface{}, statusFilename string, configArg interface{},
 	statusArg interface{}) {
-	var config *types.AppNetworkConfig
-	var status *types.AppNetworkStatus
-
-	switch configArg.(type) {
-	default:
-		log.Fatal("Can only handle AppNetworkConfig")
-	case *types.AppNetworkConfig:
-		config = configArg.(*types.AppNetworkConfig)
-	}
-	switch statusArg.(type) {
-	default:
-		log.Fatal("Can only handle AppNetworkStatus")
-	case *types.AppNetworkStatus:
-		status = statusArg.(*types.AppNetworkStatus)
-	}
+	config := configArg.(*types.AppNetworkConfig)
+	status := statusArg.(*types.AppNetworkStatus)
 	log.Printf("handleModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
@@ -763,23 +874,7 @@ func handleModify(statusFilename string, configArg interface{},
 			startDnsmasq(cfgPathname)
 		}
 
-		// Format a json string with any additional info
-		addInfoApp := types.AdditionalInfoApp{
-			DisplayName: config.DisplayName,
-			DeviceEID:   deviceEID,
-			DeviceIID:   deviceIID,
-		}
-		if additionalInfoDevice != nil {
-			addInfoApp.UnderlayIP = additionalInfoDevice.UnderlayIP
-			addInfoApp.Hostname = additionalInfoDevice.Hostname
-		}
-		b, err := json.Marshal(addInfoApp)
-		if err != nil {
-			log.Fatal(err, "json Marshal AdditionalInfoApp")
-		}
-		additionalInfo := string(b)
-		fmt.Printf("Generated additional info app %s\n",
-			additionalInfo)
+		additionalInfo := generateAdditionalInfo(*status, olConfig)
 
 		// Update any signature changes
 		// XXX should we check that EID didn't change?
@@ -787,7 +882,7 @@ func handleModify(statusFilename string, configArg interface{},
 		// Create LISP configlets for IID and EID/signature
 		updateLispConfiglet(lispRunDirname, false, olConfig.IID,
 			olConfig.EID, olConfig.LispSignature,
-			globalStatus, olIfname, olIfname,
+			deviceNetworkStatus, olIfname, olIfname,
 			additionalInfo, olConfig.LispServers)
 
 	}
@@ -852,15 +947,9 @@ func handleModify(statusFilename string, configArg interface{},
 	log.Printf("handleModify done for %s\n", config.DisplayName)
 }
 
-func handleDelete(statusFilename string, statusArg interface{}) {
-	var status *types.AppNetworkStatus
-
-	switch statusArg.(type) {
-	default:
-		log.Fatal("Can only handle AppNetworkStatus")
-	case *types.AppNetworkStatus:
-		status = statusArg.(*types.AppNetworkStatus)
-	}
+func handleDelete(ctxArg interface{}, statusFilename string,
+	statusArg interface{}) {
+	status := statusArg.(*types.AppNetworkStatus)
 	log.Printf("handleDelete(%v) for %s\n",
 		status.UUIDandVersion, status.DisplayName)
 
@@ -943,7 +1032,7 @@ func handleDelete(statusFilename string, statusArg interface{}) {
 
 		// Delete LISP configlets
 		deleteLispConfiglet(lispRunDirname, true, olStatus.IID,
-			olStatus.EID, globalStatus)
+			olStatus.EID, deviceNetworkStatus)
 	} else {
 		// Delete everything for overlay
 		for olNum := 1; olNum <= maxOlNum; olNum++ {
@@ -982,7 +1071,7 @@ func handleDelete(statusFilename string, statusArg interface{}) {
 				// Delete LISP configlets
 				deleteLispConfiglet(lispRunDirname, false,
 					olStatus.IID, olStatus.EID,
-					globalStatus)
+					deviceNetworkStatus)
 			} else {
 				log.Println("Missing status for overlay %d; can not clean up ACLs and LISP\n",
 					olNum)
@@ -1030,9 +1119,8 @@ func handleDelete(statusFilename string, statusArg interface{}) {
 		}
 	}
 	// Write out what we modified to AppNetworkStatus aka delete
-	if err := os.Remove(statusFilename); err != nil {
-		log.Println(err)
-	}
+	removeAppNetworkStatus(status)
+
 	appNumFree(status.UUIDandVersion.UUID)
 	log.Printf("handleDelete done for %s\n", status.DisplayName)
 }
@@ -1049,4 +1137,74 @@ func pkillUserArgs(userName string, match string, printOnError bool) {
 	if err != nil && printOnError {
 		fmt.Printf("Command %v %v failed: %s\n", cmd, args, err)
 	}
+}
+
+func handleDNCModify(ctxArg interface{}, configFilename string,
+	configArg interface{}) {
+	config := configArg.(*types.DeviceNetworkConfig)
+	ctx := ctxArg.(*DNCContext)
+
+	// XXX from context with manufacturerModel
+	if configFilename != "global" {
+		fmt.Printf("handleDNSModify: ignoring %s\n", configFilename)
+		return
+	}
+	log.Printf("handleDNCModify for %s\n", configFilename)
+
+	deviceNetworkConfig = *config
+	new, _ := types.MakeDeviceNetworkStatus(*config)
+	if !reflect.DeepEqual(deviceNetworkStatus, new) {
+		log.Printf("DeviceNetworkStatus change from %v to %v\n",
+			deviceNetworkStatus, new)
+		deviceNetworkStatus = new
+		doDNSUpdate(ctx)
+	}
+	log.Printf("handleDNCModify done for %s\n", configFilename)
+}
+
+func handleDNCDelete(ctxArg interface{}, configFilename string) {
+	log.Printf("handleDNCDelete for %s\n", configFilename)
+	ctx := ctxArg.(*DNCContext)
+
+	if configFilename != "global" {
+		fmt.Printf("handleDNSDelete: ignoring %s\n", configFilename)
+		return
+	}
+	new := types.DeviceNetworkStatus{}
+	if !reflect.DeepEqual(deviceNetworkStatus, new) {
+		log.Printf("DeviceNetworkStatus change from %v to %v\n",
+			deviceNetworkStatus, new)
+		deviceNetworkStatus = new
+		doDNSUpdate(ctx)
+	}
+	log.Printf("handleDNCDelete done for %s\n", configFilename)
+}
+
+func doDNSUpdate(ctx *DNCContext) {
+	// Did we loose all usable addresses or gain the first usable
+	// address?
+	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
+	if newAddrCount == 0 && ctx.usableAddressCount != 0 {
+		log.Printf("DeviceNetworkStatus from %d to %d addresses\n",
+			newAddrCount, ctx.usableAddressCount)
+		// Inform ledmanager that we have no addresses
+		types.UpdateLedManagerConfig(1)
+	} else if newAddrCount != 0 && ctx.usableAddressCount == 0 {
+		log.Printf("DeviceNetworkStatus from %d to %d addresses\n",
+			newAddrCount, ctx.usableAddressCount)
+		// Inform ledmanager that we have uplink addresses
+		types.UpdateLedManagerConfig(2)
+	}
+	ctx.usableAddressCount = newAddrCount
+	updateDeviceNetworkStatus()
+	updateLispConfiglets()
+
+	setUplinks(deviceNetworkConfig.Uplink)
+	setFreeUplinks(deviceNetworkConfig.FreeUplinks)
+	// XXX check if FreeUplinks changed; add/delete
+	// XXX need to redo this when FreeUplinks changes
+	// for _, u := range deviceNetworkConfig.FreeUplinks {
+	//	iptableCmd("-t", "nat", "-A", "POSTROUTING", "-o", u,
+	//		"-s", "172.27.0.0/16", "-j", "MASQUERADE")
+	//}
 }

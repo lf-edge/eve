@@ -27,12 +27,14 @@ import (
 	"time"
 )
 
+const tmpDirname = "/var/tmp/zededa"
+
 // Set from Makefile
 var Version = "No version specified"
 
 var maxDelay = time.Second * 600 // 10 minutes
 
-// Assumes the config files are in dirName, which is /opt/zededa/etc
+// Assumes the config files are in identityDirname, which is /config
 // by default. The files are
 //  root-certificate.pem	Fixed? Written if redirected. factory-root-cert?
 //  server			Fixed? Written if redirected. factory-root-cert?
@@ -44,34 +46,32 @@ var maxDelay = time.Second * 600 // 10 minutes
 //  		     		client is started.
 //  infra			If this file exists assume zedcontrol and do not
 //  				create ACLs
-//  zedserverconfig		Written by lookupParam operation; zed server EIDs
-//  zedrouterconfig.json	Written by lookupParam operation
-//  uuid			Written by lookupParam operation
-//  hwstatus.json		Uploaded by updateHwStatus operation XXX remove
-//  swstatus.json		Uploaded by updateSwStatus operation XXX remvove
-//  clientIP			Written containing the public client IP
+//  /var/tmp/zededa/zedserverconfig		Written by lookupParam operation; zed server EIDs
+//  /var/tmp/zededa/zedrouterconfig.json	Written by lookupParam operation
+//  /var/tmp/zededa/uuid	Written by lookupParam operation
 //
 func main() {
 	log.SetOutput(os.Stdout)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
 	versionPtr := flag.Bool("v", false, "Version")
 	oldPtr := flag.Bool("o", false, "Old use of prov01")
-	dirPtr := flag.String("d", "/opt/zededa/etc",
+	forcePtr := flag.Bool("f", false, "Force using onboarding cert")
+	dirPtr := flag.String("d", "/config",
 		"Directory with certs etc")
 	flag.Parse()
 	versionFlag := *versionPtr
 	oldFlag := *oldPtr
-	dirName := *dirPtr
+	forceOnboardingCert := *forcePtr
+	identityDirname := *dirPtr
 	args := flag.Args()
 	if versionFlag {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
 	operations := map[string]bool{
-		"selfRegister":   false,
-		"lookupParam":    false,
-		"updateHwStatus": false, // XXX remove later
-		"updateSwStatus": false, // XXX remove later
+		"selfRegister": false,
+		"lookupParam":  false,
+		"ping":         false,
 	}
 	for _, op := range args {
 		if _, ok := operations[op]; ok {
@@ -79,42 +79,50 @@ func main() {
 		} else {
 			log.Printf("Unknown arg %s\n", op)
 			log.Fatal("Usage: " + os.Args[0] +
-				"[-o] [-d <dirName> [<operations>...]]")
+				"[-o] [-d <identityDirname> [<operations>...]]")
 		}
 	}
 
-	onboardCertName := dirName + "/onboard.cert.pem"
-	onboardKeyName := dirName + "/onboard.key.pem"
-	deviceCertName := dirName + "/device.cert.pem"
-	deviceKeyName := dirName + "/device.key.pem"
-	rootCertName := dirName + "/root-certificate.pem"
-	serverFileName := dirName + "/server"
-	oldServerFileName := dirName + "/oldserver"
-	infraFileName := dirName + "/infra"
-	zedserverConfigFileName := dirName + "/zedserverconfig"
-	zedrouterConfigFileName := dirName + "/zedrouterconfig.json"
-	uuidFileName := dirName + "/uuid"
-	clientIPFileName := dirName + "/clientIP"
-	hwStatusFileName := dirName + "/hwstatus.json" // XXX remove later
-	swStatusFileName := dirName + "/swstatus.json" // XXX remove later
+	onboardCertName := identityDirname + "/onboard.cert.pem"
+	onboardKeyName := identityDirname + "/onboard.key.pem"
+	deviceCertName := identityDirname + "/device.cert.pem"
+	deviceKeyName := identityDirname + "/device.key.pem"
+	rootCertName := identityDirname + "/root-certificate.pem"
+	serverFileName := identityDirname + "/server"
+	oldServerFileName := identityDirname + "/oldserver"
+	infraFileName := identityDirname + "/infra"
+	zedserverConfigFileName := tmpDirname + "/zedserverconfig"
+	zedrouterConfigFileName := tmpDirname + "/zedrouterconfig.json"
+	uuidFileName := tmpDirname + "/uuid"
 
-	globalNetworkConfigFilename := "/var/tmp/zedrouter/config/global"
-	globalConfig, err := types.GetGlobalNetworkConfig(globalNetworkConfigFilename)
-	if err != nil {
-		log.Printf("%s for %s\n", err, globalNetworkConfigFilename)
-		log.Fatal(err)
-	}
-	globalStatus, err := types.MakeGlobalNetworkStatus(globalConfig)
-	if err != nil {
-		log.Printf("%s from MakeGlobalNetworkStatus\n", err)
-		log.Fatal(err)
+	var hasDeviceNetworkStatus = false
+	var deviceNetworkStatus types.DeviceNetworkStatus
+
+	globalNetworkConfigFilename := "/var/tmp/zededa/DeviceNetworkConfig/global.json"
+	if _, err := os.Stat(globalNetworkConfigFilename); err == nil {
+		deviceNetworkConfig, err := types.GetDeviceNetworkConfig(globalNetworkConfigFilename)
+		if err != nil {
+			log.Fatal(err)
+		}
+		deviceNetworkStatus, err = types.MakeDeviceNetworkStatus(deviceNetworkConfig)
+		if err != nil {
+			log.Fatal(err)
+		}
+		hasDeviceNetworkStatus = true
+		addrCount := types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
+		fmt.Printf("Have %d uplinks addresses to use\n", addrCount)
+		if addrCount != 0 {
+			// Inform ledmanager that we have uplink addresses
+			types.UpdateLedManagerConfig(2)
+		}
 	}
 
 	var onboardCert, deviceCert tls.Certificate
 	var deviceCertPem []byte
 	deviceCertSet := false
 
-	if operations["selfRegister"] {
+	if operations["selfRegister"] ||
+		(operations["ping"] && forceOnboardingCert) {
 		var err error
 		onboardCert, err = tls.LoadX509KeyPair(onboardCertName, onboardKeyName)
 		if err != nil {
@@ -126,8 +134,8 @@ func main() {
 			log.Fatal(err)
 		}
 	}
-	if operations["lookupParam"] || operations["updateHwStatus"] ||
-		operations["updateSwStatus"] {
+	if operations["lookupParam"] ||
+		(operations["ping"] && !forceOnboardingCert) {
 		// Load device cert
 		var err error
 		deviceCert, err = tls.LoadX509KeyPair(deviceCertName,
@@ -174,10 +182,13 @@ func main() {
 	// Returns true when done; false when retry
 	myPost := func(tlsConfig *tls.Config, retryCount int,
 		url string, b *bytes.Buffer) bool {
-		localAddr, err := types.GetLocalAddrAny(globalConfig,
-			globalStatus, retryCount, "")
-		if err != nil {
-			log.Fatal(err)
+		var localAddr net.IP
+		if hasDeviceNetworkStatus {
+			localAddr, err = types.GetLocalAddrAny(deviceNetworkStatus,
+				retryCount, "")
+			if err != nil {
+				log.Fatal(err)
+			}
 		}
 		localTCPAddr := net.TCPAddr{IP: localAddr}
 		fmt.Printf("Connecting to %s/%s using source %v\n",
@@ -193,7 +204,7 @@ func main() {
 		// IP ("no suitable address found") and retry due to server
 		// side response errors such as 401? In both cases
 		// we don't want to retry immediately
-		resp, err := client.Post("https://" + serverNameAndPort + url,
+		resp, err := client.Post("https://"+serverNameAndPort+url,
 			"application/x-proto-binary", b)
 		if err != nil {
 			fmt.Println(err)
@@ -203,6 +214,8 @@ func main() {
 		connState := resp.TLS
 		if connState == nil {
 			fmt.Println("no TLS connection state")
+			// Inform ledmanager about broken cloud connectivity
+			types.UpdateLedManagerConfig(10)
 			return false
 		}
 
@@ -215,9 +228,13 @@ func main() {
 			}
 			//XXX OSCP is not implemented in cloud side so
 			// commenting out it for now. Should be:
+			// Inform ledmanager about broken cloud connectivity
+			// types.UpdateLedManagerConfig(10)
 			// return false
-			return true
 		}
+
+		// Inform ledmanager about cloud connectivity
+		types.UpdateLedManagerConfig(3)
 
 		contents, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
@@ -225,13 +242,18 @@ func main() {
 			return false
 		}
 
-		// XXX Should this behavior be url-specific?
 		switch resp.StatusCode {
 		case http.StatusOK:
+			// Inform ledmanager about existence in cloud
+			types.UpdateLedManagerConfig(4)
 			fmt.Printf("%s StatusOK\n", url)
 		case http.StatusCreated:
+			// Inform ledmanager about existence in cloud
+			types.UpdateLedManagerConfig(4)
 			fmt.Printf("%s StatusCreated\n", url)
 		case http.StatusConflict:
+			// Inform ledmanager about brokenness
+			types.UpdateLedManagerConfig(10)
 			fmt.Printf("%s StatusConflict\n", url)
 			// Retry until fixed
 			fmt.Printf("%s\n", string(contents))
@@ -269,10 +291,13 @@ func main() {
 	// XXX remove later
 	oldMyPost := func(tlsConfig *tls.Config, retryCount int,
 		url string, b *bytes.Buffer) bool {
-		localAddr, err := types.GetLocalAddrAny(globalConfig,
-			globalStatus, retryCount, "")
-		if err != nil {
-			log.Fatal(err)
+		var localAddr net.IP
+		if hasDeviceNetworkStatus {
+			localAddr, err = types.GetLocalAddrAny(deviceNetworkStatus,
+				retryCount, "")
+			if err != nil {
+				log.Fatal(err)
+			}
 		}
 		localTCPAddr := net.TCPAddr{IP: localAddr}
 		fmt.Printf("Connecting to %s/%s using source %v\n",
@@ -283,7 +308,7 @@ func main() {
 			Dial:            d.Dial,
 		}
 		client := &http.Client{Transport: transport}
-		resp, err := client.Post("https://" + serverNameAndPort + url,
+		resp, err := client.Post("https://"+serverNameAndPort+url,
 			"application/json", b)
 		if err != nil {
 			fmt.Println(err)
@@ -293,6 +318,8 @@ func main() {
 		connState := resp.TLS
 		if connState == nil {
 			fmt.Println("no TLS connection state")
+			// Inform ledmanager about broken cloud connectivity
+			types.UpdateLedManagerConfig(10)
 			return false
 		}
 
@@ -303,8 +330,12 @@ func main() {
 			} else {
 				fmt.Println("OCSP stapled check failed")
 			}
+			// Inform ledmanager about broken cloud connectivity
+			types.UpdateLedManagerConfig(10)
 			return false
 		}
+		// Inform ledmanager about cloud connectivity
+		types.UpdateLedManagerConfig(3)
 
 		contents, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
@@ -312,13 +343,18 @@ func main() {
 			return false
 		}
 
-		// XXX Should this behavior be url-specific?
 		switch resp.StatusCode {
 		case http.StatusOK:
+			// Inform ledmanager about existence in cloud
+			types.UpdateLedManagerConfig(4)
 			fmt.Printf("%s StatusOK\n", url)
 		case http.StatusCreated:
+			// Inform ledmanager about existence in cloud
+			types.UpdateLedManagerConfig(4)
 			fmt.Printf("%s StatusCreated\n", url)
 		case http.StatusConflict:
+			// Inform ledmanager about brokenness
+			types.UpdateLedManagerConfig(10)
 			fmt.Printf("%s StatusConflict\n", url)
 			// Retry until fixed
 			fmt.Printf("%s\n", string(contents))
@@ -401,10 +437,13 @@ func main() {
 	lookupParam := func(tlsConfig *tls.Config, retryCount int,
 		device *types.DeviceDb) bool {
 		url := "/rest/device-param"
-		localAddr, err := types.GetLocalAddrAny(globalConfig,
-			globalStatus, retryCount, "")
-		if err != nil {
-			log.Fatal(err)
+		var localAddr net.IP
+		if hasDeviceNetworkStatus {
+			localAddr, err = types.GetLocalAddrAny(deviceNetworkStatus,
+				retryCount, "")
+			if err != nil {
+				log.Fatal(err)
+			}
 		}
 		localTCPAddr := net.TCPAddr{IP: localAddr}
 		fmt.Printf("Connecting to %s/%s using source %v\n",
@@ -425,6 +464,8 @@ func main() {
 		connState := resp.TLS
 		if connState == nil {
 			log.Println("no TLS connection state")
+			// Inform ledmanager about broken cloud connectivity
+			types.UpdateLedManagerConfig(10)
 			return false
 		}
 		if connState.OCSPResponse == nil ||
@@ -434,8 +475,13 @@ func main() {
 			} else {
 				fmt.Println("OCSP stapled check failed")
 			}
+			// Inform ledmanager about brokenness
+			types.UpdateLedManagerConfig(10)
 			return false
 		}
+
+		// Inform ledmanager about connectivity to cloud
+		types.UpdateLedManagerConfig(3)
 
 		contents, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
@@ -444,14 +490,12 @@ func main() {
 		}
 		switch resp.StatusCode {
 		case http.StatusOK:
+			// Inform ledmanager about device existence in cloud
+			types.UpdateLedManagerConfig(4)
 			fmt.Printf("device-param StatusOK\n")
 		case http.StatusNotFound:
 			fmt.Printf("device-param StatusNotFound\n")
-			// XXX:FIXME
-			// New devices which are only registered in zedcloud
-			// will not have state in prov1 hence no EID for
-			// zedmanager until we add lookupParam to zedcloud
-			return true
+			return false
 		default:
 			fmt.Printf("device-param statuscode %d %s\n",
 				resp.StatusCode,
@@ -483,6 +527,172 @@ func main() {
 		return true
 	}
 
+	// Get something without a return type; used by ping
+	// Returns true when done; false when retry
+	myGet := func(tlsConfig *tls.Config, url string, retryCount int) bool {
+		var localAddr net.IP
+		if hasDeviceNetworkStatus {
+			localAddr, err = types.GetLocalAddrAny(deviceNetworkStatus,
+				retryCount, "")
+			if err != nil {
+				log.Fatal(err)
+			}
+		}
+		localTCPAddr := net.TCPAddr{IP: localAddr}
+		fmt.Printf("Connecting to %s/%s using source %v\n",
+			serverNameAndPort, url, localTCPAddr)
+		d := net.Dialer{LocalAddr: &localTCPAddr}
+		transport := &http.Transport{
+			TLSClientConfig: tlsConfig,
+			Dial:            d.Dial,
+		}
+		client := &http.Client{Transport: transport}
+
+		// Should we distinguish retry due to inappropriate source
+		// IP ("no suitable address found") and retry due to server
+		// side response errors such as 401? In both cases
+		// we don't want to retry immediately
+		resp, err := client.Get("https://" + serverNameAndPort + url)
+		if err != nil {
+			fmt.Println(err)
+			return false
+		}
+		defer resp.Body.Close()
+		connState := resp.TLS
+		if connState == nil {
+			fmt.Println("no TLS connection state")
+			// Inform ledmanager about broken cloud connectivity
+			types.UpdateLedManagerConfig(10)
+			return false
+		}
+
+		if connState.OCSPResponse == nil ||
+			!stapledCheck(connState) {
+			if connState.OCSPResponse == nil {
+				fmt.Println("no OCSP response")
+			} else {
+				fmt.Println("OCSP stapled check failed")
+			}
+			//XXX OSCP is not implemented in cloud side so
+			// commenting out it for now. Should be:
+			// Inform ledmanager about broken cloud connectivity
+			// types.UpdateLedManagerConfig(10)
+			// return false
+		}
+		contents, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			fmt.Println(err)
+			return false
+		}
+		switch resp.StatusCode {
+		case http.StatusOK:
+			fmt.Printf("%s StatusOK\n", url)
+			return true
+		case http.StatusCreated:
+			fmt.Printf("%s StatusCreated\n", url)
+			return false
+		default:
+			fmt.Printf("%s statuscode %d %s\n",
+				url, resp.StatusCode,
+				http.StatusText(resp.StatusCode))
+			fmt.Printf("%s\n", string(contents))
+			return false
+		}
+	}
+
+	// Setup HTTPS client for deviceCert unless force
+	var cert tls.Certificate
+	if forceOnboardingCert || operations["selfRegister"] {
+		fmt.Printf("Using onboarding cert\n")
+		cert = onboardCert
+	} else if deviceCertSet {
+		fmt.Printf("Using device cert\n")
+		cert = deviceCert
+	} else {
+		log.Fatalf("No device certificate for %v\n", operations)
+	}
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		ServerName:   serverName,
+		RootCAs:      caCertPool,
+		CipherSuites: []uint16{
+			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256},
+		// TLS 1.2 because we can
+		MinVersion: tls.VersionTLS12,
+	}
+	tlsConfig.BuildNameToCertificate()
+
+	var addInfoDevice *types.AdditionalInfoDevice
+	if operations["lookupParam"] {
+		// Determine location information and use as AdditionalInfo
+		if myIP, err := ipinfo.MyIP(); err == nil {
+			addInfo := types.AdditionalInfoDevice{
+				UnderlayIP: myIP.IP,
+				Hostname:   myIP.Hostname,
+				City:       myIP.City,
+				Region:     myIP.Region,
+				Country:    myIP.Country,
+				Loc:        myIP.Loc,
+				Org:        myIP.Org,
+			}
+			addInfoDevice = &addInfo
+		}
+	}
+
+	var devUUID uuid.UUID
+
+	if operations["lookupParam"] || operations["selfRegister"] {
+		if _, err := os.Stat(uuidFileName); err != nil {
+			// Create and write with initial values
+			// XXX ignoring any error
+			devUUID, _ = uuid.NewV4()
+			b := []byte(fmt.Sprintf("%s\n", devUUID))
+			err = ioutil.WriteFile(uuidFileName, b, 0644)
+			if err != nil {
+				log.Fatal("WriteFile", err, uuidFileName)
+			}
+			fmt.Printf("Created UUID %s\n", devUUID)
+		} else {
+			b, err := ioutil.ReadFile(uuidFileName)
+			if err != nil {
+				log.Fatal("ReadFile", err, uuidFileName)
+			}
+			uuidStr := strings.TrimSpace(string(b))
+			devUUID, err = uuid.FromString(uuidStr)
+			if err != nil {
+				log.Fatal("uuid.FromString", err, string(b))
+			}
+			fmt.Printf("Read UUID %s\n", devUUID)
+		}
+	}
+
+	if operations["ping"] {
+		if oldFlag {
+			log.Printf("XXX ping not supported using %s\n",
+				serverName)
+			return
+		}
+		url := "/api/v1/edgedevice/ping"
+		retryCount := 0
+		done := false
+		var delay time.Duration
+		for !done {
+			time.Sleep(delay)
+			done = myGet(tlsConfig, url, retryCount)
+			if done {
+				continue
+			}
+			retryCount += 1
+			delay = 2 * (delay + time.Second)
+			if delay > maxDelay {
+				delay = maxDelay
+			}
+			log.Printf("Retrying ping in %d seconds\n",
+				delay/time.Second)
+		}
+	}
+
 	if operations["selfRegister"] {
 		retryCount := 0
 		done := false
@@ -505,62 +715,6 @@ func main() {
 			log.Printf("Retrying selfRegister in %d seconds\n",
 				delay/time.Second)
 		}
-	}
-
-	if !deviceCertSet {
-		return
-	}
-	// Setup HTTPS client for deviceCert
-	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{deviceCert},
-		ServerName:   serverName,
-		RootCAs:      caCertPool,
-		CipherSuites: []uint16{
-			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256},
-		// TLS 1.2 because we can
-		MinVersion: tls.VersionTLS12,
-	}
-	tlsConfig.BuildNameToCertificate()
-
-	var addInfoDevice *types.AdditionalInfoDevice
-	if operations["lookupParam"] || operations["updateHwStatus"] {
-		// Determine location information and use as AdditionalInfo
-		if myIP, err := ipinfo.MyIP(); err == nil {
-			addInfo := types.AdditionalInfoDevice{
-				UnderlayIP: myIP.IP,
-				Hostname:   myIP.Hostname,
-				City:       myIP.City,
-				Region:     myIP.Region,
-				Country:    myIP.Country,
-				Loc:        myIP.Loc,
-				Org:        myIP.Org,
-			}
-			addInfoDevice = &addInfo
-		}
-	}
-
-	var devUUID uuid.UUID
-	if _, err := os.Stat(uuidFileName); err != nil {
-		// Create and write with initial values
-		devUUID, err = uuid.NewV4()
-		b := []byte(fmt.Sprintf("%s\n", devUUID))
-		err = ioutil.WriteFile(uuidFileName, b, 0644)
-		if err != nil {
-			log.Fatal("WriteFile", err, uuidFileName)
-		}
-		fmt.Printf("Created UUID %s\n", devUUID)
-	} else {
-		b, err := ioutil.ReadFile(uuidFileName)
-		if err != nil {
-			log.Fatal("ReadFile", err, uuidFileName)
-		}
-		uuidStr := strings.TrimSpace(string(b))
-		devUUID, err = uuid.FromString(uuidStr)
-		if err != nil {
-			log.Fatal("uuid.FromString", err, string(b))
-		}
-		fmt.Printf("Read UUID %s\n", devUUID)
 	}
 
 	if operations["lookupParam"] {
@@ -660,17 +814,9 @@ func main() {
 		if publicIP, err := addrStringToIP(device.ClientAddr); err != nil {
 			log.Printf("Failed to convert %s, error %s\n",
 				device.ClientAddr, err)
-			// Remove any existing/old file
-			_ = os.Remove(clientIPFileName)
 		} else {
 			nat := !IsMyAddress(publicIP)
 			fmt.Printf("NAT %v, publicIP %v\n", nat, publicIP)
-			// Store clientIP in file for device-steps.sh
-			b := []byte(fmt.Sprintf("%s\n", publicIP))
-			err = ioutil.WriteFile(clientIPFileName, b, 0644)
-			if err != nil {
-				log.Fatal("WriteFile", err, clientIPFileName)
-			}
 		}
 
 		// Write an AppNetworkConfig for the ZedManager application
@@ -712,83 +858,6 @@ func main() {
 			matches[0].Type = "eidset"
 		}
 		writeNetworkConfig(&config, zedrouterConfigFileName)
-	}
-	// XXX remove later
-	if operations["updateHwStatus"] {
-		if !oldFlag {
-			log.Printf("XXX updateHwStatus not yet supported using %s\n",
-				serverName)
-			return
-		}
-		// Load file for upload
-		buf, err := ioutil.ReadFile(hwStatusFileName)
-		if err != nil {
-			log.Fatal(err)
-		}
-		// Input is in json format; parse and add additionalInfo
-		b := bytes.NewBuffer(buf)
-		// parsing DeviceHwStatus json payload
-		hwStatus := &types.DeviceHwStatus{}
-		if err := json.NewDecoder(b).Decode(hwStatus); err != nil {
-			log.Fatal("Error decoding DeviceHwStatus: ", err)
-		}
-		if addInfoDevice != nil {
-			hwStatus.AdditionalInfoDevice = *addInfoDevice
-		}
-		b = new(bytes.Buffer)
-		json.NewEncoder(b).Encode(hwStatus)
-
-		done := false
-		retryCount := 0
-		var delay time.Duration
-		for !done {
-			time.Sleep(delay)
-			done = oldMyPost(tlsConfig, retryCount,
-				"/rest/update-hw-status", b)
-			if done {
-				continue
-			}
-			retryCount += 1
-			delay = 2 * (delay + time.Second)
-			if delay > maxDelay {
-				delay = maxDelay
-			}
-			log.Printf("Retrying updateHwStatus in %d seconds\n",
-				delay/time.Second)
-		}
-	}
-	// XXX remove later
-	if operations["updateSwStatus"] {
-		if !oldFlag {
-			log.Printf("XXX updateSwStatus not yet supported using %s\n",
-				serverName)
-			return
-		}
-		// Load file for upload
-		buf, err := ioutil.ReadFile(swStatusFileName)
-		if err != nil {
-			log.Fatal(err)
-		}
-		// Input is in json format
-		b := bytes.NewBuffer(buf)
-		done := false
-		retryCount := 0
-		var delay time.Duration
-		for !done {
-			time.Sleep(delay)
-			done = oldMyPost(tlsConfig, retryCount,
-				"/rest/update-sw-status", b)
-			if done {
-				continue
-			}
-			retryCount += 1
-			delay = 2 * (delay + time.Second)
-			if delay > maxDelay {
-				delay = maxDelay
-			}
-			log.Printf("Retrying updateSwStatus in %d seconds\n",
-				delay/time.Second)
-		}
 	}
 }
 

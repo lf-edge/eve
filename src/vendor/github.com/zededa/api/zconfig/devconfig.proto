@@ -29,17 +29,43 @@ message DeviceLispDetails {
         bytes EidAllocationPrefix = 8;
         uint32 EidAllocationPrefixLen = 9;
         string ClientAddr = 10;
+        bool Experimental = 20;	// true: Zededa dataplane, false [default]: lispers.net dataplane
+}
+
+// Device Operational Commands Semantic
+// For rebooting device,  command=Reset, counter = counter+delta, desiredState = on
+// For poweroff device,  command=Reset, counter = counter+delta, desiredState = off
+// For backup at midnight, command=Backup, counter = counter+delta, desiredState=n/a, opsTime = mm/dd/yy:hh:ss
+// Current implementation does support only single command outstanding for each type
+// In future can be extended to have more scheduled events
+//
+message DeviceOpsCmd {
+	uint32 counter = 2;
+	bool desiredState = 3;
+	// FIXME: change to timestamp, once we move to gogo proto
+	string opsTime = 4;
 }
 
 message EdgeDevConfig {
 	UUIDandVersion id = 1;
 	bytes devConfigSha256 = 2;
 	bytes devConfigSignature = 3;
-	
+
 	repeated AppInstanceConfig apps   = 4;
 	repeated NetworkConfig networks = 5;
 	repeated DatastoreConfig datastores = 6;
 
 	DeviceLispDetails lispInfo = 7;
 	repeated BaseOSConfig base = 8;	// BaseOSImage config block
+	DeviceOpsCmd reboot = 9;
+	DeviceOpsCmd backup = 10;
+}
+
+message ConfigRequest {
+	string configHash = 1;
+}
+
+message ConfigResponse {
+	EdgeDevConfig config = 1;
+	string configHash = 2;
 }

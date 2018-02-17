@@ -14,6 +14,7 @@ import (
 
 var cache *types.MapCacheTable
 var decaps *types.DecapTable
+var upLinks types.Uplinks
 
 var pktBuf []byte
 
@@ -60,10 +61,53 @@ func InitMapCache() {
 		log.Printf("FIB ipv6 raw socket creation failed.\n")
 	}
 	// XXX We should close these sockets somewhere. Where?
+
+	// Initialize the uplink addresses
+	SetUplinkAddrs(net.IP{}, net.IP{})
 }
 
 func InitDecapTable() {
 	decaps = newDecapTable()
+}
+
+// Control thread looks for changes to /var/run/zedrouter/DeviceNetworkStatus/global.json
+// and selects uplinks for ipv4 & ipv6 addresses. We store these uplink addresses at a 
+// global location. ITR threads will make READ accesses for uplink addresses simultaneously.
+// Control thread can change these uplink addresses any time. Since it is not possible to 
+// change all the fields of UpLinkAddress structure, we allocate a new structure
+// (initialize it) and then atomically change the global pointer such that it points
+// to the newly allocated data structure.
+//
+// At the same time ITR threads atomically load the pointer to global location. Atomic read
+// ensures that the pointer value is loaded from memory location rather from local storage
+// (register).
+func SetUplinkAddrs(ipv4 net.IP, ipv6 net.IP) {
+	upLinks.Lock()
+	defer upLinks.Unlock()
+	uplinks := new(types.UplinkAddress)
+	if uplinks == nil {
+		log.Fatal("SetUplinkAddrs: Uplink address memory allocation failed.\n")
+	}
+	uplinks.Ipv4 = ipv4
+	uplinks.Ipv6 = ipv6
+	log.Printf("XXXXX Storing pointer %p with ip4 %s, ipv6 %s\n",
+		&uplinks, uplinks.Ipv4, uplinks.Ipv6)
+	upLinks.UpLinks = uplinks
+}
+
+func GetIPv4UplinkAddr() net.IP {
+	upLinks.RLock()
+	defer upLinks.RUnlock()
+	uplinks := upLinks.UpLinks
+	log.Printf("XXXXX Read pointer %p\n", uplinks)
+	return uplinks.Ipv4
+}
+
+func GetIPv6UplinkAddr() net.IP {
+	upLinks.RLock()
+	defer upLinks.RUnlock()
+	uplinks := upLinks.UpLinks
+	return uplinks.Ipv6
 }
 
 func makeMapCacheKey(iid uint32, eid net.IP) types.MapCacheKey {
@@ -381,8 +425,8 @@ func ShowDecapKeys() {
 func StatsThread(puntChannel chan []byte) {
 	log.Printf("Starting statistics thread.\n")
 	for {
-		// We collect and transport statistic to lispers.net every 30 seconds
-		time.Sleep(30 * time.Second)
+		// We collect and transport statistic to lispers.net every 10 seconds
+		time.Sleep(10 * time.Second)
 
 		// take read lock of map cache table
 		// and go through each entry while preparing statistics message
@@ -399,7 +443,12 @@ func StatsThread(puntChannel chan []byte) {
 
 			var eidStats types.EidStatsEntry
 			eidStats.InstanceId = strconv.FormatUint(uint64(key.IID), 10)
-			eidStats.EidPrefix = key.Eid
+			prefixLength := "/128"
+			if key.Eid == "::" {
+				prefixLength = "/0"
+			}
+			eidStats.EidPrefix = key.Eid + prefixLength
+			eidStats.Rlocs = []types.RlocStatsEntry{}
 			for _, rloc := range value.Rlocs {
 
 				var rlocStats types.RlocStatsEntry

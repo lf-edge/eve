@@ -13,6 +13,7 @@ type UrlCloudCfg struct {
 	ConfigUrl  string
 	MetricsUrl string
 	StatusUrl  string
+	LogUrl     string
 }
 
 // top level config container
@@ -130,12 +131,16 @@ type StorageConfig struct {
 	Format  string // Default "raw"; could be raw, qcow, qcow2, vhd
 	Devtype string // Default ""; could be e.g. "cdrom"
 	Target  string // Default "" is interpreted as "disk"
+
+	// XXX FinalObjDir shouldn't be setable from the cloud. Local to
+	// device.
+	FinalObjDir string // installation dir, may differ from verified
 }
 
 type StorageStatus struct {
 	DownloadURL        string
 	ImageSha256        string  // sha256 of immutable image
-	Target		   string  // Default "" is interpreted as "disk"
+	Target             string  // Default "" is interpreted as "disk"
 	State              SwState // DOWNLOADED etc
 	HasDownloaderRef   bool    // Reference against downloader to clean up
 	HasVerifierRef     bool    // Reference against verifier to clean up

@@ -25,13 +25,13 @@ type ZedStatus interface {
 	CheckPendingDelete() bool
 }
 
-type configCreateHandler func(statusFilename string, config interface{})
-type configModifyHandler func(statusFilename string, config interface{},
+type configCreateHandler func(ctx interface{}, key string, config interface{})
+type configModifyHandler func(ctx interface{}, key string, config interface{},
 	status interface{})
-type configDeleteHandler func(statusFilename string, status interface{})
-type ConfigRestartHandler func(bool)
+type configDeleteHandler func(ctx interface{}, key string, status interface{})
+type ConfigRestartHandler func(ctx interface{}, restarted bool)
 
-func HandleConfigStatusEvent(change string,
+func HandleConfigStatusEvent(change string, ctx interface{},
 	configDirname string, statusDirname string,
 	config ZedConfig, status ZedStatus,
 	handleCreate configCreateHandler, handleModify configModifyHandler,
@@ -46,7 +46,7 @@ func HandleConfigStatusEvent(change string,
 	if fileName == "restart" && operation == "M" {
 		log.Printf("Found restart file\n")
 		if handleRestart != nil {
-			(*handleRestart)(true)
+			(*handleRestart)(ctx, true)
 		}
 		return
 	}
@@ -77,7 +77,7 @@ func HandleConfigStatusEvent(change string,
 		}
 		statusName := statusDirname + "/" + fileName
 		// Note that we might have a Pending* at this point in time
-		handleDelete(statusName, status)
+		handleDelete(ctx, statusName, status)
 		return
 	}
 	if operation != "M" {
@@ -102,7 +102,7 @@ func HandleConfigStatusEvent(change string,
 	if _, err := os.Stat(statusFile); err != nil {
 		// File does not exist in status hence new
 		statusName := statusDirname + "/" + fileName
-		handleCreate(statusName, config)
+		handleCreate(ctx, statusName, config)
 		return
 	}
 	// Read and check status
@@ -124,28 +124,29 @@ func HandleConfigStatusEvent(change string,
 	// have a Config.
 	if status.CheckPendingAdd() {
 		statusName := statusDirname + "/" + fileName
-		handleCreate(statusName, config)
+		handleCreate(ctx, statusName, config)
 		return
 	}
 	if status.CheckPendingDelete() {
 		statusName := statusDirname + "/" + fileName
-		handleDelete(statusName, status)
+		handleDelete(ctx, statusName, status)
 		return
 	}
 	if status.CheckPendingModify() {
 		statusName := statusDirname + "/" + fileName
-		handleModify(statusName, config, status)
+		handleModify(ctx, statusName, config, status)
 		return
 	}
 	statusName := statusDirname + "/" + fileName
-	handleModify(statusName, config, status)
+	handleModify(ctx, statusName, config, status)
 }
 
-type statusCreateHandler func(statusFilename string, status interface{})
-type statusDeleteHandler func(statusFilename string)
-type StatusRestartHandler func(bool)
+type statusCreateHandler func(ctx interface{}, key string, status interface{})
+type statusDeleteHandler func(ctx interface{}, key string)
+type StatusRestartHandler func(ctx interface{}, restarted bool)
 
-func HandleStatusEvent(change string, statusDirname string, status interface{},
+func HandleStatusEvent(change string, ctx interface{},
+	statusDirname string, status interface{},
 	statusCreateFunc statusCreateHandler,
 	statusDeleteFunc statusDeleteHandler,
 	handleRestart *StatusRestartHandler) {
@@ -158,7 +159,7 @@ func HandleStatusEvent(change string, statusDirname string, status interface{},
 	if fileName == "restarted" && operation == "M" {
 		log.Printf("Found restarted file\n")
 		if handleRestart != nil {
-			(*handleRestart)(true)
+			(*handleRestart)(ctx, true)
 		}
 		return
 	}
@@ -171,7 +172,7 @@ func HandleStatusEvent(change string, statusDirname string, status interface{},
 	// Remove .json from name */
 	name := strings.Split(fileName, ".")
 	if operation == "D" {
-		statusDeleteFunc(name[0])
+		statusDeleteFunc(ctx, name[0])
 		return
 	}
 	if operation != "M" {
@@ -189,5 +190,5 @@ func HandleStatusEvent(change string, statusDirname string, status interface{},
 			err, status, statusFile)
 		return
 	}
-	statusCreateFunc(name[0], status)
+	statusCreateFunc(ctx, name[0], status)
 }

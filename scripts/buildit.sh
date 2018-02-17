@@ -23,13 +23,14 @@ else
 	BUILD_VERSION=${VERSION}-${GIT_BRANCH}${EXTRA_VERSION}
 fi
 echo "Building version ${BUILD_VERSION}"
-echo "all: ${BUILD_VERSION}" >etc/version_tag
+mkdir -p var/tmp/zededa/
+echo "all: ${BUILD_VERSION}" >var/tmp/zededa/version_tag
 
 [ -d bin ] || mkdir bin
 [ -d bin/linux_x86_64 ] || mkdir bin/linux_x86_64
 [ -d bin/linux_arm64 ] || mkdir bin/linux_arm64
 
-APPS="downloader verifier client server register zedrouter domainmgr identitymgr zedmanager eidregister zedagent dataplane"
+APPS="ledmanager downloader verifier client server register zedrouter domainmgr identitymgr zedmanager eidregister zedagent dataplane"
 if /bin/true; then
     cmdline=""
     for app in $APPS; do
@@ -58,6 +59,7 @@ TMPDIR=/tmp/zededa-build.$$
 TYPE=linux_arm64
 rm -rf $TMPDIR
 # Setup for untaring in /opt
+# zenbuild will move /opt/zededa/etc to /config
 mkdir -p $TMPDIR/zededa/etc $TMPDIR/zededa/bin
 cp -p README $TMPDIR/zededa/bin/
 cp -p etc/* $TMPDIR/zededa/etc/

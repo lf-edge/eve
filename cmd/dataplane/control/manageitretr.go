@@ -6,7 +6,7 @@ import (
 	"github.com/zededa/go-provision/dataplane/itr"
 	"github.com/zededa/go-provision/types"
 	"log"
-	"syscall"
+	//"syscall"
 )
 
 type ThreadEntry struct {
@@ -15,11 +15,6 @@ type ThreadEntry struct {
 }
 
 var threadTable map[string]ThreadEntry
-var etrRunStatus types.EtrRunStatus
-
-func InitEtrRunStatus() {
-	etrRunStatus = types.EtrRunStatus{-1, nil, -1}
-}
 
 func InitThreadTable() {
 	threadTable = make(map[string]ThreadEntry)
@@ -89,23 +84,9 @@ func ManageItrThreads(interfaces Interfaces) {
 }
 
 func ManageETRThread(port int) {
-	// return if the ephemeral port that we currently use is same
-	if etrRunStatus.EphPort == port {
-		return
-	}
-	// Destroy the previous ETR run state
+	etr.HandleEtrEphPort(port)
+}
 
-	// NAT etr packet capture
-	if etrRunStatus.Ring != nil {
-		etrRunStatus.Ring.Disable()
-		etrRunStatus.Ring.Close()
-	}
-
-	if etrRunStatus.RingFD != -1 {
-		syscall.Close(etrRunStatus.RingFD)
-	}
-	ring, fd := etr.StartEtrNat(port)
-	etrRunStatus.Ring = ring
-	etrRunStatus.RingFD = fd
-	etrRunStatus.EphPort = port
+func ManageEtrDNS(deviceNetworkStatus types.DeviceNetworkStatus) {
+	etr.HandleDeviceNetworkChange(deviceNetworkStatus)
 }

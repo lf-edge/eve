@@ -160,21 +160,21 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 	var padLen uint32 = 0
 	var icvKey []byte
 
+	srcAddr := GetIPv4UplinkAddr()
+	log.Printf("XXXXX UPLINK address is %s.\n", srcAddr)
 	// XXX
 	// Should we have a static per-thread entry for this header?
 	// Can we have it globally and re-use?
-	/*
-		srcAddr := net.ParseIP("0.0.0.0")
-		ip := &layers.IPv4{
-			DstIP:    rloc.Rloc,
-			SrcIP:    srcAddr,
-			Flags:    0,
-			TTL:      64,
-			IHL:      5,
-			Version:  4,
-			Protocol: layers.IPProtocolUDP,
-		}
-	*/
+	//srcAddr := net.ParseIP("0.0.0.0")
+	ip := &layers.IPv4{
+		DstIP:    rloc.Rloc,
+		SrcIP:    srcAddr,
+		Flags:    0,
+		TTL:      64,
+		IHL:      5,
+		Version:  4,
+		Protocol: layers.IPProtocolUDP,
+	}
 
 	// Check if the RLOC expects encryption
 	if rloc.KeyCount != 0 {
@@ -204,10 +204,9 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 		if ok == false {
 			keyId = 0
 			useCrypto = false
+		} else {
+			log.Println("XXXXX Using CRYPTO")
 		}
-	}
-	if useCrypto == true {
-		log.Println("XXXXX Using CRYPTO")
 	}
 
 	// XXX
@@ -218,15 +217,16 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 	var srcPort uint16 = 0xC000
 	srcPort = (srcPort | (uint16(hash32) & 0x3FFF))
 
+	udpLen := types.UDPHEADERLEN + types.LISPHEADERLEN + capLen - types.ETHHEADERLEN
 	udp := &layers.UDP{
 		// XXX Source port should be a hash from packet
 		// Hard coding for now.
 		SrcPort: layers.UDPPort(srcPort),
 		DstPort: 4341,
-		Length:  uint16(16 + capLen - 14),
+		Length:  uint16(udpLen),
 	}
 
-	//udp.SetNetworkLayerForChecksum(ip)
+	udp.SetNetworkLayerForChecksum(ip)
 
 	// Create a custom LISP header
 	lispHdr := make([]byte, 8)
@@ -251,16 +251,16 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 		FixLengths:       false,
 	}
 
+	if err := gopacket.SerializeLayers(buf, opts, ip, udp); err != nil {
+		log.Printf("Failed serializing packet: %s", err)
+		return
+	}
 	/*
-		if err := gopacket.SerializeLayers(buf, opts, ip, udp); err != nil {
-			log.Printf("Failed serializing packet: %s", err)
-			return
-		}
-	*/
 	if err := gopacket.SerializeLayers(buf, opts, udp); err != nil {
 		log.Printf("Failed serializing packet: %s", err)
 		return
 	}
+	*/
 
 	outerHdr := buf.Bytes()
 	outerHdr = append(outerHdr, lispHdr...)
@@ -276,13 +276,15 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 
 	// output slice starts after "offset" and the length of output slice
 	// will be len(outerHdr) + capture length - 14 (ethernet header)
-	offsetEnd := uint32(offset) + uint32(outerHdrLen) + capLen - 14
+	offsetEnd := uint32(offset) + uint32(outerHdrLen) + capLen - types.ETHHEADERLEN
 	if useCrypto == true {
 		// add IV length
-		offsetEnd = offsetEnd + aes.BlockSize + padLen + 20
+		offsetEnd = offsetEnd + aes.BlockSize + padLen + types.ICVLEN
 
 		// We do not include outer UDP header for ICV computation
-		computeAndWriteICV(pktBuf[offset+8:offsetEnd], icvKey)
+		icvStartOffset := offset + types.IP4HEADERLEN + types.UDPHEADERLEN
+		//computeAndWriteICV(pktBuf[offset+types.UDPHEADERLEN:offsetEnd], icvKey)
+		computeAndWriteICV(pktBuf[icvStartOffset:offsetEnd], icvKey)
 	}
 	//outputSlice := pktBuf[offset : uint32(offset)+uint32(outerHdrLen)+capLen-14]
 	outputSlice := pktBuf[offset:offsetEnd]

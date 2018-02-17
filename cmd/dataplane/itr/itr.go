@@ -32,8 +32,8 @@ func StartItrThread(threadName string,
 	}
 
 	// create raw socket pair for sending LISP packets out
-	fd4, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, syscall.IPPROTO_UDP)
-	//fd4, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
+	//fd4, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, syscall.IPPROTO_UDP)
+	fd4, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
 	if err != nil {
 		log.Printf("Failed creating IPv4 raw socket for %s: %s\n",
 			threadName, err)
@@ -53,10 +53,12 @@ func StartItrThread(threadName string,
 	if err != nil {
 		log.Printf("Disabling path MTU discovery failed: %s.\n", err)
 	}
+	/*
 	err = syscall.SetsockoptInt(fd4, syscall.IPPROTO_IP, syscall.IP_HDRINCL, 0)
 	if err != nil {
 		log.Printf("Disabling IP_HDRINCL failed: %s.\n", err)
 	}
+	*/
 	//*****
 
 	fd6, err := syscall.Socket(syscall.AF_INET6, syscall.SOCK_RAW, syscall.IPPROTO_RAW)

@@ -84,17 +84,9 @@ func writeEIDConfig(config types.EIDConfig,
 // Key is UUID:IID
 var EIDStatus map[string]types.EIDStatus
 
-func handleEIDStatusModify(statusFilename string,
+func handleEIDStatusModify(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
-	var status *types.EIDStatus
-
-	switch statusArg.(type) {
-	default:
-		log.Fatal("Can only handle EIDStatus")
-	case *types.EIDStatus:
-		status = statusArg.(*types.EIDStatus)
-	}
-
+	status := statusArg.(*types.EIDStatus)
 	key := fmt.Sprintf("%s:%d",
 		status.UUIDandVersion.UUID.String(), status.IID)
 	log.Printf("handleEIDStatusModify for %s\n", key)
@@ -134,7 +126,7 @@ func LookupEIDStatus(UUIDandVersion types.UUIDandVersion, IID uint32) (types.EID
 	}
 }
 
-func handleEIDStatusDelete(statusFilename string) {
+func handleEIDStatusDelete(ctxArg interface{}, statusFilename string) {
 	log.Printf("handleEIDStatusDelete for %s\n",
 		statusFilename)
 
