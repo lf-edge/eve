@@ -51,6 +51,12 @@ type AppInstanceConfig struct {
 	Activate            bool
 	OverlayNetworkList  []EIDOverlayConfig
 	UnderlayNetworkList []UnderlayNetworkConfig
+	IoAdapterList       []IoAdapter
+}
+
+type IoAdapter struct {
+	Type IoType
+	Name string // Short hand name such as "com"
 }
 
 func (config AppInstanceConfig) VerifyFilename(fileName string) bool {
@@ -65,11 +71,12 @@ func (config AppInstanceConfig) VerifyFilename(fileName string) bool {
 
 // Indexed by UUIDandVersion as above
 type AppInstanceStatus struct {
-	UUIDandVersion    UUIDandVersion
-	DisplayName       string
-	Activated         bool
-	StorageStatusList []StorageStatus
-	EIDList           []EIDStatusDetails
+	UUIDandVersion     UUIDandVersion
+	DisplayName        string
+	Activated          bool
+	ActivateInprogress bool // Needed for cleanup after failure
+	StorageStatusList  []StorageStatus
+	EIDList            []EIDStatusDetails
 	// Mininum state across all steps and all StorageStatus.
 	// INITIAL implies error.
 	State SwState

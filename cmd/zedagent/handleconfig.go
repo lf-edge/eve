@@ -101,22 +101,28 @@ func getCloudUrls() {
 // for each of the above buckets
 // XXX should the timers be randomized to avoid self-synchronization across
 // potentially lots of devices?
+// Combine with being able to change the timer intervals - generate at random
+// times between .3x and 1x
 func configTimerTask() {
 	iteration := 0
-	log.Println("starting config fetch timer task")
-	getLatestConfig(configUrl, iteration)
+	curPart := getCurrentPartition()
+	inProgressState, _ := isCurrentPartitionStateInProgress()
+
+	log.Printf("Config Fetch Task, curPart:%s, inProgress:%v\n",
+		curPart, inProgressState)
+	getLatestConfig(configUrl, iteration, &inProgressState)
 
 	ticker := time.NewTicker(time.Minute * configTickTimeout)
 
 	for range ticker.C {
 		iteration += 1
-		getLatestConfig(configUrl, iteration)
+		getLatestConfig(configUrl, iteration, &inProgressState)
 	}
 }
 
 // Each iteration we try a different uplink. For each uplink we try all
 // its local IP addresses until we get a success.
-func getLatestConfig(configUrl string, iteration int) {
+func getLatestConfig(configUrl string, iteration int, partState *bool) {
 	intf, err := types.GetUplinkAny(deviceNetworkStatus, iteration)
 	if err != nil {
 		log.Printf("getLatestConfig: %s\n", err)
@@ -158,6 +164,17 @@ func getLatestConfig(configUrl string, iteration int) {
 			continue
 		}
 
+		log.Printf("current partition-state inProgress:%v\n", *partState)
+		// now cloud connectivity is good, mark partition state
+		if *partState == true {
+			ret, err := markPartitionStateActive()
+			if ret == true {
+				*partState = false
+			} else {
+				log.Println(err)
+			}
+		}
+
 		if connState.OCSPResponse == nil ||
 			!stapledCheck(connState) {
 			if connState.OCSPResponse == nil {
@@ -173,6 +190,8 @@ func getLatestConfig(configUrl string, iteration int) {
 			// types.UpdateLedManagerConfig(10)
 			// continue
 		}
+		// Even if we get a 404 we consider the connection a success
+		zedCloudSuccess(intf)
 
 		if err := validateConfigMessage(configUrl, intf, localTCPAddr,
 			resp); err != nil {
@@ -189,6 +208,7 @@ func getLatestConfig(configUrl string, iteration int) {
 			types.UpdateLedManagerConfig(3)
 			return
 		}
+
 		// Inform ledmanager about config received from cloud
 		types.UpdateLedManagerConfig(4)
 
@@ -197,6 +217,7 @@ func getLatestConfig(configUrl string, iteration int) {
 	}
 	log.Printf("All attempts to connect to %s using intf %s failed\n",
 		configUrl, intf)
+	zedCloudFailure(intf)
 }
 
 func validateConfigMessage(configUrl string, intf string,
@@ -212,7 +233,7 @@ func validateConfigMessage(configUrl string, intf string,
 				configUrl, intf, localTCPAddr)
 		}
 	default:
-		fmt.Printf("validateConfigMessage %s using intf %s source %v statuscode %d %s\n",
+		log.Printf("validateConfigMessage %s using intf %s source %v statuscode %d %s\n",
 			configUrl, intf, localTCPAddr,
 			r.StatusCode, http.StatusText(r.StatusCode))
 		if debug {
@@ -318,6 +339,8 @@ func checkCurrentAppFiles(config *zconfig.EdgeDevConfig) {
 				if err != nil {
 					log.Println("Old config: ", err)
 				}
+				// also remove the certifiates holder config
+				os.Remove(zedagentCertObjConfigDirname + "/" + curAppFilename)
 			}
 		}
 	}
@@ -354,6 +377,10 @@ func checkCurrentBaseOsFiles(config *zconfig.EdgeDevConfig) {
 				if err != nil {
 					log.Printf("Old config:%v\n", err)
 				}
+				// remove the certificates holder config
+				os.Remove(zedagentCertObjConfigDirname + "/" + curBaseOsFilename)
+				// also remove the partition info holder config
+				os.Remove(configDir + "/" + curBaseOsFilename)
 			}
 		}
 	}

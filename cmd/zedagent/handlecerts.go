@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/zededa/go-provision/types"
+	"io"
 	"io/ioutil"
 	"log"
 	"os"
@@ -133,7 +134,7 @@ func certObjHandleStatusUpdate(uuidStr string) {
 func doCertObjStatusUpdate(uuidStr string, config types.CertObjConfig,
 	status *types.CertObjStatus) bool {
 
-	log.Printf("doCertObjUpdate for %s\n", uuidStr)
+	log.Printf("doCertObjStatusUpdate for %s\n", uuidStr)
 
 	changed, proceed := doCertObjInstall(uuidStr, config, status)
 	if !proceed {
@@ -141,6 +142,8 @@ func doCertObjStatusUpdate(uuidStr string, config types.CertObjConfig,
 	}
 
 	log.Printf("doCertObjStatusUpdate for %s, Done\n", uuidStr)
+	// call baseOs to pick up the certs
+	baseOsHandleStatusUpdate(uuidStr)
 	return changed
 }
 
@@ -190,7 +193,11 @@ func doCertObjInstall(uuidStr string, config types.CertObjConfig,
 		status.State = types.INSTALLED
 		changed = true
 	}
-	log.Printf("doCertObjInstall for %s, Done %d\n", uuidStr, changed)
+
+	statusFilename := fmt.Sprintf("%s/%s.json",
+		zedagentCertObjStatusDirname, uuidStr)
+	writeCertObjStatus(status, statusFilename)
+	log.Printf("doCertObjInstall for %s, Done %v\n", uuidStr, changed)
 	return changed, true
 }
 
@@ -204,8 +211,10 @@ func checkCertObjStorageDownloadStatus(uuidStr string,
 	status.Error = allErrors
 	status.ErrorTime = errorTime
 
+	log.Printf("checkCertObjDownloaStatus %s, %v\n", uuidStr, minState)
+
 	if minState == types.INITIAL {
-		log.Printf("checkCertObjDownloadStatus for %s, Download erro\n", uuidStr)
+		log.Printf("checkCertObjDownloadStatus for %s, Download error\n", uuidStr)
 		return changed, false
 	}
 
@@ -330,4 +339,51 @@ func writeCertObjStatus(status *types.CertObjStatus, statusFilename string) {
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+func installCertObject(srcFilename string, dstDirname string, safename string) error {
+
+	// create the destination directory
+	if _, err := os.Stat(dstDirname); err != nil {
+		if err := os.MkdirAll(dstDirname, 0700); err != nil {
+			log.Fatal("installCertObject: ", err, dstDirname)
+		}
+	}
+
+	dstFilename := dstDirname + "/" + types.SafenameToFilename(safename)
+
+	if _, err := os.Stat(dstFilename); err != nil {
+
+		log.Printf("installCertObject: writing %s to %s\n",
+			srcFilename, dstFilename)
+
+		// XXX:FIXME its copy, not move
+		// need to refactor the certs placement properly
+		// this should be on safename or, holder object uuid context
+		_, err := copyFile(srcFilename, dstFilename)
+		return err
+	}
+	return nil
+}
+
+func copyFile(srcFilename string, dstFilename string) (bool, error) {
+
+	in, err := os.Open(srcFilename)
+	if err != nil {
+		return false, err
+	}
+	defer in.Close()
+
+	out, err := os.Create(dstFilename)
+	if err != nil {
+		return false, err
+	}
+	defer out.Close()
+
+	if _, err = io.Copy(out, in); err != nil {
+		return false, err
+	}
+
+	err = out.Sync()
+	return true, err
 }

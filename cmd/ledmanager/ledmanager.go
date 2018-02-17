@@ -2,7 +2,7 @@
 // All rights reserved.
 
 //watcher tells ledmanager about
-//change in ledmanager status file,
+//change in ledmanager config file,
 //which contains number of times
 //LED has to blink on any device
 //ledmanager notify each event by
@@ -23,6 +23,7 @@ import (
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
+	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
@@ -58,14 +59,16 @@ func main() {
 	}
 	log.Printf("Starting ledmanager\n")
 
-	model := hardware.HardwareModel()
+	model := hardware.GetHardwareModel()
 	fmt.Printf("Got HardwareModel %s\n", model)
 
 	var blinkFunc Blink200msFunc
-	// XXX case insensitive matching?
 	// XXX add table when we have more hardware models
 	if model == "Supermicro.SYS-E100-9APP" {
 		blinkFunc = ExecuteDDCmd
+	} else if model == "hisilicon,hikey.hisilicon,hi6220." {
+		InitWifiLedCmd()
+		blinkFunc = ExecuteWifiLedCmd
 	} else {
 		log.Printf("No blink function for %s\n", model)
 		blinkFunc = DummyCmd
@@ -170,5 +173,37 @@ func ExecuteDDCmd() {
 	}
 	if debug {
 		log.Printf("ddinfo: %s\n", stdout)
+	}
+}
+
+const (
+	ledFilename        = "/sys/class/leds/wifi_active"
+	triggerFilename    = ledFilename + "/trigger"
+	brightnessFilename = ledFilename + "/brightness"
+)
+
+// Disable existimg trigger
+// Write "none\n" to /sys/class/leds/wifi_active/trigger
+func InitWifiLedCmd() {
+	log.Printf("InitWifiLedCmd\n")
+	b := []byte("none")
+	err := ioutil.WriteFile(triggerFilename, b, 0644)
+	if err != nil {
+		log.Fatal(err, triggerFilename)
+	}
+}
+
+// Enable the Wifi led for 200ms
+func ExecuteWifiLedCmd() {
+	b := []byte("1")
+	err := ioutil.WriteFile(brightnessFilename, b, 0644)
+	if err != nil {
+		log.Fatal(err, brightnessFilename)
+	}
+	time.Sleep(200 * time.Millisecond)
+	b = []byte("0")
+	err = ioutil.WriteFile(brightnessFilename, b, 0644)
+	if err != nil {
+		log.Fatal(err, brightnessFilename)
 	}
 }

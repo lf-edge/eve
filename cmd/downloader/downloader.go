@@ -39,7 +39,6 @@ const (
 	zedRunDirname         = "/var/run"
 	baseDirname           = zedBaseDirname + "/" + moduleName
 	runDirname            = zedRunDirname + "/" + moduleName
-	certsDirname          = "/var/tmp/zedmanager/certs"
 	persistDir            = "/persist"
 	objectDownloadDirname = persistDir + "/downloads"
 	DNSDirname            = "/var/run/zedrouter/DeviceNetworkStatus"
@@ -93,14 +92,14 @@ func main() {
 	ctx := downloaderContext{}
 	ctx.dCtx = downloaderInit()
 
-	deviceStatusChanges := make(chan string)
-	go watch.WatchStatus(DNSDirname, deviceStatusChanges)
+	networkStatusChanges := make(chan string)
+	go watch.WatchStatus(DNSDirname, networkStatusChanges)
 
 	// First wait to have some uplinks with addresses
 	// Looking at any uplinks since we can do baseOS download over all
 	for types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus) == 0 {
 		select {
-		case change := <-deviceStatusChanges:
+		case change := <-networkStatusChanges:
 			watch.HandleStatusEvent(change, dummyContext{},
 				DNSDirname,
 				&types.DeviceNetworkStatus{},
@@ -127,49 +126,42 @@ func main() {
 	for {
 		select {
 
-		case change := <-deviceStatusChanges:
-			{
-				watch.HandleStatusEvent(change, dummyContext{},
-					DNSDirname,
-					&types.DeviceNetworkStatus{},
-					handleDNSModify, handleDNSDelete,
-					nil)
-			}
+		case change := <-networkStatusChanges:
+			watch.HandleStatusEvent(change, dummyContext{},
+				DNSDirname,
+				&types.DeviceNetworkStatus{},
+				handleDNSModify, handleDNSDelete,
+				nil)
+
+		case change := <-certObjChanges:
+			watch.HandleConfigStatusEvent(change, &ctx,
+				certObjConfigDirname,
+				certObjStatusDirname,
+				&types.DownloaderConfig{},
+				&types.DownloaderStatus{},
+				handleCertObjCreate,
+				handleCertObjModify,
+				handleCertObjDelete, nil)
 
 		case change := <-appImgChanges:
-			{
-				watch.HandleConfigStatusEvent(change, &ctx,
-					appImgConfigDirname,
-					appImgStatusDirname,
-					&types.DownloaderConfig{},
-					&types.DownloaderStatus{},
-					handleAppImgObjCreate,
-					handleAppImgObjModify,
-					handleAppImgObjDelete, nil)
-			}
+			watch.HandleConfigStatusEvent(change, &ctx,
+				appImgConfigDirname,
+				appImgStatusDirname,
+				&types.DownloaderConfig{},
+				&types.DownloaderStatus{},
+				handleAppImgObjCreate,
+				handleAppImgObjModify,
+				handleAppImgObjDelete, nil)
 
 		case change := <-baseOsChanges:
-			{
-				watch.HandleConfigStatusEvent(change, &ctx,
-					baseOsConfigDirname,
-					baseOsStatusDirname,
-					&types.DownloaderConfig{},
-					&types.DownloaderStatus{},
-					handleBaseOsObjCreate,
-					handleBaseOsObjModify,
-					handleBaseOsObjDelete, nil)
-			}
-		case change := <-certObjChanges:
-			{
-				watch.HandleConfigStatusEvent(change, &ctx,
-					certObjConfigDirname,
-					certObjStatusDirname,
-					&types.DownloaderConfig{},
-					&types.DownloaderStatus{},
-					handleCertObjCreate,
-					handleCertObjModify,
-					handleCertObjDelete, nil)
-			}
+			watch.HandleConfigStatusEvent(change, &ctx,
+				baseOsConfigDirname,
+				baseOsStatusDirname,
+				&types.DownloaderConfig{},
+				&types.DownloaderStatus{},
+				handleBaseOsObjCreate,
+				handleBaseOsObjModify,
+				handleBaseOsObjDelete, nil)
 		}
 	}
 }
@@ -491,12 +483,6 @@ func downloaderInit() *zedUpload.DronaCtx {
 }
 
 func initializeDirs() {
-
-	if _, err := os.Stat(certsDirname); err != nil {
-		if err := os.MkdirAll(certsDirname, 0700); err != nil {
-			log.Fatal(err)
-		}
-	}
 
 	// Remove any files which didn't make it past the verifier.
 	// Though verifier owns it, remove them for calculating the
@@ -897,7 +883,7 @@ func handleSyncOpResponse(objType string, config types.DownloaderConfig,
 	// XXX Compare against MaxSize and reject? Already wasted the space?
 	status.Size = uint((info.Size() + 1023) / 1024)
 
-	if status.Size > config.MaxSize {
+	if config.MaxSize != 0 && status.Size > config.MaxSize {
 		// Delete file
 		errString := fmt.Sprintf("Size exceeds MaxSize; %d vs. %d for %s\n",
 			status.Size, config.MaxSize, status.DownloadURL)
@@ -935,7 +921,6 @@ func handleDNSModify(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
 	status := statusArg.(*types.DeviceNetworkStatus)
 
-	// XXX from context with manufacturerModel? NO. That's for DNC
 	if statusFilename != "global" {
 		fmt.Printf("handleDNSModify: ignoring %s\n", statusFilename)
 		return

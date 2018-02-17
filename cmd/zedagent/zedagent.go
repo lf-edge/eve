@@ -1,4 +1,4 @@
-// Copyright (c) 2017 Zededa, Inc.
+// Copyright (c) 2017-2018 Zededa, Inc.
 // All rights reserved.
 
 // zedAgent interfaces with zedcloud for
@@ -36,6 +36,8 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/zededa/go-provision/assignableadapters"
+	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
 	"log"
@@ -59,9 +61,10 @@ const (
 	baseDirname    = zedBaseDirname + "/" + moduleName
 	runDirname     = zedRunDirname + "/" + moduleName
 
-	certsDirname          = "/var/tmp/zedmanager/certs"
+	configDir             = "/config"
 	persistDir            = "/persist"
 	objectDownloadDirname = persistDir + "/downloads"
+	certificateDirname    = persistDir + "/certs"
 
 	downloaderBaseDirname = zedBaseDirname + "/" + downloaderModulename
 	downloaderRunDirname  = zedRunDirname + "/" + downloaderModulename
@@ -96,11 +99,26 @@ const (
 
 // Set from Makefile
 var Version = "No version specified"
-var verifierRestarted = false
+
 var deviceNetworkStatus types.DeviceNetworkStatus
 
-// Dummy since we don't have anything to pass
+// Dummy used when we don't have anything to pass
 type dummyContext struct {
+}
+
+// Information from handleVerifierRestarted
+type verifierContext struct {
+	verifierRestarted bool
+}
+
+// Information for handleAppInstanceStatus*
+type appInstanceContext struct {
+	publishIteration int
+}
+
+// Information for handleBaseOsCreate/Modify/Delete
+type deviceContext struct {
+	assignableAdapters *types.AssignableAdapters
 }
 
 var debug = false
@@ -140,6 +158,18 @@ func main() {
 	go watch.WatchStatus(verifierBaseOsStatusDirname,
 		baseOsVerifierChanges)
 
+	// Pick up (mostly static) AssignableAdapters before we report
+	// any device info
+	model := hardware.GetHardwareModel()
+	log.Printf("HardwareModel %s\n", model)
+	aa := types.AssignableAdapters{}
+	aaChanges, aaFunc, aaCtx := assignableadapters.Init(&aa, model)
+	aaDone := false
+
+	verifierCtx := verifierContext{}
+	aiCtx := appInstanceContext{}
+	devCtx := deviceContext{assignableAdapters: &aa}
+
 	// First we process the verifierStatus to avoid downloading
 	// an base image we already have in place
 	log.Printf("Handling initial verifier Status\n")
@@ -147,42 +177,52 @@ func main() {
 	for !done {
 		select {
 		case change := <-baseOsVerifierChanges:
-			watch.HandleStatusEvent(change, dummyContext{},
+			watch.HandleStatusEvent(change, &verifierCtx,
 				verifierBaseOsStatusDirname,
 				&types.VerifyImageStatus{},
 				handleBaseOsVerifierStatusModify,
 				handleBaseOsVerifierStatusDelete,
 				&verifierRestartedFn)
-			if verifierRestarted {
+			if verifierCtx.verifierRestarted {
 				log.Printf("Verifier reported restarted\n")
 				done = true
 				break
 			}
+		case change := <-aaChanges:
+			aaFunc(&aaCtx, change)
+			aaDone = true
 		}
 	}
 
-	deviceStatusChanges := make(chan string)
-	go watch.WatchStatus(DNSDirname, deviceStatusChanges)
+	networkStatusChanges := make(chan string)
+	go watch.WatchStatus(DNSDirname, networkStatusChanges)
 
+	log.Printf("Waiting until we have some uplinks with usable addresses\n")
 	waited := false
-	// Wait to have some uplinks with usable addresses
-	for types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus) == 0 {
+	for types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus) == 0 ||
+		!aaDone {
 		waited = true
 		select {
-		case change := <-deviceStatusChanges:
+		case change := <-networkStatusChanges:
 			watch.HandleStatusEvent(change, dummyContext{},
 				DNSDirname,
 				&types.DeviceNetworkStatus{},
 				handleDNSModify, handleDNSDelete,
 				nil)
+		case change := <-aaChanges:
+			aaFunc(&aaCtx, change)
+			aaDone = true
 		}
 	}
-	fmt.Printf("Have %d uplinks addresses to use\n",
+	log.Printf("Have %d uplinks addresses to use\n",
 		types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus))
 	if waited {
 		// Inform ledmanager that we have uplink addresses
 		types.UpdateLedManagerConfig(2)
 	}
+
+	// Publish initial device info. Retries all addresses on all uplinks.
+	PublishDeviceInfoToZedCloud(baseOsStatusMap, devCtx.assignableAdapters)
 
 	// start the metrics/config fetch tasks
 	go metricsTimerTask()
@@ -217,31 +257,14 @@ func main() {
 
 		case change := <-restartChanges:
 			// restart only, place holder
-			watch.HandleStatusEvent(change, dummyContext{},
+			watch.HandleStatusEvent(change, &aiCtx,
 				zedagentStatusDirname,
 				&types.AppInstanceStatus{},
 				handleAppInstanceStatusModify,
 				handleAppInstanceStatusDelete, &restartFn)
 
-		case change := <-appInstanceStatusChanges:
-			go watch.HandleStatusEvent(change, dummyContext{},
-				zedmanagerStatusDirname,
-				&types.AppInstanceStatus{},
-				handleAppInstanceStatusModify,
-				handleAppInstanceStatusDelete, nil)
-
-		case change := <-baseOsConfigStatusChanges:
-			go watch.HandleConfigStatusEvent(change, dummyContext{},
-				zedagentBaseOsConfigDirname,
-				zedagentBaseOsStatusDirname,
-				&types.BaseOsConfig{},
-				&types.BaseOsStatus{},
-				handleBaseOsCreate,
-				handleBaseOsModify,
-				handleBaseOsDelete, nil)
-
 		case change := <-certObjConfigStatusChanges:
-			go watch.HandleConfigStatusEvent(change, dummyContext{},
+			watch.HandleConfigStatusEvent(change, dummyContext{},
 				zedagentCertObjConfigDirname,
 				zedagentCertObjStatusDirname,
 				&types.CertObjConfig{},
@@ -250,39 +273,61 @@ func main() {
 				handleCertObjModify,
 				handleCertObjDelete, nil)
 
+		case change := <-appInstanceStatusChanges:
+			watch.HandleStatusEvent(change, &aiCtx,
+				zedmanagerStatusDirname,
+				&types.AppInstanceStatus{},
+				handleAppInstanceStatusModify,
+				handleAppInstanceStatusDelete, nil)
+
+		case change := <-baseOsConfigStatusChanges:
+			watch.HandleConfigStatusEvent(change, &devCtx,
+				zedagentBaseOsConfigDirname,
+				zedagentBaseOsStatusDirname,
+				&types.BaseOsConfig{},
+				&types.BaseOsStatus{},
+				handleBaseOsCreate,
+				handleBaseOsModify,
+				handleBaseOsDelete, nil)
+
 		case change := <-baseOsDownloaderChanges:
-			go watch.HandleStatusEvent(change, dummyContext{},
+			watch.HandleStatusEvent(change, dummyContext{},
 				downloaderBaseOsStatusDirname,
 				&types.DownloaderStatus{},
 				handleBaseOsDownloadStatusModify,
 				handleBaseOsDownloadStatusDelete, nil)
 
 		case change := <-baseOsVerifierChanges:
-			go watch.HandleStatusEvent(change, dummyContext{},
+			watch.HandleStatusEvent(change, dummyContext{},
 				verifierBaseOsStatusDirname,
 				&types.VerifyImageStatus{},
 				handleBaseOsVerifierStatusModify,
 				handleBaseOsVerifierStatusDelete, nil)
 
 		case change := <-certObjDownloaderChanges:
-			go watch.HandleStatusEvent(change, dummyContext{},
+			watch.HandleStatusEvent(change, dummyContext{},
 				downloaderCertObjStatusDirname,
 				&types.DownloaderStatus{},
 				handleCertObjDownloadStatusModify,
 				handleCertObjDownloadStatusDelete, nil)
 
-		case change := <-deviceStatusChanges:
+		case change := <-networkStatusChanges:
 			watch.HandleStatusEvent(change, dummyContext{},
 				DNSDirname,
 				&types.DeviceNetworkStatus{},
 				handleDNSModify, handleDNSDelete,
 				nil)
+			// IP/DNS in device info could have changed
+			PublishDeviceInfoToZedCloud(baseOsStatusMap,
+				devCtx.assignableAdapters)
 		case change := <-domainStatusChanges:
 			watch.HandleStatusEvent(change, dummyContext{},
 				domainStatusDirname,
 				&types.DomainStatus{},
 				handleDomainStatusModify, handleDomainStatusDelete,
 				nil)
+		case change := <-aaChanges:
+			aaFunc(&aaCtx, change)
 		}
 	}
 }
@@ -298,9 +343,10 @@ func handleRestart(ctxArg interface{}, done bool) {
 }
 
 func handleVerifierRestarted(ctxArg interface{}, done bool) {
+	ctx := ctxArg.(*verifierContext)
 	log.Printf("handleVerifierRestarted(%v)\n", done)
 	if done {
-		verifierRestarted = true
+		ctx.verifierRestarted = true
 	}
 }
 
@@ -309,6 +355,7 @@ func handleInit() {
 	initializeDirs()
 	initMaps()
 	getCloudUrls()
+	partitionInit()
 }
 
 func initializeDirs() {
@@ -322,6 +369,23 @@ func initializeDirs() {
 	createConfigStatusDirs(zedagentModulename, zedagentObjTypes)
 	createConfigStatusDirs(zedmanagerModulename, noObjTypes)
 	createConfigStatusDirs(verifierModulename, zedagentVerifierObjTypes)
+
+	// create persistent holder directory
+	if _, err := os.Stat(persistDir); err != nil {
+		if err := os.MkdirAll(persistDir, 0700); err != nil {
+			log.Fatal(err)
+		}
+	}
+	if _, err := os.Stat(certificateDirname); err != nil {
+		if err := os.MkdirAll(certificateDirname, 0700); err != nil {
+			log.Fatal(err)
+		}
+	}
+	if _, err := os.Stat(objectDownloadDirname); err != nil {
+		if err := os.MkdirAll(objectDownloadDirname, 0700); err != nil {
+			log.Fatal(err)
+		}
+	}
 }
 
 // create module and object based config/status directories
@@ -363,21 +427,21 @@ func createConfigStatusDirs(moduleName string, objTypes []string) {
 // app instance event watch to capture transitions
 // and publish to zedCloud
 
-var publishIteration = 0
-
 func handleAppInstanceStatusModify(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
 	status := statusArg.(*types.AppInstanceStatus)
+	ctx := ctxArg.(*appInstanceContext)
 	uuidStr := status.UUIDandVersion.UUID.String()
-	PublishAppInfoToZedCloud(uuidStr, status, publishIteration)
-	publishIteration += 1
+	PublishAppInfoToZedCloud(uuidStr, status, ctx.publishIteration)
+	ctx.publishIteration += 1
 }
 
 func handleAppInstanceStatusDelete(ctxArg interface{}, statusFilename string) {
-	// XXX is statusFilename == key aka UUIDstr?
+	// statusFilename == key aka UUIDstr?
+	ctx := ctxArg.(*appInstanceContext)
 	uuidStr := statusFilename
-	PublishAppInfoToZedCloud(uuidStr, nil, publishIteration)
-	publishIteration += 1
+	PublishAppInfoToZedCloud(uuidStr, nil, ctx.publishIteration)
+	ctx.publishIteration += 1
 }
 
 func handleDNSModify(ctxArg interface{}, statusFilename string,
@@ -385,7 +449,7 @@ func handleDNSModify(ctxArg interface{}, statusFilename string,
 	status := statusArg.(*types.DeviceNetworkStatus)
 
 	if statusFilename != "global" {
-		fmt.Printf("handleDNSModify: ignoring %s\n", statusFilename)
+		log.Printf("handleDNSModify: ignoring %s\n", statusFilename)
 		return
 	}
 	log.Printf("handleDNSModify for %s\n", statusFilename)
@@ -397,7 +461,7 @@ func handleDNSDelete(ctxArg interface{}, statusFilename string) {
 	log.Printf("handleDNSDelete for %s\n", statusFilename)
 
 	if statusFilename != "global" {
-		fmt.Printf("handleDNSDelete: ignoring %s\n", statusFilename)
+		log.Printf("handleDNSDelete: ignoring %s\n", statusFilename)
 		return
 	}
 	deviceNetworkStatus = types.DeviceNetworkStatus{}
@@ -409,12 +473,12 @@ func handleDNSDelete(ctxArg interface{}, statusFilename string) {
 func handleBaseOsCreate(ctxArg interface{}, statusFilename string,
 	configArg interface{}) {
 	config := configArg.(*types.BaseOsConfig)
+	ctx := ctxArg.(*deviceContext)
 	uuidStr := config.UUIDandVersion.UUID.String()
 
 	log.Printf("handleBaseOsCreate for %s\n", uuidStr)
 	addOrUpdateBaseOsConfig(uuidStr, *config)
-	PublishDeviceInfoToZedCloud(baseOsStatusMap, publishIteration)
-	publishIteration += 1
+	PublishDeviceInfoToZedCloud(baseOsStatusMap, ctx.assignableAdapters)
 }
 
 // base os config modify event
@@ -422,6 +486,7 @@ func handleBaseOsModify(ctxArg interface{}, statusFilename string,
 	configArg interface{}, statusArg interface{}) {
 	config := configArg.(*types.BaseOsConfig)
 	status := statusArg.(*types.BaseOsStatus)
+	ctx := ctxArg.(*deviceContext)
 	uuidStr := config.UUIDandVersion.UUID.String()
 
 	log.Printf("handleBaseOsModify for %s\n", status.BaseOsVersion)
@@ -436,19 +501,18 @@ func handleBaseOsModify(ctxArg interface{}, statusFilename string,
 	writeBaseOsStatus(status, statusFilename)
 
 	addOrUpdateBaseOsConfig(uuidStr, *config)
-	PublishDeviceInfoToZedCloud(baseOsStatusMap, publishIteration)
-	publishIteration += 1
+	PublishDeviceInfoToZedCloud(baseOsStatusMap, ctx.assignableAdapters)
 }
 
 // base os config delete event
 func handleBaseOsDelete(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
 	status := statusArg.(*types.BaseOsStatus)
+	ctx := ctxArg.(*deviceContext)
 
 	log.Printf("handleBaseOsDelete for %s\n", status.BaseOsVersion)
 	removeBaseOsConfig(status.UUIDandVersion.UUID.String())
-	PublishDeviceInfoToZedCloud(baseOsStatusMap, publishIteration)
-	publishIteration += 1
+	PublishDeviceInfoToZedCloud(baseOsStatusMap, ctx.assignableAdapters)
 }
 
 // certificate config/status event handlers

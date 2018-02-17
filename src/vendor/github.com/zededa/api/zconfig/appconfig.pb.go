@@ -50,8 +50,8 @@ type AppInstanceConfig struct {
 	Fixedresources *VmConfig       `protobuf:"bytes,3,opt,name=fixedresources" json:"fixedresources,omitempty"`
 	Drives         []*Drive        `protobuf:"bytes,4,rep,name=drives" json:"drives,omitempty"`
 	Activate       bool            `protobuf:"varint,5,opt,name=activate" json:"activate,omitempty"`
-	// XXX At some point in time we should merge NetworkAdapter and
-	// Adapter
+	// NetworkAdapter are virtual adapters assigned to the application
+	// Physical adapters such as eth1 are part of Adapter
 	Interfaces []*NetworkAdapter `protobuf:"bytes,6,rep,name=interfaces" json:"interfaces,omitempty"`
 	Adapters   []*Adapter        `protobuf:"bytes,7,rep,name=adapters" json:"adapters,omitempty"`
 }

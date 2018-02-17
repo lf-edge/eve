@@ -94,7 +94,7 @@ rm -rf /var/run/zedmanager/status/*.json
 
 # The following is a workaround for a racecondition between different agents
 # Make sure we have the required directories in place
-DIRS="$ETCDIR $PERSISTDIR $TMPDIR /var/tmp/ledmanager/config/ /var/tmp/domainmgr/config/ /var/tmp/verifier/config/ /var/tmp/downloader/config/ /var/tmp/zedmanager/config/ /var/tmp/identitymgr/config/ /var/tmp/zedrouter/config/ /var/run/domainmgr/status/ /var/run/downloader/status/ /var/run/zedmanager/status/ /var/run/eidregister/status/ /var/run/zedrouter/status/ /var/run/identitymgr/status/ /var/tmp/zededa/DeviceNetworkConfig/ /var/run/zedrouter/DeviceNetworkStatus/"
+DIRS="$ETCDIR $PERSISTDIR $TMPDIR /var/tmp/ledmanager/config/ /var/tmp/domainmgr/config/ /var/tmp/verifier/config/ /var/tmp/downloader/config/ /var/tmp/zedmanager/config/ /var/tmp/identitymgr/config/ /var/tmp/zedrouter/config/ /var/run/domainmgr/status/ /var/run/downloader/status/ /var/run/zedmanager/status/ /var/run/eidregister/status/ /var/run/zedrouter/status/ /var/run/identitymgr/status/ /var/tmp/zededa/DeviceNetworkConfig/ /var/run/zedrouter/DeviceNetworkStatus/ /var/tmp/zededa/AssignableAdapters"
 for d in $DIRS; do
     d1=`dirname $d`
     if [ ! -d $d1 ]; then
@@ -330,6 +330,7 @@ fi
 mkdir -p $TMPDIR/DeviceNetworkConfig/
 if [ -f $ETCDIR/network.config.static ] ; then
     echo "Using $ETCDIR/network.config.static"
+    # XXX not used
     cp -p $ETCDIR/network.config.static $TMPDIR/DeviceNetworkConfig/global.json 
 fi
 
@@ -398,6 +399,7 @@ if [ $SELF_REGISTER = 1 ]; then
 		echo "NOT Found interface based on route to map servers. Giving up"
 		exit 1    
 	fi
+	# XXX not used
 	cat <<EOF >$TMPDIR/DeviceNetworkConfig/global.json
 {"Uplink":["$intf"], "FreeUplinks":["$intf"]}
 EOF
@@ -433,6 +435,7 @@ else
     else
 	echo "Found $uuid in /etc/hosts"
     fi
+    # XXX delete this block
     # Handle old file format
     grep -q FreeUplinks $TMPDIR/DeviceNetworkConfig/global.json
     if [ $? = 0 ]; then

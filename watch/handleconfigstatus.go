@@ -170,7 +170,7 @@ func HandleStatusEvent(change string, ctx interface{},
 		return
 	}
 	// Remove .json from name */
-	name := strings.Split(fileName, ".")
+	name := strings.Split(fileName, ".json")
 	if operation == "D" {
 		statusDeleteFunc(ctx, name[0])
 		return

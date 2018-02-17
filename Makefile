@@ -2,6 +2,14 @@
 # Makefile for zededa-provision
 #
 
+# Goals
+# 1. Build go provision binaries for arm64 and amd64
+# 2. Build on Linux as well on Mac
+# 3. If build host is Linux, build a Debian package ...
+# 4. .. else build a tarball(?)
+# 5. Option to build and install on a given device(s).
+#    If this is done well, then we can forget about 3 and 4.
+
 PKGNAME   := zededa-provision
 ARCH        ?= amd64
 #ARCH        ?= arm64
@@ -54,7 +62,9 @@ APPS = \
 	identitymgr	\
 	zedmanager 	\
 	eidregister	\
-	zedagent
+	zedagent	\
+	ledmanager	\
+	hardwaremodel
 
 SCRIPTS = \
 	device-steps.sh \
