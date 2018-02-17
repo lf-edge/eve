@@ -65,6 +65,7 @@ func MaybeAddDomainConfig(aiConfig types.AppInstanceConfig,
 		Activate:       aiConfig.Activate,
 		AppNum:         AppNum,
 		VmConfig:       aiConfig.FixedResources,
+		IoAdapterList:  aiConfig.IoAdapterList,
 	}
 
 	// Determine number of "disk" targets in list

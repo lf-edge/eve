@@ -33,10 +33,6 @@ import (
 	"time"
 )
 
-const (
-	compatibleFile = "/proc/device-tree/compatible"
-)
-
 // Remember the set of names of the disks and partitions
 var savedDisks []string
 
@@ -163,6 +159,18 @@ func LookupDomainStatusUUID(uuid string) *types.DomainStatus {
 	for _, ds := range domainStatus {
 		if strings.Compare(ds.UUIDandVersion.UUID.String(), uuid) == 0 {
 			return &ds
+		}
+	}
+	return nil
+}
+
+// Look for a DomainStatus which is using the IoBundle
+func LookupDomainStatusIoBundle(ioType types.IoType, name string) *types.DomainStatus {
+	for _, ds := range domainStatus {
+		for _, b := range ds.IoAdapterList {
+			if b.Type == ioType && strings.EqualFold(b.Name, name) {
+				return &ds
+			}
 		}
 	}
 	return nil
@@ -716,14 +724,34 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 	ReportDeviceInfo.Dns.DNSsearch = dc.Search
 
 	// Report AssignableAdapters
-	ReportDeviceInfo.AssignableAdapters = make([]*zmet.ZioBundle, len(aa.IoBundleList))
-	for i, b := range aa.IoBundleList {
+	// We exclude adapters which do not currently exist.
+	// We also exclude current uplinks. Note that this routine
+	// is called when the uplinks change (to also report any change in
+	// the uplink IP addresses etc.))
+	for i, _ := range aa.IoBundleList {
+		ib := &aa.IoBundleList[i]
+		// For a PCI device we check if it exists in hardware/kernel
+		_, _, err := types.IoBundleToPci(ib)
+		if err != nil {
+			log.Printf("Not reporting non-existent PCI device %d %s: %v\n",
+				ib.Type, ib.Name, err)
+			continue
+		}
 		reportAA := new(zmet.ZioBundle)
-		reportAA.Type = zmet.ZioType(b.Type)
-		reportAA.Name = b.Name
-		reportAA.Members = b.Members
-		reportAA.UsedByUUID = b.UsedByUUID // XXX or get from DomainStatus?
-		ReportDeviceInfo.AssignableAdapters[i] = reportAA
+		reportAA.Type = zmet.ZioType(ib.Type)
+		reportAA.Name = ib.Name
+		reportAA.Members = ib.Members
+		// lookup domains to see what is in use
+		ds := LookupDomainStatusIoBundle(ib.Type, ib.Name)
+		if ds != nil {
+			reportAA.UsedByUUID = ds.UUIDandVersion.UUID.String()
+		} else if types.IsUplink(deviceNetworkStatus, ib.Name) {
+			log.Printf("Reporting uplink as used %d %s\n",
+				ib.Type, ib.Name)
+			reportAA.UsedByUUID = deviceId
+		}
+		ReportDeviceInfo.AssignableAdapters = append(ReportDeviceInfo.AssignableAdapters,
+			reportAA)
 	}
 
 	info, err := host.Info()
@@ -818,6 +846,16 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 		} else {
 			bootTime, _ := ptypes.TimestampProto(ds.BootTime)
 			ReportAppInfo.BootTime = bootTime
+		}
+
+		// Note that we don't have the members handy here.
+		for _, ib := range ds.IoAdapterList {
+			reportAA := new(zmet.ZioBundle)
+			reportAA.Type = zmet.ZioType(ib.Type)
+			reportAA.Name = ib.Name
+			reportAA.UsedByUUID = ds.UUIDandVersion.UUID.String()
+			ReportAppInfo.AssignedAdapters = append(ReportAppInfo.AssignedAdapters,
+				reportAA)
 		}
 	}
 

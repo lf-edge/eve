@@ -330,6 +330,7 @@ fi
 mkdir -p $TMPDIR/DeviceNetworkConfig/
 if [ -f $ETCDIR/network.config.static ] ; then
     echo "Using $ETCDIR/network.config.static"
+    # XXX not used
     cp -p $ETCDIR/network.config.static $TMPDIR/DeviceNetworkConfig/global.json 
 fi
 
@@ -398,6 +399,7 @@ if [ $SELF_REGISTER = 1 ]; then
 		echo "NOT Found interface based on route to map servers. Giving up"
 		exit 1    
 	fi
+	# XXX not used
 	cat <<EOF >$TMPDIR/DeviceNetworkConfig/global.json
 {"Uplink":["$intf"], "FreeUplinks":["$intf"]}
 EOF
@@ -433,6 +435,7 @@ else
     else
 	echo "Found $uuid in /etc/hosts"
     fi
+    # XXX delete this block
     # Handle old file format
     grep -q FreeUplinks $TMPDIR/DeviceNetworkConfig/global.json
     if [ $? = 0 ]; then

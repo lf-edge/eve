@@ -248,6 +248,16 @@ func GetLocalAddrFree(globalStatus DeviceNetworkStatus, pickNum int, uplink stri
 	return addrs[pickNum], nil
 }
 
+// Check if an interface/adapter name is an uplink
+func IsUplink(globalStatus DeviceNetworkStatus, ifname string) bool {
+	for _, us := range globalStatus.UplinkStatus {
+		if us.IfName == ifname {
+			return true
+		}
+	}
+	return false
+}
+
 func getInterfaceAddr(globalStatus DeviceNetworkStatus, free bool, ifname string, includeLinkLocal bool) ([]net.IP, error) {
 	// fmt.Printf("getInterfaceAddr(%v, %s, %v)\n",	free, ifname, includeLinnklocal)
 	var addrs []net.IP

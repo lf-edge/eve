@@ -51,6 +51,12 @@ type AppInstanceConfig struct {
 	Activate            bool
 	OverlayNetworkList  []EIDOverlayConfig
 	UnderlayNetworkList []UnderlayNetworkConfig
+	IoAdapterList       []IoAdapter
+}
+
+type IoAdapter struct {
+	Type IoType
+	Name string // Short hand name such as "com"
 }
 
 func (config AppInstanceConfig) VerifyFilename(fileName string) bool {

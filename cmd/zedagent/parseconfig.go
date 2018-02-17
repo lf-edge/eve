@@ -222,6 +222,17 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig) {
 		// fill the overlay/underlay config
 		parseNetworkConfig(&appInstance, cfgApp, config.Networks)
 
+		// I/O adapters
+		appInstance.IoAdapterList = nil
+		for _, adapter := range cfgApp.Adapters {
+			fmt.Printf("Processing adapter type %d name %s\n",
+				adapter.Type, adapter.Name)
+			appInstance.IoAdapterList = append(appInstance.IoAdapterList,
+				types.IoAdapter{Type: types.IoType(adapter.Type),
+					Name: adapter.Name})
+		}
+		fmt.Printf("Got adapters %v\n", appInstance.IoAdapterList)
+
 		// get the certs for image sha verification
 		getCertObjects(appInstance.UUIDandVersion,
 			appInstance.ConfigSha256, appInstance.StorageConfigList)

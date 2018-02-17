@@ -921,7 +921,6 @@ func handleDNSModify(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
 	status := statusArg.(*types.DeviceNetworkStatus)
 
-	// XXX from context with manufacturerModel? NO. That's for DNC
 	if statusFilename != "global" {
 		fmt.Printf("handleDNSModify: ignoring %s\n", statusFilename)
 		return
