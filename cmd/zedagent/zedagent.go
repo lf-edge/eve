@@ -116,6 +116,11 @@ type appInstanceContext struct {
 	publishIteration int
 }
 
+// Information for handleDomainStatus*
+type domainContext struct {
+	TriggerDeviceInfo bool
+}
+
 // Information for handleBaseOsCreate/Modify/Delete
 type deviceContext struct {
 	assignableAdapters *types.AssignableAdapters
@@ -169,6 +174,7 @@ func main() {
 	verifierCtx := verifierContext{}
 	aiCtx := appInstanceContext{}
 	devCtx := deviceContext{assignableAdapters: &aa}
+	domainCtx := domainContext{}
 
 	// First we process the verifierStatus to avoid downloading
 	// an base image we already have in place
@@ -318,14 +324,24 @@ func main() {
 				handleDNSModify, handleDNSDelete,
 				nil)
 			// IP/DNS in device info could have changed
+			// XXX could compare in handleDNSModify as we do
+			// for handleDomainStatus
+			log.Printf("NetworkStatus triggered PublishDeviceInfo\n")
 			PublishDeviceInfoToZedCloud(baseOsStatusMap,
 				devCtx.assignableAdapters)
 		case change := <-domainStatusChanges:
-			watch.HandleStatusEvent(change, dummyContext{},
+			watch.HandleStatusEvent(change, &domainCtx,
 				domainStatusDirname,
 				&types.DomainStatus{},
 				handleDomainStatusModify, handleDomainStatusDelete,
 				nil)
+			// UsedByUUID could have changed ...
+			if domainCtx.TriggerDeviceInfo {
+				log.Printf("Triggered PublishDeviceInfo\n")
+				PublishDeviceInfoToZedCloud(baseOsStatusMap,
+					devCtx.assignableAdapters)
+				domainCtx.TriggerDeviceInfo = false
+			}
 		case change := <-aaChanges:
 			aaFunc(&aaCtx, change)
 		}

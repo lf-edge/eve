@@ -99,6 +99,7 @@ var appInterfaceAndNameList map[string][]string
 func handleDomainStatusModify(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
 	status := statusArg.(*types.DomainStatus)
+	domainCtx := ctxArg.(*domainContext)
 	key := status.UUIDandVersion.UUID.String()
 	log.Printf("handleDomainStatusModify for %s\n", key)
 	// Ignore if any Pending* flag is set
@@ -111,6 +112,16 @@ func handleDomainStatusModify(ctxArg interface{}, statusFilename string,
 		log.Printf("create Domain map\n")
 		domainStatus = make(map[string]types.DomainStatus)
 	}
+	// Detect if any changes relevant to the device status report
+	if old, ok := domainStatus[key]; ok {
+		if ioAdapterListChanged(old, *status) {
+			domainCtx.TriggerDeviceInfo = true
+		}
+	} else {
+		if ioAdapterListChanged(types.DomainStatus{}, *status) {
+			domainCtx.TriggerDeviceInfo = true
+		}
+	}
 	domainStatus[key] = *status
 	if appInterfaceAndNameList == nil {
 		appInterfaceAndNameList = make(map[string][]string)
@@ -120,17 +131,24 @@ func handleDomainStatusModify(ctxArg interface{}, statusFilename string,
 		interfaceList = append(interfaceList, vif.Bridge)
 	}
 	appInterfaceAndNameList[status.DomainName] = interfaceList
-	log.Printf("handleDomainStatusModidy appIntf %s %v\n", status.DomainName, interfaceList)
+	log.Printf("handleDomainStatusModify appIntf %s %v\n",
+		status.DomainName, interfaceList)
 	log.Printf("handleDomainStatusModify done for %s\n", key)
 }
 
 func handleDomainStatusDelete(ctxArg interface{}, statusFilename string) {
+	domainCtx := ctxArg.(*domainContext)
 	log.Printf("handleDomainStatusDelete for %s\n", statusFilename)
 	key := statusFilename
 	if m, ok := domainStatus[key]; !ok {
 		log.Printf("handleDomainStatusDelete for %s - not found\n",
 			key)
 	} else {
+		// Detect if any changes relevant to the device status report
+		if ioAdapterListChanged(m, types.DomainStatus{}) {
+			domainCtx.TriggerDeviceInfo = true
+		}
+
 		if _, ok := appInterfaceAndNameList[m.DomainName]; ok {
 			log.Printf("appInterfaceAndnameList for %v\n", m.DomainName)
 			delete(appInterfaceAndNameList, m.DomainName)
@@ -142,6 +160,28 @@ func handleDomainStatusDelete(ctxArg interface{}, statusFilename string) {
 		statusFilename)
 }
 
+func ioAdapterListChanged(old types.DomainStatus, new types.DomainStatus) bool {
+	log.Printf("ioAdapterListChanged(%v, %v)\n",
+		old.IoAdapterList, new.IoAdapterList)
+	if len(old.IoAdapterList) != len(new.IoAdapterList) {
+		log.Printf("ioAdapterListChanged length from %d to %d\n",
+			len(old.IoAdapterList), len(new.IoAdapterList))
+		return true
+	}
+	adapterSet := make(map[types.IoAdapter]bool)
+	for _, ad := range old.IoAdapterList {
+		adapterSet[ad] = true
+	}
+	for _, ad := range new.IoAdapterList {
+		if _, ok := adapterSet[ad]; !ok {
+			log.Printf("ioAdapterListChanged %v not in old set\n",
+				ad)
+			return true
+		}
+	}
+	log.Printf("ioAdapterListChanged: no change\n")
+	return false
+}
 func ReadAppInterfaceName(domainName string) []string {
 	return appInterfaceAndNameList[domainName]
 }
