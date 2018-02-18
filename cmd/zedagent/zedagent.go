@@ -36,7 +36,7 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/zededa/go-provision/assignableadapters"
+	"github.com/zededa/go-provision/adapters"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
@@ -168,7 +168,7 @@ func main() {
 	model := hardware.GetHardwareModel()
 	log.Printf("HardwareModel %s\n", model)
 	aa := types.AssignableAdapters{}
-	aaChanges, aaFunc, aaCtx := assignableadapters.Init(&aa, model)
+	aaChanges, aaFunc, aaCtx := adapters.Init(&aa, model)
 	aaDone := false
 
 	verifierCtx := verifierContext{}

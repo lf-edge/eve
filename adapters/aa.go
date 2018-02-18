@@ -11,7 +11,7 @@
 // The aa is updated initially and when there is a change. On delete it
 // is set to its default value.
 
-package assignableadapters
+package adapters
 
 import (
 	"fmt"

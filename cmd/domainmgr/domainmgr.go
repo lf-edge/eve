@@ -13,7 +13,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/satori/go.uuid"
-	"github.com/zededa/go-provision/assignableadapters"
+	"github.com/zededa/go-provision/adapters"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
@@ -129,7 +129,7 @@ func main() {
 	// any DomainConfig
 	model := hardware.GetHardwareModel()
 	aa := types.AssignableAdapters{}
-	aaChanges, aaFunc, aaCtx := assignableadapters.Init(&aa, model)
+	aaChanges, aaFunc, aaCtx := adapters.Init(&aa, model)
 	aaDone := false
 	domainCtx := domainContext{assignableAdapters: &aa}
 
