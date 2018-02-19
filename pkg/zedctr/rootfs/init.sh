@@ -2,6 +2,12 @@
 #
 # This *really* needs to be replaced with tini+monit ASAP.
 
+# Mount /config
+CFGDEV=$(cgpt find -t 13307e62-cd9c-4920-8f9b-91b45828b798)
+if [ ! "x$CFGDEV" = "x" ]; then
+    mount $CFGDEV /config
+fi
+
 # Need to disable H/W TCP offload since it seems to mess us up
 ethtool -K eth0 gro off
 ethtool -K eth1 gro off

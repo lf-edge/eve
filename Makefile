@@ -1,4 +1,4 @@
-.PHONY: run pkgs zededa-container help
+.PHONY: run pkgs help
 
 all: help
 
@@ -22,26 +22,21 @@ run:
 run-fallback:
 	qemu-system-x86_64 --bios ./bios/OVMF.fd -m 4096 -cpu SandyBridge -serial mon:stdio -hda fallback.img -redir tcp:2222::22
 
-zededa-container/Dockerfile: pkgs parse-pkgs.sh zededa-container/Dockerfile.in
-	./parse-pkgs.sh zededa-container/Dockerfile.in > zededa-container/Dockerfile
-
-zededa-container: zededa-container/Dockerfile
-	linuxkit pkg build --disable-content-trust zededa-container/
-
-images/%.yml: parse-pkgs.sh images/%.yml.in FORCE
+images/%.yml: pkgs parse-pkgs.sh images/%.yml.in FORCE
 	./parse-pkgs.sh $@.in > $@
 
-supermicro.iso: zededa-container images/supermicro-iso.yml
+supermicro.iso: images/supermicro-iso.yml
 	./makeiso.sh images/supermicro-iso.yml supermicro.iso
 
-supermicro.img: zededa-container images/supermicro-img.yml
+supermicro.img: images/supermicro-img.yml
 	./makeraw.sh images/supermicro-img.yml supermicro.img
 
-rootfs.img: zededa-container images/fallback.yml
+rootfs.img: images/fallback.yml
 	./makerootfs.sh images/fallback.yml squash rootfs.img
 
 fallback.img: rootfs.img
-	tar c rootfs.img | ./makeflash.sh -C $@
+	./maketestconfig.sh config.img
+	tar c rootfs.img config.img | ./makeflash.sh -C $@
 
 .PHONY: FORCE
 FORCE:

@@ -6,6 +6,7 @@ IMGFILE=$1
 
 ESP_FILE=/parts/efifs.img
 IMGA_FILE=/parts/rootfs.img
+CONF_FILE=/parts/config.img
 
 #
 # Step 1: Extract partitions from stdin
@@ -13,18 +14,15 @@ IMGA_FILE=/parts/rootfs.img
 mkdir -p /parts
 [ -t 0 ] || (cd /parts; bsdtar xzf -)
 
-IMAGE_SIZE=$(stat -c %s "$IMGA_FILE")
-
-echo $IMAGE_SIZE
+IMAGE_SIZE=$(( 300 * 1024 * 1024 ))
 
 # (x+1024)/1024*1024 rounds up to multiple of 1024KB, or 2048
 # sectors some firmwares get confused if the partitions are not
 # aligned on 2048 blocks we will round up to the nearest multiple of
 # 2048 blocks since each block is 512 bytes, we want the size to be
 # a multiple of 2048 blocks * 512 bytes = 1048576 bytes = 1024KB
-IMAGE_SIZE_KB=$(( ( ($IMAGE_SIZE + 1024) / 1024 * 1024 ) / 1024 ))
+IMAGE_SIZE_KB=$(( ( ( ($IMAGE_SIZE + 1024-1) / 1024 ) + 1024-1) / 1024 * 1024 ))
 IMAGE_SIZE_SECTORS=$(( 2 * $IMAGE_SIZE_KB ))
-echo $IMAGE_SIZE_SECTORS
 
 #
 # Step 2: Create EFI partition in ${ESP_FILE}
@@ -37,11 +35,7 @@ GRUB_SIZE=$((512 * 1024))
 
 # Calculate partition size. There's not much in it.
 ESP_FILE_SIZE=$(($GRUB_SIZE + $ESP_HEADROOM))
-
-#  ESP_FILE_SIZE_KB=$(( ( ($ESP_FILE_SIZE+1024) / 1024 ) / 1024 * 1024 ))
-#  ESP_FILE_SIZE_SECTORS=$(( $ESP_FILE_SIZE_KB * 2 ))
-
-ESP_FILE_SIZE_KB=$(( ( ($ESP_FILE_SIZE + 1024) / 1024 ) / 1024 * 1024 ))
+ESP_FILE_SIZE_KB=$(( ( ( ($ESP_FILE_SIZE+1024-1) / 1024 ) + 1024-1) / 1024 * 1024 ))
 ESP_FILE_SIZE_SECTORS=$(( 2 * $ESP_FILE_SIZE_KB ))
 
 
@@ -49,7 +43,6 @@ ESP_FILE_SIZE_SECTORS=$(( 2 * $ESP_FILE_SIZE_KB ))
 mkfs.vfat -v -C $ESP_FILE $(( $ESP_FILE_SIZE_KB )) > /dev/null
 echo "mtools_skip_check=1" >> /etc/mtools.conf && \
     mcopy -i $ESP_FILE -s /efifs/* ::/
-
 
 #
 # Step 3: Create bootable image
@@ -59,13 +52,13 @@ GPTPRIO_ACTIVE=01020000000
 GPTPRIO_UNUSED=0000000000000000
 
 # Empty GPT partition
-sgdisk --clear $IMGFILE
+sgdisk --clear $IMGFILE 2> /dev/null
 
 # Add EFI partition
 ESP_SECTOR_START=2048
 ESP_SECTOR_END=$(( $ESP_SECTOR_START + $ESP_FILE_SIZE_SECTORS - 1 ))
 sgdisk --new 1:$ESP_SECTOR_START:$ESP_SECTOR_END --typecode=1:ef00 --change-name=1:'EFI System' \
-       --attributes 1:set:2 $IMGFILE
+       --attributes 1:set:2 $IMGFILE 2> /dev/null
 
 # Add ImageA Partition.
 IMGA_SECTOR_START=$(( $ESP_SECTOR_END + 1 ))
@@ -74,14 +67,28 @@ sgdisk --new 2:$IMGA_SECTOR_START:$IMGA_SECTOR_END \
        --typecode=2:5dfbf5f4-2848-4bac-aa5e-0d9a20b745a6 \
        --attributes=2:set:56 \
        --attributes=2:set:49 \
-       --change-name=2:'IMGA' $IMGFILE
+       --change-name=2:'IMGA' $IMGFILE 2> /dev/null
 
 # Add ImageB Partition.
 IMGB_SECTOR_START=$(( $IMGA_SECTOR_END + 1 ))
 IMGB_SECTOR_END=$(( $IMGB_SECTOR_START + $IMAGE_SIZE_SECTORS - 1))
 sgdisk --new 3:$IMGB_SECTOR_START:$IMGB_SECTOR_END \
        --typecode=3:5dfbf5f4-2848-4bac-aa5e-0d9a20b745a6 \
-       --change-name=3:'IMGB' $IMGFILE
+       --change-name=3:'IMGB' $IMGFILE 2> /dev/null
+
+if [ -f $CONF_FILE ]; then
+    # Add Config Partition if present
+     CONF_SIZE=$(stat -c %s "$CONF_FILE")
+     CONF_SIZE_KB=$(( ($CONF_SIZE + 1023) / 1024 ))
+     CONF_SIZE_KB=$(( ( ( ($CONF_SIZE+1024-1) / 1024 ) + 1024-1) / 1024 * 1024 ))
+     CONF_SIZE_SECTORS=$(( 2 * $CONF_SIZE_KB ))
+     CONF_SECTOR_START=$(( $IMGB_SECTOR_END + 1 ))
+     CONF_SECTOR_END=$(( $CONF_SECTOR_START + $CONF_SIZE_SECTORS - 1 ))
+
+     sgdisk --new 4:$CONF_SECTOR_START:$CONF_SECTOR_END \
+	    --typecode=4:13307e62-cd9c-4920-8f9b-91b45828b798 \
+	    --change-name=4:'CONFIG' $IMGFILE 2> /dev/null
+fi
 
 # Copy EFI fs to EFI partition
 dd if=$ESP_FILE of=$IMGFILE bs=512 count=$ESP_FILE_SIZE_SECTORS \
@@ -94,3 +101,9 @@ dd if=$IMGA_FILE of=$IMGFILE bs=512 count=$IMAGE_SIZE_SECTORS \
 # image B is empty
 dd if=/dev/zero of=$IMGFILE bs=512 count=$IMAGE_SIZE_SECTORS \
      conv=notrunc seek=$IMGB_SECTOR_START
+
+# Copy config fs to config partition
+if [ -f $CONF_FILE ]; then
+    dd if=$CONF_FILE of=$IMGFILE bs=512 count=$CONF_SIZE_SECTORS \
+       conv=notrunc seek=$CONF_SECTOR_START
+fi
