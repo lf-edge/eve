@@ -303,9 +303,13 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig) {
 
 	devId = config.GetId()
 	if devId != nil {
-		// store the device id
+		// store the device id and version
 		deviceId = devId.Uuid
-		if devId.Version == activeVersion {
+		activeVersion = devId.Version
+	} else {
+		// XXX at some point in time we should set version in
+		// zedcloud and increment on change, or skip this completely
+		if false && devId.Version == activeVersion {
 			log.Printf("Same version, skipping:%v\n", config.Id.Version)
 			return
 		}
