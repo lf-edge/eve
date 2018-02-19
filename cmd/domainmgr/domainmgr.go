@@ -130,14 +130,13 @@ func main() {
 	model := hardware.GetHardwareModel()
 	aa := types.AssignableAdapters{}
 	aaChanges, aaFunc, aaCtx := adapters.Init(&aa, model)
-	aaDone := false
 	domainCtx := domainContext{assignableAdapters: &aa}
 
-	for !aaDone {
+	for !aaCtx.Found {
+		log.Printf("Waiting - aaCtx %v\n", aaCtx.Found)
 		select {
 		case change := <-aaChanges:
 			aaFunc(&aaCtx, change)
-			aaDone = true
 		}
 	}
 	fmt.Printf("Have %d assignable adapters\n", len(aa.IoBundleList))

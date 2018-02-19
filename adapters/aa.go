@@ -25,6 +25,7 @@ import (
 type context struct {
 	aa    *types.AssignableAdapters
 	model string
+	Found bool
 }
 
 type processEventFn func(ctx *context, event string)
@@ -55,8 +56,9 @@ func handleAAModify(ctxArg interface{}, key string, configArg interface{}) {
 			key, ctx.model)
 		return
 	}
-	log.Printf("handleAAModify for %s\n", key)
+	log.Printf("handleAAModify found %s\n", key)
 	*ctx.aa = *config
+	ctx.Found = true
 	log.Printf("handleAAModify done for %s\n", key)
 }
 
@@ -69,6 +71,8 @@ func handleAADelete(ctxArg interface{}, key string) {
 			key, ctx.model)
 		return
 	}
+	fmt.Printf("handleAADelete: found %s\n", ctx.model)
+	ctx.Found = false
 	ctx.aa = &types.AssignableAdapters{}
 	log.Printf("handleAADelete done for %s\n", key)
 }

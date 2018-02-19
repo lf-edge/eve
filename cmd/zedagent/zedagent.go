@@ -169,7 +169,6 @@ func main() {
 	log.Printf("HardwareModel %s\n", model)
 	aa := types.AssignableAdapters{}
 	aaChanges, aaFunc, aaCtx := adapters.Init(&aa, model)
-	aaDone := false
 
 	verifierCtx := verifierContext{}
 	aiCtx := appInstanceContext{}
@@ -179,8 +178,7 @@ func main() {
 	// First we process the verifierStatus to avoid downloading
 	// an base image we already have in place
 	log.Printf("Handling initial verifier Status\n")
-	done := false
-	for !done {
+	for !verifierCtx.verifierRestarted {
 		select {
 		case change := <-baseOsVerifierChanges:
 			watch.HandleStatusEvent(change, &verifierCtx,
@@ -191,12 +189,10 @@ func main() {
 				&verifierRestartedFn)
 			if verifierCtx.verifierRestarted {
 				log.Printf("Verifier reported restarted\n")
-				done = true
 				break
 			}
 		case change := <-aaChanges:
 			aaFunc(&aaCtx, change)
-			aaDone = true
 		}
 	}
 
@@ -206,7 +202,10 @@ func main() {
 	log.Printf("Waiting until we have some uplinks with usable addresses\n")
 	waited := false
 	for types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus) == 0 ||
-		!aaDone {
+		!aaCtx.Found {
+		log.Printf("Waiting - have %d addresses; aaCtx %v\n",
+			types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus),
+			aaCtx.Found)
 		waited = true
 		select {
 		case change := <-networkStatusChanges:
@@ -217,11 +216,11 @@ func main() {
 				nil)
 		case change := <-aaChanges:
 			aaFunc(&aaCtx, change)
-			aaDone = true
 		}
 	}
-	log.Printf("Have %d uplinks addresses to use\n",
-		types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus))
+	log.Printf("Have %d uplinks addresses to use; aaCtx %v\n",
+		types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus),
+		aaCtx.Found)
 	if waited {
 		// Inform ledmanager that we have uplink addresses
 		types.UpdateLedManagerConfig(2)
