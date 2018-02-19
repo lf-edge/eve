@@ -814,7 +814,7 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 		x.Dinfo = ReportDeviceInfo
 	}
 
-	fmt.Printf("PublishDeviceInfoToZedCloud sending %v\n", ReportInfo)
+	log.Printf("PublishDeviceInfoToZedCloud sending %v\n", ReportInfo)
 
 	err = SendInfoProtobufStrThroughHttp(ReportInfo)
 	if err != nil {
@@ -829,7 +829,7 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 // containing only the UUID to inform zedcloud about the delete.
 func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 	iteration int) {
-	fmt.Printf("PublishAppInfoToZedCloud uuid %s\n", uuid)
+	log.Printf("PublishAppInfoToZedCloud uuid %s\n", uuid)
 	var ReportInfo = &zmet.ZInfoMsg{}
 
 	appType := new(zmet.ZInfoTypes)
