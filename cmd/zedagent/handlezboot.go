@@ -336,18 +336,28 @@ func setPersitentPartitionInfo(uuidStr string, config *types.BaseOsConfig) {
 
 func zbootWriteToPartition(srcFilename string, partName string) (bool, error) {
 
+	log.Printf("WriteToPartition %s: %v\n", partName, srcFilename)
+
 	if ret, err := isOtherPartition(partName); ret == false {
+		log.Printf("not other Partition %s: %v\n", partName)
 		return ret, err
 	}
 
 	if ret, _ := isOtherPartitionStateUnused(); ret == false {
-		errStr := fmt.Sprintf("not an unused partition %s", partName)
+		errStr := fmt.Sprintf("%s: Not an unused partition", partName)
 		err := errors.New(errStr)
-		return false, err
+		log.Printf("partName %s: %v\n", partName, err)
+		return ret, err
 	}
 
 	devName, err := getPartitionDevname(partName)
 	if err != nil || devName == "" {
+		log.Printf("partName %s: %v\n", partName, err)
+		return false, err
+	}
+
+	if ret, err := setOtherPartitionStateUpdating(); ret == false {
+		log.Printf("partName %s: %v\n", partName, err)
 		return false, err
 	}
 
@@ -356,8 +366,14 @@ func zbootWriteToPartition(srcFilename string, partName string) (bool, error) {
 
 	ddCmd := exec.Command("dd", "if="+srcFilename, "of="+devName, "bs=8M")
 	if _, err := ddCmd.Output(); err != nil {
+		log.Printf("partName : %v\n", err)
+		if ret, err := setOtherPartitionStateUnused(); ret == false {
+			log.Printf("partName %s: %v\n", partName, err)
+			return false, err
+		}
 		return false, err
 	}
+
 	return true, nil
 }
 

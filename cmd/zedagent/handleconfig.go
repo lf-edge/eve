@@ -305,11 +305,14 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig) {
 	if devId != nil {
 		// store the device id
 		deviceId = devId.Uuid
-		if devId.Version == activeVersion {
-			log.Printf("Same version, skipping:%v\n", config.Id.Version)
-			return
+		if devId.Version != "" {
+			if activeVersion != "" &&
+				devId.Version == activeVersion {
+				log.Printf("Same version, skipping:%v\n", config.Id.Version)
+				return
+			}
+			activeVersion = devId.Version
 		}
-		activeVersion = devId.Version
 	}
 	handleLookUpParam(config)
 
