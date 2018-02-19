@@ -25,6 +25,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -949,9 +950,24 @@ func SendInfoProtobufStrThroughHttp(ReportInfo *zmet.ZInfoMsg) error {
 			}
 			client := &http.Client{Transport: transport}
 
-			resp, err := client.Post("https://"+statusUrl,
-				"application/x-proto-binary",
-				bytes.NewBuffer(data))
+			req, err := http.NewRequest("POST",
+				"https://"+statusUrl, bytes.NewBuffer(data))
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+			req.Header.Add("Content-Type",
+				"application/x-proto-binary")
+			trace := &httptrace.ClientTrace{
+				GotConn: func(connInfo httptrace.GotConnInfo) {
+					fmt.Printf("Got RemoteAddr: %+v, LocalAddr: %+v\n",
+						connInfo.Conn.RemoteAddr(),
+						connInfo.Conn.LocalAddr())
+				},
+			}
+			req = req.WithContext(httptrace.WithClientTrace(req.Context(),
+				trace))
+			resp, err := client.Do(req)
 			if err != nil {
 				fmt.Println(err)
 				continue
@@ -1044,8 +1060,23 @@ func SendMetricsProtobufStrThroughHttp(ReportMetrics *zmet.ZMetricMsg,
 		}
 		client := &http.Client{Transport: transport}
 
-		resp, err := client.Post("https://"+metricsUrl,
-			"application/x-proto-binary", bytes.NewBuffer(data))
+		req, err := http.NewRequest("POST",
+			"https://"+metricsUrl, bytes.NewBuffer(data))
+		if err != nil {
+			fmt.Println(err)
+			continue
+		}
+		req.Header.Add("Content-Type", "application/x-proto-binary")
+		trace := &httptrace.ClientTrace{
+			GotConn: func(connInfo httptrace.GotConnInfo) {
+				fmt.Printf("Got RemoteAddr: %+v, LocalAddr: %+v\n",
+					connInfo.Conn.RemoteAddr(),
+					connInfo.Conn.LocalAddr())
+			},
+		}
+		req = req.WithContext(httptrace.WithClientTrace(req.Context(),
+			trace))
+		resp, err := client.Do(req)
 		if err != nil {
 			fmt.Println(err)
 			continue

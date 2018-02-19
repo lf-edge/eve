@@ -16,6 +16,7 @@ import (
 	"mime"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"os"
 	"strings"
 	"time"
@@ -150,7 +151,21 @@ func getLatestConfig(configUrl string, iteration int, partState *bool) {
 			Dial:            d.Dial,
 		}
 		client := &http.Client{Transport: transport}
-		resp, err := client.Get("https://" + configUrl)
+		req, err := http.NewRequest("POST", "https://"+configUrl, nil)
+		if err != nil {
+			fmt.Println(err)
+			continue
+		}
+		trace := &httptrace.ClientTrace{
+			GotConn: func(connInfo httptrace.GotConnInfo) {
+				fmt.Printf("Got RemoteAddr: %+v, LocalAddr: %+v\n",
+					connInfo.Conn.RemoteAddr(),
+					connInfo.Conn.LocalAddr())
+			},
+		}
+		req = req.WithContext(httptrace.WithClientTrace(req.Context(),
+			trace))
+		resp, err := client.Do(req)
 		if err != nil {
 			log.Printf("URL get fail: %v\n", err)
 			continue

@@ -25,6 +25,7 @@ import (
 	"mime"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"os"
 	"strings"
 	"time"
@@ -207,8 +208,24 @@ func main() {
 		// IP ("no suitable address found") and retry due to server
 		// side response errors such as 401? In both cases
 		// we don't want to retry immediately
-		resp, err := client.Post("https://"+serverNameAndPort+url,
-			"application/x-proto-binary", b)
+
+		req, err := http.NewRequest("POST",
+			"https://"+serverNameAndPort+url, b)
+		if err != nil {
+			fmt.Println(err)
+			return false
+		}
+		req.Header.Add("Content-Type", "application/x-proto-binary")
+		trace := &httptrace.ClientTrace{
+			GotConn: func(connInfo httptrace.GotConnInfo) {
+				fmt.Printf("Got RemoteAddr: %+v, LocalAddr: %+v\n",
+					connInfo.Conn.RemoteAddr(),
+					connInfo.Conn.LocalAddr())
+			},
+		}
+		req = req.WithContext(httptrace.WithClientTrace(req.Context(),
+			trace))
+		resp, err := client.Do(req)
 		if err != nil {
 			fmt.Println(err)
 			return false
@@ -311,8 +328,23 @@ func main() {
 			Dial:            d.Dial,
 		}
 		client := &http.Client{Transport: transport}
-		resp, err := client.Post("https://"+serverNameAndPort+url,
-			"application/json", b)
+		req, err := http.NewRequest("POST",
+			"https://"+serverNameAndPort+url, b)
+		if err != nil {
+			fmt.Println(err)
+			return false
+		}
+		req.Header.Add("Content-Type", "application/json")
+		trace := &httptrace.ClientTrace{
+			GotConn: func(connInfo httptrace.GotConnInfo) {
+				fmt.Printf("Got RemoteAddr: %+v, LocalAddr: %+v\n",
+					connInfo.Conn.RemoteAddr(),
+					connInfo.Conn.LocalAddr())
+			},
+		}
+		req = req.WithContext(httptrace.WithClientTrace(req.Context(),
+			trace))
+		resp, err := client.Do(req)
 		if err != nil {
 			fmt.Println(err)
 			return false
@@ -458,7 +490,22 @@ func main() {
 		}
 		client := &http.Client{Transport: transport}
 
-		resp, err := client.Get("https://" + serverNameAndPort + url)
+		req, err := http.NewRequest("GET",
+			"https://"+serverNameAndPort+url, nil)
+		if err != nil {
+			fmt.Println(err)
+			return false
+		}
+		trace := &httptrace.ClientTrace{
+			GotConn: func(connInfo httptrace.GotConnInfo) {
+				fmt.Printf("Got RemoteAddr: %+v, LocalAddr: %+v\n",
+					connInfo.Conn.RemoteAddr(),
+					connInfo.Conn.LocalAddr())
+			},
+		}
+		req = req.WithContext(httptrace.WithClientTrace(req.Context(),
+			trace))
+		resp, err := client.Do(req)
 		if err != nil {
 			fmt.Println(err)
 			return false
@@ -555,7 +602,23 @@ func main() {
 		// IP ("no suitable address found") and retry due to server
 		// side response errors such as 401? In both cases
 		// we don't want to retry immediately
-		resp, err := client.Get("https://" + serverNameAndPort + url)
+
+		req, err := http.NewRequest("GET",
+			"https://"+serverNameAndPort+url, nil)
+		if err != nil {
+			fmt.Println(err)
+			return false
+		}
+		trace := &httptrace.ClientTrace{
+			GotConn: func(connInfo httptrace.GotConnInfo) {
+				fmt.Printf("Got RemoteAddr: %+v, LocalAddr: %+v\n",
+					connInfo.Conn.RemoteAddr(),
+					connInfo.Conn.LocalAddr())
+			},
+		}
+		req = req.WithContext(httptrace.WithClientTrace(req.Context(),
+			trace))
+		resp, err := client.Do(req)
 		if err != nil {
 			fmt.Println(err)
 			return false
