@@ -56,28 +56,33 @@ fi
 TMPDIR=/tmp/zededa-build.$$
 # XXX create function for cp+tar
 
+# Setup for untaring in /
+# zenbuild will move /opt/zededa/etc to /config
+
 TYPE=linux_arm64
 rm -rf $TMPDIR
-# Setup for untaring in /opt
-# zenbuild will move /opt/zededa/etc to /config
-mkdir -p $TMPDIR/zededa/etc $TMPDIR/zededa/bin
-cp -p README $TMPDIR/zededa/bin/
-cp -p etc/* $TMPDIR/zededa/etc/
-cp -p scripts/*.sh $TMPDIR/zededa/bin/
-cp -p bin/$TYPE/* $TMPDIR/zededa/bin/
-tar -C $TMPDIR/zededa/bin -xf $DIR/dnsmasq.$TYPE.tar.gz
+mkdir -p $TMPDIR/config $TMPDIR/opt/zededa/bin $TMPDIR/var/tmp/zededa/
+cp -rp DeviceNetworkConfig $TMPDIR/var/tmp/zededa
+cp -rp AssignableAdapters $TMPDIR/var/tmp/zededa
+cp -p README $TMPDIR/opt/zededa/bin/
+cp -p etc/* $TMPDIR/config
+cp -p scripts/*.sh $TMPDIR/opt/zededa/bin/
+cp -p bin/$TYPE/* $TMPDIR/opt/zededa/bin/
+tar -C $TMPDIR/opt/zededa/bin -xf $DIR/dnsmasq.$TYPE.tar.gz
 (cd $TMPDIR; tar -cf $DIR/go-provision.$TYPE.tar.gz .)
 rm -rf $TMPDIR
 
 TYPE=linux_x86_64
 rm -rf $TMPDIR
 # Setup for untaring in /opt
-mkdir -p $TMPDIR/zededa/etc $TMPDIR/zededa/bin
-cp -p README $TMPDIR/zededa/bin/
-cp -p etc/* $TMPDIR/zededa/etc/
-cp -p scripts/*.sh $TMPDIR/zededa/bin/
-cp -p bin/$TYPE/* $TMPDIR/zededa/bin/
-tar -C $TMPDIR/zededa/bin -xf $DIR/dnsmasq.$TYPE.tar.gz
+mkdir -p $TMPDIR/config $TMPDIR/opt/zededa/bin $TMPDIR/var/tmp/zededa/
+cp -rp DeviceNetworkConfig $TMPDIR/var/tmp/zededa
+cp -rp AssignableAdapters $TMPDIR/var/tmp/zededa
+cp -p README $TMPDIR/opt/zededa/bin/
+cp -p etc/* $TMPDIR/config
+cp -p scripts/*.sh $TMPDIR/opt/zededa/bin/
+cp -p bin/$TYPE/* $TMPDIR/opt/zededa/bin/
+tar -C $TMPDIR/opt/zededa/bin -xf $DIR/dnsmasq.$TYPE.tar.gz
 (cd $TMPDIR; tar -cf $DIR/go-provision.$TYPE.tar.gz .)
 rm -rf $TMPDIR
 
