@@ -1,15 +1,15 @@
 # Zenbuild
 
-zenbuild is a LinuxKit/moby based builder for Xen-centric platforms.
+zenbuild is a LinuxKit based builder for Xen-centric platforms.
 
 How to use:
 
-You will need Docker, LinuxKit (https://github.com/linuxkit/linuxkit),
-moby tool (https://github.com/moby/tool) and qemu (https://www.qemu.org/)
-installed in your system.
+You will need qemu (https://www.qemu.org/), Docker (https://www.docker.com) 
+and go 1.9+ (https://golang.org) installed in your system.
 
-Support for linuxkit pkg building has been added in the last few weeks
-so be sure to have a recent version of linuxkit installed.
+Note, that since Linuxkit and manifest-tool are evolving pretty rapidly, we're
+vendoring those under build-tools/src. This means you don't have to have them
+locally installed, but it also means your first build time will be much longer.
 
 If you're on MacOS the following steps should get you all the dependencies:
    1. Get Docker:
@@ -22,9 +22,6 @@ If you're on MacOS the following steps should get you all the dependencies:
       ```
    3. Brew install linuxkit, moby and qemu
       ```
-      $ brew tap linuxkit/linuxkit
-      $ brew install --HEAD moby
-      $ brew install --HEAD linuxkit
       $ brew install qemu
       ```
 
@@ -36,8 +33,7 @@ Alternatively, `make supermicro.img` will create a raw disk image of
 the same system.
 
 Please note that not all containers will be fetched from the docker
-hub. mkimage-raw-efi in particular will be built, as I wasn't able to
-create a container in docker hub.
+hub. mkimage-raw-efi in particular will be built.
 
 Also, keep in mind that since the initial build fetches a LOT of bits
 over the network it may occasionally time out and fail. Typically

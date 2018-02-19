@@ -26,7 +26,6 @@ XENTOOLS_TAG=$(linuxkit_tag pkg/xen-tools)-$ARCH
 XEN_TAG=$(linuxkit_tag pkg/xen)-$ARCH
 GRUB_TAG=$(linuxkit_tag pkg/grub)-$ARCH
 DNSMASQ_TAG=$(linuxkit_tag pkg/dnsmasq)-$ARCH
-TESTCERT_TAG=$(linuxkit_tag pkg/test-cert)-$ARCH
 TESTMSVCS_TAG=$(linuxkit_tag pkg/test-microsvcs)-$ARCH
 ZEDEDA_TAG=$(linuxkit_tag pkg/zedctr)-$ARCH
 DOM0ZTOOLS_TAG=$(linuxkit_tag pkg/dom0-ztools)-$ARCH

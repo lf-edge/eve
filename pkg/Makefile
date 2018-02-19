@@ -1,4 +1,5 @@
 # disable content trust for now
+PATH := $(CURDIR)/../build-tools/bin:$(PATH)
 LINUXKIT_OPTS= --disable-content-trust
 
 PKGS = grub xen kernel kmod_pfring xen-tools dnsmasq gpt-tools dom0-ztools	\

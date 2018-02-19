@@ -1,0 +1,33 @@
+
+required = ["github.com/linuxkit/linuxkit/src/cmd/linuxkit"]
+
+[prune]
+  go-tests = true
+  unused-packages = true
+  non-go = true
+
+[[constraint]]
+  name = "github.com/linuxkit/linuxkit"
+  branch = "master"
+
+[[override]]
+  name = "github.com/docker/docker"
+  revision = "ba99c19b593bdb9e7b90793681fe89b0a91781ed"
+[[override]]
+  name = "github.com/docker/distribution"
+  revision = "3800056b8832cf6075e78b282ac010131d8687bc"
+[[override]]
+  name = "github.com/radu-matei/azure-sdk-for-go"
+  revision = "3b12823551999669c9a325a32472508e0af7978e"
+[[override]]
+  name = "github.com/radu-matei/azure-vhd-utils"
+  revision = "e52754d5569d2a643a7775f72ff2a6cf524f4c25"
+[[override]]
+  name = "github.com/Azure/azure-sdk-for-go"
+  revision = "26132835cbefa2669a306b777f34b929b56aa0a2"
+[[override]]
+  name = "github.com/moby/hyperkit"
+  revision = "a285521725f44f3d10ca1042c2c07d3a6e24bed8"
+[[override]]
+  name = "github.com/packethost/packngo"
+  revision = "f1be085ecd6fca1b0a0e25eda71f208dcfcee5ab"

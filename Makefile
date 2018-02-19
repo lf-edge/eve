@@ -1,5 +1,11 @@
 .PHONY: run pkgs help
 
+PATH := $(CURDIR)/build-tools/bin:$(PATH)
+COMMIT_NO := $(shell git rev-parse HEAD 2> /dev/null || true)
+COMMIT := $(if $(shell git status --porcelain --untracked-files=no),${COMMIT_NO}-dirty,${COMMIT_NO})
+BUILD_TOOLS=build-tools/bin/linuxkit build-tools/bin/manifest-tool
+GOC=GOPATH=$(CURDIR)/build-tools go
+
 all: help
 
 help:
@@ -12,7 +18,7 @@ help:
 	@echo "                         bootloader"
 	@echo
 
-pkgs:
+pkgs: $(BUILD_TOOLS)
 	make -C pkg
 
 run:
@@ -40,6 +46,20 @@ rootfs.img: images/fallback.yml
 fallback.img: rootfs.img
 	./maketestconfig.sh config.img
 	tar c rootfs.img config.img | ./makeflash.sh -C $@
+
+%Gopkg.lock: %Gopkg.toml
+	cd `dirname $@` ; GOPATH=$(CURDIR)/build-tools $(CURDIR)/build-tools/bin/dep ensure -v
+
+build-tools/bin/linuxkit: build-tools/src/linuxkit/Gopkg.lock
+	cd build-tools/src/linuxkit/vendor/github.com/linuxkit/linuxkit/src/cmd/linuxkit ;\
+	$(GOC) build -ldflags "-X github.com/linuxkit/linuxkit/src/cmd/linuxkit/version.GitCommit=${COMMIT}" -o $(CURDIR)/$@ .
+
+build-tools/bin/manifest-tool: build-tools/src/manifest-tool/Gopkg.lock
+	cd build-tools/src/manifest-tool/vendor/github.com/estesp/manifest-tool ;\
+	$(GOC) build -ldflags "-X main.gitCommit=${COMMIT}" -o $(CURDIR)/$@ .
+
+build-tools/bin/dep:
+	$(GOC) get github.com/golang/dep/cmd/dep
 
 .PHONY: FORCE
 FORCE:
