@@ -581,6 +581,7 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 	*deviceType = zmet.ZInfoTypes_ZiDevice
 	ReportInfo.Ztype = *deviceType
 	ReportInfo.DevId = *proto.String(deviceId)
+	ReportInfo.AtTimeStamp = ptypes.TimestampNow()
 
 	ReportDeviceInfo := new(zmet.ZInfoDevice)
 
