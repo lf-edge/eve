@@ -218,7 +218,7 @@ func doBaseOsActivate(uuidStr string, config types.BaseOsConfig,
 	}
 
 	if ret, err := isOtherPartitionStateUpdating(); ret == true {
-		log.Printf("doBaseOsActivate: %s\n", uuidSt,)
+		log.Printf("doBaseOsActivate: activating %s\n", uuidStr)
 
 		// if it is installed, flip the activated status
 		if status.State == types.INSTALLED ||
