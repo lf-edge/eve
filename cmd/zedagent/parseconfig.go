@@ -50,11 +50,11 @@ func validateConfig(config *zconfig.EdgeDevConfig) bool {
 
 func parseBaseOsConfig(config *zconfig.EdgeDevConfig) {
 
-	log.Println("Applying Base Os config")
 	partitionUsed := false
 
 	cfgOsList := config.GetBase()
 	baseOsCount := len(cfgOsList)
+	log.Println("Applying Base Os config len %d", baseOsCount)
 
 	if baseOsCount == 0 {
 		return
@@ -125,6 +125,8 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) {
 }
 
 func getPartitionInfo(baseOs *types.BaseOsConfig, baseOsCount int) bool {
+	log.Printf("getPartitionInfo(%s) count %d\n",
+		baseOs.BaseOsVersion, baseOsCount)
 	ret0 := false
 
 	// get old Partition Label, if any
@@ -135,6 +137,8 @@ func getPartitionInfo(baseOs *types.BaseOsConfig, baseOsCount int) bool {
 	// by calling bootloader API to fetch
 	// the unused partition
 	if baseOs.PartitionLabel == "" {
+		log.Printf("getPartitionInfo(%s) no PartitionLabel\n",
+			baseOs.BaseOsVersion)
 		if isInstallCandidate(uuidStr, baseOs, baseOsCount) {
 
 			uuidStr := baseOs.UUIDandVersion.UUID.String()
@@ -142,7 +146,13 @@ func getPartitionInfo(baseOs *types.BaseOsConfig, baseOsCount int) bool {
 				ret0 = true
 				baseOs.PartitionLabel = getOtherPartition()
 				setPersitentPartitionInfo(uuidStr, baseOs)
+			} else {
+				log.Printf("getPartitionInfo(%s) not unused\n",
+					baseOs.BaseOsVersion)
 			}
+		} else {
+			log.Printf("getPartitionInfo(%s) not candidate\n",
+				baseOs.BaseOsVersion)
 		}
 	}
 
@@ -158,25 +168,35 @@ func isInstallCandidate(uuidStr string, baseOs *types.BaseOsConfig,
 
 	if curBaseOsStatus != nil &&
 		curBaseOsStatus.Activated == true {
+		log.Printf("isInstallCandidate(%s) FAIL current (%s) is Activated\n",
+			baseOs.BaseOsVersion, curBaseOsStatus.BaseOsVersion)
 		return false
 	}
 
 	// new Config
 	if curBaseOsConfig == nil {
+		log.Printf("isInstallCandidate(%s) no current\n",
+			baseOs.BaseOsVersion)
 		return true
 	}
 
 	// only one baseOs Config
 	if curBaseOsConfig.PartitionLabel == "" &&
 		baseOsCount == 1 {
+		log.Printf("isInstallCandidate(%s) only one\n",
+			baseOs.BaseOsVersion)
 		return true
 	}
 
 	// Activate Flag is flipped
 	if curBaseOsConfig.Activate == false &&
 		baseOs.Activate == true {
+		log.Printf("isInstallCandidate(%s) Activate and cur not\n",
+			baseOs.BaseOsVersion)
 		return true
 	}
+	log.Printf("isInstallCandidate(%s) FAIL: curBaseOs %v baseOs %v\n",
+		baseOs.BaseOsVersion, curBaseOsConfig, baseOs)
 
 	return false
 }
@@ -848,14 +868,14 @@ func execReboot(state bool) {
 		log.Printf("Rebooting...\n")
 		duration := time.Duration(immediate)
 		timer := time.NewTimer(time.Second * duration)
-		 <-timer.C
+		<-timer.C
 		zbootReset()
 
 	case false:
 		log.Printf("Powering Off..\n")
 		duration := time.Duration(immediate)
 		timer := time.NewTimer(time.Second * duration)
-		 <-timer.C
+		<-timer.C
 		poweroffCmd := exec.Command("poweroff")
 		_, err := poweroffCmd.Output()
 		if err != nil {

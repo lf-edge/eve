@@ -296,7 +296,7 @@ func readDeviceConfigProtoMessage(r *http.Response) (*zconfig.EdgeDevConfig, err
 	log.Printf("Config Hash same %v: %v prev %v\n",
 		same, configHash, prevConfigHash)
 	prevConfigHash = configHash
-	
+
 	//log.Println(" proto bytes(config) received from cloud: ", fmt.Sprintf("%s",bytes))
 	//log.Printf("parsing proto %d bytes\n", len(b))
 	err = proto.Unmarshal(b, config)

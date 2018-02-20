@@ -204,6 +204,7 @@ func doBaseOsActivate(uuidStr string, config types.BaseOsConfig,
 		uuidStr, config.PartitionLabel)
 
 	if config.PartitionLabel == "" {
+		// XXX we hit this
 		log.Printf("doBaseOsActivate for %s, unassigned partition\n", uuidStr)
 		return changed
 	}

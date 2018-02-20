@@ -28,7 +28,7 @@ func zbootReset() {
 	rebootCmd := exec.Command("zboot", "reset")
 	_, err := rebootCmd.Output()
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("zboot reset: err %v\n", err)
 	}
 }
 
@@ -126,7 +126,7 @@ func setPartitionState(partName string, partState string) {
 	setPartStateCmd := exec.Command("zboot", "set_partstate",
 		partName, partState)
 	if _, err := setPartStateCmd.Output(); err != nil {
-		log.Fatalf("zboot partstate %s %s: err %v\n",
+		log.Fatalf("zboot set_partstate %s %s: err %v\n",
 			partName, partState, err)
 	}
 }
@@ -150,11 +150,11 @@ func setPartitionStateActive(partName string) {
 	setPartitionState(partName, "active")
 }
 
-func setPartitionStateUnused(partName string)  {
+func setPartitionStateUnused(partName string) {
 	setPartitionState(partName, "unused")
 }
 
-func setPartitionStateUpdating(partName string)  {
+func setPartitionStateUpdating(partName string) {
 	setPartitionState(partName, "updating")
 }
 
@@ -236,6 +236,7 @@ func getOtherPartitionDevName() string {
 	return getPartitionDevname(partName)
 }
 
+// XXX can this return ""? No file if no PartitionLabel when setPer called
 func getPersitentPartitionInfo(uuidStr string) string {
 
 	var partitionInfo = &types.PartitionInfo{}
@@ -274,19 +275,23 @@ func zbootWriteToPartition(srcFilename string, partName string) error {
 	log.Printf("WriteToPartition %s: %v\n", partName, srcFilename)
 	if !isOtherPartition(partName) {
 		errStr := fmt.Sprintf("not other partition %s", partName)
+		log.Println(errStr)
 		return errors.New(errStr)
 	}
 
 	if !isOtherPartitionStateUnused() {
 		errStr := fmt.Sprintf("%s: Not an unused partition", partName)
+		log.Println(errStr)
 		return errors.New(errStr)
 	}
 
 	devName := getPartitionDevname(partName)
 	if devName == "" {
 		errStr := fmt.Sprintf("null devname for partition %s", partName)
+		log.Println(errStr)
 		return errors.New(errStr)
 	}
+	// XXX how can we set this before we complete the dd?
 	setOtherPartitionStateUpdating()
 
 	// XXX:FIXME checkpoint, make sure, only one write to a partition
