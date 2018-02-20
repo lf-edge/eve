@@ -788,9 +788,17 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 		if ds != nil {
 			reportAA.UsedByUUID = ds.UUIDandVersion.UUID.String()
 		} else if types.IsUplink(deviceNetworkStatus, ib.Name) {
-			log.Printf("Reporting uplink as used %d %s\n",
-				ib.Type, ib.Name)
-			reportAA.UsedByUUID = deviceId
+			// XXX need to get our own UUID from cloud from getConfig
+			// early on.
+			if deviceId != "" {
+				log.Printf("Reporting uplink as used %d %s by %s\n",
+					ib.Type, ib.Name, deviceId)
+				reportAA.UsedByUUID = deviceId
+			} else {
+				log.Printf("NOT reporting uplink %d %s\n",
+					ib.Type, ib.Name)
+				continue
+			}
 		}
 		ReportDeviceInfo.AssignableAdapters = append(ReportDeviceInfo.AssignableAdapters,
 			reportAA)
@@ -836,6 +844,7 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 	*appType = zmet.ZInfoTypes_ZiApp
 	ReportInfo.Ztype = *appType
 	ReportInfo.DevId = *proto.String(deviceId)
+	ReportInfo.AtTimeStamp = ptypes.TimestampNow()
 
 	ReportAppInfo := new(zmet.ZInfoApp)
 
