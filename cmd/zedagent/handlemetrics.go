@@ -773,11 +773,16 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 	for i, _ := range aa.IoBundleList {
 		ib := &aa.IoBundleList[i]
 		// For a PCI device we check if it exists in hardware/kernel
+		// XXX could have been assigned away; hack to check for domains
 		_, _, err := types.IoBundleToPci(ib)
 		if err != nil {
-			log.Printf("Not reporting non-existent PCI device %d %s: %v\n",
+			if len(domainStatus) == 0 {
+				log.Printf("Not reporting non-existent PCI device %d %s: %v\n",
+					ib.Type, ib.Name, err)
+				continue
+			}
+			log.Printf("XXX reporting non-existent PCI device %d %s: %v\n",
 				ib.Type, ib.Name, err)
-			continue
 		}
 		reportAA := new(zmet.ZioBundle)
 		reportAA.Type = zmet.ZioType(ib.Type)
