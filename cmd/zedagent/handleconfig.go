@@ -151,7 +151,7 @@ func getLatestConfig(configUrl string, iteration int, partState *bool) {
 			Dial:            d.Dial,
 		}
 		client := &http.Client{Transport: transport}
-		req, err := http.NewRequest("POST", "https://"+configUrl, nil)
+		req, err := http.NewRequest("GET", "https://"+configUrl, nil)
 		if err != nil {
 			fmt.Println(err)
 			continue

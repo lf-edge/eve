@@ -129,6 +129,7 @@ func getPartitionState(partName string) (string, error) {
 	}
 	partState := string(ret)
 	partState = strings.TrimSpace(partState)
+	log.Printf("zboot partstate %s: %v\n", partName, partState)
 	return partState, nil
 }
 
@@ -142,15 +143,12 @@ func isPartitionState(partName string, partState string) (bool, error) {
 		return ret, err
 	}
 
-	partStateCmd := exec.Command("zboot", "partstate", partName)
-	ret, err := partStateCmd.Output()
+	curPartState, err := getPartitionState(partName)
 	if err != nil {
-		errStr := fmt.Sprintf("zboot partstate %s: err %v\n", partName, err)
-		err := errors.New(errStr)
 		return false, err
 	}
-	curPartState := string(ret)
-	curPartState = strings.TrimSpace(partState)
+
+	log.Printf("zboot partstate %s: %v %v\n", partName, curPartState, partState)
 
 	if curPartState != partState {
 		return false, nil

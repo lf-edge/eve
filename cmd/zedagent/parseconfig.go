@@ -96,11 +96,12 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) {
 			}
 		}
 
-		if partitionUsed == false &&
-			imageCount != 0 {
+		if imageCount != 0 {
 			baseOs.StorageConfigList = make([]types.StorageConfig, imageCount)
-			if ret := getPartitionInfo(baseOs, baseOsCount); ret == true {
-				partitionUsed = true
+			if partitionUsed == false {
+				if ret := getPartitionInfo(baseOs, baseOsCount); ret == true {
+					partitionUsed = true
+				}
 			}
 			parseStorageConfigList(config, baseOsObj, baseOs.StorageConfigList,
 				cfgOs.Drives, baseOs.PartitionLabel)
@@ -727,15 +728,21 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd) {
 	}
 
 	log.Printf("Reboot Config: %v\n", reboot)
-
-	rebootConfig := &zconfig.DeviceOpsCmd{}
+	var rebootConfig *zconfig.DeviceOpsCmd
 
 	// read old reboot config
 	if _, err := os.Stat(rebootConfigFilename); err == nil {
+		rebootConfig = &zconfig.DeviceOpsCmd{}
 		bytes, err := ioutil.ReadFile(rebootConfigFilename)
 		if err == nil {
 			err = json.Unmarshal(bytes, rebootConfig)
 		}
+	}
+
+	// store current config, persistently
+	bytes, err := json.Marshal(reboot)
+	if err == nil {
+		ioutil.WriteFile(rebootConfigFilename, bytes, 0644)
 	}
 
 	// if not first time,
@@ -756,13 +763,7 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd) {
 
 		log.Printf("Scheduling for reboot %d %d\n", rebootConfig.Counter, reboot.Counter)
 
-		go handleReboot()
-	}
-
-	// store current config, persistently
-	bytes, err := json.Marshal(reboot)
-	if err == nil {
-		ioutil.WriteFile(rebootConfigFilename, bytes, 0644)
+		go handleReboot(reboot)
 	}
 }
 
@@ -828,15 +829,16 @@ func execReboot(state bool) {
 
 	case true:
 		log.Printf("Rebooting...\n")
-		sleepCmd := exec.Command("sleep 15")
-		_, err := sleepCmd.Output()
-		if err != nil {
-			log.Println(err)
-		}
+		duration := time.Duration(immediate)
+		timer := time.NewTimer(time.Second * duration)
+		 <-timer.C
 		zbootReset()
 
 	case false:
 		log.Printf("Powering Off..\n")
+		duration := time.Duration(immediate)
+		timer := time.NewTimer(time.Second * duration)
+		 <-timer.C
 		poweroffCmd := exec.Command("poweroff")
 		_, err := poweroffCmd.Output()
 		if err != nil {
