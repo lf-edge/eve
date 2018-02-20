@@ -113,7 +113,7 @@ func isPartitionState(partName string, partState string) bool {
 	validatePartitionState(partState)
 
 	curPartState := getPartitionState(partName)
-	log.Printf("zboot partstate %s: %v %v\n",
+	log.Printf("isPartitionState %s: %v %v\n",
 		partName, curPartState, partState)
 	return curPartState == partState
 }
