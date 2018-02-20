@@ -729,10 +729,9 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd) {
 
 	if _, err := os.Stat(rebootConfigFilename); err != nil {
 		// XXX assume file doesn't exist
-		log.Printf("scheduleReboot - writing %s\n",
-			rebootConfigFilename)
 		// Take received as current and store in file
-		// store current config, persistently
+		log.Printf("scheduleReboot - writing initial %s\n",
+			rebootConfigFilename)
 		bytes, err := json.Marshal(reboot)
 		if err != nil {
 			log.Fatal(err)
@@ -755,28 +754,15 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd) {
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	log.Printf("scheduleReboot - read %v\n", rebootConfig)
+	log.Printf("scheduleReboot read %v\n", rebootConfig)
 
 	// store current config, persistently
 	bytes, err = json.Marshal(reboot)
-	if err != nil {
-		log.Fatal(err)
-	}
-	err = ioutil.WriteFile(rebootConfigFilename, bytes, 0644)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// store current config, persistently
-	bytes, err := json.Marshal(reboot)
 	if err == nil {
 		ioutil.WriteFile(rebootConfigFilename, bytes, 0644)
 	}
 
-	// if not first time, XXX where is the first time check?
-	// counter value has changed
-	// means new reboot event
+	// If counter value has changed it means new reboot event
 	if rebootConfig.Counter != reboot.Counter {
 
 		log.Printf("scheduleReboot: old %d new %d\n",

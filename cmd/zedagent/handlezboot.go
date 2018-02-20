@@ -296,7 +296,7 @@ func zbootWriteToPartition(srcFilename string, partName string) error {
 	if _, err := ddCmd.Output(); err != nil {
 		log.Printf("partName : %v\n", err)
 		setOtherPartitionStateUnused()
-		return false, err
+		return err
 	}
 
 	return nil
