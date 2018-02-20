@@ -763,7 +763,7 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd) {
 
 		log.Printf("Scheduling for reboot %d %d\n", rebootConfig.Counter, reboot.Counter)
 
-		go handleReboot(reboot)
+		go handleReboot()
 	}
 }
 
