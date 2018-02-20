@@ -89,7 +89,7 @@ func addOrUpdateBaseOsConfig(uuidStr string, config types.BaseOsConfig) {
 			PartitionLabel: config.PartitionLabel,
 		}
 
-		status.Activated = getActivationStatus(uuidStr, status)
+		status.Activated = getActivationStatus(status)
 
 		status.StorageStatusList = make([]types.StorageStatus,
 			len(config.StorageConfigList))
@@ -136,10 +136,11 @@ func baseOsStatusGet(uuidStr string) *types.BaseOsStatus {
 	return &status
 }
 
-// XXX what does the return value mean?
-func getActivationStatus(uuidStr string, status types.BaseOsStatus) bool {
+// Check if the BaseOsStatus is the current partition and is active
+func getActivationStatus(status types.BaseOsStatus) bool {
 
-	log.Printf("getActivationStatus: partitionLabel %s\n", status.PartitionLabel)
+	log.Printf("getActivationStatus: partitionLabel %s\n",
+		status.PartitionLabel)
 	if !isCurrentPartition(status.PartitionLabel) {
 		return false
 	}
