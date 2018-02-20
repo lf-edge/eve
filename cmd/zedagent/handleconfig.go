@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
@@ -280,23 +281,25 @@ func readDeviceConfigProtoMessage(r *http.Response) (*zconfig.EdgeDevConfig, err
 
 	var config = &zconfig.EdgeDevConfig{}
 
-	bytes, err := ioutil.ReadAll(r.Body)
+	b, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		fmt.Println(err)
 		return nil, err
 	}
-	// XXX add sha printing
 	// compute sha256 of the image and match it
 	// with the one in config file...
 	h := sha256.New()
-	h.Write(bytes)
+	h.Write(b)
 	configHash := h.Sum(nil)
-	log.Printf("Config Hash %v prev %v\n", configHash, prevConfigHash)
+	// XXX add sha compare and ignore
+	same := bytes.Equal(configHash, prevConfigHash)
+	log.Printf("Config Hash same %v: %v prev %v\n",
+		same, configHash, prevConfigHash)
 	prevConfigHash = configHash
 	
 	//log.Println(" proto bytes(config) received from cloud: ", fmt.Sprintf("%s",bytes))
-	//log.Printf("parsing proto %d bytes\n", len(bytes))
-	err = proto.Unmarshal(bytes, config)
+	//log.Printf("parsing proto %d bytes\n", len(b))
+	err = proto.Unmarshal(b, config)
 	if err != nil {
 		log.Println("Unmarshalling failed: %v", err)
 		return nil, err
