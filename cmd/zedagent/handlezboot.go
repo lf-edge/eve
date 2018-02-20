@@ -103,6 +103,7 @@ func getPartitionState(partName string) string {
 	}
 	partState := string(ret)
 	partState = strings.TrimSpace(partState)
+	log.Printf("zboot partstate %s: %v\n", partName, partState)
 	return partState
 }
 
@@ -112,6 +113,8 @@ func isPartitionState(partName string, partState string) bool {
 	validatePartitionState(partState)
 
 	curPartState := getPartitionState(partName)
+	log.Printf("zboot partstate %s: %v %v\n",
+		partName, curPartState, partState)
 	return curPartState == partState
 }
 
@@ -268,13 +271,14 @@ func setPersitentPartitionInfo(uuidStr string, config *types.BaseOsConfig) {
 
 func zbootWriteToPartition(srcFilename string, partName string) error {
 
+	log.Printf("WriteToPartition %s: %v\n", partName, srcFilename)
 	if !isOtherPartition(partName) {
 		errStr := fmt.Sprintf("not other partition %s", partName)
 		return errors.New(errStr)
 	}
 
 	if !isOtherPartitionStateUnused() {
-		errStr := fmt.Sprintf("not an unused partition %s", partName)
+		errStr := fmt.Sprintf("%s: Not an unused partition", partName)
 		return errors.New(errStr)
 	}
 
@@ -283,14 +287,18 @@ func zbootWriteToPartition(srcFilename string, partName string) error {
 		errStr := fmt.Sprintf("null devname for partition %s", partName)
 		return errors.New(errStr)
 	}
+	setOtherPartitionStateUpdating()
 
 	// XXX:FIXME checkpoint, make sure, only one write to a partition
 	// cleanup, if it fails, or the attached baseOs config is deleted
 
 	ddCmd := exec.Command("dd", "if="+srcFilename, "of="+devName, "bs=8M")
 	if _, err := ddCmd.Output(); err != nil {
-		return err
+		log.Printf("partName : %v\n", err)
+		setOtherPartitionStateUnused()
+		return false, err
 	}
+
 	return nil
 }
 
