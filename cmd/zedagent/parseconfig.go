@@ -129,11 +129,10 @@ func getPartitionInfo(baseOs *types.BaseOsConfig, baseOsCount int) {
 	// by calling bootloader API to fetch
 	// the unused partition
 	if baseOs.PartitionLabel == "" {
-		if ret := isInstallCandidate(uuidStr, baseOs, baseOsCount); ret == true {
+		if isInstallCandidate(uuidStr, baseOs, baseOsCount) {
 
 			uuidStr := baseOs.UUIDandVersion.UUID.String()
-			ret, _ := isOtherPartitionStateUnused()
-			if ret == true {
+			if isOtherPartitionStateUnused() {
 				baseOs.PartitionLabel = getOtherPartition()
 				setPersitentPartitionInfo(uuidStr, baseOs)
 			}
@@ -704,9 +703,10 @@ func parseOpCmds(config *zconfig.EdgeDevConfig) {
 }
 
 func scheduleReboot(reboot *zconfig.DeviceOpsCmd) {
-
+	log.Printf("scheduleReboot(%v)\n", reboot)
 	if reboot == nil {
-
+		log.Printf("scheduleReboot - removing %s\n",
+			rebootConfigFilename)
 		// stop the timer
 		if rebootTimer != nil {
 			rebootTimer.Stop()
@@ -716,23 +716,56 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd) {
 		return
 	}
 
-	log.Printf("Reboot Config: %v\n", reboot)
-
 	rebootConfig := &zconfig.DeviceOpsCmd{}
 
-	// read old reboot config
-	if _, err := os.Stat(rebootConfigFilename); err == nil {
-		bytes, err := ioutil.ReadFile(rebootConfigFilename)
-		if err == nil {
-			err = json.Unmarshal(bytes, rebootConfig)
+	if _, err := os.Stat(rebootConfigFilename); err != nil {
+		// XXX assume file doesn't exist
+		log.Printf("scheduleReboot - writing %s\n",
+			rebootConfigFilename)
+		// Take received as current and store in file
+		// store current config, persistently
+		bytes, err := json.Marshal(reboot)
+		if err != nil {
+			log.Fatal(err)
+		}
+		err = ioutil.WriteFile(rebootConfigFilename, bytes, 0644)
+		if err != nil {
+			log.Fatal(err)
 		}
 	}
+	log.Printf("scheduleReboot - reading %s\n",
+		rebootConfigFilename)
+	// read old reboot config
+	bytes, err := ioutil.ReadFile(rebootConfigFilename)
+	// XXX error handling?
+	if err != nil {
+		log.Fatal(err)
+	}
+	err = json.Unmarshal(bytes, rebootConfig)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	// if not first time,
+	log.Printf("scheduleReboot - read %v\n", rebootConfig)
+
+	// store current config, persistently
+	bytes, err = json.Marshal(reboot)
+	if err != nil {
+		log.Fatal(err)
+	}
+	err = ioutil.WriteFile(rebootConfigFilename, bytes, 0644)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// if not first time, XXX where is the first time check?
 	// counter value has changed
 	// means new reboot event
 	if (rebootConfig != nil) &&
 		(rebootConfig.Counter != reboot.Counter) {
+
+		log.Printf("scheduleReboot: old %d new %d\n",
+			rebootConfig.Counter, reboot.Counter)
 
 		//timer was started, stop now
 		if rebootTimer != nil {
@@ -748,16 +781,10 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd) {
 
 		go handleReboot()
 	}
-
-	// store current config, persistently
-	bytes, err := json.Marshal(reboot)
-	if err == nil {
-		ioutil.WriteFile(rebootConfigFilename, bytes, 0644)
-	}
 }
 
 func scheduleBackup(backup *zconfig.DeviceOpsCmd) {
-
+	log.Printf("scheduleBackup(%v)\n", backup)
 	// XXX:FIXME  handle baackup semantics
 	log.Printf("Backup Config: %v\n", backup)
 }

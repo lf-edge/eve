@@ -28,7 +28,7 @@ func zbootReset() {
 	rebootCmd := exec.Command("zboot", "reset")
 	_, err := rebootCmd.Output()
 	if err != nil {
-		log.Println(err)
+		log.Fatal(err)
 	}
 }
 
@@ -37,21 +37,11 @@ func getCurrentPartition() string {
 	curPartCmd := exec.Command("zboot", "curpart")
 	ret, err := curPartCmd.Output()
 	if err != nil {
-		log.Printf("zboot curpart: err %v\n", err)
-		return ""
+		log.Fatalf("zboot curpart: err %v\n", err)
 	}
 
 	partName := string(ret)
 	partName = strings.TrimSpace(partName)
-	switch partName {
-	case "IMGA":
-		partName = "IMGA"
-	case "IMGB":
-		partName = "IMGB"
-	default:
-		partName = ""
-	}
-	//log.Printf("zboot curpart: %s\n", partName)
 	return partName
 }
 
@@ -65,238 +55,180 @@ func getOtherPartition() string {
 	case "IMGB":
 		partName = "IMGA"
 	default:
-		partName = ""
+		log.Fatalf("getOtherPartition unknow partName %s\n", partName)
 	}
 	//log.Printf("zboot otherpart: %s\n", partName)
 	return partName
 }
 
-func validatePartitionName(partName string) (bool, error) {
+func validatePartitionName(partName string) {
 
 	if partName == "IMGA" || partName == "IMGB" {
-		return true, nil
+		return
 	}
 	errStr := fmt.Sprintf("invalid partition %s", partName)
-	err := errors.New(errStr)
-	return false, err
+	log.Fatal(errStr)
 }
 
-func validatePartitionState(partState string) (bool, error) {
-
+func validatePartitionState(partState string) {
 	if partState == "active" || partState == "inprogress" ||
 		partState == "unused" || partState == "updating" {
-		return true, nil
+		return
 	}
-	errStr := fmt.Sprintf("invalid state %s", partState)
-	err := errors.New(errStr)
-	return false, err
+	errStr := fmt.Sprintf("invalid partition state %s", partState)
+	log.Fatal(errStr)
 }
 
-func isCurrentPartition(partName string) (bool, error) {
-	if ret, err := validatePartitionName(partName); ret == false {
-		return ret, err
-	}
+func isCurrentPartition(partName string) bool {
+	validatePartitionName(partName)
 	curPartName := getCurrentPartition()
-	if curPartName != partName {
-		return false, nil
-	}
-	return true, nil
+	return curPartName == partName
 }
 
-func isOtherPartition(partName string) (bool, error) {
-	if ret, err := validatePartitionName(partName); ret == false {
-		return ret, err
-	}
+func isOtherPartition(partName string) bool {
+	validatePartitionName(partName)
 	otherPartName := getOtherPartition()
-	if otherPartName != partName {
-		return false, nil
-	}
-	return true, nil
+	return otherPartName == partName
 }
 
 //  get/set api routines
-func getPartitionState(partName string) (string, error) {
+func getPartitionState(partName string) string {
 
-	if ret, err := validatePartitionName(partName); ret == false {
-		return "", err
-	}
+	validatePartitionName(partName)
 
 	partStateCmd := exec.Command("zboot", "partstate", partName)
 	ret, err := partStateCmd.Output()
 	if err != nil {
-		log.Printf("zboot partstate %s: err %v\n", partName, err)
-		return "", err
+		log.Fatalf("zboot partstate %s: err %v\n", partName, err)
 	}
 	partState := string(ret)
 	partState = strings.TrimSpace(partState)
-	return partState, nil
+	return partState
 }
 
-func isPartitionState(partName string, partState string) (bool, error) {
+func isPartitionState(partName string, partState string) bool {
 
-	if ret, err := validatePartitionName(partName); ret == false {
-		return ret, err
-	}
+	validatePartitionName(partName)
+	validatePartitionState(partState)
 
-	if ret, err := validatePartitionState(partState); ret == false {
-		return ret, err
-	}
-
-	partStateCmd := exec.Command("zboot", "partstate", partName)
-	ret, err := partStateCmd.Output()
-	if err != nil {
-		errStr := fmt.Sprintf("zboot partstate %s: err %v\n", partName, err)
-		err := errors.New(errStr)
-		return false, err
-	}
-	curPartState := string(ret)
-	curPartState = strings.TrimSpace(partState)
-
-	if curPartState != partState {
-		return false, nil
-	}
-	return true, nil
+	curPartState := getPartitionState(partName)
+	return curPartState == partState
 }
 
-func setPartitionState(partName string, partState string) (bool, error) {
+func setPartitionState(partName string, partState string) {
 
-	if ret, err := validatePartitionName(partName); ret == false {
-		return ret, err
-	}
-
-	if ret, err := validatePartitionState(partState); ret == false {
-		return ret, err
-	}
+	validatePartitionName(partName)
+	validatePartitionState(partState)
 
 	setPartStateCmd := exec.Command("zboot", "set_partstate",
 		partName, partState)
 	if _, err := setPartStateCmd.Output(); err != nil {
-		log.Printf("zboot partstate %s %s: err %v\n",
+		log.Fatalf("zboot partstate %s %s: err %v\n",
 			partName, partState, err)
-		return false, err
 	}
-	return true, nil
 }
 
-func getPartitionDevname(partName string) (string, error) {
+func getPartitionDevname(partName string) string {
 
-	if ret, err := validatePartitionName(partName); ret == false {
-		return "", err
-	}
+	validatePartitionName(partName)
 	getPartDevCmd := exec.Command("zboot", "partdev", partName)
 	ret, err := getPartDevCmd.Output()
 	if err != nil {
-		log.Printf("zboot partdev %s: err %v\n", partName, err)
-		return "", err
+		log.Fatalf("zboot partdev %s: err %v\n", partName, err)
 	}
 
 	devName := string(ret)
 	devName = strings.TrimSpace(devName)
-	return devName, nil
+	return devName
 }
 
 // set routines
-func setPartitionStateActive(partName string) (bool, error) {
-	return setPartitionState(partName, "active")
+func setPartitionStateActive(partName string) {
+	setPartitionState(partName, "active")
 }
 
-func setPartitionStateInProgress(partName string) (bool, error) {
-	return setPartitionState(partName, "inprogress")
+func setPartitionStateUnused(partName string)  {
+	setPartitionState(partName, "unused")
 }
 
-func setPartitionStateUnused(partName string) (bool, error) {
-	return setPartitionState(partName, "unused")
-}
-
-func setPartitionStateUpdating(partName string) (bool, error) {
-	return setPartitionState(partName, "updating")
+func setPartitionStateUpdating(partName string)  {
+	setPartitionState(partName, "updating")
 }
 
 // check routines, for current partition
-func isCurrentPartitionStateActive() (bool, error) {
+func isCurrentPartitionStateActive() bool {
 	partName := getCurrentPartition()
 	return isPartitionState(partName, "active")
 }
 
-func isCurrentPartitionStateInProgress() (bool, error) {
+func isCurrentPartitionStateInProgress() bool {
 	partName := getCurrentPartition()
 	return isPartitionState(partName, "inprogress")
 }
 
-func isCurrentPartitionStateUpdating() (bool, error) {
+func isCurrentPartitionStateUpdating() bool {
 	partName := getCurrentPartition()
 	return isPartitionState(partName, "updating")
 }
 
 // check routines, for other partition
-func isOtherPartitionStateActive() (bool, error) {
+func isOtherPartitionStateActive() bool {
 	partName := getOtherPartition()
 	return isPartitionState(partName, "active")
 }
 
-func isOtherPartitionStateInProgress() (bool, error) {
+func isOtherPartitionStateInProgress() bool {
 	partName := getOtherPartition()
 	return isPartitionState(partName, "inprogress")
 }
 
-func isOtherPartitionStateUnused() (bool, error) {
+func isOtherPartitionStateUnused() bool {
 	partName := getOtherPartition()
 	return isPartitionState(partName, "unused")
 }
 
-func isOtherPartitionStateUpdating() (bool, error) {
+func isOtherPartitionStateUpdating() bool {
 	partName := getOtherPartition()
 	return isPartitionState(partName, "updating")
 }
 
-// set routines, for current partition
-func setCurrentPartitionStateInProgress() (bool, error) {
+func setCurrentPartitionStateActive() {
 	partName := getCurrentPartition()
-	return setPartitionState(partName, "inprogress")
+	setPartitionState(partName, "active")
 }
 
-func setCurrentPartitionStateActive() (bool, error) {
+func setCurrentPartitionStateUpdating() {
 	partName := getCurrentPartition()
-	return setPartitionState(partName, "active")
+	setPartitionState(partName, "updating")
 }
 
-func setCurrentPartitionStateUpdating() (bool, error) {
+func setCurrentPartitionStateUnused() {
 	partName := getCurrentPartition()
-	return setPartitionState(partName, "updating")
-}
-
-func setCurrentPartitionStateUnused() (bool, error) {
-	partName := getCurrentPartition()
-	return setPartitionState(partName, "unused")
+	setPartitionState(partName, "unused")
 }
 
 // set routines, for other partition
-func setOtherPartitionStateInProgress() (bool, error) {
+func setOtherPartitionStateActive() {
 	partName := getOtherPartition()
-	return setPartitionState(partName, "inprogress")
+	setPartitionState(partName, "active")
 }
 
-func setOtherPartitionStateActive() (bool, error) {
+func setOtherPartitionStateUpdating() {
 	partName := getOtherPartition()
-	return setPartitionState(partName, "active")
+	setPartitionState(partName, "updating")
 }
 
-func setOtherPartitionStateUpdating() (bool, error) {
+func setOtherPartitionStateUnused() {
 	partName := getOtherPartition()
-	return setPartitionState(partName, "updating")
+	setPartitionState(partName, "unused")
 }
 
-func setOtherPartitionStateUnused() (bool, error) {
-	partName := getOtherPartition()
-	return setPartitionState(partName, "unused")
-}
-
-func getCurrentPartitionDevName() (string, error) {
+func getCurrentPartitionDevName() string {
 	partName := getCurrentPartition()
 	return getPartitionDevname(partName)
 }
 
-func getOtherPartitionDevName() (string, error) {
+func getOtherPartitionDevName() string {
 	partName := getOtherPartition()
 	return getPartitionDevname(partName)
 }
@@ -334,21 +266,22 @@ func setPersitentPartitionInfo(uuidStr string, config *types.BaseOsConfig) {
 	}
 }
 
-func zbootWriteToPartition(srcFilename string, partName string) (bool, error) {
+func zbootWriteToPartition(srcFilename string, partName string) error {
 
-	if ret, err := isOtherPartition(partName); ret == false {
-		return ret, err
+	if !isOtherPartition(partName) {
+		errStr := fmt.Sprintf("not other partition %s", partName)
+		return errors.New(errStr)
 	}
 
-	if ret, _ := isOtherPartitionStateUnused(); ret == false {
+	if !isOtherPartitionStateUnused() {
 		errStr := fmt.Sprintf("not an unused partition %s", partName)
-		err := errors.New(errStr)
-		return false, err
+		return errors.New(errStr)
 	}
 
-	devName, err := getPartitionDevname(partName)
-	if err != nil || devName == "" {
-		return false, err
+	devName := getPartitionDevname(partName)
+	if devName == "" {
+		errStr := fmt.Sprintf("null devname for partition %s", partName)
+		return errors.New(errStr)
 	}
 
 	// XXX:FIXME checkpoint, make sure, only one write to a partition
@@ -356,59 +289,42 @@ func zbootWriteToPartition(srcFilename string, partName string) (bool, error) {
 
 	ddCmd := exec.Command("dd", "if="+srcFilename, "of="+devName, "bs=8M")
 	if _, err := ddCmd.Output(); err != nil {
-		return false, err
+		return err
 	}
-	return true, nil
+	return nil
 }
 
-func partitionInit() (bool, error) {
+func partitionInit() {
 
 	curPart := getCurrentPartition()
 	otherPart := getOtherPartition()
 
-	currActiveState, _ := isCurrentPartitionStateActive()
-	otherActiveState, _ := isOtherPartitionStateActive()
+	currActiveState := isCurrentPartitionStateActive()
+	otherActiveState := isOtherPartitionStateActive()
 
-	if currActiveState == true && otherActiveState == true {
+	if currActiveState && otherActiveState {
 		log.Printf("Both partitions are Active %s, %s n", curPart, otherPart)
 		log.Printf("Mark other partition %s, unused\n", otherPart)
-		if ret, err := setOtherPartitionStateUnused(); ret == false {
-			errStr := fmt.Sprintf("Marking other partition %s unused, %v\n",
-				otherPart, err)
-			err = errors.New(errStr)
-			return ret, err
-		}
+		setOtherPartitionStateUnused()
 	}
-	return true, nil
 }
 
-func markPartitionStateActive() (bool, error) {
+func markPartitionStateActive() error {
 
 	curPart := getCurrentPartition()
 	otherPart := getOtherPartition()
 
 	log.Printf("Mark the current partition %s, active\n", curPart)
-	if ret, err := setCurrentPartitionStateActive(); ret == false {
-		errStr := fmt.Sprintf("Marking current partition %s active, %v\n",
-			curPart, err)
-		err = errors.New(errStr)
-		return ret, err
-	}
+	setCurrentPartitionStateActive()
 
 	log.Printf("Check other partition %s, active\n", otherPart)
-	if ret, err := isOtherPartitionStateActive(); ret == false {
-		errStr := fmt.Sprintf("Other partition %s, is not active %v\n",
-			otherPart, err)
-		err = errors.New(errStr)
-		return ret, err
+	if !isOtherPartitionStateActive() {
+		errStr := fmt.Sprintf("Other partition %s, is not active\n",
+			otherPart)
+		return errors.New(errStr)
 	}
 
 	log.Printf("Mark other partition %s, unused\n", otherPart)
-	if ret, err := setOtherPartitionStateUnused(); ret == false {
-		errStr := fmt.Sprintf("Marking other partition %s unused, %v\n",
-			otherPart, err)
-		err = errors.New(errStr)
-		return ret, err
-	}
-	return true, nil
+	setOtherPartitionStateUnused()
+	return nil
 }

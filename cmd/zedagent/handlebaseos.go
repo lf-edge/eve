@@ -136,17 +136,14 @@ func baseOsStatusGet(uuidStr string) *types.BaseOsStatus {
 	return &status
 }
 
+// XXX what does the return value mean?
 func getActivationStatus(uuidStr string, status types.BaseOsStatus) bool {
 
 	log.Printf("getActivationStatus: partitionLabel %s\n", status.PartitionLabel)
-	if ret, _ := isCurrentPartition(status.PartitionLabel); ret == false {
-		return ret
+	if !isCurrentPartition(status.PartitionLabel) {
+		return false
 	}
-	ret, err := isCurrentPartitionStateActive()
-	if err != nil {
-		log.Printf("getActivationStatus: partitionState %s, %v\n", ret, err)
-	}
-	return ret
+	return isCurrentPartitionStateActive()
 }
 
 func baseOsHandleStatusUpdate(uuidStr string) {
@@ -208,15 +205,12 @@ func doBaseOsActivate(uuidStr string, config types.BaseOsConfig,
 	// check the partition label of the current root...
 	// check PartitionLabel the one we got is really unused?
 	// if partitionState unsed then change status to updating...
-	if ret, _ := isOtherPartition(config.PartitionLabel); ret == false {
+	if !isOtherPartition(config.PartitionLabel) {
 		return changed
 	}
 
-	if ret, _ := isOtherPartitionStateUnused(); ret == true {
-		if ret, err := setPartitionStateUpdating(config.PartitionLabel); ret == false {
-			log.Printf("doBaseOsActivate: %s %v\n", uuidStr, err)
-			return changed
-		}
+	if isOtherPartitionStateUnused() {
+		setPartitionStateUpdating(config.PartitionLabel)
 	}
 
 	// if it is installed, flip the activated status
@@ -531,6 +525,9 @@ func installBaseOsObject(srcFilename string, dstFilename string) error {
 		}
 	}
 
-	_, err := zbootWriteToPartition(srcFilename, dstFilename)
+	err := zbootWriteToPartition(srcFilename, dstFilename)
+	if err != nil {
+		log.Printf("installBaseOsObject: write failed %s\n", err)
+	}
 	return err
 }

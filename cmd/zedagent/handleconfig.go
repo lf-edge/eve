@@ -4,6 +4,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -107,7 +108,7 @@ func getCloudUrls() {
 func configTimerTask() {
 	iteration := 0
 	curPart := getCurrentPartition()
-	inProgressState, _ := isCurrentPartitionStateInProgress()
+	inProgressState := isCurrentPartitionStateInProgress()
 
 	log.Printf("Config Fetch Task, curPart:%s, inProgress:%v\n",
 		curPart, inProgressState)
@@ -179,17 +180,6 @@ func getLatestConfig(configUrl string, iteration int, partState *bool) {
 			continue
 		}
 
-		log.Printf("current partition-state inProgress:%v\n", *partState)
-		// now cloud connectivity is good, mark partition state
-		if *partState == true {
-			ret, err := markPartitionStateActive()
-			if ret == true {
-				*partState = false
-			} else {
-				log.Println(err)
-			}
-		}
-
 		if connState.OCSPResponse == nil ||
 			!stapledCheck(connState) {
 			if connState.OCSPResponse == nil {
@@ -207,6 +197,16 @@ func getLatestConfig(configUrl string, iteration int, partState *bool) {
 		}
 		// Even if we get a 404 we consider the connection a success
 		zedCloudSuccess(intf)
+
+		log.Printf("current partition-state inProgress:%v\n", *partState)
+		// now cloud connectivity is good, mark partition state
+		if *partState == true {
+			if err := markPartitionStateActive(); err != nil {
+				log.Println(err)
+			} else {
+				*partState = false
+			}
+		}
 
 		if err := validateConfigMessage(configUrl, intf, localTCPAddr,
 			resp); err != nil {
@@ -274,6 +274,8 @@ func validateConfigMessage(configUrl string, intf string,
 	}
 }
 
+var prevConfigHash []byte
+
 func readDeviceConfigProtoMessage(r *http.Response) (*zconfig.EdgeDevConfig, error) {
 
 	var config = &zconfig.EdgeDevConfig{}
@@ -283,6 +285,15 @@ func readDeviceConfigProtoMessage(r *http.Response) (*zconfig.EdgeDevConfig, err
 		fmt.Println(err)
 		return nil, err
 	}
+	// XXX add sha printing
+	// compute sha256 of the image and match it
+	// with the one in config file...
+	h := sha256.New()
+	h.Write(bytes)
+	configHash := h.Sum(nil)
+	log.Printf("Config Hash %v prev %v\n", configHash, prevConfigHash)
+	prevConfigHash = configHash
+	
 	//log.Println(" proto bytes(config) received from cloud: ", fmt.Sprintf("%s",bytes))
 	//log.Printf("parsing proto %d bytes\n", len(bytes))
 	err = proto.Unmarshal(bytes, config)
