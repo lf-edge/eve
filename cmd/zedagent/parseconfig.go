@@ -51,6 +51,7 @@ func validateConfig(config *zconfig.EdgeDevConfig) bool {
 func parseBaseOsConfig(config *zconfig.EdgeDevConfig) {
 
 	log.Println("Applying Base Os config")
+	partitionUsed := false
 
 	cfgOsList := config.GetBase()
 	baseOsCount := len(cfgOsList)
@@ -97,7 +98,11 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) {
 
 		if imageCount != 0 {
 			baseOs.StorageConfigList = make([]types.StorageConfig, imageCount)
-			getPartitionInfo(baseOs, baseOsCount)
+			if partitionUsed == false {
+				if ret := getPartitionInfo(baseOs, baseOsCount); ret == true {
+					partitionUsed = true
+				}
+			}
 			parseStorageConfigList(config, baseOsObj, baseOs.StorageConfigList,
 				cfgOs.Drives, baseOs.PartitionLabel)
 		}
@@ -119,7 +124,8 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) {
 	}
 }
 
-func getPartitionInfo(baseOs *types.BaseOsConfig, baseOsCount int) {
+func getPartitionInfo(baseOs *types.BaseOsConfig, baseOsCount int) bool {
+	ret0 := false
 
 	// get old Partition Label, if any
 	uuidStr := baseOs.UUIDandVersion.UUID.String()
@@ -134,6 +140,7 @@ func getPartitionInfo(baseOs *types.BaseOsConfig, baseOsCount int) {
 			uuidStr := baseOs.UUIDandVersion.UUID.String()
 			ret, _ := isOtherPartitionStateUnused()
 			if ret == true {
+				ret0 = true
 				baseOs.PartitionLabel = getOtherPartition()
 				setPersitentPartitionInfo(uuidStr, baseOs)
 			}
@@ -141,6 +148,7 @@ func getPartitionInfo(baseOs *types.BaseOsConfig, baseOsCount int) {
 	}
 
 	log.Printf("%s, Partition info %s\n", uuidStr, baseOs.PartitionLabel)
+	return ret0
 }
 
 func isInstallCandidate(uuidStr string, baseOs *types.BaseOsConfig,
@@ -626,6 +634,7 @@ func validateBaseOsConfig(baseOsList []types.BaseOsConfig) bool {
 
 	// not more than max base os count(2)
 	if len(baseOsList) > MaxBaseOsCount {
+		log.Printf("baseOs: Image Count %v\n", len(baseOsList))
 		return false
 	}
 
@@ -641,6 +650,7 @@ func validateBaseOsConfig(baseOsList []types.BaseOsConfig) bool {
 	// can not be more than one activate as true
 	if osCount != 0 {
 		if activateCount != 1 {
+			log.Printf("baseOs: Activate Count %v\n", activateCount)
 			return false
 		}
 	}
@@ -659,6 +669,7 @@ func validateBaseOsConfig(baseOsList []types.BaseOsConfig) bool {
 					// if sha is same for URLs
 					if drive0.ImageSha256 == drive1.ImageSha256 &&
 						drive0.DownloadURL != drive1.DownloadURL {
+						log.Printf("baseOs: Same Sha %v\n", drive0.ImageSha256)
 						return false
 					}
 				}
@@ -717,15 +728,21 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd) {
 	}
 
 	log.Printf("Reboot Config: %v\n", reboot)
-
-	rebootConfig := &zconfig.DeviceOpsCmd{}
+	var rebootConfig *zconfig.DeviceOpsCmd
 
 	// read old reboot config
 	if _, err := os.Stat(rebootConfigFilename); err == nil {
+		rebootConfig = &zconfig.DeviceOpsCmd{}
 		bytes, err := ioutil.ReadFile(rebootConfigFilename)
 		if err == nil {
 			err = json.Unmarshal(bytes, rebootConfig)
 		}
+	}
+
+	// store current config, persistently
+	bytes, err := json.Marshal(reboot)
+	if err == nil {
+		ioutil.WriteFile(rebootConfigFilename, bytes, 0644)
 	}
 
 	// if not first time,
@@ -747,12 +764,6 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd) {
 		log.Printf("Scheduling for reboot %d %d\n", rebootConfig.Counter, reboot.Counter)
 
 		go handleReboot()
-	}
-
-	// store current config, persistently
-	bytes, err := json.Marshal(reboot)
-	if err == nil {
-		ioutil.WriteFile(rebootConfigFilename, bytes, 0644)
 	}
 }
 
@@ -818,10 +829,16 @@ func execReboot(state bool) {
 
 	case true:
 		log.Printf("Rebooting...\n")
+		duration := time.Duration(immediate)
+		timer := time.NewTimer(time.Second * duration)
+		 <-timer.C
 		zbootReset()
 
 	case false:
 		log.Printf("Powering Off..\n")
+		duration := time.Duration(immediate)
+		timer := time.NewTimer(time.Second * duration)
+		 <-timer.C
 		poweroffCmd := exec.Command("poweroff")
 		_, err := poweroffCmd.Output()
 		if err != nil {

@@ -303,19 +303,33 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig) {
 
 	devId = config.GetId()
 	if devId != nil {
-		// store the device id and version
-		log.Printf("First config; storing UUID/version %s/%s\n",
-			devId.Uuid, devId.Version)
-		deviceId = devId.Uuid
-		activeVersion = devId.Version
-	} else {
-		// XXX at some point in time we should set version in
-		// zedcloud and increment on change, or skip this completely
-		if false && devId.Version == activeVersion {
-			log.Printf("Same version, skipping:%v\n", config.Id.Version)
-			return
+		if deviceId == "" {
+			// First time; record id and version
+			log.Printf("First config; storing UUID/version %s/%s\n",
+				devId.Uuid, devId.Version)
+			deviceId = devId.Uuid
+			activeVersion = devId.Version
+			// XXX need to update hostname/LISP with deviceId
+			// Write to uuid file etc.
+		} else {
+			// check the device id and version
+			if deviceId != devId.Uuid {
+				log.Printf("Updated config but wrong UUID have %s got %s\n",
+					deviceId, devId.Uuid)
+				// XXX can we send back an error somehow?
+				return
+			}
+			// XXX at some point in time we should set version in
+			// zedcloud and increment on change, or skip this completely
+			// For now we always accept the empty version.
+			if devId.Version != "" &&
+				devId.Version == activeVersion {
+				log.Printf("Same version, ignoring %s\n",
+					devId.Version)
+				return
+			}
+			activeVersion = devId.Version
 		}
-		activeVersion = devId.Version
 	}
 	handleLookUpParam(config)
 

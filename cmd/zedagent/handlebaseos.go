@@ -201,9 +201,14 @@ func doBaseOsStatusUpdate(uuidStr string, config types.BaseOsConfig,
 func doBaseOsActivate(uuidStr string, config types.BaseOsConfig,
 	status *types.BaseOsStatus) bool {
 
+	changed := false
 	log.Printf("doBaseOsActivate for %s, partition %s\n",
 		uuidStr, config.PartitionLabel)
-	changed := false
+
+	if config.PartitionLabel == "" {
+		log.Printf("doBaseOsActivate for %s, unassigned partition\n", uuidStr)
+		return changed
+	}
 
 	// check the partition label of the current root...
 	// check PartitionLabel the one we got is really unused?
@@ -212,19 +217,16 @@ func doBaseOsActivate(uuidStr string, config types.BaseOsConfig,
 		return changed
 	}
 
-	if ret, _ := isOtherPartitionStateUnused(); ret == true {
-		if ret, err := setPartitionStateUpdating(config.PartitionLabel); ret == false {
-			log.Printf("doBaseOsActivate: %s %v\n", uuidStr, err)
-			return changed
-		}
-	}
+	if ret, _ := isOtherPartitionStateUpdating(); ret == true {
+		log.Printf("doBaseOsActivate: activating %s\n", uuidStr)
 
-	// if it is installed, flip the activated status
-	if status.State == types.INSTALLED ||
-		status.Activated == false {
-		status.Activated = true
-		changed = true
-		startExecReboot()
+		// if it is installed, flip the activated status
+		if status.State == types.INSTALLED ||
+			status.Activated == false {
+			status.Activated = true
+			changed = true
+			startExecReboot()
+		}
 	}
 
 	return changed

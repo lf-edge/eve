@@ -129,6 +129,7 @@ func getPartitionState(partName string) (string, error) {
 	}
 	partState := string(ret)
 	partState = strings.TrimSpace(partState)
+	log.Printf("zboot partstate %s: %v\n", partName, partState)
 	return partState, nil
 }
 
@@ -142,15 +143,12 @@ func isPartitionState(partName string, partState string) (bool, error) {
 		return ret, err
 	}
 
-	partStateCmd := exec.Command("zboot", "partstate", partName)
-	ret, err := partStateCmd.Output()
+	curPartState, err := getPartitionState(partName)
 	if err != nil {
-		errStr := fmt.Sprintf("zboot partstate %s: err %v\n", partName, err)
-		err := errors.New(errStr)
 		return false, err
 	}
-	curPartState := string(ret)
-	curPartState = strings.TrimSpace(partState)
+
+	log.Printf("zboot partstate %s: %v %v\n", partName, curPartState, partState)
 
 	if curPartState != partState {
 		return false, nil
@@ -336,18 +334,28 @@ func setPersitentPartitionInfo(uuidStr string, config *types.BaseOsConfig) {
 
 func zbootWriteToPartition(srcFilename string, partName string) (bool, error) {
 
+	log.Printf("WriteToPartition %s: %v\n", partName, srcFilename)
+
 	if ret, err := isOtherPartition(partName); ret == false {
+		log.Printf("not other Partition %s: %v\n", partName)
 		return ret, err
 	}
 
 	if ret, _ := isOtherPartitionStateUnused(); ret == false {
-		errStr := fmt.Sprintf("not an unused partition %s", partName)
+		errStr := fmt.Sprintf("%s: Not an unused partition", partName)
 		err := errors.New(errStr)
-		return false, err
+		log.Printf("partName %s: %v\n", partName, err)
+		return ret, err
 	}
 
 	devName, err := getPartitionDevname(partName)
 	if err != nil || devName == "" {
+		log.Printf("partName %s: %v\n", partName, err)
+		return false, err
+	}
+
+	if ret, err := setOtherPartitionStateUpdating(); ret == false {
+		log.Printf("partName %s: %v\n", partName, err)
 		return false, err
 	}
 
@@ -356,8 +364,14 @@ func zbootWriteToPartition(srcFilename string, partName string) (bool, error) {
 
 	ddCmd := exec.Command("dd", "if="+srcFilename, "of="+devName, "bs=8M")
 	if _, err := ddCmd.Output(); err != nil {
+		log.Printf("partName : %v\n", err)
+		if ret, err := setOtherPartitionStateUnused(); ret == false {
+			log.Printf("partName %s: %v\n", partName, err)
+			return false, err
+		}
 		return false, err
 	}
+
 	return true, nil
 }
 
