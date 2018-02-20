@@ -303,7 +303,9 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig) {
 
 	devId = config.GetId()
 	if devId != nil {
-		// store the device id
+		// store the device id and version
+		log.Printf("First config; storing UUID/version %s/%s\n",
+			devId.Uuid, devId.Version)
 		deviceId = devId.Uuid
 		if devId.Version != "" {
 			if activeVersion != "" &&
