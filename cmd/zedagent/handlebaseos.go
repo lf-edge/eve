@@ -89,7 +89,10 @@ func addOrUpdateBaseOsConfig(uuidStr string, config types.BaseOsConfig) {
 			PartitionLabel: config.PartitionLabel,
 		}
 
-		status.Activated = getActivationStatus(status)
+		// XXX PartitionLabel can be empty here!
+		if status.PartitionLabel != "" {
+			status.Activated = getActivationStatus(status)
+		}
 
 		status.StorageStatusList = make([]types.StorageStatus,
 			len(config.StorageConfigList))
