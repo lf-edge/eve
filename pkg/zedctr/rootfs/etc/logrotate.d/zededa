@@ -1,0 +1,27 @@
+/var/log/*.log {
+    daily
+    missingok
+    rotate 14
+	size 10k
+    compress
+    notifempty
+	copytruncate
+}
+/opt/zededa/lisp/logs/*.log {
+    daily
+    missingok
+    rotate 14
+	size 10k
+    compress
+    notifempty
+	copytruncate
+}
+/var/log/xen/*.log {
+    daily
+    missingok
+    rotate 14
+	size 10k
+    compress
+    notifempty
+	copytruncate
+}
