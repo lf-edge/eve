@@ -89,7 +89,7 @@ func addOrUpdateBaseOsConfig(uuidStr string, config types.BaseOsConfig) {
 			PartitionLabel: config.PartitionLabel,
 		}
 
-		status.Activated = getActivationStatus(uuidStr, status)
+		status.Activated = getActivationStatus(status)
 
 		status.StorageStatusList = make([]types.StorageStatus,
 			len(config.StorageConfigList))
@@ -136,17 +136,15 @@ func baseOsStatusGet(uuidStr string) *types.BaseOsStatus {
 	return &status
 }
 
-func getActivationStatus(uuidStr string, status types.BaseOsStatus) bool {
+// Check if the BaseOsStatus is the current partition and is active
+func getActivationStatus(status types.BaseOsStatus) bool {
 
-	log.Printf("getActivationStatus: partitionLabel %s\n", status.PartitionLabel)
-	if ret, _ := isCurrentPartition(status.PartitionLabel); ret == false {
-		return ret
+	log.Printf("getActivationStatus: partitionLabel %s\n",
+		status.PartitionLabel)
+	if !isCurrentPartition(status.PartitionLabel) {
+		return false
 	}
-	ret, err := isCurrentPartitionStateActive()
-	if err != nil {
-		log.Printf("getActivationStatus: partitionState %s, %v\n", ret, err)
-	}
-	return ret
+	return isCurrentPartitionStateActive()
 }
 
 func baseOsHandleStatusUpdate(uuidStr string) {
@@ -206,6 +204,7 @@ func doBaseOsActivate(uuidStr string, config types.BaseOsConfig,
 		uuidStr, config.PartitionLabel)
 
 	if config.PartitionLabel == "" {
+		// XXX we hit this
 		log.Printf("doBaseOsActivate for %s, unassigned partition\n", uuidStr)
 		return changed
 	}
@@ -213,11 +212,11 @@ func doBaseOsActivate(uuidStr string, config types.BaseOsConfig,
 	// check the partition label of the current root...
 	// check PartitionLabel the one we got is really unused?
 	// if partitionState unsed then change status to updating...
-	if ret, _ := isOtherPartition(config.PartitionLabel); ret == false {
+	if !isOtherPartition(config.PartitionLabel) {
 		return changed
 	}
 
-	if ret, _ := isOtherPartitionStateUpdating(); ret == true {
+	if isOtherPartitionStateUpdating() {
 		log.Printf("doBaseOsActivate: activating %s\n", uuidStr)
 
 		// if it is installed, flip the activated status
@@ -533,6 +532,9 @@ func installBaseOsObject(srcFilename string, dstFilename string) error {
 		}
 	}
 
-	_, err := zbootWriteToPartition(srcFilename, dstFilename)
+	err := zbootWriteToPartition(srcFilename, dstFilename)
+	if err != nil {
+		log.Printf("installBaseOsObject: write failed %s\n", err)
+	}
 	return err
 }
