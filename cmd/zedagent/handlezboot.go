@@ -260,6 +260,7 @@ func setPersitentPartitionInfo(uuidStr string, config *types.BaseOsConfig) {
 
 		var partitionInfo = &types.PartitionInfo{}
 		partitionInfo.UUIDandVersion = config.UUIDandVersion
+		partitionInfo.BaseOsVersion = config.BaseOsVersion
 		partitionInfo.PartitionLabel = config.PartitionLabel
 
 		filename := configDir + "/" + uuidStr + ".json"
