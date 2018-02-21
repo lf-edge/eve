@@ -1150,7 +1150,7 @@ func handleDNCModify(ctxArg interface{}, configFilename string,
 	ctx := ctxArg.(*DNCContext)
 
 	if configFilename != ctx.manufacturerModel {
-		fmt.Printf("handleDNSModify: ignoring %s - expecting %s\n",
+		fmt.Printf("handleDNCModify: ignoring %s - expecting %s\n",
 			configFilename, ctx.manufacturerModel)
 		return
 	}
