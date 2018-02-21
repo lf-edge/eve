@@ -237,7 +237,7 @@ func getOtherPartitionDevName() string {
 }
 
 // XXX can this return ""? No file if no PartitionLabel when setPer called
-func getPersitentPartitionInfo(uuidStr string) string {
+func getPersistentPartitionInfo(uuidStr string) string {
 
 	var partitionInfo = &types.PartitionInfo{}
 
@@ -252,7 +252,7 @@ func getPersitentPartitionInfo(uuidStr string) string {
 	return ""
 }
 
-func setPersitentPartitionInfo(uuidStr string, config *types.BaseOsConfig) {
+func setPersistentPartitionInfo(uuidStr string, config *types.BaseOsConfig) {
 
 	log.Printf("%s, set partition %s\n", uuidStr, config.PartitionLabel)
 

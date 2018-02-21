@@ -131,7 +131,7 @@ func getPartitionInfo(baseOs *types.BaseOsConfig, baseOsCount int) bool {
 
 	// get old Partition Label, if any
 	uuidStr := baseOs.UUIDandVersion.UUID.String()
-	baseOs.PartitionLabel = getPersitentPartitionInfo(uuidStr)
+	baseOs.PartitionLabel = getPersistentPartitionInfo(uuidStr)
 
 	// XXX:FIXME put the finalObjDir value,
 	// by calling bootloader API to fetch
@@ -145,7 +145,7 @@ func getPartitionInfo(baseOs *types.BaseOsConfig, baseOsCount int) bool {
 			if isOtherPartitionStateUnused() {
 				ret0 = true
 				baseOs.PartitionLabel = getOtherPartition()
-				setPersitentPartitionInfo(uuidStr, baseOs)
+				setPersistentPartitionInfo(uuidStr, baseOs)
 			} else {
 				log.Printf("getPartitionInfo(%s) not unused\n",
 					baseOs.BaseOsVersion)
