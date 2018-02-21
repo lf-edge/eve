@@ -217,7 +217,7 @@ func getLatestConfig(configUrl string, iteration int, partState *bool) {
 			return
 		}
 
-		config, err := readDeviceConfigProtoMessage(resp)
+		changed, config, err := readDeviceConfigProtoMessage(resp)
 		if err != nil {
 			log.Println("readDeviceConfigProtoMessage: ", err)
 			// Inform ledmanager about cloud connectivity
@@ -227,7 +227,12 @@ func getLatestConfig(configUrl string, iteration int, partState *bool) {
 
 		// Inform ledmanager about config received from cloud
 		types.UpdateLedManagerConfig(4)
-
+		if !changed {
+			if debug {
+				log.Printf("Configuration from zedcloud is unchanged\n")
+			}
+			return
+		}
 		inhaleDeviceConfig(config)
 		return
 	}
@@ -277,21 +282,22 @@ func validateConfigMessage(configUrl string, intf string,
 
 var prevConfigHash []byte
 
-func readDeviceConfigProtoMessage(r *http.Response) (*zconfig.EdgeDevConfig, error) {
+// Returns changed, config, error. The changed is based on a comparison of
+// the hash of the protobuf message.
+func readDeviceConfigProtoMessage(r *http.Response) (bool, *zconfig.EdgeDevConfig, error) {
 
 	var config = &zconfig.EdgeDevConfig{}
 
 	b, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		fmt.Println(err)
-		return nil, err
+		return false, nil, err
 	}
 	// compute sha256 of the image and match it
 	// with the one in config file...
 	h := sha256.New()
 	h.Write(b)
 	configHash := h.Sum(nil)
-	// XXX add sha compare and ignore
 	same := bytes.Equal(configHash, prevConfigHash)
 	log.Printf("Config Hash same %v: %v prev %v\n",
 		same, configHash, prevConfigHash)
@@ -302,9 +308,9 @@ func readDeviceConfigProtoMessage(r *http.Response) (*zconfig.EdgeDevConfig, err
 	err = proto.Unmarshal(b, config)
 	if err != nil {
 		log.Println("Unmarshalling failed: %v", err)
-		return nil, err
+		return false, nil, err
 	}
-	return config, nil
+	return !same, config, nil
 }
 
 func inhaleDeviceConfig(config *zconfig.EdgeDevConfig) {
