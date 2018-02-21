@@ -254,7 +254,8 @@ func getPersistentPartitionInfo(uuidStr string) string {
 
 func setPersistentPartitionInfo(uuidStr string, config *types.BaseOsConfig) {
 
-	log.Printf("%s, set partition %s\n", uuidStr, config.PartitionLabel)
+	log.Printf("%s, version %s set partition %s\n", uuidStr,
+		config.BaseOsVersion, config.PartitionLabel)
 
 	if config.PartitionLabel != "" {
 
@@ -289,7 +290,7 @@ func zbootWriteToPartition(srcFilename string, partName string) error {
 	devName := getPartitionDevname(partName)
 	if devName == "" {
 		errStr := fmt.Sprintf("null devname for partition %s", partName)
-		log.Println(errStr)
+		log.PrIntln(errStr)
 		return errors.New(errStr)
 	}
 	// XXX how can we set this before we complete the dd?
