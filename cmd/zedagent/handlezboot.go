@@ -236,7 +236,8 @@ func getOtherPartitionDevName() string {
 	return getPartitionDevname(partName)
 }
 
-// XXX can this return ""? No file if no PartitionLabel when setPer called
+// This returns "" if no file which happens when no PartitionLabel was set
+// for setPersistentPartitionInfo
 func getPersistentPartitionInfo(uuidStr string) string {
 
 	var partitionInfo = &types.PartitionInfo{}
@@ -254,7 +255,7 @@ func getPersistentPartitionInfo(uuidStr string) string {
 
 func setPersistentPartitionInfo(uuidStr string, config *types.BaseOsConfig) {
 
-	log.Printf("%s, version %s set partition %s\n", uuidStr,
+	log.Printf("%s, (%s) set partition %s\n", uuidStr,
 		config.BaseOsVersion, config.PartitionLabel)
 
 	if config.PartitionLabel != "" {
@@ -290,7 +291,7 @@ func zbootWriteToPartition(srcFilename string, partName string) error {
 	devName := getPartitionDevname(partName)
 	if devName == "" {
 		errStr := fmt.Sprintf("null devname for partition %s", partName)
-		log.PrIntln(errStr)
+		log.Println(errStr)
 		return errors.New(errStr)
 	}
 	// XXX how can we set this before we complete the dd?
