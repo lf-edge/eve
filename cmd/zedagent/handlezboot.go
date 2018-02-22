@@ -293,26 +293,27 @@ func setPersistentPartitionInfo(uuidStr string, config *types.BaseOsConfig) {
 
 func zbootWriteToPartition(srcFilename string, partName string) error {
 
-	log.Printf("WriteToPartition %s: %v\n", partName, srcFilename)
 	if !isOtherPartition(partName) {
 		errStr := fmt.Sprintf("not other partition %s", partName)
-		log.Println(errStr)
+		log.Printf("WriteToPartition failed %s\n", errStr)
 		return errors.New(errStr)
 	}
 
 	if !isOtherPartitionStateUnused() {
 		errStr := fmt.Sprintf("%s: Not an unused partition", partName)
-		log.Println(errStr)
+		log.Printf("WriteToPartition failed %s\n", errStr)
 		return errors.New(errStr)
 	}
 
+	log.Printf("WriteToPartition %s: %v\n", partName, srcFilename)
 	devName := getPartitionDevname(partName)
 	if devName == "" {
 		errStr := fmt.Sprintf("null devname for partition %s", partName)
-		log.Println(errStr)
+		log.Printf("WriteToPartition failed %s\n", errStr)
 		return errors.New(errStr)
 	}
 	// XXX how can we set this before we complete the dd?
+	// If crash during dd the image would be corrupt.
 	setOtherPartitionStateUpdating()
 
 	// XXX:FIXME checkpoint, make sure, only one write to a partition
@@ -320,7 +321,7 @@ func zbootWriteToPartition(srcFilename string, partName string) error {
 
 	ddCmd := exec.Command("dd", "if="+srcFilename, "of="+devName, "bs=8M")
 	if _, err := ddCmd.Output(); err != nil {
-		log.Printf("partName : %v\n", err)
+		log.Printf("WriteToPartition failed %s\n", err)
 		setOtherPartitionStateUnused()
 		return err
 	}
