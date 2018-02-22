@@ -113,12 +113,19 @@ func isPartitionState(partName string, partState string) bool {
 	validatePartitionState(partState)
 
 	curPartState := getPartitionState(partName)
-	log.Printf("isPartitionState %s: %v %v\n",
-		partName, curPartState, partState)
-	return curPartState == partState
+	res := curPartState == partState
+	if res {
+		log.Printf("isPartitionState(%s, %s) TRUE\n",
+			partName, partState)
+	} else {
+		log.Printf("isPartitionState(%s, %s) FALSE - is %s\n",
+			partName, partState, curPartState)
+	}
+	return res
 }
 
 func setPartitionState(partName string, partState string) {
+	log.Printf("setPartitionState(%s, %s)\n", partName, partState)
 
 	validatePartitionName(partName)
 	validatePartitionState(partState)
@@ -245,9 +252,16 @@ func getPersistentPartitionInfo(uuidStr string) string {
 	filename := configDir + "/" + uuidStr + ".json"
 	if _, err := os.Stat(filename); err == nil {
 		bytes, err := ioutil.ReadFile(filename)
-		if err == nil {
-			err = json.Unmarshal(bytes, partitionInfo)
+		if err != nil {
+			log.Fatal(err)
 		}
+		err = json.Unmarshal(bytes, partitionInfo)
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Printf("getPersistentPartitionInfo(%s) for %s label %s\n",
+			partitionInfo.BaseOsVersion, uuidStr,
+			partitionInfo.PartitionLabel)
 		return partitionInfo.PartitionLabel
 	}
 	return ""
@@ -255,8 +269,8 @@ func getPersistentPartitionInfo(uuidStr string) string {
 
 func setPersistentPartitionInfo(uuidStr string, config *types.BaseOsConfig) {
 
-	log.Printf("%s, (%s) set partition %s\n", uuidStr,
-		config.BaseOsVersion, config.PartitionLabel)
+	log.Printf("setPersistentPartitionInfo(%s) for %s label %s\n",
+		config.BaseOsVersion, uuidStr, config.PartitionLabel)
 
 	if config.PartitionLabel != "" {
 
@@ -267,8 +281,12 @@ func setPersistentPartitionInfo(uuidStr string, config *types.BaseOsConfig) {
 
 		filename := configDir + "/" + uuidStr + ".json"
 		bytes, err := json.Marshal(partitionInfo)
-		if err == nil {
-			err = ioutil.WriteFile(filename, bytes, 0644)
+		if err != nil {
+			log.Fatal(err)
+		}
+		err = ioutil.WriteFile(filename, bytes, 0644)
+		if err != nil {
+			log.Fatal(err)
 		}
 	}
 }

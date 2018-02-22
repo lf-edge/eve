@@ -142,6 +142,7 @@ func getPartitionInfo(baseOs *types.BaseOsConfig, baseOsCount int) bool {
 		if isInstallCandidate(uuidStr, baseOs, baseOsCount) {
 
 			uuidStr := baseOs.UUIDandVersion.UUID.String()
+			// XXX when updating to .14 the state of IMGA is updating
 			if isOtherPartitionStateUnused() {
 				ret0 = true
 				baseOs.PartitionLabel = getOtherPartition()
