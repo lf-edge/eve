@@ -11,9 +11,7 @@ import (
 	"github.com/zededa/go-provision/types"
 	"log"
 	"os"
-	"os/exec"
 	"reflect"
-	"strings"
 	"time"
 )
 
@@ -116,6 +114,13 @@ func addOrUpdateBaseOsConfig(uuidStr string, config types.BaseOsConfig) {
 	}
 }
 
+func getBaseOsImageSha(config types.BaseOsConfig) string {
+	for _, sc := range config.StorageConfigList {
+		return sc.ImageSha256
+	}
+	return ""
+}
+
 func baseOsConfigGet(uuidStr string) *types.BaseOsConfig {
 
 	config, ok := baseOsConfigMap[uuidStr]
@@ -188,6 +193,8 @@ func doBaseOsStatusUpdate(uuidStr string, config types.BaseOsConfig,
 		return changed
 	}
 
+	setPersistentPartitionInfo(uuidStr, config)
+
 	if status.Activated == true {
 		log.Printf("doBaseOsStatusUpdate for %s, is already activated\n", uuidStr)
 		return false
@@ -217,8 +224,8 @@ func doBaseOsActivate(uuidStr string, config types.BaseOsConfig,
 		return changed
 	}
 
-	if ret, _ := isOtherPartitionStateUpdating(); ret == true {
-		log.Printf("doBaseOsActivate: activating %s\n", uuidStr)
+	if ret, err := setOtherPartitionStateUpdating(); ret == true {
+		log.Printf("doBaseOsActivate: activating %s, %v\n", uuidStr, err)
 
 		// if it is installed, flip the activated status
 		if status.State == types.INSTALLED ||
@@ -508,29 +515,6 @@ func installBaseOsObject(srcFilename string, dstFilename string) error {
 		log.Printf("installBaseOsObject: unssigned destination partition\n")
 		err := errors.New("no destination partition")
 		return err
-	}
-
-	// XXX:FIXME, currently, cloud gives a zipped file, without ".gz"
-	if strings.HasSuffix(srcFilename, ".gz") == false {
-		os.Rename(srcFilename, srcFilename+".gz")
-		srcFilename = srcFilename + ".gz"
-	}
-
-	// unzip the source file
-	if strings.HasSuffix(srcFilename, ".gz") == true {
-		zipCmd := exec.Command("gunzip", srcFilename)
-		_, err := zipCmd.Output()
-		if err != nil {
-			log.Printf("installBaseOsObject: %s %v\n",
-				srcFilename, err)
-			return err
-		}
-		srcFilename = strings.Split(srcFilename, ".gz")[0]
-		if _, err := os.Stat(srcFilename); err != nil {
-			log.Printf("installBaseOsObject: %s %v\n",
-				srcFilename, err)
-			return err
-		}
 	}
 
 	_, err := zbootWriteToPartition(srcFilename, dstFilename)

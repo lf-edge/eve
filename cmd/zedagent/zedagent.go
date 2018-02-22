@@ -506,7 +506,8 @@ func handleBaseOsModify(ctxArg interface{}, statusFilename string,
 	uuidStr := config.UUIDandVersion.UUID.String()
 
 	log.Printf("handleBaseOsModify for %s\n", status.BaseOsVersion)
-	if config.UUIDandVersion.Version == status.UUIDandVersion.Version {
+	if config.UUIDandVersion.Version == status.UUIDandVersion.Version  &&
+		config.Activate == status.Activated {
 		log.Printf("Same version %s for %s\n",
 			config.UUIDandVersion.Version, uuidStr)
 		return

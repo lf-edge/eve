@@ -179,17 +179,6 @@ func getLatestConfig(configUrl string, iteration int, partState *bool) {
 			continue
 		}
 
-		log.Printf("current partition-state inProgress:%v\n", *partState)
-		// now cloud connectivity is good, mark partition state
-		if *partState == true {
-			ret, err := markPartitionStateActive()
-			if ret == true {
-				*partState = false
-			} else {
-				log.Println(err)
-			}
-		}
-
 		if connState.OCSPResponse == nil ||
 			!stapledCheck(connState) {
 			if connState.OCSPResponse == nil {
@@ -207,6 +196,17 @@ func getLatestConfig(configUrl string, iteration int, partState *bool) {
 		}
 		// Even if we get a 404 we consider the connection a success
 		zedCloudSuccess(intf)
+
+		log.Printf("current partition-state inProgress:%v\n", *partState)
+		// now cloud connectivity is good, mark partition state
+		if *partState == true {
+			ret, err := markPartitionStateActive()
+			if ret == true {
+				*partState = false
+			} else {
+				log.Println(err)
+			}
+		}
 
 		if err := validateConfigMessage(configUrl, intf, localTCPAddr,
 			resp); err != nil {
@@ -390,18 +390,25 @@ func checkCurrentBaseOsFiles(config *zconfig.EdgeDevConfig) {
 			}
 			// baseOS instance not found, delete
 			if !found {
-				log.Printf("Remove baseOs config %s\n", curBaseOsFilename)
-				err := os.Remove(zedagentBaseOsConfigDirname + "/" + curBaseOsFilename)
-				if err != nil {
-					log.Printf("Old config:%v\n", err)
-				}
-				// remove the certificates holder config
-				os.Remove(zedagentCertObjConfigDirname + "/" + curBaseOsFilename)
-				// also remove the partition info holder config
-				os.Remove(configDir + "/" + curBaseOsFilename)
+				removeBaseOsEntry(curBaseOsFilename)
 			}
 		}
 	}
+}
+
+func removeBaseOsEntry(baseOsFilename string) {
+
+	uuidStr := strings.Split(baseOsFilename, ".")[0]
+	log.Printf("%s, remove baseOs entry\n", uuidStr)
+
+	// remove partition map entry
+	resetPersistentPartitionInfo(uuidStr)
+
+	// remove the certificates holder config
+	os.Remove(zedagentCertObjConfigDirname + "/" + baseOsFilename)
+
+	// remove Config File
+	os.Remove(zedagentBaseOsConfigDirname + "/" + baseOsFilename)
 }
 
 func stapledCheck(connState *tls.ConnectionState) bool {

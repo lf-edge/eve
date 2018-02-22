@@ -31,7 +31,12 @@ var rebootTimer *time.Timer
 func parseConfig(config *zconfig.EdgeDevConfig) {
 
 	log.Println("Applying new config")
-	parseOpCmds(config)
+
+	if parseOpCmds(config) == true {
+		log.Println("Reboot flag set, skipping config processing")
+		return
+	}
+
 	if validateConfig(config) == true {
 		parseBaseOsConfig(config)
 		parseAppInstanceConfig(config)
@@ -51,7 +56,6 @@ func validateConfig(config *zconfig.EdgeDevConfig) bool {
 func parseBaseOsConfig(config *zconfig.EdgeDevConfig) {
 
 	log.Println("Applying Base Os config")
-	partitionUsed := false
 
 	cfgOsList := config.GetBase()
 	baseOsCount := len(cfgOsList)
@@ -98,11 +102,7 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) {
 
 		if imageCount != 0 {
 			baseOs.StorageConfigList = make([]types.StorageConfig, imageCount)
-			if partitionUsed == false {
-				if ret := getPartitionInfo(baseOs, baseOsCount); ret == true {
-					partitionUsed = true
-				}
-			}
+			checkPartitionInfo(baseOs, baseOsCount)
 			parseStorageConfigList(config, baseOsObj, baseOs.StorageConfigList,
 				cfgOs.Drives, baseOs.PartitionLabel)
 		}
@@ -124,31 +124,24 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) {
 	}
 }
 
-func getPartitionInfo(baseOs *types.BaseOsConfig, baseOsCount int) bool {
-	ret0 := false
+func checkPartitionInfo(baseOs *types.BaseOsConfig, baseOsCount int) {
 
 	// get old Partition Label, if any
 	uuidStr := baseOs.UUIDandVersion.UUID.String()
-	baseOs.PartitionLabel = getPersitentPartitionInfo(uuidStr)
+	imageSha256 := getBaseOsImageSha(*baseOs)
+	baseOs.PartitionLabel = getPersistentPartitionInfo(uuidStr, imageSha256)
 
-	// XXX:FIXME put the finalObjDir value,
-	// by calling bootloader API to fetch
-	// the unused partition
-	if baseOs.PartitionLabel == "" {
-		if ret := isInstallCandidate(uuidStr, baseOs, baseOsCount); ret == true {
+	if baseOs.PartitionLabel != "" {
+		return
+	}
 
-			uuidStr := baseOs.UUIDandVersion.UUID.String()
-			ret, _ := isOtherPartitionStateUnused()
-			if ret == true {
-				ret0 = true
-				baseOs.PartitionLabel = getOtherPartition()
-				setPersitentPartitionInfo(uuidStr, baseOs)
-			}
+	if ret := isInstallCandidate(uuidStr, baseOs, baseOsCount); ret == true {
+		if ret, _ := isOtherPartitionStateUnused(); ret == true {
+			baseOs.PartitionLabel = getOtherPartition()
 		}
 	}
 
 	log.Printf("%s, Partition info %s\n", uuidStr, baseOs.PartitionLabel)
-	return ret0
 }
 
 func isInstallCandidate(uuidStr string, baseOs *types.BaseOsConfig,
@@ -708,13 +701,13 @@ func writeCertObjConfig(config *types.CertObjConfig, configFilename string) {
 	}
 }
 
-func parseOpCmds(config *zconfig.EdgeDevConfig) {
+func parseOpCmds(config *zconfig.EdgeDevConfig) bool {
 
-	scheduleReboot(config.GetReboot())
 	scheduleBackup(config.GetBackup())
+	return scheduleReboot(config.GetReboot())
 }
 
-func scheduleReboot(reboot *zconfig.DeviceOpsCmd) {
+func scheduleReboot(reboot *zconfig.DeviceOpsCmd) bool {
 
 	if reboot == nil {
 
@@ -724,7 +717,7 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd) {
 		}
 		// remove the existing file
 		os.Remove(rebootConfigFilename)
-		return
+		return false
 	}
 
 	log.Printf("Reboot Config: %v\n", reboot)
@@ -748,8 +741,8 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd) {
 	// if not first time,
 	// counter value has changed
 	// means new reboot event
-	if (rebootConfig != nil) &&
-		(rebootConfig.Counter != reboot.Counter) {
+	if rebootConfig != nil &&
+		rebootConfig.Counter != reboot.Counter {
 
 		//timer was started, stop now
 		if rebootTimer != nil {
@@ -764,7 +757,9 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd) {
 		log.Printf("Scheduling for reboot %d %d\n", rebootConfig.Counter, reboot.Counter)
 
 		go handleReboot()
+		return true
 	}
+	return false
 }
 
 func scheduleBackup(backup *zconfig.DeviceOpsCmd) {
