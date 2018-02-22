@@ -76,6 +76,7 @@ message ZinfoPeripheral {
   ZInfoManufacturer minfo = 3;
 }
 
+//SW Info for Apps
 message ZInfoSW {
   string swVersion = 2;
   string swHash = 3;
@@ -83,6 +84,12 @@ message ZInfoSW {
   bool activated = 5;		// Activation flag -- deprecated
   string target = 6;		// E.g., "disk", "kernel", "device-tree"
   string vdev = 7;		// E.g., "xvda"
+}
+
+message ErrorInfo {
+  string description = 1;
+  string severity = 2;  // Should this be an enum?
+  google.protobuf.Timestamp timestamp = 3;
 }
 
 // Base device info, as discovered by Xen (or OS on bare metal)
@@ -99,12 +106,28 @@ message ZInfoDevice {
 
   ZInfoSW software = 12;		// Deprecated;
   repeated ZInfoNetwork network = 13;
-  repeated ZInfoSW softwareList = 14;	// Software Images in both partitions
+  repeated ZInfoSW softwareList = 14;	// Deprecated
   repeated ZioBundle assignableAdapters = 15;
   ZInfoDNS dns = 16; // What is used in resolv.conf
   repeated ZInfoStorage storageList = 17;
 
   google.protobuf.Timestamp bootTime = 18;
+
+  repeated ZInfoDevSW swList = 19;
+
+  ErrorInfo devErr = 20;  // Should this be repeated??
+}
+
+//SW Info for the device base OS
+message ZInfoDevSW {
+  bool activated = 2;        // XXX is this implicit in partitionStatus?
+  string tag = 3;            // E.g., "IMGA"
+  string partition = 4;      // /dev/something
+  ZSwState status = 5;       // E.g., "inprogress"
+  string swVersion = 6;      // From BaseOSConfig vs. from image?
+  string swHash = 7;
+  string baseOSContent = 8;    // E.g., the yml file content from build
+  bool currentPartition = 9;   // Is this the current active partition?
 }
 
 // Per filesystem/partition information
@@ -136,11 +159,12 @@ message ZInfoApp {
   string AppName = 7;
   repeated ZInfoSW softwareList = 8;
   bool activated = 9;
-  string error = 10;
-  google.protobuf.Timestamp errorTime = 11;
+  string error = 10;  // deprecated
+  google.protobuf.Timestamp errorTime = 11; //deprecated
 
     google.protobuf.Timestamp bootTime = 12;
   repeated ZioBundle assignedAdapters = 13;
+  ErrorInfo appErr = 14;  // should this be repeated?
 }
 
 message ZInfoMsg {
@@ -169,7 +193,7 @@ message ZioBundle {
   ZioType type = 1;
   string name = 2;		// Short hand name such as "com"
   repeated string members = 3;	// E.g., "com1", "com2"
-  string usedByUUID = 4;
+  string usedByAppUUID = 4;
 }
 
 // Metrics from devices and applications
@@ -226,26 +250,28 @@ message zedcloudMetric {
 }
 
 message appCpuMetric {
-    uint32 cpuTotal = 2;		// in seconds
+    uint32 cpuTotal = 2;		// deprecated
     double cpuPercentage = 3;		// deprecated
-    google.protobuf.Timestamp upTime = 4; // deprecated
+    google.protobuf.Timestamp upTime = 4;
+    uint64 total = 5;                   // cpu total in secs.
 }
 
 // We report both upTime in seconds and bootTime (in info). Allows to determine
 // large clock skew. Difference betweem cpuTotal and upTime is the amount
 // of idle.
-message devCpuMetric {
+message devCpuMetric {  // deprecated
     uint64 cpuTotal = 1;	// in seconds
-    uint64 upTime = 2;		// in seconds
+    uint64 upTime = 2;
 }
 
 message deviceMetric {
-  cpuMetric cpu = 1;	// deprecated - use appCpuMetric
+  cpuMetric cpu = 1;	// deprecated
   memoryMetric memory = 2;
   repeated networkMetric network = 3;
   repeated zedcloudMetric zedcloud = 4;
-  devCpuMetric compute = 5;
+  devCpuMetric compute = 5; // depcreated
   repeated diskMetric disk = 6;
+  appCpuMetric cpuMetric = 7;
 }
 
 // For each partition; counts since boot
