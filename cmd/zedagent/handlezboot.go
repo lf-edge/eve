@@ -32,6 +32,14 @@ func zbootReset() {
 	}
 }
 
+// tell watchdog we are fine
+func zbootWatchdogOK() {
+	_, err := exec.Command("zboot", "watchdog").Output()
+	if err != nil {
+		log.Fatalf("zboot watchdog: err %v\n", err)
+	}
+}
+
 // partition routines
 func getCurrentPartition() string {
 	curPartCmd := exec.Command("zboot", "curpart")

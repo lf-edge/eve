@@ -210,6 +210,14 @@ func getLatestConfig(configUrl string, iteration int, checkConnectivity *bool) {
 			}
 		}
 
+		// Each time we hear back from the cloud we assume
+		// the device and connectivity is ok so we advance the
+		// watchdog timer.
+		// We should only require this connectivity once every 24 hours
+		// or so using a setable policy in the watchdog, but have
+		// a short timeout during validation of a image post upgrade.
+		zbootWatchdogOK()
+
 		if err := validateConfigMessage(configUrl, intf, localTCPAddr,
 			resp); err != nil {
 			log.Println("validateConfigMessage: ", err)
