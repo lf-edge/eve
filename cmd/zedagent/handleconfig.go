@@ -108,24 +108,19 @@ func getCloudUrls() {
 // times between .3x and 1x
 func configTimerTask() {
 	iteration := 0
-	curPart := getCurrentPartition()
-	inProgressState := isCurrentPartitionStateInProgress()
-
-	log.Printf("Config Fetch Task, curPart:%s, inProgress:%v\n",
-		curPart, inProgressState)
-	getLatestConfig(configUrl, iteration, &inProgressState)
+	getLatestConfig(configUrl, iteration)
 
 	ticker := time.NewTicker(time.Minute * configTickTimeout)
 
 	for range ticker.C {
 		iteration += 1
-		getLatestConfig(configUrl, iteration, &inProgressState)
+		getLatestConfig(configUrl, iteration)
 	}
 }
 
 // Each iteration we try a different uplink. For each uplink we try all
 // its local IP addresses until we get a success.
-func getLatestConfig(configUrl string, iteration int, partState *bool) {
+func getLatestConfig(configUrl string, iteration int) {
 	intf, err := types.GetUplinkAny(deviceNetworkStatus, iteration)
 	if err != nil {
 		log.Printf("getLatestConfig: %s\n", err)
@@ -199,13 +194,16 @@ func getLatestConfig(configUrl string, iteration int, partState *bool) {
 		// Even if we get a 404 we consider the connection a success
 		zedCloudSuccess(intf)
 
-		log.Printf("current partition-state inProgress:%v\n", *partState)
-		// now cloud connectivity is good, mark partition state
-		if *partState == true {
+		// now cloud connectivity is good, mark partition state as
+		// active if it was inprogress
+		// XXX down the road we want more diagnostics and validation
+		// before we do this
+		curPart := getCurrentPartition()
+		if  isCurrentPartitionStateInProgress() {
+			log.Printf("Config Fetch Task, curPart %s inprogress\n",
+				curPart)
 			if err := markPartitionStateActive(); err != nil {
 				log.Println(err)
-			} else {
-				*partState = false
 			}
 		}
 
