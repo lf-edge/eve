@@ -226,7 +226,7 @@ func doBaseOsActivate(uuidStr string, config types.BaseOsConfig,
 	if !isOtherPartition(config.PartitionLabel) {
 		return changed
 	}
-	if !isOtherPartitionUnused(config.PartitionLabel) {
+	if !isOtherPartitionStateUnused() {
 		return changed
 	}
 

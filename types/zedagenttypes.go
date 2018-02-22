@@ -139,9 +139,8 @@ func (status CertObjStatus) CheckPendingDelete() bool {
 
 // Indexed by UUIDandVersion as above
 type PartitionInfo struct {
-	UUIDandVersion  UUIDandVersion
-	BaseOsVersion	string	// For user-friendly debug
-	ImageSha256     string
-	PartitionLabel  string
+	UUIDandVersion UUIDandVersion
+	BaseOsVersion  string // For user-friendly debug
+	ImageSha256    string
+	PartitionLabel string
 }
-
