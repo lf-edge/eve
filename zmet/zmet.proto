@@ -40,6 +40,7 @@ message ZInfoNetwork {
   repeated string IPAddrs = 5; // All IP addresses with /N for subnet
   repeated string defaultRouters = 6; // If DHCP assigned
   ZInfoDNS dns = 7; // If DHCP assigned
+  bool up = 8;      // up/down status.
 }
 
 // This is used both to represent the information we receive from DHCP
@@ -116,6 +117,7 @@ message ZInfoDevice {
   repeated ZInfoDevSW swList = 19;
 
   repeated ErrorInfo devErr = 20;
+  string   HostName = 21;
 }
 
 //SW Info for the device base OS
