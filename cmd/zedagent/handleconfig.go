@@ -297,8 +297,6 @@ func readDeviceConfigProtoMessage(r *http.Response) (bool, *zconfig.EdgeDevConfi
 	h.Write(b)
 	configHash := h.Sum(nil)
 	same := bytes.Equal(configHash, prevConfigHash)
-	log.Printf("Config Hash same %v: %v prev %v\n",
-		same, configHash, prevConfigHash)
 	prevConfigHash = configHash
 
 	//log.Println(" proto bytes(config) received from cloud: ", fmt.Sprintf("%s",bytes))
