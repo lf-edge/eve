@@ -108,19 +108,20 @@ func getCloudUrls() {
 // times between .3x and 1x
 func configTimerTask() {
 	iteration := 0
-	getLatestConfig(configUrl, iteration)
+	checkConnectivity := isCurrentPartitionStateInProgress()
+	getLatestConfig(configUrl, iteration, checkConnectivity)
 
 	ticker := time.NewTicker(time.Minute * configTickTimeout)
 
 	for range ticker.C {
 		iteration += 1
-		getLatestConfig(configUrl, iteration)
+		getLatestConfig(configUrl, iteration, checkConnectivity)
 	}
 }
 
 // Each iteration we try a different uplink. For each uplink we try all
 // its local IP addresses until we get a success.
-func getLatestConfig(configUrl string, iteration int) {
+func getLatestConfig(configUrl string, iteration int, checkConnectivity bool) {
 	intf, err := types.GetUplinkAny(deviceNetworkStatus, iteration)
 	if err != nil {
 		log.Printf("getLatestConfig: %s\n", err)
@@ -198,8 +199,8 @@ func getLatestConfig(configUrl string, iteration int) {
 		// active if it was inprogress
 		// XXX down the road we want more diagnostics and validation
 		// before we do this
-		curPart := getCurrentPartition()
-		if  isCurrentPartitionStateInProgress() {
+		if checkConnectivity && isCurrentPartitionStateInProgress() {
+			curPart := getCurrentPartition()
 			log.Printf("Config Fetch Task, curPart %s inprogress\n",
 				curPart)
 			if err := markPartitionStateActive(); err != nil {
