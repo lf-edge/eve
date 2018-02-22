@@ -115,19 +115,18 @@ message ZInfoDevice {
 
   repeated ZInfoDevSW swList = 19;
 
-  ErrorInfo devErr = 20;  // Should this be repeated??
+  repeated ErrorInfo devErr = 20;
 }
 
 //SW Info for the device base OS
 message ZInfoDevSW {
   bool activated = 2;        // XXX is this implicit in partitionStatus?
-  string tag = 3;            // E.g., "IMGA"
-  string partition = 4;      // /dev/something
+  string partitionLabel = 3; // E.g., "IMGA"
+  string partitionDevice = 4;// /dev/something
   ZSwState status = 5;       // E.g., "inprogress"
-  string swVersion = 6;      // From BaseOSConfig vs. from image?
-  string swHash = 7;
-  string baseOSContent = 8;    // E.g., the yml file content from build
-  bool currentPartition = 9;   // Is this the current active partition?
+  string swVersion = 6;      // From rootfs i.e., image
+  string longVersion = 7;    // E.g., the yml file content from build
+  ErrorInfo swErr = 8;
 }
 
 // Per filesystem/partition information
@@ -164,7 +163,7 @@ message ZInfoApp {
 
     google.protobuf.Timestamp bootTime = 12;
   repeated ZioBundle assignedAdapters = 13;
-  ErrorInfo appErr = 14;  // should this be repeated?
+  repeated ErrorInfo appErr = 14;
 }
 
 message ZInfoMsg {
@@ -194,6 +193,7 @@ message ZioBundle {
   string name = 2;		// Short hand name such as "com"
   repeated string members = 3;	// E.g., "com1", "com2"
   string usedByAppUUID = 4;
+  bool usedByBaseOS = 5;
 }
 
 // Metrics from devices and applications
@@ -261,7 +261,7 @@ message appCpuMetric {
 // of idle.
 message devCpuMetric {  // deprecated
     uint64 cpuTotal = 1;	// in seconds
-    uint64 upTime = 2;
+    uint64 upTime = 2;          // in seconds
 }
 
 message deviceMetric {
