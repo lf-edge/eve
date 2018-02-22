@@ -787,17 +787,17 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd) {
 	}
 	log.Printf("scheduleReboot read %v\n", rebootConfig)
 
-	// store current config, persistently
-	bytes, err = json.Marshal(reboot)
-	if err == nil {
-		ioutil.WriteFile(rebootConfigFilename, bytes, 0644)
-	}
-
 	// If counter value has changed it means new reboot event
 	if rebootConfig.Counter != reboot.Counter {
 
 		log.Printf("scheduleReboot: old %d new %d\n",
 			rebootConfig.Counter, reboot.Counter)
+
+		// store current config, persistently
+		bytes, err = json.Marshal(reboot)
+		if err == nil {
+			ioutil.WriteFile(rebootConfigFilename, bytes, 0644)
+		}
 
 		//timer was started, stop now
 		if rebootTimer != nil {
