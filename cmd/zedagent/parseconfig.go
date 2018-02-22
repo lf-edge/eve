@@ -144,6 +144,16 @@ func getPartitionInfo(baseOs *types.BaseOsConfig, baseOsCount int) bool {
 			uuidStr := baseOs.UUIDandVersion.UUID.String()
 			// XXX when updating to .14 the state of IMGA is updating
 			if isOtherPartitionStateUnused() {
+				log.Printf("getPartitionInfo(%s) unused\n",
+					baseOs.BaseOsVersion)
+				ret0 = true
+				baseOs.PartitionLabel = getOtherPartition()
+				setPersistentPartitionInfo(uuidStr, baseOs)
+			} else if isOtherPartitionStateUpdating() {
+				// XXX Did we get an update before we activated
+				// the previous update?
+				log.Printf("XXX getPartitionInfo(%s) updating\n",
+					baseOs.BaseOsVersion)
 				ret0 = true
 				baseOs.PartitionLabel = getOtherPartition()
 				setPersistentPartitionInfo(uuidStr, baseOs)
@@ -196,9 +206,9 @@ func isInstallCandidate(uuidStr string, baseOs *types.BaseOsConfig,
 			baseOs.BaseOsVersion)
 		return true
 	}
-	log.Printf("isInstallCandidate(%s) FAIL: curBaseOs %v baseOs %v\n",
-		baseOs.BaseOsVersion, curBaseOsConfig, baseOs)
-
+	log.Printf("isInstallCandidate(%s) FAIL: curBaseOs %s activate %v/%v\n",
+		baseOs.BaseOsVersion, curBaseOsConfig.BaseOsVersion,
+		baseOs.Activate, curBaseOsConfig.Activate)
 	return false
 }
 
