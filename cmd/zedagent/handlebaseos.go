@@ -91,7 +91,7 @@ func addOrUpdateBaseOsConfig(uuidStr string, config types.BaseOsConfig) {
 			PartitionLabel: config.PartitionLabel,
 		}
 
-		// XXX PartitionLabel can be empty here!
+		// PartitionLabel can be empty here!
 		if status.PartitionLabel != "" {
 			status.Activated = getActivationStatus(status)
 		}
@@ -216,7 +216,6 @@ func doBaseOsActivate(uuidStr string, config types.BaseOsConfig,
 		config.BaseOsVersion, uuidStr, config.PartitionLabel)
 
 	if config.PartitionLabel == "" {
-		// XXX we hit this
 		log.Printf("doBaseOsActivate(%s) for %s, unassigned partition\n",
 			config.BaseOsVersion, uuidStr)
 		return changed
