@@ -59,6 +59,7 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) {
 
 	cfgOsList := config.GetBase()
 	baseOsCount := len(cfgOsList)
+	log.Println("Applying Base Os config len %d", baseOsCount)
 
 	if baseOsCount == 0 {
 		return
@@ -136,7 +137,7 @@ func checkPartitionInfo(baseOs *types.BaseOsConfig, baseOsCount int) {
 	}
 
 	if ret := isInstallCandidate(uuidStr, baseOs, baseOsCount); ret == true {
-		if ret, _ := isOtherPartitionStateUnused(); ret == true {
+		if ret := isOtherPartitionStateUnused(); ret == true {
 			baseOs.PartitionLabel = getOtherPartition()
 		}
 	}
@@ -152,25 +153,35 @@ func isInstallCandidate(uuidStr string, baseOs *types.BaseOsConfig,
 
 	if curBaseOsStatus != nil &&
 		curBaseOsStatus.Activated == true {
+		log.Printf("isInstallCandidate(%s) FAIL current (%s) is Activated\n",
+			baseOs.BaseOsVersion, curBaseOsStatus.BaseOsVersion)
 		return false
 	}
 
 	// new Config
 	if curBaseOsConfig == nil {
+		log.Printf("isInstallCandidate(%s) no current\n",
+			baseOs.BaseOsVersion)
 		return true
 	}
 
 	// only one baseOs Config
 	if curBaseOsConfig.PartitionLabel == "" &&
 		baseOsCount == 1 {
+		log.Printf("isInstallCandidate(%s) only one\n",
+			baseOs.BaseOsVersion)
 		return true
 	}
 
 	// Activate Flag is flipped
 	if curBaseOsConfig.Activate == false &&
 		baseOs.Activate == true {
+		log.Printf("isInstallCandidate(%s) Activate and cur not\n",
+			baseOs.BaseOsVersion)
 		return true
 	}
+	log.Printf("isInstallCandidate(%s) FAIL: curBaseOs %v baseOs %v\n",
+		baseOs.BaseOsVersion, curBaseOsConfig, baseOs)
 
 	return false
 }
@@ -710,7 +721,8 @@ func parseOpCmds(config *zconfig.EdgeDevConfig) bool {
 func scheduleReboot(reboot *zconfig.DeviceOpsCmd) bool {
 
 	if reboot == nil {
-
+		log.Printf("scheduleReboot - removing %s\n",
+			rebootConfigFilename)
 		// stop the timer
 		if rebootTimer != nil {
 			rebootTimer.Stop()
@@ -720,29 +732,46 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd) bool {
 		return false
 	}
 
-	log.Printf("Reboot Config: %v\n", reboot)
-	var rebootConfig *zconfig.DeviceOpsCmd
-
-	// read old reboot config
-	if _, err := os.Stat(rebootConfigFilename); err == nil {
-		rebootConfig = &zconfig.DeviceOpsCmd{}
-		bytes, err := ioutil.ReadFile(rebootConfigFilename)
-		if err == nil {
-			err = json.Unmarshal(bytes, rebootConfig)
+	if _, err := os.Stat(rebootConfigFilename); err != nil {
+		// XXX assume file doesn't exist
+		// Take received as current and store in file
+		log.Printf("scheduleReboot - writing initial %s\n",
+			rebootConfigFilename)
+		bytes, err := json.Marshal(reboot)
+		if err != nil {
+			log.Fatal(err)
+		}
+		err = ioutil.WriteFile(rebootConfigFilename, bytes, 0644)
+		if err != nil {
+			log.Fatal(err)
 		}
 	}
+	rebootConfig := &zconfig.DeviceOpsCmd{}
+
+	log.Printf("scheduleReboot - reading %s\n",
+		rebootConfigFilename)
+	// read old reboot config
+	bytes, err := ioutil.ReadFile(rebootConfigFilename)
+	if err != nil {
+		log.Fatal(err)
+	}
+	err = json.Unmarshal(bytes, rebootConfig)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("scheduleReboot read %v\n", rebootConfig)
 
 	// store current config, persistently
-	bytes, err := json.Marshal(reboot)
+	bytes, err = json.Marshal(reboot)
 	if err == nil {
 		ioutil.WriteFile(rebootConfigFilename, bytes, 0644)
 	}
 
-	// if not first time,
-	// counter value has changed
-	// means new reboot event
-	if rebootConfig != nil &&
-		rebootConfig.Counter != reboot.Counter {
+	// If counter value has changed it means new reboot event
+	if rebootConfig.Counter != reboot.Counter {
+
+		log.Printf("scheduleReboot: old %d new %d\n",
+			rebootConfig.Counter, reboot.Counter)
 
 		//timer was started, stop now
 		if rebootTimer != nil {
@@ -763,7 +792,7 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd) bool {
 }
 
 func scheduleBackup(backup *zconfig.DeviceOpsCmd) {
-
+	log.Printf("scheduleBackup(%v)\n", backup)
 	// XXX:FIXME  handle baackup semantics
 	log.Printf("Backup Config: %v\n", backup)
 }
@@ -826,14 +855,14 @@ func execReboot(state bool) {
 		log.Printf("Rebooting...\n")
 		duration := time.Duration(immediate)
 		timer := time.NewTimer(time.Second * duration)
-		 <-timer.C
+		<-timer.C
 		zbootReset()
 
 	case false:
 		log.Printf("Powering Off..\n")
 		duration := time.Duration(immediate)
 		timer := time.NewTimer(time.Second * duration)
-		 <-timer.C
+		<-timer.C
 		poweroffCmd := exec.Command("poweroff")
 		_, err := poweroffCmd.Output()
 		if err != nil {

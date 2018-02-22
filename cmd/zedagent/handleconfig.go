@@ -4,6 +4,8 @@
 package main
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -107,7 +109,7 @@ func getCloudUrls() {
 func configTimerTask() {
 	iteration := 0
 	curPart := getCurrentPartition()
-	inProgressState, _ := isCurrentPartitionStateInProgress()
+	inProgressState := isCurrentPartitionStateInProgress()
 
 	log.Printf("Config Fetch Task, curPart:%s, inProgress:%v\n",
 		curPart, inProgressState)
@@ -200,11 +202,10 @@ func getLatestConfig(configUrl string, iteration int, partState *bool) {
 		log.Printf("current partition-state inProgress:%v\n", *partState)
 		// now cloud connectivity is good, mark partition state
 		if *partState == true {
-			ret, err := markPartitionStateActive()
-			if ret == true {
-				*partState = false
-			} else {
+			if err := markPartitionStateActive(); err != nil {
 				log.Println(err)
+			} else {
+				*partState = false
 			}
 		}
 
@@ -216,7 +217,7 @@ func getLatestConfig(configUrl string, iteration int, partState *bool) {
 			return
 		}
 
-		config, err := readDeviceConfigProtoMessage(resp)
+		changed, config, err := readDeviceConfigProtoMessage(resp)
 		if err != nil {
 			log.Println("readDeviceConfigProtoMessage: ", err)
 			// Inform ledmanager about cloud connectivity
@@ -226,7 +227,12 @@ func getLatestConfig(configUrl string, iteration int, partState *bool) {
 
 		// Inform ledmanager about config received from cloud
 		types.UpdateLedManagerConfig(4)
-
+		if !changed {
+			if debug {
+				log.Printf("Configuration from zedcloud is unchanged\n")
+			}
+			return
+		}
 		inhaleDeviceConfig(config)
 		return
 	}
@@ -274,23 +280,37 @@ func validateConfigMessage(configUrl string, intf string,
 	}
 }
 
-func readDeviceConfigProtoMessage(r *http.Response) (*zconfig.EdgeDevConfig, error) {
+var prevConfigHash []byte
+
+// Returns changed, config, error. The changed is based on a comparison of
+// the hash of the protobuf message.
+func readDeviceConfigProtoMessage(r *http.Response) (bool, *zconfig.EdgeDevConfig, error) {
 
 	var config = &zconfig.EdgeDevConfig{}
 
-	bytes, err := ioutil.ReadAll(r.Body)
+	b, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		fmt.Println(err)
-		return nil, err
+		return false, nil, err
 	}
+	// compute sha256 of the image and match it
+	// with the one in config file...
+	h := sha256.New()
+	h.Write(b)
+	configHash := h.Sum(nil)
+	same := bytes.Equal(configHash, prevConfigHash)
+	log.Printf("Config Hash same %v: %v prev %v\n",
+		same, configHash, prevConfigHash)
+	prevConfigHash = configHash
+
 	//log.Println(" proto bytes(config) received from cloud: ", fmt.Sprintf("%s",bytes))
-	//log.Printf("parsing proto %d bytes\n", len(bytes))
-	err = proto.Unmarshal(bytes, config)
+	//log.Printf("parsing proto %d bytes\n", len(b))
+	err = proto.Unmarshal(b, config)
 	if err != nil {
 		log.Println("Unmarshalling failed: %v", err)
-		return nil, err
+		return false, nil, err
 	}
-	return config, nil
+	return !same, config, nil
 }
 
 func inhaleDeviceConfig(config *zconfig.EdgeDevConfig) {
@@ -303,12 +323,29 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig) {
 
 	devId = config.GetId()
 	if devId != nil {
-		// store the device id
-		deviceId = devId.Uuid
-		if devId.Version != "" {
-			if activeVersion != "" &&
+		if deviceId == "" {
+			// First time; record id and version
+			log.Printf("First config; storing UUID/version %s/%s\n",
+				devId.Uuid, devId.Version)
+			deviceId = devId.Uuid
+			activeVersion = devId.Version
+			// XXX need to update hostname/LISP with deviceId
+			// Write to uuid file etc.
+		} else {
+			// check the device id and version
+			if deviceId != devId.Uuid {
+				log.Printf("Updated config but wrong UUID have %s got %s\n",
+					deviceId, devId.Uuid)
+				// XXX can we send back an error somehow?
+				return
+			}
+			// XXX at some point in time we should set version in
+			// zedcloud and increment on change, or skip this completely
+			// For now we always accept the empty version.
+			if devId.Version != "" &&
 				devId.Version == activeVersion {
-				log.Printf("Same version, skipping:%v\n", config.Id.Version)
+				log.Printf("Same version, ignoring %s\n",
+					devId.Version)
 				return
 			}
 			activeVersion = devId.Version

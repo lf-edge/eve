@@ -103,13 +103,15 @@ func main() {
 		}
 	}
 	appNumAllocatorInit(statusDirname, configDirname)
+	model := hardware.GetHardwareModel()
 
-	handleInit(DNCDirname+"/global.json", DNSDirname+"/global.json",
+	DNCFilename := fmt.Sprintf("%s/%s.json", DNCDirname, model)
+	handleInit(DNCFilename, DNSDirname+"/global.json",
 		runDirname)
 
 	DNCctx := DNCContext{}
 	DNCctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
-	DNCctx.manufacturerModel = hardware.GetHardwareModel()
+	DNCctx.manufacturerModel = model
 
 	// Wait for zedmanager having populated the intial files to
 	// reduce the number of LISP-RESTARTs
@@ -1148,7 +1150,7 @@ func handleDNCModify(ctxArg interface{}, configFilename string,
 	ctx := ctxArg.(*DNCContext)
 
 	if configFilename != ctx.manufacturerModel {
-		fmt.Printf("handleDNSModify: ignoring %s - expecting %s\n",
+		fmt.Printf("handleDNCModify: ignoring %s - expecting %s\n",
 			configFilename, ctx.manufacturerModel)
 		return
 	}

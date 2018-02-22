@@ -581,6 +581,7 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 	*deviceType = zmet.ZInfoTypes_ZiDevice
 	ReportInfo.Ztype = *deviceType
 	ReportInfo.DevId = *proto.String(deviceId)
+	ReportInfo.AtTimeStamp = ptypes.TimestampNow()
 
 	ReportDeviceInfo := new(zmet.ZInfoDevice)
 
@@ -772,11 +773,16 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 	for i, _ := range aa.IoBundleList {
 		ib := &aa.IoBundleList[i]
 		// For a PCI device we check if it exists in hardware/kernel
+		// XXX could have been assigned away; hack to check for domains
 		_, _, err := types.IoBundleToPci(ib)
 		if err != nil {
-			log.Printf("Not reporting non-existent PCI device %d %s: %v\n",
+			if len(domainStatus) == 0 {
+				log.Printf("Not reporting non-existent PCI device %d %s: %v\n",
+					ib.Type, ib.Name, err)
+				continue
+			}
+			log.Printf("XXX reporting non-existent PCI device %d %s: %v\n",
 				ib.Type, ib.Name, err)
-			continue
 		}
 		reportAA := new(zmet.ZioBundle)
 		reportAA.Type = zmet.ZioType(ib.Type)
@@ -787,9 +793,17 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 		if ds != nil {
 			reportAA.UsedByUUID = ds.UUIDandVersion.UUID.String()
 		} else if types.IsUplink(deviceNetworkStatus, ib.Name) {
-			log.Printf("Reporting uplink as used %d %s\n",
-				ib.Type, ib.Name)
-			reportAA.UsedByUUID = deviceId
+			// XXX need to get our own UUID from cloud from getConfig
+			// early on.
+			if deviceId != "" {
+				log.Printf("Reporting uplink as used %d %s by %s\n",
+					ib.Type, ib.Name, deviceId)
+				reportAA.UsedByUUID = deviceId
+			} else {
+				log.Printf("NOT reporting uplink %d %s\n",
+					ib.Type, ib.Name)
+				continue
+			}
 		}
 		ReportDeviceInfo.AssignableAdapters = append(ReportDeviceInfo.AssignableAdapters,
 			reportAA)
@@ -813,7 +827,7 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 		x.Dinfo = ReportDeviceInfo
 	}
 
-	fmt.Printf("PublishDeviceInfoToZedCloud sending %v\n", ReportInfo)
+	log.Printf("PublishDeviceInfoToZedCloud sending %v\n", ReportInfo)
 
 	err = SendInfoProtobufStrThroughHttp(ReportInfo)
 	if err != nil {
@@ -828,13 +842,14 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 // containing only the UUID to inform zedcloud about the delete.
 func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 	iteration int) {
-	fmt.Printf("PublishAppInfoToZedCloud uuid %s\n", uuid)
+	log.Printf("PublishAppInfoToZedCloud uuid %s\n", uuid)
 	var ReportInfo = &zmet.ZInfoMsg{}
 
 	appType := new(zmet.ZInfoTypes)
 	*appType = zmet.ZInfoTypes_ZiApp
 	ReportInfo.Ztype = *appType
 	ReportInfo.DevId = *proto.String(deviceId)
+	ReportInfo.AtTimeStamp = ptypes.TimestampNow()
 
 	ReportAppInfo := new(zmet.ZInfoApp)
 

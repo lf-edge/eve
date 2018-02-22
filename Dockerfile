@@ -21,8 +21,6 @@ RUN go get github.com/zededa/go-provision/cmd/...
 RUN go get github.com/zededa/go-provision/oldcmd/...
 RUN cd /opt/zededa/bin ; ln -s /go/bin/* .
 
-RUN ash -c 'ID=`uuidgen | tr "[A-Z]" "[a-z]"` ; cat /tmp/gg.json | sed -e s"#1a0d85d9-5e83-4589-b56f-cedabc9a8c0d#${ID}#" > /config/${ID}.json'
-
 # Now building LISP
 FROM zededa/lisp:latest AS lisp
 
