@@ -830,10 +830,8 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 // send report on each uplink.
 // When aiStatus is nil it means a delete and we send a message
 // containing only the UUID to inform zedcloud about the delete.
-// XXX Need devCtx.assignableAdapters argument.
-// XXX iteration not used. Means we don't need appInstanceContext with iteration
 func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
-	iteration int) {
+	aa *types.AssignableAdapters) {
 	log.Printf("PublishAppInfoToZedCloud uuid %s\n", uuid)
 	var ReportInfo = &zmet.ZInfoMsg{}
 
@@ -896,13 +894,16 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 			ReportAppInfo.BootTime = bootTime
 		}
 
-		// XXX Note that we don't have the members handy here.
-		// Can we call LookupIoBundle(aa *AssignableAdapters, ioType IoType, name string)??
 		for _, ib := range ds.IoAdapterList {
 			reportAA := new(zmet.ZioBundle)
 			reportAA.Type = zmet.ZioType(ib.Type)
 			reportAA.Name = ib.Name
 			reportAA.UsedByAppUUID = ds.UUIDandVersion.UUID.String()
+			// Can we call
+			b := types.LookupIoBundle(aa, ib.Type, ib.Name)
+			if b != nil {
+				reportAA.Members = b.Members
+			}
 			ReportAppInfo.AssignedAdapters = append(ReportAppInfo.AssignedAdapters,
 				reportAA)
 		}
