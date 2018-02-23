@@ -791,19 +791,9 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 		// lookup domains to see what is in use
 		ds := LookupDomainStatusIoBundle(ib.Type, ib.Name)
 		if ds != nil {
-			reportAA.UsedByUUID = ds.UUIDandVersion.UUID.String()
+			reportAA.UsedByAppUUID = ds.UUIDandVersion.UUID.String()
 		} else if types.IsUplink(deviceNetworkStatus, ib.Name) {
-			// XXX need to get our own UUID from cloud from getConfig
-			// early on.
-			if deviceId != "" {
-				log.Printf("Reporting uplink as used %d %s by %s\n",
-					ib.Type, ib.Name, deviceId)
-				reportAA.UsedByUUID = deviceId
-			} else {
-				log.Printf("NOT reporting uplink %d %s\n",
-					ib.Type, ib.Name)
-				continue
-			}
+			reportAA.UsedByBaseOS = true
 		}
 		ReportDeviceInfo.AssignableAdapters = append(ReportDeviceInfo.AssignableAdapters,
 			reportAA)
@@ -840,6 +830,8 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 // send report on each uplink.
 // When aiStatus is nil it means a delete and we send a message
 // containing only the UUID to inform zedcloud about the delete.
+// XXX Need devCtx.assignableAdapters argument.
+// XXX iteration not used. Means we don't need appInstanceContext with iteration
 func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 	iteration int) {
 	log.Printf("PublishAppInfoToZedCloud uuid %s\n", uuid)
@@ -904,12 +896,13 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 			ReportAppInfo.BootTime = bootTime
 		}
 
-		// Note that we don't have the members handy here.
+		// XXX Note that we don't have the members handy here.
+		// Can we call LookupIoBundle(aa *AssignableAdapters, ioType IoType, name string)??
 		for _, ib := range ds.IoAdapterList {
 			reportAA := new(zmet.ZioBundle)
 			reportAA.Type = zmet.ZioType(ib.Type)
 			reportAA.Name = ib.Name
-			reportAA.UsedByUUID = ds.UUIDandVersion.UUID.String()
+			reportAA.UsedByAppUUID = ds.UUIDandVersion.UUID.String()
 			ReportAppInfo.AssignedAdapters = append(ReportAppInfo.AssignedAdapters,
 				reportAA)
 		}
@@ -925,7 +918,7 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 	err := SendInfoProtobufStrThroughHttp(ReportInfo)
 	if err != nil {
 		// XXX reschedule doing this again later somehow
-		log.Printf("PublishDeviceInfoToZedCloud: %s\n", err)
+		log.Printf("PublishAppInfoToZedCloud: %s\n", err)
 	}
 }
 
