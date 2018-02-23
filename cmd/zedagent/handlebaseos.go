@@ -11,9 +11,7 @@ import (
 	"github.com/zededa/go-provision/types"
 	"log"
 	"os"
-	"os/exec"
 	"reflect"
-	"strings"
 	"time"
 )
 
@@ -543,29 +541,6 @@ func installBaseOsObject(srcFilename string, dstFilename string) error {
 		log.Printf("installBaseOsObject: unssigned destination partition\n")
 		err := errors.New("no destination partition")
 		return err
-	}
-
-	// XXX:FIXME, currently, cloud gives a zipped file, without ".gz"
-	if strings.HasSuffix(srcFilename, ".gz") == false {
-		os.Rename(srcFilename, srcFilename+".gz")
-		srcFilename = srcFilename + ".gz"
-	}
-
-	// unzip the source file
-	if strings.HasSuffix(srcFilename, ".gz") == true {
-		zipCmd := exec.Command("gunzip", srcFilename)
-		_, err := zipCmd.Output()
-		if err != nil {
-			log.Printf("installBaseOsObject: %s %v\n",
-				srcFilename, err)
-			return err
-		}
-		srcFilename = strings.Split(srcFilename, ".gz")[0]
-		if _, err := os.Stat(srcFilename); err != nil {
-			log.Printf("installBaseOsObject: %s %v\n",
-				srcFilename, err)
-			return err
-		}
 	}
 
 	err := zbootWriteToPartition(srcFilename, dstFilename)
