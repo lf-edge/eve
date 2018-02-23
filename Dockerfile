@@ -21,6 +21,11 @@ RUN go get github.com/zededa/go-provision/cmd/...
 RUN go get github.com/zededa/go-provision/oldcmd/...
 RUN cd /opt/zededa/bin ; ln -s /go/bin/* .
 
+# XXX temporary until we have a version
+RUN echo `date -u +"%Y-%m-%d-%H:%M"`-`whoami`-`hostname` >/opt/zededa/bin/buildinfo
+# No .git in container
+# RUN echo `git tag`-`git rev-parse --abbrev-ref HEAD`-`git describe --match v --abbrev=8 --always --dirty`-`date -u +"%Y-%m-%d-%H:%M"` >/opt/zededa/bin/versioninfo
+
 # Now building LISP
 FROM zededa/lisp:latest AS lisp
 

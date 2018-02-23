@@ -108,24 +108,20 @@ func getCloudUrls() {
 // times between .3x and 1x
 func configTimerTask() {
 	iteration := 0
-	curPart := getCurrentPartition()
-	inProgressState := isCurrentPartitionStateInProgress()
-
-	log.Printf("Config Fetch Task, curPart:%s, inProgress:%v\n",
-		curPart, inProgressState)
-	getLatestConfig(configUrl, iteration, &inProgressState)
+	checkConnectivity := isCurrentPartitionStateInProgress()
+	getLatestConfig(configUrl, iteration, &checkConnectivity)
 
 	ticker := time.NewTicker(time.Minute * configTickTimeout)
 
 	for range ticker.C {
 		iteration += 1
-		getLatestConfig(configUrl, iteration, &inProgressState)
+		getLatestConfig(configUrl, iteration, &checkConnectivity)
 	}
 }
 
 // Each iteration we try a different uplink. For each uplink we try all
 // its local IP addresses until we get a success.
-func getLatestConfig(configUrl string, iteration int, partState *bool) {
+func getLatestConfig(configUrl string, iteration int, checkConnectivity *bool) {
 	intf, err := types.GetUplinkAny(deviceNetworkStatus, iteration)
 	if err != nil {
 		log.Printf("getLatestConfig: %s\n", err)
@@ -199,15 +195,28 @@ func getLatestConfig(configUrl string, iteration int, partState *bool) {
 		// Even if we get a 404 we consider the connection a success
 		zedCloudSuccess(intf)
 
-		log.Printf("current partition-state inProgress:%v\n", *partState)
-		// now cloud connectivity is good, mark partition state
-		if *partState == true {
+		// now cloud connectivity is good, mark partition state as
+		// active if it was inprogress
+		// XXX down the road we want more diagnostics and validation
+		// before we do this.
+		if *checkConnectivity && isCurrentPartitionStateInProgress() {
+			curPart := getCurrentPartition()
+			log.Printf("Config Fetch Task, curPart %s inprogress\n",
+				curPart)
 			if err := markPartitionStateActive(); err != nil {
 				log.Println(err)
 			} else {
-				*partState = false
+				*checkConnectivity = false
 			}
 		}
+
+		// Each time we hear back from the cloud we assume
+		// the device and connectivity is ok so we advance the
+		// watchdog timer.
+		// We should only require this connectivity once every 24 hours
+		// or so using a setable policy in the watchdog, but have
+		// a short timeout during validation of a image post upgrade.
+		zbootWatchdogOK()
 
 		if err := validateConfigMessage(configUrl, intf, localTCPAddr,
 			resp); err != nil {
@@ -299,8 +308,6 @@ func readDeviceConfigProtoMessage(r *http.Response) (bool, *zconfig.EdgeDevConfi
 	h.Write(b)
 	configHash := h.Sum(nil)
 	same := bytes.Equal(configHash, prevConfigHash)
-	log.Printf("Config Hash same %v: %v prev %v\n",
-		same, configHash, prevConfigHash)
 	prevConfigHash = configHash
 
 	//log.Println(" proto bytes(config) received from cloud: ", fmt.Sprintf("%s",bytes))

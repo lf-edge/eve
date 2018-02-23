@@ -33,6 +33,14 @@ func zbootReset() {
 	}
 }
 
+// tell watchdog we are fine
+func zbootWatchdogOK() {
+	_, err := exec.Command("zboot", "watchdog").Output()
+	if err != nil {
+		log.Fatalf("zboot watchdog: err %v\n", err)
+	}
+}
+
 // partition routines
 func getCurrentPartition() string {
 	curPartCmd := exec.Command("zboot", "curpart")
@@ -113,12 +121,19 @@ func isPartitionState(partName string, partState string) bool {
 	validatePartitionState(partState)
 
 	curPartState := getPartitionState(partName)
-	log.Printf("isPartitionState %s: %v %v\n",
-		partName, curPartState, partState)
-	return curPartState == partState
+	res := curPartState == partState
+	if res {
+		log.Printf("isPartitionState(%s, %s) TRUE\n",
+			partName, partState)
+	} else {
+		log.Printf("isPartitionState(%s, %s) FALSE - is %s\n",
+			partName, partState, curPartState)
+	}
+	return res
 }
 
 func setPartitionState(partName string, partState string) {
+	log.Printf("setPartitionState(%s, %s)\n", partName, partState)
 
 	validatePartitionName(partName)
 	validatePartitionState(partState)
@@ -238,29 +253,29 @@ func getOtherPartitionDevName() string {
 
 func zbootWriteToPartition(srcFilename string, partName string) error {
 
-	log.Printf("WriteToPartition %s: %s\n", partName, srcFilename)
-
-	if ret := isOtherPartition(partName); ret == false {
-		errStr := fmt.Sprintf("%s: not other partition", partName)
-		log.Println(errStr)
+	if !isOtherPartition(partName) {
+		errStr := fmt.Sprintf("not other partition %s", partName)
+		log.Printf("WriteToPartition failed %s\n", errStr)
 		return errors.New(errStr)
 	}
 
 	if !isOtherPartitionStateUnused() {
 		errStr := fmt.Sprintf("%s: Not an unused partition", partName)
-		log.Println(errStr)
+		log.Printf("WriteToPartition failed %s\n", errStr)
 		return errors.New(errStr)
 	}
 
+	log.Printf("WriteToPartition %s: %v\n", partName, srcFilename)
 	devName := getPartitionDevname(partName)
 	if devName == "" {
 		errStr := fmt.Sprintf("null devname for partition %s", partName)
-		log.Println(errStr)
+		log.Printf("WriteToPartition failed %s\n", errStr)
 		return errors.New(errStr)
 	}
 
 	ddCmd := exec.Command("dd", "if="+srcFilename, "of="+devName, "bs=8M")
 	if _, err := ddCmd.Output(); err != nil {
+		log.Printf("WriteToPartition failed %s\n", err)
 		log.Printf("partName : %v\n", err)
 		return err
 	}

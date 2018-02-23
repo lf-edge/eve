@@ -105,6 +105,9 @@ func main() {
 	appNumAllocatorInit(statusDirname, configDirname)
 	model := hardware.GetHardwareModel()
 
+	// XXX Should we wait for the DNCFilename same way as we wait
+	// for AssignableAdapter filename?
+
 	DNCFilename := fmt.Sprintf("%s/%s.json", DNCDirname, model)
 	handleInit(DNCFilename, DNSDirname+"/global.json",
 		runDirname)

@@ -136,9 +136,16 @@ func checkPartitionInfo(baseOs *types.BaseOsConfig, baseOsCount int) {
 		return
 	}
 
-	if ret := isInstallCandidate(uuidStr, baseOs, baseOsCount); ret == true {
-		if ret := isOtherPartitionStateUnused(); ret == true {
-			baseOs.PartitionLabel = getOtherPartition()
+	if isInstallCandidate(uuidStr, baseOs, baseOsCount) {
+		if isOtherPartitionStateUnused() {
+			log.Printf("getPartitionInfo(%s) unused\n",
+				baseOs.BaseOsVersion)
+		} else if isOtherPartitionStateUpdating() {
+			// XXX Did we get an update before we activated
+			// the previous update?
+			log.Printf("XXX getPartitionInfo(%s) updating\n",
+				baseOs.BaseOsVersion)
+			// XXX do we need this? baseOs.PartitionLabel = getOtherPartition()
 		}
 	}
 
@@ -180,9 +187,9 @@ func isInstallCandidate(uuidStr string, baseOs *types.BaseOsConfig,
 			baseOs.BaseOsVersion)
 		return true
 	}
-	log.Printf("isInstallCandidate(%s) FAIL: curBaseOs %v baseOs %v\n",
-		baseOs.BaseOsVersion, curBaseOsConfig, baseOs)
-
+	log.Printf("isInstallCandidate(%s) FAIL: curBaseOs %s activate %v/%v\n",
+		baseOs.BaseOsVersion, curBaseOsConfig.BaseOsVersion,
+		baseOs.Activate, curBaseOsConfig.Activate)
 	return false
 }
 
@@ -761,17 +768,17 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd) bool {
 	}
 	log.Printf("scheduleReboot read %v\n", rebootConfig)
 
-	// store current config, persistently
-	bytes, err = json.Marshal(reboot)
-	if err == nil {
-		ioutil.WriteFile(rebootConfigFilename, bytes, 0644)
-	}
-
 	// If counter value has changed it means new reboot event
 	if rebootConfig.Counter != reboot.Counter {
 
 		log.Printf("scheduleReboot: old %d new %d\n",
 			rebootConfig.Counter, reboot.Counter)
+
+		// store current config, persistently
+		bytes, err = json.Marshal(reboot)
+		if err == nil {
+			ioutil.WriteFile(rebootConfigFilename, bytes, 0644)
+		}
 
 		//timer was started, stop now
 		if rebootTimer != nil {
