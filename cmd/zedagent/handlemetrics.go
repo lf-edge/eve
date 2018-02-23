@@ -750,6 +750,22 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 				// Install /usr/share/udhcpc/default.script
 				// to get the data about the leases?
 
+				// XXX remove debug
+				if debug {
+					fmt.Printf("Interface %s flags %v\n",
+						interfaceDetail.Name,
+						interfaceDetail.Flags)
+				}
+				for _, fl := range interfaceDetail.Flags {
+					if fl == "up" {
+						ReportDeviceNetworkInfo.Up = true
+						break
+					}
+				}
+				// XXX once we have static config add any
+				// config errors. Note that this might imply
+				// reporting for devices which do not exist.
+
 				ReportDeviceInfo.Network = append(ReportDeviceInfo.Network,
 					ReportDeviceNetworkInfo)
 			}
