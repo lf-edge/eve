@@ -328,7 +328,6 @@ func installDownloadedObject(objType string, safename string,
 		break
 
 	case types.DELIVERED:
-		// XXX sometimes the name ends with .gz
 		srcFilename += "/verified/" + config.ImageSha256 + "/" +
 			types.SafenameToFilename(safename)
 		break
@@ -340,13 +339,7 @@ func installDownloadedObject(objType string, safename string,
 
 	// ensure the file is present
 	if _, err := os.Stat(srcFilename); err != nil {
-		log.Printf("Failed %v; trying with .gz added\n", err)
-		// XXX try
-		srcFilename += ".gz"
-		if _, err := os.Stat(srcFilename); err != nil {
-			log.Fatal(err)
-		}
-		log.Printf("XXX worked with .gz added: %s\n", srcFilename)
+		log.Fatal(err)
 	}
 
 	// move to final installation point
