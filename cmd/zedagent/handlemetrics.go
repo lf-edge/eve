@@ -318,7 +318,7 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 
 	ReportDeviceMetric := new(zmet.DeviceMetric)
 	ReportDeviceMetric.Memory = new(zmet.MemoryMetric)
-	ReportDeviceMetric.Compute = new(zmet.DevCpuMetric)
+	ReportDeviceMetric.CpuMetric = new(zmet.AppCpuMetric)
 
 	ReportMetrics.DevID = *proto.String(deviceId)
 	ReportZmetric := new(zmet.ZmetricTypes)
@@ -341,8 +341,13 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 			info.Uptime, cpuSecs, (100*cpuSecs)/info.Uptime)
 	}
 
-	ReportDeviceMetric.Compute.CpuTotal = *proto.Uint64(cpuSecs)
-	ReportDeviceMetric.Compute.UpTime = *proto.Uint64(info.Uptime)
+	ReportDeviceMetric.CpuMetric.Total = *proto.Uint64(cpuSecs)
+	// XXX note that uptime is seconds we've been up. We're converting
+	// to a timestamp. That better not be interpreted as a time since
+	// the epoch
+	uptime, _ := ptypes.TimestampProto(
+		time.Unix(int64(info.Uptime), 0).UTC())
+	ReportDeviceMetric.CpuMetric.UpTime = uptime
 
 	// Memory related info for dom0
 	ram, err := mem.VirtualMemory()
@@ -503,9 +508,9 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 				}
 
 				appCpuTotal, _ := strconv.ParseUint(cpuStorageStat[arr][3], 10, 0)
-				ReportAppMetric.Cpu.CpuTotal = *proto.Uint32(uint32(appCpuTotal))
-				appCpuUsedInPercent, _ := strconv.ParseFloat(cpuStorageStat[arr][4], 10)
-				ReportAppMetric.Cpu.CpuPercentage = *proto.Float64(float64(appCpuUsedInPercent))
+				ReportAppMetric.Cpu.Total = *proto.Uint64(appCpuTotal)
+				// We don't report ReportAppMetric.Cpu.Uptime
+				// since we already report BootTime for the app
 
 				totalAppMemory, _ := strconv.ParseUint(cpuStorageStat[arr][5], 10, 0)
 				usedAppMemoryPercent, _ := strconv.ParseFloat(cpuStorageStat[arr][6], 10)
