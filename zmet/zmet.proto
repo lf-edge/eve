@@ -40,7 +40,7 @@ message ZInfoNetwork {
   repeated string IPAddrs = 5; // All IP addresses with /N for subnet
   repeated string defaultRouters = 6; // If DHCP assigned
   ZInfoDNS dns = 7; // If DHCP assigned
-  bool up = 8;      // up/down status.
+  bool up = 8;      // operational up/down status.
 }
 
 // This is used both to represent the information we receive from DHCP
@@ -87,10 +87,10 @@ message ZInfoSW {
   string vdev = 7;		// E.g., "xvda"
 }
 
+// Errors in response to the applicatioan of configuration
 message ErrorInfo {
   string description = 1;
-  string severity = 2;  // Should this be an enum?
-  google.protobuf.Timestamp timestamp = 3;
+  google.protobuf.Timestamp timestamp = 2;
 }
 
 // Base device info, as discovered by Xen (or OS on bare metal)
@@ -115,9 +115,7 @@ message ZInfoDevice {
   google.protobuf.Timestamp bootTime = 18;
 
   repeated ZInfoDevSW swList = 19;
-
-  repeated ErrorInfo devErr = 20;
-  string   HostName = 21;
+  string   HostName = 20;
 }
 
 //SW Info for the device base OS
@@ -125,10 +123,11 @@ message ZInfoDevSW {
   bool activated = 2;        // XXX is this implicit in partitionStatus?
   string partitionLabel = 3; // E.g., "IMGA"
   string partitionDevice = 4;// /dev/something
-  ZSwState status = 5;       // E.g., "inprogress"
-  string swVersion = 6;      // From rootfs i.e., image
-  string longVersion = 7;    // E.g., the yml file content from build
-  ErrorInfo swErr = 8;
+  string partitionState = 5; // state obtained from cboot
+  ZSwState status = 6;       // E.g., "DOWNLOADED"
+  string shortVersion = 7;   // From rootfs i.e., image
+  string longVersion = 8;    // E.g., the yml file content from build
+  ErrorInfo swErr = 9;
 }
 
 // Per filesystem/partition information
@@ -160,8 +159,8 @@ message ZInfoApp {
   string AppName = 7;
   repeated ZInfoSW softwareList = 8;
   bool activated = 9;
-  string error = 10;  // deprecated
-  google.protobuf.Timestamp errorTime = 11; //deprecated
+  string error = 10;  // deprecated, use ErrorInfo
+  google.protobuf.Timestamp errorTime = 11; //deprecated, use ErrorInfo
 
     google.protobuf.Timestamp bootTime = 12;
   repeated ZioBundle assignedAdapters = 13;
