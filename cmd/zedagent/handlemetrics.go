@@ -879,12 +879,13 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 			ReportAppInfo.Activated = aiStatus.Activated && verifyDomainExists(ds.DomainId)
 		}
 
-		ReportAppInfo.Error = aiStatus.Error
-		if (aiStatus.ErrorTime).IsZero() {
-			log.Println("ErrorTime is empty...so do not fill it")
-		} else {
+		if !aiStatus.ErrorTime.IsZero() {
+			errInfo := new(zmet.ErrorInfo)
+			errInfo.Description = aiStatus.Error
 			errTime, _ := ptypes.TimestampProto(aiStatus.ErrorTime)
-			ReportAppInfo.ErrorTime = errTime
+			errInfo.Timestamp = errTime
+			ReportAppInfo.AppErr = append(ReportAppInfo.AppErr,
+				errInfo)
 		}
 
 		if len(aiStatus.StorageStatusList) == 0 {
