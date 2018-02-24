@@ -142,7 +142,6 @@ func getPartitionInfo(baseOs *types.BaseOsConfig, baseOsCount int) bool {
 		if isInstallCandidate(uuidStr, baseOs, baseOsCount) {
 
 			uuidStr := baseOs.UUIDandVersion.UUID.String()
-			// XXX when updating to .14 the state of IMGA is updating
 			if isOtherPartitionStateUnused() {
 				log.Printf("getPartitionInfo(%s) unused\n",
 					baseOs.BaseOsVersion)
@@ -759,7 +758,6 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd) {
 	}
 
 	if _, err := os.Stat(rebootConfigFilename); err != nil {
-		// XXX assume file doesn't exist
 		// Take received as current and store in file
 		log.Printf("scheduleReboot - writing initial %s\n",
 			rebootConfigFilename)
