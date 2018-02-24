@@ -35,6 +35,9 @@ func zbootReset() {
 
 // tell watchdog we are fine
 func zbootWatchdogOK() {
+	if !isZbootAvailable() {
+		return
+	}
 	_, err := exec.Command("zboot", "watchdog").Output()
 	if err != nil {
 		log.Fatalf("zboot watchdog: err %v\n", err)
