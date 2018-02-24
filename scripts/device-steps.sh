@@ -460,7 +460,7 @@ if [ $WAIT = 1 ]; then
 fi
 
 echo "Starting eidregister at" `date`
-eidregister >/var/log/eidregister.log 2>&1 &
+eidregister $OLDFLAG -d $CONFIGDIR >/var/log/eidregister.log 2>&1 &
 if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
