@@ -733,9 +733,11 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 		return swInfo
 	}
 
-	ReportDeviceInfo.SwList = make([]*zmet.ZInfoDevSW, 2)
-	ReportDeviceInfo.SwList[0] = getSwInfo(getCurrentPartition())
-	ReportDeviceInfo.SwList[1] = getSwInfo(getOtherPartition())
+	if isZbootAvailable() {
+		ReportDeviceInfo.SwList = make([]*zmet.ZInfoDevSW, 2)
+		ReportDeviceInfo.SwList[0] = getSwInfo(getCurrentPartition())
+		ReportDeviceInfo.SwList[1] = getSwInfo(getOtherPartition())
+	}
 
 	// Read interface name from library and match it with uplink name from
 	// global status. Only report the uplinks.

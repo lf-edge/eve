@@ -108,7 +108,7 @@ func getCloudUrls() {
 // times between .3x and 1x
 func configTimerTask() {
 	iteration := 0
-	checkConnectivity := isCurrentPartitionStateInProgress()
+	checkConnectivity := isZbootAvailable() && isCurrentPartitionStateInProgress()
 	getLatestConfig(configUrl, iteration, &checkConnectivity)
 
 	ticker := time.NewTicker(time.Minute * configTickTimeout)

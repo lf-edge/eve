@@ -339,7 +339,9 @@ func zbootWriteToPartition(srcFilename string, partName string) error {
 }
 
 func partitionInit() {
-
+	if !isZbootAvailable() {
+		return
+	}
 	curPart := getCurrentPartition()
 	otherPart := getOtherPartition()
 
@@ -420,5 +422,16 @@ func getVersion(part string, filename string) string {
 			log.Fatal(err)
 		}
 		return string(version)
+	}
+}
+
+// XXX temporary? Needed to run on hikey's with no zboot yet.
+func isZbootAvailable() bool {
+	filename := "/usr/bin/zboot"
+	if _, err := os.Stat(filename); err != nil {
+		log.Printf("zboot not available on this platform: %s\n", err)
+		return false
+	} else {
+		return true
 	}
 }
