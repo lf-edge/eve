@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
 )
 
 const (
@@ -370,4 +371,54 @@ func markPartitionStateActive() error {
 	log.Printf("Mark other partition %s, unused\n", otherPart)
 	setOtherPartitionStateUnused()
 	return nil
+}
+
+// XXX known pathnames for the version file and the zededa-tools container
+const (
+	shortVersionFile = "/opt/zededa/bin/versioninfo"
+	longVersionFile  = "XXX"
+	otherPrefix      = "/containers/services/zededa-tools/lower"
+)
+
+func GetShortVersion(part string) string {
+	return getVersion(part, shortVersionFile)
+}
+
+// XXX add longversion once we have a filename
+func GetLongVersion(part string) string {
+	return ""
+}
+
+func getVersion(part string, filename string) string {
+	isCurrent := (part == getCurrentPartition())
+	if isCurrent {
+		version, err := ioutil.ReadFile(filename)
+		if err != nil {
+			log.Fatal(err)
+		}
+		return string(version)
+	} else {
+		devname := getPartitionDevname(part)
+		target, err := ioutil.TempDir("/var/run", "tmpmnt")
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer os.RemoveAll(target)
+		// Mount failure is ok; might not have a filesystem in the
+		// other partition
+		// XXX hardcoded file system type squashfs
+		err = syscall.Mount(devname, target, "squashfs",
+			syscall.MS_RDONLY, "")
+		if err != nil {
+			log.Printf("Mount of %s failed: %s\n", devname, err)
+			return ""
+		}
+		defer syscall.Unmount(target, 0)
+
+		version, err := ioutil.ReadFile(filename)
+		if err != nil {
+			log.Fatal(err)
+		}
+		return string(version)
+	}
 }

@@ -698,22 +698,44 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 	ReportDeviceSoftwareInfo.SwHash = *proto.String(" ")
 	ReportDeviceInfo.Software = ReportDeviceSoftwareInfo
 
-	// Report BaseOs Status
-	ReportDeviceInfo.SoftwareList = make([]*zmet.ZInfoSW, len(baseOsStatus))
-	var idx int = 0
-	for _, value := range baseOsStatus {
-		ReportDeviceSoftwareInfo := new(zmet.ZInfoSW)
-		ReportDeviceSoftwareInfo.SwVersion = value.BaseOsVersion
-		ReportDeviceSoftwareInfo.SwHash = value.ConfigSha256
-		ReportDeviceSoftwareInfo.State = zmet.ZSwState(value.State)
-		// XXX should we track "inprogress" as well as "active" i.e. get
-		// the state from zboot?
-		// Should we expand the message to also have the partition
-		// and tag (sda2 and IMGA)?
-		ReportDeviceSoftwareInfo.Activated = value.Activated
-		ReportDeviceInfo.SoftwareList[idx] = ReportDeviceSoftwareInfo
-		idx++
+	// Report BaseOs Status for the two partitions
+	getBaseOsStatus := func(partLabel string) *types.BaseOsStatus {
+		// Look for a matching IMGA/IMGB in baseOsStatus
+		// XXX sanity check on activated vs. curPart
+		for _, bos := range baseOsStatus {
+			if bos.PartitionLabel == partLabel {
+				return &bos
+			}
+		}
+		return nil
 	}
+	getSwInfo := func(partLabel string) *zmet.ZInfoDevSW {
+		swInfo := new(zmet.ZInfoDevSW)
+		swInfo.Activated = (partLabel == getCurrentPartition())
+		swInfo.PartitionLabel = partLabel
+		swInfo.PartitionDevice = getPartitionDevname(partLabel)
+		swInfo.PartitionState = getPartitionState(partLabel)
+		swInfo.ShortVersion = GetShortVersion(partLabel)
+		swInfo.LongVersion = GetLongVersion(partLabel)
+		if bos := getBaseOsStatus(partLabel); bos != nil {
+			swInfo.Status = zmet.ZSwState(bos.State)
+			if !bos.ErrorTime.IsZero() {
+				errInfo := new(zmet.ErrorInfo)
+				errInfo.Description = bos.Error
+				errTime, _ := ptypes.TimestampProto(bos.ErrorTime)
+				errInfo.Timestamp = errTime
+				swInfo.SwErr = errInfo
+			}
+		} else {
+			// Must be factory install i.e. INSTALLED
+			swInfo.Status = zmet.ZSwState(types.INSTALLED)
+		}
+		return swInfo
+	}
+
+	ReportDeviceInfo.SwList = make([]*zmet.ZInfoDevSW, 2)
+	ReportDeviceInfo.SwList[0] = getSwInfo(getCurrentPartition())
+	ReportDeviceInfo.SwList[1] = getSwInfo(getOtherPartition())
 
 	// Read interface name from library and match it with uplink name from
 	// global status. Only report the uplinks.
