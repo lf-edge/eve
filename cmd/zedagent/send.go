@@ -38,13 +38,8 @@ func sendOnAllIntf(url string, data []byte, iteration int) (bool, *http.Response
 		for _, intf := range intfs {
 			ok, resp := sendOnIntf(url, intf, data)
 			if !ok {
-				zedCloudFailure(intf)
 				continue
 			}
-			// Even if we got a 404 we consider the
-			// connection a success
-			zedCloudSuccess(intf)
-
 			return ok, resp
 		}
 	}
@@ -59,6 +54,7 @@ func sendOnIntf(url string, intf string, data []byte) (bool, *http.Response) {
 			url, intf, addrCount)
 	}
 	if addrCount == 0 {
+		zedCloudFailure(intf)
 		return false, nil
 	}
 	for retryCount := 0; retryCount < addrCount; retryCount += 1 {
@@ -133,6 +129,9 @@ func sendOnIntf(url string, intf string, data []byte) (bool, *http.Response) {
 			// resp.Body.Close()
 			// continue
 		}
+		// Even if we got e.g., a 404 we consider the connection a
+		// success since we care about the connectivity to the cloud.
+		zedCloudSuccess(intf)
 
 		switch resp.StatusCode {
 		case http.StatusOK:
@@ -154,6 +153,7 @@ func sendOnIntf(url string, intf string, data []byte) (bool, *http.Response) {
 			return false, nil
 		}
 	}
+	zedCloudFailure(intf)
 	log.Printf("All attempts to connect to %s using intf %s failed\n",
 		configUrl, intf)
 	return false, nil
