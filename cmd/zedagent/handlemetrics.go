@@ -682,16 +682,6 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 	compatible := hardware.GetCompatible()
 	ReportDeviceManufacturerInfo.Compatible = *proto.String(compatible)
 	ReportDeviceInfo.Minfo = ReportDeviceManufacturerInfo
-	ReportDeviceSoftwareInfo := new(zmet.ZInfoSW)
-	systemHost, err := host.Info()
-	if err != nil {
-		log.Println(err)
-	} else {
-		//XXX for now we are filling kernel version...
-		ReportDeviceSoftwareInfo.SwVersion = systemHost.KernelVersion
-	}
-	ReportDeviceSoftwareInfo.SwHash = *proto.String(" ")
-	ReportDeviceInfo.Software = ReportDeviceSoftwareInfo
 
 	// Report BaseOs Status for the two partitions
 	getBaseOsStatus := func(partLabel string) *types.BaseOsStatus {
