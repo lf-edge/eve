@@ -44,7 +44,9 @@ TMPDIR=/tmp/zededa-build.$$
 
 TYPE=linux_arm64
 rm -rf $TMPDIR
+# Setup for untaring in /
 mkdir -p $TMPDIR/config $TMPDIR/opt/zededa/bin $TMPDIR/var/tmp/zededa/
+echo ${BUILD_VERSION} >$TMPDIR/opt/zededa/bin/versioninfo
 cp -rp DeviceNetworkConfig $TMPDIR/var/tmp/zededa
 cp -rp AssignableAdapters $TMPDIR/var/tmp/zededa
 cp -p README $TMPDIR/opt/zededa/bin/
@@ -57,8 +59,9 @@ rm -rf $TMPDIR
 
 TYPE=linux_x86_64
 rm -rf $TMPDIR
-# Setup for untaring in /opt
+# Setup for untaring in /
 mkdir -p $TMPDIR/config $TMPDIR/opt/zededa/bin $TMPDIR/var/tmp/zededa/
+echo ${BUILD_VERSION} >$TMPDIR/opt/zededa/bin/versioninfo
 cp -rp DeviceNetworkConfig $TMPDIR/var/tmp/zededa
 cp -rp AssignableAdapters $TMPDIR/var/tmp/zededa
 cp -p README $TMPDIR/opt/zededa/bin/
