@@ -16,6 +16,7 @@ import (
 	psutilnet "github.com/shirou/gopsutil/net"
 	"github.com/vishvananda/netlink"
 	"github.com/zededa/api/zmet"
+	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/netclone"
 	"github.com/zededa/go-provision/types"
@@ -40,15 +41,16 @@ func publishMetrics(iteration int) {
 	PublishMetricsToZedCloud(cpuStorageStat, iteration)
 }
 
-// XXX should the timers be randomized to avoid self-synchronization across
-// potentially lots of devices?
-// Combine with being able to change the timer intervals - generate at random
+// XXX Combine with being able to change the timer intervals - generate at random
 // times between .3x and 1x
 func metricsTimerTask() {
 	iteration := 0
 	log.Println("starting report metrics timer task")
 	publishMetrics(iteration)
-	ticker := time.NewTicker(time.Second * 60)
+	// Make this configurable from zedcloud and call update on ticker
+	max := float64(time.Second * 60)
+	min := max * 0.3
+	ticker := flextimer.NewRangeTicker(time.Duration(min), time.Duration(max))
 	for range ticker.C {
 		iteration += 1
 		publishMetrics(iteration)
