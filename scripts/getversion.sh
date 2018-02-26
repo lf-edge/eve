@@ -3,7 +3,7 @@
 # XXX not clear how we can feed a RELEASE environment into the docker
 
 GIT_TAG=`git tag`
-BUILD_DATE=`date -u +"%Y-%m-%d-%H:%M"`
+BUILD_DATE=`date -u +"%Y-%m-%d.%H.%M"`
 GIT_VERSION=`git describe --match v --abbrev=8 --always --dirty`
 BRANCH_NAME=`git rev-parse --abbrev-ref HEAD`
 
