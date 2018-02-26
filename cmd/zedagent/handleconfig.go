@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"github.com/golang/protobuf/proto"
 	"github.com/zededa/api/zconfig"
+	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/types"
 	"golang.org/x/crypto/ocsp"
 	"io/ioutil"
@@ -100,16 +101,17 @@ func getCloudUrls() {
 // delete if some thing is not present in the old config
 // for the new config create entries in the zMgerConfig Dir
 // for each of the above buckets
-// XXX should the timers be randomized to avoid self-synchronization across
-// potentially lots of devices?
-// Combine with being able to change the timer intervals - generate at random
+// XXX Combine with being able to change the timer intervals - generate at random
 // times between .3x and 1x
 func configTimerTask() {
 	iteration := 0
 	checkConnectivity := isZbootAvailable() && isCurrentPartitionStateInProgress()
 	getLatestConfig(configUrl, iteration, &checkConnectivity)
 
-	ticker := time.NewTicker(time.Minute * configTickTimeout)
+	// Make this configurable from zedcloud and call update on ticker
+	max := float64(time.Minute * configTickTimeout)
+	min := max * 0.3
+	ticker := flextimer.NewRangeTicker(time.Duration(min), time.Duration(max))
 
 	for range ticker.C {
 		iteration += 1
