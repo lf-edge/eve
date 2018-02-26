@@ -1,4 +1,4 @@
-// Copyright (c) 2017 Zededa, Inc.
+// Copyright (c) 2017-2018 Zededa, Inc.
 // All rights reserved.
 
 package main
@@ -16,9 +16,7 @@ import (
 	"io/ioutil"
 	"log"
 	"mime"
-	"net"
 	"net/http"
-	"net/http/httptrace"
 	"os"
 	"strings"
 	"time"
@@ -119,81 +117,16 @@ func configTimerTask() {
 	}
 }
 
-// Each iteration we try a different uplink. For each uplink we try all
-// its local IP addresses until we get a success.
+// Start by trying the all the free uplinks and then all the non-free
+// until one succeeds in communicating with the cloud.
+// We use the iteration argument to start at a different point each time.
 func getLatestConfig(configUrl string, iteration int, checkConnectivity *bool) {
-	intf, err := types.GetUplinkAny(deviceNetworkStatus, iteration)
-	if err != nil {
-		log.Printf("getLatestConfig: %s\n", err)
+	ok, resp := sendOnAllIntf(configUrl, nil, iteration)
+	if !ok {
+		// error was already logged
 		return
-	}
-	addrCount := types.CountLocalAddrAny(deviceNetworkStatus, intf)
-	if debug {
-		log.Printf("Connecting to %s using intf %s interation %d #sources %d\n",
-			configUrl, intf, iteration, addrCount)
-	}
-	for retryCount := 0; retryCount < addrCount; retryCount += 1 {
-		localAddr, err := types.GetLocalAddrAny(deviceNetworkStatus,
-			retryCount, intf)
-		if err != nil {
-			log.Fatal(err)
-		}
-		localTCPAddr := net.TCPAddr{IP: localAddr}
-		if debug {
-			fmt.Printf("Connecting to %s using intf %s source %v\n",
-				configUrl, intf, localTCPAddr)
-		}
-		d := net.Dialer{LocalAddr: &localTCPAddr}
-		transport := &http.Transport{
-			TLSClientConfig: tlsConfig,
-			Dial:            d.Dial,
-		}
-		client := &http.Client{Transport: transport}
-		req, err := http.NewRequest("GET", "https://"+configUrl, nil)
-		if err != nil {
-			fmt.Println(err)
-			continue
-		}
-		trace := &httptrace.ClientTrace{
-			GotConn: func(connInfo httptrace.GotConnInfo) {
-				fmt.Printf("Got RemoteAddr: %+v, LocalAddr: %+v\n",
-					connInfo.Conn.RemoteAddr(),
-					connInfo.Conn.LocalAddr())
-			},
-		}
-		req = req.WithContext(httptrace.WithClientTrace(req.Context(),
-			trace))
-		resp, err := client.Do(req)
-		if err != nil {
-			log.Printf("URL get fail: %v\n", err)
-			continue
-		}
+	} else {
 		defer resp.Body.Close()
-		connState := resp.TLS
-		if connState == nil {
-			log.Println("no TLS connection state")
-			// Inform ledmanager about broken cloud connectivity
-			types.UpdateLedManagerConfig(10)
-			continue
-		}
-
-		if connState.OCSPResponse == nil ||
-			!stapledCheck(connState) {
-			if connState.OCSPResponse == nil {
-				log.Printf("no OCSP response for %s\n",
-					configUrl)
-			} else {
-				log.Printf("OCSP stapled check failed for %s\n",
-					configUrl)
-			}
-			//XXX OSCP is not implemented in cloud side so
-			// commenting out it for now. Should be:
-			// Inform ledmanager about broken cloud connectivity
-			// types.UpdateLedManagerConfig(10)
-			// continue
-		}
-		// Even if we get a 404 we consider the connection a success
-		zedCloudSuccess(intf)
 
 		// now cloud connectivity is good, mark partition state as
 		// active if it was inprogress
@@ -218,8 +151,7 @@ func getLatestConfig(configUrl string, iteration int, checkConnectivity *bool) {
 		// a short timeout during validation of a image post upgrade.
 		zbootWatchdogOK()
 
-		if err := validateConfigMessage(configUrl, intf, localTCPAddr,
-			resp); err != nil {
+		if err := validateConfigMessage(configUrl, resp); err != nil {
 			log.Println("validateConfigMessage: ", err)
 			// Inform ledmanager about cloud connectivity
 			types.UpdateLedManagerConfig(3)
@@ -243,35 +175,14 @@ func getLatestConfig(configUrl string, iteration int, checkConnectivity *bool) {
 			return
 		}
 		inhaleDeviceConfig(config)
-		return
 	}
-	log.Printf("All attempts to connect to %s using intf %s failed\n",
-		configUrl, intf)
-	zedCloudFailure(intf)
 }
 
-func validateConfigMessage(configUrl string, intf string,
-	localTCPAddr net.TCPAddr, r *http.Response) error {
+func validateConfigMessage(configUrl string, r *http.Response) error {
 
 	var ctTypeStr = "Content-Type"
 	var ctTypeProtoStr = "application/x-proto-binary"
 
-	switch r.StatusCode {
-	case http.StatusOK:
-		if debug {
-			fmt.Printf("validateConfigMessage %s using intf %s source %v StatusOK\n",
-				configUrl, intf, localTCPAddr)
-		}
-	default:
-		log.Printf("validateConfigMessage %s using intf %s source %v statuscode %d %s\n",
-			configUrl, intf, localTCPAddr,
-			r.StatusCode, http.StatusText(r.StatusCode))
-		if debug {
-			fmt.Printf("received response %v\n", r)
-		}
-		return fmt.Errorf("http status %d %s",
-			r.StatusCode, http.StatusText(r.StatusCode))
-	}
 	ct := r.Header.Get(ctTypeStr)
 	if ct == "" {
 		return fmt.Errorf("No content-type")

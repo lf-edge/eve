@@ -6,8 +6,6 @@
 package main
 
 import (
-	"bytes"
-	"errors"
 	"fmt"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
@@ -23,9 +21,6 @@ import (
 	"github.com/zededa/go-provision/types"
 	"io/ioutil"
 	"log"
-	"net"
-	"net/http"
-	"net/http/httptrace"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -848,10 +843,20 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 
 	log.Printf("PublishDeviceInfoToZedCloud sending %v\n", ReportInfo)
 
-	err = SendInfoProtobufStrThroughHttp(ReportInfo)
+	data, err := proto.Marshal(ReportInfo)
 	if err != nil {
+		log.Fatal("PublishDeviceInfoToZedCloud proto marshaling error: ", err)
+	}
+
+	// XXX vary for load spreading when multiple free or multiple non-free
+	// uplinks
+	iteration := 0
+	ok := SendProtobufStrThroughHttp(configUrl, data, iteration)
+	if !ok {
 		// XXX reschedule doing this again later somehow
-		log.Printf("PublishDeviceInfoToZedCloud: %s\n", err)
+		// Queue data on deviceQueue; replace if fails again
+	} else {
+		// XXX remove any queued old message for device
 	}
 }
 
@@ -946,124 +951,39 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 
 	fmt.Printf("PublishAppInfoToZedCloud sending %v\n", ReportInfo)
 
-	err := SendInfoProtobufStrThroughHttp(ReportInfo)
+	data, err := proto.Marshal(ReportInfo)
 	if err != nil {
+		log.Fatal("PublishAppInfoToZedCloud proto marshaling error: ", err)
+	}
+
+	// XXX vary for load spreading when multiple free or multiple non-free
+	// uplinks
+	iteration := 0
+	ok := SendProtobufStrThroughHttp(statusUrl, data, iteration)
+	if !ok {
 		// XXX reschedule doing this again later somehow
-		log.Printf("PublishAppInfoToZedCloud: %s\n", err)
+		// Queue data on for this app; replace if fails again
+	} else {
+		// XXX remove any queued old message for app
 	}
 }
 
 // This function is called per change, hence needs to try over all uplinks
 // send report on each uplink.
 // For each uplink we try different source IPs until we find a working one.
-func SendInfoProtobufStrThroughHttp(ReportInfo *zmet.ZInfoMsg) error {
-
-	data, err := proto.Marshal(ReportInfo)
-	if err != nil {
-		log.Fatal("SendInfoProtobufStr proto marshaling error: ", err)
+// Returns true/false for success/failure
+func SendProtobufStrThroughHttp(statusUrl string, data []byte, iteration int) bool {
+	ok, resp := sendOnAllIntf(statusUrl, data, iteration)
+	if !ok {
+		return false
 	}
-
-	for i, uplink := range deviceNetworkStatus.UplinkStatus {
-		intf := uplink.IfName
-		addrCount := types.CountLocalAddrAny(deviceNetworkStatus, intf)
-		if debug {
-			log.Printf("Connecting to %s using intf %s i %d #sources %d\n",
-				statusUrl, intf, i, addrCount)
-		}
-
-		for retryCount := 0; retryCount < addrCount; retryCount += 1 {
-			localAddr, err := types.GetLocalAddrAny(deviceNetworkStatus,
-				retryCount, intf)
-			if err != nil {
-				log.Fatal(err)
-			}
-			localTCPAddr := net.TCPAddr{IP: localAddr}
-			if debug {
-				fmt.Printf("Connecting to %s using intf %s source %v\n",
-					statusUrl, intf, localTCPAddr)
-			}
-			d := net.Dialer{LocalAddr: &localTCPAddr}
-			transport := &http.Transport{
-				TLSClientConfig: tlsConfig,
-				Dial:            d.Dial,
-			}
-			client := &http.Client{Transport: transport}
-
-			req, err := http.NewRequest("POST",
-				"https://"+statusUrl, bytes.NewBuffer(data))
-			if err != nil {
-				fmt.Println(err)
-				continue
-			}
-			req.Header.Add("Content-Type",
-				"application/x-proto-binary")
-			trace := &httptrace.ClientTrace{
-				GotConn: func(connInfo httptrace.GotConnInfo) {
-					fmt.Printf("Got RemoteAddr: %+v, LocalAddr: %+v\n",
-						connInfo.Conn.RemoteAddr(),
-						connInfo.Conn.LocalAddr())
-				},
-			}
-			req = req.WithContext(httptrace.WithClientTrace(req.Context(),
-				trace))
-			resp, err := client.Do(req)
-			if err != nil {
-				fmt.Println(err)
-				continue
-			}
-			defer resp.Body.Close()
-			connState := resp.TLS
-			if connState == nil {
-				log.Println("no TLS connection state")
-				continue
-			}
-
-			if connState.OCSPResponse == nil ||
-				!stapledCheck(connState) {
-				if connState.OCSPResponse == nil {
-					log.Printf("no OCSP response for %s\n",
-						configUrl)
-				} else {
-					log.Printf("OCSP stapled check failed for %s\n",
-						configUrl)
-				}
-				//XXX OSCP is not implemented in cloud side so
-				// commenting out it for now. Should be:
-				// continue
-			}
-
-			// Even if we get e.g., a 404 we consider the
-			// connection a success
-			zedCloudSuccess(intf)
-
-			switch resp.StatusCode {
-			case http.StatusOK:
-				if debug {
-					fmt.Printf("SendInfoProtobufStrThroughHttp to %s using intf %s source %v StatusOK\n",
-						statusUrl, intf, localTCPAddr)
-				}
-				return nil
-			default:
-				log.Printf("SendInfoProtobufStrThroughHttp to %s using intf %s source %v statuscode %d %s\n",
-					statusUrl, intf, localTCPAddr,
-					resp.StatusCode, http.StatusText(resp.StatusCode))
-				if debug {
-					fmt.Printf("received response %v\n",
-						resp)
-				}
-			}
-		}
-		log.Printf("All attempts to connect to %s using intf %s failed\n",
-			statusUrl, intf)
-		zedCloudFailure(intf)
-	}
-	errStr := fmt.Sprintf("All attempts to connect to %s failed\n", statusUrl)
-	log.Printf(errStr)
-	return errors.New(errStr)
+	resp.Body.Close()
+	return true
 }
 
-// Each iteration we try a different uplink. For each uplink we try all
-// its local IP addresses until we get a success.
+// Try all (first free, then rest) until it gets through.
+// Each iteration we try a different uplink for load spreading.
+// For each uplink we try all its local IP addresses until we get a success.
 func SendMetricsProtobufStrThroughHttp(ReportMetrics *zmet.ZMetricMsg,
 	iteration int) {
 	data, err := proto.Marshal(ReportMetrics)
@@ -1071,99 +991,12 @@ func SendMetricsProtobufStrThroughHttp(ReportMetrics *zmet.ZMetricMsg,
 		log.Fatal("SendInfoProtobufStr proto marshaling error: ", err)
 	}
 
-	intf, err := types.GetUplinkAny(deviceNetworkStatus, iteration)
-	if err != nil {
-		log.Printf("SendMetricsProtobufStrThroughHttp: %s\n", err)
+	ok, resp := sendOnAllIntf(metricsUrl, data, iteration)
+	if !ok {
+		// Hopefully next timeout will be more successful
 		return
 	}
-	addrCount := types.CountLocalAddrAny(deviceNetworkStatus, intf)
-	if debug {
-		log.Printf("Connecting to %s using intf %s interation %d #sources %d\n",
-			metricsUrl, intf, iteration, addrCount)
-	}
-	for retryCount := 0; retryCount < addrCount; retryCount += 1 {
-		localAddr, err := types.GetLocalAddrAny(deviceNetworkStatus,
-			retryCount, intf)
-		if err != nil {
-			log.Fatal(err)
-		}
-		localTCPAddr := net.TCPAddr{IP: localAddr}
-		if debug {
-			fmt.Printf("Connecting to %s using intf %s source %v\n",
-				metricsUrl, intf, localTCPAddr)
-		}
-		d := net.Dialer{LocalAddr: &localTCPAddr}
-		transport := &http.Transport{
-			TLSClientConfig: tlsConfig,
-			Dial:            d.Dial,
-		}
-		client := &http.Client{Transport: transport}
-
-		req, err := http.NewRequest("POST",
-			"https://"+metricsUrl, bytes.NewBuffer(data))
-		if err != nil {
-			fmt.Println(err)
-			continue
-		}
-		req.Header.Add("Content-Type", "application/x-proto-binary")
-		trace := &httptrace.ClientTrace{
-			GotConn: func(connInfo httptrace.GotConnInfo) {
-				fmt.Printf("Got RemoteAddr: %+v, LocalAddr: %+v\n",
-					connInfo.Conn.RemoteAddr(),
-					connInfo.Conn.LocalAddr())
-			},
-		}
-		req = req.WithContext(httptrace.WithClientTrace(req.Context(),
-			trace))
-		resp, err := client.Do(req)
-		if err != nil {
-			fmt.Println(err)
-			continue
-		}
-		defer resp.Body.Close()
-		connState := resp.TLS
-		if connState == nil {
-			log.Println("no TLS connection state")
-			continue
-		}
-
-		if connState.OCSPResponse == nil ||
-			!stapledCheck(connState) {
-			if connState.OCSPResponse == nil {
-				log.Printf("no OCSP response for %s\n",
-					metricsUrl)
-			} else {
-				log.Printf("OCSP stapled check failed for %s\n",
-					metricsUrl)
-			}
-			//XXX OSCP is not implemented in cloud side so
-			// commenting out it for now. Should be:
-			// continue
-		}
-		// Even if we get e.g., a 404 we consider the connection a
-		// success
-		zedCloudSuccess(intf)
-
-		switch resp.StatusCode {
-		case http.StatusOK:
-			if debug {
-				fmt.Printf("SendMetricsProtobufStrThroughHttp to %s using intf %s source %v StatusOK\n",
-					metricsUrl, intf, localTCPAddr)
-			}
-			return
-		default:
-			log.Printf("SendMetricsProtobufStrThroughHttp to %s using intf %s source %v  statuscode %d %s\n",
-				metricsUrl, intf, localTCPAddr,
-				resp.StatusCode,
-				http.StatusText(resp.StatusCode))
-			if debug {
-				fmt.Printf("received response %v\n", resp)
-			}
-		}
-	}
-	log.Printf("All attempts to connect to %s using intf %s failed\n",
-		metricsUrl, intf)
-	zedCloudFailure(intf)
+	resp.Body.Close()
 }
 
 // Return an array of names like "sda", "sdb1"
