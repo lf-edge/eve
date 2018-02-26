@@ -356,7 +356,7 @@ func readOtherPartitionInfo() *types.PartitionInfo {
 	return readPartitionInfo(partName)
 }
 
-// haas to be always other partition
+// has to be always other partition
 func removePartitionMap(mapFilename string, partInfo *types.PartitionInfo) {
 	otherPartInfo := readOtherPartitionInfo()
 	if otherPartInfo == nil {
@@ -373,10 +373,10 @@ func removePartitionMap(mapFilename string, partInfo *types.PartitionInfo) {
 	uuidStr := otherPartInfo.UUIDandVersion.UUID.String()
 
 	// find the baseOs config/status map entries
-
 	// reset the partition information
 	config := baseOsConfigGet(uuidStr)
 	if config != nil {
+		log.Printf("%s, reset old config\n", uuidStr)
 		configFilename := zedagentBaseOsConfigDirname +
 			"/" + uuidStr + ".json"
 		config.PartitionLabel = ""
@@ -389,6 +389,7 @@ func removePartitionMap(mapFilename string, partInfo *types.PartitionInfo) {
 	// and mark status as DELIVERED
 	status := baseOsStatusGet(uuidStr)
 	if status != nil {
+		log.Printf("%s, reset old status\n", uuidStr)
 		statusFilename := zedagentBaseOsStatusDirname +
 			"/" + uuidStr + ".json"
 		status.State = types.DELIVERED
@@ -402,35 +403,37 @@ func removePartitionMap(mapFilename string, partInfo *types.PartitionInfo) {
 	partMapFilename := configDir + "/" + otherPartInfo.PartitionLabel + ".json"
 	if err := os.Remove(partMapFilename); err != nil {
 		log.Printf("%v for %s\n", err, partMapFilename)
-		return
 	}
 	return
 }
 
 // check the partition table, for this baseOs
-func getPersistentPartitionInfo(uuidStr string, imageSha256 string) string {
+func getPersistentPartitionInfo(uuidStr string, imageSha256 string) *types.PartitionInfo {
 
 	var isCurrentPart, isOtherPart bool
 
-	if partInfo := readCurrentPartitionInfo(); partInfo != nil {
-		curUuidStr := partInfo.UUIDandVersion.UUID.String()
+	curPartInfo := readCurrentPartitionInfo()
+	otherPartInfo := readOtherPartitionInfo()
+
+	if curPartInfo != nil {
+		curUuidStr := curPartInfo.UUIDandVersion.UUID.String()
 		if curUuidStr == uuidStr {
 			isCurrentPart = true
 		} else {
 			if imageSha256 != "" &&
-				imageSha256 == partInfo.ImageSha256 {
+				imageSha256 == curPartInfo.ImageSha256 {
 				isCurrentPart = true
 			}
 		}
 	}
 
-	if partInfo := readOtherPartitionInfo(); partInfo != nil {
-		otherUuidStr := partInfo.UUIDandVersion.UUID.String()
+	if otherPartInfo != nil {
+		otherUuidStr := otherPartInfo.UUIDandVersion.UUID.String()
 		if otherUuidStr == uuidStr {
 			isOtherPart = true
 		} else {
 			if imageSha256 != "" &&
-				imageSha256 == partInfo.ImageSha256 {
+				imageSha256 == otherPartInfo.ImageSha256 {
 				isOtherPart = true
 			}
 		}
@@ -438,21 +441,21 @@ func getPersistentPartitionInfo(uuidStr string, imageSha256 string) string {
 
 	if isCurrentPart == true &&
 		isCurrentPart == isOtherPart {
-		log.Fatal("Both partitions assigned with the same BaseOs %s\n", uuidStr)
+		log.Fatal("same baseOs %s, on both Partitions\n", uuidStr)
 	}
 
 	if isCurrentPart == true {
-		return getCurrentPartition()
+		return curPartInfo
 	}
 
 	if isOtherPart == true {
-		return getOtherPartition()
+		return otherPartInfo
 	}
-	return ""
+	return nil
 }
 
 // can only be done to the other partition
-func setPersistentPartitionInfo(uuidStr string, config types.BaseOsConfig) error {
+func setPersistentPartitionInfo(uuidStr string, config types.BaseOsConfig, status types.BaseOsStatus) error {
 	partName := config.PartitionLabel
 	log.Printf("%s, set partition %s\n", uuidStr, partName)
 
@@ -465,9 +468,10 @@ func setPersistentPartitionInfo(uuidStr string, config types.BaseOsConfig) error
 	// new partition mapping
 	partInfo := &types.PartitionInfo{}
 	partInfo.UUIDandVersion = config.UUIDandVersion
-	partInfo.ImageSha256 = getBaseOsImageSha(config)
+	partInfo.ImageSha256 = baseOsGetImageSha(config)
 	partInfo.BaseOsVersion = config.BaseOsVersion
 	partInfo.PartitionLabel = partName
+	partInfo.State = status.State
 
 	// remove old partition mapping
 	mapFilename := configDir + "/" + config.PartitionLabel + ".json"

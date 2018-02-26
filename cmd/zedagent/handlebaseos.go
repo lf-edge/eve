@@ -91,7 +91,7 @@ func addOrUpdateBaseOsConfig(uuidStr string, config types.BaseOsConfig) {
 
 		// PartitionLabel can be empty here!
 		if status.PartitionLabel != "" {
-			status.Activated = getActivationStatus(status)
+			status.Activated = getActivationStatus(config, &status)
 		}
 
 		status.StorageStatusList = make([]types.StorageStatus,
@@ -119,7 +119,7 @@ func addOrUpdateBaseOsConfig(uuidStr string, config types.BaseOsConfig) {
 	}
 }
 
-func getBaseOsImageSha(config types.BaseOsConfig) string {
+func baseOsGetImageSha(config types.BaseOsConfig) string {
 	for _, sc := range config.StorageConfigList {
 		return sc.ImageSha256
 	}
@@ -147,13 +147,29 @@ func baseOsStatusGet(uuidStr string) *types.BaseOsStatus {
 }
 
 // Check if the BaseOsStatus is the current partition and is active
-func getActivationStatus(status types.BaseOsStatus) bool {
+func getActivationStatus(config types.BaseOsConfig, status *types.BaseOsStatus) bool {
 
 	log.Printf("getActivationStatus(%s): partitionLabel %s\n",
 		status.BaseOsVersion, status.PartitionLabel)
+
+	uuidStr := status.UUIDandVersion.UUID.String()
+	imageSha256 := baseOsGetImageSha(config)
+	partInfo := getPersistentPartitionInfo(uuidStr, imageSha256)
+	if partInfo == nil {
+		log.Fatal("getActivationStatus(%s): inconsistent partitionLabel %s\n",
+			status.BaseOsVersion, status.PartitionLabel)
+	}
+	// replicate state information
+	status.State = partInfo.State
+	for _, ss := range status.StorageStatusList {
+		ss.State = partInfo.State
+	}
+
+	// for otherPartition, its always false
 	if !isCurrentPartition(status.PartitionLabel) {
 		return false
 	}
+	// if current Partition, get the status from zboot
 	return isCurrentPartitionStateActive()
 }
 
@@ -198,8 +214,6 @@ func doBaseOsStatusUpdate(uuidStr string, config types.BaseOsConfig,
 		changed = doBaseOsInactivate(uuidStr, status)
 		return changed
 	}
-
-	setPersistentPartitionInfo(uuidStr, config)
 
 	if status.Activated == true {
 		log.Printf("doBaseOsStatusUpdate(%s) for %s, is already activated\n",
@@ -318,6 +332,7 @@ func doBaseOsInstall(uuidStr string, config types.BaseOsConfig,
 		status.StorageStatusList); ret == true {
 		// move the state from DELIVERED to INSTALLED
 		status.State = types.INSTALLED
+		setPersistentPartitionInfo(uuidStr, config, *status)
 		changed = true
 	}
 

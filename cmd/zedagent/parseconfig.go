@@ -129,8 +129,10 @@ func checkPartitionInfo(baseOs *types.BaseOsConfig, baseOsCount int) {
 
 	// get old Partition Label, if any
 	uuidStr := baseOs.UUIDandVersion.UUID.String()
-	imageSha256 := getBaseOsImageSha(*baseOs)
-	baseOs.PartitionLabel = getPersistentPartitionInfo(uuidStr, imageSha256)
+	imageSha256 := baseOsGetImageSha(*baseOs)
+	if partInfo := getPersistentPartitionInfo(uuidStr, imageSha256); partInfo != nil {
+		baseOs.PartitionLabel = partInfo.PartitionLabel
+	}
 
 	if baseOs.PartitionLabel != "" {
 		return

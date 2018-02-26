@@ -143,4 +143,5 @@ type PartitionInfo struct {
 	BaseOsVersion  string // For user-friendly debug
 	ImageSha256    string
 	PartitionLabel string
+	State          SwState
 }
