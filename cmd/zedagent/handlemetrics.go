@@ -6,8 +6,6 @@
 package main
 
 import (
-	"bytes"
-	"errors"
 	"fmt"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
@@ -18,14 +16,12 @@ import (
 	psutilnet "github.com/shirou/gopsutil/net"
 	"github.com/vishvananda/netlink"
 	"github.com/zededa/api/zmet"
+	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/netclone"
 	"github.com/zededa/go-provision/types"
 	"io/ioutil"
 	"log"
-	"net"
-	"net/http"
-	"net/http/httptrace"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -45,15 +41,16 @@ func publishMetrics(iteration int) {
 	PublishMetricsToZedCloud(cpuStorageStat, iteration)
 }
 
-// XXX should the timers be randomized to avoid self-synchronization across
-// potentially lots of devices?
-// Combine with being able to change the timer intervals - generate at random
+// XXX Combine with being able to change the timer intervals - generate at random
 // times between .3x and 1x
 func metricsTimerTask() {
 	iteration := 0
 	log.Println("starting report metrics timer task")
 	publishMetrics(iteration)
-	ticker := time.NewTicker(time.Second * 60)
+	// Make this configurable from zedcloud and call update on ticker
+	max := float64(time.Second * 60)
+	min := max * 0.3
+	ticker := flextimer.NewRangeTicker(time.Duration(min), time.Duration(max))
 	for range ticker.C {
 		iteration += 1
 		publishMetrics(iteration)
@@ -318,7 +315,7 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 
 	ReportDeviceMetric := new(zmet.DeviceMetric)
 	ReportDeviceMetric.Memory = new(zmet.MemoryMetric)
-	ReportDeviceMetric.Compute = new(zmet.DevCpuMetric)
+	ReportDeviceMetric.CpuMetric = new(zmet.AppCpuMetric)
 
 	ReportMetrics.DevID = *proto.String(deviceId)
 	ReportZmetric := new(zmet.ZmetricTypes)
@@ -341,8 +338,13 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 			info.Uptime, cpuSecs, (100*cpuSecs)/info.Uptime)
 	}
 
-	ReportDeviceMetric.Compute.CpuTotal = *proto.Uint64(cpuSecs)
-	ReportDeviceMetric.Compute.UpTime = *proto.Uint64(info.Uptime)
+	ReportDeviceMetric.CpuMetric.Total = *proto.Uint64(cpuSecs)
+	// XXX note that uptime is seconds we've been up. We're converting
+	// to a timestamp. That better not be interpreted as a time since
+	// the epoch
+	uptime, _ := ptypes.TimestampProto(
+		time.Unix(int64(info.Uptime), 0).UTC())
+	ReportDeviceMetric.CpuMetric.UpTime = uptime
 
 	// Memory related info for dom0
 	ram, err := mem.VirtualMemory()
@@ -503,9 +505,9 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 				}
 
 				appCpuTotal, _ := strconv.ParseUint(cpuStorageStat[arr][3], 10, 0)
-				ReportAppMetric.Cpu.CpuTotal = *proto.Uint32(uint32(appCpuTotal))
-				appCpuUsedInPercent, _ := strconv.ParseFloat(cpuStorageStat[arr][4], 10)
-				ReportAppMetric.Cpu.CpuPercentage = *proto.Float64(float64(appCpuUsedInPercent))
+				ReportAppMetric.Cpu.Total = *proto.Uint64(appCpuTotal)
+				// We don't report ReportAppMetric.Cpu.Uptime
+				// since we already report BootTime for the app
 
 				totalAppMemory, _ := strconv.ParseUint(cpuStorageStat[arr][5], 10, 0)
 				usedAppMemoryPercent, _ := strconv.ParseFloat(cpuStorageStat[arr][6], 10)
@@ -682,32 +684,46 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 	compatible := hardware.GetCompatible()
 	ReportDeviceManufacturerInfo.Compatible = *proto.String(compatible)
 	ReportDeviceInfo.Minfo = ReportDeviceManufacturerInfo
-	ReportDeviceSoftwareInfo := new(zmet.ZInfoSW)
-	systemHost, err := host.Info()
-	if err != nil {
-		log.Println(err)
-	} else {
-		//XXX for now we are filling kernel version...
-		ReportDeviceSoftwareInfo.SwVersion = systemHost.KernelVersion
-	}
-	ReportDeviceSoftwareInfo.SwHash = *proto.String(" ")
-	ReportDeviceInfo.Software = ReportDeviceSoftwareInfo
 
-	// Report BaseOs Status
-	ReportDeviceInfo.SoftwareList = make([]*zmet.ZInfoSW, len(baseOsStatus))
-	var idx int = 0
-	for _, value := range baseOsStatus {
-		ReportDeviceSoftwareInfo := new(zmet.ZInfoSW)
-		ReportDeviceSoftwareInfo.SwVersion = value.BaseOsVersion
-		ReportDeviceSoftwareInfo.SwHash = value.ConfigSha256
-		ReportDeviceSoftwareInfo.State = zmet.ZSwState(value.State)
-		// XXX should we track "inprogress" as well as "active" i.e. get
-		// the state from zboot?
-		// Should we expand the message to also have the partition
-		// and tag (sda2 and IMGA)?
-		ReportDeviceSoftwareInfo.Activated = value.Activated
-		ReportDeviceInfo.SoftwareList[idx] = ReportDeviceSoftwareInfo
-		idx++
+	// Report BaseOs Status for the two partitions
+	getBaseOsStatus := func(partLabel string) *types.BaseOsStatus {
+		// Look for a matching IMGA/IMGB in baseOsStatus
+		// XXX sanity check on activated vs. curPart
+		for _, bos := range baseOsStatus {
+			if bos.PartitionLabel == partLabel {
+				return &bos
+			}
+		}
+		return nil
+	}
+	getSwInfo := func(partLabel string) *zmet.ZInfoDevSW {
+		swInfo := new(zmet.ZInfoDevSW)
+		swInfo.Activated = (partLabel == getCurrentPartition())
+		swInfo.PartitionLabel = partLabel
+		swInfo.PartitionDevice = getPartitionDevname(partLabel)
+		swInfo.PartitionState = getPartitionState(partLabel)
+		swInfo.ShortVersion = GetShortVersion(partLabel)
+		swInfo.LongVersion = GetLongVersion(partLabel)
+		if bos := getBaseOsStatus(partLabel); bos != nil {
+			swInfo.Status = zmet.ZSwState(bos.State)
+			if !bos.ErrorTime.IsZero() {
+				errInfo := new(zmet.ErrorInfo)
+				errInfo.Description = bos.Error
+				errTime, _ := ptypes.TimestampProto(bos.ErrorTime)
+				errInfo.Timestamp = errTime
+				swInfo.SwErr = errInfo
+			}
+		} else {
+			// Must be factory install i.e. INSTALLED
+			swInfo.Status = zmet.ZSwState(types.INSTALLED)
+		}
+		return swInfo
+	}
+
+	if isZbootAvailable() {
+		ReportDeviceInfo.SwList = make([]*zmet.ZInfoDevSW, 2)
+		ReportDeviceInfo.SwList[0] = getSwInfo(getCurrentPartition())
+		ReportDeviceInfo.SwList[1] = getSwInfo(getOtherPartition())
 	}
 
 	// Read interface name from library and match it with uplink name from
@@ -750,6 +766,16 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 				// Install /usr/share/udhcpc/default.script
 				// to get the data about the leases?
 
+				for _, fl := range interfaceDetail.Flags {
+					if fl == "up" {
+						ReportDeviceNetworkInfo.Up = true
+						break
+					}
+				}
+				// XXX once we have static config add any
+				// config errors. Note that this might imply
+				// reporting for devices which do not exist.
+
 				ReportDeviceInfo.Network = append(ReportDeviceInfo.Network,
 					ReportDeviceNetworkInfo)
 			}
@@ -791,19 +817,9 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 		// lookup domains to see what is in use
 		ds := LookupDomainStatusIoBundle(ib.Type, ib.Name)
 		if ds != nil {
-			reportAA.UsedByUUID = ds.UUIDandVersion.UUID.String()
+			reportAA.UsedByAppUUID = ds.UUIDandVersion.UUID.String()
 		} else if types.IsUplink(deviceNetworkStatus, ib.Name) {
-			// XXX need to get our own UUID from cloud from getConfig
-			// early on.
-			if deviceId != "" {
-				log.Printf("Reporting uplink as used %d %s by %s\n",
-					ib.Type, ib.Name, deviceId)
-				reportAA.UsedByUUID = deviceId
-			} else {
-				log.Printf("NOT reporting uplink %d %s\n",
-					ib.Type, ib.Name)
-				continue
-			}
+			reportAA.UsedByBaseOS = true
 		}
 		ReportDeviceInfo.AssignableAdapters = append(ReportDeviceInfo.AssignableAdapters,
 			reportAA)
@@ -829,10 +845,20 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 
 	log.Printf("PublishDeviceInfoToZedCloud sending %v\n", ReportInfo)
 
-	err = SendInfoProtobufStrThroughHttp(ReportInfo)
+	data, err := proto.Marshal(ReportInfo)
 	if err != nil {
+		log.Fatal("PublishDeviceInfoToZedCloud proto marshaling error: ", err)
+	}
+
+	// XXX vary for load spreading when multiple free or multiple non-free
+	// uplinks
+	iteration := 0
+	ok := SendProtobufStrThroughHttp(configUrl, data, iteration)
+	if !ok {
 		// XXX reschedule doing this again later somehow
-		log.Printf("PublishDeviceInfoToZedCloud: %s\n", err)
+		// Queue data on deviceQueue; replace if fails again
+	} else {
+		// XXX remove any queued old message for device
 	}
 }
 
@@ -841,7 +867,7 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 // When aiStatus is nil it means a delete and we send a message
 // containing only the UUID to inform zedcloud about the delete.
 func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
-	iteration int) {
+	aa *types.AssignableAdapters) {
 	log.Printf("PublishAppInfoToZedCloud uuid %s\n", uuid)
 	var ReportInfo = &zmet.ZInfoMsg{}
 
@@ -868,12 +894,13 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 			ReportAppInfo.Activated = aiStatus.Activated && verifyDomainExists(ds.DomainId)
 		}
 
-		ReportAppInfo.Error = aiStatus.Error
-		if (aiStatus.ErrorTime).IsZero() {
-			log.Println("ErrorTime is empty...so do not fill it")
-		} else {
+		if !aiStatus.ErrorTime.IsZero() {
+			errInfo := new(zmet.ErrorInfo)
+			errInfo.Description = aiStatus.Error
 			errTime, _ := ptypes.TimestampProto(aiStatus.ErrorTime)
-			ReportAppInfo.ErrorTime = errTime
+			errInfo.Timestamp = errTime
+			ReportAppInfo.AppErr = append(ReportAppInfo.AppErr,
+				errInfo)
 		}
 
 		if len(aiStatus.StorageStatusList) == 0 {
@@ -904,12 +931,16 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 			ReportAppInfo.BootTime = bootTime
 		}
 
-		// Note that we don't have the members handy here.
 		for _, ib := range ds.IoAdapterList {
 			reportAA := new(zmet.ZioBundle)
 			reportAA.Type = zmet.ZioType(ib.Type)
 			reportAA.Name = ib.Name
-			reportAA.UsedByUUID = ds.UUIDandVersion.UUID.String()
+			reportAA.UsedByAppUUID = ds.UUIDandVersion.UUID.String()
+			// Can we call
+			b := types.LookupIoBundle(aa, ib.Type, ib.Name)
+			if b != nil {
+				reportAA.Members = b.Members
+			}
 			ReportAppInfo.AssignedAdapters = append(ReportAppInfo.AssignedAdapters,
 				reportAA)
 		}
@@ -922,124 +953,39 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 
 	fmt.Printf("PublishAppInfoToZedCloud sending %v\n", ReportInfo)
 
-	err := SendInfoProtobufStrThroughHttp(ReportInfo)
+	data, err := proto.Marshal(ReportInfo)
 	if err != nil {
+		log.Fatal("PublishAppInfoToZedCloud proto marshaling error: ", err)
+	}
+
+	// XXX vary for load spreading when multiple free or multiple non-free
+	// uplinks
+	iteration := 0
+	ok := SendProtobufStrThroughHttp(statusUrl, data, iteration)
+	if !ok {
 		// XXX reschedule doing this again later somehow
-		log.Printf("PublishDeviceInfoToZedCloud: %s\n", err)
+		// Queue data on for this app; replace if fails again
+	} else {
+		// XXX remove any queued old message for app
 	}
 }
 
 // This function is called per change, hence needs to try over all uplinks
 // send report on each uplink.
 // For each uplink we try different source IPs until we find a working one.
-func SendInfoProtobufStrThroughHttp(ReportInfo *zmet.ZInfoMsg) error {
-
-	data, err := proto.Marshal(ReportInfo)
-	if err != nil {
-		log.Fatal("SendInfoProtobufStr proto marshaling error: ", err)
+// Returns true/false for success/failure
+func SendProtobufStrThroughHttp(statusUrl string, data []byte, iteration int) bool {
+	ok, resp := sendOnAllIntf(statusUrl, data, iteration)
+	if !ok {
+		return false
 	}
-
-	for i, uplink := range deviceNetworkStatus.UplinkStatus {
-		intf := uplink.IfName
-		addrCount := types.CountLocalAddrAny(deviceNetworkStatus, intf)
-		if debug {
-			log.Printf("Connecting to %s using intf %s i %d #sources %d\n",
-				statusUrl, intf, i, addrCount)
-		}
-
-		for retryCount := 0; retryCount < addrCount; retryCount += 1 {
-			localAddr, err := types.GetLocalAddrAny(deviceNetworkStatus,
-				retryCount, intf)
-			if err != nil {
-				log.Fatal(err)
-			}
-			localTCPAddr := net.TCPAddr{IP: localAddr}
-			if debug {
-				fmt.Printf("Connecting to %s using intf %s source %v\n",
-					statusUrl, intf, localTCPAddr)
-			}
-			d := net.Dialer{LocalAddr: &localTCPAddr}
-			transport := &http.Transport{
-				TLSClientConfig: tlsConfig,
-				Dial:            d.Dial,
-			}
-			client := &http.Client{Transport: transport}
-
-			req, err := http.NewRequest("POST",
-				"https://"+statusUrl, bytes.NewBuffer(data))
-			if err != nil {
-				fmt.Println(err)
-				continue
-			}
-			req.Header.Add("Content-Type",
-				"application/x-proto-binary")
-			trace := &httptrace.ClientTrace{
-				GotConn: func(connInfo httptrace.GotConnInfo) {
-					fmt.Printf("Got RemoteAddr: %+v, LocalAddr: %+v\n",
-						connInfo.Conn.RemoteAddr(),
-						connInfo.Conn.LocalAddr())
-				},
-			}
-			req = req.WithContext(httptrace.WithClientTrace(req.Context(),
-				trace))
-			resp, err := client.Do(req)
-			if err != nil {
-				fmt.Println(err)
-				continue
-			}
-			defer resp.Body.Close()
-			connState := resp.TLS
-			if connState == nil {
-				log.Println("no TLS connection state")
-				continue
-			}
-
-			if connState.OCSPResponse == nil ||
-				!stapledCheck(connState) {
-				if connState.OCSPResponse == nil {
-					log.Printf("no OCSP response for %s\n",
-						configUrl)
-				} else {
-					log.Printf("OCSP stapled check failed for %s\n",
-						configUrl)
-				}
-				//XXX OSCP is not implemented in cloud side so
-				// commenting out it for now. Should be:
-				// continue
-			}
-
-			// Even if we get e.g., a 404 we consider the
-			// connection a success
-			zedCloudSuccess(intf)
-
-			switch resp.StatusCode {
-			case http.StatusOK:
-				if debug {
-					fmt.Printf("SendInfoProtobufStrThroughHttp to %s using intf %s source %v StatusOK\n",
-						statusUrl, intf, localTCPAddr)
-				}
-				return nil
-			default:
-				log.Printf("SendInfoProtobufStrThroughHttp to %s using intf %s source %v statuscode %d %s\n",
-					statusUrl, intf, localTCPAddr,
-					resp.StatusCode, http.StatusText(resp.StatusCode))
-				if debug {
-					fmt.Printf("received response %v\n",
-						resp)
-				}
-			}
-		}
-		log.Printf("All attempts to connect to %s using intf %s failed\n",
-			statusUrl, intf)
-		zedCloudFailure(intf)
-	}
-	errStr := fmt.Sprintf("All attempts to connect to %s failed\n", statusUrl)
-	log.Printf(errStr)
-	return errors.New(errStr)
+	resp.Body.Close()
+	return true
 }
 
-// Each iteration we try a different uplink. For each uplink we try all
-// its local IP addresses until we get a success.
+// Try all (first free, then rest) until it gets through.
+// Each iteration we try a different uplink for load spreading.
+// For each uplink we try all its local IP addresses until we get a success.
 func SendMetricsProtobufStrThroughHttp(ReportMetrics *zmet.ZMetricMsg,
 	iteration int) {
 	data, err := proto.Marshal(ReportMetrics)
@@ -1047,99 +993,12 @@ func SendMetricsProtobufStrThroughHttp(ReportMetrics *zmet.ZMetricMsg,
 		log.Fatal("SendInfoProtobufStr proto marshaling error: ", err)
 	}
 
-	intf, err := types.GetUplinkAny(deviceNetworkStatus, iteration)
-	if err != nil {
-		log.Printf("SendMetricsProtobufStrThroughHttp: %s\n", err)
+	ok, resp := sendOnAllIntf(metricsUrl, data, iteration)
+	if !ok {
+		// Hopefully next timeout will be more successful
 		return
 	}
-	addrCount := types.CountLocalAddrAny(deviceNetworkStatus, intf)
-	if debug {
-		log.Printf("Connecting to %s using intf %s interation %d #sources %d\n",
-			metricsUrl, intf, iteration, addrCount)
-	}
-	for retryCount := 0; retryCount < addrCount; retryCount += 1 {
-		localAddr, err := types.GetLocalAddrAny(deviceNetworkStatus,
-			retryCount, intf)
-		if err != nil {
-			log.Fatal(err)
-		}
-		localTCPAddr := net.TCPAddr{IP: localAddr}
-		if debug {
-			fmt.Printf("Connecting to %s using intf %s source %v\n",
-				metricsUrl, intf, localTCPAddr)
-		}
-		d := net.Dialer{LocalAddr: &localTCPAddr}
-		transport := &http.Transport{
-			TLSClientConfig: tlsConfig,
-			Dial:            d.Dial,
-		}
-		client := &http.Client{Transport: transport}
-
-		req, err := http.NewRequest("POST",
-			"https://"+metricsUrl, bytes.NewBuffer(data))
-		if err != nil {
-			fmt.Println(err)
-			continue
-		}
-		req.Header.Add("Content-Type", "application/x-proto-binary")
-		trace := &httptrace.ClientTrace{
-			GotConn: func(connInfo httptrace.GotConnInfo) {
-				fmt.Printf("Got RemoteAddr: %+v, LocalAddr: %+v\n",
-					connInfo.Conn.RemoteAddr(),
-					connInfo.Conn.LocalAddr())
-			},
-		}
-		req = req.WithContext(httptrace.WithClientTrace(req.Context(),
-			trace))
-		resp, err := client.Do(req)
-		if err != nil {
-			fmt.Println(err)
-			continue
-		}
-		defer resp.Body.Close()
-		connState := resp.TLS
-		if connState == nil {
-			log.Println("no TLS connection state")
-			continue
-		}
-
-		if connState.OCSPResponse == nil ||
-			!stapledCheck(connState) {
-			if connState.OCSPResponse == nil {
-				log.Printf("no OCSP response for %s\n",
-					metricsUrl)
-			} else {
-				log.Printf("OCSP stapled check failed for %s\n",
-					metricsUrl)
-			}
-			//XXX OSCP is not implemented in cloud side so
-			// commenting out it for now. Should be:
-			// continue
-		}
-		// Even if we get e.g., a 404 we consider the connection a
-		// success
-		zedCloudSuccess(intf)
-
-		switch resp.StatusCode {
-		case http.StatusOK:
-			if debug {
-				fmt.Printf("SendMetricsProtobufStrThroughHttp to %s using intf %s source %v StatusOK\n",
-					metricsUrl, intf, localTCPAddr)
-			}
-			return
-		default:
-			log.Printf("SendMetricsProtobufStrThroughHttp to %s using intf %s source %v  statuscode %d %s\n",
-				metricsUrl, intf, localTCPAddr,
-				resp.StatusCode,
-				http.StatusText(resp.StatusCode))
-			if debug {
-				fmt.Printf("received response %v\n", resp)
-			}
-		}
-	}
-	log.Printf("All attempts to connect to %s using intf %s failed\n",
-		metricsUrl, intf)
-	zedCloudFailure(intf)
+	resp.Body.Close()
 }
 
 // Return an array of names like "sda", "sdb1"

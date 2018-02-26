@@ -16,15 +16,15 @@ ADD examples /opt/zededa/examples
 ADD AssignableAdapters /var/tmp/zededa/AssignableAdapters
 ADD DeviceNetworkConfig /var/tmp/zededa/DeviceNetworkConfig
 
+# XXX temporary until we have a version for all of baseOS/rootfs
+RUN (cd ./src/github.com/zededa/go-provision/; scripts/getversion.sh >/opt/zededa/bin/versioninfo)
+# Echo for builders enjoyment
+RUN echo Building: `cat /opt/zededa/bin/versioninfo`
+
 RUN go get github.com/zededa/go-provision/cmd/...
 # this is taking care of on-boarding code that has to interact with LISP
 RUN go get github.com/zededa/go-provision/oldcmd/...
 RUN cd /opt/zededa/bin ; ln -s /go/bin/* .
-
-# XXX temporary until we have a version
-RUN echo `date -u +"%Y-%m-%d-%H:%M"`-`whoami`-`hostname` >/opt/zededa/bin/buildinfo
-# No .git in container
-# RUN echo `git tag`-`git rev-parse --abbrev-ref HEAD`-`git describe --match v --abbrev=8 --always --dirty`-`date -u +"%Y-%m-%d-%H:%M"` >/opt/zededa/bin/versioninfo
 
 # Now building LISP
 FROM zededa/lisp:latest AS lisp

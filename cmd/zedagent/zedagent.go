@@ -111,17 +111,12 @@ type verifierContext struct {
 	verifierRestarted bool
 }
 
-// Information for handleAppInstanceStatus*
-type appInstanceContext struct {
-	publishIteration int
-}
-
 // Information for handleDomainStatus*
 type domainContext struct {
 	TriggerDeviceInfo bool
 }
 
-// Information for handleBaseOsCreate/Modify/Delete
+// Information for handleBaseOsCreate/Modify/Delete and handleAppInstanceStatus*
 type deviceContext struct {
 	assignableAdapters *types.AssignableAdapters
 }
@@ -171,7 +166,6 @@ func main() {
 	aaChanges, aaFunc, aaCtx := adapters.Init(&aa, model)
 
 	verifierCtx := verifierContext{}
-	aiCtx := appInstanceContext{}
 	devCtx := deviceContext{assignableAdapters: &aa}
 	domainCtx := domainContext{}
 
@@ -262,7 +256,7 @@ func main() {
 
 		case change := <-restartChanges:
 			// restart only, place holder
-			watch.HandleStatusEvent(change, &aiCtx,
+			watch.HandleStatusEvent(change, &devCtx,
 				zedagentStatusDirname,
 				&types.AppInstanceStatus{},
 				handleAppInstanceStatusModify,
@@ -279,7 +273,7 @@ func main() {
 				handleCertObjDelete, nil)
 
 		case change := <-appInstanceStatusChanges:
-			watch.HandleStatusEvent(change, &aiCtx,
+			watch.HandleStatusEvent(change, &devCtx,
 				zedmanagerStatusDirname,
 				&types.AppInstanceStatus{},
 				handleAppInstanceStatusModify,
@@ -445,18 +439,16 @@ func createConfigStatusDirs(moduleName string, objTypes []string) {
 func handleAppInstanceStatusModify(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
 	status := statusArg.(*types.AppInstanceStatus)
-	ctx := ctxArg.(*appInstanceContext)
+	ctx := ctxArg.(*deviceContext)
 	uuidStr := status.UUIDandVersion.UUID.String()
-	PublishAppInfoToZedCloud(uuidStr, status, ctx.publishIteration)
-	ctx.publishIteration += 1
+	PublishAppInfoToZedCloud(uuidStr, status, ctx.assignableAdapters)
 }
 
 func handleAppInstanceStatusDelete(ctxArg interface{}, statusFilename string) {
 	// statusFilename == key aka UUIDstr?
-	ctx := ctxArg.(*appInstanceContext)
+	ctx := ctxArg.(*deviceContext)
 	uuidStr := statusFilename
-	PublishAppInfoToZedCloud(uuidStr, nil, ctx.publishIteration)
-	ctx.publishIteration += 1
+	PublishAppInfoToZedCloud(uuidStr, nil, ctx.assignableAdapters)
 }
 
 func handleDNSModify(ctxArg interface{}, statusFilename string,

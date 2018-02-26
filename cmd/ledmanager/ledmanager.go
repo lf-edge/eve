@@ -40,6 +40,30 @@ type ledManagerContext struct {
 }
 
 type Blink200msFunc func()
+type BlinkInitFunc func()
+
+type modelToFuncs struct {
+	model     string
+	initFunc  BlinkInitFunc
+	blinkFunc Blink200msFunc
+}
+
+var mToF = []modelToFuncs{
+	modelToFuncs{
+		model:     "Supermicro.SYS-E100-9APP",
+		blinkFunc: ExecuteDDCmd},
+	modelToFuncs{ // XXX temporary fix for old BIOS
+		model:     "Supermicro.Super Server",
+		blinkFunc: ExecuteDDCmd},
+	modelToFuncs{
+		model:     "hisilicon,hikey.hisilicon,hi6220.",
+		initFunc:  InitWifiLedCmd,
+		blinkFunc: ExecuteWifiLedCmd},
+	// Last in table as a default
+	modelToFuncs{
+		model:     "",
+		blinkFunc: DummyCmd},
+}
 
 var debug bool
 
@@ -63,17 +87,24 @@ func main() {
 	fmt.Printf("Got HardwareModel %s\n", model)
 
 	var blinkFunc Blink200msFunc
-	// XXX add table when we have more hardware models
-	if model == "Supermicro.SYS-E100-9APP" {
-		blinkFunc = ExecuteDDCmd
-	} else if model == "hisilicon,hikey.hisilicon,hi6220." {
-		InitWifiLedCmd()
-		blinkFunc = ExecuteWifiLedCmd
-	} else {
-		log.Printf("No blink function for %s\n", model)
-		blinkFunc = DummyCmd
+	var initFunc BlinkInitFunc
+	for _, m := range mToF {
+		if m.model == model {
+			blinkFunc = m.blinkFunc
+			initFunc = m.initFunc
+			break
+		}
+		if m.model == "" {
+			log.Printf("No blink function for %s\n", model)
+			blinkFunc = m.blinkFunc
+			initFunc = m.initFunc
+			break
+		}
 	}
 
+	if initFunc != nil {
+		initFunc()
+	}
 	ledChanges := make(chan string)
 	go watch.WatchStatus(ledConfigDirName, ledChanges)
 	log.Println("called watcher...")

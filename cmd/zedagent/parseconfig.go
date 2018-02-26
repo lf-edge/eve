@@ -742,7 +742,6 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd) bool {
 	}
 
 	if _, err := os.Stat(rebootConfigFilename); err != nil {
-		// XXX assume file doesn't exist
 		// Take received as current and store in file
 		log.Printf("scheduleReboot - writing initial %s\n",
 			rebootConfigFilename)

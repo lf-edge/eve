@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -35,6 +36,9 @@ func zbootReset() {
 
 // tell watchdog we are fine
 func zbootWatchdogOK() {
+	if !isZbootAvailable() {
+		return
+	}
 	_, err := exec.Command("zboot", "watchdog").Output()
 	if err != nil {
 		log.Fatalf("zboot watchdog: err %v\n", err)
@@ -283,7 +287,9 @@ func zbootWriteToPartition(srcFilename string, partName string) error {
 }
 
 func partitionInit() {
-
+	if !isZbootAvailable() {
+		return
+	}
 	curPart := getCurrentPartition()
 	otherPart := getOtherPartition()
 
@@ -508,4 +514,65 @@ func resetPersistentPartitionInfo(uuidStr string) error {
 	mapFilename := configDir + "/" + config.PartitionLabel + ".json"
 	removePartitionMap(mapFilename, nil)
 	return nil
+}
+
+// XXX known pathnames for the version file and the zededa-tools container
+const (
+	shortVersionFile = "/opt/zededa/bin/versioninfo"
+	longVersionFile  = "XXX"
+	otherPrefix      = "/containers/services/zededa-tools/lower"
+)
+
+func GetShortVersion(part string) string {
+	return getVersion(part, shortVersionFile)
+}
+
+// XXX add longversion once we have a filename
+func GetLongVersion(part string) string {
+	return ""
+}
+
+func getVersion(part string, filename string) string {
+	isCurrent := (part == getCurrentPartition())
+	if isCurrent {
+		version, err := ioutil.ReadFile(filename)
+		if err != nil {
+			log.Fatal(err)
+		}
+		return string(version)
+	} else {
+		devname := getPartitionDevname(part)
+		target, err := ioutil.TempDir("/var/run", "tmpmnt")
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer os.RemoveAll(target)
+		// Mount failure is ok; might not have a filesystem in the
+		// other partition
+		// XXX hardcoded file system type squashfs
+		err = syscall.Mount(devname, target, "squashfs",
+			syscall.MS_RDONLY, "")
+		if err != nil {
+			log.Printf("Mount of %s failed: %s\n", devname, err)
+			return ""
+		}
+		defer syscall.Unmount(target, 0)
+
+		version, err := ioutil.ReadFile(filename)
+		if err != nil {
+			log.Fatal(err)
+		}
+		return string(version)
+	}
+}
+
+// XXX temporary? Needed to run on hikey's with no zboot yet.
+func isZbootAvailable() bool {
+	filename := "/usr/bin/zboot"
+	if _, err := os.Stat(filename); err != nil {
+		log.Printf("zboot not available on this platform: %s\n", err)
+		return false
+	} else {
+		return true
+	}
 }

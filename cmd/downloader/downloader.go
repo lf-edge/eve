@@ -791,6 +791,7 @@ func handleSyncOp(ctx *downloaderContext, objType string, statusFilename string,
 			ipSrc, err = types.GetLocalAddrFree(deviceNetworkStatus,
 				addrIndex, "")
 		} else {
+			// Note that GetLocalAddrAny has the free ones first
 			ipSrc, err = types.GetLocalAddrAny(deviceNetworkStatus,
 				addrIndex, "")
 		}

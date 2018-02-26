@@ -569,5 +569,9 @@ func installBaseOsObject(srcFilename string, dstFilename string) error {
 		return err
 	}
 
-	return zbootWriteToPartition(srcFilename, dstFilename)
+	err := zbootWriteToPartition(srcFilename, dstFilename)
+	if err != nil {
+		log.Printf("installBaseOsObject: write failed %s\n", err)
+	}
+	return err
 }

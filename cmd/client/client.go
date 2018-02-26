@@ -18,6 +18,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/satori/go.uuid"
 	"github.com/zededa/api/zmet"
+	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/types"
 	"golang.org/x/crypto/ocsp"
 	"io/ioutil"
@@ -31,12 +32,14 @@ import (
 	"time"
 )
 
-const tmpDirname = "/var/tmp/zededa"
+const (
+	tmpDirname = "/var/tmp/zededa"
+	DNCDirname = "/var/tmp/zededa/DeviceNetworkConfig"
+	maxDelay   = time.Second * 600 // 10 minutes
+)
 
 // Set from Makefile
 var Version = "No version specified"
-
-var maxDelay = time.Second * 600 // 10 minutes
 
 // Assumes the config files are in identityDirname, which is /config
 // by default. The files are
@@ -102,9 +105,10 @@ func main() {
 	var hasDeviceNetworkStatus = false
 	var deviceNetworkStatus types.DeviceNetworkStatus
 
-	globalNetworkConfigFilename := "/var/tmp/zededa/DeviceNetworkConfig/global.json"
-	if _, err := os.Stat(globalNetworkConfigFilename); err == nil {
-		deviceNetworkConfig, err := types.GetDeviceNetworkConfig(globalNetworkConfigFilename)
+	model := hardware.GetHardwareModel()
+	DNCFilename := fmt.Sprintf("%s/%s.json", DNCDirname, model)
+	if _, err := os.Stat(DNCFilename); err == nil {
+		deviceNetworkConfig, err := types.GetDeviceNetworkConfig(DNCFilename)
 		if err != nil {
 			log.Fatal(err)
 		}
