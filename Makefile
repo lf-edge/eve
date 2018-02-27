@@ -19,7 +19,7 @@ BUILD_DATE  := $(shell date -u +"%Y-%m-%d-%H:%M")
 GIT_VERSION := $(shell git describe --match v --abbrev=8 --always --dirty)
 BRANCH_NAME := $(shell git rev-parse --abbrev-ref HEAD)
 VERSION     := $(GIT_TAG)
-LISPURL     := https://www.dropbox.com/s/8wwdihdxm6pomqu/lispers.net-x86-release-0.434.tgz
+LISPURL     := https://www.dropbox.com/s/yw8qwvplhkibp0k/lispers.net-x86-release-0.443.tgz
 
 # Go parameters
 GOCMD=go
