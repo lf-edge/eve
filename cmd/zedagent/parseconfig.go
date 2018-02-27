@@ -14,6 +14,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"reflect"
 	"strings"
 	"syscall"
 	"time"
@@ -22,7 +23,6 @@ import (
 const (
 	MaxBaseOsCount       = 2
 	rebootConfigFilename = configDir + "/rebootConfig"
-	partitionMapFilename = configDir + "/partitionMap"
 )
 
 var immediate int = 30 // take a 10 second delay
@@ -38,8 +38,11 @@ func parseConfig(config *zconfig.EdgeDevConfig) {
 	}
 
 	if validateConfig(config) == true {
-		parseBaseOsConfig(config)
-		parseAppInstanceConfig(config)
+		// if no baseOs config write, consider
+		// picking up application image config
+		if parseBaseOsConfig(config) == false {
+			parseAppInstanceConfig(config)
+		}
 	}
 }
 
@@ -53,8 +56,9 @@ func validateConfig(config *zconfig.EdgeDevConfig) bool {
 	return true
 }
 
-func parseBaseOsConfig(config *zconfig.EdgeDevConfig) {
+func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 
+	configCount := 0
 	log.Println("Applying Base Os config")
 
 	cfgOsList := config.GetBase()
@@ -62,7 +66,7 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) {
 	log.Println("Applying Base Os config len %d", baseOsCount)
 
 	if baseOsCount == 0 {
-		return
+		return false
 	}
 
 	baseOsList := make([]types.BaseOsConfig, len(cfgOsList))
@@ -121,8 +125,14 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) {
 	}
 
 	if validateBaseOsConfig(baseOsList) == true {
-		createBaseOsConfig(baseOsList)
+		configCount = createBaseOsConfig(baseOsList)
 	}
+
+	// baseOs config write, is true
+	if configCount > 0 {
+		return true
+	}
+	return false
 }
 
 func checkPartitionInfo(baseOs *types.BaseOsConfig, baseOsCount int) {
@@ -689,17 +699,40 @@ func validateBaseOsConfig(baseOsList []types.BaseOsConfig) bool {
 			}
 		}
 	}
+
+	InitializePartitionTable(baseOsList)
 	return true
 }
 
-func createBaseOsConfig(baseOsList []types.BaseOsConfig) {
+func createBaseOsConfig(baseOsList []types.BaseOsConfig) int {
 
+	writeCount := 0
 	for _, baseOsInstance := range baseOsList {
 
 		baseOsFilename := baseOsInstance.UUIDandVersion.UUID.String()
 		configFilename := zedagentBaseOsConfigDirname + "/" + baseOsFilename + ".json"
-		writeBaseOsConfig(baseOsInstance, configFilename)
+		// file not present
+		if _, err := os.Stat(configFilename); err != nil {
+			writeBaseOsConfig(baseOsInstance, configFilename)
+			writeCount ++
+		} else {
+			baseOsConfig := &types.BaseOsConfig{}
+			bytes, err := ioutil.ReadFile(configFilename)
+			if err != nil {
+				log.Fatal(err)
+			}
+			err = json.Unmarshal(bytes, baseOsConfig)
+			if err != nil {
+				log.Fatal(err)
+			}
+			// changed file
+			if !reflect.DeepEqual(baseOsConfig, baseOsInstance) {
+				writeBaseOsConfig(baseOsInstance, configFilename)
+				writeCount++
+			}
+		}
 	}
+	return writeCount
 }
 
 func validateAppInstanceConfig(appInstance types.AppInstanceConfig) bool {

@@ -165,6 +165,11 @@ func getActivationStatus(config types.BaseOsConfig, status *types.BaseOsStatus) 
 		ss.State = partInfo.State
 	}
 
+	// replicate Error Info
+	if !partInfo.ErrorTime.IsZero() {
+		status.Error = partInfo.Error
+		status.ErrorTime = partInfo.ErrorTime
+	}
 	// for otherPartition, its always false
 	if !isCurrentPartition(status.PartitionLabel) {
 		return false
@@ -332,7 +337,7 @@ func doBaseOsInstall(uuidStr string, config types.BaseOsConfig,
 		status.StorageStatusList); ret == true {
 		// move the state from DELIVERED to INSTALLED
 		status.State = types.INSTALLED
-		setPersistentPartitionInfo(uuidStr, config, *status)
+		setPersistentPartitionInfo(uuidStr, config, status)
 		changed = true
 	}
 

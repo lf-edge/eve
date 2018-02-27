@@ -21,12 +21,13 @@ type OsVerParams struct {
 
 type BaseOsConfig struct {
 	UUIDandVersion    UUIDandVersion
-	BaseOsVersion     string
+	BaseOsVersion     string // From GetShortVersion
 	ConfigSha256      string
 	ConfigSignature   string
-	OsParams          []OsVerParams
+	OsParams          []OsVerParams // From GetLongVersion
 	StorageConfigList []StorageConfig
 	PartitionLabel    string
+	RetryCount        int32
 	Activate          bool
 }
 
@@ -49,6 +50,8 @@ type BaseOsStatus struct {
 	OsParams          []OsVerParams
 	StorageStatusList []StorageStatus
 	PartitionLabel    string
+	PartitionDevice   string // From zboot
+	PartitionState    string // From zboot
 
 	// Mininum state across all steps/StorageStatus.
 	// INITIAL implies error.
@@ -144,4 +147,7 @@ type PartitionInfo struct {
 	ImageSha256    string
 	PartitionLabel string
 	State          SwState
+	RetryCount     int32
+	Error          string
+	ErrorTime      time.Time
 }
