@@ -52,6 +52,17 @@ if [ $CLEANUP = 1 -a -d $PERSISTDIR/downloads ]; then
     rm -rf $PERSISTDIR/downloads
 fi
     
+# Move any uuid file to /config
+if [ -f $TMPDIR/uuid ]; then
+    if [ -f $CONFIGDIR/uuid ]; then
+	echo "Removing old $TMPDIR/uuid"
+	rm -f $TMPDIR/uuid
+    else
+	echo "Moving old $TMPDIR/uuid to $CONFIGDIR/uuid"
+	mv $TMPDIR/uuid $CONFIGDIR/uuid
+    fi
+fi
+
 echo "Configuration from factory/install:"
 (cd $CONFIGDIR; ls -l)
 echo
@@ -331,7 +342,47 @@ if [ $SELF_REGISTER = 1 ]; then
     if [ $WAIT = 1 ]; then
 	echo -n "Press any key to continue "; read dummy; echo; echo
     fi
+    echo $BINDIR/client $OLDFLAG -d $CONFIGDIR getUuid 
+    $BINDIR/client $OLDFLAG -d $CONFIGDIR getUuid
+
+    # Make sure we set the dom0 hostname, used by LISP nat traversal, to
+    # a unique string. Using the uuid
+    uuid=`cat $CONFIGDIR/uuid`
+    /bin/hostname $uuid
+    /bin/hostname >/etc/hostname
+    grep -q $uuid /etc/hosts
+    if [ $? = 1 ]; then
+	# put the uuid in /etc/hosts to avoid complaints
+	echo "Adding $uuid to /etc/hosts"
+	echo "127.0.0.1 $uuid" >>/etc/hosts
+    else
+	echo "Found $uuid in /etc/hosts"
+    fi
+    if [ $WAIT = 1 ]; then
+	echo -n "Press any key to continue "; read dummy; echo; echo
+    fi
+elif [ x$OLDFLAG = x ]; then
+    echo "XXX until cloud keeps state across upgrades redo getUuid"
+    echo $BINDIR/client $OLDFLAG -d $CONFIGDIR getUuid 
+    $BINDIR/client $OLDFLAG -d $CONFIGDIR getUuid
+
+    uuid=`cat $CONFIGDIR/uuid`
+    /bin/hostname $uuid
+    /bin/hostname >/etc/hostname
+    grep -q $uuid /etc/hosts
+    if [ $? = 1 ]; then
+	# put the uuid in /etc/hosts to avoid complaints
+	echo "Adding $uuid to /etc/hosts"
+	echo "127.0.0.1 $uuid" >>/etc/hosts
+    else
+	echo "Found $uuid in /etc/hosts"
+    fi
+    if [ $WAIT = 1 ]; then
+	echo -n "Press any key to continue "; read dummy; echo; echo
+    fi
 fi
+
+
 # We always redo this to get an updated zedserverconfig
 rm -f $TMPDIR/zedserverconfig
 if [ /bin/true -o ! -f $CONFIGDIR/lisp.config ]; then
@@ -386,42 +437,12 @@ if [ $SELF_REGISTER = 1 ]; then
 {"Uplink":["$intf"], "FreeUplinks":["$intf"]}
 EOF
     fi
-    # Make sure we set the dom0 hostname, used by LISP nat traversal, to
-    # a unique string. Using the uuid
-    if [ -f $TMPDIR/uuid ]; then
-	uuid=`cat $TMPDIR/uuid`
-    else
-	uuid=`cat $CONFIGDIR/uuid`
-    fi
-    echo "Setting hostname to $uuid"
-    /bin/hostname $uuid
-    /bin/hostname >/etc/hostname
-    # put the uuid in /etc/hosts to avoid complaints
-    echo "Adding $uuid to /etc/hosts"
-    echo "127.0.0.1 $uuid" >>/etc/hosts
 else
     model=`$BINDIR/hardwaremodel`
     MODELFILE=${model}.json
     if [ ! -f $DNCDIR/$MODELFILE ] ; then
 	echo "Missing $DNCDIR/$MODELFILE - giving up"
 	exit 1
-    fi
-    if [ -f $TMPDIR/uuid ]; then
-	uuid=`cat $TMPDIR/uuid`
-    else
-	uuid=`cat $CONFIGDIR/uuid`
-    fi
-    # For safety in case the rootfs was duplicated and /etc/hostame wasn't
-    # updated
-    /bin/hostname $uuid
-    /bin/hostname >/etc/hostname
-    grep -q $uuid /etc/hosts
-    if [ $? = 1 ]; then
-	# put the uuid in /etc/hosts to avoid complaints
-	echo "Adding $uuid to /etc/hosts"
-	echo "127.0.0.1 $uuid" >>/etc/hosts
-    else
-	echo "Found $uuid in /etc/hosts"
     fi
 fi
 
@@ -432,7 +453,8 @@ cp -p $CONFIGDIR/device.key.pem $LISPDIR/lisp-sig.pem
 # it in /var/tmp/zedrouter/config/
 # This will result in starting lispers.net when zedrouter starts
 if [ -f $TMPDIR/zedrouterconfig.json ]; then
-	cp $TMPDIR/zedrouterconfig.json /var/tmp/zedrouter/config/${uuid}.json
+    uuid=`cat $CONFIGDIR/uuid`
+    cp $TMPDIR/zedrouterconfig.json /var/tmp/zedrouter/config/${uuid}.json
 fi
 
 # Setup default amount of space for images
