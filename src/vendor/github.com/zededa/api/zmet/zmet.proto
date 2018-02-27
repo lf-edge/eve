@@ -273,7 +273,19 @@ message deviceMetric {
   devCpuMetric compute = 5; // depcreated
   repeated diskMetric disk = 6;
   appCpuMetric cpuMetric = 7;
+  repeated MetricItem metricItems = 8;
 }
+
+// Open-ended metrics from different part of the device such as LTE modem
+// metrics.
+message MetricItem {
+	string key = 1;		// E.g., "lte-metrics"??
+	oneof metricItemValue {
+		uint32 uint32Value = 2;
+		string stringValue = 3;
+		string jsonValue = 4;
+	}
+}		
 
 // For each partition; counts since boot
 message diskMetric {
