@@ -327,18 +327,36 @@ func handleDecapKeys(msg []byte) {
 		if err != nil {
 			continue
 		}
+
+		// XXX Some times lispers.net send icv key of 40 bytes.
+		// Some times it send the right length.
+		// This is a hack from our side for the time being.
+		// lispers.net should fix this eventually.
+		if len(key.IcvKey) == 40 {
+			key.IcvKey = key.IcvKey[8:]
+		}
+		//if (len(key.DecKey) != CRYPTO_KEY_LEN) ||
+		//	(len(key.IcvKey[8:]) != CRYPTO_KEY_LEN) {
 		if (len(key.DecKey) != CRYPTO_KEY_LEN) ||
-			(len(key.IcvKey[8:]) != CRYPTO_KEY_LEN) {
+			(len(key.IcvKey) != CRYPTO_KEY_LEN) {
 			log.Printf("XXXXX Decap-key is %s\n", key.DecKey)
-			log.Printf("XXXXX ICV-key is %s\n", key.IcvKey[8:])
+			//log.Printf("XXXXX ICV-key is %s\n", key.IcvKey[8:])
+			log.Printf("XXXXX ICV-key is %s\n", key.IcvKey)
+			/*
 			log.Printf(
 				"Error: Decap/ICV Key lengths should be 32, found encrypt key len %d & icv key length %d\n",
 				len(key.DecKey), len(key.IcvKey[8:]))
+
+				*/
+			log.Printf(
+				"Error: Decap/ICV Key lengths should be 32, found encrypt key len %d & icv key length %d\n",
+				len(key.DecKey), len(key.IcvKey))
 			continue
 		}
 		decKey := []byte(key.DecKey)
-		// XXX lispers.net sends 8 zeroes in the beginning
-		icvKey := []byte(key.IcvKey[8:])
+		// XXX lispers.net some times sends 8 zeroes in the beginning
+		//icvKey := []byte(key.IcvKey[8:])
+		icvKey := []byte(key.IcvKey)
 		decBlock, err := aes.NewCipher(decKey)
 		if err != nil {
 			log.Printf("Creating of Cipher block for decryption key %s failed\n",

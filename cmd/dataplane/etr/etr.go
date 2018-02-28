@@ -99,14 +99,18 @@ func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
 		// If not, start capturing packets from this new uplink.
 		_, ok := etrTable.EtrTable[link.IfName]
 		if ok == false {
+			var ring *pfring.Ring = nil
+			var fd int = -1
 			// Create new ETR thread
-			ring, fd := StartEtrNat(etrTable.EphPort, link.IfName)
+			if etrTable.EphPort != -1 {
+				ring, fd = StartEtrNat(etrTable.EphPort, link.IfName)
+				log.Printf("XXXXX Creating ETR thread for UP link %s\n", link.IfName)
+			}
 			etrTable.EtrTable[link.IfName] = &types.EtrRunStatus{
 				IfName: link.IfName,
 				Ring: ring,
 				RingFD: fd,
 			}
-			log.Printf("XXXXX Creating ETR thread for UP link %s\n", link.IfName)
 		}
 	}
 
@@ -138,6 +142,13 @@ func HandleEtrEphPort(ephPort int) {
 		//link.Ring.Disable()
 		//link.Ring.Close()
 		//syscall.Close(link.RingFD)
+		if (link.Ring == nil) && (link.RingFD == -1) {
+			log.Printf("XXXXX Creating ETR thread for UP link %s\n", link.IfName)
+			ring, fd := StartEtrNat(etrTable.EphPort, link.IfName)
+			link.Ring = ring
+			link.RingFD = fd
+			return
+		}
 
 		// Remove the old BPF filter
 		link.Ring.RemoveBPFFilter()
@@ -188,6 +199,8 @@ func verifyAndInject(fd6 int,
 	log.Println("IID of packet is:", iid)
 	packetOffset := 8
 	destAddrOffset := 24
+
+	//fmt.Printf("% x\n", buf)
 
 	//useCrypto := false
 	keyId := fib.GetLispKeyId(buf[0:8])
@@ -251,7 +264,7 @@ func verifyAndInject(fd6 int,
 	var destAddr [16]byte
 	for i, _ := range destAddr {
 		// offset is lisp hdr size + start offset of ip addresses in v6 hdr
-		destAddr[i] = buf[8+destAddrOffset+i]
+		destAddr[i] = buf[types.LISPHEADERLEN+destAddrOffset+i]
 		//pktEid[i] = destAddr[i]
 	}
 
