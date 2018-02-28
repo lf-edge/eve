@@ -273,7 +273,7 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig) {
 			// XXX remove once zedcloud preserves state.
 			if id != zcdevUUID {
 				log.Printf("XXX Device UUID changed from %s to %s\n",
-					zcdevUUID.String(), id.String)
+					zcdevUUID.String(), id.String())
 				zcdevUUID = id
 			}
 
