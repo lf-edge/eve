@@ -19,6 +19,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/exec"
 )
 
 const (
@@ -41,6 +42,9 @@ const (
 //  /var/tmp/zededa/uuid	Written by us
 //
 func handleLookUpParam(devConfig *zconfig.EdgeDevConfig) {
+	// XXX should we hadle changes at all? Want to update zedserverconfig
+	// but not rest.
+
 	//Fill DeviceDb struct with LispInfo config...
 	var device = types.DeviceDb{}
 
@@ -222,8 +226,20 @@ func handleLookUpParam(devConfig *zconfig.EdgeDevConfig) {
 	} else {
 		matches[0].Type = "eidset"
 	}
+	// XXX if there is a change we need to change version string!
 	zedrouterConfigFileName := zedRouterConfigbaseDir + "" + devUUID.String() + ".json"
 	writeNetworkConfig(&config, zedrouterConfigFileName)
+
+	// Add NameToEID to /etc/hosts
+	cmd := exec.Command("/opt/zededa/bin/handlezedserverconfig.sh")
+	stdout, err := cmd.Output()
+	if err != nil {
+		log.Println(err.Error())
+	}
+	if debug {
+		log.Printf("handlezedserverconfig output %s\n",
+			stdout)
+	}
 }
 
 func writeNetworkConfig(config *types.AppNetworkConfig,
