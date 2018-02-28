@@ -148,9 +148,6 @@ func PbrRouteChange(change netlink.RouteUpdate) {
 
 // Handle an IP address change
 func PbrAddrChange(change netlink.AddrUpdate) {
-	// XXX remove?
-	log.Printf("PbrAddrChange: new %v if %d addr %v\n", change.NewAddr,
-		change.LinkIndex, change.LinkAddress)
 	changed := false
 	if change.NewAddr {
 		changed = IfindexToAddrsAdd(change.LinkIndex,
@@ -181,29 +178,12 @@ func PbrAddrChange(change netlink.AddrUpdate) {
 
 // Handle a link being added or deleted
 func PbrLinkChange(change netlink.LinkUpdate) {
-	// XXX remove?
-	switch change.Header.Type {
-	case syscall.RTM_NEWLINK:
-		log.Printf("PbrLinkChange: new if %d name %s\n",
-			change.Attrs().Index, change.Attrs().Name)
-	case syscall.RTM_DELLINK:
-		log.Printf("PbrLinkChange: del if %d name %s\n",
-			change.Attrs().Index, change.Attrs().Name)
-	}
 	ifindex := change.Attrs().Index
 	ifname := change.Attrs().Name
 	switch change.Header.Type {
 	case syscall.RTM_NEWLINK:
 		new := IfindexToNameAdd(ifindex, ifname)
 		if new {
-			// XXX any ordering issues?
-			log.Printf("PbrLinkChange: XXX any ordering issues?\n")
-			// Could we flush things we just added?
-			// flushRoutesTable(FreeTable, ifindex)
-			// MyTable := FreeTable + ifindex
-			// flushRoutesTable(MyTable, 0)
-			// flushRules(ifindex)
-
 			if isFreeUplink(ifname) {
 				log.Printf("PbrLinkChange moving to FreeTable %s\n",
 					ifname)
@@ -519,8 +499,6 @@ func moveRoutesTable(srcTable int, ifindex int, dstTable int) {
 
 // Flush the rules we create. If ifindex is non-zero we also compare it
 // Otherwise we flush the FreeTable
-// XXX should we have a way to flush all on startup?
-// or flush an ifindex when we add it?
 func flushRules(ifindex int) {
 	rules, err := netlink.RuleList(syscall.AF_UNSPEC)
 	if err != nil {
