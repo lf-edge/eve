@@ -382,10 +382,10 @@ elif [ x$OLDFLAG = x ]; then
     fi
 fi
 
-
+# XXX remove once OLDFLAG goes away
 # We always redo this to get an updated zedserverconfig
 rm -f $TMPDIR/zedserverconfig
-if [ /bin/true -o ! -f $CONFIGDIR/lisp.config ]; then
+if [ x$OLDFLAG != x ]; then
     echo "Retrieving device and overlay network config at" `date`
     echo $BINDIR/client $OLDFLAG -d $CONFIGDIR lookupParam
     $BINDIR/client $OLDFLAG -d $CONFIGDIR lookupParam
