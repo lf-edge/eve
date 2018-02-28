@@ -1,3 +1,11 @@
 image: wlan
 org: zededa
 network: yes
+config:
+  binds:
+    - /lib/modules:/lib/modules
+    - /dev:/dev
+    - /etc/resolv.conf:/etc/resolv.conf
+  net: host
+  capabilities:
+    - all

@@ -19,29 +19,10 @@ services:
      image: linuxkit/openntpd:536e5947607c9e6a6771957c2ff817230cba0d3c
    - name: wwan
      image: WWAN_TAG
-     binds:
-      - /lib:/lib
-      - /dev:/dev
-      - /etc/resolv.conf:/etc/resolv.conf
-     net: host
-     capabilities:
-      - all
    - name: wlan
      image: WLAN_TAG
-     binds:
-      - /dev:/dev
-      - /etc/resolv.conf:/etc/resolv.conf
-     net: host
-     capabilities:
-      - all
    - name: zededa-tools
      image: ZEDEDA_TAG
-     binds:
-      - /dev:/dev
-      - /etc/resolv.conf:/etc/resolv.conf
-     net: host
-     capabilities:
-      - all
 trust:
   org:
     - linuxkit

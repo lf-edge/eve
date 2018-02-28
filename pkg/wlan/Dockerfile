@@ -17,4 +17,3 @@ COPY --from=build /rt2870.bin /lib/firmware/rt2870.bin
 COPY etc/ /etc/
 COPY usr/ /usr/
 CMD ["/usr/bin/wlan-init.sh"]
-# LABEL org.mobyproject.config='{"binds": ["/run/resolvconf:/etc"], "capabilities": ["CAP_NET_ADMIN", "CAP_NET_BIND_SERVICE", "CAP_NET_RAW", "CAP_SYS_ADMIN"]}'

@@ -39,4 +39,3 @@ COPY --from=build /uqmi/uqmi /bin
 COPY usr/ /usr/
 COPY etc/ /etc/
 CMD ["/usr/bin/wwan-init.sh"]
-# LABEL org.mobyproject.config='{"binds": ["/run/resolvconf:/etc"], "capabilities": ["CAP_NET_ADMIN", "CAP_NET_BIND_SERVICE", "CAP_NET_RAW", "CAP_SYS_ADMIN"]}'

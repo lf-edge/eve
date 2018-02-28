@@ -1,3 +1,11 @@
 image: zedctr
 org: zededa
 network: yes
+config:
+  binds:
+    - /dev:/dev
+    - /etc/resolv.conf:/etc/resolv.conf
+  net: host
+  capabilities:
+    - all
+  pid: host
