@@ -5,7 +5,7 @@ config:
   binds:
     - /lib/modules:/lib/modules
     - /dev:/dev
-    - /etc/resolv.conf:/etc/resolv.conf
+    - /run:/run
   net: host
   capabilities:
     - all

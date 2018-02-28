@@ -5,6 +5,8 @@ config:
   binds:
     - /dev:/dev
     - /etc/resolv.conf:/etc/resolv.conf
+    - /run:/run
+    - /var/log:/var/log/dom0
   net: host
   capabilities:
     - all
