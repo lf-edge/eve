@@ -116,12 +116,13 @@ func main() {
 		}
 		deviceNetworkStatus, err = types.MakeDeviceNetworkStatus(deviceNetworkConfig)
 		if err != nil {
-			log.Fatal(err)
+			log.Printf("%s from MakeDeviceNetworkStatus\n", err)
+			// Proceed even if some uplinks are missing
 		}
-		hasDeviceNetworkStatus = true
 		addrCount := types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
 		fmt.Printf("Have %d uplinks addresses to use\n", addrCount)
 		if addrCount != 0 {
+			hasDeviceNetworkStatus = true
 			// Inform ledmanager that we have uplink addresses
 			types.UpdateLedManagerConfig(2)
 		}
