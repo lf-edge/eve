@@ -277,9 +277,10 @@ message deviceMetric {
 }
 
 enum MetricItemType {
-  MetricItemOther = 0;
-  MetricItemGuage = 1;
-  MetricItemCounter = 2;
+  MetricItemOther = 0;		// E.g., a string like an ESSID
+  MetricItemGuage = 1;		// Goes up and down over time
+  MetricItemCounter = 2;	// Monotonically increasing (until reboot)
+  MetricItemState = 3;		// Toggles on and off; count transitions
 }
 
 // Open-ended metrics from different part of the device such as LTE modem
