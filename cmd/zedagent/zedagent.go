@@ -363,7 +363,7 @@ func handleInit() {
 
 	initializeDirs()
 	initMaps()
-	getCloudUrls()
+	handleConfigInit()
 	partitionInit()
 }
 
