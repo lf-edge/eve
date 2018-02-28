@@ -771,7 +771,7 @@ func main() {
 
 	if operations["getUuid"] {
 		var devUUID uuid.UUID
-
+		doWrite := true
 		// In the old case we locally generate one.
 		// In the new case we get it from the deviceConfig
 		if oldFlag {
@@ -784,10 +784,6 @@ func main() {
 			devUUID, _ = uuid.NewV4()
 			fmt.Printf("Created UUID %s\n", devUUID)
 		} else {
-			if _, err := os.Stat(uuidFileName); err == nil {
-				log.Printf("Replacing existing UUID file: %s\n",
-					uuidFileName)
-			}
 			url := "/api/v1/edgedevice/config"
 			retryCount := 0
 			done := false
@@ -817,16 +813,35 @@ func main() {
 				log.Printf("Retrying config in %d seconds\n",
 					delay/time.Second)
 			}
-			fmt.Printf("Got config with UUID %s\n", devUUID)
+			b, err := ioutil.ReadFile(uuidFileName)
+			if err == nil {
+				uuidStr := strings.TrimSpace(string(b))
+				oldUUID, err := uuid.FromString(uuidStr)
+				if err != nil {
+					fmt.Printf("Got config with UUID %s\n",
+						devUUID)
+				} else if oldUUID != devUUID {
+					log.Printf("Replacing existing UUID %s\n",
+						oldUUID.String())
+				} else {
+					fmt.Printf("No change to UUID %s\n",
+						devUUID)
+					doWrite = false
+				}
+			} else {
+				fmt.Printf("Got config with UUID %s\n", devUUID)
+			}
 			// Inform ledmanager about config received from cloud
 			types.UpdateLedManagerConfig(4)
 		}
-		b := []byte(fmt.Sprintf("%s\n", devUUID))
-		err = ioutil.WriteFile(uuidFileName, b, 0644)
-		if err != nil {
-			log.Fatal("WriteFile", err, uuidFileName)
+		if doWrite {
+			b := []byte(fmt.Sprintf("%s\n", devUUID))
+			err = ioutil.WriteFile(uuidFileName, b, 0644)
+			if err != nil {
+				log.Fatal("WriteFile", err, uuidFileName)
+			}
+			fmt.Printf("Wrote UUID %s\n", devUUID)
 		}
-		fmt.Printf("Wrote UUID %s\n", devUUID)
 	}
 
 	if operations["lookupParam"] {
