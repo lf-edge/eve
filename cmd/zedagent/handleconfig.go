@@ -10,6 +10,7 @@ import (
 	"crypto/x509"
 	"fmt"
 	"github.com/golang/protobuf/proto"
+	"github.com/satori/go.uuid"
 	"github.com/zededa/api/zconfig"
 	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/types"
@@ -35,11 +36,6 @@ var configApi string = "api/v1/edgedevice/config"
 var statusApi string = "api/v1/edgedevice/info"
 var metricsApi string = "api/v1/edgedevice/metrics"
 
-// XXX remove global variables
-// XXX shouldn't we know our own device UUID? Get from some global struct?
-// Or read from uuid file?
-var deviceId string
-
 // These URLs are effectively constants; depends on the server name
 var configUrl string
 var metricsUrl string
@@ -51,12 +47,22 @@ const (
 	deviceCertName  = identityDirname + "/device.cert.pem"
 	deviceKeyName   = identityDirname + "/device.key.pem"
 	rootCertName    = identityDirname + "/root-certificate.pem"
+	uuidFileName    = identityDirname + "/uuid"
 )
 
 // tlsConfig is initialized once i.e. effectively a constant
 var tlsConfig *tls.Config
 
-func getCloudUrls() {
+// devUUID is set in handleConfigInit and never changed
+var devUUID uuid.UUID
+
+// XXX need to support recreating devices. Remove when zedcloud preserves state
+var zcdevUUID uuid.UUID
+
+// Really a constant
+var nilUUID uuid.UUID
+
+func handleConfigInit() {
 
 	// get the server name
 	bytes, err := ioutil.ReadFile(serverFilename)
@@ -93,6 +99,18 @@ func getCloudUrls() {
 		MinVersion: tls.VersionTLS12,
 	}
 	tlsConfig.BuildNameToCertificate()
+
+	b, err := ioutil.ReadFile(uuidFileName)
+	if err != nil {
+		log.Fatal("ReadFile", err, uuidFileName)
+	}
+	uuidStr := strings.TrimSpace(string(b))
+	devUUID, err = uuid.FromString(uuidStr)
+	if err != nil {
+		log.Fatal("uuid.FromString", err, string(b))
+	}
+	fmt.Printf("Read UUID %s\n", devUUID)
+	zcdevUUID = devUUID
 }
 
 // got a trigger for new config. check the present version and compare
@@ -234,8 +252,6 @@ func readDeviceConfigProtoMessage(r *http.Response) (bool, *zconfig.EdgeDevConfi
 }
 
 func inhaleDeviceConfig(config *zconfig.EdgeDevConfig) {
-	activeVersion := ""
-
 	log.Printf("Inhaling config %v\n", config)
 
 	// if they match return
@@ -243,32 +259,24 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig) {
 
 	devId = config.GetId()
 	if devId != nil {
-		if deviceId == "" {
-			// First time; record id and version
-			log.Printf("First config; storing UUID/version %s/%s\n",
-				devId.Uuid, devId.Version)
-			deviceId = devId.Uuid
-			activeVersion = devId.Version
-			// XXX need to update hostname/LISP with deviceId
-			// Write to uuid file etc.
-		} else {
-			// check the device id and version
-			if deviceId != devId.Uuid {
-				log.Printf("Updated config but wrong UUID have %s got %s\n",
-					deviceId, devId.Uuid)
-				// XXX can we send back an error somehow?
-				return
+		id, err := uuid.FromString(devId.Uuid)
+		if err != nil {
+			log.Printf("Invalid UUID %s from cloud: %s\n",
+				devId.Uuid, err)
+			return
+		}
+		if id != devUUID {
+			// XXX logic to handle re-registering a device private
+			// key with zedcloud. We accept a new UUID from the
+			// cloud and use that in our reports, but we do
+			// not update the hostname nor LISP.
+			// XXX remove once zedcloud preserves state.
+			if id != zcdevUUID {
+				log.Printf("XXX Device UUID changed from %s to %s\n",
+					zcdevUUID.String(), id.String)
+				zcdevUUID = id
 			}
-			// XXX at some point in time we should set version in
-			// zedcloud and increment on change, or skip this completely
-			// For now we always accept the empty version.
-			if devId.Version != "" &&
-				devId.Version == activeVersion {
-				log.Printf("Same version, ignoring %s\n",
-					devId.Version)
-				return
-			}
-			activeVersion = devId.Version
+
 		}
 	}
 	handleLookUpParam(config)
