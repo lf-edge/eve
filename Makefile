@@ -20,24 +20,13 @@ help:
 pkgs: $(BUILD_TOOLS)
 	make -C pkg
 
-run:
-	qemu-system-x86_64 --bios ./bios/OVMF.fd -m 4096 -cpu SandyBridge -serial mon:stdio -hda ./fallback.img \
-				-net nic,vlan=0 -net user,id=eth0,vlan=0,net=192.168.1.0/24,dhcpstart=192.168.1.10,hostfwd=tcp::2222-:22 \
-				-net nic,vlan=1 -net user,id=eth1,vlan=1,net=192.168.2.0/24,dhcpstart=192.168.2.10
-
-run-fallback:
+run-fallback run:
 	qemu-system-x86_64 --bios ./bios/OVMF.fd -m 4096 -cpu SandyBridge -serial mon:stdio -hda fallback.img \
 				-net nic,vlan=0 -net user,id=eth0,vlan=0,net=192.168.1.0/24,dhcpstart=192.168.1.10,hostfwd=tcp::2222-:22 \
 				-net nic,vlan=1 -net user,id=eth1,vlan=1,net=192.168.2.0/24,dhcpstart=192.168.2.10
 
 images/%.yml: pkgs parse-pkgs.sh images/%.yml.in FORCE
 	./parse-pkgs.sh $@.in > $@
-
-supermicro.iso: images/supermicro-iso.yml
-	./makeiso.sh images/supermicro-iso.yml supermicro.iso
-
-supermicro.img: images/supermicro-img.yml
-	./makeraw.sh images/supermicro-img.yml supermicro.img
 
 rootfs.img: images/fallback.yml
 	./makerootfs.sh images/fallback.yml squash rootfs.img
