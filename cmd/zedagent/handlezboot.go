@@ -529,6 +529,8 @@ func setPersistentPartitionInfo(uuidStr string, config types.BaseOsConfig, statu
 		return errors.New(errStr)
 	}
 
+	log.Println(partInfo)
+
 	if err := ioutil.WriteFile(mapFilename, bytes, 0644); err != nil {
 		errStr := fmt.Sprintf("%s, file write error %s\n", uuidStr, err)
 		log.Println(errStr)

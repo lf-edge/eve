@@ -89,11 +89,6 @@ func addOrUpdateBaseOsConfig(uuidStr string, config types.BaseOsConfig) {
 			PartitionLabel: config.PartitionLabel,
 		}
 
-		// PartitionLabel can be empty here!
-		if status.PartitionLabel != "" {
-			status.Activated = getActivationStatus(config, &status)
-		}
-
 		status.StorageStatusList = make([]types.StorageStatus,
 			len(config.StorageConfigList))
 
@@ -106,6 +101,11 @@ func addOrUpdateBaseOsConfig(uuidStr string, config types.BaseOsConfig) {
 			if status.ConfigSha256 != "" {
 				status.ConfigSha256 = sc.ImageSha256
 			}
+		}
+
+		// PartitionLabel can be empty here!
+		if status.PartitionLabel != "" {
+			status.Activated = getActivationStatus(config, &status)
 		}
 
 		baseOsStatusMap[uuidStr] = status
@@ -167,7 +167,7 @@ func getActivationStatus(config types.BaseOsConfig, status *types.BaseOsStatus) 
 		uuidStr := config.UUIDandVersion.UUID.String()
 		ret := setPersistentPartitionInfo(uuidStr, config, status)
 		if ret != nil {
-			errStr := fmt.Sprintf("getActivationStatus: %s\n", uuidStr, ret)
+			errStr := fmt.Sprintf("%v for %s\n", ret, uuidStr)
 			status.Error = errStr
 			status.ErrorTime = time.Now()
 			log.Printf("getActivationStatus: %s\n", errStr)
