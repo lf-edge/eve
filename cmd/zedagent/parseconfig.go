@@ -69,7 +69,8 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 		return false
 	}
 
-	baseOsList := make([]types.BaseOsConfig, len(cfgOsList))
+	baseOsList := make([]*types.BaseOsConfig, len(cfgOsList))
+	certList := make([]*types.CertObjConfig, len(cfgOsList))
 
 	for idx, cfgOs := range cfgOsList {
 
@@ -112,10 +113,12 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 				cfgOs.Drives, baseOs.PartitionLabel)
 		}
 
-		baseOsList[idx] = *baseOs
-
-		getCertObjects(baseOs.UUIDandVersion, baseOs.ConfigSha256,
-			baseOs.StorageConfigList)
+		baseOsList[idx] = baseOs
+		certInstance := getCertObjects(baseOs.UUIDandVersion,
+						baseOs.ConfigSha256, baseOs.StorageConfigList)
+		if certInstance != nil {
+			certList[idx] = certInstance
+		}
 
 		// Dump the config content
 		bytes, err := json.Marshal(baseOs)
@@ -125,7 +128,7 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 	}
 
 	if validateBaseOsConfig(baseOsList) == true {
-		configCount = createBaseOsConfig(baseOsList)
+		configCount = createBaseOsConfig(baseOsList, certList)
 	}
 
 	// baseOs config write, is true
@@ -265,15 +268,18 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig) {
 		fmt.Printf("Got adapters %v\n", appInstance.IoAdapterList)
 
 		// get the certs for image sha verification
-		getCertObjects(appInstance.UUIDandVersion,
+		certInstance := getCertObjects(appInstance.UUIDandVersion,
 			appInstance.ConfigSha256, appInstance.StorageConfigList)
 
 		if validateAppInstanceConfig(appInstance) == true {
 
 			// write to zedmanager config directory
-			appFilename := cfgApp.Uuidandversion.Uuid
+			filename := cfgApp.Uuidandversion.Uuid
 
-			writeAppInstanceConfig(appInstance, appFilename)
+			writeAppInstanceConfig(appInstance, filename)
+			if certInstance != nil {
+				writeCertObjConfig(certInstance, filename)
+			}
 		}
 	}
 }
@@ -538,9 +544,10 @@ func writeAppInstanceConfig(appInstance types.AppInstanceConfig,
 	}
 }
 
-func writeBaseOsConfig(baseOsConfig types.BaseOsConfig,
-	configFilename string) {
+func writeBaseOsConfig(baseOsConfig *types.BaseOsConfig,
+	filename string) {
 
+	configFilename := zedagentBaseOsConfigDirname + "/" + filename + ".json"
 	bytes, err := json.Marshal(baseOsConfig)
 
 	if err != nil {
@@ -573,7 +580,7 @@ func writeBaseOsStatus(baseOsStatus *types.BaseOsStatus,
 }
 
 func getCertObjects(uuidAndVersion types.UUIDandVersion,
-	sha256 string, drives []types.StorageConfig) {
+	sha256 string, drives []types.StorageConfig) *types.CertObjConfig {
 
 	var cidx int = 0
 
@@ -591,15 +598,12 @@ func getCertObjects(uuidAndVersion types.UUIDandVersion,
 
 	// if no cerificates, return
 	if cidx == 0 {
-		return
+		return nil
 	}
 
 	// using the holder object UUID for
 	// cert config json, and also the config sha
 	var config = &types.CertObjConfig{}
-	var certConfigFilename = uuidAndVersion.UUID.String()
-	var configFilename = fmt.Sprintf("%s/%s.json",
-		zedagentCertObjConfigDirname, certConfigFilename)
 
 	// certs object holder
 	// each storageConfigList entry is a
@@ -624,7 +628,7 @@ func getCertObjects(uuidAndVersion types.UUIDandVersion,
 		}
 	}
 
-	writeCertObjConfig(config, configFilename)
+	return config
 }
 
 func getCertObjConfig(config *types.CertObjConfig,
@@ -651,7 +655,7 @@ func getCertObjConfig(config *types.CertObjConfig,
 	config.StorageConfigList[idx] = *drive
 }
 
-func validateBaseOsConfig(baseOsList []types.BaseOsConfig) bool {
+func validateBaseOsConfig(baseOsList []*types.BaseOsConfig) bool {
 
 	var osCount, activateCount int
 
@@ -700,20 +704,22 @@ func validateBaseOsConfig(baseOsList []types.BaseOsConfig) bool {
 		}
 	}
 
-	InitializePartitionTable(baseOsList)
-	return true
+	return InitializePartitionTable(baseOsList)
 }
 
-func createBaseOsConfig(baseOsList []types.BaseOsConfig) int {
+func createBaseOsConfig(baseOsList []*types.BaseOsConfig, certList []*types.CertObjConfig) int {
 
 	writeCount := 0
-	for _, baseOsInstance := range baseOsList {
+	for idx, baseOsInstance := range baseOsList {
 
-		baseOsFilename := baseOsInstance.UUIDandVersion.UUID.String()
-		configFilename := zedagentBaseOsConfigDirname + "/" + baseOsFilename + ".json"
+		filename := baseOsInstance.UUIDandVersion.UUID.String()
+		configFilename := zedagentBaseOsConfigDirname + "/" + filename + ".json"
 		// file not present
 		if _, err := os.Stat(configFilename); err != nil {
-			writeBaseOsConfig(baseOsInstance, configFilename)
+			writeBaseOsConfig(baseOsInstance, filename)
+			if certList[idx] != nil {
+				writeCertObjConfig(certList[idx], filename)
+			}
 			writeCount++
 		} else {
 			baseOsConfig := &types.BaseOsConfig{}
@@ -727,7 +733,10 @@ func createBaseOsConfig(baseOsList []types.BaseOsConfig) int {
 			}
 			// changed file
 			if !reflect.DeepEqual(baseOsConfig, baseOsInstance) {
-				writeBaseOsConfig(baseOsInstance, configFilename)
+				writeBaseOsConfig(baseOsInstance, filename)
+				if certList[idx] != nil {
+					writeCertObjConfig(certList[idx], filename)
+				}
 				writeCount++
 			}
 		}
@@ -739,7 +748,9 @@ func validateAppInstanceConfig(appInstance types.AppInstanceConfig) bool {
 	return true
 }
 
-func writeCertObjConfig(config *types.CertObjConfig, configFilename string) {
+func writeCertObjConfig(config *types.CertObjConfig, filename string) {
+
+	configFilename := zedagentCertObjConfigDirname + "/" + filename + ".json"
 
 	bytes, err := json.Marshal(config)
 	if err != nil {

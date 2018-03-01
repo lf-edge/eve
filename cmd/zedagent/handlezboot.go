@@ -286,10 +286,10 @@ func zbootWriteToPartition(srcFilename string, partName string) error {
 	return nil
 }
 
-func InitializePartitionTable(baseOsList []types.BaseOsConfig) {
+func InitializePartitionTable(baseOsList []*types.BaseOsConfig) bool {
 
 	if !isZbootAvailable() {
-		return
+		return true
 	}
 	curPart := getCurrentPartition()
 	otherPart := getOtherPartition()
@@ -300,20 +300,24 @@ func InitializePartitionTable(baseOsList []types.BaseOsConfig) {
 	// if not current partition config does not have
 	// activation flag set, switch to other partition
 	if currActiveState && otherActiveState {
-		log.Printf("Both partitions are Active %s, %s n", curPart, otherPart)
-		log.Printf("Mark other partition %s, unused\n", otherPart)
+		log.Printf("Both partitions are Active %s, %s", curPart, otherPart)
 		if isCurPartActivateSet(baseOsList) {
+			log.Printf("Mark other partition %s, unused\n", otherPart)
 			setOtherPartitionStateUnused()
 		} else {
+			log.Printf("Mark current partition %s, unused\n", curPart)
+			log.Printf("and Schedule Reboot\n")
 			setCurrentPartitionStateUnused()
 			startExecReboot()
+			return false
 		}
 	}
+	return true
 }
 
 // check is this is current partition and activate is set
 // for the config
-func isCurPartActivateSet(baseOsList []types.BaseOsConfig) bool {
+func isCurPartActivateSet(baseOsList []*types.BaseOsConfig) bool {
 
 	for _, baseOsConfig := range baseOsList {
 
@@ -412,7 +416,7 @@ func removePartitionMap(mapFilename string, partInfo *types.PartitionInfo) bool 
 		for _, sc := range config.StorageConfigList {
 			sc.FinalObjDir = ""
 		}
-		writeBaseOsConfig(*config, configFilename)
+		writeBaseOsConfig(config, configFilename)
 	}
 
 	// and mark status as DELIVERED
