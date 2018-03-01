@@ -141,9 +141,9 @@ func configTimerTask() {
 // until one succeeds in communicating with the cloud.
 // We use the iteration argument to start at a different point each time.
 func getLatestConfig(configUrl string, iteration int, checkConnectivity *bool) {
-	ok, resp := sendOnAllIntf(configUrl, nil, iteration)
-	if !ok {
-		// error was already logged
+	resp, err := sendOnAllIntf(configUrl, nil, iteration)
+	if err != nil {
+		log.Printf("getLatestConfig failed: %s\n", err)
 		return
 	} else {
 		defer resp.Body.Close()

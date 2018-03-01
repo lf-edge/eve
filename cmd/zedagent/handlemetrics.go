@@ -853,8 +853,9 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 	// XXX vary for load spreading when multiple free or multiple non-free
 	// uplinks
 	iteration := 0
-	ok := SendProtobufStrThroughHttp(statusUrl, data, iteration)
-	if !ok {
+	err = SendProtobufStrThroughHttp(statusUrl, data, iteration)
+	if err != nil {
+		log.Printf("PublishDeviceInfoToZedCloud failed: %s\n", err)
 		// XXX reschedule doing this again later somehow
 		// Queue data on deviceQueue; replace if fails again
 	} else {
@@ -961,8 +962,9 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 	// XXX vary for load spreading when multiple free or multiple non-free
 	// uplinks
 	iteration := 0
-	ok := SendProtobufStrThroughHttp(statusUrl, data, iteration)
-	if !ok {
+	err = SendProtobufStrThroughHttp(statusUrl, data, iteration)
+	if err != nil {
+		log.Printf("PublishAppInfoToZedCloud failed: %s\n", err)
 		// XXX reschedule doing this again later somehow
 		// Queue data on for this app; replace if fails again
 	} else {
@@ -974,13 +976,13 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 // send report on each uplink.
 // For each uplink we try different source IPs until we find a working one.
 // Returns true/false for success/failure
-func SendProtobufStrThroughHttp(statusUrl string, data []byte, iteration int) bool {
-	ok, resp := sendOnAllIntf(statusUrl, data, iteration)
-	if !ok {
-		return false
+func SendProtobufStrThroughHttp(statusUrl string, data []byte, iteration int) error {
+	resp, err := sendOnAllIntf(statusUrl, data, iteration)
+	if err != nil {
+		return err
 	}
 	resp.Body.Close()
-	return true
+	return nil
 }
 
 // Try all (first free, then rest) until it gets through.
@@ -993,9 +995,10 @@ func SendMetricsProtobufStrThroughHttp(ReportMetrics *zmet.ZMetricMsg,
 		log.Fatal("SendInfoProtobufStr proto marshaling error: ", err)
 	}
 
-	ok, resp := sendOnAllIntf(metricsUrl, data, iteration)
-	if !ok {
+	resp, err := sendOnAllIntf(metricsUrl, data, iteration)
+	if err != nil {
 		// Hopefully next timeout will be more successful
+		log.Printf("SendMetrics failed: %s\n", err)
 		return
 	}
 	resp.Body.Close()
