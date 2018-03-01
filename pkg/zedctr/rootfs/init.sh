@@ -2,6 +2,9 @@
 #
 # This *really* needs to be replaced with tini+monit ASAP.
 
+# Start with a default content for resolv.conf
+echo 'nameserver 8.8.8.8' > /etc/resolv.conf
+
 # Mount /config
 CFGDEV=$(cgpt find -t 13307e62-cd9c-4920-8f9b-91b45828b798)
 if [ ! "x$CFGDEV" = "x" ]; then
