@@ -130,6 +130,7 @@ message ZInfoDevice {
 
   repeated ZInfoDevSW swList = 19;
   string   HostName = 20;
+  repeated MetricItem metricItems = 21; // For instance, static LTE network info
 }
 
 //SW Info for the device base OS
