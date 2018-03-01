@@ -41,6 +41,20 @@ message ZInfoNetwork {
   repeated string defaultRouters = 6; // If DHCP assigned
   ZInfoDNS dns = 7; // If DHCP assigned
   bool up = 8;      // operational up/down status.
+  GeoLoc location = 9;
+}
+
+// From an IP address-based geolocation service
+// XXX later define GPS coordinates from device
+message GeoLoc {
+  string UnderlayIP = 1;
+  string Hostname = 2;
+  string City = 3;
+  string Region = 4;
+  string Country = 5;
+  string Loc = 6;
+  string Org = 7;
+  string Postal = 8;
 }
 
 // This is used both to represent the information we receive from DHCP
@@ -116,6 +130,7 @@ message ZInfoDevice {
 
   repeated ZInfoDevSW swList = 19;
   string   HostName = 20;
+  repeated MetricItem metricItems = 21; // For instance, static LTE network info
 }
 
 //SW Info for the device base OS
@@ -276,14 +291,24 @@ message deviceMetric {
   repeated MetricItem metricItems = 8;
 }
 
+enum MetricItemType {
+  MetricItemOther = 0;		// E.g., a string like an ESSID
+  MetricItemGauge = 1;		// Goes up and down over time
+  MetricItemCounter = 2;	// Monotonically increasing (until reboot)
+  MetricItemState = 3;		// Toggles on and off; count transitions
+}
+
 // Open-ended metrics from different part of the device such as LTE modem
 // metrics.
 message MetricItem {
-	string key = 1;		// E.g., "lte-metrics"??
+	string key = 1;		// E.g., "lte-signal-strength"
+	MetricItemType type = 2;
 	oneof metricItemValue {
-		uint32 uint32Value = 2;
-		string stringValue = 3;
-		string jsonValue = 4;
+		bool boolValue = 3;
+		uint32 uint32Value = 4;	// If timer this is in seconds
+		uint64 uint64Value = 5;
+		float floatValue = 6;
+		string stringValue = 7; // Use with care
 	}
 }		
 
