@@ -850,6 +850,7 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 		log.Fatal("PublishDeviceInfoToZedCloud proto marshaling error: ", err)
 	}
 
+	statusUrl := serverName + "/" + statusApi
 	// XXX vary for load spreading when multiple free or multiple non-free
 	// uplinks
 	iteration := 0
@@ -886,7 +887,7 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 		ReportAppInfo.AppName = aiStatus.DisplayName
 		ds := LookupDomainStatusUUID(uuid)
 		if ds == nil {
-			log.Printf("Did not find DomainStaus for UUID %s\n",
+			log.Printf("Did not find DomainStatus for UUID %s\n",
 				uuid)
 			// XXX should we reschedule when we have a domainStatus?
 			// Avoid nil checks
@@ -959,6 +960,7 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 		log.Fatal("PublishAppInfoToZedCloud proto marshaling error: ", err)
 	}
 
+	statusUrl := serverName + "/" + statusApi
 	// XXX vary for load spreading when multiple free or multiple non-free
 	// uplinks
 	iteration := 0
@@ -976,8 +978,8 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 // send report on each uplink.
 // For each uplink we try different source IPs until we find a working one.
 // Returns true/false for success/failure
-func SendProtobufStrThroughHttp(statusUrl string, data []byte, iteration int) error {
-	resp, err := sendOnAllIntf(statusUrl, data, iteration)
+func SendProtobufStrThroughHttp(url string, data []byte, iteration int) error {
+	resp, err := sendOnAllIntf(url, data, iteration)
 	if err != nil {
 		return err
 	}
@@ -995,10 +997,11 @@ func SendMetricsProtobufStrThroughHttp(ReportMetrics *zmet.ZMetricMsg,
 		log.Fatal("SendInfoProtobufStr proto marshaling error: ", err)
 	}
 
+	metricsUrl := serverName + "/" + metricsApi
 	resp, err := sendOnAllIntf(metricsUrl, data, iteration)
 	if err != nil {
 		// Hopefully next timeout will be more successful
-		log.Printf("SendMetrics failed: %s\n", err)
+		log.Printf("SendMetricsProtobuf failed: %s\n", err)
 		return
 	}
 	resp.Body.Close()
