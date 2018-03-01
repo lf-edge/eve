@@ -853,7 +853,7 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 	// XXX vary for load spreading when multiple free or multiple non-free
 	// uplinks
 	iteration := 0
-	ok := SendProtobufStrThroughHttp(configUrl, data, iteration)
+	ok := SendProtobufStrThroughHttp(statusUrl, data, iteration)
 	if !ok {
 		// XXX reschedule doing this again later somehow
 		// Queue data on deviceQueue; replace if fails again
