@@ -123,10 +123,8 @@ func main() {
 	watch.WaitForFile(restartFile)
 	log.Printf("Zedmanager reported in %s\n", restartFile)
 
-	// This function is called when some uplink interface changes
+	// This function is called from PBR when some uplink interface changes
 	// its IP address(es)
-	// XXX Do we need to collapse multiple changes into one?
-	// Or just feed this into a separate channel? Or defer for lisp?
 	addrChangeFn := func(ifname string) {
 		log.Printf("addrChangeFn(%s) called\n", ifname)
 		new, _ := types.MakeDeviceNetworkStatus(deviceNetworkConfig)

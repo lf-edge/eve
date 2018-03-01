@@ -121,7 +121,8 @@ func handleConfigInit() {
 // for each of the above buckets
 // XXX Combine with being able to change the timer intervals - generate at random
 // times between .3x and 1x
-func configTimerTask() {
+
+func configTimerTask(handleChannel chan interface{}) {
 	iteration := 0
 	checkConnectivity := isZbootAvailable() && isCurrentPartitionStateInProgress()
 	getLatestConfig(configUrl, iteration, &checkConnectivity)
@@ -129,12 +130,20 @@ func configTimerTask() {
 	// Make this configurable from zedcloud and call update on ticker
 	max := float64(time.Minute * configTickTimeout)
 	min := max * 0.3
-	ticker := flextimer.NewRangeTicker(time.Duration(min), time.Duration(max))
-
-	for range ticker.C {
+	configTicker := flextimer.NewRangeTicker(time.Duration(min),
+		time.Duration(max))
+	// Return handle to caller
+	handleChannel <- configTicker
+	for range configTicker.C {
 		iteration += 1
 		getLatestConfig(configUrl, iteration, &checkConnectivity)
 	}
+}
+
+func triggerGetConfig(handle interface{}) {
+	// XXX
+	log.Printf("triggerGetConfig()\n")
+	flextimer.TickNow(handle)
 }
 
 // Start by trying the all the free uplinks and then all the non-free
