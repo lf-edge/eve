@@ -772,6 +772,11 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 						break
 					}
 				}
+				// XXX add geoloc information for the interface
+				// XXX where do we run geoloc? Triggered in
+				// handleDNC? Output as separate collection
+				// so we can run as go routine and not block?
+
 				// XXX once we have static config add any
 				// config errors. Note that this might imply
 				// reporting for devices which do not exist.

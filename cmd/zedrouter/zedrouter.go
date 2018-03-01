@@ -1188,6 +1188,8 @@ func handleDNCDelete(ctxArg interface{}, configFilename string) {
 	log.Printf("handleDNCDelete done for %s\n", configFilename)
 }
 
+// XXX should we trigger a geoloc request? Wait for it to be done?
+// XXX with a short 10 second timeout?
 func doDNSUpdate(ctx *DNCContext) {
 	// Did we loose all usable addresses or gain the first usable
 	// address?
