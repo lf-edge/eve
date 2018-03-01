@@ -41,6 +41,20 @@ message ZInfoNetwork {
   repeated string defaultRouters = 6; // If DHCP assigned
   ZInfoDNS dns = 7; // If DHCP assigned
   bool up = 8;      // operational up/down status.
+  GeoLoc location = 9;
+}
+
+// From an IP address-based geolocation service
+// XXX later define GPS coordinates from device
+message GeoLoc {
+  string UnderlayIP = 1;
+  string Hostname = 2;
+  string City = 3;
+  string Region = 4;
+  string Country = 5;
+  string Loc = 6;
+  string Org = 7;
+  string Postal = 8;
 }
 
 // This is used both to represent the information we receive from DHCP
