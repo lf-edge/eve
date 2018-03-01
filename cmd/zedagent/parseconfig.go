@@ -152,12 +152,12 @@ func checkPartitionInfo(baseOs *types.BaseOsConfig, baseOsCount int) {
 		if isOtherPartitionStateUnused() {
 			log.Printf("getPartitionInfo(%s) unused\n",
 				baseOs.BaseOsVersion)
+			baseOs.PartitionLabel = getOtherPartition()
 		} else if isOtherPartitionStateUpdating() {
 			// XXX Did we get an update before we activated
 			// the previous update?
 			log.Printf("XXX getPartitionInfo(%s) updating\n",
 				baseOs.BaseOsVersion)
-			// XXX do we need this? baseOs.PartitionLabel = getOtherPartition()
 		}
 	}
 
@@ -714,7 +714,7 @@ func createBaseOsConfig(baseOsList []types.BaseOsConfig) int {
 		// file not present
 		if _, err := os.Stat(configFilename); err != nil {
 			writeBaseOsConfig(baseOsInstance, configFilename)
-			writeCount ++
+			writeCount++
 		} else {
 			baseOsConfig := &types.BaseOsConfig{}
 			bytes, err := ioutil.ReadFile(configFilename)

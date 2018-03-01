@@ -155,9 +155,33 @@ func getActivationStatus(config types.BaseOsConfig, status *types.BaseOsStatus) 
 	uuidStr := status.UUIDandVersion.UUID.String()
 	imageSha256 := baseOsGetImageSha(config)
 	partInfo := getPersistentPartitionInfo(uuidStr, imageSha256)
+
 	if partInfo == nil {
-		log.Fatal("getActivationStatus(%s): inconsistent partitionLabel %s\n",
+		// only for other partition
+		if !isOtherPartition(config.PartitionLabel) {
+			return false
+		}
+
+		log.Printf("getActivationStatus(%s): missing partitionMap %s\n",
 			status.BaseOsVersion, status.PartitionLabel)
+		uuidStr := config.UUIDandVersion.UUID.String()
+		ret := setPersistentPartitionInfo(uuidStr, config, status)
+		if ret != nil {
+			errStr := fmt.Sprintf("getActivationStatus: %s\n", uuidStr, ret)
+			status.Error = errStr
+			status.ErrorTime = time.Now()
+			log.Printf("getActivationStatus: %s\n", errStr)
+			return false
+		}
+		partInfo = getPersistentPartitionInfo(uuidStr, imageSha256)
+		if partInfo == nil {
+			errStr := fmt.Sprintf("%s, inconsistent partitionLabel %s\n",
+				status.BaseOsVersion, status.PartitionLabel)
+			status.Error = errStr
+			status.ErrorTime = time.Now()
+			log.Printf("getActivationStatus: %s\n", errStr)
+			return false
+		}
 	}
 	// replicate state information
 	status.State = partInfo.State
