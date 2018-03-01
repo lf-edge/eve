@@ -24,7 +24,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='devconfig.proto',
   package='',
   syntax='proto3',
-  serialized_pb=_b('\n\x0f\x64\x65vconfig.proto\x1a\x0f\x64\x65vcommon.proto\x1a\x0f\x61ppconfig.proto\x1a\x12\x62\x61seosconfig.proto\x1a\x0fnetconfig.proto\x1a\rstorage.proto\"1\n\tMapServer\x12\x10\n\x08NameOrIp\x18\x01 \x01(\t\x12\x12\n\nCredential\x18\x02 \x01(\t\"*\n\tZedServer\x12\x10\n\x08HostName\x18\x01 \x01(\t\x12\x0b\n\x03\x45ID\x18\x02 \x03(\t\"\xf5\x01\n\x11\x44\x65viceLispDetails\x12\"\n\x0eLispMapServers\x18\x01 \x03(\x0b\x32\n.MapServer\x12\x14\n\x0cLispInstance\x18\x02 \x01(\r\x12\x0b\n\x03\x45ID\x18\x04 \x01(\t\x12\x12\n\nEIDHashLen\x18\x05 \x01(\r\x12\x1e\n\nZedServers\x18\x06 \x03(\x0b\x32\n.ZedServer\x12\x1b\n\x13\x45idAllocationPrefix\x18\x08 \x01(\x0c\x12\x1e\n\x16\x45idAllocationPrefixLen\x18\t \x01(\r\x12\x12\n\nClientAddr\x18\n \x01(\t\x12\x14\n\x0c\x45xperimental\x18\x14 \x01(\x08\"F\n\x0c\x44\x65viceOpsCmd\x12\x0f\n\x07\x63ounter\x18\x02 \x01(\r\x12\x14\n\x0c\x64\x65siredState\x18\x03 \x01(\x08\x12\x0f\n\x07opsTime\x18\x04 \x01(\t\"\xee\x02\n\rEdgeDevConfig\x12\x1b\n\x02id\x18\x01 \x01(\x0b\x32\x0f.UUIDandVersion\x12\x17\n\x0f\x64\x65vConfigSha256\x18\x02 \x01(\x0c\x12\x1a\n\x12\x64\x65vConfigSignature\x18\x03 \x01(\x0c\x12 \n\x04\x61pps\x18\x04 \x03(\x0b\x32\x12.AppInstanceConfig\x12 \n\x08networks\x18\x05 \x03(\x0b\x32\x0e.NetworkConfig\x12$\n\ndatastores\x18\x06 \x03(\x0b\x32\x10.DatastoreConfig\x12$\n\x08lispInfo\x18\x07 \x01(\x0b\x32\x12.DeviceLispDetails\x12\x1b\n\x04\x62\x61se\x18\x08 \x03(\x0b\x32\r.BaseOSConfig\x12\x1d\n\x06reboot\x18\t \x01(\x0b\x32\r.DeviceOpsCmd\x12\x1d\n\x06\x62\x61\x63kup\x18\n \x01(\x0b\x32\r.DeviceOpsCmd\x12 \n\x0b\x63onfigItems\x18\x0b \x03(\x0b\x32\x0b.ConfigItem\"o\n\nConfigItem\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x15\n\x0buint32Value\x18\x02 \x01(\rH\x00\x12\x15\n\x0bstringValue\x18\x03 \x01(\tH\x00\x12\x13\n\tjsonValue\x18\x04 \x01(\tH\x00\x42\x11\n\x0f\x63onfigItemValue\"#\n\rConfigRequest\x12\x12\n\nconfigHash\x18\x01 \x01(\t\"D\n\x0e\x43onfigResponse\x12\x1e\n\x06\x63onfig\x18\x01 \x01(\x0b\x32\x0e.EdgeDevConfig\x12\x12\n\nconfigHash\x18\x02 \x01(\tB@\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1dgithub.com/zededa/api/zconfigb\x06proto3')
+  serialized_pb=_b('\n\x0f\x64\x65vconfig.proto\x1a\x0f\x64\x65vcommon.proto\x1a\x0f\x61ppconfig.proto\x1a\x12\x62\x61seosconfig.proto\x1a\x0fnetconfig.proto\x1a\rstorage.proto\"1\n\tMapServer\x12\x10\n\x08NameOrIp\x18\x01 \x01(\t\x12\x12\n\nCredential\x18\x02 \x01(\t\"*\n\tZedServer\x12\x10\n\x08HostName\x18\x01 \x01(\t\x12\x0b\n\x03\x45ID\x18\x02 \x03(\t\"\xf5\x01\n\x11\x44\x65viceLispDetails\x12\"\n\x0eLispMapServers\x18\x01 \x03(\x0b\x32\n.MapServer\x12\x14\n\x0cLispInstance\x18\x02 \x01(\r\x12\x0b\n\x03\x45ID\x18\x04 \x01(\t\x12\x12\n\nEIDHashLen\x18\x05 \x01(\r\x12\x1e\n\nZedServers\x18\x06 \x03(\x0b\x32\n.ZedServer\x12\x1b\n\x13\x45idAllocationPrefix\x18\x08 \x01(\x0c\x12\x1e\n\x16\x45idAllocationPrefixLen\x18\t \x01(\r\x12\x12\n\nClientAddr\x18\n \x01(\t\x12\x14\n\x0c\x45xperimental\x18\x14 \x01(\x08\"F\n\x0c\x44\x65viceOpsCmd\x12\x0f\n\x07\x63ounter\x18\x02 \x01(\r\x12\x14\n\x0c\x64\x65siredState\x18\x03 \x01(\x08\x12\x0f\n\x07opsTime\x18\x04 \x01(\t\"\xee\x02\n\rEdgeDevConfig\x12\x1b\n\x02id\x18\x01 \x01(\x0b\x32\x0f.UUIDandVersion\x12\x17\n\x0f\x64\x65vConfigSha256\x18\x02 \x01(\x0c\x12\x1a\n\x12\x64\x65vConfigSignature\x18\x03 \x01(\x0c\x12 \n\x04\x61pps\x18\x04 \x03(\x0b\x32\x12.AppInstanceConfig\x12 \n\x08networks\x18\x05 \x03(\x0b\x32\x0e.NetworkConfig\x12$\n\ndatastores\x18\x06 \x03(\x0b\x32\x10.DatastoreConfig\x12$\n\x08lispInfo\x18\x07 \x01(\x0b\x32\x12.DeviceLispDetails\x12\x1b\n\x04\x62\x61se\x18\x08 \x03(\x0b\x32\r.BaseOSConfig\x12\x1d\n\x06reboot\x18\t \x01(\x0b\x32\r.DeviceOpsCmd\x12\x1d\n\x06\x62\x61\x63kup\x18\n \x01(\x0b\x32\r.DeviceOpsCmd\x12 \n\x0b\x63onfigItems\x18\x0b \x03(\x0b\x32\x0b.ConfigItem\"\x9c\x01\n\nConfigItem\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x13\n\tboolValue\x18\x03 \x01(\x08H\x00\x12\x15\n\x0buint32Value\x18\x04 \x01(\rH\x00\x12\x15\n\x0buint64Value\x18\x05 \x01(\x04H\x00\x12\x14\n\nfloatValue\x18\x06 \x01(\x02H\x00\x12\x15\n\x0bstringValue\x18\x07 \x01(\tH\x00\x42\x11\n\x0f\x63onfigItemValue\"#\n\rConfigRequest\x12\x12\n\nconfigHash\x18\x01 \x01(\t\"D\n\x0e\x43onfigResponse\x12\x1e\n\x06\x63onfig\x18\x01 \x01(\x0b\x32\x0e.EdgeDevConfig\x12\x12\n\nconfigHash\x18\x02 \x01(\tB@\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1dgithub.com/zededa/api/zconfigb\x06proto3')
   ,
   dependencies=[devcommon__pb2.DESCRIPTOR,appconfig__pb2.DESCRIPTOR,baseosconfig__pb2.DESCRIPTOR,netconfig__pb2.DESCRIPTOR,storage__pb2.DESCRIPTOR,])
 
@@ -355,22 +355,36 @@ _CONFIGITEM = _descriptor.Descriptor(
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='uint32Value', full_name='ConfigItem.uint32Value', index=1,
-      number=2, type=13, cpp_type=3, label=1,
+      name='boolValue', full_name='ConfigItem.boolValue', index=1,
+      number=3, type=8, cpp_type=7, label=1,
+      has_default_value=False, default_value=False,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='uint32Value', full_name='ConfigItem.uint32Value', index=2,
+      number=4, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='stringValue', full_name='ConfigItem.stringValue', index=2,
-      number=3, type=9, cpp_type=9, label=1,
-      has_default_value=False, default_value=_b("").decode('utf-8'),
+      name='uint64Value', full_name='ConfigItem.uint64Value', index=3,
+      number=5, type=4, cpp_type=4, label=1,
+      has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='jsonValue', full_name='ConfigItem.jsonValue', index=3,
-      number=4, type=9, cpp_type=9, label=1,
+      name='floatValue', full_name='ConfigItem.floatValue', index=4,
+      number=6, type=2, cpp_type=6, label=1,
+      has_default_value=False, default_value=float(0),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='stringValue', full_name='ConfigItem.stringValue', index=5,
+      number=7, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
@@ -390,8 +404,8 @@ _CONFIGITEM = _descriptor.Descriptor(
       name='configItemValue', full_name='ConfigItem.configItemValue',
       index=0, containing_type=None, fields=[]),
   ],
-  serialized_start=889,
-  serialized_end=1000,
+  serialized_start=890,
+  serialized_end=1046,
 )
 
 
@@ -421,8 +435,8 @@ _CONFIGREQUEST = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1002,
-  serialized_end=1037,
+  serialized_start=1048,
+  serialized_end=1083,
 )
 
 
@@ -459,8 +473,8 @@ _CONFIGRESPONSE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1039,
-  serialized_end=1107,
+  serialized_start=1085,
+  serialized_end=1153,
 )
 
 _DEVICELISPDETAILS.fields_by_name['LispMapServers'].message_type = _MAPSERVER
@@ -475,14 +489,20 @@ _EDGEDEVCONFIG.fields_by_name['reboot'].message_type = _DEVICEOPSCMD
 _EDGEDEVCONFIG.fields_by_name['backup'].message_type = _DEVICEOPSCMD
 _EDGEDEVCONFIG.fields_by_name['configItems'].message_type = _CONFIGITEM
 _CONFIGITEM.oneofs_by_name['configItemValue'].fields.append(
+  _CONFIGITEM.fields_by_name['boolValue'])
+_CONFIGITEM.fields_by_name['boolValue'].containing_oneof = _CONFIGITEM.oneofs_by_name['configItemValue']
+_CONFIGITEM.oneofs_by_name['configItemValue'].fields.append(
   _CONFIGITEM.fields_by_name['uint32Value'])
 _CONFIGITEM.fields_by_name['uint32Value'].containing_oneof = _CONFIGITEM.oneofs_by_name['configItemValue']
 _CONFIGITEM.oneofs_by_name['configItemValue'].fields.append(
+  _CONFIGITEM.fields_by_name['uint64Value'])
+_CONFIGITEM.fields_by_name['uint64Value'].containing_oneof = _CONFIGITEM.oneofs_by_name['configItemValue']
+_CONFIGITEM.oneofs_by_name['configItemValue'].fields.append(
+  _CONFIGITEM.fields_by_name['floatValue'])
+_CONFIGITEM.fields_by_name['floatValue'].containing_oneof = _CONFIGITEM.oneofs_by_name['configItemValue']
+_CONFIGITEM.oneofs_by_name['configItemValue'].fields.append(
   _CONFIGITEM.fields_by_name['stringValue'])
 _CONFIGITEM.fields_by_name['stringValue'].containing_oneof = _CONFIGITEM.oneofs_by_name['configItemValue']
-_CONFIGITEM.oneofs_by_name['configItemValue'].fields.append(
-  _CONFIGITEM.fields_by_name['jsonValue'])
-_CONFIGITEM.fields_by_name['jsonValue'].containing_oneof = _CONFIGITEM.oneofs_by_name['configItemValue']
 _CONFIGRESPONSE.fields_by_name['config'].message_type = _EDGEDEVCONFIG
 DESCRIPTOR.message_types_by_name['MapServer'] = _MAPSERVER
 DESCRIPTOR.message_types_by_name['ZedServer'] = _ZEDSERVER
