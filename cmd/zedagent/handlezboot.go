@@ -517,7 +517,7 @@ func setPersistentPartitionInfo(uuidStr string, config types.BaseOsConfig, statu
 	mapFilename := configDir + "/" + config.PartitionLabel + ".json"
 
 	if match := removePartitionMap(mapFilename, partInfo); match == true {
-		log.Printf("Updating existing Partition Map Status\n", partName)
+		log.Printf("Updating existing Partition Map Status %s\n", partName)
 	}
 
 	// XXX:FIXME, Take care of retry count
