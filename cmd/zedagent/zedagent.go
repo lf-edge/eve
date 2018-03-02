@@ -364,6 +364,7 @@ func handleInit() {
 	initializeDirs()
 	initMaps()
 	getCloudUrls()
+	initializePartitionMap()
 }
 
 func initializeDirs() {

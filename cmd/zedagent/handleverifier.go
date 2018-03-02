@@ -218,6 +218,13 @@ func checkStorageVerifierStatus(objType string, uuidStr string,
 
 		safename := types.UrlToSafename(sc.DownloadURL, sc.ImageSha256)
 
+		log.Printf("checkStorageVerifierStatus for %s\n", sc.DownloadURL)
+
+		if ss.State == types.INSTALLED {
+			minState = ss.State
+			continue
+		}
+
 		vs, err := lookupVerificationStatusAny(objType, safename, sc.ImageSha256)
 		if err != nil {
 			log.Printf("%s, %v\n", safename, err)

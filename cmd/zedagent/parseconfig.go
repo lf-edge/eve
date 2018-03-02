@@ -704,7 +704,7 @@ func validateBaseOsConfig(baseOsList []*types.BaseOsConfig) bool {
 		}
 	}
 
-	return InitializePartitionTable(baseOsList)
+	return normalizePartitionMap(baseOsList)
 }
 
 func createBaseOsConfig(baseOsList []*types.BaseOsConfig, certList []*types.CertObjConfig) int {

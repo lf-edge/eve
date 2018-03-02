@@ -183,10 +183,14 @@ func getActivationStatus(config types.BaseOsConfig, status *types.BaseOsStatus) 
 			return false
 		}
 	}
+	log.Printf("getActivationStatus(%s): state %v\n", uuidStr, partInfo.State)
 	// replicate state information
-	status.State = partInfo.State
-	for _, ss := range status.StorageStatusList {
-		ss.State = partInfo.State
+
+	if partInfo.State == types.INSTALLED {
+		status.State = partInfo.State
+		for _, ss := range status.StorageStatusList {
+			ss.State = partInfo.State
+		}
 	}
 
 	// replicate Error Info

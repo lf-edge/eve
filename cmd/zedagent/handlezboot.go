@@ -286,7 +286,21 @@ func zbootWriteToPartition(srcFilename string, partName string) error {
 	return nil
 }
 
-func InitializePartitionTable(baseOsList []*types.BaseOsConfig) bool {
+func initializePartitionMap() {
+	resetPartitionMapState(getCurrentPartition())
+	resetPartitionMapState(getOtherPartition())
+}
+
+func resetPartitionMapState(partName string) {
+	// reset state, if not installed
+	partInfo := readPartitionInfo(partName)
+	if partInfo != nil && partInfo.State != types.INSTALLED {
+		partInfo.State = 0
+		writePartitionInfo(partName, partInfo)
+	}
+}
+
+func normalizePartitionMap(baseOsList []*types.BaseOsConfig) bool {
 
 	if !isZbootAvailable() {
 		return true
@@ -304,7 +318,9 @@ func InitializePartitionTable(baseOsList []*types.BaseOsConfig) bool {
 		if isCurPartActivateSet(baseOsList) {
 			log.Printf("Mark other partition %s, unused\n", otherPart)
 			setOtherPartitionStateUnused()
-		} else {
+			return true
+		}
+		if isOtherPartActivateSet(baseOsList) {
 			log.Printf("Mark current partition %s, unused\n", curPart)
 			log.Printf("and Schedule Reboot\n")
 			setCurrentPartitionStateUnused()
@@ -323,6 +339,19 @@ func isCurPartActivateSet(baseOsList []*types.BaseOsConfig) bool {
 
 		if baseOsConfig.PartitionLabel != "" &&
 			isCurrentPartition(baseOsConfig.PartitionLabel) {
+			return baseOsConfig.Activate
+		}
+	}
+
+	return false
+}
+
+func isOtherPartActivateSet(baseOsList []*types.BaseOsConfig) bool {
+
+	for _, baseOsConfig := range baseOsList {
+
+		if baseOsConfig.PartitionLabel != "" &&
+			isOtherPartition(baseOsConfig.PartitionLabel) {
 			return baseOsConfig.Activate
 		}
 	}
@@ -379,6 +408,44 @@ func readPartitionInfo(partName string) *types.PartitionInfo {
 	return partInfo
 }
 
+func writePartitionInfo(partName string,
+			 partInfo *types.PartitionInfo) error {
+
+	validatePartitionName(partName)
+
+	mapFilename := configDir + "/" + partName + ".json"
+
+	bytes, err := json.Marshal(partInfo)
+	if err != nil {
+		errStr := fmt.Sprintf("%s, marshalling error %s\n", partName, err)
+		log.Println(errStr)
+		return errors.New(errStr)
+	}
+
+	log.Println(partInfo)
+
+	if err := ioutil.WriteFile(mapFilename, bytes, 0644); err != nil {
+		errStr := fmt.Sprintf("%s, file write error %s\n", partName, err)
+		log.Println(errStr)
+		return errors.New(errStr)
+	}
+	return nil
+}
+
+// delete other Partition Info
+func deletePartitionInfo(partName string) {
+
+	validatePartitionName(partName)
+	if !isOtherPartition(partName) {
+		return
+	}
+
+	mapFilename := configDir + "/" + partName + ".json"
+	if err := os.Remove(mapFilename); err != nil {
+		log.Printf("%v for %s\n", err, mapFilename)
+	}
+}
+
 func readCurrentPartitionInfo() *types.PartitionInfo {
 	partName := getCurrentPartition()
 	return readPartitionInfo(partName)
@@ -389,8 +456,25 @@ func readOtherPartitionInfo() *types.PartitionInfo {
 	return readPartitionInfo(partName)
 }
 
+func writeCurrentPartitionInfo(partInfo *types.PartitionInfo) error {
+	partName := getCurrentPartition()
+	return writePartitionInfo(partName, partInfo)
+}
+
+func writeOtherPartitionInfo(partInfo *types.PartitionInfo) error {
+	partName := getOtherPartition()
+	return writePartitionInfo(partName, partInfo)
+}
+
 // has to be always other partition
-func removePartitionMap(mapFilename string, partInfo *types.PartitionInfo) bool {
+func clearPartitionMap(partName string, partInfo *types.PartitionInfo) bool {
+
+	validatePartitionName(partName)
+
+	if !isOtherPartition(partName) {
+		return false
+	}
+
 	otherPartInfo := readOtherPartitionInfo()
 	if otherPartInfo == nil {
 		return false
@@ -430,13 +514,11 @@ func removePartitionMap(mapFilename string, partInfo *types.PartitionInfo) bool 
 			otherPartInfo.PartitionLabel)
 		status.Error = errStr
 		status.ErrorTime = time.Now()
+		status.PartitionLabel = ""
 		writeBaseOsStatus(status, statusFilename)
 	}
 
-	partMapFilename := configDir + "/" + otherPartInfo.PartitionLabel + ".json"
-	if err := os.Remove(partMapFilename); err != nil {
-		log.Printf("%v for %s\n", err, partMapFilename)
-	}
+	deletePartitionInfo(partName)
 	return false
 }
 
@@ -488,7 +570,9 @@ func getPersistentPartitionInfo(uuidStr string, imageSha256 string) *types.Parti
 }
 
 // can only be done to the other partition
-func setPersistentPartitionInfo(uuidStr string, config types.BaseOsConfig, status *types.BaseOsStatus) error {
+func setPersistentPartitionInfo(uuidStr string, config types.BaseOsConfig,
+		 status *types.BaseOsStatus) error {
+
 	partName := config.PartitionLabel
 	log.Printf("%s, set partition %s\n", uuidStr, partName)
 
@@ -518,29 +602,12 @@ func setPersistentPartitionInfo(uuidStr string, config types.BaseOsConfig, statu
 	status.PartitionState = getPartitionState(partName)
 
 	// remove old partition mapping
-	mapFilename := configDir + "/" + config.PartitionLabel + ".json"
-
-	if match := removePartitionMap(mapFilename, partInfo); match == true {
+	if match := clearPartitionMap(partName, nil); match == true {
 		log.Printf("Updating existing Partition Map Status %s\n", partName)
 	}
 
 	// XXX:FIXME, Take care of retry count
-
-	bytes, err := json.Marshal(partInfo)
-	if err != nil {
-		errStr := fmt.Sprintf("%s, marshalling error %s\n", uuidStr, err)
-		log.Println(errStr)
-		return errors.New(errStr)
-	}
-
-	log.Println(partInfo)
-
-	if err := ioutil.WriteFile(mapFilename, bytes, 0644); err != nil {
-		errStr := fmt.Sprintf("%s, file write error %s\n", uuidStr, err)
-		log.Println(errStr)
-		return errors.New(errStr)
-	}
-	return nil
+	return writeOtherPartitionInfo(partInfo)
 }
 
 func resetPersistentPartitionInfo(uuidStr string) error {
@@ -553,11 +620,9 @@ func resetPersistentPartitionInfo(uuidStr string) error {
 		return err
 	}
 
-	if !isOtherPartition(config.PartitionLabel) {
-		return nil
+	if isOtherPartition(config.PartitionLabel) {
+		clearPartitionMap(config.PartitionLabel, nil)
 	}
-	mapFilename := configDir + "/" + config.PartitionLabel + ".json"
-	removePartitionMap(mapFilename, nil)
 	return nil
 }
 

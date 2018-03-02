@@ -185,6 +185,10 @@ func checkStorageDownloadStatus(objType string, uuidStr string,
 		safename := types.UrlToSafename(sc.DownloadURL, sc.ImageSha256)
 
 		log.Printf("checkStorageDownloadStatus for %s\n", safename)
+		if ss.State == types.INSTALLED {
+			minState = ss.State
+			continue
+		}
 
 		if sc.ImageSha256 != "" {
 			// Shortcut if image is already verified
@@ -218,7 +222,7 @@ func checkStorageDownloadStatus(objType string, uuidStr string,
 			ss.HasDownloaderRef = true
 			changed = true
 		}
-
+        
 		ds, err := lookupDownloaderStatus(objType, safename)
 		if err != nil {
 			log.Printf("%s, %s \n", safename, err)
@@ -234,7 +238,7 @@ func checkStorageDownloadStatus(objType string, uuidStr string,
 			changed = true
 		}
 
-		switch ds.State {
+		switch ss.State {
 		case types.INITIAL:
 			log.Printf("%s, Downloader status error, %s\n",
 				key, ds.LastErr)
