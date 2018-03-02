@@ -79,7 +79,7 @@ func (f flexTickerHandle) TickNow() {
 }
 
 func TickNow(hdl interface{}) {
-	f := hdl.(*flexTickerHandle)
+	f := hdl.(flexTickerHandle)
 	f.privateChan <- time.Now()
 }
 
