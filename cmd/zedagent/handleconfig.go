@@ -113,9 +113,7 @@ func handleConfigInit() {
 // delete if some thing is not present in the old config
 // for the new config create entries in the zMgerConfig Dir
 // for each of the above buckets
-// XXX Combine with being able to change the timer intervals - generate at random
-// times between .3x and 1x
-
+// XXX Combine with being able to change the timer intervals
 func configTimerTask(handleChannel chan interface{}) {
 	configUrl := serverName + "/" + configApi
 	iteration := 0
@@ -136,7 +134,6 @@ func configTimerTask(handleChannel chan interface{}) {
 }
 
 func triggerGetConfig(handle interface{}) {
-	// XXX
 	log.Printf("triggerGetConfig()\n")
 	flextimer.TickNow(handle)
 }
