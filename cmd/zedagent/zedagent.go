@@ -106,6 +106,12 @@ var deviceNetworkStatus types.DeviceNetworkStatus
 type dummyContext struct {
 }
 
+// Context for handleDNSModify
+type DNSContext struct {
+	usableAddressCount int
+	triggerGetConfig   bool
+}
+
 // Information from handleVerifierRestarted
 type verifierContext struct {
 	verifierRestarted bool
@@ -190,6 +196,9 @@ func main() {
 		}
 	}
 
+	DNSctx := DNSContext{}
+	DNSctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
+
 	networkStatusChanges := make(chan string)
 	go watch.WatchStatus(DNSDirname, networkStatusChanges)
 
@@ -203,7 +212,7 @@ func main() {
 		waited = true
 		select {
 		case change := <-networkStatusChanges:
-			watch.HandleStatusEvent(change, dummyContext{},
+			watch.HandleStatusEvent(change, &DNSctx,
 				DNSDirname,
 				&types.DeviceNetworkStatus{},
 				handleDNSModify, handleDNSDelete,
@@ -224,8 +233,11 @@ func main() {
 	PublishDeviceInfoToZedCloud(baseOsStatusMap, devCtx.assignableAdapters)
 
 	// start the metrics/config fetch tasks
+	handleChannel := make(chan interface{})
+	go configTimerTask(handleChannel)
+	log.Printf("Waiting for flexticker handle\n")
+	configTickerHandle := <-handleChannel
 	go metricsTimerTask()
-	go configTimerTask()
 
 	// app instance status event watcher
 	go watch.WatchStatus(zedmanagerStatusDirname, appInstanceStatusChanges)
@@ -311,11 +323,15 @@ func main() {
 				handleCertObjDownloadStatusDelete, nil)
 
 		case change := <-networkStatusChanges:
-			watch.HandleStatusEvent(change, dummyContext{},
+			watch.HandleStatusEvent(change, &DNSctx,
 				DNSDirname,
 				&types.DeviceNetworkStatus{},
 				handleDNSModify, handleDNSDelete,
 				nil)
+			if DNSctx.triggerGetConfig {
+				triggerGetConfig(configTickerHandle)
+				DNSctx.triggerGetConfig = false
+			}
 			// IP/DNS in device info could have changed
 			// XXX could compare in handleDNSModify as we do
 			// for handleDomainStatus
@@ -454,6 +470,7 @@ func handleAppInstanceStatusDelete(ctxArg interface{}, statusFilename string) {
 func handleDNSModify(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
 	status := statusArg.(*types.DeviceNetworkStatus)
+	ctx := ctxArg.(*DNSContext)
 
 	if statusFilename != "global" {
 		log.Printf("handleDNSModify: ignoring %s\n", statusFilename)
@@ -461,17 +478,29 @@ func handleDNSModify(ctxArg interface{}, statusFilename string,
 	}
 	log.Printf("handleDNSModify for %s\n", statusFilename)
 	deviceNetworkStatus = *status
+	// Did we (re-)gain the first usable address?
+	// XXX should we also trigger if the count increases?
+	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
+	if newAddrCount != 0 && ctx.usableAddressCount == 0 {
+		log.Printf("DeviceNetworkStatus from %d to %d addresses\n",
+			newAddrCount, ctx.usableAddressCount)
+		ctx.triggerGetConfig = true
+	}
+	ctx.usableAddressCount = newAddrCount
 	log.Printf("handleDNSModify done for %s\n", statusFilename)
 }
 
 func handleDNSDelete(ctxArg interface{}, statusFilename string) {
 	log.Printf("handleDNSDelete for %s\n", statusFilename)
+	ctx := ctxArg.(*DNSContext)
 
 	if statusFilename != "global" {
 		log.Printf("handleDNSDelete: ignoring %s\n", statusFilename)
 		return
 	}
 	deviceNetworkStatus = types.DeviceNetworkStatus{}
+	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
+	ctx.usableAddressCount = newAddrCount
 	log.Printf("handleDNSDelete done for %s\n", statusFilename)
 }
 

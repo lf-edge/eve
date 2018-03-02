@@ -5,6 +5,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"github.com/zededa/go-provision/types"
 	"log"
@@ -15,8 +16,8 @@ import (
 
 // Tries all interfaces (free first) until one succeeds. interation arg
 // ensure load spreading across multiple interfaces.
-// Returns true, response for first success
-func sendOnAllIntf(url string, data []byte, iteration int) (bool, *http.Response) {
+// Returns response for first success
+func sendOnAllIntf(url string, data []byte, iteration int) (*http.Response, error) {
 	// If failed then try the non-free
 	for try := 0; try < 2; try += 1 {
 		var intfs []string
@@ -36,18 +37,20 @@ func sendOnAllIntf(url string, data []byte, iteration int) (bool, *http.Response
 			}
 		}
 		for _, intf := range intfs {
-			ok, resp := sendOnIntf(url, intf, data)
-			if !ok {
+			resp, err := sendOnIntf(url, intf, data)
+			if err != nil {
 				continue
 			}
-			return ok, resp
+			return resp, nil
 		}
 	}
-	log.Printf("All attempts to connect to %s failed\n", url)
-	return false, nil
+	errStr := fmt.Sprintf("All attempts to connect to %s failed",
+		url)
+	log.Println(errStr)
+	return nil, errors.New(errStr)
 }
 
-func sendOnIntf(url string, intf string, data []byte) (bool, *http.Response) {
+func sendOnIntf(url string, intf string, data []byte) (*http.Response, error) {
 	addrCount := types.CountLocalAddrAny(deviceNetworkStatus, intf)
 	if debug {
 		log.Printf("Connecting to %s using intf %s #sources %d\n",
@@ -55,7 +58,10 @@ func sendOnIntf(url string, intf string, data []byte) (bool, *http.Response) {
 	}
 	if addrCount == 0 {
 		zedCloudFailure(intf)
-		return false, nil
+		errStr := fmt.Sprintf("No IP addresses to connect to %s using intf %s",
+			url, intf)
+		log.Println(errStr)
+		return nil, errors.New(errStr)
 	}
 	for retryCount := 0; retryCount < addrCount; retryCount += 1 {
 		localAddr, err := types.GetLocalAddrAny(deviceNetworkStatus,
@@ -139,22 +145,24 @@ func sendOnIntf(url string, intf string, data []byte) (bool, *http.Response) {
 				fmt.Printf("sendOnIntf to %s StatusOK\n",
 					url)
 			}
-			return true, resp
+			return resp, nil
 		default:
-			log.Printf("sendOnIntf to %s statuscode %d %s\n",
+			errStr := fmt.Sprintf("sendOnIntf to %s statuscode %d %s",
 				url, resp.StatusCode,
 				http.StatusText(resp.StatusCode))
+			log.Println(errStr)
 			if debug {
 				fmt.Printf("received response %v\n",
 					resp)
 			}
 			resp.Body.Close()
 			// Get caller to schedule a retry
-			return false, nil
+			return nil, errors.New(errStr)
 		}
 	}
 	zedCloudFailure(intf)
-	log.Printf("All attempts to connect to %s using intf %s failed\n",
-		configUrl, intf)
-	return false, nil
+	errStr := fmt.Sprintf("All attempts to connect to %s using intf %s failed",
+		url, intf)
+	log.Println(errStr)
+	return nil, errors.New(errStr)
 }

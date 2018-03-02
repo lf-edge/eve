@@ -33,8 +33,9 @@ import (
 
 // Ticker handle for caller
 type flexTickerHandle struct {
-	C          <-chan time.Time
-	configChan chan<- flexTickerConfig
+	C           <-chan time.Time
+	privateChan chan<- time.Time
+	configChan  chan<- flexTickerConfig
 }
 
 // Arguments fed over configChan
@@ -51,7 +52,7 @@ func NewRangeTicker(minTime time.Duration, maxTime time.Duration) flexTickerHand
 	configChan := make(chan flexTickerConfig, 1)
 	tickChan := newFlexTicker(configChan)
 	configChan <- initialConfig
-	return flexTickerHandle{C: tickChan, configChan: configChan}
+	return flexTickerHandle{C: tickChan, privateChan: tickChan, configChan: configChan}
 }
 
 func NewExpTicker(minTime time.Duration, maxTime time.Duration, randomFactor float64) flexTickerHandle {
@@ -70,6 +71,18 @@ func (f flexTickerHandle) UpdateRangeTicker(minTime time.Duration, maxTime time.
 	f.configChan <- config
 }
 
+// Insert a tick now in addition to running timers
+// Note that the member function isn't always useful since flexTickerHandle
+// type is not exported. Hence have a normal function as well.
+func (f flexTickerHandle) TickNow() {
+	f.privateChan <- time.Now()
+}
+
+func TickNow(hdl interface{}) {
+	f := hdl.(flexTickerHandle)
+	f.privateChan <- time.Now()
+}
+
 func (f flexTickerHandle) UpdateExpTicker(minTime time.Duration, maxTime time.Duration, randomFactor float64) {
 	config := flexTickerConfig{minTime: minTime,
 		maxTime: maxTime, exponential: true,
@@ -83,7 +96,7 @@ func (f flexTickerHandle) StopTicker() {
 
 // Implementation functions
 
-func newFlexTicker(config <-chan flexTickerConfig) <-chan time.Time {
+func newFlexTicker(config <-chan flexTickerConfig) chan time.Time {
 	tick := make(chan time.Time, 1)
 	go flexTicker(config, tick)
 	return tick
