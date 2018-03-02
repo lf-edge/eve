@@ -36,10 +36,8 @@ var configApi string = "api/v1/edgedevice/config"
 var statusApi string = "api/v1/edgedevice/info"
 var metricsApi string = "api/v1/edgedevice/metrics"
 
-// These URLs are effectively constants; depends on the server name
-var configUrl string
-var metricsUrl string
-var statusUrl string
+// This is set once at init time and not changed
+var serverName string
 
 const (
 	identityDirname = "/config"
@@ -70,11 +68,7 @@ func handleConfigInit() {
 		log.Fatal(err)
 	}
 	strTrim := strings.TrimSpace(string(bytes))
-	serverName := strings.Split(strTrim, ":")[0]
-
-	configUrl = serverName + "/" + configApi
-	statusUrl = serverName + "/" + statusApi
-	metricsUrl = serverName + "/" + metricsApi
+	serverName = strings.Split(strTrim, ":")[0]
 
 	deviceCert, err := tls.LoadX509KeyPair(deviceCertName, deviceKeyName)
 	if err != nil {
@@ -123,6 +117,7 @@ func handleConfigInit() {
 // times between .3x and 1x
 
 func configTimerTask(handleChannel chan interface{}) {
+	configUrl := serverName + "/" + configApi
 	iteration := 0
 	checkConnectivity := isZbootAvailable() && isCurrentPartitionStateInProgress()
 	getLatestConfig(configUrl, iteration, &checkConnectivity)
@@ -149,10 +144,10 @@ func triggerGetConfig(handle interface{}) {
 // Start by trying the all the free uplinks and then all the non-free
 // until one succeeds in communicating with the cloud.
 // We use the iteration argument to start at a different point each time.
-func getLatestConfig(configUrl string, iteration int, checkConnectivity *bool) {
-	ok, resp := sendOnAllIntf(configUrl, nil, iteration)
-	if !ok {
-		// error was already logged
+func getLatestConfig(url string, iteration int, checkConnectivity *bool) {
+	resp, err := sendOnAllIntf(url, nil, iteration)
+	if err != nil {
+		log.Printf("getLatestConfig failed: %s\n", err)
 		return
 	} else {
 		defer resp.Body.Close()
@@ -180,7 +175,7 @@ func getLatestConfig(configUrl string, iteration int, checkConnectivity *bool) {
 		// a short timeout during validation of a image post upgrade.
 		zbootWatchdogOK()
 
-		if err := validateConfigMessage(configUrl, resp); err != nil {
+		if err := validateConfigMessage(url, resp); err != nil {
 			log.Println("validateConfigMessage: ", err)
 			// Inform ledmanager about cloud connectivity
 			types.UpdateLedManagerConfig(3)
@@ -207,7 +202,7 @@ func getLatestConfig(configUrl string, iteration int, checkConnectivity *bool) {
 	}
 }
 
-func validateConfigMessage(configUrl string, r *http.Response) error {
+func validateConfigMessage(url string, r *http.Response) error {
 
 	var ctTypeStr = "Content-Type"
 	var ctTypeProtoStr = "application/x-proto-binary"

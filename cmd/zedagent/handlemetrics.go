@@ -471,7 +471,7 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 	// Handle xentop failing above
 	if len(cpuStorageStat) == 0 {
 		log.Printf("No xentop? metrics: %s\n", ReportMetrics)
-		SendMetricsProtobufStrThroughHttp(ReportMetrics, iteration)
+		SendMetricsProtobuf(ReportMetrics, iteration)
 		return
 	}
 
@@ -567,7 +567,7 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 		log.Printf("PublishMetricsToZedCloud sending %s\n",
 			ReportMetrics)
 	}
-	SendMetricsProtobufStrThroughHttp(ReportMetrics, iteration)
+	SendMetricsProtobuf(ReportMetrics, iteration)
 }
 
 const mbyte = 1024 * 1024
@@ -850,11 +850,13 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 		log.Fatal("PublishDeviceInfoToZedCloud proto marshaling error: ", err)
 	}
 
+	statusUrl := serverName + "/" + statusApi
 	// XXX vary for load spreading when multiple free or multiple non-free
 	// uplinks
 	iteration := 0
-	ok := SendProtobufStrThroughHttp(configUrl, data, iteration)
-	if !ok {
+	err = SendProtobuf(statusUrl, data, iteration)
+	if err != nil {
+		log.Printf("PublishDeviceInfoToZedCloud failed: %s\n", err)
 		// XXX reschedule doing this again later somehow
 		// Queue data on deviceQueue; replace if fails again
 	} else {
@@ -885,7 +887,7 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 		ReportAppInfo.AppName = aiStatus.DisplayName
 		ds := LookupDomainStatusUUID(uuid)
 		if ds == nil {
-			log.Printf("Did not find DomainStaus for UUID %s\n",
+			log.Printf("Did not find DomainStatus for UUID %s\n",
 				uuid)
 			// XXX should we reschedule when we have a domainStatus?
 			// Avoid nil checks
@@ -958,11 +960,13 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 		log.Fatal("PublishAppInfoToZedCloud proto marshaling error: ", err)
 	}
 
+	statusUrl := serverName + "/" + statusApi
 	// XXX vary for load spreading when multiple free or multiple non-free
 	// uplinks
 	iteration := 0
-	ok := SendProtobufStrThroughHttp(statusUrl, data, iteration)
-	if !ok {
+	err = SendProtobuf(statusUrl, data, iteration)
+	if err != nil {
+		log.Printf("PublishAppInfoToZedCloud failed: %s\n", err)
 		// XXX reschedule doing this again later somehow
 		// Queue data on for this app; replace if fails again
 	} else {
@@ -973,29 +977,30 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 // This function is called per change, hence needs to try over all uplinks
 // send report on each uplink.
 // For each uplink we try different source IPs until we find a working one.
-// Returns true/false for success/failure
-func SendProtobufStrThroughHttp(statusUrl string, data []byte, iteration int) bool {
-	ok, resp := sendOnAllIntf(statusUrl, data, iteration)
-	if !ok {
-		return false
+func SendProtobuf(url string, data []byte, iteration int) error {
+	resp, err := sendOnAllIntf(url, data, iteration)
+	if err != nil {
+		return err
 	}
 	resp.Body.Close()
-	return true
+	return nil
 }
 
 // Try all (first free, then rest) until it gets through.
 // Each iteration we try a different uplink for load spreading.
 // For each uplink we try all its local IP addresses until we get a success.
-func SendMetricsProtobufStrThroughHttp(ReportMetrics *zmet.ZMetricMsg,
+func SendMetricsProtobuf(ReportMetrics *zmet.ZMetricMsg,
 	iteration int) {
 	data, err := proto.Marshal(ReportMetrics)
 	if err != nil {
 		log.Fatal("SendInfoProtobufStr proto marshaling error: ", err)
 	}
 
-	ok, resp := sendOnAllIntf(metricsUrl, data, iteration)
-	if !ok {
+	metricsUrl := serverName + "/" + metricsApi
+	resp, err := sendOnAllIntf(metricsUrl, data, iteration)
+	if err != nil {
 		// Hopefully next timeout will be more successful
+		log.Printf("SendMetricsProtobuf failed: %s\n", err)
 		return
 	}
 	resp.Body.Close()
