@@ -138,5 +138,11 @@ build:
 			-o $(BINDIR)/$$app github.com/zededa/go-provision/$$app || exit 1; \
 	done
 
+build-docker:
+	docker build -t zededa/ztools:local .
+
+build-docker-git:
+	git archive HEAD | docker build -t zededa/ztools:local -
+
 clean:
 	@rm -rf obj
