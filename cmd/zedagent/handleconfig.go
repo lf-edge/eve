@@ -48,6 +48,18 @@ const (
 	uuidFileName    = identityDirname + "/uuid"
 )
 
+// A value of zero means we should use the default
+// All times are in seconds.
+type configItems struct {
+	configInterval          uint32
+	metricInterval          uint32
+	resetIfCloudGoneTime    uint32
+	fallbackIfCloudGoneTime uint32
+}
+
+var configItemDefaults = configItems{configInterval: 60, metricInterval: 60,
+	resetIfCloudGoneTime: 168 * 3600, fallbackIfCloudGoneTime: 600}
+
 // tlsConfig is initialized once i.e. effectively a constant
 var tlsConfig *tls.Config
 
