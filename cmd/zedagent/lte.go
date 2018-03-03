@@ -19,7 +19,7 @@ const (
 	metricsFile = "/run/wwan/signal-info.json"
 )
 
-type fileFormat map[string]string
+type fileFormat map[string]interface{}
 
 func readLTEInfo() []types.MetricItem {
 	return readLTE(infoFile)
@@ -70,25 +70,64 @@ func readLTE(filename string) []types.MetricItem {
 }
 
 // Note that any negative number is returned as a float
-func parseAny(v string) interface{} {
-	b, err := strconv.ParseBool(v)
-	if err == nil {
-		return b
+// We seem to get float64 for integers from the json decode. Need
+// to covert them here.
+func parseAny(val interface{}) interface{} {
+	switch t := val.(type) {
+	case uint64:
+		return val.(uint64)
+	case uint32:
+		return val.(uint32)
+	case bool:
+		return val.(bool)
+	case float32:
+		v := val.(float32)
+		switch v {
+		case float32(uint32(v)):
+			return uint32(v)
+		case float32(uint64(v)):
+			return uint64(v)
+		default:
+			return v
+		}
+	case float64:
+		v := val.(float64)
+		switch v {
+		case float64(uint32(v)):
+			return uint32(v)
+		case float64(uint64(v)):
+			return uint64(v)
+		default:
+			return float32(v)
+		}
+	case string:
+		v := val.(string)
+		// XXX don't seem to need to parse these from
+		// inside quotes
+		if false {
+			b, err := strconv.ParseBool(v)
+			if err == nil {
+				return b
+			}
+			u, err := strconv.ParseUint(v, 10, 32)
+			if err == nil {
+				return uint32(u)
+			}
+			u, err = strconv.ParseUint(v, 10, 64)
+			if err == nil {
+				return u
+			}
+			f, err := strconv.ParseFloat(v, 32)
+			if err == nil {
+				return float32(f)
+			}
+		}
+		// Must be string
+		return v
+	default:
+		log.Printf("parseAny unknown %T\n", t)
+		return fmt.Sprintf("unknown type %T", t)
 	}
-	u, err := strconv.ParseUint(v, 10, 32)
-	if err == nil {
-		return uint32(u)
-	}
-	u, err = strconv.ParseUint(v, 10, 64)
-	if err == nil {
-		return u
-	}
-	f, err := strconv.ParseFloat(v, 32)
-	if err == nil {
-		return float32(f)
-	}
-	// Must be string
-	return v
 }
 
 // XXX remove
