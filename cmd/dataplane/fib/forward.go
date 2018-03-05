@@ -59,13 +59,13 @@ func CraftAndSendLispPacket(packet gopacket.Packet,
 // payload slice does not end at the packet length. It extends till
 // the end of the original packet buffer. This way we do not have to
 // allocate/re-slice for padding packets or adding icv to the end.
-// We take payloadLen that indicates the lenght of original packet.
+// We take payloadLen that indicates the length of original packet.
 //
-// NOTE: payload slice that is passed here should have a lot of extra space
-// after the packet.
-func encryptPayload(
-	payload []byte, payloadLen uint32,
-	encKey []byte, block cipher.Block, ivArray []byte) (bool, uint32) {
+// NOTE: payload slice that is passed here should have some extra space
+// at the end of packet(for Padding and ICV).
+func encryptPayload(payload []byte,
+	payloadLen uint32, encKey []byte,
+	block cipher.Block, ivArray []byte) (bool, uint32) {
 
 	if len(encKey) == 0 {
 		log.Printf("Invalid encrypt key lenght: %s\n", len(encKey))

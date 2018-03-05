@@ -4,29 +4,26 @@ import (
 	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
-	//"encoding/json"
 	"fmt"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pfring"
 	"github.com/zededa/go-provision/dataplane/fib"
 	"github.com/zededa/go-provision/types"
-	//"github.com/zededa/go-provision/watch"
-	//"io/ioutil"
 	"log"
 	"net"
 	"syscall"
+	"time"
 )
 
 // Status and metadata of different ETR threads currently running
 var etrTable types.EtrTable
+var deviceNetworkStatus types.DeviceNetworkStatus
 
 const (
 	uplinkFileName = "/var/run/zedrouter/DeviceNetworkStatus/global.json"
 	etrNatPortMatch = "udp dst port %d and udp src port 4341"
 )
-
-var deviceNetworkStatus types.DeviceNetworkStatus
 
 func InitETRStatus() {
 	etrTable.EphPort  = -1
@@ -40,11 +37,16 @@ func StartEtrNonNat() {
 	etrServer, err := net.ResolveUDPAddr("udp4", ":4341")
 	if err != nil {
 		log.Fatal("Error resolving ETR socket address: %s\n", err)
-		return
 	}
 	serverConn, err := net.ListenUDP("udp4", etrServer)
 	if err != nil {
-		log.Fatal("Unable to start ETR server on :4341: %s\n", err)
+		log.Printf("Unable to start ETR server on :4341: %s\n", err)
+
+		// try after 2 seconds
+		go func() {
+			time.Sleep(2 * time.Second)
+			StartEtrNonNat()
+		}()
 		return
 	}
 
@@ -66,7 +68,7 @@ func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
 
 	links := types.GetUplinkFreeNoLocal(deviceNetworkStatus)
 
-	// collect the interfaces that are still valid
+	// Collect the interfaces that are still valid
 	// Create newly required ETR instances
 	validList := make(map[string]bool)
 	for _, link := range links {
@@ -74,22 +76,16 @@ func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
 
 		// Find the next ipv4, ipv6 uplink addresses to be used by ITRs.
 		for _, addr := range link.Addrs {
-			log.Printf("XXXXX Checking link %s address %s.\n", link.IfName, addr.String())
-			if (ipv6Found == true) && (ipv4Found == true) {
+			if ipv6Found && ipv4Found {
 				break
 			}
 			// ipv6 case
-			if addr.To4() == nil {
-				if ipv6Found == true {
-					continue
-				}
+			if (addr.To4() == nil) && (ipv6Found == false) {
+				// This address is ipv6
 				ipv6Addr = addr
 				ipv6Found = true
-			} else {
+			} else if ipv4Found == false {
 				// This address is ipv4
-				if ipv4Found == true {
-					continue
-				}
 				ipv4Addr = addr
 				ipv4Found = true
 			}
@@ -111,6 +107,8 @@ func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
 				Ring: ring,
 				RingFD: fd,
 			}
+			log.Printf("HandleDeviceNetworkChange: Creating ETR thread for UP link %s\n",
+			link.IfName)
 		}
 	}
 
@@ -124,7 +122,8 @@ func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
 		}
 	}
 
-	log.Printf("XXXXX Setting Uplink v4 addr %s, v6 addr %s\n", ipv4Addr, ipv6Addr)
+	log.Printf("HandleDeviceNetworkChange: Setting Uplink v4 addr %s, v6 addr %s\n",
+		ipv4Addr, ipv6Addr)
 	fib.SetUplinkAddrs(ipv4Addr, ipv6Addr)
 }
 
@@ -138,10 +137,9 @@ func HandleEtrEphPort(ephPort int) {
 
 	// Destroy all old threads and create new ETR threads
 	for ifName, link := range etrTable.EtrTable {
-		// Delete the old ring and raw socket
-		//link.Ring.Disable()
-		//link.Ring.Close()
-		//syscall.Close(link.RingFD)
+		// Logically thinking, we should first disable the PF_RING (stop packet inflow)
+		// and then change the BPF rules. But, when the ring is deactivated, I see calls
+		// on the ring throwing errors.
 		if (link.Ring == nil) && (link.RingFD == -1) {
 			log.Printf("XXXXX Creating ETR thread for UP link %s\n", link.IfName)
 			ring, fd := StartEtrNat(etrTable.EphPort, link.IfName)
@@ -161,7 +159,8 @@ func HandleEtrEphPort(ephPort int) {
 		//link.Ring, link.RingFD = StartEtrNat(ephPort, ifName)
 		// Add it back, just in case
 		//etrTable.EtrTable[ifName] = link
-		log.Printf("XXXXX Destroying and re-creating ETR for %s\n", ifName)
+		log.Printf("HandleEtrEphPort: Changed ephemeral port BPF match for ETR %s\n",
+			ifName)
 	}
 }
 
@@ -205,7 +204,6 @@ func verifyAndInject(fd6 int,
 	//useCrypto := false
 	keyId := fib.GetLispKeyId(buf[0:8])
 	if keyId != 0 {
-		log.Printf("XXXXX Using KeyId %d\n", keyId)
 		//useCrypto = true
 		destAddrOffset += aes.BlockSize
 		packetOffset += aes.BlockSize
@@ -215,7 +213,7 @@ func verifyAndInject(fd6 int,
 		}
 
 		// compute and compare ICV of packet
-		// Always use key 1
+		// Zededa ITR always picks a keyId of 1
 		key := decapKeys.Keys[keyId-1]
 		icvKey := key.IcvKey
 		if icvKey == nil {
@@ -240,22 +238,18 @@ func verifyAndInject(fd6 int,
 		cryptoLen := n - packetOffset - types.ICVLEN
 		if cryptoLen%16 != 0 {
 			log.Printf("XXXXX Crypto packet length is %d\n", cryptoLen)
+			// AES encrypted packet should have a lenght that is multiple of 16
+			// aes.BlockSize is 16
+			log.Printf("verifyAndInject: Invalid Crypto packet length %d\n", cryptoLen)
 			return false
 		}
 
 		if len(decapKeys.Keys) == 0 {
-			log.Printf("ETR does not have decap keys from lispers.net yet\n")
+			log.Printf(
+				"verifyAndInject: ETR has not received decap keys from lispers.net yet\n")
 			return false
 		}
 
-		//decKey := key.DecKey
-
-		// This should happen once. May be make it part of the database entry
-		//block, err := aes.NewCipher(decKey)
-		//if err != nil {
-		//	log.Println("Error: creating decrypt key:", err)
-		//	return false
-		//}
 		block := key.DecBlock
 		mode := cipher.NewCBCDecrypter(block, ivArray)
 		mode.CryptBlocks(packet, packet)
@@ -274,7 +268,7 @@ func verifyAndInject(fd6 int,
 		Addr:   destAddr,
 	})
 	if err != nil {
-		log.Printf("Failed injecting ETR packet: %s.\n", err)
+		log.Printf("verifyAndInject: Failed injecting ETR packet: %s.\n", err)
 		return false
 	}
 	return true
@@ -288,11 +282,11 @@ func SetupEtrPktCapture(ephemeralPort int, upLink string) *pfring.Ring {
 		return nil
 	}
 
-	// Set filter for UDP, source port = 4341, destination port = given ephemeral
+	// We only read packets from this interface
 	ring.SetDirection(pfring.ReceiveOnly)
 	ring.SetSocketMode(pfring.ReadOnly)
 
-	//filter := fmt.Sprintf("udp dst port %d and udp src port 4341", ephemeralPort)
+	// Set filter for UDP, source port = 4341, destination port = given ephemeral
 	filter := fmt.Sprintf(etrNatPortMatch, ephemeralPort)
 	ring.SetBPFFilter(filter)
 
@@ -302,7 +296,8 @@ func SetupEtrPktCapture(ephemeralPort int, upLink string) *pfring.Ring {
 
 	err = ring.Enable()
 	if err != nil {
-		log.Printf("Enabling pfring on interface %s failed: %s\n", upLink, err)
+		log.Printf("SetupEtrPktCapture: Enabling pfring on interface %s failed: %s\n",
+			upLink, err)
 		return nil
 	}
 	return ring
@@ -362,7 +357,7 @@ func ProcessCapturedPkts(fd6 int, ring *pfring.Ring) {
 			srcIP = ipHdr.SrcIP
 		} else if ip6Layer := packet.Layer(layers.LayerTypeIPv6); ip6Layer != nil {
 			// ipv6 underlay
-			ip6Hdr := ipLayer.(*layers.IPv6)
+			ip6Hdr := ip6Layer.(*layers.IPv6)
 			srcIP = ip6Hdr.SrcIP
 		} else {
 			// We do not need this packet
@@ -371,10 +366,10 @@ func ProcessCapturedPkts(fd6 int, ring *pfring.Ring) {
 
 		decapKeys := fib.LookupDecapKeys(srcIP)
 
-		//log.Println(payload)
 		ok := verifyAndInject(fd6, payload, len(payload), decapKeys)
 		if ok == false {
-			log.Printf("Failed injecting ETR packet from ephemeral port\n")
+			log.Printf("ProcessCapturedPkts: ETR Failed injecting packet from RLOC %s\n",
+				srcIP.String())
 		}
 	}
 }

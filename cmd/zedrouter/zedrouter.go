@@ -36,22 +36,27 @@ const (
 	statusDirname = runDirname + "/status"
 	DNCDirname    = "/var/tmp/zededa/DeviceNetworkConfig"
 	DNSDirname    = runDirname + "/DeviceNetworkStatus"
+	DataPlaneName = "dataplane"
 )
 
 // Set from Makefile
 var Version = "No version specified"
 
 type zedrouterContext struct {
+	// Experimental Zededa data plane enable/disable flag
+	ZededaDataPlane bool
 }
 
 // Dummy since we don't have anything to pass
 type dummyContext struct {
+	ZededaDataPlane bool
 }
 
 // Context for handleDNCModify
 type DNCContext struct {
 	usableAddressCount int
 	manufacturerModel  string
+	ZededaDataPlane    bool
 }
 
 func main() {
@@ -110,6 +115,11 @@ func main() {
 	DNCctx := DNCContext{}
 	DNCctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
 	DNCctx.manufacturerModel = hardware.GetHardwareModel()
+	DNCctx.ZededaDataPlane = false
+
+	ZedrouterCtx := zedrouterContext{
+		ZededaDataPlane: false,
+	}
 
 	// Wait for zedmanager having populated the intial files to
 	// reduce the number of LISP-RESTARTs
@@ -139,7 +149,7 @@ func main() {
 		deviceNetworkConfig.Uplink, deviceNetworkConfig.FreeUplinks,
 		addrChangeFn)
 
-	handleRestart(dummyContext{}, false)
+	handleRestart(&ZedrouterCtx, false)
 	var restartFn watch.ConfigRestartHandler = handleRestart
 
 	configChanges := make(chan string)
@@ -149,12 +159,17 @@ func main() {
 	for {
 		select {
 		case change := <-configChanges:
-			watch.HandleConfigStatusEvent(change, dummyContext{},
+			watch.HandleConfigStatusEvent(change, &ZedrouterCtx,
 				configDirname, statusDirname,
 				&types.AppNetworkConfig{},
 				&types.AppNetworkStatus{},
 				handleCreate, handleModify, handleDelete,
 				&restartFn)
+
+			// DNC handling also re-writes the lisp.config file.
+			// We should call the updateLisp with correct Dataplane
+			// flag inorder not to confuse lispers.net
+			DNCctx.ZededaDataPlane = ZedrouterCtx.ZededaDataPlane
 		case change := <-deviceConfigChanges:
 			watch.HandleStatusEvent(change, &DNCctx,
 				DNCDirname,
@@ -173,7 +188,8 @@ func main() {
 
 func handleRestart(ctxArg interface{}, done bool) {
 	log.Printf("handleRestart(%v)\n", done)
-	handleLispRestart(done)
+	ctx := ctxArg.(*zedrouterContext)
+	handleLispRestart(done, ctx.ZededaDataPlane)
 	if done {
 		// Since all work is done inline we can immediately say that
 		// we have restarted.
@@ -358,7 +374,7 @@ func generateAdditionalInfo(status types.AppNetworkStatus, olConfig types.Overla
 	return additionalInfo
 }
 
-func updateLispConfiglets() {
+func updateLispConfiglets(zededaDataPlane bool) {
 	for _, status := range appNetworkStatus {
 		for i, olStatus := range status.OverlayNetworkList {
 			olNum := i + 1
@@ -377,7 +393,7 @@ func updateLispConfiglets() {
 			createLispConfiglet(lispRunDirname, status.IsZedmanager,
 				olStatus.IID, olStatus.EID, olStatus.LispSignature,
 				deviceNetworkStatus, olIfname, olIfname,
-				additionalInfo, olStatus.LispServers)
+				additionalInfo, olStatus.LispServers, zededaDataPlane)
 		}
 	}
 }
@@ -395,6 +411,7 @@ var additionalInfoDevice *types.AdditionalInfoDevice
 
 func handleCreate(ctxArg interface{}, statusFilename string,
 	configArg interface{}) {
+	ctx := ctxArg.(*zedrouterContext)
 	config := configArg.(*types.AppNetworkConfig)
 	log.Printf("handleCreate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
@@ -414,6 +431,8 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		DisplayName:    config.DisplayName,
 		IsZedmanager:   config.IsZedmanager,
 	}
+	log.Printf("XXXXX handleCreate: config ZededaDataPlane %v.\n",
+		config.ZededaDataPlane)
 	writeAppNetworkStatus(&status, statusFilename)
 
 	if config.IsZedmanager {
@@ -425,6 +444,8 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 			log.Println("Malformed IsZedmanager config; ignored")
 			return
 		}
+		ctx.ZededaDataPlane = config.ZededaDataPlane
+		log.Printf("XXXXX handleCreate: ZededaDataPlane %v.\n", ctx.ZededaDataPlane)
 
 		// Use this olIfname to name files
 		// XXX some files might not be used until Zedmanager becomes
@@ -550,7 +571,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		createLispConfiglet(lispRunDirname, config.IsZedmanager,
 			olConfig.IID, olConfig.EID, olConfig.LispSignature,
 			deviceNetworkStatus, olIfname, olIfname,
-			additionalInfo, olConfig.LispServers)
+			additionalInfo, olConfig.LispServers, ctx.ZededaDataPlane)
 		status.OverlayNetworkList = make([]types.OverlayNetworkStatus,
 			len(config.OverlayNetworkList))
 		for i, _ := range config.OverlayNetworkList {
@@ -681,7 +702,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		createLispConfiglet(lispRunDirname, config.IsZedmanager,
 			olConfig.IID, olConfig.EID, olConfig.LispSignature,
 			deviceNetworkStatus, olIfname, olIfname,
-			additionalInfo, olConfig.LispServers)
+			additionalInfo, olConfig.LispServers, ctx.ZededaDataPlane)
 
 		// Add bridge parameters for Xen to Status
 		olStatus := &status.OverlayNetworkList[olNum-1]
@@ -771,6 +792,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 // XXX If so flag other changes as errors; would need lastError in status.
 func handleModify(ctxArg interface{}, statusFilename string, configArg interface{},
 	statusArg interface{}) {
+	ctx := ctxArg.(*zedrouterContext)
 	config := configArg.(*types.AppNetworkConfig)
 	status := statusArg.(*types.AppNetworkStatus)
 	log.Printf("handleModify(%v) for %s\n",
@@ -806,11 +828,16 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 		return
 	}
 
+	status.ZededaDataPlane = ctx.ZededaDataPlane
 	status.PendingModify = true
 	status.UUIDandVersion = config.UUIDandVersion
 	writeAppNetworkStatus(status, statusFilename)
 
 	if config.IsZedmanager {
+		if config.ZededaDataPlane != ctx.ZededaDataPlane {
+			log.Printf("Unsupported: Changing experimental data plane flag on the fly\n")
+			// XXX Should we return here?
+		}
 		olConfig := config.OverlayNetworkList[0]
 		olStatus := status.OverlayNetworkList[0]
 		olNum := 1
@@ -886,7 +913,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 		updateLispConfiglet(lispRunDirname, false, olConfig.IID,
 			olConfig.EID, olConfig.LispSignature,
 			deviceNetworkStatus, olIfname, olIfname,
-			additionalInfo, olConfig.LispServers)
+			additionalInfo, olConfig.LispServers, ctx.ZededaDataPlane)
 
 	}
 	// Look for ACL changes in underlay
@@ -952,6 +979,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 
 func handleDelete(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
+	ctx := ctxArg.(*zedrouterContext)
 	status := statusArg.(*types.AppNetworkStatus)
 	log.Printf("handleDelete(%v) for %s\n",
 		status.UUIDandVersion, status.DisplayName)
@@ -1035,7 +1063,7 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 
 		// Delete LISP configlets
 		deleteLispConfiglet(lispRunDirname, true, olStatus.IID,
-			olStatus.EID, deviceNetworkStatus)
+			olStatus.EID, deviceNetworkStatus, ctx.ZededaDataPlane)
 	} else {
 		// Delete everything for overlay
 		for olNum := 1; olNum <= maxOlNum; olNum++ {
@@ -1074,7 +1102,8 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 				// Delete LISP configlets
 				deleteLispConfiglet(lispRunDirname, false,
 					olStatus.IID, olStatus.EID,
-					deviceNetworkStatus)
+					deviceNetworkStatus,
+					ctx.ZededaDataPlane)
 			} else {
 				log.Println("Missing status for overlay %d; can not clean up ACLs and LISP\n",
 					olNum)
@@ -1200,7 +1229,7 @@ func doDNSUpdate(ctx *DNCContext) {
 	}
 	ctx.usableAddressCount = newAddrCount
 	updateDeviceNetworkStatus()
-	updateLispConfiglets()
+	updateLispConfiglets(ctx.ZededaDataPlane)
 
 	setUplinks(deviceNetworkConfig.Uplink)
 	setFreeUplinks(deviceNetworkConfig.FreeUplinks)

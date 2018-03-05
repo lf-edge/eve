@@ -520,11 +520,11 @@ if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
-echo "Starting dataplane at" `date`
-dataplane >/var/log/dataplane.log 2>&1 &
-if [ $WAIT = 1 ]; then
-    echo; read -n 1 -s -p "Press any key to continue"; echo; echo
-fi
+#echo "Starting dataplane at" `date`
+#dataplane >/var/log/dataplane.log 2>&1 &
+#if [ $WAIT = 1 ]; then
+#    echo; read -n 1 -s -p "Press any key to continue"; echo; echo
+#fi
 
 echo "Initial setup done at" `date`
 if [ $MEASURE = 1 ]; then

@@ -253,7 +253,9 @@ func handleLookUpParam(devConfig *zconfig.EdgeDevConfig) {
 		UUIDandVersion: uv,
 		DisplayName:    "zedmanager",
 		IsZedmanager:   true,
+		ZededaDataPlane: lispInfo.Experimental,
 	}
+	log.Printf("XXXXX ZededaDataPlane %v.\n", config.ZededaDataPlane)
 
 	olconf := make([]types.OverlayNetworkConfig, 1)
 	config.OverlayNetworkList = olconf

@@ -20,6 +20,7 @@ const (
 	configHolePath = lispConfigDir + "lisp-ipc-data-plane"
 	lispersDotNetItr = lispConfigDir + "lispers.net-itr"
 	dnsDirname = "/var/run/zedrouter/DeviceNetworkStatus"
+	logOutput        = "/var/log/dataplane.log"
 )
 
 // Dummy since we don't have anything to pass
@@ -32,7 +33,15 @@ var puntChannel chan []byte
 var Version = "No version specified"
 
 func main() {
-	log.SetOutput(os.Stdout)
+	// Open/Create new log file
+	f, err := os.OpenFile(logOutput, os.O_RDWR | os.O_CREATE | os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatal("Error: Opening log file: /var/log/dataplane.log\n")
+	}
+	defer f.Close()
+	//log.SetOutput(os.Stdout)
+	// Output logging to file
+	log.SetOutput(f)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
 	versionPtr := flag.Bool("v", false, "Version")
 	flag.Parse()
