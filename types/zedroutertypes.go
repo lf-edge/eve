@@ -228,6 +228,15 @@ func IsUplink(globalStatus DeviceNetworkStatus, ifname string) bool {
 	return false
 }
 
+func GetUplink(globalStatus DeviceNetworkStatus, ifname string) *NetworkUplink {
+	for _, us := range globalStatus.UplinkStatus {
+		if us.IfName == ifname {
+			return &us
+		}
+	}
+	return nil
+}
+
 // Returns addresses based on free, ifname, and whether or not we want
 // IPv6 link-locals.
 // If free is not set, the addresses from the free uplinks are first.

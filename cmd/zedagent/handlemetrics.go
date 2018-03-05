@@ -7,6 +7,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/eriknordmark/ipinfo"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/shirou/gopsutil/cpu"
@@ -889,6 +890,8 @@ func setMetricAnyValue(item *zmet.MetricItem, val interface{}) {
 	}
 }
 
+var nilIPInfo = ipinfo.IPInfo{}
+
 func getNetInfo(interfaceDetail psutilnet.InterfaceStat) *zmet.ZInfoNetwork {
 	networkInfo := new(zmet.ZInfoNetwork)
 	networkInfo.IPAddrs = make([]string, len(interfaceDetail.Addrs))
@@ -922,11 +925,28 @@ func getNetInfo(interfaceDetail psutilnet.InterfaceStat) *zmet.ZInfoNetwork {
 		}
 	}
 
-	// XXX add geoloc information for the interface
-	// XXX where do we run geoloc? Triggered in
-	// handleDNC? Output as separate collection
-	// so we can run as go routine and not block?
-
+	// XXX we potentially have geoloc information for each IP address.
+	// For now fill in the first one.
+	uplink := types.GetUplink(deviceNetworkStatus, interfaceDetail.Name)
+	if uplink != nil {
+		for _, ai := range uplink.AddrInfoList {
+			if ai.Geo == nilIPInfo {
+				continue
+			}
+			log.Printf("XXX Found geo for %s: %v\n",
+				interfaceDetail.Name, ai.Geo)
+			geo := new(zmet.GeoLoc)
+			geo.UnderlayIP = *proto.String(ai.Geo.IP)
+			geo.Hostname = *proto.String(ai.Geo.Hostname)
+			geo.City = *proto.String(ai.Geo.City)
+			geo.Country = *proto.String(ai.Geo.Country)
+			geo.Loc = *proto.String(ai.Geo.Loc)
+			geo.Org = *proto.String(ai.Geo.Org)
+			geo.Postal = *proto.String(ai.Geo.Postal)
+			networkInfo.Location = geo
+			break
+		}
+	}
 	// XXX once we have static config add any
 	// config errors. Note that this might imply
 	// reporting for devices which do not exist.
