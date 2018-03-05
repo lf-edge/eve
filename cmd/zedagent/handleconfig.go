@@ -57,7 +57,7 @@ type configItems struct {
 }
 
 // XXX add code which sets timers from ConfigItems from cloud
-var configItemDefaults = configItems{configInterval: 60, metricInterval: 60,
+var configItemDefaults = configItems{configInterval: 10, metricInterval: 60,
 	resetIfCloudGoneTime: 168 * 3600, fallbackIfCloudGoneTime: 600}
 
 // tlsConfig is initialized once i.e. effectively a constant
