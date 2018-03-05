@@ -237,7 +237,11 @@ func main() {
 	go configTimerTask(handleChannel)
 	log.Printf("Waiting for flexticker handle\n")
 	configTickerHandle := <-handleChannel
-	go metricsTimerTask()
+	go metricsTimerTask(handleChannel)
+	metricsTickerHandle := <-handleChannel
+	// XXX close handleChannel?
+	// XXX pass both handles to config fetch task somehow
+	fmt.Printf("metricsTickerHandle %v\n", metricsTickerHandle)
 
 	// app instance status event watcher
 	go watch.WatchStatus(zedmanagerStatusDirname, appInstanceStatusChanges)

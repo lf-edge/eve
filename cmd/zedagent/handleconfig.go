@@ -29,7 +29,6 @@ const (
 	MaxReaderMaxDefault = MaxReaderSmall
 	MaxReaderMedium     = 1 << 19 // 512k
 	MaxReaderHuge       = 1 << 21 // two megabytes
-	configTickTimeout   = 1       // in minutes
 )
 
 var configApi string = "api/v1/edgedevice/config"
@@ -57,6 +56,7 @@ type configItems struct {
 	fallbackIfCloudGoneTime uint32
 }
 
+// XXX add code which sets timers from ConfigItems from cloud
 var configItemDefaults = configItems{configInterval: 60, metricInterval: 60,
 	resetIfCloudGoneTime: 168 * 3600, fallbackIfCloudGoneTime: 600}
 
@@ -119,35 +119,52 @@ func handleConfigInit() {
 	zcdevUUID = devUUID
 }
 
-// got a trigger for new config. check the present version and compare
-// if this is a new version, initiate update
-//  compare the old version config with the new one
-// delete if some thing is not present in the old config
-// for the new config create entries in the zMgerConfig Dir
-// for each of the above buckets
-// XXX Combine with being able to change the timer intervals
+// Run a periodic fetch of the config
+// XXX have caller check for unchanged value?
+var currentConfigInterval time.Duration
+
 func configTimerTask(handleChannel chan interface{}) {
 	configUrl := serverName + "/" + configApi
 	iteration := 0
 	checkConnectivity := isZbootAvailable() && isCurrentPartitionStateInProgress()
 	getLatestConfig(configUrl, iteration, &checkConnectivity)
 
-	// Make this configurable from zedcloud and call update on ticker
-	max := float64(time.Minute * configTickTimeout)
+	interval := time.Duration(configItemDefaults.configInterval) * time.Second
+	currentConfigInterval = interval
+	max := float64(interval)
 	min := max * 0.3
-	configTicker := flextimer.NewRangeTicker(time.Duration(min),
+	ticker := flextimer.NewRangeTicker(time.Duration(min),
 		time.Duration(max))
 	// Return handle to caller
-	handleChannel <- configTicker
-	for range configTicker.C {
+	handleChannel <- ticker
+	for range ticker.C {
 		iteration += 1
 		getLatestConfig(configUrl, iteration, &checkConnectivity)
 	}
 }
 
-func triggerGetConfig(handle interface{}) {
+func triggerGetConfig(tickerHandle interface{}) {
 	log.Printf("triggerGetConfig()\n")
-	flextimer.TickNow(handle)
+	flextimer.TickNow(tickerHandle)
+}
+
+// Called when configItemDefaults changes
+func updateConfigTimer(tickerHandle interface{}) {
+	interval := time.Duration(configItemDefaults.configInterval) * time.Second
+	if interval == currentConfigInterval {
+		return
+	}
+	log.Printf("updateConfigTimer() change from %v to %v\n",
+		currentConfigInterval, interval)
+	max := float64(interval)
+	min := max * 0.3
+	flextimer.UpdateRangeTicker(tickerHandle,
+		time.Duration(min), time.Duration(max))
+	if interval < currentConfigInterval {
+		// Force an immediate timout on decrease
+		flextimer.TickNow(tickerHandle)
+	}
+	currentConfigInterval = interval
 }
 
 // Start by trying the all the free uplinks and then all the non-free
