@@ -4,7 +4,10 @@ COMMIT := $(if $(shell git status --porcelain --untracked-files=no),${COMMIT_NO}
 BUILD_TOOLS=bin/linuxkit bin/manifest-tool
 GOC=GOPATH=${CURDIR} go
 
-%Gopkg.lock: %Gopkg.toml
+bin/dep:
+	${GOC} get github.com/golang/dep/cmd/dep
+
+%Gopkg.lock: bin/dep %Gopkg.toml
 	cd `dirname $@` ; GOPATH=${CURDIR} ${CURDIR}/bin/dep ensure -v
 
 bin/linuxkit: src/linuxkit/Gopkg.lock
@@ -15,7 +18,4 @@ bin/manifest-tool: src/manifest-tool/Gopkg.lock
 	cd src/manifest-tool/vendor/github.com/estesp/manifest-tool ;\
 	${GOC} build -ldflags "-X main.gitCommit=${COMMIT}" -o ${CURDIR}/$@ .
 
-bin/dep:
-	${GOC} get github.com/golang/dep/cmd/dep
-
-all: bin/dep bin/linuxkit bin/manifest-tool
+all: bin/linuxkit bin/manifest-tool
