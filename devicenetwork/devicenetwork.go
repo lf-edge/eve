@@ -7,11 +7,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/eriknordmark/ipinfo"
 	"github.com/vishvananda/netlink"
 	"github.com/zededa/go-provision/types"
 	"io/ioutil"
 	"log"
-	"net"
+	"time"
 )
 
 // Parse the file with DeviceNetworkConfig
@@ -62,18 +63,38 @@ func MakeDeviceNetworkStatus(globalConfig types.DeviceNetworkConfig) (types.Devi
 		if err != nil {
 			addrs6 = nil
 		}
-		globalStatus.UplinkStatus[ix].Addrs = make([]net.IP,
+		globalStatus.UplinkStatus[ix].AddrInfoList = make([]types.AddrInfo,
 			len(addrs4)+len(addrs6))
 		for i, addr := range addrs4 {
 			fmt.Printf("UplinkAddrs(%s) found IPv4 %v\n",
 				u, addr.IP)
-			globalStatus.UplinkStatus[ix].Addrs[i] = addr.IP
+			globalStatus.UplinkStatus[ix].AddrInfoList[i].Addr = addr.IP
+			// geoloc with short timeout
+			opt := ipinfo.Options{Timeout: 5 * time.Second,
+				SourceIp: addr.IP}
+			info, err := ipinfo.MyIPWithOptions(opt)
+			if err != nil {
+				// Ignore error
+				log.Printf("MakeDeviceNetworkStatus MyInfoInfo %s\n", err)
+			} else {
+				globalStatus.UplinkStatus[ix].AddrInfoList[i].Geo = *info
+			}
 		}
 		for i, addr := range addrs6 {
 			// We include link-locals since they can be used for LISP behind nats
 			fmt.Printf("UplinkAddrs(%s) found IPv6 %v\n",
 				u, addr.IP)
-			globalStatus.UplinkStatus[ix].Addrs[i+len(addrs4)] = addr.IP
+			globalStatus.UplinkStatus[ix].AddrInfoList[i+len(addrs4)].Addr = addr.IP
+			// geoloc with short timeout
+			opt := ipinfo.Options{Timeout: 5 * time.Second,
+				SourceIp: addr.IP}
+			info, err := ipinfo.MyIPWithOptions(opt)
+			if err != nil {
+				// Ignore error
+				log.Printf("MakeDeviceNetworkStatus MyInfoInfo %s\n", err)
+			} else {
+				globalStatus.UplinkStatus[ix].AddrInfoList[i+len(addrs4)].Geo = *info
+			}
 		}
 	}
 	return globalStatus, err

@@ -5,6 +5,7 @@ package types
 
 import (
 	"errors"
+	"github.com/eriknordmark/ipinfo"
 	"log"
 	"net"
 )
@@ -76,9 +77,14 @@ type DeviceNetworkConfig struct {
 }
 
 type NetworkUplink struct {
-	IfName string
-	Free   bool
-	Addrs  []net.IP
+	IfName       string
+	Free         bool
+	AddrInfoList []AddrInfo
+}
+
+type AddrInfo struct {
+	Addr net.IP
+	Geo  ipinfo.IPInfo
 }
 
 type DeviceNetworkStatus struct {
@@ -238,13 +244,9 @@ func getInterfaceAddr(globalStatus DeviceNetworkStatus, free bool, ifname string
 			continue
 		}
 		var addrs []net.IP
-		if includeLinkLocal {
-			addrs = u.Addrs
-		} else {
-			for _, a := range u.Addrs {
-				if !a.IsLinkLocalUnicast() {
-					addrs = append(addrs, a)
-				}
+		for _, i := range u.AddrInfoList {
+			if includeLinkLocal || !i.Addr.IsLinkLocalUnicast() {
+				addrs = append(addrs, i.Addr)
 			}
 		}
 		if free {
