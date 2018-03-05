@@ -1,3 +1,8 @@
+// Copyright (c) 2017 Zededa, Inc.
+// All rights reserved.
+
+// Code to set/get lisp header fields like key id, iid and nonce.
+
 package fib
 
 import (

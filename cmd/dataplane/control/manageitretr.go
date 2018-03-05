@@ -1,3 +1,9 @@
+// Copyright (c) 2017 Zededa, Inc.
+// All rights reserved.
+
+// Maintains maps for storing ITR/ETR thread information. Also takes care of
+// creating new threads and destroying stale ITR/ETR threads.
+
 package main
 
 import (
@@ -6,7 +12,6 @@ import (
 	"github.com/zededa/go-provision/dataplane/itr"
 	"github.com/zededa/go-provision/types"
 	"log"
-	//"syscall"
 )
 
 type ThreadEntry struct {
@@ -45,7 +50,7 @@ func ManageItrThreads(interfaces Interfaces) {
 		// a kill signal if not.
 		if _, ok := tmpMap[name]; !ok {
 			// This thread has to die, break the bad news to it
-			log.Println("Sending kill signal to", name)
+			log.Println("ManageItrThreads: Sending kill signal to", name)
 			entry.killChannel <- true
 
 			// XXX
@@ -73,7 +78,7 @@ func ManageItrThreads(interfaces Interfaces) {
 
 			// Start the go thread here
 			ring := itr.SetupPacketCapture(name, 65536)
-			log.Println("Creating new ITR thread for", name)
+			log.Println("ManageItrThreads: Creating new ITR thread for", name)
 			threadTable[name] = ThreadEntry{
 				killChannel: killChannel,
 				ring:        ring,

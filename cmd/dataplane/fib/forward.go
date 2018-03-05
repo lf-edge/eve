@@ -1,3 +1,8 @@
+// Copyright (c) 2017 Zededa, Inc.
+// All rights reserved.
+
+// LISP packet creation code. Supports AES/sha1 crypto encryption.
+
 package fib
 
 import (
@@ -10,7 +15,6 @@ import (
 	"github.com/zededa/go-provision/types"
 	"log"
 	"math/rand"
-	"net"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -25,7 +29,7 @@ func CraftAndSendLispPacket(packet gopacket.Packet,
 	iid uint32,
 	itrLocalData *types.ITRLocalData) {
 
-	// XXX calculate a hash and use it for load balancing accross entries
+	// calculate a hash and use it for load balancing accross entries
 	totWeight := mapEntry.RlocTotWeight
 
 	// Get map cache slot from hash and weight
@@ -51,7 +55,7 @@ func CraftAndSendLispPacket(packet gopacket.Packet,
 		craftAndSendIPv6LispPacket(packet, pktBuf, capLen, timeStamp,
 			hash32, rlocPtr, iid, itrLocalData)
 	case types.MAP_CACHE_FAMILY_UNKNOWN:
-		log.Printf("Unkown family found for rloc %s\n",
+		log.Printf("CraftAndSendLispPacket: Unkown family found for rloc %s\n",
 			rlocPtr.Rloc)
 	}
 }
@@ -68,7 +72,7 @@ func encryptPayload(payload []byte,
 	block cipher.Block, ivArray []byte) (bool, uint32) {
 
 	if len(encKey) == 0 {
-		log.Printf("Invalid encrypt key lenght: %s\n", len(encKey))
+		log.Printf("encryptPayload: Invalid encrypt key lenght: %s\n", len(encKey))
 		return false, 0
 	}
 
@@ -92,19 +96,6 @@ func encryptPayload(payload []byte,
 	// XXX Check with Dino, how his code treats IV.
 	// String(ascii) or binary?
 	// For now, convert the IV into byte array
-
-	// Write IV into packet
-	//for i, b := range ivArray {
-	//	packet[i] = b
-	//}
-
-	// the below block value can be stored in map-cache entry for efficiency
-	//block, err := aes.NewCipher(encKey)
-	//if err != nil {
-	//	log.Printf("Error: Creating new AES encryption block from key: %x: %s\n",
-	//	encKey, err)
-	//	return false, 0
-	//}
 
 	mode := cipher.NewCBCEncrypter(block, packet[:aes.BlockSize])
 	mode.CryptBlocks(packet[aes.BlockSize:], packet[aes.BlockSize:])
@@ -144,6 +135,24 @@ func GetIVArray(itrLocalData *types.ITRLocalData, ivArray []byte) []byte {
 	return GenerateIVByteArray(ivHigh, ivLow, ivArray)
 }
 
+func ComputeICV(buf []byte, icvKey []byte) []byte {
+	mac := hmac.New(sha1.New, icvKey)
+	mac.Write(buf)
+	icv := mac.Sum(nil)
+	return icv
+}
+
+func computeAndWriteICV(packet []byte, icvKey []byte) {
+	pktLen := len(packet)
+	icv := ComputeICV(packet[:pktLen-types.ICVLEN], icvKey)
+
+	// Write ICV to packet
+	startIdx := pktLen - types.ICVLEN
+	for i, b := range icv {
+		packet[startIdx+i] = b
+	}
+}
+
 func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 	pktBuf []byte,
 	capLen uint32,
@@ -161,7 +170,7 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 	var icvKey []byte
 
 	srcAddr := GetIPv4UplinkAddr()
-	log.Printf("XXXXX UPLINK address is %s.\n", srcAddr)
+	log.Printf("XXXXX craftAndSendIPv4LispPacket: UPLINK address is %s.\n", srcAddr)
 	// XXX
 	// Should we have a static per-thread entry for this header?
 	// Can we have it globally and re-use?
@@ -178,12 +187,11 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 
 	// Check if the RLOC expects encryption
 	if rloc.KeyCount != 0 {
-		// XXX Call the encrypt function here
-		// We should not encrypt the outer IP and lisp headers
-		// XXX Also set the LISP key id here. May be always use 1.
-		// Pass the IV from map cache entry, packet buffer
-		// Also we have to increment the IV
-
+		// Call the encrypt function here.
+		// We should not encrypt the outer IP and lisp headers.
+		// Also set the LISP key id here. May be always use 1.
+		// Pass the IV from map cache entry, packet buffer.
+		// Also we have to increment the IV.
 		useCrypto = true
 
 		// use keyid 1 for now
@@ -209,7 +217,6 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 		}
 	}
 
-	// XXX
 	// Should we have a static per-thread entry for this header?
 	// Can we have it globally and re-use?
 
@@ -218,6 +225,165 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 	srcPort = (srcPort | (uint16(hash32) & 0x3FFF))
 
 	udpLen := types.UDPHEADERLEN + types.LISPHEADERLEN + capLen - types.ETHHEADERLEN
+	udp := &layers.UDP{
+		// Source port is a hash from packet
+		SrcPort: layers.UDPPort(srcPort),
+		DstPort: 4341,
+		Length:  uint16(udpLen),
+	}
+
+	udp.SetNetworkLayerForChecksum(ip)
+
+	// Create a custom LISP header
+	lispHdr := make([]byte, 8)
+	SetLispIID(lispHdr, iid)
+
+	nonce := rand.Intn(0xffffff)
+	SetLispNonce(lispHdr, uint32(nonce))
+
+	// XXX Check if crypto is enabled for this EID and set
+	// the key id as required
+	if useCrypto == true {
+		SetLispKeyId(lispHdr, keyId)
+
+		// UDP length changes with crypto
+		// original length + any padding + 20 bytes ICV
+		udp.Length += aes.BlockSize + uint16(padLen) + types.ICVLEN
+	}
+
+	buf := gopacket.NewSerializeBuffer()
+	opts := gopacket.SerializeOptions{
+		ComputeChecksums: false,
+		FixLengths:       false,
+	}
+
+	if err := gopacket.SerializeLayers(buf, opts, ip, udp); err != nil {
+		log.Printf("craftAndSendIPv4LispPacket: Failed serializing packet: %s", err)
+		return
+	}
+	/*
+		if err := gopacket.SerializeLayers(buf, opts, udp); err != nil {
+			log.Printf("Failed serializing packet: %s", err)
+			return
+		}
+	*/
+
+	outerHdr := buf.Bytes()
+	outerHdr = append(outerHdr, lispHdr...)
+	outerHdrLen := len(outerHdr)
+	offset := types.MAXHEADERLEN + types.ETHHEADERLEN - outerHdrLen
+
+	// output slice starts after "offset" and the length of output slice
+	// will be len(outerHdr) + capture length - 14 (ethernet header)
+	offsetEnd := uint32(offset) + uint32(outerHdrLen) + capLen - types.ETHHEADERLEN
+	if useCrypto == true {
+		offset = offset - aes.BlockSize
+
+		// add IV length
+		offsetEnd = offsetEnd + aes.BlockSize + padLen + types.ICVLEN
+
+		// We do not include outer UDP header for ICV computation
+		icvStartOffset := offset + types.IP4HEADERLEN + types.UDPHEADERLEN
+		//computeAndWriteICV(pktBuf[offset+types.UDPHEADERLEN:offsetEnd], icvKey)
+		computeAndWriteICV(pktBuf[icvStartOffset:offsetEnd], icvKey)
+	}
+
+	for i := 0; i < outerHdrLen; i++ {
+		pktBuf[i+offset] = outerHdr[i]
+	}
+
+	outputSlice := pktBuf[offset:offsetEnd]
+
+	v4Addr := rloc.Rloc.To4()
+	log.Printf("XXXXX Writing %d bytes into ITR socket\n", len(outputSlice))
+	err := syscall.Sendto(fd4, outputSlice, 0, &syscall.SockaddrInet4{
+		Port: 0,
+		Addr: [4]byte{v4Addr[0], v4Addr[1], v4Addr[2], v4Addr[3]},
+	})
+	if err != nil {
+		log.Printf("craftAndSendIPv4LispPacket: Packet send ERROR: %s", err)
+		return
+	}
+
+	// Increment RLOC packet & byte count statistics
+	totalBytes := offsetEnd - uint32(offset) + types.IP4HEADERLEN
+	atomic.AddUint64(&rloc.Packets, 1)
+	atomic.AddUint64(&rloc.Bytes, uint64(totalBytes))
+
+	// Atomically store time stamp
+	unixSeconds := timeStamp.Unix()
+	atomic.StoreInt64(&rloc.LastPktTime, unixSeconds)
+}
+
+func craftAndSendIPv6LispPacket(packet gopacket.Packet,
+	pktBuf []byte,
+	capLen uint32,
+	timeStamp time.Time,
+	hash32 uint32,
+	rloc *types.Rloc,
+	iid uint32,
+	itrLocalData *types.ITRLocalData) {
+
+	var fd6 int = itrLocalData.Fd6
+	var useCrypto bool = false
+	var keyId byte = 0
+	var padLen uint32 = 0
+	var icvKey []byte
+
+	srcAddr := GetIPv6UplinkAddr()
+	log.Printf("XXXXX craftAndSendIPv6LispPacket: UPLINK address is %s.\n", srcAddr)
+
+	// XXX
+	// Should we have a static per-thread entry for this header?
+	// Can we have it globally and re-use?
+	ip := &layers.IPv6{
+		Version:    6,
+		HopLimit:   64,
+		DstIP:      rloc.Rloc,
+		SrcIP:      srcAddr,
+		NextHeader: layers.IPProtocolUDP,
+	}
+
+	// Check if the RLOC expects encryption
+	if rloc.KeyCount != 0 {
+		// Call the encrypt function here.
+		// We should not encrypt the outer IP and lisp headers.
+		// Also set the LISP key id here. May be always use 1.
+		// Pass the IV from map cache entry, packet buffer.
+		// Also we have to increment the IV.
+		useCrypto = true
+
+		// use keyid 1 for now
+		keyId = 1
+
+		key := rloc.Keys[keyId-1]
+		encKey := key.EncKey
+		icvKey = key.IcvKey
+
+		offsetStart := types.MAXHEADERLEN + types.ETHHEADERLEN - uint32(aes.BlockSize)
+		offsetEnd := types.MAXHEADERLEN + capLen
+		payloadLen := offsetEnd - offsetStart
+
+		ok := false
+		ok, padLen = encryptPayload(pktBuf[offsetStart:offsetEnd], payloadLen,
+			encKey, key.EncBlock,
+			GetIVArray(itrLocalData, pktBuf[offsetStart:offsetStart+types.IVLEN]))
+		if ok == false {
+			keyId = 0
+			useCrypto = false
+		} else {
+			log.Println("XXXXX Using CRYPTO")
+		}
+	}
+
+	// make sure the source port is one of the ephemeral one's
+	var srcPort uint16 = 0xC000
+	srcPort = (srcPort | (uint16(hash32) & 0x3FFF))
+
+	udpLen := types.UDPHEADERLEN + types.LISPHEADERLEN + capLen - types.ETHHEADERLEN
+	// XXX
+	// Should we have a static per-thread entry for this header?
+	// Can we have it globally and re-use?
 	udp := &layers.UDP{
 		// XXX Source port should be a hash from packet
 		// Hard coding for now.
@@ -242,7 +408,7 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 
 		// UDP length changes with crypto
 		// original length + any padding + 20 bytes ICV
-		udp.Length += aes.BlockSize + uint16(padLen) + 20
+		udp.Length += aes.BlockSize + uint16(padLen) + types.ICVLEN
 	}
 
 	buf := gopacket.NewSerializeBuffer()
@@ -252,169 +418,56 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 	}
 
 	if err := gopacket.SerializeLayers(buf, opts, ip, udp); err != nil {
-		log.Printf("Failed serializing packet: %s", err)
+		log.Printf("craftAndSendIPv6LispPacket: Failed serializing packet")
 		return
 	}
-	/*
-	if err := gopacket.SerializeLayers(buf, opts, udp); err != nil {
-		log.Printf("Failed serializing packet: %s", err)
-		return
-	}
-	*/
 
 	outerHdr := buf.Bytes()
 	outerHdr = append(outerHdr, lispHdr...)
 	outerHdrLen := len(outerHdr)
 	offset := types.MAXHEADERLEN + types.ETHHEADERLEN - outerHdrLen
-	if useCrypto == true {
-		offset = offset - aes.BlockSize
-	}
-
-	for i := 0; i < outerHdrLen; i++ {
-		pktBuf[i+offset] = outerHdr[i]
-	}
 
 	// output slice starts after "offset" and the length of output slice
 	// will be len(outerHdr) + capture length - 14 (ethernet header)
 	offsetEnd := uint32(offset) + uint32(outerHdrLen) + capLen - types.ETHHEADERLEN
 	if useCrypto == true {
+		offset = offset - aes.BlockSize
+
 		// add IV length
 		offsetEnd = offsetEnd + aes.BlockSize + padLen + types.ICVLEN
 
-		// We do not include outer UDP header for ICV computation
-		icvStartOffset := offset + types.IP4HEADERLEN + types.UDPHEADERLEN
-		//computeAndWriteICV(pktBuf[offset+types.UDPHEADERLEN:offsetEnd], icvKey)
+		// We do not include outer IP/UDP headers for ICV computation
+		icvStartOffset := offset + types.IP6HEADERLEN + types.UDPHEADERLEN
 		computeAndWriteICV(pktBuf[icvStartOffset:offsetEnd], icvKey)
 	}
-	//outputSlice := pktBuf[offset : uint32(offset)+uint32(outerHdrLen)+capLen-14]
-	outputSlice := pktBuf[offset:offsetEnd]
-
-	v4Addr := rloc.Rloc.To4()
-	log.Printf("Writing %d bytes into ITR socket\n", len(outputSlice))
-	err := syscall.Sendto(fd4, outputSlice, 0, &syscall.SockaddrInet4{
-		Port: 0,
-		Addr: [4]byte{v4Addr[0], v4Addr[1], v4Addr[2], v4Addr[3]},
-	})
-	if err != nil {
-		log.Printf("Packet send ERROR: %s", err)
-		return
-	}
-
-	// Increment RLOC packet & byte count statistics
-	totalBytes := offsetEnd - uint32(offset) + types.IP4HEADERLEN
-	atomic.AddUint64(&rloc.Packets, 1)
-	atomic.AddUint64(&rloc.Bytes, uint64(totalBytes))
-	// Atomically store time stamp
-	unixSeconds := timeStamp.Unix()
-	atomic.StoreInt64(&rloc.LastPktTime, unixSeconds)
-}
-
-func ComputeICV(buf []byte, icvKey []byte) []byte {
-	mac := hmac.New(sha1.New, icvKey)
-	mac.Write(buf)
-	icv := mac.Sum(nil)
-	return icv
-}
-
-func computeAndWriteICV(packet []byte, icvKey []byte) {
-	pktLen := len(packet)
-	icv := ComputeICV(packet[:pktLen-types.ICVLEN], icvKey)
-
-	// Write ICV to packet
-	startIdx := pktLen - types.ICVLEN
-	for i, b := range icv {
-		packet[startIdx+i] = b
-	}
-}
-
-func craftAndSendIPv6LispPacket(packet gopacket.Packet,
-	pktBuf []byte,
-	capLen uint32,
-	timeStamp time.Time,
-	hash32 uint32,
-	//mapEntry *types.MapCacheEntry,
-	rloc *types.Rloc,
-	iid uint32,
-	itrLocalData *types.ITRLocalData) {
-
-	var fd6 int = itrLocalData.Fd6
-	// XXX
-	// Should we have a static per-thread entry for this header?
-	// Can we have it globally and re-use?
-	srcAddr := net.ParseIP("")
-	ip := &layers.IPv6{
-		Version:    6,
-		HopLimit:   64,
-		DstIP:      rloc.Rloc,
-		SrcIP:      srcAddr,
-		NextHeader: layers.IPProtocolUDP,
-	}
-
-	// XXX
-	// Should we have a static per-thread entry for this header?
-	// Can we have it globally and re-use?
-	udp := &layers.UDP{
-		// XXX Source port should be a hash from packet
-		// Hard coding for now.
-		SrcPort: 1434,
-		DstPort: 4341,
-		Length:  uint16(16 + capLen - 14),
-	}
-
-	udp.SetNetworkLayerForChecksum(ip)
-
-	// Create a custom LISP header
-	lispHdr := make([]byte, 8)
-	SetLispIID(lispHdr, iid)
-
-	nonce := rand.Intn(0xffffff)
-	SetLispNonce(lispHdr, uint32(nonce))
-
-	// get bytes starting from the IP header of captured packet
-	linkLayer := packet.LinkLayer()
-	payload := linkLayer.LayerPayload()
-
-	// Prepend the lisp header
-	payload = append(lispHdr, payload...)
-
-	data := gopacket.Payload(payload)
-
-	buf := gopacket.NewSerializeBuffer()
-	opts := gopacket.SerializeOptions{
-		//ComputeChecksums: true,
-		FixLengths: true,
-	}
-
-	if err := gopacket.SerializeLayers(buf, opts, ip, udp, data); err != nil {
-		log.Printf("Failed serializing packet")
-		return
-	}
-
-	outerHdr := buf.Bytes()
-	outerHdr = append(outerHdr, lispHdr...)
-	outerHdrLen := len(outerHdr)
-	//log.Println("Outer header length is", outerHdrLen)
-	offset := types.MAXHEADERLEN + types.ETHHEADERLEN - outerHdrLen
-	//log.Println("Offset is", offset)
 
 	for i := 0; i < outerHdrLen; i++ {
 		pktBuf[i+offset] = outerHdr[i]
 	}
-	outputSlice := pktBuf[offset : uint32(offset)+uint32(outerHdrLen)+capLen-14]
+	outputSlice := pktBuf[offset:offsetEnd]
 
-	//_, err := conn6.WriteTo(buf.Bytes(), &net.IPAddr{IP: rloc.Rloc})
 	v6Addr := rloc.Rloc.To16()
 	var destAddr [16]byte
 	for i, _ := range destAddr {
 		destAddr[i] = v6Addr[i]
 	}
 
+	log.Printf("XXXXX Writing %d bytes into ITR socket\n", len(outputSlice))
 	err := syscall.Sendto(fd6, outputSlice, 0, &syscall.SockaddrInet6{
 		Port:   0,
 		ZoneId: 0,
 		Addr:   destAddr,
 	})
 	if err != nil {
-		log.Printf("Packet send ERROR: %s", err)
+		log.Printf("craftAndSendIPv6LispPacket: Packet send ERROR: %s", err)
 	}
+
+	// Increment RLOC packet & byte count statistics
+	totalBytes := offsetEnd - uint32(offset) + types.IP6HEADERLEN
+	atomic.AddUint64(&rloc.Packets, 1)
+	atomic.AddUint64(&rloc.Bytes, uint64(totalBytes))
+
+	// Atomically store time stamp
+	unixSeconds := timeStamp.Unix()
+	atomic.StoreInt64(&rloc.LastPktTime, unixSeconds)
 }

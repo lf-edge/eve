@@ -1,3 +1,11 @@
+// Copyright (c) 2017 Zededa, Inc.
+// All rights reserved.
+
+// Main code that starts data plane process. All other modules like fib, itr & etr
+// are initialized and started by this control thread code.
+// Control code also opens/reads unix sockets to get map-cache and interface fib
+// data fron lispers.net process.
+
 package main
 
 import (
@@ -16,10 +24,10 @@ import (
 )
 
 const (
-	lispConfigDir = "/opt/zededa/lisp/"
-	configHolePath = lispConfigDir + "lisp-ipc-data-plane"
+	lispConfigDir    = "/opt/zededa/lisp/"
+	configHolePath   = lispConfigDir + "lisp-ipc-data-plane"
 	lispersDotNetItr = lispConfigDir + "lispers.net-itr"
-	dnsDirname = "/var/run/zedrouter/DeviceNetworkStatus"
+	dnsDirname       = "/var/run/zedrouter/DeviceNetworkStatus"
 	logOutput        = "/var/log/dataplane.log"
 )
 
@@ -34,7 +42,7 @@ var Version = "No version specified"
 
 func main() {
 	// Open/Create new log file
-	f, err := os.OpenFile(logOutput, os.O_RDWR | os.O_CREATE | os.O_APPEND, 0666)
+	f, err := os.OpenFile(logOutput, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		log.Fatal("Error: Opening log file: /var/log/dataplane.log\n")
 	}

@@ -1,3 +1,6 @@
+// Copyright (c) 2017 Zededa, Inc.
+// All rights reserved.
+
 package fib
 
 import (
@@ -92,6 +95,7 @@ func ShowIfaceIIDs() {
 	ifaceMap.LockMe.RLock()
 	defer ifaceMap.LockMe.RUnlock()
 
+	log.Println("##### INTERFACE IIDs #####")
 	for key, data := range ifaceMap.InterfaceDB {
 		log.Println("Interface:", key)
 		log.Println("IID:", data.InstanceId)
@@ -104,6 +108,7 @@ func ShowIfaceEIDs() {
 	eidMap.LockMe.RLock()
 	defer eidMap.LockMe.RUnlock()
 
+	log.Println("##### INTERFACE EIDs #####")
 	for key, data := range eidMap.EidEntries {
 		log.Println("IID:", key)
 		log.Println("Eids:")

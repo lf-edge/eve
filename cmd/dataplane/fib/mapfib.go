@@ -1,3 +1,9 @@
+// Copyright (c) 2017 Zededa, Inc.
+// All rights reserved.
+
+// Code to Add/Chance/Update map-cache entries. Also has code for storing the uplink
+// ipv4/ipv6 addresses to be used for sending out LISP packets.
+
 package fib
 
 import (
@@ -42,23 +48,22 @@ func InitMapCache() {
 	pktBuf = make([]byte, 65536)
 
 	// create required raw sockets
-	//fd4, err = syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
 	fd4, err = syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, syscall.IPPROTO_UDP)
 	if err != nil {
-		log.Printf("FIB ipv4 raw socket creation failed.\n")
+		log.Printf("InitMapCache: FIB ipv4 raw socket creation failed.\n")
 	}
 	err = syscall.SetsockoptInt(fd4, syscall.SOL_SOCKET, syscall.IP_MTU_DISCOVER,
 		syscall.IP_PMTUDISC_DONT)
 	if err != nil {
-		log.Printf("Disabling path mtu discovery failed.\n")
+		log.Printf("InitMapCache: Disabling path mtu discovery failed.\n")
 	}
 	err = syscall.SetsockoptInt(fd4, syscall.IPPROTO_IP, syscall.IP_HDRINCL, 0)
 	if err != nil {
-		log.Printf("Disabling IP_HDRINCL failed.\n")
+		log.Printf("InitMapCache: Disabling IP_HDRINCL failed.\n")
 	}
 	fd6, err = syscall.Socket(syscall.AF_INET6, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
 	if err != nil {
-		log.Printf("FIB ipv6 raw socket creation failed.\n")
+		log.Printf("InitMapCache: FIB ipv6 raw socket creation failed.\n")
 	}
 	// XXX We should close these sockets somewhere. Where?
 
@@ -71,9 +76,9 @@ func InitDecapTable() {
 }
 
 // Control thread looks for changes to /var/run/zedrouter/DeviceNetworkStatus/global.json
-// and selects uplinks for ipv4 & ipv6 addresses. We store these uplink addresses at a 
+// and selects uplinks for ipv4 & ipv6 addresses. We store these uplink addresses at a
 // global location. ITR threads will make READ accesses for uplink addresses simultaneously.
-// Control thread can change these uplink addresses any time. Since it is not possible to 
+// Control thread can change these uplink addresses any time. Since it is not possible to
 // change all the fields of UpLinkAddress structure, we allocate a new structure
 // (initialize it) and then atomically change the global pointer such that it points
 // to the newly allocated data structure.
@@ -119,6 +124,12 @@ func makeMapCacheKey(iid uint32, eid net.IP) types.MapCacheKey {
 
 // This function will delete all map-cache entries that we have.
 func FlushMapCache() {
+	cache.LockMe.Lock()
+	defer cache.LockMe.Unlock()
+
+	for key := range cache.MapCache {
+		delete(cache.MapCache, key)
+	}
 }
 
 // Do a lookup into map cache database. If a resolved entry is not found,
@@ -145,7 +156,6 @@ func LookupAndAdd(iid uint32,
 		}
 
 		// elapsed time is in Nano seconds
-		//elapsed := time.Since(entry.LastPunt)
 		elapsed := timeStamp.Sub(entry.LastPunt)
 
 		// convert elapsed time to milli seconds
@@ -155,7 +165,6 @@ func LookupAndAdd(iid uint32,
 		// XXX Is 30 seconds for punt too high?
 		if elapsed >= puntInterval {
 			punt = true
-			//entry.LastPunt = time.Now()
 			entry.LastPunt = timeStamp
 		}
 		return entry, punt
@@ -242,7 +251,7 @@ func UpdateMapCacheEntry(iid uint32, eid net.IP, rlocs []types.Rloc) {
 
 // Compile the given rlocs according to their priorities and prepare a load
 // balance list.
-// XXX We only consider the highest priority RLOCs and ignore other priorities
+// Note: We only consider the highest priority RLOCs and ignore other priorities
 func compileRlocs(rlocs []types.Rloc) ([]types.Rloc, uint32) {
 	var highPrio uint32 = 0xFFFFFFFF
 	selectRlocs := []types.Rloc{}
@@ -277,7 +286,7 @@ func compileRlocs(rlocs []types.Rloc) ([]types.Rloc, uint32) {
 
 		selectRlocs[i].WrLow = low
 		selectRlocs[i].WrHigh = high
-		log.Println("Adding weights:", low, high)
+		log.Println("compileRlocs: Adding weights:", low, high)
 	}
 
 	return selectRlocs, totWeight
@@ -295,7 +304,8 @@ func LookupAndUpdate(iid uint32, eid net.IP, rlocs []types.Rloc) *types.MapCache
 	var packets, bytes, tailDrops, buffdPkts uint64
 	var lastPunt time.Time
 
-	log.Printf("Adding map-cache entry with key %d, %s\n", key.IID, key.Eid)
+	log.Printf("LookupAndUpdate: Adding map-cache entry with key %d, %s\n",
+		key.IID, key.Eid)
 
 	if ok && (entry.Resolved == true) {
 		// Delete the old map cache entry
@@ -377,6 +387,7 @@ func ShowMapCacheEntries() {
 	cache.LockMe.RLock()
 	defer cache.LockMe.RUnlock()
 
+	log.Println("##### MAP CACHE ENTRIES #####")
 	for key, value := range cache.MapCache {
 		log.Println("Key IID:", key.IID)
 		log.Printf("Key Eid: %s\n", key.Eid)
@@ -408,6 +419,7 @@ func ShowDecapKeys() {
 	decaps.LockMe.RLock()
 	defer decaps.LockMe.RUnlock()
 
+	log.Println("##### DECAP KEYS #####")
 	for rloc, entry := range decaps.DecapEntries {
 		log.Println("Rloc:", rloc)
 		for _, key := range entry.Keys {
@@ -422,14 +434,16 @@ func ShowDecapKeys() {
 	log.Println()
 }
 
+// Stats thread starts every 5 seconds and punts map cache statistics to lispers.net.
 func StatsThread(puntChannel chan []byte) {
 	log.Printf("Starting statistics thread.\n")
 	for {
-		// We collect and transport statistic to lispers.net every 10 seconds
-		time.Sleep(10 * time.Second)
+		// We collect and transport statistic to lispers.net every 5 seconds
+		time.Sleep(5 * time.Second)
 
-		// take read lock of map cache table
+		// Take read lock of map cache table
 		// and go through each entry while preparing statistics message
+		// We hold the lock while we iterate through the table.
 
 		cache.LockMe.RLock()
 
@@ -437,10 +451,6 @@ func StatsThread(puntChannel chan []byte) {
 		encapStatistics.Type = "statistics"
 
 		for key, value := range cache.MapCache {
-			//log.Println("Key IID:", key.IID)
-			//log.Printf("Key Eid: %s\n", key.Eid)
-			//log.Println("Rlocs:")
-
 			var eidStats types.EidStatsEntry
 			eidStats.InstanceId = strconv.FormatUint(uint64(key.IID), 10)
 			prefixLength := "/128"

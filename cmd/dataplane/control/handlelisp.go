@@ -1,3 +1,8 @@
+// Copyright (c) 2017 Zededa, Inc.
+// All rights reserved.
+
+// Decode messages from lispers.net and update fibs.
+
 package main
 
 import (
@@ -79,13 +84,13 @@ func parseRloc(rlocStr *Rloc) (types.Rloc, bool) {
 		icvKey := []byte(key.IcvKey[8:])
 		encBlock, err := aes.NewCipher(encKey)
 		if err != nil {
-			log.Printf("Creating of Cipher block for ecnryption key %s failed\n",
+			log.Printf(
+				"parseRloc: Creating of Cipher block for ecnryption key %s failed\n",
 				key.EncKey)
 			// XXX Should we log.Fatal here?
 			continue
 		}
 
-		//keys[i] = types.Key {
 		keys[keyId-1] = types.Key{
 			KeyId:    uint32(keyId),
 			EncKey:   encKey,
@@ -138,7 +143,7 @@ func createMapCache(mapCache *MapCacheEntry) {
 		// We are not interested in prefixes shorter than 128 except 0 prefix length
 		// If we do not find a more specific route (prefix length 128), we forward
 		// our packets to the default route.
-		log.Println("Ignoring EID with mask length:", maskLen)
+		log.Println("createMapCache: Ignoring EID with mask length:", maskLen)
 		return
 	}
 
@@ -178,6 +183,13 @@ func handleMapCacheTable(msg []byte) {
 		return
 	}
 
+	numEntries := len(mapCacheTable.MapCaches)
+	if numEntries == 0 {
+		// This is a special case where lispers.net wants data plane
+		// to flush/clear all map-cache entries.
+		fib.FlushMapCache()
+	}
+
 	for _, mapCache := range mapCacheTable.MapCaches {
 		createMapCache(&mapCache)
 	}
@@ -195,13 +207,6 @@ func handleMapCache(msg []byte) {
 			string(msg), err)
 		return
 	}
-	/*
-		//log.Println("map-cache is", mapCache)
-		log.Println("Opcode:", mapCache.Opcode)
-		log.Println("eid-prefix:", mapCache.EidPrefix)
-		log.Println("IID:", mapCache.InstanceId)
-		log.Println()
-	*/
 
 	createMapCache(&mapCache)
 }
@@ -210,19 +215,12 @@ func parseDatabaseMappings(databaseMappings DatabaseMappings) map[uint32][]net.I
 	tmpMap := make(map[uint32][]net.IP)
 
 	for _, entry := range databaseMappings.Mappings {
-		/*
-			log.Println("IID:", entry.InstanceId)
-			log.Println("Eid prefix:", entry.EidPrefix)
-			log.Println()
-		*/
-
 		x, err := strconv.ParseUint(entry.InstanceId, 10, 32)
 		if err != nil {
 			continue
 		}
 		iid := uint32(x)
 		eid, _, err := net.ParseCIDR(entry.EidPrefix)
-		//if eid == nil {
 		if err != nil {
 			continue
 		}
@@ -238,6 +236,7 @@ func parseDatabaseMappings(databaseMappings DatabaseMappings) map[uint32][]net.I
 func handleDatabaseMappings(msg []byte) {
 	var databaseMappings DatabaseMappings
 
+	log.Printf("Handling the following Database map message:\n%s\n", string(msg))
 	err := json.Unmarshal(msg, &databaseMappings)
 	if err != nil {
 		log.Fatal("handleDatabaseMappings: Error: Unknown json message format: %s: %s",
@@ -252,7 +251,7 @@ func handleDatabaseMappings(msg []byte) {
 	eidEntries := []types.EIDEntry{}
 
 	if eidEntries == nil {
-		log.Println("Allocation of EID entry slice failed")
+		log.Println("handleDatabaseMappings: Allocation of EID entry slice failed")
 		return
 	}
 
@@ -268,6 +267,7 @@ func handleDatabaseMappings(msg []byte) {
 func handleInterfaces(msg []byte) {
 	var interfaces Interfaces
 
+	log.Printf("Handling the following Interfaces message:\n%s\n", string(msg))
 	err := json.Unmarshal(msg, &interfaces)
 	if err != nil {
 		log.Fatal("handleInterfaces: Error: Unknown json message format: %s: %s",
@@ -277,7 +277,7 @@ func handleInterfaces(msg []byte) {
 	ifaces := []types.Interface{}
 
 	if ifaces == nil {
-		log.Println("Allocation of Interface slice failed")
+		log.Println("handleInterfaces: Allocation of Interface slice failed")
 		return
 	}
 
@@ -307,6 +307,7 @@ func handleInterfaces(msg []byte) {
 func handleDecapKeys(msg []byte) {
 	var decapMsg DecapKeys
 
+	log.Printf("Handling the following Decaps message:\n%s\n", string(msg))
 	err := json.Unmarshal(msg, &decapMsg)
 	if err != nil {
 		log.Fatal("handleDecapKeys: Error: Unknown json message format: %s: %s",
@@ -321,7 +322,6 @@ func handleDecapKeys(msg []byte) {
 
 	keys := make([]types.DKey, len(decapMsg.Keys))
 
-	//for i, key := range decapMsg.Keys {
 	for _, key := range decapMsg.Keys {
 		keyId, err := strconv.ParseUint(key.KeyId, 10, 32)
 		if err != nil {
@@ -335,19 +335,8 @@ func handleDecapKeys(msg []byte) {
 		if len(key.IcvKey) == 40 {
 			key.IcvKey = key.IcvKey[8:]
 		}
-		//if (len(key.DecKey) != CRYPTO_KEY_LEN) ||
-		//	(len(key.IcvKey[8:]) != CRYPTO_KEY_LEN) {
 		if (len(key.DecKey) != CRYPTO_KEY_LEN) ||
 			(len(key.IcvKey) != CRYPTO_KEY_LEN) {
-			log.Printf("XXXXX Decap-key is %s\n", key.DecKey)
-			//log.Printf("XXXXX ICV-key is %s\n", key.IcvKey[8:])
-			log.Printf("XXXXX ICV-key is %s\n", key.IcvKey)
-			/*
-			log.Printf(
-				"Error: Decap/ICV Key lengths should be 32, found encrypt key len %d & icv key length %d\n",
-				len(key.DecKey), len(key.IcvKey[8:]))
-
-				*/
 			log.Printf(
 				"Error: Decap/ICV Key lengths should be 32, found encrypt key len %d & icv key length %d\n",
 				len(key.DecKey), len(key.IcvKey))
@@ -355,11 +344,11 @@ func handleDecapKeys(msg []byte) {
 		}
 		decKey := []byte(key.DecKey)
 		// XXX lispers.net some times sends 8 zeroes in the beginning
-		//icvKey := []byte(key.IcvKey[8:])
 		icvKey := []byte(key.IcvKey)
 		decBlock, err := aes.NewCipher(decKey)
 		if err != nil {
-			log.Printf("Creating of Cipher block for decryption key %s failed\n",
+			log.Printf(
+				"handleDecapKeys: Creating of Cipher block for decryption key %s failed\n",
 				key.DecKey)
 			continue
 		}
@@ -369,9 +358,9 @@ func handleDecapKeys(msg []byte) {
 			IcvKey:   icvKey,
 			DecBlock: decBlock,
 		}
-		log.Printf("Adding Decap key[%d] %s for Rloc %s\n",
+		log.Printf("handleDecapKeys: Adding Decap key[%d] %s for Rloc %s\n",
 			keyId-1, keys[keyId-1].DecKey, decapMsg.Rloc)
-		log.Printf("Adding Decap icv[%d] %s for Rloc %s\n",
+		log.Printf("handleDecapKeys: Adding Decap icv[%d] %s for Rloc %s\n",
 			keyId-1, keys[keyId-1].IcvKey, decapMsg.Rloc)
 	}
 
@@ -385,14 +374,13 @@ func handleDecapKeys(msg []byte) {
 
 func handleEtrNatPort(msg []byte) {
 	var etrNatPort EtrNatPort
-	log.Println(string(msg))
 
+	log.Printf("Handling the following ETR Nat port message:\n%s\n", string(msg))
 	err := json.Unmarshal(msg, &etrNatPort)
 	if err != nil {
 		log.Fatal("handleEtrNatPort: Error: Unknown json message format: %s: %s",
 			string(msg), err)
 		return
 	}
-	//ManageETRThread(etrNatPort.Port)
 	etr.HandleEtrEphPort(etrNatPort.Port)
 }

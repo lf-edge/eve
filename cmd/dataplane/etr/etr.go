@@ -1,3 +1,11 @@
+// Copyright (c) 2017 Zededa, Inc.
+// All rights reserved.
+
+// This implements the ETR functionality. Listens on UDP destination port 4341 for
+// receiving packets behind the same NAT. Cross NAT packets are captured using pfring
+// listening for packets with source port 4341 and destination ephemeral port received
+// from lispers.net.
+
 package etr
 
 import (
@@ -21,26 +29,26 @@ var etrTable types.EtrTable
 var deviceNetworkStatus types.DeviceNetworkStatus
 
 const (
-	uplinkFileName = "/var/run/zedrouter/DeviceNetworkStatus/global.json"
+	uplinkFileName  = "/var/run/zedrouter/DeviceNetworkStatus/global.json"
 	etrNatPortMatch = "udp dst port %d and udp src port 4341"
 )
 
 func InitETRStatus() {
-	etrTable.EphPort  = -1
+	etrTable.EphPort = -1
 	etrTable.EtrTable = make(map[string]*types.EtrRunStatus)
 }
 
 func StartEtrNonNat() {
-	log.Println("Starting ETR thread on port 4341")
+	log.Println("StartEtrNonNat: Starting ETR thread on port 4341")
 	// create a udp server socket and start listening on port 4341
 	// XXX Using ipv4 underlay for now. Will have to figure out v6 underlay case.
 	etrServer, err := net.ResolveUDPAddr("udp4", ":4341")
 	if err != nil {
-		log.Fatal("Error resolving ETR socket address: %s\n", err)
+		log.Fatal("StartEtrNonNat: Error resolving ETR socket address: %s\n", err)
 	}
 	serverConn, err := net.ListenUDP("udp4", etrServer)
 	if err != nil {
-		log.Printf("Unable to start ETR server on :4341: %s\n", err)
+		log.Printf("StartEtrNonNat: Unable to start ETR server on :4341: %s\n", err)
 
 		// try after 2 seconds
 		go func() {
@@ -54,7 +62,9 @@ func StartEtrNonNat() {
 	fd, err := syscall.Socket(syscall.AF_INET6, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
 	if err != nil {
 		serverConn.Close()
-		log.Fatal("Creating ETR raw socket for packet injection failed: %s\n", err)
+		log.Fatal(
+			"StartEtrNonNat: Creating ETR raw socket for packet injection failed: %s\n",
+			err)
 		return
 	}
 
@@ -104,11 +114,11 @@ func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
 			}
 			etrTable.EtrTable[link.IfName] = &types.EtrRunStatus{
 				IfName: link.IfName,
-				Ring: ring,
+				Ring:   ring,
 				RingFD: fd,
 			}
 			log.Printf("HandleDeviceNetworkChange: Creating ETR thread for UP link %s\n",
-			link.IfName)
+				link.IfName)
 		}
 	}
 
@@ -154,11 +164,7 @@ func HandleEtrEphPort(ephPort int) {
 		// Add the new BPF filter with new eph port match
 		filter := fmt.Sprintf(etrNatPortMatch, ephPort)
 		link.Ring.SetBPFFilter(filter)
-		//link.Ring.Enable()
 
-		//link.Ring, link.RingFD = StartEtrNat(ephPort, ifName)
-		// Add it back, just in case
-		//etrTable.EtrTable[ifName] = link
 		log.Printf("HandleEtrEphPort: Changed ephemeral port BPF match for ETR %s\n",
 			ifName)
 	}
@@ -169,7 +175,7 @@ func StartEtrNat(ephPort int, upLink string) (*pfring.Ring, int) {
 
 	ring := SetupEtrPktCapture(ephPort, upLink)
 	if ring == nil {
-		log.Fatal("Unable to create ETR packet capture.\n")
+		log.Fatal("StartEtrNat: Unable to create ETR packet capture.\n")
 		return nil, -1
 	}
 
@@ -177,7 +183,8 @@ func StartEtrNat(ephPort int, upLink string) (*pfring.Ring, int) {
 	if err != nil {
 		ring.Disable()
 		ring.Close()
-		log.Fatal("Creating second ETR raw socket for packet injection failed: %s\n",
+		log.Fatal(
+			"StartEtrNat:Creating second ETR raw socket for packet injection failed: %s\n",
 			err)
 		return nil, -1
 	}
@@ -195,11 +202,9 @@ func verifyAndInject(fd6 int,
 	if iid == uint32(0xFFFFFF) {
 		return true
 	}
-	log.Println("IID of packet is:", iid)
+	log.Println("XXXXX IID of packet is:", iid)
 	packetOffset := 8
 	destAddrOffset := 24
-
-	//fmt.Printf("% x\n", buf)
 
 	//useCrypto := false
 	keyId := fib.GetLispKeyId(buf[0:8])
@@ -217,14 +222,16 @@ func verifyAndInject(fd6 int,
 		key := decapKeys.Keys[keyId-1]
 		icvKey := key.IcvKey
 		if icvKey == nil {
-			log.Printf("ETR Key id %d had nil ICV key value\n", keyId)
+			log.Printf("verifyAndInject: ETR Key id %d had nil ICV key value\n", keyId)
 			return false
 		}
 		icv := fib.ComputeICV(buf[0:n-types.ICVLEN], icvKey)
 		pktIcv := buf[n-types.ICVLEN : n]
 
 		if !bytes.Equal(icv, pktIcv) {
-			log.Printf("Pkt ICV %x and calculated ICV %x do not match.\n", pktIcv, icv)
+			log.Printf(
+				"verifyAndInject: Pkt ICV %x and calculated ICV %x do not match.\n",
+				pktIcv, icv)
 			return false
 		}
 		log.Println("XXXXX ICVs match")
@@ -330,8 +337,9 @@ func ProcessCapturedPkts(fd6 int, ring *pfring.Ring) {
 	for {
 		ci, err := ring.ReadPacketDataTo(pktBuf[:])
 		if err != nil {
-			log.Printf("Error capturing packets: %s\n", err)
-			log.Printf("It could be the ring closure leading to this.\n")
+			log.Printf("ProcessCapturedPkts: Error capturing packets: %s\n", err)
+			log.Printf(
+				"ProcessCapturedPkts: It could be the ring closure leading to this.\n")
 			return
 		}
 		capLen := ci.CaptureLength

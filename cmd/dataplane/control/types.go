@@ -1,3 +1,8 @@
+// Copyright (c) 2017 Zededa, Inc.
+// All rights reserved.
+
+// Defines json structures for control messages from lispers.net
+
 package main
 
 const CRYPTO_KEY_LEN = 32
