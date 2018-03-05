@@ -22,6 +22,7 @@ import (
 	"github.com/zededa/go-provision/types"
 	"io/ioutil"
 	"log"
+	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -463,6 +464,17 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 		}
 		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
 	}
+	// Note that these are associated with the device and not with a
+	// device name like ppp0 or wwan0
+	lte := readLTEMetrics()
+	for _, i := range lte {
+		item := new(zmet.MetricItem)
+		item.Key = i.Key
+		item.Type = zmet.MetricItemType(i.Type)
+		setMetricAnyValue(item, i.Value)
+		ReportDeviceMetric.MetricItems = append(ReportDeviceMetric.MetricItems, item)
+	}
+
 	ReportMetrics.MetricContent = new(zmet.ZMetricMsg_Dm)
 	if x, ok := ReportMetrics.GetMetricContent().(*zmet.ZMetricMsg_Dm); ok {
 		x.Dm = ReportDeviceMetric
@@ -732,55 +744,7 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 	for _, uplink := range deviceNetworkStatus.UplinkStatus {
 		for _, interfaceDetail := range interfaces {
 			if uplink.IfName == interfaceDetail.Name {
-				ReportDeviceNetworkInfo := new(zmet.ZInfoNetwork)
-				ReportDeviceNetworkInfo.IPAddrs = make([]string, len(interfaceDetail.Addrs))
-				for index, ip := range interfaceDetail.Addrs {
-					// For compatibility we put he first in the deprecated singleton
-					fmt.Printf("Intf %s addr/N %v\n",
-						interfaceDetail.Name,
-						ip)
-					// Note CIDR notation with /N
-					if index == 0 {
-						ReportDeviceNetworkInfo.IPAddr = *proto.String(ip.Addr)
-					}
-					ReportDeviceNetworkInfo.IPAddrs[index] = *proto.String(ip.Addr)
-				}
-
-				ReportDeviceNetworkInfo.MacAddr = *proto.String(interfaceDetail.HardwareAddr)
-				ReportDeviceNetworkInfo.DevName = *proto.String(interfaceDetail.Name)
-				// Default routers from kernel whether or
-				// not we are using DHCP
-				drs := getDefaultRouters(interfaceDetail.Name)
-				ReportDeviceNetworkInfo.DefaultRouters = make([]string, len(drs))
-				for index, dr := range drs {
-					if debug {
-						fmt.Printf("got dr: %v\n", dr)
-					}
-					ReportDeviceNetworkInfo.DefaultRouters[index] = *proto.String(dr)
-				}
-
-				// XXX fill in ZInfoDNS dns
-				// XXX need alpine wwan and wlan lease file
-				// (not in container) and parse it
-				// XXX Does udhcpc have such a file??
-				// Install /usr/share/udhcpc/default.script
-				// to get the data about the leases?
-
-				for _, fl := range interfaceDetail.Flags {
-					if fl == "up" {
-						ReportDeviceNetworkInfo.Up = true
-						break
-					}
-				}
-				// XXX add geoloc information for the interface
-				// XXX where do we run geoloc? Triggered in
-				// handleDNC? Output as separate collection
-				// so we can run as go routine and not block?
-
-				// XXX once we have static config add any
-				// config errors. Note that this might imply
-				// reporting for devices which do not exist.
-
+				ReportDeviceNetworkInfo := getNetInfo(interfaceDetail)
 				ReportDeviceInfo.Network = append(ReportDeviceInfo.Network,
 					ReportDeviceNetworkInfo)
 			}
@@ -842,6 +806,23 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 	bootTime, _ := ptypes.TimestampProto(
 		time.Unix(int64(info.BootTime), 0).UTC())
 	ReportDeviceInfo.BootTime = bootTime
+	hostname, err := os.Hostname()
+	if err != nil {
+		log.Printf("HostName failed: %s\n", err)
+	} else {
+		ReportDeviceInfo.HostName = hostname
+	}
+
+	// Note that these are associated with the device and not with a
+	// device name like ppp0 or wwan0
+	lte := readLTEInfo()
+	for _, i := range lte {
+		item := new(zmet.MetricItem)
+		item.Key = i.Key
+		item.Type = zmet.MetricItemType(i.Type)
+		setMetricAnyValue(item, i.Value)
+		ReportDeviceInfo.MetricItems = append(ReportDeviceInfo.MetricItems, item)
+	}
 
 	ReportInfo.InfoContent = new(zmet.ZInfoMsg_Dinfo)
 	if x, ok := ReportInfo.GetInfoContent().(*zmet.ZInfoMsg_Dinfo); ok {
@@ -867,6 +848,90 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 	} else {
 		// XXX remove any queued old message for device
 	}
+}
+
+func setMetricAnyValue(item *zmet.MetricItem, val interface{}) {
+	switch t := val.(type) {
+	case uint32:
+		u := val.(uint32)
+		item.MetricItemValue = new(zmet.MetricItem_Uint32Value)
+		if x, ok := item.GetMetricItemValue().(*zmet.MetricItem_Uint32Value); ok {
+			x.Uint32Value = u
+		}
+	case uint64:
+		u := val.(uint64)
+		item.MetricItemValue = new(zmet.MetricItem_Uint64Value)
+		if x, ok := item.GetMetricItemValue().(*zmet.MetricItem_Uint64Value); ok {
+			x.Uint64Value = u
+		}
+	case bool:
+		b := val.(bool)
+		item.MetricItemValue = new(zmet.MetricItem_BoolValue)
+		if x, ok := item.GetMetricItemValue().(*zmet.MetricItem_BoolValue); ok {
+			x.BoolValue = b
+		}
+	case float32:
+		f := val.(float32)
+		item.MetricItemValue = new(zmet.MetricItem_FloatValue)
+		if x, ok := item.GetMetricItemValue().(*zmet.MetricItem_FloatValue); ok {
+			x.FloatValue = f
+		}
+
+	case string:
+		s := val.(string)
+		item.MetricItemValue = new(zmet.MetricItem_StringValue)
+		if x, ok := item.GetMetricItemValue().(*zmet.MetricItem_StringValue); ok {
+			x.StringValue = s
+		}
+
+	default:
+		log.Printf("setMetricAnyValue unknown %T\n", t)
+	}
+}
+
+func getNetInfo(interfaceDetail psutilnet.InterfaceStat) *zmet.ZInfoNetwork {
+	networkInfo := new(zmet.ZInfoNetwork)
+	networkInfo.IPAddrs = make([]string, len(interfaceDetail.Addrs))
+	for index, ip := range interfaceDetail.Addrs {
+		// For compatibility we put he first in the deprecated singleton
+		// Note CIDR notation with /N
+		if index == 0 {
+			networkInfo.IPAddr = *proto.String(ip.Addr)
+		}
+		networkInfo.IPAddrs[index] = *proto.String(ip.Addr)
+	}
+	networkInfo.MacAddr = *proto.String(interfaceDetail.HardwareAddr)
+	networkInfo.DevName = *proto.String(interfaceDetail.Name)
+	// Default routers from kernel whether or not we are using DHCP
+	drs := getDefaultRouters(interfaceDetail.Name)
+	networkInfo.DefaultRouters = make([]string, len(drs))
+	for index, dr := range drs {
+		if debug {
+			fmt.Printf("got dr: %v\n", dr)
+		}
+		networkInfo.DefaultRouters[index] = *proto.String(dr)
+	}
+
+	// XXX fill in ZInfoDNS dns
+	// XXX from correct resolv conf file - static map from intf to file?
+
+	for _, fl := range interfaceDetail.Flags {
+		if fl == "up" {
+			networkInfo.Up = true
+			break
+		}
+	}
+
+	// XXX add geoloc information for the interface
+	// XXX where do we run geoloc? Triggered in
+	// handleDNC? Output as separate collection
+	// so we can run as go routine and not block?
+
+	// XXX once we have static config add any
+	// config errors. Note that this might imply
+	// reporting for devices which do not exist.
+
+	return networkInfo
 }
 
 // This function is called per change, hence needs to try over all uplinks
