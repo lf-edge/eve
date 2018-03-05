@@ -777,7 +777,7 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 					ib.Type, ib.Name, err)
 				continue
 			}
-			log.Printf("XXX reporting non-existent PCI device %d %s: %v\n",
+			log.Printf("Reporting non-existent PCI device %d %s: %v\n",
 				ib.Type, ib.Name, err)
 		}
 		reportAA := new(zmet.ZioBundle)
@@ -933,8 +933,6 @@ func getNetInfo(interfaceDetail psutilnet.InterfaceStat) *zmet.ZInfoNetwork {
 			if ai.Geo == nilIPInfo {
 				continue
 			}
-			log.Printf("XXX Found geo for %s: %v\n",
-				interfaceDetail.Name, ai.Geo)
 			geo := new(zmet.GeoLoc)
 			geo.UnderlayIP = *proto.String(ai.Geo.IP)
 			geo.Hostname = *proto.String(ai.Geo.Hostname)
@@ -947,6 +945,7 @@ func getNetInfo(interfaceDetail psutilnet.InterfaceStat) *zmet.ZInfoNetwork {
 			break
 		}
 	}
+
 	// XXX once we have static config add any
 	// config errors. Note that this might imply
 	// reporting for devices which do not exist.

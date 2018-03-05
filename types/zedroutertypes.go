@@ -189,7 +189,8 @@ func CountLocalAddrFreeNoLinkLocal(globalStatus DeviceNetworkStatus) int {
 
 // Pick one address from all of the uplinks, unless if uplink is set in which we
 // pick from that uplink
-// XXX put the free ones first in the list.
+// We put addresses from the free uplinks first in the list i.e., returned
+// for the lower 'pickNum'
 func GetLocalAddrAny(globalStatus DeviceNetworkStatus, pickNum int, uplink string) (net.IP, error) {
 	// Count the number of addresses which apply
 	addrs, err := getInterfaceAddr(globalStatus, false, uplink, true)
@@ -328,8 +329,6 @@ type ACEAction struct {
 }
 
 // Retrieved from geolocation service for device underlay connectivity
-// XXX separate out lat/long as floats to be able to use GPS?
-// XXX feed back to zedcloud in HwStatus
 type AdditionalInfoDevice struct {
 	UnderlayIP string
 	Hostname   string `json:",omitempty"` // From reverse DNS
