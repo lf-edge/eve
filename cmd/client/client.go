@@ -18,6 +18,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/satori/go.uuid"
 	"github.com/zededa/api/zmet"
+	"github.com/zededa/go-provision/devicenetwork"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/types"
 	"golang.org/x/crypto/ocsp"
@@ -110,11 +111,11 @@ func main() {
 	model := hardware.GetHardwareModel()
 	DNCFilename := fmt.Sprintf("%s/%s.json", DNCDirname, model)
 	if _, err := os.Stat(DNCFilename); err == nil {
-		deviceNetworkConfig, err := types.GetDeviceNetworkConfig(DNCFilename)
+		deviceNetworkConfig, err := devicenetwork.GetDeviceNetworkConfig(DNCFilename)
 		if err != nil {
 			log.Fatal(err)
 		}
-		deviceNetworkStatus, err = types.MakeDeviceNetworkStatus(deviceNetworkConfig)
+		deviceNetworkStatus, err = devicenetwork.MakeDeviceNetworkStatus(deviceNetworkConfig)
 		if err != nil {
 			log.Printf("%s from MakeDeviceNetworkStatus\n", err)
 			// Proceed even if some uplinks are missing

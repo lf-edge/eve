@@ -7,6 +7,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/eriknordmark/ipinfo"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/shirou/gopsutil/cpu"
@@ -776,7 +777,7 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 					ib.Type, ib.Name, err)
 				continue
 			}
-			log.Printf("XXX reporting non-existent PCI device %d %s: %v\n",
+			log.Printf("Reporting non-existent PCI device %d %s: %v\n",
 				ib.Type, ib.Name, err)
 		}
 		reportAA := new(zmet.ZioBundle)
@@ -889,6 +890,8 @@ func setMetricAnyValue(item *zmet.MetricItem, val interface{}) {
 	}
 }
 
+var nilIPInfo = ipinfo.IPInfo{}
+
 func getNetInfo(interfaceDetail psutilnet.InterfaceStat) *zmet.ZInfoNetwork {
 	networkInfo := new(zmet.ZInfoNetwork)
 	networkInfo.IPAddrs = make([]string, len(interfaceDetail.Addrs))
@@ -918,6 +921,27 @@ func getNetInfo(interfaceDetail psutilnet.InterfaceStat) *zmet.ZInfoNetwork {
 	for _, fl := range interfaceDetail.Flags {
 		if fl == "up" {
 			networkInfo.Up = true
+			break
+		}
+	}
+
+	// XXX we potentially have geoloc information for each IP address.
+	// For now fill in the first one.
+	uplink := types.GetUplink(deviceNetworkStatus, interfaceDetail.Name)
+	if uplink != nil {
+		for _, ai := range uplink.AddrInfoList {
+			if ai.Geo == nilIPInfo {
+				continue
+			}
+			geo := new(zmet.GeoLoc)
+			geo.UnderlayIP = *proto.String(ai.Geo.IP)
+			geo.Hostname = *proto.String(ai.Geo.Hostname)
+			geo.City = *proto.String(ai.Geo.City)
+			geo.Country = *proto.String(ai.Geo.Country)
+			geo.Loc = *proto.String(ai.Geo.Loc)
+			geo.Org = *proto.String(ai.Geo.Org)
+			geo.Postal = *proto.String(ai.Geo.Postal)
+			networkInfo.Location = geo
 			break
 		}
 	}
