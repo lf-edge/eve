@@ -43,20 +43,45 @@ func publishMetrics(iteration int) {
 	PublishMetricsToZedCloud(cpuStorageStat, iteration)
 }
 
-// XXX Combine with being able to change the timer intervals - generate at random
-// times between .3x and 1x
-func metricsTimerTask() {
+// Run a periodic post of the metrics
+// XXX have caller check for unchanged value?
+var currentMetricsInterval time.Duration
+
+func metricsTimerTask(handleChannel chan interface{}) {
 	iteration := 0
 	log.Println("starting report metrics timer task")
 	publishMetrics(iteration)
-	// Make this configurable from zedcloud and call update on ticker
-	max := float64(time.Second * 60)
+
+	interval := time.Duration(configItemDefaults.metricInterval) * time.Second
+	currentMetricsInterval = interval
+	max := float64(interval)
 	min := max * 0.3
 	ticker := flextimer.NewRangeTicker(time.Duration(min), time.Duration(max))
+	// Return handle to caller
+	handleChannel <- ticker
 	for range ticker.C {
 		iteration += 1
 		publishMetrics(iteration)
 	}
+}
+
+// Called when configItemDefaults changes
+func updateMetricsTimer(tickerHandle interface{}) {
+	interval := time.Duration(configItemDefaults.metricInterval) * time.Second
+	if interval == currentMetricsInterval {
+		return
+	}
+	log.Printf("updateMetricsTimer() change from %v to %v\n",
+		currentMetricsInterval, interval)
+	max := float64(interval)
+	min := max * 0.3
+	flextimer.UpdateRangeTicker(tickerHandle,
+		time.Duration(min), time.Duration(max))
+	if interval < currentMetricsInterval {
+		// Force an immediate timout on decrease
+		flextimer.TickNow(tickerHandle)
+	}
+	currentMetricsInterval = interval
 }
 
 func ExecuteXlInfoCmd() map[string]string {
