@@ -44,7 +44,7 @@ var ZRegisterResult_value = map[string]int32{
 func (x ZRegisterResult) String() string {
 	return proto.EnumName(ZRegisterResult_name, int32(x))
 }
-func (ZRegisterResult) EnumDescriptor() ([]byte, []int) { return fileDescriptor1, []int{0} }
+func (ZRegisterResult) EnumDescriptor() ([]byte, []int) { return fileDescriptor2, []int{0} }
 
 // XXX is this used? Not in client.go
 type ZRegisterResp struct {
@@ -54,7 +54,7 @@ type ZRegisterResp struct {
 func (m *ZRegisterResp) Reset()                    { *m = ZRegisterResp{} }
 func (m *ZRegisterResp) String() string            { return proto.CompactTextString(m) }
 func (*ZRegisterResp) ProtoMessage()               {}
-func (*ZRegisterResp) Descriptor() ([]byte, []int) { return fileDescriptor1, []int{0} }
+func (*ZRegisterResp) Descriptor() ([]byte, []int) { return fileDescriptor2, []int{0} }
 
 func (m *ZRegisterResp) GetResult() ZRegisterResult {
 	if m != nil {
@@ -71,7 +71,7 @@ type ZRegisterMsg struct {
 func (m *ZRegisterMsg) Reset()                    { *m = ZRegisterMsg{} }
 func (m *ZRegisterMsg) String() string            { return proto.CompactTextString(m) }
 func (*ZRegisterMsg) ProtoMessage()               {}
-func (*ZRegisterMsg) Descriptor() ([]byte, []int) { return fileDescriptor1, []int{1} }
+func (*ZRegisterMsg) Descriptor() ([]byte, []int) { return fileDescriptor2, []int{1} }
 
 func (m *ZRegisterMsg) GetOnBoardKey() string {
 	if m != nil {
@@ -93,9 +93,9 @@ func init() {
 	proto.RegisterEnum("ZRegisterResult", ZRegisterResult_name, ZRegisterResult_value)
 }
 
-func init() { proto.RegisterFile("zregister.proto", fileDescriptor1) }
+func init() { proto.RegisterFile("zregister.proto", fileDescriptor2) }
 
-var fileDescriptor1 = []byte{
+var fileDescriptor2 = []byte{
 	// 246 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x5c, 0x90, 0xc1, 0x4b, 0xc3, 0x30,
 	0x14, 0xc6, 0xed, 0xd4, 0xa9, 0xcf, 0xba, 0xc6, 0xe7, 0xa5, 0x88, 0xc8, 0xd8, 0xa9, 0x78, 0x68,

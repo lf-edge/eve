@@ -4,11 +4,8 @@
 package types
 
 import (
-	"encoding/json"
 	"errors"
-	"fmt"
-	"github.com/vishvananda/netlink"
-	"io/ioutil"
+	"github.com/eriknordmark/ipinfo"
 	"log"
 	"net"
 )
@@ -80,78 +77,18 @@ type DeviceNetworkConfig struct {
 }
 
 type NetworkUplink struct {
-	IfName string
-	Free   bool
-	Addrs  []net.IP
+	IfName       string
+	Free         bool
+	AddrInfoList []AddrInfo
+}
+
+type AddrInfo struct {
+	Addr net.IP
+	Geo  ipinfo.IPInfo
 }
 
 type DeviceNetworkStatus struct {
 	UplinkStatus []NetworkUplink
-}
-
-// Parse the file with DeviceNetworkConfig
-func GetDeviceNetworkConfig(configFilename string) (DeviceNetworkConfig, error) {
-	var globalConfig DeviceNetworkConfig
-	cb, err := ioutil.ReadFile(configFilename)
-	if err != nil {
-		return DeviceNetworkConfig{}, err
-	}
-	if err := json.Unmarshal(cb, &globalConfig); err != nil {
-		return DeviceNetworkConfig{}, err
-	}
-	// Workaround for old config with FreeUplinks not set
-	if len(globalConfig.FreeUplinks) == 0 {
-		fmt.Printf("Setting FreeUplinks from Uplink: %v\n",
-			globalConfig.Uplink)
-		globalConfig.FreeUplinks = globalConfig.Uplink
-	}
-	return globalConfig, nil
-}
-
-// Calculate local IP addresses to make a DeviceNetworkStatus
-func MakeDeviceNetworkStatus(globalConfig DeviceNetworkConfig) (DeviceNetworkStatus, error) {
-	var globalStatus DeviceNetworkStatus
-	var err error = nil
-
-	globalStatus.UplinkStatus = make([]NetworkUplink,
-		len(globalConfig.Uplink))
-	for ix, u := range globalConfig.Uplink {
-		globalStatus.UplinkStatus[ix].IfName = u
-		for _, f := range globalConfig.FreeUplinks {
-			if f == u {
-				globalStatus.UplinkStatus[ix].Free = true
-				break
-			}
-		}
-		link, err := netlink.LinkByName(u)
-		if err != nil {
-			log.Printf("MakeDeviceNetworkStatus LinkByName %s: %s\n", u, err)
-			err = errors.New(fmt.Sprintf("Uplink in config/global does not exist: %v", u))
-			continue
-		}
-		addrs4, err := netlink.AddrList(link, netlink.FAMILY_V4)
-		if err != nil {
-			addrs4 = nil
-		}
-		addrs6, err := netlink.AddrList(link, netlink.FAMILY_V6)
-		if err != nil {
-			addrs6 = nil
-		}
-		globalStatus.UplinkStatus[ix].Addrs = make([]net.IP,
-			len(addrs4)+len(addrs6))
-		for i, addr := range addrs4 {
-			fmt.Printf("UplinkAddrs(%s) found IPv4 %v\n",
-				u, addr.IP)
-			globalStatus.UplinkStatus[ix].Addrs[i] = addr.IP
-		}
-		for i, addr := range addrs6 {
-			// We include link-locals since they can be used for LISP behind nats
-			fmt.Printf("UplinkAddrs(%s) found IPv6 %v\n",
-				u, addr.IP)
-			globalStatus.UplinkStatus[ix].Addrs[i+len(addrs4)] = addr.IP
-		}
-	}
-	return globalStatus, err
 }
 
 // Pick one of the uplinks
@@ -252,7 +189,8 @@ func CountLocalAddrFreeNoLinkLocal(globalStatus DeviceNetworkStatus) int {
 
 // Pick one address from all of the uplinks, unless if uplink is set in which we
 // pick from that uplink
-// XXX put the free ones first in the list.
+// We put addresses from the free uplinks first in the list i.e., returned
+// for the lower 'pickNum'
 func GetLocalAddrAny(globalStatus DeviceNetworkStatus, pickNum int, uplink string) (net.IP, error) {
 	// Count the number of addresses which apply
 	addrs, err := getInterfaceAddr(globalStatus, false, uplink, true)
@@ -291,6 +229,15 @@ func IsUplink(globalStatus DeviceNetworkStatus, ifname string) bool {
 	return false
 }
 
+func GetUplink(globalStatus DeviceNetworkStatus, ifname string) *NetworkUplink {
+	for _, us := range globalStatus.UplinkStatus {
+		if us.IfName == ifname {
+			return &us
+		}
+	}
+	return nil
+}
+
 // Returns addresses based on free, ifname, and whether or not we want
 // IPv6 link-locals.
 // If free is not set, the addresses from the free uplinks are first.
@@ -307,13 +254,9 @@ func getInterfaceAddr(globalStatus DeviceNetworkStatus, free bool, ifname string
 			continue
 		}
 		var addrs []net.IP
-		if includeLinkLocal {
-			addrs = u.Addrs
-		} else {
-			for _, a := range u.Addrs {
-				if !a.IsLinkLocalUnicast() {
-					addrs = append(addrs, a)
-				}
+		for _, i := range u.AddrInfoList {
+			if includeLinkLocal || !i.Addr.IsLinkLocalUnicast() {
+				addrs = append(addrs, i.Addr)
 			}
 		}
 		if free {
@@ -386,8 +329,6 @@ type ACEAction struct {
 }
 
 // Retrieved from geolocation service for device underlay connectivity
-// XXX separate out lat/long as floats to be able to use GPS?
-// XXX feed back to zedcloud in HwStatus
 type AdditionalInfoDevice struct {
 	UnderlayIP string
 	Hostname   string `json:",omitempty"` // From reverse DNS

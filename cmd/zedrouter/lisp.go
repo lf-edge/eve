@@ -198,12 +198,12 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 		if !u.Free {
 			continue
 		}
-		if len(u.Addrs) == 0 {
+		if len(u.AddrInfoList) == 0 {
 			continue
 		}
 		found := false
-		for _, a := range u.Addrs {
-			if !a.IsLinkLocalUnicast() {
+		for _, i := range u.AddrInfoList {
+			if !i.Addr.IsLinkLocalUnicast() {
 				found = true
 				break
 			}
@@ -215,12 +215,12 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 		one := fmt.Sprintf("    rloc {\n        interface = %s\n    }\n",
 			u.IfName)
 		rlocString += one
-		for _, a := range u.Addrs {
+		for _, i := range u.AddrInfoList {
 			prio := 0
-			if a.IsLinkLocalUnicast() {
+			if i.Addr.IsLinkLocalUnicast() {
 				prio = 2
 			}
-			one := fmt.Sprintf("    rloc {\n        address = %s\n        priority = %d\n    }\n", a, prio)
+			one := fmt.Sprintf("    rloc {\n        address = %s\n        priority = %d\n    }\n", i.Addr, prio)
 			rlocString += one
 		}
 	}
@@ -429,11 +429,11 @@ func restartLisp(upLinkStatus []types.NetworkUplink, devices string) {
 		if !u.Free {
 			continue
 		}
-		if len(u.Addrs) == 0 {
+		if len(u.AddrInfoList) == 0 {
 			continue
 		}
-		for _, a := range u.Addrs {
-			if !a.IsLinkLocalUnicast() {
+		for _, i := range u.AddrInfoList {
+			if !i.Addr.IsLinkLocalUnicast() {
 				uplink = u
 				found = true
 				break

@@ -18,6 +18,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/satori/go.uuid"
 	"github.com/zededa/api/zmet"
+	"github.com/zededa/go-provision/devicenetwork"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/types"
 	"golang.org/x/crypto/ocsp"
@@ -53,9 +54,10 @@ var Version = "No version specified"
 //  		     		client is started.
 //  infra			If this file exists assume zedcontrol and do not
 //  				create ACLs
+//  uuid			Written by getUuid operation
+//
 //  /var/tmp/zededa/zedserverconfig		Written by lookupParam operation; zed server EIDs
 //  /var/tmp/zededa/zedrouterconfig.json	Written by lookupParam operation
-//  /var/tmp/zededa/uuid	Written by lookupParam operation
 //
 func main() {
 	log.SetOutput(os.Stdout)
@@ -79,6 +81,7 @@ func main() {
 		"selfRegister": false,
 		"lookupParam":  false,
 		"ping":         false,
+		"getUuid":      false,
 	}
 	for _, op := range args {
 		if _, ok := operations[op]; ok {
@@ -98,9 +101,9 @@ func main() {
 	serverFileName := identityDirname + "/server"
 	oldServerFileName := identityDirname + "/oldserver"
 	infraFileName := identityDirname + "/infra"
+	uuidFileName := identityDirname + "/uuid"
 	zedserverConfigFileName := tmpDirname + "/zedserverconfig"
 	zedrouterConfigFileName := tmpDirname + "/zedrouterconfig.json"
-	uuidFileName := tmpDirname + "/uuid"
 
 	var hasDeviceNetworkStatus = false
 	var deviceNetworkStatus types.DeviceNetworkStatus
@@ -108,18 +111,19 @@ func main() {
 	model := hardware.GetHardwareModel()
 	DNCFilename := fmt.Sprintf("%s/%s.json", DNCDirname, model)
 	if _, err := os.Stat(DNCFilename); err == nil {
-		deviceNetworkConfig, err := types.GetDeviceNetworkConfig(DNCFilename)
+		deviceNetworkConfig, err := devicenetwork.GetDeviceNetworkConfig(DNCFilename)
 		if err != nil {
 			log.Fatal(err)
 		}
-		deviceNetworkStatus, err = types.MakeDeviceNetworkStatus(deviceNetworkConfig)
+		deviceNetworkStatus, err = devicenetwork.MakeDeviceNetworkStatus(deviceNetworkConfig)
 		if err != nil {
-			log.Fatal(err)
+			log.Printf("%s from MakeDeviceNetworkStatus\n", err)
+			// Proceed even if some uplinks are missing
 		}
-		hasDeviceNetworkStatus = true
 		addrCount := types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
 		fmt.Printf("Have %d uplinks addresses to use\n", addrCount)
 		if addrCount != 0 {
+			hasDeviceNetworkStatus = true
 			// Inform ledmanager that we have uplink addresses
 			types.UpdateLedManagerConfig(2)
 		}
@@ -142,7 +146,7 @@ func main() {
 			log.Fatal(err)
 		}
 	}
-	if operations["lookupParam"] ||
+	if operations["lookupParam"] || operations["getUuid"] ||
 		(operations["ping"] && !forceOnboardingCert) {
 		// Load device cert
 		var err error
@@ -582,8 +586,9 @@ func main() {
 	}
 
 	// Get something without a return type; used by ping
-	// Returns true when done; false when retry
-	myGet := func(tlsConfig *tls.Config, url string, retryCount int) bool {
+	// Returns true when done; false when retry.
+	// Returns the response when done. Note caller must do resp.Body.Close()
+	myGet := func(tlsConfig *tls.Config, url string, retryCount int) (bool, *http.Response) {
 		var localAddr net.IP
 		if hasDeviceNetworkStatus {
 			localAddr, err = types.GetLocalAddrAny(deviceNetworkStatus,
@@ -611,7 +616,7 @@ func main() {
 			"https://"+serverNameAndPort+url, nil)
 		if err != nil {
 			fmt.Println(err)
-			return false
+			return false, nil
 		}
 		trace := &httptrace.ClientTrace{
 			GotConn: func(connInfo httptrace.GotConnInfo) {
@@ -625,15 +630,16 @@ func main() {
 		resp, err := client.Do(req)
 		if err != nil {
 			fmt.Println(err)
-			return false
+			return false, nil
 		}
-		defer resp.Body.Close()
+
 		connState := resp.TLS
 		if connState == nil {
 			fmt.Println("no TLS connection state")
 			// Inform ledmanager about broken cloud connectivity
 			types.UpdateLedManagerConfig(10)
-			return false
+			resp.Body.Close()
+			return false, nil
 		}
 
 		if connState.OCSPResponse == nil ||
@@ -647,26 +653,27 @@ func main() {
 			// commenting out it for now. Should be:
 			// Inform ledmanager about broken cloud connectivity
 			// types.UpdateLedManagerConfig(10)
-			// return false
-		}
-		contents, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			fmt.Println(err)
-			return false
+			// resp.Body.Close()
+			// return false, nil
 		}
 		switch resp.StatusCode {
 		case http.StatusOK:
 			fmt.Printf("%s StatusOK\n", url)
-			return true
+			return true, resp
 		case http.StatusCreated:
 			fmt.Printf("%s StatusCreated\n", url)
-			return false
+			resp.Body.Close()
+			return false, nil
 		default:
 			fmt.Printf("%s statuscode %d %s\n",
 				url, resp.StatusCode,
 				http.StatusText(resp.StatusCode))
-			fmt.Printf("%s\n", string(contents))
-			return false
+			contents, err := ioutil.ReadAll(resp.Body)
+			if err == nil {
+				fmt.Printf("Received %s\n", string(contents))
+			}
+			resp.Body.Close()
+			return false, nil
 		}
 	}
 
@@ -710,33 +717,6 @@ func main() {
 		}
 	}
 
-	var devUUID uuid.UUID
-
-	if operations["lookupParam"] || operations["selfRegister"] {
-		if _, err := os.Stat(uuidFileName); err != nil {
-			// Create and write with initial values
-			// XXX ignoring any error
-			devUUID, _ = uuid.NewV4()
-			b := []byte(fmt.Sprintf("%s\n", devUUID))
-			err = ioutil.WriteFile(uuidFileName, b, 0644)
-			if err != nil {
-				log.Fatal("WriteFile", err, uuidFileName)
-			}
-			fmt.Printf("Created UUID %s\n", devUUID)
-		} else {
-			b, err := ioutil.ReadFile(uuidFileName)
-			if err != nil {
-				log.Fatal("ReadFile", err, uuidFileName)
-			}
-			uuidStr := strings.TrimSpace(string(b))
-			devUUID, err = uuid.FromString(uuidStr)
-			if err != nil {
-				log.Fatal("uuid.FromString", err, string(b))
-			}
-			fmt.Printf("Read UUID %s\n", devUUID)
-		}
-	}
-
 	if operations["ping"] {
 		if oldFlag {
 			log.Printf("XXX ping not supported using %s\n",
@@ -748,9 +728,12 @@ func main() {
 		done := false
 		var delay time.Duration
 		for !done {
+			var resp *http.Response
+
 			time.Sleep(delay)
-			done = myGet(tlsConfig, url, retryCount)
+			done, resp = myGet(tlsConfig, url, retryCount)
 			if done {
+				resp.Body.Close()
 				continue
 			}
 			retryCount += 1
@@ -787,6 +770,81 @@ func main() {
 		}
 	}
 
+	if operations["getUuid"] {
+		var devUUID uuid.UUID
+		doWrite := true
+		// In the old case we locally generate one.
+		// In the new case we get it from the deviceConfig
+		if oldFlag {
+			if _, err := os.Stat(uuidFileName); err == nil {
+				log.Fatalf("UUID file already exists: %s\n",
+					uuidFileName)
+			}
+			// Create and write with initial values
+			// XXX ignoring any error
+			devUUID, _ = uuid.NewV4()
+			fmt.Printf("Created UUID %s\n", devUUID)
+		} else {
+			url := "/api/v1/edgedevice/config"
+			retryCount := 0
+			done := false
+			var delay time.Duration
+			for !done {
+				var resp *http.Response
+
+				time.Sleep(delay)
+				done, resp = myGet(tlsConfig, url, retryCount)
+				if done {
+					defer resp.Body.Close()
+					var err error
+					devUUID, err = parseUUID(url, resp)
+					if err == nil {
+						continue
+					}
+					// Keep on trying until it parses
+					done = false
+					log.Printf("Failed parsing uuid: %s\n",
+						err)
+				}
+				retryCount += 1
+				delay = 2 * (delay + time.Second)
+				if delay > maxDelay {
+					delay = maxDelay
+				}
+				log.Printf("Retrying config in %d seconds\n",
+					delay/time.Second)
+			}
+			b, err := ioutil.ReadFile(uuidFileName)
+			if err == nil {
+				uuidStr := strings.TrimSpace(string(b))
+				oldUUID, err := uuid.FromString(uuidStr)
+				if err != nil {
+					fmt.Printf("Got config with UUID %s\n",
+						devUUID)
+				} else if oldUUID != devUUID {
+					log.Printf("Replacing existing UUID %s\n",
+						oldUUID.String())
+				} else {
+					fmt.Printf("No change to UUID %s\n",
+						devUUID)
+					doWrite = false
+				}
+			} else {
+				fmt.Printf("Got config with UUID %s\n", devUUID)
+			}
+			// Inform ledmanager about config received from cloud
+			types.UpdateLedManagerConfig(4)
+		}
+		if doWrite {
+			b := []byte(fmt.Sprintf("%s\n", devUUID))
+			err = ioutil.WriteFile(uuidFileName, b, 0644)
+			if err != nil {
+				log.Fatal("WriteFile", err, uuidFileName)
+			}
+			fmt.Printf("Wrote UUID %s\n", devUUID)
+		}
+	}
+
 	if operations["lookupParam"] {
 		if !oldFlag {
 			log.Printf("XXX lookupParam not yet supported using %s\n",
@@ -794,6 +852,17 @@ func main() {
 			os.Remove(zedrouterConfigFileName)
 			return
 		}
+		b, err := ioutil.ReadFile(uuidFileName)
+		if err != nil {
+			log.Fatal("ReadFile", err, uuidFileName)
+		}
+		uuidStr := strings.TrimSpace(string(b))
+		devUUID, err := uuid.FromString(uuidStr)
+		if err != nil {
+			log.Fatal("uuid.FromString", err, string(b))
+		}
+		fmt.Printf("Read UUID %s\n", devUUID)
+
 		retryCount := 0
 		done := false
 		var delay time.Duration

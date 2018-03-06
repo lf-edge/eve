@@ -74,7 +74,7 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 
 	cfgOsList := config.GetBase()
 	baseOsCount := len(cfgOsList)
-	log.Printf("Applying Base Os config count, %d\n", baseOsCount)
+	log.Printf("Applying Base Os config len %d\n", baseOsCount)
 
 	if baseOsCount == 0 {
 		return false

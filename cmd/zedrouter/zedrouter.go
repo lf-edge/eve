@@ -15,6 +15,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/vishvananda/netlink"
+	"github.com/zededa/go-provision/devicenetwork"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
@@ -123,13 +124,11 @@ func main() {
 	watch.WaitForFile(restartFile)
 	log.Printf("Zedmanager reported in %s\n", restartFile)
 
-	// This function is called when some uplink interface changes
+	// This function is called from PBR when some uplink interface changes
 	// its IP address(es)
-	// XXX Do we need to collapse multiple changes into one?
-	// Or just feed this into a separate channel? Or defer for lisp?
 	addrChangeFn := func(ifname string) {
 		log.Printf("addrChangeFn(%s) called\n", ifname)
-		new, _ := types.MakeDeviceNetworkStatus(deviceNetworkConfig)
+		new, _ := devicenetwork.MakeDeviceNetworkStatus(deviceNetworkConfig)
 		if !reflect.DeepEqual(deviceNetworkStatus, new) {
 			log.Printf("Address change for %s from %v to %v\n",
 				ifname, deviceNetworkStatus, new)
@@ -218,12 +217,12 @@ func handleInit(configFilename string, statusFilename string,
 
 	// Need initial deviceNetworkStatus for iptablesInit
 	var err error
-	deviceNetworkConfig, err = types.GetDeviceNetworkConfig(configFilename)
+	deviceNetworkConfig, err = devicenetwork.GetDeviceNetworkConfig(configFilename)
 	if err != nil {
 		log.Printf("%s for %s\n", err, configFilename)
 		log.Fatal(err)
 	}
-	deviceNetworkStatus, err = types.MakeDeviceNetworkStatus(deviceNetworkConfig)
+	deviceNetworkStatus, err = devicenetwork.MakeDeviceNetworkStatus(deviceNetworkConfig)
 	if err != nil {
 		log.Printf("%s from MakeDeviceNetworkStatus\n", err)
 		// Proceed even if some uplinks are missing
@@ -1160,7 +1159,7 @@ func handleDNCModify(ctxArg interface{}, configFilename string,
 	log.Printf("handleDNCModify for %s\n", configFilename)
 
 	deviceNetworkConfig = *config
-	new, _ := types.MakeDeviceNetworkStatus(*config)
+	new, _ := devicenetwork.MakeDeviceNetworkStatus(*config)
 	if !reflect.DeepEqual(deviceNetworkStatus, new) {
 		log.Printf("DeviceNetworkStatus change from %v to %v\n",
 			deviceNetworkStatus, new)
@@ -1188,6 +1187,8 @@ func handleDNCDelete(ctxArg interface{}, configFilename string) {
 	log.Printf("handleDNCDelete done for %s\n", configFilename)
 }
 
+// XXX should we trigger a geoloc request? Wait for it to be done?
+// XXX with a short 10 second timeout?
 func doDNSUpdate(ctx *DNCContext) {
 	// Did we loose all usable addresses or gain the first usable
 	// address?

@@ -7,10 +7,8 @@ ADD etc /config
 ADD scripts/device-steps.sh \
     scripts/find-uplink.sh \
     scripts/generate-device.sh \
-    scripts/generate-onboard.sh \
     scripts/generate-self-signed.sh \
-    scripts/run-ocsp.sh \
-    scripts/zupgrade.sh \
+    scripts/handlezedserverconfig.sh \
   /opt/zededa/bin/
 ADD examples /opt/zededa/examples
 ADD AssignableAdapters /var/tmp/zededa/AssignableAdapters

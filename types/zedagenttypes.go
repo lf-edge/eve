@@ -152,3 +152,27 @@ type PartitionInfo struct {
 	Error          string
 	ErrorTime      time.Time
 }
+
+// Mirrors proto definition for ConfigItem
+// The value can be bool, float, uint, or string
+type ConfigItem struct {
+	Key   string
+	Value interface{}
+}
+
+// Mirrors proto definition for MetricItem
+// The value can be bool, float, uint, or string
+type MetricItem struct {
+	Key   string
+	Type  MetricItemType
+	Value interface{}
+}
+
+type MetricItemType uint8
+
+const (
+	MetricItemOther   MetricItemType = iota // E.g., a string like an ESSID
+	MetricItemGauge                         // Goes up and down over time
+	MetricItemCounter                       // Monotonically increasing (until reboot)
+	MetricItemState                         // Toggles on and off; count transitions
+)
