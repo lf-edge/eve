@@ -9,7 +9,7 @@ PROVDIR=$BINDIR
 TMPDIR=/var/tmp/zededa
 DNCDIR=/var/tmp/zededa/DeviceNetworkConfig
 LISPDIR=/opt/zededa/lisp
-AGENTS="ledmanager zedrouter domainmgr downloader verifier identitymgr eidregister zedagent"
+AGENTS="logmanager ledmanager zedrouter domainmgr downloader verifier identitymgr eidregister zedagent"
 ALLAGENTS="zedmanager $AGENTS"
 
 PATH=$BINDIR:$PATH
@@ -237,6 +237,16 @@ for l in $LOGGERS; do
 	mv $f $f.$datetime
     fi
 done
+
+#If loganager is already running we don't have to start it.
+pgrep logmanager >/dev/null
+if [ $? != 0 ]; then
+    echo "Starting logmanager at" `date`
+    logmanager >/var/log/logmanager.log 2>&1 &
+    if [ $WAIT = 1 ]; then
+	echo -n "Press any key to continue "; read dummy; echo; echo
+    fi
+fi
 
 # BlinkCounter 1 means we have started; might not yet have IP addresses
 # client/selfRegister and zedagent update this when the found at least
