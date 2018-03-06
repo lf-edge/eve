@@ -54,11 +54,18 @@ type configItems struct {
 	metricInterval          uint32
 	resetIfCloudGoneTime    uint32
 	fallbackIfCloudGoneTime uint32
+	// XXX max space for downloads?
+	// XXX LTE uplink usage policy?
 }
 
 // XXX add code which sets timers from ConfigItems from cloud
 var configItemDefaults = configItems{configInterval: 10, metricInterval: 60,
 	resetIfCloudGoneTime: 168 * 3600, fallbackIfCloudGoneTime: 600}
+
+type getconfigContext struct {
+	ledManagerCount int // Current count
+	// XXX add timer handles?
+}
 
 // tlsConfig is initialized once i.e. effectively a constant
 var tlsConfig *tls.Config
@@ -123,11 +130,12 @@ func handleConfigInit() {
 // XXX have caller check for unchanged value?
 var currentConfigInterval time.Duration
 
-func configTimerTask(handleChannel chan interface{}) {
+func configTimerTask(handleChannel chan interface{},
+	getconfigCtx *getconfigContext) {
 	configUrl := serverName + "/" + configApi
 	iteration := 0
 	checkConnectivity := isZbootAvailable() && isCurrentPartitionStateInProgress()
-	getLatestConfig(configUrl, iteration, &checkConnectivity)
+	getLatestConfig(configUrl, iteration, &checkConnectivity, getconfigCtx)
 
 	interval := time.Duration(configItemDefaults.configInterval) * time.Second
 	currentConfigInterval = interval
@@ -139,7 +147,8 @@ func configTimerTask(handleChannel chan interface{}) {
 	handleChannel <- ticker
 	for range ticker.C {
 		iteration += 1
-		getLatestConfig(configUrl, iteration, &checkConnectivity)
+		getLatestConfig(configUrl, iteration, &checkConnectivity,
+			getconfigCtx)
 	}
 }
 
@@ -170,10 +179,16 @@ func updateConfigTimer(tickerHandle interface{}) {
 // Start by trying the all the free uplinks and then all the non-free
 // until one succeeds in communicating with the cloud.
 // We use the iteration argument to start at a different point each time.
-func getLatestConfig(url string, iteration int, checkConnectivity *bool) {
+func getLatestConfig(url string, iteration int, checkConnectivity *bool,
+	getconfigCtx *getconfigContext) {
 	resp, err := sendOnAllIntf(url, nil, iteration)
 	if err != nil {
 		log.Printf("getLatestConfig failed: %s\n", err)
+		if getconfigCtx.ledManagerCount == 4 {
+			// Inform ledmanager about loss of config from cloud
+			types.UpdateLedManagerConfig(3)
+			getconfigCtx.ledManagerCount = 3
+		}
 		return
 	} else {
 		defer resp.Body.Close()
@@ -205,6 +220,7 @@ func getLatestConfig(url string, iteration int, checkConnectivity *bool) {
 			log.Println("validateConfigMessage: ", err)
 			// Inform ledmanager about cloud connectivity
 			types.UpdateLedManagerConfig(3)
+			getconfigCtx.ledManagerCount = 3
 			return
 		}
 
@@ -213,11 +229,13 @@ func getLatestConfig(url string, iteration int, checkConnectivity *bool) {
 			log.Println("readDeviceConfigProtoMessage: ", err)
 			// Inform ledmanager about cloud connectivity
 			types.UpdateLedManagerConfig(3)
+			getconfigCtx.ledManagerCount = 3
 			return
 		}
 
 		// Inform ledmanager about config received from cloud
 		types.UpdateLedManagerConfig(4)
+		getconfigCtx.ledManagerCount = 4
 		if !changed {
 			if debug {
 				log.Printf("Configuration from zedcloud is unchanged\n")
