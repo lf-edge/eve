@@ -124,7 +124,7 @@ func clearPartitionMap(partName string, partInfo *types.PartitionInfo) bool {
 
 	// if same UUID, return
 	if partInfo != nil &&
-		partInfo.UUIDandVersion == otherPartInfo.UUIDandVersion {
+		partInfo.UUIDandVersion != otherPartInfo.UUIDandVersion {
 		return true
 	}
 
@@ -136,28 +136,24 @@ func clearPartitionMap(partName string, partInfo *types.PartitionInfo) bool {
 	config := baseOsConfigGet(uuidStr)
 	if config != nil {
 		log.Printf("%s, reset old config\n", uuidStr)
-		configFilename := zedagentBaseOsConfigDirname +
-			"/" + uuidStr + ".json"
 		config.PartitionLabel = ""
 		for _, sc := range config.StorageConfigList {
 			sc.FinalObjDir = ""
 		}
-		writeBaseOsConfig(config, configFilename)
+		writeBaseOsConfig(config, uuidStr)
 	}
 
 	// and mark status as DELIVERED
 	status := baseOsStatusGet(uuidStr)
 	if status != nil {
 		log.Printf("%s, reset old status\n", uuidStr)
-		statusFilename := zedagentBaseOsStatusDirname +
-			"/" + uuidStr + ".json"
 		status.State = types.DELIVERED
 		errStr := fmt.Sprintf("uninstalled from %s",
 			otherPartInfo.PartitionLabel)
 		status.Error = errStr
 		status.ErrorTime = time.Now()
 		status.PartitionLabel = ""
-		writeBaseOsStatus(status, statusFilename)
+		writeBaseOsStatus(status, uuidStr)
 	}
 
 	deletePartitionInfo(partName)
@@ -216,22 +212,29 @@ func getPersistentPartitionInfo(uuidStr string, imageSha256 string) *types.Parti
 func setPersistentPartitionInfo(uuidStr string, config types.BaseOsConfig,
 		 status *types.BaseOsStatus) error {
 
-	partName := config.PartitionLabel
+	partName := status.PartitionLabel
 	log.Printf("%s, set partition %s\n", uuidStr, partName)
 
+	if partName == "" {
+		errStr := fmt.Sprintf("%s, unssigned partition", uuidStr)
+		log.Println(errStr)
+		return errors.New(errStr)
+	}
+
 	if ret := isOtherPartition(partName); ret == false {
-		errStr := fmt.Sprintf("%s: not other partition", partName)
+		errStr := fmt.Sprintf("%s, not other partition %s", uuidStr, partName)
 		log.Println(errStr)
 		return errors.New(errStr)
 	}
 
 	// new partition mapping
 	partInfo := &types.PartitionInfo{}
-	partInfo.UUIDandVersion = config.UUIDandVersion
+	partInfo.UUIDandVersion = status.UUIDandVersion
 	partInfo.ImageSha256 = baseOsGetImageSha(config)
 	partInfo.BaseOsVersion = config.BaseOsVersion
 	partInfo.PartitionLabel = partName
 	partInfo.State = status.State
+	partInfo.Activate = config.Activate
 	partInfo.RetryCount = config.RetryCount
 
 	// replicate Error Info
@@ -253,31 +256,43 @@ func setPersistentPartitionInfo(uuidStr string, config types.BaseOsConfig,
 	return writeOtherPartitionInfo(partInfo)
 }
 
-// reset the partition map for a baseOs
+// reset the partition map for baseOs
 // always the other partition
 func resetPersistentPartitionInfo(uuidStr string) error {
 
 	log.Printf("%s, reset partition\n", uuidStr)
 	config := baseOsConfigGet(uuidStr)
 	if config == nil {
-		errStr := fmt.Sprintf("%s, config absent\n", uuidStr)
+		errStr := fmt.Sprintf("%s, resetting partition, config absent\n", uuidStr)
+		err := errors.New(errStr)
+		return err
+	}
+	if config.PartitionLabel == "" {
+		errStr := fmt.Sprintf("%s, resetting partition map, unassigned \n", uuidStr)
 		err := errors.New(errStr)
 		return err
 	}
 
 	if isOtherPartition(config.PartitionLabel) {
-		clearPartitionMap(config.PartitionLabel, nil)
+		partInfo := readOtherPartitionInfo()
+		clearPartitionMap(config.PartitionLabel, partInfo)
+		return nil
 	}
-	return nil
+
+	errStr := fmt.Sprintf("%s, cannot reset current partition\n",	
+		 uuidStr, config.PartitionLabel)
+	err := errors.New(errStr)
+	return err
 }
 
 func initializePartitionMap() {
+	normalizePartitionMap()
 	resetPartitionMapState(getCurrentPartition())
 	resetPartitionMapState(getOtherPartition())
 }
 
+// reset state, if not installed
 func resetPartitionMapState(partName string) {
-	// reset state, if not installed
 	partInfo := readPartitionInfo(partName)
 	if partInfo != nil && partInfo.State != types.INSTALLED {
 		partInfo.State = 0
@@ -285,10 +300,10 @@ func resetPartitionMapState(partName string) {
 	}
 }
 
-func normalizePartitionMap(baseOsList []*types.BaseOsConfig) bool {
+func normalizePartitionMap() {
 
 	if !isZbootAvailable() {
-		return true
+		return
 	}
 	curPart := getCurrentPartition()
 	otherPart := getOtherPartition()
@@ -300,46 +315,36 @@ func normalizePartitionMap(baseOsList []*types.BaseOsConfig) bool {
 	// activation flag set, switch to other partition
 	if currActiveState && otherActiveState {
 		log.Printf("Both partitions are Active %s, %s", curPart, otherPart)
-		if isCurPartActivateSet(baseOsList) {
+		if isCurPartConfigActivateSet() {
 			log.Printf("Mark other partition %s, unused\n", otherPart)
 			setOtherPartitionStateUnused()
-			return true
+			return
 		}
-		if isOtherPartActivateSet(baseOsList) {
+		if isOtherPartConfigActivateSet() {
 			log.Printf("Mark current partition %s, unused\n", curPart)
 			log.Printf("and Schedule Reboot\n")
 			setCurrentPartitionStateUnused()
 			startExecReboot()
-			return false
+			return
 		}
 	}
-	return true
+	return
 }
 
-// check is this is current partition and activate is set
+// check activate flag for current partition
 // for the config
-func isCurPartActivateSet(baseOsList []*types.BaseOsConfig) bool {
-
-	for _, baseOsConfig := range baseOsList {
-
-		if baseOsConfig.PartitionLabel != "" &&
-			isCurrentPartition(baseOsConfig.PartitionLabel) {
-			return baseOsConfig.Activate
-		}
+func isCurPartConfigActivateSet() bool {
+	if partInfo := readCurrentPartitionInfo(); partInfo != nil {
+		return partInfo.Activate
 	}
-
 	return false
 }
 
-func isOtherPartActivateSet(baseOsList []*types.BaseOsConfig) bool {
+// check activate flag for other partition
+func isOtherPartConfigActivateSet() bool {
 
-	for _, baseOsConfig := range baseOsList {
-
-		if baseOsConfig.PartitionLabel != "" &&
-			isOtherPartition(baseOsConfig.PartitionLabel) {
-			return baseOsConfig.Activate
-		}
+	if partInfo := readOtherPartitionInfo(); partInfo != nil {
+		return partInfo.Activate
 	}
-
 	return false
 }

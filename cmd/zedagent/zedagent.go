@@ -499,14 +499,14 @@ func handleBaseOsModify(ctxArg interface{}, statusFilename string,
 	log.Printf("handleBaseOsModify for %s\n", status.BaseOsVersion)
 	if config.UUIDandVersion.Version == status.UUIDandVersion.Version &&
 		config.Activate == status.Activated {
-		log.Printf("Same version %s for %s\n",
+		log.Printf("Same version %v for %s\n",
 			config.UUIDandVersion.Version, uuidStr)
 		return
 	}
 
 	// update the version field, uuis being the same
 	status.UUIDandVersion = config.UUIDandVersion
-	writeBaseOsStatus(status, statusFilename)
+	writeBaseOsStatus(status, uuidStr)
 
 	addOrUpdateBaseOsConfig(uuidStr, *config)
 	PublishDeviceInfoToZedCloud(baseOsStatusMap, ctx.assignableAdapters)
@@ -545,7 +545,7 @@ func handleCertObjModify(ctxArg interface{}, statusFilename string,
 
 	// XXX:FIXME, do we
 	if config.UUIDandVersion.Version == status.UUIDandVersion.Version {
-		log.Printf("Same version %s for %s\n",
+		log.Printf("Same version %v for %s\n",
 			config.UUIDandVersion.Version, statusFilename)
 		return
 	}

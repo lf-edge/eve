@@ -170,7 +170,7 @@ func checkStorageDownloadStatus(objType string, uuidStr string,
 	config []types.StorageConfig, status []types.StorageStatus) (bool, types.SwState, string, time.Time) {
 
 	key := formLookupKey(objType, uuidStr)
-	log.Printf("checkStorageDownloadStatus for %s\n", key)
+	log.Printf("checkStorageDownloadStatus for %s, %v\n", key, status)
 
 	allErrors := ""
 	var errorTime time.Time

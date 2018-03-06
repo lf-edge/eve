@@ -106,7 +106,7 @@ func getCloudUrls() {
 func configTimerTask() {
 	iteration := 0
 	checkConnectivity := isZbootAvailable() && isCurrentPartitionStateInProgress()
-	getLatestConfig(configUrl, iteration, &checkConnectivity)
+	rebootFlag := getLatestConfig(configUrl, iteration, &checkConnectivity)
 
 	// Make this configurable from zedcloud and call update on ticker
 	max := float64(time.Minute * configTickTimeout)
@@ -115,18 +115,20 @@ func configTimerTask() {
 
 	for range ticker.C {
 		iteration += 1
-		getLatestConfig(configUrl, iteration, &checkConnectivity)
+		if rebootFlag == false {
+			rebootFlag = getLatestConfig(configUrl, iteration, &checkConnectivity)
+		}
 	}
 }
 
 // Start by trying the all the free uplinks and then all the non-free
 // until one succeeds in communicating with the cloud.
 // We use the iteration argument to start at a different point each time.
-func getLatestConfig(configUrl string, iteration int, checkConnectivity *bool) {
+func getLatestConfig(configUrl string, iteration int, checkConnectivity *bool) bool {
 	ok, resp := sendOnAllIntf(configUrl, nil, iteration)
 	if !ok {
 		// error was already logged
-		return
+		return false
 	} else {
 		defer resp.Body.Close()
 
@@ -157,7 +159,7 @@ func getLatestConfig(configUrl string, iteration int, checkConnectivity *bool) {
 			log.Println("validateConfigMessage: ", err)
 			// Inform ledmanager about cloud connectivity
 			types.UpdateLedManagerConfig(3)
-			return
+			return false
 		}
 
 		changed, config, err := readDeviceConfigProtoMessage(resp)
@@ -165,7 +167,7 @@ func getLatestConfig(configUrl string, iteration int, checkConnectivity *bool) {
 			log.Println("readDeviceConfigProtoMessage: ", err)
 			// Inform ledmanager about cloud connectivity
 			types.UpdateLedManagerConfig(3)
-			return
+			return false
 		}
 
 		// Inform ledmanager about config received from cloud
@@ -174,9 +176,9 @@ func getLatestConfig(configUrl string, iteration int, checkConnectivity *bool) {
 			if debug {
 				log.Printf("Configuration from zedcloud is unchanged\n")
 			}
-			return
+			return false
 		}
-		inhaleDeviceConfig(config)
+		return inhaleDeviceConfig(config)
 	}
 }
 
@@ -233,7 +235,7 @@ func readDeviceConfigProtoMessage(r *http.Response) (bool, *zconfig.EdgeDevConfi
 	return !same, config, nil
 }
 
-func inhaleDeviceConfig(config *zconfig.EdgeDevConfig) {
+func inhaleDeviceConfig(config *zconfig.EdgeDevConfig) bool {
 	activeVersion := ""
 
 	log.Printf("Inhaling config %v\n", config)
@@ -257,7 +259,7 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig) {
 				log.Printf("Updated config but wrong UUID have %s got %s\n",
 					deviceId, devId.Uuid)
 				// XXX can we send back an error somehow?
-				return
+				return false
 			}
 			// XXX at some point in time we should set version in
 			// zedcloud and increment on change, or skip this completely
@@ -266,7 +268,7 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig) {
 				devId.Version == activeVersion {
 				log.Printf("Same version, ignoring %s\n",
 					devId.Version)
-				return
+				return false
 			}
 			activeVersion = devId.Version
 		}
@@ -280,7 +282,7 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig) {
 	checkCurrentBaseOsFiles(config)
 
 	// add new App instances
-	parseConfig(config)
+	return parseConfig(config)
 }
 
 func checkCurrentAppFiles(config *zconfig.EdgeDevConfig) {

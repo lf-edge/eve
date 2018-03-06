@@ -92,9 +92,7 @@ func addOrUpdateCertObjConfig(uuidStr string, config types.CertObjConfig) {
 		}
 
 		certObjStatusMap[uuidStr] = status
-		statusFilename := fmt.Sprintf("%s/%s.json",
-			zedagentCertObjStatusDirname, uuidStr)
-		writeCertObjStatus(&status, statusFilename)
+		writeCertObjStatus(&status, uuidStr)
 	}
 
 	if changed {
@@ -125,9 +123,7 @@ func certObjHandleStatusUpdate(uuidStr string) {
 		log.Printf("certObjHandleStatusUpdate for %s, Status changed\n",
 			uuidStr)
 		certObjStatusMap[uuidStr] = status
-		statusFilename := fmt.Sprintf("%s/%s.json",
-			zedagentCertObjStatusDirname, uuidStr)
-		writeCertObjStatus(&status, statusFilename)
+		writeCertObjStatus(&status, uuidStr)
 	}
 }
 
@@ -194,9 +190,7 @@ func doCertObjInstall(uuidStr string, config types.CertObjConfig,
 		changed = true
 	}
 
-	statusFilename := fmt.Sprintf("%s/%s.json",
-		zedagentCertObjStatusDirname, uuidStr)
-	writeCertObjStatus(status, statusFilename)
+	writeCertObjStatus(status, uuidStr)
 	log.Printf("doCertObjInstall for %s, Done %v\n", uuidStr, changed)
 	return changed, true
 }
@@ -255,14 +249,12 @@ func removeCertObjStatus(uuidStr string) {
 	if changed {
 		log.Printf("removeCertObjStatus for %s, Status changed\n", uuidStr)
 		certObjStatusMap[uuidStr] = status
-		statusFilename := fmt.Sprintf("%s/%s.json",
-			zedagentCertObjStatusDirname, uuidStr)
-		writeCertObjStatus(&status, statusFilename)
+		writeCertObjStatus(&status, uuidStr)
 	}
 
 	if del {
 
-		// Write out what we modified to AppInstanceStatus aka delete
+		// Write out what we modified to CertObj aka delete
 		statusFilename := fmt.Sprintf("%s/%s.json",
 			zedagentCertObjStatusDirname, uuidStr)
 		if err := os.Remove(statusFilename); err != nil {
@@ -329,7 +321,9 @@ func doCertObjUninstall(uuidStr string, status *types.CertObjStatus) (bool, bool
 	return changed, del
 }
 
-func writeCertObjStatus(status *types.CertObjStatus, statusFilename string) {
+func writeCertObjStatus(status *types.CertObjStatus, uuidStr string) {
+	statusFilename := zedagentCertObjStatusDirname + "/" +  uuidStr + ".json"
+	log.Printf("Writing CertObj Status %s\n", statusFilename)
 	bytes, err := json.Marshal(status)
 	if err != nil {
 		log.Fatal(err, "json Marshal certObjStatus")

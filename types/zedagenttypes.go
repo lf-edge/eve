@@ -147,6 +147,7 @@ type PartitionInfo struct {
 	ImageSha256    string
 	PartitionLabel string
 	State          SwState
+	Activate	   bool
 	RetryCount     int32
 	Error          string
 	ErrorTime      time.Time
