@@ -74,6 +74,7 @@ type MapCacheEntry struct {
 	Resolved      bool
 	PktBuffer     chan *BufferedPacket
 	LastPunt      time.Time
+	ResolveTime   time.Time
 	RlocTotWeight uint32
 
 	// Packet statistics

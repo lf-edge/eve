@@ -18,6 +18,8 @@ import (
 	"time"
 )
 
+const SCRUBTHRESHOLD = 5 * 60
+
 var cache *types.MapCacheTable
 var decaps *types.DecapTable
 var upLinks types.Uplinks
@@ -182,12 +184,14 @@ func LookupAndAdd(iid uint32,
 	if ok {
 		return entry, false
 	} else {
+		currTime := time.Now()
 		resolveEntry := types.MapCacheEntry{
 			InstanceId: iid,
 			Eid:        eid,
 			Resolved:   false,
 			PktBuffer:  make(chan *types.BufferedPacket, 10),
-			LastPunt:   time.Now(),
+			LastPunt:   currTime,
+			ResolveTime: currTime,
 		}
 		cache.MapCache[key] = &resolveEntry
 		return &resolveEntry, true
@@ -432,6 +436,55 @@ func ShowDecapKeys() {
 		}
 	}
 	log.Println()
+}
+
+// This thread wakes up every minutes, to find the map cache entries that are
+// in resolve state for more than 5 minutes. Resolve entries that are older than
+// 5 minutes will be deleted.
+func MapcacheScrubThread() {
+	log.Printf("Starting map-cache scrubber thread")
+	// scrubber thread wakes up every 1 minute and scrubs
+	// map-cache entries in resolve status for more than 5 minutes.
+	for {
+		time.Sleep(60 * time.Second)
+		delList := []types.MapCacheKey{}
+
+		cache.LockMe.RLock()
+
+		// Iterate through the map-cache table and make of note of the entries
+		// that need removal (entries in resolve state for more than 5 minutes).
+		// We take write lock later and delete the required entries.
+		for key, entry := range cache.MapCache {
+			if entry.Resolved == false {
+				continue
+			}
+
+			currTime := time.Now()
+
+			// 5 * 50 * 1000 milli seconds threshold interval
+			var scrubThreshold time.Duration = SCRUBTHRESHOLD * 1000
+
+			// elapsed time is in Nano seconds
+			elapsed := currTime.Sub(entry.ResolveTime)
+
+			// convert elapsed time to milli seconds
+			elapsed = (elapsed / 1000000)
+
+			// if elapsed time is greater than 5 minutes send delete resolve entry
+			if elapsed >= scrubThreshold {
+				// mark the resolve entry for deletion
+				delList = append(delList, key)
+			}
+		}
+		cache.LockMe.RUnlock()
+
+		// take write lock and delete the entries necessary
+		cache.LockMe.Lock()
+		for _, key := range delList {
+			delete(cache.MapCache, key)
+		}
+		cache.LockMe.Unlock()
+	}
 }
 
 // Stats thread starts every 5 seconds and punts map cache statistics to lispers.net.

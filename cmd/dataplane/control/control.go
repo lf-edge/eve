@@ -104,6 +104,9 @@ func main() {
 	// Initialize and start stats thread
 	InitAndStartStatsThread(puntChannel)
 
+	// start map cache scrub thread
+	StartMapcacheScrubThread()
+
 	// This function should not return.
 	handleConfig(configPipe)
 }
@@ -212,6 +215,10 @@ func startPuntProcessor() {
 			}
 		}
 	}(conn, puntChannel)
+}
+
+func StartMapcacheScrubThread() {
+	go fib.MapcacheScrubThread()
 }
 
 func InitAndStartStatsThread(puntChannel chan []byte) {
