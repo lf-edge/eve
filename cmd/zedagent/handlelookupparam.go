@@ -13,24 +13,21 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/RevH/ipinfo"
-	"github.com/satori/go.uuid"
 	"github.com/zededa/api/zconfig"
 	"github.com/zededa/go-provision/types"
 	"io/ioutil"
 	"log"
 	"net"
 	"os"
+	"os/exec"
 	"strings"
 )
 
 const (
-	infraFileName = identityDirname + "/infra"
-
+	infraFileName           = identityDirname + "/infra"
 	tmpDirname              = "/var/tmp/zededa"
 	zedserverConfigFileName = tmpDirname + "/zedserverconfig"
-	uuidFileName            = tmpDirname + "/uuid"
-
-	zedRouterConfigbaseDir = "/var/tmp/zedrouter/config/"
+	zedRouterConfigbaseDir  = "/var/tmp/zedrouter/config/"
 )
 
 // Assumes the config files are in identityDirname, which is /config. Files are:
@@ -46,6 +43,9 @@ const (
 //  /var/tmp/zededa/uuid	Written by us
 //
 func handleLookUpParam(devConfig *zconfig.EdgeDevConfig) {
+	// XXX should we hadle changes at all? Want to update zedserverconfig
+	// but not rest.
+
 	//Fill DeviceDb struct with LispInfo config...
 	var device = types.DeviceDb{}
 
@@ -113,30 +113,6 @@ func handleLookUpParam(devConfig *zconfig.EdgeDevConfig) {
 			Org:        myIP.Org,
 		}
 		addInfoDevice = &addInfo
-	}
-
-	var devUUID uuid.UUID
-	if _, err := os.Stat(uuidFileName); err != nil {
-		// Create and write with initial values
-		// Ignoring any error
-		devUUID, _ = uuid.NewV4()
-		b := []byte(fmt.Sprintf("%s\n", devUUID))
-		err = ioutil.WriteFile(uuidFileName, b, 0644)
-		if err != nil {
-			log.Fatal("WriteFile", err, uuidFileName)
-		}
-		log.Printf("Created UUID %s\n", devUUID)
-	} else {
-		b, err := ioutil.ReadFile(uuidFileName)
-		if err != nil {
-			log.Fatal("ReadFile", err, uuidFileName)
-		}
-		uuidStr := strings.TrimSpace(string(b))
-		devUUID, err = uuid.FromString(uuidStr)
-		if err != nil {
-			log.Fatal("uuid.FromString", err, string(b))
-		}
-		log.Printf("Read UUID %s\n", devUUID)
 	}
 
 	// If we got a StatusNotFound the EID will be zero
@@ -282,8 +258,20 @@ func handleLookUpParam(devConfig *zconfig.EdgeDevConfig) {
 	} else {
 		matches[0].Type = "eidset"
 	}
+	// XXX if there is a change we need to change version string!
 	zedrouterConfigFileName := zedRouterConfigbaseDir + "" + devUUID.String() + ".json"
 	writeNetworkConfig(&config, zedrouterConfigFileName)
+
+	// Add NameToEID to /etc/hosts
+	cmd := exec.Command("/opt/zededa/bin/handlezedserverconfig.sh")
+	stdout, err := cmd.Output()
+	if err != nil {
+		log.Println(err.Error())
+	}
+	if debug {
+		log.Printf("handlezedserverconfig output %s\n",
+			stdout)
+	}
 }
 
 func writeNetworkConfig(config *types.AppNetworkConfig,

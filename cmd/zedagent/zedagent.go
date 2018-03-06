@@ -36,7 +36,7 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/zededa/go-provision/assignableadapters"
+	"github.com/zededa/go-provision/adapters"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
@@ -106,17 +106,23 @@ var deviceNetworkStatus types.DeviceNetworkStatus
 type dummyContext struct {
 }
 
+// Context for handleDNSModify
+type DNSContext struct {
+	usableAddressCount int
+	triggerGetConfig   bool
+}
+
 // Information from handleVerifierRestarted
 type verifierContext struct {
 	verifierRestarted bool
 }
 
-// Information for handleAppInstanceStatus*
-type appInstanceContext struct {
-	publishIteration int
+// Information for handleDomainStatus*
+type domainContext struct {
+	TriggerDeviceInfo bool
 }
 
-// Information for handleBaseOsCreate/Modify/Delete
+// Information for handleBaseOsCreate/Modify/Delete and handleAppInstanceStatus*
 type deviceContext struct {
 	assignableAdapters *types.AssignableAdapters
 }
@@ -163,18 +169,16 @@ func main() {
 	model := hardware.GetHardwareModel()
 	log.Printf("HardwareModel %s\n", model)
 	aa := types.AssignableAdapters{}
-	aaChanges, aaFunc, aaCtx := assignableadapters.Init(&aa, model)
-	aaDone := false
+	aaChanges, aaFunc, aaCtx := adapters.Init(&aa, model)
 
 	verifierCtx := verifierContext{}
-	aiCtx := appInstanceContext{}
 	devCtx := deviceContext{assignableAdapters: &aa}
+	domainCtx := domainContext{}
 
 	// First we process the verifierStatus to avoid downloading
 	// an base image we already have in place
 	log.Printf("Handling initial verifier Status\n")
-	done := false
-	for !done {
+	for !verifierCtx.verifierRestarted {
 		select {
 		case change := <-baseOsVerifierChanges:
 			watch.HandleStatusEvent(change, &verifierCtx,
@@ -185,14 +189,15 @@ func main() {
 				&verifierRestartedFn)
 			if verifierCtx.verifierRestarted {
 				log.Printf("Verifier reported restarted\n")
-				done = true
 				break
 			}
 		case change := <-aaChanges:
 			aaFunc(&aaCtx, change)
-			aaDone = true
 		}
 	}
+
+	DNSctx := DNSContext{}
+	DNSctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
 
 	networkStatusChanges := make(chan string)
 	go watch.WatchStatus(DNSDirname, networkStatusChanges)
@@ -200,22 +205,25 @@ func main() {
 	log.Printf("Waiting until we have some uplinks with usable addresses\n")
 	waited := false
 	for types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus) == 0 ||
-		!aaDone {
+		!aaCtx.Found {
+		log.Printf("Waiting - have %d addresses; aaCtx %v\n",
+			types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus),
+			aaCtx.Found)
 		waited = true
 		select {
 		case change := <-networkStatusChanges:
-			watch.HandleStatusEvent(change, dummyContext{},
+			watch.HandleStatusEvent(change, &DNSctx,
 				DNSDirname,
 				&types.DeviceNetworkStatus{},
 				handleDNSModify, handleDNSDelete,
 				nil)
 		case change := <-aaChanges:
 			aaFunc(&aaCtx, change)
-			aaDone = true
 		}
 	}
-	log.Printf("Have %d uplinks addresses to use\n",
-		types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus))
+	log.Printf("Have %d uplinks addresses to use; aaCtx %v\n",
+		types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus),
+		aaCtx.Found)
 	if waited {
 		// Inform ledmanager that we have uplink addresses
 		types.UpdateLedManagerConfig(2)
@@ -225,8 +233,11 @@ func main() {
 	PublishDeviceInfoToZedCloud(baseOsStatusMap, devCtx.assignableAdapters)
 
 	// start the metrics/config fetch tasks
+	handleChannel := make(chan interface{})
+	go configTimerTask(handleChannel)
+	log.Printf("Waiting for flexticker handle\n")
+	configTickerHandle := <-handleChannel
 	go metricsTimerTask()
-	go configTimerTask()
 
 	// app instance status event watcher
 	go watch.WatchStatus(zedmanagerStatusDirname, appInstanceStatusChanges)
@@ -257,7 +268,7 @@ func main() {
 
 		case change := <-restartChanges:
 			// restart only, place holder
-			watch.HandleStatusEvent(change, &aiCtx,
+			watch.HandleStatusEvent(change, &devCtx,
 				zedagentStatusDirname,
 				&types.AppInstanceStatus{},
 				handleAppInstanceStatusModify,
@@ -274,7 +285,7 @@ func main() {
 				handleCertObjDelete, nil)
 
 		case change := <-appInstanceStatusChanges:
-			watch.HandleStatusEvent(change, &aiCtx,
+			watch.HandleStatusEvent(change, &devCtx,
 				zedmanagerStatusDirname,
 				&types.AppInstanceStatus{},
 				handleAppInstanceStatusModify,
@@ -312,20 +323,34 @@ func main() {
 				handleCertObjDownloadStatusDelete, nil)
 
 		case change := <-networkStatusChanges:
-			watch.HandleStatusEvent(change, dummyContext{},
+			watch.HandleStatusEvent(change, &DNSctx,
 				DNSDirname,
 				&types.DeviceNetworkStatus{},
 				handleDNSModify, handleDNSDelete,
 				nil)
+			if DNSctx.triggerGetConfig {
+				triggerGetConfig(configTickerHandle)
+				DNSctx.triggerGetConfig = false
+			}
 			// IP/DNS in device info could have changed
+			// XXX could compare in handleDNSModify as we do
+			// for handleDomainStatus
+			log.Printf("NetworkStatus triggered PublishDeviceInfo\n")
 			PublishDeviceInfoToZedCloud(baseOsStatusMap,
 				devCtx.assignableAdapters)
 		case change := <-domainStatusChanges:
-			watch.HandleStatusEvent(change, dummyContext{},
+			watch.HandleStatusEvent(change, &domainCtx,
 				domainStatusDirname,
 				&types.DomainStatus{},
 				handleDomainStatusModify, handleDomainStatusDelete,
 				nil)
+			// UsedByUUID could have changed ...
+			if domainCtx.TriggerDeviceInfo {
+				log.Printf("Triggered PublishDeviceInfo\n")
+				PublishDeviceInfoToZedCloud(baseOsStatusMap,
+					devCtx.assignableAdapters)
+				domainCtx.TriggerDeviceInfo = false
+			}
 		case change := <-aaChanges:
 			aaFunc(&aaCtx, change)
 		}
@@ -354,7 +379,7 @@ func handleInit() {
 
 	initializeDirs()
 	initMaps()
-	getCloudUrls()
+	handleConfigInit()
 	partitionInit()
 }
 
@@ -430,23 +455,22 @@ func createConfigStatusDirs(moduleName string, objTypes []string) {
 func handleAppInstanceStatusModify(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
 	status := statusArg.(*types.AppInstanceStatus)
-	ctx := ctxArg.(*appInstanceContext)
+	ctx := ctxArg.(*deviceContext)
 	uuidStr := status.UUIDandVersion.UUID.String()
-	PublishAppInfoToZedCloud(uuidStr, status, ctx.publishIteration)
-	ctx.publishIteration += 1
+	PublishAppInfoToZedCloud(uuidStr, status, ctx.assignableAdapters)
 }
 
 func handleAppInstanceStatusDelete(ctxArg interface{}, statusFilename string) {
 	// statusFilename == key aka UUIDstr?
-	ctx := ctxArg.(*appInstanceContext)
+	ctx := ctxArg.(*deviceContext)
 	uuidStr := statusFilename
-	PublishAppInfoToZedCloud(uuidStr, nil, ctx.publishIteration)
-	ctx.publishIteration += 1
+	PublishAppInfoToZedCloud(uuidStr, nil, ctx.assignableAdapters)
 }
 
 func handleDNSModify(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
 	status := statusArg.(*types.DeviceNetworkStatus)
+	ctx := ctxArg.(*DNSContext)
 
 	if statusFilename != "global" {
 		log.Printf("handleDNSModify: ignoring %s\n", statusFilename)
@@ -454,17 +478,29 @@ func handleDNSModify(ctxArg interface{}, statusFilename string,
 	}
 	log.Printf("handleDNSModify for %s\n", statusFilename)
 	deviceNetworkStatus = *status
+	// Did we (re-)gain the first usable address?
+	// XXX should we also trigger if the count increases?
+	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
+	if newAddrCount != 0 && ctx.usableAddressCount == 0 {
+		log.Printf("DeviceNetworkStatus from %d to %d addresses\n",
+			newAddrCount, ctx.usableAddressCount)
+		ctx.triggerGetConfig = true
+	}
+	ctx.usableAddressCount = newAddrCount
 	log.Printf("handleDNSModify done for %s\n", statusFilename)
 }
 
 func handleDNSDelete(ctxArg interface{}, statusFilename string) {
 	log.Printf("handleDNSDelete for %s\n", statusFilename)
+	ctx := ctxArg.(*DNSContext)
 
 	if statusFilename != "global" {
 		log.Printf("handleDNSDelete: ignoring %s\n", statusFilename)
 		return
 	}
 	deviceNetworkStatus = types.DeviceNetworkStatus{}
+	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
+	ctx.usableAddressCount = newAddrCount
 	log.Printf("handleDNSDelete done for %s\n", statusFilename)
 }
 
@@ -490,9 +526,10 @@ func handleBaseOsModify(ctxArg interface{}, statusFilename string,
 	uuidStr := config.UUIDandVersion.UUID.String()
 
 	log.Printf("handleBaseOsModify for %s\n", status.BaseOsVersion)
-	if config.UUIDandVersion.Version == status.UUIDandVersion.Version {
-		log.Printf("Same version %s for %s\n",
-			config.UUIDandVersion.Version, uuidStr)
+	if config.UUIDandVersion.Version == status.UUIDandVersion.Version &&
+		config.Activate == status.Activated {
+		log.Printf("Same version/Activate %s/%v for %s\n",
+			config.UUIDandVersion.Version, config.Activate, uuidStr)
 		return
 	}
 

@@ -1,20 +1,23 @@
-// Copyright (c) 2017 Zededa, Inc.
+// Copyright (c) 2017-2018 Zededa, Inc.
 // All rights reserved.
 
 package main
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
 	"github.com/golang/protobuf/proto"
+	"github.com/satori/go.uuid"
 	"github.com/zededa/api/zconfig"
+	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/types"
 	"golang.org/x/crypto/ocsp"
 	"io/ioutil"
 	"log"
 	"mime"
-	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -33,15 +36,8 @@ var configApi string = "api/v1/edgedevice/config"
 var statusApi string = "api/v1/edgedevice/info"
 var metricsApi string = "api/v1/edgedevice/metrics"
 
-// XXX remove global variables
-// XXX shouldn't we know our own device UUID? Get from some global struct?
-// Or read from uuid file?
-var deviceId string
-
-// These URLs are effectively constants; depends on the server name
-var configUrl string
-var metricsUrl string
-var statusUrl string
+// This is set once at init time and not changed
+var serverName string
 
 const (
 	identityDirname = "/config"
@@ -49,12 +45,34 @@ const (
 	deviceCertName  = identityDirname + "/device.cert.pem"
 	deviceKeyName   = identityDirname + "/device.key.pem"
 	rootCertName    = identityDirname + "/root-certificate.pem"
+	uuidFileName    = identityDirname + "/uuid"
 )
+
+// A value of zero means we should use the default
+// All times are in seconds.
+type configItems struct {
+	configInterval          uint32
+	metricInterval          uint32
+	resetIfCloudGoneTime    uint32
+	fallbackIfCloudGoneTime uint32
+}
+
+var configItemDefaults = configItems{configInterval: 60, metricInterval: 60,
+	resetIfCloudGoneTime: 168 * 3600, fallbackIfCloudGoneTime: 600}
 
 // tlsConfig is initialized once i.e. effectively a constant
 var tlsConfig *tls.Config
 
-func getCloudUrls() {
+// devUUID is set in handleConfigInit and never changed
+var devUUID uuid.UUID
+
+// XXX need to support recreating devices. Remove when zedcloud preserves state
+var zcdevUUID uuid.UUID
+
+// Really a constant
+var nilUUID uuid.UUID
+
+func handleConfigInit() {
 
 	// get the server name
 	bytes, err := ioutil.ReadFile(serverFilename)
@@ -62,11 +80,7 @@ func getCloudUrls() {
 		log.Fatal(err)
 	}
 	strTrim := strings.TrimSpace(string(bytes))
-	serverName := strings.Split(strTrim, ":")[0]
-
-	configUrl = serverName + "/" + configApi
-	statusUrl = serverName + "/" + statusApi
-	metricsUrl = serverName + "/" + metricsApi
+	serverName = strings.Split(strTrim, ":")[0]
 
 	deviceCert, err := tls.LoadX509KeyPair(deviceCertName, deviceKeyName)
 	if err != nil {
@@ -91,6 +105,18 @@ func getCloudUrls() {
 		MinVersion: tls.VersionTLS12,
 	}
 	tlsConfig.BuildNameToCertificate()
+
+	b, err := ioutil.ReadFile(uuidFileName)
+	if err != nil {
+		log.Fatal("ReadFile", err, uuidFileName)
+	}
+	uuidStr := strings.TrimSpace(string(b))
+	devUUID, err = uuid.FromString(uuidStr)
+	if err != nil {
+		log.Fatal("uuid.FromString", err, string(b))
+	}
+	fmt.Printf("Read UUID %s\n", devUUID)
+	zcdevUUID = devUUID
 }
 
 // got a trigger for new config. check the present version and compare
@@ -99,109 +125,73 @@ func getCloudUrls() {
 // delete if some thing is not present in the old config
 // for the new config create entries in the zMgerConfig Dir
 // for each of the above buckets
-// XXX should the timers be randomized to avoid self-synchronization across
-// potentially lots of devices?
-// Combine with being able to change the timer intervals - generate at random
-// times between .3x and 1x
-func configTimerTask() {
+// XXX Combine with being able to change the timer intervals
+func configTimerTask(handleChannel chan interface{}) {
+	configUrl := serverName + "/" + configApi
 	iteration := 0
-	curPart := getCurrentPartition()
-	inProgressState, _ := isCurrentPartitionStateInProgress()
+	checkConnectivity := isZbootAvailable() && isCurrentPartitionStateInProgress()
+	getLatestConfig(configUrl, iteration, &checkConnectivity)
 
-	log.Printf("Config Fetch Task, curPart:%s, inProgress:%v\n",
-		curPart, inProgressState)
-	getLatestConfig(configUrl, iteration, &inProgressState)
-
-	ticker := time.NewTicker(time.Minute * configTickTimeout)
-
-	for range ticker.C {
+	// Make this configurable from zedcloud and call update on ticker
+	max := float64(time.Minute * configTickTimeout)
+	min := max * 0.3
+	configTicker := flextimer.NewRangeTicker(time.Duration(min),
+		time.Duration(max))
+	// Return handle to caller
+	handleChannel <- configTicker
+	for range configTicker.C {
 		iteration += 1
-		getLatestConfig(configUrl, iteration, &inProgressState)
+		getLatestConfig(configUrl, iteration, &checkConnectivity)
 	}
 }
 
-// Each iteration we try a different uplink. For each uplink we try all
-// its local IP addresses until we get a success.
-func getLatestConfig(configUrl string, iteration int, partState *bool) {
-	intf, err := types.GetUplinkAny(deviceNetworkStatus, iteration)
+func triggerGetConfig(handle interface{}) {
+	log.Printf("triggerGetConfig()\n")
+	flextimer.TickNow(handle)
+}
+
+// Start by trying the all the free uplinks and then all the non-free
+// until one succeeds in communicating with the cloud.
+// We use the iteration argument to start at a different point each time.
+func getLatestConfig(url string, iteration int, checkConnectivity *bool) {
+	resp, err := sendOnAllIntf(url, nil, iteration)
 	if err != nil {
-		log.Printf("getLatestConfig: %s\n", err)
+		log.Printf("getLatestConfig failed: %s\n", err)
 		return
-	}
-	addrCount := types.CountLocalAddrAny(deviceNetworkStatus, intf)
-	if debug {
-		log.Printf("Connecting to %s using intf %s interation %d #sources %d\n",
-			configUrl, intf, iteration, addrCount)
-	}
-	for retryCount := 0; retryCount < addrCount; retryCount += 1 {
-		localAddr, err := types.GetLocalAddrAny(deviceNetworkStatus,
-			retryCount, intf)
-		if err != nil {
-			log.Fatal(err)
-		}
-		localTCPAddr := net.TCPAddr{IP: localAddr}
-		if debug {
-			fmt.Printf("Connecting to %s using intf %s source %v\n",
-				configUrl, intf, localTCPAddr)
-		}
-		d := net.Dialer{LocalAddr: &localTCPAddr}
-		transport := &http.Transport{
-			TLSClientConfig: tlsConfig,
-			Dial:            d.Dial,
-		}
-		client := &http.Client{Transport: transport}
-		resp, err := client.Get("https://" + configUrl)
-		if err != nil {
-			log.Printf("URL get fail: %v\n", err)
-			continue
-		}
+	} else {
 		defer resp.Body.Close()
-		connState := resp.TLS
-		if connState == nil {
-			log.Println("no TLS connection state")
-			// Inform ledmanager about broken cloud connectivity
-			types.UpdateLedManagerConfig(10)
-			continue
-		}
 
-		log.Printf("current partition-state inProgress:%v\n", *partState)
-		// now cloud connectivity is good, mark partition state
-		if *partState == true {
-			ret, err := markPartitionStateActive()
-			if ret == true {
-				*partState = false
-			} else {
+		// now cloud connectivity is good, mark partition state as
+		// active if it was inprogress
+		// XXX down the road we want more diagnostics and validation
+		// before we do this.
+		if *checkConnectivity && isCurrentPartitionStateInProgress() {
+			curPart := getCurrentPartition()
+			log.Printf("Config Fetch Task, curPart %s inprogress\n",
+				curPart)
+			if err := markPartitionStateActive(); err != nil {
 				log.Println(err)
-			}
-		}
-
-		if connState.OCSPResponse == nil ||
-			!stapledCheck(connState) {
-			if connState.OCSPResponse == nil {
-				log.Printf("no OCSP response for %s\n",
-					configUrl)
 			} else {
-				log.Printf("OCSP stapled check failed for %s\n",
-					configUrl)
+				*checkConnectivity = false
 			}
-			//XXX OSCP is not implemented in cloud side so
-			// commenting out it for now. Should be:
-			// Inform ledmanager about broken cloud connectivity
-			// types.UpdateLedManagerConfig(10)
-			// continue
 		}
-		// Even if we get a 404 we consider the connection a success
-		zedCloudSuccess(intf)
 
-		if err := validateConfigMessage(configUrl, intf, localTCPAddr,
-			resp); err != nil {
+		// Each time we hear back from the cloud we assume
+		// the device and connectivity is ok so we advance the
+		// watchdog timer.
+		// We should only require this connectivity once every 24 hours
+		// or so using a setable policy in the watchdog, but have
+		// a short timeout during validation of a image post upgrade.
+		zbootWatchdogOK()
+
+		if err := validateConfigMessage(url, resp); err != nil {
 			log.Println("validateConfigMessage: ", err)
 			// Inform ledmanager about cloud connectivity
 			types.UpdateLedManagerConfig(3)
 			return
 		}
 
-		config, err := readDeviceConfigProtoMessage(resp)
+		changed, config, err := readDeviceConfigProtoMessage(resp)
 		if err != nil {
 			log.Println("readDeviceConfigProtoMessage: ", err)
 			// Inform ledmanager about cloud connectivity
@@ -211,37 +201,21 @@ func getLatestConfig(configUrl string, iteration int, partState *bool) {
 
 		// Inform ledmanager about config received from cloud
 		types.UpdateLedManagerConfig(4)
-
+		if !changed {
+			if debug {
+				log.Printf("Configuration from zedcloud is unchanged\n")
+			}
+			return
+		}
 		inhaleDeviceConfig(config)
-		return
 	}
-	log.Printf("All attempts to connect to %s using intf %s failed\n",
-		configUrl, intf)
-	zedCloudFailure(intf)
 }
 
-func validateConfigMessage(configUrl string, intf string,
-	localTCPAddr net.TCPAddr, r *http.Response) error {
+func validateConfigMessage(url string, r *http.Response) error {
 
 	var ctTypeStr = "Content-Type"
 	var ctTypeProtoStr = "application/x-proto-binary"
 
-	switch r.StatusCode {
-	case http.StatusOK:
-		if debug {
-			fmt.Printf("validateConfigMessage %s using intf %s source %v StatusOK\n",
-				configUrl, intf, localTCPAddr)
-		}
-	default:
-		log.Printf("validateConfigMessage %s using intf %s source %v statuscode %d %s\n",
-			configUrl, intf, localTCPAddr,
-			r.StatusCode, http.StatusText(r.StatusCode))
-		if debug {
-			fmt.Printf("received response %v\n", r)
-		}
-		return fmt.Errorf("http status %d %s",
-			r.StatusCode, http.StatusText(r.StatusCode))
-	}
 	ct := r.Header.Get(ctTypeStr)
 	if ct == "" {
 		return fmt.Errorf("No content-type")
@@ -259,28 +233,38 @@ func validateConfigMessage(configUrl string, intf string,
 	}
 }
 
-func readDeviceConfigProtoMessage(r *http.Response) (*zconfig.EdgeDevConfig, error) {
+var prevConfigHash []byte
+
+// Returns changed, config, error. The changed is based on a comparison of
+// the hash of the protobuf message.
+func readDeviceConfigProtoMessage(r *http.Response) (bool, *zconfig.EdgeDevConfig, error) {
 
 	var config = &zconfig.EdgeDevConfig{}
 
-	bytes, err := ioutil.ReadAll(r.Body)
+	b, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		fmt.Println(err)
-		return nil, err
+		return false, nil, err
 	}
+	// compute sha256 of the image and match it
+	// with the one in config file...
+	h := sha256.New()
+	h.Write(b)
+	configHash := h.Sum(nil)
+	same := bytes.Equal(configHash, prevConfigHash)
+	prevConfigHash = configHash
+
 	//log.Println(" proto bytes(config) received from cloud: ", fmt.Sprintf("%s",bytes))
-	//log.Printf("parsing proto %d bytes\n", len(bytes))
-	err = proto.Unmarshal(bytes, config)
+	//log.Printf("parsing proto %d bytes\n", len(b))
+	err = proto.Unmarshal(b, config)
 	if err != nil {
 		log.Println("Unmarshalling failed: %v", err)
-		return nil, err
+		return false, nil, err
 	}
-	return config, nil
+	return !same, config, nil
 }
 
 func inhaleDeviceConfig(config *zconfig.EdgeDevConfig) {
-	activeVersion := ""
-
 	log.Printf("Inhaling config %v\n", config)
 
 	// if they match return
@@ -289,13 +273,25 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig) {
 	devId = config.GetId()
 	handleLookUpParam(config)
 	if devId != nil {
-		// store the device id
-		deviceId = devId.Uuid
-		if devId.Version == activeVersion {
-			log.Printf("Same version, skipping:%v\n", config.Id.Version)
+		id, err := uuid.FromString(devId.Uuid)
+		if err != nil {
+			log.Printf("Invalid UUID %s from cloud: %s\n",
+				devId.Uuid, err)
 			return
 		}
-		activeVersion = devId.Version
+		if id != devUUID {
+			// XXX logic to handle re-registering a device private
+			// key with zedcloud. We accept a new UUID from the
+			// cloud and use that in our reports, but we do
+			// not update the hostname nor LISP.
+			// XXX remove once zedcloud preserves state.
+			if id != zcdevUUID {
+				log.Printf("XXX Device UUID changed from %s to %s\n",
+					zcdevUUID.String(), id.String())
+				zcdevUUID = id
+			}
+
+		}
 	}
 
 	// delete old app configs, if any

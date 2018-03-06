@@ -13,23 +13,23 @@ ADD etc /config
 ADD scripts/device-steps.sh \
     scripts/find-uplink.sh \
     scripts/generate-device.sh \
-    scripts/generate-onboard.sh \
     scripts/generate-self-signed.sh \
-    scripts/run-ocsp.sh \
-    scripts/zupgrade.sh \
+    scripts/handlezedserverconfig.sh \
   /opt/zededa/bin/
 ADD examples /opt/zededa/examples
 ADD AssignableAdapters /var/tmp/zededa/AssignableAdapters
 ADD DeviceNetworkConfig /var/tmp/zededa/DeviceNetworkConfig
 
 RUN mkdir -p /tmp/github; cd /tmp/github; git clone -b ${PF_RING_VERSION} https://github.com/ntop/PF_RING.git; cd PF_RING/userland; make install; cp ../kernel/linux/pf_ring.h /usr/include/linux
+# XXX temporary until we have a version for all of baseOS/rootfs
+RUN (cd ./src/github.com/zededa/go-provision/; scripts/getversion.sh >/opt/zededa/bin/versioninfo)
+# Echo for builders enjoyment
+RUN echo Building: `cat /opt/zededa/bin/versioninfo`
 
 RUN go get github.com/zededa/go-provision/cmd/...
 # this is taking care of on-boarding code that has to interact with LISP
 RUN go get github.com/zededa/go-provision/oldcmd/...
 RUN cd /opt/zededa/bin ; ln -s /go/bin/* .
-
-RUN ash -c 'ID=`uuidgen | tr "[A-Z]" "[a-z]"` ; cat /tmp/gg.json | sed -e s"#1a0d85d9-5e83-4589-b56f-cedabc9a8c0d#${ID}#" > /config/${ID}.json'
 
 # Now building LISP
 FROM zededa/lisp:latest AS lisp

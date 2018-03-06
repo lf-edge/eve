@@ -5,7 +5,7 @@
 // prov1.zededa.net which in turn registers them to the map servers
 // Reacts to the the collection of EIDStatus structs in
 // /var/run/identitymgr/status/*.json, and invokes /rest/eid-register
-// Reads config from arg1 or /opt/zededa/etc
+// Reads config from -d configdir or /config
 
 package main
 
@@ -46,23 +46,24 @@ func main() {
 	log.SetOutput(os.Stdout)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
 	versionPtr := flag.Bool("v", false, "Version")
+	oldPtr := flag.Bool("o", false, "Old use of prov01")
+	dirPtr := flag.String("d", "/config",
+		"Directory with certs etc")
 	flag.Parse()
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
+	oldFlag := *oldPtr
+	identityDirname := *dirPtr
 	log.Printf("Starting eidregister\n")
 	watch.CleanupRestarted("eidregister")
 
-	args := os.Args[1:]
-	dirName := "/opt/zededa/etc"
-	if len(args) > 0 {
-		dirName = args[0]
-	}
-	deviceCertName := dirName + "/device.cert.pem"
-	deviceKeyName := dirName + "/device.key.pem"
-	rootCertName := dirName + "/root-certificate.pem"
-	serverFileName := dirName + "/server"
+	deviceCertName := identityDirname + "/device.cert.pem"
+	deviceKeyName := identityDirname + "/device.key.pem"
+	rootCertName := identityDirname + "/root-certificate.pem"
+	serverFileName := identityDirname + "/server"
+	oldServerFileName := identityDirname + "/oldserver"
 
 	// Load device cert
 	var err error
@@ -82,6 +83,12 @@ func main() {
 	server, err := ioutil.ReadFile(serverFileName)
 	if err != nil {
 		log.Fatal(err)
+	}
+	if oldFlag {
+		server, err = ioutil.ReadFile(oldServerFileName)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 	serverNameAndPort = strings.TrimSpace(string(server))
 	serverName = strings.Split(serverNameAndPort, ":")[0]

@@ -40,6 +40,21 @@ message ZInfoNetwork {
   repeated string IPAddrs = 5; // All IP addresses with /N for subnet
   repeated string defaultRouters = 6; // If DHCP assigned
   ZInfoDNS dns = 7; // If DHCP assigned
+  bool up = 8;      // operational up/down status.
+  GeoLoc location = 9;
+}
+
+// From an IP address-based geolocation service
+// XXX later define GPS coordinates from device
+message GeoLoc {
+  string UnderlayIP = 1;
+  string Hostname = 2;
+  string City = 3;
+  string Region = 4;
+  string Country = 5;
+  string Loc = 6;
+  string Org = 7;
+  string Postal = 8;
 }
 
 // This is used both to represent the information we receive from DHCP
@@ -76,6 +91,7 @@ message ZinfoPeripheral {
   ZInfoManufacturer minfo = 3;
 }
 
+//SW Info for Apps
 message ZInfoSW {
   string swVersion = 2;
   string swHash = 3;
@@ -83,6 +99,12 @@ message ZInfoSW {
   bool activated = 5;		// Activation flag -- deprecated
   string target = 6;		// E.g., "disk", "kernel", "device-tree"
   string vdev = 7;		// E.g., "xvda"
+}
+
+// Errors in response to the applicatioan of configuration
+message ErrorInfo {
+  string description = 1;
+  google.protobuf.Timestamp timestamp = 2;
 }
 
 // Base device info, as discovered by Xen (or OS on bare metal)
@@ -99,12 +121,28 @@ message ZInfoDevice {
 
   ZInfoSW software = 12;		// Deprecated;
   repeated ZInfoNetwork network = 13;
-  repeated ZInfoSW softwareList = 14;	// Software Images in both partitions
+  repeated ZInfoSW softwareList = 14;	// Deprecated
   repeated ZioBundle assignableAdapters = 15;
   ZInfoDNS dns = 16; // What is used in resolv.conf
   repeated ZInfoStorage storageList = 17;
 
   google.protobuf.Timestamp bootTime = 18;
+
+  repeated ZInfoDevSW swList = 19;
+  string   HostName = 20;
+  repeated MetricItem metricItems = 21; // For instance, static LTE network info
+}
+
+//SW Info for the device base OS
+message ZInfoDevSW {
+  bool activated = 2;        // XXX is this implicit in partitionStatus?
+  string partitionLabel = 3; // E.g., "IMGA"
+  string partitionDevice = 4;// /dev/something
+  string partitionState = 5; // state obtained from cboot
+  ZSwState status = 6;       // E.g., "DOWNLOADED"
+  string shortVersion = 7;   // From rootfs i.e., image
+  string longVersion = 8;    // E.g., the yml file content from build
+  ErrorInfo swErr = 9;
 }
 
 // Per filesystem/partition information
@@ -136,11 +174,12 @@ message ZInfoApp {
   string AppName = 7;
   repeated ZInfoSW softwareList = 8;
   bool activated = 9;
-  string error = 10;
-  google.protobuf.Timestamp errorTime = 11;
+  string error = 10;  // deprecated, use ErrorInfo
+  google.protobuf.Timestamp errorTime = 11; //deprecated, use ErrorInfo
 
     google.protobuf.Timestamp bootTime = 12;
   repeated ZioBundle assignedAdapters = 13;
+  repeated ErrorInfo appErr = 14;
 }
 
 message ZInfoMsg {
@@ -169,7 +208,8 @@ message ZioBundle {
   ZioType type = 1;
   string name = 2;		// Short hand name such as "com"
   repeated string members = 3;	// E.g., "com1", "com2"
-  string usedByUUID = 4;
+  string usedByAppUUID = 4;
+  bool usedByBaseOS = 5;
 }
 
 // Metrics from devices and applications
@@ -226,27 +266,51 @@ message zedcloudMetric {
 }
 
 message appCpuMetric {
-    uint32 cpuTotal = 2;		// in seconds
+    uint32 cpuTotal = 2;		// deprecated
     double cpuPercentage = 3;		// deprecated
-    google.protobuf.Timestamp upTime = 4; // deprecated
+    google.protobuf.Timestamp upTime = 4;
+    uint64 total = 5;                   // cpu total in secs.
 }
 
 // We report both upTime in seconds and bootTime (in info). Allows to determine
 // large clock skew. Difference betweem cpuTotal and upTime is the amount
 // of idle.
-message devCpuMetric {
+message devCpuMetric {  // deprecated
     uint64 cpuTotal = 1;	// in seconds
-    uint64 upTime = 2;		// in seconds
+    uint64 upTime = 2;          // in seconds
 }
 
 message deviceMetric {
-  cpuMetric cpu = 1;	// deprecated - use appCpuMetric
+  cpuMetric cpu = 1;	// deprecated
   memoryMetric memory = 2;
   repeated networkMetric network = 3;
   repeated zedcloudMetric zedcloud = 4;
-  devCpuMetric compute = 5;
+  devCpuMetric compute = 5; // depcreated
   repeated diskMetric disk = 6;
+  appCpuMetric cpuMetric = 7;
+  repeated MetricItem metricItems = 8;
 }
+
+enum MetricItemType {
+  MetricItemOther = 0;		// E.g., a string like an ESSID
+  MetricItemGauge = 1;		// Goes up and down over time
+  MetricItemCounter = 2;	// Monotonically increasing (until reboot)
+  MetricItemState = 3;		// Toggles on and off; count transitions
+}
+
+// Open-ended metrics from different part of the device such as LTE modem
+// metrics.
+message MetricItem {
+	string key = 1;		// E.g., "lte-signal-strength"
+	MetricItemType type = 2;
+	oneof metricItemValue {
+		bool boolValue = 3;
+		uint32 uint32Value = 4;	// If timer this is in seconds
+		uint64 uint64Value = 5;
+		float floatValue = 6;
+		string stringValue = 7; // Use with care
+	}
+}		
 
 // For each partition; counts since boot
 message diskMetric {

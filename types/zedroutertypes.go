@@ -188,6 +188,38 @@ func GetUplinkFree(globalStatus DeviceNetworkStatus, pickNum int) (string, error
 	return "", errors.New("GetUplinkFree past end")
 }
 
+// Return all free uplink interfaces
+func GetUplinksFree(globalStatus DeviceNetworkStatus, rotation int) []string {
+	var uplinks []string
+
+	for _, us := range globalStatus.UplinkStatus {
+		if us.Free {
+			uplinks = append(uplinks, us.IfName)
+		}
+	}
+	return rotate(uplinks, rotation)
+}
+
+func rotate(arr []string, amount int) []string {
+	if len(arr) == 0 {
+		return []string{}
+	}
+	amount = amount % len(arr)
+	return append(append([]string{}, arr[amount:]...), arr[:amount]...)
+}
+
+// Return all non-free uplink interfaces
+func GetUplinksNonFree(globalStatus DeviceNetworkStatus, rotation int) []string {
+	var uplinks []string
+
+	for _, us := range globalStatus.UplinkStatus {
+		if !us.Free {
+			uplinks = append(uplinks, us.IfName)
+		}
+	}
+	return rotate(uplinks, rotation)
+}
+
 // Return number of local IP addresses for all the uplinks, unless if
 // uplink is set in which case we could it.
 func CountLocalAddrAny(globalStatus DeviceNetworkStatus, uplink string) int {
@@ -229,6 +261,7 @@ func CountLocalAddrFreeNoLinkLocal(globalStatus DeviceNetworkStatus) int {
 
 // Pick one address from all of the uplinks, unless if uplink is set in which we
 // pick from that uplink
+// XXX put the free ones first in the list.
 func GetLocalAddrAny(globalStatus DeviceNetworkStatus, pickNum int, uplink string) (net.IP, error) {
 	// Count the number of addresses which apply
 	addrs, err := getInterfaceAddr(globalStatus, false, uplink, true)
@@ -309,9 +342,13 @@ func IsUplink(globalStatus DeviceNetworkStatus, ifname string) bool {
 	return false
 }
 
+// Returns addresses based on free, ifname, and whether or not we want
+// IPv6 link-locals.
+// If free is not set, the addresses from the free uplinks are first.
 func getInterfaceAddr(globalStatus DeviceNetworkStatus, free bool, ifname string, includeLinkLocal bool) ([]net.IP, error) {
 	// fmt.Printf("getInterfaceAddr(%v, %s, %v)\n",	free, ifname, includeLinnklocal)
-	var addrs []net.IP
+	var freeAddrs []net.IP
+	var nonfreeAddrs []net.IP
 	for _, u := range globalStatus.UplinkStatus {
 		if free && !u.Free {
 			continue
@@ -320,8 +357,9 @@ func getInterfaceAddr(globalStatus DeviceNetworkStatus, free bool, ifname string
 		if u.IfName != ifname && ifname != "" {
 			continue
 		}
+		var addrs []net.IP
 		if includeLinkLocal {
-			addrs = append(addrs, u.Addrs...)
+			addrs = u.Addrs
 		} else {
 			for _, a := range u.Addrs {
 				if !a.IsLinkLocalUnicast() {
@@ -329,7 +367,13 @@ func getInterfaceAddr(globalStatus DeviceNetworkStatus, free bool, ifname string
 				}
 			}
 		}
+		if free {
+			freeAddrs = append(freeAddrs, addrs...)
+		} else {
+			nonfreeAddrs = append(nonfreeAddrs, addrs...)
+		}
 	}
+	addrs := append(freeAddrs, nonfreeAddrs...)
 	if len(addrs) != 0 {
 		// fmt.Printf("getInterfaceAddr(%s) returning %v\n",
 		//	ifname, addrs)

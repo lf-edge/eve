@@ -13,7 +13,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/satori/go.uuid"
-	"github.com/zededa/go-provision/assignableadapters"
+	"github.com/zededa/go-provision/adapters"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
@@ -129,15 +129,14 @@ func main() {
 	// any DomainConfig
 	model := hardware.GetHardwareModel()
 	aa := types.AssignableAdapters{}
-	aaChanges, aaFunc, aaCtx := assignableadapters.Init(&aa, model)
-	aaDone := false
+	aaChanges, aaFunc, aaCtx := adapters.Init(&aa, model)
 	domainCtx := domainContext{assignableAdapters: &aa}
 
-	for !aaDone {
+	for !aaCtx.Found {
+		log.Printf("Waiting - aaCtx %v\n", aaCtx.Found)
 		select {
 		case change := <-aaChanges:
 			aaFunc(&aaCtx, change)
-			aaDone = true
 		}
 	}
 	fmt.Printf("Have %d assignable adapters\n", len(aa.IoBundleList))

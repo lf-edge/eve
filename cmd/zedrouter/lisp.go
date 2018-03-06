@@ -520,7 +520,6 @@ func maybeStartLispDataPlane() {
 	if isRunning {
 		return
 	}
-	log.Printf("XXXXX Starting Dataplane\n")
 	// Dataplane is currently running. Start it.
 	cmd := "nohup"
 	args := []string{
@@ -543,7 +542,6 @@ func maybeStopLispDataPlane() bool {
 				fmt.Printf("maybeStopLispDataPlane: Killing pid %s failed: %s\n",
 					pid, err)
 			}
-			log.Printf("XXXXX Stopping Dataplane\n")
 		}
 		return true
 	}

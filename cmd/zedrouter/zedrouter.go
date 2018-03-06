@@ -108,13 +108,18 @@ func main() {
 		}
 	}
 	appNumAllocatorInit(statusDirname, configDirname)
+	model := hardware.GetHardwareModel()
 
-	handleInit(DNCDirname+"/global.json", DNSDirname+"/global.json",
+	// XXX Should we wait for the DNCFilename same way as we wait
+	// for AssignableAdapter filename?
+
+	DNCFilename := fmt.Sprintf("%s/%s.json", DNCDirname, model)
+	handleInit(DNCFilename, DNSDirname+"/global.json",
 		runDirname)
 
 	DNCctx := DNCContext{}
 	DNCctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
-	DNCctx.manufacturerModel = hardware.GetHardwareModel()
+	DNCctx.manufacturerModel = model
 	DNCctx.ZededaDataPlane = false
 
 	ZedrouterCtx := zedrouterContext{
@@ -128,10 +133,8 @@ func main() {
 	watch.WaitForFile(restartFile)
 	log.Printf("Zedmanager reported in %s\n", restartFile)
 
-	// This function is called when some uplink interface changes
+	// This function is called from PBR when some uplink interface changes
 	// its IP address(es)
-	// XXX Do we need to collapse multiple changes into one?
-	// Or just feed this into a separate channel? Or defer for lisp?
 	addrChangeFn := func(ifname string) {
 		log.Printf("addrChangeFn(%s) called\n", ifname)
 		new, _ := types.MakeDeviceNetworkStatus(deviceNetworkConfig)
@@ -1177,7 +1180,7 @@ func handleDNCModify(ctxArg interface{}, configFilename string,
 	ctx := ctxArg.(*DNCContext)
 
 	if configFilename != ctx.manufacturerModel {
-		fmt.Printf("handleDNSModify: ignoring %s - expecting %s\n",
+		fmt.Printf("handleDNCModify: ignoring %s - expecting %s\n",
 			configFilename, ctx.manufacturerModel)
 		return
 	}

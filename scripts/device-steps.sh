@@ -2,12 +2,12 @@
 
 echo "Starting device-steps.sh at" `date`
 
-# This is really CONFIGDIR; ETCDIR across reboots is TMPDIR
-ETCDIR=/config
+CONFIGDIR=/config
 PERSISTDIR=/persist
 BINDIR=/opt/zededa/bin
 PROVDIR=$BINDIR
 TMPDIR=/var/tmp/zededa
+DNCDIR=/var/tmp/zededa/DeviceNetworkConfig
 LISPDIR=/opt/zededa/lisp
 AGENTS="ledmanager zedrouter domainmgr downloader verifier identitymgr eidregister zedagent dataplane"
 ALLAGENTS="zedmanager $AGENTS"
@@ -31,22 +31,13 @@ while [ $# != 0 ]; do
     elif [ "$1" = -c ]; then
 	CLEANUP=1
     else
-	ETCDIR=$1
+	CONFIGDIR=$1
     fi
     shift
 done
 
 mkdir -p $TMPDIR
 
-# The docker build moves this to /config
-if [ ! -d $ETCDIR -a -d /opt/zededa/etc ]; then
-    echo "Moving from /opt/zededa/etc to $ETCDIR"
-    mv /opt/zededa/etc $ETCDIR
-elif [ -d /opt/zededa/etc ]; then
-    echo "Updating from /opt/zededa/etc to $ETCDIR:"
-    (cd /opt/zededa/etc/; tar cf - . ) | (cd $ETCDIR; tar xfv -)
-    rm -rf /opt/zededa/etc
-fi
 if [ -d /var/tmp/zedmanager/downloads ]; then
     echo "Cleaning up old download dir: /var/tmp/zedmanager/downloads"
     rm -rf /var/tmp/zedmanager/downloads
@@ -61,8 +52,19 @@ if [ $CLEANUP = 1 -a -d $PERSISTDIR/downloads ]; then
     rm -rf $PERSISTDIR/downloads
 fi
     
+# Move any uuid file to /config
+if [ -f $TMPDIR/uuid ]; then
+    if [ -f $CONFIGDIR/uuid ]; then
+	echo "Removing old $TMPDIR/uuid"
+	rm -f $TMPDIR/uuid
+    else
+	echo "Moving old $TMPDIR/uuid to $CONFIGDIR/uuid"
+	mv $TMPDIR/uuid $CONFIGDIR/uuid
+    fi
+fi
+
 echo "Configuration from factory/install:"
-(cd $ETCDIR; ls -l)
+(cd $CONFIGDIR; ls -l)
 echo
 
 echo "Update version info in $TMPDIR/version"
@@ -94,7 +96,7 @@ rm -rf /var/run/zedmanager/status/*.json
 
 # The following is a workaround for a racecondition between different agents
 # Make sure we have the required directories in place
-DIRS="$ETCDIR $PERSISTDIR $TMPDIR /var/tmp/ledmanager/config/ /var/tmp/domainmgr/config/ /var/tmp/verifier/config/ /var/tmp/downloader/config/ /var/tmp/zedmanager/config/ /var/tmp/identitymgr/config/ /var/tmp/zedrouter/config/ /var/run/domainmgr/status/ /var/run/downloader/status/ /var/run/zedmanager/status/ /var/run/eidregister/status/ /var/run/zedrouter/status/ /var/run/identitymgr/status/ /var/tmp/zededa/DeviceNetworkConfig/ /var/run/zedrouter/DeviceNetworkStatus/ /var/tmp/zededa/AssignableAdapters"
+DIRS="$CONFIGDIR $PERSISTDIR $TMPDIR /var/tmp/ledmanager/config/ /var/tmp/domainmgr/config/ /var/tmp/verifier/config/ /var/tmp/downloader/config/ /var/tmp/zedmanager/config/ /var/tmp/identitymgr/config/ /var/tmp/zedrouter/config/ /var/run/domainmgr/status/ /var/run/downloader/status/ /var/run/zedmanager/status/ /var/run/eidregister/status/ /var/run/zedrouter/status/ /var/run/identitymgr/status/ /var/tmp/zededa/DeviceNetworkConfig/ /var/run/zedrouter/DeviceNetworkStatus/ /var/tmp/zededa/AssignableAdapters"
 for d in $DIRS; do
     d1=`dirname $d`
     if [ ! -d $d1 ]; then
@@ -255,9 +257,9 @@ fi
 # We need to try our best to setup time *before* we generate the certifiacte.
 # Otherwise it may have start date in the future
 echo "Check for NTP config"
-if [ -f $ETCDIR/ntp-server ]; then
+if [ -f $CONFIGDIR/ntp-server ]; then
     echo -n "Using "
-    cat $ETCDIR/ntp-server
+    cat $CONFIGDIR/ntp-server
     # XXX is ntp service running/installed?
     # XXX actually configure ntp
     # Ubuntu has /usr/bin/timedatectl; ditto Debian
@@ -265,7 +267,7 @@ if [ -f $ETCDIR/ntp-server ]; then
     # Not installed on Ubuntu
     #
     if [ -f /usr/bin/ntpdate ]; then
-	/usr/bin/ntpdate `cat $ETCDIR/ntp-server`
+	/usr/bin/ntpdate `cat $CONFIGDIR/ntp-server`
     elif [ -f /usr/bin/timedatectl ]; then
 	echo "NTP might already be running. Check"
 	/usr/bin/timedatectl status
@@ -287,9 +289,9 @@ if [ $WAIT = 1 ]; then
 fi
 
 
-if [ ! \( -f $ETCDIR/device.cert.pem -a -f $ETCDIR/device.key.pem \) ]; then
+if [ ! \( -f $CONFIGDIR/device.cert.pem -a -f $CONFIGDIR/device.key.pem \) ]; then
     echo "Generating a device key pair and self-signed cert (using TPM/TEE if available) at" `date`
-    $PROVDIR/generate-device.sh $ETCDIR/device
+    $PROVDIR/generate-device.sh $CONFIGDIR/device
     SELF_REGISTER=1
 elif [ -f $TMPDIR/self-register-failed ]; then
     echo "self-register failed/killed/rebooted; redoing self-register"
@@ -298,7 +300,7 @@ else
     echo "Using existing device key pair and self-signed cert"
     SELF_REGISTER=0
 fi
-if [ ! -f $ETCDIR/server -o ! -f $ETCDIR/root-certificate.pem ]; then
+if [ ! -f $CONFIGDIR/server -o ! -f $CONFIGDIR/root-certificate.pem ]; then
     echo "No server or root-certificate to connect to. Done"
     exit 0
 fi
@@ -309,12 +311,12 @@ fi
 
 # XXX should we harden/remove any Linux network services at this point?
 echo "Check for WiFi config"
-if [ -f $ETCDIR/wifi_ssid ]; then
+if [ -f $CONFIGDIR/wifi_ssid ]; then
     echo -n "SSID: "
-    cat $ETCDIR/wifi_ssid
-    if [ -f $ETCDIR/wifi_credentials ]; then
+    cat $CONFIGDIR/wifi_ssid
+    if [ -f $CONFIGDIR/wifi_credentials ]; then
 	echo -n "Wifi credentials: "
-	cat $ETCDIR/wifi_credentials
+	cat $CONFIGDIR/wifi_credentials
     fi
     # XXX actually configure wifi
     # Requires a /etc/network/interfaces.d/wlan0.cfg
@@ -325,41 +327,68 @@ if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
-# We use the factory network.config.static if we have one, otherwise
-# we reuse the DeviceNetworkConfig from a previous run
-mkdir -p $TMPDIR/DeviceNetworkConfig/
-if [ -f $ETCDIR/network.config.static ] ; then
-    echo "Using $ETCDIR/network.config.static"
-    # XXX not used
-    cp -p $ETCDIR/network.config.static $TMPDIR/DeviceNetworkConfig/global.json 
-fi
-
-if [ ! -f $TMPDIR/uuid -a -f $ETCDIR/uuid ]; then
-    cp -p $ETCDIR/uuid $TMPDIR/uuid
-fi
-
 if [ $SELF_REGISTER = 1 ]; then
     rm -f $TMPDIR/zedrouterconfig.json
     
     touch $TMPDIR/self-register-failed
     echo "Self-registering our device certificate at " `date`
-    if [ ! \( -f $ETCDIR/onboard.cert.pem -a -f $ETCDIR/onboard.key.pem \) ]; then
+    if [ ! \( -f $CONFIGDIR/onboard.cert.pem -a -f $CONFIGDIR/onboard.key.pem \) ]; then
 	echo "Missing onboarding certificate. Giving up"
 	exit 1
     fi
-    echo $BINDIR/client $OLDFLAG -d $ETCDIR selfRegister
-    $BINDIR/client $OLDFLAG -d $ETCDIR selfRegister
+    echo $BINDIR/client $OLDFLAG -d $CONFIGDIR selfRegister
+    $BINDIR/client $OLDFLAG -d $CONFIGDIR selfRegister
     rm -f $TMPDIR/self-register-failed
     if [ $WAIT = 1 ]; then
 	echo -n "Press any key to continue "; read dummy; echo; echo
     fi
+    echo $BINDIR/client $OLDFLAG -d $CONFIGDIR getUuid 
+    $BINDIR/client $OLDFLAG -d $CONFIGDIR getUuid
+
+    # Make sure we set the dom0 hostname, used by LISP nat traversal, to
+    # a unique string. Using the uuid
+    uuid=`cat $CONFIGDIR/uuid`
+    /bin/hostname $uuid
+    /bin/hostname >/etc/hostname
+    grep -q $uuid /etc/hosts
+    if [ $? = 1 ]; then
+	# put the uuid in /etc/hosts to avoid complaints
+	echo "Adding $uuid to /etc/hosts"
+	echo "127.0.0.1 $uuid" >>/etc/hosts
+    else
+	echo "Found $uuid in /etc/hosts"
+    fi
+    if [ $WAIT = 1 ]; then
+	echo -n "Press any key to continue "; read dummy; echo; echo
+    fi
+elif [ x$OLDFLAG = x ]; then
+    echo "XXX until cloud keeps state across upgrades redo getUuid"
+    echo $BINDIR/client $OLDFLAG -d $CONFIGDIR getUuid 
+    $BINDIR/client $OLDFLAG -d $CONFIGDIR getUuid
+
+    uuid=`cat $CONFIGDIR/uuid`
+    /bin/hostname $uuid
+    /bin/hostname >/etc/hostname
+    grep -q $uuid /etc/hosts
+    if [ $? = 1 ]; then
+	# put the uuid in /etc/hosts to avoid complaints
+	echo "Adding $uuid to /etc/hosts"
+	echo "127.0.0.1 $uuid" >>/etc/hosts
+    else
+	echo "Found $uuid in /etc/hosts"
+    fi
+    if [ $WAIT = 1 ]; then
+	echo -n "Press any key to continue "; read dummy; echo; echo
+    fi
 fi
+
+# XXX remove once OLDFLAG goes away
 # We always redo this to get an updated zedserverconfig
 rm -f $TMPDIR/zedserverconfig
-if [ /bin/true -o ! -f $ETCDIR/lisp.config ]; then
+if [ x$OLDFLAG != x ]; then
     echo "Retrieving device and overlay network config at" `date`
-    echo $BINDIR/client $OLDFLAG -d $ETCDIR lookupParam
-    $BINDIR/client $OLDFLAG -d $ETCDIR lookupParam
+    echo $BINDIR/client $OLDFLAG -d $CONFIGDIR lookupParam
+    $BINDIR/client $OLDFLAG -d $CONFIGDIR lookupParam
     if [ -f $TMPDIR/zedserverconfig ]; then
 	echo "Retrieved overlay /etc/hosts with:"
 	cat $TMPDIR/zedserverconfig
@@ -390,79 +419,42 @@ ip6tables -t raw -F
 
 if [ $SELF_REGISTER = 1 ]; then
     # Do we have a file from the build?
-    if [ ! -f $ETCDIR/network.config.static ] ; then
+    # For now we do not exit if it is missing, but instead we determine
+    # a minimal one on the fly
+    model=`$BINDIR/hardwaremodel`
+    MODELFILE=${model}.json
+    if [ ! -f $DNCDIR/$MODELFILE ] ; then
+	echo "XXX Missing $DNCDIR/$MODELFILE - generate on the fly"
 	echo "Determining uplink interface"
-	intf=`$BINDIR/find-uplink.sh $ETCDIR/lisp.config.base`
+	intf=`$BINDIR/find-uplink.sh $CONFIGDIR/lisp.config.base`
 	if [ "$intf" != "" ]; then
 		echo "Found interface $intf based on route to map servers"
 	else
 		echo "NOT Found interface based on route to map servers. Giving up"
 		exit 1    
 	fi
-	# XXX not used
-	cat <<EOF >$TMPDIR/DeviceNetworkConfig/global.json
+	cat <<EOF >$DNCDIR/$MODELFILE
 {"Uplink":["$intf"], "FreeUplinks":["$intf"]}
 EOF
     fi
-    # Make sure we set the dom0 hostname, used by LISP nat traversal, to
-    # a unique string. Using the uuid
-    if [ -f $TMPDIR/uuid ]; then
-	uuid=`cat $TMPDIR/uuid`
-    else
-	uuid=`cat $ETCDIR/uuid`
-    fi
-    echo "Setting hostname to $uuid"
-    /bin/hostname $uuid
-    /bin/hostname >/etc/hostname
-    # put the uuid in /etc/hosts to avoid complaints
-    echo "Adding $uuid to /etc/hosts"
-    echo "127.0.0.1 $uuid" >>/etc/hosts
 else
-    if [ -f $TMPDIR/uuid ]; then
-	uuid=`cat $TMPDIR/uuid`
-    else
-	uuid=`cat $ETCDIR/uuid`
-    fi
-    # For safety in case the rootfs was duplicated and /etc/hostame wasn't
-    # updated
-    /bin/hostname $uuid
-    /bin/hostname >/etc/hostname
-    grep -q $uuid /etc/hosts
-    if [ $? = 1 ]; then
-	# put the uuid in /etc/hosts to avoid complaints
-	echo "Adding $uuid to /etc/hosts"
-	echo "127.0.0.1 $uuid" >>/etc/hosts
-    else
-	echo "Found $uuid in /etc/hosts"
-    fi
-    # XXX delete this block
-    # Handle old file format
-    grep -q FreeUplinks $TMPDIR/DeviceNetworkConfig/global.json
-    if [ $? = 0 ]; then
-	echo "Found FreeUplinks in $TMPDIR/DeviceNetworkConfig/global.json"
-    else
-	echo "Determining uplink interface"
-	intf=`$BINDIR/find-uplink.sh $ETCDIR/lisp.config.base`
-	if [ "$intf" != "" ]; then
-		echo "Found interface $intf based on route to map servers"
-	else
-		echo "NOT Found interface based on route to map servers. Giving up"
-		exit 1    
-	fi
-	cat <<EOF >$TMPDIR/DeviceNetworkConfig/global.json
-{"Uplink":["$intf"], "FreeUplinks":["$intf"]}
-EOF
+    model=`$BINDIR/hardwaremodel`
+    MODELFILE=${model}.json
+    if [ ! -f $DNCDIR/$MODELFILE ] ; then
+	echo "Missing $DNCDIR/$MODELFILE - giving up"
+	exit 1
     fi
 fi
 
 # Need a key for device-to-device map-requests
-cp -p $ETCDIR/device.key.pem $LISPDIR/lisp-sig.pem   
+cp -p $CONFIGDIR/device.key.pem $LISPDIR/lisp-sig.pem
 
-# Pick up the device EID zedrouter config file from $ETCDIR and put
+# Pick up the device EID zedrouter config file from $TMPDIR and put
 # it in /var/tmp/zedrouter/config/
 # This will result in starting lispers.net when zedrouter starts
 if [ -f $TMPDIR/zedrouterconfig.json ]; then
-	cp $TMPDIR/zedrouterconfig.json /var/tmp/zedrouter/config/${uuid}.json
+    uuid=`cat $CONFIGDIR/uuid`
+    cp $TMPDIR/zedrouterconfig.json /var/tmp/zedrouter/config/${uuid}.json
 fi
 
 # Setup default amount of space for images
@@ -490,7 +482,7 @@ if [ $WAIT = 1 ]; then
 fi
 
 echo "Starting eidregister at" `date`
-eidregister >/var/log/eidregister.log 2>&1 &
+eidregister $OLDFLAG -d $CONFIGDIR >/var/log/eidregister.log 2>&1 &
 if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
