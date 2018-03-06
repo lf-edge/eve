@@ -81,7 +81,7 @@ func StartItrThread(threadName string,
 	if err != nil {
 		log.Printf(
 			"StartItrThread: Disabling path MTU discovery for ipv6 socket failed: %s.\n",
-				err)
+			err)
 	}
 	defer syscall.Close(fd6)
 

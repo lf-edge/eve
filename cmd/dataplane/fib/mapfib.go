@@ -186,11 +186,11 @@ func LookupAndAdd(iid uint32,
 	} else {
 		currTime := time.Now()
 		resolveEntry := types.MapCacheEntry{
-			InstanceId: iid,
-			Eid:        eid,
-			Resolved:   false,
-			PktBuffer:  make(chan *types.BufferedPacket, 10),
-			LastPunt:   currTime,
+			InstanceId:  iid,
+			Eid:         eid,
+			Resolved:    false,
+			PktBuffer:   make(chan *types.BufferedPacket, 10),
+			LastPunt:    currTime,
 			ResolveTime: currTime,
 		}
 		cache.MapCache[key] = &resolveEntry
