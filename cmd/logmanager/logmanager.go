@@ -2,20 +2,24 @@
 // All rights reserved.
 
 package main
+
 import (
-	"github.com/zededa/go-provision/watch"
-	"log"
+	"bufio"
 	"flag"
+	"fmt"
+	//"github.com/zededa/api/zmet"
+	"github.com/zededa/go-provision/watch"
+	"io"
+	"log"
 	"os"
 	"strings"
-	"bufio"
-	"fmt"
-	"io"
 )
 
 const (
 	logDirName = "/var/log"
 )
+
+var debug bool
 
 // Set from Makefile
 var Version = "No version specified"
@@ -23,15 +27,15 @@ var Version = "No version specified"
 func main() {
 
 	log.SetOutput(os.Stdout)
-    log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
-    versionPtr := flag.Bool("v", false, "Version")
-    //debugPtr := flag.Bool("d", false, "Debug")
-    flag.Parse()
-    //debug = *debugPtr
-    if *versionPtr {
-        fmt.Printf("%s: %s\n", os.Args[0], Version)
-        return
-    }
+	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
+	versionPtr := flag.Bool("v", false, "Version")
+	debugPtr := flag.Bool("d", false, "Debug")
+	flag.Parse()
+	debug = *debugPtr
+	if *versionPtr {
+		fmt.Printf("%s: %s\n", os.Args[0], Version)
+		return
+	}
 	log.Println("Starting log manager...")
 	logChanges := make(chan string)
 	go watch.WatchStatus(logDirName, logChanges)
@@ -64,6 +68,7 @@ func HandleLogEvent(change string, logDirName string, handleLogModifyFunc logRea
 	}
 	// Remove .log from name */
 	name := strings.Split(fileName, ".log")
+	logFileName := name[0]
 	if operation == "D" {
 		handleLogDeleteFunc(name[0])
 		return
@@ -72,9 +77,15 @@ func HandleLogEvent(change string, logDirName string, handleLogModifyFunc logRea
 		log.Fatal("Unknown operation from Watcher: ",
 			operation)
 	}
-	logFile := logDirName + "/" + fileName
+	logFilePath := logDirName + "/" + fileName
+	go readLogFileLineByLine(logFilePath, logFileName, handleLogModifyFunc)
 
-	file, err := os.Open(logFile)
+}
+
+func readLogFileLineByLine(logFilePath,fileName string, handleLogModifyFunc logReadHandler) {
+
+
+	file, err := os.Open(logFilePath)
 
 	if err != nil {
 		log.Println(err)
@@ -87,24 +98,29 @@ func HandleLogEvent(change string, logDirName string, handleLogModifyFunc logRea
 		line, err = reader.ReadString('\n')
 
 		if err != nil {
-			log.Println(err)
+			if debug {
+				log.Println(err)
+			}
 			break
 		}
-		handleLogModifyFunc(name[0], line)
+		handleLogModifyFunc(fileName, line)
 	}
 
 	if err != io.EOF {
 		fmt.Printf(" > Failed!: %v\n", err)
 	}
+
 }
-
 func handleLogModify(logFilename string, logContent string) {
-
-	log.Printf("handleLogModify for %s\n", logFilename)
-	log.Println("value of log content: ", logContent)
+	//if debug {
+		log.Printf("handleLogModify for %s\n", logFilename)
+		log.Println("value of log content: ", logContent)
+	//}
 }
 
 func handleLogDelete(logFilename string) {
-	log.Printf("handleLogDelete for %s\n", logFilename)
+	//if debug {
+		log.Printf("handleLogDelete for %s\n", logFilename)
+	//}
 
 }

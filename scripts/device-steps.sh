@@ -238,16 +238,6 @@ for l in $LOGGERS; do
     fi
 done
 
-#If loganager is already running we don't have to start it.
-pgrep logmanager >/dev/null
-if [ $? != 0 ]; then
-    echo "Starting logmanager at" `date`
-    logmanager >/var/log/logmanager.log 2>&1 &
-    if [ $WAIT = 1 ]; then
-	echo -n "Press any key to continue "; read dummy; echo; echo
-    fi
-fi
-
 # BlinkCounter 1 means we have started; might not yet have IP addresses
 # client/selfRegister and zedagent update this when the found at least
 # one free uplink with IP address(s)
@@ -520,6 +510,16 @@ echo "Starting zedagent at" `date`
 zedagent >/var/log/zedagent.log 2>&1 &
 if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
+fi
+
+#If loganager is already running we don't have to start it.
+pgrep logmanager >/dev/null
+if [ $? != 0 ]; then
+    echo "Starting logmanager at" `date`
+    logmanager >/var/run/logmanager.log 2>&1 &
+    if [ $WAIT = 1 ]; then
+	echo -n "Press any key to continue "; read dummy; echo; echo
+    fi
 fi
 
 echo "Initial setup done at" `date`
