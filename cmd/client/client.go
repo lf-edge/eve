@@ -105,6 +105,7 @@ func main() {
 	zedserverConfigFileName := tmpDirname + "/zedserverconfig"
 	zedrouterConfigFileName := tmpDirname + "/zedrouterconfig.json"
 
+	// XXX should we require a deviceNetworkStatus?
 	var hasDeviceNetworkStatus = false
 	var deviceNetworkStatus types.DeviceNetworkStatus
 
