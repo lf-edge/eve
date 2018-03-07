@@ -75,11 +75,11 @@ var nilUUID uuid.UUID
 
 func handleConfigInit() {
 
-	tlsConfig, err := zedcloud.GetTlsConfig("")
+	tlsConfig, err := zedcloud.GetTlsConfig("", nil)
 	if err != nil {
 		log.Fatal(err)
 	}
-	zedcloudCtx.DeviceNetworkStatus = deviceNetworkStatus
+	zedcloudCtx.DeviceNetworkStatus = &deviceNetworkStatus
 	zedcloudCtx.TlsConfig = tlsConfig
 	zedcloudCtx.Debug = debug
 	zedcloudCtx.FailureFunc = zedCloudFailure

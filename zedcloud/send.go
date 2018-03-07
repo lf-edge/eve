@@ -19,7 +19,7 @@ import (
 
 // XXX should we add some Init() function to create this?
 type ZedCloudContext struct {
-	DeviceNetworkStatus types.DeviceNetworkStatus
+	DeviceNetworkStatus *types.DeviceNetworkStatus
 	TlsConfig           *tls.Config
 	FailureFunc         func(intf string)
 	SuccessFunc         func(intf string)
@@ -29,19 +29,19 @@ type ZedCloudContext struct {
 // Tries all interfaces (free first) until one succeeds. interation arg
 // ensure load spreading across multiple interfaces.
 // Returns response for first success
-func SendOnAllIntf(ctx ZedCloudContext, url string, data []byte, iteration int) (*http.Response, error) {
+func SendOnAllIntf(ctx ZedCloudContext, url string, b *bytes.Buffer, iteration int) (*http.Response, error) {
 	// If failed then try the non-free
 	for try := 0; try < 2; try += 1 {
 		var intfs []string
 		if try == 0 {
-			intfs = types.GetUplinksFree(ctx.DeviceNetworkStatus,
+			intfs = types.GetUplinksFree(*ctx.DeviceNetworkStatus,
 				iteration)
 			if ctx.Debug {
 				log.Printf("sendOnAllIntf trying free %v\n",
 					intfs)
 			}
 		} else {
-			intfs = types.GetUplinksNonFree(ctx.DeviceNetworkStatus,
+			intfs = types.GetUplinksNonFree(*ctx.DeviceNetworkStatus,
 				iteration)
 			if ctx.Debug {
 				log.Printf("sendOnAllIntf non-free %v\n",
@@ -49,7 +49,7 @@ func SendOnAllIntf(ctx ZedCloudContext, url string, data []byte, iteration int) 
 			}
 		}
 		for _, intf := range intfs {
-			resp, err := sendOnIntf(ctx, url, intf, data)
+			resp, err := sendOnIntf(ctx, url, intf, b)
 			if err != nil {
 				continue
 			}
@@ -62,8 +62,8 @@ func SendOnAllIntf(ctx ZedCloudContext, url string, data []byte, iteration int) 
 	return nil, errors.New(errStr)
 }
 
-func sendOnIntf(ctx ZedCloudContext, url string, intf string, data []byte) (*http.Response, error) {
-	addrCount := types.CountLocalAddrAny(ctx.DeviceNetworkStatus, intf)
+func sendOnIntf(ctx ZedCloudContext, url string, intf string, b *bytes.Buffer) (*http.Response, error) {
+	addrCount := types.CountLocalAddrAny(*ctx.DeviceNetworkStatus, intf)
 	if ctx.Debug {
 		log.Printf("Connecting to %s using intf %s #sources %d\n",
 			url, intf, addrCount)
@@ -78,7 +78,7 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, data []byte) (*htt
 		return nil, errors.New(errStr)
 	}
 	for retryCount := 0; retryCount < addrCount; retryCount += 1 {
-		localAddr, err := types.GetLocalAddrAny(ctx.DeviceNetworkStatus,
+		localAddr, err := types.GetLocalAddrAny(*ctx.DeviceNetworkStatus,
 			retryCount, intf)
 		if err != nil {
 			log.Fatal(err)
@@ -95,9 +95,8 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, data []byte) (*htt
 		}
 		client := &http.Client{Transport: transport}
 		var req *http.Request
-		if data != nil {
-			req, err = http.NewRequest("POST",
-				"https://"+url, bytes.NewBuffer(data))
+		if b != nil {
+			req, err = http.NewRequest("POST", "https://"+url, b)
 		} else {
 			req, err = http.NewRequest("GET", "https://"+url, nil)
 		}
@@ -105,7 +104,7 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, data []byte) (*htt
 			fmt.Println(err)
 			continue
 		}
-		if data != nil {
+		if b != nil {
 			req.Header.Add("Content-Type", "application/x-proto-binary")
 		}
 		trace := &httptrace.ClientTrace{
