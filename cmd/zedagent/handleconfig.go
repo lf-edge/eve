@@ -38,6 +38,7 @@ var serverName string
 
 const (
 	identityDirname = "/config"
+	serverFilename  = identityDirname + "/server"
 	uuidFileName    = identityDirname + "/uuid"
 )
 
@@ -75,7 +76,15 @@ var nilUUID uuid.UUID
 
 func handleConfigInit() {
 
-	tlsConfig, err := zedcloud.GetTlsConfig("", nil)
+	// get the server name
+	bytes, err := ioutil.ReadFile(serverFilename)
+	if err != nil {
+		log.Fatal(err)
+	}
+	strTrim := strings.TrimSpace(string(bytes))
+	serverName = strings.Split(strTrim, ":")[0]
+
+	tlsConfig, err := zedcloud.GetTlsConfig(serverName, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
