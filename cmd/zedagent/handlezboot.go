@@ -40,7 +40,7 @@ func zbootReset() {
 	zbootMutex.Unlock()
 	_, err := rebootCmd.Output()
 	if err != nil {
-		log.Fatal("zboot reset: err %v\n", err)
+		log.Fatalf("zboot reset: err %v\n", err)
 	}
 }
 
@@ -54,7 +54,7 @@ func zbootWatchdogOK() {
 	zbootMutex.Unlock()
 	_, err := watchDogCmd.Output()
 	if err != nil {
-		log.Fatal("zboot watchdog: err %v\n", err)
+		log.Fatalf("zboot watchdog: err %v\n", err)
 	}
 }
 
@@ -65,7 +65,7 @@ func getCurrentPartition() string {
 	zbootMutex.Unlock()
 	ret, err := curPartCmd.Output()
 	if err != nil {
-		log.Fatal("zboot curpart: err %v\n", err)
+		log.Fatalf("zboot curpart: err %v\n", err)
 	}
 
 	partName := string(ret)
@@ -83,7 +83,7 @@ func getOtherPartition() string {
 	case "IMGB":
 		partName = "IMGA"
 	default:
-		log.Fatal("getOtherPartition unknown partName %s\n", partName)
+		log.Fatalf("getOtherPartition unknown partName %s\n", partName)
 	}
 	return partName
 }
@@ -128,7 +128,7 @@ func getPartitionState(partName string) string {
 	zbootMutex.Unlock()
 	ret, err := partStateCmd.Output()
 	if err != nil {
-		log.Fatal("zboot partstate %s: err %v\n", partName, err)
+		log.Fatalf("zboot partstate %s: err %v\n", partName, err)
 	}
 	partState := string(ret)
 	partState = strings.TrimSpace(partState)
@@ -164,7 +164,7 @@ func setPartitionState(partName string, partState string) {
 		partName, partState)
 	zbootMutex.Unlock()
 	if _, err := setPartStateCmd.Output(); err != nil {
-		log.Fatal("zboot set_partstate %s %s: err %v\n",
+		log.Fatalf("zboot set_partstate %s %s: err %v\n",
 			partName, partState, err)
 	}
 }
@@ -177,7 +177,7 @@ func getPartitionDevname(partName string) string {
 	zbootMutex.Unlock()
 	ret, err := getPartDevCmd.Output()
 	if err != nil {
-		log.Fatal("zboot partdev %s: err %v\n", partName, err)
+		log.Fatalf("zboot partdev %s: err %v\n", partName, err)
 	}
 
 	devName := string(ret)
