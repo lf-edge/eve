@@ -338,6 +338,7 @@ func main() {
 			log.Printf("NetworkStatus triggered PublishDeviceInfo\n")
 			PublishDeviceInfoToZedCloud(baseOsStatusMap,
 				devCtx.assignableAdapters)
+
 		case change := <-domainStatusChanges:
 			watch.HandleStatusEvent(change, &domainCtx,
 				domainStatusDirname,
@@ -351,6 +352,7 @@ func main() {
 					devCtx.assignableAdapters)
 				domainCtx.TriggerDeviceInfo = false
 			}
+
 		case change := <-aaChanges:
 			aaFunc(&aaCtx, change)
 		}
@@ -377,6 +379,7 @@ func handleVerifierRestarted(ctxArg interface{}, done bool) {
 
 func handleInit() {
 
+	zbootInit()
 	initializeDirs()
 	initMaps()
 	handleConfigInit()

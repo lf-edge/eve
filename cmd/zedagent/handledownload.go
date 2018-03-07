@@ -14,6 +14,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"time"
 )
 
 // zedagent publishes for these config files
@@ -304,7 +305,7 @@ func installDownloadedObjects(objType string, uuidStr string,
 // the final installation directory is mentioned,
 // move the object there
 func installDownloadedObject(objType string, safename string,
-	config types.StorageConfig, status *types.StorageStatus) {
+	config types.StorageConfig, status *types.StorageStatus) error {
 
 	var ret error
 	var srcFilename string = objectDownloadDirname + "/" + objType
@@ -321,12 +322,12 @@ func installDownloadedObject(objType string, safename string,
 
 	case types.INSTALLED:
 		log.Printf("%s, Already installed\n", key)
-		return
+		return nil
 
 	case types.DOWNLOADED:
 		if config.ImageSha256 != "" {
 			log.Printf("%s, Pending verification\n", key)
-			return
+			return nil
 		}
 		srcFilename += "/pending/" + safename
 		break
@@ -338,7 +339,7 @@ func installDownloadedObject(objType string, safename string,
 
 	default:
 		log.Printf("%s, still not ready (%d)\n", key, status.State)
-		return
+		return nil
 	}
 
 	// ensure the file is present
@@ -362,13 +363,18 @@ func installDownloadedObject(objType string, safename string,
 			log.Printf("%s, Unsupported Object Type %v\n", safename, objType)
 		}
 	} else {
-		log.Printf("%s, final dir not set %v\n", safename, objType)
+		errStr := fmt.Sprintf("%s, final dir not set %v\n", safename, objType)
+		log.Println(errStr)
+		status.Error = errStr
+		status.ErrorTime = time.Now()
+		ret = errors.New(status.Error)
 	}
 
 	if ret == nil {
 		status.State = types.INSTALLED
 		log.Printf("installDownloadedObject for %s, installation done\n", key)
 	}
+	return ret
 }
 
 func writeDownloaderConfig(config types.DownloaderConfig, configFilename string) {

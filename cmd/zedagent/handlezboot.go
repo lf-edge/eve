@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"syscall"
 )
 
@@ -22,12 +23,24 @@ const (
 	imgBPartition = tmpDir + "/IMGBPart"
 )
 
+// mutex for zboot/dd APIs
+var zbootMutex *sync.Mutex
+
+func zbootInit() {
+	zbootMutex = new(sync.Mutex) 
+	if zbootMutex == nil {
+		log.Fatal("Mutex Init")
+	}
+}
+
 // reset routine
 func zbootReset() {
+	zbootMutex.Lock() // we are going to reboot
 	rebootCmd := exec.Command("zboot", "reset")
+	zbootMutex.Unlock()
 	_, err := rebootCmd.Output()
 	if err != nil {
-		log.Fatalf("zboot reset: err %v\n", err)
+		log.Fatal("zboot reset: err %v\n", err)
 	}
 }
 
@@ -36,18 +49,23 @@ func zbootWatchdogOK() {
 	if !isZbootAvailable() {
 		return
 	}
-	_, err := exec.Command("zboot", "watchdog").Output()
+	zbootMutex.Lock()
+	watchDogCmd := exec.Command("zboot", "watchdog")
+	zbootMutex.Unlock()
+	_, err := watchDogCmd.Output()
 	if err != nil {
-		log.Fatalf("zboot watchdog: err %v\n", err)
+		log.Fatal("zboot watchdog: err %v\n", err)
 	}
 }
 
 // partition routines
 func getCurrentPartition() string {
+	zbootMutex.Lock()
 	curPartCmd := exec.Command("zboot", "curpart")
+	zbootMutex.Unlock()
 	ret, err := curPartCmd.Output()
 	if err != nil {
-		log.Fatalf("zboot curpart: err %v\n", err)
+		log.Fatal("zboot curpart: err %v\n", err)
 	}
 
 	partName := string(ret)
@@ -65,7 +83,7 @@ func getOtherPartition() string {
 	case "IMGB":
 		partName = "IMGA"
 	default:
-		log.Fatalf("getOtherPartition unknow partName %s\n", partName)
+		log.Fatal("getOtherPartition unknown partName %s\n", partName)
 	}
 	return partName
 }
@@ -105,10 +123,12 @@ func getPartitionState(partName string) string {
 
 	validatePartitionName(partName)
 
+	zbootMutex.Lock()
 	partStateCmd := exec.Command("zboot", "partstate", partName)
+	zbootMutex.Unlock()
 	ret, err := partStateCmd.Output()
 	if err != nil {
-		log.Fatalf("zboot partstate %s: err %v\n", partName, err)
+		log.Fatal("zboot partstate %s: err %v\n", partName, err)
 	}
 	partState := string(ret)
 	partState = strings.TrimSpace(partState)
@@ -139,10 +159,12 @@ func setPartitionState(partName string, partState string) {
 	validatePartitionName(partName)
 	validatePartitionState(partState)
 
+	zbootMutex.Lock()
 	setPartStateCmd := exec.Command("zboot", "set_partstate",
 		partName, partState)
+	zbootMutex.Unlock()
 	if _, err := setPartStateCmd.Output(); err != nil {
-		log.Fatalf("zboot set_partstate %s %s: err %v\n",
+		log.Fatal("zboot set_partstate %s %s: err %v\n",
 			partName, partState, err)
 	}
 }
@@ -150,10 +172,12 @@ func setPartitionState(partName string, partState string) {
 func getPartitionDevname(partName string) string {
 
 	validatePartitionName(partName)
+	zbootMutex.Lock()
 	getPartDevCmd := exec.Command("zboot", "partdev", partName)
+	zbootMutex.Unlock()
 	ret, err := getPartDevCmd.Output()
 	if err != nil {
-		log.Fatalf("zboot partdev %s: err %v\n", partName, err)
+		log.Fatal("zboot partdev %s: err %v\n", partName, err)
 	}
 
 	devName := string(ret)
@@ -275,10 +299,12 @@ func zbootWriteToPartition(srcFilename string, partName string) error {
 
 	log.Printf("WriteToPartition %s, %s: %v\n", partName, devName, srcFilename)
 
+	zbootMutex.Lock()
 	ddCmd := exec.Command("dd", "if="+srcFilename, "of="+devName, "bs=8M")
+	zbootMutex.Unlock()
 	if _, err := ddCmd.Output(); err != nil {
-		log.Printf("WriteToPartition failed %s\n", err)
-		log.Printf("partName : %v\n", err)
+		errStr := fmt.Sprintf("WriteToPartition %s failed %v\n", partName, err)
+		log.Fatal(errStr)
 		return err
 	}
 	return nil

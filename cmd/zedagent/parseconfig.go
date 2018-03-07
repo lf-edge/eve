@@ -229,7 +229,8 @@ func getOldPartitionInfo(baseOs *types.BaseOsConfig) {
 
 func setStoragePartitionLabel(baseOs *types.BaseOsConfig) {
 
-	for _, sc := range baseOs.StorageConfigList {
+	for idx,_ := range baseOs.StorageConfigList {
+		sc := &baseOs.StorageConfigList[idx]
 		sc.FinalObjDir = baseOs.PartitionLabel
 	}
 }

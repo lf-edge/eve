@@ -328,13 +328,16 @@ func normalizePartitionMap() {
 	curPart := getCurrentPartition()
 	otherPart := getOtherPartition()
 
-	currActiveState := isCurrentPartitionStateActive()
+	curActiveState := isCurrentPartitionStateActive()
 	otherActiveState := isOtherPartitionStateActive()
+
+	log.Printf("Partition State (current:%s, %v), (other:%s, %v)\n",
+		curPart, curActiveState, otherPart, otherActiveState)
 
 	// if not current partition config does not have
 	// activation flag set, switch to other partition
-	if currActiveState && otherActiveState {
-		log.Printf("Both partitions are Active %s, %s", curPart, otherPart)
+	if curActiveState && otherActiveState {
+		log.Printf("Both partitions are Active %s, %s\n", curPart, otherPart)
 		if isCurPartConfigActivateSet() {
 			log.Printf("Mark other partition %s, unused\n", otherPart)
 			setOtherPartitionStateUnused()
@@ -342,12 +345,12 @@ func normalizePartitionMap() {
 		}
 		if isOtherPartConfigActivateSet() {
 			log.Printf("Mark current partition %s, unused\n", curPart)
-			log.Printf("and Schedule Reboot\n")
+			log.Printf("Schedule Reboot\n")
 			setCurrentPartitionStateUnused()
 			startExecReboot()
 			return
 		}
-	}
+	} 
 	return
 }
 

@@ -161,7 +161,7 @@ func getActivationStatus(config types.BaseOsConfig, status *types.BaseOsStatus) 
 
 	if partInfo == nil {
 		// only for other partition
-		if !isOtherPartition(config.PartitionLabel) {
+		if !isOtherPartition(status.PartitionLabel) {
 			return false
 		}
 
@@ -204,7 +204,6 @@ func getActivationStatus(config types.BaseOsConfig, status *types.BaseOsStatus) 
 		status.ErrorTime = partInfo.ErrorTime
 	}
 
-	log.Printf("getActivationStatus(%s): %v\n", uuidStr, status)
 	// for otherPartition, its always false
 	if !isCurrentPartition(status.PartitionLabel) {
 		return false
@@ -291,7 +290,7 @@ func doBaseOsActivate(uuidStr string, config types.BaseOsConfig,
 		return changed
 	}
 
-	log.Printf("doBaseOsActivate: activating %\n", uuidStr)
+	log.Printf("doBaseOsActivate: %s activating\n", uuidStr)
 	setOtherPartitionStateUpdating()
 
 	// if it is installed, flip the activated status

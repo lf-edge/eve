@@ -122,8 +122,8 @@ func handleConfigInit() {
 // got a trigger for new config. check the present version and compare
 // if this is a new version, initiate update
 //  compare the old version config with the new one
-// delete if some thing is not present in the old config
-// for the new config create entries in the zMgerConfig Dir
+// delete if some thing is not present in the new config
+// for the new config create entries in the zMgrConfig Dir
 // for each of the above buckets
 // XXX Combine with being able to change the timer intervals
 func configTimerTask(handleChannel chan interface{}) {
@@ -141,6 +141,7 @@ func configTimerTask(handleChannel chan interface{}) {
 	handleChannel <- configTicker
 	for range configTicker.C {
 		iteration += 1
+		// reboot flag is not set, go fetch new config
 		if rebootFlag == false {
 			rebootFlag = getLatestConfig(configUrl, iteration, &checkConnectivity)
 		}
