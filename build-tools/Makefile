@@ -1,7 +1,7 @@
 # Set path variables.
 CURDIR != pwd
-PATH += ${CURDIR}/bin
-GOPATH += ${CURDIR}
+PATH := ${CURDIR}/bin
+GOPATH := ${CURDIR}
 GO != which go # XXX: Provide more precise method.
 
 # Export some of them to subshells
