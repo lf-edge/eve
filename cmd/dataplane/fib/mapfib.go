@@ -455,7 +455,7 @@ func MapcacheScrubThread() {
 		// that need removal (entries in resolve state for more than 5 minutes).
 		// We take write lock later and delete the required entries.
 		for key, entry := range cache.MapCache {
-			if entry.Resolved == false {
+			if entry.Resolved == true {
 				continue
 			}
 
@@ -481,6 +481,8 @@ func MapcacheScrubThread() {
 		// take write lock and delete the entries necessary
 		cache.LockMe.Lock()
 		for _, key := range delList {
+			log.Printf("MapcacheScrubThread: Removing resolve entry with iid %v, eid %s\n",
+				key.IID, key.Eid)
 			delete(cache.MapCache, key)
 		}
 		cache.LockMe.Unlock()

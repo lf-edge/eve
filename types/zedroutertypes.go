@@ -243,22 +243,23 @@ func getInterfaceAndAddr(globalStatus DeviceNetworkStatus, free bool, ifname str
 		if includeLinkLocal {
 			link := NetworkUplink {
 				IfName: u.IfName,
-				Addrs: u.Addrs,
+				//Addrs: u.Addrs,
+				AddrInfoList: u.AddrInfoList,
 			}
 			links = append(links, link)
 		} else {
-			var addrs []net.IP
+			var addrs []AddrInfo
 			var link NetworkUplink
 			link.IfName = u.IfName
-			for _, a := range u.Addrs {
-				log.Printf("XXXXX Checking address %s.\n", a.String())
-				if !a.IsLinkLocalUnicast() {
-					log.Printf("XXXXX Adding address %s.\n", a.String())
+			for _, a := range u.AddrInfoList {
+				log.Printf("XXXXX Checking address %s.\n", a.Addr.String())
+				if !a.Addr.IsLinkLocalUnicast() {
+					log.Printf("XXXXX Adding address %s.\n", a.Addr.String())
 					addrs = append(addrs, a)
 				}
 			}
 			if len(addrs) > 0 {
-				link.Addrs = addrs
+				link.AddrInfoList = addrs
 				links = append(links, link)
 			}
 		}

@@ -85,18 +85,18 @@ func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
 		validList[link.IfName] = true
 
 		// Find the next ipv4, ipv6 uplink addresses to be used by ITRs.
-		for _, addr := range link.Addrs {
+		for _, addrInfo := range link.AddrInfoList {
 			if ipv6Found && ipv4Found {
 				break
 			}
 			// ipv6 case
-			if (addr.To4() == nil) && (ipv6Found == false) {
+			if (addrInfo.Addr.To4() == nil) && (ipv6Found == false) {
 				// This address is ipv6
-				ipv6Addr = addr
+				ipv6Addr = addrInfo.Addr
 				ipv6Found = true
 			} else if ipv4Found == false {
 				// This address is ipv4
-				ipv4Addr = addr
+				ipv4Addr = addrInfo.Addr
 				ipv4Found = true
 			}
 		}
