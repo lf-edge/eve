@@ -167,7 +167,7 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	EID net.IP, lispSignature string,
 	globalStatus types.DeviceNetworkStatus,
 	tag string, olIfname string, additionalInfo string,
-	lispServers []types.LispServerInfo, zedDataPlane bool) {
+	lispServers []types.LispServerInfo, separateDataPlane bool) {
 	fmt.Printf("createLispConfiglet: %s %v %d %s %v %s %s %s %s %v\n",
 		lispRunDirname, isMgmt, IID, EID, lispSignature, globalStatus,
 		tag, olIfname, additionalInfo, lispServers)
@@ -246,7 +246,7 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 		file2.WriteString(fmt.Sprintf(lispDBtemplate,
 			IID, EID, IID, tag, tag, rlocString))
 	}
-	updateLisp(lispRunDirname, globalStatus.UplinkStatus, zedDataPlane)
+	updateLisp(lispRunDirname, globalStatus.UplinkStatus, separateDataPlane)
 }
 
 func updateLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
@@ -254,16 +254,16 @@ func updateLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	globalStatus types.DeviceNetworkStatus,
 	tag string, olIfname string, additionalInfo string,
 	lispServers []types.LispServerInfo,
-	zedDataPlane bool) {
+	separateDataPlane bool) {
 	fmt.Printf("updateLispConfiglet: %s %v %d %s %v %s %s %s %s %v\n",
 		lispRunDirname, isMgmt, IID, EID, lispSignature, globalStatus,
 		tag, olIfname, additionalInfo, lispServers)
 	createLispConfiglet(lispRunDirname, isMgmt, IID, EID, lispSignature,
-		globalStatus, tag, olIfname, additionalInfo, lispServers, zedDataPlane)
+		globalStatus, tag, olIfname, additionalInfo, lispServers, separateDataPlane)
 }
 
 func deleteLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
-	EID net.IP, globalStatus types.DeviceNetworkStatus, zedDataPlane bool) {
+	EID net.IP, globalStatus types.DeviceNetworkStatus, separateDataPlane bool) {
 	fmt.Printf("deleteLispConfiglet: %s %d %s %v\n",
 		lispRunDirname, IID, EID, globalStatus)
 
@@ -284,12 +284,12 @@ func deleteLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	// cfgPathnameIID := lispRunDirname + "/" +
 	//	strconv.FormatUint(uint64(IID), 10)
 
-	updateLisp(lispRunDirname, globalStatus.UplinkStatus, zedDataPlane)
+	updateLisp(lispRunDirname, globalStatus.UplinkStatus, separateDataPlane)
 }
 
 func updateLisp(lispRunDirname string,
 	upLinkStatus []types.NetworkUplink,
-	zedDataPlane bool) {
+	separateDataPlane bool) {
 	fmt.Printf("updateLisp: %s %v\n", lispRunDirname, upLinkStatus)
 
 	if deferUpdate {
@@ -315,7 +315,7 @@ func updateLisp(lispRunDirname string,
 		return
 	}
 	baseConfig := string(content)
-	if zedDataPlane {
+	if separateDataPlane {
 		tmpfile.WriteString(fmt.Sprintf(baseConfig, "yes"))
 	} else {
 		tmpfile.WriteString(fmt.Sprintf(baseConfig, "no"))
@@ -394,11 +394,11 @@ func updateLisp(lispRunDirname string,
 	// Check how many EIDs we have configured. If none we stop lisp
 	if eidCount == 0 {
 		stopLisp()
-		if zedDataPlane {
+		if separateDataPlane {
 			maybeStopLispDataPlane()
 		}
 	} else {
-		if zedDataPlane {
+		if separateDataPlane {
 			maybeStartLispDataPlane()
 		}
 		restartLisp(upLinkStatus, devices)
@@ -409,14 +409,14 @@ var deferUpdate = false
 var deferLispRunDirname = ""
 var deferUpLinkStatus []types.NetworkUplink = nil
 
-func handleLispRestart(done bool, zedDataPlane bool) {
+func handleLispRestart(done bool, separateDataPlane bool) {
 	log.Printf("handleLispRestart(%v)\n", done)
 	if done {
 		if deferUpdate {
 			deferUpdate = false
 			if deferLispRunDirname != "" {
 				updateLisp(deferLispRunDirname,
-					deferUpLinkStatus, zedDataPlane)
+					deferUpLinkStatus, separateDataPlane)
 				deferLispRunDirname = ""
 				deferUpLinkStatus = nil
 			}

@@ -18,7 +18,7 @@ type AppNetworkConfig struct {
 	UUIDandVersion      UUIDandVersion
 	DisplayName         string
 	IsZedmanager        bool
-	ZededaDataPlane     bool
+	SeparateDataPlane   bool
 	OverlayNetworkList  []OverlayNetworkConfig
 	UnderlayNetworkList []UnderlayNetworkConfig
 }
@@ -57,7 +57,7 @@ type AppNetworkStatus struct {
 	DisplayName    string
 	// Copy from the AppNetworkConfig; used to delete when config is gone.
 	IsZedmanager        bool
-	ZededaDataPlane     bool
+	SeparateDataPlane     bool
 	OverlayNetworkList  []OverlayNetworkStatus
 	UnderlayNetworkList []UnderlayNetworkStatus
 }
