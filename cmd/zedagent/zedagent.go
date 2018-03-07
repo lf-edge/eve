@@ -202,6 +202,9 @@ func main() {
 	networkStatusChanges := make(chan string)
 	go watch.WatchStatus(DNSDirname, networkStatusChanges)
 
+	// Context to pass around
+	getconfigCtx := getconfigContext{}
+
 	log.Printf("Waiting until we have some uplinks with usable addresses\n")
 	waited := false
 	for types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus) == 0 ||
@@ -227,6 +230,7 @@ func main() {
 	if waited {
 		// Inform ledmanager that we have uplink addresses
 		types.UpdateLedManagerConfig(2)
+		getconfigCtx.ledManagerCount = 2
 	}
 
 	// Publish initial device info. Retries all addresses on all uplinks.
@@ -234,10 +238,14 @@ func main() {
 
 	// start the metrics/config fetch tasks
 	handleChannel := make(chan interface{})
-	go configTimerTask(handleChannel)
+	go configTimerTask(handleChannel, &getconfigCtx)
 	log.Printf("Waiting for flexticker handle\n")
 	configTickerHandle := <-handleChannel
-	go metricsTimerTask()
+	go metricsTimerTask(handleChannel)
+	metricsTickerHandle := <-handleChannel
+	// XXX close handleChannel?
+	// XXX pass both handles to config fetch in getConfigContext
+	fmt.Printf("metricsTickerHandle %v\n", metricsTickerHandle)
 
 	// app instance status event watcher
 	go watch.WatchStatus(zedmanagerStatusDirname, appInstanceStatusChanges)
