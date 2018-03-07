@@ -306,6 +306,9 @@ func resetPersistentPartitionInfo(uuidStr string) error {
 }
 
 func initializePartitionMap() {
+	if !isZbootAvailable() {
+		return
+	}
 	normalizePartitionMap()
 	resetPartitionMapState(getCurrentPartition())
 	resetPartitionMapState(getOtherPartition())

@@ -231,6 +231,9 @@ func isOtherPartitionStateUnused() bool {
 }
 
 func isOtherPartitionStateUpdating() bool {
+	if !isZbootAvailable() {
+		return false
+	}
 	partName := getOtherPartition()
 	return isPartitionState(partName, "updating")
 }
