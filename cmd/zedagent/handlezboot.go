@@ -266,13 +266,14 @@ func zbootWriteToPartition(srcFilename string, partName string) error {
 		return errors.New(errStr)
 	}
 
-	log.Printf("WriteToPartition %s: %v\n", partName, srcFilename)
 	devName := getPartitionDevname(partName)
 	if devName == "" {
 		errStr := fmt.Sprintf("null devname for partition %s", partName)
 		log.Printf("WriteToPartition failed %s\n", errStr)
 		return errors.New(errStr)
 	}
+
+	log.Printf("WriteToPartition %s, %s: %v\n", partName, devName, srcFilename)
 
 	ddCmd := exec.Command("dd", "if="+srcFilename, "of="+devName, "bs=8M")
 	if _, err := ddCmd.Output(); err != nil {

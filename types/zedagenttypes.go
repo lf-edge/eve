@@ -153,6 +153,13 @@ type PartitionInfo struct {
 	ErrorTime      time.Time
 }
 
+// return value holder
+type RetStatus struct {
+	Changed 	bool
+	MinState 	SwState
+	AllErrors 	string
+	ErrorTime 	time.Time
+}
 // Mirrors proto definition for ConfigItem
 // The value can be bool, float, uint, or string
 type ConfigItem struct {
@@ -176,3 +183,4 @@ const (
 	MetricItemCounter                       // Monotonically increasing (until reboot)
 	MetricItemState                         // Toggles on and off; count transitions
 )
+

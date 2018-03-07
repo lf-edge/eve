@@ -196,29 +196,29 @@ func doCertObjInstall(uuidStr string, config types.CertObjConfig,
 }
 
 func checkCertObjStorageDownloadStatus(uuidStr string,
-	config types.CertObjConfig,
-	status *types.CertObjStatus) (bool, bool) {
+	config types.CertObjConfig, status *types.CertObjStatus) (bool, bool) {
 
-	changed, minState, allErrors, errorTime := checkStorageDownloadStatus(certObj, uuidStr, config.StorageConfigList, status.StorageStatusList)
+	ret := checkStorageDownloadStatus(certObj, uuidStr,
+			 config.StorageConfigList, status.StorageStatusList)
 
-	status.State = minState
-	status.Error = allErrors
-	status.ErrorTime = errorTime
+	status.State = ret.MinState
+	status.Error = ret.AllErrors
+	status.ErrorTime = ret.ErrorTime
 
-	log.Printf("checkCertObjDownloaStatus %s, %v\n", uuidStr, minState)
+	log.Printf("checkCertObjDownloadStatus %s, %v\n", uuidStr, ret.MinState)
 
-	if minState == types.INITIAL {
+	if ret.MinState == types.INITIAL {
 		log.Printf("checkCertObjDownloadStatus for %s, Download error\n", uuidStr)
-		return changed, false
+		return ret.Changed, false
 	}
 
-	if minState < types.DOWNLOADED {
+	if ret.MinState < types.DOWNLOADED {
 		log.Printf("checkCertObjDownloaStatus %s, Waiting for downloads\n", uuidStr)
-		return changed, false
+		return ret.Changed, false
 	}
 
 	log.Printf("checkCertObjDownloadStatus for %s, Downloads done\n", uuidStr)
-	return changed, true
+	return ret.Changed, true
 }
 
 func removeCertObjConfig(uuidStr string) {

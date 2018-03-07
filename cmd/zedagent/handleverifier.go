@@ -14,7 +14,6 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
-	"time"
 )
 
 // zedagent is the publishes for these config files
@@ -202,16 +201,16 @@ func lookupVerificationStatusAny(objType string, safename string, sha256 string)
 }
 
 func checkStorageVerifierStatus(objType string, uuidStr string,
-	config []types.StorageConfig, status []types.StorageStatus) (bool, types.SwState, string, time.Time) {
+	config []types.StorageConfig, status []types.StorageStatus) *types.RetStatus {
 
-	allErrors := ""
-	var errorTime time.Time
+	ret := &types.RetStatus{}
 	key := formLookupKey(objType, uuidStr)
 
 	log.Printf("checkStorageVerifierStatus for %s\n", key)
 
-	changed := false
-	minState := types.MAXSTATE
+	ret.AllErrors = ""
+	ret.Changed = false
+	ret.MinState = types.MAXSTATE
 
 	for i, sc := range config {
 		ss := &status[i]
@@ -221,47 +220,47 @@ func checkStorageVerifierStatus(objType string, uuidStr string,
 		log.Printf("checkStorageVerifierStatus for %s\n", sc.DownloadURL)
 
 		if ss.State == types.INSTALLED {
-			minState = ss.State
+			ret.MinState = ss.State
 			continue
 		}
 
 		vs, err := lookupVerificationStatusAny(objType, safename, sc.ImageSha256)
 		if err != nil {
 			log.Printf("%s, %v\n", safename, err)
-			minState = types.DOWNLOADED
+			ret.MinState = types.DOWNLOADED
 			continue
 		}
-		if minState > vs.State {
-			minState = vs.State
+		if ret.MinState > vs.State {
+			ret.MinState = vs.State
 		}
 		if vs.State != ss.State {
 			ss.State = vs.State
-			changed = true
+			ret.Changed = true
 		}
 		switch vs.State {
 		case types.INITIAL:
 			log.Printf("%s, verifier error for %s: %s\n",
 				key, safename, vs.LastErr)
 			ss.Error = vs.LastErr
-			allErrors = appendError(allErrors, "verifier",
+			ret.AllErrors = appendError(ret.AllErrors, "verifier",
 				vs.LastErr)
 			ss.ErrorTime = vs.LastErrTime
-			errorTime = vs.LastErrTime
-			changed = true
+			ret.ErrorTime = vs.LastErrTime
+			ret.Changed = true
 		default:
 			ss.ActiveFileLocation = objectDownloadDirname + "/" + objType + "/" + vs.Safename
 
 			log.Printf("%s, Update SSL ActiveFileLocation for %s: %s\n",
 				key, uuidStr, ss.ActiveFileLocation)
-			changed = true
+			ret.Changed = true
 		}
 	}
 
-	if minState == types.MAXSTATE {
+	if ret.MinState == types.MAXSTATE {
 		// Odd; no StorageConfig in list
-		minState = types.DELIVERED
+		ret.MinState = types.DELIVERED
 	}
-	return changed, minState, allErrors, errorTime
+	return ret
 }
 
 func writeVerifierConfig(config types.VerifyImageConfig, configFilename string) {

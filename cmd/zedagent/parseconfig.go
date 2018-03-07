@@ -629,8 +629,7 @@ func writeBaseOsConfig(baseOsConfig *types.BaseOsConfig, uuidStr string) {
 	}
 }
 
-func writeBaseOsStatus(baseOsStatus *types.BaseOsStatus,
-	uuidStr string) {
+func writeBaseOsStatus(baseOsStatus *types.BaseOsStatus, uuidStr string) {
 
 	statusFilename := zedagentBaseOsStatusDirname + "/" + uuidStr + ".json"
 	log.Printf("Writing baseOs status UUID %s\n", statusFilename)

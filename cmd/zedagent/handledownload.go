@@ -14,7 +14,6 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
-	"time"
 )
 
 // zedagent publishes for these config files
@@ -167,16 +166,15 @@ func lookupDownloaderStatus(objType string, safename string) (types.DownloaderSt
 }
 
 func checkStorageDownloadStatus(objType string, uuidStr string,
-	config []types.StorageConfig, status []types.StorageStatus) (bool, types.SwState, string, time.Time) {
+	config []types.StorageConfig, status []types.StorageStatus) *types.RetStatus {
 
+	ret := &types.RetStatus{}
 	key := formLookupKey(objType, uuidStr)
 	log.Printf("checkStorageDownloadStatus for %s, %v\n", key, status)
 
-	allErrors := ""
-	var errorTime time.Time
-
-	changed := false
-	minState := types.MAXSTATE
+	ret.Changed = false
+	ret.AllErrors = ""
+	ret.MinState = types.MAXSTATE
 
 	for i, sc := range config {
 
@@ -184,9 +182,10 @@ func checkStorageDownloadStatus(objType string, uuidStr string,
 
 		safename := types.UrlToSafename(sc.DownloadURL, sc.ImageSha256)
 
-		log.Printf("checkStorageDownloadStatus for %s\n", safename)
+		log.Printf("checkStorageDownloadStatus for %s, %v\n", safename, ss.State)
 		if ss.State == types.INSTALLED {
-			minState = ss.State
+			ret.MinState = ss.State
+			log.Printf("checkStorageDownloadStatus for %s is already installed\n", safename)
 			continue
 		}
 
@@ -203,14 +202,14 @@ func checkStorageDownloadStatus(objType string, uuidStr string,
 					log.Printf("%s, !HasVerifierRef\n", safename)
 					vs.RefCount += 1
 					ss.HasVerifierRef = true
-					changed = true
+					ret.Changed = true
 				}
-				if minState > vs.State {
-					minState = vs.State
+				if ret.MinState > vs.State {
+					ret.MinState = vs.State
 				}
 				if vs.State != ss.State {
 					ss.State = vs.State
-					changed = true
+					ret.Changed = true
 				}
 				continue
 			}
@@ -220,22 +219,22 @@ func checkStorageDownloadStatus(objType string, uuidStr string,
 			log.Printf("%s, !HasDownloaderRef\n", safename)
 			createDownloaderConfig(objType, safename, &sc)
 			ss.HasDownloaderRef = true
-			changed = true
+			ret.Changed = true
 		}
         
 		ds, err := lookupDownloaderStatus(objType, safename)
 		if err != nil {
 			log.Printf("%s, %s \n", safename, err)
-			minState = types.DOWNLOAD_STARTED
+			ret.MinState = types.DOWNLOAD_STARTED
 			continue
 		}
 
-		if minState > ds.State {
-			minState = ds.State
+		if ret.MinState > ds.State {
+			ret.MinState = ds.State
 		}
 		if ds.State != ss.State {
 			ss.State = ds.State
-			changed = true
+			ret.Changed = true
 		}
 
 		switch ss.State {
@@ -243,10 +242,11 @@ func checkStorageDownloadStatus(objType string, uuidStr string,
 			log.Printf("%s, Downloader status error, %s\n",
 				key, ds.LastErr)
 			ss.Error = ds.LastErr
-			allErrors = appendError(allErrors, "downloader",
+			ret.AllErrors = appendError(ret.AllErrors, "downloader",
 				ds.LastErr)
 			ss.ErrorTime = ds.LastErrTime
-			changed = true
+			ret.ErrorTime = ss.ErrorTime
+			ret.Changed = true
 		case types.DOWNLOAD_STARTED:
 			// Nothing to do
 		case types.DOWNLOADED:
@@ -259,20 +259,20 @@ func checkStorageDownloadStatus(objType string, uuidStr string,
 					err := createVerifierConfig(objType, safename, &sc)
 					if err == nil {
 						ss.HasVerifierRef = true
-						changed = true
+						ret.Changed = true
 					} else {
-						allErrors = appendError(allErrors, "downloader", err.Error())
+						ret.AllErrors = appendError(ret.AllErrors, "downloader", err.Error())
 					}
 				}
 			}
 		}
 	}
 
-	if minState == types.MAXSTATE {
-		minState = types.DOWNLOADED
+	if ret.MinState == types.MAXSTATE {
+		ret.MinState = types.DOWNLOADED
 	}
 
-	return changed, minState, allErrors, errorTime
+	return ret
 }
 
 func installDownloadedObjects(objType string, uuidStr string,

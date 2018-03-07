@@ -186,12 +186,14 @@ func getActivationStatus(config types.BaseOsConfig, status *types.BaseOsStatus) 
 			return false
 		}
 	}
-	log.Printf("getActivationStatus(%s): state %v\n", uuidStr, partInfo.State)
-	// replicate state information
 
+	log.Printf("getActivationStatus(%s): state %v\n", uuidStr, partInfo.State)
+
+	// replicate state information
 	if partInfo.State == types.INSTALLED {
 		status.State = partInfo.State
-		for _, ss := range status.StorageStatusList {
+		for idx, _ := range status.StorageStatusList {
+			ss := &status.StorageStatusList[idx]
 			ss.State = partInfo.State
 		}
 	}
@@ -201,6 +203,8 @@ func getActivationStatus(config types.BaseOsConfig, status *types.BaseOsStatus) 
 		status.Error = partInfo.Error
 		status.ErrorTime = partInfo.ErrorTime
 	}
+
+	log.Printf("getActivationStatus(%s): %v\n", uuidStr, status)
 	// for otherPartition, its always false
 	if !isCurrentPartition(status.PartitionLabel) {
 		return false
@@ -282,10 +286,8 @@ func doBaseOsActivate(uuidStr string, config types.BaseOsConfig,
 	// check PartitionLabel the one we got is really unused?
 	// if partitionState unsed then change status to updating...
 
-	if !isOtherPartition(config.PartitionLabel) {
-		return changed
-	}
-	if !isOtherPartitionStateUnused() {
+	if !isOtherPartition(config.PartitionLabel) ||
+	   !isOtherPartitionStateUnused() {
 		return changed
 	}
 
@@ -379,53 +381,54 @@ func checkBaseOsStorageDownloadStatus(uuidStr string,
 	config types.BaseOsConfig,
 	status *types.BaseOsStatus) (bool, bool) {
 
-	changed, minState, allErrors, errorTime := checkStorageDownloadStatus(baseOsObj,
-		 uuidStr, config.StorageConfigList, status.StorageStatusList)
+	ret := checkStorageDownloadStatus(baseOsObj, uuidStr,
+			 config.StorageConfigList, status.StorageStatusList)
 
-	status.State = minState
-	status.Error = allErrors
-	status.ErrorTime = errorTime
+	status.State = ret.MinState
+	status.Error = ret.AllErrors
+	status.ErrorTime = ret.ErrorTime
 
-	if minState == types.INITIAL {
+	if ret.MinState == types.INITIAL {
 		log.Printf("checkBaseOsStorageDownloadStatus(%s) for %s, Download error for %s\n",
 			config.BaseOsVersion, uuidStr)
-		return changed, false
+		return ret.Changed, false
 	}
 
-	if minState < types.DOWNLOADED {
+	if ret.MinState < types.DOWNLOADED {
 		log.Printf("checkBaseOsStorageDownloadStatus(%s) for %s, Waiting for all downloads\n",
 			config.BaseOsVersion, uuidStr)
-		return changed, false
+		return ret.Changed, false
 	}
 
 	log.Printf("checkBaseOsStorageDownloadStatus(%s) for %s, Downloads done\n",
 		config.BaseOsVersion, uuidStr)
-	return changed, true
+	return ret.Changed, true
 }
 
 func checkBaseOsVerificationStatus(uuidStr string,
 	config types.BaseOsConfig, status *types.BaseOsStatus) (bool, bool) {
 
-	changed, minState, allErrors, errorTime := checkStorageVerifierStatus(baseOsObj,
+	ret := checkStorageVerifierStatus(baseOsObj,
 		uuidStr, config.StorageConfigList, status.StorageStatusList)
 
-	status.State = minState
-	status.Error = allErrors
-	status.ErrorTime = errorTime
-	if minState == types.INITIAL {
+	status.State = ret.MinState
+	status.Error = ret.AllErrors
+	status.ErrorTime = ret.ErrorTime
+
+	if ret.MinState == types.INITIAL {
 		log.Printf("checkBaseOsVerificationStatus(%s) for %s, Verification error\n",
 			config.BaseOsVersion, uuidStr)
-		return changed, false
+		return ret.Changed, false
 	}
 
-	if minState < types.DELIVERED {
+	if ret.MinState < types.DELIVERED {
 		log.Printf("checkBaseOsVerificationStatus(%s) for %s, Waiting for all verifications\n",
 			config.BaseOsVersion, uuidStr)
-		return changed, false
+		return ret.Changed, false
 	}
 	log.Printf("checkBaseOsVerificationStatus(%s) for %s, Verifications done\n",
 		config.BaseOsVersion, uuidStr)
-	return changed, true
+	return ret.Changed, true
 }
 
 func removeBaseOsConfig(uuidStr string) {

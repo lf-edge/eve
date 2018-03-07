@@ -68,11 +68,13 @@ func writePartitionInfo(partName string,
 }
 
 // delete the map file, for a partition
-// its always the other partition
+// keeping the option open for current partition
+// map delete
 func deletePartitionInfo(partName string) {
 
 	validatePartitionName(partName)
-	if !isOtherPartition(partName) {
+	if !isOtherPartition(partName) ||
+	 	!isCurrentPartition(partName) {
 		return
 	}
 
@@ -109,27 +111,39 @@ func writeOtherPartitionInfo(partInfo *types.PartitionInfo) error {
 // reset the parition map info
 // adjust the base os config/status files
 // always other partition
-func clearPartitionMap(partName string, partInfo *types.PartitionInfo) bool {
+// may be one case, wherein we want to 
+// clear current partition, like we receive
+// two new base os image configuration
+func clearOtherPartitionMap(partName string) {
 
 	validatePartitionName(partName)
 
 	if !isOtherPartition(partName) {
-		return false
+		return
 	}
 
-	otherPartInfo := readOtherPartitionInfo()
-	if otherPartInfo == nil {
-		return false
+	if partInfo := readOtherPartitionInfo(); partInfo != nil {
+		clearPartitionMap(partName, partInfo)
+	}
+}
+
+func clearCurrentPartitionMap(partName string) {
+
+	validatePartitionName(partName)
+
+	if !isCurrentPartition(partName) {
+		return
 	}
 
-	// if same UUID, return
-	if partInfo != nil &&
-		partInfo.UUIDandVersion != otherPartInfo.UUIDandVersion {
-		return true
+	if partInfo := readOtherPartitionInfo(); partInfo != nil {
+		clearPartitionMap(partName, partInfo)
 	}
+}
+
+func clearPartitionMap(partName string, partInfo * types.PartitionInfo) {
 
 	// old map entry, nuke it
-	uuidStr := otherPartInfo.UUIDandVersion.UUID.String()
+	uuidStr := partInfo.UUIDandVersion.UUID.String()
 
 	// find the baseOs config/status map entries
 	// reset the partition information
@@ -143,13 +157,19 @@ func clearPartitionMap(partName string, partInfo *types.PartitionInfo) bool {
 		writeBaseOsConfig(config, uuidStr)
 	}
 
-	// and mark status as DELIVERED
+	// and mark status as DELIVERED, if it has been installed
 	status := baseOsStatusGet(uuidStr)
 	if status != nil {
 		log.Printf("%s, reset old status\n", uuidStr)
-		status.State = types.DELIVERED
+		if status.State == types.INSTALLED {
+			status.State = types.DELIVERED
+			for i,_ := range status.StorageStatusList {
+				ss := &status.StorageStatusList[i]
+				ss.State = types.DELIVERED
+			}
+		}
 		errStr := fmt.Sprintf("uninstalled from %s",
-			otherPartInfo.PartitionLabel)
+			partInfo.PartitionLabel)
 		status.Error = errStr
 		status.ErrorTime = time.Now()
 		status.PartitionLabel = ""
@@ -157,7 +177,6 @@ func clearPartitionMap(partName string, partInfo *types.PartitionInfo) bool {
 	}
 
 	deletePartitionInfo(partName)
-	return false
 }
 
 // get the partition map for a baseOS
@@ -227,6 +246,13 @@ func setPersistentPartitionInfo(uuidStr string, config types.BaseOsConfig,
 		return errors.New(errStr)
 	}
 
+	// remove old partition mapping, if any
+	if partInfo := readOtherPartitionInfo(); partInfo != nil {
+		if partInfo.BaseOsVersion != config.BaseOsVersion {
+			clearOtherPartitionMap(partName)
+		}
+	}
+
 	// new partition mapping
 	partInfo := &types.PartitionInfo{}
 	partInfo.UUIDandVersion = status.UUIDandVersion
@@ -246,11 +272,6 @@ func setPersistentPartitionInfo(uuidStr string, config types.BaseOsConfig,
 	// set these values in BaseOs status
 	status.PartitionDevice = getPartitionDevname(partName)
 	status.PartitionState = getPartitionState(partName)
-
-	// remove old partition mapping
-	if match := clearPartitionMap(partName, nil); match == true {
-		log.Printf("Updating existing Partition Map Status %s\n", partName)
-	}
 
 	// XXX:FIXME, Take care of retry count
 	return writeOtherPartitionInfo(partInfo)
@@ -274,8 +295,7 @@ func resetPersistentPartitionInfo(uuidStr string) error {
 	}
 
 	if isOtherPartition(config.PartitionLabel) {
-		partInfo := readOtherPartitionInfo()
-		clearPartitionMap(config.PartitionLabel, partInfo)
+		clearOtherPartitionMap(config.PartitionLabel)
 		return nil
 	}
 
