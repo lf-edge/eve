@@ -72,15 +72,21 @@ func (f flexTickerHandle) UpdateRangeTicker(minTime time.Duration, maxTime time.
 }
 
 // Insert a tick now in addition to running timers
-// Note that the member function isn't always useful since flexTickerHandle
-// type is not exported. Hence have a normal function as well.
 func (f flexTickerHandle) TickNow() {
 	f.privateChan <- time.Now()
 }
 
+// Note that the above member functions aren't always usable since the
+// flexTickerHandle type is not exported. Hence these functions help.
+func UpdateRangeTicker(hdl interface{}, minTime time.Duration,
+	maxTime time.Duration) {
+	f := hdl.(flexTickerHandle)
+	f.UpdateRangeTicker(minTime, maxTime)
+}
+
 func TickNow(hdl interface{}) {
 	f := hdl.(flexTickerHandle)
-	f.privateChan <- time.Now()
+	f.TickNow()
 }
 
 func (f flexTickerHandle) UpdateExpTicker(minTime time.Duration, maxTime time.Duration, randomFactor float64) {
