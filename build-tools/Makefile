@@ -1,6 +1,6 @@
 # Set path variables.
 CURDIR != pwd
-PATH := ${CURDIR}/bin
+PATH := ${CURDIR}/bin:${PATH}
 GOPATH := ${CURDIR}
 GO != which go # XXX: Provide more precise method.
 
