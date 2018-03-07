@@ -838,7 +838,8 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 	if config.IsZedmanager {
 		if config.SeparateDataPlane != ctx.SeparateDataPlane {
 			log.Printf("Unsupported: Changing experimental data plane flag on the fly\n")
-			// XXX Should we return here?
+			// XXX Add an error stat here. It can be passed back to cloud in future.
+			return
 		}
 		olConfig := config.OverlayNetworkList[0]
 		olStatus := status.OverlayNetworkList[0]
