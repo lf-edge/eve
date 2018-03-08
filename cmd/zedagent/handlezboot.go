@@ -383,7 +383,9 @@ func getVersion(part string, filename string) string {
 		}
 		defer syscall.Unmount(target, 0)
 
-		version, err := ioutil.ReadFile(filename)
+		fullname := fmt.Sprintf("%s/%s/%s",
+			target, otherPrefix, filename)
+		version, err := ioutil.ReadFile(fullname)
 		if err != nil {
 			log.Fatal(err)
 		}
