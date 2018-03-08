@@ -421,7 +421,7 @@ func checkCurrentBaseOsFiles(config *zconfig.EdgeDevConfig) {
 func removeBaseOsEntry(baseOsFilename string) {
 
 	uuidStr := strings.Split(baseOsFilename, ".")[0]
-	log.Printf("%s, remove baseOs entry\n", uuidStr)
+	log.Printf("removeBaseOsEntry %s, remove baseOs entry\n", uuidStr)
 
 	// remove partition map entry
 	resetPersistentPartitionInfo(uuidStr)

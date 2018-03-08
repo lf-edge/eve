@@ -21,23 +21,27 @@ import (
 
 // read from the map file, for a partition
 func readPartitionInfo(partName string) *types.PartitionInfo {
-
+	log.Printf("readPartitionInfo(%s)\n", partName)
 	validatePartitionName(partName)
 
 	mapFilename := configDir + "/" + partName + ".json"
 	if _, err := os.Stat(mapFilename); err != nil {
+		log.Printf("readPartitionInfo(%s) no file %s\n", mapFilename)
 		return nil
 	}
 
 	bytes, err := ioutil.ReadFile(mapFilename)
 	if err != nil {
+		log.Printf("readPartitionInfo(%s) failed %v\n", err)
 		return nil
 	}
 
 	partInfo := &types.PartitionInfo{}
 	if err := json.Unmarshal(bytes, partInfo); err != nil {
+		log.Printf("readPartitionInfo(%s) failed %v\n", err)
 		return nil
 	}
+	log.Printf("readPartitionInfo(%s) return %v\n", partName, partInfo)
 	return partInfo
 }
 
@@ -45,6 +49,7 @@ func readPartitionInfo(partName string) *types.PartitionInfo {
 // write to map file, for a partition
 func writePartitionInfo(partName string,
 			 partInfo *types.PartitionInfo) error {
+	log.Printf("writePartitionInfo(%s, %v)\n", partName, partInfo)
 
 	validatePartitionName(partName)
 
@@ -56,8 +61,6 @@ func writePartitionInfo(partName string,
 		log.Println(errStr)
 		return errors.New(errStr)
 	}
-
-	log.Println(partInfo)
 
 	if err := ioutil.WriteFile(mapFilename, bytes, 0644); err != nil {
 		errStr := fmt.Sprintf("%s, file write error %s\n", partName, err)
@@ -71,16 +74,19 @@ func writePartitionInfo(partName string,
 // keeping the option open for current partition
 // map delete
 func deletePartitionInfo(partName string) {
+	log.Printf("deletePartitionInfo(%s)\n", partName)
 
 	validatePartitionName(partName)
 	if !isOtherPartition(partName) ||
 	 	!isCurrentPartition(partName) {
+		log.Printf("deletePartitionInfo unknown partition %s\n",
+			partName)
 		return
 	}
 
 	mapFilename := configDir + "/" + partName + ".json"
 	if err := os.Remove(mapFilename); err != nil {
-		log.Printf("%v for %s\n", err, mapFilename)
+		log.Printf("deletePartitionInfo %v for %s\n", err, mapFilename)
 	}
 }
 
@@ -115,10 +121,13 @@ func writeOtherPartitionInfo(partInfo *types.PartitionInfo) error {
 // clear current partition, like we receive
 // two new base os image configuration
 func clearOtherPartitionMap(partName string) {
+	log.Printf("clearOtherPartitionMap(%s)\n", partName)
 
 	validatePartitionName(partName)
 
 	if !isOtherPartition(partName) {
+		log.Printf("clearOtherPartitionMap(%s) caller is confused\n",
+			partName)
 		return
 	}
 
@@ -128,10 +137,13 @@ func clearOtherPartitionMap(partName string) {
 }
 
 func clearCurrentPartitionMap(partName string) {
+	log.Printf("clearCurrentPartitionMap(%s)\n", partName)
 
 	validatePartitionName(partName)
 
 	if !isCurrentPartition(partName) {
+		log.Printf("clearCurrentPartitionMap(%s) caller is confused\n",
+			partName)
 		return
 	}
 
@@ -149,7 +161,8 @@ func clearPartitionMap(partName string, partInfo * types.PartitionInfo) {
 	// reset the partition information
 	config := baseOsConfigGet(uuidStr)
 	if config != nil {
-		log.Printf("%s, reset old config\n", uuidStr)
+		log.Printf("clearPartitionMap(%s) %s, reset old config\n",
+			partName, uuidStr)
 		config.PartitionLabel = ""
 		for _, sc := range config.StorageConfigList {
 			sc.FinalObjDir = ""
@@ -157,10 +170,12 @@ func clearPartitionMap(partName string, partInfo * types.PartitionInfo) {
 		writeBaseOsConfig(config, uuidStr)
 	}
 
+	// XXX comment doesn't match code
 	// and mark status as DELIVERED, if it has been installed
 	status := baseOsStatusGet(uuidStr)
 	if status != nil {
-		log.Printf("%s, reset old status\n", uuidStr)
+		log.Printf("clearPartitionMap(%s) %s, reset old status\n",
+			partName, uuidStr)
 		if status.State == types.INSTALLED {
 			status.State = types.DELIVERED
 			for i,_ := range status.StorageStatusList {
@@ -232,7 +247,8 @@ func setPersistentPartitionInfo(uuidStr string, config types.BaseOsConfig,
 		 status *types.BaseOsStatus) error {
 
 	partName := status.PartitionLabel
-	log.Printf("%s, set partition %s\n", uuidStr, partName)
+	log.Printf("setPersistentPartitionInfo(%s) %s, set partition %s\n",
+		status.BaseOsVersion, uuidStr, partName)
 
 	if partName == "" {
 		errStr := fmt.Sprintf("%s, unssigned partition", uuidStr)

@@ -70,11 +70,10 @@ func validateConfig(config *zconfig.EdgeDevConfig) bool {
 
 func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 
-	log.Println("Applying Base Os config")
-
 	cfgOsList := config.GetBase()
 	baseOsCount := len(cfgOsList)
-	log.Printf("Applying Base Os config len %d\n", baseOsCount)
+	log.Printf("parseBaseOsConfig() Applying Base Os config len %d\n",
+		baseOsCount)
 
 	if baseOsCount == 0 {
 		return false
@@ -140,6 +139,7 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 		if err == nil {
 			log.Printf("New/updated BaseOs %d: %s\n", idx, bytes)
 		}
+		// XXX shouldn't the code write what it just marshalled?
 	}
 
 	// first, seep in old partition information
@@ -156,9 +156,11 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 		}
 		log.Printf("%s, assigned with partition %s\n",
 				baseOs.BaseOsVersion, baseOs.PartitionLabel)
+		// XXX shouldn't this already be set?
 		setStoragePartitionLabel(baseOs)
 	}
 
+	// Do we have some unassigned ones?
 	// first pass, pick up the one, with activate flag set
 	if assignedPart == false {
 		log.Printf("Partition Assignment, First Pass\n")
@@ -772,7 +774,11 @@ func validateBaseOsConfig(baseOsList []*types.BaseOsConfig) bool {
 					if drive0.ImageSha256 == drive1.ImageSha256 &&
 						drive0.DownloadURL != drive1.DownloadURL {
 						log.Printf("baseOs: Same Sha %v\n", drive0.ImageSha256)
-						return false
+						// XXX causes silent failure?
+						// Need to report this to the cliud
+						if false {
+							return false
+						}
 					}
 				}
 			}
