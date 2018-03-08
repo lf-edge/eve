@@ -173,7 +173,7 @@ func main() {
 				// flag inorder not to confuse lispers.net
 				DNCctx.SeparateDataPlane = ZedrouterCtx.SeparateDataPlane
 		case change := <-deviceConfigChanges:
-			watch.HandleStatusEvent(change, &ZedrouterCtx,
+			watch.HandleStatusEvent(change, &DNCctx,
 				DNCDirname,
 				&types.DeviceNetworkConfig{},
 				handleDNCModify, handleDNCDelete,

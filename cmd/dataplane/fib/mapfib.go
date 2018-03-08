@@ -455,25 +455,25 @@ func MapcacheScrubThread() {
 		// that need removal (entries in resolve state for more than 5 minutes).
 		// We take write lock later and delete the required entries.
 		for key, entry := range cache.MapCache {
-			if entry.Resolved == true {
-				continue
-			}
+			if entry.Resolved == false {
 
-			currTime := time.Now()
+				currTime := time.Now()
 
-			// 5 * 50 * 1000 milli seconds threshold interval
-			var scrubThreshold time.Duration = SCRUBTHRESHOLD * 1000
+				// 5 * 50 * 1000 milli seconds threshold interval
+				var scrubThreshold time.Duration = SCRUBTHRESHOLD * 1000
 
-			// elapsed time is in Nano seconds
-			elapsed := currTime.Sub(entry.ResolveTime)
+				// elapsed time is in Nano seconds
+				elapsed := currTime.Sub(entry.ResolveTime)
 
-			// convert elapsed time to milli seconds
-			elapsed = (elapsed / 1000000)
+				// convert elapsed time to milli seconds
+				elapsed = (elapsed / 1000000)
 
-			// if elapsed time is greater than 5 minutes send delete resolve entry
-			if elapsed >= scrubThreshold {
-				// mark the resolve entry for deletion
-				delList = append(delList, key)
+				// if elapsed time is greater than 5 minutes
+				// send delete resolve entry
+				if elapsed >= scrubThreshold {
+					// mark the resolve entry for deletion
+					delList = append(delList, key)
+				}
 			}
 		}
 		cache.LockMe.RUnlock()
