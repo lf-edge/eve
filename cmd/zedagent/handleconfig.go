@@ -117,7 +117,7 @@ func configTimerTask(handleChannel chan interface{},
 	iteration := 0
 	checkConnectivity := isZbootAvailable() && isCurrentPartitionStateInProgress()
 	rebootFlag := getLatestConfig(configUrl, iteration,
-					 &checkConnectivity, getconfigCtx)
+		&checkConnectivity, getconfigCtx)
 
 	interval := time.Duration(configItemDefaults.configInterval) * time.Second
 	currentConfigInterval = interval
@@ -132,7 +132,7 @@ func configTimerTask(handleChannel chan interface{},
 		// reboot flag is not set, go fetch new config
 		if rebootFlag == false {
 			rebootFlag = getLatestConfig(configUrl, iteration,
-							 &checkConnectivity, getconfigCtx)
+				&checkConnectivity, getconfigCtx)
 		}
 	}
 }
@@ -164,8 +164,9 @@ func updateConfigTimer(tickerHandle interface{}) {
 // Start by trying the all the free uplinks and then all the non-free
 // until one succeeds in communicating with the cloud.
 // We use the iteration argument to start at a different point each time.
+// Returns a rebootFlag
 func getLatestConfig(url string, iteration int, checkConnectivity *bool,
-	getconfigCtx *getconfigContext) {
+	getconfigCtx *getconfigContext) bool {
 	resp, err := zedcloud.SendOnAllIntf(zedcloudCtx, url, nil, iteration)
 	if err != nil {
 		log.Printf("getLatestConfig failed: %s\n", err)
@@ -284,6 +285,7 @@ func readDeviceConfigProtoMessage(r *http.Response) (bool, *zconfig.EdgeDevConfi
 	return !same, config, nil
 }
 
+// Returns a rebootFlag
 func inhaleDeviceConfig(config *zconfig.EdgeDevConfig) bool {
 	log.Printf("Inhaling config %v\n", config)
 

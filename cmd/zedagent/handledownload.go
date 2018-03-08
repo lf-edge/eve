@@ -222,7 +222,7 @@ func checkStorageDownloadStatus(objType string, uuidStr string,
 			ss.HasDownloaderRef = true
 			ret.Changed = true
 		}
-        
+
 		ds, err := lookupDownloaderStatus(objType, safename)
 		if err != nil {
 			log.Printf("%s, %s \n", safename, err)

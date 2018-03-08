@@ -29,6 +29,7 @@ const (
 var immediate int = 30 // take a 30 second delay
 var rebootTimer *time.Timer
 
+// Returns a rebootFlag
 func parseConfig(config *zconfig.EdgeDevConfig) bool {
 
 	log.Println("Applying new config")
@@ -39,7 +40,7 @@ func parseConfig(config *zconfig.EdgeDevConfig) bool {
 	}
 
 	// updating/rebooting, ignore
-	if	isOtherPartitionStateUpdating() {
+	if isOtherPartitionStateUpdating() {
 		return true
 	}
 	if validateConfig(config) == true {
@@ -124,11 +125,11 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 
 		baseOs.StorageConfigList = make([]types.StorageConfig, imageCount)
 		parseStorageConfigList(config, baseOsObj,
-			 baseOs.StorageConfigList, cfgOs.Drives)
+			baseOs.StorageConfigList, cfgOs.Drives)
 
 		baseOsList[idx] = baseOs
 		certInstance := getCertObjects(baseOs.UUIDandVersion,
-						baseOs.ConfigSha256, baseOs.StorageConfigList)
+			baseOs.ConfigSha256, baseOs.StorageConfigList)
 		if certInstance != nil {
 			certList[idx] = certInstance
 		}
@@ -155,7 +156,7 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 			continue
 		}
 		log.Printf("%s, assigned with partition %s\n",
-				baseOs.BaseOsVersion, baseOs.PartitionLabel)
+			baseOs.BaseOsVersion, baseOs.PartitionLabel)
 		// XXX shouldn't this already be set?
 		setStoragePartitionLabel(baseOs)
 	}
@@ -166,17 +167,17 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 		log.Printf("Partition Assignment, First Pass\n")
 		for _, baseOs := range baseOsList {
 			if baseOs == nil ||
-			 	baseOs.PartitionLabel != "" {
+				baseOs.PartitionLabel != "" {
 				continue
 			}
-    
+
 			uuidStr := baseOs.UUIDandVersion.UUID.String()
 			if isInstallCandidate(uuidStr, baseOs, baseOsCount) {
 				if isOtherPartitionStateUnused() {
 					log.Printf("getPartitionInfo(%s) unused\n",
 						baseOs.BaseOsVersion)
 					log.Printf("%s, assigning with partition %s\n",
-							baseOs.BaseOsVersion, getOtherPartition())
+						baseOs.BaseOsVersion, getOtherPartition())
 					baseOs.PartitionLabel = getOtherPartition()
 					setStoragePartitionLabel(baseOs)
 					assignedPart = true
@@ -186,19 +187,19 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 		}
 	}
 
-	// second pass, if still unassigned, pick any 
+	// second pass, if still unassigned, pick any
 	if assignedPart == false {
 		log.Printf("Partition Assignment, Second Pass\n")
 		for _, baseOs := range baseOsList {
 			if baseOs == nil ||
-			   baseOs.PartitionLabel != "" {
+				baseOs.PartitionLabel != "" {
 				continue
 			}
 			if isOtherPartitionStateUnused() {
 				log.Printf("getPartitionInfo(%s) unused\n",
 					baseOs.BaseOsVersion)
 				log.Printf("%s, assigning with partition %s\n",
-						baseOs.BaseOsVersion, getOtherPartition())
+					baseOs.BaseOsVersion, getOtherPartition())
 				baseOs.PartitionLabel = getOtherPartition()
 				setStoragePartitionLabel(baseOs)
 				break
@@ -224,14 +225,14 @@ func getOldPartitionInfo(baseOs *types.BaseOsConfig) {
 	uuidStr := baseOs.UUIDandVersion.UUID.String()
 	imageSha256 := baseOsGetImageSha(*baseOs)
 	partInfo := getPersistentPartitionInfo(uuidStr, imageSha256)
-	if  partInfo != nil {
+	if partInfo != nil {
 		baseOs.PartitionLabel = partInfo.PartitionLabel
 	}
 }
 
 func setStoragePartitionLabel(baseOs *types.BaseOsConfig) {
 
-	for idx,_ := range baseOs.StorageConfigList {
+	for idx, _ := range baseOs.StorageConfigList {
 		sc := &baseOs.StorageConfigList[idx]
 		sc.FinalObjDir = baseOs.PartitionLabel
 	}
@@ -323,7 +324,7 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig) {
 		if imageCount != 0 {
 			appInstance.StorageConfigList = make([]types.StorageConfig, imageCount)
 			parseStorageConfigList(config, appImgObj,
-				 appInstance.StorageConfigList, cfgApp.Drives)
+				appInstance.StorageConfigList, cfgApp.Drives)
 		}
 
 		// fill the overlay/underlay config
