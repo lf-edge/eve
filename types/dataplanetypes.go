@@ -10,6 +10,7 @@ import (
 	"crypto/cipher"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/pfring"
+	"syscall"
 )
 
 const (
@@ -51,6 +52,11 @@ type Rloc struct {
 	Family   uint32
 	KeyCount uint32
 	Keys     []Key
+
+	// Destination socket addresses.
+	// Used for sending packets out.
+	IPv4SockAddr syscall.SockaddrInet4
+	IPv6SockAddr syscall.SockaddrInet6
 
 	// Weight range
 	WrLow  uint32

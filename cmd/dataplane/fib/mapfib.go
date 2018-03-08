@@ -299,14 +299,15 @@ func compileRlocs(rlocs []types.Rloc) ([]types.Rloc, uint32) {
 // Add/update map cache entry. Look at the comments inside this function to understand
 // more about what it does.
 func LookupAndUpdate(iid uint32, eid net.IP, rlocs []types.Rloc) *types.MapCacheEntry {
-	key := makeMapCacheKey(iid, eid)
-	cache.LockMe.Lock()
-	defer cache.LockMe.Unlock()
-	entry, ok := cache.MapCache[key]
 	var selectRlocs []types.Rloc
 	var totWeight uint32
 	var packets, bytes, tailDrops, buffdPkts uint64
 	var lastPunt time.Time
+
+	key := makeMapCacheKey(iid, eid)
+	cache.LockMe.Lock()
+	defer cache.LockMe.Unlock()
+	entry, ok := cache.MapCache[key]
 
 	log.Printf("LookupAndUpdate: Adding map-cache entry with key %d, %s\n",
 		key.IID, key.Eid)

@@ -174,7 +174,6 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 	// XXX
 	// Should we have a static per-thread entry for this header?
 	// Can we have it globally and re-use?
-	//srcAddr := net.ParseIP("0.0.0.0")
 	ip := &layers.IPv4{
 		DstIP:    rloc.Rloc,
 		SrcIP:    srcAddr,
@@ -261,12 +260,6 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 		log.Printf("craftAndSendIPv4LispPacket: Failed serializing packet: %s", err)
 		return
 	}
-	/*
-		if err := gopacket.SerializeLayers(buf, opts, udp); err != nil {
-			log.Printf("Failed serializing packet: %s", err)
-			return
-		}
-	*/
 
 	outerHdr := buf.Bytes()
 	outerHdr = append(outerHdr, lispHdr...)
@@ -294,12 +287,8 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 
 	outputSlice := pktBuf[offset:offsetEnd]
 
-	v4Addr := rloc.Rloc.To4()
 	log.Printf("XXXXX Writing %d bytes into ITR socket\n", len(outputSlice))
-	err := syscall.Sendto(fd4, outputSlice, 0, &syscall.SockaddrInet4{
-		Port: 0,
-		Addr: [4]byte{v4Addr[0], v4Addr[1], v4Addr[2], v4Addr[3]},
-	})
+	err := syscall.Sendto(fd4, outputSlice, 0, &rloc.IPv4SockAddr)
 	if err != nil {
 		log.Printf("craftAndSendIPv4LispPacket: Packet send ERROR: %s", err)
 		return
@@ -446,18 +435,9 @@ func craftAndSendIPv6LispPacket(packet gopacket.Packet,
 	}
 	outputSlice := pktBuf[offset:offsetEnd]
 
-	v6Addr := rloc.Rloc.To16()
-	var destAddr [16]byte
-	for i, _ := range destAddr {
-		destAddr[i] = v6Addr[i]
-	}
-
 	log.Printf("XXXXX Writing %d bytes into ITR socket\n", len(outputSlice))
-	err := syscall.Sendto(fd6, outputSlice, 0, &syscall.SockaddrInet6{
-		Port:   0,
-		ZoneId: 0,
-		Addr:   destAddr,
-	})
+	err := syscall.Sendto(fd6, outputSlice, 0, &rloc.IPv6SockAddr)
+
 	if err != nil {
 		log.Printf("craftAndSendIPv6LispPacket: Packet send ERROR: %s", err)
 	}

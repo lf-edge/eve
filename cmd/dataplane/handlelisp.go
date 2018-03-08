@@ -112,6 +112,25 @@ func parseRloc(rlocStr *Rloc) (types.Rloc, bool) {
 		Keys:     keys,
 		Family:   uint32(family),
 	}
+
+	v4Addr := rloc.To4()
+	if v4Addr == nil {
+		var destAddr [16]byte
+
+		// This is IPv6 Rloc address
+		v6Addr := rloc.To16()
+		for i, _ := range destAddr {
+			destAddr[i] = v6Addr[i]
+		}
+		rlocEntry.IPv6SockAddr.Port = 0
+		rlocEntry.IPv6SockAddr.ZoneId = 0
+		rlocEntry.IPv6SockAddr.Addr = destAddr
+	} else {
+		// This is IPv4 Rloc address
+		rlocEntry.IPv4SockAddr.Port = 0
+		rlocEntry.IPv4SockAddr.Addr = [4]byte{v4Addr[0], v4Addr[1], v4Addr[2], v4Addr[3]}
+	}
+
 	return rlocEntry, true
 }
 
