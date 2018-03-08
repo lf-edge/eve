@@ -512,7 +512,7 @@ if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
-#If loganager is already running we don't have to start it.
+#If logmanager is already running we don't have to start it.
 pgrep logmanager >/dev/null
 if [ $? != 0 ]; then
     echo "Starting logmanager at" `date`
