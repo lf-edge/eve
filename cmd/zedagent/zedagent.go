@@ -129,6 +129,9 @@ type deviceContext struct {
 
 var debug = false
 
+// XXX temporary hack for writeBaseOsStatus
+var devCtx deviceContext
+
 func main() {
 	log.SetOutput(os.Stdout)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
@@ -172,7 +175,7 @@ func main() {
 	aaChanges, aaFunc, aaCtx := adapters.Init(&aa, model)
 
 	verifierCtx := verifierContext{}
-	devCtx := deviceContext{assignableAdapters: &aa}
+	devCtx = deviceContext{assignableAdapters: &aa}
 	domainCtx := domainContext{}
 
 	// First we process the verifierStatus to avoid downloading
@@ -346,6 +349,7 @@ func main() {
 			log.Printf("NetworkStatus triggered PublishDeviceInfo\n")
 			PublishDeviceInfoToZedCloud(baseOsStatusMap,
 				devCtx.assignableAdapters)
+
 		case change := <-domainStatusChanges:
 			watch.HandleStatusEvent(change, &domainCtx,
 				domainStatusDirname,
@@ -359,6 +363,7 @@ func main() {
 					devCtx.assignableAdapters)
 				domainCtx.TriggerDeviceInfo = false
 			}
+
 		case change := <-aaChanges:
 			aaFunc(&aaCtx, change)
 		}
@@ -385,10 +390,11 @@ func handleVerifierRestarted(ctxArg interface{}, done bool) {
 
 func handleInit() {
 
+	zbootInit()
 	initializeDirs()
 	initMaps()
 	handleConfigInit()
-	partitionInit()
+	initializePartitionMap()
 }
 
 func initializeDirs() {
@@ -536,14 +542,14 @@ func handleBaseOsModify(ctxArg interface{}, statusFilename string,
 	log.Printf("handleBaseOsModify for %s\n", status.BaseOsVersion)
 	if config.UUIDandVersion.Version == status.UUIDandVersion.Version &&
 		config.Activate == status.Activated {
-		log.Printf("Same version/Activate %s/%v for %s\n",
-			config.UUIDandVersion.Version, config.Activate, uuidStr)
+		log.Printf("Same version %v for %s\n",
+			config.UUIDandVersion.Version, uuidStr)
 		return
 	}
 
 	// update the version field, uuis being the same
 	status.UUIDandVersion = config.UUIDandVersion
-	writeBaseOsStatus(status, statusFilename)
+	writeBaseOsStatus(status, uuidStr)
 
 	addOrUpdateBaseOsConfig(uuidStr, *config)
 	PublishDeviceInfoToZedCloud(baseOsStatusMap, ctx.assignableAdapters)
@@ -582,7 +588,7 @@ func handleCertObjModify(ctxArg interface{}, statusFilename string,
 
 	// XXX:FIXME, do we
 	if config.UUIDandVersion.Version == status.UUIDandVersion.Version {
-		log.Printf("Same version %s for %s\n",
+		log.Printf("Same version %v for %s\n",
 			config.UUIDandVersion.Version, statusFilename)
 		return
 	}

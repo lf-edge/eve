@@ -92,9 +92,7 @@ func addOrUpdateCertObjConfig(uuidStr string, config types.CertObjConfig) {
 		}
 
 		certObjStatusMap[uuidStr] = status
-		statusFilename := fmt.Sprintf("%s/%s.json",
-			zedagentCertObjStatusDirname, uuidStr)
-		writeCertObjStatus(&status, statusFilename)
+		writeCertObjStatus(&status, uuidStr)
 	}
 
 	if changed {
@@ -125,9 +123,7 @@ func certObjHandleStatusUpdate(uuidStr string) {
 		log.Printf("certObjHandleStatusUpdate for %s, Status changed\n",
 			uuidStr)
 		certObjStatusMap[uuidStr] = status
-		statusFilename := fmt.Sprintf("%s/%s.json",
-			zedagentCertObjStatusDirname, uuidStr)
-		writeCertObjStatus(&status, statusFilename)
+		writeCertObjStatus(&status, uuidStr)
 	}
 }
 
@@ -194,37 +190,35 @@ func doCertObjInstall(uuidStr string, config types.CertObjConfig,
 		changed = true
 	}
 
-	statusFilename := fmt.Sprintf("%s/%s.json",
-		zedagentCertObjStatusDirname, uuidStr)
-	writeCertObjStatus(status, statusFilename)
+	writeCertObjStatus(status, uuidStr)
 	log.Printf("doCertObjInstall for %s, Done %v\n", uuidStr, changed)
 	return changed, true
 }
 
 func checkCertObjStorageDownloadStatus(uuidStr string,
-	config types.CertObjConfig,
-	status *types.CertObjStatus) (bool, bool) {
+	config types.CertObjConfig, status *types.CertObjStatus) (bool, bool) {
 
-	changed, minState, allErrors, errorTime := checkStorageDownloadStatus(certObj, uuidStr, config.StorageConfigList, status.StorageStatusList)
+	ret := checkStorageDownloadStatus(certObj, uuidStr,
+			 config.StorageConfigList, status.StorageStatusList)
 
-	status.State = minState
-	status.Error = allErrors
-	status.ErrorTime = errorTime
+	status.State = ret.MinState
+	status.Error = ret.AllErrors
+	status.ErrorTime = ret.ErrorTime
 
-	log.Printf("checkCertObjDownloaStatus %s, %v\n", uuidStr, minState)
+	log.Printf("checkCertObjDownloadStatus %s, %v\n", uuidStr, ret.MinState)
 
-	if minState == types.INITIAL {
+	if ret.MinState == types.INITIAL {
 		log.Printf("checkCertObjDownloadStatus for %s, Download error\n", uuidStr)
-		return changed, false
+		return ret.Changed, false
 	}
 
-	if minState < types.DOWNLOADED {
+	if ret.MinState < types.DOWNLOADED {
 		log.Printf("checkCertObjDownloaStatus %s, Waiting for downloads\n", uuidStr)
-		return changed, false
+		return ret.Changed, false
 	}
 
 	log.Printf("checkCertObjDownloadStatus for %s, Downloads done\n", uuidStr)
-	return changed, true
+	return ret.Changed, true
 }
 
 func removeCertObjConfig(uuidStr string) {
@@ -255,14 +249,12 @@ func removeCertObjStatus(uuidStr string) {
 	if changed {
 		log.Printf("removeCertObjStatus for %s, Status changed\n", uuidStr)
 		certObjStatusMap[uuidStr] = status
-		statusFilename := fmt.Sprintf("%s/%s.json",
-			zedagentCertObjStatusDirname, uuidStr)
-		writeCertObjStatus(&status, statusFilename)
+		writeCertObjStatus(&status, uuidStr)
 	}
 
 	if del {
 
-		// Write out what we modified to AppInstanceStatus aka delete
+		// Write out what we modified to CertObj aka delete
 		statusFilename := fmt.Sprintf("%s/%s.json",
 			zedagentCertObjStatusDirname, uuidStr)
 		if err := os.Remove(statusFilename); err != nil {
@@ -329,7 +321,9 @@ func doCertObjUninstall(uuidStr string, status *types.CertObjStatus) (bool, bool
 	return changed, del
 }
 
-func writeCertObjStatus(status *types.CertObjStatus, statusFilename string) {
+func writeCertObjStatus(status *types.CertObjStatus, uuidStr string) {
+	statusFilename := zedagentCertObjStatusDirname + "/" +  uuidStr + ".json"
+	log.Printf("Writing CertObj Status %s\n", statusFilename)
 	bytes, err := json.Marshal(status)
 	if err != nil {
 		log.Fatal(err, "json Marshal certObjStatus")

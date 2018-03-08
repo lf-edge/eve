@@ -423,7 +423,7 @@ if [ $SELF_REGISTER = 1 ]; then
     # a minimal one on the fly
     model=`$BINDIR/hardwaremodel`
     MODELFILE=${model}.json
-    if [ ! -f $DNCDIR/$MODELFILE ] ; then
+    if [ ! -f "$DNCDIR/$MODELFILE" ] ; then
 	echo "XXX Missing $DNCDIR/$MODELFILE - generate on the fly"
 	echo "Determining uplink interface"
 	intf=`$BINDIR/find-uplink.sh $CONFIGDIR/lisp.config.base`
@@ -433,14 +433,14 @@ if [ $SELF_REGISTER = 1 ]; then
 		echo "NOT Found interface based on route to map servers. Giving up"
 		exit 1    
 	fi
-	cat <<EOF >$DNCDIR/$MODELFILE
+	cat <<EOF >"$DNCDIR/$MODELFILE"
 {"Uplink":["$intf"], "FreeUplinks":["$intf"]}
 EOF
     fi
 else
     model=`$BINDIR/hardwaremodel`
     MODELFILE=${model}.json
-    if [ ! -f $DNCDIR/$MODELFILE ] ; then
+    if [ ! -f "$DNCDIR/$MODELFILE" ] ; then
 	echo "Missing $DNCDIR/$MODELFILE - giving up"
 	exit 1
     fi
