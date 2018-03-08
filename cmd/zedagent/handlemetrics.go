@@ -6,6 +6,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"github.com/eriknordmark/ipinfo"
 	"github.com/golang/protobuf/proto"
@@ -21,6 +22,7 @@ import (
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/netclone"
 	"github.com/zededa/go-provision/types"
+	"github.com/zededa/go-provision/zedcloud"
 	"io/ioutil"
 	"log"
 	"os"
@@ -1092,7 +1094,8 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 // send report on each uplink.
 // For each uplink we try different source IPs until we find a working one.
 func SendProtobuf(url string, data []byte, iteration int) error {
-	resp, err := sendOnAllIntf(url, data, iteration)
+	resp, err := zedcloud.SendOnAllIntf(zedcloudCtx, url,
+		bytes.NewBuffer(data), iteration)
 	if err != nil {
 		return err
 	}
@@ -1111,7 +1114,8 @@ func SendMetricsProtobuf(ReportMetrics *zmet.ZMetricMsg,
 	}
 
 	metricsUrl := serverName + "/" + metricsApi
-	resp, err := sendOnAllIntf(metricsUrl, data, iteration)
+	resp, err := zedcloud.SendOnAllIntf(zedcloudCtx, metricsUrl,
+		bytes.NewBuffer(data), iteration)
 	if err != nil {
 		// Hopefully next timeout will be more successful
 		log.Printf("SendMetricsProtobuf failed: %s\n", err)

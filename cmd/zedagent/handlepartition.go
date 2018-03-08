@@ -16,7 +16,6 @@ import (
 	"time"
 )
 
-
 // Partition Map Management routines
 
 // read from the map file, for a partition
@@ -48,7 +47,7 @@ func readPartitionInfo(partName string) *types.PartitionInfo {
 // its always the other partition
 // write to map file, for a partition
 func writePartitionInfo(partName string,
-			 partInfo *types.PartitionInfo) error {
+	partInfo *types.PartitionInfo) error {
 	log.Printf("writePartitionInfo(%s, %v)\n", partName, partInfo)
 
 	validatePartitionName(partName)
@@ -78,7 +77,7 @@ func deletePartitionInfo(partName string) {
 
 	validatePartitionName(partName)
 	if !isOtherPartition(partName) ||
-	 	!isCurrentPartition(partName) {
+		!isCurrentPartition(partName) {
 		log.Printf("deletePartitionInfo unknown partition %s\n",
 			partName)
 		return
@@ -117,7 +116,7 @@ func writeOtherPartitionInfo(partInfo *types.PartitionInfo) error {
 // reset the parition map info
 // adjust the base os config/status files
 // always other partition
-// may be one case, wherein we want to 
+// may be one case, wherein we want to
 // clear current partition, like we receive
 // two new base os image configuration
 func clearOtherPartitionMap(partName string) {
@@ -152,7 +151,7 @@ func clearCurrentPartitionMap(partName string) {
 	}
 }
 
-func clearPartitionMap(partName string, partInfo * types.PartitionInfo) {
+func clearPartitionMap(partName string, partInfo *types.PartitionInfo) {
 
 	// old map entry, nuke it
 	uuidStr := partInfo.UUIDandVersion.UUID.String()
@@ -178,7 +177,7 @@ func clearPartitionMap(partName string, partInfo * types.PartitionInfo) {
 			partName, uuidStr)
 		if status.State == types.INSTALLED {
 			status.State = types.DELIVERED
-			for i,_ := range status.StorageStatusList {
+			for i, _ := range status.StorageStatusList {
 				ss := &status.StorageStatusList[i]
 				ss.State = types.DELIVERED
 			}
@@ -244,7 +243,7 @@ func getPersistentPartitionInfo(uuidStr string, imageSha256 string) *types.Parti
 // set/create the partition map for a baseOs
 // always the other partition
 func setPersistentPartitionInfo(uuidStr string, config types.BaseOsConfig,
-		 status *types.BaseOsStatus) error {
+	status *types.BaseOsStatus) error {
 
 	partName := status.PartitionLabel
 	log.Printf("setPersistentPartitionInfo(%s) %s, set partition %s\n",
@@ -315,8 +314,8 @@ func resetPersistentPartitionInfo(uuidStr string) error {
 		return nil
 	}
 
-	errStr := fmt.Sprintf("%s, cannot reset current partition\n",	
-		 uuidStr, config.PartitionLabel)
+	errStr := fmt.Sprintf("%s, cannot reset current partition\n",
+		uuidStr, config.PartitionLabel)
 	err := errors.New(errStr)
 	return err
 }
@@ -369,7 +368,7 @@ func normalizePartitionMap() {
 			startExecReboot()
 			return
 		}
-	} 
+	}
 	return
 }
 
