@@ -21,12 +21,13 @@ type OsVerParams struct {
 
 type BaseOsConfig struct {
 	UUIDandVersion    UUIDandVersion
-	BaseOsVersion     string
+	BaseOsVersion     string // From GetShortVersion
 	ConfigSha256      string
 	ConfigSignature   string
-	OsParams          []OsVerParams
+	OsParams          []OsVerParams // From GetLongVersion
 	StorageConfigList []StorageConfig
 	PartitionLabel    string
+	RetryCount        int32
 	Activate          bool
 }
 
@@ -49,6 +50,8 @@ type BaseOsStatus struct {
 	OsParams          []OsVerParams
 	StorageStatusList []StorageStatus
 	PartitionLabel    string
+	PartitionDevice   string // From zboot
+	PartitionState    string // From zboot
 
 	// Mininum state across all steps/StorageStatus.
 	// INITIAL implies error.
@@ -141,9 +144,22 @@ func (status CertObjStatus) CheckPendingDelete() bool {
 type PartitionInfo struct {
 	UUIDandVersion UUIDandVersion
 	BaseOsVersion  string // For user-friendly debug
+	ImageSha256    string
 	PartitionLabel string
+	State          SwState
+	Activate	   bool
+	RetryCount     int32
+	Error          string
+	ErrorTime      time.Time
 }
 
+// return value holder
+type RetStatus struct {
+	Changed 	bool
+	MinState 	SwState
+	AllErrors 	string
+	ErrorTime 	time.Time
+}
 // Mirrors proto definition for ConfigItem
 // The value can be bool, float, uint, or string
 type ConfigItem struct {
@@ -167,3 +183,4 @@ const (
 	MetricItemCounter                       // Monotonically increasing (until reboot)
 	MetricItemState                         // Toggles on and off; count transitions
 )
+

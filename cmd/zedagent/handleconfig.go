@@ -135,7 +135,8 @@ func configTimerTask(handleChannel chan interface{},
 	configUrl := serverName + "/" + configApi
 	iteration := 0
 	checkConnectivity := isZbootAvailable() && isCurrentPartitionStateInProgress()
-	getLatestConfig(configUrl, iteration, &checkConnectivity, getconfigCtx)
+	rebootFlag := getLatestConfig(configUrl, iteration,
+					 &checkConnectivity, getconfigCtx)
 
 	interval := time.Duration(configItemDefaults.configInterval) * time.Second
 	currentConfigInterval = interval
@@ -147,8 +148,11 @@ func configTimerTask(handleChannel chan interface{},
 	handleChannel <- ticker
 	for range ticker.C {
 		iteration += 1
-		getLatestConfig(configUrl, iteration, &checkConnectivity,
-			getconfigCtx)
+		// reboot flag is not set, go fetch new config
+		if rebootFlag == false {
+			rebootFlag = getLatestConfig(configUrl, iteration,
+							 &checkConnectivity, getconfigCtx)
+		}
 	}
 }
 
@@ -179,8 +183,8 @@ func updateConfigTimer(tickerHandle interface{}) {
 // Start by trying the all the free uplinks and then all the non-free
 // until one succeeds in communicating with the cloud.
 // We use the iteration argument to start at a different point each time.
-func getLatestConfig(url string, iteration int, checkConnectivity *bool,
-	getconfigCtx *getconfigContext) {
+func getLatestConfig(url string, iteration int,
+		 	checkConnectivity *bool, getconfigCtx *getconfigContext) bool {
 	resp, err := sendOnAllIntf(url, nil, iteration)
 	if err != nil {
 		log.Printf("getLatestConfig failed: %s\n", err)
@@ -189,7 +193,7 @@ func getLatestConfig(url string, iteration int, checkConnectivity *bool,
 			types.UpdateLedManagerConfig(3)
 			getconfigCtx.ledManagerCount = 3
 		}
-		return
+		return false
 	} else {
 		defer resp.Body.Close()
 
@@ -221,7 +225,7 @@ func getLatestConfig(url string, iteration int, checkConnectivity *bool,
 			// Inform ledmanager about cloud connectivity
 			types.UpdateLedManagerConfig(3)
 			getconfigCtx.ledManagerCount = 3
-			return
+			return false
 		}
 
 		changed, config, err := readDeviceConfigProtoMessage(resp)
@@ -230,7 +234,7 @@ func getLatestConfig(url string, iteration int, checkConnectivity *bool,
 			// Inform ledmanager about cloud connectivity
 			types.UpdateLedManagerConfig(3)
 			getconfigCtx.ledManagerCount = 3
-			return
+			return false
 		}
 
 		// Inform ledmanager about config received from cloud
@@ -240,9 +244,9 @@ func getLatestConfig(url string, iteration int, checkConnectivity *bool,
 			if debug {
 				log.Printf("Configuration from zedcloud is unchanged\n")
 			}
-			return
+			return false
 		}
-		inhaleDeviceConfig(config)
+		return inhaleDeviceConfig(config)
 	}
 }
 
@@ -299,7 +303,7 @@ func readDeviceConfigProtoMessage(r *http.Response) (bool, *zconfig.EdgeDevConfi
 	return !same, config, nil
 }
 
-func inhaleDeviceConfig(config *zconfig.EdgeDevConfig) {
+func inhaleDeviceConfig(config *zconfig.EdgeDevConfig) bool {
 	log.Printf("Inhaling config %v\n", config)
 
 	// if they match return
@@ -311,7 +315,7 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig) {
 		if err != nil {
 			log.Printf("Invalid UUID %s from cloud: %s\n",
 				devId.Uuid, err)
-			return
+			return false
 		}
 		if id != devUUID {
 			// XXX logic to handle re-registering a device private
@@ -336,7 +340,7 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig) {
 	checkCurrentBaseOsFiles(config)
 
 	// add new App instances
-	parseConfig(config)
+	return parseConfig(config)
 }
 
 func checkCurrentAppFiles(config *zconfig.EdgeDevConfig) {
@@ -403,18 +407,30 @@ func checkCurrentBaseOsFiles(config *zconfig.EdgeDevConfig) {
 			}
 			// baseOS instance not found, delete
 			if !found {
-				log.Printf("Remove baseOs config %s\n", curBaseOsFilename)
-				err := os.Remove(zedagentBaseOsConfigDirname + "/" + curBaseOsFilename)
-				if err != nil {
-					log.Printf("Old config:%v\n", err)
-				}
-				// remove the certificates holder config
-				os.Remove(zedagentCertObjConfigDirname + "/" + curBaseOsFilename)
-				// also remove the partition info holder config
-				os.Remove(configDir + "/" + curBaseOsFilename)
+				removeBaseOsEntry(curBaseOsFilename)
 			}
 		}
 	}
+
+	// XXX:FIXME, set a sync method, between the old config
+	// clean up and new config sync up
+	// currently, resetPersistentPartitionInfo, cleans up the
+	// partition map table. check if more
+}
+
+func removeBaseOsEntry(baseOsFilename string) {
+
+	uuidStr := strings.Split(baseOsFilename, ".")[0]
+	log.Printf("removeBaseOsEntry %s, remove baseOs entry\n", uuidStr)
+
+	// remove partition map entry
+	resetPersistentPartitionInfo(uuidStr)
+
+	// remove the certificates holder config
+	os.Remove(zedagentCertObjConfigDirname + "/" + baseOsFilename)
+
+	// remove Config File
+	os.Remove(zedagentBaseOsConfigDirname + "/" + baseOsFilename)
 }
 
 func stapledCheck(connState *tls.ConnectionState) bool {

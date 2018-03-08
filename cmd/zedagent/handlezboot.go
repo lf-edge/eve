@@ -6,15 +6,14 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/zededa/go-provision/types"
 	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"syscall"
 )
 
@@ -24,9 +23,21 @@ const (
 	imgBPartition = tmpDir + "/IMGBPart"
 )
 
+// mutex for zboot/dd APIs
+var zbootMutex *sync.Mutex
+
+func zbootInit() {
+	zbootMutex = new(sync.Mutex) 
+	if zbootMutex == nil {
+		log.Fatal("Mutex Init")
+	}
+}
+
 // reset routine
 func zbootReset() {
+	zbootMutex.Lock() // we are going to reboot
 	rebootCmd := exec.Command("zboot", "reset")
+	zbootMutex.Unlock()
 	_, err := rebootCmd.Output()
 	if err != nil {
 		log.Fatalf("zboot reset: err %v\n", err)
@@ -38,7 +49,10 @@ func zbootWatchdogOK() {
 	if !isZbootAvailable() {
 		return
 	}
-	_, err := exec.Command("zboot", "watchdog").Output()
+	zbootMutex.Lock()
+	watchDogCmd := exec.Command("zboot", "watchdog")
+	zbootMutex.Unlock()
+	_, err := watchDogCmd.Output()
 	if err != nil {
 		log.Fatalf("zboot watchdog: err %v\n", err)
 	}
@@ -46,7 +60,9 @@ func zbootWatchdogOK() {
 
 // partition routines
 func getCurrentPartition() string {
+	zbootMutex.Lock()
 	curPartCmd := exec.Command("zboot", "curpart")
+	zbootMutex.Unlock()
 	ret, err := curPartCmd.Output()
 	if err != nil {
 		log.Fatalf("zboot curpart: err %v\n", err)
@@ -67,9 +83,8 @@ func getOtherPartition() string {
 	case "IMGB":
 		partName = "IMGA"
 	default:
-		log.Fatalf("getOtherPartition unknow partName %s\n", partName)
+		log.Fatalf("getOtherPartition unknown partName %s\n", partName)
 	}
-	//log.Printf("zboot otherpart: %s\n", partName)
 	return partName
 }
 
@@ -108,7 +123,9 @@ func getPartitionState(partName string) string {
 
 	validatePartitionName(partName)
 
+	zbootMutex.Lock()
 	partStateCmd := exec.Command("zboot", "partstate", partName)
+	zbootMutex.Unlock()
 	ret, err := partStateCmd.Output()
 	if err != nil {
 		log.Fatalf("zboot partstate %s: err %v\n", partName, err)
@@ -142,8 +159,10 @@ func setPartitionState(partName string, partState string) {
 	validatePartitionName(partName)
 	validatePartitionState(partState)
 
+	zbootMutex.Lock()
 	setPartStateCmd := exec.Command("zboot", "set_partstate",
 		partName, partState)
+	zbootMutex.Unlock()
 	if _, err := setPartStateCmd.Output(); err != nil {
 		log.Fatalf("zboot set_partstate %s %s: err %v\n",
 			partName, partState, err)
@@ -153,7 +172,9 @@ func setPartitionState(partName string, partState string) {
 func getPartitionDevname(partName string) string {
 
 	validatePartitionName(partName)
+	zbootMutex.Lock()
 	getPartDevCmd := exec.Command("zboot", "partdev", partName)
+	zbootMutex.Unlock()
 	ret, err := getPartDevCmd.Output()
 	if err != nil {
 		log.Fatalf("zboot partdev %s: err %v\n", partName, err)
@@ -210,6 +231,9 @@ func isOtherPartitionStateUnused() bool {
 }
 
 func isOtherPartitionStateUpdating() bool {
+	if !isZbootAvailable() {
+		return false
+	}
 	partName := getOtherPartition()
 	return isPartitionState(partName, "updating")
 }
@@ -255,54 +279,6 @@ func getOtherPartitionDevName() string {
 	return getPartitionDevname(partName)
 }
 
-// This returns "" if no file which happens when no PartitionLabel was set
-// for setPersistentPartitionInfo
-func getPersistentPartitionInfo(uuidStr string) string {
-
-	var partitionInfo = &types.PartitionInfo{}
-
-	filename := configDir + "/" + uuidStr + ".json"
-	if _, err := os.Stat(filename); err == nil {
-		bytes, err := ioutil.ReadFile(filename)
-		if err != nil {
-			log.Fatal(err)
-		}
-		err = json.Unmarshal(bytes, partitionInfo)
-		if err != nil {
-			log.Fatal(err)
-		}
-		log.Printf("getPersistentPartitionInfo(%s) for %s label %s\n",
-			partitionInfo.BaseOsVersion, uuidStr,
-			partitionInfo.PartitionLabel)
-		return partitionInfo.PartitionLabel
-	}
-	return ""
-}
-
-func setPersistentPartitionInfo(uuidStr string, config *types.BaseOsConfig) {
-
-	log.Printf("setPersistentPartitionInfo(%s) for %s label %s\n",
-		config.BaseOsVersion, uuidStr, config.PartitionLabel)
-
-	if config.PartitionLabel != "" {
-
-		var partitionInfo = &types.PartitionInfo{}
-		partitionInfo.UUIDandVersion = config.UUIDandVersion
-		partitionInfo.BaseOsVersion = config.BaseOsVersion
-		partitionInfo.PartitionLabel = config.PartitionLabel
-
-		filename := configDir + "/" + uuidStr + ".json"
-		bytes, err := json.Marshal(partitionInfo)
-		if err != nil {
-			log.Fatal(err)
-		}
-		err = ioutil.WriteFile(filename, bytes, 0644)
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
-}
-
 func zbootWriteToPartition(srcFilename string, partName string) error {
 
 	if !isOtherPartition(partName) {
@@ -317,45 +293,24 @@ func zbootWriteToPartition(srcFilename string, partName string) error {
 		return errors.New(errStr)
 	}
 
-	log.Printf("WriteToPartition %s: %v\n", partName, srcFilename)
 	devName := getPartitionDevname(partName)
 	if devName == "" {
 		errStr := fmt.Sprintf("null devname for partition %s", partName)
 		log.Printf("WriteToPartition failed %s\n", errStr)
 		return errors.New(errStr)
 	}
-	// XXX how can we set this before we complete the dd?
-	// If crash during dd the image would be corrupt.
-	setOtherPartitionStateUpdating()
 
-	// XXX:FIXME checkpoint, make sure, only one write to a partition
-	// cleanup, if it fails, or the attached baseOs config is deleted
+	log.Printf("WriteToPartition %s, %s: %v\n", partName, devName, srcFilename)
 
+	zbootMutex.Lock()
 	ddCmd := exec.Command("dd", "if="+srcFilename, "of="+devName, "bs=8M")
+	zbootMutex.Unlock()
 	if _, err := ddCmd.Output(); err != nil {
-		log.Printf("WriteToPartition failed %s\n", err)
-		setOtherPartitionStateUnused()
+		errStr := fmt.Sprintf("WriteToPartition %s failed %v\n", partName, err)
+		log.Fatal(errStr)
 		return err
 	}
-
 	return nil
-}
-
-func partitionInit() {
-	if !isZbootAvailable() {
-		return
-	}
-	curPart := getCurrentPartition()
-	otherPart := getOtherPartition()
-
-	currActiveState := isCurrentPartitionStateActive()
-	otherActiveState := isOtherPartitionStateActive()
-
-	if currActiveState && otherActiveState {
-		log.Printf("Both partitions are Active %s, %s n", curPart, otherPart)
-		log.Printf("Mark other partition %s, unused\n", otherPart)
-		setOtherPartitionStateUnused()
-	}
 }
 
 func markPartitionStateActive() error {
@@ -363,12 +318,19 @@ func markPartitionStateActive() error {
 	curPart := getCurrentPartition()
 	otherPart := getOtherPartition()
 
+	log.Printf("Check current partition %s, for inProgress state\n", curPart)
+	if ret := isCurrentPartitionStateInProgress(); ret == false {
+		errStr := fmt.Sprintf("Current partition %s, is not inProgress",
+			curPart)
+		return errors.New(errStr)
+	}
+
 	log.Printf("Mark the current partition %s, active\n", curPart)
 	setCurrentPartitionStateActive()
 
-	log.Printf("Check other partition %s, active\n", otherPart)
-	if !isOtherPartitionStateActive() {
-		errStr := fmt.Sprintf("Other partition %s, is not active\n",
+	log.Printf("Check other partition %s for active state\n", otherPart)
+	if ret := isOtherPartitionStateActive(); ret == false {
+		errStr := fmt.Sprintf("Other partition %s, is not active",
 			otherPart)
 		return errors.New(errStr)
 	}
@@ -377,6 +339,7 @@ func markPartitionStateActive() error {
 	setOtherPartitionStateUnused()
 	return nil
 }
+
 
 // XXX known pathnames for the version file and the zededa-tools container
 const (
@@ -420,7 +383,9 @@ func getVersion(part string, filename string) string {
 		}
 		defer syscall.Unmount(target, 0)
 
-		version, err := ioutil.ReadFile(filename)
+		fullname := fmt.Sprintf("%s/%s/%s",
+			target, otherPrefix, filename)
+		version, err := ioutil.ReadFile(fullname)
 		if err != nil {
 			log.Fatal(err)
 		}
