@@ -129,6 +129,9 @@ type deviceContext struct {
 
 var debug = false
 
+// XXX temporary hack for writeBaseOsStatus
+var devCtx deviceContext
+
 func main() {
 	log.SetOutput(os.Stdout)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
@@ -172,7 +175,7 @@ func main() {
 	aaChanges, aaFunc, aaCtx := adapters.Init(&aa, model)
 
 	verifierCtx := verifierContext{}
-	devCtx := deviceContext{assignableAdapters: &aa}
+	devCtx = deviceContext{assignableAdapters: &aa}
 	domainCtx := domainContext{}
 
 	// First we process the verifierStatus to avoid downloading
