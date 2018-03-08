@@ -286,7 +286,7 @@ func doBaseOsActivate(uuidStr string, config types.BaseOsConfig,
 	// if partitionState unsed then change status to updating...
 
 	if !isOtherPartition(config.PartitionLabel) ||
-	   !isOtherPartitionStateUnused() {
+		!isOtherPartitionStateUnused() {
 		return changed
 	}
 
@@ -381,7 +381,7 @@ func checkBaseOsStorageDownloadStatus(uuidStr string,
 	status *types.BaseOsStatus) (bool, bool) {
 
 	ret := checkStorageDownloadStatus(baseOsObj, uuidStr,
-			 config.StorageConfigList, status.StorageStatusList)
+		config.StorageConfigList, status.StorageStatusList)
 
 	status.State = ret.MinState
 	status.Error = ret.AllErrors
@@ -499,7 +499,7 @@ func doBaseOsRemove(uuidStr string, config types.BaseOsConfig, status *types.Bas
 }
 
 func doBaseOsInactivate(uuidStr string, config types.BaseOsConfig,
-		 status *types.BaseOsStatus) bool {
+	status *types.BaseOsStatus) bool {
 	log.Printf("doBaseOsInactivate(%s) for %s\n",
 		status.BaseOsVersion, uuidStr)
 

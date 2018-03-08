@@ -6,15 +6,13 @@ package main
 import (
 	"bytes"
 	"crypto/sha256"
-	"crypto/tls"
-	"crypto/x509"
 	"fmt"
 	"github.com/golang/protobuf/proto"
 	"github.com/satori/go.uuid"
 	"github.com/zededa/api/zconfig"
 	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/types"
-	"golang.org/x/crypto/ocsp"
+	"github.com/zededa/go-provision/zedcloud"
 	"io/ioutil"
 	"log"
 	"mime"
@@ -41,9 +39,6 @@ var serverName string
 const (
 	identityDirname = "/config"
 	serverFilename  = identityDirname + "/server"
-	deviceCertName  = identityDirname + "/device.cert.pem"
-	deviceKeyName   = identityDirname + "/device.key.pem"
-	rootCertName    = identityDirname + "/root-certificate.pem"
 	uuidFileName    = identityDirname + "/uuid"
 )
 
@@ -68,7 +63,7 @@ type getconfigContext struct {
 }
 
 // tlsConfig is initialized once i.e. effectively a constant
-var tlsConfig *tls.Config
+var zedcloudCtx zedcloud.ZedCloudContext
 
 // devUUID is set in handleConfigInit and never changed
 var devUUID uuid.UUID
@@ -89,29 +84,15 @@ func handleConfigInit() {
 	strTrim := strings.TrimSpace(string(bytes))
 	serverName = strings.Split(strTrim, ":")[0]
 
-	deviceCert, err := tls.LoadX509KeyPair(deviceCertName, deviceKeyName)
+	tlsConfig, err := zedcloud.GetTlsConfig(serverName, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
-	// Load CA cert
-	caCert, err := ioutil.ReadFile(rootCertName)
-	if err != nil {
-		log.Fatal(err)
-	}
-	caCertPool := x509.NewCertPool()
-	caCertPool.AppendCertsFromPEM(caCert)
-
-	tlsConfig = &tls.Config{
-		Certificates: []tls.Certificate{deviceCert},
-		ServerName:   serverName,
-		RootCAs:      caCertPool,
-		CipherSuites: []uint16{
-			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256},
-		// TLS 1.2 because we can
-		MinVersion: tls.VersionTLS12,
-	}
-	tlsConfig.BuildNameToCertificate()
+	zedcloudCtx.DeviceNetworkStatus = &deviceNetworkStatus
+	zedcloudCtx.TlsConfig = tlsConfig
+	zedcloudCtx.Debug = debug
+	zedcloudCtx.FailureFunc = zedCloudFailure
+	zedcloudCtx.SuccessFunc = zedCloudSuccess
 
 	b, err := ioutil.ReadFile(uuidFileName)
 	if err != nil {
@@ -136,7 +117,7 @@ func configTimerTask(handleChannel chan interface{},
 	iteration := 0
 	checkConnectivity := isZbootAvailable() && isCurrentPartitionStateInProgress()
 	rebootFlag := getLatestConfig(configUrl, iteration,
-					 &checkConnectivity, getconfigCtx)
+		&checkConnectivity, getconfigCtx)
 
 	interval := time.Duration(configItemDefaults.configInterval) * time.Second
 	currentConfigInterval = interval
@@ -151,7 +132,7 @@ func configTimerTask(handleChannel chan interface{},
 		// reboot flag is not set, go fetch new config
 		if rebootFlag == false {
 			rebootFlag = getLatestConfig(configUrl, iteration,
-							 &checkConnectivity, getconfigCtx)
+				&checkConnectivity, getconfigCtx)
 		}
 	}
 }
@@ -183,9 +164,10 @@ func updateConfigTimer(tickerHandle interface{}) {
 // Start by trying the all the free uplinks and then all the non-free
 // until one succeeds in communicating with the cloud.
 // We use the iteration argument to start at a different point each time.
-func getLatestConfig(url string, iteration int,
-		 	checkConnectivity *bool, getconfigCtx *getconfigContext) bool {
-	resp, err := sendOnAllIntf(url, nil, iteration)
+// Returns a rebootFlag
+func getLatestConfig(url string, iteration int, checkConnectivity *bool,
+	getconfigCtx *getconfigContext) bool {
+	resp, err := zedcloud.SendOnAllIntf(zedcloudCtx, url, nil, iteration)
 	if err != nil {
 		log.Printf("getLatestConfig failed: %s\n", err)
 		if getconfigCtx.ledManagerCount == 4 {
@@ -303,6 +285,7 @@ func readDeviceConfigProtoMessage(r *http.Response) (bool, *zconfig.EdgeDevConfi
 	return !same, config, nil
 }
 
+// Returns a rebootFlag
 func inhaleDeviceConfig(config *zconfig.EdgeDevConfig) bool {
 	log.Printf("Inhaling config %v\n", config)
 
@@ -431,33 +414,4 @@ func removeBaseOsEntry(baseOsFilename string) {
 
 	// remove Config File
 	os.Remove(zedagentBaseOsConfigDirname + "/" + baseOsFilename)
-}
-
-func stapledCheck(connState *tls.ConnectionState) bool {
-	issuer := connState.VerifiedChains[0][1]
-	resp, err := ocsp.ParseResponse(connState.OCSPResponse, issuer)
-	if err != nil {
-		log.Println("error parsing response: ", err)
-		return false
-	}
-	now := time.Now()
-	age := now.Unix() - resp.ProducedAt.Unix()
-	remain := resp.NextUpdate.Unix() - now.Unix()
-	if debug {
-		log.Printf("OCSP age %d, remain %d\n", age, remain)
-	}
-	if remain < 0 {
-		log.Println("OCSP expired.")
-		return false
-	}
-	if resp.Status == ocsp.Good {
-		if debug {
-			log.Println("Certificate Status Good.")
-		}
-	} else if resp.Status == ocsp.Unknown {
-		log.Println("Certificate Status Unknown")
-	} else {
-		log.Println("Certificate Status Revoked")
-	}
-	return resp.Status == ocsp.Good
 }

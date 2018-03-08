@@ -23,6 +23,8 @@ import (
 )
 
 const (
+	deviceCertName          = identityDirname + "/device.cert.pem"
+	deviceKeyName           = identityDirname + "/device.key.pem"
 	infraFileName           = identityDirname + "/infra"
 	tmpDirname              = "/var/tmp/zededa"
 	zedserverConfigFileName = tmpDirname + "/zedserverconfig"
