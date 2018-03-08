@@ -14,6 +14,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"reflect"
 	"strings"
 	"syscall"
 	"time"
@@ -21,21 +22,40 @@ import (
 
 const (
 	MaxBaseOsCount       = 2
+	BaseOsImageCount     = 1
 	rebootConfigFilename = configDir + "/rebootConfig"
-	partitionMapFilename = configDir + "/partitionMap"
 )
 
-var immediate int = 30 // take a 10 second delay
+var immediate int = 30 // take a 30 second delay
 var rebootTimer *time.Timer
 
-func parseConfig(config *zconfig.EdgeDevConfig) {
+func parseConfig(config *zconfig.EdgeDevConfig) bool {
 
 	log.Println("Applying new config")
-	parseOpCmds(config)
-	if validateConfig(config) == true {
-		parseBaseOsConfig(config)
-		parseAppInstanceConfig(config)
+
+	if parseOpCmds(config) == true {
+		log.Println("Reboot flag set, skipping config processing")
+		return true
 	}
+
+	// updating/rebooting, ignore
+	if	isOtherPartitionStateUpdating() {
+		return true
+	}
+	if validateConfig(config) == true {
+
+		// if no baseOs config write, consider
+		// picking up application image config
+
+		if parseBaseOsConfig(config) == false {
+			parseAppInstanceConfig(config)
+		}
+
+		// XXX:FIXME, otherwise, dont process
+		// app image config, until the current
+		// baseos config processing is complete
+	}
+	return false
 }
 
 func validateConfig(config *zconfig.EdgeDevConfig) bool {
@@ -48,21 +68,22 @@ func validateConfig(config *zconfig.EdgeDevConfig) bool {
 	return true
 }
 
-func parseBaseOsConfig(config *zconfig.EdgeDevConfig) {
-
-	partitionUsed := false
+func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 
 	cfgOsList := config.GetBase()
 	baseOsCount := len(cfgOsList)
-	log.Printf("Applying Base Os config len %d\n", baseOsCount)
+	log.Printf("parseBaseOsConfig() Applying Base Os config len %d\n",
+		baseOsCount)
 
 	if baseOsCount == 0 {
-		return
+		return false
 	}
 
-	baseOsList := make([]types.BaseOsConfig, len(cfgOsList))
+	baseOsList := make([]*types.BaseOsConfig, len(cfgOsList))
+	certList := make([]*types.CertObjConfig, len(cfgOsList))
 
-	for idx, cfgOs := range cfgOsList {
+	idx := 0
+	for _, cfgOs := range cfgOsList {
 
 		baseOs := new(types.BaseOsConfig)
 
@@ -82,7 +103,7 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) {
 			baseOs.OsParams[jdx] = *param
 		}
 
-		var imageCount int
+		imageCount := 0
 		for _, drive := range cfgOs.Drives {
 			if drive.Image != nil {
 				imageId := drive.Image.DsId
@@ -96,78 +117,124 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) {
 			}
 		}
 
-		if imageCount != 0 {
-			baseOs.StorageConfigList = make([]types.StorageConfig, imageCount)
-			if partitionUsed == false {
-				if ret := getPartitionInfo(baseOs, baseOsCount); ret == true {
-					partitionUsed = true
-				}
-			}
-			parseStorageConfigList(config, baseOsObj, baseOs.StorageConfigList,
-				cfgOs.Drives, baseOs.PartitionLabel)
+		if imageCount != BaseOsImageCount {
+			log.Printf("%s, invalid storage config %d\n", baseOs.BaseOsVersion, imageCount)
+			continue
 		}
 
-		baseOsList[idx] = *baseOs
+		baseOs.StorageConfigList = make([]types.StorageConfig, imageCount)
+		parseStorageConfigList(config, baseOsObj,
+			 baseOs.StorageConfigList, cfgOs.Drives)
 
-		getCertObjects(baseOs.UUIDandVersion, baseOs.ConfigSha256,
-			baseOs.StorageConfigList)
+		baseOsList[idx] = baseOs
+		certInstance := getCertObjects(baseOs.UUIDandVersion,
+						baseOs.ConfigSha256, baseOs.StorageConfigList)
+		if certInstance != nil {
+			certList[idx] = certInstance
+		}
+		idx++
 
 		// Dump the config content
 		bytes, err := json.Marshal(baseOs)
 		if err == nil {
 			log.Printf("New/updated BaseOs %d: %s\n", idx, bytes)
 		}
+		// XXX shouldn't the code write what it just marshalled?
 	}
 
-	if validateBaseOsConfig(baseOsList) == true {
-		createBaseOsConfig(baseOsList)
+	// first, seep in old partition information
+	log.Printf("Starting Partition Assignment Process\n")
+	assignedPart := true
+	for _, baseOs := range baseOsList {
+		if baseOs == nil {
+			continue
+		}
+		getOldPartitionInfo(baseOs)
+		if baseOs.PartitionLabel == "" {
+			assignedPart = false
+			continue
+		}
+		log.Printf("%s, assigned with partition %s\n",
+				baseOs.BaseOsVersion, baseOs.PartitionLabel)
+		// XXX shouldn't this already be set?
+		setStoragePartitionLabel(baseOs)
 	}
-}
 
-func getPartitionInfo(baseOs *types.BaseOsConfig, baseOsCount int) bool {
-	log.Printf("getPartitionInfo(%s) count %d\n",
-		baseOs.BaseOsVersion, baseOsCount)
-	ret0 := false
-
-	// get old Partition Label, if any
-	uuidStr := baseOs.UUIDandVersion.UUID.String()
-	baseOs.PartitionLabel = getPersistentPartitionInfo(uuidStr)
-
-	// XXX:FIXME put the finalObjDir value,
-	// by calling bootloader API to fetch
-	// the unused partition
-	if baseOs.PartitionLabel == "" {
-		log.Printf("getPartitionInfo(%s) no PartitionLabel\n",
-			baseOs.BaseOsVersion)
-		if isInstallCandidate(uuidStr, baseOs, baseOsCount) {
-
-			uuidStr := baseOs.UUIDandVersion.UUID.String()
-			if isOtherPartitionStateUnused() {
-				log.Printf("getPartitionInfo(%s) unused\n",
-					baseOs.BaseOsVersion)
-				ret0 = true
-				baseOs.PartitionLabel = getOtherPartition()
-				setPersistentPartitionInfo(uuidStr, baseOs)
-			} else if isOtherPartitionStateUpdating() {
-				// XXX Did we get an update before we activated
-				// the previous update?
-				log.Printf("XXX getPartitionInfo(%s) updating\n",
-					baseOs.BaseOsVersion)
-				ret0 = true
-				baseOs.PartitionLabel = getOtherPartition()
-				setPersistentPartitionInfo(uuidStr, baseOs)
-			} else {
-				log.Printf("getPartitionInfo(%s) not unused\n",
-					baseOs.BaseOsVersion)
+	// Do we have some unassigned ones?
+	// first pass, pick up the one, with activate flag set
+	if assignedPart == false {
+		log.Printf("Partition Assignment, First Pass\n")
+		for _, baseOs := range baseOsList {
+			if baseOs == nil ||
+			 	baseOs.PartitionLabel != "" {
+				continue
 			}
-		} else {
-			log.Printf("getPartitionInfo(%s) not candidate\n",
-				baseOs.BaseOsVersion)
+    
+			uuidStr := baseOs.UUIDandVersion.UUID.String()
+			if isInstallCandidate(uuidStr, baseOs, baseOsCount) {
+				if isOtherPartitionStateUnused() {
+					log.Printf("getPartitionInfo(%s) unused\n",
+						baseOs.BaseOsVersion)
+					log.Printf("%s, assigning with partition %s\n",
+							baseOs.BaseOsVersion, getOtherPartition())
+					baseOs.PartitionLabel = getOtherPartition()
+					setStoragePartitionLabel(baseOs)
+					assignedPart = true
+					break
+				}
+			}
 		}
 	}
 
-	log.Printf("%s, Partition info %s\n", uuidStr, baseOs.PartitionLabel)
-	return ret0
+	// second pass, if still unassigned, pick any 
+	if assignedPart == false {
+		log.Printf("Partition Assignment, Second Pass\n")
+		for _, baseOs := range baseOsList {
+			if baseOs == nil ||
+			   baseOs.PartitionLabel != "" {
+				continue
+			}
+			if isOtherPartitionStateUnused() {
+				log.Printf("getPartitionInfo(%s) unused\n",
+					baseOs.BaseOsVersion)
+				log.Printf("%s, assigning with partition %s\n",
+						baseOs.BaseOsVersion, getOtherPartition())
+				baseOs.PartitionLabel = getOtherPartition()
+				setStoragePartitionLabel(baseOs)
+				break
+			}
+		}
+	}
+
+	configCount := 0
+	if validateBaseOsConfig(baseOsList) == true {
+		configCount = createBaseOsConfig(baseOsList, certList)
+	}
+
+	// baseOs config write, is true
+	if configCount > 0 {
+		return true
+	}
+	return false
+}
+
+func getOldPartitionInfo(baseOs *types.BaseOsConfig) {
+
+	// get old Partition Label, if any
+	uuidStr := baseOs.UUIDandVersion.UUID.String()
+	imageSha256 := baseOsGetImageSha(*baseOs)
+	partInfo := getPersistentPartitionInfo(uuidStr, imageSha256)
+	if  partInfo != nil {
+		baseOs.PartitionLabel = partInfo.PartitionLabel
+	}
+}
+
+func setStoragePartitionLabel(baseOs *types.BaseOsConfig) {
+
+	for idx,_ := range baseOs.StorageConfigList {
+		sc := &baseOs.StorageConfigList[idx]
+		sc.FinalObjDir = baseOs.PartitionLabel
+	}
 }
 
 func isInstallCandidate(uuidStr string, baseOs *types.BaseOsConfig,
@@ -187,7 +254,10 @@ func isInstallCandidate(uuidStr string, baseOs *types.BaseOsConfig,
 	if curBaseOsConfig == nil {
 		log.Printf("isInstallCandidate(%s) no current\n",
 			baseOs.BaseOsVersion)
-		return true
+		if baseOsCount == 1 || baseOs.Activate == true {
+			return true
+		}
+		return false
 	}
 
 	// only one baseOs Config
@@ -252,8 +322,8 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig) {
 
 		if imageCount != 0 {
 			appInstance.StorageConfigList = make([]types.StorageConfig, imageCount)
-			parseStorageConfigList(config, appImgObj, appInstance.StorageConfigList,
-				cfgApp.Drives, "")
+			parseStorageConfigList(config, appImgObj,
+				 appInstance.StorageConfigList, cfgApp.Drives)
 		}
 
 		// fill the overlay/underlay config
@@ -271,22 +341,23 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig) {
 		fmt.Printf("Got adapters %v\n", appInstance.IoAdapterList)
 
 		// get the certs for image sha verification
-		getCertObjects(appInstance.UUIDandVersion,
+		certInstance := getCertObjects(appInstance.UUIDandVersion,
 			appInstance.ConfigSha256, appInstance.StorageConfigList)
 
 		if validateAppInstanceConfig(appInstance) == true {
 
 			// write to zedmanager config directory
-			appFilename := cfgApp.Uuidandversion.Uuid
-
-			writeAppInstanceConfig(appInstance, appFilename)
+			uuidStr := cfgApp.Uuidandversion.Uuid
+			writeAppInstanceConfig(appInstance, uuidStr)
+			if certInstance != nil {
+				writeCertObjConfig(certInstance, uuidStr)
+			}
 		}
 	}
 }
 
 func parseStorageConfigList(config *zconfig.EdgeDevConfig, objType string,
-	storageList []types.StorageConfig,
-	drives []*zconfig.Drive, partitionLabel string) {
+	storageList []types.StorageConfig, drives []*zconfig.Drive) {
 
 	var idx int = 0
 
@@ -339,7 +410,6 @@ func parseStorageConfigList(config *zconfig.EdgeDevConfig, objType string,
 			image.CertificateChain[0] = drive.Image.Siginfo.Intercertsurl
 		}
 
-		image.FinalObjDir = partitionLabel
 		storageList[idx] = *image
 		idx++
 	}
@@ -530,23 +600,23 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 }
 
 func writeAppInstanceConfig(appInstance types.AppInstanceConfig,
-	appFilename string) {
+	uuidStr string) {
 
-	log.Printf("Writing app instance UUID %s\n", appFilename)
+	log.Printf("Writing app instance UUID %s\n", uuidStr)
 	bytes, err := json.Marshal(appInstance)
 	if err != nil {
 		log.Fatal(err, "json Marshal AppInstanceConfig")
 	}
-	configFilename := zedmanagerConfigDirname + "/" + appFilename + ".json"
+	configFilename := zedmanagerConfigDirname + "/" + uuidStr + ".json"
 	err = ioutil.WriteFile(configFilename, bytes, 0644)
 	if err != nil {
 		log.Fatal(err)
 	}
 }
 
-func writeBaseOsConfig(baseOsConfig types.BaseOsConfig,
-	configFilename string) {
+func writeBaseOsConfig(baseOsConfig *types.BaseOsConfig, uuidStr string) {
 
+	configFilename := zedagentBaseOsConfigDirname + "/" + uuidStr + ".json"
 	bytes, err := json.Marshal(baseOsConfig)
 
 	if err != nil {
@@ -562,9 +632,9 @@ func writeBaseOsConfig(baseOsConfig types.BaseOsConfig,
 	}
 }
 
-func writeBaseOsStatus(baseOsStatus *types.BaseOsStatus,
-	statusFilename string) {
+func writeBaseOsStatus(baseOsStatus *types.BaseOsStatus, uuidStr string) {
 
+	statusFilename := zedagentBaseOsStatusDirname + "/" + uuidStr + ".json"
 	log.Printf("Writing baseOs status UUID %s\n", statusFilename)
 
 	bytes, err := json.Marshal(baseOsStatus)
@@ -576,10 +646,13 @@ func writeBaseOsStatus(baseOsStatus *types.BaseOsStatus,
 	if err != nil {
 		log.Fatal(err)
 	}
+	// XXX For now we might trigger more often than needed
+	// XXX should check whether the status changed
+	PublishDeviceInfoToZedCloud(baseOsStatusMap, devCtx.assignableAdapters)
 }
 
 func getCertObjects(uuidAndVersion types.UUIDandVersion,
-	sha256 string, drives []types.StorageConfig) {
+	sha256 string, drives []types.StorageConfig) *types.CertObjConfig {
 
 	var cidx int = 0
 
@@ -597,15 +670,12 @@ func getCertObjects(uuidAndVersion types.UUIDandVersion,
 
 	// if no cerificates, return
 	if cidx == 0 {
-		return
+		return nil
 	}
 
 	// using the holder object UUID for
 	// cert config json, and also the config sha
 	var config = &types.CertObjConfig{}
-	var certConfigFilename = uuidAndVersion.UUID.String()
-	var configFilename = fmt.Sprintf("%s/%s.json",
-		zedagentCertObjConfigDirname, certConfigFilename)
 
 	// certs object holder
 	// each storageConfigList entry is a
@@ -630,7 +700,7 @@ func getCertObjects(uuidAndVersion types.UUIDandVersion,
 		}
 	}
 
-	writeCertObjConfig(config, configFilename)
+	return config
 }
 
 func getCertObjConfig(config *types.CertObjConfig,
@@ -657,72 +727,117 @@ func getCertObjConfig(config *types.CertObjConfig,
 	config.StorageConfigList[idx] = *drive
 }
 
-func validateBaseOsConfig(baseOsList []types.BaseOsConfig) bool {
+func validateBaseOsConfig(baseOsList []*types.BaseOsConfig) bool {
 
 	var osCount, activateCount int
 
-	// not more than max base os count(2)
-	if len(baseOsList) > MaxBaseOsCount {
-		log.Printf("baseOs: Image Count %v\n", len(baseOsList))
-		return false
+	//count base os instance activate count
+	for _, baseOs := range baseOsList {
+		if baseOs != nil {
+			osCount++
+			if baseOs.Activate == true {
+				activateCount++
+			}
+		}
 	}
 
-	//count base os instance activate count
-	for _, baseOsInstance := range baseOsList {
-
-		osCount++
-		if baseOsInstance.Activate == true {
-			activateCount++
-		}
+	// not more than max base os count(2)
+	if osCount > MaxBaseOsCount {
+		log.Printf("baseOs: Unsupported Instance Count %d\n", osCount)
+		return false
 	}
 
 	// can not be more than one activate as true
 	if osCount != 0 {
 		if activateCount != 1 {
-			log.Printf("baseOs: Activate Count %v\n", activateCount)
+			log.Printf("baseOs: Unsupported Activate Count %v\n", activateCount)
 			return false
 		}
 	}
 
 	// check if the Sha is same, for different names
-	for idx, baseOsConfig0 := range baseOsList {
+	for idx, baseOs0 := range baseOsList {
+		if baseOs0 == nil {
+			continue
+		}
 
-		for bidx, baseOsConfig1 := range baseOsList {
+		for bidx, baseOs1 := range baseOsList {
+
+			if baseOs1 == nil {
+				continue
+			}
 
 			if idx <= bidx {
 				continue
 			}
 			// compare the drives, for same Sha
-			for _, drive0 := range baseOsConfig0.StorageConfigList {
-				for _, drive1 := range baseOsConfig1.StorageConfigList {
+			for _, drive0 := range baseOs0.StorageConfigList {
+				for _, drive1 := range baseOs1.StorageConfigList {
 					// if sha is same for URLs
 					if drive0.ImageSha256 == drive1.ImageSha256 &&
 						drive0.DownloadURL != drive1.DownloadURL {
 						log.Printf("baseOs: Same Sha %v\n", drive0.ImageSha256)
-						return false
+						// XXX causes silent failure?
+						// Need to report this to the cliud
+						if false {
+							return false
+						}
 					}
 				}
 			}
 		}
 	}
+
 	return true
 }
 
-func createBaseOsConfig(baseOsList []types.BaseOsConfig) {
+func createBaseOsConfig(baseOsList []*types.BaseOsConfig, certList []*types.CertObjConfig) int {
 
-	for _, baseOsInstance := range baseOsList {
+	writeCount := 0
+	for idx, baseOs := range baseOsList {
 
-		baseOsFilename := baseOsInstance.UUIDandVersion.UUID.String()
-		configFilename := zedagentBaseOsConfigDirname + "/" + baseOsFilename + ".json"
-		writeBaseOsConfig(baseOsInstance, configFilename)
+		if baseOs == nil {
+			continue
+		}
+		uuidStr := baseOs.UUIDandVersion.UUID.String()
+		configFilename := zedagentBaseOsConfigDirname + "/" + uuidStr + ".json"
+		// file not present
+		if _, err := os.Stat(configFilename); err != nil {
+			writeBaseOsConfig(baseOs, uuidStr)
+			if certList[idx] != nil {
+				writeCertObjConfig(certList[idx], uuidStr)
+			}
+			writeCount++
+		} else {
+			curBaseOs := &types.BaseOsConfig{}
+			bytes, err := ioutil.ReadFile(configFilename)
+			if err != nil {
+				log.Fatal(err)
+			}
+			err = json.Unmarshal(bytes, curBaseOs)
+			if err != nil {
+				log.Fatal(err)
+			}
+			// changed file
+			if !reflect.DeepEqual(curBaseOs, baseOs) {
+				writeBaseOsConfig(baseOs, uuidStr)
+				if certList[idx] != nil {
+					writeCertObjConfig(certList[idx], uuidStr)
+				}
+				writeCount++
+			}
+		}
 	}
+	return writeCount
 }
 
 func validateAppInstanceConfig(appInstance types.AppInstanceConfig) bool {
 	return true
 }
 
-func writeCertObjConfig(config *types.CertObjConfig, configFilename string) {
+func writeCertObjConfig(config *types.CertObjConfig, uuidStr string) {
+
+	configFilename := zedagentCertObjConfigDirname + "/" + uuidStr + ".json"
 
 	bytes, err := json.Marshal(config)
 	if err != nil {
@@ -737,14 +852,14 @@ func writeCertObjConfig(config *types.CertObjConfig, configFilename string) {
 	}
 }
 
-func parseOpCmds(config *zconfig.EdgeDevConfig) {
+func parseOpCmds(config *zconfig.EdgeDevConfig) bool {
 
-	scheduleReboot(config.GetReboot())
 	scheduleBackup(config.GetBackup())
+	return scheduleReboot(config.GetReboot())
 }
 
-func scheduleReboot(reboot *zconfig.DeviceOpsCmd) {
-	log.Printf("scheduleReboot(%v)\n", reboot)
+func scheduleReboot(reboot *zconfig.DeviceOpsCmd) bool {
+
 	if reboot == nil {
 		log.Printf("scheduleReboot - removing %s\n",
 			rebootConfigFilename)
@@ -754,7 +869,7 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd) {
 		}
 		// remove the existing file
 		os.Remove(rebootConfigFilename)
-		return
+		return false
 	}
 
 	if _, err := os.Stat(rebootConfigFilename); err != nil {
@@ -810,7 +925,9 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd) {
 		log.Printf("Scheduling for reboot %d %d\n", rebootConfig.Counter, reboot.Counter)
 
 		go handleReboot()
+		return true
 	}
+	return false
 }
 
 func scheduleBackup(backup *zconfig.DeviceOpsCmd) {
