@@ -31,7 +31,7 @@ RUN cmake -DBUILD_STATIC=true . && make
 # second stage (new-ish Docker feature) for smaller image
 FROM alpine:3.6 
 
-RUN apk add --no-cache ppp
+RUN apk add --no-cache ppp jq
 
 ENTRYPOINT []
 WORKDIR /
