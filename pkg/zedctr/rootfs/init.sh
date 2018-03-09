@@ -14,6 +14,8 @@ fi
 # Need to disable H/W TCP offload since it seems to mess us up
 ethtool -K eth0 gro off
 ethtool -K eth1 gro off
+ethtool -K eth0 sg off
+ethtool -K eth1 sg off
 
 # For convenice's sake we're putting SSH inisde of a root container 
 /usr/sbin/sshd
