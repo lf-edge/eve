@@ -120,9 +120,9 @@ func configTimerTask(handleChannel chan interface{},
 	configUrl := serverName + "/" + configApi
 	getconfigCtx.lastReceivedConfigFromCloud = time.Now()
 	iteration := 0
-	checkConnectivity := isZbootAvailable() && isCurrentPartitionStateInProgress()
+	upgradeInprogress := isZbootAvailable() && isCurrentPartitionStateInProgress()
 	rebootFlag := getLatestConfig(configUrl, iteration,
-		&checkConnectivity, getconfigCtx)
+		&upgradeInprogress, getconfigCtx)
 
 	interval := time.Duration(configItemCurrent.configInterval) * time.Second
 	max := float64(interval)
@@ -136,7 +136,7 @@ func configTimerTask(handleChannel chan interface{},
 		// reboot flag is not set, go fetch new config
 		if rebootFlag == false {
 			rebootFlag = getLatestConfig(configUrl, iteration,
-				&checkConnectivity, getconfigCtx)
+				&upgradeInprogress, getconfigCtx)
 		}
 	}
 }
@@ -163,7 +163,7 @@ func updateConfigTimer(tickerHandle interface{}) {
 // until one succeeds in communicating with the cloud.
 // We use the iteration argument to start at a different point each time.
 // Returns a rebootFlag
-func getLatestConfig(url string, iteration int, checkConnectivity *bool,
+func getLatestConfig(url string, iteration int, upgradeInprogress *bool,
 	getconfigCtx *getconfigContext) bool {
 
 	// Did we exceed the time limits?
@@ -176,7 +176,7 @@ func getLatestConfig(url string, iteration int, checkConnectivity *bool,
 		execReboot(true)
 		return true
 	}
-	if *checkConnectivity {
+	if *upgradeInprogress {
 		fallbackLimit := time.Second * time.Duration(configItemCurrent.fallbackIfCloudGoneTime)
 		if timePassed > fallbackLimit {
 			log.Printf("Exceeded fallback outage for cloud connectivity by %d seconds- rebooting\n",
@@ -202,14 +202,14 @@ func getLatestConfig(url string, iteration int, checkConnectivity *bool,
 		// active if it was inprogress
 		// XXX down the road we want more diagnostics and validation
 		// before we do this.
-		if *checkConnectivity && isCurrentPartitionStateInProgress() {
+		if *upgradeInprogress && isCurrentPartitionStateInProgress() {
 			curPart := getCurrentPartition()
 			log.Printf("Config Fetch Task, curPart %s inprogress\n",
 				curPart)
 			if err := markPartitionStateActive(); err != nil {
 				log.Println(err)
 			} else {
-				*checkConnectivity = false
+				*upgradeInprogress = false
 			}
 		}
 
