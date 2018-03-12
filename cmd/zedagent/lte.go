@@ -11,7 +11,6 @@ import (
 	"github.com/zededa/go-provision/types"
 	"io/ioutil"
 	"log"
-	"strconv"
 )
 
 const (
@@ -46,9 +45,8 @@ func readLTE(filename string) []types.MetricItem {
 	for k, v := range m {
 		info := types.MetricItem{Key: k, Value: parseAny(v)}
 
-		// XXX remove
-		// fmt.Printf("Got %s %v type %T\n", k, info.Value, info.Value)
 		// XXX Set Type to what? Guess based on type?
+		// Need to have providers include the type explicitly.
 		switch t := info.Value.(type) {
 		case uint64:
 			info.Type = types.MetricItemCounter
@@ -102,38 +100,9 @@ func parseAny(val interface{}) interface{} {
 		}
 	case string:
 		v := val.(string)
-		// XXX don't seem to need to parse these from
-		// inside quotes
-		if false {
-			b, err := strconv.ParseBool(v)
-			if err == nil {
-				return b
-			}
-			u, err := strconv.ParseUint(v, 10, 32)
-			if err == nil {
-				return uint32(u)
-			}
-			u, err = strconv.ParseUint(v, 10, 64)
-			if err == nil {
-				return u
-			}
-			f, err := strconv.ParseFloat(v, 32)
-			if err == nil {
-				return float32(f)
-			}
-		}
-		// Must be string
 		return v
 	default:
 		log.Printf("parseAny unknown %T\n", t)
 		return fmt.Sprintf("unknown type %T", t)
 	}
-}
-
-// XXX remove
-func XXXmain() {
-	res := readLTEInfo()
-	fmt.Printf("Info %v\n", res)
-	res = readLTEMetrics()
-	fmt.Printf("Metrics %v\n", res)
 }
