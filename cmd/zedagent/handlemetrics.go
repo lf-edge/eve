@@ -46,16 +46,13 @@ func publishMetrics(iteration int) {
 }
 
 // Run a periodic post of the metrics
-// XXX have caller check for unchanged value?
-var currentMetricsInterval time.Duration
 
 func metricsTimerTask(handleChannel chan interface{}) {
 	iteration := 0
 	log.Println("starting report metrics timer task")
 	publishMetrics(iteration)
 
-	interval := time.Duration(configItemDefaults.metricInterval) * time.Second
-	currentMetricsInterval = interval
+	interval := time.Duration(configItemCurrent.metricInterval) * time.Second
 	max := float64(interval)
 	min := max * 0.3
 	ticker := flextimer.NewRangeTicker(time.Duration(min), time.Duration(max))
@@ -67,23 +64,17 @@ func metricsTimerTask(handleChannel chan interface{}) {
 	}
 }
 
-// Called when configItemDefaults changes
+// Called when configItemCurrent changes
+// Assumes the caller has verifier that the interval has changed
 func updateMetricsTimer(tickerHandle interface{}) {
-	interval := time.Duration(configItemDefaults.metricInterval) * time.Second
-	if interval == currentMetricsInterval {
-		return
-	}
-	log.Printf("updateMetricsTimer() change from %v to %v\n",
-		currentMetricsInterval, interval)
+	interval := time.Duration(configItemCurrent.metricInterval) * time.Second
+	log.Printf("updateMetricsTimer() change to %v\n", interval)
 	max := float64(interval)
 	min := max * 0.3
 	flextimer.UpdateRangeTicker(tickerHandle,
 		time.Duration(min), time.Duration(max))
-	if interval < currentMetricsInterval {
-		// Force an immediate timout on decrease
-		flextimer.TickNow(tickerHandle)
-	}
-	currentMetricsInterval = interval
+	// Force an immediate timout since timer could have decreased
+	flextimer.TickNow(tickerHandle)
 }
 
 func ExecuteXlInfoCmd() map[string]string {

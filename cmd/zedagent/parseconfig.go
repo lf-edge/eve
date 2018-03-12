@@ -30,7 +30,7 @@ var immediate int = 30 // take a 30 second delay
 var rebootTimer *time.Timer
 
 // Returns a rebootFlag
-func parseConfig(config *zconfig.EdgeDevConfig) bool {
+func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext) bool {
 
 	log.Println("Applying new config")
 
@@ -40,12 +40,12 @@ func parseConfig(config *zconfig.EdgeDevConfig) bool {
 	}
 
 	// updating/rebooting, ignore
-	if isOtherPartitionStateUpdating() {
+	if isZbootAvailable() && isOtherPartitionStateUpdating() {
 		return true
 	}
 
 	// If the other partition is inprogress it means update failed
-	if isOtherPartitionStateInProgress() {
+	if isZbootAvailable() && isOtherPartitionStateInProgress() {
 		otherPart := getOtherPartition()
 		log.Printf("Other %s partition contains failed upgrade\n",
 			otherPart)
@@ -54,19 +54,23 @@ func parseConfig(config *zconfig.EdgeDevConfig) bool {
 		setOtherPartitionStateUnused()
 	}
 
-	if validateConfig(config) == true {
-
-		// if no baseOs config write, consider
-		// picking up application image config
-
-		if parseBaseOsConfig(config) == false {
-			parseAppInstanceConfig(config)
-		}
-
-		// XXX:FIXME, otherwise, dont process
-		// app image config, until the current
-		// baseos config processing is complete
+	if !validateConfig(config) {
+		return false
 	}
+
+	// Look for timers and other settings in configItems
+	parseConfigItems(config, getconfigCtx)
+
+	// if no baseOs config write, consider
+	// picking up application image config
+
+	if parseBaseOsConfig(config) == false {
+		parseAppInstanceConfig(config)
+	}
+
+	// XXX:FIXME, otherwise, dont process
+	// app image config, until the current
+	// baseos config processing is complete
 	return false
 }
 
@@ -617,6 +621,75 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 				appInstance.OverlayNetworkList[olIdx] = *olCfg
 				olIdx++
 			}
+		}
+	}
+}
+
+func parseConfigItems(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext) {
+	log.Printf("parseConfigItems\n")
+
+	items := config.GetConfigItems()
+
+	for _, item := range items {
+		log.Printf("New/updated configItem %v\n", item)
+		log.Printf("New/updated configItem key %s\n", item.Key)
+		// XXX how to parse oneOf? u32 := item.Uint32Value
+		newU32 := uint32(0)
+		switch item.Key {
+		case "configInterval":
+			if newU32 == 0 {
+				// Revert to default
+				newU32 = configItemDefaults.configInterval
+			}
+			if newU32 != configItemCurrent.configInterval {
+				log.Printf("parseConfigItems: %s change from %d to %d\n",
+					item.Key,
+					configItemCurrent.configInterval,
+					newU32)
+				configItemCurrent.configInterval = newU32
+				updateConfigTimer(getconfigCtx.configTickerHandle)
+			}
+		case "metricInterval":
+			if newU32 == 0 {
+				// Revert to default
+				newU32 = configItemDefaults.metricInterval
+			}
+			if newU32 != configItemCurrent.metricInterval {
+				log.Printf("parseConfigItems: %s change from %d to %d\n",
+					item.Key,
+					configItemCurrent.metricInterval,
+					newU32)
+				configItemCurrent.metricInterval = newU32
+				updateMetricsTimer(getconfigCtx.metricsTickerHandle)
+			}
+		case "resetIfCloudGoneTime":
+			if newU32 == 0 {
+				// Revert to default
+				newU32 = configItemDefaults.resetIfCloudGoneTime
+			}
+			if newU32 != configItemCurrent.resetIfCloudGoneTime {
+				log.Printf("parseConfigItems: %s change from %d to %d\n",
+					item.Key,
+					configItemCurrent.resetIfCloudGoneTime,
+					newU32)
+				configItemCurrent.resetIfCloudGoneTime = newU32
+			}
+		case "fallbackIfCloudGoneTime":
+			if newU32 == 0 {
+				// Revert to default
+				newU32 = configItemDefaults.fallbackIfCloudGoneTime
+			}
+			if newU32 != configItemCurrent.fallbackIfCloudGoneTime {
+				log.Printf("parseConfigItems: %s change from %d to %d\n",
+					item.Key,
+					configItemCurrent.fallbackIfCloudGoneTime,
+					newU32)
+				configItemCurrent.fallbackIfCloudGoneTime = newU32
+			}
+		// XXX what other ones?
+		default:
+			log.Printf("Unknown configItem %s\n", item.Key)
+			// XXX send back error? Need device error for that
 		}
 	}
 }

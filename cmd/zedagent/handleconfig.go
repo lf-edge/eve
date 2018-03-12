@@ -49,21 +49,23 @@ type configItems struct {
 	metricInterval          uint32
 	resetIfCloudGoneTime    uint32
 	fallbackIfCloudGoneTime uint32
-	// XXX max space for downloads?
-	// XXX LTE uplink usage policy?
+	// XXX add max space for downloads?
+	// XXX add LTE uplink usage policy?
 }
 
-// XXX add code which sets timers from ConfigItems from cloud
-// XXX below we have shorter values for tesing; 5 minutes and 1 minute.
+// Really a constant
 // XXX revert to 7 days and 10 minutes
 var configItemDefaults = configItems{configInterval: 10, metricInterval: 60,
 	resetIfCloudGoneTime: 300, fallbackIfCloudGoneTime: 60}
 //	resetIfCloudGoneTime: 168 * 3600, fallbackIfCloudGoneTime: 600}
 
+var configItemCurrent = configItemDefaults
+
 type getconfigContext struct {
-	ledManagerCount int // Current count
+	ledManagerCount             int // Current count
 	lastReceivedConfigFromCloud time.Time
-	// XXX add timer handles?
+	configTickerHandle          interface{}
+	metricsTickerHandle         interface{}
 }
 
 // tlsConfig is initialized once i.e. effectively a constant
@@ -112,8 +114,6 @@ func handleConfigInit() {
 }
 
 // Run a periodic fetch of the config
-// XXX have caller check for unchanged value?
-var currentConfigInterval time.Duration
 
 func configTimerTask(handleChannel chan interface{},
 	getconfigCtx *getconfigContext) {
@@ -124,8 +124,7 @@ func configTimerTask(handleChannel chan interface{},
 	rebootFlag := getLatestConfig(configUrl, iteration,
 		&checkConnectivity, getconfigCtx)
 
-	interval := time.Duration(configItemDefaults.configInterval) * time.Second
-	currentConfigInterval = interval
+	interval := time.Duration(configItemCurrent.configInterval) * time.Second
 	max := float64(interval)
 	min := max * 0.3
 	ticker := flextimer.NewRangeTicker(time.Duration(min),
@@ -147,23 +146,17 @@ func triggerGetConfig(tickerHandle interface{}) {
 	flextimer.TickNow(tickerHandle)
 }
 
-// Called when configItemDefaults changes
+// Called when configItemCurrent changes
+// Assumes the caller has verifier that the interval has changed
 func updateConfigTimer(tickerHandle interface{}) {
-	interval := time.Duration(configItemDefaults.configInterval) * time.Second
-	if interval == currentConfigInterval {
-		return
-	}
-	log.Printf("updateConfigTimer() change from %v to %v\n",
-		currentConfigInterval, interval)
+	interval := time.Duration(configItemCurrent.configInterval) * time.Second
+	log.Printf("updateConfigTimer() change to %v\n", interval)
 	max := float64(interval)
 	min := max * 0.3
 	flextimer.UpdateRangeTicker(tickerHandle,
 		time.Duration(min), time.Duration(max))
-	if interval < currentConfigInterval {
-		// Force an immediate timout on decrease
-		flextimer.TickNow(tickerHandle)
-	}
-	currentConfigInterval = interval
+	// Force an immediate timout since timer could have decreased
+	flextimer.TickNow(tickerHandle)
 }
 
 // Start by trying the all the free uplinks and then all the non-free
@@ -176,18 +169,18 @@ func getLatestConfig(url string, iteration int, checkConnectivity *bool,
 	// Did we exceed the time limits?
 	timePassed := time.Since(getconfigCtx.lastReceivedConfigFromCloud)
 
-	resetLimit := time.Second * time.Duration(configItemDefaults.resetIfCloudGoneTime)
+	resetLimit := time.Second * time.Duration(configItemCurrent.resetIfCloudGoneTime)
 	if timePassed > resetLimit {
 		log.Printf("Exceeded outage for cloud connectivity by %d seconds- rebooting\n",
-			(timePassed - resetLimit) / time.Second)
+			(timePassed-resetLimit)/time.Second)
 		execReboot(true)
 		return true
 	}
 	if *checkConnectivity {
-		fallbackLimit := time.Second * time.Duration(configItemDefaults.fallbackIfCloudGoneTime)
+		fallbackLimit := time.Second * time.Duration(configItemCurrent.fallbackIfCloudGoneTime)
 		if timePassed > fallbackLimit {
 			log.Printf("Exceeded fallback outage for cloud connectivity by %d seconds- rebooting\n",
-				(timePassed - fallbackLimit) / time.Second)
+				(timePassed-fallbackLimit)/time.Second)
 			execReboot(true)
 			return true
 		}
@@ -256,7 +249,7 @@ func getLatestConfig(url string, iteration int, checkConnectivity *bool,
 			}
 			return false
 		}
-		return inhaleDeviceConfig(config)
+		return inhaleDeviceConfig(config, getconfigCtx)
 	}
 }
 
@@ -314,7 +307,7 @@ func readDeviceConfigProtoMessage(r *http.Response) (bool, *zconfig.EdgeDevConfi
 }
 
 // Returns a rebootFlag
-func inhaleDeviceConfig(config *zconfig.EdgeDevConfig) bool {
+func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext) bool {
 	log.Printf("Inhaling config %v\n", config)
 
 	// if they match return
@@ -342,11 +335,11 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig) bool {
 
 		}
 	}
-	handleLookUpParam(config)
+	handleLookupParam(config)
 
-	// add new BaseOS/App instances
-	if rebootSet := parseConfig(config); rebootSet == true {
-		return rebootSet
+	// add new BaseOS/App instances; if we're rebooting then return
+	if parseConfig(config, getconfigCtx) {
+		return true
 	}
 
 	// then, clean up old config entries

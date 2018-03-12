@@ -246,9 +246,9 @@ func main() {
 	configTickerHandle := <-handleChannel
 	go metricsTimerTask(handleChannel)
 	metricsTickerHandle := <-handleChannel
-	// XXX close handleChannel?
-	// XXX pass both handles to config fetch in getConfigContext
-	fmt.Printf("metricsTickerHandle %v\n", metricsTickerHandle)
+	// XXX close handleChannels?
+	getconfigCtx.configTickerHandle = configTickerHandle
+	getconfigCtx.metricsTickerHandle = metricsTickerHandle
 
 	// app instance status event watcher
 	go watch.WatchStatus(zedmanagerStatusDirname, appInstanceStatusChanges)
