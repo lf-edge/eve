@@ -197,16 +197,6 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 					setStoragePartitionLabel(baseOs)
 					assignedPart = true
 					break
-				} else if isOtherPartitionStateInProgress() {
-					// XXX this appears to be needed
-					log.Printf("XXX getPartitionInfo(%s) inprogress\n",
-						baseOs.BaseOsVersion)
-					log.Printf("%s, assigning with partition %s\n",
-						baseOs.BaseOsVersion, getOtherPartition())
-					baseOs.PartitionLabel = getOtherPartition()
-					setStoragePartitionLabel(baseOs)
-					assignedPart = true
-					break
 				}
 			}
 		}
@@ -686,7 +676,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCont
 					newU32)
 				configItemCurrent.fallbackIfCloudGoneTime = newU32
 			}
-		// XXX what other ones?
+		// XXX what other configItems should we add?
 		default:
 			log.Printf("Unknown configItem %s\n", item.Key)
 			// XXX send back error? Need device error for that
