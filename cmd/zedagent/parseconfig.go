@@ -619,12 +619,19 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCont
 	log.Printf("parseConfigItems\n")
 
 	items := config.GetConfigItems()
-
 	for _, item := range items {
-		log.Printf("New/updated configItem %v\n", item)
-		log.Printf("New/updated configItem key %s\n", item.Key)
-		// XXX how to parse oneOf? u32 := item.Uint32Value
-		newU32 := uint32(0)
+		log.Printf("parseConfigItems key %s\n", item.Key)
+
+		var newU32 uint32
+		switch u := item.ConfigItemValue.(type) {
+		case *zconfig.ConfigItem_Uint32Value:
+			newU32 = u.Uint32Value
+		// XXX handle more types
+		// Currently we only have configItems with a uint32Value
+		default:
+			log.Printf("parseConfigItems: currently only supporting uint32\n")
+			continue
+		}
 		switch item.Key {
 		case "configInterval":
 			if newU32 == 0 {
