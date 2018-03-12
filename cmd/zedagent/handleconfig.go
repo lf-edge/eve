@@ -54,11 +54,15 @@ type configItems struct {
 }
 
 // XXX add code which sets timers from ConfigItems from cloud
+// XXX below we have shorter values for tesing; 5 minutes and 1 minute.
+// XXX revert to 7 days and 10 minutes
 var configItemDefaults = configItems{configInterval: 10, metricInterval: 60,
-	resetIfCloudGoneTime: 168 * 3600, fallbackIfCloudGoneTime: 600}
+	resetIfCloudGoneTime: 300, fallbackIfCloudGoneTime: 60}
+//	resetIfCloudGoneTime: 168 * 3600, fallbackIfCloudGoneTime: 600}
 
 type getconfigContext struct {
 	ledManagerCount int // Current count
+	lastReceivedConfigFromCloud time.Time
 	// XXX add timer handles?
 }
 
@@ -114,6 +118,7 @@ var currentConfigInterval time.Duration
 func configTimerTask(handleChannel chan interface{},
 	getconfigCtx *getconfigContext) {
 	configUrl := serverName + "/" + configApi
+	getconfigCtx.lastReceivedConfigFromCloud = time.Now()
 	iteration := 0
 	checkConnectivity := isZbootAvailable() && isCurrentPartitionStateInProgress()
 	rebootFlag := getLatestConfig(configUrl, iteration,
@@ -167,6 +172,27 @@ func updateConfigTimer(tickerHandle interface{}) {
 // Returns a rebootFlag
 func getLatestConfig(url string, iteration int, checkConnectivity *bool,
 	getconfigCtx *getconfigContext) bool {
+
+	// Did we exceed the time limits?
+	timePassed := time.Since(getconfigCtx.lastReceivedConfigFromCloud)
+
+	resetLimit := time.Second * time.Duration(configItemDefaults.resetIfCloudGoneTime)
+	if timePassed > resetLimit {
+		log.Printf("Exceeded outage for cloud connectivity by %d seconds- rebooting\n",
+			(timePassed - resetLimit) / time.Second)
+		execReboot(true)
+		return true
+	}
+	if *checkConnectivity {
+		fallbackLimit := time.Second * time.Duration(configItemDefaults.fallbackIfCloudGoneTime)
+		if timePassed > fallbackLimit {
+			log.Printf("Exceeded fallback outage for cloud connectivity by %d seconds- rebooting\n",
+				(timePassed - fallbackLimit) / time.Second)
+			execReboot(true)
+			return true
+		}
+	}
+
 	resp, err := zedcloud.SendOnAllIntf(zedcloudCtx, url, nil, iteration)
 	if err != nil {
 		log.Printf("getLatestConfig failed: %s\n", err)
@@ -222,6 +248,8 @@ func getLatestConfig(url string, iteration int, checkConnectivity *bool,
 		// Inform ledmanager about config received from cloud
 		types.UpdateLedManagerConfig(4)
 		getconfigCtx.ledManagerCount = 4
+
+		getconfigCtx.lastReceivedConfigFromCloud = time.Now()
 		if !changed {
 			if debug {
 				log.Printf("Configuration from zedcloud is unchanged\n")
