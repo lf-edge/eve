@@ -43,6 +43,17 @@ func parseConfig(config *zconfig.EdgeDevConfig) bool {
 	if isOtherPartitionStateUpdating() {
 		return true
 	}
+
+	// If the other partition is inprogress it means update failed
+	if isOtherPartitionStateInProgress() {
+		otherPart := getOtherPartition()
+		log.Printf("Other %s partition contains failed upgrade\n",
+			otherPart)
+		// XXX make sure its logs are made available
+		log.Printf("Mark other partition %s, unused\n", otherPart)
+		setOtherPartitionStateUnused()
+	}
+
 	if validateConfig(config) == true {
 
 		// if no baseOs config write, consider
