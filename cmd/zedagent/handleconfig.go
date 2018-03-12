@@ -344,14 +344,31 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig) bool {
 	}
 	handleLookUpParam(config)
 
+	// add new BaseOS/App instances
+	if rebootSet := parseConfig(config); rebootSet == true {
+		return rebootSet
+	}
+
+	// then, clean up old config entries
+	duration := time.Duration(immediate)
+	cleanUpTimer := time.NewTimer(time.Second * duration)
+	cleanupOldConfig(config, cleanUpTimer)
+
+	return false
+}
+
+// clean up oldConfig, after newConfig
+// to maintain the refcount for certs
+func cleanupOldConfig(config *zconfig.EdgeDevConfig,
+		 cleanUpTimer *time.Timer) {
+
+	<-cleanUpTimer.C
+
 	// delete old app configs, if any
 	checkCurrentAppFiles(config)
 
 	// delete old base os configs, if any
 	checkCurrentBaseOsFiles(config)
-
-	// add new App instances
-	return parseConfig(config)
 }
 
 func checkCurrentAppFiles(config *zconfig.EdgeDevConfig) {
@@ -422,11 +439,6 @@ func checkCurrentBaseOsFiles(config *zconfig.EdgeDevConfig) {
 			}
 		}
 	}
-
-	// XXX:FIXME, set a sync method, between the old config
-	// clean up and new config sync up
-	// currently, resetPersistentPartitionInfo, cleans up the
-	// partition map table. check if more
 }
 
 func removeBaseOsEntry(baseOsFilename string) {

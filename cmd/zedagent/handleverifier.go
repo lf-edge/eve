@@ -114,13 +114,21 @@ func updateVerifierStatus(objType string, status *types.VerifyImageStatus) {
 func removeVerifierConfig(objType string, safename string) {
 
 	key := formLookupKey(objType, safename)
-	log.Printf("removeVerifierConfig for %s, Done\n", key)
+	log.Printf("%s, verifier config delete \n", key)
 
-	if _, ok := verifierConfigMap[key]; !ok {
-		log.Printf("removeVerifierConfig for %s - not found\n", key)
+	m, ok := verifierConfigMap[key]
+	if !ok {
+		log.Printf("%s, verifier config map - not found\n", key)
 		return
 	}
-	log.Printf("removeVerifierConfig for %s, verifier config map delete\n", key)
+
+	if m.RefCount > 1 {
+		m.RefCount -= 1
+		log.Printf("%s, verifier config map - decrement refCount\n", key)
+		return
+	}
+
+	log.Printf("%s, verifier config map delete\n", key)
 	delete(verifierConfigMap, key)
 
 	configFilename := fmt.Sprintf("%s/%s/config/%s.json",
@@ -130,22 +138,24 @@ func removeVerifierConfig(objType string, safename string) {
 		log.Println(err)
 	}
 
-	log.Printf("removeVerifierConfig for %s, Done\n", key)
+	log.Printf("%s, remove verifier config, Done \n", key)
 }
 
 func removeVerifierStatus(objType string, safename string) {
 
 	key := formLookupKey(objType, safename)
 
+	log.Printf("%s, remove verifier status\n", key)
+
 	if _, ok := verifierStatusMap[key]; !ok {
-		log.Printf("removeVerifierStatus for %s, Verifier Status Map is absent\n", key)
+		log.Printf("%s, verifier status map is absent\n", key)
 		return
 	}
 
-	log.Printf("removeVerifierStatus for %s, verifier status map delete\n", key)
+	log.Printf("%s, verifier status map delete\n", key)
 	delete(verifierStatusMap, key)
 
-	log.Printf("removeVerifierStatus for %s, Done\n", key)
+	log.Printf("%s, verifier status map delete, Done\n", key)
 }
 
 func lookupVerificationStatusSha256Internal(objType string, sha256 string) (*types.VerifyImageStatus, error) {
