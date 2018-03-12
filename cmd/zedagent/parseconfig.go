@@ -182,6 +182,16 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 					setStoragePartitionLabel(baseOs)
 					assignedPart = true
 					break
+				} else if isOtherPartitionStateInProgress() {
+					// XXX this appears to be needed
+					log.Printf("XXX getPartitionInfo(%s) inprogress\n",
+						baseOs.BaseOsVersion)
+					log.Printf("%s, assigning with partition %s\n",
+						baseOs.BaseOsVersion, getOtherPartition())
+					baseOs.PartitionLabel = getOtherPartition()
+					setStoragePartitionLabel(baseOs)
+					assignedPart = true
+					break
 				}
 			}
 		}
