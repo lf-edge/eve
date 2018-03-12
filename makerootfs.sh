@@ -3,6 +3,9 @@
 #
 #     ./makerootfs.sh <image.yml> <fs> <output.img>
 #
+# The following env variables change the behaviour of this script
+#     ZEN_DEFAULT_BOOT - sets the default GRUB menu entry
+
 
 usage() {
     echo "Usage:"
@@ -23,4 +26,4 @@ case $2 in
 esac
 MKROOTFS_TAG="$(linuxkit pkg show-tag pkg/${MKROOTFS_PKG})-amd64"
 
-linuxkit build -o - $1 | docker run -v /dev:/dev --privileged -i ${MKROOTFS_TAG} > $3
+linuxkit build -o - $1 | docker run -e ZEN_DEFAULT_BOOT -v /dev:/dev --privileged -i ${MKROOTFS_TAG} > $3

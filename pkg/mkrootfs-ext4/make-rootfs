@@ -4,6 +4,10 @@
 #
 # Input is a tarball containing the rootfs partition.
 # Output is a raw partition on stdout
+#
+# The following env variables change the behaviour of this script
+#     ZEN_DEFAULT_BOOT - sets the default GRUB menu entry
+#     DEBUG - makes this script verbose
 
 set -e
 [ -n "$DEBUG" ] && set -x
@@ -33,6 +37,7 @@ IMGFILE=/rootfs.img
   cat >> EFI/BOOT/grub.cfg <<EOF
 set timeout=5
 set gfxpayload=text
+set default=${ZEN_DEFAULT_BOOT:-0}
 
 probe --set partuuid -U \$root
 

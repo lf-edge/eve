@@ -1,3 +1,6 @@
+# How large to we want the disk to be in Mb
+MEDIA_SIZE=610
+
 .PHONY: run pkgs help build-tools
 
 all: help
@@ -30,7 +33,7 @@ rootfs.img: images/fallback.yml
 
 fallback.img: rootfs.img
 	./maketestconfig.sh config.img
-	tar c rootfs.img config.img | ./makeflash.sh -C $@
+	tar c rootfs.img config.img | ./makeflash.sh -C ${MEDIA_SIZE} $@
 
 .PHONY: FORCE
 FORCE:
