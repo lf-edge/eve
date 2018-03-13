@@ -7,12 +7,13 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
-	//"github.com/zededa/api/zmet"
+//	"github.com/zededa/api/zmet"
 	"github.com/zededa/go-provision/watch"
 	"io"
 	"log"
 	"os"
 	"strings"
+	//"time"
 )
 
 const (
@@ -20,9 +21,10 @@ const (
 )
 
 var debug bool
+var logContentChan chan string
+var logFileChan chan string
 
 // global stuff
-var loggerReaderMap map[string]*bufio.Reader
 var logFileSizeMap map[string]int64
 
 type logReadHandler func(logFileName string, logContent string)
@@ -45,15 +47,13 @@ func main() {
 	}
 
 	log.Println("Starting log manager...")
+	logContentChan = make(chan string)
+	logFileChan = make(chan string)
+	go sendLogsOnChannel(logContentChan, logFileChan)
 
 	if logFileSizeMap == nil {
 		log.Println("Creating logFileSizeMap map")
 		logFileSizeMap = make(map[string]int64)
-	}
-
-	if loggerReaderMap == nil {
-		log.Println("Creating loggerReader map")
-		loggerReaderMap = make(map[string]*bufio.Reader)
 	}
 
 	logChanges := make(chan string)
@@ -63,7 +63,7 @@ func main() {
 		select {
 		case change := <-logChanges:
 			{
-				//log.Println("change: ", change)
+				log.Println("change: ", change)
 				HandleLogEvent(change, logDirName, handleLogModify, handleLogDelete)
 			}
 		}
@@ -93,32 +93,6 @@ func HandleLogEvent(change string, logDirName string, handleLogModifyFunc logRea
 	logFilePath := logDirName + "/" + fileName
 	go readLogFileLineByLine(logFilePath, logFileName, handleLogModifyFunc)
 
-}
-
-//XXX FIXME we are not using this function....remmove it later
-func openLogFile(logFile string) *bufio.Reader {
-	fileDesc, err := os.Open(logFile)
-
-	if err != nil {
-		log.Fatalf("%v for %s\n", err, logFile)
-	}
-	// Start reading from the file with a reader.
-	reader := bufio.NewReader(fileDesc)
-	if reader == nil {
-		log.Fatalf("%s, reader create failed\n", logFile)
-	}
-
-	loggerReaderMap[logFile] = reader
-	return reader
-}
-
-//XXX FIXME we are not using this function....remmove it later
-func getLoggerReader(logFile string) *bufio.Reader {
-	reader, ok := loggerReaderMap[logFile]
-	if !ok {
-		return openLogFile(logFile)
-	}
-	return reader
 }
 
 func readLogFileLineByLine(logFilePath, fileName string, handleLogModifyFunc logReadHandler) {
@@ -179,9 +153,12 @@ func readLogFileLineByLine(logFilePath, fileName string, handleLogModifyFunc log
 
 func handleLogModify(logFilename string, logContent string) {
 	//if debug {
-	log.Printf("handleLogModify for %s\n", logFilename)
-	log.Println("value of log content: ", logContent)
+	//log.Printf("handleLogModify for %s\n", logFilename)
+	//log.Println("value of log content: ", logContent)
 	//}
+	contentAndFileName := logContent + " -logFileName- " + logFilename
+	logContentChan <- contentAndFileName
+	logFileChan <- logFilename
 }
 
 func handleLogDelete(logFilename string) {
@@ -189,4 +166,21 @@ func handleLogDelete(logFilename string) {
 	log.Printf("handleLogDelete for %s\n", logFilename)
 	//}
 
+}
+func sendLogsOnChannel(logContent chan string, logFileName chan string) {
+	log.Println("protoStrForLogs called...")
+
+	for {
+		select {
+		case content := <-logContentChan:
+			log.Printf("logContentChan %s\n", content)
+		//case filename := <-logFileChan:
+		//log.Println("logFileChann: ", filename)
+
+		default:
+		}
+	}
+}
+func makeAndsendProtoStrForLogsToZedcloud(content string) {
+//	var ReportLogs = &zmet.LogBundle{}
 }
