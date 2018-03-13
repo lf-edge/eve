@@ -45,19 +45,21 @@ const (
 // A value of zero means we should use the default
 // All times are in seconds.
 type configItems struct {
-	configInterval          uint32
-	metricInterval          uint32
-	resetIfCloudGoneTime    uint32
-	fallbackIfCloudGoneTime uint32
+	configInterval          uint32 // Try get of device config
+	metricInterval          uint32 // push metrics to cloud
+	resetIfCloudGoneTime    uint32 // reboot if no cloud connectivity
+	fallbackIfCloudGoneTime uint32 // ... and shorter during upgrade
 	// XXX add max space for downloads?
 	// XXX add LTE uplink usage policy?
 }
 
 // Really a constant
-// XXX revert to 7 days and 10 minutes
+// We do a GET of config every 10 seconds,
+// PUT of metrics every 60 seconds,
+// if we don't hear anything from the cloud in a week, then we reboot,
+// and during a post-upgrade boot that time is reduced to 10 minutes.
 var configItemDefaults = configItems{configInterval: 10, metricInterval: 60,
-	resetIfCloudGoneTime: 300, fallbackIfCloudGoneTime: 60}
-//	resetIfCloudGoneTime: 168 * 3600, fallbackIfCloudGoneTime: 600}
+	resetIfCloudGoneTime: 7 * 24 * 3600, fallbackIfCloudGoneTime: 600}
 
 var configItemCurrent = configItemDefaults
 
@@ -353,7 +355,7 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCo
 // clean up oldConfig, after newConfig
 // to maintain the refcount for certs
 func cleanupOldConfig(config *zconfig.EdgeDevConfig,
-		 cleanUpTimer *time.Timer) {
+	cleanUpTimer *time.Timer) {
 
 	<-cleanUpTimer.C
 
