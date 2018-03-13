@@ -42,6 +42,7 @@ import (
 	"github.com/zededa/go-provision/watch"
 	"log"
 	"os"
+	"time"
 )
 
 // Keeping status in /var/run to be clean after a crash/reboot
@@ -207,6 +208,9 @@ func main() {
 
 	// Context to pass around
 	getconfigCtx := getconfigContext{}
+	upgradeInprogress := isZbootAvailable() && isCurrentPartitionStateInProgress()
+	t1 := time.NewTimer(time.Duration(configItemCurrent.resetIfCloudGoneTime) * time.Second)
+	t2 := time.NewTimer(time.Duration(configItemCurrent.fallbackIfCloudGoneTime) * time.Second)
 
 	log.Printf("Waiting until we have some uplinks with usable addresses\n")
 	waited := false
@@ -216,6 +220,7 @@ func main() {
 			types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus),
 			aaCtx.Found)
 		waited = true
+
 		select {
 		case change := <-networkStatusChanges:
 			watch.HandleStatusEvent(change, &DNSctx,
@@ -225,8 +230,18 @@ func main() {
 				nil)
 		case change := <-aaChanges:
 			aaFunc(&aaCtx, change)
+		case <- t1.C:
+			log.Printf("Exceeded outage for cloud connectivity - rebooting\n")
+			execReboot(true)
+		case <- t2.C:
+			if upgradeInprogress {
+				log.Printf("Exceeded fallback outage for cloud connectivity - rebooting\n")
+				execReboot(true)
+			}
 		}
 	}
+	t1.Stop()
+	t2.Stop()
 	log.Printf("Have %d uplinks addresses to use; aaCtx %v\n",
 		types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus),
 		aaCtx.Found)
