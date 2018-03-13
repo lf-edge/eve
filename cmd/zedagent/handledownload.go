@@ -179,7 +179,7 @@ func removeDownloaderConfig(objType string, safename string) {
 
 		configFilename := fmt.Sprintf("%s/%s/config/%s.json",
 			downloaderBaseDirname, objType, safename)
-    
+
 		if err := os.Remove(configFilename); err != nil {
 			log.Println(err)
 		}
@@ -414,7 +414,7 @@ func installDownloadedObject(objType string, safename string,
 }
 
 func writeDownloaderConfig(objType string, safename string,
-		config *types.DownloaderConfig) {
+	config *types.DownloaderConfig) {
 	if config == nil {
 		return
 	}

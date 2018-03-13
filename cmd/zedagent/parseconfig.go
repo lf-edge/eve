@@ -40,7 +40,7 @@ func parseConfig(config *zconfig.EdgeDevConfig) bool {
 	}
 
 	// updating/rebooting, ignore config
-	if	isOtherPartitionStateUpdating() {
+	if isOtherPartitionStateUpdating() {
 		return true
 	}
 	if validateConfig(config) == true {
@@ -172,7 +172,7 @@ func assignBaseOsPartition(baseOsList []*types.BaseOsConfig) {
 		uuidStr := baseOs.UUIDandVersion.UUID.String()
 		curBaseOsConfig := baseOsConfigGet(uuidStr)
 
-		if curBaseOsConfig  != nil &&
+		if curBaseOsConfig != nil &&
 			curBaseOsConfig.PartitionLabel != "" {
 			baseOs.PartitionLabel = curBaseOsConfig.PartitionLabel
 			setStoragePartitionLabel(baseOs)

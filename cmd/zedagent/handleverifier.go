@@ -45,7 +45,7 @@ func verifierConfigGet(key string) *types.VerifyImageConfig {
 	return nil
 }
 
-func verifierConfigSet(key string, config*types.VerifyImageConfig) {
+func verifierConfigSet(key string, config *types.VerifyImageConfig) {
 	verifierConfigMap[key] = *config
 }
 
@@ -82,7 +82,7 @@ func verifierStatusSet(key string, status *types.VerifyImageStatus) {
 func verifierStatusDelete(key string) {
 	log.Printf("%s, verifier status entry delete\n", key)
 	if status := verifierStatusGet(key); status != nil {
-		delete(verifierStatusMap,key)
+		delete(verifierStatusMap, key)
 	}
 }
 
@@ -165,10 +165,10 @@ func removeVerifierConfig(objType string, safename string) {
 	key := formLookupKey(objType, safename)
 	log.Printf("%s, verifier config delete \n", key)
 
-	if ok :=  verifierConfigDelete(key); ok {
+	if ok := verifierConfigDelete(key); ok {
 		configFilename := fmt.Sprintf("%s/%s/config/%s.json",
 			verifierBaseDirname, objType, safename)
-    
+
 		if err := os.Remove(configFilename); err != nil {
 			log.Println(err)
 		}
@@ -293,7 +293,7 @@ func checkStorageVerifierStatus(objType string, uuidStr string,
 }
 
 func writeVerifierConfig(objType string, safename string,
-		 	config *types.VerifyImageConfig) {
+	config *types.VerifyImageConfig) {
 	if config == nil {
 		return
 	}

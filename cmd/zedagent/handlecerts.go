@@ -305,7 +305,7 @@ func doCertObjRemove(uuidStr string, status *types.CertObjStatus) (bool, bool) {
 
 func doCertObjUninstall(uuidStr string, status *types.CertObjStatus) (bool, bool) {
 
-	var del, changed , removedAll bool
+	var del, changed, removedAll bool
 
 	removedAll = true
 	log.Printf("%s, doCertObjUninstall\n", uuidStr)

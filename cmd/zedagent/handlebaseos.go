@@ -353,7 +353,7 @@ func doBaseOsInstall(uuidStr string, config types.BaseOsConfig,
 
 	// install the image at proper partition
 	if ret := installDownloadedObjects(baseOsObj, uuidStr,
-			 config.StorageConfigList, status.StorageStatusList); ret == true {
+		config.StorageConfigList, status.StorageStatusList); ret == true {
 
 		changed = true
 		//match the version string
@@ -370,7 +370,7 @@ func doBaseOsInstall(uuidStr string, config types.BaseOsConfig,
 
 	writeBaseOsStatus(status, uuidStr)
 	log.Printf("doBaseOsInstall(%s), Done %v\n",
-		 config.BaseOsVersion, proceed)
+		config.BaseOsVersion, proceed)
 	return changed, proceed
 }
 
@@ -472,7 +472,7 @@ func removeBaseOsStatus(uuidStr string) {
 }
 
 func doBaseOsRemove(uuidStr string, config types.BaseOsConfig,
-			status *types.BaseOsStatus) (bool, bool) {
+	status *types.BaseOsStatus) (bool, bool) {
 
 	log.Printf("doBaseOsRemove(%s) for %s\n", status.BaseOsVersion, uuidStr)
 
@@ -489,7 +489,7 @@ func doBaseOsRemove(uuidStr string, config types.BaseOsConfig,
 }
 
 func doBaseOsInactivate(uuidStr string, config types.BaseOsConfig,
-		 status *types.BaseOsStatus) bool {
+	status *types.BaseOsStatus) bool {
 	log.Printf("doBaseOsInactivate(%s) %v\n",
 		status.BaseOsVersion, status.Activated)
 
@@ -592,19 +592,19 @@ func installBaseOsObject(srcFilename string, dstFilename string) error {
 	return err
 }
 
-// validate whether the image version matches with 
-// config version string 
+// validate whether the image version matches with
+// config version string
 func checkInstalledVersion(config types.BaseOsConfig) string {
 
 	log.Printf("check baseOs installation %s, %s, installation\n",
-				config.PartitionLabel, config.BaseOsVersion)
+		config.PartitionLabel, config.BaseOsVersion)
 
 	partVersion := GetShortVersion(config.PartitionLabel)
 	if config.BaseOsVersion == partVersion {
 		return ""
 	}
 	errStr := fmt.Sprintf("baseOs %s, %s, does not match installed %s",
-						config.PartitionLabel, config.BaseOsVersion, partVersion)
+		config.PartitionLabel, config.BaseOsVersion, partVersion)
 
 	log.Println(errStr)
 	return errStr
