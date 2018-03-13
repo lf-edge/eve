@@ -23,6 +23,8 @@ var debug bool
 
 // global stuff
 var loggerReaderMap map[string]*bufio.Reader
+var logFileSizeMap map[string]int64
+
 type logReadHandler func(logFileName string, logContent string)
 type logDeleteHandler func(logFileName string)
 
@@ -43,6 +45,11 @@ func main() {
 	}
 
 	log.Println("Starting log manager...")
+
+	if logFileSizeMap == nil {
+		log.Println("Creating logFileSizeMap map")
+		logFileSizeMap = make(map[string]int64)
+	}
 
 	if loggerReaderMap == nil {
 		log.Println("Creating loggerReader map")
@@ -87,7 +94,8 @@ func HandleLogEvent(change string, logDirName string, handleLogModifyFunc logRea
 	go readLogFileLineByLine(logFilePath, logFileName, handleLogModifyFunc)
 
 }
-//XXX FIXME reader
+
+//XXX FIXME we are not using this function....remmove it later
 func openLogFile(logFile string) *bufio.Reader {
 	fileDesc, err := os.Open(logFile)
 
@@ -104,6 +112,7 @@ func openLogFile(logFile string) *bufio.Reader {
 	return reader
 }
 
+//XXX FIXME we are not using this function....remmove it later
 func getLoggerReader(logFile string) *bufio.Reader {
 	reader, ok := loggerReaderMap[logFile]
 	if !ok {
@@ -112,19 +121,43 @@ func getLoggerReader(logFile string) *bufio.Reader {
 	return reader
 }
 
-//XXX FIXME reader.ReadString('\n') is not able to read any new changes
-//made in the log files.
-//we are checking that if we have an existing reader for any file(means we already 
-//have opened the file) and if the file is opened then we are not opening it again
-//for new change......this part is creating issue.
-func readLogFileLineByLine(logFilePath,fileName string, handleLogModifyFunc logReadHandler) {
+func readLogFileLineByLine(logFilePath, fileName string, handleLogModifyFunc logReadHandler) {
 
 	logFile := logFilePath
+	fileDesc, err := os.Open(logFile)
 
-	reader := getLoggerReader(logFile)
+	if err != nil {
+		log.Fatalf("%v for %s\n", err, logFile)
+	}
+
+	fileSize, err := fileDesc.Stat()
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	fmt.Println("size of file: ", fileSize.Size())
+	//logFileSizeMap[logFile] = fileSize.Size()
+
+	if logFileSizeMap != nil {
+		for fileName, fileSize := range logFileSizeMap {
+			if fileName == logFile {
+				_, err := fileDesc.Seek(fileSize, 0)
+				if err != nil {
+					log.Println(err)
+				}
+			}
+		}
+	}
+	// Start reading from the file with a reader.
+	reader := bufio.NewReader(fileDesc)
+	if reader == nil {
+		log.Fatalf("%s, reader create failed\n", logFile)
+	}
+
+	/*reader := getLoggerReader(logFile)
 	if reader == nil {
 		log.Fatalf("%s, log File open failed\n", logFile)
-	}
+	}*/
 
 	for {
 		line, err := reader.ReadString('\n')
@@ -140,18 +173,19 @@ func readLogFileLineByLine(logFilePath,fileName string, handleLogModifyFunc logR
 		}
 		handleLogModifyFunc(fileName, line)
 	}
+	logFileSizeMap[logFile] = fileSize.Size()
 }
 
 func handleLogModify(logFilename string, logContent string) {
 	//if debug {
-		log.Printf("handleLogModify for %s\n", logFilename)
-		log.Println("value of log content: ", logContent)
+	log.Printf("handleLogModify for %s\n", logFilename)
+	log.Println("value of log content: ", logContent)
 	//}
 }
 
 func handleLogDelete(logFilename string) {
 	//if debug {
-		log.Printf("handleLogDelete for %s\n", logFilename)
+	log.Printf("handleLogDelete for %s\n", logFilename)
 	//}
 
 }
