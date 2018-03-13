@@ -37,11 +37,11 @@ func removeBaseOsDownloaderConfig(safename string) {
 	removeDownloaderConfig(baseOsObj, safename)
 }
 
-func lookupBaseOsDownloaderStatus(safename string) (types.DownloaderStatus, error) {
+func lookupBaseOsDownloaderStatus(safename string) (*types.DownloaderStatus, error) {
 	return lookupDownloaderStatus(baseOsObj, safename)
 }
 
-func lookupCertObjDownloaderStatus(safename string) (types.DownloaderStatus, error) {
+func lookupCertObjDownloaderStatus(safename string) (*types.DownloaderStatus, error) {
 	return lookupDownloaderStatus(certObj, safename)
 }
 
@@ -52,16 +52,16 @@ func removeCertObjDownloaderConfig(safename string) {
 func removeBaseOsVerifierConfig(safename string) {
 	removeVerifierConfig(baseOsObj, safename)
 }
-func lookupBaseOsVerificationStatus(safename string) (types.VerifyImageStatus, error) {
+func lookupBaseOsVerificationStatus(safename string) (*types.VerifyImageStatus, error) {
 	return lookupVerificationStatus(baseOsObj, safename)
 }
 
-func lookupBaseOsVerificationStatusSha256(sha256 string) (types.VerifyImageStatus, error) {
+func lookupBaseOsVerificationStatusSha256(sha256 string) (*types.VerifyImageStatus, error) {
 
 	return lookupVerificationStatusSha256(baseOsObj, sha256)
 }
 
-func lookupBaseOsVerificationStatusAny(safename string, sha256 string) (types.VerifyImageStatus, error) {
+func lookupBaseOsVerificationStatusAny(safename string, sha256 string) (*types.VerifyImageStatus, error) {
 	return lookupVerificationStatusAny(baseOsObj, safename, sha256)
 
 }

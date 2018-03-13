@@ -740,7 +740,7 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 		swInfo.PartitionLabel = partLabel
 		swInfo.PartitionDevice = getPartitionDevname(partLabel)
 		swInfo.PartitionState = getPartitionState(partLabel)
-		swInfo.ShortVersion = GetShortVersion(partLabel)
+		swInfo.ShortVersion = getPartitionShortVersion(partLabel)
 		swInfo.LongVersion = GetLongVersion(partLabel)
 		if bos := getBaseOsStatus(partLabel); bos != nil {
 			swInfo.Status = zmet.ZSwState(bos.State)

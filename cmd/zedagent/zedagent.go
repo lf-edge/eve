@@ -394,7 +394,6 @@ func handleInit() {
 	initializeDirs()
 	initMaps()
 	handleConfigInit()
-	initializePartitionMap()
 }
 
 func initializeDirs() {
@@ -594,8 +593,7 @@ func handleCertObjModify(ctxArg interface{}, statusFilename string,
 	}
 
 	status.UUIDandVersion = config.UUIDandVersion
-
-	writeCertObjStatus(status, statusFilename)
+	writeCertObjStatus(status, uuidStr)
 	addOrUpdateCertObjConfig(uuidStr, *config)
 }
 
