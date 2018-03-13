@@ -61,6 +61,8 @@ type configItems struct {
 var configItemDefaults = configItems{configInterval: 10, metricInterval: 60,
 	resetIfCloudGoneTime: 7 * 24 * 3600, fallbackIfCloudGoneTime: 600}
 
+// XXX	resetIfCloudGoneTime: 300, fallbackIfCloudGoneTime: 60}
+
 var configItemCurrent = configItemDefaults
 
 type getconfigContext struct {
