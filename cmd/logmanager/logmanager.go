@@ -174,6 +174,7 @@ func sendLogsOnChannel(logContent chan string, logFileName chan string) {
 		select {
 		case content := <-logContentChan:
 			log.Printf("logContentChan %s\n", content)
+			makeAndsendProtoStrForLogsToZedcloud(content)
 		//case filename := <-logFileChan:
 		//log.Println("logFileChann: ", filename)
 
