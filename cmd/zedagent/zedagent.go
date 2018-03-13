@@ -209,8 +209,13 @@ func main() {
 	// Context to pass around
 	getconfigCtx := getconfigContext{}
 	upgradeInprogress := isZbootAvailable() && isCurrentPartitionStateInProgress()
-	t1 := time.NewTimer(time.Duration(configItemCurrent.resetIfCloudGoneTime) * time.Second)
-	t2 := time.NewTimer(time.Duration(configItemCurrent.fallbackIfCloudGoneTime) * time.Second)
+	time1 := time.Duration(configItemCurrent.resetIfCloudGoneTime)
+	t1 := time.NewTimer(time1 * time.Second)
+	log.Printf("Started timer for reset for %d seconds\n", time1)
+	time2 := time.Duration(configItemCurrent.fallbackIfCloudGoneTime)
+	log.Printf("Started timer for fallback (%v) reset for %d seconds\n",
+		upgradeInprogress, time2)
+	t2 := time.NewTimer(time2 * time.Second)
 
 	log.Printf("Waiting until we have some uplinks with usable addresses\n")
 	waited := false
@@ -230,10 +235,10 @@ func main() {
 				nil)
 		case change := <-aaChanges:
 			aaFunc(&aaCtx, change)
-		case <- t1.C:
+		case <-t1.C:
 			log.Printf("Exceeded outage for cloud connectivity - rebooting\n")
 			execReboot(true)
-		case <- t2.C:
+		case <-t2.C:
 			if upgradeInprogress {
 				log.Printf("Exceeded fallback outage for cloud connectivity - rebooting\n")
 				execReboot(true)
