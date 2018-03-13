@@ -6,6 +6,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"github.com/eriknordmark/ipinfo"
 	"github.com/golang/protobuf/proto"
@@ -21,6 +22,7 @@ import (
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/netclone"
 	"github.com/zededa/go-provision/types"
+	"github.com/zededa/go-provision/zedcloud"
 	"io/ioutil"
 	"log"
 	"os"
@@ -390,17 +392,7 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 		log.Println(err)
 	} else {
 		// Only report stats for the uplinks plus dbo1x0
-		// Latter will move to a system app when we disaggregate
-		// Build list of uplinks + dbo1x0
-		reportNames := func() []string {
-			var names []string
-			names = append(names, "dbo1x0")
-			for _, uplink := range deviceNetworkStatus.UplinkStatus {
-				names = append(names, uplink.IfName)
-			}
-			return names
-		}
-		ifNames := reportNames()
+		ifNames := reportInterfaces(deviceNetworkStatus)
 		for _, ifName := range ifNames {
 			var ni *psutilnet.IOCountersStat
 			for _, networkInfo := range network {
@@ -608,6 +600,18 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 	SendMetricsProtobuf(ReportMetrics, iteration)
 }
 
+// Return list of interfaces we will report in info and metrics
+// Always include dbo1x0 for now.
+// Latter will move to a system app when we disaggregate
+func reportInterfaces(deviceNetworkStatus types.DeviceNetworkStatus) []string {
+	var names []string
+	names = append(names, "dbo1x0")
+	for _, uplink := range deviceNetworkStatus.UplinkStatus {
+		names = append(names, uplink.IfName)
+	}
+	return names
+}
+
 const mbyte = 1024 * 1024
 
 // This function is called per change, hence needs to try over all uplinks
@@ -765,11 +769,12 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 	}
 
 	// Read interface name from library and match it with uplink name from
-	// global status. Only report the uplinks.
+	// global status. Only report the uplinks plus dbo1x0
 	interfaces, _ := psutilnet.Interfaces()
-	for _, uplink := range deviceNetworkStatus.UplinkStatus {
+	ifNames := reportInterfaces(deviceNetworkStatus)
+	for _, ifname := range ifNames {
 		for _, interfaceDetail := range interfaces {
-			if uplink.IfName == interfaceDetail.Name {
+			if ifname == interfaceDetail.Name {
 				ReportDeviceNetworkInfo := getNetInfo(interfaceDetail)
 				ReportDeviceInfo.Network = append(ReportDeviceInfo.Network,
 					ReportDeviceNetworkInfo)
@@ -1092,7 +1097,8 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 // send report on each uplink.
 // For each uplink we try different source IPs until we find a working one.
 func SendProtobuf(url string, data []byte, iteration int) error {
-	resp, err := sendOnAllIntf(url, data, iteration)
+	resp, err := zedcloud.SendOnAllIntf(zedcloudCtx, url,
+		bytes.NewBuffer(data), iteration)
 	if err != nil {
 		return err
 	}
@@ -1111,7 +1117,8 @@ func SendMetricsProtobuf(ReportMetrics *zmet.ZMetricMsg,
 	}
 
 	metricsUrl := serverName + "/" + metricsApi
-	resp, err := sendOnAllIntf(metricsUrl, data, iteration)
+	resp, err := zedcloud.SendOnAllIntf(zedcloudCtx, metricsUrl,
+		bytes.NewBuffer(data), iteration)
 	if err != nil {
 		// Hopefully next timeout will be more successful
 		log.Printf("SendMetricsProtobuf failed: %s\n", err)

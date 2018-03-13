@@ -237,7 +237,7 @@ func checkCertObjStorageDownloadStatus(uuidStr string,
 	config types.CertObjConfig, status *types.CertObjStatus) (bool, bool) {
 
 	ret := checkStorageDownloadStatus(certObj, uuidStr,
-			 config.StorageConfigList, status.StorageStatusList)
+		config.StorageConfigList, status.StorageStatusList)
 
 	status.State = ret.MinState
 	status.Error = ret.AllErrors
@@ -345,7 +345,8 @@ func doCertObjUninstall(uuidStr string, status *types.CertObjStatus) (bool, bool
 }
 
 func writeCertObjStatus(status *types.CertObjStatus, uuidStr string) {
-	statusFilename := zedagentCertObjStatusDirname + "/" +  uuidStr + ".json"
+	statusFilename := zedagentCertObjStatusDirname + "/" + uuidStr + ".json"
+	log.Printf("Writing CertObj Status %s\n", statusFilename)
 	bytes, err := json.Marshal(status)
 	if err != nil {
 		log.Fatal(err, "json Marshal certObjStatus")

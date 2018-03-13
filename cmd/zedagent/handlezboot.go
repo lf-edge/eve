@@ -32,7 +32,7 @@ var gCurPartName, gOtherPartName string
 var gCurPartVersion, gOtherPartVersion string
 
 func zbootInit() {
-	zbootMutex = new(sync.Mutex) 
+	zbootMutex = new(sync.Mutex)
 	if zbootMutex == nil {
 		log.Fatal("Mutex Init")
 	}
@@ -365,7 +365,6 @@ func markPartitionStateActive() error {
 	setOtherPartitionStateUnused()
 	return nil
 }
-
 
 // XXX known pathnames for the version file and the zededa-tools container
 const (

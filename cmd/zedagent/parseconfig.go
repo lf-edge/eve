@@ -29,6 +29,7 @@ const (
 var immediate int = 30 // take a 30 second delay
 var rebootTimer *time.Timer
 
+// Returns a rebootFlag
 func parseConfig(config *zconfig.EdgeDevConfig) bool {
 
 	log.Println("Applying new config")
@@ -124,11 +125,11 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 
 		baseOs.StorageConfigList = make([]types.StorageConfig, imageCount)
 		parseStorageConfigList(config, baseOsObj,
-			 baseOs.StorageConfigList, cfgOs.Drives)
+			baseOs.StorageConfigList, cfgOs.Drives)
 
 		baseOsList[idx] = baseOs
 		certInstance := getCertObjects(baseOs.UUIDandVersion,
-						baseOs.ConfigSha256, baseOs.StorageConfigList)
+			baseOs.ConfigSha256, baseOs.StorageConfigList)
 		if certInstance != nil {
 			certList[idx] = certInstance
 		}
@@ -236,7 +237,7 @@ func assignBaseOsPartition(baseOsList []*types.BaseOsConfig) {
 
 func setStoragePartitionLabel(baseOs *types.BaseOsConfig) {
 
-	for idx,_ := range baseOs.StorageConfigList {
+	for idx, _ := range baseOs.StorageConfigList {
 		sc := &baseOs.StorageConfigList[idx]
 		sc.FinalObjDir = baseOs.PartitionLabel
 	}
@@ -328,7 +329,7 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig) {
 		if imageCount != 0 {
 			appInstance.StorageConfigList = make([]types.StorageConfig, imageCount)
 			parseStorageConfigList(config, appImgObj,
-				 appInstance.StorageConfigList, cfgApp.Drives)
+				appInstance.StorageConfigList, cfgApp.Drives)
 		}
 
 		// fill the overlay/underlay config

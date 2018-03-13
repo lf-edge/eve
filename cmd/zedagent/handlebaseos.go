@@ -104,7 +104,6 @@ func addOrUpdateBaseOsConfig(uuidStr string, config types.BaseOsConfig) {
 		}
 
 		baseOsGetActivationStatus(&status)
-
 		baseOsStatusSet(uuidStr, &status)
 		writeBaseOsStatus(&status, uuidStr)
 	}
@@ -207,13 +206,11 @@ func baseOsHandleStatusUpdate(uuidStr string) {
 
 	config := baseOsConfigGet(uuidStr)
 	if config == nil {
-		log.Printf("baseOsHandleStatusUpdate for %s, Config absent\n", uuidStr)
 		return
 	}
 
 	status := baseOsStatusGet(uuidStr)
 	if status == nil {
-		log.Printf("baseOsHandleStatusUpdate for %s, Status absent\n", uuidStr)
 		return
 	}
 
@@ -279,7 +276,7 @@ func doBaseOsActivate(uuidStr string, config types.BaseOsConfig,
 	// if partitionState unsed then change status to updating...
 
 	if !isOtherPartition(config.PartitionLabel) ||
-	   !isOtherPartitionStateUnused() {
+		!isOtherPartitionStateUnused() {
 		return changed
 	}
 
@@ -382,7 +379,7 @@ func checkBaseOsStorageDownloadStatus(uuidStr string,
 	status *types.BaseOsStatus) (bool, bool) {
 
 	ret := checkStorageDownloadStatus(baseOsObj, uuidStr,
-			 config.StorageConfigList, status.StorageStatusList)
+		config.StorageConfigList, status.StorageStatusList)
 
 	status.State = ret.MinState
 	status.Error = ret.AllErrors
@@ -444,13 +441,11 @@ func removeBaseOsStatus(uuidStr string) {
 
 	config := baseOsConfigGet(uuidStr)
 	if config == nil {
-		log.Printf("removeBaseOsStatus for %s, Config absent\n", uuidStr)
 		return
 	}
 
 	status := baseOsStatusGet(uuidStr)
 	if status == nil {
-		log.Printf("removeBaseOsStatus for %s, Status absent\n", uuidStr)
 		return
 	}
 
@@ -495,7 +490,6 @@ func doBaseOsRemove(uuidStr string, config types.BaseOsConfig,
 
 func doBaseOsInactivate(uuidStr string, config types.BaseOsConfig,
 		 status *types.BaseOsStatus) bool {
-
 	log.Printf("doBaseOsInactivate(%s) %v\n",
 		status.BaseOsVersion, status.Activated)
 
