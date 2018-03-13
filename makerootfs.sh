@@ -4,7 +4,10 @@
 #     ./makerootfs.sh <image.yml> <fs> <output.img>
 #
 # The following env variables change the behaviour of this script
-#     ZEN_DEFAULT_BOOT - sets the default GRUB menu entry
+#     ZEN_DEFAULT_BOOT - sets the default GRUB menu entry. See 
+#                        pkg/mkrootfs*/make-rootfs for details:
+#                          0 is the default
+#                          1 is qemu specific boot arguments
 
 
 usage() {
