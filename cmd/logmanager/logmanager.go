@@ -21,6 +21,11 @@ const (
 
 var debug bool
 
+// global stuff
+var loggerReaderMap map[string]*bufio.Reader
+type logReadHandler func(logFileName string, logContent string)
+type logDeleteHandler func(logFileName string)
+
 // Set from Makefile
 var Version = "No version specified"
 
@@ -36,7 +41,14 @@ func main() {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
+
 	log.Println("Starting log manager...")
+
+	if loggerReaderMap == nil {
+		log.Println("Creating loggerReader map")
+		loggerReaderMap = make(map[string]*bufio.Reader)
+	}
+
 	logChanges := make(chan string)
 	go watch.WatchStatus(logDirName, logChanges)
 	log.Println("called watcher...")
@@ -51,16 +63,10 @@ func main() {
 	}
 }
 
-type logReadHandler func(logFileName string, logContent string)
-type logDeleteHandler func(logFileName string)
-
 func HandleLogEvent(change string, logDirName string, handleLogModifyFunc logReadHandler, handleLogDeleteFunc logDeleteHandler) {
+
 	operation := string(change[0])
 	fileName := string(change[2:])
-	if operation == "R" {
-		log.Printf("Received restart <%s>; ignored\n", fileName)
-		return
-	}
 	if !strings.HasSuffix(fileName, ".log") {
 		log.Printf("Ignoring file <%s> operation %s\n",
 			fileName, operation)
@@ -81,36 +87,61 @@ func HandleLogEvent(change string, logDirName string, handleLogModifyFunc logRea
 	go readLogFileLineByLine(logFilePath, logFileName, handleLogModifyFunc)
 
 }
-
-func readLogFileLineByLine(logFilePath,fileName string, handleLogModifyFunc logReadHandler) {
-
-
-	file, err := os.Open(logFilePath)
+//XXX FIXME reader
+func openLogFile(logFile string) *bufio.Reader {
+	fileDesc, err := os.Open(logFile)
 
 	if err != nil {
-		log.Println(err)
+		log.Fatalf("%v for %s\n", err, logFile)
 	}
 	// Start reading from the file with a reader.
-	reader := bufio.NewReader(file)
+	reader := bufio.NewReader(fileDesc)
+	if reader == nil {
+		log.Fatalf("%s, reader create failed\n", logFile)
+	}
 
-	var line string
+	loggerReaderMap[logFile] = reader
+	return reader
+}
+
+func getLoggerReader(logFile string) *bufio.Reader {
+	reader, ok := loggerReaderMap[logFile]
+	if !ok {
+		return openLogFile(logFile)
+	}
+	return reader
+}
+
+//XXX FIXME reader.ReadString('\n') is not able to read any new changes
+//made in the log files.
+//we are checking that if we have an existing reader for any file(means we already 
+//have opened the file) and if the file is opened then we are not opening it again
+//for new change......this part is creating issue.
+func readLogFileLineByLine(logFilePath,fileName string, handleLogModifyFunc logReadHandler) {
+
+	logFile := logFilePath
+
+	reader := getLoggerReader(logFile)
+	if reader == nil {
+		log.Fatalf("%s, log File open failed\n", logFile)
+	}
+
 	for {
-		line, err = reader.ReadString('\n')
+		line, err := reader.ReadString('\n')
 
 		if err != nil {
 			if debug {
 				log.Println(err)
 			}
+			if err != io.EOF {
+				fmt.Printf(" > Failed!: %v\n", err)
+			}
 			break
 		}
 		handleLogModifyFunc(fileName, line)
 	}
-
-	if err != io.EOF {
-		fmt.Printf(" > Failed!: %v\n", err)
-	}
-
 }
+
 func handleLogModify(logFilename string, logContent string) {
 	//if debug {
 		log.Printf("handleLogModify for %s\n", logFilename)
