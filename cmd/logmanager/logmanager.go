@@ -129,6 +129,7 @@ func readLogFileLineByLine(logFilePath, fileName string, handleLogModifyFunc log
 	if err != nil {
 		log.Fatalf("%v for %s\n", err, logFile)
 	}
+	defer fileDesc.Close()
 
 	fileSize, err := fileDesc.Stat()
 	if err != nil {
