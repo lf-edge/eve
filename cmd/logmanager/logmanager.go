@@ -5,11 +5,17 @@ package main
 
 import (
 	"bufio"
+	//"bytes"
 	"flag"
 	"fmt"
-	//"github.com/zededa/api/zmet"
+	//"github.com/golang/protobuf/proto"
+	"github.com/golang/protobuf/ptypes"
+	google_protobuf "github.com/golang/protobuf/ptypes/timestamp"
+	"github.com/zededa/api/zmet"
 	"github.com/zededa/go-provision/watch"
+	"github.com/zededa/go-provision/zedcloud"
 	"io"
+	"io/ioutil"
 	"log"
 	"os"
 	"strings"
@@ -18,9 +24,15 @@ import (
 
 const (
 	defaultLogdirname = "/var/log"
+	identityDirname   = "/config"
+	serverFilename    = identityDirname + "/server"
 )
 
 var debug bool
+var serverName string
+var logsApi string = "api/v1/edgedevice/logs"
+var zedcloudCtx zedcloud.ZedCloudContext
+var logMaxSize = 10
 
 // global stuff
 type logDirModifyHandler func(ctx *loggerContext, logFileName string, source string)
@@ -31,12 +43,13 @@ var Version = "No version specified"
 
 // Based on the proto file
 type logEntry struct {
-	severity  string
-	source    string // basename of filename?
-	image     string // XXX missing in zlog.proto
-	iid       string // XXX e.g. PID - where do we get it from?
-	content   string // One line
-	timestamp time.Time
+	severity string
+	source   string // basename of filename?
+	image    string // XXX missing in zlog.proto
+	iid      string // XXX e.g. PID - where do we get it from?
+	content  string // One line
+	//timestamp time.Time
+	timestamp *google_protobuf.Timestamp
 }
 
 // List of log files we watch
@@ -67,6 +80,7 @@ func main() {
 	}
 	logDirName := *logdirPtr
 	log.Printf("Starting log manager... watching %s\n", logDirName)
+	handleConfigInit()
 
 	loggerChan := make(chan logEntry)
 	ctx := loggerContext{logChan: loggerChan}
@@ -91,26 +105,116 @@ func main() {
 	}
 }
 
-// This runs as a separate go routine sending out data
+//get server name
+func getServerName() string {
+	bytes, err := ioutil.ReadFile(serverFilename)
+	if err != nil {
+		log.Fatal(err)
+	}
+	strTrim := strings.TrimSpace(string(bytes))
+	serverName = strings.Split(strTrim, ":")[0]
+	return serverName
+}
 
+// This runs as a separate go routine sending out data
 func processEvents(logChan <-chan logEntry) {
+
+	reportLogs := new(zmet.LogBundle)
+	flushTimer := time.NewTicker(time.Second * 10)
+	counter := 0
+
 	for {
 		select {
 		case event := <-logChan:
-			HandleLogEvent(event)
+			HandleLogEvent(event, reportLogs, counter)
+			counter++
+
+			if ok := isBufferFlush(reportLogs, iteration,
+				counter, false); ok {
+				counter = 0
+				iteration += 1
+			}
+
+		case <-flushTimer.C:
+			log.Println("Logger Flush at", reportLogs.Timestamp)
+			//data, _ := proto.Marshal(reportLogs)
+			//log.Println("reportLogs: ",data)
+			if ok := isBufferFlush(reportLogs, iteration,
+				counter, true); ok {
+				counter = 0
+				iteration += 1
+			}
 		}
 	}
 }
 
-var msgIdCounter = 1
+func isBufferFlush(reportLogs *zmet.LogBundle, iteration int,
+	counter int, flush bool) bool {
+	if counter >= logMaxSize || (flush == true && counter > 0) {
+		sendProtoStrForLogs(reportLogs, iteration)
+		return true
+	}
+	return false
+}
 
-func HandleLogEvent(event logEntry) {
+var msgIdCounter = 1
+var iteration = 0
+
+//func HandleLogEvent(event logEntry) {
+func HandleLogEvent(event logEntry, reportLogs *zmet.LogBundle, counter int) {
 	// Assign a unique msgId for each message
 	msgId := msgIdCounter
 	msgIdCounter += 1
 	// XXX send message over protobuf
 	fmt.Printf("Read event from %s time %v id %d: %s\n",
 		event.source, event.timestamp, msgId, event.content)
+	logDetails := &zmet.LogEntry{}
+	logDetails.Content = event.content
+	logDetails.Timestamp = event.timestamp
+	logDetails.Source = event.source
+	logDetails.Msgid = uint64(msgId)
+	reportLogs.Log = append(reportLogs.Log, logDetails)
+}
+
+func sendProtoStrForLogs(reportLogs *zmet.LogBundle, iteration int) {
+	//func sendProtoStrForLogs(iteration int) {
+	reportLogs.Timestamp = ptypes.TimestampNow()
+	log.Println("sendProtoStrForLogs called...", iteration)
+	log.Println("Log Details: ", reportLogs)
+	/*serverName := getServerName()
+	data, err := proto.Marshal(reportLogs)
+	if err != nil {
+		log.Fatal("SendInfoProtobufStr proto marshaling error: ", err)
+	}
+	buf := bytes.NewBuffer(data)
+	if buf == nil {
+		log.Fatal("SendInfoProtobufStr malloc error:")
+	}
+
+	logsUrl := serverName + "/" + logsApi
+	resp, err := zedcloud.SendOnAllIntf(zedcloudCtx, logsUrl,
+		buf, iteration)
+	if err != nil {
+		// Hopefully next timeout will be more successful
+		log.Printf("SendMetricsProtobuf failed: %s\n", err)
+		return
+	}*/
+	reportLogs.Log = []*zmet.LogEntry{}
+	//resp.Body.Close()
+}
+
+func handleConfigInit() {
+
+	serverName := getServerName()
+	tlsConfig, err := zedcloud.GetTlsConfig(serverName, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	//zedcloudCtx.DeviceNetworkStatus = &deviceNetworkStatus
+	zedcloudCtx.TlsConfig = tlsConfig
+	zedcloudCtx.Debug = debug
+	//zedcloudCtx.FailureFunc = zedCloudFailure
+	//zedcloudCtx.SuccessFunc = zedCloudSuccess
 }
 
 func HandleLogDirEvent(change string, logDirName string, ctx *loggerContext,
