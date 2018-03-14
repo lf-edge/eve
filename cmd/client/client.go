@@ -32,10 +32,14 @@ import (
 )
 
 const (
-	tmpDirname = "/var/tmp/zededa"
-	DNCDirname = "/var/tmp/zededa/DeviceNetworkConfig"
-	maxDelay   = time.Second * 600 // 10 minutes
+	tmpDirname  = "/var/tmp/zededa"
+	DNCDirname  = "/var/tmp/zededa/DeviceNetworkConfig"
+	maxDelay    = time.Second * 600 // 10 minutes
+	uuidMaxWait = time.Second * 60 // 1 minute
 )
+
+// Really a constant
+var nilUUID uuid.UUID
 
 // Set from Makefile
 var Version = "No version specified"
@@ -102,6 +106,16 @@ func main() {
 	zedserverConfigFileName := tmpDirname + "/zedserverconfig"
 	zedrouterConfigFileName := tmpDirname + "/zedrouterconfig.json"
 
+	var oldUUID uuid.UUID
+	b, err := ioutil.ReadFile(uuidFileName)
+	if err == nil {
+		uuidStr := strings.TrimSpace(string(b))
+		oldUUID, err = uuid.FromString(uuidStr)
+		if err != nil {
+			fmt.Printf("UUID file ignored: %s\n", err)
+		}
+	}
+
 	var deviceNetworkStatus types.DeviceNetworkStatus
 
 	model := hardware.GetHardwareModel()
@@ -119,7 +133,17 @@ func main() {
 		}
 		addrCount = types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
 		if addrCount == 0 {
+			// If we already know a uuid we can skip
+			if operations["getUuid"] && oldUUID != nilUUID {
+				fmt.Printf("Already have a UUID %s; declaring success\n",
+					oldUUID.String())
+				return
+			}
 			fmt.Printf("Waiting for some uplink addresses to use\n")
+			delay := time.Second
+			log.Printf("Retrying in %d seconds\n",
+				delay/time.Second)
+			time.Sleep(delay)
 		}
 	}
 	fmt.Printf("Have %d uplinks addresses to use\n", addrCount)
@@ -570,14 +594,8 @@ func main() {
 				log.Printf("Retrying config in %d seconds\n",
 					delay/time.Second)
 			}
-			b, err := ioutil.ReadFile(uuidFileName)
-			if err == nil {
-				uuidStr := strings.TrimSpace(string(b))
-				oldUUID, err := uuid.FromString(uuidStr)
-				if err != nil {
-					fmt.Printf("Got config with UUID %s\n",
-						devUUID)
-				} else if oldUUID != devUUID {
+			if oldUUID != nilUUID {
+				if oldUUID != devUUID {
 					log.Printf("Replacing existing UUID %s\n",
 						oldUUID.String())
 				} else {

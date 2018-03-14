@@ -30,7 +30,7 @@ var immediate int = 30 // take a 30 second delay
 var rebootTimer *time.Timer
 
 // Returns a rebootFlag
-func parseConfig(config *zconfig.EdgeDevConfig) bool {
+func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext) bool {
 
 	log.Println("Applying new config")
 
@@ -40,10 +40,25 @@ func parseConfig(config *zconfig.EdgeDevConfig) bool {
 	}
 
 	// updating/rebooting, ignore config
-	if isOtherPartitionStateUpdating() {
+	if isZbootAvailable() && isOtherPartitionStateUpdating() {
 		return true
 	}
-	if validateConfig(config) == true {
+
+	// If the other partition is inprogress it means update failed
+	if isZbootAvailable() && isOtherPartitionStateInProgress() {
+		otherPart := getOtherPartition()
+		log.Printf("Other %s partition contains failed upgrade\n",
+			otherPart)
+		// XXX make sure its logs are made available
+		// XXX switch to keep it in inprogress until we get
+		// a baseOsConfig with a different baseOsVersion string.
+		log.Printf("Mark other partition %s, unused\n", otherPart)
+		setOtherPartitionStateUnused()
+	}
+
+	if validateConfig(config) {
+		// Look for timers and other settings in configItems
+		parseConfigItems(config, getconfigCtx)
 
 		// if no baseOs config write, consider
 		// picking up application image config
@@ -557,6 +572,82 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 				appInstance.OverlayNetworkList[olIdx] = *olCfg
 				olIdx++
 			}
+		}
+	}
+}
+
+func parseConfigItems(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext) {
+	log.Printf("parseConfigItems\n")
+
+	items := config.GetConfigItems()
+	for _, item := range items {
+		log.Printf("parseConfigItems key %s\n", item.Key)
+
+		var newU32 uint32
+		switch u := item.ConfigItemValue.(type) {
+		case *zconfig.ConfigItem_Uint32Value:
+			newU32 = u.Uint32Value
+		// XXX handle more types
+		// Currently we only have configItems with a uint32Value
+		default:
+			log.Printf("parseConfigItems: currently only supporting uint32\n")
+			continue
+		}
+		switch item.Key {
+		case "configInterval":
+			if newU32 == 0 {
+				// Revert to default
+				newU32 = configItemDefaults.configInterval
+			}
+			if newU32 != configItemCurrent.configInterval {
+				log.Printf("parseConfigItems: %s change from %d to %d\n",
+					item.Key,
+					configItemCurrent.configInterval,
+					newU32)
+				configItemCurrent.configInterval = newU32
+				updateConfigTimer(getconfigCtx.configTickerHandle)
+			}
+		case "metricInterval":
+			if newU32 == 0 {
+				// Revert to default
+				newU32 = configItemDefaults.metricInterval
+			}
+			if newU32 != configItemCurrent.metricInterval {
+				log.Printf("parseConfigItems: %s change from %d to %d\n",
+					item.Key,
+					configItemCurrent.metricInterval,
+					newU32)
+				configItemCurrent.metricInterval = newU32
+				updateMetricsTimer(getconfigCtx.metricsTickerHandle)
+			}
+		case "resetIfCloudGoneTime":
+			if newU32 == 0 {
+				// Revert to default
+				newU32 = configItemDefaults.resetIfCloudGoneTime
+			}
+			if newU32 != configItemCurrent.resetIfCloudGoneTime {
+				log.Printf("parseConfigItems: %s change from %d to %d\n",
+					item.Key,
+					configItemCurrent.resetIfCloudGoneTime,
+					newU32)
+				configItemCurrent.resetIfCloudGoneTime = newU32
+			}
+		case "fallbackIfCloudGoneTime":
+			if newU32 == 0 {
+				// Revert to default
+				newU32 = configItemDefaults.fallbackIfCloudGoneTime
+			}
+			if newU32 != configItemCurrent.fallbackIfCloudGoneTime {
+				log.Printf("parseConfigItems: %s change from %d to %d\n",
+					item.Key,
+					configItemCurrent.fallbackIfCloudGoneTime,
+					newU32)
+				configItemCurrent.fallbackIfCloudGoneTime = newU32
+			}
+		// XXX what other configItems should we add?
+		default:
+			log.Printf("Unknown configItem %s\n", item.Key)
+			// XXX send back error? Need device error for that
 		}
 	}
 }

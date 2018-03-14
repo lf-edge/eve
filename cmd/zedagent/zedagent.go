@@ -43,6 +43,7 @@ import (
 	"github.com/zededa/go-provision/watch"
 	"log"
 	"os"
+	"time"
 )
 
 // Keeping status in /var/run to be clean after a crash/reboot
@@ -213,6 +214,14 @@ func main() {
 
 	// Context to pass around
 	getconfigCtx := getconfigContext{}
+	upgradeInprogress := isZbootAvailable() && isCurrentPartitionStateInProgress()
+	time1 := time.Duration(configItemCurrent.resetIfCloudGoneTime)
+	t1 := time.NewTimer(time1 * time.Second)
+	log.Printf("Started timer for reset for %d seconds\n", time1)
+	time2 := time.Duration(configItemCurrent.fallbackIfCloudGoneTime)
+	log.Printf("Started timer for fallback (%v) reset for %d seconds\n",
+		upgradeInprogress, time2)
+	t2 := time.NewTimer(time2 * time.Second)
 
 	log.Printf("Waiting until we have some uplinks with usable addresses\n")
 	waited := false
@@ -222,6 +231,7 @@ func main() {
 			types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus),
 			aaCtx.Found)
 		waited = true
+
 		select {
 		case change := <-networkStatusChanges:
 			watch.HandleStatusEvent(change, &DNSctx,
@@ -231,8 +241,18 @@ func main() {
 				nil)
 		case change := <-aaChanges:
 			aaFunc(&aaCtx, change)
+		case <-t1.C:
+			log.Printf("Exceeded outage for cloud connectivity - rebooting\n")
+			execReboot(true)
+		case <-t2.C:
+			if upgradeInprogress {
+				log.Printf("Exceeded fallback outage for cloud connectivity - rebooting\n")
+				execReboot(true)
+			}
 		}
 	}
+	t1.Stop()
+	t2.Stop()
 	log.Printf("Have %d uplinks addresses to use; aaCtx %v\n",
 		types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus),
 		aaCtx.Found)
@@ -252,9 +272,9 @@ func main() {
 	configTickerHandle := <-handleChannel
 	go metricsTimerTask(handleChannel)
 	metricsTickerHandle := <-handleChannel
-	// XXX close handleChannel?
-	// XXX pass both handles to config fetch in getConfigContext
-	fmt.Printf("metricsTickerHandle %v\n", metricsTickerHandle)
+	// XXX close handleChannels?
+	getconfigCtx.configTickerHandle = configTickerHandle
+	getconfigCtx.metricsTickerHandle = metricsTickerHandle
 
 	// app instance status event watcher
 	go watch.WatchStatus(zedmanagerStatusDirname, appInstanceStatusChanges)

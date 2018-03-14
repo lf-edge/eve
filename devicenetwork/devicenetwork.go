@@ -75,8 +75,9 @@ func MakeDeviceNetworkStatus(globalConfig types.DeviceNetworkConfig) (types.Devi
 			info, err := ipinfo.MyIPWithOptions(opt)
 			if err != nil {
 				// Ignore error
-				log.Printf("MakeDeviceNetworkStatus MyInfoInfo %s\n", err)
+				log.Printf("MakeDeviceNetworkStatus MyIPInfo failed %s\n", err)
 			} else {
+				log.Printf("MakeDeviceNetworkStatus MyIPInfo got %v\n", *info)
 				globalStatus.UplinkStatus[ix].AddrInfoList[i].Geo = *info
 			}
 		}
@@ -91,8 +92,9 @@ func MakeDeviceNetworkStatus(globalConfig types.DeviceNetworkConfig) (types.Devi
 			info, err := ipinfo.MyIPWithOptions(opt)
 			if err != nil {
 				// Ignore error
-				log.Printf("MakeDeviceNetworkStatus MyInfoInfo %s\n", err)
+				log.Printf("MakeDeviceNetworkStatus MyIPInfo failed %s\n", err)
 			} else {
+				log.Printf("MakeDeviceNetworkStatus MyIPInfo got %v\n", *info)
 				globalStatus.UplinkStatus[ix].AddrInfoList[i+len(addrs4)].Geo = *info
 			}
 		}
