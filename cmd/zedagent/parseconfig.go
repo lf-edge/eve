@@ -86,13 +86,16 @@ func validateConfig(config *zconfig.EdgeDevConfig) bool {
 }
 
 func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
-
 	cfgOsList := config.GetBase()
 	baseOsCount := len(cfgOsList)
 	log.Printf("parseBaseOsConfig() Applying Base Os config len %d\n",
 		baseOsCount)
 
 	if baseOsCount == 0 {
+		return false
+	}
+	if !zboot.IsAvailable() {
+		log.Printf("No zboot; ignoring baseOsConfig\n");
 		return false
 	}
 
