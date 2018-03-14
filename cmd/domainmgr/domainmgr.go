@@ -15,6 +15,7 @@ import (
 	"github.com/satori/go.uuid"
 	"github.com/zededa/go-provision/adapters"
 	"github.com/zededa/go-provision/hardware"
+	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
 	"github.com/zededa/go-provision/wrap"
@@ -30,9 +31,10 @@ import (
 // Keeping status in /var/run to be clean after a crash/reboot
 const (
 	appImgObj = "appImg.obj"
+	agentName = "domainmgr"
 
-	baseDirname       = "/var/tmp/domainmgr"
-	runDirname        = "/var/run/domainmgr"
+	baseDirname       = "/var/tmp/" + agentName
+	runDirname        = "/var/run/" + agentName
 	configDirname     = baseDirname + "/config"
 	statusDirname     = runDirname + "/status"
 	persistDir        = "/persist"
@@ -71,8 +73,11 @@ func main() {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
-	log.Printf("Starting domainmgr\n")
-	watch.CleanupRestarted("domainmgr")
+	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("Starting %s\n", agentName)
+	watch.CleanupRestarted(agentName)
 
 	if _, err := os.Stat(baseDirname); err != nil {
 		if err := os.MkdirAll(baseDirname, 0700); err != nil {
