@@ -350,8 +350,8 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCo
 	}
 
 	// add new BaseOS/App instances
-	if rebootSet := parseConfig(config); rebootSet == true {
-		return rebootSet
+	if parseConfig(config, getconfigCtx) {
+		return true
 	}
 
 	return false
