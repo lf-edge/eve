@@ -22,6 +22,7 @@ import (
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/netclone"
 	"github.com/zededa/go-provision/types"
+	"github.com/zededa/go-provision/zboot"
 	"github.com/zededa/go-provision/zedcloud"
 	"io/ioutil"
 	"log"
@@ -740,12 +741,12 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 	}
 	getSwInfo := func(partLabel string) *zmet.ZInfoDevSW {
 		swInfo := new(zmet.ZInfoDevSW)
-		swInfo.Activated = (partLabel == getCurrentPartition())
+		swInfo.Activated = (partLabel == zboot.GetCurrentPartition())
 		swInfo.PartitionLabel = partLabel
-		swInfo.PartitionDevice = getPartitionDevname(partLabel)
-		swInfo.PartitionState = getPartitionState(partLabel)
-		swInfo.ShortVersion = GetShortVersion(partLabel)
-		swInfo.LongVersion = GetLongVersion(partLabel)
+		swInfo.PartitionDevice = zboot.GetPartitionDevname(partLabel)
+		swInfo.PartitionState = zboot.GetPartitionState(partLabel)
+		swInfo.ShortVersion = zboot.GetShortVersion(partLabel)
+		swInfo.LongVersion = zboot.GetLongVersion(partLabel)
 		if bos := getBaseOsStatus(partLabel); bos != nil {
 			swInfo.Status = zmet.ZSwState(bos.State)
 			if !bos.ErrorTime.IsZero() {
@@ -762,10 +763,10 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 		return swInfo
 	}
 
-	if isZbootAvailable() {
+	if zboot.IsAvailable() {
 		ReportDeviceInfo.SwList = make([]*zmet.ZInfoDevSW, 2)
-		ReportDeviceInfo.SwList[0] = getSwInfo(getCurrentPartition())
-		ReportDeviceInfo.SwList[1] = getSwInfo(getOtherPartition())
+		ReportDeviceInfo.SwList[0] = getSwInfo(zboot.GetCurrentPartition())
+		ReportDeviceInfo.SwList[1] = getSwInfo(zboot.GetOtherPartition())
 	}
 
 	// Read interface name from library and match it with uplink name from

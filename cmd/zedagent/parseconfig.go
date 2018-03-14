@@ -9,6 +9,7 @@ import (
 	"github.com/satori/go.uuid"
 	"github.com/zededa/api/zconfig"
 	"github.com/zededa/go-provision/types"
+	"github.com/zededa/go-provision/zboot"
 	"io/ioutil"
 	"log"
 	"net"
@@ -40,7 +41,7 @@ func parseConfig(config *zconfig.EdgeDevConfig) bool {
 	}
 
 	// updating/rebooting, ignore config
-	if isOtherPartitionStateUpdating() {
+	if zboot.IsOtherPartitionStateUpdating() {
 		return true
 	}
 	if validateConfig(config) == true {
@@ -158,10 +159,10 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 }
 
 func assignBaseOsPartition(baseOsList []*types.BaseOsConfig) {
-	curPartName := getCurrentPartition()
-	otherPartName := getOtherPartition()
-	curPartVersion := GetShortVersion(curPartName)
-	otherPartVersion := GetShortVersion(otherPartName)
+	curPartName := zboot.GetCurrentPartition()
+	otherPartName := zboot.GetOtherPartition()
+	curPartVersion := zboot.GetShortVersion(curPartName)
+	otherPartVersion := zboot.GetShortVersion(otherPartName)
 
 	assignedPart := true
 	// older assignments/installations
@@ -955,7 +956,7 @@ func execReboot(state bool) {
 		duration := time.Duration(immediate)
 		timer := time.NewTimer(time.Second * duration)
 		<-timer.C
-		zbootReset()
+		zboot.Reset()
 
 	case false:
 		log.Printf("Powering Off..\n")

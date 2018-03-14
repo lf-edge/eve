@@ -395,8 +395,6 @@ func handleVerifierRestarted(ctxArg interface{}, done bool) {
 }
 
 func handleInit() {
-
-	zbootInit()
 	initializeDirs()
 	initMaps()
 	handleConfigInit()

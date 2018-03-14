@@ -12,6 +12,7 @@ import (
 	"github.com/zededa/api/zconfig"
 	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/types"
+	"github.com/zededa/go-provision/zboot"
 	"github.com/zededa/go-provision/zedcloud"
 	"io/ioutil"
 	"log"
@@ -115,7 +116,7 @@ func configTimerTask(handleChannel chan interface{},
 	getconfigCtx *getconfigContext) {
 	configUrl := serverName + "/" + configApi
 	iteration := 0
-	checkConnectivity := isZbootAvailable() && isCurrentPartitionStateInProgress()
+	checkConnectivity := zboot.IsAvailable() && zboot.IsCurrentPartitionStateInProgress()
 	rebootFlag := getLatestConfig(configUrl, iteration,
 		&checkConnectivity, getconfigCtx)
 
@@ -183,11 +184,12 @@ func getLatestConfig(url string, iteration int, checkConnectivity *bool,
 		// active if it was inprogress
 		// XXX down the road we want more diagnostics and validation
 		// before we do this.
-		if *checkConnectivity && isCurrentPartitionStateInProgress() {
-			curPart := getCurrentPartition()
+		if *checkConnectivity && zboot.IsCurrentPartitionStateInProgress() {
+			curPart := zboot.GetCurrentPartition()
 			log.Printf("Config Fetch Task, curPart %s inprogress\n",
 				curPart)
-			if err := markPartitionStateActive(); err != nil {
+			// XXX marking which partition?
+			if err := zboot.MarkPartitionStateActive(); err != nil {
 				log.Println(err)
 			} else {
 				*checkConnectivity = false
@@ -200,7 +202,7 @@ func getLatestConfig(url string, iteration int, checkConnectivity *bool,
 		// We should only require this connectivity once every 24 hours
 		// or so using a setable policy in the watchdog, but have
 		// a short timeout during validation of a image post upgrade.
-		zbootWatchdogOK()
+		zboot.WatchdogOK()
 
 		if err := validateConfigMessage(url, resp); err != nil {
 			log.Println("validateConfigMessage: ", err)
