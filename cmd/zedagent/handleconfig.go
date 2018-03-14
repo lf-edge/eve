@@ -46,21 +46,31 @@ const (
 // A value of zero means we should use the default
 // All times are in seconds.
 type configItems struct {
-	configInterval          uint32
-	metricInterval          uint32
-	resetIfCloudGoneTime    uint32
-	fallbackIfCloudGoneTime uint32
-	// XXX max space for downloads?
-	// XXX LTE uplink usage policy?
+	configInterval          uint32 // Try get of device config
+	metricInterval          uint32 // push metrics to cloud
+	resetIfCloudGoneTime    uint32 // reboot if no cloud connectivity
+	fallbackIfCloudGoneTime uint32 // ... and shorter during upgrade
+	// XXX add max space for downloads?
+	// XXX add LTE uplink usage policy?
 }
 
-// XXX add code which sets timers from ConfigItems from cloud
+// Really a constant
+// We do a GET of config every 10 seconds,
+// PUT of metrics every 60 seconds,
+// if we don't hear anything from the cloud in a week, then we reboot,
+// and during a post-upgrade boot that time is reduced to 10 minutes.
 var configItemDefaults = configItems{configInterval: 10, metricInterval: 60,
-	resetIfCloudGoneTime: 168 * 3600, fallbackIfCloudGoneTime: 600}
+	resetIfCloudGoneTime: 7 * 24 * 3600, fallbackIfCloudGoneTime: 600}
+
+// XXX	resetIfCloudGoneTime: 300, fallbackIfCloudGoneTime: 60}
+
+var configItemCurrent = configItemDefaults
 
 type getconfigContext struct {
-	ledManagerCount int // Current count
-	// XXX add timer handles?
+	ledManagerCount             int // Current count
+	lastReceivedConfigFromCloud time.Time
+	configTickerHandle          interface{}
+	metricsTickerHandle         interface{}
 }
 
 // tlsConfig is initialized once i.e. effectively a constant
@@ -109,19 +119,17 @@ func handleConfigInit() {
 }
 
 // Run a periodic fetch of the config
-// XXX have caller check for unchanged value?
-var currentConfigInterval time.Duration
 
 func configTimerTask(handleChannel chan interface{},
 	getconfigCtx *getconfigContext) {
 	configUrl := serverName + "/" + configApi
+	getconfigCtx.lastReceivedConfigFromCloud = time.Now()
 	iteration := 0
-	checkConnectivity := zboot.IsAvailable() && zboot.IsCurrentPartitionStateInProgress()
+	upgradeInprogress := zboot.IsAvailable() && zboot.IsCurrentPartitionStateInProgress()
 	rebootFlag := getLatestConfig(configUrl, iteration,
-		&checkConnectivity, getconfigCtx)
+		&upgradeInprogress, getconfigCtx)
 
-	interval := time.Duration(configItemDefaults.configInterval) * time.Second
-	currentConfigInterval = interval
+	interval := time.Duration(configItemCurrent.configInterval) * time.Second
 	max := float64(interval)
 	min := max * 0.3
 	ticker := flextimer.NewRangeTicker(time.Duration(min),
@@ -133,7 +141,7 @@ func configTimerTask(handleChannel chan interface{},
 		// reboot flag is not set, go fetch new config
 		if rebootFlag == false {
 			rebootFlag = getLatestConfig(configUrl, iteration,
-				&checkConnectivity, getconfigCtx)
+				&upgradeInprogress, getconfigCtx)
 		}
 	}
 }
@@ -143,31 +151,46 @@ func triggerGetConfig(tickerHandle interface{}) {
 	flextimer.TickNow(tickerHandle)
 }
 
-// Called when configItemDefaults changes
+// Called when configItemCurrent changes
+// Assumes the caller has verifier that the interval has changed
 func updateConfigTimer(tickerHandle interface{}) {
-	interval := time.Duration(configItemDefaults.configInterval) * time.Second
-	if interval == currentConfigInterval {
-		return
-	}
-	log.Printf("updateConfigTimer() change from %v to %v\n",
-		currentConfigInterval, interval)
+	interval := time.Duration(configItemCurrent.configInterval) * time.Second
+	log.Printf("updateConfigTimer() change to %v\n", interval)
 	max := float64(interval)
 	min := max * 0.3
 	flextimer.UpdateRangeTicker(tickerHandle,
 		time.Duration(min), time.Duration(max))
-	if interval < currentConfigInterval {
-		// Force an immediate timout on decrease
-		flextimer.TickNow(tickerHandle)
-	}
-	currentConfigInterval = interval
+	// Force an immediate timout since timer could have decreased
+	flextimer.TickNow(tickerHandle)
 }
 
 // Start by trying the all the free uplinks and then all the non-free
 // until one succeeds in communicating with the cloud.
 // We use the iteration argument to start at a different point each time.
 // Returns a rebootFlag
-func getLatestConfig(url string, iteration int, checkConnectivity *bool,
+func getLatestConfig(url string, iteration int, upgradeInprogress *bool,
 	getconfigCtx *getconfigContext) bool {
+
+	// Did we exceed the time limits?
+	timePassed := time.Since(getconfigCtx.lastReceivedConfigFromCloud)
+
+	resetLimit := time.Second * time.Duration(configItemCurrent.resetIfCloudGoneTime)
+	if timePassed > resetLimit {
+		log.Printf("Exceeded outage for cloud connectivity by %d seconds- rebooting\n",
+			(timePassed-resetLimit)/time.Second)
+		execReboot(true)
+		return true
+	}
+	if *upgradeInprogress {
+		fallbackLimit := time.Second * time.Duration(configItemCurrent.fallbackIfCloudGoneTime)
+		if timePassed > fallbackLimit {
+			log.Printf("Exceeded fallback outage for cloud connectivity by %d seconds- rebooting\n",
+				(timePassed-fallbackLimit)/time.Second)
+			execReboot(true)
+			return true
+		}
+	}
+
 	resp, err := zedcloud.SendOnAllIntf(zedcloudCtx, url, nil, iteration)
 	if err != nil {
 		log.Printf("getLatestConfig failed: %s\n", err)
@@ -184,7 +207,7 @@ func getLatestConfig(url string, iteration int, checkConnectivity *bool,
 		// active if it was inprogress
 		// XXX down the road we want more diagnostics and validation
 		// before we do this.
-		if *checkConnectivity && zboot.IsCurrentPartitionStateInProgress() {
+		if *upgradeInprogress && zboot.IsCurrentPartitionStateInProgress() {
 			curPart := zboot.GetCurrentPartition()
 			log.Printf("Config Fetch Task, curPart %s inprogress\n",
 				curPart)
@@ -192,7 +215,7 @@ func getLatestConfig(url string, iteration int, checkConnectivity *bool,
 			if err := zboot.MarkPartitionStateActive(); err != nil {
 				log.Println(err)
 			} else {
-				*checkConnectivity = false
+				*upgradeInprogress = false
 			}
 		}
 
@@ -224,13 +247,15 @@ func getLatestConfig(url string, iteration int, checkConnectivity *bool,
 		// Inform ledmanager about config received from cloud
 		types.UpdateLedManagerConfig(4)
 		getconfigCtx.ledManagerCount = 4
+
+		getconfigCtx.lastReceivedConfigFromCloud = time.Now()
 		if !changed {
 			if debug {
 				log.Printf("Configuration from zedcloud is unchanged\n")
 			}
 			return false
 		}
-		return inhaleDeviceConfig(config)
+		return inhaleDeviceConfig(config, getconfigCtx)
 	}
 }
 
@@ -288,7 +313,7 @@ func readDeviceConfigProtoMessage(r *http.Response) (bool, *zconfig.EdgeDevConfi
 }
 
 // Returns a rebootFlag
-func inhaleDeviceConfig(config *zconfig.EdgeDevConfig) bool {
+func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext) bool {
 	log.Printf("Inhaling config %v\n", config)
 
 	// if they match return
@@ -316,7 +341,7 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig) bool {
 
 		}
 	}
-	handleLookUpParam(config)
+	handleLookupParam(config)
 
 	// clean up old config entries
 	if deleted := cleanupOldConfig(config); deleted {
@@ -327,8 +352,8 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig) bool {
 	}
 
 	// add new BaseOS/App instances
-	if rebootSet := parseConfig(config); rebootSet == true {
-		return rebootSet
+	if parseConfig(config, getconfigCtx) {
+		return true
 	}
 
 	return false
