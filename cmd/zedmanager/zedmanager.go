@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
 	"io/ioutil"
@@ -25,10 +26,11 @@ import (
 const (
 	appImgObj  = "appImg.obj"
 	certObj    = "cert.obj"
-	moduleName = "zedmanager"
+	agentName  = "zedmanager"
+	moduleName = agentName
 
-	baseDirname              = "/var/tmp/zedmanager"
-	runDirname               = "/var/run/zedmanager"
+	baseDirname              = "/var/tmp/" + agentName
+	runDirname               = "/var/run/" + agentName
 	zedmanagerConfigDirname  = baseDirname + "/config"
 	zedmanagerStatusDirname  = runDirname + "/status"
 	verifierConfigDirname    = "/var/tmp/verifier/config"
@@ -67,8 +69,11 @@ func main() {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
-	log.Printf("Starting zedmanager\n")
-	watch.CleanupRestarted("zedmanager")
+	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("Starting %s\n", agentName)
+	watch.CleanupRestarted(agentName)
 	// XXX either we don't need this, or we need it for each objType
 	watch.CleanupRestart("downloader")
 	// XXX either we don't need this, or we need it for each objType
@@ -117,7 +122,7 @@ func main() {
 	}
 
 	// Tell ourselves to go ahead
-	watch.SignalRestart("zedmanager")
+	watch.SignalRestart(agentName)
 
 	// Any state needed by handler functions
 	ctx := zedmanagerContext{}
