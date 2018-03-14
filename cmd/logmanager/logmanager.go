@@ -39,6 +39,8 @@ var logsApi string = "api/v1/edgedevice/logs"
 var zedcloudCtx zedcloud.ZedCloudContext
 var logMaxSize = 10
 
+// Key is ifname string
+var logs map[string]zedcloudLogs
 // global stuff
 type logDirModifyHandler func(ctx *loggerContext, logFileName string, source string)
 type logDirDeleteHandler func(ctx *loggerContext, logFileName string, source string)
@@ -75,6 +77,13 @@ type logfileReader struct {
 type DNSContext struct {
 	usableAddressCount int
 	triggerGetConfig   bool
+}
+
+type zedcloudLogs struct {
+    FailureCount uint64
+    SuccessCount uint64
+    LastFailure  time.Time
+    LastSuccess  time.Time
 }
 
 func main() {
@@ -197,6 +206,33 @@ func handleDNSDelete(ctxArg interface{}, statusFilename string) {
 	log.Printf("handleDNSDelete done for %s\n", statusFilename)
 }
 
+func maybeInit(ifname string) {
+    if logs == nil {
+        fmt.Printf("create zedcloudlog map\n")
+        logs = make(map[string]zedcloudLogs)
+    }
+    if _, ok := logs[ifname]; !ok {
+        fmt.Printf("create zedcloudlog for %s\n", ifname)
+        logs[ifname] = zedcloudLogs{}
+    }
+}
+
+func zedCloudFailure(ifname string) {
+    maybeInit(ifname)
+    m := logs[ifname]
+    m.FailureCount += 1
+    m.LastFailure = time.Now()
+    logs[ifname] = m
+}
+
+func zedCloudSuccess(ifname string) {
+    maybeInit(ifname)
+    m := logs[ifname]
+    m.SuccessCount += 1
+    m.LastSuccess = time.Now()
+    logs[ifname] = m
+}
+
 //get server name
 func getServerName() string {
 	bytes, err := ioutil.ReadFile(serverFilename)
@@ -305,8 +341,8 @@ func handleConfigInit() {
 	zedcloudCtx.DeviceNetworkStatus = &deviceNetworkStatus
 	zedcloudCtx.TlsConfig = tlsConfig
 	zedcloudCtx.Debug = debug
-	//zedcloudCtx.FailureFunc = zedCloudFailure
-	//zedcloudCtx.SuccessFunc = zedCloudSuccess
+	zedcloudCtx.FailureFunc = zedCloudFailure
+	zedcloudCtx.SuccessFunc = zedCloudSuccess
 }
 
 func HandleLogDirEvent(change string, logDirName string, ctx *loggerContext,
