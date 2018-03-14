@@ -348,7 +348,7 @@ func installDownloadedObject(objType string, safename string,
 
 	key := formLookupKey(objType, safename)
 
-	log.Printf("%s, installDownloadedObject(%s, %s), %v\n", safename, objType, status.State)
+	log.Printf("%s, installDownloadedObject(%s, %v)\n", safename, objType, status.State)
 
 	// if the object is in downloaded state,
 	// pick from pending directory
