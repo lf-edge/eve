@@ -39,7 +39,7 @@ func parseConfig(config *zconfig.EdgeDevConfig) bool {
 		return true
 	}
 
-	// updating/rebooting, ignore
+	// updating/rebooting, ignore config
 	if isOtherPartitionStateUpdating() {
 		return true
 	}
@@ -143,69 +143,7 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 		// XXX shouldn't the code write what it just marshalled?
 	}
 
-	// first, seep in old partition information
-	log.Printf("Starting Partition Assignment Process\n")
-	assignedPart := true
-	for _, baseOs := range baseOsList {
-		if baseOs == nil {
-			continue
-		}
-		getOldPartitionInfo(baseOs)
-		if baseOs.PartitionLabel == "" {
-			assignedPart = false
-			continue
-		}
-		log.Printf("%s, assigned with partition %s\n",
-			baseOs.BaseOsVersion, baseOs.PartitionLabel)
-		// XXX shouldn't this already be set?
-		setStoragePartitionLabel(baseOs)
-	}
-
-	// Do we have some unassigned ones?
-	// first pass, pick up the one, with activate flag set
-	if assignedPart == false {
-		log.Printf("Partition Assignment, First Pass\n")
-		for _, baseOs := range baseOsList {
-			if baseOs == nil ||
-				baseOs.PartitionLabel != "" {
-				continue
-			}
-
-			uuidStr := baseOs.UUIDandVersion.UUID.String()
-			if isInstallCandidate(uuidStr, baseOs, baseOsCount) {
-				if isOtherPartitionStateUnused() {
-					log.Printf("getPartitionInfo(%s) unused\n",
-						baseOs.BaseOsVersion)
-					log.Printf("%s, assigning with partition %s\n",
-						baseOs.BaseOsVersion, getOtherPartition())
-					baseOs.PartitionLabel = getOtherPartition()
-					setStoragePartitionLabel(baseOs)
-					assignedPart = true
-					break
-				}
-			}
-		}
-	}
-
-	// second pass, if still unassigned, pick any
-	if assignedPart == false {
-		log.Printf("Partition Assignment, Second Pass\n")
-		for _, baseOs := range baseOsList {
-			if baseOs == nil ||
-				baseOs.PartitionLabel != "" {
-				continue
-			}
-			if isOtherPartitionStateUnused() {
-				log.Printf("getPartitionInfo(%s) unused\n",
-					baseOs.BaseOsVersion)
-				log.Printf("%s, assigning with partition %s\n",
-					baseOs.BaseOsVersion, getOtherPartition())
-				baseOs.PartitionLabel = getOtherPartition()
-				setStoragePartitionLabel(baseOs)
-				break
-			}
-		}
-	}
+	assignBaseOsPartition(baseOsList)
 
 	configCount := 0
 	if validateBaseOsConfig(baseOsList) == true {
@@ -219,14 +157,81 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 	return false
 }
 
-func getOldPartitionInfo(baseOs *types.BaseOsConfig) {
+func assignBaseOsPartition(baseOsList []*types.BaseOsConfig) {
+	curPartName := getCurrentPartition()
+	otherPartName := getOtherPartition()
+	curPartVersion := GetShortVersion(curPartName)
+	otherPartVersion := GetShortVersion(otherPartName)
 
-	// get old Partition Label, if any
-	uuidStr := baseOs.UUIDandVersion.UUID.String()
-	imageSha256 := baseOsGetImageSha(*baseOs)
-	partInfo := getPersistentPartitionInfo(uuidStr, imageSha256)
-	if partInfo != nil {
-		baseOs.PartitionLabel = partInfo.PartitionLabel
+	assignedPart := true
+	// older assignments/installations
+	for _, baseOs := range baseOsList {
+		if baseOs == nil {
+			continue
+		}
+		uuidStr := baseOs.UUIDandVersion.UUID.String()
+		curBaseOsConfig := baseOsConfigGet(uuidStr)
+
+		if curBaseOsConfig != nil &&
+			curBaseOsConfig.PartitionLabel != "" {
+			baseOs.PartitionLabel = curBaseOsConfig.PartitionLabel
+			setStoragePartitionLabel(baseOs)
+			log.Printf("%s, assigned with partition %s, %s\n",
+				uuidStr, baseOs.BaseOsVersion, baseOs.PartitionLabel)
+			continue
+		}
+
+		if curPartVersion == baseOs.BaseOsVersion {
+			baseOs.PartitionLabel = curPartName
+			setStoragePartitionLabel(baseOs)
+			log.Printf("%s, installed in partition %s\n",
+				baseOs.BaseOsVersion, baseOs.PartitionLabel)
+			continue
+		}
+
+		if otherPartVersion == baseOs.BaseOsVersion {
+			baseOs.PartitionLabel = otherPartName
+			setStoragePartitionLabel(baseOs)
+			log.Printf("%s, installed in partition %s\n",
+				baseOs.BaseOsVersion, baseOs.PartitionLabel)
+			continue
+		}
+		assignedPart = false
+	}
+
+	if assignedPart == true {
+		return
+	}
+
+	// if activate set, assign partition
+	for _, baseOs := range baseOsList {
+		if baseOs == nil || baseOs.PartitionLabel != "" {
+			continue
+		}
+
+		if baseOs.Activate == true {
+			baseOs.PartitionLabel = otherPartName
+			setStoragePartitionLabel(baseOs)
+			log.Printf("%s, assigning with partition %s\n",
+				baseOs.BaseOsVersion, baseOs.PartitionLabel)
+			assignedPart = true
+			break
+		}
+	}
+
+	if assignedPart == true {
+		return
+	}
+
+	// still not assigned, assign partition
+	for _, baseOs := range baseOsList {
+		if baseOs == nil || baseOs.PartitionLabel != "" {
+			continue
+		}
+		baseOs.PartitionLabel = otherPartName
+		setStoragePartitionLabel(baseOs)
+		log.Printf("%s, assigning with partition %s\n",
+			baseOs.BaseOsVersion, baseOs.PartitionLabel)
 	}
 }
 
@@ -236,50 +241,6 @@ func setStoragePartitionLabel(baseOs *types.BaseOsConfig) {
 		sc := &baseOs.StorageConfigList[idx]
 		sc.FinalObjDir = baseOs.PartitionLabel
 	}
-}
-
-func isInstallCandidate(uuidStr string, baseOs *types.BaseOsConfig,
-	baseOsCount int) bool {
-
-	curBaseOsConfig := baseOsConfigGet(uuidStr)
-	curBaseOsStatus := baseOsStatusGet(uuidStr)
-
-	if curBaseOsStatus != nil &&
-		curBaseOsStatus.Activated == true {
-		log.Printf("isInstallCandidate(%s) FAIL current (%s) is Activated\n",
-			baseOs.BaseOsVersion, curBaseOsStatus.BaseOsVersion)
-		return false
-	}
-
-	// new Config
-	if curBaseOsConfig == nil {
-		log.Printf("isInstallCandidate(%s) no current\n",
-			baseOs.BaseOsVersion)
-		if baseOsCount == 1 || baseOs.Activate == true {
-			return true
-		}
-		return false
-	}
-
-	// only one baseOs Config
-	if curBaseOsConfig.PartitionLabel == "" &&
-		baseOsCount == 1 {
-		log.Printf("isInstallCandidate(%s) only one\n",
-			baseOs.BaseOsVersion)
-		return true
-	}
-
-	// Activate Flag is flipped
-	if curBaseOsConfig.Activate == false &&
-		baseOs.Activate == true {
-		log.Printf("isInstallCandidate(%s) Activate and cur not\n",
-			baseOs.BaseOsVersion)
-		return true
-	}
-	log.Printf("isInstallCandidate(%s) FAIL: curBaseOs %s activate %v/%v\n",
-		baseOs.BaseOsVersion, curBaseOsConfig.BaseOsVersion,
-		baseOs.Activate, curBaseOsConfig.Activate)
-	return false
 }
 
 func parseAppInstanceConfig(config *zconfig.EdgeDevConfig) {
@@ -636,8 +597,6 @@ func writeBaseOsConfig(baseOsConfig *types.BaseOsConfig, uuidStr string) {
 func writeBaseOsStatus(baseOsStatus *types.BaseOsStatus, uuidStr string) {
 
 	statusFilename := zedagentBaseOsStatusDirname + "/" + uuidStr + ".json"
-	log.Printf("Writing baseOs status UUID %s\n", statusFilename)
-
 	bytes, err := json.Marshal(baseOsStatus)
 	if err != nil {
 		log.Fatal(err, "json Marshal BaseOsStatus")

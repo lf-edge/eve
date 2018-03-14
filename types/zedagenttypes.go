@@ -140,26 +140,14 @@ func (status CertObjStatus) CheckPendingDelete() bool {
 	return false
 }
 
-// Indexed by UUIDandVersion as above
-type PartitionInfo struct {
-	UUIDandVersion UUIDandVersion
-	BaseOsVersion  string // For user-friendly debug
-	ImageSha256    string
-	PartitionLabel string
-	State          SwState
-	Activate	   bool
-	RetryCount     int32
-	Error          string
-	ErrorTime      time.Time
-}
-
 // return value holder
 type RetStatus struct {
-	Changed 	bool
-	MinState 	SwState
-	AllErrors 	string
-	ErrorTime 	time.Time
+	Changed   bool
+	MinState  SwState
+	AllErrors string
+	ErrorTime time.Time
 }
+
 // Mirrors proto definition for ConfigItem
 // The value can be bool, float, uint, or string
 type ConfigItem struct {
@@ -183,4 +171,3 @@ const (
 	MetricItemCounter                       // Monotonically increasing (until reboot)
 	MetricItemState                         // Toggles on and off; count transitions
 )
-
