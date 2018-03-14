@@ -114,7 +114,6 @@ func addOrUpdateBaseOsConfig(uuidStr string, config types.BaseOsConfig) {
 }
 
 func baseOsConfigGet(uuidStr string) *types.BaseOsConfig {
-
 	config, ok := baseOsConfigMap[uuidStr]
 	if !ok {
 		log.Printf("%s, baseOs config is absent\n", uuidStr)
@@ -135,8 +134,8 @@ func baseOsConfigDelete(uuidStr string) bool {
 	}
 	return false
 }
-func baseOsStatusGet(uuidStr string) *types.BaseOsStatus {
 
+func baseOsStatusGet(uuidStr string) *types.BaseOsStatus {
 	status, ok := baseOsStatusMap[uuidStr]
 	if !ok {
 		log.Printf("%s, baseOs status is absent\n", uuidStr)
@@ -158,7 +157,6 @@ func baseOsStatusDelete(uuidStr string) bool {
 }
 
 func baseOsGetActivationStatus(status *types.BaseOsStatus) {
-
 	log.Printf("baseOsGetActivationStatus(%s): partitionLabel %s\n",
 		status.BaseOsVersion, status.PartitionLabel)
 
@@ -578,16 +576,22 @@ func installBaseOsObject(srcFilename string, dstFilename string) error {
 // config version string
 func checkInstalledVersion(config types.BaseOsConfig) string {
 
-	log.Printf("check baseOs installation %s, %s, installation\n",
+	log.Printf("%s, check baseOs installation %s\n",
 		config.PartitionLabel, config.BaseOsVersion)
 
-	partVersion := GetShortVersion(config.PartitionLabel)
-	if config.BaseOsVersion == partVersion {
-		return ""
+	if config.PartitionLabel == "" {
+		errStr := fmt.Sprintf("%s, invalid partition", config.BaseOsVersion)
+		log.Println(errStr)
+		return errStr
 	}
-	errStr := fmt.Sprintf("baseOs %s, %s, does not match installed %s",
-		config.PartitionLabel, config.BaseOsVersion, partVersion)
 
-	log.Println(errStr)
-	return errStr
+	partVersion := GetShortVersion(config.PartitionLabel)
+	if config.BaseOsVersion != partVersion {
+		errStr := fmt.Sprintf("baseOs %s, %s, does not match installed %s",
+			config.PartitionLabel, config.BaseOsVersion, partVersion)
+
+		log.Println(errStr)
+		return errStr
+	}
+	return ""
 }
