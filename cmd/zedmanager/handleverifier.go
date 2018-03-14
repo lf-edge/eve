@@ -34,9 +34,10 @@ func MaybeAddVerifyImageConfig(safename string, sc *types.StorageConfig) bool {
 	}
 	key := safename
 	if m, ok := verifyImageConfig[key]; ok {
+		m.RefCount += 1
 		fmt.Printf("verifier config already exists refcnt %d for %s\n",
 			m.RefCount, safename)
-		m.RefCount += 1
+		verifyImageConfig[key] = m
 	} else {
 		fmt.Printf("verifier config add for %s\n", safename)
 		n := types.VerifyImageConfig{

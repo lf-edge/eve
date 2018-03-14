@@ -70,6 +70,7 @@ func getCurrentPartition() string {
 
 	partName := string(ret)
 	partName = strings.TrimSpace(partName)
+	validatePartitionName(partName)
 	return partName
 }
 
@@ -347,8 +348,8 @@ const (
 	otherPrefix      = "/containers/services/zededa-tools/lower"
 )
 
-func GetShortVersion(part string) string {
-	return getVersion(part, shortVersionFile)
+func GetShortVersion(partName string) string {
+	return getVersion(partName, shortVersionFile)
 }
 
 // XXX add longversion once we have a filename
@@ -356,14 +357,22 @@ func GetLongVersion(part string) string {
 	return ""
 }
 
-func getVersion(part string, filename string) string {
-	isCurrent := (part == getCurrentPartition())
-	if isCurrent {
+func getVersion(part string, verFilename string) string {
+	if !isZbootAvailable() {
+		return ""
+	}
+	validatePartitionName(part)
+
+	if part == getCurrentPartition() {
+		filename := verFilename
 		version, err := ioutil.ReadFile(filename)
 		if err != nil {
 			log.Fatal(err)
 		}
-		return string(version)
+		versionStr := string(version)
+		versionStr = strings.TrimSpace(versionStr)
+		log.Printf("%s, readCurVersion %s\n", part, versionStr)
+		return versionStr
 	} else {
 		devname := getPartitionDevname(part)
 		target, err := ioutil.TempDir("/var/run", "tmpmnt")
@@ -381,14 +390,16 @@ func getVersion(part string, filename string) string {
 			return ""
 		}
 		defer syscall.Unmount(target, 0)
-
-		fullname := fmt.Sprintf("%s/%s/%s",
-			target, otherPrefix, filename)
-		version, err := ioutil.ReadFile(fullname)
+		filename := fmt.Sprintf("%s/%s/%s",
+			target, otherPrefix, verFilename)
+		version, err := ioutil.ReadFile(filename)
 		if err != nil {
 			log.Fatal(err)
 		}
-		return string(version)
+		versionStr := string(version)
+		versionStr = strings.TrimSpace(versionStr)
+		log.Printf("%s, readOtherVersion %s\n", part, versionStr)
+		return versionStr
 	}
 }
 
