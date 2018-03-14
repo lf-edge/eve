@@ -207,7 +207,7 @@ func checkStorageDownloadStatus(objType string, uuidStr string,
 
 	ret := &types.RetStatus{}
 	key := formLookupKey(objType, uuidStr)
-	log.Printf("checkStorageDownloadStatus for %s, %v\n", key, status)
+	log.Printf("%s, checkStorageDownloadStatus\n", key)
 
 	ret.Changed = false
 	ret.AllErrors = ""
@@ -219,10 +219,10 @@ func checkStorageDownloadStatus(objType string, uuidStr string,
 
 		safename := types.UrlToSafename(sc.DownloadURL, sc.ImageSha256)
 
-		log.Printf("checkStorageDownloadStatus for %s, %v\n", safename, ss.State)
+		log.Printf("%s, image status %v\n", safename, ss.State)
 		if ss.State == types.INSTALLED {
 			ret.MinState = ss.State
-			log.Printf("checkStorageDownloadStatus for %s is already installed\n", safename)
+			log.Printf("%s,is already installed\n", safename)
 			continue
 		}
 
@@ -276,7 +276,7 @@ func checkStorageDownloadStatus(objType string, uuidStr string,
 
 		switch ss.State {
 		case types.INITIAL:
-			log.Printf("%s, Downloader status error, %s\n",
+			log.Printf("%s, downloader error, %s\n",
 				key, ds.LastErr)
 			ss.Error = ds.LastErr
 			ret.AllErrors = appendError(ret.AllErrors, "downloader",
@@ -288,7 +288,7 @@ func checkStorageDownloadStatus(objType string, uuidStr string,
 			// Nothing to do
 		case types.DOWNLOADED:
 
-			log.Printf("%s, Downloaded\n", safename)
+			log.Printf("%s, is downloaded\n", safename)
 			// if verification is needed
 			if sc.ImageSha256 != "" {
 				// start verifier for this object
@@ -348,7 +348,7 @@ func installDownloadedObject(objType string, safename string,
 
 	key := formLookupKey(objType, safename)
 
-	log.Printf("%s, installDownloadedObject(%s), %v\n", objType, safename, status.State)
+	log.Printf("%s, installDownloadedObject(%s, %s), %v\n", safename, objType, status.State)
 
 	// if the object is in downloaded state,
 	// pick from pending directory
@@ -357,12 +357,12 @@ func installDownloadedObject(objType string, safename string,
 	switch status.State {
 
 	case types.INSTALLED:
-		log.Printf("%s, Already installed\n", key)
+		log.Printf("%s, already installed\n", key)
 		return nil
 
 	case types.DOWNLOADED:
 		if config.ImageSha256 != "" {
-			log.Printf("%s, Pending verification\n", key)
+			log.Printf("%s, verification pending\n", key)
 			return nil
 		}
 		srcFilename += "/pending/" + safename
@@ -408,7 +408,7 @@ func installDownloadedObject(objType string, safename string,
 
 	if ret == nil {
 		status.State = types.INSTALLED
-		log.Printf("%s, installDownloadedObject installation done\n", key)
+		log.Printf("%s, installation done\n", key)
 	}
 	return ret
 }

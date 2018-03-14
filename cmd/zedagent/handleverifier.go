@@ -235,7 +235,7 @@ func checkStorageVerifierStatus(objType string, uuidStr string,
 	ret := &types.RetStatus{}
 	key := formLookupKey(objType, uuidStr)
 
-	log.Printf("checkStorageVerifierStatus for %s\n", key)
+	log.Printf("%s, checkStorageVerifierStatus\n", key)
 
 	ret.AllErrors = ""
 	ret.Changed = false
@@ -246,7 +246,7 @@ func checkStorageVerifierStatus(objType string, uuidStr string,
 
 		safename := types.UrlToSafename(sc.DownloadURL, sc.ImageSha256)
 
-		log.Printf("checkStorageVerifierStatus for %s\n", sc.DownloadURL)
+		log.Printf("%s, image verifier status %v\n", sc.DownloadURL, ss.State)
 
 		if ss.State == types.INSTALLED {
 			ret.MinState = ss.State

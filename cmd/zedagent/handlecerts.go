@@ -314,7 +314,7 @@ func doCertObjUninstall(uuidStr string, status *types.CertObjStatus) (bool, bool
 
 		ss := &status.StorageStatusList[i]
 		safename := types.UrlToSafename(ss.DownloadURL, ss.ImageSha256)
-		log.Printf("%s, found StorageStatus safename %s\n", uuidStr, safename)
+		log.Printf("%s, certEntry safename %s\n", uuidStr, safename)
 		// Decrease refcount if we had increased it
 		if ss.HasDownloaderRef {
 			removeCertObjDownloaderConfig(safename)
@@ -346,7 +346,6 @@ func doCertObjUninstall(uuidStr string, status *types.CertObjStatus) (bool, bool
 
 func writeCertObjStatus(status *types.CertObjStatus, uuidStr string) {
 	statusFilename := zedagentCertObjStatusDirname + "/" + uuidStr + ".json"
-	log.Printf("Writing CertObj Status %s\n", statusFilename)
 	bytes, err := json.Marshal(status)
 	if err != nil {
 		log.Fatal(err, "json Marshal certObjStatus")
