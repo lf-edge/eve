@@ -5,14 +5,17 @@ package main
 
 import (
 	"bufio"
-	//"bytes"
+	"bytes"
 	"flag"
 	"fmt"
-	//"github.com/golang/protobuf/proto"
+	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
 	google_protobuf "github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/zededa/api/zmet"
+	"github.com/zededa/go-provision/types"
+	"github.com/zededa/go-provision/adapters"
 	"github.com/zededa/go-provision/watch"
+	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/zedcloud"
 	"io"
 	"io/ioutil"
@@ -26,8 +29,10 @@ const (
 	defaultLogdirname = "/var/log"
 	identityDirname   = "/config"
 	serverFilename    = identityDirname + "/server"
+	DNSDirname        = "/var/run/zedrouter/DeviceNetworkStatus"
 )
 
+var deviceNetworkStatus types.DeviceNetworkStatus
 var debug bool
 var serverName string
 var logsApi string = "api/v1/edgedevice/logs"
@@ -66,6 +71,12 @@ type logfileReader struct {
 	size     int64 // To detect file truncation
 }
 
+// Context for handleDNSModify
+type DNSContext struct {
+	usableAddressCount int
+	triggerGetConfig   bool
+}
+
 func main() {
 	log.SetOutput(os.Stdout)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
@@ -80,6 +91,39 @@ func main() {
 	}
 	logDirName := *logdirPtr
 	log.Printf("Starting log manager... watching %s\n", logDirName)
+
+	model := hardware.GetHardwareModel()
+    log.Printf("HardwareModel %s\n", model)
+    aa := types.AssignableAdapters{}
+    aaChanges, aaFunc, aaCtx := adapters.Init(&aa, model)
+
+	DNSctx := DNSContext{}
+	DNSctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
+
+	networkStatusChanges := make(chan string)
+	go watch.WatchStatus(DNSDirname, networkStatusChanges)
+
+	// Context to pass around
+	//getconfigCtx := getconfigContext{}
+
+	log.Printf("Waiting until we have some uplinks with usable addresses\n")
+	for types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus) == 0 ||
+		!aaCtx.Found {
+		log.Printf("Waiting - have %d addresses; aaCtx %v\n",
+			types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus),
+			aaCtx.Found)
+		select {
+		case change := <-networkStatusChanges:
+			watch.HandleStatusEvent(change, &DNSctx,
+				DNSDirname,
+				&types.DeviceNetworkStatus{},
+				handleDNSModify, handleDNSDelete,
+				nil)
+		case change := <-aaChanges:
+			aaFunc(&aaCtx, change)
+		}
+	}
+
 	handleConfigInit()
 
 	loggerChan := make(chan logEntry)
@@ -95,14 +139,62 @@ func main() {
 
 	logDirChanges := make(chan string)
 	go watch.WatchStatus(logDirName, logDirChanges)
+
 	log.Println("called watcher...")
 	for {
 		select {
 		case change := <-logDirChanges:
 			HandleLogDirEvent(change, logDirName, &ctx,
 				handleLogDirModify, handleLogDirDelete)
+
+		case change := <-networkStatusChanges:
+			watch.HandleStatusEvent(change, &DNSctx,
+				DNSDirname,
+				&types.DeviceNetworkStatus{},
+				handleDNSModify, handleDNSDelete,
+				nil)
+			if DNSctx.triggerGetConfig {
+				DNSctx.triggerGetConfig = false
+			}
 		}
 	}
+}
+
+func handleDNSModify(ctxArg interface{}, statusFilename string,
+	statusArg interface{}) {
+	status := statusArg.(*types.DeviceNetworkStatus)
+	ctx := ctxArg.(*DNSContext)
+
+	if statusFilename != "global" {
+		log.Printf("handleDNSModify: ignoring %s\n", statusFilename)
+		return
+	}
+	log.Printf("handleDNSModify for %s\n", statusFilename)
+	deviceNetworkStatus = *status
+	// Did we (re-)gain the first usable address?
+	// XXX should we also trigger if the count increases?
+	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
+	if newAddrCount != 0 && ctx.usableAddressCount == 0 {
+		log.Printf("DeviceNetworkStatus from %d to %d addresses\n",
+			newAddrCount, ctx.usableAddressCount)
+		ctx.triggerGetConfig = true
+	}
+	ctx.usableAddressCount = newAddrCount
+	log.Printf("handleDNSModify done for %s\n", statusFilename)
+}
+
+func handleDNSDelete(ctxArg interface{}, statusFilename string) {
+	log.Printf("handleDNSDelete for %s\n", statusFilename)
+	ctx := ctxArg.(*DNSContext)
+
+	if statusFilename != "global" {
+		log.Printf("handleDNSDelete: ignoring %s\n", statusFilename)
+		return
+	}
+	deviceNetworkStatus = types.DeviceNetworkStatus{}
+	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
+	ctx.usableAddressCount = newAddrCount
+	log.Printf("handleDNSDelete done for %s\n", statusFilename)
 }
 
 //get server name
@@ -181,7 +273,7 @@ func sendProtoStrForLogs(reportLogs *zmet.LogBundle, iteration int) {
 	reportLogs.Timestamp = ptypes.TimestampNow()
 	log.Println("sendProtoStrForLogs called...", iteration)
 	log.Println("Log Details: ", reportLogs)
-	/*serverName := getServerName()
+	serverName := getServerName()
 	data, err := proto.Marshal(reportLogs)
 	if err != nil {
 		log.Fatal("SendInfoProtobufStr proto marshaling error: ", err)
@@ -198,9 +290,9 @@ func sendProtoStrForLogs(reportLogs *zmet.LogBundle, iteration int) {
 		// Hopefully next timeout will be more successful
 		log.Printf("SendMetricsProtobuf failed: %s\n", err)
 		return
-	}*/
+	}
 	reportLogs.Log = []*zmet.LogEntry{}
-	//resp.Body.Close()
+	resp.Body.Close()
 }
 
 func handleConfigInit() {
@@ -210,7 +302,7 @@ func handleConfigInit() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	//zedcloudCtx.DeviceNetworkStatus = &deviceNetworkStatus
+	zedcloudCtx.DeviceNetworkStatus = &deviceNetworkStatus
 	zedcloudCtx.TlsConfig = tlsConfig
 	zedcloudCtx.Debug = debug
 	//zedcloudCtx.FailureFunc = zedCloudFailure
