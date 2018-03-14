@@ -16,6 +16,10 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/zededa/go-provision/pidfile"
+	"github.com/zededa/go-provision/types"
+	"github.com/zededa/go-provision/watch"
+	"golang.org/x/crypto/ocsp"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -23,10 +27,14 @@ import (
 	"reflect"
 	"strings"
 	"time"
+)
 
-	"github.com/zededa/go-provision/types"
-	"github.com/zededa/go-provision/watch"
-	"golang.org/x/crypto/ocsp"
+const (
+	agentName         = "eidregister"
+	inputBaseDirname  = "/var/run/" + agentName
+	outputBaseDirname = "/var/run/" + agentName
+	inputDirname      = inputBaseDirname + "/status"
+	outputDirname     = outputBaseDirname + "/status"
 )
 
 var maxDelay = time.Second * 600 // 10 minutes
@@ -56,8 +64,11 @@ func main() {
 	}
 	oldFlag := *oldPtr
 	identityDirname := *dirPtr
-	log.Printf("Starting eidregister\n")
-	watch.CleanupRestarted("eidregister")
+	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("Starting %s\n", agentName)
+	watch.CleanupRestarted(agentName)
 
 	deviceCertName := identityDirname + "/device.cert.pem"
 	deviceKeyName := identityDirname + "/device.key.pem"
@@ -92,12 +103,6 @@ func main() {
 	}
 	serverNameAndPort = strings.TrimSpace(string(server))
 	serverName = strings.Split(serverNameAndPort, ":")[0]
-
-	// Keeping status in /var/run to be clean after a crash/reboot
-	inputBaseDirname := "/var/run/identitymgr"
-	outputBaseDirname := "/var/run/eidregister"
-	inputDirname := inputBaseDirname + "/status"
-	outputDirname := outputBaseDirname + "/status"
 
 	if _, err := os.Stat(inputBaseDirname); err != nil {
 		if err := os.Mkdir(inputBaseDirname, 0700); err != nil {
