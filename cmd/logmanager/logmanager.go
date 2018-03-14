@@ -7,70 +7,114 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
-//	"github.com/zededa/api/zmet"
+	//"github.com/zededa/api/zmet"
 	"github.com/zededa/go-provision/watch"
 	"io"
 	"log"
 	"os"
 	"strings"
-	//"time"
+	"time"
 )
 
 const (
-	logDirName = "/var/log"
+	defaultLogdirname = "/var/log"
 )
 
 var debug bool
-var logContentChan chan string
-var logFileChan chan string
 
 // global stuff
-var logFileSizeMap map[string]int64
-
-type logReadHandler func(logFileName string, logContent string)
-type logDeleteHandler func(logFileName string)
+type logDirModifyHandler func(ctx *loggerContext, logFileName string, source string)
+type logDirDeleteHandler func(ctx *loggerContext, logFileName string, source string)
 
 // Set from Makefile
 var Version = "No version specified"
 
-func main() {
+// Based on the proto file
+type logEntry struct {
+	severity  string
+	source    string // basename of filename?
+	image     string // XXX missing in zlog.proto
+	iid       string // XXX e.g. PID - where do we get it from?
+	content   string // One line
+	timestamp time.Time
+}
 
+// List of log files we watch
+type loggerContext struct {
+	logfileReaders []logfileReader
+	logChan        chan<- logEntry
+}
+
+type logfileReader struct {
+	filename string
+	source   string
+	fileDesc *os.File
+	reader   *bufio.Reader
+	size     int64 // To detect file truncation
+}
+
+func main() {
 	log.SetOutput(os.Stdout)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug")
+	logdirPtr := flag.String("l", defaultLogdirname, "Log file directory")
 	flag.Parse()
 	debug = *debugPtr
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
+	logDirName := *logdirPtr
+	log.Printf("Starting log manager... watching %s\n", logDirName)
 
-	log.Println("Starting log manager...")
-	logContentChan = make(chan string)
-	logFileChan = make(chan string)
-	go sendLogsOnChannel(logContentChan, logFileChan)
+	loggerChan := make(chan logEntry)
+	ctx := loggerContext{logChan: loggerChan}
+	// Start sender of log events
+	// XXX or we run this in main routine and the logDirChanges loop
+	// in a go routine??
+	go processEvents(loggerChan)
 
-	if logFileSizeMap == nil {
-		log.Println("Creating logFileSizeMap map")
-		logFileSizeMap = make(map[string]int64)
-	}
+	// XXX The OtherPartition files will not change hence we can just
+	// read them and send their lines; no need to watch for changes.
+	// Should we read all of them serially?
 
-	logChanges := make(chan string)
-	go watch.WatchStatus(logDirName, logChanges)
+	logDirChanges := make(chan string)
+	go watch.WatchStatus(logDirName, logDirChanges)
 	log.Println("called watcher...")
 	for {
 		select {
-		case change := <-logChanges:
-			{
-				log.Println("change: ", change)
-				HandleLogEvent(change, logDirName, handleLogModify, handleLogDelete)
-			}
+		case change := <-logDirChanges:
+			HandleLogDirEvent(change, logDirName, &ctx,
+				handleLogDirModify, handleLogDirDelete)
 		}
 	}
 }
 
-func HandleLogEvent(change string, logDirName string, handleLogModifyFunc logReadHandler, handleLogDeleteFunc logDeleteHandler) {
+// This runs as a separate go routine sending out data
+
+func processEvents(logChan <-chan logEntry) {
+	for {
+		select {
+		case event := <-logChan:
+			HandleLogEvent(event)
+		}
+	}
+}
+
+var msgIdCounter = 1
+
+func HandleLogEvent(event logEntry) {
+	// Assign a unique msgId for each message
+	msgId := msgIdCounter
+	msgIdCounter += 1
+	// XXX send message over protobuf
+	fmt.Printf("Read event from %s time %v id %d: %s\n",
+		event.source, event.timestamp, msgId, event.content)
+}
+
+func HandleLogDirEvent(change string, logDirName string, ctx *loggerContext,
+	handleLogDirModifyFunc logDirModifyHandler, handleLogDirDeleteFunc logDirDeleteHandler) {
 
 	operation := string(change[0])
 	fileName := string(change[2:])
@@ -79,65 +123,76 @@ func HandleLogEvent(change string, logDirName string, handleLogModifyFunc logRea
 			fileName, operation)
 		return
 	}
+	logFilePath := logDirName + "/" + fileName
 	// Remove .log from name */
 	name := strings.Split(fileName, ".log")
-	logFileName := name[0]
+	source := name[0]
 	if operation == "D" {
-		handleLogDeleteFunc(name[0])
+		handleLogDirDeleteFunc(ctx, logFilePath, source)
 		return
 	}
 	if operation != "M" {
 		log.Fatal("Unknown operation from Watcher: ",
 			operation)
 	}
-	logFilePath := logDirName + "/" + fileName
-	go readLogFileLineByLine(logFilePath, logFileName, handleLogModifyFunc)
-
+	handleLogDirModifyFunc(ctx, logFilePath, source)
 }
 
-func readLogFileLineByLine(logFilePath, fileName string, handleLogModifyFunc logReadHandler) {
-
-	logFile := logFilePath
-	fileDesc, err := os.Open(logFile)
-
-	if err != nil {
-		log.Fatalf("%v for %s\n", err, logFile)
-	}
-	defer fileDesc.Close()
-
-	fileSize, err := fileDesc.Stat()
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	fmt.Println("size of file: ", fileSize.Size())
-	//logFileSizeMap[logFile] = fileSize.Size()
-
-	if logFileSizeMap != nil {
-		for fileName, fileSize := range logFileSizeMap {
-			if fileName == logFile {
-				_, err := fileDesc.Seek(fileSize, 0)
-				if err != nil {
-					log.Println(err)
-				}
-			}
+// If the filename is new we spawn a go routine which will read
+func handleLogDirModify(ctx *loggerContext, filename string, source string) {
+	for i, r := range ctx.logfileReaders {
+		if r.filename == filename {
+			readLineToEvent(&ctx.logfileReaders[i], ctx.logChan)
+			return
 		}
+	}
+	log.Printf("handleLogDirModify: add %s, source %s\n", filename, source)
+	fileDesc, err := os.Open(filename)
+	if err != nil {
+		log.Printf("Log file ignored due to %s\n", err)
+		return
 	}
 	// Start reading from the file with a reader.
 	reader := bufio.NewReader(fileDesc)
 	if reader == nil {
-		log.Fatalf("%s, reader create failed\n", logFile)
+		log.Printf("Log file ignored due to %s\n", err)
+		return
 	}
+	r := logfileReader{filename: filename,
+		source:   source,
+		fileDesc: fileDesc,
+		reader:   reader,
+	}
+	// read initial entries until EOF
+	readLineToEvent(&r, ctx.logChan)
+	ctx.logfileReaders = append(ctx.logfileReaders, r)
+}
 
-	/*reader := getLoggerReader(logFile)
-	if reader == nil {
-		log.Fatalf("%s, log File open failed\n", logFile)
-	}*/
+// XXX TBD should we stop the go routine?
+func handleLogDirDelete(ctx *loggerContext, filename string, source string) {
+}
 
-	for {
-		line, err := reader.ReadString('\n')
-
+// Read until EOF or error
+func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
+	// Check if shrunk aka truncated
+	fi, err := r.fileDesc.Stat()
+	if err != nil {
+		log.Printf("Stat failed %s\n", err)
+		return
+	}
+	if fi.Size() < r.size {
+		log.Printf("File shrunk from %d to %d\n", r.size, fi.Size())
+		_, err = r.fileDesc.Seek(0, os.SEEK_SET)
 		if err != nil {
+			log.Printf("Seek failed %s\n", err)
+			return
+		}
+	}
+	for {
+		line, err := r.reader.ReadString('\n')
+		if err != nil {
+			// XXX do we need to look for truncatation during
+			// this loop?
 			if debug {
 				log.Println(err)
 			}
@@ -146,42 +201,40 @@ func readLogFileLineByLine(logFilePath, fileName string, handleLogModifyFunc log
 			}
 			break
 		}
-		handleLogModifyFunc(fileName, line)
+		// XXX remove trailing "/n" from line
+		// XXX parse timestamp and remove it from line (if present)
+		// otherwise leave timestamp unitialized
+		logChan <- logEntry{source: r.source, content: line}
 	}
-	logFileSizeMap[logFile] = fileSize.Size()
-}
-
-func handleLogModify(logFilename string, logContent string) {
-	//if debug {
-	//log.Printf("handleLogModify for %s\n", logFilename)
-	//log.Println("value of log content: ", logContent)
-	//}
-	contentAndFileName := logContent + " -logFileName- " + logFilename
-	logContentChan <- contentAndFileName
-	logFileChan <- logFilename
-}
-
-func handleLogDelete(logFilename string) {
-	//if debug {
-	log.Printf("handleLogDelete for %s\n", logFilename)
-	//}
-
-}
-func sendLogsOnChannel(logContent chan string, logFileName chan string) {
-	log.Println("protoStrForLogs called...")
-
-	for {
-		select {
-		case content := <-logContentChan:
-			log.Printf("logContentChan %s\n", content)
-			makeAndsendProtoStrForLogsToZedcloud(content)
-		//case filename := <-logFileChan:
-		//log.Println("logFileChann: ", filename)
-
-		default:
-		}
+	// Update size
+	fi, err = r.fileDesc.Stat()
+	if err != nil {
+		log.Printf("Stat failed %s\n", err)
+		return
 	}
+	r.size = fi.Size()
 }
-func makeAndsendProtoStrForLogsToZedcloud(content string) {
-//	var ReportLogs = &zmet.LogBundle{}
+
+// XXX useful to read unchanging files until EOF
+// Use for the otherpartition files!
+func logReader(logFile string, source string, logChan chan<- logEntry) {
+	fileDesc, err := os.Open(logFile)
+	if err != nil {
+		log.Printf("Log file ignored due to %s\n", err)
+		return
+	}
+	// Start reading from the file with a reader.
+	reader := bufio.NewReader(fileDesc)
+	if reader == nil {
+		log.Printf("Log file ignored due to %s\n", err)
+		return
+	}
+	r := logfileReader{filename: logFile,
+		source:   source,
+		fileDesc: fileDesc,
+		reader:   reader,
+	}
+	// read entries until EOF
+	readLineToEvent(&r, logChan)
+	log.Printf("logReader done for %s\n", logFile)
 }
