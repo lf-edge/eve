@@ -61,19 +61,11 @@ func MaybeRemoveDownloaderConfig(safename string) {
 		fmt.Printf("create Downloader config map\n")
 		downloaderConfig = make(map[string]types.DownloaderConfig)
 	}
-	m, ok := downloaderConfig[safename]
-	if !ok {
+	if _, ok := downloaderConfig[safename]; !ok {
 		log.Printf("Downloader config missing for remove for %s\n",
 			safename)
 		return
 	}
-
-	if m.RefCount > 1 {
-		m.RefCount -= 1
-		log.Printf("%s, downloader config decrement refCount %d\n", safename, m.RefCount)
-		return
-	}
-	
 	delete(downloaderConfig, safename)
 	configFilename := fmt.Sprintf("%s/%s.json",
 		downloaderAppImgObjConfigDirname, safename)
