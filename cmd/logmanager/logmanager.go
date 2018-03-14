@@ -61,7 +61,6 @@ type logEntry struct {
 	image    string // XXX missing in zlog.proto
 	iid      string // XXX e.g. PID - where do we get it from?
 	content  string // One line
-	//timestamp time.Time
 	timestamp *google_protobuf.Timestamp
 }
 
@@ -117,9 +116,6 @@ func main() {
 
 	networkStatusChanges := make(chan string)
 	go watch.WatchStatus(DNSDirname, networkStatusChanges)
-
-	// Context to pass around
-	//getconfigCtx := getconfigContext{}
 
 	log.Printf("Waiting until we have some uplinks with usable addresses\n")
 	for types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus) == 0 ||
@@ -271,8 +267,6 @@ func processEvents(logChan <-chan logEntry) {
 
 		case <-flushTimer.C:
 			log.Println("Logger Flush at", reportLogs.Timestamp)
-			//data, _ := proto.Marshal(reportLogs)
-			//log.Println("reportLogs: ",data)
 			if ok := isBufferFlush(reportLogs, iteration,
 				counter, true); ok {
 				counter = 0
@@ -294,7 +288,6 @@ func isBufferFlush(reportLogs *zmet.LogBundle, iteration int,
 var msgIdCounter = 1
 var iteration = 0
 
-//func HandleLogEvent(event logEntry) {
 func HandleLogEvent(event logEntry, reportLogs *zmet.LogBundle, counter int) {
 	// Assign a unique msgId for each message
 	msgId := msgIdCounter
@@ -311,7 +304,6 @@ func HandleLogEvent(event logEntry, reportLogs *zmet.LogBundle, counter int) {
 }
 
 func sendProtoStrForLogs(reportLogs *zmet.LogBundle, iteration int) {
-	//func sendProtoStrForLogs(iteration int) {
 	reportLogs.Timestamp = ptypes.TimestampNow()
 	reportLogs.DevID = *proto.String(zcdevUUID.String())
 	reportLogs.Image = "IMG"
