@@ -838,6 +838,10 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 	// Note that these are associated with the device and not with a
 	// device name like ppp0 or wwan0
 	lte := readLTEInfo()
+	lteNets := readLTENetworks()
+	if lteNets != nil {
+		lte = append(lte, lteNets...)
+	}
 	for _, i := range lte {
 		item := new(zmet.MetricItem)
 		item.Key = i.Key

@@ -14,27 +14,40 @@ import (
 )
 
 const (
-	infoFile    = "/run/wwan/serving-system.json"
-	metricsFile = "/run/wwan/signal-info.json"
+	infoFile     = "/run/wwan/serving-system.json"
+	metricsFile  = "/run/wwan/signal-info.json"
+	networksFile = "/run/wwan/networks-info.json"
 )
 
 type fileFormat map[string]interface{}
 
 func readLTEInfo() []types.MetricItem {
-	return readLTE(infoFile)
+	return readLTE(infoFile, "")
+}
+
+func readLTENetworks() []types.MetricItem {
+	return readLTE(networksFile, "lte-networks")
 }
 
 func readLTEMetrics() []types.MetricItem {
-	return readLTE(metricsFile)
+	return readLTE(metricsFile, "")
 }
 
-func readLTE(filename string) []types.MetricItem {
+func readLTE(filename string, verbatim string) []types.MetricItem {
 	var items []types.MetricItem
 	var m fileFormat
 
 	bytes, err := ioutil.ReadFile(filename)
 	if err != nil {
 		log.Printf("readLTE: %s\n", err)
+		return items
+	}
+	if verbatim != "" {
+		// Just return file content as a single string
+		log.Printf("readLTE verbatim %s: %s\n", verbatim, string(bytes))
+		info := types.MetricItem{Key: verbatim, Value: string(bytes)}
+		info.Type = types.MetricItemOther
+		items = append(items, info)
 		return items
 	}
 	err = json.Unmarshal(bytes, &m)
