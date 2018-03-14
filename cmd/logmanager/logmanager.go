@@ -11,26 +11,27 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
 	google_protobuf "github.com/golang/protobuf/ptypes/timestamp"
-	"github.com/zededa/api/zmet"
-	"github.com/zededa/go-provision/types"
-	"github.com/zededa/go-provision/adapters"
-	"github.com/zededa/go-provision/watch"
-	"github.com/zededa/go-provision/hardware"
-	"github.com/zededa/go-provision/zedcloud"
 	"github.com/satori/go.uuid"
+	"github.com/zededa/api/zmet"
+	"github.com/zededa/go-provision/adapters"
+	"github.com/zededa/go-provision/hardware"
+	"github.com/zededa/go-provision/types"
+	"github.com/zededa/go-provision/watch"
+	"github.com/zededa/go-provision/zedcloud"
 	"io"
 	"io/ioutil"
 	"log"
 	"os"
 	"strings"
 	"time"
+	"regexp"
 )
 
 const (
 	defaultLogdirname = "/var/log"
 	identityDirname   = "/config"
 	serverFilename    = identityDirname + "/server"
-	uuidFileName    = identityDirname + "/uuid"
+	uuidFileName      = identityDirname + "/uuid"
 	DNSDirname        = "/var/run/zedrouter/DeviceNetworkStatus"
 )
 
@@ -41,10 +42,11 @@ var debug bool
 var serverName string
 var logsApi string = "api/v1/edgedevice/logs"
 var zedcloudCtx zedcloud.ZedCloudContext
-var logMaxSize = 10
+var logMaxSize = 100
 
 // Key is ifname string
 var logs map[string]zedcloudLogs
+
 // global stuff
 type logDirModifyHandler func(ctx *loggerContext, logFileName string, source string)
 type logDirDeleteHandler func(ctx *loggerContext, logFileName string, source string)
@@ -84,10 +86,10 @@ type DNSContext struct {
 }
 
 type zedcloudLogs struct {
-    FailureCount uint64
-    SuccessCount uint64
-    LastFailure  time.Time
-    LastSuccess  time.Time
+	FailureCount uint64
+	SuccessCount uint64
+	LastFailure  time.Time
+	LastSuccess  time.Time
 }
 
 func main() {
@@ -106,9 +108,9 @@ func main() {
 	log.Printf("Starting log manager... watching %s\n", logDirName)
 
 	model := hardware.GetHardwareModel()
-    log.Printf("HardwareModel %s\n", model)
-    aa := types.AssignableAdapters{}
-    aaChanges, aaFunc, aaCtx := adapters.Init(&aa, model)
+	log.Printf("HardwareModel %s\n", model)
+	aa := types.AssignableAdapters{}
+	aaChanges, aaFunc, aaCtx := adapters.Init(&aa, model)
 
 	DNSctx := DNSContext{}
 	DNSctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
@@ -211,30 +213,30 @@ func handleDNSDelete(ctxArg interface{}, statusFilename string) {
 }
 
 func maybeInit(ifname string) {
-    if logs == nil {
-        fmt.Printf("create zedcloudlog map\n")
-        logs = make(map[string]zedcloudLogs)
-    }
-    if _, ok := logs[ifname]; !ok {
-        fmt.Printf("create zedcloudlog for %s\n", ifname)
-        logs[ifname] = zedcloudLogs{}
-    }
+	if logs == nil {
+		fmt.Printf("create zedcloudlog map\n")
+		logs = make(map[string]zedcloudLogs)
+	}
+	if _, ok := logs[ifname]; !ok {
+		fmt.Printf("create zedcloudlog for %s\n", ifname)
+		logs[ifname] = zedcloudLogs{}
+	}
 }
 
 func zedCloudFailure(ifname string) {
-    maybeInit(ifname)
-    m := logs[ifname]
-    m.FailureCount += 1
-    m.LastFailure = time.Now()
-    logs[ifname] = m
+	maybeInit(ifname)
+	m := logs[ifname]
+	m.FailureCount += 1
+	m.LastFailure = time.Now()
+	logs[ifname] = m
 }
 
 func zedCloudSuccess(ifname string) {
-    maybeInit(ifname)
-    m := logs[ifname]
-    m.SuccessCount += 1
-    m.LastSuccess = time.Now()
-    logs[ifname] = m
+	maybeInit(ifname)
+	m := logs[ifname]
+	m.SuccessCount += 1
+	m.LastSuccess = time.Now()
+	logs[ifname] = m
 }
 
 //get server name
@@ -312,7 +314,7 @@ func sendProtoStrForLogs(reportLogs *zmet.LogBundle, iteration int) {
 	//func sendProtoStrForLogs(iteration int) {
 	reportLogs.Timestamp = ptypes.TimestampNow()
 	reportLogs.DevID = *proto.String(zcdevUUID.String())
-	reportLogs.Image =  "IMG"
+	reportLogs.Image = "IMG"
 	log.Println("sendProtoStrForLogs called...", iteration)
 	log.Println("Log Details: ", reportLogs)
 	serverName := getServerName()
@@ -351,16 +353,16 @@ func handleConfigInit() {
 	zedcloudCtx.SuccessFunc = zedCloudSuccess
 
 	b, err := ioutil.ReadFile(uuidFileName)
-    if err != nil {
-        log.Fatal("ReadFile", err, uuidFileName)
-    }
-    uuidStr := strings.TrimSpace(string(b))
-    devUUID, err = uuid.FromString(uuidStr)
-    if err != nil {
-        log.Fatal("uuid.FromString", err, string(b))
-    }
-    fmt.Printf("Read UUID %s\n", devUUID)
-    zcdevUUID = devUUID
+	if err != nil {
+		log.Fatal("ReadFile", err, uuidFileName)
+	}
+	uuidStr := strings.TrimSpace(string(b))
+	devUUID, err = uuid.FromString(uuidStr)
+	if err != nil {
+		log.Fatal("uuid.FromString", err, string(b))
+	}
+	fmt.Printf("Read UUID %s\n", devUUID)
+	zcdevUUID = devUUID
 }
 
 func HandleLogDirEvent(change string, logDirName string, ctx *loggerContext,
@@ -454,7 +456,31 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 		// XXX remove trailing "/n" from line
 		// XXX parse timestamp and remove it from line (if present)
 		// otherwise leave timestamp unitialized
-		logChan <- logEntry{source: r.source, content: line}
+		re := regexp.MustCompile(`\d{4}/\d{2}/\d{2}`)
+		matched := re.MatchString(line)
+		var protoDateAndTime *google_protobuf.Timestamp
+		if matched {
+			dateAndTime := strings.Split(line, " ")
+			re := regexp.MustCompile("/")
+			newDateFormat := re.ReplaceAllLiteralString(dateAndTime[0], "-")
+
+			timeFormat := strings.Split(dateAndTime[1], ".")[0]
+			newDateAndTime := newDateFormat + "T" + timeFormat
+			layout := "2006-01-02T15:04:05"
+
+			///convert newDateAndTime type string to type time.time
+			dt, err := time.Parse(layout, newDateAndTime)
+			if err != nil {
+				log.Println(err)
+			}
+			//convert dt type time.time to type proto
+			protoDateAndTime, err = ptypes.TimestampProto(dt)
+			if err != nil {
+				log.Println(err)
+			}
+			log.Println("Parsed Date And Time From Agents Log In Proto Format: ",protoDateAndTime)
+		}
+		logChan <- logEntry{source: r.source, content: line, timestamp: protoDateAndTime}
 	}
 	// Update size
 	fi, err = r.fileDesc.Stat()
