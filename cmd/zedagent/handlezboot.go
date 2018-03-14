@@ -26,23 +26,11 @@ const (
 // mutex for zboot/dd APIs
 var zbootMutex *sync.Mutex
 
-// keep these four things handy, for avoiding
-// zboot API calls in config fetch thread
-var gCurPartName, gOtherPartName string
-var gCurPartVersion, gOtherPartVersion string
-
 func zbootInit() {
 	zbootMutex = new(sync.Mutex)
 	if zbootMutex == nil {
 		log.Fatal("Mutex Init")
 	}
-
-	log.Println("Initialize zboot NameCache")
-	// cache these attributes
-	getCurrentPartition()
-	getOtherPartition()
-	getCurPartShortVersion()
-	getOtherPartShortVersion()
 }
 
 // reset routine
@@ -72,9 +60,6 @@ func zbootWatchdogOK() {
 
 // partition routines
 func getCurrentPartition() string {
-	if gCurPartName != "" {
-		return gCurPartName
-	}
 	zbootMutex.Lock()
 	curPartCmd := exec.Command("zboot", "curpart")
 	zbootMutex.Unlock()
@@ -86,17 +71,10 @@ func getCurrentPartition() string {
 	partName := string(ret)
 	partName = strings.TrimSpace(partName)
 	validatePartitionName(partName)
-	if partName != "" && gCurPartName != partName {
-		gCurPartName = partName
-	}
 	return partName
 }
 
 func getOtherPartition() string {
-
-	if gOtherPartName != "" {
-		return gOtherPartName
-	}
 
 	partName := getCurrentPartition()
 
@@ -107,9 +85,6 @@ func getOtherPartition() string {
 		partName = "IMGA"
 	default:
 		log.Fatalf("getOtherPartition unknown partName %s\n", partName)
-	}
-	if partName != "" && gOtherPartName != partName {
-		gOtherPartName = partName
 	}
 	return partName
 }
@@ -373,50 +348,6 @@ const (
 	otherPrefix      = "/containers/services/zededa-tools/lower"
 )
 
-func getCurPartShortVersion() string {
-	if gCurPartVersion != "" {
-		return gCurPartVersion
-	}
-	partName := getCurrentPartition()
-	return GetShortVersion(partName)
-}
-
-func getOtherPartShortVersion() string {
-	if gOtherPartVersion != "" {
-		return gOtherPartVersion
-	}
-	partName := getOtherPartition()
-	return GetShortVersion(partName)
-}
-
-func getPartitionShortVersion(partName string) string {
-	validatePartitionName(partName)
-
-	if isCurrentPartition(partName) {
-		return getCurPartShortVersion()
-	}
-	if isOtherPartition(partName) {
-		return getOtherPartShortVersion()
-	}
-	return ""
-}
-
-// reset the cache entry
-func resetCurPartShortVersion() {
-	log.Printf("resetCurrPartShortVersion:%s\n", gCurPartVersion)
-	if gCurPartVersion != "" {
-		gCurPartVersion = ""
-	}
-}
-
-// reset the cache entry
-func resetOtherPartShortVersion() {
-	log.Printf("resetOtherPartShortVersion:%s\n", gOtherPartVersion)
-	if gOtherPartVersion != "" {
-		gOtherPartVersion = ""
-	}
-}
-
 func GetShortVersion(partName string) string {
 	return getVersion(partName, shortVersionFile)
 }
@@ -443,13 +374,8 @@ func getVersion(part string, verFilename string) string {
 		versionStr := string(version)
 		versionStr = strings.TrimSpace(versionStr)
 		log.Printf("%s, readCurVersion %s\n", part, versionStr)
-		if versionStr != "" && gCurPartVersion != versionStr {
-			gCurPartVersion = versionStr
-		}
 		return versionStr
-	}
-
-	if part == getOtherPartition() {
+	} else {
 		devname := getPartitionDevname(part)
 		target, err := ioutil.TempDir("/var/run", "tmpmnt")
 		if err != nil {
@@ -474,9 +400,6 @@ func getVersion(part string, verFilename string) string {
 		versionStr := string(version)
 		versionStr = strings.TrimSpace(versionStr)
 		log.Printf("%s, readOtherVersion %s\n", part, versionStr)
-		if versionStr != "" && gOtherPartVersion != versionStr {
-			gOtherPartVersion = versionStr
-		}
 		return versionStr
 	}
 

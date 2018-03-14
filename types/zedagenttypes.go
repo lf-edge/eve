@@ -140,19 +140,6 @@ func (status CertObjStatus) CheckPendingDelete() bool {
 	return false
 }
 
-// Indexed by UUIDandVersion as above
-type PartitionInfo struct {
-	UUIDandVersion UUIDandVersion
-	BaseOsVersion  string // For user-friendly debug
-	ImageSha256    string
-	PartitionLabel string
-	State          SwState
-	Activate       bool
-	RetryCount     int32
-	Error          string
-	ErrorTime      time.Time
-}
-
 // return value holder
 type RetStatus struct {
 	Changed   bool

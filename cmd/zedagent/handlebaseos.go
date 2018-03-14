@@ -297,30 +297,17 @@ func doBaseOsActivate(uuidStr string, config types.BaseOsConfig,
 func doBaseOsInstall(uuidStr string, config types.BaseOsConfig,
 	status *types.BaseOsStatus) (bool, bool) {
 
-	log.Printf("doBaseOsInstall(%s) for %s\n",
-		config.BaseOsVersion, uuidStr)
+	log.Printf("%s, doBaseOsInstall(%s) \n", uuidStr, config.BaseOsVersion)
 	changed := false
 	proceed := false
-
-	// XXX:FIXME, handle image add/delete through deactivate/activate
-	if len(config.StorageConfigList) != len(status.StorageStatusList) {
-
-		errString := fmt.Sprintf("doBaseOsInstall(%s) for %s, Storage length mismatch: %d vs %d\n",
-			config.BaseOsVersion, uuidStr,
-			len(config.StorageConfigList),
-			len(status.StorageStatusList))
-
-		status.Error = errString
-		status.ErrorTime = time.Now()
-		return changed, proceed
-	}
 
 	for i, sc := range config.StorageConfigList {
 		ss := &status.StorageStatusList[i]
 		if ss.DownloadURL != sc.DownloadURL ||
 			ss.ImageSha256 != sc.ImageSha256 {
 			// Report to zedcloud
-			errString := fmt.Sprintf("doBaseOsInstall for %s, Storage config mismatch:\n\t%s\n\t%s\n\t%s\n\t%s\n\n", uuidStr,
+			errString := fmt.Sprintf("%s, for %s, Storage config mismatch:\n\t%s\n\t%s\n\t%s\n\t%s\n\n", uuidStr,
+				config.BaseOsVersion,
 				sc.DownloadURL, ss.DownloadURL,
 				sc.ImageSha256, ss.ImageSha256)
 			log.Println(errString)
@@ -336,8 +323,7 @@ func doBaseOsInstall(uuidStr string, config types.BaseOsConfig,
 		checkBaseOsStorageDownloadStatus(uuidStr, config, status)
 
 	if downloaded == false {
-		log.Printf("doBaseOsInstall(%s) for %s, Still not downloaded\n",
-			config.BaseOsVersion, uuidStr)
+		log.Printf(" %s, Still not downloaded\n", config.BaseOsVersion)
 		return changed || downloadchange, proceed
 	}
 
@@ -346,8 +332,7 @@ func doBaseOsInstall(uuidStr string, config types.BaseOsConfig,
 		checkBaseOsVerificationStatus(uuidStr, config, status)
 
 	if verified == false {
-		log.Printf("doBaseOsInstall(%s) for %s, Still not verified\n",
-			config.BaseOsVersion, uuidStr)
+		log.Printf("%s, Still not verified\n", config.BaseOsVersion)
 		return changed || verifychange, proceed
 	}
 
@@ -586,9 +571,6 @@ func installBaseOsObject(srcFilename string, dstFilename string) error {
 	if err != nil {
 		log.Printf("installBaseOsObject: write failed %s\n", err)
 	}
-
-	// resetting the local cache
-	resetOtherPartShortVersion()
 	return err
 }
 

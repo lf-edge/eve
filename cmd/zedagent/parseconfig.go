@@ -160,8 +160,8 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 func assignBaseOsPartition(baseOsList []*types.BaseOsConfig) {
 	curPartName := getCurrentPartition()
 	otherPartName := getOtherPartition()
-	curPartVersion := getCurPartShortVersion()
-	otherPartVersion := getOtherPartShortVersion()
+	curPartVersion := GetShortVersion(curPartName)
+	otherPartVersion := GetShortVersion(otherPartName)
 
 	assignedPart := true
 	// older assignments/installations
@@ -241,50 +241,6 @@ func setStoragePartitionLabel(baseOs *types.BaseOsConfig) {
 		sc := &baseOs.StorageConfigList[idx]
 		sc.FinalObjDir = baseOs.PartitionLabel
 	}
-}
-
-func isInstallCandidate(uuidStr string, baseOs *types.BaseOsConfig,
-	baseOsCount int) bool {
-
-	curBaseOsConfig := baseOsConfigGet(uuidStr)
-	curBaseOsStatus := baseOsStatusGet(uuidStr)
-
-	if curBaseOsStatus != nil &&
-		curBaseOsStatus.Activated == true {
-		log.Printf("isInstallCandidate(%s) FAIL current (%s) is Activated\n",
-			baseOs.BaseOsVersion, curBaseOsStatus.BaseOsVersion)
-		return false
-	}
-
-	// new Config
-	if curBaseOsConfig == nil {
-		log.Printf("isInstallCandidate(%s) no current\n",
-			baseOs.BaseOsVersion)
-		if baseOsCount == 1 || baseOs.Activate == true {
-			return true
-		}
-		return false
-	}
-
-	// only one baseOs Config
-	if curBaseOsConfig.PartitionLabel == "" &&
-		baseOsCount == 1 {
-		log.Printf("isInstallCandidate(%s) only one\n",
-			baseOs.BaseOsVersion)
-		return true
-	}
-
-	// Activate Flag is flipped
-	if curBaseOsConfig.Activate == false &&
-		baseOs.Activate == true {
-		log.Printf("isInstallCandidate(%s) Activate and cur not\n",
-			baseOs.BaseOsVersion)
-		return true
-	}
-	log.Printf("isInstallCandidate(%s) FAIL: curBaseOs %s activate %v/%v\n",
-		baseOs.BaseOsVersion, curBaseOsConfig.BaseOsVersion,
-		baseOs.Activate, curBaseOsConfig.Activate)
-	return false
 }
 
 func parseAppInstanceConfig(config *zconfig.EdgeDevConfig) {
