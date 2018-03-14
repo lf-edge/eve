@@ -341,26 +341,6 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCo
 	}
 	handleLookupParam(config)
 
-	// add new BaseOS/App instances; if we're rebooting then return
-	if parseConfig(config, getconfigCtx) {
-		return true
-	}
-
-	// then, clean up old config entries
-	duration := time.Duration(immediate)
-	cleanUpTimer := time.NewTimer(time.Second * duration)
-	cleanupOldConfig(config, cleanUpTimer)
-
-	return false
-}
-
-// clean up oldConfig, after newConfig
-// to maintain the refcount for certs
-func cleanupOldConfig(config *zconfig.EdgeDevConfig,
-	cleanUpTimer *time.Timer) {
-
-	<-cleanUpTimer.C
-
 	// clean up old config entries
 	if deleted := cleanupOldConfig(config); deleted {
 		log.Printf("Old Config removed, take a delay\n")

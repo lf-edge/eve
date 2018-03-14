@@ -50,27 +50,27 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext) 
 		log.Printf("Other %s partition contains failed upgrade\n",
 			otherPart)
 		// XXX make sure its logs are made available
+		// XXX switch to keep it in inprogress until we get
+		// a baseOsConfig with a different baseOsVersion string.
 		log.Printf("Mark other partition %s, unused\n", otherPart)
 		setOtherPartitionStateUnused()
 	}
 
-	if !validateConfig(config) {
-		return false
+	if validateConfig(config) {
+		// Look for timers and other settings in configItems
+		parseConfigItems(config, getconfigCtx)
+
+		// if no baseOs config write, consider
+		// picking up application image config
+
+		if parseBaseOsConfig(config) == false {
+			parseAppInstanceConfig(config)
+		}
+
+		// XXX:FIXME, otherwise, dont process
+		// app image config, until the current
+		// baseos config processing is complete
 	}
-
-	// Look for timers and other settings in configItems
-	parseConfigItems(config, getconfigCtx)
-
-	// if no baseOs config write, consider
-	// picking up application image config
-
-	if parseBaseOsConfig(config) == false {
-		parseAppInstanceConfig(config)
-	}
-
-	// XXX:FIXME, otherwise, dont process
-	// app image config, until the current
-	// baseos config processing is complete
 	return false
 }
 
