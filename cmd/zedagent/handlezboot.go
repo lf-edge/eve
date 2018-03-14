@@ -358,11 +358,9 @@ func GetLongVersion(part string) string {
 }
 
 func getVersion(part string, verFilename string) string {
-
 	if !isZbootAvailable() {
 		return ""
 	}
-
 	validatePartitionName(part)
 
 	if part == getCurrentPartition() {
@@ -392,7 +390,8 @@ func getVersion(part string, verFilename string) string {
 			return ""
 		}
 		defer syscall.Unmount(target, 0)
-		filename := target + otherPrefix + verFilename
+		filename := fmt.Sprintf("%s/%s/%s",
+			target, otherPrefix, verFilename)
 		version, err := ioutil.ReadFile(filename)
 		if err != nil {
 			log.Fatal(err)
@@ -402,8 +401,6 @@ func getVersion(part string, verFilename string) string {
 		log.Printf("%s, readOtherVersion %s\n", part, versionStr)
 		return versionStr
 	}
-
-	return ""
 }
 
 // XXX temporary? Needed to run on hikey's with no zboot yet.
