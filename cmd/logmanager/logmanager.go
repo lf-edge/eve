@@ -17,6 +17,7 @@ import (
 	"github.com/zededa/go-provision/watch"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/zedcloud"
+	"github.com/satori/go.uuid"
 	"io"
 	"io/ioutil"
 	"log"
@@ -29,9 +30,12 @@ const (
 	defaultLogdirname = "/var/log"
 	identityDirname   = "/config"
 	serverFilename    = identityDirname + "/server"
+	uuidFileName    = identityDirname + "/uuid"
 	DNSDirname        = "/var/run/zedrouter/DeviceNetworkStatus"
 )
 
+var zcdevUUID uuid.UUID
+var devUUID uuid.UUID
 var deviceNetworkStatus types.DeviceNetworkStatus
 var debug bool
 var serverName string
@@ -307,6 +311,8 @@ func HandleLogEvent(event logEntry, reportLogs *zmet.LogBundle, counter int) {
 func sendProtoStrForLogs(reportLogs *zmet.LogBundle, iteration int) {
 	//func sendProtoStrForLogs(iteration int) {
 	reportLogs.Timestamp = ptypes.TimestampNow()
+	reportLogs.DevID = *proto.String(zcdevUUID.String())
+	reportLogs.Image =  "IMG"
 	log.Println("sendProtoStrForLogs called...", iteration)
 	log.Println("Log Details: ", reportLogs)
 	serverName := getServerName()
@@ -343,6 +349,18 @@ func handleConfigInit() {
 	zedcloudCtx.Debug = debug
 	zedcloudCtx.FailureFunc = zedCloudFailure
 	zedcloudCtx.SuccessFunc = zedCloudSuccess
+
+	b, err := ioutil.ReadFile(uuidFileName)
+    if err != nil {
+        log.Fatal("ReadFile", err, uuidFileName)
+    }
+    uuidStr := strings.TrimSpace(string(b))
+    devUUID, err = uuid.FromString(uuidStr)
+    if err != nil {
+        log.Fatal("uuid.FromString", err, string(b))
+    }
+    fmt.Printf("Read UUID %s\n", devUUID)
+    zcdevUUID = devUUID
 }
 
 func HandleLogDirEvent(change string, logDirName string, ctx *loggerContext,
