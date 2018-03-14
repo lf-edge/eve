@@ -44,16 +44,17 @@ func CheckAndCreatePidfile(agentName string) error {
 	oldPid, err := strconv.Atoi(string(b))
 	if err != nil {
 		log.Printf("Atoi of %s failed %s; ignored\n", filename, err)
-	}
-	// Does the old pid exist?
-	p, err := os.FindProcess(oldPid)
-	if err == nil {
-		err = p.Signal(syscall.Signal(0))
+	} else {
+		// Does the old pid exist?
+		p, err := os.FindProcess(oldPid)
 		if err == nil {
-			errStr := fmt.Sprintf("Old pid %d exists for agent %s",
-				oldPid, agentName)
-			log.Println(errStr)
-			return errors.New(errStr)
+			err = p.Signal(syscall.Signal(0))
+			if err == nil {
+				errStr := fmt.Sprintf("Old pid %d exists for agent %s",
+					oldPid, agentName)
+				log.Println(errStr)
+				return errors.New(errStr)
+			}
 		}
 	}
 	if err := writeMyPid(filename); err != nil {
