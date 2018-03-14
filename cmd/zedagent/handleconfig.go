@@ -361,15 +361,37 @@ func cleanupOldConfig(config *zconfig.EdgeDevConfig,
 
 	<-cleanUpTimer.C
 
-	// delete old app configs, if any
-	checkCurrentAppFiles(config)
+	// clean up old config entries
+	if deleted := cleanupOldConfig(config); deleted {
+		log.Printf("Old Config removed, take a delay\n")
+		duration := time.Duration(immediate)
+		newConfigTimer := time.NewTimer(time.Second * duration)
+		<-newConfigTimer.C
+	}
 
-	// delete old base os configs, if any
-	checkCurrentBaseOsFiles(config)
+	// add new BaseOS/App instances
+	if rebootSet := parseConfig(config); rebootSet == true {
+		return rebootSet
+	}
+
+	return false
 }
 
-func checkCurrentAppFiles(config *zconfig.EdgeDevConfig) {
+// clean up oldConfig, after newConfig
+// to maintain the refcount for certs
+func cleanupOldConfig(config *zconfig.EdgeDevConfig) bool {
 
+	// delete old app configs, if any
+	appDel := checkCurrentAppFiles(config)
+
+	// delete old base os configs, if any
+	baseDel := checkCurrentBaseOsFiles(config)
+	return appDel || baseDel
+}
+
+func checkCurrentAppFiles(config *zconfig.EdgeDevConfig) bool {
+
+	deleted := false
 	// get the current set of App files
 	curAppFilenames, err := ioutil.ReadDir(zedmanagerConfigDirname)
 	if err != nil {
@@ -392,22 +414,26 @@ func checkCurrentAppFiles(config *zconfig.EdgeDevConfig) {
 					break
 				}
 			}
-			// app instance not found, delete
+			// app instance not found, delete app instance
+			// config holder file
 			if !found {
 				log.Printf("Remove app config %s\n", curAppFilename)
 				err := os.Remove(zedmanagerConfigDirname + "/" + curAppFilename)
 				if err != nil {
 					log.Println("Old config: ", err)
 				}
-				// also remove the certifiates holder config
+				// also remove the certificates config holder file
 				os.Remove(zedagentCertObjConfigDirname + "/" + curAppFilename)
+				deleted = true
 			}
 		}
 	}
+	return deleted
 }
 
-func checkCurrentBaseOsFiles(config *zconfig.EdgeDevConfig) {
+func checkCurrentBaseOsFiles(config *zconfig.EdgeDevConfig) bool {
 
+	deleted := false
 	// get the current set of baseOs files
 	curBaseOsFilenames, err := ioutil.ReadDir(zedagentBaseOsConfigDirname)
 	if err != nil {
@@ -433,9 +459,11 @@ func checkCurrentBaseOsFiles(config *zconfig.EdgeDevConfig) {
 			// baseOS instance not found, delete
 			if !found {
 				removeBaseOsEntry(curBaseOsFilename)
+				deleted = true
 			}
 		}
 	}
+	return deleted
 }
 
 func removeBaseOsEntry(baseOsFilename string) {
@@ -443,12 +471,9 @@ func removeBaseOsEntry(baseOsFilename string) {
 	uuidStr := strings.Split(baseOsFilename, ".")[0]
 	log.Printf("removeBaseOsEntry %s, remove baseOs entry\n", uuidStr)
 
-	// remove partition map entry
-	resetPersistentPartitionInfo(uuidStr)
-
-	// remove the certificates holder config
-	os.Remove(zedagentCertObjConfigDirname + "/" + baseOsFilename)
-
-	// remove Config File
+	// remove base os holder config file
 	os.Remove(zedagentBaseOsConfigDirname + "/" + baseOsFilename)
+
+	// remove certificates holder config file
+	os.Remove(zedagentCertObjConfigDirname + "/" + baseOsFilename)
 }

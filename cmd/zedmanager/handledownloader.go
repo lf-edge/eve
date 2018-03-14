@@ -26,9 +26,10 @@ func AddOrRefcountDownloaderConfig(safename string, sc *types.StorageConfig) {
 	}
 	key := safename
 	if m, ok := downloaderConfig[key]; ok {
+		m.RefCount += 1
 		fmt.Printf("downloader config exists for %s refcount %d\n",
 			safename, m.RefCount)
-		m.RefCount += 1
+		downloaderConfig[key] = m
 	} else {
 		fmt.Printf("downloader config add for %s\n", safename)
 		n := types.DownloaderConfig{
