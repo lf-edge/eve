@@ -21,6 +21,7 @@ import (
 	"encoding/pem"
 	"flag"
 	"fmt"
+	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
 	"io/ioutil"
@@ -34,8 +35,9 @@ import (
 
 // Keeping status in /var/run to be clean after a crash/reboot
 const (
-	baseDirname = "/var/tmp/identitymgr"
-	runDirname = "/var/run/identitymgr"
+	agentName     = "identitymgr"
+	baseDirname   = "/var/tmp/identitymgr"
+	runDirname    = "/var/run/identitymgr"
 	configDirname = baseDirname + "/config"
 	statusDirname = runDirname + "/status"
 )
@@ -56,8 +58,11 @@ func main() {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
-	log.Printf("Starting identitymgr\n")
-	watch.CleanupRestarted("identitymgr")
+	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("Starting %s\n", agentName)
+	watch.CleanupRestarted(agentName)
 
 	if _, err := os.Stat(baseDirname); err != nil {
 		if err := os.Mkdir(baseDirname, 0700); err != nil {
@@ -99,7 +104,7 @@ func handleRestart(ctxArg interface{}, done bool) {
 	if done {
 		// Since all work is done inline we can immediately say that
 		// we have restarted.
-		watch.SignalRestarted("identitymgr")
+		watch.SignalRestarted(agentName)
 	}
 }
 

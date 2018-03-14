@@ -21,6 +21,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/zededa/go-provision/hardware"
+	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
 	"io/ioutil"
@@ -31,6 +32,7 @@ import (
 )
 
 const (
+	agentName = "ledmanager"
 	ledConfigDirName = "/var/tmp/ledmanager/config"
 )
 
@@ -81,7 +83,10 @@ func main() {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
-	log.Printf("Starting ledmanager\n")
+	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("Starting %s\n", agentName)
 
 	model := hardware.GetHardwareModel()
 	fmt.Printf("Got HardwareModel %s\n", model)

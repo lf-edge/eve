@@ -18,6 +18,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/zededa/api/zconfig"
+	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
 	"github.com/zededa/go-provision/wrap"
@@ -33,8 +34,9 @@ const (
 	appImgObj = "appImg.obj"
 	baseOsObj = "baseOs.obj"
 	certObj   = "cert.obj"
+	agentName = "downloader"
 
-	moduleName            = "downloader"
+	moduleName            = agentName
 	zedBaseDirname        = "/var/tmp"
 	zedRunDirname         = "/var/run"
 	baseDirname           = zedBaseDirname + "/" + moduleName
@@ -83,9 +85,12 @@ func main() {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
-	log.Printf("Starting downloader\n")
+	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("Starting %s\n", agentName)
 	for _, ot := range downloaderObjTypes {
-		watch.CleanupRestartedObj("downloader", ot)
+		watch.CleanupRestartedObj(agentName, ot)
 	}
 
 	// Any state needed by handler functions

@@ -24,6 +24,7 @@ import (
 	"encoding/pem"
 	"flag"
 	"fmt"
+	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
 	"io"
@@ -39,8 +40,9 @@ import (
 const (
 	appImgObj = "appImg.obj"
 	baseOsObj = "baseOs.obj"
+	agentName = "verifier"
 
-	moduleName            = "verifier"
+	moduleName            = agentName
 	zedBaseDirname        = "/var/tmp"
 	zedRunDirname         = "/var/run"
 	baseDirname           = zedBaseDirname + "/" + moduleName
@@ -85,16 +87,19 @@ func main() {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
-	log.Printf("Starting verifier\n")
+	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("Starting %s\n", agentName)
 
 	for _, ot := range verifierObjTypes {
-		watch.CleanupRestartedObj("verifier", ot)
+		watch.CleanupRestartedObj(agentName, ot)
 	}
 	handleInit()
 
 	// Report to zedmanager that init is done
 	for _, ot := range verifierObjTypes {
-		watch.SignalRestartedObj("verifier", ot)
+		watch.SignalRestartedObj(agentName, ot)
 	}
 
 	// Any state needed by handler functions
