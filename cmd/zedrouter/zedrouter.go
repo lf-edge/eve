@@ -17,6 +17,7 @@ import (
 	"github.com/vishvananda/netlink"
 	"github.com/zededa/go-provision/devicenetwork"
 	"github.com/zededa/go-provision/hardware"
+	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
 	"github.com/zededa/go-provision/wrap"
@@ -64,8 +65,11 @@ func main() {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
-	log.Printf("Starting zedrouter\n")
-	watch.CleanupRestarted("zedrouter")
+	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("Starting %s\n", agentName)
+	watch.CleanupRestarted(agentName)
 
 	if _, err := os.Stat(baseDirname); err != nil {
 		if err := os.Mkdir(baseDirname, 0700); err != nil {
@@ -181,7 +185,7 @@ func handleRestart(ctxArg interface{}, done bool) {
 	if done {
 		// Since all work is done inline we can immediately say that
 		// we have restarted.
-		watch.SignalRestarted("zedrouter")
+		watch.SignalRestarted(agentName)
 	}
 }
 

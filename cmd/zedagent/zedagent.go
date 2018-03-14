@@ -38,6 +38,7 @@ import (
 	"fmt"
 	"github.com/zededa/go-provision/adapters"
 	"github.com/zededa/go-provision/hardware"
+	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
 	"log"
@@ -50,13 +51,14 @@ const (
 	appImgObj = "appImg.obj"
 	baseOsObj = "baseOs.obj"
 	certObj   = "cert.obj"
+	agentName = "zedagent"
 
 	downloaderModulename = "downloader"
 	verifierModulename   = "verifier"
-	zedagentModulename   = "zedagent"
+	zedagentModulename   = agentName
 	zedmanagerModulename = "zedmanager"
 
-	moduleName     = "zedagent"
+	moduleName     = agentName
 	zedBaseDirname = "/var/tmp"
 	zedRunDirname  = "/var/run"
 	baseDirname    = zedBaseDirname + "/" + moduleName
@@ -144,14 +146,18 @@ func main() {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
-	log.Printf("Starting zedagent\n")
-	watch.CleanupRestarted("zedagent")
+	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
+		log.Fatal(err)
+	}
+
+	log.Printf("Starting %s\n, agentName")
+	watch.CleanupRestarted(agentName)
 
 	// Tell ourselves to go ahead
 	// initialize the module specifig stuff
 	handleInit()
 
-	watch.SignalRestart("zedagent")
+	watch.SignalRestart(agentName)
 	var restartFn watch.StatusRestartHandler = handleRestart
 
 	restartChanges := make(chan string)
