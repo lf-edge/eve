@@ -266,7 +266,7 @@ func SetOtherPartitionStateUpdating() {
 	setPartitionState(partName, "updating")
 }
 
-func setOtherPartitionStateUnused() {
+func SetOtherPartitionStateUnused() {
 	partName := GetOtherPartition()
 	setPartitionState(partName, "unused")
 }
@@ -339,7 +339,7 @@ func MarkPartitionStateActive() error {
 	}
 
 	log.Printf("Mark other partition %s, unused\n", otherPart)
-	setOtherPartitionStateUnused()
+	SetOtherPartitionStateUnused()
 	return nil
 }
 

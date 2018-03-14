@@ -41,6 +41,7 @@ import (
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
+	"github.com/zededa/go-provision/zboot"
 	"log"
 	"os"
 	"time"
@@ -214,7 +215,7 @@ func main() {
 
 	// Context to pass around
 	getconfigCtx := getconfigContext{}
-	upgradeInprogress := isZbootAvailable() && isCurrentPartitionStateInProgress()
+	upgradeInprogress := zboot.IsAvailable() && zboot.IsCurrentPartitionStateInProgress()
 	time1 := time.Duration(configItemCurrent.resetIfCloudGoneTime)
 	t1 := time.NewTimer(time1 * time.Second)
 	log.Printf("Started timer for reset for %d seconds\n", time1)

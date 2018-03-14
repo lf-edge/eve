@@ -46,15 +46,15 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext) 
 	}
 
 	// If the other partition is inprogress it means update failed
-	if isZbootAvailable() && isOtherPartitionStateInProgress() {
-		otherPart := getOtherPartition()
+	if zboot.IsAvailable() && zboot.IsOtherPartitionStateInProgress() {
+		otherPart := zboot.GetOtherPartition()
 		log.Printf("Other %s partition contains failed upgrade\n",
 			otherPart)
 		// XXX make sure its logs are made available
 		// XXX switch to keep it in inprogress until we get
 		// a baseOsConfig with a different baseOsVersion string.
 		log.Printf("Mark other partition %s, unused\n", otherPart)
-		setOtherPartitionStateUnused()
+		zboot.SetOtherPartitionStateUnused()
 	}
 
 	if validateConfig(config) {
