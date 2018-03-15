@@ -75,8 +75,7 @@ function bringup_iface() {
                    pointopoint `echo "$JSON" | jq -r .ipv4.gateway`
   # NOTE we may want to disable /proc/sys/net/ipv4/conf/default/rp_filter instead
   #      Verify it by cat /proc/net/netstat | awk '{print $80}'
-  route add default gw `echo "$JSON" | jq -r .ipv4.gateway` $IFACE
-
+  ip route add default via `echo "$JSON" | jq -r .ipv4.gateway` dev $IFACE metric 65000
   cat > $BBS/resolv.conf <<__EOT__
 nameserver `echo "$JSON" | jq -r .ipv4.dns1`
 nameserver `echo "$JSON" | jq -r .ipv4.dns2`
