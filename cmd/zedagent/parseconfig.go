@@ -5,7 +5,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"github.com/satori/go.uuid"
 	"github.com/zededa/api/zconfig"
 	"github.com/zededa/go-provision/types"
@@ -313,13 +312,13 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig) {
 		// I/O adapters
 		appInstance.IoAdapterList = nil
 		for _, adapter := range cfgApp.Adapters {
-			fmt.Printf("Processing adapter type %d name %s\n",
+			log.Printf("Processing adapter type %d name %s\n",
 				adapter.Type, adapter.Name)
 			appInstance.IoAdapterList = append(appInstance.IoAdapterList,
 				types.IoAdapter{Type: types.IoType(adapter.Type),
 					Name: adapter.Name})
 		}
-		fmt.Printf("Got adapters %v\n", appInstance.IoAdapterList)
+		log.Printf("Got adapters %v\n", appInstance.IoAdapterList)
 
 		// get the certs for image sha verification
 		certInstance := getCertObjects(appInstance.UUIDandVersion,

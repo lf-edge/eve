@@ -4,7 +4,6 @@
 package main
 
 import (
-	"fmt"
 	"github.com/zededa/go-provision/types"
 	"log"
 )
@@ -23,7 +22,7 @@ func handleCertObjStatusModify(ctxArg interface{}, statusFilename string,
 	log.Printf("handlCertObjStatusModify for %s\n", uuidStr)
 
 	if certObjStatus == nil {
-		fmt.Printf("create CertObj Status map\n")
+		log.Printf("create CertObj Status map\n")
 		certObjStatus = make(map[string]types.CertObjStatus)
 	}
 

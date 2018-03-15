@@ -94,7 +94,7 @@ func main() {
 	log.Printf("Starting %s\n", agentName)
 
 	model := hardware.GetHardwareModel()
-	fmt.Printf("Got HardwareModel %s\n", model)
+	log.Printf("Got HardwareModel %s\n", model)
 
 	var blinkFunc Blink200msFunc
 	var initFunc BlinkInitFunc
@@ -147,7 +147,7 @@ func handleLedBlinkModify(ctxArg interface{}, configFilename string,
 	ctx := ctxArg.(*ledManagerContext)
 
 	if configFilename != "ledconfig" {
-		fmt.Printf("handleLedBlinkModify: ignoring %s\n", configFilename)
+		log.Printf("handleLedBlinkModify: ignoring %s\n", configFilename)
 		return
 	}
 	// Supress work and logging if no change
@@ -166,7 +166,7 @@ func handleLedBlinkDelete(ctxArg interface{}, configFilename string) {
 	ctx := ctxArg.(*ledManagerContext)
 
 	if configFilename != "ledconfig" {
-		fmt.Printf("handleLedBlinkDelete: ignoring %s\n", configFilename)
+		log.Printf("handleLedBlinkDelete: ignoring %s\n", configFilename)
 		return
 	}
 	// XXX or should we tell the blink go routine to exit?

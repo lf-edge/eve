@@ -633,7 +633,7 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 	// Read the root cerificates from /config
 	rootCertificate, err := ioutil.ReadFile(rootCertFileName)
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		cerr := fmt.Sprintf("failed to find root certificate")
 		return cerr
 	}

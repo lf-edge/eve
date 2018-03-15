@@ -167,7 +167,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		// Give it a 20 year lifetime. XXX allow cloud to set lifetime?
 		notBefore := time.Now()
 		notAfter := notBefore.AddDate(20, 0, 0)
-		fmt.Printf("notAfter %v\n", notAfter)
+		log.Printf("notAfter %v\n", notAfter)
 
 		// XXX allow cloud to set curve?
 		keypair, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -212,14 +212,14 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 
 		eid := generateEID(config.IID, config.AllocationPrefix,
 			publicDer)
-		fmt.Printf("EID: (len %d) %s\n", len(eid), eid)
+		log.Printf("EID: (len %d) %s\n", len(eid), eid)
 		status.EID = eid
 		status.CreateTime = time.Now()
 		signature, err := generateLispSignature(eid, config.IID, keypair)
 		if err != nil {
 			return
 		}
-		fmt.Println("signature:", signature)
+		log.Println("signature:", signature)
 		status.LispSignature = signature
 
 		// Generate the PemPrivateKey
@@ -273,7 +273,7 @@ func extractPublicPem(pk interface{}) ([]byte, []byte, error) {
 		Bytes: publicDer,
 	}
 	publicPem := pem.EncodeToMemory(publicKey)
-	fmt.Printf("public %s\n", string(publicPem))
+	log.Printf("public %s\n", string(publicPem))
 	return publicPem, publicDer, nil
 }
 
@@ -283,13 +283,13 @@ func generateEID(iid uint32, allocationPrefix []byte, publicDer []byte) net.IP {
 	binary.BigEndian.PutUint32(iidData, iid)
 
 	hasher := sha256.New()
-	fmt.Printf("iidData % x\n", iidData)
+	log.Printf("iidData % x\n", iidData)
 	hasher.Write(iidData)
-	fmt.Printf("AllocationPrefix % x\n", allocationPrefix)
+	log.Printf("AllocationPrefix % x\n", allocationPrefix)
 	hasher.Write(allocationPrefix)
 	hasher.Write(publicDer)
 	sum := hasher.Sum(nil)
-	fmt.Printf("SUM: (len %d) % 2x\n", len(sum), sum)
+	log.Printf("SUM: (len %d) % 2x\n", len(sum), sum)
 	// Truncate to get EidHashLen by taking the first
 	// EidHashLen/8 bytes from the left.
 	eid := net.IP(append(allocationPrefix, sum...)[0:16])
@@ -304,24 +304,24 @@ func generateLispSignature(eid net.IP, iid uint32,
 	// [iid]eid, where the eid uses the textual format defined in
 	// RFC 5952. The iid is printed as an integer.
 	sigdata := fmt.Sprintf("[%d]%s", iid, eid.String())
-	fmt.Printf("sigdata (len %d) %s\n", len(sigdata), sigdata)
+	log.Printf("sigdata (len %d) %s\n", len(sigdata), sigdata)
 
 	hasher := sha256.New()
 	hasher.Write([]byte(sigdata))
 	hash := hasher.Sum(nil)
-	fmt.Printf("hash (len %d) % x\n", len(hash), hash)
-	fmt.Printf("base64 hash %s\n",
+	log.Printf("hash (len %d) % x\n", len(hash), hash)
+	log.Printf("base64 hash %s\n",
 		base64.StdEncoding.EncodeToString(hash))
 	r, s, err := ecdsa.Sign(rand.Reader, keypair, hash)
 	if err != nil {
 		log.Println("ecdsa.Sign: ", err)
 		return "", err
 	}
-	fmt.Printf("r.bytes %d s.bytes %d\n", len(r.Bytes()),
+	log.Printf("r.bytes %d s.bytes %d\n", len(r.Bytes()),
 		len(s.Bytes()))
 	sigres := r.Bytes()
 	sigres = append(sigres, s.Bytes()...)
-	fmt.Printf("sigres (len %d): % x\n", len(sigres), sigres)
+	log.Printf("sigres (len %d): % x\n", len(sigres), sigres)
 	return base64.StdEncoding.EncodeToString(sigres), nil
 }
 
@@ -349,7 +349,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 		config.UUIDandVersion, config.IID, config.DisplayName)
 
 	if config.UUIDandVersion.Version == status.UUIDandVersion.Version {
-		fmt.Printf("Same version %s for %s\n",
+		log.Printf("Same version %s for %s\n",
 			config.UUIDandVersion.Version, statusFilename)
 		return
 	}

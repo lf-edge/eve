@@ -14,7 +14,6 @@
 package adapters
 
 import (
-	"fmt"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
 	"log"
@@ -52,7 +51,7 @@ func handleAAModify(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*context)
 	// Only care about my model
 	if key != ctx.model {
-		fmt.Printf("handleAAModify: ignoring %s, expecting %s\n",
+		log.Printf("handleAAModify: ignoring %s, expecting %s\n",
 			key, ctx.model)
 		return
 	}
@@ -67,11 +66,11 @@ func handleAADelete(ctxArg interface{}, key string) {
 	ctx := ctxArg.(*context)
 	// Only care about my model
 	if key != ctx.model {
-		fmt.Printf("handleAADelete: ignoring %s, expecting %s\n",
+		log.Printf("handleAADelete: ignoring %s, expecting %s\n",
 			key, ctx.model)
 		return
 	}
-	fmt.Printf("handleAADelete: found %s\n", ctx.model)
+	log.Printf("handleAADelete: found %s\n", ctx.model)
 	ctx.Found = false
 	ctx.aa = &types.AssignableAdapters{}
 	log.Printf("handleAADelete done for %s\n", key)

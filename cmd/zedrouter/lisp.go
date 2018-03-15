@@ -168,7 +168,7 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	globalStatus types.DeviceNetworkStatus,
 	tag string, olIfname string, additionalInfo string,
 	lispServers []types.LispServerInfo) {
-	fmt.Printf("createLispConfiglet: %s %v %d %s %v %s %s %s %s %v\n",
+	log.Printf("createLispConfiglet: %s %v %d %s %v %s %s %s %s %v\n",
 		lispRunDirname, isMgmt, IID, EID, lispSignature, globalStatus,
 		tag, olIfname, additionalInfo, lispServers)
 	cfgPathnameIID := lispRunDirname + "/" +
@@ -254,7 +254,7 @@ func updateLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	globalStatus types.DeviceNetworkStatus,
 	tag string, olIfname string, additionalInfo string,
 	lispServers []types.LispServerInfo) {
-	fmt.Printf("updateLispConfiglet: %s %v %d %s %v %s %s %s %s %v\n",
+	log.Printf("updateLispConfiglet: %s %v %d %s %v %s %s %s %s %v\n",
 		lispRunDirname, isMgmt, IID, EID, lispSignature, globalStatus,
 		tag, olIfname, additionalInfo, lispServers)
 	createLispConfiglet(lispRunDirname, isMgmt, IID, EID, lispSignature,
@@ -263,7 +263,7 @@ func updateLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 
 func deleteLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	EID net.IP, globalStatus types.DeviceNetworkStatus) {
-	fmt.Printf("deleteLispConfiglet: %s %d %s %v\n",
+	log.Printf("deleteLispConfiglet: %s %d %s %v\n",
 		lispRunDirname, IID, EID, globalStatus)
 
 	var cfgPathnameEID string
@@ -287,7 +287,7 @@ func deleteLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 }
 
 func updateLisp(lispRunDirname string, upLinkStatus []types.NetworkUplink) {
-	fmt.Printf("updateLisp: %s %v\n", lispRunDirname, upLinkStatus)
+	log.Printf("updateLisp: %s %v\n", lispRunDirname, upLinkStatus)
 
 	if deferUpdate {
 		log.Printf("updateLisp deferred\n")
@@ -304,7 +304,7 @@ func updateLisp(lispRunDirname string, upLinkStatus []types.NetworkUplink) {
 	defer tmpfile.Close()
 	defer os.Remove(tmpfile.Name())
 
-	fmt.Printf("Copying from %s to %s\n", baseFilename, tmpfile.Name())
+	log.Printf("Copying from %s to %s\n", baseFilename, tmpfile.Name())
 	s, err := os.Open(baseFilename)
 	if err != nil {
 		log.Println("os.Open ", baseFilename, err)
@@ -316,7 +316,7 @@ func updateLisp(lispRunDirname string, upLinkStatus []types.NetworkUplink) {
 		log.Println("io.Copy ", baseFilename, err)
 		return
 	}
-	fmt.Printf("Copied %d bytes from %s\n", cnt, baseFilename)
+	log.Printf("Copied %d bytes from %s\n", cnt, baseFilename)
 	files, err := ioutil.ReadDir(lispRunDirname)
 	if err != nil {
 		log.Println(err)
@@ -329,7 +329,7 @@ func updateLisp(lispRunDirname string, upLinkStatus []types.NetworkUplink) {
 			eidCount += 1
 		}
 		filename := lispRunDirname + "/" + file.Name()
-		fmt.Printf("Copying from %s to %s\n", filename, tmpfile.Name())
+		log.Printf("Copying from %s to %s\n", filename, tmpfile.Name())
 		s, err := os.Open(filename)
 		if err != nil {
 			log.Println("os.Open ", filename, err)
@@ -340,7 +340,7 @@ func updateLisp(lispRunDirname string, upLinkStatus []types.NetworkUplink) {
 			log.Println("io.Copy ", filename, err)
 			return
 		}
-		fmt.Printf("Copied %d bytes from %s\n", cnt, filename)
+		log.Printf("Copied %d bytes from %s\n", cnt, filename)
 	}
 	if err := tmpfile.Close(); err != nil {
 		log.Println("Close ", tmpfile.Name(), err)
@@ -371,7 +371,7 @@ func updateLisp(lispRunDirname string, upLinkStatus []types.NetworkUplink) {
 	_ = awk.Wait()
 	devices := strings.TrimSpace(string(intfs))
 	devices = strings.Replace(devices, "\n", " ", -1)
-	fmt.Printf("updateLisp: found %d EIDs devices <%v>\n", eidCount, devices)
+	log.Printf("updateLisp: found %d EIDs devices <%v>\n", eidCount, devices)
 
 	// Check how many EIDs we have configured. If none we stop lisp
 	if eidCount == 0 {
@@ -487,7 +487,7 @@ func restartLisp(upLinkStatus []types.NetworkUplink, devices string) {
 		log.Fatal("WriteFile", err, RLFilename)
 		return
 	}
-	fmt.Printf("Wrote %s\n", RLFilename)
+	log.Printf("Wrote %s\n", RLFilename)
 }
 
 func stopLisp() {

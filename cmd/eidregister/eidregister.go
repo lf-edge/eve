@@ -162,56 +162,56 @@ func myPost(client *http.Client, url string, b *bytes.Buffer) bool {
 	resp, err := client.Post("https://"+serverNameAndPort+url,
 		"application/json", b)
 	if err != nil {
-		fmt.Printf("client.Post: ", err)
+		log.Printf("client.Post: ", err)
 		return false
 	}
 	defer resp.Body.Close()
 	connState := resp.TLS
 	if connState == nil {
-		fmt.Println("no TLS connection state")
+		log.Println("no TLS connection state")
 		return false
 	}
 
 	if connState.OCSPResponse == nil || !stapledCheck(connState) {
 		if connState.OCSPResponse == nil {
-			fmt.Println("no OCSP response")
+			log.Println("no OCSP response")
 		} else {
-			fmt.Println("OCSP stapled check failed")
+			log.Println("OCSP stapled check failed")
 		}
 		return false
 	}
 
 	contents, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		return false
 	}
 
 	// XXX Should this behavior be url-specific?
 	switch resp.StatusCode {
 	case http.StatusOK:
-		fmt.Printf("%s StatusOK\n", url)
+		log.Printf("%s StatusOK\n", url)
 	case http.StatusCreated:
-		fmt.Printf("%s StatusCreated\n", url)
+		log.Printf("%s StatusCreated\n", url)
 	case http.StatusConflict:
-		fmt.Printf("%s StatusConflict\n", url)
+		log.Printf("%s StatusConflict\n", url)
 		// Retry until fixed
-		fmt.Printf("%s\n", string(contents))
+		log.Printf("%s\n", string(contents))
 		return false
 	default:
-		fmt.Printf("%s statuscode %d %s\n",
+		log.Printf("%s statuscode %d %s\n",
 			url, resp.StatusCode,
 			http.StatusText(resp.StatusCode))
-		fmt.Printf("%s\n", string(contents))
+		log.Printf("%s\n", string(contents))
 		return false
 	}
 
 	contentType := resp.Header.Get("Content-Type")
 	if contentType != "application/json" {
-		fmt.Println("Incorrect Content-Type " + contentType)
+		log.Println("Incorrect Content-Type " + contentType)
 		return false
 	}
-	fmt.Printf("%s\n", string(contents))
+	log.Printf("%s\n", string(contents))
 	return true
 }
 
@@ -257,7 +257,7 @@ func registerEID(register *types.EIDRegister) bool {
 	}
 	tlsConfig.BuildNameToCertificate()
 
-	fmt.Printf("Connecting to %s\n", serverNameAndPort)
+	log.Printf("Connecting to %s\n", serverNameAndPort)
 
 	transport := &http.Transport{TLSClientConfig: tlsConfig}
 	client := &http.Client{Transport: transport}
@@ -322,7 +322,7 @@ func handleModify(ctxArg interface{}, outputFilename string, inputArg interface{
 		input.UUIDandVersion, input.DisplayName)
 
 	if input.UUIDandVersion.Version == output.UUIDandVersion.Version {
-		fmt.Printf("Same version %s for %s\n",
+		log.Printf("Same version %s for %s\n",
 			input.UUIDandVersion.Version, outputFilename)
 		return
 	}

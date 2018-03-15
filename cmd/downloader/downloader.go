@@ -117,7 +117,7 @@ func main() {
 				nil)
 		}
 	}
-	fmt.Printf("Have %d uplinks addresses to use\n",
+	log.Printf("Have %d uplinks addresses to use\n",
 		types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus))
 
 	appImgChanges := make(chan string)
@@ -589,7 +589,7 @@ func sizeFromDir(dirname string) int64 {
 		log.Printf("Looking in %s\n", filename)
 		if location.IsDir() {
 			size := sizeFromDir(filename)
-			fmt.Printf("Dir %s size %d\n", filename, size)
+			log.Printf("Dir %s size %d\n", filename, size)
 			totalUsed += size
 		} else {
 			log.Printf("File %s Size %d\n", filename, location.Size())
@@ -728,7 +728,7 @@ func doS3(ctx *downloaderContext, syncOp zedUpload.SyncOpType,
 	// create Endpoint
 	dEndPoint, err := ctx.dCtx.NewSyncerDest(trType, region, dpath, auth)
 	if err != nil {
-		fmt.Printf("NewSyncerDest failed: %s\n", err)
+		log.Printf("NewSyncerDest failed: %s\n", err)
 		return err
 	}
 	dEndPoint.WithSrcIpSelection(ipSrc)
@@ -789,10 +789,10 @@ func handleSyncOp(ctx *downloaderContext, objType string, statusFilename string,
 	var addrCount int
 	if config.UseFreeUplinks {
 		addrCount = types.CountLocalAddrFree(deviceNetworkStatus, "")
-		fmt.Printf("Have %d free uplink addresses\n", addrCount)
+		log.Printf("Have %d free uplink addresses\n", addrCount)
 	} else {
 		addrCount = types.CountLocalAddrAny(deviceNetworkStatus, "")
-		fmt.Printf("Have %d any uplink addresses\n", addrCount)
+		log.Printf("Have %d any uplink addresses\n", addrCount)
 	}
 	// Loop through all interfaces until a success
 	for addrIndex := 0; addrIndex < addrCount; addrIndex += 1 {
@@ -806,10 +806,10 @@ func handleSyncOp(ctx *downloaderContext, objType string, statusFilename string,
 				addrIndex, "")
 		}
 		if err != nil {
-			fmt.Printf("GetLocalAddr failed: %s\n", err)
+			log.Printf("GetLocalAddr failed: %s\n", err)
 			continue
 		}
-		fmt.Printf("Using IP source %v transport %v\n", ipSrc,
+		log.Printf("Using IP source %v transport %v\n", ipSrc,
 			config.TransportMethod)
 
 		switch config.TransportMethod {
@@ -818,7 +818,7 @@ func handleSyncOp(ctx *downloaderContext, objType string, statusFilename string,
 				config.Password, config.Dpath,
 				config.MaxSize, ipSrc, filename, locFilename)
 			if err != nil {
-				fmt.Printf("Source IP %s failed: %s\n",
+				log.Printf("Source IP %s failed: %s\n",
 					ipSrc.String(), err)
 			} else {
 				handleSyncOpResponse(objType, config, status,
@@ -831,7 +831,7 @@ func handleSyncOp(ctx *downloaderContext, objType string, statusFilename string,
 			err = doCurl(config.DownloadURL, ipSrc.String(),
 				locFilename)
 			if err != nil {
-				fmt.Printf("Source IP %s failed: %s\n",
+				log.Printf("Source IP %s failed: %s\n",
 					ipSrc.String(), err)
 			} else {
 				handleSyncOpResponse(objType, config, status,
@@ -842,7 +842,7 @@ func handleSyncOp(ctx *downloaderContext, objType string, statusFilename string,
 			log.Fatal("unsupported transport method")
 		}
 	}
-	fmt.Printf("All source IP addresses failed. Last %s\n", err)
+	log.Printf("All source IP addresses failed. Last %s\n", err)
 	handleSyncOpResponse(objType, config, status, statusFilename, err)
 }
 
@@ -933,13 +933,13 @@ func handleDNSModify(ctxArg interface{}, statusFilename string,
 	status := statusArg.(*types.DeviceNetworkStatus)
 
 	if statusFilename != "global" {
-		fmt.Printf("handleDNSModify: ignoring %s\n", statusFilename)
+		log.Printf("handleDNSModify: ignoring %s\n", statusFilename)
 		return
 	}
 
 	log.Printf("handleDNSModify for %s\n", statusFilename)
 	deviceNetworkStatus = *status
-	fmt.Printf("handleDNSModify %d free uplinks addresses; %d any %d\n",
+	log.Printf("handleDNSModify %d free uplinks addresses; %d any %d\n",
 		types.CountLocalAddrFree(deviceNetworkStatus, ""),
 		types.CountLocalAddrAny(deviceNetworkStatus, ""))
 	log.Printf("handleDNSModify done for %s\n", statusFilename)
@@ -949,7 +949,7 @@ func handleDNSDelete(ctxArg interface{}, statusFilename string) {
 	log.Printf("handleDNSDelete for %s\n", statusFilename)
 
 	if statusFilename != "global" {
-		fmt.Printf("handleDNSDelete: ignoring %s\n", statusFilename)
+		log.Printf("handleDNSDelete: ignoring %s\n", statusFilename)
 		return
 	}
 	deviceNetworkStatus = types.DeviceNetworkStatus{}

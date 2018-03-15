@@ -276,7 +276,7 @@ func handleInit(configFilename string, statusFilename string,
 	// XXX hack to determine whether a real system or Erik's laptop
 	_, err = wrap.Command("xl", "list").Output()
 	if err != nil {
-		fmt.Printf("Command xl list failed: %s\n", err)
+		log.Printf("Command xl list failed: %s\n", err)
 		broken = true
 	}
 }
@@ -305,7 +305,7 @@ func writeAppNetworkStatus(status *types.AppNetworkStatus,
 	statusFilename string) {
 
 	if appNetworkStatus == nil {
-		fmt.Printf("create appNetwork status map\n")
+		log.Printf("create appNetwork status map\n")
 		appNetworkStatus = make(map[string]types.AppNetworkStatus)
 	}
 	key := status.UUIDandVersion.UUID.String()
@@ -346,7 +346,7 @@ func generateAdditionalInfo(status types.AppNetworkStatus, olConfig types.Overla
 				log.Fatal(err, "json Marshal AdditionalInfoDevice")
 			}
 			additionalInfo = string(b)
-			fmt.Printf("Generated additional info device %s\n",
+			log.Printf("Generated additional info device %s\n",
 				additionalInfo)
 		}
 	} else {
@@ -365,7 +365,7 @@ func generateAdditionalInfo(status types.AppNetworkStatus, olConfig types.Overla
 			log.Fatal(err, "json Marshal AdditionalInfoApp")
 		}
 		additionalInfo = string(b)
-		fmt.Printf("Generated additional info app %s\n",
+		log.Printf("Generated additional info app %s\n",
 			additionalInfo)
 	}
 	return additionalInfo
@@ -430,7 +430,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 	writeAppNetworkStatus(&status, statusFilename)
 
 	if config.IsZedmanager {
-		fmt.Printf("handleCreate: for %s IsZedmanager\n",
+		log.Printf("handleCreate: for %s IsZedmanager\n",
 			config.DisplayName)
 		if len(config.OverlayNetworkList) != 1 ||
 			len(config.UnderlayNetworkList) != 0 {
@@ -468,24 +468,24 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		attrs.HardwareAddr = hw
 		oLink = &netlink.Dummy{LinkAttrs: attrs}
 		if err := netlink.LinkAdd(oLink); err != nil {
-			fmt.Printf("LinkAdd on %s failed: %s\n", olIfname, err)
+			log.Printf("LinkAdd on %s failed: %s\n", olIfname, err)
 		}
 
 		// ip link set ${olIfname} mtu 1280
 		if err := netlink.LinkSetMTU(oLink, 1280); err != nil {
-			fmt.Printf("LinkSetMTU on %s failed: %s\n",
+			log.Printf("LinkSetMTU on %s failed: %s\n",
 				olIfname, err)
 		}
 
 		//    ip link set ${olIfname} up
 		if err := netlink.LinkSetUp(oLink); err != nil {
-			fmt.Printf("LinkSetUp on %s failed: %s\n",
+			log.Printf("LinkSetUp on %s failed: %s\n",
 				olIfname, err)
 		}
 
 		//    ip link set ${olIfname} arp on
 		if err := netlink.LinkSetARPOn(oLink); err != nil {
-			fmt.Printf("LinkSetARPOn on %s failed: %s\n", olIfname,
+			log.Printf("LinkSetARPOn on %s failed: %s\n", olIfname,
 				err)
 		}
 
@@ -523,15 +523,15 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		neigh := netlink.Neigh{LinkIndex: index, IP: via,
 			HardwareAddr: hw, State: netlink.NUD_PERMANENT}
 		if err := netlink.NeighAdd(&neigh); err != nil {
-			fmt.Printf("NeighAdd fe80::1 failed: %s\n", err)
+			log.Printf("NeighAdd fe80::1 failed: %s\n", err)
 		}
 		if err := netlink.NeighSet(&neigh); err != nil {
-			fmt.Printf("NeighSet fe80::1 failed: %s\n", err)
+			log.Printf("NeighSet fe80::1 failed: %s\n", err)
 		}
 
 		rt := netlink.Route{Dst: ipnet, LinkIndex: index, Gw: via}
 		if err := netlink.RouteAdd(&rt); err != nil {
-			fmt.Printf("RouteAdd fd00::/8 failed: %s\n", err)
+			log.Printf("RouteAdd fd00::/8 failed: %s\n", err)
 		}
 
 		// XXX NOTE: this hosts file is not read!
@@ -595,18 +595,18 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 
 	for i, olConfig := range config.OverlayNetworkList {
 		olNum := i + 1
-		fmt.Printf("olNum %d ACLs %v\n", olNum, olConfig.ACLs)
+		log.Printf("olNum %d ACLs %v\n", olNum, olConfig.ACLs)
 
 		EID := olConfig.EID
 		olIfname := "bo" + strconv.Itoa(olNum) + "x" +
 			strconv.Itoa(appNum)
-		fmt.Printf("olIfname %s\n", olIfname)
+		log.Printf("olIfname %s\n", olIfname)
 		olAddr1 := "fd00::" + strconv.FormatInt(int64(olNum), 16) +
 			":" + strconv.FormatInt(int64(appNum), 16)
-		fmt.Printf("olAddr1 %s EID %s\n", olAddr1, EID)
+		log.Printf("olAddr1 %s EID %s\n", olAddr1, EID)
 		olMac := "00:16:3e:1:" + strconv.FormatInt(int64(olNum), 16) +
 			":" + strconv.FormatInt(int64(appNum), 16)
-		fmt.Printf("olMac %s\n", olMac)
+		log.Printf("olMac %s\n", olMac)
 
 		// Start clean
 		attrs := netlink.NewLinkAttrs()
@@ -625,32 +625,32 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		attrs.HardwareAddr = hw
 		oLink = &netlink.Bridge{LinkAttrs: attrs}
 		if err := netlink.LinkAdd(oLink); err != nil {
-			fmt.Printf("LinkAdd on %s failed: %s\n", olIfname, err)
+			log.Printf("LinkAdd on %s failed: %s\n", olIfname, err)
 		}
 
 		//    ip link set ${olIfname} up
 		if err := netlink.LinkSetUp(oLink); err != nil {
-			fmt.Printf("LinkSetUp on %s failed: %s\n", olIfname, err)
+			log.Printf("LinkSetUp on %s failed: %s\n", olIfname, err)
 		}
 
 		//    ip addr add ${olAddr1}/128 dev ${olIfname}
 		addr, err := netlink.ParseAddr(olAddr1 + "/128")
 		if err != nil {
-			fmt.Printf("ParseAddr %s failed: %s\n", olAddr1, err)
+			log.Printf("ParseAddr %s failed: %s\n", olAddr1, err)
 		}
 		if err := netlink.AddrAdd(oLink, addr); err != nil {
-			fmt.Printf("AddrAdd %s failed: %s\n", olAddr1, err)
+			log.Printf("AddrAdd %s failed: %s\n", olAddr1, err)
 		}
 
 		//    ip -6 route add ${EID}/128 dev ${olIfname}
 		_, ipnet, err := net.ParseCIDR(EID.String() + "/128")
 		if err != nil {
-			fmt.Printf("ParseCIDR %s failed: %v\n", EID, err)
+			log.Printf("ParseCIDR %s failed: %v\n", EID, err)
 		}
-		fmt.Printf("oLink.Index %d\n", oLink.Index)
+		log.Printf("oLink.Index %d\n", oLink.Index)
 		rt := netlink.Route{Dst: ipnet, LinkIndex: oLink.Index}
 		if err := netlink.RouteAdd(&rt); err != nil {
-			fmt.Printf("RouteAdd %s failed: %s\n", EID, err)
+			log.Printf("RouteAdd %s failed: %s\n", EID, err)
 		}
 
 		// Write radvd configlet; start radvd
@@ -708,19 +708,19 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		if ulNum != 1 {
 			// For now we only support one underlay interface
 			// in app
-			fmt.Printf("Ignoring multiple UnderlayNetwork\n")
+			log.Printf("Ignoring multiple UnderlayNetwork\n")
 			continue
 		}
-		fmt.Printf("ulNum %d ACLs %v\n", ulNum, ulConfig.ACLs)
+		log.Printf("ulNum %d ACLs %v\n", ulNum, ulConfig.ACLs)
 		ulIfname := "bu" + strconv.Itoa(appNum)
-		fmt.Printf("ulIfname %s\n", ulIfname)
+		log.Printf("ulIfname %s\n", ulIfname)
 		// Not clear how to handle multiple ul; use /30 prefix?
 		ulAddr1 := "172.27." + strconv.Itoa(appNum) + ".1"
 		ulAddr2 := "172.27." + strconv.Itoa(appNum) + ".2"
-		fmt.Printf("ulAddr1 %s ulAddr2 %s\n", ulAddr1, ulAddr2)
+		log.Printf("ulAddr1 %s ulAddr2 %s\n", ulAddr1, ulAddr2)
 		// Room to handle multiple underlays in 5th byte
 		ulMac := "00:16:3e:0:0:" + strconv.FormatInt(int64(appNum), 16)
-		fmt.Printf("ulMac %s\n", ulMac)
+		log.Printf("ulMac %s\n", ulMac)
 
 		// Start clean
 		attrs := netlink.NewLinkAttrs()
@@ -739,19 +739,19 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		attrs.HardwareAddr = hw
 		uLink = &netlink.Bridge{LinkAttrs: attrs}
 		if err := netlink.LinkAdd(uLink); err != nil {
-			fmt.Printf("LinkAdd on %s failed: %s\n", ulIfname, err)
+			log.Printf("LinkAdd on %s failed: %s\n", ulIfname, err)
 		}
 		//    ip link set ${ulIfname} up
 		if err := netlink.LinkSetUp(uLink); err != nil {
-			fmt.Printf("LinkSetUp on %s failed: %s\n", ulIfname, err)
+			log.Printf("LinkSetUp on %s failed: %s\n", ulIfname, err)
 		}
 		//    ip addr add ${ulAddr1}/24 dev ${ulIfname}
 		addr, err := netlink.ParseAddr(ulAddr1 + "/24")
 		if err != nil {
-			fmt.Printf("ParseAddr %s failed: %s\n", ulAddr1, err)
+			log.Printf("ParseAddr %s failed: %s\n", ulAddr1, err)
 		}
 		if err := netlink.AddrAdd(uLink, addr); err != nil {
-			fmt.Printf("AddrAdd %s failed: %s\n", ulAddr1, err)
+			log.Printf("AddrAdd %s failed: %s\n", ulAddr1, err)
 		}
 
 		// Create iptables with optional ipset's based ACL
@@ -790,13 +790,13 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 		config.UUIDandVersion, config.DisplayName)
 
 	if config.UUIDandVersion.Version == status.UUIDandVersion.Version {
-		fmt.Printf("Same version %s for %s\n",
+		log.Printf("Same version %s for %s\n",
 			config.UUIDandVersion.Version, statusFilename)
 		return
 	}
 
 	appNum := status.AppNum
-	fmt.Printf("handleModify appNum %d\n", appNum)
+	log.Printf("handleModify appNum %d\n", appNum)
 
 	// Check for unsupported changes
 	if config.IsZedmanager != status.IsZedmanager {
@@ -841,7 +841,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 		// Update ACLs
 		updateACLConfiglet(olIfname, true, olStatus.ACLs,
 			olConfig.ACLs, 6, "")
-		fmt.Printf("handleModify done for %s\n", config.DisplayName)
+		log.Printf("handleModify done for %s\n", config.DisplayName)
 		return
 	}
 
@@ -853,7 +853,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 	// Look for ACL and NametoEidList changes in overlay
 	for i, olConfig := range config.OverlayNetworkList {
 		olNum := i + 1
-		fmt.Printf("handleModify olNum %d\n", olNum)
+		log.Printf("handleModify olNum %d\n", olNum)
 		olIfname := "bo" + strconv.Itoa(olNum) + "x" +
 			strconv.Itoa(appNum)
 		olStatus := status.OverlayNetworkList[olNum-1]
@@ -905,7 +905,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 	// Look for ACL changes in underlay
 	for i, ulConfig := range config.UnderlayNetworkList {
 		ulNum := i + 1
-		fmt.Printf("handleModify ulNum %d\n", ulNum)
+		log.Printf("handleModify ulNum %d\n", ulNum)
 		ulIfname := "bu" + strconv.Itoa(appNum)
 		ulStatus := status.UnderlayNetworkList[ulNum-1]
 
@@ -972,7 +972,7 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 	appNum := status.AppNum
 	maxOlNum := status.OlNum
 	maxUlNum := status.UlNum
-	fmt.Printf("handleDelete appNum %d maxOlNum %d maxUlNum %d\n",
+	log.Printf("handleDelete appNum %d maxOlNum %d maxUlNum %d\n",
 		appNum, maxOlNum, maxUlNum)
 
 	status.PendingDelete = true
@@ -1002,7 +1002,7 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 		EID := status.OverlayNetworkList[0].EID
 		addr, err := netlink.ParseAddr(EID.String() + "/128")
 		if err != nil {
-			fmt.Printf("ParseAddr %s failed: %s\n", EID, err)
+			log.Printf("ParseAddr %s failed: %s\n", EID, err)
 			return
 		}
 		attrs := netlink.NewLinkAttrs()
@@ -1010,7 +1010,7 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 		oLink := &netlink.Dummy{LinkAttrs: attrs}
 		// XXX can we skip explicit deletes and just remove the oLink?
 		if err := netlink.AddrDel(oLink, addr); err != nil {
-			fmt.Printf("AddrDel %s failed: %s\n", EID, err)
+			log.Printf("AddrDel %s failed: %s\n", EID, err)
 		}
 
 		//    ip route del fd00::/8 via fe80::1 dev $intf
@@ -1025,12 +1025,12 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 		}
 		rt := netlink.Route{Dst: ipnet, LinkIndex: index, Gw: via}
 		if err := netlink.RouteDel(&rt); err != nil {
-			fmt.Printf("RouteDel fd00::/8 failed: %s\n", err)
+			log.Printf("RouteDel fd00::/8 failed: %s\n", err)
 		}
 		//    ip nei del fe80::1 lladdr 0:0:0:0:0:1 dev $intf
 		neigh := netlink.Neigh{LinkIndex: index, IP: via}
 		if err := netlink.NeighDel(&neigh); err != nil {
-			fmt.Printf("NeighDel fe80::1 failed: %s\n", err)
+			log.Printf("NeighDel fe80::1 failed: %s\n", err)
 		}
 
 		// Remove link and associated addresses
@@ -1052,10 +1052,10 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 	} else {
 		// Delete everything for overlay
 		for olNum := 1; olNum <= maxOlNum; olNum++ {
-			fmt.Printf("handleDelete olNum %d\n", olNum)
+			log.Printf("handleDelete olNum %d\n", olNum)
 			olIfname := "bo" + strconv.Itoa(olNum) + "x" +
 				strconv.Itoa(appNum)
-			fmt.Printf("Deleting olIfname %s\n", olIfname)
+			log.Printf("Deleting olIfname %s\n", olIfname)
 			olAddr1 := "fd00::" + strconv.FormatInt(int64(olNum), 16) +
 				":" + strconv.FormatInt(int64(appNum), 16)
 
@@ -1106,9 +1106,9 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 
 		// Delete everything in underlay
 		for ulNum := 1; ulNum <= maxUlNum; ulNum++ {
-			fmt.Printf("handleDelete ulNum %d\n", ulNum)
+			log.Printf("handleDelete ulNum %d\n", ulNum)
 			ulIfname := "bu" + strconv.Itoa(appNum)
-			fmt.Printf("Deleting ulIfname %s\n", ulIfname)
+			log.Printf("Deleting ulIfname %s\n", ulIfname)
 
 			attrs := netlink.NewLinkAttrs()
 			attrs.Name = ulIfname
@@ -1151,7 +1151,7 @@ func pkillUserArgs(userName string, match string, printOnError bool) {
 	}
 	_, err := wrap.Command(cmd, args...).Output()
 	if err != nil && printOnError {
-		fmt.Printf("Command %v %v failed: %s\n", cmd, args, err)
+		log.Printf("Command %v %v failed: %s\n", cmd, args, err)
 	}
 }
 
@@ -1161,7 +1161,7 @@ func handleDNCModify(ctxArg interface{}, configFilename string,
 	ctx := ctxArg.(*DNCContext)
 
 	if configFilename != ctx.manufacturerModel {
-		fmt.Printf("handleDNCModify: ignoring %s - expecting %s\n",
+		log.Printf("handleDNCModify: ignoring %s - expecting %s\n",
 			configFilename, ctx.manufacturerModel)
 		return
 	}
@@ -1183,7 +1183,7 @@ func handleDNCDelete(ctxArg interface{}, configFilename string) {
 	ctx := ctxArg.(*DNCContext)
 
 	if configFilename != "global" {
-		fmt.Printf("handleDNSDelete: ignoring %s\n", configFilename)
+		log.Printf("handleDNSDelete: ignoring %s\n", configFilename)
 		return
 	}
 	new := types.DeviceNetworkStatus{}

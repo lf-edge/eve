@@ -114,7 +114,7 @@ func handleConfigInit() {
 	if err != nil {
 		log.Fatal("uuid.FromString", err, string(b))
 	}
-	fmt.Printf("Read UUID %s\n", devUUID)
+	log.Printf("Read UUID %s\n", devUUID)
 	zcdevUUID = devUUID
 }
 
@@ -290,7 +290,7 @@ func readDeviceConfigProtoMessage(r *http.Response) (bool, *zconfig.EdgeDevConfi
 
 	b, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		return false, nil, err
 	}
 	// compute sha256 of the image and match it

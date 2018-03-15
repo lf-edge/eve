@@ -34,20 +34,20 @@ func MaybeAddDomainConfig(aiConfig types.AppInstanceConfig,
 		displayName)
 
 	if domainConfig == nil {
-		fmt.Printf("create Domain config map\n")
+		log.Printf("create Domain config map\n")
 		domainConfig = make(map[string]types.DomainConfig)
 	}
 	changed := false
 	if m, ok := domainConfig[key]; ok {
 		// XXX any other change? Compare nothing else changed?
 		if m.Activate != aiConfig.Activate {
-			fmt.Printf("Domain config: Activate changed %s\n", key)
+			log.Printf("Domain config: Activate changed %s\n", key)
 			changed = true
 		} else {
-			fmt.Printf("Domain config already exists for %s\n", key)
+			log.Printf("Domain config already exists for %s\n", key)
 		}
 	} else {
-		fmt.Printf("Domain config add for %s\n", key)
+		log.Printf("Domain config add for %s\n", key)
 		changed = true
 	}
 	if !changed {
@@ -141,7 +141,7 @@ func MaybeRemoveDomainConfig(uuidStr string) {
 	log.Printf("MaybeRemoveDomainConfig for %s\n", uuidStr)
 
 	if domainConfig == nil {
-		fmt.Printf("create Domain config map\n")
+		log.Printf("create Domain config map\n")
 		domainConfig = make(map[string]types.DomainConfig)
 	}
 	if _, ok := domainConfig[uuidStr]; !ok {
@@ -188,7 +188,7 @@ func handleDomainStatusModify(ctxArg interface{}, statusFilename string,
 	}
 
 	if domainStatus == nil {
-		fmt.Printf("create Domain map\n")
+		log.Printf("create Domain map\n")
 		domainStatus = make(map[string]types.DomainStatus)
 	}
 	domainStatus[key] = *status
@@ -215,7 +215,7 @@ func handleDomainStatusDelete(ctxArg interface{}, statusFilename string) {
 		log.Printf("handleDomainStatusDelete for %s - not found\n",
 			key)
 	} else {
-		fmt.Printf("Domain map delete for %v\n", key)
+		log.Printf("Domain map delete for %v\n", key)
 		delete(domainStatus, key)
 		removeAIStatusUUID(m.UUIDandVersion.UUID.String())
 	}

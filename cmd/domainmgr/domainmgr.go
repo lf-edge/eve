@@ -149,7 +149,7 @@ func main() {
 			aaFunc(&aaCtx, change)
 		}
 	}
-	fmt.Printf("Have %d assignable adapters\n", len(aa.IoBundleList))
+	log.Printf("Have %d assignable adapters\n", len(aa.IoBundleList))
 
 	networkStatusChanges := make(chan string)
 	go watch.WatchStatus(DNSDirname, networkStatusChanges)
@@ -215,7 +215,7 @@ var domainStatusMap map[string]types.DomainStatus
 
 func handleInit() {
 	if domainStatusMap == nil {
-		fmt.Printf("create domainStatusMap\n")
+		log.Printf("create domainStatusMap\n")
 		domainStatusMap = make(map[string]types.DomainStatus)
 	}
 }
@@ -320,7 +320,7 @@ func cleanupAdapters(ctx *domainContext, ioAdapterList []types.IoAdapter,
 	myUuid uuid.UUID) {
 	// Look for any adapters used by us and clear UsedByUUID
 	for _, adapter := range ioAdapterList {
-		fmt.Printf("cleanupAdapters processing adapter %d %s\n",
+		log.Printf("cleanupAdapters processing adapter %d %s\n",
 			adapter.Type, adapter.Name)
 		ib := types.LookupIoBundle(ctx.assignableAdapters,
 			adapter.Type, adapter.Name)
@@ -330,7 +330,7 @@ func cleanupAdapters(ctx *domainContext, ioAdapterList []types.IoAdapter,
 		if ib.UsedByUUID != myUuid {
 			continue
 		}
-		fmt.Printf("cleanupAdapters clearing uuid for adapter %d %s\n",
+		log.Printf("cleanupAdapters clearing uuid for adapter %d %s\n",
 			adapter.Type, adapter.Name)
 		ib.UsedByUUID = nilUUID
 	}
@@ -343,7 +343,7 @@ func doActivate(config types.DomainConfig, status *types.DomainStatus,
 
 	// Assign any I/O devices
 	for _, adapter := range config.IoAdapterList {
-		fmt.Printf("doActivate processing adapter %d %s\n",
+		log.Printf("doActivate processing adapter %d %s\n",
 			adapter.Type, adapter.Name)
 		ib := types.LookupIoBundle(aa, adapter.Type, adapter.Name)
 		// We reserved it in handleCreate so nobody could have stolen it
@@ -361,7 +361,7 @@ func doActivate(config types.DomainConfig, status *types.DomainStatus,
 				adapter.Type, adapter.Name, status.DomainName)
 		}
 		if ib.PciShort != "" {
-			fmt.Printf("Assigning %s %s to %s\n",
+			log.Printf("Assigning %s %s to %s\n",
 				ib.PciLong, ib.PciShort, status.DomainName)
 			err := pciAssignableAdd(ib.PciLong)
 			if err != nil {
@@ -507,7 +507,7 @@ func doInactivate(status *types.DomainStatus, aa *types.AssignableAdapters) {
 	}
 	// Unassign any pci devices but keep UsedByUUID set and keep in status
 	for _, adapter := range status.IoAdapterList {
-		fmt.Printf("doInactivate processing adapter %d %s\n",
+		log.Printf("doInactivate processing adapter %d %s\n",
 			adapter.Type, adapter.Name)
 		ib := types.LookupIoBundle(aa, adapter.Type, adapter.Name)
 		// We reserved it in handleCreate so nobody could have stolen it
@@ -525,7 +525,7 @@ func doInactivate(status *types.DomainStatus, aa *types.AssignableAdapters) {
 				adapter.Type, adapter.Name, status.DomainName)
 		}
 		if ib.PciShort != "" {
-			fmt.Printf("Removing %s %s from %s\n",
+			log.Printf("Removing %s %s from %s\n",
 				ib.PciLong, ib.PciShort, status.DomainName)
 			err := pciAssignableRem(ib.PciLong)
 			if err != nil {
@@ -574,7 +574,7 @@ func configToStatus(config types.DomainConfig, aa *types.AssignableAdapters,
 		ds.ActiveFileLocation = target
 	}
 	for _, adapter := range config.IoAdapterList {
-		fmt.Printf("configToStatus processing adapter %d %s\n",
+		log.Printf("configToStatus processing adapter %d %s\n",
 			adapter.Type, adapter.Name)
 		if types.IsUplink(deviceNetworkStatus, adapter.Name) {
 			return errors.New(fmt.Sprintf("Adapter %d %s is an uplink\n",
@@ -598,7 +598,7 @@ func configToStatus(config types.DomainConfig, aa *types.AssignableAdapters,
 			log.Printf("IoBundleToPci failed: %v\n", err)
 			return err
 		}
-		fmt.Printf("configToStatus setting uuid %s for adapter %d %s\n",
+		log.Printf("configToStatus setting uuid %s for adapter %d %s\n",
 			config.UUIDandVersion.UUID.String(),
 			adapter.Type, adapter.Name)
 		ib.UsedByUUID = config.UUIDandVersion.UUID
@@ -714,7 +714,7 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 		}
 		oneDisk := fmt.Sprintf("'%s,%s,%s,%s'",
 			ds.ActiveFileLocation, dc.Format, ds.Vdev, access)
-		fmt.Printf("Processing disk %d: %s\n", i, oneDisk)
+		log.Printf("Processing disk %d: %s\n", i, oneDisk)
 		if diskString == "" {
 			diskString = oneDisk
 		} else {
@@ -739,7 +739,7 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 	var pciAssignments []string
 
 	for _, adapter := range config.IoAdapterList {
-		fmt.Printf("configToXenCfg processing adapter %d %s\n",
+		log.Printf("configToXenCfg processing adapter %d %s\n",
 			adapter.Type, adapter.Name)
 		ib := types.LookupIoBundle(aa, adapter.Type, adapter.Name)
 		// We reserved it in handleCreate so nobody could have stolen it
@@ -759,12 +759,12 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 		if ib.PciShort != "" {
 			pciAssignments = append(pciAssignments, ib.PciShort)
 		} else {
-			fmt.Printf("Adding io adapter config <%s>\n", ib.XenCfg)
+			log.Printf("Adding io adapter config <%s>\n", ib.XenCfg)
 			file.WriteString(fmt.Sprintf("%s\n", ib.XenCfg))
 		}
 	}
 	if len(pciAssignments) != 0 {
-		fmt.Printf("PCI assignments %v\n", pciAssignments)
+		log.Printf("PCI assignments %v\n", pciAssignments)
 		cfg := fmt.Sprintf("pci = [ ")
 		for i, pa := range pciAssignments {
 			if i != 0 {
@@ -773,7 +773,7 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 			cfg = cfg + fmt.Sprintf("'%s'", pa)
 		}
 		cfg = cfg + "]"
-		fmt.Printf("Adding pci config <%s>\n", cfg)
+		log.Printf("Adding pci config <%s>\n", cfg)
 		file.WriteString(fmt.Sprintf("%s\n", cfg))
 	}
 	return nil
@@ -849,7 +849,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 	// before activation.
 
 	if config.UUIDandVersion.Version == status.UUIDandVersion.Version {
-		fmt.Printf("Same version %s for %s\n",
+		log.Printf("Same version %s for %s\n",
 			config.UUIDandVersion.Version, statusFilename)
 		status.PendingModify = false
 		writeDomainStatus(status, statusFilename)
@@ -954,7 +954,7 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 
 // Create in paused state; Need to call xlUnpause later
 func xlCreate(domainName string, xenCfgFilename string) (int, error) {
-	fmt.Printf("xlCreate %s %s\n", domainName, xenCfgFilename)
+	log.Printf("xlCreate %s %s\n", domainName, xenCfgFilename)
 	cmd := "xl"
 	args := []string{
 		"create",
@@ -968,7 +968,7 @@ func xlCreate(domainName string, xenCfgFilename string) (int, error) {
 		return 0, errors.New(fmt.Sprintf("xl create failed: %s\n",
 			string(stdoutStderr)))
 	}
-	fmt.Printf("xl create done\n")
+	log.Printf("xl create done\n")
 
 	args = []string{
 		"domid",
@@ -989,7 +989,7 @@ func xlCreate(domainName string, xenCfgFilename string) (int, error) {
 }
 
 func xlStatus(domainName string, domainId int) error {
-	fmt.Printf("xlStatus %s %d\n", domainName, domainId)
+	log.Printf("xlStatus %s %d\n", domainName, domainId)
 	// XXX xl list -l domainName returns json. XXX but state not included!
 	// Note that state is not very useful anyhow
 	cmd := "xl"
@@ -1004,14 +1004,14 @@ func xlStatus(domainName string, domainId int) error {
 		return err
 	}
 	// XXX parse json to look at state? Not currently included
-	fmt.Printf("xl list done. Result %s\n", string(res))
+	log.Printf("xl list done. Result %s\n", string(res))
 	return nil
 }
 
 // If we have a domain reboot issue the domainId
 // can change.
 func xlDomid(domainName string, domainId int) (int, error) {
-	fmt.Printf("xlDomid %s %d\n", domainName, domainId)
+	log.Printf("xlDomid %s %d\n", domainName, domainId)
 	cmd := "xl"
 	args := []string{
 		"domid",
@@ -1038,7 +1038,7 @@ func xlDomid(domainName string, domainId int) (int, error) {
 // Perform xenstore write to disable all of these for all VIFs
 // feature-sg, feature-gso-tcpv4, feature-gso-tcpv6, feature-ipv6-csum-offload
 func xlDisableVifOffload(domainName string, domainId int, vifCount int) error {
-	fmt.Printf("xlDisableVifOffload %s %d %d\n",
+	log.Printf("xlDisableVifOffload %s %d %d\n",
 		domainName, domainId, vifCount)
 	pref := "/local/domain"
 	for i := 0; i < vifCount; i += 1 {
@@ -1072,17 +1072,17 @@ func xlDisableVifOffload(domainName string, domainId int, vifCount int) error {
 				log.Println("xenstore write failed ", err)
 				return err
 			}
-			fmt.Printf("xenstore write done. Result %s\n",
+			log.Printf("xenstore write done. Result %s\n",
 				string(res))
 		}
 	}
 
-	fmt.Printf("xlDisableVifOffload done.\n")
+	log.Printf("xlDisableVifOffload done.\n")
 	return nil
 }
 
 func xlUnpause(domainName string, domainId int) error {
-	fmt.Printf("xlUnpause %s %d\n", domainName, domainId)
+	log.Printf("xlUnpause %s %d\n", domainName, domainId)
 	cmd := "xl"
 	args := []string{
 		"unpause",
@@ -1093,12 +1093,12 @@ func xlUnpause(domainName string, domainId int) error {
 		log.Println("xlUnpause failed ", err)
 		return err
 	}
-	fmt.Printf("xlUnpause done. Result %s\n", string(res))
+	log.Printf("xlUnpause done. Result %s\n", string(res))
 	return nil
 }
 
 func xlShutdown(domainName string, domainId int) error {
-	fmt.Printf("xlShutdown %s %d\n", domainName, domainId)
+	log.Printf("xlShutdown %s %d\n", domainName, domainId)
 	cmd := "xl"
 	args := []string{
 		"shutdown",
@@ -1110,12 +1110,12 @@ func xlShutdown(domainName string, domainId int) error {
 		log.Println("xl shutdown output ", string(stdoutStderr))
 		return err
 	}
-	fmt.Printf("xl shutdown done\n")
+	log.Printf("xl shutdown done\n")
 	return nil
 }
 
 func xlDestroy(domainName string, domainId int) error {
-	fmt.Printf("xlDestroy %s %d\n", domainName, domainId)
+	log.Printf("xlDestroy %s %d\n", domainName, domainId)
 	cmd := "xl"
 	args := []string{
 		"destroy",
@@ -1127,7 +1127,7 @@ func xlDestroy(domainName string, domainId int) error {
 		log.Println("xl destroy output ", string(stdoutStderr))
 		return err
 	}
-	fmt.Printf("xl destroy done\n")
+	log.Printf("xl destroy done\n")
 	return nil
 }
 
@@ -1157,7 +1157,7 @@ func locationFromDir(locationDir string) (string, error) {
 }
 
 func pciAssignableAdd(long string) error {
-	fmt.Printf("pciAssignableAdd %s\n", long)
+	log.Printf("pciAssignableAdd %s\n", long)
 	cmd := "xl"
 	args := []string{
 		"pci-assignable-add",
@@ -1170,12 +1170,12 @@ func pciAssignableAdd(long string) error {
 		log.Println(errStr)
 		return errors.New(errStr)
 	}
-	fmt.Printf("xl pci-assignable-add done\n")
+	log.Printf("xl pci-assignable-add done\n")
 	return nil
 }
 
 func pciAssignableRem(long string) error {
-	fmt.Printf("pciAssignableRem %s\n", long)
+	log.Printf("pciAssignableRem %s\n", long)
 	cmd := "xl"
 	args := []string{
 		"pci-assignable-rem",
@@ -1189,7 +1189,7 @@ func pciAssignableRem(long string) error {
 		log.Println(errStr)
 		return errors.New(errStr)
 	}
-	fmt.Printf("xl pci-assignable-rem done\n")
+	log.Printf("xl pci-assignable-rem done\n")
 	return nil
 }
 
@@ -1198,7 +1198,7 @@ func handleDNSModify(ctxArg interface{}, statusFilename string,
 	status := statusArg.(*types.DeviceNetworkStatus)
 
 	if statusFilename != "global" {
-		fmt.Printf("handleDNSModify: ignoring %s\n", statusFilename)
+		log.Printf("handleDNSModify: ignoring %s\n", statusFilename)
 		return
 	}
 	log.Printf("handleDNSModify for %s\n", statusFilename)
@@ -1210,7 +1210,7 @@ func handleDNSDelete(ctxArg interface{}, statusFilename string) {
 	log.Printf("handleDNSDelete for %s\n", statusFilename)
 
 	if statusFilename != "global" {
-		fmt.Printf("handleDNSDelete: ignoring %s\n", statusFilename)
+		log.Printf("handleDNSDelete: ignoring %s\n", statusFilename)
 		return
 	}
 	deviceNetworkStatus = types.DeviceNetworkStatus{}

@@ -349,7 +349,7 @@ func handleModify(ctxArg interface{}, statusFilename string,
 		config.UUIDandVersion, config.DisplayName)
 
 	if config.UUIDandVersion.Version == status.UUIDandVersion.Version {
-		fmt.Printf("Same version %s for %s\n",
+		log.Printf("Same version %s for %s\n",
 			config.UUIDandVersion.Version, statusFilename)
 		return
 	}
@@ -380,7 +380,7 @@ func handleDNSModify(ctxArg interface{}, statusFilename string,
 	status := statusArg.(*types.DeviceNetworkStatus)
 
 	if statusFilename != "global" {
-		fmt.Printf("handleDNSModify: ignoring %s\n", statusFilename)
+		log.Printf("handleDNSModify: ignoring %s\n", statusFilename)
 		return
 	}
 	log.Printf("handleDNSModify for %s\n", statusFilename)
@@ -392,7 +392,7 @@ func handleDNSDelete(ctxArg interface{}, statusFilename string) {
 	log.Printf("handleDNSDelete for %s\n", statusFilename)
 
 	if statusFilename != "global" {
-		fmt.Printf("handleDNSDelete: ignoring %s\n", statusFilename)
+		log.Printf("handleDNSDelete: ignoring %s\n", statusFilename)
 		return
 	}
 	deviceNetworkStatus = types.DeviceNetworkStatus{}
