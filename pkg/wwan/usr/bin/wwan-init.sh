@@ -8,6 +8,9 @@
 # be relative path names (either ./ for the ones
 # that are local to this service or ../ for the
 # global context).
+#
+# Some inspiration (but not the code!) taken from:
+#    https://github.com/openwrt-mirror/openwrt/blob/master/package/network/utils/uqmi/files/lib/netifd/proto/qmi.sh
 BBS=/run/wwan
 
 # FIXME: we really need to pick the following from some config
@@ -56,6 +59,10 @@ function wait_for_register() {
   local STATUS="null"
   while [ "$STATUS" != "registered" ] ; do
     STATUS=`qmi --get-serving-system | jq -r .registration`
+    sleep 5
+  done
+  while [ "$STATUS" != "connected" ] ; do
+    STATUS=`qmi --get-data-status | jq -r .`
     sleep 5
   done
 }
