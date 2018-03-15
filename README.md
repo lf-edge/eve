@@ -25,12 +25,9 @@ If you're on MacOS the following steps should get you all the dependencies:
       $ brew install qemu
       ```
 
-Type `make supermicro.iso` in the source directory . This will
+Type `make fallback.img` in the source directory . This will
 download the relevant dockers from docker hub and create a bootable
-ISO for the supermicro in the file 'supermicro.iso'.
-
-Alternatively, `make supermicro.img` will create a raw disk image of
-the same system.
+image 'fallback.img'.
 
 Please note that not all containers will be fetched from the docker
 hub. mkimage-raw-efi in particular will be built.
@@ -42,6 +39,10 @@ re-running make fixes the issue.
 Finally run the resulting image by typing `make run`. This will launch
 qemu with some default assumptions. Make sure to wait for the GRUB menu
 to show up and then pick the 2nd option (otherwise image will hang).
+
+If you don't want to manually select that option everytime you boot with
+qemu you can build your image with an extra environment variable set to 1
+'ZEN_DEFAULT_BOOT=1 make fallback.img' 
 
 Once the image boots you can interact with it either by using the console
 (right there in the terminal window from which make run was executed).
