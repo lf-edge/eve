@@ -14,6 +14,7 @@ import (
 	google_protobuf "github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/satori/go.uuid"
 	"github.com/zededa/api/zmet"
+	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
 	"github.com/zededa/go-provision/zedcloud"
@@ -27,6 +28,7 @@ import (
 )
 
 const (
+	agentName         = "logmanager"
 	defaultLogdirname = "/var/log"
 	identityDirname   = "/config"
 	serverFilename    = identityDirname + "/server"
@@ -80,7 +82,6 @@ type logfileReader struct {
 // Context for handleDNSModify
 type DNSContext struct {
 	usableAddressCount int
-	triggerGetConfig   bool
 }
 
 type zedcloudLogs struct {
@@ -91,6 +92,8 @@ type zedcloudLogs struct {
 }
 
 func main() {
+	// Note that device-steps.sh sends our output to /var/run
+	// so we don't log our own output.
 	log.SetOutput(os.Stdout)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
 	versionPtr := flag.Bool("v", false, "Version")
@@ -98,13 +101,17 @@ func main() {
 	logdirPtr := flag.String("l", defaultLogdirname, "Log file directory")
 	flag.Parse()
 	debug = *debugPtr
+	logDirName := *logdirPtr
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
-	logDirName := *logdirPtr
-	log.Printf("Starting log manager... watching %s\n", logDirName)
+	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("Starting %s watching %s\n", agentName, logDirName)
 
+	// XXX should we wait until we have at least one useable address?
 	DNSctx := DNSContext{}
 	DNSctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
 
@@ -168,14 +175,7 @@ func handleDNSModify(ctxArg interface{}, statusFilename string,
 	}
 	log.Printf("handleDNSModify for %s\n", statusFilename)
 	deviceNetworkStatus = *status
-	// Did we (re-)gain the first usable address?
-	// XXX should we also trigger if the count increases?
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
-	if newAddrCount != 0 && ctx.usableAddressCount == 0 {
-		log.Printf("DeviceNetworkStatus from %d to %d addresses\n",
-			newAddrCount, ctx.usableAddressCount)
-		ctx.triggerGetConfig = true
-	}
 	ctx.usableAddressCount = newAddrCount
 	log.Printf("handleDNSModify done for %s\n", statusFilename)
 }
@@ -231,9 +231,10 @@ func HandleLogEvent(event logEntry, reportLogs *zmet.LogBundle, counter int) {
 	// Assign a unique msgId for each message
 	msgId := msgIdCounter
 	msgIdCounter += 1
-	// XXX send message over protobuf
-	fmt.Printf("Read event from %s time %v id %d: %s\n",
-		event.source, event.timestamp, msgId, event.content)
+	if debug {
+		fmt.Printf("Read event from %s time %v id %d: %s\n",
+			event.source, event.timestamp, msgId, event.content)
+	}
 	logDetails := &zmet.LogEntry{}
 	logDetails.Content = event.content
 	logDetails.Timestamp = event.timestamp
@@ -247,10 +248,14 @@ func sendProtoStrForLogs(reportLogs *zmet.LogBundle, iteration int) {
 	reportLogs.DevID = *proto.String(devUUID.String())
 	reportLogs.Image = "IMG"
 	log.Println("sendProtoStrForLogs called...", iteration)
-	log.Println("Log Details: ", reportLogs)
 	data, err := proto.Marshal(reportLogs)
 	if err != nil {
 		log.Fatal("SendInfoProtobufStr proto marshaling error: ", err)
+	}
+	if debug {
+		log.Printf("Log Details (len %d): %s\n", len(data), reportLogs)
+	} else {
+		log.Printf("Log length %d\n", len(data))
 	}
 	buf := bytes.NewBuffer(data)
 	if buf == nil {
