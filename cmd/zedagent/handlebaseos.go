@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/zededa/go-provision/types"
+	"github.com/zededa/go-provision/zboot"
 	"log"
 	"os"
 	"reflect"
@@ -167,7 +168,7 @@ func baseOsGetActivationStatus(status *types.BaseOsStatus) {
 	}
 
 	partName := status.PartitionLabel
-	partVersion := GetShortVersion(partName)
+	partVersion := zboot.GetShortVersion(partName)
 
 	// if they match, mean already installed
 	// mark the status accordingly
@@ -176,16 +177,16 @@ func baseOsGetActivationStatus(status *types.BaseOsStatus) {
 	}
 
 	// some partition specific attributes
-	status.PartitionState = getPartitionState(partName)
-	status.PartitionDevice = getPartitionDevname(partName)
+	status.PartitionState = zboot.GetPartitionState(partName)
+	status.PartitionDevice = zboot.GetPartitionDevname(partName)
 
 	// for otherPartition, its always false
-	if !isCurrentPartition(partName) {
+	if !zboot.IsCurrentPartition(partName) {
 		status.Activated = false
 		return
 	}
 	// if current Partition, get the status from zboot
-	status.Activated = isCurrentPartitionStateActive()
+	status.Activated = zboot.IsCurrentPartitionStateActive()
 }
 
 func baseOsMarkInstalled(status *types.BaseOsStatus) {
@@ -273,13 +274,13 @@ func doBaseOsActivate(uuidStr string, config types.BaseOsConfig,
 	// check PartitionLabel the one we got is really unused?
 	// if partitionState unsed then change status to updating...
 
-	if !isOtherPartition(config.PartitionLabel) ||
-		!isOtherPartitionStateUnused() {
+	if !zboot.IsOtherPartition(config.PartitionLabel) ||
+		!zboot.IsOtherPartitionStateUnused() {
 		return changed
 	}
 
 	log.Printf("doBaseOsActivate: %s activating\n", uuidStr)
-	setOtherPartitionStateUpdating()
+	zboot.SetOtherPartitionStateUpdating()
 
 	// if it is installed, flip the activated status
 	if status.State == types.INSTALLED ||
@@ -565,7 +566,7 @@ func installBaseOsObject(srcFilename string, dstFilename string) error {
 		return err
 	}
 
-	err := zbootWriteToPartition(srcFilename, dstFilename)
+	err := zboot.WriteToPartition(srcFilename, dstFilename)
 	if err != nil {
 		log.Printf("installBaseOsObject: write failed %s\n", err)
 	}
@@ -585,7 +586,7 @@ func checkInstalledVersion(config types.BaseOsConfig) string {
 		return errStr
 	}
 
-	partVersion := GetShortVersion(config.PartitionLabel)
+	partVersion := zboot.GetShortVersion(config.PartitionLabel)
 	if config.BaseOsVersion != partVersion {
 		errStr := fmt.Sprintf("baseOs %s, %s, does not match installed %s",
 			config.PartitionLabel, config.BaseOsVersion, partVersion)

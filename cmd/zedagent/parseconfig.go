@@ -9,6 +9,7 @@ import (
 	"github.com/satori/go.uuid"
 	"github.com/zededa/api/zconfig"
 	"github.com/zededa/go-provision/types"
+	"github.com/zededa/go-provision/zboot"
 	"io/ioutil"
 	"log"
 	"net"
@@ -40,20 +41,20 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext) 
 	}
 
 	// updating/rebooting, ignore config
-	if isZbootAvailable() && isOtherPartitionStateUpdating() {
+	if zboot.IsAvailable() && zboot.IsOtherPartitionStateUpdating() {
 		return true
 	}
 
 	// If the other partition is inprogress it means update failed
-	if isZbootAvailable() && isOtherPartitionStateInProgress() {
-		otherPart := getOtherPartition()
+	if zboot.IsAvailable() && zboot.IsOtherPartitionStateInProgress() {
+		otherPart := zboot.GetOtherPartition()
 		log.Printf("Other %s partition contains failed upgrade\n",
 			otherPart)
 		// XXX make sure its logs are made available
 		// XXX switch to keep it in inprogress until we get
 		// a baseOsConfig with a different baseOsVersion string.
 		log.Printf("Mark other partition %s, unused\n", otherPart)
-		setOtherPartitionStateUnused()
+		zboot.SetOtherPartitionStateUnused()
 	}
 
 	if validateConfig(config) {
@@ -85,13 +86,16 @@ func validateConfig(config *zconfig.EdgeDevConfig) bool {
 }
 
 func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
-
 	cfgOsList := config.GetBase()
 	baseOsCount := len(cfgOsList)
 	log.Printf("parseBaseOsConfig() Applying Base Os config len %d\n",
 		baseOsCount)
 
 	if baseOsCount == 0 {
+		return false
+	}
+	if !zboot.IsAvailable() {
+		log.Printf("No zboot; ignoring baseOsConfig\n");
 		return false
 	}
 
@@ -173,10 +177,10 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 }
 
 func assignBaseOsPartition(baseOsList []*types.BaseOsConfig) {
-	curPartName := getCurrentPartition()
-	otherPartName := getOtherPartition()
-	curPartVersion := GetShortVersion(curPartName)
-	otherPartVersion := GetShortVersion(otherPartName)
+	curPartName := zboot.GetCurrentPartition()
+	otherPartName := zboot.GetOtherPartition()
+	curPartVersion := zboot.GetShortVersion(curPartName)
+	otherPartVersion := zboot.GetShortVersion(otherPartName)
 
 	assignedPart := true
 	// older assignments/installations
@@ -1046,7 +1050,7 @@ func execReboot(state bool) {
 		duration := time.Duration(immediate)
 		timer := time.NewTimer(time.Second * duration)
 		<-timer.C
-		zbootReset()
+		zboot.Reset()
 
 	case false:
 		log.Printf("Powering Off..\n")
