@@ -211,8 +211,7 @@ func getLatestConfig(url string, iteration int, upgradeInprogress *bool,
 			curPart := zboot.GetCurrentPartition()
 			log.Printf("Config Fetch Task, curPart %s inprogress\n",
 				curPart)
-			// XXX marking which partition?
-			if err := zboot.MarkPartitionStateActive(); err != nil {
+			if err := zboot.MarkOtherPartitionStateActive(); err != nil {
 				log.Println(err)
 			} else {
 				*upgradeInprogress = false

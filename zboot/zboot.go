@@ -17,14 +17,8 @@ import (
 	"syscall"
 )
 
-// XXX use?
-const (
-	tmpDir        = "/var/tmp/zededa"
-	imgAPartition = tmpDir + "/IMGAPart"
-	imgBPartition = tmpDir + "/IMGBPart"
-)
-
 // mutex for zboot/dd APIs
+// XXX not useful since this can be invoked by different agents
 var zbootMutex *sync.Mutex
 
 func init() {
@@ -315,8 +309,7 @@ func WriteToPartition(srcFilename string, partName string) error {
 	return nil
 }
 
-// XXX mark which partition? Add to name?
-func MarkPartitionStateActive() error {
+func MarkOtherPartitionStateActive() error {
 
 	curPart := GetCurrentPartition()
 	otherPart := GetOtherPartition()
