@@ -20,6 +20,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/types"
@@ -73,8 +74,12 @@ var debug bool
 var Version = "No version specified"
 
 func main() {
-	log.SetOutput(os.Stdout)
-	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
+	logf, err := agentlog.Init(agentName)
+	if err != nil {
+	       log.Fatal(err)
+	}
+	defer logf.Close()
+
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug")
 	flag.Parse()

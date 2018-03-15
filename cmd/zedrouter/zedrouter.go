@@ -15,6 +15,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/vishvananda/netlink"
+	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/devicenetwork"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/pidfile"
@@ -57,8 +58,12 @@ type DNCContext struct {
 }
 
 func main() {
-	log.SetOutput(os.Stdout)
-	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
+	logf, err := agentlog.Init(agentName)
+	if err != nil {
+	       log.Fatal(err)
+	}
+	defer logf.Close()
+
 	versionPtr := flag.Bool("v", false, "Version")
 	flag.Parse()
 	if *versionPtr {

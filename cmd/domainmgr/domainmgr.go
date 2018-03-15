@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"github.com/satori/go.uuid"
 	"github.com/zededa/go-provision/adapters"
+	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/types"
@@ -65,8 +66,12 @@ type domainContext struct {
 }
 
 func main() {
-	log.SetOutput(os.Stdout)
-	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
+	logf, err := agentlog.Init(agentName)
+	if err != nil {
+	       log.Fatal(err)
+	}
+	defer logf.Close()
+
 	versionPtr := flag.Bool("v", false, "Version")
 	flag.Parse()
 	if *versionPtr {

@@ -17,6 +17,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/satori/go.uuid"
 	"github.com/zededa/api/zmet"
+	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/devicenetwork"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/types"
@@ -35,7 +36,7 @@ const (
 	tmpDirname  = "/var/tmp/zededa"
 	DNCDirname  = "/var/tmp/zededa/DeviceNetworkConfig"
 	maxDelay    = time.Second * 600 // 10 minutes
-	uuidMaxWait = time.Second * 60 // 1 minute
+	uuidMaxWait = time.Second * 60  // 1 minute
 )
 
 // Really a constant
@@ -62,8 +63,12 @@ var Version = "No version specified"
 //  /var/tmp/zededa/zedrouterconfig.json	Written by lookupParam operation
 //
 func main() {
-	log.SetOutput(os.Stdout)
-	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
+	logf, err := agentlog.Init("client")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer logf.Close()
+
 	versionPtr := flag.Bool("v", false, "Version")
 	oldPtr := flag.Bool("o", false, "Old use of prov01")
 	forcePtr := flag.Bool("f", false, "Force using onboarding cert")

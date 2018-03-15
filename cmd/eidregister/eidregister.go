@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
@@ -51,8 +52,12 @@ type dummyContext struct {
 }
 
 func main() {
-	log.SetOutput(os.Stdout)
-	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
+	logf, err := agentlog.Init(agentName)
+	if err != nil {
+	       log.Fatal(err)
+	}
+	defer logf.Close()
+
 	versionPtr := flag.Bool("v", false, "Version")
 	oldPtr := flag.Bool("o", false, "Old use of prov01")
 	dirPtr := flag.String("d", "/config",
@@ -77,7 +82,6 @@ func main() {
 	oldServerFileName := identityDirname + "/oldserver"
 
 	// Load device cert
-	var err error
 	deviceCert, err = tls.LoadX509KeyPair(deviceCertName, deviceKeyName)
 	if err != nil {
 		log.Fatal(err)
