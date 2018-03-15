@@ -52,7 +52,6 @@ func CheckAndCreatePidfile(agentName string) error {
 			if err == nil {
 				errStr := fmt.Sprintf("Old pid %d exists for agent %s",
 					oldPid, agentName)
-				log.Println(errStr)
 				return errors.New(errStr)
 			}
 		}

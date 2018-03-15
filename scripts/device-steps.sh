@@ -11,7 +11,7 @@ DNCDIR=/var/tmp/zededa/DeviceNetworkConfig
 LISPDIR=/opt/zededa/lisp
 LOGDIRA=$PERSISTDIR/IMGA/log
 LOGDIRB=$PERSISTDIR/IMGB/log
-AGENTS="ledmanager zedrouter domainmgr downloader verifier identitymgr eidregister zedagent"
+AGENTS="logmanager ledmanager zedrouter domainmgr downloader verifier identitymgr eidregister zedagent"
 ALLAGENTS="zedmanager $AGENTS"
 
 PATH=$BINDIR:$PATH
@@ -497,6 +497,16 @@ echo "Starting zedagent at" `date`
 zedagent &
 if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
+fi
+
+#If logmanager is already running we don't have to start it.
+pgrep logmanager >/dev/null
+if [ $? != 0 ]; then
+    echo "Starting logmanager at" `date`
+    logmanager >/var/run/logmanager.log 2>&1 &
+    if [ $WAIT = 1 ]; then
+	echo -n "Press any key to continue "; read dummy; echo; echo
+    fi
 fi
 
 echo "Initial setup done at" `date`
