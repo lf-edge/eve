@@ -6,6 +6,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"flag"
 	"fmt"
 	"github.com/golang/protobuf/proto"
@@ -13,8 +14,6 @@ import (
 	google_protobuf "github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/satori/go.uuid"
 	"github.com/zededa/api/zmet"
-	"github.com/zededa/go-provision/adapters"
-	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
 	"github.com/zededa/go-provision/zedcloud"
@@ -22,9 +21,9 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"regexp"
 	"strings"
 	"time"
-	"regexp"
 )
 
 const (
@@ -35,12 +34,12 @@ const (
 	DNSDirname        = "/var/run/zedrouter/DeviceNetworkStatus"
 )
 
-var zcdevUUID uuid.UUID
 var devUUID uuid.UUID
 var deviceNetworkStatus types.DeviceNetworkStatus
 var debug bool
 var serverName string
 var logsApi string = "api/v1/edgedevice/logs"
+var logsUrl string
 var zedcloudCtx zedcloud.ZedCloudContext
 var logMaxSize = 100
 
@@ -56,11 +55,11 @@ var Version = "No version specified"
 
 // Based on the proto file
 type logEntry struct {
-	severity string
-	source   string // basename of filename?
-	image    string // XXX missing in zlog.proto
-	iid      string // XXX e.g. PID - where do we get it from?
-	content  string // One line
+	severity  string
+	source    string // basename of filename?
+	image     string
+	iid       string // XXX e.g. PID - where do we get it from?
+	content   string // One line
 	timestamp *google_protobuf.Timestamp
 }
 
@@ -106,11 +105,6 @@ func main() {
 	logDirName := *logdirPtr
 	log.Printf("Starting log manager... watching %s\n", logDirName)
 
-	model := hardware.GetHardwareModel()
-	log.Printf("HardwareModel %s\n", model)
-	aa := types.AssignableAdapters{}
-	aaChanges, aaFunc, aaCtx := adapters.Init(&aa, model)
-
 	DNSctx := DNSContext{}
 	DNSctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
 
@@ -118,11 +112,7 @@ func main() {
 	go watch.WatchStatus(DNSDirname, networkStatusChanges)
 
 	log.Printf("Waiting until we have some uplinks with usable addresses\n")
-	for types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus) == 0 ||
-		!aaCtx.Found {
-		log.Printf("Waiting - have %d addresses; aaCtx %v\n",
-			types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus),
-			aaCtx.Found)
+	for types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus) == 0 {
 		select {
 		case change := <-networkStatusChanges:
 			watch.HandleStatusEvent(change, &DNSctx,
@@ -130,12 +120,11 @@ func main() {
 				&types.DeviceNetworkStatus{},
 				handleDNSModify, handleDNSDelete,
 				nil)
-		case change := <-aaChanges:
-			aaFunc(&aaCtx, change)
 		}
 	}
 
-	handleConfigInit()
+	//Get servername, set logUrl, get device id and initialize zedcloudCtx
+	sendCtxInit()
 
 	loggerChan := make(chan logEntry)
 	ctx := loggerContext{logChan: loggerChan}
@@ -164,9 +153,6 @@ func main() {
 				&types.DeviceNetworkStatus{},
 				handleDNSModify, handleDNSDelete,
 				nil)
-			if DNSctx.triggerGetConfig {
-				DNSctx.triggerGetConfig = false
-			}
 		}
 	}
 }
@@ -208,44 +194,6 @@ func handleDNSDelete(ctxArg interface{}, statusFilename string) {
 	log.Printf("handleDNSDelete done for %s\n", statusFilename)
 }
 
-func maybeInit(ifname string) {
-	if logs == nil {
-		fmt.Printf("create zedcloudlog map\n")
-		logs = make(map[string]zedcloudLogs)
-	}
-	if _, ok := logs[ifname]; !ok {
-		fmt.Printf("create zedcloudlog for %s\n", ifname)
-		logs[ifname] = zedcloudLogs{}
-	}
-}
-
-func zedCloudFailure(ifname string) {
-	maybeInit(ifname)
-	m := logs[ifname]
-	m.FailureCount += 1
-	m.LastFailure = time.Now()
-	logs[ifname] = m
-}
-
-func zedCloudSuccess(ifname string) {
-	maybeInit(ifname)
-	m := logs[ifname]
-	m.SuccessCount += 1
-	m.LastSuccess = time.Now()
-	logs[ifname] = m
-}
-
-//get server name
-func getServerName() string {
-	bytes, err := ioutil.ReadFile(serverFilename)
-	if err != nil {
-		log.Fatal(err)
-	}
-	strTrim := strings.TrimSpace(string(bytes))
-	serverName = strings.Split(strTrim, ":")[0]
-	return serverName
-}
-
 // This runs as a separate go routine sending out data
 func processEvents(logChan <-chan logEntry) {
 
@@ -259,30 +207,21 @@ func processEvents(logChan <-chan logEntry) {
 			HandleLogEvent(event, reportLogs, counter)
 			counter++
 
-			if ok := isBufferFlush(reportLogs, iteration,
-				counter, false); ok {
+			if counter >= logMaxSize {
+				sendProtoStrForLogs(reportLogs, iteration)
 				counter = 0
 				iteration += 1
 			}
 
 		case <-flushTimer.C:
 			log.Println("Logger Flush at", reportLogs.Timestamp)
-			if ok := isBufferFlush(reportLogs, iteration,
-				counter, true); ok {
+			if counter > 0 {
+				sendProtoStrForLogs(reportLogs, iteration)
 				counter = 0
 				iteration += 1
 			}
 		}
 	}
-}
-
-func isBufferFlush(reportLogs *zmet.LogBundle, iteration int,
-	counter int, flush bool) bool {
-	if counter >= logMaxSize || (flush == true && counter > 0) {
-		sendProtoStrForLogs(reportLogs, iteration)
-		return true
-	}
-	return false
 }
 
 var msgIdCounter = 1
@@ -305,11 +244,10 @@ func HandleLogEvent(event logEntry, reportLogs *zmet.LogBundle, counter int) {
 
 func sendProtoStrForLogs(reportLogs *zmet.LogBundle, iteration int) {
 	reportLogs.Timestamp = ptypes.TimestampNow()
-	reportLogs.DevID = *proto.String(zcdevUUID.String())
+	reportLogs.DevID = *proto.String(devUUID.String())
 	reportLogs.Image = "IMG"
 	log.Println("sendProtoStrForLogs called...", iteration)
 	log.Println("Log Details: ", reportLogs)
-	serverName := getServerName()
 	data, err := proto.Marshal(reportLogs)
 	if err != nil {
 		log.Fatal("SendInfoProtobufStr proto marshaling error: ", err)
@@ -319,7 +257,6 @@ func sendProtoStrForLogs(reportLogs *zmet.LogBundle, iteration int) {
 		log.Fatal("SendInfoProtobufStr malloc error:")
 	}
 
-	logsUrl := serverName + "/" + logsApi
 	resp, err := zedcloud.SendOnAllIntf(zedcloudCtx, logsUrl,
 		buf, iteration)
 	if err != nil {
@@ -331,9 +268,18 @@ func sendProtoStrForLogs(reportLogs *zmet.LogBundle, iteration int) {
 	resp.Body.Close()
 }
 
-func handleConfigInit() {
+func sendCtxInit() {
+	//get server name
+	bytes, err := ioutil.ReadFile(serverFilename)
+	if err != nil {
+		log.Fatal(err)
+	}
+	strTrim := strings.TrimSpace(string(bytes))
+	serverName = strings.Split(strTrim, ":")[0]
 
-	serverName := getServerName()
+	//set log url
+	logsUrl = serverName + "/" + logsApi
+
 	tlsConfig, err := zedcloud.GetTlsConfig(serverName, nil)
 	if err != nil {
 		log.Fatal(err)
@@ -341,8 +287,6 @@ func handleConfigInit() {
 	zedcloudCtx.DeviceNetworkStatus = &deviceNetworkStatus
 	zedcloudCtx.TlsConfig = tlsConfig
 	zedcloudCtx.Debug = debug
-	zedcloudCtx.FailureFunc = zedCloudFailure
-	zedcloudCtx.SuccessFunc = zedCloudSuccess
 
 	b, err := ioutil.ReadFile(uuidFileName)
 	if err != nil {
@@ -354,7 +298,6 @@ func handleConfigInit() {
 		log.Fatal("uuid.FromString", err, string(b))
 	}
 	fmt.Printf("Read UUID %s\n", devUUID)
-	zcdevUUID = devUUID
 }
 
 func HandleLogDirEvent(change string, logDirName string, ctx *loggerContext,
@@ -448,31 +391,13 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 		// XXX remove trailing "/n" from line
 		// XXX parse timestamp and remove it from line (if present)
 		// otherwise leave timestamp unitialized
-		re := regexp.MustCompile(`\d{4}/\d{2}/\d{2}`)
-		matched := re.MatchString(line)
-		var protoDateAndTime *google_protobuf.Timestamp
-		if matched {
-			dateAndTime := strings.Split(line, " ")
-			re := regexp.MustCompile("/")
-			newDateFormat := re.ReplaceAllLiteralString(dateAndTime[0], "-")
-
-			timeFormat := strings.Split(dateAndTime[1], ".")[0]
-			newDateAndTime := newDateFormat + "T" + timeFormat
-			layout := "2006-01-02T15:04:05"
-
-			///convert newDateAndTime type string to type time.time
-			dt, err := time.Parse(layout, newDateAndTime)
-			if err != nil {
-				log.Println(err)
-			}
-			//convert dt type time.time to type proto
-			protoDateAndTime, err = ptypes.TimestampProto(dt)
-			if err != nil {
-				log.Println(err)
-			}
-			log.Println("Parsed Date And Time From Agents Log In Proto Format: ",protoDateAndTime)
+		parsedDateAndTime, err := parseDateTime(line)
+		if err != nil {
+			logChan <- logEntry{source: r.source, content: line}
+		} else {
+			logChan <- logEntry{source: r.source, content: line, timestamp: parsedDateAndTime}
 		}
-		logChan <- logEntry{source: r.source, content: line, timestamp: protoDateAndTime}
+
 	}
 	// Update size
 	fi, err = r.fileDesc.Stat()
@@ -481,6 +406,41 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 		return
 	}
 	r.size = fi.Size()
+}
+
+//parse date and time from agent logs
+func parseDateTime(line string) (*google_protobuf.Timestamp, error) {
+
+	var protoDateAndTime *google_protobuf.Timestamp
+	re := regexp.MustCompile(`^\d{4}/\d{2}/\d{2}`)
+	matched := re.MatchString(line)
+	if matched {
+		dateAndTime := strings.Split(line, " ")
+		re := regexp.MustCompile("/")
+		newDateFormat := re.ReplaceAllLiteralString(dateAndTime[0], "-")
+
+		timeFormat := strings.Split(dateAndTime[1], ".")[0]
+		newDateAndTime := newDateFormat + "T" + timeFormat
+		layout := "2006-01-02T15:04:05"
+
+		///convert newDateAndTime type string to type time.time
+		dt, err := time.Parse(layout, newDateAndTime)
+		if err != nil {
+			log.Println(err)
+			return nil, err
+		} else {
+			//convert dt type time.time to type proto
+			protoDateAndTime, err = ptypes.TimestampProto(dt)
+			if err != nil {
+				log.Println("Error while converting timestamp in proto format: ", err)
+				return nil, err
+			} else {
+				return protoDateAndTime, nil
+			}
+		}
+	} else {
+		return nil, errors.New("date and time format not found")
+	}
 }
 
 // XXX useful to read unchanging files until EOF
