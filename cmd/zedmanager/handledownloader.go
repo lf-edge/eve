@@ -36,7 +36,7 @@ func AddOrRefcountDownloaderConfig(safename string, sc *types.StorageConfig) {
 			Safename:        safename,
 			DownloadURL:     sc.DownloadURL,
 			UseFreeUplinks:  true,
-			MaxSize:         sc.MaxSize,
+			Size:            sc.Size,
 			TransportMethod: sc.TransportMethod,
 			Dpath:           sc.Dpath,
 			ApiKey:          sc.ApiKey,

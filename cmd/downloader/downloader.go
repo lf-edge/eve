@@ -27,6 +27,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -278,9 +279,10 @@ func handleCreate(ctx *downloaderContext, objType string,
 	writeDownloaderStatus(&status, statusFilename)
 
 	// Check if we have space
-	if config.MaxSize >= globalStatus.RemainingSpace {
+	kb := types.RoundupToKB(config.Size)
+	if uint(kb) >= globalStatus.RemainingSpace {
 		errString := fmt.Sprintf("Would exceed remaining space %d vs %d\n",
-			config.MaxSize, globalStatus.RemainingSpace)
+			kb, globalStatus.RemainingSpace)
 		log.Println(errString)
 		status.PendingAdd = false
 		status.Size = 0
@@ -295,7 +297,7 @@ func handleCreate(ctx *downloaderContext, objType string,
 
 	// Update reserved space. Keep reserved until doDelete
 	// XXX RefCount -> 0 should keep it reserved.
-	status.ReservedSpace = config.MaxSize
+	status.ReservedSpace = uint(types.RoundupToKB(config.Size))
 	globalStatus.ReservedSpace += status.ReservedSpace
 	updateRemainingSpace()
 
@@ -395,7 +397,7 @@ func doDelete(statusFilename string, locDirname string, status *types.Downloader
 	}
 
 	status.State = types.INITIAL
-	globalStatus.UsedSpace -= status.Size
+	globalStatus.UsedSpace -= uint(types.RoundupToKB(status.Size))
 	status.Size = 0
 
 	// XXX Asymmetric; handleCreate reserved on RefCount 0. We unreserve
@@ -414,7 +416,7 @@ func handleDelete(ctx *downloaderContext, objType string,
 
 	globalStatus.ReservedSpace -= status.ReservedSpace
 	status.ReservedSpace = 0
-	globalStatus.UsedSpace -= status.Size
+	globalStatus.UsedSpace -= uint(types.RoundupToKB(status.Size))
 	status.Size = 0
 
 	updateRemainingSpace()
@@ -473,7 +475,7 @@ func downloaderInit() *zedUpload.DronaCtx {
 	// We read objectDownloadDirname/* and determine how much space
 	// is used. Place in GlobalDownloadStatus. Calculate remaining space.
 	totalUsed := sizeFromDir(objectDownloadDirname)
-	globalStatus.UsedSpace = uint((totalUsed + 1023) / 1024)
+	globalStatus.UsedSpace = uint(types.RoundupToKB(totalUsed))
 	updateRemainingSpace()
 
 	// create drona interface
@@ -573,8 +575,8 @@ func clearInProgressDownloadDirs(objTypes []string) {
 	}
 }
 
-func sizeFromDir(dirname string) int64 {
-	var totalUsed int64 = 0
+func sizeFromDir(dirname string) uint64 {
+	var totalUsed uint64 = 0
 	locations, err := ioutil.ReadDir(dirname)
 	if err != nil {
 		log.Fatal(err)
@@ -588,7 +590,7 @@ func sizeFromDir(dirname string) int64 {
 			totalUsed += size
 		} else {
 			log.Printf("File %s Size %d\n", filename, location.Size())
-			totalUsed += location.Size()
+			totalUsed += uint64(location.Size())
 		}
 	}
 	return totalUsed
@@ -660,13 +662,12 @@ func writeFile(sFilename string, dFilename string) {
 // XXX should we use --cacart? Would assume we know the root CA.
 // XXX Set --limit-rate 100k
 // XXX continue based on filesize with: -C -
-// XXX --max-filesize <bytes> from MaxSize in DownLoaderConfig (kbytes)
-// XXX --interface ...
 // Note that support for --dns-interface is not compiled in
 // Normally "ifname" is the source IP to be consistent with the S3 loop
-func doCurl(url string, ifname string, destFilename string) error {
+func doCurl(url string, ifname string, maxsize uint64, destFilename string) error {
 	cmd := "curl"
 	args := []string{}
+	maxsizeStr := strconv.FormatUint(maxsize, 10)
 	if ifname != "" {
 		args = []string{
 			"-q",
@@ -678,6 +679,8 @@ func doCurl(url string, ifname string, destFilename string) error {
 			"--show-error",
 			"--interface",
 			ifname,
+			"--max-filesize",
+			maxsizeStr,
 			"-o",
 			destFilename,
 			url,
@@ -691,6 +694,8 @@ func doCurl(url string, ifname string, destFilename string) error {
 			"3",
 			"--silent",
 			"--show-error",
+			"--max-filesize",
+			maxsizeStr,
 			"-o",
 			destFilename,
 			url,
@@ -708,7 +713,7 @@ func doCurl(url string, ifname string, destFilename string) error {
 }
 
 func doS3(ctx *downloaderContext, syncOp zedUpload.SyncOpType,
-	apiKey string, password string, dpath string, maxsize uint,
+	apiKey string, password string, dpath string, maxsize uint64,
 	ipSrc net.IP, filename string, locFilename string) error {
 	auth := &zedUpload.AuthInput{
 		AuthType: "s3",
@@ -731,8 +736,10 @@ func doS3(ctx *downloaderContext, syncOp zedUpload.SyncOpType,
 
 	log.Printf("syncOp for <%s>/<%s>\n", dpath, filename)
 	// create Request
+	// Round up from bytes to Mbytes
+	maxMB := (maxsize + 1024*1024 - 1) / (1024 * 1024)
 	req := dEndPoint.NewRequest(syncOp, filename, locFilename,
-		int64(maxsize/1024), true, respChan)
+		int64(maxMB), true, respChan)
 	if req == nil {
 		return errors.New("NewRequest failed")
 	}
@@ -811,7 +818,7 @@ func handleSyncOp(ctx *downloaderContext, objType string, statusFilename string,
 		case zconfig.DsType_DsS3.String():
 			err = doS3(ctx, syncOp, config.ApiKey,
 				config.Password, config.Dpath,
-				config.MaxSize, ipSrc, filename, locFilename)
+				config.Size, ipSrc, filename, locFilename)
 			if err != nil {
 				fmt.Printf("Source IP %s failed: %s\n",
 					ipSrc.String(), err)
@@ -824,7 +831,7 @@ func handleSyncOp(ctx *downloaderContext, objType string, statusFilename string,
 		case zconfig.DsType_DsHttps.String():
 		case "":
 			err = doCurl(config.DownloadURL, ipSrc.String(),
-				locFilename)
+				config.Size, locFilename)
 			if err != nil {
 				fmt.Printf("Source IP %s failed: %s\n",
 					ipSrc.String(), err)
@@ -885,31 +892,11 @@ func handleSyncOpResponse(objType string, config types.DownloaderConfig,
 		log.Printf("handleCreate failed for %s <%s>\n", status.DownloadURL, err)
 		return
 	}
-
-	// XXX Compare against MaxSize and reject? Already wasted the space?
-	status.Size = uint((info.Size() + 1023) / 1024)
-
-	if config.MaxSize != 0 && status.Size > config.MaxSize {
-		// Delete file
-		errString := fmt.Sprintf("Size exceeds MaxSize; %d vs. %d for %s\n",
-			status.Size, config.MaxSize, status.DownloadURL)
-		log.Println(errString)
-		// Delete file
-		doDelete(statusFilename, locDirname, status)
-		status.PendingAdd = false
-		status.Size = 0
-		status.LastErr = errString
-		status.LastErrTime = time.Now()
-		status.RetryCount += 1
-		status.State = types.INITIAL
-		writeDownloaderStatus(status, statusFilename)
-		log.Printf("handleCreate failed for %s, <%s>\n", status.DownloadURL, err)
-		return
-	}
+	status.Size = uint64(info.Size())
 
 	globalStatus.ReservedSpace -= status.ReservedSpace
 	status.ReservedSpace = 0
-	globalStatus.UsedSpace += status.Size
+	globalStatus.UsedSpace += uint(types.RoundupToKB(status.Size))
 	updateRemainingSpace()
 
 	log.Printf("handleCreate successful <%s> <%s>\n",

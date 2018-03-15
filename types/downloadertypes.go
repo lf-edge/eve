@@ -18,7 +18,7 @@ type DownloaderConfig struct {
 	Dpath           string
 	ApiKey          string
 	Password        string
-	MaxSize         uint   // In kbytes
+	Size            uint64 // In bytes
 	ImageSha256     string // sha256 of immutable image
 	FinalObjDir     string // final Object Store
 	RefCount        uint   // Zero means can delete file/cancel download
@@ -54,7 +54,7 @@ type DownloaderStatus struct {
 	ImageSha256    string  // sha256 of immutable image
 	State          SwState // DOWNLOADED etc
 	ReservedSpace  uint    // Contribution to global ReservedSpace
-	Size           uint    // Once DOWNLOADED; less than MaxSize
+	Size           uint64  // Once DOWNLOADED; in bytes
 	ModTime        time.Time
 	LastErr        string // Download error
 	LastErrTime    time.Time
@@ -87,6 +87,7 @@ type GlobalDownloadConfig struct {
 	MaxSpace uint // Number of kbytes allowed in /var/tmp/zedmanager/downloads
 }
 
+// These are all in kbytes
 type GlobalDownloadStatus struct {
 	UsedSpace      uint // Number of kbytes used in /var/tmp/zedmanager/downloads
 	ReservedSpace  uint // Reserved for ongoing downloads
