@@ -56,14 +56,18 @@ function start_network() {
     mbus_publish pdh_$IFACE
 }
 
+function wait_for_wds() {
+  local STATUS="null"
+  while [ "$STATUS" != "connected" ] ; do
+    STATUS=`qmi --get-data-status | jq -r .`
+    sleep 5
+  done
+}
+
 function wait_for_register() {
   local STATUS="null"
   while [ "$STATUS" != "registered" ] ; do
     STATUS=`qmi --get-serving-system | jq -r .registration`
-    sleep 5
-  done
-  while [ "$STATUS" != "connected" ] ; do
-    STATUS=`qmi --get-data-status | jq -r .`
     sleep 5
   done
 }
@@ -123,6 +127,7 @@ while true ; do
     # hopefully we can recover now
     wait_for_register
     start_network
+    wait_for_wds
     wait_for_settings
     bringup_iface
   fi
