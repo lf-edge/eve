@@ -7,6 +7,7 @@ config:
     - /etc/resolv.conf:/etc/resolv.conf
     - /run:/run
     - /var/log:/var/log/dom0
+    - /:/hostfs
   net: host
   capabilities:
     - all

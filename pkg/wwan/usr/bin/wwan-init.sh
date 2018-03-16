@@ -1,4 +1,5 @@
 #!/bin/sh
+set -x
 
 # Currently our message bus is files in /run
 # When we replace it, we should pay attention
@@ -8,6 +9,9 @@
 # be relative path names (either ./ for the ones
 # that are local to this service or ../ for the
 # global context).
+#
+# Some inspiration (but not the code!) taken from:
+#    https://github.com/openwrt-mirror/openwrt/blob/master/package/network/utils/uqmi/files/lib/netifd/proto/qmi.sh
 BBS=/run/wwan
 
 # FIXME: we really need to pick the following from some config
@@ -50,6 +54,14 @@ function start_network() {
   ip link set $IFACE up
   qmi --device $QMI_DEV --start-network --apn $APN --keep-client-id wds |\
     mbus_publish pdh_$IFACE
+}
+
+function wait_for_wds() {
+  local STATUS="null"
+  while [ "$STATUS" != "connected" ] ; do
+    STATUS=`qmi --get-data-status | jq -r .`
+    sleep 5
+  done
 }
 
 function wait_for_register() {
@@ -115,6 +127,7 @@ while true ; do
     # hopefully we can recover now
     wait_for_register
     start_network
+    wait_for_wds
     wait_for_settings
     bringup_iface
   fi
