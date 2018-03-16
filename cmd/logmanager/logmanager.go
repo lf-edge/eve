@@ -14,9 +14,11 @@ import (
 	google_protobuf "github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/satori/go.uuid"
 	"github.com/zededa/api/zmet"
+	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
+	"github.com/zededa/go-provision/zboot"
 	"github.com/zededa/go-provision/zedcloud"
 	"io"
 	"io/ioutil"
@@ -28,12 +30,11 @@ import (
 )
 
 const (
-	agentName         = "logmanager"
-	defaultLogdirname = "/var/log"
-	identityDirname   = "/config"
-	serverFilename    = identityDirname + "/server"
-	uuidFileName      = identityDirname + "/uuid"
-	DNSDirname        = "/var/run/zedrouter/DeviceNetworkStatus"
+	agentName       = "logmanager"
+	identityDirname = "/config"
+	serverFilename  = identityDirname + "/server"
+	uuidFileName    = identityDirname + "/uuid"
+	DNSDirname      = "/var/run/zedrouter/DeviceNetworkStatus"
 )
 
 var devUUID uuid.UUID
@@ -59,7 +60,6 @@ var Version = "No version specified"
 type logEntry struct {
 	severity  string
 	source    string // basename of filename?
-	image     string
 	iid       string // XXX e.g. PID - where do we get it from?
 	content   string // One line
 	timestamp *google_protobuf.Timestamp
@@ -68,6 +68,7 @@ type logEntry struct {
 // List of log files we watch
 type loggerContext struct {
 	logfileReaders []logfileReader
+	image          string
 	logChan        chan<- logEntry
 }
 
@@ -96,6 +97,9 @@ func main() {
 	// so we don't log our own output.
 	log.SetOutput(os.Stdout)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
+
+	defaultLogdirname := agentlog.GetCurrentLogdir()
+	otherLogdirname := agentlog.GetOtherLogdir()
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug")
 	logdirPtr := flag.String("l", defaultLogdirname, "Log file directory")
@@ -133,16 +137,39 @@ func main() {
 	//Get servername, set logUrl, get device id and initialize zedcloudCtx
 	sendCtxInit()
 
+	currentPartition := zboot.GetCurrentPartition()
 	loggerChan := make(chan logEntry)
-	ctx := loggerContext{logChan: loggerChan}
+	ctx := loggerContext{logChan: loggerChan, image: currentPartition}
 	// Start sender of log events
 	// XXX or we run this in main routine and the logDirChanges loop
 	// in a go routine??
-	go processEvents(loggerChan)
+	go processEvents(currentPartition, loggerChan)
 
-	// XXX The OtherPartition files will not change hence we can just
+	// The OtherPartition files will not change hence we can just
 	// read them and send their lines; no need to watch for changes.
-	// Should we read all of them serially?
+	if otherLogdirname != "" {
+		log.Printf("Have logs from failed upgrade in %s\n",
+			otherLogdirname)
+		otherLoggerChan := make(chan logEntry)
+		otherPartition := zboot.GetOtherPartition()
+		go processEvents(otherPartition, otherLoggerChan)
+		files, err := ioutil.ReadDir(otherLogdirname)
+		if err != nil {
+			log.Fatal(err)
+		}
+		for _, file := range files {
+			filename := otherLogdirname + "/" + file.Name()
+			if !strings.HasSuffix(filename, ".log") {
+				log.Printf("Ignore %s\n", filename)
+				continue
+			}
+			log.Printf("Read %s until EOF\n", filename)
+			name := strings.Split(filename, ".log")
+			source := name[0]
+			logReader(filename, source, otherLoggerChan)
+		}
+		// XXX make processEvents() exit for this channel
+	}
 
 	logDirChanges := make(chan string)
 	go watch.WatchStatus(logDirName, logDirChanges)
@@ -195,7 +222,7 @@ func handleDNSDelete(ctxArg interface{}, statusFilename string) {
 }
 
 // This runs as a separate go routine sending out data
-func processEvents(logChan <-chan logEntry) {
+func processEvents(image string, logChan <-chan logEntry) {
 
 	reportLogs := new(zmet.LogBundle)
 	flushTimer := time.NewTicker(time.Second * 10)
@@ -208,15 +235,20 @@ func processEvents(logChan <-chan logEntry) {
 			counter++
 
 			if counter >= logMaxSize {
-				sendProtoStrForLogs(reportLogs, iteration)
+				sendProtoStrForLogs(reportLogs, image,
+					iteration)
 				counter = 0
 				iteration += 1
 			}
 
 		case <-flushTimer.C:
-			log.Println("Logger Flush at", reportLogs.Timestamp)
+			if debug {
+				log.Println("Logger Flush at",
+					reportLogs.Timestamp)
+			}
 			if counter > 0 {
-				sendProtoStrForLogs(reportLogs, iteration)
+				sendProtoStrForLogs(reportLogs, image,
+					iteration)
 				counter = 0
 				iteration += 1
 			}
@@ -239,23 +271,25 @@ func HandleLogEvent(event logEntry, reportLogs *zmet.LogBundle, counter int) {
 	logDetails.Content = event.content
 	logDetails.Timestamp = event.timestamp
 	logDetails.Source = event.source
+	logDetails.Iid = event.iid
 	logDetails.Msgid = uint64(msgId)
 	reportLogs.Log = append(reportLogs.Log, logDetails)
 }
 
-func sendProtoStrForLogs(reportLogs *zmet.LogBundle, iteration int) {
+func sendProtoStrForLogs(reportLogs *zmet.LogBundle, image string,
+	iteration int) {
 	reportLogs.Timestamp = ptypes.TimestampNow()
 	reportLogs.DevID = *proto.String(devUUID.String())
-	reportLogs.Image = "IMG"
-	log.Println("sendProtoStrForLogs called...", iteration)
+	reportLogs.Image = image
+	if debug {
+		log.Println("sendProtoStrForLogs called...", iteration)
+	}
 	data, err := proto.Marshal(reportLogs)
 	if err != nil {
 		log.Fatal("SendInfoProtobufStr proto marshaling error: ", err)
 	}
 	if debug {
 		log.Printf("Log Details (len %d): %s\n", len(data), reportLogs)
-	} else {
-		log.Printf("Log length %d\n", len(data))
 	}
 	buf := bytes.NewBuffer(data)
 	if buf == nil {
@@ -265,7 +299,7 @@ func sendProtoStrForLogs(reportLogs *zmet.LogBundle, iteration int) {
 	resp, err := zedcloud.SendOnAllIntf(zedcloudCtx, logsUrl,
 		buf, iteration)
 	if err != nil {
-		// Hopefully next timeout will be more successful
+		// XXX need to queue message and retry
 		log.Printf("SendMetricsProtobuf failed: %s\n", err)
 		return
 	}
@@ -397,10 +431,12 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 		// XXX parse timestamp and remove it from line (if present)
 		// otherwise leave timestamp unitialized
 		parsedDateAndTime, err := parseDateTime(line)
+		// XXX set iid to PID?
 		if err != nil {
 			logChan <- logEntry{source: r.source, content: line}
 		} else {
-			logChan <- logEntry{source: r.source, content: line, timestamp: parsedDateAndTime}
+			logChan <- logEntry{source: r.source, content: line,
+				timestamp: parsedDateAndTime}
 		}
 
 	}
@@ -448,8 +484,8 @@ func parseDateTime(line string) (*google_protobuf.Timestamp, error) {
 	}
 }
 
-// XXX useful to read unchanging files until EOF
-// Use for the otherpartition files!
+// Read unchanging files until EOF
+// Used for the otherpartition files!
 func logReader(logFile string, source string, logChan chan<- logEntry) {
 	fileDesc, err := os.Open(logFile)
 	if err != nil {
