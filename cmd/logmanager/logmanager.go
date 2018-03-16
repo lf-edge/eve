@@ -137,7 +137,10 @@ func main() {
 	//Get servername, set logUrl, get device id and initialize zedcloudCtx
 	sendCtxInit()
 
-	currentPartition := zboot.GetCurrentPartition()
+	currentPartition := "IMGA"
+	if zboot.IsAvailable() {
+		currentPartition = zboot.GetCurrentPartition()
+	}
 	loggerChan := make(chan logEntry)
 	ctx := loggerContext{logChan: loggerChan, image: currentPartition}
 	// Start sender of log events
