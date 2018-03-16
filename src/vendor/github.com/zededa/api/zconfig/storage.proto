@@ -81,9 +81,10 @@ enum DriveType {
 
 message Drive {
 	Image image = 1;
-	int64 maxsize = 2;
+	int64 maxsize = 2;     // deprecated
 	bool readonly = 5;
 	bool preserve = 6;
 	DriveType drvtype = 8;
 	Target target = 9;
+	int64 maxsizebytes = 10;
 }
