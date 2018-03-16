@@ -29,17 +29,17 @@ func MaybeAddVerifyImageConfig(safename string, sc *types.StorageConfig) bool {
 	}
 
 	if verifyImageConfig == nil {
-		fmt.Printf("create verifier config map\n")
+		log.Printf("create verifier config map\n")
 		verifyImageConfig = make(map[string]types.VerifyImageConfig)
 	}
 	key := safename
 	if m, ok := verifyImageConfig[key]; ok {
 		m.RefCount += 1
-		fmt.Printf("verifier config already exists refcnt %d for %s\n",
+		log.Printf("verifier config already exists refcnt %d for %s\n",
 			m.RefCount, safename)
 		verifyImageConfig[key] = m
 	} else {
-		fmt.Printf("verifier config add for %s\n", safename)
+		log.Printf("verifier config add for %s\n", safename)
 		n := types.VerifyImageConfig{
 			Safename:         safename,
 			DownloadURL:      sc.DownloadURL,
@@ -123,19 +123,19 @@ func handleVerifyImageStatusModify(ctxArg interface{}, statusFilename string,
 	}
 
 	if verifierStatus == nil {
-		fmt.Printf("create verifier map\n")
+		log.Printf("create verifier map\n")
 		verifierStatus = make(map[string]types.VerifyImageStatus)
 	}
 	key := status.Safename
 	changed := false
 	if m, ok := verifierStatus[key]; ok {
 		if status.State != m.State {
-			fmt.Printf("verifier map changed from %v to %v\n",
+			log.Printf("verifier map changed from %v to %v\n",
 				m.State, status.State)
 			changed = true
 		}
 	} else {
-		fmt.Printf("verifier map add for %v\n", status.State)
+		log.Printf("verifier map add for %v\n", status.State)
 		changed = true
 	}
 	if changed {
@@ -207,7 +207,7 @@ func handleVerifyImageStatusDelete(ctxArg interface{}, statusFilename string) {
 		log.Printf("handleVerifyImageStatusDelete for %s - not found\n",
 			key)
 	} else {
-		fmt.Printf("verifier map delete for %v\n", m.State)
+		log.Printf("verifier map delete for %v\n", m.State)
 		delete(verifierStatus, key)
 		log.Printf("Deleted verifierStatus key %v\n", key)
 		dumpVerifierStatus()

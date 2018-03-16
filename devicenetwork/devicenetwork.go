@@ -27,7 +27,7 @@ func GetDeviceNetworkConfig(configFilename string) (types.DeviceNetworkConfig, e
 	}
 	// Workaround for old config with FreeUplinks not set
 	if len(globalConfig.FreeUplinks) == 0 {
-		fmt.Printf("Setting FreeUplinks from Uplink: %v\n",
+		log.Printf("Setting FreeUplinks from Uplink: %v\n",
 			globalConfig.Uplink)
 		globalConfig.FreeUplinks = globalConfig.Uplink
 	}
@@ -66,7 +66,7 @@ func MakeDeviceNetworkStatus(globalConfig types.DeviceNetworkConfig) (types.Devi
 		globalStatus.UplinkStatus[ix].AddrInfoList = make([]types.AddrInfo,
 			len(addrs4)+len(addrs6))
 		for i, addr := range addrs4 {
-			fmt.Printf("UplinkAddrs(%s) found IPv4 %v\n",
+			log.Printf("UplinkAddrs(%s) found IPv4 %v\n",
 				u, addr.IP)
 			globalStatus.UplinkStatus[ix].AddrInfoList[i].Addr = addr.IP
 			// geoloc with short timeout
@@ -83,7 +83,7 @@ func MakeDeviceNetworkStatus(globalConfig types.DeviceNetworkConfig) (types.Devi
 		}
 		for i, addr := range addrs6 {
 			// We include link-locals since they can be used for LISP behind nats
-			fmt.Printf("UplinkAddrs(%s) found IPv6 %v\n",
+			log.Printf("UplinkAddrs(%s) found IPv6 %v\n",
 				u, addr.IP)
 			globalStatus.UplinkStatus[ix].AddrInfoList[i+len(addrs4)].Addr = addr.IP
 			// geoloc with short timeout

@@ -308,8 +308,9 @@ func ExecuteXentopCmd() [][]string {
 		for out := 0; out < len(finalOutput[f]); out++ {
 
 			matched, err := regexp.MatchString("[A-Za-z0-9]+", finalOutput[f][out])
-			fmt.Sprint(err)
-			if matched {
+			if err != nil {
+				log.Println(err)
+			} else if matched {
 
 				if finalOutput[f][out] == "no" {
 
@@ -349,13 +350,13 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 		log.Fatal("host.Info(): %s\n", err)
 	}
 	if debug {
-		fmt.Printf("uptime %d = %d days\n",
+		log.Printf("uptime %d = %d days\n",
 			info.Uptime, info.Uptime/(3600*24))
-		fmt.Printf("Booted at %v\n", time.Unix(int64(info.BootTime), 0).UTC())
+		log.Printf("Booted at %v\n", time.Unix(int64(info.BootTime), 0).UTC())
 	}
 	cpuSecs := getCpuSecs()
 	if debug && info.Uptime != 0 {
-		fmt.Printf("uptime %d cpuSecs %d, percent used %d\n",
+		log.Printf("uptime %d cpuSecs %d, percent used %d\n",
 			info.Uptime, cpuSecs, (100*cpuSecs)/info.Uptime)
 	}
 
@@ -416,7 +417,7 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 	}
 	cms := getCloudMetrics()
 	if debug {
-		fmt.Printf("Sending CloudMetrics %v\n", cms)
+		log.Printf("Sending CloudMetrics %v\n", cms)
 	}
 	for ifname, cm := range cms {
 		metric := zmet.ZedcloudMetric{IfName: ifname,
@@ -442,7 +443,7 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 	for _, d := range savedDisks {
 		size := partitionSize(d)
 		if debug {
-			fmt.Printf("Disk/partition %s size %d\n",
+			log.Printf("Disk/partition %s size %d\n",
 				d, size)
 		}
 		metric := zmet.DiskMetric{Disk: d, Total: size}
@@ -464,7 +465,7 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 			continue
 		}
 		if debug {
-			fmt.Printf("Path %s total %d used %d free %d\n",
+			log.Printf("Path %s total %d used %d free %d\n",
 				path, u.Total, u.Used, u.Free)
 		}
 		metric := zmet.DiskMetric{MountPath: path,
@@ -678,7 +679,7 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 	for _, disk := range disks {
 		size := partitionSize(disk)
 		if debug {
-			fmt.Printf("Disk/partition %s size %d\n", disk, size)
+			log.Printf("Disk/partition %s size %d\n", disk, size)
 		}
 		is := zmet.ZInfoStorage{Device: disk, Total: size}
 		ReportDeviceInfo.StorageList = append(ReportDeviceInfo.StorageList,
@@ -693,7 +694,7 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 		}
 
 		if debug {
-			fmt.Printf("Path %s total %d used %d free %d\n",
+			log.Printf("Path %s total %d used %d free %d\n",
 				path, u.Total, u.Used, u.Free)
 		}
 		is := zmet.ZInfoStorage{MountPath: path, Total: u.Total}
@@ -777,8 +778,8 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 	// Note that "domain" is returned in search, hence DNSdomain is
 	// not filled in.
 	dc := netclone.DnsReadConfig("/etc/resolv.conf")
-	fmt.Printf("resolv.conf servers %v\n", dc.Servers)
-	fmt.Printf("resolv.conf search %v\n", dc.Search)
+	log.Printf("resolv.conf servers %v\n", dc.Servers)
+	log.Printf("resolv.conf search %v\n", dc.Search)
 	ReportDeviceInfo.Dns = new(zmet.ZInfoDNS)
 	ReportDeviceInfo.Dns.DNSservers = dc.Servers
 	ReportDeviceInfo.Dns.DNSsearch = dc.Search
@@ -822,9 +823,9 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 		log.Fatal("host.Info(): %s\n", err)
 	}
 	if debug {
-		fmt.Printf("uptime %d = %d days\n",
+		log.Printf("uptime %d = %d days\n",
 			info.Uptime, info.Uptime/(3600*24))
-		fmt.Printf("Booted at %v\n", time.Unix(int64(info.BootTime), 0).UTC())
+		log.Printf("Booted at %v\n", time.Unix(int64(info.BootTime), 0).UTC())
 	}
 	bootTime, _ := ptypes.TimestampProto(
 		time.Unix(int64(info.BootTime), 0).UTC())
@@ -936,7 +937,7 @@ func getNetInfo(interfaceDetail psutilnet.InterfaceStat) *zmet.ZInfoNetwork {
 	networkInfo.DefaultRouters = make([]string, len(drs))
 	for index, dr := range drs {
 		if debug {
-			fmt.Printf("got dr: %v\n", dr)
+			log.Printf("got dr: %v\n", dr)
 		}
 		networkInfo.DefaultRouters[index] = *proto.String(dr)
 	}
@@ -1068,7 +1069,7 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 		x.Ainfo = ReportAppInfo
 	}
 
-	fmt.Printf("PublishAppInfoToZedCloud sending %v\n", ReportInfo)
+	log.Printf("PublishAppInfoToZedCloud sending %v\n", ReportInfo)
 
 	data, err := proto.Marshal(ReportInfo)
 	if err != nil {
@@ -1167,7 +1168,7 @@ func getCpuSecs() uint64 {
 		for i, f := range fields {
 			val, err := strconv.ParseFloat(f, 64)
 			if err != nil {
-				fmt.Println("Error: ", f, err)
+				log.Println("Error: ", f, err)
 			} else {
 				switch i {
 				case 0:
@@ -1180,7 +1181,7 @@ func getCpuSecs() uint64 {
 	}
 	cpus, err := cpu.Info()
 	if err != nil {
-		fmt.Printf("cpu.Info: %s\n", err)
+		log.Printf("cpu.Info: %s\n", err)
 		// Assume 1 CPU
 		return uptime - idle
 	}
@@ -1194,7 +1195,7 @@ func getDefaultRouters(ifname string) []string {
 	var res []string
 	link, err := netlink.LinkByName(ifname)
 	if err != nil {
-		fmt.Printf("getDefaultRouters failed to find %s: %s\n",
+		log.Printf("getDefaultRouters failed to find %s: %s\n",
 			ifname, err)
 		return res
 	}
@@ -1210,7 +1211,7 @@ func getDefaultRouters(ifname string) []string {
 	if err != nil {
 		log.Fatal("getDefaultRouters RouteList failed: %v\n", err)
 	}
-	// fmt.Printf("getDefaultRouters(%s) - got %d\n", ifname, len(routes))
+	// log.Printf("getDefaultRouters(%s) - got %d\n", ifname, len(routes))
 	for _, rt := range routes {
 		if rt.Table != table {
 			continue

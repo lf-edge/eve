@@ -9,6 +9,7 @@ package types
 import (
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path"
 	"regexp"
@@ -26,12 +27,12 @@ func ifNameToPci(ifName string) (string, string, error) {
 	info, err := os.Lstat(devPath)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			fmt.Println(err)
+			log.Println(err)
 		}
 		return "", "", err
 	}
 	if (info.Mode() & os.ModeSymlink) == 0 {
-		fmt.Printf("Skipping non-symlink %s\n", devPath)
+		log.Printf("Skipping non-symlink %s\n", devPath)
 		return "", "", errors.New(fmt.Sprintf("Not a symlink %s", devPath))
 	}
 	link, err := os.Readlink(devPath)

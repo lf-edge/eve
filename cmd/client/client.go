@@ -17,6 +17,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/satori/go.uuid"
 	"github.com/zededa/api/zmet"
+	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/devicenetwork"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/types"
@@ -35,7 +36,7 @@ const (
 	tmpDirname  = "/var/tmp/zededa"
 	DNCDirname  = "/var/tmp/zededa/DeviceNetworkConfig"
 	maxDelay    = time.Second * 600 // 10 minutes
-	uuidMaxWait = time.Second * 60 // 1 minute
+	uuidMaxWait = time.Second * 60  // 1 minute
 )
 
 // Really a constant
@@ -62,8 +63,12 @@ var Version = "No version specified"
 //  /var/tmp/zededa/zedrouterconfig.json	Written by lookupParam operation
 //
 func main() {
-	log.SetOutput(os.Stdout)
-	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
+	logf, err := agentlog.Init("client")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer logf.Close()
+
 	versionPtr := flag.Bool("v", false, "Version")
 	oldPtr := flag.Bool("o", false, "Old use of prov01")
 	forcePtr := flag.Bool("f", false, "Force using onboarding cert")
@@ -112,7 +117,7 @@ func main() {
 		uuidStr := strings.TrimSpace(string(b))
 		oldUUID, err = uuid.FromString(uuidStr)
 		if err != nil {
-			fmt.Printf("UUID file ignored: %s\n", err)
+			log.Printf("UUID file ignored: %s\n", err)
 		}
 	}
 
@@ -135,18 +140,18 @@ func main() {
 		if addrCount == 0 {
 			// If we already know a uuid we can skip
 			if operations["getUuid"] && oldUUID != nilUUID {
-				fmt.Printf("Already have a UUID %s; declaring success\n",
+				log.Printf("Already have a UUID %s; declaring success\n",
 					oldUUID.String())
 				return
 			}
-			fmt.Printf("Waiting for some uplink addresses to use\n")
+			log.Printf("Waiting for some uplink addresses to use\n")
 			delay := time.Second
 			log.Printf("Retrying in %d seconds\n",
 				delay/time.Second)
 			time.Sleep(delay)
 		}
 	}
-	fmt.Printf("Have %d uplinks addresses to use\n", addrCount)
+	log.Printf("Have %d uplinks addresses to use\n", addrCount)
 
 	// Inform ledmanager that we have uplink addresses
 	types.UpdateLedManagerConfig(2)
@@ -204,7 +209,7 @@ func main() {
 	// EID to connect.
 	ACLPromisc := false
 	if _, err := os.Stat(infraFileName); err == nil {
-		fmt.Printf("Setting ACLPromisc\n")
+		log.Printf("Setting ACLPromisc\n")
 		ACLPromisc = true
 	}
 
@@ -214,7 +219,7 @@ func main() {
 		resp, err := zedcloud.SendOnAllIntf(zedcloudCtx,
 			serverNameAndPort+url, b, retryCount)
 		if err != nil {
-			fmt.Println(err)
+			log.Println(err)
 			return false
 		}
 		defer resp.Body.Close()
@@ -224,7 +229,7 @@ func main() {
 
 		contents, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			fmt.Println(err)
+			log.Println(err)
 			return false
 		}
 
@@ -232,43 +237,43 @@ func main() {
 		case http.StatusOK:
 			// Inform ledmanager about existence in cloud
 			types.UpdateLedManagerConfig(4)
-			fmt.Printf("%s StatusOK\n", url)
+			log.Printf("%s StatusOK\n", url)
 		case http.StatusCreated:
 			// Inform ledmanager about existence in cloud
 			types.UpdateLedManagerConfig(4)
-			fmt.Printf("%s StatusCreated\n", url)
+			log.Printf("%s StatusCreated\n", url)
 		case http.StatusConflict:
 			// Inform ledmanager about brokenness
 			types.UpdateLedManagerConfig(10)
-			fmt.Printf("%s StatusConflict\n", url)
+			log.Printf("%s StatusConflict\n", url)
 			// Retry until fixed
-			fmt.Printf("%s\n", string(contents))
+			log.Printf("%s\n", string(contents))
 			return false
 		default:
-			fmt.Printf("%s statuscode %d %s\n",
+			log.Printf("%s statuscode %d %s\n",
 				url, resp.StatusCode,
 				http.StatusText(resp.StatusCode))
-			fmt.Printf("%s\n", string(contents))
+			log.Printf("%s\n", string(contents))
 			return false
 		}
 
 		contentType := resp.Header.Get("Content-Type")
 		if contentType == "" {
-			fmt.Printf("%s no content-type\n", url)
+			log.Printf("%s no content-type\n", url)
 			return false
 		}
 		mimeType, _, err := mime.ParseMediaType(contentType)
 		if err != nil {
-			fmt.Printf("%s ParseMediaType failed %v\n", url, err)
+			log.Printf("%s ParseMediaType failed %v\n", url, err)
 			return false
 		}
 		switch mimeType {
 		case "application/x-proto-binary":
 		case "application/json":
 		case "text/plain":
-			fmt.Printf("Received reply %s\n", string(contents))
+			log.Printf("Received reply %s\n", string(contents))
 		default:
-			fmt.Println("Incorrect Content-Type " + mimeType)
+			log.Println("Incorrect Content-Type " + mimeType)
 			return false
 		}
 		return true
@@ -279,7 +284,7 @@ func main() {
 		resp, err := zedcloud.SendOnAllIntf(zedcloudCtx,
 			serverNameAndPort+url, b, retryCount)
 		if err != nil {
-			fmt.Println(err)
+			log.Println(err)
 			return false
 		}
 		defer resp.Body.Close()
@@ -289,7 +294,7 @@ func main() {
 
 		contents, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			fmt.Println(err)
+			log.Println(err)
 			return false
 		}
 
@@ -297,41 +302,41 @@ func main() {
 		case http.StatusOK:
 			// Inform ledmanager about existence in cloud
 			types.UpdateLedManagerConfig(4)
-			fmt.Printf("%s StatusOK\n", url)
+			log.Printf("%s StatusOK\n", url)
 		case http.StatusCreated:
 			// Inform ledmanager about existence in cloud
 			types.UpdateLedManagerConfig(4)
-			fmt.Printf("%s StatusCreated\n", url)
+			log.Printf("%s StatusCreated\n", url)
 		case http.StatusConflict:
 			// Inform ledmanager about brokenness
 			types.UpdateLedManagerConfig(10)
-			fmt.Printf("%s StatusConflict\n", url)
+			log.Printf("%s StatusConflict\n", url)
 			// Retry until fixed
-			fmt.Printf("%s\n", string(contents))
+			log.Printf("%s\n", string(contents))
 			return false
 		default:
-			fmt.Printf("%s statuscode %d %s\n",
+			log.Printf("%s statuscode %d %s\n",
 				url, resp.StatusCode,
 				http.StatusText(resp.StatusCode))
-			fmt.Printf("%s\n", string(contents))
+			log.Printf("%s\n", string(contents))
 			return false
 		}
 
 		contentType := resp.Header.Get("Content-Type")
 		if contentType == "" {
-			fmt.Printf("%s no content-type\n", url)
+			log.Printf("%s no content-type\n", url)
 			return false
 		}
 		mimeType, _, err := mime.ParseMediaType(contentType)
 		if err != nil {
-			fmt.Printf("%s ParseMediaType failed %v\n", url, err)
+			log.Printf("%s ParseMediaType failed %v\n", url, err)
 			return false
 		}
 		switch mimeType {
 		case "application/json":
-			fmt.Printf("%s\n", string(contents))
+			log.Printf("%s\n", string(contents))
 		default:
-			fmt.Println("Incorrect Content-Type " + mimeType)
+			log.Println("Incorrect Content-Type " + mimeType)
 			return false
 		}
 		return true
@@ -378,7 +383,7 @@ func main() {
 		resp, err := zedcloud.SendOnAllIntf(zedcloudCtx,
 			serverNameAndPort+url, nil, retryCount)
 		if err != nil {
-			fmt.Println(err)
+			log.Println(err)
 			return false
 		}
 		defer resp.Body.Close()
@@ -388,43 +393,43 @@ func main() {
 
 		contents, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			fmt.Println(err)
+			log.Println(err)
 			return false
 		}
 		switch resp.StatusCode {
 		case http.StatusOK:
 			// Inform ledmanager about device existence in cloud
 			types.UpdateLedManagerConfig(4)
-			fmt.Printf("device-param StatusOK\n")
+			log.Printf("device-param StatusOK\n")
 		case http.StatusNotFound:
-			fmt.Printf("device-param StatusNotFound\n")
+			log.Printf("device-param StatusNotFound\n")
 			return false
 		default:
-			fmt.Printf("device-param statuscode %d %s\n",
+			log.Printf("device-param statuscode %d %s\n",
 				resp.StatusCode,
 				http.StatusText(resp.StatusCode))
-			fmt.Printf("%s\n", string(contents))
+			log.Printf("%s\n", string(contents))
 			return false
 		}
 		contentType := resp.Header.Get("Content-Type")
 		if contentType == "" {
-			fmt.Printf("device-param no content-type\n")
+			log.Printf("device-param no content-type\n")
 			return false
 		}
 		mimeType, _, err := mime.ParseMediaType(contentType)
 		if err != nil {
-			fmt.Printf("device-param ParseMediaType failed %v\n", err)
+			log.Printf("device-param ParseMediaType failed %v\n", err)
 			return false
 		}
 		switch mimeType {
 		case "application/json":
 			break
 		default:
-			fmt.Println("Incorrect Content-Type " + mimeType)
+			log.Println("Incorrect Content-Type " + mimeType)
 			return false
 		}
 		if err := json.Unmarshal(contents, &device); err != nil {
-			fmt.Println(err)
+			log.Println(err)
 			return false
 		}
 		return true
@@ -437,26 +442,26 @@ func main() {
 		resp, err := zedcloud.SendOnAllIntf(zedcloudCtx,
 			serverNameAndPort+url, nil, retryCount)
 		if err != nil {
-			fmt.Println(err)
+			log.Println(err)
 			return false, nil
 		}
 		// Perform resp.Body.Close() except in success case
 
 		switch resp.StatusCode {
 		case http.StatusOK:
-			fmt.Printf("%s StatusOK\n", url)
+			log.Printf("%s StatusOK\n", url)
 			return true, resp
 		case http.StatusCreated:
-			fmt.Printf("%s StatusCreated\n", url)
+			log.Printf("%s StatusCreated\n", url)
 			resp.Body.Close()
 			return false, nil
 		default:
-			fmt.Printf("%s statuscode %d %s\n",
+			log.Printf("%s statuscode %d %s\n",
 				url, resp.StatusCode,
 				http.StatusText(resp.StatusCode))
 			contents, err := ioutil.ReadAll(resp.Body)
 			if err == nil {
-				fmt.Printf("Received %s\n", string(contents))
+				log.Printf("Received %s\n", string(contents))
 			}
 			resp.Body.Close()
 			return false, nil
@@ -466,10 +471,10 @@ func main() {
 	// Setup HTTPS client for deviceCert unless force
 	var cert tls.Certificate
 	if forceOnboardingCert || operations["selfRegister"] {
-		fmt.Printf("Using onboarding cert\n")
+		log.Printf("Using onboarding cert\n")
 		cert = onboardCert
 	} else if deviceCertSet {
-		fmt.Printf("Using device cert\n")
+		log.Printf("Using device cert\n")
 		cert = deviceCert
 	} else {
 		log.Fatalf("No device certificate for %v\n", operations)
@@ -563,7 +568,7 @@ func main() {
 			// Create and write with initial values
 			// XXX ignoring any error
 			devUUID, _ = uuid.NewV4()
-			fmt.Printf("Created UUID %s\n", devUUID)
+			log.Printf("Created UUID %s\n", devUUID)
 		} else {
 			url := "/api/v1/edgedevice/config"
 			retryCount := 0
@@ -599,12 +604,12 @@ func main() {
 					log.Printf("Replacing existing UUID %s\n",
 						oldUUID.String())
 				} else {
-					fmt.Printf("No change to UUID %s\n",
+					log.Printf("No change to UUID %s\n",
 						devUUID)
 					doWrite = false
 				}
 			} else {
-				fmt.Printf("Got config with UUID %s\n", devUUID)
+				log.Printf("Got config with UUID %s\n", devUUID)
 			}
 			// Inform ledmanager about config received from cloud
 			types.UpdateLedManagerConfig(4)
@@ -615,7 +620,7 @@ func main() {
 			if err != nil {
 				log.Fatal("WriteFile", err, uuidFileName)
 			}
-			fmt.Printf("Wrote UUID %s\n", devUUID)
+			log.Printf("Wrote UUID %s\n", devUUID)
 		}
 	}
 
@@ -635,7 +640,7 @@ func main() {
 		if err != nil {
 			log.Fatal("uuid.FromString", err, string(b))
 		}
-		fmt.Printf("Read UUID %s\n", devUUID)
+		log.Printf("Read UUID %s\n", devUUID)
 
 		retryCount := 0
 		done := false
@@ -672,13 +677,13 @@ func main() {
 		// RFC 5952. The iid is printed as an integer.
 		sigdata := fmt.Sprintf("[%d]%s",
 			device.LispInstance, device.EID.String())
-		fmt.Printf("sigdata (len %d) %s\n", len(sigdata), sigdata)
+		log.Printf("sigdata (len %d) %s\n", len(sigdata), sigdata)
 
 		hasher := sha256.New()
 		hasher.Write([]byte(sigdata))
 		hash := hasher.Sum(nil)
-		fmt.Printf("hash (len %d) % x\n", len(hash), hash)
-		fmt.Printf("base64 hash %s\n",
+		log.Printf("hash (len %d) % x\n", len(hash), hash)
+		log.Printf("base64 hash %s\n",
 			base64.StdEncoding.EncodeToString(hash))
 
 		var signature string
@@ -691,19 +696,19 @@ func main() {
 			if err != nil {
 				log.Fatal("ecdsa.Sign: ", err)
 			}
-			fmt.Printf("r.bytes %d s.bytes %d\n", len(r.Bytes()),
+			log.Printf("r.bytes %d s.bytes %d\n", len(r.Bytes()),
 				len(s.Bytes()))
 			sigres := r.Bytes()
 			sigres = append(sigres, s.Bytes()...)
-			fmt.Printf("sigres (len %d): % x\n", len(sigres), sigres)
+			log.Printf("sigres (len %d): % x\n", len(sigres), sigres)
 			signature = base64.StdEncoding.EncodeToString(sigres)
-			fmt.Println("signature:", signature)
+			log.Println("signature:", signature)
 		}
-		fmt.Printf("UserName %s\n", device.UserName)
-		fmt.Printf("MapServers %s\n", device.LispMapServers)
-		fmt.Printf("Lisp IID %d\n", device.LispInstance)
-		fmt.Printf("EID %s\n", device.EID)
-		fmt.Printf("EID hash length %d\n", device.EIDHashLen)
+		log.Printf("UserName %s\n", device.UserName)
+		log.Printf("MapServers %s\n", device.LispMapServers)
+		log.Printf("Lisp IID %d\n", device.LispInstance)
+		log.Printf("EID %s\n", device.EID)
+		log.Printf("EID hash length %d\n", device.EIDHashLen)
 
 		// write zedserverconfig file with hostname to EID mappings
 		f, err := os.Create(zedserverConfigFileName)
@@ -729,7 +734,7 @@ func main() {
 				device.ClientAddr, err)
 		} else {
 			nat := !IsMyAddress(publicIP)
-			fmt.Printf("NAT %v, publicIP %v\n", nat, publicIP)
+			log.Printf("NAT %v, publicIP %v\n", nat, publicIP)
 		}
 
 		// Write an AppNetworkConfig for the ZedManager application
@@ -776,7 +781,7 @@ func main() {
 
 func writeNetworkConfig(config *types.AppNetworkConfig,
 	configFilename string) {
-	fmt.Printf("Writing AppNetworkConfig to %s\n", configFilename)
+	log.Printf("Writing AppNetworkConfig to %s\n", configFilename)
 	b, err := json.Marshal(config)
 	if err != nil {
 		log.Fatal(err, "json Marshal AppNetworkConfig")

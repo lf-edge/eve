@@ -34,7 +34,7 @@ interface %s {
 // Create the radvd config file for the overlay
 // Would be more polite to return an error then to Fatal
 func createRadvdConfiglet(cfgPathname string, olIfname string) {
-	fmt.Printf("createRadvdConfiglet: %s\n", olIfname)
+	log.Printf("createRadvdConfiglet: %s\n", olIfname)
 	file, err := os.Create(cfgPathname)
 	if err != nil {
 		log.Fatal("os.Create for ", cfgPathname, err)
@@ -44,7 +44,7 @@ func createRadvdConfiglet(cfgPathname string, olIfname string) {
 }
 
 func deleteRadvdConfiglet(cfgPathname string) {
-	fmt.Printf("createRadvdConfiglet: %s\n", cfgPathname)
+	log.Printf("createRadvdConfiglet: %s\n", cfgPathname)
 	if err := os.Remove(cfgPathname); err != nil {
 		log.Println(err)
 	}
@@ -53,7 +53,7 @@ func deleteRadvdConfiglet(cfgPathname string) {
 // Run this:
 //    radvd -u radvd -C /var/run/zedrouter/radvd.${OLIFNAME}.conf -p /var/run/radvd.${OLIFNAME}.pid
 func startRadvd(cfgPathname string, olIfname string) {
-	fmt.Printf("startRadvd: %s\n", cfgPathname)
+	log.Printf("startRadvd: %s\n", cfgPathname)
 	pidPathname := "/var/run/radvd." + olIfname + ".pid"
 	cmd := "nohup"
 	args := []string{
@@ -70,6 +70,6 @@ func startRadvd(cfgPathname string, olIfname string) {
 
 //    pkill -u radvd -f radvd.${OLIFNAME}.conf
 func stopRadvd(cfgFilename string, printOnError bool) {
-	fmt.Printf("stopRadvd: %s\n", cfgFilename)
+	log.Printf("stopRadvd: %s\n", cfgFilename)
 	pkillUserArgs("radvd", cfgFilename, printOnError)
 }

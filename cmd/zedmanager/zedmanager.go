@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
@@ -61,8 +62,12 @@ type zedmanagerContext struct {
 var deviceNetworkStatus types.DeviceNetworkStatus
 
 func main() {
-	log.SetOutput(os.Stdout)
-	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
+	logf, err := agentlog.Init(agentName)
+	if err != nil {
+	       log.Fatal(err)
+	}
+	defer logf.Close()
+
 	versionPtr := flag.Bool("v", false, "Version")
 	flag.Parse()
 	if *versionPtr {
@@ -344,7 +349,7 @@ func handleModify(ctxArg interface{}, statusFilename string,
 		config.UUIDandVersion, config.DisplayName)
 
 	if config.UUIDandVersion.Version == status.UUIDandVersion.Version {
-		fmt.Printf("Same version %s for %s\n",
+		log.Printf("Same version %s for %s\n",
 			config.UUIDandVersion.Version, statusFilename)
 		return
 	}
@@ -375,7 +380,7 @@ func handleDNSModify(ctxArg interface{}, statusFilename string,
 	status := statusArg.(*types.DeviceNetworkStatus)
 
 	if statusFilename != "global" {
-		fmt.Printf("handleDNSModify: ignoring %s\n", statusFilename)
+		log.Printf("handleDNSModify: ignoring %s\n", statusFilename)
 		return
 	}
 	log.Printf("handleDNSModify for %s\n", statusFilename)
@@ -387,7 +392,7 @@ func handleDNSDelete(ctxArg interface{}, statusFilename string) {
 	log.Printf("handleDNSDelete for %s\n", statusFilename)
 
 	if statusFilename != "global" {
-		fmt.Printf("handleDNSDelete: ignoring %s\n", statusFilename)
+		log.Printf("handleDNSDelete: ignoring %s\n", statusFilename)
 		return
 	}
 	deviceNetworkStatus = types.DeviceNetworkStatus{}
