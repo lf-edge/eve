@@ -8,7 +8,7 @@
 package main
 
 import (
-	"fmt"
+	"log"
 	"time"
 )
 
@@ -24,11 +24,11 @@ var metrics map[string]zedcloudMetric
 
 func maybeInit(ifname string) {
 	if metrics == nil {
-		fmt.Printf("create zedcloudmetric map\n")
+		log.Printf("create zedcloudmetric map\n")
 		metrics = make(map[string]zedcloudMetric)
 	}
 	if _, ok := metrics[ifname]; !ok {
-		fmt.Printf("create zedcloudmetric for %s\n", ifname)
+		log.Printf("create zedcloudmetric for %s\n", ifname)
 		metrics[ifname] = zedcloudMetric{}
 	}
 }

@@ -9,6 +9,8 @@ PROVDIR=$BINDIR
 TMPDIR=/var/tmp/zededa
 DNCDIR=/var/tmp/zededa/DeviceNetworkConfig
 LISPDIR=/opt/zededa/lisp
+LOGDIRA=$PERSISTDIR/IMGA/log
+LOGDIRB=$PERSISTDIR/IMGB/log
 AGENTS="logmanager ledmanager zedrouter domainmgr downloader verifier identitymgr eidregister zedagent"
 ALLAGENTS="zedmanager $AGENTS"
 
@@ -66,19 +68,6 @@ fi
 echo "Configuration from factory/install:"
 (cd $CONFIGDIR; ls -l)
 echo
-
-echo "Update version info in $TMPDIR/version"
-if [ -f $TMPDIR/version_tag ]; then
-    cat $TMPDIR/version_tag >$TMPDIR/version
-else
-    rm -f $TMPDIR/version
-fi
-for AGENT in $ALLAGENTS; do
-    $BINDIR/$AGENT -v >>$TMPDIR/version
-done
-
-echo "Combined version:"
-cat $TMPDIR/version
 
 echo "Handling restart case at" `date`
 # XXX should we check if zedmanager is running?
@@ -227,16 +216,14 @@ fi
 
 echo "Handling restart done at" `date`
 
-echo "Saving any old log files"
-LOGGERS=$ALLAGENTS
-for l in $LOGGERS; do
-    f=/var/log/$l.log
-    if [ -f $f ]; then
-	datetime=`stat -c %y $f | awk '{printf "%s-%s", $1, $2}'`
-	echo "Saving $f.$datetime"
-	mv $f $f.$datetime
-    fi
-done
+if [ ! -d $LOGDIRA ]; then
+    echo "Creating $LOGDIRA"
+    mkdir -p $LOGDIRA
+fi
+if [ ! -d $LOGDIRB ]; then
+    echo "Creating $LOGDIRB"
+    mkdir -p $LOGDIRB
+fi
 
 # BlinkCounter 1 means we have started; might not yet have IP addresses
 # client/selfRegister and zedagent update this when the found at least
@@ -248,7 +235,7 @@ echo '{"BlinkCounter": 1}' > '/var/tmp/ledmanager/config/ledconfig.json'
 pgrep ledmanager >/dev/null
 if [ $? != 0 ]; then
     echo "Starting ledmanager at" `date`
-    ledmanager >/var/log/ledmanager.log 2>&1 &
+    ledmanager &
     if [ $WAIT = 1 ]; then
 	echo -n "Press any key to continue "; read dummy; echo; echo
     fi
@@ -464,50 +451,50 @@ rm -f /var/run/verifier/*/status/restarted
 rm -f /var/tmp/zedrouter/config/restart
 
 echo "Starting verifier at" `date`
-verifier >/var/log/verifier.log 2>&1 &
+verifier &
 if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
 echo "Starting ZedManager at" `date`
-zedmanager >/var/log/zedmanager.log 2>&1 &
+zedmanager &
 if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
 echo "Starting downloader at" `date`
-downloader >/var/log/downloader.log 2>&1 &
+downloader &
 if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
 echo "Starting eidregister at" `date`
-eidregister $OLDFLAG -d $CONFIGDIR >/var/log/eidregister.log 2>&1 &
+eidregister $OLDFLAG -d $CONFIGDIR &
 if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
 echo "Starting identitymgr at" `date`
-identitymgr >/var/log/identitymgr.log 2>&1 &
+identitymgr &
 if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
 echo "Starting ZedRouter at" `date`
-zedrouter >/var/log/zedrouter.log 2>&1 &
+zedrouter &
 if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
 echo "Starting DomainMgr at" `date`
-domainmgr >/var/log/domainmgr.log 2>&1 &
+domainmgr &
 # Do something
 if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
 echo "Starting zedagent at" `date`
-zedagent >/var/log/zedagent.log 2>&1 &
+zedagent &
 if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi

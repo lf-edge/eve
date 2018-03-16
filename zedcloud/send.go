@@ -85,7 +85,7 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, b *bytes.Buffer) (
 		}
 		localTCPAddr := net.TCPAddr{IP: localAddr}
 		if ctx.Debug {
-			fmt.Printf("Connecting to %s using intf %s source %v\n",
+			log.Printf("Connecting to %s using intf %s source %v\n",
 				url, intf, localTCPAddr)
 		}
 		d := net.Dialer{LocalAddr: &localTCPAddr}
@@ -101,7 +101,7 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, b *bytes.Buffer) (
 			req, err = http.NewRequest("GET", "https://"+url, nil)
 		}
 		if err != nil {
-			fmt.Println(err)
+			log.Println(err)
 			continue
 		}
 		if b != nil {
@@ -109,9 +109,11 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, b *bytes.Buffer) (
 		}
 		trace := &httptrace.ClientTrace{
 			GotConn: func(connInfo httptrace.GotConnInfo) {
-				fmt.Printf("Got RemoteAddr: %+v, LocalAddr: %+v\n",
-					connInfo.Conn.RemoteAddr(),
-					connInfo.Conn.LocalAddr())
+				if ctx.Debug {
+					log.Printf("Got RemoteAddr: %+v, LocalAddr: %+v\n",
+						connInfo.Conn.RemoteAddr(),
+						connInfo.Conn.LocalAddr())
+				}
 			},
 		}
 		req = req.WithContext(httptrace.WithClientTrace(req.Context(),
@@ -135,8 +137,11 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, b *bytes.Buffer) (
 		if connState.OCSPResponse == nil ||
 			!stapledCheck(connState) {
 			if connState.OCSPResponse == nil {
-				log.Printf("no OCSP response for %s\n",
-					url)
+				// XXX remove debug check
+				if ctx.Debug {
+					log.Printf("no OCSP response for %s\n",
+						url)
+				}
 			} else {
 				log.Printf("OCSP stapled check failed for %s\n",
 					url)
@@ -157,7 +162,7 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, b *bytes.Buffer) (
 		switch resp.StatusCode {
 		case http.StatusOK:
 			if ctx.Debug {
-				fmt.Printf("sendOnIntf to %s StatusOK\n",
+				log.Printf("sendOnIntf to %s StatusOK\n",
 					url)
 			}
 			return resp, nil
@@ -167,7 +172,7 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, b *bytes.Buffer) (
 				http.StatusText(resp.StatusCode))
 			log.Println(errStr)
 			if ctx.Debug {
-				fmt.Printf("received response %v\n",
+				log.Printf("received response %v\n",
 					resp)
 			}
 			resp.Body.Close()

@@ -21,17 +21,17 @@ func AddOrRefcountDownloaderConfig(safename string, sc *types.StorageConfig) {
 		safename)
 
 	if downloaderConfig == nil {
-		fmt.Printf("create downloader config map\n")
+		log.Printf("create downloader config map\n")
 		downloaderConfig = make(map[string]types.DownloaderConfig)
 	}
 	key := safename
 	if m, ok := downloaderConfig[key]; ok {
 		m.RefCount += 1
-		fmt.Printf("downloader config exists for %s refcount %d\n",
+		log.Printf("downloader config exists for %s refcount %d\n",
 			safename, m.RefCount)
 		downloaderConfig[key] = m
 	} else {
-		fmt.Printf("downloader config add for %s\n", safename)
+		log.Printf("downloader config add for %s\n", safename)
 		n := types.DownloaderConfig{
 			Safename:        safename,
 			DownloadURL:     sc.DownloadURL,
@@ -58,7 +58,7 @@ func MaybeRemoveDownloaderConfig(safename string) {
 	log.Printf("MaybeRemoveDownloaderConfig for %s\n", safename)
 
 	if downloaderConfig == nil {
-		fmt.Printf("create Downloader config map\n")
+		log.Printf("create Downloader config map\n")
 		downloaderConfig = make(map[string]types.DownloaderConfig)
 	}
 	if _, ok := downloaderConfig[safename]; !ok {
@@ -105,19 +105,19 @@ func handleDownloaderStatusModify(ctxArg interface{}, statusFilename string,
 		return
 	}
 	if downloaderStatus == nil {
-		fmt.Printf("create downloader map\n")
+		log.Printf("create downloader map\n")
 		downloaderStatus = make(map[string]types.DownloaderStatus)
 	}
 	key := status.Safename
 	changed := false
 	if m, ok := downloaderStatus[key]; ok {
 		if status.State != m.State {
-			fmt.Printf("downloader map changed from %v to %v\n",
+			log.Printf("downloader map changed from %v to %v\n",
 				m.State, status.State)
 			changed = true
 		}
 	} else {
-		fmt.Printf("downloader map add for %v\n", status.State)
+		log.Printf("downloader map add for %v\n", status.State)
 		changed = true
 	}
 	if changed {
@@ -146,7 +146,7 @@ func handleDownloaderStatusDelete(ctxArg interface{}, statusFilename string) {
 		log.Printf("handleDownloaderStatusDelete for %s - not found\n",
 			key)
 	} else {
-		fmt.Printf("downloader map delete for %v\n", m.State)
+		log.Printf("downloader map delete for %v\n", m.State)
 		delete(downloaderStatus, key)
 		removeAIStatusSafename(key)
 	}

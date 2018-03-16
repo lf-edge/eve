@@ -24,14 +24,14 @@ func MaybeAddEIDConfig(UUIDandVersion types.UUIDandVersion,
 		displayName)
 
 	if EIDConfig == nil {
-		fmt.Printf("create EID config map\n")
+		log.Printf("create EID config map\n")
 		EIDConfig = make(map[string]types.EIDConfig)
 	}
 	if _, ok := EIDConfig[key]; ok {
-		fmt.Printf("EID config already exists for %s\n", key)
+		log.Printf("EID config already exists for %s\n", key)
 		// XXX check displayName and EIDConfigDetails didn't change?
 	} else {
-		fmt.Printf("EID config add for %s\n", key)
+		log.Printf("EID config add for %s\n", key)
 
 		EIDConfig[key] = types.EIDConfig{
 			UUIDandVersion:   UUIDandVersion,
@@ -51,7 +51,7 @@ func MaybeRemoveEIDConfig(UUIDandVersion types.UUIDandVersion,
 	log.Printf("MaybeRemoveEIDConfig for %s\n", key)
 
 	if EIDConfig == nil {
-		fmt.Printf("create EID config map\n")
+		log.Printf("create EID config map\n")
 		EIDConfig = make(map[string]types.EIDConfig)
 	}
 	if _, ok := EIDConfig[key]; !ok {
@@ -98,14 +98,14 @@ func handleEIDStatusModify(ctxArg interface{}, statusFilename string,
 	}
 
 	if EIDStatus == nil {
-		fmt.Printf("create EID map\n")
+		log.Printf("create EID map\n")
 		EIDStatus = make(map[string]types.EIDStatus)
 	}
 	changed := false
 	if _, ok := EIDStatus[key]; ok {
-		fmt.Printf("Exists means no change for %v\n", status.EID)
+		log.Printf("Exists means no change for %v\n", status.EID)
 	} else {
-		fmt.Printf("EID map add for %v\n", status.EID)
+		log.Printf("EID map add for %v\n", status.EID)
 		changed = true
 	}
 	if changed {
@@ -135,7 +135,7 @@ func handleEIDStatusDelete(ctxArg interface{}, statusFilename string) {
 		log.Printf("handleEIDStatusDelete for %s - not found\n",
 			key)
 	} else {
-		fmt.Printf("EID map delete for %v\n", m.EID)
+		log.Printf("EID map delete for %v\n", m.EID)
 		delete(EIDStatus, key)
 		removeAIStatusUUID(m.UUIDandVersion.UUID.String())
 	}

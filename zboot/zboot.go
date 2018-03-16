@@ -402,7 +402,7 @@ func getVersion(part string, verFilename string) string {
 func IsAvailable() bool {
 	filename := "/usr/bin/zboot"
 	if _, err := os.Stat(filename); err != nil {
-		log.Printf("zboot not available on this platform: %s\n", err)
+		// XXX log.Printf("zboot not available on this platform: %s\n", err)
 		return false
 	} else {
 		return true
