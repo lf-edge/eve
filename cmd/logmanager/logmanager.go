@@ -171,7 +171,8 @@ func main() {
 			source := name[0]
 			logReader(filename, source, otherLoggerChan)
 		}
-		// XXX make processEvents() exit for this channel
+		// make processEvents() exit for this channel
+		close(otherLoggerChan)
 	}
 
 	logDirChanges := make(chan string)
@@ -233,7 +234,16 @@ func processEvents(image string, logChan <-chan logEntry) {
 
 	for {
 		select {
-		case event := <-logChan:
+		case event, more := <-logChan:
+			if !more {
+				log.Printf("processEvents(%s) done\n", image)
+				if counter > 0 {
+					sendProtoStrForLogs(reportLogs, image,
+						iteration)
+				}
+				return
+			}
+				
 			HandleLogEvent(event, reportLogs, counter)
 			counter++
 
