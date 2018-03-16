@@ -109,9 +109,11 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, b *bytes.Buffer) (
 		}
 		trace := &httptrace.ClientTrace{
 			GotConn: func(connInfo httptrace.GotConnInfo) {
-				log.Printf("Got RemoteAddr: %+v, LocalAddr: %+v\n",
-					connInfo.Conn.RemoteAddr(),
-					connInfo.Conn.LocalAddr())
+				if ctx.Debug {
+					log.Printf("Got RemoteAddr: %+v, LocalAddr: %+v\n",
+						connInfo.Conn.RemoteAddr(),
+						connInfo.Conn.LocalAddr())
+				}
 			},
 		}
 		req = req.WithContext(httptrace.WithClientTrace(req.Context(),
@@ -135,8 +137,11 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, b *bytes.Buffer) (
 		if connState.OCSPResponse == nil ||
 			!stapledCheck(connState) {
 			if connState.OCSPResponse == nil {
-				log.Printf("no OCSP response for %s\n",
-					url)
+				// XXX remove debug check
+				if ctx.Debug {
+					log.Printf("no OCSP response for %s\n",
+						url)
+				}
 			} else {
 				log.Printf("OCSP stapled check failed for %s\n",
 					url)
