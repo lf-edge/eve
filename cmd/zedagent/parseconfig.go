@@ -366,7 +366,7 @@ func parseStorageConfigList(config *zconfig.EdgeDevConfig, objType string,
 		}
 
 		image.Format = strings.ToLower(drive.Image.Iformat.String())
-		image.MaxSize = uint(drive.Maxsize)
+		image.Size = uint64(drive.Image.SizeBytes)
 		image.ReadOnly = drive.Readonly
 		image.Preserve = drive.Preserve
 		image.Target = strings.ToLower(drive.Target.String())
@@ -767,10 +767,10 @@ func getCertObjConfig(config *types.CertObjConfig,
 	// XXX:FIXME dpath/key/pwd from image storage
 	// should be coming from Drive
 	// also the sha for the cert should be set
-	// XXX:FIXME hardcoding MaxSize as 100KB
+	// XXX:FIXME hardcoding Size as 100KB
 	var drive = &types.StorageConfig{
 		DownloadURL:     certUrl,
-		MaxSize:         100,
+		Size:         	 100 * 1024,
 		TransportMethod: image.TransportMethod,
 		Dpath:           "zededa-cert-repo",
 		ApiKey:          image.ApiKey,
