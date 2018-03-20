@@ -25,3 +25,21 @@
     notifempty
 	copytruncate
 }
+/persist/IMGA/log/*.log {
+    daily
+    missingok
+    rotate 14
+    size 10k
+    compress
+    notifempty
+    copytruncate
+}
+/persist/IMGB/log/*.log {
+    daily
+    missingok
+    rotate 14
+    size 10k
+    compress
+    notifempty
+    copytruncate
+}
