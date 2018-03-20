@@ -7,6 +7,7 @@
 package main
 
 import (
+	"github.com/google/gopacket/afpacket"
 	"github.com/google/gopacket/pfring"
 	"github.com/zededa/go-provision/dataplane/etr"
 	"github.com/zededa/go-provision/dataplane/itr"
@@ -17,6 +18,7 @@ import (
 type ThreadEntry struct {
 	killChannel chan bool
 	ring        *pfring.Ring
+	handle      *afpacket.TPacket
 }
 
 var threadTable map[string]ThreadEntry
@@ -53,6 +55,7 @@ func ManageItrThreads(interfaces Interfaces) {
 			log.Println("ManageItrThreads: Sending kill signal to", name)
 			entry.killChannel <- true
 
+			/*
 			// XXX
 			// ITR threads use pf_ring for packet capture.
 			// pf_ring packet read calls are blocking. If a thread is blocked
@@ -66,6 +69,9 @@ func ManageItrThreads(interfaces Interfaces) {
 			close(entry.killChannel)
 			entry.ring.Disable()
 			entry.ring.Close()
+			//close(entry.killChannel)
+			*/
+
 			delete(threadTable, name)
 		}
 	}
@@ -77,13 +83,15 @@ func ManageItrThreads(interfaces Interfaces) {
 			killChannel := make(chan bool, 1)
 
 			// Start the go thread here
-			ring := itr.SetupPacketCapture(name, 65536)
+			//ring := itr.SetupPacketCapture(name, 65536)
+			handle := itr.SetupPacketCapture(name, 65536)
 			log.Println("ManageItrThreads: Creating new ITR thread for", name)
 			threadTable[name] = ThreadEntry{
 				killChannel: killChannel,
-				ring:        ring,
+				handle:      handle,
 			}
-			go itr.StartItrThread(name, ring, killChannel, puntChannel)
+			//go itr.StartItrThread(name, ring, killChannel, puntChannel)
+			go itr.StartItrThread(name, handle, killChannel, puntChannel)
 		}
 	}
 }

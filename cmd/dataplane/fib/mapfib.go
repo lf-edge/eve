@@ -106,7 +106,6 @@ func GetIPv4UplinkAddr() net.IP {
 	upLinks.RLock()
 	defer upLinks.RUnlock()
 	uplinks := upLinks.UpLinks
-	log.Printf("XXXXX Read pointer %p\n", uplinks)
 	return uplinks.Ipv4
 }
 

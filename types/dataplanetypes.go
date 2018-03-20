@@ -9,7 +9,8 @@ import (
 	"time"
 	"crypto/cipher"
 	"github.com/google/gopacket"
-	"github.com/google/gopacket/pfring"
+	//"github.com/google/gopacket/pfring"
+	"github.com/google/gopacket/afpacket"
 	"syscall"
 )
 
@@ -172,8 +173,11 @@ type EncapStatistics struct {
 type EtrRunStatus struct {
 	// Name of the interface to capture packets from
 	IfName   string
+
+	//Ring    *pfring.Ring
+
 	// ETR Natted packet capture ring
-	Ring    *pfring.Ring
+	Handle  *afpacket.TPacket
 	// Raw socket FD used by ETR packet capture thread
 	// for injecting decapsulated packets
 	RingFD   int

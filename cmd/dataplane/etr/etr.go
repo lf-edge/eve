@@ -14,8 +14,9 @@ import (
 	"crypto/cipher"
 	"fmt"
 	"github.com/google/gopacket"
+	"github.com/google/gopacket/afpacket"
 	"github.com/google/gopacket/layers"
-	"github.com/google/gopacket/pfring"
+	//"github.com/google/gopacket/pfring"
 	"github.com/zededa/go-provision/dataplane/fib"
 	"github.com/zededa/go-provision/types"
 	"log"
@@ -105,16 +106,19 @@ func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
 		// If not, start capturing packets from this new uplink.
 		_, ok := etrTable.EtrTable[link.IfName]
 		if ok == false {
-			var ring *pfring.Ring = nil
+			//var ring *pfring.Ring = nil
+			var handle *afpacket.TPacket
 			var fd int = -1
 			// Create new ETR thread
 			if etrTable.EphPort != -1 {
-				ring, fd = StartEtrNat(etrTable.EphPort, link.IfName)
+				//ring, fd = StartEtrNat(etrTable.EphPort, link.IfName)
+				handle, fd = StartEtrNat(etrTable.EphPort, link.IfName)
 				log.Printf("XXXXX Creating ETR thread for UP link %s\n", link.IfName)
 			}
 			etrTable.EtrTable[link.IfName] = &types.EtrRunStatus{
 				IfName: link.IfName,
-				Ring:   ring,
+				//Ring:   ring,
+				Handle: handle,
 				RingFD: fd,
 			}
 			log.Printf("HandleDeviceNetworkChange: Creating ETR thread for UP link %s\n",
@@ -126,8 +130,9 @@ func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
 	for key, link := range etrTable.EtrTable {
 		if _, ok := validList[key]; ok == false {
 			syscall.Close(link.RingFD)
-			link.Ring.Disable()
-			link.Ring.Close()
+			//link.Ring.Disable()
+			//link.Ring.Close()
+			link.Handle.Close()
 			delete(etrTable.EtrTable, key)
 		}
 	}
@@ -147,50 +152,59 @@ func HandleEtrEphPort(ephPort int) {
 
 	// Destroy all old threads and create new ETR threads
 	for ifName, link := range etrTable.EtrTable {
-		// Logically thinking, we should first disable the PF_RING (stop packet inflow)
-		// and then change the BPF rules. But, when the ring is deactivated, I see calls
-		// on the ring throwing errors.
-		if (link.Ring == nil) && (link.RingFD == -1) {
+		//if (link.Ring == nil) && (link.RingFD == -1) {
+		if (link.Handle == nil) && (link.RingFD == -1) {
 			log.Printf("XXXXX Creating ETR thread for UP link %s\n", link.IfName)
-			ring, fd := StartEtrNat(etrTable.EphPort, link.IfName)
-			link.Ring = ring
+			//ring, fd := StartEtrNat(etrTable.EphPort, link.IfName)
+			//ling.Ring = ring
+			handle, fd := StartEtrNat(etrTable.EphPort, link.IfName)
+			link.Handle = handle
 			link.RingFD = fd
-			return
+			//return
+			continue
 		}
 
 		// Remove the old BPF filter
-		link.Ring.RemoveBPFFilter()
+		//link.Ring.RemoveBPFFilter()
 
 		// Add the new BPF filter with new eph port match
 		filter := fmt.Sprintf(etrNatPortMatch, ephPort)
-		link.Ring.SetBPFFilter(filter)
+		//link.Ring.SetBPFFilter(filter)
+
+		// For AF_PACKET sockers old filter is replaced with new one.
+		link.Handle.SetBPFFilter(filter)
 
 		log.Printf("HandleEtrEphPort: Changed ephemeral port BPF match for ETR %s\n",
 			ifName)
 	}
 }
 
-//func StartETR(ephPort int) (*net.UDPConn, *pfring.Ring, int, int) {
-func StartEtrNat(ephPort int, upLink string) (*pfring.Ring, int) {
+//func StartEtrNat(ephPort int, upLink string) (*pfring.Ring, int) {
+func StartEtrNat(ephPort int, upLink string) (*afpacket.TPacket, int) {
 
-	ring := SetupEtrPktCapture(ephPort, upLink)
-	if ring == nil {
+	//ring := SetupEtrPktCapture(ephPort, upLink)
+	//if ring == nil {
+	handle := SetupEtrPktCapture(ephPort, upLink)
+	if handle == nil {
 		log.Fatal("StartEtrNat: Unable to create ETR packet capture.\n")
 		return nil, -1
 	}
 
 	fd, err := syscall.Socket(syscall.AF_INET6, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
 	if err != nil {
-		ring.Disable()
-		ring.Close()
+		//ring.Disable()
+		//ring.Close()
+		handle.Close()
 		log.Fatal(
 			"StartEtrNat:Creating second ETR raw socket for packet injection failed: %s\n",
 			err)
 		return nil, -1
 	}
-	go ProcessCapturedPkts(fd, ring)
+	//go ProcessCapturedPkts(fd, ring)
+	go ProcessCapturedPkts(fd, handle)
 
-	return ring, fd
+	//return ring, fd
+	return handle, fd
 }
 
 func verifyAndInject(fd6 int,
@@ -281,22 +295,49 @@ func verifyAndInject(fd6 int,
 	return true
 }
 
-func SetupEtrPktCapture(ephemeralPort int, upLink string) *pfring.Ring {
-	ring, err := pfring.NewRing(upLink, 65536, pfring.FlagPromisc)
+//func SetupEtrPktCapture(ephemeralPort int, upLink string) *pfring.Ring {
+//	ring, err := pfring.NewRing(upLink, 65536, pfring.FlagPromisc)
+func SetupEtrPktCapture(ephemeralPort int, upLink string) *afpacket.TPacket {
+	const (
+		// Memory map buffer size in mega bytes
+		mmapBufSize int = 24
+
+		// set interface in promiscous mode
+		promisc bool = true
+	)
+
+	frameSize := 65536
+	blockSize := frameSize * 128
+	numBlocks := 10
+
+	tPacket, err := afpacket.NewTPacket(
+		afpacket.OptInterface(upLink),
+		afpacket.OptFrameSize(frameSize),
+		afpacket.OptBlockSize(blockSize),
+		afpacket.OptNumBlocks(numBlocks),
+		afpacket.OptPollTimeout(5*time.Second),
+		afpacket.OptBlockTimeout(1*time.Millisecond),
+		afpacket.OptTPacketVersion(afpacket.TPacketVersion3))
 	if err != nil {
-		log.Printf("ETR packet capture on interface %s failed: %s\n",
-			upLink, err)
+		//log.Printf("ETR packet capture on interface %s failed: %s\n",
+		//	upLink, err)
+		log.Printf("SetupEtrPktCapture: Error: "+
+			"Opening afpacket interface %s: %s\n", upLink, err)
 		return nil
 	}
 
+	/*
 	// We only read packets from this interface
 	ring.SetDirection(pfring.ReceiveOnly)
 	ring.SetSocketMode(pfring.ReadOnly)
+	*/
 
 	// Set filter for UDP, source port = 4341, destination port = given ephemeral
 	filter := fmt.Sprintf(etrNatPortMatch, ephemeralPort)
-	ring.SetBPFFilter(filter)
+	//ring.SetBPFFilter(filter)
+	tPacket.SetBPFFilter(filter)
 
+	/*
 	ring.SetPollWatermark(1)
 	// set a poll duration of 1 hour
 	ring.SetPollDuration(60 * 60 * 1000)
@@ -308,6 +349,9 @@ func SetupEtrPktCapture(ephemeralPort int, upLink string) *pfring.Ring {
 		return nil
 	}
 	return ring
+	*/
+
+	return tPacket
 }
 
 func ProcessETRPkts(fd6 int, serverConn *net.UDPConn) bool {
@@ -319,7 +363,7 @@ func ProcessETRPkts(fd6 int, serverConn *net.UDPConn) bool {
 		n, saddr, err := serverConn.ReadFromUDP(buf)
 		log.Println("XXXXX Received", n, "bytes in ETR")
 		if err != nil {
-			log.Printf("Fatal error during ETR processing\n")
+			log.Fatal("ProcessETRPkts: Fatal error during ETR processing\n")
 			return false
 		}
 		decapKeys := fib.LookupDecapKeys(saddr.IP)
@@ -330,16 +374,22 @@ func ProcessETRPkts(fd6 int, serverConn *net.UDPConn) bool {
 	}
 }
 
-func ProcessCapturedPkts(fd6 int, ring *pfring.Ring) {
+//func ProcessCapturedPkts(fd6 int, ring *pfring.Ring) {
+func ProcessCapturedPkts(fd6 int, handle *afpacket.TPacket) {
 	var pktBuf [65536]byte
 	log.Printf("Started processing captured packets in ETR\n")
 
 	for {
-		ci, err := ring.ReadPacketDataTo(pktBuf[:])
+		//ci, err := ring.ReadPacketDataTo(pktBuf[:])
+		ci, err := handle.ReadPacketDataTo(pktBuf[:])
 		if err != nil {
 			log.Printf("ProcessCapturedPkts: Error capturing packets: %s\n", err)
+			/*
 			log.Printf(
 				"ProcessCapturedPkts: It could be the ring closure leading to this.\n")
+				*/
+			log.Printf(
+				"ProcessCapturedPkts: It could be the handle closure leading to this.\n")
 			return
 		}
 		capLen := ci.CaptureLength

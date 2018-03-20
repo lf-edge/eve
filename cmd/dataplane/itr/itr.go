@@ -10,8 +10,9 @@ package itr
 import (
 	"encoding/json"
 	"github.com/google/gopacket"
+	"github.com/google/gopacket/afpacket"
 	"github.com/google/gopacket/layers"
-	"github.com/google/gopacket/pfring"
+	//"github.com/google/gopacket/pfring"
 	"github.com/zededa/go-provision/dataplane/fib"
 	"github.com/zededa/go-provision/types"
 	"log"
@@ -25,7 +26,8 @@ import (
 const SNAPLENGTH = 65536
 
 func StartItrThread(threadName string,
-	ring *pfring.Ring,
+	//ring *pfring.Ring,
+	handle *afpacket.TPacket,
 	killChannel chan bool,
 	puntChannel chan []byte) {
 
@@ -33,21 +35,26 @@ func StartItrThread(threadName string,
 	// Kill channel will no longer be needed
 	// if we return from this function
 
-	if ring == nil {
+	//if ring == nil {
+	if handle == nil {
 		log.Printf("StartItrThread: Packet capture setup for interface %s failed\n",
 			threadName)
 	}
+	defer handle.Close()
 
 	// create raw socket pair for sending LISP packets out
 	fd4, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
 	if err != nil {
-		log.Printf("StartItrThread: Failed creating IPv4 raw socket for %s: %s\n",
+		log.Printf("StartItrThread: "+
+			"Failed creating IPv4 raw socket for %s: %s\n",
 			threadName, err)
 		return
 	}
-	err = syscall.SetsockoptInt(fd4, syscall.SOL_SOCKET, syscall.SO_SNDBUF, 65536)
+	err = syscall.SetsockoptInt(
+		fd4, syscall.SOL_SOCKET, syscall.SO_SNDBUF, 65536)
 	if err != nil {
-		log.Printf("StartItrThread: Thread %s: Setting socket buffer size failed: %s\n",
+		log.Printf("StartItrThread: Thread %s: "+
+			"Setting socket buffer size failed: %s\n",
 			threadName, err)
 	}
 	defer syscall.Close(fd4)
@@ -55,7 +62,10 @@ func StartItrThread(threadName string,
 	err = syscall.SetsockoptInt(fd4, syscall.SOL_SOCKET,
 		syscall.IP_MTU_DISCOVER, syscall.IP_PMTUDISC_DONT)
 	if err != nil {
-		log.Printf("StartItrThread: Disabling path MTU discovery for ipv4 socket failed: %s.\n", err)
+		log.Printf(
+			"StartItrThread: "+
+				"Disabling path MTU discovery for ipv4 socket failed: %s.\n",
+			err)
 	}
 	/*
 		err = syscall.SetsockoptInt(fd4, syscall.IPPROTO_IP, syscall.IP_HDRINCL, 0)
@@ -64,15 +74,19 @@ func StartItrThread(threadName string,
 		}
 	*/
 
-	fd6, err := syscall.Socket(syscall.AF_INET6, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
+	fd6, err := syscall.Socket(
+		syscall.AF_INET6, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
 	if err != nil {
-		log.Printf("StartItrThread: Failed creating IPv6 raw socket for %s: %s\n",
+		log.Printf("StartItrThread: "+
+			"Failed creating IPv6 raw socket for %s: %s\n",
 			threadName, err)
 		return
 	}
-	err = syscall.SetsockoptInt(fd6, syscall.SOL_SOCKET, syscall.SO_SNDBUF, 65536)
+	err = syscall.SetsockoptInt(
+		fd6, syscall.SOL_SOCKET, syscall.SO_SNDBUF, 65536)
 	if err != nil {
-		log.Printf("StartItrThread: Thread %s: Setting socket buffer size failed: %s\n",
+		log.Printf("StartItrThread: "+
+			"Thread %s: Setting socket buffer size failed: %s\n",
 			threadName, err)
 	}
 
@@ -80,7 +94,8 @@ func StartItrThread(threadName string,
 		syscall.IP_MTU_DISCOVER, syscall.IP_PMTUDISC_DONT)
 	if err != nil {
 		log.Printf(
-			"StartItrThread: Disabling path MTU discovery for ipv6 socket failed: %s.\n",
+			"StartItrThread: "+
+				"Disabling path MTU discovery for ipv6 socket failed: %s.\n",
 			err)
 	}
 	defer syscall.Close(fd6)
@@ -95,7 +110,8 @@ func StartItrThread(threadName string,
 	itrLocalData.IvHigh = ivHigh
 	itrLocalData.IvLow = ivLow
 
-	startWorking(threadName, ring, killChannel, puntChannel,
+	//startWorking(threadName, ring, killChannel, puntChannel,
+	startWorking(threadName, handle, killChannel, puntChannel,
 		itrLocalData)
 
 	// If startWorking returns, it means the control thread wants
@@ -103,17 +119,43 @@ func StartItrThread(threadName string,
 	return
 }
 
+/*
 // Opens up the pfing on interface and sets up packet capture.
 func SetupPacketCapture(ifname string, snapLen uint32) *pfring.Ring {
 	// create a new pf_ring to capture packets from our interface
 	ring, err := pfring.NewRing(ifname, SNAPLENGTH, pfring.FlagPromisc)
+*/
+func SetupPacketCapture(iface string, snapLen int) *afpacket.TPacket {
+	const (
+		// Memory map buffer size in mega bytes
+		mmapBufSize int = 24
+
+		// set interface in promiscous mode
+		promisc bool = true
+	)
+
+	frameSize := snapLen
+	blockSize := frameSize * 128
+	numBlocks := 10
+
+	tPacket, err := afpacket.NewTPacket(
+		afpacket.OptInterface(iface),
+		afpacket.OptFrameSize(frameSize),
+		afpacket.OptBlockSize(blockSize),
+		afpacket.OptNumBlocks(numBlocks),
+		afpacket.OptPollTimeout(5*time.Second),
+		afpacket.OptBlockTimeout(1*time.Millisecond),
+		afpacket.OptTPacketVersion(afpacket.TPacketVersion3))
 	if err != nil {
-		log.Printf("SetupPacketCapture: PF_RING creation for interface %s failed: %s\n",
-			ifname, err)
+		//log.Printf("SetupPacketCapture: PF_RING creation for interface %s failed: %s\n",
+		//	ifname, err)
+		log.Printf("SetupPacketCapture: Error: "+
+			"Opening afpacket interface %s: %s\n", iface, err)
 		return nil
 	}
 
 	// Capture ipv6 packets only
+	/*
 	err = ring.SetBPFFilter("ip6")
 	if err != nil {
 		log.Print(
@@ -125,7 +167,10 @@ func SetupPacketCapture(ifname string, snapLen uint32) *pfring.Ring {
 
 	// Make PF_RING capture only transmitted packet
 	ring.SetDirection(pfring.TransmitOnly)
+	*/
+	err = tPacket.SetBPFFilter("ip6")
 
+	/*
 	// set the ring in readonly mode
 	ring.SetSocketMode(pfring.ReadOnly)
 
@@ -142,17 +187,21 @@ func SetupPacketCapture(ifname string, snapLen uint32) *pfring.Ring {
 		return nil
 	}
 	return ring
+	*/
+	return tPacket
 }
 
 // Start capturing and processing packets.
-func startWorking(ifname string, ring *pfring.Ring,
+//func startWorking(ifname string, ring *pfring.Ring,
+func startWorking(ifname string, handle *afpacket.TPacket,
 	killChannel chan bool, puntChannel chan []byte,
 	itrLocalData *types.ITRLocalData) {
 	var pktBuf [SNAPLENGTH]byte
 
 	iid := fib.LookupIfaceIID(ifname)
 	if iid == 0 {
-		log.Printf("startWorking: Interface %s's IID cannot be found\n", ifname)
+		log.Printf("startWorking: "+
+			"Interface %s's IID cannot be found\n", ifname)
 		return
 	}
 
@@ -165,7 +214,8 @@ eidLoop:
 		select {
 		case <-killChannel:
 			log.Printf(
-				"startWorking: ITR thread %s received terminate from control module.",
+				"startWorking: "+
+					"ITR thread %s received terminate from control module.",
 				ifname)
 			return
 		default:
@@ -175,7 +225,8 @@ eidLoop:
 			if eids != nil {
 				break eidLoop
 			}
-			log.Println("startWorking: Re-trying EID lookup for interface", ifname)
+			log.Println("startWorking: "+
+				"Re-trying EID lookup for interface", ifname)
 			continue
 		}
 	}
@@ -193,17 +244,26 @@ eidLoop:
 			// So we terminate the thread either when we see "true" coming in it or
 			// when the control thread closes our communication channel.
 			log.Printf(
-				"startWorking: ITR thread %s received terminate from control module.",
+				"startWorking: "+
+					"ITR thread %s received terminate from control module.",
 				ifname)
 			return
 		default:
-			ci, err := ring.ReadPacketDataTo(pktBuf[types.MAXHEADERLEN:])
+			//ci, err := ring.ReadPacketDataTo(pktBuf[types.MAXHEADERLEN:])
+			ci, err := handle.ReadPacketDataTo(pktBuf[types.MAXHEADERLEN:])
 			if err != nil {
+				if err == afpacket.ErrTimeout {
+					continue
+				}
 				log.Printf(
-					"startWorking: Something wrong with packet capture from interface %s: %s\n",
+					"startWorking: "+
+						"Something wrong with "+
+						"packet capture from interface %s: %s\n",
 					ifname, err)
 				log.Printf(
-					"startWorking: May be we are asked to terminate after the hosting domU died.\n")
+					"startWorking: " +
+						"May be we are asked to " +
+						"terminate after the hosting domU died.\n")
 				return
 			}
 
@@ -240,7 +300,8 @@ eidLoop:
 			if !matchFound {
 				// XXX May be add a per thread stat here
 				log.Printf(
-					"Thread: %s: Input packet with source address %s does not have matching EID of interface\n",
+					"Thread: %s: Input packet with source address %s "+
+						"does not have matching EID of interface\n",
 					ifname, srcAddr)
 				continue
 			}
@@ -321,7 +382,8 @@ func LookupAndSend(packet gopacket.Packet,
 		}:
 			atomic.AddUint64(&mapEntry.BuffdPkts, 1)
 		default:
-			log.Println("LookupAndSend: Packet buffer channel full for EID", dstAddr)
+			log.Println("LookupAndSend: "+
+				"Packet buffer channel full for EID", dstAddr)
 			atomic.AddUint64(&mapEntry.TailDrops, 1)
 		}
 
@@ -395,7 +457,8 @@ func LookupAndSend(packet gopacket.Packet,
 		}
 		puntMsg, err := json.Marshal(puntEntry)
 		if err != nil {
-			log.Printf("LookupAndSend: Marshaling punt entry failed %s: %s\n",
+			log.Printf("LookupAndSend: "+
+				"Marshaling punt entry failed %s: %s\n",
 				puntEntry, err)
 		} else {
 			puntChannel <- puntMsg
