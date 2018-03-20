@@ -326,6 +326,7 @@ func sendProtoStrForLogs(reportLogs *zmet.LogBundle, image string,
 		log.Printf("SendMetricsProtobuf failed: %s\n", err)
 		return
 	}
+	log.Printf("Sent %d bytes to %s\n", len(data), logsUrl)
 	reportLogs.Log = []*zmet.LogEntry{}
 	resp.Body.Close()
 }
