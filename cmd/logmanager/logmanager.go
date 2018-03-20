@@ -110,10 +110,14 @@ func main() {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
+	// Note that LISP needs a separate directory since it moves
+	// old content to a subdir when it (re)starts
+	lispLogDirName := fmt.Sprintf("%s/%s", logDirName, "lisp")
 	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 		log.Fatal(err)
 	}
 	log.Printf("Starting %s watching %s\n", agentName, logDirName)
+	log.Printf("watching %s\n", lispLogDirName)
 
 	// XXX should we wait until we have at least one useable address?
 	DNSctx := DNSContext{}
@@ -177,12 +181,18 @@ func main() {
 
 	logDirChanges := make(chan string)
 	go watch.WatchStatus(logDirName, logDirChanges)
+	lispLogDirChanges := make(chan string)
+	go watch.WatchStatus(lispLogDirName, lispLogDirChanges)
 
 	log.Println("called watcher...")
 	for {
 		select {
 		case change := <-logDirChanges:
 			HandleLogDirEvent(change, logDirName, &ctx,
+				handleLogDirModify, handleLogDirDelete)
+
+		case change := <-lispLogDirChanges:
+			HandleLogDirEvent(change, lispLogDirName, &ctx,
 				handleLogDirModify, handleLogDirDelete)
 
 		case change := <-networkStatusChanges:
@@ -316,6 +326,7 @@ func sendProtoStrForLogs(reportLogs *zmet.LogBundle, image string,
 		log.Printf("SendMetricsProtobuf failed: %s\n", err)
 		return
 	}
+	log.Printf("Sent %d bytes to %s\n", len(data), logsUrl)
 	reportLogs.Log = []*zmet.LogEntry{}
 	resp.Body.Close()
 }

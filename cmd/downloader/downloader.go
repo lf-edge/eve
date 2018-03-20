@@ -797,9 +797,11 @@ func handleSyncOp(ctx *downloaderContext, objType string, statusFilename string,
 	if config.UseFreeUplinks {
 		addrCount = types.CountLocalAddrFree(deviceNetworkStatus, "")
 		log.Printf("Have %d free uplink addresses\n", addrCount)
+		err = errors.New("No free IP uplink addresses for download")
 	} else {
 		addrCount = types.CountLocalAddrAny(deviceNetworkStatus, "")
 		log.Printf("Have %d any uplink addresses\n", addrCount)
+		err = errors.New("No IP uplink addresses for download")
 	}
 	// Loop through all interfaces until a success
 	for addrIndex := 0; addrIndex < addrCount; addrIndex += 1 {

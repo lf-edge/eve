@@ -225,6 +225,31 @@ if [ ! -d $LOGDIRB ]; then
     mkdir -p $LOGDIRB
 fi
 
+echo "Set up log capture"
+CURPART=`zboot curpart`
+if [ $? != 0 ]; then
+    CURPART="IMGA"
+fi
+DOM0LOGFILES="dhcpcd.err.log ntpd.err.log wlan.err.log wwan.err.log zededa-tools.err.log dhcpcd.out.log ntpd.out.log wlan.out.log wwan.out.log zededa-tools.out.log"
+# XXX note that these tail and dmesg processes are not killed when
+# device-steps.sh is re-run
+for f in $DOM0LOGFILES; do
+    tail -c +0 -F /var/log/dom0/$f >/persist/$CURPART/log/$f &
+done
+tail -c +0 -F /var/log/xen/hypervisor.log >/persist/$CURPART/log/hypervisor.log &
+dmesg -T -w -l 1,2,3 --time-format iso >/persist/$CURPART/log/dmesg.log &
+
+if [ -d $LISPDIR/logs ]; then
+    echo "Saving old lisp logs in $LISPDIR/logs.old"
+    mv $LISPDIR/logs $LISPDIR/logs.old
+fi
+# Remove any old symlink to different IMG directory
+rm -f $LISPDIR/logs
+if [ ! -d /persist/$CURPART/log/lisp ]; then
+    mkdir -p /persist/$CURPART/log/lisp
+fi
+ln -s /persist/$CURPART/log/lisp $LISPDIR/logs
+
 # BlinkCounter 1 means we have started; might not yet have IP addresses
 # client/selfRegister and zedagent update this when the found at least
 # one free uplink with IP address(s)
@@ -503,7 +528,7 @@ fi
 pgrep logmanager >/dev/null
 if [ $? != 0 ]; then
     echo "Starting logmanager at" `date`
-    logmanager >/var/run/logmanager.log 2>&1 &
+    logmanager >/var/log/logmanager.log 2>&1 &
     if [ $WAIT = 1 ]; then
 	echo -n "Press any key to continue "; read dummy; echo; echo
     fi

@@ -140,9 +140,9 @@ func aclToRules(ifname string, ACLs []types.ACE, ipVer int,
 	}
 	// Implicit drop at the end with log before it
 	outArgs1 := []string{"-i", ifname, "-j", "LOG", "--log-prefix",
-		"FORWARD:FROM:", "--log-level", "6"}
+		"FORWARD:FROM:", "--log-level", "3"}
 	inArgs1 := []string{"-o", ifname, "-j", "LOG", "--log-prefix",
-		"FORWARD:TO:", "--log-level", "6"}
+		"FORWARD:TO:", "--log-level", "3"}
 	outArgs2 := []string{"-i", ifname, "-j", "DROP"}
 	inArgs2 := []string{"-o", ifname, "-j", "DROP"}
 	rulesList = append(rulesList, outArgs1, inArgs1, outArgs2, inArgs2)

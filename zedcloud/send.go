@@ -74,7 +74,9 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, b *bytes.Buffer) (
 		}
 		errStr := fmt.Sprintf("No IP addresses to connect to %s using intf %s",
 			url, intf)
-		log.Println(errStr)
+		if ctx.Debug {
+			log.Println(errStr)
+		}
 		return nil, errors.New(errStr)
 	}
 	for retryCount := 0; retryCount < addrCount; retryCount += 1 {
