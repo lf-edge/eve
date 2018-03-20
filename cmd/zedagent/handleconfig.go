@@ -55,11 +55,11 @@ type configItems struct {
 }
 
 // Really a constant
-// We do a GET of config every 10 seconds,
+// We do a GET of config every 60 seconds,
 // PUT of metrics every 60 seconds,
 // if we don't hear anything from the cloud in a week, then we reboot,
 // and during a post-upgrade boot that time is reduced to 10 minutes.
-var configItemDefaults = configItems{configInterval: 10, metricInterval: 60,
+var configItemDefaults = configItems{configInterval: 60, metricInterval: 60,
 	resetIfCloudGoneTime: 7 * 24 * 3600, fallbackIfCloudGoneTime: 600}
 
 // XXX	resetIfCloudGoneTime: 300, fallbackIfCloudGoneTime: 60}
