@@ -231,11 +231,13 @@ if [ $? != 0 ]; then
     CURPART="IMGA"
 fi
 DOM0LOGFILES="dhcpcd.err.log ntpd.err.log wlan.err.log wwan.err.log zededa-tools.err.log dhcpcd.out.log ntpd.out.log wlan.out.log wwan.out.log zededa-tools.out.log"
+# XXX note that these tail and dmesg processes are not killed when
+# device-steps.sh is re-run
 for f in $DOM0LOGFILES; do
     tail -c +0 -F /var/log/dom0/$f >/persist/$CURPART/log/$f &
 done
 tail -c +0 -F /var/log/xen/hypervisor.log >/persist/$CURPART/log/hypervisor.log &
-dmesg -T -w --time-format iso >/persist/$CURPART/log/dmesg.log &
+dmesg -T -w -l 1,2,3 --time-format iso >/persist/$CURPART/log/dmesg.log &
 
 if [ -d $LISPDIR/logs ]; then
     echo "Saving old lisp logs in $LISPDIR/logs.old"
