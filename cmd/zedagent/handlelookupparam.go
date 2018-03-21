@@ -20,7 +20,6 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"strings"
 )
 
 const (
@@ -184,35 +183,6 @@ func handleLookupParam(devConfig *zconfig.EdgeDevConfig) {
 	}
 	f.Sync()
 
-	//write name and eid in /etc/hosts....
-	hosts, err := ioutil.ReadFile("/etc/hosts")
-	if err != nil {
-		log.Println("error inreading file")
-	}
-	hostsString := string(hosts)
-	seperator := "Dynamically Allocated Eid To Name List"
-	finalStaticHost := fmt.Sprintf("%s \n %s ", hostsString, seperator)
-	err = ioutil.WriteFile("/etc/hosts", []byte(finalStaticHost), 0644)
-
-	//read hosts file with seperator....
-	seperatorHosts, err := ioutil.ReadFile("/etc/hosts")
-	if err != nil {
-		log.Println("error in reading seperator file")
-	}
-	seperatorFile := string(seperatorHosts)
-	splitSperator := strings.SplitAfter(seperatorFile, "Dynamically Allocated Eid To Name List")
-
-	dynamicHosts, err := ioutil.ReadFile(zedserverConfigFileName)
-	if err != nil {
-		log.Println("error inreading file")
-	}
-	dynamicHost := string(dynamicHosts)
-	splitSperator[1] = dynamicHost
-
-	finalHostList := fmt.Sprintf("%s \n %s ", splitSperator[0], splitSperator[1])
-	//log.Println("finalHostList: ",finalHostList)
-	err = ioutil.WriteFile("/etc/hosts", []byte(finalHostList), 0644)
-
 	// Determine whether NAT is in use
 	if publicIP, err := addrStringToIP(device.ClientAddr); err != nil {
 		log.Printf("Failed to convert %s, error %s\n",
@@ -233,7 +203,6 @@ func handleLookupParam(devConfig *zconfig.EdgeDevConfig) {
 		IsZedmanager:      true,
 		SeparateDataPlane: lispInfo.Experimental,
 	}
-	log.Printf("XXXXX SeparateDataPlane %v.\n", config.SeparateDataPlane)
 
 	olconf := make([]types.OverlayNetworkConfig, 1)
 	config.OverlayNetworkList = olconf

@@ -319,7 +319,6 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCo
 	var devId = &zconfig.UUIDandVersion{}
 
 	devId = config.GetId()
-	handleLookUpParam(config)
 	if devId != nil {
 		id, err := uuid.FromString(devId.Uuid)
 		if err != nil {
