@@ -25,7 +25,7 @@ message NetworkAdapter {
 	string networkId =3;	// UUID of NetworkConfig object
 
 	// eid=lisp, v4=ipv4 etc...
-	string addr =4;		// Only used as EID so fat
+	string addr =4;		// Only used as EID so far
 	string hostname = 5;	// Not currently used
 
 	// more configuration for getting addr

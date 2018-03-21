@@ -36,6 +36,7 @@ enum ZCioType {
   ZCioEth = 1;		// Includes WiFi?
   ZCioUSB = 2;
   ZCioCOM = 3;		// Com ports
+  ZCioHDMI = 4;	// HDMI Display
   ZCioOther = 255;
 }
 
