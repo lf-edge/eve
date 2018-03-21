@@ -26,7 +26,9 @@ func MaybeAddAppNetworkConfig(aiConfig types.AppInstanceConfig,
 		displayName)
 
 	if appNetworkConfig == nil {
-		log.Printf("create appNetwork config map\n")
+		if debug {
+			log.Printf("create appNetwork config map\n")
+		}
 		appNetworkConfig = make(map[string]types.AppNetworkConfig)
 	}
 	changed := false
@@ -75,7 +77,9 @@ func MaybeAddAppNetworkConfig(aiConfig types.AppInstanceConfig,
 			}
 		}
 	} else {
-		log.Printf("appNetwork config add for %s\n", key)
+		if debug {
+			log.Printf("appNetwork config add for %s\n", key)
+		}
 		changed = true
 	}
 	if changed {
@@ -116,7 +120,9 @@ func MaybeRemoveAppNetworkConfig(uuidStr string) {
 	log.Printf("MaybeRemoveAppNetworkConfig for %s\n", uuidStr)
 
 	if appNetworkConfig == nil {
-		log.Printf("create AppNetwork config map\n")
+		if debug {
+			log.Printf("create AppNetwork config map\n")
+		}
 		appNetworkConfig = make(map[string]types.AppNetworkConfig)
 	}
 	if _, ok := appNetworkConfig[uuidStr]; !ok {
@@ -167,7 +173,9 @@ func handleAppNetworkStatusModify(ctxArg interface{}, statusFilename string,
 		return
 	}
 	if appNetworkStatus == nil {
-		log.Printf("create appNetwork status map\n")
+		if debug {
+			log.Printf("create appNetwork status map\n")
+		}
 		appNetworkStatus = make(map[string]types.AppNetworkStatus)
 	}
 	appNetworkStatus[key] = *status
@@ -194,7 +202,9 @@ func handleAppNetworkStatusDelete(ctxArg interface{}, statusFilename string) {
 		log.Printf("handleAppNetworkStatusDelete for %s - not found\n",
 			key)
 	} else {
-		log.Printf("appNetwork Status map delete for %v\n", key)
+		if debug {
+			log.Printf("appNetwork Status map delete for %v\n", key)
+		}
 		delete(appNetworkStatus, key)
 		removeAIStatusUUID(m.UUIDandVersion.UUID.String())
 	}

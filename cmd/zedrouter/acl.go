@@ -82,14 +82,21 @@ func compileOldAppInstanceIpsets(ollist []types.OverlayNetworkStatus,
 
 func createACLConfiglet(ifname string, isMgmt bool, ACLs []types.ACE,
 	ipVer int, overlayIP string) {
-	log.Printf("createACLConfiglet: ifname %s, ACLs %v\n", ifname, ACLs)
+	if debug {
+		log.Printf("createACLConfiglet: ifname %s, ACLs %v\n",
+			ifname, ACLs)
+	}
 	rules := aclToRules(ifname, ACLs, ipVer, overlayIP)
 	for _, rule := range rules {
-		log.Printf("createACLConfiglet: rule %v\n", rule)
+		if debug {
+			log.Printf("createACLConfiglet: rule %v\n", rule)
+		}
 		args := rulePrefix("-A", isMgmt, ipVer, rule)
 		if args == nil {
-			log.Printf("createACLConfiglet: skipping rule %v\n",
-				rule)
+			if debug {
+				log.Printf("createACLConfiglet: skipping rule %v\n",
+					rule)
+			}
 			continue
 		}
 		args = append(args, rule...)
@@ -232,8 +239,10 @@ func aceToRules(ifname string, ace types.ACE, ipVer int) IptablesRuleList {
 		outArgs = append(outArgs, []string{"-j", "ACCEPT"}...)
 		inArgs = append(inArgs, []string{"-j", "ACCEPT"}...)
 	}
-	log.Printf("outArgs %v\n", outArgs)
-	log.Printf("inArgs %v\n", inArgs)
+	if debug {
+		log.Printf("outArgs %v\n", outArgs)
+		log.Printf("inArgs %v\n", inArgs)
+	}
 	rulesList := IptablesRuleList{}
 	rulesList = append(rulesList, outArgs, inArgs)
 	if foundLimit {
@@ -242,8 +251,10 @@ func aceToRules(ifname string, ace types.ACE, ipVer int) IptablesRuleList {
 			[]string{"-j", "DROP"}...)
 		unlimitedInArgs = append(unlimitedInArgs,
 			[]string{"-j", "DROP"}...)
-		log.Printf("unlimitedOutArgs %v\n", unlimitedOutArgs)
-		log.Printf("unlimitedInArgs %v\n", unlimitedInArgs)
+		if debug {
+			log.Printf("unlimitedOutArgs %v\n", unlimitedOutArgs)
+			log.Printf("unlimitedInArgs %v\n", unlimitedInArgs)
+		}
 		rulesList = append(rulesList, unlimitedOutArgs, unlimitedInArgs)
 	}
 	return rulesList
@@ -350,8 +361,10 @@ func updateAppInstanceIpsets(newolConfig []types.OverlayNetworkConfig,
 
 func updateACLConfiglet(ifname string, isMgmt bool, oldACLs []types.ACE,
 	newACLs []types.ACE, ipVer int, overlayIP string) {
-	log.Printf("updateACLConfiglet: ifname %s, oldACLs %v newACLs %v\n",
-		ifname, oldACLs, newACLs)
+	if debug {
+		log.Printf("updateACLConfiglet: ifname %s, oldACLs %v newACLs %v\n",
+			ifname, oldACLs, newACLs)
+	}
 	oldRules := aclToRules(ifname, oldACLs, ipVer, overlayIP)
 	newRules := aclToRules(ifname, newACLs, ipVer, overlayIP)
 	// Look for old which should be deleted
@@ -359,11 +372,15 @@ func updateACLConfiglet(ifname string, isMgmt bool, oldACLs []types.ACE,
 		if containsRule(newRules, rule) {
 			continue
 		}
-		log.Printf("modifyACLConfiglet: delete rule %v\n", rule)
+		if debug {
+			log.Printf("modifyACLConfiglet: delete rule %v\n", rule)
+		}
 		args := rulePrefix("-D", isMgmt, ipVer, rule)
 		if args == nil {
-			log.Printf("modifyACLConfiglet: skipping delete rule %v\n",
-				rule)
+			if debug {
+				log.Printf("modifyACLConfiglet: skipping delete rule %v\n",
+					rule)
+			}
 			continue
 		}
 		args = append(args, rule...)
@@ -383,11 +400,15 @@ func updateACLConfiglet(ifname string, isMgmt bool, oldACLs []types.ACE,
 		if containsRule(oldRules, rule) {
 			continue
 		}
-		log.Printf("modifyACLConfiglet: add rule %v\n", rule)
+		if debug {
+			log.Printf("modifyACLConfiglet: add rule %v\n", rule)
+		}
 		args := rulePrefix("-I", isMgmt, ipVer, rule)
 		if args == nil {
-			log.Printf("modifyACLConfiglet: skipping insert rule %v\n",
-				rule)
+			if debug {
+				log.Printf("modifyACLConfiglet: skipping insert rule %v\n",
+					rule)
+			}
 			continue
 		}
 		args = append(args, rule...)
@@ -401,14 +422,21 @@ func updateACLConfiglet(ifname string, isMgmt bool, oldACLs []types.ACE,
 
 func deleteACLConfiglet(ifname string, isMgmt bool, ACLs []types.ACE,
 	ipVer int, overlayIP string) {
-	log.Printf("deleteACLConfiglet: ifname %s ACLs %v\n", ifname, ACLs)
+	if debug {
+		log.Printf("deleteACLConfiglet: ifname %s ACLs %v\n",
+			ifname, ACLs)
+	}
 	rules := aclToRules(ifname, ACLs, ipVer, overlayIP)
 	for _, rule := range rules {
-		log.Printf("deleteACLConfiglet: rule %v\n", rule)
+		if debug {
+			log.Printf("deleteACLConfiglet: rule %v\n", rule)
+		}
 		args := rulePrefix("-D", isMgmt, ipVer, rule)
 		if args == nil {
-			log.Printf("deleteACLConfiglet: skipping rule %v\n",
-				rule)
+			if debug {
+				log.Printf("deleteACLConfiglet: skipping rule %v\n",
+					rule)
+			}
 			continue
 		}
 		args = append(args, rule...)
