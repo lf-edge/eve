@@ -17,7 +17,7 @@ import (
 
 type ThreadEntry struct {
 	killChannel chan bool
-	ring        *pfring.Ring
+	//ring        *pfring.Ring
 	handle      *afpacket.TPacket
 }
 
