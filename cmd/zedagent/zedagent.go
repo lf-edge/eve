@@ -140,7 +140,7 @@ var devCtx deviceContext
 func main() {
 	logf, err := agentlog.Init(agentName)
 	if err != nil {
-	       log.Fatal(err)
+		log.Fatal(err)
 	}
 	defer logf.Close()
 

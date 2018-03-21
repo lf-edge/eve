@@ -120,15 +120,21 @@ func handleDomainStatusModify(ctxArg interface{}, statusFilename string,
 	status := statusArg.(*types.DomainStatus)
 	domainCtx := ctxArg.(*domainContext)
 	key := status.UUIDandVersion.UUID.String()
-	log.Printf("handleDomainStatusModify for %s\n", key)
+	if debug {
+		log.Printf("handleDomainStatusModify for %s\n", key)
+	}
 	// Ignore if any Pending* flag is set
 	if status.PendingAdd || status.PendingModify || status.PendingDelete {
-		log.Printf("handleDomainstatusModify skipped due to Pending* for %s\n",
-			key)
+		if debug {
+			log.Printf("handleDomainstatusModify skipped due to Pending* for %s\n",
+				key)
+		}
 		return
 	}
 	if domainStatus == nil {
-		log.Printf("create Domain map\n")
+		if debug {
+			log.Printf("create Domain map\n")
+		}
 		domainStatus = make(map[string]types.DomainStatus)
 	}
 	// Detect if any changes relevant to the device status report
@@ -152,7 +158,9 @@ func handleDomainStatusModify(ctxArg interface{}, statusFilename string,
 	appInterfaceAndNameList[status.DomainName] = interfaceList
 	log.Printf("handleDomainStatusModify appIntf %s %v\n",
 		status.DomainName, interfaceList)
-	log.Printf("handleDomainStatusModify done for %s\n", key)
+	if debug {
+		log.Printf("handleDomainStatusModify done for %s\n", key)
+	}
 }
 
 func handleDomainStatusDelete(ctxArg interface{}, statusFilename string) {
@@ -778,8 +786,10 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 	// Note that "domain" is returned in search, hence DNSdomain is
 	// not filled in.
 	dc := netclone.DnsReadConfig("/etc/resolv.conf")
-	log.Printf("resolv.conf servers %v\n", dc.Servers)
-	log.Printf("resolv.conf search %v\n", dc.Search)
+	if debug {
+		log.Printf("resolv.conf servers %v\n", dc.Servers)
+		log.Printf("resolv.conf search %v\n", dc.Search)
+	}
 	ReportDeviceInfo.Dns = new(zmet.ZInfoDNS)
 	ReportDeviceInfo.Dns.DNSservers = dc.Servers
 	ReportDeviceInfo.Dns.DNSsearch = dc.Search
@@ -796,12 +806,16 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 		_, _, err := types.IoBundleToPci(ib)
 		if err != nil {
 			if len(domainStatus) == 0 {
-				log.Printf("Not reporting non-existent PCI device %d %s: %v\n",
-					ib.Type, ib.Name, err)
+				if debug {
+					log.Printf("Not reporting non-existent PCI device %d %s: %v\n",
+						ib.Type, ib.Name, err)
+				}
 				continue
 			}
-			log.Printf("Reporting non-existent PCI device %d %s: %v\n",
-				ib.Type, ib.Name, err)
+			if debug {
+				log.Printf("Reporting non-existent PCI device %d %s: %v\n",
+					ib.Type, ib.Name, err)
+			}
 		}
 		reportAA := new(zmet.ZioBundle)
 		reportAA.Type = zmet.ZioType(ib.Type)
@@ -857,8 +871,10 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 		x.Dinfo = ReportDeviceInfo
 	}
 
-	log.Printf("PublishDeviceInfoToZedCloud sending %v\n", ReportInfo)
-
+	if debug {
+		log.Printf("PublishDeviceInfoToZedCloud sending %v\n",
+			ReportInfo)
+	}
 	data, err := proto.Marshal(ReportInfo)
 	if err != nil {
 		log.Fatal("PublishDeviceInfoToZedCloud proto marshaling error: ", err)
@@ -986,7 +1002,9 @@ func getNetInfo(interfaceDetail psutilnet.InterfaceStat) *zmet.ZInfoNetwork {
 // containing only the UUID to inform zedcloud about the delete.
 func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 	aa *types.AssignableAdapters) {
-	log.Printf("PublishAppInfoToZedCloud uuid %s\n", uuid)
+	if debug {
+		log.Printf("PublishAppInfoToZedCloud uuid %s\n", uuid)
+	}
 	var ReportInfo = &zmet.ZInfoMsg{}
 
 	appType := new(zmet.ZInfoTypes)
@@ -1069,7 +1087,9 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 		x.Ainfo = ReportAppInfo
 	}
 
-	log.Printf("PublishAppInfoToZedCloud sending %v\n", ReportInfo)
+	if debug {
+		log.Printf("PublishAppInfoToZedCloud sending %v\n", ReportInfo)
+	}
 
 	data, err := proto.Marshal(ReportInfo)
 	if err != nil {
