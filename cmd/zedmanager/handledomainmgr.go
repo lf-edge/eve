@@ -212,7 +212,7 @@ func LookupDomainStatus(uuidStr string) (types.DomainStatus, error) {
 }
 
 func handleDomainStatusDelete(ctxArg interface{}, statusFilename string) {
-	log.Printf("handleDomainStatusDelete for %s\n",	statusFilename)
+	log.Printf("handleDomainStatusDelete for %s\n", statusFilename)
 
 	key := statusFilename
 	if m, ok := domainStatus[key]; !ok {
