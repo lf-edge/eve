@@ -16,6 +16,8 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/afpacket"
 	"github.com/google/gopacket/layers"
+	"github.com/google/gopacket/pcap"
+	"golang.org/x/net/bpf"
 	//"github.com/google/gopacket/pfring"
 	"github.com/zededa/go-provision/dataplane/fib"
 	"github.com/zededa/go-provision/types"
@@ -23,6 +25,7 @@ import (
 	"net"
 	"syscall"
 	"time"
+	"unsafe"
 )
 
 // Status and metadata of different ETR threads currently running
@@ -172,7 +175,18 @@ func HandleEtrEphPort(ephPort int) {
 		//link.Ring.SetBPFFilter(filter)
 
 		// For AF_PACKET sockers old filter is replaced with new one.
-		link.Handle.SetBPFFilter(filter)
+		ins, err := pcap.CompileBPFFilter(layers.LinkTypeEthernet,
+			1600, filter)
+		if err != nil {
+			log.Printf("SetupEtrPktCapture: Compiling BPF filter %s failed: %s\n", filter, err)
+		} else {
+			raw_ins := *(*[]bpf.RawInstruction)(unsafe.Pointer(&ins))
+			err = link.Handle.SetBPF(raw_ins)
+			if err != nil {
+				log.Printf("SetupEtrPktCapture: Setting BPF filter %s failed: %s\n", filter, err)
+			}
+		}
+		//link.Handle.SetBPFFilter(filter)
 
 		log.Printf("HandleEtrEphPort: Changed ephemeral port BPF match for ETR %s\n",
 			ifName)
@@ -327,28 +341,40 @@ func SetupEtrPktCapture(ephemeralPort int, upLink string) *afpacket.TPacket {
 	}
 
 	/*
-	// We only read packets from this interface
-	ring.SetDirection(pfring.ReceiveOnly)
-	ring.SetSocketMode(pfring.ReadOnly)
+		// We only read packets from this interface
+		ring.SetDirection(pfring.ReceiveOnly)
+		ring.SetSocketMode(pfring.ReadOnly)
 	*/
 
 	// Set filter for UDP, source port = 4341, destination port = given ephemeral
 	filter := fmt.Sprintf(etrNatPortMatch, ephemeralPort)
 	//ring.SetBPFFilter(filter)
-	tPacket.SetBPFFilter(filter)
+
+	ins, err := pcap.CompileBPFFilter(layers.LinkTypeEthernet,
+		1600, filter)
+	if err != nil {
+		log.Printf("SetupEtrPktCapture: Compiling BPF filter %s failed: %s\n", filter, err)
+	} else {
+		raw_ins := *(*[]bpf.RawInstruction)(unsafe.Pointer(&ins))
+		err = tPacket.SetBPF(raw_ins)
+		if err != nil {
+			log.Printf("SetupEtrPktCapture: Setting BPF filter %s failed: %s\n", filter, err)
+		}
+	}
+	//tPacket.SetBPFFilter(filter)
 
 	/*
-	ring.SetPollWatermark(1)
-	// set a poll duration of 1 hour
-	ring.SetPollDuration(60 * 60 * 1000)
+		ring.SetPollWatermark(1)
+		// set a poll duration of 1 hour
+		ring.SetPollDuration(60 * 60 * 1000)
 
-	err = ring.Enable()
-	if err != nil {
-		log.Printf("SetupEtrPktCapture: Enabling pfring on interface %s failed: %s\n",
-			upLink, err)
-		return nil
-	}
-	return ring
+		err = ring.Enable()
+		if err != nil {
+			log.Printf("SetupEtrPktCapture: Enabling pfring on interface %s failed: %s\n",
+				upLink, err)
+			return nil
+		}
+		return ring
 	*/
 
 	return tPacket
@@ -385,9 +411,9 @@ func ProcessCapturedPkts(fd6 int, handle *afpacket.TPacket) {
 		if err != nil {
 			log.Printf("ProcessCapturedPkts: Error capturing packets: %s\n", err)
 			/*
-			log.Printf(
-				"ProcessCapturedPkts: It could be the ring closure leading to this.\n")
-				*/
+				log.Printf(
+					"ProcessCapturedPkts: It could be the ring closure leading to this.\n")
+			*/
 			log.Printf(
 				"ProcessCapturedPkts: It could be the handle closure leading to this.\n")
 			return

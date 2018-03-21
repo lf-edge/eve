@@ -12,6 +12,8 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/afpacket"
 	"github.com/google/gopacket/layers"
+	"github.com/google/gopacket/pcap"
+	"golang.org/x/net/bpf"
 	//"github.com/google/gopacket/pfring"
 	"github.com/zededa/go-provision/dataplane/fib"
 	"github.com/zededa/go-provision/types"
@@ -21,6 +23,7 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+	"unsafe"
 )
 
 const SNAPLENGTH = 65536
@@ -156,37 +159,49 @@ func SetupPacketCapture(iface string, snapLen int) *afpacket.TPacket {
 
 	// Capture ipv6 packets only
 	/*
-	err = ring.SetBPFFilter("ip6")
-	if err != nil {
-		log.Print(
-			"SetupPacketCapture: Setting ipv6 BPF filter on interface %s failed: %s\n",
-			ifname, err)
-		ring.Close()
-		return nil
-	}
+		err = ring.SetBPFFilter("ip6")
+		if err != nil {
+			log.Print(
+				"SetupPacketCapture: Setting ipv6 BPF filter on interface %s failed: %s\n",
+				ifname, err)
+			ring.Close()
+			return nil
+		}
 
-	// Make PF_RING capture only transmitted packet
-	ring.SetDirection(pfring.TransmitOnly)
+		// Make PF_RING capture only transmitted packet
+		ring.SetDirection(pfring.TransmitOnly)
 	*/
-	err = tPacket.SetBPFFilter("ip6")
+	filter := "ip6"
+	ins, err := pcap.CompileBPFFilter(layers.LinkTypeEthernet,
+		1600, filter)
+	if err != nil {
+		log.Printf("SetupPacketCapture: Compiling BPF filter %s failed: %s\n", filter, err)
+	} else {
+		raw_ins := *(*[]bpf.RawInstruction)(unsafe.Pointer(&ins))
+		err = tPacket.SetBPF(raw_ins)
+		if err != nil {
+			log.Printf("SetupPacketCapture: Setting BPF filter %s failed: %s\n", filter, err)
+		}
+	}
+	//err = tPacket.SetBPFFilter("ip6")
 
 	/*
-	// set the ring in readonly mode
-	ring.SetSocketMode(pfring.ReadOnly)
+		// set the ring in readonly mode
+		ring.SetSocketMode(pfring.ReadOnly)
 
-	ring.SetPollWatermark(1)
-	// set a poll duration of 1 hour
-	ring.SetPollDuration(60 * 60 * 1000)
+		ring.SetPollWatermark(1)
+		// set a poll duration of 1 hour
+		ring.SetPollDuration(60 * 60 * 1000)
 
-	// Enable ring. Packet inflow starts after this.
-	err = ring.Enable()
-	if err != nil {
-		log.Printf("SetupPacketCapture: Failed enabling PF_RING for interface %s: %s\n",
-			ifname, err)
-		ring.Close()
-		return nil
-	}
-	return ring
+		// Enable ring. Packet inflow starts after this.
+		err = ring.Enable()
+		if err != nil {
+			log.Printf("SetupPacketCapture: Failed enabling PF_RING for interface %s: %s\n",
+				ifname, err)
+			ring.Close()
+			return nil
+		}
+		return ring
 	*/
 	return tPacket
 }

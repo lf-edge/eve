@@ -56,20 +56,20 @@ func ManageItrThreads(interfaces Interfaces) {
 			entry.killChannel <- true
 
 			/*
-			// XXX
-			// ITR threads use pf_ring for packet capture.
-			// pf_ring packet read calls are blocking. If a thread is blocked
-			// and there are no packets coming in from the corresponding interface,
-			// it can never get unblocked and process messages from kill channel.
-			//
-			// We delete the pf_ring socket for now, so that the ITR thread blocking
-			// calls returns with error.
-			//
-			// We'll retain the kill channel mechanism for future optimizations.
-			close(entry.killChannel)
-			entry.ring.Disable()
-			entry.ring.Close()
-			//close(entry.killChannel)
+				// XXX
+				// ITR threads use pf_ring for packet capture.
+				// pf_ring packet read calls are blocking. If a thread is blocked
+				// and there are no packets coming in from the corresponding interface,
+				// it can never get unblocked and process messages from kill channel.
+				//
+				// We delete the pf_ring socket for now, so that the ITR thread blocking
+				// calls returns with error.
+				//
+				// We'll retain the kill channel mechanism for future optimizations.
+				close(entry.killChannel)
+				entry.ring.Disable()
+				entry.ring.Close()
+				//close(entry.killChannel)
 			*/
 
 			delete(threadTable, name)
