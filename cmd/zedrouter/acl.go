@@ -407,7 +407,7 @@ func updateACLConfiglet(ifname string, isMgmt bool, oldACLs []types.ACE,
 		if args == nil {
 			if debug {
 				log.Printf("modifyACLConfiglet: skipping insert rule %v\n",
-				rule)
+					rule)
 			}
 			continue
 		}

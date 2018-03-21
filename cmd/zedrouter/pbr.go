@@ -180,8 +180,8 @@ func PbrAddrChange(change netlink.AddrUpdate) {
 		} else if isUplink(ifname) {
 			if debug {
 				log.Printf("Address change for uplink: %v\n",
-				change)
-				}
+					change)
+			}
 			addrChangeFunc(ifname)
 		} else {
 			if debug {
@@ -579,7 +579,7 @@ func addSourceRule(ifindex int, p net.IPNet) {
 	} else {
 		r.Family = syscall.AF_INET6
 		r.Src = &net.IPNet{IP: p.IP, Mask: net.CIDRMask(128, 128)}
-	}	
+	}
 	if debug {
 		log.Printf("addSourceRule: RuleAdd %v\n", r)
 	}
