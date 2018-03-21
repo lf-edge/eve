@@ -61,6 +61,8 @@ type zedmanagerContext struct {
 
 var deviceNetworkStatus types.DeviceNetworkStatus
 
+var debug = false
+
 func main() {
 	logf, err := agentlog.Init(agentName)
 	if err != nil {
@@ -69,7 +71,9 @@ func main() {
 	defer logf.Close()
 
 	versionPtr := flag.Bool("v", false, "Version")
+	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
+	debug = *debugPtr
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return

@@ -13,7 +13,9 @@ import (
 
 // Create local IPv6 ipset called "local.ipv6".
 func createDefaultIpset() {
-	log.Printf("createDefaultIpset()\n")
+	if debug {
+		log.Printf("createDefaultIpset()\n")
+	}
 	ipsetName := "local.ipv6"
 	if !ipsetExists(ipsetName) {
 		if err := ipsetCreate(ipsetName, "hash:net", 6); err != nil {
@@ -38,8 +40,10 @@ func createDefaultIpset() {
 // Would be more polite to return an error then to Fatal
 func createEidIpsetConfiglet(olIfname string, nameToEidList []types.NameToEid,
 	myEid string) {
-	log.Printf("createEidIpsetConfiglet: olifName %s nameToEidList %v myEid %s\n",
-		olIfname, nameToEidList, myEid)
+	if debug {
+		log.Printf("createEidIpsetConfiglet: olifName %s nameToEidList %v myEid %s\n",
+			olIfname, nameToEidList, myEid)
+	}
 	ipsetName := "eids." + olIfname
 	if !ipsetExists(ipsetName) {
 		if err := ipsetCreate(ipsetName, "hash:ip", 6); err != nil {
@@ -70,8 +74,10 @@ func createEidIpsetConfiglet(olIfname string, nameToEidList []types.NameToEid,
 
 func updateEidIpsetConfiglet(olIfname string,
 	oldNameToEidList []types.NameToEid, newNameToEidList []types.NameToEid) {
-	log.Printf("updateEidIpsetConfiglet: olIfname %s old %v, new %v\n",
-		olIfname, oldNameToEidList, newNameToEidList)
+	if debug {
+		log.Printf("updateEidIpsetConfiglet: olIfname %s old %v, new %v\n",
+			olIfname, oldNameToEidList, newNameToEidList)
+	}
 	ipsetName := "eids." + olIfname
 
 	// Look for EIDs which should be deleted
@@ -102,7 +108,9 @@ func updateEidIpsetConfiglet(olIfname string,
 }
 
 func deleteEidIpsetConfiglet(olIfname string, printOnError bool) {
-	log.Printf("deleteEidIpsetConfiglet: olIfname %s\n", olIfname)
+	if debug {
+		log.Printf("deleteEidIpsetConfiglet: olIfname %s\n", olIfname)
+	}
 	ipsetName := "eids." + olIfname
 
 	err := ipsetDestroy(ipsetName)

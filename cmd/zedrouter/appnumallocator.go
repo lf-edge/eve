@@ -53,7 +53,9 @@ func appNumAllocatorInit(statusDir string, configDir string) {
 	for _, statusFile := range statusFiles {
 		fileName := statusFile.Name()
 		if !strings.HasSuffix(fileName, ".json") {
-			log.Printf("Ignoring file <%s>\n", fileName)
+			if debug {
+				log.Printf("Ignoring file <%s>\n", fileName)
+			}
 			continue
 		}
 		sb, err := ioutil.ReadFile(statusDir + "/" + fileName)

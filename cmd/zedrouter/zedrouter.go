@@ -57,6 +57,8 @@ type DNCContext struct {
 	manufacturerModel  string
 }
 
+var debug = false
+
 func main() {
 	logf, err := agentlog.Init(agentName)
 	if err != nil {
@@ -65,7 +67,9 @@ func main() {
 	defer logf.Close()
 
 	versionPtr := flag.Bool("v", false, "Version")
+	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
+	debug = *debugPtr
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
@@ -136,11 +140,15 @@ func main() {
 	// This function is called from PBR when some uplink interface changes
 	// its IP address(es)
 	addrChangeFn := func(ifname string) {
-		log.Printf("addrChangeFn(%s) called\n", ifname)
+		if debug {
+			log.Printf("addrChangeFn(%s) called\n", ifname)
+		}
 		new, _ := devicenetwork.MakeDeviceNetworkStatus(deviceNetworkConfig)
 		if !reflect.DeepEqual(deviceNetworkStatus, new) {
-			log.Printf("Address change for %s from %v to %v\n",
-				ifname, deviceNetworkStatus, new)
+			if debug {
+				log.Printf("Address change for %s from %v to %v\n",
+					ifname, deviceNetworkStatus, new)
+			}
 			deviceNetworkStatus = new
 			doDNSUpdate(&DNCctx)
 		} else {
@@ -185,7 +193,9 @@ func main() {
 }
 
 func handleRestart(ctxArg interface{}, done bool) {
-	log.Printf("handleRestart(%v)\n", done)
+	if debug {
+		log.Printf("handleRestart(%v)\n", done)
+	}
 	handleLispRestart(done)
 	if done {
 		// Since all work is done inline we can immediately say that
@@ -305,7 +315,9 @@ func writeAppNetworkStatus(status *types.AppNetworkStatus,
 	statusFilename string) {
 
 	if appNetworkStatus == nil {
-		log.Printf("create appNetwork status map\n")
+		if debug {
+			log.Printf("create appNetwork status map\n")
+		}
 		appNetworkStatus = make(map[string]types.AppNetworkStatus)
 	}
 	key := status.UUIDandVersion.UUID.String()
@@ -346,8 +358,10 @@ func generateAdditionalInfo(status types.AppNetworkStatus, olConfig types.Overla
 				log.Fatal(err, "json Marshal AdditionalInfoDevice")
 			}
 			additionalInfo = string(b)
-			log.Printf("Generated additional info device %s\n",
-				additionalInfo)
+			if debug {
+				log.Printf("Generated additional info device %s\n",
+					additionalInfo)
+			}
 		}
 	} else {
 		// Combine subset of the device and application information
@@ -365,8 +379,10 @@ func generateAdditionalInfo(status types.AppNetworkStatus, olConfig types.Overla
 			log.Fatal(err, "json Marshal AdditionalInfoApp")
 		}
 		additionalInfo = string(b)
-		log.Printf("Generated additional info app %s\n",
-			additionalInfo)
+		if debug {
+			log.Printf("Generated additional info app %s\n",
+				additionalInfo)
+		}
 	}
 	return additionalInfo
 }
@@ -385,8 +401,10 @@ func updateLispConfiglets() {
 			}
 			additionalInfo := generateAdditionalInfo(status,
 				olStatus.OverlayNetworkConfig)
-			log.Printf("updateLispConfiglets for %s isMgmt %v\n",
-				olIfname, status.IsZedmanager)
+			if debug {
+				log.Printf("updateLispConfiglets for %s isMgmt %v\n",
+					olIfname, status.IsZedmanager)
+			}
 			createLispConfiglet(lispRunDirname, status.IsZedmanager,
 				olStatus.IID, olStatus.EID, olStatus.LispSignature,
 				deviceNetworkStatus, olIfname, olIfname,
@@ -595,19 +613,25 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 
 	for i, olConfig := range config.OverlayNetworkList {
 		olNum := i + 1
-		log.Printf("olNum %d ACLs %v\n", olNum, olConfig.ACLs)
-
+		if debug {
+			log.Printf("olNum %d ACLs %v\n", olNum, olConfig.ACLs)
+		}
 		EID := olConfig.EID
 		olIfname := "bo" + strconv.Itoa(olNum) + "x" +
 			strconv.Itoa(appNum)
-		log.Printf("olIfname %s\n", olIfname)
+		if debug {
+			log.Printf("olIfname %s\n", olIfname)
+		}
 		olAddr1 := "fd00::" + strconv.FormatInt(int64(olNum), 16) +
 			":" + strconv.FormatInt(int64(appNum), 16)
-		log.Printf("olAddr1 %s EID %s\n", olAddr1, EID)
+		if debug {
+			log.Printf("olAddr1 %s EID %s\n", olAddr1, EID)
+		}
 		olMac := "00:16:3e:1:" + strconv.FormatInt(int64(olNum), 16) +
 			":" + strconv.FormatInt(int64(appNum), 16)
-		log.Printf("olMac %s\n", olMac)
-
+		if debug {
+			log.Printf("olMac %s\n", olMac)
+		}
 		// Start clean
 		attrs := netlink.NewLinkAttrs()
 		attrs.Name = olIfname
@@ -647,7 +671,9 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		if err != nil {
 			log.Printf("ParseCIDR %s failed: %v\n", EID, err)
 		}
-		log.Printf("oLink.Index %d\n", oLink.Index)
+		if debug {
+			log.Printf("oLink.Index %d\n", oLink.Index)
+		}
 		rt := netlink.Route{Dst: ipnet, LinkIndex: oLink.Index}
 		if err := netlink.RouteAdd(&rt); err != nil {
 			log.Printf("RouteAdd %s failed: %s\n", EID, err)
@@ -711,17 +737,24 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 			log.Printf("Ignoring multiple UnderlayNetwork\n")
 			continue
 		}
-		log.Printf("ulNum %d ACLs %v\n", ulNum, ulConfig.ACLs)
+		if debug {
+			log.Printf("ulNum %d ACLs %v\n", ulNum, ulConfig.ACLs)
+		}
 		ulIfname := "bu" + strconv.Itoa(appNum)
-		log.Printf("ulIfname %s\n", ulIfname)
+		if debug {
+			log.Printf("ulIfname %s\n", ulIfname)
+		}
 		// Not clear how to handle multiple ul; use /30 prefix?
 		ulAddr1 := "172.27." + strconv.Itoa(appNum) + ".1"
 		ulAddr2 := "172.27." + strconv.Itoa(appNum) + ".2"
-		log.Printf("ulAddr1 %s ulAddr2 %s\n", ulAddr1, ulAddr2)
+		if debug {
+			log.Printf("ulAddr1 %s ulAddr2 %s\n", ulAddr1, ulAddr2)
+		}
 		// Room to handle multiple underlays in 5th byte
 		ulMac := "00:16:3e:0:0:" + strconv.FormatInt(int64(appNum), 16)
-		log.Printf("ulMac %s\n", ulMac)
-
+		if debug {
+			log.Printf("ulMac %s\n", ulMac)
+		}
 		// Start clean
 		attrs := netlink.NewLinkAttrs()
 		attrs.Name = ulIfname
@@ -796,7 +829,9 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 	}
 
 	appNum := status.AppNum
-	log.Printf("handleModify appNum %d\n", appNum)
+	if debug {
+		log.Printf("handleModify appNum %d\n", appNum)
+	}
 
 	// Check for unsupported changes
 	if config.IsZedmanager != status.IsZedmanager {
@@ -853,7 +888,9 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 	// Look for ACL and NametoEidList changes in overlay
 	for i, olConfig := range config.OverlayNetworkList {
 		olNum := i + 1
-		log.Printf("handleModify olNum %d\n", olNum)
+		if debug {
+			log.Printf("handleModify olNum %d\n", olNum)
+		}
 		olIfname := "bo" + strconv.Itoa(olNum) + "x" +
 			strconv.Itoa(appNum)
 		olStatus := status.OverlayNetworkList[olNum-1]
@@ -905,7 +942,9 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 	// Look for ACL changes in underlay
 	for i, ulConfig := range config.UnderlayNetworkList {
 		ulNum := i + 1
-		log.Printf("handleModify ulNum %d\n", ulNum)
+		if debug {
+			log.Printf("handleModify ulNum %d\n", ulNum)
+		}
 		ulIfname := "bu" + strconv.Itoa(appNum)
 		ulStatus := status.UnderlayNetworkList[ulNum-1]
 
@@ -972,8 +1011,10 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 	appNum := status.AppNum
 	maxOlNum := status.OlNum
 	maxUlNum := status.UlNum
-	log.Printf("handleDelete appNum %d maxOlNum %d maxUlNum %d\n",
-		appNum, maxOlNum, maxUlNum)
+	if debug {
+		log.Printf("handleDelete appNum %d maxOlNum %d maxUlNum %d\n",
+			appNum, maxOlNum, maxUlNum)
+	}
 
 	status.PendingDelete = true
 	writeAppNetworkStatus(status, statusFilename)
@@ -1052,10 +1093,14 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 	} else {
 		// Delete everything for overlay
 		for olNum := 1; olNum <= maxOlNum; olNum++ {
-			log.Printf("handleDelete olNum %d\n", olNum)
+			if debug {
+				log.Printf("handleDelete olNum %d\n", olNum)
+			}
 			olIfname := "bo" + strconv.Itoa(olNum) + "x" +
 				strconv.Itoa(appNum)
-			log.Printf("Deleting olIfname %s\n", olIfname)
+			if debug {
+				log.Printf("Deleting olIfname %s\n", olIfname)
+			}
 			olAddr1 := "fd00::" + strconv.FormatInt(int64(olNum), 16) +
 				":" + strconv.FormatInt(int64(appNum), 16)
 
@@ -1106,10 +1151,13 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 
 		// Delete everything in underlay
 		for ulNum := 1; ulNum <= maxUlNum; ulNum++ {
-			log.Printf("handleDelete ulNum %d\n", ulNum)
+			if debug {
+				log.Printf("handleDelete ulNum %d\n", ulNum)
+			}
 			ulIfname := "bu" + strconv.Itoa(appNum)
-			log.Printf("Deleting ulIfname %s\n", ulIfname)
-
+			if debug {
+				log.Printf("Deleting ulIfname %s\n", ulIfname)
+			}
 			attrs := netlink.NewLinkAttrs()
 			attrs.Name = ulIfname
 			uLink := &netlink.Bridge{LinkAttrs: attrs}
@@ -1161,8 +1209,10 @@ func handleDNCModify(ctxArg interface{}, configFilename string,
 	ctx := ctxArg.(*DNCContext)
 
 	if configFilename != ctx.manufacturerModel {
-		log.Printf("handleDNCModify: ignoring %s - expecting %s\n",
-			configFilename, ctx.manufacturerModel)
+		if debug {
+			log.Printf("handleDNCModify: ignoring %s - expecting %s\n",
+				configFilename, ctx.manufacturerModel)
+		}
 		return
 	}
 	log.Printf("handleDNCModify for %s\n", configFilename)

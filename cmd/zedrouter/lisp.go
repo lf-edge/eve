@@ -168,9 +168,11 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	globalStatus types.DeviceNetworkStatus,
 	tag string, olIfname string, additionalInfo string,
 	lispServers []types.LispServerInfo) {
-	log.Printf("createLispConfiglet: %s %v %d %s %v %s %s %s %s %v\n",
-		lispRunDirname, isMgmt, IID, EID, lispSignature, globalStatus,
-		tag, olIfname, additionalInfo, lispServers)
+	if debug {
+		log.Printf("createLispConfiglet: %s %v %d %s %v %s %s %s %s %v\n",
+			lispRunDirname, isMgmt, IID, EID, lispSignature, globalStatus,
+			tag, olIfname, additionalInfo, lispServers)
+	}
 	cfgPathnameIID := lispRunDirname + "/" +
 		strconv.FormatUint(uint64(IID), 10)
 	file1, err := os.Create(cfgPathnameIID)
@@ -254,18 +256,21 @@ func updateLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	globalStatus types.DeviceNetworkStatus,
 	tag string, olIfname string, additionalInfo string,
 	lispServers []types.LispServerInfo) {
-	log.Printf("updateLispConfiglet: %s %v %d %s %v %s %s %s %s %v\n",
-		lispRunDirname, isMgmt, IID, EID, lispSignature, globalStatus,
-		tag, olIfname, additionalInfo, lispServers)
+	if debug {
+		log.Printf("updateLispConfiglet: %s %v %d %s %v %s %s %s %s %v\n",
+			lispRunDirname, isMgmt, IID, EID, lispSignature, globalStatus,
+			tag, olIfname, additionalInfo, lispServers)
+	}
 	createLispConfiglet(lispRunDirname, isMgmt, IID, EID, lispSignature,
 		globalStatus, tag, olIfname, additionalInfo, lispServers)
 }
 
 func deleteLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	EID net.IP, globalStatus types.DeviceNetworkStatus) {
-	log.Printf("deleteLispConfiglet: %s %d %s %v\n",
-		lispRunDirname, IID, EID, globalStatus)
-
+	if debug {
+		log.Printf("deleteLispConfiglet: %s %d %s %v\n",
+			lispRunDirname, IID, EID, globalStatus)
+	}
 	var cfgPathnameEID string
 	if isMgmt {
 		// LISP gets confused if the management "lisp interface"
@@ -287,7 +292,9 @@ func deleteLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 }
 
 func updateLisp(lispRunDirname string, upLinkStatus []types.NetworkUplink) {
-	log.Printf("updateLisp: %s %v\n", lispRunDirname, upLinkStatus)
+	if debug {
+		log.Printf("updateLisp: %s %v\n", lispRunDirname, upLinkStatus)
+	}
 
 	if deferUpdate {
 		log.Printf("updateLisp deferred\n")
@@ -304,7 +311,10 @@ func updateLisp(lispRunDirname string, upLinkStatus []types.NetworkUplink) {
 	defer tmpfile.Close()
 	defer os.Remove(tmpfile.Name())
 
-	log.Printf("Copying from %s to %s\n", baseFilename, tmpfile.Name())
+	if debug {
+		log.Printf("Copying from %s to %s\n",
+			baseFilename, tmpfile.Name())
+	}
 	s, err := os.Open(baseFilename)
 	if err != nil {
 		log.Println("os.Open ", baseFilename, err)
@@ -316,7 +326,9 @@ func updateLisp(lispRunDirname string, upLinkStatus []types.NetworkUplink) {
 		log.Println("io.Copy ", baseFilename, err)
 		return
 	}
-	log.Printf("Copied %d bytes from %s\n", cnt, baseFilename)
+	if debug {
+		log.Printf("Copied %d bytes from %s\n", cnt, baseFilename)
+	}
 	files, err := ioutil.ReadDir(lispRunDirname)
 	if err != nil {
 		log.Println(err)
@@ -329,7 +341,10 @@ func updateLisp(lispRunDirname string, upLinkStatus []types.NetworkUplink) {
 			eidCount += 1
 		}
 		filename := lispRunDirname + "/" + file.Name()
-		log.Printf("Copying from %s to %s\n", filename, tmpfile.Name())
+		if debug {
+			log.Printf("Copying from %s to %s\n",
+				filename, tmpfile.Name())
+		}
 		s, err := os.Open(filename)
 		if err != nil {
 			log.Println("os.Open ", filename, err)
@@ -340,7 +355,9 @@ func updateLisp(lispRunDirname string, upLinkStatus []types.NetworkUplink) {
 			log.Println("io.Copy ", filename, err)
 			return
 		}
-		log.Printf("Copied %d bytes from %s\n", cnt, filename)
+		if debug {
+			log.Printf("Copied %d bytes from %s\n", cnt, filename)
+		}
 	}
 	if err := tmpfile.Close(); err != nil {
 		log.Println("Close ", tmpfile.Name(), err)
@@ -371,8 +388,10 @@ func updateLisp(lispRunDirname string, upLinkStatus []types.NetworkUplink) {
 	_ = awk.Wait()
 	devices := strings.TrimSpace(string(intfs))
 	devices = strings.Replace(devices, "\n", " ", -1)
-	log.Printf("updateLisp: found %d EIDs devices <%v>\n", eidCount, devices)
-
+	if debug {
+		log.Printf("updateLisp: found %d EIDs devices <%v>\n",
+			eidCount, devices)
+	}
 	// Check how many EIDs we have configured. If none we stop lisp
 	if eidCount == 0 {
 		stopLisp()
@@ -386,7 +405,9 @@ var deferLispRunDirname = ""
 var deferUpLinkStatus []types.NetworkUplink = nil
 
 func handleLispRestart(done bool) {
-	log.Printf("handleLispRestart(%v)\n", done)
+	if debug {
+		log.Printf("handleLispRestart(%v)\n", done)
+	}
 	if done {
 		if deferUpdate {
 			deferUpdate = false
@@ -403,8 +424,9 @@ func handleLispRestart(done bool) {
 }
 
 func restartLisp(upLinkStatus []types.NetworkUplink, devices string) {
-	log.Printf("restartLisp: %v %s\n",
-		upLinkStatus, devices)
+	if debug {
+		log.Printf("restartLisp: %v %s\n", upLinkStatus, devices)
+	}
 	if len(upLinkStatus) == 0 {
 		log.Printf("Can not restart lisp with no uplinks\n")
 		return
@@ -469,7 +491,10 @@ func restartLisp(upLinkStatus []types.NetworkUplink, devices string) {
 		log.Printf("RESTART-LISP output %s\n", string(stdoutStderr))
 		return
 	}
-	log.Printf("restartLisp done: output %s\n", string(stdoutStderr))
+	if debug {
+		log.Printf("restartLisp done: output %s\n",
+			string(stdoutStderr))
+	}
 
 	// Save the restart as a bash command called RL
 	const RLTemplate = "#!/bin/bash\n" +
@@ -487,11 +512,15 @@ func restartLisp(upLinkStatus []types.NetworkUplink, devices string) {
 		log.Fatal("WriteFile", err, RLFilename)
 		return
 	}
-	log.Printf("Wrote %s\n", RLFilename)
+	if debug {
+		log.Printf("Wrote %s\n", RLFilename)
+	}
 }
 
 func stopLisp() {
-	log.Printf("stopLisp\n")
+	if debug {
+		log.Printf("stopLisp\n")
+	}
 	// XXX hack to avoid hang in pslisp on Erik's laptop
 	if broken {
 		// Issue pkill -f lisp-core.pyo
@@ -514,10 +543,14 @@ func stopLisp() {
 		log.Printf("STOP-LISP output %s\n", string(stdoutStderr))
 		return
 	}
-	log.Printf("stopLisp done: output %s\n", string(stdoutStderr))
+	if debug {
+		log.Printf("stopLisp done: output %s\n", string(stdoutStderr))
+	}
 	if err = os.Remove(RLFilename); err != nil {
 		log.Println(err)
 		return
 	}
-	log.Printf("Removed %s\n", RLFilename)
+	if debug {
+		log.Printf("Removed %s\n", RLFilename)
+	}
 }
