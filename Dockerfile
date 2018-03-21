@@ -1,14 +1,11 @@
 FROM golang:1.9.1-alpine AS build
 RUN apk update
-ARG PF_RING_VERSION=6.6.0-stable
-RUN apk add --no-cache bison flex git gcc linux-headers libc-dev make util-linux
+RUN apk add --no-cache git gcc linux-headers libc-dev util-linux libpcap-dev
 
 ADD ./  /go/src/github.com/zededa/go-provision/
 ADD ./cmd/dataplane/itr  /go/src/github.com/zededa/go-provision/dataplane/itr
 ADD ./cmd/dataplane/etr  /go/src/github.com/zededa/go-provision/dataplane/etr
 ADD ./cmd/dataplane/fib  /go/src/github.com/zededa/go-provision/dataplane/fib
-ADD etc /opt/zededa/etc
-ADD README /opt/zededa/etc
 ADD etc /config
 ADD scripts/device-steps.sh \
     scripts/find-uplink.sh \
@@ -20,7 +17,6 @@ ADD examples /opt/zededa/examples
 ADD AssignableAdapters /var/tmp/zededa/AssignableAdapters
 ADD DeviceNetworkConfig /var/tmp/zededa/DeviceNetworkConfig
 
-RUN mkdir -p /tmp/github; cd /tmp/github; git clone -b ${PF_RING_VERSION} https://github.com/ntop/PF_RING.git; cd PF_RING/userland; make install; cp ../kernel/linux/pf_ring.h /usr/include/linux
 # XXX temporary until we have a version for all of baseOS/rootfs
 RUN (cd ./src/github.com/zededa/go-provision/; scripts/getversion.sh >/opt/zededa/bin/versioninfo)
 # Echo for builders enjoyment
@@ -42,9 +38,6 @@ COPY --from=build /var/tmp/zededa/AssignableAdapters /var/tmp/zededa/AssignableA
 COPY --from=build /var/tmp/zededa/DeviceNetworkConfig /var/tmp/zededa/DeviceNetworkConfig
 COPY --from=build /config /config
 COPY --from=build /go/bin/* /opt/zededa/bin/
-COPY --from=build /usr/local/lib/* /usr/local/lib/
-COPY --from=build /usr/local/include/* /opt/zededa/include/
-COPY --from=build /usr/include/linux/pf_ring.h /opt/zededa/include/linux/
 COPY --from=lisp /lisp /opt/zededa/lisp/
 COPY --from=lisp /usr/bin/pydoc /usr/bin/smtpd.py /usr/bin/python* /usr/bin/
 COPY --from=lisp /usr/lib/libpython* /usr/lib/libffi.so* /usr/lib/
