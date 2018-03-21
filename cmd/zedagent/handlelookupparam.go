@@ -24,6 +24,8 @@ import (
 )
 
 const (
+	deviceCertName          = identityDirname + "/device.cert.pem"
+	deviceKeyName           = identityDirname + "/device.key.pem"
 	infraFileName           = identityDirname + "/infra"
 	tmpDirname              = "/var/tmp/zededa"
 	zedserverConfigFileName = tmpDirname + "/zedserverconfig"
@@ -42,7 +44,7 @@ const (
 //  /var/tmp/zededa/zedserverconfig Written by us; zed server EIDs
 //  /var/tmp/zededa/uuid	Written by us
 //
-func handleLookUpParam(devConfig *zconfig.EdgeDevConfig) {
+func handleLookupParam(devConfig *zconfig.EdgeDevConfig) {
 	// XXX should we hadle changes at all? Want to update zedserverconfig
 	// but not rest.
 

@@ -11,31 +11,46 @@ import (
 	"github.com/zededa/go-provision/types"
 	"io/ioutil"
 	"log"
-	"strconv"
 )
 
 const (
-	infoFile    = "/run/wwan/serving-system.json"
-	metricsFile = "/run/wwan/signal-info.json"
+	infoFile     = "/run/wwan/serving-system.json"
+	metricsFile  = "/run/wwan/signal-info.json"
+	networksFile = "/run/wwan/networks-info.json"
 )
 
 type fileFormat map[string]interface{}
 
 func readLTEInfo() []types.MetricItem {
-	return readLTE(infoFile)
+	return readLTE(infoFile, "")
+}
+
+func readLTENetworks() []types.MetricItem {
+	return readLTE(networksFile, "lte-networks")
 }
 
 func readLTEMetrics() []types.MetricItem {
-	return readLTE(metricsFile)
+	return readLTE(metricsFile, "")
 }
 
-func readLTE(filename string) []types.MetricItem {
+func readLTE(filename string, verbatim string) []types.MetricItem {
 	var items []types.MetricItem
 	var m fileFormat
 
 	bytes, err := ioutil.ReadFile(filename)
 	if err != nil {
 		log.Printf("readLTE: %s\n", err)
+		return items
+	}
+	if verbatim != "" {
+		// Just return file content as a single string
+		if debug {
+			log.Printf("readLTE verbatim %s: %s\n",
+				verbatim, string(bytes))
+		}
+		info := types.MetricItem{Key: verbatim, Value: string(bytes)}
+		info.Type = types.MetricItemOther
+		items = append(items, info)
 		return items
 	}
 	err = json.Unmarshal(bytes, &m)
@@ -46,9 +61,8 @@ func readLTE(filename string) []types.MetricItem {
 	for k, v := range m {
 		info := types.MetricItem{Key: k, Value: parseAny(v)}
 
-		// XXX remove
-		// fmt.Printf("Got %s %v type %T\n", k, info.Value, info.Value)
 		// XXX Set Type to what? Guess based on type?
+		// Need to have providers include the type explicitly.
 		switch t := info.Value.(type) {
 		case uint64:
 			info.Type = types.MetricItemCounter
@@ -102,38 +116,9 @@ func parseAny(val interface{}) interface{} {
 		}
 	case string:
 		v := val.(string)
-		// XXX don't seem to need to parse these from
-		// inside quotes
-		if false {
-			b, err := strconv.ParseBool(v)
-			if err == nil {
-				return b
-			}
-			u, err := strconv.ParseUint(v, 10, 32)
-			if err == nil {
-				return uint32(u)
-			}
-			u, err = strconv.ParseUint(v, 10, 64)
-			if err == nil {
-				return u
-			}
-			f, err := strconv.ParseFloat(v, 32)
-			if err == nil {
-				return float32(f)
-			}
-		}
-		// Must be string
 		return v
 	default:
 		log.Printf("parseAny unknown %T\n", t)
 		return fmt.Sprintf("unknown type %T", t)
 	}
-}
-
-// XXX remove
-func XXXmain() {
-	res := readLTEInfo()
-	fmt.Printf("Info %v\n", res)
-	res = readLTEMetrics()
-	fmt.Printf("Metrics %v\n", res)
 }

@@ -6,7 +6,6 @@
 package main
 
 import (
-	"fmt"
 	"github.com/zededa/go-provision/types"
 	"log"
 	"strconv"
@@ -83,14 +82,21 @@ func compileOldAppInstanceIpsets(ollist []types.OverlayNetworkStatus,
 
 func createACLConfiglet(ifname string, isMgmt bool, ACLs []types.ACE,
 	ipVer int, overlayIP string) {
-	fmt.Printf("createACLConfiglet: ifname %s, ACLs %v\n", ifname, ACLs)
+	if debug {
+		log.Printf("createACLConfiglet: ifname %s, ACLs %v\n",
+			ifname, ACLs)
+	}
 	rules := aclToRules(ifname, ACLs, ipVer, overlayIP)
 	for _, rule := range rules {
-		fmt.Printf("createACLConfiglet: rule %v\n", rule)
+		if debug {
+			log.Printf("createACLConfiglet: rule %v\n", rule)
+		}
 		args := rulePrefix("-A", isMgmt, ipVer, rule)
 		if args == nil {
-			fmt.Printf("createACLConfiglet: skipping rule %v\n",
-				rule)
+			if debug {
+				log.Printf("createACLConfiglet: skipping rule %v\n",
+					rule)
+			}
 			continue
 		}
 		args = append(args, rule...)
@@ -141,9 +147,9 @@ func aclToRules(ifname string, ACLs []types.ACE, ipVer int,
 	}
 	// Implicit drop at the end with log before it
 	outArgs1 := []string{"-i", ifname, "-j", "LOG", "--log-prefix",
-		"FORWARD:FROM:", "--log-level", "6"}
+		"FORWARD:FROM:", "--log-level", "3"}
 	inArgs1 := []string{"-o", ifname, "-j", "LOG", "--log-prefix",
-		"FORWARD:TO:", "--log-level", "6"}
+		"FORWARD:TO:", "--log-level", "3"}
 	outArgs2 := []string{"-i", ifname, "-j", "DROP"}
 	inArgs2 := []string{"-o", ifname, "-j", "DROP"}
 	rulesList = append(rulesList, outArgs1, inArgs1, outArgs2, inArgs2)
@@ -233,8 +239,10 @@ func aceToRules(ifname string, ace types.ACE, ipVer int) IptablesRuleList {
 		outArgs = append(outArgs, []string{"-j", "ACCEPT"}...)
 		inArgs = append(inArgs, []string{"-j", "ACCEPT"}...)
 	}
-	fmt.Printf("outArgs %v\n", outArgs)
-	fmt.Printf("inArgs %v\n", inArgs)
+	if debug {
+		log.Printf("outArgs %v\n", outArgs)
+		log.Printf("inArgs %v\n", inArgs)
+	}
 	rulesList := IptablesRuleList{}
 	rulesList = append(rulesList, outArgs, inArgs)
 	if foundLimit {
@@ -243,8 +251,10 @@ func aceToRules(ifname string, ace types.ACE, ipVer int) IptablesRuleList {
 			[]string{"-j", "DROP"}...)
 		unlimitedInArgs = append(unlimitedInArgs,
 			[]string{"-j", "DROP"}...)
-		fmt.Printf("unlimitedOutArgs %v\n", unlimitedOutArgs)
-		fmt.Printf("unlimitedInArgs %v\n", unlimitedInArgs)
+		if debug {
+			log.Printf("unlimitedOutArgs %v\n", unlimitedOutArgs)
+			log.Printf("unlimitedInArgs %v\n", unlimitedInArgs)
+		}
 		rulesList = append(rulesList, unlimitedOutArgs, unlimitedInArgs)
 	}
 	return rulesList
@@ -351,8 +361,10 @@ func updateAppInstanceIpsets(newolConfig []types.OverlayNetworkConfig,
 
 func updateACLConfiglet(ifname string, isMgmt bool, oldACLs []types.ACE,
 	newACLs []types.ACE, ipVer int, overlayIP string) {
-	fmt.Printf("updateACLConfiglet: ifname %s, oldACLs %v newACLs %v\n",
-		ifname, oldACLs, newACLs)
+	if debug {
+		log.Printf("updateACLConfiglet: ifname %s, oldACLs %v newACLs %v\n",
+			ifname, oldACLs, newACLs)
+	}
 	oldRules := aclToRules(ifname, oldACLs, ipVer, overlayIP)
 	newRules := aclToRules(ifname, newACLs, ipVer, overlayIP)
 	// Look for old which should be deleted
@@ -360,11 +372,15 @@ func updateACLConfiglet(ifname string, isMgmt bool, oldACLs []types.ACE,
 		if containsRule(newRules, rule) {
 			continue
 		}
-		fmt.Printf("modifyACLConfiglet: delete rule %v\n", rule)
+		if debug {
+			log.Printf("modifyACLConfiglet: delete rule %v\n", rule)
+		}
 		args := rulePrefix("-D", isMgmt, ipVer, rule)
 		if args == nil {
-			fmt.Printf("modifyACLConfiglet: skipping delete rule %v\n",
-				rule)
+			if debug {
+				log.Printf("modifyACLConfiglet: skipping delete rule %v\n",
+					rule)
+			}
 			continue
 		}
 		args = append(args, rule...)
@@ -384,11 +400,15 @@ func updateACLConfiglet(ifname string, isMgmt bool, oldACLs []types.ACE,
 		if containsRule(oldRules, rule) {
 			continue
 		}
-		fmt.Printf("modifyACLConfiglet: add rule %v\n", rule)
+		if debug {
+			log.Printf("modifyACLConfiglet: add rule %v\n", rule)
+		}
 		args := rulePrefix("-I", isMgmt, ipVer, rule)
 		if args == nil {
-			fmt.Printf("modifyACLConfiglet: skipping insert rule %v\n",
-				rule)
+			if debug {
+				log.Printf("modifyACLConfiglet: skipping insert rule %v\n",
+					rule)
+			}
 			continue
 		}
 		args = append(args, rule...)
@@ -402,14 +422,21 @@ func updateACLConfiglet(ifname string, isMgmt bool, oldACLs []types.ACE,
 
 func deleteACLConfiglet(ifname string, isMgmt bool, ACLs []types.ACE,
 	ipVer int, overlayIP string) {
-	fmt.Printf("deleteACLConfiglet: ifname %s ACLs %v\n", ifname, ACLs)
+	if debug {
+		log.Printf("deleteACLConfiglet: ifname %s ACLs %v\n",
+			ifname, ACLs)
+	}
 	rules := aclToRules(ifname, ACLs, ipVer, overlayIP)
 	for _, rule := range rules {
-		fmt.Printf("deleteACLConfiglet: rule %v\n", rule)
+		if debug {
+			log.Printf("deleteACLConfiglet: rule %v\n", rule)
+		}
 		args := rulePrefix("-D", isMgmt, ipVer, rule)
 		if args == nil {
-			fmt.Printf("deleteACLConfiglet: skipping rule %v\n",
-				rule)
+			if debug {
+				log.Printf("deleteACLConfiglet: skipping rule %v\n",
+					rule)
+			}
 			continue
 		}
 		args = append(args, rule...)

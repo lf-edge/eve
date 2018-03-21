@@ -54,13 +54,14 @@ message Image {
 	string name = 2;
 
 	string sha256 = 3;
-	int64 size = 7;
+	int64 size = 7;           // deprecated
 	Format iformat = 4;
 
 	// if its signed image
 	SignatureInfo siginfo = 5;
 
 	string dsId = 6;
+	int64 sizeBytes = 8;
 }
 
 enum Target {
@@ -80,9 +81,10 @@ enum DriveType {
 
 message Drive {
 	Image image = 1;
-	int64 maxsize = 2;
+	int64 maxsize = 2;     // deprecated
 	bool readonly = 5;
 	bool preserve = 6;
 	DriveType drvtype = 8;
 	Target target = 9;
+	int64 maxsizebytes = 10;
 }

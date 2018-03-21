@@ -24,8 +24,9 @@ var addrChangeFunc addrChangeFnType
 // Returns the channels for route, addr, link updates
 func PbrInit(uplinks []string, freeUplinks []string, addrChangeFn addrChangeFnType) (chan netlink.RouteUpdate,
 	chan netlink.AddrUpdate, chan netlink.LinkUpdate) {
-	log.Printf("PbrInit(%v, %v)\n", uplinks, freeUplinks)
-
+	if debug {
+		log.Printf("PbrInit(%v, %v)\n", uplinks, freeUplinks)
+	}
 	setUplinks(uplinks)
 	setFreeUplinks(freeUplinks)
 	addrChangeFunc = addrChangeFn
@@ -97,7 +98,9 @@ func PbrRouteChange(change netlink.RouteUpdate) {
 		log.Printf("PbrRouteChange IfindexToName failed for %d: %s\n",
 			rt.LinkIndex, err)
 	} else if isFreeUplink(ifname) {
-		log.Printf("Applying to FreeTable: %v\n", rt)
+		if debug {
+			log.Printf("Applying to FreeTable: %v\n", rt)
+		}
 		doFreeTable = true
 	}
 	srt := rt
@@ -106,7 +109,10 @@ func PbrRouteChange(change netlink.RouteUpdate) {
 	// table unless the Priority differs. Different
 	// LinkIndex, Src, Scope doesn't matter.
 	if rt.Dst != nil && rt.Dst.IP.IsLinkLocalUnicast() {
-		fmt.Printf("Forcing IPv6 priority to %v\n", rt.LinkIndex)
+		if debug {
+			log.Printf("Forcing IPv6 priority to %v\n",
+				rt.LinkIndex)
+		}
 		// Hack to make the kernel routes not appear identical
 		srt.Priority = rt.LinkIndex
 	}
@@ -120,7 +126,9 @@ func PbrRouteChange(change netlink.RouteUpdate) {
 		myrt.Flags = 0
 	}
 	if change.Type == syscall.RTM_DELROUTE {
-		fmt.Printf("Received route del %v\n", rt)
+		if debug {
+			log.Printf("Received route del %v\n", rt)
+		}
 		if doFreeTable {
 			if err := netlink.RouteDel(&srt); err != nil {
 				log.Printf("Failed to remove %v from %d: %s\n",
@@ -132,7 +140,9 @@ func PbrRouteChange(change netlink.RouteUpdate) {
 				myrt, myrt.Table, err)
 		}
 	} else if change.Type == syscall.RTM_NEWROUTE {
-		fmt.Printf("Received route add %v\n", rt)
+		if debug {
+			log.Printf("Received route add %v\n", rt)
+		}
 		if doFreeTable {
 			if err := netlink.RouteAdd(&srt); err != nil {
 				log.Printf("Failed to add %v to %d: %s\n",
@@ -168,10 +178,16 @@ func PbrAddrChange(change netlink.AddrUpdate) {
 			log.Printf("PbrAddrChange IfindexToName failed for %d: %s\n",
 				change.LinkIndex, err)
 		} else if isUplink(ifname) {
-			log.Printf("Address change for uplink: %v\n", change)
+			if debug {
+				log.Printf("Address change for uplink: %v\n",
+					change)
+			}
 			addrChangeFunc(ifname)
 		} else {
-			log.Printf("Address change for non-uplink: %v\n", change)
+			if debug {
+				log.Printf("Address change for non-uplink: %v\n",
+					change)
+			}
 		}
 	}
 }
@@ -185,12 +201,17 @@ func PbrLinkChange(change netlink.LinkUpdate) {
 		new := IfindexToNameAdd(ifindex, ifname)
 		if new {
 			if isFreeUplink(ifname) {
-				log.Printf("PbrLinkChange moving to FreeTable %s\n",
-					ifname)
+				if debug {
+					log.Printf("PbrLinkChange moving to FreeTable %s\n",
+						ifname)
+				}
 				moveRoutesTable(0, ifindex, FreeTable)
 			}
 			if isUplink(ifname) {
-				log.Printf("Link change for uplink: %s\n", ifname)
+				if debug {
+					log.Printf("Link change for uplink: %s\n",
+						ifname)
+				}
 				addrChangeFunc(ifname)
 			}
 		}
@@ -204,7 +225,10 @@ func PbrLinkChange(change netlink.LinkUpdate) {
 			flushRoutesTable(MyTable, 0)
 			flushRules(ifindex)
 			if isUplink(ifname) {
-				log.Printf("Link change for uplink: %s\n", ifname)
+				if debug {
+					log.Printf("Link change for uplink: %s\n",
+						ifname)
+				}
 				addrChangeFunc(ifname)
 			}
 		}
@@ -216,7 +240,9 @@ var freeUplinkList []string // The subset we add to FreeTable
 
 // Can be called to update the list.
 func setFreeUplinks(freeUplinks []string) {
-	log.Printf("setFreeUplinks(%v)\n", freeUplinks)
+	if debug {
+		log.Printf("setFreeUplinks(%v)\n", freeUplinks)
+	}
 	// Determine which ones were added; moveRoutesTable to add to free table
 	for _, new := range freeUplinks {
 		found := false
@@ -289,17 +315,17 @@ func IfindexToNameAdd(index int, name string) bool {
 	if !ok {
 		// Note that we get RTM_NEWLINK even for link changes
 		// hence we don't print unless the entry is new
-		fmt.Printf("IfindexToNameAdd index %d name %s\n", index, name)
+		log.Printf("IfindexToNameAdd index %d name %s\n", index, name)
 		ifindexToName[index] = name
-		// fmt.Printf("ifindexToName post add %v\n", ifindexToName)
+		// log.Printf("ifindexToName post add %v\n", ifindexToName)
 		return true
 	} else if m != name {
 		// We get this when the vifs are created with "vif*" names
 		// and then changed to "bu*" etc.
-		fmt.Printf("IfindexToNameAdd name mismatch %s vs %s for %d\n",
+		log.Printf("IfindexToNameAdd name mismatch %s vs %s for %d\n",
 			m, name, index)
 		ifindexToName[index] = name
-		// fmt.Printf("ifindexToName post add %v\n", ifindexToName)
+		// log.Printf("ifindexToName post add %v\n", ifindexToName)
 		return false
 	} else {
 		return false
@@ -316,12 +342,15 @@ func IfindexToNameDel(index int, name string) bool {
 		log.Printf("IfindexToNameDel name mismatch %s vs %s for %d\n",
 			m, name, index)
 		delete(ifindexToName, index)
-		// fmt.Printf("ifindexToName post delete %v\n", ifindexToName)
+		// log.Printf("ifindexToName post delete %v\n", ifindexToName)
 		return true
 	} else {
-		fmt.Printf("IfindexToNameDel index %d name %s\n", index, name)
+		if debug {
+			log.Printf("IfindexToNameDel index %d name %s\n",
+				index, name)
+		}
 		delete(ifindexToName, index)
-		// fmt.Printf("ifindexToName post delete %v\n", ifindexToName)
+		// log.Printf("ifindexToName post delete %v\n", ifindexToName)
 		return true
 	}
 }
@@ -355,10 +384,12 @@ func IfindexToAddrsInit() {
 func IfindexToAddrsAdd(index int, addr net.IPNet) bool {
 	addrs, ok := ifindexToAddrs[index]
 	if !ok {
-		log.Printf("IfindexToAddrsAdd add %v for %d\n",
-			addr, index)
+		if debug {
+			log.Printf("IfindexToAddrsAdd add %v for %d\n",
+				addr, index)
+		}
 		ifindexToAddrs[index] = append(ifindexToAddrs[index], addr)
-		// fmt.Printf("ifindexToAddrs post add %v\n", ifindexToAddrs)
+		// log.Printf("ifindexToAddrs post add %v\n", ifindexToAddrs)
 		return true
 	}
 	found := false
@@ -371,10 +402,12 @@ func IfindexToAddrsAdd(index int, addr net.IPNet) bool {
 		}
 	}
 	if !found {
-		log.Printf("IfindexToAddrsAdd add %v for %d\n",
-			addr, index)
+		if debug {
+			log.Printf("IfindexToAddrsAdd add %v for %d\n",
+				addr, index)
+		}
 		ifindexToAddrs[index] = append(ifindexToAddrs[index], addr)
-		// fmt.Printf("ifindexToAddrs post add %v\n", ifindexToAddrs)
+		// log.Printf("ifindexToAddrs post add %v\n", ifindexToAddrs)
 	}
 	return !found
 }
@@ -391,11 +424,13 @@ func IfindexToAddrsDel(index int, addr net.IPNet) bool {
 		// Equal if containment in both directions?
 		if a.IP.Equal(addr.IP) &&
 			a.Contains(addr.IP) && addr.Contains(a.IP) {
-			log.Printf("IfindexToAddrsDel del %v for %d\n",
-				addr, index)
+			if debug {
+				log.Printf("IfindexToAddrsDel del %v for %d\n",
+					addr, index)
+			}
 			ifindexToAddrs[index] = append(ifindexToAddrs[index][:i],
 				ifindexToAddrs[index][i+1:]...)
-			// fmt.Printf("ifindexToAddrs post remove %v\n", ifindexToAddrs)
+			// log.Printf("ifindexToAddrs post remove %v\n", ifindexToAddrs)
 			// XXX should we check for zero and remove ifindex?
 			return true
 		}
@@ -427,8 +462,10 @@ func flushRoutesTable(table int, ifindex int) {
 	if err != nil {
 		log.Fatal("RouteList failed: %v\n", err)
 	}
-	fmt.Printf("flushRoutesTable(%d, %d) - got %d\n", table, ifindex,
-		len(routes))
+	if debug {
+		log.Printf("flushRoutesTable(%d, %d) - got %d\n",
+			table, ifindex, len(routes))
+	}
 	for _, rt := range routes {
 		if rt.Table != table {
 			continue
@@ -436,8 +473,10 @@ func flushRoutesTable(table int, ifindex int) {
 		if ifindex != 0 && rt.LinkIndex != ifindex {
 			continue
 		}
-		log.Printf("flushRoutesTable(%d, %d) deleting %v\n",
-			table, ifindex, rt)
+		if debug {
+			log.Printf("flushRoutesTable(%d, %d) deleting %v\n",
+				table, ifindex, rt)
+		}
 		if err := netlink.RouteDel(&rt); err != nil {
 			log.Fatal("flushRoutesTable - RouteDel %v failed %s\n",
 				rt, err)
@@ -461,8 +500,10 @@ func moveRoutesTable(srcTable int, ifindex int, dstTable int) {
 	if err != nil {
 		log.Fatal("RouteList failed: %v\n", err)
 	}
-	fmt.Printf("moveRoutesTable(%d, %d, %d) - got %d\n", srcTable, ifindex,
-		dstTable, len(routes))
+	if debug {
+		log.Printf("moveRoutesTable(%d, %d, %d) - got %d\n",
+			srcTable, ifindex, dstTable, len(routes))
+	}
 	for _, rt := range routes {
 		if rt.Table != srcTable {
 			continue
@@ -476,8 +517,10 @@ func moveRoutesTable(srcTable int, ifindex int, dstTable int) {
 		// table unless the Priority differs. Different
 		// LinkIndex, Src, Scope doesn't matter.
 		if rt.Dst != nil && rt.Dst.IP.IsLinkLocalUnicast() {
-			fmt.Printf("Forcing IPv6 priority to %v\n",
-				rt.LinkIndex)
+			if debug {
+				log.Printf("Forcing IPv6 priority to %v\n",
+					rt.LinkIndex)
+			}
 			// Hack to make the kernel routes not appear identical
 			art.Priority = rt.LinkIndex
 		}
@@ -486,8 +529,10 @@ func moveRoutesTable(srcTable int, ifindex int, dstTable int) {
 		if rt.Flags != 0 {
 			art.Flags = 0
 		}
-		log.Printf("moveRoutesTable(%d, %d, %d) adding %v\n",
-			srcTable, ifindex, dstTable, art)
+		if debug {
+			log.Printf("moveRoutesTable(%d, %d, %d) adding %v\n",
+				srcTable, ifindex, dstTable, art)
+		}
 		if err := netlink.RouteAdd(&art); err != nil {
 			log.Printf("moveRoutesTable failed to add %v to %d: %s\n",
 				art, art.Table, err)
@@ -504,7 +549,9 @@ func flushRules(ifindex int) {
 	if err != nil {
 		log.Fatal("RuleList failed: %v\n", err)
 	}
-	fmt.Printf("flushRules(%d) - got %d\n", ifindex, len(rules))
+	if debug {
+		log.Printf("flushRules(%d) - got %d\n", ifindex, len(rules))
+	}
 	for _, r := range rules {
 		if ifindex == 0 && r.Table != FreeTable {
 			continue
@@ -512,7 +559,9 @@ func flushRules(ifindex int) {
 		if ifindex != 0 && r.Table != FreeTable+ifindex {
 			continue
 		}
-		log.Printf("flushRules: RuleDel %v\n", r)
+		if debug {
+			log.Printf("flushRules: RuleDel %v\n", r)
+		}
 		if err := netlink.RuleDel(&r); err != nil {
 			log.Fatal("flushRules - RuleDel %v failed %s\n",
 				r, err)
@@ -531,7 +580,9 @@ func addSourceRule(ifindex int, p net.IPNet) {
 		r.Family = syscall.AF_INET6
 		r.Src = &net.IPNet{IP: p.IP, Mask: net.CIDRMask(128, 128)}
 	}
-	log.Printf("addSourceRule: RuleAdd %v\n", r)
+	if debug {
+		log.Printf("addSourceRule: RuleAdd %v\n", r)
+	}
 	// Avoid duplicate rules
 	_ = netlink.RuleDel(r)
 	if err := netlink.RuleAdd(r); err != nil {
@@ -551,7 +602,9 @@ func delSourceRule(ifindex int, p net.IPNet) {
 		r.Family = syscall.AF_INET6
 		r.Src = &net.IPNet{IP: p.IP, Mask: net.CIDRMask(128, 128)}
 	}
-	log.Printf("delSourceRule: RuleDel %v\n", r)
+	if debug {
+		log.Printf("delSourceRule: RuleDel %v\n", r)
+	}
 	if err := netlink.RuleDel(r); err != nil {
 		log.Printf("RuleDel %v failed with %s\n", r, err)
 		return

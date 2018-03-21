@@ -6,15 +6,14 @@ package main
 import (
 	"bytes"
 	"crypto/sha256"
-	"crypto/tls"
-	"crypto/x509"
 	"fmt"
 	"github.com/golang/protobuf/proto"
 	"github.com/satori/go.uuid"
 	"github.com/zededa/api/zconfig"
 	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/types"
-	"golang.org/x/crypto/ocsp"
+	"github.com/zededa/go-provision/zboot"
+	"github.com/zededa/go-provision/zedcloud"
 	"io/ioutil"
 	"log"
 	"mime"
@@ -41,34 +40,41 @@ var serverName string
 const (
 	identityDirname = "/config"
 	serverFilename  = identityDirname + "/server"
-	deviceCertName  = identityDirname + "/device.cert.pem"
-	deviceKeyName   = identityDirname + "/device.key.pem"
-	rootCertName    = identityDirname + "/root-certificate.pem"
 	uuidFileName    = identityDirname + "/uuid"
 )
 
 // A value of zero means we should use the default
 // All times are in seconds.
 type configItems struct {
-	configInterval          uint32
-	metricInterval          uint32
-	resetIfCloudGoneTime    uint32
-	fallbackIfCloudGoneTime uint32
-	// XXX max space for downloads?
-	// XXX LTE uplink usage policy?
+	configInterval          uint32 // Try get of device config
+	metricInterval          uint32 // push metrics to cloud
+	resetIfCloudGoneTime    uint32 // reboot if no cloud connectivity
+	fallbackIfCloudGoneTime uint32 // ... and shorter during upgrade
+	// XXX add max space for downloads?
+	// XXX add LTE uplink usage policy?
 }
 
-// XXX add code which sets timers from ConfigItems from cloud
-var configItemDefaults = configItems{configInterval: 10, metricInterval: 60,
-	resetIfCloudGoneTime: 168 * 3600, fallbackIfCloudGoneTime: 600}
+// Really a constant
+// We do a GET of config every 60 seconds,
+// PUT of metrics every 60 seconds,
+// if we don't hear anything from the cloud in a week, then we reboot,
+// and during a post-upgrade boot that time is reduced to 10 minutes.
+var configItemDefaults = configItems{configInterval: 60, metricInterval: 60,
+	resetIfCloudGoneTime: 7 * 24 * 3600, fallbackIfCloudGoneTime: 600}
+
+// XXX	resetIfCloudGoneTime: 300, fallbackIfCloudGoneTime: 60}
+
+var configItemCurrent = configItemDefaults
 
 type getconfigContext struct {
-	ledManagerCount int // Current count
-	// XXX add timer handles?
+	ledManagerCount             int // Current count
+	lastReceivedConfigFromCloud time.Time
+	configTickerHandle          interface{}
+	metricsTickerHandle         interface{}
 }
 
 // tlsConfig is initialized once i.e. effectively a constant
-var tlsConfig *tls.Config
+var zedcloudCtx zedcloud.ZedCloudContext
 
 // devUUID is set in handleConfigInit and never changed
 var devUUID uuid.UUID
@@ -89,29 +95,15 @@ func handleConfigInit() {
 	strTrim := strings.TrimSpace(string(bytes))
 	serverName = strings.Split(strTrim, ":")[0]
 
-	deviceCert, err := tls.LoadX509KeyPair(deviceCertName, deviceKeyName)
+	tlsConfig, err := zedcloud.GetTlsConfig(serverName, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
-	// Load CA cert
-	caCert, err := ioutil.ReadFile(rootCertName)
-	if err != nil {
-		log.Fatal(err)
-	}
-	caCertPool := x509.NewCertPool()
-	caCertPool.AppendCertsFromPEM(caCert)
-
-	tlsConfig = &tls.Config{
-		Certificates: []tls.Certificate{deviceCert},
-		ServerName:   serverName,
-		RootCAs:      caCertPool,
-		CipherSuites: []uint16{
-			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256},
-		// TLS 1.2 because we can
-		MinVersion: tls.VersionTLS12,
-	}
-	tlsConfig.BuildNameToCertificate()
+	zedcloudCtx.DeviceNetworkStatus = &deviceNetworkStatus
+	zedcloudCtx.TlsConfig = tlsConfig
+	zedcloudCtx.Debug = debug
+	zedcloudCtx.FailureFunc = zedCloudFailure
+	zedcloudCtx.SuccessFunc = zedCloudSuccess
 
 	b, err := ioutil.ReadFile(uuidFileName)
 	if err != nil {
@@ -122,23 +114,22 @@ func handleConfigInit() {
 	if err != nil {
 		log.Fatal("uuid.FromString", err, string(b))
 	}
-	fmt.Printf("Read UUID %s\n", devUUID)
+	log.Printf("Read UUID %s\n", devUUID)
 	zcdevUUID = devUUID
 }
 
 // Run a periodic fetch of the config
-// XXX have caller check for unchanged value?
-var currentConfigInterval time.Duration
 
 func configTimerTask(handleChannel chan interface{},
 	getconfigCtx *getconfigContext) {
 	configUrl := serverName + "/" + configApi
+	getconfigCtx.lastReceivedConfigFromCloud = time.Now()
 	iteration := 0
-	checkConnectivity := isZbootAvailable() && isCurrentPartitionStateInProgress()
-	getLatestConfig(configUrl, iteration, &checkConnectivity, getconfigCtx)
+	upgradeInprogress := zboot.IsAvailable() && zboot.IsCurrentPartitionStateInProgress()
+	rebootFlag := getLatestConfig(configUrl, iteration,
+		&upgradeInprogress, getconfigCtx)
 
-	interval := time.Duration(configItemDefaults.configInterval) * time.Second
-	currentConfigInterval = interval
+	interval := time.Duration(configItemCurrent.configInterval) * time.Second
 	max := float64(interval)
 	min := max * 0.3
 	ticker := flextimer.NewRangeTicker(time.Duration(min),
@@ -147,8 +138,11 @@ func configTimerTask(handleChannel chan interface{},
 	handleChannel <- ticker
 	for range ticker.C {
 		iteration += 1
-		getLatestConfig(configUrl, iteration, &checkConnectivity,
-			getconfigCtx)
+		// reboot flag is not set, go fetch new config
+		if rebootFlag == false {
+			rebootFlag = getLatestConfig(configUrl, iteration,
+				&upgradeInprogress, getconfigCtx)
+		}
 	}
 }
 
@@ -157,31 +151,47 @@ func triggerGetConfig(tickerHandle interface{}) {
 	flextimer.TickNow(tickerHandle)
 }
 
-// Called when configItemDefaults changes
+// Called when configItemCurrent changes
+// Assumes the caller has verifier that the interval has changed
 func updateConfigTimer(tickerHandle interface{}) {
-	interval := time.Duration(configItemDefaults.configInterval) * time.Second
-	if interval == currentConfigInterval {
-		return
-	}
-	log.Printf("updateConfigTimer() change from %v to %v\n",
-		currentConfigInterval, interval)
+	interval := time.Duration(configItemCurrent.configInterval) * time.Second
+	log.Printf("updateConfigTimer() change to %v\n", interval)
 	max := float64(interval)
 	min := max * 0.3
 	flextimer.UpdateRangeTicker(tickerHandle,
 		time.Duration(min), time.Duration(max))
-	if interval < currentConfigInterval {
-		// Force an immediate timout on decrease
-		flextimer.TickNow(tickerHandle)
-	}
-	currentConfigInterval = interval
+	// Force an immediate timout since timer could have decreased
+	flextimer.TickNow(tickerHandle)
 }
 
 // Start by trying the all the free uplinks and then all the non-free
 // until one succeeds in communicating with the cloud.
 // We use the iteration argument to start at a different point each time.
-func getLatestConfig(url string, iteration int, checkConnectivity *bool,
-	getconfigCtx *getconfigContext) {
-	resp, err := sendOnAllIntf(url, nil, iteration)
+// Returns a rebootFlag
+func getLatestConfig(url string, iteration int, upgradeInprogress *bool,
+	getconfigCtx *getconfigContext) bool {
+
+	// Did we exceed the time limits?
+	timePassed := time.Since(getconfigCtx.lastReceivedConfigFromCloud)
+
+	resetLimit := time.Second * time.Duration(configItemCurrent.resetIfCloudGoneTime)
+	if timePassed > resetLimit {
+		log.Printf("Exceeded outage for cloud connectivity by %d seconds- rebooting\n",
+			(timePassed-resetLimit)/time.Second)
+		execReboot(true)
+		return true
+	}
+	if *upgradeInprogress {
+		fallbackLimit := time.Second * time.Duration(configItemCurrent.fallbackIfCloudGoneTime)
+		if timePassed > fallbackLimit {
+			log.Printf("Exceeded fallback outage for cloud connectivity by %d seconds- rebooting\n",
+				(timePassed-fallbackLimit)/time.Second)
+			execReboot(true)
+			return true
+		}
+	}
+
+	resp, err := zedcloud.SendOnAllIntf(zedcloudCtx, url, nil, iteration)
 	if err != nil {
 		log.Printf("getLatestConfig failed: %s\n", err)
 		if getconfigCtx.ledManagerCount == 4 {
@@ -189,7 +199,7 @@ func getLatestConfig(url string, iteration int, checkConnectivity *bool,
 			types.UpdateLedManagerConfig(3)
 			getconfigCtx.ledManagerCount = 3
 		}
-		return
+		return false
 	} else {
 		defer resp.Body.Close()
 
@@ -197,14 +207,14 @@ func getLatestConfig(url string, iteration int, checkConnectivity *bool,
 		// active if it was inprogress
 		// XXX down the road we want more diagnostics and validation
 		// before we do this.
-		if *checkConnectivity && isCurrentPartitionStateInProgress() {
-			curPart := getCurrentPartition()
+		if *upgradeInprogress && zboot.IsCurrentPartitionStateInProgress() {
+			curPart := zboot.GetCurrentPartition()
 			log.Printf("Config Fetch Task, curPart %s inprogress\n",
 				curPart)
-			if err := markPartitionStateActive(); err != nil {
+			if err := zboot.MarkOtherPartitionStateActive(); err != nil {
 				log.Println(err)
 			} else {
-				*checkConnectivity = false
+				*upgradeInprogress = false
 			}
 		}
 
@@ -214,14 +224,14 @@ func getLatestConfig(url string, iteration int, checkConnectivity *bool,
 		// We should only require this connectivity once every 24 hours
 		// or so using a setable policy in the watchdog, but have
 		// a short timeout during validation of a image post upgrade.
-		zbootWatchdogOK()
+		zboot.WatchdogOK()
 
 		if err := validateConfigMessage(url, resp); err != nil {
 			log.Println("validateConfigMessage: ", err)
 			// Inform ledmanager about cloud connectivity
 			types.UpdateLedManagerConfig(3)
 			getconfigCtx.ledManagerCount = 3
-			return
+			return false
 		}
 
 		changed, config, err := readDeviceConfigProtoMessage(resp)
@@ -230,19 +240,21 @@ func getLatestConfig(url string, iteration int, checkConnectivity *bool,
 			// Inform ledmanager about cloud connectivity
 			types.UpdateLedManagerConfig(3)
 			getconfigCtx.ledManagerCount = 3
-			return
+			return false
 		}
 
 		// Inform ledmanager about config received from cloud
 		types.UpdateLedManagerConfig(4)
 		getconfigCtx.ledManagerCount = 4
+
+		getconfigCtx.lastReceivedConfigFromCloud = time.Now()
 		if !changed {
 			if debug {
 				log.Printf("Configuration from zedcloud is unchanged\n")
 			}
-			return
+			return false
 		}
-		inhaleDeviceConfig(config)
+		return inhaleDeviceConfig(config, getconfigCtx)
 	}
 }
 
@@ -278,7 +290,7 @@ func readDeviceConfigProtoMessage(r *http.Response) (bool, *zconfig.EdgeDevConfi
 
 	b, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		return false, nil, err
 	}
 	// compute sha256 of the image and match it
@@ -299,7 +311,8 @@ func readDeviceConfigProtoMessage(r *http.Response) (bool, *zconfig.EdgeDevConfi
 	return !same, config, nil
 }
 
-func inhaleDeviceConfig(config *zconfig.EdgeDevConfig) {
+// Returns a rebootFlag
+func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext) bool {
 	log.Printf("Inhaling config %v\n", config)
 
 	// if they match return
@@ -312,7 +325,7 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig) {
 		if err != nil {
 			log.Printf("Invalid UUID %s from cloud: %s\n",
 				devId.Uuid, err)
-			return
+			return false
 		}
 		if id != devUUID {
 			// XXX logic to handle re-registering a device private
@@ -328,19 +341,39 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig) {
 
 		}
 	}
+	handleLookupParam(config)
 
-	// delete old app configs, if any
-	checkCurrentAppFiles(config)
+	// clean up old config entries
+	if deleted := cleanupOldConfig(config); deleted {
+		log.Printf("Old Config removed, take a delay\n")
+		duration := time.Duration(immediate)
+		newConfigTimer := time.NewTimer(time.Second * duration)
+		<-newConfigTimer.C
+	}
 
-	// delete old base os configs, if any
-	checkCurrentBaseOsFiles(config)
+	// add new BaseOS/App instances
+	if parseConfig(config, getconfigCtx) {
+		return true
+	}
 
-	// add new App instances
-	parseConfig(config)
+	return false
 }
 
-func checkCurrentAppFiles(config *zconfig.EdgeDevConfig) {
+// clean up oldConfig, after newConfig
+// to maintain the refcount for certs
+func cleanupOldConfig(config *zconfig.EdgeDevConfig) bool {
 
+	// delete old app configs, if any
+	appDel := checkCurrentAppFiles(config)
+
+	// delete old base os configs, if any
+	baseDel := checkCurrentBaseOsFiles(config)
+	return appDel || baseDel
+}
+
+func checkCurrentAppFiles(config *zconfig.EdgeDevConfig) bool {
+
+	deleted := false
 	// get the current set of App files
 	curAppFilenames, err := ioutil.ReadDir(zedmanagerConfigDirname)
 	if err != nil {
@@ -363,22 +396,26 @@ func checkCurrentAppFiles(config *zconfig.EdgeDevConfig) {
 					break
 				}
 			}
-			// app instance not found, delete
+			// app instance not found, delete app instance
+			// config holder file
 			if !found {
 				log.Printf("Remove app config %s\n", curAppFilename)
 				err := os.Remove(zedmanagerConfigDirname + "/" + curAppFilename)
 				if err != nil {
 					log.Println("Old config: ", err)
 				}
-				// also remove the certifiates holder config
+				// also remove the certificates config holder file
 				os.Remove(zedagentCertObjConfigDirname + "/" + curAppFilename)
+				deleted = true
 			}
 		}
 	}
+	return deleted
 }
 
-func checkCurrentBaseOsFiles(config *zconfig.EdgeDevConfig) {
+func checkCurrentBaseOsFiles(config *zconfig.EdgeDevConfig) bool {
 
+	deleted := false
 	// get the current set of baseOs files
 	curBaseOsFilenames, err := ioutil.ReadDir(zedagentBaseOsConfigDirname)
 	if err != nil {
@@ -403,45 +440,22 @@ func checkCurrentBaseOsFiles(config *zconfig.EdgeDevConfig) {
 			}
 			// baseOS instance not found, delete
 			if !found {
-				log.Printf("Remove baseOs config %s\n", curBaseOsFilename)
-				err := os.Remove(zedagentBaseOsConfigDirname + "/" + curBaseOsFilename)
-				if err != nil {
-					log.Printf("Old config:%v\n", err)
-				}
-				// remove the certificates holder config
-				os.Remove(zedagentCertObjConfigDirname + "/" + curBaseOsFilename)
-				// also remove the partition info holder config
-				os.Remove(configDir + "/" + curBaseOsFilename)
+				removeBaseOsEntry(curBaseOsFilename)
+				deleted = true
 			}
 		}
 	}
+	return deleted
 }
 
-func stapledCheck(connState *tls.ConnectionState) bool {
-	issuer := connState.VerifiedChains[0][1]
-	resp, err := ocsp.ParseResponse(connState.OCSPResponse, issuer)
-	if err != nil {
-		log.Println("error parsing response: ", err)
-		return false
-	}
-	now := time.Now()
-	age := now.Unix() - resp.ProducedAt.Unix()
-	remain := resp.NextUpdate.Unix() - now.Unix()
-	if debug {
-		log.Printf("OCSP age %d, remain %d\n", age, remain)
-	}
-	if remain < 0 {
-		log.Println("OCSP expired.")
-		return false
-	}
-	if resp.Status == ocsp.Good {
-		if debug {
-			log.Println("Certificate Status Good.")
-		}
-	} else if resp.Status == ocsp.Unknown {
-		log.Println("Certificate Status Unknown")
-	} else {
-		log.Println("Certificate Status Revoked")
-	}
-	return resp.Status == ocsp.Good
+func removeBaseOsEntry(baseOsFilename string) {
+
+	uuidStr := strings.Split(baseOsFilename, ".")[0]
+	log.Printf("removeBaseOsEntry %s, remove baseOs entry\n", uuidStr)
+
+	// remove base os holder config file
+	os.Remove(zedagentBaseOsConfigDirname + "/" + baseOsFilename)
+
+	// remove certificates holder config file
+	os.Remove(zedagentCertObjConfigDirname + "/" + baseOsFilename)
 }

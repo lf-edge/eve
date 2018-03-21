@@ -26,12 +26,14 @@ func MaybeAddAppNetworkConfig(aiConfig types.AppInstanceConfig,
 		displayName)
 
 	if appNetworkConfig == nil {
-		fmt.Printf("create appNetwork config map\n")
+		if debug {
+			log.Printf("create appNetwork config map\n")
+		}
 		appNetworkConfig = make(map[string]types.AppNetworkConfig)
 	}
 	changed := false
 	if m, ok := appNetworkConfig[key]; ok {
-		fmt.Printf("appNetwork config already exists for %s\n", key)
+		log.Printf("appNetwork config already exists for %s\n", key)
 		if len(aiConfig.OverlayNetworkList) != len(m.OverlayNetworkList) {
 			log.Println("Unsupported: Changed number of overlays for ",
 				aiConfig.UUIDandVersion)
@@ -75,7 +77,9 @@ func MaybeAddAppNetworkConfig(aiConfig types.AppInstanceConfig,
 			}
 		}
 	} else {
-		fmt.Printf("appNetwork config add for %s\n", key)
+		if debug {
+			log.Printf("appNetwork config add for %s\n", key)
+		}
 		changed = true
 	}
 	if changed {
@@ -116,7 +120,9 @@ func MaybeRemoveAppNetworkConfig(uuidStr string) {
 	log.Printf("MaybeRemoveAppNetworkConfig for %s\n", uuidStr)
 
 	if appNetworkConfig == nil {
-		fmt.Printf("create AppNetwork config map\n")
+		if debug {
+			log.Printf("create AppNetwork config map\n")
+		}
 		appNetworkConfig = make(map[string]types.AppNetworkConfig)
 	}
 	if _, ok := appNetworkConfig[uuidStr]; !ok {
@@ -162,12 +168,14 @@ func handleAppNetworkStatusModify(ctxArg interface{}, statusFilename string,
 		return
 	}
 	if status.IsZedmanager {
-		fmt.Printf("Ignoring IsZedmanager appNetwork status for %v\n",
+		log.Printf("Ignoring IsZedmanager appNetwork status for %v\n",
 			key)
 		return
 	}
 	if appNetworkStatus == nil {
-		fmt.Printf("create appNetwork status map\n")
+		if debug {
+			log.Printf("create appNetwork status map\n")
+		}
 		appNetworkStatus = make(map[string]types.AppNetworkStatus)
 	}
 	appNetworkStatus[key] = *status
@@ -194,7 +202,9 @@ func handleAppNetworkStatusDelete(ctxArg interface{}, statusFilename string) {
 		log.Printf("handleAppNetworkStatusDelete for %s - not found\n",
 			key)
 	} else {
-		fmt.Printf("appNetwork Status map delete for %v\n", key)
+		if debug {
+			log.Printf("appNetwork Status map delete for %v\n", key)
+		}
 		delete(appNetworkStatus, key)
 		removeAIStatusUUID(m.UUIDandVersion.UUID.String())
 	}

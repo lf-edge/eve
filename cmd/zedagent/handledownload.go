@@ -36,6 +36,57 @@ func initDownloaderMaps() {
 	}
 }
 
+func downloaderConfigGet(key string) *types.DownloaderConfig {
+	if config, ok := downloaderConfigMap[key]; ok {
+		log.Printf("%s, downloader config exists, refcount %d\n",
+			key, config.RefCount)
+		return &config
+	}
+	log.Printf("%s, downloader config is absent\n", key)
+	return nil
+}
+
+func downloaderConfigSet(key string, config *types.DownloaderConfig) {
+	downloaderConfigMap[key] = *config
+}
+
+func downloaderConfigDelete(key string) bool {
+
+	config := downloaderConfigGet(key)
+	if config == nil {
+		return false
+	}
+
+	if config.RefCount > 1 {
+		log.Printf("%s, decrementing refCount(%d)\n", key, config.RefCount)
+		config.RefCount -= 1
+		downloaderConfigSet(key, config)
+		return false
+	}
+
+	delete(downloaderConfigMap, key)
+	log.Printf("%s, downloader config delete done\n", key)
+	return true
+}
+
+func downloaderStatusGet(key string) *types.DownloaderStatus {
+	if status, ok := downloaderStatusMap[key]; ok {
+		return &status
+	}
+	return nil
+}
+
+func downloaderStatusSet(key string, status *types.DownloaderStatus) {
+	downloaderStatusMap[key] = *status
+}
+
+func downloaderStatusDelete(key string) {
+	log.Printf("%s, downloader status entry delete\n", key)
+	if status := downloaderStatusGet(key); status != nil {
+		delete(downloaderStatusMap, key)
+	}
+}
+
 func createDownloaderConfig(objType string, safename string,
 	sc *types.StorageConfig) {
 
@@ -44,16 +95,16 @@ func createDownloaderConfig(objType string, safename string,
 	key := formLookupKey(objType, safename)
 	log.Printf("createDownloaderConfig for %s\n", key)
 
-	if m, ok := downloaderConfigMap[key]; ok {
-		log.Printf("createDownloaderConfig for %s, exists, refcount %d\n",
-			key, m.RefCount)
+	if m := downloaderConfigGet(key); m != nil {
 		m.RefCount += 1
+		downloaderConfigSet(key, m)
 	} else {
+		log.Printf("%s, downloader config add\n", safename)
 		n := types.DownloaderConfig{
 			Safename:        safename,
 			DownloadURL:     sc.DownloadURL,
 			UseFreeUplinks:  false,
-			MaxSize:         sc.MaxSize,
+			Size:            sc.Size,
 			TransportMethod: sc.TransportMethod,
 			Dpath:           sc.Dpath,
 			ApiKey:          sc.ApiKey,
@@ -61,12 +112,12 @@ func createDownloaderConfig(objType string, safename string,
 			ImageSha256:     sc.ImageSha256,
 			RefCount:        1,
 		}
-		downloaderConfigMap[key] = n
+		downloaderConfigSet(key, &n)
 	}
 
-	configFilename := fmt.Sprintf("%s/%s/config/%s.json",
-		downloaderBaseDirname, objType, safename)
-	writeDownloaderConfig(downloaderConfigMap[key], configFilename)
+	writeDownloaderConfig(objType, safename, downloaderConfigGet(key))
+
+	log.Printf("%s, createDownloaderConfig done\n", safename)
 }
 
 func updateDownloaderStatus(objType string, status *types.DownloaderStatus) {
@@ -83,21 +134,23 @@ func updateDownloaderStatus(objType string, status *types.DownloaderStatus) {
 	}
 
 	changed := false
-	if m, ok := downloaderStatusMap[key]; ok {
+	if m := downloaderStatusGet(key); m != nil {
 		if status.State != m.State {
-			log.Printf("Download state %s, state changed from %v to %v\n",
+			log.Printf("%s, download state, state changed from %v to %v\n",
 				key, m.State, status.State)
 			changed = true
+		} else {
+			log.Printf("%s, download state, no change\n", key)
 		}
 	} else {
-		log.Printf("Downloader status map %s add, state %v\n",
+		log.Printf("%s downloader status add, state %v\n",
 			key, status.State)
 		changed = true
 	}
 
 	if changed {
 
-		downloaderStatusMap[key] = *status
+		downloaderStatusSet(key, status)
 
 		switch objType {
 		case baseOsObj:
@@ -113,70 +166,52 @@ func updateDownloaderStatus(objType string, status *types.DownloaderStatus) {
 		}
 	}
 
-	log.Printf("updateDownloaderStatus for %s, Done\n", key)
+	log.Printf("%s, updateDownloaderStatus done\n", key)
 }
 
 func removeDownloaderConfig(objType string, safename string) {
 
 	key := formLookupKey(objType, safename)
 
-	log.Printf("removeDownloaderConfig for %s\n", key)
+	log.Printf("%s, removeDownloaderConfig\n", key)
 
-	if _, ok := downloaderConfigMap[key]; !ok {
-		log.Printf("removeDownloaderConfig for %s, Config absent\n", key)
-		return
+	if ok := downloaderConfigDelete(key); ok {
+
+		configFilename := fmt.Sprintf("%s/%s/config/%s.json",
+			downloaderBaseDirname, objType, safename)
+
+		if err := os.Remove(configFilename); err != nil {
+			log.Println(err)
+		}
 	}
-
-	log.Printf("removeDownloaderConfig for %s, Downloader config map entry delete\n", key)
-	delete(downloaderConfigMap, key)
-
-	configFilename := fmt.Sprintf("%s/%s/config/%s.json",
-		downloaderBaseDirname, objType, safename)
-
-	if err := os.Remove(configFilename); err != nil {
-		log.Println(err)
-	}
-	log.Printf("removeDownloaderConfig for %s, Done\n", key)
+	log.Printf("%s, removeDownloaderConfig done\n", key)
 }
 
 func removeDownloaderStatus(objType string, statusFilename string) {
-
 	key := formLookupKey(objType, statusFilename)
-
-	log.Printf("removeDownloaderStatus for %s\n", key)
-
-	if _, ok := downloaderStatusMap[key]; !ok {
-		log.Printf("removeDownloaderStatus for %s, Downloader Status Map absent\n",
-			key)
-		return
-	}
-	log.Printf("removeDownloaderStatus for %s, Downloader status map entry delete\n", key)
-	delete(downloaderStatusMap, key)
-
-	log.Printf("removeDownloaderStatus done for %s\n", key)
+	downloaderStatusDelete(key)
 }
 
-func lookupDownloaderStatus(objType string, safename string) (types.DownloaderStatus, error) {
+func lookupDownloaderStatus(objType string, safename string) (*types.DownloaderStatus, error) {
 
 	key := formLookupKey(objType, safename)
 
-	if m, ok := downloaderStatusMap[key]; ok {
+	if m := downloaderStatusGet(key); m != nil {
 		return m, nil
 	}
-	return types.DownloaderStatus{}, errors.New("No DownloaderStatus")
+	return nil, errors.New("No DownloaderStatus")
 }
 
 func checkStorageDownloadStatus(objType string, uuidStr string,
-	config []types.StorageConfig, status []types.StorageStatus) (bool, types.SwState, string, time.Time) {
+	config []types.StorageConfig, status []types.StorageStatus) *types.RetStatus {
 
+	ret := &types.RetStatus{}
 	key := formLookupKey(objType, uuidStr)
-	log.Printf("checkStorageDownloadStatus for %s\n", key)
+	log.Printf("%s, checkStorageDownloadStatus\n", key)
 
-	allErrors := ""
-	var errorTime time.Time
-
-	changed := false
-	minState := types.MAXSTATE
+	ret.Changed = false
+	ret.AllErrors = ""
+	ret.MinState = types.MAXSTATE
 
 	for i, sc := range config {
 
@@ -184,7 +219,12 @@ func checkStorageDownloadStatus(objType string, uuidStr string,
 
 		safename := types.UrlToSafename(sc.DownloadURL, sc.ImageSha256)
 
-		log.Printf("checkStorageDownloadStatus for %s\n", safename)
+		log.Printf("%s, image status %v\n", safename, ss.State)
+		if ss.State == types.INSTALLED {
+			ret.MinState = ss.State
+			log.Printf("%s,is already installed\n", safename)
+			continue
+		}
 
 		if sc.ImageSha256 != "" {
 			// Shortcut if image is already verified
@@ -199,14 +239,14 @@ func checkStorageDownloadStatus(objType string, uuidStr string,
 					log.Printf("%s, !HasVerifierRef\n", safename)
 					vs.RefCount += 1
 					ss.HasVerifierRef = true
-					changed = true
+					ret.Changed = true
 				}
-				if minState > vs.State {
-					minState = vs.State
+				if ret.MinState > vs.State {
+					ret.MinState = vs.State
 				}
 				if vs.State != ss.State {
 					ss.State = vs.State
-					changed = true
+					ret.Changed = true
 				}
 				continue
 			}
@@ -216,38 +256,39 @@ func checkStorageDownloadStatus(objType string, uuidStr string,
 			log.Printf("%s, !HasDownloaderRef\n", safename)
 			createDownloaderConfig(objType, safename, &sc)
 			ss.HasDownloaderRef = true
-			changed = true
+			ret.Changed = true
 		}
 
 		ds, err := lookupDownloaderStatus(objType, safename)
 		if err != nil {
 			log.Printf("%s, %s \n", safename, err)
-			minState = types.DOWNLOAD_STARTED
+			ret.MinState = types.DOWNLOAD_STARTED
 			continue
 		}
 
-		if minState > ds.State {
-			minState = ds.State
+		if ret.MinState > ds.State {
+			ret.MinState = ds.State
 		}
 		if ds.State != ss.State {
 			ss.State = ds.State
-			changed = true
+			ret.Changed = true
 		}
 
-		switch ds.State {
+		switch ss.State {
 		case types.INITIAL:
-			log.Printf("%s, Downloader status error, %s\n",
+			log.Printf("%s, downloader error, %s\n",
 				key, ds.LastErr)
 			ss.Error = ds.LastErr
-			allErrors = appendError(allErrors, "downloader",
+			ret.AllErrors = appendError(ret.AllErrors, "downloader",
 				ds.LastErr)
 			ss.ErrorTime = ds.LastErrTime
-			changed = true
+			ret.ErrorTime = ss.ErrorTime
+			ret.Changed = true
 		case types.DOWNLOAD_STARTED:
 			// Nothing to do
 		case types.DOWNLOADED:
 
-			log.Printf("%s, Downloaded\n", safename)
+			log.Printf("%s, is downloaded\n", safename)
 			// if verification is needed
 			if sc.ImageSha256 != "" {
 				// start verifier for this object
@@ -255,20 +296,20 @@ func checkStorageDownloadStatus(objType string, uuidStr string,
 					err := createVerifierConfig(objType, safename, &sc)
 					if err == nil {
 						ss.HasVerifierRef = true
-						changed = true
+						ret.Changed = true
 					} else {
-						allErrors = appendError(allErrors, "downloader", err.Error())
+						ret.AllErrors = appendError(ret.AllErrors, "downloader", err.Error())
 					}
 				}
 			}
 		}
 	}
 
-	if minState == types.MAXSTATE {
-		minState = types.DOWNLOADED
+	if ret.MinState == types.MAXSTATE {
+		ret.MinState = types.DOWNLOADED
 	}
 
-	return changed, minState, allErrors, errorTime
+	return ret
 }
 
 func installDownloadedObjects(objType string, uuidStr string,
@@ -276,7 +317,7 @@ func installDownloadedObjects(objType string, uuidStr string,
 
 	ret := true
 	key := formLookupKey(objType, uuidStr)
-	log.Printf("installDownloadedObjects for %s\n", key)
+	log.Printf("%s, installDownloadedObjects\n", key)
 
 	for i, sc := range config {
 
@@ -292,7 +333,7 @@ func installDownloadedObjects(objType string, uuidStr string,
 		}
 	}
 
-	log.Printf("installDownloadedObjects for %s, Done %v\n", key, ret)
+	log.Printf("%s, installDownloadedObjects done %v\n", key, ret)
 	return ret
 }
 
@@ -300,14 +341,14 @@ func installDownloadedObjects(objType string, uuidStr string,
 // the final installation directory is mentioned,
 // move the object there
 func installDownloadedObject(objType string, safename string,
-	config types.StorageConfig, status *types.StorageStatus) {
+	config types.StorageConfig, status *types.StorageStatus) error {
 
 	var ret error
 	var srcFilename string = objectDownloadDirname + "/" + objType
 
 	key := formLookupKey(objType, safename)
 
-	log.Printf("installDownloadedObject %s for %s, %v\n", objType, safename, status.State)
+	log.Printf("%s, installDownloadedObject(%s, %v)\n", safename, objType, status.State)
 
 	// if the object is in downloaded state,
 	// pick from pending directory
@@ -316,13 +357,13 @@ func installDownloadedObject(objType string, safename string,
 	switch status.State {
 
 	case types.INSTALLED:
-		log.Printf("%s, Already installed\n", key)
-		return
+		log.Printf("%s, already installed\n", key)
+		return nil
 
 	case types.DOWNLOADED:
 		if config.ImageSha256 != "" {
-			log.Printf("%s, Pending verification\n", key)
-			return
+			log.Printf("%s, verification pending\n", key)
+			return nil
 		}
 		srcFilename += "/pending/" + safename
 		break
@@ -334,7 +375,7 @@ func installDownloadedObject(objType string, safename string,
 
 	default:
 		log.Printf("%s, still not ready (%d)\n", key, status.State)
-		return
+		return nil
 	}
 
 	// ensure the file is present
@@ -358,16 +399,28 @@ func installDownloadedObject(objType string, safename string,
 			log.Printf("%s, Unsupported Object Type %v\n", safename, objType)
 		}
 	} else {
-		log.Printf("%s, final dir not set %v\n", safename, objType)
+		errStr := fmt.Sprintf("%s, final dir not set %v\n", safename, objType)
+		log.Println(errStr)
+		status.Error = errStr
+		status.ErrorTime = time.Now()
+		ret = errors.New(status.Error)
 	}
 
 	if ret == nil {
 		status.State = types.INSTALLED
-		log.Printf("installDownloadedObject for %s, installation done\n", key)
+		log.Printf("%s, installation done\n", key)
 	}
+	return ret
 }
 
-func writeDownloaderConfig(config types.DownloaderConfig, configFilename string) {
+func writeDownloaderConfig(objType string, safename string,
+	config *types.DownloaderConfig) {
+	if config == nil {
+		return
+	}
+
+	configFilename := fmt.Sprintf("%s/%s/config/%s.json",
+		downloaderBaseDirname, objType, safename)
 
 	bytes, err := json.Marshal(config)
 	if err != nil {

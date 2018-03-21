@@ -20,7 +20,9 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/hardware"
+	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
 	"io/ioutil"
@@ -31,6 +33,7 @@ import (
 )
 
 const (
+	agentName = "ledmanager"
 	ledConfigDirName = "/var/tmp/ledmanager/config"
 )
 
@@ -71,8 +74,12 @@ var debug bool
 var Version = "No version specified"
 
 func main() {
-	log.SetOutput(os.Stdout)
-	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
+	logf, err := agentlog.Init(agentName)
+	if err != nil {
+	       log.Fatal(err)
+	}
+	defer logf.Close()
+
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug")
 	flag.Parse()
@@ -81,10 +88,13 @@ func main() {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
-	log.Printf("Starting ledmanager\n")
+	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("Starting %s\n", agentName)
 
 	model := hardware.GetHardwareModel()
-	fmt.Printf("Got HardwareModel %s\n", model)
+	log.Printf("Got HardwareModel %s\n", model)
 
 	var blinkFunc Blink200msFunc
 	var initFunc BlinkInitFunc
@@ -137,7 +147,7 @@ func handleLedBlinkModify(ctxArg interface{}, configFilename string,
 	ctx := ctxArg.(*ledManagerContext)
 
 	if configFilename != "ledconfig" {
-		fmt.Printf("handleLedBlinkModify: ignoring %s\n", configFilename)
+		log.Printf("handleLedBlinkModify: ignoring %s\n", configFilename)
 		return
 	}
 	// Supress work and logging if no change
@@ -156,7 +166,7 @@ func handleLedBlinkDelete(ctxArg interface{}, configFilename string) {
 	ctx := ctxArg.(*ledManagerContext)
 
 	if configFilename != "ledconfig" {
-		fmt.Printf("handleLedBlinkDelete: ignoring %s\n", configFilename)
+		log.Printf("handleLedBlinkDelete: ignoring %s\n", configFilename)
 		return
 	}
 	// XXX or should we tell the blink go routine to exit?

@@ -9,7 +9,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"flag"
@@ -18,26 +17,30 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/satori/go.uuid"
 	"github.com/zededa/api/zmet"
+	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/devicenetwork"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/types"
-	"golang.org/x/crypto/ocsp"
+	"github.com/zededa/go-provision/zedcloud"
 	"io/ioutil"
 	"log"
 	"mime"
 	"net"
 	"net/http"
-	"net/http/httptrace"
 	"os"
 	"strings"
 	"time"
 )
 
 const (
-	tmpDirname = "/var/tmp/zededa"
-	DNCDirname = "/var/tmp/zededa/DeviceNetworkConfig"
-	maxDelay   = time.Second * 600 // 10 minutes
+	tmpDirname  = "/var/tmp/zededa"
+	DNCDirname  = "/var/tmp/zededa/DeviceNetworkConfig"
+	maxDelay    = time.Second * 600 // 10 minutes
+	uuidMaxWait = time.Second * 60  // 1 minute
 )
+
+// Really a constant
+var nilUUID uuid.UUID
 
 // Set from Makefile
 var Version = "No version specified"
@@ -60,8 +63,12 @@ var Version = "No version specified"
 //  /var/tmp/zededa/zedrouterconfig.json	Written by lookupParam operation
 //
 func main() {
-	log.SetOutput(os.Stdout)
-	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
+	logf, err := agentlog.Init("client")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer logf.Close()
+
 	versionPtr := flag.Bool("v", false, "Version")
 	oldPtr := flag.Bool("o", false, "Old use of prov01")
 	forcePtr := flag.Bool("f", false, "Force using onboarding cert")
@@ -97,7 +104,6 @@ func main() {
 	onboardKeyName := identityDirname + "/onboard.key.pem"
 	deviceCertName := identityDirname + "/device.cert.pem"
 	deviceKeyName := identityDirname + "/device.key.pem"
-	rootCertName := identityDirname + "/root-certificate.pem"
 	serverFileName := identityDirname + "/server"
 	oldServerFileName := identityDirname + "/oldserver"
 	infraFileName := identityDirname + "/infra"
@@ -105,12 +111,22 @@ func main() {
 	zedserverConfigFileName := tmpDirname + "/zedserverconfig"
 	zedrouterConfigFileName := tmpDirname + "/zedrouterconfig.json"
 
-	var hasDeviceNetworkStatus = false
+	var oldUUID uuid.UUID
+	b, err := ioutil.ReadFile(uuidFileName)
+	if err == nil {
+		uuidStr := strings.TrimSpace(string(b))
+		oldUUID, err = uuid.FromString(uuidStr)
+		if err != nil {
+			log.Printf("UUID file ignored: %s\n", err)
+		}
+	}
+
 	var deviceNetworkStatus types.DeviceNetworkStatus
 
 	model := hardware.GetHardwareModel()
 	DNCFilename := fmt.Sprintf("%s/%s.json", DNCDirname, model)
-	if _, err := os.Stat(DNCFilename); err == nil {
+	addrCount := 0
+	for addrCount == 0 {
 		deviceNetworkConfig, err := devicenetwork.GetDeviceNetworkConfig(DNCFilename)
 		if err != nil {
 			log.Fatal(err)
@@ -120,15 +136,30 @@ func main() {
 			log.Printf("%s from MakeDeviceNetworkStatus\n", err)
 			// Proceed even if some uplinks are missing
 		}
-		addrCount := types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
-		fmt.Printf("Have %d uplinks addresses to use\n", addrCount)
-		if addrCount != 0 {
-			hasDeviceNetworkStatus = true
-			// Inform ledmanager that we have uplink addresses
-			types.UpdateLedManagerConfig(2)
+		addrCount = types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
+		if addrCount == 0 {
+			// If we already know a uuid we can skip
+			if operations["getUuid"] && oldUUID != nilUUID {
+				log.Printf("Already have a UUID %s; declaring success\n",
+					oldUUID.String())
+				return
+			}
+			log.Printf("Waiting for some uplink addresses to use\n")
+			delay := time.Second
+			log.Printf("Retrying in %d seconds\n",
+				delay/time.Second)
+			time.Sleep(delay)
 		}
 	}
+	log.Printf("Have %d uplinks addresses to use\n", addrCount)
 
+	// Inform ledmanager that we have uplink addresses
+	types.UpdateLedManagerConfig(2)
+
+	zedcloudCtx := zedcloud.ZedCloudContext{
+		DeviceNetworkStatus: &deviceNetworkStatus,
+		Debug:               true,
+	}
 	var onboardCert, deviceCert tls.Certificate
 	var deviceCertPem []byte
 	deviceCertSet := false
@@ -158,14 +189,6 @@ func main() {
 		deviceCertSet = true
 	}
 
-	// Load CA cert
-	caCert, err := ioutil.ReadFile(rootCertName)
-	if err != nil {
-		log.Fatal(err)
-	}
-	caCertPool := x509.NewCertPool()
-	caCertPool.AppendCertsFromPEM(caCert)
-
 	server, err := ioutil.ReadFile(serverFileName)
 	if err != nil {
 		log.Fatal(err)
@@ -186,87 +209,27 @@ func main() {
 	// EID to connect.
 	ACLPromisc := false
 	if _, err := os.Stat(infraFileName); err == nil {
-		fmt.Printf("Setting ACLPromisc\n")
+		log.Printf("Setting ACLPromisc\n")
 		ACLPromisc = true
 	}
 
 	// Post something without a return type.
 	// Returns true when done; false when retry
-	myPost := func(tlsConfig *tls.Config, retryCount int,
-		url string, b *bytes.Buffer) bool {
-		var localAddr net.IP
-		if hasDeviceNetworkStatus {
-			localAddr, err = types.GetLocalAddrAny(deviceNetworkStatus,
-				retryCount, "")
-			if err != nil {
-				log.Fatal(err)
-			}
-		}
-		localTCPAddr := net.TCPAddr{IP: localAddr}
-		fmt.Printf("Connecting to %s/%s using source %v\n",
-			serverNameAndPort, url, localTCPAddr)
-		d := net.Dialer{LocalAddr: &localTCPAddr}
-		transport := &http.Transport{
-			TLSClientConfig: tlsConfig,
-			Dial:            d.Dial,
-		}
-		client := &http.Client{Transport: transport}
-
-		// Should we distinguish retry due to inappropriate source
-		// IP ("no suitable address found") and retry due to server
-		// side response errors such as 401? In both cases
-		// we don't want to retry immediately
-
-		req, err := http.NewRequest("POST",
-			"https://"+serverNameAndPort+url, b)
+	myPost := func(retryCount int, url string, b *bytes.Buffer) bool {
+		resp, err := zedcloud.SendOnAllIntf(zedcloudCtx,
+			serverNameAndPort+url, b, retryCount)
 		if err != nil {
-			fmt.Println(err)
-			return false
-		}
-		req.Header.Add("Content-Type", "application/x-proto-binary")
-		trace := &httptrace.ClientTrace{
-			GotConn: func(connInfo httptrace.GotConnInfo) {
-				fmt.Printf("Got RemoteAddr: %+v, LocalAddr: %+v\n",
-					connInfo.Conn.RemoteAddr(),
-					connInfo.Conn.LocalAddr())
-			},
-		}
-		req = req.WithContext(httptrace.WithClientTrace(req.Context(),
-			trace))
-		resp, err := client.Do(req)
-		if err != nil {
-			fmt.Println(err)
+			log.Println(err)
 			return false
 		}
 		defer resp.Body.Close()
-		connState := resp.TLS
-		if connState == nil {
-			fmt.Println("no TLS connection state")
-			// Inform ledmanager about broken cloud connectivity
-			types.UpdateLedManagerConfig(10)
-			return false
-		}
-
-		if connState.OCSPResponse == nil ||
-			!stapledCheck(connState) {
-			if connState.OCSPResponse == nil {
-				fmt.Println("no OCSP response")
-			} else {
-				fmt.Println("OCSP stapled check failed")
-			}
-			//XXX OSCP is not implemented in cloud side so
-			// commenting out it for now. Should be:
-			// Inform ledmanager about broken cloud connectivity
-			// types.UpdateLedManagerConfig(10)
-			// return false
-		}
 
 		// Inform ledmanager about cloud connectivity
 		types.UpdateLedManagerConfig(3)
 
 		contents, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			fmt.Println(err)
+			log.Println(err)
 			return false
 		}
 
@@ -274,115 +237,64 @@ func main() {
 		case http.StatusOK:
 			// Inform ledmanager about existence in cloud
 			types.UpdateLedManagerConfig(4)
-			fmt.Printf("%s StatusOK\n", url)
+			log.Printf("%s StatusOK\n", url)
 		case http.StatusCreated:
 			// Inform ledmanager about existence in cloud
 			types.UpdateLedManagerConfig(4)
-			fmt.Printf("%s StatusCreated\n", url)
+			log.Printf("%s StatusCreated\n", url)
 		case http.StatusConflict:
 			// Inform ledmanager about brokenness
 			types.UpdateLedManagerConfig(10)
-			fmt.Printf("%s StatusConflict\n", url)
+			log.Printf("%s StatusConflict\n", url)
 			// Retry until fixed
-			fmt.Printf("%s\n", string(contents))
+			log.Printf("%s\n", string(contents))
 			return false
 		default:
-			fmt.Printf("%s statuscode %d %s\n",
+			log.Printf("%s statuscode %d %s\n",
 				url, resp.StatusCode,
 				http.StatusText(resp.StatusCode))
-			fmt.Printf("%s\n", string(contents))
+			log.Printf("%s\n", string(contents))
 			return false
 		}
 
 		contentType := resp.Header.Get("Content-Type")
 		if contentType == "" {
-			fmt.Printf("%s no content-type\n", url)
+			log.Printf("%s no content-type\n", url)
 			return false
 		}
 		mimeType, _, err := mime.ParseMediaType(contentType)
 		if err != nil {
-			fmt.Printf("%s ParseMediaType failed %v\n", url, err)
+			log.Printf("%s ParseMediaType failed %v\n", url, err)
 			return false
 		}
 		switch mimeType {
 		case "application/x-proto-binary":
 		case "application/json":
 		case "text/plain":
-			fmt.Printf("Received reply %s\n", string(contents))
+			log.Printf("Received reply %s\n", string(contents))
 		default:
-			fmt.Println("Incorrect Content-Type " + mimeType)
+			log.Println("Incorrect Content-Type " + mimeType)
 			return false
 		}
 		return true
 	}
 
 	// XXX remove later
-	oldMyPost := func(tlsConfig *tls.Config, retryCount int,
-		url string, b *bytes.Buffer) bool {
-		var localAddr net.IP
-		if hasDeviceNetworkStatus {
-			localAddr, err = types.GetLocalAddrAny(deviceNetworkStatus,
-				retryCount, "")
-			if err != nil {
-				log.Fatal(err)
-			}
-		}
-		localTCPAddr := net.TCPAddr{IP: localAddr}
-		fmt.Printf("Connecting to %s/%s using source %v\n",
-			serverNameAndPort, url, localTCPAddr)
-		d := net.Dialer{LocalAddr: &localTCPAddr}
-		transport := &http.Transport{
-			TLSClientConfig: tlsConfig,
-			Dial:            d.Dial,
-		}
-		client := &http.Client{Transport: transport}
-		req, err := http.NewRequest("POST",
-			"https://"+serverNameAndPort+url, b)
+	oldMyPost := func(retryCount int, url string, b *bytes.Buffer) bool {
+		resp, err := zedcloud.SendOnAllIntf(zedcloudCtx,
+			serverNameAndPort+url, b, retryCount)
 		if err != nil {
-			fmt.Println(err)
-			return false
-		}
-		req.Header.Add("Content-Type", "application/json")
-		trace := &httptrace.ClientTrace{
-			GotConn: func(connInfo httptrace.GotConnInfo) {
-				fmt.Printf("Got RemoteAddr: %+v, LocalAddr: %+v\n",
-					connInfo.Conn.RemoteAddr(),
-					connInfo.Conn.LocalAddr())
-			},
-		}
-		req = req.WithContext(httptrace.WithClientTrace(req.Context(),
-			trace))
-		resp, err := client.Do(req)
-		if err != nil {
-			fmt.Println(err)
+			log.Println(err)
 			return false
 		}
 		defer resp.Body.Close()
-		connState := resp.TLS
-		if connState == nil {
-			fmt.Println("no TLS connection state")
-			// Inform ledmanager about broken cloud connectivity
-			types.UpdateLedManagerConfig(10)
-			return false
-		}
 
-		if connState.OCSPResponse == nil ||
-			!stapledCheck(connState) {
-			if connState.OCSPResponse == nil {
-				fmt.Println("no OCSP response")
-			} else {
-				fmt.Println("OCSP stapled check failed")
-			}
-			// Inform ledmanager about broken cloud connectivity
-			types.UpdateLedManagerConfig(10)
-			return false
-		}
 		// Inform ledmanager about cloud connectivity
 		types.UpdateLedManagerConfig(3)
 
 		contents, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			fmt.Println(err)
+			log.Println(err)
 			return false
 		}
 
@@ -390,41 +302,41 @@ func main() {
 		case http.StatusOK:
 			// Inform ledmanager about existence in cloud
 			types.UpdateLedManagerConfig(4)
-			fmt.Printf("%s StatusOK\n", url)
+			log.Printf("%s StatusOK\n", url)
 		case http.StatusCreated:
 			// Inform ledmanager about existence in cloud
 			types.UpdateLedManagerConfig(4)
-			fmt.Printf("%s StatusCreated\n", url)
+			log.Printf("%s StatusCreated\n", url)
 		case http.StatusConflict:
 			// Inform ledmanager about brokenness
 			types.UpdateLedManagerConfig(10)
-			fmt.Printf("%s StatusConflict\n", url)
+			log.Printf("%s StatusConflict\n", url)
 			// Retry until fixed
-			fmt.Printf("%s\n", string(contents))
+			log.Printf("%s\n", string(contents))
 			return false
 		default:
-			fmt.Printf("%s statuscode %d %s\n",
+			log.Printf("%s statuscode %d %s\n",
 				url, resp.StatusCode,
 				http.StatusText(resp.StatusCode))
-			fmt.Printf("%s\n", string(contents))
+			log.Printf("%s\n", string(contents))
 			return false
 		}
 
 		contentType := resp.Header.Get("Content-Type")
 		if contentType == "" {
-			fmt.Printf("%s no content-type\n", url)
+			log.Printf("%s no content-type\n", url)
 			return false
 		}
 		mimeType, _, err := mime.ParseMediaType(contentType)
 		if err != nil {
-			fmt.Printf("%s ParseMediaType failed %v\n", url, err)
+			log.Printf("%s ParseMediaType failed %v\n", url, err)
 			return false
 		}
 		switch mimeType {
 		case "application/json":
-			fmt.Printf("%s\n", string(contents))
+			log.Printf("%s\n", string(contents))
 		default:
-			fmt.Println("Incorrect Content-Type " + mimeType)
+			log.Println("Incorrect Content-Type " + mimeType)
 			return false
 		}
 		return true
@@ -432,154 +344,92 @@ func main() {
 
 	// Returns true when done; false when retry
 	selfRegister := func(retryCount int) bool {
-		// Setup HTTPS client
-		tlsConfig := &tls.Config{
-			Certificates: []tls.Certificate{onboardCert},
-			ServerName:   serverName,
-			RootCAs:      caCertPool,
-			CipherSuites: []uint16{
-				tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-				tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256},
-			// TLS 1.2 because we can
-			MinVersion: tls.VersionTLS12,
+		tlsConfig, err := zedcloud.GetTlsConfig(serverName, &onboardCert)
+		if err != nil {
+			log.Println(err)
+			return false
 		}
-		tlsConfig.BuildNameToCertificate()
-
+		zedcloudCtx.TlsConfig = tlsConfig
 		registerCreate := &zmet.ZRegisterMsg{
 			PemCert: []byte(base64.StdEncoding.EncodeToString(deviceCertPem)),
 		}
 		b, err := proto.Marshal(registerCreate)
 		if err != nil {
 			log.Println(err)
+			return false
 		}
-		return myPost(tlsConfig, retryCount, "/api/v1/edgedevice/register", bytes.NewBuffer(b))
+		return myPost(retryCount, "/api/v1/edgedevice/register", bytes.NewBuffer(b))
 	}
 
 	// XXX remove later
 	oldSelfRegister := func(retryCount int) bool {
 		// Setup HTTPS client
-		tlsConfig := &tls.Config{
-			Certificates: []tls.Certificate{onboardCert},
-			ServerName:   serverName,
-			RootCAs:      caCertPool,
-			CipherSuites: []uint16{
-				tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-				tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256},
-			// TLS 1.2 because we can
-			MinVersion: tls.VersionTLS12,
+		tlsConfig, err := zedcloud.GetTlsConfig(serverName, &onboardCert)
+		if err != nil {
+			log.Println(err)
+			return false
 		}
-		tlsConfig.BuildNameToCertificate()
+		zedcloudCtx.TlsConfig = tlsConfig
 
 		rc := types.RegisterCreate{PemCert: deviceCertPem}
 		b := new(bytes.Buffer)
 		json.NewEncoder(b).Encode(rc)
-		return oldMyPost(tlsConfig, retryCount, "/rest/self-register", b)
+		return oldMyPost(retryCount, "/rest/self-register", b)
 	}
 
 	// Returns true when done; false when retry
-	lookupParam := func(tlsConfig *tls.Config, retryCount int,
-		device *types.DeviceDb) bool {
+	lookupParam := func(retryCount int, device *types.DeviceDb) bool {
 		url := "/rest/device-param"
-		var localAddr net.IP
-		if hasDeviceNetworkStatus {
-			localAddr, err = types.GetLocalAddrAny(deviceNetworkStatus,
-				retryCount, "")
-			if err != nil {
-				log.Fatal(err)
-			}
-		}
-		localTCPAddr := net.TCPAddr{IP: localAddr}
-		fmt.Printf("Connecting to %s/%s using source %v\n",
-			serverNameAndPort, url, localTCPAddr)
-		d := net.Dialer{LocalAddr: &localTCPAddr}
-		transport := &http.Transport{
-			TLSClientConfig: tlsConfig,
-			Dial:            d.Dial,
-		}
-		client := &http.Client{Transport: transport}
-
-		req, err := http.NewRequest("GET",
-			"https://"+serverNameAndPort+url, nil)
+		resp, err := zedcloud.SendOnAllIntf(zedcloudCtx,
+			serverNameAndPort+url, nil, retryCount)
 		if err != nil {
-			fmt.Println(err)
-			return false
-		}
-		trace := &httptrace.ClientTrace{
-			GotConn: func(connInfo httptrace.GotConnInfo) {
-				fmt.Printf("Got RemoteAddr: %+v, LocalAddr: %+v\n",
-					connInfo.Conn.RemoteAddr(),
-					connInfo.Conn.LocalAddr())
-			},
-		}
-		req = req.WithContext(httptrace.WithClientTrace(req.Context(),
-			trace))
-		resp, err := client.Do(req)
-		if err != nil {
-			fmt.Println(err)
+			log.Println(err)
 			return false
 		}
 		defer resp.Body.Close()
-		connState := resp.TLS
-		if connState == nil {
-			log.Println("no TLS connection state")
-			// Inform ledmanager about broken cloud connectivity
-			types.UpdateLedManagerConfig(10)
-			return false
-		}
-		if connState.OCSPResponse == nil ||
-			!stapledCheck(connState) {
-			if connState.OCSPResponse == nil {
-				fmt.Println("no OCSP response")
-			} else {
-				fmt.Println("OCSP stapled check failed")
-			}
-			// Inform ledmanager about brokenness
-			types.UpdateLedManagerConfig(10)
-			return false
-		}
 
 		// Inform ledmanager about connectivity to cloud
 		types.UpdateLedManagerConfig(3)
 
 		contents, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			fmt.Println(err)
+			log.Println(err)
 			return false
 		}
 		switch resp.StatusCode {
 		case http.StatusOK:
 			// Inform ledmanager about device existence in cloud
 			types.UpdateLedManagerConfig(4)
-			fmt.Printf("device-param StatusOK\n")
+			log.Printf("device-param StatusOK\n")
 		case http.StatusNotFound:
-			fmt.Printf("device-param StatusNotFound\n")
+			log.Printf("device-param StatusNotFound\n")
 			return false
 		default:
-			fmt.Printf("device-param statuscode %d %s\n",
+			log.Printf("device-param statuscode %d %s\n",
 				resp.StatusCode,
 				http.StatusText(resp.StatusCode))
-			fmt.Printf("%s\n", string(contents))
+			log.Printf("%s\n", string(contents))
 			return false
 		}
 		contentType := resp.Header.Get("Content-Type")
 		if contentType == "" {
-			fmt.Printf("device-param no content-type\n")
+			log.Printf("device-param no content-type\n")
 			return false
 		}
 		mimeType, _, err := mime.ParseMediaType(contentType)
 		if err != nil {
-			fmt.Printf("device-param ParseMediaType failed %v\n", err)
+			log.Printf("device-param ParseMediaType failed %v\n", err)
 			return false
 		}
 		switch mimeType {
 		case "application/json":
 			break
 		default:
-			fmt.Println("Incorrect Content-Type " + mimeType)
+			log.Println("Incorrect Content-Type " + mimeType)
 			return false
 		}
 		if err := json.Unmarshal(contents, &device); err != nil {
-			fmt.Println(err)
+			log.Println(err)
 			return false
 		}
 		return true
@@ -588,89 +438,30 @@ func main() {
 	// Get something without a return type; used by ping
 	// Returns true when done; false when retry.
 	// Returns the response when done. Note caller must do resp.Body.Close()
-	myGet := func(tlsConfig *tls.Config, url string, retryCount int) (bool, *http.Response) {
-		var localAddr net.IP
-		if hasDeviceNetworkStatus {
-			localAddr, err = types.GetLocalAddrAny(deviceNetworkStatus,
-				retryCount, "")
-			if err != nil {
-				log.Fatal(err)
-			}
-		}
-		localTCPAddr := net.TCPAddr{IP: localAddr}
-		fmt.Printf("Connecting to %s/%s using source %v\n",
-			serverNameAndPort, url, localTCPAddr)
-		d := net.Dialer{LocalAddr: &localTCPAddr}
-		transport := &http.Transport{
-			TLSClientConfig: tlsConfig,
-			Dial:            d.Dial,
-		}
-		client := &http.Client{Transport: transport}
-
-		// Should we distinguish retry due to inappropriate source
-		// IP ("no suitable address found") and retry due to server
-		// side response errors such as 401? In both cases
-		// we don't want to retry immediately
-
-		req, err := http.NewRequest("GET",
-			"https://"+serverNameAndPort+url, nil)
+	myGet := func(url string, retryCount int) (bool, *http.Response) {
+		resp, err := zedcloud.SendOnAllIntf(zedcloudCtx,
+			serverNameAndPort+url, nil, retryCount)
 		if err != nil {
-			fmt.Println(err)
+			log.Println(err)
 			return false, nil
 		}
-		trace := &httptrace.ClientTrace{
-			GotConn: func(connInfo httptrace.GotConnInfo) {
-				fmt.Printf("Got RemoteAddr: %+v, LocalAddr: %+v\n",
-					connInfo.Conn.RemoteAddr(),
-					connInfo.Conn.LocalAddr())
-			},
-		}
-		req = req.WithContext(httptrace.WithClientTrace(req.Context(),
-			trace))
-		resp, err := client.Do(req)
-		if err != nil {
-			fmt.Println(err)
-			return false, nil
-		}
+		// Perform resp.Body.Close() except in success case
 
-		connState := resp.TLS
-		if connState == nil {
-			fmt.Println("no TLS connection state")
-			// Inform ledmanager about broken cloud connectivity
-			types.UpdateLedManagerConfig(10)
-			resp.Body.Close()
-			return false, nil
-		}
-
-		if connState.OCSPResponse == nil ||
-			!stapledCheck(connState) {
-			if connState.OCSPResponse == nil {
-				fmt.Println("no OCSP response")
-			} else {
-				fmt.Println("OCSP stapled check failed")
-			}
-			//XXX OSCP is not implemented in cloud side so
-			// commenting out it for now. Should be:
-			// Inform ledmanager about broken cloud connectivity
-			// types.UpdateLedManagerConfig(10)
-			// resp.Body.Close()
-			// return false, nil
-		}
 		switch resp.StatusCode {
 		case http.StatusOK:
-			fmt.Printf("%s StatusOK\n", url)
+			log.Printf("%s StatusOK\n", url)
 			return true, resp
 		case http.StatusCreated:
-			fmt.Printf("%s StatusCreated\n", url)
+			log.Printf("%s StatusCreated\n", url)
 			resp.Body.Close()
 			return false, nil
 		default:
-			fmt.Printf("%s statuscode %d %s\n",
+			log.Printf("%s statuscode %d %s\n",
 				url, resp.StatusCode,
 				http.StatusText(resp.StatusCode))
 			contents, err := ioutil.ReadAll(resp.Body)
 			if err == nil {
-				fmt.Printf("Received %s\n", string(contents))
+				log.Printf("Received %s\n", string(contents))
 			}
 			resp.Body.Close()
 			return false, nil
@@ -680,25 +471,19 @@ func main() {
 	// Setup HTTPS client for deviceCert unless force
 	var cert tls.Certificate
 	if forceOnboardingCert || operations["selfRegister"] {
-		fmt.Printf("Using onboarding cert\n")
+		log.Printf("Using onboarding cert\n")
 		cert = onboardCert
 	} else if deviceCertSet {
-		fmt.Printf("Using device cert\n")
+		log.Printf("Using device cert\n")
 		cert = deviceCert
 	} else {
 		log.Fatalf("No device certificate for %v\n", operations)
 	}
-	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		ServerName:   serverName,
-		RootCAs:      caCertPool,
-		CipherSuites: []uint16{
-			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256},
-		// TLS 1.2 because we can
-		MinVersion: tls.VersionTLS12,
+	tlsConfig, err := zedcloud.GetTlsConfig(serverName, &cert)
+	if err != nil {
+		log.Fatal(err)
 	}
-	tlsConfig.BuildNameToCertificate()
+	zedcloudCtx.TlsConfig = tlsConfig
 
 	var addInfoDevice *types.AdditionalInfoDevice
 	if operations["lookupParam"] {
@@ -731,7 +516,7 @@ func main() {
 			var resp *http.Response
 
 			time.Sleep(delay)
-			done, resp = myGet(tlsConfig, url, retryCount)
+			done, resp = myGet(url, retryCount)
 			if done {
 				resp.Body.Close()
 				continue
@@ -783,7 +568,7 @@ func main() {
 			// Create and write with initial values
 			// XXX ignoring any error
 			devUUID, _ = uuid.NewV4()
-			fmt.Printf("Created UUID %s\n", devUUID)
+			log.Printf("Created UUID %s\n", devUUID)
 		} else {
 			url := "/api/v1/edgedevice/config"
 			retryCount := 0
@@ -793,7 +578,7 @@ func main() {
 				var resp *http.Response
 
 				time.Sleep(delay)
-				done, resp = myGet(tlsConfig, url, retryCount)
+				done, resp = myGet(url, retryCount)
 				if done {
 					defer resp.Body.Close()
 					var err error
@@ -814,23 +599,17 @@ func main() {
 				log.Printf("Retrying config in %d seconds\n",
 					delay/time.Second)
 			}
-			b, err := ioutil.ReadFile(uuidFileName)
-			if err == nil {
-				uuidStr := strings.TrimSpace(string(b))
-				oldUUID, err := uuid.FromString(uuidStr)
-				if err != nil {
-					fmt.Printf("Got config with UUID %s\n",
-						devUUID)
-				} else if oldUUID != devUUID {
+			if oldUUID != nilUUID {
+				if oldUUID != devUUID {
 					log.Printf("Replacing existing UUID %s\n",
 						oldUUID.String())
 				} else {
-					fmt.Printf("No change to UUID %s\n",
+					log.Printf("No change to UUID %s\n",
 						devUUID)
 					doWrite = false
 				}
 			} else {
-				fmt.Printf("Got config with UUID %s\n", devUUID)
+				log.Printf("Got config with UUID %s\n", devUUID)
 			}
 			// Inform ledmanager about config received from cloud
 			types.UpdateLedManagerConfig(4)
@@ -841,7 +620,7 @@ func main() {
 			if err != nil {
 				log.Fatal("WriteFile", err, uuidFileName)
 			}
-			fmt.Printf("Wrote UUID %s\n", devUUID)
+			log.Printf("Wrote UUID %s\n", devUUID)
 		}
 	}
 
@@ -861,7 +640,7 @@ func main() {
 		if err != nil {
 			log.Fatal("uuid.FromString", err, string(b))
 		}
-		fmt.Printf("Read UUID %s\n", devUUID)
+		log.Printf("Read UUID %s\n", devUUID)
 
 		retryCount := 0
 		done := false
@@ -869,7 +648,7 @@ func main() {
 		device := types.DeviceDb{}
 		for !done {
 			time.Sleep(delay)
-			done = lookupParam(tlsConfig, retryCount, &device)
+			done = lookupParam(retryCount, &device)
 			if done {
 				continue
 			}
@@ -898,13 +677,13 @@ func main() {
 		// RFC 5952. The iid is printed as an integer.
 		sigdata := fmt.Sprintf("[%d]%s",
 			device.LispInstance, device.EID.String())
-		fmt.Printf("sigdata (len %d) %s\n", len(sigdata), sigdata)
+		log.Printf("sigdata (len %d) %s\n", len(sigdata), sigdata)
 
 		hasher := sha256.New()
 		hasher.Write([]byte(sigdata))
 		hash := hasher.Sum(nil)
-		fmt.Printf("hash (len %d) % x\n", len(hash), hash)
-		fmt.Printf("base64 hash %s\n",
+		log.Printf("hash (len %d) % x\n", len(hash), hash)
+		log.Printf("base64 hash %s\n",
 			base64.StdEncoding.EncodeToString(hash))
 
 		var signature string
@@ -917,19 +696,19 @@ func main() {
 			if err != nil {
 				log.Fatal("ecdsa.Sign: ", err)
 			}
-			fmt.Printf("r.bytes %d s.bytes %d\n", len(r.Bytes()),
+			log.Printf("r.bytes %d s.bytes %d\n", len(r.Bytes()),
 				len(s.Bytes()))
 			sigres := r.Bytes()
 			sigres = append(sigres, s.Bytes()...)
-			fmt.Printf("sigres (len %d): % x\n", len(sigres), sigres)
+			log.Printf("sigres (len %d): % x\n", len(sigres), sigres)
 			signature = base64.StdEncoding.EncodeToString(sigres)
-			fmt.Println("signature:", signature)
+			log.Println("signature:", signature)
 		}
-		fmt.Printf("UserName %s\n", device.UserName)
-		fmt.Printf("MapServers %s\n", device.LispMapServers)
-		fmt.Printf("Lisp IID %d\n", device.LispInstance)
-		fmt.Printf("EID %s\n", device.EID)
-		fmt.Printf("EID hash length %d\n", device.EIDHashLen)
+		log.Printf("UserName %s\n", device.UserName)
+		log.Printf("MapServers %s\n", device.LispMapServers)
+		log.Printf("Lisp IID %d\n", device.LispInstance)
+		log.Printf("EID %s\n", device.EID)
+		log.Printf("EID hash length %d\n", device.EIDHashLen)
 
 		// write zedserverconfig file with hostname to EID mappings
 		f, err := os.Create(zedserverConfigFileName)
@@ -955,7 +734,7 @@ func main() {
 				device.ClientAddr, err)
 		} else {
 			nat := !IsMyAddress(publicIP)
-			fmt.Printf("NAT %v, publicIP %v\n", nat, publicIP)
+			log.Printf("NAT %v, publicIP %v\n", nat, publicIP)
 		}
 
 		// Write an AppNetworkConfig for the ZedManager application
@@ -1002,7 +781,7 @@ func main() {
 
 func writeNetworkConfig(config *types.AppNetworkConfig,
 	configFilename string) {
-	fmt.Printf("Writing AppNetworkConfig to %s\n", configFilename)
+	log.Printf("Writing AppNetworkConfig to %s\n", configFilename)
 	b, err := json.Marshal(config)
 	if err != nil {
 		log.Fatal(err, "json Marshal AppNetworkConfig")
@@ -1037,29 +816,4 @@ func IsMyAddress(clientIP net.IP) bool {
 		}
 	}
 	return false
-}
-
-func stapledCheck(connState *tls.ConnectionState) bool {
-	issuer := connState.VerifiedChains[0][1]
-	resp, err := ocsp.ParseResponse(connState.OCSPResponse, issuer)
-	if err != nil {
-		log.Println("error parsing response: ", err)
-		return false
-	}
-	now := time.Now()
-	age := now.Unix() - resp.ProducedAt.Unix()
-	remain := resp.NextUpdate.Unix() - now.Unix()
-	fmt.Printf("OCSP age %d, remain %d\n", age, remain)
-	if remain < 0 {
-		fmt.Println("OCSP expired.")
-		return false
-	}
-	if resp.Status == ocsp.Good {
-		fmt.Println("Certificate Status Good.")
-	} else if resp.Status == ocsp.Unknown {
-		fmt.Println("Certificate Status Unknown")
-	} else {
-		fmt.Println("Certificate Status Revoked")
-	}
-	return resp.Status == ocsp.Good
 }

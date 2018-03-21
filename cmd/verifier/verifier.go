@@ -24,6 +24,8 @@ import (
 	"encoding/pem"
 	"flag"
 	"fmt"
+	"github.com/zededa/go-provision/agentlog"
+	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
 	"io"
@@ -39,8 +41,9 @@ import (
 const (
 	appImgObj = "appImg.obj"
 	baseOsObj = "baseOs.obj"
+	agentName = "verifier"
 
-	moduleName            = "verifier"
+	moduleName            = agentName
 	zedBaseDirname        = "/var/tmp"
 	zedRunDirname         = "/var/run"
 	baseDirname           = zedBaseDirname + "/" + moduleName
@@ -77,24 +80,31 @@ type verifierContext struct {
 }
 
 func main() {
-	log.SetOutput(os.Stdout)
-	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
+	logf, err := agentlog.Init(agentName)
+	if err != nil {
+	       log.Fatal(err)
+	}
+	defer logf.Close()
+
 	versionPtr := flag.Bool("v", false, "Version")
 	flag.Parse()
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
-	log.Printf("Starting verifier\n")
+	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("Starting %s\n", agentName)
 
 	for _, ot := range verifierObjTypes {
-		watch.CleanupRestartedObj("verifier", ot)
+		watch.CleanupRestartedObj(agentName, ot)
 	}
 	handleInit()
 
 	// Report to zedmanager that init is done
 	for _, ot := range verifierObjTypes {
-		watch.SignalRestartedObj("verifier", ot)
+		watch.SignalRestartedObj(agentName, ot)
 	}
 
 	// Any state needed by handler functions
@@ -623,7 +633,7 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 	// Read the root cerificates from /config
 	rootCertificate, err := ioutil.ReadFile(rootCertFileName)
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		cerr := fmt.Sprintf("failed to find root certificate")
 		return cerr
 	}

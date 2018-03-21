@@ -120,10 +120,9 @@ type EIDOverlayConfig struct {
 // - "ramdisk"
 // - "device_tree"
 type StorageConfig struct {
-	DownloadURL     string
-	MaxSize         uint   // In kbytes
-	TransportMethod string // Download method S3/HTTP/SFTP etc.
-	// XXX Add SignatureInfo for the sha256. Verifier should check.
+	DownloadURL      string
+	Size             uint64   // In bytes
+	TransportMethod  string   // Download method S3/HTTP/SFTP etc.
 	CertificateChain []string //name of intermediate certificates
 	ImageSignature   []byte   //signature of image
 	SignatureKey     string   //certificate containing public key
@@ -142,6 +141,10 @@ type StorageConfig struct {
 	// XXX FinalObjDir shouldn't be setable from the cloud. Local to
 	// device.
 	FinalObjDir string // installation dir, may differ from verified
+}
+
+func RoundupToKB(b uint64) uint64 {
+	return (b + 1023) / 1024
 }
 
 type StorageStatus struct {

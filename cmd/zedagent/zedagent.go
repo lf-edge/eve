@@ -37,11 +37,15 @@ import (
 	"flag"
 	"fmt"
 	"github.com/zededa/go-provision/adapters"
+	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/hardware"
+	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
+	"github.com/zededa/go-provision/zboot"
 	"log"
 	"os"
+	"time"
 )
 
 // Keeping status in /var/run to be clean after a crash/reboot
@@ -49,13 +53,14 @@ const (
 	appImgObj = "appImg.obj"
 	baseOsObj = "baseOs.obj"
 	certObj   = "cert.obj"
+	agentName = "zedagent"
 
 	downloaderModulename = "downloader"
 	verifierModulename   = "verifier"
-	zedagentModulename   = "zedagent"
+	zedagentModulename   = agentName
 	zedmanagerModulename = "zedmanager"
 
-	moduleName     = "zedagent"
+	moduleName     = agentName
 	zedBaseDirname = "/var/tmp"
 	zedRunDirname  = "/var/run"
 	baseDirname    = zedBaseDirname + "/" + moduleName
@@ -129,9 +134,16 @@ type deviceContext struct {
 
 var debug = false
 
+// XXX temporary hack for writeBaseOsStatus
+var devCtx deviceContext
+
 func main() {
-	log.SetOutput(os.Stdout)
-	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
+	logf, err := agentlog.Init(agentName)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer logf.Close()
+
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
@@ -140,14 +152,18 @@ func main() {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
-	log.Printf("Starting zedagent\n")
-	watch.CleanupRestarted("zedagent")
+	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
+		log.Fatal(err)
+	}
+
+	log.Printf("Starting %s\n, agentName")
+	watch.CleanupRestarted(agentName)
 
 	// Tell ourselves to go ahead
 	// initialize the module specifig stuff
 	handleInit()
 
-	watch.SignalRestart("zedagent")
+	watch.SignalRestart(agentName)
 	var restartFn watch.StatusRestartHandler = handleRestart
 
 	restartChanges := make(chan string)
@@ -172,7 +188,7 @@ func main() {
 	aaChanges, aaFunc, aaCtx := adapters.Init(&aa, model)
 
 	verifierCtx := verifierContext{}
-	devCtx := deviceContext{assignableAdapters: &aa}
+	devCtx = deviceContext{assignableAdapters: &aa}
 	domainCtx := domainContext{}
 
 	// First we process the verifierStatus to avoid downloading
@@ -204,6 +220,14 @@ func main() {
 
 	// Context to pass around
 	getconfigCtx := getconfigContext{}
+	upgradeInprogress := zboot.IsAvailable() && zboot.IsCurrentPartitionStateInProgress()
+	time1 := time.Duration(configItemCurrent.resetIfCloudGoneTime)
+	t1 := time.NewTimer(time1 * time.Second)
+	log.Printf("Started timer for reset for %d seconds\n", time1)
+	time2 := time.Duration(configItemCurrent.fallbackIfCloudGoneTime)
+	log.Printf("Started timer for fallback (%v) reset for %d seconds\n",
+		upgradeInprogress, time2)
+	t2 := time.NewTimer(time2 * time.Second)
 
 	log.Printf("Waiting until we have some uplinks with usable addresses\n")
 	waited := false
@@ -213,6 +237,7 @@ func main() {
 			types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus),
 			aaCtx.Found)
 		waited = true
+
 		select {
 		case change := <-networkStatusChanges:
 			watch.HandleStatusEvent(change, &DNSctx,
@@ -222,8 +247,18 @@ func main() {
 				nil)
 		case change := <-aaChanges:
 			aaFunc(&aaCtx, change)
+		case <-t1.C:
+			log.Printf("Exceeded outage for cloud connectivity - rebooting\n")
+			execReboot(true)
+		case <-t2.C:
+			if upgradeInprogress {
+				log.Printf("Exceeded fallback outage for cloud connectivity - rebooting\n")
+				execReboot(true)
+			}
 		}
 	}
+	t1.Stop()
+	t2.Stop()
 	log.Printf("Have %d uplinks addresses to use; aaCtx %v\n",
 		types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus),
 		aaCtx.Found)
@@ -243,9 +278,9 @@ func main() {
 	configTickerHandle := <-handleChannel
 	go metricsTimerTask(handleChannel)
 	metricsTickerHandle := <-handleChannel
-	// XXX close handleChannel?
-	// XXX pass both handles to config fetch in getConfigContext
-	fmt.Printf("metricsTickerHandle %v\n", metricsTickerHandle)
+	// XXX close handleChannels?
+	getconfigCtx.configTickerHandle = configTickerHandle
+	getconfigCtx.metricsTickerHandle = metricsTickerHandle
 
 	// app instance status event watcher
 	go watch.WatchStatus(zedmanagerStatusDirname, appInstanceStatusChanges)
@@ -346,6 +381,7 @@ func main() {
 			log.Printf("NetworkStatus triggered PublishDeviceInfo\n")
 			PublishDeviceInfoToZedCloud(baseOsStatusMap,
 				devCtx.assignableAdapters)
+
 		case change := <-domainStatusChanges:
 			watch.HandleStatusEvent(change, &domainCtx,
 				domainStatusDirname,
@@ -359,6 +395,7 @@ func main() {
 					devCtx.assignableAdapters)
 				domainCtx.TriggerDeviceInfo = false
 			}
+
 		case change := <-aaChanges:
 			aaFunc(&aaCtx, change)
 		}
@@ -384,11 +421,9 @@ func handleVerifierRestarted(ctxArg interface{}, done bool) {
 }
 
 func handleInit() {
-
 	initializeDirs()
 	initMaps()
 	handleConfigInit()
-	partitionInit()
 }
 
 func initializeDirs() {
@@ -536,14 +571,14 @@ func handleBaseOsModify(ctxArg interface{}, statusFilename string,
 	log.Printf("handleBaseOsModify for %s\n", status.BaseOsVersion)
 	if config.UUIDandVersion.Version == status.UUIDandVersion.Version &&
 		config.Activate == status.Activated {
-		log.Printf("Same version/Activate %s/%v for %s\n",
-			config.UUIDandVersion.Version, config.Activate, uuidStr)
+		log.Printf("Same version %v for %s\n",
+			config.UUIDandVersion.Version, uuidStr)
 		return
 	}
 
 	// update the version field, uuis being the same
 	status.UUIDandVersion = config.UUIDandVersion
-	writeBaseOsStatus(status, statusFilename)
+	writeBaseOsStatus(status, uuidStr)
 
 	addOrUpdateBaseOsConfig(uuidStr, *config)
 	PublishDeviceInfoToZedCloud(baseOsStatusMap, ctx.assignableAdapters)
@@ -582,14 +617,13 @@ func handleCertObjModify(ctxArg interface{}, statusFilename string,
 
 	// XXX:FIXME, do we
 	if config.UUIDandVersion.Version == status.UUIDandVersion.Version {
-		log.Printf("Same version %s for %s\n",
+		log.Printf("Same version %v for %s\n",
 			config.UUIDandVersion.Version, statusFilename)
 		return
 	}
 
 	status.UUIDandVersion = config.UUIDandVersion
-
-	writeCertObjStatus(status, statusFilename)
+	writeCertObjStatus(status, uuidStr)
 	addOrUpdateCertObjConfig(uuidStr, *config)
 }
 

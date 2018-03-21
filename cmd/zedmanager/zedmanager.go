@@ -14,6 +14,8 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/zededa/go-provision/agentlog"
+	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
 	"io/ioutil"
@@ -25,10 +27,11 @@ import (
 const (
 	appImgObj  = "appImg.obj"
 	certObj    = "cert.obj"
-	moduleName = "zedmanager"
+	agentName  = "zedmanager"
+	moduleName = agentName
 
-	baseDirname              = "/var/tmp/zedmanager"
-	runDirname               = "/var/run/zedmanager"
+	baseDirname              = "/var/tmp/" + agentName
+	runDirname               = "/var/run/" + agentName
 	zedmanagerConfigDirname  = baseDirname + "/config"
 	zedmanagerStatusDirname  = runDirname + "/status"
 	verifierConfigDirname    = "/var/tmp/verifier/config"
@@ -58,17 +61,28 @@ type zedmanagerContext struct {
 
 var deviceNetworkStatus types.DeviceNetworkStatus
 
+var debug = false
+
 func main() {
-	log.SetOutput(os.Stdout)
-	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
+	logf, err := agentlog.Init(agentName)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer logf.Close()
+
 	versionPtr := flag.Bool("v", false, "Version")
+	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
+	debug = *debugPtr
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
-	log.Printf("Starting zedmanager\n")
-	watch.CleanupRestarted("zedmanager")
+	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("Starting %s\n", agentName)
+	watch.CleanupRestarted(agentName)
 	// XXX either we don't need this, or we need it for each objType
 	watch.CleanupRestart("downloader")
 	// XXX either we don't need this, or we need it for each objType
@@ -117,7 +131,7 @@ func main() {
 	}
 
 	// Tell ourselves to go ahead
-	watch.SignalRestart("zedmanager")
+	watch.SignalRestart(agentName)
 
 	// Any state needed by handler functions
 	ctx := zedmanagerContext{}
@@ -339,7 +353,7 @@ func handleModify(ctxArg interface{}, statusFilename string,
 		config.UUIDandVersion, config.DisplayName)
 
 	if config.UUIDandVersion.Version == status.UUIDandVersion.Version {
-		fmt.Printf("Same version %s for %s\n",
+		log.Printf("Same version %s for %s\n",
 			config.UUIDandVersion.Version, statusFilename)
 		return
 	}
@@ -370,7 +384,10 @@ func handleDNSModify(ctxArg interface{}, statusFilename string,
 	status := statusArg.(*types.DeviceNetworkStatus)
 
 	if statusFilename != "global" {
-		fmt.Printf("handleDNSModify: ignoring %s\n", statusFilename)
+		if debug {
+			log.Printf("handleDNSModify: ignoring %s\n",
+				statusFilename)
+		}
 		return
 	}
 	log.Printf("handleDNSModify for %s\n", statusFilename)
@@ -382,7 +399,7 @@ func handleDNSDelete(ctxArg interface{}, statusFilename string) {
 	log.Printf("handleDNSDelete for %s\n", statusFilename)
 
 	if statusFilename != "global" {
-		fmt.Printf("handleDNSDelete: ignoring %s\n", statusFilename)
+		log.Printf("handleDNSDelete: ignoring %s\n", statusFilename)
 		return
 	}
 	deviceNetworkStatus = types.DeviceNetworkStatus{}

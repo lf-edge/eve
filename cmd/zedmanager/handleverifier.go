@@ -17,8 +17,7 @@ import (
 var verifyImageConfig map[string]types.VerifyImageConfig
 
 func MaybeAddVerifyImageConfig(safename string, sc *types.StorageConfig) bool {
-	log.Printf("MaybeAddVerifyImageConfig for %s\n",
-		safename)
+	log.Printf("MaybeAddVerifyImageConfig for %s\n", safename)
 
 	// check the certificate files, if not present,
 	// we can not start verification
@@ -29,16 +28,23 @@ func MaybeAddVerifyImageConfig(safename string, sc *types.StorageConfig) bool {
 	}
 
 	if verifyImageConfig == nil {
-		fmt.Printf("create verifier config map\n")
+		if debug {
+			log.Printf("create verifier config map\n")
+		}
 		verifyImageConfig = make(map[string]types.VerifyImageConfig)
 	}
 	key := safename
 	if m, ok := verifyImageConfig[key]; ok {
-		fmt.Printf("verifier config already exists refcnt %d for %s\n",
-			m.RefCount, safename)
 		m.RefCount += 1
+		if debug {
+			log.Printf("verifier config already exists refcnt %d for %s\n",
+				m.RefCount, safename)
+		}
+		verifyImageConfig[key] = m
 	} else {
-		fmt.Printf("verifier config add for %s\n", safename)
+		if debug {
+			log.Printf("verifier config add for %s\n", safename)
+		}
 		n := types.VerifyImageConfig{
 			Safename:         safename,
 			DownloadURL:      sc.DownloadURL,
@@ -73,8 +79,10 @@ func MaybeRemoveVerifyImageConfigSha256(sha256 string) {
 			m.RefCount, sha256)
 		return
 	}
-	log.Printf("MaybeRemoveVerifyImageConfig RefCount zerp for %s\n",
-		sha256)
+	if debug {
+		log.Printf("MaybeRemoveVerifyImageConfig RefCount zero for %s\n",
+			sha256)
+	}
 	key := m.Safename
 	delete(verifyImageConfig, key)
 	configFilename := fmt.Sprintf("%s/%s.json",
@@ -122,26 +130,32 @@ func handleVerifyImageStatusModify(ctxArg interface{}, statusFilename string,
 	}
 
 	if verifierStatus == nil {
-		fmt.Printf("create verifier map\n")
+		if debug {
+			log.Printf("create verifier map\n")
+		}
 		verifierStatus = make(map[string]types.VerifyImageStatus)
 	}
 	key := status.Safename
 	changed := false
 	if m, ok := verifierStatus[key]; ok {
 		if status.State != m.State {
-			fmt.Printf("verifier map changed from %v to %v\n",
+			log.Printf("verifier map changed from %v to %v\n",
 				m.State, status.State)
 			changed = true
 		}
 	} else {
-		fmt.Printf("verifier map add for %v\n", status.State)
+		if debug {
+			log.Printf("verifier map add for %v\n", status.State)
+		}
 		changed = true
 	}
 	if changed {
 		verifierStatus[key] = *status
-		log.Printf("Added verifierStatus key %v sha %s safename %s\n",
-			key, status.ImageSha256, status.Safename)
-		dumpVerifierStatus()
+		if debug {
+			log.Printf("Added verifierStatus key %v sha %s safename %s\n",
+				key, status.ImageSha256, status.Safename)
+			dumpVerifierStatus()
+		}
 		updateAIStatusSafename(key)
 	}
 	log.Printf("handleVerifyImageStatusModify done for %s\n",
@@ -150,8 +164,10 @@ func handleVerifyImageStatusModify(ctxArg interface{}, statusFilename string,
 
 func LookupVerifyImageStatus(safename string) (types.VerifyImageStatus, error) {
 	if m, ok := verifierStatus[safename]; ok {
-		log.Printf("LookupVerifyImageStatus: found based on safename %s\n",
-			safename)
+		if debug {
+			log.Printf("LookupVerifyImageStatus: found based on safename %s\n",
+				safename)
+		}
 		return m, nil
 	} else {
 		return types.VerifyImageStatus{}, errors.New("No VerifyImageStatus for safename")
@@ -188,8 +204,10 @@ func LookupVerifyImageStatusAny(safename string,
 	}
 	m1, err := lookupVerifyImageStatusSha256Impl(sha256)
 	if err == nil {
-		log.Printf("LookupVerifyImageStatusAny: found based on sha %s\n",
-			sha256)
+		if debug {
+			log.Printf("LookupVerifyImageStatusAny: found based on sha %s\n",
+				sha256)
+		}
 		return *m1, nil
 	} else {
 		return types.VerifyImageStatus{},
@@ -206,10 +224,14 @@ func handleVerifyImageStatusDelete(ctxArg interface{}, statusFilename string) {
 		log.Printf("handleVerifyImageStatusDelete for %s - not found\n",
 			key)
 	} else {
-		fmt.Printf("verifier map delete for %v\n", m.State)
+		if debug {
+			log.Printf("verifier map delete for %v\n", m.State)
+		}
 		delete(verifierStatus, key)
-		log.Printf("Deleted verifierStatus key %v\n", key)
-		dumpVerifierStatus()
+		if debug {
+			log.Printf("Deleted verifierStatus key %v\n", key)
+			dumpVerifierStatus()
+		}
 		removeAIStatusSafename(key)
 	}
 	log.Printf("handleVerifyImageStatusDelete done for %s\n",

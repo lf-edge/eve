@@ -17,7 +17,6 @@
 package flextimer
 
 import (
-	// "fmt"
 	"math/rand"
 	"time"
 )
@@ -111,10 +110,8 @@ func newFlexTicker(config <-chan flexTickerConfig) chan time.Time {
 func flexTicker(config <-chan flexTickerConfig, tick chan<- time.Time) {
 	s1 := rand.NewSource(time.Now().UnixNano())
 	r1 := rand.New(s1)
-	// fmt.Printf("flexTicker: waiting for intial config\n")
 	// Wait for initial config
 	c := <-config
-	// fmt.Printf("flexTicker: got intial config %v\n", c)
 	expFactor := 1
 	for {
 		var d time.Duration
@@ -134,29 +131,23 @@ func flexTicker(config <-chan flexTickerConfig, tick chan<- time.Time) {
 			if max == min {
 				d = time.Duration(min)
 			} else {
-				// fmt.Printf("base %v range %v\n", int64(min), int64(max - min))
 				r := r1.Int63n(int64(max-min)) + int64(min)
 				d = time.Duration(r)
 			}
-			// fmt.Printf("Exponential %v %d secs\n", d, d/time.Second)
 		} else {
 			r := r1.Int63n(int64(c.maxTime-c.minTime)) + int64(c.minTime)
 			d = time.Duration(r)
-			// fmt.Printf("Random %v %d secs\n", d, d/time.Second)
 		}
 		timer := time.NewTimer(d)
 		select {
 		case <-timer.C:
-			// fmt.Printf("flexTicker: timer fired\n")
 			tick <- time.Now()
 		case c = <-config:
 			// Replace current parameters without
 			// looking at when current timer would fire
-			// fmt.Printf("flexTicker: got updated config %v\n", c)
 			timer.Stop()
 			expFactor = 1
 			if c.maxTime == 0 && c.minTime == 0 {
-				// fmt.Printf("flexTicker: got stop\n")
 				close(tick)
 				return
 			}

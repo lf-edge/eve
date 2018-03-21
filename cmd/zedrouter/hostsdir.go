@@ -16,9 +16,10 @@ import (
 // Create the hosts file for the overlay DNS resolution
 // Would be more polite to return an error then to Fatal
 func createHostsConfiglet(cfgDirname string, nameToEidList []types.NameToEid) {
-	fmt.Printf("createHostsConfiglet: dir %s nameToEidList %v\n",
-		cfgDirname, nameToEidList)
-
+	if debug {
+		log.Printf("createHostsConfiglet: dir %s nameToEidList %v\n",
+			cfgDirname, nameToEidList)
+	}
 	err := os.Mkdir(cfgDirname, 0755)
 	if err != nil {
 		log.Fatal(err)
@@ -60,9 +61,10 @@ func containsEID(nameToEidList []types.NameToEid, EID net.IP) bool {
 
 func updateHostsConfiglet(cfgDirname string,
 	oldNameToEidList []types.NameToEid, newNameToEidList []types.NameToEid) {
-	fmt.Printf("updateHostsConfiglet: dir %s old %v, new %v\n",
-		cfgDirname, oldNameToEidList, newNameToEidList)
-
+	if debug {
+		log.Printf("updateHostsConfiglet: dir %s old %v, new %v\n",
+			cfgDirname, oldNameToEidList, newNameToEidList)
+	}
 	// Look for hosts which should be deleted
 	for _, ne := range oldNameToEidList {
 		if !containsHostName(newNameToEidList, ne.HostName) {
@@ -88,7 +90,9 @@ func updateHostsConfiglet(cfgDirname string,
 }
 
 func deleteHostsConfiglet(cfgDirname string, printOnError bool) {
-	fmt.Printf("deleteHostsConfiglet: dir %s\n", cfgDirname)
+	if debug {
+		log.Printf("deleteHostsConfiglet: dir %s\n", cfgDirname)
+	}
 	err := os.RemoveAll(cfgDirname)
 	if err != nil && printOnError {
 		log.Println(err)
