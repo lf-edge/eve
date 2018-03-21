@@ -24,14 +24,18 @@ func MaybeAddEIDConfig(UUIDandVersion types.UUIDandVersion,
 		displayName)
 
 	if EIDConfig == nil {
-		log.Printf("create EID config map\n")
+		if debug {
+			log.Printf("create EID config map\n")
+		}
 		EIDConfig = make(map[string]types.EIDConfig)
 	}
 	if _, ok := EIDConfig[key]; ok {
 		log.Printf("EID config already exists for %s\n", key)
 		// XXX check displayName and EIDConfigDetails didn't change?
 	} else {
-		log.Printf("EID config add for %s\n", key)
+		if debug {
+			log.Printf("EID config add for %s\n", key)
+		}
 
 		EIDConfig[key] = types.EIDConfig{
 			UUIDandVersion:   UUIDandVersion,
@@ -51,7 +55,9 @@ func MaybeRemoveEIDConfig(UUIDandVersion types.UUIDandVersion,
 	log.Printf("MaybeRemoveEIDConfig for %s\n", key)
 
 	if EIDConfig == nil {
-		log.Printf("create EID config map\n")
+		if debug {
+			log.Printf("create EID config map\n")
+		}
 		EIDConfig = make(map[string]types.EIDConfig)
 	}
 	if _, ok := EIDConfig[key]; !ok {
@@ -98,7 +104,9 @@ func handleEIDStatusModify(ctxArg interface{}, statusFilename string,
 	}
 
 	if EIDStatus == nil {
-		log.Printf("create EID map\n")
+		if debug {
+			log.Printf("create EID map\n")
+		}
 		EIDStatus = make(map[string]types.EIDStatus)
 	}
 	changed := false
@@ -113,8 +121,7 @@ func handleEIDStatusModify(ctxArg interface{}, statusFilename string,
 		updateAIStatusUUID(status.UUIDandVersion.UUID.String())
 	}
 
-	log.Printf("handleEIDStatusModify done for %s\n",
-		key)
+	log.Printf("handleEIDStatusModify done for %s\n", key)
 }
 
 func LookupEIDStatus(UUIDandVersion types.UUIDandVersion, IID uint32) (types.EIDStatus, error) {
@@ -127,15 +134,16 @@ func LookupEIDStatus(UUIDandVersion types.UUIDandVersion, IID uint32) (types.EID
 }
 
 func handleEIDStatusDelete(ctxArg interface{}, statusFilename string) {
-	log.Printf("handleEIDStatusDelete for %s\n",
-		statusFilename)
+	log.Printf("handleEIDStatusDelete for %s\n", statusFilename)
 
 	key := statusFilename
 	if m, ok := EIDStatus[key]; !ok {
 		log.Printf("handleEIDStatusDelete for %s - not found\n",
 			key)
 	} else {
-		log.Printf("EID map delete for %v\n", m.EID)
+		if debug {
+			log.Printf("EID map delete for %v\n", m.EID)
+		}
 		delete(EIDStatus, key)
 		removeAIStatusUUID(m.UUIDandVersion.UUID.String())
 	}

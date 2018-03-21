@@ -18,11 +18,15 @@ var AIS map[string]types.AppInstanceStatus
 
 func initMaps() {
 	if AIC == nil {
-		log.Printf("create AIC map\n")
+		if debug {
+			log.Printf("create AIC map\n")
+		}
 		AIC = make(map[string]types.AppInstanceConfig)
 	}
 	if AIS == nil {
-		log.Printf("create AIS map\n")
+		if debug {
+			log.Printf("create AIS map\n")
+		}
 		AIS = make(map[string]types.AppInstanceStatus)
 	}
 }
@@ -41,7 +45,9 @@ func addOrUpdateConfig(uuidStr string, config types.AppInstanceConfig) {
 			changed = true
 		}
 	} else {
-		log.Printf("AI config add for %s\n", uuidStr)
+		if debug {
+			log.Printf("AI config add for %s\n", uuidStr)
+		}
 		changed = true
 		added = true
 	}
@@ -103,7 +109,9 @@ func addOrUpdateStatus(uuidStr string, status types.AppInstanceStatus) {
 			changed = true
 		}
 	} else {
-		log.Printf("AI status add for %s\n", uuidStr)
+		if debug {
+			log.Printf("AI status add for %s\n", uuidStr)
+		}
 		changed = true
 	}
 	if changed {
@@ -119,8 +127,10 @@ func updateAIStatusSafename(safename string) {
 	log.Printf("updateAIStatusSafename for %s\n", safename)
 
 	for _, config := range AIC {
-		log.Printf("found AIC for UUID %s\n",
-			config.UUIDandVersion.UUID)
+		if debug {
+			log.Printf("found AIC for UUID %s\n",
+				config.UUIDandVersion.UUID)
+		}
 		for _, sc := range config.StorageConfigList {
 			safename2 := types.UrlToSafename(sc.DownloadURL, sc.ImageSha256)
 			if safename == safename2 {
@@ -195,13 +205,17 @@ func removeAIStatusSafename(safename string) {
 	log.Printf("removeAIStatusSafename for %s\n", safename)
 
 	for _, status := range AIS {
-		log.Printf("found AIS for UUID %s\n",
-			status.UUIDandVersion.UUID)
+		if debug {
+			log.Printf("found AIS for UUID %s\n",
+				status.UUIDandVersion.UUID)
+		}
 		for _, ss := range status.StorageStatusList {
 			safename2 := types.UrlToSafename(ss.DownloadURL, ss.ImageSha256)
 			if safename == safename2 {
-				log.Printf("Found StorageStatus URL %s safename %s\n",
-					ss.DownloadURL, safename2)
+				if debug {
+					log.Printf("Found StorageStatus URL %s safename %s\n",
+						ss.DownloadURL, safename2)
+				}
 				removeAIStatusUUID(status.UUIDandVersion.UUID.String())
 				break
 			}
@@ -487,8 +501,9 @@ func doActivate(uuidStr string, config types.AppInstanceConfig,
 		log.Printf("Waiting for AppNetworkStatus for %s\n", uuidStr)
 		return changed
 	}
-	log.Printf("Done with AppNetworkStatus for %s\n", uuidStr)
-
+	if debug {
+		log.Printf("Done with AppNetworkStatus for %s\n", uuidStr)
+	}
 	// Make sure we have a DomainConfig
 	err = MaybeAddDomainConfig(config, &ns)
 	if err != nil {
@@ -605,8 +620,10 @@ func doInactivate(uuidStr string, status *types.AppInstanceStatus) bool {
 			uuidStr)
 		return changed
 	}
-	log.Printf("Done with AppNetworkStatus removal for %s\n", uuidStr)
-
+	if debug {
+		log.Printf("Done with AppNetworkStatus removal for %s\n",
+			uuidStr)
+	}
 	status.Activated = false
 	status.ActivateInprogress = false
 	log.Printf("doInactivate done for %s\n", uuidStr)
@@ -641,8 +658,9 @@ func doUninstall(uuidStr string, status *types.AppInstanceStatus) (bool, bool) {
 		log.Printf("Waiting for all EID frees for %s\n", uuidStr)
 		return changed, del
 	}
-	log.Printf("Done with EID frees for %s\n", uuidStr)
-
+	if debug {
+		log.Printf("Done with EID frees for %s\n", uuidStr)
+	}
 	removedAll := true
 	for i, _ := range status.StorageStatusList {
 		ss := &status.StorageStatusList[i]
@@ -666,14 +684,17 @@ func doUninstall(uuidStr string, status *types.AppInstanceStatus) (bool, bool) {
 		log.Printf("Waiting for all verify removes for %s\n", uuidStr)
 		return changed, del
 	}
-	log.Printf("Done with all verify removes for %s\n", uuidStr)
-
+	if debug {
+		log.Printf("Done with all verify removes for %s\n", uuidStr)
+	}
 	removedAll = true
 	for i, _ := range status.StorageStatusList {
 		ss := &status.StorageStatusList[i]
 		safename := types.UrlToSafename(ss.DownloadURL, ss.ImageSha256)
-		log.Printf("Found StorageStatus URL %s safename %s\n",
-			ss.DownloadURL, safename)
+		if debug {
+			log.Printf("Found StorageStatus URL %s safename %s\n",
+				ss.DownloadURL, safename)
+		}
 		// Decrease refcount if we had increased it
 		if ss.HasDownloaderRef {
 			MaybeRemoveDownloaderConfig(safename)
@@ -694,7 +715,9 @@ func doUninstall(uuidStr string, status *types.AppInstanceStatus) (bool, bool) {
 		log.Printf("Waiting for all downloader removes for %s\n", uuidStr)
 		return changed, del
 	}
-	log.Printf("Done with all verify removes for %s\n", uuidStr)
+	if debug {
+		log.Printf("Done with all verify removes for %s\n", uuidStr)
+	}
 
 	del = true
 	log.Printf("doUninstall done for %s\n", uuidStr)

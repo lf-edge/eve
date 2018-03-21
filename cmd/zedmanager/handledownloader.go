@@ -17,11 +17,12 @@ import (
 var downloaderConfig map[string]types.DownloaderConfig
 
 func AddOrRefcountDownloaderConfig(safename string, sc *types.StorageConfig) {
-	log.Printf("AddOrRefcountDownloaderConfig for %s\n",
-		safename)
+	log.Printf("AddOrRefcountDownloaderConfig for %s\n", safename)
 
 	if downloaderConfig == nil {
-		log.Printf("create downloader config map\n")
+		if debug {
+			log.Printf("create downloader config map\n")
+		}
 		downloaderConfig = make(map[string]types.DownloaderConfig)
 	}
 	key := safename
@@ -31,7 +32,9 @@ func AddOrRefcountDownloaderConfig(safename string, sc *types.StorageConfig) {
 			safename, m.RefCount)
 		downloaderConfig[key] = m
 	} else {
-		log.Printf("downloader config add for %s\n", safename)
+		if debug {
+			log.Printf("downloader config add for %s\n", safename)
+		}
 		n := types.DownloaderConfig{
 			Safename:        safename,
 			DownloadURL:     sc.DownloadURL,
@@ -58,7 +61,9 @@ func MaybeRemoveDownloaderConfig(safename string) {
 	log.Printf("MaybeRemoveDownloaderConfig for %s\n", safename)
 
 	if downloaderConfig == nil {
-		log.Printf("create Downloader config map\n")
+		if debug {
+			log.Printf("create Downloader config map\n")
+		}
 		downloaderConfig = make(map[string]types.DownloaderConfig)
 	}
 	if _, ok := downloaderConfig[safename]; !ok {
@@ -95,8 +100,7 @@ var downloaderStatus map[string]types.DownloaderStatus
 func handleDownloaderStatusModify(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
 	status := statusArg.(*types.DownloaderStatus)
-	log.Printf("handleDownloaderStatusModify for %s\n",
-		status.Safename)
+	log.Printf("handleDownloaderStatusModify for %s\n", status.Safename)
 
 	// Ignore if any Pending* flag is set
 	if status.PendingAdd || status.PendingModify || status.PendingDelete {
@@ -105,7 +109,9 @@ func handleDownloaderStatusModify(ctxArg interface{}, statusFilename string,
 		return
 	}
 	if downloaderStatus == nil {
-		log.Printf("create downloader map\n")
+		if debug {
+			log.Printf("create downloader map\n")
+		}
 		downloaderStatus = make(map[string]types.DownloaderStatus)
 	}
 	key := status.Safename
@@ -117,7 +123,9 @@ func handleDownloaderStatusModify(ctxArg interface{}, statusFilename string,
 			changed = true
 		}
 	} else {
-		log.Printf("downloader map add for %v\n", status.State)
+		if debug {
+			log.Printf("downloader map add for %v\n", status.State)
+		}
 		changed = true
 	}
 	if changed {
@@ -138,15 +146,16 @@ func LookupDownloaderStatus(safename string) (types.DownloaderStatus, error) {
 }
 
 func handleDownloaderStatusDelete(ctxArg interface{}, statusFilename string) {
-	log.Printf("handleDownloaderStatusDelete for %s\n",
-		statusFilename)
+	log.Printf("handleDownloaderStatusDelete for %s\n", statusFilename)
 
 	key := statusFilename
 	if m, ok := downloaderStatus[key]; !ok {
 		log.Printf("handleDownloaderStatusDelete for %s - not found\n",
 			key)
 	} else {
-		log.Printf("downloader map delete for %v\n", m.State)
+		if debug {
+			log.Printf("downloader map delete for %v\n", m.State)
+		}
 		delete(downloaderStatus, key)
 		removeAIStatusSafename(key)
 	}

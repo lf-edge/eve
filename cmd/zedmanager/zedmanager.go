@@ -384,7 +384,10 @@ func handleDNSModify(ctxArg interface{}, statusFilename string,
 	status := statusArg.(*types.DeviceNetworkStatus)
 
 	if statusFilename != "global" {
-		log.Printf("handleDNSModify: ignoring %s\n", statusFilename)
+		if debug {
+			log.Printf("handleDNSModify: ignoring %s\n",
+				statusFilename)
+		}
 		return
 	}
 	log.Printf("handleDNSModify for %s\n", statusFilename)

@@ -29,12 +29,16 @@ func handleCertObjStatusModify(ctxArg interface{}, statusFilename string,
 	changed := false
 	if m, ok := certObjStatus[uuidStr]; ok {
 		if status.State != m.State {
-			log.Printf("Cert obj status map changed from %v to %v\n",
-				m.State, status.State)
+			if debug {
+				log.Printf("Cert obj status map changed from %v to %v\n",
+					m.State, status.State)
+			}
 			changed = true
 		}
 	} else {
-		log.Printf("Cert objmap add for %v\n", status.State)
+		if debug {
+			log.Printf("Cert objmap add for %v\n", status.State)
+		}
 		changed = true
 	}
 	if changed {
