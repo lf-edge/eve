@@ -89,4 +89,5 @@ message Drive {
 	Target target = 9;
 	int64 maxsizebytes = 10;
 	int64 minsizebytes = 11;
+	string mountpoint = 12;
 }
