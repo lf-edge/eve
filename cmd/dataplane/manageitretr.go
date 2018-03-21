@@ -8,7 +8,7 @@ package main
 
 import (
 	"github.com/google/gopacket/afpacket"
-	"github.com/google/gopacket/pfring"
+	//"github.com/google/gopacket/pfring"
 	"github.com/zededa/go-provision/dataplane/etr"
 	"github.com/zededa/go-provision/dataplane/itr"
 	"github.com/zededa/go-provision/types"
