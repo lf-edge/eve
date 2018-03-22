@@ -3,6 +3,7 @@ FROM XENTOOLS_TAG as xen-tools
 FROM DNSMASQ_TAG as dnsmasq
 FROM TESTMSVCS_TAG as msvcs
 FROM GPTTOOLS_TAG as gpttools
+FROM WATCHDOG_TAG as watchdog
 
 FROM alpine:3.6
 RUN apk add --no-cache \
@@ -22,6 +23,7 @@ COPY --from=ztools / /
 COPY --from=gpttools / /
 COPY --from=dnsmasq /usr/sbin/dnsmasq /opt/zededa/bin/dnsmasq
 COPY --from=msvcs /vms /vms
+COPY --from=watchdog /usr/sbin /usr/sbin
 
 # And now a few local tweaks
 COPY rootfs/ /
