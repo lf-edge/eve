@@ -3,7 +3,7 @@ PATH := $(CURDIR)/build-tools/bin:$(PATH)
 # How large to we want the disk to be in Mb
 MEDIA_SIZE=610
 
-.PHONY: run pkgs help build-tools
+.PHONY: run pkgs build-pkgs help build-tools
 
 all: help
 
@@ -19,7 +19,10 @@ help:
 build-tools:
 	${MAKE} -C build-tools all
 
-pkgs: build-tools
+build-pkgs: build-tools
+	make -C build-pkgs
+
+pkgs: build-tools build-pkgs
 	make -C pkg
 
 run-fallback run:
