@@ -14,13 +14,12 @@ PKGNAME   := zededa-provision
 ARCH        ?= amd64
 #ARCH        ?= arm64
 
-GIT_TAG     := $(shell git tag)
+GIT_TAG     := $(shell git tag | tail -1)
 BUILD_DATE  := $(shell date -u +"%Y-%m-%d-%H:%M")
 GIT_VERSION := $(shell git describe --match v --abbrev=8 --always --dirty)
 BRANCH_NAME := $(shell git rev-parse --abbrev-ref HEAD)
 VERSION     := $(GIT_TAG)
-LISPURL     := https://www.dropbox.com/s/yw8qwvplhkibp0k/lispers.net-x86-release-0.443.tgz
-
+LISPURL     := https://www.dropbox.com/s/dwlsd31y9iku85x/zededa.tgz
 # Go parameters
 GOCMD=go
 GOBUILD=$(GOCMD) build
