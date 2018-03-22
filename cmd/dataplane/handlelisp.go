@@ -97,8 +97,10 @@ func parseRloc(rlocStr *Rloc) (types.Rloc, bool) {
 			IcvKey:   icvKey,
 			EncBlock: encBlock,
 		}
-		log.Printf("Adding enc key %s\n", keys[keyId-1].EncKey)
-		log.Printf("Adding icv key %s\n", keys[keyId-1].IcvKey)
+		if debug {
+			log.Printf("Adding enc key %s\n", keys[keyId-1].EncKey)
+			log.Printf("Adding icv key %s\n", keys[keyId-1].IcvKey)
+		}
 	}
 
 	// XXX We are not decoding the keys for now.
@@ -219,7 +221,9 @@ func handleMapCacheTable(msg []byte) {
 func handleMapCache(msg []byte) {
 	var mapCache MapCacheEntry
 
-	log.Printf("Handling the following map-cache message:\n%s\n", string(msg))
+	if debug {
+		log.Printf("Handling the following map-cache message:\n%s\n", string(msg))
+	}
 	err := json.Unmarshal(msg, &mapCache)
 	if err != nil {
 		log.Fatal("handleMapCache: Error: Unknown json message format: %s: %s",
@@ -255,7 +259,9 @@ func parseDatabaseMappings(databaseMappings DatabaseMappings) map[uint32][]net.I
 func handleDatabaseMappings(msg []byte) {
 	var databaseMappings DatabaseMappings
 
-	log.Printf("Handling the following Database map message:\n%s\n", string(msg))
+	if debug {
+		log.Printf("Handling the following Database map message:\n%s\n", string(msg))
+	}
 	err := json.Unmarshal(msg, &databaseMappings)
 	if err != nil {
 		log.Fatal("handleDatabaseMappings: Error: Unknown json message format: %s: %s",
@@ -286,7 +292,9 @@ func handleDatabaseMappings(msg []byte) {
 func handleInterfaces(msg []byte) {
 	var interfaces Interfaces
 
-	log.Printf("Handling the following Interfaces message:\n%s\n", string(msg))
+	if debug {
+		log.Printf("Handling the following Interfaces message:\n%s\n", string(msg))
+	}
 	err := json.Unmarshal(msg, &interfaces)
 	if err != nil {
 		log.Fatal("handleInterfaces: Error: Unknown json message format: %s: %s",
@@ -326,7 +334,9 @@ func handleInterfaces(msg []byte) {
 func handleDecapKeys(msg []byte) {
 	var decapMsg DecapKeys
 
-	log.Printf("Handling the following Decaps message:\n%s\n", string(msg))
+	if debug {
+		log.Printf("Handling the following Decaps message:\n%s\n", string(msg))
+	}
 	err := json.Unmarshal(msg, &decapMsg)
 	if err != nil {
 		log.Fatal("handleDecapKeys: Error: Unknown json message format: %s: %s",
@@ -377,10 +387,12 @@ func handleDecapKeys(msg []byte) {
 			IcvKey:   icvKey,
 			DecBlock: decBlock,
 		}
-		log.Printf("handleDecapKeys: Adding Decap key[%d] %s for Rloc %s\n",
-			keyId-1, keys[keyId-1].DecKey, decapMsg.Rloc)
-		log.Printf("handleDecapKeys: Adding Decap icv[%d] %s for Rloc %s\n",
-			keyId-1, keys[keyId-1].IcvKey, decapMsg.Rloc)
+		if debug {
+			log.Printf("handleDecapKeys: Adding Decap key[%d] %s for Rloc %s\n",
+				keyId-1, keys[keyId-1].DecKey, decapMsg.Rloc)
+			log.Printf("handleDecapKeys: Adding Decap icv[%d] %s for Rloc %s\n",
+				keyId-1, keys[keyId-1].IcvKey, decapMsg.Rloc)
+		}
 	}
 
 	// Parse and store the decap keys.
@@ -394,7 +406,9 @@ func handleDecapKeys(msg []byte) {
 func handleEtrNatPort(msg []byte) {
 	var etrNatPort EtrNatPort
 
-	log.Printf("Handling the following ETR Nat port message:\n%s\n", string(msg))
+	if debug {
+		log.Printf("Handling the following ETR Nat port message:\n%s\n", string(msg))
+	}
 	err := json.Unmarshal(msg, &etrNatPort)
 	if err != nil {
 		log.Fatal("handleEtrNatPort: Error: Unknown json message format: %s: %s",

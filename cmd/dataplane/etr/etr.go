@@ -31,13 +31,15 @@ import (
 // Status and metadata of different ETR threads currently running
 var etrTable types.EtrTable
 var deviceNetworkStatus types.DeviceNetworkStatus
+var debug bool = false
 
 const (
 	uplinkFileName  = "/var/run/zedrouter/DeviceNetworkStatus/global.json"
 	etrNatPortMatch = "udp dst port %d and udp src port 4341"
 )
 
-func InitETRStatus() {
+func InitETRStatus(debugFlag bool) {
+	debug = debugFlag
 	etrTable.EphPort = -1
 	etrTable.EtrTable = make(map[string]*types.EtrRunStatus)
 }
@@ -80,6 +82,10 @@ func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
 	ipv4Found, ipv6Found := false, false
 	ipv4Addr, ipv6Addr := net.IP{}, net.IP{}
 
+	if debug {
+		log.Printf("HandleDeviceNetworkChange: Free uplinks have changed" +
+			" new ipv4 & ipv6 source addresses will be picked\n")
+	}
 	links := types.GetUplinkFreeNoLocal(deviceNetworkStatus)
 
 	// Collect the interfaces that are still valid
@@ -98,10 +104,18 @@ func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
 				// This address is ipv6
 				ipv6Addr = addrInfo.Addr
 				ipv6Found = true
+				if debug {
+					log.Printf("HandleDeviceNetworkChange: Picked ipv6 source address %s\n",
+						ipv6Addr)
+				}
 			} else if ipv4Found == false {
 				// This address is ipv4
 				ipv4Addr = addrInfo.Addr
 				ipv4Found = true
+				if debug {
+					log.Printf("HandleDeviceNetworkChange: Picked ipv4 source address %s\n",
+						ipv6Addr)
+				}
 			}
 		}
 
@@ -117,6 +131,10 @@ func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
 				//ring, fd = StartEtrNat(etrTable.EphPort, link.IfName)
 				handle, fd = StartEtrNat(etrTable.EphPort, link.IfName)
 				log.Printf("XXXXX Creating ETR thread for UP link %s\n", link.IfName)
+				if debug {
+					log.Printf("HandleDeviceNetworkChange: Creating ETR thread "+
+						"for UP link %s\n", link.IfName)
+				}
 			}
 			etrTable.EtrTable[link.IfName] = &types.EtrRunStatus{
 				IfName: link.IfName,
@@ -124,8 +142,10 @@ func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
 				Handle: handle,
 				RingFD: fd,
 			}
-			log.Printf("HandleDeviceNetworkChange: Creating ETR thread for UP link %s\n",
-				link.IfName)
+			if debug {
+				log.Printf("HandleDeviceNetworkChange: Creating ETR thread for UP link %s\n",
+					link.IfName)
+			}
 		}
 	}
 
@@ -158,6 +178,10 @@ func HandleEtrEphPort(ephPort int) {
 		//if (link.Ring == nil) && (link.RingFD == -1) {
 		if (link.Handle == nil) && (link.RingFD == -1) {
 			log.Printf("XXXXX Creating ETR thread for UP link %s\n", link.IfName)
+			if debug {
+				log.Printf("HandleEtrEphPort: Creating ETR thread for UP link %s\n",
+					link.IfName)
+			}
 			//ring, fd := StartEtrNat(etrTable.EphPort, link.IfName)
 			//ling.Ring = ring
 			handle, fd := StartEtrNat(etrTable.EphPort, link.IfName)
@@ -198,6 +222,10 @@ func StartEtrNat(ephPort int, upLink string) (*afpacket.TPacket, int) {
 
 	//ring := SetupEtrPktCapture(ephPort, upLink)
 	//if ring == nil {
+	if debug {
+		log.Printf("StartEtrNat: ETR thread (%s) with ephemeral port %d\n",
+			upLink, ephPort)
+	}
 	handle := SetupEtrPktCapture(ephPort, upLink)
 	if handle == nil {
 		log.Fatal("StartEtrNat: Unable to create ETR packet capture.\n")
@@ -320,6 +348,11 @@ func SetupEtrPktCapture(ephemeralPort int, upLink string) *afpacket.TPacket {
 		promisc bool = true
 	)
 
+	if debug {
+		log.Printf("SetupEtrPktCapture: Setup ETR NAT capture on interface %s, "+
+			"ephemeral port %d\n", upLink, ephemeralPort)
+	}
+
 	frameSize := 65536
 	blockSize := frameSize * 128
 	numBlocks := 10
@@ -383,7 +416,9 @@ func SetupEtrPktCapture(ephemeralPort int, upLink string) *afpacket.TPacket {
 func ProcessETRPkts(fd6 int, serverConn *net.UDPConn) bool {
 	// start processing packets. This loop should never end.
 	buf := make([]byte, 65536)
-	log.Printf("Started processing captured packets in ETR\n")
+	if debug {
+		log.Printf("Started processing captured packets in ETR\n")
+	}
 
 	for {
 		n, saddr, err := serverConn.ReadFromUDP(buf)
@@ -403,7 +438,9 @@ func ProcessETRPkts(fd6 int, serverConn *net.UDPConn) bool {
 //func ProcessCapturedPkts(fd6 int, ring *pfring.Ring) {
 func ProcessCapturedPkts(fd6 int, handle *afpacket.TPacket) {
 	var pktBuf [65536]byte
-	log.Printf("Started processing captured packets in ETR\n")
+	if debug {
+		log.Printf("Started processing captured packets in ETR\n")
+	}
 
 	for {
 		//ci, err := ring.ReadPacketDataTo(pktBuf[:])

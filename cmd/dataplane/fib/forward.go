@@ -189,7 +189,7 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 		// Call the encrypt function here.
 		// We should not encrypt the outer IP and lisp headers.
 		// Also set the LISP key id here. May be always use 1.
-		// Pass the IV from map cache entry, packet buffer.
+		// Pass the IV from map cache entry.
 		// Also we have to increment the IV.
 		useCrypto = true
 

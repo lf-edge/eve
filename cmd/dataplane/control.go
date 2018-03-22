@@ -11,8 +11,11 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/dataplane/etr"
 	"github.com/zededa/go-provision/dataplane/fib"
+	"github.com/zededa/go-provision/dataplane/itr"
+	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
 	"log"
@@ -24,6 +27,7 @@ import (
 )
 
 const (
+	agentName        = "dataplane"
 	lispConfigDir    = "/opt/zededa/lisp/"
 	configHolePath   = lispConfigDir + "lisp-ipc-data-plane"
 	lispersDotNetItr = lispConfigDir + "lispers.net-itr"
@@ -39,35 +43,41 @@ var configPipe net.Listener
 var puntChannel chan []byte
 
 var Version = "No version specified"
+var debug = false
 
 func main() {
 	// Open/Create new log file
-	f, err := os.OpenFile(logOutput, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	logf, err := agentlog.Init(agentName)
 	if err != nil {
-		log.Fatal("Error: Opening log file: /var/log/dataplane.log\n")
+		log.Fatal(err)
 	}
-	defer f.Close()
-	//log.SetOutput(os.Stdout)
-	// Output logging to file
-	log.SetOutput(f)
-	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
+	defer logf.Close()
+
 	versionPtr := flag.Bool("v", false, "Version")
+	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
+
+	debug = *debugPtr
 	if *versionPtr {
 		log.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
 
+	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("Starting %s\n", agentName)
+
 	// Initialize databases
 	fib.InitIfaceMaps()
-	fib.InitMapCache()
+	fib.InitMapCache(debug)
 	fib.InitDecapTable()
 
 	// Initialize ITR thread management
 	InitThreadTable()
 
-	// Initialize ETR run status
-	etr.InitETRStatus()
+	// Init ITR
+	itr.InitITR(debug)
 
 	// Start listening on the Unix domain socket "lisp-ipc-data-plane"
 	// lispers.net code uses this socket for sending eid to rloc maps
@@ -94,7 +104,8 @@ func main() {
 	registerSignalHandler()
 	startPuntProcessor()
 
-	etr.InitETRStatus()
+	// Initialize ETR run status
+	etr.InitETRStatus(debug)
 
 	// Start ETR thread that listens on port 4341 for Non-NAT packets
 	// Thread that handles NAT piercing will be started by handleEtrNatPort
@@ -287,7 +298,9 @@ func handleConfig(c *net.UnixConn) {
 				&types.DeviceNetworkStatus{},
 				handleDNSModify, handleDNSDelete,
 				nil)
-			log.Println("XXXXX Detected a change in DeviceNetworkStatus")
+			if debug {
+				log.Println("Detected a change in DeviceNetworkStatus")
+			}
 			ManageEtrDNS(deviceNetworkStatus)
 		default:
 			n, err := c.Read(buf[:])
@@ -314,23 +327,39 @@ func handleLispMsg(msg []byte) {
 
 	switch msgType.Type {
 	case MAPCACHETYPE:
-		log.Println("Processing map-cache entry message")
+		if debug {
+			log.Println("Processing map-cache entry message")
+		}
 		handleMapCache(msg)
 	case ENTIREMAPCACHE:
-		log.Println("Processing Mapcache dump")
+		if debug {
+			log.Println("Processing Mapcache dump")
+		}
 		handleMapCacheTable(msg)
 	case DATABASEMAPPINGSTYPE:
-		log.Println("Processing database-mappings entry message")
+		if debug {
+			log.Println("Processing database-mappings entry message")
+		}
 		handleDatabaseMappings(msg)
 	case INTERFACESTYPE:
-		log.Println("Processing interfaces entry message")
+		if debug {
+			log.Println("Processing interfaces entry message")
+		}
 		handleInterfaces(msg)
 	case DECAPKEYSTYPE:
+		if debug {
+			log.Println("Processing Decap Keys message")
+		}
 		handleDecapKeys(msg)
 	case ETRNATPORT:
+		if debug {
+			log.Println("Processing ETR nat port message")
+		}
 		handleEtrNatPort(msg)
 	default:
-		log.Println(string(msg))
-		log.Println("Unknown message type received")
+		if debug {
+			log.Println(string(msg))
+			log.Println("Unknown message type received")
+		}
 	}
 }

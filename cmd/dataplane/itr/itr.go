@@ -28,6 +28,12 @@ import (
 
 const SNAPLENGTH = 65536
 
+var debug bool = false
+
+func InitITR(debugFlag bool) {
+	debug = debugFlag
+}
+
 func StartItrThread(threadName string,
 	//ring *pfring.Ring,
 	handle *afpacket.TPacket,
@@ -129,6 +135,9 @@ func SetupPacketCapture(ifname string, snapLen uint32) *pfring.Ring {
 	ring, err := pfring.NewRing(ifname, SNAPLENGTH, pfring.FlagPromisc)
 */
 func SetupPacketCapture(iface string, snapLen int) *afpacket.TPacket {
+	if debug {
+		log.Printf("SetupPacketCapture: Start capture from interface %s\n", iface)
+	}
 	const (
 		// Memory map buffer size in mega bytes
 		mmapBufSize int = 24
@@ -172,6 +181,10 @@ func SetupPacketCapture(iface string, snapLen int) *afpacket.TPacket {
 		ring.SetDirection(pfring.TransmitOnly)
 	*/
 	filter := "ip6"
+	if debug {
+		log.Printf("SetupPacketCapture: Compiling BPF filter (%s) for interface %s\n",
+			filter, iface)
+	}
 	ins, err := pcap.CompileBPFFilter(layers.LinkTypeEthernet,
 		1600, filter)
 	if err != nil {
@@ -218,6 +231,10 @@ func startWorking(ifname string, handle *afpacket.TPacket,
 		log.Printf("startWorking: "+
 			"Interface %s's IID cannot be found\n", ifname)
 		return
+	}
+
+	if debug {
+		log.Printf("startWorking: Capturing packets from interface %s\n", ifname)
 	}
 
 	// We need the EIDs attached to this interfaces for further processing
@@ -344,7 +361,6 @@ eidLoop:
 
 				// XXX What do we do when there is no transport header? like PING
 				if transportContents != nil {
-					//log.Println("XXXXX Transport contents:", transportContents)
 					ports = (uint32(transportContents[0])<<24 |
 						uint32(transportContents[1])<<16 |
 						uint32(transportContents[2])<<8 |
@@ -397,8 +413,10 @@ func LookupAndSend(packet gopacket.Packet,
 		}:
 			atomic.AddUint64(&mapEntry.BuffdPkts, 1)
 		default:
-			log.Println("LookupAndSend: "+
-				"Packet buffer channel full for EID", dstAddr)
+			if debug {
+				log.Println("LookupAndSend: "+
+					"Packet buffer channel full for EID", dstAddr)
+			}
 			atomic.AddUint64(&mapEntry.TailDrops, 1)
 		}
 
