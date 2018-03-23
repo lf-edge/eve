@@ -222,9 +222,30 @@ fi
 
 echo "Handling restart done at" `date`
 
+echo "Starting" `date`
+
 echo "Configuration from factory/install:"
 (cd $CONFIGDIR; ls -l)
 echo
+
+P3=`zboot partdev P3`
+if [ $? = 0 -a x$P3 != x ]; then
+    echo "Using $P3 for /persist"
+    fsck -y -t ext3 $P3
+    if [ $? != 0 ]; then
+	mkfs -t ext3 -v $P3
+        if [ $? != 0 ]; then
+            echo "mkfs $P3 failed: $?"
+	    # Try mounting below
+        fi
+    fi
+    mount -t ext3 $P3 /persist
+    if [ $? != 0 ]; then
+	echo "mount $P3 failed: $?"
+    fi
+else
+    echo "No separate /persist partition"
+fi
 
 CURPART=`zboot curpart`
 if [ $? != 0 ]; then
