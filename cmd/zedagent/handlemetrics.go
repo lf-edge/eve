@@ -420,9 +420,6 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 		log.Printf("Sending CloudMetrics %v\n", cms)
 	}
 	for ifname, cm := range cms {
-		// XXX add per URL counters to API
-		log.Printf("CloudMetrics[%s] %v\n",
-			ifname, cm)
 		metric := zmet.ZedcloudMetric{IfName: ifname,
 			Failures: cm.FailureCount,
 			Success:  cm.SuccessCount,
@@ -434,6 +431,11 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 		if !cm.LastSuccess.IsZero() {
 			ls, _ := ptypes.TimestampProto(cm.LastSuccess)
 			metric.LastSuccess = ls
+		}
+		for url, um := range cm.UrlCounters {
+			// XXX add per URL counters to API
+			log.Printf("CloudMetrics[%s] url %s %v\n",
+				ifname, url, um)
 		}
 		ReportDeviceMetric.Zedcloud = append(ReportDeviceMetric.Zedcloud,
 			&metric)
