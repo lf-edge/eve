@@ -1,7 +1,7 @@
 PATH := $(CURDIR)/build-tools/bin:$(PATH)
 
 # How large to we want the disk to be in Mb
-MEDIA_SIZE=610
+MEDIA_SIZE=700
 
 .PHONY: run pkgs build-pkgs help build-tools
 
