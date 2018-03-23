@@ -215,9 +215,9 @@ func main() {
 
 	// Post something without a return type.
 	// Returns true when done; false when retry
-	myPost := func(retryCount int, url string, b *bytes.Buffer) bool {
+	myPost := func(retryCount int, url string, reqlen int64, b *bytes.Buffer) bool {
 		resp, err := zedcloud.SendOnAllIntf(zedcloudCtx,
-			serverNameAndPort+url, b, retryCount)
+			serverNameAndPort+url, reqlen, b, retryCount)
 		if err != nil {
 			log.Println(err)
 			return false
@@ -280,9 +280,9 @@ func main() {
 	}
 
 	// XXX remove later
-	oldMyPost := func(retryCount int, url string, b *bytes.Buffer) bool {
+	oldMyPost := func(retryCount int, url string, reqlen int64, b *bytes.Buffer) bool {
 		resp, err := zedcloud.SendOnAllIntf(zedcloudCtx,
-			serverNameAndPort+url, b, retryCount)
+			serverNameAndPort+url, reqlen, b, retryCount)
 		if err != nil {
 			log.Println(err)
 			return false
@@ -358,7 +358,8 @@ func main() {
 			log.Println(err)
 			return false
 		}
-		return myPost(retryCount, "/api/v1/edgedevice/register", bytes.NewBuffer(b))
+		return myPost(retryCount, "/api/v1/edgedevice/register",
+			int64(len(b)), bytes.NewBuffer(b))
 	}
 
 	// XXX remove later
@@ -374,14 +375,17 @@ func main() {
 		rc := types.RegisterCreate{PemCert: deviceCertPem}
 		b := new(bytes.Buffer)
 		json.NewEncoder(b).Encode(rc)
-		return oldMyPost(retryCount, "/rest/self-register", b)
+		// XXX Random value 100 for length since we are deleting this
+		// code soon
+		return oldMyPost(retryCount, "/rest/self-register",
+			100, b)
 	}
 
 	// Returns true when done; false when retry
 	lookupParam := func(retryCount int, device *types.DeviceDb) bool {
 		url := "/rest/device-param"
 		resp, err := zedcloud.SendOnAllIntf(zedcloudCtx,
-			serverNameAndPort+url, nil, retryCount)
+			serverNameAndPort+url, 0, nil, retryCount)
 		if err != nil {
 			log.Println(err)
 			return false
@@ -440,7 +444,7 @@ func main() {
 	// Returns the response when done. Note caller must do resp.Body.Close()
 	myGet := func(url string, retryCount int) (bool, *http.Response) {
 		resp, err := zedcloud.SendOnAllIntf(zedcloudCtx,
-			serverNameAndPort+url, nil, retryCount)
+			serverNameAndPort+url, 0, nil, retryCount)
 		if err != nil {
 			log.Println(err)
 			return false, nil

@@ -420,6 +420,9 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 		log.Printf("Sending CloudMetrics %v\n", cms)
 	}
 	for ifname, cm := range cms {
+		// XXX add per URL counters to API
+		log.Printf("CloudMetrics[%s] %v\n",
+			ifname, cm)
 		metric := zmet.ZedcloudMetric{IfName: ifname,
 			Failures: cm.FailureCount,
 			Success:  cm.SuccessCount,
@@ -1095,7 +1098,7 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 // For each uplink we try different source IPs until we find a working one.
 func SendProtobuf(url string, data []byte, iteration int) error {
 	resp, err := zedcloud.SendOnAllIntf(zedcloudCtx, url,
-		bytes.NewBuffer(data), iteration)
+		int64(len(data)), bytes.NewBuffer(data), iteration)
 	if err != nil {
 		return err
 	}
@@ -1115,7 +1118,7 @@ func SendMetricsProtobuf(ReportMetrics *zmet.ZMetricMsg,
 
 	metricsUrl := serverName + "/" + metricsApi
 	resp, err := zedcloud.SendOnAllIntf(zedcloudCtx, metricsUrl,
-		bytes.NewBuffer(data), iteration)
+		int64(len(data)), bytes.NewBuffer(data), iteration)
 	if err != nil {
 		// Hopefully next timeout will be more successful
 		log.Printf("SendMetricsProtobuf failed: %s\n", err)

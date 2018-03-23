@@ -191,7 +191,7 @@ func getLatestConfig(url string, iteration int, upgradeInprogress *bool,
 		}
 	}
 
-	resp, err := zedcloud.SendOnAllIntf(zedcloudCtx, url, nil, iteration)
+	resp, err := zedcloud.SendOnAllIntf(zedcloudCtx, url, 0, nil, iteration)
 	if err != nil {
 		log.Printf("getLatestConfig failed: %s\n", err)
 		if getconfigCtx.ledManagerCount == 4 {

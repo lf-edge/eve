@@ -310,7 +310,7 @@ func sendProtoStrForLogs(reportLogs *zmet.LogBundle, image string,
 	}
 
 	resp, err := zedcloud.SendOnAllIntf(zedcloudCtx, logsUrl,
-		buf, iteration)
+		int64(len(data)), buf, iteration)
 	if err != nil {
 		// XXX need to queue message and retry
 		log.Printf("SendMetricsProtobuf failed: %s\n", err)
@@ -339,6 +339,10 @@ func sendCtxInit() {
 	zedcloudCtx.DeviceNetworkStatus = &deviceNetworkStatus
 	zedcloudCtx.TlsConfig = tlsConfig
 	zedcloudCtx.Debug = debug
+	// XXX need functions to count per interface
+	// XXX how do we report?
+	// zedcloudCtx.FailureFunc = zedCloudFailure
+	// zedcloudCtx.SuccessFunc = zedCloudSuccess
 
 	b, err := ioutil.ReadFile(uuidFileName)
 	if err != nil {

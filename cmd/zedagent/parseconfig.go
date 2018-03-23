@@ -94,7 +94,7 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 		return false
 	}
 	if !zboot.IsAvailable() {
-		log.Printf("No zboot; ignoring baseOsConfig\n");
+		log.Printf("No zboot; ignoring baseOsConfig\n")
 		return false
 	}
 
@@ -770,7 +770,7 @@ func getCertObjConfig(config *types.CertObjConfig,
 	// XXX:FIXME hardcoding Size as 100KB
 	var drive = &types.StorageConfig{
 		DownloadURL:     certUrl,
-		Size:         	 100 * 1024,
+		Size:            100 * 1024,
 		TransportMethod: image.TransportMethod,
 		Dpath:           "zededa-cert-repo",
 		ApiKey:          image.ApiKey,

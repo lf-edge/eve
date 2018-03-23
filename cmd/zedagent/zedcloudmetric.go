@@ -17,6 +17,16 @@ type zedcloudMetric struct {
 	SuccessCount uint64
 	LastFailure  time.Time
 	LastSuccess  time.Time
+	UrlCounters  map[string]urlcloudMetrics
+}
+
+type urlcloudMetrics struct {
+	TryMsgCount   int64
+	TryByteCount  int64
+	SentMsgCount  int64
+	SentByteCount int64
+	RecvMsgCount  int64
+	RecvByteCount int64
 }
 
 // Key is ifname string
@@ -29,23 +39,47 @@ func maybeInit(ifname string) {
 	}
 	if _, ok := metrics[ifname]; !ok {
 		log.Printf("create zedcloudmetric for %s\n", ifname)
-		metrics[ifname] = zedcloudMetric{}
+		metrics[ifname] = zedcloudMetric{
+			UrlCounters: make(map[string]urlcloudMetrics),
+		}
 	}
 }
 
-func zedCloudFailure(ifname string) {
+func zedCloudFailure(ifname string, url string, reqLen int64, respLen int64) {
 	maybeInit(ifname)
 	m := metrics[ifname]
 	m.FailureCount += 1
 	m.LastFailure = time.Now()
+	var u urlcloudMetrics
+	var ok bool
+	if u, ok = m.UrlCounters[url]; !ok {
+		u = urlcloudMetrics{}
+		m.UrlCounters[url] = u
+	}
+	u.TryMsgCount += 1
+	u.TryByteCount += reqLen
+	if respLen != 0 {
+		u.RecvMsgCount += 1
+		u.RecvByteCount += respLen
+	}
 	metrics[ifname] = m
 }
 
-func zedCloudSuccess(ifname string) {
+func zedCloudSuccess(ifname string, url string, reqLen int64, respLen int64) {
 	maybeInit(ifname)
 	m := metrics[ifname]
 	m.SuccessCount += 1
 	m.LastSuccess = time.Now()
+	var u urlcloudMetrics
+	var ok bool
+	if u, ok = m.UrlCounters[url]; !ok {
+		u = urlcloudMetrics{}
+		m.UrlCounters[url] = u
+	}
+	u.SentMsgCount += 1
+	u.SentByteCount += reqLen
+	u.RecvMsgCount += 1
+	u.RecvByteCount += respLen
 	metrics[ifname] = m
 }
 
