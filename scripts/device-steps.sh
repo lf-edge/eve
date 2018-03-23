@@ -7,7 +7,7 @@ PERSISTDIR=/persist
 BINDIR=/opt/zededa/bin
 PROVDIR=$BINDIR
 TMPDIR=/var/tmp/zededa
-DNCDIR=/var/tmp/zededa/DeviceNetworkConfig
+DNCDIR=$TMPDIR/DeviceNetworkConfig
 LISPDIR=/opt/zededa/lisp
 LOGDIRA=$PERSISTDIR/IMGA/log
 LOGDIRB=$PERSISTDIR/IMGB/log
@@ -70,6 +70,16 @@ echo "Handling restart case at" `date`
 
 echo "Removing old stale files"
 # Remove internal config files
+# XXX not that when restarting device-steps.sh this kill
+# can result in watchdog(8) rebooting the system
+cat >$TMPDIR/watchdog.conf <<EOF
+admin =
+EOF
+if [ -f /var/run/watchdog.pid ]; then
+    kill `cat /var/run/watchdog.pid`
+    /usr/sbin/watchdog -c $TMPDIR/watchdog.conf -F -s &
+fi
+
 pkill zedmanager
 if [ x$OLDFLAG = x ]; then
 	echo "Removing old zedmanager config files"
@@ -81,7 +91,7 @@ rm -rf /var/run/zedmanager/status/*.json
 
 # The following is a workaround for a racecondition between different agents
 # Make sure we have the required directories in place
-DIRS="$CONFIGDIR $PERSISTDIR $TMPDIR /var/tmp/ledmanager/config/ /var/tmp/domainmgr/config/ /var/tmp/verifier/config/ /var/tmp/downloader/config/ /var/tmp/zedmanager/config/ /var/tmp/identitymgr/config/ /var/tmp/zedrouter/config/ /var/run/domainmgr/status/ /var/run/downloader/status/ /var/run/zedmanager/status/ /var/run/eidregister/status/ /var/run/zedrouter/status/ /var/run/identitymgr/status/ /var/tmp/zededa/DeviceNetworkConfig/ /var/run/zedrouter/DeviceNetworkStatus/ /var/tmp/zededa/AssignableAdapters"
+DIRS="$CONFIGDIR $PERSISTDIR $TMPDIR /var/tmp/ledmanager/config/ /var/tmp/domainmgr/config/ /var/tmp/verifier/config/ /var/tmp/downloader/config/ /var/tmp/zedmanager/config/ /var/tmp/identitymgr/config/ /var/tmp/zedrouter/config/ /var/run/domainmgr/status/ /var/run/downloader/status/ /var/run/zedmanager/status/ /var/run/eidregister/status/ /var/run/zedrouter/status/ /var/run/identitymgr/status/ $TMPDIR/DeviceNetworkConfig/ /var/run/zedrouter/DeviceNetworkStatus/ $TMPDIR/AssignableAdapters"
 for d in $DIRS; do
     d1=`dirname $d`
     if [ ! -d $d1 ]; then
@@ -222,10 +232,11 @@ if [ $? != 0 ]; then
 fi
 
 # Create config file for watchdog(8)
+# XXX should we enable realtime in the kernel?
 cat >$TMPDIR/watchdog.conf <<EOF
 admin =
-realtime = yes
-priority = 1
+#realtime = yes
+#priority = 1
 interval = 10
 logtick  = 60
 EOF
@@ -240,7 +251,7 @@ if [ -f /var/run/watchdog.pid ]; then
     kill `cat /var/run/watchdog.pid`
 fi
 # Make sure client.go doesn't fail
-/usr/sbin/watchdog -c /var/tmp/zededa/watchdogc.conf -F -s &
+/usr/sbin/watchdog -c $TMPDIR/watchdogc.conf -F -s &
 
 if [ ! -d $LOGDIRA ]; then
     echo "Creating $LOGDIRA"
@@ -504,7 +515,7 @@ done
 if [ -f /var/run/watchdog.pid ]; then
     kill `cat /var/run/watchdog.pid`
 fi
-/usr/sbin/watchdog -c /var/tmp/zededa/watchdog.conf -F -s &
+/usr/sbin/watchdog -c $TMPDIR/watchdog.conf -F -s &
 
 echo "Starting verifier at" `date`
 verifier &
