@@ -1,11 +1,8 @@
 FROM golang:1.9.1-alpine AS build
 RUN apk update
-RUN apk add --no-cache git gcc linux-headers libc-dev util-linux libpcap-dev
+RUN apk add --no-cache git gcc linux-headers libc-dev util-linux
 
 ADD ./  /go/src/github.com/zededa/go-provision/
-ADD ./cmd/dataplane/itr  /go/src/github.com/zededa/go-provision/dataplane/itr
-ADD ./cmd/dataplane/etr  /go/src/github.com/zededa/go-provision/dataplane/etr
-ADD ./cmd/dataplane/fib  /go/src/github.com/zededa/go-provision/dataplane/fib
 ADD etc /config
 ADD scripts/device-steps.sh \
     scripts/find-uplink.sh \
@@ -38,6 +35,7 @@ COPY --from=build /var/tmp/zededa/AssignableAdapters /var/tmp/zededa/AssignableA
 COPY --from=build /var/tmp/zededa/DeviceNetworkConfig /var/tmp/zededa/DeviceNetworkConfig
 COPY --from=build /config /config
 COPY --from=build /go/bin/* /opt/zededa/bin/
+COPY --from=lisp /lisp/dataplane /opt/zededa/bin/
 COPY --from=lisp /lisp /opt/zededa/lisp/
 COPY --from=lisp /usr/bin/pydoc /usr/bin/smtpd.py /usr/bin/python* /usr/bin/
 COPY --from=lisp /usr/lib/libpython* /usr/lib/libffi.so* /usr/lib/
