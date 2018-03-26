@@ -119,7 +119,6 @@ func handleConfigInit() {
 }
 
 // Run a periodic fetch of the config
-
 func configTimerTask(handleChannel chan interface{},
 	getconfigCtx *getconfigContext) {
 	configUrl := serverName + "/" + configApi
@@ -142,6 +141,8 @@ func configTimerTask(handleChannel chan interface{},
 		if rebootFlag == false {
 			rebootFlag = getLatestConfig(configUrl, iteration,
 				&upgradeInprogress, getconfigCtx)
+		} else {
+			log.Printf("rebootFlag set; not getting config\n")
 		}
 	}
 }
@@ -350,7 +351,7 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCo
 		<-newConfigTimer.C
 	}
 
-	// add new BaseOS/App instances
+	// add new BaseOS/App instances; returns rebootFlag
 	if parseConfig(config, getconfigCtx) {
 		return true
 	}
