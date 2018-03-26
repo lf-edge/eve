@@ -34,6 +34,7 @@ import (
 )
 
 const (
+	agentName   = "zedclient"
 	tmpDirname  = "/var/tmp/zededa"
 	DNCDirname  = "/var/tmp/zededa/DeviceNetworkConfig"
 	maxDelay    = time.Second * 600 // 10 minutes
@@ -69,7 +70,7 @@ func main() {
 		log.Fatal(err)
 	}
 	defer logf.Close()
-	if err := pidfile.CheckAndCreatePidfile("zedclient"); err != nil {
+	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 		log.Fatal(err)
 	}
 
