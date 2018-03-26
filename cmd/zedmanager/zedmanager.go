@@ -61,15 +61,19 @@ type zedmanagerContext struct {
 
 var deviceNetworkStatus types.DeviceNetworkStatus
 
+var debug = false
+
 func main() {
 	logf, err := agentlog.Init(agentName)
 	if err != nil {
-	       log.Fatal(err)
+		log.Fatal(err)
 	}
 	defer logf.Close()
 
 	versionPtr := flag.Bool("v", false, "Version")
+	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
+	debug = *debugPtr
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
@@ -380,7 +384,10 @@ func handleDNSModify(ctxArg interface{}, statusFilename string,
 	status := statusArg.(*types.DeviceNetworkStatus)
 
 	if statusFilename != "global" {
-		log.Printf("handleDNSModify: ignoring %s\n", statusFilename)
+		if debug {
+			log.Printf("handleDNSModify: ignoring %s\n",
+				statusFilename)
+		}
 		return
 	}
 	log.Printf("handleDNSModify for %s\n", statusFilename)

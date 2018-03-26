@@ -34,7 +34,9 @@ func MaybeAddDomainConfig(aiConfig types.AppInstanceConfig,
 		displayName)
 
 	if domainConfig == nil {
-		log.Printf("create Domain config map\n")
+		if debug {
+			log.Printf("create Domain config map\n")
+		}
 		domainConfig = make(map[string]types.DomainConfig)
 	}
 	changed := false
@@ -141,7 +143,9 @@ func MaybeRemoveDomainConfig(uuidStr string) {
 	log.Printf("MaybeRemoveDomainConfig for %s\n", uuidStr)
 
 	if domainConfig == nil {
-		log.Printf("create Domain config map\n")
+		if debug {
+			log.Printf("create Domain config map\n")
+		}
 		domainConfig = make(map[string]types.DomainConfig)
 	}
 	if _, ok := domainConfig[uuidStr]; !ok {
@@ -188,14 +192,15 @@ func handleDomainStatusModify(ctxArg interface{}, statusFilename string,
 	}
 
 	if domainStatus == nil {
-		log.Printf("create Domain map\n")
+		if debug {
+			log.Printf("create Domain map\n")
+		}
 		domainStatus = make(map[string]types.DomainStatus)
 	}
 	domainStatus[key] = *status
 	updateAIStatusUUID(status.UUIDandVersion.UUID.String())
 
-	log.Printf("handleDomainStatusModify done for %s\n",
-		key)
+	log.Printf("handleDomainStatusModify done for %s\n", key)
 }
 
 func LookupDomainStatus(uuidStr string) (types.DomainStatus, error) {
@@ -207,15 +212,16 @@ func LookupDomainStatus(uuidStr string) (types.DomainStatus, error) {
 }
 
 func handleDomainStatusDelete(ctxArg interface{}, statusFilename string) {
-	log.Printf("handleDomainStatusDelete for %s\n",
-		statusFilename)
+	log.Printf("handleDomainStatusDelete for %s\n", statusFilename)
 
 	key := statusFilename
 	if m, ok := domainStatus[key]; !ok {
 		log.Printf("handleDomainStatusDelete for %s - not found\n",
 			key)
 	} else {
-		log.Printf("Domain map delete for %v\n", key)
+		if debug {
+			log.Printf("Domain map delete for %v\n", key)
+		}
 		delete(domainStatus, key)
 		removeAIStatusUUID(m.UUIDandVersion.UUID.String())
 	}
