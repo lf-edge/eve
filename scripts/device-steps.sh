@@ -231,8 +231,9 @@ echo
 P3=`zboot partdev P3`
 if [ $? = 0 -a x$P3 != x ]; then
     echo "Using $P3 for /persist"
-    fsck -y -t ext3 $P3
+    fsck.ext3 -y $P3
     if [ $? != 0 ]; then
+	echo "mkfs on $P3 for /persist"
 	mkfs -t ext3 -v $P3
         if [ $? != 0 ]; then
             echo "mkfs $P3 failed: $?"
