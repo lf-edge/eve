@@ -415,7 +415,7 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 				ReportDeviceMetric.Network)
 		}
 	}
-	cms := getCloudMetrics()
+	cms := zedcloud.GetCloudMetrics()
 	if debug {
 		log.Printf("Sending CloudMetrics %v\n", cms)
 	}

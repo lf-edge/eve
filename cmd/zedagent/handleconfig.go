@@ -102,8 +102,8 @@ func handleConfigInit() {
 	zedcloudCtx.DeviceNetworkStatus = &deviceNetworkStatus
 	zedcloudCtx.TlsConfig = tlsConfig
 	zedcloudCtx.Debug = debug
-	zedcloudCtx.FailureFunc = zedCloudFailure
-	zedcloudCtx.SuccessFunc = zedCloudSuccess
+	zedcloudCtx.FailureFunc = zedcloud.ZedCloudFailure
+	zedcloudCtx.SuccessFunc = zedcloud.ZedCloudSuccess
 
 	b, err := ioutil.ReadFile(uuidFileName)
 	if err != nil {

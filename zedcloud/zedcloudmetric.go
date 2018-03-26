@@ -5,7 +5,7 @@
 // Just success and failures.
 // Reported as device metrics
 
-package main
+package zedcloud
 
 import (
 	"log"
@@ -45,7 +45,7 @@ func maybeInit(ifname string) {
 	}
 }
 
-func zedCloudFailure(ifname string, url string, reqLen int64, respLen int64) {
+func ZedCloudFailure(ifname string, url string, reqLen int64, respLen int64) {
 	maybeInit(ifname)
 	m := metrics[ifname]
 	m.FailureCount += 1
@@ -54,7 +54,6 @@ func zedCloudFailure(ifname string, url string, reqLen int64, respLen int64) {
 	var ok bool
 	if u, ok = m.UrlCounters[url]; !ok {
 		u = urlcloudMetrics{}
-		m.UrlCounters[url] = u
 	}
 	u.TryMsgCount += 1
 	u.TryByteCount += reqLen
@@ -62,10 +61,11 @@ func zedCloudFailure(ifname string, url string, reqLen int64, respLen int64) {
 		u.RecvMsgCount += 1
 		u.RecvByteCount += respLen
 	}
+	m.UrlCounters[url] = u
 	metrics[ifname] = m
 }
 
-func zedCloudSuccess(ifname string, url string, reqLen int64, respLen int64) {
+func ZedCloudSuccess(ifname string, url string, reqLen int64, respLen int64) {
 	maybeInit(ifname)
 	m := metrics[ifname]
 	m.SuccessCount += 1
@@ -74,15 +74,15 @@ func zedCloudSuccess(ifname string, url string, reqLen int64, respLen int64) {
 	var ok bool
 	if u, ok = m.UrlCounters[url]; !ok {
 		u = urlcloudMetrics{}
-		m.UrlCounters[url] = u
 	}
 	u.SentMsgCount += 1
 	u.SentByteCount += reqLen
 	u.RecvMsgCount += 1
 	u.RecvByteCount += respLen
+	m.UrlCounters[url] = u
 	metrics[ifname] = m
 }
 
-func getCloudMetrics() map[string]zedcloudMetric {
+func GetCloudMetrics() map[string]zedcloudMetric {
 	return metrics
 }
