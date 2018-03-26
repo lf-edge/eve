@@ -39,8 +39,10 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext) 
 		return true
 	}
 
-	// updating/rebooting, ignore config
+	// updating/rebooting, ignore config??
+	// XXX can we get stuck here?
 	if zboot.IsAvailable() && zboot.IsOtherPartitionStateUpdating() {
+		log.Println("OtherPartitionStatusUpdating - returning rebootFlag")
 		return true
 	}
 
@@ -906,12 +908,14 @@ func writeCertObjConfig(config *types.CertObjConfig, uuidStr string) {
 	}
 }
 
+// Returns a rebootFlag
 func parseOpCmds(config *zconfig.EdgeDevConfig) bool {
 
 	scheduleBackup(config.GetBackup())
 	return scheduleReboot(config.GetReboot())
 }
 
+// Returns a rebootFlag
 func scheduleReboot(reboot *zconfig.DeviceOpsCmd) bool {
 
 	if reboot == nil {
