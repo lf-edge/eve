@@ -7,7 +7,7 @@ PERSISTDIR=/persist
 BINDIR=/opt/zededa/bin
 PROVDIR=$BINDIR
 TMPDIR=/var/tmp/zededa
-DNCDIR=/var/tmp/zededa/DeviceNetworkConfig
+DNCDIR=$TMPDIR/DeviceNetworkConfig
 LISPDIR=/opt/zededa/lisp
 LOGDIRA=$PERSISTDIR/IMGA/log
 LOGDIRB=$PERSISTDIR/IMGB/log
@@ -65,15 +65,21 @@ if [ -f $TMPDIR/uuid ]; then
     fi
 fi
 
-echo "Configuration from factory/install:"
-(cd $CONFIGDIR; ls -l)
-echo
-
 echo "Handling restart case at" `date`
 # XXX should we check if zedmanager is running?
 
 echo "Removing old stale files"
 # Remove internal config files
+# XXX not that when restarting device-steps.sh this kill
+# can result in watchdog(8) rebooting the system
+cat >$TMPDIR/watchdog.conf <<EOF
+admin =
+EOF
+if [ -f /var/run/watchdog.pid ]; then
+    kill `cat /var/run/watchdog.pid`
+    /usr/sbin/watchdog -c $TMPDIR/watchdog.conf -F -s &
+fi
+
 pkill zedmanager
 if [ x$OLDFLAG = x ]; then
 	echo "Removing old zedmanager config files"
@@ -85,7 +91,7 @@ rm -rf /var/run/zedmanager/status/*.json
 
 # The following is a workaround for a racecondition between different agents
 # Make sure we have the required directories in place
-DIRS="$CONFIGDIR $PERSISTDIR $TMPDIR /var/tmp/ledmanager/config/ /var/tmp/domainmgr/config/ /var/tmp/verifier/config/ /var/tmp/downloader/config/ /var/tmp/zedmanager/config/ /var/tmp/identitymgr/config/ /var/tmp/zedrouter/config/ /var/run/domainmgr/status/ /var/run/downloader/status/ /var/run/zedmanager/status/ /var/run/eidregister/status/ /var/run/zedrouter/status/ /var/run/identitymgr/status/ /var/tmp/zededa/DeviceNetworkConfig/ /var/run/zedrouter/DeviceNetworkStatus/ /var/tmp/zededa/AssignableAdapters"
+DIRS="$CONFIGDIR $PERSISTDIR $TMPDIR /var/tmp/ledmanager/config/ /var/tmp/domainmgr/config/ /var/tmp/verifier/config/ /var/tmp/downloader/config/ /var/tmp/zedmanager/config/ /var/tmp/identitymgr/config/ /var/tmp/zedrouter/config/ /var/run/domainmgr/status/ /var/run/downloader/status/ /var/run/zedmanager/status/ /var/run/eidregister/status/ /var/run/zedrouter/status/ /var/run/identitymgr/status/ $TMPDIR/DeviceNetworkConfig/ /var/run/zedrouter/DeviceNetworkStatus/ $TMPDIR/AssignableAdapters"
 for d in $DIRS; do
     d1=`dirname $d`
     if [ ! -d $d1 ]; then
@@ -216,6 +222,59 @@ fi
 
 echo "Handling restart done at" `date`
 
+echo "Starting" `date`
+
+echo "Configuration from factory/install:"
+(cd $CONFIGDIR; ls -l)
+echo
+
+P3=`zboot partdev P3`
+if [ $? = 0 -a x$P3 != x ]; then
+    echo "Using $P3 for /persist"
+    fsck.ext3 -y $P3
+    if [ $? != 0 ]; then
+	echo "mkfs on $P3 for /persist"
+	mkfs -t ext3 -v $P3
+        if [ $? != 0 ]; then
+            echo "mkfs $P3 failed: $?"
+	    # Try mounting below
+        fi
+    fi
+    mount -t ext3 $P3 /persist
+    if [ $? != 0 ]; then
+	echo "mount $P3 failed: $?"
+    fi
+else
+    echo "No separate /persist partition"
+fi
+
+CURPART=`zboot curpart`
+if [ $? != 0 ]; then
+    CURPART="IMGA"
+fi
+
+# Create config file for watchdog(8)
+# XXX should we enable realtime in the kernel?
+cat >$TMPDIR/watchdog.conf <<EOF
+admin =
+#realtime = yes
+#priority = 1
+interval = 10
+logtick  = 60
+EOF
+echo "log-dir = /persist/$CURPART/log/" >>$TMPDIR/watchdog.conf
+echo "pidfile = /var/run/ledmanager.pid" >>$TMPDIR/watchdog.conf
+
+# The client should start soon
+cp $TMPDIR/watchdog.conf $TMPDIR/watchdogc.conf
+echo "pidfile = /var/run/zedclient.pid" >>$TMPDIR/watchdogc.conf
+
+if [ -f /var/run/watchdog.pid ]; then
+    kill `cat /var/run/watchdog.pid`
+fi
+# Make sure client.go doesn't fail
+/usr/sbin/watchdog -c $TMPDIR/watchdogc.conf -F -s &
+
 if [ ! -d $LOGDIRA ]; then
     echo "Creating $LOGDIRA"
     mkdir -p $LOGDIRA
@@ -226,10 +285,6 @@ if [ ! -d $LOGDIRB ]; then
 fi
 
 echo "Set up log capture"
-CURPART=`zboot curpart`
-if [ $? != 0 ]; then
-    CURPART="IMGA"
-fi
 DOM0LOGFILES="dhcpcd.err.log ntpd.err.log wlan.err.log wwan.err.log zededa-tools.err.log dhcpcd.out.log ntpd.out.log wlan.out.log wwan.out.log zededa-tools.out.log"
 # XXX note that these tail and dmesg processes are not killed when
 # device-steps.sh is re-run
@@ -266,6 +321,7 @@ if [ $? != 0 ]; then
     fi
 fi
 
+# XXX could ntp take more than 60 seconds??
 # We need to try our best to setup time *before* we generate the certifiacte.
 # Otherwise it may have start date in the future
 echo "Check for NTP config"
@@ -474,6 +530,14 @@ echo '{"MaxSpace":2000000}' >/var/tmp/downloader/config/global
 
 rm -f /var/run/verifier/*/status/restarted
 rm -f /var/tmp/zedrouter/config/restart
+
+for AGENT in $AGENTS; do
+    echo "pidfile = /var/run/$AGENT.pid" >>$TMPDIR/watchdog.conf
+done
+if [ -f /var/run/watchdog.pid ]; then
+    kill `cat /var/run/watchdog.pid`
+fi
+/usr/sbin/watchdog -c $TMPDIR/watchdog.conf -F -s &
 
 echo "Starting verifier at" `date`
 verifier &

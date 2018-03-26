@@ -20,6 +20,7 @@ import (
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/devicenetwork"
 	"github.com/zededa/go-provision/hardware"
+	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/zedcloud"
 	"io/ioutil"
@@ -33,6 +34,7 @@ import (
 )
 
 const (
+	agentName   = "zedclient"
 	tmpDirname  = "/var/tmp/zededa"
 	DNCDirname  = "/var/tmp/zededa/DeviceNetworkConfig"
 	maxDelay    = time.Second * 600 // 10 minutes
@@ -68,6 +70,9 @@ func main() {
 		log.Fatal(err)
 	}
 	defer logf.Close()
+	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
+		log.Fatal(err)
+	}
 
 	versionPtr := flag.Bool("v", false, "Version")
 	oldPtr := flag.Bool("o", false, "Old use of prov01")
