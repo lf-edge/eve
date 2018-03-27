@@ -453,9 +453,7 @@ func handleXenLogDirModify(ctx *loggerContext, filename string, source string) {
 	}
 	logCtx.logfileReaders = append(logCtx.logfileReaders, r)
 
-	log.Printf("posting add context for %s, %v\n", source, logCtx.processChan)
 	logCtx.processChan <- logCtx
-	log.Printf("processChan: successful %v\n", logCtx.processChan)
 
 	// read initial entries until EOF
 	readLineToEvent(&logCtx.logfileReaders[0], logCtx.logChan)
