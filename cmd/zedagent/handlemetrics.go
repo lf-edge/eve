@@ -423,30 +423,19 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 				ReportDeviceMetric.Network)
 		}
 	}
+	// Collect zedcloud metrics from ourselves and other agents
 	cms := zedcloud.GetCloudMetrics()
-	if debug {
-		log.Printf("Got our CloudMetrics %v\n", cms)
-	}
 	cms1 := zedcloud.CastCloudMetrics(clientMetrics)
 	if cms1 != nil {
-		log.Printf("Got client CloudMetrics %v\n", cms1)
-		for ifname, cm := range cms1 {
-			cms[ifname] = cm
-		}
+		cms = zedcloud.Append(cms, cms1)
 	}
 	cms1 = zedcloud.CastCloudMetrics(logmanagerMetrics)
 	if cms1 != nil {
-		log.Printf("Got logmanager CloudMetrics %v\n", cms1)
-		for ifname, cm := range cms1 {
-			cms[ifname] = cm
-		}
+		cms = zedcloud.Append(cms, cms1)
 	}
 	cms1 = zedcloud.CastCloudMetrics(downloaderMetrics)
 	if cms1 != nil {
-		log.Printf("Got downloader CloudMetrics %v\n", cms1)
-		for ifname, cm := range cms1 {
-			cms[ifname] = cm
-		}
+		cms = zedcloud.Append(cms, cms1)
 	}
 	for ifname, cm := range cms {
 		metric := zmet.ZedcloudMetric{IfName: ifname,
