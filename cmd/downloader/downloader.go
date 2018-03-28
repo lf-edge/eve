@@ -19,10 +19,13 @@ import (
 	"fmt"
 	"github.com/zededa/api/zconfig"
 	"github.com/zededa/go-provision/agentlog"
+	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/pidfile"
+	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
 	"github.com/zededa/go-provision/wrap"
+	"github.com/zededa/go-provision/zedcloud"
 	"github.com/zededa/shared/libs/zedUpload"
 	"io/ioutil"
 	"log"
@@ -81,7 +84,7 @@ var deviceNetworkStatus types.DeviceNetworkStatus
 func main() {
 	logf, err := agentlog.Init(agentName)
 	if err != nil {
-	       log.Fatal(err)
+		log.Fatal(err)
 	}
 	defer logf.Close()
 
@@ -98,6 +101,19 @@ func main() {
 	for _, ot := range downloaderObjTypes {
 		watch.CleanupRestartedObj(agentName, ot)
 	}
+
+	cms := zedcloud.GetCloudMetrics() // Need type of data
+	pub, err := pubsub.Publish(agentName, cms)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Publish send metrics for zedagent every 10 seconds
+	interval := time.Duration(10 * time.Second)
+	max := float64(interval)
+	min := max * 0.3
+	publishTimer := flextimer.NewRangeTicker(time.Duration(min),
+		time.Duration(max))
 
 	// Any state needed by handler functions
 	ctx := downloaderContext{}
@@ -173,6 +189,8 @@ func main() {
 				handleBaseOsObjCreate,
 				handleBaseOsObjModify,
 				handleBaseOsObjDelete, nil)
+		case <-publishTimer.C:
+			pub.Publish("global", zedcloud.GetCloudMetrics())
 		}
 	}
 }
@@ -803,6 +821,12 @@ func handleSyncOp(ctx *downloaderContext, objType string, statusFilename string,
 		log.Printf("Have %d any uplink addresses\n", addrCount)
 		err = errors.New("No IP uplink addresses for download")
 	}
+	metricsUrl := config.DownloadURL
+	if config.TransportMethod == zconfig.DsType_DsS3.String() {
+		// fake URL for metrics
+		metricsUrl = fmt.Sprintf("S3:%s/%s", config.Dpath, filename)
+	}
+
 	// Loop through all interfaces until a success
 	for addrIndex := 0; addrIndex < addrCount; addrIndex += 1 {
 		var ipSrc net.IP
@@ -818,9 +842,9 @@ func handleSyncOp(ctx *downloaderContext, objType string, statusFilename string,
 			log.Printf("GetLocalAddr failed: %s\n", err)
 			continue
 		}
-		log.Printf("Using IP source %v transport %v\n", ipSrc,
-			config.TransportMethod)
-
+		ifname := types.GetUplinkFromAddr(deviceNetworkStatus, ipSrc)
+		log.Printf("Using IP source %v if %s transport %v\n",
+			ipSrc, ifname, config.TransportMethod)
 		switch config.TransportMethod {
 		case zconfig.DsType_DsS3.String():
 			err = doS3(ctx, syncOp, config.ApiKey,
@@ -829,7 +853,12 @@ func handleSyncOp(ctx *downloaderContext, objType string, statusFilename string,
 			if err != nil {
 				log.Printf("Source IP %s failed: %s\n",
 					ipSrc.String(), err)
+				// XXX don't know how much we downloaded! 0?
+				zedcloud.ZedCloudFailure(ifname,
+					metricsUrl, 1024, 0)
 			} else {
+				zedcloud.ZedCloudSuccess(ifname,
+					metricsUrl, 1024, int64(config.Size))
 				handleSyncOpResponse(objType, config, status,
 					statusFilename, err)
 				return
@@ -842,7 +871,11 @@ func handleSyncOp(ctx *downloaderContext, objType string, statusFilename string,
 			if err != nil {
 				log.Printf("Source IP %s failed: %s\n",
 					ipSrc.String(), err)
+				zedcloud.ZedCloudFailure(ifname,
+					metricsUrl, 1024, 0)
 			} else {
+				zedcloud.ZedCloudSuccess(ifname,
+					metricsUrl, 1024, int64(config.Size))
 				handleSyncOpResponse(objType, config, status,
 					statusFilename, err)
 				return
