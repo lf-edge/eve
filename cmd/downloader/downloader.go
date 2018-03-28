@@ -853,14 +853,18 @@ func handleSyncOp(ctx *downloaderContext, objType string, statusFilename string,
 			if err != nil {
 				log.Printf("Source IP %s failed: %s\n",
 					ipSrc.String(), err)
-				// XXX don't know how much we downloaded! 0?
+				// XXX don't know how much we downloaded!
+				// Could have failed half-way. Using zero.
 				zedcloud.ZedCloudFailure(ifname,
 					metricsUrl, 1024, 0)
 			} else {
+				// Record how much we downloaded
+				info, _ := os.Stat(locFilename)
+				size := info.Size()
 				zedcloud.ZedCloudSuccess(ifname,
-					metricsUrl, 1024, int64(config.Size))
+					metricsUrl, 1024, size)
 				handleSyncOpResponse(objType, config, status,
-					statusFilename, err)
+					locFilename, statusFilename, err)
 				return
 			}
 		case zconfig.DsType_DsHttp.String():
@@ -874,10 +878,13 @@ func handleSyncOp(ctx *downloaderContext, objType string, statusFilename string,
 				zedcloud.ZedCloudFailure(ifname,
 					metricsUrl, 1024, 0)
 			} else {
+				// Record how much we downloaded
+				info, _ := os.Stat(locFilename)
+				size := info.Size()
 				zedcloud.ZedCloudSuccess(ifname,
-					metricsUrl, 1024, int64(config.Size))
+					metricsUrl, 1024, size)
 				handleSyncOpResponse(objType, config, status,
-					statusFilename, err)
+					locFilename, statusFilename, err)
 				return
 			}
 		default:
@@ -885,15 +892,15 @@ func handleSyncOp(ctx *downloaderContext, objType string, statusFilename string,
 		}
 	}
 	log.Printf("All source IP addresses failed. Last %s\n", err)
-	handleSyncOpResponse(objType, config, status, statusFilename, err)
+	handleSyncOpResponse(objType, config, status, locFilename,
+		statusFilename, err)
 }
 
 func handleSyncOpResponse(objType string, config types.DownloaderConfig,
-	status *types.DownloaderStatus, statusFilename string,
-	err error) {
+	status *types.DownloaderStatus, locFilename string,
+	statusFilename string, err error) {
 
 	locDirname := objectDownloadDirname + "/" + objType
-
 	if err != nil {
 		// Delete file
 		doDelete(statusFilename, locDirname, status)
@@ -908,15 +915,6 @@ func handleSyncOpResponse(objType string, config types.DownloaderConfig,
 			status.DownloadURL, err)
 		return
 	}
-
-	locFilename := locDirname + "/pending"
-
-	// XXX:FIXME
-	if status.ImageSha256 != "" {
-		locFilename = locFilename + "/" + status.ImageSha256
-	}
-
-	locFilename = locFilename + "/" + config.Safename
 
 	info, err := os.Stat(locFilename)
 	if err != nil {
