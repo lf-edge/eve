@@ -42,6 +42,8 @@ const publishToSock = true      // XXX
 const subscribeFromDir = true   // XXX
 const subscribeFromSock = false // XXX
 
+const debug = true // XXX setable?
+
 // Usage:
 //  p1, err := pubsub.Publish("foo", fooStruct{})
 //  ...
@@ -184,21 +186,31 @@ func (pub *publication) Publish(key string, item interface{}) error {
 			agentName, pub.topic, topic)
 		return errors.New(errStr)
 	}
-	log.Printf("Publish(%s, %s, %s)\n", agentName, topic, key)
-	// XXX debug
 	if m, ok := pub.km.key[key]; ok {
-		log.Printf("Publish(%s, %s, %s) replacing %v with %v\n",
-			agentName, topic, key, m, item)
-	} else {
+		if reflect.DeepEqual(m, item) {
+			if debug {
+				log.Printf("Publish(%s, %s, %s) unchanged\n",
+					agentName, topic, key)
+			}
+			return nil
+		}
+		if debug {
+			log.Printf("Publish(%s, %s, %s) replacing %v with %v\n",
+				agentName, topic, key, m, item)
+		}
+	} else if debug {
 		log.Printf("Publish(%s, %s, %s) adding %v\n",
 			agentName, topic, key, item)
 	}
 	pub.km.key[key] = item
-	pub.dump("after Publish")
-
+	if debug {
+		pub.dump("after Publish")
+	}
 	dirName := PubDirName(agentName, topic)
 	fileName := dirName + "/" + key + ".json"
-	log.Printf("Publish writing %s\n", fileName)
+	if debug {
+		log.Printf("Publish writing %s\n", fileName)
+	}
 	b, err := json.Marshal(item)
 	if err != nil {
 		log.Fatal(err, "json Marshal in Publish")
@@ -219,11 +231,11 @@ func (pub *publication) Publish(key string, item interface{}) error {
 func (pub *publication) Unpublish(key string) error {
 	agentName := pub.agentName
 	topic := pub.topic
-	log.Printf("Unpublish(%s, %s, %s)\n", agentName, topic, key)
 	if m, ok := pub.km.key[key]; ok {
-		// XXX debug
-		log.Printf("Unpublish(%s, %s, %s) removing %v\n",
-			agentName, topic, key, m)
+		if debug {
+			log.Printf("Unpublish(%s, %s, %s) removing %v\n",
+				agentName, topic, key, m)
+		}
 	} else {
 		errStr := fmt.Sprintf("Unpublish(%s, %s): key %s does not exist",
 			agentName, pub.topic, key)
@@ -231,11 +243,14 @@ func (pub *publication) Unpublish(key string) error {
 		return errors.New(errStr)
 	}
 	delete(pub.km.key, key)
-	pub.dump("after Unpublish")
-
+	if debug {
+		pub.dump("after Unpublish")
+	}
 	dirName := PubDirName(agentName, topic)
 	fileName := dirName + "/" + key + ".json"
-	log.Printf("Unpublish deleting %s\n", fileName)
+	if debug {
+		log.Printf("Unpublish deleting %s\n", fileName)
+	}
 	if err := os.Remove(fileName); err != nil {
 		errStr := fmt.Sprintf("Publish(%s, %s): %s",
 			agentName, pub.topic, err)
@@ -338,40 +353,48 @@ func Subscribe(agentName string, topicType interface{}, ctx interface{}) (*subsc
 
 // XXX Currently only handles directory subscriptions; no AF_UNIX
 func (sub *subscription) ProcessChange(change string) {
-	log.Printf("ProcessEvent %s\n", change)
+	if debug {
+		log.Printf("ProcessEvent %s\n", change)
+	}
 	dirName := PubDirName(sub.agentName, sub.topic)
 	watch.HandleStatusEvent(change, sub,
 		dirName, &sub.topicType,
 		handleModify, handleDelete, nil)
 }
 
+// XXX note that we could add a CreateHandler since we know if we've already
+// read it. Is that different than the handleConfigStatus notion of create??
 func handleModify(ctxArg interface{}, key string, stateArg interface{}) {
-	log.Printf("handleModify for %s\n", key)
+	if debug {
+		log.Printf("handleModify for %s\n", key)
+	}
 	sub := ctxArg.(*subscription)
 	m, ok := sub.km.key[key]
 	// XXX if debug; need json encode to get readable output
-	if ok {
-		log.Printf("Replace %v with %v for key %s\n", m, stateArg, key)
-		sub.km.key[key] = stateArg
-	} else {
-		log.Printf("Add %v for key %s\n", stateArg, key)
-		sub.km.key[key] = stateArg
+	if debug {
+		if ok {
+			log.Printf("Replace %v with %v for key %s\n",
+				m, stateArg, key)
+		} else {
+			log.Printf("Add %v for key %s\n", stateArg, key)
+		}
 	}
+	sub.km.key[key] = stateArg
 	if sub.ModifyHandler != nil {
 		(*sub.ModifyHandler)(sub.userCtx, key, stateArg)
 	}
 }
 
 func handleDelete(ctxArg interface{}, key string) {
-	log.Printf("handleDelete for %s\n", key)
 	sub := ctxArg.(*subscription)
 	m, ok := sub.km.key[key]
 	if !ok {
 		log.Printf("XXX Delete not found for key %s\n", key)
 		return
 	}
-	// XXX if debug
-	log.Printf("Delete key %s value %v\n", key, m)
+	if debug {
+		log.Printf("Delete key %s value %v\n", key, m)
+	}
 	delete(sub.km.key, key)
 	if sub.DeleteHandler != nil {
 		(*sub.DeleteHandler)(sub.userCtx, key)
