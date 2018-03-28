@@ -19,9 +19,9 @@ import (
 	"github.com/zededa/api/zmet"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/devicenetwork"
-	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/pidfile"
+	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/zedcloud"
 	"io/ioutil"
@@ -117,7 +117,12 @@ func main() {
 	zedserverConfigFileName := tmpDirname + "/zedserverconfig"
 	zedrouterConfigFileName := tmpDirname + "/zedrouterconfig.json"
 
-	publishInit()
+	cms := zedcloud.GetCloudMetrics() // Need type of data
+	pub, err := pubsub.Publish(agentName, cms)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	var oldUUID uuid.UUID
 	b, err := ioutil.ReadFile(uuidFileName)
 	if err == nil {
@@ -150,7 +155,7 @@ func main() {
 				log.Printf("Already have a UUID %s; declaring success\n",
 					oldUUID.String())
 				// Likely zero metrics
-				publishMetrics()
+				pub.Publish("global", zedcloud.GetCloudMetrics())
 				return
 			}
 			log.Printf("Waiting for some uplink addresses to use\n")
@@ -168,7 +173,7 @@ func main() {
 	zedcloudCtx := zedcloud.ZedCloudContext{
 		DeviceNetworkStatus: &deviceNetworkStatus,
 		Debug:               true,
-		FailureFunc:	     zedcloud.ZedCloudFailure,
+		FailureFunc:         zedcloud.ZedCloudFailure,
 		SuccessFunc:         zedcloud.ZedCloudSuccess,
 	}
 	var onboardCert, deviceCert tls.Certificate
@@ -521,7 +526,7 @@ func main() {
 		if oldFlag {
 			log.Printf("XXX ping not supported using %s\n",
 				serverName)
-			publishMetrics()
+			pub.Publish("global", zedcloud.GetCloudMetrics())
 			return
 		}
 		url := "/api/v1/edgedevice/ping"
@@ -645,7 +650,7 @@ func main() {
 			log.Printf("XXX lookupParam not yet supported using %s\n",
 				serverName)
 			os.Remove(zedrouterConfigFileName)
-			publishMetrics()
+			pub.Publish("global", zedcloud.GetCloudMetrics())
 			return
 		}
 		b, err := ioutil.ReadFile(uuidFileName)
@@ -682,7 +687,7 @@ func main() {
 		if device.EID == nil {
 			log.Printf("Did not receive an EID\n")
 			os.Remove(zedserverConfigFileName)
-			publishMetrics()
+			pub.Publish("global", zedcloud.GetCloudMetrics())
 			return
 		}
 
@@ -795,7 +800,7 @@ func main() {
 		}
 		writeNetworkConfig(&config, zedrouterConfigFileName)
 	}
-	publishMetrics()
+	pub.Publish("global", zedcloud.GetCloudMetrics())
 }
 
 func writeNetworkConfig(config *types.AppNetworkConfig,
@@ -835,15 +840,4 @@ func IsMyAddress(clientIP net.IP) bool {
 		}
 	}
 	return false
-}
-
-func publishInit() {
-	cms := zedcloud.GetCloudMetrics()
-	pubsub.PublishInit(agentName, cms)
-}
-
-func publishMetrics() {
-	log.Printf("publishMetrics()\n")
-	cms := zedcloud.GetCloudMetrics()
-	pubsub.Publish(agentName, "global", cms)
 }

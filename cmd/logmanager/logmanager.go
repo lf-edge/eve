@@ -121,7 +121,11 @@ func main() {
 	log.Printf("Starting %s watching %s\n", agentName, logDirName)
 	log.Printf("watching %s\n", lispLogDirName)
 
-	publishInit()
+	cms := zedcloud.GetCloudMetrics() // Need type of data
+	pub, err := pubsub.Publish(agentName, cms)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	// XXX should we wait until we have at least one useable address?
 	DNSctx := DNSContext{}
@@ -212,12 +216,12 @@ func main() {
 				&types.DeviceNetworkStatus{},
 				handleDNSModify, handleDNSDelete,
 				nil)
-		case <- publishTimer.C:
+		case <-publishTimer.C:
 			if debug {
 				log.Println("publishTimer at",
 					time.Now())
 			}
-			publishMetrics()
+			pub.Publish("global", zedcloud.GetCloudMetrics())
 		}
 	}
 }
@@ -275,7 +279,7 @@ func processEvents(image string, logChan <-chan logEntry) {
 				}
 				return
 			}
-				
+
 			HandleLogEvent(event, reportLogs, counter)
 			counter++
 
@@ -554,14 +558,4 @@ func logReader(logFile string, source string, logChan chan<- logEntry) {
 	// read entries until EOF
 	readLineToEvent(&r, logChan)
 	log.Printf("logReader done for %s\n", logFile)
-}
-
-func publishInit() {
-	cms := zedcloud.GetCloudMetrics()
-	pubsub.PublishInit(agentName, cms)
-}
-
-func publishMetrics() {
-	cms := zedcloud.GetCloudMetrics()
-	pubsub.Publish(agentName, "global", cms)
 }
