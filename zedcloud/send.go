@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/zededa/go-provision/types"
+	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -133,8 +134,12 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, reqlen int64, b *b
 			// Inform ledmanager about broken cloud connectivity
 			types.UpdateLedManagerConfig(10)
 			if ctx.FailureFunc != nil {
-				ctx.FailureFunc(intf, url, reqlen,
-					resp.ContentLength)
+				resplen := resp.ContentLength
+				if resplen == -1 {
+					b, _ := ioutil.ReadAll(resp.Body)
+					resplen = int64(len(b))
+				}
+				ctx.FailureFunc(intf, url, reqlen, resplen)
 			}
 			resp.Body.Close()
 			continue
@@ -158,8 +163,13 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, reqlen int64, b *b
 				// Inform ledmanager about broken cloud connectivity
 				types.UpdateLedManagerConfig(10)
 				if ctx.FailureFunc != nil {
+					resplen := resp.ContentLength
+					if resplen == -1 {
+						b, _ := ioutil.ReadAll(resp.Body)
+						resplen = int64(len(b))
+					}
 					ctx.FailureFunc(intf, url, reqlen,
-						resp.ContentLength)
+						resplen)
 				}
 				resp.Body.Close()
 				continue
@@ -168,7 +178,14 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, reqlen int64, b *b
 		// Even if we got e.g., a 404 we consider the connection a
 		// success since we care about the connectivity to the cloud.
 		if ctx.SuccessFunc != nil {
-			ctx.SuccessFunc(intf, url, reqlen, resp.ContentLength)
+			resplen := resp.ContentLength
+			if resplen == -1 {
+				// XXX how do we determine length? Can't consume
+				// body by reading i.e.,
+				// XXX	b, err := ioutil.ReadAll(r.Body)
+				resplen = 0
+			}
+			ctx.SuccessFunc(intf, url, reqlen, resplen)
 		}
 
 		switch resp.StatusCode {
