@@ -27,7 +27,7 @@ type urlcloudMetrics struct {
 	SentMsgCount  int64
 	SentByteCount int64
 	RecvMsgCount  int64
-	RecvByteCount int64
+	RecvByteCount int64 // Based on content-length which could be off
 }
 
 // Key is ifname string
@@ -118,4 +118,51 @@ func CastCloudMetrics2(in interface{}) metricsMap {
 		o1[k1] = elem
 	}
 	return o1
+}
+
+// Concatenate different interfaces and URLs into a union map
+func Append(cms metricsMap, cms1 metricsMap) metricsMap {
+	for ifname, cm1 := range cms1 {
+		cm, ok := cms[ifname]
+		if !ok {
+			// New ifname; take all
+			cms[ifname] = cm
+			continue
+		}
+		if cm.LastFailure.IsZero() {
+			// Don't care if cm1 is zero
+			cm.LastFailure = cm1.LastFailure
+		} else if !cm1.LastFailure.IsZero() &&
+			cm1.LastFailure.Sub(cm.LastFailure) > 0 {
+			cm.LastFailure = cm1.LastFailure
+		}
+		if cm.LastSuccess.IsZero() {
+			// Don't care if cm1 is zero
+			cm.LastSuccess = cm1.LastSuccess
+		} else if !cm1.LastSuccess.IsZero() &&
+			cm1.LastSuccess.Sub(cm.LastSuccess) > 0 {
+			cm.LastSuccess = cm1.LastSuccess
+		}
+		cm.FailureCount += cm1.FailureCount
+		cm.SuccessCount += cm1.SuccessCount
+		for url, um1 := range cm1.UrlCounters {
+			cmu := cm.UrlCounters // A pointer to the map
+			um, ok := cmu[url]
+			if !ok {
+				// New url; take all
+				cmu[url] = um1
+				continue
+			}
+			um.TryMsgCount += um1.TryMsgCount
+			um.TryMsgCount += um1.TryMsgCount
+			um.TryByteCount += um1.TryByteCount
+			um.SentMsgCount += um1.SentMsgCount
+			um.SentByteCount += um1.SentByteCount
+			um.RecvMsgCount += um1.RecvMsgCount
+			um.RecvByteCount += um1.RecvByteCount
+			cmu[url] = um
+		}
+		cms[ifname] = cm
+	}
+	return cms
 }
