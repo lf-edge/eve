@@ -234,6 +234,18 @@ func GetUplink(globalStatus DeviceNetworkStatus, ifname string) *NetworkUplink {
 	return nil
 }
 
+// Given an address tell me its interface
+func GetUplinkFromAddr(globalStatus DeviceNetworkStatus, addr net.IP) string {
+	for _, u := range globalStatus.UplinkStatus {
+		for _, i := range u.AddrInfoList {
+			if i.Addr.Equal(addr) {
+				return u.IfName
+			}
+		}
+	}
+	return ""
+}
+
 // Returns addresses based on free, ifname, and whether or not we want
 // IPv6 link-locals.
 // If free is not set, the addresses from the free uplinks are first.
