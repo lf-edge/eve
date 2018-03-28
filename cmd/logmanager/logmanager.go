@@ -345,7 +345,7 @@ func sendProtoStrForLogs(reportLogs *zmet.LogBundle, image string,
 		log.Fatal("SendInfoProtobufStr malloc error:")
 	}
 
-	resp, err := zedcloud.SendOnAllIntf(zedcloudCtx, logsUrl,
+	_, _, err = zedcloud.SendOnAllIntf(zedcloudCtx, logsUrl,
 		int64(len(data)), buf, iteration)
 	if err != nil {
 		// XXX need to queue message and retry
@@ -354,7 +354,6 @@ func sendProtoStrForLogs(reportLogs *zmet.LogBundle, image string,
 	}
 	log.Printf("Sent %d bytes to %s\n", len(data), logsUrl)
 	reportLogs.Log = []*zmet.LogEntry{}
-	resp.Body.Close()
 }
 
 func sendCtxInit() {

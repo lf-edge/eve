@@ -29,8 +29,9 @@ type ZedCloudContext struct {
 
 // Tries all interfaces (free first) until one succeeds. interation arg
 // ensure load spreading across multiple interfaces.
-// Returns response for first success
-func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffer, iteration int) (*http.Response, error) {
+// Returns response for first success. Caller can not use resp.Body but can
+// use []byte contents return.
+func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffer, iteration int) (*http.Response, []byte, error) {
 	// If failed then try the non-free
 	for try := 0; try < 2; try += 1 {
 		var intfs []string
@@ -50,20 +51,23 @@ func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffe
 			}
 		}
 		for _, intf := range intfs {
-			resp, err := sendOnIntf(ctx, url, intf, reqlen, b)
+			resp, contents, err := sendOnIntf(ctx, url, intf, reqlen, b)
 			if err != nil {
 				continue
 			}
-			return resp, nil
+			return resp, contents, nil
 		}
 	}
 	errStr := fmt.Sprintf("All attempts to connect to %s failed",
 		url)
 	log.Println(errStr)
-	return nil, errors.New(errStr)
+	return nil, nil, errors.New(errStr)
 }
 
-func sendOnIntf(ctx ZedCloudContext, url string, intf string, reqlen int64, b *bytes.Buffer) (*http.Response, error) {
+// Tries all source addresses on interface until one succeeds.
+// Returns response for first success. Caller can not use resp.Body but can
+// use []byte contents return.
+func sendOnIntf(ctx ZedCloudContext, url string, intf string, reqlen int64, b *bytes.Buffer) (*http.Response, []byte, error) {
 	addrCount := types.CountLocalAddrAny(*ctx.DeviceNetworkStatus, intf)
 	if ctx.Debug {
 		log.Printf("Connecting to %s using intf %s #sources %d\n",
@@ -78,7 +82,7 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, reqlen int64, b *b
 		if ctx.Debug {
 			log.Println(errStr)
 		}
-		return nil, errors.New(errStr)
+		return nil, nil, errors.New(errStr)
 	}
 	for retryCount := 0; retryCount < addrCount; retryCount += 1 {
 		localAddr, err := types.GetLocalAddrAny(*ctx.DeviceNetworkStatus,
@@ -126,7 +130,14 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, reqlen int64, b *b
 			log.Printf("URL get fail: %v\n", err)
 			continue
 		}
-		// Note that we are returning resp hence no resp.Body.Close()
+		defer resp.Body.Close()
+
+		contents, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			log.Println(err)
+			continue
+		}
+		resplen := int64(len(contents))
 
 		connState := resp.TLS
 		if connState == nil {
@@ -134,14 +145,8 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, reqlen int64, b *b
 			// Inform ledmanager about broken cloud connectivity
 			types.UpdateLedManagerConfig(10)
 			if ctx.FailureFunc != nil {
-				resplen := resp.ContentLength
-				if resplen == -1 {
-					b, _ := ioutil.ReadAll(resp.Body)
-					resplen = int64(len(b))
-				}
 				ctx.FailureFunc(intf, url, reqlen, resplen)
 			}
-			resp.Body.Close()
 			continue
 		}
 
@@ -163,28 +168,15 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, reqlen int64, b *b
 				// Inform ledmanager about broken cloud connectivity
 				types.UpdateLedManagerConfig(10)
 				if ctx.FailureFunc != nil {
-					resplen := resp.ContentLength
-					if resplen == -1 {
-						b, _ := ioutil.ReadAll(resp.Body)
-						resplen = int64(len(b))
-					}
 					ctx.FailureFunc(intf, url, reqlen,
 						resplen)
 				}
-				resp.Body.Close()
 				continue
 			}
 		}
 		// Even if we got e.g., a 404 we consider the connection a
 		// success since we care about the connectivity to the cloud.
 		if ctx.SuccessFunc != nil {
-			resplen := resp.ContentLength
-			if resplen == -1 {
-				// XXX how do we determine length? Can't consume
-				// body by reading i.e.,
-				// XXX	b, err := ioutil.ReadAll(r.Body)
-				resplen = 0
-			}
 			ctx.SuccessFunc(intf, url, reqlen, resplen)
 		}
 
@@ -194,7 +186,7 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, reqlen int64, b *b
 				log.Printf("sendOnIntf to %s StatusOK\n",
 					url)
 			}
-			return resp, nil
+			return resp, contents, nil
 		default:
 			errStr := fmt.Sprintf("sendOnIntf to %s statuscode %d %s",
 				url, resp.StatusCode,
@@ -204,9 +196,8 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, reqlen int64, b *b
 				log.Printf("received response %v\n",
 					resp)
 			}
-			resp.Body.Close()
 			// Get caller to schedule a retry
-			return nil, errors.New(errStr)
+			return nil, nil, errors.New(errStr)
 		}
 	}
 	if ctx.FailureFunc != nil {
@@ -215,5 +206,5 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, reqlen int64, b *b
 	errStr := fmt.Sprintf("All attempts to connect to %s using intf %s failed",
 		url, intf)
 	log.Println(errStr)
-	return nil, errors.New(errStr)
+	return nil, nil, errors.New(errStr)
 }

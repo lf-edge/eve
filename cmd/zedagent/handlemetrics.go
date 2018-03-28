@@ -1129,13 +1129,9 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 // send report on each uplink.
 // For each uplink we try different source IPs until we find a working one.
 func SendProtobuf(url string, data []byte, iteration int) error {
-	resp, err := zedcloud.SendOnAllIntf(zedcloudCtx, url,
+	_, _, err := zedcloud.SendOnAllIntf(zedcloudCtx, url,
 		int64(len(data)), bytes.NewBuffer(data), iteration)
-	if err != nil {
-		return err
-	}
-	resp.Body.Close()
-	return nil
+	return err
 }
 
 // Try all (first free, then rest) until it gets through.
@@ -1149,14 +1145,13 @@ func SendMetricsProtobuf(ReportMetrics *zmet.ZMetricMsg,
 	}
 
 	metricsUrl := serverName + "/" + metricsApi
-	resp, err := zedcloud.SendOnAllIntf(zedcloudCtx, metricsUrl,
+	_, _, err = zedcloud.SendOnAllIntf(zedcloudCtx, metricsUrl,
 		int64(len(data)), bytes.NewBuffer(data), iteration)
 	if err != nil {
 		// Hopefully next timeout will be more successful
 		log.Printf("SendMetricsProtobuf failed: %s\n", err)
 		return
 	}
-	resp.Body.Close()
 }
 
 // Return an array of names like "sda", "sdb1"

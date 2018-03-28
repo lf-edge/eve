@@ -232,22 +232,15 @@ func main() {
 	// Post something without a return type.
 	// Returns true when done; false when retry
 	myPost := func(retryCount int, url string, reqlen int64, b *bytes.Buffer) bool {
-		resp, err := zedcloud.SendOnAllIntf(zedcloudCtx,
+		resp, contents, err := zedcloud.SendOnAllIntf(zedcloudCtx,
 			serverNameAndPort+url, reqlen, b, retryCount)
 		if err != nil {
 			log.Println(err)
 			return false
 		}
-		defer resp.Body.Close()
 
 		// Inform ledmanager about cloud connectivity
 		types.UpdateLedManagerConfig(3)
-
-		contents, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			log.Println(err)
-			return false
-		}
 
 		switch resp.StatusCode {
 		case http.StatusOK:
@@ -297,22 +290,15 @@ func main() {
 
 	// XXX remove later
 	oldMyPost := func(retryCount int, url string, reqlen int64, b *bytes.Buffer) bool {
-		resp, err := zedcloud.SendOnAllIntf(zedcloudCtx,
+		resp, contents, err := zedcloud.SendOnAllIntf(zedcloudCtx,
 			serverNameAndPort+url, reqlen, b, retryCount)
 		if err != nil {
 			log.Println(err)
 			return false
 		}
-		defer resp.Body.Close()
 
 		// Inform ledmanager about cloud connectivity
 		types.UpdateLedManagerConfig(3)
-
-		contents, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			log.Println(err)
-			return false
-		}
 
 		switch resp.StatusCode {
 		case http.StatusOK:
@@ -400,22 +386,16 @@ func main() {
 	// Returns true when done; false when retry
 	lookupParam := func(retryCount int, device *types.DeviceDb) bool {
 		url := "/rest/device-param"
-		resp, err := zedcloud.SendOnAllIntf(zedcloudCtx,
+		resp, contents, err := zedcloud.SendOnAllIntf(zedcloudCtx,
 			serverNameAndPort+url, 0, nil, retryCount)
 		if err != nil {
 			log.Println(err)
 			return false
 		}
-		defer resp.Body.Close()
 
 		// Inform ledmanager about connectivity to cloud
 		types.UpdateLedManagerConfig(3)
 
-		contents, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			log.Println(err)
-			return false
-		}
 		switch resp.StatusCode {
 		case http.StatusOK:
 			// Inform ledmanager about device existence in cloud
@@ -457,34 +437,26 @@ func main() {
 
 	// Get something without a return type; used by ping
 	// Returns true when done; false when retry.
-	// Returns the response when done. Note caller must do resp.Body.Close()
-	myGet := func(url string, retryCount int) (bool, *http.Response) {
-		resp, err := zedcloud.SendOnAllIntf(zedcloudCtx,
+	// Returns the response when done. Caller can not use resp.Body but
+	// can use the contents []byte
+	myGet := func(url string, retryCount int) (bool, *http.Response, []byte) {
+		resp, contents, err := zedcloud.SendOnAllIntf(zedcloudCtx,
 			serverNameAndPort+url, 0, nil, retryCount)
 		if err != nil {
 			log.Println(err)
-			return false, nil
+			return false, nil, nil
 		}
-		// Perform resp.Body.Close() except in success case
 
 		switch resp.StatusCode {
 		case http.StatusOK:
 			log.Printf("%s StatusOK\n", url)
-			return true, resp
-		case http.StatusCreated:
-			log.Printf("%s StatusCreated\n", url)
-			resp.Body.Close()
-			return false, nil
+			return true, resp, contents
 		default:
 			log.Printf("%s statuscode %d %s\n",
 				url, resp.StatusCode,
 				http.StatusText(resp.StatusCode))
-			contents, err := ioutil.ReadAll(resp.Body)
-			if err == nil {
-				log.Printf("Received %s\n", string(contents))
-			}
-			resp.Body.Close()
-			return false, nil
+			log.Printf("Received %s\n", string(contents))
+			return false, nil, nil
 		}
 	}
 
@@ -534,12 +506,9 @@ func main() {
 		done := false
 		var delay time.Duration
 		for !done {
-			var resp *http.Response
-
 			time.Sleep(delay)
-			done, resp = myGet(url, retryCount)
+			done, _, _ = myGet(url, retryCount)
 			if done {
-				resp.Body.Close()
 				continue
 			}
 			retryCount += 1
@@ -597,13 +566,13 @@ func main() {
 			var delay time.Duration
 			for !done {
 				var resp *http.Response
+				var contents []byte
 
 				time.Sleep(delay)
-				done, resp = myGet(url, retryCount)
+				done, resp, contents = myGet(url, retryCount)
 				if done {
-					defer resp.Body.Close()
 					var err error
-					devUUID, err = parseUUID(url, resp)
+					devUUID, err = parseUUID(url, resp, contents)
 					if err == nil {
 						continue
 					}
