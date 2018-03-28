@@ -83,7 +83,7 @@ ifndef INSTALL_SERVER
 else
 	SERVER_CMD := @echo "HTTP server already running"
 endif
-.PHONY: all clean pkg obj install
+.PHONY: all clean pkg obj install vendor
 
 all: pkg
 
@@ -142,6 +142,18 @@ build-docker:
 
 build-docker-git:
 	git archive HEAD | docker build -t zededa/ztools:local -
+
+Gopkg.lock: Gopkg.toml
+	mkdir -p .go/src/github.com/zededa && ln -s ../../../.. .go/src/github.com/zededa/go-provision || :
+	GOPATH=$(CURDIR)/.go go get github.com/golang/dep/cmd/dep
+	rm vendor
+	mv src/vendor vendor
+	(cd .go/src/github.com/zededa/go-provision ; GOPATH=$(CURDIR)/.go dep ensure -update $(GODEP_NAME)) 
+	mv vendor src/vendor
+	ln -s src/vendor vendor	
+
+vendor: Gopkg.lock
+	touch Gopkg.toml
 
 clean:
 	@rm -rf obj
