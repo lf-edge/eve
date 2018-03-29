@@ -38,7 +38,7 @@ type keyMap struct {
 // We always publish to our collection.
 // XXX always need to write directory to have a checkpoint on
 // XXX restart; need to read restart content in Publish?
-const publishToSock = true      // XXX
+const publishToSock = false     // XXX
 const subscribeFromDir = true   // XXX
 const subscribeFromSock = false // XXX
 
@@ -202,7 +202,9 @@ func (pub *publication) Publish(key string, item interface{}) error {
 		log.Printf("Publish(%s, %s, %s) adding %v\n",
 			agentName, topic, key, item)
 	}
-	pub.km.key[key] = item
+	// Perform a deep copy so the above DeepEqual check will work
+	// XXX will it still detect equal?
+	pub.km.key[key] = deepCopy(item)
 	if debug {
 		pub.dump("after Publish")
 	}
@@ -226,6 +228,18 @@ func (pub *publication) Publish(key string, item interface{}) error {
 
 	// XXX send update to all listeners - how? channel to listener -> connections?
 	return nil
+}
+
+func deepCopy(in interface{}) interface{} {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in deepCopy")
+	}
+	var output interface{}
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "json Unmarshal in deepCopy")
+	}
+	return output
 }
 
 func (pub *publication) Unpublish(key string) error {
@@ -285,6 +299,26 @@ func (pub *publication) dump(infoStr string) {
 		}
 		log.Printf("key %s val %s\n", key, b)
 	}
+}
+
+func (pub *publication) Get(key string) (interface{}, error) {
+	m, ok := pub.km.key[key]
+	if ok {
+		return m, nil
+	} else {
+		errStr := fmt.Sprintf("Unknown key %s for %s/%s", key,
+			pub.agentName, pub.topic)
+		return nil, errors.New(errStr)
+	}
+}
+
+// Enumerate all the key, value for the collection
+func (pub *publication) GetAll() map[string]interface{} {
+	result := make(map[string]interface{})
+	for k, e := range pub.km.key {
+		result[k] = e
+	}
+	return result
 }
 
 // Usage:
@@ -379,6 +413,8 @@ func handleModify(ctxArg interface{}, key string, stateArg interface{}) {
 			log.Printf("Add %v for key %s\n", stateArg, key)
 		}
 	}
+	// Note that the stateArg was created by the caller hence no
+	// need for a deep copy
 	sub.km.key[key] = stateArg
 	if sub.ModifyHandler != nil {
 		(*sub.ModifyHandler)(sub.userCtx, key, stateArg)

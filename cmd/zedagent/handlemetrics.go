@@ -425,6 +425,8 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 	}
 	// Collect zedcloud metrics from ourselves and other agents
 	cms := zedcloud.GetCloudMetrics()
+	// XXX make a copy
+	cms = zedcloud.CastCloudMetrics(cms)
 	cms1 := zedcloud.CastCloudMetrics(clientMetrics)
 	if cms1 != nil {
 		cms = zedcloud.Append(cms, cms1)
@@ -451,9 +453,19 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 			metric.LastSuccess = ls
 		}
 		for url, um := range cm.UrlCounters {
-			// XXX add per URL counters to API
-			log.Printf("CloudMetrics[%s] url %s %v\n",
-				ifname, url, um)
+			if debug {
+				log.Printf("CloudMetrics[%s] url %s %v\n",
+					ifname, url, um)
+			}
+			urlMet := new(zmet.UrlcloudMetric)
+			urlMet.Url = url
+			urlMet.TryMsgCount = um.TryMsgCount
+			urlMet.TryByteCount = um.TryByteCount
+			urlMet.SentMsgCount = um.SentMsgCount
+			urlMet.SentByteCount = um.SentByteCount
+			urlMet.RecvMsgCount = um.RecvMsgCount
+			urlMet.RecvByteCount = um.RecvByteCount
+			metric.UrlMetrics = append(metric.UrlMetrics, urlMet)
 		}
 		ReportDeviceMetric.Zedcloud = append(ReportDeviceMetric.Zedcloud,
 			&metric)
