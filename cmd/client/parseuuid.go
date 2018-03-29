@@ -8,14 +8,13 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/satori/go.uuid"
 	"github.com/zededa/api/zconfig"
-	"io/ioutil"
 	"log"
 	"mime"
 	"net/http"
 	"strings"
 )
 
-func parseUUID(configUrl string, resp *http.Response) (uuid.UUID, error) {
+func parseUUID(configUrl string, resp *http.Response, contents []byte) (uuid.UUID, error) {
 	var devUUID uuid.UUID
 
 	if err := validateConfigMessage(configUrl, resp); err != nil {
@@ -23,7 +22,7 @@ func parseUUID(configUrl string, resp *http.Response) (uuid.UUID, error) {
 		return devUUID, err
 	}
 
-	config, err := readDeviceConfigProtoMessage(resp)
+	config, err := readDeviceConfigProtoMessage(contents)
 	if err != nil {
 		log.Println("readDeviceConfigProtoMessage: ", err)
 		return devUUID, err
@@ -62,20 +61,13 @@ func validateConfigMessage(configUrl string, r *http.Response) error {
 
 // Returns changed, config, error. The changed is based on a comparison of
 // the hash of the protobuf message.
-func readDeviceConfigProtoMessage(r *http.Response) (*zconfig.EdgeDevConfig, error) {
-
+func readDeviceConfigProtoMessage(contents []byte) (*zconfig.EdgeDevConfig, error) {
 	var config = &zconfig.EdgeDevConfig{}
 
-	b, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		log.Println(err)
-		return nil, err
-	}
-	err = proto.Unmarshal(b, config)
+	err := proto.Unmarshal(contents, config)
 	if err != nil {
 		log.Println("Unmarshalling failed: %v", err)
 		return nil, err
 	}
 	return config, nil
 }
-

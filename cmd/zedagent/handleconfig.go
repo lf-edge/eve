@@ -102,8 +102,8 @@ func handleConfigInit() {
 	zedcloudCtx.DeviceNetworkStatus = &deviceNetworkStatus
 	zedcloudCtx.TlsConfig = tlsConfig
 	zedcloudCtx.Debug = debug
-	zedcloudCtx.FailureFunc = zedCloudFailure
-	zedcloudCtx.SuccessFunc = zedCloudSuccess
+	zedcloudCtx.FailureFunc = zedcloud.ZedCloudFailure
+	zedcloudCtx.SuccessFunc = zedcloud.ZedCloudSuccess
 
 	b, err := ioutil.ReadFile(uuidFileName)
 	if err != nil {
@@ -192,7 +192,7 @@ func getLatestConfig(url string, iteration int, upgradeInprogress *bool,
 		}
 	}
 
-	resp, err := zedcloud.SendOnAllIntf(zedcloudCtx, url, nil, iteration)
+	resp, contents, err := zedcloud.SendOnAllIntf(zedcloudCtx, url, 0, nil, iteration)
 	if err != nil {
 		log.Printf("getLatestConfig failed: %s\n", err)
 		if getconfigCtx.ledManagerCount == 4 {
@@ -202,8 +202,6 @@ func getLatestConfig(url string, iteration int, upgradeInprogress *bool,
 		}
 		return false
 	} else {
-		defer resp.Body.Close()
-
 		// now cloud connectivity is good, mark partition state as
 		// active if it was inprogress
 		// XXX down the road we want more diagnostics and validation
@@ -235,7 +233,7 @@ func getLatestConfig(url string, iteration int, upgradeInprogress *bool,
 			return false
 		}
 
-		changed, config, err := readDeviceConfigProtoMessage(resp)
+		changed, config, err := readDeviceConfigProtoMessage(contents)
 		if err != nil {
 			log.Println("readDeviceConfigProtoMessage: ", err)
 			// Inform ledmanager about cloud connectivity
@@ -285,26 +283,19 @@ var prevConfigHash []byte
 
 // Returns changed, config, error. The changed is based on a comparison of
 // the hash of the protobuf message.
-func readDeviceConfigProtoMessage(r *http.Response) (bool, *zconfig.EdgeDevConfig, error) {
+func readDeviceConfigProtoMessage(contents []byte) (bool, *zconfig.EdgeDevConfig, error) {
 
 	var config = &zconfig.EdgeDevConfig{}
 
-	b, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		log.Println(err)
-		return false, nil, err
-	}
 	// compute sha256 of the image and match it
 	// with the one in config file...
 	h := sha256.New()
-	h.Write(b)
+	h.Write(contents)
 	configHash := h.Sum(nil)
 	same := bytes.Equal(configHash, prevConfigHash)
 	prevConfigHash = configHash
 
-	//log.Println(" proto bytes(config) received from cloud: ", fmt.Sprintf("%s",bytes))
-	//log.Printf("parsing proto %d bytes\n", len(b))
-	err = proto.Unmarshal(b, config)
+	err := proto.Unmarshal(contents, config)
 	if err != nil {
 		log.Println("Unmarshalling failed: %v", err)
 		return false, nil, err

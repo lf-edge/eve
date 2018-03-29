@@ -12,7 +12,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/RevH/ipinfo"
+	"github.com/eriknordmark/ipinfo"
 	"github.com/zededa/api/zconfig"
 	"github.com/zededa/go-provision/types"
 	"io/ioutil"

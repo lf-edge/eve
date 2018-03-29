@@ -91,7 +91,7 @@ rm -rf /var/run/zedmanager/status/*.json
 
 # The following is a workaround for a racecondition between different agents
 # Make sure we have the required directories in place
-DIRS="$CONFIGDIR $PERSISTDIR $TMPDIR /var/tmp/ledmanager/config/ /var/tmp/domainmgr/config/ /var/tmp/verifier/config/ /var/tmp/downloader/config/ /var/tmp/zedmanager/config/ /var/tmp/identitymgr/config/ /var/tmp/zedrouter/config/ /var/run/domainmgr/status/ /var/run/downloader/status/ /var/run/zedmanager/status/ /var/run/eidregister/status/ /var/run/zedrouter/status/ /var/run/identitymgr/status/ $TMPDIR/DeviceNetworkConfig/ /var/run/zedrouter/DeviceNetworkStatus/ $TMPDIR/AssignableAdapters"
+DIRS="$CONFIGDIR $PERSISTDIR $TMPDIR /var/tmp/ledmanager/config/ /var/tmp/domainmgr/config/ /var/tmp/verifier/config/ /var/tmp/downloader/config/ /var/tmp/zedmanager/config/ /var/tmp/identitymgr/config/ /var/tmp/zedrouter/config/ /var/run/domainmgr/status/ /var/run/downloader/status/ /var/run/zedmanager/status/ /var/run/eidregister/status/ /var/run/zedrouter/status/ /var/run/identitymgr/status/ $TMPDIR/DeviceNetworkConfig/ /var/run/zedrouter/DeviceNetworkStatus/ $TMPDIR/AssignableAdapters /var/run/zedclient/metricsMap /var/run/logmanager/metricsMap /var/run/downloader/metricsMap"
 for d in $DIRS; do
     d1=`dirname $d`
     if [ ! -d $d1 ]; then
@@ -285,7 +285,7 @@ if [ ! -d $LOGDIRB ]; then
 fi
 
 echo "Set up log capture"
-DOM0LOGFILES="dhcpcd.err.log ntpd.err.log wlan.err.log wwan.err.log zededa-tools.err.log dhcpcd.out.log ntpd.out.log wlan.out.log wwan.out.log zededa-tools.out.log"
+DOM0LOGFILES="dhcpcd.err.log ntpd.err.log wlan.err.log wwan.err.log dhcpcd.out.log ntpd.out.log wlan.out.log wwan.out.log"
 # XXX note that these tail and dmesg processes are not killed when
 # device-steps.sh is re-run
 for f in $DOM0LOGFILES; do
