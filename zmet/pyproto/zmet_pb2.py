@@ -21,7 +21,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='zmet.proto',
   package='',
   syntax='proto3',
-  serialized_pb=_b('\n\nzmet.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xc9\x01\n\x11ZInfoManufacturer\x12\x14\n\x0cmanufacturer\x18\x01 \x01(\t\x12\x13\n\x0bproductName\x18\x02 \x01(\t\x12\x0f\n\x07version\x18\x03 \x01(\t\x12\x14\n\x0cserialNumber\x18\x04 \x01(\t\x12\x0c\n\x04UUID\x18\x05 \x01(\t\x12\x12\n\ncompatible\x18\x06 \x01(\t\x12\x12\n\nbiosVendor\x18\x07 \x01(\t\x12\x13\n\x0b\x62iosVersion\x18\x08 \x01(\t\x12\x17\n\x0f\x62iosReleaseDate\x18\t \x01(\t\"\xb8\x01\n\x0cZInfoNetwork\x12\x0e\n\x06IPAddr\x18\x01 \x01(\t\x12\x0e\n\x06gwAddr\x18\x02 \x01(\t\x12\x0f\n\x07macAddr\x18\x03 \x01(\t\x12\x0f\n\x07\x64\x65vName\x18\x04 \x01(\t\x12\x0f\n\x07IPAddrs\x18\x05 \x03(\t\x12\x16\n\x0e\x64\x65\x66\x61ultRouters\x18\x06 \x03(\t\x12\x16\n\x03\x64ns\x18\x07 \x01(\x0b\x32\t.ZInfoDNS\x12\n\n\x02up\x18\x08 \x01(\x08\x12\x19\n\x08location\x18\t \x01(\x0b\x32\x07.GeoLoc\"\x87\x01\n\x06GeoLoc\x12\x12\n\nUnderlayIP\x18\x01 \x01(\t\x12\x10\n\x08Hostname\x18\x02 \x01(\t\x12\x0c\n\x04\x43ity\x18\x03 \x01(\t\x12\x0e\n\x06Region\x18\x04 \x01(\t\x12\x0f\n\x07\x43ountry\x18\x05 \x01(\t\x12\x0b\n\x03Loc\x18\x06 \x01(\t\x12\x0b\n\x03Org\x18\x07 \x01(\t\x12\x0e\n\x06Postal\x18\x08 \x01(\t\"D\n\x08ZInfoDNS\x12\x12\n\nDNSservers\x18\x01 \x03(\t\x12\x11\n\tDNSdomain\x18\x02 \x01(\t\x12\x11\n\tDNSsearch\x18\x03 \x03(\t\"i\n\x0fZinfoPeripheral\x12 \n\x05ztype\x18\x01 \x01(\x0e\x32\x11.ZPeripheralTypes\x12\x11\n\tpluggable\x18\x02 \x01(\x08\x12!\n\x05minfo\x18\x03 \x01(\x0b\x32\x12.ZInfoManufacturer\"w\n\x07ZInfoSW\x12\x11\n\tswVersion\x18\x02 \x01(\t\x12\x0e\n\x06swHash\x18\x03 \x01(\t\x12\x18\n\x05state\x18\x04 \x01(\x0e\x32\t.ZSwState\x12\x11\n\tactivated\x18\x05 \x01(\x08\x12\x0e\n\x06target\x18\x06 \x01(\t\x12\x0c\n\x04vdev\x18\x07 \x01(\t\"O\n\tErrorInfo\x12\x13\n\x0b\x64\x65scription\x18\x01 \x01(\t\x12-\n\ttimestamp\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\"\xf9\x03\n\x0bZInfoDevice\x12\x13\n\x0bmachineArch\x18\x04 \x01(\t\x12\x0f\n\x07\x63puArch\x18\x05 \x01(\t\x12\x10\n\x08platform\x18\x06 \x01(\t\x12\x0c\n\x04ncpu\x18\x07 \x01(\r\x12\x0e\n\x06memory\x18\x08 \x01(\x04\x12\x0f\n\x07storage\x18\t \x01(\x04\x12!\n\x07\x64\x65vices\x18\n \x03(\x0b\x32\x10.ZinfoPeripheral\x12!\n\x05minfo\x18\x0b \x01(\x0b\x32\x12.ZInfoManufacturer\x12\x1a\n\x08software\x18\x0c \x01(\x0b\x32\x08.ZInfoSW\x12\x1e\n\x07network\x18\r \x03(\x0b\x32\r.ZInfoNetwork\x12\x1e\n\x0csoftwareList\x18\x0e \x03(\x0b\x32\x08.ZInfoSW\x12&\n\x12\x61ssignableAdapters\x18\x0f \x03(\x0b\x32\n.ZioBundle\x12\x16\n\x03\x64ns\x18\x10 \x01(\x0b\x32\t.ZInfoDNS\x12\"\n\x0bstorageList\x18\x11 \x03(\x0b\x32\r.ZInfoStorage\x12,\n\x08\x62ootTime\x18\x12 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x1b\n\x06swList\x18\x13 \x03(\x0b\x32\x0b.ZInfoDevSW\x12\x10\n\x08HostName\x18\x14 \x01(\t\x12 \n\x0bmetricItems\x18\x15 \x03(\x0b\x32\x0b.MetricItem\"\xc9\x01\n\nZInfoDevSW\x12\x11\n\tactivated\x18\x02 \x01(\x08\x12\x16\n\x0epartitionLabel\x18\x03 \x01(\t\x12\x17\n\x0fpartitionDevice\x18\x04 \x01(\t\x12\x16\n\x0epartitionState\x18\x05 \x01(\t\x12\x19\n\x06status\x18\x06 \x01(\x0e\x32\t.ZSwState\x12\x14\n\x0cshortVersion\x18\x07 \x01(\t\x12\x13\n\x0blongVersion\x18\x08 \x01(\t\x12\x19\n\x05swErr\x18\t \x01(\x0b\x32\n.ErrorInfo\"@\n\x0cZInfoStorage\x12\x0e\n\x06\x64\x65vice\x18\x01 \x01(\t\x12\x11\n\tmountPath\x18\x02 \x01(\t\x12\r\n\x05total\x18\x03 \x01(\x04\"\\\n\x0fZInfoHypervisor\x12\x0c\n\x04ncpu\x18\x03 \x01(\r\x12\x0e\n\x06memory\x18\x04 \x01(\x04\x12\x0f\n\x07storage\x18\x05 \x01(\x04\x12\x1a\n\x08software\x18\x06 \x01(\x0b\x32\x08.ZInfoSW\"\xe9\x02\n\x08ZInfoApp\x12\r\n\x05\x41ppID\x18\x01 \x01(\t\x12\x0c\n\x04ncpu\x18\x02 \x01(\r\x12\x0e\n\x06memory\x18\x03 \x01(\r\x12\x0f\n\x07storage\x18\x04 \x01(\r\x12\x1a\n\x08software\x18\x05 \x01(\x0b\x32\x08.ZInfoSW\x12\x11\n\tsystemApp\x18\x06 \x01(\x08\x12\x0f\n\x07\x41ppName\x18\x07 \x01(\t\x12\x1e\n\x0csoftwareList\x18\x08 \x03(\x0b\x32\x08.ZInfoSW\x12\x11\n\tactivated\x18\t \x01(\x08\x12\r\n\x05\x65rror\x18\n \x01(\t\x12-\n\terrorTime\x18\x0b \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12,\n\x08\x62ootTime\x18\x0c \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12$\n\x10\x61ssignedAdapters\x18\r \x03(\x0b\x32\n.ZioBundle\x12\x1a\n\x06\x61ppErr\x18\x0e \x03(\x0b\x32\n.ErrorInfo\"\xd3\x01\n\x08ZInfoMsg\x12\x1a\n\x05ztype\x18\x01 \x01(\x0e\x32\x0b.ZInfoTypes\x12\r\n\x05\x64\x65vId\x18\x02 \x01(\t\x12\x1d\n\x05\x64info\x18\x03 \x01(\x0b\x32\x0c.ZInfoDeviceH\x00\x12!\n\x05hinfo\x18\x04 \x01(\x0b\x32\x10.ZInfoHypervisorH\x00\x12\x1a\n\x05\x61info\x18\x05 \x01(\x0b\x32\t.ZInfoAppH\x00\x12/\n\x0b\x61tTimeStamp\x18\x06 \x01(\x0b\x32\x1a.google.protobuf.TimestampB\r\n\x0bInfoContent\"o\n\tZioBundle\x12\x16\n\x04type\x18\x01 \x01(\x0e\x32\x08.ZioType\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0f\n\x07members\x18\x03 \x03(\t\x12\x15\n\rusedByAppUUID\x18\x04 \x01(\t\x12\x14\n\x0cusedByBaseOS\x18\x05 \x01(\x08\"\xb1\x01\n\tcpuMetric\x12\x0e\n\x06upTime\x18\x02 \x01(\r\x12\x16\n\x0e\x63puUtilization\x18\x03 \x01(\x01\x12\x0b\n\x03usr\x18\x04 \x01(\x01\x12\x0c\n\x04nice\x18\x05 \x01(\x01\x12\x0e\n\x06system\x18\x06 \x01(\x01\x12\n\n\x02io\x18\x07 \x01(\x01\x12\x0b\n\x03irq\x18\x08 \x01(\x01\x12\x0c\n\x04soft\x18\t \x01(\x01\x12\r\n\x05steal\x18\n \x01(\x01\x12\r\n\x05guest\x18\x0b \x01(\x01\x12\x0c\n\x04idle\x18\x0c \x01(\x01\"b\n\x0cmemoryMetric\x12\x0f\n\x07usedMem\x18\x02 \x01(\r\x12\x10\n\x08\x61vailMem\x18\x03 \x01(\r\x12\x16\n\x0eusedPercentage\x18\x04 \x01(\x01\x12\x17\n\x0f\x61vailPercentage\x18\x05 \x01(\x01\"\xc6\x01\n\rnetworkMetric\x12\r\n\x05iName\x18\x01 \x01(\t\x12\x0f\n\x07txBytes\x18\x02 \x01(\x04\x12\x0f\n\x07rxBytes\x18\x03 \x01(\x04\x12\x0f\n\x07txDrops\x18\x04 \x01(\x04\x12\x0f\n\x07rxDrops\x18\x05 \x01(\x04\x12\x0e\n\x06txRate\x18\x06 \x01(\x04\x12\x0e\n\x06rxRate\x18\x07 \x01(\x04\x12\x0e\n\x06txPkts\x18\x08 \x01(\x04\x12\x0e\n\x06rxPkts\x18\t \x01(\x04\x12\x10\n\x08txErrors\x18\n \x01(\x04\x12\x10\n\x08rxErrors\x18\x0b \x01(\x04\"\xa5\x01\n\x0ezedcloudMetric\x12\x0e\n\x06ifName\x18\x01 \x01(\t\x12\x10\n\x08\x66\x61ilures\x18\x02 \x01(\x04\x12\x0f\n\x07success\x18\x03 \x01(\x04\x12/\n\x0blastFailure\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12/\n\x0blastSuccess\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\"r\n\x0c\x61ppCpuMetric\x12\x10\n\x08\x63puTotal\x18\x02 \x01(\r\x12\x15\n\rcpuPercentage\x18\x03 \x01(\x01\x12*\n\x06upTime\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\r\n\x05total\x18\x05 \x01(\x04\"0\n\x0c\x64\x65vCpuMetric\x12\x10\n\x08\x63puTotal\x18\x01 \x01(\x04\x12\x0e\n\x06upTime\x18\x02 \x01(\x04\"\x89\x02\n\x0c\x64\x65viceMetric\x12\x17\n\x03\x63pu\x18\x01 \x01(\x0b\x32\n.cpuMetric\x12\x1d\n\x06memory\x18\x02 \x01(\x0b\x32\r.memoryMetric\x12\x1f\n\x07network\x18\x03 \x03(\x0b\x32\x0e.networkMetric\x12!\n\x08zedcloud\x18\x04 \x03(\x0b\x32\x0f.zedcloudMetric\x12\x1e\n\x07\x63ompute\x18\x05 \x01(\x0b\x32\r.devCpuMetric\x12\x19\n\x04\x64isk\x18\x06 \x03(\x0b\x32\x0b.diskMetric\x12 \n\tcpuMetric\x18\x07 \x01(\x0b\x32\r.appCpuMetric\x12 \n\x0bmetricItems\x18\x08 \x03(\x0b\x32\x0b.MetricItem\"\xbb\x01\n\nMetricItem\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x1d\n\x04type\x18\x02 \x01(\x0e\x32\x0f.MetricItemType\x12\x13\n\tboolValue\x18\x03 \x01(\x08H\x00\x12\x15\n\x0buint32Value\x18\x04 \x01(\rH\x00\x12\x15\n\x0buint64Value\x18\x05 \x01(\x04H\x00\x12\x14\n\nfloatValue\x18\x06 \x01(\x02H\x00\x12\x15\n\x0bstringValue\x18\x07 \x01(\tH\x00\x42\x11\n\x0fmetricItemValue\"\xa6\x01\n\ndiskMetric\x12\x0c\n\x04\x64isk\x18\x01 \x01(\t\x12\x11\n\tmountPath\x18\x02 \x01(\t\x12\x11\n\treadBytes\x18\x03 \x01(\x04\x12\x12\n\nwriteBytes\x18\x04 \x01(\x04\x12\x11\n\treadCount\x18\x05 \x01(\x04\x12\x12\n\nwriteCount\x18\x06 \x01(\x04\x12\r\n\x05total\x18\x07 \x01(\x04\x12\x0c\n\x04used\x18\x08 \x01(\x04\x12\x0c\n\x04\x66ree\x18\t \x01(\x04\"\x87\x01\n\tappMetric\x12\r\n\x05\x41ppID\x18\x01 \x01(\t\x12\x0f\n\x07\x41ppName\x18\x02 \x01(\t\x12\x1a\n\x03\x63pu\x18\x03 \x01(\x0b\x32\r.appCpuMetric\x12\x1d\n\x06memory\x18\x04 \x01(\x0b\x32\r.memoryMetric\x12\x1f\n\x07network\x18\x05 \x03(\x0b\x32\x0e.networkMetric\"\xb0\x01\n\nZMetricMsg\x12\r\n\x05\x64\x65vID\x18\x01 \x01(\t\x12\x1c\n\x05ztype\x18\x02 \x01(\x0e\x32\r.ZmetricTypes\x12/\n\x0b\x61tTimeStamp\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x1b\n\x02\x64m\x18\x04 \x01(\x0b\x32\r.deviceMetricH\x00\x12\x16\n\x02\x61m\x18\x05 \x03(\x0b\x32\n.appMetricB\x0f\n\rMetricContent*B\n\nZInfoTypes\x12\t\n\x05ZiNop\x10\x00\x12\x0c\n\x08ZiDevice\x10\x01\x12\x10\n\x0cZiHypervisor\x10\x02\x12\t\n\x05ZiApp\x10\x03*<\n\x10ZPeripheralTypes\x12\n\n\x06ZpNone\x10\x00\x12\r\n\tZpStorage\x10\x01\x12\r\n\tZpNetwork\x10\x02*h\n\x08ZSwState\x12\x0b\n\x07INVALID\x10\x00\x12\x0b\n\x07INITIAL\x10\x01\x12\x14\n\x10\x44OWNLOAD_STARTED\x10\x02\x12\x0e\n\nDOWNLOADED\x10\x03\x12\r\n\tDELIVERED\x10\x04\x12\r\n\tINSTALLED\x10\x05*H\n\x07ZioType\x12\n\n\x06ZioNop\x10\x00\x12\n\n\x06ZioEth\x10\x01\x12\n\n\x06ZioUSB\x10\x02\x12\n\n\x06ZioCOM\x10\x03\x12\r\n\x08ZioOther\x10\xff\x01*2\n\x0cZmetricTypes\x12\t\n\x05ZmNop\x10\x00\x12\x0c\n\x08ZmDevice\x10\x01\x12\t\n\x05ZmApp\x10\x03*f\n\x0eMetricItemType\x12\x13\n\x0fMetricItemOther\x10\x00\x12\x13\n\x0fMetricItemGauge\x10\x01\x12\x15\n\x11MetricItemCounter\x10\x02\x12\x13\n\x0fMetricItemState\x10\x03\x42=\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1agithub.com/zededa/api/zmetb\x06proto3')
+  serialized_pb=_b('\n\nzmet.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xc9\x01\n\x11ZInfoManufacturer\x12\x14\n\x0cmanufacturer\x18\x01 \x01(\t\x12\x13\n\x0bproductName\x18\x02 \x01(\t\x12\x0f\n\x07version\x18\x03 \x01(\t\x12\x14\n\x0cserialNumber\x18\x04 \x01(\t\x12\x0c\n\x04UUID\x18\x05 \x01(\t\x12\x12\n\ncompatible\x18\x06 \x01(\t\x12\x12\n\nbiosVendor\x18\x07 \x01(\t\x12\x13\n\x0b\x62iosVersion\x18\x08 \x01(\t\x12\x17\n\x0f\x62iosReleaseDate\x18\t \x01(\t\"\xb8\x01\n\x0cZInfoNetwork\x12\x0e\n\x06IPAddr\x18\x01 \x01(\t\x12\x0e\n\x06gwAddr\x18\x02 \x01(\t\x12\x0f\n\x07macAddr\x18\x03 \x01(\t\x12\x0f\n\x07\x64\x65vName\x18\x04 \x01(\t\x12\x0f\n\x07IPAddrs\x18\x05 \x03(\t\x12\x16\n\x0e\x64\x65\x66\x61ultRouters\x18\x06 \x03(\t\x12\x16\n\x03\x64ns\x18\x07 \x01(\x0b\x32\t.ZInfoDNS\x12\n\n\x02up\x18\x08 \x01(\x08\x12\x19\n\x08location\x18\t \x01(\x0b\x32\x07.GeoLoc\"\x87\x01\n\x06GeoLoc\x12\x12\n\nUnderlayIP\x18\x01 \x01(\t\x12\x10\n\x08Hostname\x18\x02 \x01(\t\x12\x0c\n\x04\x43ity\x18\x03 \x01(\t\x12\x0e\n\x06Region\x18\x04 \x01(\t\x12\x0f\n\x07\x43ountry\x18\x05 \x01(\t\x12\x0b\n\x03Loc\x18\x06 \x01(\t\x12\x0b\n\x03Org\x18\x07 \x01(\t\x12\x0e\n\x06Postal\x18\x08 \x01(\t\"D\n\x08ZInfoDNS\x12\x12\n\nDNSservers\x18\x01 \x03(\t\x12\x11\n\tDNSdomain\x18\x02 \x01(\t\x12\x11\n\tDNSsearch\x18\x03 \x03(\t\"i\n\x0fZinfoPeripheral\x12 \n\x05ztype\x18\x01 \x01(\x0e\x32\x11.ZPeripheralTypes\x12\x11\n\tpluggable\x18\x02 \x01(\x08\x12!\n\x05minfo\x18\x03 \x01(\x0b\x32\x12.ZInfoManufacturer\"w\n\x07ZInfoSW\x12\x11\n\tswVersion\x18\x02 \x01(\t\x12\x0e\n\x06swHash\x18\x03 \x01(\t\x12\x18\n\x05state\x18\x04 \x01(\x0e\x32\t.ZSwState\x12\x11\n\tactivated\x18\x05 \x01(\x08\x12\x0e\n\x06target\x18\x06 \x01(\t\x12\x0c\n\x04vdev\x18\x07 \x01(\t\"O\n\tErrorInfo\x12\x13\n\x0b\x64\x65scription\x18\x01 \x01(\t\x12-\n\ttimestamp\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\"\xf9\x03\n\x0bZInfoDevice\x12\x13\n\x0bmachineArch\x18\x04 \x01(\t\x12\x0f\n\x07\x63puArch\x18\x05 \x01(\t\x12\x10\n\x08platform\x18\x06 \x01(\t\x12\x0c\n\x04ncpu\x18\x07 \x01(\r\x12\x0e\n\x06memory\x18\x08 \x01(\x04\x12\x0f\n\x07storage\x18\t \x01(\x04\x12!\n\x07\x64\x65vices\x18\n \x03(\x0b\x32\x10.ZinfoPeripheral\x12!\n\x05minfo\x18\x0b \x01(\x0b\x32\x12.ZInfoManufacturer\x12\x1a\n\x08software\x18\x0c \x01(\x0b\x32\x08.ZInfoSW\x12\x1e\n\x07network\x18\r \x03(\x0b\x32\r.ZInfoNetwork\x12\x1e\n\x0csoftwareList\x18\x0e \x03(\x0b\x32\x08.ZInfoSW\x12&\n\x12\x61ssignableAdapters\x18\x0f \x03(\x0b\x32\n.ZioBundle\x12\x16\n\x03\x64ns\x18\x10 \x01(\x0b\x32\t.ZInfoDNS\x12\"\n\x0bstorageList\x18\x11 \x03(\x0b\x32\r.ZInfoStorage\x12,\n\x08\x62ootTime\x18\x12 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x1b\n\x06swList\x18\x13 \x03(\x0b\x32\x0b.ZInfoDevSW\x12\x10\n\x08HostName\x18\x14 \x01(\t\x12 \n\x0bmetricItems\x18\x15 \x03(\x0b\x32\x0b.MetricItem\"\xc9\x01\n\nZInfoDevSW\x12\x11\n\tactivated\x18\x02 \x01(\x08\x12\x16\n\x0epartitionLabel\x18\x03 \x01(\t\x12\x17\n\x0fpartitionDevice\x18\x04 \x01(\t\x12\x16\n\x0epartitionState\x18\x05 \x01(\t\x12\x19\n\x06status\x18\x06 \x01(\x0e\x32\t.ZSwState\x12\x14\n\x0cshortVersion\x18\x07 \x01(\t\x12\x13\n\x0blongVersion\x18\x08 \x01(\t\x12\x19\n\x05swErr\x18\t \x01(\x0b\x32\n.ErrorInfo\"@\n\x0cZInfoStorage\x12\x0e\n\x06\x64\x65vice\x18\x01 \x01(\t\x12\x11\n\tmountPath\x18\x02 \x01(\t\x12\r\n\x05total\x18\x03 \x01(\x04\"\\\n\x0fZInfoHypervisor\x12\x0c\n\x04ncpu\x18\x03 \x01(\r\x12\x0e\n\x06memory\x18\x04 \x01(\x04\x12\x0f\n\x07storage\x18\x05 \x01(\x04\x12\x1a\n\x08software\x18\x06 \x01(\x0b\x32\x08.ZInfoSW\"\xe9\x02\n\x08ZInfoApp\x12\r\n\x05\x41ppID\x18\x01 \x01(\t\x12\x0c\n\x04ncpu\x18\x02 \x01(\r\x12\x0e\n\x06memory\x18\x03 \x01(\r\x12\x0f\n\x07storage\x18\x04 \x01(\r\x12\x1a\n\x08software\x18\x05 \x01(\x0b\x32\x08.ZInfoSW\x12\x11\n\tsystemApp\x18\x06 \x01(\x08\x12\x0f\n\x07\x41ppName\x18\x07 \x01(\t\x12\x1e\n\x0csoftwareList\x18\x08 \x03(\x0b\x32\x08.ZInfoSW\x12\x11\n\tactivated\x18\t \x01(\x08\x12\r\n\x05\x65rror\x18\n \x01(\t\x12-\n\terrorTime\x18\x0b \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12,\n\x08\x62ootTime\x18\x0c \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12$\n\x10\x61ssignedAdapters\x18\r \x03(\x0b\x32\n.ZioBundle\x12\x1a\n\x06\x61ppErr\x18\x0e \x03(\x0b\x32\n.ErrorInfo\"\xd3\x01\n\x08ZInfoMsg\x12\x1a\n\x05ztype\x18\x01 \x01(\x0e\x32\x0b.ZInfoTypes\x12\r\n\x05\x64\x65vId\x18\x02 \x01(\t\x12\x1d\n\x05\x64info\x18\x03 \x01(\x0b\x32\x0c.ZInfoDeviceH\x00\x12!\n\x05hinfo\x18\x04 \x01(\x0b\x32\x10.ZInfoHypervisorH\x00\x12\x1a\n\x05\x61info\x18\x05 \x01(\x0b\x32\t.ZInfoAppH\x00\x12/\n\x0b\x61tTimeStamp\x18\x06 \x01(\x0b\x32\x1a.google.protobuf.TimestampB\r\n\x0bInfoContent\"o\n\tZioBundle\x12\x16\n\x04type\x18\x01 \x01(\x0e\x32\x08.ZioType\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0f\n\x07members\x18\x03 \x03(\t\x12\x15\n\rusedByAppUUID\x18\x04 \x01(\t\x12\x14\n\x0cusedByBaseOS\x18\x05 \x01(\x08\"\xb1\x01\n\tcpuMetric\x12\x0e\n\x06upTime\x18\x02 \x01(\r\x12\x16\n\x0e\x63puUtilization\x18\x03 \x01(\x01\x12\x0b\n\x03usr\x18\x04 \x01(\x01\x12\x0c\n\x04nice\x18\x05 \x01(\x01\x12\x0e\n\x06system\x18\x06 \x01(\x01\x12\n\n\x02io\x18\x07 \x01(\x01\x12\x0b\n\x03irq\x18\x08 \x01(\x01\x12\x0c\n\x04soft\x18\t \x01(\x01\x12\r\n\x05steal\x18\n \x01(\x01\x12\r\n\x05guest\x18\x0b \x01(\x01\x12\x0c\n\x04idle\x18\x0c \x01(\x01\"b\n\x0cmemoryMetric\x12\x0f\n\x07usedMem\x18\x02 \x01(\r\x12\x10\n\x08\x61vailMem\x18\x03 \x01(\r\x12\x16\n\x0eusedPercentage\x18\x04 \x01(\x01\x12\x17\n\x0f\x61vailPercentage\x18\x05 \x01(\x01\"\xc6\x01\n\rnetworkMetric\x12\r\n\x05iName\x18\x01 \x01(\t\x12\x0f\n\x07txBytes\x18\x02 \x01(\x04\x12\x0f\n\x07rxBytes\x18\x03 \x01(\x04\x12\x0f\n\x07txDrops\x18\x04 \x01(\x04\x12\x0f\n\x07rxDrops\x18\x05 \x01(\x04\x12\x0e\n\x06txRate\x18\x06 \x01(\x04\x12\x0e\n\x06rxRate\x18\x07 \x01(\x04\x12\x0e\n\x06txPkts\x18\x08 \x01(\x04\x12\x0e\n\x06rxPkts\x18\t \x01(\x04\x12\x10\n\x08txErrors\x18\n \x01(\x04\x12\x10\n\x08rxErrors\x18\x0b \x01(\x04\"\xca\x01\n\x0ezedcloudMetric\x12\x0e\n\x06ifName\x18\x01 \x01(\t\x12\x10\n\x08\x66\x61ilures\x18\x02 \x01(\x04\x12\x0f\n\x07success\x18\x03 \x01(\x04\x12/\n\x0blastFailure\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12/\n\x0blastSuccess\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12#\n\nurlMetrics\x18\x06 \x03(\x0b\x32\x0f.urlcloudMetric\"\xa2\x01\n\x0eurlcloudMetric\x12\x0b\n\x03url\x18\x01 \x01(\t\x12\x13\n\x0btryMsgCount\x18\x02 \x01(\x03\x12\x14\n\x0ctryByteCount\x18\x03 \x01(\x03\x12\x14\n\x0csentMsgCount\x18\x04 \x01(\x03\x12\x15\n\rsentByteCount\x18\x05 \x01(\x03\x12\x14\n\x0crecvMsgCount\x18\x06 \x01(\x03\x12\x15\n\rrecvByteCount\x18\x07 \x01(\x03\"r\n\x0c\x61ppCpuMetric\x12\x10\n\x08\x63puTotal\x18\x02 \x01(\r\x12\x15\n\rcpuPercentage\x18\x03 \x01(\x01\x12*\n\x06upTime\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\r\n\x05total\x18\x05 \x01(\x04\"0\n\x0c\x64\x65vCpuMetric\x12\x10\n\x08\x63puTotal\x18\x01 \x01(\x04\x12\x0e\n\x06upTime\x18\x02 \x01(\x04\"\x89\x02\n\x0c\x64\x65viceMetric\x12\x17\n\x03\x63pu\x18\x01 \x01(\x0b\x32\n.cpuMetric\x12\x1d\n\x06memory\x18\x02 \x01(\x0b\x32\r.memoryMetric\x12\x1f\n\x07network\x18\x03 \x03(\x0b\x32\x0e.networkMetric\x12!\n\x08zedcloud\x18\x04 \x03(\x0b\x32\x0f.zedcloudMetric\x12\x1e\n\x07\x63ompute\x18\x05 \x01(\x0b\x32\r.devCpuMetric\x12\x19\n\x04\x64isk\x18\x06 \x03(\x0b\x32\x0b.diskMetric\x12 \n\tcpuMetric\x18\x07 \x01(\x0b\x32\r.appCpuMetric\x12 \n\x0bmetricItems\x18\x08 \x03(\x0b\x32\x0b.MetricItem\"\xbb\x01\n\nMetricItem\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x1d\n\x04type\x18\x02 \x01(\x0e\x32\x0f.MetricItemType\x12\x13\n\tboolValue\x18\x03 \x01(\x08H\x00\x12\x15\n\x0buint32Value\x18\x04 \x01(\rH\x00\x12\x15\n\x0buint64Value\x18\x05 \x01(\x04H\x00\x12\x14\n\nfloatValue\x18\x06 \x01(\x02H\x00\x12\x15\n\x0bstringValue\x18\x07 \x01(\tH\x00\x42\x11\n\x0fmetricItemValue\"\xa6\x01\n\ndiskMetric\x12\x0c\n\x04\x64isk\x18\x01 \x01(\t\x12\x11\n\tmountPath\x18\x02 \x01(\t\x12\x11\n\treadBytes\x18\x03 \x01(\x04\x12\x12\n\nwriteBytes\x18\x04 \x01(\x04\x12\x11\n\treadCount\x18\x05 \x01(\x04\x12\x12\n\nwriteCount\x18\x06 \x01(\x04\x12\r\n\x05total\x18\x07 \x01(\x04\x12\x0c\n\x04used\x18\x08 \x01(\x04\x12\x0c\n\x04\x66ree\x18\t \x01(\x04\"\x87\x01\n\tappMetric\x12\r\n\x05\x41ppID\x18\x01 \x01(\t\x12\x0f\n\x07\x41ppName\x18\x02 \x01(\t\x12\x1a\n\x03\x63pu\x18\x03 \x01(\x0b\x32\r.appCpuMetric\x12\x1d\n\x06memory\x18\x04 \x01(\x0b\x32\r.memoryMetric\x12\x1f\n\x07network\x18\x05 \x03(\x0b\x32\x0e.networkMetric\"\xb0\x01\n\nZMetricMsg\x12\r\n\x05\x64\x65vID\x18\x01 \x01(\t\x12\x1c\n\x05ztype\x18\x02 \x01(\x0e\x32\r.ZmetricTypes\x12/\n\x0b\x61tTimeStamp\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x1b\n\x02\x64m\x18\x04 \x01(\x0b\x32\r.deviceMetricH\x00\x12\x16\n\x02\x61m\x18\x05 \x03(\x0b\x32\n.appMetricB\x0f\n\rMetricContent*B\n\nZInfoTypes\x12\t\n\x05ZiNop\x10\x00\x12\x0c\n\x08ZiDevice\x10\x01\x12\x10\n\x0cZiHypervisor\x10\x02\x12\t\n\x05ZiApp\x10\x03*<\n\x10ZPeripheralTypes\x12\n\n\x06ZpNone\x10\x00\x12\r\n\tZpStorage\x10\x01\x12\r\n\tZpNetwork\x10\x02*h\n\x08ZSwState\x12\x0b\n\x07INVALID\x10\x00\x12\x0b\n\x07INITIAL\x10\x01\x12\x14\n\x10\x44OWNLOAD_STARTED\x10\x02\x12\x0e\n\nDOWNLOADED\x10\x03\x12\r\n\tDELIVERED\x10\x04\x12\r\n\tINSTALLED\x10\x05*H\n\x07ZioType\x12\n\n\x06ZioNop\x10\x00\x12\n\n\x06ZioEth\x10\x01\x12\n\n\x06ZioUSB\x10\x02\x12\n\n\x06ZioCOM\x10\x03\x12\r\n\x08ZioOther\x10\xff\x01*2\n\x0cZmetricTypes\x12\t\n\x05ZmNop\x10\x00\x12\x0c\n\x08ZmDevice\x10\x01\x12\t\n\x05ZmApp\x10\x03*f\n\x0eMetricItemType\x12\x13\n\x0fMetricItemOther\x10\x00\x12\x13\n\x0fMetricItemGauge\x10\x01\x12\x15\n\x11MetricItemCounter\x10\x02\x12\x13\n\x0fMetricItemState\x10\x03\x42=\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1agithub.com/zededa/api/zmetb\x06proto3')
   ,
   dependencies=[google_dot_protobuf_dot_timestamp__pb2.DESCRIPTOR,])
 
@@ -50,8 +50,8 @@ _ZINFOTYPES = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=4277,
-  serialized_end=4343,
+  serialized_start=4479,
+  serialized_end=4545,
 )
 _sym_db.RegisterEnumDescriptor(_ZINFOTYPES)
 
@@ -77,8 +77,8 @@ _ZPERIPHERALTYPES = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=4345,
-  serialized_end=4405,
+  serialized_start=4547,
+  serialized_end=4607,
 )
 _sym_db.RegisterEnumDescriptor(_ZPERIPHERALTYPES)
 
@@ -116,8 +116,8 @@ _ZSWSTATE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=4407,
-  serialized_end=4511,
+  serialized_start=4609,
+  serialized_end=4713,
 )
 _sym_db.RegisterEnumDescriptor(_ZSWSTATE)
 
@@ -151,8 +151,8 @@ _ZIOTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=4513,
-  serialized_end=4585,
+  serialized_start=4715,
+  serialized_end=4787,
 )
 _sym_db.RegisterEnumDescriptor(_ZIOTYPE)
 
@@ -178,8 +178,8 @@ _ZMETRICTYPES = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=4587,
-  serialized_end=4637,
+  serialized_start=4789,
+  serialized_end=4839,
 )
 _sym_db.RegisterEnumDescriptor(_ZMETRICTYPES)
 
@@ -209,8 +209,8 @@ _METRICITEMTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=4639,
-  serialized_end=4741,
+  serialized_start=4841,
+  serialized_end=4943,
 )
 _sym_db.RegisterEnumDescriptor(_METRICITEMTYPE)
 
@@ -1564,6 +1564,13 @@ _ZEDCLOUDMETRIC = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='urlMetrics', full_name='zedcloudMetric.urlMetrics', index=5,
+      number=6, type=11, cpp_type=10, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -1577,7 +1584,80 @@ _ZEDCLOUDMETRIC = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=3000,
-  serialized_end=3165,
+  serialized_end=3202,
+)
+
+
+_URLCLOUDMETRIC = _descriptor.Descriptor(
+  name='urlcloudMetric',
+  full_name='urlcloudMetric',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='url', full_name='urlcloudMetric.url', index=0,
+      number=1, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='tryMsgCount', full_name='urlcloudMetric.tryMsgCount', index=1,
+      number=2, type=3, cpp_type=2, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='tryByteCount', full_name='urlcloudMetric.tryByteCount', index=2,
+      number=3, type=3, cpp_type=2, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='sentMsgCount', full_name='urlcloudMetric.sentMsgCount', index=3,
+      number=4, type=3, cpp_type=2, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='sentByteCount', full_name='urlcloudMetric.sentByteCount', index=4,
+      number=5, type=3, cpp_type=2, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='recvMsgCount', full_name='urlcloudMetric.recvMsgCount', index=5,
+      number=6, type=3, cpp_type=2, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='recvByteCount', full_name='urlcloudMetric.recvByteCount', index=6,
+      number=7, type=3, cpp_type=2, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=3205,
+  serialized_end=3367,
 )
 
 
@@ -1628,8 +1708,8 @@ _APPCPUMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=3167,
-  serialized_end=3281,
+  serialized_start=3369,
+  serialized_end=3483,
 )
 
 
@@ -1666,8 +1746,8 @@ _DEVCPUMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=3283,
-  serialized_end=3331,
+  serialized_start=3485,
+  serialized_end=3533,
 )
 
 
@@ -1746,8 +1826,8 @@ _DEVICEMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=3334,
-  serialized_end=3599,
+  serialized_start=3536,
+  serialized_end=3801,
 )
 
 
@@ -1822,8 +1902,8 @@ _METRICITEM = _descriptor.Descriptor(
       name='metricItemValue', full_name='MetricItem.metricItemValue',
       index=0, containing_type=None, fields=[]),
   ],
-  serialized_start=3602,
-  serialized_end=3789,
+  serialized_start=3804,
+  serialized_end=3991,
 )
 
 
@@ -1909,8 +1989,8 @@ _DISKMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=3792,
-  serialized_end=3958,
+  serialized_start=3994,
+  serialized_end=4160,
 )
 
 
@@ -1968,8 +2048,8 @@ _APPMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=3961,
-  serialized_end=4096,
+  serialized_start=4163,
+  serialized_end=4298,
 )
 
 
@@ -2030,8 +2110,8 @@ _ZMETRICMSG = _descriptor.Descriptor(
       name='MetricContent', full_name='ZMetricMsg.MetricContent',
       index=0, containing_type=None, fields=[]),
   ],
-  serialized_start=4099,
-  serialized_end=4275,
+  serialized_start=4301,
+  serialized_end=4477,
 )
 
 _ZINFONETWORK.fields_by_name['dns'].message_type = _ZINFODNS
@@ -2077,6 +2157,7 @@ _ZINFOMSG.fields_by_name['ainfo'].containing_oneof = _ZINFOMSG.oneofs_by_name['I
 _ZIOBUNDLE.fields_by_name['type'].enum_type = _ZIOTYPE
 _ZEDCLOUDMETRIC.fields_by_name['lastFailure'].message_type = google_dot_protobuf_dot_timestamp__pb2._TIMESTAMP
 _ZEDCLOUDMETRIC.fields_by_name['lastSuccess'].message_type = google_dot_protobuf_dot_timestamp__pb2._TIMESTAMP
+_ZEDCLOUDMETRIC.fields_by_name['urlMetrics'].message_type = _URLCLOUDMETRIC
 _APPCPUMETRIC.fields_by_name['upTime'].message_type = google_dot_protobuf_dot_timestamp__pb2._TIMESTAMP
 _DEVICEMETRIC.fields_by_name['cpu'].message_type = _CPUMETRIC
 _DEVICEMETRIC.fields_by_name['memory'].message_type = _MEMORYMETRIC
@@ -2130,6 +2211,7 @@ DESCRIPTOR.message_types_by_name['cpuMetric'] = _CPUMETRIC
 DESCRIPTOR.message_types_by_name['memoryMetric'] = _MEMORYMETRIC
 DESCRIPTOR.message_types_by_name['networkMetric'] = _NETWORKMETRIC
 DESCRIPTOR.message_types_by_name['zedcloudMetric'] = _ZEDCLOUDMETRIC
+DESCRIPTOR.message_types_by_name['urlcloudMetric'] = _URLCLOUDMETRIC
 DESCRIPTOR.message_types_by_name['appCpuMetric'] = _APPCPUMETRIC
 DESCRIPTOR.message_types_by_name['devCpuMetric'] = _DEVCPUMETRIC
 DESCRIPTOR.message_types_by_name['deviceMetric'] = _DEVICEMETRIC
@@ -2270,6 +2352,13 @@ zedcloudMetric = _reflection.GeneratedProtocolMessageType('zedcloudMetric', (_me
   # @@protoc_insertion_point(class_scope:zedcloudMetric)
   ))
 _sym_db.RegisterMessage(zedcloudMetric)
+
+urlcloudMetric = _reflection.GeneratedProtocolMessageType('urlcloudMetric', (_message.Message,), dict(
+  DESCRIPTOR = _URLCLOUDMETRIC,
+  __module__ = 'zmet_pb2'
+  # @@protoc_insertion_point(class_scope:urlcloudMetric)
+  ))
+_sym_db.RegisterMessage(urlcloudMetric)
 
 appCpuMetric = _reflection.GeneratedProtocolMessageType('appCpuMetric', (_message.Message,), dict(
   DESCRIPTOR = _APPCPUMETRIC,
