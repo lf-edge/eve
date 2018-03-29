@@ -281,7 +281,7 @@ func (m *EdgeDevConfig) GetConfigItems() []*ConfigItem {
 // to avoid synchronization with other devices. Random range is between
 // between .5 and 1.5 of these nominal values. If not set (i.e. zero),
 // it means the default value of 60 seconds.
-// Initially we'll have a "configinterval" and a "metricsinterval" item.
+// Initially we'll have a "configinterval" and a "metricinterval" item.
 // We'll also need a "resetIfCloudGoneTime" and a "fallbackIfCloudGoneTime"
 // to control a normal operation and an upgrade inprogress check of
 // cloud connectivity.
