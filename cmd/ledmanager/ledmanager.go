@@ -205,8 +205,9 @@ func DummyCmd() {
 }
 
 // Should be tuned so that the LED lights up for 200ms
+// Disable cache since there might be a filesystem on the device
 func ExecuteDDCmd() {
-	cmd := exec.Command("dd", "if=/dev/sda", "of=/dev/null", "bs=4M", "count=22")
+	cmd := exec.Command("dd", "if=/dev/sda", "of=/dev/null", "bs=4M", "count=22", "iflag=nocache")
 	stdout, err := cmd.Output()
 	if err != nil {
 		log.Println("dd error: ", err)
