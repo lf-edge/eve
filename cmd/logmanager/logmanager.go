@@ -156,10 +156,7 @@ func main() {
 	publishTimer := flextimer.NewRangeTicker(time.Duration(min),
 		time.Duration(max))
 
-	currentPartition := "IMGA"
-	if zboot.IsAvailable() {
-		currentPartition = zboot.GetCurrentPartition()
-	}
+	currentPartition := zboot.GetCurrentPartition()
 	loggerChan := make(chan logEntry)
 	ctx := loggerContext{logChan: loggerChan, image: currentPartition}
 	// Start sender of log events

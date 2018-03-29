@@ -124,7 +124,7 @@ func configTimerTask(handleChannel chan interface{},
 	configUrl := serverName + "/" + configApi
 	getconfigCtx.lastReceivedConfigFromCloud = time.Now()
 	iteration := 0
-	upgradeInprogress := zboot.IsAvailable() && zboot.IsCurrentPartitionStateInProgress()
+	upgradeInprogress := zboot.IsCurrentPartitionStateInProgress()
 	rebootFlag := getLatestConfig(configUrl, iteration,
 		&upgradeInprogress, getconfigCtx)
 

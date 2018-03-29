@@ -255,6 +255,7 @@ func doBaseOsStatusUpdate(uuidStr string, config types.BaseOsConfig,
 	return changed
 }
 
+// Returns changed boolean when the status was changed
 func doBaseOsActivate(uuidStr string, config types.BaseOsConfig,
 	status *types.BaseOsStatus) bool {
 	log.Printf("doBaseOsActivate(%s) uuid %s\n",
@@ -273,9 +274,37 @@ func doBaseOsActivate(uuidStr string, config types.BaseOsConfig,
 	// check the partition label of the current root...
 	// check PartitionLabel the one we got is really unused?
 	// if partitionState unsed then change status to updating...
-
-	if !zboot.IsOtherPartition(config.PartitionLabel) ||
-		!zboot.IsOtherPartitionStateUnused() {
+	// If it is inprogress and this is a different image than the failed
+	// one then we also use it.
+	if !zboot.IsOtherPartition(config.PartitionLabel) {
+		return changed
+	}
+	partState := zboot.GetPartitionState(config.PartitionLabel)
+	switch partState {
+	case "unused":
+		// Proceeed
+	case "inprogress":
+		// XXX we should catch this before we download the
+		// failed update!
+		oldVersion := zboot.GetShortVersion(config.PartitionLabel)
+		if oldVersion == config.BaseOsVersion {
+			errString := fmt.Sprintf("Attempt to reinstall failed %s: refused",
+				oldVersion)
+			log.Println(errString)
+			status.Error = errString
+			status.ErrorTime = time.Now()
+			changed = true
+			return changed
+		}
+		log.Printf("Installing %s over failed %s\n",
+			config.BaseOsVersion, oldVersion)
+	default:
+		errString := fmt.Sprintf("Wrong partition state %s for %s",
+			partState, config.PartitionLabel)
+		log.Println(errString)
+		status.Error = errString
+		status.ErrorTime = time.Now()
+		changed = true
 		return changed
 	}
 

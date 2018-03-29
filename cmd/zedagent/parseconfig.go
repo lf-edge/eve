@@ -41,21 +41,19 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext) 
 
 	// updating/rebooting, ignore config??
 	// XXX can we get stuck here?
-	if zboot.IsAvailable() && zboot.IsOtherPartitionStateUpdating() {
+	if zboot.IsOtherPartitionStateUpdating() {
 		log.Println("OtherPartitionStatusUpdating - returning rebootFlag")
 		return true
 	}
 
 	// If the other partition is inprogress it means update failed
-	if zboot.IsAvailable() && zboot.IsOtherPartitionStateInProgress() {
+	// We leave in inprogress state so logmanager can use it to decide
+	// to upload the other logs. If a different BaseOsVersion is provided
+	// we allow it to be installed into the inprogress partition.
+	if zboot.IsOtherPartitionStateInProgress() {
 		otherPart := zboot.GetOtherPartition()
 		log.Printf("Other %s partition contains failed upgrade\n",
 			otherPart)
-		// XXX make sure its logs are made available
-		// XXX switch to keep it in inprogress until we get
-		// a baseOsConfig with a different baseOsVersion string.
-		log.Printf("Mark other partition %s, unused\n", otherPart)
-		zboot.SetOtherPartitionStateUnused()
 	}
 
 	if validateConfig(config) {
@@ -86,6 +84,7 @@ func validateConfig(config *zconfig.EdgeDevConfig) bool {
 	return true
 }
 
+// Returns true if there is some baseOs work to do
 func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 	cfgOsList := config.GetBase()
 	baseOsCount := len(cfgOsList)
@@ -163,8 +162,10 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 		// XXX shouldn't the code write what it just marshalled?
 	}
 
+	// XXX defer until we have validated; call with BaseOsStatus
 	assignBaseOsPartition(baseOsList)
 
+	// XXX configCount needs to take "failed update" into account
 	configCount := 0
 	if validateBaseOsConfig(baseOsList) == true {
 		configCount = createBaseOsConfig(baseOsList, certList)
@@ -177,6 +178,7 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 	return false
 }
 
+// XXX should work on BaseOsStatus
 func assignBaseOsPartition(baseOsList []*types.BaseOsConfig) {
 	curPartName := zboot.GetCurrentPartition()
 	otherPartName := zboot.GetOtherPartition()
@@ -810,43 +812,13 @@ func validateBaseOsConfig(baseOsList []*types.BaseOsConfig) bool {
 			return false
 		}
 	}
-
-	// check if the Sha is same, for different names
-	for idx, baseOs0 := range baseOsList {
-		if baseOs0 == nil {
-			continue
-		}
-
-		for bidx, baseOs1 := range baseOsList {
-
-			if baseOs1 == nil {
-				continue
-			}
-
-			if idx <= bidx {
-				continue
-			}
-			// compare the drives, for same Sha
-			for _, drive0 := range baseOs0.StorageConfigList {
-				for _, drive1 := range baseOs1.StorageConfigList {
-					// if sha is same for URLs
-					if drive0.ImageSha256 == drive1.ImageSha256 &&
-						drive0.DownloadURL != drive1.DownloadURL {
-						log.Printf("baseOs: Same Sha %v\n", drive0.ImageSha256)
-						// XXX causes silent failure?
-						// Need to report this to the cliud
-						if false {
-							return false
-						}
-					}
-				}
-			}
-		}
-	}
-
 	return true
 }
 
+// Returns the number of BaseOsConfig that are new or modified
+// XXX not useful for caller if we want to catch failed upgrades up front.
+// XXX should we initially populate BaseOsStyatus with what we find in
+// the partitions? Makes the checks simpler.
 func createBaseOsConfig(baseOsList []*types.BaseOsConfig, certList []*types.CertObjConfig) int {
 
 	writeCount := 0
