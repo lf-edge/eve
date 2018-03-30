@@ -284,8 +284,8 @@ func doBaseOsActivate(uuidStr string, config types.BaseOsConfig,
 	case "unused":
 		// Proceeed
 	case "inprogress":
-		// XXX we should catch this before we download the
-		// failed update!
+		// We also check for this condition when processing
+		// the baseOsConfig
 		oldVersion := zboot.GetShortVersion(config.PartitionLabel)
 		if oldVersion == config.BaseOsVersion {
 			errString := fmt.Sprintf("Attempt to reinstall failed %s: refused",

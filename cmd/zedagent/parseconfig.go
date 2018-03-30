@@ -167,9 +167,13 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 	}
 
 	// XXX defer until we have validated; call with BaseOsStatus
-	assignBaseOsPartition(baseOsList)
-
-	// XXX configCount needs to take "failed update" into account
+	failedUpdate := assignBaseOsPartition(baseOsList)
+	if failedUpdate {
+		// Proceed with applications etc. User has to retry with a
+		// different update than the one that failed.
+		return false
+	}
+	// XXX will the createBaseOsConfig creation result in a download?
 	configCount := 0
 	if validateBaseOsConfig(baseOsList) == true {
 		configCount = createBaseOsConfig(baseOsList, certList)
@@ -183,12 +187,13 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 }
 
 // XXX should work on BaseOsStatus once PartitionLabel moves to BaseOsStatus
-func assignBaseOsPartition(baseOsList []*types.BaseOsConfig) {
+// Returns true if there is a failed ugrade in the config
+func assignBaseOsPartition(baseOsList []*types.BaseOsConfig) bool {
 	curPartName := zboot.GetCurrentPartition()
 	otherPartName := zboot.GetOtherPartition()
 	curPartVersion := zboot.GetShortVersion(curPartName)
 	otherPartVersion := zboot.GetShortVersion(otherPartName)
-	inProg := zboot.IsOtherPartitionStateInProgress()
+	otherInprog := zboot.IsOtherPartitionStateInProgress()
 
 	assignedPart := true
 	// older assignments/installations
@@ -210,10 +215,11 @@ func assignBaseOsPartition(baseOsList []*types.BaseOsConfig) {
 		}
 
 		if otherPartVersion == baseOs.BaseOsVersion {
-			if inProg {
+			if otherInprog {
 				rejectReinstallFailed(baseOs)
 				// XXX return? Shouldn't do any assigments
-				return
+				// Tell caller it should ignore baseOs for now
+				return true
 			}
 
 			baseOs.PartitionLabel = otherPartName
@@ -235,7 +241,7 @@ func assignBaseOsPartition(baseOsList []*types.BaseOsConfig) {
 	}
 
 	if assignedPart == true {
-		return
+		return false
 	}
 
 	// if activate set, assign partition
@@ -255,7 +261,7 @@ func assignBaseOsPartition(baseOsList []*types.BaseOsConfig) {
 	}
 
 	if assignedPart == true {
-		return
+		return false
 	}
 
 	// still not assigned, assign partition
@@ -268,6 +274,7 @@ func assignBaseOsPartition(baseOsList []*types.BaseOsConfig) {
 		log.Printf("%s, assigning with partition %s\n",
 			baseOs.BaseOsVersion, baseOs.PartitionLabel)
 	}
+	return false
 }
 
 func rejectReinstallFailed(config *types.BaseOsConfig) {
@@ -280,10 +287,21 @@ func rejectReinstallFailed(config *types.BaseOsConfig) {
 	if status == nil {
 		log.Printf("XXX %s, rejectReinstallFailed can't find baseOsStatus uuid %s\n",
 			config.BaseOsVersion, uuidStr)
-	} else {
-		status.Error = errString
-		status.ErrorTime = time.Now()
+		// XXX this is a hack to report the error.
+		// The status should already exist once this code
+		// is moved from the parser to baseosmanager.
+		status = &types.BaseOsStatus{
+			UUIDandVersion: config.UUIDandVersion,
+			BaseOsVersion:  config.BaseOsVersion,
+			ConfigSha256:   config.ConfigSha256,
+			PartitionLabel: config.PartitionLabel,
+		}
 	}
+	status.Error = errString
+	status.ErrorTime = time.Now()
+
+	baseOsStatusSet(uuidStr, status)
+	writeBaseOsStatus(status, uuidStr)
 	// XXX how do we tell handler that status changes?
 }
 
