@@ -15,7 +15,9 @@ import (
 	"github.com/satori/go.uuid"
 	"github.com/zededa/api/zmet"
 	"github.com/zededa/go-provision/agentlog"
+	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/pidfile"
+	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
 	"github.com/zededa/go-provision/zboot"
@@ -135,6 +137,12 @@ func main() {
 	log.Printf("Starting %s watching %s\n", agentName, logDirName)
 	log.Printf("watching %s\n", lispLogDirName)
 
+	cms := zedcloud.GetCloudMetrics() // Need type of data
+	pub, err := pubsub.Publish(agentName, cms)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	// XXX should we wait until we have at least one useable address?
 	DNSctx := DNSContext{}
 	DNSctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
@@ -156,6 +164,13 @@ func main() {
 
 	//Get servername, set logUrl, get device id and initialize zedcloudCtx
 	sendCtxInit()
+
+	// Publish send metrics for zedagent every 10 seconds
+	interval := time.Duration(10 * time.Second)
+	max := float64(interval)
+	min := max * 0.3
+	publishTimer := flextimer.NewRangeTicker(time.Duration(min),
+		time.Duration(max))
 
 	currentPartition := "IMGA"
 	if zboot.IsAvailable() {
@@ -233,6 +248,12 @@ func main() {
 				handleDNSModify, handleDNSDelete,
 				nil)
 
+		case <-publishTimer.C:
+			if debug {
+				log.Println("publishTimer at",
+					time.Now())
+			}
+			pub.Publish("global", zedcloud.GetCloudMetrics())
 		}
 	}
 }
@@ -281,7 +302,12 @@ func handleDNSDelete(ctxArg interface{}, statusFilename string) {
 func processEvents(logChan chan logEntry, image string) {
 
 	reportLogs := new(zmet.LogBundle)
-	flushTimer := time.NewTicker(time.Second * 10)
+	// XXX should we make the log interval configurable?
+	interval := time.Duration(10 * time.Second)
+	max := float64(interval)
+	min := max * 0.3
+	flushTimer := flextimer.NewRangeTicker(time.Duration(min),
+		time.Duration(max))
 	counter := 0
 
 	for {
@@ -359,8 +385,8 @@ func sendProtoStrForLogs(image string, reportLogs *zmet.LogBundle,
 		log.Fatal("SendInfoProtobufStr malloc error:")
 	}
 
-	resp, err := zedcloud.SendOnAllIntf(zedcloudCtx, logsUrl,
-		buf, iteration)
+	_, _, err = zedcloud.SendOnAllIntf(zedcloudCtx, logsUrl,
+		int64(len(data)), buf, iteration)
 	if err != nil {
 		// XXX need to queue message and retry
 		//XXX FIXME lushing it for now, do we need to flush?
@@ -370,7 +396,6 @@ func sendProtoStrForLogs(image string, reportLogs *zmet.LogBundle,
 	}
 	log.Printf("Sent %d bytes to %s\n", len(data), logsUrl)
 	reportLogs.Log = []*zmet.LogEntry{}
-	resp.Body.Close()
 }
 
 func sendCtxInit() {
@@ -392,6 +417,8 @@ func sendCtxInit() {
 	zedcloudCtx.DeviceNetworkStatus = &deviceNetworkStatus
 	zedcloudCtx.TlsConfig = tlsConfig
 	zedcloudCtx.Debug = debug
+	zedcloudCtx.FailureFunc = zedcloud.ZedCloudFailure
+	zedcloudCtx.SuccessFunc = zedcloud.ZedCloudSuccess
 
 	b, err := ioutil.ReadFile(uuidFileName)
 	if err != nil {

@@ -40,9 +40,11 @@ import (
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/pidfile"
+	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
 	"github.com/zededa/go-provision/zboot"
+	"github.com/zededa/go-provision/zedcloud"
 	"log"
 	"os"
 	"time"
@@ -106,6 +108,11 @@ const (
 var Version = "No version specified"
 
 var deviceNetworkStatus types.DeviceNetworkStatus
+
+// XXX globals filled in by subscription handlers and read by handlemetrics
+var clientMetrics interface{}
+var logmanagerMetrics interface{}
+var downloaderMetrics interface{}
 
 // Dummy used when we don't have anything to pass
 type dummyContext struct {
@@ -268,6 +275,24 @@ func main() {
 		getconfigCtx.ledManagerCount = 2
 	}
 
+	// Subscribe to network metrics from different agents
+	cms := zedcloud.GetCloudMetrics()
+	subClientMetrics, err := pubsub.Subscribe("zedclient", cms,
+		&dummyContext{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	subLogmanagerMetrics, err := pubsub.Subscribe("logmanager", cms,
+		&dummyContext{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	subDownloaderMetrics, err := pubsub.Subscribe("downloader", cms,
+		&dummyContext{})
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	// Publish initial device info. Retries all addresses on all uplinks.
 	PublishDeviceInfoToZedCloud(baseOsStatusMap, devCtx.assignableAdapters)
 
@@ -398,6 +423,28 @@ func main() {
 
 		case change := <-aaChanges:
 			aaFunc(&aaCtx, change)
+		case change := <-subClientMetrics.C:
+			subClientMetrics.ProcessChange(change)
+			clientMetrics, err = subClientMetrics.Get("global")
+			if err != nil {
+				log.Printf("subClientMetrics.Get failed: %s\n",
+					err)
+			}
+		case change := <-subLogmanagerMetrics.C:
+			subLogmanagerMetrics.ProcessChange(change)
+			logmanagerMetrics, err = subLogmanagerMetrics.Get("global")
+			if err != nil {
+				log.Printf("subLogmanagerMetrics.Get failed: %s\n",
+					err)
+			}
+		case change := <-subDownloaderMetrics.C:
+			subDownloaderMetrics.ProcessChange(change)
+			downloaderMetrics, err = subDownloaderMetrics.Get("global")
+			if err != nil {
+				log.Printf("subDownloaderMetrics.Get failed: %s\n",
+					err)
+			}
+
 		}
 	}
 }

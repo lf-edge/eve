@@ -13,7 +13,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/RevH/ipinfo"
+	"github.com/eriknordmark/ipinfo"
 	"github.com/golang/protobuf/proto"
 	"github.com/satori/go.uuid"
 	"github.com/zededa/api/zmet"
@@ -21,6 +21,7 @@ import (
 	"github.com/zededa/go-provision/devicenetwork"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/pidfile"
+	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/zedcloud"
 	"io/ioutil"
@@ -116,6 +117,12 @@ func main() {
 	zedserverConfigFileName := tmpDirname + "/zedserverconfig"
 	zedrouterConfigFileName := tmpDirname + "/zedrouterconfig.json"
 
+	cms := zedcloud.GetCloudMetrics() // Need type of data
+	pub, err := pubsub.Publish(agentName, cms)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	var oldUUID uuid.UUID
 	b, err := ioutil.ReadFile(uuidFileName)
 	if err == nil {
@@ -147,6 +154,8 @@ func main() {
 			if operations["getUuid"] && oldUUID != nilUUID {
 				log.Printf("Already have a UUID %s; declaring success\n",
 					oldUUID.String())
+				// Likely zero metrics
+				pub.Publish("global", zedcloud.GetCloudMetrics())
 				return
 			}
 			log.Printf("Waiting for some uplink addresses to use\n")
@@ -164,6 +173,8 @@ func main() {
 	zedcloudCtx := zedcloud.ZedCloudContext{
 		DeviceNetworkStatus: &deviceNetworkStatus,
 		Debug:               true,
+		FailureFunc:         zedcloud.ZedCloudFailure,
+		SuccessFunc:         zedcloud.ZedCloudSuccess,
 	}
 	var onboardCert, deviceCert tls.Certificate
 	var deviceCertPem []byte
@@ -220,23 +231,16 @@ func main() {
 
 	// Post something without a return type.
 	// Returns true when done; false when retry
-	myPost := func(retryCount int, url string, b *bytes.Buffer) bool {
-		resp, err := zedcloud.SendOnAllIntf(zedcloudCtx,
-			serverNameAndPort+url, b, retryCount)
+	myPost := func(retryCount int, url string, reqlen int64, b *bytes.Buffer) bool {
+		resp, contents, err := zedcloud.SendOnAllIntf(zedcloudCtx,
+			serverNameAndPort+url, reqlen, b, retryCount)
 		if err != nil {
 			log.Println(err)
 			return false
 		}
-		defer resp.Body.Close()
 
 		// Inform ledmanager about cloud connectivity
 		types.UpdateLedManagerConfig(3)
-
-		contents, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			log.Println(err)
-			return false
-		}
 
 		switch resp.StatusCode {
 		case http.StatusOK:
@@ -285,23 +289,16 @@ func main() {
 	}
 
 	// XXX remove later
-	oldMyPost := func(retryCount int, url string, b *bytes.Buffer) bool {
-		resp, err := zedcloud.SendOnAllIntf(zedcloudCtx,
-			serverNameAndPort+url, b, retryCount)
+	oldMyPost := func(retryCount int, url string, reqlen int64, b *bytes.Buffer) bool {
+		resp, contents, err := zedcloud.SendOnAllIntf(zedcloudCtx,
+			serverNameAndPort+url, reqlen, b, retryCount)
 		if err != nil {
 			log.Println(err)
 			return false
 		}
-		defer resp.Body.Close()
 
 		// Inform ledmanager about cloud connectivity
 		types.UpdateLedManagerConfig(3)
-
-		contents, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			log.Println(err)
-			return false
-		}
 
 		switch resp.StatusCode {
 		case http.StatusOK:
@@ -363,7 +360,8 @@ func main() {
 			log.Println(err)
 			return false
 		}
-		return myPost(retryCount, "/api/v1/edgedevice/register", bytes.NewBuffer(b))
+		return myPost(retryCount, "/api/v1/edgedevice/register",
+			int64(len(b)), bytes.NewBuffer(b))
 	}
 
 	// XXX remove later
@@ -379,28 +377,25 @@ func main() {
 		rc := types.RegisterCreate{PemCert: deviceCertPem}
 		b := new(bytes.Buffer)
 		json.NewEncoder(b).Encode(rc)
-		return oldMyPost(retryCount, "/rest/self-register", b)
+		// XXX Random value 100 for length since we are deleting this
+		// code soon
+		return oldMyPost(retryCount, "/rest/self-register",
+			100, b)
 	}
 
 	// Returns true when done; false when retry
 	lookupParam := func(retryCount int, device *types.DeviceDb) bool {
 		url := "/rest/device-param"
-		resp, err := zedcloud.SendOnAllIntf(zedcloudCtx,
-			serverNameAndPort+url, nil, retryCount)
+		resp, contents, err := zedcloud.SendOnAllIntf(zedcloudCtx,
+			serverNameAndPort+url, 0, nil, retryCount)
 		if err != nil {
 			log.Println(err)
 			return false
 		}
-		defer resp.Body.Close()
 
 		// Inform ledmanager about connectivity to cloud
 		types.UpdateLedManagerConfig(3)
 
-		contents, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			log.Println(err)
-			return false
-		}
 		switch resp.StatusCode {
 		case http.StatusOK:
 			// Inform ledmanager about device existence in cloud
@@ -442,34 +437,26 @@ func main() {
 
 	// Get something without a return type; used by ping
 	// Returns true when done; false when retry.
-	// Returns the response when done. Note caller must do resp.Body.Close()
-	myGet := func(url string, retryCount int) (bool, *http.Response) {
-		resp, err := zedcloud.SendOnAllIntf(zedcloudCtx,
-			serverNameAndPort+url, nil, retryCount)
+	// Returns the response when done. Caller can not use resp.Body but
+	// can use the contents []byte
+	myGet := func(url string, retryCount int) (bool, *http.Response, []byte) {
+		resp, contents, err := zedcloud.SendOnAllIntf(zedcloudCtx,
+			serverNameAndPort+url, 0, nil, retryCount)
 		if err != nil {
 			log.Println(err)
-			return false, nil
+			return false, nil, nil
 		}
-		// Perform resp.Body.Close() except in success case
 
 		switch resp.StatusCode {
 		case http.StatusOK:
 			log.Printf("%s StatusOK\n", url)
-			return true, resp
-		case http.StatusCreated:
-			log.Printf("%s StatusCreated\n", url)
-			resp.Body.Close()
-			return false, nil
+			return true, resp, contents
 		default:
 			log.Printf("%s statuscode %d %s\n",
 				url, resp.StatusCode,
 				http.StatusText(resp.StatusCode))
-			contents, err := ioutil.ReadAll(resp.Body)
-			if err == nil {
-				log.Printf("Received %s\n", string(contents))
-			}
-			resp.Body.Close()
-			return false, nil
+			log.Printf("Received %s\n", string(contents))
+			return false, nil, nil
 		}
 	}
 
@@ -511,6 +498,7 @@ func main() {
 		if oldFlag {
 			log.Printf("XXX ping not supported using %s\n",
 				serverName)
+			pub.Publish("global", zedcloud.GetCloudMetrics())
 			return
 		}
 		url := "/api/v1/edgedevice/ping"
@@ -518,12 +506,9 @@ func main() {
 		done := false
 		var delay time.Duration
 		for !done {
-			var resp *http.Response
-
 			time.Sleep(delay)
-			done, resp = myGet(url, retryCount)
+			done, _, _ = myGet(url, retryCount)
 			if done {
-				resp.Body.Close()
 				continue
 			}
 			retryCount += 1
@@ -581,13 +566,13 @@ func main() {
 			var delay time.Duration
 			for !done {
 				var resp *http.Response
+				var contents []byte
 
 				time.Sleep(delay)
-				done, resp = myGet(url, retryCount)
+				done, resp, contents = myGet(url, retryCount)
 				if done {
-					defer resp.Body.Close()
 					var err error
-					devUUID, err = parseUUID(url, resp)
+					devUUID, err = parseUUID(url, resp, contents)
 					if err == nil {
 						continue
 					}
@@ -634,6 +619,7 @@ func main() {
 			log.Printf("XXX lookupParam not yet supported using %s\n",
 				serverName)
 			os.Remove(zedrouterConfigFileName)
+			pub.Publish("global", zedcloud.GetCloudMetrics())
 			return
 		}
 		b, err := ioutil.ReadFile(uuidFileName)
@@ -670,6 +656,7 @@ func main() {
 		if device.EID == nil {
 			log.Printf("Did not receive an EID\n")
 			os.Remove(zedserverConfigFileName)
+			pub.Publish("global", zedcloud.GetCloudMetrics())
 			return
 		}
 
@@ -782,6 +769,7 @@ func main() {
 		}
 		writeNetworkConfig(&config, zedrouterConfigFileName)
 	}
+	pub.Publish("global", zedcloud.GetCloudMetrics())
 }
 
 func writeNetworkConfig(config *types.AppNetworkConfig,

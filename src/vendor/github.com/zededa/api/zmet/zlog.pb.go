@@ -30,6 +30,7 @@ It has these top-level messages:
 	MemoryMetric
 	NetworkMetric
 	ZedcloudMetric
+	UrlcloudMetric
 	AppCpuMetric
 	DevCpuMetric
 	DeviceMetric
