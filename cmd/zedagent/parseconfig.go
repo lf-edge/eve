@@ -156,7 +156,10 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 
 		// Dump the config content
 		bytes, err := json.Marshal(baseOs)
-		if err == nil {
+		if err != nil {
+			log.Fatal(err)
+		}
+		if debug {
 			log.Printf("New/updated BaseOs %d: %s\n", idx, bytes)
 		}
 		// XXX shouldn't the code write what it just marshalled?
@@ -184,6 +187,8 @@ func assignBaseOsPartition(baseOsList []*types.BaseOsConfig) {
 	otherPartName := zboot.GetOtherPartition()
 	curPartVersion := zboot.GetShortVersion(curPartName)
 	otherPartVersion := zboot.GetShortVersion(otherPartName)
+
+	// XXX check for unused vs. inprogress and generate error here
 
 	assignedPart := true
 	// older assignments/installations
@@ -274,9 +279,11 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig) {
 	Apps := config.GetApps()
 
 	for _, cfgApp := range Apps {
-
-		log.Printf("New/updated app instance %v\n", cfgApp)
-
+		// Note that we repeat this even if the app config didn't
+		// change but something else in the EdgeDeviceConfig did
+		if debug {
+			log.Printf("New/updated app instance %v\n", cfgApp)
+		}
 		appInstance.UUIDandVersion.UUID, _ = uuid.FromString(cfgApp.Uuidandversion.Uuid)
 		appInstance.UUIDandVersion.Version = cfgApp.Uuidandversion.Version
 		appInstance.DisplayName = cfgApp.Displayname
@@ -683,7 +690,10 @@ func writeBaseOsConfig(baseOsConfig *types.BaseOsConfig, uuidStr string) {
 		log.Fatal(err, "json Marshal BaseOsConfig")
 	}
 
-	log.Printf("Writing baseOs config UUID %s, %s\n", configFilename, bytes)
+	if debug {
+		log.Printf("Writing baseOs config UUID %s, %s\n",
+			configFilename, bytes)
+	}
 
 	err = ioutil.WriteFile(configFilename, bytes, 0644)
 
@@ -872,7 +882,9 @@ func writeCertObjConfig(config *types.CertObjConfig, uuidStr string) {
 		log.Fatal(err, "json Marshal certObjConfig")
 	}
 
-	log.Printf("Writing CA config %s, %s\n", configFilename, bytes)
+	if debug {
+		log.Printf("Writing CA config %s, %s\n", configFilename, bytes)
+	}
 
 	err = ioutil.WriteFile(configFilename, bytes, 0644)
 	if err != nil {

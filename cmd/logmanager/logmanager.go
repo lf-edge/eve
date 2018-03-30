@@ -320,6 +320,7 @@ func HandleLogEvent(event logEntry, reportLogs *zmet.LogBundle, counter int) {
 	logDetails.Iid = event.iid
 	logDetails.Msgid = uint64(msgId)
 	reportLogs.Log = append(reportLogs.Log, logDetails)
+	// XXX count bytes. Limit to << 64k
 }
 
 func sendProtoStrForLogs(reportLogs *zmet.LogBundle, image string,
@@ -346,6 +347,7 @@ func sendProtoStrForLogs(reportLogs *zmet.LogBundle, image string,
 		int64(len(data)), buf, iteration)
 	if err != nil {
 		// XXX need to queue message and retry
+		// XXX not that we will keep on going adding to reportLogs.Log
 		log.Printf("SendProtoStrForLogs failed: %s\n", err)
 		return
 	}

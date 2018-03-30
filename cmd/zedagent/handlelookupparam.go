@@ -44,13 +44,15 @@ const (
 //  /var/tmp/zededa/uuid	Written by us
 //
 func handleLookupParam(devConfig *zconfig.EdgeDevConfig) {
-	// XXX should we hadle changes at all? Want to update zedserverconfig
+	// XXX should we handle changes at all? Want to update zedserverconfig
 	// but not rest.
 
 	//Fill DeviceDb struct with LispInfo config...
 	var device = types.DeviceDb{}
 
-	log.Printf("handleLookupParam got config %v\n", devConfig)
+	if debug {
+		log.Printf("handleLookupParam got config %v\n", devConfig)
+	}
 	lispInfo := devConfig.LispInfo
 	if lispInfo == nil {
 		log.Printf("handleLookupParam: missing lispInfo\n")

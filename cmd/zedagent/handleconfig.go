@@ -305,7 +305,9 @@ func readDeviceConfigProtoMessage(contents []byte) (bool, *zconfig.EdgeDevConfig
 
 // Returns a rebootFlag
 func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext) bool {
-	log.Printf("Inhaling config %v\n", config)
+	if debug {
+		log.Printf("Inhaling config %v\n", config)
+	}
 
 	// if they match return
 	var devId = &zconfig.UUIDandVersion{}
