@@ -140,6 +140,7 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 
 		if imageCount != BaseOsImageCount {
 			log.Printf("%s, invalid storage config %d\n", baseOs.BaseOsVersion, imageCount)
+			// XXX need to publish this as an error in baseOsStatus
 			continue
 		}
 

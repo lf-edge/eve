@@ -284,7 +284,7 @@ func doBaseOsActivate(uuidStr string, config types.BaseOsConfig,
 	case "unused":
 		// Proceeed
 	case "inprogress":
-		// We also check for this condition when processing
+		// We also check for this condition much earlier when processing
 		// the baseOsConfig
 		oldVersion := zboot.GetShortVersion(config.PartitionLabel)
 		if oldVersion == config.BaseOsVersion {
@@ -310,6 +310,13 @@ func doBaseOsActivate(uuidStr string, config types.BaseOsConfig,
 
 	log.Printf("doBaseOsActivate: %s activating\n", uuidStr)
 	zboot.SetOtherPartitionStateUpdating()
+
+	// Remove any old log files for a previous instance
+	logdir := fmt.Sprintf("/persist/%s/log", config.PartitionLabel)
+	log.Printf("Clearing old logs in %s\n", logdir)
+	if err := os.RemoveAll(logdir); err != nil {
+		log.Println(err)
+	}
 
 	// if it is installed, flip the activated status
 	if status.State == types.INSTALLED ||
@@ -598,8 +605,9 @@ func installBaseOsObject(srcFilename string, dstFilename string) error {
 	err := zboot.WriteToPartition(srcFilename, dstFilename)
 	if err != nil {
 		log.Printf("installBaseOsObject: write failed %s\n", err)
+		return err
 	}
-	return err
+	return nil
 }
 
 // validate whether the image version matches with
