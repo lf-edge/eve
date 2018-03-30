@@ -347,8 +347,11 @@ func sendProtoStrForLogs(reportLogs *zmet.LogBundle, image string,
 		int64(len(data)), buf, iteration)
 	if err != nil {
 		// XXX need to queue message and retry
-		// XXX not that we will keep on going adding to reportLogs.Log
-		log.Printf("SendProtoStrForLogs failed: %s\n", err)
+		// For now we discard what failed to constrain the size
+		// of each message
+		log.Printf("SendProtoStrForLogs %d bytes failed: %s\n",
+			len(data), err)
+		reportLogs.Log = []*zmet.LogEntry{}
 		return
 	}
 	log.Printf("Sent %d bytes to %s\n", len(data), logsUrl)
