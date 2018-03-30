@@ -5,6 +5,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/satori/go.uuid"
 	"github.com/zededa/api/zconfig"
 	"github.com/zededa/go-provision/types"
@@ -181,14 +182,13 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 	return false
 }
 
-// XXX should work on BaseOsStatus
+// XXX should work on BaseOsStatus once PartitionLabel moves to BaseOsStatus
 func assignBaseOsPartition(baseOsList []*types.BaseOsConfig) {
 	curPartName := zboot.GetCurrentPartition()
 	otherPartName := zboot.GetOtherPartition()
 	curPartVersion := zboot.GetShortVersion(curPartName)
 	otherPartVersion := zboot.GetShortVersion(otherPartName)
-
-	// XXX check for unused vs. inprogress and generate error here
+	inProg := zboot.IsOtherPartitionStateInProgress()
 
 	assignedPart := true
 	// older assignments/installations
@@ -198,7 +198,30 @@ func assignBaseOsPartition(baseOsList []*types.BaseOsConfig) {
 		}
 		uuidStr := baseOs.UUIDandVersion.UUID.String()
 		curBaseOsConfig := baseOsConfigGet(uuidStr)
+		// XXX isn't curBaseOsConfig the same as baseOs???
+		// We are iterating over all the baseOsConfigs.
 
+		if curPartVersion == baseOs.BaseOsVersion {
+			baseOs.PartitionLabel = curPartName
+			setStoragePartitionLabel(baseOs)
+			log.Printf("%s, already installed in partition %s\n",
+				baseOs.BaseOsVersion, baseOs.PartitionLabel)
+			continue
+		}
+
+		if otherPartVersion == baseOs.BaseOsVersion {
+			if inProg {
+				rejectReinstallFailed(baseOs)
+				// XXX return? Shouldn't do any assigments
+				return
+			}
+
+			baseOs.PartitionLabel = otherPartName
+			setStoragePartitionLabel(baseOs)
+			log.Printf("%s, already installed in partition %s\n",
+				baseOs.BaseOsVersion, baseOs.PartitionLabel)
+			continue
+		}
 		if curBaseOsConfig != nil &&
 			curBaseOsConfig.PartitionLabel != "" {
 			baseOs.PartitionLabel = curBaseOsConfig.PartitionLabel
@@ -208,21 +231,6 @@ func assignBaseOsPartition(baseOsList []*types.BaseOsConfig) {
 			continue
 		}
 
-		if curPartVersion == baseOs.BaseOsVersion {
-			baseOs.PartitionLabel = curPartName
-			setStoragePartitionLabel(baseOs)
-			log.Printf("%s, installed in partition %s\n",
-				baseOs.BaseOsVersion, baseOs.PartitionLabel)
-			continue
-		}
-
-		if otherPartVersion == baseOs.BaseOsVersion {
-			baseOs.PartitionLabel = otherPartName
-			setStoragePartitionLabel(baseOs)
-			log.Printf("%s, installed in partition %s\n",
-				baseOs.BaseOsVersion, baseOs.PartitionLabel)
-			continue
-		}
 		assignedPart = false
 	}
 
@@ -260,6 +268,23 @@ func assignBaseOsPartition(baseOsList []*types.BaseOsConfig) {
 		log.Printf("%s, assigning with partition %s\n",
 			baseOs.BaseOsVersion, baseOs.PartitionLabel)
 	}
+}
+
+func rejectReinstallFailed(config *types.BaseOsConfig) {
+	errString := fmt.Sprintf("Attempt to reinstall failed %s: refused",
+		config.BaseOsVersion)
+	log.Println(errString)
+	// XXX do we have a baseOsStatus yet?
+	uuidStr := config.UUIDandVersion.UUID.String()
+	status := baseOsStatusGet(uuidStr)
+	if status == nil {
+		log.Printf("XXX %s, rejectReinstallFailed can't find baseOsStatus uuid %s\n",
+			config.BaseOsVersion, uuidStr)
+	} else {
+		status.Error = errString
+		status.ErrorTime = time.Now()
+	}
+	// XXX how do we tell handler that status changes?
 }
 
 func setStoragePartitionLabel(baseOs *types.BaseOsConfig) {

@@ -299,12 +299,6 @@ func WriteToPartition(srcFilename string, partName string) error {
 		return errors.New(errStr)
 	}
 
-	if !IsOtherPartitionStateUnused() {
-		errStr := fmt.Sprintf("%s: Not an unused partition", partName)
-		log.Printf("WriteToPartition failed %s\n", errStr)
-		return errors.New(errStr)
-	}
-
 	devName := GetPartitionDevname(partName)
 	if devName == "" {
 		errStr := fmt.Sprintf("null devname for partition %s", partName)
