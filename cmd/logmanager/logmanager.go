@@ -52,8 +52,8 @@ var logMaxSize = 100
 var logs map[string]zedcloudLogs
 
 // global stuff
-type logDirModifyHandler func(ctx *loggerContext, logFileName string, source string)
-type logDirDeleteHandler func(ctx *loggerContext, logFileName string, source string)
+type logDirModifyHandler func(ctx *loggerContext, xCtx *imageLoggerContext, logFileName string, source string)
+type logDirDeleteHandler func(ctx *loggerContext, xCtx *imageLoggerContext, logFileName string, source string)
 
 // Set from Makefile
 var Version = "No version specified"
@@ -72,7 +72,6 @@ type loggerContext struct {
 	logfileReaders []logfileReader
 	image          string
 	logChan        chan logEntry
-	processChan    chan *loggerContext
 }
 
 type logfileReader struct {
@@ -81,6 +80,20 @@ type logfileReader struct {
 	fileDesc *os.File
 	reader   *bufio.Reader
 	size     int64 // To detect file truncation
+}
+
+// These are for the case when we have a separate channel/image
+// per file.
+type imageLogFileReader struct {
+	logfileReader
+	image   string
+	logChan chan logEntry
+}
+
+// List of log files we watch where channel/image is per file
+type imageLoggerContext struct {
+	logfileReaders []*imageLogFileReader
+	processChan    chan *imageLogFileReader
 }
 
 // Context for handleDNSModify
@@ -94,8 +107,6 @@ type zedcloudLogs struct {
 	LastFailure  time.Time
 	LastSuccess  time.Time
 }
-
-var loggerMap map[string]*loggerContext
 
 func main() {
 	// Note that device-steps.sh sends our output to /var/run
@@ -113,10 +124,6 @@ func main() {
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
-	}
-
-	if loggerMap == nil {
-		loggerMap = make(map[string]*loggerContext)
 	}
 
 	// Note that LISP needs a separate directory since it moves
@@ -156,10 +163,14 @@ func main() {
 	}
 	loggerChan := make(chan logEntry)
 	ctx := loggerContext{logChan: loggerChan, image: currentPartition}
+	xenCtx := imageLoggerContext{}
+	xenCtx.processChan = make(chan *imageLogFileReader)
+
 	// Start sender of log events
 	// XXX or we run this in main routine and the logDirChanges loop
 	// in a go routine??
-	go processEvents(&ctx)
+
+	go processEvents(loggerChan, currentPartition)
 
 	// The OtherPartition files will not change hence we can just
 	// read them and send their lines; no need to watch for changes.
@@ -167,11 +178,10 @@ func main() {
 	if otherLogdirname != "" {
 		log.Printf("Have logs from failed upgrade in %s\n",
 			otherLogdirname)
-		otherCtx := loggerContext{}
 		otherLoggerChan := make(chan logEntry)
 		otherPartition := zboot.GetOtherPartition()
-		otherCtx = loggerContext{logChan: otherLoggerChan, image: otherPartition}
-		go processEvents(&otherCtx)
+
+		go processEvents(otherLoggerChan, otherPartition)
 		files, err := ioutil.ReadDir(otherLogdirname)
 		if err != nil {
 			log.Fatal(err)
@@ -187,36 +197,33 @@ func main() {
 			source := name[0]
 			logReader(filename, source, otherLoggerChan)
 		}
-		// make processEvents() exit for this channel
 		close(otherLoggerChan)
 	}
 
+	go processXenLoggerEvent(&xenCtx)
 	logDirChanges := make(chan string)
 	go watch.WatchStatus(logDirName, logDirChanges)
 
 	lispLogDirChanges := make(chan string)
 	go watch.WatchStatus(lispLogDirName, lispLogDirChanges)
 
-	pctx := loggerContext{}
-	pctx.processChan = make(chan *loggerContext)
-	go handleXenCtxChan(pctx.processChan)
-
 	xenLogDirChanges := make(chan string)
 	go watch.WatchStatus(xenLogDirname, xenLogDirChanges)
-	xenCtx := loggerContext{logChan: loggerChan, processChan: pctx.processChan}
 
 	log.Println("called watcher...")
 	for {
 		select {
+
 		case change := <-logDirChanges:
-			HandleLogDirEvent(change, logDirName, &ctx,
+			HandleLogDirEvent(change, logDirName, &ctx, nil,
 				handleLogDirModify, handleLogDirDelete)
 
 		case change := <-lispLogDirChanges:
-			HandleLogDirEvent(change, lispLogDirName, &ctx,
+			HandleLogDirEvent(change, lispLogDirName, &ctx, nil,
 				handleLogDirModify, handleLogDirDelete)
+
 		case change := <-xenLogDirChanges:
-			HandleLogDirEvent(change, xenLogDirname, &xenCtx,
+			HandleLogDirEvent(change, xenLogDirname, nil, &xenCtx,
 				handleXenLogDirModify, handleXenLogDirDelete)
 
 		case change := <-networkStatusChanges:
@@ -225,19 +232,21 @@ func main() {
 				&types.DeviceNetworkStatus{},
 				handleDNSModify, handleDNSDelete,
 				nil)
+
 		}
 	}
 }
 
-func handleXenCtxChan(processChan chan *loggerContext) {
+func processXenLoggerEvent(ctx *imageLoggerContext) {
 
 	for {
 		select {
-		case logCtx := <-processChan:
-			go processEvents(logCtx)
+		case logger := <-ctx.processChan:
+			go processEvents(logger.logChan, logger.source)
 		}
 	}
 }
+
 func handleDNSModify(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
 	status := statusArg.(*types.DeviceNetworkStatus)
@@ -269,7 +278,7 @@ func handleDNSDelete(ctxArg interface{}, statusFilename string) {
 }
 
 // This runs as a separate go routine sending out data
-func processEvents(ctx *loggerContext) {
+func processEvents(logChan chan logEntry, image string) {
 
 	reportLogs := new(zmet.LogBundle)
 	flushTimer := time.NewTicker(time.Second * 10)
@@ -277,11 +286,11 @@ func processEvents(ctx *loggerContext) {
 
 	for {
 		select {
-		case event, more := <-ctx.logChan:
+		case event, more := <-logChan:
 			if !more {
-				log.Printf("processEvents(%s) done\n", ctx.image)
+				log.Printf("processEvents: %s end\n", image)
 				if counter > 0 {
-					sendProtoStrForLogs(ctx, reportLogs, iteration)
+					sendProtoStrForLogs(image, reportLogs, iteration)
 				}
 				return
 			}
@@ -289,7 +298,7 @@ func processEvents(ctx *loggerContext) {
 			counter++
 
 			if counter >= logMaxSize {
-				sendProtoStrForLogs(ctx, reportLogs, iteration)
+				sendProtoStrForLogs(image, reportLogs, iteration)
 				counter = 0
 				iteration += 1
 			}
@@ -297,10 +306,10 @@ func processEvents(ctx *loggerContext) {
 		case <-flushTimer.C:
 			if debug {
 				log.Printf("Logger Flush at %v %v\n",
-					ctx.image, reportLogs.Timestamp)
+					image, reportLogs.Timestamp)
 			}
 			if counter > 0 {
-				sendProtoStrForLogs(ctx, reportLogs, iteration)
+				sendProtoStrForLogs(image, reportLogs, iteration)
 				counter = 0
 				iteration += 1
 			}
@@ -328,12 +337,13 @@ func HandleLogEvent(event logEntry, reportLogs *zmet.LogBundle, counter int) {
 	reportLogs.Log = append(reportLogs.Log, logDetails)
 }
 
-func sendProtoStrForLogs(ctx *loggerContext, reportLogs *zmet.LogBundle,
+func sendProtoStrForLogs(image string, reportLogs *zmet.LogBundle,
 	iteration int) {
 	reportLogs.Timestamp = ptypes.TimestampNow()
 	reportLogs.DevID = *proto.String(devUUID.String())
-	reportLogs.Image = ctx.image
-	log.Println("reportLogs: ", reportLogs)
+	reportLogs.Image = image
+
+	//log.Println("reportLogs: ", reportLogs)
 	if debug {
 		log.Println("sendProtoStrForLogs called...", iteration)
 	}
@@ -353,6 +363,8 @@ func sendProtoStrForLogs(ctx *loggerContext, reportLogs *zmet.LogBundle,
 		buf, iteration)
 	if err != nil {
 		// XXX need to queue message and retry
+		//XXX FIXME lushing it for now, do we need to flush?
+		reportLogs.Log = []*zmet.LogEntry{}
 		log.Printf("SendMetricsProtobuf failed: %s\n", err)
 		return
 	}
@@ -394,7 +406,8 @@ func sendCtxInit() {
 }
 
 func HandleLogDirEvent(change string, logDirName string, ctx *loggerContext,
-	handleLogDirModifyFunc logDirModifyHandler, handleLogDirDeleteFunc logDirDeleteHandler) {
+	xCtx *imageLoggerContext, handleLogDirModifyFunc logDirModifyHandler,
+	handleLogDirDeleteFunc logDirDeleteHandler) {
 
 	operation := string(change[0])
 	fileName := string(change[2:])
@@ -408,32 +421,33 @@ func HandleLogDirEvent(change string, logDirName string, ctx *loggerContext,
 	name := strings.Split(fileName, ".log")
 	source := name[0]
 	if operation == "D" {
-		handleLogDirDeleteFunc(ctx, logFilePath, source)
+		handleLogDirDeleteFunc(ctx, xCtx, logFilePath, source)
 		return
 	}
 	if operation != "M" {
 		log.Fatal("Unknown operation from Watcher: ",
 			operation)
 	}
-	handleLogDirModifyFunc(ctx, logFilePath, source)
+	handleLogDirModifyFunc(ctx, xCtx, logFilePath, source)
 }
 
-func handleXenLogDirModify(ctx *loggerContext, filename string, source string) {
+func handleXenLogDirModify(pCtx *loggerContext, ctx *imageLoggerContext,
+	filename string, source string) {
 
-	log.Printf("handleXenLogDirModify: add %s, source %s\n", filename, source)
-
-	logCtx, ok := loggerMap[filename]
-	if ok {
-		readLineToEvent(&logCtx.logfileReaders[0], logCtx.logChan)
-		return
+	for _, logger := range ctx.logfileReaders {
+		if logger.logfileReader.filename == filename {
+			readLineToEvent(&logger.logfileReader, logger.logChan)
+			return
+		}
 	}
+	createXenLogger(ctx, filename, source)
+}
 
-	logCtx = &loggerContext{}
-	logCtx.image = source
-	logCtx.logChan = make(chan logEntry)
-	logCtx.processChan = ctx.processChan
+func createXenLogger(ctx *imageLoggerContext, filename string, source string) {
 
-	loggerMap[filename] = logCtx
+	logger := new(imageLogFileReader)
+	logger.image = source
+	logger.logChan = make(chan logEntry)
 
 	fileDesc, err := os.Open(filename)
 	if err != nil {
@@ -446,36 +460,52 @@ func handleXenLogDirModify(ctx *loggerContext, filename string, source string) {
 		log.Printf("Log file ignored due to %s\n", err)
 		return
 	}
-	r := logfileReader{filename: filename,
+
+	logger.logfileReader = logfileReader{filename: filename,
 		source:   source,
 		fileDesc: fileDesc,
 		reader:   reader,
 	}
-	logCtx.logfileReaders = append(logCtx.logfileReaders, r)
 
-	logCtx.processChan <- logCtx
+	ctx.logfileReaders = append(ctx.logfileReaders, logger)
+
+	//XXX FIXME we have to call processEvents from main
+	// process associated channel
+	//go processEvents(logger.logChan, source)
+
+	ctx.processChan <- logger
 
 	// read initial entries until EOF
-	readLineToEvent(&logCtx.logfileReaders[0], logCtx.logChan)
+	readLineToEvent(&logger.logfileReader, logger.logChan)
 }
 
-func handleXenLogDirDelete(ctx *loggerContext, filename string, source string) {
+func handleXenLogDirDelete(pCtx *loggerContext, ctx *imageLoggerContext,
+	filename string, source string) {
 
 	log.Printf("handleLogDirDelete: delete %s, source %s\n", filename, source)
-	if loggerMap[filename] != nil {
-		delete(loggerMap, filename)
+	for _, logger := range ctx.logfileReaders {
+		if logger.logfileReader.filename == filename {
+			// XXX:FIXME, delete the entry
+			//ctx.logFileReaders = delete(ctx.logfileReaders, i)
+		}
 	}
 }
 
 // If the filename is new we spawn a go routine which will read
-func handleLogDirModify(ctx *loggerContext, filename string, source string) {
+func handleLogDirModify(ctx *loggerContext, xCtx *imageLoggerContext,
+	filename string, source string) {
+
 	for i, r := range ctx.logfileReaders {
 		if r.filename == filename {
 			readLineToEvent(&ctx.logfileReaders[i], ctx.logChan)
 			return
 		}
 	}
-	log.Printf("handleLogDirModify: add %s, source %s\n", filename, source)
+	createLogger(ctx, filename, source)
+}
+
+func createLogger(ctx *loggerContext, filename, source string) {
+
 	fileDesc, err := os.Open(filename)
 	if err != nil {
 		log.Printf("Log file ignored due to %s\n", err)
@@ -492,13 +522,16 @@ func handleLogDirModify(ctx *loggerContext, filename string, source string) {
 		fileDesc: fileDesc,
 		reader:   reader,
 	}
+
 	// read initial entries until EOF
-	readLineToEvent(&r, ctx.logChan)
 	ctx.logfileReaders = append(ctx.logfileReaders, r)
+
+	readLineToEvent(&r, ctx.logChan)
 }
 
 // XXX TBD should we stop the go routine?
-func handleLogDirDelete(ctx *loggerContext, filename string, source string) {
+func handleLogDirDelete(ctx *loggerContext, xCtx *imageLoggerContext,
+	filename string, source string) {
 }
 
 // Read until EOF or error
