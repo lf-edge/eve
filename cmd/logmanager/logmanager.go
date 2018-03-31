@@ -95,7 +95,6 @@ type imageLogFileReader struct {
 // List of log files we watch where channel/image is per file
 type imageLoggerContext struct {
 	logfileReaders []*imageLogFileReader
-	processChan    chan *imageLogFileReader
 }
 
 // Context for handleDNSModify
@@ -179,7 +178,6 @@ func main() {
 	loggerChan := make(chan logEntry)
 	ctx := loggerContext{logChan: loggerChan, image: currentPartition}
 	xenCtx := imageLoggerContext{}
-	xenCtx.processChan = make(chan *imageLogFileReader)
 
 	// Start sender of log events
 	// XXX or we run this in main routine and the logDirChanges loop
@@ -215,7 +213,6 @@ func main() {
 		close(otherLoggerChan)
 	}
 
-	go processXenLoggerEvent(&xenCtx)
 	logDirChanges := make(chan string)
 	go watch.WatchStatus(logDirName, logDirChanges)
 
@@ -254,16 +251,6 @@ func main() {
 					time.Now())
 			}
 			pub.Publish("global", zedcloud.GetCloudMetrics())
-		}
-	}
-}
-
-func processXenLoggerEvent(ctx *imageLoggerContext) {
-
-	for {
-		select {
-		case logger := <-ctx.processChan:
-			go processEvents(logger.logChan, logger.source)
 		}
 	}
 }
@@ -369,7 +356,6 @@ func sendProtoStrForLogs(image string, reportLogs *zmet.LogBundle,
 	reportLogs.DevID = *proto.String(devUUID.String())
 	reportLogs.Image = image
 
-	//log.Println("reportLogs: ", reportLogs)
 	if debug {
 		log.Println("sendProtoStrForLogs called...", iteration)
 	}
@@ -389,8 +375,6 @@ func sendProtoStrForLogs(image string, reportLogs *zmet.LogBundle,
 		int64(len(data)), buf, iteration)
 	if err != nil {
 		// XXX need to queue message and retry
-		//XXX FIXME lushing it for now, do we need to flush?
-		reportLogs.Log = []*zmet.LogEntry{}
 		log.Printf("SendMetricsProtobuf failed: %s\n", err)
 		return
 	}
@@ -496,11 +480,9 @@ func createXenLogger(ctx *imageLoggerContext, filename string, source string) {
 
 	ctx.logfileReaders = append(ctx.logfileReaders, logger)
 
-	//XXX FIXME we have to call processEvents from main
 	// process associated channel
-	//go processEvents(logger.logChan, source)
+	go processEvents(logger.logChan, source)
 
-	ctx.processChan <- logger
 
 	// read initial entries until EOF
 	readLineToEvent(&logger.logfileReader, logger.logChan)
