@@ -210,14 +210,14 @@ func assignBaseOsPartition(baseOsList []*types.BaseOsConfig) bool {
 		if curPartVersion == baseOs.BaseOsVersion {
 			baseOs.PartitionLabel = curPartName
 			setStoragePartitionLabel(baseOs)
-			log.Printf("%s, already installed in partition %s\n",
+			log.Printf("%s, already installed in current partition %s\n",
 				baseOs.BaseOsVersion, baseOs.PartitionLabel)
 			continue
 		}
 
 		if otherPartVersion == baseOs.BaseOsVersion {
 			if otherInprog {
-				rejectReinstallFailed(baseOs)
+				rejectReinstallFailed(baseOs, otherPartName)
 				// XXX return? Shouldn't do any assigments
 				// Tell caller it should ignore baseOs for now
 				return true
@@ -225,7 +225,7 @@ func assignBaseOsPartition(baseOsList []*types.BaseOsConfig) bool {
 
 			baseOs.PartitionLabel = otherPartName
 			setStoragePartitionLabel(baseOs)
-			log.Printf("%s, already installed in partition %s\n",
+			log.Printf("%s, already installed in other partition %s\n",
 				baseOs.BaseOsVersion, baseOs.PartitionLabel)
 			continue
 		}
@@ -278,8 +278,8 @@ func assignBaseOsPartition(baseOsList []*types.BaseOsConfig) bool {
 	return false
 }
 
-func rejectReinstallFailed(config *types.BaseOsConfig) {
-	errString := fmt.Sprintf("Attempt to reinstall failed %s: refused",
+func rejectReinstallFailed(config *types.BaseOsConfig, otherPartName string) {
+	errString := fmt.Sprintf("Attempt to reinstall failed %s in %s: refused",
 		config.BaseOsVersion)
 	log.Println(errString)
 	// XXX do we have a baseOsStatus yet?
@@ -291,6 +291,7 @@ func rejectReinstallFailed(config *types.BaseOsConfig) {
 		// XXX this is a hack to report the error.
 		// The status should already exist once this code
 		// is moved from the parser to baseosmanager.
+		// XXX not clear this gets reported to zedcloud.
 		status = &types.BaseOsStatus{
 			UUIDandVersion: config.UUIDandVersion,
 			BaseOsVersion:  config.BaseOsVersion,
