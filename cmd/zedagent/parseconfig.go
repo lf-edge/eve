@@ -288,24 +288,21 @@ func rejectReinstallFailed(config *types.BaseOsConfig) {
 	if status == nil {
 		log.Printf("XXX %s, rejectReinstallFailed can't find baseOsStatus uuid %s\n",
 			config.BaseOsVersion, uuidStr)
-		if false {
-			// XXX this is a hack to report the error.
-			// The status should already exist once this code
-			// is moved from the parser to baseosmanager.
-			status = &types.BaseOsStatus{
-				UUIDandVersion: config.UUIDandVersion,
-				BaseOsVersion:  config.BaseOsVersion,
-				ConfigSha256:   config.ConfigSha256,
-				PartitionLabel: config.PartitionLabel,
-			}
+		// XXX this is a hack to report the error.
+		// The status should already exist once this code
+		// is moved from the parser to baseosmanager.
+		status = &types.BaseOsStatus{
+			UUIDandVersion: config.UUIDandVersion,
+			BaseOsVersion:  config.BaseOsVersion,
+			ConfigSha256:   config.ConfigSha256,
+			PartitionLabel: config.PartitionLabel,
 		}
-	} else {
-		status.Error = errString
-		status.ErrorTime = time.Now()
-
-		baseOsStatusSet(uuidStr, status)
-		writeBaseOsStatus(status, uuidStr)
 	}
+	status.Error = errString
+	status.ErrorTime = time.Now()
+
+	baseOsStatusSet(uuidStr, status)
+	writeBaseOsStatus(status, uuidStr)
 	// XXX how do we tell handler that status changes?
 }
 
