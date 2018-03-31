@@ -4,12 +4,16 @@
 package main
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"github.com/golang/protobuf/proto"
 	"github.com/satori/go.uuid"
 	"github.com/zededa/api/zconfig"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/zboot"
+	"hash"
 	"io/ioutil"
 	"log"
 	"net"
@@ -41,7 +45,7 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext) 
 	}
 
 	// updating/rebooting, ignore config??
-	// XXX can we get stuck here?
+	// XXX can we get stuck here? When do we set updating? As part of activate?
 	if zboot.IsOtherPartitionStateUpdating() {
 		log.Println("OtherPartitionStatusUpdating - returning rebootFlag")
 		return true
@@ -85,9 +89,22 @@ func validateConfig(config *zconfig.EdgeDevConfig) bool {
 	return true
 }
 
+var baseosPrevConfigHash []byte
+
 // Returns true if there is some baseOs work to do
 func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 	cfgOsList := config.GetBase()
+	h := sha256.New()
+	for _, os := range cfgOsList {
+		computeConfigElementSha(h, os)
+	}
+	configHash := h.Sum(nil)
+	same := bytes.Equal(configHash, baseosPrevConfigHash)
+	baseosPrevConfigHash = configHash
+	if false && same {
+		log.Printf("parseBaseOsConfig: baseos sha is unchanged\n")
+		return false
+	}
 	baseOsCount := len(cfgOsList)
 	log.Printf("parseBaseOsConfig() Applying Base Os config len %d\n",
 		baseOsCount)
@@ -280,7 +297,7 @@ func assignBaseOsPartition(baseOsList []*types.BaseOsConfig) bool {
 
 func rejectReinstallFailed(config *types.BaseOsConfig, otherPartName string) {
 	errString := fmt.Sprintf("Attempt to reinstall failed %s in %s: refused",
-		config.BaseOsVersion)
+		config.BaseOsVersion, otherPartName)
 	log.Println(errString)
 	// XXX do we have a baseOsStatus yet?
 	uuidStr := config.UUIDandVersion.UUID.String()
@@ -315,13 +332,25 @@ func setStoragePartitionLabel(baseOs *types.BaseOsConfig) {
 	}
 }
 
+var appinstancePrevConfigHash []byte
+
 func parseAppInstanceConfig(config *zconfig.EdgeDevConfig) {
 
 	var appInstance = types.AppInstanceConfig{}
 
-	log.Println("Applying App Instance config")
-
 	Apps := config.GetApps()
+	h := sha256.New()
+	for _, a := range Apps {
+		computeConfigElementSha(h, a)
+	}
+	configHash := h.Sum(nil)
+	same := bytes.Equal(configHash, appinstancePrevConfigHash)
+	appinstancePrevConfigHash = configHash
+	if same {
+		log.Printf("parseAppInstanceConfig: appinstance sha is unchanged\n")
+		return
+	}
+	log.Println("Applying App Instance config")
 
 	for _, cfgApp := range Apps {
 		// Note that we repeat this even if the app config didn't
@@ -635,10 +664,23 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 	}
 }
 
+var itemsPrevConfigHash []byte
+
 func parseConfigItems(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext) {
 	log.Printf("parseConfigItems\n")
 
 	items := config.GetConfigItems()
+	h := sha256.New()
+	for _, i := range items {
+		computeConfigElementSha(h, i)
+	}
+	configHash := h.Sum(nil)
+	same := bytes.Equal(configHash, itemsPrevConfigHash)
+	itemsPrevConfigHash = configHash
+	if same {
+		log.Printf("parseConfigItems: items sha is unchanged\n")
+		return
+	}
 	for _, item := range items {
 		log.Printf("parseConfigItems key %s\n", item.Key)
 
@@ -937,12 +979,38 @@ func writeCertObjConfig(config *types.CertObjConfig, uuidStr string) {
 	}
 }
 
+// Get sha256 for a subset of the protobuf message.
+// Used to determine which pieces changed
+func computeConfigSha(msg proto.Message) []byte {
+	data, err := proto.Marshal(msg)
+	if err != nil {
+		log.Fatal("computeConfigSha: proto.Marshal: %s\n", err)
+	}
+	h := sha256.New()
+	h.Write(data)
+	return h.Sum(nil)
+}
+
+// Get sha256 for a subset of the protobuf message.
+// Used to determine which pieces changed
+func computeConfigElementSha(h hash.Hash, msg proto.Message) {
+	data, err := proto.Marshal(msg)
+	if err != nil {
+		log.Fatal("computeConfigItemSha: proto.Marshal: %s\n",
+			err)
+	}
+	h.Write(data)
+}
+
 // Returns a rebootFlag
 func parseOpCmds(config *zconfig.EdgeDevConfig) bool {
 
 	scheduleBackup(config.GetBackup())
 	return scheduleReboot(config.GetReboot())
 }
+
+var rebootPrevConfigHash []byte
+var rebootPrevReturn bool
 
 // Returns a rebootFlag
 func scheduleReboot(reboot *zconfig.DeviceOpsCmd) bool {
@@ -957,6 +1025,14 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd) bool {
 		// remove the existing file
 		os.Remove(rebootConfigFilename)
 		return false
+	}
+
+	configHash := computeConfigSha(reboot)
+	same := bytes.Equal(configHash, rebootPrevConfigHash)
+	rebootPrevConfigHash = configHash
+	if same {
+		log.Printf("scheduleReboot: reboot sha is unchanged\n")
+		return rebootPrevReturn
 	}
 
 	if _, err := os.Stat(rebootConfigFilename); err != nil {
@@ -1012,15 +1088,28 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd) bool {
 		log.Printf("Scheduling for reboot %d %d\n", rebootConfig.Counter, reboot.Counter)
 
 		go handleReboot()
+		rebootPrevReturn = true
 		return true
 	}
+	rebootPrevReturn = false
 	return false
 }
 
+var backupPrevConfigHash []byte
+
 func scheduleBackup(backup *zconfig.DeviceOpsCmd) {
 	log.Printf("scheduleBackup(%v)\n", backup)
-	// XXX:FIXME  handle baackup semantics
-	log.Printf("Backup Config: %v\n", backup)
+	// XXX:FIXME  handle backup semantics
+	if backup == nil {
+		return
+	}
+	configHash := computeConfigSha(backup)
+	same := bytes.Equal(configHash, backupPrevConfigHash)
+	backupPrevConfigHash = configHash
+	if same {
+		log.Printf("scheduleBackup: backup sha is unchanged\n")
+	}
+	log.Printf("XXX handle Backup Config: %v\n", backup)
 }
 
 // the timer channel handler

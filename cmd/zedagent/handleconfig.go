@@ -336,6 +336,8 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCo
 	}
 	handleLookupParam(config)
 
+	// XXX should check for different sha for baseOs and appInstances
+	// before looking for old
 	// clean up old config entries
 	if deleted := cleanupOldConfig(config); deleted {
 		log.Printf("Old Config removed, take a delay\n")

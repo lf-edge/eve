@@ -43,6 +43,8 @@ const (
 //  /var/tmp/zededa/zedserverconfig Written by us; zed server EIDs
 //  /var/tmp/zededa/uuid	Written by us
 //
+var lispPrevConfigHash []byte
+
 func handleLookupParam(devConfig *zconfig.EdgeDevConfig) {
 	// XXX should we handle changes at all? Want to update zedserverconfig
 	// but not rest.
@@ -56,6 +58,14 @@ func handleLookupParam(devConfig *zconfig.EdgeDevConfig) {
 	lispInfo := devConfig.LispInfo
 	if lispInfo == nil {
 		log.Printf("handleLookupParam: missing lispInfo\n")
+		return
+	}
+	configHash := computeConfigSha(lispInfo)
+	same := bytes.Equal(configHash, lispPrevConfigHash)
+	lispPrevConfigHash = configHash
+
+	if same {
+		log.Printf("handleLookupParam: lispInfo sha is unchanged\n")
 		return
 	}
 	device.LispInstance = lispInfo.LispInstance
