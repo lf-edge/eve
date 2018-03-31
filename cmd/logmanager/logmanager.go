@@ -182,7 +182,6 @@ func main() {
 	// Start sender of log events
 	// XXX or we run this in main routine and the logDirChanges loop
 	// in a go routine??
-
 	go processEvents(currentPartition, loggerChan)
 
 	// The OtherPartition files will not change hence we can just
@@ -194,7 +193,6 @@ func main() {
 		otherLoggerChan := make(chan logEntry)
 		otherPartition := zboot.GetOtherPartition()
 		go processEvents(otherPartition, otherLoggerChan)
-
 		files, err := ioutil.ReadDir(otherLogdirname)
 		if err != nil {
 			log.Fatal(err)
@@ -304,7 +302,8 @@ func processEvents(image string, logChan <-chan logEntry) {
 			if !more {
 				log.Printf("processEvents: %s end\n", image)
 				if counter > 0 {
-					sendProtoStrForLogs(reportLogs, image, iteration)
+					sendProtoStrForLogs(reportLogs, image,
+						iteration)
 				}
 				return
 			}
@@ -312,7 +311,8 @@ func processEvents(image string, logChan <-chan logEntry) {
 			counter++
 
 			if counter >= logMaxSize {
-				sendProtoStrForLogs(reportLogs, image, iteration)
+				sendProtoStrForLogs(reportLogs, image,
+					iteration)
 				counter = 0
 				iteration += 1
 			}
@@ -323,7 +323,8 @@ func processEvents(image string, logChan <-chan logEntry) {
 					image, reportLogs.Timestamp)
 			}
 			if counter > 0 {
-				sendProtoStrForLogs(reportLogs, image, iteration)
+				sendProtoStrForLogs(reportLogs, image,
+					iteration)
 				counter = 0
 				iteration += 1
 			}
@@ -458,6 +459,8 @@ func handleXenLogDirModify(context interface{},
 
 func createXenLogger(ctx *imageLoggerContext, filename string, source string) {
 
+	log.Printf("createXenLogger: add %s, source %s\n", filename, source)
+
 	fileDesc, err := os.Open(filename)
 	if err != nil {
 		log.Printf("Log file ignored due to %s\n", err)
@@ -480,13 +483,12 @@ func createXenLogger(ctx *imageLoggerContext, filename string, source string) {
 		logChan: make(chan logEntry),
 	}
 
-	ctx.logfileReaders = append(ctx.logfileReaders, r)
-
 	// process associated channel
 	go processEvents(source, r.logChan)
 
 	// read initial entries until EOF
 	readLineToEvent(&r.logfileReader, r.logChan)
+	ctx.logfileReaders = append(ctx.logfileReaders, r)
 }
 
 func handleXenLogDirDelete(context interface{},
@@ -517,6 +519,8 @@ func handleLogDirModify(context interface{}, filename string, source string) {
 
 func createLogger(ctx *loggerContext, filename, source string) {
 
+	log.Printf("createLogger: add %s, source %s\n", filename, source)
+
 	fileDesc, err := os.Open(filename)
 	if err != nil {
 		log.Printf("Log file ignored due to %s\n", err)
@@ -533,11 +537,9 @@ func createLogger(ctx *loggerContext, filename, source string) {
 		fileDesc: fileDesc,
 		reader:   reader,
 	}
-
 	// read initial entries until EOF
-	ctx.logfileReaders = append(ctx.logfileReaders, r)
-
 	readLineToEvent(&r, ctx.logChan)
+	ctx.logfileReaders = append(ctx.logfileReaders, r)
 }
 
 // XXX TBD should we stop the go routine?
