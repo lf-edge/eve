@@ -30,9 +30,13 @@ RUN apk add \
     xz-dev \
     zlib-dev
 
-# libunwind-dev pkg is missed from arm64 now, below statement will be removed if the pkg is available.
-RUN [ $(uname -m) == x86_64 ] && apk add libunwind-dev || true
+# we need edge/testing for u-boot and libunwind-dev
+RUN (echo http://nl.alpinelinux.org/alpine/edge/main ;\
+     echo http://nl.alpinelinux.org/alpine/edge/testing) >> /etc/apk/repositories ;\
+    apk add --no-cache libunwind-dev uboot-tools
 
+
+ENV XEN_UBOOT_ADDR 0x81000000
 ENV XEN_VERSION 4.9.0
 ENV XEN_SOURCE=https://downloads.xenproject.org/release/xen/${XEN_VERSION}/xen-${XEN_VERSION}.tar.gz
 
@@ -51,15 +55,23 @@ RUN case $(uname -m) in \
     x86_64) \
         XEN_DEF_CONF=/xen/xen/arch/x86/configs/x86_64_defconfig; \
 	;; \
-    esac && \
+    esac ;\
     cp /xen/xen_config-${XEN_VERSION}-$(uname -m) ${XEN_DEF_CONF}; \
     rm /xen/xen_config* && \
     make defconfig && \
-    make oldconfig
+    make oldconfig && \
+    mkdir -p /out/boot
 
-RUN mkdir -p /out/boot
-
-RUN make && cp xen.gz /out/boot/xen.gz
+RUN make && \
+    case $(uname -m) in \
+    x86_64) \
+        cp xen.gz /out/boot/xen.gz \
+	;; \
+    aarch64) \
+        mkimage -A arm64 -T kernel -a $XEN_UBOOT_ADDR -e $XEN_UBOOT_ADDR -C none -d xen /out/boot/xen.uboot ;\
+        cp xen.efi /out/boot/ \
+        ;; \
+    esac
 
 FROM scratch
 ENTRYPOINT []
