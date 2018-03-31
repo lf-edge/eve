@@ -101,14 +101,14 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 	configHash := h.Sum(nil)
 	same := bytes.Equal(configHash, baseosPrevConfigHash)
 	baseosPrevConfigHash = configHash
-	if false && same {
+	if same {
 		log.Printf("parseBaseOsConfig: baseos sha is unchanged\n")
 		return false
 	}
-	baseOsCount := len(cfgOsList)
-	log.Printf("parseBaseOsConfig() Applying Base Os config len %d\n",
-		baseOsCount)
+	log.Printf("parseBaseOsConfig() Applying updated config %v\n",
+		cfgOsList)
 
+	baseOsCount := len(cfgOsList)
 	if baseOsCount == 0 {
 		return false
 	}
@@ -350,7 +350,7 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig) {
 		log.Printf("parseAppInstanceConfig: appinstance sha is unchanged\n")
 		return
 	}
-	log.Println("Applying App Instance config")
+	log.Printf("Applying updated App Instance config %v\n", Apps)
 
 	for _, cfgApp := range Apps {
 		// Note that we repeat this even if the app config didn't
@@ -681,6 +681,8 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCont
 		log.Printf("parseConfigItems: items sha is unchanged\n")
 		return
 	}
+	log.Printf("parseConfigItems() Applying updated config %v\n", items)
+
 	for _, item := range items {
 		log.Printf("parseConfigItems key %s\n", item.Key)
 
@@ -1034,6 +1036,7 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd) bool {
 		log.Printf("scheduleReboot: reboot sha is unchanged\n")
 		return rebootPrevReturn
 	}
+	log.Printf("scheduleReboot: Applying updated config %v\n", reboot)
 
 	if _, err := os.Stat(rebootConfigFilename); err != nil {
 		// Take received as current and store in file
@@ -1109,6 +1112,7 @@ func scheduleBackup(backup *zconfig.DeviceOpsCmd) {
 	if same {
 		log.Printf("scheduleBackup: backup sha is unchanged\n")
 	}
+	log.Printf("scheduleBackup: Applying updated config %v\n", backup)
 	log.Printf("XXX handle Backup Config: %v\n", backup)
 }
 

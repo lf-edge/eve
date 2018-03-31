@@ -65,9 +65,11 @@ func handleLookupParam(devConfig *zconfig.EdgeDevConfig) {
 	lispPrevConfigHash = configHash
 
 	if same {
+		// XXX we never hit this!
 		log.Printf("handleLookupParam: lispInfo sha is unchanged\n")
 		return
 	}
+	log.Printf("handleLookupParam: updated lispInfo %v\n", lispInfo)
 	device.LispInstance = lispInfo.LispInstance
 	device.EID = net.ParseIP(lispInfo.EID)
 	device.EIDHashLen = uint8(lispInfo.EIDHashLen)
