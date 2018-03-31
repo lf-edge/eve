@@ -183,7 +183,7 @@ func main() {
 				continue
 			}
 			log.Printf("Read %s until EOF\n", filename)
-			name := strings.Split(filename, ".log")
+			name := strings.Split(file.Name(), ".log")
 			source := name[0]
 			logReader(filename, source, otherLoggerChan)
 		}
