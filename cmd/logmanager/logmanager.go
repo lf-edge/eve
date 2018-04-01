@@ -173,10 +173,7 @@ func main() {
 	publishTimer := flextimer.NewRangeTicker(time.Duration(min),
 		time.Duration(max))
 
-	currentPartition := "IMGA"
-	if zboot.IsAvailable() {
-		currentPartition = zboot.GetCurrentPartition()
-	}
+	currentPartition := zboot.GetCurrentPartition()
 	loggerChan := make(chan logEntry)
 	ctx := loggerContext{logChan: loggerChan, image: currentPartition}
 	xenCtx := imageLoggerContext{}
@@ -206,7 +203,7 @@ func main() {
 				continue
 			}
 			log.Printf("Read %s until EOF\n", filename)
-			name := strings.Split(filename, ".log")
+			name := strings.Split(file.Name(), ".log")
 			source := name[0]
 			logReader(filename, source, otherLoggerChan)
 		}
@@ -352,6 +349,7 @@ func HandleLogEvent(event logEntry, reportLogs *zmet.LogBundle, counter int) {
 	logDetails.Iid = event.iid
 	logDetails.Msgid = uint64(msgId)
 	reportLogs.Log = append(reportLogs.Log, logDetails)
+	// XXX count bytes. Limit to << 64k
 }
 
 func sendProtoStrForLogs(reportLogs *zmet.LogBundle, image string,
@@ -379,10 +377,14 @@ func sendProtoStrForLogs(reportLogs *zmet.LogBundle, image string,
 		int64(len(data)), buf, iteration)
 	if err != nil {
 		// XXX need to queue message and retry
-		log.Printf("sendProtoStrForLogs failed: %s\n", err)
+		// For now we discard what failed to constrain the size
+		// of each message
+		log.Printf("SendProtoStrForLogs %d bytes image %s failed: %s\n",
+			len(data), image, err)
+		reportLogs.Log = []*zmet.LogEntry{}
 		return
 	}
-	log.Printf("Sent %d bytes to %s\n", len(data), logsUrl)
+	log.Printf("Sent %d bytes image %s to %s\n", len(data), image, logsUrl)
 	reportLogs.Log = []*zmet.LogEntry{}
 }
 

@@ -227,7 +227,7 @@ func main() {
 
 	// Context to pass around
 	getconfigCtx := getconfigContext{}
-	upgradeInprogress := zboot.IsAvailable() && zboot.IsCurrentPartitionStateInProgress()
+	upgradeInprogress := zboot.IsCurrentPartitionStateInProgress()
 	time1 := time.Duration(configItemCurrent.resetIfCloudGoneTime)
 	t1 := time.NewTimer(time1 * time.Second)
 	log.Printf("Started timer for reset for %d seconds\n", time1)

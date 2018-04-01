@@ -30,6 +30,11 @@ func init() {
 
 // reset routine
 func Reset() {
+	if !IsAvailable() {
+		// XXX should we call reboot?
+		log.Printf("no zboot; can't do reset\n")
+		return
+	}
 	zbootMutex.Lock() // we are going to reboot
 	rebootCmd := exec.Command("zboot", "reset")
 	zbootMutex.Unlock()
@@ -55,6 +60,9 @@ func WatchdogOK() {
 
 // partition routines
 func GetCurrentPartition() string {
+	if !IsAvailable() {
+		return "IMGA"
+	}
 	zbootMutex.Lock()
 	curPartCmd := exec.Command("zboot", "curpart")
 	zbootMutex.Unlock()
@@ -118,7 +126,13 @@ func IsOtherPartition(partName string) bool {
 func GetPartitionState(partName string) string {
 
 	validatePartitionName(partName)
-
+	if !IsAvailable() {
+		if partName == "IMGA" {
+			return "active"
+		} else {
+			return "unused"
+		}
+	}
 	zbootMutex.Lock()
 	partStateCmd := exec.Command("zboot", "partstate", partName)
 	zbootMutex.Unlock()
@@ -166,8 +180,10 @@ func setPartitionState(partName string, partState string) {
 }
 
 func GetPartitionDevname(partName string) string {
-
 	validatePartitionName(partName)
+	if !IsAvailable() {
+		return ""
+	}
 	zbootMutex.Lock()
 	getPartDevCmd := exec.Command("zboot", "partdev", partName)
 	zbootMutex.Unlock()
@@ -283,12 +299,6 @@ func WriteToPartition(srcFilename string, partName string) error {
 		return errors.New(errStr)
 	}
 
-	if !IsOtherPartitionStateUnused() {
-		errStr := fmt.Sprintf("%s: Not an unused partition", partName)
-		log.Printf("WriteToPartition failed %s\n", errStr)
-		return errors.New(errStr)
-	}
-
 	devName := GetPartitionDevname(partName)
 	if devName == "" {
 		errStr := fmt.Sprintf("null devname for partition %s", partName)
@@ -347,15 +357,13 @@ func GetShortVersion(partName string) string {
 	return getVersion(partName, shortVersionFile)
 }
 
-// XXX add longversion once we have a filename
+// XXX add longversion once we have a filename above
 func GetLongVersion(part string) string {
 	return ""
 }
 
+// XXX return IMGA's version ...
 func getVersion(part string, verFilename string) string {
-	if !IsAvailable() {
-		return ""
-	}
 	validatePartitionName(part)
 
 	if part == GetCurrentPartition() {
@@ -369,6 +377,9 @@ func getVersion(part string, verFilename string) string {
 		log.Printf("%s, readCurVersion %s\n", part, versionStr)
 		return versionStr
 	} else {
+		if !IsAvailable() {
+			return ""
+		}
 		devname := GetPartitionDevname(part)
 		target, err := ioutil.TempDir("/var/run", "tmpmnt")
 		if err != nil {

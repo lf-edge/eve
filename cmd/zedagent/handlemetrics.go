@@ -775,7 +775,11 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 		swInfo.ShortVersion = zboot.GetShortVersion(partLabel)
 		swInfo.LongVersion = zboot.GetLongVersion(partLabel)
 		if bos := getBaseOsStatus(partLabel); bos != nil {
+			// Get current state/version which is different than
+			// what is on disk
 			swInfo.Status = zmet.ZSwState(bos.State)
+			swInfo.ShortVersion = bos.BaseOsVersion
+			swInfo.LongVersion = "" // XXX
 			if !bos.ErrorTime.IsZero() {
 				errInfo := new(zmet.ErrorInfo)
 				errInfo.Description = bos.Error
@@ -783,18 +787,18 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 				errInfo.Timestamp = errTime
 				swInfo.SwErr = errInfo
 			}
-		} else {
+		} else if swInfo.ShortVersion != "" {
 			// Must be factory install i.e. INSTALLED
 			swInfo.Status = zmet.ZSwState(types.INSTALLED)
+		} else {
+			swInfo.Status = zmet.ZSwState(types.INITIAL)
 		}
 		return swInfo
 	}
 
-	if zboot.IsAvailable() {
-		ReportDeviceInfo.SwList = make([]*zmet.ZInfoDevSW, 2)
-		ReportDeviceInfo.SwList[0] = getSwInfo(zboot.GetCurrentPartition())
-		ReportDeviceInfo.SwList[1] = getSwInfo(zboot.GetOtherPartition())
-	}
+	ReportDeviceInfo.SwList = make([]*zmet.ZInfoDevSW, 2)
+	ReportDeviceInfo.SwList[0] = getSwInfo(zboot.GetCurrentPartition())
+	ReportDeviceInfo.SwList[1] = getSwInfo(zboot.GetOtherPartition())
 
 	// Read interface name from library and match it with uplink name from
 	// global status. Only report the uplinks plus dbo1x0
