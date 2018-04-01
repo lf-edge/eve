@@ -118,10 +118,12 @@ func main() {
 	defaultLogdirname := agentlog.GetCurrentLogdir()
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug")
+	forcePtr := flag.Bool("f", false, "Force")
 	logdirPtr := flag.String("l", defaultLogdirname, "Log file directory")
 	flag.Parse()
 	debug = *debugPtr
 	logDirName := *logdirPtr
+	force := *forcePtr
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
@@ -150,7 +152,7 @@ func main() {
 	go watch.WatchStatus(DNSDirname, networkStatusChanges)
 
 	log.Printf("Waiting until we have some uplinks with usable addresses\n")
-	for types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus) == 0 {
+	for types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus) == 0 && !force{
 		select {
 		case change := <-networkStatusChanges:
 			watch.HandleStatusEvent(change, &DNSctx,
