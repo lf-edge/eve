@@ -396,19 +396,24 @@ func installDownloadedObject(objType string, safename string,
 			ret = installBaseOsObject(srcFilename, dstFilename)
 
 		default:
-			log.Printf("%s, Unsupported Object Type %v\n", safename, objType)
+			errStr := fmt.Sprintf("%s, Unsupported Object Type %v",
+				safename, objType)
+			log.Println(errStr)
+			ret = errors.New(status.Error)
 		}
 	} else {
 		errStr := fmt.Sprintf("%s, final dir not set %v\n", safename, objType)
 		log.Println(errStr)
-		status.Error = errStr
-		status.ErrorTime = time.Now()
-		ret = errors.New(status.Error)
+		ret = errors.New(errStr)
 	}
 
 	if ret == nil {
 		status.State = types.INSTALLED
 		log.Printf("%s, installation done\n", key)
+	} else {
+		status.State = types.INITIAL
+		status.Error = fmt.Sprintf("%s", ret)
+		status.ErrorTime = time.Now()
 	}
 	return ret
 }

@@ -255,6 +255,7 @@ func doBaseOsStatusUpdate(uuidStr string, config types.BaseOsConfig,
 	return changed
 }
 
+// Returns changed boolean when the status was changed
 func doBaseOsActivate(uuidStr string, config types.BaseOsConfig,
 	status *types.BaseOsStatus) bool {
 	log.Printf("doBaseOsActivate(%s) uuid %s\n",
@@ -270,17 +271,42 @@ func doBaseOsActivate(uuidStr string, config types.BaseOsConfig,
 		return changed
 	}
 
-	// check the partition label of the current root...
-	// check PartitionLabel the one we got is really unused?
-	// if partitionState unsed then change status to updating...
+	// Sanity check the partition label of the current root and
+	// the partition state
+	// We've already dd'ed the new image into the partition
+	// hence can't compare versions here. Version check was done when
+	// processing the baseOsConfig.
 
-	if !zboot.IsOtherPartition(config.PartitionLabel) ||
-		!zboot.IsOtherPartitionStateUnused() {
+	if !zboot.IsOtherPartition(config.PartitionLabel) {
+		return changed
+	}
+	partState := zboot.GetPartitionState(config.PartitionLabel)
+	switch partState {
+	case "unused":
+		log.Printf("Installing %s over unused\n",
+			config.BaseOsVersion)
+	case "inprogress":
+		log.Printf("Installing %s over inprogress\n",
+			config.BaseOsVersion)
+	default:
+		errString := fmt.Sprintf("Wrong partition state %s for %s",
+			partState, config.PartitionLabel)
+		log.Println(errString)
+		status.Error = errString
+		status.ErrorTime = time.Now()
+		changed = true
 		return changed
 	}
 
 	log.Printf("doBaseOsActivate: %s activating\n", uuidStr)
 	zboot.SetOtherPartitionStateUpdating()
+
+	// Remove any old log files for a previous instance
+	logdir := fmt.Sprintf("/persist/%s/log", config.PartitionLabel)
+	log.Printf("Clearing old logs in %s\n", logdir)
+	if err := os.RemoveAll(logdir); err != nil {
+		log.Println(err)
+	}
 
 	// if it is installed, flip the activated status
 	if status.State == types.INSTALLED ||
@@ -569,8 +595,9 @@ func installBaseOsObject(srcFilename string, dstFilename string) error {
 	err := zboot.WriteToPartition(srcFilename, dstFilename)
 	if err != nil {
 		log.Printf("installBaseOsObject: write failed %s\n", err)
+		return err
 	}
-	return err
+	return nil
 }
 
 // validate whether the image version matches with

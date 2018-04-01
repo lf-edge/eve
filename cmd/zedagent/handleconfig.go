@@ -124,7 +124,7 @@ func configTimerTask(handleChannel chan interface{},
 	configUrl := serverName + "/" + configApi
 	getconfigCtx.lastReceivedConfigFromCloud = time.Now()
 	iteration := 0
-	upgradeInprogress := zboot.IsAvailable() && zboot.IsCurrentPartitionStateInProgress()
+	upgradeInprogress := zboot.IsCurrentPartitionStateInProgress()
 	rebootFlag := getLatestConfig(configUrl, iteration,
 		&upgradeInprogress, getconfigCtx)
 
@@ -305,7 +305,9 @@ func readDeviceConfigProtoMessage(contents []byte) (bool, *zconfig.EdgeDevConfig
 
 // Returns a rebootFlag
 func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext) bool {
-	log.Printf("Inhaling config %v\n", config)
+	if debug {
+		log.Printf("Inhaling config %v\n", config)
+	}
 
 	// if they match return
 	var devId = &zconfig.UUIDandVersion{}
@@ -334,6 +336,8 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCo
 	}
 	handleLookupParam(config)
 
+	// XXX should check for different sha for baseOs and appInstances
+	// before looking for old
 	// clean up old config entries
 	if deleted := cleanupOldConfig(config); deleted {
 		log.Printf("Old Config removed, take a delay\n")

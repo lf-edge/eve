@@ -4,11 +4,16 @@
 package main
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
+	"github.com/golang/protobuf/proto"
 	"github.com/satori/go.uuid"
 	"github.com/zededa/api/zconfig"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/zboot"
+	"hash"
 	"io/ioutil"
 	"log"
 	"net"
@@ -40,22 +45,20 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext) 
 	}
 
 	// updating/rebooting, ignore config??
-	// XXX can we get stuck here?
-	if zboot.IsAvailable() && zboot.IsOtherPartitionStateUpdating() {
+	// XXX can we get stuck here? When do we set updating? As part of activate?
+	if zboot.IsOtherPartitionStateUpdating() {
 		log.Println("OtherPartitionStatusUpdating - returning rebootFlag")
 		return true
 	}
 
 	// If the other partition is inprogress it means update failed
-	if zboot.IsAvailable() && zboot.IsOtherPartitionStateInProgress() {
+	// We leave in inprogress state so logmanager can use it to decide
+	// to upload the other logs. If a different BaseOsVersion is provided
+	// we allow it to be installed into the inprogress partition.
+	if zboot.IsOtherPartitionStateInProgress() {
 		otherPart := zboot.GetOtherPartition()
 		log.Printf("Other %s partition contains failed upgrade\n",
 			otherPart)
-		// XXX make sure its logs are made available
-		// XXX switch to keep it in inprogress until we get
-		// a baseOsConfig with a different baseOsVersion string.
-		log.Printf("Mark other partition %s, unused\n", otherPart)
-		zboot.SetOtherPartitionStateUnused()
 	}
 
 	if validateConfig(config) {
@@ -86,12 +89,26 @@ func validateConfig(config *zconfig.EdgeDevConfig) bool {
 	return true
 }
 
+var baseosPrevConfigHash []byte
+
+// Returns true if there is some baseOs work to do
 func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 	cfgOsList := config.GetBase()
-	baseOsCount := len(cfgOsList)
-	log.Printf("parseBaseOsConfig() Applying Base Os config len %d\n",
-		baseOsCount)
+	h := sha256.New()
+	for _, os := range cfgOsList {
+		computeConfigElementSha(h, os)
+	}
+	configHash := h.Sum(nil)
+	same := bytes.Equal(configHash, baseosPrevConfigHash)
+	baseosPrevConfigHash = configHash
+	if same {
+		log.Printf("parseBaseOsConfig: baseos sha is unchanged\n")
+		return false
+	}
+	log.Printf("parseBaseOsConfig() Applying updated config %v\n",
+		cfgOsList)
 
+	baseOsCount := len(cfgOsList)
 	if baseOsCount == 0 {
 		return false
 	}
@@ -140,6 +157,7 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 
 		if imageCount != BaseOsImageCount {
 			log.Printf("%s, invalid storage config %d\n", baseOs.BaseOsVersion, imageCount)
+			// XXX need to publish this as an error in baseOsStatus
 			continue
 		}
 
@@ -157,14 +175,23 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 
 		// Dump the config content
 		bytes, err := json.Marshal(baseOs)
-		if err == nil {
+		if err != nil {
+			log.Fatal(err)
+		}
+		if debug {
 			log.Printf("New/updated BaseOs %d: %s\n", idx, bytes)
 		}
 		// XXX shouldn't the code write what it just marshalled?
 	}
 
-	assignBaseOsPartition(baseOsList)
-
+	// XXX defer until we have validated; call with BaseOsStatus
+	failedUpdate := assignBaseOsPartition(baseOsList)
+	if failedUpdate {
+		// Proceed with applications etc. User has to retry with a
+		// different update than the one that failed.
+		return false
+	}
+	// XXX will the createBaseOsConfig creation result in a download?
 	configCount := 0
 	if validateBaseOsConfig(baseOsList) == true {
 		configCount = createBaseOsConfig(baseOsList, certList)
@@ -177,11 +204,14 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 	return false
 }
 
-func assignBaseOsPartition(baseOsList []*types.BaseOsConfig) {
+// XXX should work on BaseOsStatus once PartitionLabel moves to BaseOsStatus
+// Returns true if there is a failed ugrade in the config
+func assignBaseOsPartition(baseOsList []*types.BaseOsConfig) bool {
 	curPartName := zboot.GetCurrentPartition()
 	otherPartName := zboot.GetOtherPartition()
 	curPartVersion := zboot.GetShortVersion(curPartName)
 	otherPartVersion := zboot.GetShortVersion(otherPartName)
+	otherInprog := zboot.IsOtherPartitionStateInProgress()
 
 	assignedPart := true
 	// older assignments/installations
@@ -191,7 +221,31 @@ func assignBaseOsPartition(baseOsList []*types.BaseOsConfig) {
 		}
 		uuidStr := baseOs.UUIDandVersion.UUID.String()
 		curBaseOsConfig := baseOsConfigGet(uuidStr)
+		// XXX isn't curBaseOsConfig the same as baseOs???
+		// We are iterating over all the baseOsConfigs.
 
+		if curPartVersion == baseOs.BaseOsVersion {
+			baseOs.PartitionLabel = curPartName
+			setStoragePartitionLabel(baseOs)
+			log.Printf("%s, already installed in current partition %s\n",
+				baseOs.BaseOsVersion, baseOs.PartitionLabel)
+			continue
+		}
+
+		if otherPartVersion == baseOs.BaseOsVersion {
+			if otherInprog {
+				rejectReinstallFailed(baseOs, otherPartName)
+				// XXX return? Shouldn't do any assigments
+				// Tell caller it should ignore baseOs for now
+				return true
+			}
+
+			baseOs.PartitionLabel = otherPartName
+			setStoragePartitionLabel(baseOs)
+			log.Printf("%s, already installed in other partition %s\n",
+				baseOs.BaseOsVersion, baseOs.PartitionLabel)
+			continue
+		}
 		if curBaseOsConfig != nil &&
 			curBaseOsConfig.PartitionLabel != "" {
 			baseOs.PartitionLabel = curBaseOsConfig.PartitionLabel
@@ -201,26 +255,11 @@ func assignBaseOsPartition(baseOsList []*types.BaseOsConfig) {
 			continue
 		}
 
-		if curPartVersion == baseOs.BaseOsVersion {
-			baseOs.PartitionLabel = curPartName
-			setStoragePartitionLabel(baseOs)
-			log.Printf("%s, installed in partition %s\n",
-				baseOs.BaseOsVersion, baseOs.PartitionLabel)
-			continue
-		}
-
-		if otherPartVersion == baseOs.BaseOsVersion {
-			baseOs.PartitionLabel = otherPartName
-			setStoragePartitionLabel(baseOs)
-			log.Printf("%s, installed in partition %s\n",
-				baseOs.BaseOsVersion, baseOs.PartitionLabel)
-			continue
-		}
 		assignedPart = false
 	}
 
 	if assignedPart == true {
-		return
+		return false
 	}
 
 	// if activate set, assign partition
@@ -240,7 +279,7 @@ func assignBaseOsPartition(baseOsList []*types.BaseOsConfig) {
 	}
 
 	if assignedPart == true {
-		return
+		return false
 	}
 
 	// still not assigned, assign partition
@@ -253,6 +292,36 @@ func assignBaseOsPartition(baseOsList []*types.BaseOsConfig) {
 		log.Printf("%s, assigning with partition %s\n",
 			baseOs.BaseOsVersion, baseOs.PartitionLabel)
 	}
+	return false
+}
+
+func rejectReinstallFailed(config *types.BaseOsConfig, otherPartName string) {
+	errString := fmt.Sprintf("Attempt to reinstall failed %s in %s: refused",
+		config.BaseOsVersion, otherPartName)
+	log.Println(errString)
+	// XXX do we have a baseOsStatus yet?
+	uuidStr := config.UUIDandVersion.UUID.String()
+	status := baseOsStatusGet(uuidStr)
+	if status == nil {
+		log.Printf("XXX %s, rejectReinstallFailed can't find baseOsStatus uuid %s\n",
+			config.BaseOsVersion, uuidStr)
+		// XXX this is a hack to report the error.
+		// The status should already exist once this code
+		// is moved from the parser to baseosmanager.
+		// XXX not clear this gets reported to zedcloud.
+		status = &types.BaseOsStatus{
+			UUIDandVersion: config.UUIDandVersion,
+			BaseOsVersion:  config.BaseOsVersion,
+			ConfigSha256:   config.ConfigSha256,
+			PartitionLabel: config.PartitionLabel,
+		}
+	}
+	status.Error = errString
+	status.ErrorTime = time.Now()
+
+	baseOsStatusSet(uuidStr, status)
+	writeBaseOsStatus(status, uuidStr)
+	// XXX how do we tell handler that status changes?
 }
 
 func setStoragePartitionLabel(baseOs *types.BaseOsConfig) {
@@ -263,18 +332,32 @@ func setStoragePartitionLabel(baseOs *types.BaseOsConfig) {
 	}
 }
 
+var appinstancePrevConfigHash []byte
+
 func parseAppInstanceConfig(config *zconfig.EdgeDevConfig) {
 
 	var appInstance = types.AppInstanceConfig{}
 
-	log.Println("Applying App Instance config")
-
 	Apps := config.GetApps()
+	h := sha256.New()
+	for _, a := range Apps {
+		computeConfigElementSha(h, a)
+	}
+	configHash := h.Sum(nil)
+	same := bytes.Equal(configHash, appinstancePrevConfigHash)
+	appinstancePrevConfigHash = configHash
+	if same {
+		log.Printf("parseAppInstanceConfig: appinstance sha is unchanged\n")
+		return
+	}
+	log.Printf("Applying updated App Instance config %v\n", Apps)
 
 	for _, cfgApp := range Apps {
-
-		log.Printf("New/updated app instance %v\n", cfgApp)
-
+		// Note that we repeat this even if the app config didn't
+		// change but something else in the EdgeDeviceConfig did
+		if debug {
+			log.Printf("New/updated app instance %v\n", cfgApp)
+		}
 		appInstance.UUIDandVersion.UUID, _ = uuid.FromString(cfgApp.Uuidandversion.Uuid)
 		appInstance.UUIDandVersion.Version = cfgApp.Uuidandversion.Version
 		appInstance.DisplayName = cfgApp.Displayname
@@ -581,10 +664,25 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 	}
 }
 
+var itemsPrevConfigHash []byte
+
 func parseConfigItems(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext) {
 	log.Printf("parseConfigItems\n")
 
 	items := config.GetConfigItems()
+	h := sha256.New()
+	for _, i := range items {
+		computeConfigElementSha(h, i)
+	}
+	configHash := h.Sum(nil)
+	same := bytes.Equal(configHash, itemsPrevConfigHash)
+	itemsPrevConfigHash = configHash
+	if same {
+		log.Printf("parseConfigItems: items sha is unchanged\n")
+		return
+	}
+	log.Printf("parseConfigItems() Applying updated config %v\n", items)
+
 	for _, item := range items {
 		log.Printf("parseConfigItems key %s\n", item.Key)
 
@@ -681,7 +779,10 @@ func writeBaseOsConfig(baseOsConfig *types.BaseOsConfig, uuidStr string) {
 		log.Fatal(err, "json Marshal BaseOsConfig")
 	}
 
-	log.Printf("Writing baseOs config UUID %s, %s\n", configFilename, bytes)
+	if debug {
+		log.Printf("Writing baseOs config UUID %s, %s\n",
+			configFilename, bytes)
+	}
 
 	err = ioutil.WriteFile(configFilename, bytes, 0644)
 
@@ -810,43 +911,13 @@ func validateBaseOsConfig(baseOsList []*types.BaseOsConfig) bool {
 			return false
 		}
 	}
-
-	// check if the Sha is same, for different names
-	for idx, baseOs0 := range baseOsList {
-		if baseOs0 == nil {
-			continue
-		}
-
-		for bidx, baseOs1 := range baseOsList {
-
-			if baseOs1 == nil {
-				continue
-			}
-
-			if idx <= bidx {
-				continue
-			}
-			// compare the drives, for same Sha
-			for _, drive0 := range baseOs0.StorageConfigList {
-				for _, drive1 := range baseOs1.StorageConfigList {
-					// if sha is same for URLs
-					if drive0.ImageSha256 == drive1.ImageSha256 &&
-						drive0.DownloadURL != drive1.DownloadURL {
-						log.Printf("baseOs: Same Sha %v\n", drive0.ImageSha256)
-						// XXX causes silent failure?
-						// Need to report this to the cliud
-						if false {
-							return false
-						}
-					}
-				}
-			}
-		}
-	}
-
 	return true
 }
 
+// Returns the number of BaseOsConfig that are new or modified
+// XXX not useful for caller if we want to catch failed upgrades up front.
+// XXX should we initially populate BaseOsStyatus with what we find in
+// the partitions? Makes the checks simpler.
 func createBaseOsConfig(baseOsList []*types.BaseOsConfig, certList []*types.CertObjConfig) int {
 
 	writeCount := 0
@@ -900,12 +971,37 @@ func writeCertObjConfig(config *types.CertObjConfig, uuidStr string) {
 		log.Fatal(err, "json Marshal certObjConfig")
 	}
 
-	log.Printf("Writing CA config %s, %s\n", configFilename, bytes)
+	if debug {
+		log.Printf("Writing CA config %s, %s\n", configFilename, bytes)
+	}
 
 	err = ioutil.WriteFile(configFilename, bytes, 0644)
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+// Get sha256 for a subset of the protobuf message.
+// Used to determine which pieces changed
+func computeConfigSha(msg proto.Message) []byte {
+	data, err := proto.Marshal(msg)
+	if err != nil {
+		log.Fatal("computeConfigSha: proto.Marshal: %s\n", err)
+	}
+	h := sha256.New()
+	h.Write(data)
+	return h.Sum(nil)
+}
+
+// Get sha256 for a subset of the protobuf message.
+// Used to determine which pieces changed
+func computeConfigElementSha(h hash.Hash, msg proto.Message) {
+	data, err := proto.Marshal(msg)
+	if err != nil {
+		log.Fatal("computeConfigItemSha: proto.Marshal: %s\n",
+			err)
+	}
+	h.Write(data)
 }
 
 // Returns a rebootFlag
@@ -914,6 +1010,9 @@ func parseOpCmds(config *zconfig.EdgeDevConfig) bool {
 	scheduleBackup(config.GetBackup())
 	return scheduleReboot(config.GetReboot())
 }
+
+var rebootPrevConfigHash []byte
+var rebootPrevReturn bool
 
 // Returns a rebootFlag
 func scheduleReboot(reboot *zconfig.DeviceOpsCmd) bool {
@@ -929,6 +1028,15 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd) bool {
 		os.Remove(rebootConfigFilename)
 		return false
 	}
+
+	configHash := computeConfigSha(reboot)
+	same := bytes.Equal(configHash, rebootPrevConfigHash)
+	rebootPrevConfigHash = configHash
+	if same {
+		log.Printf("scheduleReboot: reboot sha is unchanged\n")
+		return rebootPrevReturn
+	}
+	log.Printf("scheduleReboot: Applying updated config %v\n", reboot)
 
 	if _, err := os.Stat(rebootConfigFilename); err != nil {
 		// Take received as current and store in file
@@ -983,15 +1091,29 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd) bool {
 		log.Printf("Scheduling for reboot %d %d\n", rebootConfig.Counter, reboot.Counter)
 
 		go handleReboot()
+		rebootPrevReturn = true
 		return true
 	}
+	rebootPrevReturn = false
 	return false
 }
 
+var backupPrevConfigHash []byte
+
 func scheduleBackup(backup *zconfig.DeviceOpsCmd) {
 	log.Printf("scheduleBackup(%v)\n", backup)
-	// XXX:FIXME  handle baackup semantics
-	log.Printf("Backup Config: %v\n", backup)
+	// XXX:FIXME  handle backup semantics
+	if backup == nil {
+		return
+	}
+	configHash := computeConfigSha(backup)
+	same := bytes.Equal(configHash, backupPrevConfigHash)
+	backupPrevConfigHash = configHash
+	if same {
+		log.Printf("scheduleBackup: backup sha is unchanged\n")
+	}
+	log.Printf("scheduleBackup: Applying updated config %v\n", backup)
+	log.Printf("XXX handle Backup Config: %v\n", backup)
 }
 
 // the timer channel handler
