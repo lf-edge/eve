@@ -18,7 +18,16 @@ plugin_tag() {
   fi
 }
 
-ARCH=amd64
+case $(uname -m) in
+  x86_64) ARCH=amd64
+    ;;
+  aarch64) ARCH=arm64
+    ;;
+  *)
+    echo "Unsupported architecture $(uname -m). Exiting"
+    exit 1
+    ;;
+esac
 
 KERNEL_TAG=$(linuxkit_tag pkg/kernel)-$ARCH
 KMOD_PFRING_TAG=$(linuxkit_tag pkg/kmod_pfring)-$ARCH
