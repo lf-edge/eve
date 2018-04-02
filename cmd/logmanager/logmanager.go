@@ -450,6 +450,13 @@ func HandleLogDirEvent(change string, logDirName string, ctx interface{},
 
 func handleXenLogDirModify(context interface{},
 	filename string, source string) {
+
+	if strings.Compare(source,"hypervisor") == 0 {
+		if debug {
+			log.Println("Ignoring hypervisor log while sending domU log")
+		}
+		return
+	}
 	ctx := context.(*imageLoggerContext)
 	for i, r := range ctx.logfileReaders {
 		if r.filename == filename {
@@ -503,7 +510,6 @@ func handleXenLogDirDelete(context interface{},
 	for _, logger := range ctx.logfileReaders {
 		if logger.logfileReader.filename == filename {
 			// XXX:FIXME, delete the entry
-			//ctx.logFileReaders = delete(ctx.logfileReaders, i)
 		}
 	}
 }
