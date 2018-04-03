@@ -625,6 +625,7 @@ func handleBaseOsModify(ctxArg interface{}, statusFilename string,
 
 	// update the version field, uuis being the same
 	status.UUIDandVersion = config.UUIDandVersion
+	baseOsStatusSet(uuidStr, status)
 	writeBaseOsStatus(status, uuidStr)
 
 	addOrUpdateBaseOsConfig(uuidStr, *config)

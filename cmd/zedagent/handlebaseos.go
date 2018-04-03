@@ -239,7 +239,7 @@ func doBaseOsStatusUpdate(uuidStr string, config types.BaseOsConfig,
 	if config.Activate == false {
 		log.Printf("doBaseOsStatusUpdate(%s) for %s, Activate is not set\n",
 			config.BaseOsVersion, uuidStr)
-		changed = doBaseOsInactivate(uuidStr, config, status)
+		changed = doBaseOsInactivate(uuidStr, status)
 		return changed
 	}
 
@@ -378,6 +378,7 @@ func doBaseOsInstall(uuidStr string, config types.BaseOsConfig,
 		}
 	}
 
+	baseOsStatusSet(uuidStr, status)
 	writeBaseOsStatus(status, uuidStr)
 	log.Printf("doBaseOsInstall(%s), Done %v\n",
 		config.BaseOsVersion, proceed)
@@ -392,12 +393,13 @@ func checkBaseOsStorageDownloadStatus(uuidStr string,
 		config.StorageConfigList, status.StorageStatusList)
 
 	status.State = ret.MinState
-	status.Error = ret.AllErrors
-	status.ErrorTime = ret.ErrorTime
 
 	if ret.MinState == types.INITIAL {
-		log.Printf("checkBaseOsStorageDownloadStatus(%s) for %s, Download error for %s\n",
-			config.BaseOsVersion, uuidStr)
+		status.Error = ret.AllErrors
+		status.ErrorTime = ret.ErrorTime
+		log.Printf("checkBaseOsStorageDownloadStatus(%s) for %s, Download error at %v: %v\n",
+			config.BaseOsVersion, uuidStr, status.ErrorTime, status.Error)
+		// XXX how does this status with its error appear in zedcloud?
 		return ret.Changed, false
 	}
 
@@ -419,12 +421,12 @@ func checkBaseOsVerificationStatus(uuidStr string,
 		uuidStr, config.StorageConfigList, status.StorageStatusList)
 
 	status.State = ret.MinState
-	status.Error = ret.AllErrors
-	status.ErrorTime = ret.ErrorTime
 
 	if ret.MinState == types.INITIAL {
-		log.Printf("checkBaseOsVerificationStatus(%s) for %s, Verification error\n",
-			config.BaseOsVersion, uuidStr)
+		status.Error = ret.AllErrors
+		status.ErrorTime = ret.ErrorTime
+		log.Printf("checkBaseOsVerificationStatus(%s) for %s, Verification error at %v: %v\n",
+			config.BaseOsVersion, uuidStr, status.ErrorTime, status.Error)
 		return ret.Changed, false
 	}
 
@@ -443,23 +445,21 @@ func removeBaseOsConfig(uuidStr string) {
 	log.Printf("removeBaseOsConfig for %s\n", uuidStr)
 	if ok := baseOsConfigDelete(uuidStr); ok {
 		removeBaseOsStatus(uuidStr)
+		log.Printf("removeBaseOSConfig for %s, done\n", uuidStr)
+	} else {
+		log.Printf("removeBaseOsConfig failed for %s\n", uuidStr)
 	}
-	log.Printf("removeBaseOSConfig for %s, done\n", uuidStr)
 }
 
 func removeBaseOsStatus(uuidStr string) {
 
-	config := baseOsConfigGet(uuidStr)
-	if config == nil {
-		return
-	}
-
 	status := baseOsStatusGet(uuidStr)
 	if status == nil {
+		log.Printf("removeBaseOsStatus: no status\n")
 		return
 	}
 
-	changed, del := doBaseOsRemove(uuidStr, *config, status)
+	changed, del := doBaseOsRemove(uuidStr, status)
 	if changed {
 		log.Printf("removeBaseOsStatus for %s, Status change\n", uuidStr)
 		baseOsStatusSet(uuidStr, status)
@@ -481,15 +481,14 @@ func removeBaseOsStatus(uuidStr string) {
 	}
 }
 
-func doBaseOsRemove(uuidStr string, config types.BaseOsConfig,
-	status *types.BaseOsStatus) (bool, bool) {
+func doBaseOsRemove(uuidStr string, status *types.BaseOsStatus) (bool, bool) {
 
 	log.Printf("doBaseOsRemove(%s) for %s\n", status.BaseOsVersion, uuidStr)
 
 	changed := false
 	del := false
 
-	changed = doBaseOsInactivate(uuidStr, config, status)
+	changed = doBaseOsInactivate(uuidStr, status)
 
 	changed, del = doBaseOsUninstall(uuidStr, status)
 
@@ -498,8 +497,7 @@ func doBaseOsRemove(uuidStr string, config types.BaseOsConfig,
 	return changed, del
 }
 
-func doBaseOsInactivate(uuidStr string, config types.BaseOsConfig,
-	status *types.BaseOsStatus) bool {
+func doBaseOsInactivate(uuidStr string, status *types.BaseOsStatus) bool {
 	log.Printf("doBaseOsInactivate(%s) %v\n",
 		status.BaseOsVersion, status.Activated)
 
@@ -530,8 +528,7 @@ func doBaseOsUninstall(uuidStr string, status *types.BaseOsStatus) (bool, bool) 
 
 		_, err := lookupBaseOsVerificationStatusSha256(ss.ImageSha256)
 
-		// XXX if additional refs it will not go away
-		if false && err == nil {
+		if err == nil {
 			log.Printf("doBaseOsUninstall(%s) for %s, Verifier %s not yet gone\n",
 				status.BaseOsVersion, uuidStr, ss.ImageSha256)
 			removedAll = false
@@ -562,8 +559,7 @@ func doBaseOsUninstall(uuidStr string, status *types.BaseOsStatus) (bool, bool) 
 		}
 
 		_, err := lookupBaseOsDownloaderStatus(ss.ImageSha256)
-		// XXX if additional refs it will not go away
-		if false && err == nil {
+		if err == nil {
 			log.Printf("doBaseOsUninstall(%s) for %s, Download %s not yet gone\n",
 				status.BaseOsVersion, uuidStr, safename)
 			removedAll = false
