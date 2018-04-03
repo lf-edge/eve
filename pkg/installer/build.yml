@@ -1,0 +1,9 @@
+image: installer
+org: zededa
+network: no
+config:
+  binds:
+    - /dev:/dev
+  capabilities:
+    - all
+  pid: host

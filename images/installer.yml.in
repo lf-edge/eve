@@ -1,0 +1,18 @@
+kernel:
+  image: KERNEL_TAG
+  cmdline: "rootdelay=3 root=/dev/sdb"
+init:
+  - GRUB_TAG
+  - XEN_TAG
+  - linuxkit/init:v0.2
+  - linuxkit/runc:v0.2
+  - linuxkit/containerd:v0.2
+  - linuxkit/getty:v0.2
+onboot:
+  - name: installer
+    image: INSTALLER_TAG
+    command: ["/install.sh", "/dev/sda"]
+trust:
+  org:
+    - linuxkit
+
