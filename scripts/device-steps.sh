@@ -73,6 +73,7 @@ echo "Removing old stale files"
 # XXX not that when restarting device-steps.sh this kill
 # can result in watchdog(8) rebooting the system
 cat >$TMPDIR/watchdog.conf <<EOF
+watchdog-device = /dev/watchdog
 admin =
 EOF
 if [ -f /var/run/watchdog.pid ]; then
@@ -256,6 +257,7 @@ fi
 # Create config file for watchdog(8)
 # XXX should we enable realtime in the kernel?
 cat >$TMPDIR/watchdog.conf <<EOF
+watchdog-device = /dev/watchdog
 admin =
 #realtime = yes
 #priority = 1
@@ -526,7 +528,7 @@ if [ -f $TMPDIR/zedrouterconfig.json ]; then
 fi
 
 # Setup default amount of space for images
-echo '{"MaxSpace":2000000}' >/var/tmp/downloader/config/global 
+echo '{"MaxSpace":2000000}' >/var/tmp/downloader/config/global
 
 rm -f /var/run/verifier/*/status/restarted
 rm -f /var/tmp/zedrouter/config/restart
