@@ -499,6 +499,11 @@ func downloaderInit() *zedUpload.DronaCtx {
 	// is used. Place in GlobalDownloadStatus. Calculate remaining space.
 	totalUsed := sizeFromDir(objectDownloadDirname)
 	globalStatus.UsedSpace = uint(types.RoundupToKB(totalUsed))
+	// Note that the UsedSpace calculated during initialization can exceed
+	// MaxSpace, and RemainingSpace is a uint!
+	if globalStatus.UsedSpace > globalConfig.MaxSpace {
+		globalStatus.UsedSpace = globalConfig.MaxSpace
+	}
 	updateRemainingSpace()
 
 	// create drona interface
