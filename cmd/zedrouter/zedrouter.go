@@ -17,8 +17,10 @@ import (
 	"github.com/vishvananda/netlink"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/devicenetwork"
+	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/pidfile"
+	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
 	"github.com/zededa/go-provision/wrap"
@@ -28,6 +30,7 @@ import (
 	"os"
 	"reflect"
 	"strconv"
+	"time"
 )
 
 // Keeping status in /var/run to be clean after a crash/reboot
@@ -163,6 +166,18 @@ func main() {
 	handleRestart(dummyContext{}, false)
 	var restartFn watch.ConfigRestartHandler = handleRestart
 
+	// Publish network metrics for zedagent every 10 seconds
+	nms := getNetworkMetrics() // Need type of data
+	pub, err := pubsub.Publish(agentName, nms)
+	if err != nil {
+		log.Fatal(err)
+	}
+	interval := time.Duration(10 * time.Second)
+	max := float64(interval)
+	min := max * 0.3
+	publishTimer := flextimer.NewRangeTicker(time.Duration(min),
+		time.Duration(max))
+
 	configChanges := make(chan string)
 	go watch.WatchConfigStatus(configDirname, statusDirname, configChanges)
 	deviceConfigChanges := make(chan string)
@@ -188,6 +203,12 @@ func main() {
 			PbrAddrChange(change)
 		case change := <-linkChanges:
 			PbrLinkChange(change)
+		case <-publishTimer.C:
+			if debug {
+				log.Println("publishTimer at",
+					time.Now())
+			}
+			pub.Publish("global", getNetworkMetrics())
 		}
 	}
 }
