@@ -217,10 +217,31 @@ func (pub *publication) Publish(key string, item interface{}) error {
 	if err != nil {
 		log.Fatal(err, "json Marshal in Publish")
 	}
-	// We assume a /var/run path hence we don't need to worry about
-	// partial writes/empty files due to a kernel crash.
-	err = ioutil.WriteFile(fileName, b, 0644)
+	// Do atomic rename to avoid partially written files
+	// XXX in same filesystem??
+	tmpfile, err := ioutil.TempFile("/tmp/", "pubsub")
 	if err != nil {
+		errStr := fmt.Sprintf("Publish(%s, %s): %s",
+			agentName, pub.topic, err)
+		return errors.New(errStr)
+	}
+	defer tmpfile.Close()
+	defer os.Remove(tmpfile.Name())
+	// XXX write to open file
+	// XXX was err = ioutil.WriteFile(tmpfile.Name(), b, 0644)
+	// XXX what is the return? int, error
+	_, err = tmpfile.Write(b)
+	if err != nil {
+		errStr := fmt.Sprintf("Publish(%s, %s): %s",
+			agentName, pub.topic, err)
+		return errors.New(errStr)
+	}
+	if err := tmpfile.Close(); err != nil {
+		errStr := fmt.Sprintf("Publish(%s, %s): %s",
+			agentName, pub.topic, err)
+		return errors.New(errStr)
+	}
+	if err := os.Rename(tmpfile.Name(), fileName); err != nil {
 		errStr := fmt.Sprintf("Publish(%s, %s): %s",
 			agentName, pub.topic, err)
 		return errors.New(errStr)
