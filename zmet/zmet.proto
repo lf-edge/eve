@@ -253,8 +253,10 @@ message networkMetric {
   uint64 rxPkts = 9;
   uint64 txErrors = 10;
   uint64 rxErrors = 11;
-  uint64 aclDrops = 12;
-  uint64 aclRateLimitDrops = 13;
+  uint64 txAclDrops = 12;
+  uint64 rxAclDrops = 13;
+  uint64 txAclRateLimitDrops = 14;
+  uint64 rxAclRateLimitDrops = 15;
 }
 
 // Failures and successes for commuication to zedcloud
