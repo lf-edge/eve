@@ -610,6 +610,7 @@ func checkInstalledVersion(config types.BaseOsConfig) string {
 	}
 
 	partVersion := zboot.GetShortVersion(config.PartitionLabel)
+	// XXX this check can result in failures when multiple updates in progress in zedcloud!
 	if config.BaseOsVersion != partVersion {
 		errStr := fmt.Sprintf("baseOs %s, %s, does not match installed %s",
 			config.PartitionLabel, config.BaseOsVersion, partVersion)
