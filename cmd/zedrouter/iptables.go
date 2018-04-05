@@ -6,11 +6,8 @@
 package main
 
 import (
-	"bufio"
 	"github.com/zededa/go-provision/wrap"
-	"io"
 	"log"
-	"os"
 	"strconv"
 	"strings"
 )
@@ -75,8 +72,17 @@ func iptablesInit() {
 func fetchIprulesCounters() []AclCounters {
 	var counters []AclCounters
 	// get for IPv4 filter, IPv6 filter, and IPv6 raw
-	// XXX get
 	out, err := iptableCmdOut("-t", "filter", "-S", "FORWARD", "-v")
+	if err != nil {
+		log.Printf("fetchIprulesCounters: iptables -S failed %s\n", err)
+	} else {
+		c := parseCounters(out, "filter", false)
+		if c != nil {
+			counters = append(counters, c...)
+		}
+	}
+	// XXX to get dbo1x0 stats
+	out, err = iptableCmdOut("-t", "filter", "-S", "OUTPUT", "-v")
 	if err != nil {
 		log.Printf("fetchIprulesCounters: iptables -S failed %s\n", err)
 	} else {
@@ -160,11 +166,12 @@ func getIpRuleAclRateLimitDrop(counters []AclCounters, ifname string, input bool
 }
 
 // Parse the output of iptables -S -v
-// XXX Note that we have both for normal AclDrop! Same values => combine?
 func parseCounters(out string, table string, overlay bool) []AclCounters {
 	var counters []AclCounters
 
 	lines := strings.Split(out, "\n")
+	// XXX
+	log.Printf("parseCounters: %v\n", lines)
 	for _, line := range lines {
 		ac := parseline(line, table, overlay)
 		if ac != nil {
@@ -174,34 +181,6 @@ func parseCounters(out string, table string, overlay bool) []AclCounters {
 		}
 	}
 	return counters
-}
-
-// XXX remove
-func parsefile(filename string, table string, overlay bool) {
-	fileDesc, err := os.Open(filename)
-	if err != nil {
-		log.Printf("Open: %s\n", err)
-		return
-	}
-	// Start reading from the file with a reader.
-	reader := bufio.NewReader(fileDesc)
-	for {
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			// log.Println(err)
-
-			if err != io.EOF {
-				log.Printf(" > Failed!: %v\n", err)
-			}
-			break
-		}
-		line = line[0 : len(line)-1]
-		// log.Printf("Read <%s>\n", line)
-		ac := parseline(line, table, overlay)
-		if ac != nil {
-			log.Printf("ACL counters %v\n", ac)
-		}
-	}
 }
 
 type AclCounters struct {
