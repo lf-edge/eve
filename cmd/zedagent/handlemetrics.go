@@ -411,10 +411,10 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 		networkDetails.RxDrops = metric.RxDrops
 		networkDetails.TxErrors = metric.TxErrors
 		networkDetails.RxErrors = metric.RxErrors
-		// XXX networkDetails.TxAclDrops = metric.TxAclDrops
-		// XXX networkDetails.RxAclDrops = metric.RxAclDrops
-		// XXX networkDetails.TxAclRateLimitDrops = metric.TxAclRateLimitDrops
-		// XXX networkDetails.RxAclRateLimitDrops = metric.RxAclRateLimitDrops
+		networkDetails.TxAclDrops = metric.TxAclDrops
+		networkDetails.RxAclDrops = metric.RxAclDrops
+		networkDetails.TxAclRateLimitDrops = metric.TxAclRateLimitDrops
+		networkDetails.RxAclRateLimitDrops = metric.RxAclRateLimitDrops
 		ReportDeviceMetric.Network = append(ReportDeviceMetric.Network,
 			networkDetails)
 	}
@@ -604,10 +604,10 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 			networkDetails.RxDrops = metric.TxDrops
 			networkDetails.TxErrors = metric.RxErrors
 			networkDetails.RxErrors = metric.TxErrors
-			// XXX networkDetails.TxAclDrops = metric.RxAclDrops
-			// XXX networkDetails.RxAclDrops = metric.TxAclDrops
-			// XXX networkDetails.TxAclRateLimitDrops = metric.RxAclRateLimitDrops
-			// XXX networkDetails.RxAclRateLimitDrops = metric.TxAclRateLimitDrops
+			networkDetails.TxAclDrops = metric.RxAclDrops
+			networkDetails.RxAclDrops = metric.TxAclDrops
+			networkDetails.TxAclRateLimitDrops = metric.RxAclRateLimitDrops
+			networkDetails.RxAclRateLimitDrops = metric.TxAclRateLimitDrops
 
 			ReportAppMetric.Network = append(ReportAppMetric.Network,
 				networkDetails)
