@@ -50,7 +50,7 @@ func downloaderConfigSet(key string, config *types.DownloaderConfig) {
 	downloaderConfigMap[key] = *config
 }
 
-func downloaderConfigDelete(key string) bool {
+func downloaderConfigDelete(key string, objType string, safename string) bool {
 
 	config := downloaderConfigGet(key)
 	if config == nil {
@@ -61,6 +61,8 @@ func downloaderConfigDelete(key string) bool {
 		log.Printf("%s, decrementing refCount(%d)\n", key, config.RefCount)
 		config.RefCount -= 1
 		downloaderConfigSet(key, config)
+		writeDownloaderConfig(objType, safename,
+			downloaderConfigGet(key))
 		return false
 	}
 
@@ -175,7 +177,7 @@ func removeDownloaderConfig(objType string, safename string) {
 
 	log.Printf("%s, removeDownloaderConfig\n", key)
 
-	if ok := downloaderConfigDelete(key); ok {
+	if ok := downloaderConfigDelete(key, objType, safename); ok {
 
 		configFilename := fmt.Sprintf("%s/%s/config/%s.json",
 			downloaderBaseDirname, objType, safename)
@@ -183,8 +185,10 @@ func removeDownloaderConfig(objType string, safename string) {
 		if err := os.Remove(configFilename); err != nil {
 			log.Println(err)
 		}
+		log.Printf("%s, removeDownloaderConfig done\n", key)
+	} else {
+		log.Printf("%s, removeDownloaderConfig no Config\n", key)
 	}
-	log.Printf("%s, removeDownloaderConfig done\n", key)
 }
 
 func removeDownloaderStatus(objType string, statusFilename string) {
@@ -299,6 +303,7 @@ func checkStorageDownloadStatus(objType string, uuidStr string,
 						ret.Changed = true
 					} else {
 						ret.AllErrors = appendError(ret.AllErrors, "downloader", err.Error())
+						ret.ErrorTime = time.Now()
 					}
 				}
 			}
@@ -373,6 +378,7 @@ func installDownloadedObject(objType string, safename string,
 			types.SafenameToFilename(safename)
 		break
 
+		// XXX types.INITIAL for failures?
 	default:
 		log.Printf("%s, still not ready (%d)\n", key, status.State)
 		return nil
@@ -394,7 +400,11 @@ func installDownloadedObject(objType string, safename string,
 
 		case baseOsObj:
 			ret = installBaseOsObject(srcFilename, dstFilename)
-
+			// XXX if ok then decrease refcount
+			// Done in Uninstall; just log here to make sure
+			if ret == nil && status.HasDownloaderRef {
+				log.Printf("installDownloadedObject: HasDownloaderRef for %s\n", safename)
+			}
 		default:
 			errStr := fmt.Sprintf("%s, Unsupported Object Type %v",
 				safename, objType)
@@ -424,6 +434,8 @@ func writeDownloaderConfig(objType string, safename string,
 		return
 	}
 
+	log.Printf("%s, writeDownloaderConfig: RefCount %d\n",
+		safename, config.RefCount)
 	configFilename := fmt.Sprintf("%s/%s/config/%s.json",
 		downloaderBaseDirname, objType, safename)
 

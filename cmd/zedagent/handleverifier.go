@@ -49,7 +49,7 @@ func verifierConfigSet(key string, config *types.VerifyImageConfig) {
 	verifierConfigMap[key] = *config
 }
 
-func verifierConfigDelete(key string) bool {
+func verifierConfigDelete(key string, objType string, safename string) bool {
 	config := verifierConfigGet(key)
 	if config == nil {
 		return false
@@ -59,6 +59,7 @@ func verifierConfigDelete(key string) bool {
 		log.Printf("%s, decrementing refCount(%d)\n", key, config.RefCount)
 		config.RefCount -= 1
 		verifierConfigSet(key, config)
+		writeVerifierConfig(objType, safename, verifierConfigGet(key))
 		return false
 	}
 
@@ -165,16 +166,17 @@ func removeVerifierConfig(objType string, safename string) {
 	key := formLookupKey(objType, safename)
 	log.Printf("%s, verifier config delete \n", key)
 
-	if ok := verifierConfigDelete(key); ok {
+	if ok := verifierConfigDelete(key, objType, safename); ok {
 		configFilename := fmt.Sprintf("%s/%s/config/%s.json",
 			verifierBaseDirname, objType, safename)
 
 		if err := os.Remove(configFilename); err != nil {
 			log.Println(err)
 		}
+		log.Printf("%s, verifier config entry delete, Done\n", key)
+	} else {
+		log.Printf("%s, verifier config entry delete, no config\n", key)
 	}
-
-	log.Printf("%s, verifier config entry delete, Done \n", key)
 }
 
 func removeVerifierStatus(objType string, safename string) {
@@ -297,6 +299,8 @@ func writeVerifierConfig(objType string, safename string,
 	if config == nil {
 		return
 	}
+	log.Printf("%s, writeVerifierConfig: RefCount %d\n",
+		safename, config.RefCount)
 	configFilename := fmt.Sprintf("%s/%s/config/%s.json",
 		verifierBaseDirname, objType, safename)
 

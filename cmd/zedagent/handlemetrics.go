@@ -759,6 +759,8 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 	getBaseOsStatus := func(partLabel string) *types.BaseOsStatus {
 		// Look for a matching IMGA/IMGB in baseOsStatus
 		// XXX sanity check on activated vs. curPart
+		// XXX are there cases where we've started download without
+		// having assigned a partLabel?
 		for _, bos := range baseOsStatus {
 			if bos.PartitionLabel == partLabel {
 				return &bos
@@ -781,6 +783,9 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 			swInfo.ShortVersion = bos.BaseOsVersion
 			swInfo.LongVersion = "" // XXX
 			if !bos.ErrorTime.IsZero() {
+				log.Printf("reportMetrics sending error time %v error %v for %s\n",
+					bos.ErrorTime, bos.Error,
+					bos.BaseOsVersion)
 				errInfo := new(zmet.ErrorInfo)
 				errInfo.Description = bos.Error
 				errTime, _ := ptypes.TimestampProto(bos.ErrorTime)
