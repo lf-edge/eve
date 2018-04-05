@@ -144,7 +144,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// XXX should we wait until we have at least one useable address?
+	// Wait until we have at least one useable address?
 	DNSctx := DNSContext{}
 	DNSctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
 
@@ -152,7 +152,7 @@ func main() {
 	go watch.WatchStatus(DNSDirname, networkStatusChanges)
 
 	log.Printf("Waiting until we have some uplinks with usable addresses\n")
-	for types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus) == 0 && !force{
+	for types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus) == 0 && !force {
 		select {
 		case change := <-networkStatusChanges:
 			watch.HandleStatusEvent(change, &DNSctx,
@@ -179,8 +179,6 @@ func main() {
 	xenCtx := imageLoggerContext{}
 
 	// Start sender of log events
-	// XXX or we run this in main routine and the logDirChanges loop
-	// in a go routine??
 	go processEvents(currentPartition, loggerChan)
 
 	// The OtherPartition files will not change hence we can just
@@ -266,7 +264,8 @@ func handleDNSModify(ctxArg interface{}, statusFilename string,
 	deviceNetworkStatus = *status
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
 	ctx.usableAddressCount = newAddrCount
-	log.Printf("handleDNSModify done for %s\n", statusFilename)
+	log.Printf("handleDNSModify done for %s; %d usable\n",
+		statusFilename, newAddrCount)
 }
 
 func handleDNSDelete(ctxArg interface{}, statusFilename string) {
@@ -349,7 +348,7 @@ func HandleLogEvent(event logEntry, reportLogs *zmet.LogBundle, counter int) {
 	logDetails.Iid = event.iid
 	logDetails.Msgid = uint64(msgId)
 	reportLogs.Log = append(reportLogs.Log, logDetails)
-	// XXX count bytes. Limit to << 64k
+	// XXX count bytes instead of messages? Limit to << 64k
 }
 
 func sendProtoStrForLogs(reportLogs *zmet.LogBundle, image string,
@@ -451,7 +450,7 @@ func HandleLogDirEvent(change string, logDirName string, ctx interface{},
 func handleXenLogDirModify(context interface{},
 	filename string, source string) {
 
-	if strings.Compare(source,"hypervisor") == 0 {
+	if strings.Compare(source, "hypervisor") == 0 {
 		if debug {
 			log.Println("Ignoring hypervisor log while sending domU log")
 		}
@@ -490,7 +489,7 @@ func createXenLogger(ctx *imageLoggerContext, filename string, source string) {
 		reader:   reader,
 	}
 	r := imageLogfileReader{logfileReader: r0,
-		image:   source, // XXX used?
+		image:   source,
 		logChan: make(chan logEntry),
 	}
 
@@ -587,7 +586,7 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 			break
 		}
 		// remove trailing "/n" from line
-		line = line[0:len(line)-1]
+		line = line[0 : len(line)-1]
 		// XXX parse timestamp and remove it from line (if present)
 		// otherwise leave timestamp unitialized
 		parsedDateAndTime, err := parseDateTime(line)

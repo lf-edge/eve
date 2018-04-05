@@ -964,7 +964,7 @@ func handleDNSModify(ctxArg interface{}, statusFilename string,
 
 	log.Printf("handleDNSModify for %s\n", statusFilename)
 	deviceNetworkStatus = *status
-	log.Printf("handleDNSModify %d free uplinks addresses; %d any %d\n",
+	log.Printf("handleDNSModify %d free uplinks addresses; %d any\n",
 		types.CountLocalAddrFree(deviceNetworkStatus, ""),
 		types.CountLocalAddrAny(deviceNetworkStatus, ""))
 	log.Printf("handleDNSModify done for %s\n", statusFilename)
