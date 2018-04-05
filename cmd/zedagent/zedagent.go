@@ -439,8 +439,7 @@ func main() {
 					err)
 			} else {
 				log.Printf("got NetworkMetrics %v\n", m)
-				m1 := *(m.(*interface{}))
-				networkMetrics = m1.(types.NetworkMetrics)
+				networkMetrics = types.CastNetworkMetrics(m)
 			}
 
 		case change := <-subClientMetrics.C:
