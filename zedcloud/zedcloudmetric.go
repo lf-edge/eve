@@ -33,12 +33,11 @@ type urlcloudMetrics struct {
 // Key is ifname string
 type metricsMap map[string]zedcloudMetric
 
-var metrics metricsMap
+var metrics metricsMap = make(metricsMap)
 
 func maybeInit(ifname string) {
 	if metrics == nil {
-		log.Printf("create zedcloudmetric map\n")
-		metrics = make(metricsMap)
+		log.Fatal("no zedcloudmetric map\n")
 	}
 	if _, ok := metrics[ifname]; !ok {
 		log.Printf("create zedcloudmetric for %s\n", ifname)
