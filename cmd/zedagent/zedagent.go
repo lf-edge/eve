@@ -433,38 +433,43 @@ func main() {
 
 		case change := <-subNetworkMetrics.C:
 			subNetworkMetrics.ProcessChange(change)
-			res, err := subNetworkMetrics.Get("global")
+			m, err := subNetworkMetrics.Get("global")
 			if err != nil {
 				log.Printf("subNetworkMetrics.Get failed: %s\n",
 					err)
-			}
-			if res != nil {
-				networkMetrics = res.(types.NetworkMetrics)
+			} else {
+				networkMetrics = m.(types.NetworkMetrics)
 			}
 
 		case change := <-subClientMetrics.C:
 			subClientMetrics.ProcessChange(change)
-			clientMetrics, err = subClientMetrics.Get("global")
+			m, err := subClientMetrics.Get("global")
 			if err != nil {
 				log.Printf("subClientMetrics.Get failed: %s\n",
 					err)
+			} else {
+				clientMetrics = m
 			}
 
 		case change := <-subLogmanagerMetrics.C:
 			subLogmanagerMetrics.ProcessChange(change)
-			logmanagerMetrics, err = subLogmanagerMetrics.Get("global")
+			m, err := subLogmanagerMetrics.Get("global")
 			if err != nil {
 				log.Printf("subLogmanagerMetrics.Get failed: %s\n",
 					err)
+			} else {
+				logmanagerMetrics = m
 			}
+
 		case change := <-subDownloaderMetrics.C:
 			subDownloaderMetrics.ProcessChange(change)
-			downloaderMetrics, err = subDownloaderMetrics.Get("global")
+			m, err := subDownloaderMetrics.Get("global")
 			if err != nil {
 				log.Printf("subDownloaderMetrics.Get failed: %s\n",
 					err)
+			} else {
+				downloaderMetrics = m
 			}
-
 		}
 	}
 }
