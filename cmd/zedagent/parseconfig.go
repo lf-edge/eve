@@ -747,6 +747,18 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCont
 					newU32)
 				configItemCurrent.fallbackIfCloudGoneTime = newU32
 			}
+		case "mintimeUpdateSuccess":
+			if newU32 == 0 {
+				// Revert to default
+				newU32 = configItemDefaults.mintimeUpdateSuccess
+			}
+			if newU32 != configItemCurrent.mintimeUpdateSuccess {
+				log.Printf("parseConfigItems: %s change from %d to %d\n",
+					item.Key,
+					configItemCurrent.mintimeUpdateSuccess,
+					newU32)
+				configItemCurrent.mintimeUpdateSuccess = newU32
+			}
 		// XXX what other configItems should we add?
 		default:
 			log.Printf("Unknown configItem %s\n", item.Key)

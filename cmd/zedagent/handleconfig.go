@@ -49,7 +49,8 @@ type configItems struct {
 	configInterval          uint32 // Try get of device config
 	metricInterval          uint32 // push metrics to cloud
 	resetIfCloudGoneTime    uint32 // reboot if no cloud connectivity
-	fallbackIfCloudGoneTime uint32 // ... and shorter during upgrade
+	fallbackIfCloudGoneTime uint32 // ... and shorter during update
+	mintimeUpdateSuccess	uint32 // time before zedagent declares success
 	// XXX add max space for downloads?
 	// XXX add LTE uplink usage policy?
 }
@@ -60,7 +61,8 @@ type configItems struct {
 // if we don't hear anything from the cloud in a week, then we reboot,
 // and during a post-upgrade boot that time is reduced to 10 minutes.
 var configItemDefaults = configItems{configInterval: 60, metricInterval: 60,
-	resetIfCloudGoneTime: 7 * 24 * 3600, fallbackIfCloudGoneTime: 600}
+	resetIfCloudGoneTime: 7 * 24 * 3600, fallbackIfCloudGoneTime: 600,
+	mintimeUpdateSuccess: 600}
 
 // XXX	resetIfCloudGoneTime: 300, fallbackIfCloudGoneTime: 60}
 
@@ -202,11 +204,15 @@ func getLatestConfig(url string, iteration int, upgradeInprogress *bool,
 		}
 		return false
 	} else {
+		// Wait for a bit to detect an agent crash. Should run for
+		// at least N minutes to make sure we don't hit a watchdog.
+		successLimit := time.Second * time.Duration(configItemCurrent.mintimeUpdateSuccess)
 		// now cloud connectivity is good, mark partition state as
 		// active if it was inprogress
 		// XXX down the road we want more diagnostics and validation
 		// before we do this.
-		if *upgradeInprogress && zboot.IsCurrentPartitionStateInProgress() {
+		if timePassed > successLimit && *upgradeInprogress &&
+			zboot.IsCurrentPartitionStateInProgress() {
 			curPart := zboot.GetCurrentPartition()
 			log.Printf("Config Fetch Task, curPart %s inprogress\n",
 				curPart)
