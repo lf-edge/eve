@@ -163,7 +163,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	log.Printf("Starting %s\n, agentName")
+	log.Printf("Starting %s\n", agentName)
 	watch.CleanupRestarted(agentName)
 
 	// Tell ourselves to go ahead
