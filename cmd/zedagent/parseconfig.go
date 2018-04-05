@@ -57,7 +57,7 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext) 
 	// we allow it to be installed into the inprogress partition.
 	if zboot.IsOtherPartitionStateInProgress() {
 		otherPart := zboot.GetOtherPartition()
-		log.Printf("Other %s partition contains failed upgrade\n",
+		log.Printf("Other %s partition contains failed update\n",
 			otherPart)
 	}
 
@@ -927,7 +927,7 @@ func validateBaseOsConfig(baseOsList []*types.BaseOsConfig) bool {
 }
 
 // Returns the number of BaseOsConfig that are new or modified
-// XXX not useful for caller if we want to catch failed upgrades up front.
+// XXX not useful for caller if we want to catch failed updates up front.
 // XXX should we initially populate BaseOsStyatus with what we find in
 // the partitions? Makes the checks simpler.
 func createBaseOsConfig(baseOsList []*types.BaseOsConfig, certList []*types.CertObjConfig) int {
