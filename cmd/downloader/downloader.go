@@ -190,7 +190,10 @@ func main() {
 				handleBaseOsObjModify,
 				handleBaseOsObjDelete, nil)
 		case <-publishTimer.C:
-			pub.Publish("global", zedcloud.GetCloudMetrics())
+			err := pub.Publish("global", zedcloud.GetCloudMetrics())
+			if err != nil {
+				log.Println(err)
+			}
 		}
 	}
 }

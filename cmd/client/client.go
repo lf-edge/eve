@@ -155,7 +155,10 @@ func main() {
 				log.Printf("Already have a UUID %s; declaring success\n",
 					oldUUID.String())
 				// Likely zero metrics
-				pub.Publish("global", zedcloud.GetCloudMetrics())
+				err := pub.Publish("global", zedcloud.GetCloudMetrics())
+				if err != nil {
+					log.Println(err)
+				}
 				return
 			}
 			log.Printf("Waiting for some uplink addresses to use\n")
@@ -498,7 +501,10 @@ func main() {
 		if oldFlag {
 			log.Printf("XXX ping not supported using %s\n",
 				serverName)
-			pub.Publish("global", zedcloud.GetCloudMetrics())
+			err := pub.Publish("global", zedcloud.GetCloudMetrics())
+			if err != nil {
+				log.Println(err)
+			}
 			return
 		}
 		url := "/api/v1/edgedevice/ping"
@@ -619,7 +625,10 @@ func main() {
 			log.Printf("XXX lookupParam not yet supported using %s\n",
 				serverName)
 			os.Remove(zedrouterConfigFileName)
-			pub.Publish("global", zedcloud.GetCloudMetrics())
+			err := pub.Publish("global", zedcloud.GetCloudMetrics())
+			if err != nil {
+				log.Println(err)
+			}
 			return
 		}
 		b, err := ioutil.ReadFile(uuidFileName)
@@ -656,7 +665,10 @@ func main() {
 		if device.EID == nil {
 			log.Printf("Did not receive an EID\n")
 			os.Remove(zedserverConfigFileName)
-			pub.Publish("global", zedcloud.GetCloudMetrics())
+			err := pub.Publish("global", zedcloud.GetCloudMetrics())
+			if err != nil {
+				log.Println(err)
+			}
 			return
 		}
 
@@ -769,7 +781,10 @@ func main() {
 		}
 		writeNetworkConfig(&config, zedrouterConfigFileName)
 	}
-	pub.Publish("global", zedcloud.GetCloudMetrics())
+	err = pub.Publish("global", zedcloud.GetCloudMetrics())
+	if err != nil {
+		log.Println(err)
+	}
 }
 
 func writeNetworkConfig(config *types.AppNetworkConfig,

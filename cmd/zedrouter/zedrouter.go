@@ -208,7 +208,10 @@ func main() {
 				log.Println("publishTimer at",
 					time.Now())
 			}
-			pub.Publish("global", getNetworkMetrics())
+			err := pub.Publish("global", getNetworkMetrics())
+			if err != nil {
+				log.Println(err)
+			}
 		}
 	}
 }
