@@ -20,7 +20,8 @@ func getNetworkMetrics() types.NetworkMetrics {
 		log.Println(err)
 		return types.NetworkMetrics{}
 	}
-	// XXX call iptables once to get counters
+	// Call iptables once to get counters
+	ac := fetchIprulesCounters()
 
 	for _, ni := range network {
 		metric := types.NetworkMetric{
@@ -34,12 +35,11 @@ func getNetworkMetrics() types.NetworkMetrics {
 			TxErrors: ni.Errout,
 			RxErrors: ni.Errin,
 		}
-		// XXX extract iptables counters
-		// XXX note that Tx is transmitted to bu/bo interface
-		metric.TxAclDrops = 0
-		metric.RxAclDrops = 0
-		metric.TxAclRateLimitDrops = 0
-		metric.RxAclRateLimitDrops = 0
+		// Note that Tx is transmitted to bu/bo interface
+		metric.TxAclDrops = getIpRuleAclDrop(ac, ni.Name, false)
+		metric.RxAclDrops = getIpRuleAclDrop(ac, ni.Name, true)
+		metric.TxAclRateLimitDrops = getIpRuleAclRateLimitDrop(ac, ni.Name, false)
+		metric.RxAclRateLimitDrops = getIpRuleAclRateLimitDrop(ac, ni.Name, true)
 		metrics = append(metrics, metric)
 	}
 	return types.NetworkMetrics{MetricList: metrics}
