@@ -576,7 +576,7 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 	for {
 		line, err := r.reader.ReadString('\n')
 		if err != nil {
-			// XXX do we need to look for truncatation during
+			// XXX do we need to look for file truncation during
 			// this loop?
 			if debug {
 				log.Println(err)
@@ -586,7 +586,8 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 			}
 			break
 		}
-		// XXX remove trailing "/n" from line
+		// remove trailing "/n" from line
+		line = line[0:len(line)-1]
 		// XXX parse timestamp and remove it from line (if present)
 		// otherwise leave timestamp unitialized
 		parsedDateAndTime, err := parseDateTime(line)
