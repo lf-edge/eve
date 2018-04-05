@@ -49,7 +49,8 @@ type configItems struct {
 	configInterval          uint32 // Try get of device config
 	metricInterval          uint32 // push metrics to cloud
 	resetIfCloudGoneTime    uint32 // reboot if no cloud connectivity
-	fallbackIfCloudGoneTime uint32 // ... and shorter during upgrade
+	fallbackIfCloudGoneTime uint32 // ... and shorter during update
+	mintimeUpdateSuccess	uint32 // time before zedagent declares success
 	// XXX add max space for downloads?
 	// XXX add LTE uplink usage policy?
 }
@@ -58,9 +59,10 @@ type configItems struct {
 // We do a GET of config every 60 seconds,
 // PUT of metrics every 60 seconds,
 // if we don't hear anything from the cloud in a week, then we reboot,
-// and during a post-upgrade boot that time is reduced to 10 minutes.
+// and during a post-update boot that time is reduced to 10 minutes.
 var configItemDefaults = configItems{configInterval: 60, metricInterval: 60,
-	resetIfCloudGoneTime: 7 * 24 * 3600, fallbackIfCloudGoneTime: 600}
+	resetIfCloudGoneTime: 7 * 24 * 3600, fallbackIfCloudGoneTime: 600,
+	mintimeUpdateSuccess: 600}
 
 // XXX	resetIfCloudGoneTime: 300, fallbackIfCloudGoneTime: 60}
 
@@ -124,9 +126,9 @@ func configTimerTask(handleChannel chan interface{},
 	configUrl := serverName + "/" + configApi
 	getconfigCtx.lastReceivedConfigFromCloud = time.Now()
 	iteration := 0
-	upgradeInprogress := zboot.IsCurrentPartitionStateInProgress()
+	updateInprogress := zboot.IsCurrentPartitionStateInProgress()
 	rebootFlag := getLatestConfig(configUrl, iteration,
-		&upgradeInprogress, getconfigCtx)
+		&updateInprogress, getconfigCtx)
 
 	interval := time.Duration(configItemCurrent.configInterval) * time.Second
 	max := float64(interval)
@@ -140,7 +142,7 @@ func configTimerTask(handleChannel chan interface{},
 		// reboot flag is not set, go fetch new config
 		if rebootFlag == false {
 			rebootFlag = getLatestConfig(configUrl, iteration,
-				&upgradeInprogress, getconfigCtx)
+				&updateInprogress, getconfigCtx)
 		} else {
 			log.Printf("rebootFlag set; not getting config\n")
 		}
@@ -169,7 +171,7 @@ func updateConfigTimer(tickerHandle interface{}) {
 // until one succeeds in communicating with the cloud.
 // We use the iteration argument to start at a different point each time.
 // Returns a rebootFlag
-func getLatestConfig(url string, iteration int, upgradeInprogress *bool,
+func getLatestConfig(url string, iteration int, updateInprogress *bool,
 	getconfigCtx *getconfigContext) bool {
 
 	// Did we exceed the time limits?
@@ -182,7 +184,7 @@ func getLatestConfig(url string, iteration int, upgradeInprogress *bool,
 		execReboot(true)
 		return true
 	}
-	if *upgradeInprogress {
+	if *updateInprogress {
 		fallbackLimit := time.Second * time.Duration(configItemCurrent.fallbackIfCloudGoneTime)
 		if timePassed > fallbackLimit {
 			log.Printf("Exceeded fallback outage for cloud connectivity by %d seconds- rebooting\n",
@@ -202,18 +204,22 @@ func getLatestConfig(url string, iteration int, upgradeInprogress *bool,
 		}
 		return false
 	} else {
+		// Wait for a bit to detect an agent crash. Should run for
+		// at least N minutes to make sure we don't hit a watchdog.
+		successLimit := time.Second * time.Duration(configItemCurrent.mintimeUpdateSuccess)
 		// now cloud connectivity is good, mark partition state as
 		// active if it was inprogress
 		// XXX down the road we want more diagnostics and validation
 		// before we do this.
-		if *upgradeInprogress && zboot.IsCurrentPartitionStateInProgress() {
+		if timePassed > successLimit && *updateInprogress &&
+			zboot.IsCurrentPartitionStateInProgress() {
 			curPart := zboot.GetCurrentPartition()
 			log.Printf("Config Fetch Task, curPart %s inprogress\n",
 				curPart)
 			if err := zboot.MarkOtherPartitionStateActive(); err != nil {
 				log.Println(err)
 			} else {
-				*upgradeInprogress = false
+				*updateInprogress = false
 			}
 		}
 
@@ -222,7 +228,7 @@ func getLatestConfig(url string, iteration int, upgradeInprogress *bool,
 		// watchdog timer.
 		// We should only require this connectivity once every 24 hours
 		// or so using a setable policy in the watchdog, but have
-		// a short timeout during validation of a image post upgrade.
+		// a short timeout during validation of a image post update.
 		zboot.WatchdogOK()
 
 		if err := validateConfigMessage(url, resp); err != nil {
