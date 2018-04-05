@@ -436,6 +436,9 @@ func handleModify(ctxArg interface{}, key string, stateArg interface{}) {
 	if sub.ModifyHandler != nil {
 		(*sub.ModifyHandler)(sub.userCtx, key, stateArg)
 	}
+	if debug {
+		log.Printf("handleModify done for %s\n", key)
+	}
 }
 
 func handleDelete(ctxArg interface{}, key string) {

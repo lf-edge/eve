@@ -438,6 +438,7 @@ func main() {
 				log.Printf("subNetworkMetrics.Get failed: %s\n",
 					err)
 			} else {
+				log.Printf("got NetworkMetrics %v\n", m)
 				networkMetrics = m.(types.NetworkMetrics)
 			}
 
@@ -448,6 +449,7 @@ func main() {
 				log.Printf("subClientMetrics.Get failed: %s\n",
 					err)
 			} else {
+				log.Printf("got clientMetrics %v\n", m)
 				clientMetrics = m
 			}
 
@@ -458,6 +460,7 @@ func main() {
 				log.Printf("subLogmanagerMetrics.Get failed: %s\n",
 					err)
 			} else {
+				log.Printf("got logmanagerMetrics %v\n", m)
 				logmanagerMetrics = m
 			}
 
@@ -468,6 +471,7 @@ func main() {
 				log.Printf("subDownloaderMetrics.Get failed: %s\n",
 					err)
 			} else {
+				log.Printf("got downloaderMetrics %v\n", m)
 				downloaderMetrics = m
 			}
 		}
