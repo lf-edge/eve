@@ -42,7 +42,7 @@ const publishToSock = false     // XXX
 const subscribeFromDir = true   // XXX
 const subscribeFromSock = false // XXX
 
-const debug = false // XXX setable?
+const debug = true // XXX setable?
 
 // Usage:
 //  p1, err := pubsub.Publish("foo", fooStruct{})
@@ -219,7 +219,7 @@ func (pub *publication) Publish(key string, item interface{}) error {
 	}
 	// Do atomic rename to avoid partially written files
 	// XXX in same filesystem??
-	tmpfile, err := ioutil.TempFile("/tmp/", "pubsub")
+	tmpfile, err := ioutil.TempFile(dirName, "pubsub")
 	if err != nil {
 		errStr := fmt.Sprintf("Publish(%s, %s): %s",
 			agentName, pub.topic, err)
@@ -227,9 +227,6 @@ func (pub *publication) Publish(key string, item interface{}) error {
 	}
 	defer tmpfile.Close()
 	defer os.Remove(tmpfile.Name())
-	// XXX write to open file
-	// XXX was err = ioutil.WriteFile(tmpfile.Name(), b, 0644)
-	// XXX what is the return? int, error
 	_, err = tmpfile.Write(b)
 	if err != nil {
 		errStr := fmt.Sprintf("Publish(%s, %s): %s",
@@ -246,7 +243,6 @@ func (pub *publication) Publish(key string, item interface{}) error {
 			agentName, pub.topic, err)
 		return errors.New(errStr)
 	}
-
 	// XXX send update to all listeners - how? channel to listener -> connections?
 	return nil
 }
