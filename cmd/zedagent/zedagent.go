@@ -438,7 +438,9 @@ func main() {
 				log.Printf("subNetworkMetrics.Get failed: %s\n",
 					err)
 			}
-			networkMetrics = res.(types.NetworkMetrics)
+			if res != nil {
+				networkMetrics = res.(types.NetworkMetrics)
+			}
 
 		case change := <-subClientMetrics.C:
 			subClientMetrics.ProcessChange(change)
