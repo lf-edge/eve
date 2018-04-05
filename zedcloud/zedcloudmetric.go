@@ -104,21 +104,6 @@ func CastCloudMetrics(in interface{}) metricsMap {
 	return output
 }
 
-// XXX Need to walk and do type assertions for each map member
-// XXX incomplete; remove or fix
-func CastCloudMetrics2(in interface{}) metricsMap {
-	in1 := *(in.(*interface{}))
-	in2 := in1.(map[string]interface{})
-	o1 := make(metricsMap)
-	for k1, e1 := range in2 {
-		log.Printf("Cast: %s: %v %t\n", k1, e1, e1)
-		// XXX blows up on next line; need to do a deep type assertions
-		elem := e1.(zedcloudMetric)
-		o1[k1] = elem
-	}
-	return o1
-}
-
 // Concatenate different interfaces and URLs into a union map
 func Append(cms metricsMap, cms1 metricsMap) metricsMap {
 	for ifname, cm1 := range cms1 {

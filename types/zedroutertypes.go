@@ -4,6 +4,7 @@
 package types
 
 import (
+	"encoding/json"
 	"errors"
 	"github.com/eriknordmark/ipinfo"
 	"log"
@@ -338,6 +339,21 @@ type NetworkMetric struct {
 	RxAclDrops          uint64 // For implicit deny/drop at end
 	TxAclRateLimitDrops uint64 // For all rate limited rules
 	RxAclRateLimitDrops uint64 // For all rate limited rules
+}
+
+// XXX this works but ugly as ...
+// Alternative seems to be a deep walk with type assertions in order
+// to produce the map of map of map with the correct type.
+func CastNetworkMetrics(in interface{}) NetworkMetrics {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastNetworkMetrics")
+	}
+	var output NetworkMetrics
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "json Unmarshal in CastNetworkMetrics")
+	}
+	return output
 }
 
 // Similar support as in draft-ietf-netmod-acl-model
