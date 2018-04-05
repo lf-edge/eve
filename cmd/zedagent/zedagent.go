@@ -164,7 +164,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	log.Printf("Starting %s\n, agentName")
+	log.Printf("Starting %s\n", agentName)
 	watch.CleanupRestarted(agentName)
 
 	// Tell ourselves to go ahead
@@ -645,6 +645,7 @@ func handleBaseOsModify(ctxArg interface{}, statusFilename string,
 
 	// update the version field, uuis being the same
 	status.UUIDandVersion = config.UUIDandVersion
+	baseOsStatusSet(uuidStr, status)
 	writeBaseOsStatus(status, uuidStr)
 
 	addOrUpdateBaseOsConfig(uuidStr, *config)

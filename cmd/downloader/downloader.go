@@ -502,6 +502,11 @@ func downloaderInit() *zedUpload.DronaCtx {
 	// is used. Place in GlobalDownloadStatus. Calculate remaining space.
 	totalUsed := sizeFromDir(objectDownloadDirname)
 	globalStatus.UsedSpace = uint(types.RoundupToKB(totalUsed))
+	// Note that the UsedSpace calculated during initialization can exceed
+	// MaxSpace, and RemainingSpace is a uint!
+	if globalStatus.UsedSpace > globalConfig.MaxSpace {
+		globalStatus.UsedSpace = globalConfig.MaxSpace
+	}
 	updateRemainingSpace()
 
 	// create drona interface
@@ -962,7 +967,7 @@ func handleDNSModify(ctxArg interface{}, statusFilename string,
 
 	log.Printf("handleDNSModify for %s\n", statusFilename)
 	deviceNetworkStatus = *status
-	log.Printf("handleDNSModify %d free uplinks addresses; %d any %d\n",
+	log.Printf("handleDNSModify %d free uplinks addresses; %d any\n",
 		types.CountLocalAddrFree(deviceNetworkStatus, ""),
 		types.CountLocalAddrAny(deviceNetworkStatus, ""))
 	log.Printf("handleDNSModify done for %s\n", statusFilename)
