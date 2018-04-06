@@ -72,6 +72,16 @@ func HandleDeferred(event time.Time) {
 	}
 }
 
+// Check if there are any deferred items for this key
+func HasDeferred(key string) bool {
+	if debug {
+		log.Printf("HasDeferred(%s) map %d\n",
+			key, len(deferredItems))
+	}
+	_, ok := deferredItems[key]
+	return ok
+}
+
 // Remove any item for the specific key. If no items left then stop timer.
 func RemoveDeferred(key string) {
 	if debug {
