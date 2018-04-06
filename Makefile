@@ -57,9 +57,8 @@ fallback.img: rootfs.img config.img
 
 .PHONY: pkg_installer
 pkg_installer: rootfs.img config.img
-	./parse-pkgs.sh pkg/installer/Dockerfile.in > pkg/installer/Dockerfile
 	cp rootfs.img config.img pkg/installer
-	linuxkit pkg build --disable-content-trust pkg/installer
+	make -C pkg PKGS=installer LINUXKIT_OPTS="--disable-content-trust --disable-cache" forcebuild
 
 #
 # INSTALLER IMAGE CREATION:

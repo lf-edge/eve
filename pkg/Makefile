@@ -12,13 +12,13 @@ PKGS = grub xen kernel kmod_pfring xen-tools dnsmasq gpt-tools dom0-ztools	\
 build: dockerfiles
 	@set -e; for d in $(PKGS); do linuxkit pkg build ${LINUXKIT_OPTS} "$$d"; done
 
-push:
+push: dockerfiles
 	@set -e; for d in $(PKGS); do linuxkit pkg push ${LINUXKIT_OPTS} "$$d"; done
 
-forcepush:
+forcepush: dockerfiles
 	@set -e; for d in $(PKGS); do linuxkit pkg push --force ${LINUXKIT_OPTS} "$$d"; done
 
-forcebuild:
+forcebuild: dockerfiles
 	@set -e; for d in $(PKGS); do linuxkit pkg build --force ${LINUXKIT_OPTS} "$$d"; done
 
 show-tag:
