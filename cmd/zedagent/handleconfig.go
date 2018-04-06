@@ -229,6 +229,7 @@ func getLatestConfig(url string, iteration int, updateInprogress *bool,
 				log.Println(err)
 			} else {
 				*updateInprogress = false
+				publishDeviceInfo = true
 			}
 		}
 	}

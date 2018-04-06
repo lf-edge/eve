@@ -825,9 +825,7 @@ func writeBaseOsStatus(baseOsStatus *types.BaseOsStatus, uuidStr string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	// XXX For now we might trigger more often than needed
-	// XXX should check whether the status changed
-	PublishDeviceInfoToZedCloud(baseOsStatusMap, devCtx.assignableAdapters)
+	publishDeviceInfo = true
 }
 
 func getCertObjects(uuidAndVersion types.UUIDandVersion,

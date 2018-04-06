@@ -145,6 +145,11 @@ var debug = false
 // XXX temporary hack for writeBaseOsStatus
 var devCtx deviceContext
 
+// XXX used by baseOs code to indicate that something changed
+// Will not be needed once we have a separate baseosmgr since
+// we'll react to baseOsStatus changes.
+var publishDeviceInfo bool
+
 func main() {
 	logf, err := agentlog.Init(agentName)
 	if err != nil {
@@ -342,6 +347,13 @@ func main() {
 	domainStatusChanges := make(chan string)
 	go watch.WatchStatus(domainStatusDirname, domainStatusChanges)
 	for {
+		if publishDeviceInfo {
+			log.Printf("BaseOs triggered PublishDeviceInfo\n")
+			PublishDeviceInfoToZedCloud(baseOsStatusMap,
+				devCtx.assignableAdapters)
+			publishDeviceInfo = false
+		}
+
 		select {
 
 		case change := <-restartChanges:
@@ -425,7 +437,7 @@ func main() {
 				nil)
 			// UsedByUUID could have changed ...
 			if domainCtx.TriggerDeviceInfo {
-				log.Printf("Triggered PublishDeviceInfo\n")
+				log.Printf("UsedByUUID triggered PublishDeviceInfo\n")
 				PublishDeviceInfoToZedCloud(baseOsStatusMap,
 					devCtx.assignableAdapters)
 				domainCtx.TriggerDeviceInfo = false
@@ -629,12 +641,11 @@ func handleDNSDelete(ctxArg interface{}, statusFilename string) {
 func handleBaseOsCreate(ctxArg interface{}, statusFilename string,
 	configArg interface{}) {
 	config := configArg.(*types.BaseOsConfig)
-	ctx := ctxArg.(*deviceContext)
 	uuidStr := config.UUIDandVersion.UUID.String()
 
 	log.Printf("handleBaseOsCreate for %s\n", uuidStr)
 	addOrUpdateBaseOsConfig(uuidStr, *config)
-	PublishDeviceInfoToZedCloud(baseOsStatusMap, ctx.assignableAdapters)
+	publishDeviceInfo = true
 }
 
 // base os config modify event
@@ -642,7 +653,6 @@ func handleBaseOsModify(ctxArg interface{}, statusFilename string,
 	configArg interface{}, statusArg interface{}) {
 	config := configArg.(*types.BaseOsConfig)
 	status := statusArg.(*types.BaseOsStatus)
-	ctx := ctxArg.(*deviceContext)
 	uuidStr := config.UUIDandVersion.UUID.String()
 
 	log.Printf("handleBaseOsModify for %s\n", status.BaseOsVersion)
@@ -659,18 +669,17 @@ func handleBaseOsModify(ctxArg interface{}, statusFilename string,
 	writeBaseOsStatus(status, uuidStr)
 
 	addOrUpdateBaseOsConfig(uuidStr, *config)
-	PublishDeviceInfoToZedCloud(baseOsStatusMap, ctx.assignableAdapters)
+	publishDeviceInfo = true
 }
 
 // base os config delete event
 func handleBaseOsDelete(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
 	status := statusArg.(*types.BaseOsStatus)
-	ctx := ctxArg.(*deviceContext)
 
 	log.Printf("handleBaseOsDelete for %s\n", status.BaseOsVersion)
 	removeBaseOsConfig(status.UUIDandVersion.UUID.String())
-	PublishDeviceInfoToZedCloud(baseOsStatusMap, ctx.assignableAdapters)
+	publishDeviceInfo = true
 }
 
 // certificate config/status event handlers

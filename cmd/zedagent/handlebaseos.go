@@ -301,6 +301,7 @@ func doBaseOsActivate(uuidStr string, config types.BaseOsConfig,
 
 	log.Printf("doBaseOsActivate: %s activating\n", uuidStr)
 	zboot.SetOtherPartitionStateUpdating()
+	publishDeviceInfo = true
 
 	// Remove any old log files for a previous instance
 	logdir := fmt.Sprintf("/persist/%s/log", config.PartitionLabel)
