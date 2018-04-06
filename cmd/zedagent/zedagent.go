@@ -113,6 +113,7 @@ var deviceNetworkStatus types.DeviceNetworkStatus
 var clientMetrics interface{}
 var logmanagerMetrics interface{}
 var downloaderMetrics interface{}
+var networkMetrics types.NetworkMetrics
 
 // Dummy used when we don't have anything to pass
 type dummyContext struct {
@@ -275,7 +276,13 @@ func main() {
 		getconfigCtx.ledManagerCount = 2
 	}
 
-	// Subscribe to network metrics from different agents
+	// Subscribe to network metrics from zedrouter
+	subNetworkMetrics, err := pubsub.Subscribe("zedrouter",
+		types.NetworkMetrics{}, &dummyContext{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	// Subscribe to cloud metrics from different agents
 	cms := zedcloud.GetCloudMetrics()
 	subClientMetrics, err := pubsub.Subscribe("zedclient", cms,
 		&dummyContext{})
@@ -423,28 +430,46 @@ func main() {
 
 		case change := <-aaChanges:
 			aaFunc(&aaCtx, change)
+
+		case change := <-subNetworkMetrics.C:
+			subNetworkMetrics.ProcessChange(change)
+			m, err := subNetworkMetrics.Get("global")
+			if err != nil {
+				log.Printf("subNetworkMetrics.Get failed: %s\n",
+					err)
+			} else {
+				networkMetrics = types.CastNetworkMetrics(m)
+			}
+
 		case change := <-subClientMetrics.C:
 			subClientMetrics.ProcessChange(change)
-			clientMetrics, err = subClientMetrics.Get("global")
+			m, err := subClientMetrics.Get("global")
 			if err != nil {
 				log.Printf("subClientMetrics.Get failed: %s\n",
 					err)
+			} else {
+				clientMetrics = m
 			}
+
 		case change := <-subLogmanagerMetrics.C:
 			subLogmanagerMetrics.ProcessChange(change)
-			logmanagerMetrics, err = subLogmanagerMetrics.Get("global")
+			m, err := subLogmanagerMetrics.Get("global")
 			if err != nil {
 				log.Printf("subLogmanagerMetrics.Get failed: %s\n",
 					err)
+			} else {
+				logmanagerMetrics = m
 			}
+
 		case change := <-subDownloaderMetrics.C:
 			subDownloaderMetrics.ProcessChange(change)
-			downloaderMetrics, err = subDownloaderMetrics.Get("global")
+			m, err := subDownloaderMetrics.Get("global")
 			if err != nil {
 				log.Printf("subDownloaderMetrics.Get failed: %s\n",
 					err)
+			} else {
+				downloaderMetrics = m
 			}
-
 		}
 	}
 }

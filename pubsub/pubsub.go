@@ -217,15 +217,32 @@ func (pub *publication) Publish(key string, item interface{}) error {
 	if err != nil {
 		log.Fatal(err, "json Marshal in Publish")
 	}
-	// We assume a /var/run path hence we don't need to worry about
-	// partial writes/empty files due to a kernel crash.
-	err = ioutil.WriteFile(fileName, b, 0644)
+	// Do atomic rename to avoid partially written files
+	// XXX in same filesystem??
+	tmpfile, err := ioutil.TempFile(dirName, "pubsub")
 	if err != nil {
 		errStr := fmt.Sprintf("Publish(%s, %s): %s",
 			agentName, pub.topic, err)
 		return errors.New(errStr)
 	}
-
+	defer tmpfile.Close()
+	defer os.Remove(tmpfile.Name())
+	_, err = tmpfile.Write(b)
+	if err != nil {
+		errStr := fmt.Sprintf("Publish(%s, %s): %s",
+			agentName, pub.topic, err)
+		return errors.New(errStr)
+	}
+	if err := tmpfile.Close(); err != nil {
+		errStr := fmt.Sprintf("Publish(%s, %s): %s",
+			agentName, pub.topic, err)
+		return errors.New(errStr)
+	}
+	if err := os.Rename(tmpfile.Name(), fileName); err != nil {
+		errStr := fmt.Sprintf("Publish(%s, %s): %s",
+			agentName, pub.topic, err)
+		return errors.New(errStr)
+	}
 	// XXX send update to all listeners - how? channel to listener -> connections?
 	return nil
 }
@@ -418,6 +435,9 @@ func handleModify(ctxArg interface{}, key string, stateArg interface{}) {
 	sub.km.key[key] = stateArg
 	if sub.ModifyHandler != nil {
 		(*sub.ModifyHandler)(sub.userCtx, key, stateArg)
+	}
+	if debug {
+		log.Printf("handleModify done for %s\n", key)
 	}
 }
 

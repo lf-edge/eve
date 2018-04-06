@@ -246,7 +246,10 @@ func main() {
 				log.Println("publishTimer at",
 					time.Now())
 			}
-			pub.Publish("global", zedcloud.GetCloudMetrics())
+			err := pub.Publish("global", zedcloud.GetCloudMetrics())
+			if err != nil {
+				log.Println(err)
+			}
 		}
 	}
 }
@@ -428,8 +431,10 @@ func HandleLogDirEvent(change string, logDirName string, ctx interface{},
 	operation := string(change[0])
 	fileName := string(change[2:])
 	if !strings.HasSuffix(fileName, ".log") {
-		log.Printf("Ignoring file <%s> operation %s\n",
-			fileName, operation)
+		if debug {
+			log.Printf("Ignoring file <%s> operation %s\n",
+				fileName, operation)
+		}
 		return
 	}
 	logFilePath := logDirName + "/" + fileName

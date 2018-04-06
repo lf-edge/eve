@@ -387,41 +387,41 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 		ReportDeviceMetric.Memory.AvailPercentage =
 			(100.0 - (ram.UsedPercent))
 	}
-	//find network related info...
-	network, err := psutilnet.IOCounters(true)
-	if err != nil {
-		log.Println(err)
-	} else {
-		// Only report stats for the uplinks plus dbo1x0
-		ifNames := reportInterfaces(deviceNetworkStatus)
-		for _, ifName := range ifNames {
-			var ni *psutilnet.IOCountersStat
-			for _, networkInfo := range network {
-				if ifName == networkInfo.Name {
-					ni = &networkInfo
-					break
-				}
+	// Use the network metrics from zedrouter subscription
+	// Only report stats for the uplinks plus dbo1x0
+	ifNames := types.ReportInterfaces(deviceNetworkStatus)
+	for _, ifName := range ifNames {
+		var metric *types.NetworkMetric
+		for _, m := range networkMetrics.MetricList {
+			if ifName == m.IfName {
+				metric = &m
+				break
 			}
-			if ni == nil {
-				continue
-			}
-			networkDetails := new(zmet.NetworkMetric)
-			networkDetails.IName = ni.Name
-			networkDetails.TxPkts = ni.PacketsSent
-			networkDetails.RxPkts = ni.PacketsRecv
-			networkDetails.TxBytes = ni.BytesSent
-			networkDetails.RxBytes = ni.BytesRecv
-			networkDetails.TxDrops = ni.Dropout
-			networkDetails.RxDrops = ni.Dropin
-			networkDetails.TxErrors = ni.Errout
-			networkDetails.RxErrors = ni.Errin
-			ReportDeviceMetric.Network = append(ReportDeviceMetric.Network,
-				networkDetails)
 		}
-		if debug {
-			log.Println("network metrics: ",
-				ReportDeviceMetric.Network)
+		if metric == nil {
+			continue
 		}
+		networkDetails := new(zmet.NetworkMetric)
+		networkDetails.IName = metric.IfName
+		networkDetails.TxPkts = metric.TxPkts
+		networkDetails.RxPkts = metric.RxPkts
+		networkDetails.TxBytes = metric.TxBytes
+		networkDetails.RxBytes = metric.RxBytes
+		networkDetails.TxDrops = metric.TxDrops
+		networkDetails.RxDrops = metric.RxDrops
+		networkDetails.TxErrors = metric.TxErrors
+		networkDetails.RxErrors = metric.RxErrors
+		networkDetails.TxAclDrops = metric.TxAclDrops
+		networkDetails.RxAclDrops = metric.RxAclDrops
+		networkDetails.TxAclRateLimitDrops = metric.TxAclRateLimitDrops
+		networkDetails.RxAclRateLimitDrops = metric.RxAclRateLimitDrops
+		ReportDeviceMetric.Network = append(ReportDeviceMetric.Network,
+			networkDetails)
+	}
+	// XXX
+	if true || debug {
+		log.Println("network metrics: ",
+			ReportDeviceMetric.Network)
 	}
 	// Collect zedcloud metrics from ourselves and other agents
 	cms := zedcloud.GetCloudMetrics()
@@ -540,85 +540,85 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 			if debug {
 				log.Printf("Nothing to report for Domain-0\n")
 			}
-		} else {
-
-			if len(cpuStorageStat) > 2 {
-				ReportAppMetric := new(zmet.AppMetric)
-				ReportAppMetric.Cpu = new(zmet.AppCpuMetric)
-				ReportAppMetric.Memory = new(zmet.MemoryMetric)
-
-				domainName := cpuStorageStat[arr][1]
-				ds := LookupDomainStatus(domainName)
-				if ds == nil {
-					log.Printf("Did not find status for domainName %s\n",
-						domainName)
-					// Note that it is included in the
-					// metrics without a name and uuid.
-					// XXX ignore and report next time?
-					// Avoid nil checks
-					ds = &types.DomainStatus{}
-				} else {
-					ReportAppMetric.AppName = ds.DisplayName
-					ReportAppMetric.AppID = ds.UUIDandVersion.UUID.String()
-				}
-
-				appCpuTotal, _ := strconv.ParseUint(cpuStorageStat[arr][3], 10, 0)
-				ReportAppMetric.Cpu.Total = *proto.Uint64(appCpuTotal)
-				// We don't report ReportAppMetric.Cpu.Uptime
-				// since we already report BootTime for the app
-
-				totalAppMemory, _ := strconv.ParseUint(cpuStorageStat[arr][5], 10, 0)
-				usedAppMemoryPercent, _ := strconv.ParseFloat(cpuStorageStat[arr][6], 10)
-				usedMemory := (float64(totalAppMemory) * (usedAppMemoryPercent)) / 100
-				availableMemory := float64(totalAppMemory) - usedMemory
-				availableAppMemoryPercent := 100 - usedAppMemoryPercent
-
-				ReportAppMetric.Memory.UsedMem = uint32(usedMemory)
-				ReportAppMetric.Memory.AvailMem = uint32(availableMemory)
-				ReportAppMetric.Memory.UsedPercentage = float64(usedAppMemoryPercent)
-				ReportAppMetric.Memory.AvailPercentage = float64(availableAppMemoryPercent)
-
-				appInterfaceList := ReadAppInterfaceName(strings.TrimSpace(cpuStorageStat[arr][1]))
-				network, err := psutilnet.IOCounters(true)
-				if err != nil {
-					log.Fatalf("psutilnet.IOCounters: %s\n", err)
-				}
-				for _, ifName := range appInterfaceList {
-					var ni *psutilnet.IOCountersStat
-					for _, networkInfo := range network {
-						if ifName == networkInfo.Name {
-							ni = &networkInfo
-							break
-						}
-					}
-					if ni == nil {
-						continue
-					}
-					networkDetails := new(zmet.NetworkMetric)
-					networkDetails.IName = ni.Name
-					// Note that the packets received on bu* and bo* where sent
-					// by the domU and vice versa, hence we swap here
-					networkDetails.TxPkts = ni.PacketsRecv
-					networkDetails.RxPkts = ni.PacketsSent
-					networkDetails.TxBytes = ni.BytesRecv
-					networkDetails.RxBytes = ni.BytesSent
-					networkDetails.TxDrops = ni.Dropin
-					networkDetails.RxDrops = ni.Dropout
-					networkDetails.TxErrors = ni.Errin
-					networkDetails.RxErrors = ni.Errout
-
-					ReportAppMetric.Network = append(ReportAppMetric.Network,
-						networkDetails)
-				}
-				ReportMetrics.Am[countApp] = ReportAppMetric
-				if debug {
-					log.Println("metrics per app is: ",
-						ReportMetrics.Am[countApp])
-				}
-				countApp++
-			}
-
+			continue
 		}
+		if len(cpuStorageStat) <= 2 {
+			continue
+		}
+		ReportAppMetric := new(zmet.AppMetric)
+		ReportAppMetric.Cpu = new(zmet.AppCpuMetric)
+		ReportAppMetric.Memory = new(zmet.MemoryMetric)
+
+		domainName := cpuStorageStat[arr][1]
+		ds := LookupDomainStatus(domainName)
+		if ds == nil {
+			log.Printf("Did not find status for domainName %s\n",
+				domainName)
+			// Note that it is included in the
+			// metrics without a name and uuid.
+			// XXX ignore and report next time?
+			// Avoid nil checks
+			ds = &types.DomainStatus{}
+		} else {
+			ReportAppMetric.AppName = ds.DisplayName
+			ReportAppMetric.AppID = ds.UUIDandVersion.UUID.String()
+		}
+
+		appCpuTotal, _ := strconv.ParseUint(cpuStorageStat[arr][3], 10, 0)
+		ReportAppMetric.Cpu.Total = *proto.Uint64(appCpuTotal)
+		// We don't report ReportAppMetric.Cpu.Uptime
+		// since we already report BootTime for the app
+
+		totalAppMemory, _ := strconv.ParseUint(cpuStorageStat[arr][5], 10, 0)
+		usedAppMemoryPercent, _ := strconv.ParseFloat(cpuStorageStat[arr][6], 10)
+		usedMemory := (float64(totalAppMemory) * (usedAppMemoryPercent)) / 100
+		availableMemory := float64(totalAppMemory) - usedMemory
+		availableAppMemoryPercent := 100 - usedAppMemoryPercent
+
+		ReportAppMetric.Memory.UsedMem = uint32(usedMemory)
+		ReportAppMetric.Memory.AvailMem = uint32(availableMemory)
+		ReportAppMetric.Memory.UsedPercentage = float64(usedAppMemoryPercent)
+		ReportAppMetric.Memory.AvailPercentage = float64(availableAppMemoryPercent)
+
+		appInterfaceList := ReadAppInterfaceName(strings.TrimSpace(cpuStorageStat[arr][1]))
+		// Use the network metrics from zedrouter subscription
+		for _, ifName := range appInterfaceList {
+			var metric *types.NetworkMetric
+			for _, m := range networkMetrics.MetricList {
+				if ifName == m.IfName {
+					metric = &m
+					break
+				}
+			}
+			if metric == nil {
+				continue
+			}
+			networkDetails := new(zmet.NetworkMetric)
+			networkDetails.IName = metric.IfName
+			// Note that the packets received on bu* and bo* where sent
+			// by the domU and vice versa, hence we swap here
+			networkDetails.TxPkts = metric.RxPkts
+			networkDetails.RxPkts = metric.TxPkts
+			networkDetails.TxBytes = metric.RxBytes
+			networkDetails.RxBytes = metric.TxBytes
+			networkDetails.TxDrops = metric.RxDrops
+			networkDetails.RxDrops = metric.TxDrops
+			networkDetails.TxErrors = metric.RxErrors
+			networkDetails.RxErrors = metric.TxErrors
+			networkDetails.TxAclDrops = metric.RxAclDrops
+			networkDetails.RxAclDrops = metric.TxAclDrops
+			networkDetails.TxAclRateLimitDrops = metric.RxAclRateLimitDrops
+			networkDetails.RxAclRateLimitDrops = metric.TxAclRateLimitDrops
+
+			ReportAppMetric.Network = append(ReportAppMetric.Network,
+				networkDetails)
+		}
+		ReportMetrics.Am[countApp] = ReportAppMetric
+		if debug {
+			log.Println("metrics per app is: ",
+				ReportMetrics.Am[countApp])
+		}
+		countApp++
 	}
 
 	if debug {
@@ -626,18 +626,6 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 			ReportMetrics)
 	}
 	SendMetricsProtobuf(ReportMetrics, iteration)
-}
-
-// Return list of interfaces we will report in info and metrics
-// Always include dbo1x0 for now.
-// Latter will move to a system app when we disaggregate
-func reportInterfaces(deviceNetworkStatus types.DeviceNetworkStatus) []string {
-	var names []string
-	names = append(names, "dbo1x0")
-	for _, uplink := range deviceNetworkStatus.UplinkStatus {
-		names = append(names, uplink.IfName)
-	}
-	return names
 }
 
 const mbyte = 1024 * 1024
@@ -807,8 +795,10 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 
 	// Read interface name from library and match it with uplink name from
 	// global status. Only report the uplinks plus dbo1x0
+	// XXX should get this info from zedrouter subscription
+	// Should we put it all in DeviceNetworkStatus?
 	interfaces, _ := psutilnet.Interfaces()
-	ifNames := reportInterfaces(deviceNetworkStatus)
+	ifNames := types.ReportInterfaces(deviceNetworkStatus)
 	for _, ifname := range ifNames {
 		for _, interfaceDetail := range interfaces {
 			if ifname == interfaceDetail.Name {

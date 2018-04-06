@@ -51,8 +51,8 @@ func HandleConfigStatusEvent(change string, ctx interface{},
 		return
 	}
 	if !strings.HasSuffix(fileName, ".json") {
-		log.Printf("Ignoring file <%s> operation %s\n",
-			fileName, operation)
+		// log.Printf("Ignoring file <%s> operation %s\n",
+		//	fileName, operation)
 		return
 	}
 	if operation == "D" {
@@ -165,8 +165,8 @@ func HandleStatusEvent(change string, ctx interface{},
 	}
 
 	if !strings.HasSuffix(fileName, ".json") {
-		log.Printf("Ignoring file <%s> operation %s\n",
-			fileName, operation)
+		// log.Printf("Ignoring file <%s> operation %s\n",
+		//	fileName, operation)
 		return
 	}
 	// Remove .json from name */

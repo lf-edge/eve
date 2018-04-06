@@ -288,6 +288,7 @@ func rulePrefix(operation string, isMgmt bool, ipVer int,
 		// The output rules (to domU) are applied in forwarding path
 		// since packets are forwarded from lispers.net interface after
 		// decap.
+		// Note that the counter parsing code assumes this.
 		if rule[0] == "-i" {
 			prefix = []string{"-t", "raw", operation, "PREROUTING"}
 		} else if rule[0] == "-o" {

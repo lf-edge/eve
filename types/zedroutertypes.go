@@ -4,6 +4,7 @@
 package types
 
 import (
+	"encoding/json"
 	"errors"
 	"github.com/eriknordmark/ipinfo"
 	"log"
@@ -280,6 +281,18 @@ func getInterfaceAddr(globalStatus DeviceNetworkStatus, free bool, ifname string
 	}
 }
 
+// Return list of interfaces we will report in info and metrics
+// Always include dbo1x0 for now.
+// Latter will move to a system app when we disaggregate
+func ReportInterfaces(deviceNetworkStatus DeviceNetworkStatus) []string {
+	var names []string
+	names = append(names, "dbo1x0")
+	for _, uplink := range deviceNetworkStatus.UplinkStatus {
+		names = append(names, uplink.IfName)
+	}
+	return names
+}
+
 type OverlayNetworkConfig struct {
 	IID           uint32
 	EID           net.IP
@@ -304,6 +317,43 @@ type UnderlayNetworkConfig struct {
 type UnderlayNetworkStatus struct {
 	UnderlayNetworkConfig
 	VifInfo
+}
+
+// Network metrics for overlay and underlay
+// Matches networkMetrics protobuf message
+type NetworkMetrics struct {
+	MetricList []NetworkMetric
+}
+
+type NetworkMetric struct {
+	IfName              string
+	TxBytes             uint64
+	RxBytes             uint64
+	TxDrops             uint64
+	RxDrops             uint64
+	TxPkts              uint64
+	RxPkts              uint64
+	TxErrors            uint64
+	RxErrors            uint64
+	TxAclDrops          uint64 // For implicit deny/drop at end
+	RxAclDrops          uint64 // For implicit deny/drop at end
+	TxAclRateLimitDrops uint64 // For all rate limited rules
+	RxAclRateLimitDrops uint64 // For all rate limited rules
+}
+
+// XXX this works but ugly as ...
+// Alternative seems to be a deep walk with type assertions in order
+// to produce the map of map of map with the correct type.
+func CastNetworkMetrics(in interface{}) NetworkMetrics {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastNetworkMetrics")
+	}
+	var output NetworkMetrics
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "json Unmarshal in CastNetworkMetrics")
+	}
+	return output
 }
 
 // Similar support as in draft-ietf-netmod-acl-model

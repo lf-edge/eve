@@ -33,12 +33,11 @@ type urlcloudMetrics struct {
 // Key is ifname string
 type metricsMap map[string]zedcloudMetric
 
-var metrics metricsMap
+var metrics metricsMap = make(metricsMap)
 
 func maybeInit(ifname string) {
 	if metrics == nil {
-		log.Printf("create zedcloudmetric map\n")
-		metrics = make(metricsMap)
+		log.Fatal("no zedcloudmetric map\n")
 	}
 	if _, ok := metrics[ifname]; !ok {
 		log.Printf("create zedcloudmetric for %s\n", ifname)
@@ -103,21 +102,6 @@ func CastCloudMetrics(in interface{}) metricsMap {
 		log.Fatal(err, "json Unmarshal in CastCloudMetrics")
 	}
 	return output
-}
-
-// XXX Need to walk and do type assertions for each map member
-// XXX incomplete; remove or fix
-func CastCloudMetrics2(in interface{}) metricsMap {
-	in1 := *(in.(*interface{}))
-	in2 := in1.(map[string]interface{})
-	o1 := make(metricsMap)
-	for k1, e1 := range in2 {
-		log.Printf("Cast: %s: %v %t\n", k1, e1, e1)
-		// XXX blows up on next line; need to do a deep type assertions
-		elem := e1.(zedcloudMetric)
-		o1[k1] = elem
-	}
-	return o1
 }
 
 // Concatenate different interfaces and URLs into a union map
