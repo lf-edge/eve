@@ -34,12 +34,13 @@ type deferredItem struct {
 
 var deferredItems map[string]deferredItem
 
-const year = time.Hour * 24 * 365
+const longTime1 = time.Hour * 24
+const longTime2 = time.Hour * 48
 
 // We always keep a flextimer running so that we can return
 // the associated channel. We adjust the times when we start and stop
 // the timer.
-var ticker = flextimer.NewRangeTicker(year, year)
+var ticker = flextimer.NewRangeTicker(longTime1, longTime2)
 
 // Create and return a channel to the
 func InitDeferred() <-chan time.Time {
@@ -131,5 +132,5 @@ func stopTimer() {
 	if debug {
 		log.Printf("stopTimer()\n")
 	}
-	ticker.UpdateRangeTicker(year, year)
+	ticker.UpdateRangeTicker(longTime1, longTime2)
 }
