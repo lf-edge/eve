@@ -418,7 +418,8 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 		ReportDeviceMetric.Network = append(ReportDeviceMetric.Network,
 			networkDetails)
 	}
-	if debug {
+	// XXX
+	if true || debug {
 		log.Println("network metrics: ",
 			ReportDeviceMetric.Network)
 	}
