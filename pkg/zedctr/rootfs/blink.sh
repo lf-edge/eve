@@ -17,7 +17,7 @@ fi
 
 while [ $repeat != 0 ] ; do
     for i in `seq 1 $pattern`; do
-	dd if=/dev/sda of=/dev/null bs=4M count=22 2>1 >/dev/null
+	dd if=/dev/sda of=/dev/null iflag=nocache bs=4M count=22 2>1 >/dev/null
 	usleep 200000
     done
     usleep 1200000
