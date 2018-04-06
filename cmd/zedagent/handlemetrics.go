@@ -757,6 +757,8 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 		}
 		return nil
 	}
+	// XXX can we have baseOsConfig/Status without being assocated with
+	// a partitionLabel?
 	getSwInfo := func(partLabel string) *zmet.ZInfoDevSW {
 		swInfo := new(zmet.ZInfoDevSW)
 		swInfo.Activated = (partLabel == zboot.GetCurrentPartition())

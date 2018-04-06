@@ -290,6 +290,10 @@ func doBaseOsActivate(uuidStr string, config types.BaseOsConfig,
 			config.BaseOsVersion)
 	default:
 		// XXX we seem to hit this in some cases
+		// Happens when a new baseOs config appears while
+		// we are still testing the previous update in
+		// which case the current is inprogress and the other/fallback
+		// partition is active.
 		errString := fmt.Sprintf("Wrong partition state %s for %s",
 			partState, config.PartitionLabel)
 		log.Println(errString)
