@@ -400,7 +400,6 @@ func checkBaseOsStorageDownloadStatus(uuidStr string,
 		status.ErrorTime = ret.ErrorTime
 		log.Printf("checkBaseOsStorageDownloadStatus(%s) for %s, Download error at %v: %v\n",
 			config.BaseOsVersion, uuidStr, status.ErrorTime, status.Error)
-		// XXX how does this status with its error appear in zedcloud?
 		return ret.Changed, false
 	}
 
@@ -520,27 +519,30 @@ func doBaseOsUninstall(uuidStr string, status *types.BaseOsStatus) (bool, bool) 
 
 		// Decrease refcount if we had increased it
 		if ss.HasVerifierRef {
-			log.Printf("doBaseOsUninstall(%s) for %s, Found verifer status %s\n",
+			log.Printf("doBaseOsUninstall(%s) for %s, process verifer %s\n",
 				status.BaseOsVersion, uuidStr, ss.ImageSha256)
 			removeBaseOsVerifierConfig(ss.ImageSha256)
 			ss.HasVerifierRef = false
 			changed = true
 		}
 
-		_, err := lookupBaseOsVerificationStatusSha256(ss.ImageSha256)
+		vs, err := lookupBaseOsVerificationStatusSha256(ss.ImageSha256)
 
 		if err == nil {
-			log.Printf("doBaseOsUninstall(%s) for %s, Verifier %s not yet gone\n",
-				status.BaseOsVersion, uuidStr, ss.ImageSha256)
+			log.Printf("doBaseOsUninstall(%s) for %s, Verifier %s not yet gone; RefCount \n",
+				status.BaseOsVersion, uuidStr, ss.ImageSha256,
+				vs.RefCount)
 			removedAll = false
 			continue
 		}
 	}
 
 	if !removedAll {
-		log.Printf("doBaseOsUninstall(%s) for %s, Waiting for verifier purge\n",
+		log.Printf("NOT XXX doBaseOsUninstall(%s) for %s, Waiting for verifier purge\n",
 			status.BaseOsVersion, uuidStr)
-		return changed, del
+		// XXX try; alternatively caller needs to defer and react to
+		// drop in refcount or delete. Why wait?
+		// return changed, del
 	}
 
 	removedAll = true
@@ -549,29 +551,32 @@ func doBaseOsUninstall(uuidStr string, status *types.BaseOsStatus) (bool, bool) 
 
 		ss := &status.StorageStatusList[i]
 		safename := types.UrlToSafename(ss.DownloadURL, ss.ImageSha256)
-		log.Printf("doBaseOsUninstall(%s) for %s, Found Downloader status %s\n",
-			status.BaseOsVersion, uuidStr, safename)
-
 		// Decrease refcount if we had increased it
 		if ss.HasDownloaderRef {
+			log.Printf("doBaseOsUninstall(%s) for %s, process Downloader %s\n",
+				status.BaseOsVersion, uuidStr, safename)
+
 			removeBaseOsDownloaderConfig(safename)
 			ss.HasDownloaderRef = false
 			changed = true
 		}
 
-		_, err := lookupBaseOsDownloaderStatus(ss.ImageSha256)
+		ds, err := lookupBaseOsDownloaderStatus(ss.ImageSha256)
 		if err == nil {
-			log.Printf("doBaseOsUninstall(%s) for %s, Download %s not yet gone\n",
-				status.BaseOsVersion, uuidStr, safename)
+			log.Printf("doBaseOsUninstall(%s) for %s, Download %s not yet gone; RefCount %d\n",
+				status.BaseOsVersion, uuidStr, safename,
+				ds.RefCount)
 			removedAll = false
 			continue
 		}
 	}
 
 	if !removedAll {
-		log.Printf("doBaseOsUninstall(%s) for %s, Waiting for downloader purge\n",
+		log.Printf("NOT XXX doBaseOsUninstall(%s) for %s, Waiting for downloader purge\n",
 			status.BaseOsVersion, uuidStr)
-		return changed, del
+		// XXX try; alternatively caller needs to defer and react to
+		// drop in refcount or delete. Why wait?
+		// return changed, del
 	}
 
 	del = true

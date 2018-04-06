@@ -65,7 +65,8 @@ func handleLookupParam(devConfig *zconfig.EdgeDevConfig) {
 	lispPrevConfigHash = configHash
 
 	if same {
-		// XXX we never hit this!
+		// XXX we never hit this! Order from the proto.Encode in
+		// the comparison is not constant!
 		log.Printf("handleLookupParam: lispInfo sha is unchanged\n")
 		return
 	}

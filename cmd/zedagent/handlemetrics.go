@@ -369,7 +369,7 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 	}
 
 	ReportDeviceMetric.CpuMetric.Total = *proto.Uint64(cpuSecs)
-	// XXX note that uptime is seconds we've been up. We're converting
+	// Note that uptime is seconds we've been up. We're converting
 	// to a timestamp. That better not be interpreted as a time since
 	// the epoch
 	uptime, _ := ptypes.TimestampProto(
@@ -425,7 +425,7 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 	}
 	// Collect zedcloud metrics from ourselves and other agents
 	cms := zedcloud.GetCloudMetrics()
-	// XXX make a copy
+	// Have to make a copy
 	cms = zedcloud.CastCloudMetrics(cms)
 	cms1 := zedcloud.CastCloudMetrics(clientMetrics)
 	if cms1 != nil {

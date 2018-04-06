@@ -400,7 +400,7 @@ func installDownloadedObject(objType string, safename string,
 
 		case baseOsObj:
 			ret = installBaseOsObject(srcFilename, dstFilename)
-			// XXX if ok then decrease refcount
+			// XXX if ok then decrease refcount?? Or done at uninstall time?
 			// Done in Uninstall; just log here to make sure
 			if ret == nil && status.HasDownloaderRef {
 				log.Printf("installDownloadedObject: HasDownloaderRef for %s\n", safename)

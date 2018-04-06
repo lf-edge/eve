@@ -50,7 +50,7 @@ type configItems struct {
 	metricInterval          uint32 // push metrics to cloud
 	resetIfCloudGoneTime    uint32 // reboot if no cloud connectivity
 	fallbackIfCloudGoneTime uint32 // ... and shorter during update
-	mintimeUpdateSuccess	uint32 // time before zedagent declares success
+	mintimeUpdateSuccess    uint32 // time before zedagent declares success
 	// XXX add max space for downloads?
 	// XXX add LTE uplink usage policy?
 }
@@ -64,13 +64,14 @@ var configItemDefaults = configItems{configInterval: 60, metricInterval: 60,
 	resetIfCloudGoneTime: 7 * 24 * 3600, fallbackIfCloudGoneTime: 600,
 	mintimeUpdateSuccess: 600}
 
-// XXX	resetIfCloudGoneTime: 300, fallbackIfCloudGoneTime: 60}
+// XXX shorter counters for testing fallback:
+// 	resetIfCloudGoneTime: 300, fallbackIfCloudGoneTime: 60}
 
 var configItemCurrent = configItemDefaults
 
 type getconfigContext struct {
 	ledManagerCount             int // Current count
-	startTime		    time.Time
+	startTime                   time.Time
 	lastReceivedConfigFromCloud time.Time
 	configTickerHandle          interface{}
 	metricsTickerHandle         interface{}
