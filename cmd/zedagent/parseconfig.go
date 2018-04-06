@@ -148,6 +148,8 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 
 				for _, dsEntry := range config.Datastores {
 					if dsEntry.Id == imageId {
+						// XXX this might not
+						// always happen. Order??
 						imageCount++
 						break
 					}
@@ -157,6 +159,7 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 
 		if imageCount != BaseOsImageCount {
 			log.Printf("%s, invalid storage config %d\n", baseOs.BaseOsVersion, imageCount)
+			log.Printf("Datastores %v\n", config.Datastores)
 			// XXX need to publish this as an error in baseOsStatus
 			continue
 		}

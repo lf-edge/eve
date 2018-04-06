@@ -289,6 +289,7 @@ func doBaseOsActivate(uuidStr string, config types.BaseOsConfig,
 		log.Printf("Installing %s over inprogress\n",
 			config.BaseOsVersion)
 	default:
+		// XXX we seem to hit this in some cases
 		errString := fmt.Sprintf("Wrong partition state %s for %s",
 			partState, config.PartitionLabel)
 		log.Println(errString)
