@@ -534,7 +534,7 @@ func doBaseOsUninstall(uuidStr string, status *types.BaseOsStatus) (bool, bool) 
 		vs, err := lookupBaseOsVerificationStatusSha256(ss.ImageSha256)
 
 		if err == nil {
-			log.Printf("doBaseOsUninstall(%s) for %s, Verifier %s not yet gone; RefCount \n",
+			log.Printf("doBaseOsUninstall(%s) for %s, Verifier %s not yet gone; RefCount %d\n",
 				status.BaseOsVersion, uuidStr, ss.ImageSha256,
 				vs.RefCount)
 			removedAll = false
