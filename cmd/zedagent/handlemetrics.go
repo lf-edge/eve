@@ -640,7 +640,8 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 	deviceType := new(zmet.ZInfoTypes)
 	*deviceType = zmet.ZInfoTypes_ZiDevice
 	ReportInfo.Ztype = *deviceType
-	ReportInfo.DevId = *proto.String(zcdevUUID.String())
+	deviceUUID := zcdevUUID.String()
+	ReportInfo.DevId = *proto.String(deviceUUID)
 	ReportInfo.AtTimeStamp = ptypes.TimestampNow()
 
 	ReportDeviceInfo := new(zmet.ZInfoDevice)
@@ -910,13 +911,12 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 	// XXX vary for load spreading when multiple free or multiple non-free
 	// uplinks
 	iteration := 0
+	zedcloud.RemoveDeferred(deviceUUID)
 	err = SendProtobuf(statusUrl, data, iteration)
 	if err != nil {
 		log.Printf("PublishDeviceInfoToZedCloud failed: %s\n", err)
-		// XXX reschedule doing this again later somehow
-		// Queue data on deviceQueue; replace if fails again
-	} else {
-		// XXX remove any queued old message for device
+		// Try sending later
+		zedcloud.SetDeferred(deviceUUID, data, statusUrl, zedcloudCtx)
 	}
 }
 
@@ -1126,13 +1126,12 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 	// XXX vary for load spreading when multiple free or multiple non-free
 	// uplinks
 	iteration := 0
+	zedcloud.RemoveDeferred(uuid)
 	err = SendProtobuf(statusUrl, data, iteration)
 	if err != nil {
 		log.Printf("PublishAppInfoToZedCloud failed: %s\n", err)
-		// XXX reschedule doing this again later somehow
-		// Queue data on for this app; replace if fails again
-	} else {
-		// XXX remove any queued old message for app
+		// Try sending later
+		zedcloud.SetDeferred(uuid, data, statusUrl, zedcloudCtx)
 	}
 }
 

@@ -300,6 +300,9 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// Timer for deferred sends of info messages
+	deferredChan := zedcloud.InitDeferred()
+
 	// Publish initial device info. Retries all addresses on all uplinks.
 	PublishDeviceInfoToZedCloud(baseOsStatusMap, devCtx.assignableAdapters)
 
@@ -470,6 +473,8 @@ func main() {
 			} else {
 				downloaderMetrics = m
 			}
+		case change := <-deferredChan:
+			zedcloud.HandleDeferred(change)
 		}
 	}
 }
