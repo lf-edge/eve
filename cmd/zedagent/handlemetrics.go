@@ -418,8 +418,7 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 		ReportDeviceMetric.Network = append(ReportDeviceMetric.Network,
 			networkDetails)
 	}
-	// XXX
-	if true || debug {
+	if debug {
 		log.Println("network metrics: ",
 			ReportDeviceMetric.Network)
 	}
@@ -614,7 +613,8 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 				networkDetails)
 		}
 		ReportMetrics.Am[countApp] = ReportAppMetric
-		if debug {
+		// XXX
+		if true || debug {
 			log.Println("metrics per app is: ",
 				ReportMetrics.Am[countApp])
 		}
