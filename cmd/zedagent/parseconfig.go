@@ -57,7 +57,7 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext) 
 	// we allow it to be installed into the inprogress partition.
 	if zboot.IsOtherPartitionStateInProgress() {
 		otherPart := zboot.GetOtherPartition()
-		log.Printf("Other %s partition contains failed upgrade\n",
+		log.Printf("Other %s partition contains failed update\n",
 			otherPart)
 	}
 
@@ -148,6 +148,8 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 
 				for _, dsEntry := range config.Datastores {
 					if dsEntry.Id == imageId {
+						// XXX this might not
+						// always happen. Order??
 						imageCount++
 						break
 					}
@@ -157,6 +159,7 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 
 		if imageCount != BaseOsImageCount {
 			log.Printf("%s, invalid storage config %d\n", baseOs.BaseOsVersion, imageCount)
+			log.Printf("Datastores %v\n", config.Datastores)
 			// XXX need to publish this as an error in baseOsStatus
 			continue
 		}
@@ -747,6 +750,18 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCont
 					newU32)
 				configItemCurrent.fallbackIfCloudGoneTime = newU32
 			}
+		case "mintimeUpdateSuccess":
+			if newU32 == 0 {
+				// Revert to default
+				newU32 = configItemDefaults.mintimeUpdateSuccess
+			}
+			if newU32 != configItemCurrent.mintimeUpdateSuccess {
+				log.Printf("parseConfigItems: %s change from %d to %d\n",
+					item.Key,
+					configItemCurrent.mintimeUpdateSuccess,
+					newU32)
+				configItemCurrent.mintimeUpdateSuccess = newU32
+			}
 		// XXX what other configItems should we add?
 		default:
 			log.Printf("Unknown configItem %s\n", item.Key)
@@ -915,7 +930,7 @@ func validateBaseOsConfig(baseOsList []*types.BaseOsConfig) bool {
 }
 
 // Returns the number of BaseOsConfig that are new or modified
-// XXX not useful for caller if we want to catch failed upgrades up front.
+// XXX not useful for caller if we want to catch failed updates up front.
 // XXX should we initially populate BaseOsStyatus with what we find in
 // the partitions? Makes the checks simpler.
 func createBaseOsConfig(baseOsList []*types.BaseOsConfig, certList []*types.CertObjConfig) int {
