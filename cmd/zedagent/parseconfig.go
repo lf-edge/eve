@@ -214,7 +214,11 @@ func assignBaseOsPartition(baseOsList []*types.BaseOsConfig) bool {
 	otherPartName := zboot.GetOtherPartition()
 	curPartVersion := zboot.GetShortVersion(curPartName)
 	otherPartVersion := zboot.GetShortVersion(otherPartName)
-	otherInprog := zboot.IsOtherPartitionStateInProgress()
+
+	ignoreVersion := ""
+	if zboot.IsOtherPartitionStateInProgress() {
+		ignoreVersion = otherPartVersion
+	}
 
 	assignedPart := true
 	// older assignments/installations
@@ -227,6 +231,13 @@ func assignBaseOsPartition(baseOsList []*types.BaseOsConfig) bool {
 		// XXX isn't curBaseOsConfig the same as baseOs???
 		// We are iterating over all the baseOsConfigs.
 
+		if ignoreVersion == baseOs.BaseOsVersion {
+			rejectReinstallFailed(baseOs, otherPartName)
+			baseOs.PartitionLabel = ""
+			assignedPart = false
+			continue
+		}
+
 		if curPartVersion == baseOs.BaseOsVersion {
 			baseOs.PartitionLabel = curPartName
 			setStoragePartitionLabel(baseOs)
@@ -236,13 +247,6 @@ func assignBaseOsPartition(baseOsList []*types.BaseOsConfig) bool {
 		}
 
 		if otherPartVersion == baseOs.BaseOsVersion {
-			if otherInprog {
-				rejectReinstallFailed(baseOs, otherPartName)
-				// XXX return? Shouldn't do any assigments
-				// Tell caller it should ignore baseOs for now
-				return true
-			}
-
 			baseOs.PartitionLabel = otherPartName
 			setStoragePartitionLabel(baseOs)
 			log.Printf("%s, already installed in other partition %s\n",
@@ -271,6 +275,9 @@ func assignBaseOsPartition(baseOsList []*types.BaseOsConfig) bool {
 			continue
 		}
 
+		if ignoreVersion == baseOs.BaseOsVersion {
+			continue
+		}
 		if baseOs.Activate == true {
 			baseOs.PartitionLabel = otherPartName
 			setStoragePartitionLabel(baseOs)
