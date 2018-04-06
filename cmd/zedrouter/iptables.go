@@ -8,13 +8,20 @@ package main
 import (
 	"github.com/zededa/go-provision/wrap"
 	"log"
+	"os/exec"
 	"strconv"
 	"strings"
 )
 
-func iptableCmdOut(args ...string) (string, error) {
+func iptableCmdOut(dolog bool, args ...string) (string, error) {
 	cmd := "iptables"
-	out, err := wrap.Command(cmd, args...).Output()
+	var out []byte
+	var err error
+	if dolog {
+		out, err = wrap.Command(cmd, args...).Output()
+	} else {
+		out, err = exec.Command(cmd, args...).Output()
+	}
 	if err != nil {
 		log.Println("iptables command failed: ", args, err)
 		return "", err
@@ -23,13 +30,19 @@ func iptableCmdOut(args ...string) (string, error) {
 }
 
 func iptableCmd(args ...string) error {
-	_, err := iptableCmdOut(args...)
+	_, err := iptableCmdOut(true, args...)
 	return err
 }
 
-func ip6tableCmdOut(args ...string) (string, error) {
+func ip6tableCmdOut(dolog bool, args ...string) (string, error) {
 	cmd := "ip6tables"
-	out, err := wrap.Command(cmd, args...).Output()
+	var out []byte
+	var err error
+	if dolog {
+		out, err = wrap.Command(cmd, args...).Output()
+	} else {
+		out, err = exec.Command(cmd, args...).Output()
+	}
 	if err != nil {
 		log.Println("ip6tables command failed: ", args, err)
 		return "", err
@@ -38,7 +51,7 @@ func ip6tableCmdOut(args ...string) (string, error) {
 }
 
 func ip6tableCmd(args ...string) error {
-	_, err := ip6tableCmdOut(args...)
+	_, err := ip6tableCmdOut(true, args...)
 	return err
 }
 
@@ -72,7 +85,7 @@ func iptablesInit() {
 func fetchIprulesCounters() []AclCounters {
 	var counters []AclCounters
 	// get for IPv4 filter, IPv6 filter, and IPv6 raw
-	out, err := iptableCmdOut("-t", "filter", "-S", "FORWARD", "-v")
+	out, err := iptableCmdOut(false, "-t", "filter", "-S", "FORWARD", "-v")
 	if err != nil {
 		log.Printf("fetchIprulesCounters: iptables -S failed %s\n", err)
 	} else {
@@ -82,29 +95,29 @@ func fetchIprulesCounters() []AclCounters {
 		}
 	}
 	// XXX to get dbo1x0 stats
-	out, err = iptableCmdOut("-t", "filter", "-S", "OUTPUT", "-v")
+	out, err = ip6tableCmdOut(false, "-t", "filter", "-S", "OUTPUT", "-v")
 	if err != nil {
 		log.Printf("fetchIprulesCounters: iptables -S failed %s\n", err)
 	} else {
-		c := parseCounters(out, "filter", false)
+		c := parseCounters(out, "filter", true)
 		if c != nil {
 			counters = append(counters, c...)
 		}
 	}
-	out, err = ip6tableCmdOut("-t", "filter", "-S", "FORWARD", "-v")
+	out, err = ip6tableCmdOut(false, "-t", "filter", "-S", "FORWARD", "-v")
 	if err != nil {
 		log.Printf("fetchIprulesCounters: ip6tables failed %s\n", err)
 	} else {
-		c := parseCounters(out, "filter", false)
+		c := parseCounters(out, "filter", true)
 		if c != nil {
 			counters = append(counters, c...)
 		}
 	}
-	out, err = ip6tableCmdOut("-t", "raw", "-S", "PREROUTING", "-v")
+	out, err = ip6tableCmdOut(false, "-t", "raw", "-S", "PREROUTING", "-v")
 	if err != nil {
 		log.Printf("fetchIprulesCounters: ip6tables -S failed %s\n", err)
 	} else {
-		c := parseCounters(out, "filter", false)
+		c := parseCounters(out, "filter", true)
 		if c != nil {
 			counters = append(counters, c...)
 		}
@@ -130,7 +143,8 @@ func getIpRuleCounters(counters []AclCounters, match AclCounters) *AclCounters {
 
 // Look for a LOG entry without More; we don't have those for rate limits
 func getIpRuleAclDrop(counters []AclCounters, ifname string, input bool) uint64 {
-	overlay := strings.HasPrefix(ifname, "bo")
+	overlay := strings.HasPrefix(ifname, "bo") ||
+		strings.HasPrefix(ifname, "dbo")
 	var iif string
 	var oif string
 	if input {
@@ -138,7 +152,7 @@ func getIpRuleAclDrop(counters []AclCounters, ifname string, input bool) uint64 
 	} else {
 		oif = ifname
 	}
-	match := AclCounters{IIf: iif, OIf: oif, Overlay: overlay, Log: true}
+	match := AclCounters{IIf: iif, OIf: oif, Overlay: overlay, Drop: true}
 	c := getIpRuleCounters(counters, match)
 	if c == nil {
 		return 0
@@ -148,7 +162,8 @@ func getIpRuleAclDrop(counters []AclCounters, ifname string, input bool) uint64 
 
 // Look for a DROP entry with More set.
 func getIpRuleAclRateLimitDrop(counters []AclCounters, ifname string, input bool) uint64 {
-	overlay := strings.HasPrefix(ifname, "bo")
+	overlay := strings.HasPrefix(ifname, "bo") ||
+		strings.HasPrefix(ifname, "dbo")
 	var iif string
 	var oif string
 	if input {
