@@ -261,6 +261,13 @@ func main() {
 			// Retry until fixed
 			log.Printf("%s\n", string(contents))
 			return false
+		case http.StatusNotModified: // XXX from zedcloud
+			// Inform ledmanager about brokenness
+			types.UpdateLedManagerConfig(10)
+			log.Printf("%s StatusNotModified\n", url)
+			// Retry until fixed
+			log.Printf("%s\n", string(contents))
+			return false
 		default:
 			log.Printf("%s statuscode %d %s\n",
 				url, resp.StatusCode,
@@ -316,6 +323,13 @@ func main() {
 			// Inform ledmanager about brokenness
 			types.UpdateLedManagerConfig(10)
 			log.Printf("%s StatusConflict\n", url)
+			// Retry until fixed
+			log.Printf("%s\n", string(contents))
+			return false
+		case http.StatusNotModified: // XXX from zedcloud
+			// Inform ledmanager about brokenness
+			types.UpdateLedManagerConfig(10)
+			log.Printf("%s StatusNotModified\n", url)
 			// Retry until fixed
 			log.Printf("%s\n", string(contents))
 			return false
