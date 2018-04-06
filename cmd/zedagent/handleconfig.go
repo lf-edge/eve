@@ -70,6 +70,7 @@ var configItemCurrent = configItemDefaults
 
 type getconfigContext struct {
 	ledManagerCount             int // Current count
+	startTime		    time.Time
 	lastReceivedConfigFromCloud time.Time
 	configTickerHandle          interface{}
 	metricsTickerHandle         interface{}
@@ -124,7 +125,8 @@ func handleConfigInit() {
 func configTimerTask(handleChannel chan interface{},
 	getconfigCtx *getconfigContext) {
 	configUrl := serverName + "/" + configApi
-	getconfigCtx.lastReceivedConfigFromCloud = time.Now()
+	getconfigCtx.startTime = time.Now()
+	getconfigCtx.lastReceivedConfigFromCloud = getconfigCtx.startTime
 	iteration := 0
 	updateInprogress := zboot.IsCurrentPartitionStateInProgress()
 	rebootFlag := getLatestConfig(configUrl, iteration,
@@ -206,6 +208,7 @@ func getLatestConfig(url string, iteration int, updateInprogress *bool,
 	} else {
 		// Wait for a bit to detect an agent crash. Should run for
 		// at least N minutes to make sure we don't hit a watchdog.
+		timePassed := time.Since(getconfigCtx.startTime)
 		successLimit := time.Second * time.Duration(configItemCurrent.mintimeUpdateSuccess)
 		// now cloud connectivity is good, mark partition state as
 		// active if it was inprogress
