@@ -379,16 +379,23 @@ func sendProtoStrForLogs(reportLogs *zmet.LogBundle, image string,
 		log.Fatal("sendProtoStrForLogs malloc error:")
 	}
 
+	if zedcloud.HasDeferred(image) {
+		log.Printf("SendProtoStrForLogs queued after existing for %s\n",
+			image)
+		zedcloud.AddDeferred(image, data, logsUrl, zedcloudCtx)
+		reportLogs.Log = []*zmet.LogEntry{}
+		return
+	}
 	_, _, err = zedcloud.SendOnAllIntf(zedcloudCtx, logsUrl,
 		int64(len(data)), buf, iteration)
 	if err != nil {
 		log.Printf("SendProtoStrForLogs %d bytes image %s failed: %s\n",
 			len(data), image, err)
-		reportLogs.Log = []*zmet.LogEntry{}
 		// Try sending later. The deferred state means processEvents
 		// will sleep until the timer takes care of sending this
 		// hence we'll keep things in order for a given image
 		zedcloud.AddDeferred(image, data, logsUrl, zedcloudCtx)
+		reportLogs.Log = []*zmet.LogEntry{}
 		return
 	}
 	log.Printf("Sent %d bytes image %s to %s\n", len(data), image, logsUrl)
