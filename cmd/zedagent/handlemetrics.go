@@ -633,7 +633,7 @@ const mbyte = 1024 * 1024
 // This function is called per change, hence needs to try over all uplinks
 // send report on each uplink.
 func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
-	aa *types.AssignableAdapters) {
+	aa *types.AssignableAdapters, iteration int) {
 
 	var ReportInfo = &zmet.ZInfoMsg{}
 
@@ -910,9 +910,6 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 	}
 
 	statusUrl := serverName + "/" + statusApi
-	// XXX vary for load spreading when multiple free or multiple non-free
-	// uplinks
-	iteration := 0
 	zedcloud.RemoveDeferred(deviceUUID)
 	err = SendProtobuf(statusUrl, data, iteration)
 	if err != nil {
@@ -1029,7 +1026,7 @@ func getNetInfo(interfaceDetail psutilnet.InterfaceStat) *zmet.ZInfoNetwork {
 // When aiStatus is nil it means a delete and we send a message
 // containing only the UUID to inform zedcloud about the delete.
 func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
-	aa *types.AssignableAdapters) {
+	aa *types.AssignableAdapters, iteration int) {
 	if debug {
 		log.Printf("PublishAppInfoToZedCloud uuid %s\n", uuid)
 	}
@@ -1123,11 +1120,8 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 	if err != nil {
 		log.Fatal("PublishAppInfoToZedCloud proto marshaling error: ", err)
 	}
-
 	statusUrl := serverName + "/" + statusApi
-	// XXX vary for load spreading when multiple free or multiple non-free
-	// uplinks
-	iteration := 0
+
 	zedcloud.RemoveDeferred(uuid)
 	err = SendProtobuf(statusUrl, data, iteration)
 	if err != nil {

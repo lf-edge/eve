@@ -138,6 +138,7 @@ type domainContext struct {
 // Information for handleBaseOsCreate/Modify/Delete and handleAppInstanceStatus*
 type deviceContext struct {
 	assignableAdapters *types.AssignableAdapters
+	iteration          int
 }
 
 var debug = false
@@ -309,7 +310,7 @@ func main() {
 	deferredChan := zedcloud.InitDeferred()
 
 	// Publish initial device info. Retries all addresses on all uplinks.
-	PublishDeviceInfoToZedCloud(baseOsStatusMap, devCtx.assignableAdapters)
+	publishDevInfo(&devCtx)
 
 	// start the metrics/config fetch tasks
 	handleChannel := make(chan interface{})
@@ -349,8 +350,7 @@ func main() {
 	for {
 		if publishDeviceInfo {
 			log.Printf("BaseOs triggered PublishDeviceInfo\n")
-			PublishDeviceInfoToZedCloud(baseOsStatusMap,
-				devCtx.assignableAdapters)
+			publishDevInfo(&devCtx)
 			publishDeviceInfo = false
 		}
 
@@ -426,8 +426,7 @@ func main() {
 			// XXX could compare in handleDNSModify as we do
 			// for handleDomainStatus
 			log.Printf("NetworkStatus triggered PublishDeviceInfo\n")
-			PublishDeviceInfoToZedCloud(baseOsStatusMap,
-				devCtx.assignableAdapters)
+			publishDevInfo(&devCtx)
 
 		case change := <-domainStatusChanges:
 			watch.HandleStatusEvent(change, &domainCtx,
@@ -438,8 +437,7 @@ func main() {
 			// UsedByUUID could have changed ...
 			if domainCtx.TriggerDeviceInfo {
 				log.Printf("UsedByUUID triggered PublishDeviceInfo\n")
-				PublishDeviceInfoToZedCloud(baseOsStatusMap,
-					devCtx.assignableAdapters)
+				publishDevInfo(&devCtx)
 				domainCtx.TriggerDeviceInfo = false
 			}
 
@@ -489,6 +487,12 @@ func main() {
 			zedcloud.HandleDeferred(change)
 		}
 	}
+}
+
+func publishDevInfo(devCtx *deviceContext) {
+	PublishDeviceInfoToZedCloud(baseOsStatusMap, devCtx.assignableAdapters,
+		devCtx.iteration)
+	devCtx.iteration += 1
 }
 
 // signal zedmanager, to restart
@@ -589,14 +593,18 @@ func handleAppInstanceStatusModify(ctxArg interface{}, statusFilename string,
 	status := statusArg.(*types.AppInstanceStatus)
 	ctx := ctxArg.(*deviceContext)
 	uuidStr := status.UUIDandVersion.UUID.String()
-	PublishAppInfoToZedCloud(uuidStr, status, ctx.assignableAdapters)
+	PublishAppInfoToZedCloud(uuidStr, status, ctx.assignableAdapters,
+		ctx.iteration)
+	ctx.iteration += 1
 }
 
 func handleAppInstanceStatusDelete(ctxArg interface{}, statusFilename string) {
 	// statusFilename == key aka UUIDstr?
 	ctx := ctxArg.(*deviceContext)
 	uuidStr := statusFilename
-	PublishAppInfoToZedCloud(uuidStr, nil, ctx.assignableAdapters)
+	PublishAppInfoToZedCloud(uuidStr, nil, ctx.assignableAdapters,
+		ctx.iteration)
+	ctx.iteration += 1
 }
 
 func handleDNSModify(ctxArg interface{}, statusFilename string,
