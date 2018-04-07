@@ -26,10 +26,9 @@ COPY patch /ws/patch
 RUN bash -c 'patch -p0 < patch/*'
 RUN make -C BaseTools
 RUN bash -c ". edksetup.sh ; build \$BUILD_ARGS_"`uname -m`
-RUN cp Build/OvmfX64/RELEASE_*/FV/OVMF.fd . 2>/dev/null || \
-    (dd if=/dev/zero of=OVMF.fd bs=1M count=64 ; \
-     dd if=Build/ArmVirtQemu-AARCH64/RELEASE_GCC5/FV/QEMU_EFI.fd of=OVMF.fd  conv=notrunc bs=1M)
+RUN cp Build/OvmfX64/RELEASE_*/FV/OVMF*.fd . 2>/dev/null || \
+    (cp Build/ArmVirtQemu-AARCH64/RELEASE_GCC5/FV/QEMU_EFI.fd OVMF.fd ;\
+     cp Build/ArmVirtQemu-AARCH64/RELEASE_GCC5/FV/QEMU_VARS.fd OVMF_VARS.fd)
 
-FROM alpine:3.7
-COPY --from=build /ws/OVMF.fd /
-CMD cat /OVMF.fd
+FROM scratch
+COPY --from=build /ws/OVMF*.fd /
