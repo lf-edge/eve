@@ -404,6 +404,10 @@ func installDownloadedObject(objType string, safename string,
 			// Done in Uninstall; just log here to make sure
 			if ret == nil && status.HasDownloaderRef {
 				log.Printf("installDownloadedObject: HasDownloaderRef for %s\n", safename)
+				// XXX try decrementing
+				removeBaseOsDownloaderConfig(safename)
+				status.HasDownloaderRef = false
+				// XXX write?
 			}
 		default:
 			errStr := fmt.Sprintf("%s, Unsupported Object Type %v",
