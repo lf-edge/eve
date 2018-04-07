@@ -302,12 +302,6 @@ func processEvents(image string, logChan <-chan logEntry) {
 	counter := 0
 
 	for {
-		for zedcloud.HasDeferred(image) {
-			log.Printf("processEvents waiting for deferred for %s\n",
-				image)
-			time.Sleep(1 * time.Minute)
-		}
-
 		select {
 		case event, more := <-logChan:
 			if !more {
@@ -394,7 +388,7 @@ func sendProtoStrForLogs(reportLogs *zmet.LogBundle, image string,
 		// Try sending later. The deferred state means processEvents
 		// will sleep until the timer takes care of sending this
 		// hence we'll keep things in order for a given image
-		zedcloud.SetDeferred(image, data, logsUrl, zedcloudCtx)
+		zedcloud.AddDeferred(image, data, logsUrl, zedcloudCtx)
 		return
 	}
 	log.Printf("Sent %d bytes image %s to %s\n", len(data), image, logsUrl)
@@ -529,7 +523,6 @@ func handleXenLogDirDelete(context interface{},
 	}
 }
 
-// If the filename is new we spawn a go routine which will read
 func handleLogDirModify(context interface{}, filename string, source string) {
 	ctx := context.(*loggerContext)
 

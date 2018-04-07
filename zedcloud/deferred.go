@@ -18,9 +18,10 @@ import (
 //      case change := <- deferredChan:
 //		zedcloud.HandleDeferred(change)
 // Before or after sending success call:
-//	zedcloud.RemoveDeferred(uuidStr)
+//	zedcloud.RemoveDeferred(key)
 // After failure call
-// 	zedcloud.SetDeferred(uuidStr, data, url, zedcloudCtx)
+// 	zedcloud.SetDeferred(key, data, url, zedcloudCtx)
+// or AddDeferred to build a queue for each key
 
 var debug = true // XXX or use zedcloudCtx.Debug?
 
@@ -32,7 +33,11 @@ type deferredItem struct {
 	zedcloudCtx ZedCloudContext
 }
 
-var deferredItems map[string]deferredItem
+type deferredItemList struct {
+	list []deferredItem
+}
+
+var deferredItems map[string]deferredItemList
 
 const longTime1 = time.Hour * 24
 const longTime2 = time.Hour * 48
@@ -44,7 +49,7 @@ var ticker = flextimer.NewRangeTicker(longTime1, longTime2)
 
 // Create and return a channel to the
 func InitDeferred() <-chan time.Time {
-	deferredItems = make(map[string]deferredItem)
+	deferredItems = make(map[string]deferredItemList)
 	return ticker.C
 }
 
@@ -53,23 +58,36 @@ func InitDeferred() <-chan time.Time {
 func HandleDeferred(event time.Time) {
 	log.Printf("HandleDeferred(%v) map %d\n",
 		event, len(deferredItems))
-	iteration := 0 // XXX
-	for key, item := range deferredItems {
+	iteration := 0 // Do some load spreading
+	for key, l := range deferredItems {
 		log.Printf("Trying to send for %s\n", key)
-		_, _, err := SendOnAllIntf(item.zedcloudCtx, item.url,
-			int64(len(item.data)), bytes.NewBuffer(item.data),
-			iteration)
-		if err != nil {
-			log.Printf("HandleDeferred: for %s failed %s\n",
-				key, err)
-			break
+		failed := false
+		for _, item := range l.list {
+			if item.data == nil {
+				continue
+			}
+			_, _, err := SendOnAllIntf(item.zedcloudCtx, item.url,
+				int64(len(item.data)), bytes.NewBuffer(item.data),
+				iteration)
+			if err != nil {
+				log.Printf("HandleDeferred: for %s failed %s\n",
+					key, err)
+				failed = true
+				break
+			}
+			item.data = nil
 		}
-		delete(deferredItems, key)
-		iteration += 1
+		if failed {
+			break
+		} else {
+			delete(deferredItems, key)
+			iteration += 1
+		}
 	}
 	if len(deferredItems) == 0 {
 		stopTimer()
 	}
+	log.Printf("HandleDeferred() done map %d\n", len(deferredItems))
 }
 
 // Check if there are any deferred items for this key
@@ -113,19 +131,47 @@ func SetDeferred(key string, data []byte, url string,
 	if len(deferredItems) == 0 {
 		startTimer()
 	}
+	_, ok := deferredItems[key]
 	if debug {
-		_, ok := deferredItems[key]
 		if ok {
 			log.Printf("Replacing key %s\n", key)
 		} else {
 			log.Printf("Adding key %s\n", key)
 		}
 	}
-	deferredItems[key] = deferredItem{
+	item := deferredItem{
 		data:        data,
 		url:         url,
 		zedcloudCtx: zedcloudCtx,
 	}
+	l := deferredItemList{}
+	l.list = append(l.list, item)
+	deferredItems[key] = l
+}
+
+// Add to slice for this key
+func AddDeferred(key string, data []byte, url string,
+	zedcloudCtx ZedCloudContext) {
+
+	log.Printf("QueueDeferred(%s) map %d\n", key, len(deferredItems))
+	if len(deferredItems) == 0 {
+		startTimer()
+	}
+	l, ok := deferredItems[key]
+	if debug {
+		if ok {
+			log.Printf("Adding to key %s\n", key)
+		} else {
+			log.Printf("Adding key %s\n", key)
+		}
+	}
+	item := deferredItem{
+		data:        data,
+		url:         url,
+		zedcloudCtx: zedcloudCtx,
+	}
+	l.list = append(l.list, item)
+	deferredItems[key] = l
 }
 
 // Try every minute backoff to every 15 minutes
