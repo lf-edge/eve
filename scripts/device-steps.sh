@@ -229,6 +229,10 @@ echo "Configuration from factory/install:"
 (cd $CONFIGDIR; ls -l)
 echo
 
+echo "Current downloaded files:"
+ls -lt $PERSISTDIR/downloads/*/*
+echo
+
 P3=`zboot partdev P3`
 if [ $? = 0 -a x$P3 != x ]; then
     echo "Using $P3 for /persist"
