@@ -268,7 +268,6 @@ admin =
 interval = 10
 logtick  = 60
 EOF
-echo "log-dir = /persist/$CURPART/log/" >>$TMPDIR/watchdog.conf
 echo "pidfile = /var/run/ledmanager.pid" >>$TMPDIR/watchdog.conf
 
 # The client should start soon
@@ -289,6 +288,8 @@ if [ ! -d $LOGDIRB ]; then
     echo "Creating $LOGDIRB"
     mkdir -p $LOGDIRB
 fi
+
+mkdir $PERSISTDIR/log
 
 echo "Set up log capture"
 DOM0LOGFILES="dhcpcd.err.log ntpd.err.log wlan.err.log wwan.err.log dhcpcd.out.log ntpd.out.log wlan.out.log wwan.out.log zededa-tools.out.log zededa-tools.err.log"

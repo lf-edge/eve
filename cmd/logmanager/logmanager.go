@@ -110,7 +110,7 @@ type zedcloudLogs struct {
 }
 
 func main() {
-	logf, err := agentlog.InitWithDir(agentName, "/var/log")
+	logf, err := agentlog.InitWithDir(agentName, "/persist/log")
 	if err != nil {
 		log.Fatal(err)
 	}
