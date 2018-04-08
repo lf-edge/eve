@@ -110,10 +110,11 @@ type zedcloudLogs struct {
 }
 
 func main() {
-	// Note that device-steps.sh sends our output to /var/run
-	// so we don't log our own output.
-	log.SetOutput(os.Stdout)
-	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
+	logf, err := agentlog.InitWithDir(agentName, "/var/log")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer logf.Close()
 
 	defaultLogdirname := agentlog.GetCurrentLogdir()
 	versionPtr := flag.Bool("v", false, "Version")
@@ -345,7 +346,7 @@ func HandleLogEvent(event logEntry, reportLogs *zmet.LogBundle, counter int) {
 	msgId := msgIdCounter
 	msgIdCounter += 1
 	if debug {
-		fmt.Printf("Read event from %s time %v id %d: %s\n",
+		log.Printf("Read event from %s time %v id %d: %s\n",
 			event.source, event.timestamp, msgId, event.content)
 	}
 	logDetails := &zmet.LogEntry{}
@@ -433,7 +434,7 @@ func sendCtxInit() {
 	if err != nil {
 		log.Fatal("uuid.FromString", err, string(b))
 	}
-	fmt.Printf("Read UUID %s\n", devUUID)
+	log.Printf("Read UUID %s\n", devUUID)
 }
 
 func HandleLogDirEvent(change string, logDirName string, ctx interface{},
@@ -597,7 +598,7 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 				log.Println(err)
 			}
 			if err != io.EOF {
-				fmt.Printf(" > Failed!: %v\n", err)
+				log.Printf(" > Failed!: %v\n", err)
 			}
 			break
 		}

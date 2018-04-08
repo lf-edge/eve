@@ -598,7 +598,7 @@ fi
 pgrep logmanager >/dev/null
 if [ $? != 0 ]; then
     echo "Starting logmanager at" `date`
-    logmanager >/var/log/logmanager.log 2>&1 &
+    logmanager &
     if [ $WAIT = 1 ]; then
 	echo -n "Press any key to continue "; read dummy; echo; echo
     fi

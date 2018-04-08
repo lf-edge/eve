@@ -10,8 +10,7 @@ import (
 	"os"
 )
 
-func Init(agentName string) (*os.File, error) {
-	logdir := GetCurrentLogdir()
+func initImpl(agentName string, logdir string) (*os.File, error) {
 	logfile := fmt.Sprintf("%s/%s.log", logdir, agentName)
 	logf, err := os.OpenFile(logfile, os.O_RDWR|os.O_CREATE|os.O_APPEND,
 		0666)
@@ -21,6 +20,15 @@ func Init(agentName string) (*os.File, error) {
 	log.SetOutput(logf)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
 	return logf, nil
+}
+
+func Init(agentName string) (*os.File, error) {
+	logdir := GetCurrentLogdir()
+	return initImpl(agentName, logdir)
+}
+
+func InitWithDir(agentName string, logdir string) (*os.File, error) {
+	return initImpl(agentName, logdir)
 }
 
 const baseLogdir = "/persist"
