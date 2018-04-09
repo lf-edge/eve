@@ -94,7 +94,7 @@ func fetchIprulesCounters() []AclCounters {
 			counters = append(counters, c...)
 		}
 	}
-	// XXX to get dbo1x0 stats
+	// XXX Only needed to get dbo1x0 stats
 	out, err = ip6tableCmdOut(false, "-t", "filter", "-S", "OUTPUT", "-v")
 	if err != nil {
 		log.Printf("fetchIprulesCounters: iptables -S failed %s\n", err)
@@ -122,8 +122,6 @@ func fetchIprulesCounters() []AclCounters {
 			counters = append(counters, c...)
 		}
 	}
-	// XXX
-	log.Printf("fetchIprulesCounters returning %v\n", counters)
 	return counters
 }
 
@@ -185,13 +183,10 @@ func parseCounters(out string, table string, overlay bool) []AclCounters {
 	var counters []AclCounters
 
 	lines := strings.Split(out, "\n")
-	// XXX
-	log.Printf("parseCounters: %v\n", lines)
 	for _, line := range lines {
 		ac := parseline(line, table, overlay)
 		if ac != nil {
-			// XXX
-			log.Printf("ACL counters %v\n", *ac)
+			// XXX log.Printf("ACL counters %v\n", *ac)
 			counters = append(counters, *ac)
 		}
 	}

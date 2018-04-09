@@ -50,7 +50,7 @@ type configItems struct {
 	metricInterval          uint32 // push metrics to cloud
 	resetIfCloudGoneTime    uint32 // reboot if no cloud connectivity
 	fallbackIfCloudGoneTime uint32 // ... and shorter during update
-	mintimeUpdateSuccess	uint32 // time before zedagent declares success
+	mintimeUpdateSuccess    uint32 // time before zedagent declares success
 	// XXX add max space for downloads?
 	// XXX add LTE uplink usage policy?
 }
@@ -62,15 +62,16 @@ type configItems struct {
 // and during a post-update boot that time is reduced to 10 minutes.
 var configItemDefaults = configItems{configInterval: 60, metricInterval: 60,
 	resetIfCloudGoneTime: 7 * 24 * 3600, fallbackIfCloudGoneTime: 600,
-	mintimeUpdateSuccess: 600}
+	mintimeUpdateSuccess: 300}
 
-// XXX	resetIfCloudGoneTime: 300, fallbackIfCloudGoneTime: 60}
+// XXX shorter counters for testing fallback:
+// 	resetIfCloudGoneTime: 300, fallbackIfCloudGoneTime: 60}
 
 var configItemCurrent = configItemDefaults
 
 type getconfigContext struct {
 	ledManagerCount             int // Current count
-	startTime		    time.Time
+	startTime                   time.Time
 	lastReceivedConfigFromCloud time.Time
 	configTickerHandle          interface{}
 	metricsTickerHandle         interface{}
@@ -205,65 +206,71 @@ func getLatestConfig(url string, iteration int, updateInprogress *bool,
 			getconfigCtx.ledManagerCount = 3
 		}
 		return false
-	} else {
+	}
+	// now cloud connectivity is good, consider marking partition state as
+	// active if it was inprogress
+	// XXX down the road we want more diagnostics and validation
+	// before we do this.
+	if *updateInprogress && zboot.IsCurrentPartitionStateInProgress() {
 		// Wait for a bit to detect an agent crash. Should run for
 		// at least N minutes to make sure we don't hit a watchdog.
 		timePassed := time.Since(getconfigCtx.startTime)
-		successLimit := time.Second * time.Duration(configItemCurrent.mintimeUpdateSuccess)
-		// now cloud connectivity is good, mark partition state as
-		// active if it was inprogress
-		// XXX down the road we want more diagnostics and validation
-		// before we do this.
-		if timePassed > successLimit && *updateInprogress &&
-			zboot.IsCurrentPartitionStateInProgress() {
-			curPart := zboot.GetCurrentPartition()
-			log.Printf("Config Fetch Task, curPart %s inprogress\n",
+		successLimit := time.Second *
+			time.Duration(configItemCurrent.mintimeUpdateSuccess)
+		curPart := zboot.GetCurrentPartition()
+		if timePassed < successLimit {
+			log.Printf("getLastestConfig, curPart %s inprogress waiting for %d seconds\n",
+				curPart,
+				(successLimit-timePassed)/time.Second)
+		} else {
+			log.Printf("getLastestConfig, curPart %s inprogress; marking active\n",
 				curPart)
 			if err := zboot.MarkOtherPartitionStateActive(); err != nil {
 				log.Println(err)
 			} else {
 				*updateInprogress = false
+				publishDeviceInfo = true
 			}
 		}
-
-		// Each time we hear back from the cloud we assume
-		// the device and connectivity is ok so we advance the
-		// watchdog timer.
-		// We should only require this connectivity once every 24 hours
-		// or so using a setable policy in the watchdog, but have
-		// a short timeout during validation of a image post update.
-		zboot.WatchdogOK()
-
-		if err := validateConfigMessage(url, resp); err != nil {
-			log.Println("validateConfigMessage: ", err)
-			// Inform ledmanager about cloud connectivity
-			types.UpdateLedManagerConfig(3)
-			getconfigCtx.ledManagerCount = 3
-			return false
-		}
-
-		changed, config, err := readDeviceConfigProtoMessage(contents)
-		if err != nil {
-			log.Println("readDeviceConfigProtoMessage: ", err)
-			// Inform ledmanager about cloud connectivity
-			types.UpdateLedManagerConfig(3)
-			getconfigCtx.ledManagerCount = 3
-			return false
-		}
-
-		// Inform ledmanager about config received from cloud
-		types.UpdateLedManagerConfig(4)
-		getconfigCtx.ledManagerCount = 4
-
-		getconfigCtx.lastReceivedConfigFromCloud = time.Now()
-		if !changed {
-			if debug {
-				log.Printf("Configuration from zedcloud is unchanged\n")
-			}
-			return false
-		}
-		return inhaleDeviceConfig(config, getconfigCtx)
 	}
+
+	// Each time we hear back from the cloud we assume
+	// the device and connectivity is ok so we advance the
+	// watchdog timer.
+	// We should only require this connectivity once every 24 hours
+	// or so using a setable policy in the watchdog, but have
+	// a short timeout during validation of a image post update.
+	zboot.WatchdogOK()
+
+	if err := validateConfigMessage(url, resp); err != nil {
+		log.Println("validateConfigMessage: ", err)
+		// Inform ledmanager about cloud connectivity
+		types.UpdateLedManagerConfig(3)
+		getconfigCtx.ledManagerCount = 3
+		return false
+	}
+
+	changed, config, err := readDeviceConfigProtoMessage(contents)
+	if err != nil {
+		log.Println("readDeviceConfigProtoMessage: ", err)
+		// Inform ledmanager about cloud connectivity
+		types.UpdateLedManagerConfig(3)
+		getconfigCtx.ledManagerCount = 3
+		return false
+	}
+
+	// Inform ledmanager about config received from cloud
+	types.UpdateLedManagerConfig(4)
+	getconfigCtx.ledManagerCount = 4
+
+	getconfigCtx.lastReceivedConfigFromCloud = time.Now()
+	if !changed {
+		if debug {
+			log.Printf("Configuration from zedcloud is unchanged\n")
+		}
+		return false
+	}
+	return inhaleDeviceConfig(config, getconfigCtx)
 }
 
 func validateConfigMessage(url string, r *http.Response) error {

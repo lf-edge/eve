@@ -369,7 +369,7 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 	}
 
 	ReportDeviceMetric.CpuMetric.Total = *proto.Uint64(cpuSecs)
-	// XXX note that uptime is seconds we've been up. We're converting
+	// Note that uptime is seconds we've been up. We're converting
 	// to a timestamp. That better not be interpreted as a time since
 	// the epoch
 	uptime, _ := ptypes.TimestampProto(
@@ -418,14 +418,13 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 		ReportDeviceMetric.Network = append(ReportDeviceMetric.Network,
 			networkDetails)
 	}
-	// XXX
-	if true || debug {
+	if debug {
 		log.Println("network metrics: ",
 			ReportDeviceMetric.Network)
 	}
 	// Collect zedcloud metrics from ourselves and other agents
 	cms := zedcloud.GetCloudMetrics()
-	// XXX make a copy
+	// Have to make a copy
 	cms = zedcloud.CastCloudMetrics(cms)
 	cms1 := zedcloud.CastCloudMetrics(clientMetrics)
 	if cms1 != nil {
@@ -614,7 +613,8 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 				networkDetails)
 		}
 		ReportMetrics.Am[countApp] = ReportAppMetric
-		if debug {
+		// XXX
+		if true || debug {
 			log.Println("metrics per app is: ",
 				ReportMetrics.Am[countApp])
 		}
@@ -633,14 +633,15 @@ const mbyte = 1024 * 1024
 // This function is called per change, hence needs to try over all uplinks
 // send report on each uplink.
 func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
-	aa *types.AssignableAdapters) {
+	aa *types.AssignableAdapters, iteration int) {
 
 	var ReportInfo = &zmet.ZInfoMsg{}
 
 	deviceType := new(zmet.ZInfoTypes)
 	*deviceType = zmet.ZInfoTypes_ZiDevice
 	ReportInfo.Ztype = *deviceType
-	ReportInfo.DevId = *proto.String(zcdevUUID.String())
+	deviceUUID := zcdevUUID.String()
+	ReportInfo.DevId = *proto.String(deviceUUID)
 	ReportInfo.AtTimeStamp = ptypes.TimestampNow()
 
 	ReportDeviceInfo := new(zmet.ZInfoDevice)
@@ -756,6 +757,8 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 		}
 		return nil
 	}
+	// XXX can we have baseOsConfig/Status without being assocated with
+	// a partitionLabel?
 	getSwInfo := func(partLabel string) *zmet.ZInfoDevSW {
 		swInfo := new(zmet.ZInfoDevSW)
 		swInfo.Activated = (partLabel == zboot.GetCurrentPartition())
@@ -907,16 +910,12 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 	}
 
 	statusUrl := serverName + "/" + statusApi
-	// XXX vary for load spreading when multiple free or multiple non-free
-	// uplinks
-	iteration := 0
+	zedcloud.RemoveDeferred(deviceUUID)
 	err = SendProtobuf(statusUrl, data, iteration)
 	if err != nil {
 		log.Printf("PublishDeviceInfoToZedCloud failed: %s\n", err)
-		// XXX reschedule doing this again later somehow
-		// Queue data on deviceQueue; replace if fails again
-	} else {
-		// XXX remove any queued old message for device
+		// Try sending later
+		zedcloud.SetDeferred(deviceUUID, data, statusUrl, zedcloudCtx)
 	}
 }
 
@@ -1027,7 +1026,7 @@ func getNetInfo(interfaceDetail psutilnet.InterfaceStat) *zmet.ZInfoNetwork {
 // When aiStatus is nil it means a delete and we send a message
 // containing only the UUID to inform zedcloud about the delete.
 func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
-	aa *types.AssignableAdapters) {
+	aa *types.AssignableAdapters, iteration int) {
 	if debug {
 		log.Printf("PublishAppInfoToZedCloud uuid %s\n", uuid)
 	}
@@ -1121,18 +1120,14 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 	if err != nil {
 		log.Fatal("PublishAppInfoToZedCloud proto marshaling error: ", err)
 	}
-
 	statusUrl := serverName + "/" + statusApi
-	// XXX vary for load spreading when multiple free or multiple non-free
-	// uplinks
-	iteration := 0
+
+	zedcloud.RemoveDeferred(uuid)
 	err = SendProtobuf(statusUrl, data, iteration)
 	if err != nil {
 		log.Printf("PublishAppInfoToZedCloud failed: %s\n", err)
-		// XXX reschedule doing this again later somehow
-		// Queue data on for this app; replace if fails again
-	} else {
-		// XXX remove any queued old message for app
+		// Try sending later
+		zedcloud.SetDeferred(uuid, data, statusUrl, zedcloudCtx)
 	}
 }
 

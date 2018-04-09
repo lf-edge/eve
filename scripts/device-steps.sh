@@ -229,6 +229,10 @@ echo "Configuration from factory/install:"
 (cd $CONFIGDIR; ls -l)
 echo
 
+echo "Current downloaded files:"
+ls -lt $PERSISTDIR/downloads/*/*
+echo
+
 P3=`zboot partdev P3`
 if [ $? = 0 -a x$P3 != x ]; then
     echo "Using $P3 for /persist"
@@ -264,7 +268,6 @@ admin =
 interval = 10
 logtick  = 60
 EOF
-echo "log-dir = /persist/$CURPART/log/" >>$TMPDIR/watchdog.conf
 echo "pidfile = /var/run/ledmanager.pid" >>$TMPDIR/watchdog.conf
 
 # The client should start soon
@@ -285,6 +288,8 @@ if [ ! -d $LOGDIRB ]; then
     echo "Creating $LOGDIRB"
     mkdir -p $LOGDIRB
 fi
+
+mkdir $PERSISTDIR/log
 
 echo "Set up log capture"
 DOM0LOGFILES="dhcpcd.err.log ntpd.err.log wlan.err.log wwan.err.log dhcpcd.out.log ntpd.out.log wlan.out.log wwan.out.log zededa-tools.out.log zededa-tools.err.log"
@@ -594,7 +599,7 @@ fi
 pgrep logmanager >/dev/null
 if [ $? != 0 ]; then
     echo "Starting logmanager at" `date`
-    logmanager >/var/log/logmanager.log 2>&1 &
+    logmanager &
     if [ $WAIT = 1 ]; then
 	echo -n "Press any key to continue "; read dummy; echo; echo
     fi

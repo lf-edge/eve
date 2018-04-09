@@ -110,10 +110,11 @@ type zedcloudLogs struct {
 }
 
 func main() {
-	// Note that device-steps.sh sends our output to /var/run
-	// so we don't log our own output.
-	log.SetOutput(os.Stdout)
-	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
+	logf, err := agentlog.InitWithDir(agentName, "/persist/log")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer logf.Close()
 
 	defaultLogdirname := agentlog.GetCurrentLogdir()
 	versionPtr := flag.Bool("v", false, "Version")
@@ -163,6 +164,9 @@ func main() {
 		}
 	}
 
+	// Timer for deferred sends of info messages
+	deferredChan := zedcloud.InitDeferred()
+
 	//Get servername, set logUrl, get device id and initialize zedcloudCtx
 	sendCtxInit()
 
@@ -181,32 +185,27 @@ func main() {
 	// Start sender of log events
 	go processEvents(currentPartition, loggerChan)
 
-	// The OtherPartition files will not change hence we can just
-	// read them and send their lines; no need to watch for changes.
-	otherLogdirname := agentlog.GetOtherLogdir()
-	if otherLogdirname != "" {
+	// If we have a logdir from a failed update, then set that up
+	// as well.
+	// XXX we can close this down once we've reached EOF for all the
+	// files in otherLofdirname. This is TBD
+	// Closing otherLoggerChan would the effect of terminating the
+	// processEvents go routine but we need to tell when all the files
+	// have reached the end.
+	otherLogDirname := agentlog.GetOtherLogdir()
+	otherLogDirChanges := make(chan string)
+	var otherCtx = loggerContext{}
+
+	if otherLogDirname != "" {
 		log.Printf("Have logs from failed upgrade in %s\n",
-			otherLogdirname)
+			otherLogDirname)
 		otherLoggerChan := make(chan logEntry)
 		otherPartition := zboot.GetOtherPartition()
 		go processEvents(otherPartition, otherLoggerChan)
-		files, err := ioutil.ReadDir(otherLogdirname)
-		if err != nil {
-			log.Fatal(err)
-		}
-		for _, file := range files {
-			filename := otherLogdirname + "/" + file.Name()
-			if !strings.HasSuffix(filename, ".log") {
-				log.Printf("Ignore %s\n", filename)
-				continue
-			}
-			log.Printf("Read %s until EOF\n", filename)
-			name := strings.Split(file.Name(), ".log")
-			source := name[0]
-			logReader(filename, source, otherLoggerChan)
-		}
-		// make processEvents() exit for this channel
-		close(otherLoggerChan)
+
+		go watch.WatchStatus(otherLogDirname, otherLogDirChanges)
+		otherCtx = loggerContext{logChan: otherLoggerChan,
+			image: otherPartition}
 	}
 
 	logDirChanges := make(chan string)
@@ -224,6 +223,10 @@ func main() {
 
 		case change := <-logDirChanges:
 			HandleLogDirEvent(change, logDirName, &ctx,
+				handleLogDirModify, handleLogDirDelete)
+
+		case change := <-otherLogDirChanges:
+			HandleLogDirEvent(change, otherLogDirname, &otherCtx,
 				handleLogDirModify, handleLogDirDelete)
 
 		case change := <-lispLogDirChanges:
@@ -250,6 +253,8 @@ func main() {
 			if err != nil {
 				log.Println(err)
 			}
+		case change := <-deferredChan:
+			zedcloud.HandleDeferred(change)
 		}
 	}
 }
@@ -341,7 +346,7 @@ func HandleLogEvent(event logEntry, reportLogs *zmet.LogBundle, counter int) {
 	msgId := msgIdCounter
 	msgIdCounter += 1
 	if debug {
-		fmt.Printf("Read event from %s time %v id %d: %s\n",
+		log.Printf("Read event from %s time %v id %d: %s\n",
 			event.source, event.timestamp, msgId, event.content)
 	}
 	logDetails := &zmet.LogEntry{}
@@ -375,14 +380,22 @@ func sendProtoStrForLogs(reportLogs *zmet.LogBundle, image string,
 		log.Fatal("sendProtoStrForLogs malloc error:")
 	}
 
+	if zedcloud.HasDeferred(image) {
+		log.Printf("SendProtoStrForLogs queued after existing for %s\n",
+			image)
+		zedcloud.AddDeferred(image, data, logsUrl, zedcloudCtx)
+		reportLogs.Log = []*zmet.LogEntry{}
+		return
+	}
 	_, _, err = zedcloud.SendOnAllIntf(zedcloudCtx, logsUrl,
 		int64(len(data)), buf, iteration)
 	if err != nil {
-		// XXX need to queue message and retry
-		// For now we discard what failed to constrain the size
-		// of each message
 		log.Printf("SendProtoStrForLogs %d bytes image %s failed: %s\n",
 			len(data), image, err)
+		// Try sending later. The deferred state means processEvents
+		// will sleep until the timer takes care of sending this
+		// hence we'll keep things in order for a given image
+		zedcloud.AddDeferred(image, data, logsUrl, zedcloudCtx)
 		reportLogs.Log = []*zmet.LogEntry{}
 		return
 	}
@@ -421,7 +434,7 @@ func sendCtxInit() {
 	if err != nil {
 		log.Fatal("uuid.FromString", err, string(b))
 	}
-	fmt.Printf("Read UUID %s\n", devUUID)
+	log.Printf("Read UUID %s\n", devUUID)
 }
 
 func HandleLogDirEvent(change string, logDirName string, ctx interface{},
@@ -518,7 +531,6 @@ func handleXenLogDirDelete(context interface{},
 	}
 }
 
-// If the filename is new we spawn a go routine which will read
 func handleLogDirModify(context interface{}, filename string, source string) {
 	ctx := context.(*loggerContext)
 
@@ -586,7 +598,7 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 				log.Println(err)
 			}
 			if err != io.EOF {
-				fmt.Printf(" > Failed!: %v\n", err)
+				log.Printf(" > Failed!: %v\n", err)
 			}
 			break
 		}

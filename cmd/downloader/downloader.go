@@ -403,24 +403,9 @@ func doDelete(statusFilename string, locDirname string, status *types.Downloader
 
 	log.Printf("doDelete(%v) for %s\n", status.Safename, status.DownloadURL)
 
-	// XXX:FIXME, delete from verifier/verfied !!
-	locFilename := locDirname + "/pending"
-
-	if status.ImageSha256 != "" {
-		locFilename = locFilename + "/" + status.ImageSha256
-	}
-
-	if _, err := os.Stat(locFilename); err == nil {
-		locFilename := locFilename + "/" + status.Safename
-		if _, err := os.Stat(locFilename); err == nil {
-			log.Printf("Deleting %s\n", locFilename)
-			// Remove file
-			if err := os.Remove(locFilename); err != nil {
-				log.Printf("Failed to remove %s: err %s\n",
-					locFilename, err)
-			}
-		}
-	}
+	deletefile(locDirname+"/pending", status)
+	deletefile(locDirname+"/verifie", status)
+	deletefile(locDirname+"/verified", status)
 
 	status.State = types.INITIAL
 	globalStatus.UsedSpace -= uint(types.RoundupToKB(status.Size))
@@ -430,6 +415,24 @@ func doDelete(statusFilename string, locDirname string, status *types.Downloader
 	// going back to RefCount 0. FIXed
 	updateRemainingSpace()
 	writeDownloaderStatus(status, statusFilename)
+}
+
+func deletefile(dirname string, status *types.DownloaderStatus) {
+	if status.ImageSha256 != "" {
+		dirname = dirname + "/" + status.ImageSha256
+	}
+
+	if _, err := os.Stat(dirname); err == nil {
+		filename := dirname + "/" + status.Safename
+		if _, err := os.Stat(filename); err == nil {
+			log.Printf("Deleting %s\n", filename)
+			// Remove file
+			if err := os.Remove(filename); err != nil {
+				log.Printf("Failed to remove %s: err %s\n",
+					filename, err)
+			}
+		}
+	}
 }
 
 func handleDelete(ctx *downloaderContext, objType string,
@@ -632,7 +635,7 @@ func updateRemainingSpace() {
 	globalStatus.RemainingSpace = globalConfig.MaxSpace -
 		globalStatus.UsedSpace - globalStatus.ReservedSpace
 
-	log.Printf("RemaingSpace %d, maxspace %d, usedspace %d, reserved %d\n",
+	log.Printf("RemainingSpace %d, maxspace %d, usedspace %d, reserved %d\n",
 		globalStatus.RemainingSpace, globalConfig.MaxSpace,
 		globalStatus.UsedSpace, globalStatus.ReservedSpace)
 	// Create and write
