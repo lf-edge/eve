@@ -77,7 +77,6 @@ enum DriveType {
 	CDROM   = 1;
 	HDD     = 2;
 	NET     = 3;
-	APPHD   = 4;
 }
 
 message Drive {
@@ -88,6 +87,4 @@ message Drive {
 	DriveType drvtype = 8;
 	Target target = 9;
 	int64 maxsizebytes = 10;
-	int64 minsizebytes = 11;	// required minimum storage size
-	string mountpoint = 12;	// domU mount point
 }
