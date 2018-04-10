@@ -47,6 +47,7 @@ rm -rf $TMPDIR
 # Setup for untaring in /
 mkdir -p $TMPDIR/config $TMPDIR/opt/zededa/bin $TMPDIR/var/tmp/zededa/
 echo ${BUILD_VERSION} >$TMPDIR/opt/zededa/bin/versioninfo
+cp -rp lisp.config.base $TMPDIR/var/tmp/zededa
 cp -rp DeviceNetworkConfig $TMPDIR/var/tmp/zededa
 cp -rp AssignableAdapters $TMPDIR/var/tmp/zededa
 cp -p README $TMPDIR/opt/zededa/bin/
@@ -62,6 +63,7 @@ rm -rf $TMPDIR
 # Setup for untaring in /
 mkdir -p $TMPDIR/config $TMPDIR/opt/zededa/bin $TMPDIR/var/tmp/zededa/
 echo ${BUILD_VERSION} >$TMPDIR/opt/zededa/bin/versioninfo
+cp -rp lisp.config.base $TMPDIR/var/tmp/zededa
 cp -rp DeviceNetworkConfig $TMPDIR/var/tmp/zededa
 cp -rp AssignableAdapters $TMPDIR/var/tmp/zededa
 cp -p README $TMPDIR/opt/zededa/bin/

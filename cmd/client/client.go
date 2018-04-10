@@ -37,7 +37,7 @@ import (
 const (
 	agentName   = "zedclient"
 	tmpDirname  = "/var/tmp/zededa"
-	DNCDirname  = "/var/tmp/zededa/DeviceNetworkConfig"
+	DNCDirname  = tmpDirname + "/DeviceNetworkConfig"
 	maxDelay    = time.Second * 600 // 10 minutes
 	uuidMaxWait = time.Second * 60  // 1 minute
 )
