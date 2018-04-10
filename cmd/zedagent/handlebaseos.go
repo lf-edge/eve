@@ -548,7 +548,7 @@ func doBaseOsUninstall(uuidStr string, status *types.BaseOsStatus) (bool, bool) 
 	}
 
 	if !removedAll {
-		log.Printf("XXX NOT doBaseOsUninstall(%s) for %s, Waiting for verifier purge\n",
+		log.Printf("NOT XXX doBaseOsUninstall(%s) for %s, Waiting for verifier purge\n",
 			status.BaseOsVersion, uuidStr)
 		// XXX try; alternatively caller needs to defer and react to
 		// drop in refcount or delete. Why wait?
