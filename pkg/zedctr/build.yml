@@ -12,4 +12,3 @@ config:
   capabilities:
     - all
   pid: host
-
