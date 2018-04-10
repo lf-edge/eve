@@ -435,10 +435,16 @@ func checkCurrentBaseOsFiles(config *zconfig.EdgeDevConfig) bool {
 	}
 
 	baseOses := config.GetBase()
+	log.Printf("checkCurrentBaseOsFiles: have %d files: %v\n",
+		len(curBaseOsFilenames), curBaseOsFilenames)
+	log.Printf("checkCurrentBaseOsFiles: have %d config: %v\n",
+		len(baseOses), baseOses)
 	// delete any baseOs config which is not present in the new set
 	for _, curBaseOs := range curBaseOsFilenames {
 		curBaseOsFilename := curBaseOs.Name()
 
+		log.Printf("checkCurrentBaseOsFiles: found file %s\n",
+			curBaseOsFilename)
 		// file type json
 		if strings.HasSuffix(curBaseOsFilename, ".json") {
 			found := false
@@ -465,8 +471,13 @@ func removeBaseOsEntry(baseOsFilename string) {
 	log.Printf("removeBaseOsEntry %s, remove baseOs entry\n", uuidStr)
 
 	// remove base os holder config file
-	os.Remove(zedagentBaseOsConfigDirname + "/" + baseOsFilename)
-
+	err := os.Remove(zedagentBaseOsConfigDirname + "/" + baseOsFilename)
+	if err != nil {
+		log.Printf("removeBaseOsEntry: failed %s\n", err)
+	}
 	// remove certificates holder config file
-	os.Remove(zedagentCertObjConfigDirname + "/" + baseOsFilename)
+	err = os.Remove(zedagentCertObjConfigDirname + "/" + baseOsFilename)
+	if err != nil {
+		log.Printf("removeBaseOsEntry: failed %s\n", err)
+	}
 }

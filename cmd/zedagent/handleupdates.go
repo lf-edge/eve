@@ -28,9 +28,10 @@ func createCertObjDownloaderConfig(safename string,
 	createDownloaderConfig(baseOsObj, safename, sc)
 }
 
+// XXX this function is not used
 func createBaseOsVerifierConfig(safename string,
-	sc *types.StorageConfig) {
-	createVerifierConfig(baseOsObj, safename, sc)
+	sc *types.StorageConfig, checkCerts bool) {
+	createVerifierConfig(baseOsObj, safename, sc, checkCerts)
 }
 
 func removeBaseOsDownloaderConfig(safename string) {

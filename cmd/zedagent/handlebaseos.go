@@ -458,6 +458,7 @@ func removeBaseOsConfig(uuidStr string) {
 
 func removeBaseOsStatus(uuidStr string) {
 
+	log.Printf("removeBaseOsStatus for %s\n", uuidStr)
 	status := baseOsStatusGet(uuidStr)
 	if status == nil {
 		log.Printf("removeBaseOsStatus: no status\n")
@@ -472,6 +473,7 @@ func removeBaseOsStatus(uuidStr string) {
 	}
 
 	if del {
+		log.Printf("removeBaseOsStatus %s, Deleting\n", uuidStr)
 
 		// Write out what we modified to BaseOsStatus aka delete
 		// Remove the status file also
@@ -481,9 +483,9 @@ func removeBaseOsStatus(uuidStr string) {
 			if err := os.Remove(statusFilename); err != nil {
 				log.Println(err)
 			}
-			log.Printf("%s, removeBaseOsStatus %s, Done\n", uuidStr)
 		}
 	}
+	log.Printf("removeBaseOsStatus %s, Done\n", uuidStr)
 }
 
 func doBaseOsRemove(uuidStr string, status *types.BaseOsStatus) (bool, bool) {
@@ -524,11 +526,14 @@ func doBaseOsUninstall(uuidStr string, status *types.BaseOsStatus) (bool, bool) 
 
 		// Decrease refcount if we had increased it
 		if ss.HasVerifierRef {
-			log.Printf("doBaseOsUninstall(%s) for %s, process verifer %s\n",
+			log.Printf("doBaseOsUninstall(%s) for %s, HasVerifierRed %s\n",
 				status.BaseOsVersion, uuidStr, ss.ImageSha256)
 			removeBaseOsVerifierConfig(ss.ImageSha256)
 			ss.HasVerifierRef = false
 			changed = true
+		} else {
+			log.Printf("doBaseOsUninstall(%s) for %s, NO HasVerifier\n",
+				status.BaseOsVersion, uuidStr)
 		}
 
 		vs, err := lookupBaseOsVerificationStatusSha256(ss.ImageSha256)
@@ -543,7 +548,7 @@ func doBaseOsUninstall(uuidStr string, status *types.BaseOsStatus) (bool, bool) 
 	}
 
 	if !removedAll {
-		log.Printf("NOT XXX doBaseOsUninstall(%s) for %s, Waiting for verifier purge\n",
+		log.Printf("XXX NOT doBaseOsUninstall(%s) for %s, Waiting for verifier purge\n",
 			status.BaseOsVersion, uuidStr)
 		// XXX try; alternatively caller needs to defer and react to
 		// drop in refcount or delete. Why wait?
@@ -558,12 +563,15 @@ func doBaseOsUninstall(uuidStr string, status *types.BaseOsStatus) (bool, bool) 
 		safename := types.UrlToSafename(ss.DownloadURL, ss.ImageSha256)
 		// Decrease refcount if we had increased it
 		if ss.HasDownloaderRef {
-			log.Printf("doBaseOsUninstall(%s) for %s, process Downloader %s\n",
+			log.Printf("doBaseOsUninstall(%s) for %s, HasDownloaderRef %s\n",
 				status.BaseOsVersion, uuidStr, safename)
 
 			removeBaseOsDownloaderConfig(safename)
 			ss.HasDownloaderRef = false
 			changed = true
+		} else {
+			log.Printf("doBaseOsUninstall(%s) for %s, NO HasDownloaderRef\n",
+				status.BaseOsVersion, uuidStr)
 		}
 
 		ds, err := lookupBaseOsDownloaderStatus(ss.ImageSha256)

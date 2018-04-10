@@ -87,16 +87,19 @@ func verifierStatusDelete(key string) {
 	}
 }
 
+// If checkCerts is set this can return an error. Otherwise not.
 func createVerifierConfig(objType string, safename string,
-	sc *types.StorageConfig) error {
+	sc *types.StorageConfig, checkCerts bool) error {
 
 	initVerifierMaps()
 
 	// check the certificate files, if not present,
 	// we can not start verification
-	if err := checkCertsForObject(safename, sc); err != nil {
-		log.Printf("%v for %s\n", err, safename)
-		return err
+	if checkCerts {
+		if err := checkCertsForObject(safename, sc); err != nil {
+			log.Printf("%v for %s\n", err, safename)
+			return err
+		}
 	}
 
 	key := formLookupKey(objType, safename)
