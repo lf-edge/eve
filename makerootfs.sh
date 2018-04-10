@@ -27,6 +27,6 @@ case $2 in
     squash) MKROOTFS_PKG=mkrootfs-squash ;;
     *) usage
 esac
-MKROOTFS_TAG="$(linuxkit pkg show-tag pkg/${MKROOTFS_PKG})-amd64"
+MKROOTFS_TAG="$(linuxkit pkg show-tag pkg/${MKROOTFS_PKG})"
 
 linuxkit build -o - $1 | docker run -e ZEN_DEFAULT_BOOT -v /dev:/dev --privileged -i ${MKROOTFS_TAG} > $3

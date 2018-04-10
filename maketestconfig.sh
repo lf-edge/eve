@@ -3,7 +3,7 @@
 #
 #      ./makeflash.sh <output.img>
 #
-MKCONFIG_TAG="$(linuxkit pkg show-tag pkg/test-conf)-amd64"
+MKCONFIG_TAG="$(linuxkit pkg show-tag pkg/test-conf)"
 
 IMAGE=$1
 

@@ -4,7 +4,7 @@ LINUXKIT_OPTS= --disable-content-trust
 
 BUILDARCH ?= $(shell uname -m) # The target CPU architecture == host arch if unspecified.
 
-BUILD-PKGS =  abuild
+BUILD-PKGS =  abuild uefi
 
 .PHONY: push force-push build forcebuild show-tag clean dockerfiles
 

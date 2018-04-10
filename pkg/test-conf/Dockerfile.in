@@ -14,7 +14,7 @@ ADD make-config /
 COPY /conf /conf
 
 # Copy ztools conf
-COPY --from=zededa /config /conf/
+COPY --from=zededa /opt/zededa/examples/config /conf/
 
 WORKDIR /
 ENTRYPOINT [ "/make-config" ]
