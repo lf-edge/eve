@@ -801,6 +801,7 @@ func handleModify(ctx *verifierContext, objType string, statusFilename string,
 	// Note no comparison on version
 	changed := false
 
+	log.Printf("handleModify for %s\n", config.DownloadURL)
 	// Always update RefCount
 	if status.RefCount != config.RefCount {
 		log.Printf("handleModify RefCount change %s from %d to %d\n",

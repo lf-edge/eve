@@ -243,7 +243,7 @@ func LookupDomainStatusIoBundle(ioType types.IoType, name string) *types.DomainS
 	return nil
 }
 
-// XXX can we use libxenstat? /usr/local/lib/libxenstat.so on hikey
+// XX can we use libxenstat? /usr/local/lib/libxenstat.so on hikey
 func ExecuteXentopCmd() [][]string {
 	var cpuStorageStat [][]string
 

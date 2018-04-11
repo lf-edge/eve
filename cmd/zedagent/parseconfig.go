@@ -194,7 +194,6 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 		// different update than the one that failed.
 		return false
 	}
-	// XXX will the createBaseOsConfig creation result in a download?
 	configCount := 0
 	if validateBaseOsConfig(baseOsList) == true {
 		configCount = createBaseOsConfig(baseOsList, certList)
@@ -309,7 +308,7 @@ func rejectReinstallFailed(config *types.BaseOsConfig, otherPartName string) {
 	errString := fmt.Sprintf("Attempt to reinstall failed %s in %s: refused",
 		config.BaseOsVersion, otherPartName)
 	log.Println(errString)
-	// XXX do we have a baseOsStatus yet?
+	// XXX do we have a baseOsStatus yet? NO
 	uuidStr := config.UUIDandVersion.UUID.String()
 	status := baseOsStatusGet(uuidStr)
 	if status == nil {
@@ -331,7 +330,6 @@ func rejectReinstallFailed(config *types.BaseOsConfig, otherPartName string) {
 
 	baseOsStatusSet(uuidStr, status)
 	writeBaseOsStatus(status, uuidStr)
-	// XXX how do we tell handler that status changes?
 }
 
 func setStoragePartitionLabel(baseOs *types.BaseOsConfig) {

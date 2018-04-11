@@ -168,14 +168,6 @@ func baseOsGetActivationStatus(status *types.BaseOsStatus) {
 	}
 
 	partName := status.PartitionLabel
-	partVersion := zboot.GetShortVersion(partName)
-
-	// if they match, mean already installed
-	// mark the status accordingly
-	// XXX TRY
-	if false && partVersion == status.BaseOsVersion {
-		baseOsMarkInstalled(status)
-	}
 
 	// some partition specific attributes
 	status.PartitionState = zboot.GetPartitionState(partName)
@@ -188,19 +180,6 @@ func baseOsGetActivationStatus(status *types.BaseOsStatus) {
 	}
 	// if current Partition, get the status from zboot
 	status.Activated = zboot.IsCurrentPartitionStateActive()
-}
-
-func baseOsMarkInstalled(status *types.BaseOsStatus) {
-
-	log.Printf("baseOsMarkInstalled(%s)\n", status.BaseOsVersion)
-	if status.State != types.INSTALLED {
-		log.Printf("%s, marking installed\n", status.BaseOsVersion)
-		status.State = types.INSTALLED
-		for idx, _ := range status.StorageStatusList {
-			ss := &status.StorageStatusList[idx]
-			ss.State = types.INSTALLED
-		}
-	}
 }
 
 func baseOsHandleStatusUpdate(uuidStr string) {
@@ -354,7 +333,6 @@ func doBaseOsInstall(uuidStr string, config types.BaseOsConfig,
 	// check for the download status change
 	downloadchange, downloaded :=
 		checkBaseOsStorageDownloadStatus(uuidStr, config, status)
-	// XXX above returns downloaded! How? What is in status? ss.DOWNLOADED?
 
 	if downloaded == false {
 		log.Printf(" %s, Still not downloaded\n", config.BaseOsVersion)
@@ -553,6 +531,7 @@ func doBaseOsUninstall(uuidStr string, status *types.BaseOsStatus) (bool, bool) 
 	}
 
 	if !removedAll {
+		// XXX should be able to reinsert the return
 		log.Printf("NOT XXX doBaseOsUninstall(%s) for %s, Waiting for verifier purge\n",
 			status.BaseOsVersion, uuidStr)
 		// XXX try; alternatively caller needs to defer and react to
@@ -590,6 +569,7 @@ func doBaseOsUninstall(uuidStr string, status *types.BaseOsStatus) (bool, bool) 
 	}
 
 	if !removedAll {
+		// XXX should be able to reinsert the return
 		log.Printf("NOT XXX doBaseOsUninstall(%s) for %s, Waiting for downloader purge\n",
 			status.BaseOsVersion, uuidStr)
 		// XXX try; alternatively caller needs to defer and react to
