@@ -317,12 +317,12 @@ func doCertObjUninstall(uuidStr string, status *types.CertObjStatus) (bool, bool
 		log.Printf("%s, certEntry safename %s\n", uuidStr, safename)
 		// Decrease refcount if we had increased it
 		if ss.HasDownloaderRef {
-			removeCertObjDownloaderConfig(safename)
+			removeDownloaderConfig(certObj, safename)
 			ss.HasDownloaderRef = false
 			changed = true
 		}
 
-		_, err := lookupCertObjDownloaderStatus(safename)
+		_, err := lookupDownloaderStatus(certObj, safename)
 		// XXX if additional refs it will not go away
 		if false && err == nil {
 			log.Printf("%s, download %s not yet gone\n", uuidStr, safename)

@@ -45,27 +45,20 @@ func verifierConfigGet(key string) *types.VerifyImageConfig {
 	return nil
 }
 
-func verifierConfigSet(key string, config *types.VerifyImageConfig) {
-	verifierConfigMap[key] = *config
+func verifierConfigGetSha256(sha string) *types.VerifyImageConfig {
+	for key, config := range verifierConfigMap {
+		if config.ImageSha256 == sha {
+			log.Printf("verifierConfigGetSha256(%s): found key %s safename %s, refcount %d\n",
+				sha, key, config.Safename, config.RefCount)
+		}
+		return &config
+	}
+	log.Printf("verifierConfigGetSha256(%s): not found\n", sha)
+	return nil
 }
 
-func verifierConfigDelete(key string, objType string, safename string) bool {
-	config := verifierConfigGet(key)
-	if config == nil {
-		return false
-	}
-
-	if config.RefCount > 1 {
-		log.Printf("%s, decrementing refCount(%d)\n", key, config.RefCount)
-		config.RefCount -= 1
-		verifierConfigSet(key, config)
-		writeVerifierConfig(objType, safename, verifierConfigGet(key))
-		return false
-	}
-
-	log.Printf("%s, verifier config delete\n", key)
-	delete(verifierConfigMap, key)
-	return true
+func verifierConfigSet(key string, config *types.VerifyImageConfig) {
+	verifierConfigMap[key] = *config
 }
 
 func verifierStatusGet(key string) *types.VerifyImageStatus {
@@ -164,22 +157,29 @@ func updateVerifierStatus(objType string, status *types.VerifyImageStatus) {
 	log.Printf("updateVerifierStatus for %s, Done\n", key)
 }
 
-func removeVerifierConfig(objType string, safename string) {
+func MaybeRemoveVerifierConfigSha256(objType string, sha256 string) {
+	log.Printf("MaybeRemoveVerifierConfig for %s\n", sha256)
 
-	key := formLookupKey(objType, safename)
-	log.Printf("%s, verifier config delete \n", key)
-
-	if ok := verifierConfigDelete(key, objType, safename); ok {
-		configFilename := fmt.Sprintf("%s/%s/config/%s.json",
-			verifierBaseDirname, objType, safename)
-
-		if err := os.Remove(configFilename); err != nil {
-			log.Println(err)
-		}
-		log.Printf("%s, verifier config entry delete, Done\n", key)
-	} else {
-		log.Printf("%s, verifier config entry delete, no config\n", key)
+	m := verifierConfigGetSha256(sha256)
+	if m == nil {
+		log.Printf("Verifier config missing for remove for %s\n",
+			sha256)
+		return
 	}
+	safename := m.Safename
+	key := formLookupKey(objType, safename)
+	log.Printf("MaybeRemoveVerifierConfig key %s\n", key)
+
+	m.RefCount -= 1
+	if m.RefCount != 0 {
+		log.Printf("MaybeRemoveVerifierConfig remaining RefCount %d for %s\n",
+			m.RefCount, sha256)
+		verifierConfigSet(key, m)
+		writeVerifierConfig(objType, safename, m)
+		return
+	}
+	deleteVerifierConfig(objType, safename)
+	log.Printf("MaybeRemoveVerifierConfigSha256 done for %s\n", sha256)
 }
 
 func removeVerifierStatus(objType string, safename string) {
@@ -188,7 +188,7 @@ func removeVerifierStatus(objType string, safename string) {
 	verifierStatusDelete(key)
 }
 
-func lookupVerificationStatusSha256Internal(objType string, sha256 string) (*types.VerifyImageStatus, error) {
+func lookupVerificationStatusSha256(objType string, sha256 string) (*types.VerifyImageStatus, error) {
 
 	for _, status := range verifierStatusMap {
 		if status.ImageSha256 == sha256 {
@@ -211,23 +211,12 @@ func lookupVerificationStatus(objType string, safename string) (*types.VerifyIma
 	return nil, errors.New("No verificationStatusMap for safename")
 }
 
-func lookupVerificationStatusSha256(objType string, sha256 string) (*types.VerifyImageStatus, error) {
-
-	m, err := lookupVerificationStatusSha256Internal(objType, sha256)
-	if err != nil {
-		return nil, err
-	}
-	log.Printf("found status based on sha256 %s safename %s\n",
-		sha256, m.Safename)
-	return m, nil
-}
-
 func lookupVerificationStatusAny(objType string, safename string, sha256 string) (*types.VerifyImageStatus, error) {
 
 	if m, err := lookupVerificationStatus(objType, safename); err == nil {
 		return m, nil
 	}
-	if m, err := lookupVerificationStatusSha256Internal(objType, sha256); err == nil {
+	if m, err := lookupVerificationStatusSha256(objType, sha256); err == nil {
 		log.Printf("lookupVerifyImageStatusAny: found based on sha %s\n", sha256)
 		return m, nil
 	}
@@ -304,7 +293,7 @@ func writeVerifierConfig(objType string, safename string,
 	if config == nil {
 		return
 	}
-	log.Printf("%s, writeVerifierConfig: RefCount %d\n",
+	log.Printf("writeVerifierConfig(%s): RefCount %d\n",
 		safename, config.RefCount)
 	configFilename := fmt.Sprintf("%s/%s/config/%s.json",
 		verifierBaseDirname, objType, safename)
@@ -317,6 +306,15 @@ func writeVerifierConfig(objType string, safename string,
 	err = ioutil.WriteFile(configFilename, bytes, 0644)
 	if err != nil {
 		log.Fatal(err)
+	}
+}
+
+func deleteVerifierConfig(objType string, safename string) {
+	log.Printf("deleteVerifierConfig(%s)\n", safename)
+	configFilename := fmt.Sprintf("%s/%s/config/%s.json",
+		verifierBaseDirname, objType, safename)
+	if err := os.Remove(configFilename); err != nil {
+		log.Println(err)
 	}
 }
 

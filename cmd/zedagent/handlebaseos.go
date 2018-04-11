@@ -509,9 +509,10 @@ func doBaseOsUninstall(uuidStr string, status *types.BaseOsStatus) (bool, bool) 
 
 		// Decrease refcount if we had increased it
 		if ss.HasVerifierRef {
-			log.Printf("doBaseOsUninstall(%s) for %s, HasVerifierRed %s\n",
+			log.Printf("doBaseOsUninstall(%s) for %s, HasVerifierRef %s\n",
 				status.BaseOsVersion, uuidStr, ss.ImageSha256)
-			removeBaseOsVerifierConfig(ss.ImageSha256)
+			MaybeRemoveVerifierConfigSha256(baseOsObj,
+				ss.ImageSha256)
 			ss.HasVerifierRef = false
 			changed = true
 		} else {
@@ -519,7 +520,8 @@ func doBaseOsUninstall(uuidStr string, status *types.BaseOsStatus) (bool, bool) 
 				status.BaseOsVersion, uuidStr)
 		}
 
-		vs, err := lookupBaseOsVerificationStatusSha256(ss.ImageSha256)
+		vs, err := lookupVerificationStatusSha256(baseOsObj,
+			ss.ImageSha256)
 
 		if err == nil {
 			log.Printf("doBaseOsUninstall(%s) for %s, Verifier %s not yet gone; RefCount %d\n",
@@ -550,7 +552,7 @@ func doBaseOsUninstall(uuidStr string, status *types.BaseOsStatus) (bool, bool) 
 			log.Printf("doBaseOsUninstall(%s) for %s, HasDownloaderRef %s\n",
 				status.BaseOsVersion, uuidStr, safename)
 
-			removeBaseOsDownloaderConfig(safename)
+			removeDownloaderConfig(baseOsObj, safename)
 			ss.HasDownloaderRef = false
 			changed = true
 		} else {
@@ -558,7 +560,7 @@ func doBaseOsUninstall(uuidStr string, status *types.BaseOsStatus) (bool, bool) 
 				status.BaseOsVersion, uuidStr)
 		}
 
-		ds, err := lookupBaseOsDownloaderStatus(ss.ImageSha256)
+		ds, err := lookupDownloaderStatus(baseOsObj, ss.ImageSha256)
 		if err == nil {
 			log.Printf("doBaseOsUninstall(%s) for %s, Download %s not yet gone; RefCount %d\n",
 				status.BaseOsVersion, uuidStr, safename,

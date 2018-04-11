@@ -69,6 +69,8 @@ func MaybeAddVerifyImageConfig(safename string, sc *types.StorageConfig,
 func MaybeRemoveVerifyImageConfigSha256(sha256 string) {
 	log.Printf("MaybeRemoveVerifyImageConfig for %s\n", sha256)
 
+	// XXX Looking in status to remove config??? Assumes status made
+	// it back from verifier before we want to delete it.
 	m, err := lookupVerifyImageStatusSha256Impl(sha256)
 	if err != nil {
 		log.Printf("VerifyImage config missing for remove for %s\n",
