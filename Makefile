@@ -4,6 +4,9 @@ PATH := $(CURDIR)/build-tools/bin:$(PATH)
 MEDIA_SIZE=700
 
 ZARCH=$(shell uname -m)
+DOCKER_ARCH_TAG_aarch64=arm64
+DOCKER_ARCH_TAG_x86_64=amd64
+DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG_$(ZARCH))
 QEMU_OPTS_aarch64=-machine virt,gic_version=3 -machine virtualization=true -cpu cortex-a57 -machine type=virt \
                   -drive file=./bios/OVMF.fd,format=raw,if=pflash -drive file=./bios/flash1.img,format=raw,if=pflash
 QEMU_OPTS_x86_64=--bios ./bios/OVMF.fd -cpu SandyBridge
@@ -37,8 +40,8 @@ pkgs: build-tools build-pkgs
 bios/OVMF.fd:
 	mkdir bios || :
 	[ -f bios/flash1.img ] || dd if=/dev/zero of=bios/flash1.img bs=1048576 count=64
-	make -C build-pkgs BUILD-PKGS=uefi
-	docker run $(shell make -C build-pkgs BUILD-PKGS=uefi show-tag) > $@	
+	C=`docker create $(shell make -C build-pkgs BUILD-PKGS=uefi show-tag)-$(DOCKER_ARCH_TAG) fake` ;\
+	   docker export $$C | tar -C bios -xf - OVMF* ; docker rm $$C
 
 # run-installer
 #
