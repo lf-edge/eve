@@ -834,7 +834,8 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 		// XXX could have been assigned away; hack to check for domains
 		_, _, err := types.IoBundleToPci(ib)
 		if err != nil {
-			if len(domainStatus) == 0 {
+			// XXX assigning at init
+			if false && len(domainStatus) == 0 {
 				if debug {
 					log.Printf("Not reporting non-existent PCI device %d %s: %v\n",
 						ib.Type, ib.Name, err)

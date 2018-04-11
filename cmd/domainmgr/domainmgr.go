@@ -151,6 +151,9 @@ func main() {
 	}
 	log.Printf("Have %d assignable adapters\n", len(aa.IoBundleList))
 
+	if err := pciAssignableAddAll(&aa); err != nil {
+		log.Printf("pciAssignableAddAll: failed %v\n", err)
+	}
 	networkStatusChanges := make(chan string)
 	go watch.WatchStatus(DNSDirname, networkStatusChanges)
 
@@ -360,7 +363,8 @@ func doActivate(config types.DomainConfig, status *types.DomainStatus,
 			log.Fatal("doActivate lookup missing: %d %s for %s\n",
 				adapter.Type, adapter.Name, status.DomainName)
 		}
-		if ib.PciShort != "" {
+		// XXX was assigned away at init
+		if false && ib.PciShort != "" {
 			log.Printf("Assigning %s %s to %s\n",
 				ib.PciLong, ib.PciShort, status.DomainName)
 			err := pciAssignableAdd(ib.PciLong)
@@ -524,7 +528,8 @@ func doInactivate(status *types.DomainStatus, aa *types.AssignableAdapters) {
 			log.Fatal("doInactivate lookup missing: %d %s for %s\n",
 				adapter.Type, adapter.Name, status.DomainName)
 		}
-		if ib.PciShort != "" {
+		// XXX no
+		if false && ib.PciShort != "" {
 			log.Printf("Removing %s %s from %s\n",
 				ib.PciLong, ib.PciShort, status.DomainName)
 			err := pciAssignableRem(ib.PciLong)
@@ -1190,6 +1195,30 @@ func pciAssignableRem(long string) error {
 		return errors.New(errStr)
 	}
 	log.Printf("xl pci-assignable-rem done\n")
+	return nil
+}
+
+// Take away all assignable devices so dom0 will not react to e.g. a USB stick
+func pciAssignableAddAll(aa *types.AssignableAdapters) error {
+	for i, _ := range aa.IoBundleList {
+		ib := &aa.IoBundleList[i]
+		// Does it exist?
+		// Then save the PCI ID before we assign it away
+		long, short, err := types.IoBundleToPci(ib)
+		if err != nil {
+			log.Printf("IoBundleToPci failed: %v\n", err)
+			continue
+		}
+		ib.PciLong = long
+		ib.PciShort = short
+		if ib.PciShort != "" {
+			err := pciAssignableAdd(ib.PciLong)
+			if err != nil {
+				log.Printf("pciAssignableAdd failed: %v\n", err)
+				continue
+			}
+		}
+	}
 	return nil
 }
 
