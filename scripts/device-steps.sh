@@ -224,6 +224,7 @@ fi
 echo "Handling restart done at" `date`
 
 echo "Starting" `date`
+echo "go-provison version:" `cat $BINDIR/versioninfo`
 
 echo "Configuration from factory/install:"
 (cd $CONFIGDIR; ls -l)
