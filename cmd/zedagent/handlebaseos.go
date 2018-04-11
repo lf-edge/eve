@@ -531,9 +531,12 @@ func doBaseOsUninstall(uuidStr string, status *types.BaseOsStatus) (bool, bool) 
 	}
 
 	if !removedAll {
-		log.Printf("doBaseOsUninstall(%s) for %s, Waiting for verifier purge\n",
+		// XXX should be able to reinsert the return
+		log.Printf("NOT XXX doBaseOsUninstall(%s) for %s, Waiting for verifier purge\n",
 			status.BaseOsVersion, uuidStr)
-		return changed, del
+		// XXX try; alternatively caller needs to defer and react to
+		// drop in refcount or delete. Why wait?
+		// return changed, del
 	}
 
 	removedAll = true
@@ -566,9 +569,12 @@ func doBaseOsUninstall(uuidStr string, status *types.BaseOsStatus) (bool, bool) 
 	}
 
 	if !removedAll {
-		log.Printf("doBaseOsUninstall(%s) for %s, Waiting for downloader purge\n",
+		// XXX should be able to reinsert the return
+		log.Printf("NOT XXX doBaseOsUninstall(%s) for %s, Waiting for downloader purge\n",
 			status.BaseOsVersion, uuidStr)
-		return changed, del
+		// XXX try; alternatively caller needs to defer and react to
+		// drop in refcount or delete. Why wait?
+		// return changed, del
 	}
 
 	del = true
