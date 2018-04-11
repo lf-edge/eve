@@ -172,7 +172,8 @@ func baseOsGetActivationStatus(status *types.BaseOsStatus) {
 
 	// if they match, mean already installed
 	// mark the status accordingly
-	if partVersion == status.BaseOsVersion {
+	// XXX TRY
+	if false && partVersion == status.BaseOsVersion {
 		baseOsMarkInstalled(status)
 	}
 
@@ -191,6 +192,7 @@ func baseOsGetActivationStatus(status *types.BaseOsStatus) {
 
 func baseOsMarkInstalled(status *types.BaseOsStatus) {
 
+	log.Printf("baseOsMarkInstalled(%s)\n", status.BaseOsVersion)
 	if status.State != types.INSTALLED {
 		log.Printf("%s, marking installed\n", status.BaseOsVersion)
 		status.State = types.INSTALLED
@@ -352,6 +354,7 @@ func doBaseOsInstall(uuidStr string, config types.BaseOsConfig,
 	// check for the download status change
 	downloadchange, downloaded :=
 		checkBaseOsStorageDownloadStatus(uuidStr, config, status)
+	// XXX above returns downloaded! How? What is in status? ss.DOWNLOADED?
 
 	if downloaded == false {
 		log.Printf(" %s, Still not downloaded\n", config.BaseOsVersion)
@@ -395,6 +398,8 @@ func checkBaseOsStorageDownloadStatus(uuidStr string,
 	config types.BaseOsConfig,
 	status *types.BaseOsStatus) (bool, bool) {
 
+	log.Printf("checkBaseOsStorageDownloadStatus(%s) for %s\n",
+		config.BaseOsVersion, uuidStr)
 	ret := checkStorageDownloadStatus(baseOsObj, uuidStr,
 		config.StorageConfigList, status.StorageStatusList)
 

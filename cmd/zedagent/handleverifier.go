@@ -253,6 +253,7 @@ func checkStorageVerifierStatus(objType string, uuidStr string,
 
 		log.Printf("%s, image verifier status %v\n", sc.DownloadURL, ss.State)
 
+		// XXX do we need to increment refcount here?
 		if ss.State == types.INSTALLED {
 			ret.MinState = ss.State
 			continue
@@ -268,6 +269,8 @@ func checkStorageVerifierStatus(objType string, uuidStr string,
 			ret.MinState = vs.State
 		}
 		if vs.State != ss.State {
+			log.Printf("checkStorageVerifierStatus(%s) set ss.State %d\n",
+				safename, vs.State)
 			ss.State = vs.State
 			ret.Changed = true
 		}

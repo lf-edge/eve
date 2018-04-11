@@ -211,7 +211,7 @@ func checkStorageDownloadStatus(objType string, uuidStr string,
 
 	ret := &types.RetStatus{}
 	key := formLookupKey(objType, uuidStr)
-	log.Printf("%s, checkStorageDownloadStatus\n", key)
+	log.Printf("checkStorageDownloadStatus for %s\n", uuidStr)
 
 	ret.Changed = false
 	ret.AllErrors = ""
@@ -255,6 +255,8 @@ func checkStorageDownloadStatus(objType string, uuidStr string,
 					ret.MinState = vs.State
 				}
 				if vs.State != ss.State {
+					log.Printf("checkStorageDownloadStatus(%s) from vs set ss.State %d\n",
+						safename, vs.State)
 					ss.State = vs.State
 					ret.Changed = true
 				}
@@ -280,6 +282,8 @@ func checkStorageDownloadStatus(objType string, uuidStr string,
 			ret.MinState = ds.State
 		}
 		if ds.State != ss.State {
+			log.Printf("checkStorageDownloadStatus(%s) from ds set ss.State %d\n",
+				safename, ds.State)
 			ss.State = ds.State
 			ret.Changed = true
 		}
