@@ -23,7 +23,7 @@ import (
 // 	zedcloud.SetDeferred(key, data, url, zedcloudCtx)
 // or AddDeferred to build a queue for each key
 
-var debug = true // XXX or use zedcloudCtx.Debug?
+var debug = false // XXX or use zedcloudCtx.Debug?
 
 var deferredChan chan string
 
@@ -153,14 +153,14 @@ func SetDeferred(key string, data []byte, url string,
 func AddDeferred(key string, data []byte, url string,
 	zedcloudCtx ZedCloudContext) {
 
-	log.Printf("QueueDeferred(%s) map %d\n", key, len(deferredItems))
+	log.Printf("AddDeferred(%s) map %d\n", key, len(deferredItems))
 	if len(deferredItems) == 0 {
 		startTimer()
 	}
 	l, ok := deferredItems[key]
 	if debug {
 		if ok {
-			log.Printf("Adding to key %s\n", key)
+			log.Printf("Appening to key %s\n", key)
 		} else {
 			log.Printf("Adding key %s\n", key)
 		}

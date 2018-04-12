@@ -382,7 +382,7 @@ func handleModify(ctx *downloaderContext, objType string,
 	// download
 	// If RefCount from zero to non-zero then do install
 	if status.RefCount == 0 && config.RefCount != 0 {
-
+		status.PendingModify = true
 		log.Printf("handleModify installing %s\n", config.DownloadURL)
 		handleCreate(ctx, objType, config, statusFilename)
 		status.RefCount = config.RefCount
@@ -391,9 +391,10 @@ func handleModify(ctx *downloaderContext, objType string,
 	} else if status.RefCount != 0 && config.RefCount == 0 {
 		log.Printf("handleModify deleting %s\n", config.DownloadURL)
 		doDelete(statusFilename, locDirname, &status)
-	} else {
+	} else if status.RefCount != config.RefCount {
+		log.Printf("handleModify RefCount change %s from %d to %d\n",
+			config.DownloadURL, status.RefCount, config.RefCount)
 		status.RefCount = config.RefCount
-		status.PendingModify = false
 		writeDownloaderStatus(&status, statusFilename)
 	}
 	log.Printf("handleModify done for %s\n", config.DownloadURL)

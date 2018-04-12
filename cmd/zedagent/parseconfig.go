@@ -194,7 +194,6 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 		// different update than the one that failed.
 		return false
 	}
-	// XXX will the createBaseOsConfig creation result in a download?
 	configCount := 0
 	if validateBaseOsConfig(baseOsList) == true {
 		configCount = createBaseOsConfig(baseOsList, certList)
@@ -309,7 +308,7 @@ func rejectReinstallFailed(config *types.BaseOsConfig, otherPartName string) {
 	errString := fmt.Sprintf("Attempt to reinstall failed %s in %s: refused",
 		config.BaseOsVersion, otherPartName)
 	log.Println(errString)
-	// XXX do we have a baseOsStatus yet?
+	// XXX do we have a baseOsStatus yet? NO
 	uuidStr := config.UUIDandVersion.UUID.String()
 	status := baseOsStatusGet(uuidStr)
 	if status == nil {
@@ -331,7 +330,6 @@ func rejectReinstallFailed(config *types.BaseOsConfig, otherPartName string) {
 
 	baseOsStatusSet(uuidStr, status)
 	writeBaseOsStatus(status, uuidStr)
-	// XXX how do we tell handler that status changes?
 }
 
 func setStoragePartitionLabel(baseOs *types.BaseOsConfig) {
@@ -794,6 +792,8 @@ func writeAppInstanceConfig(appInstance types.AppInstanceConfig,
 
 func writeBaseOsConfig(baseOsConfig *types.BaseOsConfig, uuidStr string) {
 
+	log.Printf("writeBaseOsConfig UUID %s, %s\n",
+		uuidStr, baseOsConfig.BaseOsVersion)
 	configFilename := zedagentBaseOsConfigDirname + "/" + uuidStr + ".json"
 	bytes, err := json.Marshal(baseOsConfig)
 
@@ -815,6 +815,8 @@ func writeBaseOsConfig(baseOsConfig *types.BaseOsConfig, uuidStr string) {
 
 func writeBaseOsStatus(baseOsStatus *types.BaseOsStatus, uuidStr string) {
 
+	log.Printf("writeBaseOsStatus UUID %s, %s\n",
+		uuidStr, baseOsStatus.BaseOsVersion)
 	statusFilename := zedagentBaseOsStatusDirname + "/" + uuidStr + ".json"
 	bytes, err := json.Marshal(baseOsStatus)
 	if err != nil {
@@ -950,12 +952,16 @@ func createBaseOsConfig(baseOsList []*types.BaseOsConfig, certList []*types.Cert
 		configFilename := zedagentBaseOsConfigDirname + "/" + uuidStr + ".json"
 		// file not present
 		if _, err := os.Stat(configFilename); err != nil {
+			log.Printf("createBaseOsConfig new %s %s\n",
+				uuidStr, baseOs.BaseOsVersion)
 			writeBaseOsConfig(baseOs, uuidStr)
 			if certList[idx] != nil {
 				writeCertObjConfig(certList[idx], uuidStr)
 			}
 			writeCount++
 		} else {
+			log.Printf("createBaseOsConfig update %s %s\n",
+				uuidStr, baseOs.BaseOsVersion)
 			curBaseOs := &types.BaseOsConfig{}
 			bytes, err := ioutil.ReadFile(configFilename)
 			if err != nil {
