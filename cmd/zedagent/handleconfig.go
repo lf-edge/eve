@@ -465,8 +465,13 @@ func removeBaseOsEntry(baseOsFilename string) {
 	log.Printf("removeBaseOsEntry %s, remove baseOs entry\n", uuidStr)
 
 	// remove base os holder config file
-	os.Remove(zedagentBaseOsConfigDirname + "/" + baseOsFilename)
-
+	err := os.Remove(zedagentBaseOsConfigDirname + "/" + baseOsFilename)
+	if err != nil {
+		log.Printf("removeBaseOsEntry: failed %s\n", err)
+	}
 	// remove certificates holder config file
-	os.Remove(zedagentCertObjConfigDirname + "/" + baseOsFilename)
+	err = os.Remove(zedagentCertObjConfigDirname + "/" + baseOsFilename)
+	if err != nil {
+		log.Printf("removeBaseOsEntry: failed %s\n", err)
+	}
 }

@@ -68,10 +68,8 @@ fi
 echo "Handling restart case at" `date`
 # XXX should we check if zedmanager is running?
 
-echo "Removing old stale files"
-# Remove internal config files
-# XXX not that when restarting device-steps.sh this kill
-# can result in watchdog(8) rebooting the system
+# If watchdog was running we restart it in a way where it will
+# no fail due to killing the agents below.
 cat >$TMPDIR/watchdog.conf <<EOF
 watchdog-device = /dev/watchdog
 admin =
@@ -80,6 +78,15 @@ if [ -f /var/run/watchdog.pid ]; then
     kill `cat /var/run/watchdog.pid`
     /usr/sbin/watchdog -c $TMPDIR/watchdog.conf -F -s &
 fi
+# If we are re-running this script, clean up from last run
+pgrep zedmanager >/dev/null
+if [ $? = 0 ]; then
+    killall tail
+    killall dmesg
+fi
+
+echo "Removing old stale files"
+# Remove internal config files
 
 pkill zedmanager
 if [ x$OLDFLAG = x ]; then
@@ -259,28 +266,6 @@ if [ $? != 0 ]; then
     CURPART="IMGA"
 fi
 
-# Create config file for watchdog(8)
-# XXX should we enable realtime in the kernel?
-cat >$TMPDIR/watchdog.conf <<EOF
-watchdog-device = /dev/watchdog
-admin =
-#realtime = yes
-#priority = 1
-interval = 10
-logtick  = 60
-EOF
-echo "pidfile = /var/run/ledmanager.pid" >>$TMPDIR/watchdog.conf
-
-# The client should start soon
-cp $TMPDIR/watchdog.conf $TMPDIR/watchdogc.conf
-echo "pidfile = /var/run/zedclient.pid" >>$TMPDIR/watchdogc.conf
-
-if [ -f /var/run/watchdog.pid ]; then
-    kill `cat /var/run/watchdog.pid`
-fi
-# Make sure client.go doesn't fail
-/usr/sbin/watchdog -c $TMPDIR/watchdogc.conf -F -s &
-
 if [ ! -d $LOGDIRA ]; then
     echo "Creating $LOGDIRA"
     mkdir -p $LOGDIRA
@@ -294,8 +279,6 @@ mkdir $PERSISTDIR/log
 
 echo "Set up log capture"
 DOM0LOGFILES="dhcpcd.err.log ntpd.err.log wlan.err.log wwan.err.log dhcpcd.out.log ntpd.out.log wlan.out.log wwan.out.log zededa-tools.out.log zededa-tools.err.log"
-# XXX note that these tail and dmesg processes are not killed when
-# device-steps.sh is re-run
 for f in $DOM0LOGFILES; do
     tail -c +0 -F /var/log/dom0/$f >/persist/$CURPART/log/$f &
 done
@@ -329,15 +312,12 @@ if [ $? != 0 ]; then
     fi
 fi
 
-# XXX could ntp take more than 60 seconds??
 # We need to try our best to setup time *before* we generate the certifiacte.
 # Otherwise it may have start date in the future
 echo "Check for NTP config"
 if [ -f $CONFIGDIR/ntp-server ]; then
     echo -n "Using "
     cat $CONFIGDIR/ntp-server
-    # XXX is ntp service running/installed?
-    # XXX actually configure ntp
     # Ubuntu has /usr/bin/timedatectl; ditto Debian
     # ntpdate pool.ntp.org
     # Not installed on Ubuntu
@@ -364,6 +344,27 @@ if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
+# Create config file for watchdog(8)
+# XXX should we enable realtime in the kernel?
+cat >$TMPDIR/watchdog.conf <<EOF
+watchdog-device = /dev/watchdog
+admin =
+#realtime = yes
+#priority = 1
+interval = 10
+logtick  = 60
+EOF
+echo "pidfile = /var/run/ledmanager.pid" >>$TMPDIR/watchdog.conf
+
+# The client should start soon
+cp $TMPDIR/watchdog.conf $TMPDIR/watchdogc.conf
+echo "pidfile = /var/run/zedclient.pid" >>$TMPDIR/watchdogc.conf
+
+if [ -f /var/run/watchdog.pid ]; then
+    kill `cat /var/run/watchdog.pid`
+fi
+# Make sure client.go doesn't fail
+/usr/sbin/watchdog -c $TMPDIR/watchdogc.conf -F -s &
 
 if [ ! \( -f $CONFIGDIR/device.cert.pem -a -f $CONFIGDIR/device.key.pem \) ]; then
     echo "Generating a device key pair and self-signed cert (using TPM/TEE if available) at" `date`

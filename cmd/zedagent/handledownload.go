@@ -211,7 +211,7 @@ func checkStorageDownloadStatus(objType string, uuidStr string,
 
 	ret := &types.RetStatus{}
 	key := formLookupKey(objType, uuidStr)
-	log.Printf("%s, checkStorageDownloadStatus\n", key)
+	log.Printf("checkStorageDownloadStatus for %s\n", uuidStr)
 
 	ret.Changed = false
 	ret.AllErrors = ""
@@ -238,10 +238,16 @@ func checkStorageDownloadStatus(objType string, uuidStr string,
 			if err == nil && vs.State == types.DELIVERED {
 				log.Printf(" %s, exists verified with sha %s\n",
 					safename, sc.ImageSha256)
+				if vs.Safename != safename {
+					// If found based on sha256
+					log.Printf("found diff safename %s\n",
+						vs.Safename)
+				}
 				// If we don't already have a RefCount add one
 				if !ss.HasVerifierRef {
-					log.Printf("%s, !HasVerifierRef\n", safename)
-					vs.RefCount += 1
+					log.Printf("%s, !HasVerifierRef\n", vs.Safename)
+					createVerifierConfig(objType, vs.Safename,
+						&sc, false)
 					ss.HasVerifierRef = true
 					ret.Changed = true
 				}
@@ -249,6 +255,8 @@ func checkStorageDownloadStatus(objType string, uuidStr string,
 					ret.MinState = vs.State
 				}
 				if vs.State != ss.State {
+					log.Printf("checkStorageDownloadStatus(%s) from vs set ss.State %d\n",
+						safename, vs.State)
 					ss.State = vs.State
 					ret.Changed = true
 				}
@@ -274,6 +282,8 @@ func checkStorageDownloadStatus(objType string, uuidStr string,
 			ret.MinState = ds.State
 		}
 		if ds.State != ss.State {
+			log.Printf("checkStorageDownloadStatus(%s) from ds set ss.State %d\n",
+				safename, ds.State)
 			ss.State = ds.State
 			ret.Changed = true
 		}
@@ -297,11 +307,13 @@ func checkStorageDownloadStatus(objType string, uuidStr string,
 			if sc.ImageSha256 != "" {
 				// start verifier for this object
 				if !ss.HasVerifierRef {
-					err := createVerifierConfig(objType, safename, &sc)
+					err := createVerifierConfig(objType, safename, &sc, true)
 					if err == nil {
 						ss.HasVerifierRef = true
 						ret.Changed = true
 					} else {
+						// XXX or should we wait for
+						// certs just like zedmanager?
 						ret.AllErrors = appendError(ret.AllErrors, "downloader", err.Error())
 						ret.ErrorTime = time.Now()
 					}
@@ -378,7 +390,7 @@ func installDownloadedObject(objType string, safename string,
 			types.SafenameToFilename(safename)
 		break
 
-		// XXX types.INITIAL for failures?
+		// XXX do we need to handle types.INITIAL for failures?
 	default:
 		log.Printf("%s, still not ready (%d)\n", key, status.State)
 		return nil
@@ -400,15 +412,7 @@ func installDownloadedObject(objType string, safename string,
 
 		case baseOsObj:
 			ret = installBaseOsObject(srcFilename, dstFilename)
-			// XXX if ok then decrease refcount?? Or done at uninstall time?
-			// Done in Uninstall; just log here to make sure
-			if ret == nil && status.HasDownloaderRef {
-				log.Printf("installDownloadedObject: HasDownloaderRef for %s\n", safename)
-				// XXX try decrementing
-				removeBaseOsDownloaderConfig(safename)
-				status.HasDownloaderRef = false
-				// XXX write?
-			}
+
 		default:
 			errStr := fmt.Sprintf("%s, Unsupported Object Type %v",
 				safename, objType)

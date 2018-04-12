@@ -8,7 +8,6 @@ package main
 
 import (
 	"fmt"
-	"github.com/zededa/go-provision/types"
 )
 
 func initMaps() {
@@ -17,53 +16,6 @@ func initMaps() {
 	initCertObjMaps()
 	initDownloaderMaps()
 	initVerifierMaps()
-}
-func createBaseOsDownloaderConfig(safename string,
-	sc *types.StorageConfig) {
-	createDownloaderConfig(baseOsObj, safename, sc)
-}
-
-func createCertObjDownloaderConfig(safename string,
-	sc *types.StorageConfig) {
-	createDownloaderConfig(baseOsObj, safename, sc)
-}
-
-func createBaseOsVerifierConfig(safename string,
-	sc *types.StorageConfig) {
-	createVerifierConfig(baseOsObj, safename, sc)
-}
-
-func removeBaseOsDownloaderConfig(safename string) {
-	removeDownloaderConfig(baseOsObj, safename)
-}
-
-func lookupBaseOsDownloaderStatus(safename string) (*types.DownloaderStatus, error) {
-	return lookupDownloaderStatus(baseOsObj, safename)
-}
-
-func lookupCertObjDownloaderStatus(safename string) (*types.DownloaderStatus, error) {
-	return lookupDownloaderStatus(certObj, safename)
-}
-
-func removeCertObjDownloaderConfig(safename string) {
-	removeDownloaderConfig(certObj, safename)
-}
-
-func removeBaseOsVerifierConfig(safename string) {
-	removeVerifierConfig(baseOsObj, safename)
-}
-func lookupBaseOsVerificationStatus(safename string) (*types.VerifyImageStatus, error) {
-	return lookupVerificationStatus(baseOsObj, safename)
-}
-
-func lookupBaseOsVerificationStatusSha256(sha256 string) (*types.VerifyImageStatus, error) {
-
-	return lookupVerificationStatusSha256(baseOsObj, sha256)
-}
-
-func lookupBaseOsVerificationStatusAny(safename string, sha256 string) (*types.VerifyImageStatus, error) {
-	return lookupVerificationStatusAny(baseOsObj, safename, sha256)
-
 }
 
 func appendError(allErrors string, prefix string, lasterr string) string {

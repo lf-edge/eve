@@ -168,13 +168,6 @@ func baseOsGetActivationStatus(status *types.BaseOsStatus) {
 	}
 
 	partName := status.PartitionLabel
-	partVersion := zboot.GetShortVersion(partName)
-
-	// if they match, mean already installed
-	// mark the status accordingly
-	if partVersion == status.BaseOsVersion {
-		baseOsMarkInstalled(status)
-	}
 
 	// some partition specific attributes
 	status.PartitionState = zboot.GetPartitionState(partName)
@@ -187,18 +180,6 @@ func baseOsGetActivationStatus(status *types.BaseOsStatus) {
 	}
 	// if current Partition, get the status from zboot
 	status.Activated = zboot.IsCurrentPartitionStateActive()
-}
-
-func baseOsMarkInstalled(status *types.BaseOsStatus) {
-
-	if status.State != types.INSTALLED {
-		log.Printf("%s, marking installed\n", status.BaseOsVersion)
-		status.State = types.INSTALLED
-		for idx, _ := range status.StorageStatusList {
-			ss := &status.StorageStatusList[idx]
-			ss.State = types.INSTALLED
-		}
-	}
 }
 
 func baseOsHandleStatusUpdate(uuidStr string) {
@@ -395,6 +376,8 @@ func checkBaseOsStorageDownloadStatus(uuidStr string,
 	config types.BaseOsConfig,
 	status *types.BaseOsStatus) (bool, bool) {
 
+	log.Printf("checkBaseOsStorageDownloadStatus(%s) for %s\n",
+		config.BaseOsVersion, uuidStr)
 	ret := checkStorageDownloadStatus(baseOsObj, uuidStr,
 		config.StorageConfigList, status.StorageStatusList)
 
@@ -458,6 +441,7 @@ func removeBaseOsConfig(uuidStr string) {
 
 func removeBaseOsStatus(uuidStr string) {
 
+	log.Printf("removeBaseOsStatus for %s\n", uuidStr)
 	status := baseOsStatusGet(uuidStr)
 	if status == nil {
 		log.Printf("removeBaseOsStatus: no status\n")
@@ -472,6 +456,7 @@ func removeBaseOsStatus(uuidStr string) {
 	}
 
 	if del {
+		log.Printf("removeBaseOsStatus %s, Deleting\n", uuidStr)
 
 		// Write out what we modified to BaseOsStatus aka delete
 		// Remove the status file also
@@ -481,9 +466,9 @@ func removeBaseOsStatus(uuidStr string) {
 			if err := os.Remove(statusFilename); err != nil {
 				log.Println(err)
 			}
-			log.Printf("%s, removeBaseOsStatus %s, Done\n", uuidStr)
 		}
 	}
+	log.Printf("removeBaseOsStatus %s, Done\n", uuidStr)
 }
 
 func doBaseOsRemove(uuidStr string, status *types.BaseOsStatus) (bool, bool) {
@@ -524,14 +509,19 @@ func doBaseOsUninstall(uuidStr string, status *types.BaseOsStatus) (bool, bool) 
 
 		// Decrease refcount if we had increased it
 		if ss.HasVerifierRef {
-			log.Printf("doBaseOsUninstall(%s) for %s, process verifer %s\n",
+			log.Printf("doBaseOsUninstall(%s) for %s, HasVerifierRef %s\n",
 				status.BaseOsVersion, uuidStr, ss.ImageSha256)
-			removeBaseOsVerifierConfig(ss.ImageSha256)
+			MaybeRemoveVerifierConfigSha256(baseOsObj,
+				ss.ImageSha256)
 			ss.HasVerifierRef = false
 			changed = true
+		} else {
+			log.Printf("doBaseOsUninstall(%s) for %s, NO HasVerifier\n",
+				status.BaseOsVersion, uuidStr)
 		}
 
-		vs, err := lookupBaseOsVerificationStatusSha256(ss.ImageSha256)
+		vs, err := lookupVerificationStatusSha256(baseOsObj,
+			ss.ImageSha256)
 
 		if err == nil {
 			log.Printf("doBaseOsUninstall(%s) for %s, Verifier %s not yet gone; RefCount %d\n",
@@ -543,11 +533,14 @@ func doBaseOsUninstall(uuidStr string, status *types.BaseOsStatus) (bool, bool) 
 	}
 
 	if !removedAll {
-		log.Printf("NOT XXX doBaseOsUninstall(%s) for %s, Waiting for verifier purge\n",
+		// XXX not that we hit this all the time, and
+		// we proceed to not look at the downloads and proceed
+		// to delete all the config and status for this baseos, which
+		// is odd.
+		// Changed to proceed in any case
+		log.Printf("doBaseOsUninstall(%s) for %s, NOT Waiting for verifier purge\n",
 			status.BaseOsVersion, uuidStr)
-		// XXX try; alternatively caller needs to defer and react to
-		// drop in refcount or delete. Why wait?
-		// return changed, del
+		// XXX return changed, del
 	}
 
 	removedAll = true
@@ -558,15 +551,18 @@ func doBaseOsUninstall(uuidStr string, status *types.BaseOsStatus) (bool, bool) 
 		safename := types.UrlToSafename(ss.DownloadURL, ss.ImageSha256)
 		// Decrease refcount if we had increased it
 		if ss.HasDownloaderRef {
-			log.Printf("doBaseOsUninstall(%s) for %s, process Downloader %s\n",
+			log.Printf("doBaseOsUninstall(%s) for %s, HasDownloaderRef %s\n",
 				status.BaseOsVersion, uuidStr, safename)
 
-			removeBaseOsDownloaderConfig(safename)
+			removeDownloaderConfig(baseOsObj, safename)
 			ss.HasDownloaderRef = false
 			changed = true
+		} else {
+			log.Printf("doBaseOsUninstall(%s) for %s, NO HasDownloaderRef\n",
+				status.BaseOsVersion, uuidStr)
 		}
 
-		ds, err := lookupBaseOsDownloaderStatus(ss.ImageSha256)
+		ds, err := lookupDownloaderStatus(baseOsObj, ss.ImageSha256)
 		if err == nil {
 			log.Printf("doBaseOsUninstall(%s) for %s, Download %s not yet gone; RefCount %d\n",
 				status.BaseOsVersion, uuidStr, safename,
@@ -577,11 +573,9 @@ func doBaseOsUninstall(uuidStr string, status *types.BaseOsStatus) (bool, bool) 
 	}
 
 	if !removedAll {
-		log.Printf("NOT XXX doBaseOsUninstall(%s) for %s, Waiting for downloader purge\n",
+		log.Printf("doBaseOsUninstall(%s) for %s, Waiting for downloader purge\n",
 			status.BaseOsVersion, uuidStr)
-		// XXX try; alternatively caller needs to defer and react to
-		// drop in refcount or delete. Why wait?
-		// return changed, del
+		return changed, del
 	}
 
 	del = true
