@@ -311,11 +311,18 @@ func doInstall(uuidStr string, config types.AppInstanceConfig,
 		if err == nil && vs.State == types.DELIVERED {
 			log.Printf("doUpdate found verified image for %s sha %s\n",
 				safename, sc.ImageSha256)
+			if vs.Safename != safename {
+				// If found based on sha256
+				log.Printf("doUpdate found diff safename %s\n",
+					vs.Safename)
+			}
 			// If we don't already have a RefCount add one
 			if !ss.HasVerifierRef {
-				log.Printf("doUpdate !HasVerifierRef vs.RefCount %d for %s\n",
-					vs.RefCount, safename)
-				vs.RefCount += 1
+				log.Printf("doUpdate !HasVerifierRef vs. RefCount %d for %s\n",
+					vs.RefCount, vs.Safename)
+				// We don't need certs since Status already
+				// exists
+				MaybeAddVerifyImageConfig(vs.Safename, &sc, false)
 				ss.HasVerifierRef = true
 				changed = true
 			}
@@ -364,9 +371,11 @@ func doInstall(uuidStr string, config types.AppInstanceConfig,
 		case types.DOWNLOADED:
 			// Kick verifier to start if it hasn't already
 			if !ss.HasVerifierRef {
-				if ret := MaybeAddVerifyImageConfig(safename, &sc); ret == true {
+				if MaybeAddVerifyImageConfig(safename, &sc, true) {
 					ss.HasVerifierRef = true
 					changed = true
+				} else {
+					// Waiting for certs
 				}
 			}
 		}

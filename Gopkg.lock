@@ -138,12 +138,6 @@
   version = "v2.18.02"
 
 [[projects]]
-  branch = "master"
-  name = "github.com/shirou/w32"
-  packages = ["."]
-  revision = "bb4de0191aa41b5507caa14b0650cdbddcd9280b"
-
-[[projects]]
   name = "github.com/vishvananda/netlink"
   packages = [
     ".",
@@ -165,7 +159,7 @@
     "zconfig",
     "zmet"
   ]
-  revision = "d7c7478b958de7b4eedcc1e664e0e56a794835ab"
+  revision = "1ee4830567c34ab503e4c23373a91dcd12a35180"
 
 [[projects]]
   branch = "master"

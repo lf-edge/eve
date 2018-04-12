@@ -16,15 +16,18 @@ import (
 // Key is Safename string.
 var verifyImageConfig map[string]types.VerifyImageConfig
 
-func MaybeAddVerifyImageConfig(safename string, sc *types.StorageConfig) bool {
+// If checkCerts is set this can return false. Otherwise not.
+func MaybeAddVerifyImageConfig(safename string, sc *types.StorageConfig,
+	checkCerts bool) bool {
+
 	log.Printf("MaybeAddVerifyImageConfig for %s\n", safename)
 
 	// check the certificate files, if not present,
 	// we can not start verification
-	if ret := checkCertsForObject(safename, sc); ret == false {
+	if checkCerts && checkCertsForObject(safename, sc) {
 		log.Printf("createVerifierConfig for %s, Certs are still not installed\n",
 			safename)
-		return ret
+		return false
 	}
 
 	if verifyImageConfig == nil {
@@ -59,14 +62,15 @@ func MaybeAddVerifyImageConfig(safename string, sc *types.StorageConfig) bool {
 	configFilename := fmt.Sprintf("%s/%s.json",
 		verifierAppImgObjConfigDirname, safename)
 	writeVerifyImageConfig(verifyImageConfig[key], configFilename)
-	log.Printf("AddOrRefcountVerifyImageConfig done for %s\n",
-		safename)
+	log.Printf("MaybeAddVerifyImageConfig done for %s\n", safename)
 	return true
 }
 
 func MaybeRemoveVerifyImageConfigSha256(sha256 string) {
 	log.Printf("MaybeRemoveVerifyImageConfig for %s\n", sha256)
 
+	// XXX Looking in status to remove config??? Assumes status made
+	// it back from verifier before we want to delete it.
 	m, err := lookupVerifyImageStatusSha256Impl(sha256)
 	if err != nil {
 		log.Printf("VerifyImage config missing for remove for %s\n",
