@@ -53,8 +53,8 @@ func verifierConfigGetSha256(sha string) *types.VerifyImageConfig {
 		if config.ImageSha256 == sha {
 			log.Printf("verifierConfigGetSha256(%s): found key %s safename %s, refcount %d\n",
 				sha, key, config.Safename, config.RefCount)
+			return &config
 		}
-		return &config
 	}
 	log.Printf("verifierConfigGetSha256(%s): not found\n", sha)
 	return nil
