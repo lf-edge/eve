@@ -48,8 +48,6 @@ func verifierConfigGet(key string) *types.VerifyImageConfig {
 func verifierConfigGetSha256(sha string) *types.VerifyImageConfig {
 	log.Printf("verifierConfigGetSha256(%s)\n", sha)
 	for key, config := range verifierConfigMap {
-		log.Printf("verifierConfigGetSha256(%s) checking %s, %v\n",
-			sha, key, config)
 		if config.ImageSha256 == sha {
 			log.Printf("verifierConfigGetSha256(%s): found key %s safename %s, refcount %d\n",
 				sha, key, config.Safename, config.RefCount)

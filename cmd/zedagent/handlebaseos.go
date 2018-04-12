@@ -533,9 +533,14 @@ func doBaseOsUninstall(uuidStr string, status *types.BaseOsStatus) (bool, bool) 
 	}
 
 	if !removedAll {
-		log.Printf("doBaseOsUninstall(%s) for %s, Waiting for verifier purge\n",
+		// XXX not that we hit this all the time, and
+		// we proceed to not look at the downloads and proceed
+		// to delete all the config and status for this baseos, which
+		// is odd.
+		// Changed to proceed in any case
+		log.Printf("doBaseOsUninstall(%s) for %s, NOT Waiting for verifier purge\n",
 			status.BaseOsVersion, uuidStr)
-		return changed, del
+		// XXX return changed, del
 	}
 
 	removedAll = true
