@@ -1,6 +1,14 @@
 #!/bin/sh
+#
+# input is a tarball on stdin with kernel and cmdline in /boot
+# output is an iso on stdout
+#
+# The following env variables change the behaviour of this script
+#     ZEN_DEFAULT_BOOT - sets the default GRUB menu entry
+#     DEBUG - makes this script verbose
 
 set -e
+[ -n "$DEBUG" ] && set -x
 
 # get the GRUB2 boot file name
 ARCH=$(uname -m)
@@ -20,9 +28,6 @@ esac
 mkdir -p /tmp/efi
 cd /tmp/efi
 
-# input is a tarball on stdin with kernel and cmdline in /boot
-# output is an iso on stdout
-
 # extract. BSD tar auto recognises compression, unlike GNU tar
 # only if stdin is a tty, if so need files volume mounted...
 [ -t 0 ] || bsdtar xzf -
@@ -35,20 +40,24 @@ rm boot/cmdline
 
 cp /usr/local/share/$BOOTFILE .
 
-CFG="set timeout=5
+CMDLINESR=`echo ${CMDLINE} | sed -e 's#sdb#sr0#'`
+
+mkdir -p EFI/BOOT
+cat > EFI/BOOT/grub.cfg <<EOF
+set timeout=5
 set gfxpayload=text
+set default=${ZEN_DEFAULT_BOOT:-0}
+
 menuentry 'LinuxKit ISO Image' {
 	multiboot2 /boot/xen.gz
 	module2 /boot/kernel console=tty0 ${CMDLINE} text
 }
 menuentry 'LinuxKit ISO Image on QEMU' {
 	multiboot2 /boot/xen.gz clocksource=pit console=com1
-	module2 /boot/kernel console=hvc0 clocksource=jiffies `echo ${CMDLINE} | sed -e 's#sdb#sr0#'` ro text
-}
-"
 
-mkdir -p EFI/BOOT
-printf "$CFG" > EFI/BOOT/grub.cfg
+	module2 /boot/kernel console=hvc0 clocksource=jiffies ${CMDLINESR} ro text
+}
+EOF
 
 # create a ISO with a EFI boot partition
 # Stuff it into a FAT filesystem, making it as small as possible.  511KiB
