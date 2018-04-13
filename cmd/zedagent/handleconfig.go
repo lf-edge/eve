@@ -51,6 +51,8 @@ type configItems struct {
 	resetIfCloudGoneTime    uint32 // reboot if no cloud connectivity
 	fallbackIfCloudGoneTime uint32 // ... and shorter during update
 	mintimeUpdateSuccess    uint32 // time before zedagent declares success
+	usbAccess               bool   // domU has all PCI including USB controllers
+	sshAccess               bool
 	// XXX add max space for downloads?
 	// XXX add LTE uplink usage policy?
 }
@@ -62,7 +64,7 @@ type configItems struct {
 // and during a post-update boot that time is reduced to 10 minutes.
 var configItemDefaults = configItems{configInterval: 60, metricInterval: 60,
 	resetIfCloudGoneTime: 7 * 24 * 3600, fallbackIfCloudGoneTime: 600,
-	mintimeUpdateSuccess: 300}
+	mintimeUpdateSuccess: 300, usbAccess: true, sshAccess: false}
 
 // XXX shorter counters for testing fallback:
 // 	resetIfCloudGoneTime: 300, fallbackIfCloudGoneTime: 60}

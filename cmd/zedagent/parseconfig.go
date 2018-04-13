@@ -695,13 +695,14 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCont
 		log.Printf("parseConfigItems key %s\n", item.Key)
 
 		var newU32 uint32
+		var newBool bool
 		switch u := item.ConfigItemValue.(type) {
 		case *zconfig.ConfigItem_Uint32Value:
 			newU32 = u.Uint32Value
-		// XXX handle more types
-		// Currently we only have configItems with a uint32Value
+		case *zconfig.ConfigItem_BoolValue:
+			newBool = u.BoolValue
 		default:
-			log.Printf("parseConfigItems: currently only supporting uint32\n")
+			log.Printf("parseConfigItems: currently only supporting uint32 and bool types\n")
 			continue
 		}
 		switch item.Key {
@@ -767,7 +768,26 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCont
 					newU32)
 				configItemCurrent.mintimeUpdateSuccess = newU32
 			}
-		// XXX what other configItems should we add?
+		case "usbAccess":
+			if newBool != configItemCurrent.usbAccess {
+				log.Printf("parseConfigItems: %s change from %v to %v\n",
+					item.Key,
+					configItemCurrent.usbAccess,
+					newBool)
+				configItemCurrent.usbAccess = newBool
+				// Need to enable/disable login in domainMgr
+				// for PCI assignment
+				// XXX updateUsbAccess(configItemCurrent.usbAccess)
+			}
+		case "sshAccess":
+			if newBool != configItemCurrent.sshAccess {
+				log.Printf("parseConfigItems: %s change from %v to %v\n",
+					item.Key,
+					configItemCurrent.sshAccess,
+					newBool)
+				configItemCurrent.sshAccess = newBool
+				updateSshAccess(configItemCurrent.sshAccess)
+			}
 		default:
 			log.Printf("Unknown configItem %s\n", item.Key)
 			// XXX send back error? Need device error for that

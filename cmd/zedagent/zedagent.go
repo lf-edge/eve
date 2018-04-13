@@ -323,6 +323,8 @@ func main() {
 	getconfigCtx.configTickerHandle = configTickerHandle
 	getconfigCtx.metricsTickerHandle = metricsTickerHandle
 
+	updateSshAccess(configItemCurrent.sshAccess)
+
 	// app instance status event watcher
 	go watch.WatchStatus(zedmanagerStatusDirname, appInstanceStatusChanges)
 
