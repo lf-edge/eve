@@ -503,7 +503,7 @@ if [ $SELF_REGISTER = 1 ]; then
     if [ ! -f "$DNCDIR/$MODELFILE" ] ; then
 	echo "XXX Missing $DNCDIR/$MODELFILE - generate on the fly"
 	echo "Determining uplink interface"
-	intf=`$BINDIR/find-uplink.sh $CONFIGDIR/lisp.config.base`
+	intf=`$BINDIR/find-uplink.sh $TMPDIR/lisp.config.base`
 	if [ "$intf" != "" ]; then
 		echo "Found interface $intf based on route to map servers"
 	else

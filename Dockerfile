@@ -13,6 +13,7 @@ ADD scripts/device-steps.sh \
 ADD examples /opt/zededa/examples
 ADD AssignableAdapters /var/tmp/zededa/AssignableAdapters
 ADD DeviceNetworkConfig /var/tmp/zededa/DeviceNetworkConfig
+ADD lisp.config.base /var/tmp/zededa/lisp.config.base
 
 # XXX temporary until we have a version for all of baseOS/rootfs
 RUN (cd ./src/github.com/zededa/go-provision/; scripts/getversion.sh >/opt/zededa/bin/versioninfo)
