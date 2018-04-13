@@ -429,14 +429,22 @@ func sendCtxInit() {
 	zedcloudCtx.FailureFunc = zedcloud.ZedCloudFailure
 	zedcloudCtx.SuccessFunc = zedcloud.ZedCloudSuccess
 
-	b, err := ioutil.ReadFile(uuidFileName)
-	if err != nil {
-		log.Fatal("ReadFile", err, uuidFileName)
-	}
-	uuidStr := strings.TrimSpace(string(b))
-	devUUID, err = uuid.FromString(uuidStr)
-	if err != nil {
-		log.Fatal("uuid.FromString", err, string(b))
+	// In case we run early, wait for UUID file to appear
+	for {
+		b, err := ioutil.ReadFile(uuidFileName)
+		if err != nil {
+			log.Println("ReadFile", err, uuidFileName)
+			time.Sleep(time.Second)
+			continue
+		}
+		uuidStr := strings.TrimSpace(string(b))
+		devUUID, err = uuid.FromString(uuidStr)
+		if err != nil {
+			log.Println("uuid.FromString", err, string(b))
+			time.Sleep(time.Second)
+			continue
+		}
+		break
 	}
 	log.Printf("Read UUID %s\n", devUUID)
 }

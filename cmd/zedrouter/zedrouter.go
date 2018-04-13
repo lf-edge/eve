@@ -40,7 +40,8 @@ const (
 	baseDirname   = "/var/tmp/zedrouter"
 	configDirname = baseDirname + "/config"
 	statusDirname = runDirname + "/status"
-	DNCDirname    = "/var/tmp/zededa/DeviceNetworkConfig"
+	tmpDirname    = "/var/tmp/zededa"
+	DNCDirname    = tmpDirname + "/DeviceNetworkConfig"
 	DNSDirname    = runDirname + "/DeviceNetworkStatus"
 )
 
