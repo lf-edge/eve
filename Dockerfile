@@ -34,6 +34,8 @@ COPY --from=build /opt/zededa/bin /opt/zededa/bin
 COPY --from=build /opt/zededa/examples /opt/zededa/examples
 COPY --from=build /var/tmp/zededa/AssignableAdapters /var/tmp/zededa/AssignableAdapters
 COPY --from=build /var/tmp/zededa/DeviceNetworkConfig /var/tmp/zededa/DeviceNetworkConfig
+COPY --from=build /var/tmp/zededa/lisp.config.base /var/tmp/zededa/lisp.config.base
+
 # We have to make sure configs survive in some location, but they don't pollute
 # the default /config (since that is expected to be an empty mount point)
 COPY --from=build /config /opt/zededa/examples/config
@@ -42,5 +44,6 @@ COPY --from=lisp /lisp /opt/zededa/lisp/
 COPY --from=lisp /usr/bin/pydoc /usr/bin/smtpd.py /usr/bin/python* /usr/bin/
 COPY --from=lisp /usr/lib/libpython* /usr/lib/libffi.so* /usr/lib/
 COPY --from=lisp /usr/lib/python2.7 /usr/lib/python2.7/
+COPY --from=lisp /lib /lib
 WORKDIR /opt/zededa/bin
 CMD /bin/ash
