@@ -485,8 +485,6 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		DisplayName:    config.DisplayName,
 		IsZedmanager:   config.IsZedmanager,
 	}
-	log.Printf("XXXXX handleCreate: config SeparateDataPlane %v.\n",
-		config.SeparateDataPlane)
 	writeAppNetworkStatus(&status, statusFilename)
 
 	if config.IsZedmanager {
@@ -499,7 +497,6 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 			return
 		}
 		ctx.SeparateDataPlane = config.SeparateDataPlane
-		log.Printf("XXXXX handleCreate: SeparateDataPlane %v.\n", ctx.SeparateDataPlane)
 
 		// Use this olIfname to name files
 		// XXX some files might not be used until Zedmanager becomes
