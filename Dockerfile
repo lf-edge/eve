@@ -42,8 +42,6 @@ COPY --from=lisp /lisp /opt/zededa/lisp/
 COPY --from=lisp /usr/bin/pydoc /usr/bin/smtpd.py /usr/bin/python* /usr/bin/
 COPY --from=lisp /usr/lib/libpython* /usr/lib/libffi.so* /usr/lib/
 COPY --from=lisp /usr/lib/python2.7 /usr/lib/python2.7/
-# XXX restrict to python libraries?
-# COPY --from=lisp /lib /lib
-COPY --from=lisp /lib/python2.7/ /lib/python2.7/
+COPY --from=lisp /lib /lib
 WORKDIR /opt/zededa/bin
 CMD /bin/ash
