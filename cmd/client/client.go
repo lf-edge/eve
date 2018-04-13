@@ -80,7 +80,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	console := log.New(consolef, "zedclient",
+	console := log.New(consolef, "zedclient: ",
 		log.Ldate|log.Ltime|log.Lmicroseconds|log.LUTC)
 
 	versionPtr := flag.Bool("v", false, "Version")
