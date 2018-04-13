@@ -19,6 +19,7 @@ type AppNetworkConfig struct {
 	UUIDandVersion      UUIDandVersion
 	DisplayName         string
 	IsZedmanager        bool
+	SeparateDataPlane   bool
 	OverlayNetworkList  []OverlayNetworkConfig
 	UnderlayNetworkList []UnderlayNetworkConfig
 }
@@ -57,6 +58,7 @@ type AppNetworkStatus struct {
 	DisplayName    string
 	// Copy from the AppNetworkConfig; used to delete when config is gone.
 	IsZedmanager        bool
+	SeparateDataPlane     bool
 	OverlayNetworkList  []OverlayNetworkStatus
 	UnderlayNetworkList []UnderlayNetworkStatus
 }
@@ -180,6 +182,13 @@ func CountLocalAddrAnyNoLinkLocal(globalStatus DeviceNetworkStatus) int {
 	return len(addrs)
 }
 
+// Return a list of free uplinks that have non link local IP addresses
+func GetUplinkFreeNoLocal(globalStatus DeviceNetworkStatus) ([]NetworkUplink) {
+	// Return Uplink list with valid non link local addresses
+	links, _ := getInterfaceAndAddr(globalStatus, true, "", false)
+	return links
+}
+
 // Return number of local IP addresses for all the free uplinks, unless if
 // uplink is set in which case we could it.
 func CountLocalAddrFreeNoLinkLocal(globalStatus DeviceNetworkStatus) int {
@@ -214,6 +223,47 @@ func GetLocalAddrFree(globalStatus DeviceNetworkStatus, pickNum int, uplink stri
 	numAddrs := len(addrs)
 	pickNum = pickNum % numAddrs
 	return addrs[pickNum], nil
+}
+
+func getInterfaceAndAddr(globalStatus DeviceNetworkStatus, free bool, ifname string,
+	includeLinkLocal bool) ([]NetworkUplink, error) {
+	var links []NetworkUplink
+	for _, u := range globalStatus.UplinkStatus {
+		if free && !u.Free {
+			continue
+		}
+		// If ifname is set it should match
+		if u.IfName != ifname && ifname != "" {
+			continue
+		}
+
+		if includeLinkLocal {
+			link := NetworkUplink {
+				IfName: u.IfName,
+				//Addrs: u.Addrs,
+				AddrInfoList: u.AddrInfoList,
+			}
+			links = append(links, link)
+		} else {
+			var addrs []AddrInfo
+			var link NetworkUplink
+			link.IfName = u.IfName
+			for _, a := range u.AddrInfoList {
+				if !a.Addr.IsLinkLocalUnicast() {
+					addrs = append(addrs, a)
+				}
+			}
+			if len(addrs) > 0 {
+				link.AddrInfoList = addrs
+				links = append(links, link)
+			}
+		}
+	}
+	if len(links) != 0 {
+		return links, nil
+	} else {
+		return []NetworkUplink{}, errors.New("No good Uplinks")
+	}
 }
 
 // Check if an interface/adapter name is an uplink
