@@ -150,7 +150,11 @@ func main() {
 		}
 	}
 	log.Printf("Have %d assignable adapters\n", len(aa.IoBundleList))
-
+	// XXX should we init the pci ids up front? Delete the ones which
+	// do not exist? React to changes in adapters in aaChanges below?
+	// XXX changes should take into account global config and assign
+	// away from dom0
+	// XXX based on config in new global.json
 	if err := pciAssignableAddAll(&aa); err != nil {
 		log.Printf("pciAssignableAddAll: failed %v\n", err)
 	}
@@ -1213,6 +1217,21 @@ func pciAssignableAddAll(aa *types.AssignableAdapters) error {
 		ib.PciShort = short
 		if ib.PciShort != "" {
 			err := pciAssignableAdd(ib.PciLong)
+			if err != nil {
+				log.Printf("pciAssignableAdd failed: %v\n", err)
+				continue
+			}
+		}
+	}
+	return nil
+}
+
+// Re-assign all assignable devices to dom0
+func pciAssignableRemAll(aa *types.AssignableAdapters) error {
+	for i, _ := range aa.IoBundleList {
+		ib := &aa.IoBundleList[i]
+		if ib.PciShort != "" {
+			err := pciAssignableRem(ib.PciLong)
 			if err != nil {
 				log.Printf("pciAssignableAdd failed: %v\n", err)
 				continue
