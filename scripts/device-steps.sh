@@ -11,7 +11,7 @@ DNCDIR=$TMPDIR/DeviceNetworkConfig
 LISPDIR=/opt/zededa/lisp
 LOGDIRA=$PERSISTDIR/IMGA/log
 LOGDIRB=$PERSISTDIR/IMGB/log
-AGENTS="logmanager ledmanager zedrouter domainmgr downloader verifier identitymgr eidregister zedagent"
+AGENTS="logmanager ledmanager zedrouter domainmgr downloader verifier identitymgr eidregister zedagent dataplane"
 ALLAGENTS="zedmanager $AGENTS"
 
 PATH=$BINDIR:$PATH

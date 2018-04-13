@@ -210,12 +210,13 @@ func handleLookupParam(devConfig *zconfig.EdgeDevConfig) {
 	// Write an AppNetworkConfig for the ZedManager application
 	uv := types.UUIDandVersion{
 		UUID:    devUUID,
-		Version: "0",
+		Version: devConfig.Id.String(),
 	}
 	config := types.AppNetworkConfig{
-		UUIDandVersion: uv,
-		DisplayName:    "zedmanager",
-		IsZedmanager:   true,
+		UUIDandVersion:    uv,
+		DisplayName:       "zedmanager",
+		IsZedmanager:      true,
+		SeparateDataPlane: lispInfo.Experimental,
 	}
 
 	olconf := make([]types.OverlayNetworkConfig, 1)
