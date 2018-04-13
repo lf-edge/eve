@@ -306,7 +306,8 @@ func processEvents(image string, logChan <-chan logEntry) {
 		select {
 		case event, more := <-logChan:
 			if !more {
-				log.Printf("processEvents: %s end\n", image)
+				log.Printf("processEvents: %s end\n",
+					image)
 				if counter > 0 {
 					sendProtoStrForLogs(reportLogs, image,
 						iteration)
@@ -399,7 +400,10 @@ func sendProtoStrForLogs(reportLogs *zmet.LogBundle, image string,
 		reportLogs.Log = []*zmet.LogEntry{}
 		return
 	}
-	log.Printf("Sent %d bytes image %s to %s\n", len(data), image, logsUrl)
+	if debug {
+		log.Printf("Sent %d bytes image %s to %s\n",
+			len(data), image, logsUrl)
+	}
 	reportLogs.Log = []*zmet.LogEntry{}
 }
 

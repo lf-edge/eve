@@ -82,7 +82,7 @@ type verifierContext struct {
 func main() {
 	logf, err := agentlog.Init(agentName)
 	if err != nil {
-	       log.Fatal(err)
+		log.Fatal(err)
 	}
 	defer logf.Close()
 
@@ -799,9 +799,16 @@ func handleModify(ctx *verifierContext, objType string, statusFilename string,
 	config *types.VerifyImageConfig,
 	status *types.VerifyImageStatus) {
 	// Note no comparison on version
+	changed := false
 
+	log.Printf("handleModify for %s\n", config.DownloadURL)
 	// Always update RefCount
-	status.RefCount = config.RefCount
+	if status.RefCount != config.RefCount {
+		log.Printf("handleModify RefCount change %s from %d to %d\n",
+			config.DownloadURL, status.RefCount, config.RefCount)
+		status.RefCount = config.RefCount
+		changed = true
+	}
 
 	if status.RefCount == 0 {
 		status.PendingModify = true
@@ -817,7 +824,10 @@ func handleModify(ctx *verifierContext, objType string, statusFilename string,
 	// If identical we do nothing. Otherwise we do a delete and create.
 	if config.Safename == status.Safename &&
 		config.ImageSha256 == status.ImageSha256 {
-		log.Printf("handleModify: no change for %s\n",
+		if changed {
+			writeVerifyObjectStatus(status, statusFilename)
+		}
+		log.Printf("handleModify: no (other) change for %s\n",
 			config.DownloadURL)
 		return
 	}
