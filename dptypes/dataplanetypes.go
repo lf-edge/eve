@@ -1,7 +1,7 @@
 // Copyright (c) 2017 Zededa, Inc.
 // All rights reserved.
 
-package types
+package dptypes
 
 import (
 	"net"
@@ -19,8 +19,9 @@ const (
 	MAP_CACHE_FAMILY_IPV6    = 2
 	MAP_CACHE_FAMILY_UNKNOWN = 3
 	// max header len is ip6 hdr len (40) +
-	// udp (8) + lisp (8) - eth hdr (14) + crypto iv len (16)
-	MAXHEADERLEN             = 58
+	// udp (8) + lisp (8) - eth hdr (14) + crypto iv len (16 for CBC and 12 for GCM)
+	//MAXHEADERLEN             = 58 // max header len with CBC
+	MAXHEADERLEN             = 54
 	ETHHEADERLEN             = 14
 	UDPHEADERLEN             = 8
 	ICVLEN                   = 20
@@ -28,6 +29,7 @@ const (
 	IP4HEADERLEN             = 20
 	IP6HEADERLEN             = 40
 	LISPHEADERLEN            = 8
+	GCMIVLENGTH              = 12
 )
 
 type Key struct {
@@ -191,7 +193,8 @@ type EtrTable struct {
 
 type ITRLocalData struct {
 	// crypto initialization vector data (IV)
-	IvHigh uint64
+	//IvHigh uint64
+	IvHigh uint32
 	IvLow  uint64
 
 	// Raw sockets for sending out LISP encapsulted packets

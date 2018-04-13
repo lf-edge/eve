@@ -9,6 +9,7 @@ package fib
 import (
 	"encoding/json"
 	"github.com/zededa/go-provision/types"
+	"github.com/zededa/lisp/dataplane/dptypes"
 	"log"
 	"math/rand"
 	"net"
@@ -20,8 +21,8 @@ import (
 
 const SCRUBTHRESHOLD = 5 * 60
 
-var cache *types.MapCacheTable
-var decaps *types.DecapTable
+var cache *dptypes.MapCacheTable
+var decaps *dptypes.DecapTable
 var upLinks types.Uplinks
 
 var debug bool = false
@@ -31,15 +32,15 @@ var pktBuf []byte
 var fd4 int
 var fd6 int
 
-func newMapCache() *types.MapCacheTable {
-	return &types.MapCacheTable{
-		MapCache: make(map[types.MapCacheKey]*types.MapCacheEntry),
+func newMapCache() *dptypes.MapCacheTable {
+	return &dptypes.MapCacheTable{
+		MapCache: make(map[dptypes.MapCacheKey]*dptypes.MapCacheEntry),
 	}
 }
 
-func newDecapTable() *types.DecapTable {
-	return &types.DecapTable{
-		DecapEntries: make(map[string]*types.DecapKeys),
+func newDecapTable() *dptypes.DecapTable {
+	return &dptypes.DecapTable{
+		DecapEntries: make(map[string]*dptypes.DecapKeys),
 	}
 }
 
@@ -123,8 +124,8 @@ func GetIPv6UplinkAddr() net.IP {
 	return uplinks.Ipv6
 }
 
-func makeMapCacheKey(iid uint32, eid net.IP) types.MapCacheKey {
-	return types.MapCacheKey{
+func makeMapCacheKey(iid uint32, eid net.IP) dptypes.MapCacheKey {
+	return dptypes.MapCacheKey{
 		IID: iid,
 		Eid: eid.String(),
 	}
@@ -143,7 +144,7 @@ func FlushMapCache() {
 // Do a lookup into map cache database. If a resolved entry is not found,
 // create and add an un-resolved entry for buffering packets.
 func LookupAndAdd(iid uint32,
-	eid net.IP, timeStamp time.Time) (*types.MapCacheEntry, bool) {
+	eid net.IP, timeStamp time.Time) (*dptypes.MapCacheEntry, bool) {
 	if debug {
 		log.Printf("LookupAndAdd: Adding EID %d with IID %v\n", eid, iid)
 	}
@@ -202,11 +203,11 @@ func LookupAndAdd(iid uint32,
 		return entry, false
 	} else {
 		currTime := time.Now()
-		resolveEntry := types.MapCacheEntry{
+		resolveEntry := dptypes.MapCacheEntry{
 			InstanceId:  iid,
 			Eid:         eid,
 			Resolved:    false,
-			PktBuffer:   make(chan *types.BufferedPacket, 10),
+			PktBuffer:   make(chan *dptypes.BufferedPacket, 10),
 			LastPunt:    currTime,
 			ResolveTime: currTime,
 		}
@@ -221,7 +222,7 @@ func LookupAndAdd(iid uint32,
 
 // Add/update map cache entry. Along with that process and send out and
 // buffered packets attached to this entry.
-func UpdateMapCacheEntry(iid uint32, eid net.IP, rlocs []types.Rloc) {
+func UpdateMapCacheEntry(iid uint32, eid net.IP, rlocs []dptypes.Rloc) {
 	if debug {
 		log.Printf("UpdateMapCacheEntry: Updating map-cache entry with EID %s, IID %v\n",
 			eid, iid)
@@ -230,10 +231,10 @@ func UpdateMapCacheEntry(iid uint32, eid net.IP, rlocs []types.Rloc) {
 
 	// Create a temporary IV to work with
 	rand.Seed(time.Now().UnixNano())
-	ivHigh := rand.Uint64()
+	ivHigh := rand.Uint32()
 	ivLow := rand.Uint64()
 
-	itrLocalData := new(types.ITRLocalData)
+	itrLocalData := new(dptypes.ITRLocalData)
 	itrLocalData.Fd4 = fd4
 	itrLocalData.Fd6 = fd6
 	itrLocalData.IvHigh = ivHigh
@@ -253,7 +254,7 @@ func UpdateMapCacheEntry(iid uint32, eid net.IP, rlocs []types.Rloc) {
 
 				// copy packet bytes into pktBuf at an offset of MAXHEADERLEN bytes
 				// ipv6 (40) + UDP (8) + LISP (8) - ETHERNET (14) + LISP IV (16) = 58
-				copy(pktBuf[types.MAXHEADERLEN:], pktBytes)
+				copy(pktBuf[dptypes.MAXHEADERLEN:], pktBytes)
 
 				// Send the packet out now
 				CraftAndSendLispPacket(pkt.Packet, pktBuf, uint32(capLen), timeStamp,
@@ -285,9 +286,9 @@ func UpdateMapCacheEntry(iid uint32, eid net.IP, rlocs []types.Rloc) {
 // Compile the given rlocs according to their priorities and prepare a load
 // balance list.
 // Note: We only consider the highest priority RLOCs and ignore other priorities
-func compileRlocs(rlocs []types.Rloc) ([]types.Rloc, uint32) {
+func compileRlocs(rlocs []dptypes.Rloc) ([]dptypes.Rloc, uint32) {
 	var highPrio uint32 = 0xFFFFFFFF
-	selectRlocs := []types.Rloc{}
+	selectRlocs := []dptypes.Rloc{}
 	var totWeight uint32 = 0
 	var wrStart uint32 = 0
 
@@ -329,8 +330,8 @@ func compileRlocs(rlocs []types.Rloc) ([]types.Rloc, uint32) {
 
 // Add/update map cache entry. Look at the comments inside this function to understand
 // more about what it does.
-func LookupAndUpdate(iid uint32, eid net.IP, rlocs []types.Rloc) *types.MapCacheEntry {
-	var selectRlocs []types.Rloc
+func LookupAndUpdate(iid uint32, eid net.IP, rlocs []dptypes.Rloc) *dptypes.MapCacheEntry {
+	var selectRlocs []dptypes.Rloc
 	var totWeight uint32
 	var packets, bytes, tailDrops, buffdPkts uint64
 	var lastPunt time.Time
@@ -383,13 +384,13 @@ func LookupAndUpdate(iid uint32, eid net.IP, rlocs []types.Rloc) *types.MapCache
 	// We will only use the highest priority rlocs and ignore rlocs with
 	// other priorities
 	selectRlocs, totWeight = compileRlocs(rlocs)
-	newEntry := types.MapCacheEntry{
+	newEntry := dptypes.MapCacheEntry{
 		InstanceId:    iid,
 		Eid:           eid,
 		Resolved:      true,
 		Rlocs:         selectRlocs,
 		RlocTotWeight: totWeight,
-		PktBuffer:     make(chan *types.BufferedPacket, 10),
+		PktBuffer:     make(chan *dptypes.BufferedPacket, 10),
 		LastPunt:      lastPunt,
 		Packets:       packets,
 		Bytes:         bytes,
@@ -409,14 +410,14 @@ func DeleteMapCacheEntry(iid uint32, eid net.IP) {
 	// collected later
 }
 
-func UpdateDecapKeys(entry *types.DecapKeys) {
+func UpdateDecapKeys(entry *dptypes.DecapKeys) {
 	decaps.LockMe.Lock()
 	defer decaps.LockMe.Unlock()
 	key := entry.Rloc.String()
 	decaps.DecapEntries[key] = entry
 }
 
-func LookupDecapKeys(ip net.IP) *types.DecapKeys {
+func LookupDecapKeys(ip net.IP) *dptypes.DecapKeys {
 	decaps.LockMe.RLock()
 	defer decaps.LockMe.RUnlock()
 	key := ip.String()
@@ -487,7 +488,7 @@ func MapcacheScrubThread() {
 	// map-cache entries in resolve status for more than 5 minutes.
 	for {
 		time.Sleep(60 * time.Second)
-		delList := []types.MapCacheKey{}
+		delList := []dptypes.MapCacheKey{}
 
 		cache.LockMe.RLock()
 
@@ -542,21 +543,21 @@ func StatsThread(puntChannel chan []byte) {
 
 		cache.LockMe.RLock()
 
-		var encapStatistics types.EncapStatistics
+		var encapStatistics dptypes.EncapStatistics
 		encapStatistics.Type = "statistics"
 
 		for key, value := range cache.MapCache {
-			var eidStats types.EidStatsEntry
+			var eidStats dptypes.EidStatsEntry
 			eidStats.InstanceId = strconv.FormatUint(uint64(key.IID), 10)
 			prefixLength := "/128"
 			if key.Eid == "::" {
 				prefixLength = "/0"
 			}
 			eidStats.EidPrefix = key.Eid + prefixLength
-			eidStats.Rlocs = []types.RlocStatsEntry{}
+			eidStats.Rlocs = []dptypes.RlocStatsEntry{}
 			for _, rloc := range value.Rlocs {
 
-				var rlocStats types.RlocStatsEntry
+				var rlocStats dptypes.RlocStatsEntry
 				rlocStats.Rloc = rloc.Rloc.String()
 				rlocStats.PacketCount = atomic.LoadUint64(&rloc.Packets)
 				rlocStats.ByteCount = atomic.LoadUint64(&rloc.Bytes)

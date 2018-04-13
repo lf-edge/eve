@@ -16,7 +16,7 @@ import (
 	"golang.org/x/net/bpf"
 	//"github.com/google/gopacket/pfring"
 	"github.com/zededa/lisp/dataplane/fib"
-	"github.com/zededa/go-provision/types"
+	"github.com/zededa/lisp/dataplane/dptypes"
 	"log"
 	"math/rand"
 	"net"
@@ -110,10 +110,10 @@ func StartItrThread(threadName string,
 	defer syscall.Close(fd6)
 
 	rand.Seed(time.Now().UnixNano())
-	ivHigh := rand.Uint64()
+	ivHigh := rand.Uint32()
 	ivLow := rand.Uint64()
 
-	itrLocalData := new(types.ITRLocalData)
+	itrLocalData := new(dptypes.ITRLocalData)
 	itrLocalData.Fd4 = fd4
 	itrLocalData.Fd6 = fd6
 	itrLocalData.IvHigh = ivHigh
@@ -223,7 +223,7 @@ func SetupPacketCapture(iface string, snapLen int) *afpacket.TPacket {
 //func startWorking(ifname string, ring *pfring.Ring,
 func startWorking(ifname string, handle *afpacket.TPacket,
 	killChannel chan bool, puntChannel chan []byte,
-	itrLocalData *types.ITRLocalData) {
+	itrLocalData *dptypes.ITRLocalData) {
 	var pktBuf [SNAPLENGTH]byte
 
 	iid := fib.LookupIfaceIID(ifname)
@@ -281,8 +281,8 @@ eidLoop:
 				ifname)
 			return
 		default:
-			//ci, err := ring.ReadPacketDataTo(pktBuf[types.MAXHEADERLEN:])
-			ci, err := handle.ReadPacketDataTo(pktBuf[types.MAXHEADERLEN:])
+			//ci, err := ring.ReadPacketDataTo(pktBuf[dptypes.MAXHEADERLEN:])
+			ci, err := handle.ReadPacketDataTo(pktBuf[dptypes.MAXHEADERLEN:])
 			if err != nil {
 				if err == afpacket.ErrTimeout {
 					continue
@@ -305,7 +305,7 @@ eidLoop:
 				continue
 			}
 			packet := gopacket.NewPacket(
-				pktBuf[types.MAXHEADERLEN:ci.CaptureLength+types.MAXHEADERLEN],
+				pktBuf[dptypes.MAXHEADERLEN:ci.CaptureLength+dptypes.MAXHEADERLEN],
 				layers.LinkTypeEthernet,
 				//gopacket.DecodeOptions{Lazy: true, NoCopy: true})
 				gopacket.DecodeOptions{Lazy: false, NoCopy: true})
@@ -396,7 +396,7 @@ func LookupAndSend(packet gopacket.Packet,
 	srcAddr net.IP,
 	dstAddr net.IP,
 	puntChannel chan []byte,
-	itrLocalData *types.ITRLocalData) {
+	itrLocalData *dptypes.ITRLocalData) {
 
 	// Look for the map-cache entry required
 	mapEntry, punt := fib.LookupAndAdd(iid, dstAddr, timeStamp)
@@ -407,7 +407,7 @@ func LookupAndSend(packet gopacket.Packet,
 		// Add packet to channel in a non blocking fashion.
 		// Buffered packet channel is only 10 entries long.
 		select {
-		case mapEntry.PktBuffer <- &types.BufferedPacket{
+		case mapEntry.PktBuffer <- &dptypes.BufferedPacket{
 			Packet: packet,
 			Hash32: hash32,
 		}:
@@ -446,7 +446,7 @@ func LookupAndSend(packet gopacket.Packet,
 
 				// copy packet bytes into pktBuf at an offset of MAXHEADERLEN bytes
 				// ipv6 (40) + UDP (8) + LISP (8) - ETHERNET (14) + LISP IV (16) = 58
-				copy(pktBuf[types.MAXHEADERLEN:], pktBytes)
+				copy(pktBuf[dptypes.MAXHEADERLEN:], pktBytes)
 
 				// Encapsulate and send packet out
 				fib.CraftAndSendLispPacket(pkt.Packet, pktBuf, capLen, timeStamp,
@@ -482,7 +482,7 @@ func LookupAndSend(packet gopacket.Packet,
 	if punt == true {
 		// We will have to put a punt request on the control
 		// module's channel
-		puntEntry := types.PuntEntry{
+		puntEntry := dptypes.PuntEntry{
 			Type:  "discovery",
 			Deid:  dstAddr,
 			Seid:  srcAddr,

@@ -10,7 +10,7 @@ package etr
 
 import (
 	"bytes"
-	"crypto/aes"
+	//"crypto/aes"
 	"crypto/cipher"
 	"fmt"
 	"github.com/google/gopacket"
@@ -21,6 +21,7 @@ import (
 	//"github.com/google/gopacket/pfring"
 	"github.com/zededa/lisp/dataplane/fib"
 	"github.com/zededa/go-provision/types"
+	"github.com/zededa/lisp/dataplane/dptypes"
 	"log"
 	"net"
 	"syscall"
@@ -29,7 +30,7 @@ import (
 )
 
 // Status and metadata of different ETR threads currently running
-var etrTable types.EtrTable
+var etrTable dptypes.EtrTable
 var deviceNetworkStatus types.DeviceNetworkStatus
 var debug bool = false
 
@@ -41,7 +42,7 @@ const (
 func InitETRStatus(debugFlag bool) {
 	debug = debugFlag
 	etrTable.EphPort = -1
-	etrTable.EtrTable = make(map[string]*types.EtrRunStatus)
+	etrTable.EtrTable = make(map[string]*dptypes.EtrRunStatus)
 }
 
 func StartEtrNonNat() {
@@ -136,7 +137,7 @@ func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
 						"for UP link %s\n", link.IfName)
 				}
 			}
-			etrTable.EtrTable[link.IfName] = &types.EtrRunStatus{
+			etrTable.EtrTable[link.IfName] = &dptypes.EtrRunStatus{
 				IfName: link.IfName,
 				//Ring:   ring,
 				Handle: handle,
@@ -251,7 +252,7 @@ func StartEtrNat(ephPort int, upLink string) (*afpacket.TPacket, int) {
 
 func verifyAndInject(fd6 int,
 	buf []byte, n int,
-	decapKeys *types.DecapKeys) bool {
+	decapKeys *dptypes.DecapKeys) bool {
 
 	//var pktEid net.IP
 	iid := fib.GetLispIID(buf[0:8])
@@ -259,30 +260,33 @@ func verifyAndInject(fd6 int,
 		return true
 	}
 	log.Println("XXXXX IID of packet is:", iid)
-	packetOffset := 8
+	packetOffset := dptypes.LISPHEADERLEN
+
+	// offset of destination address inside ipv6 header
 	destAddrOffset := 24
 
-	//useCrypto := false
 	keyId := fib.GetLispKeyId(buf[0:8])
 	if keyId != 0 {
-		//useCrypto = true
-		destAddrOffset += aes.BlockSize
-		packetOffset += aes.BlockSize
-
 		if decapKeys == nil {
 			return false
 		}
 
-		// compute and compare ICV of packet
-		// Zededa ITR always picks a keyId of 1
+		//destAddrOffset += aes.BlockSize
+		destAddrOffset += dptypes.GCMIVLENGTH
+		//packetOffset += aes.BlockSize
+		packetOffset += dptypes.GCMIVLENGTH
+
+		// Compute and compare ICV of packet.
+		// Zededa ITRs always pick keyId of 1.
+		// We read the key id from lisp header for inter-op with lispers.net
 		key := decapKeys.Keys[keyId-1]
 		icvKey := key.IcvKey
 		if icvKey == nil {
 			log.Printf("verifyAndInject: ETR Key id %d had nil ICV key value\n", keyId)
 			return false
 		}
-		icv := fib.ComputeICV(buf[0:n-types.ICVLEN], icvKey)
-		pktIcv := buf[n-types.ICVLEN : n]
+		icv := fib.ComputeICV(buf[0:n-dptypes.ICVLEN], icvKey)
+		pktIcv := buf[n-dptypes.ICVLEN : n]
 
 		if !bytes.Equal(icv, pktIcv) {
 			log.Printf(
@@ -292,15 +296,14 @@ func verifyAndInject(fd6 int,
 		}
 		log.Println("XXXXX ICVs match")
 
-		// Decrypt the packet before sending out
-		// read the IV from packet buffer
-		ivArray := buf[types.LISPHEADERLEN:packetOffset]
+		// Decrypt the packet before sending out.
+		// Read the IV from packet buffer.
+		ivArray := buf[dptypes.LISPHEADERLEN:packetOffset]
 
-		packet := buf[packetOffset : n-types.ICVLEN]
+		packet := buf[packetOffset : n-dptypes.ICVLEN]
 
-		cryptoLen := n - packetOffset - types.ICVLEN
+		cryptoLen := n - packetOffset - dptypes.ICVLEN
 		if cryptoLen%16 != 0 {
-			log.Printf("XXXXX Crypto packet length is %d\n", cryptoLen)
 			// AES encrypted packet should have a lenght that is multiple of 16
 			// aes.BlockSize is 16
 			log.Printf("verifyAndInject: Invalid Crypto packet length %d\n", cryptoLen)
@@ -314,14 +317,20 @@ func verifyAndInject(fd6 int,
 		}
 
 		block := key.DecBlock
-		mode := cipher.NewCBCDecrypter(block, ivArray)
-		mode.CryptBlocks(packet, packet)
+		//mode := cipher.NewCBCDecrypter(block, ivArray)
+		aesGcm, err := cipher.NewGCM(block)
+		if err != nil {
+			log.Printf("VerifyAndInject: GCM cipher creation failed: %s\n", err)
+			return false
+		}
+		//mode.CryptBlocks(packet, packet)
+		aesGcm.Open(packet, ivArray, packet, nil)
 	}
 
 	var destAddr [16]byte
 	for i, _ := range destAddr {
 		// offset is lisp hdr size + start offset of ip addresses in v6 hdr
-		destAddr[i] = buf[types.LISPHEADERLEN+destAddrOffset+i]
+		destAddr[i] = buf[dptypes.LISPHEADERLEN+destAddrOffset+i]
 		//pktEid[i] = destAddr[i]
 	}
 

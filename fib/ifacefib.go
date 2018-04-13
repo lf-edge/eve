@@ -4,23 +4,23 @@
 package fib
 
 import (
-	"github.com/zededa/go-provision/types"
+	"github.com/zededa/lisp/dataplane/dptypes"
 	"log"
 	"net"
 )
 
-var ifaceMap *types.InterfaceMap
-var eidMap *types.EIDMap
+var ifaceMap *dptypes.InterfaceMap
+var eidMap *dptypes.EIDMap
 
-func NewIfaceMap() *types.InterfaceMap {
-	return &types.InterfaceMap{
-		InterfaceDB: make(map[string]types.Interface),
+func NewIfaceMap() *dptypes.InterfaceMap {
+	return &dptypes.InterfaceMap{
+		InterfaceDB: make(map[string]dptypes.Interface),
 	}
 }
 
-func NewEIDMap() *types.EIDMap {
-	return &types.EIDMap{
-		EidEntries: make(map[uint32]types.EIDEntry),
+func NewEIDMap() *dptypes.EIDMap {
+	return &dptypes.EIDMap{
+		EidEntries: make(map[uint32]dptypes.EIDEntry),
 	}
 }
 
@@ -57,7 +57,7 @@ func IfaceGetEids(name string) []net.IP {
 	return nil
 }
 
-func UpdateIfaceIIDs(interfaces []types.Interface) {
+func UpdateIfaceIIDs(interfaces []dptypes.Interface) {
 	ifaceMap.LockMe.Lock()
 	defer ifaceMap.LockMe.Unlock()
 
@@ -74,7 +74,7 @@ func UpdateIfaceIIDs(interfaces []types.Interface) {
 	}
 }
 
-func UpdateIfaceEids(eidEntries []types.EIDEntry) {
+func UpdateIfaceEids(eidEntries []dptypes.EIDEntry) {
 	eidMap.LockMe.Lock()
 	defer eidMap.LockMe.Unlock()
 
