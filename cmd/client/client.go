@@ -37,7 +37,7 @@ import (
 const (
 	agentName   = "zedclient"
 	tmpDirname  = "/var/tmp/zededa"
-	DNCDirname  = "/var/tmp/zededa/DeviceNetworkConfig"
+	DNCDirname  = tmpDirname + "/DeviceNetworkConfig"
 	maxDelay    = time.Second * 600 // 10 minutes
 	uuidMaxWait = time.Second * 60  // 1 minute
 )
@@ -74,6 +74,14 @@ func main() {
 	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 		log.Fatal(err)
 	}
+	// For limited output on console
+	consolef, err := os.OpenFile("/dev/console", os.O_RDWR|os.O_APPEND,
+		0666)
+	if err != nil {
+		log.Fatal(err)
+	}
+	console := log.New(consolef, "zedclient: ",
+		log.Ldate|log.Ltime|log.Lmicroseconds|log.LUTC)
 
 	versionPtr := flag.Bool("v", false, "Version")
 	oldPtr := flag.Bool("o", false, "Old use of prov01")
@@ -120,6 +128,7 @@ func main() {
 	cms := zedcloud.GetCloudMetrics() // Need type of data
 	pub, err := pubsub.Publish(agentName, cms)
 	if err != nil {
+		console.Println(err)
 		log.Fatal(err)
 	}
 
@@ -129,7 +138,7 @@ func main() {
 		uuidStr := strings.TrimSpace(string(b))
 		oldUUID, err = uuid.FromString(uuidStr)
 		if err != nil {
-			log.Printf("UUID file ignored: %s\n", err)
+			log.Printf("Malformed UUID file ignored: %s\n", err)
 		}
 	}
 
@@ -137,10 +146,25 @@ func main() {
 
 	model := hardware.GetHardwareModel()
 	DNCFilename := fmt.Sprintf("%s/%s.json", DNCDirname, model)
+	// To better handle new hardware platforms log and blink if we
+	// don't have a DeviceNetworkConfig
+	for {
+		if _, err := os.Stat(DNCFilename); err == nil {
+			break
+		}
+		// Tell the world that we have issues
+		types.UpdateLedManagerConfig(10)
+		log.Println(err)
+		console.Println(err)
+		console.Printf("You need to create this file for this hardware: %s\n",
+			DNCFilename)
+		time.Sleep(time.Second)
+	}
 	addrCount := 0
 	for addrCount == 0 {
 		deviceNetworkConfig, err := devicenetwork.GetDeviceNetworkConfig(DNCFilename)
 		if err != nil {
+			console.Println(err)
 			log.Fatal(err)
 		}
 		deviceNetworkStatus, err = devicenetwork.MakeDeviceNetworkStatus(deviceNetworkConfig)
@@ -162,6 +186,7 @@ func main() {
 				return
 			}
 			log.Printf("Waiting for some uplink addresses to use\n")
+			console.Printf("Waiting for some uplink addresses to use\n")
 			delay := time.Second
 			log.Printf("Retrying in %d seconds\n",
 				delay/time.Second)
@@ -169,6 +194,7 @@ func main() {
 		}
 	}
 	log.Printf("Have %d uplinks addresses to use\n", addrCount)
+	console.Printf("Have %d uplinks addresses to use\n", addrCount)
 
 	// Inform ledmanager that we have uplink addresses
 	types.UpdateLedManagerConfig(2)
@@ -188,11 +214,13 @@ func main() {
 		var err error
 		onboardCert, err = tls.LoadX509KeyPair(onboardCertName, onboardKeyName)
 		if err != nil {
+			console.Println(err)
 			log.Fatal(err)
 		}
 		// Load device text cert for upload
 		deviceCertPem, err = ioutil.ReadFile(deviceCertName)
 		if err != nil {
+			console.Println(err)
 			log.Fatal(err)
 		}
 	}
@@ -203,6 +231,7 @@ func main() {
 		deviceCert, err = tls.LoadX509KeyPair(deviceCertName,
 			deviceKeyName)
 		if err != nil {
+			console.Println(err)
 			log.Fatal(err)
 		}
 		deviceCertSet = true
@@ -210,12 +239,14 @@ func main() {
 
 	server, err := ioutil.ReadFile(serverFileName)
 	if err != nil {
+		console.Println(err)
 		log.Fatal(err)
 	}
 	//XXX: remove oldFlag later
 	if oldFlag {
 		server, err = ioutil.ReadFile(oldServerFileName)
 		if err != nil {
+			console.Println(err)
 			log.Fatal(err)
 		}
 	}
@@ -238,6 +269,7 @@ func main() {
 		resp, contents, err := zedcloud.SendOnAllIntf(zedcloudCtx,
 			serverNameAndPort+url, reqlen, b, retryCount)
 		if err != nil {
+			console.Println(err)
 			log.Println(err)
 			return false
 		}
@@ -249,14 +281,17 @@ func main() {
 		case http.StatusOK:
 			// Inform ledmanager about existence in cloud
 			types.UpdateLedManagerConfig(4)
+			console.Printf("%s StatusOK\n", url)
 			log.Printf("%s StatusOK\n", url)
 		case http.StatusCreated:
 			// Inform ledmanager about existence in cloud
 			types.UpdateLedManagerConfig(4)
+			console.Printf("%s StatusCreated\n", url)
 			log.Printf("%s StatusCreated\n", url)
 		case http.StatusConflict:
 			// Inform ledmanager about brokenness
 			types.UpdateLedManagerConfig(10)
+			console.Printf("%s StatusConflict\n", url)
 			log.Printf("%s StatusConflict\n", url)
 			// Retry until fixed
 			log.Printf("%s\n", string(contents))
@@ -264,11 +299,15 @@ func main() {
 		case http.StatusNotModified: // XXX from zedcloud
 			// Inform ledmanager about brokenness
 			types.UpdateLedManagerConfig(10)
+			console.Printf("%s StatusNotModified\n", url)
 			log.Printf("%s StatusNotModified\n", url)
 			// Retry until fixed
 			log.Printf("%s\n", string(contents))
 			return false
 		default:
+			console.Printf("%s statuscode %d %s\n",
+				url, resp.StatusCode,
+				http.StatusText(resp.StatusCode))
 			log.Printf("%s statuscode %d %s\n",
 				url, resp.StatusCode,
 				http.StatusText(resp.StatusCode))
@@ -365,6 +404,7 @@ func main() {
 	selfRegister := func(retryCount int) bool {
 		tlsConfig, err := zedcloud.GetTlsConfig(serverName, &onboardCert)
 		if err != nil {
+			console.Println(err)
 			log.Println(err)
 			return false
 		}
@@ -374,6 +414,7 @@ func main() {
 		}
 		b, err := proto.Marshal(registerCreate)
 		if err != nil {
+			console.Println(err)
 			log.Println(err)
 			return false
 		}
@@ -406,6 +447,7 @@ func main() {
 		resp, contents, err := zedcloud.SendOnAllIntf(zedcloudCtx,
 			serverNameAndPort+url, 0, nil, retryCount)
 		if err != nil {
+			console.Println(err)
 			log.Println(err)
 			return false
 		}
@@ -460,15 +502,20 @@ func main() {
 		resp, contents, err := zedcloud.SendOnAllIntf(zedcloudCtx,
 			serverNameAndPort+url, 0, nil, retryCount)
 		if err != nil {
+			console.Println(err)
 			log.Println(err)
 			return false, nil, nil
 		}
 
 		switch resp.StatusCode {
 		case http.StatusOK:
+			console.Printf("%s StatusOK\n", url)
 			log.Printf("%s StatusOK\n", url)
 			return true, resp, contents
 		default:
+			console.Printf("%s statuscode %d %s\n",
+				url, resp.StatusCode,
+				http.StatusText(resp.StatusCode))
 			log.Printf("%s statuscode %d %s\n",
 				url, resp.StatusCode,
 				http.StatusText(resp.StatusCode))
@@ -480,16 +527,20 @@ func main() {
 	// Setup HTTPS client for deviceCert unless force
 	var cert tls.Certificate
 	if forceOnboardingCert || operations["selfRegister"] {
+		console.Printf("Using onboarding cert\n")
 		log.Printf("Using onboarding cert\n")
 		cert = onboardCert
 	} else if deviceCertSet {
+		console.Printf("Using device cert\n")
 		log.Printf("Using device cert\n")
 		cert = deviceCert
 	} else {
+		console.Printf("No device certificate for %v\n", operations)
 		log.Fatalf("No device certificate for %v\n", operations)
 	}
 	tlsConfig, err := zedcloud.GetTlsConfig(serverName, &cert)
 	if err != nil {
+		console.Println(err)
 		log.Fatal(err)
 	}
 	zedcloudCtx.TlsConfig = tlsConfig
@@ -536,6 +587,8 @@ func main() {
 			if delay > maxDelay {
 				delay = maxDelay
 			}
+			console.Printf("Retrying ping in %d seconds\n",
+				delay/time.Second)
 			log.Printf("Retrying ping in %d seconds\n",
 				delay/time.Second)
 		}
@@ -560,6 +613,8 @@ func main() {
 			if delay > maxDelay {
 				delay = maxDelay
 			}
+			console.Printf("Retrying selfRegister in %d seconds\n",
+				delay/time.Second)
 			log.Printf("Retrying selfRegister in %d seconds\n",
 				delay/time.Second)
 		}
@@ -578,6 +633,7 @@ func main() {
 			// Create and write with initial values
 			// XXX ignoring any error
 			devUUID, _ = uuid.NewV4()
+			console.Printf("Created UUID %s\n", devUUID)
 			log.Printf("Created UUID %s\n", devUUID)
 		} else {
 			url := "/api/v1/edgedevice/config"
@@ -611,6 +667,8 @@ func main() {
 			}
 			if oldUUID != nilUUID {
 				if oldUUID != devUUID {
+					console.Printf("Replacing existing UUID %s\n",
+						oldUUID.String())
 					log.Printf("Replacing existing UUID %s\n",
 						oldUUID.String())
 				} else {
@@ -619,6 +677,7 @@ func main() {
 					doWrite = false
 				}
 			} else {
+				console.Printf("Got config with UUID %s\n", devUUID)
 				log.Printf("Got config with UUID %s\n", devUUID)
 			}
 			// Inform ledmanager about config received from cloud
@@ -797,6 +856,7 @@ func main() {
 	}
 	err = pub.Publish("global", zedcloud.GetCloudMetrics())
 	if err != nil {
+		console.Println(err)
 		log.Println(err)
 	}
 }

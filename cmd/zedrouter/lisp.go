@@ -145,8 +145,7 @@ lisp database-mapping {
 `
 
 const (
-	identityDirname = "/config"
-	baseFilename    = identityDirname + "/lisp.config.base"
+	baseFilename    = tmpDirname + "/lisp.config.base"
 
 	lispDirname  = "/opt/zededa/lisp"
 	destFilename = lispDirname + "/lisp.config"
