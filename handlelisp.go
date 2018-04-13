@@ -10,7 +10,7 @@ import (
 	"encoding/json"
 	"github.com/zededa/lisp/dataplane/etr"
 	"github.com/zededa/lisp/dataplane/fib"
-	"github.com/zededa/go-provision/types"
+	"github.com/zededa/lisp/dataplane/dptypes"
 	"log"
 	"net"
 	"strconv"
@@ -18,23 +18,23 @@ import (
 
 // Parse the json RLOC message and extract ip addresses along
 // with respective priorities and weights.
-func parseRloc(rlocStr *Rloc) (types.Rloc, bool) {
+func parseRloc(rlocStr *Rloc) (dptypes.Rloc, bool) {
 	rloc := net.ParseIP(rlocStr.Rloc)
 	if rloc == nil {
 		// XXX Should we log.Fatal here?
 		log.Println("RLOC:", rlocStr.Rloc, "is invalid")
-		return types.Rloc{}, false
+		return dptypes.Rloc{}, false
 	}
 	x, err := strconv.ParseUint(rlocStr.Priority, 10, 32)
 	if err != nil {
 		// XXX Should we log.Fatal here?
-		return types.Rloc{}, false
+		return dptypes.Rloc{}, false
 	}
 	priority := uint32(x)
 	x, err = strconv.ParseUint(rlocStr.Weight, 10, 32)
 	if err != nil {
 		// XXX Should we log.Fatal here?
-		return types.Rloc{}, false
+		return dptypes.Rloc{}, false
 	}
 	weight := uint32(x)
 	if weight == 0 {
@@ -43,24 +43,24 @@ func parseRloc(rlocStr *Rloc) (types.Rloc, bool) {
 
 	// find the family of Rloc
 
-	family := types.MAP_CACHE_FAMILY_UNKNOWN
+	family := dptypes.MAP_CACHE_FAMILY_UNKNOWN
 	for i := 0; i < len(rlocStr.Rloc); i++ {
 		switch rlocStr.Rloc[i] {
 		case '.':
-			family = types.MAP_CACHE_FAMILY_IPV4
+			family = dptypes.MAP_CACHE_FAMILY_IPV4
 		case ':':
-			family = types.MAP_CACHE_FAMILY_IPV6
+			family = dptypes.MAP_CACHE_FAMILY_IPV6
 		}
 	}
-	if family == types.MAP_CACHE_FAMILY_UNKNOWN {
+	if family == dptypes.MAP_CACHE_FAMILY_UNKNOWN {
 		// This ip address is not correct
 		// XXX Should we log.Fatal here?
-		return types.Rloc{}, false
+		return dptypes.Rloc{}, false
 	}
 
-	//keys := make([]types.Key, len(rlocStr.Keys))
+	//keys := make([]dptypes.Key, len(rlocStr.Keys))
 	// Max number of keys per RLOC can only be 3. Look at RFC 8061 lisp header
-	keys := make([]types.Key, 3)
+	keys := make([]dptypes.Key, 3)
 
 	//for i, key := range rlocStr.Keys {
 	for _, key := range rlocStr.Keys {
@@ -91,7 +91,7 @@ func parseRloc(rlocStr *Rloc) (types.Rloc, bool) {
 			continue
 		}
 
-		keys[keyId-1] = types.Key{
+		keys[keyId-1] = dptypes.Key{
 			KeyId:    uint32(keyId),
 			EncKey:   encKey,
 			IcvKey:   icvKey,
@@ -106,7 +106,7 @@ func parseRloc(rlocStr *Rloc) (types.Rloc, bool) {
 	// XXX We are not decoding the keys for now.
 	// Will have to add code for key handling in future.
 
-	rlocEntry := types.Rloc{
+	rlocEntry := dptypes.Rloc{
 		Rloc:     rloc,
 		Priority: priority,
 		Weight:   weight,
@@ -145,7 +145,7 @@ func isAddressIPv6(eid net.IP) bool {
 }
 
 func createMapCache(mapCache *MapCacheEntry) {
-	rlocs := []types.Rloc{}
+	rlocs := []dptypes.Rloc{}
 
 	x, err := strconv.ParseUint(mapCache.InstanceId, 10, 32)
 	if err != nil {
@@ -273,7 +273,7 @@ func handleDatabaseMappings(msg []byte) {
 	// pairs. It may have multiple rows for the same iid with different EIDs.
 	// We have to convert these rows to a map of IID to list of EIDs.
 	tmpMap := parseDatabaseMappings(databaseMappings)
-	eidEntries := []types.EIDEntry{}
+	eidEntries := []dptypes.EIDEntry{}
 
 	if eidEntries == nil {
 		log.Println("handleDatabaseMappings: Allocation of EID entry slice failed")
@@ -281,7 +281,7 @@ func handleDatabaseMappings(msg []byte) {
 	}
 
 	for key, data := range tmpMap {
-		eidEntries = append(eidEntries, types.EIDEntry{
+		eidEntries = append(eidEntries, dptypes.EIDEntry{
 			InstanceId: key,
 			Eids:       data,
 		})
@@ -301,7 +301,7 @@ func handleInterfaces(msg []byte) {
 			string(msg), err)
 		return
 	}
-	ifaces := []types.Interface{}
+	ifaces := []dptypes.Interface{}
 
 	if ifaces == nil {
 		log.Println("handleInterfaces: Allocation of Interface slice failed")
@@ -317,7 +317,7 @@ func handleInterfaces(msg []byte) {
 			continue
 		}
 		iid := uint32(x)
-		ifaces = append(ifaces, types.Interface{
+		ifaces = append(ifaces, dptypes.Interface{
 			Name:       iface.Interface,
 			InstanceId: iid,
 		})
@@ -349,7 +349,7 @@ func handleDecapKeys(msg []byte) {
 		return
 	}
 
-	keys := make([]types.DKey, len(decapMsg.Keys))
+	keys := make([]dptypes.DKey, len(decapMsg.Keys))
 
 	for _, key := range decapMsg.Keys {
 		keyId, err := strconv.ParseUint(key.KeyId, 10, 32)
@@ -381,7 +381,7 @@ func handleDecapKeys(msg []byte) {
 				key.DecKey)
 			continue
 		}
-		keys[keyId-1] = types.DKey{
+		keys[keyId-1] = dptypes.DKey{
 			KeyId:    uint32(keyId),
 			DecKey:   decKey,
 			IcvKey:   icvKey,
@@ -396,7 +396,7 @@ func handleDecapKeys(msg []byte) {
 	}
 
 	// Parse and store the decap keys.
-	decapEntry := types.DecapKeys{
+	decapEntry := dptypes.DecapKeys{
 		Rloc: rloc,
 		Keys: keys,
 	}

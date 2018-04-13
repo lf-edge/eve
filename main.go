@@ -17,6 +17,7 @@ import (
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/types"
+	"github.com/zededa/lisp/dataplane/dptypes"
 	"github.com/zededa/go-provision/watch"
 	"log"
 	"net"
@@ -174,7 +175,7 @@ func startPuntProcessor() {
 	}
 
 	// We could have restarted. We need to ask lispers.net for the databases again.
-	restartEntry := types.RestartEntry{
+	restartEntry := dptypes.RestartEntry{
 		Type: "restart",
 	}
 	restartMsg, err := json.Marshal(restartEntry)
