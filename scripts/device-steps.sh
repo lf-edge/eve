@@ -541,6 +541,10 @@ rm -f /var/run/verifier/*/status/restarted
 rm -f /var/tmp/zedrouter/config/restart
 
 for AGENT in $AGENTS; do
+    # XXX conditional - how do we handle?
+    if [ $AGENT == "dataplane" ]; then
+	continue
+    fi
     echo "pidfile = /var/run/$AGENT.pid" >>$TMPDIR/watchdog.conf
 done
 if [ -f /var/run/watchdog.pid ]; then
