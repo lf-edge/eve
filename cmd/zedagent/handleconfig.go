@@ -64,10 +64,10 @@ type configItems struct {
 // and during a post-update boot that time is reduced to 10 minutes.
 var configItemDefaults = configItems{configInterval: 60, metricInterval: 60,
 	resetIfCloudGoneTime: 7 * 24 * 3600, fallbackIfCloudGoneTime: 600,
-	mintimeUpdateSuccess: 300, usbAccess: true, sshAccess: false}
+	mintimeUpdateSuccess: 300, usbAccess: true, sshAccess: true}
 
 // XXX shorter counters for testing fallback:
-// 	resetIfCloudGoneTime: 300, fallbackIfCloudGoneTime: 60}
+// 	resetIfCloudGoneTime: 300, fallbackIfCloudGoneTime: 60,
 
 var configItemCurrent = configItemDefaults
 
