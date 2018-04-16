@@ -794,6 +794,7 @@ func doS3(ctx *downloaderContext, syncOp zedUpload.SyncOpType,
 func handleSyncOp(ctx *downloaderContext, objType string, statusFilename string,
 	config types.DownloaderConfig, status *types.DownloaderStatus) {
 	var err error
+	var errStr string
 	var locFilename string
 
 	var syncOp zedUpload.SyncOpType = zedUpload.SyncOpDownload
@@ -809,8 +810,7 @@ func handleSyncOp(ctx *downloaderContext, objType string, statusFilename string,
 		locFilename = locFilename + "/" + config.ImageSha256
 	}
 
-	if _, err = os.Stat(locFilename); err != nil {
-
+	if _, err := os.Stat(locFilename); err != nil {
 		if err = os.MkdirAll(locFilename, 0755); err != nil {
 			log.Fatal(err)
 		}
@@ -833,6 +833,9 @@ func handleSyncOp(ctx *downloaderContext, objType string, statusFilename string,
 		log.Printf("Have %d any uplink addresses\n", addrCount)
 		err = errors.New("No IP uplink addresses for download")
 	}
+	if err != nil {
+		errStr = errStr + "\n" + err.Error()
+	}
 	metricsUrl := config.DownloadURL
 	if config.TransportMethod == zconfig.DsType_DsS3.String() {
 		// fake URL for metrics
@@ -852,6 +855,7 @@ func handleSyncOp(ctx *downloaderContext, objType string, statusFilename string,
 		}
 		if err != nil {
 			log.Printf("GetLocalAddr failed: %s\n", err)
+			errStr = errStr + "\n" + err.Error()
 			continue
 		}
 		ifname := types.GetUplinkFromAddr(deviceNetworkStatus, ipSrc)
@@ -865,6 +869,7 @@ func handleSyncOp(ctx *downloaderContext, objType string, statusFilename string,
 			if err != nil {
 				log.Printf("Source IP %s failed: %s\n",
 					ipSrc.String(), err)
+				errStr = errStr + "\n" + err.Error()
 				// XXX don't know how much we downloaded!
 				// Could have failed half-way. Using zero.
 				zedcloud.ZedCloudFailure(ifname,
@@ -887,6 +892,7 @@ func handleSyncOp(ctx *downloaderContext, objType string, statusFilename string,
 			if err != nil {
 				log.Printf("Source IP %s failed: %s\n",
 					ipSrc.String(), err)
+				errStr = errStr + "\n" + err.Error()
 				zedcloud.ZedCloudFailure(ifname,
 					metricsUrl, 1024, 0)
 			} else {
@@ -903,7 +909,7 @@ func handleSyncOp(ctx *downloaderContext, objType string, statusFilename string,
 			log.Fatal("unsupported transport method")
 		}
 	}
-	log.Printf("All source IP addresses failed. Last %s\n", err)
+	log.Printf("All source IP addresses failed. All errors:%s\n", errStr)
 	handleSyncOpResponse(objType, config, status, locFilename,
 		statusFilename, err)
 }
