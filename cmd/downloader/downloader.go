@@ -909,7 +909,7 @@ func handleSyncOp(ctx *downloaderContext, objType string, statusFilename string,
 			log.Fatal("unsupported transport method")
 		}
 	}
-	log.Printf("All source IP addresses failed. All errors:\n%s\n", errStr)
+	log.Printf("All source IP addresses failed. All errors:%s\n", errStr)
 	handleSyncOpResponse(objType, config, status, locFilename,
 		statusFilename, err)
 }

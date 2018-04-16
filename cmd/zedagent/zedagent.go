@@ -243,6 +243,9 @@ func main() {
 		updateInprogress, time2)
 	t2 := time.NewTimer(time2 * time.Second)
 
+	// Initial settings; redone below in case some
+	updateSshAccess(configItemCurrent.sshAccess)
+
 	log.Printf("Waiting until we have some uplinks with usable addresses\n")
 	waited := false
 	for types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus) == 0 ||
@@ -322,6 +325,8 @@ func main() {
 	// XXX close handleChannels?
 	getconfigCtx.configTickerHandle = configTickerHandle
 	getconfigCtx.metricsTickerHandle = metricsTickerHandle
+
+	updateSshAccess(configItemCurrent.sshAccess)
 
 	// app instance status event watcher
 	go watch.WatchStatus(zedmanagerStatusDirname, appInstanceStatusChanges)

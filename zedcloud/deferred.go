@@ -60,12 +60,14 @@ func HandleDeferred(event time.Time) {
 		event, len(deferredItems))
 	iteration := 0 // Do some load spreading
 	for key, l := range deferredItems {
-		log.Printf("Trying to send for %s\n", key)
+		log.Printf("Trying to send for %s len %d\n", key, len(l.list))
 		failed := false
-		for _, item := range l.list {
+		for i, item := range l.list {
 			if item.data == nil {
 				continue
 			}
+			log.Printf("Trying to send for %s item %d data len %d\n",
+				key, i, len(item.data))
 			_, _, err := SendOnAllIntf(item.zedcloudCtx, item.url,
 				int64(len(item.data)), bytes.NewBuffer(item.data),
 				iteration)
@@ -160,7 +162,8 @@ func AddDeferred(key string, data []byte, url string,
 	l, ok := deferredItems[key]
 	if debug {
 		if ok {
-			log.Printf("Appening to key %s\n", key)
+			log.Printf("Appening to key %s len %d\n",
+				key, len(l.list))
 		} else {
 			log.Printf("Adding key %s\n", key)
 		}
