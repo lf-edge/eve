@@ -37,11 +37,11 @@ build-pkgs: build-tools
 pkgs: build-tools build-pkgs
 	make -C pkg
 
-bios/OVMF.fd:
-	mkdir bios || :
-	[ -f bios/flash1.img ] || dd if=/dev/zero of=bios/flash1.img bs=1048576 count=64
-	C=`docker create $(shell make -s -C build-pkgs BUILD-PKGS=uefi show-tag)-$(DOCKER_ARCH_TAG) fake` ;\
-	   docker export $$C | tar -C bios -xf - OVMF* ; docker rm $$C
+bios:
+	mkdir bios
+
+bios/OVMF.fd: bios
+	cd bios ; $(DOCKER_UNPACK) $(shell make -s -C build-pkgs BUILD-PKGS=uefi show-tag)-$(DOCKER_ARCH_TAG) OVMF.fd
 
 # run-installer
 #
