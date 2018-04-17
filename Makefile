@@ -36,7 +36,13 @@ build-tools:
 build-pkgs: build-tools
 	make -C build-pkgs
 
-pkgs: build-tools build-pkgs
+# FIXME: the following is an ugly workaround against linuxkit complaining:
+# FATA[0030] Failed to create OCI spec for zededa/zedctr:XXX: 
+#    Error response from daemon: pull access denied for zededa/zedctr, repository does not exist or may require ‘docker login’
+zedctr-workaround:
+	make -C pkg PKGS=zedctr LINUXKIT_OPTS="--disable-content-trust --force --disable-cache" build
+
+pkgs: build-tools build-pkgs zedctr-workaround
 	make -C pkg
 
 bios:
