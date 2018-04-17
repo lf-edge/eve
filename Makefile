@@ -82,5 +82,9 @@ pkg_installer: rootfs.img config.img
 installer.iso: images/installer.yml pkg_installer
 	./makeiso.sh images/installer.yml installer.iso	
 
+publish: Makefile rootfs.img config.img fallback.img installer.iso bios/OVMF.fd
+	cp $^ zenix
+	cd zenix ; docker build -t zededa/zenix:latest .
+
 .PHONY: FORCE
 FORCE:
