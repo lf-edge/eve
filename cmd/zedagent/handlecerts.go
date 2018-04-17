@@ -255,6 +255,13 @@ func checkCertObjStorageDownloadStatus(uuidStr string,
 		return ret.Changed, false
 	}
 
+	// XXX can this ever happen?
+	if ret.WaitingForCerts {
+		log.Printf("checkCertObjDownloadStatus %s, Waiting for certs\n",
+			uuidStr)
+		return ret.Changed, false
+	}
+
 	log.Printf("checkCertObjDownloadStatus for %s, Downloads done\n", uuidStr)
 	return ret.Changed, true
 }

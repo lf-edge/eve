@@ -300,6 +300,7 @@ func doInstall(uuidStr string, config types.AppInstanceConfig,
 		changed = true
 		return changed, false
 	}
+	waitingForCerts := false
 	for i, sc := range config.StorageConfigList {
 		ss := &status.StorageStatusList[i]
 		safename := types.UrlToSafename(sc.DownloadURL, sc.ImageSha256)
@@ -376,6 +377,7 @@ func doInstall(uuidStr string, config types.AppInstanceConfig,
 					changed = true
 				} else {
 					// Waiting for certs
+					waitingForCerts = true
 				}
 			}
 		}
@@ -394,6 +396,10 @@ func doInstall(uuidStr string, config types.AppInstanceConfig,
 
 	if minState < types.DOWNLOADED {
 		log.Printf("Waiting for all downloads for %s\n", uuidStr)
+		return changed, false
+	}
+	if waitingForCerts {
+		log.Printf("Waiting for certs for %s\n", uuidStr)
 		return changed, false
 	}
 	log.Printf("Done with downloads for %s\n", uuidStr)

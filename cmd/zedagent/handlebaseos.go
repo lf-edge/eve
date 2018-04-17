@@ -397,6 +397,12 @@ func checkBaseOsStorageDownloadStatus(uuidStr string,
 		return ret.Changed, false
 	}
 
+	if ret.WaitingForCerts {
+		log.Printf("checkBaseOsStorageDownloadStatus(%s) for %s, Waiting for certs\n",
+			config.BaseOsVersion, uuidStr)
+		return ret.Changed, false
+	}
+
 	log.Printf("checkBaseOsStorageDownloadStatus(%s) for %s, Downloads done\n",
 		config.BaseOsVersion, uuidStr)
 	return ret.Changed, true
