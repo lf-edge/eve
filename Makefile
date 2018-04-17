@@ -15,6 +15,8 @@ QEMU_OPTS_COMMON= -m 4096 -smp 4 -display none -serial mon:stdio \
 	-net nic,vlan=1 -net user,id=eth1,vlan=1,net=192.168.2.0/24,dhcpstart=192.168.2.10
 QEMU_OPTS=$(QEMU_OPTS_COMMON) $(QEMU_OPTS_$(ZARCH))
 
+DOCKER_UNPACK= _() { C=`docker create $$1 fake` ; docker export $$C | tar -xf - $$2 ; docker rm $$C ; } ; _
+
 .PHONY: run pkgs build-pkgs help build-tools
 
 all: help
