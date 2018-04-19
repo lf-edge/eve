@@ -3,7 +3,10 @@ RUN apk add --no-cache \
     	    gcc make libc-dev dev86 xz-dev perl bash python-dev \
 	    gettext iasl util-linux-dev ncurses-dev glib-dev \
 	    pixman-dev libaio-dev yajl-dev argp-standalone \
-	    linux-headers git patch texinfo curl tar dtc-dev
+	    linux-headers git patch texinfo curl tar
+
+# FIXME: this is really ugly -- we need to figure out xen tools dependencies
+RUN [ `uname -m` = "aarch64" ] && apk add --no-cache dtc-dev
 
 ENV XEN_VERSION 4.9.0
 ENV XEN_SOURCE=https://downloads.xenproject.org/release/xen/${XEN_VERSION}/xen-${XEN_VERSION}.tar.gz
