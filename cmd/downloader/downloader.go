@@ -881,7 +881,7 @@ func handleSyncOp(ctx *downloaderContext, objType string, statusFilename string,
 				zedcloud.ZedCloudSuccess(ifname,
 					metricsUrl, 1024, size)
 				handleSyncOpResponse(objType, config, status,
-					locFilename, statusFilename, err)
+					locFilename, statusFilename, "")
 				return
 			}
 		case zconfig.DsType_DsHttp.String():
@@ -902,7 +902,7 @@ func handleSyncOp(ctx *downloaderContext, objType string, statusFilename string,
 				zedcloud.ZedCloudSuccess(ifname,
 					metricsUrl, 1024, size)
 				handleSyncOpResponse(objType, config, status,
-					locFilename, statusFilename, err)
+					locFilename, statusFilename, "")
 				return
 			}
 		default:
@@ -911,31 +911,33 @@ func handleSyncOp(ctx *downloaderContext, objType string, statusFilename string,
 	}
 	log.Printf("All source IP addresses failed. All errors:%s\n", errStr)
 	handleSyncOpResponse(objType, config, status, locFilename,
-		statusFilename, err)
+		statusFilename, errStr)
 }
 
 func handleSyncOpResponse(objType string, config types.DownloaderConfig,
 	status *types.DownloaderStatus, locFilename string,
-	statusFilename string, err error) {
+	statusFilename string, errStr string) {
 
 	locDirname := objectDownloadDirname + "/" + objType
-	if err != nil {
+	if errStr != "" {
 		// Delete file
 		doDelete(statusFilename, locDirname, status)
 		status.PendingAdd = false
 		status.Size = 0
-		status.LastErr = fmt.Sprintf("%v", err)
+		status.LastErr = errStr
 		status.LastErrTime = time.Now()
 		status.RetryCount += 1
 		status.State = types.INITIAL
 		writeDownloaderStatus(status, statusFilename)
 		log.Printf("handleCreate failed for %s, <%s>\n",
-			status.DownloadURL, err)
+			status.DownloadURL, errStr)
 		return
 	}
 
 	info, err := os.Stat(locFilename)
 	if err != nil {
+		log.Printf("handleCreate Stat failed for %s <%s>\n",
+			status.DownloadURL, err)
 		// Delete file
 		doDelete(statusFilename, locDirname, status)
 		status.PendingAdd = false
@@ -945,7 +947,6 @@ func handleSyncOpResponse(objType string, config types.DownloaderConfig,
 		status.RetryCount += 1
 		status.State = types.INITIAL
 		writeDownloaderStatus(status, statusFilename)
-		log.Printf("handleCreate failed for %s <%s>\n", status.DownloadURL, err)
 		return
 	}
 	status.Size = uint64(info.Size())
