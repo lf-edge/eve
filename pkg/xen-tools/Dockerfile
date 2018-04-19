@@ -6,7 +6,7 @@ RUN apk add --no-cache \
 	    linux-headers git patch texinfo curl tar
 
 # FIXME: this is really ugly -- we need to figure out xen tools dependencies
-RUN [ `uname -m` = "aarch64" ] && apk add --no-cache dtc-dev
+RUN [ `uname -m` = "aarch64" ] && apk add --no-cache dtc-dev || :
 
 ENV XEN_VERSION 4.9.0
 ENV XEN_SOURCE=https://downloads.xenproject.org/release/xen/${XEN_VERSION}/xen-${XEN_VERSION}.tar.gz
