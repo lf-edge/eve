@@ -237,10 +237,6 @@ echo "Configuration from factory/install:"
 (cd $CONFIGDIR; ls -l)
 echo
 
-echo "Current downloaded files:"
-ls -lt $PERSISTDIR/downloads/*/*
-echo
-
 P3=`zboot partdev P3`
 if [ $? = 0 -a x$P3 != x ]; then
     echo "Using $P3 for /persist"
@@ -261,6 +257,10 @@ else
     echo "No separate /persist partition"
 fi
 
+echo "Current downloaded files:"
+ls -lt $PERSISTDIR/downloads/*/*
+echo
+
 CURPART=`zboot curpart`
 if [ $? != 0 ]; then
     CURPART="IMGA"
@@ -275,7 +275,10 @@ if [ ! -d $LOGDIRB ]; then
     mkdir -p $LOGDIRB
 fi
 
-mkdir $PERSISTDIR/log
+if [ ! -d $PERSISTDIR/log ]; then
+    echo "Creating $PERSISTDIR/log"
+    mkdir $PERSISTDIR/log
+fi
 
 echo "Set up log capture"
 DOM0LOGFILES="dhcpcd.err.log ntpd.err.log wlan.err.log wwan.err.log dhcpcd.out.log ntpd.out.log wlan.out.log wwan.out.log zededa-tools.out.log zededa-tools.err.log"
@@ -337,6 +340,8 @@ elif [ -f /usr/sbin/ntpd ]; then
     # last ditch attemp to sync up our clock
     # '-p' means peer in some distros; pidfile in others
     /usr/sbin/ntpd -q -n -p pool.ntp.org
+    # XXX remove all of ntp once container is working correctly
+    # /usr/sbin/ntpd -g -p pool.ntp.org
 else
     echo "No ntpd"
 fi
