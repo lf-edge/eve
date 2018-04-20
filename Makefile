@@ -1,7 +1,7 @@
 PATH := $(CURDIR)/build-tools/bin:$(PATH)
 
 # How large to we want the disk to be in Mb
-MEDIA_SIZE=700
+MEDIA_SIZE=8192
 
 ZARCH=$(shell uname -m)
 DOCKER_ARCH_TAG_aarch64=arm64
@@ -58,7 +58,7 @@ bios/OVMF.fd: bios
 # testing.
 #
 run-installer:
-	dd if=/dev/zero of=target.img count=750000 bs=1024
+	dd if=/dev/zero of=target.img seek=${MEDIA_SIZE} count=1 bs=1M
 	qemu-system-$(ZARCH) $(QEMU_OPTS) -hda target.img -cdrom installer.iso -boot d
 
 run-fallback run: bios/OVMF.fd
