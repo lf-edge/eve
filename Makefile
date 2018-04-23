@@ -92,8 +92,8 @@ installer.iso: images/installer.yml pkg_installer
 	./makeiso.sh images/installer.yml installer.iso	
 
 publish: Makefile rootfs.img config.img fallback.img installer.iso bios/OVMF.fd
-	cp $^ zenix
-	cd zenix ; docker build -t zededa/zenix:latest .
+	cp $^ build-pkgs/zenix
+	make -C build-pkgs BUILD-PKGS=zenix LINUXKIT_OPTS="--disable-content-trust --force --disable-cache" push
 
 .PHONY: FORCE
 FORCE:
