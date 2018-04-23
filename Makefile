@@ -1,7 +1,7 @@
 PATH := $(CURDIR)/build-tools/bin:$(PATH)
 
 # How large to we want the disk to be in Mb
-MEDIA_SIZE=8192
+MEDIA_SIZE=700
 
 ZARCH=$(shell uname -m)
 DOCKER_ARCH_TAG_aarch64=arm64
@@ -40,6 +40,7 @@ build-pkgs: build-tools
 # FATA[0030] Failed to create OCI spec for zededa/zedctr:XXX: 
 #    Error response from daemon: pull access denied for zededa/zedctr, repository does not exist or may require ‘docker login’
 zedctr-workaround:
+	docker pull `bash -c "./parse-pkgs.sh <(echo ZTOOLS_TAG)"`
 	make -C pkg PKGS=zedctr LINUXKIT_OPTS="--disable-content-trust --force --disable-cache" build
 
 pkgs: build-tools build-pkgs zedctr-workaround
