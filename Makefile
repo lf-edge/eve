@@ -17,6 +17,8 @@ QEMU_OPTS=$(QEMU_OPTS_COMMON) $(QEMU_OPTS_$(ZARCH))
 
 DOCKER_UNPACK= _() { C=`docker create $$1 fake` ; docker export $$C | tar -xf - $$2 ; docker rm $$C ; } ; _
 
+DEFAULT_PKG_TARGET=build
+
 .PHONY: run pkgs build-pkgs help build-tools
 
 all: help
@@ -34,17 +36,17 @@ build-tools:
 	${MAKE} -C build-tools all
 
 build-pkgs: build-tools
-	make -C build-pkgs
+	make -C build-pkgs $(DEFAULT_PKG_TARGET)
 
 # FIXME: the following is an ugly workaround against linuxkit complaining:
 # FATA[0030] Failed to create OCI spec for zededa/zedctr:XXX: 
 #    Error response from daemon: pull access denied for zededa/zedctr, repository does not exist or may require ‘docker login’
 zedctr-workaround:
 	docker pull `bash -c "./parse-pkgs.sh <(echo ZTOOLS_TAG)"`
-	make -C pkg PKGS=zedctr LINUXKIT_OPTS="--disable-content-trust --force --disable-cache" build
+	make -C pkg PKGS=zedctr LINUXKIT_OPTS="--disable-content-trust --force --disable-cache" $(DEFAULT_PKG_TARGET)
 
 pkgs: build-tools build-pkgs zedctr-workaround
-	make -C pkg
+	make -C pkg $(DEFAULT_PKG_TARGET)
 
 bios:
 	mkdir bios
@@ -65,7 +67,7 @@ run-installer:
 run-fallback run: bios/OVMF.fd
 	qemu-system-$(ZARCH) $(QEMU_OPTS) -hda fallback.img
 
-images/%.yml: pkgs parse-pkgs.sh images/%.yml.in FORCE
+images/%.yml: parse-pkgs.sh images/%.yml.in FORCE
 	./parse-pkgs.sh $@.in > $@
 
 rootfs.img: images/fallback.yml
@@ -80,7 +82,7 @@ fallback.img: rootfs.img config.img
 .PHONY: pkg_installer
 pkg_installer: rootfs.img config.img
 	cp rootfs.img config.img pkg/installer
-	make -C pkg PKGS=installer LINUXKIT_OPTS="--disable-content-trust --disable-cache" forcebuild
+	make -C pkg PKGS=installer LINUXKIT_OPTS="--disable-content-trust --disable-cache --force" $(DEFAULT_PKG_TARGET)
 
 #
 # INSTALLER IMAGE CREATION:
@@ -93,7 +95,7 @@ installer.iso: images/installer.yml pkg_installer
 
 publish: Makefile rootfs.img config.img fallback.img installer.iso bios/OVMF.fd
 	cp $^ build-pkgs/zenix
-	make -C build-pkgs BUILD-PKGS=zenix LINUXKIT_OPTS="--disable-content-trust --force --disable-cache" push
+	make -C build-pkgs BUILD-PKGS=zenix LINUXKIT_OPTS="--disable-content-trust --disable-cache --force" $(DEFAULT_PKG_TARGET)
 
 .PHONY: FORCE
 FORCE:
