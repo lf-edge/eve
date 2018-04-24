@@ -492,6 +492,7 @@ func parseNetworkConfig(appInstance *types.AppInstanceConfig,
 	cfgApp *zconfig.AppInstanceConfig,
 	cfgNetworks []*zconfig.NetworkConfig) {
 
+	log.Printf("parseNetworkConfig: %v\n", cfgNetworks)
 	var ulMaxIdx int = 0
 	var olMaxIdx int = 0
 
@@ -520,11 +521,13 @@ func parseNetworkConfig(appInstance *types.AppInstanceConfig,
 	}
 
 	if ulMaxIdx != 0 {
+		log.Printf("parseNetworkConfig: %d underlays\n", ulMaxIdx)
 		appInstance.UnderlayNetworkList = make([]types.UnderlayNetworkConfig, ulMaxIdx)
 		parseUnderlayNetworkConfig(appInstance, cfgApp, cfgNetworks)
 	}
 
 	if olMaxIdx != 0 {
+		log.Printf("parseNetworkConfig: %d overlays\n", olMaxIdx)
 		appInstance.OverlayNetworkList = make([]types.EIDOverlayConfig, olMaxIdx)
 		parseOverlayNetworkConfig(appInstance, cfgApp, cfgNetworks)
 	}
