@@ -115,7 +115,7 @@ func MaybeAddDomainConfig(aiConfig types.AppInstanceConfig,
 			dc.DeviceTree = location
 		default:
 			err := errors.New(fmt.Sprintf(
-				"Unknown target %s", sc.Target))
+				"Unknown target %s for %s", sc.Target, sc.DownloadURL))
 			log.Printf("Got error %v for %s\n", err, displayName)
 			return err
 		}

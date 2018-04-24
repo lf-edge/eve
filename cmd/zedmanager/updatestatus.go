@@ -242,6 +242,7 @@ func doUpdate(uuidStr string, config types.AppInstanceConfig,
 			if err != nil {
 				log.Printf("Error from MaybeAddDomainConfig for %s: %s\n",
 					uuidStr, err)
+				status.State = types.INITIAL
 				status.Error = fmt.Sprintf("%s", err)
 				status.ErrorTime = time.Now()
 				changed = true
@@ -269,6 +270,7 @@ func doInstall(uuidStr string, config types.AppInstanceConfig,
 			len(config.StorageConfigList),
 			len(status.StorageStatusList))
 		log.Println(errString)
+		status.State = types.INITIAL
 		status.Error = errString
 		status.ErrorTime = time.Now()
 		changed = true
@@ -283,6 +285,7 @@ func doInstall(uuidStr string, config types.AppInstanceConfig,
 				sc.DownloadURL, ss.DownloadURL,
 				sc.ImageSha256, ss.ImageSha256)
 			log.Println(errString)
+			status.State = types.INITIAL
 			status.Error = errString
 			status.ErrorTime = time.Now()
 			changed = true
@@ -295,6 +298,7 @@ func doInstall(uuidStr string, config types.AppInstanceConfig,
 			len(config.OverlayNetworkList),
 			len(status.EIDList))
 		log.Println(errString)
+		status.State = types.INITIAL
 		status.Error = errString
 		status.ErrorTime = time.Now()
 		changed = true
@@ -524,6 +528,7 @@ func doActivate(uuidStr string, config types.AppInstanceConfig,
 	if err != nil {
 		log.Printf("Error from MaybeAddDomainConfig for %s: %s\n",
 			uuidStr, err)
+		status.State = types.INITIAL
 		status.Error = fmt.Sprintf("%s", err)
 		status.ErrorTime = time.Now()
 		changed = true
@@ -543,6 +548,7 @@ func doActivate(uuidStr string, config types.AppInstanceConfig,
 		if ds.LastErr != "" {
 			log.Printf("Received error from domainmgr for %s: %s\n",
 				uuidStr, ds.LastErr)
+			status.State = types.INITIAL
 			status.Error = ds.LastErr
 			status.ErrorTime = ds.LastErrTime
 			changed = true
@@ -616,6 +622,7 @@ func doInactivate(uuidStr string, status *types.AppInstanceStatus) bool {
 			if ds.LastErr != "" {
 				log.Printf("Received error from domainmgr for %s: %s\n",
 					uuidStr, ds.LastErr)
+				status.State = types.INITIAL
 				status.Error = ds.LastErr
 				status.ErrorTime = ds.LastErrTime
 				changed = true
