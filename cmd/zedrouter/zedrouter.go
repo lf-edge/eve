@@ -636,15 +636,32 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		return
 	}
 
+	olcount := len(config.OverlayNetworkList)
+	if olcount > 0 {
+		log.Printf("Received olcount %d\n", olcount)
+	}
 	status.OverlayNetworkList = make([]types.OverlayNetworkStatus,
-		len(config.OverlayNetworkList))
+		olcount)
 	for i, _ := range config.OverlayNetworkList {
 		status.OverlayNetworkList[i].OverlayNetworkConfig =
 			config.OverlayNetworkList[i]
 	}
+	// XXX restrict to first underlaynetwork. Can't handle more than one!
+	// XXX results in entry with no vif and no mac
+	// which causes failure in domainmgr/xl create!
+	ulcount := len(config.UnderlayNetworkList)
+	if ulcount > 1 {
+		log.Printf("Ignoring received ulcount %d\n", ulcount)
+		ulcount = 1
+	}
 	status.UnderlayNetworkList = make([]types.UnderlayNetworkStatus,
-		len(config.UnderlayNetworkList))
+		ulcount)
 	for i, _ := range config.UnderlayNetworkList {
+		if i > 0 {
+			log.Printf("Ignoring UnderlayNetworkConfig[%d] = %v\n",
+				i, config.UnderlayNetworkList[i])
+			continue
+		}
 		status.UnderlayNetworkList[i].UnderlayNetworkConfig =
 			config.UnderlayNetworkList[i]
 	}
