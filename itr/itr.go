@@ -20,6 +20,7 @@ import (
 	"log"
 	"math/rand"
 	"net"
+	"os/exec"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -32,6 +33,19 @@ var debug bool = false
 
 func InitITR(debugFlag bool) {
 	debug = debugFlag
+}
+
+func disableIntfHardwareFeatures(ifname string) {
+	cmd := "ethtool"
+	args := []string{"-K", ifname, "tx", "off", "sg", "off",
+		"tso", "off", "ufo", "off", "gso", "off"}
+
+	_, err := exec.Command(cmd, args...).Output()
+	if err != nil {
+		log.Printf("disableIntfHardwareFeatures: Failed disabling hardware features on %s\n", ifname)
+	} else {
+		log.Printf("disableIntfHardwareFeatures: Disabled hardware features on %s\n", ifname)
+	}
 }
 
 func StartItrThread(threadName string,
@@ -50,6 +64,9 @@ func StartItrThread(threadName string,
 			threadName)
 	}
 	defer handle.Close()
+
+	// Disable hardware features on interface
+	disableIntfHardwareFeatures(threadName)
 
 	// create raw socket pair for sending LISP packets out
 	fd4, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
