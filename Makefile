@@ -41,9 +41,17 @@ build-pkgs: build-tools
 # FIXME: the following is an ugly workaround against linuxkit complaining:
 # FATA[0030] Failed to create OCI spec for zededa/zedctr:XXX: 
 #    Error response from daemon: pull access denied for zededa/zedctr, repository does not exist or may require ‘docker login’
+# But wait! There's more! Since zedctr depends on ztools container (go-provision)
+# we have to make sure that when it is specified by the user explicitly via ZTOOLS_TAG env var we:
+#   1. don't attempt a docker pull
+#   2. touch a file in the zedctr package (thus making it dirty and changing a reference in image.yml) 
+# Finally, we only forcefully rebuild the zedctr IF either docker pull brught a new image or ZTOOLS_TAG was given 
 zedctr-workaround:
-	docker pull `bash -c "./parse-pkgs.sh <(echo ZTOOLS_TAG)"`
-	make -C pkg PKGS=zedctr LINUXKIT_OPTS="--disable-content-trust --force --disable-cache" $(DEFAULT_PKG_TARGET)
+	@if [ -z "$$ZTOOLS_TAG" ]; then \
+	  docker pull `bash -c "./parse-pkgs.sh <(echo ZTOOLS_TAG)"` | tee /dev/tty | grep -q 'Downloaded newer image' ;\
+	else \
+	  date +%s > pkg/zedctr/trigger ;\
+        fi ; if [ $$? -eq 0 ]; then make -C pkg PKGS=zedctr LINUXKIT_OPTS="--disable-content-trust --force --disable-cache" $(DEFAULT_PKG_TARGET) ; fi
 
 pkgs: build-tools build-pkgs zedctr-workaround
 	make -C pkg $(DEFAULT_PKG_TARGET)
@@ -67,7 +75,9 @@ run-installer:
 run-fallback run: bios/OVMF.fd
 	qemu-system-$(ZARCH) $(QEMU_OPTS) -hda fallback.img
 
-images/%.yml: parse-pkgs.sh images/%.yml.in FORCE
+# NOTE: that we have to depend on zedctr-workaround here to make sure
+# it gets triggered when we build any kind of image target
+images/%.yml: zedctr-workaround parse-pkgs.sh images/%.yml.in FORCE
 	./parse-pkgs.sh $@.in > $@
 
 rootfs.img: images/fallback.yml
@@ -92,6 +102,9 @@ pkg_installer: rootfs.img config.img
 
 installer.iso: images/installer.yml pkg_installer
 	./makeiso.sh images/installer.yml installer.iso	
+
+installer.img: images/installer.yml pkg_installer
+	./makeraw.sh images/installer.yml installer.iso
 
 publish: Makefile rootfs.img config.img fallback.img installer.iso bios/OVMF.fd
 	cp $^ build-pkgs/zenix
