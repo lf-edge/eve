@@ -6,10 +6,11 @@
 package fib
 
 import (
-	"crypto/aes"
+	//"crypto/aes"
 	"crypto/cipher"
 	"crypto/hmac"
 	"crypto/sha256"
+	"encoding/binary"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/zededa/lisp/dataplane/dptypes"
@@ -76,10 +77,12 @@ func encryptPayload(payload []byte,
 		return false, 0
 	}
 
-	var remainder uint32 = 0
+	//var remainder uint32 = 0
 
 	packet := payload[:payloadLen]
 
+	// We do not pad packet with GCM
+	/*
 	// Pad the payload if it's length is not a multiple of 16.
 	if (payloadLen % aes.BlockSize) != 0 {
 		remainder = (payloadLen % aes.BlockSize)
@@ -92,6 +95,7 @@ func encryptPayload(payload []byte,
 			packet[i] = 0
 		}
 	}
+	*/
 
 	// XXX Check with Dino, how his code treats IV.
 	// String(ascii) or binary?
@@ -107,7 +111,8 @@ func encryptPayload(payload []byte,
 	}
 	aesGcm.Seal(packet[dptypes.GCMIVLENGTH:], packet[:dptypes.GCMIVLENGTH],
 		packet[dptypes.GCMIVLENGTH:], nil)
-	return true, (aes.BlockSize - remainder)
+	//return true, (aes.BlockSize - remainder)
+	return true, 0
 }
 
 func GenerateIVByteArray(ivHigh uint32, ivLow uint64, ivArray []byte) []byte {
@@ -116,12 +121,17 @@ func GenerateIVByteArray(ivHigh uint32, ivLow uint64, ivArray []byte) []byte {
 	// Write individual bytes from ivHigh and ivLow into IV byte array
 	// Doesn't look good, but couldn't find a more elegant way of doing it.
 	//for i := 0; i < 8; i++ {
+	/*
 	for i := 0; i < 4; i++ {
-		ivArray[i] = byte((ivHigh >> uint((8-i-1)*8)) & 0xff)
+		ivArray[i] = byte((ivHigh >> uint((4-i-1)*8)) & 0xff)
 	}
 	for i := 0; i < 8; i++ {
-		ivArray[8+i] = byte((ivLow >> uint((8-i-1)*8)) & 0xff)
+		ivArray[4+i] = byte((ivLow >> uint((8-i-1)*8)) & 0xff)
 	}
+	*/
+	binary.BigEndian.PutUint32(ivArray[0:4], ivHigh)
+	binary.BigEndian.PutUint64(ivArray[4:12], ivLow)
+
 	return ivArray
 }
 
@@ -219,10 +229,12 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 		payloadLen := offsetEnd - offsetStart
 
 		ok := false
-		ok, padLen = encryptPayload(pktBuf[offsetStart:offsetEnd], payloadLen,
-			encKey, key.EncBlock,
+		ok, padLen = encryptPayload(
+			pktBuf[offsetStart:offsetEnd],
+			payloadLen, encKey, key.EncBlock,
 			//GetIVArray(itrLocalData, pktBuf[offsetStart:offsetStart+dptypes.IVLEN]))
-			GetIVArray(itrLocalData, pktBuf[offsetStart:offsetStart+dptypes.GCMIVLENGTH]))
+			GetIVArray(itrLocalData,
+			pktBuf[offsetStart:offsetStart+dptypes.GCMIVLENGTH]))
 		if ok == false {
 			keyId = 0
 			useCrypto = false
@@ -288,7 +300,7 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 		//offset = offset - aes.BlockSize
 		offset = offset - dptypes.GCMIVLENGTH
 
-		// add IV length
+		// add IV, padding and ICV lengths
 		//offsetEnd = offsetEnd + aes.BlockSize + padLen + dptypes.ICVLEN
 		offsetEnd = offsetEnd + dptypes.GCMIVLENGTH + padLen + dptypes.ICVLEN
 

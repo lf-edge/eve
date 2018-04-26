@@ -127,10 +127,14 @@ func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
 			//var ring *pfring.Ring = nil
 			var handle *afpacket.TPacket
 			var fd int = -1
+
+			// Send a message on channel to kill the ETR thread when required.
+			killChannel := make(chan bool, 1)
+
 			// Create new ETR thread
 			if etrTable.EphPort != -1 {
 				//ring, fd = StartEtrNat(etrTable.EphPort, link.IfName)
-				handle, fd = StartEtrNat(etrTable.EphPort, link.IfName)
+				handle, fd = StartEtrNat(etrTable.EphPort, link.IfName, killChannel)
 				log.Printf("XXXXX Creating ETR thread for UP link %s\n", link.IfName)
 				if debug {
 					log.Printf("HandleDeviceNetworkChange: Creating ETR thread "+
@@ -142,6 +146,7 @@ func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
 				//Ring:   ring,
 				Handle: handle,
 				RingFD: fd,
+				KillChannel: killChannel,
 			}
 			if debug {
 				log.Printf("HandleDeviceNetworkChange: Creating ETR thread for UP link %s\n",
@@ -153,6 +158,7 @@ func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
 	// find the interfaces to be deleted
 	for key, link := range etrTable.EtrTable {
 		if _, ok := validList[key]; ok == false {
+			link.KillChannel <- true
 			syscall.Close(link.RingFD)
 			//link.Ring.Disable()
 			//link.Ring.Close()
@@ -185,7 +191,7 @@ func HandleEtrEphPort(ephPort int) {
 			}
 			//ring, fd := StartEtrNat(etrTable.EphPort, link.IfName)
 			//ling.Ring = ring
-			handle, fd := StartEtrNat(etrTable.EphPort, link.IfName)
+			handle, fd := StartEtrNat(etrTable.EphPort, link.IfName, link.KillChannel)
 			link.Handle = handle
 			link.RingFD = fd
 			//return
@@ -219,7 +225,9 @@ func HandleEtrEphPort(ephPort int) {
 }
 
 //func StartEtrNat(ephPort int, upLink string) (*pfring.Ring, int) {
-func StartEtrNat(ephPort int, upLink string) (*afpacket.TPacket, int) {
+func StartEtrNat(ephPort int,
+	upLink string,
+	killChannel chan bool) (*afpacket.TPacket, int) {
 
 	//ring := SetupEtrPktCapture(ephPort, upLink)
 	//if ring == nil {
@@ -244,7 +252,7 @@ func StartEtrNat(ephPort int, upLink string) (*afpacket.TPacket, int) {
 		return nil, -1
 	}
 	//go ProcessCapturedPkts(fd, ring)
-	go ProcessCapturedPkts(fd, handle)
+	go ProcessCapturedPkts(fd, handle, killChannel)
 
 	//return ring, fd
 	return handle, fd
@@ -268,6 +276,7 @@ func verifyAndInject(fd6 int,
 	keyId := fib.GetLispKeyId(buf[0:8])
 	if keyId != 0 {
 		if decapKeys == nil {
+			log.Printf("verifyAndInject: Decap keys for this RLOC have not arrived yet\n")
 			return false
 		}
 
@@ -302,6 +311,10 @@ func verifyAndInject(fd6 int,
 
 		packet := buf[packetOffset : n-dptypes.ICVLEN]
 
+
+		// The following check is not necessary with AES/GCM.
+		// 16 byte boundary is not used while encrypting.
+		/*
 		cryptoLen := n - packetOffset - dptypes.ICVLEN
 		if cryptoLen%16 != 0 {
 			// AES encrypted packet should have a lenght that is multiple of 16
@@ -309,6 +322,7 @@ func verifyAndInject(fd6 int,
 			log.Printf("verifyAndInject: Invalid Crypto packet length %d\n", cryptoLen)
 			return false
 		}
+		*/
 
 		if len(decapKeys.Keys) == 0 {
 			log.Printf(
@@ -445,7 +459,10 @@ func ProcessETRPkts(fd6 int, serverConn *net.UDPConn) bool {
 }
 
 //func ProcessCapturedPkts(fd6 int, ring *pfring.Ring) {
-func ProcessCapturedPkts(fd6 int, handle *afpacket.TPacket) {
+func ProcessCapturedPkts(fd6 int,
+	handle *afpacket.TPacket,
+	killChannel chan bool) {
+
 	var pktBuf [65536]byte
 	if debug {
 		log.Printf("Started processing captured packets in ETR\n")
@@ -455,14 +472,15 @@ func ProcessCapturedPkts(fd6 int, handle *afpacket.TPacket) {
 		//ci, err := ring.ReadPacketDataTo(pktBuf[:])
 		ci, err := handle.ReadPacketDataTo(pktBuf[:])
 		if err != nil {
-			log.Printf("ProcessCapturedPkts: Error capturing packets: %s\n", err)
-			/*
+			select {
+			case <- killChannel:
+				log.Printf("ProcessCapturedPkts: Error capturing packets: %s\n", err)
 				log.Printf(
-					"ProcessCapturedPkts: It could be the ring closure leading to this.\n")
-			*/
-			log.Printf(
-				"ProcessCapturedPkts: It could be the handle closure leading to this.\n")
-			return
+					"ProcessCapturedPkts: It could be the handle closure leading to this.\n")
+				return
+			default:
+				continue
+			}
 		}
 		capLen := ci.CaptureLength
 		log.Printf("XXXXX Captured ETR packet of length %d\n", capLen)

@@ -176,6 +176,9 @@ type EtrRunStatus struct {
 	// Name of the interface to capture packets from
 	IfName   string
 
+	// Kill message channel
+	KillChannel chan bool
+
 	//Ring    *pfring.Ring
 
 	// ETR Natted packet capture ring
