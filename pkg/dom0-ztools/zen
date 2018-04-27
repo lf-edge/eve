@@ -1,9 +1,43 @@
 #!/bin/sh
 
-case "$*" in
-  *enter*) ctr --namespace services.linuxkit tasks exec -t --exec-id zen zededa-tools bash
-           ;;
-        *) echo "Welcome to Zenix!"
-           echo "  commands: enter"
-           ;;
+CTR_CMD="ctr --namespace services.linuxkit"
+
+help() {
+  cat <<__EOT__
+Welcome to Zenix!
+  commands: enter [qube (assumed zededa-tools)] [command (assumed sh)]
+            list
+            status
+            start <qube> (requires a qube to be in a destroyed state) 
+            pause <qube>
+            resume <qube>
+            destroy <qube>
+__EOT__
+  exit 1
+}
+
+case "$1" in
+   enter) ${CTR_CMD} t exec -t --exec-id $(basename $(mktemp))  ${2:-zededa-tools} ${3:-sh}
+          ;;
+    list) ${CTR_CMD} c ls
+          ;;
+  status) ${CTR_CMD} t ls
+          ;;
+   start) [ -z "$2" ] && help
+          ${CTR_CMD} c ls -q | grep -q $2 && echo "ERROR: make sure to run: $0 destroy $2" && help
+          /usr/bin/service -v start $2 
+          ;;
+ destroy) [ -z "$2" ] && help 
+          ${CTR_CMD} t kill -a -s SIGKILL $2
+          ${CTR_CMD} t delete $2 
+          ${CTR_CMD} c rm $2
+          ;;
+   pause) [ -z "$2" ] && help
+          ${CTR_CMD} t pause $2
+          ;;
+  resume) [ -z "$2" ] && help
+          ${CTR_CMD} t resume $2
+          ;;
+       *) help 
+          ;;
 esac 
