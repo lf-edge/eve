@@ -41,6 +41,11 @@ build-pkgs: build-tools
 # FIXME: the following is an ugly workaround against linuxkit complaining:
 # FATA[0030] Failed to create OCI spec for zededa/zedctr:XXX: 
 #    Error response from daemon: pull access denied for zededa/zedctr, repository does not exist or may require ‘docker login’
+# The underlying problem is that running pkg target doesn't guarantee that
+# the zededa/zedctr:XXX container will end up in a local docker cache (if linuxkit 
+# doesn't rebuild the package) and we need it there for the linuxkit build to work.
+# Which means, that we have to either forcefully rebuild it or fetch from docker hub.
+#
 # But wait! There's more! Since zedctr depends on ztools container (go-provision)
 # we have to make sure that when it is specified by the user explicitly via ZTOOLS_TAG env var we:
 #   1. don't attempt a docker pull
@@ -51,7 +56,11 @@ zedctr-workaround:
 	  docker pull `bash -c "./parse-pkgs.sh <(echo ZTOOLS_TAG)"` | tee /dev/tty | grep -q 'Downloaded newer image' ;\
 	else \
 	  date +%s > pkg/zedctr/trigger ;\
-        fi ; if [ $$? -eq 0 ]; then make -C pkg PKGS=zedctr LINUXKIT_OPTS="--disable-content-trust --force --disable-cache" $(DEFAULT_PKG_TARGET) ; fi
+        fi ; if [ $$? -eq 0 ]; then \
+	  make -C pkg PKGS=zedctr LINUXKIT_OPTS="--disable-content-trust --force --disable-cache" $(DEFAULT_PKG_TARGET) ;\
+	else \
+	  docker pull `bash -c "./parse-pkgs.sh <(echo ZEDEDA_TAG)"` ;\
+        fi
 
 pkgs: build-tools build-pkgs zedctr-workaround
 	make -C pkg $(DEFAULT_PKG_TARGET)
