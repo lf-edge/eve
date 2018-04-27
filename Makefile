@@ -59,7 +59,7 @@ zedctr-workaround:
         fi ; if [ $$? -eq 0 ]; then \
 	  make -C pkg PKGS=zedctr LINUXKIT_OPTS="--disable-content-trust --force --disable-cache" $(DEFAULT_PKG_TARGET) ;\
 	else \
-	  docker pull `bash -c "./parse-pkgs.sh <(echo ZEDEDA_TAG)"` ;\
+	  docker pull `bash -c "./parse-pkgs.sh <(echo ZEDEDA_TAG)"` || : ;\
         fi
 
 pkgs: build-tools build-pkgs zedctr-workaround
