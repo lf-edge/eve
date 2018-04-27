@@ -39,7 +39,9 @@ import (
 var savedDisks []string
 
 // Also report usage for these paths
-var reportPaths = []string{"/", "/config", "/persist"}
+const persistPath = "/persist"
+
+var reportPaths = []string{"/", "/config", persistPath}
 
 func publishMetrics(iteration int) {
 	cpuStorageStat := ExecuteXentopCmd()
@@ -722,6 +724,11 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 				path, u.Total, u.Used, u.Free)
 		}
 		is := zmet.ZInfoStorage{MountPath: path, Total: u.Total}
+		// We know this is where we store images and keep
+		// domU virtual disks.
+		if path == persistPath {
+			is.StorageLocation = true
+		}
 		ReportDeviceInfo.StorageList = append(ReportDeviceInfo.StorageList,
 			&is)
 	}
@@ -993,10 +1000,13 @@ func getNetInfo(interfaceDetail psutilnet.InterfaceStat) *zmet.ZInfoNetwork {
 		}
 	}
 
-	// XXX we potentially have geoloc information for each IP address.
-	// For now fill in the first one.
 	uplink := types.GetUplink(deviceNetworkStatus, interfaceDetail.Name)
 	if uplink != nil {
+		networkInfo.Uplink = true
+		// XXX we potentially have geoloc information for each IP
+		// address.
+		// For now fill in using the first IP address which has location
+		// info.
 		for _, ai := range uplink.AddrInfoList {
 			if ai.Geo == nilIPInfo {
 				continue
