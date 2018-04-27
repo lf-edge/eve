@@ -340,8 +340,8 @@ elif [ -f /usr/sbin/ntpd ]; then
     # last ditch attemp to sync up our clock
     # '-p' means peer in some distros; pidfile in others
     /usr/sbin/ntpd -q -n -p pool.ntp.org
-    # XXX remove all of ntp once container is working correctly
-    # /usr/sbin/ntpd -g -p pool.ntp.org
+    # Run ntpd to keep it in sync.
+    /usr/sbin/ntpd -g -p pool.ntp.org
 else
     echo "No ntpd"
 fi
