@@ -8,6 +8,12 @@ RUN apk add --no-cache \
 # FIXME: this is really ugly -- we need to figure out xen tools dependencies
 RUN [ `uname -m` = "aarch64" ] && apk add --no-cache dtc-dev || :
 
+# Alpine linux defines all 64bit integer types as long. Patch
+# /usr/include/bits/alltypes.h to fix compilation with -m32
+WORKDIR /
+COPY alpine.patch /
+RUN patch -p1 < alpine.patch
+
 ENV XEN_VERSION 4.9.0
 ENV XEN_SOURCE=https://downloads.xenproject.org/release/xen/${XEN_VERSION}/xen-${XEN_VERSION}.tar.gz
 

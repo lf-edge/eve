@@ -1,13 +1,3 @@
---- a/tools/firmware/hvmloader/Makefile
-+++ b/tools/firmware/hvmloader/Makefile
-@@ -30,6 +30,7 @@
-
- # We mustn't use tools-only public interfaces.
- CFLAGS += -D__XEN_INTERFACE_VERSION__=__XEN_LATEST_INTERFACE_VERSION__
-+CFLAGS += -Wno-error
-
- OBJS  = hvmloader.o mp_tables.o util.o smbios.o
- OBJS += smp.o cacheattr.o xenbus.o vnuma.o
 --- a/tools/libxc/xc_sr_restore.c
 +++ b/tools/libxc/xc_sr_restore.c
 @@ -398,6 +398,6 @@
