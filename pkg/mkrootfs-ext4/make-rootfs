@@ -48,7 +48,7 @@ menuentry 'LinuxKit Image' {
 
 menuentry 'LinuxKit Image on QEMU' {
 	multiboot2 /boot/xen.gz clocksource=pit console=com1
-	module2 /boot/kernel console=hvc0 clocksource=jiffies ${CMDLINE} root=PARTUUID=\$partuuid text
+	module2 /boot/kernel console=hvc0 clocksource=tsc clocksource_failover=xen ${CMDLINE} root=PARTUUID=\$partuuid text
 }
 EOF
 
