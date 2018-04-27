@@ -11,6 +11,7 @@ QEMU_OPTS_aarch64=-machine virt,gic_version=3 -machine virtualization=true -cpu 
                   -drive file=./bios/OVMF.fd,format=raw,if=pflash -drive file=./bios/flash1.img,format=raw,if=pflash
 QEMU_OPTS_x86_64=--bios ./bios/OVMF.fd -cpu SandyBridge
 QEMU_OPTS_COMMON= -m 4096 -smp 4 -display none -serial mon:stdio \
+	-rtc base=utc,clock=rt \
 	-net nic,vlan=0 -net user,id=eth0,vlan=0,net=192.168.1.0/24,dhcpstart=192.168.1.10,hostfwd=tcp::2222-:22 \
 	-net nic,vlan=1 -net user,id=eth1,vlan=1,net=192.168.2.0/24,dhcpstart=192.168.2.10
 QEMU_OPTS=$(QEMU_OPTS_COMMON) $(QEMU_OPTS_$(ZARCH))
