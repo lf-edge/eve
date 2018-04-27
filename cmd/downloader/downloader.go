@@ -833,8 +833,8 @@ func handleSyncOp(ctx *downloaderContext, objType string, statusFilename string,
 		log.Printf("Have %d any uplink addresses\n", addrCount)
 		err = errors.New("No IP uplink addresses for download")
 	}
-	if err != nil {
-		errStr = errStr + "\n" + err.Error()
+	if addrCount == 0 {
+		errStr = err.Error()
 	}
 	metricsUrl := config.DownloadURL
 	if config.TransportMethod == zconfig.DsType_DsS3.String() {

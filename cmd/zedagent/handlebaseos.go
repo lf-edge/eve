@@ -269,6 +269,9 @@ func doBaseOsActivate(uuidStr string, config types.BaseOsConfig,
 	case "inprogress":
 		log.Printf("Installing %s over inprogress\n",
 			config.BaseOsVersion)
+	case "updating":
+		log.Printf("Installing %s over updating\n",
+			config.BaseOsVersion)
 	default:
 		// XXX we seem to hit this in some cases
 		// Happens when a new baseOs config appears while
@@ -509,6 +512,18 @@ func doBaseOsUninstall(uuidStr string, status *types.BaseOsStatus) (bool, bool) 
 	changed := false
 	removedAll := true
 
+	// If this image is on the !active partition we mark that
+	// as unused.
+	if status.PartitionLabel != "" {
+		partName := status.PartitionLabel
+		if status.BaseOsVersion == zboot.GetShortVersion(partName) &&
+			zboot.IsOtherPartition(partName) {
+			log.Printf("doBaseOsUninstall(%s) for %s, currently on other %s\n",
+				status.BaseOsVersion, uuidStr, partName)
+			log.Printf("Mark other partition %s, unused\n", partName)
+			zboot.SetOtherPartitionStateUnused()
+		}
+	}
 	for i, _ := range status.StorageStatusList {
 
 		ss := &status.StorageStatusList[i]
@@ -622,12 +637,13 @@ func checkInstalledVersion(config types.BaseOsConfig) string {
 
 	partVersion := zboot.GetShortVersion(config.PartitionLabel)
 	// XXX this check can result in failures when multiple updates in progress in zedcloud!
+	// XXX remove?
 	if config.BaseOsVersion != partVersion {
 		errStr := fmt.Sprintf("baseOs %s, %s, does not match installed %s",
 			config.PartitionLabel, config.BaseOsVersion, partVersion)
 
 		log.Println(errStr)
-		return errStr
+		// XXX return errStr
 	}
 	return ""
 }
