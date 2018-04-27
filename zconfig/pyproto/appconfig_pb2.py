@@ -24,7 +24,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='appconfig.proto',
   package='',
   syntax='proto3',
-  serialized_pb=_b('\n\x0f\x61ppconfig.proto\x1a\x0f\x64\x65vcommon.proto\x1a\rstorage.proto\x1a\x08vm.proto\x1a\x0fnetconfig.proto\"\xdf\x01\n\x11\x41ppInstanceConfig\x12\'\n\x0euuidandversion\x18\x01 \x01(\x0b\x32\x0f.UUIDandVersion\x12\x13\n\x0b\x64isplayname\x18\x02 \x01(\t\x12!\n\x0e\x66ixedresources\x18\x03 \x01(\x0b\x32\t.VmConfig\x12\x16\n\x06\x64rives\x18\x04 \x03(\x0b\x32\x06.Drive\x12\x10\n\x08\x61\x63tivate\x18\x05 \x01(\x08\x12#\n\ninterfaces\x18\x06 \x03(\x0b\x32\x0f.NetworkAdapter\x12\x1a\n\x08\x61\x64\x61pters\x18\x07 \x03(\x0b\x32\x08.Adapter\"0\n\x07\x41\x64\x61pter\x12\x17\n\x04type\x18\x01 \x01(\x0e\x32\t.ZCioType\x12\x0c\n\x04name\x18\x02 \x01(\t*N\n\x08ZCioType\x12\x0b\n\x07ZCioNop\x10\x00\x12\x0b\n\x07ZCioEth\x10\x01\x12\x0b\n\x07ZCioUSB\x10\x02\x12\x0b\n\x07ZCioCOM\x10\x03\x12\x0e\n\tZCioOther\x10\xff\x01\x42@\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1dgithub.com/zededa/api/zconfigb\x06proto3')
+  serialized_pb=_b('\n\x0f\x61ppconfig.proto\x1a\x0f\x64\x65vcommon.proto\x1a\rstorage.proto\x1a\x08vm.proto\x1a\x0fnetconfig.proto\"\xdf\x01\n\x11\x41ppInstanceConfig\x12\'\n\x0euuidandversion\x18\x01 \x01(\x0b\x32\x0f.UUIDandVersion\x12\x13\n\x0b\x64isplayname\x18\x02 \x01(\t\x12!\n\x0e\x66ixedresources\x18\x03 \x01(\x0b\x32\t.VmConfig\x12\x16\n\x06\x64rives\x18\x04 \x03(\x0b\x32\x06.Drive\x12\x10\n\x08\x61\x63tivate\x18\x05 \x01(\x08\x12#\n\ninterfaces\x18\x06 \x03(\x0b\x32\x0f.NetworkAdapter\x12\x1a\n\x08\x61\x64\x61pters\x18\x07 \x03(\x0b\x32\x08.Adapter\"0\n\x07\x41\x64\x61pter\x12\x17\n\x04type\x18\x01 \x01(\x0e\x32\t.ZCioType\x12\x0c\n\x04name\x18\x02 \x01(\t*\\\n\x08ZCioType\x12\x0b\n\x07ZCioNop\x10\x00\x12\x0b\n\x07ZCioEth\x10\x01\x12\x0b\n\x07ZCioUSB\x10\x02\x12\x0b\n\x07ZCioCOM\x10\x03\x12\x0c\n\x08ZCioHDMI\x10\x04\x12\x0e\n\tZCioOther\x10\xff\x01\x42@\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1dgithub.com/zededa/api/zconfigb\x06proto3')
   ,
   dependencies=[devcommon__pb2.DESCRIPTOR,storage__pb2.DESCRIPTOR,vm__pb2.DESCRIPTOR,netconfig__pb2.DESCRIPTOR,])
 
@@ -51,14 +51,18 @@ _ZCIOTYPE = _descriptor.EnumDescriptor(
       options=None,
       type=None),
     _descriptor.EnumValueDescriptor(
-      name='ZCioOther', index=4, number=255,
+      name='ZCioHDMI', index=4, number=4,
+      options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='ZCioOther', index=5, number=255,
       options=None,
       type=None),
   ],
   containing_type=None,
   options=None,
   serialized_start=354,
-  serialized_end=432,
+  serialized_end=446,
 )
 _sym_db.RegisterEnumDescriptor(_ZCIOTYPE)
 
@@ -67,6 +71,7 @@ ZCioNop = 0
 ZCioEth = 1
 ZCioUSB = 2
 ZCioCOM = 3
+ZCioHDMI = 4
 ZCioOther = 255
 
 

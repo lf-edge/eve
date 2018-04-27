@@ -42,6 +42,7 @@ message ZInfoNetwork {
   ZInfoDNS dns = 7; // If DHCP assigned
   bool up = 8;      // operational up/down status.
   GeoLoc location = 9;
+  bool uplink = 10; // Uplink interface
 }
 
 // From an IP address-based geolocation service
@@ -150,6 +151,7 @@ message ZInfoStorage {
   string device = 1;	// E.g., "sda3"
   string mountPath = 2;	// E.g., "/", or "/config"
   uint64 total = 3;	// in MBytes
+  bool storageLocation = 4; // Storage location for app disks, images etc.
 }
 
 // Device info from DOM0 perspective, if it exists.
