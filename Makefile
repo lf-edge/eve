@@ -1,17 +1,28 @@
 PATH := $(CURDIR)/build-tools/bin:$(PATH)
 
 # How large to we want the disk to be in Mb
-MEDIA_SIZE=700
+MEDIA_SIZE=8192
+IMG_FORMAT=qcow2
 
 ZARCH=$(shell uname -m)
 DOCKER_ARCH_TAG_aarch64=arm64
 DOCKER_ARCH_TAG_x86_64=amd64
 DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG_$(ZARCH))
-QEMU_OPTS_aarch64=-machine virt,gic_version=3 -machine virtualization=true -cpu cortex-a57 -machine type=virt \
-                  -drive file=./bios/OVMF.fd,format=raw,if=pflash -drive file=./bios/flash1.img,format=raw,if=pflash
-QEMU_OPTS_x86_64=--bios ./bios/OVMF.fd -cpu SandyBridge
-QEMU_OPTS_COMMON= -m 4096 -smp 4 -display none -serial mon:stdio \
-	-rtc base=utc,clock=rt \
+
+FALLBACK_IMG_aarch64=fallback_aarch64
+FALLBACK_IMG_x86_64=fallback
+FALLBACK_IMG=$(FALLBACK_IMG_$(ZARCH))
+
+ROOTFS_IMG_aarch64=rootfs_aarch64.img
+ROOTFS_IMG_x86_64=rootfs.img
+ROOTFS_IMG=$(ROOTFS_IMG_$(ZARCH))
+
+QEMU_OPTS_aarch64= -machine virt,gic_version=3 -machine virtualization=true -cpu cortex-a57 -machine type=virt
+# -drive file=./bios/flash0.img,format=raw,if=pflash -drive file=./bios/flash1.img,format=raw,if=pflash
+# [ -f bios/flash1.img ] || dd if=/dev/zero of=bios/flash1.img bs=1048576 count=64
+QEMU_OPTS_x86_64= -cpu SandyBridge
+QEMU_OPTS_COMMON= -m 4096 -smp 4 -display none -serial mon:stdio -bios ./bios/OVMF.fd \
+        -rtc base=utc,clock=rt \
 	-net nic,vlan=0 -net user,id=eth0,vlan=0,net=192.168.1.0/24,dhcpstart=192.168.1.10,hostfwd=tcp::2222-:22 \
 	-net nic,vlan=1 -net user,id=eth1,vlan=1,net=192.168.2.0/24,dhcpstart=192.168.2.10
 QEMU_OPTS=$(QEMU_OPTS_COMMON) $(QEMU_OPTS_$(ZARCH))
@@ -69,6 +80,10 @@ pkgs: build-tools build-pkgs zedctr-workaround
 bios:
 	mkdir bios
 
+bios/EFI: bios
+	cd bios ; $(DOCKER_UNPACK) $(shell make -s -C pkg PKGS=grub show-tag)-$(DOCKER_ARCH_TAG) EFI
+	(echo "set root=(hd0)" ; echo "chainloader /EFI/BOOT/BOOTX64.EFI" ; echo boot) > bios/EFI/BOOT/grub.cfg
+
 bios/OVMF.fd: bios
 	cd bios ; $(DOCKER_UNPACK) $(shell make -s -C build-pkgs BUILD-PKGS=uefi show-tag)-$(DOCKER_ARCH_TAG) OVMF.fd
 
@@ -79,29 +94,40 @@ bios/OVMF.fd: bios
 # testing.
 #
 run-installer:
-	dd if=/dev/zero of=target.img seek=${MEDIA_SIZE} count=1 bs=1M
-	qemu-system-$(ZARCH) $(QEMU_OPTS) -hda target.img -cdrom installer.iso -boot d
+	qemu-img create -f ${IMG_FORMAT} target.img ${MEDIA_SIZE}M
+	qemu-system-$(ZARCH) $(QEMU_OPTS) -drive file=target.img,format=$(IMG_FORMAT) -cdrom installer.iso -boot d
 
 run-fallback run: bios/OVMF.fd
-	qemu-system-$(ZARCH) $(QEMU_OPTS) -hda fallback.img
+	qemu-system-$(ZARCH) $(QEMU_OPTS) -drive file=$(FALLBACK_IMG).img,format=$(IMG_FORMAT)
+
+run-rootfs: bios/OVMF.fd bios/EFI
+	qemu-system-$(ZARCH) $(QEMU_OPTS) -drive file=$(ROOTFS_IMG),format=raw -drive file=fat:rw:./bios/,format=raw 
 
 # NOTE: that we have to depend on zedctr-workaround here to make sure
 # it gets triggered when we build any kind of image target
 images/%.yml: zedctr-workaround parse-pkgs.sh images/%.yml.in FORCE
 	./parse-pkgs.sh $@.in > $@
 
-rootfs.img: images/fallback.yml
-	./makerootfs.sh images/fallback.yml squash rootfs.img
+$(ROOTFS_IMG): images/fallback.yml
+	./makerootfs.sh images/fallback.yml squash $@
 
 config.img:
 	./maketestconfig.sh config.img
 
-fallback.img: rootfs.img config.img
-	tar c rootfs.img config.img | ./makeflash.sh -C ${MEDIA_SIZE} $@
+$(FALLBACK_IMG).img: $(FALLBACK_IMG).$(IMG_FORMAT)
+	@rm -f $@ >/dev/null 2>&1 || :
+	ln -s $< $@
+
+$(FALLBACK_IMG).qcow2: $(FALLBACK_IMG).raw
+	qemu-img convert -c -f raw -O qcow2 $< $@
+	rm $<
+
+$(FALLBACK_IMG).raw: $(ROOTFS_IMG) config.img
+	tar c $(ROOTFS_IMG) config.img | ./makeflash.sh -C ${MEDIA_SIZE} $@
 
 .PHONY: pkg_installer
-pkg_installer: rootfs.img config.img
-	cp rootfs.img config.img pkg/installer
+pkg_installer: $(ROOTFS_IMG) config.img
+	cp $(ROOTFS_IMG) config.img pkg/installer
 	make -C pkg PKGS=installer LINUXKIT_OPTS="--disable-content-trust --disable-cache --force" $(DEFAULT_PKG_TARGET)
 
 #
@@ -116,7 +142,7 @@ installer.iso: images/installer.yml pkg_installer
 installer.img: images/installer.yml pkg_installer
 	./makeraw.sh images/installer.yml installer.iso
 
-publish: Makefile rootfs.img config.img fallback.img installer.iso bios/OVMF.fd
+publish: Makefile config.img installer.iso bios/OVMF.fd $(ROOTFS_IMG) $(FALLBACK_IMG)
 	cp $^ build-pkgs/zenix
 	make -C build-pkgs BUILD-PKGS=zenix LINUXKIT_OPTS="--disable-content-trust --disable-cache --force" $(DEFAULT_PKG_TARGET)
 

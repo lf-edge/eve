@@ -8,7 +8,7 @@ MKFLASH_TAG="$(linuxkit pkg show-tag pkg/mkflash)"
 if [ "$1" = "-C" ]; then
     SIZE=$2
     IMAGE=$3
-    dd if=/dev/zero of=$IMAGE count=$(( $SIZE * 1024 )) bs=1024
+    dd if=/dev/zero of=$IMAGE oseek=$(( $SIZE * 1024 * 1024)) bs=1 count=1
     # If we're a non-root user, the bind mount gets permissions sensitive.
     # So we go docker^Wcowboy style
     chmod ugo+w $IMAGE
