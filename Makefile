@@ -4,6 +4,8 @@ PATH := $(CURDIR)/build-tools/bin:$(PATH)
 MEDIA_SIZE=8192
 IMG_FORMAT=qcow2
 
+CONF_DIR=conf
+
 ZARCH=$(shell uname -m)
 DOCKER_ARCH_TAG_aarch64=arm64
 DOCKER_ARCH_TAG_x86_64=amd64
@@ -112,7 +114,7 @@ $(ROOTFS_IMG): images/fallback.yml
 	./makerootfs.sh images/fallback.yml squash $@
 
 config.img:
-	./maketestconfig.sh config.img
+	./maketestconfig.sh $(CONF_DIR) config.img
 
 $(FALLBACK_IMG).img: $(FALLBACK_IMG).$(IMG_FORMAT)
 	@rm -f $@ >/dev/null 2>&1 || :
@@ -142,9 +144,12 @@ installer.iso: images/installer.yml pkg_installer
 installer.img: images/installer.yml pkg_installer
 	./makeraw.sh images/installer.yml installer.iso
 
-publish: Makefile config.img installer.iso bios/OVMF.fd $(ROOTFS_IMG) $(FALLBACK_IMG)
+publish: Makefile config.img installer.iso bios/OVMF.fd $(ROOTFS_IMG) $(FALLBACK_IMG).img
 	cp $^ build-pkgs/zenix
 	make -C build-pkgs BUILD-PKGS=zenix LINUXKIT_OPTS="--disable-content-trust --disable-cache --force" $(DEFAULT_PKG_TARGET)
+
+pkg/%: FORCE
+	make -C pkg PKGS=$(notdir $@) LINUXKIT_OPTS="--disable-content-trust --disable-cache --force" $(DEFAULT_PKG_TARGET)
 
 .PHONY: FORCE
 FORCE:

@@ -6,6 +6,9 @@ CONFIG_FILE=$1
 # Config is 1Mb
 CONFIG_SIZE_KB=1024
 
+# Slurp the input in a form of a tarball
+(cd /conf; tar xf -)
+
 #
 # Create Config image
 #
