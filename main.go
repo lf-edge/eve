@@ -29,12 +29,12 @@ import (
 
 const (
 	agentName        = "dataplane"
-	lispConfigDir    = "/opt/zededa/lisp/"
-	configHolePath   = lispConfigDir + "lisp-ipc-data-plane"
-	lispersDotNetItr = lispConfigDir + "lispers.net-itr"
 	dnsDirname       = "/var/run/zedrouter/DeviceNetworkStatus"
-	logOutput        = "/var/log/dataplane.log"
 )
+
+var lispConfigDir string
+var configHolePath string
+var lispersDotNetItr string
 
 // Dummy since we don't have anything to pass
 type dummyContext struct {
@@ -56,7 +56,12 @@ func main() {
 
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
+	flag.StringVar(&lispConfigDir, "lisp", "/opt/zededa/lisp", "lispers.net path")
 	flag.Parse()
+
+	log.Printf("Dataplane: Using %s for LISP directory.\n", lispConfigDir)
+	configHolePath   = lispConfigDir + "/lisp-ipc-data-plane"
+	lispersDotNetItr = lispConfigDir + "/lispers.net-itr"
 
 	debug = *debugPtr
 	if *versionPtr {
