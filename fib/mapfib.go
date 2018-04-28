@@ -8,7 +8,6 @@ package fib
 
 import (
 	"encoding/json"
-	"github.com/zededa/go-provision/types"
 	"github.com/zededa/lisp/dataplane/dptypes"
 	"log"
 	"math/rand"
@@ -23,7 +22,7 @@ const SCRUBTHRESHOLD = 5 * 60
 
 var cache *dptypes.MapCacheTable
 var decaps *dptypes.DecapTable
-var upLinks types.Uplinks
+var upLinks dptypes.Uplinks
 
 var debug bool = false
 var pktBuf []byte
@@ -95,7 +94,7 @@ func InitDecapTable() {
 func SetUplinkAddrs(ipv4 net.IP, ipv6 net.IP) {
 	upLinks.Lock()
 	defer upLinks.Unlock()
-	uplinks := new(types.UplinkAddress)
+	uplinks := new(dptypes.UplinkAddress)
 	if uplinks == nil {
 		log.Fatal("SetUplinkAddrs: Uplink address memory allocation failed.\n")
 	}
