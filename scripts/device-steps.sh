@@ -16,7 +16,6 @@ ALLAGENTS="zedmanager $AGENTS"
 
 PATH=$BINDIR:$PATH
 
-OLDFLAG=
 WAIT=1
 EID_IN_DOMU=0
 MEASURE=0
@@ -28,8 +27,6 @@ while [ $# != 0 ]; do
 	EID_IN_DOMU=1
     elif [ "$1" = -m ]; then
 	MEASURE=1
-    elif [ "$1" = -o ]; then
-	OLDFLAG=$1
     elif [ "$1" = -c ]; then
 	CLEANUP=1
     else
@@ -89,10 +86,8 @@ echo "Removing old stale files"
 # Remove internal config files
 
 pkill zedmanager
-if [ x$OLDFLAG = x ]; then
-	echo "Removing old zedmanager config files"
-	rm -rf /var/tmp/zedmanager/config/*.json
-fi
+echo "Removing old zedmanager config files"
+rm -rf /var/tmp/zedmanager/config/*.json
 
 echo "Removing old zedmanager status files"
 rm -rf /var/run/zedmanager/status/*.json
@@ -418,14 +413,14 @@ if [ $SELF_REGISTER = 1 ]; then
 	echo "Missing onboarding certificate. Giving up"
 	exit 1
     fi
-    echo $BINDIR/client $OLDFLAG -d $CONFIGDIR selfRegister
-    $BINDIR/client $OLDFLAG -d $CONFIGDIR selfRegister
+    echo $BINDIR/client -d $CONFIGDIR selfRegister
+    $BINDIR/client -d $CONFIGDIR selfRegister
     rm -f $TMPDIR/self-register-failed
     if [ $WAIT = 1 ]; then
 	echo -n "Press any key to continue "; read dummy; echo; echo
     fi
-    echo $BINDIR/client $OLDFLAG -d $CONFIGDIR getUuid 
-    $BINDIR/client $OLDFLAG -d $CONFIGDIR getUuid
+    echo $BINDIR/client -d $CONFIGDIR getUuid 
+    $BINDIR/client -d $CONFIGDIR getUuid
 
     # Make sure we set the dom0 hostname, used by LISP nat traversal, to
     # a unique string. Using the uuid
@@ -443,10 +438,10 @@ if [ $SELF_REGISTER = 1 ]; then
     if [ $WAIT = 1 ]; then
 	echo -n "Press any key to continue "; read dummy; echo; echo
     fi
-elif [ x$OLDFLAG = x ]; then
+else
     echo "XXX until cloud keeps state across upgrades redo getUuid"
-    echo $BINDIR/client $OLDFLAG -d $CONFIGDIR getUuid 
-    $BINDIR/client $OLDFLAG -d $CONFIGDIR getUuid
+    echo $BINDIR/client -d $CONFIGDIR getUuid 
+    $BINDIR/client -d $CONFIGDIR getUuid
 
     uuid=`cat $CONFIGDIR/uuid`
     /bin/hostname $uuid
@@ -458,30 +453,6 @@ elif [ x$OLDFLAG = x ]; then
 	echo "127.0.0.1 $uuid" >>/etc/hosts
     else
 	echo "Found $uuid in /etc/hosts"
-    fi
-    if [ $WAIT = 1 ]; then
-	echo -n "Press any key to continue "; read dummy; echo; echo
-    fi
-fi
-
-# XXX remove once OLDFLAG goes away
-# We always redo this to get an updated zedserverconfig
-rm -f $TMPDIR/zedserverconfig
-if [ x$OLDFLAG != x ]; then
-    echo "Retrieving device and overlay network config at" `date`
-    echo $BINDIR/client $OLDFLAG -d $CONFIGDIR lookupParam
-    $BINDIR/client $OLDFLAG -d $CONFIGDIR lookupParam
-    if [ -f $TMPDIR/zedserverconfig ]; then
-	echo "Retrieved overlay /etc/hosts with:"
-	cat $TMPDIR/zedserverconfig
-	# edit zedserverconfig into /etc/hosts
-	match=`awk '{print $2}' $TMPDIR/zedserverconfig| sort -u | awk 'BEGIN {m=""} { m = sprintf("%s|%s", m, $1) } END { m = substr(m, 2, length(m)); printf ".*:.*(%s)\n", m}'`
-	egrep -v $match /etc/hosts >/tmp/hosts.$$
-	cat $TMPDIR/zedserverconfig >>/tmp/hosts.$$
-	echo "New /etc/hosts:"
-	cat /tmp/hosts.$$
-	cp /tmp/hosts.$$ /etc/hosts
-	rm -f /tmp/hosts.$$
     fi
     if [ $WAIT = 1 ]; then
 	echo -n "Press any key to continue "; read dummy; echo; echo
@@ -575,8 +546,9 @@ if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
+# XXX shouldn't we remove eidregister?
 echo "Starting eidregister at" `date`
-eidregister $OLDFLAG -d $CONFIGDIR &
+eidregister -d $CONFIGDIR &
 if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
