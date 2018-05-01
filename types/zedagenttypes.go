@@ -26,7 +26,7 @@ type BaseOsConfig struct {
 	ConfigSignature   string
 	OsParams          []OsVerParams // From GetLongVersion
 	StorageConfigList []StorageConfig
-	PartitionLabel    string	// XXX Remove
+	PartitionLabel    string // XXX Remove
 	RetryCount        int32
 	Activate          bool
 }
@@ -145,8 +145,8 @@ type RetStatus struct {
 	Changed         bool
 	MinState        SwState
 	WaitingForCerts bool
-	AllErrors 	string
-	ErrorTime 	time.Time
+	AllErrors       string
+	ErrorTime       time.Time
 }
 
 // Mirrors proto definition for ConfigItem

@@ -100,6 +100,7 @@ const (
 	// base os verifier status holder
 	verifierBaseOsConfigDirname = verifierBaseDirname + "/" + baseOsObj + "/config"
 	verifierBaseOsStatusDirname = verifierRunDirname + "/" + baseOsObj + "/status"
+	verifierAppImgStatusDirname = verifierRunDirname + "/" + appImgObj + "/status"
 	DNSDirname                  = "/var/run/zedrouter/DeviceNetworkStatus"
 	domainStatusDirname         = "/var/run/domainmgr/status"
 )
@@ -185,6 +186,7 @@ func main() {
 	baseOsConfigStatusChanges := make(chan string)
 	baseOsDownloaderChanges := make(chan string)
 	baseOsVerifierChanges := make(chan string)
+	appImgVerifierChanges := make(chan string)
 	certObjConfigStatusChanges := make(chan string)
 	certObjDownloaderChanges := make(chan string)
 
@@ -193,6 +195,9 @@ func main() {
 	// baseOs verification status watcher
 	go watch.WatchStatus(verifierBaseOsStatusDirname,
 		baseOsVerifierChanges)
+
+	go watch.WatchStatus(verifierAppImgStatusDirname,
+		appImgVerifierChanges)
 
 	// Pick up (mostly static) AssignableAdapters before we report
 	// any device info
@@ -409,6 +414,13 @@ func main() {
 				&types.VerifyImageStatus{},
 				handleBaseOsVerifierStatusModify,
 				handleBaseOsVerifierStatusDelete, nil)
+
+		case change := <-appImgVerifierChanges:
+			watch.HandleStatusEvent(change, dummyContext{},
+				verifierAppImgStatusDirname,
+				&types.VerifyImageStatus{},
+				handleAppImgVerifierStatusModify,
+				handleAppImgVerifierStatusDelete, nil)
 
 		case change := <-certObjDownloaderChanges:
 			watch.HandleStatusEvent(change, dummyContext{},
@@ -772,6 +784,24 @@ func handleBaseOsVerifierStatusDelete(ctxArg interface{}, statusFilename string)
 	log.Printf("handleBaseOsVeriferStatusDelete for %s\n",
 		statusFilename)
 	removeVerifierStatus(baseOsObj, statusFilename)
+}
+
+// app img verification status change event; for disk usage tracking
+func handleAppImgVerifierStatusModify(ctxArg interface{}, statusFilename string,
+	statusArg interface{}) {
+	status := statusArg.(*types.VerifyImageStatus)
+
+	log.Printf("handleAppImgVeriferStatusModify for %s\n",
+		status.Safename)
+	updateVerifierStatus(appImgObj, status)
+}
+
+// base os verification status delete event
+func handleAppImgVerifierStatusDelete(ctxArg interface{}, statusFilename string) {
+
+	log.Printf("handleAppImgVeriferStatusDelete for %s\n",
+		statusFilename)
+	removeVerifierStatus(appImgObj, statusFilename)
 }
 
 // cerificate download status change event
