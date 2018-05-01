@@ -513,16 +513,26 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 	}
 	// Walk all verified downloads and report their size (faked
 	// as disks)
-	// XXX TBD: Also downloads in progress from downloader? Avoid dups.
 	for _, vs := range verifierStatusMap {
-		// XXX
-		if true || debug {
-			log.Printf("Verifier %s size %d\n",
+		if debug {
+			log.Printf("verifierStatusMap %s size %d\n",
 				vs.Safename, vs.Size)
 		}
 		metric := zmet.DiskMetric{
 			Disk:  vs.Safename,
 			Total: uint64(vs.Size),
+		}
+		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
+	}
+	// XXX TBD: Avoid dups with verifierStatusMap above
+	for _, ds := range downloaderStatusMap {
+		if debug {
+			log.Printf("downloaderStatusMap %s size %d\n",
+				ds.Safename, ds.Size)
+		}
+		metric := zmet.DiskMetric{
+			Disk:  ds.Safename,
+			Total: uint64(ds.Size),
 		}
 		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
 	}
@@ -631,8 +641,7 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 				networkDetails)
 		}
 		ReportMetrics.Am[countApp] = ReportAppMetric
-		// XXX
-		if true || debug {
+		if debug {
 			log.Println("metrics per app is: ",
 				ReportMetrics.Am[countApp])
 		}
