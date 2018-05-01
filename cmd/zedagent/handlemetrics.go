@@ -521,7 +521,7 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 				vs.Safename, vs.Size)
 		}
 		metric := zmet.DiskMetric{
-			Disk: vs.Safename,
+			Disk:  vs.Safename,
 			Total: uint64(vs.Size),
 		}
 		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
