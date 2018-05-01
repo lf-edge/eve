@@ -109,8 +109,12 @@ func encryptPayload(payload []byte,
 		log.Printf("encryptPayload: Packet encryption failed: %s\n", err)
 		return false, 0
 	}
-	aesGcm.Seal(packet[dptypes.GCMIVLENGTH:], packet[:dptypes.GCMIVLENGTH],
-		packet[dptypes.GCMIVLENGTH:], nil)
+	plainText := packet[dptypes.GCMIVLENGTH:]
+	//aesGcm.Seal(packet[dptypes.GCMIVLENGTH:], packet[:dptypes.GCMIVLENGTH],
+	//	packet[dptypes.GCMIVLENGTH:], nil)
+	aesGcm.Seal(plainText[:0], packet[:dptypes.GCMIVLENGTH],
+		plainText, nil)
+	log.Printf("XXXXX Over head length is %d\n", aesGcm.Overhead())
 	//return true, (aes.BlockSize - remainder)
 	return true, 0
 }
