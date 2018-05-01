@@ -294,6 +294,7 @@ func handleCreate(ctx *downloaderContext, objType string,
 	statusFilename string) {
 
 	// Start by marking with PendingAdd
+	// XXX set a ObjType in DownloaderStatus
 	status := types.DownloaderStatus{
 		Safename:       config.Safename,
 		RefCount:       config.RefCount,
