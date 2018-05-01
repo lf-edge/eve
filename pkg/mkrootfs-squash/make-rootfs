@@ -39,6 +39,12 @@ set timeout=5
 set gfxpayload=text
 set default=${ZEN_DEFAULT_BOOT:-0}
 
+# Looking for UEFI QEMU label (hex 5500450046004900200051004500) 
+for b in 1 2 3 4 5 6 7 8 9 ; do
+   getenv -b -e Boot000\$b -g 8BE4DF61-93CA-11D2-AA0D-00E098032B8C efiboot
+   if regexp 5500450046004900200051004500 \$efiboot ; then set default=1 ; fi
+done
+
 probe --set partuuid -U \$root
 
 menuentry 'LinuxKit Image' {
