@@ -9,7 +9,7 @@ RUN apk add --no-cache \
     yajl xz bash openssl iptables ip6tables \
     apk-cron coreutils dmidecode sudo libbz2 libuuid ipset \
     libpcap libaio logrotate pixman glib curl radvd perl ethtool \
-    openssh-server util-linux e2fsprogs qemu-img
+    openssh-server util-linux e2fsprogs
 
 # The following enables pcappy to dlopen libpcap.so
 RUN ln -s libpcap.so.1 /usr/lib/libpcap.so
