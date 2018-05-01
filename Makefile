@@ -113,7 +113,7 @@ images/%.yml: zedctr-workaround parse-pkgs.sh images/%.yml.in FORCE
 $(ROOTFS_IMG): images/fallback.yml
 	./makerootfs.sh images/fallback.yml squash $@
 
-config.img:
+config.img: conf/server conf/onboard.cert.pem conf/
 	./maketestconfig.sh $(CONF_DIR) config.img
 
 $(FALLBACK_IMG).img: $(FALLBACK_IMG).$(IMG_FORMAT)
