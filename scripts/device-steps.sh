@@ -5,7 +5,6 @@ echo "Starting device-steps.sh at" `date`
 CONFIGDIR=/config
 PERSISTDIR=/persist
 BINDIR=/opt/zededa/bin
-PROVDIR=$BINDIR
 TMPDIR=/var/tmp/zededa
 DNCDIR=$TMPDIR/DeviceNetworkConfig
 LISPDIR=/opt/zededa/lisp
@@ -368,7 +367,7 @@ fi
 
 if [ ! \( -f $CONFIGDIR/device.cert.pem -a -f $CONFIGDIR/device.key.pem \) ]; then
     echo "Generating a device key pair and self-signed cert (using TPM/TEE if available) at" `date`
-    $PROVDIR/generate-device.sh $CONFIGDIR/device
+    $BINDIR/generate-device.sh $CONFIGDIR/device
     SELF_REGISTER=1
 elif [ -f $TMPDIR/self-register-failed ]; then
     echo "self-register failed/killed/rebooted; redoing self-register"
