@@ -510,7 +510,10 @@ if [ -f $TMPDIR/zedrouterconfig.json ]; then
 fi
 
 # Setup default amount of space for images
-echo '{"MaxSpace":2000000}' >/var/tmp/downloader/config/global
+# Half of /persist by default! Convert to kbytes
+size=`df -B1 --output=size /persist | tail -1`
+space=`expr $size / 2048`
+echo {\"MaxSpace\":$space} >/var/tmp/downloader/config/global
 
 rm -f /var/run/verifier/*/status/restarted
 rm -f /var/tmp/zedrouter/config/restart

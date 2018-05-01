@@ -75,6 +75,9 @@ func MaybeAddDomainConfig(aiConfig types.AppInstanceConfig,
 	for _, sc := range aiConfig.StorageConfigList {
 		if sc.Target == "" || sc.Target == "disk" {
 			numDisks++
+		} else {
+			log.Printf("Not allocating disk for Target %s\n",
+				sc.Target)
 		}
 	}
 	dc.DiskConfigList = make([]types.DiskConfig, numDisks)

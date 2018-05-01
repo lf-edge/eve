@@ -140,6 +140,10 @@ func updateVerifierStatus(objType string, status *types.VerifyImageStatus) {
 			log.Printf("%s, verifier entry change, State %v to %v\n",
 				key, m.State, status.State)
 			changed = true
+		} else if status.Size != m.Size {
+			log.Printf("%s, verifier entry change, Size %v to %v\n",
+				key, m.Size, status.Size)
+			changed = true
 		} else {
 			log.Printf("%s, verifier entry no change, State %v\n",
 				key, status.State)
@@ -152,7 +156,9 @@ func updateVerifierStatus(objType string, status *types.VerifyImageStatus) {
 
 	if changed {
 		verifierStatusSet(key, status)
-		baseOsHandleStatusUpdateSafename(status.Safename)
+		if objType == baseOsObj {
+			baseOsHandleStatusUpdateSafename(status.Safename)
+		}
 	}
 
 	log.Printf("updateVerifierStatus for %s, Done\n", key)

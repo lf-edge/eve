@@ -294,6 +294,7 @@ func handleCreate(ctx *downloaderContext, objType string,
 	statusFilename string) {
 
 	// Start by marking with PendingAdd
+	// XXX set a ObjType in DownloaderStatus
 	status := types.DownloaderStatus{
 		Safename:       config.Safename,
 		RefCount:       config.RefCount,
@@ -502,6 +503,9 @@ func downloaderInit() *zedUpload.DronaCtx {
 	updateRemainingSpace()
 
 	// XXX how do we find out when verifier cleans up duplicates etc?
+	// XXX run this periodically... What about downloads inprogress
+	// when we run it?
+	// XXX look at verifier and downloader status which have Size
 	// We read objectDownloadDirname/* and determine how much space
 	// is used. Place in GlobalDownloadStatus. Calculate remaining space.
 	totalUsed := sizeFromDir(objectDownloadDirname)
@@ -529,6 +533,7 @@ func initializeDirs() {
 	// Remove any files which didn't make it past the verifier.
 	// Though verifier owns it, remove them for calculating the
 	// total available space
+	// XXX instead rely on verifier status
 	clearInProgressDownloadDirs(downloaderObjTypes)
 
 	// create the object based config/status dirs
