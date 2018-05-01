@@ -511,6 +511,22 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 		}
 		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
 	}
+	// Walk all verified downloads and report their size (faked
+	// as disks)
+	// XXX TBD: Also downloads in progress from downloader? Avoid dups.
+	for _, vs := range verifierStatusMap {
+		// XXX
+		if true || debug {
+			log.Printf("Verifier %s size %d\n",
+				vs.Safename, vs.Size)
+		}
+		metric := zmet.DiskMetric{
+			Disk: vs.Safename,
+			Total: uint64(vs.Size),
+		}
+		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
+	}
+
 	// Note that these are associated with the device and not with a
 	// device name like ppp0 or wwan0
 	lte := readLTEMetrics()
