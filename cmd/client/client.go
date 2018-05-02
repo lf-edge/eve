@@ -78,12 +78,11 @@ func main() {
 	// For limited output on console
 	consolef := os.Stdout
 	if !useStdout {
-		consolef, err := os.OpenFile("/dev/console", os.O_RDWR|os.O_APPEND,
+		consolef, err = os.OpenFile("/dev/console", os.O_RDWR|os.O_APPEND,
 			0666)
 		if err != nil {
 			log.Fatal(err)
 		}
-		defer consolef.Close()
 	}
 	multi := io.MultiWriter(logf, consolef)
 	log.SetOutput(multi)
