@@ -59,12 +59,14 @@ func main() {
 	versionPtr := flag.Bool("v", false, "Version")
 	forcePtr := flag.Bool("f", false, "Force using onboarding cert")
 	dirPtr := flag.String("d", "/config", "Directory with certs etc")
-	stdoutPtr := flag.Bool("s", false, "Used stdout instead of console")
+	stdoutPtr := flag.Bool("s", false, "Use stdout instead of console")
+	noPidPtr := flag.Bool("p", false, "Do not check for running client")
 	flag.Parse()
 	versionFlag := *versionPtr
 	forceOnboardingCert := *forcePtr
 	identityDirname := *dirPtr
 	useStdout := *stdoutPtr
+	noPidFlag := *noPidPtr
 	args := flag.Args()
 	if versionFlag {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
@@ -86,8 +88,10 @@ func main() {
 	}
 	multi := io.MultiWriter(logf, consolef)
 	log.SetOutput(multi)
-	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
-		log.Fatal(err)
+	if !noPidFlag {
+		if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
+			log.Fatal(err)
+		}
 	}
 	operations := map[string]bool{
 		"selfRegister": false,
