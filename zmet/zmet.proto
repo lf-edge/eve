@@ -344,7 +344,7 @@ message diskMetric {
 
 message appDiskMetric {
   string disk = 1;		// E.g., "mmcblk0p2"
-  uint64 total = 2;		// in MBytes
+  uint64 provisioned = 2;	// in MBytes
   uint64 used = 3;		// in MBytes
   uint64 free = 4;		// in MBytes
   bool dirty = 5;               // Dirty flag
