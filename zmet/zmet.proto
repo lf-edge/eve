@@ -346,7 +346,7 @@ message appDiskMetric {
   string disk = 1;		// E.g., "mmcblk0p2"
   uint64 provisioned = 2;	// in MBytes
   uint64 used = 3;		// in MBytes
-  uint64 free = 4;		// in MBytes
+  string diskType = 4;          // Type of disk, e.g., QCOW2, RAW etc.
   bool dirty = 5;               // Dirty flag
 }
 
