@@ -145,7 +145,7 @@ lisp database-mapping {
 `
 
 const (
-	baseFilename    = tmpDirname + "/lisp.config.base"
+	baseFilename = tmpDirname + "/lisp.config.base"
 
 	lispDirname  = "/opt/zededa/lisp"
 	destFilename = lispDirname + "/lisp.config"
@@ -169,8 +169,8 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	lispServers []types.LispServerInfo, separateDataPlane bool) {
 	if debug {
 		log.Printf("createLispConfiglet: %s %v %d %s %v %s %s %s %s %v\n",
-		lispRunDirname, isMgmt, IID, EID, lispSignature, globalStatus,
-		tag, olIfname, additionalInfo, lispServers)
+			lispRunDirname, isMgmt, IID, EID, lispSignature, globalStatus,
+			tag, olIfname, additionalInfo, lispServers)
 	}
 	cfgPathnameIID := lispRunDirname + "/" +
 		strconv.FormatUint(uint64(IID), 10)
