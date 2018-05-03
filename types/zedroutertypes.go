@@ -9,6 +9,7 @@ import (
 	"github.com/eriknordmark/ipinfo"
 	"log"
 	"net"
+	"time"
 )
 
 // Indexed by UUID
@@ -86,8 +87,9 @@ type NetworkUplink struct {
 }
 
 type AddrInfo struct {
-	Addr net.IP
-	Geo  ipinfo.IPInfo
+	Addr             net.IP
+	Geo              ipinfo.IPInfo
+	LastGeoTimestamp time.Time
 }
 
 type DeviceNetworkStatus struct {

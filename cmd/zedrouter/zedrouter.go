@@ -143,6 +143,18 @@ func main() {
 		SeparateDataPlane: false,
 	}
 
+	// XXX should we make geoRedoTime configurable?
+	// We refresh the gelocation information when the underlay
+	// IP address(es) change, or once an hour.
+	geoRedoTime := time.Hour
+
+	// Timer for retries after failure etc. Should be less than geoRedoTime
+	geoInterval := time.Duration(10 * time.Minute)
+	geoMax := float64(geoInterval)
+	geoMin := geoMax * 0.3
+	geoTimer := flextimer.NewRangeTicker(time.Duration(geoMin),
+		time.Duration(geoMax))
+
 	// Wait for zedmanager having populated the intial files to
 	// reduce the number of LISP-RESTARTs
 	restartFile := "/var/tmp/zedrouter/config/restart"
@@ -201,10 +213,10 @@ func main() {
 				&types.AppNetworkStatus{},
 				handleCreate, handleModify, handleDelete,
 				&restartFn)
-				// DNC handling also re-writes the lisp.config file.
-				// We should call the updateLisp with correct Dataplane
-				// flag inorder not to confuse lispers.net
-				DNCctx.SeparateDataPlane = ZedrouterCtx.SeparateDataPlane
+			// DNC handling also re-writes the lisp.config file.
+			// We should call the updateLisp with correct Dataplane
+			// flag inorder not to confuse lispers.net
+			DNCctx.SeparateDataPlane = ZedrouterCtx.SeparateDataPlane
 		case change := <-deviceConfigChanges:
 			watch.HandleStatusEvent(change, &DNCctx,
 				DNCDirname,
@@ -225,6 +237,15 @@ func main() {
 			err := pub.Publish("global", getNetworkMetrics())
 			if err != nil {
 				log.Println(err)
+			}
+		case <-geoTimer.C:
+			if debug {
+				log.Println("geoTimer at", time.Now())
+			}
+			change := devicenetwork.UpdateDeviceNetworkGeo(
+				geoRedoTime, &deviceNetworkStatus)
+			if change {
+				updateDeviceNetworkStatus()
 			}
 		}
 	}
@@ -1313,8 +1334,6 @@ func handleDNCDelete(ctxArg interface{}, configFilename string) {
 	log.Printf("handleDNCDelete done for %s\n", configFilename)
 }
 
-// XXX should we trigger a geoloc request? Wait for it to be done?
-// XXX with a short 10 second timeout?
 func doDNSUpdate(ctx *DNCContext) {
 	// Did we loose all usable addresses or gain the first usable
 	// address?
