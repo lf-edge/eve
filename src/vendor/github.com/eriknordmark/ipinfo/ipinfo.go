@@ -4,6 +4,7 @@ package ipinfo
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -27,11 +28,12 @@ type IPInfo struct {
 type Options struct {
 	Timeout  time.Duration
 	SourceIp net.IP
+	Token    string
 }
 
 // MyIP provides information about the public IP address of the client.
 func MyIP() (*IPInfo, error) {
-	return getInfo(fmt.Sprintf("%s/json", ipinfoURI), nil)
+	return getInfo(fmt.Sprintf("%s/json%s", ipinfoURI), nil)
 }
 
 // ForeignIP provides information about the given IP address (IPv4 or IPv6)
@@ -49,6 +51,9 @@ func getInfo(url string, opt *Options) (*IPInfo, error) {
 	var localAddr net.IP
 	if opt != nil {
 		localAddr = opt.SourceIp
+		if opt.Token != "" {
+			url += fmt.Sprintf("/?token=%s", opt.Token)
+		}
 	}
 	localTCPAddr := net.TCPAddr{IP: localAddr}
 	d := net.Dialer{LocalAddr: &localTCPAddr}
@@ -64,12 +69,18 @@ func getInfo(url string, opt *Options) (*IPInfo, error) {
 		return nil, err
 	}
 	defer response.Body.Close()
-
-	var ipinfo IPInfo
-	err = json.NewDecoder(response.Body).Decode(&ipinfo)
-	if err != nil {
-		return nil, err
+	switch response.StatusCode {
+	case http.StatusOK:
+		var ipinfo IPInfo
+		err = json.NewDecoder(response.Body).Decode(&ipinfo)
+		if err != nil {
+			return nil, err
+		}
+		return &ipinfo, nil
+	default:
+		errStr := fmt.Sprintf("%s got statuscode %d %s body <%v>",
+			url, response.StatusCode,
+			http.StatusText(response.StatusCode), response.Body)
+		return nil, errors.New(errStr)
 	}
-
-	return &ipinfo, nil
 }

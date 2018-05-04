@@ -47,7 +47,7 @@
   branch = "master"
   name = "github.com/eriknordmark/ipinfo"
   packages = ["."]
-  revision = "e0887f9e41f089cd7e1d0ce703c154a415a0071f"
+  revision = "beff5cd6527619bdfec41ba304a02088b25e7009"
 
 [[projects]]
   name = "github.com/fsnotify/fsnotify"
