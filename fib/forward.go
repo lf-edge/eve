@@ -70,7 +70,9 @@ func CraftAndSendLispPacket(packet gopacket.Packet,
 // at the end of packet(for Padding and ICV).
 func encryptPayload(payload []byte,
 	payloadLen uint32, encKey []byte,
-	block cipher.Block, ivArray []byte) (bool, uint32) {
+	block cipher.Block, ivArray []byte) (bool, int) {
+
+	var extraLen int = 0
 
 	if len(encKey) == 0 {
 		log.Printf("encryptPayload: Invalid encrypt key lenght: %s\n", len(encKey))
@@ -110,13 +112,21 @@ func encryptPayload(payload []byte,
 		return false, 0
 	}
 	plainText := packet[dptypes.GCMIVLENGTH:]
+	log.Printf("XXXXX Plain text length is %d\n", len(plainText))
 	//aesGcm.Seal(packet[dptypes.GCMIVLENGTH:], packet[:dptypes.GCMIVLENGTH],
 	//	packet[dptypes.GCMIVLENGTH:], nil)
-	aesGcm.Seal(plainText[:0], packet[:dptypes.GCMIVLENGTH],
+	cipherText := aesGcm.Seal(plainText[:0], packet[:dptypes.GCMIVLENGTH],
 		plainText, nil)
+	//cipherText := aesGcm.Seal(nil, packet[:dptypes.GCMIVLENGTH],
+	//	plainText, nil)
 	log.Printf("XXXXX Over head length is %d\n", aesGcm.Overhead())
+	log.Printf("XXXXX Cipher text length is %d\n", len(cipherText))
+	log.Printf("XXXXX Cipher text is %x\n", cipherText)
+	//copy(packet[dptypes.GCMIVLENGTH:], cipherText)
+	extraLen = len(cipherText) - len(plainText)
+	log.Printf("XXXXX Extra length is %d\n", extraLen)
 	//return true, (aes.BlockSize - remainder)
-	return true, 0
+	return true, extraLen
 }
 
 func GenerateIVByteArray(ivHigh uint32, ivLow uint64, ivArray []byte) []byte {
@@ -170,6 +180,9 @@ func ComputeICV(buf []byte, icvKey []byte) []byte {
 func computeAndWriteICV(packet []byte, icvKey []byte) {
 	pktLen := len(packet)
 	icv := ComputeICV(packet[:pktLen-dptypes.ICVLEN], icvKey)
+	log.Printf("XXXXX ICV pktLen is %d\n", pktLen)
+	log.Printf("XXXXX ICV length is %d\n", len(icv))
+	log.Printf("XXXXX ICV is %x\n", icv)
 
 	// Write ICV to packet
 	startIdx := pktLen - dptypes.ICVLEN
@@ -191,7 +204,8 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 	var fd4 int = itrLocalData.Fd4
 	var useCrypto bool = false
 	var keyId byte = 0
-	var padLen uint32 = 0
+	//var padLen uint32 = 0
+	var extraLen int = 0
 	var icvKey []byte
 
 	srcAddr := GetIPv4UplinkAddr()
@@ -233,10 +247,11 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 		payloadLen := offsetEnd - offsetStart
 
 		ok := false
-		ok, padLen = encryptPayload(
-			pktBuf[offsetStart:offsetEnd],
+		//ok, padLen = encryptPayload(
+		ok, extraLen = encryptPayload(
+			//pktBuf[offsetStart:offsetEnd],
+			pktBuf[offsetStart:],
 			payloadLen, encKey, key.EncBlock,
-			//GetIVArray(itrLocalData, pktBuf[offsetStart:offsetStart+dptypes.IVLEN]))
 			GetIVArray(itrLocalData,
 			pktBuf[offsetStart:offsetStart+dptypes.GCMIVLENGTH]))
 		if ok == false {
@@ -278,7 +293,8 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 
 		// UDP length changes with crypto
 		// original length + any padding + 20 bytes ICV
-		udp.Length += dptypes.GCMIVLENGTH + uint16(padLen) + dptypes.ICVLEN
+		//udp.Length += dptypes.GCMIVLENGTH + uint16(padLen) + dptypes.ICVLEN
+		udp.Length += dptypes.GCMIVLENGTH + uint16(extraLen) + dptypes.ICVLEN
 	}
 
 	buf := gopacket.NewSerializeBuffer()
@@ -299,14 +315,16 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 
 	// output slice starts after "offset" and the length of output slice
 	// will be len(outerHdr) + capture length - 14 (ethernet header)
-	offsetEnd := uint32(offset) + uint32(outerHdrLen) + capLen - dptypes.ETHHEADERLEN
+	offsetEnd := uint32(offset) + uint32(outerHdrLen) + (capLen - dptypes.ETHHEADERLEN)
 	if useCrypto == true {
 		//offset = offset - aes.BlockSize
 		offset = offset - dptypes.GCMIVLENGTH
 
 		// add IV, padding and ICV lengths
 		//offsetEnd = offsetEnd + aes.BlockSize + padLen + dptypes.ICVLEN
-		offsetEnd = offsetEnd + dptypes.GCMIVLENGTH + padLen + dptypes.ICVLEN
+		//offsetEnd = offsetEnd + dptypes.GCMIVLENGTH + padLen + dptypes.ICVLEN
+		//offsetEnd = offsetEnd + dptypes.GCMIVLENGTH + uint32(extraLen) + dptypes.ICVLEN
+		offsetEnd = offsetEnd + uint32(extraLen) + dptypes.ICVLEN
 
 		// We do not include outer UDP header for ICV computation
 		icvStartOffset := offset + dptypes.IP4HEADERLEN + dptypes.UDPHEADERLEN
@@ -348,7 +366,8 @@ func craftAndSendIPv6LispPacket(packet gopacket.Packet,
 	var fd6 int = itrLocalData.Fd6
 	var useCrypto bool = false
 	var keyId byte = 0
-	var padLen uint32 = 0
+	//var padLen uint32 = 0
+	var extraLen int = 0
 	var icvKey []byte
 
 	srcAddr := GetIPv6UplinkAddr()
@@ -387,9 +406,11 @@ func craftAndSendIPv6LispPacket(packet gopacket.Packet,
 		payloadLen := offsetEnd - offsetStart
 
 		ok := false
-		ok, padLen = encryptPayload(pktBuf[offsetStart:offsetEnd], payloadLen,
+		ok, extraLen = encryptPayload(
+			//pktBuf[offsetStart:offsetEnd],
+			pktBuf[offsetStart:],
+			payloadLen,
 			encKey, key.EncBlock,
-			//GetIVArray(itrLocalData, pktBuf[offsetStart:offsetStart+dptypes.IVLEN]))
 			GetIVArray(itrLocalData, pktBuf[offsetStart:offsetStart+dptypes.GCMIVLENGTH]))
 		if ok == false {
 			keyId = 0
@@ -432,7 +453,7 @@ func craftAndSendIPv6LispPacket(packet gopacket.Packet,
 		// UDP length changes with crypto
 		// original length + any padding + 20 bytes ICV
 		//udp.Length += aes.BlockSize + uint16(padLen) + dptypes.ICVLEN
-		udp.Length += dptypes.GCMIVLENGTH + uint16(padLen) + dptypes.ICVLEN
+		udp.Length += dptypes.GCMIVLENGTH + uint16(extraLen) + dptypes.ICVLEN
 	}
 
 	buf := gopacket.NewSerializeBuffer()
@@ -460,7 +481,7 @@ func craftAndSendIPv6LispPacket(packet gopacket.Packet,
 
 		// add IV length
 		//offsetEnd = offsetEnd + aes.BlockSize + padLen + dptypes.ICVLEN
-		offsetEnd = offsetEnd + dptypes.GCMIVLENGTH + padLen + dptypes.ICVLEN
+		offsetEnd = offsetEnd + dptypes.GCMIVLENGTH + uint32(extraLen) + dptypes.ICVLEN
 
 		// We do not include outer IP/UDP headers for ICV computation
 		icvStartOffset := offset + dptypes.IP6HEADERLEN + dptypes.UDPHEADERLEN

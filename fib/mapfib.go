@@ -145,7 +145,7 @@ func FlushMapCache() {
 func LookupAndAdd(iid uint32,
 	eid net.IP, timeStamp time.Time) (*dptypes.MapCacheEntry, bool) {
 	if debug {
-		log.Printf("LookupAndAdd: Adding EID %d with IID %v\n", eid, iid)
+		log.Printf("LookupAndAdd: Adding EID %s with IID %v\n", eid, iid)
 	}
 	key := makeMapCacheKey(iid, eid)
 
@@ -260,7 +260,7 @@ func UpdateMapCacheEntry(iid uint32, eid net.IP, rlocs []dptypes.Rloc) {
 					pkt.Hash32, entry, entry.InstanceId, itrLocalData)
 				if debug {
 					log.Printf("UpdateMapCacheEntry: Sending out buffered packet for map-cache "+
-						"entry with EID %d, IID %v\n", eid, iid)
+						"entry with EID %s, IID %v\n", eid, iid)
 				}
 
 				// decrement buffered packet count and increment pkt, byte counts

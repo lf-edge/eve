@@ -308,6 +308,7 @@ func verifyAndInject(fd6 int,
 		// Decrypt the packet before sending out.
 		// Read the IV from packet buffer.
 		ivArray := buf[dptypes.LISPHEADERLEN:packetOffset]
+		log.Printf("XXXXX IV Array is %x\n", ivArray)
 
 		packet := buf[packetOffset : n-dptypes.ICVLEN]
 
@@ -338,7 +339,11 @@ func verifyAndInject(fd6 int,
 			return false
 		}
 		//mode.CryptBlocks(packet, packet)
-		aesGcm.Open(packet, ivArray, packet, nil)
+		_, err = aesGcm.Open(packet[:0], ivArray, packet, nil)
+		if err != nil {
+			log.Printf("verifyAndInject: Packet decryption failed: %s\n", err)
+			return false
+		}
 	}
 
 	var destAddr [16]byte
