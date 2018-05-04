@@ -150,7 +150,7 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		deviceNetworkStatus, err = devicenetwork.MakeDeviceNetworkStatus(deviceNetworkConfig)
+		deviceNetworkStatus, err = devicenetwork.MakeDeviceNetworkStatus(deviceNetworkConfig, deviceNetworkStatus)
 		if err != nil {
 			log.Printf("%s from MakeDeviceNetworkStatus\n", err)
 			// Proceed even if some uplinks are missing

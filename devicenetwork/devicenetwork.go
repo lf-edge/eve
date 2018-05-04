@@ -12,6 +12,7 @@ import (
 	"github.com/zededa/go-provision/types"
 	"io/ioutil"
 	"log"
+	"net"
 	"time"
 )
 
@@ -35,7 +36,7 @@ func GetDeviceNetworkConfig(configFilename string) (types.DeviceNetworkConfig, e
 }
 
 // Calculate local IP addresses to make a types.DeviceNetworkStatus
-func MakeDeviceNetworkStatus(globalConfig types.DeviceNetworkConfig) (types.DeviceNetworkStatus, error) {
+func MakeDeviceNetworkStatus(globalConfig types.DeviceNetworkConfig, oldStatus types.DeviceNetworkStatus) (types.DeviceNetworkStatus, error) {
 	var globalStatus types.DeviceNetworkStatus
 	var err error = nil
 
@@ -77,9 +78,39 @@ func MakeDeviceNetworkStatus(globalConfig types.DeviceNetworkConfig) (types.Devi
 			globalStatus.UplinkStatus[ix].AddrInfoList[i+len(addrs4)].Addr = addr.IP
 		}
 	}
+	// Preserve geo info for existing interface and IP address
+	for ui, _ := range globalStatus.UplinkStatus {
+		u := &globalStatus.UplinkStatus[ui]
+		for i, _ := range u.AddrInfoList {
+			// Need pointer since we are going to modify
+			ai := &u.AddrInfoList[i]
+			oai := lookupUplinkStatusAddr(oldStatus,
+				u.IfName, ai.Addr)
+			if oai == nil {
+				continue
+			}
+			ai.Geo = oai.Geo
+			ai.LastGeoTimestamp = oai.LastGeoTimestamp
+		}
+	}
 	// Immediate check
 	UpdateDeviceNetworkGeo(time.Second, &globalStatus)
 	return globalStatus, err
+}
+
+func lookupUplinkStatusAddr(status types.DeviceNetworkStatus,
+	ifname string, addr net.IP) *types.AddrInfo {
+	for _, u := range status.UplinkStatus {
+		if u.IfName != ifname {
+			continue
+		}
+		for _, ai := range u.AddrInfoList {
+			if ai.Addr.Equal(addr) {
+				return &ai
+			}
+		}
+	}
+	return nil
 }
 
 // Returns true if anything might have changed

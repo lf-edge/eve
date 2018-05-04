@@ -168,7 +168,7 @@ func main() {
 		if debug {
 			log.Printf("addrChangeFn(%s) called\n", ifname)
 		}
-		new, _ := devicenetwork.MakeDeviceNetworkStatus(deviceNetworkConfig)
+		new, _ := devicenetwork.MakeDeviceNetworkStatus(deviceNetworkConfig, deviceNetworkStatus)
 		if !reflect.DeepEqual(deviceNetworkStatus, new) {
 			if debug {
 				log.Printf("Address change for %s from %v to %v\n",
@@ -301,7 +301,7 @@ func handleInit(configFilename string, statusFilename string,
 		log.Printf("%s for %s\n", err, configFilename)
 		log.Fatal(err)
 	}
-	deviceNetworkStatus, err = devicenetwork.MakeDeviceNetworkStatus(deviceNetworkConfig)
+	deviceNetworkStatus, err = devicenetwork.MakeDeviceNetworkStatus(deviceNetworkConfig, deviceNetworkStatus)
 	if err != nil {
 		log.Printf("%s from MakeDeviceNetworkStatus\n", err)
 		// Proceed even if some uplinks are missing
@@ -1306,7 +1306,8 @@ func handleDNCModify(ctxArg interface{}, configFilename string,
 	log.Printf("handleDNCModify for %s\n", configFilename)
 
 	deviceNetworkConfig = *config
-	new, _ := devicenetwork.MakeDeviceNetworkStatus(*config)
+	new, _ := devicenetwork.MakeDeviceNetworkStatus(*config,
+		deviceNetworkStatus)
 	if !reflect.DeepEqual(deviceNetworkStatus, new) {
 		log.Printf("DeviceNetworkStatus change from %v to %v\n",
 			deviceNetworkStatus, new)
