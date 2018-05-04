@@ -95,8 +95,12 @@ func UpdateDeviceNetworkGeo(timelimit time.Duration, globalStatus *types.DeviceN
 				continue
 			}
 			// geoloc with short timeout
-			opt := ipinfo.Options{Timeout: 5 * time.Second,
-				SourceIp: ai.Addr}
+			opt := ipinfo.Options{
+				Timeout:  5 * time.Second,
+				// XXX for test purpose use token
+				Token:    "e1277a86467b6b",
+				SourceIp: ai.Addr,
+			}
 			info, err := ipinfo.MyIPWithOptions(opt)
 			if err != nil {
 				// Ignore error
