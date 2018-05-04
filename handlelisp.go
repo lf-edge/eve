@@ -112,8 +112,8 @@ func parseRloc(rlocStr *Rloc) (dptypes.Rloc, bool) {
 			EncBlock: encBlock,
 		}
 		if debug {
-			log.Printf("Adding enc key %s\n", keys[keyId-1].EncKey)
-			log.Printf("Adding icv key %s\n", keys[keyId-1].IcvKey)
+			log.Printf("Adding enc key 0x%x\n", keys[keyId-1].EncKey)
+			log.Printf("Adding icv key 0x%x\n", keys[keyId-1].IcvKey)
 		}
 	}
 
@@ -418,9 +418,9 @@ func handleDecapKeys(msg []byte) {
 			DecBlock: decBlock,
 		}
 		if debug {
-			log.Printf("handleDecapKeys: Adding Decap key[%d] %s for Rloc %s\n",
+			log.Printf("handleDecapKeys: Adding Decap key[%d] 0x%x for Rloc %s\n",
 				keyId-1, keys[keyId-1].DecKey, decapMsg.Rloc)
-			log.Printf("handleDecapKeys: Adding Decap icv[%d] %s for Rloc %s\n",
+			log.Printf("handleDecapKeys: Adding Decap icv[%d] 0x%x for Rloc %s\n",
 				keyId-1, keys[keyId-1].IcvKey, decapMsg.Rloc)
 		}
 	}
