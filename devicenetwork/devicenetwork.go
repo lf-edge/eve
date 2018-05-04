@@ -12,6 +12,7 @@ import (
 	"github.com/zededa/go-provision/types"
 	"io/ioutil"
 	"log"
+	"net"
 	"time"
 )
 
@@ -35,7 +36,7 @@ func GetDeviceNetworkConfig(configFilename string) (types.DeviceNetworkConfig, e
 }
 
 // Calculate local IP addresses to make a types.DeviceNetworkStatus
-func MakeDeviceNetworkStatus(globalConfig types.DeviceNetworkConfig) (types.DeviceNetworkStatus, error) {
+func MakeDeviceNetworkStatus(globalConfig types.DeviceNetworkConfig, oldStatus types.DeviceNetworkStatus) (types.DeviceNetworkStatus, error) {
 	var globalStatus types.DeviceNetworkStatus
 	var err error = nil
 
@@ -69,35 +70,85 @@ func MakeDeviceNetworkStatus(globalConfig types.DeviceNetworkConfig) (types.Devi
 			log.Printf("UplinkAddrs(%s) found IPv4 %v\n",
 				u, addr.IP)
 			globalStatus.UplinkStatus[ix].AddrInfoList[i].Addr = addr.IP
-			// geoloc with short timeout
-			opt := ipinfo.Options{Timeout: 5 * time.Second,
-				SourceIp: addr.IP}
-			info, err := ipinfo.MyIPWithOptions(opt)
-			if err != nil {
-				// Ignore error
-				log.Printf("MakeDeviceNetworkStatus MyIPInfo failed %s\n", err)
-			} else {
-				log.Printf("MakeDeviceNetworkStatus MyIPInfo got %v\n", *info)
-				globalStatus.UplinkStatus[ix].AddrInfoList[i].Geo = *info
-			}
 		}
 		for i, addr := range addrs6 {
 			// We include link-locals since they can be used for LISP behind nats
 			log.Printf("UplinkAddrs(%s) found IPv6 %v\n",
 				u, addr.IP)
 			globalStatus.UplinkStatus[ix].AddrInfoList[i+len(addrs4)].Addr = addr.IP
-			// geoloc with short timeout
-			opt := ipinfo.Options{Timeout: 5 * time.Second,
-				SourceIp: addr.IP}
-			info, err := ipinfo.MyIPWithOptions(opt)
-			if err != nil {
-				// Ignore error
-				log.Printf("MakeDeviceNetworkStatus MyIPInfo failed %s\n", err)
-			} else {
-				log.Printf("MakeDeviceNetworkStatus MyIPInfo got %v\n", *info)
-				globalStatus.UplinkStatus[ix].AddrInfoList[i+len(addrs4)].Geo = *info
+		}
+	}
+	// Preserve geo info for existing interface and IP address
+	for ui, _ := range globalStatus.UplinkStatus {
+		u := &globalStatus.UplinkStatus[ui]
+		for i, _ := range u.AddrInfoList {
+			// Need pointer since we are going to modify
+			ai := &u.AddrInfoList[i]
+			oai := lookupUplinkStatusAddr(oldStatus,
+				u.IfName, ai.Addr)
+			if oai == nil {
+				continue
+			}
+			ai.Geo = oai.Geo
+			ai.LastGeoTimestamp = oai.LastGeoTimestamp
+		}
+	}
+	// Immediate check
+	UpdateDeviceNetworkGeo(time.Second, &globalStatus)
+	return globalStatus, err
+}
+
+func lookupUplinkStatusAddr(status types.DeviceNetworkStatus,
+	ifname string, addr net.IP) *types.AddrInfo {
+	for _, u := range status.UplinkStatus {
+		if u.IfName != ifname {
+			continue
+		}
+		for _, ai := range u.AddrInfoList {
+			if ai.Addr.Equal(addr) {
+				return &ai
 			}
 		}
 	}
-	return globalStatus, err
+	return nil
+}
+
+// Returns true if anything might have changed
+func UpdateDeviceNetworkGeo(timelimit time.Duration, globalStatus *types.DeviceNetworkStatus) bool {
+	change := false
+	for ui, _ := range globalStatus.UplinkStatus {
+		u := &globalStatus.UplinkStatus[ui]
+		for i, _ := range u.AddrInfoList {
+			// Need pointer since we are going to modify
+			ai := &u.AddrInfoList[i]
+			timePassed := time.Since(ai.LastGeoTimestamp)
+			if timePassed < timelimit {
+				continue
+			}
+			// geoloc with short timeout
+			opt := ipinfo.Options{
+				Timeout: 5 * time.Second,
+				// XXX for test purpose use token
+				Token:    "e1277a86467b6b",
+				SourceIp: ai.Addr,
+			}
+			info, err := ipinfo.MyIPWithOptions(opt)
+			if err != nil {
+				// Ignore error
+				log.Printf("UpdateDeviceNetworkGeo MyIPInfo failed %s\n", err)
+				continue
+			}
+			// Note that if the global IP is unchanged we don't
+			// update anything.
+			if info.IP == ai.Geo.IP {
+				continue
+			}
+			log.Printf("UpdateDeviceNetworkGeo MyIPInfo changed from %v to %v\n",
+				ai.Geo, *info)
+			ai.Geo = *info
+			ai.LastGeoTimestamp = time.Now()
+			change = true
+		}
+	}
+	return change
 }
