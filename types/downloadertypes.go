@@ -45,6 +45,7 @@ type CertConfig struct {
 // That is the filename in which we store the corresponding json files.
 type DownloaderStatus struct {
 	Safename       string
+	ObjType        string
 	PendingAdd     bool
 	PendingModify  bool
 	PendingDelete  bool

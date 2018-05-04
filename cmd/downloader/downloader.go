@@ -167,8 +167,8 @@ func main() {
 				&types.DownloaderConfig{},
 				&types.DownloaderStatus{},
 				handleCertObjCreate,
-				handleCertObjModify,
-				handleCertObjDelete, nil)
+				handleModify,
+				handleDelete, nil)
 
 		case change := <-appImgChanges:
 			watch.HandleConfigStatusEvent(change, &ctx,
@@ -177,8 +177,8 @@ func main() {
 				&types.DownloaderConfig{},
 				&types.DownloaderStatus{},
 				handleAppImgObjCreate,
-				handleAppImgObjModify,
-				handleAppImgObjDelete, nil)
+				handleModify,
+				handleDelete, nil)
 
 		case change := <-baseOsChanges:
 			watch.HandleConfigStatusEvent(change, &ctx,
@@ -187,8 +187,8 @@ func main() {
 				&types.DownloaderConfig{},
 				&types.DownloaderStatus{},
 				handleBaseOsObjCreate,
-				handleBaseOsObjModify,
-				handleBaseOsObjDelete, nil)
+				handleModify,
+				handleDelete, nil)
 		case <-publishTimer.C:
 			err := pub.Publish("global", zedcloud.GetCloudMetrics())
 			if err != nil {
@@ -204,7 +204,6 @@ func handleAppImgObjCreate(ctxArg interface{}, statusFilename string,
 	config := configArg.(*types.DownloaderConfig)
 	ctx := ctxArg.(*downloaderContext)
 
-	log.Printf("handleObjectCreate: %s\n", config.DownloadURL)
 	handleCreate(ctx, appImgObj, *config, statusFilename)
 }
 
@@ -213,7 +212,6 @@ func handleBaseOsObjCreate(ctxArg interface{}, statusFilename string,
 	config := configArg.(*types.DownloaderConfig)
 	ctx := ctxArg.(*downloaderContext)
 
-	log.Printf("handleObjectCreate: %s\n", config.DownloadURL)
 	handleCreate(ctx, baseOsObj, *config, statusFilename)
 }
 
@@ -222,81 +220,24 @@ func handleCertObjCreate(ctxArg interface{}, statusFilename string,
 	config := configArg.(*types.DownloaderConfig)
 	ctx := ctxArg.(*downloaderContext)
 
-	log.Printf("handleObjectCreate: %s\n", config.DownloadURL)
 	handleCreate(ctx, certObj, *config, statusFilename)
-}
-
-func handleAppImgObjModify(ctxArg interface{}, statusFilename string,
-	configArg interface{}, statusArg interface{}) {
-	config := configArg.(*types.DownloaderConfig)
-	status := statusArg.(*types.DownloaderStatus)
-	ctx := ctxArg.(*downloaderContext)
-
-	log.Printf("handleObjectModify(%v) for %s\n",
-		config.Safename, config.DownloadURL)
-	handleModify(ctx, appImgObj, *config, *status, statusFilename)
-}
-
-func handleBaseOsObjModify(ctxArg interface{}, statusFilename string,
-	configArg interface{}, statusArg interface{}) {
-	config := configArg.(*types.DownloaderConfig)
-	status := statusArg.(*types.DownloaderStatus)
-	ctx := ctxArg.(*downloaderContext)
-
-	log.Printf("handleObjectModify(%v) for %s\n",
-		config.Safename, config.DownloadURL)
-	handleModify(ctx, baseOsObj, *config, *status, statusFilename)
-}
-
-func handleCertObjModify(ctxArg interface{}, statusFilename string,
-	configArg interface{}, statusArg interface{}) {
-	config := configArg.(*types.DownloaderConfig)
-	status := statusArg.(*types.DownloaderStatus)
-	ctx := ctxArg.(*downloaderContext)
-
-	log.Printf("handleObjectModify(%v) for %s\n",
-		config.Safename, config.DownloadURL)
-	handleModify(ctx, certObj, *config, *status, statusFilename)
-}
-
-func handleAppImgObjDelete(ctxArg interface{}, statusFilename string,
-	statusArg interface{}) {
-	status := statusArg.(*types.DownloaderStatus)
-	ctx := ctxArg.(*downloaderContext)
-
-	log.Printf("handleObjectDelete(%v) for %s\n",
-		status.Safename, status.DownloadURL)
-	handleDelete(ctx, appImgObj, *status, statusFilename)
-}
-
-func handleBaseOsObjDelete(ctxArg interface{}, statusFilename string,
-	statusArg interface{}) {
-	status := statusArg.(*types.DownloaderStatus)
-	ctx := ctxArg.(*downloaderContext)
-
-	log.Printf("handleObjectDelete(%v) for %s\n",
-		status.Safename, status.DownloadURL)
-	handleDelete(ctx, baseOsObj, *status, statusFilename)
-}
-
-func handleCertObjDelete(ctxArg interface{}, statusFilename string,
-	statusArg interface{}) {
-	status := statusArg.(*types.DownloaderStatus)
-	ctx := ctxArg.(*downloaderContext)
-
-	log.Printf("handleObjectDelete(%v) for %s\n",
-		status.Safename, status.DownloadURL)
-	handleDelete(ctx, certObj, *status, statusFilename)
 }
 
 func handleCreate(ctx *downloaderContext, objType string,
 	config types.DownloaderConfig,
 	statusFilename string) {
 
+	log.Printf("handleCreate(%v) objType %s for %s\n",
+		config.Safename, objType, config.DownloadURL)
+
+	if objType == "" {
+		log.Fatalf("handleCreate: No ObjType for %s\n",
+			config.Safename)
+	}
 	// Start by marking with PendingAdd
-	// XXX set a ObjType in DownloaderStatus
 	status := types.DownloaderStatus{
 		Safename:       config.Safename,
+		ObjType:        objType,
 		RefCount:       config.RefCount,
 		DownloadURL:    config.DownloadURL,
 		UseFreeUplinks: config.UseFreeUplinks,
@@ -345,16 +286,25 @@ func handleCreate(ctx *downloaderContext, objType string,
 		return
 	}
 
-	handleSyncOp(ctx, objType, statusFilename, config, &status)
+	handleSyncOp(ctx, statusFilename, config, &status)
 }
 
 // Allow to cancel by setting RefCount = 0. Same as delete? RefCount 0->1
 // means download. Ignore other changes?
-func handleModify(ctx *downloaderContext, objType string,
-	config types.DownloaderConfig, status types.DownloaderStatus,
-	statusFilename string) {
+func handleModify(ctxArg interface{}, statusFilename string,
+	configArg interface{}, statusArg interface{}) {
+	config := configArg.(*types.DownloaderConfig)
+	status := statusArg.(*types.DownloaderStatus)
+	ctx := ctxArg.(*downloaderContext)
 
-	locDirname := objectDownloadDirname + "/" + objType
+	log.Printf("handleModify(%v) objType %s for %s\n",
+		status.Safename, status.ObjType, status.DownloadURL)
+
+	if status.ObjType == "" {
+		log.Fatalf("handleModify: No ObjType for %s\n",
+			status.Safename)
+	}
+	locDirname := objectDownloadDirname + "/" + status.ObjType
 
 	if config.DownloadURL != status.DownloadURL {
 		log.Printf("URL changed - not allowed %s -> %s\n",
@@ -373,8 +323,8 @@ func handleModify(ctx *downloaderContext, objType string,
 		}
 		log.Printf("handleModify %s for %s\n",
 			reason, config.DownloadURL)
-		doDelete(statusFilename, locDirname, &status)
-		handleCreate(ctx, objType, config, statusFilename)
+		doDelete(statusFilename, locDirname, status)
+		handleCreate(ctx, status.ObjType, *config, statusFilename)
 		log.Printf("handleModify done for %s\n", config.DownloadURL)
 		return
 	}
@@ -385,18 +335,18 @@ func handleModify(ctx *downloaderContext, objType string,
 	if status.RefCount == 0 && config.RefCount != 0 {
 		status.PendingModify = true
 		log.Printf("handleModify installing %s\n", config.DownloadURL)
-		handleCreate(ctx, objType, config, statusFilename)
+		handleCreate(ctx, status.ObjType, *config, statusFilename)
 		status.RefCount = config.RefCount
 		status.PendingModify = false
-		writeDownloaderStatus(&status, statusFilename)
+		writeDownloaderStatus(status, statusFilename)
 	} else if status.RefCount != 0 && config.RefCount == 0 {
 		log.Printf("handleModify deleting %s\n", config.DownloadURL)
-		doDelete(statusFilename, locDirname, &status)
+		doDelete(statusFilename, locDirname, status)
 	} else if status.RefCount != config.RefCount {
 		log.Printf("handleModify RefCount change %s from %d to %d\n",
 			config.DownloadURL, status.RefCount, config.RefCount)
 		status.RefCount = config.RefCount
-		writeDownloaderStatus(&status, statusFilename)
+		writeDownloaderStatus(status, statusFilename)
 	}
 	log.Printf("handleModify done for %s\n", config.DownloadURL)
 }
@@ -437,13 +387,21 @@ func deletefile(dirname string, status *types.DownloaderStatus) {
 	}
 }
 
-func handleDelete(ctx *downloaderContext, objType string,
-	status types.DownloaderStatus, statusFilename string) {
+func handleDelete(ctxArg interface{}, statusFilename string,
+	statusArg interface{}) {
+	status := statusArg.(*types.DownloaderStatus)
 
-	locDirname := objectDownloadDirname + "/" + objType
+	log.Printf("handleDelete(%v) objType %s for %s\n",
+		status.Safename, status.ObjType, status.DownloadURL)
+
+	if status.ObjType == "" {
+		log.Fatalf("handleDelete: No ObjType for %s\n",
+			status.Safename)
+	}
+	locDirname := objectDownloadDirname + "/" + status.ObjType
 
 	status.PendingDelete = true
-	writeDownloaderStatus(&status, statusFilename)
+	writeDownloaderStatus(status, statusFilename)
 
 	globalStatus.ReservedSpace -= status.ReservedSpace
 	status.ReservedSpace = 0
@@ -452,12 +410,12 @@ func handleDelete(ctx *downloaderContext, objType string,
 
 	updateRemainingSpace()
 
-	writeDownloaderStatus(&status, statusFilename)
+	writeDownloaderStatus(status, statusFilename)
 
-	doDelete(statusFilename, locDirname, &status)
+	doDelete(statusFilename, locDirname, status)
 
 	status.PendingDelete = false
-	writeDownloaderStatus(&status, statusFilename)
+	writeDownloaderStatus(status, statusFilename)
 
 	// Write out what we modified to DownloaderStatus aka delete
 	if err := os.Remove(statusFilename); err != nil {
@@ -796,7 +754,7 @@ func doS3(ctx *downloaderContext, syncOp zedUpload.SyncOpType,
 
 // Drona APIs for object Download
 
-func handleSyncOp(ctx *downloaderContext, objType string, statusFilename string,
+func handleSyncOp(ctx *downloaderContext, statusFilename string,
 	config types.DownloaderConfig, status *types.DownloaderStatus) {
 	var err error
 	var errStr string
@@ -804,7 +762,11 @@ func handleSyncOp(ctx *downloaderContext, objType string, statusFilename string,
 
 	var syncOp zedUpload.SyncOpType = zedUpload.SyncOpDownload
 
-	locDirname := objectDownloadDirname + "/" + objType
+	if status.ObjType == "" {
+		log.Fatalf("handleSyncOp: No ObjType for %s\n",
+			status.Safename)
+	}
+	locDirname := objectDownloadDirname + "/" + status.ObjType
 	locFilename = locDirname + "/pending"
 
 	// update status to DOWNLOAD STARTED
@@ -885,7 +847,7 @@ func handleSyncOp(ctx *downloaderContext, objType string, statusFilename string,
 				size := info.Size()
 				zedcloud.ZedCloudSuccess(ifname,
 					metricsUrl, 1024, size)
-				handleSyncOpResponse(objType, config, status,
+				handleSyncOpResponse(config, status,
 					locFilename, statusFilename, "")
 				return
 			}
@@ -906,7 +868,7 @@ func handleSyncOp(ctx *downloaderContext, objType string, statusFilename string,
 				size := info.Size()
 				zedcloud.ZedCloudSuccess(ifname,
 					metricsUrl, 1024, size)
-				handleSyncOpResponse(objType, config, status,
+				handleSyncOpResponse(config, status,
 					locFilename, statusFilename, "")
 				return
 			}
@@ -915,15 +877,19 @@ func handleSyncOp(ctx *downloaderContext, objType string, statusFilename string,
 		}
 	}
 	log.Printf("All source IP addresses failed. All errors:%s\n", errStr)
-	handleSyncOpResponse(objType, config, status, locFilename,
+	handleSyncOpResponse(config, status, locFilename,
 		statusFilename, errStr)
 }
 
-func handleSyncOpResponse(objType string, config types.DownloaderConfig,
+func handleSyncOpResponse(config types.DownloaderConfig,
 	status *types.DownloaderStatus, locFilename string,
 	statusFilename string, errStr string) {
 
-	locDirname := objectDownloadDirname + "/" + objType
+	if status.ObjType == "" {
+		log.Fatalf("handleSyncOpResponse: No ObjType for %s\n",
+			status.Safename)
+	}
+	locDirname := objectDownloadDirname + "/" + status.ObjType
 	if errStr != "" {
 		// Delete file
 		doDelete(statusFilename, locDirname, status)
@@ -934,14 +900,14 @@ func handleSyncOpResponse(objType string, config types.DownloaderConfig,
 		status.RetryCount += 1
 		status.State = types.INITIAL
 		writeDownloaderStatus(status, statusFilename)
-		log.Printf("handleCreate failed for %s, <%s>\n",
+		log.Printf("handleSyncOpResponse failed for %s, <%s>\n",
 			status.DownloadURL, errStr)
 		return
 	}
 
 	info, err := os.Stat(locFilename)
 	if err != nil {
-		log.Printf("handleCreate Stat failed for %s <%s>\n",
+		log.Printf("handleSyncOpResponse Stat failed for %s <%s>\n",
 			status.DownloadURL, err)
 		// Delete file
 		doDelete(statusFilename, locDirname, status)
@@ -961,7 +927,7 @@ func handleSyncOpResponse(objType string, config types.DownloaderConfig,
 	globalStatus.UsedSpace += uint(types.RoundupToKB(status.Size))
 	updateRemainingSpace()
 
-	log.Printf("handleCreate successful <%s> <%s>\n",
+	log.Printf("handleSyncOpResponse successful <%s> <%s>\n",
 		config.DownloadURL, locFilename)
 	// We do not clear any status.RetryCount, LastErr, etc. The caller
 	// should look at State == DOWNLOADED to determine it is done.

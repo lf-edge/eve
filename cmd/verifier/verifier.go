@@ -133,8 +133,8 @@ func main() {
 					&types.VerifyImageConfig{},
 					&types.VerifyImageStatus{},
 					handleAppImgObjCreate,
-					handleAppImgObjModify,
-					handleAppImgObjDelete, nil)
+					handleModify,
+					handleDelete, nil)
 			}
 		case change := <-baseOsChanges:
 			{
@@ -144,8 +144,8 @@ func main() {
 					&types.VerifyImageConfig{},
 					&types.VerifyImageStatus{},
 					handleBaseOsObjCreate,
-					handleBaseOsObjModify,
-					handleBaseOsObjDelete, nil)
+					handleModify,
+					handleDelete, nil)
 			}
 		case <-gc.C:
 			gcVerifiedObjects()
@@ -484,13 +484,18 @@ func handleBaseOsObjCreate(ctxArg interface{}, statusFilename string,
 	config := configArg.(*types.VerifyImageConfig)
 	ctx := ctxArg.(*verifierContext)
 
-	log.Printf("handleCreate(%v) for %s\n",
-		config.Safename, config.DownloadURL)
 	handleCreate(ctx, baseOsObj, config)
 }
 
 func handleCreate(ctx *verifierContext, objType string,
 	config *types.VerifyImageConfig) {
+
+	log.Printf("handleCreate(%v) objType %s for %s\n",
+		config.Safename, objType, config.DownloadURL)
+	if objType == "" {
+		log.Fatalf("handleCreate: No ObjType for %s\n",
+			config.Safename)
+	}
 
 	status := types.VerifyImageStatus{
 		Safename:    config.Safename,
@@ -833,28 +838,23 @@ func markObjectAsVerified(config *types.VerifyImageConfig,
 	}
 }
 
-func handleAppImgObjModify(ctxArg interface{}, statusFilename string,
+func handleModify(ctxArg interface{}, statusFilename string,
 	configArg interface{}, statusArg interface{}) {
 	config := configArg.(*types.VerifyImageConfig)
 	status := statusArg.(*types.VerifyImageStatus)
 	ctx := ctxArg.(*verifierContext)
-	handleModify(ctx, appImgObj, config, status)
-}
 
-func handleBaseOsObjModify(ctxArg interface{}, statusFilename string,
-	configArg interface{}, statusArg interface{}) {
-	config := configArg.(*types.VerifyImageConfig)
-	status := statusArg.(*types.VerifyImageStatus)
-	ctx := ctxArg.(*verifierContext)
-	handleModify(ctx, baseOsObj, config, status)
-}
-
-func handleModify(ctx *verifierContext, objType string,
-	config *types.VerifyImageConfig, status *types.VerifyImageStatus) {
 	// Note no comparison on version
 	changed := false
 
-	log.Printf("handleModify for %s\n", config.DownloadURL)
+	log.Printf("handleModify(%v) objType %s for %s\n",
+		status.Safename, status.ObjType, config.DownloadURL)
+
+	if status.ObjType == "" {
+		log.Fatalf("handleModify: No ObjType for %s\n",
+			status.Safename)
+	}
+
 	// Always update RefCount
 	if status.RefCount != config.RefCount {
 		log.Printf("handleModify RefCount change %s from %d to %d\n",
@@ -887,33 +887,24 @@ func handleModify(ctx *verifierContext, objType string,
 
 	status.PendingModify = true
 	updateVerifyObjectStatus(status)
-	handleDelete(ctx, objType, status)
-	handleCreate(ctx, objType, config)
+	handleDelete(ctx, statusFilename, status)
+	handleCreate(ctx, status.ObjType, config)
 	status.PendingModify = false
 	updateVerifyObjectStatus(status)
 	log.Printf("handleModify done for %s\n", config.DownloadURL)
 }
 
-func handleAppImgObjDelete(ctxArg interface{}, statusFilename string,
+func handleDelete(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
 	status := statusArg.(*types.VerifyImageStatus)
-	ctx := ctxArg.(*verifierContext)
 
-	log.Printf("handleDelete(%v)\n", status.Safename)
-	handleDelete(ctx, appImgObj, status)
-}
+	log.Printf("handleDelete(%v) objType %s\n",
+		status.Safename, status.ObjType)
 
-func handleBaseOsObjDelete(ctxArg interface{}, statusFilename string,
-	statusArg interface{}) {
-	status := statusArg.(*types.VerifyImageStatus)
-	ctx := ctxArg.(*verifierContext)
-
-	log.Printf("handleDelete(%v)\n", status.Safename)
-	handleDelete(ctx, baseOsObj, status)
-}
-
-func handleDelete(ctx *verifierContext, objType string,
-	status *types.VerifyImageStatus) {
+	if status.ObjType == "" {
+		log.Fatalf("handleDelete: No ObjType for %s\n",
+			status.Safename)
+	}
 
 	doDelete(status)
 
