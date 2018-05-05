@@ -26,7 +26,7 @@ type BaseOsConfig struct {
 	ConfigSignature   string
 	OsParams          []OsVerParams // From GetLongVersion
 	StorageConfigList []StorageConfig
-	PartitionLabel    string	// XXX Remove
+	PartitionLabel    string // XXX Remove
 	RetryCount        int32
 	Activate          bool
 }
@@ -142,10 +142,11 @@ func (status CertObjStatus) CheckPendingDelete() bool {
 
 // return value holder
 type RetStatus struct {
-	Changed   bool
-	MinState  SwState
-	AllErrors string
-	ErrorTime time.Time
+	Changed         bool
+	MinState        SwState
+	WaitingForCerts bool
+	AllErrors       string
+	ErrorTime       time.Time
 }
 
 // Mirrors proto definition for ConfigItem

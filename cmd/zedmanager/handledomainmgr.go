@@ -75,6 +75,9 @@ func MaybeAddDomainConfig(aiConfig types.AppInstanceConfig,
 	for _, sc := range aiConfig.StorageConfigList {
 		if sc.Target == "" || sc.Target == "disk" {
 			numDisks++
+		} else {
+			log.Printf("Not allocating disk for Target %s\n",
+				sc.Target)
 		}
 	}
 	dc.DiskConfigList = make([]types.DiskConfig, numDisks)
@@ -115,7 +118,7 @@ func MaybeAddDomainConfig(aiConfig types.AppInstanceConfig,
 			dc.DeviceTree = location
 		default:
 			err := errors.New(fmt.Sprintf(
-				"Unknown target %s", sc.Target))
+				"Unknown target %s for %s", sc.Target, sc.DownloadURL))
 			log.Printf("Got error %v for %s\n", err, displayName)
 			return err
 		}

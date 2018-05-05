@@ -24,7 +24,7 @@ func MaybeAddVerifyImageConfig(safename string, sc *types.StorageConfig,
 
 	// check the certificate files, if not present,
 	// we can not start verification
-	if checkCerts && checkCertsForObject(safename, sc) {
+	if checkCerts && !checkCertsForObject(safename, sc) {
 		log.Printf("createVerifierConfig for %s, Certs are still not installed\n",
 			safename)
 		return false

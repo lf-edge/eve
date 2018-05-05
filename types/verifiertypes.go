@@ -45,6 +45,7 @@ func (config VerifyImageConfig) VerifyFilename(fileName string) bool {
 // That is the filename in which we store the corresponding json files.
 type VerifyImageStatus struct {
 	Safename      string
+	ObjType       string
 	PendingAdd    bool
 	PendingModify bool
 	PendingDelete bool
@@ -52,6 +53,7 @@ type VerifyImageStatus struct {
 	State         SwState // DELIVERED, or INITIAL if failed
 	LastErr       string  // Verification error
 	LastErrTime   time.Time
+	Size          int64
 	RefCount      uint // Zero means deleted
 }
 

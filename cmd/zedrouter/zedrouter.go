@@ -143,6 +143,18 @@ func main() {
 		SeparateDataPlane: false,
 	}
 
+	// XXX should we make geoRedoTime configurable?
+	// We refresh the gelocation information when the underlay
+	// IP address(es) change, or once an hour.
+	geoRedoTime := time.Hour
+
+	// Timer for retries after failure etc. Should be less than geoRedoTime
+	geoInterval := time.Duration(10 * time.Minute)
+	geoMax := float64(geoInterval)
+	geoMin := geoMax * 0.3
+	geoTimer := flextimer.NewRangeTicker(time.Duration(geoMin),
+		time.Duration(geoMax))
+
 	// Wait for zedmanager having populated the intial files to
 	// reduce the number of LISP-RESTARTs
 	restartFile := "/var/tmp/zedrouter/config/restart"
@@ -156,7 +168,7 @@ func main() {
 		if debug {
 			log.Printf("addrChangeFn(%s) called\n", ifname)
 		}
-		new, _ := devicenetwork.MakeDeviceNetworkStatus(deviceNetworkConfig)
+		new, _ := devicenetwork.MakeDeviceNetworkStatus(deviceNetworkConfig, deviceNetworkStatus)
 		if !reflect.DeepEqual(deviceNetworkStatus, new) {
 			if debug {
 				log.Printf("Address change for %s from %v to %v\n",
@@ -201,10 +213,10 @@ func main() {
 				&types.AppNetworkStatus{},
 				handleCreate, handleModify, handleDelete,
 				&restartFn)
-				// DNC handling also re-writes the lisp.config file.
-				// We should call the updateLisp with correct Dataplane
-				// flag inorder not to confuse lispers.net
-				DNCctx.SeparateDataPlane = ZedrouterCtx.SeparateDataPlane
+			// DNC handling also re-writes the lisp.config file.
+			// We should call the updateLisp with correct Dataplane
+			// flag inorder not to confuse lispers.net
+			DNCctx.SeparateDataPlane = ZedrouterCtx.SeparateDataPlane
 		case change := <-deviceConfigChanges:
 			watch.HandleStatusEvent(change, &DNCctx,
 				DNCDirname,
@@ -225,6 +237,15 @@ func main() {
 			err := pub.Publish("global", getNetworkMetrics())
 			if err != nil {
 				log.Println(err)
+			}
+		case <-geoTimer.C:
+			if debug {
+				log.Println("geoTimer at", time.Now())
+			}
+			change := devicenetwork.UpdateDeviceNetworkGeo(
+				geoRedoTime, &deviceNetworkStatus)
+			if change {
+				updateDeviceNetworkStatus()
 			}
 		}
 	}
@@ -280,7 +301,7 @@ func handleInit(configFilename string, statusFilename string,
 		log.Printf("%s for %s\n", err, configFilename)
 		log.Fatal(err)
 	}
-	deviceNetworkStatus, err = devicenetwork.MakeDeviceNetworkStatus(deviceNetworkConfig)
+	deviceNetworkStatus, err = devicenetwork.MakeDeviceNetworkStatus(deviceNetworkConfig, deviceNetworkStatus)
 	if err != nil {
 		log.Printf("%s from MakeDeviceNetworkStatus\n", err)
 		// Proceed even if some uplinks are missing
@@ -636,15 +657,32 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		return
 	}
 
+	olcount := len(config.OverlayNetworkList)
+	if olcount > 0 {
+		log.Printf("Received olcount %d\n", olcount)
+	}
 	status.OverlayNetworkList = make([]types.OverlayNetworkStatus,
-		len(config.OverlayNetworkList))
+		olcount)
 	for i, _ := range config.OverlayNetworkList {
 		status.OverlayNetworkList[i].OverlayNetworkConfig =
 			config.OverlayNetworkList[i]
 	}
+	// XXX restrict to first underlaynetwork. Can't handle more than one!
+	// XXX results in entry with no vif and no mac
+	// which causes failure in domainmgr/xl create!
+	ulcount := len(config.UnderlayNetworkList)
+	if ulcount > 1 {
+		log.Printf("Ignoring received ulcount %d\n", ulcount)
+		ulcount = 1
+	}
 	status.UnderlayNetworkList = make([]types.UnderlayNetworkStatus,
-		len(config.UnderlayNetworkList))
+		ulcount)
 	for i, _ := range config.UnderlayNetworkList {
+		if i > 0 {
+			log.Printf("Ignoring UnderlayNetworkConfig[%d] = %v\n",
+				i, config.UnderlayNetworkList[i])
+			continue
+		}
 		status.UnderlayNetworkList[i].UnderlayNetworkConfig =
 			config.UnderlayNetworkList[i]
 	}
@@ -1268,7 +1306,8 @@ func handleDNCModify(ctxArg interface{}, configFilename string,
 	log.Printf("handleDNCModify for %s\n", configFilename)
 
 	deviceNetworkConfig = *config
-	new, _ := devicenetwork.MakeDeviceNetworkStatus(*config)
+	new, _ := devicenetwork.MakeDeviceNetworkStatus(*config,
+		deviceNetworkStatus)
 	if !reflect.DeepEqual(deviceNetworkStatus, new) {
 		log.Printf("DeviceNetworkStatus change from %v to %v\n",
 			deviceNetworkStatus, new)
@@ -1296,8 +1335,6 @@ func handleDNCDelete(ctxArg interface{}, configFilename string) {
 	log.Printf("handleDNCDelete done for %s\n", configFilename)
 }
 
-// XXX should we trigger a geoloc request? Wait for it to be done?
-// XXX with a short 10 second timeout?
 func doDNSUpdate(ctx *DNCContext) {
 	// Did we loose all usable addresses or gain the first usable
 	// address?

@@ -143,18 +143,24 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 
 		imageCount := 0
 		for _, drive := range cfgOs.Drives {
-			if drive.Image != nil {
-				imageId := drive.Image.DsId
-
-				for _, dsEntry := range config.Datastores {
-					if dsEntry.Id == imageId {
-						// XXX this might not
-						// always happen. Order??
-						imageCount++
-						break
-					}
-				}
+			if drive.Image == nil {
+				// XXX have to report to zedcloud by moving
+				// this check out of the parser
+				log.Printf("No drive.Image for baseos %s drive %v\n",
+					baseOs.BaseOsVersion, drive)
+				continue
 			}
+			ds := lookupDatastore(config, drive.Image.DsId)
+			if ds == nil {
+				// XXX have to report to zedcloud by moving
+				// this check out of the parser
+				log.Printf("Did not find datastore %v for baseos %s, drive %s\n",
+					drive.Image.DsId,
+					baseOs.BaseOsVersion,
+					drive.Image.Sha256)
+				continue
+			}
+			imageCount++
 		}
 
 		if imageCount != BaseOsImageCount {
@@ -381,17 +387,30 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig) {
 
 		var imageCount int
 		for _, drive := range cfgApp.Drives {
-			if drive.Image != nil {
-				imageId := drive.Image.DsId
-
-				for _, dsEntry := range config.Datastores {
-					if dsEntry.Id == imageId {
-						imageCount++
-						break
-					}
-				}
+			if drive.Image == nil {
+				// XXX have to report to zedcloud by moving
+				// this check out of the parser
+				log.Printf("No drive.Image for app %s drive %v\n",
+					appInstance.DisplayName,
+					drive)
+				continue
 			}
+			ds := lookupDatastore(config, drive.Image.DsId)
+			if ds == nil {
+				// XXX have to report to zedcloud by moving
+				// this check out of the parser
+				log.Printf("Did not find datastore %v for app %s, drive %s\n",
+					drive.Image.DsId,
+					appInstance.DisplayName,
+					drive.Image.Sha256)
+				continue
+			}
+			imageCount++
 		}
+
+		log.Printf("Found %d images for %s uuid %v\n",
+			imageCount, appInstance.DisplayName,
+			appInstance.UUIDandVersion)
 
 		if imageCount != 0 {
 			appInstance.StorageConfigList = make([]types.StorageConfig, imageCount)
@@ -429,34 +448,42 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig) {
 	}
 }
 
+func lookupDatastore(config *zconfig.EdgeDevConfig, dsid string) *zconfig.DatastoreConfig {
+	for _, ds := range config.Datastores {
+		if dsid == ds.Id {
+			return ds
+		}
+	}
+	return nil
+}
+
 func parseStorageConfigList(config *zconfig.EdgeDevConfig, objType string,
 	storageList []types.StorageConfig, drives []*zconfig.Drive) {
 
 	var idx int = 0
 
 	for _, drive := range drives {
-
-		found := false
-
 		image := new(types.StorageConfig)
-		for _, ds := range config.Datastores {
-
-			if drive.Image != nil &&
-				drive.Image.DsId == ds.Id {
-
-				found = true
-				image.DownloadURL = ds.Fqdn + "/" + ds.Dpath + "/" + drive.Image.Name
-				image.TransportMethod = ds.DType.String()
-				image.ApiKey = ds.ApiKey
-				image.Password = ds.Password
-				image.Dpath = ds.Dpath
-				break
-			}
-		}
-
-		if found == false {
+		if drive.Image == nil {
+			// XXX have to report to zedcloud by moving
+			// this check out of the parser
+			log.Printf("No drive.Image for drive %v\n",
+				drive)
 			continue
 		}
+		ds := lookupDatastore(config, drive.Image.DsId)
+		if ds == nil {
+			// XXX have to report to zedcloud by moving
+			// this check out of the parser
+			log.Printf("Did not find datastore %v for drive %s\n",
+				drive.Image.DsId, drive.Image.Sha256)
+			continue
+		}
+		image.DownloadURL = ds.Fqdn + "/" + ds.Dpath + "/" + drive.Image.Name
+		image.TransportMethod = ds.DType.String()
+		image.ApiKey = ds.ApiKey
+		image.Password = ds.Password
+		image.Dpath = ds.Dpath
 
 		image.Format = strings.ToLower(drive.Image.Iformat.String())
 		image.Size = uint64(drive.Image.SizeBytes)
@@ -465,7 +492,6 @@ func parseStorageConfigList(config *zconfig.EdgeDevConfig, objType string,
 		image.Target = strings.ToLower(drive.Target.String())
 		image.Devtype = strings.ToLower(drive.Drvtype.String())
 		image.ImageSignature = drive.Image.Siginfo.Signature
-		image.ImageSha256 = drive.Image.Sha256
 		image.ImageSha256 = drive.Image.Sha256
 
 		// copy the certificates
@@ -492,6 +518,7 @@ func parseNetworkConfig(appInstance *types.AppInstanceConfig,
 	cfgApp *zconfig.AppInstanceConfig,
 	cfgNetworks []*zconfig.NetworkConfig) {
 
+	log.Printf("parseNetworkConfig: %v\n", cfgNetworks)
 	var ulMaxIdx int = 0
 	var olMaxIdx int = 0
 
@@ -520,11 +547,13 @@ func parseNetworkConfig(appInstance *types.AppInstanceConfig,
 	}
 
 	if ulMaxIdx != 0 {
+		log.Printf("parseNetworkConfig: %d underlays\n", ulMaxIdx)
 		appInstance.UnderlayNetworkList = make([]types.UnderlayNetworkConfig, ulMaxIdx)
 		parseUnderlayNetworkConfig(appInstance, cfgApp, cfgNetworks)
 	}
 
 	if olMaxIdx != 0 {
+		log.Printf("parseNetworkConfig: %d overlays\n", olMaxIdx)
 		appInstance.OverlayNetworkList = make([]types.EIDOverlayConfig, olMaxIdx)
 		parseOverlayNetworkConfig(appInstance, cfgApp, cfgNetworks)
 	}

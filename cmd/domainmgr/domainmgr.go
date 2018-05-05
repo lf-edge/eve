@@ -68,7 +68,7 @@ type domainContext struct {
 func main() {
 	logf, err := agentlog.Init(agentName)
 	if err != nil {
-	       log.Fatal(err)
+		log.Fatal(err)
 	}
 	defer logf.Close()
 
@@ -513,6 +513,18 @@ func doInactivate(status *types.DomainStatus, aa *types.AssignableAdapters) {
 			}
 		}
 	}
+	pciUnassign(status, aa, false)
+
+	log.Printf("doInactivate(%v) done for %s\n",
+		status.UUIDandVersion, status.DisplayName)
+}
+
+func pciUnassign(status *types.DomainStatus, aa *types.AssignableAdapters,
+	ignoreErrors bool) {
+
+	log.Printf("pciUnassign(%v, %v) for %s\n",
+		status.UUIDandVersion, ignoreErrors, status.DisplayName)
+
 	// Unassign any pci devices but keep UsedByUUID set and keep in status
 	for _, adapter := range status.IoAdapterList {
 		log.Printf("doInactivate processing adapter %d %s\n",
@@ -537,16 +549,13 @@ func doInactivate(status *types.DomainStatus, aa *types.AssignableAdapters) {
 			log.Printf("Removing %s %s from %s\n",
 				ib.PciLong, ib.PciShort, status.DomainName)
 			err := pciAssignableRem(ib.PciLong)
-			if err != nil {
+			if err != nil && !ignoreErrors {
 				status.LastErr = fmt.Sprintf("%v", err)
 				status.LastErrTime = time.Now()
 				return
 			}
 		}
 	}
-
-	log.Printf("doInactivate(%v) done for %s\n",
-		status.UUIDandVersion, status.DisplayName)
 }
 
 // Produce DomainStatus based on the config
@@ -924,6 +933,8 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 
 	if status.Activated {
 		doInactivate(status, ctx.assignableAdapters)
+	} else {
+		pciUnassign(status, ctx.assignableAdapters, true)
 	}
 
 	// Look for any adapters used by us and clear UsedByUUID

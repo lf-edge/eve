@@ -216,6 +216,7 @@ func checkStorageDownloadStatus(objType string, uuidStr string,
 	ret.Changed = false
 	ret.AllErrors = ""
 	ret.MinState = types.MAXSTATE
+	ret.WaitingForCerts = false
 
 	for i, sc := range config {
 
@@ -312,10 +313,7 @@ func checkStorageDownloadStatus(objType string, uuidStr string,
 						ss.HasVerifierRef = true
 						ret.Changed = true
 					} else {
-						// XXX or should we wait for
-						// certs just like zedmanager?
-						ret.AllErrors = appendError(ret.AllErrors, "downloader", err.Error())
-						ret.ErrorTime = time.Now()
+						ret.WaitingForCerts = true
 					}
 				}
 			}

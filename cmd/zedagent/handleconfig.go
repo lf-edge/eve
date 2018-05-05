@@ -418,7 +418,10 @@ func checkCurrentAppFiles(config *zconfig.EdgeDevConfig) bool {
 					log.Println("Old config: ", err)
 				}
 				// also remove the certificates config holder file
-				os.Remove(zedagentCertObjConfigDirname + "/" + curAppFilename)
+				err = os.Remove(zedagentCertObjConfigDirname + "/" + curAppFilename)
+				if err != nil {
+					log.Println("Old cert: ", err)
+				}
 				deleted = true
 			}
 		}

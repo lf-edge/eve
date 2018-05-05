@@ -39,7 +39,9 @@ import (
 var savedDisks []string
 
 // Also report usage for these paths
-var reportPaths = []string{"/", "/config", "/persist"}
+const persistPath = "/persist"
+
+var reportPaths = []string{"/", "/config", persistPath}
 
 func publishMetrics(iteration int) {
 	cpuStorageStat := ExecuteXentopCmd()
@@ -509,6 +511,32 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 		}
 		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
 	}
+	// Walk all verified downloads and report their size (faked
+	// as disks)
+	for _, vs := range verifierStatusMap {
+		if debug {
+			log.Printf("verifierStatusMap %s size %d\n",
+				vs.Safename, vs.Size)
+		}
+		metric := zmet.DiskMetric{
+			Disk:  vs.Safename,
+			Total: uint64(vs.Size),
+		}
+		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
+	}
+	// XXX TBD: Avoid dups with verifierStatusMap above
+	for _, ds := range downloaderStatusMap {
+		if debug {
+			log.Printf("downloaderStatusMap %s size %d\n",
+				ds.Safename, ds.Size)
+		}
+		metric := zmet.DiskMetric{
+			Disk:  ds.Safename,
+			Total: uint64(ds.Size),
+		}
+		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
+	}
+
 	// Note that these are associated with the device and not with a
 	// device name like ppp0 or wwan0
 	lte := readLTEMetrics()
@@ -613,8 +641,7 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 				networkDetails)
 		}
 		ReportMetrics.Am[countApp] = ReportAppMetric
-		// XXX
-		if true || debug {
+		if debug {
 			log.Println("metrics per app is: ",
 				ReportMetrics.Am[countApp])
 		}
@@ -722,6 +749,11 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 				path, u.Total, u.Used, u.Free)
 		}
 		is := zmet.ZInfoStorage{MountPath: path, Total: u.Total}
+		// We know this is where we store images and keep
+		// domU virtual disks.
+		if path == persistPath {
+			is.StorageLocation = true
+		}
 		ReportDeviceInfo.StorageList = append(ReportDeviceInfo.StorageList,
 			&is)
 	}
@@ -994,10 +1026,13 @@ func getNetInfo(interfaceDetail psutilnet.InterfaceStat) *zmet.ZInfoNetwork {
 		}
 	}
 
-	// XXX we potentially have geoloc information for each IP address.
-	// For now fill in the first one.
 	uplink := types.GetUplink(deviceNetworkStatus, interfaceDetail.Name)
 	if uplink != nil {
+		networkInfo.Uplink = true
+		// XXX we potentially have geoloc information for each IP
+		// address.
+		// For now fill in using the first IP address which has location
+		// info.
 		for _, ai := range uplink.AddrInfoList {
 			if ai.Geo == nilIPInfo {
 				continue

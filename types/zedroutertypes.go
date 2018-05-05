@@ -9,6 +9,7 @@ import (
 	"github.com/eriknordmark/ipinfo"
 	"log"
 	"net"
+	"time"
 )
 
 // Indexed by UUID
@@ -58,7 +59,7 @@ type AppNetworkStatus struct {
 	DisplayName    string
 	// Copy from the AppNetworkConfig; used to delete when config is gone.
 	IsZedmanager        bool
-	SeparateDataPlane     bool
+	SeparateDataPlane   bool
 	OverlayNetworkList  []OverlayNetworkStatus
 	UnderlayNetworkList []UnderlayNetworkStatus
 }
@@ -86,8 +87,9 @@ type NetworkUplink struct {
 }
 
 type AddrInfo struct {
-	Addr net.IP
-	Geo  ipinfo.IPInfo
+	Addr             net.IP
+	Geo              ipinfo.IPInfo
+	LastGeoTimestamp time.Time
 }
 
 type DeviceNetworkStatus struct {
@@ -183,7 +185,7 @@ func CountLocalAddrAnyNoLinkLocal(globalStatus DeviceNetworkStatus) int {
 }
 
 // Return a list of free uplinks that have non link local IP addresses
-func GetUplinkFreeNoLocal(globalStatus DeviceNetworkStatus) ([]NetworkUplink) {
+func GetUplinkFreeNoLocal(globalStatus DeviceNetworkStatus) []NetworkUplink {
 	// Return Uplink list with valid non link local addresses
 	links, _ := getInterfaceAndAddr(globalStatus, true, "", false)
 	return links
@@ -238,7 +240,7 @@ func getInterfaceAndAddr(globalStatus DeviceNetworkStatus, free bool, ifname str
 		}
 
 		if includeLinkLocal {
-			link := NetworkUplink {
+			link := NetworkUplink{
 				IfName: u.IfName,
 				//Addrs: u.Addrs,
 				AddrInfoList: u.AddrInfoList,
