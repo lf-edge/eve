@@ -36,6 +36,7 @@ It has these top-level messages:
 	DeviceMetric
 	MetricItem
 	DiskMetric
+	AppDiskMetric
 	AppMetric
 	ZMetricMsg
 	ZRegisterResp
