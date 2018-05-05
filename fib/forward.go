@@ -186,9 +186,10 @@ func computeAndWriteICV(packet []byte, icvKey []byte) {
 
 	// Write ICV to packet
 	startIdx := pktLen - dptypes.ICVLEN
-	for i, b := range icv {
-		packet[startIdx+i] = b
-	}
+	//for i, b := range icv {
+	//	packet[startIdx+i] = b
+	//}
+	copy(packet[startIdx:], icv)
 }
 
 func craftAndSendIPv4LispPacket(packet gopacket.Packet,
@@ -328,6 +329,7 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 
 		// We do not include outer UDP header for ICV computation
 		icvStartOffset := offset + dptypes.IP4HEADERLEN + dptypes.UDPHEADERLEN
+		log.Printf("XXXXX ICV offset start %d, offset end %d\n", icvStartOffset, offsetEnd)
 		computeAndWriteICV(pktBuf[icvStartOffset:offsetEnd], icvKey)
 	}
 
