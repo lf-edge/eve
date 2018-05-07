@@ -272,6 +272,8 @@ func verifyAndInject(fd6 int,
 
 	// offset of destination address inside ipv6 header
 	destAddrOffset := 24
+	gcmOverhead := 0
+	icvLen := 0
 
 	keyId := fib.GetLispKeyId(buf[0:8])
 	if keyId != 0 {
@@ -347,8 +349,11 @@ func verifyAndInject(fd6 int,
 			log.Printf("verifyAndInject: Packet decryption failed: %s\n", err)
 			return false
 		}
+		gcmOverhead = aesGcm.Overhead()
+		icvLen = dptypes.ICVLEN
 	}
 
+	packetEnd := n - gcmOverhead - icvLen
 	var destAddr [16]byte
 	for i, _ := range destAddr {
 		// offset is lisp hdr size + start offset of ip addresses in v6 hdr
@@ -356,7 +361,7 @@ func verifyAndInject(fd6 int,
 		//pktEid[i] = destAddr[i]
 	}
 
-	err := syscall.Sendto(fd6, buf[packetOffset:n], 0, &syscall.SockaddrInet6{
+	err := syscall.Sendto(fd6, buf[packetOffset:packetEnd], 0, &syscall.SockaddrInet6{
 		Port:   0,
 		ZoneId: 0,
 		Addr:   destAddr,
