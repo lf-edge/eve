@@ -171,6 +171,7 @@ func GetIVArray(itrLocalData *dptypes.ITRLocalData, ivArray []byte) []byte {
 func ComputeICV(buf []byte, icvKey []byte) []byte {
 	//mac := hmac.New(sha1.New, icvKey)
 	mac := hmac.New(sha256.New, icvKey)
+	log.Printf("XXXXX ICV text is 0x%x\n", buf)
 	mac.Write(buf)
 	icv := mac.Sum(nil)
 	// we only use the first 20 bytes as ICV
@@ -330,16 +331,21 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 		// We do not include outer UDP header for ICV computation
 		icvStartOffset := offset + dptypes.IP4HEADERLEN + dptypes.UDPHEADERLEN
 		log.Printf("XXXXX ICV offset start %d, offset end %d\n", icvStartOffset, offsetEnd)
+		for i := 0; i < outerHdrLen; i++ {
+			pktBuf[i+offset] = outerHdr[i]
+		}
 		computeAndWriteICV(pktBuf[icvStartOffset:offsetEnd], icvKey)
-	}
-
-	for i := 0; i < outerHdrLen; i++ {
-		pktBuf[i+offset] = outerHdr[i]
+	} else {
+		for i := 0; i < outerHdrLen; i++ {
+			pktBuf[i+offset] = outerHdr[i]
+		}
 	}
 
 	outputSlice := pktBuf[offset:offsetEnd]
 
 	log.Printf("XXXXX Writing %d bytes into ITR socket\n", len(outputSlice))
+	log.Printf("XXXXX LISP + IV + Crypto text (len %d) is 0x%x\n",
+		len(outputSlice[28:]), outputSlice[28:len(outputSlice) - 20])
 	err := syscall.Sendto(fd4, outputSlice, 0, &rloc.IPv4SockAddr)
 	if err != nil {
 		log.Printf("craftAndSendIPv4LispPacket: Packet send ERROR: %s", err)

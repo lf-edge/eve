@@ -294,6 +294,9 @@ func verifyAndInject(fd6 int,
 			log.Printf("verifyAndInject: ETR Key id %d had nil ICV key value\n", keyId)
 			return false
 		}
+		log.Printf("XXXX ETR LISP + IV + Cipher text (len %d) is 0x%x\n",
+			len(buf[0:n-dptypes.ICVLEN]), buf[0:n-dptypes.ICVLEN])
+		log.Printf("XXXX ETR ICV is 0x%x\n", buf[n-dptypes.ICVLEN:n])
 		icv := fib.ComputeICV(buf[0:n-dptypes.ICVLEN], icvKey)
 		pktIcv := buf[n-dptypes.ICVLEN : n]
 
