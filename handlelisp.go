@@ -71,15 +71,6 @@ func parseRloc(rlocStr *Rloc) (dptypes.Rloc, bool) {
 			continue
 		}
 
-		if (len(key.EncKey) != CRYPTO_KEY_LEN) ||
-			(len(key.IcvKey[8:]) != CRYPTO_KEY_LEN) {
-			log.Printf(
-				"Error: Encap Key lengths should be 32, found encrypt key len %d & icv key length %d and encap key %s, icv key %s\n",
-				len(key.EncKey), len(key.IcvKey[8:]), key.EncKey, key.IcvKey[8:])
-			// XXX Should we log.Fatal here?
-			continue
-		}
-
 		//encKey := []byte(key.EncKey)
 		encKey, err := hex.DecodeString(key.EncKey)
 		if err != nil {
@@ -87,10 +78,11 @@ func parseRloc(rlocStr *Rloc) (dptypes.Rloc, bool) {
 			continue
 		}
 		// XXX lispers.net is sending 8 zeroes in the front
-		//icvKey := []byte(key.IcvKey[8:])
+		/*
 		if len(key.IcvKey) == 40 {
 			key.IcvKey = key.IcvKey[8:]
 		}
+		*/
 		icvKey, err := hex.DecodeString(key.IcvKey)
 		if err != nil {
 			log.Printf("parseRloc: Decoding ICV key to binary from string failed: %s\n", err)
@@ -376,6 +368,7 @@ func handleDecapKeys(msg []byte) {
 		// Some times it sendis the right length.
 		// This is a hack from our side for the time being.
 		// lispers.net should fix this eventually.
+		/*
 		if len(key.IcvKey) == 40 {
 			key.IcvKey = key.IcvKey[8:]
 		}
@@ -387,6 +380,7 @@ func handleDecapKeys(msg []byte) {
 				len(key.DecKey), len(key.IcvKey))
 			continue
 		}
+		*/
 		//decKey := []byte(key.DecKey)
 		decKey, err := hex.DecodeString(key.DecKey)
 		if err != nil {
