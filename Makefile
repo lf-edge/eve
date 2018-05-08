@@ -19,6 +19,10 @@ ROOTFS_IMG_aarch64=rootfs_aarch64.img
 ROOTFS_IMG_x86_64=rootfs.img
 ROOTFS_IMG=$(ROOTFS_IMG_$(ZARCH))
 
+TARGET_IMG_aarch64=target_aarch64.img
+TARGET_IMG_x86_64=target.img
+TARGET_IMG=$(TARGET_IMG_$(ZARCH))
+
 QEMU_OPTS_aarch64= -machine virt,gic_version=3 -machine virtualization=true -cpu cortex-a57 -machine type=virt
 # -drive file=./bios/flash0.img,format=raw,if=pflash -drive file=./bios/flash1.img,format=raw,if=pflash
 # [ -f bios/flash1.img ] || dd if=/dev/zero of=bios/flash1.img bs=1048576 count=64
@@ -101,6 +105,9 @@ run-installer:
 
 run-fallback run: bios/OVMF.fd
 	qemu-system-$(ZARCH) $(QEMU_OPTS) -drive file=$(FALLBACK_IMG).img,format=$(IMG_FORMAT)
+
+run-target: bios/OVMF.fd
+	qemu-system-$(ZARCH) $(QEMU_OPTS) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT)
 
 run-rootfs: bios/OVMF.fd bios/EFI
 	qemu-system-$(ZARCH) $(QEMU_OPTS) -drive file=$(ROOTFS_IMG),format=raw -drive file=fat:rw:./bios/,format=raw 
