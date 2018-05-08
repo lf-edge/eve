@@ -18,6 +18,7 @@ import (
 	psutilnet "github.com/shirou/gopsutil/net"
 	"github.com/vishvananda/netlink"
 	"github.com/zededa/api/zmet"
+	"github.com/zededa/go-provision/diskmetrics"
 	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/netclone"
@@ -114,8 +115,11 @@ func verifyDomainExists(domainId int) bool {
 // Key is UUID
 var domainStatus map[string]types.DomainStatus
 
-// Key is DomainName; value is arrive of interfacenames
+// Key is DomainName; value is array of interface names
 var appInterfaceAndNameList map[string][]string
+
+// Key is DomainName; value is array of disk images
+var appDiskAndNameList map[string][]string
 
 func handleDomainStatusModify(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
@@ -153,11 +157,19 @@ func handleDomainStatusModify(ctxArg interface{}, statusFilename string,
 	if appInterfaceAndNameList == nil {
 		appInterfaceAndNameList = make(map[string][]string)
 	}
+	if appDiskAndNameList == nil {
+		appDiskAndNameList = make(map[string][]string)
+	}
 	var interfaceList []string
 	for _, vif := range status.VifList {
 		interfaceList = append(interfaceList, vif.Bridge)
 	}
 	appInterfaceAndNameList[status.DomainName] = interfaceList
+	var diskList []string
+	for _, ds := range status.DiskStatusList {
+		diskList = append(diskList, ds.ActiveFileLocation)
+	}
+	appDiskAndNameList[status.DomainName] = diskList
 	log.Printf("handleDomainStatusModify appIntf %s %v\n",
 		status.DomainName, interfaceList)
 	if debug {
@@ -211,8 +223,13 @@ func ioAdapterListChanged(old types.DomainStatus, new types.DomainStatus) bool {
 	log.Printf("ioAdapterListChanged: no change\n")
 	return false
 }
-func ReadAppInterfaceName(domainName string) []string {
+
+func ReadAppInterfaceList(domainName string) []string {
 	return appInterfaceAndNameList[domainName]
+}
+
+func ReadAppDiskList(domainName string) []string {
+	return appDiskAndNameList[domainName]
 }
 
 func LookupDomainStatus(domainName string) *types.DomainStatus {
@@ -607,7 +624,7 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 		ReportAppMetric.Memory.UsedPercentage = float64(usedAppMemoryPercent)
 		ReportAppMetric.Memory.AvailPercentage = float64(availableAppMemoryPercent)
 
-		appInterfaceList := ReadAppInterfaceName(strings.TrimSpace(cpuStorageStat[arr][1]))
+		appInterfaceList := ReadAppInterfaceList(strings.TrimSpace(cpuStorageStat[arr][1]))
 		// Use the network metrics from zedrouter subscription
 		for _, ifName := range appInterfaceList {
 			var metric *types.NetworkMetric
@@ -640,6 +657,21 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 			ReportAppMetric.Network = append(ReportAppMetric.Network,
 				networkDetails)
 		}
+
+		appDiskList := ReadAppDiskList(strings.TrimSpace(cpuStorageStat[arr][1]))
+		// Use the network metrics from zedrouter subscription
+		for _, diskfile := range appDiskList {
+			appDiskDetails := new(zmet.AppDiskMetric)
+			err := getDiskInfo(diskfile, appDiskDetails)
+			if err != nil {
+				log.Printf("getDiskInfo(%s) failed %v\n",
+					diskfile, err)
+				continue
+			}
+			log.Printf("XXX appDiskDetails %v\n", appDiskDetails)
+			ReportAppMetric.Disk = append(ReportAppMetric.Disk,
+				appDiskDetails)
+		}
 		ReportMetrics.Am[countApp] = ReportAppMetric
 		if debug {
 			log.Println("metrics per app is: ",
@@ -653,6 +685,19 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 			ReportMetrics)
 	}
 	SendMetricsProtobuf(ReportMetrics, iteration)
+}
+
+func getDiskInfo(diskfile string, appDiskDetails *zmet.AppDiskMetric) error {
+	imgInfo, err := diskmetrics.GetImgInfo(diskfile)
+	if err != nil {
+		return err
+	}
+	appDiskDetails.Disk = diskfile
+	appDiskDetails.Provisioned = imgInfo.VirtualSize
+	appDiskDetails.Used = imgInfo.ActualSize
+	appDiskDetails.DiskType = imgInfo.Format
+	appDiskDetails.Dirty = imgInfo.DirtyFlag
+	return nil
 }
 
 const mbyte = 1024 * 1024
