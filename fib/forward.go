@@ -6,7 +6,7 @@
 package fib
 
 import (
-	//"crypto/aes"
+	"crypto/aes"
 	"crypto/cipher"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -72,23 +72,24 @@ func encryptPayload(payload []byte,
 	payloadLen uint32, encKey []byte,
 	block cipher.Block, ivArray []byte) (bool, int) {
 
-	var extraLen int = 0
+	var extraLen, padLen int = 0, 0
 
 	if len(encKey) == 0 {
 		log.Printf("encryptPayload: Invalid encrypt key lenght: %s\n", len(encKey))
 		return false, 0
 	}
 
-	//var remainder uint32 = 0
+	var remainder uint32 = 0
 
 	packet := payload[:payloadLen]
 
 	// We do not pad packet with GCM
-	/*
 	// Pad the payload if it's length is not a multiple of 16.
 	if (payloadLen % aes.BlockSize) != 0 {
-		remainder = (payloadLen % aes.BlockSize)
+		// GCM has an IV length of 12 bytes
+		remainder = ((payloadLen - 12) % aes.BlockSize)
 		packet = payload[:payloadLen+aes.BlockSize-remainder]
+		padLen = int(aes.BlockSize-remainder)
 		log.Printf("XXXXX Padded packet with %d bytes\n",
 			aes.BlockSize-remainder)
 
@@ -97,7 +98,6 @@ func encryptPayload(payload []byte,
 			packet[i] = 0
 		}
 	}
-	*/
 
 	// XXX Check with Dino, how his code treats IV.
 	// String(ascii) or binary?
@@ -124,9 +124,9 @@ func encryptPayload(payload []byte,
 	log.Printf("XXXXX Cipher text is %x\n", cipherText)
 	//copy(packet[dptypes.GCMIVLENGTH:], cipherText)
 	extraLen = len(cipherText) - len(plainText)
-	log.Printf("XXXXX Extra length is %d\n", extraLen)
+	log.Printf("XXXXX Extra length + pad length is %d\n", extraLen + padLen)
 	//return true, (aes.BlockSize - remainder)
-	return true, extraLen
+	return true, extraLen + padLen
 }
 
 func GenerateIVByteArray(ivHigh uint32, ivLow uint64, ivArray []byte) []byte {
