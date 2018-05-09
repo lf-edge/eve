@@ -78,6 +78,19 @@ func InitMapCache(debugFlag bool) {
 
 func InitDecapTable() {
 	decaps = newDecapTable()
+
+	if decaps == nil {
+		return
+	}
+
+	// Allocate ETR statistics
+	decaps.NoDecryptKey = new(uint64)
+	decaps.OuterHeaderError = new(uint64)
+	decaps.BadInnerVersion = new(uint64)
+	decaps.GoodPackets = new(uint64)
+	decaps.ICVError = new(uint64)
+	decaps.LispHeaderError = new(uint64)
+	decaps.ChecksumError = new(uint64)
 }
 
 // Control thread looks for changes to /var/run/zedrouter/DeviceNetworkStatus/global.json
@@ -409,7 +422,29 @@ func DeleteMapCacheEntry(iid uint32, eid net.IP) {
 	// collected later
 }
 
+func AddDecapStatistics(statName string, count uint64) {
+	switch statName {
+	case "no-decrypt-key":
+		atomic.SwapUint64(decaps.NoDecryptKey, count)
+	case "outer-header-error":
+		atomic.SwapUint64(decaps.OuterHeaderError, count)
+	case "bad-inner-version":
+		atomic.SwapUint64(decaps.BadInnerVersion, count)
+	case "good-packets":
+		atomic.SwapUint64(decaps.GoodPackets, count)
+	case "ICV-error":
+		atomic.SwapUint64(decaps.ICVError, count)
+	case "lisp-header-error":
+		atomic.SwapUint64(decaps.LispHeaderError, count)
+	case "checksum-error":
+		atomic.SwapUint64(decaps.ChecksumError, count)
+	}
+}
+
 func UpdateDecapKeys(entry *dptypes.DecapKeys) {
+	if decaps == nil {
+		return
+	}
 	decaps.LockMe.Lock()
 	defer decaps.LockMe.Unlock()
 	key := entry.Rloc.String()
@@ -417,6 +452,9 @@ func UpdateDecapKeys(entry *dptypes.DecapKeys) {
 }
 
 func LookupDecapKeys(ip net.IP) *dptypes.DecapKeys {
+	if decaps == nil {
+		return nil
+	}
 	decaps.LockMe.RLock()
 	defer decaps.LockMe.RUnlock()
 	key := ip.String()
@@ -460,6 +498,9 @@ func ShowMapCacheEntries() {
 }
 
 func ShowDecapKeys() {
+	if decaps == nil {
+		return
+	}
 	decaps.LockMe.RLock()
 	defer decaps.LockMe.RUnlock()
 
@@ -542,8 +583,8 @@ func StatsThread(puntChannel chan []byte) {
 
 		cache.LockMe.RLock()
 
-		var encapStatistics dptypes.EncapStatistics
-		encapStatistics.Type = "statistics"
+		var lispStatistics dptypes.LispStatistics
+		lispStatistics.Type = "statistics"
 
 		for key, value := range cache.MapCache {
 			var eidStats dptypes.EidStatsEntry
@@ -566,9 +607,21 @@ func StatsThread(puntChannel chan []byte) {
 
 				eidStats.Rlocs = append(eidStats.Rlocs, rlocStats)
 			}
-			encapStatistics.Entries = append(encapStatistics.Entries, eidStats)
+			lispStatistics.Entries = append(lispStatistics.Entries, eidStats)
 		}
-		statsMsg, err := json.Marshal(encapStatistics)
+
+		var decapStatistics dptypes.DecapStatistics
+		decapStatistics.NoDecryptKey = atomic.SwapUint64(decaps.NoDecryptKey, 0)
+		decapStatistics.OuterHeaderError = 0
+		decapStatistics.BadInnerVersion = 0
+		decapStatistics.GoodPackets = atomic.SwapUint64(decaps.GoodPackets, 0)
+		decapStatistics.ICVError = atomic.SwapUint64(decaps.ICVError, 0)
+		decapStatistics.LispHeaderError = 0
+		decapStatistics.ChecksumError = 0
+
+		lispStatistics.DecapStats = decapStatistics
+
+		statsMsg, err := json.Marshal(lispStatistics)
 		log.Println(string(statsMsg))
 		if err != nil {
 			log.Printf("Error: Encoding encap statistics\n")

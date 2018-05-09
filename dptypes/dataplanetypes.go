@@ -4,11 +4,11 @@
 package dptypes
 
 import (
+	"crypto/cipher"
+	"github.com/google/gopacket"
 	"net"
 	"sync"
 	"time"
-	"crypto/cipher"
-	"github.com/google/gopacket"
 	//"github.com/google/gopacket/pfring"
 	"github.com/google/gopacket/afpacket"
 	"syscall"
@@ -21,15 +21,15 @@ const (
 	// max header len is ip6 hdr len (40) +
 	// udp (8) + lisp (8) - eth hdr (14) + crypto iv len (16 for CBC and 12 for GCM)
 	//MAXHEADERLEN             = 58 // max header len with CBC
-	MAXHEADERLEN             = 54
-	ETHHEADERLEN             = 14
-	UDPHEADERLEN             = 8
-	ICVLEN                   = 20
-	IVLEN                    = 16
-	IP4HEADERLEN             = 20
-	IP6HEADERLEN             = 40
-	LISPHEADERLEN            = 8
-	GCMIVLENGTH              = 12
+	MAXHEADERLEN  = 54
+	ETHHEADERLEN  = 14
+	UDPHEADERLEN  = 8
+	ICVLEN        = 20
+	IVLEN         = 16
+	IP4HEADERLEN  = 20
+	IP6HEADERLEN  = 40
+	LISPHEADERLEN = 8
+	GCMIVLENGTH   = 12
 )
 
 type Key struct {
@@ -42,9 +42,9 @@ type Key struct {
 
 // Decrypt key information
 type DKey struct {
-	KeyId  uint32
-	DecKey []byte
-	IcvKey []byte
+	KeyId    uint32
+	DecKey   []byte
+	IcvKey   []byte
 	DecBlock cipher.Block
 }
 
@@ -66,9 +66,9 @@ type Rloc struct {
 	WrHigh uint32
 
 	// Packet statistics
-	Packets       *uint64
-	Bytes         *uint64
-	LastPktTime   *int64
+	Packets     *uint64
+	Bytes       *uint64
+	LastPktTime *int64
 }
 
 type BufferedPacket struct {
@@ -87,10 +87,10 @@ type MapCacheEntry struct {
 	RlocTotWeight uint32
 
 	// Packet statistics
-	Packets       uint64
-	Bytes         uint64
-	BuffdPkts     uint64
-	TailDrops     uint64
+	Packets   uint64
+	Bytes     uint64
+	BuffdPkts uint64
+	TailDrops uint64
 }
 
 type MapCacheKey struct {
@@ -141,6 +141,15 @@ type DecapKeys struct {
 type DecapTable struct {
 	LockMe       sync.RWMutex
 	DecapEntries map[string]*DecapKeys
+
+	// ETR statistics
+	NoDecryptKey     *uint64
+	OuterHeaderError *uint64
+	BadInnerVersion  *uint64
+	GoodPackets      *uint64
+	ICVError         *uint64
+	LispHeaderError  *uint64
+	ChecksumError    *uint64
 }
 
 type PuntEntry struct {
@@ -155,26 +164,37 @@ type RestartEntry struct {
 }
 
 type RlocStatsEntry struct {
-	Rloc string `json:"rloc"`
-	PacketCount uint64 `json:"packet-count"`
-	ByteCount   uint64 `json:"byte-count"`
-	SecondsSinceLastPkt int64 `json:"seconds-last-packet"`
+	Rloc                string `json:"rloc"`
+	PacketCount         uint64 `json:"packet-count"`
+	ByteCount           uint64 `json:"byte-count"`
+	SecondsSinceLastPkt int64  `json:"seconds-last-packet"`
 }
 
 type EidStatsEntry struct {
-	InstanceId string `json:"instance-id"`
-	EidPrefix string `json:"eid-prefix"`
-	Rlocs     []RlocStatsEntry `json:"rlocs"`
+	InstanceId string           `json:"instance-id"`
+	EidPrefix  string           `json:"eid-prefix"`
+	Rlocs      []RlocStatsEntry `json:"rlocs"`
 }
 
-type EncapStatistics struct {
-	Type string `json:"type"`
-	Entries []EidStatsEntry `json:"entries"`
+type DecapStatistics struct {
+	NoDecryptKey     uint64 `json:"no-decrypt-key"`
+	OuterHeaderError uint64 `json:"outer-header-error"`
+	BadInnerVersion  uint64 `json:"bad-inner-version"`
+	GoodPackets      uint64 `json:"good-packets"`
+	ICVError         uint64 `json:"ICV-error"`
+	LispHeaderError  uint64 `json:"lisp-header-error"`
+	ChecksumError    uint64 `json:"checksum-error"`
+}
+
+type LispStatistics struct {
+	Type       string          `json:"type"`
+	Entries    []EidStatsEntry `json:"entries"`
+	DecapStats DecapStatistics `json:"decap-stats"`
 }
 
 type EtrRunStatus struct {
 	// Name of the interface to capture packets from
-	IfName   string
+	IfName string
 
 	// Kill message channel
 	KillChannel chan bool
@@ -182,16 +202,16 @@ type EtrRunStatus struct {
 	//Ring    *pfring.Ring
 
 	// ETR Natted packet capture ring
-	Handle  *afpacket.TPacket
+	Handle *afpacket.TPacket
 	// Raw socket FD used by ETR packet capture thread
 	// for injecting decapsulated packets
-	RingFD   int
+	RingFD int
 }
 
 type EtrTable struct {
-	// Destination ephemeral port 
-	EphPort   int
-	EtrTable  map[string]*EtrRunStatus
+	// Destination ephemeral port
+	EphPort  int
+	EtrTable map[string]*EtrRunStatus
 }
 
 type ITRLocalData struct {
@@ -201,6 +221,6 @@ type ITRLocalData struct {
 	IvLow  uint64
 
 	// Raw sockets for sending out LISP encapsulted packets
-	Fd4    int
-	Fd6    int
+	Fd4 int
+	Fd6 int
 }

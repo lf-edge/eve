@@ -19,9 +19,9 @@ import (
 	"github.com/google/gopacket/pcap"
 	"golang.org/x/net/bpf"
 	//"github.com/google/gopacket/pfring"
-	"github.com/zededa/lisp/dataplane/fib"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/lisp/dataplane/dptypes"
+	"github.com/zededa/lisp/dataplane/fib"
 	"log"
 	"net"
 	"syscall"
@@ -30,7 +30,7 @@ import (
 )
 
 // Status and metadata of different ETR threads currently running
-var etrTable dptypes.EtrTable
+var EtrTable dptypes.EtrTable
 var deviceNetworkStatus types.DeviceNetworkStatus
 var debug bool = false
 
@@ -41,8 +41,8 @@ const (
 
 func InitETRStatus(debugFlag bool) {
 	debug = debugFlag
-	etrTable.EphPort = -1
-	etrTable.EtrTable = make(map[string]*dptypes.EtrRunStatus)
+	EtrTable.EphPort = -1
+	EtrTable.EtrTable = make(map[string]*dptypes.EtrRunStatus)
 }
 
 func StartEtrNonNat() {
@@ -122,7 +122,7 @@ func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
 
 		// Check if this uplink present in the current etr table.
 		// If not, start capturing packets from this new uplink.
-		_, ok := etrTable.EtrTable[link.IfName]
+		_, ok := EtrTable.EtrTable[link.IfName]
 		if ok == false {
 			//var ring *pfring.Ring = nil
 			var handle *afpacket.TPacket
@@ -132,20 +132,20 @@ func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
 			killChannel := make(chan bool, 1)
 
 			// Create new ETR thread
-			if etrTable.EphPort != -1 {
-				//ring, fd = StartEtrNat(etrTable.EphPort, link.IfName)
-				handle, fd = StartEtrNat(etrTable.EphPort, link.IfName, killChannel)
+			if EtrTable.EphPort != -1 {
+				//ring, fd = StartEtrNat(EtrTable.EphPort, link.IfName)
+				handle, fd = StartEtrNat(EtrTable.EphPort, link.IfName, killChannel)
 				log.Printf("XXXXX Creating ETR thread for UP link %s\n", link.IfName)
 				if debug {
 					log.Printf("HandleDeviceNetworkChange: Creating ETR thread "+
 						"for UP link %s\n", link.IfName)
 				}
 			}
-			etrTable.EtrTable[link.IfName] = &dptypes.EtrRunStatus{
+			EtrTable.EtrTable[link.IfName] = &dptypes.EtrRunStatus{
 				IfName: link.IfName,
 				//Ring:   ring,
-				Handle: handle,
-				RingFD: fd,
+				Handle:      handle,
+				RingFD:      fd,
 				KillChannel: killChannel,
 			}
 			if debug {
@@ -156,14 +156,14 @@ func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
 	}
 
 	// find the interfaces to be deleted
-	for key, link := range etrTable.EtrTable {
+	for key, link := range EtrTable.EtrTable {
 		if _, ok := validList[key]; ok == false {
 			link.KillChannel <- true
 			syscall.Close(link.RingFD)
 			//link.Ring.Disable()
 			//link.Ring.Close()
 			link.Handle.Close()
-			delete(etrTable.EtrTable, key)
+			delete(EtrTable.EtrTable, key)
 		}
 	}
 
@@ -175,13 +175,13 @@ func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
 // Handle ETR's ephemeral port message from lispers.net
 func HandleEtrEphPort(ephPort int) {
 	// Check if the ephemeral port has changed
-	if ephPort == etrTable.EphPort {
+	if ephPort == EtrTable.EphPort {
 		return
 	}
-	etrTable.EphPort = ephPort
+	EtrTable.EphPort = ephPort
 
 	// Destroy all old threads and create new ETR threads
-	for ifName, link := range etrTable.EtrTable {
+	for ifName, link := range EtrTable.EtrTable {
 		//if (link.Ring == nil) && (link.RingFD == -1) {
 		if (link.Handle == nil) && (link.RingFD == -1) {
 			log.Printf("XXXXX Creating ETR thread for UP link %s\n", link.IfName)
@@ -189,9 +189,9 @@ func HandleEtrEphPort(ephPort int) {
 				log.Printf("HandleEtrEphPort: Creating ETR thread for UP link %s\n",
 					link.IfName)
 			}
-			//ring, fd := StartEtrNat(etrTable.EphPort, link.IfName)
+			//ring, fd := StartEtrNat(EtrTable.EphPort, link.IfName)
 			//ling.Ring = ring
-			handle, fd := StartEtrNat(etrTable.EphPort, link.IfName, link.KillChannel)
+			handle, fd := StartEtrNat(EtrTable.EphPort, link.IfName, link.KillChannel)
 			link.Handle = handle
 			link.RingFD = fd
 			//return
@@ -279,6 +279,7 @@ func verifyAndInject(fd6 int,
 	if keyId != 0 {
 		if decapKeys == nil {
 			log.Printf("verifyAndInject: Decap keys for this RLOC have not arrived yet\n")
+			fib.AddDecapStatistics("no-decrypt-key", 1)
 			return false
 		}
 
@@ -296,13 +297,6 @@ func verifyAndInject(fd6 int,
 			log.Printf("verifyAndInject: ETR Key id %d had nil ICV key value\n", keyId)
 			return false
 		}
-		if debug {
-			log.Printf("verifyAndInject: LISP %s, IV %s, Cipher %s, ICV %s\n",
-				fib.PrintHexBytes(buf[:8]),
-				fib.PrintHexBytes(buf[8:20]),
-				fib.PrintHexBytes(buf[20:n-20]),
-				fib.PrintHexBytes(buf[n-20:n]))
-		}
 		icv := fib.ComputeICV(buf[0:n-dptypes.ICVLEN], icvKey)
 		pktIcv := buf[n-dptypes.ICVLEN : n]
 
@@ -310,6 +304,7 @@ func verifyAndInject(fd6 int,
 			log.Printf(
 				"verifyAndInject: Pkt ICV %x and calculated ICV %x do not match.\n",
 				pktIcv, icv)
+			fib.AddDecapStatistics("ICV-error", 1)
 			return false
 		}
 		log.Println("XXXXX ICVs match")
@@ -320,17 +315,16 @@ func verifyAndInject(fd6 int,
 
 		packet := buf[packetOffset : n-dptypes.ICVLEN]
 
-
 		// The following check is not necessary with AES/GCM.
 		// 16 byte boundary is not used while encrypting.
 		/*
-		cryptoLen := n - packetOffset - dptypes.ICVLEN
-		if cryptoLen%16 != 0 {
-			// AES encrypted packet should have a lenght that is multiple of 16
-			// aes.BlockSize is 16
-			log.Printf("verifyAndInject: Invalid Crypto packet length %d\n", cryptoLen)
-			return false
-		}
+			cryptoLen := n - packetOffset - dptypes.ICVLEN
+			if cryptoLen%16 != 0 {
+				// AES encrypted packet should have a lenght that is multiple of 16
+				// aes.BlockSize is 16
+				log.Printf("verifyAndInject: Invalid Crypto packet length %d\n", cryptoLen)
+				return false
+			}
 		*/
 
 		if len(decapKeys.Keys) == 0 {
@@ -345,6 +339,13 @@ func verifyAndInject(fd6 int,
 		if err != nil {
 			log.Printf("VerifyAndInject: GCM cipher creation failed: %s\n", err)
 			return false
+		}
+		if debug {
+			log.Printf("verifyAndInject: LISP %s, IV %s, Cipher %s, ICV %s\n",
+				fib.PrintHexBytes(buf[:8]),
+				fib.PrintHexBytes(ivArray),
+				fib.PrintHexBytes(packet),
+				fib.PrintHexBytes(pktIcv))
 		}
 		//mode.CryptBlocks(packet, packet)
 		_, err = aesGcm.Open(packet[:0], ivArray, packet, nil)
@@ -373,6 +374,7 @@ func verifyAndInject(fd6 int,
 		log.Printf("verifyAndInject: Failed injecting ETR packet: %s.\n", err)
 		return false
 	}
+	fib.AddDecapStatistics("good-packets", 1)
 	return true
 }
 
@@ -489,7 +491,7 @@ func ProcessCapturedPkts(fd6 int,
 		ci, err := handle.ReadPacketDataTo(pktBuf[:])
 		if err != nil {
 			select {
-			case <- killChannel:
+			case <-killChannel:
 				log.Printf("ProcessCapturedPkts: Error capturing packets: %s\n", err)
 				log.Printf(
 					"ProcessCapturedPkts: It could be the handle closure leading to this.\n")

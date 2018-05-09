@@ -90,7 +90,7 @@ func encryptPayload(payload []byte,
 		// GCM has an IV length of 12 bytes
 		remainder = ((payloadLen - 12) % aes.BlockSize)
 		packet = payload[:payloadLen+aes.BlockSize-remainder]
-		padLen = int(aes.BlockSize-remainder)
+		padLen = int(aes.BlockSize - remainder)
 
 		// Now fill the padding with zeroes
 		for i := payloadLen; i < uint32(len(packet)); i++ {
@@ -137,12 +137,12 @@ func GenerateIVByteArray(ivHigh uint32, ivLow uint64, ivArray []byte) []byte {
 	// Doesn't look good, but couldn't find a more elegant way of doing it.
 	//for i := 0; i < 8; i++ {
 	/*
-	for i := 0; i < 4; i++ {
-		ivArray[i] = byte((ivHigh >> uint((4-i-1)*8)) & 0xff)
-	}
-	for i := 0; i < 8; i++ {
-		ivArray[4+i] = byte((ivLow >> uint((8-i-1)*8)) & 0xff)
-	}
+		for i := 0; i < 4; i++ {
+			ivArray[i] = byte((ivHigh >> uint((4-i-1)*8)) & 0xff)
+		}
+		for i := 0; i < 8; i++ {
+			ivArray[4+i] = byte((ivLow >> uint((8-i-1)*8)) & 0xff)
+		}
 	*/
 	binary.BigEndian.PutUint32(ivArray[0:4], ivHigh)
 	binary.BigEndian.PutUint64(ivArray[4:12], ivLow)
@@ -187,9 +187,6 @@ func computeAndWriteICV(packet []byte, icvKey []byte) {
 
 	// Write ICV to packet
 	startIdx := pktLen - dptypes.ICVLEN
-	//for i, b := range icv {
-	//	packet[startIdx+i] = b
-	//}
 	copy(packet[startIdx:], icv)
 }
 
@@ -197,8 +194,8 @@ func computeAndWriteICV(packet []byte, icvKey []byte) {
 func PrintHexBytes(data []byte) string {
 	inputLen := len(data)
 	startIdx := 0
-	endIdx   := 4
-	output   := ""
+	endIdx := 4
+	output := ""
 
 	for {
 		if startIdx >= inputLen {
@@ -208,9 +205,9 @@ func PrintHexBytes(data []byte) string {
 		if endIdx > inputLen {
 			endIdx = inputLen
 		}
-		output = output + hex.EncodeToString(data[startIdx: endIdx]) + " "
+		output = output + hex.EncodeToString(data[startIdx:endIdx]) + " "
 		startIdx += 4
-		endIdx   += 4
+		endIdx += 4
 	}
 	return output
 }
@@ -271,12 +268,14 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 
 		ok := false
 		//ok, padLen = encryptPayload(
+		// payloadLen includes the IV length
+		// GetIVArray gets and writes the IV to packet buffer
 		ok, extraLen = encryptPayload(
 			//pktBuf[offsetStart:offsetEnd],
 			pktBuf[offsetStart:],
 			payloadLen, encKey, key.EncBlock,
 			GetIVArray(itrLocalData,
-			pktBuf[offsetStart:offsetStart+dptypes.GCMIVLENGTH]))
+				pktBuf[offsetStart:offsetStart+dptypes.GCMIVLENGTH]))
 		if ok == false {
 			keyId = 0
 			useCrypto = false
