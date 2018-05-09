@@ -296,9 +296,13 @@ func verifyAndInject(fd6 int,
 			log.Printf("verifyAndInject: ETR Key id %d had nil ICV key value\n", keyId)
 			return false
 		}
-		log.Printf("XXXX ETR LISP + IV + Cipher text (len %d) is 0x%x\n",
-			len(buf[0:n-dptypes.ICVLEN]), buf[0:n-dptypes.ICVLEN])
-		log.Printf("XXXX ETR ICV is 0x%x\n", buf[n-dptypes.ICVLEN:n])
+		if debug {
+			log.Printf("verifyAndInject: LISP %s, IV %s, Cipher %s, ICV %s\n",
+				fib.PrintHexBytes(buf[:8]),
+				fib.PrintHexBytes(buf[8:20]),
+				fib.PrintHexBytes(buf[20:n-20]),
+				fib.PrintHexBytes(buf[n-20:n]))
+		}
 		icv := fib.ComputeICV(buf[0:n-dptypes.ICVLEN], icvKey)
 		pktIcv := buf[n-dptypes.ICVLEN : n]
 
@@ -313,7 +317,6 @@ func verifyAndInject(fd6 int,
 		// Decrypt the packet before sending out.
 		// Read the IV from packet buffer.
 		ivArray := buf[dptypes.LISPHEADERLEN:packetOffset]
-		log.Printf("XXXXX IV Array is %x\n", ivArray)
 
 		packet := buf[packetOffset : n-dptypes.ICVLEN]
 

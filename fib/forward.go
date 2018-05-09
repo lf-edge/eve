@@ -11,6 +11,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/zededa/lisp/dataplane/dptypes"
@@ -90,8 +91,6 @@ func encryptPayload(payload []byte,
 		remainder = ((payloadLen - 12) % aes.BlockSize)
 		packet = payload[:payloadLen+aes.BlockSize-remainder]
 		padLen = int(aes.BlockSize-remainder)
-		log.Printf("XXXXX Padded packet with %d bytes\n",
-			aes.BlockSize-remainder)
 
 		// Now fill the padding with zeroes
 		for i := payloadLen; i < uint32(len(packet)); i++ {
@@ -112,19 +111,21 @@ func encryptPayload(payload []byte,
 		return false, 0
 	}
 	plainText := packet[dptypes.GCMIVLENGTH:]
-	log.Printf("XXXXX Plain text length is %d\n", len(plainText))
+	if debug {
+		log.Printf("encryptPayload: Plain text length is %d\n", len(plainText))
+	}
 	//aesGcm.Seal(packet[dptypes.GCMIVLENGTH:], packet[:dptypes.GCMIVLENGTH],
 	//	packet[dptypes.GCMIVLENGTH:], nil)
 	cipherText := aesGcm.Seal(plainText[:0], packet[:dptypes.GCMIVLENGTH],
 		plainText, nil)
 	//cipherText := aesGcm.Seal(nil, packet[:dptypes.GCMIVLENGTH],
 	//	plainText, nil)
-	log.Printf("XXXXX Over head length is %d\n", aesGcm.Overhead())
-	log.Printf("XXXXX Cipher text length is %d\n", len(cipherText))
-	log.Printf("XXXXX Cipher text is %x\n", cipherText)
 	//copy(packet[dptypes.GCMIVLENGTH:], cipherText)
 	extraLen = len(cipherText) - len(plainText)
-	log.Printf("XXXXX Extra length + pad length is %d\n", extraLen + padLen)
+	if debug {
+		log.Printf("encryptPayload: GCM extra length is %d, Padding length is %d\n",
+			extraLen, padLen)
+	}
 	//return true, (aes.BlockSize - remainder)
 	return true, extraLen + padLen
 }
@@ -171,7 +172,9 @@ func GetIVArray(itrLocalData *dptypes.ITRLocalData, ivArray []byte) []byte {
 func ComputeICV(buf []byte, icvKey []byte) []byte {
 	//mac := hmac.New(sha1.New, icvKey)
 	mac := hmac.New(sha256.New, icvKey)
-	log.Printf("XXXXX ICV text is 0x%x\n", buf)
+	if debug {
+		log.Printf("ICV: ICV will be computed on %s\n", PrintHexBytes(buf))
+	}
 	mac.Write(buf)
 	icv := mac.Sum(nil)
 	// we only use the first 20 bytes as ICV
@@ -181,9 +184,6 @@ func ComputeICV(buf []byte, icvKey []byte) []byte {
 func computeAndWriteICV(packet []byte, icvKey []byte) {
 	pktLen := len(packet)
 	icv := ComputeICV(packet[:pktLen-dptypes.ICVLEN], icvKey)
-	log.Printf("XXXXX ICV pktLen is %d\n", pktLen)
-	log.Printf("XXXXX ICV length is %d\n", len(icv))
-	log.Printf("XXXXX ICV is %x\n", icv)
 
 	// Write ICV to packet
 	startIdx := pktLen - dptypes.ICVLEN
@@ -191,6 +191,28 @@ func computeAndWriteICV(packet []byte, icvKey []byte) {
 	//	packet[startIdx+i] = b
 	//}
 	copy(packet[startIdx:], icv)
+}
+
+// Groups 4 bytes at a time and prints
+func PrintHexBytes(data []byte) string {
+	inputLen := len(data)
+	startIdx := 0
+	endIdx   := 4
+	output   := ""
+
+	for {
+		if startIdx >= inputLen {
+			break
+		}
+
+		if endIdx > inputLen {
+			endIdx = inputLen
+		}
+		output = output + hex.EncodeToString(data[startIdx: endIdx]) + " "
+		startIdx += 4
+		endIdx   += 4
+	}
+	return output
 }
 
 func craftAndSendIPv4LispPacket(packet gopacket.Packet,
@@ -211,7 +233,6 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 	var icvKey []byte
 
 	srcAddr := GetIPv4UplinkAddr()
-	log.Printf("XXXXX craftAndSendIPv4LispPacket: UPLINK address is %s.\n", srcAddr)
 	// XXX
 	// Should we have a static per-thread entry for this header?
 	// Can we have it globally and re-use?
@@ -330,7 +351,6 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 
 		// We do not include outer UDP header for ICV computation
 		icvStartOffset := offset + dptypes.IP4HEADERLEN + dptypes.UDPHEADERLEN
-		log.Printf("XXXXX ICV offset start %d, offset end %d\n", icvStartOffset, offsetEnd)
 		for i := 0; i < outerHdrLen; i++ {
 			pktBuf[i+offset] = outerHdr[i]
 		}
@@ -344,8 +364,19 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 	outputSlice := pktBuf[offset:offsetEnd]
 
 	log.Printf("XXXXX Writing %d bytes into ITR socket\n", len(outputSlice))
-	log.Printf("XXXXX LISP + IV + Crypto text (len %d) is 0x%x\n",
-		len(outputSlice[28:]), outputSlice[28:len(outputSlice) - 20])
+	if debug {
+		if useCrypto {
+			log.Printf("ITR: LISP %s, IV %s, Crypto %s, ICV %s\n",
+				PrintHexBytes(outputSlice[28:36]),
+				PrintHexBytes(outputSlice[36:48]),
+				PrintHexBytes(outputSlice[38:len(outputSlice)-20]),
+				PrintHexBytes(outputSlice[len(outputSlice)-20:]))
+		} else {
+			log.Printf("ITR: LISP %s, PlainText %s\n",
+				PrintHexBytes(outputSlice[28:36]),
+				PrintHexBytes(outputSlice[36:]))
+		}
+	}
 	err := syscall.Sendto(fd4, outputSlice, 0, &rloc.IPv4SockAddr)
 	if err != nil {
 		log.Printf("craftAndSendIPv4LispPacket: Packet send ERROR: %s", err)
@@ -502,6 +533,19 @@ func craftAndSendIPv6LispPacket(packet gopacket.Packet,
 	outputSlice := pktBuf[offset:offsetEnd]
 
 	log.Printf("XXXXX Writing %d bytes into ITR socket\n", len(outputSlice))
+	if debug {
+		if useCrypto {
+			log.Printf("ITR: LISP %s, IV %s, Crypto %s, ICV %s\n",
+				PrintHexBytes(outputSlice[48:56]),
+				PrintHexBytes(outputSlice[56:68]),
+				PrintHexBytes(outputSlice[68:len(outputSlice)-20]),
+				PrintHexBytes(outputSlice[len(outputSlice)-20:]))
+		} else {
+			log.Printf("ITR: LISP %s, PlainText %s\n",
+				PrintHexBytes(outputSlice[48:56]),
+				PrintHexBytes(outputSlice[56:]))
+		}
+	}
 	err := syscall.Sendto(fd6, outputSlice, 0, &rloc.IPv6SockAddr)
 
 	if err != nil {
