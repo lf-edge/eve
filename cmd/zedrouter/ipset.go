@@ -3,7 +3,7 @@
 
 // default eid ipset configlet for overlay interface towards domU
 
-package main
+package zedrouter
 
 import (
 	"github.com/zededa/go-provision/types"

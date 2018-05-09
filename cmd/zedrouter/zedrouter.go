@@ -8,7 +8,7 @@
 // ipset, ip link/addr/route configuration) based on that and apply those
 // configlets.
 
-package main
+package zedrouter
 
 import (
 	"encoding/json"
@@ -67,7 +67,7 @@ type DNCContext struct {
 
 var debug = false
 
-func main() {
+func Run() {
 	logf, err := agentlog.Init(agentName)
 	if err != nil {
 		log.Fatal(err)

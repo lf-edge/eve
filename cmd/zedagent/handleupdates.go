@@ -4,7 +4,7 @@
 // Pull AppInstanceConfig from ZedCloud, make it available for zedmanager
 // publish AppInstanceStatus to ZedCloud.
 
-package main
+package zedagent
 
 import (
 	"fmt"

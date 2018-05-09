@@ -20,8 +20,9 @@ RUN (cd ./src/github.com/zededa/go-provision/; scripts/getversion.sh >/opt/zeded
 # Echo for builders enjoyment
 RUN echo Building: `cat /opt/zededa/bin/versioninfo`
 
-RUN go install github.com/zededa/go-provision/cmd/...
+RUN go install github.com/zededa/go-provision/zedbox/...
 RUN cd /opt/zededa/bin ; ln -s /go/bin/* .
+RUN cd /opt/zededa/bin ; ln -s zedbox client; ln -s zedbox domainmgr; ln -s zedbox downloader; ln -s zedbox eidregister; ln -s zedbox hardwaremodel; ln -s zedbox identitymgr; ln -s zedbox ledmanager; ln -s zedbox logmanager; ln -s zedbox verifier; ln -s zedbox zedagent; ln -s zedbox zedmanager; ln -s zedbox zedrouter
 
 # Now building LISP
 FROM zededa/lisp:latest AS lisp

@@ -1,7 +1,7 @@
 // Copyright (c) 2019 Zededa, Inc.
 // All rights reserved.
 
-package main
+package zedrouter
 
 // Grab both interface counters and acl counters.
 // Does it for all interfaces; caller can filter

@@ -1,7 +1,7 @@
 // Copyright (c) 2018 Zededa, Inc.
 // All rights reserved.
 
-package main
+package hardwaremodel
 
 import (
 	"flag"
@@ -13,7 +13,7 @@ import (
 // Set from Makefile
 var Version = "No version specified"
 
-func main() {
+func Run() {
 	versionPtr := flag.Bool("v", false, "Version")
 	flag.Parse()
 	if *versionPtr {

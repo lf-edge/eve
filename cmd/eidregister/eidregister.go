@@ -7,7 +7,7 @@
 // /var/run/identitymgr/status/*.json, and invokes /rest/eid-register
 // Reads config from -d configdir or /config
 
-package main
+package eidregister
 
 import (
 	"bytes"
@@ -51,7 +51,7 @@ var Version = "No version specified"
 type dummyContext struct {
 }
 
-func main() {
+func Run() {
 	logf, err := agentlog.Init(agentName)
 	if err != nil {
 	       log.Fatal(err)

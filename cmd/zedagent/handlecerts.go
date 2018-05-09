@@ -2,7 +2,7 @@
 // All rights reserved.
 
 // cert object event handlers
-package main
+package zedagent
 
 import (
 	"encoding/json"

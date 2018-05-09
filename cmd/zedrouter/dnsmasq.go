@@ -3,7 +3,7 @@
 
 // dnsmasq configlets for overlay and underlay interfaces towards domU
 
-package main
+package zedrouter
 
 import (
 	"fmt"

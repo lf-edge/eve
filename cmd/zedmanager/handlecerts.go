@@ -1,7 +1,7 @@
 // Copyright (c) 2017 Zededa, Inc.
 // All rights reserved.
 
-package main
+package zedmanager
 
 import (
 	"github.com/zededa/go-provision/types"

@@ -31,7 +31,7 @@
 //				<downloaded>...    --> <downloader>  <certs> <status>
 //								   --> <zedagent>    <certs> <status>
 
-package main
+package zedagent
 
 import (
 	"flag"
@@ -152,7 +152,7 @@ var devCtx deviceContext
 // we'll react to baseOsStatus changes.
 var publishDeviceInfo bool
 
-func main() {
+func Run() {
 	logf, err := agentlog.Init(agentName)
 	if err != nil {
 		log.Fatal(err)

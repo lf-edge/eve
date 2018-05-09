@@ -5,7 +5,7 @@
 // we disaggregate
 // XXX also blocks port 8080
 
-package main
+package zedagent
 
 import (
 	"github.com/zededa/go-provision/wrap"
