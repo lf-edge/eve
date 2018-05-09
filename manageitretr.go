@@ -9,9 +9,9 @@ package main
 import (
 	"github.com/google/gopacket/afpacket"
 	//"github.com/google/gopacket/pfring"
+	"github.com/zededa/go-provision/types"
 	"github.com/zededa/lisp/dataplane/etr"
 	"github.com/zededa/lisp/dataplane/itr"
-        "github.com/zededa/go-provision/types"
 	"log"
 )
 

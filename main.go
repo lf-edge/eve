@@ -11,14 +11,14 @@ package main
 import (
 	"encoding/json"
 	"flag"
-	"github.com/zededa/lisp/dataplane/etr"
-	"github.com/zededa/lisp/dataplane/fib"
-	"github.com/zededa/lisp/dataplane/itr"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/types"
-	"github.com/zededa/lisp/dataplane/dptypes"
 	"github.com/zededa/go-provision/watch"
+	"github.com/zededa/lisp/dataplane/dptypes"
+	"github.com/zededa/lisp/dataplane/etr"
+	"github.com/zededa/lisp/dataplane/fib"
+	"github.com/zededa/lisp/dataplane/itr"
 	"log"
 	"net"
 	"os"
@@ -28,8 +28,8 @@ import (
 )
 
 const (
-	agentName        = "dataplane"
-	dnsDirname       = "/var/run/zedrouter/DeviceNetworkStatus"
+	agentName  = "dataplane"
+	dnsDirname = "/var/run/zedrouter/DeviceNetworkStatus"
 )
 
 var lispConfigDir string
@@ -60,7 +60,7 @@ func main() {
 	flag.Parse()
 
 	log.Printf("Dataplane: Using %s for LISP directory.\n", lispConfigDir)
-	configHolePath   = lispConfigDir + "/lisp-ipc-data-plane"
+	configHolePath = lispConfigDir + "/lisp-ipc-data-plane"
 	lispersDotNetItr = lispConfigDir + "/lispers.net-itr"
 
 	debug = *debugPtr

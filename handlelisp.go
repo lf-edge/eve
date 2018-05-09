@@ -7,11 +7,11 @@ package main
 
 import (
 	"crypto/aes"
-	"encoding/json"
 	"encoding/hex"
+	"encoding/json"
+	"github.com/zededa/lisp/dataplane/dptypes"
 	"github.com/zededa/lisp/dataplane/etr"
 	"github.com/zededa/lisp/dataplane/fib"
-	"github.com/zededa/lisp/dataplane/dptypes"
 	"log"
 	"net"
 	"strconv"
@@ -79,9 +79,9 @@ func parseRloc(rlocStr *Rloc) (dptypes.Rloc, bool) {
 		}
 		// XXX lispers.net is sending 8 zeroes in the front
 		/*
-		if len(key.IcvKey) == 40 {
-			key.IcvKey = key.IcvKey[8:]
-		}
+			if len(key.IcvKey) == 40 {
+				key.IcvKey = key.IcvKey[8:]
+			}
 		*/
 		icvKey, err := hex.DecodeString(key.IcvKey)
 		if err != nil {
@@ -113,14 +113,14 @@ func parseRloc(rlocStr *Rloc) (dptypes.Rloc, bool) {
 	// Will have to add code for key handling in future.
 
 	rlocEntry := dptypes.Rloc{
-		Rloc:     rloc,
-		Priority: priority,
-		Weight:   weight,
-		KeyCount: uint32(len(rlocStr.Keys)),
-		Keys:     keys,
-		Family:   uint32(family),
-		Packets:  new(uint64),
-		Bytes:    new(uint64),
+		Rloc:        rloc,
+		Priority:    priority,
+		Weight:      weight,
+		KeyCount:    uint32(len(rlocStr.Keys)),
+		Keys:        keys,
+		Family:      uint32(family),
+		Packets:     new(uint64),
+		Bytes:       new(uint64),
 		LastPktTime: new(int64),
 	}
 
@@ -372,22 +372,22 @@ func handleDecapKeys(msg []byte) {
 		// This is a hack from our side for the time being.
 		// lispers.net should fix this eventually.
 		/*
-		if len(key.IcvKey) == 40 {
-			key.IcvKey = key.IcvKey[8:]
-		}
-		if (len(key.DecKey) != CRYPTO_KEY_LEN) ||
-			(len(key.IcvKey) != CRYPTO_KEY_LEN) {
-			log.Printf(
-				"Error: Decap/ICV Key lengths should be 32, " +
-				"found encrypt key len %d & icv key length %d\n",
-				len(key.DecKey), len(key.IcvKey))
-			continue
-		}
+			if len(key.IcvKey) == 40 {
+				key.IcvKey = key.IcvKey[8:]
+			}
+			if (len(key.DecKey) != CRYPTO_KEY_LEN) ||
+				(len(key.IcvKey) != CRYPTO_KEY_LEN) {
+				log.Printf(
+					"Error: Decap/ICV Key lengths should be 32, " +
+					"found encrypt key len %d & icv key length %d\n",
+					len(key.DecKey), len(key.IcvKey))
+				continue
+			}
 		*/
 		//decKey := []byte(key.DecKey)
 		decKey, err := hex.DecodeString(key.DecKey)
 		if err != nil {
-			log.Printf("handleDecapKeys: Decoding decrypt key " +
+			log.Printf("handleDecapKeys: Decoding decrypt key "+
 				"from string to binary failed: %s\n",
 				err)
 			continue
@@ -395,7 +395,7 @@ func handleDecapKeys(msg []byte) {
 		//icvKey := []byte(key.IcvKey)
 		icvKey, err := hex.DecodeString(key.IcvKey)
 		if err != nil {
-			log.Printf("handleDecapKeys: Decoding ICV key from " +
+			log.Printf("handleDecapKeys: Decoding ICV key from "+
 				"string to binary failed: %s\n",
 				err)
 			continue
@@ -403,8 +403,8 @@ func handleDecapKeys(msg []byte) {
 		decBlock, err := aes.NewCipher(decKey)
 		if err != nil {
 			log.Printf(
-				"handleDecapKeys: Creating of Cipher block for " +
-				"decryption key %s failed\n",
+				"handleDecapKeys: Creating of Cipher block for "+
+					"decryption key %s failed\n",
 				key.DecKey)
 			continue
 		}
