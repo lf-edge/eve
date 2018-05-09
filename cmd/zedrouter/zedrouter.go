@@ -792,7 +792,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		createDnsmasqOverlayConfiglet(cfgPathname, olIfname, olAddr1,
 			EID.String(), olMac, hostsDirpath,
 			config.UUIDandVersion.UUID.String(), ipsets)
-		startDnsmasq(cfgPathname)
+		startDnsmasq(cfgPathname, olIfname)
 
 		additionalInfo := generateAdditionalInfo(status, olConfig)
 		// Create LISP configlets for IID and EID/signature
@@ -877,7 +877,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 
 		createDnsmasqUnderlayConfiglet(cfgPathname, ulIfname, ulAddr1,
 			ulAddr2, ulMac, config.UUIDandVersion.UUID.String(), ipsets)
-		startDnsmasq(cfgPathname)
+		startDnsmasq(cfgPathname, ulIfname)
 
 		// Add bridge parameters for Xen to Status
 		ulStatus := &status.UnderlayNetworkList[ulNum-1]
@@ -1010,7 +1010,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 			createDnsmasqOverlayConfiglet(cfgPathname, olIfname, olAddr1,
 				EID.String(), olMac, hostsDirpath,
 				config.UUIDandVersion.UUID.String(), newIpsets)
-			startDnsmasq(cfgPathname)
+			startDnsmasq(cfgPathname, olIfname)
 		}
 
 		additionalInfo := generateAdditionalInfo(*status, olConfig)
@@ -1051,7 +1051,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 			createDnsmasqUnderlayConfiglet(cfgPathname, ulIfname, ulAddr1,
 				ulAddr2, ulMac,
 				config.UUIDandVersion.UUID.String(), newIpsets)
-			startDnsmasq(cfgPathname)
+			startDnsmasq(cfgPathname, ulIfname)
 		}
 	}
 

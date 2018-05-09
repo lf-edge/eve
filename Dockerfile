@@ -21,8 +21,6 @@ RUN (cd ./src/github.com/zededa/go-provision/; scripts/getversion.sh >/opt/zeded
 RUN echo Building: `cat /opt/zededa/bin/versioninfo`
 
 RUN go install github.com/zededa/go-provision/cmd/...
-# this is taking care of on-boarding code that has to interact with LISP
-RUN go install github.com/zededa/go-provision/oldcmd/...
 RUN cd /opt/zededa/bin ; ln -s /go/bin/* .
 
 # Now building LISP
