@@ -66,9 +66,9 @@ type Rloc struct {
 	WrHigh uint32
 
 	// Packet statistics
-	Packets       uint64
-	Bytes         uint64
-	LastPktTime   int64
+	Packets       *uint64
+	Bytes         *uint64
+	LastPktTime   *int64
 }
 
 type BufferedPacket struct {

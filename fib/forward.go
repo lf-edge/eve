@@ -385,12 +385,12 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 
 	// Increment RLOC packet & byte count statistics
 	totalBytes := offsetEnd - uint32(offset) + dptypes.IP4HEADERLEN
-	atomic.AddUint64(&rloc.Packets, 1)
-	atomic.AddUint64(&rloc.Bytes, uint64(totalBytes))
+	atomic.AddUint64(rloc.Packets, 1)
+	atomic.AddUint64(rloc.Bytes, uint64(totalBytes))
 
 	// Atomically store time stamp
 	unixSeconds := timeStamp.Unix()
-	atomic.StoreInt64(&rloc.LastPktTime, unixSeconds)
+	atomic.StoreInt64(rloc.LastPktTime, unixSeconds)
 }
 
 func craftAndSendIPv6LispPacket(packet gopacket.Packet,
@@ -554,10 +554,10 @@ func craftAndSendIPv6LispPacket(packet gopacket.Packet,
 
 	// Increment RLOC packet & byte count statistics
 	totalBytes := offsetEnd - uint32(offset) + dptypes.IP6HEADERLEN
-	atomic.AddUint64(&rloc.Packets, 1)
-	atomic.AddUint64(&rloc.Bytes, uint64(totalBytes))
+	atomic.AddUint64(rloc.Packets, 1)
+	atomic.AddUint64(rloc.Bytes, uint64(totalBytes))
 
 	// Atomically store time stamp
 	unixSeconds := timeStamp.Unix()
-	atomic.StoreInt64(&rloc.LastPktTime, unixSeconds)
+	atomic.StoreInt64(rloc.LastPktTime, unixSeconds)
 }

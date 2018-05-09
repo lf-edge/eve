@@ -438,8 +438,8 @@ func ShowMapCacheEntries() {
 		log.Println("Rlocs:")
 		for _, rloc := range value.Rlocs {
 			log.Printf("	RLOC: %s\n", rloc.Rloc)
-			log.Printf("	RLOC Packets: %v\n", atomic.LoadUint64(&rloc.Packets))
-			log.Printf("	RLOC Bytes: %v\n", atomic.LoadUint64(&rloc.Bytes))
+			log.Printf("	RLOC Packets: %v\n", atomic.LoadUint64(rloc.Packets))
+			log.Printf("	RLOC Bytes: %v\n", atomic.LoadUint64(rloc.Bytes))
 			log.Printf("	RLOC Keys:\n")
 			for _, key := range rloc.Keys {
 				keyId := key.KeyId
@@ -558,10 +558,10 @@ func StatsThread(puntChannel chan []byte) {
 
 				var rlocStats dptypes.RlocStatsEntry
 				rlocStats.Rloc = rloc.Rloc.String()
-				rlocStats.PacketCount = atomic.LoadUint64(&rloc.Packets)
-				rlocStats.ByteCount = atomic.LoadUint64(&rloc.Bytes)
+				rlocStats.PacketCount = atomic.SwapUint64(rloc.Packets, 0)
+				rlocStats.ByteCount = atomic.SwapUint64(rloc.Bytes, 0)
 				currUnixSecs := time.Now().Unix()
-				lastPktSecs := atomic.LoadInt64(&rloc.LastPktTime)
+				lastPktSecs := atomic.LoadInt64(rloc.LastPktTime)
 				rlocStats.SecondsSinceLastPkt = currUnixSecs - lastPktSecs
 
 				eidStats.Rlocs = append(eidStats.Rlocs, rlocStats)
