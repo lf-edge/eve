@@ -119,6 +119,9 @@ func parseRloc(rlocStr *Rloc) (dptypes.Rloc, bool) {
 		KeyCount: uint32(len(rlocStr.Keys)),
 		Keys:     keys,
 		Family:   uint32(family),
+		Packets:  new(uint64),
+		Bytes:    new(uint64),
+		LastPktTime: new(int64),
 	}
 
 	v4Addr := rloc.To4()
