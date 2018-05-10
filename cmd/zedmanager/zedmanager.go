@@ -124,6 +124,7 @@ func main() {
 
 	for _, dir := range dirs {
 		if _, err := os.Stat(dir); err != nil {
+			log.Printf("Create %s\n", dir)
 			if err := os.MkdirAll(dir, 0700); err != nil {
 				log.Fatal(err)
 			}
