@@ -7,9 +7,10 @@ package main
 
 import (
 	"fmt"
-	"github.com/zededa/go-provision/wrap"
+	"github.com/zededa/go-provision/agentlog"
 	"log"
 	"os"
+	"os/exec"
 )
 
 const dnsmasqOverlayStatic = `
@@ -108,17 +109,28 @@ func deleteDnsmasqConfiglet(cfgPathname string) {
 //    ${DMDIR}/dnsmasq --conf-file=/var/run/zedrouter/dnsmasq.${OLIFNAME}.conf
 // or
 //    ${DMDIR}/dnsmasq --conf-file=/var/run/zedrouter/dnsmasq.${ULIFNAME}.conf
-func startDnsmasq(cfgPathname string) {
+func startDnsmasq(cfgPathname string, ifname string) {
 	if debug {
 		log.Printf("startDnsmasq: %s\n", cfgPathname)
 	}
-	cmd := "nohup"
+	name := "nohup"
 	args := []string{
 		"/opt/zededa/bin/dnsmasq",
+		"-d",
 		"-C",
 		cfgPathname,
 	}
-	go wrap.Command(cmd, args...).Output()
+	logFilename := fmt.Sprintf("dnsmasq.%s", ifname)
+	logf, err := agentlog.Init(logFilename)
+	if err != nil {
+		log.Fatalf("startDnsmasq agentlog failed: %s\n", err)
+	}
+	cmd := exec.Command(name, args...)
+	cmd.Stderr = logf
+	if debug {
+		log.Printf("Calling command %s %v\n", name, args)
+	}
+	go cmd.Run()
 }
 
 //    pkill -u nobody -f dnsmasq.${IFNAME}.conf

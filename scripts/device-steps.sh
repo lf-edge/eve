@@ -91,16 +91,28 @@ rm -rf /var/tmp/zedmanager/config/*.json
 echo "Removing old zedmanager status files"
 rm -rf /var/run/zedmanager/status/*.json
 
+# XXX when we swich to pusub package make it wait for directories to appear
+
 # The following is a workaround for a racecondition between different agents
 # Make sure we have the required directories in place
-DIRS="$CONFIGDIR $PERSISTDIR $TMPDIR /var/tmp/ledmanager/config/ /var/tmp/domainmgr/config/ /var/tmp/verifier/config/ /var/tmp/downloader/config/ /var/tmp/zedmanager/config/ /var/tmp/identitymgr/config/ /var/tmp/zedrouter/config/ /var/run/domainmgr/status/ /var/run/downloader/status/ /var/run/zedmanager/status/ /var/run/eidregister/status/ /var/run/zedrouter/status/ /var/run/identitymgr/status/ $TMPDIR/DeviceNetworkConfig/ /var/run/zedrouter/DeviceNetworkStatus/ /var/run/zedrouter/NetworkMetrics $TMPDIR/AssignableAdapters /var/run/zedclient/metricsMap /var/run/logmanager/metricsMap /var/run/downloader/metricsMap"
+DIRS="$CONFIGDIR $PERSISTDIR $TMPDIR $TMPDIR/DeviceNetworkConfig/ /var/run/zedrouter/DeviceNetworkStatus/ /var/run/zedrouter/NetworkMetrics $TMPDIR/AssignableAdapters /var/run/zedclient/metricsMap /var/run/logmanager/metricsMap /var/run/downloader/metricsMap"
+for a in $ALLAGENTS; do
+    DIRS="$DIRS /var/tmp/$a/config /var/run/$a/status"
+done
+# Make sure we create these as well
+OBJDIRS="verifier/appImg.obj verifier/baseOs.obj downloader/appImg.obj downloader/baseOs.obj downloader/cert.obj zedagent/baseOs.obj zedagent/cert.obj"
+for d in $OBJDIRS; do
+    DIRS="$DIRS /var/tmp/$d/config /var/run/$d/status"
+done
 for d in $DIRS; do
     d1=`dirname $d`
     if [ ! -d $d1 ]; then
+	# XXX echo "Create $d1"
 	mkdir -p $d1
 	chmod 700 $d1
     fi
     if [ ! -d $d ]; then
+	# XXX echo "Create $d"
 	mkdir -p $d
 	chmod 700 $d
     fi

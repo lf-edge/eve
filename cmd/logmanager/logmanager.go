@@ -621,7 +621,8 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 		parsedDateAndTime, err := parseDateTime(line)
 		// XXX set iid to PID?
 		if err != nil {
-			logChan <- logEntry{source: r.source, content: line}
+			logChan <- logEntry{source: r.source, content: line,
+				timestamp: ptypes.TimestampNow()}
 		} else {
 			logChan <- logEntry{source: r.source, content: line,
 				timestamp: parsedDateAndTime}
