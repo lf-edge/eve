@@ -109,21 +109,25 @@ func Run() {
 	serverName = strings.Split(serverNameAndPort, ":")[0]
 
 	if _, err := os.Stat(inputBaseDirname); err != nil {
+		log.Printf("Create %s\n", inputBaseDirname)
 		if err := os.Mkdir(inputBaseDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(outputBaseDirname); err != nil {
+		log.Printf("Create %s\n", outputBaseDirname)
 		if err := os.Mkdir(outputBaseDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(inputDirname); err != nil {
+		log.Printf("Create %s\n", inputDirname)
 		if err := os.Mkdir(inputDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(outputDirname); err != nil {
+		log.Printf("Create %s\n", outputDirname)
 		if err := os.Mkdir(outputDirname, 0700); err != nil {
 			log.Fatal(err)
 		}

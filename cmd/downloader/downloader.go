@@ -547,6 +547,7 @@ func createDownloadDirs(objTypes []string) {
 		for _, dirType := range workingDirTypes {
 			dirName := objectDownloadDirname + "/" + objType + "/" + dirType
 			if _, err := os.Stat(dirName); err != nil {
+				log.Printf("Create %s\n", dirName)
 				if err := os.MkdirAll(dirName, 0700); err != nil {
 					log.Fatal(err)
 				}
@@ -778,6 +779,7 @@ func handleSyncOp(ctx *downloaderContext, statusFilename string,
 	}
 
 	if _, err := os.Stat(locFilename); err != nil {
+		log.Printf("Create %s\n", locFilename)
 		if err = os.MkdirAll(locFilename, 0755); err != nil {
 			log.Fatal(err)
 		}
