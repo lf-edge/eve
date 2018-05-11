@@ -34,6 +34,7 @@ KMOD_PFRING_TAG=$(linuxkit_tag pkg/kmod_pfring)-$ARCH
 XENTOOLS_TAG=$(linuxkit_tag pkg/xen-tools)-$ARCH
 XEN_TAG=$(linuxkit_tag pkg/xen)-$ARCH
 GRUB_TAG=$(linuxkit_tag pkg/grub)-$ARCH
+DTREES_TAG=$(linuxkit_tag pkg/device-trees)-$ARCH
 DNSMASQ_TAG=$(linuxkit_tag pkg/dnsmasq)-$ARCH
 TESTMSVCS_TAG=$(linuxkit_tag pkg/test-microsvcs)-$ARCH
 ZEDEDA_TAG=$(linuxkit_tag pkg/zedctr)-$ARCH
@@ -67,6 +68,7 @@ sed -e "s#KERNEL_TAG#"$KERNEL_TAG"#" \
     -e "s#WWAN_TAG#"$WWAN_TAG"#" \
     -e "s#WLAN_TAG#"$WLAN_TAG"#" \
     -e "s#GRUB_TAG#"$GRUB_TAG"#" \
+    -e "s#DTREES_TAG#"$DTREES_TAG"#" \
     -e "s#GPTTOOLS_TAG#"$GPTTOOLS_TAG"#" \
     -e "s#WATCHDOG_TAG#"$WATCHDOG_TAG"#" \
     -e "s#KMOD_PFRING_TAG#"$KMOD_PFRING_TAG"#" \

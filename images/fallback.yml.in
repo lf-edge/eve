@@ -3,6 +3,7 @@ kernel:
   cmdline: "rootdelay=3"
 init:
   - GRUB_TAG
+  - DTREES_TAG
   - XEN_TAG
   - GPTTOOLS_TAG
   - DOM0ZTOOLS_TAG

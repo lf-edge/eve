@@ -3,6 +3,7 @@ kernel:
   cmdline: "rootdelay=3 root=/dev/sdb"
 init:
   - GRUB_TAG
+  - DTREES_TAG
   - XEN_TAG
   - linuxkit/init:v0.3
   - linuxkit/runc:v0.3
