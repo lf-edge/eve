@@ -30,7 +30,6 @@ case $(uname -m) in
 esac
 
 KERNEL_TAG=$(linuxkit_tag pkg/kernel)-$ARCH
-KMOD_PFRING_TAG=$(linuxkit_tag pkg/kmod_pfring)-$ARCH
 XENTOOLS_TAG=$(linuxkit_tag pkg/xen-tools)-$ARCH
 XEN_TAG=$(linuxkit_tag pkg/xen)-$ARCH
 GRUB_TAG=$(linuxkit_tag pkg/grub)-$ARCH
@@ -70,6 +69,5 @@ sed -e "s#KERNEL_TAG#"$KERNEL_TAG"#" \
     -e "s#DTREES_TAG#"$DTREES_TAG"#" \
     -e "s#GPTTOOLS_TAG#"$GPTTOOLS_TAG"#" \
     -e "s#WATCHDOG_TAG#"$WATCHDOG_TAG"#" \
-    -e "s#KMOD_PFRING_TAG#"$KMOD_PFRING_TAG"#" \
     -e "s#MKFLASH_TAG#"$MKFLASH_TAG"#" \
     $1
