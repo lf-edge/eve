@@ -540,9 +540,13 @@ func ProcessCapturedPkts(fd6 int,
 			// ipv4 underlay
 			ipHdr := ipLayer.(*layers.IPv4)
 			// validate outer header checksum
-			csum := computeChecksum(pktBuf[dptypes.ETHHEADERLEN:dptypes.IP4HEADERLEN])
+			csum := computeChecksum(pktBuf[dptypes.ETHHEADERLEN:dptypes.ETHHEADERLEN+dptypes.IP4HEADERLEN])
 			if csum != 0xFFFF {
 				fib.AddDecapStatistics("checksum-error", 1)
+				if debug {
+					log.Printf("ProcessCapturedPackets: Checksum error\n")
+				}
+				return
 			}
 
 			srcIP = ipHdr.SrcIP
