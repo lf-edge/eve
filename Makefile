@@ -23,6 +23,10 @@ TARGET_IMG_aarch64=target_aarch64.img
 TARGET_IMG_x86_64=target.img
 TARGET_IMG=$(TARGET_IMG_$(ZARCH))
 
+INSTALLER_IMG_aarch64=installer_aarch64
+INSTALLER_IMG_x86_64=installer
+INSTALLER_IMG=$(INSTALLER_IMG_$(ZARCH))
+
 QEMU_OPTS_aarch64= -machine virt,gic_version=3 -machine virtualization=true -cpu cortex-a57 -machine type=virt
 # -drive file=./bios/flash0.img,format=raw,if=pflash -drive file=./bios/flash1.img,format=raw,if=pflash
 # [ -f bios/flash1.img ] || dd if=/dev/zero of=bios/flash1.img bs=1048576 count=64
@@ -99,9 +103,13 @@ bios/OVMF.fd: bios
 # through the installer. It's the long road to fallback.img. Good for
 # testing.
 #
-run-installer:
-	qemu-img create -f ${IMG_FORMAT} target.img ${MEDIA_SIZE}M
-	qemu-system-$(ZARCH) $(QEMU_OPTS) -drive file=target.img,format=$(IMG_FORMAT) -cdrom installer.iso -boot d
+run-installer: bios/OVMF.fd
+	qemu-img create -f ${IMG_FORMAT} $(TARGET_IMG) ${MEDIA_SIZE}M
+	qemu-system-$(ZARCH) $(QEMU_OPTS) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) -cdrom $(INSTALLER_IMG).iso -boot d
+
+run-installer-raw: bios/OVMF.fd
+	qemu-img create -f ${IMG_FORMAT} $(TARGET_IMG) ${MEDIA_SIZE}M
+	qemu-system-$(ZARCH) $(QEMU_OPTS) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) -drive file=$(INSTALLER_IMG).raw,format=raw
 
 run-fallback run: bios/OVMF.fd
 	qemu-system-$(ZARCH) $(QEMU_OPTS) -drive file=$(FALLBACK_IMG).img,format=$(IMG_FORMAT)
@@ -132,24 +140,15 @@ $(FALLBACK_IMG).qcow2: $(FALLBACK_IMG).raw
 	rm $<
 
 $(FALLBACK_IMG).raw: $(ROOTFS_IMG) config.img
-	tar c $(ROOTFS_IMG) config.img | ./makeflash.sh -C ${MEDIA_SIZE} $@
+	tar c $^ | ./makeflash.sh -C ${MEDIA_SIZE} $@
 
-.PHONY: pkg_installer
-pkg_installer: $(ROOTFS_IMG) config.img
-	cp $(ROOTFS_IMG) config.img pkg/installer
-	make -C pkg PKGS=installer LINUXKIT_OPTS="--disable-content-trust --disable-cache --force" $(DEFAULT_PKG_TARGET)
+$(INSTALLER_IMG).raw: images/installer.yml
+	./makerootfs.sh $^ squash $(ROOTFS_IMG)_installer.img
+	tar c $(ROOTFS_IMG)_installer.img | ./makeflash.sh -C 350 $@ 2
+	rm $(ROOTFS_IMG)_installer.img
 
-#
-# INSTALLER IMAGE CREATION:
-#
-# Use makeiso instead of linuxkit own's format because the
-# former are able to boot on our platforms.
-
-installer.iso: images/installer.yml pkg_installer
-	./makeiso.sh images/installer.yml installer.iso	
-
-installer.img: images/installer.yml pkg_installer
-	./makeraw.sh images/installer.yml installer.iso
+$(INSTALLER_IMG).iso: images/installer.yml
+	./makeiso.sh $^ $@
 
 publish: Makefile config.img installer.iso bios/OVMF.fd $(ROOTFS_IMG) $(FALLBACK_IMG).img
 	cp $^ build-pkgs/zenix

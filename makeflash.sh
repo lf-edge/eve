@@ -1,7 +1,7 @@
 #!/bin/sh
 # Usage:
 #
-#      ./makeflash.sh [-C size] <output.img>
+#      ./makeflash.sh [-C size] <output.img> [num of partitions]
 #
 MKFLASH_TAG="$(linuxkit pkg show-tag pkg/mkflash)"
 
@@ -12,8 +12,10 @@ if [ "$1" = "-C" ]; then
     # If we're a non-root user, the bind mount gets permissions sensitive.
     # So we go docker^Wcowboy style
     chmod ugo+w $IMAGE
+    NUMPARTS=$4
 else
     IMAGE=$1
+    NUMPARTS=$2
 fi
 
 # Docker, for unknown reasons, decides whether a passed bind mount is
@@ -28,4 +30,4 @@ case $IMAGE in
     *) IMAGE=$PWD/$IMAGE;;
 esac
 
-docker run --privileged -v $IMAGE:/output.img -i ${MKFLASH_TAG} /output.img
+docker run --privileged -v $IMAGE:/output.img -i ${MKFLASH_TAG} /output.img $NUMPARTS

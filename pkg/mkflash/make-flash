@@ -3,6 +3,7 @@
 set -ex
 
 IMGFILE=$1
+NUMPARTS=${2:-9}
 
 ESP_FILE=/parts/efifs.img
 IMGA_FILE=/parts/rootfs.img
@@ -69,6 +70,16 @@ sgdisk --new 2:$IMGA_SECTOR_START:$IMGA_SECTOR_END \
        --attributes=2:set:49 \
        --change-name=2:'IMGA' $IMGFILE 2> /dev/null
 
+# Copy EFI fs to EFI partition
+dd if=$ESP_FILE of=$IMGFILE bs=512 count=$ESP_FILE_SIZE_SECTORS \
+     conv=notrunc seek=$ESP_SECTOR_START
+
+# Copy rootfs to image A
+dd if=$IMGA_FILE of=$IMGFILE bs=512 count=$IMAGE_SIZE_SECTORS \
+     conv=notrunc seek=$IMGA_SECTOR_START
+
+[ $NUMPARTS -le 2 ] && exit 0
+
 # Add ImageB Partition.
 IMGB_SECTOR_START=$(( $IMGA_SECTOR_END + 1 ))
 IMGB_SECTOR_END=$(( $IMGB_SECTOR_START + $IMAGE_SIZE_SECTORS - 1))
@@ -88,6 +99,9 @@ if [ -f $CONF_FILE ]; then
      sgdisk --new 4:$CONF_SECTOR_START:$CONF_SECTOR_END \
 	    --typecode=4:13307e62-cd9c-4920-8f9b-91b45828b798 \
 	    --change-name=4:'CONFIG' $IMGFILE 2> /dev/null
+
+    dd if=$CONF_FILE of=$IMGFILE bs=512 count=$CONF_SIZE_SECTORS \
+       conv=notrunc seek=$CONF_SECTOR_START
 else
     # No CONFIG partition (!!). Last partition is IMGB
     CONF_SECTOR_END=$(( $IMGB_SECTOR_END + 1))
@@ -102,21 +116,5 @@ P3_SECTOR_END=0
 sgdisk --new 9:$P3_SECTOR_START:$P3_SECTOR_END \
        --typecode=9:5f24425a-2dfa-11e8-a270-7b663faccc2c \
        --change-name=9:'P3' $IMGFILE 2> /dev/null
-
-# Copy EFI fs to EFI partition
-dd if=$ESP_FILE of=$IMGFILE bs=512 count=$ESP_FILE_SIZE_SECTORS \
-     conv=notrunc seek=$ESP_SECTOR_START
-
-# Copy rootfs to image A
-dd if=$IMGA_FILE of=$IMGFILE bs=512 count=$IMAGE_SIZE_SECTORS \
-     conv=notrunc seek=$IMGA_SECTOR_START
-
-# image B is empty
-
-# Copy config fs to config partition
-if [ -f $CONF_FILE ]; then
-    dd if=$CONF_FILE of=$IMGFILE bs=512 count=$CONF_SIZE_SECTORS \
-       conv=notrunc seek=$CONF_SECTOR_START
-fi
 
 # P3 is emtpy
