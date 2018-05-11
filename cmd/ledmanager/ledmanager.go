@@ -62,6 +62,9 @@ var mToF = []modelToFuncs{
 		model:     "Supermicro.SYS-E300-8D",
 		blinkFunc: ExecuteDDCmd},
 	modelToFuncs{
+		model:     "Supermicro.SYS-5018D-FN8T",
+		blinkFunc: ExecuteDDCmd},
+	modelToFuncs{
 		model:     "hisilicon,hikey.hisilicon,hi6220.",
 		initFunc:  InitWifiLedCmd,
 		blinkFunc: ExecuteWifiLedCmd},
