@@ -13,7 +13,13 @@ mkdir -p var/tmp/zededa/
 [ -d bin/linux_x86_64 ] || mkdir bin/linux_x86_64
 [ -d bin/linux_arm64 ] || mkdir bin/linux_arm64
 
-APPS="logmanager ledmanager downloader verifier client server register zedrouter domainmgr identitymgr zedmanager eidregister zedagent hardwaremodel"
+echo ${BUILD_VERSION} >bin/versioninfo
+echo ${BUILD_VERSION} >bin/linux_x86_64/versioninfo
+echo ${BUILD_VERSION} >bin/linux_arm64/versioninfo
+
+APPS="zedbox"
+APPS1="logmanager ledmanager downloader verifier client zedrouter domainmgr identitymgr zedmanager eidregister zedagent hardwaremodel"
+
 if /bin/true; then
     cmdline=""
     for app in $APPS; do
@@ -35,42 +41,9 @@ if /bin/true; then
     # done
 fi
 
-# Creating client tar files
-TMPDIR=/tmp/zededa-build.$$
-# XXX create function for cp+tar
-
-# Setup for untaring in /
-# zenbuild will move /opt/zededa/etc to /config
-
-TYPE=linux_arm64
-rm -rf $TMPDIR
-# Setup for untaring in /
-mkdir -p $TMPDIR/config $TMPDIR/opt/zededa/bin $TMPDIR/var/tmp/zededa/
-echo ${BUILD_VERSION} >$TMPDIR/opt/zededa/bin/versioninfo
-cp -rp lisp.config.base $TMPDIR/var/tmp/zededa
-cp -rp DeviceNetworkConfig $TMPDIR/var/tmp/zededa
-cp -rp AssignableAdapters $TMPDIR/var/tmp/zededa
-cp -p README $TMPDIR/opt/zededa/bin/
-cp -p etc/* $TMPDIR/config
-cp -p scripts/*.sh $TMPDIR/opt/zededa/bin/
-cp -p bin/$TYPE/* $TMPDIR/opt/zededa/bin/
-tar -C $TMPDIR/opt/zededa/bin -xf $DIR/dnsmasq.$TYPE.tar.gz
-(cd $TMPDIR; tar -cf $DIR/go-provision.$TYPE.tar.gz .)
-rm -rf $TMPDIR
-
-TYPE=linux_x86_64
-rm -rf $TMPDIR
-# Setup for untaring in /
-mkdir -p $TMPDIR/config $TMPDIR/opt/zededa/bin $TMPDIR/var/tmp/zededa/
-echo ${BUILD_VERSION} >$TMPDIR/opt/zededa/bin/versioninfo
-cp -rp lisp.config.base $TMPDIR/var/tmp/zededa
-cp -rp DeviceNetworkConfig $TMPDIR/var/tmp/zededa
-cp -rp AssignableAdapters $TMPDIR/var/tmp/zededa
-cp -p README $TMPDIR/opt/zededa/bin/
-cp -p etc/* $TMPDIR/config
-cp -p scripts/*.sh $TMPDIR/opt/zededa/bin/
-cp -p bin/$TYPE/* $TMPDIR/opt/zededa/bin/
-tar -C $TMPDIR/opt/zededa/bin -xf $DIR/dnsmasq.$TYPE.tar.gz
-(cd $TMPDIR; tar -cf $DIR/go-provision.$TYPE.tar.gz .)
-rm -rf $TMPDIR
-
+for app in $APPS1; do
+    rm -f bin/${app} bin/linux_x86_64/${app} bin/linux_arm64/${app}
+    ln -s $APPS bin/${app}
+    ln -s $APPS bin/linux_x86_64/${app}
+    ln -s $APPS bin/linux_arm64/${app}
+done
