@@ -20,14 +20,15 @@ RUN ln -s python3 /usr/bin/python
 # list of grub modules that are portable between x86_64 and aarch64
 ENV GRUB_MODULES_PORT="part_gpt fat ext2 iso9660 squash4 gzio linux acpi normal cpio crypto disk boot crc64 gpt \
 search_disk_uuid verify xzio xfs video gfxterm efi_gop gptprio chain probe reboot regexp getenv part_msdos"
-ENV GRUB_MODULES_x86_64="multiboot2 efi_uga linuxefi"
+ENV GRUB_MODULES_x86_64="multiboot2 efi_uga"
 ENV GRUB_MODULES_aarch64="xen_boot"
-ENV GRUB_COMMIT=6782f6d431d22b4e9ab14e94d263795c7991e160
+ENV GRUB_COMMIT=71f9e4ac44142af52c3fc1860436cf9e432bf764
+ENV GRUB_REPO=git://git.sv.gnu.org/grub.git
 
 COPY patches/* /patches/
 RUN mkdir /grub-lib && \
   set -e && \
-  git clone https://github.com/coreos/grub.git && \
+  git clone ${GRUB_REPO} && \
   cd grub && \
   git checkout -b grub-build ${GRUB_COMMIT} && \
   for patch in /patches/*.patch; do \
@@ -55,3 +56,4 @@ ENTRYPOINT []
 CMD []
 WORKDIR /EFI/BOOT
 COPY --from=grub-build /grub-lib/BOOT*.EFI ./
+COPY rootfs.cfg grub.cfg
