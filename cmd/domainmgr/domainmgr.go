@@ -589,11 +589,6 @@ func configToStatus(config types.DomainConfig, aa *types.AssignableAdapters,
 	for _, adapter := range config.IoAdapterList {
 		log.Printf("configToStatus processing adapter %d %s\n",
 			adapter.Type, adapter.Name)
-		if types.IsUplink(deviceNetworkStatus, adapter.Name) {
-			return errors.New(fmt.Sprintf("Adapter %d %s is an uplink\n",
-				adapter.Type, adapter.Name))
-		}
-
 		// Lookup to make sure adapter exists on this device
 		ib := types.LookupIoBundle(aa, adapter.Type, adapter.Name)
 		if ib == nil {
@@ -604,6 +599,13 @@ func configToStatus(config types.DomainConfig, aa *types.AssignableAdapters,
 			return errors.New(fmt.Sprintf("Adapter %d %s used by %s\n",
 				adapter.Type, adapter.Name, ib.UsedByUUID))
 		}
+		for _, m := range ib.Members {
+			if types.IsUplink(deviceNetworkStatus, m) {
+				return errors.New(fmt.Sprintf("Adapter %d %s member %s is (part of) an uplink\n",
+					adapter.Type, adapter.Name, m))
+			}
+		}
+
 		// Does it exist?
 		// Then save the PCI ID before we assign it away
 		long, short, err := types.IoBundleToPci(ib)
