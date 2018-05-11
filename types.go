@@ -15,6 +15,7 @@ const (
 	INTERFACESTYPE       = "interfaces"
 	DECAPKEYSTYPE        = "decap-keys"
 	ETRNATPORT           = "etr-nat-port"
+	ITRCRYPTOPORT        = "itr-crypto-port"
 )
 
 type Type struct {
@@ -35,6 +36,7 @@ type DKey struct {
 
 type Rloc struct {
 	Rloc     string `json:"rloc"`
+	Port     string `json:"port"`
 	Priority string `json:"priority"`
 	Weight   string `json:"weight"`
 	Keys     []Key  `json:"keys"`
@@ -76,6 +78,11 @@ type DecapKeys struct {
 }
 
 type EtrNatPort struct {
+	Type string `json:"type"`
+	Port int    `json:"port"`
+}
+
+type ItrCryptoPort struct {
 	Type string `json:"type"`
 	Port int    `json:"port"`
 }

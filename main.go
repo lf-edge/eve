@@ -362,6 +362,11 @@ func handleLispMsg(msg []byte) {
 			log.Println("Processing ETR nat port message")
 		}
 		handleEtrNatPort(msg)
+	case ITRCRYPTOPORT:
+		if debug {
+			log.Println("Processing ITR crypto port message")
+		}
+		handleItrCryptoPort(msg)
 	default:
 		if debug {
 			log.Println(string(msg))

@@ -26,12 +26,19 @@ func parseRloc(rlocStr *Rloc) (dptypes.Rloc, bool) {
 		log.Println("RLOC:", rlocStr.Rloc, "is invalid")
 		return dptypes.Rloc{}, false
 	}
-	x, err := strconv.ParseUint(rlocStr.Priority, 10, 32)
+	x, err := strconv.ParseUint(rlocStr.Port, 10, 32)
+	if err != nil {
+		return dptypes.Rloc{}, false
+	}
+	port := uint16(x)
+
+	x, err = strconv.ParseUint(rlocStr.Priority, 10, 32)
 	if err != nil {
 		// XXX Should we log.Fatal here?
 		return dptypes.Rloc{}, false
 	}
 	priority := uint32(x)
+
 	x, err = strconv.ParseUint(rlocStr.Weight, 10, 32)
 	if err != nil {
 		// XXX Should we log.Fatal here?
@@ -114,6 +121,7 @@ func parseRloc(rlocStr *Rloc) (dptypes.Rloc, bool) {
 
 	rlocEntry := dptypes.Rloc{
 		Rloc:        rloc,
+		Port:        port,
 		Priority:    priority,
 		Weight:      weight,
 		KeyCount:    uint32(len(rlocStr.Keys)),
@@ -443,4 +451,19 @@ func handleEtrNatPort(msg []byte) {
 		return
 	}
 	etr.HandleEtrEphPort(etrNatPort.Port)
+}
+
+func handleItrCryptoPort(msg []byte) {
+	var itrCryptoPort ItrCryptoPort
+
+	if debug {
+		log.Printf("Handling the following ITR crypto port message:\n%s\n", string(msg))
+	}
+	err := json.Unmarshal(msg, &itrCryptoPort)
+	if err != nil {
+		log.Fatal("handleItrCryptoPort: Error: Unknown json message format: %s: %s",
+			string(msg), err)
+		return
+	}
+	fib.HandleItrCryptoPort(itrCryptoPort.Port)
 }
