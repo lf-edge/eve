@@ -124,12 +124,18 @@ run-rootfs: bios/OVMF.fd bios/EFI
 # it gets triggered when we build any kind of image target
 images/%.yml: zedctr-workaround parse-pkgs.sh images/%.yml.in FORCE
 	./parse-pkgs.sh $@.in > $@
-
-$(ROOTFS_IMG): images/fallback.yml
-	./makerootfs.sh images/fallback.yml squash $@
+	# the following is a horrible hack that needs to go away ASAP
+	if [ "$(ZARCH)" != `uname -m` ] ; then \
+	   sed -e 's#-amd64\s*$$##' -e 's#-arm64\s*$$##' \
+               -e '/linuxkit|zededa\/[^:]*:/s#\s*$$#-$(DOCKER_ARCH_TAG)#' -E -i.orig $@ ;\
+	   echo "WARNING: We are assembling a $(ZARCH) image on `uname -m`. Things may break." ;\
+        fi
 
 config.img: conf/server conf/onboard.cert.pem conf/
 	./maketestconfig.sh $(CONF_DIR) config.img
+
+$(ROOTFS_IMG): images/fallback.yml
+	./makerootfs.sh images/fallback.yml squash $@
 
 $(FALLBACK_IMG).img: $(FALLBACK_IMG).$(IMG_FORMAT)
 	@rm -f $@ >/dev/null 2>&1 || :
