@@ -1,18 +1,30 @@
 kernel:
   image: KERNEL_TAG
-  cmdline: "rootdelay=3 root=/dev/sdb"
+  cmdline: "rootdelay=3"
 init:
   - GRUB_TAG
   - DTREES_TAG
   - XEN_TAG
   - linuxkit/init:v0.3
   - linuxkit/runc:v0.3
-  - linuxkit/containerd:v0.3
   - linuxkit/getty:v0.3
 onboot:
   - name: installer
-    image: INSTALLER_TAG
-    command: ["/install.sh", "/dev/sda"]
+    image: MKFLASH_TAG
+    command: ["/bin/sh", "-xc", "/make-flash /dev/sda ; sync ; sleep 5 ; sync ; poweroff -f"]
+    pid: host
+    binds:
+      - /parts:/parts
+      - /dev:/dev
+    capabilities:
+      - all
+files:
+  - path: /parts/config.img
+    source: config.img
+    mode: "0660"
+  - path: /parts/rootfs.img
+    source: rootfs.img
+    mode: "0660"
 trust:
   org:
     - linuxkit
