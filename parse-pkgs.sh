@@ -45,7 +45,6 @@ WLAN_TAG=$(linuxkit_tag pkg/wlan)-$ARCH
 GPTTOOLS_TAG=$(linuxkit_tag pkg/gpt-tools)-$ARCH
 WATCHDOG_TAG=$(linuxkit_tag pkg/watchdog)-$ARCH
 MKFLASH_TAG=$(linuxkit_tag pkg/mkflash)-$ARCH
-INSTALLER_TAG=$(linuxkit_tag pkg/installer)-$ARCH
 
 # Plugin tags: the following tags will default to
 # 'scratch' Docker container if not available.
@@ -73,5 +72,4 @@ sed -e "s#KERNEL_TAG#"$KERNEL_TAG"#" \
     -e "s#WATCHDOG_TAG#"$WATCHDOG_TAG"#" \
     -e "s#KMOD_PFRING_TAG#"$KMOD_PFRING_TAG"#" \
     -e "s#MKFLASH_TAG#"$MKFLASH_TAG"#" \
-    -e "s#INSTALLER_TAG#"$INSTALLER_TAG"#" \
     $1
