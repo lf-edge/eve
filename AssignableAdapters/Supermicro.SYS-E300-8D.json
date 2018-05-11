@@ -1,0 +1,7 @@
+{ "IoBundleList": [
+    { "Type": 1, "Name": "eth0-1", "Members": [ "eth0", "eth1"], "Lookup": true },
+    { "Type": 1, "Name": "eth2", "Members": [ "eth2" ], "Lookup": true },
+    { "Type": 1, "Name": "eth3", "Members": [ "eth3" ], "Lookup": true },
+    { "Type": 1, "Name": "eth4-7", "Members": [ "eth4", "eth5", "eth6", "eth7" ], "Lookup": true },
+    { "Type": 3, "Name": "COM1", "Members": [ "COM1" ], "XenCfg": "irqs=[4]\nioports=['3f8-3ff']\n" }
+] }

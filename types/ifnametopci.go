@@ -59,11 +59,18 @@ func pciLongExists(long string) bool {
 // Returns the long and short PCI IDs.
 // Check if PCI ID exists on system. Returns null strings for non-PCI
 // devices since we can't check if they exist.
+// If there are multiple members in the bundle we return the PCI ID for
+// the first one we find.
 func IoBundleToPci(ib *IoBundle) (string, string, error) {
 	var long, short string
 	if ib.Lookup {
 		var err error
-		long, short, err = ifNameToPci(ib.Name)
+		for _, m := range ib.Members {
+			long, short, err = ifNameToPci(m)
+			if err == nil {
+				break
+			}
+		}
 		if err != nil {
 			return "", "", err
 		}
