@@ -2,7 +2,7 @@
 +++ b/usr/include/bits/alltypes.h
 @@ -1,5 +1,9 @@
  #define _Addr long
-+#if defined __x86_64__ && !defined __ILP32__
++#if (defined(__x86_64__) || defined(__aarch64__)) && !defined __ILP32__
  #define _Int64 long
 +#else
 +#define _Int64 long long
