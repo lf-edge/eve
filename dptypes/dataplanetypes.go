@@ -50,6 +50,7 @@ type DKey struct {
 
 type Rloc struct {
 	Rloc     net.IP
+	Port     uint16
 	Priority uint32
 	Weight   uint32
 	Family   uint32
@@ -223,4 +224,9 @@ type ITRLocalData struct {
 	// Raw sockets for sending out LISP encapsulted packets
 	Fd4 int
 	Fd6 int
+}
+
+type ITRGlobalData struct {
+	ItrCryptoPort int
+	LockMe       sync.RWMutex
 }

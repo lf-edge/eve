@@ -262,6 +262,12 @@ func verifyAndInject(fd6 int,
 	buf []byte, n int,
 	decapKeys *dptypes.DecapKeys) bool {
 
+	// Check if packet is too small to include a full size 8 byte lisp header
+	if n < dptypes.LISPHEADERLEN {
+		fib.AddDecapStatistics("lisp-header-error", 1)
+		return false
+	}
+
 	//var pktEid net.IP
 	iid := fib.GetLispIID(buf[0:8])
 	if iid == uint32(0xFFFFFF) {
@@ -271,7 +277,7 @@ func verifyAndInject(fd6 int,
 	packetOffset := dptypes.LISPHEADERLEN
 
 	// offset of destination address inside ipv6 header
-	destAddrOffset := 24
+	//destAddrOffset := 24
 	gcmOverhead := 0
 	icvLen := 0
 
@@ -284,7 +290,7 @@ func verifyAndInject(fd6 int,
 		}
 
 		//destAddrOffset += aes.BlockSize
-		destAddrOffset += dptypes.GCMIVLENGTH
+		//destAddrOffset += dptypes.GCMIVLENGTH
 		//packetOffset += aes.BlockSize
 		packetOffset += dptypes.GCMIVLENGTH
 
@@ -357,11 +363,24 @@ func verifyAndInject(fd6 int,
 		icvLen = dptypes.ICVLEN
 	}
 
+	// Zededa's use case only have ipv6 EIDs. Check if the version
+	// of inner packet is ipv6. Else drop the packet and increment
+	// error count.
+	var msb byte = buf[packetOffset]
+	version := msb >> 4
+	if version != 6 {
+		fib.AddDecapStatistics("bad-inner-version", 1)
+		return false
+	}
+
+	// 24 is the offset of destination ipv6 address in ipv6 header
+	destAddrOffset := packetOffset + 24
 	packetEnd := n - gcmOverhead - icvLen
 	var destAddr [16]byte
 	for i, _ := range destAddr {
 		// offset is lisp hdr size + start offset of ip addresses in v6 hdr
-		destAddr[i] = buf[dptypes.LISPHEADERLEN+destAddrOffset+i]
+		//destAddr[i] = buf[dptypes.LISPHEADERLEN+destAddrOffset+i]
+		destAddr[i] = buf[destAddrOffset+i]
 		//pktEid[i] = destAddr[i]
 	}
 
@@ -520,6 +539,12 @@ func ProcessCapturedPkts(fd6 int,
 		if ipLayer := packet.Layer(layers.LayerTypeIPv4); ipLayer != nil {
 			// ipv4 underlay
 			ipHdr := ipLayer.(*layers.IPv4)
+			// validate outer header checksum
+			csum := computeChecksum(pktBuf[dptypes.ETHHEADERLEN:dptypes.IP4HEADERLEN])
+			if csum != 0xFFFF {
+				fib.AddDecapStatistics("checksum-error", 1)
+			}
+
 			srcIP = ipHdr.SrcIP
 		} else if ip6Layer := packet.Layer(layers.LayerTypeIPv6); ip6Layer != nil {
 			// ipv6 underlay
@@ -527,6 +552,7 @@ func ProcessCapturedPkts(fd6 int,
 			srcIP = ip6Hdr.SrcIP
 		} else {
 			// We do not need this packet
+			fib.AddDecapStatistics("outer-header-error", 1)
 			return
 		}
 
@@ -539,3 +565,24 @@ func ProcessCapturedPkts(fd6 int,
 		}
 	}
 }
+
+func computeChecksum(buf []byte) uint32 {
+	if (len(buf) % 2) != 0 { 
+		fmt.Printf("Invalid length: %v\n", len(buf))
+		return 0
+	}   
+	var csum uint32 = 0 
+	var segment uint32
+
+	for i := 0; i < len(buf); i += 2 { 
+		segment = uint32(buf[i]) << 8
+		segment += uint32(buf[i + 1]) 
+		csum += segment
+	}   
+
+	remainder := csum >> 16
+	csum += remainder
+
+	return csum & 0xffff
+}
+

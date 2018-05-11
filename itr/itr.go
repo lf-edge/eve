@@ -33,6 +33,7 @@ var debug bool = false
 
 func InitITR(debugFlag bool) {
 	debug = debugFlag
+	fib.InitItrCryptoPort()
 }
 
 func disableIntfHardwareFeatures(ifname string) {

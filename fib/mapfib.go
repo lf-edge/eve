@@ -24,12 +24,21 @@ var cache *dptypes.MapCacheTable
 var decaps *dptypes.DecapTable
 var upLinks dptypes.Uplinks
 
+// presently this structure only has ITR crypto source port
+var itrGlobalData dptypes.ITRGlobalData
+
 var debug bool = false
 var pktBuf []byte
 
 // ipv4 and ipv6 raw sockets respectively
 var fd4 int
 var fd6 int
+
+func InitItrCryptoPort() {
+	itrGlobalData.LockMe.Lock()
+	defer itrGlobalData.LockMe.Unlock()
+	itrGlobalData.ItrCryptoPort = -1
+}
 
 func newMapCache() *dptypes.MapCacheTable {
 	return &dptypes.MapCacheTable{
@@ -517,6 +526,20 @@ func ShowDecapKeys() {
 		}
 	}
 	log.Println()
+}
+
+func HandleItrCryptoPort(port int) {
+	itrGlobalData.LockMe.Lock()
+	defer itrGlobalData.LockMe.Unlock()
+	itrGlobalData.ItrCryptoPort = port
+}
+
+func GetItrCryptoPort() int {
+	itrGlobalData.LockMe.RLock()
+	defer itrGlobalData.LockMe.RUnlock()
+	port := itrGlobalData.ItrCryptoPort
+
+	return port
 }
 
 // This thread wakes up every minutes, to find the map cache entries that are
