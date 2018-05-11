@@ -5,15 +5,22 @@ set -ex
 IMGFILE=$1
 NUMPARTS=${2:-9}
 
-ESP_FILE=/parts/efifs.img
-IMGA_FILE=/parts/rootfs.img
-CONF_FILE=/parts/config.img
-
 #
 # Step 1: Extract partitions from stdin
 #
 mkdir -p /parts
 [ -t 0 ] || (cd /parts; bsdtar xzf -)
+
+ESP_FILE=/tmp/efifs.img
+IMGA_FILE=`echo /parts/rootfs*.img | cut -f1 -d\ `
+CONF_FILE=/parts/config.img
+
+#
+# Step 1.1: Extract a GRUB bootloader
+#
+mount -o loop "$IMGA_FILE" /mnt
+cp /mnt/EFI/BOOT/BOOT*EFI /efifs/EFI/BOOT/
+umount /mnt
 
 IMAGE_SIZE=$(( 300 * 1024 * 1024 ))
 

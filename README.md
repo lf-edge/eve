@@ -40,10 +40,6 @@ Finally run the resulting image by typing `make run`. This will launch
 qemu with some default assumptions. Make sure to wait for the GRUB menu
 to show up and then pick the 2nd option (otherwise image will hang).
 
-If you don't want to manually select that option everytime you boot with
-qemu you can build your image with an extra environment variable set to 1
-'ZEN_DEFAULT_BOOT=1 make fallback.img' 
-
 Once the image boots you can interact with it either by using the console
 (right there in the terminal window from which make run was executed).
 Your shell in the console is connected to the 'host' os. Everything

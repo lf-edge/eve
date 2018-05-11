@@ -10,6 +10,5 @@ RUN apk add --no-cache \
 WORKDIR /
 COPY make-flash .
 COPY /efi-files /efifs
-COPY --from=grub / /efifs/
 
 ENTRYPOINT [ "/make-flash" ]
