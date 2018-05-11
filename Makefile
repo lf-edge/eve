@@ -148,13 +148,13 @@ $(FALLBACK_IMG).qcow2: $(FALLBACK_IMG).raw
 $(FALLBACK_IMG).raw: $(ROOTFS_IMG) config.img
 	tar c $^ | ./makeflash.sh -C ${MEDIA_SIZE} $@
 
-$(INSTALLER_IMG).raw: images/installer.yml
-	./makerootfs.sh $^ squash $(ROOTFS_IMG)_installer.img
+$(INSTALLER_IMG).raw: images/installer.yml $(ROOTFS_IMG) config.img
+	./makerootfs.sh $< squash $(ROOTFS_IMG)_installer.img
 	tar c $(ROOTFS_IMG)_installer.img | ./makeflash.sh -C 350 $@ 2
 	rm $(ROOTFS_IMG)_installer.img
 
-$(INSTALLER_IMG).iso: images/installer.yml
-	./makeiso.sh $^ $@
+$(INSTALLER_IMG).iso: images/installer.yml $(ROOTFS_IMG) config.img
+	./makeiso.sh $< $@
 
 publish: Makefile config.img installer.iso bios/OVMF.fd $(ROOTFS_IMG) $(FALLBACK_IMG).img
 	cp $^ build-pkgs/zenix
