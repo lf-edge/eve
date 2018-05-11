@@ -3,7 +3,7 @@
 
 // Push info and metrics to zedcloud
 
-package main
+package zedagent
 
 import (
 	"bytes"
@@ -1144,6 +1144,7 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 	ReportAppInfo.SystemApp = false
 	if aiStatus != nil {
 		ReportAppInfo.AppName = aiStatus.DisplayName
+		// XXX TBD add to proto: ReportAppInfo.State = zmet.ZSwState(aiStatus.State)
 		ds := LookupDomainStatusUUID(uuid)
 		if ds == nil {
 			log.Printf("Did not find DomainStatus for UUID %s\n",

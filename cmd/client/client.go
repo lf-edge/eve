@@ -1,7 +1,7 @@
 // Copyright (c) 2017-2018 Zededa, Inc.
 // All rights reserved.
 
-package main
+package client
 
 import (
 	"bytes"
@@ -55,7 +55,7 @@ var Version = "No version specified"
 //  uuid			Written by getUuid operation
 //
 //
-func main() {
+func Run() {
 	versionPtr := flag.Bool("v", false, "Version")
 	forcePtr := flag.Bool("f", false, "Force using onboarding cert")
 	dirPtr := flag.String("d", "/config", "Directory with certs etc")

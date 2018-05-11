@@ -3,7 +3,7 @@
 
 // lisp configlet for overlay interface towards domU
 
-package main
+package zedrouter
 
 import (
 	"fmt"

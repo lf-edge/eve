@@ -11,7 +11,7 @@
 // Note that different URLs for same file will download to the same <sha>
 // directory. We delete duplicates assuming the file content will be the same.
 
-package main
+package verifier
 
 import (
 	"crypto"
@@ -79,7 +79,7 @@ var Version = "No version specified"
 type verifierContext struct {
 }
 
-func main() {
+func Run() {
 	logf, err := agentlog.Init(agentName)
 	if err != nil {
 		log.Fatal(err)

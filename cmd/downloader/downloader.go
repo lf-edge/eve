@@ -10,7 +10,7 @@
 // Output directory with status (URL, refcount, state, ModTime, lastErr, lastErrTime, retryCount)
 // refCount -> 0 means delete from dstDir? Who owns dstDir? Separate mount.
 
-package main
+package downloader
 
 import (
 	"encoding/json"
@@ -81,7 +81,7 @@ type dummyContext struct {
 
 var deviceNetworkStatus types.DeviceNetworkStatus
 
-func main() {
+func Run() {
 	logf, err := agentlog.Init(agentName)
 	if err != nil {
 		log.Fatal(err)

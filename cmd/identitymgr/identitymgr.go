@@ -6,7 +6,7 @@
 // on status in the collection of EIDStatus structs in
 // /var/run/identitymgr/status/*.json
 
-package main
+package identitymgr
 
 import (
 	"crypto/ecdsa"
@@ -50,7 +50,7 @@ var Version = "No version specified"
 type dummyContext struct {
 }
 
-func main() {
+func Run() {
 	logf, err := agentlog.Init(agentName)
 	if err != nil {
 	       log.Fatal(err)

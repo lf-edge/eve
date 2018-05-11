@@ -15,7 +15,7 @@
 //After end of each event we will take
 //pause of 1200ms...
 
-package main
+package ledmanager
 
 import (
 	"flag"
@@ -76,7 +76,7 @@ var debug bool
 // Set from Makefile
 var Version = "No version specified"
 
-func main() {
+func Run() {
 	logf, err := agentlog.Init(agentName)
 	if err != nil {
 	       log.Fatal(err)

@@ -5,7 +5,7 @@
 // in /var/tmp/domainmgr/config/*.json and report on status in the
 // collection of DomainStatus structs in /var/run/domainmgr/status/*.json
 
-package main
+package domainmgr
 
 import (
 	"encoding/json"
@@ -65,7 +65,7 @@ type domainContext struct {
 	assignableAdapters *types.AssignableAdapters
 }
 
-func main() {
+func Run() {
 	logf, err := agentlog.Init(agentName)
 	if err != nil {
 		log.Fatal(err)

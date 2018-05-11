@@ -3,7 +3,7 @@
 
 // base os event handlers
 
-package main
+package zedagent
 
 import (
 	"errors"
