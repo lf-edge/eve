@@ -3,7 +3,7 @@
 
 // iptables support code
 
-package main
+package zedrouter
 
 import (
 	"github.com/zededa/go-provision/wrap"

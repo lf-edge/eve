@@ -2,7 +2,7 @@
 // All rights reserved.
 
 // cert object event handlers
-package main
+package zedagent
 
 import (
 	"encoding/json"
@@ -368,6 +368,7 @@ func installCertObject(srcFilename string, dstDirname string, safename string) e
 
 	// create the destination directory
 	if _, err := os.Stat(dstDirname); err != nil {
+		log.Printf("Create %s\n", dstDirname)
 		if err := os.MkdirAll(dstDirname, 0700); err != nil {
 			log.Fatal("installCertObject: ", err, dstDirname)
 		}

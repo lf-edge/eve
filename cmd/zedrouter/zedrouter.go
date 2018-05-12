@@ -8,7 +8,7 @@
 // ipset, ip link/addr/route configuration) based on that and apply those
 // configlets.
 
-package main
+package zedrouter
 
 import (
 	"encoding/json"
@@ -67,7 +67,7 @@ type DNCContext struct {
 
 var debug = false
 
-func main() {
+func Run() {
 	logf, err := agentlog.Init(agentName)
 	if err != nil {
 		log.Fatal(err)
@@ -89,16 +89,19 @@ func main() {
 	watch.CleanupRestarted(agentName)
 
 	if _, err := os.Stat(baseDirname); err != nil {
+		log.Printf("Create %s\n", baseDirname)
 		if err := os.Mkdir(baseDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(configDirname); err != nil {
+		log.Printf("Create %s\n", configDirname)
 		if err := os.Mkdir(configDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(runDirname); err != nil {
+		log.Printf("Create %s\n", runDirname)
 		if err := os.Mkdir(runDirname, 0755); err != nil {
 			log.Fatal(err)
 		}
@@ -110,16 +113,19 @@ func main() {
 	}
 
 	if _, err := os.Stat(statusDirname); err != nil {
+		log.Printf("Create %s\n", statusDirname)
 		if err := os.Mkdir(statusDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(DNCDirname); err != nil {
+		log.Printf("Create %s\n", DNCDirname)
 		if err := os.MkdirAll(DNCDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(DNSDirname); err != nil {
+		log.Printf("Create %s\n", DNSDirname)
 		if err := os.MkdirAll(DNSDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
@@ -281,6 +287,7 @@ func handleInit(configFilename string, statusFilename string,
 	// XXX should this be in the lisp code?
 	lispRunDirname = runDirname + "/lisp"
 	if _, err := os.Stat(lispRunDirname); err != nil {
+		log.Printf("Create %s\n", lispRunDirname)
 		if err := os.Mkdir(lispRunDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
@@ -792,7 +799,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		createDnsmasqOverlayConfiglet(cfgPathname, olIfname, olAddr1,
 			EID.String(), olMac, hostsDirpath,
 			config.UUIDandVersion.UUID.String(), ipsets)
-		startDnsmasq(cfgPathname)
+		startDnsmasq(cfgPathname, olIfname)
 
 		additionalInfo := generateAdditionalInfo(status, olConfig)
 		// Create LISP configlets for IID and EID/signature
@@ -877,7 +884,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 
 		createDnsmasqUnderlayConfiglet(cfgPathname, ulIfname, ulAddr1,
 			ulAddr2, ulMac, config.UUIDandVersion.UUID.String(), ipsets)
-		startDnsmasq(cfgPathname)
+		startDnsmasq(cfgPathname, ulIfname)
 
 		// Add bridge parameters for Xen to Status
 		ulStatus := &status.UnderlayNetworkList[ulNum-1]
@@ -1010,7 +1017,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 			createDnsmasqOverlayConfiglet(cfgPathname, olIfname, olAddr1,
 				EID.String(), olMac, hostsDirpath,
 				config.UUIDandVersion.UUID.String(), newIpsets)
-			startDnsmasq(cfgPathname)
+			startDnsmasq(cfgPathname, olIfname)
 		}
 
 		additionalInfo := generateAdditionalInfo(*status, olConfig)
@@ -1051,7 +1058,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 			createDnsmasqUnderlayConfiglet(cfgPathname, ulIfname, ulAddr1,
 				ulAddr2, ulMac,
 				config.UUIDandVersion.UUID.String(), newIpsets)
-			startDnsmasq(cfgPathname)
+			startDnsmasq(cfgPathname, ulIfname)
 		}
 	}
 

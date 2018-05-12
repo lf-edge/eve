@@ -5,7 +5,7 @@
 // in /var/tmp/domainmgr/config/*.json and report on status in the
 // collection of DomainStatus structs in /var/run/domainmgr/status/*.json
 
-package main
+package domainmgr
 
 import (
 	"encoding/json"
@@ -65,7 +65,7 @@ type domainContext struct {
 	assignableAdapters *types.AssignableAdapters
 }
 
-func main() {
+func Run() {
 	logf, err := agentlog.Init(agentName)
 	if err != nil {
 		log.Fatal(err)
@@ -85,21 +85,25 @@ func main() {
 	watch.CleanupRestarted(agentName)
 
 	if _, err := os.Stat(baseDirname); err != nil {
+		log.Printf("Create %s\n", baseDirname)
 		if err := os.MkdirAll(baseDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(configDirname); err != nil {
+		log.Printf("Create %s\n", configDirname)
 		if err := os.MkdirAll(configDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(runDirname); err != nil {
+		log.Printf("Create %s\n", runDirname)
 		if err := os.MkdirAll(runDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(statusDirname); err != nil {
+		log.Printf("Create %s\n", statusDirname)
 		if err := os.MkdirAll(statusDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
@@ -594,11 +598,6 @@ func configToStatus(config types.DomainConfig, aa *types.AssignableAdapters,
 	for _, adapter := range config.IoAdapterList {
 		log.Printf("configToStatus processing adapter %d %s\n",
 			adapter.Type, adapter.Name)
-		if types.IsUplink(deviceNetworkStatus, adapter.Name) {
-			return errors.New(fmt.Sprintf("Adapter %d %s is an uplink\n",
-				adapter.Type, adapter.Name))
-		}
-
 		// Lookup to make sure adapter exists on this device
 		ib := types.LookupIoBundle(aa, adapter.Type, adapter.Name)
 		if ib == nil {
@@ -609,6 +608,13 @@ func configToStatus(config types.DomainConfig, aa *types.AssignableAdapters,
 			return errors.New(fmt.Sprintf("Adapter %d %s used by %s\n",
 				adapter.Type, adapter.Name, ib.UsedByUUID))
 		}
+		for _, m := range ib.Members {
+			if types.IsUplink(deviceNetworkStatus, m) {
+				return errors.New(fmt.Sprintf("Adapter %d %s member %s is (part of) an uplink\n",
+					adapter.Type, adapter.Name, m))
+			}
+		}
+
 		// Does it exist?
 		// Then save the PCI ID before we assign it away
 		long, short, err := types.IoBundleToPci(ib)

@@ -3,7 +3,7 @@
 
 // Extract LTE information from files
 
-package main
+package zedagent
 
 import (
 	"encoding/json"

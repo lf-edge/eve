@@ -1,7 +1,7 @@
 // Copyright (c) 2018 Zededa, Inc.
 // All rights reserved.
 
-package main
+package logmanager
 
 import (
 	"bufio"
@@ -109,7 +109,7 @@ type zedcloudLogs struct {
 	LastSuccess  time.Time
 }
 
-func main() {
+func Run() {
 	logf, err := agentlog.InitWithDir(agentName, "/persist/log")
 	if err != nil {
 		log.Fatal(err)
@@ -621,7 +621,8 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 		parsedDateAndTime, err := parseDateTime(line)
 		// XXX set iid to PID?
 		if err != nil {
-			logChan <- logEntry{source: r.source, content: line}
+			logChan <- logEntry{source: r.source, content: line,
+				timestamp: ptypes.TimestampNow()}
 		} else {
 			logChan <- logEntry{source: r.source, content: line,
 				timestamp: parsedDateAndTime}

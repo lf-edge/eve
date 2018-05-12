@@ -8,7 +8,7 @@
 // This reads AppInstanceConfig from /var/tmp/zedmanager/config/*.json and
 // produces AppInstanceStatus in /var/run/zedmanager/status/*.json.
 
-package main
+package zedmanager
 
 import (
 	"encoding/json"
@@ -63,7 +63,7 @@ var deviceNetworkStatus types.DeviceNetworkStatus
 
 var debug = false
 
-func main() {
+func Run() {
 	logf, err := agentlog.Init(agentName)
 	if err != nil {
 		log.Fatal(err)
@@ -124,6 +124,7 @@ func main() {
 
 	for _, dir := range dirs {
 		if _, err := os.Stat(dir); err != nil {
+			log.Printf("Create %s\n", dir)
 			if err := os.MkdirAll(dir, 0700); err != nil {
 				log.Fatal(err)
 			}

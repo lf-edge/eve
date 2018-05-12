@@ -9,7 +9,7 @@
 // When there are no free numbers then reuse the reserved numbers.
 // We try to give the application with IsZedmanager=true appnum zero.
 
-package main
+package zedrouter
 
 import (
 	"encoding/json"

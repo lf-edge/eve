@@ -15,7 +15,7 @@
 //After end of each event we will take
 //pause of 1200ms...
 
-package main
+package ledmanager
 
 import (
 	"flag"
@@ -59,6 +59,12 @@ var mToF = []modelToFuncs{
 		model:     "Supermicro.Super Server",
 		blinkFunc: ExecuteDDCmd},
 	modelToFuncs{
+		model:     "Supermicro.SYS-E300-8D",
+		blinkFunc: ExecuteDDCmd},
+	modelToFuncs{
+		model:     "Supermicro.SYS-5018D-FN8T",
+		blinkFunc: ExecuteDDCmd},
+	modelToFuncs{
 		model:     "hisilicon,hikey.hisilicon,hi6220.",
 		initFunc:  InitWifiLedCmd,
 		blinkFunc: ExecuteWifiLedCmd},
@@ -73,7 +79,7 @@ var debug bool
 // Set from Makefile
 var Version = "No version specified"
 
-func main() {
+func Run() {
 	logf, err := agentlog.Init(agentName)
 	if err != nil {
 	       log.Fatal(err)

@@ -11,7 +11,7 @@
 // Note that different URLs for same file will download to the same <sha>
 // directory. We delete duplicates assuming the file content will be the same.
 
-package main
+package verifier
 
 import (
 	"crypto"
@@ -79,7 +79,7 @@ var Version = "No version specified"
 type verifierContext struct {
 }
 
-func main() {
+func Run() {
 	logf, err := agentlog.Init(agentName)
 	if err != nil {
 		log.Fatal(err)
@@ -175,6 +175,7 @@ func handleInit() {
 func initializeDirs() {
 	// first the certs directory
 	if _, err := os.Stat(certificateDirname); err != nil {
+		log.Printf("Create %s\n", certificateDirname)
 		if err := os.MkdirAll(certificateDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
@@ -352,6 +353,7 @@ func createDownloadDirs(objTypes []string) {
 		for _, dirType := range workingDirTypes {
 			dirName := objectDownloadDirname + "/" + objType + "/" + dirType
 			if _, err := os.Stat(dirName); err != nil {
+				log.Printf("Create %s\n", dirName)
 				if err := os.MkdirAll(dirName, 0700); err != nil {
 					log.Fatal(err)
 				}
@@ -569,6 +571,7 @@ func markObjectAsVerifying(config *types.VerifyImageConfig,
 			log.Fatal(err)
 		}
 	}
+	log.Printf("Create %s\n", verifierDirname)
 	if err := os.MkdirAll(verifierDirname, 0700); err != nil {
 		log.Fatal(err)
 	}
@@ -820,6 +823,7 @@ func markObjectAsVerified(config *types.VerifyImageConfig,
 		}
 	}
 
+	log.Printf("Create %s\n", verifiedDirname)
 	if err := os.MkdirAll(verifiedDirname, 0700); err != nil {
 		log.Fatal(err)
 	}

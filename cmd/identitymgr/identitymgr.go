@@ -6,7 +6,7 @@
 // on status in the collection of EIDStatus structs in
 // /var/run/identitymgr/status/*.json
 
-package main
+package identitymgr
 
 import (
 	"crypto/ecdsa"
@@ -50,7 +50,7 @@ var Version = "No version specified"
 type dummyContext struct {
 }
 
-func main() {
+func Run() {
 	logf, err := agentlog.Init(agentName)
 	if err != nil {
 	       log.Fatal(err)
@@ -70,21 +70,25 @@ func main() {
 	watch.CleanupRestarted(agentName)
 
 	if _, err := os.Stat(baseDirname); err != nil {
+		log.Printf("Create %s\n", baseDirname)
 		if err := os.Mkdir(baseDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(configDirname); err != nil {
+		log.Printf("Create %s\n", configDirname)
 		if err := os.Mkdir(configDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(runDirname); err != nil {
+		log.Printf("Create %s\n", runDirname)
 		if err := os.Mkdir(runDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(statusDirname); err != nil {
+		log.Printf("Create %s\n", statusDirname)
 		if err := os.Mkdir(statusDirname, 0700); err != nil {
 			log.Fatal(err)
 		}

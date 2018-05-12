@@ -10,7 +10,7 @@
 // Output directory with status (URL, refcount, state, ModTime, lastErr, lastErrTime, retryCount)
 // refCount -> 0 means delete from dstDir? Who owns dstDir? Separate mount.
 
-package main
+package downloader
 
 import (
 	"encoding/json"
@@ -81,7 +81,7 @@ type dummyContext struct {
 
 var deviceNetworkStatus types.DeviceNetworkStatus
 
-func main() {
+func Run() {
 	logf, err := agentlog.Init(agentName)
 	if err != nil {
 		log.Fatal(err)
@@ -547,6 +547,7 @@ func createDownloadDirs(objTypes []string) {
 		for _, dirType := range workingDirTypes {
 			dirName := objectDownloadDirname + "/" + objType + "/" + dirType
 			if _, err := os.Stat(dirName); err != nil {
+				log.Printf("Create %s\n", dirName)
 				if err := os.MkdirAll(dirName, 0700); err != nil {
 					log.Fatal(err)
 				}
@@ -778,6 +779,7 @@ func handleSyncOp(ctx *downloaderContext, statusFilename string,
 	}
 
 	if _, err := os.Stat(locFilename); err != nil {
+		log.Printf("Create %s\n", locFilename)
 		if err = os.MkdirAll(locFilename, 0755); err != nil {
 			log.Fatal(err)
 		}

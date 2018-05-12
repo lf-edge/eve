@@ -3,7 +3,7 @@
 
 // ACL configlet for overlay and underlay interface towards domU
 
-package main
+package zedrouter
 
 import (
 	"github.com/zededa/go-provision/types"

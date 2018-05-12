@@ -4,7 +4,7 @@
 // Create ip rules and ip routing tables for each ifindex and also a free
 // one for the collection of free uplinks.
 
-package main
+package zedrouter
 
 import (
 	"errors"

@@ -31,7 +31,7 @@
 //				<downloaded>...    --> <downloader>  <certs> <status>
 //								   --> <zedagent>    <certs> <status>
 
-package main
+package zedagent
 
 import (
 	"flag"
@@ -152,7 +152,7 @@ var devCtx deviceContext
 // we'll react to baseOsStatus changes.
 var publishDeviceInfo bool
 
-func main() {
+func Run() {
 	logf, err := agentlog.Init(agentName)
 	if err != nil {
 		log.Fatal(err)
@@ -550,16 +550,19 @@ func initializeDirs() {
 
 	// create persistent holder directory
 	if _, err := os.Stat(persistDir); err != nil {
+		log.Printf("Create %s\n", persistDir)
 		if err := os.MkdirAll(persistDir, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(certificateDirname); err != nil {
+		log.Printf("Create %s\n", certificateDirname)
 		if err := os.MkdirAll(certificateDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(objectDownloadDirname); err != nil {
+		log.Printf("Create %s\n", objectDownloadDirname)
 		if err := os.MkdirAll(objectDownloadDirname, 0700); err != nil {
 			log.Fatal(err)
 		}

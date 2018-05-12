@@ -3,7 +3,7 @@
 
 // Push info and metrics to zedcloud
 
-package main
+package zedagent
 
 import (
 	"bytes"
@@ -18,6 +18,7 @@ import (
 	psutilnet "github.com/shirou/gopsutil/net"
 	"github.com/vishvananda/netlink"
 	"github.com/zededa/api/zmet"
+	"github.com/zededa/go-provision/diskmetrics"
 	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/netclone"
@@ -114,8 +115,11 @@ func verifyDomainExists(domainId int) bool {
 // Key is UUID
 var domainStatus map[string]types.DomainStatus
 
-// Key is DomainName; value is arrive of interfacenames
+// Key is DomainName; value is array of interface names
 var appInterfaceAndNameList map[string][]string
+
+// Key is DomainName; value is array of disk images
+var appDiskAndNameList map[string][]string
 
 func handleDomainStatusModify(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
@@ -153,11 +157,19 @@ func handleDomainStatusModify(ctxArg interface{}, statusFilename string,
 	if appInterfaceAndNameList == nil {
 		appInterfaceAndNameList = make(map[string][]string)
 	}
+	if appDiskAndNameList == nil {
+		appDiskAndNameList = make(map[string][]string)
+	}
 	var interfaceList []string
 	for _, vif := range status.VifList {
 		interfaceList = append(interfaceList, vif.Bridge)
 	}
 	appInterfaceAndNameList[status.DomainName] = interfaceList
+	var diskList []string
+	for _, ds := range status.DiskStatusList {
+		diskList = append(diskList, ds.ActiveFileLocation)
+	}
+	appDiskAndNameList[status.DomainName] = diskList
 	log.Printf("handleDomainStatusModify appIntf %s %v\n",
 		status.DomainName, interfaceList)
 	if debug {
@@ -211,8 +223,13 @@ func ioAdapterListChanged(old types.DomainStatus, new types.DomainStatus) bool {
 	log.Printf("ioAdapterListChanged: no change\n")
 	return false
 }
-func ReadAppInterfaceName(domainName string) []string {
+
+func ReadAppInterfaceList(domainName string) []string {
 	return appInterfaceAndNameList[domainName]
+}
+
+func ReadAppDiskList(domainName string) []string {
+	return appDiskAndNameList[domainName]
 }
 
 func LookupDomainStatus(domainName string) *types.DomainStatus {
@@ -246,6 +263,7 @@ func LookupDomainStatusIoBundle(ioType types.IoType, name string) *types.DomainS
 }
 
 // XXX can we use libxenstat? /usr/local/lib/libxenstat.so on hikey
+// /usr/lib/libxenstat.so in container
 func ExecuteXentopCmd() [][]string {
 	var cpuStorageStat [][]string
 
@@ -383,8 +401,8 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 	if err != nil {
 		log.Printf("mem.VirtualMemory: %s\n", err)
 	} else {
-		ReportDeviceMetric.Memory.UsedMem = uint32(ram.Used)
-		ReportDeviceMetric.Memory.AvailMem = uint32(ram.Available)
+		ReportDeviceMetric.Memory.UsedMem = uint32(RoundToMbytes(ram.Used))
+		ReportDeviceMetric.Memory.AvailMem = uint32(RoundToMbytes(ram.Available))
 		ReportDeviceMetric.Memory.UsedPercentage = ram.UsedPercent
 		ReportDeviceMetric.Memory.AvailPercentage =
 			(100.0 - (ram.UsedPercent))
@@ -482,11 +500,12 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 			log.Printf("Disk/partition %s size %d\n",
 				d, size)
 		}
+		size = RoundToMbytes(size)
 		metric := zmet.DiskMetric{Disk: d, Total: size}
 		stat, err := disk.IOCounters(d)
 		if err == nil {
-			metric.ReadBytes = stat[d].ReadBytes / mbyte
-			metric.WriteBytes = stat[d].WriteBytes / mbyte
+			metric.ReadBytes = RoundToMbytes(stat[d].ReadBytes)
+			metric.WriteBytes = RoundToMbytes(stat[d].WriteBytes)
 			metric.ReadCount = stat[d].ReadCount
 			metric.WriteCount = stat[d].WriteCount
 		}
@@ -505,9 +524,9 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 				path, u.Total, u.Used, u.Free)
 		}
 		metric := zmet.DiskMetric{MountPath: path,
-			Total: u.Total,
-			Used:  u.Used,
-			Free:  u.Free,
+			Total: RoundToMbytes(u.Total),
+			Used:  RoundToMbytes(u.Used),
+			Free:  RoundToMbytes(u.Free),
 		}
 		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
 	}
@@ -520,7 +539,7 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 		}
 		metric := zmet.DiskMetric{
 			Disk:  vs.Safename,
-			Total: uint64(vs.Size),
+			Total: RoundToMbytes(uint64(vs.Size)),
 		}
 		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
 	}
@@ -532,7 +551,7 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 		}
 		metric := zmet.DiskMetric{
 			Disk:  ds.Safename,
-			Total: uint64(ds.Size),
+			Total: RoundToMbytes(uint64(ds.Size)),
 		}
 		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
 	}
@@ -596,7 +615,9 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 		// We don't report ReportAppMetric.Cpu.Uptime
 		// since we already report BootTime for the app
 
+		// This is in kbytes
 		totalAppMemory, _ := strconv.ParseUint(cpuStorageStat[arr][5], 10, 0)
+		totalAppMemory = RoundFromKbytesToMbytes(totalAppMemory)
 		usedAppMemoryPercent, _ := strconv.ParseFloat(cpuStorageStat[arr][6], 10)
 		usedMemory := (float64(totalAppMemory) * (usedAppMemoryPercent)) / 100
 		availableMemory := float64(totalAppMemory) - usedMemory
@@ -607,7 +628,7 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 		ReportAppMetric.Memory.UsedPercentage = float64(usedAppMemoryPercent)
 		ReportAppMetric.Memory.AvailPercentage = float64(availableAppMemoryPercent)
 
-		appInterfaceList := ReadAppInterfaceName(strings.TrimSpace(cpuStorageStat[arr][1]))
+		appInterfaceList := ReadAppInterfaceList(strings.TrimSpace(cpuStorageStat[arr][1]))
 		// Use the network metrics from zedrouter subscription
 		for _, ifName := range appInterfaceList {
 			var metric *types.NetworkMetric
@@ -640,6 +661,20 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 			ReportAppMetric.Network = append(ReportAppMetric.Network,
 				networkDetails)
 		}
+
+		appDiskList := ReadAppDiskList(strings.TrimSpace(cpuStorageStat[arr][1]))
+		// Use the network metrics from zedrouter subscription
+		for _, diskfile := range appDiskList {
+			appDiskDetails := new(zmet.AppDiskMetric)
+			err := getDiskInfo(diskfile, appDiskDetails)
+			if err != nil {
+				log.Printf("getDiskInfo(%s) failed %v\n",
+					diskfile, err)
+				continue
+			}
+			ReportAppMetric.Disk = append(ReportAppMetric.Disk,
+				appDiskDetails)
+		}
 		ReportMetrics.Am[countApp] = ReportAppMetric
 		if debug {
 			log.Println("metrics per app is: ",
@@ -655,7 +690,30 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 	SendMetricsProtobuf(ReportMetrics, iteration)
 }
 
-const mbyte = 1024 * 1024
+func getDiskInfo(diskfile string, appDiskDetails *zmet.AppDiskMetric) error {
+	imgInfo, err := diskmetrics.GetImgInfo(diskfile)
+	if err != nil {
+		return err
+	}
+	appDiskDetails.Disk = diskfile
+	appDiskDetails.Provisioned = RoundToMbytes(imgInfo.VirtualSize)
+	appDiskDetails.Used = RoundToMbytes(imgInfo.ActualSize)
+	appDiskDetails.DiskType = imgInfo.Format
+	appDiskDetails.Dirty = imgInfo.DirtyFlag
+	return nil
+}
+
+func RoundToMbytes(byteCount uint64) uint64 {
+	const mbyte = 1024 * 1024
+
+	return (byteCount + mbyte/2) / mbyte
+}
+
+func RoundFromKbytesToMbytes(byteCount uint64) uint64 {
+	const kbyte = 1024
+
+	return (byteCount + kbyte/2) / kbyte
+}
 
 // This function is called per change, hence needs to try over all uplinks
 // send report on each uplink.
@@ -713,6 +771,7 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 		}
 		totalMemory, err := strconv.ParseUint(dict["total_memory"], 10, 64)
 		if err == nil {
+			// totalMemory is in MBytes
 			ReportDeviceInfo.Memory = *proto.Uint64(uint64(totalMemory))
 		}
 	}
@@ -721,7 +780,8 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 	if err != nil {
 		log.Printf("disk.Usage: %s\n", err)
 	} else {
-		ReportDeviceInfo.Storage = *proto.Uint64(uint64(d.Total / mbyte))
+		mbytes := RoundToMbytes(d.Total)
+		ReportDeviceInfo.Storage = *proto.Uint64(mbytes)
 	}
 	// Find all disks and partitions
 	disks := findDisksPartitions()
@@ -732,6 +792,7 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 		if debug {
 			log.Printf("Disk/partition %s size %d\n", disk, size)
 		}
+		size = RoundToMbytes(size)
 		is := zmet.ZInfoStorage{Device: disk, Total: size}
 		ReportDeviceInfo.StorageList = append(ReportDeviceInfo.StorageList,
 			&is)
@@ -748,7 +809,8 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 			log.Printf("Path %s total %d used %d free %d\n",
 				path, u.Total, u.Used, u.Free)
 		}
-		is := zmet.ZInfoStorage{MountPath: path, Total: u.Total}
+		is := zmet.ZInfoStorage{
+			MountPath: path, Total: RoundToMbytes(u.Total)}
 		// We know this is where we store images and keep
 		// domU virtual disks.
 		if path == persistPath {
@@ -789,8 +851,6 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 		}
 		return nil
 	}
-	// XXX can we have baseOsConfig/Status without being assocated with
-	// a partitionLabel?
 	getSwInfo := func(partLabel string) *zmet.ZInfoDevSW {
 		swInfo := new(zmet.ZInfoDevSW)
 		swInfo.Activated = (partLabel == zboot.GetCurrentPartition())
@@ -887,8 +947,13 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 		ds := LookupDomainStatusIoBundle(ib.Type, ib.Name)
 		if ds != nil {
 			reportAA.UsedByAppUUID = ds.UUIDandVersion.UUID.String()
-		} else if types.IsUplink(deviceNetworkStatus, ib.Name) {
-			reportAA.UsedByBaseOS = true
+		} else {
+			for _, m := range ib.Members {
+				if types.IsUplink(deviceNetworkStatus, m) {
+					reportAA.UsedByBaseOS = true
+					break
+				}
+			}
 		}
 		ReportDeviceInfo.AssignableAdapters = append(ReportDeviceInfo.AssignableAdapters,
 			reportAA)
@@ -1080,6 +1145,7 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 	ReportAppInfo.SystemApp = false
 	if aiStatus != nil {
 		ReportAppInfo.AppName = aiStatus.DisplayName
+		ReportAppInfo.State = zmet.ZSwState(aiStatus.State)
 		ds := LookupDomainStatusUUID(uuid)
 		if ds == nil {
 			log.Printf("Did not find DomainStatus for UUID %s\n",
