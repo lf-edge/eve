@@ -38,7 +38,7 @@ message DatastoreConfig {
 
 enum Format {
 	FmtUnknown = 0;	
-	Raw   = 1;
+	RAW   = 1;
 	QCOW  = 2;
 	QCOW2 = 3;
 	VHD   = 4;

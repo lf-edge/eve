@@ -179,9 +179,10 @@ message ZInfoApp {
   string error = 10;  // deprecated, use ErrorInfo
   google.protobuf.Timestamp errorTime = 11; //deprecated, use ErrorInfo
 
-    google.protobuf.Timestamp bootTime = 12;
+  google.protobuf.Timestamp bootTime = 12;
   repeated ZioBundle assignedAdapters = 13;
   repeated ErrorInfo appErr = 14;
+  ZSwState state = 15;
 }
 
 message ZInfoMsg {
