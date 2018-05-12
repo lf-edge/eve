@@ -70,6 +70,7 @@ enum Target {
 	Kernel = 2;
 	Initrd = 3;
 	RamDisk = 4;
+	// XXX DeviceTree?
 }
 
 enum DriveType {
