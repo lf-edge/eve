@@ -544,12 +544,15 @@ func ShowDecapKeys() {
 	log.Println()
 }
 
+/*
 func HandleItrCryptoPort(port int) {
 	itrGlobalData.LockMe.Lock()
 	defer itrGlobalData.LockMe.Unlock()
 	itrGlobalData.ItrCryptoPort = port
 }
+*/
 
+/*
 func GetItrCryptoPort() int {
 	itrGlobalData.LockMe.RLock()
 	defer itrGlobalData.LockMe.RUnlock()
@@ -557,6 +560,7 @@ func GetItrCryptoPort() int {
 
 	return port
 }
+*/
 
 // This thread wakes up every minutes, to find the map cache entries that are
 // in resolve state for more than 5 minutes. Resolve entries that are older than

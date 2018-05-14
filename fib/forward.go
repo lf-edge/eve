@@ -313,7 +313,8 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 	if useCrypto == true {
 		SetLispKeyId(lispHdr, keyId)
 
-		srcPort := GetItrCryptoPort()
+		//srcPort := GetItrCryptoPort()
+		srcPort := itrLocalData.ItrCryptoPort
 		if srcPort != -1 {
 			udp.SrcPort = layers.UDPPort(uint16(srcPort))
 		}
@@ -493,7 +494,8 @@ func craftAndSendIPv6LispPacket(packet gopacket.Packet,
 	if useCrypto == true {
 		SetLispKeyId(lispHdr, keyId)
 
-		srcPort := GetItrCryptoPort()
+		//srcPort := GetItrCryptoPort()
+		srcPort := itrLocalData.ItrCryptoPort
 		if srcPort != -1 {
 			udp.SrcPort = layers.UDPPort(uint16(srcPort))
 		}

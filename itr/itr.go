@@ -52,7 +52,8 @@ func disableIntfHardwareFeatures(ifname string) {
 func StartItrThread(threadName string,
 	//ring *pfring.Ring,
 	handle *afpacket.TPacket,
-	killChannel chan bool,
+	//killChannel chan bool,
+	umblical chan dptypes.ITRConfiguration,
 	puntChannel chan []byte) {
 
 	log.Println("StartItrThread: Starting ITR thread:", threadName)
@@ -138,7 +139,9 @@ func StartItrThread(threadName string,
 	itrLocalData.IvLow = ivLow
 
 	//startWorking(threadName, ring, killChannel, puntChannel,
-	startWorking(threadName, handle, killChannel, puntChannel,
+	//startWorking(threadName, handle, killChannel, puntChannel,
+	//	itrLocalData)
+	startWorking(threadName, handle, umblical, puntChannel,
 		itrLocalData)
 
 	// If startWorking returns, it means the control thread wants
@@ -240,7 +243,8 @@ func SetupPacketCapture(iface string, snapLen int) *afpacket.TPacket {
 // Start capturing and processing packets.
 //func startWorking(ifname string, ring *pfring.Ring,
 func startWorking(ifname string, handle *afpacket.TPacket,
-	killChannel chan bool, puntChannel chan []byte,
+	//killChannel chan bool, puntChannel chan []byte,
+	umblical chan dptypes.ITRConfiguration, puntChannel chan []byte,
 	itrLocalData *dptypes.ITRLocalData) {
 	var pktBuf [SNAPLENGTH]byte
 
@@ -262,12 +266,21 @@ eidLoop:
 	for {
 		time.Sleep(2 * time.Second)
 		select {
-		case <-killChannel:
-			log.Printf(
-				"startWorking: "+
-					"ITR thread %s received terminate from control module.",
-				ifname)
-			return
+		//case <-killChannel:
+		case itrConfig := <-umblical:
+			if itrConfig.Quit == true {
+				log.Printf(
+					"startWorking: "+
+						"ITR thread %s received terminate from control module.",
+					ifname)
+				return
+			}
+
+			if itrConfig.ItrCryptoPortValid == true {
+				log.Printf("XXXXXX Changing ITR crpto port from %d to %d\n",
+					itrLocalData.ItrCryptoPort, itrConfig.ItrCryptoPort)
+				itrLocalData.ItrCryptoPort = itrConfig.ItrCryptoPort
+			}
 		default:
 			// EID map database might not have come yet. Wait for before we start
 			// processing packets.
@@ -289,15 +302,23 @@ eidLoop:
 	 */
 	for {
 		select {
-		case <-killChannel:
-			// Channel becomes readable when it's closed.
-			// So we terminate the thread either when we see "true" coming in it or
-			// when the control thread closes our communication channel.
-			log.Printf(
-				"startWorking: "+
-					"ITR thread %s received terminate from control module.",
-				ifname)
-			return
+		//case <-killChannel:
+		case itrConfig := <-umblical:
+			if itrConfig.Quit == true {
+				// Channel becomes readable when it's closed.
+				// So we terminate the thread either when we see "true" coming in it or
+				// when the control thread closes our communication channel.
+				log.Printf(
+					"startWorking: "+
+						"ITR thread %s received terminate from control module.",
+					ifname)
+				return
+			}
+			if itrConfig.ItrCryptoPortValid == true {
+				log.Printf("XXXXX Changing ITR crpto port from %d to %d\n",
+					itrLocalData.ItrCryptoPort, itrConfig.ItrCryptoPort)
+				itrLocalData.ItrCryptoPort = itrConfig.ItrCryptoPort
+			}
 		default:
 			//ci, err := ring.ReadPacketDataTo(pktBuf[dptypes.MAXHEADERLEN:])
 			ci, err := handle.ReadPacketDataTo(pktBuf[dptypes.MAXHEADERLEN:])

@@ -230,9 +230,18 @@ type ITRLocalData struct {
 	// Raw sockets for sending out LISP encapsulted packets
 	Fd4 int
 	Fd6 int
+
+	// ITR crypto source port to be used when sending crypto packets out
+	ItrCryptoPort int
 }
 
 type ITRGlobalData struct {
 	ItrCryptoPort int
 	LockMe        sync.RWMutex
+}
+
+type ITRConfiguration struct {
+	ItrCryptoPort      int
+	ItrCryptoPortValid bool
+	Quit               bool
 }
