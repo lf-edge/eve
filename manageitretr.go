@@ -10,17 +10,20 @@ import (
 	"github.com/google/gopacket/afpacket"
 	//"github.com/google/gopacket/pfring"
 	"github.com/zededa/go-provision/types"
+	"github.com/zededa/lisp/dataplane/dptypes"
 	"github.com/zededa/lisp/dataplane/etr"
 	"github.com/zededa/lisp/dataplane/itr"
 	"log"
 )
 
 type ThreadEntry struct {
-	killChannel chan bool
+	//killChannel chan bool
+	umblical chan dptypes.ITRConfiguration
 	//ring        *pfring.Ring
 	handle *afpacket.TPacket
 }
 
+var itrCryptoPort int = -1
 var threadTable map[string]ThreadEntry
 
 func InitThreadTable() {
@@ -30,6 +33,19 @@ func InitThreadTable() {
 func DumpThreadTable() {
 	for name, _ := range threadTable {
 		log.Println(name)
+	}
+}
+
+func HandleItrCryptoPort(port int) {
+	var itrConfig dptypes.ITRConfiguration
+
+	itrCryptoPort = port
+
+	itrConfig.Quit = false
+	itrConfig.ItrCryptoPort = port
+	itrConfig.ItrCryptoPortValid = true
+	for _, entry := range threadTable {
+		entry.umblical <- itrConfig
 	}
 }
 
@@ -50,10 +66,14 @@ func ManageItrThreads(interfaces Interfaces) {
 	for name, entry := range threadTable {
 		// Check if this thread is needed with new configuration and send
 		// a kill signal if not.
+		var itrConfig dptypes.ITRConfiguration
+		itrConfig.Quit = true
+		itrConfig.ItrCryptoPortValid = false
 		if _, ok := tmpMap[name]; !ok {
 			// This thread has to die, break the bad news to it
 			log.Println("ManageItrThreads: Sending kill signal to", name)
-			entry.killChannel <- true
+			//entry.killChannel <- true
+			entry.umblical <- itrConfig
 
 			/*
 				// XXX
@@ -80,18 +100,30 @@ func ManageItrThreads(interfaces Interfaces) {
 	for name, _ := range tmpMap {
 		if _, ok := threadTable[name]; !ok {
 			// This ITR thread has to be given birth to. Find a mom!!
-			killChannel := make(chan bool, 1)
+			//killChannel := make(chan bool, 1)
+			umblical := make(chan dptypes.ITRConfiguration, 1)
 
 			// Start the go thread here
 			//ring := itr.SetupPacketCapture(name, 65536)
 			handle := itr.SetupPacketCapture(name, 65536)
 			log.Println("ManageItrThreads: Creating new ITR thread for", name)
 			threadTable[name] = ThreadEntry{
-				killChannel: killChannel,
-				handle:      handle,
+				//killChannel: killChannel,
+				umblical: umblical,
+				handle:   handle,
 			}
 			//go itr.StartItrThread(name, ring, killChannel, puntChannel)
-			go itr.StartItrThread(name, handle, killChannel, puntChannel)
+			//go itr.StartItrThread(name, handle, killChannel, puntChannel)
+			go itr.StartItrThread(name, handle, umblical, puntChannel)
+
+			// ITR crypto port message could have come before the ITR thread creation.
+			// Send ITR crypto port to ITR thread via umblical
+			var itrConfig dptypes.ITRConfiguration
+			itrConfig.Quit = false
+			itrConfig.ItrCryptoPortValid = true
+			itrConfig.ItrCryptoPort = itrCryptoPort
+
+			umblical <- itrConfig
 		}
 	}
 }

@@ -465,5 +465,5 @@ func handleItrCryptoPort(msg []byte) {
 			string(msg), err)
 		return
 	}
-	fib.HandleItrCryptoPort(itrCryptoPort.Port)
+	HandleItrCryptoPort(itrCryptoPort.Port)
 }
