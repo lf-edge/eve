@@ -139,18 +139,24 @@ type DecapKeys struct {
 	Keys []DKey
 }
 
+type PktStat struct {
+	Pkts        uint64 `json:"packet-count"`
+	Bytes       uint64 `json:"byte-count"`
+	LastPktTime int64  `json:"seconds-last-packet"`
+}
+
 type DecapTable struct {
 	LockMe       sync.RWMutex
 	DecapEntries map[string]*DecapKeys
 
 	// ETR statistics
-	NoDecryptKey     *uint64
-	OuterHeaderError *uint64
-	BadInnerVersion  *uint64
-	GoodPackets      *uint64
-	ICVError         *uint64
-	LispHeaderError  *uint64
-	ChecksumError    *uint64
+	NoDecryptKey     PktStat
+	OuterHeaderError PktStat
+	BadInnerVersion  PktStat
+	GoodPackets      PktStat
+	ICVError         PktStat
+	LispHeaderError  PktStat
+	ChecksumError    PktStat
 }
 
 type PuntEntry struct {
@@ -178,13 +184,13 @@ type EidStatsEntry struct {
 }
 
 type DecapStatistics struct {
-	NoDecryptKey     uint64 `json:"no-decrypt-key"`
-	OuterHeaderError uint64 `json:"outer-header-error"`
-	BadInnerVersion  uint64 `json:"bad-inner-version"`
-	GoodPackets      uint64 `json:"good-packets"`
-	ICVError         uint64 `json:"ICV-error"`
-	LispHeaderError  uint64 `json:"lisp-header-error"`
-	ChecksumError    uint64 `json:"checksum-error"`
+	NoDecryptKey     PktStat `json:"no-decrypt-key"`
+	OuterHeaderError PktStat `json:"outer-header-error"`
+	BadInnerVersion  PktStat `json:"bad-inner-version"`
+	GoodPackets      PktStat `json:"good-packets"`
+	ICVError         PktStat `json:"ICV-error"`
+	LispHeaderError  PktStat `json:"lisp-header-error"`
+	ChecksumError    PktStat `json:"checksum-error"`
 }
 
 type LispStatistics struct {
@@ -228,5 +234,5 @@ type ITRLocalData struct {
 
 type ITRGlobalData struct {
 	ItrCryptoPort int
-	LockMe       sync.RWMutex
+	LockMe        sync.RWMutex
 }

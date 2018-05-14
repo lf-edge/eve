@@ -260,11 +260,12 @@ func StartEtrNat(ephPort int,
 
 func verifyAndInject(fd6 int,
 	buf []byte, n int,
-	decapKeys *dptypes.DecapKeys) bool {
+	decapKeys *dptypes.DecapKeys,
+	currUnixSeconds int64) bool {
 
 	// Check if packet is too small to include a full size 8 byte lisp header
 	if n < dptypes.LISPHEADERLEN {
-		fib.AddDecapStatistics("lisp-header-error", 1)
+		fib.AddDecapStatistics("lisp-header-error", 1, uint64(n), currUnixSeconds)
 		return false
 	}
 
@@ -285,7 +286,7 @@ func verifyAndInject(fd6 int,
 	if keyId != 0 {
 		if decapKeys == nil {
 			log.Printf("verifyAndInject: Decap keys for this RLOC have not arrived yet\n")
-			fib.AddDecapStatistics("no-decrypt-key", 1)
+			fib.AddDecapStatistics("no-decrypt-key", 1, uint64(n), currUnixSeconds)
 			return false
 		}
 
@@ -310,7 +311,7 @@ func verifyAndInject(fd6 int,
 			log.Printf(
 				"verifyAndInject: Pkt ICV %x and calculated ICV %x do not match.\n",
 				pktIcv, icv)
-			fib.AddDecapStatistics("ICV-error", 1)
+			fib.AddDecapStatistics("ICV-error", 1, uint64(n), currUnixSeconds)
 			return false
 		}
 		log.Println("XXXXX ICVs match")
@@ -369,7 +370,7 @@ func verifyAndInject(fd6 int,
 	var msb byte = buf[packetOffset]
 	version := msb >> 4
 	if version != 6 {
-		fib.AddDecapStatistics("bad-inner-version", 1)
+		fib.AddDecapStatistics("bad-inner-version", 1, uint64(n), currUnixSeconds)
 		return false
 	}
 
@@ -393,7 +394,7 @@ func verifyAndInject(fd6 int,
 		log.Printf("verifyAndInject: Failed injecting ETR packet: %s.\n", err)
 		return false
 	}
-	fib.AddDecapStatistics("good-packets", 1)
+	fib.AddDecapStatistics("good-packets", 1, uint64(n), currUnixSeconds)
 	return true
 }
 
@@ -487,8 +488,9 @@ func ProcessETRPkts(fd6 int, serverConn *net.UDPConn) bool {
 			log.Fatal("ProcessETRPkts: Fatal error during ETR processing\n")
 			return false
 		}
+		currUnixSeconds := time.Now().Unix()
 		decapKeys := fib.LookupDecapKeys(saddr.IP)
-		ok := verifyAndInject(fd6, buf, n, decapKeys)
+		ok := verifyAndInject(fd6, buf, n, decapKeys, currUnixSeconds)
 		if ok == false {
 			log.Printf("Failed injecting ETR packet from port 4341\n")
 		}
@@ -520,6 +522,7 @@ func ProcessCapturedPkts(fd6 int,
 			}
 		}
 		capLen := ci.CaptureLength
+		currUnixSeconds := ci.Timestamp.Unix()
 		log.Printf("XXXXX Captured ETR packet of length %d\n", capLen)
 		packet := gopacket.NewPacket(
 			pktBuf[:capLen],
@@ -540,9 +543,9 @@ func ProcessCapturedPkts(fd6 int,
 			// ipv4 underlay
 			ipHdr := ipLayer.(*layers.IPv4)
 			// validate outer header checksum
-			csum := computeChecksum(pktBuf[dptypes.ETHHEADERLEN:dptypes.ETHHEADERLEN+dptypes.IP4HEADERLEN])
+			csum := computeChecksum(pktBuf[dptypes.ETHHEADERLEN : dptypes.ETHHEADERLEN+dptypes.IP4HEADERLEN])
 			if csum != 0xFFFF {
-				fib.AddDecapStatistics("checksum-error", 1)
+				fib.AddDecapStatistics("checksum-error", 1, uint64(capLen), currUnixSeconds)
 				if debug {
 					log.Printf("ProcessCapturedPackets: Checksum error\n")
 				}
@@ -556,13 +559,13 @@ func ProcessCapturedPkts(fd6 int,
 			srcIP = ip6Hdr.SrcIP
 		} else {
 			// We do not need this packet
-			fib.AddDecapStatistics("outer-header-error", 1)
+			fib.AddDecapStatistics("outer-header-error", 1, uint64(capLen), currUnixSeconds)
 			return
 		}
 
 		decapKeys := fib.LookupDecapKeys(srcIP)
 
-		ok := verifyAndInject(fd6, payload, len(payload), decapKeys)
+		ok := verifyAndInject(fd6, payload, len(payload), decapKeys, currUnixSeconds)
 		if ok == false {
 			log.Printf("ProcessCapturedPkts: ETR Failed injecting packet from RLOC %s\n",
 				srcIP.String())
@@ -571,22 +574,21 @@ func ProcessCapturedPkts(fd6 int,
 }
 
 func computeChecksum(buf []byte) uint32 {
-	if (len(buf) % 2) != 0 { 
+	if (len(buf) % 2) != 0 {
 		fmt.Printf("Invalid length: %v\n", len(buf))
 		return 0
-	}   
-	var csum uint32 = 0 
+	}
+	var csum uint32 = 0
 	var segment uint32
 
-	for i := 0; i < len(buf); i += 2 { 
+	for i := 0; i < len(buf); i += 2 {
 		segment = uint32(buf[i]) << 8
-		segment += uint32(buf[i + 1]) 
+		segment += uint32(buf[i+1])
 		csum += segment
-	}   
+	}
 
 	remainder := csum >> 16
 	csum += remainder
 
 	return csum & 0xffff
 }
-

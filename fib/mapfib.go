@@ -93,13 +93,14 @@ func InitDecapTable() {
 	}
 
 	// Allocate ETR statistics
-	decaps.NoDecryptKey = new(uint64)
-	decaps.OuterHeaderError = new(uint64)
-	decaps.BadInnerVersion = new(uint64)
-	decaps.GoodPackets = new(uint64)
-	decaps.ICVError = new(uint64)
-	decaps.LispHeaderError = new(uint64)
-	decaps.ChecksumError = new(uint64)
+	currUnixSeconds := time.Now().Unix()
+	decaps.NoDecryptKey = dptypes.PktStat{0, 0, currUnixSeconds}
+	decaps.OuterHeaderError = dptypes.PktStat{0, 0, currUnixSeconds}
+	decaps.BadInnerVersion = dptypes.PktStat{0, 0, currUnixSeconds}
+	decaps.GoodPackets = dptypes.PktStat{0, 0, currUnixSeconds}
+	decaps.ICVError = dptypes.PktStat{0, 0, currUnixSeconds}
+	decaps.LispHeaderError = dptypes.PktStat{0, 0, currUnixSeconds}
+	decaps.ChecksumError = dptypes.PktStat{0, 0, currUnixSeconds}
 }
 
 // Control thread looks for changes to /var/run/zedrouter/DeviceNetworkStatus/global.json
@@ -431,22 +432,37 @@ func DeleteMapCacheEntry(iid uint32, eid net.IP) {
 	// collected later
 }
 
-func AddDecapStatistics(statName string, count uint64) {
+func AddDecapStatistics(statName string, pkts uint64,
+	bytes uint64, unixSeconds int64) {
 	switch statName {
 	case "no-decrypt-key":
-		atomic.SwapUint64(decaps.NoDecryptKey, count)
+		atomic.SwapUint64(&decaps.NoDecryptKey.Pkts, pkts)
+		atomic.SwapUint64(&decaps.NoDecryptKey.Bytes, bytes)
+		atomic.StoreInt64(&decaps.NoDecryptKey.LastPktTime, unixSeconds)
 	case "outer-header-error":
-		atomic.SwapUint64(decaps.OuterHeaderError, count)
+		atomic.SwapUint64(&decaps.OuterHeaderError.Pkts, pkts)
+		atomic.SwapUint64(&decaps.OuterHeaderError.Bytes, bytes)
+		atomic.StoreInt64(&decaps.OuterHeaderError.LastPktTime, unixSeconds)
 	case "bad-inner-version":
-		atomic.SwapUint64(decaps.BadInnerVersion, count)
+		atomic.SwapUint64(&decaps.BadInnerVersion.Pkts, pkts)
+		atomic.SwapUint64(&decaps.BadInnerVersion.Bytes, bytes)
+		atomic.StoreInt64(&decaps.BadInnerVersion.LastPktTime, unixSeconds)
 	case "good-packets":
-		atomic.SwapUint64(decaps.GoodPackets, count)
+		atomic.SwapUint64(&decaps.GoodPackets.Pkts, pkts)
+		atomic.SwapUint64(&decaps.GoodPackets.Bytes, bytes)
+		atomic.StoreInt64(&decaps.GoodPackets.LastPktTime, unixSeconds)
 	case "ICV-error":
-		atomic.SwapUint64(decaps.ICVError, count)
+		atomic.SwapUint64(&decaps.ICVError.Pkts, pkts)
+		atomic.SwapUint64(&decaps.ICVError.Bytes, bytes)
+		atomic.StoreInt64(&decaps.ICVError.LastPktTime, unixSeconds)
 	case "lisp-header-error":
-		atomic.SwapUint64(decaps.LispHeaderError, count)
+		atomic.SwapUint64(&decaps.LispHeaderError.Pkts, pkts)
+		atomic.SwapUint64(&decaps.LispHeaderError.Bytes, bytes)
+		atomic.StoreInt64(&decaps.LispHeaderError.LastPktTime, unixSeconds)
 	case "checksum-error":
-		atomic.SwapUint64(decaps.ChecksumError, count)
+		atomic.SwapUint64(&decaps.ChecksumError.Pkts, pkts)
+		atomic.SwapUint64(&decaps.ChecksumError.Bytes, bytes)
+		atomic.StoreInt64(&decaps.ChecksumError.LastPktTime, unixSeconds)
 	}
 }
 
@@ -634,13 +650,41 @@ func StatsThread(puntChannel chan []byte) {
 		}
 
 		var decapStatistics dptypes.DecapStatistics
-		decapStatistics.NoDecryptKey = atomic.SwapUint64(decaps.NoDecryptKey, 0)
-		decapStatistics.OuterHeaderError = 0
-		decapStatistics.BadInnerVersion = 0
-		decapStatistics.GoodPackets = atomic.SwapUint64(decaps.GoodPackets, 0)
-		decapStatistics.ICVError = atomic.SwapUint64(decaps.ICVError, 0)
-		decapStatistics.LispHeaderError = 0
-		decapStatistics.ChecksumError = 0
+		currUnixSecs := time.Now().Unix()
+		decapStatistics.NoDecryptKey.Pkts = atomic.SwapUint64(&decaps.NoDecryptKey.Pkts, 0)
+		decapStatistics.NoDecryptKey.Bytes = atomic.SwapUint64(&decaps.NoDecryptKey.Bytes, 0)
+		lastPktTime := atomic.LoadInt64(&decaps.NoDecryptKey.LastPktTime)
+		decapStatistics.NoDecryptKey.LastPktTime = currUnixSecs - lastPktTime
+
+		decapStatistics.OuterHeaderError.Pkts = atomic.SwapUint64(&decaps.OuterHeaderError.Pkts, 0)
+		decapStatistics.OuterHeaderError.Bytes = atomic.SwapUint64(&decaps.OuterHeaderError.Bytes, 0)
+		lastPktTime = atomic.LoadInt64(&decaps.OuterHeaderError.LastPktTime)
+		decapStatistics.OuterHeaderError.LastPktTime = currUnixSecs - lastPktTime
+
+		decapStatistics.BadInnerVersion.Pkts = atomic.SwapUint64(&decaps.BadInnerVersion.Pkts, 0)
+		decapStatistics.BadInnerVersion.Bytes = atomic.SwapUint64(&decaps.BadInnerVersion.Bytes, 0)
+		lastPktTime = atomic.LoadInt64(&decaps.BadInnerVersion.LastPktTime)
+		decapStatistics.BadInnerVersion.LastPktTime = currUnixSecs - lastPktTime
+
+		decapStatistics.GoodPackets.Pkts = atomic.SwapUint64(&decaps.GoodPackets.Pkts, 0)
+		decapStatistics.GoodPackets.Bytes = atomic.SwapUint64(&decaps.GoodPackets.Bytes, 0)
+		lastPktTime = atomic.LoadInt64(&decaps.GoodPackets.LastPktTime)
+		decapStatistics.GoodPackets.LastPktTime = currUnixSecs - lastPktTime
+
+		decapStatistics.ICVError.Pkts = atomic.SwapUint64(&decaps.ICVError.Pkts, 0)
+		decapStatistics.ICVError.Bytes = atomic.SwapUint64(&decaps.ICVError.Bytes, 0)
+		lastPktTime = atomic.LoadInt64(&decaps.ICVError.LastPktTime)
+		decapStatistics.ICVError.LastPktTime = currUnixSecs - lastPktTime
+
+		decapStatistics.LispHeaderError.Pkts = atomic.SwapUint64(&decaps.LispHeaderError.Pkts, 0)
+		decapStatistics.LispHeaderError.Bytes = atomic.SwapUint64(&decaps.LispHeaderError.Bytes, 0)
+		lastPktTime = atomic.LoadInt64(&decaps.LispHeaderError.LastPktTime)
+		decapStatistics.LispHeaderError.LastPktTime = currUnixSecs - lastPktTime
+
+		decapStatistics.ChecksumError.Pkts = atomic.SwapUint64(&decaps.ChecksumError.Pkts, 0)
+		decapStatistics.ChecksumError.Bytes = atomic.SwapUint64(&decaps.ChecksumError.Bytes, 0)
+		lastPktTime = atomic.LoadInt64(&decaps.ChecksumError.LastPktTime)
+		decapStatistics.ChecksumError.LastPktTime = currUnixSecs - lastPktTime
 
 		lispStatistics.DecapStats = decapStatistics
 
