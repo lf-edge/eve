@@ -18,6 +18,7 @@ import (
 	"time"
 )
 
+// 5 minutes scrub threshold
 const SCRUBTHRESHOLD = 5 * 60
 
 var cache *dptypes.MapCacheTable
@@ -92,7 +93,7 @@ func InitDecapTable() {
 		return
 	}
 
-	// Allocate ETR statistics
+	// Initialize ETR statistics
 	currUnixSeconds := time.Now().Unix()
 	decaps.NoDecryptKey = dptypes.PktStat{0, 0, currUnixSeconds}
 	decaps.OuterHeaderError = dptypes.PktStat{0, 0, currUnixSeconds}
@@ -366,6 +367,14 @@ func LookupAndUpdate(iid uint32, eid net.IP, rlocs []dptypes.Rloc) *dptypes.MapC
 	log.Printf("LookupAndUpdate: Adding map-cache entry with key IID %d, EID %s\n",
 		key.IID, key.Eid)
 
+	selectRlocs, totWeight = compileRlocs(rlocs)
+
+	resolved := true
+	// If RLOC list is empty we mark the map-cache entry as resolved.
+	if len(selectRlocs) == 0 {
+		resolved = false
+	}
+
 	if ok && (entry.Resolved == true) {
 		// Delete the old map cache entry
 		// Another ITR thread might have taken a pointer to this entry
@@ -395,21 +404,21 @@ func LookupAndUpdate(iid uint32, eid net.IP, rlocs []dptypes.Rloc) *dptypes.MapC
 			log.Printf("LookupAndUpdate: Resolving unresolved entry with EID %s, IID %v\n",
 				key.Eid, key.IID)
 		}
-		selectRlocs, totWeight = compileRlocs(rlocs)
+		//selectRlocs, totWeight = compileRlocs(rlocs)
 		entry.Rlocs = selectRlocs
 		entry.RlocTotWeight = totWeight
-		entry.Resolved = true
+		entry.Resolved = resolved
 		entry.LastPunt = time.Now()
 		return entry
 	}
 	// allocate new MapCacheEntry and add to table
 	// We will only use the highest priority rlocs and ignore rlocs with
 	// other priorities
-	selectRlocs, totWeight = compileRlocs(rlocs)
+	//selectRlocs, totWeight = compileRlocs(rlocs)
 	newEntry := dptypes.MapCacheEntry{
 		InstanceId:    iid,
 		Eid:           eid,
-		Resolved:      true,
+		Resolved:      resolved,
 		Rlocs:         selectRlocs,
 		RlocTotWeight: totWeight,
 		PktBuffer:     make(chan *dptypes.BufferedPacket, 10),
@@ -544,24 +553,6 @@ func ShowDecapKeys() {
 	log.Println()
 }
 
-/*
-func HandleItrCryptoPort(port int) {
-	itrGlobalData.LockMe.Lock()
-	defer itrGlobalData.LockMe.Unlock()
-	itrGlobalData.ItrCryptoPort = port
-}
-*/
-
-/*
-func GetItrCryptoPort() int {
-	itrGlobalData.LockMe.RLock()
-	defer itrGlobalData.LockMe.RUnlock()
-	port := itrGlobalData.ItrCryptoPort
-
-	return port
-}
-*/
-
 // This thread wakes up every minutes, to find the map cache entries that are
 // in resolve state for more than 5 minutes. Resolve entries that are older than
 // 5 minutes will be deleted.
@@ -583,7 +574,7 @@ func MapcacheScrubThread() {
 
 				currTime := time.Now()
 
-				// 5 * 50 * 1000 milli seconds threshold interval
+				// 5 * 60 * 1000 milli seconds threshold interval
 				var scrubThreshold time.Duration = SCRUBTHRESHOLD * 1000
 
 				// elapsed time is in Nano seconds
@@ -592,7 +583,7 @@ func MapcacheScrubThread() {
 				// convert elapsed time to milli seconds
 				elapsed = (elapsed / 1000000)
 
-				// if elapsed time is greater than 5 minutes
+				// if elapsed time is greater than scrub threshold
 				// send delete resolve entry
 				if elapsed >= scrubThreshold {
 					// mark the resolve entry for deletion
@@ -602,7 +593,7 @@ func MapcacheScrubThread() {
 		}
 		cache.LockMe.RUnlock()
 
-		// take write lock and delete the entries necessary
+		// take write lock and delete the stale entries
 		cache.LockMe.Lock()
 		for _, key := range delList {
 			log.Printf("MapcacheScrubThread: Removing resolve entry with iid %v, eid %s\n",
