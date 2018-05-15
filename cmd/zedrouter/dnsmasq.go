@@ -93,6 +93,11 @@ func createDnsmasqUnderlayConfiglet(cfgPathname string, ulIfname string,
 	file.WriteString(fmt.Sprintf("listen-address=%s\n", ulAddr1))
 	file.WriteString(fmt.Sprintf("dhcp-host=%s,id:*,%s,%s\n",
 		ulMac, ulAddr2, hostName))
+	// XXX this function is really for IPv4 whether underlay or overlay
+	// Or make a combined IPv4+IPv6 overlay function?
+	// XXX file.WriteString(fmt.Sprintf("dhcp-option=option:router,%s\n", ulAddr1)
+	// XXX assumes zedrouter has an IP address in the subnet?
+	// Or do combined where DNS is IPv6 and IPv4 routing to remote router?
 }
 
 func deleteDnsmasqConfiglet(cfgPathname string) {
