@@ -445,32 +445,32 @@ func AddDecapStatistics(statName string, pkts uint64,
 	bytes uint64, unixSeconds int64) {
 	switch statName {
 	case "no-decrypt-key":
-		atomic.SwapUint64(&decaps.NoDecryptKey.Pkts, pkts)
-		atomic.SwapUint64(&decaps.NoDecryptKey.Bytes, bytes)
+		atomic.AddUint64(&decaps.NoDecryptKey.Pkts, pkts)
+		atomic.AddUint64(&decaps.NoDecryptKey.Bytes, bytes)
 		atomic.StoreInt64(&decaps.NoDecryptKey.LastPktTime, unixSeconds)
 	case "outer-header-error":
-		atomic.SwapUint64(&decaps.OuterHeaderError.Pkts, pkts)
-		atomic.SwapUint64(&decaps.OuterHeaderError.Bytes, bytes)
+		atomic.AddUint64(&decaps.OuterHeaderError.Pkts, pkts)
+		atomic.AddUint64(&decaps.OuterHeaderError.Bytes, bytes)
 		atomic.StoreInt64(&decaps.OuterHeaderError.LastPktTime, unixSeconds)
 	case "bad-inner-version":
-		atomic.SwapUint64(&decaps.BadInnerVersion.Pkts, pkts)
-		atomic.SwapUint64(&decaps.BadInnerVersion.Bytes, bytes)
+		atomic.AddUint64(&decaps.BadInnerVersion.Pkts, pkts)
+		atomic.AddUint64(&decaps.BadInnerVersion.Bytes, bytes)
 		atomic.StoreInt64(&decaps.BadInnerVersion.LastPktTime, unixSeconds)
 	case "good-packets":
-		atomic.SwapUint64(&decaps.GoodPackets.Pkts, pkts)
-		atomic.SwapUint64(&decaps.GoodPackets.Bytes, bytes)
+		atomic.AddUint64(&decaps.GoodPackets.Pkts, pkts)
+		atomic.AddUint64(&decaps.GoodPackets.Bytes, bytes)
 		atomic.StoreInt64(&decaps.GoodPackets.LastPktTime, unixSeconds)
 	case "ICV-error":
-		atomic.SwapUint64(&decaps.ICVError.Pkts, pkts)
-		atomic.SwapUint64(&decaps.ICVError.Bytes, bytes)
+		atomic.AddUint64(&decaps.ICVError.Pkts, pkts)
+		atomic.AddUint64(&decaps.ICVError.Bytes, bytes)
 		atomic.StoreInt64(&decaps.ICVError.LastPktTime, unixSeconds)
 	case "lisp-header-error":
-		atomic.SwapUint64(&decaps.LispHeaderError.Pkts, pkts)
-		atomic.SwapUint64(&decaps.LispHeaderError.Bytes, bytes)
+		atomic.AddUint64(&decaps.LispHeaderError.Pkts, pkts)
+		atomic.AddUint64(&decaps.LispHeaderError.Bytes, bytes)
 		atomic.StoreInt64(&decaps.LispHeaderError.LastPktTime, unixSeconds)
 	case "checksum-error":
-		atomic.SwapUint64(&decaps.ChecksumError.Pkts, pkts)
-		atomic.SwapUint64(&decaps.ChecksumError.Bytes, bytes)
+		atomic.AddUint64(&decaps.ChecksumError.Pkts, pkts)
+		atomic.AddUint64(&decaps.ChecksumError.Bytes, bytes)
 		atomic.StoreInt64(&decaps.ChecksumError.LastPktTime, unixSeconds)
 	}
 }
