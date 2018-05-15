@@ -657,6 +657,8 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 	//  as valid may not hold good always!!!
 	if (config.ImageSignature == nil) ||
 		(len(config.ImageSignature) == 0) {
+		log.Printf("No signature to verify for %s\n",
+			config.DownloadURL)
 		return ""
 	}
 
@@ -672,19 +674,19 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 	serverCertName := types.UrlToFilename(config.SignatureKey)
 	serverCertificate, err := ioutil.ReadFile(certificateDirname + "/" + serverCertName)
 	if err != nil {
-		cerr := fmt.Sprintf("unable to read the certificate %s", serverCertName)
+		cerr := fmt.Sprintf("unable to read the certificate %s: %s", serverCertName, err)
 		return cerr
 	}
 
 	block, _ := pem.Decode(serverCertificate)
 	if block == nil {
-		cerr := fmt.Sprintf("unable to decode certificate")
+		cerr := fmt.Sprintf("unable to decode server certificate")
 		return cerr
 	}
 
 	cert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
-		cerr := fmt.Sprintf("unable to parse certificate")
+		cerr := fmt.Sprintf("unable to parse certificate: %s", err)
 		return cerr
 	}
 
@@ -700,7 +702,7 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 	rootCertificate, err := ioutil.ReadFile(rootCertFileName)
 	if err != nil {
 		log.Println(err)
-		cerr := fmt.Sprintf("failed to find root certificate")
+		cerr := fmt.Sprintf("failed to find root certificate: %s", err)
 		return cerr
 	}
 
@@ -715,7 +717,8 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 
 		bytes, err := ioutil.ReadFile(certificateDirname + "/" + certName)
 		if err != nil {
-			cerr := fmt.Sprintf("failed to read certificate Directory: %v", certName)
+			cerr := fmt.Sprintf("failed to read certificate Directory %s: %s",
+				certName, err)
 			return cerr
 		}
 
@@ -727,7 +730,8 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 
 	opts := x509.VerifyOptions{Roots: roots}
 	if _, err := cert.Verify(opts); err != nil {
-		cerr := fmt.Sprintf("failed to verify certificate chain: ")
+		cerr := fmt.Sprintf("failed to verify certificate chain: %s",
+			err)
 		return cerr
 	}
 
@@ -741,7 +745,7 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 	case *rsa.PublicKey:
 		err = rsa.VerifyPKCS1v15(pub, crypto.SHA256, imageHash, imgSig)
 		if err != nil {
-			cerr := fmt.Sprintf("rsa image signature verification failed")
+			cerr := fmt.Sprintf("rsa image signature verification failed: %s", err)
 			return cerr
 		}
 		log.Println("VerifyPKCS1v15 successful...\n")
@@ -766,7 +770,7 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 		log.Printf("Decoded r, s: %v, %v\n", r, s)
 		ok := ecdsa.Verify(pub, imageHash, r, s)
 		if !ok {
-			cerr := fmt.Sprintf("ecdsa image signature verification failed ")
+			cerr := fmt.Sprintf("ecdsa image signature verification failed")
 			return cerr
 		}
 		log.Printf("Signature verified\n")
