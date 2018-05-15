@@ -384,6 +384,8 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig) {
 		appInstance.FixedResources.Memory = int(cfgApp.Fixedresources.Memory)
 		appInstance.FixedResources.RootDev = cfgApp.Fixedresources.Rootdev
 		appInstance.FixedResources.VCpus = int(cfgApp.Fixedresources.Vcpus)
+		appInstance.FixedResources.VirtualizationMode = types.VmMode(cfgApp.Fixedresources.VirtualizationMode)
+		appInstance.FixedResources.EnableVnc = cfgApp.Fixedresources.EnableVnc
 
 		var imageCount int
 		for _, drive := range cfgApp.Drives {
