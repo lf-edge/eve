@@ -128,6 +128,8 @@ images/%.yml: zedctr-workaround parse-pkgs.sh images/%.yml.in FORCE
 	if [ "$(ZARCH)" != `uname -m` ] ; then \
 	   sed -e 's#-amd64\s*$$##' -e 's#-arm64\s*$$##' \
                -e '/linuxkit|zededa\/[^:]*:/s#\s*$$#-$(DOCKER_ARCH_TAG)#' -E -i.orig $@ ;\
+           sed -e '/source:/s#rootfs.img#rootfs_aarch64.img#' \
+               -e '/command:/s#/dev/sda#/dev/vda#' -i.orig $@ ;\
 	   echo "WARNING: We are assembling a $(ZARCH) image on `uname -m`. Things may break." ;\
         fi
 
