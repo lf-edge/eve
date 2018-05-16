@@ -662,9 +662,9 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 		return ""
 	}
 
-	log.Printf("Validating %s using cert %s expecting signature %s sha %s\n",
+	log.Printf("Validating %s using cert %s expecting sha %s\n",
 		config.DownloadURL, config.SignatureKey,
-		string(config.ImageSignature), config.ImageSha256)
+		config.ImageSha256)
 
 	//Read the server certificate
 	//Decode it and parse it
