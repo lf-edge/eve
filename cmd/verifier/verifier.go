@@ -662,7 +662,7 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 		return ""
 	}
 
-	log.Printf("Validating %s using cert %s expecting sha %s\n",
+	log.Printf("Validating %s using cert %s sha %s\n",
 		config.DownloadURL, config.SignatureKey,
 		config.ImageSha256)
 
@@ -739,7 +739,7 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 		return cerr
 	}
 
-	log.Println("certificate options verified")
+	log.Printf("certificate options verified for %s\n", config.DownloadURL)
 
 	//Read the signature from config file...
 	imgSig := config.ImageSignature
@@ -752,8 +752,8 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 			cerr := fmt.Sprintf("rsa image signature verification failed: %s", err)
 			return cerr
 		}
-		log.Println("VerifyPKCS1v15 successful...\n")
-
+		log.Printf("VerifyPKCS1v15 successful for %s\n",
+			config.DownloadURL)
 	case *ecdsa.PublicKey:
 		log.Printf("pub is of type ecdsa: ", pub)
 		imgSignature, err := base64.StdEncoding.DecodeString(string(imgSig))
@@ -777,8 +777,8 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 			cerr := fmt.Sprintf("ecdsa image signature verification failed")
 			return cerr
 		}
-		log.Printf("Signature verified\n")
-
+		log.Printf("ecdsa Verify successful for %s\n",
+			config.DownloadURL)
 	default:
 		cerr := fmt.Sprintf("unknown type of public key")
 		return cerr
