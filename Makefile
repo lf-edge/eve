@@ -3,6 +3,7 @@ PATH := $(CURDIR)/build-tools/bin:$(PATH)
 # How large to we want the disk to be in Mb
 MEDIA_SIZE=8192
 IMG_FORMAT=qcow2
+ROOTFS_FORMAT=squash
 
 CONF_DIR=conf
 
@@ -135,7 +136,7 @@ config.img: conf/server conf/onboard.cert.pem conf/
 	./maketestconfig.sh $(CONF_DIR) config.img
 
 $(ROOTFS_IMG): images/rootfs.yml
-	./makerootfs.sh $< squash $@
+	./makerootfs.sh $< $(ROOTFS_FORMAT) $@
 
 $(FALLBACK_IMG).img: $(FALLBACK_IMG).$(IMG_FORMAT)
 	@rm -f $@ >/dev/null 2>&1 || :
@@ -149,7 +150,7 @@ $(FALLBACK_IMG).raw: $(ROOTFS_IMG) config.img
 	tar c $^ | ./makeflash.sh -C ${MEDIA_SIZE} $@
 
 $(INSTALLER_IMG).raw: images/installer.yml $(ROOTFS_IMG) config.img
-	./makerootfs.sh $< squash $(ROOTFS_IMG)_installer.img
+	./makerootfs.sh $< $(ROOTFS_FORMAT) $(ROOTFS_IMG)_installer.img
 	tar c $(ROOTFS_IMG)_installer.img | ./makeflash.sh -C 350 $@ 2
 	rm $(ROOTFS_IMG)_installer.img
 
