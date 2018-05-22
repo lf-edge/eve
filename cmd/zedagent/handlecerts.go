@@ -7,9 +7,9 @@ package zedagent
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
 	"reflect"
@@ -358,7 +358,7 @@ func writeCertObjStatus(status *types.CertObjStatus, uuidStr string) {
 		log.Fatal(err, "json Marshal certObjStatus")
 	}
 
-	err = ioutil.WriteFile(statusFilename, bytes, 0644)
+	err = pubsub.WriteRename(statusFilename, bytes)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -376,18 +376,23 @@ func installCertObject(srcFilename string, dstDirname string, safename string) e
 
 	dstFilename := dstDirname + "/" + types.SafenameToFilename(safename)
 
-	if _, err := os.Stat(dstFilename); err != nil {
-
-		log.Printf("installCertObject: writing %s to %s\n",
-			srcFilename, dstFilename)
-
-		// XXX:FIXME its copy, not move
-		// need to refactor the certs placement properly
-		// this should be on safename or, holder object uuid context
-		_, err := copyFile(srcFilename, dstFilename)
-		return err
+	if _, err := os.Stat(dstFilename); err == nil {
+		// Remove amd replace
+		log.Printf("installCertObject: replacing %s\n",
+			dstFilename)
+		if err := os.Remove(dstFilename); err != nil {
+			log.Fatalf("installCertObject failed %s\n", err)
+		}
 	}
-	return nil
+
+	log.Printf("installCertObject: writing %s to %s\n",
+		srcFilename, dstFilename)
+
+	// XXX:FIXME its copy, not move
+	// need to refactor the certs placement properly
+	// this should be on safename or, holder object uuid context
+	_, err := copyFile(srcFilename, dstFilename)
+	return err
 }
 
 func copyFile(srcFilename string, dstFilename string) (bool, error) {

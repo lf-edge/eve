@@ -11,6 +11,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/satori/go.uuid"
 	"github.com/zededa/api/zconfig"
+	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/zboot"
 	"hash"
@@ -835,7 +836,7 @@ func writeAppInstanceConfig(appInstance types.AppInstanceConfig,
 		log.Fatal(err, "json Marshal AppInstanceConfig")
 	}
 	configFilename := zedmanagerConfigDirname + "/" + uuidStr + ".json"
-	err = ioutil.WriteFile(configFilename, bytes, 0644)
+	err = pubsub.WriteRename(configFilename, bytes)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -857,8 +858,7 @@ func writeBaseOsConfig(baseOsConfig *types.BaseOsConfig, uuidStr string) {
 			configFilename, bytes)
 	}
 
-	err = ioutil.WriteFile(configFilename, bytes, 0644)
-
+	err = pubsub.WriteRename(configFilename, bytes)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -874,7 +874,7 @@ func writeBaseOsStatus(baseOsStatus *types.BaseOsStatus, uuidStr string) {
 		log.Fatal(err, "json Marshal BaseOsStatus")
 	}
 
-	err = ioutil.WriteFile(statusFilename, bytes, 0644)
+	err = pubsub.WriteRename(statusFilename, bytes)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -1052,7 +1052,7 @@ func writeCertObjConfig(config *types.CertObjConfig, uuidStr string) {
 		log.Printf("Writing CA config %s, %s\n", configFilename, bytes)
 	}
 
-	err = ioutil.WriteFile(configFilename, bytes, 0644)
+	err = pubsub.WriteRename(configFilename, bytes)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -1123,7 +1123,7 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd) bool {
 		if err != nil {
 			log.Fatal(err)
 		}
-		err = ioutil.WriteFile(rebootConfigFilename, bytes, 0644)
+		err = pubsub.WriteRename(rebootConfigFilename, bytes)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -1152,7 +1152,11 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd) bool {
 		// store current config, persistently
 		bytes, err = json.Marshal(reboot)
 		if err == nil {
-			ioutil.WriteFile(rebootConfigFilename, bytes, 0644)
+			err := pubsub.WriteRename(rebootConfigFilename, bytes)
+			if err != nil {
+				log.Printf("scheduleReboot: failed %s\n",
+					err)
+			}
 		}
 
 		//timer was started, stop now
