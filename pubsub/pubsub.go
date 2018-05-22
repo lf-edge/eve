@@ -15,6 +15,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 )
@@ -217,33 +218,41 @@ func (pub *publication) Publish(key string, item interface{}) error {
 	if err != nil {
 		log.Fatal(err, "json Marshal in Publish")
 	}
+	err = WriteRename(fileName, b)
+	if err != nil {
+		return err
+	}
+	// XXX send update to all listeners - how? channel to listener -> connections?
+	return nil
+}
+
+func WriteRename(fileName string, b []byte) error {
+	dirName := filepath.Dir(fileName)
 	// Do atomic rename to avoid partially written files
-	// XXX in same filesystem??
 	tmpfile, err := ioutil.TempFile(dirName, "pubsub")
 	if err != nil {
-		errStr := fmt.Sprintf("Publish(%s, %s): %s",
-			agentName, pub.topic, err)
+		errStr := fmt.Sprintf("WriteRename(%s): %s",
+			fileName, err)
 		return errors.New(errStr)
 	}
 	defer tmpfile.Close()
 	defer os.Remove(tmpfile.Name())
 	_, err = tmpfile.Write(b)
 	if err != nil {
-		errStr := fmt.Sprintf("Publish(%s, %s): %s",
-			agentName, pub.topic, err)
+		errStr := fmt.Sprintf("WriteRename(%s): %s",
+			fileName, err)
 		return errors.New(errStr)
 	}
 	if err := tmpfile.Close(); err != nil {
-		errStr := fmt.Sprintf("Publish(%s, %s): %s",
-			agentName, pub.topic, err)
+		errStr := fmt.Sprintf("WriteRename(%s): %s",
+			fileName, err)
 		return errors.New(errStr)
 	}
 	if err := os.Rename(tmpfile.Name(), fileName); err != nil {
-		errStr := fmt.Sprintf("Publish(%s, %s): %s",
-			agentName, pub.topic, err)
+		errStr := fmt.Sprintf("WriteRename(%s): %s",
+			fileName, err)
 		return errors.New(errStr)
 	}
-	// XXX send update to all listeners - how? channel to listener -> connections?
 	return nil
 }
 
