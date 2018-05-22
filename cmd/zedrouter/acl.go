@@ -83,8 +83,7 @@ func compileOldAppInstanceIpsets(ollist []types.OverlayNetworkStatus,
 
 func createACLConfiglet(ifname string, isMgmt bool, ACLs []types.ACE,
 	ipVer int, myIP string, appIP string, underlaySshPortMap uint) {
-	// XXX
-	if true || debug {
+	if debug {
 		log.Printf("createACLConfiglet: ifname %s, ACLs %v, IP %s/%s, ssh %d\n",
 			ifname, ACLs, myIP, appIP, underlaySshPortMap)
 	}
@@ -146,12 +145,10 @@ func aclToRules(ifname string, ACLs []types.ACE, ipVer int,
 		rulesList = append(rulesList, rule1, rule2, rule3, rule4)
 	}
 	if underlaySshPortMap != 0 {
-		// XXX iptables -t nat -A PREROUTING -p tcp -i eth0 --dport 8122 -j DNAT --to-destination 172.27.1.2:22
-		// XXX iptables -I FORWARD -i eth0 -o bu1 -p tcp --dport 22 -j ACCEPT
-		// XXX iptables -I FORWARD -o eth0 -i bu1 -p tcp --sport 22 -j ACCEPT
 		port := fmt.Sprintf("%d", underlaySshPortMap)
 		dest := fmt.Sprintf("%s:22", appIP)
-		// XXX Do we need to have uplink-specific rules?
+		// These rules should only apply on the uplink interfaces
+		// but for now we just compare the TCP port number.
 		rule1 := []string{"PREROUTING",
 			"-p", "tcp", "--dport", port, "-j", "DNAT",
 			"--to-destination", dest}
