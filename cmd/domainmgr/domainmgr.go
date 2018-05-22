@@ -17,6 +17,7 @@ import (
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/pidfile"
+	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
 	"github.com/zededa/go-provision/wrap"
@@ -231,9 +232,7 @@ func writeDomainStatus(status *types.DomainStatus,
 	if err != nil {
 		log.Fatal(err, "json Marshal DomainStatus")
 	}
-	// We assume a /var/run path hence we don't need to worry about
-	// partial writes/empty files due to a kernel crash.
-	err = ioutil.WriteFile(statusFilename, b, 0644)
+	err = pubsub.WriteRename(statusFilename, b)
 	if err != nil {
 		log.Fatal(err, statusFilename)
 	}
