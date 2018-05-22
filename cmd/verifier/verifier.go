@@ -554,7 +554,8 @@ func markObjectAsVerifying(config *types.VerifyImageConfig,
 
 	info, err := os.Stat(pendingFilename)
 	if err != nil {
-		// XXX hits sometimes
+		// XXX hits sometimes; attempting to verify before download
+		// is complete?
 		log.Printf("%s\n", err)
 		cerr := fmt.Sprintf("%v", err)
 		updateVerifyErrStatus(status, cerr)
