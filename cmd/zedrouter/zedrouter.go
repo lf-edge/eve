@@ -24,7 +24,6 @@ import (
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
 	"github.com/zededa/go-provision/wrap"
-	"io/ioutil"
 	"log"
 	"net"
 	"os"
@@ -363,9 +362,7 @@ func updateDeviceNetworkStatus() {
 	if err != nil {
 		log.Fatal(err, "json Marshal DeviceNetworkStatus")
 	}
-	// We assume a /var/run path hence we don't need to worry about
-	// partial writes/empty files due to a kernel crash.
-	err = ioutil.WriteFile(deviceNetworkStatusFilename, b, 0644)
+	err = pubsub.WriteRename(deviceNetworkStatusFilename, b)
 	if err != nil {
 		log.Fatal(err, deviceNetworkStatusFilename)
 	}
@@ -394,9 +391,7 @@ func writeAppNetworkStatus(status *types.AppNetworkStatus,
 	if err != nil {
 		log.Fatal(err, "json Marshal AppNetworkStatus")
 	}
-	// We assume a /var/run path hence we don't need to worry about
-	// partial writes/empty files due to a kernel crash.
-	err = ioutil.WriteFile(statusFilename, b, 0644)
+	err = pubsub.WriteRename(statusFilename, b)
 	if err != nil {
 		log.Fatal(err, statusFilename)
 	}
