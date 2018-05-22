@@ -791,7 +791,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 
 		// Set up ACLs before we setup dnsmasq
 		createACLConfiglet(olIfname, false, olConfig.ACLs, 6,
-			olAddr1, olAddr2, 0)
+			olAddr1, "", 0)
 
 		// Start clean
 		cfgFilename = "dnsmasq." + olIfname + ".conf"
@@ -1010,7 +1010,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 
 		// Update ACLs
 		updateACLConfiglet(olIfname, false, olStatus.ACLs,
-			olConfig.ACLs, 6, olAddr1, olAddr2, 0)
+			olConfig.ACLs, 6, olAddr1, "", 0)
 
 		// updateAppInstanceIpsets told us whether there is a change
 		// to the set of ipsets, and that requires restarting dnsmasq
@@ -1234,7 +1234,7 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 				olStatus := status.OverlayNetworkList[olNum-1]
 				// Delete ACLs
 				deleteACLConfiglet(olIfname, false,
-					olStatus.ACLs, 6, olAddr1, olAddr2, 0)
+					olStatus.ACLs, 6, olAddr1, "", 0)
 
 				// Delete LISP configlets
 				deleteLispConfiglet(lispRunDirname, false,
