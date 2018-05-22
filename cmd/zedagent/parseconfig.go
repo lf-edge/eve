@@ -588,7 +588,8 @@ func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
 
 				ulCfg := new(types.UnderlayNetworkConfig)
 				ulCfg.ACLs = make([]types.ACE, len(intfEnt.Acls))
-
+				// XXX set from TBD proto field
+				ulCfg.SshPortMap = true
 				for aclIdx, acl := range intfEnt.Acls {
 
 					aclCfg := new(types.ACE)
