@@ -637,7 +637,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 			EID.String())
 
 		// Set up ACLs
-		createACLConfiglet(olIfname, true, olConfig.ACLs, 6, "")
+		createACLConfiglet(olIfname, true, olConfig.ACLs, 6, "", "", 0)
 
 		// Save information about zedmanger EID and additional info
 		deviceEID = EID
@@ -790,7 +790,8 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 			EID.String())
 
 		// Set up ACLs before we setup dnsmasq
-		createACLConfiglet(olIfname, false, olConfig.ACLs, 6, olAddr1)
+		createACLConfiglet(olIfname, false, olConfig.ACLs, 6,
+			olAddr1, olAddr2, 0)
 
 		// Start clean
 		cfgFilename = "dnsmasq." + olIfname + ".conf"
@@ -875,7 +876,15 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 
 		// Create iptables with optional ipset's based ACL
 		// XXX Doesn't handle IPv6 underlay ACLs
-		createACLConfiglet(ulIfname, false, ulConfig.ACLs, 4, "")
+		var sshPort uint
+		if ulConfig.AllowSsh {
+			sshPort = 8022 + 100*uint(appNum)
+		}
+		// XXX
+		log.Printf("AllowSsh %v sshPort %d\n", ulConfig.AllowSsh,
+			sshPort)
+		createACLConfiglet(ulIfname, false, ulConfig.ACLs, 4,
+			ulAddr1, ulAddr2, sshPort)
 
 		// Start clean
 		cfgFilename := "dnsmasq." + ulIfname + ".conf"
@@ -968,7 +977,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 
 		// Update ACLs
 		updateACLConfiglet(olIfname, true, olStatus.ACLs,
-			olConfig.ACLs, 6, "")
+			olConfig.ACLs, 6, "", "", 0)
 		log.Printf("handleModify done for %s\n", config.DisplayName)
 		return
 	}
@@ -1001,7 +1010,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 
 		// Update ACLs
 		updateACLConfiglet(olIfname, false, olStatus.ACLs,
-			olConfig.ACLs, 6, olAddr1)
+			olConfig.ACLs, 6, olAddr1, olAddr2, 0)
 
 		// updateAppInstanceIpsets told us whether there is a change
 		// to the set of ipsets, and that requires restarting dnsmasq
@@ -1039,18 +1048,22 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 			log.Printf("handleModify ulNum %d\n", ulNum)
 		}
 		ulIfname := "bu" + strconv.Itoa(appNum)
+		ulAddr1 := "172.27." + strconv.Itoa(appNum) + ".1"
+		ulAddr2 := "172.27." + strconv.Itoa(appNum) + ".2"
 		ulStatus := status.UnderlayNetworkList[ulNum-1]
 
 		// Update ACLs
+		var sshPort uint
+		if ulConfig.AllowSsh {
+			sshPort = 8022 + 100*uint(appNum)
+		}
 		updateACLConfiglet(ulIfname, false, ulStatus.ACLs,
-			ulConfig.ACLs, 4, "")
+			ulConfig.ACLs, 4, ulAddr1, ulAddr2, sshPort)
 
 		if restartDnsmasq {
 			//update underlay dnsmasq configuration
 			cfgFilename := "dnsmasq." + ulIfname + ".conf"
 			cfgPathname := runDirname + "/" + cfgFilename
-			ulAddr1 := "172.27." + strconv.Itoa(appNum) + ".1"
-			ulAddr2 := "172.27." + strconv.Itoa(appNum) + ".2"
 			ulMac := "00:16:3e:0:0:" + strconv.FormatInt(int64(appNum), 16)
 			stopDnsmasq(cfgFilename, false)
 			//remove old dnsmasq configuration file
@@ -1179,7 +1192,7 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 		deleteEidIpsetConfiglet(olIfname, true)
 
 		// Delete ACLs
-		deleteACLConfiglet(olIfname, true, olStatus.ACLs, 6, "")
+		deleteACLConfiglet(olIfname, true, olStatus.ACLs, 6, "", "", 0)
 
 		// Delete LISP configlets
 		deleteLispConfiglet(lispRunDirname, true, olStatus.IID,
@@ -1221,7 +1234,7 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 				olStatus := status.OverlayNetworkList[olNum-1]
 				// Delete ACLs
 				deleteACLConfiglet(olIfname, false,
-					olStatus.ACLs, 6, olAddr1)
+					olStatus.ACLs, 6, olAddr1, olAddr2, 0)
 
 				// Delete LISP configlets
 				deleteLispConfiglet(lispRunDirname, false,
@@ -1250,6 +1263,8 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 				log.Printf("handleDelete ulNum %d\n", ulNum)
 			}
 			ulIfname := "bu" + strconv.Itoa(appNum)
+			ulAddr1 := "172.27." + strconv.Itoa(appNum) + ".1"
+			ulAddr2 := "172.27." + strconv.Itoa(appNum) + ".2"
 			if debug {
 				log.Printf("Deleting ulIfname %s\n", ulIfname)
 			}
@@ -1269,8 +1284,13 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 			// Need to check that index exists
 			if len(status.UnderlayNetworkList) >= ulNum {
 				ulStatus := status.UnderlayNetworkList[ulNum-1]
+				var sshPort uint
+				if ulStatus.AllowSsh {
+					sshPort = 8022 + 100*uint(appNum)
+				}
 				deleteACLConfiglet(ulIfname, false,
-					ulStatus.ACLs, 4, "")
+					ulStatus.ACLs, 4, ulAddr1, ulAddr2,
+					sshPort)
 			} else {
 				log.Println("Missing status for underlay %d; can not clean up ACLs\n",
 					ulNum)

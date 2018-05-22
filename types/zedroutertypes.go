@@ -364,6 +364,7 @@ type OverlayNetworkStatus struct {
 
 type UnderlayNetworkConfig struct {
 	ACLs []ACE
+	AllowSsh bool	// XXX add to proto; implement
 }
 
 type UnderlayNetworkStatus struct {
