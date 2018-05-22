@@ -75,6 +75,12 @@ func MaybeAddAppNetworkConfig(aiConfig types.AppInstanceConfig,
 				changed = true
 				break
 			}
+			if new.AllowSsh != old.AllowSsh {
+				log.Printf("AllowSsh changed from %v to %v\n",
+					old.AllowSsh, new.AllowSsh)
+				changed = true
+				break
+			}
 		}
 	} else {
 		if debug {
@@ -107,6 +113,7 @@ func MaybeAddAppNetworkConfig(aiConfig types.AppInstanceConfig,
 		for i, ulc := range aiConfig.UnderlayNetworkList {
 			ul := &nc.UnderlayNetworkList[i]
 			ul.ACLs = ulc.ACLs
+			ul.AllowSsh = ulc.AllowSsh
 		}
 		appNetworkConfig[key] = nc
 		configFilename := fmt.Sprintf("%s/%s.json",
