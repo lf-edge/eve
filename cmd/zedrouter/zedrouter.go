@@ -877,11 +877,11 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		// Create iptables with optional ipset's based ACL
 		// XXX Doesn't handle IPv6 underlay ACLs
 		var sshPort uint
-		if ulConfig.AllowSsh {
+		if ulConfig.SshPortMap {
 			sshPort = 8022 + 100*uint(appNum)
 		}
 		// XXX
-		log.Printf("AllowSsh %v sshPort %d\n", ulConfig.AllowSsh,
+		log.Printf("SshPortMap %v sshPort %d\n", ulConfig.SshPortMap,
 			sshPort)
 		createACLConfiglet(ulIfname, false, ulConfig.ACLs, 4,
 			ulAddr1, ulAddr2, sshPort)
@@ -1054,7 +1054,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 
 		// Update ACLs
 		var sshPort uint
-		if ulConfig.AllowSsh {
+		if ulConfig.SshPortMap {
 			sshPort = 8022 + 100*uint(appNum)
 		}
 		updateACLConfiglet(ulIfname, false, ulStatus.ACLs,
@@ -1285,7 +1285,7 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 			if len(status.UnderlayNetworkList) >= ulNum {
 				ulStatus := status.UnderlayNetworkList[ulNum-1]
 				var sshPort uint
-				if ulStatus.AllowSsh {
+				if ulStatus.SshPortMap {
 					sshPort = 8022 + 100*uint(appNum)
 				}
 				deleteACLConfiglet(ulIfname, false,
