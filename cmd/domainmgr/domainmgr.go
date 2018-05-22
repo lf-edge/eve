@@ -630,9 +630,19 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 
 	builder := "pv"
 	firmwareOverride := ""
+	rootDev := ""
+	extra := ""
+	uuidStr := fmt.Sprintf("appuuid=%s ", config.UUIDandVersion.UUID)
+
 	switch config.VirtualizationMode {
 	case types.PV:
 		builder = "pv"
+		// Note that qcow2 images might have partitions hence xvda1 by default
+		rootDev = config.RootDev
+		if rootDev == "" {
+			rootDev = "/dev/xvda1"
+		}
+		extra = "console=hvc0 " + uuidStr + config.ExtraArgs
 	case types.HVM:
 		builder = "hvm"
 		firmwareOverride = "/usr/lib/xen/boot/hvmloader"
@@ -664,7 +674,7 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 	}
 	if config.EnableVnc {
 		file.WriteString(fmt.Sprintf("vnc = 1\n"))
-		file.WriteString(fmt.Sprintf("vnclisten = 0.0.0.0\n"))
+		file.WriteString(fmt.Sprintf("vnclisten = \"0.0.0.0\"\n"))
 	}
 
 	// Go from kbytes to mbytes
@@ -725,16 +735,12 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 		file.WriteString(fmt.Sprintf("iomem = [%s]\n", imString))
 	}
 	// Note that qcow2 images might have partitions hence xvda1 by default
-	if config.RootDev == "" {
-		file.WriteString(fmt.Sprintf("root = \"/dev/xvda1\"\n"))
-	} else {
-		file.WriteString(fmt.Sprintf("root = \"%s\"\n",
-			config.RootDev))
+	if rootDev != "" {
+		file.WriteString(fmt.Sprintf("root = \"%s\"\n", rootDev))
 	}
-	uuidStr := fmt.Sprintf("appuuid=%s ",
-		config.UUIDandVersion.UUID)
-	extra := "console=hvc0 " + uuidStr + config.ExtraArgs
-	file.WriteString(fmt.Sprintf("extra = \"%s\"\n", extra))
+	if extra != "" {
+		file.WriteString(fmt.Sprintf("extra = \"%s\"\n", extra))
+	}
 	file.WriteString(fmt.Sprintf("serial = \"%s\"\n", "pty"))
 	// Always prefer CDROM vdisk over disk
 	file.WriteString(fmt.Sprintf("boot = \"%s\"\n", "dc"))
