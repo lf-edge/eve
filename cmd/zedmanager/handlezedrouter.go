@@ -8,7 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/zededa/go-provision/types"
-	"io/ioutil"
+	"github.com/zededa/go-provision/pubsub"
 	"log"
 	"os"
 	"reflect"
@@ -144,9 +144,7 @@ func writeAppNetworkConfig(config types.AppNetworkConfig,
 	if err != nil {
 		log.Fatal(err, "json Marshal AppNetworkConfig")
 	}
-	// We assume a /var/run path hence we don't need to worry about
-	// partial writes/empty files due to a kernel crash.
-	err = ioutil.WriteFile(configFilename, b, 0644)
+	err = pubsub.WriteRename(configFilename, b)
 	if err != nil {
 		log.Fatal(err, configFilename)
 	}
