@@ -152,11 +152,16 @@ func aclToRules(ifname string, ACLs []types.ACE, ipVer int,
 		rule1 := []string{"PREROUTING",
 			"-p", "tcp", "--dport", port, "-j", "DNAT",
 			"--to-destination", dest}
-		rule2 := []string{"-o", ifname, "-p", "tcp", "--dport", "22",
+		// Make sure packets are returned to zedrouter and not e.g.,
+		// out a directly attached interface in the domU
+		rule2 := []string{"POSTROUTING",
+			"-p", "tcp", "-o", ifname, "--dport", "22", "-j", "SNAT",
+			"--to-source", myIP}
+		rule3 := []string{"-o", ifname, "-p", "tcp", "--dport", "22",
 			"-j", "ACCEPT"}
-		rule3 := []string{"-i", ifname, "-p", "tcp", "--sport", "22",
+		rule4 := []string{"-i", ifname, "-p", "tcp", "--sport", "22",
 			"-j", "ACCEPT"}
-		rulesList = append(rulesList, rule1, rule2, rule3)
+		rulesList = append(rulesList, rule1, rule2, rule3, rule4)
 	}
 	for _, ace := range ACLs {
 		rules := aceToRules(ifname, ace, ipVer)
@@ -321,7 +326,7 @@ func rulePrefix(operation string, isMgmt bool, ipVer int,
 		}
 	} else {
 		// Underlay
-		if rule[0] == "PREROUTING" {
+		if rule[0] == "PREROUTING" || rule[0] == "POSTROUTING" {
 			// NAT verbatim rule
 			prefix = []string{"-t", "nat", operation}
 		} else {
