@@ -242,11 +242,17 @@ func aceToRules(ifname string, ace types.ACE, ipVer int) IptablesRuleList {
 		} else if action.Limit {
 			foundLimit = true
 			// -m limit --limit 4/s --limit-burst 4
-			limit := strconv.Itoa(action.LimitRate) + "/" +
-				action.LimitUnit
-			burst := strconv.Itoa(action.LimitBurst)
-			add := []string{"-m", "limit", "--limit", limit,
-				"--limit-burst", burst}
+			add := []string{"-m", "limit"}
+			// iptables doesn't limit --limit 0
+			if action.LimitRate != 0 {
+				limit := strconv.Itoa(action.LimitRate) + "/" +
+					action.LimitUnit
+				add = append(add, "--limit", limit)
+			}
+			if action.LimitBurst != 0 {
+				burst := strconv.Itoa(action.LimitBurst)
+				add = append(add, "--limit-burst", burst)
+			}
 			outArgs = append(outArgs, add...)
 			inArgs = append(inArgs, add...)
 		}
