@@ -11,6 +11,9 @@ RUN apk add --no-cache \
     libpcap libaio logrotate pixman glib curl radvd perl ethtool \
     openssh-server util-linux e2fsprogs
 
+# The following is for xen-tools
+RUN [ `uname -m` = "aarch64" ] && apk add --no-cache libfdt || :
+
 # The following enables pcappy to dlopen libpcap.so
 RUN ln -s libpcap.so.1 /usr/lib/libpcap.so
 
