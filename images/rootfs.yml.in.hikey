@@ -1,0 +1,59 @@
+kernel:
+  image: KERNEL_TAG
+  cmdline: "rootdelay=3"
+init:
+  - GRUB_TAG
+  - DTREES_TAG
+  - XEN_TAG
+  - GPTTOOLS_TAG
+  - DOM0ZTOOLS_TAG
+  - linuxkit/init:v0.3
+  - linuxkit/runc:v0.3
+  - linuxkit/containerd:v0.3
+  - linuxkit/getty:v0.3
+onboot:
+   - name: sysctl
+     image: linuxkit/sysctl:v0.3
+   - name: modprobe
+     image: linuxkit/modprobe:v0.3
+     command: ["dd", "if=/dev/mmcblk0", "of=/dev/random", "conv=notrunc", "bs=1M", "count=256"]
+     binds:
+       - /dev:/dev
+services:
+   - name: dhcpcd
+     image: linuxkit/dhcpcd:v0.3
+     binds:
+       - /run:/etc
+     command: ["/sbin/dhcpcd", "--nobackground", "-f", "/dhcpcd.conf", "-z", "eth*,wlan*"]
+   - name: ntpd
+     image: linuxkit/openntpd:v0.3
+   - name: wwan
+     image: WWAN_TAG
+   - name: wlan
+     image: WLAN_TAG
+   - name: zededa-tools
+     image: ZEDEDA_TAG
+files:
+   - path: /containers/services/zededa-tools/lower/opt/zededa/bin/versioninfo
+     contents: 'ZENBUILD_VERSION'
+   - path: /boot/kernel.hikey
+     source: blobs/kernel.hikey
+     mode: "0660"
+   - path: /EFI/BOOT/grub.cfg
+     source: blobs/grub.cfg
+     mode: "0660"
+   - path: /lib/firmware/ti-connectivity/wl18xx-fw-4.bin
+     source: blobs/ti-connectivity/wl18xx-fw-4.bin
+     mode: "0660"
+   - path: /lib/firmware/ti-connectivity/wl18xx-fw-2.bin
+     source: blobs/ti-connectivity/wl18xx-fw-2.bin
+     mode: "0660"
+   - path: /lib/firmware/ti-connectivity/wl18xx-fw-3.bin
+     source: blobs/ti-connectivity/wl18xx-fw-3.bin
+     mode: "0660"
+   - path: /containers/services/wlan/lower/etc/wpa_supplicant/wpa_supplicant.conf
+     source: blobs/wpa_supplicant.conf
+     mode: "0660"
+trust:
+  org:
+    - linuxkit
