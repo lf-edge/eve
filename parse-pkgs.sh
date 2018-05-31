@@ -10,7 +10,7 @@ zenbuild_version() {
 
   if [ -z "$vers" ] ; then
     vers="0.0.0-`git rev-parse --abbrev-ref HEAD`-`git describe --match v --abbrev=8 --always --dirty`-`date -u +"%Y-%m-%d.%H.%M"`"
-    vers=${vers/-master/}
+    vers=`echo ${vers} | sed -e 's#-master##'`
   fi
 
   echo $vers
