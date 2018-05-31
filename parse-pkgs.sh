@@ -5,6 +5,17 @@
 # [1] A poor man is a man on a deadline.
 #
 
+zenbuild_version() {
+  local vers="`git tag -l --points-at HEAD | grep '[0-9]*\.[0-9]*\.[0-9]*' | head -1`"
+
+  if [ -z "$vers" ] ; then
+    vers="0.0.0-`git rev-parse --abbrev-ref HEAD`-`git describe --match v --abbrev=8 --always --dirty`-`date -u +"%Y-%m-%d.%H.%M"`"
+    vers=${vers/-master/}
+  fi
+
+  echo $vers
+}
+
 linuxkit_tag() {
     linuxkit pkg show-tag $1
 }
@@ -18,32 +29,36 @@ plugin_tag() {
   fi
 }
 
-case $(uname -m) in
-  x86_64) ARCH=amd64
-    ;;
-  aarch64) ARCH=arm64
-    ;;
-  *)
-    echo "Unsupported architecture $(uname -m). Exiting"
-    exit 1
-    ;;
-esac
+if [ -z "$DOCKER_ARCH_TAG" ] ; then
+  case $(uname -m) in
+    x86_64) ARCH=-amd64
+      ;;
+    aarch64) ARCH=-arm64
+      ;;
+    *) echo "Unsupported architecture $(uname -m). Exiting" && exit 1
+      ;;
+  esac
+else
+  [ -z "`echo $DOCKER_ARCH_TAG`" ] || ARCH="-${DOCKER_ARCH_TAG}"
+fi
 
-KERNEL_TAG=$(linuxkit_tag pkg/kernel)-$ARCH
-XENTOOLS_TAG=$(linuxkit_tag pkg/xen-tools)-$ARCH
-XEN_TAG=$(linuxkit_tag pkg/xen)-$ARCH
-GRUB_TAG=$(linuxkit_tag pkg/grub)-$ARCH
-DTREES_TAG=$(linuxkit_tag pkg/device-trees)-$ARCH
-DNSMASQ_TAG=$(linuxkit_tag pkg/dnsmasq)-$ARCH
-TESTMSVCS_TAG=$(linuxkit_tag pkg/test-microsvcs)-$ARCH
-ZEDEDA_TAG=$(linuxkit_tag pkg/zedctr)-$ARCH
-DOM0ZTOOLS_TAG=$(linuxkit_tag pkg/dom0-ztools)-$ARCH
-QREXECLIB_TAG=$(linuxkit_tag pkg/qrexec-lib)-$ARCH
-WWAN_TAG=$(linuxkit_tag pkg/wwan)-$ARCH
-WLAN_TAG=$(linuxkit_tag pkg/wlan)-$ARCH
-GPTTOOLS_TAG=$(linuxkit_tag pkg/gpt-tools)-$ARCH
-WATCHDOG_TAG=$(linuxkit_tag pkg/watchdog)-$ARCH
-MKFLASH_TAG=$(linuxkit_tag pkg/mkflash)-$ARCH
+ZENBUILD_VERSION=`zenbuild_version`$ARCH
+
+KERNEL_TAG=$(linuxkit_tag pkg/kernel)$ARCH
+XENTOOLS_TAG=$(linuxkit_tag pkg/xen-tools)$ARCH
+XEN_TAG=$(linuxkit_tag pkg/xen)$ARCH
+GRUB_TAG=$(linuxkit_tag pkg/grub)$ARCH
+DTREES_TAG=$(linuxkit_tag pkg/device-trees)$ARCH
+DNSMASQ_TAG=$(linuxkit_tag pkg/dnsmasq)$ARCH
+TESTMSVCS_TAG=$(linuxkit_tag pkg/test-microsvcs)$ARCH
+ZEDEDA_TAG=$(linuxkit_tag pkg/zedctr)$ARCH
+DOM0ZTOOLS_TAG=$(linuxkit_tag pkg/dom0-ztools)$ARCH
+QREXECLIB_TAG=$(linuxkit_tag pkg/qrexec-lib)$ARCH
+WWAN_TAG=$(linuxkit_tag pkg/wwan)$ARCH
+WLAN_TAG=$(linuxkit_tag pkg/wlan)$ARCH
+GPTTOOLS_TAG=$(linuxkit_tag pkg/gpt-tools)$ARCH
+WATCHDOG_TAG=$(linuxkit_tag pkg/watchdog)$ARCH
+MKFLASH_TAG=$(linuxkit_tag pkg/mkflash)$ARCH
 
 # Plugin tags: the following tags will default to
 # 'scratch' Docker container if not available.
@@ -53,7 +68,8 @@ MKFLASH_TAG=$(linuxkit_tag pkg/mkflash)-$ARCH
 # images lacking functionality.
 ZTOOLS_TAG=${ZTOOLS_TAG:-$(plugin_tag zededa/ztools:latest)}
 
-sed -e "s#KERNEL_TAG#"$KERNEL_TAG"#" \
+sed -e "s#ZENBUILD_VERSION#"$ZENBUILD_VERSION"#" \
+    -e "s#KERNEL_TAG#"$KERNEL_TAG"#" \
     -e "s#XENTOOLS_TAG#"$XENTOOLS_TAG"#" \
     -e "s#DOM0ZTOOLS_TAG#"$DOM0ZTOOLS_TAG"#" \
     -e "s#XEN_TAG#"$XEN_TAG"#" \
