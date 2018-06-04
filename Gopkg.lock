@@ -40,8 +40,8 @@
     "service/s3/s3manager",
     "service/sts"
   ]
-  revision = "bb206ce0d6a50da7807694a823aed5c601c57ce0"
-  version = "v1.13.23"
+  revision = "fad131ddc707880428615dc8bc1587b55fb46d74"
+  version = "v1.13.54"
 
 [[projects]]
   branch = "master"
@@ -58,8 +58,8 @@
 [[projects]]
   name = "github.com/go-ini/ini"
   packages = ["."]
-  revision = "6333e38ac20b8949a8dd68baa3650f4dee8f39f0"
-  version = "v1.33.0"
+  revision = "6529cf7c58879c08d927016dde4477f18a0634cb"
+  version = "v1.36.0"
 
 [[projects]]
   name = "github.com/go-ole/go-ole"
@@ -79,8 +79,19 @@
     "ptypes/duration",
     "ptypes/timestamp"
   ]
-  revision = "925541529c1fa6821df4e44ce2723319eb2be768"
-  version = "v1.0.0"
+  revision = "b4deda0973fb4c70b50d226b1af49f3da59f5265"
+  version = "v1.1.0"
+
+[[projects]]
+  name = "github.com/google/go-cmp"
+  packages = [
+    "cmp",
+    "cmp/internal/diff",
+    "cmp/internal/function",
+    "cmp/internal/value"
+  ]
+  revision = "3af367b6b30c263d47e8895973edcca9a49cf029"
+  version = "v0.2.0"
 
 [[projects]]
   branch = "master"
@@ -94,10 +105,10 @@
   revision = "0b12d6b5"
 
 [[projects]]
-  branch = "master"
   name = "github.com/kr/fs"
   packages = ["."]
-  revision = "2788f0dbd16903de03cb8186e5c7d97b69ad387b"
+  revision = "1455def202f6e05b95cc7bfc7e8ae67ae5141eba"
+  version = "v0.1.0"
 
 [[projects]]
   branch = "master"
@@ -114,8 +125,8 @@
 [[projects]]
   name = "github.com/pkg/sftp"
   packages = ["."]
-  revision = "49488377fa2f14143ba3067cf7555f60f6c7b550"
-  version = "1.5.0"
+  revision = "d2aa419835609d317c34baae11bc345d1f9971a7"
+  version = "1.7.0"
 
 [[projects]]
   branch = "master"
@@ -134,8 +145,8 @@
     "net",
     "process"
   ]
-  revision = "5776ff9c7c5d063d574ef53d740f75c68b448e53"
-  version = "v2.18.02"
+  revision = "c95755e4bcd7a62bb8bd33f3a597a7c7f35e2cf3"
+  version = "v2.18.04"
 
 [[projects]]
   branch = "master"
@@ -189,7 +200,7 @@
     "poly1305",
     "ssh"
   ]
-  revision = "88942b9c40a4c9d203b82b3731787b672d6e809b"
+  revision = "1a580b3eff7814fc9b40602fd35256c63b50f491"
 
 [[projects]]
   branch = "master"
@@ -198,11 +209,11 @@
     "unix",
     "windows"
   ]
-  revision = "378d26f46672a356c46195c28f61bdb4c0a781dd"
+  revision = "88eb85aaee56831ad49eaf7aa80d73de9814cde2"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "501b2b81c164018b5a0fa2f005d9ee7008dbc84380cdf072ff12cff1f63690e5"
+  inputs-digest = "33e7f5bc5756df2388373e980c3d1aca4a34cd30b575109c92bfbe9bcb4bcb8b"
   solver-name = "gps-cdcl"
   solver-version = 1
