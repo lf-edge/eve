@@ -48,21 +48,23 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 			select {
 			case event := <-w.Events:
 				baseName := path.Base(event.Name)
-				// log.Println("watchConfigStatus event:", event)
+				log.Println("WatchConfigStatus event:", event)
 
 				// We get create events when file is moved into
 				// the watched directory.
 				if event.Op&
 					(fsnotify.Write|fsnotify.Create) != 0 {
-					// log.Println("modified", baseName)
+					log.Println("WatchConfigStatus modified", baseName)
 					fileChanges <- "M " + baseName
 				} else if event.Op&
 					(fsnotify.Rename|fsnotify.Remove) != 0 {
-					// log.Println("deleted", baseName)
+					log.Println("WatchConfigStatus deleted", baseName)
 					fileChanges <- "D " + baseName
+				} else {
+					log.Println("WatchConfigStatus unknown", baseName)
 				}
 			case err := <-w.Errors:
-				log.Println("watchConfigStatus error:", err)
+				log.Println("WatchConfigStatus error:", err)
 			}
 		}
 	}()
@@ -71,13 +73,14 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 	if err != nil {
 		log.Fatal(err, ": ", configDir)
 	}
+	log.Println("WatchConfigStatus added", configDir)
 	files, err := ioutil.ReadDir(configDir)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	for _, file := range files {
-		log.Println("watchConfigStatus readdir modified", file.Name())
+		log.Println("WatchConfigStatus readdir modified", file.Name())
 		fileChanges <- "M " + file.Name()
 	}
 	log.Printf("Initial ReadDir done for %s\n", configDir)
@@ -120,19 +123,22 @@ func WatchStatus(statusDir string, fileChanges chan<- string) {
 			select {
 			case event := <-w.Events:
 				baseName := path.Base(event.Name)
-				// log.Println("WatchStatus event:", event)
+				log.Println("WatchStatus event:", event)
 
 				// We get create events when file is moved into
 				// the watched directory.
 				if event.Op&
 					(fsnotify.Write|fsnotify.Create) != 0 {
-					// log.Println("modified", baseName)
+					log.Println("WatchStatus modified", baseName)
 					fileChanges <- "M " + baseName
 				} else if event.Op&
 					(fsnotify.Rename|fsnotify.Remove) != 0 {
-					// log.Println("deleted", baseName)
+					log.Println("WatchStatus deleted", baseName)
 					fileChanges <- "D " + baseName
+				} else {
+					log.Println("WatchStatus unknown", baseName)
 				}
+
 			case err := <-w.Errors:
 				log.Println("WatchStatus error:", err)
 			}
@@ -143,6 +149,7 @@ func WatchStatus(statusDir string, fileChanges chan<- string) {
 	if err != nil {
 		log.Fatal(err, ": ", statusDir)
 	}
+	log.Println("WatchStatus added", statusDir)
 	files, err := ioutil.ReadDir(statusDir)
 	if err != nil {
 		log.Fatal(err)
