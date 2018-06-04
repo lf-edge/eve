@@ -103,6 +103,8 @@ func handleLookupParam(devConfig *zconfig.EdgeDevConfig) {
 		zsx++
 	}
 
+	// XXX compare device against a prevDevice using Equal
+
 	// Load device cert
 	deviceCert, err := tls.LoadX509KeyPair(deviceCertName,
 		deviceKeyName)

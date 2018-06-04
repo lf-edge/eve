@@ -357,6 +357,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 	}
 	// Reject any changes to EIDAllocation.
 	// XXX report internal error?
+	// XXX switch to Equal?
 	if !reflect.DeepEqual(status.EIDAllocation, config.EIDAllocation) {
 		log.Printf("handleModify(%v,%d) EIDAllocation changed for %s\n",
 			config.UUIDandVersion, config.IID, config.DisplayName)

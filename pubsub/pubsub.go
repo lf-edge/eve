@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/google/go-cmp/cmp"
 	"github.com/zededa/go-provision/watch"
 	"io/ioutil"
 	"log"
@@ -73,6 +74,7 @@ func Publish(agentName string, topicType interface{}) (*publication, error) {
 	// We always write to the directory as a checkpoint
 	dirName := PubDirName(agentName, topic)
 	if _, err := os.Stat(dirName); err != nil {
+		log.Printf("Publish Create %s\n", dirName)
 		if err := os.MkdirAll(dirName, 0700); err != nil {
 			errStr := fmt.Sprintf("Publish(%s, %s): %s",
 				agentName, topic, err)
@@ -188,7 +190,7 @@ func (pub *publication) Publish(key string, item interface{}) error {
 		return errors.New(errStr)
 	}
 	if m, ok := pub.km.key[key]; ok {
-		if reflect.DeepEqual(m, item) {
+		if cmp.Equal(m, item) {
 			if debug {
 				log.Printf("Publish(%s, %s, %s) unchanged\n",
 					agentName, topic, key)
@@ -196,15 +198,14 @@ func (pub *publication) Publish(key string, item interface{}) error {
 			return nil
 		}
 		if debug {
-			log.Printf("Publish(%s, %s, %s) replacing %v with %v\n",
-				agentName, topic, key, m, item)
+			log.Printf("Publish(%s, %s, %s) replacing due to diff %s\n",
+				agentName, topic, key, cmp.Diff(m, item))
 		}
 	} else if debug {
 		log.Printf("Publish(%s, %s, %s) adding %v\n",
 			agentName, topic, key, item)
 	}
-	// Perform a deep copy so the above DeepEqual check will work
-	// XXX will it still detect equal?
+	// Perform a deep copy so the above Equal check will work
 	pub.km.key[key] = deepCopy(item)
 	if debug {
 		pub.dump("after Publish")

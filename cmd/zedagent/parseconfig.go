@@ -1024,6 +1024,7 @@ func createBaseOsConfig(baseOsList []*types.BaseOsConfig, certList []*types.Cert
 				log.Fatal(err)
 			}
 			// changed file
+			// XXX switch to Equal?
 			if !reflect.DeepEqual(curBaseOs, baseOs) {
 				writeBaseOsConfig(baseOs, uuidStr)
 				if certList[idx] != nil {

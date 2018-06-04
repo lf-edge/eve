@@ -331,6 +331,7 @@ func handleModify(ctxArg interface{}, outputFilename string, inputArg interface{
 	}
 	// Reject any changes to EIDAllocation.
 	// XXX report internal error?
+	// XXX switch to Equal?
 	if !reflect.DeepEqual(input.EIDAllocation, output.EIDAllocation) {
 		log.Printf("handleModify(%v,%d) EIDAllocation changed for %s\n",
 			input.UUIDandVersion, input.IID, input.DisplayName)

@@ -100,6 +100,7 @@ func addOrUpdateCertObjConfig(uuidStr string, config types.CertObjConfig) {
 
 	if m := certObjConfigGet(uuidStr); m != nil {
 		// XXX or just compare version like elsewhere?
+		// XXX switch to Equal?
 		if !reflect.DeepEqual(*m, config) {
 			log.Printf("%s, certObj config change\n", uuidStr)
 			changed = true

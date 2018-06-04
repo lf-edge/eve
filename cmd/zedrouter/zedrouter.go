@@ -174,6 +174,7 @@ func Run() {
 			log.Printf("addrChangeFn(%s) called\n", ifname)
 		}
 		new, _ := devicenetwork.MakeDeviceNetworkStatus(deviceNetworkConfig, deviceNetworkStatus)
+		// XXX switch to Equal?
 		if !reflect.DeepEqual(deviceNetworkStatus, new) {
 			if debug {
 				log.Printf("Address change for %s from %v to %v\n",
@@ -1328,6 +1329,7 @@ func handleDNCModify(ctxArg interface{}, configFilename string,
 	deviceNetworkConfig = *config
 	new, _ := devicenetwork.MakeDeviceNetworkStatus(*config,
 		deviceNetworkStatus)
+	// XXX switch to Equal?
 	if !reflect.DeepEqual(deviceNetworkStatus, new) {
 		log.Printf("DeviceNetworkStatus change from %v to %v\n",
 			deviceNetworkStatus, new)
@@ -1346,6 +1348,7 @@ func handleDNCDelete(ctxArg interface{}, configFilename string) {
 		return
 	}
 	new := types.DeviceNetworkStatus{}
+	// XXX switch to Equal?
 	if !reflect.DeepEqual(deviceNetworkStatus, new) {
 		log.Printf("DeviceNetworkStatus change from %v to %v\n",
 			deviceNetworkStatus, new)
