@@ -13,10 +13,12 @@ package watch
 
 import (
 	"github.com/fsnotify/fsnotify"
+	"github.com/zededa/go-provision/flextimer"
 	"io/ioutil"
 	"log"
 	"os"
 	"path"
+	"time"
 )
 
 // Generates 'M' events for all existing and all creates/modify.
@@ -103,8 +105,33 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 	}
 	// Hook to tell restart is done
 	fileChanges <- "R done"
-	// Watch for changes
-	<-done
+
+	// Watch for changes or timeout
+	interval := time.Minute
+	max := float64(interval)
+	min := max * 0.3
+	ticker := flextimer.NewRangeTicker(time.Duration(min),
+		time.Duration(max))
+	for {
+		select {
+		case <-done:
+			log.Println("WatchConfigStatus channel done; terminating")
+			// XXX log.Fatal?
+			break
+		case <-ticker.C:
+			// Remove and re-add
+			// XXX do we also need to re-scan?
+			log.Println("WatchConfigStatus remove/re-add", configDir)
+			err = w.Remove(configDir)
+			if err != nil {
+				log.Fatal(err, "Remove: ", configDir)
+			}
+			err = w.Add(configDir)
+			if err != nil {
+				log.Fatal(err, "Add: ", configDir)
+			}
+		}
+	}
 }
 
 // Generates 'M' events for all existing and all creates/modify.
@@ -164,6 +191,30 @@ func WatchStatus(statusDir string, fileChanges chan<- string) {
 	// Hook to tell restart is done
 	fileChanges <- "R done"
 
-	// Watch for changes
-	<-done
+	// Watch for changes or timeout
+	interval := time.Minute
+	max := float64(interval)
+	min := max * 0.3
+	ticker := flextimer.NewRangeTicker(time.Duration(min),
+		time.Duration(max))
+	for {
+		select {
+		case <-done:
+			log.Println("WatchStatus channel done; terminating")
+			// XXX log.Fatal?
+			break
+		case <-ticker.C:
+			// Remove and re-add
+			// XXX do we also need to re-scan?
+			log.Println("WatchStatus remove/re-add", statusDir)
+			err = w.Remove(statusDir)
+			if err != nil {
+				log.Fatal(err, "Remove: ", statusDir)
+			}
+			err = w.Add(statusDir)
+			if err != nil {
+				log.Fatal(err, "Add: ", statusDir)
+			}
+		}
+	}
 }
