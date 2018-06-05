@@ -50,17 +50,17 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 			select {
 			case event := <-w.Events:
 				baseName := path.Base(event.Name)
-				log.Println("WatchConfigStatus event:", event)
+				// log.Println("WatchConfigStatus event:", event)
 
 				// We get create events when file is moved into
 				// the watched directory.
 				if event.Op&
 					(fsnotify.Write|fsnotify.Create) != 0 {
-					log.Println("WatchConfigStatus modified", baseName)
+					// log.Println("WatchConfigStatus modified", baseName)
 					fileChanges <- "M " + baseName
 				} else if event.Op&
 					(fsnotify.Rename|fsnotify.Remove) != 0 {
-					log.Println("WatchConfigStatus deleted", baseName)
+					// log.Println("WatchConfigStatus deleted", baseName)
 					fileChanges <- "D " + baseName
 				} else {
 					log.Println("WatchConfigStatus unknown", baseName)
@@ -75,7 +75,7 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 	if err != nil {
 		log.Fatal(err, ": ", configDir)
 	}
-	log.Println("WatchConfigStatus added", configDir)
+	// log.Println("WatchConfigStatus added", configDir)
 	files, err := ioutil.ReadDir(configDir)
 	if err != nil {
 		log.Fatal(err)
@@ -121,7 +121,7 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 		case <-ticker.C:
 			// Remove and re-add
 			// XXX do we also need to re-scan?
-			log.Println("WatchConfigStatus remove/re-add", configDir)
+			// log.Println("WatchConfigStatus remove/re-add", configDir)
 			err = w.Remove(configDir)
 			if err != nil {
 				log.Fatal(err, "Remove: ", configDir)
@@ -150,17 +150,17 @@ func WatchStatus(statusDir string, fileChanges chan<- string) {
 			select {
 			case event := <-w.Events:
 				baseName := path.Base(event.Name)
-				log.Println("WatchStatus event:", event)
+				// log.Println("WatchStatus event:", event)
 
 				// We get create events when file is moved into
 				// the watched directory.
 				if event.Op&
 					(fsnotify.Write|fsnotify.Create) != 0 {
-					log.Println("WatchStatus modified", baseName)
+					// log.Println("WatchStatus modified", baseName)
 					fileChanges <- "M " + baseName
 				} else if event.Op&
 					(fsnotify.Rename|fsnotify.Remove) != 0 {
-					log.Println("WatchStatus deleted", baseName)
+					// log.Println("WatchStatus deleted", baseName)
 					fileChanges <- "D " + baseName
 				} else {
 					log.Println("WatchStatus unknown", baseName)
@@ -176,7 +176,7 @@ func WatchStatus(statusDir string, fileChanges chan<- string) {
 	if err != nil {
 		log.Fatal(err, ": ", statusDir)
 	}
-	log.Println("WatchStatus added", statusDir)
+	// log.Println("WatchStatus added", statusDir)
 	files, err := ioutil.ReadDir(statusDir)
 	if err != nil {
 		log.Fatal(err)
@@ -206,7 +206,7 @@ func WatchStatus(statusDir string, fileChanges chan<- string) {
 		case <-ticker.C:
 			// Remove and re-add
 			// XXX do we also need to re-scan?
-			log.Println("WatchStatus remove/re-add", statusDir)
+			// log.Println("WatchStatus remove/re-add", statusDir)
 			err = w.Remove(statusDir)
 			if err != nil {
 				log.Fatal(err, "Remove: ", statusDir)
