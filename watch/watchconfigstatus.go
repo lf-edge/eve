@@ -80,7 +80,7 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 	}
 	// log.Println("WatchConfigStatus added", configDir)
 
-	watchReadDir(configDir, fileChanges)
+	watchReadDir(configDir, fileChanges, false)
 
 	if initialDelete {
 		statusFiles, err := ioutil.ReadDir(statusDir)
@@ -125,22 +125,28 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 			if err != nil {
 				log.Fatal(err, "Add: ", configDir)
 			}
-			watchReadDir(configDir, fileChanges)
+			watchReadDir(configDir, fileChanges, true)
 		}
 	}
 }
 
-func watchReadDir(configDir string, fileChanges chan<- string) {
+func watchReadDir(configDir string, fileChanges chan<- string, retry bool) {
 	files, err := ioutil.ReadDir(configDir)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	for _, file := range files {
-		log.Println("WatchReadDir modified", file.Name())
+		if retry {
+			log.Println("watchReadDir retry modified", file.Name())
+		} else {
+			log.Println("watchReadDir modified", file.Name())
+		}
 		fileChanges <- "M " + file.Name()
 	}
-	log.Printf("ReadDir done for %s\n", configDir)
+	if !retry {
+		log.Printf("watchReadDir done for %s\n", configDir)
+	}
 }
 
 // Generates 'M' events for all existing and all creates/modify.
@@ -190,7 +196,7 @@ func WatchStatus(statusDir string, fileChanges chan<- string) {
 	}
 	// log.Println("WatchStatus added", statusDir)
 
-	watchReadDir(statusDir, fileChanges)
+	watchReadDir(statusDir, fileChanges, false)
 
 	// Hook to tell restart is done
 	fileChanges <- "R done"
@@ -219,7 +225,7 @@ func WatchStatus(statusDir string, fileChanges chan<- string) {
 			if err != nil {
 				log.Fatal(err, "Add: ", statusDir)
 			}
-			watchReadDir(statusDir, fileChanges)
+			watchReadDir(statusDir, fileChanges, true)
 		}
 	}
 }
