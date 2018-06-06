@@ -79,16 +79,8 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 		log.Fatal(err, ": ", configDir)
 	}
 	// log.Println("WatchConfigStatus added", configDir)
-	files, err := ioutil.ReadDir(configDir)
-	if err != nil {
-		log.Fatal(err)
-	}
 
-	for _, file := range files {
-		log.Println("WatchConfigStatus readdir modified", file.Name())
-		fileChanges <- "M " + file.Name()
-	}
-	log.Printf("Initial ReadDir done for %s\n", configDir)
+	watchReadDir(configDir, fileChanges)
 
 	if initialDelete {
 		statusFiles, err := ioutil.ReadDir(statusDir)
@@ -110,7 +102,7 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 	fileChanges <- "R done"
 
 	// Watch for changes or timeout
-	interval := time.Minute
+	interval := 10 * time.Minute
 	max := float64(interval)
 	min := max * 0.3
 	ticker := flextimer.NewRangeTicker(time.Duration(min),
@@ -133,8 +125,22 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 			if err != nil {
 				log.Fatal(err, "Add: ", configDir)
 			}
+			watchReadDir(configDir, fileChanges)
 		}
 	}
+}
+
+func watchReadDir(configDir string, fileChanges chan<- string) {
+	files, err := ioutil.ReadDir(configDir)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, file := range files {
+		log.Println("WatchReadDir modified", file.Name())
+		fileChanges <- "M " + file.Name()
+	}
+	log.Printf("ReadDir done for %s\n", configDir)
 }
 
 // Generates 'M' events for all existing and all creates/modify.
@@ -183,22 +189,14 @@ func WatchStatus(statusDir string, fileChanges chan<- string) {
 		log.Fatal(err, ": ", statusDir)
 	}
 	// log.Println("WatchStatus added", statusDir)
-	files, err := ioutil.ReadDir(statusDir)
-	if err != nil {
-		log.Fatal(err)
-	}
 
-	for _, file := range files {
-		log.Println("WatchStatus initial modified", file.Name())
-		fileChanges <- "M " + file.Name()
-	}
-	log.Printf("Initial ReadDir done for %s\n", statusDir)
+	watchReadDir(statusDir, fileChanges)
 
 	// Hook to tell restart is done
 	fileChanges <- "R done"
 
 	// Watch for changes or timeout
-	interval := time.Minute
+	interval := 10 * time.Minute
 	max := float64(interval)
 	min := max * 0.3
 	ticker := flextimer.NewRangeTicker(time.Duration(min),
@@ -221,6 +219,7 @@ func WatchStatus(statusDir string, fileChanges chan<- string) {
 			if err != nil {
 				log.Fatal(err, "Add: ", statusDir)
 			}
+			watchReadDir(statusDir, fileChanges)
 		}
 	}
 }
