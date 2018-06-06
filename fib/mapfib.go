@@ -643,8 +643,10 @@ func StatsThread(puntChannel chan []byte) {
 			}
 			lispStatistics.Entries = append(lispStatistics.Entries, eidStats)
 		}
+		cache.LockMe.RUnlock()
 
 		var decapStatistics dptypes.DecapStatistics
+		decapStatistics.Type = "decap-statistics"
 		currUnixSecs := time.Now().Unix()
 		decapStatistics.NoDecryptKey.Pkts = atomic.SwapUint64(&decaps.NoDecryptKey.Pkts, 0)
 		decapStatistics.NoDecryptKey.Bytes = atomic.SwapUint64(&decaps.NoDecryptKey.Bytes, 0)
@@ -681,8 +683,7 @@ func StatsThread(puntChannel chan []byte) {
 		lastPktTime = atomic.LoadInt64(&decaps.ChecksumError.LastPktTime)
 		decapStatistics.ChecksumError.LastPktTime = currUnixSecs - lastPktTime
 
-		lispStatistics.DecapStats = decapStatistics
-
+		// Send out ITR encap statistics to lispers.net
 		statsMsg, err := json.Marshal(lispStatistics)
 		log.Println(string(statsMsg))
 		if err != nil {
@@ -690,6 +691,14 @@ func StatsThread(puntChannel chan []byte) {
 		} else {
 			puntChannel <- statsMsg
 		}
-		cache.LockMe.RUnlock()
+
+		// Send out ETR decap statistics to lispers.net
+		decapStatsMsg, err := json.Marshal(decapStatistics)
+		log.Println(string(decapStatsMsg))
+		if err != nil {
+			log.Printf("Error: Encoding decap statistics\n")
+		} else {
+			puntChannel <- decapStatsMsg
+		}
 	}
 }

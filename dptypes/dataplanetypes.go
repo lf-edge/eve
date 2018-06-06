@@ -184,6 +184,7 @@ type EidStatsEntry struct {
 }
 
 type DecapStatistics struct {
+	Type             string  `json:"type"`
 	NoDecryptKey     PktStat `json:"no-decrypt-key"`
 	OuterHeaderError PktStat `json:"outer-header-error"`
 	BadInnerVersion  PktStat `json:"bad-inner-version"`
@@ -196,7 +197,6 @@ type DecapStatistics struct {
 type LispStatistics struct {
 	Type       string          `json:"type"`
 	Entries    []EidStatsEntry `json:"entries"`
-	DecapStats DecapStatistics `json:"decap-stats"`
 }
 
 type EtrRunStatus struct {
