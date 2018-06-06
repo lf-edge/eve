@@ -58,12 +58,15 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 					(fsnotify.Write|fsnotify.Create) != 0 {
 					// log.Println("WatchConfigStatus modified", baseName)
 					fileChanges <- "M " + baseName
+				} else if event.Op&fsnotify.Chmod != 0 {
+					// log.Println("WatchConfigStatus chmod", baseName)
+					fileChanges <- "M " + baseName
 				} else if event.Op&
 					(fsnotify.Rename|fsnotify.Remove) != 0 {
 					// log.Println("WatchConfigStatus deleted", baseName)
 					fileChanges <- "D " + baseName
 				} else {
-					log.Println("WatchConfigStatus unknown", baseName)
+					log.Println("WatchConfigStatus unknown ", event, baseName)
 				}
 			case err := <-w.Errors:
 				log.Println("WatchConfigStatus error:", err)
@@ -158,12 +161,15 @@ func WatchStatus(statusDir string, fileChanges chan<- string) {
 					(fsnotify.Write|fsnotify.Create) != 0 {
 					// log.Println("WatchStatus modified", baseName)
 					fileChanges <- "M " + baseName
+				} else if event.Op&fsnotify.Chmod != 0 {
+					// log.Println("WatchStatus chmod", baseName)
+					fileChanges <- "M " + baseName
 				} else if event.Op&
 					(fsnotify.Rename|fsnotify.Remove) != 0 {
 					// log.Println("WatchStatus deleted", baseName)
 					fileChanges <- "D " + baseName
 				} else {
-					log.Println("WatchStatus unknown", baseName)
+					log.Println("WatchStatus unknown", event, baseName)
 				}
 
 			case err := <-w.Errors:
