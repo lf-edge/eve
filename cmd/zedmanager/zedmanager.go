@@ -16,9 +16,9 @@ import (
 	"fmt"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/pidfile"
+	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
-	"io/ioutil"
 	"log"
 	"os"
 )
@@ -310,9 +310,7 @@ func writeAICStatus(status *types.AppInstanceStatus,
 	if err != nil {
 		log.Fatal(err, "json Marshal AppInstanceStatus")
 	}
-	// We assume a /var/run path hence we don't need to worry about
-	// partial writes/empty files due to a kernel crash.
-	err = ioutil.WriteFile(statusFilename, b, 0644)
+	err = pubsub.WriteRename(statusFilename, b)
 	if err != nil {
 		log.Fatal(err, statusFilename)
 	}
@@ -324,9 +322,7 @@ func writeAppInstanceStatus(status *types.AppInstanceStatus,
 	if err != nil {
 		log.Fatal(err, "json Marshal AppInstanceStatus")
 	}
-	// We assume a /var/run path hence we don't need to worry about
-	// partial writes/empty files due to a kernel crash.
-	err = ioutil.WriteFile(statusFilename, b, 0644)
+	err = pubsub.WriteRename(statusFilename, b)
 	if err != nil {
 		log.Fatal(err, statusFilename)
 	}

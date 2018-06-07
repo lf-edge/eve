@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/pidfile"
+	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
 	"io"
@@ -121,6 +122,7 @@ func Run() {
 
 	// We will cleanup zero RefCount objects after a while
 	// XXX hard-coded at 10 minutes
+	// XXX run periodically or restart after creating refCount=0 object?
 	gc := time.NewTimer(10 * time.Minute)
 
 	for {
@@ -395,6 +397,7 @@ func gcVerifiedObjects() {
 			log.Fatalf("gcVerifiedObjects: No ObjType for %s\n",
 				key)
 		}
+		// XXX force delete ...
 		doDelete(&status)
 		removeVerifyObjectStatus(&status)
 	}
@@ -442,9 +445,7 @@ func updateVerifyObjectStatus(status *types.VerifyImageStatus) {
 	}
 	statusFilename := verifyObjectStatusFilename(status.ObjType,
 		status.Safename)
-	// We assume a /var/run path hence we don't need to worry about
-	// partial writes/empty files due to a kernel crash.
-	err = ioutil.WriteFile(statusFilename, b, 0644)
+	err = pubsub.WriteRename(statusFilename, b)
 	if err != nil {
 		log.Fatal(err, statusFilename)
 	}
@@ -879,6 +880,7 @@ func handleModify(ctxArg interface{}, statusFilename string,
 	if status.RefCount == 0 {
 		status.PendingModify = true
 		updateVerifyObjectStatus(status)
+		// XXX start gc timer instead
 		doDelete(status)
 		status.PendingModify = false
 		status.State = 0 // XXX INITIAL implies failure
@@ -919,8 +921,10 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 			status.Safename)
 	}
 
+	// XXX start gc timer instead
 	doDelete(status)
 
+	// XXX set refCount=0
 	// Write out what we modified to VerifyImageStatus aka delete
 	removeVerifyObjectStatus(status)
 	log.Printf("handleDelete done for %s\n", status.Safename)
@@ -935,22 +939,9 @@ func doDelete(status *types.VerifyImageStatus) {
 
 	objType := status.ObjType
 	downloadDirname := objectDownloadDirname + "/" + objType
-	pendingDirname := downloadDirname + "/pending/" + status.ImageSha256
-	verifierDirname := downloadDirname + "/verifier/" + status.ImageSha256
 	verifiedDirname := downloadDirname + "/verified/" + status.ImageSha256
 
-	if _, err := os.Stat(pendingDirname); err == nil {
-		log.Printf("doDelete removing %s\n", pendingDirname)
-		if err := os.RemoveAll(pendingDirname); err != nil {
-			log.Fatal(err)
-		}
-	}
-	if _, err := os.Stat(verifierDirname); err == nil {
-		log.Printf("doDelete removing %s\n", verifierDirname)
-		if err := os.RemoveAll(verifierDirname); err != nil {
-			log.Fatal(err)
-		}
-	}
+	// XXX defer until gc
 	_, err := os.Stat(verifiedDirname)
 	if err == nil && status.State == types.DELIVERED {
 		if _, err := os.Stat(preserveFilename); err != nil {

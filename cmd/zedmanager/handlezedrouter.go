@@ -8,7 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/zededa/go-provision/types"
-	"io/ioutil"
+	"github.com/zededa/go-provision/pubsub"
 	"log"
 	"os"
 	"reflect"
@@ -46,12 +46,14 @@ func MaybeAddAppNetworkConfig(aiConfig types.AppInstanceConfig,
 		}
 		for i, new := range aiConfig.OverlayNetworkList {
 			old := m.OverlayNetworkList[i]
+			// XXX switch to Equal?
 			if !reflect.DeepEqual(new.ACLs, old.ACLs) {
 				log.Printf("Over ACLs changed from %v to %v\n",
 					old.ACLs, new.ACLs)
 				changed = true
 				break
 			}
+			// XXX switch to Equal?
 			if !reflect.DeepEqual(new.NameToEidList,
 				old.NameToEidList) {
 				log.Printf("NameToEidList changed from %v to %v\n",
@@ -59,6 +61,7 @@ func MaybeAddAppNetworkConfig(aiConfig types.AppInstanceConfig,
 				changed = true
 				break
 			}
+			// XXX switch to Equal?
 			if !reflect.DeepEqual(new.LispServers,
 				old.LispServers) {
 				log.Printf("LispServers changed from %v to %v\n",
@@ -69,6 +72,7 @@ func MaybeAddAppNetworkConfig(aiConfig types.AppInstanceConfig,
 		}
 		for i, new := range aiConfig.UnderlayNetworkList {
 			old := m.UnderlayNetworkList[i]
+			// XXX switch to Equal?
 			if !reflect.DeepEqual(new.ACLs, old.ACLs) {
 				log.Printf("Under ACLs changed from %v to %v\n",
 					old.ACLs, new.ACLs)
@@ -151,9 +155,7 @@ func writeAppNetworkConfig(config types.AppNetworkConfig,
 	if err != nil {
 		log.Fatal(err, "json Marshal AppNetworkConfig")
 	}
-	// We assume a /var/run path hence we don't need to worry about
-	// partial writes/empty files due to a kernel crash.
-	err = ioutil.WriteFile(configFilename, b, 0644)
+	err = pubsub.WriteRename(configFilename, b)
 	if err != nil {
 		log.Fatal(err, configFilename)
 	}

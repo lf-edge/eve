@@ -6,6 +6,7 @@ package sftp
 import (
 	"fmt"
 	"os"
+	"os/user"
 	"path"
 	"syscall"
 	"time"
@@ -19,12 +20,14 @@ func runLsStatt(dirent os.FileInfo, statt *syscall.Stat_t) string {
 
 	typeword := runLsTypeWord(dirent)
 	numLinks := statt.Nlink
-	uid := statt.Uid
-	gid := statt.Gid
-	username := fmt.Sprintf("%d", uid)
-	groupname := fmt.Sprintf("%d", gid)
-	// TODO FIXME: uid -> username, gid -> groupname lookup for ls -l format output
-
+	username := fmt.Sprintf("%d", statt.Uid)
+	if usr, err := user.LookupId(username); err == nil {
+		username = usr.Username
+	}
+	groupname := fmt.Sprintf("%d", statt.Gid)
+	if grp, err := user.LookupGroupId(groupname); err == nil {
+		groupname = grp.Name
+	}
 	mtime := dirent.ModTime()
 	monthStr := mtime.Month().String()[0:3]
 	day := mtime.Day()
@@ -37,7 +40,9 @@ func runLsStatt(dirent os.FileInfo, statt *syscall.Stat_t) string {
 		yearOrTime = fmt.Sprintf("%d", year)
 	}
 
-	return fmt.Sprintf("%s %4d %-8s %-8s %8d %s %2d %5s %s", typeword, numLinks, username, groupname, dirent.Size(), monthStr, day, yearOrTime, dirent.Name())
+	return fmt.Sprintf("%s %4d %-8s %-8s %8d %s %2d %5s %s", typeword,
+		numLinks, username, groupname, dirent.Size(), monthStr, day,
+		yearOrTime, dirent.Name())
 }
 
 // ls -l style output for a file, which is in the 'long output' section of a readdir response packet

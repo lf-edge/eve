@@ -60,7 +60,17 @@ type VmConfig struct {
 	// Example, IRQs=[88,86]
 	IOMem []string // default nil; sets iomem
 	// Example, IOMem=["0xf7020,1","0xf8013,1"]
+	VirtualizationMode VmMode
+	EnableVnc          bool
 }
+
+type VmMode uint8
+
+const (
+	PV VmMode = iota + 0	// Default
+	HVM
+	// PVH
+)
 
 type DomainStatus struct {
 	UUIDandVersion UUIDandVersion

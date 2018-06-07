@@ -7,8 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
-	"io/ioutil"
 	"log"
 	"os"
 )
@@ -79,9 +79,7 @@ func writeEIDConfig(config types.EIDConfig,
 	if err != nil {
 		log.Fatal(err, "json Marshal EIDConfig")
 	}
-	// We assume a /var/run path hence we don't need to worry about
-	// partial writes/empty files due to a kernel crash.
-	err = ioutil.WriteFile(configFilename, b, 0644)
+	err = pubsub.WriteRename(configFilename, b)
 	if err != nil {
 		log.Fatal(err, configFilename)
 	}

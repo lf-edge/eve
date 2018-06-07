@@ -66,6 +66,7 @@ func addOrUpdateBaseOsConfig(uuidStr string, config types.BaseOsConfig) {
 
 	if m := baseOsConfigGet(uuidStr); m != nil {
 		// XXX or just compare version like elsewhere?
+		// XXX switch to Equal?
 		if !reflect.DeepEqual(m, config) {
 			log.Printf("addOrUpdateBaseOsConfig(%v) for %s, Config change\n",
 				config.BaseOsVersion, uuidStr)

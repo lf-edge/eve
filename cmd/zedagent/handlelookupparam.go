@@ -14,8 +14,8 @@ import (
 	"fmt"
 	"github.com/eriknordmark/ipinfo"
 	"github.com/zededa/api/zconfig"
+	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
-	"io/ioutil"
 	"log"
 	"net"
 	"os"
@@ -102,6 +102,8 @@ func handleLookupParam(devConfig *zconfig.EdgeDevConfig) {
 		device.ZedServers.NameToEidList[zsx] = *nameToEidInfo
 		zsx++
 	}
+
+	// XXX compare device against a prevDevice using Equal
 
 	// Load device cert
 	deviceCert, err := tls.LoadX509KeyPair(deviceCertName,
@@ -267,7 +269,7 @@ func writeNetworkConfig(config *types.AppNetworkConfig,
 	if err != nil {
 		log.Fatal(err, "json Marshal AppNetworkConfig")
 	}
-	err = ioutil.WriteFile(configFilename, b, 0644)
+	err = pubsub.WriteRename(configFilename, b)
 	if err != nil {
 		log.Fatal(err, configFilename)
 	}

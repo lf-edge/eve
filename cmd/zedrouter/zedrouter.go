@@ -24,7 +24,6 @@ import (
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
 	"github.com/zededa/go-provision/wrap"
-	"io/ioutil"
 	"log"
 	"net"
 	"os"
@@ -175,6 +174,7 @@ func Run() {
 			log.Printf("addrChangeFn(%s) called\n", ifname)
 		}
 		new, _ := devicenetwork.MakeDeviceNetworkStatus(deviceNetworkConfig, deviceNetworkStatus)
+		// XXX switch to Equal?
 		if !reflect.DeepEqual(deviceNetworkStatus, new) {
 			if debug {
 				log.Printf("Address change for %s from %v to %v\n",
@@ -363,9 +363,7 @@ func updateDeviceNetworkStatus() {
 	if err != nil {
 		log.Fatal(err, "json Marshal DeviceNetworkStatus")
 	}
-	// We assume a /var/run path hence we don't need to worry about
-	// partial writes/empty files due to a kernel crash.
-	err = ioutil.WriteFile(deviceNetworkStatusFilename, b, 0644)
+	err = pubsub.WriteRename(deviceNetworkStatusFilename, b)
 	if err != nil {
 		log.Fatal(err, deviceNetworkStatusFilename)
 	}
@@ -394,9 +392,7 @@ func writeAppNetworkStatus(status *types.AppNetworkStatus,
 	if err != nil {
 		log.Fatal(err, "json Marshal AppNetworkStatus")
 	}
-	// We assume a /var/run path hence we don't need to worry about
-	// partial writes/empty files due to a kernel crash.
-	err = ioutil.WriteFile(statusFilename, b, 0644)
+	err = pubsub.WriteRename(statusFilename, b)
 	if err != nil {
 		log.Fatal(err, statusFilename)
 	}
@@ -1333,6 +1329,7 @@ func handleDNCModify(ctxArg interface{}, configFilename string,
 	deviceNetworkConfig = *config
 	new, _ := devicenetwork.MakeDeviceNetworkStatus(*config,
 		deviceNetworkStatus)
+	// XXX switch to Equal?
 	if !reflect.DeepEqual(deviceNetworkStatus, new) {
 		log.Printf("DeviceNetworkStatus change from %v to %v\n",
 			deviceNetworkStatus, new)
@@ -1351,6 +1348,7 @@ func handleDNCDelete(ctxArg interface{}, configFilename string) {
 		return
 	}
 	new := types.DeviceNetworkStatus{}
+	// XXX switch to Equal?
 	if !reflect.DeepEqual(deviceNetworkStatus, new) {
 		log.Printf("DeviceNetworkStatus change from %v to %v\n",
 			deviceNetworkStatus, new)
