@@ -125,7 +125,6 @@ run-rootfs: bios/OVMF.fd bios/EFI
 # it gets triggered when we build any kind of image target
 images/%.yml: zedctr-workaround parse-pkgs.sh images/%.yml.in FORCE
 	DOCKER_ARCH_TAG="$(DOCKER_ARCH_TAG)" ./parse-pkgs.sh $@.in > $@
-	echo "Building version" `grep contents: $@`
 	# the following is a horrible hack that needs to go away ASAP
 	if [ "$(ZARCH)" != `uname -m` ] ; then \
            sed -e '/source:/s#rootfs.img#rootfs_aarch64.img#' \

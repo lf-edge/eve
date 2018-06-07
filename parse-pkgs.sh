@@ -9,11 +9,7 @@ zenbuild_version() {
   local vers="`git tag -l --points-at HEAD | grep '[0-9]*\.[0-9]*\.[0-9]*' | head -1`"
 
   if [ -z "$vers" ] ; then
-    local tag="`git tag -l | grep '[0-9]*\.[0-9]*\.[0-9]*' | tail -1`"
-    if [ -z "$tag" ] ; then
-	tag="0.0.0"
-    fi
-    vers="${tag}-`git rev-parse --abbrev-ref HEAD`-`git describe --match v --abbrev=8 --always --dirty`-`date -u +"%Y-%m-%d.%H.%M"`"
+    vers="0.0.0-`git rev-parse --abbrev-ref HEAD`-`git describe --match v --abbrev=8 --always --dirty`-`date -u +"%Y-%m-%d.%H.%M"`"
     vers=`echo ${vers} | sed -e 's#-master##'`
   fi
 
