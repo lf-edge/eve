@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/eriknordmark/ipinfo"
+	"github.com/google/go-cmp/cmp"
 	"github.com/zededa/api/zconfig"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
@@ -20,6 +21,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"sort"
 )
 
 const (
@@ -44,6 +46,7 @@ const (
 //  /var/tmp/zededa/uuid	Written by us
 //
 var lispPrevConfigHash []byte
+var prevDevice types.DeviceDb
 
 func handleLookupParam(devConfig *zconfig.EdgeDevConfig) {
 	// XXX should we handle changes at all? Want to update zedserverconfig
@@ -65,12 +68,12 @@ func handleLookupParam(devConfig *zconfig.EdgeDevConfig) {
 	lispPrevConfigHash = configHash
 
 	if same {
-		// XXX we never hit this! Order from the proto.Encode in
-		// the comparison is not constant!
+		// We normally don't his this since the order in
+		// the NameToEidList from the prot.Encode is random.
+		// Hence we check again after sorting.
 		log.Printf("handleLookupParam: lispInfo sha is unchanged\n")
 		return
 	}
-	log.Printf("handleLookupParam: updated lispInfo %v\n", lispInfo)
 	device.LispInstance = lispInfo.LispInstance
 	device.EID = net.ParseIP(lispInfo.EID)
 	device.EIDHashLen = uint8(lispInfo.EIDHashLen)
@@ -103,7 +106,21 @@ func handleLookupParam(devConfig *zconfig.EdgeDevConfig) {
 		zsx++
 	}
 
-	// XXX compare device against a prevDevice using Equal
+	// compare device against a prevDevice
+	sort.Slice(device.ZedServers.NameToEidList[:],
+		func(i, j int) bool {
+		        return device.ZedServers.NameToEidList[i].HostName <
+				device.ZedServers.NameToEidList[j].HostName
+		})
+	if cmp.Equal(prevDevice, device) { // XXX DeepEqual
+		log.Printf("handleLookupParam: prevDevice is unchanged\n")
+		return
+	}
+	log.Printf("handleLookupParam: prevDevice change %v\n",
+		cmp.Diff(prevDevice, device))
+	prevDevice = device
+
+	log.Printf("handleLookupParam: updated lispInfo %v\n", lispInfo)
 
 	// Load device cert
 	deviceCert, err := tls.LoadX509KeyPair(deviceCertName,
@@ -299,4 +316,37 @@ func IsMyAddress(clientIP net.IP) bool {
 		}
 	}
 	return false
+}
+
+// By is the type of a "less" function that defines the ordering of its HostName arguments.
+type By func(p1, p2 *types.NameToEid) bool
+
+// Sort is a method on the function type, By, that sorts the argument slice according to the function.
+func (by By) Sort(hostnames []types.NameToEid) {
+	ps := &hostnameSorter{
+		hostnames: hostnames,
+		by:      by, // The Sort method's receiver is the function (closure) that defines the sort order.
+	}
+	sort.Sort(ps)
+}
+
+// hostnameSorter joins a By function and a slice of HostNames to be sorted.
+type hostnameSorter struct {
+	hostnames []types.NameToEid
+	by      func(p1, p2 *types.NameToEid) bool // Closure used in the Less method.
+}
+
+// Len is part of sort.Interface.
+func (s *hostnameSorter) Len() int {
+	return len(s.hostnames)
+}
+
+// Swap is part of sort.Interface.
+func (s *hostnameSorter) Swap(i, j int) {
+	s.hostnames[i], s.hostnames[j] = s.hostnames[j], s.hostnames[i]
+}
+
+// Less is part of sort.Interface. It is implemented by calling the "by" closure in the sorter.
+func (s *hostnameSorter) Less(i, j int) bool {
+	return s.by(&s.hostnames[i], &s.hostnames[j])
 }
