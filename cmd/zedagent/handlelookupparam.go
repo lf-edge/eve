@@ -71,7 +71,9 @@ func handleLookupParam(devConfig *zconfig.EdgeDevConfig) {
 		// We normally don't his this since the order in
 		// the NameToEidList from the prot.Encode is random.
 		// Hence we check again after sorting.
-		log.Printf("handleLookupParam: lispInfo sha is unchanged\n")
+		if debug {
+			log.Printf("handleLookupParam: lispInfo sha is unchanged\n")
+		}
 		return
 	}
 	device.LispInstance = lispInfo.LispInstance
@@ -113,7 +115,9 @@ func handleLookupParam(devConfig *zconfig.EdgeDevConfig) {
 				device.ZedServers.NameToEidList[j].HostName
 		})
 	if reflect.DeepEqual(prevDevice, device) {
-		log.Printf("handleLookupParam: prevDevice is unchanged\n")
+		if debug {
+			log.Printf("handleLookupParam: sorted lispInfo is unchanged\n")
+		}
 		return
 	}
 	prevDevice = device
@@ -164,15 +168,18 @@ func handleLookupParam(devConfig *zconfig.EdgeDevConfig) {
 	// RFC 5952. The iid is printed as an integer.
 	sigdata := fmt.Sprintf("[%d]%s",
 		device.LispInstance, device.EID.String())
-	log.Printf("sigdata (len %d) %s\n", len(sigdata), sigdata)
+	if debug {
+		log.Printf("sigdata (len %d) %s\n", len(sigdata), sigdata)
+	}
 
 	hasher := sha256.New()
 	hasher.Write([]byte(sigdata))
 	hash := hasher.Sum(nil)
-	log.Printf("hash (len %d) % x\n", len(hash), hash)
-	log.Printf("base64 hash %s\n",
-		base64.StdEncoding.EncodeToString(hash))
-
+	if debug {
+		log.Printf("hash (len %d) % x\n", len(hash), hash)
+		log.Printf("base64 hash %s\n",
+			base64.StdEncoding.EncodeToString(hash))
+	}
 	var signature string
 	switch deviceCert.PrivateKey.(type) {
 	default:
@@ -183,20 +190,26 @@ func handleLookupParam(devConfig *zconfig.EdgeDevConfig) {
 		if err != nil {
 			log.Fatal("ecdsa.Sign: ", err)
 		}
-		log.Printf("r.bytes %d s.bytes %d\n", len(r.Bytes()),
-			len(s.Bytes()))
+		if debug {
+			log.Printf("r.bytes %d s.bytes %d\n", len(r.Bytes()),
+				len(s.Bytes()))
+		}
 		sigres := r.Bytes()
 		sigres = append(sigres, s.Bytes()...)
-		log.Printf("sigres (len %d): % x\n", len(sigres), sigres)
 		signature = base64.StdEncoding.EncodeToString(sigres)
-		log.Println("signature:", signature)
+		if debug {
+			log.Printf("sigres (len %d): % x\n",
+				len(sigres), sigres)
+			log.Println("signature:", signature)
+		}
 	}
-	log.Printf("UserName %s\n", device.UserName)
-	log.Printf("MapServers %s\n", device.LispMapServers)
-	log.Printf("Lisp IID %d\n", device.LispInstance)
-	log.Printf("EID %s\n", device.EID)
-	log.Printf("EID hash length %d\n", device.EIDHashLen)
-
+	if debug {
+		log.Printf("UserName %s\n", device.UserName)
+		log.Printf("MapServers %s\n", device.LispMapServers)
+		log.Printf("Lisp IID %d\n", device.LispInstance)
+		log.Printf("EID %s\n", device.EID)
+		log.Printf("EID hash length %d\n", device.EIDHashLen)
+	}
 	// write zedserverconfig file with hostname to EID mappings
 	f, err := os.Create(zedserverConfigFileName)
 	if err != nil {
