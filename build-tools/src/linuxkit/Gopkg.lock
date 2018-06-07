@@ -241,8 +241,8 @@
     "src/cmd/linuxkit/pkglib",
     "src/cmd/linuxkit/version"
   ]
-  revision = "37e29b45b3a5015e846f64ab32dffb7a48c32b3a"
-  version = "v0.3"
+  revision = "8d17887e11c7ad25efd7f201b8dfe2b0badc4bee"
+  version = "v0.4"
 
 [[projects]]
   branch = "master"
@@ -259,29 +259,26 @@
 [[projects]]
   name = "github.com/moby/datakit"
   packages = ["api/go-datakit"]
-  revision = "857df397f139d293a698047c136756b7b5ec2bb2"
-  version = "0.12.1"
+  revision = "97b3d230535397a813323902c23751e176481a86"
 
 [[projects]]
   name = "github.com/moby/hyperkit"
   packages = ["go"]
-  revision = "a285521725f44f3d10ca1042c2c07d3a6e24bed8"
+  revision = "d65b09c1c28a2bfb6a976c86ecd885d2ee4c71d3"
 
 [[projects]]
-  branch = "master"
   name = "github.com/moby/tool"
   packages = [
     "src/initrd",
     "src/moby",
     "src/pad4"
   ]
-  revision = "830794f3c07d172aba29b9333248ad05b27a1267"
+  revision = "3dbad3b7daffd631d036493a1e883608206d2e03"
 
 [[projects]]
   name = "github.com/moby/vpnkit"
   packages = ["go/pkg/vpnkit"]
-  revision = "a07303459c595d8861e1770b043fd2c252aa0476"
-  version = "v0.2.0"
+  revision = "0e4293bb1058598c4b0a406ed171f52573ef414c"
 
 [[projects]]
   name = "github.com/opencontainers/go-digest"
@@ -507,6 +504,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "b010f291f4e5dcfea54c477670bc9c274bde2003687566bbd8ea14b762b4c279"
+  inputs-digest = "1073068ea1df906f915197cbcccc8637956c0e9d13b3dc03cd6cd67637196a7b"
   solver-name = "gps-cdcl"
   solver-version = 1
