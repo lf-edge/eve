@@ -4,6 +4,10 @@ option java_package = "com.zededa.cloud.uservice.proto";
 option go_package = "github.com/zededa/api/zconfig";
 
 // import "fw.proto";
+message ipRange {
+	string start;
+	string end;
+}
 
 message ipv4spec {
 	bool   dhcp = 2;
@@ -14,6 +18,10 @@ message ipv4spec {
 	string domain = 6;
 	string ntp = 7;
 	repeated string dns = 8;
+
+	// for IPAM management when dhcp is turned on.
+	// If none provided, system will default pool.
+	string ipRange = 9;
 }
 
 message ipv6spec {
@@ -25,6 +33,11 @@ message ipv6spec {
 	string domain = 6;
 	string ntp = 7;;
 	repeated string dns = 8;
+
+	// for IPAM management when dhcp is turned on.
+	// If none provided, system will default pool.
+	string ipRange = 9;
+}
 }
 
 message NameToEid {

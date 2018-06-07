@@ -46,6 +46,40 @@ message DeviceOpsCmd {
 	string opsTime = 4;
 }
 
+enum adapterType {
+	VLAN = 1;
+	BOND = 2;
+} 
+
+message AdapaterParams {
+	adapterType aType = 1;
+
+	// vlan
+        uint32 vlanId = 9;
+
+	// OR : repeated physical interfaces for bond0
+	repeated bondgroup = 10;
+}
+
+message Adapters {
+	// name of the adapter
+	string name = 1;
+
+	// this software adapter, if its not found on the device create one
+	bool allocate = 2;
+
+	AdapterParams allocDetails = 20;
+		
+	// this is part of the uplink group
+	bool uplink = 3;
+
+	// attach this network config for this adapter
+	string networkUUID = 4;
+
+	// if its static network we need ip address
+	string addr = 5;
+}
+
 message EdgeDevConfig {
 	UUIDandVersion id = 1;
 	bytes devConfigSha256 = 2;
@@ -61,6 +95,7 @@ message EdgeDevConfig {
 	DeviceOpsCmd backup = 10;
 
 	repeated ConfigItem configItems = 11;	
+	repeated Adapters = 12; 
 }
 
 // Timers and other per-device policy which relates to the interaction
