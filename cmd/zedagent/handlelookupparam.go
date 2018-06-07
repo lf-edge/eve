@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/eriknordmark/ipinfo"
-	"github.com/google/go-cmp/cmp"
 	"github.com/zededa/api/zconfig"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
@@ -21,6 +20,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"reflect"
 	"sort"
 )
 
@@ -109,15 +109,13 @@ func handleLookupParam(devConfig *zconfig.EdgeDevConfig) {
 	// compare device against a prevDevice
 	sort.Slice(device.ZedServers.NameToEidList[:],
 		func(i, j int) bool {
-		        return device.ZedServers.NameToEidList[i].HostName <
+			return device.ZedServers.NameToEidList[i].HostName <
 				device.ZedServers.NameToEidList[j].HostName
 		})
-	if cmp.Equal(prevDevice, device) { // XXX DeepEqual
+	if reflect.DeepEqual(prevDevice, device) {
 		log.Printf("handleLookupParam: prevDevice is unchanged\n")
 		return
 	}
-	log.Printf("handleLookupParam: prevDevice change %v\n",
-		cmp.Diff(prevDevice, device))
 	prevDevice = device
 
 	log.Printf("handleLookupParam: updated lispInfo %v\n", lispInfo)
@@ -316,37 +314,4 @@ func IsMyAddress(clientIP net.IP) bool {
 		}
 	}
 	return false
-}
-
-// By is the type of a "less" function that defines the ordering of its HostName arguments.
-type By func(p1, p2 *types.NameToEid) bool
-
-// Sort is a method on the function type, By, that sorts the argument slice according to the function.
-func (by By) Sort(hostnames []types.NameToEid) {
-	ps := &hostnameSorter{
-		hostnames: hostnames,
-		by:      by, // The Sort method's receiver is the function (closure) that defines the sort order.
-	}
-	sort.Sort(ps)
-}
-
-// hostnameSorter joins a By function and a slice of HostNames to be sorted.
-type hostnameSorter struct {
-	hostnames []types.NameToEid
-	by      func(p1, p2 *types.NameToEid) bool // Closure used in the Less method.
-}
-
-// Len is part of sort.Interface.
-func (s *hostnameSorter) Len() int {
-	return len(s.hostnames)
-}
-
-// Swap is part of sort.Interface.
-func (s *hostnameSorter) Swap(i, j int) {
-	s.hostnames[i], s.hostnames[j] = s.hostnames[j], s.hostnames[i]
-}
-
-// Less is part of sort.Interface. It is implemented by calling the "by" closure in the sorter.
-func (s *hostnameSorter) Less(i, j int) bool {
-	return s.by(&s.hostnames[i], &s.hostnames[j])
 }
