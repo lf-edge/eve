@@ -23,9 +23,9 @@ import (
 	"fmt"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/pidfile"
+	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
-	"io/ioutil"
 	"log"
 	"math/big"
 	"net"
@@ -123,9 +123,7 @@ func writeEIDStatus(status *types.EIDStatus,
 	if err != nil {
 		log.Fatal(err, "json Marshal EIDStatus")
 	}
-	// We assume a /var/run path hence we don't need to worry about
-	// partial writes/empty files due to a kernel crash.
-	err = ioutil.WriteFile(statusFilename, b, 0644)
+	err = pubsub.WriteRename(statusFilename, b)
 	if err != nil {
 		log.Fatal(err, statusFilename)
 	}
@@ -359,6 +357,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 	}
 	// Reject any changes to EIDAllocation.
 	// XXX report internal error?
+	// XXX switch to Equal?
 	if !reflect.DeepEqual(status.EIDAllocation, config.EIDAllocation) {
 		log.Printf("handleModify(%v,%d) EIDAllocation changed for %s\n",
 			config.UUIDandVersion, config.IID, config.DisplayName)

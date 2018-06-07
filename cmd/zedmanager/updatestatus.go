@@ -40,6 +40,7 @@ func addOrUpdateConfig(uuidStr string, config types.AppInstanceConfig) {
 	added := false
 	if m, ok := AIC[uuidStr]; ok {
 		// XXX or just compare version like elsewhere?
+		// XXX switch to Equal?
 		if !reflect.DeepEqual(m, config) {
 			log.Printf("AI config changed for %s\n", uuidStr)
 			changed = true
@@ -104,6 +105,7 @@ func addOrUpdateStatus(uuidStr string, status types.AppInstanceStatus) {
 
 	changed := false
 	if m, ok := AIS[uuidStr]; ok {
+		// XXX switch to Equal?
 		if reflect.DeepEqual(m, status) {
 			log.Printf("AI status changed for %s\n", uuidStr)
 			changed = true

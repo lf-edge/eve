@@ -11,6 +11,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/satori/go.uuid"
 	"github.com/zededa/api/zconfig"
+	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/zboot"
 	"hash"
@@ -384,6 +385,8 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig) {
 		appInstance.FixedResources.Memory = int(cfgApp.Fixedresources.Memory)
 		appInstance.FixedResources.RootDev = cfgApp.Fixedresources.Rootdev
 		appInstance.FixedResources.VCpus = int(cfgApp.Fixedresources.Vcpus)
+		appInstance.FixedResources.VirtualizationMode = types.VmMode(cfgApp.Fixedresources.VirtualizationMode)
+		appInstance.FixedResources.EnableVnc = cfgApp.Fixedresources.EnableVnc
 
 		var imageCount int
 		for _, drive := range cfgApp.Drives {
@@ -514,6 +517,15 @@ func parseStorageConfigList(config *zconfig.EdgeDevConfig, objType string,
 	}
 }
 
+func lookupNetworkId(id string, cfgNetworks []*zconfig.NetworkConfig) *zconfig.NetworkConfig {
+	for _, netEnt := range cfgNetworks {
+		if id == netEnt.Id {
+			return netEnt
+		}
+	}
+	return nil
+}
+
 func parseNetworkConfig(appInstance *types.AppInstanceConfig,
 	cfgApp *zconfig.AppInstanceConfig,
 	cfgNetworks []*zconfig.NetworkConfig) {
@@ -524,25 +536,19 @@ func parseNetworkConfig(appInstance *types.AppInstanceConfig,
 
 	// count the interfaces and allocate
 	for _, intfEnt := range cfgApp.Interfaces {
-		for _, netEnt := range cfgNetworks {
-
-			if intfEnt.NetworkId == netEnt.Id {
-
-				switch strings.ToLower(netEnt.Type.String()) {
-				// underlay interface
-				case "v4", "v6":
-					{
-						ulMaxIdx++
-						break
-					}
-				// overlay interface
-				case "lisp":
-					{
-						olMaxIdx++
-						break
-					}
-				}
-			}
+		netEnt := lookupNetworkId(intfEnt.NetworkId, cfgNetworks)
+		if netEnt == nil {
+			log.Printf("parseNetworkConfig: Can't find network id %s; ignored\n",
+				intfEnt.NetworkId)
+			continue
+		}
+		switch strings.ToLower(netEnt.Type.String()) {
+		// underlay interface
+		case "v4", "v6":
+			ulMaxIdx++
+		// overlay interface
+		case "lisp":
+			olMaxIdx++
 		}
 	}
 
@@ -566,54 +572,57 @@ func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
 	var ulIdx int = 0
 
 	for _, intfEnt := range cfgApp.Interfaces {
-		for _, netEnt := range cfgNetworks {
-
-			if intfEnt.NetworkId == netEnt.Id &&
-				(strings.ToLower(netEnt.Type.String()) == "v4" ||
-					strings.ToLower(netEnt.Type.String()) == "v6") {
-
-				nv4 := netEnt.GetNv4() //XXX not required now...
-				if nv4 != nil {
-					booValNv4 := nv4.Dhcp
-					log.Println("booValNv4: ", booValNv4)
-				}
-				nv6 := netEnt.GetNv6() //XXX not required now...
-				if nv6 != nil {
-					booValNv6 := nv6.Dhcp
-					log.Println("booValNv6: ", booValNv6)
-				}
-
-				ulCfg := new(types.UnderlayNetworkConfig)
-				ulCfg.ACLs = make([]types.ACE, len(intfEnt.Acls))
-
-				for aclIdx, acl := range intfEnt.Acls {
-
-					aclCfg := new(types.ACE)
-					aclCfg.Matches = make([]types.ACEMatch, len(acl.Matches))
-					aclCfg.Actions = make([]types.ACEAction, len(acl.Actions))
-
-					for matchIdx, match := range acl.Matches {
-						matchCfg := new(types.ACEMatch)
-						matchCfg.Type = match.Type
-						matchCfg.Value = match.Value
-						aclCfg.Matches[matchIdx] = *matchCfg
-					}
-
-					for actionIdx, action := range acl.Actions {
-						actionCfg := new(types.ACEAction)
-						actionCfg.Limit = action.Limit
-						actionCfg.LimitRate = int(action.Limitrate)
-						actionCfg.LimitUnit = action.Limitunit
-						actionCfg.LimitBurst = int(action.Limitburst)
-						// XXX:FIXME actionCfg.Drop = <TBD>
-						aclCfg.Actions[actionIdx] = *actionCfg
-					}
-					ulCfg.ACLs[aclIdx] = *aclCfg
-				}
-				appInstance.UnderlayNetworkList[ulIdx] = *ulCfg
-				ulIdx++
-			}
+		netEnt := lookupNetworkId(intfEnt.NetworkId, cfgNetworks)
+		if netEnt == nil {
+			log.Printf("parseUnderlayNetworkConfig: Can't find network id %s; ignored\n",
+				intfEnt.NetworkId)
+			continue
 		}
+		if strings.ToLower(netEnt.Type.String()) != "v4" &&
+			strings.ToLower(netEnt.Type.String()) != "v6" {
+			continue
+		}
+		nv4 := netEnt.GetNv4() //XXX not required now...
+		if nv4 != nil {
+			booValNv4 := nv4.Dhcp
+			log.Println("booValNv4: ", booValNv4)
+		}
+		nv6 := netEnt.GetNv6() //XXX not required now...
+		if nv6 != nil {
+			booValNv6 := nv6.Dhcp
+			log.Println("booValNv6: ", booValNv6)
+		}
+
+		ulCfg := new(types.UnderlayNetworkConfig)
+		ulCfg.ACLs = make([]types.ACE, len(intfEnt.Acls))
+		// XXX set from TBD proto field
+		ulCfg.SshPortMap = true
+		for aclIdx, acl := range intfEnt.Acls {
+			aclCfg := new(types.ACE)
+			aclCfg.Matches = make([]types.ACEMatch,
+				len(acl.Matches))
+			aclCfg.Actions = make([]types.ACEAction,
+				len(acl.Actions))
+			for matchIdx, match := range acl.Matches {
+				matchCfg := new(types.ACEMatch)
+				matchCfg.Type = match.Type
+				matchCfg.Value = match.Value
+				aclCfg.Matches[matchIdx] = *matchCfg
+			}
+
+			for actionIdx, action := range acl.Actions {
+				actionCfg := new(types.ACEAction)
+				actionCfg.Limit = action.Limit
+				actionCfg.LimitRate = int(action.Limitrate)
+				actionCfg.LimitUnit = action.Limitunit
+				actionCfg.LimitBurst = int(action.Limitburst)
+				// XXX:FIXME actionCfg.Drop = <TBD>
+				aclCfg.Actions[actionIdx] = *actionCfg
+			}
+			ulCfg.ACLs[aclIdx] = *aclCfg
+		}
+		appInstance.UnderlayNetworkList[ulIdx] = *ulCfg
+		ulIdx++
 	}
 }
 
@@ -623,81 +632,77 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 	var olIdx int = 0
 
 	for _, intfEnt := range cfgApp.Interfaces {
-		for _, netEnt := range cfgNetworks {
-
-			if intfEnt.NetworkId == netEnt.Id &&
-				strings.ToLower(netEnt.Type.String()) == "lisp" {
-
-				olCfg := new(types.EIDOverlayConfig)
-				olCfg.ACLs = make([]types.ACE, len(intfEnt.Acls))
-
-				for aclIdx, acl := range intfEnt.Acls {
-
-					aclCfg := new(types.ACE)
-					aclCfg.Matches = make([]types.ACEMatch, len(acl.Matches))
-					aclCfg.Actions = make([]types.ACEAction, len(acl.Actions))
-
-					for matchIdx, match := range acl.Matches {
-						matchCfg := new(types.ACEMatch)
-						matchCfg.Type = match.Type
-						matchCfg.Value = match.Value
-						aclCfg.Matches[matchIdx] = *matchCfg
-					}
-
-					for actionIdx, action := range acl.Actions {
-						actionCfg := new(types.ACEAction)
-						actionCfg.Limit = action.Limit
-						actionCfg.LimitRate = int(action.Limitrate)
-						actionCfg.LimitUnit = action.Limitunit
-						actionCfg.LimitBurst = int(action.Limitburst)
-						aclCfg.Actions[actionIdx] = *actionCfg
-					}
-					olCfg.ACLs[aclIdx] = *aclCfg
-				}
-
-				olCfg.EIDConfigDetails.EID = net.ParseIP(intfEnt.Addr)
-				olCfg.EIDConfigDetails.LispSignature = intfEnt.Lispsignature
-				olCfg.EIDConfigDetails.PemCert = intfEnt.Pemcert
-				olCfg.EIDConfigDetails.PemPrivateKey = intfEnt.Pemprivatekey
-
-				nlisp := netEnt.GetNlisp()
-
-				if nlisp != nil {
-
-					if nlisp.Eidalloc != nil {
-
-						olCfg.EIDConfigDetails.IID = nlisp.Iid
-						olCfg.EIDConfigDetails.EIDAllocation.Allocate = nlisp.Eidalloc.Allocate
-						olCfg.EIDConfigDetails.EIDAllocation.ExportPrivate = nlisp.Eidalloc.Exportprivate
-						olCfg.EIDConfigDetails.EIDAllocation.AllocationPrefix = nlisp.Eidalloc.Allocationprefix
-						olCfg.EIDConfigDetails.EIDAllocation.AllocationPrefixLen = int(nlisp.Eidalloc.Allocationprefixlen)
-					}
-
-					if len(nlisp.Nmtoeid) != 0 {
-
-						olCfg.NameToEidList = make([]types.NameToEid, len(nlisp.Nmtoeid))
-
-						for nameIdx, nametoeid := range nlisp.Nmtoeid {
-
-							nameCfg := new(types.NameToEid)
-							nameCfg.HostName = nametoeid.Hostname
-							nameCfg.EIDs = make([]net.IP, len(nametoeid.Eids))
-
-							for eIdx, eid := range nametoeid.Eids {
-								nameCfg.EIDs[eIdx] = net.ParseIP(eid)
-							}
-
-							olCfg.NameToEidList[nameIdx] = *nameCfg
-						}
-					}
-				} else {
-					log.Printf("No Nlisp in for %v\n", netEnt.Id)
-				}
-
-				appInstance.OverlayNetworkList[olIdx] = *olCfg
-				olIdx++
-			}
+		netEnt := lookupNetworkId(intfEnt.NetworkId, cfgNetworks)
+		if netEnt == nil {
+			log.Printf("parseOverlayNetworkConfig: Can't find network id %s; ignored\n",
+				intfEnt.NetworkId)
+			continue
 		}
+
+		if strings.ToLower(netEnt.Type.String()) != "lisp" {
+			continue
+		}
+		olCfg := new(types.EIDOverlayConfig)
+		olCfg.ACLs = make([]types.ACE, len(intfEnt.Acls))
+
+		for aclIdx, acl := range intfEnt.Acls {
+			aclCfg := new(types.ACE)
+			aclCfg.Matches = make([]types.ACEMatch,
+				len(acl.Matches))
+			aclCfg.Actions = make([]types.ACEAction,
+				len(acl.Actions))
+			for matchIdx, match := range acl.Matches {
+				matchCfg := new(types.ACEMatch)
+				matchCfg.Type = match.Type
+				matchCfg.Value = match.Value
+				aclCfg.Matches[matchIdx] = *matchCfg
+			}
+
+			for actionIdx, action := range acl.Actions {
+				actionCfg := new(types.ACEAction)
+				actionCfg.Limit = action.Limit
+				actionCfg.LimitRate = int(action.Limitrate)
+				actionCfg.LimitUnit = action.Limitunit
+				actionCfg.LimitBurst = int(action.Limitburst)
+				aclCfg.Actions[actionIdx] = *actionCfg
+			}
+			olCfg.ACLs[aclIdx] = *aclCfg
+		}
+
+		olCfg.EIDConfigDetails.EID = net.ParseIP(intfEnt.Addr)
+		olCfg.EIDConfigDetails.LispSignature = intfEnt.Lispsignature
+		olCfg.EIDConfigDetails.PemCert = intfEnt.Pemcert
+		olCfg.EIDConfigDetails.PemPrivateKey = intfEnt.Pemprivatekey
+
+		nlisp := netEnt.GetNlisp()
+		if nlisp != nil {
+			if nlisp.Eidalloc != nil {
+				olCfg.EIDConfigDetails.IID = nlisp.Iid
+				olCfg.EIDConfigDetails.EIDAllocation.Allocate = nlisp.Eidalloc.Allocate
+				olCfg.EIDConfigDetails.EIDAllocation.ExportPrivate = nlisp.Eidalloc.Exportprivate
+				olCfg.EIDConfigDetails.EIDAllocation.AllocationPrefix = nlisp.Eidalloc.Allocationprefix
+				olCfg.EIDConfigDetails.EIDAllocation.AllocationPrefixLen = int(nlisp.Eidalloc.Allocationprefixlen)
+			}
+
+			if len(nlisp.Nmtoeid) != 0 {
+				olCfg.NameToEidList = make([]types.NameToEid,
+					len(nlisp.Nmtoeid))
+				for nameIdx, nametoeid := range nlisp.Nmtoeid {
+					nameCfg := new(types.NameToEid)
+					nameCfg.HostName = nametoeid.Hostname
+					nameCfg.EIDs = make([]net.IP,
+						len(nametoeid.Eids))
+					for eIdx, eid := range nametoeid.Eids {
+						nameCfg.EIDs[eIdx] = net.ParseIP(eid)
+					}
+					olCfg.NameToEidList[nameIdx] = *nameCfg
+				}
+			}
+		} else {
+			log.Printf("No Nlisp in for %v\n", netEnt.Id)
+		}
+		appInstance.OverlayNetworkList[olIdx] = *olCfg
+		olIdx++
 	}
 }
 
@@ -833,7 +838,7 @@ func writeAppInstanceConfig(appInstance types.AppInstanceConfig,
 		log.Fatal(err, "json Marshal AppInstanceConfig")
 	}
 	configFilename := zedmanagerConfigDirname + "/" + uuidStr + ".json"
-	err = ioutil.WriteFile(configFilename, bytes, 0644)
+	err = pubsub.WriteRename(configFilename, bytes)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -855,8 +860,7 @@ func writeBaseOsConfig(baseOsConfig *types.BaseOsConfig, uuidStr string) {
 			configFilename, bytes)
 	}
 
-	err = ioutil.WriteFile(configFilename, bytes, 0644)
-
+	err = pubsub.WriteRename(configFilename, bytes)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -872,7 +876,7 @@ func writeBaseOsStatus(baseOsStatus *types.BaseOsStatus, uuidStr string) {
 		log.Fatal(err, "json Marshal BaseOsStatus")
 	}
 
-	err = ioutil.WriteFile(statusFilename, bytes, 0644)
+	err = pubsub.WriteRename(statusFilename, bytes)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -1021,6 +1025,7 @@ func createBaseOsConfig(baseOsList []*types.BaseOsConfig, certList []*types.Cert
 				log.Fatal(err)
 			}
 			// changed file
+			// XXX switch to Equal?
 			if !reflect.DeepEqual(curBaseOs, baseOs) {
 				writeBaseOsConfig(baseOs, uuidStr)
 				if certList[idx] != nil {
@@ -1050,7 +1055,7 @@ func writeCertObjConfig(config *types.CertObjConfig, uuidStr string) {
 		log.Printf("Writing CA config %s, %s\n", configFilename, bytes)
 	}
 
-	err = ioutil.WriteFile(configFilename, bytes, 0644)
+	err = pubsub.WriteRename(configFilename, bytes)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -1121,7 +1126,7 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd) bool {
 		if err != nil {
 			log.Fatal(err)
 		}
-		err = ioutil.WriteFile(rebootConfigFilename, bytes, 0644)
+		err = pubsub.WriteRename(rebootConfigFilename, bytes)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -1150,7 +1155,11 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd) bool {
 		// store current config, persistently
 		bytes, err = json.Marshal(reboot)
 		if err == nil {
-			ioutil.WriteFile(rebootConfigFilename, bytes, 0644)
+			err := pubsub.WriteRename(rebootConfigFilename, bytes)
+			if err != nil {
+				log.Printf("scheduleReboot: failed %s\n",
+					err)
+			}
 		}
 
 		//timer was started, stop now

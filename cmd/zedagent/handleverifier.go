@@ -10,8 +10,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
-	"io/ioutil"
 	"log"
 	"os"
 )
@@ -311,7 +311,7 @@ func writeVerifierConfig(objType string, safename string,
 		log.Fatal(err, "json Marshal VerifyImageConfig")
 	}
 
-	err = ioutil.WriteFile(configFilename, bytes, 0644)
+	err = pubsub.WriteRename(configFilename, bytes)
 	if err != nil {
 		log.Fatal(err)
 	}

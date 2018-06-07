@@ -6,6 +6,7 @@
 package zedrouter
 
 import (
+	"fmt"
 	"github.com/zededa/go-provision/types"
 	"log"
 	"strconv"
@@ -81,12 +82,13 @@ func compileOldAppInstanceIpsets(ollist []types.OverlayNetworkStatus,
 }
 
 func createACLConfiglet(ifname string, isMgmt bool, ACLs []types.ACE,
-	ipVer int, overlayIP string) {
+	ipVer int, myIP string, appIP string, underlaySshPortMap uint) {
 	if debug {
-		log.Printf("createACLConfiglet: ifname %s, ACLs %v\n",
-			ifname, ACLs)
+		log.Printf("createACLConfiglet: ifname %s, ACLs %v, IP %s/%s, ssh %d\n",
+			ifname, ACLs, myIP, appIP, underlaySshPortMap)
 	}
-	rules := aclToRules(ifname, ACLs, ipVer, overlayIP)
+	rules := aclToRules(ifname, ACLs, ipVer, myIP, appIP,
+		underlaySshPortMap)
 	for _, rule := range rules {
 		if debug {
 			log.Printf("createACLConfiglet: rule %v\n", rule)
@@ -118,7 +120,7 @@ func createACLConfiglet(ifname string, isMgmt bool, ACLs []types.ACE,
 	// XXX isMgmt is painful; related to commenting out eidset accepts
 	// XXX won't need this when zedmanager is in a separate domU
 	// Commenting out for now
-	if false && overlayIP != "" && !isMgmt {
+	if false && ipVer == 6 && !isMgmt {
 		// Manually add rules so that lispers.net doesn't see and drop
 		// the packet on dbo1x0
 		ip6tableCmd("-A", "FORWARD", "-i", ifname, "-o", "dbo1x0",
@@ -128,17 +130,37 @@ func createACLConfiglet(ifname string, isMgmt bool, ACLs []types.ACE,
 
 // Returns a list of iptables commands, witout the initial "-A FORWARD"
 func aclToRules(ifname string, ACLs []types.ACE, ipVer int,
-	overlayIP string) IptablesRuleList {
+	myIP string, appIP string, underlaySshPortMap uint) IptablesRuleList {
 	rulesList := IptablesRuleList{}
-	if overlayIP != "" {
+	// XXX should we check isMgmt instead of myIP?
+	if ipVer == 6 && myIP != "" {
 		// Need to allow local communication */
 		// Note that sufficient for src or dst to be local
 		rule1 := []string{"-i", ifname, "-m", "set", "--match-set",
 			"local.ipv6", "dst", "-j", "ACCEPT"}
 		rule2 := []string{"-i", ifname, "-m", "set", "--match-set",
 			"local.ipv6", "src", "-j", "ACCEPT"}
-		rule3 := []string{"-i", ifname, "-d", overlayIP, "-j", "ACCEPT"}
-		rule4 := []string{"-i", ifname, "-s", overlayIP, "-j", "ACCEPT"}
+		rule3 := []string{"-i", ifname, "-d", myIP, "-j", "ACCEPT"}
+		rule4 := []string{"-i", ifname, "-s", myIP, "-j", "ACCEPT"}
+		rulesList = append(rulesList, rule1, rule2, rule3, rule4)
+	}
+	if underlaySshPortMap != 0 {
+		port := fmt.Sprintf("%d", underlaySshPortMap)
+		dest := fmt.Sprintf("%s:22", appIP)
+		// These rules should only apply on the uplink interfaces
+		// but for now we just compare the TCP port number.
+		rule1 := []string{"PREROUTING",
+			"-p", "tcp", "--dport", port, "-j", "DNAT",
+			"--to-destination", dest}
+		// Make sure packets are returned to zedrouter and not e.g.,
+		// out a directly attached interface in the domU
+		rule2 := []string{"POSTROUTING",
+			"-p", "tcp", "-o", ifname, "--dport", "22", "-j", "SNAT",
+			"--to-source", myIP}
+		rule3 := []string{"-o", ifname, "-p", "tcp", "--dport", "22",
+			"-j", "ACCEPT"}
+		rule4 := []string{"-i", ifname, "-p", "tcp", "--sport", "22",
+			"-j", "ACCEPT"}
 		rulesList = append(rulesList, rule1, rule2, rule3, rule4)
 	}
 	for _, ace := range ACLs {
@@ -222,11 +244,17 @@ func aceToRules(ifname string, ace types.ACE, ipVer int) IptablesRuleList {
 		} else if action.Limit {
 			foundLimit = true
 			// -m limit --limit 4/s --limit-burst 4
-			limit := strconv.Itoa(action.LimitRate) + "/" +
-				action.LimitUnit
-			burst := strconv.Itoa(action.LimitBurst)
-			add := []string{"-m", "limit", "--limit", limit,
-				"--limit-burst", burst}
+			add := []string{"-m", "limit"}
+			// iptables doesn't limit --limit 0
+			if action.LimitRate != 0 {
+				limit := strconv.Itoa(action.LimitRate) + "/" +
+					action.LimitUnit
+				add = append(add, "--limit", limit)
+			}
+			if action.LimitBurst != 0 {
+				burst := strconv.Itoa(action.LimitBurst)
+				add = append(add, "--limit-burst", burst)
+			}
 			outArgs = append(outArgs, add...)
 			inArgs = append(inArgs, add...)
 		}
@@ -298,7 +326,12 @@ func rulePrefix(operation string, isMgmt bool, ipVer int,
 		}
 	} else {
 		// Underlay
-		prefix = []string{operation, "FORWARD"}
+		if rule[0] == "PREROUTING" || rule[0] == "POSTROUTING" {
+			// NAT verbatim rule
+			prefix = []string{"-t", "nat", operation}
+		} else {
+			prefix = []string{operation, "FORWARD"}
+		}
 	}
 	return prefix
 }
@@ -361,13 +394,16 @@ func updateAppInstanceIpsets(newolConfig []types.OverlayNetworkConfig,
 }
 
 func updateACLConfiglet(ifname string, isMgmt bool, oldACLs []types.ACE,
-	newACLs []types.ACE, ipVer int, overlayIP string) {
+	newACLs []types.ACE, ipVer int, myIP string, appIP string,
+	underlaySshPortMap uint) {
 	if debug {
 		log.Printf("updateACLConfiglet: ifname %s, oldACLs %v newACLs %v\n",
 			ifname, oldACLs, newACLs)
 	}
-	oldRules := aclToRules(ifname, oldACLs, ipVer, overlayIP)
-	newRules := aclToRules(ifname, newACLs, ipVer, overlayIP)
+	oldRules := aclToRules(ifname, oldACLs, ipVer, myIP, appIP,
+		underlaySshPortMap)
+	newRules := aclToRules(ifname, newACLs, ipVer, myIP, appIP,
+		underlaySshPortMap)
 	// Look for old which should be deleted
 	for _, rule := range oldRules {
 		if containsRule(newRules, rule) {
@@ -422,12 +458,13 @@ func updateACLConfiglet(ifname string, isMgmt bool, oldACLs []types.ACE,
 }
 
 func deleteACLConfiglet(ifname string, isMgmt bool, ACLs []types.ACE,
-	ipVer int, overlayIP string) {
+	ipVer int, myIP string, appIP string, underlaySshPortMap uint) {
 	if debug {
 		log.Printf("deleteACLConfiglet: ifname %s ACLs %v\n",
 			ifname, ACLs)
 	}
-	rules := aclToRules(ifname, ACLs, ipVer, overlayIP)
+	rules := aclToRules(ifname, ACLs, ipVer, myIP, appIP,
+		underlaySshPortMap)
 	for _, rule := range rules {
 		if debug {
 			log.Printf("deleteACLConfiglet: rule %v\n", rule)
@@ -455,7 +492,7 @@ func deleteACLConfiglet(ifname string, isMgmt bool, ACLs []types.ACE,
 			"-p", "udp", "-j", "CHECKSUM", "--checksum-fill")
 	}
 	// XXX see above
-	if false && overlayIP != "" {
+	if false && ipVer == 6 && !isMgmt {
 		// Manually delete the manual add above
 		ip6tableCmd("-D", "FORWARD", "-i", ifname, "-j", "DROP")
 	}

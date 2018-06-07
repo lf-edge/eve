@@ -24,7 +24,6 @@ import (
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
 	"github.com/zededa/go-provision/wrap"
-	"io/ioutil"
 	"log"
 	"net"
 	"os"
@@ -175,6 +174,7 @@ func Run() {
 			log.Printf("addrChangeFn(%s) called\n", ifname)
 		}
 		new, _ := devicenetwork.MakeDeviceNetworkStatus(deviceNetworkConfig, deviceNetworkStatus)
+		// XXX switch to Equal?
 		if !reflect.DeepEqual(deviceNetworkStatus, new) {
 			if debug {
 				log.Printf("Address change for %s from %v to %v\n",
@@ -363,9 +363,7 @@ func updateDeviceNetworkStatus() {
 	if err != nil {
 		log.Fatal(err, "json Marshal DeviceNetworkStatus")
 	}
-	// We assume a /var/run path hence we don't need to worry about
-	// partial writes/empty files due to a kernel crash.
-	err = ioutil.WriteFile(deviceNetworkStatusFilename, b, 0644)
+	err = pubsub.WriteRename(deviceNetworkStatusFilename, b)
 	if err != nil {
 		log.Fatal(err, deviceNetworkStatusFilename)
 	}
@@ -394,9 +392,7 @@ func writeAppNetworkStatus(status *types.AppNetworkStatus,
 	if err != nil {
 		log.Fatal(err, "json Marshal AppNetworkStatus")
 	}
-	// We assume a /var/run path hence we don't need to worry about
-	// partial writes/empty files due to a kernel crash.
-	err = ioutil.WriteFile(statusFilename, b, 0644)
+	err = pubsub.WriteRename(statusFilename, b)
 	if err != nil {
 		log.Fatal(err, statusFilename)
 	}
@@ -637,7 +633,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 			EID.String())
 
 		// Set up ACLs
-		createACLConfiglet(olIfname, true, olConfig.ACLs, 6, "")
+		createACLConfiglet(olIfname, true, olConfig.ACLs, 6, "", "", 0)
 
 		// Save information about zedmanger EID and additional info
 		deviceEID = EID
@@ -790,7 +786,8 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 			EID.String())
 
 		// Set up ACLs before we setup dnsmasq
-		createACLConfiglet(olIfname, false, olConfig.ACLs, 6, olAddr1)
+		createACLConfiglet(olIfname, false, olConfig.ACLs, 6,
+			olAddr1, "", 0)
 
 		// Start clean
 		cfgFilename = "dnsmasq." + olIfname + ".conf"
@@ -875,7 +872,13 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 
 		// Create iptables with optional ipset's based ACL
 		// XXX Doesn't handle IPv6 underlay ACLs
-		createACLConfiglet(ulIfname, false, ulConfig.ACLs, 4, "")
+
+		var sshPort uint
+		if ulConfig.SshPortMap {
+			sshPort = 8022 + 100*uint(appNum)
+		}
+		createACLConfiglet(ulIfname, false, ulConfig.ACLs, 4,
+			ulAddr1, ulAddr2, sshPort)
 
 		// Start clean
 		cfgFilename := "dnsmasq." + ulIfname + ".conf"
@@ -968,7 +971,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 
 		// Update ACLs
 		updateACLConfiglet(olIfname, true, olStatus.ACLs,
-			olConfig.ACLs, 6, "")
+			olConfig.ACLs, 6, "", "", 0)
 		log.Printf("handleModify done for %s\n", config.DisplayName)
 		return
 	}
@@ -1001,7 +1004,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 
 		// Update ACLs
 		updateACLConfiglet(olIfname, false, olStatus.ACLs,
-			olConfig.ACLs, 6, olAddr1)
+			olConfig.ACLs, 6, olAddr1, "", 0)
 
 		// updateAppInstanceIpsets told us whether there is a change
 		// to the set of ipsets, and that requires restarting dnsmasq
@@ -1039,18 +1042,22 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 			log.Printf("handleModify ulNum %d\n", ulNum)
 		}
 		ulIfname := "bu" + strconv.Itoa(appNum)
+		ulAddr1 := "172.27." + strconv.Itoa(appNum) + ".1"
+		ulAddr2 := "172.27." + strconv.Itoa(appNum) + ".2"
 		ulStatus := status.UnderlayNetworkList[ulNum-1]
 
 		// Update ACLs
+		var sshPort uint
+		if ulConfig.SshPortMap {
+			sshPort = 8022 + 100*uint(appNum)
+		}
 		updateACLConfiglet(ulIfname, false, ulStatus.ACLs,
-			ulConfig.ACLs, 4, "")
+			ulConfig.ACLs, 4, ulAddr1, ulAddr2, sshPort)
 
 		if restartDnsmasq {
 			//update underlay dnsmasq configuration
 			cfgFilename := "dnsmasq." + ulIfname + ".conf"
 			cfgPathname := runDirname + "/" + cfgFilename
-			ulAddr1 := "172.27." + strconv.Itoa(appNum) + ".1"
-			ulAddr2 := "172.27." + strconv.Itoa(appNum) + ".2"
 			ulMac := "00:16:3e:0:0:" + strconv.FormatInt(int64(appNum), 16)
 			stopDnsmasq(cfgFilename, false)
 			//remove old dnsmasq configuration file
@@ -1179,7 +1186,7 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 		deleteEidIpsetConfiglet(olIfname, true)
 
 		// Delete ACLs
-		deleteACLConfiglet(olIfname, true, olStatus.ACLs, 6, "")
+		deleteACLConfiglet(olIfname, true, olStatus.ACLs, 6, "", "", 0)
 
 		// Delete LISP configlets
 		deleteLispConfiglet(lispRunDirname, true, olStatus.IID,
@@ -1221,7 +1228,7 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 				olStatus := status.OverlayNetworkList[olNum-1]
 				// Delete ACLs
 				deleteACLConfiglet(olIfname, false,
-					olStatus.ACLs, 6, olAddr1)
+					olStatus.ACLs, 6, olAddr1, "", 0)
 
 				// Delete LISP configlets
 				deleteLispConfiglet(lispRunDirname, false,
@@ -1250,6 +1257,8 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 				log.Printf("handleDelete ulNum %d\n", ulNum)
 			}
 			ulIfname := "bu" + strconv.Itoa(appNum)
+			ulAddr1 := "172.27." + strconv.Itoa(appNum) + ".1"
+			ulAddr2 := "172.27." + strconv.Itoa(appNum) + ".2"
 			if debug {
 				log.Printf("Deleting ulIfname %s\n", ulIfname)
 			}
@@ -1269,8 +1278,13 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 			// Need to check that index exists
 			if len(status.UnderlayNetworkList) >= ulNum {
 				ulStatus := status.UnderlayNetworkList[ulNum-1]
+				var sshPort uint
+				if ulStatus.SshPortMap {
+					sshPort = 8022 + 100*uint(appNum)
+				}
 				deleteACLConfiglet(ulIfname, false,
-					ulStatus.ACLs, 4, "")
+					ulStatus.ACLs, 4, ulAddr1, ulAddr2,
+					sshPort)
 			} else {
 				log.Println("Missing status for underlay %d; can not clean up ACLs\n",
 					ulNum)
@@ -1315,6 +1329,7 @@ func handleDNCModify(ctxArg interface{}, configFilename string,
 	deviceNetworkConfig = *config
 	new, _ := devicenetwork.MakeDeviceNetworkStatus(*config,
 		deviceNetworkStatus)
+	// XXX switch to Equal?
 	if !reflect.DeepEqual(deviceNetworkStatus, new) {
 		log.Printf("DeviceNetworkStatus change from %v to %v\n",
 			deviceNetworkStatus, new)
@@ -1333,6 +1348,7 @@ func handleDNCDelete(ctxArg interface{}, configFilename string) {
 		return
 	}
 	new := types.DeviceNetworkStatus{}
+	// XXX switch to Equal?
 	if !reflect.DeepEqual(deviceNetworkStatus, new) {
 		log.Printf("DeviceNetworkStatus change from %v to %v\n",
 			deviceNetworkStatus, new)

@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/pidfile"
+	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch"
 	"io"
@@ -121,6 +122,7 @@ func Run() {
 
 	// We will cleanup zero RefCount objects after a while
 	// XXX hard-coded at 10 minutes
+	// XXX run periodically or restart after creating refCount=0 object?
 	gc := time.NewTimer(10 * time.Minute)
 
 	for {
@@ -395,6 +397,7 @@ func gcVerifiedObjects() {
 			log.Fatalf("gcVerifiedObjects: No ObjType for %s\n",
 				key)
 		}
+		// XXX force delete ...
 		doDelete(&status)
 		removeVerifyObjectStatus(&status)
 	}
@@ -442,9 +445,7 @@ func updateVerifyObjectStatus(status *types.VerifyImageStatus) {
 	}
 	statusFilename := verifyObjectStatusFilename(status.ObjType,
 		status.Safename)
-	// We assume a /var/run path hence we don't need to worry about
-	// partial writes/empty files due to a kernel crash.
-	err = ioutil.WriteFile(statusFilename, b, 0644)
+	err = pubsub.WriteRename(statusFilename, b)
 	if err != nil {
 		log.Fatal(err, statusFilename)
 	}
@@ -554,7 +555,8 @@ func markObjectAsVerifying(config *types.VerifyImageConfig,
 
 	info, err := os.Stat(pendingFilename)
 	if err != nil {
-		// XXX hits sometimes
+		// XXX hits sometimes; attempting to verify before download
+		// is complete?
 		log.Printf("%s\n", err)
 		cerr := fmt.Sprintf("%v", err)
 		updateVerifyErrStatus(status, cerr)
@@ -657,8 +659,14 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 	//  as valid may not hold good always!!!
 	if (config.ImageSignature == nil) ||
 		(len(config.ImageSignature) == 0) {
+		log.Printf("No signature to verify for %s\n",
+			config.DownloadURL)
 		return ""
 	}
+
+	log.Printf("Validating %s using cert %s sha %s\n",
+		config.DownloadURL, config.SignatureKey,
+		config.ImageSha256)
 
 	//Read the server certificate
 	//Decode it and parse it
@@ -672,19 +680,19 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 	serverCertName := types.UrlToFilename(config.SignatureKey)
 	serverCertificate, err := ioutil.ReadFile(certificateDirname + "/" + serverCertName)
 	if err != nil {
-		cerr := fmt.Sprintf("unable to read the certificate %s", serverCertName)
+		cerr := fmt.Sprintf("unable to read the certificate %s: %s", serverCertName, err)
 		return cerr
 	}
 
 	block, _ := pem.Decode(serverCertificate)
 	if block == nil {
-		cerr := fmt.Sprintf("unable to decode certificate")
+		cerr := fmt.Sprintf("unable to decode server certificate")
 		return cerr
 	}
 
 	cert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
-		cerr := fmt.Sprintf("unable to parse certificate")
+		cerr := fmt.Sprintf("unable to parse certificate: %s", err)
 		return cerr
 	}
 
@@ -700,7 +708,7 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 	rootCertificate, err := ioutil.ReadFile(rootCertFileName)
 	if err != nil {
 		log.Println(err)
-		cerr := fmt.Sprintf("failed to find root certificate")
+		cerr := fmt.Sprintf("failed to find root certificate: %s", err)
 		return cerr
 	}
 
@@ -715,7 +723,8 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 
 		bytes, err := ioutil.ReadFile(certificateDirname + "/" + certName)
 		if err != nil {
-			cerr := fmt.Sprintf("failed to read certificate Directory: %v", certName)
+			cerr := fmt.Sprintf("failed to read certificate Directory %s: %s",
+				certName, err)
 			return cerr
 		}
 
@@ -727,11 +736,12 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 
 	opts := x509.VerifyOptions{Roots: roots}
 	if _, err := cert.Verify(opts); err != nil {
-		cerr := fmt.Sprintf("failed to verify certificate chain: ")
+		cerr := fmt.Sprintf("failed to verify certificate chain: %s",
+			err)
 		return cerr
 	}
 
-	log.Println("certificate options verified")
+	log.Printf("certificate options verified for %s\n", config.DownloadURL)
 
 	//Read the signature from config file...
 	imgSig := config.ImageSignature
@@ -741,11 +751,11 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 	case *rsa.PublicKey:
 		err = rsa.VerifyPKCS1v15(pub, crypto.SHA256, imageHash, imgSig)
 		if err != nil {
-			cerr := fmt.Sprintf("rsa image signature verification failed")
+			cerr := fmt.Sprintf("rsa image signature verification failed: %s", err)
 			return cerr
 		}
-		log.Println("VerifyPKCS1v15 successful...\n")
-
+		log.Printf("VerifyPKCS1v15 successful for %s\n",
+			config.DownloadURL)
 	case *ecdsa.PublicKey:
 		log.Printf("pub is of type ecdsa: ", pub)
 		imgSignature, err := base64.StdEncoding.DecodeString(string(imgSig))
@@ -766,11 +776,11 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 		log.Printf("Decoded r, s: %v, %v\n", r, s)
 		ok := ecdsa.Verify(pub, imageHash, r, s)
 		if !ok {
-			cerr := fmt.Sprintf("ecdsa image signature verification failed ")
+			cerr := fmt.Sprintf("ecdsa image signature verification failed")
 			return cerr
 		}
-		log.Printf("Signature verified\n")
-
+		log.Printf("ecdsa Verify successful for %s\n",
+			config.DownloadURL)
 	default:
 		cerr := fmt.Sprintf("unknown type of public key")
 		return cerr
@@ -870,6 +880,7 @@ func handleModify(ctxArg interface{}, statusFilename string,
 	if status.RefCount == 0 {
 		status.PendingModify = true
 		updateVerifyObjectStatus(status)
+		// XXX start gc timer instead
 		doDelete(status)
 		status.PendingModify = false
 		status.State = 0 // XXX INITIAL implies failure
@@ -910,8 +921,10 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 			status.Safename)
 	}
 
+	// XXX start gc timer instead
 	doDelete(status)
 
+	// XXX set refCount=0
 	// Write out what we modified to VerifyImageStatus aka delete
 	removeVerifyObjectStatus(status)
 	log.Printf("handleDelete done for %s\n", status.Safename)
@@ -926,22 +939,9 @@ func doDelete(status *types.VerifyImageStatus) {
 
 	objType := status.ObjType
 	downloadDirname := objectDownloadDirname + "/" + objType
-	pendingDirname := downloadDirname + "/pending/" + status.ImageSha256
-	verifierDirname := downloadDirname + "/verifier/" + status.ImageSha256
 	verifiedDirname := downloadDirname + "/verified/" + status.ImageSha256
 
-	if _, err := os.Stat(pendingDirname); err == nil {
-		log.Printf("doDelete removing %s\n", pendingDirname)
-		if err := os.RemoveAll(pendingDirname); err != nil {
-			log.Fatal(err)
-		}
-	}
-	if _, err := os.Stat(verifierDirname); err == nil {
-		log.Printf("doDelete removing %s\n", verifierDirname)
-		if err := os.RemoveAll(verifierDirname); err != nil {
-			log.Fatal(err)
-		}
-	}
+	// XXX defer until gc
 	_, err := os.Stat(verifiedDirname)
 	if err == nil && status.State == types.DELIVERED {
 		if _, err := os.Stat(preserveFilename); err != nil {

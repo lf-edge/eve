@@ -356,8 +356,8 @@ func doDelete(statusFilename string, locDirname string, status *types.Downloader
 	log.Printf("doDelete(%v) for %s\n", status.Safename, status.DownloadURL)
 
 	deletefile(locDirname+"/pending", status)
-	deletefile(locDirname+"/verifie", status)
-	deletefile(locDirname+"/verified", status)
+	deletefile(locDirname+"/verifier", status)
+	// verifier handles the verified directory
 
 	status.State = types.INITIAL
 	globalStatus.UsedSpace -= uint(types.RoundupToKB(status.Size))
@@ -613,9 +613,7 @@ func writeGlobalStatus() {
 	if err != nil {
 		log.Fatal(err, "json Marshal GlobalDownloadStatus")
 	}
-	// We assume a /var/run path hence we don't need to worry about
-	// partial writes/empty files due to a kernel crash.
-	if err = ioutil.WriteFile(globalStatusFilename, sb, 0644); err != nil {
+	if err = pubsub.WriteRename(globalStatusFilename, sb); err != nil {
 		log.Fatal(err, globalStatusFilename)
 	}
 }
@@ -626,33 +624,9 @@ func writeDownloaderStatus(status *types.DownloaderStatus,
 	if err != nil {
 		log.Fatal(err, "json Marshal DownloaderStatus")
 	}
-	// We assume a /var/run path hence we don't need to worry about
-	// partial writes/empty files due to a kernel crash.
-	err = ioutil.WriteFile(statusFilename, b, 0644)
+	err = pubsub.WriteRename(statusFilename, b)
 	if err != nil {
 		log.Fatal(err, statusFilename)
-	}
-}
-
-func writeFile(sFilename string, dFilename string) {
-
-	log.Printf("Writing <%s> file to <%s>\n", sFilename, dFilename)
-
-	if _, err := os.Stat(sFilename); err == nil {
-		sb, err := ioutil.ReadFile(sFilename)
-		if err == nil {
-
-			if err = ioutil.WriteFile(dFilename, sb, 0644); err != nil {
-				log.Printf("Failed to write %s: err %s\n",
-					dFilename, err)
-			}
-		} else {
-			log.Printf("Failed to read %s: err %s\n",
-				sFilename)
-		}
-	} else {
-		log.Printf("Failed to stat %s: err %s\n",
-			sFilename, err)
 	}
 }
 

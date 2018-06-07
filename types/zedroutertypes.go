@@ -363,7 +363,8 @@ type OverlayNetworkStatus struct {
 }
 
 type UnderlayNetworkConfig struct {
-	ACLs []ACE
+	ACLs       []ACE
+	SshPortMap bool
 }
 
 type UnderlayNetworkStatus struct {

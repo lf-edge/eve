@@ -13,10 +13,12 @@ package watch
 
 import (
 	"github.com/fsnotify/fsnotify"
+	"github.com/zededa/go-provision/flextimer"
 	"io/ioutil"
 	"log"
 	"os"
 	"path"
+	"time"
 )
 
 // Generates 'M' events for all existing and all creates/modify.
@@ -48,21 +50,26 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 			select {
 			case event := <-w.Events:
 				baseName := path.Base(event.Name)
-				// log.Println("watchConfigStatus event:", event)
+				// log.Println("WatchConfigStatus event:", event)
 
 				// We get create events when file is moved into
 				// the watched directory.
 				if event.Op&
 					(fsnotify.Write|fsnotify.Create) != 0 {
-					// log.Println("modified", baseName)
+					// log.Println("WatchConfigStatus modified", baseName)
+					fileChanges <- "M " + baseName
+				} else if event.Op&fsnotify.Chmod != 0 {
+					// log.Println("WatchConfigStatus chmod", baseName)
 					fileChanges <- "M " + baseName
 				} else if event.Op&
 					(fsnotify.Rename|fsnotify.Remove) != 0 {
-					// log.Println("deleted", baseName)
+					// log.Println("WatchConfigStatus deleted", baseName)
 					fileChanges <- "D " + baseName
+				} else {
+					log.Println("WatchConfigStatus unknown ", event, baseName)
 				}
 			case err := <-w.Errors:
-				log.Println("watchConfigStatus error:", err)
+				log.Println("WatchConfigStatus error:", err)
 			}
 		}
 	}()
@@ -71,16 +78,9 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 	if err != nil {
 		log.Fatal(err, ": ", configDir)
 	}
-	files, err := ioutil.ReadDir(configDir)
-	if err != nil {
-		log.Fatal(err)
-	}
+	// log.Println("WatchConfigStatus added", configDir)
 
-	for _, file := range files {
-		log.Println("watchConfigStatus readdir modified", file.Name())
-		fileChanges <- "M " + file.Name()
-	}
-	log.Printf("Initial ReadDir done for %s\n", configDir)
+	watchReadDir(configDir, fileChanges, false)
 
 	if initialDelete {
 		statusFiles, err := ioutil.ReadDir(statusDir)
@@ -100,8 +100,54 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 	}
 	// Hook to tell restart is done
 	fileChanges <- "R done"
-	// Watch for changes
-	<-done
+
+	// Watch for changes or timeout
+	interval := 10 * time.Minute
+	max := float64(interval)
+	min := max * 0.3
+	ticker := flextimer.NewRangeTicker(time.Duration(min),
+		time.Duration(max))
+	for {
+		select {
+		case <-done:
+			log.Println("WatchConfigStatus channel done; terminating")
+			// XXX log.Fatal?
+			break
+		case <-ticker.C:
+			// Remove and re-add
+			// XXX do we also need to re-scan?
+			// log.Println("WatchConfigStatus remove/re-add", configDir)
+			err = w.Remove(configDir)
+			if err != nil {
+				log.Fatal(err, "Remove: ", configDir)
+			}
+			err = w.Add(configDir)
+			if err != nil {
+				log.Fatal(err, "Add: ", configDir)
+			}
+			watchReadDir(configDir, fileChanges, true)
+		}
+	}
+}
+
+func watchReadDir(configDir string, fileChanges chan<- string, retry bool) {
+	files, err := ioutil.ReadDir(configDir)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, file := range files {
+		if retry {
+			log.Println("watchReadDir retry modified",
+				configDir, file.Name())
+		} else {
+			log.Println("watchReadDir modified", file.Name())
+		}
+		fileChanges <- "M " + file.Name()
+	}
+	if !retry {
+		log.Printf("watchReadDir done for %s\n", configDir)
+	}
 }
 
 // Generates 'M' events for all existing and all creates/modify.
@@ -126,13 +172,19 @@ func WatchStatus(statusDir string, fileChanges chan<- string) {
 				// the watched directory.
 				if event.Op&
 					(fsnotify.Write|fsnotify.Create) != 0 {
-					// log.Println("modified", baseName)
+					// log.Println("WatchStatus modified", baseName)
+					fileChanges <- "M " + baseName
+				} else if event.Op&fsnotify.Chmod != 0 {
+					// log.Println("WatchStatus chmod", baseName)
 					fileChanges <- "M " + baseName
 				} else if event.Op&
 					(fsnotify.Rename|fsnotify.Remove) != 0 {
-					// log.Println("deleted", baseName)
+					// log.Println("WatchStatus deleted", baseName)
 					fileChanges <- "D " + baseName
+				} else {
+					log.Println("WatchStatus unknown", event, baseName)
 				}
+
 			case err := <-w.Errors:
 				log.Println("WatchStatus error:", err)
 			}
@@ -143,20 +195,38 @@ func WatchStatus(statusDir string, fileChanges chan<- string) {
 	if err != nil {
 		log.Fatal(err, ": ", statusDir)
 	}
-	files, err := ioutil.ReadDir(statusDir)
-	if err != nil {
-		log.Fatal(err)
-	}
+	// log.Println("WatchStatus added", statusDir)
 
-	for _, file := range files {
-		log.Println("WatchStatus initial modified", file.Name())
-		fileChanges <- "M " + file.Name()
-	}
-	log.Printf("Initial ReadDir done for %s\n", statusDir)
+	watchReadDir(statusDir, fileChanges, false)
 
 	// Hook to tell restart is done
 	fileChanges <- "R done"
 
-	// Watch for changes
-	<-done
+	// Watch for changes or timeout
+	interval := 10 * time.Minute
+	max := float64(interval)
+	min := max * 0.3
+	ticker := flextimer.NewRangeTicker(time.Duration(min),
+		time.Duration(max))
+	for {
+		select {
+		case <-done:
+			log.Println("WatchStatus channel done; terminating")
+			// XXX log.Fatal?
+			break
+		case <-ticker.C:
+			// Remove and re-add
+			// XXX do we also need to re-scan?
+			// log.Println("WatchStatus remove/re-add", statusDir)
+			err = w.Remove(statusDir)
+			if err != nil {
+				log.Fatal(err, "Remove: ", statusDir)
+			}
+			err = w.Add(statusDir)
+			if err != nil {
+				log.Fatal(err, "Add: ", statusDir)
+			}
+			watchReadDir(statusDir, fileChanges, true)
+		}
+	}
 }

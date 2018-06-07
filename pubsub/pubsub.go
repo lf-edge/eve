@@ -10,11 +10,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/google/go-cmp/cmp"
 	"github.com/zededa/go-provision/watch"
 	"io/ioutil"
 	"log"
 	"net"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 )
@@ -72,6 +74,7 @@ func Publish(agentName string, topicType interface{}) (*publication, error) {
 	// We always write to the directory as a checkpoint
 	dirName := PubDirName(agentName, topic)
 	if _, err := os.Stat(dirName); err != nil {
+		log.Printf("Publish Create %s\n", dirName)
 		if err := os.MkdirAll(dirName, 0700); err != nil {
 			errStr := fmt.Sprintf("Publish(%s, %s): %s",
 				agentName, topic, err)
@@ -187,7 +190,7 @@ func (pub *publication) Publish(key string, item interface{}) error {
 		return errors.New(errStr)
 	}
 	if m, ok := pub.km.key[key]; ok {
-		if reflect.DeepEqual(m, item) {
+		if cmp.Equal(m, item) {
 			if debug {
 				log.Printf("Publish(%s, %s, %s) unchanged\n",
 					agentName, topic, key)
@@ -195,15 +198,14 @@ func (pub *publication) Publish(key string, item interface{}) error {
 			return nil
 		}
 		if debug {
-			log.Printf("Publish(%s, %s, %s) replacing %v with %v\n",
-				agentName, topic, key, m, item)
+			log.Printf("Publish(%s, %s, %s) replacing due to diff %s\n",
+				agentName, topic, key, cmp.Diff(m, item))
 		}
 	} else if debug {
 		log.Printf("Publish(%s, %s, %s) adding %v\n",
 			agentName, topic, key, item)
 	}
-	// Perform a deep copy so the above DeepEqual check will work
-	// XXX will it still detect equal?
+	// Perform a deep copy so the above Equal check will work
 	pub.km.key[key] = deepCopy(item)
 	if debug {
 		pub.dump("after Publish")
@@ -217,33 +219,41 @@ func (pub *publication) Publish(key string, item interface{}) error {
 	if err != nil {
 		log.Fatal(err, "json Marshal in Publish")
 	}
+	err = WriteRename(fileName, b)
+	if err != nil {
+		return err
+	}
+	// XXX send update to all listeners - how? channel to listener -> connections?
+	return nil
+}
+
+func WriteRename(fileName string, b []byte) error {
+	dirName := filepath.Dir(fileName)
 	// Do atomic rename to avoid partially written files
-	// XXX in same filesystem??
 	tmpfile, err := ioutil.TempFile(dirName, "pubsub")
 	if err != nil {
-		errStr := fmt.Sprintf("Publish(%s, %s): %s",
-			agentName, pub.topic, err)
+		errStr := fmt.Sprintf("WriteRename(%s): %s",
+			fileName, err)
 		return errors.New(errStr)
 	}
 	defer tmpfile.Close()
 	defer os.Remove(tmpfile.Name())
 	_, err = tmpfile.Write(b)
 	if err != nil {
-		errStr := fmt.Sprintf("Publish(%s, %s): %s",
-			agentName, pub.topic, err)
+		errStr := fmt.Sprintf("WriteRename(%s): %s",
+			fileName, err)
 		return errors.New(errStr)
 	}
 	if err := tmpfile.Close(); err != nil {
-		errStr := fmt.Sprintf("Publish(%s, %s): %s",
-			agentName, pub.topic, err)
+		errStr := fmt.Sprintf("WriteRename(%s): %s",
+			fileName, err)
 		return errors.New(errStr)
 	}
 	if err := os.Rename(tmpfile.Name(), fileName); err != nil {
-		errStr := fmt.Sprintf("Publish(%s, %s): %s",
-			agentName, pub.topic, err)
+		errStr := fmt.Sprintf("WriteRename(%s): %s",
+			fileName, err)
 		return errors.New(errStr)
 	}
-	// XXX send update to all listeners - how? channel to listener -> connections?
 	return nil
 }
 

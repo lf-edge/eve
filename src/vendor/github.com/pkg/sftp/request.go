@@ -152,9 +152,6 @@ func (r *Request) getLister() ListerAt {
 
 // Close reader/writer if possible
 func (r *Request) close() error {
-	if r.cancelCtx != nil {
-		r.cancelCtx()
-	}
 	rd := r.getReader()
 	if c, ok := rd.(io.Closer); ok {
 		return c.Close()
@@ -162,6 +159,9 @@ func (r *Request) close() error {
 	wt := r.getWriter()
 	if c, ok := wt.(io.Closer); ok {
 		return c.Close()
+	}
+	if r.cancelCtx != nil {
+		r.cancelCtx()
 	}
 	return nil
 }
@@ -242,6 +242,12 @@ func fileput(h FileWriter, r *Request, pkt requestPacket) responsePacket {
 
 // wrap FileCmder handler
 func filecmd(h FileCmder, r *Request, pkt requestPacket) responsePacket {
+
+	switch p := pkt.(type) {
+	case *sshFxpFsetstatPacket:
+		r.Flags = p.Flags
+		r.Attrs = p.Attrs.([]byte)
+	}
 	err := h.Filecmd(r)
 	return statusFromError(pkt, err)
 }
@@ -270,7 +276,7 @@ func filelist(h FileLister, r *Request, pkt requestPacket) responsePacket {
 		if err != nil && err != io.EOF {
 			return statusFromError(pkt, err)
 		}
-		if n == 0 {
+		if err == io.EOF && n == 0 {
 			return statusFromError(pkt, io.EOF)
 		}
 		dirname := filepath.ToSlash(path.Base(r.Filepath))
