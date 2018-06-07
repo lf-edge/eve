@@ -20,6 +20,7 @@
     "aws/credentials/ec2rolecreds",
     "aws/credentials/endpointcreds",
     "aws/credentials/stscreds",
+    "aws/csm",
     "aws/defaults",
     "aws/ec2metadata",
     "aws/endpoints",
@@ -30,6 +31,8 @@
     "internal/sdkrand",
     "internal/shareddefaults",
     "private/protocol",
+    "private/protocol/eventstream",
+    "private/protocol/eventstream/eventstreamapi",
     "private/protocol/query",
     "private/protocol/query/queryutil",
     "private/protocol/rest",
@@ -40,8 +43,8 @@
     "service/s3/s3manager",
     "service/sts"
   ]
-  revision = "fad131ddc707880428615dc8bc1587b55fb46d74"
-  version = "v1.13.54"
+  revision = "47309c012812d9e9c488a54313e5cdfa7479df93"
+  version = "v1.14.1"
 
 [[projects]]
   branch = "master"
@@ -58,8 +61,8 @@
 [[projects]]
   name = "github.com/go-ini/ini"
   packages = ["."]
-  revision = "6529cf7c58879c08d927016dde4477f18a0634cb"
-  version = "v1.36.0"
+  revision = "06f5f3d67269ccec1fe5fe4134ba6e982984f7f5"
+  version = "v1.37.0"
 
 [[projects]]
   name = "github.com/go-ole/go-ole"
@@ -114,7 +117,7 @@
   branch = "master"
   name = "github.com/nanobox-io/golang-scribble"
   packages = ["."]
-  revision = "ced58d671850da57ce8c11315424513b608083d7"
+  revision = "f328a97d7ce2445d27e611065eb0483cbd97343b"
 
 [[projects]]
   name = "github.com/pkg/errors"
@@ -145,8 +148,8 @@
     "net",
     "process"
   ]
-  revision = "c95755e4bcd7a62bb8bd33f3a597a7c7f35e2cf3"
-  version = "v2.18.04"
+  revision = "eeb1d38d69593f121e060d24d17f7b1f0936b203"
+  version = "v2.18.05"
 
 [[projects]]
   branch = "master"
@@ -176,7 +179,7 @@
     "zconfig",
     "zmet"
   ]
-  revision = "904bc7c8f1156cae2c054ed7e7f3fe22f7afa7e5"
+  revision = "237541392e2fba662e79ce700fcc8eaa5dbee6e5"
 
 [[projects]]
   branch = "master"
@@ -200,7 +203,7 @@
     "poly1305",
     "ssh"
   ]
-  revision = "1a580b3eff7814fc9b40602fd35256c63b50f491"
+  revision = "b47b1587369238182299fe4dad77d05b8b461e06"
 
 [[projects]]
   branch = "master"
@@ -209,11 +212,11 @@
     "unix",
     "windows"
   ]
-  revision = "88eb85aaee56831ad49eaf7aa80d73de9814cde2"
+  revision = "9527bec2660bd847c050fda93a0f0c6dee0800bb"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "33e7f5bc5756df2388373e980c3d1aca4a34cd30b575109c92bfbe9bcb4bcb8b"
+  inputs-digest = "26cbd3abbb6a42d8a97487bee020e458e7d9d0d216e2f14b630ab55893d9dd6d"
   solver-name = "gps-cdcl"
   solver-version = 1
