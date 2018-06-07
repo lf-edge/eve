@@ -152,12 +152,6 @@
   version = "v2.18.05"
 
 [[projects]]
-  branch = "master"
-  name = "github.com/shirou/w32"
-  packages = ["."]
-  revision = "bb4de0191aa41b5507caa14b0650cdbddcd9280b"
-
-[[projects]]
   name = "github.com/vishvananda/netlink"
   packages = [
     ".",
@@ -217,6 +211,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "b70bd949f9704e26cb5fb4b569d3b6d5cf27fe35f58e179fb7b99798b86c6aa9"
+  inputs-digest = "26cbd3abbb6a42d8a97487bee020e458e7d9d0d216e2f14b630ab55893d9dd6d"
   solver-name = "gps-cdcl"
   solver-version = 1
