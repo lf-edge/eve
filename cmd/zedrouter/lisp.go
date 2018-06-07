@@ -540,7 +540,7 @@ func restartLisp(upLinkStatus []types.NetworkUplink, devices string) {
 
 func maybeStartLispDataPlane() {
 	if debug {
-		log.Printf("maybeStartLispDataPlane: %s\n", "/opt/zededa/bin/dataplane")
+		log.Printf("maybeStartLispDataPlane: %s\n", "/opt/zededa/bin/lisp-ztr")
 	}
 	isRunning, _ := isLispDataPlaneRunning()
 	if isRunning {
@@ -549,12 +549,12 @@ func maybeStartLispDataPlane() {
 	// Dataplane is currently running. Start it.
 	cmd := "nohup"
 	args := []string{
-		"/opt/zededa/bin/dataplane",
+		"/opt/zededa/bin/lisp-ztr",
 	}
 	go wrap.Command(cmd, args...).Output()
 }
 
-// Stop if dataplane is running
+// Stop if dataplane(lisp-ztr) is running
 // return true if dataplane was running and we stopped it.
 // false otherwise
 func maybeStopLispDataPlane() bool {
@@ -592,7 +592,7 @@ func isLispDataPlaneRunning() (bool, []string) {
 	log.Printf("isLispDataPlaneRunning: Instances of %s is running.\n", prog)
 	pids := strings.Split(string(out), "\n")
 
-	// The last entry returns by strings.Split is empty string.
+	// The last entry returned by strings.Split is an empty string.
 	// splice the last entry out.
 	pids = pids[:len(pids)-1]
 

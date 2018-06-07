@@ -40,7 +40,7 @@ COPY --from=build /var/tmp/zededa/lisp.config.base /var/tmp/zededa/lisp.config.b
 # the default /config (since that is expected to be an empty mount point)
 COPY --from=build /config /opt/zededa/examples/config
 COPY --from=build /go/bin/* /opt/zededa/bin/
-COPY --from=lisp /lisp/dataplane /opt/zededa/bin/
+COPY --from=lisp /lisp/lisp-ztr /opt/zededa/bin/
 COPY --from=lisp /lisp /opt/zededa/lisp/
 COPY --from=lisp /usr/bin/pydoc /usr/bin/smtpd.py /usr/bin/python* /usr/bin/
 COPY --from=lisp /usr/lib/libpython* /usr/lib/libffi.so* /usr/lib/
