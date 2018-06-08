@@ -96,6 +96,8 @@ message EdgeDevConfig {
 
 	repeated ConfigItem configItems = 11;	
 	repeated Adapters = 12; 
+
+	repeated ServiceInstanceConfig services = 13;
 }
 
 // Timers and other per-device policy which relates to the interaction

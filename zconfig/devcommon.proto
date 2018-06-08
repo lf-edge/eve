@@ -8,3 +8,20 @@ message UUIDandVersion {
 	string version = 2;
 }
 
+// Adapter bundles corresponding to a subset of what is in ZioBundle
+message Adapter {
+  ZCioType type = 1;
+  string name = 2;	// Short hand name such as "com" from bundle
+  // Future will have type-specific oneof definitions as needed
+}
+
+// XXX duplicate of definition in zmet.proto with uniq names (ZCio vs Zio)
+// Types of I/O adapters that can be assigned to applications
+enum ZCioType {
+  ZCioNop = 0;
+  ZCioEth = 1;		// Includes WiFi?
+  ZCioUSB = 2;
+  ZCioCOM = 3;		// Com ports
+  ZCioHDMI = 4;	// HDMI Display
+  ZCioOther = 255;
+}

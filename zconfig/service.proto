@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+option java_package = "com.zededa.cloud.uservice.proto";
+option go_package = "github.com/zededa/api/zconfig";
+
+import "devcommon.proto"
+
+enum ZSrvType {
+  ZsrvFirst = 0;
+  ZsrvVPN = 1;
+  ZsrvBridge = 2;
+  ZsrvLB = 3;
+  ZsrvLast = 255;
+}
+
+// Service Opaue config
+message ServiceOpqConfig {
+	string oconfig = 1;
+}
+
+message ServiceInstanceConfig {
+	string id = 1;
+	string displayname = 2;
+
+	ZsrvType srvtype = 3;
+
+	// Optional in future we might need this
+	//	VmConfig fixedresources = 3;
+	//	repeated Drive drives = 4;
+
+	bool activate = 5;
+
+	// towards application which networkUUID to use
+	string applink = 1;
+
+	// towards devices which phyiscal or logical adapter to use
+	Adapter devlink = 7;	// I/O adapters to assign to app
+
+	ServiceOpqConfig cfg = 8;
+}
