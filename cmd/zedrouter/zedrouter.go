@@ -42,7 +42,7 @@ const (
 	tmpDirname    = "/var/tmp/zededa"
 	DNCDirname    = tmpDirname + "/DeviceNetworkConfig"
 	DNSDirname    = runDirname + "/DeviceNetworkStatus"
-	DataPlaneName = "dataplane"
+	DataPlaneName = "lisp-ztr"
 )
 
 // Set from Makefile
