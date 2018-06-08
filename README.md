@@ -12,18 +12,27 @@ vendoring those under build-tools/src. This means you don't have to have them
 locally installed, but it also means your first build time will be much longer.
 
 If you're on MacOS the following steps should get you all the dependencies:
-   1. Get Docker:
-      ```
-      https://store.docker.com/editions/community/docker-ce-desktop-mac
-      ```
-   2. Make sure brew is installed:
-      ```
-      https://brew.sh/
-      ```
-   3. Brew install linuxkit, moby and qemu
-      ```
-      $ brew install qemu
-      ```
+
+  1. Get Docker:
+
+  ```
+  https://store.docker.com/editions/community/docker-ce-desktop-mac
+  ```
+  2. Make sure brew is installed:
+
+  ```
+  https://brew.sh/
+  ```
+  3. Add linuxkit tap to brew if needed
+
+  ```
+  brew tap linuxkit/linuxkit
+  ```
+  4. Brew install linuxkit, moby and qemu.
+
+  ```
+  $ brew install qemu linuxkit moby
+  ```
 
 Type `make fallback.img` in the source directory . This will
 download the relevant dockers from docker hub and create a bootable
