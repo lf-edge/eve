@@ -5,8 +5,8 @@ option go_package = "github.com/zededa/api/zconfig";
 
 // import "fw.proto";
 message ipRange {
-	string start;
-	string end;
+	string start = 1;
+	string end = 2;
 }
 
 message ipv4spec {
@@ -37,7 +37,6 @@ message ipv6spec {
 	// for IPAM management when dhcp is turned on.
 	// If none provided, system will default pool.
 	string ipRange = 9;
-}
 }
 
 message NameToEid {

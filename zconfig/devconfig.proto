@@ -8,6 +8,7 @@ import "appconfig.proto";
 import "baseosconfig.proto";
 import "netconfig.proto";
 import "storage.proto";
+import "service.proto";
 
 
 message MapServer {
@@ -46,29 +47,30 @@ message DeviceOpsCmd {
 	string opsTime = 4;
 }
 
-enum adapterType {
+enum sWAdapterType {
+	IGNORE = 0;
 	VLAN = 1;
 	BOND = 2;
 } 
 
-message AdapaterParams {
-	adapterType aType = 1;
+message sWAdapterParams {
+	sWAdapterType aType = 1;
 
 	// vlan
         uint32 vlanId = 9;
 
 	// OR : repeated physical interfaces for bond0
-	repeated bondgroup = 10;
+	repeated string bondgroup = 10;
 }
 
-message Adapters {
+message SystemAdapters {
 	// name of the adapter
 	string name = 1;
 
 	// this software adapter, if its not found on the device create one
 	bool allocate = 2;
 
-	AdapterParams allocDetails = 20;
+	sWAdapterParams allocDetails = 20;
 		
 	// this is part of the uplink group
 	bool uplink = 3;
@@ -95,7 +97,7 @@ message EdgeDevConfig {
 	DeviceOpsCmd backup = 10;
 
 	repeated ConfigItem configItems = 11;	
-	repeated Adapters = 12; 
+	repeated SystemAdapters ios = 12; 
 
 	repeated ServiceInstanceConfig services = 13;
 }

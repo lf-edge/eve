@@ -20,7 +20,7 @@ type ACEMatch struct {
 func (m *ACEMatch) Reset()                    { *m = ACEMatch{} }
 func (m *ACEMatch) String() string            { return proto.CompactTextString(m) }
 func (*ACEMatch) ProtoMessage()               {}
-func (*ACEMatch) Descriptor() ([]byte, []int) { return fileDescriptor1, []int{0} }
+func (*ACEMatch) Descriptor() ([]byte, []int) { return fileDescriptor2, []int{0} }
 
 func (m *ACEMatch) GetType() string {
 	if m != nil {
@@ -47,7 +47,7 @@ type ACEAction struct {
 func (m *ACEAction) Reset()                    { *m = ACEAction{} }
 func (m *ACEAction) String() string            { return proto.CompactTextString(m) }
 func (*ACEAction) ProtoMessage()               {}
-func (*ACEAction) Descriptor() ([]byte, []int) { return fileDescriptor1, []int{1} }
+func (*ACEAction) Descriptor() ([]byte, []int) { return fileDescriptor2, []int{1} }
 
 func (m *ACEAction) GetDrop() bool {
 	if m != nil {
@@ -92,7 +92,7 @@ type ACE struct {
 func (m *ACE) Reset()                    { *m = ACE{} }
 func (m *ACE) String() string            { return proto.CompactTextString(m) }
 func (*ACE) ProtoMessage()               {}
-func (*ACE) Descriptor() ([]byte, []int) { return fileDescriptor1, []int{2} }
+func (*ACE) Descriptor() ([]byte, []int) { return fileDescriptor2, []int{2} }
 
 func (m *ACE) GetMatches() []*ACEMatch {
 	if m != nil {
@@ -114,9 +114,9 @@ func init() {
 	proto.RegisterType((*ACE)(nil), "ACE")
 }
 
-func init() { proto.RegisterFile("fw.proto", fileDescriptor1) }
+func init() { proto.RegisterFile("fw.proto", fileDescriptor2) }
 
-var fileDescriptor1 = []byte{
+var fileDescriptor2 = []byte{
 	// 262 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x4c, 0x50, 0xbb, 0x6e, 0xb3, 0x30,
 	0x14, 0x16, 0x21, 0xf9, 0x03, 0xe7, 0x57, 0x17, 0xab, 0x83, 0x87, 0x5e, 0x10, 0xed, 0xc0, 0x64,
