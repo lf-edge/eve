@@ -415,10 +415,12 @@ type ACE struct {
 	Actions []ACEAction
 }
 
-// The Type can be "ip" or "host" (aka domain name) for now. Matches remote.
-// For now these are bidirectional.
+// The Type can be "ip" or "host" (aka domain name), "eidset", "protocol",
+// "fport", or "lport" for now. The ip and host matches the remote IP/hostname.
 // The host matching is suffix-matching thus zededa.net matches *.zededa.net.
-// Can envision adding "protocol", "fport", "lport", and directionality at least
+// XXX Need "interface"... e.g. "uplink" or "eth1"? Implicit in network used?
+// For now the matches are bidirectional.
+// XXX Add directionality? Different ragte limits in different directions?
 // Value is always a string.
 // There is an implicit reject rule at the end.
 // The "eidset" type is special for the overlay. Matches all the EID which
