@@ -12,8 +12,8 @@ message ipRange {
 message ipv4spec {
 	bool   dhcp = 2;
 
+	// subnet is CIDR format...x.y.z.l/nn
 	string subnet = 3;
-	string mask = 4;
 	string gateway = 5;
 	string domain = 6;
 	string ntp = 7;
@@ -27,8 +27,8 @@ message ipv4spec {
 message ipv6spec {
 	bool   dhcp = 2;
 
+	// subnet is CIDR format...x.y.z.l/nn
 	string subnet = 3;
-	string mask = 4;
 	string gateway = 5;
 	string domain = 6;
 	string ntp = 7;;
@@ -39,6 +39,8 @@ message ipv6spec {
 	string ipRange = 9;
 }
 
+// FIXME: This will all move to network service rather than lispspec in 
+// network common
 message NameToEid {
 	string hostname = 1;
 	repeated string eids = 2;
@@ -57,13 +59,9 @@ message lispspec {
 	repeated NameToEid nmtoeid = 3;
 }
 
-message l2spec {
-}
-
 enum NetworkType {
 	NETWORKTYPENOOP = 0;
 	V4 = 4;
 	V6 = 6;
-	L2 = 2;
 	LISP = 10;
 }

@@ -63,14 +63,14 @@ message sWAdapterParams {
 	repeated string bondgroup = 10;
 }
 
-message SystemAdapters {
+message SystemAdapter {
 	// name of the adapter
 	string name = 1;
 
-	// this software adapter, if its not found on the device create one
-	bool allocate = 2;
-
 	sWAdapterParams allocDetails = 20;
+
+	// this is part of the freelink group
+	bool freeUplink = 2;
 		
 	// this is part of the uplink group
 	bool uplink = 3;
@@ -97,7 +97,7 @@ message EdgeDevConfig {
 	DeviceOpsCmd backup = 10;
 
 	repeated ConfigItem configItems = 11;	
-	repeated SystemAdapters ios = 12; 
+	repeated SystemAdapter systemAdapterList = 12; 
 
 	repeated ServiceInstanceConfig services = 13;
 }

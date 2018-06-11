@@ -20,7 +20,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='netcmn.proto',
   package='',
   syntax='proto3',
-  serialized_pb=_b('\n\x0cnetcmn.proto\"%\n\x07ipRange\x12\r\n\x05start\x18\x01 \x01(\t\x12\x0b\n\x03\x65nd\x18\x02 \x01(\t\"\x82\x01\n\x08ipv4spec\x12\x0c\n\x04\x64hcp\x18\x02 \x01(\x08\x12\x0e\n\x06subnet\x18\x03 \x01(\t\x12\x0c\n\x04mask\x18\x04 \x01(\t\x12\x0f\n\x07gateway\x18\x05 \x01(\t\x12\x0e\n\x06\x64omain\x18\x06 \x01(\t\x12\x0b\n\x03ntp\x18\x07 \x01(\t\x12\x0b\n\x03\x64ns\x18\x08 \x03(\t\x12\x0f\n\x07ipRange\x18\t \x01(\t\"\x82\x01\n\x08ipv6spec\x12\x0c\n\x04\x64hcp\x18\x02 \x01(\x08\x12\x0e\n\x06subnet\x18\x03 \x01(\t\x12\x0c\n\x04mask\x18\x04 \x01(\t\x12\x0f\n\x07gateway\x18\x05 \x01(\t\x12\x0e\n\x06\x64omain\x18\x06 \x01(\t\x12\x0b\n\x03ntp\x18\x07 \x01(\t\x12\x0b\n\x03\x64ns\x18\x08 \x03(\t\x12\x0f\n\x07ipRange\x18\t \x01(\t\"+\n\tNameToEid\x12\x10\n\x08hostname\x18\x01 \x01(\t\x12\x0c\n\x04\x65ids\x18\x02 \x03(\t\"o\n\rEIDAllocation\x12\x10\n\x08\x61llocate\x18\x01 \x01(\x08\x12\x15\n\rexportprivate\x18\x02 \x01(\x08\x12\x18\n\x10\x61llocationprefix\x18\x03 \x01(\x0c\x12\x1b\n\x13\x61llocationprefixlen\x18\x04 \x01(\r\"V\n\x08lispspec\x12\x0b\n\x03iid\x18\x01 \x01(\r\x12 \n\x08\x65idalloc\x18\x02 \x01(\x0b\x32\x0e.EIDAllocation\x12\x1b\n\x07nmtoeid\x18\x03 \x03(\x0b\x32\n.NameToEid\"\x08\n\x06l2spec*D\n\x0bNetworkType\x12\x13\n\x0fNETWORKTYPENOOP\x10\x00\x12\x06\n\x02V4\x10\x04\x12\x06\n\x02V6\x10\x06\x12\x06\n\x02L2\x10\x02\x12\x08\n\x04LISP\x10\nB@\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1dgithub.com/zededa/api/zconfigb\x06proto3')
+  serialized_pb=_b('\n\x0cnetcmn.proto\"%\n\x07ipRange\x12\r\n\x05start\x18\x01 \x01(\t\x12\x0b\n\x03\x65nd\x18\x02 \x01(\t\"t\n\x08ipv4spec\x12\x0c\n\x04\x64hcp\x18\x02 \x01(\x08\x12\x0e\n\x06subnet\x18\x03 \x01(\t\x12\x0f\n\x07gateway\x18\x05 \x01(\t\x12\x0e\n\x06\x64omain\x18\x06 \x01(\t\x12\x0b\n\x03ntp\x18\x07 \x01(\t\x12\x0b\n\x03\x64ns\x18\x08 \x03(\t\x12\x0f\n\x07ipRange\x18\t \x01(\t\"t\n\x08ipv6spec\x12\x0c\n\x04\x64hcp\x18\x02 \x01(\x08\x12\x0e\n\x06subnet\x18\x03 \x01(\t\x12\x0f\n\x07gateway\x18\x05 \x01(\t\x12\x0e\n\x06\x64omain\x18\x06 \x01(\t\x12\x0b\n\x03ntp\x18\x07 \x01(\t\x12\x0b\n\x03\x64ns\x18\x08 \x03(\t\x12\x0f\n\x07ipRange\x18\t \x01(\t\"+\n\tNameToEid\x12\x10\n\x08hostname\x18\x01 \x01(\t\x12\x0c\n\x04\x65ids\x18\x02 \x03(\t\"o\n\rEIDAllocation\x12\x10\n\x08\x61llocate\x18\x01 \x01(\x08\x12\x15\n\rexportprivate\x18\x02 \x01(\x08\x12\x18\n\x10\x61llocationprefix\x18\x03 \x01(\x0c\x12\x1b\n\x13\x61llocationprefixlen\x18\x04 \x01(\r\"V\n\x08lispspec\x12\x0b\n\x03iid\x18\x01 \x01(\r\x12 \n\x08\x65idalloc\x18\x02 \x01(\x0b\x32\x0e.EIDAllocation\x12\x1b\n\x07nmtoeid\x18\x03 \x03(\x0b\x32\n.NameToEid*<\n\x0bNetworkType\x12\x13\n\x0fNETWORKTYPENOOP\x10\x00\x12\x06\n\x02V4\x10\x04\x12\x06\n\x02V6\x10\x06\x12\x08\n\x04LISP\x10\nB@\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1dgithub.com/zededa/api/zconfigb\x06proto3')
 )
 
 _NETWORKTYPE = _descriptor.EnumDescriptor(
@@ -42,18 +42,14 @@ _NETWORKTYPE = _descriptor.EnumDescriptor(
       options=None,
       type=None),
     _descriptor.EnumValueDescriptor(
-      name='L2', index=3, number=2,
-      options=None,
-      type=None),
-    _descriptor.EnumValueDescriptor(
-      name='LISP', index=4, number=10,
+      name='LISP', index=3, number=10,
       options=None,
       type=None),
   ],
   containing_type=None,
   options=None,
-  serialized_start=577,
-  serialized_end=645,
+  serialized_start=537,
+  serialized_end=597,
 )
 _sym_db.RegisterEnumDescriptor(_NETWORKTYPE)
 
@@ -61,7 +57,6 @@ NetworkType = enum_type_wrapper.EnumTypeWrapper(_NETWORKTYPE)
 NETWORKTYPENOOP = 0
 V4 = 4
 V6 = 6
-L2 = 2
 LISP = 10
 
 
@@ -126,42 +121,35 @@ _IPV4SPEC = _descriptor.Descriptor(
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='mask', full_name='ipv4spec.mask', index=2,
-      number=4, type=9, cpp_type=9, label=1,
-      has_default_value=False, default_value=_b("").decode('utf-8'),
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      options=None, file=DESCRIPTOR),
-    _descriptor.FieldDescriptor(
-      name='gateway', full_name='ipv4spec.gateway', index=3,
+      name='gateway', full_name='ipv4spec.gateway', index=2,
       number=5, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='domain', full_name='ipv4spec.domain', index=4,
+      name='domain', full_name='ipv4spec.domain', index=3,
       number=6, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='ntp', full_name='ipv4spec.ntp', index=5,
+      name='ntp', full_name='ipv4spec.ntp', index=4,
       number=7, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='dns', full_name='ipv4spec.dns', index=6,
+      name='dns', full_name='ipv4spec.dns', index=5,
       number=8, type=9, cpp_type=9, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='ipRange', full_name='ipv4spec.ipRange', index=7,
+      name='ipRange', full_name='ipv4spec.ipRange', index=6,
       number=9, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
@@ -179,8 +167,8 @@ _IPV4SPEC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=56,
-  serialized_end=186,
+  serialized_start=55,
+  serialized_end=171,
 )
 
 
@@ -206,42 +194,35 @@ _IPV6SPEC = _descriptor.Descriptor(
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='mask', full_name='ipv6spec.mask', index=2,
-      number=4, type=9, cpp_type=9, label=1,
-      has_default_value=False, default_value=_b("").decode('utf-8'),
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      options=None, file=DESCRIPTOR),
-    _descriptor.FieldDescriptor(
-      name='gateway', full_name='ipv6spec.gateway', index=3,
+      name='gateway', full_name='ipv6spec.gateway', index=2,
       number=5, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='domain', full_name='ipv6spec.domain', index=4,
+      name='domain', full_name='ipv6spec.domain', index=3,
       number=6, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='ntp', full_name='ipv6spec.ntp', index=5,
+      name='ntp', full_name='ipv6spec.ntp', index=4,
       number=7, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='dns', full_name='ipv6spec.dns', index=6,
+      name='dns', full_name='ipv6spec.dns', index=5,
       number=8, type=9, cpp_type=9, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='ipRange', full_name='ipv6spec.ipRange', index=7,
+      name='ipRange', full_name='ipv6spec.ipRange', index=6,
       number=9, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
@@ -259,8 +240,8 @@ _IPV6SPEC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=189,
-  serialized_end=319,
+  serialized_start=173,
+  serialized_end=289,
 )
 
 
@@ -297,8 +278,8 @@ _NAMETOEID = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=321,
-  serialized_end=364,
+  serialized_start=291,
+  serialized_end=334,
 )
 
 
@@ -349,8 +330,8 @@ _EIDALLOCATION = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=366,
-  serialized_end=477,
+  serialized_start=336,
+  serialized_end=447,
 )
 
 
@@ -394,32 +375,8 @@ _LISPSPEC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=479,
-  serialized_end=565,
-)
-
-
-_L2SPEC = _descriptor.Descriptor(
-  name='l2spec',
-  full_name='l2spec',
-  filename=None,
-  file=DESCRIPTOR,
-  containing_type=None,
-  fields=[
-  ],
-  extensions=[
-  ],
-  nested_types=[],
-  enum_types=[
-  ],
-  options=None,
-  is_extendable=False,
-  syntax='proto3',
-  extension_ranges=[],
-  oneofs=[
-  ],
-  serialized_start=567,
-  serialized_end=575,
+  serialized_start=449,
+  serialized_end=535,
 )
 
 _LISPSPEC.fields_by_name['eidalloc'].message_type = _EIDALLOCATION
@@ -430,7 +387,6 @@ DESCRIPTOR.message_types_by_name['ipv6spec'] = _IPV6SPEC
 DESCRIPTOR.message_types_by_name['NameToEid'] = _NAMETOEID
 DESCRIPTOR.message_types_by_name['EIDAllocation'] = _EIDALLOCATION
 DESCRIPTOR.message_types_by_name['lispspec'] = _LISPSPEC
-DESCRIPTOR.message_types_by_name['l2spec'] = _L2SPEC
 DESCRIPTOR.enum_types_by_name['NetworkType'] = _NETWORKTYPE
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
@@ -475,13 +431,6 @@ lispspec = _reflection.GeneratedProtocolMessageType('lispspec', (_message.Messag
   # @@protoc_insertion_point(class_scope:lispspec)
   ))
 _sym_db.RegisterMessage(lispspec)
-
-l2spec = _reflection.GeneratedProtocolMessageType('l2spec', (_message.Message,), dict(
-  DESCRIPTOR = _L2SPEC,
-  __module__ = 'netcmn_pb2'
-  # @@protoc_insertion_point(class_scope:l2spec)
-  ))
-_sym_db.RegisterMessage(l2spec)
 
 
 DESCRIPTOR.has_options = True

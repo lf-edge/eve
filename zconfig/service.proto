@@ -7,9 +7,11 @@ import "devcommon.proto";
 
 enum ZSrvType {
   ZsrvFirst = 0;
-  ZsrvVPN = 1;
-  ZsrvBridge = 2;
-  ZsrvLB = 3;
+  ZsrvStrongSwan = 1;
+  ZsrvLISP = 2;
+  ZsrvBridge = 3;
+  ZsrvNAT = 4;
+  ZsrvLB = 5;
   ZsrvLast = 255;
 }
 

@@ -21,7 +21,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='service.proto',
   package='',
   syntax='proto3',
-  serialized_pb=_b('\n\rservice.proto\x1a\x0f\x64\x65vcommon.proto\"#\n\x10ServiceOpqConfig\x12\x0f\n\x07oconfig\x18\x01 \x01(\t\"\xb2\x01\n\x15ServiceInstanceConfig\x12\n\n\x02id\x18\x01 \x01(\t\x12\x13\n\x0b\x64isplayname\x18\x02 \x01(\t\x12\x1a\n\x07srvtype\x18\x03 \x01(\x0e\x32\t.ZSrvType\x12\x10\n\x08\x61\x63tivate\x18\x05 \x01(\x08\x12\x0f\n\x07\x61pplink\x18\n \x01(\t\x12\x19\n\x07\x64\x65vlink\x18\x14 \x01(\x0b\x32\x08.Adapter\x12\x1e\n\x03\x63\x66g\x18\x1e \x01(\x0b\x32\x11.ServiceOpqConfig*Q\n\x08ZSrvType\x12\r\n\tZsrvFirst\x10\x00\x12\x0b\n\x07ZsrvVPN\x10\x01\x12\x0e\n\nZsrvBridge\x10\x02\x12\n\n\x06ZsrvLB\x10\x03\x12\r\n\x08ZsrvLast\x10\xff\x01\x42@\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1dgithub.com/zededa/api/zconfigb\x06proto3')
+  serialized_pb=_b('\n\rservice.proto\x1a\x0f\x64\x65vcommon.proto\"#\n\x10ServiceOpqConfig\x12\x0f\n\x07oconfig\x18\x01 \x01(\t\"\xb2\x01\n\x15ServiceInstanceConfig\x12\n\n\x02id\x18\x01 \x01(\t\x12\x13\n\x0b\x64isplayname\x18\x02 \x01(\t\x12\x1a\n\x07srvtype\x18\x03 \x01(\x0e\x32\t.ZSrvType\x12\x10\n\x08\x61\x63tivate\x18\x05 \x01(\x08\x12\x0f\n\x07\x61pplink\x18\n \x01(\t\x12\x19\n\x07\x64\x65vlink\x18\x14 \x01(\x0b\x32\x08.Adapter\x12\x1e\n\x03\x63\x66g\x18\x1e \x01(\x0b\x32\x11.ServiceOpqConfig*s\n\x08ZSrvType\x12\r\n\tZsrvFirst\x10\x00\x12\x12\n\x0eZsrvStrongSwan\x10\x01\x12\x0c\n\x08ZsrvLISP\x10\x02\x12\x0e\n\nZsrvBridge\x10\x03\x12\x0b\n\x07ZsrvNAT\x10\x04\x12\n\n\x06ZsrvLB\x10\x05\x12\r\n\x08ZsrvLast\x10\xff\x01\x42@\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1dgithub.com/zededa/api/zconfigb\x06proto3')
   ,
   dependencies=[devcommon__pb2.DESCRIPTOR,])
 
@@ -36,34 +36,44 @@ _ZSRVTYPE = _descriptor.EnumDescriptor(
       options=None,
       type=None),
     _descriptor.EnumValueDescriptor(
-      name='ZsrvVPN', index=1, number=1,
+      name='ZsrvStrongSwan', index=1, number=1,
       options=None,
       type=None),
     _descriptor.EnumValueDescriptor(
-      name='ZsrvBridge', index=2, number=2,
+      name='ZsrvLISP', index=2, number=2,
       options=None,
       type=None),
     _descriptor.EnumValueDescriptor(
-      name='ZsrvLB', index=3, number=3,
+      name='ZsrvBridge', index=3, number=3,
       options=None,
       type=None),
     _descriptor.EnumValueDescriptor(
-      name='ZsrvLast', index=4, number=255,
+      name='ZsrvNAT', index=4, number=4,
+      options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='ZsrvLB', index=5, number=5,
+      options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='ZsrvLast', index=6, number=255,
       options=None,
       type=None),
   ],
   containing_type=None,
   options=None,
   serialized_start=252,
-  serialized_end=333,
+  serialized_end=367,
 )
 _sym_db.RegisterEnumDescriptor(_ZSRVTYPE)
 
 ZSrvType = enum_type_wrapper.EnumTypeWrapper(_ZSRVTYPE)
 ZsrvFirst = 0
-ZsrvVPN = 1
-ZsrvBridge = 2
-ZsrvLB = 3
+ZsrvStrongSwan = 1
+ZsrvLISP = 2
+ZsrvBridge = 3
+ZsrvNAT = 4
+ZsrvLB = 5
 ZsrvLast = 255
 
 

@@ -31,7 +31,7 @@ It has these top-level messages:
 	DeviceLispDetails
 	DeviceOpsCmd
 	SWAdapterParams
-	SystemAdapters
+	SystemAdapter
 	EdgeDevConfig
 	ConfigItem
 	ConfigRequest
@@ -44,7 +44,6 @@ It has these top-level messages:
 	NameToEid
 	EIDAllocation
 	Lispspec
-	L2Spec
 	AppInstanceConfig
 	VmConfig
 	NetworkConfig
