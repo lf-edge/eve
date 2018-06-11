@@ -429,11 +429,17 @@ type ACEMatch struct {
 }
 
 type ACEAction struct {
-	Drop       bool   // Otherwise accept
+	Drop bool // Otherwise accept
+
 	Limit      bool   // Is limiter enabled?
 	LimitRate  int    // Packets per unit
 	LimitUnit  string // "s", "m", "h", for second, minute, hour
 	LimitBurst int    // Packets
+
+	PortMap    bool   // Is port mapping part of action?
+	MapProto   string // "tcp" or "udp"
+	MapPort    int    // External port
+	TargetPort int    // Internal port
 }
 
 // Retrieved from geolocation service for device underlay connectivity

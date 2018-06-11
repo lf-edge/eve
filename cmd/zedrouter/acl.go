@@ -164,7 +164,7 @@ func aclToRules(ifname string, ACLs []types.ACE, ipVer int,
 		rulesList = append(rulesList, rule1, rule2, rule3, rule4)
 	}
 	for _, ace := range ACLs {
-		rules := aceToRules(ifname, ace, ipVer)
+		rules := aceToRules(ifname, ace, ipVer, myIP, appIP)
 		rulesList = append(rulesList, rules...)
 	}
 	// Implicit drop at the end with log before it
@@ -178,7 +178,7 @@ func aclToRules(ifname string, ACLs []types.ACE, ipVer int,
 	return rulesList
 }
 
-func aceToRules(ifname string, ace types.ACE, ipVer int) IptablesRuleList {
+func aceToRules(ifname string, ace types.ACE, ipVer int, myIP string, appIP string) IptablesRuleList {
 	outArgs := []string{"-i", ifname}
 	inArgs := []string{"-o", ifname}
 	for _, match := range ace.Matches {
@@ -257,6 +257,32 @@ func aceToRules(ifname string, ace types.ACE, ipVer int) IptablesRuleList {
 			}
 			outArgs = append(outArgs, add...)
 			inArgs = append(inArgs, add...)
+		} else if action.PortMap {
+			// Generate NAT and ACCEPT rules based on MapProto,
+			// MapPort, and TargetPort
+			mapPort := fmt.Sprintf("%d", action.MapPort)
+			targetPort := fmt.Sprintf("%d", action.TargetPort)
+			target := fmt.Sprintf("%s:22", appIP, action.TargetPort)
+			// These rules should only apply on the uplink
+			// interfaces but for now we just compare the protocol
+			// and port number.
+			rule1 := []string{"PREROUTING",
+				"-p", action.MapProto, "--dport", mapPort,
+				"-j", "DNAT", "--to-destination", target}
+			// Make sure packets are returned to zedrouter and not
+			// e.g., out a directly attached interface in the domU
+			rule2 := []string{"POSTROUTING",
+				"-p", action.MapProto, "-o", ifname,
+				"--dport", targetPort, "-j", "SNAT",
+				"--to-source", myIP}
+			rule3 := []string{"-o", ifname, "-p", action.MapProto,
+				"--dport", mapPort, "-j", "ACCEPT"}
+			rule4 := []string{"-i", ifname, "-p", action.MapProto,
+				"--sport", mapPort, "-j", "ACCEPT"}
+			inArgs = append(inArgs, rule1...)
+			inArgs = append(inArgs, rule3...)
+			outArgs = append(outArgs, rule2...)
+			outArgs = append(outArgs, rule4...)
 		}
 	}
 	if foundDrop {
