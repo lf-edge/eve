@@ -191,6 +191,9 @@ func aceToRules(ifname string, ace types.ACE, ipVer int) IptablesRuleList {
 		case "protocol":
 			addOut = []string{"-p", match.Value}
 			addIn = []string{"-p", match.Value}
+		// XXX add "interface" match? How does devops know whether eth0 or
+		// eth1? Should it be implicit in the underlay in use (with
+		// a special case for "uplink")
 		case "fport":
 			// XXX TCP and UDP implicitly? required by iptables
 			// XXX need to add error checks and return to status

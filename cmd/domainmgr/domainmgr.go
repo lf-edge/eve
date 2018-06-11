@@ -252,6 +252,8 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 	// Name of Xen domain must be unique; uniqify AppNum
 	name := config.DisplayName + "." + strconv.Itoa(config.AppNum)
 
+	// XXX need a channel in memory. Spawn go domainHandler(name, ...)
+
 	// Start by marking with PendingAdd
 	status := types.DomainStatus{
 		UUIDandVersion: config.UUIDandVersion,
