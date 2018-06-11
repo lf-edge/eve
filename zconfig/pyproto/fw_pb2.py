@@ -19,7 +19,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='fw.proto',
   package='',
   syntax='proto3',
-  serialized_pb=_b('\n\x08\x66w.proto\"\'\n\x08\x41\x43\x45Match\x12\x0c\n\x04type\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\"b\n\tACEAction\x12\x0c\n\x04\x64rop\x18\x01 \x01(\x08\x12\r\n\x05limit\x18\x02 \x01(\x08\x12\x11\n\tlimitrate\x18\x03 \x01(\r\x12\x11\n\tlimitunit\x18\x04 \x01(\t\x12\x12\n\nlimitburst\x18\x05 \x01(\r\">\n\x03\x41\x43\x45\x12\x1a\n\x07matches\x18\x01 \x03(\x0b\x32\t.ACEMatch\x12\x1b\n\x07\x61\x63tions\x18\x02 \x03(\x0b\x32\n.ACEActionB@\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1dgithub.com/zededa/api/zconfigb\x06proto3')
+  serialized_pb=_b('\n\x08\x66w.proto\"\'\n\x08\x41\x43\x45Match\x12\x0c\n\x04type\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\"\x84\x01\n\tACEAction\x12\x0c\n\x04\x64rop\x18\x01 \x01(\x08\x12\r\n\x05limit\x18\x02 \x01(\x08\x12\x11\n\tlimitrate\x18\x03 \x01(\r\x12\x11\n\tlimitunit\x18\x04 \x01(\t\x12\x12\n\nlimitburst\x18\x05 \x01(\r\x12\x0f\n\x07portmap\x18\x06 \x01(\x08\x12\x0f\n\x07\x61ppPort\x18\x07 \x01(\r\">\n\x03\x41\x43\x45\x12\x1a\n\x07matches\x18\x01 \x03(\x0b\x32\t.ACEMatch\x12\x1b\n\x07\x61\x63tions\x18\x02 \x03(\x0b\x32\n.ACEActionB@\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1dgithub.com/zededa/api/zconfigb\x06proto3')
 )
 
 
@@ -105,6 +105,20 @@ _ACEACTION = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='portmap', full_name='ACEAction.portmap', index=5,
+      number=6, type=8, cpp_type=7, label=1,
+      has_default_value=False, default_value=False,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='appPort', full_name='ACEAction.appPort', index=6,
+      number=7, type=13, cpp_type=3, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -117,8 +131,8 @@ _ACEACTION = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=53,
-  serialized_end=151,
+  serialized_start=54,
+  serialized_end=186,
 )
 
 
@@ -155,8 +169,8 @@ _ACE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=153,
-  serialized_end=215,
+  serialized_start=188,
+  serialized_end=250,
 )
 
 _ACE.fields_by_name['matches'].message_type = _ACEMATCH
