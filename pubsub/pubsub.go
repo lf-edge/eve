@@ -59,6 +59,7 @@ type publication struct {
 	// Private fields
 	topicType interface{}
 	agentName string
+	agentScope string // XXX objType
 	topic     string
 	km        keyMap
 	sockName  string
@@ -68,6 +69,7 @@ type publication struct {
 // Init function to create directory and socket listener based on above settings
 // XXX should read current state from dirName and insert in pub.km as initial
 // values.
+// XXX add agentScope aka objType
 func Publish(agentName string, topicType interface{}) (*publication, error) {
 	topic := TypeToName(topicType)
 	log.Printf("Publish(%s, %s)\n", agentName, topic)
@@ -146,50 +148,27 @@ func TypeToName(something interface{}) string {
 	return out[len(out)-1]
 }
 
+// XXX add agentScope aka objType
 func SockName(agentName string, topic string) string {
 	return fmt.Sprintf("/var/run/%s/%s.sock", agentName, topic)
 }
 
+// XXX add agentScope aka objType
 func PubDirName(agentName string, topic string) string {
 	return fmt.Sprintf("/var/run/%s/%s", agentName, topic)
-}
-
-// XXX no longer used. Remove if it isn't useful for debug to have
-// global maps
-type topicMap map[string]keyMap
-type agentMap map[string]topicMap
-
-var agentStatusMap agentMap
-
-// XXX var agentConfigMap agentMap
-
-// XXX no longer used
-func checkAndCreateStatusMap(agentName string, topic string) keyMap {
-	if agentStatusMap == nil {
-		agentStatusMap = make(agentMap)
-	}
-	tm, ok := agentStatusMap[agentName]
-	if !ok {
-		agentStatusMap[agentName] = make(topicMap)
-		tm = agentStatusMap[agentName]
-	}
-	km, ok := tm[topic]
-	if !ok {
-		tm[topic] = keyMap{key: make(map[string]interface{})}
-		km = tm[topic]
-	}
-	return km
 }
 
 func (pub *publication) Publish(key string, item interface{}) error {
 	agentName := pub.agentName
 	topic := TypeToName(item)
 	if topic != pub.topic {
+		// XXX add agentScope aka objType
 		errStr := fmt.Sprintf("Publish(%s, %s): item is topic %s",
 			agentName, pub.topic, topic)
 		return errors.New(errStr)
 	}
 	if m, ok := pub.km.key[key]; ok {
+		// XXX fails to equal on e.g., /var/run/downloader/metricsMap/global.json
 		if cmp.Equal(m, item) {
 			if debug {
 				log.Printf("Publish(%s, %s, %s) unchanged\n",
@@ -278,6 +257,7 @@ func (pub *publication) Unpublish(key string) error {
 				agentName, topic, key, m)
 		}
 	} else {
+		// XXX add agentScope aka objType
 		errStr := fmt.Sprintf("Unpublish(%s, %s): key %s does not exist",
 			agentName, pub.topic, key)
 		log.Printf("XXX %s\n", errStr)
@@ -293,6 +273,7 @@ func (pub *publication) Unpublish(key string) error {
 		log.Printf("Unpublish deleting %s\n", fileName)
 	}
 	if err := os.Remove(fileName); err != nil {
+		// XXX add agentScope aka objType
 		errStr := fmt.Sprintf("Publish(%s, %s): %s",
 			agentName, pub.topic, err)
 		return errors.New(errStr)
@@ -328,6 +309,7 @@ func (pub *publication) dump(infoStr string) {
 	}
 }
 
+// XXX add agentScope aka objType
 func (pub *publication) Get(key string) (interface{}, error) {
 	m, ok := pub.km.key[key]
 	if ok {
@@ -339,6 +321,7 @@ func (pub *publication) Get(key string) (interface{}, error) {
 	}
 }
 
+// XXX add agentScope aka objType
 // Enumerate all the key, value for the collection
 func (pub *publication) GetAll() map[string]interface{} {
 	result := make(map[string]interface{})
@@ -370,6 +353,7 @@ type subscription struct {
 	// Private fields
 	topicType interface{}
 	agentName string
+	// XXX add agentScope aka objType
 	topic     string
 	km        keyMap
 	userCtx   interface{}
@@ -380,6 +364,7 @@ type subscription struct {
 // handleModify and/or handleDelete functions
 // XXX separate function to subscribe to diffs i.e. WatchConfigStatus?
 // Layer above this pubsub? Wapper to do px.Get(key) and compare?
+// XXX add agentScope aka objType
 func Subscribe(agentName string, topicType interface{}, ctx interface{}) (*subscription, error) {
 	topic := TypeToName(topicType)
 	log.Printf("Subscribe(%s, %s)\n", agentName, topic)
@@ -387,6 +372,7 @@ func Subscribe(agentName string, topicType interface{}, ctx interface{}) (*subsc
 		// XXX TBD add waiting for directory to appear?
 		dirName := PubDirName(agentName, topic)
 		if _, err := os.Stat(dirName); err != nil {
+			// XXX add agentScope aka objType
 			errStr := fmt.Sprintf("Subscribe(%s, %s): %s",
 				agentName, topic, err)
 			return nil, errors.New(errStr)
@@ -405,6 +391,7 @@ func Subscribe(agentName string, topicType interface{}, ctx interface{}) (*subsc
 		errStr := fmt.Sprintf("subscribeFromSock not implemented")
 		return nil, errors.New(errStr)
 	} else {
+		// XXX add agentScope aka objType
 		errStr := fmt.Sprintf("Subscribe(%s, %s): %s",
 			agentName, topic, "nowhere to subscribe")
 		return nil, errors.New(errStr)
@@ -467,6 +454,7 @@ func handleDelete(ctxArg interface{}, key string) {
 	}
 }
 
+// XXX add agentScope aka objType
 func (sub *subscription) Get(key string) (interface{}, error) {
 	m, ok := sub.km.key[key]
 	if ok {
@@ -478,6 +466,7 @@ func (sub *subscription) Get(key string) (interface{}, error) {
 	}
 }
 
+// XXX add agentScope aka objType
 // Enumerate all the key, value for the collection
 func (sub *subscription) GetAll() map[string]interface{} {
 	result := make(map[string]interface{})

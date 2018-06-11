@@ -1082,7 +1082,7 @@ func getNetInfo(interfaceDetail psutilnet.InterfaceStat) *zmet.ZInfoNetwork {
 
 	// XXX fill in ZInfoDNS dns
 	// XXX from correct resolv conf file - static map from intf to file?
-
+	// XXX in /hostfs/containers/services/dhcpcd/tmp/upper/run/dhcpcd/resolv.conf/eth0.dhcp; place in
 	for _, fl := range interfaceDetail.Flags {
 		if fl == "up" {
 			networkInfo.Up = true
