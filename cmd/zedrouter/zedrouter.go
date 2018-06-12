@@ -638,7 +638,9 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		if err != nil {
 			log.Printf("createACLConfiglet failed for %s: %s\n",
 				config.DisplayName, err)
-			// XXX return error - need AppNetworkStatus error
+			status.Error = appendError(status.Error, "createACL",
+				err.Error())
+			status.ErrorTime = time.Now()
 		}
 
 		// Save information about zedmanger EID and additional info
@@ -797,7 +799,9 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		if err != nil {
 			log.Printf("createACLConfiglet failed for %s: %s\n",
 				config.DisplayName, err)
-			// XXX return error - need AppNetworkStatus error
+			status.Error = appendError(status.Error, "createACL",
+				err.Error())
+			status.ErrorTime = time.Now()
 		}
 
 		// Start clean
@@ -895,7 +899,9 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		if err != nil {
 			log.Printf("createACLConfiglet failed for %s: %s\n",
 				config.DisplayName, err)
-			// XXX return error - need AppNetworkStatus error
+			status.Error = appendError(status.Error, "createACL",
+				err.Error())
+			status.ErrorTime = time.Now()
 		}
 
 		// Start clean
@@ -993,8 +999,12 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 		if err != nil {
 			log.Printf("updateACLConfiglet failed for %s: %s\n",
 				config.DisplayName, err)
-			// XXX return error - need AppNetworkStatus error
+			status.Error = appendError(status.Error, "updateACL",
+				err.Error())
+			status.ErrorTime = time.Now()
 		}
+		status.PendingModify = false
+		writeAppNetworkStatus(status, statusFilename)
 		log.Printf("handleModify done for %s\n", config.DisplayName)
 		return
 	}
@@ -1031,7 +1041,9 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 		if err != nil {
 			log.Printf("updateACLConfiglet failed for %s: %s\n",
 				config.DisplayName, err)
-			// XXX return error - need AppNetworkStatus error
+			status.Error = appendError(status.Error, "updateACL",
+				err.Error())
+			status.ErrorTime = time.Now()
 		}
 
 		// updateAppInstanceIpsets told us whether there is a change
@@ -1085,7 +1097,9 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 		if err != nil {
 			log.Printf("updateACLConfiglet failed for %s: %s\n",
 				config.DisplayName, err)
-			// XXX return error - need AppNetworkStatus error
+			status.Error = appendError(status.Error, "updateACL",
+				err.Error())
+			status.ErrorTime = time.Now()
 		}
 
 		if restartDnsmasq {
@@ -1226,7 +1240,9 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 		if err != nil {
 			log.Printf("deleteACLConfiglet failed for %s: %s\n",
 				status.DisplayName, err)
-			// XXX return error - need AppNetworkStatus error
+			status.Error = appendError(status.Error, "deleteACL",
+				err.Error())
+			status.ErrorTime = time.Now()
 		}
 
 		// Delete LISP configlets
@@ -1273,7 +1289,9 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 				if err != nil {
 					log.Printf("deleteACLConfiglet failed for %s: %s\n",
 						status.DisplayName, err)
-					// XXX return error - need AppNetworkStatus error
+					status.Error = appendError(status.Error, "deleteACL",
+						err.Error())
+					status.ErrorTime = time.Now()
 				}
 
 				// Delete LISP configlets
@@ -1335,7 +1353,9 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 				if err != nil {
 					log.Printf("deleteACLConfiglet failed for %s: %s\n",
 						status.DisplayName, err)
-					// XXX return error - need AppNetworkStatus error
+					status.Error = appendError(status.Error, "deleteACL",
+						err.Error())
+					status.ErrorTime = time.Now()
 				}
 			} else {
 				log.Println("Missing status for underlay %d; can not clean up ACLs\n",
@@ -1343,6 +1363,9 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 			}
 		}
 	}
+	status.PendingDelete = false
+	writeAppNetworkStatus(status, statusFilename)
+
 	// Write out what we modified to AppNetworkStatus aka delete
 	removeAppNetworkStatus(status)
 
@@ -1437,4 +1460,8 @@ func doDNSUpdate(ctx *DNCContext) {
 	//	iptableCmd("-t", "nat", "-A", "POSTROUTING", "-o", u,
 	//		"-s", "172.27.0.0/16", "-j", "MASQUERADE")
 	//}
+}
+
+func appendError(allErrors string, prefix string, lasterr string) string {
+	return fmt.Sprintf("%s%s: %s\n\n", allErrors, prefix, lasterr)
 }

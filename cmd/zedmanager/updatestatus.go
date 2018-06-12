@@ -522,6 +522,15 @@ func doActivate(uuidStr string, config types.AppInstanceConfig,
 		log.Printf("Waiting for AppNetworkStatus for %s\n", uuidStr)
 		return changed
 	}
+	if ns.Error != "" {
+		log.Printf("Received error from zedrouter for %s: %s\n",
+			uuidStr, ns.Error)
+		status.State = types.INITIAL
+		status.Error = ns.Error
+		status.ErrorTime = ns.ErrorTime
+		changed = true
+		return changed
+	}
 	if debug {
 		log.Printf("Done with AppNetworkStatus for %s\n", uuidStr)
 	}
@@ -638,10 +647,18 @@ func doInactivate(uuidStr string, status *types.AppInstanceStatus) bool {
 	MaybeRemoveAppNetworkConfig(uuidStr)
 
 	// Check if AppNetworkStatus gone
-	_, err = LookupAppNetworkStatus(uuidStr)
+	ns, err := LookupAppNetworkStatus(uuidStr)
 	if err == nil {
 		log.Printf("Waiting for AppNetworkStatus removal for %s\n",
 			uuidStr)
+		if ns.Error != "" {
+			log.Printf("Received error from zedrouter for %s: %s\n",
+				uuidStr, ns.Error)
+			status.State = types.INITIAL
+			status.Error = ns.Error
+			status.ErrorTime = ns.ErrorTime
+			changed = true
+		}
 		return changed
 	}
 	if debug {

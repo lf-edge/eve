@@ -62,6 +62,9 @@ type AppNetworkStatus struct {
 	SeparateDataPlane   bool
 	OverlayNetworkList  []OverlayNetworkStatus
 	UnderlayNetworkList []UnderlayNetworkStatus
+	// Any errros from provisioning the network
+	Error     string
+	ErrorTime time.Time
 }
 
 func (status AppNetworkStatus) VerifyFilename(fileName string) bool {
