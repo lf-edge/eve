@@ -57,6 +57,7 @@ message sWAdapterParams {
 	sWAdapterType aType = 1;
 
 	// vlan
+	string underlayInterface = 8;
         uint32 vlanId = 9;
 
 	// OR : repeated physical interfaces for bond0
