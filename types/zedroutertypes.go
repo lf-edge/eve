@@ -438,10 +438,8 @@ type ACEAction struct {
 	LimitUnit  string // "s", "m", "h", for second, minute, hour
 	LimitBurst int    // Packets
 
-	PortMap    bool   // Is port mapping part of action?
-	MapProto   string // "tcp" or "udp"
-	MapPort    int    // External port
-	TargetPort int    // Internal port
+	PortMap    bool // Is port mapping part of action?
+	TargetPort int  // Internal port
 }
 
 // Retrieved from geolocation service for device underlay connectivity
