@@ -33,6 +33,10 @@ message NetworkAdapter {
 	bytes  pemcert = 7;
 	bytes  pemprivatekey = 8;
 
+	// used in case of P2V, where we want to specify a macAddress
+	// to vif, that is simulated towards app
+	string macAddress = 9; 
+
 	// firewall
 	repeated ACE acls = 40;
 }
