@@ -1,6 +1,7 @@
 FROM ZTOOLS_TAG as ztools
 FROM XENTOOLS_TAG as xen-tools
 FROM DNSMASQ_TAG as dnsmasq
+FROM STRONGSWAN_TAG as strongswan
 FROM GPTTOOLS_TAG as gpttools
 FROM WATCHDOG_TAG as watchdog
 
@@ -24,6 +25,7 @@ COPY --from=xen-tools / /
 COPY --from=ztools / /
 COPY --from=gpttools / /
 COPY --from=dnsmasq /usr/sbin/dnsmasq /opt/zededa/bin/dnsmasq
+COPY --from=strongswan / /
 COPY --from=watchdog /usr/sbin /usr/sbin
 
 # And now a few local tweaks
