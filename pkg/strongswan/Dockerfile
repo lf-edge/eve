@@ -5,35 +5,11 @@
 FROM alpine:3.6 as build
 
 ENV STRONGSWAN_RELEASE https://download.strongswan.org/strongswan.tar.bz2
-
-RUN apk add --no-cache \
-    gcc \
-    make \
-    patch \
-    libc-dev \
-    linux-headers \
-    tar
-
-WORKDIR /tmp/strongswan
-RUN mkdir -p /tmp/strongswan
-RUN mkdir -p /out
-
-RUN apk --update add build-base \
-            ca-certificates \
-            iptables \
-            iproute2 \
-			openssl \
-			openssl-dev \
-            curl\
-            curl-dev
-
-RUN  curl -Lo /tmp/strongswan/strongswan.tar.bz2 $STRONGSWAN_RELEASE 
-RUN  tar --strip-components=1 -C /tmp/strongswan -xjf /tmp/strongswan/strongswan.tar.bz2
-RUN  ./configure --prefix=/usr \
+ENV CONFIGURE_OPTS_x86_64 --enable-aesni
+ENV CONFIGURE_OPTS --prefix=/usr \
             --sysconfdir=/etc \
             --libexecdir=/usr/lib \
             --with-ipsecdir=/usr/lib/strongswan \
-            --enable-aesni \
             --enable-chapoly \
             --enable-cmd \
             --enable-curl \
@@ -63,6 +39,31 @@ RUN  ./configure --prefix=/usr \
             --disable-sha1 \
             --disable-sha2 \
             --disable-static
+
+RUN apk add --no-cache \
+    gcc \
+    make \
+    patch \
+    libc-dev \
+    linux-headers \
+    tar
+
+WORKDIR /tmp/strongswan
+RUN mkdir -p /tmp/strongswan
+RUN mkdir -p /out
+
+RUN apk --update add build-base \
+            ca-certificates \
+            iptables \
+            iproute2 \
+			openssl \
+			openssl-dev \
+            curl\
+            curl-dev
+
+RUN  curl -Lo /tmp/strongswan/strongswan.tar.bz2 $STRONGSWAN_RELEASE 
+RUN  tar --strip-components=1 -C /tmp/strongswan -xjf /tmp/strongswan/strongswan.tar.bz2
+RUN  eval ./configure $CONFIGURE_OPTS \$CONFIGURE_OPTS_`uname -m`
 RUN    make 
 RUN    make install DESTDIR=/out
 
