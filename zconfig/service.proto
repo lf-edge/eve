@@ -15,8 +15,9 @@ enum ZSrvType {
   ZsrvLast = 255;
 }
 
-// Service Opaue config
-message ServiceOpqConfig {
+// Service Opaque config. In future we might add more fields here
+// but idea is here. This is service specific configuration.
+message ServiceOpaqueConfig {
 	string oconfig = 1;
 }
 
@@ -29,14 +30,16 @@ message ServiceInstanceConfig {
 	// Optional in future we might need this
 	//	VmConfig fixedresources = 3;
 	//	repeated Drive drives = 4;
-
 	bool activate = 5;
 
 	// towards application which networkUUID to use
+	// FIXME: In future there might multiple application network assignment
+	// so this will become repeated.
 	string applink = 10;
 
 	// towards devices which phyiscal or logical adapter to use
 	Adapter devlink = 20;	// I/O adapters to assign to app
 
-	ServiceOpqConfig cfg = 30;
+	// Opaque configuration
+	ServiceOpaqueConfig cfg = 30;
 }

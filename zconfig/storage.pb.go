@@ -21,7 +21,7 @@ It has these top-level messages:
 	DatastoreConfig
 	Image
 	Drive
-	ServiceOpqConfig
+	ServiceOpaqueConfig
 	ServiceInstanceConfig
 	ACEMatch
 	ACEAction

@@ -3,7 +3,6 @@ syntax = "proto3";
 option java_package = "com.zededa.cloud.uservice.proto";
 option go_package = "github.com/zededa/api/zconfig";
 
-// import "fw.proto";
 message ipRange {
 	string start = 1;
 	string end = 2;
@@ -21,7 +20,7 @@ message ipv4spec {
 
 	// for IPAM management when dhcp is turned on.
 	// If none provided, system will default pool.
-	string ipRange = 9;
+	ipRange dhcpRange = 9;
 }
 
 message ipv6spec {
@@ -36,7 +35,7 @@ message ipv6spec {
 
 	// for IPAM management when dhcp is turned on.
 	// If none provided, system will default pool.
-	string ipRange = 9;
+	ipRange dhcpRange = 9;
 }
 
 // FIXME: This will all move to network service rather than lispspec in 
