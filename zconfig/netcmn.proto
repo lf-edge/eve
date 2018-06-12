@@ -8,8 +8,15 @@ message ipRange {
 	string end = 2;
 }
 
+enum DHCPType {
+	DHCPNoop = 0;
+	Static = 1;
+	PassThrough = 2;
+	Server = 3;
+}
+
 message ipv4spec {
-	bool   dhcp = 2;
+	DHCPType   dhcp = 2;
 
 	// subnet is CIDR format...x.y.z.l/nn
 	string subnet = 3;
@@ -24,7 +31,7 @@ message ipv4spec {
 }
 
 message ipv6spec {
-	bool   dhcp = 2;
+	DHCPType   dhcp = 2;
 
 	// subnet is CIDR format...x.y.z.l/nn
 	string subnet = 3;
@@ -64,3 +71,4 @@ enum NetworkType {
 	V6 = 6;
 	LISP = 10;
 }
+

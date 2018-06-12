@@ -20,9 +20,40 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='netcmn.proto',
   package='',
   syntax='proto3',
-  serialized_pb=_b('\n\x0cnetcmn.proto\"%\n\x07ipRange\x12\r\n\x05start\x18\x01 \x01(\t\x12\x0b\n\x03\x65nd\x18\x02 \x01(\t\"\x80\x01\n\x08ipv4spec\x12\x0c\n\x04\x64hcp\x18\x02 \x01(\x08\x12\x0e\n\x06subnet\x18\x03 \x01(\t\x12\x0f\n\x07gateway\x18\x05 \x01(\t\x12\x0e\n\x06\x64omain\x18\x06 \x01(\t\x12\x0b\n\x03ntp\x18\x07 \x01(\t\x12\x0b\n\x03\x64ns\x18\x08 \x03(\t\x12\x1b\n\tdhcpRange\x18\t \x01(\x0b\x32\x08.ipRange\"\x80\x01\n\x08ipv6spec\x12\x0c\n\x04\x64hcp\x18\x02 \x01(\x08\x12\x0e\n\x06subnet\x18\x03 \x01(\t\x12\x0f\n\x07gateway\x18\x05 \x01(\t\x12\x0e\n\x06\x64omain\x18\x06 \x01(\t\x12\x0b\n\x03ntp\x18\x07 \x01(\t\x12\x0b\n\x03\x64ns\x18\x08 \x03(\t\x12\x1b\n\tdhcpRange\x18\t \x01(\x0b\x32\x08.ipRange\"+\n\tNameToEid\x12\x10\n\x08hostname\x18\x01 \x01(\t\x12\x0c\n\x04\x65ids\x18\x02 \x03(\t\"o\n\rEIDAllocation\x12\x10\n\x08\x61llocate\x18\x01 \x01(\x08\x12\x15\n\rexportprivate\x18\x02 \x01(\x08\x12\x18\n\x10\x61llocationprefix\x18\x03 \x01(\x0c\x12\x1b\n\x13\x61llocationprefixlen\x18\x04 \x01(\r\"V\n\x08lispspec\x12\x0b\n\x03iid\x18\x01 \x01(\r\x12 \n\x08\x65idalloc\x18\x02 \x01(\x0b\x32\x0e.EIDAllocation\x12\x1b\n\x07nmtoeid\x18\x03 \x03(\x0b\x32\n.NameToEid*<\n\x0bNetworkType\x12\x13\n\x0fNETWORKTYPENOOP\x10\x00\x12\x06\n\x02V4\x10\x04\x12\x06\n\x02V6\x10\x06\x12\x08\n\x04LISP\x10\nB@\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1dgithub.com/zededa/api/zconfigb\x06proto3')
+  serialized_pb=_b('\n\x0cnetcmn.proto\"%\n\x07ipRange\x12\r\n\x05start\x18\x01 \x01(\t\x12\x0b\n\x03\x65nd\x18\x02 \x01(\t\"\x8b\x01\n\x08ipv4spec\x12\x17\n\x04\x64hcp\x18\x02 \x01(\x0e\x32\t.DHCPType\x12\x0e\n\x06subnet\x18\x03 \x01(\t\x12\x0f\n\x07gateway\x18\x05 \x01(\t\x12\x0e\n\x06\x64omain\x18\x06 \x01(\t\x12\x0b\n\x03ntp\x18\x07 \x01(\t\x12\x0b\n\x03\x64ns\x18\x08 \x03(\t\x12\x1b\n\tdhcpRange\x18\t \x01(\x0b\x32\x08.ipRange\"\x8b\x01\n\x08ipv6spec\x12\x17\n\x04\x64hcp\x18\x02 \x01(\x0e\x32\t.DHCPType\x12\x0e\n\x06subnet\x18\x03 \x01(\t\x12\x0f\n\x07gateway\x18\x05 \x01(\t\x12\x0e\n\x06\x64omain\x18\x06 \x01(\t\x12\x0b\n\x03ntp\x18\x07 \x01(\t\x12\x0b\n\x03\x64ns\x18\x08 \x03(\t\x12\x1b\n\tdhcpRange\x18\t \x01(\x0b\x32\x08.ipRange\"+\n\tNameToEid\x12\x10\n\x08hostname\x18\x01 \x01(\t\x12\x0c\n\x04\x65ids\x18\x02 \x03(\t\"o\n\rEIDAllocation\x12\x10\n\x08\x61llocate\x18\x01 \x01(\x08\x12\x15\n\rexportprivate\x18\x02 \x01(\x08\x12\x18\n\x10\x61llocationprefix\x18\x03 \x01(\x0c\x12\x1b\n\x13\x61llocationprefixlen\x18\x04 \x01(\r\"V\n\x08lispspec\x12\x0b\n\x03iid\x18\x01 \x01(\r\x12 \n\x08\x65idalloc\x18\x02 \x01(\x0b\x32\x0e.EIDAllocation\x12\x1b\n\x07nmtoeid\x18\x03 \x03(\x0b\x32\n.NameToEid*A\n\x08\x44HCPType\x12\x0c\n\x08\x44HCPNoop\x10\x00\x12\n\n\x06Static\x10\x01\x12\x0f\n\x0bPassThrough\x10\x02\x12\n\n\x06Server\x10\x03*<\n\x0bNetworkType\x12\x13\n\x0fNETWORKTYPENOOP\x10\x00\x12\x06\n\x02V4\x10\x04\x12\x06\n\x02V6\x10\x06\x12\x08\n\x04LISP\x10\nB@\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1dgithub.com/zededa/api/zconfigb\x06proto3')
 )
 
+_DHCPTYPE = _descriptor.EnumDescriptor(
+  name='DHCPType',
+  full_name='DHCPType',
+  filename=None,
+  file=DESCRIPTOR,
+  values=[
+    _descriptor.EnumValueDescriptor(
+      name='DHCPNoop', index=0, number=0,
+      options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='Static', index=1, number=1,
+      options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='PassThrough', index=2, number=2,
+      options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='Server', index=3, number=3,
+      options=None,
+      type=None),
+  ],
+  containing_type=None,
+  options=None,
+  serialized_start=585,
+  serialized_end=650,
+)
+_sym_db.RegisterEnumDescriptor(_DHCPTYPE)
+
+DHCPType = enum_type_wrapper.EnumTypeWrapper(_DHCPTYPE)
 _NETWORKTYPE = _descriptor.EnumDescriptor(
   name='NetworkType',
   full_name='NetworkType',
@@ -48,12 +79,16 @@ _NETWORKTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=563,
-  serialized_end=623,
+  serialized_start=652,
+  serialized_end=712,
 )
 _sym_db.RegisterEnumDescriptor(_NETWORKTYPE)
 
 NetworkType = enum_type_wrapper.EnumTypeWrapper(_NETWORKTYPE)
+DHCPNoop = 0
+Static = 1
+PassThrough = 2
+Server = 3
 NETWORKTYPENOOP = 0
 V4 = 4
 V6 = 6
@@ -108,8 +143,8 @@ _IPV4SPEC = _descriptor.Descriptor(
   fields=[
     _descriptor.FieldDescriptor(
       name='dhcp', full_name='ipv4spec.dhcp', index=0,
-      number=2, type=8, cpp_type=7, label=1,
-      has_default_value=False, default_value=False,
+      number=2, type=14, cpp_type=8, label=1,
+      has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
@@ -168,7 +203,7 @@ _IPV4SPEC = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=56,
-  serialized_end=184,
+  serialized_end=195,
 )
 
 
@@ -181,8 +216,8 @@ _IPV6SPEC = _descriptor.Descriptor(
   fields=[
     _descriptor.FieldDescriptor(
       name='dhcp', full_name='ipv6spec.dhcp', index=0,
-      number=2, type=8, cpp_type=7, label=1,
-      has_default_value=False, default_value=False,
+      number=2, type=14, cpp_type=8, label=1,
+      has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
@@ -240,8 +275,8 @@ _IPV6SPEC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=187,
-  serialized_end=315,
+  serialized_start=198,
+  serialized_end=337,
 )
 
 
@@ -278,8 +313,8 @@ _NAMETOEID = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=317,
-  serialized_end=360,
+  serialized_start=339,
+  serialized_end=382,
 )
 
 
@@ -330,8 +365,8 @@ _EIDALLOCATION = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=362,
-  serialized_end=473,
+  serialized_start=384,
+  serialized_end=495,
 )
 
 
@@ -375,11 +410,13 @@ _LISPSPEC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=475,
-  serialized_end=561,
+  serialized_start=497,
+  serialized_end=583,
 )
 
+_IPV4SPEC.fields_by_name['dhcp'].enum_type = _DHCPTYPE
 _IPV4SPEC.fields_by_name['dhcpRange'].message_type = _IPRANGE
+_IPV6SPEC.fields_by_name['dhcp'].enum_type = _DHCPTYPE
 _IPV6SPEC.fields_by_name['dhcpRange'].message_type = _IPRANGE
 _LISPSPEC.fields_by_name['eidalloc'].message_type = _EIDALLOCATION
 _LISPSPEC.fields_by_name['nmtoeid'].message_type = _NAMETOEID
@@ -389,6 +426,7 @@ DESCRIPTOR.message_types_by_name['ipv6spec'] = _IPV6SPEC
 DESCRIPTOR.message_types_by_name['NameToEid'] = _NAMETOEID
 DESCRIPTOR.message_types_by_name['EIDAllocation'] = _EIDALLOCATION
 DESCRIPTOR.message_types_by_name['lispspec'] = _LISPSPEC
+DESCRIPTOR.enum_types_by_name['DHCPType'] = _DHCPTYPE
 DESCRIPTOR.enum_types_by_name['NetworkType'] = _NETWORKTYPE
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
