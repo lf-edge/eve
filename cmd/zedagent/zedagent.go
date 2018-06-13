@@ -144,6 +144,9 @@ type deviceContext struct {
 
 var debug = false
 
+var pubNetworkConfig *pubsub.Publication
+var pubNetworkService *pubsub.Publication
+
 // XXX temporary hack for writeBaseOsStatus
 var devCtx deviceContext
 
@@ -179,6 +182,17 @@ func Run() {
 	handleInit()
 
 	watch.SignalRestart(agentName)
+
+	// Publish NetworkConfig and NetworkService for zedmanager/zedrouter
+	pubNetworkConfig, err = pubsub.Publish(agentName, types.NetworkConfig{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	pubNetworkService, err = pubsub.Publish(agentName, types.NetworkService{})
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	var restartFn watch.StatusRestartHandler = handleRestart
 
 	restartChanges := make(chan string)
