@@ -6,6 +6,7 @@
 package zedrouter
 
 import (
+	"errors"
 	"fmt"
 	"github.com/zededa/go-provision/types"
 	"log"
@@ -82,13 +83,16 @@ func compileOldAppInstanceIpsets(ollist []types.OverlayNetworkStatus,
 }
 
 func createACLConfiglet(ifname string, isMgmt bool, ACLs []types.ACE,
-	ipVer int, myIP string, appIP string, underlaySshPortMap uint) {
+	ipVer int, myIP string, appIP string, underlaySshPortMap uint) error {
 	if debug {
 		log.Printf("createACLConfiglet: ifname %s, ACLs %v, IP %s/%s, ssh %d\n",
 			ifname, ACLs, myIP, appIP, underlaySshPortMap)
 	}
-	rules := aclToRules(ifname, ACLs, ipVer, myIP, appIP,
+	rules, err := aclToRules(ifname, ACLs, ipVer, myIP, appIP,
 		underlaySshPortMap)
+	if err != nil {
+		return err
+	}
 	for _, rule := range rules {
 		if debug {
 			log.Printf("createACLConfiglet: rule %v\n", rule)
@@ -103,15 +107,21 @@ func createACLConfiglet(ifname string, isMgmt bool, ACLs []types.ACE,
 		}
 		args = append(args, rule...)
 		if ipVer == 4 {
-			iptableCmd(args...)
+			err = iptableCmd(args...)
 		} else if ipVer == 6 {
-			ip6tableCmd(args...)
+			err = ip6tableCmd(args...)
+		} else {
+			err = errors.New(fmt.Sprintf("ACL: Unknown IP version %d", ipVer))
+		}
+		if err != nil {
+			return err
 		}
 	}
 	if !isMgmt {
 		// Add mangle rules for IPv6 packets from the domU (overlay or
 		// underlay) since netfront/netback thinks there is checksum
 		// offload
+		// XXX add error checks?
 		ip6tableCmd("-t", "mangle", "-A", "PREROUTING", "-i", ifname,
 			"-p", "tcp", "-j", "CHECKSUM", "--checksum-fill")
 		ip6tableCmd("-t", "mangle", "-A", "PREROUTING", "-i", ifname,
@@ -123,14 +133,16 @@ func createACLConfiglet(ifname string, isMgmt bool, ACLs []types.ACE,
 	if false && ipVer == 6 && !isMgmt {
 		// Manually add rules so that lispers.net doesn't see and drop
 		// the packet on dbo1x0
+		// XXX add error checks?
 		ip6tableCmd("-A", "FORWARD", "-i", ifname, "-o", "dbo1x0",
 			"-j", "DROP")
 	}
+	return nil
 }
 
 // Returns a list of iptables commands, witout the initial "-A FORWARD"
 func aclToRules(ifname string, ACLs []types.ACE, ipVer int,
-	myIP string, appIP string, underlaySshPortMap uint) IptablesRuleList {
+	myIP string, appIP string, underlaySshPortMap uint) (IptablesRuleList, error) {
 	rulesList := IptablesRuleList{}
 	// XXX should we check isMgmt instead of myIP?
 	if ipVer == 6 && myIP != "" {
@@ -164,7 +176,10 @@ func aclToRules(ifname string, ACLs []types.ACE, ipVer int,
 		rulesList = append(rulesList, rule1, rule2, rule3, rule4)
 	}
 	for _, ace := range ACLs {
-		rules := aceToRules(ifname, ace, ipVer)
+		rules, err := aceToRules(ifname, ace, ipVer, myIP, appIP)
+		if err != nil {
+			return nil, err
+		}
 		rulesList = append(rulesList, rules...)
 	}
 	// Implicit drop at the end with log before it
@@ -175,12 +190,19 @@ func aclToRules(ifname string, ACLs []types.ACE, ipVer int,
 	outArgs2 := []string{"-i", ifname, "-j", "DROP"}
 	inArgs2 := []string{"-o", ifname, "-j", "DROP"}
 	rulesList = append(rulesList, outArgs1, inArgs1, outArgs2, inArgs2)
-	return rulesList
+	return rulesList, nil
 }
 
-func aceToRules(ifname string, ace types.ACE, ipVer int) IptablesRuleList {
+// XXX Pass uplinkIf as argument? Caller sets if specific interface.
+// Handling "uplink" and "freeuplink" is TBD
+// XXX could we create/maintain ... some uplink rule
+func aceToRules(ifname string, ace types.ACE, ipVer int, myIP string, appIP string) (IptablesRuleList, error) {
 	outArgs := []string{"-i", ifname}
 	inArgs := []string{"-o", ifname}
+	// Extract lport and protocol from the Matches to use for PortMap
+	lport := ""
+	protocol := ""
+	fport := ""
 	for _, match := range ace.Matches {
 		addOut := []string{}
 		addIn := []string{}
@@ -191,18 +213,17 @@ func aceToRules(ifname string, ace types.ACE, ipVer int) IptablesRuleList {
 		case "protocol":
 			addOut = []string{"-p", match.Value}
 			addIn = []string{"-p", match.Value}
-		// XXX add "interface" match? How does devops know whether eth0 or
-		// eth1? Should it be implicit in the underlay in use (with
-		// a special case for "uplink")
+			protocol = match.Value
 		case "fport":
-			// XXX TCP and UDP implicitly? required by iptables
-			// XXX need to add error checks and return to status
+			// Need a protocol as well. Checked below.
 			addOut = []string{"--dport", match.Value}
 			addIn = []string{"--sport", match.Value}
+			fport = match.Value
 		case "lport":
-			// XXX TCP and UDP implicitly? required
+			// Need a protocol as well. Checked below.
 			addOut = []string{"--sport", match.Value}
 			addIn = []string{"--dport", match.Value}
+			lport = match.Value
 		case "host":
 			// Ensure the sets exists; create if not
 			// need to feed it into dnsmasq as well; restart
@@ -230,13 +251,28 @@ func aceToRules(ifname string, ace types.ACE, ipVer int) IptablesRuleList {
 			addIn = []string{"-m", "set", "--match-set",
 				ipsetName, "src"}
 		default:
-			// XXX add more types; error if unknown.
-			log.Println("Unsupported ACE match type: ",
+			errStr := fmt.Sprintf("Unsupported ACE match type: %s",
 				match.Type)
+			log.Println(errStr)
+			return nil, errors.New(errStr)
 		}
 		outArgs = append(outArgs, addOut...)
 		inArgs = append(inArgs, addIn...)
 	}
+	// Consistency checks
+	if fport != "" && protocol == "" {
+		errStr := fmt.Sprintf("ACE with fport %s and no protocol match: %s",
+			fport)
+		log.Println(errStr)
+		return nil, errors.New(errStr)
+	}
+	if lport != "" && protocol == "" {
+		errStr := fmt.Sprintf("ACE with lport %s and no protocol match: %s",
+			lport)
+		log.Println(errStr)
+		return nil, errors.New(errStr)
+	}
+
 	foundDrop := false
 	foundLimit := false
 	unlimitedInArgs := inArgs
@@ -260,6 +296,37 @@ func aceToRules(ifname string, ace types.ACE, ipVer int) IptablesRuleList {
 			}
 			outArgs = append(outArgs, add...)
 			inArgs = append(inArgs, add...)
+		} else if action.PortMap {
+			// Generate NAT and ACCEPT rules based on protocol,
+			// lport, and TargetPort
+			if lport == "" || protocol == "" {
+				errStr := fmt.Sprintf("PortMap without lport %s/protocol %d: %s",
+					lport, protocol)
+				log.Println(errStr)
+				return nil, errors.New(errStr)
+			}
+			targetPort := fmt.Sprintf("%d", action.TargetPort)
+			target := fmt.Sprintf("%s:22", appIP, action.TargetPort)
+			// These rules should only apply on the uplink
+			// interfaces but for now we just compare the protocol
+			// and port number.
+			rule1 := []string{"PREROUTING",
+				"-p", protocol, "--dport", lport,
+				"-j", "DNAT", "--to-destination", target}
+			// Make sure packets are returned to zedrouter and not
+			// e.g., out a directly attached interface in the domU
+			rule2 := []string{"POSTROUTING",
+				"-p", protocol, "-o", ifname,
+				"--dport", targetPort, "-j", "SNAT",
+				"--to-source", myIP}
+			rule3 := []string{"-o", ifname, "-p", protocol,
+				"--dport", lport, "-j", "ACCEPT"}
+			rule4 := []string{"-i", ifname, "-p", protocol,
+				"--sport", lport, "-j", "ACCEPT"}
+			inArgs = append(inArgs, rule1...)
+			inArgs = append(inArgs, rule3...)
+			outArgs = append(outArgs, rule2...)
+			outArgs = append(outArgs, rule4...)
 		}
 	}
 	if foundDrop {
@@ -288,7 +355,7 @@ func aceToRules(ifname string, ace types.ACE, ipVer int) IptablesRuleList {
 		}
 		rulesList = append(rulesList, unlimitedOutArgs, unlimitedInArgs)
 	}
-	return rulesList
+	return rulesList, nil
 }
 
 // Determine which rules to skip and what prefix/table to use
@@ -398,15 +465,21 @@ func updateAppInstanceIpsets(newolConfig []types.OverlayNetworkConfig,
 
 func updateACLConfiglet(ifname string, isMgmt bool, oldACLs []types.ACE,
 	newACLs []types.ACE, ipVer int, myIP string, appIP string,
-	underlaySshPortMap uint) {
+	underlaySshPortMap uint) error {
 	if debug {
 		log.Printf("updateACLConfiglet: ifname %s, oldACLs %v newACLs %v\n",
 			ifname, oldACLs, newACLs)
 	}
-	oldRules := aclToRules(ifname, oldACLs, ipVer, myIP, appIP,
+	oldRules, err := aclToRules(ifname, oldACLs, ipVer, myIP, appIP,
 		underlaySshPortMap)
-	newRules := aclToRules(ifname, newACLs, ipVer, myIP, appIP,
+	if err != nil {
+		return err
+	}
+	newRules, err := aclToRules(ifname, newACLs, ipVer, myIP, appIP,
 		underlaySshPortMap)
+	if err != nil {
+		return err
+	}
 	// Look for old which should be deleted
 	for _, rule := range oldRules {
 		if containsRule(newRules, rule) {
@@ -425,9 +498,14 @@ func updateACLConfiglet(ifname string, isMgmt bool, oldACLs []types.ACE,
 		}
 		args = append(args, rule...)
 		if ipVer == 4 {
-			iptableCmd(args...)
+			err = iptableCmd(args...)
 		} else if ipVer == 6 {
-			ip6tableCmd(args...)
+			err = ip6tableCmd(args...)
+		} else {
+			err = errors.New(fmt.Sprintf("ACL: Unknown IP version %d", ipVer))
+		}
+		if err != nil {
+			return err
 		}
 	}
 	// Look for new which should be inserted
@@ -453,21 +531,30 @@ func updateACLConfiglet(ifname string, isMgmt bool, oldACLs []types.ACE,
 		}
 		args = append(args, rule...)
 		if ipVer == 4 {
-			iptableCmd(args...)
+			err = iptableCmd(args...)
 		} else if ipVer == 6 {
-			ip6tableCmd(args...)
+			err = ip6tableCmd(args...)
+		} else {
+			err = errors.New(fmt.Sprintf("ACL: Unknown IP version %d", ipVer))
+		}
+		if err != nil {
+			return err
 		}
 	}
+	return nil
 }
 
 func deleteACLConfiglet(ifname string, isMgmt bool, ACLs []types.ACE,
-	ipVer int, myIP string, appIP string, underlaySshPortMap uint) {
+	ipVer int, myIP string, appIP string, underlaySshPortMap uint) error {
 	if debug {
 		log.Printf("deleteACLConfiglet: ifname %s ACLs %v\n",
 			ifname, ACLs)
 	}
-	rules := aclToRules(ifname, ACLs, ipVer, myIP, appIP,
+	rules, err := aclToRules(ifname, ACLs, ipVer, myIP, appIP,
 		underlaySshPortMap)
+	if err != nil {
+		return err
+	}
 	for _, rule := range rules {
 		if debug {
 			log.Printf("deleteACLConfiglet: rule %v\n", rule)
@@ -482,13 +569,19 @@ func deleteACLConfiglet(ifname string, isMgmt bool, ACLs []types.ACE,
 		}
 		args = append(args, rule...)
 		if ipVer == 4 {
-			iptableCmd(args...)
+			err = iptableCmd(args...)
 		} else if ipVer == 6 {
-			ip6tableCmd(args...)
+			err = ip6tableCmd(args...)
+		} else {
+			err = errors.New(fmt.Sprintf("ACL: Unknown IP version %d", ipVer))
+		}
+		if err != nil {
+			return err
 		}
 	}
 	if !isMgmt {
 		// Remove mangle rules for IPv6 packets added above
+		// XXX error checks?
 		ip6tableCmd("-t", "mangle", "-D", "PREROUTING", "-i", ifname,
 			"-p", "tcp", "-j", "CHECKSUM", "--checksum-fill")
 		ip6tableCmd("-t", "mangle", "-D", "PREROUTING", "-i", ifname,
@@ -497,6 +590,8 @@ func deleteACLConfiglet(ifname string, isMgmt bool, ACLs []types.ACE,
 	// XXX see above
 	if false && ipVer == 6 && !isMgmt {
 		// Manually delete the manual add above
+		// XXX error checks?
 		ip6tableCmd("-D", "FORWARD", "-i", ifname, "-j", "DROP")
 	}
+	return nil
 }

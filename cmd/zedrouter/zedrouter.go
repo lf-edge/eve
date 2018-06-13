@@ -633,7 +633,15 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 			EID.String())
 
 		// Set up ACLs
-		createACLConfiglet(olIfname, true, olConfig.ACLs, 6, "", "", 0)
+		err = createACLConfiglet(olIfname, true, olConfig.ACLs,
+			6, "", "", 0)
+		if err != nil {
+			log.Printf("createACLConfiglet failed for %s: %s\n",
+				config.DisplayName, err)
+			status.Error = appendError(status.Error, "createACL",
+				err.Error())
+			status.ErrorTime = time.Now()
+		}
 
 		// Save information about zedmanger EID and additional info
 		deviceEID = EID
@@ -786,8 +794,15 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 			EID.String())
 
 		// Set up ACLs before we setup dnsmasq
-		createACLConfiglet(olIfname, false, olConfig.ACLs, 6,
+		err = createACLConfiglet(olIfname, false, olConfig.ACLs, 6,
 			olAddr1, "", 0)
+		if err != nil {
+			log.Printf("createACLConfiglet failed for %s: %s\n",
+				config.DisplayName, err)
+			status.Error = appendError(status.Error, "createACL",
+				err.Error())
+			status.ErrorTime = time.Now()
+		}
 
 		// Start clean
 		cfgFilename = "dnsmasq." + olIfname + ".conf"
@@ -828,12 +843,14 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 			log.Printf("ulIfname %s\n", ulIfname)
 		}
 		// Not clear how to handle multiple ul; use /30 prefix?
+		// XXX check for static address.
 		ulAddr1 := "172.27." + strconv.Itoa(appNum) + ".1"
 		ulAddr2 := "172.27." + strconv.Itoa(appNum) + ".2"
 		if debug {
 			log.Printf("ulAddr1 %s ulAddr2 %s\n", ulAddr1, ulAddr2)
 		}
 		// Room to handle multiple underlays in 5th byte
+		// XXX override if static
 		ulMac := "00:16:3e:0:0:" + strconv.FormatInt(int64(appNum), 16)
 		if debug {
 			log.Printf("ulMac %s\n", ulMac)
@@ -877,8 +894,15 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		if ulConfig.SshPortMap {
 			sshPort = 8022 + 100*uint(appNum)
 		}
-		createACLConfiglet(ulIfname, false, ulConfig.ACLs, 4,
+		err = createACLConfiglet(ulIfname, false, ulConfig.ACLs, 4,
 			ulAddr1, ulAddr2, sshPort)
+		if err != nil {
+			log.Printf("createACLConfiglet failed for %s: %s\n",
+				config.DisplayName, err)
+			status.Error = appendError(status.Error, "createACL",
+				err.Error())
+			status.ErrorTime = time.Now()
+		}
 
 		// Start clean
 		cfgFilename := "dnsmasq." + ulIfname + ".conf"
@@ -970,8 +994,17 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 			olConfig.NameToEidList)
 
 		// Update ACLs
-		updateACLConfiglet(olIfname, true, olStatus.ACLs,
+		err := updateACLConfiglet(olIfname, true, olStatus.ACLs,
 			olConfig.ACLs, 6, "", "", 0)
+		if err != nil {
+			log.Printf("updateACLConfiglet failed for %s: %s\n",
+				config.DisplayName, err)
+			status.Error = appendError(status.Error, "updateACL",
+				err.Error())
+			status.ErrorTime = time.Now()
+		}
+		status.PendingModify = false
+		writeAppNetworkStatus(status, statusFilename)
 		log.Printf("handleModify done for %s\n", config.DisplayName)
 		return
 	}
@@ -1003,8 +1036,15 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 			olConfig.NameToEidList)
 
 		// Update ACLs
-		updateACLConfiglet(olIfname, false, olStatus.ACLs,
+		err := updateACLConfiglet(olIfname, false, olStatus.ACLs,
 			olConfig.ACLs, 6, olAddr1, "", 0)
+		if err != nil {
+			log.Printf("updateACLConfiglet failed for %s: %s\n",
+				config.DisplayName, err)
+			status.Error = appendError(status.Error, "updateACL",
+				err.Error())
+			status.ErrorTime = time.Now()
+		}
 
 		// updateAppInstanceIpsets told us whether there is a change
 		// to the set of ipsets, and that requires restarting dnsmasq
@@ -1042,6 +1082,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 			log.Printf("handleModify ulNum %d\n", ulNum)
 		}
 		ulIfname := "bu" + strconv.Itoa(appNum)
+		// XXX check for static address.
 		ulAddr1 := "172.27." + strconv.Itoa(appNum) + ".1"
 		ulAddr2 := "172.27." + strconv.Itoa(appNum) + ".2"
 		ulStatus := status.UnderlayNetworkList[ulNum-1]
@@ -1051,13 +1092,21 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 		if ulConfig.SshPortMap {
 			sshPort = 8022 + 100*uint(appNum)
 		}
-		updateACLConfiglet(ulIfname, false, ulStatus.ACLs,
+		err := updateACLConfiglet(ulIfname, false, ulStatus.ACLs,
 			ulConfig.ACLs, 4, ulAddr1, ulAddr2, sshPort)
+		if err != nil {
+			log.Printf("updateACLConfiglet failed for %s: %s\n",
+				config.DisplayName, err)
+			status.Error = appendError(status.Error, "updateACL",
+				err.Error())
+			status.ErrorTime = time.Now()
+		}
 
 		if restartDnsmasq {
 			//update underlay dnsmasq configuration
 			cfgFilename := "dnsmasq." + ulIfname + ".conf"
 			cfgPathname := runDirname + "/" + cfgFilename
+			// XXX override if static
 			ulMac := "00:16:3e:0:0:" + strconv.FormatInt(int64(appNum), 16)
 			stopDnsmasq(cfgFilename, false)
 			//remove old dnsmasq configuration file
@@ -1186,7 +1235,15 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 		deleteEidIpsetConfiglet(olIfname, true)
 
 		// Delete ACLs
-		deleteACLConfiglet(olIfname, true, olStatus.ACLs, 6, "", "", 0)
+		err = deleteACLConfiglet(olIfname, true, olStatus.ACLs,
+			6, "", "", 0)
+		if err != nil {
+			log.Printf("deleteACLConfiglet failed for %s: %s\n",
+				status.DisplayName, err)
+			status.Error = appendError(status.Error, "deleteACL",
+				err.Error())
+			status.ErrorTime = time.Now()
+		}
 
 		// Delete LISP configlets
 		deleteLispConfiglet(lispRunDirname, true, olStatus.IID,
@@ -1227,8 +1284,15 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 			if len(status.OverlayNetworkList) >= olNum {
 				olStatus := status.OverlayNetworkList[olNum-1]
 				// Delete ACLs
-				deleteACLConfiglet(olIfname, false,
+				err := deleteACLConfiglet(olIfname, false,
 					olStatus.ACLs, 6, olAddr1, "", 0)
+				if err != nil {
+					log.Printf("deleteACLConfiglet failed for %s: %s\n",
+						status.DisplayName, err)
+					status.Error = appendError(status.Error, "deleteACL",
+						err.Error())
+					status.ErrorTime = time.Now()
+				}
 
 				// Delete LISP configlets
 				deleteLispConfiglet(lispRunDirname, false,
@@ -1257,6 +1321,7 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 				log.Printf("handleDelete ulNum %d\n", ulNum)
 			}
 			ulIfname := "bu" + strconv.Itoa(appNum)
+			// XXX check for static address.
 			ulAddr1 := "172.27." + strconv.Itoa(appNum) + ".1"
 			ulAddr2 := "172.27." + strconv.Itoa(appNum) + ".2"
 			if debug {
@@ -1282,15 +1347,25 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 				if ulStatus.SshPortMap {
 					sshPort = 8022 + 100*uint(appNum)
 				}
-				deleteACLConfiglet(ulIfname, false,
+				err := deleteACLConfiglet(ulIfname, false,
 					ulStatus.ACLs, 4, ulAddr1, ulAddr2,
 					sshPort)
+				if err != nil {
+					log.Printf("deleteACLConfiglet failed for %s: %s\n",
+						status.DisplayName, err)
+					status.Error = appendError(status.Error, "deleteACL",
+						err.Error())
+					status.ErrorTime = time.Now()
+				}
 			} else {
 				log.Println("Missing status for underlay %d; can not clean up ACLs\n",
 					ulNum)
 			}
 		}
 	}
+	status.PendingDelete = false
+	writeAppNetworkStatus(status, statusFilename)
+
 	// Write out what we modified to AppNetworkStatus aka delete
 	removeAppNetworkStatus(status)
 
@@ -1385,4 +1460,8 @@ func doDNSUpdate(ctx *DNCContext) {
 	//	iptableCmd("-t", "nat", "-A", "POSTROUTING", "-o", u,
 	//		"-s", "172.27.0.0/16", "-j", "MASQUERADE")
 	//}
+}
+
+func appendError(allErrors string, prefix string, lasterr string) string {
+	return fmt.Sprintf("%s%s: %s\n\n", allErrors, prefix, lasterr)
 }

@@ -67,7 +67,7 @@ type VmConfig struct {
 type VmMode uint8
 
 const (
-	PV VmMode = iota + 0	// Default
+	PV VmMode = iota + 0 // Default
 	HVM
 	// PVH
 )

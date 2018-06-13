@@ -616,6 +616,8 @@ func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
 				actionCfg.LimitRate = int(action.Limitrate)
 				actionCfg.LimitUnit = action.Limitunit
 				actionCfg.LimitBurst = int(action.Limitburst)
+				actionCfg.PortMap = action.Portmap
+				actionCfg.TargetPort = int(action.AppPort)
 				// XXX:FIXME actionCfg.Drop = <TBD>
 				aclCfg.Actions[actionIdx] = *actionCfg
 			}
@@ -664,6 +666,8 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 				actionCfg.LimitRate = int(action.Limitrate)
 				actionCfg.LimitUnit = action.Limitunit
 				actionCfg.LimitBurst = int(action.Limitburst)
+				actionCfg.PortMap = action.Portmap
+				actionCfg.TargetPort = int(action.AppPort)
 				aclCfg.Actions[actionIdx] = *actionCfg
 			}
 			olCfg.ACLs[aclIdx] = *aclCfg
