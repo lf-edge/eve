@@ -10,9 +10,17 @@ message ipRange {
 
 enum DHCPType {
 	DHCPNoop = 0;
+	// used for device adapter
 	Static = 1;
+
+	// used for application simulation
 	PassThrough = 2;
+
+	// used for application simulation
 	Server = 3;
+
+	// used for device adapter
+	Client = 4;
 }
 
 message ipv4spec {
