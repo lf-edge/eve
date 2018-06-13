@@ -445,18 +445,24 @@ type IpRange struct {
 type NetworkServiceType uint8
 
 const (
-	NST_NAT NetworkServiceType = iota // Default
-	NST_BRIDGE
+	NST_FIRST NetworkServiceType = iota
 	NST_STRONGSWAN
 	NST_LISP
+	NST_BRIDGE
+	NST_NAT  // Default?
+	NST_LB   // What is this?
+	NST_LAST = 255
 )
 
 // Extracted from protobuf Service definition
 type NetworkService struct {
-	UUID    uuid.UUID
-	Type    NetworkServiceType
-	AppLink uuid.UUID
-	DevLink string // Ifname or group like "uplink"
+	UUID         uuid.UUID
+	DisplayName  string
+	Type         NetworkServiceType
+	Activate     bool
+	AppLink      uuid.UUID
+	Adapter      string // Ifname or group like "uplink", or empty
+	OpaqueConfig string
 }
 
 // Network metrics for overlay and underlay
