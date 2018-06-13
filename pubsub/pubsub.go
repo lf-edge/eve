@@ -55,7 +55,7 @@ const debug = false // XXX setable?
 //  foo := p1.Get(key)
 //  fooAll := p1.GetAll()
 
-type publication struct {
+type Publication struct {
 	// Private fields
 	topicType interface{}
 	agentName string
@@ -70,7 +70,7 @@ type publication struct {
 // XXX should read current state from dirName and insert in pub.km as initial
 // values.
 // XXX add agentScope aka objType
-func Publish(agentName string, topicType interface{}) (*publication, error) {
+func Publish(agentName string, topicType interface{}) (*Publication, error) {
 	topic := TypeToName(topicType)
 	log.Printf("Publish(%s, %s)\n", agentName, topic)
 	// We always write to the directory as a checkpoint
@@ -83,7 +83,7 @@ func Publish(agentName string, topicType interface{}) (*publication, error) {
 			return nil, errors.New(errStr)
 		}
 	}
-	pub := new(publication)
+	pub := new(Publication)
 	pub.topicType = topicType
 	pub.agentName = agentName
 	pub.topic = topic
@@ -114,7 +114,7 @@ func Publish(agentName string, topicType interface{}) (*publication, error) {
 // go routine which runs the AF_UNIX server
 // XXX would need some synchronization on the accesses to the published
 // collection?
-func (pub *publication) publisher() {
+func (pub *Publication) publisher() {
 	for {
 		c, err := pub.listener.Accept()
 		if err != nil {
@@ -126,7 +126,7 @@ func (pub *publication) publisher() {
 }
 
 // XXX can't close if we serve updates
-func (pub *publication) serveConnection(s net.Conn) {
+func (pub *Publication) serveConnection(s net.Conn) {
 	agentName := pub.agentName
 	topic := pub.topic
 	log.Printf("serveConnection(%s, %s)\n", agentName, topic)
@@ -158,7 +158,7 @@ func PubDirName(agentName string, topic string) string {
 	return fmt.Sprintf("/var/run/%s/%s", agentName, topic)
 }
 
-func (pub *publication) Publish(key string, item interface{}) error {
+func (pub *Publication) Publish(key string, item interface{}) error {
 	agentName := pub.agentName
 	topic := TypeToName(item)
 	if topic != pub.topic {
@@ -248,7 +248,7 @@ func deepCopy(in interface{}) interface{} {
 	return output
 }
 
-func (pub *publication) Unpublish(key string) error {
+func (pub *Publication) Unpublish(key string) error {
 	agentName := pub.agentName
 	topic := pub.topic
 	if m, ok := pub.km.key[key]; ok {
@@ -282,7 +282,7 @@ func (pub *publication) Unpublish(key string) error {
 	return nil
 }
 
-func (pub *publication) serialize(sock net.Conn) error {
+func (pub *Publication) serialize(sock net.Conn) error {
 	log.Printf("serialize for %s/%s\n", pub.agentName, pub.topic)
 	for key, s := range pub.km.key {
 		b, err := json.Marshal(s)
@@ -298,7 +298,7 @@ func (pub *publication) serialize(sock net.Conn) error {
 	return nil
 }
 
-func (pub *publication) dump(infoStr string) {
+func (pub *Publication) dump(infoStr string) {
 	log.Printf("dump for %s/%s %s\n", pub.agentName, pub.topic, infoStr)
 	for key, s := range pub.km.key {
 		b, err := json.Marshal(s)
@@ -310,7 +310,7 @@ func (pub *publication) dump(infoStr string) {
 }
 
 // XXX add agentScope aka objType
-func (pub *publication) Get(key string) (interface{}, error) {
+func (pub *Publication) Get(key string) (interface{}, error) {
 	m, ok := pub.km.key[key]
 	if ok {
 		return m, nil
@@ -323,7 +323,7 @@ func (pub *publication) Get(key string) (interface{}, error) {
 
 // XXX add agentScope aka objType
 // Enumerate all the key, value for the collection
-func (pub *publication) GetAll() map[string]interface{} {
+func (pub *Publication) GetAll() map[string]interface{} {
 	result := make(map[string]interface{})
 	for k, e := range pub.km.key {
 		result[k] = e
@@ -345,7 +345,7 @@ type SubModifyHandler func(ctx interface{}, key string, status interface{})
 type SubDeleteHandler func(ctx interface{}, key string)
 type SubRestartHandler func(ctx interface{}, restarted bool) // XXX needed?
 
-type subscription struct {
+type Subscription struct {
 	C             <-chan string
 	ModifyHandler *SubModifyHandler
 	DeleteHandler *SubDeleteHandler
@@ -365,7 +365,7 @@ type subscription struct {
 // XXX separate function to subscribe to diffs i.e. WatchConfigStatus?
 // Layer above this pubsub? Wapper to do px.Get(key) and compare?
 // XXX add agentScope aka objType
-func Subscribe(agentName string, topicType interface{}, ctx interface{}) (*subscription, error) {
+func Subscribe(agentName string, topicType interface{}, ctx interface{}) (*Subscription, error) {
 	topic := TypeToName(topicType)
 	log.Printf("Subscribe(%s, %s)\n", agentName, topic)
 	if subscribeFromDir {
@@ -378,7 +378,7 @@ func Subscribe(agentName string, topicType interface{}, ctx interface{}) (*subsc
 			return nil, errors.New(errStr)
 		}
 		changes := make(chan string)
-		sub := new(subscription)
+		sub := new(Subscription)
 		sub.C = changes
 		sub.topicType = topicType
 		sub.agentName = agentName
@@ -400,7 +400,7 @@ func Subscribe(agentName string, topicType interface{}, ctx interface{}) (*subsc
 }
 
 // XXX Currently only handles directory subscriptions; no AF_UNIX
-func (sub *subscription) ProcessChange(change string) {
+func (sub *Subscription) ProcessChange(change string) {
 	if debug {
 		log.Printf("ProcessEvent %s\n", change)
 	}
@@ -416,7 +416,7 @@ func handleModify(ctxArg interface{}, key string, stateArg interface{}) {
 	if debug {
 		log.Printf("handleModify for %s\n", key)
 	}
-	sub := ctxArg.(*subscription)
+	sub := ctxArg.(*Subscription)
 	m, ok := sub.km.key[key]
 	// XXX if debug; need json encode to get readable output
 	if debug {
@@ -439,7 +439,7 @@ func handleModify(ctxArg interface{}, key string, stateArg interface{}) {
 }
 
 func handleDelete(ctxArg interface{}, key string) {
-	sub := ctxArg.(*subscription)
+	sub := ctxArg.(*Subscription)
 	m, ok := sub.km.key[key]
 	if !ok {
 		log.Printf("XXX Delete not found for key %s\n", key)
@@ -455,7 +455,7 @@ func handleDelete(ctxArg interface{}, key string) {
 }
 
 // XXX add agentScope aka objType
-func (sub *subscription) Get(key string) (interface{}, error) {
+func (sub *Subscription) Get(key string) (interface{}, error) {
 	m, ok := sub.km.key[key]
 	if ok {
 		return m, nil
@@ -468,7 +468,7 @@ func (sub *subscription) Get(key string) (interface{}, error) {
 
 // XXX add agentScope aka objType
 // Enumerate all the key, value for the collection
-func (sub *subscription) GetAll() map[string]interface{} {
+func (sub *Subscription) GetAll() map[string]interface{} {
 	result := make(map[string]interface{})
 	for k, e := range sub.km.key {
 		result[k] = e
