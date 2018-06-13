@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/eriknordmark/ipinfo"
+	"github.com/satori/go.uuid"
 	"log"
 	"net"
 	"time"
@@ -83,9 +84,24 @@ type DeviceNetworkConfig struct {
 	FreeUplinks []string // subset used for image downloads
 }
 
+// XXX new - replacement for above
+type DeviceNetworkConfig2 struct {
+	Uplinks []DeviceNetwork
+}
+
+type DeviceNetwork struct {
+	IfName string
+	Free   bool
+	// If Dhcp (in NetworkConfig) is DT_STATIC we use the static
+	// Addr and the rest of NetworkConfig
+	Addr net.IP
+	NetworkConfig
+}
+
 type NetworkUplink struct {
-	IfName       string
-	Free         bool
+	IfName string
+	Free   bool
+	NetworkConfig
 	AddrInfoList []AddrInfo
 }
 
@@ -358,6 +374,10 @@ type OverlayNetworkConfig struct {
 	LispServers   []LispServerInfo
 	// Optional additional informat
 	AdditionalInfoDevice *AdditionalInfoDevice
+	// XXX Externalize IID, NameToEidList, and LispServers to the network
+	// XXX use Network uuid?
+	AppMacAddr net.HardwareAddr // If set use it for vif
+	Network    uuid.UUID
 }
 
 type OverlayNetworkStatus struct {
@@ -365,7 +385,21 @@ type OverlayNetworkStatus struct {
 	VifInfo
 }
 
+type DhcpType uint8
+
+const (
+	DT_NOOP        DhcpType = iota
+	DT_STATIC               // Device static config
+	DT_PASSTHROUGH          // App passthrough e.g., to a bridge
+	DT_SERVER               // Local server for app network
+	DT_CLIENT               // Device client on external port
+)
+
 type UnderlayNetworkConfig struct {
+	Dhcp       DhcpType         // If PASSTHROUGH we don't run a dhcp server
+	AppMacAddr net.HardwareAddr // If set use it for vif
+	AppIPAddr  net.IP           // If set use DHCP to assign to app
+	Network    uuid.UUID
 	ACLs       []ACE
 	SshPortMap bool
 }
@@ -373,6 +407,56 @@ type UnderlayNetworkConfig struct {
 type UnderlayNetworkStatus struct {
 	UnderlayNetworkConfig
 	VifInfo
+}
+
+type NetworkType uint8
+
+const (
+	NT_IPV4 NetworkType = iota + 1
+	NT_IPV6
+	NT_LISP // XXX TBD make it a service
+)
+
+// Extracted from the protobuf NetworkConfig
+// Referenced using the UUID in Overlay/UnderlayNetworkConfig
+// Note that NetworkConfig can be referenced (by UUID) from NetworkService.
+// If there is no such reference the NetworkConfig ends up being local to the
+// host.
+type NetworkConfig struct {
+	UUID uuid.UUID
+	Type NetworkType
+	Dhcp DhcpType // If DT_STATIC use below
+	// XXX LocalDhcp  bool   // Run a DHCP server
+	// XXX LocalDns   bool   // Run a DNS server
+	// XXX LocalAddr  net.IP // For local DHCP/DNS; could be same as Gateway
+	Subnet     net.IPNet
+	Gateway    net.IP
+	DomainName string
+	NtpServer  net.IP
+	DnsServers []net.IP // If not set we pass LocalAddr/Gateway to application
+	DhcpRange  IpRange
+}
+
+type IpRange struct {
+	Start net.IP
+	End   net.IP
+}
+
+type NetworkServiceType uint8
+
+const (
+	NST_NAT NetworkServiceType = iota // Default
+	NST_BRIDGE
+	NST_STRONGSWAN
+	NST_LISP
+)
+
+// Extracted from protobuf Service definition
+type NetworkService struct {
+	UUID    uuid.UUID
+	Type    NetworkServiceType
+	AppLink uuid.UUID
+	DevLink string // Ifname or group like "uplink"
 }
 
 // Network metrics for overlay and underlay
