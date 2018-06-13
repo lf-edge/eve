@@ -8,7 +8,9 @@ package zedrouter
 import (
 	"fmt"
 	"github.com/zededa/go-provision/agentlog"
+	"github.com/zededa/go-provision/types"
 	"log"
+	"net"
 	"os"
 	"os/exec"
 )
@@ -40,14 +42,13 @@ bogus-priv
 stop-dns-rebind
 rebind-localhost-ok
 neg-ttl=10
-dhcp-range=172.27.0.0,static,255.255.0.0,infinite
 `
 
 // Create the dnsmasq configuration for the the overlay interface
 // Would be more polite to return an error then to Fatal
 func createDnsmasqOverlayConfiglet(cfgPathname string, olIfname string,
 	olAddr1 string, olAddr2 string, olMac string, hostsDir string,
-	hostName string, ipsets []string) {
+	hostName string, ipsets []string, netconf *types.NetworkConfig) {
 	if debug {
 		log.Printf("createDnsmasqOverlayConfiglen: %s\n", olIfname)
 	}
@@ -68,12 +69,30 @@ func createDnsmasqOverlayConfiglet(cfgPathname string, olIfname string,
 	file.WriteString(fmt.Sprintf("dhcp-host=%s,[%s],%s\n",
 		olMac, olAddr2, hostName))
 	file.WriteString(fmt.Sprintf("hostsdir=%s\n", hostsDir))
+
+	if netconf != nil {
+		if netconf.DomainName != "" {
+			file.WriteString(fmt.Sprintf("dhcp-option=domain-search,%s\n",
+				netconf.DomainName))
+		}
+		for _, ns := range netconf.DnsServers {
+			file.WriteString(fmt.Sprintf("dhcp-option=dns-server,%s\n",
+				ns.String()))
+		}
+		if netconf.NtpServer != nil {
+			file.WriteString(fmt.Sprintf("dhcp-option=ntp-server,%s\n",
+				netconf.NtpServer.String()))
+		}
+	}
 }
 
 // Create the dnsmasq configuration for the the underlay interface
 // Would be more polite to return an error then to Fatal
+// XXX not clear what needs to change here to handle IPv6 underlay. The default
+// ranges are off, plus domain-name needs to be replaced by domain-search, etc
 func createDnsmasqUnderlayConfiglet(cfgPathname string, ulIfname string,
-	ulAddr1 string, ulAddr2 string, ulMac string, hostName string, ipsets []string) {
+	ulAddr1 string, ulAddr2 string, ulMac string, hostName string,
+	ipsets []string, netconf *types.NetworkConfig) {
 	if debug {
 		log.Printf("createDnsmasqUnderlayConfiglen: %s\n", ulIfname)
 	}
@@ -93,11 +112,45 @@ func createDnsmasqUnderlayConfiglet(cfgPathname string, ulIfname string,
 	file.WriteString(fmt.Sprintf("listen-address=%s\n", ulAddr1))
 	file.WriteString(fmt.Sprintf("dhcp-host=%s,id:*,%s,%s\n",
 		ulMac, ulAddr2, hostName))
-	// XXX this function is really for IPv4 whether underlay or overlay
-	// Or make a combined IPv4+IPv6 overlay function?
-	// XXX file.WriteString(fmt.Sprintf("dhcp-option=option:router,%s\n", ulAddr1)
-	// XXX assumes zedrouter has an IP address in the subnet?
-	// Or do combined where DNS is IPv6 and IPv4 routing to remote router?
+
+	netmask := "255.255.0.0"  // Default unless there is a Subnet
+	dhcpRange := "172.27.0.0" // Default unless there is a DhcpRange
+
+	if netconf != nil {
+		if netconf.DomainName != "" {
+			file.WriteString(fmt.Sprintf("dhcp-option=domain-name,%s\n",
+				netconf.DomainName))
+		}
+		for _, ns := range netconf.DnsServers {
+			file.WriteString(fmt.Sprintf("dhcp-option=dns-server,%s\n",
+				ns.String()))
+		}
+		if netconf.NtpServer != nil {
+			file.WriteString(fmt.Sprintf("dhcp-option=ntp-server,%s\n",
+				netconf.NtpServer.String()))
+		}
+		if netconf.Subnet.IP != nil {
+			netmask = net.IP(netconf.Subnet.Mask).String()
+			file.WriteString(fmt.Sprintf("dhcp-option=netmask,%s\n",
+				netmask))
+		}
+		if netconf.Gateway != nil {
+			// XXX vs. ulAddr1
+			file.WriteString(fmt.Sprintf("dhcp-option=option:router,%s\n",
+				netconf.Gateway.String()))
+		}
+		if netconf.DhcpRange.Start != nil {
+			if netconf.DhcpRange.End != nil {
+				dhcpRange = fmt.Sprintf("%s,%s",
+					netconf.DhcpRange.Start.String(),
+					netconf.DhcpRange.End.String())
+			} else {
+				dhcpRange = netconf.DhcpRange.Start.String()
+			}
+		}
+	}
+	file.WriteString(fmt.Sprintf("dhcp-range=%s,static,%s,infinite\n",
+		dhcpRange, netmask))
 }
 
 func deleteDnsmasqConfiglet(cfgPathname string) {
