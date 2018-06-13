@@ -89,6 +89,7 @@ type DeviceNetworkConfig2 struct {
 	Uplinks []DeviceNetwork
 }
 
+// XXX new - replacement for above
 type DeviceNetwork struct {
 	IfName string
 	Free   bool
