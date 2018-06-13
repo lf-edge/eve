@@ -21,7 +21,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='netconfig.proto',
   package='',
   syntax='proto3',
-  serialized_pb=_b('\n\x0fnetconfig.proto\x1a\x08\x66w.proto\x1a\x0cnetcmn.proto\"\xad\x01\n\rNetworkConfig\x12\n\n\x02id\x18\x01 \x01(\t\x12\x1a\n\x04type\x18\x05 \x01(\x0e\x32\x0c.NetworkType\x12\x16\n\x03nl2\x18\x08 \x01(\x0b\x32\x07.l2specH\x00\x12\x1a\n\x05nlisp\x18\t \x01(\x0b\x32\t.lispspecH\x00\x12\x18\n\x03nv4\x18\n \x01(\x0b\x32\t.ipv4specH\x00\x12\x18\n\x03nv6\x18\x0b \x01(\x0b\x32\t.ipv6specH\x00\x42\x0c\n\nnetContent\"\xb0\x01\n\x0eNetworkAdapter\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\n\n\x02id\x18\x02 \x01(\t\x12\x11\n\tnetworkId\x18\x03 \x01(\t\x12\x0c\n\x04\x61\x64\x64r\x18\x04 \x01(\t\x12\x10\n\x08hostname\x18\x05 \x01(\t\x12\x15\n\rlispsignature\x18\x06 \x01(\t\x12\x0f\n\x07pemcert\x18\x07 \x01(\x0c\x12\x15\n\rpemprivatekey\x18\x08 \x01(\x0c\x12\x12\n\x04\x61\x63ls\x18( \x03(\x0b\x32\x04.ACEB@\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1dgithub.com/zededa/api/zconfigb\x06proto3')
+  serialized_pb=_b('\n\x0fnetconfig.proto\x1a\x08\x66w.proto\x1a\x0cnetcmn.proto\"\x95\x01\n\rNetworkConfig\x12\n\n\x02id\x18\x01 \x01(\t\x12\x1a\n\x04type\x18\x05 \x01(\x0e\x32\x0c.NetworkType\x12\x1a\n\x05nlisp\x18\t \x01(\x0b\x32\t.lispspecH\x00\x12\x18\n\x03nv4\x18\n \x01(\x0b\x32\t.ipv4specH\x00\x12\x18\n\x03nv6\x18\x0b \x01(\x0b\x32\t.ipv6specH\x00\x42\x0c\n\nnetContent\"\xc4\x01\n\x0eNetworkAdapter\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\n\n\x02id\x18\x02 \x01(\t\x12\x11\n\tnetworkId\x18\x03 \x01(\t\x12\x0c\n\x04\x61\x64\x64r\x18\x04 \x01(\t\x12\x10\n\x08hostname\x18\x05 \x01(\t\x12\x15\n\rlispsignature\x18\x06 \x01(\t\x12\x0f\n\x07pemcert\x18\x07 \x01(\x0c\x12\x15\n\rpemprivatekey\x18\x08 \x01(\x0c\x12\x12\n\nmacAddress\x18\t \x01(\t\x12\x12\n\x04\x61\x63ls\x18( \x03(\x0b\x32\x04.ACEB@\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1dgithub.com/zededa/api/zconfigb\x06proto3')
   ,
   dependencies=[fw__pb2.DESCRIPTOR,netcmn__pb2.DESCRIPTOR,])
 
@@ -50,28 +50,21 @@ _NETWORKCONFIG = _descriptor.Descriptor(
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='nl2', full_name='NetworkConfig.nl2', index=2,
-      number=8, type=11, cpp_type=10, label=1,
-      has_default_value=False, default_value=None,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      options=None, file=DESCRIPTOR),
-    _descriptor.FieldDescriptor(
-      name='nlisp', full_name='NetworkConfig.nlisp', index=3,
+      name='nlisp', full_name='NetworkConfig.nlisp', index=2,
       number=9, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='nv4', full_name='NetworkConfig.nv4', index=4,
+      name='nv4', full_name='NetworkConfig.nv4', index=3,
       number=10, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='nv6', full_name='NetworkConfig.nv6', index=5,
+      name='nv6', full_name='NetworkConfig.nv6', index=4,
       number=11, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
@@ -93,7 +86,7 @@ _NETWORKCONFIG = _descriptor.Descriptor(
       index=0, containing_type=None, fields=[]),
   ],
   serialized_start=44,
-  serialized_end=217,
+  serialized_end=193,
 )
 
 
@@ -161,7 +154,14 @@ _NETWORKADAPTER = _descriptor.Descriptor(
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='acls', full_name='NetworkAdapter.acls', index=8,
+      name='macAddress', full_name='NetworkAdapter.macAddress', index=8,
+      number=9, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='acls', full_name='NetworkAdapter.acls', index=9,
       number=40, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
@@ -179,18 +179,14 @@ _NETWORKADAPTER = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=220,
-  serialized_end=396,
+  serialized_start=196,
+  serialized_end=392,
 )
 
 _NETWORKCONFIG.fields_by_name['type'].enum_type = netcmn__pb2._NETWORKTYPE
-_NETWORKCONFIG.fields_by_name['nl2'].message_type = netcmn__pb2._L2SPEC
 _NETWORKCONFIG.fields_by_name['nlisp'].message_type = netcmn__pb2._LISPSPEC
 _NETWORKCONFIG.fields_by_name['nv4'].message_type = netcmn__pb2._IPV4SPEC
 _NETWORKCONFIG.fields_by_name['nv6'].message_type = netcmn__pb2._IPV6SPEC
-_NETWORKCONFIG.oneofs_by_name['netContent'].fields.append(
-  _NETWORKCONFIG.fields_by_name['nl2'])
-_NETWORKCONFIG.fields_by_name['nl2'].containing_oneof = _NETWORKCONFIG.oneofs_by_name['netContent']
 _NETWORKCONFIG.oneofs_by_name['netContent'].fields.append(
   _NETWORKCONFIG.fields_by_name['nlisp'])
 _NETWORKCONFIG.fields_by_name['nlisp'].containing_oneof = _NETWORKCONFIG.oneofs_by_name['netContent']

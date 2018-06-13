@@ -3,6 +3,7 @@
 
 import sys
 _b=sys.version_info[0]<3 and (lambda x:x) or (lambda x:x.encode('latin1'))
+from google.protobuf.internal import enum_type_wrapper
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
 from google.protobuf import reflection as _reflection
@@ -19,9 +20,54 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='devcommon.proto',
   package='',
   syntax='proto3',
-  serialized_pb=_b('\n\x0f\x64\x65vcommon.proto\"/\n\x0eUUIDandVersion\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x0f\n\x07version\x18\x02 \x01(\tB@\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1dgithub.com/zededa/api/zconfigb\x06proto3')
+  serialized_pb=_b('\n\x0f\x64\x65vcommon.proto\"/\n\x0eUUIDandVersion\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x0f\n\x07version\x18\x02 \x01(\t\"0\n\x07\x41\x64\x61pter\x12\x17\n\x04type\x18\x01 \x01(\x0e\x32\t.ZCioType\x12\x0c\n\x04name\x18\x02 \x01(\t*\\\n\x08ZCioType\x12\x0b\n\x07ZCioNop\x10\x00\x12\x0b\n\x07ZCioEth\x10\x01\x12\x0b\n\x07ZCioUSB\x10\x02\x12\x0b\n\x07ZCioCOM\x10\x03\x12\x0c\n\x08ZCioHDMI\x10\x04\x12\x0e\n\tZCioOther\x10\xff\x01\x42@\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1dgithub.com/zededa/api/zconfigb\x06proto3')
 )
 
+_ZCIOTYPE = _descriptor.EnumDescriptor(
+  name='ZCioType',
+  full_name='ZCioType',
+  filename=None,
+  file=DESCRIPTOR,
+  values=[
+    _descriptor.EnumValueDescriptor(
+      name='ZCioNop', index=0, number=0,
+      options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='ZCioEth', index=1, number=1,
+      options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='ZCioUSB', index=2, number=2,
+      options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='ZCioCOM', index=3, number=3,
+      options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='ZCioHDMI', index=4, number=4,
+      options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='ZCioOther', index=5, number=255,
+      options=None,
+      type=None),
+  ],
+  containing_type=None,
+  options=None,
+  serialized_start=118,
+  serialized_end=210,
+)
+_sym_db.RegisterEnumDescriptor(_ZCIOTYPE)
+
+ZCioType = enum_type_wrapper.EnumTypeWrapper(_ZCIOTYPE)
+ZCioNop = 0
+ZCioEth = 1
+ZCioUSB = 2
+ZCioCOM = 3
+ZCioHDMI = 4
+ZCioOther = 255
 
 
 
@@ -62,7 +108,48 @@ _UUIDANDVERSION = _descriptor.Descriptor(
   serialized_end=66,
 )
 
+
+_ADAPTER = _descriptor.Descriptor(
+  name='Adapter',
+  full_name='Adapter',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='type', full_name='Adapter.type', index=0,
+      number=1, type=14, cpp_type=8, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='name', full_name='Adapter.name', index=1,
+      number=2, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=68,
+  serialized_end=116,
+)
+
+_ADAPTER.fields_by_name['type'].enum_type = _ZCIOTYPE
 DESCRIPTOR.message_types_by_name['UUIDandVersion'] = _UUIDANDVERSION
+DESCRIPTOR.message_types_by_name['Adapter'] = _ADAPTER
+DESCRIPTOR.enum_types_by_name['ZCioType'] = _ZCIOTYPE
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
 UUIDandVersion = _reflection.GeneratedProtocolMessageType('UUIDandVersion', (_message.Message,), dict(
@@ -71,6 +158,13 @@ UUIDandVersion = _reflection.GeneratedProtocolMessageType('UUIDandVersion', (_me
   # @@protoc_insertion_point(class_scope:UUIDandVersion)
   ))
 _sym_db.RegisterMessage(UUIDandVersion)
+
+Adapter = _reflection.GeneratedProtocolMessageType('Adapter', (_message.Message,), dict(
+  DESCRIPTOR = _ADAPTER,
+  __module__ = 'devcommon_pb2'
+  # @@protoc_insertion_point(class_scope:Adapter)
+  ))
+_sym_db.RegisterMessage(Adapter)
 
 
 DESCRIPTOR.has_options = True

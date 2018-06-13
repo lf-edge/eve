@@ -8,6 +8,7 @@ import "appconfig.proto";
 import "baseosconfig.proto";
 import "netconfig.proto";
 import "storage.proto";
+import "service.proto";
 
 
 message MapServer {
@@ -46,6 +47,42 @@ message DeviceOpsCmd {
 	string opsTime = 4;
 }
 
+enum sWAdapterType {
+	IGNORE = 0;
+	VLAN = 1;
+	BOND = 2;
+} 
+
+message sWAdapterParams {
+	sWAdapterType aType = 1;
+
+	// vlan
+	string underlayInterface = 8;
+        uint32 vlanId = 9;
+
+	// OR : repeated physical interfaces for bond0
+	repeated string bondgroup = 10;
+}
+
+message SystemAdapter {
+	// name of the adapter
+	string name = 1;
+
+	sWAdapterParams allocDetails = 20;
+
+	// this is part of the freelink group
+	bool freeUplink = 2;
+		
+	// this is part of the uplink group
+	bool uplink = 3;
+
+	// attach this network config for this adapter
+	string networkUUID = 4;
+
+	// if its static network we need ip address
+	string addr = 5;
+}
+
 message EdgeDevConfig {
 	UUIDandVersion id = 1;
 	bytes devConfigSha256 = 2;
@@ -61,6 +98,9 @@ message EdgeDevConfig {
 	DeviceOpsCmd backup = 10;
 
 	repeated ConfigItem configItems = 11;	
+	repeated SystemAdapter systemAdapterList = 12; 
+
+	repeated ServiceInstanceConfig services = 13;
 }
 
 // Timers and other per-device policy which relates to the interaction

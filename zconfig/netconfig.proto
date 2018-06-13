@@ -10,7 +10,7 @@ message NetworkConfig {
 	string id = 1;
 	NetworkType type = 5;
 	oneof netContent {
-		l2spec nl2 = 8;
+		// FIXME: lisp is configuration in lisp VPN not here
 		lispspec nlisp = 9;
 		ipv4spec nv4 = 10;
 		ipv6spec nv6 = 11;
@@ -32,6 +32,10 @@ message NetworkAdapter {
 	string lispsignature = 6;
 	bytes  pemcert = 7;
 	bytes  pemprivatekey = 8;
+
+	// used in case of P2V, where we want to specify a macAddress
+	// to vif, that is simulated towards app
+	string macAddress = 9; 
 
 	// firewall
 	repeated ACE acls = 40;

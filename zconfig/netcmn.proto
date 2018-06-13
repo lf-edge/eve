@@ -3,30 +3,58 @@ syntax = "proto3";
 option java_package = "com.zededa.cloud.uservice.proto";
 option go_package = "github.com/zededa/api/zconfig";
 
-// import "fw.proto";
+message ipRange {
+	string start = 1;
+	string end = 2;
+}
+
+enum DHCPType {
+	DHCPNoop = 0;
+	// used for device adapter
+	Static = 1;
+
+	// used for application simulation
+	PassThrough = 2;
+
+	// used for application simulation
+	Server = 3;
+
+	// used for device adapter
+	Client = 4;
+}
 
 message ipv4spec {
-	bool   dhcp = 2;
+	DHCPType   dhcp = 2;
 
+	// subnet is CIDR format...x.y.z.l/nn
 	string subnet = 3;
-	string mask = 4;
 	string gateway = 5;
 	string domain = 6;
 	string ntp = 7;
 	repeated string dns = 8;
+
+	// for IPAM management when dhcp is turned on.
+	// If none provided, system will default pool.
+	ipRange dhcpRange = 9;
 }
 
 message ipv6spec {
-	bool   dhcp = 2;
+	DHCPType   dhcp = 2;
 
+	// subnet is CIDR format...x.y.z.l/nn
 	string subnet = 3;
-	string mask = 4;
 	string gateway = 5;
 	string domain = 6;
 	string ntp = 7;;
 	repeated string dns = 8;
+
+	// for IPAM management when dhcp is turned on.
+	// If none provided, system will default pool.
+	ipRange dhcpRange = 9;
 }
 
+// FIXME: This will all move to network service rather than lispspec in 
+// network common
 message NameToEid {
 	string hostname = 1;
 	repeated string eids = 2;
@@ -45,13 +73,10 @@ message lispspec {
 	repeated NameToEid nmtoeid = 3;
 }
 
-message l2spec {
-}
-
 enum NetworkType {
 	NETWORKTYPENOOP = 0;
 	V4 = 4;
 	V6 = 6;
-	L2 = 2;
 	LISP = 10;
 }
+
