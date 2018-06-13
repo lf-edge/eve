@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"time"
 )
 
 // XXX what do we need for restart/restarted?
@@ -57,13 +58,13 @@ const debug = false // XXX setable?
 
 type Publication struct {
 	// Private fields
-	topicType interface{}
-	agentName string
+	topicType  interface{}
+	agentName  string
 	agentScope string // XXX objType
-	topic     string
-	km        keyMap
-	sockName  string
-	listener  net.Listener
+	topic      string
+	km         keyMap
+	sockName   string
+	listener   net.Listener
 }
 
 // Init function to create directory and socket listener based on above settings
@@ -100,7 +101,7 @@ func Publish(agentName string, topicType interface{}) (*Publication, error) {
 		}
 		s, err := net.Listen("unix", sockName)
 		if err != nil {
-			errStr := fmt.Sprintf("Publish(%s, %s): %s",
+			errStr := fmt.Sprintf("Publish(%s/%s): failed %s",
 				agentName, topic, err)
 			return nil, errors.New(errStr)
 		}
@@ -118,7 +119,8 @@ func (pub *Publication) publisher() {
 	for {
 		c, err := pub.listener.Accept()
 		if err != nil {
-			log.Printf("publisher:", err)
+			log.Printf("publisher(%s/%s) failed %s\n",
+				pub.agentName, pub.topic, err)
 			continue
 		}
 		go pub.serveConnection(c)
@@ -129,16 +131,18 @@ func (pub *Publication) publisher() {
 func (pub *Publication) serveConnection(s net.Conn) {
 	agentName := pub.agentName
 	topic := pub.topic
-	log.Printf("serveConnection(%s, %s)\n", agentName, topic)
+	log.Printf("serveConnection(%s/%s)\n", agentName, topic)
 	defer s.Close()
 
 	_, err := s.Write([]byte(fmt.Sprintf("Hello from %s for %s\n", agentName, topic)))
 	if err != nil {
-		log.Printf("serveConnection:", err)
+		log.Printf("serveConnection(%s/%s) failed %s\n",
+			agentName, topic, err)
 	}
 	err = pub.serialize(s)
 	if err != nil {
-		log.Printf("serveConnection:", err)
+		log.Printf("serveConnection(%s/%s) failed %s\n",
+			agentName, topic, err)
 	}
 }
 
@@ -163,7 +167,7 @@ func (pub *Publication) Publish(key string, item interface{}) error {
 	topic := TypeToName(item)
 	if topic != pub.topic {
 		// XXX add agentScope aka objType
-		errStr := fmt.Sprintf("Publish(%s, %s): item is topic %s",
+		errStr := fmt.Sprintf("Publish(%s/%s): item is wrong topic %s",
 			agentName, pub.topic, topic)
 		return errors.New(errStr)
 	}
@@ -171,17 +175,17 @@ func (pub *Publication) Publish(key string, item interface{}) error {
 		// XXX fails to equal on e.g., /var/run/downloader/metricsMap/global.json
 		if cmp.Equal(m, item) {
 			if debug {
-				log.Printf("Publish(%s, %s, %s) unchanged\n",
+				log.Printf("Publish(%s/%s/%s) unchanged\n",
 					agentName, topic, key)
 			}
 			return nil
 		}
 		if debug {
-			log.Printf("Publish(%s, %s, %s) replacing due to diff %s\n",
+			log.Printf("Publish(%s/%s/%s) replacing due to diff %s\n",
 				agentName, topic, key, cmp.Diff(m, item))
 		}
 	} else if debug {
-		log.Printf("Publish(%s, %s, %s) adding %v\n",
+		log.Printf("Publish(%s/%s/%s) adding %v\n",
 			agentName, topic, key, item)
 	}
 	// Perform a deep copy so the above Equal check will work
@@ -253,12 +257,12 @@ func (pub *Publication) Unpublish(key string) error {
 	topic := pub.topic
 	if m, ok := pub.km.key[key]; ok {
 		if debug {
-			log.Printf("Unpublish(%s, %s, %s) removing %v\n",
+			log.Printf("Unpublish(%s/%s/%s) removing %v\n",
 				agentName, topic, key, m)
 		}
 	} else {
 		// XXX add agentScope aka objType
-		errStr := fmt.Sprintf("Unpublish(%s, %s): key %s does not exist",
+		errStr := fmt.Sprintf("Unpublish(%s/%s): key %s does not exist",
 			agentName, pub.topic, key)
 		log.Printf("XXX %s\n", errStr)
 		return errors.New(errStr)
@@ -270,11 +274,11 @@ func (pub *Publication) Unpublish(key string) error {
 	dirName := PubDirName(agentName, topic)
 	fileName := dirName + "/" + key + ".json"
 	if debug {
-		log.Printf("Unpublish deleting %s\n", fileName)
+		log.Printf("Unpublish deleting file %s\n", fileName)
 	}
 	if err := os.Remove(fileName); err != nil {
 		// XXX add agentScope aka objType
-		errStr := fmt.Sprintf("Publish(%s, %s): %s",
+		errStr := fmt.Sprintf("Unpublish(%s/%s): failed %s",
 			agentName, pub.topic, err)
 		return errors.New(errStr)
 	}
@@ -283,7 +287,7 @@ func (pub *Publication) Unpublish(key string) error {
 }
 
 func (pub *Publication) serialize(sock net.Conn) error {
-	log.Printf("serialize for %s/%s\n", pub.agentName, pub.topic)
+	log.Printf("serialize(%s/%s)\n", pub.agentName, pub.topic)
 	for key, s := range pub.km.key {
 		b, err := json.Marshal(s)
 		if err != nil {
@@ -291,7 +295,8 @@ func (pub *Publication) serialize(sock net.Conn) error {
 		}
 		_, err = sock.Write([]byte(fmt.Sprintf("key %s val %s\n", key, b)))
 		if err != nil {
-			log.Printf("serialize write failed %s\n", err)
+			log.Printf("serialize(%s/%s) write failed %s\n",
+				pub.agentName, pub.topic, err)
 			return err
 		}
 	}
@@ -299,7 +304,7 @@ func (pub *Publication) serialize(sock net.Conn) error {
 }
 
 func (pub *Publication) dump(infoStr string) {
-	log.Printf("dump for %s/%s %s\n", pub.agentName, pub.topic, infoStr)
+	log.Printf("dump(%s/%s) %s\n", pub.agentName, pub.topic, infoStr)
 	for key, s := range pub.km.key {
 		b, err := json.Marshal(s)
 		if err != nil {
@@ -315,8 +320,8 @@ func (pub *Publication) Get(key string) (interface{}, error) {
 	if ok {
 		return m, nil
 	} else {
-		errStr := fmt.Sprintf("Unknown key %s for %s/%s", key,
-			pub.agentName, pub.topic)
+		errStr := fmt.Sprintf("Get(%s/%s) unknown key %s",
+			pub.agentName, pub.topic, key)
 		return nil, errors.New(errStr)
 	}
 }
@@ -354,9 +359,9 @@ type Subscription struct {
 	topicType interface{}
 	agentName string
 	// XXX add agentScope aka objType
-	topic     string
-	km        keyMap
-	userCtx   interface{}
+	topic   string
+	km      keyMap
+	userCtx interface{}
 }
 
 // Init function for Subscribe; returns a context.
@@ -367,15 +372,20 @@ type Subscription struct {
 // XXX add agentScope aka objType
 func Subscribe(agentName string, topicType interface{}, ctx interface{}) (*Subscription, error) {
 	topic := TypeToName(topicType)
-	log.Printf("Subscribe(%s, %s)\n", agentName, topic)
+	log.Printf("Subscribe(%s/%s)\n", agentName, topic)
 	if subscribeFromDir {
-		// XXX TBD add waiting for directory to appear?
+		// Waiting for directory to appear
 		dirName := PubDirName(agentName, topic)
-		if _, err := os.Stat(dirName); err != nil {
-			// XXX add agentScope aka objType
-			errStr := fmt.Sprintf("Subscribe(%s, %s): %s",
-				agentName, topic, err)
-			return nil, errors.New(errStr)
+		for {
+			if _, err := os.Stat(dirName); err != nil {
+				// XXX add agentScope aka objType
+				errStr := fmt.Sprintf("Subscribe(%s/%s): failed %s",
+					agentName, topic, err)
+				log.Println(errStr)
+				time.Sleep(10 * time.Second)
+			} else {
+				break
+			}
 		}
 		changes := make(chan string)
 		sub := new(Subscription)
@@ -392,7 +402,7 @@ func Subscribe(agentName string, topicType interface{}, ctx interface{}) (*Subsc
 		return nil, errors.New(errStr)
 	} else {
 		// XXX add agentScope aka objType
-		errStr := fmt.Sprintf("Subscribe(%s, %s): %s",
+		errStr := fmt.Sprintf("Subscribe(%s/%s): failed %s",
 			agentName, topic, "nowhere to subscribe")
 		return nil, errors.New(errStr)
 	}
@@ -402,7 +412,8 @@ func Subscribe(agentName string, topicType interface{}, ctx interface{}) (*Subsc
 // XXX Currently only handles directory subscriptions; no AF_UNIX
 func (sub *Subscription) ProcessChange(change string) {
 	if debug {
-		log.Printf("ProcessEvent %s\n", change)
+		log.Printf("ProcessEvent(%s/%s) %s\n",
+			sub.agentName, sub.topic, change)
 	}
 	dirName := PubDirName(sub.agentName, sub.topic)
 	watch.HandleStatusEvent(change, sub,
@@ -413,18 +424,20 @@ func (sub *Subscription) ProcessChange(change string) {
 // XXX note that we could add a CreateHandler since we know if we've already
 // read it. Is that different than the handleConfigStatus notion of create??
 func handleModify(ctxArg interface{}, key string, stateArg interface{}) {
-	if debug {
-		log.Printf("handleModify for %s\n", key)
-	}
 	sub := ctxArg.(*Subscription)
+	if debug {
+		log.Printf("pusub.handleModify(%s/%s) key %s\n",
+			sub.agentName, sub.topic, key)
+	}
 	m, ok := sub.km.key[key]
 	// XXX if debug; need json encode to get readable output
 	if debug {
 		if ok {
-			log.Printf("Replace %v with %v for key %s\n",
-				m, stateArg, key)
+			log.Printf("pusub.handleModify(%s/%s) replace %v with %v for key %s\n",
+				sub.agentName, sub.topic, m, stateArg, key)
 		} else {
-			log.Printf("Add %v for key %s\n", stateArg, key)
+			log.Printf("pusub.handleModify(%s/%s) add %v for key %s\n",
+				sub.agentName, sub.topic, stateArg, key)
 		}
 	}
 	// Note that the stateArg was created by the caller hence no
@@ -434,19 +447,26 @@ func handleModify(ctxArg interface{}, key string, stateArg interface{}) {
 		(*sub.ModifyHandler)(sub.userCtx, key, stateArg)
 	}
 	if debug {
-		log.Printf("handleModify done for %s\n", key)
+		log.Printf("pusub.handleModify(%s/%s) done for key %s\n",
+			sub.agentName, sub.topic, key)
 	}
 }
 
 func handleDelete(ctxArg interface{}, key string) {
 	sub := ctxArg.(*Subscription)
+	if debug {
+		log.Printf("pusub.handleDelete(%s/%s) key %s\n",
+			sub.agentName, sub.topic, key)
+	}
 	m, ok := sub.km.key[key]
 	if !ok {
-		log.Printf("XXX Delete not found for key %s\n", key)
+		log.Printf("pusub.handleDelete(%s/%s) %s key not found\n",
+			sub.agentName, sub.topic, key)
 		return
 	}
 	if debug {
-		log.Printf("Delete key %s value %v\n", key, m)
+		log.Printf("pusub.handleDelete(%s/%s) key %s value %v\n",
+			sub.agentName, sub.topic, key, m)
 	}
 	delete(sub.km.key, key)
 	if sub.DeleteHandler != nil {
@@ -460,8 +480,8 @@ func (sub *Subscription) Get(key string) (interface{}, error) {
 	if ok {
 		return m, nil
 	} else {
-		errStr := fmt.Sprintf("Unknown key %s for %s/%s", key,
-			sub.agentName, sub.topic)
+		errStr := fmt.Sprintf("Get(%s/%s) unknown key %s",
+			sub.agentName, sub.topic, key)
 		return nil, errors.New(errStr)
 	}
 }
