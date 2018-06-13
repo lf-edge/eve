@@ -43,8 +43,8 @@
     "service/s3/s3manager",
     "service/sts"
   ]
-  revision = "47309c012812d9e9c488a54313e5cdfa7479df93"
-  version = "v1.14.1"
+  revision = "4bdf3e6f6926903b8ca6b0d2b93bbdddcf6af219"
+  version = "v1.14.5"
 
 [[projects]]
   branch = "master"
@@ -128,8 +128,8 @@
 [[projects]]
   name = "github.com/pkg/sftp"
   packages = ["."]
-  revision = "d2aa419835609d317c34baae11bc345d1f9971a7"
-  version = "1.7.0"
+  revision = "57673e38ea946592a59c26592b7e6fbda646975b"
+  version = "1.8.0"
 
 [[projects]]
   branch = "master"
@@ -179,7 +179,7 @@
     "zconfig",
     "zmet"
   ]
-  revision = "237541392e2fba662e79ce700fcc8eaa5dbee6e5"
+  revision = "497b1dee3d384037ed1ace52ecb16766f808887e"
 
 [[projects]]
   branch = "master"
@@ -203,7 +203,7 @@
     "poly1305",
     "ssh"
   ]
-  revision = "b47b1587369238182299fe4dad77d05b8b461e06"
+  revision = "8ac0e0d97ce45cd83d1d7243c060cb8461dda5e9"
 
 [[projects]]
   branch = "master"
@@ -212,7 +212,7 @@
     "unix",
     "windows"
   ]
-  revision = "9527bec2660bd847c050fda93a0f0c6dee0800bb"
+  revision = "56ede360ec1c541828fb88741b3f1049406d28f5"
 
 [solve-meta]
   analyzer-name = "dep"
