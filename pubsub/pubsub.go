@@ -352,8 +352,8 @@ type SubRestartHandler func(ctx interface{}, restarted bool) // XXX needed?
 
 type Subscription struct {
 	C             <-chan string
-	ModifyHandler *SubModifyHandler
-	DeleteHandler *SubDeleteHandler
+	ModifyHandler SubModifyHandler
+	DeleteHandler SubDeleteHandler
 
 	// Private fields
 	topicType interface{}
@@ -444,7 +444,7 @@ func handleModify(ctxArg interface{}, key string, stateArg interface{}) {
 	// need for a deep copy
 	sub.km.key[key] = stateArg
 	if sub.ModifyHandler != nil {
-		(*sub.ModifyHandler)(sub.userCtx, key, stateArg)
+		(sub.ModifyHandler)(sub.userCtx, key, stateArg)
 	}
 	if debug {
 		log.Printf("pusub.handleModify(%s/%s) done for key %s\n",
@@ -470,7 +470,7 @@ func handleDelete(ctxArg interface{}, key string) {
 	}
 	delete(sub.km.key, key)
 	if sub.DeleteHandler != nil {
-		(*sub.DeleteHandler)(sub.userCtx, key)
+		(sub.DeleteHandler)(sub.userCtx, key)
 	}
 }
 
