@@ -476,6 +476,9 @@ type NetworkServiceStatus struct {
 	Activated     bool
 	AppLink       uuid.UUID
 	Adapter       string // Ifname or group like "uplink", or empty
+	// Any errros from provisioning the service
+	Error     string
+	ErrorTime time.Time
 }
 
 // Network metrics for overlay and underlay
