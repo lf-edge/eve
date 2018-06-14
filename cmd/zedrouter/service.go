@@ -25,7 +25,7 @@ func handleNetworkServiceModify(ctxArg interface{}, key string, configArg interf
 		status := CastNetworkServiceStatus(st)
 		status.PendingModify = true
 		pub.Publish(key, status)
-		// XXX what do we do?
+		doModify(config, &status)
 		status.PendingModify = false
 		pub.Publish(key, status)
 	} else {
@@ -46,9 +46,10 @@ func handleNetworkServiceCreate(ctx *zedrouterContext, key string, config types.
 	}
 	status.PendingAdd = true
 	pub.Publish(key, status)
-	// XXX do work
+	doCreate(config, &status)
+	pub.Publish(key, status)
 	if config.Activate {
-		// XXX doActivate
+		doActivate(config, &status)
 		status.Activated = true
 	}
 	status.PendingAdd = false
@@ -72,8 +73,52 @@ func handleNetworkServiceDelete(ctxArg interface{}, key string) {
 	status := CastNetworkServiceStatus(st)
 	status.PendingDelete = true
 	pub.Publish(key, status)
-	// XXX what do we do?
-
+	if status.Activated {
+		doInactivate(&status)
+		pub.Publish(key, status)
+	}
+	doDelete(&status)
 	status.PendingDelete = false
 	pub.Unpublish(key)
+}
+
+func doCreate(config types.NetworkService, status *types.NetworkServiceStatus) {
+	log.Printf("XXX doCreate NetworkService key %s\n", config.UUID)
+	// Validate that the objects exists
+	switch config.Type {
+	case 1:
+	}
+}
+
+func doModify(config types.NetworkService, status *types.NetworkServiceStatus) {
+	log.Printf("doModify NetworkService key %s\n", config.UUID)
+	if config.Type != status.Type ||
+		config.AppLink != status.AppLink ||
+		config.Adapter != status.Adapter {
+		log.Printf("XXX doModify NetworkService can't change key %s\n",
+			config.UUID)
+		// XXX report error somehow?
+		return
+	}
+
+	if config.Activate && !status.Activated {
+		doActivate(config, status)
+		status.Activated = true
+	} else if status.Activated && !config.Activate {
+		doInactivate(status)
+		status.Activated = false
+	}
+}
+
+func doActivate(config types.NetworkService, status *types.NetworkServiceStatus) {
+	log.Printf("XXX doActivate NetworkService key %s\n", config.UUID)
+}
+
+func doInactivate(status *types.NetworkServiceStatus) {
+	log.Printf("XXX doInactivate NetworkService key %s\n", status.UUID)
+}
+
+func doDelete(status *types.NetworkServiceStatus) {
+	log.Printf("XXX doDelete NetworkService key %s\n", status.UUID)
+	// Anything to do except the inactivate already done?
 }
