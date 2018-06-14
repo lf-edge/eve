@@ -8,8 +8,10 @@ package zedrouter
 import (
 	"errors"
 	"fmt"
+	"github.com/vishvananda/netlink"
 	"github.com/zededa/go-provision/types"
 	"log"
+	"strings"
 	"time"
 )
 
@@ -28,7 +30,7 @@ func handleNetworkServiceModify(ctxArg interface{}, key string, configArg interf
 		status := CastNetworkServiceStatus(st)
 		status.PendingModify = true
 		pub.Publish(key, status)
-		doModify(config, &status)
+		doModify(ctx, config, &status)
 		status.PendingModify = false
 		pub.Publish(key, status)
 	} else {
@@ -51,6 +53,7 @@ func handleNetworkServiceCreate(ctx *zedrouterContext, key string, config types.
 	pub.Publish(key, status)
 	err := doCreate(config, &status)
 	if err != nil {
+		log.Printf("doCreate(%s) failed: %s\n", key, err)
 		status.Error = err.Error()
 		status.ErrorTime = time.Now()
 		status.PendingAdd = false
@@ -59,9 +62,11 @@ func handleNetworkServiceCreate(ctx *zedrouterContext, key string, config types.
 	}
 	pub.Publish(key, status)
 	if config.Activate {
-		err := doActivate(config, &status)
+		err := doActivate(ctx, config, &status)
 		if err != nil {
-			// XXX report error
+			log.Printf("doActivate(%s) failed: %s\n", key, err)
+			status.Error = err.Error()
+			status.ErrorTime = time.Now()
 		} else {
 			status.Activated = true
 		}
@@ -122,21 +127,28 @@ func doCreate(config types.NetworkService, status *types.NetworkServiceStatus) e
 	return err
 }
 
-func doModify(config types.NetworkService, status *types.NetworkServiceStatus) {
+func doModify(ctx *zedrouterContext, config types.NetworkService,
+	status *types.NetworkServiceStatus) {
+
 	log.Printf("doModify NetworkService key %s\n", config.UUID)
 	if config.Type != status.Type ||
 		config.AppLink != status.AppLink ||
 		config.Adapter != status.Adapter {
-		log.Printf("XXX doModify NetworkService can't change key %s\n",
+		errStr := fmt.Sprintf("doModify NetworkService can't change key %s",
 			config.UUID)
-		// XXX report error somehow?
+		log.Println(errStr)
+		status.Error = errStr
+		status.ErrorTime = time.Now()
 		return
 	}
 
 	if config.Activate && !status.Activated {
-		err := doActivate(config, status)
+		err := doActivate(ctx, config, status)
 		if err != nil {
-			// XXX report error
+			log.Printf("doActivate(%s) failed: %s\n",
+				config.UUID.String(), err)
+			status.Error = err.Error()
+			status.ErrorTime = time.Now()
 		} else {
 			status.Activated = true
 		}
@@ -146,11 +158,35 @@ func doModify(config types.NetworkService, status *types.NetworkServiceStatus) {
 	}
 }
 
-func doActivate(config types.NetworkService, status *types.NetworkServiceStatus) error {
+func doActivate(ctx *zedrouterContext, config types.NetworkService,
+	status *types.NetworkServiceStatus) error {
+
 	log.Printf("doActivate NetworkService key %s type %d\n",
 		config.UUID, config.Type)
 
-	var err error
+	// We must have an existing AppLink to activate
+	// Make sure we have a NetworkConfig object if we have a UUID
+	// Returns nil if UUID is zero
+	netconf, err := getNetworkConfig(ctx.subNetworkConfig,
+		config.AppLink)
+	if err != nil {
+		// XXX need a fallback/retry!!
+		return err
+	}
+	if netconf == nil {
+		return errors.New(fmt.Sprintf("No AppLink for %s", config.UUID))
+	}
+
+	// Check that Adapter is either "uplink", "freeuplink", or
+	// an existing ifname assigned to domO/zedrouter. A Bridge
+	// only works with a single adapter interface.
+	allowUplink := (config.Type != types.NST_BRIDGE)
+	err = validateAdapter(config.Adapter, allowUplink)
+	if err != nil {
+		return err
+	}
+
+	// XXX the Activate code needs NetworkConfig with buN interface...
 	switch config.Type {
 	case types.NST_STRONGSWAN:
 		err = strongswanActivate(config, status)
@@ -169,6 +205,25 @@ func doActivate(config types.NetworkService, status *types.NetworkServiceStatus)
 		err = errors.New(errStr)
 	}
 	return err
+}
+
+func validateAdapter(adapter string, allowUplink bool) error {
+	if allowUplink {
+		if strings.EqualFold(adapter, "uplink") {
+			return nil
+		}
+		if strings.EqualFold(adapter, "freeuplink") {
+			return nil
+		}
+	}
+	// XXX look for ifname; this assumes it exists in dom0/zedrouter
+	// and not assigned to pciback
+	link, _ := netlink.LinkByName(adapter)
+	if link == nil {
+		errStr := fmt.Sprintf("Unknown adapter %s", adapter)
+		return errors.New(errStr)
+	}
+	return nil
 }
 
 func doInactivate(status *types.NetworkServiceStatus) {
