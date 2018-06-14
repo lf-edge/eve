@@ -466,6 +466,18 @@ type NetworkService struct {
 	OpaqueConfig string
 }
 
+type NetworkServiceStatus struct {
+	UUID          uuid.UUID
+	PendingAdd    bool
+	PendingModify bool
+	PendingDelete bool
+	DisplayName   string
+	Type          NetworkServiceType
+	Activated     bool
+	AppLink       uuid.UUID
+	Adapter       string // Ifname or group like "uplink", or empty
+}
+
 // Network metrics for overlay and underlay
 // Matches networkMetrics protobuf message
 type NetworkMetrics struct {

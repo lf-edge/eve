@@ -52,9 +52,10 @@ var Version = "No version specified"
 
 type zedrouterContext struct {
 	// Experimental Zededa data plane enable/disable flag
-	separateDataPlane bool
-	subNetworkConfig  *pubsub.Subscription
-	subNetworkService *pubsub.Subscription
+	separateDataPlane       bool
+	subNetworkConfig        *pubsub.Subscription
+	subNetworkService       *pubsub.Subscription
+	pubNetworkServiceStatus *pubsub.Publication
 }
 
 // Dummy since we don't have anything to pass
@@ -165,10 +166,14 @@ func Run() {
 	subNetworkService.ModifyHandler = handleNetworkServiceModify
 	subNetworkService.DeleteHandler = handleNetworkServiceDelete
 
+	pubNetworkServiceStatus, err := pubsub.Publish(agentName,
+		types.NetworkServiceStatus{})
+
 	ZedrouterCtx := zedrouterContext{
-		separateDataPlane: false,
-		subNetworkConfig:  subNetworkConfig,
-		subNetworkService: subNetworkService,
+		separateDataPlane:       false,
+		subNetworkConfig:        subNetworkConfig,
+		subNetworkService:       subNetworkService,
+		pubNetworkServiceStatus: pubNetworkServiceStatus,
 	}
 
 	// XXX should we make geoRedoTime configurable?
@@ -1661,41 +1666,4 @@ func handleNetworkConfigModify(ctxArg interface{}, key string, configArg interfa
 func handleNetworkConfigDelete(ctxArg interface{}, key string) {
 	// XXX ctx := ctxArg.(*zedrouterContext)
 	log.Printf("handleNetworkConfigDelete()\n")
-}
-
-func handleNetworkServiceModify(ctxArg interface{}, key string, configArg interface{}) {
-	// XXX ctx := ctxArg.(*zedrouterContext)
-	config := CastNetworkService(configArg)
-	log.Printf("handleNetworkServiceModify(%s)\n", config.UUID.String())
-}
-
-func handleNetworkServiceDelete(ctxArg interface{}, key string) {
-	// XXX ctx := ctxArg.(*zedrouterContext)
-	log.Printf("handleNetworkServiceDelete()\n")
-}
-
-// XXX move to library? template?
-// XXX alternative seems to be a deep copy of some sort
-func CastNetworkConfig(in interface{}) types.NetworkConfig {
-	b, err := json.Marshal(in)
-	if err != nil {
-		log.Fatal(err, "json Marshal in CastNetworkConfig")
-	}
-	var output types.NetworkConfig
-	if err := json.Unmarshal(b, &output); err != nil {
-		log.Fatal(err, "json Unmarshal in CastNetworkConfig")
-	}
-	return output
-}
-
-func CastNetworkService(in interface{}) types.NetworkService {
-	b, err := json.Marshal(in)
-	if err != nil {
-		log.Fatal(err, "json Marshal in CastNetworkService")
-	}
-	var output types.NetworkService
-	if err := json.Unmarshal(b, &output); err != nil {
-		log.Fatal(err, "json Unmarshal in CastNetworkService")
-	}
-	return output
 }
