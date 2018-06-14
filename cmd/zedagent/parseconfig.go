@@ -823,7 +823,11 @@ func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
 				// XXX report?
 			}
 		}
-		if intfEnt.Addr != "" {
+		// XXX need to compare against network to make sure we don't
+		// use an IPV6 EID on a IPv4 network
+		if false && intfEnt.Addr != "" {
+			// XXX zedcloud is sending EID with a V4 network!
+			// even though no overlay configured for app.
 			ulCfg.AppIPAddr = net.ParseIP(intfEnt.Addr)
 			if ulCfg.AppIPAddr == nil {
 				log.Printf("parseUnderlayNetworkConfig: bad IP %s\n",
