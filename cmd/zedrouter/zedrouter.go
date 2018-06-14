@@ -544,7 +544,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 			config.DisplayName)
 		if len(config.OverlayNetworkList) != 1 ||
 			len(config.UnderlayNetworkList) != 0 {
-			// XXX send to cloud?
+			// XXX report error to cloud?
 			log.Println("Malformed IsZedmanager config; ignored")
 			return
 		}
@@ -620,12 +620,13 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		EID := olConfig.EID
 		addr, err := netlink.ParseAddr(EID.String() + "/128")
 		if err != nil {
-			// XXX send to cloud?
+			// XXX send error to cloud?
 			log.Printf("ParseAddr %s failed: %s\n", EID, err)
 			return
 		}
 		if err := netlink.AddrAdd(oLink, addr); err != nil {
 			// XXX fatal?
+			// XXX send error to cloud?
 			log.Printf("AddrAdd %s failed: %s\n", EID, err)
 		}
 
@@ -914,13 +915,9 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 			log.Printf("Found underlay NetworkConfig %v\n", netconf)
 		}
 		// Not clear how to handle multiple ul; use /30 prefix?
-		// XXX check for static address; if dhcp dhcpRange ...
-		// XXX sttatic; need ulAddr1 from somewhere if static...
-		ulAddr1 := "172.27." + strconv.Itoa(appNum) + ".1"
-		ulAddr2 := "172.27." + strconv.Itoa(appNum) + ".2"
-		if debug {
-			log.Printf("ulAddr1 %s ulAddr2 %s\n", ulAddr1, ulAddr2)
-		}
+		ulAddr1, ulAddr2 := getUlAddrs(appNum, &ulConfig, nil, netconf)
+		log.Printf("ulAddr1 %s ulAddr2 %s\n", ulAddr1, ulAddr2)
+
 		var ulMac string // Handed to domU
 		if ulConfig.AppMacAddr != nil {
 			ulMac = ulConfig.AppMacAddr.String()
@@ -1001,6 +998,44 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 	status.PendingAdd = false
 	writeAppNetworkStatus(&status, statusFilename)
 	log.Printf("handleCreate done for %s\n", config.DisplayName)
+}
+
+func getUlAddrs(appNum int, ulConfig *types.UnderlayNetworkConfig,
+	ulStatus *types.UnderlayNetworkStatus,
+	netconf *types.NetworkConfig) (string, string) {
+
+	// Default
+	ulAddr1 := "172.27." + strconv.Itoa(appNum) + ".1"
+	ulAddr2 := "172.27." + strconv.Itoa(appNum) + ".2"
+	if ulConfig != nil && ulConfig.AppIPAddr != nil {
+		// Note that ulAddr2 will be in a different subnet.
+		// Assumption is that the config specifies a gateway/router
+		// in the same subnet as the static address.
+		ulAddr2 = ulConfig.AppIPAddr.String()
+	} else if ulStatus != nil && ulStatus.AppIPAddr != nil {
+		// Note that ulAddr2 will be in a different subnet.
+		// Assumption is that the config specifies a gateway/router
+		// in the same subnet as the static address.
+		ulAddr2 = ulStatus.AppIPAddr.String()
+	} else if netconf != nil && netconf.DhcpRange.Start != nil {
+		// Avoid the first address in range
+		a := netconf.DhcpRange.Start.To4()
+		if a[3] == 255 {
+			a[3] = 0
+			a[2]++ // Unlikely to overflow
+		} else {
+			a[3]++
+		}
+		ulAddr1 = a.String()
+		if a[3] == 255 {
+			a[3] = 0
+			a[2]++
+		} else {
+			a[3]++ // Unlikely to overflow
+		}
+		ulAddr2 = a.String()
+	}
+	return ulAddr1, ulAddr2
 }
 
 var nilUUID uuid.UUID // Really a constant
@@ -1223,10 +1258,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 		if netconf != nil {
 			log.Printf("Found underlay NetworkConfig %v\n", netconf)
 		}
-
-		// XXX check for static address.
-		ulAddr1 := "172.27." + strconv.Itoa(appNum) + ".1"
-		ulAddr2 := "172.27." + strconv.Itoa(appNum) + ".2"
+		ulAddr1, ulAddr2 := getUlAddrs(appNum, &ulConfig, nil, netconf)
 		ulStatus := status.UnderlayNetworkList[ulNum-1]
 
 		// Update ACLs
@@ -1464,9 +1496,6 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 				log.Printf("handleDelete ulNum %d\n", ulNum)
 			}
 			ulIfname := "bu" + strconv.Itoa(appNum)
-			// XXX check for static address.
-			ulAddr1 := "172.27." + strconv.Itoa(appNum) + ".1"
-			ulAddr2 := "172.27." + strconv.Itoa(appNum) + ".2"
 			if debug {
 				log.Printf("Deleting ulIfname %s\n", ulIfname)
 			}
@@ -1484,25 +1513,38 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 
 			// Delete ACLs
 			// Need to check that index exists
-			if len(status.UnderlayNetworkList) >= ulNum {
-				ulStatus := status.UnderlayNetworkList[ulNum-1]
-				var sshPort uint
-				if ulStatus.SshPortMap {
-					sshPort = 8022 + 100*uint(appNum)
-				}
-				err := deleteACLConfiglet(ulIfname, false,
-					ulStatus.ACLs, 4, ulAddr1, ulAddr2,
-					sshPort)
-				if err != nil {
-					log.Printf("deleteACLConfiglet failed for %s: %s\n",
-						status.DisplayName, err)
-					status.Error = appendError(status.Error, "deleteACL",
-						err.Error())
-					status.ErrorTime = time.Now()
-				}
-			} else {
-				log.Println("Missing status for underlay %d; can not clean up ACLs\n",
+			if len(status.UnderlayNetworkList) < ulNum {
+				log.Println("Missing status for underlay %d; can not clean up ACLs etc\n",
 					ulNum)
+				continue
+			}
+			ulStatus := status.UnderlayNetworkList[ulNum-1]
+			var sshPort uint
+			if ulStatus.SshPortMap {
+				sshPort = 8022 + 100*uint(appNum)
+			}
+			netconf, err := getNetworkConfig(ctx.subNetworkConfig,
+				ulStatus.Network)
+			if err != nil {
+				log.Printf("handleDelete getNetworkConfig failed %s\n",
+					err)
+				// XXX need a fallback/retry!!
+			}
+			if netconf != nil {
+				log.Printf("Found underlay NetworkConfig %v\n",
+					netconf)
+			}
+			ulAddr1, ulAddr2 := getUlAddrs(appNum, nil, &ulStatus,
+				netconf)
+			err = deleteACLConfiglet(ulIfname, false,
+				ulStatus.ACLs, 4, ulAddr1, ulAddr2,
+				sshPort)
+			if err != nil {
+				log.Printf("deleteACLConfiglet failed for %s: %s\n",
+					status.DisplayName, err)
+				status.Error = appendError(status.Error, "deleteACL",
+					err.Error())
+				status.ErrorTime = time.Now()
 			}
 		}
 	}
@@ -1599,6 +1641,7 @@ func doDNSUpdate(ctx *DNCContext) {
 	setFreeUplinks(deviceNetworkConfig.FreeUplinks)
 	// XXX check if FreeUplinks changed; add/delete
 	// XXX need to redo this when FreeUplinks changes
+	// XXX also when NAT service enabled/disabled
 	// for _, u := range deviceNetworkConfig.FreeUplinks {
 	//	iptableCmd("-t", "nat", "-A", "POSTROUTING", "-o", u,
 	//		"-s", "172.27.0.0/16", "-j", "MASQUERADE")
