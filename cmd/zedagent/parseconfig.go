@@ -433,8 +433,8 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig) {
 		}
 
 		// Export NetworkConfig and NetworkService
-		publishNetworkConfig(config.Networks)
-		publishNetworkService(config.Services)
+		publishNetworkConfig(config.GetNetworks())
+		publishNetworkService(config.GetServices())
 
 		// fill the overlay/underlay config
 		parseNetworkConfig(&appInstance, cfgApp, config.Networks)
@@ -767,6 +767,7 @@ func parseNetworkConfig(appInstance *types.AppInstanceConfig,
 		case zconfig.NetworkType_V4, zconfig.NetworkType_V6:
 			ulMaxIdx++
 		// overlay interface
+		// XXX turn LISP into a service?? What happens to overlay config?
 		case zconfig.NetworkType_LISP:
 			olMaxIdx++
 		}
@@ -807,6 +808,7 @@ func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
 		switch netEnt.Type {
 		case zconfig.NetworkType_V4, zconfig.NetworkType_V6:
 			break
+		// XXX turn LISP into a service
 		case zconfig.NetworkType_LISP:
 			continue
 		default:
@@ -888,6 +890,7 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 			continue
 		}
 
+		// XXX turn LISP into a service?? What happens to overlay config?
 		if netEnt.Type != zconfig.NetworkType_LISP {
 			continue
 		}
