@@ -150,9 +150,12 @@ func Run() {
 	DNCctx.manufacturerModel = model
 	DNCctx.separateDataPlane = false
 
+	zedrouterCtx := zedrouterContext{
+		separateDataPlane: false,
+	}
 	// Subscribe to network metrics from zedrouter
 	subNetworkObjectConfig, err := pubsub.Subscribe("zedagent",
-		types.NetworkObjectConfig{}, &dummyContext{})
+		types.NetworkObjectConfig{}, &zedrouterCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -160,7 +163,7 @@ func Run() {
 	subNetworkObjectConfig.DeleteHandler = handleNetworkConfigDelete
 
 	subNetworkServiceConfig, err := pubsub.Subscribe("zedagent",
-		types.NetworkServiceConfig{}, &dummyContext{})
+		types.NetworkServiceConfig{}, &zedrouterCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -172,13 +175,10 @@ func Run() {
 	pubNetworkServiceStatus, err := pubsub.Publish(agentName,
 		types.NetworkServiceStatus{})
 
-	ZedrouterCtx := zedrouterContext{
-		separateDataPlane:       false,
-		subNetworkObjectConfig:  subNetworkObjectConfig,
-		subNetworkServiceConfig: subNetworkServiceConfig,
-		pubNetworkObjectStatus:  pubNetworkObjectStatus,
-		pubNetworkServiceStatus: pubNetworkServiceStatus,
-	}
+	zedrouterCtx.subNetworkObjectConfig = subNetworkObjectConfig
+	zedrouterCtx.subNetworkServiceConfig = subNetworkServiceConfig
+	zedrouterCtx.pubNetworkObjectStatus = pubNetworkObjectStatus
+	zedrouterCtx.pubNetworkServiceStatus = pubNetworkServiceStatus
 
 	// XXX should we make geoRedoTime configurable?
 	// We refresh the gelocation information when the underlay
@@ -223,7 +223,7 @@ func Run() {
 		deviceNetworkConfig.Uplink, deviceNetworkConfig.FreeUplinks,
 		addrChangeFn)
 
-	handleRestart(&ZedrouterCtx, false)
+	handleRestart(&zedrouterCtx, false)
 	var restartFn watch.ConfigRestartHandler = handleRestart
 
 	// Publish network metrics for zedagent every 10 seconds
@@ -245,7 +245,7 @@ func Run() {
 	for {
 		select {
 		case change := <-configChanges:
-			watch.HandleConfigStatusEvent(change, &ZedrouterCtx,
+			watch.HandleConfigStatusEvent(change, &zedrouterCtx,
 				configDirname, statusDirname,
 				&types.AppNetworkConfig{},
 				&types.AppNetworkStatus{},
@@ -254,7 +254,7 @@ func Run() {
 			// DNC handling also re-writes the lisp.config file.
 			// We should call the updateLisp with correct Dataplane
 			// flag inorder not to confuse lispers.net
-			DNCctx.separateDataPlane = ZedrouterCtx.separateDataPlane
+			DNCctx.separateDataPlane = zedrouterCtx.separateDataPlane
 		case change := <-deviceConfigChanges:
 			watch.HandleStatusEvent(change, &DNCctx,
 				DNCDirname,
