@@ -71,8 +71,8 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext) 
 		// picking up application image config
 
 		if parseBaseOsConfig(config) == false {
-			parseNetworkConfig(config, getconfigCtx)
-			parseNetworkService(config, getconfigCtx)
+			parseNetworkObjectConfig(config, getconfigCtx)
+			parseNetworkServiceConfig(config, getconfigCtx)
 			parseAppInstanceConfig(config, getconfigCtx)
 		}
 
@@ -352,7 +352,7 @@ func setStoragePartitionLabel(baseOs *types.BaseOsConfig) {
 
 var networkConfigPrevConfigHash []byte
 
-func parseNetworkConfig(config *zconfig.EdgeDevConfig,
+func parseNetworkObjectConfig(config *zconfig.EdgeDevConfig,
 	getconfigCtx *getconfigContext) {
 
 	h := sha256.New()
@@ -364,18 +364,18 @@ func parseNetworkConfig(config *zconfig.EdgeDevConfig,
 	same := bytes.Equal(configHash, networkConfigPrevConfigHash)
 	networkConfigPrevConfigHash = configHash
 	if same {
-		log.Printf("parseNetworkConfig: network sha is unchanged\n")
+		log.Printf("parseNetworkObjectConfig: network sha is unchanged\n")
 		return
 	}
 	log.Printf("Applying updated Network config %v\n", nets)
-	// Export NetworkConfig to zedrouter
-	publishNetworkConfig(getconfigCtx, nets)
+	// Export NetworkObjectConfig to zedrouter
+	publishNetworkObjectConfig(getconfigCtx, nets)
 
 }
 
 var networkServicePrevConfigHash []byte
 
-func parseNetworkService(config *zconfig.EdgeDevConfig,
+func parseNetworkServiceConfig(config *zconfig.EdgeDevConfig,
 	getconfigCtx *getconfigContext) {
 
 	h := sha256.New()
@@ -387,13 +387,13 @@ func parseNetworkService(config *zconfig.EdgeDevConfig,
 	same := bytes.Equal(configHash, networkServicePrevConfigHash)
 	networkServicePrevConfigHash = configHash
 	if same {
-		log.Printf("parseNetworkService: service sha is unchanged\n")
+		log.Printf("parseNetworkServiceConfig: service sha is unchanged\n")
 		return
 	}
-	log.Printf("Applying updated Network Service %v\n", svcs)
+	log.Printf("Applying updated NetworkServiceConfig %v\n", svcs)
 
-	// Export NetworkService to zedrouter
-	publishNetworkService(getconfigCtx, svcs)
+	// Export NetworkServiceConfig to zedrouter
+	publishNetworkServiceConfig(getconfigCtx, svcs)
 
 }
 
@@ -586,29 +586,29 @@ func lookupServiceId(id string, cfgServices []*zconfig.ServiceInstanceConfig) *z
 	return nil
 }
 
-func publishNetworkConfig(getconfigCtx *getconfigContext,
+func publishNetworkObjectConfig(getconfigCtx *getconfigContext,
 	cfgNetworks []*zconfig.NetworkConfig) {
 
 	// Check for items to delete first
-	items := getconfigCtx.pubNetworkConfig.GetAll()
+	items := getconfigCtx.pubNetworkObjectConfig.GetAll()
 	// XXX remove log
-	log.Printf("pubNetworkConfig.GetAll got %d, %v\n", len(items), items)
+	log.Printf("pubNetworkObjectConfig.GetAll got %d, %v\n", len(items), items)
 	for k, _ := range items {
 		netEnt := lookupNetworkId(k, cfgNetworks)
 		if netEnt != nil {
 			continue
 		}
-		log.Printf("publishNetworkConfig: deleting %s\n", k)
-		getconfigCtx.pubNetworkConfig.Unpublish(k)
+		log.Printf("publishNetworkObjectConfig: deleting %s\n", k)
+		getconfigCtx.pubNetworkObjectConfig.Unpublish(k)
 	}
 	for _, netEnt := range cfgNetworks {
 		id, err := uuid.FromString(netEnt.Id)
 		if err != nil {
-			log.Printf("NetworkConfig: Malformed UUID ignored: %s\n",
+			log.Printf("NetworkObjectConfig: Malformed UUID ignored: %s\n",
 				err)
 			continue
 		}
-		config := types.NetworkConfig{
+		config := types.NetworkObjectConfig{
 			UUID: id,
 			Type: types.NetworkType(netEnt.Type),
 		}
@@ -636,14 +636,14 @@ func publishNetworkConfig(getconfigCtx *getconfigContext,
 				config.UUID, config.Type)
 			createNATNetworkService(getconfigCtx, config.UUID)
 		}
-		getconfigCtx.pubNetworkConfig.Publish(id.String(), &config)
+		getconfigCtx.pubNetworkObjectConfig.Publish(id.String(), &config)
 	}
 }
 
 func createNATNetworkService(getconfigCtx *getconfigContext,
 	id uuid.UUID) {
 
-	service := types.NetworkService{
+	service := types.NetworkServiceConfig{
 		UUID:        id,
 		DisplayName: "emulated NAT service",
 		Type:        types.NST_NAT,
@@ -652,10 +652,10 @@ func createNATNetworkService(getconfigCtx *getconfigContext,
 		Adapter:     "freeuplink",
 	}
 	// XXX unpublish when DT_NOOP Network is deleted?
-	getconfigCtx.pubNetworkService.Publish(id.String(), &service)
+	getconfigCtx.pubNetworkServiceConfig.Publish(id.String(), &service)
 }
 
-func parseNv4(nv4 *zconfig.Ipv4Spec, config *types.NetworkConfig) error {
+func parseNv4(nv4 *zconfig.Ipv4Spec, config *types.NetworkObjectConfig) error {
 	config.Dhcp = types.DhcpType(nv4.Dhcp)
 	// XXX
 	log.Printf("parseNv4: dhcp %d\n", config.Dhcp)
@@ -706,7 +706,7 @@ func parseNv4(nv4 *zconfig.Ipv4Spec, config *types.NetworkConfig) error {
 	return nil
 }
 
-func parseNv6(nv6 *zconfig.Ipv6Spec, config *types.NetworkConfig) error {
+func parseNv6(nv6 *zconfig.Ipv6Spec, config *types.NetworkObjectConfig) error {
 	config.Dhcp = types.DhcpType(nv6.Dhcp)
 	// XXX
 	log.Printf("parseNv6: dhcp %d\n", config.Dhcp)
@@ -757,29 +757,29 @@ func parseNv6(nv6 *zconfig.Ipv6Spec, config *types.NetworkConfig) error {
 	return nil
 }
 
-func publishNetworkService(getconfigCtx *getconfigContext,
+func publishNetworkServiceConfig(getconfigCtx *getconfigContext,
 	cfgServices []*zconfig.ServiceInstanceConfig) {
 
 	// Check for items to delete first
-	items := getconfigCtx.pubNetworkService.GetAll()
+	items := getconfigCtx.pubNetworkServiceConfig.GetAll()
 	// XXX remove log
-	log.Printf("pubNetworkService.GetAll got %d, %v\n", len(items), items)
+	log.Printf("pubNetworkServiceConfig.GetAll got %d, %v\n", len(items), items)
 	for k, _ := range items {
 		svcEnt := lookupServiceId(k, cfgServices)
 		if svcEnt != nil {
 			continue
 		}
-		log.Printf("publishNetworkService: deleting %s\n", k)
-		getconfigCtx.pubNetworkService.Unpublish(k)
+		log.Printf("publishNetworkServiceConfig: deleting %s\n", k)
+		getconfigCtx.pubNetworkServiceConfig.Unpublish(k)
 	}
 	for _, svcEnt := range cfgServices {
 		id, err := uuid.FromString(svcEnt.Id)
 		if err != nil {
-			log.Printf("NetworkService: Malformed UUID %s ignored: %s\n",
+			log.Printf("NetworkServiceConfig: Malformed UUID %s ignored: %s\n",
 				svcEnt.Id, err)
 			continue
 		}
-		service := types.NetworkService{
+		service := types.NetworkServiceConfig{
 			UUID:        id,
 			DisplayName: svcEnt.Displayname,
 			Type:        types.NetworkServiceType(svcEnt.Srvtype),
@@ -788,7 +788,7 @@ func publishNetworkService(getconfigCtx *getconfigContext,
 		if svcEnt.Applink != "" {
 			applink, err := uuid.FromString(svcEnt.Applink)
 			if err != nil {
-				log.Printf("NetworkService: Malformed UUID %s ignored: %s\n",
+				log.Printf("NetworkServiceConfig: Malformed UUID %s ignored: %s\n",
 					svcEnt.Applink, err)
 				continue
 			}
@@ -796,7 +796,7 @@ func publishNetworkService(getconfigCtx *getconfigContext,
 		}
 		if svcEnt.Devlink != nil {
 			if svcEnt.Devlink.Type != zconfig.ZCioType_ZCioEth {
-				log.Printf("NetworkService: Unsupported IoType %v ignored\n",
+				log.Printf("NetworkServiceConfig: Unsupported IoType %v ignored\n",
 					svcEnt.Devlink.Type)
 				continue
 			}
@@ -805,7 +805,7 @@ func publishNetworkService(getconfigCtx *getconfigContext,
 		if svcEnt.Cfg != nil {
 			service.OpaqueConfig = svcEnt.Cfg.Oconfig
 		}
-		getconfigCtx.pubNetworkService.Publish(id.String(), &service)
+		getconfigCtx.pubNetworkServiceConfig.Publish(id.String(), &service)
 	}
 }
 

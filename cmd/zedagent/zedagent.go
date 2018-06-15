@@ -183,17 +183,19 @@ func Run() {
 	// Context to pass around
 	getconfigCtx := getconfigContext{}
 
-	// Publish NetworkConfig and NetworkService for zedmanager/zedrouter
-	pubNetworkConfig, err := pubsub.Publish(agentName, types.NetworkConfig{})
+	// Publish NetworkConfig and NetworkServiceConfig for zedmanager/zedrouter
+	pubNetworkObjectConfig, err := pubsub.Publish(agentName,
+		types.NetworkObjectConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}
-	pubNetworkService, err := pubsub.Publish(agentName, types.NetworkService{})
+	pubNetworkServiceConfig, err := pubsub.Publish(agentName,
+		types.NetworkServiceConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}
-	getconfigCtx.pubNetworkConfig = pubNetworkConfig
-	getconfigCtx.pubNetworkService = pubNetworkService
+	getconfigCtx.pubNetworkObjectConfig = pubNetworkObjectConfig
+	getconfigCtx.pubNetworkServiceConfig = pubNetworkServiceConfig
 
 	var restartFn watch.StatusRestartHandler = handleRestart
 

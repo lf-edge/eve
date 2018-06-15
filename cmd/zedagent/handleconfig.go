@@ -78,8 +78,8 @@ type getconfigContext struct {
 	lastReceivedConfigFromCloud time.Time
 	configTickerHandle          interface{}
 	metricsTickerHandle         interface{}
-	pubNetworkConfig            *pubsub.Publication
-	pubNetworkService           *pubsub.Publication
+	pubNetworkObjectConfig      *pubsub.Publication
+	pubNetworkServiceConfig     *pubsub.Publication
 }
 
 // tlsConfig is initialized once i.e. effectively a constant
