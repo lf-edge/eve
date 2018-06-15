@@ -8,6 +8,7 @@ package zedrouter
 import (
 	//	"errors"
 	"fmt"
+	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/types"
 	"log"
 	"time"
@@ -16,7 +17,7 @@ import (
 func handleNetworkConfigModify(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*zedrouterContext)
 	pub := ctx.pubNetworkObjectStatus
-	config := CastNetworkObjectConfig(configArg)
+	config := cast.CastNetworkObjectConfig(configArg)
 	log.Printf("handleNetworkConfigModify(%s)\n", config.UUID.String())
 	st, err := pub.Get(key)
 	if err != nil {
@@ -26,7 +27,7 @@ func handleNetworkConfigModify(ctxArg interface{}, key string, configArg interfa
 	}
 	if st != nil {
 		log.Printf("handleNetworkConfigModify(%s)\n", key)
-		status := CastNetworkObjectStatus(st)
+		status := cast.CastNetworkObjectStatus(st)
 		status.PendingModify = true
 		pub.Publish(key, status)
 		doNetworkModify(ctx, config, &status)
@@ -73,7 +74,7 @@ func handleNetworkConfigDelete(ctxArg interface{}, key string) {
 		log.Printf("handleNetworkConfigDelete: unknown %s\n", key)
 		return
 	}
-	status := CastNetworkObjectStatus(st)
+	status := cast.CastNetworkObjectStatus(st)
 	status.PendingDelete = true
 	pub.Publish(key, status)
 	doNetworkDelete(&status)
@@ -85,11 +86,16 @@ func doNetworkCreate(config types.NetworkObjectConfig, status *types.NetworkObje
 	log.Printf("doNetworkCreate NetworkObjectStatus key %s type %d\n",
 		config.UUID, config.Type)
 
+	// Check for valid types
 	var err error
 	// Validate that the objects exists
 	switch config.Type {
 	}
 	return err
+
+	// XXX Allocate bridgeNum ...
+
+	// XXX Create bridge
 }
 
 func doNetworkModify(ctx *zedrouterContext, config types.NetworkObjectConfig,

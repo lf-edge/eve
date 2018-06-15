@@ -1,7 +1,7 @@
 // Copyright (c) 2018 Zededa, Inc.
 // All rights reserved.
 
-package zedrouter
+package cast
 
 import (
 	"encoding/json"

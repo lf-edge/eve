@@ -474,6 +474,7 @@ const (
 // Extracted from protobuf Service definition
 type NetworkServiceConfig struct {
 	UUID         uuid.UUID
+	Internal     bool // Internally created - not from zedcloud
 	DisplayName  string
 	Type         NetworkServiceType
 	Activate     bool

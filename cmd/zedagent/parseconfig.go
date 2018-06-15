@@ -12,6 +12,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/satori/go.uuid"
 	"github.com/zededa/api/zconfig"
+	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/zboot"
@@ -645,6 +646,7 @@ func createNATNetworkService(getconfigCtx *getconfigContext,
 
 	service := types.NetworkServiceConfig{
 		UUID:        id,
+		Internal:    true,
 		DisplayName: "emulated NAT service",
 		Type:        types.NST_NAT,
 		Activate:    true,
@@ -764,9 +766,14 @@ func publishNetworkServiceConfig(getconfigCtx *getconfigContext,
 	items := getconfigCtx.pubNetworkServiceConfig.GetAll()
 	// XXX remove log
 	log.Printf("pubNetworkServiceConfig.GetAll got %d, %v\n", len(items), items)
-	for k, _ := range items {
+	for k, c := range items {
 		svcEnt := lookupServiceId(k, cfgServices)
 		if svcEnt != nil {
+			continue
+		}
+		config := cast.CastNetworkServiceConfig(c)
+		if config.Internal {
+			log.Printf("publishNetworkServiceConfig: not deleting internal %s: %v\n", k, config)
 			continue
 		}
 		log.Printf("publishNetworkServiceConfig: deleting %s\n", k)

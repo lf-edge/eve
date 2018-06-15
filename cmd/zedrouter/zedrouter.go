@@ -18,6 +18,7 @@ import (
 	"github.com/satori/go.uuid"
 	"github.com/vishvananda/netlink"
 	"github.com/zededa/go-provision/agentlog"
+	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/devicenetwork"
 	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/hardware"
@@ -1062,7 +1063,7 @@ func getNetworkObjectConfig(subNetworkObjectConfig *pubsub.Subscription,
 			netUUID.String(), err)
 		return nil, errors.New(errStr)
 	} else {
-		network := CastNetworkObjectConfig(net)
+		network := cast.CastNetworkObjectConfig(net)
 		return &network, nil
 	}
 }

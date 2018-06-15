@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/vishvananda/netlink"
+	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/types"
 	"log"
 	"strings"
@@ -18,7 +19,7 @@ import (
 func handleNetworkServiceModify(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*zedrouterContext)
 	pub := ctx.pubNetworkServiceStatus
-	config := CastNetworkServiceConfig(configArg)
+	config := cast.CastNetworkServiceConfig(configArg)
 	st, err := pub.Get(key)
 	if err != nil {
 		log.Printf("handleNetworkServiceModify(%s) failed %s\n",
@@ -27,7 +28,7 @@ func handleNetworkServiceModify(ctxArg interface{}, key string, configArg interf
 	}
 	if st != nil {
 		log.Printf("handleNetworkServiceModify(%s)\n", key)
-		status := CastNetworkServiceStatus(st)
+		status := cast.CastNetworkServiceStatus(st)
 		status.PendingModify = true
 		pub.Publish(key, status)
 		doServiceModify(ctx, config, &status)
@@ -89,7 +90,7 @@ func handleNetworkServiceDelete(ctxArg interface{}, key string) {
 		log.Printf("handleNetworkServiceDelete: unknown %s\n", key)
 		return
 	}
-	status := CastNetworkServiceStatus(st)
+	status := cast.CastNetworkServiceStatus(st)
 	status.PendingDelete = true
 	pub.Publish(key, status)
 	if status.Activated {
