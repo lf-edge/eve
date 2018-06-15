@@ -144,9 +144,6 @@ type deviceContext struct {
 
 var debug = false
 
-var pubNetworkConfig *pubsub.Publication
-var pubNetworkService *pubsub.Publication
-
 // XXX temporary hack for writeBaseOsStatus
 var devCtx deviceContext
 
@@ -183,15 +180,20 @@ func Run() {
 
 	watch.SignalRestart(agentName)
 
+	// Context to pass around
+	getconfigCtx := getconfigContext{}
+
 	// Publish NetworkConfig and NetworkService for zedmanager/zedrouter
-	pubNetworkConfig, err = pubsub.Publish(agentName, types.NetworkConfig{})
+	pubNetworkConfig, err := pubsub.Publish(agentName, types.NetworkConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}
-	pubNetworkService, err = pubsub.Publish(agentName, types.NetworkService{})
+	pubNetworkService, err := pubsub.Publish(agentName, types.NetworkService{})
 	if err != nil {
 		log.Fatal(err)
 	}
+	getconfigCtx.pubNetworkConfig = pubNetworkConfig
+	getconfigCtx.pubNetworkService = pubNetworkService
 
 	var restartFn watch.StatusRestartHandler = handleRestart
 
@@ -251,8 +253,6 @@ func Run() {
 	networkStatusChanges := make(chan string)
 	go watch.WatchStatus(DNSDirname, networkStatusChanges)
 
-	// Context to pass around
-	getconfigCtx := getconfigContext{}
 	updateInprogress := zboot.IsCurrentPartitionStateInProgress()
 	time1 := time.Duration(configItemCurrent.resetIfCloudGoneTime)
 	t1 := time.NewTimer(time1 * time.Second)

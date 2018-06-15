@@ -71,7 +71,9 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext) 
 		// picking up application image config
 
 		if parseBaseOsConfig(config) == false {
-			parseAppInstanceConfig(config)
+			parseNetworkConfig(config, getconfigCtx)
+			parseNetworkService(config, getconfigCtx)
+			parseAppInstanceConfig(config, getconfigCtx)
 		}
 
 		// XXX:FIXME, otherwise, dont process
@@ -348,10 +350,57 @@ func setStoragePartitionLabel(baseOs *types.BaseOsConfig) {
 	}
 }
 
+var networkConfigPrevConfigHash []byte
+
+func parseNetworkConfig(config *zconfig.EdgeDevConfig,
+	getconfigCtx *getconfigContext) {
+
+	h := sha256.New()
+	nets := config.GetNetworks()
+	for _, n := range nets {
+		computeConfigElementSha(h, n)
+	}
+	configHash := h.Sum(nil)
+	same := bytes.Equal(configHash, networkConfigPrevConfigHash)
+	networkConfigPrevConfigHash = configHash
+	if same {
+		log.Printf("parseNetworkConfig: network sha is unchanged\n")
+		return
+	}
+	log.Printf("Applying updated Network config %v\n", nets)
+	// Export NetworkConfig to zedrouter
+	publishNetworkConfig(getconfigCtx, nets)
+
+}
+
+var networkServicePrevConfigHash []byte
+
+func parseNetworkService(config *zconfig.EdgeDevConfig,
+	getconfigCtx *getconfigContext) {
+
+	h := sha256.New()
+	svcs := config.GetServices()
+	for _, s := range svcs {
+		computeConfigElementSha(h, s)
+	}
+	configHash := h.Sum(nil)
+	same := bytes.Equal(configHash, networkServicePrevConfigHash)
+	networkServicePrevConfigHash = configHash
+	if same {
+		log.Printf("parseNetworkService: service sha is unchanged\n")
+		return
+	}
+	log.Printf("Applying updated Network Service %v\n", svcs)
+
+	// Export NetworkService to zedrouter
+	publishNetworkService(getconfigCtx, svcs)
+
+}
+
 var appinstancePrevConfigHash []byte
 
-// XXX separate function for networks and services?
-func parseAppInstanceConfig(config *zconfig.EdgeDevConfig) {
+func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
+	getconfigCtx *getconfigContext) {
 
 	var appInstance = types.AppInstanceConfig{}
 
@@ -359,15 +408,6 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig) {
 	h := sha256.New()
 	for _, a := range Apps {
 		computeConfigElementSha(h, a)
-	}
-	// XXX should we separate out the Network and Services parse/sha check?
-	nets := config.GetNetworks()
-	for _, n := range nets {
-		computeConfigElementSha(h, n)
-	}
-	svcs := config.GetServices()
-	for _, s := range svcs {
-		computeConfigElementSha(h, s)
 	}
 	configHash := h.Sum(nil)
 	same := bytes.Equal(configHash, appinstancePrevConfigHash)
@@ -432,12 +472,8 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig) {
 				appInstance.StorageConfigList, cfgApp.Drives)
 		}
 
-		// Export NetworkConfig and NetworkService
-		publishNetworkConfig(config.GetNetworks())
-		publishNetworkService(config.GetServices())
-
 		// fill the overlay/underlay config
-		parseNetworkConfig(&appInstance, cfgApp, config.Networks)
+		parseAppNetworkConfig(&appInstance, cfgApp, config.Networks)
 
 		// I/O adapters
 		appInstance.IoAdapterList = nil
@@ -550,7 +586,21 @@ func lookupServiceId(id string, cfgServices []*zconfig.ServiceInstanceConfig) *z
 	return nil
 }
 
-func publishNetworkConfig(cfgNetworks []*zconfig.NetworkConfig) {
+func publishNetworkConfig(getconfigCtx *getconfigContext,
+	cfgNetworks []*zconfig.NetworkConfig) {
+
+	// Check for items to delete first
+	items := getconfigCtx.pubNetworkConfig.GetAll()
+	// XXX remove log
+	log.Printf("pubNetworkConfig.GetAll got %d, %v\n", len(items), items)
+	for k, _ := range items {
+		netEnt := lookupNetworkId(k, cfgNetworks)
+		if netEnt != nil {
+			continue
+		}
+		log.Printf("publishNetworkConfig: deleting %s\n", k)
+		getconfigCtx.pubNetworkConfig.Unpublish(k)
+	}
 	for _, netEnt := range cfgNetworks {
 		id, err := uuid.FromString(netEnt.Id)
 		if err != nil {
@@ -578,20 +628,31 @@ func publishNetworkConfig(cfgNetworks []*zconfig.NetworkConfig) {
 				log.Printf("parseNv6 failed: %s\n", err)
 			}
 		}
-		pubNetworkConfig.Publish(id.String(), &config)
-	}
-	// Anything to delete?
-	items := pubNetworkConfig.GetAll()
-	// XXX
-	log.Printf("pubNetworkConfig.GetAll got %d, %v\n", len(items), items)
-	for k, _ := range items {
-		netEnt := lookupNetworkId(k, cfgNetworks)
-		if netEnt != nil {
-			continue
+		// XXX Hack to make existing Dhcp == 0 become an implicit
+		// DHCP = Server with an associated NAT service
+		if config.Dhcp == types.DT_NOOP {
+			config.Dhcp = types.DT_SERVER
+			log.Printf("Converting DT_NOOP to DT_SERVER plus NAT service for %s type %d\n",
+				config.UUID, config.Type)
+			createNATNetworkService(getconfigCtx, config.UUID)
 		}
-		log.Printf("publishNetworkConfig: deleting %s\n", k)
-		pubNetworkConfig.Unpublish(k)
+		getconfigCtx.pubNetworkConfig.Publish(id.String(), &config)
 	}
+}
+
+func createNATNetworkService(getconfigCtx *getconfigContext,
+	id uuid.UUID) {
+
+	service := types.NetworkService{
+		UUID:        id,
+		DisplayName: "emulated NAT service",
+		Type:        types.NST_NAT,
+		Activate:    true,
+		AppLink:     id,
+		Adapter:     "freeuplink",
+	}
+	// XXX unpublish when DT_NOOP Network is deleted?
+	getconfigCtx.pubNetworkService.Publish(id.String(), &service)
 }
 
 func parseNv4(nv4 *zconfig.Ipv4Spec, config *types.NetworkConfig) error {
@@ -696,7 +757,21 @@ func parseNv6(nv6 *zconfig.Ipv6Spec, config *types.NetworkConfig) error {
 	return nil
 }
 
-func publishNetworkService(cfgServices []*zconfig.ServiceInstanceConfig) {
+func publishNetworkService(getconfigCtx *getconfigContext,
+	cfgServices []*zconfig.ServiceInstanceConfig) {
+
+	// Check for items to delete first
+	items := getconfigCtx.pubNetworkService.GetAll()
+	// XXX remove log
+	log.Printf("pubNetworkService.GetAll got %d, %v\n", len(items), items)
+	for k, _ := range items {
+		svcEnt := lookupServiceId(k, cfgServices)
+		if svcEnt != nil {
+			continue
+		}
+		log.Printf("publishNetworkService: deleting %s\n", k)
+		getconfigCtx.pubNetworkService.Unpublish(k)
+	}
 	for _, svcEnt := range cfgServices {
 		id, err := uuid.FromString(svcEnt.Id)
 		if err != nil {
@@ -730,27 +805,15 @@ func publishNetworkService(cfgServices []*zconfig.ServiceInstanceConfig) {
 		if svcEnt.Cfg != nil {
 			service.OpaqueConfig = svcEnt.Cfg.Oconfig
 		}
-		pubNetworkService.Publish(id.String(), &service)
-	}
-	// Anything to delete?
-	items := pubNetworkService.GetAll()
-	// XXX
-	log.Printf("pubNetworkService.GetAll got %d, %v\n", len(items), items)
-	for k, _ := range items {
-		svcEnt := lookupServiceId(k, cfgServices)
-		if svcEnt != nil {
-			continue
-		}
-		log.Printf("publishNetworkService: deleting %s\n", k)
-		pubNetworkService.Unpublish(k)
+		getconfigCtx.pubNetworkService.Publish(id.String(), &service)
 	}
 }
 
-func parseNetworkConfig(appInstance *types.AppInstanceConfig,
+func parseAppNetworkConfig(appInstance *types.AppInstanceConfig,
 	cfgApp *zconfig.AppInstanceConfig,
 	cfgNetworks []*zconfig.NetworkConfig) {
 
-	log.Printf("parseNetworkConfig: %v\n", cfgNetworks)
+	log.Printf("parseAppNetworkConfig: %v\n", cfgNetworks)
 	var ulMaxIdx int = 0
 	var olMaxIdx int = 0
 
@@ -758,7 +821,7 @@ func parseNetworkConfig(appInstance *types.AppInstanceConfig,
 	for _, intfEnt := range cfgApp.Interfaces {
 		netEnt := lookupNetworkId(intfEnt.NetworkId, cfgNetworks)
 		if netEnt == nil {
-			log.Printf("parseNetworkConfig: Can't find network id %s; ignored\n",
+			log.Printf("parseAppNetworkConfig: Can't find network id %s; ignored\n",
 				intfEnt.NetworkId)
 			continue
 		}
@@ -774,13 +837,13 @@ func parseNetworkConfig(appInstance *types.AppInstanceConfig,
 	}
 
 	if ulMaxIdx != 0 {
-		log.Printf("parseNetworkConfig: %d underlays\n", ulMaxIdx)
+		log.Printf("parseAppNetworkConfig: %d underlays\n", ulMaxIdx)
 		appInstance.UnderlayNetworkList = make([]types.UnderlayNetworkConfig, ulMaxIdx)
 		parseUnderlayNetworkConfig(appInstance, cfgApp, cfgNetworks)
 	}
 
 	if olMaxIdx != 0 {
-		log.Printf("parseNetworkConfig: %d overlays\n", olMaxIdx)
+		log.Printf("parseAppNetworkConfig: %d overlays\n", olMaxIdx)
 		appInstance.OverlayNetworkList = make([]types.EIDOverlayConfig, olMaxIdx)
 		parseOverlayNetworkConfig(appInstance, cfgApp, cfgNetworks)
 	}
