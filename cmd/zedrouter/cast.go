@@ -1,8 +1,6 @@
 // Copyright (c) 2018 Zededa, Inc.
 // All rights reserved.
 
-// Handle NetworkService setup
-
 package zedrouter
 
 import (
@@ -13,26 +11,39 @@ import (
 
 // XXX move to library? template?
 // XXX alternative seems to be a deep copy of some sort
-func CastNetworkConfig(in interface{}) types.NetworkConfig {
+
+func CastNetworkObjectConfig(in interface{}) types.NetworkObjectConfig {
 	b, err := json.Marshal(in)
 	if err != nil {
-		log.Fatal(err, "json Marshal in CastNetworkConfig")
+		log.Fatal(err, "json Marshal in CastNetworkObjectConfig")
 	}
-	var output types.NetworkConfig
+	var output types.NetworkObjectConfig
 	if err := json.Unmarshal(b, &output); err != nil {
-		log.Fatal(err, "json Unmarshal in CastNetworkConfig")
+		log.Fatal(err, "json Unmarshal in CastNetworkObjectConfig")
 	}
 	return output
 }
 
-func CastNetworkService(in interface{}) types.NetworkService {
+func CastNetworkObjectStatus(in interface{}) types.NetworkObjectStatus {
 	b, err := json.Marshal(in)
 	if err != nil {
-		log.Fatal(err, "json Marshal in CastNetworkService")
+		log.Fatal(err, "json Marshal in CastNetworkObjectStatus")
 	}
-	var output types.NetworkService
+	var output types.NetworkObjectStatus
 	if err := json.Unmarshal(b, &output); err != nil {
-		log.Fatal(err, "json Unmarshal in CastNetworkService")
+		log.Fatal(err, "json Unmarshal in CastNetworkObjectStatus")
+	}
+	return output
+}
+
+func CastNetworkServiceConfig(in interface{}) types.NetworkServiceConfig {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastNetworkServiceConfig")
+	}
+	var output types.NetworkServiceConfig
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "json Unmarshal in CastNetworkServiceConfig")
 	}
 	return output
 }

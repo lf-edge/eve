@@ -96,13 +96,13 @@ type DeviceNetwork struct {
 	// If Dhcp (in NetworkConfig) is DT_STATIC we use the static
 	// Addr and the rest of NetworkConfig
 	Addr net.IP
-	NetworkConfig
+	NetworkObjectConfig
 }
 
 type NetworkUplink struct {
 	IfName string
 	Free   bool
-	NetworkConfig
+	NetworkObjectConfig
 	AddrInfoList []AddrInfo
 }
 
@@ -423,7 +423,7 @@ const (
 // Note that NetworkConfig can be referenced (by UUID) from NetworkService.
 // If there is no such reference the NetworkConfig ends up being local to the
 // host.
-type NetworkConfig struct {
+type NetworkObjectConfig struct {
 	UUID uuid.UUID
 	Type NetworkType
 	Dhcp DhcpType // If DT_STATIC use below
@@ -443,6 +443,22 @@ type IpRange struct {
 	End   net.IP
 }
 
+// If Ifname is set it means the network is in use
+// TBD: allow multiple applications to connect to the same Network by adding
+// another vif to the ifname.
+type NetworkObjectStatus struct {
+	NetworkObjectConfig
+	PendingAdd    bool
+	PendingModify bool
+	PendingDelete bool
+	BridgeNum     int
+	BridgeName    string // bn<N>
+	Ifname        string // AKA Adapter - from NetworkServiceConfig???
+	// Any errrors from provisioning the network
+	Error     string
+	ErrorTime time.Time
+}
+
 type NetworkServiceType uint8
 
 const (
@@ -456,7 +472,7 @@ const (
 )
 
 // Extracted from protobuf Service definition
-type NetworkService struct {
+type NetworkServiceConfig struct {
 	UUID         uuid.UUID
 	DisplayName  string
 	Type         NetworkServiceType
@@ -476,7 +492,7 @@ type NetworkServiceStatus struct {
 	Activated     bool
 	AppLink       uuid.UUID
 	Adapter       string // Ifname or group like "uplink", or empty
-	// Any errros from provisioning the service
+	// Any errrors from provisioning the service
 	Error     string
 	ErrorTime time.Time
 }

@@ -53,8 +53,9 @@ var Version = "No version specified"
 type zedrouterContext struct {
 	// Experimental Zededa data plane enable/disable flag
 	separateDataPlane       bool
-	subNetworkConfig        *pubsub.Subscription
-	subNetworkService       *pubsub.Subscription
+	subNetworkObjectConfig  *pubsub.Subscription
+	subNetworkServiceConfig *pubsub.Subscription
+	pubNetworkObjectStatus  *pubsub.Publication
 	pubNetworkServiceStatus *pubsub.Publication
 }
 
@@ -149,32 +150,35 @@ func Run() {
 	DNCctx.manufacturerModel = model
 	DNCctx.separateDataPlane = false
 
+	zedrouterCtx := zedrouterContext{
+		separateDataPlane: false,
+	}
 	// Subscribe to network metrics from zedrouter
-	subNetworkConfig, err := pubsub.Subscribe("zedagent",
-		types.NetworkConfig{}, &dummyContext{})
+	subNetworkObjectConfig, err := pubsub.Subscribe("zedagent",
+		types.NetworkObjectConfig{}, &zedrouterCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	subNetworkConfig.ModifyHandler = handleNetworkConfigModify
-	subNetworkConfig.DeleteHandler = handleNetworkConfigDelete
+	subNetworkObjectConfig.ModifyHandler = handleNetworkConfigModify
+	subNetworkObjectConfig.DeleteHandler = handleNetworkConfigDelete
 
-	subNetworkService, err := pubsub.Subscribe("zedagent",
-		types.NetworkService{}, &dummyContext{})
+	subNetworkServiceConfig, err := pubsub.Subscribe("zedagent",
+		types.NetworkServiceConfig{}, &zedrouterCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	subNetworkService.ModifyHandler = handleNetworkServiceModify
-	subNetworkService.DeleteHandler = handleNetworkServiceDelete
+	subNetworkServiceConfig.ModifyHandler = handleNetworkServiceModify
+	subNetworkServiceConfig.DeleteHandler = handleNetworkServiceDelete
 
+	pubNetworkObjectStatus, err := pubsub.Publish(agentName,
+		types.NetworkObjectStatus{})
 	pubNetworkServiceStatus, err := pubsub.Publish(agentName,
 		types.NetworkServiceStatus{})
 
-	ZedrouterCtx := zedrouterContext{
-		separateDataPlane:       false,
-		subNetworkConfig:        subNetworkConfig,
-		subNetworkService:       subNetworkService,
-		pubNetworkServiceStatus: pubNetworkServiceStatus,
-	}
+	zedrouterCtx.subNetworkObjectConfig = subNetworkObjectConfig
+	zedrouterCtx.subNetworkServiceConfig = subNetworkServiceConfig
+	zedrouterCtx.pubNetworkObjectStatus = pubNetworkObjectStatus
+	zedrouterCtx.pubNetworkServiceStatus = pubNetworkServiceStatus
 
 	// XXX should we make geoRedoTime configurable?
 	// We refresh the gelocation information when the underlay
@@ -219,7 +223,7 @@ func Run() {
 		deviceNetworkConfig.Uplink, deviceNetworkConfig.FreeUplinks,
 		addrChangeFn)
 
-	handleRestart(&ZedrouterCtx, false)
+	handleRestart(&zedrouterCtx, false)
 	var restartFn watch.ConfigRestartHandler = handleRestart
 
 	// Publish network metrics for zedagent every 10 seconds
@@ -241,7 +245,7 @@ func Run() {
 	for {
 		select {
 		case change := <-configChanges:
-			watch.HandleConfigStatusEvent(change, &ZedrouterCtx,
+			watch.HandleConfigStatusEvent(change, &zedrouterCtx,
 				configDirname, statusDirname,
 				&types.AppNetworkConfig{},
 				&types.AppNetworkStatus{},
@@ -250,7 +254,7 @@ func Run() {
 			// DNC handling also re-writes the lisp.config file.
 			// We should call the updateLisp with correct Dataplane
 			// flag inorder not to confuse lispers.net
-			DNCctx.separateDataPlane = ZedrouterCtx.separateDataPlane
+			DNCctx.separateDataPlane = zedrouterCtx.separateDataPlane
 		case change := <-deviceConfigChanges:
 			watch.HandleStatusEvent(change, &DNCctx,
 				DNCDirname,
@@ -281,11 +285,11 @@ func Run() {
 			if change {
 				updateDeviceNetworkStatus()
 			}
-		case change := <-subNetworkConfig.C:
-			subNetworkConfig.ProcessChange(change)
+		case change := <-subNetworkObjectConfig.C:
+			subNetworkObjectConfig.ProcessChange(change)
 
-		case change := <-subNetworkService.C:
-			subNetworkService.ProcessChange(change)
+		case change := <-subNetworkServiceConfig.C:
+			subNetworkServiceConfig.ProcessChange(change)
 		}
 	}
 }
@@ -565,10 +569,10 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 
 		// Make sure we have a NetworkConfig object if we have a UUID
 		// Returns nil if UUID is zero
-		netconf, err := getNetworkConfig(ctx.subNetworkConfig,
+		netconf, err := getNetworkObjectConfig(ctx.subNetworkObjectConfig,
 			olConfig.Network)
 		if err != nil {
-			log.Printf("handleCreate getNetworkConfig failed %s\n",
+			log.Printf("handleCreate getNetworkObjectConfig failed %s\n",
 				err)
 			// XXX need a fallback/retry!!
 		}
@@ -761,10 +765,10 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		}
 		// Make sure we have a NetworkConfig object if we have a UUID
 		// Returns nil if UUID is zero
-		netconf, err := getNetworkConfig(ctx.subNetworkConfig,
+		netconf, err := getNetworkObjectConfig(ctx.subNetworkObjectConfig,
 			olConfig.Network)
 		if err != nil {
-			log.Printf("handleCreate getNetworkConfig failed %s\n",
+			log.Printf("handleCreate getNetworkObjectConfig failed %s\n",
 				err)
 			// XXX need a fallback/retry!!
 		}
@@ -909,10 +913,10 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		}
 		// Make sure we have a NetworkConfig object if we have a UUID
 		// Returns nil if UUID is zero
-		netconf, err := getNetworkConfig(ctx.subNetworkConfig,
+		netconf, err := getNetworkObjectConfig(ctx.subNetworkObjectConfig,
 			ulConfig.Network)
 		if err != nil {
-			log.Printf("handleCreate getNetworkConfig failed %s\n",
+			log.Printf("handleCreate getNetworkObjectConfig failed %s\n",
 				err)
 			// XXX need a fallback/retry!!
 		}
@@ -1007,7 +1011,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 
 func getUlAddrs(appNum int, ulConfig *types.UnderlayNetworkConfig,
 	ulStatus *types.UnderlayNetworkStatus,
-	netconf *types.NetworkConfig) (string, string) {
+	netconf *types.NetworkObjectConfig) (string, string) {
 
 	// Default
 	ulAddr1 := "172.27." + strconv.Itoa(appNum) + ".1"
@@ -1046,19 +1050,19 @@ func getUlAddrs(appNum int, ulConfig *types.UnderlayNetworkConfig,
 var nilUUID uuid.UUID // Really a constant
 
 // Returns nil, nil if the UUID is all zero
-func getNetworkConfig(subNetworkConfig *pubsub.Subscription,
-	netUUID uuid.UUID) (*types.NetworkConfig, error) {
+func getNetworkObjectConfig(subNetworkObjectConfig *pubsub.Subscription,
+	netUUID uuid.UUID) (*types.NetworkObjectConfig, error) {
 
 	if netUUID == nilUUID {
 		return nil, nil
 	}
-	net, err := subNetworkConfig.Get(netUUID.String())
+	net, err := subNetworkObjectConfig.Get(netUUID.String())
 	if net == nil {
 		errStr := fmt.Sprintf("No NetworkConfig for %s: %s",
 			netUUID.String(), err)
 		return nil, errors.New(errStr)
 	} else {
-		network := CastNetworkConfig(net)
+		network := CastNetworkObjectConfig(net)
 		return &network, nil
 	}
 }
@@ -1125,10 +1129,10 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 
 		// Make sure we have a NetworkConfig object if we have a UUID
 		// Returns nil if UUID is zero
-		netconf, err := getNetworkConfig(ctx.subNetworkConfig,
+		netconf, err := getNetworkObjectConfig(ctx.subNetworkObjectConfig,
 			olConfig.Network)
 		if err != nil {
-			log.Printf("handleModify getNetworkConfig failed %s\n",
+			log.Printf("handleModify getNetworkObjectConfig failed %s\n",
 				err)
 			// XXX need a fallback/retry!!
 		}
@@ -1179,10 +1183,10 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 
 		// Make sure we have a NetworkConfig object if we have a UUID
 		// Returns nil if UUID is zero
-		netconf, err := getNetworkConfig(ctx.subNetworkConfig,
+		netconf, err := getNetworkObjectConfig(ctx.subNetworkObjectConfig,
 			olConfig.Network)
 		if err != nil {
-			log.Printf("handleModify getNetworkConfig failed %s\n",
+			log.Printf("handleModify getNetworkObjectConfig failed %s\n",
 				err)
 			// XXX need a fallback/retry!!
 		}
@@ -1253,10 +1257,10 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 		ulIfname := "bu" + strconv.Itoa(appNum)
 		// Make sure we have a NetworkConfig object if we have a UUID
 		// Returns nil if UUID is zero
-		netconf, err := getNetworkConfig(ctx.subNetworkConfig,
+		netconf, err := getNetworkObjectConfig(ctx.subNetworkObjectConfig,
 			ulConfig.Network)
 		if err != nil {
-			log.Printf("handleModify getNetworkConfig failed %s\n",
+			log.Printf("handleModify getNetworkObjectConfig failed %s\n",
 				err)
 			// XXX need a fallback/retry!!
 		}
@@ -1528,10 +1532,10 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 			if ulStatus.SshPortMap {
 				sshPort = 8022 + 100*uint(appNum)
 			}
-			netconf, err := getNetworkConfig(ctx.subNetworkConfig,
+			netconf, err := getNetworkObjectConfig(ctx.subNetworkObjectConfig,
 				ulStatus.Network)
 			if err != nil {
-				log.Printf("handleDelete getNetworkConfig failed %s\n",
+				log.Printf("handleDelete getNetworkObjectConfig failed %s\n",
 					err)
 				// XXX need a fallback/retry!!
 			}
@@ -1655,15 +1659,4 @@ func doDNSUpdate(ctx *DNCContext) {
 
 func appendError(allErrors string, prefix string, lasterr string) string {
 	return fmt.Sprintf("%s%s: %s\n\n", allErrors, prefix, lasterr)
-}
-
-func handleNetworkConfigModify(ctxArg interface{}, key string, configArg interface{}) {
-	// XXX ctx := ctxArg.(*zedrouterContext)
-	config := CastNetworkConfig(configArg)
-	log.Printf("handleNetworkConfigModify(%s)\n", config.UUID.String())
-}
-
-func handleNetworkConfigDelete(ctxArg interface{}, key string) {
-	// XXX ctx := ctxArg.(*zedrouterContext)
-	log.Printf("handleNetworkConfigDelete()\n")
 }

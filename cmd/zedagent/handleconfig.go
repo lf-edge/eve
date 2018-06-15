@@ -11,6 +11,7 @@ import (
 	"github.com/satori/go.uuid"
 	"github.com/zededa/api/zconfig"
 	"github.com/zededa/go-provision/flextimer"
+	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/zboot"
 	"github.com/zededa/go-provision/zedcloud"
@@ -77,6 +78,8 @@ type getconfigContext struct {
 	lastReceivedConfigFromCloud time.Time
 	configTickerHandle          interface{}
 	metricsTickerHandle         interface{}
+	pubNetworkObjectConfig      *pubsub.Publication
+	pubNetworkServiceConfig     *pubsub.Publication
 }
 
 // tlsConfig is initialized once i.e. effectively a constant

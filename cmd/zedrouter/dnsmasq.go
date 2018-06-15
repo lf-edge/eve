@@ -48,7 +48,7 @@ neg-ttl=10
 // Would be more polite to return an error then to Fatal
 func createDnsmasqOverlayConfiglet(cfgPathname string, olIfname string,
 	olAddr1 string, olAddr2 string, olMac string, hostsDir string,
-	hostName string, ipsets []string, netconf *types.NetworkConfig) {
+	hostName string, ipsets []string, netconf *types.NetworkObjectConfig) {
 	if debug {
 		log.Printf("createDnsmasqOverlayConfiglen: %s\n", olIfname)
 	}
@@ -92,7 +92,7 @@ func createDnsmasqOverlayConfiglet(cfgPathname string, olIfname string,
 // ranges are off, plus domain-name needs to be replaced by domain-search, etc
 func createDnsmasqUnderlayConfiglet(cfgPathname string, ulIfname string,
 	ulAddr1 string, ulAddr2 string, ulMac string, hostName string,
-	ipsets []string, netconf *types.NetworkConfig) {
+	ipsets []string, netconf *types.NetworkObjectConfig) {
 	if debug {
 		log.Printf("createDnsmasqUnderlayConfiglen: %s\n", ulIfname)
 	}
