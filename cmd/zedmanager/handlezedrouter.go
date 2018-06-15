@@ -111,13 +111,14 @@ func MaybeAddAppNetworkConfig(aiConfig types.AppInstanceConfig,
 			// XXX Default is to use the device list? Need device
 			// config for that.
 			ol.LispServers = olc.LispServers
+			ol.AppMacAddr = olc.AppMacAddr
+			ol.Network = olc.Network
 		}
 		nc.UnderlayNetworkList = make([]types.UnderlayNetworkConfig,
 			len(aiConfig.UnderlayNetworkList))
 		for i, ulc := range aiConfig.UnderlayNetworkList {
 			ul := &nc.UnderlayNetworkList[i]
-			ul.ACLs = ulc.ACLs
-			ul.SshPortMap = ulc.SshPortMap
+			*ul = ulc
 		}
 		appNetworkConfig[key] = nc
 		configFilename := fmt.Sprintf("%s/%s.json",

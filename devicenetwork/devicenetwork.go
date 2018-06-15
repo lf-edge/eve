@@ -16,6 +16,20 @@ import (
 	"time"
 )
 
+// Parse the file with DeviceNetworkConfig2
+// XXX Use this - convert old
+func GetNewDeviceNetworkConfig(configFilename string) (types.DeviceNetworkConfig2, error) {
+	var globalConfig types.DeviceNetworkConfig2
+	cb, err := ioutil.ReadFile(configFilename)
+	if err != nil {
+		return types.DeviceNetworkConfig2{}, err
+	}
+	if err := json.Unmarshal(cb, &globalConfig); err != nil {
+		return types.DeviceNetworkConfig2{}, err
+	}
+	return globalConfig, nil
+}
+
 // Parse the file with DeviceNetworkConfig
 func GetDeviceNetworkConfig(configFilename string) (types.DeviceNetworkConfig, error) {
 	var globalConfig types.DeviceNetworkConfig
@@ -32,6 +46,7 @@ func GetDeviceNetworkConfig(configFilename string) (types.DeviceNetworkConfig, e
 			globalConfig.Uplink)
 		globalConfig.FreeUplinks = globalConfig.Uplink
 	}
+	// XXX Convert to DeviceNetworkConfig2?
 	return globalConfig, nil
 }
 

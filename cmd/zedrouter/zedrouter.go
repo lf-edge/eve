@@ -12,8 +12,10 @@ package zedrouter
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
+	"github.com/satori/go.uuid"
 	"github.com/vishvananda/netlink"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/devicenetwork"
@@ -50,7 +52,10 @@ var Version = "No version specified"
 
 type zedrouterContext struct {
 	// Experimental Zededa data plane enable/disable flag
-	SeparateDataPlane bool
+	separateDataPlane       bool
+	subNetworkConfig        *pubsub.Subscription
+	subNetworkService       *pubsub.Subscription
+	pubNetworkServiceStatus *pubsub.Publication
 }
 
 // Dummy since we don't have anything to pass
@@ -61,7 +66,7 @@ type dummyContext struct {
 type DNCContext struct {
 	usableAddressCount int
 	manufacturerModel  string
-	SeparateDataPlane  bool
+	separateDataPlane  bool
 }
 
 var debug = false
@@ -142,10 +147,33 @@ func Run() {
 	DNCctx := DNCContext{}
 	DNCctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
 	DNCctx.manufacturerModel = model
-	DNCctx.SeparateDataPlane = false
+	DNCctx.separateDataPlane = false
+
+	// Subscribe to network metrics from zedrouter
+	subNetworkConfig, err := pubsub.Subscribe("zedagent",
+		types.NetworkConfig{}, &dummyContext{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	subNetworkConfig.ModifyHandler = handleNetworkConfigModify
+	subNetworkConfig.DeleteHandler = handleNetworkConfigDelete
+
+	subNetworkService, err := pubsub.Subscribe("zedagent",
+		types.NetworkService{}, &dummyContext{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	subNetworkService.ModifyHandler = handleNetworkServiceModify
+	subNetworkService.DeleteHandler = handleNetworkServiceDelete
+
+	pubNetworkServiceStatus, err := pubsub.Publish(agentName,
+		types.NetworkServiceStatus{})
 
 	ZedrouterCtx := zedrouterContext{
-		SeparateDataPlane: false,
+		separateDataPlane:       false,
+		subNetworkConfig:        subNetworkConfig,
+		subNetworkService:       subNetworkService,
+		pubNetworkServiceStatus: pubNetworkServiceStatus,
 	}
 
 	// XXX should we make geoRedoTime configurable?
@@ -222,7 +250,7 @@ func Run() {
 			// DNC handling also re-writes the lisp.config file.
 			// We should call the updateLisp with correct Dataplane
 			// flag inorder not to confuse lispers.net
-			DNCctx.SeparateDataPlane = ZedrouterCtx.SeparateDataPlane
+			DNCctx.separateDataPlane = ZedrouterCtx.separateDataPlane
 		case change := <-deviceConfigChanges:
 			watch.HandleStatusEvent(change, &DNCctx,
 				DNCDirname,
@@ -253,6 +281,11 @@ func Run() {
 			if change {
 				updateDeviceNetworkStatus()
 			}
+		case change := <-subNetworkConfig.C:
+			subNetworkConfig.ProcessChange(change)
+
+		case change := <-subNetworkService.C:
+			subNetworkService.ProcessChange(change)
 		}
 	}
 }
@@ -262,7 +295,7 @@ func handleRestart(ctxArg interface{}, done bool) {
 		log.Printf("handleRestart(%v)\n", done)
 	}
 	ctx := ctxArg.(*zedrouterContext)
-	handleLispRestart(done, ctx.SeparateDataPlane)
+	handleLispRestart(done, ctx.separateDataPlane)
 	if done {
 		// Since all work is done inline we can immediately say that
 		// we have restarted.
@@ -516,11 +549,11 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 			config.DisplayName)
 		if len(config.OverlayNetworkList) != 1 ||
 			len(config.UnderlayNetworkList) != 0 {
-			// XXX send to cloud?
+			// XXX report error to cloud?
 			log.Println("Malformed IsZedmanager config; ignored")
 			return
 		}
-		ctx.SeparateDataPlane = config.SeparateDataPlane
+		ctx.separateDataPlane = config.SeparateDataPlane
 
 		// Use this olIfname to name files
 		// XXX some files might not be used until Zedmanager becomes
@@ -529,6 +562,19 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		olNum := 1
 		olIfname := "dbo" + strconv.Itoa(olNum) + "x" +
 			strconv.Itoa(appNum)
+
+		// Make sure we have a NetworkConfig object if we have a UUID
+		// Returns nil if UUID is zero
+		netconf, err := getNetworkConfig(ctx.subNetworkConfig,
+			olConfig.Network)
+		if err != nil {
+			log.Printf("handleCreate getNetworkConfig failed %s\n",
+				err)
+			// XXX need a fallback/retry!!
+		}
+		if netconf != nil {
+			log.Printf("Found isMgmt NetworkConfig %v\n", netconf)
+		}
 
 		// Create olIfname dummy interface with EID and fd00::/8 route
 		// pointing at it.
@@ -543,6 +589,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		//    ip link add ${olIfname} type dummy
 		attrs = netlink.NewLinkAttrs()
 		attrs.Name = olIfname
+		// Note: we ignore olConfig.AppMacAddr for IsMgmt
 		olIfMac := fmt.Sprintf("00:16:3e:02:%02x:%02x", olNum, appNum)
 		hw, err := net.ParseMAC(olIfMac)
 		if err != nil {
@@ -575,15 +622,16 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		// Configure the EID on olIfname and set up a default route
 		// for all fd00 EIDs
 		//    ip addr add ${EID}/128 dev ${olIfname}
-		EID := config.OverlayNetworkList[0].EID
+		EID := olConfig.EID
 		addr, err := netlink.ParseAddr(EID.String() + "/128")
 		if err != nil {
-			// XXX send to cloud?
+			// XXX send error to cloud?
 			log.Printf("ParseAddr %s failed: %s\n", EID, err)
 			return
 		}
 		if err := netlink.AddrAdd(oLink, addr); err != nil {
 			// XXX fatal?
+			// XXX send error to cloud?
 			log.Printf("AddrAdd %s failed: %s\n", EID, err)
 		}
 
@@ -594,7 +642,6 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 			log.Fatal("ParseCIDR fd00::/8 failed:\n", err)
 		}
 		via := net.ParseIP("fe80::1")
-
 		if via == nil {
 			log.Fatal("ParseIP fe80::1 failed: ", err)
 		}
@@ -654,7 +701,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		createLispConfiglet(lispRunDirname, config.IsZedmanager,
 			olConfig.IID, olConfig.EID, olConfig.LispSignature,
 			deviceNetworkStatus, olIfname, olIfname,
-			additionalInfo, olConfig.LispServers, ctx.SeparateDataPlane)
+			additionalInfo, olConfig.LispServers, ctx.separateDataPlane)
 		status.OverlayNetworkList = make([]types.OverlayNetworkStatus,
 			len(config.OverlayNetworkList))
 		for i, _ := range config.OverlayNetworkList {
@@ -712,13 +759,31 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		if debug {
 			log.Printf("olIfname %s\n", olIfname)
 		}
+		// Make sure we have a NetworkConfig object if we have a UUID
+		// Returns nil if UUID is zero
+		netconf, err := getNetworkConfig(ctx.subNetworkConfig,
+			olConfig.Network)
+		if err != nil {
+			log.Printf("handleCreate getNetworkConfig failed %s\n",
+				err)
+			// XXX need a fallback/retry!!
+		}
+		if netconf != nil {
+			log.Printf("Found overlay NetworkConfig %v\n", netconf)
+		}
 		olAddr1 := "fd00::" + strconv.FormatInt(int64(olNum), 16) +
 			":" + strconv.FormatInt(int64(appNum), 16)
 		if debug {
 			log.Printf("olAddr1 %s EID %s\n", olAddr1, EID)
 		}
-		olMac := "00:16:3e:1:" + strconv.FormatInt(int64(olNum), 16) +
-			":" + strconv.FormatInt(int64(appNum), 16)
+		var olMac string // Handed to domU
+		if olConfig.AppMacAddr != nil {
+			olMac = olConfig.AppMacAddr.String()
+		} else {
+			olMac = "00:16:3e:01:" +
+				strconv.FormatInt(int64(olNum), 16) + ":" +
+				strconv.FormatInt(int64(appNum), 16)
+		}
 		if debug {
 			log.Printf("olMac %s\n", olMac)
 		}
@@ -810,7 +875,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		stopDnsmasq(cfgFilename, false)
 		createDnsmasqOverlayConfiglet(cfgPathname, olIfname, olAddr1,
 			EID.String(), olMac, hostsDirpath,
-			config.UUIDandVersion.UUID.String(), ipsets)
+			config.UUIDandVersion.UUID.String(), ipsets, netconf)
 		startDnsmasq(cfgPathname, olIfname)
 
 		additionalInfo := generateAdditionalInfo(status, olConfig)
@@ -818,7 +883,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		createLispConfiglet(lispRunDirname, config.IsZedmanager,
 			olConfig.IID, olConfig.EID, olConfig.LispSignature,
 			deviceNetworkStatus, olIfname, olIfname,
-			additionalInfo, olConfig.LispServers, ctx.SeparateDataPlane)
+			additionalInfo, olConfig.LispServers, ctx.separateDataPlane)
 
 		// Add bridge parameters for Xen to Status
 		olStatus := &status.OverlayNetworkList[olNum-1]
@@ -842,16 +907,30 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		if debug {
 			log.Printf("ulIfname %s\n", ulIfname)
 		}
-		// Not clear how to handle multiple ul; use /30 prefix?
-		// XXX check for static address.
-		ulAddr1 := "172.27." + strconv.Itoa(appNum) + ".1"
-		ulAddr2 := "172.27." + strconv.Itoa(appNum) + ".2"
-		if debug {
-			log.Printf("ulAddr1 %s ulAddr2 %s\n", ulAddr1, ulAddr2)
+		// Make sure we have a NetworkConfig object if we have a UUID
+		// Returns nil if UUID is zero
+		netconf, err := getNetworkConfig(ctx.subNetworkConfig,
+			ulConfig.Network)
+		if err != nil {
+			log.Printf("handleCreate getNetworkConfig failed %s\n",
+				err)
+			// XXX need a fallback/retry!!
 		}
-		// Room to handle multiple underlays in 5th byte
-		// XXX override if static
-		ulMac := "00:16:3e:0:0:" + strconv.FormatInt(int64(appNum), 16)
+		if netconf != nil {
+			log.Printf("Found underlay NetworkConfig %v\n", netconf)
+		}
+		// Not clear how to handle multiple ul; use /30 prefix?
+		ulAddr1, ulAddr2 := getUlAddrs(appNum, &ulConfig, nil, netconf)
+		log.Printf("ulAddr1 %s ulAddr2 %s\n", ulAddr1, ulAddr2)
+
+		var ulMac string // Handed to domU
+		if ulConfig.AppMacAddr != nil {
+			ulMac = ulConfig.AppMacAddr.String()
+		} else {
+			// Room to handle multiple underlays in 5th byte
+			ulMac = "00:16:3e:0:0:" +
+				strconv.FormatInt(int64(appNum), 16)
+		}
 		if debug {
 			log.Printf("ulMac %s\n", ulMac)
 		}
@@ -910,7 +989,8 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		stopDnsmasq(cfgFilename, false)
 
 		createDnsmasqUnderlayConfiglet(cfgPathname, ulIfname, ulAddr1,
-			ulAddr2, ulMac, config.UUIDandVersion.UUID.String(), ipsets)
+			ulAddr2, ulMac, config.UUIDandVersion.UUID.String(),
+			ipsets, netconf)
 		startDnsmasq(cfgPathname, ulIfname)
 
 		// Add bridge parameters for Xen to Status
@@ -923,6 +1003,64 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 	status.PendingAdd = false
 	writeAppNetworkStatus(&status, statusFilename)
 	log.Printf("handleCreate done for %s\n", config.DisplayName)
+}
+
+func getUlAddrs(appNum int, ulConfig *types.UnderlayNetworkConfig,
+	ulStatus *types.UnderlayNetworkStatus,
+	netconf *types.NetworkConfig) (string, string) {
+
+	// Default
+	ulAddr1 := "172.27." + strconv.Itoa(appNum) + ".1"
+	ulAddr2 := "172.27." + strconv.Itoa(appNum) + ".2"
+	if ulConfig != nil && ulConfig.AppIPAddr != nil {
+		// Note that ulAddr2 will be in a different subnet.
+		// Assumption is that the config specifies a gateway/router
+		// in the same subnet as the static address.
+		ulAddr2 = ulConfig.AppIPAddr.String()
+	} else if ulStatus != nil && ulStatus.AppIPAddr != nil {
+		// Note that ulAddr2 will be in a different subnet.
+		// Assumption is that the config specifies a gateway/router
+		// in the same subnet as the static address.
+		ulAddr2 = ulStatus.AppIPAddr.String()
+	} else if netconf != nil && netconf.DhcpRange.Start != nil {
+		// Avoid the first address in range
+		a := netconf.DhcpRange.Start.To4()
+		if a[3] == 255 {
+			a[3] = 0
+			a[2]++ // Unlikely to overflow
+		} else {
+			a[3]++
+		}
+		ulAddr1 = a.String()
+		if a[3] == 255 {
+			a[3] = 0
+			a[2]++
+		} else {
+			a[3]++ // Unlikely to overflow
+		}
+		ulAddr2 = a.String()
+	}
+	return ulAddr1, ulAddr2
+}
+
+var nilUUID uuid.UUID // Really a constant
+
+// Returns nil, nil if the UUID is all zero
+func getNetworkConfig(subNetworkConfig *pubsub.Subscription,
+	netUUID uuid.UUID) (*types.NetworkConfig, error) {
+
+	if netUUID == nilUUID {
+		return nil, nil
+	}
+	net, err := subNetworkConfig.Get(netUUID.String())
+	if net == nil {
+		errStr := fmt.Sprintf("No NetworkConfig for %s: %s",
+			netUUID.String(), err)
+		return nil, errors.New(errStr)
+	} else {
+		network := CastNetworkConfig(net)
+		return &network, nil
+	}
 }
 
 // Note that handleModify will not touch the EID; just ACLs and NameToEidList
@@ -968,13 +1106,13 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 		return
 	}
 
-	status.SeparateDataPlane = ctx.SeparateDataPlane
+	status.SeparateDataPlane = ctx.separateDataPlane
 	status.PendingModify = true
 	status.UUIDandVersion = config.UUIDandVersion
 	writeAppNetworkStatus(status, statusFilename)
 
 	if config.IsZedmanager {
-		if config.SeparateDataPlane != ctx.SeparateDataPlane {
+		if config.SeparateDataPlane != ctx.separateDataPlane {
 			log.Printf("Unsupported: Changing experimental data plane flag on the fly\n")
 			// XXX Add an error stat here. It can be passed back to cloud in future.
 			return
@@ -984,6 +1122,22 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 		olNum := 1
 		olIfname := "dbo" + strconv.Itoa(olNum) + "x" +
 			strconv.Itoa(appNum)
+
+		// Make sure we have a NetworkConfig object if we have a UUID
+		// Returns nil if UUID is zero
+		netconf, err := getNetworkConfig(ctx.subNetworkConfig,
+			olConfig.Network)
+		if err != nil {
+			log.Printf("handleModify getNetworkConfig failed %s\n",
+				err)
+			// XXX need a fallback/retry!!
+		}
+		if netconf != nil {
+			log.Printf("Found isMgmt NetworkConfig %v\n", netconf)
+		}
+
+		// Note: we ignore olConfig.AppMacAddr for IsMgmt
+
 		// Update hosts
 		hostsDirpath := globalRunDirname + "/hosts." + olIfname
 		updateHostsConfiglet(hostsDirpath, olStatus.NameToEidList,
@@ -994,7 +1148,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 			olConfig.NameToEidList)
 
 		// Update ACLs
-		err := updateACLConfiglet(olIfname, true, olStatus.ACLs,
+		err = updateACLConfiglet(olIfname, true, olStatus.ACLs,
 			olConfig.ACLs, 6, "", "", 0)
 		if err != nil {
 			log.Printf("updateACLConfiglet failed for %s: %s\n",
@@ -1022,6 +1176,20 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 		}
 		olIfname := "bo" + strconv.Itoa(olNum) + "x" +
 			strconv.Itoa(appNum)
+
+		// Make sure we have a NetworkConfig object if we have a UUID
+		// Returns nil if UUID is zero
+		netconf, err := getNetworkConfig(ctx.subNetworkConfig,
+			olConfig.Network)
+		if err != nil {
+			log.Printf("handleModify getNetworkConfig failed %s\n",
+				err)
+			// XXX need a fallback/retry!!
+		}
+		if netconf != nil {
+			log.Printf("Found overlay NetworkConfig %v\n", netconf)
+		}
+
 		olStatus := status.OverlayNetworkList[olNum-1]
 		olAddr1 := "fd00::" + strconv.FormatInt(int64(olNum), 16) +
 			":" + strconv.FormatInt(int64(appNum), 16)
@@ -1036,7 +1204,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 			olConfig.NameToEidList)
 
 		// Update ACLs
-		err := updateACLConfiglet(olIfname, false, olStatus.ACLs,
+		err = updateACLConfiglet(olIfname, false, olStatus.ACLs,
 			olConfig.ACLs, 6, olAddr1, "", 0)
 		if err != nil {
 			log.Printf("updateACLConfiglet failed for %s: %s\n",
@@ -1059,7 +1227,8 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 			os.Remove(cfgPathname)
 			createDnsmasqOverlayConfiglet(cfgPathname, olIfname, olAddr1,
 				EID.String(), olMac, hostsDirpath,
-				config.UUIDandVersion.UUID.String(), newIpsets)
+				config.UUIDandVersion.UUID.String(), newIpsets,
+				netconf)
 			startDnsmasq(cfgPathname, olIfname)
 		}
 
@@ -1072,7 +1241,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 		updateLispConfiglet(lispRunDirname, false, olConfig.IID,
 			olConfig.EID, olConfig.LispSignature,
 			deviceNetworkStatus, olIfname, olIfname,
-			additionalInfo, olConfig.LispServers, ctx.SeparateDataPlane)
+			additionalInfo, olConfig.LispServers, ctx.separateDataPlane)
 
 	}
 	// Look for ACL changes in underlay
@@ -1082,9 +1251,19 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 			log.Printf("handleModify ulNum %d\n", ulNum)
 		}
 		ulIfname := "bu" + strconv.Itoa(appNum)
-		// XXX check for static address.
-		ulAddr1 := "172.27." + strconv.Itoa(appNum) + ".1"
-		ulAddr2 := "172.27." + strconv.Itoa(appNum) + ".2"
+		// Make sure we have a NetworkConfig object if we have a UUID
+		// Returns nil if UUID is zero
+		netconf, err := getNetworkConfig(ctx.subNetworkConfig,
+			ulConfig.Network)
+		if err != nil {
+			log.Printf("handleModify getNetworkConfig failed %s\n",
+				err)
+			// XXX need a fallback/retry!!
+		}
+		if netconf != nil {
+			log.Printf("Found underlay NetworkConfig %v\n", netconf)
+		}
+		ulAddr1, ulAddr2 := getUlAddrs(appNum, &ulConfig, nil, netconf)
 		ulStatus := status.UnderlayNetworkList[ulNum-1]
 
 		// Update ACLs
@@ -1092,7 +1271,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 		if ulConfig.SshPortMap {
 			sshPort = 8022 + 100*uint(appNum)
 		}
-		err := updateACLConfiglet(ulIfname, false, ulStatus.ACLs,
+		err = updateACLConfiglet(ulIfname, false, ulStatus.ACLs,
 			ulConfig.ACLs, 4, ulAddr1, ulAddr2, sshPort)
 		if err != nil {
 			log.Printf("updateACLConfiglet failed for %s: %s\n",
@@ -1113,7 +1292,8 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 			os.Remove(cfgPathname)
 			createDnsmasqUnderlayConfiglet(cfgPathname, ulIfname, ulAddr1,
 				ulAddr2, ulMac,
-				config.UUIDandVersion.UUID.String(), newIpsets)
+				config.UUIDandVersion.UUID.String(), newIpsets,
+				netconf)
 			startDnsmasq(cfgPathname, ulIfname)
 		}
 	}
@@ -1247,7 +1427,7 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 
 		// Delete LISP configlets
 		deleteLispConfiglet(lispRunDirname, true, olStatus.IID,
-			olStatus.EID, deviceNetworkStatus, ctx.SeparateDataPlane)
+			olStatus.EID, deviceNetworkStatus, ctx.separateDataPlane)
 	} else {
 		// Delete everything for overlay
 		for olNum := 1; olNum <= maxOlNum; olNum++ {
@@ -1298,7 +1478,7 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 				deleteLispConfiglet(lispRunDirname, false,
 					olStatus.IID, olStatus.EID,
 					deviceNetworkStatus,
-					ctx.SeparateDataPlane)
+					ctx.separateDataPlane)
 			} else {
 				log.Println("Missing status for overlay %d; can not clean up ACLs and LISP\n",
 					olNum)
@@ -1321,9 +1501,6 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 				log.Printf("handleDelete ulNum %d\n", ulNum)
 			}
 			ulIfname := "bu" + strconv.Itoa(appNum)
-			// XXX check for static address.
-			ulAddr1 := "172.27." + strconv.Itoa(appNum) + ".1"
-			ulAddr2 := "172.27." + strconv.Itoa(appNum) + ".2"
 			if debug {
 				log.Printf("Deleting ulIfname %s\n", ulIfname)
 			}
@@ -1341,25 +1518,38 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 
 			// Delete ACLs
 			// Need to check that index exists
-			if len(status.UnderlayNetworkList) >= ulNum {
-				ulStatus := status.UnderlayNetworkList[ulNum-1]
-				var sshPort uint
-				if ulStatus.SshPortMap {
-					sshPort = 8022 + 100*uint(appNum)
-				}
-				err := deleteACLConfiglet(ulIfname, false,
-					ulStatus.ACLs, 4, ulAddr1, ulAddr2,
-					sshPort)
-				if err != nil {
-					log.Printf("deleteACLConfiglet failed for %s: %s\n",
-						status.DisplayName, err)
-					status.Error = appendError(status.Error, "deleteACL",
-						err.Error())
-					status.ErrorTime = time.Now()
-				}
-			} else {
-				log.Println("Missing status for underlay %d; can not clean up ACLs\n",
+			if len(status.UnderlayNetworkList) < ulNum {
+				log.Println("Missing status for underlay %d; can not clean up ACLs etc\n",
 					ulNum)
+				continue
+			}
+			ulStatus := status.UnderlayNetworkList[ulNum-1]
+			var sshPort uint
+			if ulStatus.SshPortMap {
+				sshPort = 8022 + 100*uint(appNum)
+			}
+			netconf, err := getNetworkConfig(ctx.subNetworkConfig,
+				ulStatus.Network)
+			if err != nil {
+				log.Printf("handleDelete getNetworkConfig failed %s\n",
+					err)
+				// XXX need a fallback/retry!!
+			}
+			if netconf != nil {
+				log.Printf("Found underlay NetworkConfig %v\n",
+					netconf)
+			}
+			ulAddr1, ulAddr2 := getUlAddrs(appNum, nil, &ulStatus,
+				netconf)
+			err = deleteACLConfiglet(ulIfname, false,
+				ulStatus.ACLs, 4, ulAddr1, ulAddr2,
+				sshPort)
+			if err != nil {
+				log.Printf("deleteACLConfiglet failed for %s: %s\n",
+					status.DisplayName, err)
+				status.Error = appendError(status.Error, "deleteACL",
+					err.Error())
+				status.ErrorTime = time.Now()
 			}
 		}
 	}
@@ -1450,12 +1640,13 @@ func doDNSUpdate(ctx *DNCContext) {
 	}
 	ctx.usableAddressCount = newAddrCount
 	updateDeviceNetworkStatus()
-	updateLispConfiglets(ctx.SeparateDataPlane)
+	updateLispConfiglets(ctx.separateDataPlane)
 
 	setUplinks(deviceNetworkConfig.Uplink)
 	setFreeUplinks(deviceNetworkConfig.FreeUplinks)
 	// XXX check if FreeUplinks changed; add/delete
 	// XXX need to redo this when FreeUplinks changes
+	// XXX also when NAT service enabled/disabled
 	// for _, u := range deviceNetworkConfig.FreeUplinks {
 	//	iptableCmd("-t", "nat", "-A", "POSTROUTING", "-o", u,
 	//		"-s", "172.27.0.0/16", "-j", "MASQUERADE")
@@ -1464,4 +1655,15 @@ func doDNSUpdate(ctx *DNCContext) {
 
 func appendError(allErrors string, prefix string, lasterr string) string {
 	return fmt.Sprintf("%s%s: %s\n\n", allErrors, prefix, lasterr)
+}
+
+func handleNetworkConfigModify(ctxArg interface{}, key string, configArg interface{}) {
+	// XXX ctx := ctxArg.(*zedrouterContext)
+	config := CastNetworkConfig(configArg)
+	log.Printf("handleNetworkConfigModify(%s)\n", config.UUID.String())
+}
+
+func handleNetworkConfigDelete(ctxArg interface{}, key string) {
+	// XXX ctx := ctxArg.(*zedrouterContext)
+	log.Printf("handleNetworkConfigDelete()\n")
 }

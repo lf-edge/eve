@@ -89,6 +89,7 @@ type DeviceNetworkConfig2 struct {
 	Uplinks []DeviceNetwork
 }
 
+// XXX new - replacement for above
 type DeviceNetwork struct {
 	IfName string
 	Free   bool
@@ -463,6 +464,21 @@ type NetworkService struct {
 	AppLink      uuid.UUID
 	Adapter      string // Ifname or group like "uplink", or empty
 	OpaqueConfig string
+}
+
+type NetworkServiceStatus struct {
+	UUID          uuid.UUID
+	PendingAdd    bool
+	PendingModify bool
+	PendingDelete bool
+	DisplayName   string
+	Type          NetworkServiceType
+	Activated     bool
+	AppLink       uuid.UUID
+	Adapter       string // Ifname or group like "uplink", or empty
+	// Any errros from provisioning the service
+	Error     string
+	ErrorTime time.Time
 }
 
 // Network metrics for overlay and underlay

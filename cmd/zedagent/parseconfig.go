@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/golang/protobuf/proto"
 	"github.com/satori/go.uuid"
@@ -349,6 +350,7 @@ func setStoragePartitionLabel(baseOs *types.BaseOsConfig) {
 
 var appinstancePrevConfigHash []byte
 
+// XXX separate function for networks and services?
 func parseAppInstanceConfig(config *zconfig.EdgeDevConfig) {
 
 	var appInstance = types.AppInstanceConfig{}
@@ -357,6 +359,15 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig) {
 	h := sha256.New()
 	for _, a := range Apps {
 		computeConfigElementSha(h, a)
+	}
+	// XXX should we separate out the Network and Services parse/sha check?
+	nets := config.GetNetworks()
+	for _, n := range nets {
+		computeConfigElementSha(h, n)
+	}
+	svcs := config.GetServices()
+	for _, s := range svcs {
+		computeConfigElementSha(h, s)
 	}
 	configHash := h.Sum(nil)
 	same := bytes.Equal(configHash, appinstancePrevConfigHash)
@@ -420,6 +431,10 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig) {
 			parseStorageConfigList(config, appImgObj,
 				appInstance.StorageConfigList, cfgApp.Drives)
 		}
+
+		// Export NetworkConfig and NetworkService
+		publishNetworkConfig(config.GetNetworks())
+		publishNetworkService(config.GetServices())
 
 		// fill the overlay/underlay config
 		parseNetworkConfig(&appInstance, cfgApp, config.Networks)
@@ -526,6 +541,211 @@ func lookupNetworkId(id string, cfgNetworks []*zconfig.NetworkConfig) *zconfig.N
 	return nil
 }
 
+func lookupServiceId(id string, cfgServices []*zconfig.ServiceInstanceConfig) *zconfig.ServiceInstanceConfig {
+	for _, svcEnt := range cfgServices {
+		if id == svcEnt.Id {
+			return svcEnt
+		}
+	}
+	return nil
+}
+
+func publishNetworkConfig(cfgNetworks []*zconfig.NetworkConfig) {
+	for _, netEnt := range cfgNetworks {
+		id, err := uuid.FromString(netEnt.Id)
+		if err != nil {
+			log.Printf("NetworkConfig: Malformed UUID ignored: %s\n",
+				err)
+			continue
+		}
+		config := types.NetworkConfig{
+			UUID: id,
+			Type: types.NetworkType(netEnt.Type),
+		}
+		nv4 := netEnt.GetNv4()
+		if nv4 != nil {
+			err := parseNv4(nv4, &config)
+			if err != nil {
+				// XXX return how?
+				log.Printf("parseNv4 failed: %s\n", err)
+			}
+		}
+		nv6 := netEnt.GetNv6()
+		if nv6 != nil {
+			err := parseNv6(nv6, &config)
+			if err != nil {
+				// XXX return how?
+				log.Printf("parseNv6 failed: %s\n", err)
+			}
+		}
+		pubNetworkConfig.Publish(id.String(), &config)
+	}
+	// Anything to delete?
+	items := pubNetworkConfig.GetAll()
+	// XXX
+	log.Printf("pubNetworkConfig.GetAll got %d, %v\n", len(items), items)
+	for k, _ := range items {
+		netEnt := lookupNetworkId(k, cfgNetworks)
+		if netEnt != nil {
+			continue
+		}
+		log.Printf("publishNetworkConfig: deleting %s\n", k)
+		pubNetworkConfig.Unpublish(k)
+	}
+}
+
+func parseNv4(nv4 *zconfig.Ipv4Spec, config *types.NetworkConfig) error {
+	config.Dhcp = types.DhcpType(nv4.Dhcp)
+	// XXX
+	log.Printf("parseNv4: dhcp %d\n", config.Dhcp)
+	config.DomainName = nv4.Domain
+	if nv4.Subnet != "" {
+		_, subnet, err := net.ParseCIDR(nv4.Subnet)
+		if err != nil {
+			return err
+		}
+		config.Subnet = *subnet
+	}
+	if nv4.Gateway != "" {
+		config.Gateway = net.ParseIP(nv4.Gateway)
+		if config.Gateway == nil {
+			return errors.New(fmt.Sprintf("parseNv4: bad IP %s",
+				nv4.Gateway))
+		}
+	}
+	if nv4.Ntp != "" {
+		config.NtpServer = net.ParseIP(nv4.Ntp)
+		if config.NtpServer == nil {
+			return errors.New(fmt.Sprintf("parseNv4: bad IP %s",
+				nv4.Ntp))
+		}
+	}
+	for _, dsStr := range nv4.Dns {
+		ds := net.ParseIP(dsStr)
+		if ds == nil {
+			return errors.New(fmt.Sprintf("parseNv4: bad IP %s",
+				dsStr))
+		}
+		config.DnsServers = append(config.DnsServers, ds)
+	}
+	if nv4.DhcpRange != nil {
+		start := net.ParseIP(nv4.DhcpRange.Start)
+		if start == nil {
+			return errors.New(fmt.Sprintf("parseNv4: bad IP %s",
+				start))
+		}
+		end := net.ParseIP(nv4.DhcpRange.End)
+		if end == nil {
+			return errors.New(fmt.Sprintf("parseNv4: bad IP %s",
+				end))
+		}
+		config.DhcpRange.Start = start
+		config.DhcpRange.End = end
+	}
+	return nil
+}
+
+func parseNv6(nv6 *zconfig.Ipv6Spec, config *types.NetworkConfig) error {
+	config.Dhcp = types.DhcpType(nv6.Dhcp)
+	// XXX
+	log.Printf("parseNv6: dhcp %d\n", config.Dhcp)
+	config.DomainName = nv6.Domain
+	if nv6.Subnet != "" {
+		_, subnet, err := net.ParseCIDR(nv6.Subnet)
+		if err != nil {
+			return err
+		}
+		config.Subnet = *subnet
+	}
+	if nv6.Gateway != "" {
+		config.Gateway = net.ParseIP(nv6.Gateway)
+		if config.Gateway == nil {
+			return errors.New(fmt.Sprintf("parseNv6: bad IP %s",
+				nv6.Gateway))
+		}
+	}
+	if nv6.Ntp != "" {
+		config.NtpServer = net.ParseIP(nv6.Ntp)
+		if config.NtpServer == nil {
+			return errors.New(fmt.Sprintf("parseNv6: bad IP %s",
+				nv6.Ntp))
+		}
+	}
+	for _, dsStr := range nv6.Dns {
+		ds := net.ParseIP(dsStr)
+		if ds == nil {
+			return errors.New(fmt.Sprintf("parseNv6: bad IP %s",
+				dsStr))
+		}
+		config.DnsServers = append(config.DnsServers, ds)
+	}
+	if nv6.DhcpRange != nil {
+		start := net.ParseIP(nv6.DhcpRange.Start)
+		if start == nil {
+			return errors.New(fmt.Sprintf("parseNv6: bad IP %s",
+				start))
+		}
+		end := net.ParseIP(nv6.DhcpRange.End)
+		if end == nil {
+			return errors.New(fmt.Sprintf("parseNv6: bad IP %s",
+				end))
+		}
+		config.DhcpRange.Start = start
+		config.DhcpRange.End = end
+	}
+	return nil
+}
+
+func publishNetworkService(cfgServices []*zconfig.ServiceInstanceConfig) {
+	for _, svcEnt := range cfgServices {
+		id, err := uuid.FromString(svcEnt.Id)
+		if err != nil {
+			log.Printf("NetworkService: Malformed UUID %s ignored: %s\n",
+				svcEnt.Id, err)
+			continue
+		}
+		service := types.NetworkService{
+			UUID:        id,
+			DisplayName: svcEnt.Displayname,
+			Type:        types.NetworkServiceType(svcEnt.Srvtype),
+			Activate:    svcEnt.Activate,
+		}
+		if svcEnt.Applink != "" {
+			applink, err := uuid.FromString(svcEnt.Applink)
+			if err != nil {
+				log.Printf("NetworkService: Malformed UUID %s ignored: %s\n",
+					svcEnt.Applink, err)
+				continue
+			}
+			service.AppLink = applink
+		}
+		if svcEnt.Devlink != nil {
+			if svcEnt.Devlink.Type != zconfig.ZCioType_ZCioEth {
+				log.Printf("NetworkService: Unsupported IoType %v ignored\n",
+					svcEnt.Devlink.Type)
+				continue
+			}
+			service.Adapter = svcEnt.Devlink.Name
+		}
+		if svcEnt.Cfg != nil {
+			service.OpaqueConfig = svcEnt.Cfg.Oconfig
+		}
+		pubNetworkService.Publish(id.String(), &service)
+	}
+	// Anything to delete?
+	items := pubNetworkService.GetAll()
+	// XXX
+	log.Printf("pubNetworkService.GetAll got %d, %v\n", len(items), items)
+	for k, _ := range items {
+		svcEnt := lookupServiceId(k, cfgServices)
+		if svcEnt != nil {
+			continue
+		}
+		log.Printf("publishNetworkService: deleting %s\n", k)
+		pubNetworkService.Unpublish(k)
+	}
+}
+
 func parseNetworkConfig(appInstance *types.AppInstanceConfig,
 	cfgApp *zconfig.AppInstanceConfig,
 	cfgNetworks []*zconfig.NetworkConfig) {
@@ -542,12 +762,13 @@ func parseNetworkConfig(appInstance *types.AppInstanceConfig,
 				intfEnt.NetworkId)
 			continue
 		}
-		switch strings.ToLower(netEnt.Type.String()) {
+		switch netEnt.Type {
 		// underlay interface
-		case "v4", "v6":
+		case zconfig.NetworkType_V4, zconfig.NetworkType_V6:
 			ulMaxIdx++
 		// overlay interface
-		case "lisp":
+		// XXX turn LISP into a service?? What happens to overlay config?
+		case zconfig.NetworkType_LISP:
 			olMaxIdx++
 		}
 	}
@@ -578,22 +799,44 @@ func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
 				intfEnt.NetworkId)
 			continue
 		}
-		if strings.ToLower(netEnt.Type.String()) != "v4" &&
-			strings.ToLower(netEnt.Type.String()) != "v6" {
+		uuid, err := uuid.FromString(netEnt.Id)
+		if err != nil {
+			log.Printf("UnderlayNetworkConfig: Malformed UUID %s ignored: %s\n",
+				netEnt.Id, err)
 			continue
 		}
-		nv4 := netEnt.GetNv4() //XXX not required now...
-		if nv4 != nil {
-			booValNv4 := nv4.Dhcp
-			log.Println("booValNv4: ", booValNv4)
-		}
-		nv6 := netEnt.GetNv6() //XXX not required now...
-		if nv6 != nil {
-			booValNv6 := nv6.Dhcp
-			log.Println("booValNv6: ", booValNv6)
+		switch netEnt.Type {
+		case zconfig.NetworkType_V4, zconfig.NetworkType_V6:
+			break
+		// XXX turn LISP into a service
+		case zconfig.NetworkType_LISP:
+			continue
+		default:
+			continue
 		}
 
 		ulCfg := new(types.UnderlayNetworkConfig)
+		ulCfg.Network = uuid
+		if intfEnt.MacAddress != "" {
+			ulCfg.AppMacAddr, err = net.ParseMAC(intfEnt.MacAddress)
+			if err != nil {
+				log.Printf("parseUnderlayNetworkConfig: bad MAC %s: %s\n",
+					intfEnt.MacAddress, err)
+				// XXX report?
+			}
+		}
+		// XXX need to compare against network to make sure we don't
+		// use an IPV6 EID on a IPv4 network
+		if false && intfEnt.Addr != "" {
+			// XXX zedcloud is sending EID with a V4 network!
+			// even though no overlay configured for app.
+			ulCfg.AppIPAddr = net.ParseIP(intfEnt.Addr)
+			if ulCfg.AppIPAddr == nil {
+				log.Printf("parseUnderlayNetworkConfig: bad IP %s\n",
+					intfEnt.Addr)
+				// XXX report?
+			}
+		}
 		ulCfg.ACLs = make([]types.ACE, len(intfEnt.Acls))
 		// XXX set from TBD proto field
 		ulCfg.SshPortMap = true
@@ -640,13 +883,28 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 				intfEnt.NetworkId)
 			continue
 		}
+		uuid, err := uuid.FromString(netEnt.Id)
+		if err != nil {
+			log.Printf("OverlayNetworkConfig: Malformed UUID ignored: %s\n",
+				err)
+			continue
+		}
 
-		if strings.ToLower(netEnt.Type.String()) != "lisp" {
+		// XXX turn LISP into a service?? What happens to overlay config?
+		if netEnt.Type != zconfig.NetworkType_LISP {
 			continue
 		}
 		olCfg := new(types.EIDOverlayConfig)
 		olCfg.ACLs = make([]types.ACE, len(intfEnt.Acls))
-
+		olCfg.Network = uuid
+		if intfEnt.MacAddress != "" {
+			olCfg.AppMacAddr, err = net.ParseMAC(intfEnt.MacAddress)
+			if err != nil {
+				log.Printf("parseUnderlayNetworkConfig: bad MAC %s: %s\n",
+					intfEnt.MacAddress, err)
+				// XXX report?
+			}
+		}
 		for aclIdx, acl := range intfEnt.Acls {
 			aclCfg := new(types.ACE)
 			aclCfg.Matches = make([]types.ACEMatch,
