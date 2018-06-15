@@ -123,7 +123,7 @@ run-rootfs: bios/OVMF.fd bios/EFI
 
 # NOTE: that we have to depend on zedctr-workaround here to make sure
 # it gets triggered when we build any kind of image target
-images/%.yml: zedctr-workaround parse-pkgs.sh images/%.yml.in FORCE
+images/%.yml: build-tools zedctr-workaround parse-pkgs.sh images/%.yml.in FORCE
 	DOCKER_ARCH_TAG="$(DOCKER_ARCH_TAG)" ./parse-pkgs.sh $@.in > $@
 	# the following is a horrible hack that needs to go away ASAP
 	if [ "$(ZARCH)" != `uname -m` ] ; then \
