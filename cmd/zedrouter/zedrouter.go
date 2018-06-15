@@ -55,6 +55,7 @@ type zedrouterContext struct {
 	separateDataPlane       bool
 	subNetworkConfig        *pubsub.Subscription
 	subNetworkService       *pubsub.Subscription
+	pubNetworkStatus        *pubsub.Publication
 	pubNetworkServiceStatus *pubsub.Publication
 }
 
@@ -166,6 +167,8 @@ func Run() {
 	subNetworkService.ModifyHandler = handleNetworkServiceModify
 	subNetworkService.DeleteHandler = handleNetworkServiceDelete
 
+	pubNetworkStatus, err := pubsub.Publish(agentName,
+		types.NetworkServiceStatus{})
 	pubNetworkServiceStatus, err := pubsub.Publish(agentName,
 		types.NetworkServiceStatus{})
 
@@ -173,6 +176,7 @@ func Run() {
 		separateDataPlane:       false,
 		subNetworkConfig:        subNetworkConfig,
 		subNetworkService:       subNetworkService,
+		pubNetworkStatus:        pubNetworkStatus,
 		pubNetworkServiceStatus: pubNetworkServiceStatus,
 	}
 
@@ -1655,15 +1659,4 @@ func doDNSUpdate(ctx *DNCContext) {
 
 func appendError(allErrors string, prefix string, lasterr string) string {
 	return fmt.Sprintf("%s%s: %s\n\n", allErrors, prefix, lasterr)
-}
-
-func handleNetworkConfigModify(ctxArg interface{}, key string, configArg interface{}) {
-	// XXX ctx := ctxArg.(*zedrouterContext)
-	config := CastNetworkConfig(configArg)
-	log.Printf("handleNetworkConfigModify(%s)\n", config.UUID.String())
-}
-
-func handleNetworkConfigDelete(ctxArg interface{}, key string) {
-	// XXX ctx := ctxArg.(*zedrouterContext)
-	log.Printf("handleNetworkConfigDelete()\n")
 }

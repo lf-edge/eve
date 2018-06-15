@@ -44,6 +44,7 @@ func PbrInit(uplinks []string, freeUplinks []string, addrChangeFn addrChangeFnTy
 	// Can we use iif match for all the bo* interfaces?
 	// If so, use bu* matches for this rule
 	freeRule := netlink.NewRule()
+	// XXX need this rule for all NAT subnets
 	_, prefix, err := net.ParseCIDR("172.27.0.0/16")
 	if err != nil {
 		log.Fatal(err)
