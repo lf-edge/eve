@@ -18,7 +18,6 @@ import (
 	"github.com/satori/go.uuid"
 	"github.com/vishvananda/netlink"
 	"github.com/zededa/go-provision/agentlog"
-	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/devicenetwork"
 	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/hardware"
@@ -570,8 +569,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 
 		// Make sure we have a NetworkConfig object if we have a UUID
 		// Returns nil if UUID is zero
-		netconf, err := getNetworkObjectConfig(ctx.subNetworkObjectConfig,
-			olConfig.Network)
+		netconf, err := getNetworkObjectConfig(ctx, olConfig.Network)
 		if err != nil {
 			log.Printf("handleCreate getNetworkObjectConfig failed %s\n",
 				err)
@@ -766,8 +764,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		}
 		// Make sure we have a NetworkConfig object if we have a UUID
 		// Returns nil if UUID is zero
-		netconf, err := getNetworkObjectConfig(ctx.subNetworkObjectConfig,
-			olConfig.Network)
+		netconf, err := getNetworkObjectConfig(ctx, olConfig.Network)
 		if err != nil {
 			log.Printf("handleCreate getNetworkObjectConfig failed %s\n",
 				err)
@@ -909,13 +906,13 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 			log.Printf("ulNum %d ACLs %v\n", ulNum, ulConfig.ACLs)
 		}
 		ulIfname := "bu" + strconv.Itoa(appNum)
+		createBridge := true
 		if debug {
 			log.Printf("ulIfname %s\n", ulIfname)
 		}
 		// Make sure we have a NetworkConfig object if we have a UUID
 		// Returns nil if UUID is zero
-		netconf, err := getNetworkObjectConfig(ctx.subNetworkObjectConfig,
-			ulConfig.Network)
+		netconf, err := getNetworkObjectConfig(ctx, ulConfig.Network)
 		if err != nil {
 			log.Printf("handleCreate getNetworkObjectConfig failed %s\n",
 				err)
@@ -923,6 +920,14 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		}
 		if netconf != nil {
 			log.Printf("Found underlay NetworkConfig %v\n", netconf)
+			netstatus := lookupNetworkObjectStatus(ctx,
+				ulConfig.Network.String())
+			if netstatus != nil && netstatus.BridgeName != "" {
+				ulIfname = netstatus.BridgeName
+				createBridge = false
+				log.Printf("Found underlay Bridge %s\n",
+					ulIfname)
+			}
 		}
 		// Not clear how to handle multiple ul; use /30 prefix?
 		ulAddr1, ulAddr2 := getUlAddrs(appNum, &ulConfig, nil, netconf)
@@ -939,36 +944,58 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		if debug {
 			log.Printf("ulMac %s\n", ulMac)
 		}
-		// Start clean
-		attrs := netlink.NewLinkAttrs()
-		attrs.Name = ulIfname
-		uLink := &netlink.Bridge{LinkAttrs: attrs}
-		netlink.LinkDel(uLink)
+		// XXX apply this to ismgmt and overlay and handleModify below
+		var uLink *netlink.Bridge
+		if createBridge {
+			// Start clean
+			attrs := netlink.NewLinkAttrs()
+			attrs.Name = ulIfname
+			uLink = &netlink.Bridge{LinkAttrs: attrs}
+			netlink.LinkDel(uLink)
 
-		//    ip link add ${ulIfname} type bridge
-		attrs = netlink.NewLinkAttrs()
-		attrs.Name = ulIfname
-		bridgeMac := fmt.Sprintf("00:16:3e:04:00:%02x", appNum)
-		hw, err := net.ParseMAC(bridgeMac)
-		if err != nil {
-			log.Fatal("ParseMAC failed: ", bridgeMac, err)
-		}
-		attrs.HardwareAddr = hw
-		uLink = &netlink.Bridge{LinkAttrs: attrs}
-		if err := netlink.LinkAdd(uLink); err != nil {
-			log.Printf("LinkAdd on %s failed: %s\n", ulIfname, err)
-		}
-		//    ip link set ${ulIfname} up
-		if err := netlink.LinkSetUp(uLink); err != nil {
-			log.Printf("LinkSetUp on %s failed: %s\n", ulIfname, err)
-		}
-		//    ip addr add ${ulAddr1}/24 dev ${ulIfname}
-		addr, err := netlink.ParseAddr(ulAddr1 + "/24")
-		if err != nil {
-			log.Printf("ParseAddr %s failed: %s\n", ulAddr1, err)
-		}
-		if err := netlink.AddrAdd(uLink, addr); err != nil {
-			log.Printf("AddrAdd %s failed: %s\n", ulAddr1, err)
+			//    ip link add ${ulIfname} type bridge
+			attrs = netlink.NewLinkAttrs()
+			attrs.Name = ulIfname
+			bridgeMac := fmt.Sprintf("00:16:3e:04:00:%02x", appNum)
+			hw, err := net.ParseMAC(bridgeMac)
+			if err != nil {
+				log.Fatal("ParseMAC failed: ", bridgeMac, err)
+			}
+			attrs.HardwareAddr = hw
+			uLink = &netlink.Bridge{LinkAttrs: attrs}
+			if err := netlink.LinkAdd(uLink); err != nil {
+				log.Printf("LinkAdd on %s failed: %s\n", ulIfname, err)
+			}
+			//    ip link set ${ulIfname} up
+			if err := netlink.LinkSetUp(uLink); err != nil {
+				log.Printf("LinkSetUp on %s failed: %s\n", ulIfname, err)
+			}
+			//    ip addr add ${ulAddr1}/24 dev ${ulIfname}
+			addr, err := netlink.ParseAddr(ulAddr1 + "/24")
+			if err != nil {
+				log.Printf("ParseAddr %s failed: %s\n", ulAddr1, err)
+			}
+			if err := netlink.AddrAdd(uLink, addr); err != nil {
+				log.Printf("AddrAdd %s failed: %s\n", ulAddr1, err)
+			}
+		} else {
+			link, err := netlink.LinkByName(ulIfname)
+			if link == nil {
+				log.Printf("LinkByName(%s) failed %s\n",
+					ulIfname, err)
+				// XXX how to handle this failure? bridge
+				// disappeared?
+				return
+			}
+			switch link.(type) {
+			case *netlink.Bridge:
+				uLink = link.(*netlink.Bridge)
+			default:
+				log.Printf("LinkByName(%s) not a bridge\n",
+					ulIfname)
+				// XXX
+				return
+			}
 		}
 
 		// Create iptables with optional ipset's based ACL
@@ -1051,20 +1078,19 @@ func getUlAddrs(appNum int, ulConfig *types.UnderlayNetworkConfig,
 var nilUUID uuid.UUID // Really a constant
 
 // Returns nil, nil if the UUID is all zero
-func getNetworkObjectConfig(subNetworkObjectConfig *pubsub.Subscription,
+func getNetworkObjectConfig(ctx *zedrouterContext,
 	netUUID uuid.UUID) (*types.NetworkObjectConfig, error) {
 
 	if netUUID == nilUUID {
 		return nil, nil
 	}
-	net, err := subNetworkObjectConfig.Get(netUUID.String())
-	if net == nil {
-		errStr := fmt.Sprintf("No NetworkConfig for %s: %s",
-			netUUID.String(), err)
+	config := lookupNetworkObjectConfig(ctx, netUUID.String())
+	if config == nil {
+		errStr := fmt.Sprintf("No NetworkConfig for %s",
+			netUUID.String())
 		return nil, errors.New(errStr)
 	} else {
-		network := cast.CastNetworkObjectConfig(net)
-		return &network, nil
+		return config, nil
 	}
 }
 
@@ -1130,8 +1156,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 
 		// Make sure we have a NetworkConfig object if we have a UUID
 		// Returns nil if UUID is zero
-		netconf, err := getNetworkObjectConfig(ctx.subNetworkObjectConfig,
-			olConfig.Network)
+		netconf, err := getNetworkObjectConfig(ctx, olConfig.Network)
 		if err != nil {
 			log.Printf("handleModify getNetworkObjectConfig failed %s\n",
 				err)
@@ -1184,8 +1209,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 
 		// Make sure we have a NetworkConfig object if we have a UUID
 		// Returns nil if UUID is zero
-		netconf, err := getNetworkObjectConfig(ctx.subNetworkObjectConfig,
-			olConfig.Network)
+		netconf, err := getNetworkObjectConfig(ctx, olConfig.Network)
 		if err != nil {
 			log.Printf("handleModify getNetworkObjectConfig failed %s\n",
 				err)
@@ -1258,8 +1282,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 		ulIfname := "bu" + strconv.Itoa(appNum)
 		// Make sure we have a NetworkConfig object if we have a UUID
 		// Returns nil if UUID is zero
-		netconf, err := getNetworkObjectConfig(ctx.subNetworkObjectConfig,
-			ulConfig.Network)
+		netconf, err := getNetworkObjectConfig(ctx, ulConfig.Network)
 		if err != nil {
 			log.Printf("handleModify getNetworkObjectConfig failed %s\n",
 				err)
@@ -1267,6 +1290,13 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 		}
 		if netconf != nil {
 			log.Printf("Found underlay NetworkConfig %v\n", netconf)
+			netstatus := lookupNetworkObjectStatus(ctx,
+				ulConfig.Network.String())
+			if netstatus != nil && netstatus.BridgeName != "" {
+				ulIfname = netstatus.BridgeName
+				log.Printf("Found underlay Bridge %s\n",
+					ulIfname)
+			}
 		}
 		ulAddr1, ulAddr2 := getUlAddrs(appNum, &ulConfig, nil, netconf)
 		ulStatus := status.UnderlayNetworkList[ulNum-1]
@@ -1505,23 +1535,6 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 			if debug {
 				log.Printf("handleDelete ulNum %d\n", ulNum)
 			}
-			ulIfname := "bu" + strconv.Itoa(appNum)
-			if debug {
-				log.Printf("Deleting ulIfname %s\n", ulIfname)
-			}
-			attrs := netlink.NewLinkAttrs()
-			attrs.Name = ulIfname
-			uLink := &netlink.Bridge{LinkAttrs: attrs}
-			// Remove link and associated addresses
-			netlink.LinkDel(uLink)
-
-			// dnsmasq cleanup
-			cfgFilename := "dnsmasq." + ulIfname + ".conf"
-			cfgPathname := runDirname + "/" + cfgFilename
-			stopDnsmasq(cfgFilename, true)
-			deleteDnsmasqConfiglet(cfgPathname)
-
-			// Delete ACLs
 			// Need to check that index exists
 			if len(status.UnderlayNetworkList) < ulNum {
 				log.Println("Missing status for underlay %d; can not clean up ACLs etc\n",
@@ -1529,11 +1542,13 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 				continue
 			}
 			ulStatus := status.UnderlayNetworkList[ulNum-1]
-			var sshPort uint
-			if ulStatus.SshPortMap {
-				sshPort = 8022 + 100*uint(appNum)
+			// XXX get name ...
+			ulIfname := "bu" + strconv.Itoa(appNum)
+			deleteBridge := true
+			if debug {
+				log.Printf("Deleting ulIfname %s\n", ulIfname)
 			}
-			netconf, err := getNetworkObjectConfig(ctx.subNetworkObjectConfig,
+			netconf, err := getNetworkObjectConfig(ctx,
 				ulStatus.Network)
 			if err != nil {
 				log.Printf("handleDelete getNetworkObjectConfig failed %s\n",
@@ -1543,6 +1558,32 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 			if netconf != nil {
 				log.Printf("Found underlay NetworkConfig %v\n",
 					netconf)
+				netstatus := lookupNetworkObjectStatus(ctx,
+					ulStatus.Network.String())
+				if netstatus != nil && netstatus.BridgeName != "" {
+					ulIfname = netstatus.BridgeName
+					deleteBridge = false
+					log.Printf("Found underlay Bridge %s\n",
+						ulIfname)
+				}
+			}
+			if deleteBridge {
+				attrs := netlink.NewLinkAttrs()
+				attrs.Name = ulIfname
+				uLink := &netlink.Bridge{LinkAttrs: attrs}
+				// Remove link and associated addresses
+				netlink.LinkDel(uLink)
+			}
+			// dnsmasq cleanup
+			cfgFilename := "dnsmasq." + ulIfname + ".conf"
+			cfgPathname := runDirname + "/" + cfgFilename
+			stopDnsmasq(cfgFilename, true)
+			deleteDnsmasqConfiglet(cfgPathname)
+
+			// Delete ACLs
+			var sshPort uint
+			if ulStatus.SshPortMap {
+				sshPort = 8022 + 100*uint(appNum)
 			}
 			ulAddr1, ulAddr2 := getUlAddrs(appNum, nil, &ulStatus,
 				netconf)

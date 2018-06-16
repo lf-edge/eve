@@ -158,8 +158,7 @@ func doServiceActivate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	// We must have an existing AppLink to activate
 	// Make sure we have a NetworkObjectConfig if we have a UUID
 	// Returns nil if UUID is zero
-	netconf, err := getNetworkObjectConfig(ctx.subNetworkObjectConfig,
-		config.AppLink)
+	netconf, err := getNetworkObjectConfig(ctx, config.AppLink)
 	if err != nil {
 		// XXX need a fallback/retry!!
 		return err
@@ -298,7 +297,7 @@ func getBridgeService(ctx *zedrouterContext, appLink uuid.UUID) (string, error) 
 	log.Printf("getBridgeService(%s)\n", appLink.String())
 	status := lookupAppLink(ctx, appLink)
 	if status == nil {
-		log.Printf("getBridgeService: no service\n")
+		log.Printf("getBridgeService: no NetworkServiceStatus\n")
 		return "", nil
 	}
 	if status.Type != types.NST_BRIDGE {
