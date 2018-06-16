@@ -413,9 +413,9 @@ type UnderlayNetworkStatus struct {
 type NetworkType uint8
 
 const (
-	NT_IPV4 NetworkType = iota + 1
-	NT_IPV6
-	NT_LISP // XXX TBD make it a service
+	NT_IPV4 NetworkType = 4
+	NT_IPV6 = 6
+	NT_LISP = 10 // XXX TBD make it a service
 )
 
 // Extracted from the protobuf NetworkConfig
