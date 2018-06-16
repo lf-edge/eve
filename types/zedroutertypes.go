@@ -443,7 +443,7 @@ type IpRange struct {
 	End   net.IP
 }
 
-// If Ifname is set it means the network is in use
+// XXX If Ifname is set it means the network is in use
 // TBD: allow multiple applications to connect to the same Network by adding
 // another vif to the ifname.
 type NetworkObjectStatus struct {
@@ -453,7 +453,7 @@ type NetworkObjectStatus struct {
 	PendingDelete bool
 	BridgeNum     int
 	BridgeName    string // bn<N>
-	Ifname        string // AKA Adapter - from NetworkServiceConfig???
+	// XXX Ifname        string // AKA Adapter - from NetworkServiceConfig???
 	// Any errrors from provisioning the network
 	Error     string
 	ErrorTime time.Time
