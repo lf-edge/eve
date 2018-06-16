@@ -228,6 +228,8 @@ func doNetworkModify(ctx *zedrouterContext, config types.NetworkObjectConfig,
 		status.ErrorTime = time.Now()
 		return
 	}
+	// Update other fields; potentially useful for testing
+	status.NetworkObjectConfig = config
 }
 
 func doNetworkDelete(status *types.NetworkObjectStatus) {
