@@ -916,7 +916,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 			if err != nil {
 				log.Printf("handleCreate getBridgeService %s\n",
 					err)
-			} else {
+			} else if bridgeIP != "" {
 				ulAddr1 = bridgeIP
 			}
 		}
