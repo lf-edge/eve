@@ -10,25 +10,33 @@ import (
 	"os"
 )
 
-func initImpl(agentName string, logdir string) (*os.File, error) {
+func initImpl(agentName string, logdir string, redirect bool) (*os.File, error) {
 	logfile := fmt.Sprintf("%s/%s.log", logdir, agentName)
 	logf, err := os.OpenFile(logfile, os.O_RDWR|os.O_CREATE|os.O_APPEND,
 		0666)
 	if err != nil {
 		return nil, err
 	}
-	log.SetOutput(logf)
-	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
+	if redirect {
+		log.SetOutput(logf)
+		log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
+	}
 	return logf, nil
 }
 
 func Init(agentName string) (*os.File, error) {
 	logdir := GetCurrentLogdir()
-	return initImpl(agentName, logdir)
+	return initImpl(agentName, logdir, true)
 }
 
 func InitWithDir(agentName string, logdir string) (*os.File, error) {
-	return initImpl(agentName, logdir)
+	return initImpl(agentName, logdir, true)
+}
+
+// Setup and return a logf, but don't redirect our log.*
+func InitChild(agentName string) (*os.File, error) {
+	logdir := GetCurrentLogdir()
+	return initImpl(agentName, logdir, false)
 }
 
 const baseLogdir = "/persist"

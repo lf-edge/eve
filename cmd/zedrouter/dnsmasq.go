@@ -179,7 +179,7 @@ func startDnsmasq(cfgPathname string, ifname string) {
 		cfgPathname,
 	}
 	logFilename := fmt.Sprintf("dnsmasq.%s", ifname)
-	logf, err := agentlog.Init(logFilename)
+	logf, err := agentlog.InitChild(logFilename)
 	if err != nil {
 		log.Fatalf("startDnsmasq agentlog failed: %s\n", err)
 	}
