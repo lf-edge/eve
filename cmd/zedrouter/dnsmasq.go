@@ -72,15 +72,15 @@ func createDnsmasqOverlayConfiglet(cfgPathname string, olIfname string,
 
 	if netconf != nil {
 		if netconf.DomainName != "" {
-			file.WriteString(fmt.Sprintf("dhcp-option=domain-search,%s\n",
+			file.WriteString(fmt.Sprintf("dhcp-option=option:domain-search,%s\n",
 				netconf.DomainName))
 		}
 		for _, ns := range netconf.DnsServers {
-			file.WriteString(fmt.Sprintf("dhcp-option=dns-server,%s\n",
+			file.WriteString(fmt.Sprintf("dhcp-option=option:dns-server,%s\n",
 				ns.String()))
 		}
 		if netconf.NtpServer != nil {
-			file.WriteString(fmt.Sprintf("dhcp-option=ntp-server,%s\n",
+			file.WriteString(fmt.Sprintf("dhcp-option=option:ntp-server,%s\n",
 				netconf.NtpServer.String()))
 		}
 	}
@@ -118,20 +118,20 @@ func createDnsmasqUnderlayConfiglet(cfgPathname string, ulIfname string,
 
 	if netconf != nil {
 		if netconf.DomainName != "" {
-			file.WriteString(fmt.Sprintf("dhcp-option=domain-name,%s\n",
+			file.WriteString(fmt.Sprintf("dhcp-option=option:domain-name,%s\n",
 				netconf.DomainName))
 		}
 		for _, ns := range netconf.DnsServers {
-			file.WriteString(fmt.Sprintf("dhcp-option=dns-server,%s\n",
+			file.WriteString(fmt.Sprintf("dhcp-option=option:dns-server,%s\n",
 				ns.String()))
 		}
 		if netconf.NtpServer != nil {
-			file.WriteString(fmt.Sprintf("dhcp-option=ntp-server,%s\n",
+			file.WriteString(fmt.Sprintf("dhcp-option=option:ntp-server,%s\n",
 				netconf.NtpServer.String()))
 		}
 		if netconf.Subnet.IP != nil {
 			netmask = net.IP(netconf.Subnet.Mask).String()
-			file.WriteString(fmt.Sprintf("dhcp-option=netmask,%s\n",
+			file.WriteString(fmt.Sprintf("dhcp-option=option:netmask,%s\n",
 				netmask))
 		}
 		if netconf.Gateway != nil {
@@ -140,13 +140,7 @@ func createDnsmasqUnderlayConfiglet(cfgPathname string, ulIfname string,
 				netconf.Gateway.String()))
 		}
 		if netconf.DhcpRange.Start != nil {
-			if netconf.DhcpRange.End != nil {
-				dhcpRange = fmt.Sprintf("%s,%s",
-					netconf.DhcpRange.Start.String(),
-					netconf.DhcpRange.End.String())
-			} else {
-				dhcpRange = netconf.DhcpRange.Start.String()
-			}
+			dhcpRange = netconf.DhcpRange.Start.String()
 		}
 	}
 	file.WriteString(fmt.Sprintf("dhcp-range=%s,static,%s,infinite\n",
