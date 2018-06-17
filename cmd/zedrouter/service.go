@@ -272,26 +272,6 @@ func doServiceDelete(status *types.NetworkServiceStatus) {
 	}
 }
 
-// ==== StrongSwan
-
-func strongswanCreate(config types.NetworkServiceConfig,
-	status *types.NetworkServiceStatus) error {
-
-	return nil
-}
-
-func strongswanActivate(config types.NetworkServiceConfig,
-	status *types.NetworkServiceStatus) error {
-
-	return nil
-}
-
-func strongswanInactivate(status *types.NetworkServiceStatus) {
-}
-
-func strongswanDelete(status *types.NetworkServiceStatus) {
-}
-
 // ==== Lisp
 
 func lispCreate(config types.NetworkServiceConfig,

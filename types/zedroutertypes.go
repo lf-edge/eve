@@ -586,3 +586,21 @@ type AdditionalInfoApp struct {
 	UnderlayIP  string
 	Hostname    string `json:",omitempty"` // From reverse DNS
 }
+
+type IpSecLocalConfig struct {
+	TunnelName    string
+	UpLinkName    string
+	UpLinkIpAddr  string
+	IpTable       string
+	TunnelKey     string
+	Mtu           string
+	Metric        string
+}
+
+type AwsSSIpSecService struct {
+	AwsVpnGateway      string
+	AwsVpcSubnet       string
+	TunnelLocalIpAddr  string
+	TunnelRemoteIpAddr string
+	PreSharedKey       string
+}
