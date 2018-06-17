@@ -384,6 +384,7 @@ type OverlayNetworkConfig struct {
 type OverlayNetworkStatus struct {
 	OverlayNetworkConfig
 	VifInfo
+	BridgeIPAddr   string	// The address for DNS/DHCP service in zedrouter
 }
 
 type DhcpType uint8
@@ -408,6 +409,8 @@ type UnderlayNetworkConfig struct {
 type UnderlayNetworkStatus struct {
 	UnderlayNetworkConfig
 	VifInfo
+	BridgeIPAddr   string	// The address for DNS/DHCP service in zedrouter
+	AssignedIPAddr string	// Assigned to domU
 }
 
 type NetworkType uint8
@@ -416,6 +419,7 @@ const (
 	NT_IPV4 NetworkType = 4
 	NT_IPV6 = 6
 	NT_LISP = 10 // XXX TBD make it a service
+	// XXX Do we need a NT_DUAL/NT_IPV46? Implies two subnets/dhcp ranges?
 )
 
 // Extracted from the protobuf NetworkConfig
