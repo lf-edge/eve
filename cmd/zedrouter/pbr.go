@@ -45,7 +45,7 @@ func PbrInit(uplinks []string, freeUplinks []string, addrChangeFn addrChangeFnTy
 	// If so, use bu* matches for this rule
 	freeRule := netlink.NewRule()
 	// XXX need this rule for all NAT subnets
-	_, prefix, err := net.ParseCIDR("172.27.0.0/16")
+	_, prefix, err := net.ParseCIDR("172.16.0.0/12")
 	if err != nil {
 		log.Fatal(err)
 	}

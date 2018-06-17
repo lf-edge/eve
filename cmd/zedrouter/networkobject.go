@@ -159,7 +159,8 @@ func setBridgeIPAddr(ctx *zedrouterContext, config types.NetworkObjectConfig,
 	}
 	// If not we do a local allocation
 	if ulAddr1 == "" {
-		ulAddr1, _ = getUlAddrs(status.BridgeNum, nil, nil, &config)
+		// XXX Need IPV6/LISP logic to get IPv6 addresses
+		ulAddr1, _ = getUlAddrs(0, status.BridgeNum, nil, nil, &config)
 	}
 
 	//    ip addr add ${ulAddr1}/24 dev ${bridgeName}

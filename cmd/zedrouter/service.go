@@ -315,6 +315,7 @@ func getBridgeService(ctx *zedrouterContext, appLink uuid.UUID) (string, error) 
 	if err != nil {
 		return "", err
 	}
+	// XXX Add IPv6; ignore link-locals.
 	addrs, err := netlink.AddrList(link, syscall.AF_INET)
 	if err != nil {
 		return "", err

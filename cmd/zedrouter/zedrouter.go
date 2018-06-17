@@ -31,6 +31,7 @@ import (
 	"os"
 	"reflect"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -413,8 +414,13 @@ var appNetworkStatus map[string]types.AppNetworkStatus
 //	statusFilename := fmt.Sprintf("/var/run/%s/%s/%s.json",
 //		agentName, topic, key)
 // XXX introduce separate baseDir whch is /var/run (or /var/run/zededa)??
-func writeAppNetworkStatus(status *types.AppNetworkStatus,
-	statusFilename string) {
+func writeAppNetworkStatus(status *types.AppNetworkStatus) {
+
+	key := status.UUIDandVersion.UUID.String()
+	// topic := "AppNetworkStatus" // XXX reflect to get name of type?
+	topic := "status"
+	statusFilename := fmt.Sprintf("/var/run/%s/%s/%s.json",
+		agentName, topic, key)
 
 	if appNetworkStatus == nil {
 		if debug {
@@ -422,7 +428,6 @@ func writeAppNetworkStatus(status *types.AppNetworkStatus,
 		}
 		appNetworkStatus = make(map[string]types.AppNetworkStatus)
 	}
-	key := status.UUIDandVersion.UUID.String()
 	appNetworkStatus[key] = *status
 
 	b, err := json.Marshal(status)
@@ -546,15 +551,19 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		DisplayName:    config.DisplayName,
 		IsZedmanager:   config.IsZedmanager,
 	}
-	writeAppNetworkStatus(&status, statusFilename)
+	writeAppNetworkStatus(&status)
 
 	if config.IsZedmanager {
 		log.Printf("handleCreate: for %s IsZedmanager\n",
 			config.DisplayName)
 		if len(config.OverlayNetworkList) != 1 ||
 			len(config.UnderlayNetworkList) != 0 {
-			// XXX report error to cloud?
-			log.Println("Malformed IsZedmanager config; ignored")
+			// XXX report IsZedmanager error to cloud?
+			err := errors.New("Malformed IsZedmanager config; ignored")
+			status.PendingAdd = false
+			addError(ctx, &status, "IsZedmanager", err)
+			log.Printf("handleCreate done for %s\n",
+				config.DisplayName)
 			return
 		}
 		ctx.separateDataPlane = config.SeparateDataPlane
@@ -566,18 +575,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		olNum := 1
 		olIfname := "dbo" + strconv.Itoa(olNum) + "x" +
 			strconv.Itoa(appNum)
-
-		// Make sure we have a NetworkConfig object if we have a UUID
-		// Returns nil if UUID is zero
-		netconf, err := getNetworkObjectConfig(ctx, olConfig.Network)
-		if err != nil {
-			log.Printf("handleCreate getNetworkObjectConfig failed %s\n",
-				err)
-			// XXX need a fallback/retry!!
-		}
-		if netconf != nil {
-			log.Printf("Found isMgmt NetworkConfig %v\n", netconf)
-		}
+		// Assume there is no UUID for management overlay
 
 		// Create olIfname dummy interface with EID and fd00::/8 route
 		// pointing at it.
@@ -601,25 +599,34 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		attrs.HardwareAddr = hw
 		oLink = &netlink.Dummy{LinkAttrs: attrs}
 		if err := netlink.LinkAdd(oLink); err != nil {
-			log.Printf("LinkAdd on %s failed: %s\n", olIfname, err)
+			errStr := fmt.Sprintf("LinkAdd on %s failed: %s",
+				olIfname, err)
+			addError(ctx, &status, "IsZedmanager",
+				errors.New(errStr))
 		}
 
 		// ip link set ${olIfname} mtu 1280
 		if err := netlink.LinkSetMTU(oLink, 1280); err != nil {
-			log.Printf("LinkSetMTU on %s failed: %s\n",
+			errStr := fmt.Sprintf("LinkSetMTU on %s failed: %s",
 				olIfname, err)
+			addError(ctx, &status, "IsZedmanager",
+				errors.New(errStr))
 		}
 
 		//    ip link set ${olIfname} up
 		if err := netlink.LinkSetUp(oLink); err != nil {
-			log.Printf("LinkSetUp on %s failed: %s\n",
+			errStr := fmt.Sprintf("LinkSetUp on %s failed: %s",
 				olIfname, err)
+			addError(ctx, &status, "IsZedmanager",
+				errors.New(errStr))
 		}
 
 		//    ip link set ${olIfname} arp on
 		if err := netlink.LinkSetARPOn(oLink); err != nil {
-			log.Printf("LinkSetARPOn on %s failed: %s\n", olIfname,
-				err)
+			errStr := fmt.Sprintf("LinkSetARPOn on %s failed: %s",
+				olIfname, err)
+			addError(ctx, &status, "IsZedmanager",
+				errors.New(errStr))
 		}
 
 		// Configure the EID on olIfname and set up a default route
@@ -628,14 +635,19 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		EID := olConfig.EID
 		addr, err := netlink.ParseAddr(EID.String() + "/128")
 		if err != nil {
-			// XXX send error to cloud?
-			log.Printf("ParseAddr %s failed: %s\n", EID, err)
+			errStr := fmt.Sprintf("ParseAddr %s failed: %s",
+				EID, err)
+			status.PendingAdd = false
+			addError(ctx, &status, "IsZedmanager",
+				errors.New(errStr))
+			log.Printf("handleCreate done for %s\n",
+				config.DisplayName)
 			return
 		}
 		if err := netlink.AddrAdd(oLink, addr); err != nil {
-			// XXX fatal?
-			// XXX send error to cloud?
-			log.Printf("AddrAdd %s failed: %s\n", EID, err)
+			errStr := fmt.Sprintf("AddrAdd %s failed: %s", EID, err)
+			addError(ctx, &status, "IsZedmanager",
+				errors.New(errStr))
 		}
 
 		//    ip route add fd00::/8 via fe80::1 dev $intf
@@ -656,15 +668,24 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		neigh := netlink.Neigh{LinkIndex: index, IP: via,
 			HardwareAddr: hw, State: netlink.NUD_PERMANENT}
 		if err := netlink.NeighAdd(&neigh); err != nil {
-			log.Printf("NeighAdd fe80::1 failed: %s\n", err)
+			errStr := fmt.Sprintf("NeighAdd fe80::1 failed: %s",
+				err)
+			addError(ctx, &status, "IsZedmanager",
+				errors.New(errStr))
 		}
 		if err := netlink.NeighSet(&neigh); err != nil {
-			log.Printf("NeighSet fe80::1 failed: %s\n", err)
+			errStr := fmt.Sprintf("NeighSet fe80::1 failed: %s",
+				err)
+			addError(ctx, &status, "IsZedmanager",
+				errors.New(errStr))
 		}
 
 		rt := netlink.Route{Dst: ipnet, LinkIndex: index, Gw: via}
 		if err := netlink.RouteAdd(&rt); err != nil {
-			log.Printf("RouteAdd fd00::/8 failed: %s\n", err)
+			errStr := fmt.Sprintf("RouteAdd fd00::/8 failed: %s",
+				err)
+			addError(ctx, &status, "IsZedmanager",
+				errors.New(errStr))
 		}
 
 		// XXX NOTE: this hosts file is not read!
@@ -686,11 +707,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		err = createACLConfiglet(olIfname, true, olConfig.ACLs,
 			6, "", "", 0)
 		if err != nil {
-			log.Printf("createACLConfiglet failed for %s: %s\n",
-				config.DisplayName, err)
-			status.Error = appendError(status.Error, "createACL",
-				err.Error())
-			status.ErrorTime = time.Now()
+			addError(ctx, &status, "createACL", err)
 		}
 
 		// Save information about zedmanger EID and additional info
@@ -712,9 +729,8 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 				config.OverlayNetworkList[i]
 		}
 		status.PendingAdd = false
-		writeAppNetworkStatus(&status, statusFilename)
-		log.Printf("handleCreate done for %s\n",
-			config.DisplayName)
+		writeAppNetworkStatus(&status)
+		log.Printf("handleCreate done for %s\n", config.DisplayName)
 		return
 	}
 
@@ -728,22 +744,10 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		status.OverlayNetworkList[i].OverlayNetworkConfig =
 			config.OverlayNetworkList[i]
 	}
-	// XXX restrict to first underlaynetwork. Can't handle more than one!
-	// XXX results in entry with no vif and no mac
-	// which causes failure in domainmgr/xl create!
 	ulcount := len(config.UnderlayNetworkList)
-	if ulcount > 1 {
-		log.Printf("Ignoring received ulcount %d\n", ulcount)
-		ulcount = 1
-	}
 	status.UnderlayNetworkList = make([]types.UnderlayNetworkStatus,
 		ulcount)
 	for i, _ := range config.UnderlayNetworkList {
-		if i > 0 {
-			log.Printf("Ignoring UnderlayNetworkConfig[%d] = %v\n",
-				i, config.UnderlayNetworkList[i])
-			continue
-		}
 		status.UnderlayNetworkList[i].UnderlayNetworkConfig =
 			config.UnderlayNetworkList[i]
 	}
@@ -757,27 +761,64 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 			log.Printf("olNum %d ACLs %v\n", olNum, olConfig.ACLs)
 		}
 		EID := olConfig.EID
-		olIfname := "bo" + strconv.Itoa(olNum) + "x" +
+		bridgeName := "bo" + strconv.Itoa(olNum) + "x" +
 			strconv.Itoa(appNum)
-		if debug {
-			log.Printf("olIfname %s\n", olIfname)
-		}
-		// Make sure we have a NetworkConfig object if we have a UUID
-		// Returns nil if UUID is zero
-		netconf, err := getNetworkObjectConfig(ctx, olConfig.Network)
+		vifName := "nbo" + strconv.Itoa(olNum) + "x" +
+			strconv.Itoa(appNum)
+		oLink, created, err := findOrCreateBridge(ctx, bridgeName,
+			olNum, appNum, olConfig.Network)
 		if err != nil {
-			log.Printf("handleCreate getNetworkObjectConfig failed %s\n",
-				err)
-			// XXX need a fallback/retry!!
+			status.PendingAdd = false
+			addError(ctx, &status, "findOrCreateBridge", err)
+			log.Printf("handleCreate done for %s\n",
+				config.DisplayName)
+			return
 		}
-		if netconf != nil {
-			log.Printf("Found overlay NetworkConfig %v\n", netconf)
-		}
+		bridgeName = oLink.Name
+		log.Printf("bridgeName %s\n", bridgeName)
+
+		netconfig := lookupNetworkObjectConfig(ctx,
+			olConfig.Network.String())
+
+		// XXX need to get olAddr1 from bridge and record it
+		// XXX add AF_INET6 to getBridgeService(ctx, olconfig.Network)
 		olAddr1 := "fd00::" + strconv.FormatInt(int64(olNum), 16) +
 			":" + strconv.FormatInt(int64(appNum), 16)
-		if debug {
-			log.Printf("olAddr1 %s EID %s\n", olAddr1, EID)
+		log.Printf("olAddr1 %s EID %s\n", olAddr1, EID)
+
+		if created {
+			//    ip addr add ${olAddr1}/128 dev ${bridgeName}
+			addr, err := netlink.ParseAddr(olAddr1 + "/128")
+			if err != nil {
+				errStr := fmt.Sprintf("ParseAddr %s failed: %s",
+					olAddr1, err)
+				addError(ctx, &status, "handleCreate",
+					errors.New(errStr))
+			}
+			if err := netlink.AddrAdd(oLink, addr); err != nil {
+				errStr := fmt.Sprintf("AddrAdd %s failed: %s",
+					olAddr1, err)
+				addError(ctx, &status, "handleCreate",
+					errors.New(errStr))
+			}
+
+			//    ip -6 route add ${EID}/128 dev ${bridgeName}
+			_, ipnet, err := net.ParseCIDR(EID.String() + "/128")
+			if err != nil {
+				errStr := fmt.Sprintf("ParseCIDR %s failed: %v",
+					EID, err)
+				addError(ctx, &status, "handleCreate",
+					errors.New(errStr))
+			}
+			rt := netlink.Route{Dst: ipnet, LinkIndex: oLink.Index}
+			if err := netlink.RouteAdd(&rt); err != nil {
+				errStr := fmt.Sprintf("RouteAdd %s failed: %s",
+					EID, err)
+				addError(ctx, &status, "handleCreate",
+					errors.New(errStr))
+			}
 		}
+
 		var olMac string // Handed to domU
 		if olConfig.AppMacAddr != nil {
 			olMac = olConfig.AppMacAddr.String()
@@ -786,152 +827,117 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 				strconv.FormatInt(int64(olNum), 16) + ":" +
 				strconv.FormatInt(int64(appNum), 16)
 		}
-		if debug {
-			log.Printf("olMac %s\n", olMac)
-		}
-		// Start clean
-		attrs := netlink.NewLinkAttrs()
-		attrs.Name = olIfname
-		oLink := &netlink.Bridge{LinkAttrs: attrs}
-		netlink.LinkDel(oLink)
-
-		//    ip link add ${olIfname} type bridge
-		attrs = netlink.NewLinkAttrs()
-		attrs.Name = olIfname
-		bridgeMac := fmt.Sprintf("00:16:3e:02:%02x:%02x", olNum, appNum)
-		hw, err := net.ParseMAC(bridgeMac)
-		if err != nil {
-			log.Fatal("ParseMAC failed: ", bridgeMac, err)
-		}
-		attrs.HardwareAddr = hw
-		oLink = &netlink.Bridge{LinkAttrs: attrs}
-		if err := netlink.LinkAdd(oLink); err != nil {
-			log.Printf("LinkAdd on %s failed: %s\n", olIfname, err)
-		}
-
-		//    ip link set ${olIfname} up
-		if err := netlink.LinkSetUp(oLink); err != nil {
-			log.Printf("LinkSetUp on %s failed: %s\n", olIfname, err)
-		}
-
-		//    ip addr add ${olAddr1}/128 dev ${olIfname}
-		addr, err := netlink.ParseAddr(olAddr1 + "/128")
-		if err != nil {
-			log.Printf("ParseAddr %s failed: %s\n", olAddr1, err)
-		}
-		if err := netlink.AddrAdd(oLink, addr); err != nil {
-			log.Printf("AddrAdd %s failed: %s\n", olAddr1, err)
-		}
-
-		//    ip -6 route add ${EID}/128 dev ${olIfname}
-		_, ipnet, err := net.ParseCIDR(EID.String() + "/128")
-		if err != nil {
-			log.Printf("ParseCIDR %s failed: %v\n", EID, err)
-		}
-		if debug {
-			log.Printf("oLink.Index %d\n", oLink.Index)
-		}
-		rt := netlink.Route{Dst: ipnet, LinkIndex: oLink.Index}
-		if err := netlink.RouteAdd(&rt); err != nil {
-			log.Printf("RouteAdd %s failed: %s\n", EID, err)
-		}
+		log.Printf("olMac %s\n", olMac)
 
 		// Write radvd configlet; start radvd
-		cfgFilename := "radvd." + olIfname + ".conf"
+		cfgFilename := "radvd." + bridgeName + ".conf"
 		cfgPathname := runDirname + "/" + cfgFilename
 
 		//    Start clean; kill just in case
-		//    pkill -u radvd -f radvd.${OLIFNAME}.conf
+		//    pkill -u radvd -f radvd.${BRIDGENAME}.conf
 		stopRadvd(cfgFilename, false)
-		createRadvdConfiglet(cfgPathname, olIfname)
-		startRadvd(cfgPathname, olIfname)
+		createRadvdConfiglet(cfgPathname, bridgeName)
+		startRadvd(cfgPathname, bridgeName)
 
 		// Create a hosts file for the overlay based on NameToEidList
-		// Directory is /var/run/zedrouter/hosts.${OLIFNAME}
+		// Directory is /var/run/zedrouter/hosts.${BRIDGENAME}
 		// Each hostname in a separate file in directory to facilitate
 		// adds and deletes
-		hostsDirpath := globalRunDirname + "/hosts." + olIfname
+		hostsDirpath := globalRunDirname + "/hosts." + bridgeName
 		deleteHostsConfiglet(hostsDirpath, false)
 		createHostsConfiglet(hostsDirpath, olConfig.NameToEidList)
 
 		// Create default ipset with all the EIDs in NameToEidList
 		// Can be used in ACLs by specifying "alleids" as match.
-		deleteEidIpsetConfiglet(olIfname, false)
-		createEidIpsetConfiglet(olIfname, olConfig.NameToEidList,
+		deleteEidIpsetConfiglet(bridgeName, false)
+		createEidIpsetConfiglet(bridgeName, olConfig.NameToEidList,
 			EID.String())
 
 		// Set up ACLs before we setup dnsmasq
-		err = createACLConfiglet(olIfname, false, olConfig.ACLs, 6,
+		err = createACLConfiglet(bridgeName, false, olConfig.ACLs, 6,
 			olAddr1, "", 0)
 		if err != nil {
-			log.Printf("createACLConfiglet failed for %s: %s\n",
-				config.DisplayName, err)
-			status.Error = appendError(status.Error, "createACL",
-				err.Error())
-			status.ErrorTime = time.Now()
+			addError(ctx, &status, "createACL", err)
 		}
 
 		// Start clean
-		cfgFilename = "dnsmasq." + olIfname + ".conf"
+		cfgFilename = "dnsmasq." + bridgeName + ".conf"
 		cfgPathname = runDirname + "/" + cfgFilename
 		stopDnsmasq(cfgFilename, false)
-		createDnsmasqOverlayConfiglet(cfgPathname, olIfname, olAddr1,
+		createDnsmasqOverlayConfiglet(cfgPathname, bridgeName, olAddr1,
 			EID.String(), olMac, hostsDirpath,
-			config.UUIDandVersion.UUID.String(), ipsets, netconf)
-		startDnsmasq(cfgPathname, olIfname)
+			config.UUIDandVersion.UUID.String(), ipsets, netconfig)
+		startDnsmasq(cfgPathname, bridgeName)
 
 		additionalInfo := generateAdditionalInfo(status, olConfig)
 		// Create LISP configlets for IID and EID/signature
 		createLispConfiglet(lispRunDirname, config.IsZedmanager,
 			olConfig.IID, olConfig.EID, olConfig.LispSignature,
-			deviceNetworkStatus, olIfname, olIfname,
-			additionalInfo, olConfig.LispServers, ctx.separateDataPlane)
+			deviceNetworkStatus, bridgeName, bridgeName,
+			additionalInfo, olConfig.LispServers,
+			ctx.separateDataPlane)
 
 		// Add bridge parameters for Xen to Status
 		olStatus := &status.OverlayNetworkList[olNum-1]
-		olStatus.Bridge = olIfname
-		olStatus.Vif = "n" + olIfname
+		olStatus.Bridge = bridgeName
+		olStatus.Vif = vifName
 		olStatus.Mac = olMac
+		olStatus.BridgeIPAddr = olAddr1
 	}
 
 	for i, ulConfig := range config.UnderlayNetworkList {
 		ulNum := i + 1
-		if ulNum != 1 {
-			// For now we only support one underlay interface
-			// in app
-			log.Printf("Ignoring multiple UnderlayNetwork\n")
-			continue
-		}
 		if debug {
 			log.Printf("ulNum %d ACLs %v\n", ulNum, ulConfig.ACLs)
 		}
-		ulIfname := "bu" + strconv.Itoa(appNum)
-		createBridge := true
-		if debug {
-			log.Printf("ulIfname %s\n", ulIfname)
-		}
-		// Make sure we have a NetworkConfig object if we have a UUID
-		// Returns nil if UUID is zero
-		netconf, err := getNetworkObjectConfig(ctx, ulConfig.Network)
+		bridgeName := "bu" + strconv.Itoa(appNum)
+		vifName := "nbu" + strconv.Itoa(ulNum) + "x" +
+			strconv.Itoa(appNum)
+		uLink, created, err := findOrCreateBridge(ctx, bridgeName,
+			ulNum, appNum, ulConfig.Network)
 		if err != nil {
-			log.Printf("handleCreate getNetworkObjectConfig failed %s\n",
-				err)
-			// XXX need a fallback/retry!!
+			status.PendingAdd = false
+			addError(ctx, &status, "findOrCreateBridge", err)
+			log.Printf("handleCreate done for %s\n",
+				config.DisplayName)
+			return
 		}
-		if netconf != nil {
-			log.Printf("Found underlay NetworkConfig %v\n", netconf)
-			netstatus := lookupNetworkObjectStatus(ctx,
-				ulConfig.Network.String())
-			if netstatus != nil && netstatus.BridgeName != "" {
-				ulIfname = netstatus.BridgeName
-				createBridge = false
-				log.Printf("Found underlay Bridge %s\n",
-					ulIfname)
+		bridgeName = uLink.Name
+		log.Printf("bridgeName %s\n", bridgeName)
+
+		netconfig := lookupNetworkObjectConfig(ctx,
+			ulConfig.Network.String())
+
+		ulAddr1, ulAddr2 := getUlAddrs(ulNum-1, appNum, &ulConfig, nil,
+			netconfig)
+		// Check if we already have an address on the bridge
+		if !created {
+			bridgeIP, err := getBridgeService(ctx, ulConfig.Network)
+			if err != nil {
+				log.Printf("handleCreate getBridgeService %s\n",
+					err)
+			} else {
+				ulAddr1 = bridgeIP
 			}
 		}
-		// Not clear how to handle multiple ul; use /30 prefix?
-		ulAddr1, ulAddr2 := getUlAddrs(appNum, &ulConfig, nil, netconf)
 		log.Printf("ulAddr1 %s ulAddr2 %s\n", ulAddr1, ulAddr2)
+
+		if created {
+			//    ip addr add ${ulAddr1}/24 dev ${bridgeName}
+			addr, err := netlink.ParseAddr(ulAddr1 + "/24")
+			if err != nil {
+				errStr := fmt.Sprintf("ParseAddr %s failed: %s",
+					ulAddr1, err)
+				addError(ctx, &status, "handleCreate",
+					errors.New(errStr))
+			}
+			if err := netlink.AddrAdd(uLink, addr); err != nil {
+				errStr := fmt.Sprintf("AddrAdd %s failed: %s",
+					ulAddr1, err)
+				addError(ctx, &status, "handleCreate",
+					errors.New(errStr))
+			}
+		}
 
 		var ulMac string // Handed to domU
 		if ulConfig.AppMacAddr != nil {
@@ -941,62 +947,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 			ulMac = "00:16:3e:0:0:" +
 				strconv.FormatInt(int64(appNum), 16)
 		}
-		if debug {
-			log.Printf("ulMac %s\n", ulMac)
-		}
-		// XXX apply this to ismgmt and overlay and handleModify below
-		var uLink *netlink.Bridge
-		if createBridge {
-			// Start clean
-			attrs := netlink.NewLinkAttrs()
-			attrs.Name = ulIfname
-			uLink = &netlink.Bridge{LinkAttrs: attrs}
-			netlink.LinkDel(uLink)
-
-			//    ip link add ${ulIfname} type bridge
-			attrs = netlink.NewLinkAttrs()
-			attrs.Name = ulIfname
-			bridgeMac := fmt.Sprintf("00:16:3e:04:00:%02x", appNum)
-			hw, err := net.ParseMAC(bridgeMac)
-			if err != nil {
-				log.Fatal("ParseMAC failed: ", bridgeMac, err)
-			}
-			attrs.HardwareAddr = hw
-			uLink = &netlink.Bridge{LinkAttrs: attrs}
-			if err := netlink.LinkAdd(uLink); err != nil {
-				log.Printf("LinkAdd on %s failed: %s\n", ulIfname, err)
-			}
-			//    ip link set ${ulIfname} up
-			if err := netlink.LinkSetUp(uLink); err != nil {
-				log.Printf("LinkSetUp on %s failed: %s\n", ulIfname, err)
-			}
-			//    ip addr add ${ulAddr1}/24 dev ${ulIfname}
-			addr, err := netlink.ParseAddr(ulAddr1 + "/24")
-			if err != nil {
-				log.Printf("ParseAddr %s failed: %s\n", ulAddr1, err)
-			}
-			if err := netlink.AddrAdd(uLink, addr); err != nil {
-				log.Printf("AddrAdd %s failed: %s\n", ulAddr1, err)
-			}
-		} else {
-			link, err := netlink.LinkByName(ulIfname)
-			if link == nil {
-				log.Printf("LinkByName(%s) failed %s\n",
-					ulIfname, err)
-				// XXX how to handle this failure? bridge
-				// disappeared?
-				return
-			}
-			switch link.(type) {
-			case *netlink.Bridge:
-				uLink = link.(*netlink.Bridge)
-			default:
-				log.Printf("LinkByName(%s) not a bridge\n",
-					ulIfname)
-				// XXX
-				return
-			}
-		}
+		log.Printf("ulMac %s\n", ulMac)
 
 		// Create iptables with optional ipset's based ACL
 		// XXX Doesn't handle IPv6 underlay ACLs
@@ -1005,45 +956,134 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		if ulConfig.SshPortMap {
 			sshPort = 8022 + 100*uint(appNum)
 		}
-		err = createACLConfiglet(ulIfname, false, ulConfig.ACLs, 4,
+		err = createACLConfiglet(bridgeName, false, ulConfig.ACLs, 4,
 			ulAddr1, ulAddr2, sshPort)
 		if err != nil {
-			log.Printf("createACLConfiglet failed for %s: %s\n",
-				config.DisplayName, err)
-			status.Error = appendError(status.Error, "createACL",
-				err.Error())
-			status.ErrorTime = time.Now()
+			addError(ctx, &status, "createACL", err)
 		}
 
 		// Start clean
-		cfgFilename := "dnsmasq." + ulIfname + ".conf"
+		cfgFilename := "dnsmasq." + bridgeName + ".conf"
 		cfgPathname := runDirname + "/" + cfgFilename
 		stopDnsmasq(cfgFilename, false)
 
-		createDnsmasqUnderlayConfiglet(cfgPathname, ulIfname, ulAddr1,
+		createDnsmasqUnderlayConfiglet(cfgPathname, bridgeName, ulAddr1,
 			ulAddr2, ulMac, config.UUIDandVersion.UUID.String(),
-			ipsets, netconf)
-		startDnsmasq(cfgPathname, ulIfname)
+			ipsets, netconfig)
+		startDnsmasq(cfgPathname, bridgeName)
 
 		// Add bridge parameters for Xen to Status
 		ulStatus := &status.UnderlayNetworkList[ulNum-1]
-		ulStatus.Bridge = ulIfname
-		ulStatus.Vif = "n" + ulIfname
+		ulStatus.BridgeIPAddr = ulAddr1
+		ulStatus.AssignedIPAddr = ulAddr2
+		ulStatus.Bridge = bridgeName
+		ulStatus.Vif = vifName
 		ulStatus.Mac = ulMac
 	}
 	// Write out what we created to AppNetworkStatus
 	status.PendingAdd = false
-	writeAppNetworkStatus(&status, statusFilename)
+	writeAppNetworkStatus(&status)
 	log.Printf("handleCreate done for %s\n", config.DisplayName)
 }
 
-func getUlAddrs(appNum int, ulConfig *types.UnderlayNetworkConfig,
+// Returns the link and whether or not is was created (as opposed to found)
+// XXX remove createBridge/deleteBridge logic once everything
+// on nbN is working
+func findOrCreateBridge(ctx *zedrouterContext, bridgeName string, ifNum int,
+	appNum int, netUUID uuid.UUID) (*netlink.Bridge, bool, error) {
+
+	// Make sure we have a NetworkConfig object if we have a UUID
+	// Returns nil if UUID is zero
+	if netUUID != nilUUID {
+		netstatus := lookupNetworkObjectStatus(ctx, netUUID.String())
+		if netstatus == nil {
+			log.Printf("findOrCreateBridge no NetworkObjectStatus for %s\n",
+				netUUID.String())
+			// XXX need a fallback/retry!!
+		} else if netstatus.BridgeName != "" {
+			bridgeName = netstatus.BridgeName
+			log.Printf("Found Bridge %s for %s\n",
+				bridgeName, netUUID.String())
+			bridgeLink, err := findBridge(bridgeName)
+			if err != nil {
+				return nil, false, err
+			}
+			return bridgeLink, false, nil
+		}
+	}
+
+	// Create
+
+	// Start clean
+	attrs := netlink.NewLinkAttrs()
+	attrs.Name = bridgeName
+	bridgeLink := &netlink.Bridge{LinkAttrs: attrs}
+	netlink.LinkDel(bridgeLink)
+
+	//    ip link add ${bridgeName} type bridge
+	attrs = netlink.NewLinkAttrs()
+	attrs.Name = bridgeName
+
+	var bridgeMac string
+	if ifNum != 0 {
+		bridgeMac = fmt.Sprintf("00:16:3e:02:%02x:%02x", ifNum, appNum)
+	} else {
+		bridgeMac = fmt.Sprintf("00:16:3e:04:00:%02x", appNum)
+	}
+	hw, err := net.ParseMAC(bridgeMac)
+	if err != nil {
+		log.Fatal("ParseMAC failed: ", bridgeMac, err)
+	}
+	attrs.HardwareAddr = hw
+	bridgeLink = &netlink.Bridge{LinkAttrs: attrs}
+	if err := netlink.LinkAdd(bridgeLink); err != nil {
+		errStr := fmt.Sprintf("LinkAdd on %s failed: %s",
+			bridgeName, err)
+		return nil, true, errors.New(errStr)
+	}
+	//    ip link set ${bridgeName} up
+	if err := netlink.LinkSetUp(bridgeLink); err != nil {
+		errStr := fmt.Sprintf("LinkSetUp on %s failed: %s",
+			bridgeName, err)
+		return nil, true, errors.New(errStr)
+	}
+	return bridgeLink, true, nil
+}
+
+func findBridge(bridgeName string) (*netlink.Bridge, error) {
+
+	var bridgeLink *netlink.Bridge
+	link, err := netlink.LinkByName(bridgeName)
+	if link == nil {
+		errStr := fmt.Sprintf("findBridge(%s) failed %s",
+			bridgeName, err)
+		// XXX how to handle this failure? bridge
+		// disappeared?
+		return nil, errors.New(errStr)
+	}
+	switch link.(type) {
+	case *netlink.Bridge:
+		bridgeLink = link.(*netlink.Bridge)
+	default:
+		errStr := fmt.Sprintf("findBridge(%s) not a bridge %T",
+			bridgeName, link)
+		// XXX why wouldn't it be a bridge?
+		return nil, errors.New(errStr)
+	}
+	return bridgeLink, nil
+}
+
+// XXX IPv6? LISP? Same? getOlAddrs???
+func getUlAddrs(ifnum int, appNum int, ulConfig *types.UnderlayNetworkConfig,
 	ulStatus *types.UnderlayNetworkStatus,
 	netconf *types.NetworkObjectConfig) (string, string) {
 
 	// Default
-	ulAddr1 := "172.27." + strconv.Itoa(appNum) + ".1"
-	ulAddr2 := "172.27." + strconv.Itoa(appNum) + ".2"
+	// Not clear how to handle multiple ul from the same appInstance;
+	// use /30 prefix? Require user to pick private addrs?
+	// XXX limited number of ifnums for the default range - just to 27 to 31
+	ulAddr1 := fmt.Sprintf("172.%d.%d.1", 27+ifnum, appNum)
+	ulAddr2 := fmt.Sprintf("172.%d.%d.2", 27+ifnum, appNum)
 	if ulConfig != nil && ulConfig.AppIPAddr != nil {
 		// Note that ulAddr2 will be in a different subnet.
 		// Assumption is that the config specifies a gateway/router
@@ -1075,6 +1115,22 @@ func getUlAddrs(appNum int, ulConfig *types.UnderlayNetworkConfig,
 	return ulAddr1, ulAddr2
 }
 
+// Caller should clear the appropriate status.Pending* if the the caller will
+// return after adding the error.
+func addError(ctx *zedrouterContext,
+	status *types.AppNetworkStatus, tag string, err error) {
+
+	log.Printf("%s: %s\n", tag, err.Error())
+	status.Error = appendError(status.Error, tag, err.Error())
+	status.ErrorTime = time.Now()
+	// XXX use ctx to publish
+	writeAppNetworkStatus(status)
+}
+
+func appendError(allErrors string, prefix string, lasterr string) string {
+	return fmt.Sprintf("%s%s: %s\n\n", allErrors, prefix, lasterr)
+}
+
 var nilUUID uuid.UUID // Really a constant
 
 // Returns nil, nil if the UUID is all zero
@@ -1086,7 +1142,7 @@ func getNetworkObjectConfig(ctx *zedrouterContext,
 	}
 	config := lookupNetworkObjectConfig(ctx, netUUID.String())
 	if config == nil {
-		errStr := fmt.Sprintf("No NetworkConfig for %s",
+		errStr := fmt.Sprintf("No NetworkObjectConfig for %s",
 			netUUID.String())
 		return nil, errors.New(errStr)
 	} else {
@@ -1118,8 +1174,11 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 
 	// Check for unsupported changes
 	if config.IsZedmanager != status.IsZedmanager {
-		log.Println("Unsupported: IsZedmanager changed for ",
+		errStr := fmt.Sprintf("Unsupported: IsZedmanager changed for %s",
 			config.UUIDandVersion)
+		status.PendingModify = false
+		addError(ctx, status, "handleModify", errors.New(errStr))
+		log.Printf("handleModify done for %s\n", config.DisplayName)
 		return
 	}
 	// XXX We could should we allow the addition of interfaces
@@ -1127,25 +1186,36 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 	// But deletion is hard.
 	// For now don't allow any adds or deletes.
 	if len(config.OverlayNetworkList) != status.OlNum {
-		log.Println("Unsupported: Changed number of overlays for ",
+		errStr := fmt.Sprintf("Unsupported: Changed number of overlays for %s",
 			config.UUIDandVersion)
+		status.PendingModify = false
+		addError(ctx, status, "handleModify", errors.New(errStr))
+		log.Printf("handleModify done for %s\n", config.DisplayName)
 		return
 	}
 	if len(config.UnderlayNetworkList) != status.UlNum {
-		log.Println("Unsupported: Changed number of underlays for ",
+		errStr := fmt.Sprintf("Unsupported: Changed number of underlays for %s",
 			config.UUIDandVersion)
+		status.PendingModify = false
+		addError(ctx, status, "handleModify", errors.New(errStr))
+		log.Printf("handleModify done for %s\n", config.DisplayName)
 		return
 	}
 
 	status.SeparateDataPlane = ctx.separateDataPlane
 	status.PendingModify = true
 	status.UUIDandVersion = config.UUIDandVersion
-	writeAppNetworkStatus(status, statusFilename)
+	writeAppNetworkStatus(status)
 
 	if config.IsZedmanager {
 		if config.SeparateDataPlane != ctx.separateDataPlane {
-			log.Printf("Unsupported: Changing experimental data plane flag on the fly\n")
-			// XXX Add an error stat here. It can be passed back to cloud in future.
+			errStr := fmt.Sprintf("Unsupported: Changing experimental data plane flag on the fly\n")
+
+			status.PendingModify = false
+			addError(ctx, status, "handleModify",
+				errors.New(errStr))
+			log.Printf("handleModify done for %s\n",
+				config.DisplayName)
 			return
 		}
 		olConfig := config.OverlayNetworkList[0]
@@ -1153,18 +1223,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 		olNum := 1
 		olIfname := "dbo" + strconv.Itoa(olNum) + "x" +
 			strconv.Itoa(appNum)
-
-		// Make sure we have a NetworkConfig object if we have a UUID
-		// Returns nil if UUID is zero
-		netconf, err := getNetworkObjectConfig(ctx, olConfig.Network)
-		if err != nil {
-			log.Printf("handleModify getNetworkObjectConfig failed %s\n",
-				err)
-			// XXX need a fallback/retry!!
-		}
-		if netconf != nil {
-			log.Printf("Found isMgmt NetworkConfig %v\n", netconf)
-		}
+		// Assume there is no UUID for management overlay
 
 		// Note: we ignore olConfig.AppMacAddr for IsMgmt
 
@@ -1178,22 +1237,19 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 			olConfig.NameToEidList)
 
 		// Update ACLs
-		err = updateACLConfiglet(olIfname, true, olStatus.ACLs,
+		err := updateACLConfiglet(olIfname, true, olStatus.ACLs,
 			olConfig.ACLs, 6, "", "", 0)
 		if err != nil {
-			log.Printf("updateACLConfiglet failed for %s: %s\n",
-				config.DisplayName, err)
-			status.Error = appendError(status.Error, "updateACL",
-				err.Error())
-			status.ErrorTime = time.Now()
+			addError(ctx, status, "updateACL", err)
 		}
 		status.PendingModify = false
-		writeAppNetworkStatus(status, statusFilename)
+		writeAppNetworkStatus(status)
 		log.Printf("handleModify done for %s\n", config.DisplayName)
 		return
 	}
 
-	newIpsets, staleIpsets, restartDnsmasq := updateAppInstanceIpsets(config.OverlayNetworkList,
+	newIpsets, staleIpsets, restartDnsmasq := updateAppInstanceIpsets(
+		config.OverlayNetworkList,
 		config.UnderlayNetworkList,
 		status.OverlayNetworkList,
 		status.UnderlayNetworkList)
@@ -1204,61 +1260,52 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 		if debug {
 			log.Printf("handleModify olNum %d\n", olNum)
 		}
-		olIfname := "bo" + strconv.Itoa(olNum) + "x" +
-			strconv.Itoa(appNum)
-
-		// Make sure we have a NetworkConfig object if we have a UUID
-		// Returns nil if UUID is zero
-		netconf, err := getNetworkObjectConfig(ctx, olConfig.Network)
-		if err != nil {
-			log.Printf("handleModify getNetworkObjectConfig failed %s\n",
-				err)
-			// XXX need a fallback/retry!!
+		// Need to check that index exists
+		if len(status.OverlayNetworkList) < olNum {
+			log.Println("Missing status for overlay %d; can not modify\n",
+				olNum)
+			continue
 		}
-		if netconf != nil {
-			log.Printf("Found overlay NetworkConfig %v\n", netconf)
-		}
-
 		olStatus := status.OverlayNetworkList[olNum-1]
-		olAddr1 := "fd00::" + strconv.FormatInt(int64(olNum), 16) +
-			":" + strconv.FormatInt(int64(appNum), 16)
+		bridgeName := olStatus.Bridge
+		olAddr1 := olStatus.BridgeIPAddr
 
 		// Update hosts
-		hostsDirpath := globalRunDirname + "/hosts." + olIfname
+		// XXX shared with others
+		hostsDirpath := globalRunDirname + "/hosts." + bridgeName
 		updateHostsConfiglet(hostsDirpath, olStatus.NameToEidList,
 			olConfig.NameToEidList)
 
 		// Default EID ipset
-		updateEidIpsetConfiglet(olIfname, olStatus.NameToEidList,
+		// XXX shared with others
+		updateEidIpsetConfiglet(bridgeName, olStatus.NameToEidList,
 			olConfig.NameToEidList)
 
 		// Update ACLs
-		err = updateACLConfiglet(olIfname, false, olStatus.ACLs,
+		// XXX shared with others
+		err := updateACLConfiglet(bridgeName, false, olStatus.ACLs,
 			olConfig.ACLs, 6, olAddr1, "", 0)
 		if err != nil {
-			log.Printf("updateACLConfiglet failed for %s: %s\n",
-				config.DisplayName, err)
-			status.Error = appendError(status.Error, "updateACL",
-				err.Error())
-			status.ErrorTime = time.Now()
+			addError(ctx, status, "updateACL", err)
 		}
 
 		// updateAppInstanceIpsets told us whether there is a change
 		// to the set of ipsets, and that requires restarting dnsmasq
+		// XXX shared with others
 		if restartDnsmasq {
-			cfgFilename := "dnsmasq." + olIfname + ".conf"
+			netconfig := lookupNetworkObjectConfig(ctx,
+				olConfig.Network.String())
+			cfgFilename := "dnsmasq." + bridgeName + ".conf"
 			cfgPathname := runDirname + "/" + cfgFilename
 			EID := olConfig.EID
-			olMac := "00:16:3e:1:" + strconv.FormatInt(int64(olNum), 16) +
-				":" + strconv.FormatInt(int64(appNum), 16)
 			stopDnsmasq(cfgFilename, false)
 			//remove old dnsmasq configuration file
 			os.Remove(cfgPathname)
-			createDnsmasqOverlayConfiglet(cfgPathname, olIfname, olAddr1,
-				EID.String(), olMac, hostsDirpath,
+			createDnsmasqOverlayConfiglet(cfgPathname, bridgeName,
+				olAddr1, EID.String(), olStatus.Mac, hostsDirpath,
 				config.UUIDandVersion.UUID.String(), newIpsets,
-				netconf)
-			startDnsmasq(cfgPathname, olIfname)
+				netconfig)
+			startDnsmasq(cfgPathname, bridgeName)
 		}
 
 		additionalInfo := generateAdditionalInfo(*status, olConfig)
@@ -1267,9 +1314,10 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 		// XXX should we check that EID didn't change?
 
 		// Create LISP configlets for IID and EID/signature
+		// XXX shared with others???
 		updateLispConfiglet(lispRunDirname, false, olConfig.IID,
 			olConfig.EID, olConfig.LispSignature,
-			deviceNetworkStatus, olIfname, olIfname,
+			deviceNetworkStatus, bridgeName, bridgeName,
 			additionalInfo, olConfig.LispServers, ctx.separateDataPlane)
 
 	}
@@ -1279,57 +1327,43 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 		if debug {
 			log.Printf("handleModify ulNum %d\n", ulNum)
 		}
-		ulIfname := "bu" + strconv.Itoa(appNum)
-		// Make sure we have a NetworkConfig object if we have a UUID
-		// Returns nil if UUID is zero
-		netconf, err := getNetworkObjectConfig(ctx, ulConfig.Network)
-		if err != nil {
-			log.Printf("handleModify getNetworkObjectConfig failed %s\n",
-				err)
-			// XXX need a fallback/retry!!
+		// Need to check that index exists
+		if len(status.UnderlayNetworkList) < ulNum {
+			log.Println("Missing status for underlay %d; can not modify\n",
+				ulNum)
+			continue
 		}
-		if netconf != nil {
-			log.Printf("Found underlay NetworkConfig %v\n", netconf)
-			netstatus := lookupNetworkObjectStatus(ctx,
-				ulConfig.Network.String())
-			if netstatus != nil && netstatus.BridgeName != "" {
-				ulIfname = netstatus.BridgeName
-				log.Printf("Found underlay Bridge %s\n",
-					ulIfname)
-			}
-		}
-		ulAddr1, ulAddr2 := getUlAddrs(appNum, &ulConfig, nil, netconf)
 		ulStatus := status.UnderlayNetworkList[ulNum-1]
+		bridgeName := ulStatus.Bridge
+		ulAddr1 := ulStatus.BridgeIPAddr
+		ulAddr2 := ulStatus.AssignedIPAddr
 
 		// Update ACLs
+		// XXX shared with others?
 		var sshPort uint
 		if ulConfig.SshPortMap {
 			sshPort = 8022 + 100*uint(appNum)
 		}
-		err = updateACLConfiglet(ulIfname, false, ulStatus.ACLs,
+		err := updateACLConfiglet(bridgeName, false, ulStatus.ACLs,
 			ulConfig.ACLs, 4, ulAddr1, ulAddr2, sshPort)
 		if err != nil {
-			log.Printf("updateACLConfiglet failed for %s: %s\n",
-				config.DisplayName, err)
-			status.Error = appendError(status.Error, "updateACL",
-				err.Error())
-			status.ErrorTime = time.Now()
+			addError(ctx, status, "updateACL", err)
 		}
 
 		if restartDnsmasq {
 			//update underlay dnsmasq configuration
-			cfgFilename := "dnsmasq." + ulIfname + ".conf"
+			netconfig := lookupNetworkObjectConfig(ctx,
+				ulConfig.Network.String())
+			cfgFilename := "dnsmasq." + bridgeName + ".conf"
 			cfgPathname := runDirname + "/" + cfgFilename
-			// XXX override if static
-			ulMac := "00:16:3e:0:0:" + strconv.FormatInt(int64(appNum), 16)
 			stopDnsmasq(cfgFilename, false)
 			//remove old dnsmasq configuration file
 			os.Remove(cfgPathname)
-			createDnsmasqUnderlayConfiglet(cfgPathname, ulIfname, ulAddr1,
-				ulAddr2, ulMac,
+			createDnsmasqUnderlayConfiglet(cfgPathname, bridgeName,
+				ulAddr1, ulAddr2, ulStatus.Mac,
 				config.UUIDandVersion.UUID.String(), newIpsets,
-				netconf)
-			startDnsmasq(cfgPathname, ulIfname)
+				netconfig)
+			startDnsmasq(cfgPathname, bridgeName)
 		}
 	}
 
@@ -1362,7 +1396,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 			config.UnderlayNetworkList[i]
 	}
 	status.PendingModify = false
-	writeAppNetworkStatus(status, statusFilename)
+	writeAppNetworkStatus(status)
 	log.Printf("handleModify done for %s\n", config.DisplayName)
 }
 
@@ -1382,12 +1416,17 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 	}
 
 	status.PendingDelete = true
-	writeAppNetworkStatus(status, statusFilename)
+	writeAppNetworkStatus(status)
 
 	if status.IsZedmanager {
 		if len(status.OverlayNetworkList) != 1 ||
 			len(status.UnderlayNetworkList) != 0 {
-			log.Println("Malformed IsZedmanager status; ignored")
+			errStr := "Malformed IsZedmanager status; ignored"
+			status.PendingDelete = false
+			addError(ctx, status, "handleDelete",
+				errors.New(errStr))
+			log.Printf("handleDelete done for %s\n",
+				status.DisplayName)
 			return
 		}
 		// Remove global state for device
@@ -1399,6 +1438,7 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 		olStatus := &status.OverlayNetworkList[0]
 		olIfname := "dbo" + strconv.Itoa(olNum) + "x" +
 			strconv.Itoa(appNum)
+		// Assume there is no UUID for management overlay
 
 		// Delete the address from loopback
 		// Delete fd00::/8 route
@@ -1408,7 +1448,13 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 		EID := status.OverlayNetworkList[0].EID
 		addr, err := netlink.ParseAddr(EID.String() + "/128")
 		if err != nil {
-			log.Printf("ParseAddr %s failed: %s\n", EID, err)
+			errStr := fmt.Sprintf("ParseAddr %s failed: %s",
+				EID, err)
+			status.PendingDelete = false
+			addError(ctx, status, "handleDelete",
+				errors.New(errStr))
+			log.Printf("handleDelete done for %s\n",
+				status.DisplayName)
 			return
 		}
 		attrs := netlink.NewLinkAttrs()
@@ -1416,7 +1462,10 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 		oLink := &netlink.Dummy{LinkAttrs: attrs}
 		// XXX can we skip explicit deletes and just remove the oLink?
 		if err := netlink.AddrDel(oLink, addr); err != nil {
-			log.Printf("AddrDel %s failed: %s\n", EID, err)
+			errStr := fmt.Sprintf("AddrDel %s failed: %s",
+				EID, err)
+			addError(ctx, status, "handleDelete",
+				errors.New(errStr))
 		}
 
 		//    ip route del fd00::/8 via fe80::1 dev $intf
@@ -1431,12 +1480,18 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 		}
 		rt := netlink.Route{Dst: ipnet, LinkIndex: index, Gw: via}
 		if err := netlink.RouteDel(&rt); err != nil {
-			log.Printf("RouteDel fd00::/8 failed: %s\n", err)
+			errStr := fmt.Sprintf("RouteDel fd00::/8 failed: %s",
+				err)
+			addError(ctx, status, "handleDelete",
+				errors.New(errStr))
 		}
 		//    ip nei del fe80::1 lladdr 0:0:0:0:0:1 dev $intf
 		neigh := netlink.Neigh{LinkIndex: index, IP: via}
 		if err := netlink.NeighDel(&neigh); err != nil {
-			log.Printf("NeighDel fe80::1 failed: %s\n", err)
+			errStr := fmt.Sprintf("NeighDel fe80::1 failed: %s",
+				err)
+			addError(ctx, status, "handleDelete",
+				errors.New(errStr))
 		}
 
 		// Remove link and associated addresses
@@ -1453,11 +1508,7 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 		err = deleteACLConfiglet(olIfname, true, olStatus.ACLs,
 			6, "", "", 0)
 		if err != nil {
-			log.Printf("deleteACLConfiglet failed for %s: %s\n",
-				status.DisplayName, err)
-			status.Error = appendError(status.Error, "deleteACL",
-				err.Error())
-			status.ErrorTime = time.Now()
+			addError(ctx, status, "deleteACL", err)
 		}
 
 		// Delete LISP configlets
@@ -1469,62 +1520,62 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 			if debug {
 				log.Printf("handleDelete olNum %d\n", olNum)
 			}
-			olIfname := "bo" + strconv.Itoa(olNum) + "x" +
-				strconv.Itoa(appNum)
-			if debug {
-				log.Printf("Deleting olIfname %s\n", olIfname)
+			// Need to check that index exists
+			if len(status.OverlayNetworkList) < olNum {
+				log.Println("Missing status for overlay %d; can not clean up\n",
+					olNum)
+				continue
 			}
-			olAddr1 := "fd00::" + strconv.FormatInt(int64(olNum), 16) +
-				":" + strconv.FormatInt(int64(appNum), 16)
 
-			attrs := netlink.NewLinkAttrs()
-			attrs.Name = olIfname
-			oLink := &netlink.Bridge{LinkAttrs: attrs}
-			// Remove link and associated addresses
-			netlink.LinkDel(oLink)
+			olStatus := status.OverlayNetworkList[olNum-1]
+			bridgeName := olStatus.Bridge
+			olAddr1 := olStatus.BridgeIPAddr
+
+			if !strings.HasPrefix(bridgeName, "bn") {
+				log.Printf("Deleting bridge %s\n", bridgeName)
+				attrs := netlink.NewLinkAttrs()
+				attrs.Name = bridgeName
+				oLink := &netlink.Bridge{LinkAttrs: attrs}
+				// Remove link and associated addresses
+				netlink.LinkDel(oLink)
+			}
 
 			// radvd cleanup
-			cfgFilename := "radvd." + olIfname + ".conf"
+			// XXX not all of it
+			cfgFilename := "radvd." + bridgeName + ".conf"
 			cfgPathname := runDirname + "/" + cfgFilename
 			stopRadvd(cfgFilename, true)
 			deleteRadvdConfiglet(cfgPathname)
 
 			// dnsmasq cleanup
-			cfgFilename = "dnsmasq." + olIfname + ".conf"
+			// XXX not all of it
+			cfgFilename = "dnsmasq." + bridgeName + ".conf"
 			cfgPathname = runDirname + "/" + cfgFilename
 			stopDnsmasq(cfgFilename, true)
 			deleteDnsmasqConfiglet(cfgPathname)
 
-			// Need to check that index exists
-			if len(status.OverlayNetworkList) >= olNum {
-				olStatus := status.OverlayNetworkList[olNum-1]
-				// Delete ACLs
-				err := deleteACLConfiglet(olIfname, false,
-					olStatus.ACLs, 6, olAddr1, "", 0)
-				if err != nil {
-					log.Printf("deleteACLConfiglet failed for %s: %s\n",
-						status.DisplayName, err)
-					status.Error = appendError(status.Error, "deleteACL",
-						err.Error())
-					status.ErrorTime = time.Now()
-				}
-
-				// Delete LISP configlets
-				deleteLispConfiglet(lispRunDirname, false,
-					olStatus.IID, olStatus.EID,
-					deviceNetworkStatus,
-					ctx.separateDataPlane)
-			} else {
-				log.Println("Missing status for overlay %d; can not clean up ACLs and LISP\n",
-					olNum)
+			// Delete ACLs
+			// XXX not all of it
+			err := deleteACLConfiglet(bridgeName, false,
+				olStatus.ACLs, 6, olAddr1, "", 0)
+			if err != nil {
+				addError(ctx, status, "deleteACL", err)
 			}
 
+			// Delete LISP configlets
+			deleteLispConfiglet(lispRunDirname, false,
+				olStatus.IID, olStatus.EID,
+				deviceNetworkStatus,
+				ctx.separateDataPlane)
+
 			// Delete overlay hosts file
-			hostsDirpath := globalRunDirname + "/hosts." + olIfname
+			// XXX not all of it
+			hostsDirpath := globalRunDirname + "/hosts." + bridgeName
 			deleteHostsConfiglet(hostsDirpath, true)
 
 			// Default EID ipset
-			deleteEidIpsetConfiglet(olIfname, true)
+			// XXX not all of it
+			deleteEidIpsetConfiglet(bridgeName, true)
 		}
 
 		// XXX check if any IIDs are now unreferenced and delete them
@@ -1537,45 +1588,24 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 			}
 			// Need to check that index exists
 			if len(status.UnderlayNetworkList) < ulNum {
-				log.Println("Missing status for underlay %d; can not clean up ACLs etc\n",
+				log.Println("Missing status for underlay %d; can not clean up\n",
 					ulNum)
 				continue
 			}
 			ulStatus := status.UnderlayNetworkList[ulNum-1]
-			// XXX get name ...
-			ulIfname := "bu" + strconv.Itoa(appNum)
-			deleteBridge := true
-			if debug {
-				log.Printf("Deleting ulIfname %s\n", ulIfname)
-			}
-			netconf, err := getNetworkObjectConfig(ctx,
-				ulStatus.Network)
-			if err != nil {
-				log.Printf("handleDelete getNetworkObjectConfig failed %s\n",
-					err)
-				// XXX need a fallback/retry!!
-			}
-			if netconf != nil {
-				log.Printf("Found underlay NetworkConfig %v\n",
-					netconf)
-				netstatus := lookupNetworkObjectStatus(ctx,
-					ulStatus.Network.String())
-				if netstatus != nil && netstatus.BridgeName != "" {
-					ulIfname = netstatus.BridgeName
-					deleteBridge = false
-					log.Printf("Found underlay Bridge %s\n",
-						ulIfname)
-				}
-			}
-			if deleteBridge {
+			bridgeName := ulStatus.Bridge
+
+			if !strings.HasPrefix(bridgeName, "bn") {
+				log.Printf("Deleting bridge %s\n", bridgeName)
 				attrs := netlink.NewLinkAttrs()
-				attrs.Name = ulIfname
+				attrs.Name = bridgeName
 				uLink := &netlink.Bridge{LinkAttrs: attrs}
 				// Remove link and associated addresses
 				netlink.LinkDel(uLink)
 			}
 			// dnsmasq cleanup
-			cfgFilename := "dnsmasq." + ulIfname + ".conf"
+			// XXX not all of it
+			cfgFilename := "dnsmasq." + bridgeName + ".conf"
 			cfgPathname := runDirname + "/" + cfgFilename
 			stopDnsmasq(cfgFilename, true)
 			deleteDnsmasqConfiglet(cfgPathname)
@@ -1585,22 +1615,20 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 			if ulStatus.SshPortMap {
 				sshPort = 8022 + 100*uint(appNum)
 			}
-			ulAddr1, ulAddr2 := getUlAddrs(appNum, nil, &ulStatus,
-				netconf)
-			err = deleteACLConfiglet(ulIfname, false,
+			ulAddr1 := ulStatus.BridgeIPAddr
+			ulAddr2 := ulStatus.AssignedIPAddr
+
+			// XXX not all of it
+			err := deleteACLConfiglet(bridgeName, false,
 				ulStatus.ACLs, 4, ulAddr1, ulAddr2,
 				sshPort)
 			if err != nil {
-				log.Printf("deleteACLConfiglet failed for %s: %s\n",
-					status.DisplayName, err)
-				status.Error = appendError(status.Error, "deleteACL",
-					err.Error())
-				status.ErrorTime = time.Now()
+				addError(ctx, status, "deleteACL", err)
 			}
 		}
 	}
 	status.PendingDelete = false
-	writeAppNetworkStatus(status, statusFilename)
+	writeAppNetworkStatus(status)
 
 	// Write out what we modified to AppNetworkStatus aka delete
 	removeAppNetworkStatus(status)
@@ -1695,10 +1723,6 @@ func doDNSUpdate(ctx *DNCContext) {
 	// XXX also when NAT service enabled/disabled
 	// for _, u := range deviceNetworkConfig.FreeUplinks {
 	//	iptableCmd("-t", "nat", "-A", "POSTROUTING", "-o", u,
-	//		"-s", "172.27.0.0/16", "-j", "MASQUERADE")
+	//		"-s", "172.16.0.0/12", "-j", "MASQUERADE")
 	//}
-}
-
-func appendError(allErrors string, prefix string, lasterr string) string {
-	return fmt.Sprintf("%s%s: %s\n\n", allErrors, prefix, lasterr)
 }
