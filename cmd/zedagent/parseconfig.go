@@ -633,6 +633,11 @@ func publishNetworkObjectConfig(getconfigCtx *getconfigContext,
 		// DHCP = Server with an associated NAT service
 		if config.Dhcp == types.DT_NOOP {
 			config.Dhcp = types.DT_SERVER
+			_, subnet, _ := net.ParseCIDR("172.28.1.10/24")
+			config.Subnet = *subnet
+			// XXX dnsmasq should use BridgeIPAddr as the router?
+			config.DhcpRange.Start = net.ParseIP("172.28.1.10")
+			config.DhcpRange.End = net.ParseIP("172.28.1.254")
 			log.Printf("Converting DT_NOOP to DT_SERVER plus NAT service for %s type %d\n",
 				config.UUID, config.Type)
 			createNATNetworkService(getconfigCtx, config.UUID)
