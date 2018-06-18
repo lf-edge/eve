@@ -384,7 +384,8 @@ type OverlayNetworkConfig struct {
 type OverlayNetworkStatus struct {
 	OverlayNetworkConfig
 	VifInfo
-	BridgeIPAddr   string	// The address for DNS/DHCP service in zedrouter
+	BridgeMac    net.HardwareAddr
+	BridgeIPAddr string // The address for DNS/DHCP service in zedrouter
 }
 
 type DhcpType uint8
@@ -409,16 +410,17 @@ type UnderlayNetworkConfig struct {
 type UnderlayNetworkStatus struct {
 	UnderlayNetworkConfig
 	VifInfo
-	BridgeIPAddr   string	// The address for DNS/DHCP service in zedrouter
-	AssignedIPAddr string	// Assigned to domU
+	BridgeMac      net.HardwareAddr
+	BridgeIPAddr   string // The address for DNS/DHCP service in zedrouter
+	AssignedIPAddr string // Assigned to domU
 }
 
 type NetworkType uint8
 
 const (
 	NT_IPV4 NetworkType = 4
-	NT_IPV6 = 6
-	NT_LISP = 10 // XXX TBD make it a service
+	NT_IPV6             = 6
+	NT_LISP             = 10 // XXX TBD make it a service
 	// XXX Do we need a NT_DUAL/NT_IPV46? Implies two subnets/dhcp ranges?
 )
 
@@ -430,7 +432,7 @@ const (
 type NetworkObjectConfig struct {
 	UUID uuid.UUID
 	Type NetworkType
-	Dhcp DhcpType // If DT_STATIC use below
+	Dhcp DhcpType // If DT_STATIC or DT_SERVER use below
 	// XXX LocalDhcp  bool   // Run a DHCP server
 	// XXX LocalDns   bool   // Run a DNS server
 	// XXX LocalAddr  net.IP // For local DHCP/DNS; could be same as Gateway
@@ -457,7 +459,9 @@ type NetworkObjectStatus struct {
 	PendingDelete bool
 	BridgeNum     int
 	BridgeName    string // bn<N>
-	// XXX Ifname        string // AKA Adapter - from NetworkServiceConfig???
+	// XXX Adapter        string // AKA Adapter - from NetworkServiceConfig???
+	// Collection of address assignments
+	IPAssignments map[string]net.IP
 	// Any errrors from provisioning the network
 	Error     string
 	ErrorTime time.Time

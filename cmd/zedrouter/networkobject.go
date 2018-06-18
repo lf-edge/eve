@@ -6,6 +6,7 @@
 package zedrouter
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"github.com/satori/go.uuid"
@@ -40,6 +41,7 @@ func handleNetworkConfigCreate(ctx *zedrouterContext, key string, config types.N
 	pub := ctx.pubNetworkObjectStatus
 	status := types.NetworkObjectStatus{
 		NetworkObjectConfig: config,
+		IPAssignments:       make(map[string]net.IP),
 	}
 	status.PendingAdd = true
 	pub.Publish(key, status)
@@ -135,8 +137,6 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 }
 
 // Call when we have a network and a service? XXX also for local?
-// XXX for Bridge service need to get address from Adapter ...
-// XXX need wrapper for service to call based on our UUID.
 func setBridgeIPAddr(ctx *zedrouterContext, config types.NetworkObjectConfig,
 	status *types.NetworkObjectStatus) error {
 
@@ -153,27 +153,116 @@ func setBridgeIPAddr(ctx *zedrouterContext, config types.NetworkObjectConfig,
 		return errors.New(errStr)
 	}
 	// Check if we have a bridge service, and if so return error or address
-	ulAddr1, err := getBridgeService(ctx, config.UUID)
+	ipAddr, err := getBridgeService(ctx, config.UUID)
 	if err != nil {
 		return err
 	}
 	// If not we do a local allocation
-	if ulAddr1 == "" {
+	if ipAddr == "" {
 		// XXX Need IPV6/LISP logic to get IPv6 addresses
-		ulAddr1, _ = getUlAddrs(0, status.BridgeNum, nil, nil, &config)
+		var bridgeMac net.HardwareAddr
+		switch link.(type) {
+		case *netlink.Bridge:
+			bridgeLink := link.(*netlink.Bridge)
+			bridgeMac = bridgeLink.HardwareAddr
+		default:
+			errStr := fmt.Sprintf("Not a bridge %s",
+				status.BridgeName)
+			return errors.New(errStr)
+		}
+		ipAddr, err = lookupOrAllocateIPv4(ctx, config, bridgeMac)
+		if err != nil {
+			errStr := fmt.Sprintf("lookupOrAllocateIPv4 failed: %s",
+				err)
+			return errors.New(errStr)
+		}
 	}
-
-	//    ip addr add ${ulAddr1}/24 dev ${bridgeName}
-	addr, err := netlink.ParseAddr(ulAddr1 + "/24")
+	//    ip addr add ${ipAddr}/24 dev ${bridgeName}
+	addr, err := netlink.ParseAddr(ipAddr + "/24")
 	if err != nil {
-		errStr := fmt.Sprintf("ParseAddr %s failed: %s", ulAddr1, err)
+		errStr := fmt.Sprintf("ParseAddr %s failed: %s", ipAddr, err)
 		return errors.New(errStr)
 	}
 	if err := netlink.AddrAdd(link, addr); err != nil {
-		errStr := fmt.Sprintf("AddrAdd %s failed: %s", ulAddr1, err)
+		errStr := fmt.Sprintf("AddrAdd %s failed: %s", ipAddr, err)
 		return errors.New(errStr)
 	}
 	return nil
+}
+
+// XXX or return net.IP??
+func lookupOrAllocateIPv4(ctx *zedrouterContext,
+	config types.NetworkObjectConfig, mac net.HardwareAddr) (string, error) {
+
+	log.Printf("lookupOrAllocateIPv4(%s)\n", mac.String())
+	// Allocation happens in status
+	status := lookupNetworkObjectStatus(ctx, config.UUID.String())
+	if status == nil {
+		errStr := fmt.Sprintf("no NetworkOjectStatus for %s",
+			config.UUID.String())
+		return "", errors.New(errStr)
+	}
+	// Lookup to see if it exists
+	if ip, ok := status.IPAssignments[mac.String()]; ok {
+		log.Printf("lookupOrAllocateIPv4(%s) found %s\n",
+			mac.String(), ip.String())
+		return ip.String(), nil
+	}
+
+	if status.DhcpRange.Start == nil {
+		errStr := fmt.Sprintf("no NetworkOjectStatus DhcpRange for %s",
+			config.UUID.String())
+		return "", errors.New(errStr)
+	}
+	// Starting guess based on number allocated
+	allocated := uint(len(status.IPAssignments))
+	a := addToIP(status.DhcpRange.Start, allocated)
+	for status.DhcpRange.End == nil ||
+		bytes.Compare(a, status.DhcpRange.End) < 0 {
+
+		log.Printf("lookupOrAllocateIPv4(%s) testing %s\n",
+			mac.String(), a.String())
+		if lookupIP(status, a) {
+			a = addToIP(a, 1)
+			continue
+		}
+		log.Printf("lookupOrAllocateIPv4(%s) found free %s\n",
+			mac.String(), a.String())
+		status.IPAssignments[mac.String()] = a
+		// Publish the allocation
+		pub := ctx.pubNetworkObjectStatus
+		pub.Publish(status.UUID.String(), *status)
+		return a.String(), nil
+	}
+	errStr := fmt.Sprintf("NetworkOjectStatus no free address in DhcpRange for %s",
+		config.UUID.String())
+	return "", errors.New(errStr)
+}
+
+// Returns true if found
+func lookupIP(status *types.NetworkObjectStatus, ip net.IP) bool {
+	for _, a := range status.IPAssignments {
+		if ip.Equal(a) {
+			return true
+		}
+	}
+	return false
+}
+
+// Add to an IPv4 address
+func addToIP(ip net.IP, addition uint) net.IP {
+	addr := ip.To4()
+	if addr == nil {
+		log.Fatalf("addIP: not an IPv4 address %s", ip.String())
+	}
+	val := uint(addr[0])<<24 + uint(addr[1])<<16 +
+		uint(addr[2])<<8 + uint(addr[3])
+	val += addition
+	val0 := byte((val >> 24) & 0xFF)
+	val1 := byte((val >> 16) & 0xFF)
+	val2 := byte((val >> 8) & 0xFF)
+	val3 := byte(val & 0xFF)
+	return net.IPv4(val0, val1, val2, val3)
 }
 
 func lookupNetworkObjectConfig(ctx *zedrouterContext, key string) *types.NetworkObjectConfig {

@@ -775,7 +775,26 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 			return
 		}
 		bridgeName = oLink.Name
-		log.Printf("bridgeName %s\n", bridgeName)
+		bridgeMac := oLink.HardwareAddr
+		log.Printf("bridgeName %s MAC %s\n",
+			bridgeName, bridgeMac.String())
+
+		var olMac string // Handed to domU
+		if olConfig.AppMacAddr != nil {
+			olMac = olConfig.AppMacAddr.String()
+		} else {
+			olMac = "00:16:3e:01:" +
+				strconv.FormatInt(int64(olNum), 16) + ":" +
+				strconv.FormatInt(int64(appNum), 16)
+		}
+		log.Printf("olMac %s\n", olMac)
+
+		// Record what we have so far
+		olStatus := &status.OverlayNetworkList[olNum-1]
+		olStatus.Bridge = bridgeName
+		olStatus.BridgeMac = bridgeMac
+		olStatus.Vif = vifName
+		olStatus.Mac = olMac
 
 		netconfig := lookupNetworkObjectConfig(ctx,
 			olConfig.Network.String())
@@ -785,6 +804,8 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		olAddr1 := "fd00::" + strconv.FormatInt(int64(olNum), 16) +
 			":" + strconv.FormatInt(int64(appNum), 16)
 		log.Printf("olAddr1 %s EID %s\n", olAddr1, EID)
+
+		olStatus.BridgeIPAddr = olAddr1
 
 		if created {
 			//    ip addr add ${olAddr1}/128 dev ${bridgeName}
@@ -818,16 +839,6 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 					errors.New(errStr))
 			}
 		}
-
-		var olMac string // Handed to domU
-		if olConfig.AppMacAddr != nil {
-			olMac = olConfig.AppMacAddr.String()
-		} else {
-			olMac = "00:16:3e:01:" +
-				strconv.FormatInt(int64(olNum), 16) + ":" +
-				strconv.FormatInt(int64(appNum), 16)
-		}
-		log.Printf("olMac %s\n", olMac)
 
 		// Write radvd configlet; start radvd
 		cfgFilename := "radvd." + bridgeName + ".conf"
@@ -876,13 +887,6 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 			deviceNetworkStatus, bridgeName, bridgeName,
 			additionalInfo, olConfig.LispServers,
 			ctx.separateDataPlane)
-
-		// Add bridge parameters for Xen to Status
-		olStatus := &status.OverlayNetworkList[olNum-1]
-		olStatus.Bridge = bridgeName
-		olStatus.Vif = vifName
-		olStatus.Mac = olMac
-		olStatus.BridgeIPAddr = olAddr1
 	}
 
 	for i, ulConfig := range config.UnderlayNetworkList {
@@ -903,14 +907,35 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 			return
 		}
 		bridgeName = uLink.Name
-		log.Printf("bridgeName %s\n", bridgeName)
+		bridgeMac := uLink.HardwareAddr
+
+		log.Printf("bridgeName %s MAC %s\n",
+			bridgeName, bridgeMac.String())
+
+		var ulMac string // Handed to domU
+		if ulConfig.AppMacAddr != nil {
+			ulMac = ulConfig.AppMacAddr.String()
+		} else {
+			// Room to handle multiple underlays in 5th byte
+			ulMac = "00:16:3e:0:0:" +
+				strconv.FormatInt(int64(appNum), 16)
+		}
+		log.Printf("ulMac %s\n", ulMac)
+
+		// Record what we have so far
+		ulStatus := &status.UnderlayNetworkList[ulNum-1]
+		ulStatus.Bridge = bridgeName
+		ulStatus.BridgeMac = bridgeMac
+		ulStatus.Vif = vifName
+		ulStatus.Mac = ulMac
 
 		netconfig := lookupNetworkObjectConfig(ctx,
 			ulConfig.Network.String())
 
-		ulAddr1, ulAddr2 := getUlAddrs(ulNum-1, appNum, &ulConfig, nil,
+		ulAddr1, ulAddr2 := getUlAddrs(ctx, ulNum-1, appNum, ulStatus,
 			netconfig)
 		// Check if we already have an address on the bridge
+		// XXX isn't that done inside getUlAddrs?
 		if !created {
 			bridgeIP, err := getBridgeService(ctx, ulConfig.Network)
 			if err != nil {
@@ -921,6 +946,8 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 			}
 		}
 		log.Printf("ulAddr1 %s ulAddr2 %s\n", ulAddr1, ulAddr2)
+		ulStatus.BridgeIPAddr = ulAddr1
+		ulStatus.AssignedIPAddr = ulAddr2
 
 		if created {
 			//    ip addr add ${ulAddr1}/24 dev ${bridgeName}
@@ -938,16 +965,6 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 					errors.New(errStr))
 			}
 		}
-
-		var ulMac string // Handed to domU
-		if ulConfig.AppMacAddr != nil {
-			ulMac = ulConfig.AppMacAddr.String()
-		} else {
-			// Room to handle multiple underlays in 5th byte
-			ulMac = "00:16:3e:0:0:" +
-				strconv.FormatInt(int64(appNum), 16)
-		}
-		log.Printf("ulMac %s\n", ulMac)
 
 		// Create iptables with optional ipset's based ACL
 		// XXX Doesn't handle IPv6 underlay ACLs
@@ -971,14 +988,6 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 			ulAddr2, ulMac, config.UUIDandVersion.UUID.String(),
 			ipsets, netconfig)
 		startDnsmasq(cfgPathname, bridgeName)
-
-		// Add bridge parameters for Xen to Status
-		ulStatus := &status.UnderlayNetworkList[ulNum-1]
-		ulStatus.BridgeIPAddr = ulAddr1
-		ulStatus.AssignedIPAddr = ulAddr2
-		ulStatus.Bridge = bridgeName
-		ulStatus.Vif = vifName
-		ulStatus.Mac = ulMac
 	}
 	// Write out what we created to AppNetworkStatus
 	status.PendingAdd = false
@@ -1074,8 +1083,8 @@ func findBridge(bridgeName string) (*netlink.Bridge, error) {
 }
 
 // XXX IPv6? LISP? Same? getOlAddrs???
-func getUlAddrs(ifnum int, appNum int, ulConfig *types.UnderlayNetworkConfig,
-	ulStatus *types.UnderlayNetworkStatus,
+func getUlAddrs(ctx *zedrouterContext, ifnum int, appNum int,
+	status *types.UnderlayNetworkStatus,
 	netconf *types.NetworkObjectConfig) (string, string) {
 
 	// Default
@@ -1084,33 +1093,38 @@ func getUlAddrs(ifnum int, appNum int, ulConfig *types.UnderlayNetworkConfig,
 	// XXX limited number of ifnums for the default range - just to 27 to 31
 	ulAddr1 := fmt.Sprintf("172.%d.%d.1", 27+ifnum, appNum)
 	ulAddr2 := fmt.Sprintf("172.%d.%d.2", 27+ifnum, appNum)
-	if ulConfig != nil && ulConfig.AppIPAddr != nil {
-		// Note that ulAddr2 will be in a different subnet.
+
+	// XXX ulAddr1 should not depend on AppIpAddr - allocate separately
+	if netconf != nil {
+		// Allocate ulAddr1 based on BridgeMac
+		addr, err := lookupOrAllocateIPv4(ctx, *netconf,
+			status.BridgeMac)
+		if err != nil {
+			log.Printf("lookupOrAllocatePv4 failed %s\n", err)
+			// Keep above default
+		} else {
+			ulAddr1 = addr
+		}
+	}
+	if status.AppIPAddr != nil {
+		// Static IP assignment case.
+		// Note that ulAddr2 can be in a different subnet.
 		// Assumption is that the config specifies a gateway/router
 		// in the same subnet as the static address.
-		ulAddr2 = ulConfig.AppIPAddr.String()
-	} else if ulStatus != nil && ulStatus.AppIPAddr != nil {
-		// Note that ulAddr2 will be in a different subnet.
-		// Assumption is that the config specifies a gateway/router
-		// in the same subnet as the static address.
-		ulAddr2 = ulStatus.AppIPAddr.String()
-	} else if netconf != nil && netconf.DhcpRange.Start != nil {
-		// Avoid the first address in range
-		a := netconf.DhcpRange.Start.To4()
-		if a[3] == 255 {
-			a[3] = 0
-			a[2]++ // Unlikely to overflow
-		} else {
-			a[3]++
+		ulAddr2 = status.AppIPAddr.String()
+	} else if netconf != nil {
+		// XXX or change type of VifInfo.Mac?
+		mac, err := net.ParseMAC(status.Mac)
+		if err != nil {
+			log.Fatal("ParseMAC failed: ", status.Mac, err)
 		}
-		ulAddr1 = a.String()
-		if a[3] == 255 {
-			a[3] = 0
-			a[2]++
+		addr, err := lookupOrAllocateIPv4(ctx, *netconf, mac)
+		if err != nil {
+			log.Printf("lookupOrAllocateIPv4 failed %s\n", err)
+			// Keep above default
 		} else {
-			a[3]++ // Unlikely to overflow
+			ulAddr2 = addr
 		}
-		ulAddr2 = a.String()
 	}
 	return ulAddr1, ulAddr2
 }
