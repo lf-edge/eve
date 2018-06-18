@@ -45,7 +45,7 @@ const publishToSock = false     // XXX
 const subscribeFromDir = true   // XXX
 const subscribeFromSock = false // XXX
 
-const debug = false // XXX setable?
+const debug = true // XXX setable?
 
 // Usage:
 //  p1, err := pubsub.Publish("foo", fooStruct{})

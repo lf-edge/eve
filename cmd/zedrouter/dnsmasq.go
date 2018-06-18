@@ -106,8 +106,8 @@ func createDnsmasqOverlayConfiglet(cfgPathname string, olIfname string,
 // XXX not clear what needs to change here to handle IPv6 underlay. The default
 // ranges are off, plus domain-name needs to be replaced by domain-search, etc
 func createDnsmasqUnderlayConfiglet(cfgPathname string, ulIfname string,
-	ulAddr1 string, ulAddr2 string, ulMac string, hostName string,
-	ipsets []string, netconf *types.NetworkObjectConfig) {
+	ulAddr1 string, ulAddr2 string, ulMac string, hostsDir string,
+	hostName string, ipsets []string, netconf *types.NetworkObjectConfig) {
 	if debug {
 		log.Printf("createDnsmasqUnderlayConfiglen: %s\n", ulIfname)
 	}
@@ -125,6 +125,8 @@ func createDnsmasqUnderlayConfiglet(cfgPathname string, ulIfname string,
 		ulIfname))
 	file.WriteString(fmt.Sprintf("interface=%s\n", ulIfname))
 	file.WriteString(fmt.Sprintf("listen-address=%s\n", ulAddr1))
+	file.WriteString(fmt.Sprintf("hostsdir=%s\n", hostsDir))
+
 	if netconf != nil {
 		// walk all of netconf - find all hosts which use this network
 		for _, status := range appNetworkStatus {

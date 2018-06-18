@@ -461,8 +461,10 @@ type NetworkObjectStatus struct {
 	PendingDelete bool
 	BridgeNum     int
 	BridgeName    string // bn<N>
+	BridgeIPAddr  string
 	// XXX Adapter        string // AKA Adapter - from NetworkServiceConfig???
-	// Collection of address assignments
+	// Collection of address assignments; from MAC address to IP address
+	// XXX record hostnames as well?
 	IPAssignments map[string]net.IP
 	// Any errrors from provisioning the network
 	Error     string

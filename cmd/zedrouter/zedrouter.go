@@ -808,6 +808,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 
 		olStatus.BridgeIPAddr = olAddr1
 
+		// XXX set sharedBridge base on bn prefix; remove created return
 		if created {
 			//    ip addr add ${olAddr1}/128 dev ${bridgeName}
 			addr, err := netlink.ParseAddr(olAddr1 + "/128")
@@ -856,9 +857,16 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		// Each hostname in a separate file in directory to facilitate
 		// adds and deletes
 		hostsDirpath := globalRunDirname + "/hosts." + bridgeName
-		deleteHostsConfiglet(hostsDirpath, false)
-		createHostsConfiglet(hostsDirpath, olConfig.NameToEidList)
-
+		if created {
+			deleteHostsConfiglet(hostsDirpath, false)
+			createHostsConfiglet(hostsDirpath, olConfig.NameToEidList)
+		} else {
+			// XXX add bulk add function? Separate create from add?
+			for _, ne := range olConfig.NameToEidList {
+				addIPToHostsConfiglet(hostsDirpath, ne.HostName,
+					ne.EIDs)
+			}
+		}
 		// Create default ipset with all the EIDs in NameToEidList
 		// Can be used in ACLs by specifying "alleids" as match.
 		deleteEidIpsetConfiglet(bridgeName, false)
@@ -877,6 +885,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		cfgPathname = runDirname + "/" + cfgFilename
 		stopDnsmasq(cfgFilename, false)
 		// XXX need ipsets from all bn<N> users
+
 		createDnsmasqOverlayConfiglet(cfgPathname, bridgeName, olAddr1,
 			EID.String(), olMac, hostsDirpath,
 			config.UUIDandVersion.UUID.String(), ipsets, netconfig)
@@ -951,6 +960,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		log.Printf("ulAddr1 %s ulAddr2 %s\n", ulAddr1, ulAddr2)
 		ulStatus.BridgeIPAddr = ulAddr1
 		ulStatus.AssignedIPAddr = ulAddr2
+		hostsDirpath := globalRunDirname + "/hosts." + bridgeName
 
 		if created {
 			//    ip addr add ${ulAddr1}/24 dev ${bridgeName}
@@ -967,11 +977,16 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 				addError(ctx, &status, "handleCreate",
 					errors.New(errStr))
 			}
+			// Create a hosts file for the new bridge
+			// Directory is /var/run/zedrouter/hosts.${BRIDGENAME}
+			deleteHostsConfiglet(hostsDirpath, false)
+			createHostsConfiglet(hostsDirpath, nil)
 		}
+		addToHostsConfiglet(hostsDirpath, config.DisplayName,
+			[]string{ulAddr2})
 
 		// Create iptables with optional ipset's based ACL
 		// XXX Doesn't handle IPv6 underlay ACLs
-
 		var sshPort uint
 		if ulConfig.SshPortMap {
 			sshPort = 8022 + 100*uint(appNum)
@@ -989,7 +1004,8 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 
 		// XXX need ipsets from all bn<N> users
 		createDnsmasqUnderlayConfiglet(cfgPathname, bridgeName, ulAddr1,
-			ulAddr2, ulMac, config.UUIDandVersion.UUID.String(),
+			ulAddr2, ulMac, hostsDirpath,
+			config.UUIDandVersion.UUID.String(),
 			ipsets, netconfig)
 		startDnsmasq(cfgPathname, bridgeName)
 	}
@@ -1290,7 +1306,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 		olAddr1 := olStatus.BridgeIPAddr
 
 		// Update hosts
-		// XXX shared with others
+		// XXX doesn't handle a sharedBridge
 		hostsDirpath := globalRunDirname + "/hosts." + bridgeName
 		updateHostsConfiglet(hostsDirpath, olStatus.NameToEidList,
 			olConfig.NameToEidList)
@@ -1374,6 +1390,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 			//update underlay dnsmasq configuration
 			netconfig := lookupNetworkObjectConfig(ctx,
 				ulConfig.Network.String())
+			hostsDirpath := globalRunDirname + "/hosts." + bridgeName
 			cfgFilename := "dnsmasq." + bridgeName + ".conf"
 			cfgPathname := runDirname + "/" + cfgFilename
 			stopDnsmasq(cfgFilename, false)
@@ -1382,6 +1399,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 			// XXX need ipsets from all bn<N> users
 			createDnsmasqUnderlayConfiglet(cfgPathname, bridgeName,
 				ulAddr1, ulAddr2, ulStatus.Mac,
+				hostsDirpath,
 				config.UUIDandVersion.UUID.String(), newIpsets,
 				netconfig)
 			startDnsmasq(cfgPathname, bridgeName)
@@ -1552,7 +1570,9 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 			bridgeName := olStatus.Bridge
 			olAddr1 := olStatus.BridgeIPAddr
 
+			sharedBridge := true
 			if !strings.HasPrefix(bridgeName, "bn") {
+				sharedBridge = false
 				log.Printf("Deleting bridge %s\n", bridgeName)
 				attrs := netlink.NewLinkAttrs()
 				attrs.Name = bridgeName
@@ -1563,7 +1583,7 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 
 			// XXX need IPv6 allocate/free to do same as for ulConfig
 			// radvd cleanup
-			// XXX not all of it; see dnsmasq below
+			// XXX not all of it; see dnsmasq below; if sharedBridge
 			cfgFilename := "radvd." + bridgeName + ".conf"
 			cfgPathname := runDirname + "/" + cfgFilename
 			stopRadvd(cfgFilename, true)
@@ -1590,11 +1610,14 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 				deviceNetworkStatus,
 				ctx.separateDataPlane)
 
-			// Delete overlay hosts file
-			// XXX not all of it
+			// Delete overlay hosts file or directory
 			hostsDirpath := globalRunDirname + "/hosts." + bridgeName
-			deleteHostsConfiglet(hostsDirpath, true)
-
+			if sharedBridge {
+				removeFromHostsConfiglet(hostsDirpath,
+					status.DisplayName)
+			} else {
+				deleteHostsConfiglet(hostsDirpath, true)
+			}
 			// Default EID ipset
 			// XXX not all of it
 			deleteEidIpsetConfiglet(bridgeName, true)
@@ -1617,7 +1640,9 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 			ulStatus := status.UnderlayNetworkList[ulNum-1]
 			bridgeName := ulStatus.Bridge
 
+			sharedBridge := true
 			if !strings.HasPrefix(bridgeName, "bn") {
+				sharedBridge = false
 				log.Printf("Deleting bridge %s\n", bridgeName)
 				attrs := netlink.NewLinkAttrs()
 				attrs.Name = bridgeName
@@ -1639,6 +1664,7 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 				}
 			}
 
+			hostsDirpath := globalRunDirname + "/hosts." + bridgeName
 			cfgFilename := "dnsmasq." + bridgeName + ".conf"
 			cfgPathname := runDirname + "/" + cfgFilename
 			if doDelete {
@@ -1655,7 +1681,7 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 				// XXX need to determine remaining ipsets. Inside function?
 				// xxx NIL for now
 				createDnsmasqUnderlayConfiglet(cfgPathname, bridgeName,
-					"", "", ulStatus.Mac,
+					"", "", ulStatus.Mac, hostsDirpath,
 					"", []string{}, netconfig)
 				startDnsmasq(cfgPathname, bridgeName)
 			}
@@ -1674,6 +1700,13 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 				sshPort)
 			if err != nil {
 				addError(ctx, status, "deleteACL", err)
+			}
+			// Delete hosts file or directory
+			if sharedBridge {
+				removeFromHostsConfiglet(hostsDirpath,
+					status.DisplayName)
+			} else {
+				deleteHostsConfiglet(hostsDirpath, true)
 			}
 		}
 	}

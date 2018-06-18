@@ -133,6 +133,17 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 	if err := setBridgeIPAddr(ctx, config, status); err != nil {
 		return err
 	}
+
+	// Create a hosts file for the new bridge
+	// Directory is /var/run/zedrouter/hosts.${BRIDGENAME}
+	hostsDirpath := globalRunDirname + "/hosts." + bridgeName
+	deleteHostsConfiglet(hostsDirpath, false)
+	createHostsConfiglet(hostsDirpath, nil)
+	if status.BridgeIPAddr != "" {
+		// XXX arbitrary name "router"!!
+		addToHostsConfiglet(hostsDirpath, "router",
+			[]string{status.BridgeIPAddr})
+	}
 	return nil
 }
 
@@ -177,6 +188,7 @@ func setBridgeIPAddr(ctx *zedrouterContext, config types.NetworkObjectConfig,
 			return errors.New(errStr)
 		}
 	}
+	status.BridgeIPAddr = ipAddr
 	//    ip addr add ${ipAddr}/24 dev ${bridgeName}
 	addr, err := netlink.ParseAddr(ipAddr + "/24")
 	if err != nil {

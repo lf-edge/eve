@@ -26,16 +26,41 @@ func createHostsConfiglet(cfgDirname string, nameToEidList []types.NameToEid) {
 	}
 
 	for _, ne := range nameToEidList {
-		cfgPathname := cfgDirname + "/" + ne.HostName
-		file, err := os.Create(cfgPathname)
-		if err != nil {
-			log.Fatal(err)
-		}
-		defer file.Close()
-		for _, eid := range ne.EIDs {
-			file.WriteString(fmt.Sprintf("%s	%s\n",
-				eid, ne.HostName))
-		}
+		addIPToHostsConfiglet(cfgDirname, ne.HostName, ne.EIDs)
+	}
+}
+
+// Create one file per hostname
+func addIPToHostsConfiglet(cfgDirname string, hostname string, addrs []net.IP) {
+	cfgPathname := cfgDirname + "/" + hostname
+	file, err := os.Create(cfgPathname)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+	for _, addr := range addrs {
+		file.WriteString(fmt.Sprintf("%s	%s\n",
+			addr.String(), hostname))
+	}
+}
+
+// Create one file per hostname
+func addToHostsConfiglet(cfgDirname string, hostname string, addrs []string) {
+	cfgPathname := cfgDirname + "/" + hostname
+	file, err := os.Create(cfgPathname)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+	for _, addr := range addrs {
+		file.WriteString(fmt.Sprintf("%s	%s\n", addr, hostname))
+	}
+}
+
+func removeFromHostsConfiglet(cfgDirname string, hostname string) {
+	cfgPathname := cfgDirname + "/" + hostname
+	if err := os.Remove(cfgPathname); err != nil {
+		log.Println("removeFromHostsConfiglet: ", err)
 	}
 }
 
@@ -70,7 +95,7 @@ func updateHostsConfiglet(cfgDirname string,
 		if !containsHostName(newNameToEidList, ne.HostName) {
 			cfgPathname := cfgDirname + "/" + ne.HostName
 			if err := os.Remove(cfgPathname); err != nil {
-				log.Println(err)
+				log.Println("updateHostsConfiglet: ", err)
 			}
 		}
 	}
@@ -95,6 +120,6 @@ func deleteHostsConfiglet(cfgDirname string, printOnError bool) {
 	}
 	err := os.RemoveAll(cfgDirname)
 	if err != nil && printOnError {
-		log.Println(err)
+		log.Println("deleteHostsConfiglet: ", err)
 	}
 }
