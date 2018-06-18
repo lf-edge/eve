@@ -121,6 +121,8 @@ func ipTablesRulesDelete(ipTableName string,
 	return nil
 }
 
+// XXX need to make sure the added route is duplicated by ipr.go to the
+// correct table or add/delete from the correct table
 func ipRouteCreate(tunnelName string, subNet string, metric string) error {
 	cmd := exec.Command("ip", "route", "add", subNet,
 			"dev", tunnelName, "metric", metric)
