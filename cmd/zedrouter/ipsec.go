@@ -66,7 +66,7 @@ func ipSecServiceStatus()  (string, error) {
 }
 
 func ipTablesRuleCreate(ipTableName string,
-				ipSecTunnelName string, awsVpnGateway string,
+				ipSecTunnelName string, vpnGateway string,
 				tunnelKey string) error {
 
 	// setup the iptable rules
@@ -83,7 +83,7 @@ func ipTablesRuleCreate(ipTableName string,
 
 	// input rule
 	cmd = exec.Command("iptables", "-t", ipTableName,
-			"-A", "INPUT", "-p", "esp", "-s", awsVpnGateway,
+			"-A", "INPUT", "-p", "esp", "-s", vpnGateway,
 			"-j", "MARK", "--set-xmark", tunnelKey)
 	if _, err := cmd.Output(); err != nil {
 		log.Printf("%s for %s %s input rule\n",
@@ -93,11 +93,28 @@ func ipTablesRuleCreate(ipTableName string,
 	return nil
 }
 
-func ipTablesRulesDelete(ipTableName string) error {
+func ipTablesRulesDelete(ipTableName string,
+		ipSecTunnelName string, vpnGateway string,
+		 tunnelKey string) error {
 
-	cmd := exec.Command("iptables", "-t", ipTableName, "-F")
+	// setup the iptable rules
+	// forward rule
+	cmd := exec.Command("iptables", "-t", ipTableName,
+			"-D","FORWARD", "-o", ipSecTunnelName,
+			"-p", "tcp", "--tcp-flags", "SYN,RST",
+			"SYN", "-j", "TCPMSS", "--clamp-mss-to-pmtu")
 	if _, err := cmd.Output(); err != nil {
-		log.Printf("%s for %s %s flush\n",
+		log.Printf("%s for %s %s forward rule delete\n",
+			err.Error(), "iptables", ipTableName)
+		return err
+	}
+
+	// input rule
+	cmd = exec.Command("iptables", "-t", ipTableName,
+			"-D", "INPUT", "-p", "esp", "-s", vpnGateway,
+			"-j", "MARK", "--set-xmark", tunnelKey)
+	if _, err := cmd.Output(); err != nil {
+		log.Printf("%s for %s %s input rule delete\n",
 			err.Error(), "iptables", ipTableName)
 		return err
 	}
@@ -116,6 +133,12 @@ func ipRouteCreate(tunnelName string, subNet string, metric string) error {
 }
 
 func ipRouteDelete(tunnelName string, subNet string) error {
+	cmd := exec.Command("ip", "route", "delete", subNet)
+	if _, err := cmd.Output(); err != nil {
+		log.Printf("%s for %s %s add\n",
+			err.Error(), "iproute", subNet)
+		return err
+	}
 	return nil
 }
 

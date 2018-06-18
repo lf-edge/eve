@@ -492,6 +492,7 @@ type NetworkServiceStatus struct {
 	Activated     bool
 	AppLink       uuid.UUID
 	Adapter       string // Ifname or group like "uplink", or empty
+	OpaqueStatus  string
 	// Any errrors from provisioning the service
 	Error     string
 	ErrorTime time.Time
@@ -588,13 +589,15 @@ type AdditionalInfoApp struct {
 }
 
 type IpSecLocalConfig struct {
-	TunnelName    string
-	UpLinkName    string
-	UpLinkIpAddr  string
-	IpTable       string
-	TunnelKey     string
-	Mtu           string
-	Metric        string
+	AwsVpnGateway  string
+	AwsVpcSubnet   string
+	TunnelName     string
+	UpLinkName     string
+	UpLinkIpAddr   string
+	IpTable        string
+	TunnelKey      string
+	Mtu            string
+	Metric         string
 }
 
 type AwsSSIpSecService struct {

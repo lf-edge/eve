@@ -40,14 +40,23 @@ func strongswanCreate(config types.NetworkServiceConfig,
 	
 	// set the local config
 	ipSecLocalConfig := types.IpSecLocalConfig {
-			TunnelName   : "ipSecTunnel",
-			UpLinkName   : config.Adapter,
-			UpLinkIpAddr : srcIp.String(),
-			IpTable      : "mangle",
-			TunnelKey    : "100",
-			Mtu          : "1419",
-			Metric       : "50",
+			AwsVpnGateway : ipSecConfig.AwsVpnGateway,
+			AwsVpcSubnet  : ipSecConfig.AwsVpcSubnet,
+			TunnelName    : "ipSecTunnel",
+			UpLinkName    : config.Adapter,
+			UpLinkIpAddr  : srcIp.String(),
+			IpTable       : "mangle",
+			TunnelKey     : "100",
+			Mtu           : "1419",
+			Metric        : "50",
 		}
+
+	// stringify and store in status
+	bytes, err := json.Marshal(ipSecLocalConfig)
+	if err != nil {
+		return nil
+	}
+	status.OpaqueStatus = string(bytes)
 
 	// create the ipsec config files, tunnel and rules
 	if err := awsStrongSwanTunnelCreate(ipSecConfig,
@@ -60,11 +69,11 @@ func strongswanCreate(config types.NetworkServiceConfig,
 
 func strongswanDelete(status *types.NetworkServiceStatus) {
 
-	// set the local config
-	ipSecLocalConfig := types.IpSecLocalConfig {
-			TunnelName : "ipSecTunnel",
-			IpTable    : "mangle",
-		}
+	ipSecLocalConfig, err := awsStrongSwanStatusParse(status.OpaqueStatus)
+	if err != nil {
+		log.Printf("strongswanDelete config absent")
+		return
+	}
 
 	if err := awsStrongSwanTunnelDelete(ipSecLocalConfig); err != nil {
 		log.Printf("%s awsStrongSwanConfig delete\n", err.Error())
@@ -101,6 +110,17 @@ func awsStrongSwanConfigParse (opaqueConfig string) (types.AwsSSIpSecService, er
 		return ipSecConfig, err
 	}
 	return ipSecConfig, nil
+}
+
+func awsStrongSwanStatusParse (opaqueStatus string) (types.IpSecLocalConfig, error) {
+
+	cb := []byte(opaqueStatus)
+	ipSecLocalConfig := types.IpSecLocalConfig{}
+	if err := json.Unmarshal(cb, &ipSecLocalConfig); err != nil {
+		log.Printf("%s awsStrongSwanLocalConfig \n", err.Error())
+		return ipSecLocalConfig, err
+	}
+	return ipSecLocalConfig, nil
 }
 
 func awsStrongSwanTunnelCreate(ipSecConfig types.AwsSSIpSecService,
@@ -172,8 +192,16 @@ func awsStrongSwanTunnelDelete(ipSecLocalConfig types.IpSecLocalConfig)  error {
 		return err
 	}
 
-	// request iptables flush
-	if err := ipTablesRulesDelete(ipSecLocalConfig.IpTable); err != nil {
+	// request iptables  rule delete
+	if err := ipTablesRulesDelete(ipSecLocalConfig.IpTable,
+				ipSecLocalConfig.TunnelName, ipSecLocalConfig.AwsVpnGateway,
+				ipSecLocalConfig.TunnelKey); err != nil {
+		return err
+	}
+
+	// request ip route delete
+	if err := ipRouteDelete(ipSecLocalConfig.TunnelName,
+				ipSecLocalConfig.AwsVpcSubnet); err != nil {
 		return err
 	}
 
