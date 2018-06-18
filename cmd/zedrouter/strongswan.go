@@ -46,7 +46,7 @@ func strongswanCreate(config types.NetworkServiceConfig,
 			IpTable      : "mangle",
 			TunnelKey    : "100",
 			Mtu          : "1419",
-			Metric       : "100",
+			Metric       : "50",
 		}
 
 	// create the ipsec config files, tunnel and rules
@@ -111,13 +111,14 @@ func awsStrongSwanTunnelCreate(ipSecConfig types.AwsSSIpSecService,
 		return err
 	}
 
-	// create ipsec.conf/ipsec.secrets
+	// create ipsec.conf
 	if err := ipSecServiceConfigCreate(ipSecLocalConfig.TunnelName,
 				ipSecConfig.AwsVpnGateway,
 				ipSecLocalConfig.TunnelKey); err != nil {
 		return err
 	}
 
+	// create ipsec.secrets
 	if err := ipSecSecretConfigCreate(ipSecConfig.AwsVpnGateway,
 				ipSecConfig.PreSharedKey); err != nil {
 		return err
@@ -150,6 +151,10 @@ func awsStrongSwanTunnelCreate(ipSecConfig types.AwsSSIpSecService,
 	// issue sysctl for ipsec
 	if err := sysctlConfigCreate(ipSecLocalConfig.UpLinkName,
 				ipSecLocalConfig.TunnelName); err != nil {
+		return err
+	}
+
+	if err := sysctlConfigSet(); err != nil {
 		return err
 	}
 	return nil

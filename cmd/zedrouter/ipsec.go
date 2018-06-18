@@ -12,12 +12,12 @@ import (
 )
 
 const (
-	charonConfStr = "# Options for charon IKE daemon\ncharon {\n install_routes = yes\n\ttls {\n\t}\n\tx509 {\n\t}\n}\n"
+	charonConfStr = "# Options for charon IKE daemon\ncharon {\n install_routes = no\n}\n"
 	ipSecSecretHdrStr = "# ipsec.secrets - IPSec secrets file\n"
-	ipSecConfHdrStr = "# ipsec.conf - default configuration\n config setup" +
+	ipSecConfHdrStr = "# ipsec.conf - default configuration\nconfig setup" +
 	"\n\t uniqueids = no\n"
 	ipSecTunHdrStr =  "\nconn "
-	ipSecTunLeftSpecStr = "\n\tauto=start" + "\n\tleft=%defaultroute" + 
+	ipSecTunLeftSpecStr = "\n\tauto=start" + "\n\tleft=%defaultroute" +
 					"\n\tleftid=0.0.0.0"
 	ipSecTunRightSpecStr = "\n\tright="
 	ipSecTunSpecStr = ipSecTunLeftSpecStr + ipSecTunRightSpecStr
@@ -28,7 +28,7 @@ const (
 			"\n\tikelifetime=8h" +
 			"\n\tesp=aes128-sha1-modp1024" +
 			"\n\tlifetime=1h" +
-			"\n\tkeyingtries=%%forever" +
+			"\n\tkeyingtries=%forever" +
 			"\n\tleftsubnet=0.0.0.0/0" +
 			"\n\trightsubnet=0.0.0.0/0" +
 			"\n\tdpddelay=10s" +
@@ -74,7 +74,7 @@ func ipTablesRuleCreate(ipTableName string,
 	cmd := exec.Command("iptables", "-t", ipTableName,
 			"-A","FORWARD", "-o", ipSecTunnelName,
 			"-p", "tcp", "--tcp-flags", "SYN,RST",
-			"SYNC", "-j", "TCPMSS", "--clamp-mss-to-mtu")
+			"SYN", "-j", "TCPMSS", "--clamp-mss-to-pmtu")
 	if _, err := cmd.Output(); err != nil {
 		log.Printf("%s for %s %s forward rule\n",
 			err.Error(), "iptables", ipTableName)
@@ -120,19 +120,19 @@ func ipRouteDelete(tunnelName string, subNet string) error {
 }
 
 func ipLinkTunnelCreate(tunnelName string,
-				upLinkIpAddr string, awsVpnGateway string, 
+				upLinkIpAddr string, awsVpnGateway string,
 				tunnelLocalIpAddr string, tunnelRemoteIpAddr string,
 				tunnelKey string, tunnelMtu string) error {
 
 	cmd := exec.Command("ip", "link", "add",
-				tunnelName, "type", "vti", "local", upLinkIpAddr, 
+				tunnelName, "type", "vti", "local", upLinkIpAddr,
 				"remote", awsVpnGateway, "key", tunnelKey)
 	if _, err := cmd.Output(); err != nil {
 		log.Printf("%s for %s %s add\n",
 			err.Error(), "ip link", tunnelName)
 		return err
 	}
-	cmd = exec.Command("ip", "addr", "add", 
+	cmd = exec.Command("ip", "addr", "add",
 				tunnelLocalIpAddr,
 				"remote", tunnelRemoteIpAddr,
 				"dev", tunnelName)
@@ -149,7 +149,7 @@ func ipLinkTunnelCreate(tunnelName string,
 		return err
 	}
 	return nil
-} 
+}
 
 func ipLinkTunnelDelete(tunnelName string) error {
 	cmd := exec.Command("ip", "link", "delete", tunnelName)
@@ -192,9 +192,9 @@ func ipSecServiceConfigDelete() error {
 func ipSecSecretConfigCreate(awsVpnGateway string,
 		 preSharedKey string) error {
 	writeStr := ipSecSecretHdrStr
-	writeStr = writeStr + "0.0.0.0 " 
+	writeStr = writeStr + "0.0.0.0 "
 	writeStr = writeStr + awsVpnGateway + " "
-	writeStr = writeStr + " : PSK " + "\"" 
+	writeStr = writeStr + " : PSK " + "\""
 	writeStr = writeStr + preSharedKey + "\""
 	writeStr = writeStr + "\n"
 	filename := "/etc/ipsec.secrets"
@@ -213,13 +213,24 @@ func charonConfigCreate() error {
 }
 
 func sysctlConfigCreate(upLinkName string, tunnelName string) error {
-	writeStr := "\n net.ipv4.ip_forward = 1"  
+	writeStr := "\n net.ipv4.ip_forward = 1" 
 	writeStr = writeStr + "\n net.ipv4.conf." + tunnelName + ".rp_filter=2"
-	writeStr = writeStr + "\n net.ipv4.conf." + tunnelName + ".disable_policy=1" 
+	writeStr = writeStr + "\n net.ipv4.conf." + tunnelName + ".disable_policy=1"
 	writeStr = writeStr + "\n net.ipv4.conf." + upLinkName + ".disable_xfrm=1"
 	writeStr = writeStr + "\n net.ipv4.conf." + upLinkName + ".disable_policy=1\n"
 	filename := "/etc/sysctl.conf"
 	return ipSecConfigFileWrite(filename, writeStr)
+}
+
+func sysctlConfigSet() error {
+	cmd := exec.Command("sysctl", "-p")
+	_, err := cmd.Output()
+	if err != nil {
+		log.Printf("%s for %s set \n",
+			err.Error(), "sysctl")
+		return err
+	}
+	return nil
 }
 
 func ipSecConfigFileWrite(filename string, writeStr string) error {
