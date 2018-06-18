@@ -505,6 +505,7 @@ type NetworkServiceStatus struct {
 	Activated     bool
 	AppLink       uuid.UUID
 	Adapter       string // Ifname or group like "uplink", or empty
+	OpaqueStatus  string
 	// Any errrors from provisioning the service
 	Error     string
 	ErrorTime time.Time
@@ -598,4 +599,24 @@ type AdditionalInfoApp struct {
 	DeviceIID   uint32
 	UnderlayIP  string
 	Hostname    string `json:",omitempty"` // From reverse DNS
+}
+
+type IpSecLocalConfig struct {
+	AwsVpnGateway  string
+	AwsVpcSubnet   string
+	TunnelName     string
+	UpLinkName     string
+	UpLinkIpAddr   string
+	IpTable        string
+	TunnelKey      string
+	Mtu            string
+	Metric         string
+}
+
+type AwsSSIpSecService struct {
+	AwsVpnGateway      string
+	AwsVpcSubnet       string
+	TunnelLocalIpAddr  string
+	TunnelRemoteIpAddr string
+	PreSharedKey       string
 }
