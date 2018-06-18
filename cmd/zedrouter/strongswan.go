@@ -15,9 +15,8 @@ import (
 // XXX currently, only AwsVpn StrongSwan Client IpSec Tunnel handling
 // XXX add support for standalone StrongSwan Server/client
 
-
 func strongswanCreate(config types.NetworkServiceConfig,
-			status *types.NetworkServiceStatus) error {
+	status *types.NetworkServiceStatus) error {
 
 	ipSecConfig, err := awsStrongSwanConfigParse(config.OpaqueConfig)
 	if err != nil {
@@ -33,23 +32,23 @@ func strongswanCreate(config types.NetworkServiceConfig,
 
 	// if address error
 	srcIp, err := types.GetLocalAddrAny(deviceNetworkStatus, 0,
-							config.Adapter)
-	if  err != nil {
+		config.Adapter)
+	if err != nil {
 		return err
 	}
-	
+
 	// set the local config
-	ipSecLocalConfig := types.IpSecLocalConfig {
-			AwsVpnGateway : ipSecConfig.AwsVpnGateway,
-			AwsVpcSubnet  : ipSecConfig.AwsVpcSubnet,
-			TunnelName    : "ipSecTunnel",
-			UpLinkName    : config.Adapter,
-			UpLinkIpAddr  : srcIp.String(),
-			IpTable       : "mangle",
-			TunnelKey     : "100",
-			Mtu           : "1419",
-			Metric        : "50",
-		}
+	ipSecLocalConfig := types.IpSecLocalConfig{
+		AwsVpnGateway: ipSecConfig.AwsVpnGateway,
+		AwsVpcSubnet:  ipSecConfig.AwsVpcSubnet,
+		TunnelName:    "ipSecTunnel",
+		UpLinkName:    config.Adapter,
+		UpLinkIpAddr:  srcIp.String(),
+		IpTable:       "mangle",
+		TunnelKey:     "100",
+		Mtu:           "1419",
+		Metric:        "50",
+	}
 
 	// stringify and store in status
 	bytes, err := json.Marshal(ipSecLocalConfig)
@@ -60,7 +59,7 @@ func strongswanCreate(config types.NetworkServiceConfig,
 
 	// create the ipsec config files, tunnel and rules
 	if err := awsStrongSwanTunnelCreate(ipSecConfig,
-				ipSecLocalConfig); err != nil {
+		ipSecLocalConfig); err != nil {
 		return err
 	}
 
@@ -101,7 +100,7 @@ func strongswanInactivate(status *types.NetworkServiceStatus) {
 }
 
 // aws Vpn IpSec Tenneling handler routines
-func awsStrongSwanConfigParse (opaqueConfig string) (types.AwsSSIpSecService, error) {
+func awsStrongSwanConfigParse(opaqueConfig string) (types.AwsSSIpSecService, error) {
 
 	cb := []byte(opaqueConfig)
 	ipSecConfig := types.AwsSSIpSecService{}
@@ -112,7 +111,7 @@ func awsStrongSwanConfigParse (opaqueConfig string) (types.AwsSSIpSecService, er
 	return ipSecConfig, nil
 }
 
-func awsStrongSwanStatusParse (opaqueStatus string) (types.IpSecLocalConfig, error) {
+func awsStrongSwanStatusParse(opaqueStatus string) (types.IpSecLocalConfig, error) {
 
 	cb := []byte(opaqueStatus)
 	ipSecLocalConfig := types.IpSecLocalConfig{}
@@ -124,53 +123,53 @@ func awsStrongSwanStatusParse (opaqueStatus string) (types.IpSecLocalConfig, err
 }
 
 func awsStrongSwanTunnelCreate(ipSecConfig types.AwsSSIpSecService,
-			ipSecLocalConfig types.IpSecLocalConfig) error {
+	ipSecLocalConfig types.IpSecLocalConfig) error {
 
 	// set charon config
-	if err :=  charonConfigCreate(); err != nil {
+	if err := charonConfigCreate(); err != nil {
 		return err
 	}
 
 	// create ipsec.conf
 	if err := ipSecServiceConfigCreate(ipSecLocalConfig.TunnelName,
-				ipSecConfig.AwsVpnGateway,
-				ipSecLocalConfig.TunnelKey); err != nil {
+		ipSecConfig.AwsVpnGateway,
+		ipSecLocalConfig.TunnelKey); err != nil {
 		return err
 	}
 
 	// create ipsec.secrets
 	if err := ipSecSecretConfigCreate(ipSecConfig.AwsVpnGateway,
-				ipSecConfig.PreSharedKey); err != nil {
+		ipSecConfig.PreSharedKey); err != nil {
 		return err
 	}
 
 	// create tunnel interface
 	if err := ipLinkTunnelCreate(ipSecLocalConfig.TunnelName,
-				ipSecLocalConfig.UpLinkIpAddr,
-				ipSecConfig.AwsVpnGateway,
-				ipSecConfig.TunnelLocalIpAddr,
-				ipSecConfig.TunnelRemoteIpAddr,
-				ipSecLocalConfig.TunnelKey,
-				ipSecLocalConfig.Mtu); err != nil {
+		ipSecLocalConfig.UpLinkIpAddr,
+		ipSecConfig.AwsVpnGateway,
+		ipSecConfig.TunnelLocalIpAddr,
+		ipSecConfig.TunnelRemoteIpAddr,
+		ipSecLocalConfig.TunnelKey,
+		ipSecLocalConfig.Mtu); err != nil {
 		return err
 	}
 
 	// create iptable rules
 	if err := ipTablesRuleCreate(ipSecLocalConfig.IpTable,
-				ipSecLocalConfig.TunnelName, ipSecConfig.AwsVpnGateway,
-				ipSecLocalConfig.TunnelKey); err != nil {
+		ipSecLocalConfig.TunnelName, ipSecConfig.AwsVpnGateway,
+		ipSecLocalConfig.TunnelKey); err != nil {
 		return err
 	}
 
 	// request ip route create
 	if err := ipRouteCreate(ipSecLocalConfig.TunnelName,
-				ipSecConfig.AwsVpcSubnet, ipSecLocalConfig.Metric); err != nil {
+		ipSecConfig.AwsVpcSubnet, ipSecLocalConfig.Metric); err != nil {
 		return err
 	}
 
 	// issue sysctl for ipsec
 	if err := sysctlConfigCreate(ipSecLocalConfig.UpLinkName,
-				ipSecLocalConfig.TunnelName); err != nil {
+		ipSecLocalConfig.TunnelName); err != nil {
 		return err
 	}
 
@@ -180,7 +179,7 @@ func awsStrongSwanTunnelCreate(ipSecConfig types.AwsSSIpSecService,
 	return nil
 }
 
-func awsStrongSwanTunnelDelete(ipSecLocalConfig types.IpSecLocalConfig)  error {
+func awsStrongSwanTunnelDelete(ipSecLocalConfig types.IpSecLocalConfig) error {
 
 	// reset ipsec.conf/ipsec.secrets
 	// set default files in place of existing
@@ -194,14 +193,14 @@ func awsStrongSwanTunnelDelete(ipSecLocalConfig types.IpSecLocalConfig)  error {
 
 	// request iptables  rule delete
 	if err := ipTablesRulesDelete(ipSecLocalConfig.IpTable,
-				ipSecLocalConfig.TunnelName, ipSecLocalConfig.AwsVpnGateway,
-				ipSecLocalConfig.TunnelKey); err != nil {
+		ipSecLocalConfig.TunnelName, ipSecLocalConfig.AwsVpnGateway,
+		ipSecLocalConfig.TunnelKey); err != nil {
 		return err
 	}
 
 	// request ip route delete
 	if err := ipRouteDelete(ipSecLocalConfig.TunnelName,
-				ipSecLocalConfig.AwsVpcSubnet); err != nil {
+		ipSecLocalConfig.AwsVpcSubnet); err != nil {
 		return err
 	}
 
@@ -221,7 +220,7 @@ func awsStrongSwanTunnelActivate() error {
 }
 
 func awsStrongSwanTunnelInactivate() error {
-	if err:= ipSecServiceInactivate(); err != nil {
+	if err := ipSecServiceInactivate(); err != nil {
 		return err
 	}
 	return nil
