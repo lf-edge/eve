@@ -176,8 +176,8 @@ func ipSecServiceConfigCreate(tunnelName string,
 	cmd := exec.Command("chmod", "600", filename)
 	_, err := cmd.Output()
 	if err != nil {
-		log.Printf("%s for %s %s delete\n",
-			err.Error(), "ip link", tunnelName)
+		log.Printf("%s for %s %s\n",
+			err.Error(), "chmod", filename)
 		return err
 	}
 	return nil
@@ -235,6 +235,8 @@ func sysctlConfigSet() error {
 
 func ipSecConfigFileWrite(filename string, writeStr string) error {
 	data := []byte(writeStr)
-	pubsub.WriteRename(filename, data)
+	if err := pubsub.WriteRename(filename, data); err != nil {
+		return err
+	}
 	return nil
 }
