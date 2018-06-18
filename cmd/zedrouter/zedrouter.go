@@ -795,6 +795,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		olStatus.BridgeMac = bridgeMac
 		olStatus.Vif = vifName
 		olStatus.Mac = olMac
+		olStatus.HostName = config.UUIDandVersion.UUID.String()
 
 		netconfig := lookupNetworkObjectConfig(ctx,
 			olConfig.Network.String())
@@ -875,6 +876,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		cfgFilename = "dnsmasq." + bridgeName + ".conf"
 		cfgPathname = runDirname + "/" + cfgFilename
 		stopDnsmasq(cfgFilename, false)
+		// XXX need ipsets from all bn<N> users
 		createDnsmasqOverlayConfiglet(cfgPathname, bridgeName, olAddr1,
 			EID.String(), olMac, hostsDirpath,
 			config.UUIDandVersion.UUID.String(), ipsets, netconfig)
@@ -917,8 +919,8 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 			ulMac = ulConfig.AppMacAddr.String()
 		} else {
 			// Room to handle multiple underlays in 5th byte
-			ulMac = "00:16:3e:0:0:" +
-				strconv.FormatInt(int64(appNum), 16)
+			ulMac = fmt.Sprintf("00:16:3e:00:%02x:%02x",
+				ulNum, appNum)
 		}
 		log.Printf("ulMac %s\n", ulMac)
 
@@ -928,6 +930,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		ulStatus.BridgeMac = bridgeMac
 		ulStatus.Vif = vifName
 		ulStatus.Mac = ulMac
+		ulStatus.HostName = config.UUIDandVersion.UUID.String()
 
 		netconfig := lookupNetworkObjectConfig(ctx,
 			ulConfig.Network.String())
@@ -984,6 +987,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		cfgPathname := runDirname + "/" + cfgFilename
 		stopDnsmasq(cfgFilename, false)
 
+		// XXX need ipsets from all bn<N> users
 		createDnsmasqUnderlayConfiglet(cfgPathname, bridgeName, ulAddr1,
 			ulAddr2, ulMac, config.UUIDandVersion.UUID.String(),
 			ipsets, netconfig)
@@ -1262,6 +1266,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 		return
 	}
 
+	// XXX need ipsets from all bn<N> users
 	newIpsets, staleIpsets, restartDnsmasq := updateAppInstanceIpsets(
 		config.OverlayNetworkList,
 		config.UnderlayNetworkList,
@@ -1315,6 +1320,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 			stopDnsmasq(cfgFilename, false)
 			//remove old dnsmasq configuration file
 			os.Remove(cfgPathname)
+			// XXX need to determine remaining ipsets. Inside function?
 			createDnsmasqOverlayConfiglet(cfgPathname, bridgeName,
 				olAddr1, EID.String(), olStatus.Mac, hostsDirpath,
 				config.UUIDandVersion.UUID.String(), newIpsets,
@@ -1373,6 +1379,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 			stopDnsmasq(cfgFilename, false)
 			//remove old dnsmasq configuration file
 			os.Remove(cfgPathname)
+			// XXX need ipsets from all bn<N> users
 			createDnsmasqUnderlayConfiglet(cfgPathname, bridgeName,
 				ulAddr1, ulAddr2, ulStatus.Mac,
 				config.UUIDandVersion.UUID.String(), newIpsets,
@@ -1554,15 +1561,16 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 				netlink.LinkDel(oLink)
 			}
 
+			// XXX need IPv6 allocate/free to do same as for ulConfig
 			// radvd cleanup
-			// XXX not all of it
+			// XXX not all of it; see dnsmasq below
 			cfgFilename := "radvd." + bridgeName + ".conf"
 			cfgPathname := runDirname + "/" + cfgFilename
 			stopRadvd(cfgFilename, true)
 			deleteRadvdConfiglet(cfgPathname)
 
 			// dnsmasq cleanup
-			// XXX not all of it
+			// XXX not all of it - see ulStatus below
 			cfgFilename = "dnsmasq." + bridgeName + ".conf"
 			cfgPathname = runDirname + "/" + cfgFilename
 			stopDnsmasq(cfgFilename, true)
@@ -1617,12 +1625,40 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 				// Remove link and associated addresses
 				netlink.LinkDel(uLink)
 			}
-			// dnsmasq cleanup
-			// XXX not all of it
+			netconfig := lookupNetworkObjectConfig(ctx,
+				ulStatus.Network.String())
+			doDelete := true
+			if netconfig != nil {
+				last, err := releaseIPv4(ctx, *netconfig,
+					ulStatus.BridgeMac)
+				if err != nil {
+					addError(ctx, status, "freeIPv4", err)
+				}
+				if !last {
+					doDelete = false
+				}
+			}
+
 			cfgFilename := "dnsmasq." + bridgeName + ".conf"
 			cfgPathname := runDirname + "/" + cfgFilename
-			stopDnsmasq(cfgFilename, true)
-			deleteDnsmasqConfiglet(cfgPathname)
+			if doDelete {
+				// dnsmasq cleanup
+				stopDnsmasq(cfgFilename, true)
+				deleteDnsmasqConfiglet(cfgPathname)
+			} else {
+				// Update
+				stopDnsmasq(cfgFilename, false)
+				//remove old dnsmasq configuration file
+				os.Remove(cfgPathname)
+				// XXX Don't need to pass app-specific args
+				// XXX need ipsets from all bn<N> users
+				// XXX need to determine remaining ipsets. Inside function?
+				// xxx NIL for now
+				createDnsmasqUnderlayConfiglet(cfgPathname, bridgeName,
+					"", "", ulStatus.Mac,
+					"", []string{}, netconfig)
+				startDnsmasq(cfgPathname, bridgeName)
+			}
 
 			// Delete ACLs
 			var sshPort uint

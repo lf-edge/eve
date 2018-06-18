@@ -66,8 +66,23 @@ func createDnsmasqOverlayConfiglet(cfgPathname string, olIfname string,
 		olIfname))
 	file.WriteString(fmt.Sprintf("interface=%s\n", olIfname))
 	file.WriteString(fmt.Sprintf("listen-address=%s\n", olAddr1))
-	file.WriteString(fmt.Sprintf("dhcp-host=%s,[%s],%s\n",
-		olMac, olAddr2, hostName))
+	if netconf != nil {
+		// walk all of netconf - find all hosts which use this network
+		for _, status := range appNetworkStatus {
+			for _, olStatus := range status.OverlayNetworkList {
+				if olStatus.Network != netconf.UUID {
+					continue
+				}
+				file.WriteString(fmt.Sprintf("dhcp-host=%s,[%s],%s\n",
+					olStatus.Mac,
+					olStatus.EID,
+					olStatus.HostName))
+			}
+		}
+	} else {
+		file.WriteString(fmt.Sprintf("dhcp-host=%s,[%s],%s\n",
+			olMac, olAddr2, hostName))
+	}
 	file.WriteString(fmt.Sprintf("hostsdir=%s\n", hostsDir))
 
 	if netconf != nil {
@@ -110,8 +125,23 @@ func createDnsmasqUnderlayConfiglet(cfgPathname string, ulIfname string,
 		ulIfname))
 	file.WriteString(fmt.Sprintf("interface=%s\n", ulIfname))
 	file.WriteString(fmt.Sprintf("listen-address=%s\n", ulAddr1))
-	file.WriteString(fmt.Sprintf("dhcp-host=%s,id:*,%s,%s\n",
-		ulMac, ulAddr2, hostName))
+	if netconf != nil {
+		// walk all of netconf - find all hosts which use this network
+		for _, status := range appNetworkStatus {
+			for _, ulStatus := range status.UnderlayNetworkList {
+				if ulStatus.Network != netconf.UUID {
+					continue
+				}
+				file.WriteString(fmt.Sprintf("dhcp-host=%s,id:*,%s,%s\n",
+					ulStatus.Mac,
+					ulStatus.AssignedIPAddr,
+					ulStatus.HostName))
+			}
+		}
+	} else {
+		file.WriteString(fmt.Sprintf("dhcp-host=%s,id:*,%s,%s\n",
+			ulMac, ulAddr2, hostName))
+	}
 
 	netmask := "255.255.0.0"  // Default unless there is a Subnet
 	dhcpRange := "172.27.0.0" // Default unless there is a DhcpRange

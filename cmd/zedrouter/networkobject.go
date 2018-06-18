@@ -239,6 +239,29 @@ func lookupOrAllocateIPv4(ctx *zedrouterContext,
 	return "", errors.New(errStr)
 }
 
+// Returns true if the last entry was removed
+func releaseIPv4(ctx *zedrouterContext,
+	config types.NetworkObjectConfig, mac net.HardwareAddr) (bool, error) {
+
+	log.Printf("releaseIPv4(%s)\n", mac.String())
+	// Allocation happens in status
+	status := lookupNetworkObjectStatus(ctx, config.UUID.String())
+	if status == nil {
+		errStr := fmt.Sprintf("releaseIPv4: no NetworkOjectStatus for %s",
+			config.UUID.String())
+		return false, errors.New(errStr)
+	}
+	// Lookup to see if it exists
+	if _, ok := status.IPAssignments[mac.String()]; !ok {
+		errStr := fmt.Sprintf("releaseIPv4: not found %s for %s",
+			mac.String(), config.UUID.String())
+		return false, errors.New(errStr)
+	}
+	delete(status.IPAssignments, mac.String())
+	last := len(status.IPAssignments) == 0
+	return last, nil
+}
+
 // Returns true if found
 func lookupIP(status *types.NetworkObjectStatus, ip net.IP) bool {
 	for _, a := range status.IPAssignments {

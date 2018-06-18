@@ -386,6 +386,7 @@ type OverlayNetworkStatus struct {
 	VifInfo
 	BridgeMac    net.HardwareAddr
 	BridgeIPAddr string // The address for DNS/DHCP service in zedrouter
+	HostName     string
 }
 
 type DhcpType uint8
@@ -413,6 +414,7 @@ type UnderlayNetworkStatus struct {
 	BridgeMac      net.HardwareAddr
 	BridgeIPAddr   string // The address for DNS/DHCP service in zedrouter
 	AssignedIPAddr string // Assigned to domU
+	HostName       string
 }
 
 type NetworkType uint8
