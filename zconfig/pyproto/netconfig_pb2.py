@@ -21,7 +21,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='netconfig.proto',
   package='',
   syntax='proto3',
-  serialized_pb=_b('\n\x0fnetconfig.proto\x1a\x08\x66w.proto\x1a\x0cnetcmn.proto\"\x95\x01\n\rNetworkConfig\x12\n\n\x02id\x18\x01 \x01(\t\x12\x1a\n\x04type\x18\x05 \x01(\x0e\x32\x0c.NetworkType\x12\x1a\n\x05nlisp\x18\t \x01(\x0b\x32\t.lispspecH\x00\x12\x18\n\x03nv4\x18\n \x01(\x0b\x32\t.ipv4specH\x00\x12\x18\n\x03nv6\x18\x0b \x01(\x0b\x32\t.ipv6specH\x00\x42\x0c\n\nnetContent\"\xc4\x01\n\x0eNetworkAdapter\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\n\n\x02id\x18\x02 \x01(\t\x12\x11\n\tnetworkId\x18\x03 \x01(\t\x12\x0c\n\x04\x61\x64\x64r\x18\x04 \x01(\t\x12\x10\n\x08hostname\x18\x05 \x01(\t\x12\x15\n\rlispsignature\x18\x06 \x01(\t\x12\x0f\n\x07pemcert\x18\x07 \x01(\x0c\x12\x15\n\rpemprivatekey\x18\x08 \x01(\x0c\x12\x12\n\nmacAddress\x18\t \x01(\t\x12\x12\n\x04\x61\x63ls\x18( \x03(\x0b\x32\x04.ACEB@\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1dgithub.com/zededa/api/zconfigb\x06proto3')
+  serialized_pb=_b('\n\x0fnetconfig.proto\x1a\x08\x66w.proto\x1a\x0cnetcmn.proto\"L\n\rNetworkConfig\x12\n\n\x02id\x18\x01 \x01(\t\x12\x1a\n\x04type\x18\x05 \x01(\x0e\x32\x0c.NetworkType\x12\x13\n\x02ip\x18\x06 \x01(\x0b\x32\x07.ipspec\"\xc4\x01\n\x0eNetworkAdapter\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\n\n\x02id\x18\x02 \x01(\t\x12\x11\n\tnetworkId\x18\x03 \x01(\t\x12\x0c\n\x04\x61\x64\x64r\x18\x04 \x01(\t\x12\x10\n\x08hostname\x18\x05 \x01(\t\x12\x15\n\rlispsignature\x18\x06 \x01(\t\x12\x0f\n\x07pemcert\x18\x07 \x01(\x0c\x12\x15\n\rpemprivatekey\x18\x08 \x01(\x0c\x12\x12\n\nmacAddress\x18\t \x01(\t\x12\x12\n\x04\x61\x63ls\x18( \x03(\x0b\x32\x04.ACEB@\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1dgithub.com/zededa/api/zconfigb\x06proto3')
   ,
   dependencies=[fw__pb2.DESCRIPTOR,netcmn__pb2.DESCRIPTOR,])
 
@@ -50,22 +50,8 @@ _NETWORKCONFIG = _descriptor.Descriptor(
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='nlisp', full_name='NetworkConfig.nlisp', index=2,
-      number=9, type=11, cpp_type=10, label=1,
-      has_default_value=False, default_value=None,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      options=None, file=DESCRIPTOR),
-    _descriptor.FieldDescriptor(
-      name='nv4', full_name='NetworkConfig.nv4', index=3,
-      number=10, type=11, cpp_type=10, label=1,
-      has_default_value=False, default_value=None,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      options=None, file=DESCRIPTOR),
-    _descriptor.FieldDescriptor(
-      name='nv6', full_name='NetworkConfig.nv6', index=4,
-      number=11, type=11, cpp_type=10, label=1,
+      name='ip', full_name='NetworkConfig.ip', index=2,
+      number=6, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
@@ -81,12 +67,9 @@ _NETWORKCONFIG = _descriptor.Descriptor(
   syntax='proto3',
   extension_ranges=[],
   oneofs=[
-    _descriptor.OneofDescriptor(
-      name='netContent', full_name='NetworkConfig.netContent',
-      index=0, containing_type=None, fields=[]),
   ],
-  serialized_start=44,
-  serialized_end=193,
+  serialized_start=43,
+  serialized_end=119,
 )
 
 
@@ -179,23 +162,12 @@ _NETWORKADAPTER = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=196,
-  serialized_end=392,
+  serialized_start=122,
+  serialized_end=318,
 )
 
 _NETWORKCONFIG.fields_by_name['type'].enum_type = netcmn__pb2._NETWORKTYPE
-_NETWORKCONFIG.fields_by_name['nlisp'].message_type = netcmn__pb2._LISPSPEC
-_NETWORKCONFIG.fields_by_name['nv4'].message_type = netcmn__pb2._IPV4SPEC
-_NETWORKCONFIG.fields_by_name['nv6'].message_type = netcmn__pb2._IPV6SPEC
-_NETWORKCONFIG.oneofs_by_name['netContent'].fields.append(
-  _NETWORKCONFIG.fields_by_name['nlisp'])
-_NETWORKCONFIG.fields_by_name['nlisp'].containing_oneof = _NETWORKCONFIG.oneofs_by_name['netContent']
-_NETWORKCONFIG.oneofs_by_name['netContent'].fields.append(
-  _NETWORKCONFIG.fields_by_name['nv4'])
-_NETWORKCONFIG.fields_by_name['nv4'].containing_oneof = _NETWORKCONFIG.oneofs_by_name['netContent']
-_NETWORKCONFIG.oneofs_by_name['netContent'].fields.append(
-  _NETWORKCONFIG.fields_by_name['nv6'])
-_NETWORKCONFIG.fields_by_name['nv6'].containing_oneof = _NETWORKCONFIG.oneofs_by_name['netContent']
+_NETWORKCONFIG.fields_by_name['ip'].message_type = netcmn__pb2._IPSPEC
 _NETWORKADAPTER.fields_by_name['acls'].message_type = fw__pb2._ACE
 DESCRIPTOR.message_types_by_name['NetworkConfig'] = _NETWORKCONFIG
 DESCRIPTOR.message_types_by_name['NetworkAdapter'] = _NETWORKADAPTER
