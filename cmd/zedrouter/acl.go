@@ -615,6 +615,13 @@ func updateNetworkACLConfiglet(ctx *zedrouterContext,
 			}
 			newRules = append(newRules, rules...)
 		}
+		if len(newRules) != 0 {
+			dropRules, err := aclDropRules(ifname)
+			if err != nil {
+				return err
+			}
+			newRules = append(newRules, dropRules...)
+		}
 	}
 	for _, status := range appNetworkStatus {
 		for _, olStatus := range status.OverlayNetworkList {
@@ -628,11 +635,20 @@ func updateNetworkACLConfiglet(ctx *zedrouterContext,
 			}
 			oldRules = append(oldRules, rules...)
 		}
+		if len(oldRules) != 0 {
+			dropRules, err := aclDropRules(ifname)
+			if err != nil {
+				return err
+			}
+			oldRules = append(oldRules, dropRules...)
+		}
 	}
 	err := applyACLUpdate(false, ipVer, oldRules, newRules)
 	if err != nil {
 		return nil
 	}
+	newRules = IptablesRuleList{}
+	oldRules = IptablesRuleList{}
 	ipVer = 4
 	for _, config := range appNetworkConfig {
 		for _, ulConfig := range config.UnderlayNetworkList {
@@ -648,6 +664,13 @@ func updateNetworkACLConfiglet(ctx *zedrouterContext,
 			}
 			newRules = append(newRules, rules...)
 		}
+		if newRules != nil {
+			dropRules, err := aclDropRules(ifname)
+			if err != nil {
+				return err
+			}
+			newRules = append(newRules, dropRules...)
+		}
 	}
 	for _, status := range appNetworkStatus {
 		for _, ulStatus := range status.UnderlayNetworkList {
@@ -662,6 +685,13 @@ func updateNetworkACLConfiglet(ctx *zedrouterContext,
 				return err
 			}
 			oldRules = append(oldRules, rules...)
+		}
+		if len(oldRules) != 0 {
+			dropRules, err := aclDropRules(ifname)
+			if err != nil {
+				return err
+			}
+			oldRules = append(oldRules, dropRules...)
 		}
 	}
 	return applyACLUpdate(false, ipVer, oldRules, newRules)
