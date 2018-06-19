@@ -673,8 +673,8 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 	if config.EnableVnc {
 		file.WriteString(fmt.Sprintf("vnc = 1\n"))
 		file.WriteString(fmt.Sprintf("vnclisten = \"0.0.0.0\"\n"))
-		file.WriteString(fmt.Sprintf("usb=1"\n"))
-		file.WriteString(fmt.Sprintf("usbdevice=['tablet']\n"))
+		file.WriteString(fmt.Sprintf("usb=1\n"))
+		file.WriteString(fmt.Sprintf("usbdevice=[\"tablet\"]\n"))
 	}
 
 	// Go from kbytes to mbytes
