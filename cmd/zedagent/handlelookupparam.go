@@ -1,6 +1,10 @@
 // Copyright (c) 2017-2018 Zededa, Inc.
 // All rights reserved.
 
+// Publish the IsZedmanager AppNetworkConfig and /etc/hosts
+// XXX Should also look at the corresponding AppNetworkStatus and report
+// any errors back as device errors to zedcloud.
+
 package zedagent
 
 import (

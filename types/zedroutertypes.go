@@ -384,6 +384,9 @@ type OverlayNetworkConfig struct {
 type OverlayNetworkStatus struct {
 	OverlayNetworkConfig
 	VifInfo
+	BridgeMac    net.HardwareAddr
+	BridgeIPAddr string // The address for DNS/DHCP service in zedrouter
+	HostName     string
 }
 
 type DhcpType uint8
@@ -408,14 +411,19 @@ type UnderlayNetworkConfig struct {
 type UnderlayNetworkStatus struct {
 	UnderlayNetworkConfig
 	VifInfo
+	BridgeMac      net.HardwareAddr
+	BridgeIPAddr   string // The address for DNS/DHCP service in zedrouter
+	AssignedIPAddr string // Assigned to domU
+	HostName       string
 }
 
 type NetworkType uint8
 
 const (
-	NT_IPV4 NetworkType = iota + 1
-	NT_IPV6
-	NT_LISP // XXX TBD make it a service
+	NT_IPV4 NetworkType = 4
+	NT_IPV6             = 6
+	NT_LISP             = 10 // XXX TBD make it a service
+	// XXX Do we need a NT_DUAL/NT_IPV46? Implies two subnets/dhcp ranges?
 )
 
 // Extracted from the protobuf NetworkConfig
@@ -426,7 +434,7 @@ const (
 type NetworkObjectConfig struct {
 	UUID uuid.UUID
 	Type NetworkType
-	Dhcp DhcpType // If DT_STATIC use below
+	Dhcp DhcpType // If DT_STATIC or DT_SERVER use below
 	// XXX LocalDhcp  bool   // Run a DHCP server
 	// XXX LocalDns   bool   // Run a DNS server
 	// XXX LocalAddr  net.IP // For local DHCP/DNS; could be same as Gateway
@@ -443,7 +451,7 @@ type IpRange struct {
 	End   net.IP
 }
 
-// If Ifname is set it means the network is in use
+// XXX If Ifname is set it means the network is in use
 // TBD: allow multiple applications to connect to the same Network by adding
 // another vif to the ifname.
 type NetworkObjectStatus struct {
@@ -453,7 +461,11 @@ type NetworkObjectStatus struct {
 	PendingDelete bool
 	BridgeNum     int
 	BridgeName    string // bn<N>
-	Ifname        string // AKA Adapter - from NetworkServiceConfig???
+	BridgeIPAddr  string
+	// XXX Adapter        string // AKA Adapter - from NetworkServiceConfig???
+	// Collection of address assignments; from MAC address to IP address
+	// XXX record hostnames as well?
+	IPAssignments map[string]net.IP
 	// Any errrors from provisioning the network
 	Error     string
 	ErrorTime time.Time
@@ -474,6 +486,7 @@ const (
 // Extracted from protobuf Service definition
 type NetworkServiceConfig struct {
 	UUID         uuid.UUID
+	Internal     bool // Internally created - not from zedcloud
 	DisplayName  string
 	Type         NetworkServiceType
 	Activate     bool

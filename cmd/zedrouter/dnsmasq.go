@@ -66,21 +66,36 @@ func createDnsmasqOverlayConfiglet(cfgPathname string, olIfname string,
 		olIfname))
 	file.WriteString(fmt.Sprintf("interface=%s\n", olIfname))
 	file.WriteString(fmt.Sprintf("listen-address=%s\n", olAddr1))
-	file.WriteString(fmt.Sprintf("dhcp-host=%s,[%s],%s\n",
-		olMac, olAddr2, hostName))
+	if netconf != nil {
+		// walk all of netconf - find all hosts which use this network
+		for _, status := range appNetworkStatus {
+			for _, olStatus := range status.OverlayNetworkList {
+				if olStatus.Network != netconf.UUID {
+					continue
+				}
+				file.WriteString(fmt.Sprintf("dhcp-host=%s,[%s],%s\n",
+					olStatus.Mac,
+					olStatus.EID,
+					olStatus.HostName))
+			}
+		}
+	} else {
+		file.WriteString(fmt.Sprintf("dhcp-host=%s,[%s],%s\n",
+			olMac, olAddr2, hostName))
+	}
 	file.WriteString(fmt.Sprintf("hostsdir=%s\n", hostsDir))
 
 	if netconf != nil {
 		if netconf.DomainName != "" {
-			file.WriteString(fmt.Sprintf("dhcp-option=domain-search,%s\n",
+			file.WriteString(fmt.Sprintf("dhcp-option=option:domain-search,%s\n",
 				netconf.DomainName))
 		}
 		for _, ns := range netconf.DnsServers {
-			file.WriteString(fmt.Sprintf("dhcp-option=dns-server,%s\n",
+			file.WriteString(fmt.Sprintf("dhcp-option=option:dns-server,%s\n",
 				ns.String()))
 		}
 		if netconf.NtpServer != nil {
-			file.WriteString(fmt.Sprintf("dhcp-option=ntp-server,%s\n",
+			file.WriteString(fmt.Sprintf("dhcp-option=option:ntp-server,%s\n",
 				netconf.NtpServer.String()))
 		}
 	}
@@ -91,8 +106,8 @@ func createDnsmasqOverlayConfiglet(cfgPathname string, olIfname string,
 // XXX not clear what needs to change here to handle IPv6 underlay. The default
 // ranges are off, plus domain-name needs to be replaced by domain-search, etc
 func createDnsmasqUnderlayConfiglet(cfgPathname string, ulIfname string,
-	ulAddr1 string, ulAddr2 string, ulMac string, hostName string,
-	ipsets []string, netconf *types.NetworkObjectConfig) {
+	ulAddr1 string, ulAddr2 string, ulMac string, hostsDir string,
+	hostName string, ipsets []string, netconf *types.NetworkObjectConfig) {
 	if debug {
 		log.Printf("createDnsmasqUnderlayConfiglen: %s\n", ulIfname)
 	}
@@ -110,28 +125,45 @@ func createDnsmasqUnderlayConfiglet(cfgPathname string, ulIfname string,
 		ulIfname))
 	file.WriteString(fmt.Sprintf("interface=%s\n", ulIfname))
 	file.WriteString(fmt.Sprintf("listen-address=%s\n", ulAddr1))
-	file.WriteString(fmt.Sprintf("dhcp-host=%s,id:*,%s,%s\n",
-		ulMac, ulAddr2, hostName))
+	file.WriteString(fmt.Sprintf("hostsdir=%s\n", hostsDir))
+
+	if netconf != nil {
+		// walk all of netconf - find all hosts which use this network
+		for _, status := range appNetworkStatus {
+			for _, ulStatus := range status.UnderlayNetworkList {
+				if ulStatus.Network != netconf.UUID {
+					continue
+				}
+				file.WriteString(fmt.Sprintf("dhcp-host=%s,id:*,%s,%s\n",
+					ulStatus.Mac,
+					ulStatus.AssignedIPAddr,
+					ulStatus.HostName))
+			}
+		}
+	} else {
+		file.WriteString(fmt.Sprintf("dhcp-host=%s,id:*,%s,%s\n",
+			ulMac, ulAddr2, hostName))
+	}
 
 	netmask := "255.255.0.0"  // Default unless there is a Subnet
 	dhcpRange := "172.27.0.0" // Default unless there is a DhcpRange
 
 	if netconf != nil {
 		if netconf.DomainName != "" {
-			file.WriteString(fmt.Sprintf("dhcp-option=domain-name,%s\n",
+			file.WriteString(fmt.Sprintf("dhcp-option=option:domain-name,%s\n",
 				netconf.DomainName))
 		}
 		for _, ns := range netconf.DnsServers {
-			file.WriteString(fmt.Sprintf("dhcp-option=dns-server,%s\n",
+			file.WriteString(fmt.Sprintf("dhcp-option=option:dns-server,%s\n",
 				ns.String()))
 		}
 		if netconf.NtpServer != nil {
-			file.WriteString(fmt.Sprintf("dhcp-option=ntp-server,%s\n",
+			file.WriteString(fmt.Sprintf("dhcp-option=option:ntp-server,%s\n",
 				netconf.NtpServer.String()))
 		}
 		if netconf.Subnet.IP != nil {
 			netmask = net.IP(netconf.Subnet.Mask).String()
-			file.WriteString(fmt.Sprintf("dhcp-option=netmask,%s\n",
+			file.WriteString(fmt.Sprintf("dhcp-option=option:netmask,%s\n",
 				netmask))
 		}
 		if netconf.Gateway != nil {
@@ -140,13 +172,7 @@ func createDnsmasqUnderlayConfiglet(cfgPathname string, ulIfname string,
 				netconf.Gateway.String()))
 		}
 		if netconf.DhcpRange.Start != nil {
-			if netconf.DhcpRange.End != nil {
-				dhcpRange = fmt.Sprintf("%s,%s",
-					netconf.DhcpRange.Start.String(),
-					netconf.DhcpRange.End.String())
-			} else {
-				dhcpRange = netconf.DhcpRange.Start.String()
-			}
+			dhcpRange = netconf.DhcpRange.Start.String()
 		}
 	}
 	file.WriteString(fmt.Sprintf("dhcp-range=%s,static,%s,infinite\n",
