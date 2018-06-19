@@ -829,8 +829,6 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 
 		netconfig := lookupNetworkObjectConfig(ctx,
 			olConfig.Network.String())
-		netstatus := lookupNetworkObjectStatus(ctx,
-			olConfig.Network.String())
 
 		// XXX need to get olAddr1 from bridge and record it
 		// XXX add AF_INET6 to getBridgeService(ctx, olconfig.Network)
@@ -905,6 +903,8 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		createEidIpsetConfiglet(bridgeName, olConfig.NameToEidList,
 			EID.String())
 
+		netstatus := lookupNetworkObjectStatus(ctx,
+			olConfig.Network.String())
 		// Set up ACLs before we setup dnsmasq
 		if netstatus != nil {
 			err = updateNetworkACLConfiglet(ctx, netstatus)
@@ -918,6 +918,8 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 				addError(ctx, &status, "createACL", err)
 			}
 		}
+		// XXX createDnsmasq assumes it can read this to get netstatus
+		writeAppNetworkStatus(&status)
 
 		// Start clean
 		cfgFilename = "dnsmasq." + bridgeName + ".conf"
@@ -982,8 +984,6 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 
 		netconfig := lookupNetworkObjectConfig(ctx,
 			ulConfig.Network.String())
-		netstatus := lookupNetworkObjectStatus(ctx,
-			ulConfig.Network.String())
 
 		ulAddr1, ulAddr2 := getUlAddrs(ctx, ulNum-1, appNum, ulStatus,
 			netconfig)
@@ -1032,6 +1032,8 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		if ulConfig.SshPortMap {
 			sshPort = 8022 + 100*uint(appNum)
 		}
+		netstatus := lookupNetworkObjectStatus(ctx,
+			ulConfig.Network.String())
 		if netstatus != nil {
 			err = updateNetworkACLConfiglet(ctx, netstatus)
 			if err != nil {
@@ -1044,6 +1046,8 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 				addError(ctx, &status, "createACL", err)
 			}
 		}
+		// XXX createDnsmasq assumes it can read this to get netstatus
+		writeAppNetworkStatus(&status)
 
 		// Start clean
 		cfgFilename := "dnsmasq." + bridgeName + ".conf"
@@ -1161,7 +1165,6 @@ func getUlAddrs(ctx *zedrouterContext, ifnum int, appNum int,
 	ulAddr1 := fmt.Sprintf("172.%d.%d.1", 27+ifnum, appNum)
 	ulAddr2 := fmt.Sprintf("172.%d.%d.2", 27+ifnum, appNum)
 
-	// XXX ulAddr1 should not depend on AppIpAddr - allocate separately
 	if netconf != nil {
 		// Allocate ulAddr1 based on BridgeMac
 		addr, err := lookupOrAllocateIPv4(ctx, *netconf,
@@ -1354,8 +1357,6 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 
 		netconfig := lookupNetworkObjectConfig(ctx,
 			olConfig.Network.String())
-		netstatus := lookupNetworkObjectStatus(ctx,
-			olConfig.Network.String())
 		// Update hosts
 		// XXX doesn't handle a sharedBridge
 		hostsDirpath := globalRunDirname + "/hosts." + bridgeName
@@ -1367,6 +1368,8 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 		updateEidIpsetConfiglet(bridgeName, olStatus.NameToEidList,
 			olConfig.NameToEidList)
 
+		netstatus := lookupNetworkObjectStatus(ctx,
+			olConfig.Network.String())
 		// Update ACLs
 		if netstatus != nil {
 			err := updateNetworkACLConfiglet(ctx, netstatus)
@@ -1380,6 +1383,8 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 				addError(ctx, status, "updateACL", err)
 			}
 		}
+		// XXX createDnsmasq assumes it can read this to get netstatus
+		writeAppNetworkStatus(status)
 
 		// updateAppInstanceIpsets told us whether there is a change
 		// to the set of ipsets, and that requires restarting dnsmasq
@@ -1431,14 +1436,14 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 
 		netconfig := lookupNetworkObjectConfig(ctx,
 			ulConfig.Network.String())
-		netstatus := lookupNetworkObjectStatus(ctx,
-			ulConfig.Network.String())
 
 		// Update ACLs
 		var sshPort uint
 		if ulConfig.SshPortMap {
 			sshPort = 8022 + 100*uint(appNum)
 		}
+		netstatus := lookupNetworkObjectStatus(ctx,
+			ulConfig.Network.String())
 		if netstatus != nil {
 			err := updateNetworkACLConfiglet(ctx, netstatus)
 			if err != nil {
@@ -1451,6 +1456,8 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 				addError(ctx, status, "updateACL", err)
 			}
 		}
+		// XXX createDnsmasq assumes it can read this to get netstatus
+		writeAppNetworkStatus(status)
 
 		if restartDnsmasq {
 			//update underlay dnsmasq configuration
@@ -1647,10 +1654,11 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 			}
 			netconfig := lookupNetworkObjectConfig(ctx,
 				olStatus.Network.String())
-			netstatus := lookupNetworkObjectStatus(ctx,
-				olStatus.Network.String())
 
 			// XXX need IPv6 allocate/free to do same as for ulConfig
+			// XXX createDnsmasq assumes it can read this to get netstatus
+			writeAppNetworkStatus(status)
+
 			// radvd cleanup
 			// XXX not all of it; see dnsmasq below; if sharedBridge
 			cfgFilename := "radvd." + bridgeName + ".conf"
@@ -1666,6 +1674,8 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 			deleteDnsmasqConfiglet(cfgPathname)
 
 			// Delete ACLs
+			netstatus := lookupNetworkObjectStatus(ctx,
+				olStatus.Network.String())
 			if netstatus != nil {
 				err := updateNetworkACLConfiglet(ctx, netstatus)
 				if err != nil {
@@ -1727,8 +1737,6 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 			}
 			netconfig := lookupNetworkObjectConfig(ctx,
 				ulStatus.Network.String())
-			netstatus := lookupNetworkObjectStatus(ctx,
-				ulStatus.Network.String())
 
 			doDelete := true
 			if netconfig != nil {
@@ -1741,6 +1749,8 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 					doDelete = false
 				}
 			}
+			// XXX createDnsmasq assumes it can read this to get netstatus
+			writeAppNetworkStatus(status)
 
 			hostsDirpath := globalRunDirname + "/hosts." + bridgeName
 			cfgFilename := "dnsmasq." + bridgeName + ".conf"
@@ -1772,6 +1782,8 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 			ulAddr1 := ulStatus.BridgeIPAddr
 			ulAddr2 := ulStatus.AssignedIPAddr
 
+			netstatus := lookupNetworkObjectStatus(ctx,
+				ulStatus.Network.String())
 			if netstatus != nil {
 				err := updateNetworkACLConfiglet(ctx, netstatus)
 				if err != nil {
