@@ -161,7 +161,10 @@ func handleDomainStatusModify(ctxArg interface{}, statusFilename string,
 		appDiskAndNameList = make(map[string][]string)
 	}
 	var interfaceList []string
+	// We report the vif and bridge since the ACL drops are on the Bridge
+	// XXX move ACLs to vif??
 	for _, vif := range status.VifList {
+		interfaceList = append(interfaceList, vif.Vif)
 		interfaceList = append(interfaceList, vif.Bridge)
 	}
 	appInterfaceAndNameList[status.DomainName] = interfaceList
@@ -643,21 +646,38 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 			}
 			networkDetails := new(zmet.NetworkMetric)
 			networkDetails.IName = metric.IfName
-			// Note that the packets received on bu* and bo* where sent
-			// by the domU and vice versa, hence we swap here
-			networkDetails.TxPkts = metric.RxPkts
-			networkDetails.RxPkts = metric.TxPkts
-			networkDetails.TxBytes = metric.RxBytes
-			networkDetails.RxBytes = metric.TxBytes
-			networkDetails.TxDrops = metric.RxDrops
-			networkDetails.RxDrops = metric.TxDrops
-			networkDetails.TxErrors = metric.RxErrors
-			networkDetails.RxErrors = metric.TxErrors
-			networkDetails.TxAclDrops = metric.RxAclDrops
-			networkDetails.RxAclDrops = metric.TxAclDrops
-			networkDetails.TxAclRateLimitDrops = metric.RxAclRateLimitDrops
-			networkDetails.RxAclRateLimitDrops = metric.TxAclRateLimitDrops
-
+			// Counters not swapped on vif
+			if strings.HasPrefix(ifName, "nbn") ||
+			strings.HasPrefix(ifName, "nbu") ||
+			strings.HasPrefix(ifName, "nbo") {
+				networkDetails.TxPkts = metric.TxPkts
+				networkDetails.RxPkts = metric.RxPkts
+				networkDetails.TxBytes = metric.TxBytes
+				networkDetails.RxBytes = metric.RxBytes
+				networkDetails.TxDrops = metric.TxDrops
+				networkDetails.RxDrops = metric.RxDrops
+				networkDetails.TxErrors = metric.TxErrors
+				networkDetails.RxErrors = metric.RxErrors
+				networkDetails.TxAclDrops = metric.TxAclDrops
+				networkDetails.RxAclDrops = metric.RxAclDrops
+				networkDetails.TxAclRateLimitDrops = metric.TxAclRateLimitDrops
+				networkDetails.RxAclRateLimitDrops = metric.RxAclRateLimitDrops
+			} else {
+				// Note that the packets received on bu* and bo* where sent
+				// by the domU and vice versa, hence we swap here
+				networkDetails.TxPkts = metric.RxPkts
+				networkDetails.RxPkts = metric.TxPkts
+				networkDetails.TxBytes = metric.RxBytes
+				networkDetails.RxBytes = metric.TxBytes
+				networkDetails.TxDrops = metric.RxDrops
+				networkDetails.RxDrops = metric.TxDrops
+				networkDetails.TxErrors = metric.RxErrors
+				networkDetails.RxErrors = metric.TxErrors
+				networkDetails.TxAclDrops = metric.RxAclDrops
+				networkDetails.RxAclDrops = metric.TxAclDrops
+				networkDetails.TxAclRateLimitDrops = metric.RxAclRateLimitDrops
+				networkDetails.RxAclRateLimitDrops = metric.TxAclRateLimitDrops
+			}
 			ReportAppMetric.Network = append(ReportAppMetric.Network,
 				networkDetails)
 		}
