@@ -9,12 +9,7 @@ import "netcmn.proto";
 message NetworkConfig {
 	string id = 1;
 	NetworkType type = 5;
-	oneof netContent {
-		// FIXME: lisp is configuration in lisp VPN not here
-		lispspec nlisp = 9;
-		ipv4spec nv4 = 10;
-		ipv6spec nv6 = 11;
-	}
+	ipspec ip = 6;
 }
 
 message NetworkAdapter {

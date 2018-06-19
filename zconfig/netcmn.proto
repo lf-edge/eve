@@ -23,7 +23,8 @@ enum DHCPType {
 	Client = 4;
 }
 
-message ipv4spec {
+// Common for IPv4 and IPv6
+message ipspec {
 	DHCPType   dhcp = 2;
 
 	// subnet is CIDR format...x.y.z.l/nn
@@ -31,21 +32,6 @@ message ipv4spec {
 	string gateway = 5;
 	string domain = 6;
 	string ntp = 7;
-	repeated string dns = 8;
-
-	// for IPAM management when dhcp is turned on.
-	// If none provided, system will default pool.
-	ipRange dhcpRange = 9;
-}
-
-message ipv6spec {
-	DHCPType   dhcp = 2;
-
-	// subnet is CIDR format...x.y.z.l/nn
-	string subnet = 3;
-	string gateway = 5;
-	string domain = 6;
-	string ntp = 7;;
 	repeated string dns = 8;
 
 	// for IPAM management when dhcp is turned on.
@@ -66,6 +52,8 @@ message EIDAllocation {
 	bytes allocationprefix = 3;
 	uint32 allocationprefixlen = 4;
 }
+
+// XXX lispspec is no longer used. Remove?
 message lispspec {
 	uint32 iid = 1;
 	EIDAllocation eidalloc = 2;
@@ -77,6 +65,6 @@ enum NetworkType {
 	NETWORKTYPENOOP = 0;
 	V4 = 4;
 	V6 = 6;
-	LISP = 10;
+	LISP = 10;	//  XXX deprecated
 }
 

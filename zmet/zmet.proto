@@ -183,6 +183,7 @@ message ZInfoApp {
   repeated ZioBundle assignedAdapters = 13;
   repeated ErrorInfo appErr = 14;
   ZSwState state = 15;
+  repeated ZInfoNetwork network = 16;	// XXX add?
 }
 
 message ZInfoMsg {
