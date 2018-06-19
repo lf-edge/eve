@@ -291,6 +291,19 @@ func lookupNetworkServiceStatus(ctx *zedrouterContext, key string) *types.Networ
 	return &status
 }
 
+// Entrypoint from networkobject to look for the service type and optional
+// adapter
+func getServiceInfo(ctx *zedrouterContext, appLink uuid.UUID) (types.NetworkServiceType, string, error) {
+	// Find any service which is associated with the appLink UUID
+	log.Printf("getServiceInfo(%s)\n", appLink.String())
+	status := lookupAppLink(ctx, appLink)
+	if status == nil {
+		errStr := fmt.Sprintf("getServiceInfo: no NetworkServiceStatus for %s", appLink.String())
+		return types.NST_FIRST, "", errors.New(errStr)
+	}
+	return status.Type, status.Adapter, nil
+}
+
 // Entrypoint from networkobject to look for a bridge's IP address
 func getBridgeService(ctx *zedrouterContext, appLink uuid.UUID) (string, error) {
 	// Find any service which is associated with the appLink UUID
