@@ -71,7 +71,7 @@ type DNCContext struct {
 	separateDataPlane  bool
 }
 
-var debug = false
+var debug = true // XXX XXX restore
 
 func Run() {
 	logf, err := agentlog.Init(agentName)
@@ -782,6 +782,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 			config.UnderlayNetworkList[i]
 	}
 
+	// XXX use different compile??
 	ipsets := compileAppInstanceIpsets(ctx, config.OverlayNetworkList,
 		config.UnderlayNetworkList)
 	for i, olConfig := range config.OverlayNetworkList {
@@ -827,6 +828,8 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		olStatus.HostName = config.UUIDandVersion.UUID.String()
 
 		netconfig := lookupNetworkObjectConfig(ctx,
+			olConfig.Network.String())
+		netstatus := lookupNetworkObjectStatus(ctx,
 			olConfig.Network.String())
 
 		// XXX need to get olAddr1 from bridge and record it
@@ -903,10 +906,17 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 			EID.String())
 
 		// Set up ACLs before we setup dnsmasq
-		err = createACLConfiglet(bridgeName, false, olConfig.ACLs, 6,
-			olAddr1, "", 0, netconfig)
-		if err != nil {
-			addError(ctx, &status, "createACL", err)
+		if netstatus != nil {
+			err = updateNetworkACLConfiglet(ctx, netstatus)
+			if err != nil {
+				addError(ctx, &status, "updateNetworkACL", err)
+			}
+		} else {
+			err = createACLConfiglet(bridgeName, false, olConfig.ACLs, 6,
+				olAddr1, "", 0, netconfig)
+			if err != nil {
+				addError(ctx, &status, "createACL", err)
+			}
 		}
 
 		// Start clean
@@ -972,6 +982,8 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 
 		netconfig := lookupNetworkObjectConfig(ctx,
 			ulConfig.Network.String())
+		netstatus := lookupNetworkObjectStatus(ctx,
+			ulConfig.Network.String())
 
 		ulAddr1, ulAddr2 := getUlAddrs(ctx, ulNum-1, appNum, ulStatus,
 			netconfig)
@@ -1020,10 +1032,17 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		if ulConfig.SshPortMap {
 			sshPort = 8022 + 100*uint(appNum)
 		}
-		err = createACLConfiglet(bridgeName, false, ulConfig.ACLs, 4,
-			ulAddr1, ulAddr2, sshPort, netconfig)
-		if err != nil {
-			addError(ctx, &status, "createACL", err)
+		if netstatus != nil {
+			err = updateNetworkACLConfiglet(ctx, netstatus)
+			if err != nil {
+				addError(ctx, &status, "updateNetworkACL", err)
+			}
+		} else {
+			err = createACLConfiglet(bridgeName, false, ulConfig.ACLs, 4,
+				ulAddr1, ulAddr2, sshPort, netconfig)
+			if err != nil {
+				addError(ctx, &status, "createACL", err)
+			}
 		}
 
 		// Start clean
@@ -1335,6 +1354,8 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 
 		netconfig := lookupNetworkObjectConfig(ctx,
 			olConfig.Network.String())
+		netstatus := lookupNetworkObjectStatus(ctx,
+			olConfig.Network.String())
 		// Update hosts
 		// XXX doesn't handle a sharedBridge
 		hostsDirpath := globalRunDirname + "/hosts." + bridgeName
@@ -1347,11 +1368,17 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 			olConfig.NameToEidList)
 
 		// Update ACLs
-		// XXX shared with others
-		err := updateACLConfiglet(bridgeName, false, olStatus.ACLs,
-			olConfig.ACLs, 6, olAddr1, "", 0, netconfig)
-		if err != nil {
-			addError(ctx, status, "updateACL", err)
+		if netstatus != nil {
+			err := updateNetworkACLConfiglet(ctx, netstatus)
+			if err != nil {
+				addError(ctx, status, "updateNetworkACL", err)
+			}
+		} else {
+			err := updateACLConfiglet(bridgeName, false, olStatus.ACLs,
+				olConfig.ACLs, 6, olAddr1, "", 0, netconfig)
+			if err != nil {
+				addError(ctx, status, "updateACL", err)
+			}
 		}
 
 		// updateAppInstanceIpsets told us whether there is a change
@@ -1404,16 +1431,25 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 
 		netconfig := lookupNetworkObjectConfig(ctx,
 			ulConfig.Network.String())
+		netstatus := lookupNetworkObjectStatus(ctx,
+			ulConfig.Network.String())
+
 		// Update ACLs
-		// XXX shared with others?
 		var sshPort uint
 		if ulConfig.SshPortMap {
 			sshPort = 8022 + 100*uint(appNum)
 		}
-		err := updateACLConfiglet(bridgeName, false, ulStatus.ACLs,
-			ulConfig.ACLs, 4, ulAddr1, ulAddr2, sshPort, netconfig)
-		if err != nil {
-			addError(ctx, status, "updateACL", err)
+		if netstatus != nil {
+			err := updateNetworkACLConfiglet(ctx, netstatus)
+			if err != nil {
+				addError(ctx, status, "updateNetworkACL", err)
+			}
+		} else {
+			err := updateACLConfiglet(bridgeName, false, ulStatus.ACLs,
+				ulConfig.ACLs, 4, ulAddr1, ulAddr2, sshPort, netconfig)
+			if err != nil {
+				addError(ctx, status, "updateACL", err)
+			}
 		}
 
 		if restartDnsmasq {
@@ -1611,6 +1647,8 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 			}
 			netconfig := lookupNetworkObjectConfig(ctx,
 				olStatus.Network.String())
+			netstatus := lookupNetworkObjectStatus(ctx,
+				olStatus.Network.String())
 
 			// XXX need IPv6 allocate/free to do same as for ulConfig
 			// radvd cleanup
@@ -1628,11 +1666,17 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 			deleteDnsmasqConfiglet(cfgPathname)
 
 			// Delete ACLs
-			// XXX not all of it
-			err := deleteACLConfiglet(bridgeName, false,
-				olStatus.ACLs, 6, olAddr1, "", 0, netconfig)
-			if err != nil {
-				addError(ctx, status, "deleteACL", err)
+			if netstatus != nil {
+				err := updateNetworkACLConfiglet(ctx, netstatus)
+				if err != nil {
+					addError(ctx, status, "updateNetworkACL", err)
+				}
+			} else {
+				err := deleteACLConfiglet(bridgeName, false,
+					olStatus.ACLs, 6, olAddr1, "", 0, netconfig)
+				if err != nil {
+					addError(ctx, status, "deleteACL", err)
+				}
 			}
 
 			// Delete LISP configlets
@@ -1683,6 +1727,9 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 			}
 			netconfig := lookupNetworkObjectConfig(ctx,
 				ulStatus.Network.String())
+			netstatus := lookupNetworkObjectStatus(ctx,
+				ulStatus.Network.String())
+
 			doDelete := true
 			if netconfig != nil {
 				last, err := releaseIPv4(ctx, *netconfig,
@@ -1725,12 +1772,18 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 			ulAddr1 := ulStatus.BridgeIPAddr
 			ulAddr2 := ulStatus.AssignedIPAddr
 
-			// XXX not all of it
-			err := deleteACLConfiglet(bridgeName, false,
-				ulStatus.ACLs, 4, ulAddr1, ulAddr2,
-				sshPort, netconfig)
-			if err != nil {
-				addError(ctx, status, "deleteACL", err)
+			if netstatus != nil {
+				err := updateNetworkACLConfiglet(ctx, netstatus)
+				if err != nil {
+					addError(ctx, status, "updateNetworkACL", err)
+				}
+			} else {
+				err := deleteACLConfiglet(bridgeName, false,
+					ulStatus.ACLs, 4, ulAddr1, ulAddr2,
+					sshPort, netconfig)
+				if err != nil {
+					addError(ctx, status, "deleteACL", err)
+				}
 			}
 			// Delete hosts file or directory
 			if sharedBridge {

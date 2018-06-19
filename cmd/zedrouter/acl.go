@@ -588,6 +588,86 @@ func updateAppInstanceIpsets(ctx *zedrouterContext,
 	return newIpsets, staleIpsets, restartDnsmasq
 }
 
+// Perform an update across all of the bridge aka NetworkObjectStatus
+func updateNetworkACLConfiglet(ctx *zedrouterContext,
+	netstatus *types.NetworkObjectStatus) error {
+
+	if debug {
+		log.Printf("updateNetworkACLConfiglet: ifname %s IP %s\n",
+			netstatus.BridgeName, netstatus.BridgeIPAddr)
+	}
+	newRules := IptablesRuleList{}
+	oldRules := IptablesRuleList{}
+	ifname := netstatus.BridgeName
+	bridgeIPAddr := netstatus.BridgeIPAddr
+
+	// Walk overlay/IPv6 first
+	ipVer := 6
+	for _, config := range appNetworkConfig {
+		for _, olConfig := range config.OverlayNetworkList {
+			if olConfig.Network != netstatus.UUID {
+				continue
+			}
+			rules, err := aclToRules(ifname, olConfig.ACLs, ipVer,
+				bridgeIPAddr, "", 0)
+			if err != nil {
+				return err
+			}
+			newRules = append(newRules, rules...)
+		}
+	}
+	for _, status := range appNetworkStatus {
+		for _, olStatus := range status.OverlayNetworkList {
+			if olStatus.Network != netstatus.UUID {
+				continue
+			}
+			rules, err := aclToRules(ifname, olStatus.ACLs, ipVer,
+				bridgeIPAddr, "", 0)
+			if err != nil {
+				return err
+			}
+			oldRules = append(oldRules, rules...)
+		}
+	}
+	err := applyACLUpdate(false, ipVer, oldRules, newRules)
+	if err != nil {
+		return nil
+	}
+	ipVer = 4
+	for _, config := range appNetworkConfig {
+		for _, ulConfig := range config.UnderlayNetworkList {
+			if ulConfig.Network != netstatus.UUID {
+				continue
+			}
+			// XXX where can we get ulAddr2 := ulStatus.AssignedIPAddr
+			// XXX no sshPortMap
+			rules, err := aclToRules(ifname, ulConfig.ACLs, ipVer,
+				bridgeIPAddr, "", 0)
+			if err != nil {
+				return err
+			}
+			newRules = append(newRules, rules...)
+		}
+	}
+	for _, status := range appNetworkStatus {
+		for _, ulStatus := range status.UnderlayNetworkList {
+			if ulStatus.Network != netstatus.UUID {
+				continue
+			}
+			ulAddr2 := ulStatus.AssignedIPAddr
+			// XXX no sshPortMap
+			rules, err := aclToRules(ifname, ulStatus.ACLs, ipVer,
+				bridgeIPAddr, ulAddr2, 0)
+			if err != nil {
+				return err
+			}
+			oldRules = append(oldRules, rules...)
+		}
+	}
+	return applyACLUpdate(false, ipVer, oldRules, newRules)
+}
+
+// XXX old update function
 func updateACLConfiglet(ifname string, isMgmt bool, oldACLs []types.ACE,
 	newACLs []types.ACE, ipVer int, myIP string, appIP string,
 	underlaySshPortMap uint, netconfig *types.NetworkObjectConfig) error {
@@ -605,6 +685,17 @@ func updateACLConfiglet(ifname string, isMgmt bool, oldACLs []types.ACE,
 	if err != nil {
 		return err
 	}
+	return applyACLUpdate(isMgmt, ipVer, oldRules, newRules)
+}
+
+func applyACLUpdate(isMgmt bool, ipVer int,
+	oldRules IptablesRuleList, newRules IptablesRuleList) error {
+
+	if debug {
+		log.Printf("applyACLUpdate: isMgmt %v ipVer %d oldRules %v newRules %v\n",
+			isMgmt, ipVer, oldRules, newRules)
+	}
+	var err error
 	// Look for old which should be deleted
 	for _, rule := range oldRules {
 		if containsRule(newRules, rule) {
