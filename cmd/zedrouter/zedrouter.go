@@ -409,6 +409,7 @@ func updateDeviceNetworkStatus() {
 
 // Key is UUID
 var appNetworkStatus map[string]types.AppNetworkStatus
+var appNetworkConfig map[string]types.AppNetworkConfig
 
 // XXX rename to update? Remove statusFilename?
 //	statusFilename := fmt.Sprintf("/var/run/%s/%s/%s.json",
@@ -450,7 +451,35 @@ func removeAppNetworkStatus(status *types.AppNetworkStatus) {
 	if err := os.Remove(statusFilename); err != nil {
 		log.Println(err)
 	}
+	if _, ok := appNetworkStatus[key]; !ok {
+		log.Printf("removeAppNetworkStatus for remove for %s\n", key)
+		return
+	}
+	delete(appNetworkStatus, key)
 	// pubsub.UnpublishStatus(agentName, topic, key)
+}
+
+// XXX temporary function until we use pubsub for AppNetworkConfig
+func recordAppNetworkConfig(config *types.AppNetworkConfig) {
+
+	key := config.UUIDandVersion.UUID.String()
+
+	if appNetworkConfig == nil {
+		if debug {
+			log.Printf("create appNetworkConfig map\n")
+		}
+		appNetworkConfig = make(map[string]types.AppNetworkConfig)
+	}
+	appNetworkConfig[key] = *config
+}
+
+// XXX temporary function until we use pubsub for AppNetworkConfig
+func removeAppNetworkConfig(key string) {
+	if _, ok := appNetworkConfig[key]; !ok {
+		log.Printf("removeAppNetworkConfig for remove for %s\n", key)
+		return
+	}
+	delete(appNetworkConfig, key)
 }
 
 // Format a json string with any additional info
@@ -535,6 +564,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 	config := configArg.(*types.AppNetworkConfig)
 	log.Printf("handleCreate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
+	recordAppNetworkConfig(config)
 
 	// Pick a local number to identify the application instance
 	// Used for IP addresses as well bridge and file names.
@@ -705,7 +735,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 
 		// Set up ACLs
 		err = createACLConfiglet(olIfname, true, olConfig.ACLs,
-			6, "", "", 0)
+			6, "", "", 0, nil)
 		if err != nil {
 			addError(ctx, &status, "createACL", err)
 		}
@@ -752,9 +782,8 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 			config.UnderlayNetworkList[i]
 	}
 
-	ipsets := compileAppInstanceIpsets(config.OverlayNetworkList,
+	ipsets := compileAppInstanceIpsets(ctx, config.OverlayNetworkList,
 		config.UnderlayNetworkList)
-
 	for i, olConfig := range config.OverlayNetworkList {
 		olNum := i + 1
 		if debug {
@@ -875,7 +904,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 
 		// Set up ACLs before we setup dnsmasq
 		err = createACLConfiglet(bridgeName, false, olConfig.ACLs, 6,
-			olAddr1, "", 0)
+			olAddr1, "", 0, netconfig)
 		if err != nil {
 			addError(ctx, &status, "createACL", err)
 		}
@@ -992,7 +1021,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 			sshPort = 8022 + 100*uint(appNum)
 		}
 		err = createACLConfiglet(bridgeName, false, ulConfig.ACLs, 4,
-			ulAddr1, ulAddr2, sshPort)
+			ulAddr1, ulAddr2, sshPort, netconfig)
 		if err != nil {
 			addError(ctx, &status, "createACL", err)
 		}
@@ -1002,7 +1031,6 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		cfgPathname := runDirname + "/" + cfgFilename
 		stopDnsmasq(cfgFilename, false)
 
-		// XXX need ipsets from all bn<N> users
 		createDnsmasqUnderlayConfiglet(cfgPathname, bridgeName, ulAddr1,
 			ulAddr2, ulMac, hostsDirpath,
 			config.UUIDandVersion.UUID.String(),
@@ -1194,6 +1222,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 	status := statusArg.(*types.AppNetworkStatus)
 	log.Printf("handleModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
+	recordAppNetworkConfig(config)
 
 	if config.UUIDandVersion.Version == status.UUIDandVersion.Version {
 		log.Printf("Same version %s for %s\n",
@@ -1272,7 +1301,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 
 		// Update ACLs
 		err := updateACLConfiglet(olIfname, true, olStatus.ACLs,
-			olConfig.ACLs, 6, "", "", 0)
+			olConfig.ACLs, 6, "", "", 0, nil)
 		if err != nil {
 			addError(ctx, status, "updateACL", err)
 		}
@@ -1282,8 +1311,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 		return
 	}
 
-	// XXX need ipsets from all bn<N> users
-	newIpsets, staleIpsets, restartDnsmasq := updateAppInstanceIpsets(
+	newIpsets, staleIpsets, restartDnsmasq := updateAppInstanceIpsets(ctx,
 		config.OverlayNetworkList,
 		config.UnderlayNetworkList,
 		status.OverlayNetworkList,
@@ -1305,6 +1333,8 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 		bridgeName := olStatus.Bridge
 		olAddr1 := olStatus.BridgeIPAddr
 
+		netconfig := lookupNetworkObjectConfig(ctx,
+			olConfig.Network.String())
 		// Update hosts
 		// XXX doesn't handle a sharedBridge
 		hostsDirpath := globalRunDirname + "/hosts." + bridgeName
@@ -1319,7 +1349,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 		// Update ACLs
 		// XXX shared with others
 		err := updateACLConfiglet(bridgeName, false, olStatus.ACLs,
-			olConfig.ACLs, 6, olAddr1, "", 0)
+			olConfig.ACLs, 6, olAddr1, "", 0, netconfig)
 		if err != nil {
 			addError(ctx, status, "updateACL", err)
 		}
@@ -1328,8 +1358,6 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 		// to the set of ipsets, and that requires restarting dnsmasq
 		// XXX shared with others
 		if restartDnsmasq {
-			netconfig := lookupNetworkObjectConfig(ctx,
-				olConfig.Network.String())
 			cfgFilename := "dnsmasq." + bridgeName + ".conf"
 			cfgPathname := runDirname + "/" + cfgFilename
 			EID := olConfig.EID
@@ -1374,6 +1402,8 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 		ulAddr1 := ulStatus.BridgeIPAddr
 		ulAddr2 := ulStatus.AssignedIPAddr
 
+		netconfig := lookupNetworkObjectConfig(ctx,
+			ulConfig.Network.String())
 		// Update ACLs
 		// XXX shared with others?
 		var sshPort uint
@@ -1381,15 +1411,13 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 			sshPort = 8022 + 100*uint(appNum)
 		}
 		err := updateACLConfiglet(bridgeName, false, ulStatus.ACLs,
-			ulConfig.ACLs, 4, ulAddr1, ulAddr2, sshPort)
+			ulConfig.ACLs, 4, ulAddr1, ulAddr2, sshPort, netconfig)
 		if err != nil {
 			addError(ctx, status, "updateACL", err)
 		}
 
 		if restartDnsmasq {
 			//update underlay dnsmasq configuration
-			netconfig := lookupNetworkObjectConfig(ctx,
-				ulConfig.Network.String())
 			hostsDirpath := globalRunDirname + "/hosts." + bridgeName
 			cfgFilename := "dnsmasq." + bridgeName + ".conf"
 			cfgPathname := runDirname + "/" + cfgFilename
@@ -1445,6 +1473,7 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 	status := statusArg.(*types.AppNetworkStatus)
 	log.Printf("handleDelete(%v) for %s\n",
 		status.UUIDandVersion, status.DisplayName)
+	removeAppNetworkConfig(status.UUIDandVersion.UUID.String())
 
 	appNum := status.AppNum
 	maxOlNum := status.OlNum
@@ -1545,7 +1574,7 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 
 		// Delete ACLs
 		err = deleteACLConfiglet(olIfname, true, olStatus.ACLs,
-			6, "", "", 0)
+			6, "", "", 0, nil)
 		if err != nil {
 			addError(ctx, status, "deleteACL", err)
 		}
@@ -1580,6 +1609,8 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 				// Remove link and associated addresses
 				netlink.LinkDel(oLink)
 			}
+			netconfig := lookupNetworkObjectConfig(ctx,
+				olStatus.Network.String())
 
 			// XXX need IPv6 allocate/free to do same as for ulConfig
 			// radvd cleanup
@@ -1599,7 +1630,7 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 			// Delete ACLs
 			// XXX not all of it
 			err := deleteACLConfiglet(bridgeName, false,
-				olStatus.ACLs, 6, olAddr1, "", 0)
+				olStatus.ACLs, 6, olAddr1, "", 0, netconfig)
 			if err != nil {
 				addError(ctx, status, "deleteACL", err)
 			}
@@ -1697,7 +1728,7 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 			// XXX not all of it
 			err := deleteACLConfiglet(bridgeName, false,
 				ulStatus.ACLs, 4, ulAddr1, ulAddr2,
-				sshPort)
+				sshPort, netconfig)
 			if err != nil {
 				addError(ctx, status, "deleteACL", err)
 			}

@@ -32,58 +32,158 @@ func compileAceIpsets(ACLs []types.ACE) []string {
 	return ipsets
 }
 
-func compileOverlayIpsets(ollist []types.OverlayNetworkConfig) []string {
+func compileOverlayIpsets(ctx *zedrouterContext,
+	ollist []types.OverlayNetworkConfig) []string {
+
 	ipsets := []string{}
 	for _, olConfig := range ollist {
-		ipsets = append(ipsets, compileAceIpsets(olConfig.ACLs)...)
+		netconfig := lookupNetworkObjectConfig(ctx,
+			olConfig.Network.String())
+		if netconfig != nil {
+			// All ipsets from everybody on this network
+			ipsets = append(ipsets, compileNetworkIpsetsConfig(ctx,
+				netconfig)...)
+		} else {
+			ipsets = append(ipsets, compileAceIpsets(olConfig.ACLs)...)
+		}
 	}
 	return ipsets
 }
 
-func compileUnderlayIpsets(ullist []types.UnderlayNetworkConfig) []string {
-	ipsets := []string{}
-	for _, ulConfig := range ullist {
-		ipsets = append(ipsets, compileAceIpsets(ulConfig.ACLs)...)
-	}
-	return ipsets
-}
-
-func compileAppInstanceIpsets(ollist []types.OverlayNetworkConfig,
+func compileUnderlayIpsets(ctx *zedrouterContext,
 	ullist []types.UnderlayNetworkConfig) []string {
-	ipsets := []string{}
 
-	ipsets = append(ipsets, compileOverlayIpsets(ollist)...)
-	ipsets = append(ipsets, compileUnderlayIpsets(ullist)...)
-	return ipsets
-}
-
-func compileOldOverlayIpsets(ollist []types.OverlayNetworkStatus) []string {
-	ipsets := []string{}
-	for _, olConfig := range ollist {
-		ipsets = append(ipsets, compileAceIpsets(olConfig.ACLs)...)
-	}
-	return ipsets
-}
-
-func compileOldUnderlayIpsets(ullist []types.UnderlayNetworkStatus) []string {
 	ipsets := []string{}
 	for _, ulConfig := range ullist {
-		ipsets = append(ipsets, compileAceIpsets(ulConfig.ACLs)...)
+		netconfig := lookupNetworkObjectConfig(ctx,
+			ulConfig.Network.String())
+		if netconfig != nil {
+			// All ipsets from everybody on this network
+			ipsets = append(ipsets, compileNetworkIpsetsConfig(ctx,
+				netconfig)...)
+		} else {
+			ipsets = append(ipsets, compileAceIpsets(ulConfig.ACLs)...)
+		}
 	}
 	return ipsets
 }
 
-func compileOldAppInstanceIpsets(ollist []types.OverlayNetworkStatus,
-	ullist []types.UnderlayNetworkStatus) []string {
-	ipsets := []string{}
+func compileAppInstanceIpsets(ctx *zedrouterContext,
+	ollist []types.OverlayNetworkConfig,
+	ullist []types.UnderlayNetworkConfig) []string {
 
-	ipsets = append(ipsets, compileOldOverlayIpsets(ollist)...)
-	ipsets = append(ipsets, compileOldUnderlayIpsets(ullist)...)
+	ipsets := []string{}
+	ipsets = append(ipsets, compileOverlayIpsets(ctx, ollist)...)
+	ipsets = append(ipsets, compileUnderlayIpsets(ctx, ullist)...)
 	return ipsets
 }
 
+func compileNetworkIpsetsStatus(ctx *zedrouterContext,
+	netconfig *types.NetworkObjectConfig) []string {
+
+	ipsets := []string{}
+	if netconfig == nil {
+		return ipsets
+	}
+	// walk all of netconfig - find all hosts which use this network
+	for _, status := range appNetworkStatus {
+		for _, olStatus := range status.OverlayNetworkList {
+			if olStatus.Network != netconfig.UUID {
+				continue
+			}
+			ipsets = append(ipsets,
+				compileAceIpsets(olStatus.ACLs)...)
+		}
+		for _, ulStatus := range status.UnderlayNetworkList {
+			if ulStatus.Network != netconfig.UUID {
+				continue
+			}
+			ipsets = append(ipsets,
+				compileAceIpsets(ulStatus.ACLs)...)
+		}
+	}
+	return ipsets
+}
+
+func compileNetworkIpsetsConfig(ctx *zedrouterContext,
+	netconfig *types.NetworkObjectConfig) []string {
+
+	ipsets := []string{}
+	if netconfig == nil {
+		return ipsets
+	}
+	// walk all of netconfig - find all hosts which use this network
+	for _, config := range appNetworkConfig {
+		for _, olConfig := range config.OverlayNetworkList {
+			if olConfig.Network != netconfig.UUID {
+				continue
+			}
+			ipsets = append(ipsets,
+				compileAceIpsets(olConfig.ACLs)...)
+		}
+		for _, ulConfig := range config.UnderlayNetworkList {
+			if ulConfig.Network != netconfig.UUID {
+				continue
+			}
+			ipsets = append(ipsets,
+				compileAceIpsets(ulConfig.ACLs)...)
+		}
+	}
+	return ipsets
+}
+
+func compileOldOverlayIpsets(ctx *zedrouterContext,
+	ollist []types.OverlayNetworkStatus) []string {
+
+	ipsets := []string{}
+	for _, olStatus := range ollist {
+		netconfig := lookupNetworkObjectConfig(ctx,
+			olStatus.Network.String())
+		if netconfig != nil {
+			// All ipsets from everybody on this network
+			ipsets = append(ipsets, compileNetworkIpsetsStatus(ctx,
+				netconfig)...)
+		} else {
+			ipsets = append(ipsets, compileAceIpsets(olStatus.ACLs)...)
+		}
+	}
+	return ipsets
+}
+
+func compileOldUnderlayIpsets(ctx *zedrouterContext,
+	ullist []types.UnderlayNetworkStatus) []string {
+
+	ipsets := []string{}
+	for _, ulStatus := range ullist {
+		netconfig := lookupNetworkObjectConfig(ctx,
+			ulStatus.Network.String())
+		if netconfig != nil {
+			// All ipsets from everybody on this network
+			ipsets = append(ipsets, compileNetworkIpsetsStatus(ctx,
+				netconfig)...)
+		} else {
+			ipsets = append(ipsets, compileAceIpsets(ulStatus.ACLs)...)
+		}
+	}
+	return ipsets
+}
+
+func compileOldAppInstanceIpsets(ctx *zedrouterContext,
+	ollist []types.OverlayNetworkStatus,
+	ullist []types.UnderlayNetworkStatus) []string {
+
+	ipsets := []string{}
+	ipsets = append(ipsets, compileOldOverlayIpsets(ctx, ollist)...)
+	ipsets = append(ipsets, compileOldUnderlayIpsets(ctx, ullist)...)
+	return ipsets
+}
+
+// XXX old function when the bridge is not shared.
+// For a shared bridge call aclToRules for each ifname, then aclDropRules,
+// then concat all the rules and pass to applyACLrules
 func createACLConfiglet(ifname string, isMgmt bool, ACLs []types.ACE,
-	ipVer int, myIP string, appIP string, underlaySshPortMap uint) error {
+	ipVer int, myIP string, appIP string, underlaySshPortMap uint,
+	netconfig *types.NetworkObjectConfig) error {
 	if debug {
 		log.Printf("createACLConfiglet: ifname %s, ACLs %v, IP %s/%s, ssh %d\n",
 			ifname, ACLs, myIP, appIP, underlaySshPortMap)
@@ -93,6 +193,22 @@ func createACLConfiglet(ifname string, isMgmt bool, ACLs []types.ACE,
 	if err != nil {
 		return err
 	}
+	dropRules, err := aclDropRules(ifname)
+	if err != nil {
+		return err
+	}
+	rules = append(rules, dropRules...)
+	return applyACLRules(rules, ifname, isMgmt, ipVer)
+}
+
+func applyACLRules(rules IptablesRuleList, ifname string, isMgmt bool,
+	ipVer int) error {
+
+	if debug {
+		log.Printf("applyACLRules: ifname %s ipVer %d with %d rules\n",
+			ifname, ipVer, len(rules))
+	}
+	var err error
 	for _, rule := range rules {
 		if debug {
 			log.Printf("createACLConfiglet: rule %v\n", rule)
@@ -182,6 +298,14 @@ func aclToRules(ifname string, ACLs []types.ACE, ipVer int,
 		}
 		rulesList = append(rulesList, rules...)
 	}
+	return rulesList, nil
+}
+
+func aclDropRules(ifname string) (IptablesRuleList, error) {
+	if debug {
+		log.Printf("aclDropRules: ifname %s\n", ifname)
+	}
+	rulesList := IptablesRuleList{}
 	// Implicit drop at the end with log before it
 	outArgs1 := []string{"-i", ifname, "-j", "LOG", "--log-prefix",
 		"FORWARD:FROM:", "--log-level", "3"}
@@ -427,7 +551,8 @@ func containsRule(set IptablesRuleList, member IptablesRule) bool {
 	return false
 }
 
-func updateAppInstanceIpsets(newolConfig []types.OverlayNetworkConfig,
+func updateAppInstanceIpsets(ctx *zedrouterContext,
+	newolConfig []types.OverlayNetworkConfig,
 	newulConfig []types.UnderlayNetworkConfig,
 	oldolConfig []types.OverlayNetworkStatus,
 	oldulConfig []types.UnderlayNetworkStatus) ([]string, []string, bool) {
@@ -435,8 +560,8 @@ func updateAppInstanceIpsets(newolConfig []types.OverlayNetworkConfig,
 	newIpsetMap := make(map[string]bool)
 	restartDnsmasq := false
 
-	newIpsets := compileAppInstanceIpsets(newolConfig, newulConfig)
-	oldIpsets := compileOldAppInstanceIpsets(oldolConfig, oldulConfig)
+	newIpsets := compileAppInstanceIpsets(ctx, newolConfig, newulConfig)
+	oldIpsets := compileOldAppInstanceIpsets(ctx, oldolConfig, oldulConfig)
 
 	// Add all new ipsets in a map
 	for _, ipset := range newIpsets {
@@ -465,7 +590,7 @@ func updateAppInstanceIpsets(newolConfig []types.OverlayNetworkConfig,
 
 func updateACLConfiglet(ifname string, isMgmt bool, oldACLs []types.ACE,
 	newACLs []types.ACE, ipVer int, myIP string, appIP string,
-	underlaySshPortMap uint) error {
+	underlaySshPortMap uint, netconfig *types.NetworkObjectConfig) error {
 	if debug {
 		log.Printf("updateACLConfiglet: ifname %s, oldACLs %v newACLs %v\n",
 			ifname, oldACLs, newACLs)
@@ -545,7 +670,9 @@ func updateACLConfiglet(ifname string, isMgmt bool, oldACLs []types.ACE,
 }
 
 func deleteACLConfiglet(ifname string, isMgmt bool, ACLs []types.ACE,
-	ipVer int, myIP string, appIP string, underlaySshPortMap uint) error {
+	ipVer int, myIP string, appIP string, underlaySshPortMap uint,
+	netconfig *types.NetworkObjectConfig) error {
+
 	if debug {
 		log.Printf("deleteACLConfiglet: ifname %s ACLs %v\n",
 			ifname, ACLs)
