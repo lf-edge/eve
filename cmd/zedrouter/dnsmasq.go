@@ -198,6 +198,7 @@ func startDnsmasq(cfgPathname string, ifname string) {
 		log.Printf("startDnsmasq: %s\n", cfgPathname)
 	}
 	name := "nohup"
+	//    XXX currently running as root with -d above
 	args := []string{
 		"/opt/zededa/bin/dnsmasq",
 		"-d",
@@ -222,5 +223,6 @@ func stopDnsmasq(cfgFilename string, printOnError bool) {
 	if debug {
 		log.Printf("stopDnsmasq: %s\n", cfgFilename)
 	}
-	pkillUserArgs("nobody", cfgFilename, printOnError)
+	// XXX currently running as root with -d above
+	pkillUserArgs("root", cfgFilename, printOnError)
 }
