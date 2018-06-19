@@ -602,15 +602,15 @@ type AdditionalInfoApp struct {
 }
 
 type IpSecLocalConfig struct {
-	AwsVpnGateway  string
-	AwsVpcSubnet   string
-	TunnelName     string
-	UpLinkName     string
-	UpLinkIpAddr   string
-	IpTable        string
-	TunnelKey      string
-	Mtu            string
-	Metric         string
+	AwsVpnGateway string
+	AwsVpcSubnet  string
+	TunnelName    string
+	UpLinkName    string
+	UpLinkIpAddr  string
+	IpTable       string
+	TunnelKey     string
+	Mtu           string
+	Metric        string
 }
 
 type AwsSSIpSecService struct {
