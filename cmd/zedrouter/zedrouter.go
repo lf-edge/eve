@@ -1819,8 +1819,9 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 func pkillUserArgs(userName string, match string, printOnError bool) {
 	cmd := "pkill"
 	args := []string{
-		"-u",
-		userName,
+// XXX note that alpine does not support -u
+// XXX		"-u",
+// XXX		userName,
 		"-f",
 		match,
 	}
