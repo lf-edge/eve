@@ -71,7 +71,7 @@ type DNCContext struct {
 	separateDataPlane  bool
 }
 
-var debug = true // XXX XXX restore
+var debug = false
 
 func Run() {
 	logf, err := agentlog.Init(agentName)
