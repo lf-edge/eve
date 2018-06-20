@@ -638,6 +638,10 @@ func publishNetworkObjectConfig(getconfigCtx *getconfigContext,
 		// DHCP = Server with an associated NAT service
 		if config.Dhcp == types.DT_NOOP {
 			config.Dhcp = types.DT_SERVER
+
+			// XXX Order since Service checks ...
+			getconfigCtx.pubNetworkObjectConfig.Publish(id.String(), &config)
+
 			_, subnet, _ := net.ParseCIDR("172.28.1.10/24")
 			config.Subnet = *subnet
 			// XXX dnsmasq should use BridgeIPAddr as the router?

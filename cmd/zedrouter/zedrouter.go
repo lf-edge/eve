@@ -927,7 +927,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		stopDnsmasq(cfgFilename, false)
 		// XXX need ipsets from all bn<N> users
 
-		createDnsmasqOverlayConfiglet(cfgPathname, bridgeName, olAddr1,
+		createDnsmasqOverlayConfiglet(ctx, cfgPathname, bridgeName, olAddr1,
 			EID.String(), olMac, hostsDirpath,
 			config.UUIDandVersion.UUID.String(), ipsets, netconfig)
 		startDnsmasq(cfgPathname, bridgeName)
@@ -1054,7 +1054,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		cfgPathname := runDirname + "/" + cfgFilename
 		stopDnsmasq(cfgFilename, false)
 
-		createDnsmasqUnderlayConfiglet(cfgPathname, bridgeName, ulAddr1,
+		createDnsmasqUnderlayConfiglet(ctx, cfgPathname, bridgeName, ulAddr1,
 			ulAddr2, ulMac, hostsDirpath,
 			config.UUIDandVersion.UUID.String(),
 			ipsets, netconfig)
@@ -1397,7 +1397,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 			//remove old dnsmasq configuration file
 			os.Remove(cfgPathname)
 			// XXX need to determine remaining ipsets. Inside function?
-			createDnsmasqOverlayConfiglet(cfgPathname, bridgeName,
+			createDnsmasqOverlayConfiglet(ctx, cfgPathname, bridgeName,
 				olAddr1, EID.String(), olStatus.Mac, hostsDirpath,
 				config.UUIDandVersion.UUID.String(), newIpsets,
 				netconfig)
@@ -1468,7 +1468,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 			//remove old dnsmasq configuration file
 			os.Remove(cfgPathname)
 			// XXX need ipsets from all bn<N> users
-			createDnsmasqUnderlayConfiglet(cfgPathname, bridgeName,
+			createDnsmasqUnderlayConfiglet(ctx, cfgPathname, bridgeName,
 				ulAddr1, ulAddr2, ulStatus.Mac,
 				hostsDirpath,
 				config.UUIDandVersion.UUID.String(), newIpsets,
@@ -1768,7 +1768,7 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 				// XXX need ipsets from all bn<N> users
 				// XXX need to determine remaining ipsets. Inside function?
 				// xxx NIL for now
-				createDnsmasqUnderlayConfiglet(cfgPathname, bridgeName,
+				createDnsmasqUnderlayConfiglet(ctx, cfgPathname, bridgeName,
 					"", "", ulStatus.Mac, hostsDirpath,
 					"", []string{}, netconfig)
 				startDnsmasq(cfgPathname, bridgeName)
@@ -1819,9 +1819,9 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 func pkillUserArgs(userName string, match string, printOnError bool) {
 	cmd := "pkill"
 	args := []string{
-// XXX note that alpine does not support -u
-// XXX		"-u",
-// XXX		userName,
+		// XXX note that alpine does not support -u
+		// XXX		"-u",
+		// XXX		userName,
 		"-f",
 		match,
 	}

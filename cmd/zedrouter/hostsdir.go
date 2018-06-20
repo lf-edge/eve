@@ -20,18 +20,25 @@ func createHostsConfiglet(cfgDirname string, nameToEidList []types.NameToEid) {
 		log.Printf("createHostsConfiglet: dir %s nameToEidList %v\n",
 			cfgDirname, nameToEidList)
 	}
-	err := os.Mkdir(cfgDirname, 0755)
-	if err != nil {
-		log.Fatal(err)
-	}
+	ensureDir(cfgDirname)
 
 	for _, ne := range nameToEidList {
 		addIPToHostsConfiglet(cfgDirname, ne.HostName, ne.EIDs)
 	}
 }
 
+func ensureDir(dirname string) {
+	if _, err := os.Stat(dirname); err != nil {
+		err := os.Mkdir(dirname, 0755)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+}
+
 // Create one file per hostname
 func addIPToHostsConfiglet(cfgDirname string, hostname string, addrs []net.IP) {
+	ensureDir(cfgDirname)
 	cfgPathname := cfgDirname + "/" + hostname
 	file, err := os.Create(cfgPathname)
 	if err != nil {
@@ -46,6 +53,7 @@ func addIPToHostsConfiglet(cfgDirname string, hostname string, addrs []net.IP) {
 
 // Create one file per hostname
 func addToHostsConfiglet(cfgDirname string, hostname string, addrs []string) {
+	ensureDir(cfgDirname)
 	cfgPathname := cfgDirname + "/" + hostname
 	file, err := os.Create(cfgPathname)
 	if err != nil {
