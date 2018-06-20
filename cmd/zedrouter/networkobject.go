@@ -80,12 +80,16 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 	log.Printf("doNetworkCreate NetworkObjectStatus key %s type %d\n",
 		config.UUID, config.Type)
 
+	pub := ctx.pubNetworkObjectStatus
+
 	// Check for valid types
 	switch config.Type {
 	case types.NT_IPV6:
+		// Nothing to do
 	case types.NT_IPV4:
+		// Nothing to do
 	case types.NT_LISP: // XXX turn into a service?
-		break
+		// Nothing to do
 	default:
 		errStr := fmt.Sprintf("doNetworkCreate type %d not supported",
 			config.Type)
@@ -99,6 +103,7 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 	bridgeName := fmt.Sprintf("bn%d", bridgeNum)
 	status.BridgeNum = bridgeNum
 	status.BridgeName = bridgeName
+	pub.Publish(status.UUID.String(), *status)
 
 	// Create bridge
 
@@ -129,6 +134,7 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 			bridgeName, err)
 		return errors.New(errStr)
 	}
+
 	// Check if we have a bridge service
 	if err := setBridgeIPAddr(ctx, config, status); err != nil {
 		return err
@@ -151,6 +157,7 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 func setBridgeIPAddr(ctx *zedrouterContext, config types.NetworkObjectConfig,
 	status *types.NetworkObjectStatus) error {
 
+	pub := ctx.pubNetworkObjectStatus
 	if status.BridgeName == "" {
 		// Called too early
 		log.Printf("setBridgeIPAddr: don't yet have a bridgeName for %s\n",
@@ -189,6 +196,8 @@ func setBridgeIPAddr(ctx *zedrouterContext, config types.NetworkObjectConfig,
 		}
 	}
 	status.BridgeIPAddr = ipAddr
+	pub.Publish(status.UUID.String(), *status)
+
 	//    ip addr add ${ipAddr}/24 dev ${bridgeName}
 	addr, err := netlink.ParseAddr(ipAddr + "/24")
 	if err != nil {
@@ -221,6 +230,11 @@ func lookupOrAllocateIPv4(ctx *zedrouterContext,
 		return ip.String(), nil
 	}
 
+	log.Printf("lookupNetworkObjectStatus: %s dhcp %d bridgeName %s Subnet %v range %v-%v\n",
+		status.UUID.String(), status.Dhcp, status.BridgeName,
+		status.Subnet, status.DhcpRange.Start, status.DhcpRange.End)
+
+	// XXX should we fall back to using Subnet?
 	if status.DhcpRange.Start == nil {
 		errStr := fmt.Sprintf("no NetworkOjectStatus DhcpRange for %s",
 			config.UUID.String())
@@ -256,6 +270,7 @@ func releaseIPv4(ctx *zedrouterContext,
 	config types.NetworkObjectConfig, mac net.HardwareAddr) (bool, error) {
 
 	log.Printf("releaseIPv4(%s)\n", mac.String())
+	pub := ctx.pubNetworkObjectStatus
 	// Allocation happens in status
 	status := lookupNetworkObjectStatus(ctx, config.UUID.String())
 	if status == nil {
@@ -271,6 +286,7 @@ func releaseIPv4(ctx *zedrouterContext,
 	}
 	delete(status.IPAssignments, mac.String())
 	last := len(status.IPAssignments) == 0
+	pub.Publish(status.UUID.String(), *status)
 	return last, nil
 }
 
