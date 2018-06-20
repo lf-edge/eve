@@ -12,6 +12,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/satori/go.uuid"
 	"github.com/zededa/api/zconfig"
+	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/zboot"
@@ -637,6 +638,11 @@ func publishNetworkObjectConfig(getconfigCtx *getconfigContext,
 		// DHCP = Server with an associated NAT service
 		if config.Dhcp == types.DT_NOOP {
 			config.Dhcp = types.DT_SERVER
+			_, subnet, _ := net.ParseCIDR("172.28.1.10/24")
+			config.Subnet = *subnet
+			// XXX dnsmasq should use BridgeIPAddr as the router?
+			config.DhcpRange.Start = net.ParseIP("172.28.1.10")
+			config.DhcpRange.End = net.ParseIP("172.28.1.254")
 			log.Printf("Converting DT_NOOP to DT_SERVER plus NAT service for %s type %d\n",
 				config.UUID, config.Type)
 			createNATNetworkService(getconfigCtx, config.UUID)
@@ -650,6 +656,7 @@ func createNATNetworkService(getconfigCtx *getconfigContext,
 
 	service := types.NetworkServiceConfig{
 		UUID:        id,
+		Internal:    true,
 		DisplayName: "emulated NAT service",
 		Type:        types.NST_NAT,
 		Activate:    true,
@@ -718,9 +725,14 @@ func publishNetworkServiceConfig(getconfigCtx *getconfigContext,
 	items := getconfigCtx.pubNetworkServiceConfig.GetAll()
 	// XXX remove log
 	log.Printf("pubNetworkServiceConfig.GetAll got %d, %v\n", len(items), items)
-	for k, _ := range items {
+	for k, c := range items {
 		svcEnt := lookupServiceId(k, cfgServices)
 		if svcEnt != nil {
+			continue
+		}
+		config := cast.CastNetworkServiceConfig(c)
+		if config.Internal {
+			log.Printf("publishNetworkServiceConfig: not deleting internal %s: %v\n", k, config)
 			continue
 		}
 		log.Printf("publishNetworkServiceConfig: deleting %s\n", k)
