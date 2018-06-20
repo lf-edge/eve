@@ -1,6 +1,6 @@
 # Zenbuild
 
-zenbuild is a LinuxKit based builder for Xen-centric platforms.
+zenbuild is a LinuxKit based builder for Xen-centric platforms targeting x86 and ARM architectures
 
 How to use:
 
@@ -58,6 +58,39 @@ from containerd - use that instead).
 
 Once in a container you can run the usual xl commands to start VMs and
 interact with Xen.
+
+While running everything on your laptop with qemu could be fun, nothing
+beats real hardware. The most cost-effective option, not surprisingly,
+is ARM. We recommend using HiKey board (http://www.lenovator.com/product/90.html).
+Once you aquire the board you will need to build an image, flash it onto
+the SD card and tell the UEFI bootloader to boot the GRUB payload from
+the SD card. Here's what you need to do:
+```
+cp images/rootfs.yml.in.hikey images/rootfs.yml.in
+vi blobs/wpa_supplicant.conf
+  # put your WIFI passwords in and/or add your own networks
+make ZARCH=aarch64 MEDIA_SIZE=1024 fallback_aarch64.raw
+sudo dd if=fallback_aarch64.raw of=/dev/rdiskXXX bs=1m
+``` 
+
+Now put the SD card into the KiKey, connect HiKey to your serial port,
+start screen and poweron HiKey:
+```
+screen /dev/tty.usbserial-* 115200
+
+[1] fastboot
+[2] boot from eMMC
+[3] boot from SD card
+[4] Shell
+[5] Boot Manager
+Start: 4
+.....
+Press ESC in 4 seconds to skip startup.nsh or any other key to continue.
+Shell> fs0:\EFI\BOOT\BOOTAA64.EFI
+
+Finally pick the last menu item in GRUB saying
+  LinuxKit Image on HiKey/ARM64
+```
 
 As an aside, you may be wondering why do we have a container-based
 architecture for a Xen-centric environment. First of all, OCI containers
