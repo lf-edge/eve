@@ -613,21 +613,26 @@ func publishNetworkObjectConfig(getconfigCtx *getconfigContext,
 			UUID: id,
 			Type: types.NetworkType(netEnt.Type),
 		}
-		nv4 := netEnt.GetNv4()
-		if nv4 != nil {
-			err := parseNv4(nv4, &config)
+		switch config.Type {
+		case types.NT_IPV4:
+		case types.NT_IPV6:
+			ipspec := netEnt.GetIp()
+			if ipspec == nil {
+				log.Printf("Missing ipspec for %d in %v\n",
+					id.String(), netEnt)
+				continue
+			}
+			err := parseIpspec(ipspec, &config)
 			if err != nil {
 				// XXX return how?
-				log.Printf("parseNv4 failed: %s\n", err)
+				log.Printf("parseIpspec failed: %s\n", err)
 			}
-		}
-		nv6 := netEnt.GetNv6()
-		if nv6 != nil {
-			err := parseNv6(nv6, &config)
-			if err != nil {
-				// XXX return how?
-				log.Printf("parseNv6 failed: %s\n", err)
-			}
+		case types.NT_LISP:
+			log.Printf("LISP NetworkConfig not supported for %d in %v\n",
+					id.String(), netEnt)
+		default:
+			log.Printf("Unknown NetworkConfig type %d for %d in %v\n",
+					config.Type, id.String(), netEnt)
 		}
 		// XXX Hack to make existing Dhcp == 0 become an implicit
 		// DHCP = Server with an associated NAT service
@@ -666,100 +671,49 @@ func createNATNetworkService(getconfigCtx *getconfigContext,
 	getconfigCtx.pubNetworkServiceConfig.Publish(id.String(), &service)
 }
 
-func parseNv4(nv4 *zconfig.Ipv4Spec, config *types.NetworkObjectConfig) error {
-	config.Dhcp = types.DhcpType(nv4.Dhcp)
+func parseIpspec(ipspec *zconfig.Ipspec, config *types.NetworkObjectConfig) error {
+	config.Dhcp = types.DhcpType(ipspec.Dhcp)
 	// XXX
-	log.Printf("parseNv4: dhcp %d\n", config.Dhcp)
-	config.DomainName = nv4.Domain
-	if nv4.Subnet != "" {
-		_, subnet, err := net.ParseCIDR(nv4.Subnet)
+	log.Printf("parseIpspec: dhcp %d\n", config.Dhcp)
+	config.DomainName = ipspec.Domain
+	if ipspec.Subnet != "" {
+		_, subnet, err := net.ParseCIDR(ipspec.Subnet)
 		if err != nil {
 			return err
 		}
 		config.Subnet = *subnet
 	}
-	if nv4.Gateway != "" {
-		config.Gateway = net.ParseIP(nv4.Gateway)
+	if ipspec.Gateway != "" {
+		config.Gateway = net.ParseIP(ipspec.Gateway)
 		if config.Gateway == nil {
-			return errors.New(fmt.Sprintf("parseNv4: bad IP %s",
-				nv4.Gateway))
+			return errors.New(fmt.Sprintf("parseIpspec: bad IP %s",
+				ipspec.Gateway))
 		}
 	}
-	if nv4.Ntp != "" {
-		config.NtpServer = net.ParseIP(nv4.Ntp)
+	if ipspec.Ntp != "" {
+		config.NtpServer = net.ParseIP(ipspec.Ntp)
 		if config.NtpServer == nil {
-			return errors.New(fmt.Sprintf("parseNv4: bad IP %s",
-				nv4.Ntp))
+			return errors.New(fmt.Sprintf("parseIpspec: bad IP %s",
+				ipspec.Ntp))
 		}
 	}
-	for _, dsStr := range nv4.Dns {
+	for _, dsStr := range ipspec.Dns {
 		ds := net.ParseIP(dsStr)
 		if ds == nil {
-			return errors.New(fmt.Sprintf("parseNv4: bad IP %s",
+			return errors.New(fmt.Sprintf("parseIpspec: bad IP %s",
 				dsStr))
 		}
 		config.DnsServers = append(config.DnsServers, ds)
 	}
-	if nv4.DhcpRange != nil {
-		start := net.ParseIP(nv4.DhcpRange.Start)
+	if ipspec.DhcpRange != nil {
+		start := net.ParseIP(ipspec.DhcpRange.Start)
 		if start == nil {
-			return errors.New(fmt.Sprintf("parseNv4: bad IP %s",
+			return errors.New(fmt.Sprintf("parseIpspec: bad IP %s",
 				start))
 		}
-		end := net.ParseIP(nv4.DhcpRange.End)
+		end := net.ParseIP(ipspec.DhcpRange.End)
 		if end == nil {
-			return errors.New(fmt.Sprintf("parseNv4: bad IP %s",
-				end))
-		}
-		config.DhcpRange.Start = start
-		config.DhcpRange.End = end
-	}
-	return nil
-}
-
-func parseNv6(nv6 *zconfig.Ipv6Spec, config *types.NetworkObjectConfig) error {
-	config.Dhcp = types.DhcpType(nv6.Dhcp)
-	// XXX
-	log.Printf("parseNv6: dhcp %d\n", config.Dhcp)
-	config.DomainName = nv6.Domain
-	if nv6.Subnet != "" {
-		_, subnet, err := net.ParseCIDR(nv6.Subnet)
-		if err != nil {
-			return err
-		}
-		config.Subnet = *subnet
-	}
-	if nv6.Gateway != "" {
-		config.Gateway = net.ParseIP(nv6.Gateway)
-		if config.Gateway == nil {
-			return errors.New(fmt.Sprintf("parseNv6: bad IP %s",
-				nv6.Gateway))
-		}
-	}
-	if nv6.Ntp != "" {
-		config.NtpServer = net.ParseIP(nv6.Ntp)
-		if config.NtpServer == nil {
-			return errors.New(fmt.Sprintf("parseNv6: bad IP %s",
-				nv6.Ntp))
-		}
-	}
-	for _, dsStr := range nv6.Dns {
-		ds := net.ParseIP(dsStr)
-		if ds == nil {
-			return errors.New(fmt.Sprintf("parseNv6: bad IP %s",
-				dsStr))
-		}
-		config.DnsServers = append(config.DnsServers, ds)
-	}
-	if nv6.DhcpRange != nil {
-		start := net.ParseIP(nv6.DhcpRange.Start)
-		if start == nil {
-			return errors.New(fmt.Sprintf("parseNv6: bad IP %s",
-				start))
-		}
-		end := net.ParseIP(nv6.DhcpRange.End)
-		if end == nil {
-			return errors.New(fmt.Sprintf("parseNv6: bad IP %s",
+			return errors.New(fmt.Sprintf("parseIpspec: bad IP %s",
 				end))
 		}
 		config.DhcpRange.Start = start
@@ -1015,7 +969,9 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 		olCfg.EIDConfigDetails.PemCert = intfEnt.Pemcert
 		olCfg.EIDConfigDetails.PemPrivateKey = intfEnt.Pemprivatekey
 
-		nlisp := netEnt.GetNlisp()
+		// XXX removed nlisp := netEnt.GetNlisp()
+		// XXX This is dead code
+		var nlisp *zconfig.Lispspec
 		if nlisp != nil {
 			if nlisp.Eidalloc != nil {
 				olCfg.EIDConfigDetails.IID = nlisp.Iid

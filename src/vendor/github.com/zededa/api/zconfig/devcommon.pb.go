@@ -45,7 +45,7 @@ var ZCioType_value = map[string]int32{
 func (x ZCioType) String() string {
 	return proto.EnumName(ZCioType_name, int32(x))
 }
-func (ZCioType) EnumDescriptor() ([]byte, []int) { return fileDescriptor4, []int{0} }
+func (ZCioType) EnumDescriptor() ([]byte, []int) { return fileDescriptor5, []int{0} }
 
 type UUIDandVersion struct {
 	Uuid    string `protobuf:"bytes,1,opt,name=uuid" json:"uuid,omitempty"`
@@ -55,7 +55,7 @@ type UUIDandVersion struct {
 func (m *UUIDandVersion) Reset()                    { *m = UUIDandVersion{} }
 func (m *UUIDandVersion) String() string            { return proto.CompactTextString(m) }
 func (*UUIDandVersion) ProtoMessage()               {}
-func (*UUIDandVersion) Descriptor() ([]byte, []int) { return fileDescriptor4, []int{0} }
+func (*UUIDandVersion) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{0} }
 
 func (m *UUIDandVersion) GetUuid() string {
 	if m != nil {
@@ -80,7 +80,7 @@ type Adapter struct {
 func (m *Adapter) Reset()                    { *m = Adapter{} }
 func (m *Adapter) String() string            { return proto.CompactTextString(m) }
 func (*Adapter) ProtoMessage()               {}
-func (*Adapter) Descriptor() ([]byte, []int) { return fileDescriptor4, []int{1} }
+func (*Adapter) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{1} }
 
 func (m *Adapter) GetType() ZCioType {
 	if m != nil {
@@ -102,9 +102,9 @@ func init() {
 	proto.RegisterEnum("ZCioType", ZCioType_name, ZCioType_value)
 }
 
-func init() { proto.RegisterFile("devcommon.proto", fileDescriptor4) }
+func init() { proto.RegisterFile("devcommon.proto", fileDescriptor5) }
 
-var fileDescriptor4 = []byte{
+var fileDescriptor5 = []byte{
 	// 252 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x34, 0x8f, 0xc1, 0x4b, 0xf3, 0x40,
 	0x10, 0xc5, 0xbf, 0xf4, 0x0b, 0xc6, 0x8c, 0x12, 0x97, 0x3d, 0xe5, 0x52, 0x94, 0x9e, 0xc4, 0xc3,
