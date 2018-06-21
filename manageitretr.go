@@ -13,6 +13,7 @@ import (
 	"github.com/zededa/lisp/dataplane/dptypes"
 	"github.com/zededa/lisp/dataplane/etr"
 	"github.com/zededa/lisp/dataplane/itr"
+	"github.com/zededa/lisp/dataplane/fib"
 	"log"
 )
 
@@ -23,7 +24,6 @@ type ThreadEntry struct {
 	handle *afpacket.TPacket
 }
 
-var itrCryptoPort int = -1
 var threadTable map[string]ThreadEntry
 
 func InitThreadTable() {
@@ -39,7 +39,7 @@ func DumpThreadTable() {
 func HandleItrCryptoPort(port int) {
 	var itrConfig dptypes.ITRConfiguration
 
-	itrCryptoPort = port
+	fib.PutItrCryptoPort(port)
 
 	itrConfig.Quit = false
 	itrConfig.ItrCryptoPort = port
@@ -121,6 +121,7 @@ func ManageItrThreads(interfaces Interfaces) {
 			var itrConfig dptypes.ITRConfiguration
 			itrConfig.Quit = false
 			itrConfig.ItrCryptoPortValid = true
+			itrCryptoPort := fib.GetItrCryptoPort()
 			itrConfig.ItrCryptoPort = itrCryptoPort
 
 			umblical <- itrConfig
@@ -132,6 +133,7 @@ func ManageETRThread(port int) {
 	etr.HandleEtrEphPort(port)
 }
 
+// Handle device network state changes
 func ManageEtrDNS(deviceNetworkStatus types.DeviceNetworkStatus) {
 	etr.HandleDeviceNetworkChange(deviceNetworkStatus)
 }
