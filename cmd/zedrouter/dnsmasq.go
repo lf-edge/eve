@@ -117,7 +117,8 @@ func createDnsmasqUnderlayConfiglet(ctx *zedrouterContext,
 	ulAddr1 string, ulAddr2 string, ulMac string, hostsDir string,
 	hostName string, ipsets []string, netconf *types.NetworkObjectConfig) {
 	if debug {
-		log.Printf("createDnsmasqUnderlayConfiglet: %s\n", ulIfname)
+		log.Printf("createDnsmasqUnderlayConfiglet: %s netconf %v\n",
+			ulIfname, netconf)
 	}
 	file, err := os.Create(cfgPathname)
 	if err != nil {
@@ -142,6 +143,9 @@ func createDnsmasqUnderlayConfiglet(ctx *zedrouterContext,
 				if ulStatus.Network != netconf.UUID {
 					continue
 				}
+				log.Printf("createDnsmasqUnderlayConfiglet: netconf has %s/%s\n",
+					ulStatus.Mac, ulStatus.AssignedIPAddr)
+
 				file.WriteString(fmt.Sprintf("dhcp-host=%s,id:*,%s,%s\n",
 					ulStatus.Mac,
 					ulStatus.AssignedIPAddr,
@@ -149,13 +153,17 @@ func createDnsmasqUnderlayConfiglet(ctx *zedrouterContext,
 			}
 		}
 	} else {
+		log.Printf("createDnsmasqUnderlayConfiglet: single %s/%s\n",
+			ulMac, ulAddr2)
 		file.WriteString(fmt.Sprintf("dhcp-host=%s,id:*,%s,%s\n",
 			ulMac, ulAddr2, hostName))
 	}
 
-	netmask := "255.240.0.0"  // Default unless there is a Subnet
-	dhcpRange := "172.16.0.0" // Default unless there is a DhcpRange
-
+	netmask := "255.255.255.0" // Default unless there is a Subnet
+	dhcpRange := ulAddr2       // Default unless there is a DhcpRange
+	if dhcpRange == "" {
+		dhcpRange = "172.27.0.0"
+	}
 	if netconf != nil {
 		// By default dnsmasq advertizes a router (and we can have a
 		// static router defined in the NetworkObjectConfig).
@@ -193,23 +201,22 @@ func createDnsmasqUnderlayConfiglet(ctx *zedrouterContext,
 				netmask))
 		}
 		if netconf.Gateway != nil {
-			// XXX vs. ulAddr1
 			file.WriteString(fmt.Sprintf("dhcp-option=option:router,%s\n",
 				netconf.Gateway.String()))
-		} else if !advertizeRouter {
+		} else if advertizeRouter {
+			file.WriteString(fmt.Sprintf("dhcp-option=option:router,%s\n",
+				ulAddr1))
+		} else {
+			log.Printf("createDnsmasqUnderlayConfiglet: no router\n")
 			file.WriteString(fmt.Sprintf("dhcp-option=option:router\n"))
 			if !maybeAdvertizeDns {
 				// XXX handle isolated network by making sure
 				// we are not a DNS server. Can be overridden
 				// with the DnsServers above
+				log.Printf("createDnsmasqUnderlayConfiglet: no DNS server\n")
 				file.WriteString(fmt.Sprintf("dhcp-option=option:dns-server\n"))
 			}
 		}
-		// XXX do we need to set
-		// dhcp-option=option:dns-server
-		// for Linux or Windows talking to multiple networks? Or
-		// can they handle the isolated local network?
-
 		if netconf.DhcpRange.Start != nil {
 			dhcpRange = netconf.DhcpRange.Start.String()
 		}

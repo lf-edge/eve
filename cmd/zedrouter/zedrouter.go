@@ -84,7 +84,6 @@ func Run() {
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
 	debug = *debugPtr
-	debug = true // XXX XXX remove
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return

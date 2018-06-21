@@ -170,6 +170,9 @@ func doServiceActivate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 		return errors.New(fmt.Sprintf("No AppLink for %s", config.UUID))
 	}
 
+	log.Printf("doServiceActivate found NetworkObjectConfig %s\n",
+		netconf.UUID.String())
+
 	// Check that Adapter is either "uplink", "freeuplink", or
 	// an existing ifname assigned to doServicemO/zedrouter. A Bridge
 	// only works with a single adapter interface.
@@ -363,7 +366,9 @@ func lookupAppLink(ctx *zedrouterContext, appLink uuid.UUID) *types.NetworkServi
 	items := pub.GetAll()
 	for _, st := range items {
 		status := cast.CastNetworkServiceStatus(st)
-		if status.UUID == appLink {
+		if status.AppLink == appLink {
+			log.Printf("lookupAppLink(%s) found %s\n",
+				appLink.String(), status.UUID.String())
 			return &status
 		}
 	}
