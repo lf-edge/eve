@@ -400,7 +400,6 @@ const (
 )
 
 type UnderlayNetworkConfig struct {
-	Dhcp       DhcpType         // If PASSTHROUGH we don't run a dhcp server
 	AppMacAddr net.HardwareAddr // If set use it for vif
 	AppIPAddr  net.IP           // If set use DHCP to assign to app
 	Network    uuid.UUID

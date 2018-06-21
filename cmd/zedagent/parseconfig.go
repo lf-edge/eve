@@ -587,11 +587,11 @@ func lookupServiceId(id string, cfgServices []*zconfig.ServiceInstanceConfig) *z
 	return nil
 }
 
-func publishNetworkObjectConfig(getconfigCtx *getconfigContext,
+func publishNetworkObjectConfig(ctx *getconfigContext,
 	cfgNetworks []*zconfig.NetworkConfig) {
 
 	// Check for items to delete first
-	items := getconfigCtx.pubNetworkObjectConfig.GetAll()
+	items := ctx.pubNetworkObjectConfig.GetAll()
 	// XXX remove log
 	log.Printf("pubNetworkObjectConfig.GetAll got %d, %v\n", len(items), items)
 	for k, _ := range items {
@@ -600,7 +600,7 @@ func publishNetworkObjectConfig(getconfigCtx *getconfigContext,
 			continue
 		}
 		log.Printf("publishNetworkObjectConfig: deleting %s\n", k)
-		getconfigCtx.pubNetworkObjectConfig.Unpublish(k)
+		ctx.pubNetworkObjectConfig.Unpublish(k)
 	}
 	for _, netEnt := range cfgNetworks {
 		id, err := uuid.FromString(netEnt.Id)
@@ -647,7 +647,8 @@ func publishNetworkObjectConfig(getconfigCtx *getconfigContext,
 			config.Dhcp = types.DT_SERVER
 
 			// XXX Order since Service checks ...
-			getconfigCtx.pubNetworkObjectConfig.Publish(id.String(), &config)
+			ctx.pubNetworkObjectConfig.Publish(config.UUID.String(),
+				&config)
 
 			_, subnet, _ := net.ParseCIDR("172.28.1.10/24")
 			config.Subnet = *subnet
@@ -656,13 +657,14 @@ func publishNetworkObjectConfig(getconfigCtx *getconfigContext,
 			config.DhcpRange.End = net.ParseIP("172.28.1.254")
 			log.Printf("Converting DT_NOOP to DT_SERVER plus NAT service for %s type %d\n",
 				config.UUID, config.Type)
-			createNATNetworkService(getconfigCtx, config.UUID)
+			createNATNetworkService(ctx, config.UUID)
 		}
-		getconfigCtx.pubNetworkObjectConfig.Publish(id.String(), &config)
+		ctx.pubNetworkObjectConfig.Publish(config.UUID.String(),
+			&config)
 	}
 }
 
-func createNATNetworkService(getconfigCtx *getconfigContext,
+func createNATNetworkService(ctx *getconfigContext,
 	id uuid.UUID) {
 
 	// Generate a new UUID to avoid confusion between the NetworkObject
@@ -680,7 +682,8 @@ func createNATNetworkService(getconfigCtx *getconfigContext,
 		Adapter:     "freeuplink",
 	}
 	// XXX unpublish when DT_NOOP Network is deleted?
-	getconfigCtx.pubNetworkServiceConfig.Publish(id.String(), &service)
+	ctx.pubNetworkServiceConfig.Publish(service.UUID.String(),
+		&service)
 }
 
 func parseIpspec(ipspec *zconfig.Ipspec, config *types.NetworkObjectConfig) error {
@@ -734,11 +737,11 @@ func parseIpspec(ipspec *zconfig.Ipspec, config *types.NetworkObjectConfig) erro
 	return nil
 }
 
-func publishNetworkServiceConfig(getconfigCtx *getconfigContext,
+func publishNetworkServiceConfig(ctx *getconfigContext,
 	cfgServices []*zconfig.ServiceInstanceConfig) {
 
 	// Check for items to delete first
-	items := getconfigCtx.pubNetworkServiceConfig.GetAll()
+	items := ctx.pubNetworkServiceConfig.GetAll()
 	// XXX remove log
 	log.Printf("pubNetworkServiceConfig.GetAll got %d, %v\n", len(items), items)
 	for k, c := range items {
@@ -752,7 +755,7 @@ func publishNetworkServiceConfig(getconfigCtx *getconfigContext,
 			continue
 		}
 		log.Printf("publishNetworkServiceConfig: deleting %s\n", k)
-		getconfigCtx.pubNetworkServiceConfig.Unpublish(k)
+		ctx.pubNetworkServiceConfig.Unpublish(k)
 	}
 	for _, svcEnt := range cfgServices {
 		id, err := uuid.FromString(svcEnt.Id)
@@ -791,7 +794,8 @@ func publishNetworkServiceConfig(getconfigCtx *getconfigContext,
 		if svcEnt.Cfg != nil {
 			service.OpaqueConfig = svcEnt.Cfg.Oconfig
 		}
-		getconfigCtx.pubNetworkServiceConfig.Publish(id.String(), &service)
+		ctx.pubNetworkServiceConfig.Publish(service.UUID.String(),
+			&service)
 	}
 }
 
@@ -1021,7 +1025,7 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 
 var itemsPrevConfigHash []byte
 
-func parseConfigItems(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext) {
+func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 
 	items := config.GetConfigItems()
 	h := sha256.New()
@@ -1063,7 +1067,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCont
 					configItemCurrent.configInterval,
 					newU32)
 				configItemCurrent.configInterval = newU32
-				updateConfigTimer(getconfigCtx.configTickerHandle)
+				updateConfigTimer(ctx.configTickerHandle)
 			}
 		case "metricInterval":
 			if newU32 == 0 {
@@ -1076,7 +1080,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCont
 					configItemCurrent.metricInterval,
 					newU32)
 				configItemCurrent.metricInterval = newU32
-				updateMetricsTimer(getconfigCtx.metricsTickerHandle)
+				updateMetricsTimer(ctx.metricsTickerHandle)
 			}
 		case "resetIfCloudGoneTime":
 			if newU32 == 0 {

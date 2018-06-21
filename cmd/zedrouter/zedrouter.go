@@ -84,6 +84,7 @@ func Run() {
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
 	debug = *debugPtr
+	debug = true // XXX XXX remove
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
@@ -788,7 +789,8 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 	for i, olConfig := range config.OverlayNetworkList {
 		olNum := i + 1
 		if debug {
-			log.Printf("olNum %d ACLs %v\n", olNum, olConfig.ACLs)
+			log.Printf("olNum %d network %s ACLs %v\n",
+				olNum, olConfig.Network.String(), olConfig.ACLs)
 		}
 		EID := olConfig.EID
 		bridgeName := "bo" + strconv.Itoa(olNum) + "x" +
@@ -831,7 +833,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 			olConfig.Network.String())
 
 		// XXX need to get olAddr1 from bridge and record it
-		// XXX add AF_INET6 to getBridgeService(ctx, olconfig.Network)
+		// XXX add AF_INET6 to getBridgeServiceIPv6Addr(ctx, olconfig.Network)
 		olAddr1 := "fd00::" + strconv.FormatInt(int64(olNum), 16) +
 			":" + strconv.FormatInt(int64(appNum), 16)
 		log.Printf("olAddr1 %s EID %s\n", olAddr1, EID)
@@ -944,7 +946,8 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 	for i, ulConfig := range config.UnderlayNetworkList {
 		ulNum := i + 1
 		if debug {
-			log.Printf("ulNum %d ACLs %v\n", ulNum, ulConfig.ACLs)
+			log.Printf("ulNum %d network %s ACLs %v\n",
+				ulNum, ulConfig.Network.String(), ulConfig.ACLs)
 		}
 		bridgeName := "bu" + strconv.Itoa(appNum)
 		vifName := "nbu" + strconv.Itoa(ulNum) + "x" +
@@ -990,9 +993,9 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		// Check if we already have an address on the bridge
 		// XXX isn't that done inside getUlAddrs?
 		if !created {
-			bridgeIP, err := getBridgeService(ctx, ulConfig.Network)
+			bridgeIP, err := getBridgeServiceIPv4Addr(ctx, ulConfig.Network)
 			if err != nil {
-				log.Printf("handleCreate getBridgeService %s\n",
+				log.Printf("handleCreate getBridgeServiceIPv4Addr %s\n",
 					err)
 			} else if bridgeIP != "" {
 				ulAddr1 = bridgeIP
@@ -1158,6 +1161,8 @@ func getUlAddrs(ctx *zedrouterContext, ifnum int, appNum int,
 	status *types.UnderlayNetworkStatus,
 	netconf *types.NetworkObjectConfig) (string, string) {
 
+	log.Printf("getUlAddrs(%d/%d)\n", ifnum, appNum)
+
 	// Default
 	// Not clear how to handle multiple ul from the same appInstance;
 	// use /30 prefix? Require user to pick private addrs?
@@ -1167,6 +1172,9 @@ func getUlAddrs(ctx *zedrouterContext, ifnum int, appNum int,
 
 	if netconf != nil {
 		// Allocate ulAddr1 based on BridgeMac
+		log.Printf("getUlAddrs(%d/%d for %s) bridgeMac %s\n",
+			ifnum, appNum, netconf.UUID.String(),
+			status.BridgeMac.String())
 		addr, err := lookupOrAllocateIPv4(ctx, *netconf,
 			status.BridgeMac)
 		if err != nil {
@@ -1188,6 +1196,8 @@ func getUlAddrs(ctx *zedrouterContext, ifnum int, appNum int,
 		if err != nil {
 			log.Fatal("ParseMAC failed: ", status.Mac, err)
 		}
+		log.Printf("getUlAddrs(%d/%d for %s) app Mac %s\n",
+			ifnum, appNum, netconf.UUID.String(), mac.String())
 		addr, err := lookupOrAllocateIPv4(ctx, *netconf, mac)
 		if err != nil {
 			log.Printf("lookupOrAllocateIPv4 failed %s\n", err)
@@ -1196,6 +1206,8 @@ func getUlAddrs(ctx *zedrouterContext, ifnum int, appNum int,
 			ulAddr2 = addr
 		}
 	}
+	log.Printf("getUlAddrs(%d/%d) done %s/%s\n",
+		ifnum, appNum, ulAddr1, ulAddr2)
 	return ulAddr1, ulAddr2
 }
 

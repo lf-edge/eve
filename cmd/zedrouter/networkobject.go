@@ -30,6 +30,7 @@ func handleNetworkConfigModify(ctxArg interface{}, key string, configArg interfa
 		doNetworkModify(ctx, config, status)
 		status.PendingModify = false
 		pub.Publish(key, *status)
+		log.Printf("handleNetworkConfigModify(%s) done\n", key)
 	} else {
 		handleNetworkConfigCreate(ctx, key, config)
 	}
@@ -56,6 +57,7 @@ func handleNetworkConfigCreate(ctx *zedrouterContext, key string, config types.N
 	}
 	status.PendingAdd = false
 	pub.Publish(key, status)
+	log.Printf("handleNetworkConfigCreate(%s) done\n", key)
 }
 
 func handleNetworkConfigDelete(ctxArg interface{}, key string) {
@@ -72,6 +74,7 @@ func handleNetworkConfigDelete(ctxArg interface{}, key string) {
 	doNetworkDelete(status)
 	status.PendingDelete = false
 	pub.Unpublish(key)
+	log.Printf("handleNetworkConfigDelete(%s) done\n", key)
 }
 
 func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
@@ -153,10 +156,11 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 	return nil
 }
 
-// Call when we have a network and a service? XXX also for local?
+// Call when we have a network and a service?
 func setBridgeIPAddr(ctx *zedrouterContext, config types.NetworkObjectConfig,
 	status *types.NetworkObjectStatus) error {
 
+	log.Printf("setBridgeIPAddr for %s\n", config.UUID.String())
 	pub := ctx.pubNetworkObjectStatus
 	if status.BridgeName == "" {
 		// Called too early
@@ -171,14 +175,27 @@ func setBridgeIPAddr(ctx *zedrouterContext, config types.NetworkObjectConfig,
 		return errors.New(errStr)
 	}
 	// Check if we have a bridge service, and if so return error or address
-	ipAddr, err := getBridgeService(ctx, config.UUID)
+	// XXX call getServiceInfo first?
+	st, _, err := getServiceInfo(ctx, config.UUID)
 	if err != nil {
+		log.Printf("setBridgeIPAddr: getServiceInfo failed: %s\n",
+			err)
 		return err
+	}
+	var ipAddr string
+	if st == types.NST_BRIDGE {
+		ipAddr, err = getBridgeServiceIPv4Addr(ctx, config.UUID)
+		if err != nil {
+			log.Printf("setBridgeIPAddr: getBridgeServiceIPv4Addr failed: %s\n",
+				err)
+			return err
+		}
 	}
 	// If not we do a local allocation
 	if ipAddr == "" {
 		// XXX Need IPV6/LISP logic to get IPv6 addresses
 		var bridgeMac net.HardwareAddr
+
 		switch link.(type) {
 		case *netlink.Bridge:
 			bridgeLink := link.(*netlink.Bridge)
@@ -188,6 +205,9 @@ func setBridgeIPAddr(ctx *zedrouterContext, config types.NetworkObjectConfig,
 				status.BridgeName)
 			return errors.New(errStr)
 		}
+		log.Printf("setBridgeIPAddr lookupOrAllocate for %s\n",
+			bridgeMac.String())
+
 		ipAddr, err = lookupOrAllocateIPv4(ctx, config, bridgeMac)
 		if err != nil {
 			errStr := fmt.Sprintf("lookupOrAllocateIPv4 failed: %s",
@@ -324,6 +344,10 @@ func lookupNetworkObjectConfig(ctx *zedrouterContext, key string) *types.Network
 		return nil
 	}
 	config := cast.CastNetworkObjectConfig(c)
+	if config.UUID.String() != key {
+		log.Fatalf("lookupNetworkObjectConfig(%s) got %s\n",
+			key, config.UUID.String())
+	}
 	return &config
 }
 
@@ -335,6 +359,10 @@ func lookupNetworkObjectStatus(ctx *zedrouterContext, key string) *types.Network
 		return nil
 	}
 	status := cast.CastNetworkObjectStatus(st)
+	if status.UUID.String() != key {
+		log.Fatalf("lookupNetworkObjectStatus(%s) got %s\n",
+			key, status.UUID.String())
+	}
 	return &status
 }
 
