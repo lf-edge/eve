@@ -608,6 +608,8 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 		log.Printf("publishNetworkObjectConfig: deleting %s\n", k)
 		ctx.pubNetworkObjectConfig.Unpublish(k)
 	}
+	// XXX note that we currently get repeats in the same loop.
+	// Should we track them and not rewrite them?
 	for _, netEnt := range cfgNetworks {
 		id, err := uuid.FromString(netEnt.Id)
 		if err != nil {

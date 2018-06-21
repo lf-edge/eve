@@ -22,6 +22,10 @@ func handleNetworkServiceModify(ctxArg interface{}, key string, configArg interf
 	ctx := ctxArg.(*zedrouterContext)
 	pub := ctx.pubNetworkServiceStatus
 	config := cast.CastNetworkServiceConfig(configArg)
+	if config.UUID.String() != key {
+		log.Printf("handleNetworkServiceModify key/UUID mismatch %s vs %s; ignored %+v\n", key, config.UUID.String(), config)
+		return
+	}
 	status := lookupNetworkServiceStatus(ctx, key)
 	if status != nil {
 		log.Printf("handleNetworkServiceModify(%s)\n", key)
@@ -284,8 +288,8 @@ func lookupNetworkServiceConfig(ctx *zedrouterContext, key string) *types.Networ
 	}
 	config := cast.CastNetworkServiceConfig(c)
 	if config.UUID.String() != key {
-		log.Printf("lookupNetworkServiceConfig(%s) got %s; ignored\n",
-			key, config.UUID.String())
+		log.Printf("lookupNetworkServiceConfig(%s) got %s; ignored %+v\n",
+			key, config.UUID.String(), config)
 		return nil
 	}
 	return &config
@@ -301,8 +305,8 @@ func lookupNetworkServiceStatus(ctx *zedrouterContext, key string) *types.Networ
 	}
 	status := cast.CastNetworkServiceStatus(st)
 	if status.UUID.String() != key {
-		log.Printf("lookupNetworkServiceStatus(%s) got %s; ignored\n",
-			key, status.UUID.String())
+		log.Printf("lookupNetworkServiceStatus(%s) got %s; ignored %+v\n",
+			key, status.UUID.String(), status)
 		return nil
 	}
 	return &status
