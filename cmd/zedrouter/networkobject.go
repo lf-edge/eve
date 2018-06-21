@@ -26,10 +26,10 @@ func handleNetworkConfigModify(ctxArg interface{}, key string, configArg interfa
 		log.Printf("handleNetworkConfigModify(%s)\n", key)
 		pub := ctx.pubNetworkObjectStatus
 		status.PendingModify = true
-		pub.Publish(key, *status)
+		pub.Publish(status.UUID.String(), *status)
 		doNetworkModify(ctx, config, status)
 		status.PendingModify = false
-		pub.Publish(key, *status)
+		pub.Publish(status.UUID.String(), *status)
 		log.Printf("handleNetworkConfigModify(%s) done\n", key)
 	} else {
 		handleNetworkConfigCreate(ctx, key, config)
@@ -45,18 +45,18 @@ func handleNetworkConfigCreate(ctx *zedrouterContext, key string, config types.N
 		IPAssignments:       make(map[string]net.IP),
 	}
 	status.PendingAdd = true
-	pub.Publish(key, status)
+	pub.Publish(status.UUID.String(), status)
 	err := doNetworkCreate(ctx, config, &status)
 	if err != nil {
 		log.Printf("doNetworkCreate(%s) failed: %s\n", key, err)
 		status.Error = err.Error()
 		status.ErrorTime = time.Now()
 		status.PendingAdd = false
-		pub.Publish(key, status)
+		pub.Publish(status.UUID.String(), status)
 		return
 	}
 	status.PendingAdd = false
-	pub.Publish(key, status)
+	pub.Publish(status.UUID.String(), status)
 	log.Printf("handleNetworkConfigCreate(%s) done\n", key)
 }
 
@@ -70,10 +70,10 @@ func handleNetworkConfigDelete(ctxArg interface{}, key string) {
 		return
 	}
 	status.PendingDelete = true
-	pub.Publish(key, *status)
+	pub.Publish(status.UUID.String(), *status)
 	doNetworkDelete(status)
 	status.PendingDelete = false
-	pub.Unpublish(key)
+	pub.Unpublish(status.UUID.String())
 	log.Printf("handleNetworkConfigDelete(%s) done\n", key)
 }
 
@@ -139,7 +139,7 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 	}
 
 	// Check if we have a bridge service
-	if err := setBridgeIPAddr(ctx, config, status); err != nil {
+	if err := setBridgeIPAddr(ctx, status); err != nil {
 		return err
 	}
 
@@ -157,15 +157,14 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 }
 
 // Call when we have a network and a service?
-func setBridgeIPAddr(ctx *zedrouterContext, config types.NetworkObjectConfig,
-	status *types.NetworkObjectStatus) error {
+func setBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) error {
 
-	log.Printf("setBridgeIPAddr for %s\n", config.UUID.String())
+	log.Printf("setBridgeIPAddr for %s\n", status.UUID.String())
 	pub := ctx.pubNetworkObjectStatus
 	if status.BridgeName == "" {
 		// Called too early
 		log.Printf("setBridgeIPAddr: don't yet have a bridgeName for %s\n",
-			config.UUID)
+			status.UUID)
 		return nil
 	}
 
@@ -176,7 +175,7 @@ func setBridgeIPAddr(ctx *zedrouterContext, config types.NetworkObjectConfig,
 	}
 	// Check if we have a bridge service, and if so return error or address
 	// XXX call getServiceInfo first?
-	st, _, err := getServiceInfo(ctx, config.UUID)
+	st, _, err := getServiceInfo(ctx, status.UUID)
 	if err != nil {
 		log.Printf("setBridgeIPAddr: getServiceInfo failed: %s\n",
 			err)
@@ -184,7 +183,7 @@ func setBridgeIPAddr(ctx *zedrouterContext, config types.NetworkObjectConfig,
 	}
 	var ipAddr string
 	if st == types.NST_BRIDGE {
-		ipAddr, err = getBridgeServiceIPv4Addr(ctx, config.UUID)
+		ipAddr, err = getBridgeServiceIPv4Addr(ctx, status.UUID)
 		if err != nil {
 			log.Printf("setBridgeIPAddr: getBridgeServiceIPv4Addr failed: %s\n",
 				err)
@@ -208,7 +207,7 @@ func setBridgeIPAddr(ctx *zedrouterContext, config types.NetworkObjectConfig,
 		log.Printf("setBridgeIPAddr lookupOrAllocate for %s\n",
 			bridgeMac.String())
 
-		ipAddr, err = lookupOrAllocateIPv4(ctx, config, bridgeMac)
+		ipAddr, err = lookupOrAllocateIPv4(ctx, status, bridgeMac)
 		if err != nil {
 			errStr := fmt.Sprintf("lookupOrAllocateIPv4 failed: %s",
 				err)
@@ -231,18 +230,11 @@ func setBridgeIPAddr(ctx *zedrouterContext, config types.NetworkObjectConfig,
 	return nil
 }
 
-// XXX or return net.IP??
+// Returns an IP address as a string, or "" if not found.
 func lookupOrAllocateIPv4(ctx *zedrouterContext,
-	config types.NetworkObjectConfig, mac net.HardwareAddr) (string, error) {
+	status *types.NetworkObjectStatus, mac net.HardwareAddr) (string, error) {
 
 	log.Printf("lookupOrAllocateIPv4(%s)\n", mac.String())
-	// Allocation happens in status
-	status := lookupNetworkObjectStatus(ctx, config.UUID.String())
-	if status == nil {
-		errStr := fmt.Sprintf("no NetworkOjectStatus for %s",
-			config.UUID.String())
-		return "", errors.New(errStr)
-	}
 	// Lookup to see if it exists
 	if ip, ok := status.IPAssignments[mac.String()]; ok {
 		log.Printf("lookupOrAllocateIPv4(%s) found %s\n",
@@ -250,14 +242,14 @@ func lookupOrAllocateIPv4(ctx *zedrouterContext,
 		return ip.String(), nil
 	}
 
-	log.Printf("lookupNetworkObjectStatus: %s dhcp %d bridgeName %s Subnet %v range %v-%v\n",
+	log.Printf("lookupOrAllocateIPv4 status: %s dhcp %d bridgeName %s Subnet %v range %v-%v\n",
 		status.UUID.String(), status.Dhcp, status.BridgeName,
 		status.Subnet, status.DhcpRange.Start, status.DhcpRange.End)
 
 	// XXX should we fall back to using Subnet?
 	if status.DhcpRange.Start == nil {
 		errStr := fmt.Sprintf("no NetworkOjectStatus DhcpRange for %s",
-			config.UUID.String())
+			status.UUID.String())
 		return "", errors.New(errStr)
 	}
 	// Starting guess based on number allocated
@@ -280,28 +272,21 @@ func lookupOrAllocateIPv4(ctx *zedrouterContext,
 		pub.Publish(status.UUID.String(), *status)
 		return a.String(), nil
 	}
-	errStr := fmt.Sprintf("NetworkOjectStatus no free address in DhcpRange for %s",
-		config.UUID.String())
+	errStr := fmt.Sprintf("lookupOrAllocateIPv4(%s) no free address in DhcpRange",
+		status.UUID.String())
 	return "", errors.New(errStr)
 }
 
 // Returns true if the last entry was removed
 func releaseIPv4(ctx *zedrouterContext,
-	config types.NetworkObjectConfig, mac net.HardwareAddr) (bool, error) {
+	status *types.NetworkObjectStatus, mac net.HardwareAddr) (bool, error) {
 
 	log.Printf("releaseIPv4(%s)\n", mac.String())
 	pub := ctx.pubNetworkObjectStatus
-	// Allocation happens in status
-	status := lookupNetworkObjectStatus(ctx, config.UUID.String())
-	if status == nil {
-		errStr := fmt.Sprintf("releaseIPv4: no NetworkOjectStatus for %s",
-			config.UUID.String())
-		return false, errors.New(errStr)
-	}
 	// Lookup to see if it exists
 	if _, ok := status.IPAssignments[mac.String()]; !ok {
 		errStr := fmt.Sprintf("releaseIPv4: not found %s for %s",
-			mac.String(), config.UUID.String())
+			mac.String(), status.UUID.String())
 		return false, errors.New(errStr)
 	}
 	delete(status.IPAssignments, mac.String())
@@ -351,6 +336,7 @@ func lookupNetworkObjectConfig(ctx *zedrouterContext, key string) *types.Network
 	return &config
 }
 
+// XXX Callers must be careful to publish any changes to NetworkObjectStatus
 func lookupNetworkObjectStatus(ctx *zedrouterContext, key string) *types.NetworkObjectStatus {
 
 	pub := ctx.pubNetworkObjectStatus
@@ -371,14 +357,15 @@ func lookupNetworkObjectStatus(ctx *zedrouterContext, key string) *types.Network
 func updateBridgeIPAddr(ctx *zedrouterContext, id uuid.UUID) {
 	log.Printf("updateBridgeIPAddr(%s)\n", id.String())
 
-	config := lookupNetworkObjectConfig(ctx, id.String())
 	status := lookupNetworkObjectStatus(ctx, id.String())
-	if config == nil || status == nil {
-		log.Printf("updateBridgeIPAddr: no config or status\n")
+	// If setBridgeIpAddr does an allocation it will re-publish
+	// the status.
+	if status == nil {
+		log.Printf("updateBridgeIPAddr: no status\n")
 		return
 	}
 
-	err := setBridgeIPAddr(ctx, *config, status)
+	err := setBridgeIPAddr(ctx, status)
 	if err != nil {
 		log.Printf("updateBridgeIPAddr: %s\n", err)
 		return

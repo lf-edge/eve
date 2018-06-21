@@ -26,10 +26,10 @@ func handleNetworkServiceModify(ctxArg interface{}, key string, configArg interf
 	if status != nil {
 		log.Printf("handleNetworkServiceModify(%s)\n", key)
 		status.PendingModify = true
-		pub.Publish(key, *status)
+		pub.Publish(status.UUID.String(), *status)
 		doServiceModify(ctx, config, status)
 		status.PendingModify = false
-		pub.Publish(key, *status)
+		pub.Publish(status.UUID.String(), *status)
 		log.Printf("handleNetworkServiceModify(%s) done\n", key)
 	} else {
 		handleNetworkServiceCreate(ctx, key, config)
@@ -48,17 +48,17 @@ func handleNetworkServiceCreate(ctx *zedrouterContext, key string, config types.
 		Adapter:     config.Adapter,
 	}
 	status.PendingAdd = true
-	pub.Publish(key, status)
+	pub.Publish(status.UUID.String(), status)
 	err := doServiceCreate(config, &status)
 	if err != nil {
 		log.Printf("doServiceCreate(%s) failed: %s\n", key, err)
 		status.Error = err.Error()
 		status.ErrorTime = time.Now()
 		status.PendingAdd = false
-		pub.Publish(key, status)
+		pub.Publish(status.UUID.String(), status)
 		return
 	}
-	pub.Publish(key, status)
+	pub.Publish(status.UUID.String(), status)
 	if config.Activate {
 		err := doServiceActivate(ctx, config, &status)
 		if err != nil {
@@ -70,7 +70,7 @@ func handleNetworkServiceCreate(ctx *zedrouterContext, key string, config types.
 		}
 	}
 	status.PendingAdd = false
-	pub.Publish(key, status)
+	pub.Publish(status.UUID.String(), status)
 	log.Printf("handleNetworkServiceCreate(%s) done\n", key)
 }
 
@@ -84,14 +84,14 @@ func handleNetworkServiceDelete(ctxArg interface{}, key string) {
 		return
 	}
 	status.PendingDelete = true
-	pub.Publish(key, *status)
+	pub.Publish(status.UUID.String(), *status)
 	if status.Activated {
 		doServiceInactivate(ctx, status)
-		pub.Publish(key, *status)
+		pub.Publish(status.UUID.String(), *status)
 	}
 	doServiceDelete(status)
 	status.PendingDelete = false
-	pub.Unpublish(key)
+	pub.Unpublish(status.UUID.String())
 	log.Printf("handleNetworkServiceDelete(%s) done\n", key)
 }
 
@@ -287,6 +287,7 @@ func lookupNetworkServiceConfig(ctx *zedrouterContext, key string) *types.Networ
 	return &config
 }
 
+// XXX Callers must be careful to publish any changes to NetworkServiceStatus
 func lookupNetworkServiceStatus(ctx *zedrouterContext, key string) *types.NetworkServiceStatus {
 
 	pub := ctx.pubNetworkServiceStatus

@@ -987,9 +987,11 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 
 		netconfig := lookupNetworkObjectConfig(ctx,
 			ulConfig.Network.String())
+		netstatus := lookupNetworkObjectStatus(ctx,
+			ulConfig.Network.String())
 
 		ulAddr1, ulAddr2 := getUlAddrs(ctx, ulNum-1, appNum, ulStatus,
-			netconfig)
+			netstatus)
 		// Check if we already have an address on the bridge
 		// XXX isn't that done inside getUlAddrs?
 		if !created {
@@ -1035,8 +1037,6 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		if ulConfig.SshPortMap {
 			sshPort = 8022 + 100*uint(appNum)
 		}
-		netstatus := lookupNetworkObjectStatus(ctx,
-			ulConfig.Network.String())
 		if netstatus != nil {
 			err = updateNetworkACLConfiglet(ctx, netstatus)
 			if err != nil {
@@ -1159,7 +1159,7 @@ func findBridge(bridgeName string) (*netlink.Bridge, error) {
 // XXX IPv6? LISP? Same? getOlAddrs???
 func getUlAddrs(ctx *zedrouterContext, ifnum int, appNum int,
 	status *types.UnderlayNetworkStatus,
-	netconf *types.NetworkObjectConfig) (string, string) {
+	netstatus *types.NetworkObjectStatus) (string, string) {
 
 	log.Printf("getUlAddrs(%d/%d)\n", ifnum, appNum)
 
@@ -1170,12 +1170,12 @@ func getUlAddrs(ctx *zedrouterContext, ifnum int, appNum int,
 	ulAddr1 := fmt.Sprintf("172.%d.%d.1", 27+ifnum, appNum)
 	ulAddr2 := fmt.Sprintf("172.%d.%d.2", 27+ifnum, appNum)
 
-	if netconf != nil {
+	if netstatus != nil {
 		// Allocate ulAddr1 based on BridgeMac
 		log.Printf("getUlAddrs(%d/%d for %s) bridgeMac %s\n",
-			ifnum, appNum, netconf.UUID.String(),
+			ifnum, appNum, netstatus.UUID.String(),
 			status.BridgeMac.String())
-		addr, err := lookupOrAllocateIPv4(ctx, *netconf,
+		addr, err := lookupOrAllocateIPv4(ctx, netstatus,
 			status.BridgeMac)
 		if err != nil {
 			log.Printf("lookupOrAllocatePv4 failed %s\n", err)
@@ -1190,15 +1190,15 @@ func getUlAddrs(ctx *zedrouterContext, ifnum int, appNum int,
 		// Assumption is that the config specifies a gateway/router
 		// in the same subnet as the static address.
 		ulAddr2 = status.AppIPAddr.String()
-	} else if netconf != nil {
+	} else if netstatus != nil {
 		// XXX or change type of VifInfo.Mac?
 		mac, err := net.ParseMAC(status.Mac)
 		if err != nil {
 			log.Fatal("ParseMAC failed: ", status.Mac, err)
 		}
 		log.Printf("getUlAddrs(%d/%d for %s) app Mac %s\n",
-			ifnum, appNum, netconf.UUID.String(), mac.String())
-		addr, err := lookupOrAllocateIPv4(ctx, *netconf, mac)
+			ifnum, appNum, netstatus.UUID.String(), mac.String())
+		addr, err := lookupOrAllocateIPv4(ctx, netstatus, mac)
 		if err != nil {
 			log.Printf("lookupOrAllocateIPv4 failed %s\n", err)
 			// Keep above default
@@ -1747,13 +1747,14 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 				// Remove link and associated addresses
 				netlink.LinkDel(uLink)
 			}
-			netconfig := lookupNetworkObjectConfig(ctx,
+			netstatus := lookupNetworkObjectStatus(ctx,
 				ulStatus.Network.String())
 
 			doDelete := true
-			if netconfig != nil {
-				last, err := releaseIPv4(ctx, *netconfig,
+			if netstatus != nil {
+				last, err := releaseIPv4(ctx, netstatus,
 					ulStatus.BridgeMac)
+				// XXX publish
 				if err != nil {
 					addError(ctx, status, "freeIPv4", err)
 				}
@@ -1767,6 +1768,9 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 			hostsDirpath := globalRunDirname + "/hosts." + bridgeName
 			cfgFilename := "dnsmasq." + bridgeName + ".conf"
 			cfgPathname := runDirname + "/" + cfgFilename
+
+			netconfig := lookupNetworkObjectConfig(ctx,
+				ulStatus.Network.String())
 			if doDelete {
 				// dnsmasq cleanup
 				stopDnsmasq(cfgFilename, true)
@@ -1794,8 +1798,6 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 			ulAddr1 := ulStatus.BridgeIPAddr
 			ulAddr2 := ulStatus.AssignedIPAddr
 
-			netstatus := lookupNetworkObjectStatus(ctx,
-				ulStatus.Network.String())
 			if netstatus != nil {
 				err := updateNetworkACLConfiglet(ctx, netstatus)
 				if err != nil {
