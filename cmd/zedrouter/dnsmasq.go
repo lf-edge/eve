@@ -153,8 +153,8 @@ func createDnsmasqUnderlayConfiglet(ctx *zedrouterContext,
 			ulMac, ulAddr2, hostName))
 	}
 
-	netmask := "255.255.0.0"  // Default unless there is a Subnet
-	dhcpRange := "172.27.0.0" // Default unless there is a DhcpRange
+	netmask := "255.240.0.0"  // Default unless there is a Subnet
+	dhcpRange := "172.16.0.0" // Default unless there is a DhcpRange
 
 	if netconf != nil {
 		// By default dnsmasq advertizes a router (and we can have a
@@ -177,7 +177,9 @@ func createDnsmasqUnderlayConfiglet(ctx *zedrouterContext,
 			file.WriteString(fmt.Sprintf("dhcp-option=option:domain-name,%s\n",
 				netconf.DomainName))
 		}
+		maybeAdvertizeDns := false
 		for _, ns := range netconf.DnsServers {
+			maybeAdvertizeDns = true
 			file.WriteString(fmt.Sprintf("dhcp-option=option:dns-server,%s\n",
 				ns.String()))
 		}
@@ -196,6 +198,12 @@ func createDnsmasqUnderlayConfiglet(ctx *zedrouterContext,
 				netconf.Gateway.String()))
 		} else if !advertizeRouter {
 			file.WriteString(fmt.Sprintf("dhcp-option=option:router\n"))
+			if !maybeAdvertizeDns {
+				// XXX handle isolated network by making sure
+				// we are not a DNS server. Can be overridden
+				// with the DnsServers above
+				file.WriteString(fmt.Sprintf("dhcp-option=option:dns-server\n"))
+			}
 		}
 		// XXX do we need to set
 		// dhcp-option=option:dns-server
