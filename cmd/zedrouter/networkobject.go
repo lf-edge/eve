@@ -177,9 +177,11 @@ func setBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) e
 	// XXX call getServiceInfo first?
 	st, _, err := getServiceInfo(ctx, status.UUID)
 	if err != nil {
+		// There might not be a service associated with this network
+		// or it might not yet have arrived. In either case we
+		// don't treat it as a bridge service.
 		log.Printf("setBridgeIPAddr: getServiceInfo failed: %s\n",
 			err)
-		return err
 	}
 	var ipAddr string
 	if st == types.NST_BRIDGE {
