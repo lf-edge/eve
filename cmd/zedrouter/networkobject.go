@@ -332,8 +332,9 @@ func lookupNetworkObjectConfig(ctx *zedrouterContext, key string) *types.Network
 	}
 	config := cast.CastNetworkObjectConfig(c)
 	if config.UUID.String() != key {
-		log.Fatalf("lookupNetworkObjectConfig(%s) got %s\n",
+		log.Printf("lookupNetworkObjectConfig(%s) got %s; ignored\n",
 			key, config.UUID.String())
+		return nil
 	}
 	return &config
 }
@@ -348,8 +349,9 @@ func lookupNetworkObjectStatus(ctx *zedrouterContext, key string) *types.Network
 	}
 	status := cast.CastNetworkObjectStatus(st)
 	if status.UUID.String() != key {
-		log.Fatalf("lookupNetworkObjectStatus(%s) got %s\n",
+		log.Printf("lookupNetworkObjectStatus(%s) got %s; ignored\n",
 			key, status.UUID.String())
+		return nil
 	}
 	return &status
 }
