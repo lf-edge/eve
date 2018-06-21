@@ -371,6 +371,9 @@ func parseNetworkObjectConfig(config *zconfig.EdgeDevConfig,
 	// Export NetworkObjectConfig to zedrouter
 	publishNetworkObjectConfig(getconfigCtx, nets)
 
+	// XXX hack - wait for a while so zedrouter can pick up this
+	// before it sees AppNetworkConfig using this network/service
+	time.Sleep(10 * time.Second)
 }
 
 var networkServicePrevConfigHash []byte
@@ -396,6 +399,9 @@ func parseNetworkServiceConfig(config *zconfig.EdgeDevConfig,
 	// Export NetworkServiceConfig to zedrouter
 	publishNetworkServiceConfig(getconfigCtx, svcs)
 
+	// XXX hack - wait for a while so zedrouter can pick up this
+	// before it sees AppNetworkConfig using this network/service
+	time.Sleep(10 * time.Second)
 }
 
 var appinstancePrevConfigHash []byte
