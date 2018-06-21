@@ -40,8 +40,6 @@ var rebootTimer *time.Timer
 // Returns a rebootFlag
 func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext) bool {
 
-	log.Println("Applying new config")
-
 	if parseOpCmds(config) == true {
 		log.Println("Reboot flag set, skipping config processing")
 		return true
@@ -110,7 +108,7 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 		log.Printf("parseBaseOsConfig: baseos sha is unchanged\n")
 		return false
 	}
-	log.Printf("parseBaseOsConfig() Applying updated config %v\n",
+	log.Printf("parseBaseOsConfig: Applying updated config %v\n",
 		cfgOsList)
 
 	baseOsCount := len(cfgOsList)
@@ -368,10 +366,14 @@ func parseNetworkObjectConfig(config *zconfig.EdgeDevConfig,
 		log.Printf("parseNetworkObjectConfig: network sha is unchanged\n")
 		return
 	}
-	log.Printf("Applying updated Network config %v\n", nets)
+	log.Printf("parseNetworkObjectConfig: Applying updated config %v\n",
+		nets)
 	// Export NetworkObjectConfig to zedrouter
 	publishNetworkObjectConfig(getconfigCtx, nets)
 
+	// XXX hack - wait for a while so zedrouter can pick up this
+	// before it sees AppNetworkConfig using this network/service
+	time.Sleep(10 * time.Second)
 }
 
 var networkServicePrevConfigHash []byte
@@ -391,11 +393,15 @@ func parseNetworkServiceConfig(config *zconfig.EdgeDevConfig,
 		log.Printf("parseNetworkServiceConfig: service sha is unchanged\n")
 		return
 	}
-	log.Printf("Applying updated NetworkServiceConfig %v\n", svcs)
+	log.Printf("parseNetworkServiceConfig: Applying updated config %v\n",
+		svcs)
 
 	// Export NetworkServiceConfig to zedrouter
 	publishNetworkServiceConfig(getconfigCtx, svcs)
 
+	// XXX hack - wait for a while so zedrouter can pick up this
+	// before it sees AppNetworkConfig using this network/service
+	time.Sleep(10 * time.Second)
 }
 
 var appinstancePrevConfigHash []byte
@@ -417,7 +423,7 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 		log.Printf("parseAppInstanceConfig: appinstance sha is unchanged\n")
 		return
 	}
-	log.Printf("Applying updated App Instance config %v\n", Apps)
+	log.Printf("parseAppInstanceConfig: Applying updated config %v\n", Apps)
 
 	for _, cfgApp := range Apps {
 		// Note that we repeat this even if the app config didn't
@@ -587,11 +593,11 @@ func lookupServiceId(id string, cfgServices []*zconfig.ServiceInstanceConfig) *z
 	return nil
 }
 
-func publishNetworkObjectConfig(getconfigCtx *getconfigContext,
+func publishNetworkObjectConfig(ctx *getconfigContext,
 	cfgNetworks []*zconfig.NetworkConfig) {
 
 	// Check for items to delete first
-	items := getconfigCtx.pubNetworkObjectConfig.GetAll()
+	items := ctx.pubNetworkObjectConfig.GetAll()
 	// XXX remove log
 	log.Printf("pubNetworkObjectConfig.GetAll got %d, %v\n", len(items), items)
 	for k, _ := range items {
@@ -600,12 +606,12 @@ func publishNetworkObjectConfig(getconfigCtx *getconfigContext,
 			continue
 		}
 		log.Printf("publishNetworkObjectConfig: deleting %s\n", k)
-		getconfigCtx.pubNetworkObjectConfig.Unpublish(k)
+		ctx.pubNetworkObjectConfig.Unpublish(k)
 	}
 	for _, netEnt := range cfgNetworks {
 		id, err := uuid.FromString(netEnt.Id)
 		if err != nil {
-			log.Printf("NetworkObjectConfig: Malformed UUID ignored: %s\n",
+			log.Printf("publishNetworkObjectConfig: Malformed UUID ignored: %s\n",
 				err)
 			continue
 		}
@@ -613,34 +619,42 @@ func publishNetworkObjectConfig(getconfigCtx *getconfigContext,
 			UUID: id,
 			Type: types.NetworkType(netEnt.Type),
 		}
+
+		log.Printf("publishNetworkObjectConfig: processing %s type %d\n",
+			config.UUID.String(), config.Type)
+
 		switch config.Type {
-		case types.NT_IPV4:
-		case types.NT_IPV6:
+		case types.NT_IPV4, types.NT_IPV6:
 			ipspec := netEnt.GetIp()
 			if ipspec == nil {
-				log.Printf("Missing ipspec for %d in %v\n",
+				log.Printf("publishNetworkObjectConfig: Missing ipspec for %d in %v\n",
 					id.String(), netEnt)
 				continue
 			}
+			// XXX here or in function?
+			config.Dhcp = types.DhcpType(ipspec.Dhcp)
+
 			err := parseIpspec(ipspec, &config)
 			if err != nil {
 				// XXX return how?
-				log.Printf("parseIpspec failed: %s\n", err)
+				log.Printf("publishNetworkObjectConfig: parseIpspec failed: %s\n", err)
 			}
 		case types.NT_LISP:
-			log.Printf("LISP NetworkConfig not supported for %d in %v\n",
-					id.String(), netEnt)
+			log.Printf("publishNetworkObjectConfig: LISP NetworkConfig not supported for %d in %v\n",
+				id.String(), netEnt)
 		default:
-			log.Printf("Unknown NetworkConfig type %d for %d in %v\n",
-					config.Type, id.String(), netEnt)
+			log.Printf("publishNetworkObjectConfig: Unknown NetworkConfig type %d for %d in %v\n",
+				config.Type, id.String(), netEnt)
 		}
 		// XXX Hack to make existing Dhcp == 0 become an implicit
+		// XXX remove
 		// DHCP = Server with an associated NAT service
 		if config.Dhcp == types.DT_NOOP {
 			config.Dhcp = types.DT_SERVER
 
 			// XXX Order since Service checks ...
-			getconfigCtx.pubNetworkObjectConfig.Publish(id.String(), &config)
+			ctx.pubNetworkObjectConfig.Publish(config.UUID.String(),
+				&config)
 
 			_, subnet, _ := net.ParseCIDR("172.28.1.10/24")
 			config.Subnet = *subnet
@@ -649,55 +663,62 @@ func publishNetworkObjectConfig(getconfigCtx *getconfigContext,
 			config.DhcpRange.End = net.ParseIP("172.28.1.254")
 			log.Printf("Converting DT_NOOP to DT_SERVER plus NAT service for %s type %d\n",
 				config.UUID, config.Type)
-			createNATNetworkService(getconfigCtx, config.UUID)
+			createNATNetworkService(ctx, config.UUID)
 		}
-		getconfigCtx.pubNetworkObjectConfig.Publish(id.String(), &config)
+		ctx.pubNetworkObjectConfig.Publish(config.UUID.String(),
+			&config)
 	}
 }
 
-func createNATNetworkService(getconfigCtx *getconfigContext,
+func createNATNetworkService(ctx *getconfigContext,
 	id uuid.UUID) {
 
+	// Generate a new UUID to avoid confusion between the NetworkObject
+	// and the NetworkService.
+	// V5 will be the same if the id and name are the same
+	name := "emulated NAT service"
+	id2 := uuid.NewV5(id, name)
 	service := types.NetworkServiceConfig{
-		UUID:        id,
+		UUID:        id2,
 		Internal:    true,
-		DisplayName: "emulated NAT service",
+		DisplayName: name,
 		Type:        types.NST_NAT,
 		Activate:    true,
 		AppLink:     id,
 		Adapter:     "freeuplink",
 	}
 	// XXX unpublish when DT_NOOP Network is deleted?
-	getconfigCtx.pubNetworkServiceConfig.Publish(id.String(), &service)
+	ctx.pubNetworkServiceConfig.Publish(service.UUID.String(),
+		&service)
 }
 
 func parseIpspec(ipspec *zconfig.Ipspec, config *types.NetworkObjectConfig) error {
 	config.Dhcp = types.DhcpType(ipspec.Dhcp)
 	// XXX
 	log.Printf("parseIpspec: dhcp %d\n", config.Dhcp)
-	config.DomainName = ipspec.Domain
-	if ipspec.Subnet != "" {
-		_, subnet, err := net.ParseCIDR(ipspec.Subnet)
+	config.DomainName = ipspec.GetDomain()
+	if s := ipspec.GetSubnet(); s != "" {
+		_, subnet, err := net.ParseCIDR(s)
 		if err != nil {
 			return err
 		}
 		config.Subnet = *subnet
 	}
-	if ipspec.Gateway != "" {
-		config.Gateway = net.ParseIP(ipspec.Gateway)
+	if g := ipspec.GetGateway(); g != "" {
+		config.Gateway = net.ParseIP(g)
 		if config.Gateway == nil {
 			return errors.New(fmt.Sprintf("parseIpspec: bad IP %s",
-				ipspec.Gateway))
+				g))
 		}
 	}
-	if ipspec.Ntp != "" {
-		config.NtpServer = net.ParseIP(ipspec.Ntp)
+	if n := ipspec.GetNtp(); n != "" {
+		config.NtpServer = net.ParseIP(n)
 		if config.NtpServer == nil {
 			return errors.New(fmt.Sprintf("parseIpspec: bad IP %s",
-				ipspec.Ntp))
+				n))
 		}
 	}
-	for _, dsStr := range ipspec.Dns {
+	for _, dsStr := range ipspec.GetDns() {
 		ds := net.ParseIP(dsStr)
 		if ds == nil {
 			return errors.New(fmt.Sprintf("parseIpspec: bad IP %s",
@@ -705,16 +726,16 @@ func parseIpspec(ipspec *zconfig.Ipspec, config *types.NetworkObjectConfig) erro
 		}
 		config.DnsServers = append(config.DnsServers, ds)
 	}
-	if ipspec.DhcpRange != nil {
-		start := net.ParseIP(ipspec.DhcpRange.Start)
+	if dr := ipspec.GetDhcpRange(); dr != nil {
+		start := net.ParseIP(dr.GetStart())
 		if start == nil {
 			return errors.New(fmt.Sprintf("parseIpspec: bad IP %s",
-				start))
+				dr.GetStart()))
 		}
-		end := net.ParseIP(ipspec.DhcpRange.End)
+		end := net.ParseIP(dr.GetEnd())
 		if end == nil {
 			return errors.New(fmt.Sprintf("parseIpspec: bad IP %s",
-				end))
+				dr.GetEnd()))
 		}
 		config.DhcpRange.Start = start
 		config.DhcpRange.End = end
@@ -722,11 +743,11 @@ func parseIpspec(ipspec *zconfig.Ipspec, config *types.NetworkObjectConfig) erro
 	return nil
 }
 
-func publishNetworkServiceConfig(getconfigCtx *getconfigContext,
+func publishNetworkServiceConfig(ctx *getconfigContext,
 	cfgServices []*zconfig.ServiceInstanceConfig) {
 
 	// Check for items to delete first
-	items := getconfigCtx.pubNetworkServiceConfig.GetAll()
+	items := ctx.pubNetworkServiceConfig.GetAll()
 	// XXX remove log
 	log.Printf("pubNetworkServiceConfig.GetAll got %d, %v\n", len(items), items)
 	for k, c := range items {
@@ -740,7 +761,7 @@ func publishNetworkServiceConfig(getconfigCtx *getconfigContext,
 			continue
 		}
 		log.Printf("publishNetworkServiceConfig: deleting %s\n", k)
-		getconfigCtx.pubNetworkServiceConfig.Unpublish(k)
+		ctx.pubNetworkServiceConfig.Unpublish(k)
 	}
 	for _, svcEnt := range cfgServices {
 		id, err := uuid.FromString(svcEnt.Id)
@@ -755,10 +776,14 @@ func publishNetworkServiceConfig(getconfigCtx *getconfigContext,
 			Type:        types.NetworkServiceType(svcEnt.Srvtype),
 			Activate:    svcEnt.Activate,
 		}
+		log.Printf("publishNetworkServiceConfig: processing %s %s type %d activate %v\n",
+			service.UUID.String(), service.DisplayName, service.Type,
+			service.Activate)
+
 		if svcEnt.Applink != "" {
 			applink, err := uuid.FromString(svcEnt.Applink)
 			if err != nil {
-				log.Printf("NetworkServiceConfig: Malformed UUID %s ignored: %s\n",
+				log.Printf("publishNetworkServiceConfig: Malformed UUID %s ignored: %s\n",
 					svcEnt.Applink, err)
 				continue
 			}
@@ -766,7 +791,7 @@ func publishNetworkServiceConfig(getconfigCtx *getconfigContext,
 		}
 		if svcEnt.Devlink != nil {
 			if svcEnt.Devlink.Type != zconfig.ZCioType_ZCioEth {
-				log.Printf("NetworkServiceConfig: Unsupported IoType %v ignored\n",
+				log.Printf("publishNetworkServiceConfig: Unsupported IoType %v ignored\n",
 					svcEnt.Devlink.Type)
 				continue
 			}
@@ -775,7 +800,8 @@ func publishNetworkServiceConfig(getconfigCtx *getconfigContext,
 		if svcEnt.Cfg != nil {
 			service.OpaqueConfig = svcEnt.Cfg.Oconfig
 		}
-		getconfigCtx.pubNetworkServiceConfig.Publish(id.String(), &service)
+		ctx.pubNetworkServiceConfig.Publish(service.UUID.String(),
+			&service)
 	}
 }
 
@@ -840,7 +866,7 @@ func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
 		}
 		switch netEnt.Type {
 		case zconfig.NetworkType_V4, zconfig.NetworkType_V6:
-			break
+			// Do nothing
 		// XXX turn LISP into a service
 		case zconfig.NetworkType_LISP:
 			continue
@@ -1005,8 +1031,7 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 
 var itemsPrevConfigHash []byte
 
-func parseConfigItems(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext) {
-	log.Printf("parseConfigItems\n")
+func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 
 	items := config.GetConfigItems()
 	h := sha256.New()
@@ -1020,7 +1045,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCont
 		log.Printf("parseConfigItems: items sha is unchanged\n")
 		return
 	}
-	log.Printf("parseConfigItems() Applying updated config %v\n", items)
+	log.Printf("parseConfigItems: Applying updated config %v\n", items)
 
 	for _, item := range items {
 		log.Printf("parseConfigItems key %s\n", item.Key)
@@ -1048,7 +1073,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCont
 					configItemCurrent.configInterval,
 					newU32)
 				configItemCurrent.configInterval = newU32
-				updateConfigTimer(getconfigCtx.configTickerHandle)
+				updateConfigTimer(ctx.configTickerHandle)
 			}
 		case "metricInterval":
 			if newU32 == 0 {
@@ -1061,7 +1086,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCont
 					configItemCurrent.metricInterval,
 					newU32)
 				configItemCurrent.metricInterval = newU32
-				updateMetricsTimer(getconfigCtx.metricsTickerHandle)
+				updateMetricsTimer(ctx.metricsTickerHandle)
 			}
 		case "resetIfCloudGoneTime":
 			if newU32 == 0 {
