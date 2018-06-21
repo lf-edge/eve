@@ -21,6 +21,10 @@ import (
 func handleNetworkConfigModify(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*zedrouterContext)
 	config := cast.CastNetworkObjectConfig(configArg)
+	if config.UUID.String() != key {
+		log.Printf("handleNetworkConfigModify key/UUID mismatch %s vs %s; ignored %+v\n", key, config.UUID.String(), config)
+		return
+	}
 	status := lookupNetworkObjectStatus(ctx, key)
 	if status != nil {
 		log.Printf("handleNetworkConfigModify(%s)\n", key)
@@ -36,6 +40,7 @@ func handleNetworkConfigModify(ctxArg interface{}, key string, configArg interfa
 	}
 }
 
+// XXX rename Config to Object in function names
 func handleNetworkConfigCreate(ctx *zedrouterContext, key string, config types.NetworkObjectConfig) {
 	log.Printf("handleNetworkConfigCreate(%s)\n", key)
 
@@ -332,8 +337,8 @@ func lookupNetworkObjectConfig(ctx *zedrouterContext, key string) *types.Network
 	}
 	config := cast.CastNetworkObjectConfig(c)
 	if config.UUID.String() != key {
-		log.Printf("lookupNetworkObjectConfig(%s) got %s; ignored\n",
-			key, config.UUID.String())
+		log.Printf("lookupNetworkObjectConfig(%s) got %s; ignored %+v\n",
+			key, config.UUID.String(), config)
 		return nil
 	}
 	return &config
@@ -349,8 +354,8 @@ func lookupNetworkObjectStatus(ctx *zedrouterContext, key string) *types.Network
 	}
 	status := cast.CastNetworkObjectStatus(st)
 	if status.UUID.String() != key {
-		log.Printf("lookupNetworkObjectStatus(%s) got %s; ignored\n",
-			key, status.UUID.String())
+		log.Printf("lookupNetworkObjectStatus(%s) got %s; ignored %+v\n",
+			key, status.UUID.String(), status)
 		return nil
 	}
 	return &status
