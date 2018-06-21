@@ -161,8 +161,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	subNetworkObjectConfig.ModifyHandler = handleNetworkConfigModify
-	subNetworkObjectConfig.DeleteHandler = handleNetworkConfigDelete
+	subNetworkObjectConfig.ModifyHandler = handleNetworkObjectModify
+	subNetworkObjectConfig.DeleteHandler = handleNetworkObjectDelete
 
 	subNetworkServiceConfig, err := pubsub.Subscribe("zedagent",
 		types.NetworkServiceConfig{}, &zedrouterCtx)
@@ -1075,7 +1075,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 func findOrCreateBridge(ctx *zedrouterContext, bridgeName string, ifNum int,
 	appNum int, netUUID uuid.UUID) (*netlink.Bridge, bool, error) {
 
-	// Make sure we have a NetworkConfig object if we have a UUID
+	// Make sure we have a NetworkObjectConfig if we have a UUID
 	// Returns nil if UUID is zero
 	if netUUID != nilUUID {
 		netstatus := lookupNetworkObjectStatus(ctx, netUUID.String())
