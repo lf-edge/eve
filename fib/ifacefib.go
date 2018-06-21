@@ -4,6 +4,7 @@
 package fib
 
 import (
+	"fmt"
 	"github.com/zededa/lisp/dataplane/dptypes"
 	"log"
 	"net"
@@ -104,6 +105,19 @@ func ShowIfaceIIDs() {
 	log.Println()
 }
 
+func GetInterfaces() []string {
+	ifaceMap.LockMe.RLock()
+	defer ifaceMap.LockMe.RUnlock()
+
+	ifaces := []string{}
+
+	for key, data := range ifaceMap.InterfaceDB {
+		iface := fmt.Sprintf("%s:%d", key, data.InstanceId)
+		ifaces = append(ifaces, iface)
+	}
+	return ifaces
+}
+
 func ShowIfaceEIDs() {
 	eidMap.LockMe.RLock()
 	defer eidMap.LockMe.RUnlock()
@@ -118,4 +132,19 @@ func ShowIfaceEIDs() {
 		log.Println()
 	}
 	log.Println()
+}
+
+func GetIfaceEIDs() []string {
+	eidMap.LockMe.RLock()
+	defer eidMap.LockMe.RUnlock()
+
+	eids := []string{}
+	for key, data := range eidMap.EidEntries {
+		eidEntry := fmt.Sprintf("%d --> ", key)
+		for _, eid := range data.Eids {
+			eidEntry += eid.String() + " "
+		}
+		eids = append(eids, eidEntry)
+	}
+	return eids
 }

@@ -7,11 +7,14 @@
 package fib
 
 import (
+	"bufio"
 	"encoding/json"
+	"fmt"
 	"github.com/zededa/lisp/dataplane/dptypes"
 	"log"
 	"math/rand"
 	"net"
+	"os"
 	"strconv"
 	"sync/atomic"
 	"syscall"
@@ -20,6 +23,7 @@ import (
 
 // 5 minutes scrub threshold
 const SCRUBTHRESHOLD = 5 * 60
+const DATABASEWRITEFILE = "./show-ztr"
 
 var cache *dptypes.MapCacheTable
 var decaps *dptypes.DecapTable
@@ -39,6 +43,18 @@ func InitItrCryptoPort() {
 	itrGlobalData.LockMe.Lock()
 	defer itrGlobalData.LockMe.Unlock()
 	itrGlobalData.ItrCryptoPort = -1
+}
+
+func GetItrCryptoPort() int {
+	itrGlobalData.LockMe.RLock()
+	defer itrGlobalData.LockMe.RUnlock()
+	return itrGlobalData.ItrCryptoPort
+}
+
+func PutItrCryptoPort(port int) {
+	itrGlobalData.LockMe.Lock()
+	defer itrGlobalData.LockMe.Unlock()
+	itrGlobalData.ItrCryptoPort = port
 }
 
 func newMapCache() *dptypes.MapCacheTable {
@@ -475,6 +491,14 @@ func AddDecapStatistics(statName string, pkts uint64,
 	}
 }
 
+func StoreEtrNatPort(port int32) {
+	atomic.StoreInt32(&decaps.EtrNatPort, port)
+}
+
+func GetEtrNatPort() int32 {
+	return atomic.LoadInt32(&decaps.EtrNatPort)
+}
+
 func UpdateDecapKeys(entry *dptypes.DecapKeys) {
 	if decaps == nil {
 		return
@@ -604,6 +628,185 @@ func MapcacheScrubThread() {
 	}
 }
 
+func sendEncapStatistics(puntChannel chan []byte) {
+	// Take read lock of map cache table
+	// and go through each entry while preparing statistics message
+	// We hold the lock while we iterate through the table.
+
+	cache.LockMe.RLock()
+
+	var lispStatistics dptypes.LispStatistics
+	lispStatistics.Type = "statistics"
+
+	for key, value := range cache.MapCache {
+		var eidStats dptypes.EidStatsEntry
+		eidStats.InstanceId = strconv.FormatUint(uint64(key.IID), 10)
+		prefixLength := "/128"
+		if key.Eid == "::" {
+			prefixLength = "/0"
+		}
+		eidStats.EidPrefix = key.Eid + prefixLength
+		eidStats.Rlocs = []dptypes.RlocStatsEntry{}
+		for _, rloc := range value.Rlocs {
+
+			var rlocStats dptypes.RlocStatsEntry
+			rlocStats.Rloc = rloc.Rloc.String()
+			rlocStats.PacketCount = atomic.SwapUint64(rloc.Packets, 0)
+			rlocStats.ByteCount = atomic.SwapUint64(rloc.Bytes, 0)
+			currUnixSecs := time.Now().Unix()
+			lastPktSecs := atomic.LoadInt64(rloc.LastPktTime)
+			rlocStats.SecondsSinceLastPkt = currUnixSecs - lastPktSecs
+
+			eidStats.Rlocs = append(eidStats.Rlocs, rlocStats)
+		}
+		lispStatistics.Entries = append(lispStatistics.Entries, eidStats)
+	}
+	cache.LockMe.RUnlock()
+
+	// Send out ITR encap statistics to lispers.net
+	statsMsg, err := json.Marshal(lispStatistics)
+	log.Println(string(statsMsg))
+	if err != nil {
+		log.Printf("Error: Encoding encap statistics\n")
+	} else {
+		puntChannel <- statsMsg
+	}
+}
+
+func sendDecapStatistics(puntChannel chan []byte) {
+	var decapStatistics dptypes.DecapStatistics
+	decapStatistics.Type = "decap-statistics"
+	currUnixSecs := time.Now().Unix()
+	decapStatistics.NoDecryptKey.Pkts = atomic.SwapUint64(&decaps.NoDecryptKey.Pkts, 0)
+	decapStatistics.NoDecryptKey.Bytes = atomic.SwapUint64(&decaps.NoDecryptKey.Bytes, 0)
+	lastPktTime := atomic.LoadInt64(&decaps.NoDecryptKey.LastPktTime)
+	decapStatistics.NoDecryptKey.LastPktTime = currUnixSecs - lastPktTime
+
+	decapStatistics.OuterHeaderError.Pkts = atomic.SwapUint64(&decaps.OuterHeaderError.Pkts, 0)
+	decapStatistics.OuterHeaderError.Bytes = atomic.SwapUint64(&decaps.OuterHeaderError.Bytes, 0)
+	lastPktTime = atomic.LoadInt64(&decaps.OuterHeaderError.LastPktTime)
+	decapStatistics.OuterHeaderError.LastPktTime = currUnixSecs - lastPktTime
+
+	decapStatistics.BadInnerVersion.Pkts = atomic.SwapUint64(&decaps.BadInnerVersion.Pkts, 0)
+	decapStatistics.BadInnerVersion.Bytes = atomic.SwapUint64(&decaps.BadInnerVersion.Bytes, 0)
+	lastPktTime = atomic.LoadInt64(&decaps.BadInnerVersion.LastPktTime)
+	decapStatistics.BadInnerVersion.LastPktTime = currUnixSecs - lastPktTime
+
+	decapStatistics.GoodPackets.Pkts = atomic.SwapUint64(&decaps.GoodPackets.Pkts, 0)
+	decapStatistics.GoodPackets.Bytes = atomic.SwapUint64(&decaps.GoodPackets.Bytes, 0)
+	lastPktTime = atomic.LoadInt64(&decaps.GoodPackets.LastPktTime)
+	decapStatistics.GoodPackets.LastPktTime = currUnixSecs - lastPktTime
+
+	decapStatistics.ICVError.Pkts = atomic.SwapUint64(&decaps.ICVError.Pkts, 0)
+	decapStatistics.ICVError.Bytes = atomic.SwapUint64(&decaps.ICVError.Bytes, 0)
+	lastPktTime = atomic.LoadInt64(&decaps.ICVError.LastPktTime)
+	decapStatistics.ICVError.LastPktTime = currUnixSecs - lastPktTime
+
+	decapStatistics.LispHeaderError.Pkts = atomic.SwapUint64(&decaps.LispHeaderError.Pkts, 0)
+	decapStatistics.LispHeaderError.Bytes = atomic.SwapUint64(&decaps.LispHeaderError.Bytes, 0)
+	lastPktTime = atomic.LoadInt64(&decaps.LispHeaderError.LastPktTime)
+	decapStatistics.LispHeaderError.LastPktTime = currUnixSecs - lastPktTime
+
+	decapStatistics.ChecksumError.Pkts = atomic.SwapUint64(&decaps.ChecksumError.Pkts, 0)
+	decapStatistics.ChecksumError.Bytes = atomic.SwapUint64(&decaps.ChecksumError.Bytes, 0)
+	lastPktTime = atomic.LoadInt64(&decaps.ChecksumError.LastPktTime)
+	decapStatistics.ChecksumError.LastPktTime = currUnixSecs - lastPktTime
+
+	// Send out ETR decap statistics to lispers.net
+	decapStatsMsg, err := json.Marshal(decapStatistics)
+	log.Println(string(decapStatsMsg))
+	if err != nil {
+		log.Printf("Error: Encoding decap statistics\n")
+	} else {
+		puntChannel <- decapStatsMsg
+	}
+}
+
+func dumpDatabaseState() {
+	// open the database dump file
+	f, err := os.Create(DATABASEWRITEFILE)
+	if err != nil {
+		log.Printf("dumpDatabaseState: Failed opening dump file (%s) with err: %s\n",
+			DATABASEWRITEFILE, err)
+		return
+	}
+	// Get a buffered writer since we are going go make multiple writes.
+	w := bufio.NewWriter(f)
+
+	dataAndTime := fmt.Sprintf("Last database dump written on: %s\n", time.Now().String())
+	w.WriteString(dataAndTime)
+
+	w.WriteString("LISP zTR state\n")
+	msg := fmt.Sprintf("LISP dataplane debugging enabled: %v\n", debug)
+	w.WriteString(msg)
+
+	itrCryptoPort := GetItrCryptoPort()
+	msg = fmt.Sprintf("LISP ITR crypto port: %v\n", itrCryptoPort)
+	w.WriteString(msg)
+
+	etrNatPort := GetEtrNatPort()
+	msg = fmt.Sprintf("LISP ETR Nat port: %v\n", etrNatPort)
+	w.WriteString(msg)
+
+	interfaces := GetInterfaces()
+	ifnameList := "[ "
+	for _, ifname := range interfaces {
+		ifnameList += ifname + " "
+	}
+	ifnameList += "]"
+	msg = fmt.Sprintf("LISP Interfaces: %s\n", ifnameList)
+	w.WriteString(msg)
+
+	ifaceEids := GetIfaceEIDs()
+	eidList := "[ "
+	for _, eid := range ifaceEids {
+		eidList += eid + " "
+	}
+	eidList += "]"
+	msg = fmt.Sprintf("LISP database mappings: %s\n", eidList)
+	w.WriteString(msg)
+
+	w.WriteString("\n\n")
+
+	// Dump map-cache entries
+	cache.LockMe.RLock()
+
+	w.WriteString("##### MAP CACHE ENTRIES #####\n")
+	for key, value := range cache.MapCache {
+		w.WriteString("############################\n")
+		msg = fmt.Sprintf("LISP map-cache Key: [%d]%s\n", key.IID, key.Eid)
+		w.WriteString(msg)
+
+		msg = "[ "
+		for _, rloc := range value.Rlocs {
+			msg += rloc.Rloc.String() + " "
+		}
+		msg += "]\n"
+		msg = fmt.Sprintf("LISP map-cache Rlocs: %s\n\n", msg)
+		w.WriteString(msg)
+	}
+	cache.LockMe.RUnlock()
+	w.WriteString("\n\n")
+
+	// Dump decap entries
+	if decaps == nil {
+		return
+	}
+	decaps.LockMe.RLock()
+
+	w.WriteString("##### DECAP ETRs #####\n")
+	msg = "[ "
+	for rloc, _ := range decaps.DecapEntries {
+		msg += rloc + " "
+	}
+	msg += "]"
+	msg = fmt.Sprintf("Decap ETRs: %s\n", msg)
+	w.WriteString(msg)
+	decaps.LockMe.RUnlock()
+
+	w.Flush()
+}
+
 // Stats thread starts every 5 seconds and punts map cache statistics to lispers.net.
 func StatsThread(puntChannel chan []byte) {
 	log.Printf("Starting statistics thread.\n")
@@ -611,94 +814,14 @@ func StatsThread(puntChannel chan []byte) {
 		// We collect and transport statistic to lispers.net every 5 seconds
 		time.Sleep(5 * time.Second)
 
-		// Take read lock of map cache table
-		// and go through each entry while preparing statistics message
-		// We hold the lock while we iterate through the table.
+		// Send out encap & decap statistics to lispers.net
+		sendEncapStatistics(puntChannel)
+		sendDecapStatistics(puntChannel)
 
-		cache.LockMe.RLock()
-
-		var lispStatistics dptypes.LispStatistics
-		lispStatistics.Type = "statistics"
-
-		for key, value := range cache.MapCache {
-			var eidStats dptypes.EidStatsEntry
-			eidStats.InstanceId = strconv.FormatUint(uint64(key.IID), 10)
-			prefixLength := "/128"
-			if key.Eid == "::" {
-				prefixLength = "/0"
-			}
-			eidStats.EidPrefix = key.Eid + prefixLength
-			eidStats.Rlocs = []dptypes.RlocStatsEntry{}
-			for _, rloc := range value.Rlocs {
-
-				var rlocStats dptypes.RlocStatsEntry
-				rlocStats.Rloc = rloc.Rloc.String()
-				rlocStats.PacketCount = atomic.SwapUint64(rloc.Packets, 0)
-				rlocStats.ByteCount = atomic.SwapUint64(rloc.Bytes, 0)
-				currUnixSecs := time.Now().Unix()
-				lastPktSecs := atomic.LoadInt64(rloc.LastPktTime)
-				rlocStats.SecondsSinceLastPkt = currUnixSecs - lastPktSecs
-
-				eidStats.Rlocs = append(eidStats.Rlocs, rlocStats)
-			}
-			lispStatistics.Entries = append(lispStatistics.Entries, eidStats)
-		}
-		cache.LockMe.RUnlock()
-
-		var decapStatistics dptypes.DecapStatistics
-		decapStatistics.Type = "decap-statistics"
-		currUnixSecs := time.Now().Unix()
-		decapStatistics.NoDecryptKey.Pkts = atomic.SwapUint64(&decaps.NoDecryptKey.Pkts, 0)
-		decapStatistics.NoDecryptKey.Bytes = atomic.SwapUint64(&decaps.NoDecryptKey.Bytes, 0)
-		lastPktTime := atomic.LoadInt64(&decaps.NoDecryptKey.LastPktTime)
-		decapStatistics.NoDecryptKey.LastPktTime = currUnixSecs - lastPktTime
-
-		decapStatistics.OuterHeaderError.Pkts = atomic.SwapUint64(&decaps.OuterHeaderError.Pkts, 0)
-		decapStatistics.OuterHeaderError.Bytes = atomic.SwapUint64(&decaps.OuterHeaderError.Bytes, 0)
-		lastPktTime = atomic.LoadInt64(&decaps.OuterHeaderError.LastPktTime)
-		decapStatistics.OuterHeaderError.LastPktTime = currUnixSecs - lastPktTime
-
-		decapStatistics.BadInnerVersion.Pkts = atomic.SwapUint64(&decaps.BadInnerVersion.Pkts, 0)
-		decapStatistics.BadInnerVersion.Bytes = atomic.SwapUint64(&decaps.BadInnerVersion.Bytes, 0)
-		lastPktTime = atomic.LoadInt64(&decaps.BadInnerVersion.LastPktTime)
-		decapStatistics.BadInnerVersion.LastPktTime = currUnixSecs - lastPktTime
-
-		decapStatistics.GoodPackets.Pkts = atomic.SwapUint64(&decaps.GoodPackets.Pkts, 0)
-		decapStatistics.GoodPackets.Bytes = atomic.SwapUint64(&decaps.GoodPackets.Bytes, 0)
-		lastPktTime = atomic.LoadInt64(&decaps.GoodPackets.LastPktTime)
-		decapStatistics.GoodPackets.LastPktTime = currUnixSecs - lastPktTime
-
-		decapStatistics.ICVError.Pkts = atomic.SwapUint64(&decaps.ICVError.Pkts, 0)
-		decapStatistics.ICVError.Bytes = atomic.SwapUint64(&decaps.ICVError.Bytes, 0)
-		lastPktTime = atomic.LoadInt64(&decaps.ICVError.LastPktTime)
-		decapStatistics.ICVError.LastPktTime = currUnixSecs - lastPktTime
-
-		decapStatistics.LispHeaderError.Pkts = atomic.SwapUint64(&decaps.LispHeaderError.Pkts, 0)
-		decapStatistics.LispHeaderError.Bytes = atomic.SwapUint64(&decaps.LispHeaderError.Bytes, 0)
-		lastPktTime = atomic.LoadInt64(&decaps.LispHeaderError.LastPktTime)
-		decapStatistics.LispHeaderError.LastPktTime = currUnixSecs - lastPktTime
-
-		decapStatistics.ChecksumError.Pkts = atomic.SwapUint64(&decaps.ChecksumError.Pkts, 0)
-		decapStatistics.ChecksumError.Bytes = atomic.SwapUint64(&decaps.ChecksumError.Bytes, 0)
-		lastPktTime = atomic.LoadInt64(&decaps.ChecksumError.LastPktTime)
-		decapStatistics.ChecksumError.LastPktTime = currUnixSecs - lastPktTime
-
-		// Send out ITR encap statistics to lispers.net
-		statsMsg, err := json.Marshal(lispStatistics)
-		log.Println(string(statsMsg))
-		if err != nil {
-			log.Printf("Error: Encoding encap statistics\n")
-		} else {
-			puntChannel <- statsMsg
-		}
-
-		// Send out ETR decap statistics to lispers.net
-		decapStatsMsg, err := json.Marshal(decapStatistics)
-		log.Println(string(decapStatsMsg))
-		if err != nil {
-			log.Printf("Error: Encoding decap statistics\n")
-		} else {
-			puntChannel <- decapStatsMsg
+		// Keep dumping our encap & decap state to a file on disk
+		// Do it only when the debug flag is enabled
+		if debug {
+			dumpDatabaseState()
 		}
 	}
 }

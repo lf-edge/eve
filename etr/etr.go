@@ -42,6 +42,8 @@ const (
 func InitETRStatus(debugFlag bool) {
 	debug = debugFlag
 	EtrTable.EphPort = -1
+	// Store ETR nat port to fib data base for debug purposes
+	fib.StoreEtrNatPort(int32(EtrTable.EphPort))
 	EtrTable.EtrTable = make(map[string]*dptypes.EtrRunStatus)
 }
 
@@ -179,8 +181,11 @@ func HandleEtrEphPort(ephPort int) {
 		return
 	}
 	EtrTable.EphPort = ephPort
+	// Store ETR nat port to fib data base for debug purposes
+	// This will be dumped into show-ztr file for debugging
+	fib.StoreEtrNatPort(int32(EtrTable.EphPort))
 
-	// Destroy all old threads and create new ETR threads
+	// Create new threads if required and change BPF filters of running threads
 	for ifName, link := range EtrTable.EtrTable {
 		//if (link.Ring == nil) && (link.RingFD == -1) {
 		if (link.Handle == nil) && (link.RingFD == -1) {

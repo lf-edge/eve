@@ -149,6 +149,9 @@ type DecapTable struct {
 	LockMe       sync.RWMutex
 	DecapEntries map[string]*DecapKeys
 
+	// ETR ephemeral NAT port
+	EtrNatPort   int32
+
 	// ETR statistics
 	NoDecryptKey     PktStat
 	OuterHeaderError PktStat
