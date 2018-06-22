@@ -23,7 +23,7 @@ import (
 
 // 5 minutes scrub threshold
 const SCRUBTHRESHOLD = 5 * 60
-const DATABASEWRITEFILE = "./show-ztr"
+const DATABASEWRITEFILE = "/show-ztr"
 
 var cache *dptypes.MapCacheTable
 var decaps *dptypes.DecapTable
@@ -33,6 +33,7 @@ var upLinks dptypes.Uplinks
 var itrGlobalData dptypes.ITRGlobalData
 
 var debug bool = false
+var lispLocation string = ""
 var pktBuf []byte
 
 // ipv4 and ipv6 raw sockets respectively
@@ -69,10 +70,11 @@ func newDecapTable() *dptypes.DecapTable {
 	}
 }
 
-func InitMapCache(debugFlag bool) {
+func InitMapCache(debugFlag bool, lispDir string) {
 	var err error
 
 	debug = debugFlag
+	lispLocation = lispDir
 	cache = newMapCache()
 
 	// Init buffered packet processing buffer
@@ -724,7 +726,7 @@ func sendDecapStatistics(puntChannel chan []byte) {
 
 func dumpDatabaseState() {
 	// open the database dump file
-	f, err := os.Create(DATABASEWRITEFILE)
+	f, err := os.Create(lispLocation + DATABASEWRITEFILE)
 	if err != nil {
 		log.Printf("dumpDatabaseState: Failed opening dump file (%s) with err: %s\n",
 			DATABASEWRITEFILE, err)
@@ -733,19 +735,20 @@ func dumpDatabaseState() {
 	// Get a buffered writer since we are going go make multiple writes.
 	w := bufio.NewWriter(f)
 
-	dataAndTime := fmt.Sprintf("Last database dump written on: %s\n", time.Now().String())
+	dataAndTime := fmt.Sprintf("\033[1mLast database dump written on: %s\033[22m\n",
+		time.Now().String())
 	w.WriteString(dataAndTime)
 
-	w.WriteString("LISP zTR state\n")
-	msg := fmt.Sprintf("LISP dataplane debugging enabled: %v\n", debug)
+	w.WriteString("\033[1mLISP zTR state:\033[22m\n")
+	msg := fmt.Sprintf("  LISP dataplane debugging enabled: %v\n", debug)
 	w.WriteString(msg)
 
 	itrCryptoPort := GetItrCryptoPort()
-	msg = fmt.Sprintf("LISP ITR crypto port: %v\n", itrCryptoPort)
+	msg = fmt.Sprintf("  LISP ITR crypto port: %v\n", itrCryptoPort)
 	w.WriteString(msg)
 
 	etrNatPort := GetEtrNatPort()
-	msg = fmt.Sprintf("LISP ETR Nat port: %v\n", etrNatPort)
+	msg = fmt.Sprintf("  LISP ETR Nat port: %v\n", etrNatPort)
 	w.WriteString(msg)
 
 	interfaces := GetInterfaces()
@@ -754,7 +757,7 @@ func dumpDatabaseState() {
 		ifnameList += ifname + " "
 	}
 	ifnameList += "]"
-	msg = fmt.Sprintf("LISP Interfaces: %s\n", ifnameList)
+	msg = fmt.Sprintf("  LISP Interfaces: %s\n", ifnameList)
 	w.WriteString(msg)
 
 	ifaceEids := GetIfaceEIDs()
@@ -763,17 +766,16 @@ func dumpDatabaseState() {
 		eidList += eid + " "
 	}
 	eidList += "]"
-	msg = fmt.Sprintf("LISP database mappings: %s\n", eidList)
+	msg = fmt.Sprintf("  LISP database mappings: %s\n", eidList)
 	w.WriteString(msg)
 
-	w.WriteString("\n\n")
+	w.WriteString("\n")
 
 	// Dump map-cache entries
 	cache.LockMe.RLock()
 
-	w.WriteString("##### MAP CACHE ENTRIES #####\n")
+	w.WriteString("\033[1mMap-Cache Entries:\033[22m\n")
 	for key, value := range cache.MapCache {
-		w.WriteString("############################\n")
 		msg = fmt.Sprintf("LISP map-cache Key: [%d]%s\n", key.IID, key.Eid)
 		w.WriteString(msg)
 
@@ -781,12 +783,12 @@ func dumpDatabaseState() {
 		for _, rloc := range value.Rlocs {
 			msg += rloc.Rloc.String() + " "
 		}
-		msg += "]\n"
-		msg = fmt.Sprintf("LISP map-cache Rlocs: %s\n\n", msg)
+		msg += "]"
+		msg = fmt.Sprintf("  LISP map-cache Rlocs: %s\n", msg)
 		w.WriteString(msg)
 	}
 	cache.LockMe.RUnlock()
-	w.WriteString("\n\n")
+	w.WriteString("\n")
 
 	// Dump decap entries
 	if decaps == nil {
@@ -794,14 +796,11 @@ func dumpDatabaseState() {
 	}
 	decaps.LockMe.RLock()
 
-	w.WriteString("##### DECAP ETRs #####\n")
-	msg = "[ "
-	for rloc, _ := range decaps.DecapEntries {
-		msg += rloc + " "
+	w.WriteString("\033[1mDecap-Keys:\033[22m\n")
+	for rloc, keys := range decaps.DecapEntries {
+		msg = fmt.Sprintf("  RLOC: %s:%d\n", rloc, keys.Port)
+		w.WriteString(msg)
 	}
-	msg += "]"
-	msg = fmt.Sprintf("Decap ETRs: %s\n", msg)
-	w.WriteString(msg)
 	decaps.LockMe.RUnlock()
 
 	w.Flush()

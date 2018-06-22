@@ -136,6 +136,7 @@ type EIDMap struct {
 
 type DecapKeys struct {
 	Rloc net.IP
+	Port int
 	Keys []DKey
 }
 
