@@ -283,9 +283,7 @@ func Run() {
 			return false
 		}
 		switch mimeType {
-		case "application/x-proto-binary":
-		case "application/json":
-		case "text/plain":
+		case "application/x-proto-binary", "application/json", "text/plain":
 			log.Printf("Received reply %s\n", string(contents))
 		default:
 			log.Println("Incorrect Content-Type " + mimeType)

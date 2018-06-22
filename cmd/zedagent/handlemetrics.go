@@ -648,8 +648,8 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 			networkDetails.IName = metric.IfName
 			// Counters not swapped on vif
 			if strings.HasPrefix(ifName, "nbn") ||
-			strings.HasPrefix(ifName, "nbu") ||
-			strings.HasPrefix(ifName, "nbo") {
+				strings.HasPrefix(ifName, "nbu") ||
+				strings.HasPrefix(ifName, "nbo") {
 				networkDetails.TxPkts = metric.TxPkts
 				networkDetails.RxPkts = metric.RxPkts
 				networkDetails.TxBytes = metric.TxBytes

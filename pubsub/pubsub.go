@@ -185,11 +185,12 @@ func (pub *Publication) Publish(key string, item interface{}) error {
 				agentName, topic, key, cmp.Diff(m, item))
 		}
 	} else if debug {
-		log.Printf("Publish(%s/%s/%s) adding %v\n",
+		log.Printf("Publish(%s/%s/%s) adding %+v\n",
 			agentName, topic, key, item)
 	}
 	// Perform a deep copy so the above Equal check will work
 	pub.km.key[key] = deepCopy(item)
+
 	if debug {
 		pub.dump("after Publish")
 	}
@@ -257,7 +258,7 @@ func (pub *Publication) Unpublish(key string) error {
 	topic := pub.topic
 	if m, ok := pub.km.key[key]; ok {
 		if debug {
-			log.Printf("Unpublish(%s/%s/%s) removing %v\n",
+			log.Printf("Unpublish(%s/%s/%s) removing %+v\n",
 				agentName, topic, key, m)
 		}
 	} else {
@@ -367,8 +368,6 @@ type Subscription struct {
 // Init function for Subscribe; returns a context.
 // Assumption is that agent with call Get(key) later or specify
 // handleModify and/or handleDelete functions
-// XXX separate function to subscribe to diffs i.e. WatchConfigStatus?
-// Layer above this pubsub? Wapper to do px.Get(key) and compare?
 // XXX add agentScope aka objType
 func Subscribe(agentName string, topicType interface{}, ctx interface{}) (*Subscription, error) {
 	topic := TypeToName(topicType)
@@ -423,31 +422,34 @@ func (sub *Subscription) ProcessChange(change string) {
 
 // XXX note that we could add a CreateHandler since we know if we've already
 // read it. Is that different than the handleConfigStatus notion of create??
+// XXX Yes, since that notion is about the existence or not of a status object.
 func handleModify(ctxArg interface{}, key string, stateArg interface{}) {
 	sub := ctxArg.(*Subscription)
 	if debug {
-		log.Printf("pusub.handleModify(%s/%s) key %s\n",
+		log.Printf("pubsub.handleModify(%s/%s) key %s\n",
 			sub.agentName, sub.topic, key)
 	}
 	m, ok := sub.km.key[key]
-	// XXX if debug; need json encode to get readable output
 	if debug {
 		if ok {
-			log.Printf("pusub.handleModify(%s/%s) replace %v with %v for key %s\n",
+			log.Printf("pubsub.handleModify(%s/%s) replace %+v with %+v for key %s\n",
 				sub.agentName, sub.topic, m, stateArg, key)
 		} else {
-			log.Printf("pusub.handleModify(%s/%s) add %v for key %s\n",
+			log.Printf("pubsub.handleModify(%s/%s) add %+v for key %s\n",
 				sub.agentName, sub.topic, stateArg, key)
 		}
 	}
-	// Note that the stateArg was created by the caller hence no
-	// need for a deep copy
-	sub.km.key[key] = stateArg
+	// XXX without a deepCopy we just save a pointer since stateArg is
+	// a pointer.
+	sub.km.key[key] = deepCopy(stateArg)
+	if debug {
+		sub.dump("after handleModify")
+	}
 	if sub.ModifyHandler != nil {
 		(sub.ModifyHandler)(sub.userCtx, key, stateArg)
 	}
 	if debug {
-		log.Printf("pusub.handleModify(%s/%s) done for key %s\n",
+		log.Printf("pubsub.handleModify(%s/%s) done for key %s\n",
 			sub.agentName, sub.topic, key)
 	}
 }
@@ -455,22 +457,36 @@ func handleModify(ctxArg interface{}, key string, stateArg interface{}) {
 func handleDelete(ctxArg interface{}, key string) {
 	sub := ctxArg.(*Subscription)
 	if debug {
-		log.Printf("pusub.handleDelete(%s/%s) key %s\n",
+		log.Printf("pubsub.handleDelete(%s/%s) key %s\n",
 			sub.agentName, sub.topic, key)
 	}
 	m, ok := sub.km.key[key]
 	if !ok {
-		log.Printf("pusub.handleDelete(%s/%s) %s key not found\n",
+		log.Printf("pubsub.handleDelete(%s/%s) %s key not found\n",
 			sub.agentName, sub.topic, key)
 		return
 	}
 	if debug {
-		log.Printf("pusub.handleDelete(%s/%s) key %s value %v\n",
+		log.Printf("pubsub.handleDelete(%s/%s) key %s value %+v\n",
 			sub.agentName, sub.topic, key, m)
 	}
 	delete(sub.km.key, key)
+	if debug {
+		sub.dump("after handleDelete")
+	}
 	if sub.DeleteHandler != nil {
 		(sub.DeleteHandler)(sub.userCtx, key)
+	}
+}
+
+func (sub *Subscription) dump(infoStr string) {
+	log.Printf("dump(%s/%s) %s\n", sub.agentName, sub.topic, infoStr)
+	for key, s := range sub.km.key {
+		b, err := json.Marshal(s)
+		if err != nil {
+			log.Fatal(err, "json Marshal in dump")
+		}
+		log.Printf("key %s val %s\n", key, b)
 	}
 }
 

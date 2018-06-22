@@ -46,11 +46,12 @@ neg-ttl=10
 
 // Create the dnsmasq configuration for the the overlay interface
 // Would be more polite to return an error then to Fatal
-func createDnsmasqOverlayConfiglet(cfgPathname string, olIfname string,
+func createDnsmasqOverlayConfiglet(ctx *zedrouterContext,
+	cfgPathname string, olIfname string,
 	olAddr1 string, olAddr2 string, olMac string, hostsDir string,
 	hostName string, ipsets []string, netconf *types.NetworkObjectConfig) {
 	if debug {
-		log.Printf("createDnsmasqOverlayConfiglen: %s\n", olIfname)
+		log.Printf("createDnsmasqOverlayConfiglet: %s\n", olIfname)
 	}
 	file, err := os.Create(cfgPathname)
 	if err != nil {
@@ -86,6 +87,9 @@ func createDnsmasqOverlayConfiglet(cfgPathname string, olIfname string,
 	file.WriteString(fmt.Sprintf("hostsdir=%s\n", hostsDir))
 
 	if netconf != nil {
+		// XXX do we need same logic as for IPv4 to not advertise
+		// as default router? Or done by radvd? Might need lower
+		// radvd preference if isolated local network?
 		if netconf.DomainName != "" {
 			file.WriteString(fmt.Sprintf("dhcp-option=option:domain-search,%s\n",
 				netconf.DomainName))
@@ -101,15 +105,20 @@ func createDnsmasqOverlayConfiglet(cfgPathname string, olIfname string,
 	}
 }
 
+// XXX call from NetworkObject when it is created. Have separate
+// function to add/remove hosts using dhcp-hostsdir setup
+
 // Create the dnsmasq configuration for the the underlay interface
 // Would be more polite to return an error then to Fatal
 // XXX not clear what needs to change here to handle IPv6 underlay. The default
 // ranges are off, plus domain-name needs to be replaced by domain-search, etc
-func createDnsmasqUnderlayConfiglet(cfgPathname string, ulIfname string,
+func createDnsmasqUnderlayConfiglet(ctx *zedrouterContext,
+	cfgPathname string, ulIfname string,
 	ulAddr1 string, ulAddr2 string, ulMac string, hostsDir string,
 	hostName string, ipsets []string, netconf *types.NetworkObjectConfig) {
 	if debug {
-		log.Printf("createDnsmasqUnderlayConfiglen: %s\n", ulIfname)
+		log.Printf("createDnsmasqUnderlayConfiglet: %s netconf %v\n",
+			ulIfname, netconf)
 	}
 	file, err := os.Create(cfgPathname)
 	if err != nil {
@@ -134,6 +143,9 @@ func createDnsmasqUnderlayConfiglet(cfgPathname string, ulIfname string,
 				if ulStatus.Network != netconf.UUID {
 					continue
 				}
+				log.Printf("createDnsmasqUnderlayConfiglet: netconf has %s/%s\n",
+					ulStatus.Mac, ulStatus.AssignedIPAddr)
+
 				file.WriteString(fmt.Sprintf("dhcp-host=%s,id:*,%s,%s\n",
 					ulStatus.Mac,
 					ulStatus.AssignedIPAddr,
@@ -141,19 +153,41 @@ func createDnsmasqUnderlayConfiglet(cfgPathname string, ulIfname string,
 			}
 		}
 	} else {
+		log.Printf("createDnsmasqUnderlayConfiglet: single %s/%s\n",
+			ulMac, ulAddr2)
 		file.WriteString(fmt.Sprintf("dhcp-host=%s,id:*,%s,%s\n",
 			ulMac, ulAddr2, hostName))
 	}
 
-	netmask := "255.255.0.0"  // Default unless there is a Subnet
-	dhcpRange := "172.27.0.0" // Default unless there is a DhcpRange
-
+	netmask := "255.255.255.0" // Default unless there is a Subnet
+	dhcpRange := ulAddr2       // Default unless there is a DhcpRange
+	if dhcpRange == "" {
+		dhcpRange = "172.27.0.0"
+	}
 	if netconf != nil {
+		// By default dnsmasq advertizes a router (and we can have a
+		// static router defined in the NetworkObjectConfig).
+		// However, if we have no NetworkService to the outside world
+		// we don't advertise ourselves as a router by default.
+		advertizeRouter := true
+		nst, adapter, err := getServiceInfo(ctx, netconf.UUID)
+		if err != nil {
+			log.Println(err)
+			advertizeRouter = false
+		} else if nst == types.NST_FIRST {
+			log.Printf("createDnsmasqUnderlayConfiglet: NST_FIRST ignored\n")
+			advertizeRouter = false
+		} else {
+			log.Printf("createDnsmasqUnderlayConfiglet: found service %d adapter %s\n",
+				nst, adapter)
+		}
 		if netconf.DomainName != "" {
 			file.WriteString(fmt.Sprintf("dhcp-option=option:domain-name,%s\n",
 				netconf.DomainName))
 		}
+		maybeAdvertizeDns := false
 		for _, ns := range netconf.DnsServers {
+			maybeAdvertizeDns = true
 			file.WriteString(fmt.Sprintf("dhcp-option=option:dns-server,%s\n",
 				ns.String()))
 		}
@@ -167,9 +201,21 @@ func createDnsmasqUnderlayConfiglet(cfgPathname string, ulIfname string,
 				netmask))
 		}
 		if netconf.Gateway != nil {
-			// XXX vs. ulAddr1
 			file.WriteString(fmt.Sprintf("dhcp-option=option:router,%s\n",
 				netconf.Gateway.String()))
+		} else if advertizeRouter {
+			file.WriteString(fmt.Sprintf("dhcp-option=option:router,%s\n",
+				ulAddr1))
+		} else {
+			log.Printf("createDnsmasqUnderlayConfiglet: no router\n")
+			file.WriteString(fmt.Sprintf("dhcp-option=option:router\n"))
+			if !maybeAdvertizeDns {
+				// XXX handle isolated network by making sure
+				// we are not a DNS server. Can be overridden
+				// with the DnsServers above
+				log.Printf("createDnsmasqUnderlayConfiglet: no DNS server\n")
+				file.WriteString(fmt.Sprintf("dhcp-option=option:dns-server\n"))
+			}
 		}
 		if netconf.DhcpRange.Start != nil {
 			dhcpRange = netconf.DhcpRange.Start.String()
@@ -181,7 +227,7 @@ func createDnsmasqUnderlayConfiglet(cfgPathname string, ulIfname string,
 
 func deleteDnsmasqConfiglet(cfgPathname string) {
 	if debug {
-		log.Printf("deleteDnsmasqOverlayConfiglen: %s\n", cfgPathname)
+		log.Printf("deleteDnsmasqOverlayConfiglet: %s\n", cfgPathname)
 	}
 	if err := os.Remove(cfgPathname); err != nil {
 		log.Println(err)
