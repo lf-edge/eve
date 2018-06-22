@@ -13,14 +13,14 @@ ENV CONFIGURE_OPTS --prefix=/usr \
             --enable-chapoly \
             --enable-cmd \
             --enable-curl \
-            --enable-dhcp \
+            --disable-dhcp \
             --enable-eap-dynamic \
             --enable-eap-identity \
             --enable-eap-md5 \
             --enable-eap-mschapv2 \
             --enable-eap-radius \
             --enable-eap-tls \
-            --enable-farp \
+            --disable-farp \
             --enable-files \
             --enable-gcm \
             --enable-md4 \
