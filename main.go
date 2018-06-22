@@ -76,7 +76,7 @@ func main() {
 
 	// Initialize databases
 	fib.InitIfaceMaps()
-	fib.InitMapCache(debug)
+	fib.InitMapCache(debug, lispConfigDir)
 	fib.InitDecapTable()
 
 	// Initialize ITR thread management

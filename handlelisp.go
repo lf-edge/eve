@@ -363,6 +363,13 @@ func handleDecapKeys(msg []byte) {
 
 	rloc := net.ParseIP(decapMsg.Rloc)
 	if rloc == nil {
+		log.Printf("handleDecapKeys: Unparsable decap IP address %s\n",
+			decapMsg.Rloc)
+		return
+	}
+	port, err := strconv.Atoi(decapMsg.Port)
+	if err != nil {
+		log.Printf("handleDecapKeys: Invalid decap port %s\n", decapMsg.Port)
 		return
 	}
 
@@ -433,6 +440,7 @@ func handleDecapKeys(msg []byte) {
 	// Parse and store the decap keys.
 	decapEntry := dptypes.DecapKeys{
 		Rloc: rloc,
+		Port: port,
 		Keys: keys,
 	}
 	fib.UpdateDecapKeys(&decapEntry)

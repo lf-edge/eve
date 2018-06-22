@@ -74,6 +74,7 @@ type Interfaces struct {
 
 type DecapKeys struct {
 	Rloc string `json:"rloc"`
+	Port string `json:"port"`
 	Keys []DKey `json:"keys"`
 }
 
