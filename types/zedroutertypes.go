@@ -613,9 +613,9 @@ type IpSecLocalConfig struct {
 }
 
 type AwsSSIpSecService struct {
-	AwsVpnGateway      string
-	AwsVpcSubnet       string
-	TunnelLocalIpAddr  string
-	TunnelRemoteIpAddr string
-	PreSharedKey       string
+	AwsVpnGateway   string
+	AwsVpcSubnet    string
+	VpnLocalIpAddr  string
+	VpnRemoteIpAddr string
+	PreSharedKey    string
 }
