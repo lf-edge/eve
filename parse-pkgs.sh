@@ -50,6 +50,7 @@ XEN_TAG=$(linuxkit_tag pkg/xen)$ARCH
 GRUB_TAG=$(linuxkit_tag pkg/grub)$ARCH
 DTREES_TAG=$(linuxkit_tag pkg/device-trees)$ARCH
 DNSMASQ_TAG=$(linuxkit_tag pkg/dnsmasq)$ARCH
+STRONGSWAN_TAG=$(linuxkit_tag pkg/strongswan)$ARCH
 TESTMSVCS_TAG=$(linuxkit_tag pkg/test-microsvcs)$ARCH
 ZEDEDA_TAG=$(linuxkit_tag pkg/zedctr)$ARCH
 DOM0ZTOOLS_TAG=$(linuxkit_tag pkg/dom0-ztools)$ARCH
@@ -74,6 +75,7 @@ sed -e "s#ZENBUILD_VERSION#"$ZENBUILD_VERSION"#" \
     -e "s#DOM0ZTOOLS_TAG#"$DOM0ZTOOLS_TAG"#" \
     -e "s#XEN_TAG#"$XEN_TAG"#" \
     -e "s#DNSMASQ_TAG#"$DNSMASQ_TAG"#" \
+    -e "s#STRONGSWAN_TAG#"$STRONGSWAN_TAG"#" \
     -e "s#TESTCERT_TAG#"$TESTCERT_TAG"#" \
     -e "s#TESTMSVCS_TAG#"$TESTMSVCS_TAG"#" \
     -e "s#ZEDEDA_TAG#"$ZEDEDA_TAG"#" \

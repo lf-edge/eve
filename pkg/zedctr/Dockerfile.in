@@ -1,15 +1,16 @@
 FROM ZTOOLS_TAG as ztools
 FROM XENTOOLS_TAG as xen-tools
 FROM DNSMASQ_TAG as dnsmasq
+FROM STRONGSWAN_TAG as strongswan
 FROM GPTTOOLS_TAG as gpttools
 FROM WATCHDOG_TAG as watchdog
 
 FROM alpine:3.6
 RUN apk add --no-cache \
-    yajl xz bash openssl iptables ip6tables \
+    yajl xz bash openssl iptables ip6tables iproute2 \
     apk-cron coreutils dmidecode sudo libbz2 libuuid ipset \
     libpcap libaio logrotate pixman glib curl radvd perl ethtool \
-    openssh-server util-linux e2fsprogs
+    openssh-server util-linux e2fsprogs libcrypto1.0
 
 # The following is for xen-tools
 RUN [ `uname -m` = "aarch64" ] && apk add --no-cache libfdt || :
@@ -24,6 +25,7 @@ COPY --from=xen-tools / /
 COPY --from=ztools / /
 COPY --from=gpttools / /
 COPY --from=dnsmasq /usr/sbin/dnsmasq /opt/zededa/bin/dnsmasq
+COPY --from=strongswan / /
 COPY --from=watchdog /usr/sbin /usr/sbin
 
 # And now a few local tweaks
