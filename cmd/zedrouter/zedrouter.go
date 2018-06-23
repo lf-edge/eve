@@ -203,9 +203,9 @@ func Run() {
 
 	// This function is called from PBR when some uplink interface changes
 	// its IP address(es)
-	addrChangeFn := func(ifname string) {
+	addrChangeUplinkFn := func(ifname string) {
 		if debug {
-			log.Printf("addrChangeFn(%s) called\n", ifname)
+			log.Printf("addrChangeUplinkFn(%s) called\n", ifname)
 		}
 		new, _ := devicenetwork.MakeDeviceNetworkStatus(deviceNetworkConfig, deviceNetworkStatus)
 		// XXX switch to Equal?
@@ -220,10 +220,16 @@ func Run() {
 			log.Printf("No address change for %s\n", ifname)
 		}
 	}
+	addrChangeNonUplinkFn := func(ifname string) {
+		if debug {
+			log.Printf("addrChangeNonUplinkFn(%s) called\n", ifname)
+		}
+		maybeUpdateBridgeIPAddr(&zedrouterCtx, ifname)
+	}
 
 	routeChanges, addrChanges, linkChanges := PbrInit(
 		deviceNetworkConfig.Uplink, deviceNetworkConfig.FreeUplinks,
-		addrChangeFn)
+		addrChangeUplinkFn, addrChangeNonUplinkFn)
 
 	handleRestart(&zedrouterCtx, false)
 	var restartFn watch.ConfigRestartHandler = handleRestart

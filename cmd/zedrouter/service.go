@@ -156,6 +156,39 @@ func doServiceModify(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	}
 }
 
+// Find ifname as a bridge Adapter and see if it can be updated
+func maybeUpdateBridgeIPAddr(ctx *zedrouterContext, ifname string) {
+	log.Printf("maybeUpdateBridgeIPAddr(%s)\n", ifname)
+	pub := ctx.pubNetworkServiceStatus
+	items := pub.GetAll()
+	for _, st := range items {
+		status := cast.CastNetworkServiceStatus(st)
+
+		if status.Adapter != ifname {
+			log.Printf("maybeUpdateBridgeIPAddr(%s) wrong adapter %s\n",
+				ifname, status.Adapter)
+			continue
+		}
+		if status.Type != types.NST_BRIDGE {
+			log.Printf("maybeUpdateBridgeIPAddr(%s) not bridge %d\n",
+				ifname, status.Type)
+			continue
+		}
+		if !status.Activated {
+			log.Printf("maybeUpdateBridgeIPAddr(%s) not activated\n",
+				ifname)
+			continue
+		}
+		netstatus := lookupNetworkObjectStatus(ctx, status.AppLink.String())
+		if netstatus == nil {
+			log.Printf("maybeUpdateBridgeIPAddr(%s) no applink for %s\n",
+				ifname, status.UUID.String())
+			continue
+		}
+		updateBridgeIPAddr(ctx, netstatus)
+	}
+}
+
 func doServiceActivate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	status *types.NetworkServiceStatus) error {
 
@@ -180,7 +213,6 @@ func doServiceActivate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 		return err
 	}
 
-	// XXX the Activate code needs NetworkObjectConfig with buN interface...
 	switch config.Type {
 	case types.NST_STRONGSWAN:
 		err = strongswanActivate(config, status)
@@ -188,7 +220,6 @@ func doServiceActivate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 		err = lispActivate(config, status)
 	case types.NST_BRIDGE:
 		err = bridgeActivate(config, status, netstatus)
-		// XXX also need to call when IP address set/changed
 		if err != nil {
 			updateBridgeIPAddr(ctx, netstatus)
 		}
