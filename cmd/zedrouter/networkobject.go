@@ -226,7 +226,7 @@ func setBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) e
 	if status.BridgeIPAddr == "" {
 		log.Printf("Does not yet have a bridge IP address for %s\n",
 			status.UUID.String())
-		return
+		return nil
 	}
 
 	//    ip addr add ${ipAddr}/24 dev ${bridgeName}
@@ -257,7 +257,7 @@ func lookupOrAllocateIPv4(ctx *zedrouterContext,
 	log.Printf("lookupOrAllocateIPv4 status: %s dhcp %d bridgeName %s Subnet %v range %v-%v\n",
 		status.UUID.String(), status.Dhcp, status.BridgeName,
 		status.Subnet, status.DhcpRange.Start, status.DhcpRange.End)
-	if status.Dhcp == types.DT_FALLTHROUGH {
+	if status.Dhcp == types.DT_PASSTHROUGH {
 		// XXX do we have a local IP? If so caller would have found it
 		// Might appear later
 		return "", nil
