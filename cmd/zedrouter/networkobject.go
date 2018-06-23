@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/satori/go.uuid"
 	"github.com/vishvananda/netlink"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/types"
@@ -362,16 +361,8 @@ func lookupNetworkObjectStatus(ctx *zedrouterContext, key string) *types.Network
 
 // Called from service code when a bridge has been added/updated/deleted
 // XXX need to re-run this when the eth1 IP address might have been set
-func updateBridgeIPAddr(ctx *zedrouterContext, id uuid.UUID) {
-	log.Printf("updateBridgeIPAddr(%s)\n", id.String())
-
-	status := lookupNetworkObjectStatus(ctx, id.String())
-	// If setBridgeIpAddr does an allocation it will re-publish
-	// the status.
-	if status == nil {
-		log.Printf("updateBridgeIPAddr: no status\n")
-		return
-	}
+func updateBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) {
+	log.Printf("updateBridgeIPAddr(%s)\n", status.UUID.String())
 
 	err := setBridgeIPAddr(ctx, status)
 	if err != nil {

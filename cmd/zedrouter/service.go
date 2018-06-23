@@ -163,25 +163,19 @@ func doServiceActivate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 		config.UUID, config.Type)
 
 	// We must have an existing AppLink to activate
-	// Make sure we have a NetworkObjectConfig if we have a UUID
-	// Returns nil if UUID is zero
-	netconf, err := getNetworkObjectConfig(ctx, config.AppLink)
-	if err != nil {
-		// XXX need a fallback/retry!!
-		return err
-	}
-	if netconf == nil {
+	netstatus := lookupNetworkObjectStatus(ctx, config.AppLink.String())
+	if netstatus == nil {
 		return errors.New(fmt.Sprintf("No AppLink for %s", config.UUID))
 	}
 
-	log.Printf("doServiceActivate found NetworkObjectConfig %s\n",
-		netconf.UUID.String())
+	log.Printf("doServiceActivate found NetworkObjectStatus %s\n",
+		netstatus.UUID.String())
 
 	// Check that Adapter is either "uplink", "freeuplink", or
 	// an existing ifname assigned to doServicemO/zedrouter. A Bridge
 	// only works with a single adapter interface.
 	allowUplink := (config.Type != types.NST_BRIDGE)
-	err = validateAdapter(config.Adapter, allowUplink)
+	err := validateAdapter(config.Adapter, allowUplink)
 	if err != nil {
 		return err
 	}
@@ -193,10 +187,10 @@ func doServiceActivate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	case types.NST_LISP:
 		err = lispActivate(config, status)
 	case types.NST_BRIDGE:
-		err = bridgeActivate(config, status)
+		err = bridgeActivate(config, status, netstatus)
 		// XXX also need to call when IP address set/changed
 		if err != nil {
-			updateBridgeIPAddr(ctx, config.AppLink)
+			updateBridgeIPAddr(ctx, netstatus)
 		}
 	case types.NST_NAT:
 		err = natActivate(config, status)
@@ -235,6 +229,16 @@ func doServiceInactivate(ctx *zedrouterContext,
 
 	log.Printf("doServiceInactivate NetworkService key %s type %d\n",
 		status.UUID, status.Type)
+	// We must have an existing AppLink to activate
+	netstatus := lookupNetworkObjectStatus(ctx, status.AppLink.String())
+	if netstatus == nil {
+		// Should have been caught at time of activate
+		log.Printf("No AppLink for %s", status.UUID.String())
+		return
+	}
+
+	log.Printf("doServiceActivate found NetworkObjectStatus %s\n",
+		netstatus.UUID.String())
 
 	switch status.Type {
 	case types.NST_STRONGSWAN:
@@ -242,8 +246,8 @@ func doServiceInactivate(ctx *zedrouterContext,
 	case types.NST_LISP:
 		lispInactivate(status)
 	case types.NST_BRIDGE:
-		bridgeInactivate(status)
-		updateBridgeIPAddr(ctx, status.AppLink)
+		bridgeInactivate(status, netstatus)
+		updateBridgeIPAddr(ctx, netstatus)
 	case types.NST_NAT:
 		natInactivate(status)
 	case types.NST_LB:
@@ -404,19 +408,78 @@ func lispDelete(status *types.NetworkServiceStatus) {
 func bridgeCreate(config types.NetworkServiceConfig,
 	status *types.NetworkServiceStatus) error {
 
+	log.Printf("bridgeCreate(%s)\n", config.DisplayName)
 	return nil
 }
 
 func bridgeActivate(config types.NetworkServiceConfig,
-	status *types.NetworkServiceStatus) error {
+	status *types.NetworkServiceStatus,
+	netstatus *types.NetworkObjectStatus) error {
 
+	log.Printf("bridgeActivate(%s)\n", status.DisplayName)
+	// For now we only support passthrough
+	if netstatus.Dhcp != types.DT_PASSTHROUGH {
+		errStr := fmt.Sprintf("Unsupported DHCP type %d for bridge service for %s",
+			netstatus.Dhcp, status.UUID.String())
+		return errors.New(errStr)
+	}
+
+	bridgeLink, err := findBridge(netstatus.BridgeName)
+	if err != nil {
+		errStr := fmt.Sprintf("findBridge(%s) failed %s",
+			netstatus.BridgeName, err)
+		return errors.New(errStr)
+	}
+	// Find adapter
+	alink, _ := netlink.LinkByName(status.Adapter)
+	if alink == nil {
+		errStr := fmt.Sprintf("Unknown adapter %s",
+			status.Adapter)
+		return errors.New(errStr)
+	}
+	// Make sure it is up
+	//    ip link set ${adapter} up
+	if err := netlink.LinkSetUp(alink); err != nil {
+		errStr := fmt.Sprintf("LinkSetUp on %s failed: %s",
+			status.Adapter, err)
+		return errors.New(errStr)
+	}
+	// ip link set ${adapter} master ${bridge_name}
+	if err := netlink.LinkSetMaster(alink, bridgeLink); err != nil {
+		errStr := fmt.Sprintf("LinkSetMaster %s %s failed: %s",
+			status.Adapter, netstatus.BridgeName, err)
+		return errors.New(errStr)
+	}
+	log.Printf("bridgeActivate: added %s to bridge %s\n",
+		status.Adapter, netstatus.BridgeName)
 	return nil
 }
 
-func bridgeInactivate(status *types.NetworkServiceStatus) {
+func bridgeInactivate(status *types.NetworkServiceStatus,
+	netstatus *types.NetworkObjectStatus) {
+
+	log.Printf("bridgeInactivate(%s)\n", status.DisplayName)
+	// Find adapter
+	alink, _ := netlink.LinkByName(status.Adapter)
+	if alink == nil {
+		errStr := fmt.Sprintf("Unknown adapter %s",
+			status.Adapter)
+		log.Println(errStr)
+		return
+	}
+	// ip link set ${adapter} nomaster
+	if err := netlink.LinkSetNoMaster(alink); err != nil {
+		errStr := fmt.Sprintf("LinkSetMaster %s failed: %s",
+			status.Adapter, err)
+		log.Println(errStr)
+		return
+	}
+	log.Printf("bridgeInactivate: removed %s from bridge\n",
+		status.Adapter)
 }
 
 func bridgeDelete(status *types.NetworkServiceStatus) {
+	log.Printf("bridgeDelete(%s)\n", status.DisplayName)
 }
 
 // ==== Nat
