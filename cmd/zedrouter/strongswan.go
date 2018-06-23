@@ -27,7 +27,7 @@ func strongswanCreate(config types.NetworkServiceConfig,
 		ipSecConfig.AwsVpcSubnet == "" ||
 		ipSecConfig.VpnLocalIpAddr == "" ||
 		ipSecConfig.VpnRemoteIpAddr == "" ||
-		ipSecConfig.PreSharedKey == ""  {
+		ipSecConfig.PreSharedKey == "" {
 		return errors.New("invalid parameters")
 	}
 
@@ -102,7 +102,7 @@ func strongswanActivate(config types.NetworkServiceConfig,
 	}
 
 	if err := awsStrongSwanTunnelActivate(ipSecConfig,
-				ipSecLocalConfig); err != nil {
+		ipSecLocalConfig); err != nil {
 		return err
 	}
 	return nil
@@ -113,7 +113,7 @@ func strongswanInactivate(status *types.NetworkServiceStatus) {
 	ipSecLocalConfig, err := awsStrongSwanStatusParse(status.OpaqueStatus)
 	if err != nil {
 		log.Printf("strongswan local config absent")
-		return 
+		return
 	}
 
 	if err := awsStrongSwanTunnelInactivate(ipSecLocalConfig); err != nil {
@@ -159,7 +159,7 @@ func awsStrongSwanIpSecTunnelCreate(ipSecConfig types.AwsSSIpSecService,
 
 	// create ipsec.conf
 	if err := awsStrongSwanIpSecServiceConfigCreate(ipSecConfig,
-				ipSecLocalConfig); err != nil {
+		ipSecLocalConfig); err != nil {
 		return err
 	}
 
@@ -170,7 +170,7 @@ func awsStrongSwanIpSecTunnelCreate(ipSecConfig types.AwsSSIpSecService,
 
 	// create tunnel interface
 	if err := awsStrongSwanIpLinkCreate(ipSecConfig,
-				ipSecLocalConfig); err != nil {
+		ipSecLocalConfig); err != nil {
 		return err
 	}
 
@@ -230,16 +230,16 @@ func awsStrongSwanTunnelDelete(ipSecLocalConfig types.IpSecLocalConfig) error {
 }
 
 func awsStrongSwanTunnelActivate(ipSecConfig types.AwsSSIpSecService,
-		ipSecLocalConfig types.IpSecLocalConfig) error {
+	ipSecLocalConfig types.IpSecLocalConfig) error {
 
-	// check iplink interface existence 
+	// check iplink interface existence
 	if err := ipLinkInfExists(ipSecLocalConfig.TunnelName); err != nil {
 		log.Printf("%s for %s ipLink status", err.Error(),
 			ipSecLocalConfig.TunnelName)
 		return err
 	}
 
-	// check iplink interface status 
+	// check iplink interface status
 	if err := ipLinkIntfStateCheck(ipSecLocalConfig.TunnelName); err != nil {
 		log.Printf("%s for %s ipLink status", err.Error(),
 			ipSecLocalConfig.TunnelName)
@@ -252,8 +252,8 @@ func awsStrongSwanTunnelActivate(ipSecConfig types.AwsSSIpSecService,
 
 	// check iptables rule status
 	if err := ipTablesRuleCheck(ipSecLocalConfig.IpTable,
-					ipSecLocalConfig.TunnelName,
-					ipSecLocalConfig.AwsVpnGateway); err != nil {
+		ipSecLocalConfig.TunnelName,
+		ipSecLocalConfig.AwsVpnGateway); err != nil {
 		log.Printf("%s for %s ipTables status", err.Error(),
 			ipSecLocalConfig.TunnelName)
 		if err := awsStrongSwanIpTablesRuleCreate(ipSecLocalConfig); err != nil {
@@ -262,7 +262,7 @@ func awsStrongSwanTunnelActivate(ipSecConfig types.AwsSSIpSecService,
 		return err
 	}
 
-	// check ipsec tunnel up status 
+	// check ipsec tunnel up status
 	if err := ipSecTunnelStateCheck(ipSecLocalConfig.TunnelName); err != nil {
 		log.Printf("%s for %s ipSec status", err.Error(),
 			ipSecLocalConfig.TunnelName)
@@ -274,7 +274,7 @@ func awsStrongSwanTunnelActivate(ipSecConfig types.AwsSSIpSecService,
 
 	// request ip route create
 	if err := ipRouteCheck(ipSecLocalConfig.TunnelName,
-						ipSecLocalConfig.AwsVpcSubnet) ; err != nil {
+		ipSecLocalConfig.AwsVpcSubnet); err != nil {
 		if err := awsStrongSwanIpRouteCreate(ipSecLocalConfig); err != nil {
 			return err
 		}
@@ -290,7 +290,7 @@ func awsStrongSwanTunnelInactivate(ipSecLocalConfig types.IpSecLocalConfig) erro
 }
 
 func awsStrongSwanIpSecServiceConfigCreate(ipSecConfig types.AwsSSIpSecService,
-		ipSecLocalConfig types.IpSecLocalConfig) error {
+	ipSecLocalConfig types.IpSecLocalConfig) error {
 	if err := ipSecServiceConfigCreate(ipSecLocalConfig.TunnelName,
 		ipSecConfig.AwsVpnGateway,
 		ipSecLocalConfig.TunnelKey); err != nil {
@@ -308,7 +308,7 @@ func awsStrongSwanIpSecSecretConfigCreate(ipSecConfig types.AwsSSIpSecService) e
 	return nil
 }
 func awsStrongSwanIpLinkCreate(ipSecConfig types.AwsSSIpSecService,
-		ipSecLocalConfig types.IpSecLocalConfig) error {
+	ipSecLocalConfig types.IpSecLocalConfig) error {
 	// create tunnel interface
 	if err := ipLinkTunnelCreate(ipSecLocalConfig.TunnelName,
 		ipSecLocalConfig.UpLinkIpAddr,

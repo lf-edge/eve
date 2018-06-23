@@ -71,7 +71,7 @@ func ipSecServiceStatus() (string, error) {
 }
 
 func ipSecTunnelStateCheck(tunnelName string) error {
-	// check whether ipsec tunnel is up 
+	// check whether ipsec tunnel is up
 	// if not, do ipsec restart
 	if err := checkIpSecServiceStatusCmd(tunnelName); err != nil {
 		return err
@@ -109,7 +109,7 @@ func ipTablesRuleCreate(ipTableName string, tunnelName string,
 }
 
 func ipTablesRulesDelete(ipTableName string, tunnelName string,
-		vpnGateway string, tunnelKey string) error {
+	vpnGateway string, tunnelKey string) error {
 
 	// delete the iptable rules
 	// forward rule
@@ -138,13 +138,13 @@ func ipTablesRulesDelete(ipTableName string, tunnelName string,
 
 // check iptables rule status
 func ipTablesRuleCheck(tableName string, tunnelName string,
-		vpnGateway string) error {
+	vpnGateway string) error {
 	if err := ipTablesChainMatch(tableName,
-			 "FORWARD", tunnelName); err != nil {
+		"FORWARD", tunnelName); err != nil {
 		return err
 	}
 	if err := ipTablesChainMatch(tableName,
-			"INPUT", vpnGateway + "/32"); err != nil {
+		"INPUT", vpnGateway+"/32"); err != nil {
 		return err
 	}
 	log.Printf("%s IpTable rule state OK\n", tunnelName)
@@ -152,9 +152,9 @@ func ipTablesRuleCheck(tableName string, tunnelName string,
 }
 
 func ipTablesChainMatch(tableName string, chainName string,
-		 matchString string) error {
+	matchString string) error {
 	cmd := exec.Command("iptables",
-			 "-t", tableName, "-S", chainName)
+		"-t", tableName, "-S", chainName)
 	out, err := cmd.Output()
 	if err != nil {
 		log.Printf("%s for %s %s %s\n",
@@ -209,7 +209,7 @@ func ipRouteCheck(tunnelName string, subNet string) error {
 		return err
 	}
 
-	if err := ipRouteMatch(string(out), tunnelName); err!= nil {
+	if err := ipRouteMatch(string(out), tunnelName); err != nil {
 		log.Printf("%s route OK\n", tunnelName)
 		return err
 	}
@@ -235,7 +235,7 @@ func ipLinkTunnelCreate(tunnelName string, upLinkIpAddr string,
 	key string, mtu string) error {
 
 	log.Printf("%s: %s %s %s\n", tunnelName, "ip link add",
-		 upLinkIpAddr, vpnGateway)
+		upLinkIpAddr, vpnGateway)
 	cmd := exec.Command("ip", "link", "add",
 		tunnelName, "type", "vti", "local", upLinkIpAddr,
 		"remote", vpnGateway, "key", key)
@@ -245,7 +245,7 @@ func ipLinkTunnelCreate(tunnelName string, upLinkIpAddr string,
 		return err
 	}
 
-	log.Printf("%s: %s %s %s\n", tunnelName, "ip link addr", 
+	log.Printf("%s: %s %s %s\n", tunnelName, "ip link addr",
 		localIpAddr, remoteIpAddr)
 	cmd = exec.Command("ip", "addr", "add",
 		localIpAddr, "remote", remoteIpAddr,
@@ -307,7 +307,7 @@ func ipLinkIntfStateCheck(tunnelName string) error {
 }
 
 func ipSecServiceConfigCreate(tunnelName string,
-			vpnGateway string, tunnelKey string) error {
+	vpnGateway string, tunnelKey string) error {
 	writeStr := ipSecConfHdrStr
 	writeStr = writeStr + ipSecTunHdrStr + tunnelName
 	writeStr = writeStr + ipSecTunSpecStr + vpnGateway
@@ -444,7 +444,7 @@ func checkIpSecStatusCmdOutput(tunnelName string, outStr string) error {
 	return nil
 }
 
-func getIpSecLineState (outArr [] string) error {
+func getIpSecLineState(outArr []string) error {
 	for _, field := range outArr {
 		if field == "ESTABLISHED" {
 			return nil
