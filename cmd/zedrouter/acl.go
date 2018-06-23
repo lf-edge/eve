@@ -385,14 +385,14 @@ func aceToRules(ifname string, ace types.ACE, ipVer int, myIP string, appIP stri
 	}
 	// Consistency checks
 	if fport != "" && protocol == "" {
-		errStr := fmt.Sprintf("ACE with fport %s and no protocol match: %s",
-			fport)
+		errStr := fmt.Sprintf("ACE with fport %s and no protocol match: %+v",
+			fport, ace)
 		log.Println(errStr)
 		return nil, errors.New(errStr)
 	}
 	if lport != "" && protocol == "" {
-		errStr := fmt.Sprintf("ACE with lport %s and no protocol match: %s",
-			lport)
+		errStr := fmt.Sprintf("ACE with lport %s and no protocol match: %+v",
+			lport, ace)
 		log.Println(errStr)
 		return nil, errors.New(errStr)
 	}
