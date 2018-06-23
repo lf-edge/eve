@@ -533,9 +533,10 @@ func pciUnassign(status *types.DomainStatus, aa *types.AssignableAdapters,
 				adapter.Type, adapter.Name, status.DomainName)
 		}
 		if ib.UsedByUUID != status.UUIDandVersion.UUID {
-			log.Fatalf("doInactivate IoBundle not ours by %s: %d %s for %s\n",
+			log.Printf("doInactivate IoBundle not ours by %s: %d %s for %s\n",
 				ib.UsedByUUID, adapter.Type, adapter.Name,
 				status.DomainName)
+			continue
 		}
 		if ib.Lookup && ib.PciShort == "" {
 			log.Fatal("doInactivate lookup missing: %d %s for %s\n",
