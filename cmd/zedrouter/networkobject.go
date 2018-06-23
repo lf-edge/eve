@@ -263,7 +263,7 @@ func lookupOrAllocateIPv4(ctx *zedrouterContext,
 		return "", nil
 	}
 
-	if status.Dhcp == types.DT_SERVER {
+	if status.Dhcp != types.DT_SERVER {
 		errStr := fmt.Sprintf("Unsupported DHCP type %d for %s",
 			status.Dhcp, status.UUID.String())
 		return "", errors.New(errStr)
