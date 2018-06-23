@@ -202,6 +202,7 @@ func setBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) e
 
 		switch link.(type) {
 		case *netlink.Bridge:
+			// XXX always true?
 			bridgeLink := link.(*netlink.Bridge)
 			bridgeMac = bridgeLink.HardwareAddr
 		default:
@@ -221,6 +222,12 @@ func setBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) e
 	}
 	status.BridgeIPAddr = ipAddr
 	pub.Publish(status.UUID.String(), *status)
+
+	if status.BridgeIPAddr == "" {
+		log.Printf("Does not yet have a bridge IP address for %s\n",
+			status.UUID.String())
+		return
+	}
 
 	//    ip addr add ${ipAddr}/24 dev ${bridgeName}
 	addr, err := netlink.ParseAddr(ipAddr + "/24")
@@ -250,7 +257,17 @@ func lookupOrAllocateIPv4(ctx *zedrouterContext,
 	log.Printf("lookupOrAllocateIPv4 status: %s dhcp %d bridgeName %s Subnet %v range %v-%v\n",
 		status.UUID.String(), status.Dhcp, status.BridgeName,
 		status.Subnet, status.DhcpRange.Start, status.DhcpRange.End)
+	if status.Dhcp == types.DT_FALLTHROUGH {
+		// XXX do we have a local IP? If so caller would have found it
+		// Might appear later
+		return "", nil
+	}
 
+	if status.Dhcp == types.DT_SERVER {
+		errStr := fmt.Sprintf("Unsupported DHCP type %d for %s",
+			status.Dhcp, status.UUID.String())
+		return "", errors.New(errStr)
+	}
 	// XXX should we fall back to using Subnet?
 	if status.DhcpRange.Start == nil {
 		errStr := fmt.Sprintf("no NetworkOjectStatus DhcpRange for %s",
