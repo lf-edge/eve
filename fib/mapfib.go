@@ -761,22 +761,19 @@ func dumpDatabaseState() {
 	w.WriteString(msg)
 
 	ifaceEids := GetIfaceEIDs()
-	eidList := "[ "
+	eidList := ""
 	for _, eid := range ifaceEids {
-		eidList += eid + " "
+		eidList += "    [ " + eid + " ]\n"
 	}
-	eidList += "]"
-	msg = fmt.Sprintf("  LISP database mappings: %s\n", eidList)
+	msg = fmt.Sprintf("  LISP database mappings:\n%s\n", eidList)
 	w.WriteString(msg)
-
-	w.WriteString("\n")
 
 	// Dump map-cache entries
 	cache.LockMe.RLock()
 
 	w.WriteString("\033[1mMap-Cache Entries:\033[22m\n")
 	for key, value := range cache.MapCache {
-		msg = fmt.Sprintf("LISP map-cache Key: [%d]%s\n", key.IID, key.Eid)
+		msg = fmt.Sprintf("EID: [%d]%s\n", key.IID, key.Eid)
 		w.WriteString(msg)
 
 		msg = "[ "
@@ -784,7 +781,7 @@ func dumpDatabaseState() {
 			msg += rloc.Rloc.String() + " "
 		}
 		msg += "]"
-		msg = fmt.Sprintf("  LISP map-cache Rlocs: %s\n", msg)
+		msg = fmt.Sprintf("  RLOC-set: %s\n", msg)
 		w.WriteString(msg)
 	}
 	cache.LockMe.RUnlock()
@@ -798,7 +795,8 @@ func dumpDatabaseState() {
 
 	w.WriteString("\033[1mDecap-Keys:\033[22m\n")
 	for rloc, keys := range decaps.DecapEntries {
-		msg = fmt.Sprintf("  RLOC: %s:%d\n", rloc, keys.Port)
+		msg = fmt.Sprintf("  RLOC: %s:%d, key-ids [%d]\n",
+			rloc, keys.Port, len(keys.Keys))
 		w.WriteString(msg)
 	}
 	decaps.LockMe.RUnlock()
