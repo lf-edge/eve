@@ -1069,6 +1069,8 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 	log.Printf("handleCreate done for %s\n", config.DisplayName)
 }
 
+var nilUUID uuid.UUID // Really a constant
+
 // Returns the link and whether or not is was created (as opposed to found)
 // XXX remove createBridge/deleteBridge logic once everything
 // on nbN is working
@@ -1225,25 +1227,6 @@ func addError(ctx *zedrouterContext,
 
 func appendError(allErrors string, prefix string, lasterr string) string {
 	return fmt.Sprintf("%s%s: %s\n\n", allErrors, prefix, lasterr)
-}
-
-var nilUUID uuid.UUID // Really a constant
-
-// Returns nil, nil if the UUID is all zero
-func getNetworkObjectConfig(ctx *zedrouterContext,
-	netUUID uuid.UUID) (*types.NetworkObjectConfig, error) {
-
-	if netUUID == nilUUID {
-		return nil, nil
-	}
-	config := lookupNetworkObjectConfig(ctx, netUUID.String())
-	if config == nil {
-		errStr := fmt.Sprintf("No NetworkObjectConfig for %s",
-			netUUID.String())
-		return nil, errors.New(errStr)
-	} else {
-		return config, nil
-	}
 }
 
 // Note that handleModify will not touch the EID; just ACLs and NameToEidList
