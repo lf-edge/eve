@@ -100,29 +100,30 @@ func PbrRouteChange(change netlink.RouteUpdate) {
 		// We'll check on ifname when we see a linkchange
 		log.Printf("PbrRouteChange IfindexToName failed for %d: %s\n",
 			rt.LinkIndex, err)
-	} else if isFreeUplink(ifname) {
-		if debug {
-			log.Printf("Applying to FreeTable: %v\n", rt)
+	} else {
+		if isFreeUplink(ifname) {
+			if debug {
+				log.Printf("Applying to FreeTable: %v\n", rt)
+			}
+			doFreeTable = true
+		} else if !isUplink(ifname) {
+			// Delete any route which was added on a non-uplink.
+			// XXX alternative is to add it with a very high metric
+			// but that requires a delete and re-add since the
+			// metric can't be changed.
+			// XXX needs work to handle adding a link as an uplink
+			// on a running system, but perhaps that will only be
+			// done using a reboot
+			if err := netlink.RouteDel(&rt); err != nil {
+				// XXX Fatal?
+				log.Printf("PrbRouteChange - RouteDel %v failed %s\n",
+					rt, err)
+			} else {
+				log.Printf("PrbRouteChange non-uplink RouteDel %v\n",
+					rt)
+			}
+			return
 		}
-		doFreeTable = true
-	}
-	// Delete any default route which was added on a non-uplink.
-	// XXX alternative is to add it with a very high metric
-	// but that requires a delete and re-add since the metric can't
-	// be changed
-	// XXX needs work to handle adding a link as an uplink on
-	// a running system, but perhaps that will only be done using a reboot
-	if !isUplink(ifname) {
-		// XXX delete all
-		if err := netlink.RouteDel(&rt); err != nil {
-			// XXX Fatal?
-			log.Printf("PrbRouteChange - RouteDel %v failed %s\n",
-				rt, err)
-		} else {
-			log.Printf("PrbRouteChange non-uplink RouteDel %v\n",
-				rt)
-		}
-		return
 	}
 	srt := rt
 	srt.Table = FreeTable
