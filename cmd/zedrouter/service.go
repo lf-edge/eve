@@ -213,6 +213,7 @@ func doServiceActivate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	if err != nil {
 		return err
 	}
+	status.AdapterList = getAdapters(config.Adapter)
 
 	switch config.Type {
 	case types.NST_STRONGSWAN:
@@ -548,7 +549,6 @@ func natActivate(config types.NetworkServiceConfig,
 	status.Subnet = netstatus.Subnet
 	subnetStr := netstatus.Subnet.String()
 
-	status.AdapterList = getAdapters(config.Adapter)
 	for _, a := range status.AdapterList {
 		err := iptableCmd("-t", "nat", "-A", "POSTROUTING", "-o", a,
 			"-s", subnetStr, "-j", "MASQUERADE")
