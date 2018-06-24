@@ -1929,11 +1929,5 @@ func doDNSUpdate(ctx *DNCContext) {
 
 	setUplinks(deviceNetworkConfig.Uplink)
 	setFreeUplinks(deviceNetworkConfig.FreeUplinks)
-	// XXX check if FreeUplinks changed; add/delete
-	// XXX need to redo this when FreeUplinks changes
-	// XXX also when NAT service enabled/disabled
-	// for _, u := range deviceNetworkConfig.FreeUplinks {
-	//	iptableCmd("-t", "nat", "-A", "POSTROUTING", "-o", u,
-	//		"-s", "172.16.0.0/12", "-j", "MASQUERADE")
-	//}
+	// XXX do a NatInactivate/NatActivate if freeuplinks/uplinks changed?
 }

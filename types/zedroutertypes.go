@@ -505,6 +505,8 @@ type NetworkServiceStatus struct {
 	AppLink       uuid.UUID
 	Adapter       string // Ifname or group like "uplink", or empty
 	OpaqueStatus  string
+	AdapterList   []string  // Recorded at time of activate
+	Subnet        net.IPNet // Recorded at time of activate
 	// Any errrors from provisioning the service
 	Error     string
 	ErrorTime time.Time

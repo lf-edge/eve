@@ -58,14 +58,7 @@ func ip6tableCmd(args ...string) error {
 func iptablesInit() {
 	// Avoid adding nat rule multiple times as we restart by flushing first
 	iptableCmd("-t", "nat", "-F", "POSTROUTING")
-	// Assumes ip rule for all underlay interfaces
-	// XXX need to redo this when FreeUplinks changes
-	// XXX check for static addresses ... not at init time.
-	// Associated with NAT service - when we start NAT service.
-	for _, u := range deviceNetworkConfig.FreeUplinks {
-		iptableCmd("-t", "nat", "-A", "POSTROUTING", "-o", u,
-			"-s", "172.16.0.0/12", "-j", "MASQUERADE")
-	}
+
 	// Flush IPv6 mangle rules from previous run
 	ip6tableCmd("-F", "PREROUTING", "-t", "mangle")
 

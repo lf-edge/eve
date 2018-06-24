@@ -88,7 +88,8 @@ func strongswanDelete(status *types.NetworkServiceStatus) {
 }
 
 func strongswanActivate(config types.NetworkServiceConfig,
-	status *types.NetworkServiceStatus) error {
+	status *types.NetworkServiceStatus,
+	netstatus *types.NetworkObjectStatus) error {
 
 	ipSecConfig, err := awsStrongSwanConfigParse(config.OpaqueConfig)
 	if err != nil {
@@ -108,7 +109,8 @@ func strongswanActivate(config types.NetworkServiceConfig,
 	return nil
 }
 
-func strongswanInactivate(status *types.NetworkServiceStatus) {
+func strongswanInactivate(status *types.NetworkServiceStatus,
+	netstatus *types.NetworkObjectStatus) {
 
 	ipSecLocalConfig, err := awsStrongSwanStatusParse(status.OpaqueStatus)
 	if err != nil {

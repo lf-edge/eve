@@ -216,16 +216,16 @@ func doServiceActivate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 
 	switch config.Type {
 	case types.NST_STRONGSWAN:
-		err = strongswanActivate(config, status)
+		err = strongswanActivate(config, status, netstatus)
 	case types.NST_LISP:
-		err = lispActivate(config, status)
+		err = lispActivate(config, status, netstatus)
 	case types.NST_BRIDGE:
 		err = bridgeActivate(config, status, netstatus)
 		if err != nil {
 			updateBridgeIPAddr(ctx, netstatus)
 		}
 	case types.NST_NAT:
-		err = natActivate(config, status)
+		err = natActivate(config, status, netstatus)
 	case types.NST_LB:
 		errStr := "doServiceActivate NetworkService LB not yet supported"
 		err = errors.New(errStr)
@@ -248,6 +248,7 @@ func validateAdapter(adapter string, allowUplink bool) error {
 	}
 	// XXX look for ifname; this assumes it exists in dom0/zedrouter
 	// and not assigned to pciback
+	// XXX also check not uplink? assignable checked for bridge ...
 	link, _ := netlink.LinkByName(adapter)
 	if link == nil {
 		errStr := fmt.Sprintf("Unknown adapter %s", adapter)
@@ -274,14 +275,14 @@ func doServiceInactivate(ctx *zedrouterContext,
 
 	switch status.Type {
 	case types.NST_STRONGSWAN:
-		strongswanInactivate(status)
+		strongswanInactivate(status, netstatus)
 	case types.NST_LISP:
-		lispInactivate(status)
+		lispInactivate(status, netstatus)
 	case types.NST_BRIDGE:
 		bridgeInactivate(status, netstatus)
 		updateBridgeIPAddr(ctx, netstatus)
 	case types.NST_NAT:
-		natInactivate(status)
+		natInactivate(status, netstatus)
 	case types.NST_LB:
 		errStr := "doServiceInactivate NetworkService LB not yet supported"
 		log.Println(errStr)
@@ -424,12 +425,14 @@ func lispCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 }
 
 func lispActivate(config types.NetworkServiceConfig,
-	status *types.NetworkServiceStatus) error {
+	status *types.NetworkServiceStatus,
+	netstatus *types.NetworkObjectStatus) error {
 
 	return nil
 }
 
-func lispInactivate(status *types.NetworkServiceStatus) {
+func lispInactivate(status *types.NetworkServiceStatus,
+	netstatus *types.NetworkObjectStatus) {
 }
 
 func lispDelete(status *types.NetworkServiceStatus) {
@@ -532,13 +535,52 @@ func natCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	return nil
 }
 
+// XXX need to redo this when Uplinks/FreeUplinks changes?
 func natActivate(config types.NetworkServiceConfig,
-	status *types.NetworkServiceStatus) error {
+	status *types.NetworkServiceStatus,
+	netstatus *types.NetworkObjectStatus) error {
 
+	if netstatus.Subnet.IP == nil {
+		errStr := fmt.Sprintf("Missing subnet for NAT service for %s",
+			status.UUID.String())
+		return errors.New(errStr)
+	}
+	status.Subnet = netstatus.Subnet
+	subnetStr := netstatus.Subnet.String()
+
+	status.AdapterList = getAdapters(config.Adapter)
+	for _, a := range status.AdapterList {
+		err := iptableCmd("-t", "nat", "-A", "POSTROUTING", "-o", a,
+			"-s", subnetStr, "-j", "MASQUERADE")
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
-func natInactivate(status *types.NetworkServiceStatus) {
+// Expand the generic names
+func getAdapters(adapter string) []string {
+	if strings.EqualFold(adapter, "uplink") {
+		return deviceNetworkConfig.Uplink
+	}
+	if strings.EqualFold(adapter, "freeuplink") {
+		return deviceNetworkConfig.FreeUplinks
+	}
+	return []string{adapter}
+}
+
+func natInactivate(status *types.NetworkServiceStatus,
+	netstatus *types.NetworkObjectStatus) {
+
+	subnetStr := status.Subnet.String()
+	for _, a := range status.AdapterList {
+		err := iptableCmd("-t", "nat", "-D", "POSTROUTING", "-o", a,
+			"-s", subnetStr, "-j", "MASQUERADE")
+		if err != nil {
+			log.Println(err)
+		}
+	}
 }
 
 func natDelete(status *types.NetworkServiceStatus) {
