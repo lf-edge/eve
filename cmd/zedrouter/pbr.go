@@ -403,10 +403,18 @@ func IfindexToNameDel(index int, name string) bool {
 
 func IfindexToName(index int) (string, error) {
 	n, ok := ifindexToName[index]
-	if !ok {
+	if ok {
+		return n, nil
+	}
+	// Try a lookup to handle race
+	link, err := netlink.LinkByIndex(index)
+	if err != nil {
 		return "", errors.New(fmt.Sprintf("Unknown ifindex %d", index))
 	}
-	return n, nil
+	name := link.Attrs().Name
+	log.Printf("IfindexToName(%d) fallback lookup done: %s\n",
+		index, name)
+	return name, nil
 }
 
 func IfnameToIndex(ifname string) (int, error) {

@@ -294,12 +294,12 @@ func Run() {
 				&types.DeviceNetworkConfig{},
 				handleDNCModify, handleDNCDelete,
 				nil)
-		case change := <-routeChanges:
-			PbrRouteChange(change)
 		case change := <-addrChanges:
 			PbrAddrChange(change)
 		case change := <-linkChanges:
 			PbrLinkChange(change)
+		case change := <-routeChanges:
+			PbrRouteChange(change)
 		case <-publishTimer.C:
 			if debug {
 				log.Println("publishTimer at",
