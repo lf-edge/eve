@@ -15,7 +15,7 @@ import (
 // XXX currently, only AwsVpn StrongSwan Client IpSec Tunnel handling
 // XXX add support for standalone StrongSwan Server/client
 
-func strongswanCreate(config types.NetworkServiceConfig,
+func strongswanCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	status *types.NetworkServiceStatus) error {
 
 	ipSecConfig, err := awsStrongSwanConfigParse(config.OpaqueConfig)

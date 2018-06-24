@@ -53,7 +53,7 @@ func handleNetworkServiceCreate(ctx *zedrouterContext, key string, config types.
 	}
 	status.PendingAdd = true
 	pub.Publish(status.UUID.String(), status)
-	err := doServiceCreate(config, &status)
+	err := doServiceCreate(ctx, config, &status)
 	if err != nil {
 		log.Printf("doServiceCreate(%s) failed: %s\n", key, err)
 		status.Error = err.Error()
@@ -99,21 +99,22 @@ func handleNetworkServiceDelete(ctxArg interface{}, key string) {
 	log.Printf("handleNetworkServiceDelete(%s) done\n", key)
 }
 
-func doServiceCreate(config types.NetworkServiceConfig, status *types.NetworkServiceStatus) error {
+func doServiceCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
+	status *types.NetworkServiceStatus) error {
+
 	log.Printf("doServiceCreate NetworkService key %s type %d\n",
 		config.UUID, config.Type)
-
 	var err error
 
 	switch config.Type {
 	case types.NST_STRONGSWAN:
-		err = strongswanCreate(config, status)
+		err = strongswanCreate(ctx, config, status)
 	case types.NST_LISP:
-		err = lispCreate(config, status)
+		err = lispCreate(ctx, config, status)
 	case types.NST_BRIDGE:
-		err = bridgeCreate(config, status)
+		err = bridgeCreate(ctx, config, status)
 	case types.NST_NAT:
-		err = natCreate(config, status)
+		err = natCreate(ctx, config, status)
 	case types.NST_LB:
 		errStr := "doServiceCreate NetworkService LB not yet supported"
 		err = errors.New(errStr)
@@ -416,7 +417,7 @@ func lookupAppLink(ctx *zedrouterContext, appLink uuid.UUID) *types.NetworkServi
 
 // ==== Lisp
 
-func lispCreate(config types.NetworkServiceConfig,
+func lispCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	status *types.NetworkServiceStatus) error {
 
 	return nil
@@ -436,10 +437,20 @@ func lispDelete(status *types.NetworkServiceStatus) {
 
 // ==== Bridge
 
-func bridgeCreate(config types.NetworkServiceConfig,
+// XXX need a better check than assignable since it could be any
+// member of an IoBundle.
+// XXX also need to check the bundle isn't assigned to a domU?
+func bridgeCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	status *types.NetworkServiceStatus) error {
 
 	log.Printf("bridgeCreate(%s)\n", config.DisplayName)
+	ib := types.LookupIoBundle(ctx.assignableAdapters, types.IoEth,
+		config.Adapter)
+	if ib == nil {
+		errStr := fmt.Sprintf("bridge %s is not assignable for %s",
+			config.Adapter, config.UUID.String())
+		return errors.New(errStr)
+	}
 	return nil
 }
 
@@ -515,7 +526,7 @@ func bridgeDelete(status *types.NetworkServiceStatus) {
 
 // ==== Nat
 
-func natCreate(config types.NetworkServiceConfig,
+func natCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	status *types.NetworkServiceStatus) error {
 
 	return nil

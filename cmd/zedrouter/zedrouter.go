@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"github.com/satori/go.uuid"
 	"github.com/vishvananda/netlink"
+	"github.com/zededa/go-provision/adapters"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/devicenetwork"
 	"github.com/zededa/go-provision/flextimer"
@@ -58,6 +59,7 @@ type zedrouterContext struct {
 	subNetworkServiceConfig *pubsub.Subscription
 	pubNetworkObjectStatus  *pubsub.Publication
 	pubNetworkServiceStatus *pubsub.Publication
+	assignableAdapters      *types.AssignableAdapters
 }
 
 // Dummy since we don't have anything to pass
@@ -140,6 +142,20 @@ func Run() {
 	appNumAllocatorInit(statusDirname, configDirname)
 	model := hardware.GetHardwareModel()
 
+	// Pick up (mostly static) AssignableAdapters before we process
+	// any Routes; Pbr needs to know which network adapters are assignable
+	aa := types.AssignableAdapters{}
+	aaChanges, aaFunc, aaCtx := adapters.Init(&aa, model)
+
+	for !aaCtx.Found {
+		log.Printf("Waiting - aaCtx %v\n", aaCtx.Found)
+		select {
+		case change := <-aaChanges:
+			aaFunc(&aaCtx, change)
+		}
+	}
+	log.Printf("Have %d assignable adapters\n", len(aa.IoBundleList))
+
 	// XXX Should we wait for the DNCFilename same way as we wait
 	// for AssignableAdapter filename?
 
@@ -153,7 +169,8 @@ func Run() {
 	DNCctx.separateDataPlane = false
 
 	zedrouterCtx := zedrouterContext{
-		separateDataPlane: false,
+		separateDataPlane:  false,
+		assignableAdapters: &aa,
 	}
 	// Subscribe to network metrics from zedrouter
 	subNetworkObjectConfig, err := pubsub.Subscribe("zedagent",
@@ -223,6 +240,14 @@ func Run() {
 	addrChangeNonUplinkFn := func(ifname string) {
 		if debug {
 			log.Printf("addrChangeNonUplinkFn(%s) called\n", ifname)
+		}
+		ib := types.LookupIoBundle(&aa, types.IoEth, ifname)
+		if ib == nil {
+			if debug {
+				log.Printf("addrChangeNonUplinkFn(%s) not assignable\n",
+					ifname)
+			}
+			return
 		}
 		maybeUpdateBridgeIPAddr(&zedrouterCtx, ifname)
 	}
@@ -298,6 +323,9 @@ func Run() {
 
 		case change := <-subNetworkServiceConfig.C:
 			subNetworkServiceConfig.ProcessChange(change)
+
+		case change := <-aaChanges:
+			aaFunc(&aaCtx, change)
 		}
 	}
 }
