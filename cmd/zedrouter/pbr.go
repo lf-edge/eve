@@ -18,18 +18,28 @@ import (
 var FreeTable = 500 // Need a FreeUplink policy for NAT+underlay
 
 type addrChangeFnType func(ifname string)
+type suppressRoutesFnType func(ifname string) bool
 
-var addrChangeFunc addrChangeFnType
+// XXX should really be in a context returned by Init
+var addrChangeFuncUplink addrChangeFnType
+var addrChangeFuncNonUplink addrChangeFnType
+var suppressRoutesFunc suppressRoutesFnType
 
 // Returns the channels for route, addr, link updates
-func PbrInit(uplinks []string, freeUplinks []string, addrChangeFn addrChangeFnType) (chan netlink.RouteUpdate,
+func PbrInit(uplinks []string, freeUplinks []string,
+	addrChange addrChangeFnType,
+	addrChangeNon addrChangeFnType,
+	suppressRoutes suppressRoutesFnType) (chan netlink.RouteUpdate,
 	chan netlink.AddrUpdate, chan netlink.LinkUpdate) {
+
 	if debug {
 		log.Printf("PbrInit(%v, %v)\n", uplinks, freeUplinks)
 	}
 	setUplinks(uplinks)
 	setFreeUplinks(freeUplinks)
-	addrChangeFunc = addrChangeFn
+	addrChangeFuncUplink = addrChange
+	addrChangeFuncNonUplink = addrChangeNon
+	suppressRoutesFunc = suppressRoutes
 
 	IfindexToNameInit()
 	IfindexToAddrsInit()
@@ -89,20 +99,39 @@ func PbrRouteChange(change netlink.RouteUpdate) {
 		// Ignore since we will not add to other table
 		return
 	}
-	// Add for all ifindices
-	MyTable := FreeTable + rt.LinkIndex
-
 	doFreeTable := false
 	ifname, err := IfindexToName(rt.LinkIndex)
 	if err != nil {
 		// We'll check on ifname when we see a linkchange
 		log.Printf("PbrRouteChange IfindexToName failed for %d: %s\n",
 			rt.LinkIndex, err)
-	} else if isFreeUplink(ifname) {
-		if debug {
-			log.Printf("Applying to FreeTable: %v\n", rt)
+	} else {
+		if isFreeUplink(ifname) {
+			if debug {
+				log.Printf("Applying to FreeTable: %v\n", rt)
+			}
+			doFreeTable = true
 		}
-		doFreeTable = true
+		if !isUplink(ifname) && suppressRoutesFunc != nil &&
+			suppressRoutesFunc(ifname) {
+			// Delete any route which was added on an assignable
+			// adapter.
+			// XXX alternative is to add it with a very high metric
+			// but that requires a delete and re-add since the
+			// metric can't be changed.
+			// XXX needs work to handle adding a link as an uplink
+			// on a running system, but perhaps that will only be
+			// done using a reboot
+			if err := netlink.RouteDel(&rt); err != nil {
+				// XXX Fatal?
+				log.Printf("PbrRouteChange suppress RouteDel %v failed %s\n",
+					rt, err)
+			} else {
+				log.Printf("PbrRouteChange suppress RouteDel %v\n",
+					rt)
+			}
+			return
+		}
 	}
 	srt := rt
 	srt.Table = FreeTable
@@ -117,6 +146,9 @@ func PbrRouteChange(change netlink.RouteUpdate) {
 		// Hack to make the kernel routes not appear identical
 		srt.Priority = rt.LinkIndex
 	}
+
+	// Add for all ifindices
+	MyTable := FreeTable + rt.LinkIndex
 
 	// Add to ifindex specific table
 	myrt := rt
@@ -183,11 +215,14 @@ func PbrAddrChange(change netlink.AddrUpdate) {
 				log.Printf("Address change for uplink: %v\n",
 					change)
 			}
-			addrChangeFunc(ifname)
+			addrChangeFuncUplink(ifname)
 		} else {
 			if debug {
 				log.Printf("Address change for non-uplink: %v\n",
 					change)
+			}
+			if addrChangeFuncNonUplink != nil {
+				addrChangeFuncNonUplink(ifname)
 			}
 		}
 	}
@@ -213,8 +248,17 @@ func PbrLinkChange(change netlink.LinkUpdate) {
 					log.Printf("Link change for uplink: %s\n",
 						ifname)
 				}
-				addrChangeFunc(ifname)
+				addrChangeFuncUplink(ifname)
+			} else {
+				if debug {
+					log.Printf("Link change for non-uplink: %s\n",
+						ifname)
+				}
+				if addrChangeFuncNonUplink != nil {
+					addrChangeFuncNonUplink(ifname)
+				}
 			}
+
 		}
 	case syscall.RTM_DELLINK:
 		gone := IfindexToNameDel(ifindex, ifname)
@@ -230,8 +274,17 @@ func PbrLinkChange(change netlink.LinkUpdate) {
 					log.Printf("Link change for uplink: %s\n",
 						ifname)
 				}
-				addrChangeFunc(ifname)
+				addrChangeFuncUplink(ifname)
+			} else {
+				if debug {
+					log.Printf("Link change for non-uplink: %s\n",
+						ifname)
+				}
+				if addrChangeFuncNonUplink != nil {
+					addrChangeFuncNonUplink(ifname)
+				}
 			}
+
 		}
 	}
 }
@@ -358,10 +411,18 @@ func IfindexToNameDel(index int, name string) bool {
 
 func IfindexToName(index int) (string, error) {
 	n, ok := ifindexToName[index]
-	if !ok {
+	if ok {
+		return n, nil
+	}
+	// Try a lookup to handle race
+	link, err := netlink.LinkByIndex(index)
+	if err != nil {
 		return "", errors.New(fmt.Sprintf("Unknown ifindex %d", index))
 	}
-	return n, nil
+	name := link.Attrs().Name
+	log.Printf("IfindexToName(%d) fallback lookup done: %s\n",
+		index, name)
+	return name, nil
 }
 
 func IfnameToIndex(ifname string) (int, error) {

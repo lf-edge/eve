@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/satori/go.uuid"
 	"github.com/vishvananda/netlink"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/types"
@@ -203,6 +202,7 @@ func setBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) e
 
 		switch link.(type) {
 		case *netlink.Bridge:
+			// XXX always true?
 			bridgeLink := link.(*netlink.Bridge)
 			bridgeMac = bridgeLink.HardwareAddr
 		default:
@@ -222,6 +222,12 @@ func setBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) e
 	}
 	status.BridgeIPAddr = ipAddr
 	pub.Publish(status.UUID.String(), *status)
+
+	if status.BridgeIPAddr == "" {
+		log.Printf("Does not yet have a bridge IP address for %s\n",
+			status.UUID.String())
+		return nil
+	}
 
 	//    ip addr add ${ipAddr}/24 dev ${bridgeName}
 	addr, err := netlink.ParseAddr(ipAddr + "/24")
@@ -251,7 +257,17 @@ func lookupOrAllocateIPv4(ctx *zedrouterContext,
 	log.Printf("lookupOrAllocateIPv4 status: %s dhcp %d bridgeName %s Subnet %v range %v-%v\n",
 		status.UUID.String(), status.Dhcp, status.BridgeName,
 		status.Subnet, status.DhcpRange.Start, status.DhcpRange.End)
+	if status.Dhcp == types.DT_PASSTHROUGH {
+		// XXX do we have a local IP? If so caller would have found it
+		// Might appear later
+		return "", nil
+	}
 
+	if status.Dhcp != types.DT_SERVER {
+		errStr := fmt.Sprintf("Unsupported DHCP type %d for %s",
+			status.Dhcp, status.UUID.String())
+		return "", errors.New(errStr)
+	}
 	// XXX should we fall back to using Subnet?
 	if status.DhcpRange.Start == nil {
 		errStr := fmt.Sprintf("no NetworkOjectStatus DhcpRange for %s",
@@ -362,16 +378,8 @@ func lookupNetworkObjectStatus(ctx *zedrouterContext, key string) *types.Network
 
 // Called from service code when a bridge has been added/updated/deleted
 // XXX need to re-run this when the eth1 IP address might have been set
-func updateBridgeIPAddr(ctx *zedrouterContext, id uuid.UUID) {
-	log.Printf("updateBridgeIPAddr(%s)\n", id.String())
-
-	status := lookupNetworkObjectStatus(ctx, id.String())
-	// If setBridgeIpAddr does an allocation it will re-publish
-	// the status.
-	if status == nil {
-		log.Printf("updateBridgeIPAddr: no status\n")
-		return
-	}
+func updateBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) {
+	log.Printf("updateBridgeIPAddr(%s)\n", status.UUID.String())
 
 	err := setBridgeIPAddr(ctx, status)
 	if err != nil {

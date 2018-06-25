@@ -505,6 +505,8 @@ type NetworkServiceStatus struct {
 	AppLink       uuid.UUID
 	Adapter       string // Ifname or group like "uplink", or empty
 	OpaqueStatus  string
+	AdapterList   []string  // Recorded at time of activate
+	Subnet        net.IPNet // Recorded at time of activate
 	// Any errrors from provisioning the service
 	Error     string
 	ErrorTime time.Time
@@ -613,9 +615,9 @@ type IpSecLocalConfig struct {
 }
 
 type AwsSSIpSecService struct {
-	AwsVpnGateway      string
-	AwsVpcSubnet       string
-	TunnelLocalIpAddr  string
-	TunnelRemoteIpAddr string
-	PreSharedKey       string
+	AwsVpnGateway   string
+	AwsVpcSubnet    string
+	VpnLocalIpAddr  string
+	VpnRemoteIpAddr string
+	PreSharedKey    string
 }

@@ -142,6 +142,11 @@ type deviceContext struct {
 	iteration          int
 }
 
+type zedagentContext struct {
+	subNetworkObjectStatus  *pubsub.Subscription
+	subNetworkServiceStatus *pubsub.Subscription
+}
+
 var debug = false
 
 // XXX temporary hack for writeBaseOsStatus
@@ -183,6 +188,8 @@ func Run() {
 	// Context to pass around
 	getconfigCtx := getconfigContext{}
 
+	zedagentCtx := zedagentContext{}
+
 	// Publish NetworkConfig and NetworkServiceConfig for zedmanager/zedrouter
 	pubNetworkObjectConfig, err := pubsub.Publish(agentName,
 		types.NetworkObjectConfig{})
@@ -196,6 +203,26 @@ func Run() {
 	}
 	getconfigCtx.pubNetworkObjectConfig = pubNetworkObjectConfig
 	getconfigCtx.pubNetworkServiceConfig = pubNetworkServiceConfig
+
+	// Look for errors from zedrouter
+	subNetworkObjectStatus, err := pubsub.Subscribe("zedrouter",
+		types.NetworkObjectStatus{}, &zedagentCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subNetworkObjectStatus.ModifyHandler = handleNetworkObjectModify
+	subNetworkObjectStatus.DeleteHandler = handleNetworkObjectDelete
+
+	subNetworkServiceStatus, err := pubsub.Subscribe("zedrouter",
+		types.NetworkServiceStatus{}, &zedagentCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subNetworkServiceStatus.ModifyHandler = handleNetworkServiceModify
+	subNetworkServiceStatus.DeleteHandler = handleNetworkServiceDelete
+
+	zedagentCtx.subNetworkObjectStatus = subNetworkObjectStatus
+	zedagentCtx.subNetworkServiceStatus = subNetworkServiceStatus
 
 	var restartFn watch.StatusRestartHandler = handleRestart
 
@@ -518,6 +545,12 @@ func Run() {
 			}
 		case change := <-deferredChan:
 			zedcloud.HandleDeferred(change)
+
+		case change := <-subNetworkObjectStatus.C:
+			subNetworkObjectStatus.ProcessChange(change)
+
+		case change := <-subNetworkServiceStatus.C:
+			subNetworkServiceStatus.ProcessChange(change)
 		}
 	}
 }

@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"github.com/satori/go.uuid"
 	"github.com/vishvananda/netlink"
+	"github.com/zededa/go-provision/adapters"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/devicenetwork"
 	"github.com/zededa/go-provision/flextimer"
@@ -58,6 +59,7 @@ type zedrouterContext struct {
 	subNetworkServiceConfig *pubsub.Subscription
 	pubNetworkObjectStatus  *pubsub.Publication
 	pubNetworkServiceStatus *pubsub.Publication
+	assignableAdapters      *types.AssignableAdapters
 }
 
 // Dummy since we don't have anything to pass
@@ -140,6 +142,20 @@ func Run() {
 	appNumAllocatorInit(statusDirname, configDirname)
 	model := hardware.GetHardwareModel()
 
+	// Pick up (mostly static) AssignableAdapters before we process
+	// any Routes; Pbr needs to know which network adapters are assignable
+	aa := types.AssignableAdapters{}
+	aaChanges, aaFunc, aaCtx := adapters.Init(&aa, model)
+
+	for !aaCtx.Found {
+		log.Printf("Waiting - aaCtx %v\n", aaCtx.Found)
+		select {
+		case change := <-aaChanges:
+			aaFunc(&aaCtx, change)
+		}
+	}
+	log.Printf("Have %d assignable adapters\n", len(aa.IoBundleList))
+
 	// XXX Should we wait for the DNCFilename same way as we wait
 	// for AssignableAdapter filename?
 
@@ -153,7 +169,8 @@ func Run() {
 	DNCctx.separateDataPlane = false
 
 	zedrouterCtx := zedrouterContext{
-		separateDataPlane: false,
+		separateDataPlane:  false,
+		assignableAdapters: &aa,
 	}
 	// Subscribe to network metrics from zedrouter
 	subNetworkObjectConfig, err := pubsub.Subscribe("zedagent",
@@ -203,9 +220,9 @@ func Run() {
 
 	// This function is called from PBR when some uplink interface changes
 	// its IP address(es)
-	addrChangeFn := func(ifname string) {
+	addrChangeUplinkFn := func(ifname string) {
 		if debug {
-			log.Printf("addrChangeFn(%s) called\n", ifname)
+			log.Printf("addrChangeUplinkFn(%s) called\n", ifname)
 		}
 		new, _ := devicenetwork.MakeDeviceNetworkStatus(deviceNetworkConfig, deviceNetworkStatus)
 		// XXX switch to Equal?
@@ -220,10 +237,32 @@ func Run() {
 			log.Printf("No address change for %s\n", ifname)
 		}
 	}
+	addrChangeNonUplinkFn := func(ifname string) {
+		if debug {
+			log.Printf("addrChangeNonUplinkFn(%s) called\n", ifname)
+		}
+		ib := types.LookupIoBundle(&aa, types.IoEth, ifname)
+		if ib == nil {
+			if debug {
+				log.Printf("addrChangeNonUplinkFn(%s) not assignable\n",
+					ifname)
+			}
+			return
+		}
+		maybeUpdateBridgeIPAddr(&zedrouterCtx, ifname)
+	}
+	// We don't want any routes for assignable adapters
+	suppressRoutesFn := func(ifname string) bool {
+		if debug {
+			log.Printf("suppressRoutesFn(%s) called\n", ifname)
+		}
+		ib := types.LookupIoBundle(&aa, types.IoEth, ifname)
+		return ib != nil
+	}
 
 	routeChanges, addrChanges, linkChanges := PbrInit(
 		deviceNetworkConfig.Uplink, deviceNetworkConfig.FreeUplinks,
-		addrChangeFn)
+		addrChangeUplinkFn, addrChangeNonUplinkFn, suppressRoutesFn)
 
 	handleRestart(&zedrouterCtx, false)
 	var restartFn watch.ConfigRestartHandler = handleRestart
@@ -263,12 +302,12 @@ func Run() {
 				&types.DeviceNetworkConfig{},
 				handleDNCModify, handleDNCDelete,
 				nil)
-		case change := <-routeChanges:
-			PbrRouteChange(change)
 		case change := <-addrChanges:
 			PbrAddrChange(change)
 		case change := <-linkChanges:
 			PbrLinkChange(change)
+		case change := <-routeChanges:
+			PbrRouteChange(change)
 		case <-publishTimer.C:
 			if debug {
 				log.Println("publishTimer at",
@@ -292,6 +331,9 @@ func Run() {
 
 		case change := <-subNetworkServiceConfig.C:
 			subNetworkServiceConfig.ProcessChange(change)
+
+		case change := <-aaChanges:
+			aaFunc(&aaCtx, change)
 		}
 	}
 }
@@ -1069,6 +1111,8 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 	log.Printf("handleCreate done for %s\n", config.DisplayName)
 }
 
+var nilUUID uuid.UUID // Really a constant
+
 // Returns the link and whether or not is was created (as opposed to found)
 // XXX remove createBridge/deleteBridge logic once everything
 // on nbN is working
@@ -1225,25 +1269,6 @@ func addError(ctx *zedrouterContext,
 
 func appendError(allErrors string, prefix string, lasterr string) string {
 	return fmt.Sprintf("%s%s: %s\n\n", allErrors, prefix, lasterr)
-}
-
-var nilUUID uuid.UUID // Really a constant
-
-// Returns nil, nil if the UUID is all zero
-func getNetworkObjectConfig(ctx *zedrouterContext,
-	netUUID uuid.UUID) (*types.NetworkObjectConfig, error) {
-
-	if netUUID == nilUUID {
-		return nil, nil
-	}
-	config := lookupNetworkObjectConfig(ctx, netUUID.String())
-	if config == nil {
-		errStr := fmt.Sprintf("No NetworkObjectConfig for %s",
-			netUUID.String())
-		return nil, errors.New(errStr)
-	} else {
-		return config, nil
-	}
 }
 
 // Note that handleModify will not touch the EID; just ACLs and NameToEidList
@@ -1912,11 +1937,5 @@ func doDNSUpdate(ctx *DNCContext) {
 
 	setUplinks(deviceNetworkConfig.Uplink)
 	setFreeUplinks(deviceNetworkConfig.FreeUplinks)
-	// XXX check if FreeUplinks changed; add/delete
-	// XXX need to redo this when FreeUplinks changes
-	// XXX also when NAT service enabled/disabled
-	// for _, u := range deviceNetworkConfig.FreeUplinks {
-	//	iptableCmd("-t", "nat", "-A", "POSTROUTING", "-o", u,
-	//		"-s", "172.16.0.0/12", "-j", "MASQUERADE")
-	//}
+	// XXX do a NatInactivate/NatActivate if freeuplinks/uplinks changed?
 }
