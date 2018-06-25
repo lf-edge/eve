@@ -879,6 +879,8 @@ func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
 		ulCfg := new(types.UnderlayNetworkConfig)
 		ulCfg.Network = uuid
 		if intfEnt.MacAddress != "" {
+			log.Printf("parseUnderlayNetworkConfig: got static MAC %s\n",
+				intfEnt.MacAddress)
 			ulCfg.AppMacAddr, err = net.ParseMAC(intfEnt.MacAddress)
 			if err != nil {
 				log.Printf("parseUnderlayNetworkConfig: bad MAC %s: %s\n",

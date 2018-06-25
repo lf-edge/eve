@@ -15,8 +15,10 @@ import (
 // XXX currently, only AwsVpn StrongSwan Client IpSec Tunnel handling
 // XXX add support for standalone StrongSwan Server/client
 
-func strongswanCreate(config types.NetworkServiceConfig,
+func strongswanCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	status *types.NetworkServiceStatus) error {
+
+	log.Printf("strongswanCreate(%s)\n", config.DisplayName)
 
 	ipSecConfig, err := awsStrongSwanConfigParse(config.OpaqueConfig)
 	if err != nil {
@@ -76,6 +78,7 @@ func strongswanCreate(config types.NetworkServiceConfig,
 
 func strongswanDelete(status *types.NetworkServiceStatus) {
 
+	log.Printf("strongswanDelete(%s)\n", status.DisplayName)
 	ipSecLocalConfig, err := awsStrongSwanStatusParse(status.OpaqueStatus)
 	if err != nil {
 		log.Printf("strongswanDelete config absent")
@@ -88,8 +91,10 @@ func strongswanDelete(status *types.NetworkServiceStatus) {
 }
 
 func strongswanActivate(config types.NetworkServiceConfig,
-	status *types.NetworkServiceStatus) error {
+	status *types.NetworkServiceStatus,
+	netstatus *types.NetworkObjectStatus) error {
 
+	log.Printf("strongswanActivate(%s)\n", status.DisplayName)
 	ipSecConfig, err := awsStrongSwanConfigParse(config.OpaqueConfig)
 	if err != nil {
 		return err
@@ -108,8 +113,10 @@ func strongswanActivate(config types.NetworkServiceConfig,
 	return nil
 }
 
-func strongswanInactivate(status *types.NetworkServiceStatus) {
+func strongswanInactivate(status *types.NetworkServiceStatus,
+	netstatus *types.NetworkObjectStatus) {
 
+	log.Printf("strongswanInactivate(%s)\n", status.DisplayName)
 	ipSecLocalConfig, err := awsStrongSwanStatusParse(status.OpaqueStatus)
 	if err != nil {
 		log.Printf("strongswan local config absent")
@@ -124,6 +131,8 @@ func strongswanInactivate(status *types.NetworkServiceStatus) {
 // aws Vpn IpSec Tenneling handler routines
 func awsStrongSwanConfigParse(opaqueConfig string) (types.AwsSSIpSecService, error) {
 
+	log.Printf("awsStrongSwanConfigParse: parsing %s\n", opaqueConfig)
+
 	cb := []byte(opaqueConfig)
 	ipSecConfig := types.AwsSSIpSecService{}
 	if err := json.Unmarshal(cb, &ipSecConfig); err != nil {
@@ -134,6 +143,8 @@ func awsStrongSwanConfigParse(opaqueConfig string) (types.AwsSSIpSecService, err
 }
 
 func awsStrongSwanStatusParse(opaqueStatus string) (types.IpSecLocalConfig, error) {
+
+	log.Printf("awsStrongSwanStatusParse: parsing %s\n", opaqueStatus)
 
 	cb := []byte(opaqueStatus)
 	ipSecLocalConfig := types.IpSecLocalConfig{}
