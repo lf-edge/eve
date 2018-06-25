@@ -238,6 +238,7 @@ func charonConfigCreate() error {
 }
 
 func sysctlConfigCreate(upLinkName string, tunnelName string) error {
+	// XXX already done
 	writeStr := "\n net.ipv4.ip_forward = 1"
 	writeStr = writeStr + "\n net.ipv4.conf." + tunnelName + ".rp_filter=2"
 	writeStr = writeStr + "\n net.ipv4.conf." + tunnelName + ".disable_policy=1"
