@@ -112,7 +112,7 @@ func PbrRouteChange(change netlink.RouteUpdate) {
 			}
 			doFreeTable = true
 		}
-		if suppressRoutesFunc != nil &&
+		if !isUplink(ifname) && suppressRoutesFunc != nil &&
 			suppressRoutesFunc(ifname) {
 			// Delete any route which was added on an assignable
 			// adapter.
@@ -124,10 +124,10 @@ func PbrRouteChange(change netlink.RouteUpdate) {
 			// done using a reboot
 			if err := netlink.RouteDel(&rt); err != nil {
 				// XXX Fatal?
-				log.Printf("PrbRouteChange - RouteDel %v failed %s\n",
+				log.Printf("PbrRouteChange suppress RouteDel %v failed %s\n",
 					rt, err)
 			} else {
-				log.Printf("PrbRouteChange suppress RouteDel %v\n",
+				log.Printf("PbrRouteChange suppress RouteDel %v\n",
 					rt)
 			}
 			return
