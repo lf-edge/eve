@@ -271,7 +271,7 @@ func doServiceInactivate(ctx *zedrouterContext,
 		return
 	}
 
-	log.Printf("doServiceActivate found NetworkObjectStatus %s\n",
+	log.Printf("doServiceInactivate found NetworkObjectStatus %s\n",
 		netstatus.UUID.String())
 
 	switch status.Type {
@@ -422,6 +422,7 @@ func lookupAppLink(ctx *zedrouterContext, appLink uuid.UUID) *types.NetworkServi
 func lispCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	status *types.NetworkServiceStatus) error {
 
+	log.Printf("lispCreate(%s)\n", config.DisplayName)
 	return nil
 }
 
@@ -429,14 +430,19 @@ func lispActivate(config types.NetworkServiceConfig,
 	status *types.NetworkServiceStatus,
 	netstatus *types.NetworkObjectStatus) error {
 
+	log.Printf("lispActivate(%s)\n", status.DisplayName)
 	return nil
 }
 
 func lispInactivate(status *types.NetworkServiceStatus,
 	netstatus *types.NetworkObjectStatus) {
+
+	log.Printf("lispInactivate(%s)\n", status.DisplayName)
 }
 
 func lispDelete(status *types.NetworkServiceStatus) {
+
+	log.Printf("lispDelete(%s)\n", status.DisplayName)
 }
 
 // ==== Bridge
@@ -533,6 +539,7 @@ func bridgeDelete(status *types.NetworkServiceStatus) {
 func natCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	status *types.NetworkServiceStatus) error {
 
+	log.Printf("natCreate(%s)\n", config.DisplayName)
 	return nil
 }
 
@@ -541,6 +548,7 @@ func natActivate(config types.NetworkServiceConfig,
 	status *types.NetworkServiceStatus,
 	netstatus *types.NetworkObjectStatus) error {
 
+	log.Printf("natActivate(%s)\n", status.DisplayName)
 	if netstatus.Subnet.IP == nil {
 		errStr := fmt.Sprintf("Missing subnet for NAT service for %s",
 			status.UUID.String())
@@ -573,6 +581,7 @@ func getAdapters(adapter string) []string {
 func natInactivate(status *types.NetworkServiceStatus,
 	netstatus *types.NetworkObjectStatus) {
 
+	log.Printf("netInactivate(%s)\n", status.DisplayName)
 	subnetStr := status.Subnet.String()
 	for _, a := range status.AdapterList {
 		err := iptableCmd("-t", "nat", "-D", "POSTROUTING", "-o", a,
@@ -584,4 +593,6 @@ func natInactivate(status *types.NetworkServiceStatus,
 }
 
 func natDelete(status *types.NetworkServiceStatus) {
+
+	log.Printf("natDelete(%s)\n", status.DisplayName)
 }
