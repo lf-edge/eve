@@ -18,14 +18,18 @@ import (
 var FreeTable = 500 // Need a FreeUplink policy for NAT+underlay
 
 type addrChangeFnType func(ifname string)
+type suppressRoutesFnType func(ifname string) bool
 
+// XXX should really be in a context returned by Init
 var addrChangeFuncUplink addrChangeFnType
 var addrChangeFuncNonUplink addrChangeFnType
+var suppressRoutesFunc suppressRoutesFnType
 
 // Returns the channels for route, addr, link updates
 func PbrInit(uplinks []string, freeUplinks []string,
 	addrChange addrChangeFnType,
-	addrChangeNon addrChangeFnType) (chan netlink.RouteUpdate,
+	addrChangeNon addrChangeFnType,
+	suppressRoutes suppressRoutesFnType) (chan netlink.RouteUpdate,
 	chan netlink.AddrUpdate, chan netlink.LinkUpdate) {
 
 	if debug {
@@ -35,6 +39,7 @@ func PbrInit(uplinks []string, freeUplinks []string,
 	setFreeUplinks(freeUplinks)
 	addrChangeFuncUplink = addrChange
 	addrChangeFuncNonUplink = addrChangeNon
+	suppressRoutesFunc = suppressRoutes
 
 	IfindexToNameInit()
 	IfindexToAddrsInit()
@@ -106,8 +111,11 @@ func PbrRouteChange(change netlink.RouteUpdate) {
 				log.Printf("Applying to FreeTable: %v\n", rt)
 			}
 			doFreeTable = true
-		} else if !isUplink(ifname) {
-			// Delete any route which was added on a non-uplink.
+		}
+		if suppressRoutesFunc != nil &&
+			suppressRoutesFunc(ifname) {
+			// Delete any route which was added on an assignable
+			// adapter.
 			// XXX alternative is to add it with a very high metric
 			// but that requires a delete and re-add since the
 			// metric can't be changed.
@@ -119,7 +127,7 @@ func PbrRouteChange(change netlink.RouteUpdate) {
 				log.Printf("PrbRouteChange - RouteDel %v failed %s\n",
 					rt, err)
 			} else {
-				log.Printf("PrbRouteChange non-uplink RouteDel %v\n",
+				log.Printf("PrbRouteChange suppress RouteDel %v\n",
 					rt)
 			}
 			return

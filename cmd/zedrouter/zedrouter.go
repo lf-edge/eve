@@ -86,6 +86,7 @@ func Run() {
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
 	debug = *debugPtr
+	debug = true // XXX XXX remove
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
@@ -250,10 +251,18 @@ func Run() {
 		}
 		maybeUpdateBridgeIPAddr(&zedrouterCtx, ifname)
 	}
+	// We don't want any routes for assignable adapters
+	suppressRoutesFn := func(ifname string) bool {
+		if debug {
+			log.Printf("suppressRoutesFn(%s) called\n", ifname)
+		}
+		ib := types.LookupIoBundle(&aa, types.IoEth, ifname)
+		return ib != nil
+	}
 
 	routeChanges, addrChanges, linkChanges := PbrInit(
 		deviceNetworkConfig.Uplink, deviceNetworkConfig.FreeUplinks,
-		addrChangeUplinkFn, addrChangeNonUplinkFn)
+		addrChangeUplinkFn, addrChangeNonUplinkFn, suppressRoutesFn)
 
 	handleRestart(&zedrouterCtx, false)
 	var restartFn watch.ConfigRestartHandler = handleRestart
