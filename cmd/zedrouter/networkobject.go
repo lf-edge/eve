@@ -145,17 +145,27 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 	if err := setBridgeIPAddr(ctx, status); err != nil {
 		return err
 	}
+	// Should be ensured by setBridgeIPAddr
+	if status.BridgeIPAddr == "" {
+		errStr := fmt.Sprintf("No BridgeIPAddr on %s",
+			bridgeName)
+		return errors.New(errStr)
+	}
 
-	// Create a hosts file for the new bridge
+	// Create a hosts directory for the new bridge
 	// Directory is /var/run/zedrouter/hosts.${BRIDGENAME}
 	hostsDirpath := globalRunDirname + "/hosts." + bridgeName
 	deleteHostsConfiglet(hostsDirpath, false)
 	createHostsConfiglet(hostsDirpath, nil)
-	if status.BridgeIPAddr != "" {
-		// XXX arbitrary name "router"!!
-		addToHostsConfiglet(hostsDirpath, "router",
-			[]string{status.BridgeIPAddr})
-	}
+
+	// XXX arbitrary name "router"!!
+	addToHostsConfiglet(hostsDirpath, "router",
+		[]string{status.BridgeIPAddr})
+
+	deleteDnsmasqConfiglet2(bridgeName)
+	// XXX collect ipsets?
+	createDnsmasqConfiglet(ctx, bridgeName, status.BridgeIPAddr, &config,
+		hostsDirpath, nil)
 	return nil
 }
 
