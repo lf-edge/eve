@@ -780,9 +780,9 @@ func dumpDatabaseState() {
 
 		msg = "[ "
 		for _, rloc := range value.Rlocs {
-			msg += rloc.Rloc.String() + " "
+			msg += rloc.Rloc.String() + ", "
 		}
-		msg += "]"
+		msg += "\b\b ]"
 		msg = fmt.Sprintf("  RLOC-set: %s\n", msg)
 		w.WriteString(msg)
 	}
