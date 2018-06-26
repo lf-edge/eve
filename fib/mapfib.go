@@ -735,11 +735,12 @@ func dumpDatabaseState() {
 	// Get a buffered writer since we are going go make multiple writes.
 	w := bufio.NewWriter(f)
 
-	dataAndTime := fmt.Sprintf("\033[1mLast database dump written on: %s\033[22m\n",
-		time.Now().String())
+	t := time.Now()
+	dataAndTime := fmt.Sprintf("\033[1mZededa LISP Data-plane running at %s\033[0m\n",
+		t.UTC().Format(time.UnixDate))
 	w.WriteString(dataAndTime)
 
-	w.WriteString("\033[1mLISP zTR state:\033[22m\n")
+	w.WriteString("\033[1mLISP zTR state:\033[0m\n")
 	msg := fmt.Sprintf("  LISP dataplane debugging enabled: %v\n", debug)
 	w.WriteString(msg)
 
@@ -771,7 +772,7 @@ func dumpDatabaseState() {
 	// Dump map-cache entries
 	cache.LockMe.RLock()
 
-	w.WriteString("\033[1mMap-Cache Entries:\033[22m\n")
+	w.WriteString("\033[1mMap-Cache Entries:\033[0m\n")
 	for key, value := range cache.MapCache {
 		msg = fmt.Sprintf("EID: [%d]%s\n", key.IID, key.Eid)
 		w.WriteString(msg)
@@ -793,7 +794,7 @@ func dumpDatabaseState() {
 	}
 	decaps.LockMe.RLock()
 
-	w.WriteString("\033[1mDecap-Keys:\033[22m\n")
+	w.WriteString("\033[1mDecap-Keys:\033[0m\n")
 	for rloc, keys := range decaps.DecapEntries {
 		msg = fmt.Sprintf("  RLOC: %s:%d, key-ids [%d]\n",
 			rloc, keys.Port, len(keys.Keys))
