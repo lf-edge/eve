@@ -396,8 +396,9 @@ func getBridgeServiceIPv4Addr(ctx *zedrouterContext, appLink uuid.UUID) (string,
 		return "", err
 	}
 	for _, addr := range addrs {
-		log.Printf("getBridgeServiceIPv4Addr: found addr %s\n", addr.IP.String())
-		return addr.String(), nil
+		log.Printf("getBridgeServiceIPv4Addr: found addr %s\n",
+			addr.IP.String())
+		return addr.IP.String(), nil
 	}
 	log.Printf("getBridgeServiceIPv4Addr: no IP address on %s yet\n",
 		status.Adapter)
