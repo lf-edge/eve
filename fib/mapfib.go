@@ -726,10 +726,11 @@ func sendDecapStatistics(puntChannel chan []byte) {
 
 func dumpDatabaseState() {
 	// open the database dump file
-	f, err := os.Create(lispLocation + DATABASEWRITEFILE)
+	dumpFile := lispLocation + DATABASEWRITEFILE
+	f, err := os.Create(dumpFile)
 	if err != nil {
 		log.Printf("dumpDatabaseState: Failed opening dump file (%s) with err: %s\n",
-			DATABASEWRITEFILE, err)
+			dumpFile, err)
 		return
 	}
 	// Get a buffered writer since we are going go make multiple writes.
