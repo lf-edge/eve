@@ -190,9 +190,9 @@ func createDnsmasqUnderlayConfiglet(ctx *zedrouterContext,
 			file.WriteString(fmt.Sprintf("dhcp-option=option:domain-name,%s\n",
 				netconf.DomainName))
 		}
-		maybeAdvertizeDns := false
+		advertizedDns := false
 		for _, ns := range netconf.DnsServers {
-			maybeAdvertizeDns = true
+			advertizedDns = true
 			file.WriteString(fmt.Sprintf("dhcp-option=option:dns-server,%s\n",
 				ns.String()))
 		}
@@ -211,7 +211,7 @@ func createDnsmasqUnderlayConfiglet(ctx *zedrouterContext,
 		} else {
 			log.Printf("createDnsmasqUnderlayConfiglet: no router\n")
 			file.WriteString(fmt.Sprintf("dhcp-option=option:router\n"))
-			if !maybeAdvertizeDns {
+			if !advertizedDns {
 				// Handle isolated network by making sure
 				// we are not a DNS server. Can be overridden
 				// with the DnsServers above
