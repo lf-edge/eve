@@ -364,6 +364,8 @@ func getServiceInfo(ctx *zedrouterContext, appLink uuid.UUID) (types.NetworkServ
 }
 
 // Entrypoint from networkobject to look for a bridge's IPv4 address
+// XXX address seems to disappear. Might be that DHCP container doesn't
+// like that the routes get deleted?
 func getBridgeServiceIPv4Addr(ctx *zedrouterContext, appLink uuid.UUID) (string, error) {
 	// Find any service which is associated with the appLink UUID
 	log.Printf("getBridgeServiceIPv4Addr(%s)\n", appLink.String())
@@ -394,8 +396,9 @@ func getBridgeServiceIPv4Addr(ctx *zedrouterContext, appLink uuid.UUID) (string,
 		return "", err
 	}
 	for _, addr := range addrs {
-		log.Printf("getBridgeServiceIPv4Addr: found addr %s\n", addr.String())
-		return addr.String(), nil
+		log.Printf("getBridgeServiceIPv4Addr: found addr %s\n",
+			addr.IP.String())
+		return addr.IP.String(), nil
 	}
 	log.Printf("getBridgeServiceIPv4Addr: no IP address on %s yet\n",
 		status.Adapter)
