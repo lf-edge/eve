@@ -120,7 +120,9 @@ func createDnsmasqUnderlayConfiglet(ctx *zedrouterContext,
 	file.WriteString(fmt.Sprintf("pid-file=/var/run/dnsmasq.%s.pid\n",
 		ulIfname))
 	file.WriteString(fmt.Sprintf("interface=%s\n", ulIfname))
-	file.WriteString(fmt.Sprintf("listen-address=%s\n", ulAddr1))
+	if ulAddr1 != "" {
+		file.WriteString(fmt.Sprintf("listen-address=%s\n", ulAddr1))
+	}
 	file.WriteString(fmt.Sprintf("hostsdir=%s\n", hostsDir))
 
 	if netconf != nil {
@@ -154,27 +156,30 @@ func createDnsmasqUnderlayConfiglet(ctx *zedrouterContext,
 	if netconf != nil {
 		// By default dnsmasq advertizes a router (and we can have a
 		// static router defined in the NetworkObjectConfig).
-		// However, if we have no NetworkService to the outside world
-		// we don't advertise ourselves as a router by default.
+		// To support airgap networks we interpret gateway=0.0.0.0
+		// to not advertize ourselves as a router. Also,
+		// if there is not an explicit dns server we skip
+		// advertising that as well.
 		advertizeRouter := true
-		nst, adapter, err := getServiceInfo(ctx, netconf.UUID)
-		if err != nil {
-			log.Println(err)
-			advertizeRouter = false
-		} else if nst == types.NST_FIRST {
-			log.Printf("createDnsmasqUnderlayConfiglet: NST_FIRST ignored\n")
-			advertizeRouter = false
+		var router string
+		if netconf.Gateway != nil {
+			if netconf.Gateway.IsUnspecified() {
+				advertizeRouter = false
+			} else {
+				router = netconf.Gateway.String()
+			}
+		} else if ulAddr1 != "" {
+			router = ulAddr1
 		} else {
-			log.Printf("createDnsmasqUnderlayConfiglet: found service %d adapter %s\n",
-				nst, adapter)
+			advertizeRouter = false
 		}
 		if netconf.DomainName != "" {
 			file.WriteString(fmt.Sprintf("dhcp-option=option:domain-name,%s\n",
 				netconf.DomainName))
 		}
-		maybeAdvertizeDns := false
+		advertizedDns := false
 		for _, ns := range netconf.DnsServers {
-			maybeAdvertizeDns = true
+			advertizedDns = true
 			file.WriteString(fmt.Sprintf("dhcp-option=option:dns-server,%s\n",
 				ns.String()))
 		}
@@ -187,18 +192,14 @@ func createDnsmasqUnderlayConfiglet(ctx *zedrouterContext,
 			file.WriteString(fmt.Sprintf("dhcp-option=option:netmask,%s\n",
 				netmask))
 		}
-		if netconf.Gateway != nil {
+		if advertizeRouter {
 			file.WriteString(fmt.Sprintf("dhcp-option=option:router,%s\n",
-				netconf.Gateway.String()))
-		} else if advertizeRouter {
-			// XXX can ulAddr1 be zero?
-			file.WriteString(fmt.Sprintf("dhcp-option=option:router,%s\n",
-				ulAddr1))
+				router))
 		} else {
 			log.Printf("createDnsmasqUnderlayConfiglet: no router\n")
 			file.WriteString(fmt.Sprintf("dhcp-option=option:router\n"))
-			if !maybeAdvertizeDns {
-				// XXX handle isolated network by making sure
+			if !advertizedDns {
+				// Handle isolated network by making sure
 				// we are not a DNS server. Can be overridden
 				// with the DnsServers above
 				log.Printf("createDnsmasqUnderlayConfiglet: no DNS server\n")

@@ -179,10 +179,15 @@ func Run() {
 	}
 }
 
+// XXX need to run this sometime after boot to clean up
 // Clean up any unused files in rwImgDirname
 func handleRestart(ctxArg interface{}, done bool) {
 	log.Printf("handleRestart(%v)\n", done)
 	if done {
+		log.Printf("handleRestart: avoid cleanup\n")
+		// XXX
+		return
+
 		files, err := ioutil.ReadDir(rwImgDirname)
 		if err != nil {
 			log.Fatal(err)
