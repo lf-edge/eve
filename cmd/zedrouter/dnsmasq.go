@@ -27,7 +27,7 @@ bogus-priv
 stop-dns-rebind
 rebind-localhost-ok
 neg-ttl=10
-dhcp-range=::,static,0,infinite
+dhcp-range=::,static,0,10m
 `
 
 const dnsmasqUnderlayStatic = `
@@ -223,7 +223,7 @@ func createDnsmasqUnderlayConfiglet(ctx *zedrouterContext,
 			dhcpRange = netconf.DhcpRange.Start.String()
 		}
 	}
-	file.WriteString(fmt.Sprintf("dhcp-range=%s,static,%s,infinite\n",
+	file.WriteString(fmt.Sprintf("dhcp-range=%s,static,%s,10m\n",
 		dhcpRange, netmask))
 }
 
