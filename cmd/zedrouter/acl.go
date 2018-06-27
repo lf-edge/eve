@@ -182,14 +182,13 @@ func compileOldAppInstanceIpsets(ctx *zedrouterContext,
 // For a shared bridge call aclToRules for each ifname, then aclDropRules,
 // then concat all the rules and pass to applyACLrules
 func createACLConfiglet(ifname string, isMgmt bool, ACLs []types.ACE,
-	ipVer int, myIP string, appIP string, underlaySshPortMap uint,
+	ipVer int, myIP string, appIP string,
 	netconfig *types.NetworkObjectConfig) error {
 	if debug {
-		log.Printf("createACLConfiglet: ifname %s, ACLs %v, IP %s/%s, ssh %d\n",
-			ifname, ACLs, myIP, appIP, underlaySshPortMap)
+		log.Printf("createACLConfiglet: ifname %s, ACLs %v, IP %s/%s\n",
+			ifname, ACLs, myIP, appIP)
 	}
-	rules, err := aclToRules(ifname, ACLs, ipVer, myIP, appIP,
-		underlaySshPortMap)
+	rules, err := aclToRules(ifname, ACLs, ipVer, myIP, appIP)
 	if err != nil {
 		return err
 	}
@@ -258,7 +257,7 @@ func applyACLRules(rules IptablesRuleList, ifname string, isMgmt bool,
 
 // Returns a list of iptables commands, witout the initial "-A FORWARD"
 func aclToRules(ifname string, ACLs []types.ACE, ipVer int,
-	myIP string, appIP string, underlaySshPortMap uint) (IptablesRuleList, error) {
+	myIP string, appIP string) (IptablesRuleList, error) {
 	rulesList := IptablesRuleList{}
 	// XXX should we check isMgmt instead of myIP?
 	if ipVer == 6 && myIP != "" {
@@ -270,25 +269,6 @@ func aclToRules(ifname string, ACLs []types.ACE, ipVer int,
 			"local.ipv6", "src", "-j", "ACCEPT"}
 		rule3 := []string{"-i", ifname, "-d", myIP, "-j", "ACCEPT"}
 		rule4 := []string{"-i", ifname, "-s", myIP, "-j", "ACCEPT"}
-		rulesList = append(rulesList, rule1, rule2, rule3, rule4)
-	}
-	if underlaySshPortMap != 0 {
-		port := fmt.Sprintf("%d", underlaySshPortMap)
-		dest := fmt.Sprintf("%s:22", appIP)
-		// These rules should only apply on the uplink interfaces
-		// but for now we just compare the TCP port number.
-		rule1 := []string{"PREROUTING",
-			"-p", "tcp", "--dport", port, "-j", "DNAT",
-			"--to-destination", dest}
-		// Make sure packets are returned to zedrouter and not e.g.,
-		// out a directly attached interface in the domU
-		rule2 := []string{"POSTROUTING",
-			"-p", "tcp", "-o", ifname, "--dport", "22", "-j", "SNAT",
-			"--to-source", myIP}
-		rule3 := []string{"-o", ifname, "-p", "tcp", "--dport", "22",
-			"-j", "ACCEPT"}
-		rule4 := []string{"-i", ifname, "-p", "tcp", "--sport", "22",
-			"-j", "ACCEPT"}
 		rulesList = append(rulesList, rule1, rule2, rule3, rule4)
 	}
 	for _, ace := range ACLs {
@@ -588,6 +568,7 @@ func updateAppInstanceIpsets(ctx *zedrouterContext,
 	return newIpsets, staleIpsets, restartDnsmasq
 }
 
+// XXX separate out getNetworkOverlayApps() function?
 // Perform an update across all of the bridge aka NetworkObjectStatus
 func updateNetworkACLConfiglet(ctx *zedrouterContext,
 	netstatus *types.NetworkObjectStatus) error {
@@ -609,7 +590,7 @@ func updateNetworkACLConfiglet(ctx *zedrouterContext,
 				continue
 			}
 			rules, err := aclToRules(ifname, olConfig.ACLs, ipVer,
-				bridgeIPAddr, "", 0)
+				bridgeIPAddr, "")
 			if err != nil {
 				return err
 			}
@@ -629,7 +610,7 @@ func updateNetworkACLConfiglet(ctx *zedrouterContext,
 				continue
 			}
 			rules, err := aclToRules(ifname, olStatus.ACLs, ipVer,
-				bridgeIPAddr, "", 0)
+				bridgeIPAddr, "")
 			if err != nil {
 				return err
 			}
@@ -656,9 +637,8 @@ func updateNetworkACLConfiglet(ctx *zedrouterContext,
 				continue
 			}
 			// XXX where can we get ulAddr2 := ulStatus.AssignedIPAddr
-			// XXX no sshPortMap
 			rules, err := aclToRules(ifname, ulConfig.ACLs, ipVer,
-				bridgeIPAddr, "", 0)
+				bridgeIPAddr, "")
 			if err != nil {
 				return err
 			}
@@ -678,9 +658,8 @@ func updateNetworkACLConfiglet(ctx *zedrouterContext,
 				continue
 			}
 			ulAddr2 := ulStatus.AssignedIPAddr
-			// XXX no sshPortMap
 			rules, err := aclToRules(ifname, ulStatus.ACLs, ipVer,
-				bridgeIPAddr, ulAddr2, 0)
+				bridgeIPAddr, ulAddr2)
 			if err != nil {
 				return err
 			}
@@ -700,18 +679,16 @@ func updateNetworkACLConfiglet(ctx *zedrouterContext,
 // XXX old update function
 func updateACLConfiglet(ifname string, isMgmt bool, oldACLs []types.ACE,
 	newACLs []types.ACE, ipVer int, myIP string, appIP string,
-	underlaySshPortMap uint, netconfig *types.NetworkObjectConfig) error {
+	netconfig *types.NetworkObjectConfig) error {
 	if debug {
 		log.Printf("updateACLConfiglet: ifname %s, oldACLs %v newACLs %v\n",
 			ifname, oldACLs, newACLs)
 	}
-	oldRules, err := aclToRules(ifname, oldACLs, ipVer, myIP, appIP,
-		underlaySshPortMap)
+	oldRules, err := aclToRules(ifname, oldACLs, ipVer, myIP, appIP)
 	if err != nil {
 		return err
 	}
-	newRules, err := aclToRules(ifname, newACLs, ipVer, myIP, appIP,
-		underlaySshPortMap)
+	newRules, err := aclToRules(ifname, newACLs, ipVer, myIP, appIP)
 	if err != nil {
 		return err
 	}
@@ -791,15 +768,14 @@ func applyACLUpdate(isMgmt bool, ipVer int,
 }
 
 func deleteACLConfiglet(ifname string, isMgmt bool, ACLs []types.ACE,
-	ipVer int, myIP string, appIP string, underlaySshPortMap uint,
+	ipVer int, myIP string, appIP string,
 	netconfig *types.NetworkObjectConfig) error {
 
 	if debug {
 		log.Printf("deleteACLConfiglet: ifname %s ACLs %v\n",
 			ifname, ACLs)
 	}
-	rules, err := aclToRules(ifname, ACLs, ipVer, myIP, appIP,
-		underlaySshPortMap)
+	rules, err := aclToRules(ifname, ACLs, ipVer, myIP, appIP)
 	if err != nil {
 		return err
 	}

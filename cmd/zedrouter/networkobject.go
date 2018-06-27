@@ -166,6 +166,27 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 	// XXX collect ipsets?
 	createDnsmasqConfiglet(bridgeName, status.BridgeIPAddr, &config,
 		hostsDirpath, nil)
+
+	// For IPv6 and LISP, but LISP will become a service
+	isIPv6 := false
+	if config.Subnet.IP != nil {
+		isIPv6 = (config.Subnet.IP.To4() == nil)
+	}
+	if isIPv6 {
+		// XXX do we need same logic as for IPv4 dnsmasq to not
+		// advertize as default router? Might we need lower
+		// radvd preference if isolated local network?
+
+		// Write radvd configlet; start radvd; XXX shared
+		cfgFilename := "radvd." + bridgeName + ".conf"
+		cfgPathname := runDirname + "/" + cfgFilename
+
+		//    Start clean; kill just in case
+		//    pkill -u radvd -f radvd.${BRIDGENAME}.conf
+		stopRadvd(cfgFilename, false)
+		createRadvdConfiglet(cfgPathname, bridgeName)
+		startRadvd(cfgPathname, bridgeName)
+	}
 	return nil
 }
 
@@ -310,6 +331,7 @@ func lookupOrAllocateIPv4(ctx *zedrouterContext,
 }
 
 // Returns true if the last entry was removed
+// XXX last return no longer used
 func releaseIPv4(ctx *zedrouterContext,
 	status *types.NetworkObjectStatus, mac net.HardwareAddr) (bool, error) {
 
@@ -421,14 +443,32 @@ func doNetworkDelete(status *types.NetworkObjectStatus) {
 	if status.BridgeName == "" {
 		return
 	}
+	bridgeName := status.BridgeName
+
 	attrs := netlink.NewLinkAttrs()
-	attrs.Name = status.BridgeName
+	attrs.Name = bridgeName
 	link := &netlink.Bridge{LinkAttrs: attrs}
 	// Remove link and associated addresses
 	netlink.LinkDel(link)
 
-	deleteDnsmasqConfiglet(status.BridgeName)
-	stopDnsmasq(status.BridgeName, true)
+	deleteDnsmasqConfiglet(bridgeName)
+	stopDnsmasq(bridgeName, true)
+
+	hostsDirpath := globalRunDirname + "/hosts." + bridgeName
+	deleteHostsConfiglet(hostsDirpath, false)
+
+	// For IPv6 and LISP, but LISP will become a service
+	isIPv6 := false
+	if status.Subnet.IP != nil {
+		isIPv6 = (status.Subnet.IP.To4() == nil)
+	}
+	if isIPv6 {
+		// radvd cleanup
+		cfgFilename := "radvd." + bridgeName + ".conf"
+		cfgPathname := runDirname + "/" + cfgFilename
+		stopRadvd(cfgFilename, true)
+		deleteRadvdConfiglet(cfgPathname)
+	}
 
 	status.BridgeName = ""
 	status.BridgeNum = 0

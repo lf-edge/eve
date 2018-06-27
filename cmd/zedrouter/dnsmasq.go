@@ -33,7 +33,7 @@ neg-ttl=10
 // Would be more polite to return an error then to Fatal
 func createDnsmasqOverlayConfiglet(ctx *zedrouterContext,
 	cfgPathname string, olIfname string,
-	olAddr1 string, olAddr2 string, olMac string, hostsDir string,
+	bridgeIPAddr string, appIPAddr string, appMac string, hostsDir string,
 	hostName string, ipsets []string, netconf *types.NetworkObjectConfig) {
 	if debug {
 		log.Printf("createDnsmasqOverlayConfiglet: %s\n", olIfname)
@@ -52,7 +52,7 @@ func createDnsmasqOverlayConfiglet(ctx *zedrouterContext,
 	file.WriteString(fmt.Sprintf("pid-file=/var/run/dnsmasq.%s.pid\n",
 		olIfname))
 	file.WriteString(fmt.Sprintf("interface=%s\n", olIfname))
-	file.WriteString(fmt.Sprintf("listen-address=%s\n", olAddr1))
+	file.WriteString(fmt.Sprintf("listen-address=%s\n", bridgeIPAddr))
 	if netconf != nil {
 		// walk all of netconf - find all hosts which use this network
 		for _, status := range appNetworkStatus {
@@ -68,7 +68,7 @@ func createDnsmasqOverlayConfiglet(ctx *zedrouterContext,
 		}
 	} else {
 		file.WriteString(fmt.Sprintf("dhcp-host=%s,[%s],%s\n",
-			olMac, olAddr2, hostName))
+			appMac, appIPAddr, hostName))
 	}
 	file.WriteString(fmt.Sprintf("hostsdir=%s\n", hostsDir))
 
@@ -98,7 +98,7 @@ func createDnsmasqOverlayConfiglet(ctx *zedrouterContext,
 // Would be more polite to return an error then to Fatal
 func createDnsmasqUnderlayConfiglet(ctx *zedrouterContext,
 	cfgPathname string, ulIfname string,
-	ulAddr1 string, ulAddr2 string, ulMac string, hostsDir string,
+	bridgeIPAddr string, appIPAddr string, appMac string, hostsDir string,
 	hostName string, ipsets []string, netconf *types.NetworkObjectConfig) {
 	if debug {
 		log.Printf("createDnsmasqUnderlayConfiglet: %s netconf %v\n",
@@ -117,8 +117,8 @@ func createDnsmasqUnderlayConfiglet(ctx *zedrouterContext,
 	file.WriteString(fmt.Sprintf("pid-file=/var/run/dnsmasq.%s.pid\n",
 		ulIfname))
 	file.WriteString(fmt.Sprintf("interface=%s\n", ulIfname))
-	if ulAddr1 != "" {
-		file.WriteString(fmt.Sprintf("listen-address=%s\n", ulAddr1))
+	if bridgeIPAddr != "" {
+		file.WriteString(fmt.Sprintf("listen-address=%s\n", bridgeIPAddr))
 	}
 	file.WriteString(fmt.Sprintf("hostsdir=%s\n", hostsDir))
 
@@ -140,13 +140,13 @@ func createDnsmasqUnderlayConfiglet(ctx *zedrouterContext,
 		}
 	} else {
 		log.Printf("createDnsmasqUnderlayConfiglet: single %s/%s\n",
-			ulMac, ulAddr2)
+			appMac, appIPAddr)
 		file.WriteString(fmt.Sprintf("dhcp-host=%s,id:*,%s,%s\n",
-			ulMac, ulAddr2, hostName))
+			appMac, appIPAddr, hostName))
 	}
 
 	netmask := "255.255.255.0" // Default unless there is a Subnet
-	dhcpRange := ulAddr2       // Default unless there is a DhcpRange
+	dhcpRange := appIPAddr     // Default unless there is a DhcpRange
 	if dhcpRange == "" {
 		dhcpRange = "172.27.0.0"
 	}
@@ -165,8 +165,8 @@ func createDnsmasqUnderlayConfiglet(ctx *zedrouterContext,
 			} else {
 				router = netconf.Gateway.String()
 			}
-		} else if ulAddr1 != "" {
-			router = ulAddr1
+		} else if bridgeIPAddr != "" {
+			router = bridgeIPAddr
 		} else {
 			advertizeRouter = false
 		}
@@ -259,6 +259,12 @@ func createDnsmasqConfiglet(bridgeName string, bridgeIPAddr string,
 	file.WriteString(fmt.Sprintf("interface=%s\n", bridgeName))
 	isIPv6 := false
 	if bridgeIPAddr != "" {
+		ip := net.ParseIP(bridgeIPAddr)
+		if ip == nil {
+			log.Fatalf("createDnsmasqConfiglet failed to parse IP %s",
+				bridgeIPAddr)
+		}
+		isIPv6 = (ip.To4() == nil)
 		file.WriteString(fmt.Sprintf("listen-address=%s\n",
 			bridgeIPAddr))
 	}
@@ -336,41 +342,43 @@ func createDnsmasqConfiglet(bridgeName string, bridgeIPAddr string,
 	}
 }
 
-func addhostDnsmasq(bridgeName string, mac string, ipaddr string, hostname string) {
-	log.Printf("addhostDnsmasq(%s, %s, %s, %s)\n", bridgeName, mac,
-		ipaddr, hostname)
+func addhostDnsmasq(bridgeName string, appMac string, appIPAddr string,
+	hostname string) {
+
+	log.Printf("addhostDnsmasq(%s, %s, %s, %s)\n", bridgeName, appMac,
+		appIPAddr, hostname)
 	dhcphostsDir := dnsmasqDhcpHostDir(bridgeName)
 	ensureDir(dhcphostsDir)
-	cfgPathname := dhcphostsDir + "/" + mac
+	cfgPathname := dhcphostsDir + "/" + appMac
 
 	file, err := os.Create(cfgPathname)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer file.Close()
-	ip := net.ParseIP(ipaddr)
+	ip := net.ParseIP(appIPAddr)
 	if ip == nil {
-		log.Fatalf("addhostDnsmasq failed to parse IP %s", ipaddr)
+		log.Fatalf("addhostDnsmasq failed to parse IP %s", appIPAddr)
 	}
 	isIPv6 := (ip.To4() == nil)
 	if isIPv6 {
 		file.WriteString(fmt.Sprintf("%s,[%s],%s\n",
-			mac, ipaddr, hostname))
+			appMac, appIPAddr, hostname))
 	} else {
 		file.WriteString(fmt.Sprintf("%s,id:*,%s,%s\n",
-			mac, ipaddr, hostname))
+			appMac, appIPAddr, hostname))
 	}
 }
 
-func removehostDnsmasq(bridgeName string, mac string) {
-	log.Printf("removehostDnsmasq(%s, %s)\n", bridgeName, mac)
+func removehostDnsmasq(bridgeName string, appMac string) {
+	log.Printf("removehostDnsmasq(%s, %s)\n", bridgeName, appMac)
 	dhcphostsDir := dnsmasqDhcpHostDir(bridgeName)
 	ensureDir(dhcphostsDir)
 
-	cfgPathname := dhcphostsDir + "/" + mac
+	cfgPathname := dhcphostsDir + "/" + appMac
 	if _, err := os.Stat(cfgPathname); err != nil {
 		log.Printf("removehostDnsmasq(%s, %s) failed: %s\n",
-			bridgeName, mac, err)
+			bridgeName, appMac, err)
 		return
 	}
 	if err := os.Remove(cfgPathname); err != nil {
