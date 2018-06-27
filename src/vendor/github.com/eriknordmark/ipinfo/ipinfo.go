@@ -33,7 +33,7 @@ type Options struct {
 
 // MyIP provides information about the public IP address of the client.
 func MyIP() (*IPInfo, error) {
-	return getInfo(fmt.Sprintf("%s/json%s", ipinfoURI), nil)
+	return getInfo(fmt.Sprintf("%s/json", ipinfoURI), nil)
 }
 
 // ForeignIP provides information about the given IP address (IPv4 or IPv6)

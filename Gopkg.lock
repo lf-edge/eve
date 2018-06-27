@@ -43,14 +43,14 @@
     "service/s3/s3manager",
     "service/sts"
   ]
-  revision = "4bdf3e6f6926903b8ca6b0d2b93bbdddcf6af219"
-  version = "v1.14.5"
+  revision = "aff39e8473db578a1cec9ac2f829a56813c1d631"
+  version = "v1.14.14"
 
 [[projects]]
   branch = "master"
   name = "github.com/eriknordmark/ipinfo"
   packages = ["."]
-  revision = "beff5cd6527619bdfec41ba304a02088b25e7009"
+  revision = "ddb538ad9575d275460c28d68e0fc1ad09e3fd58"
 
 [[projects]]
   name = "github.com/fsnotify/fsnotify"
@@ -117,7 +117,7 @@
   branch = "master"
   name = "github.com/nanobox-io/golang-scribble"
   packages = ["."]
-  revision = "f328a97d7ce2445d27e611065eb0483cbd97343b"
+  revision = "336beac0a992ed9abaf4ef8e7042ba7fe3335c06"
 
 [[projects]]
   name = "github.com/pkg/errors"
@@ -150,12 +150,6 @@
   ]
   revision = "eeb1d38d69593f121e060d24d17f7b1f0936b203"
   version = "v2.18.05"
-
-[[projects]]
-  branch = "master"
-  name = "github.com/shirou/w32"
-  packages = ["."]
-  revision = "bb4de0191aa41b5507caa14b0650cdbddcd9280b"
 
 [[projects]]
   name = "github.com/vishvananda/netlink"
@@ -199,11 +193,12 @@
     "ed25519",
     "ed25519/internal/edwards25519",
     "internal/chacha20",
+    "internal/subtle",
     "ocsp",
     "poly1305",
     "ssh"
   ]
-  revision = "8ac0e0d97ce45cd83d1d7243c060cb8461dda5e9"
+  revision = "a49355c7e3f8fe157a85be2f77e6e269a0f89602"
 
 [[projects]]
   branch = "master"
@@ -212,7 +207,7 @@
     "unix",
     "windows"
   ]
-  revision = "56ede360ec1c541828fb88741b3f1049406d28f5"
+  revision = "c4afb3effaa53fd9a06ca61262dc7ce8df4c081b"
 
 [solve-meta]
   analyzer-name = "dep"
