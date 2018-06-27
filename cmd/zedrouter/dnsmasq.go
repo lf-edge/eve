@@ -44,7 +44,6 @@ func createDnsmasqOverlayConfiglet(ctx *zedrouterContext,
 	}
 	defer file.Close()
 	file.WriteString(dnsmasqStatic)
-	// XXX insert in common if subnet is IPv6
 	file.WriteString(fmt.Sprintf("dhcp-range=::,static,0,infinite\n"))
 	for _, ipset := range ipsets {
 		file.WriteString(fmt.Sprintf("ipset=/%s/ipv4.%s,ipv6.%s\n",
@@ -97,8 +96,6 @@ func createDnsmasqOverlayConfiglet(ctx *zedrouterContext,
 
 // Create the dnsmasq configuration for the the underlay interface
 // Would be more polite to return an error then to Fatal
-// XXX not clear what needs to change here to handle IPv6 underlay. The default
-// ranges are off, plus domain-name needs to be replaced by domain-search, etc
 func createDnsmasqUnderlayConfiglet(ctx *zedrouterContext,
 	cfgPathname string, ulIfname string,
 	ulAddr1 string, ulAddr2 string, ulMac string, hostsDir string,
@@ -214,12 +211,26 @@ func createDnsmasqUnderlayConfiglet(ctx *zedrouterContext,
 		dhcpRange, netmask))
 }
 
+func dnsmasqConfigFile(bridgeName string) string {
+	cfgFilename := "dnsmasq." + bridgeName + ".conf"
+	return cfgFilename
+}
+
+func dnsmasqConfigPath(bridgeName string) string {
+	cfgFilename := dnsmasqConfigFile(bridgeName)
+	cfgPathname := runDirname + "/" + cfgFilename
+	return cfgPathname
+}
+
+func dnsmasqDhcpHostDir(bridgeName string) string {
+	dhcphostsDir := globalRunDirname + "/dhcp-hosts." + bridgeName
+	return dhcphostsDir
+}
+
 // XXX new used when network is created; sets up dhcp-hostsdir
 // XXX do we need ipsets?
-// XXX if we don't have a service we need to allocate a ulAddr1 aka bridgeIPAddr
 // from network... require a subnet and dhcp-range in that case.
-func createDnsmasqConfiglet(ctx *zedrouterContext, bridgeName string,
-	bridgeIPAddr string,
+func createDnsmasqConfiglet(bridgeName string, bridgeIPAddr string,
 	netconf *types.NetworkObjectConfig, hostsDir string,
 	ipsets []string) {
 
@@ -227,8 +238,7 @@ func createDnsmasqConfiglet(ctx *zedrouterContext, bridgeName string,
 		log.Printf("createDnsmasqConfiglet: %s netconf %v\n",
 			bridgeName, netconf)
 	}
-	cfgFilename := "dnsmasq." + bridgeName + ".conf"
-	cfgPathname := runDirname + "/" + cfgFilename
+	cfgPathname := dnsmasqConfigPath(bridgeName)
 	file, err := os.Create(cfgPathname)
 	if err != nil {
 		log.Fatal("os.Create for ", cfgPathname, err)
@@ -236,9 +246,9 @@ func createDnsmasqConfiglet(ctx *zedrouterContext, bridgeName string,
 	defer file.Close()
 
 	// Create a dhcp-hosts directory to be used when hosts are added
-	dhcphostsDirpath := globalRunDirname + "/dhcp-hosts." + bridgeName
-	ensureDir(dhcphostsDirpath)
-	
+	dhcphostsDir := dnsmasqDhcpHostDir(bridgeName)
+	ensureDir(dhcphostsDir)
+
 	file.WriteString(dnsmasqStatic)
 	for _, ipset := range ipsets {
 		file.WriteString(fmt.Sprintf("ipset=/%s/ipv4.%s,ipv6.%s\n",
@@ -247,94 +257,137 @@ func createDnsmasqConfiglet(ctx *zedrouterContext, bridgeName string,
 	file.WriteString(fmt.Sprintf("pid-file=/var/run/dnsmasq.%s.pid\n",
 		bridgeName))
 	file.WriteString(fmt.Sprintf("interface=%s\n", bridgeName))
-	file.WriteString(fmt.Sprintf("listen-address=%s\n", bridgeIPAddr))
+	isIPv6 := false
+	if bridgeIPAddr != "" {
+		file.WriteString(fmt.Sprintf("listen-address=%s\n",
+			bridgeIPAddr))
+	}
 	file.WriteString(fmt.Sprintf("hostsdir=%s\n", hostsDir))
+	file.WriteString(fmt.Sprintf("dhcp-hostsdir=%s\n", dhcphostsDir))
 
-	netmask := "255.255.255.0" // Default unless there is a Subnet
-	dhcpRange := bridgeIPAddr       // Default unless there is a DhcpRange
+	ipv4Netmask := "255.255.255.0" // Default unless there is a Subnet
+	dhcpRange := bridgeIPAddr      // Default unless there is a DhcpRange
 
-	if netconf != nil {
-		// By default dnsmasq advertizes a router (and we can have a
-		// static router defined in the NetworkObjectConfig).
-		// However, if we have no NetworkService to the outside world
-		// we don't advertise ourselves as a router by default.
-		advertizeRouter := true
-		nst, adapter, err := getServiceInfo(ctx, netconf.UUID)
-		if err != nil {
-			log.Println(err)
-			advertizeRouter = false
-		} else if nst == types.NST_FIRST {
-			log.Printf("createDnsmasqConfiglet: NST_FIRST ignored\n")
+	// By default dnsmasq advertizes a router (and we can have a
+	// static router defined in the NetworkObjectConfig).
+	// To support airgap networks we interpret gateway=0.0.0.0
+	// to not advertize ourselves as a router. Also,
+	// if there is not an explicit dns server we skip
+	// advertising that as well.
+	advertizeRouter := true
+	var router string
+	if netconf.Gateway != nil {
+		if netconf.Gateway.IsUnspecified() {
 			advertizeRouter = false
 		} else {
-			log.Printf("createDnsmasqConfiglet: found service %d adapter %s\n",
-				nst, adapter)
+			router = netconf.Gateway.String()
 		}
-		if netconf.DomainName != "" {
+	} else if bridgeIPAddr != "" {
+		router = bridgeIPAddr
+	} else {
+		advertizeRouter = false
+	}
+	if netconf.DomainName != "" {
+		if isIPv6 {
+			file.WriteString(fmt.Sprintf("dhcp-option=option:domain-search,%s\n",
+				netconf.DomainName))
+		} else {
 			file.WriteString(fmt.Sprintf("dhcp-option=option:domain-name,%s\n",
 				netconf.DomainName))
 		}
-		maybeAdvertizeDns := false
-		for _, ns := range netconf.DnsServers {
-			maybeAdvertizeDns = true
-			file.WriteString(fmt.Sprintf("dhcp-option=option:dns-server,%s\n",
-				ns.String()))
-		}
-		if netconf.NtpServer != nil {
-			file.WriteString(fmt.Sprintf("dhcp-option=option:ntp-server,%s\n",
-				netconf.NtpServer.String()))
-		}
-		if netconf.Subnet.IP != nil {
-			netmask = net.IP(netconf.Subnet.Mask).String()
-			file.WriteString(fmt.Sprintf("dhcp-option=option:netmask,%s\n",
-				netmask))
-		}
-		if netconf.Gateway != nil {
-			file.WriteString(fmt.Sprintf("dhcp-option=option:router,%s\n",
-				netconf.Gateway.String()))
-		} else if advertizeRouter {
-			// XXX can bridgeIPAddr be zero?
-			file.WriteString(fmt.Sprintf("dhcp-option=option:router,%s\n",
-				bridgeIPAddr))
-		} else {
-			log.Printf("createDnsmasqConfiglet: no router\n")
-			file.WriteString(fmt.Sprintf("dhcp-option=option:router\n"))
-			if !maybeAdvertizeDns {
-				// XXX handle isolated network by making sure
-				// we are not a DNS server. Can be overridden
-				// with the DnsServers above
-				log.Printf("createDnsmasqConfiglet: no DNS server\n")
-				file.WriteString(fmt.Sprintf("dhcp-option=option:dns-server\n"))
-			}
-		}
-		if netconf.DhcpRange.Start != nil {
-			dhcpRange = netconf.DhcpRange.Start.String()
+	}
+	advertizedDns := false
+	for _, ns := range netconf.DnsServers {
+		advertizedDns = true
+		file.WriteString(fmt.Sprintf("dhcp-option=option:dns-server,%s\n",
+			ns.String()))
+	}
+	if netconf.NtpServer != nil {
+		file.WriteString(fmt.Sprintf("dhcp-option=option:ntp-server,%s\n",
+			netconf.NtpServer.String()))
+	}
+	if netconf.Subnet.IP != nil {
+		ipv4Netmask = net.IP(netconf.Subnet.Mask).String()
+		file.WriteString(fmt.Sprintf("dhcp-option=option:netmask,%s\n",
+			ipv4Netmask))
+	}
+	if advertizeRouter {
+		file.WriteString(fmt.Sprintf("dhcp-option=option:router,%s\n",
+			router))
+	} else {
+		log.Printf("createDnsmasqConfiglet: no router\n")
+		file.WriteString(fmt.Sprintf("dhcp-option=option:router\n"))
+		if !advertizedDns {
+			// Handle isolated network by making sure
+			// we are not a DNS server. Can be overridden
+			// with the DnsServers above
+			log.Printf("createDnsmasqConfiglet: no DNS server\n")
+			file.WriteString(fmt.Sprintf("dhcp-option=option:dns-server\n"))
 		}
 	}
-	file.WriteString(fmt.Sprintf("dhcp-range=%s,static,%s,infinite\n",
-		dhcpRange, netmask))
+	if netconf.DhcpRange.Start != nil {
+		dhcpRange = netconf.DhcpRange.Start.String()
+	}
+	if isIPv6 {
+		file.WriteString(fmt.Sprintf("dhcp-range=::,static,0,infinite\n"))
+	} else {
+		file.WriteString(fmt.Sprintf("dhcp-range=%s,static,%s,infinite\n",
+			dhcpRange, ipv4Netmask))
+	}
 }
 
-func deleteDnsmasqConfiglet(cfgPathname string) {
-	if debug {
-		log.Printf("deleteDnsmasqConfiglet: %s\n", cfgPathname)
+func addhostDnsmasq(bridgeName string, mac string, ipaddr string, hostname string) {
+	log.Printf("addhostDnsmasq(%s, %s, %s, %s)\n", bridgeName, mac,
+		ipaddr, hostname)
+	dhcphostsDir := dnsmasqDhcpHostDir(bridgeName)
+	ensureDir(dhcphostsDir)
+	cfgPathname := dhcphostsDir + "/" + mac
+
+	file, err := os.Create(cfgPathname)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+	ip := net.ParseIP(ipaddr)
+	if ip == nil {
+		log.Fatalf("addhostDnsmasq failed to parse IP %s", ipaddr)
+	}
+	isIPv6 := (ip.To4() == nil)
+	if isIPv6 {
+		file.WriteString(fmt.Sprintf("%s,[%s],%s\n",
+			mac, ipaddr, hostname))
+	} else {
+		file.WriteString(fmt.Sprintf("%s,id:*,%s,%s\n",
+			mac, ipaddr, hostname))
+	}
+}
+
+func removehostDnsmasq(bridgeName string, mac string) {
+	log.Printf("removehostDnsmasq(%s, %s)\n", bridgeName, mac)
+	dhcphostsDir := dnsmasqDhcpHostDir(bridgeName)
+	ensureDir(dhcphostsDir)
+
+	cfgPathname := dhcphostsDir + "/" + mac
+	if _, err := os.Stat(cfgPathname); err != nil {
+		log.Printf("removehostDnsmasq(%s, %s) failed: %s\n",
+			bridgeName, mac, err)
+		return
 	}
 	if err := os.Remove(cfgPathname); err != nil {
 		log.Println(err)
 	}
 }
 
-func deleteDnsmasqConfiglet2(bridgeName string) {
+func deleteDnsmasqConfiglet(bridgeName string) {
 	if debug {
-		log.Printf("deleteDnsmasqConfiglet2(%s)\n", bridgeName)
+		log.Printf("deleteDnsmasqConfiglet(%s)\n", bridgeName)
 	}
-	cfgFilename := "dnsmasq." + bridgeName + ".conf"
-	cfgPathname := runDirname + "/" + cfgFilename
+	cfgPathname := dnsmasqConfigPath(bridgeName)
 	if err := os.Remove(cfgPathname); err != nil {
 		log.Println(err)
 	}
-	dhcphostsDirpath := globalRunDirname + "/dhcp-hosts." + bridgeName
-	if err := os.RemoveAll(dhcphostsDirpath); err != nil {
+	dhcphostsDir := dnsmasqDhcpHostDir(bridgeName)
+	if err := os.RemoveAll(dhcphostsDir); err != nil {
 		log.Println(err)
 	}
 }
@@ -342,10 +395,11 @@ func deleteDnsmasqConfiglet2(bridgeName string) {
 // Run this:
 //    DMDIR=/opt/zededa/bin/
 //    ${DMDIR}/dnsmasq -b -C /var/run/zedrouter/dnsmasq.${BRIDGENAME}.conf
-func startDnsmasq(cfgPathname string, ifname string) {
+func startDnsmasq(bridgeName string) {
 	if debug {
-		log.Printf("startDnsmasq: %s\n", cfgPathname)
+		log.Printf("startDnsmasq(%s)\n", bridgeName)
 	}
+	cfgPathname := dnsmasqConfigPath(bridgeName)
 	name := "nohup"
 	//    XXX currently running as root with -d above
 	args := []string{
@@ -354,7 +408,7 @@ func startDnsmasq(cfgPathname string, ifname string) {
 		"-C",
 		cfgPathname,
 	}
-	logFilename := fmt.Sprintf("dnsmasq.%s", ifname)
+	logFilename := fmt.Sprintf("dnsmasq.%s", bridgeName)
 	logf, err := agentlog.InitChild(logFilename)
 	if err != nil {
 		log.Fatalf("startDnsmasq agentlog failed: %s\n", err)
@@ -367,11 +421,12 @@ func startDnsmasq(cfgPathname string, ifname string) {
 	go cmd.Run()
 }
 
-//    pkill -u nobody -f dnsmasq.${IFNAME}.conf
-func stopDnsmasq(cfgFilename string, printOnError bool) {
+//    pkill -u nobody -f dnsmasq.${BRIDGENAME}.conf
+func stopDnsmasq(bridgeName string, printOnError bool) {
 	if debug {
-		log.Printf("stopDnsmasq: %s\n", cfgFilename)
+		log.Printf("stopDnsmasq(%s)\n", bridgeName)
 	}
+	cfgFilename := dnsmasqConfigFile(bridgeName)
 	// XXX currently running as root with -d above
 	pkillUserArgs("root", cfgFilename, printOnError)
 }

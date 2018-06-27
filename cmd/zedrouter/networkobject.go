@@ -162,9 +162,9 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 	addToHostsConfiglet(hostsDirpath, "router",
 		[]string{status.BridgeIPAddr})
 
-	deleteDnsmasqConfiglet2(bridgeName)
+	deleteDnsmasqConfiglet(bridgeName)
 	// XXX collect ipsets?
-	createDnsmasqConfiglet(ctx, bridgeName, status.BridgeIPAddr, &config,
+	createDnsmasqConfiglet(bridgeName, status.BridgeIPAddr, &config,
 		hostsDirpath, nil)
 	return nil
 }
@@ -426,6 +426,9 @@ func doNetworkDelete(status *types.NetworkObjectStatus) {
 	link := &netlink.Bridge{LinkAttrs: attrs}
 	// Remove link and associated addresses
 	netlink.LinkDel(link)
+
+	deleteDnsmasqConfiglet(status.BridgeName)
+	stopDnsmasq(status.BridgeName, true)
 
 	status.BridgeName = ""
 	status.BridgeNum = 0

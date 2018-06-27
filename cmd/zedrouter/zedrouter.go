@@ -968,13 +968,13 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		// Start clean
 		cfgFilename = "dnsmasq." + bridgeName + ".conf"
 		cfgPathname = runDirname + "/" + cfgFilename
-		stopDnsmasq(cfgFilename, false)
+		stopDnsmasq(bridgeName, false)
 		// XXX need ipsets from all bn<N> users
 
 		createDnsmasqOverlayConfiglet(ctx, cfgPathname, bridgeName, olAddr1,
 			EID.String(), olMac, hostsDirpath,
 			config.UUIDandVersion.UUID.String(), ipsets, netconfig)
-		startDnsmasq(cfgPathname, bridgeName)
+		startDnsmasq(bridgeName)
 
 		additionalInfo := generateAdditionalInfo(status, olConfig)
 		// Create LISP configlets for IID and EID/signature
@@ -1097,13 +1097,13 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		// Start clean
 		cfgFilename := "dnsmasq." + bridgeName + ".conf"
 		cfgPathname := runDirname + "/" + cfgFilename
-		stopDnsmasq(cfgFilename, false)
+		stopDnsmasq(bridgeName, false)
 
 		createDnsmasqUnderlayConfiglet(ctx, cfgPathname, bridgeName, ulAddr1,
 			ulAddr2, ulMac, hostsDirpath,
 			config.UUIDandVersion.UUID.String(),
 			ipsets, netconfig)
-		startDnsmasq(cfgPathname, bridgeName)
+		startDnsmasq(bridgeName)
 	}
 	// Write out what we created to AppNetworkStatus
 	status.PendingAdd = false
@@ -1430,7 +1430,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 			cfgFilename := "dnsmasq." + bridgeName + ".conf"
 			cfgPathname := runDirname + "/" + cfgFilename
 			EID := olConfig.EID
-			stopDnsmasq(cfgFilename, false)
+			stopDnsmasq(bridgeName, false)
 			//remove old dnsmasq configuration file
 			os.Remove(cfgPathname)
 			// XXX need to determine remaining ipsets. Inside function?
@@ -1438,7 +1438,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 				olAddr1, EID.String(), olStatus.Mac, hostsDirpath,
 				config.UUIDandVersion.UUID.String(), newIpsets,
 				netconfig)
-			startDnsmasq(cfgPathname, bridgeName)
+			startDnsmasq(bridgeName)
 		}
 
 		additionalInfo := generateAdditionalInfo(*status, olConfig)
@@ -1501,7 +1501,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 			hostsDirpath := globalRunDirname + "/hosts." + bridgeName
 			cfgFilename := "dnsmasq." + bridgeName + ".conf"
 			cfgPathname := runDirname + "/" + cfgFilename
-			stopDnsmasq(cfgFilename, false)
+			stopDnsmasq(bridgeName, false)
 			//remove old dnsmasq configuration file
 			os.Remove(cfgPathname)
 			// XXX need ipsets from all bn<N> users
@@ -1510,7 +1510,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 				hostsDirpath,
 				config.UUIDandVersion.UUID.String(), newIpsets,
 				netconfig)
-			startDnsmasq(cfgPathname, bridgeName)
+			startDnsmasq(bridgeName)
 		}
 	}
 
@@ -1707,8 +1707,8 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 			// XXX not all of it - see ulStatus below
 			cfgFilename = "dnsmasq." + bridgeName + ".conf"
 			cfgPathname = runDirname + "/" + cfgFilename
-			stopDnsmasq(cfgFilename, true)
-			deleteDnsmasqConfiglet(cfgPathname)
+			stopDnsmasq(bridgeName, true)
+			deleteDnsmasqConfiglet(bridgeName)
 
 			// Delete ACLs
 			netstatus := lookupNetworkObjectStatus(ctx,
@@ -1798,11 +1798,11 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 				ulStatus.Network.String())
 			if doDelete {
 				// dnsmasq cleanup
-				stopDnsmasq(cfgFilename, true)
-				deleteDnsmasqConfiglet(cfgPathname)
+				stopDnsmasq(bridgeName, true)
+				deleteDnsmasqConfiglet(bridgeName)
 			} else {
 				// Update
-				stopDnsmasq(cfgFilename, false)
+				stopDnsmasq(bridgeName, false)
 				//remove old dnsmasq configuration file
 				os.Remove(cfgPathname)
 				// XXX Don't need to pass app-specific args
@@ -1812,7 +1812,7 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 				createDnsmasqUnderlayConfiglet(ctx, cfgPathname, bridgeName,
 					"", "", ulStatus.Mac, hostsDirpath,
 					"", []string{}, netconfig)
-				startDnsmasq(cfgPathname, bridgeName)
+				startDnsmasq(bridgeName)
 			}
 
 			// Delete ACLs
