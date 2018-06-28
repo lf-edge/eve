@@ -73,21 +73,23 @@ const (
 )
 
 type DomainStatus struct {
-	UUIDandVersion UUIDandVersion
-	DisplayName    string
-	Activated      bool
-	AppNum         int
-	PendingAdd     bool
-	PendingModify  bool
-	PendingDelete  bool
-	DomainName     string // Name of Xen domain
-	DomainId       int
-	BootTime       time.Time
-	DiskStatusList []DiskStatus
-	VifList        []VifInfo
-	IoAdapterList  []IoAdapter
-	LastErr        string // Xen error
-	LastErrTime    time.Time
+	UUIDandVersion     UUIDandVersion
+	DisplayName        string
+	Activated          bool
+	AppNum             int
+	PendingAdd         bool
+	PendingModify      bool
+	PendingDelete      bool
+	DomainName         string // Name of Xen domain
+	DomainId           int
+	BootTime           time.Time
+	DiskStatusList     []DiskStatus
+	VifList            []VifInfo
+	IoAdapterList      []IoAdapter
+	VirtualizationMode VmMode
+	EnableVnc          bool
+	LastErr            string // Xen error
+	LastErrTime        time.Time
 }
 
 func (status DomainStatus) VerifyFilename(fileName string) bool {

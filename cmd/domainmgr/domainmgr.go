@@ -261,12 +261,14 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 
 	// Start by marking with PendingAdd
 	status := types.DomainStatus{
-		UUIDandVersion: config.UUIDandVersion,
-		PendingAdd:     true,
-		DisplayName:    config.DisplayName,
-		DomainName:     name,
-		AppNum:         config.AppNum,
-		VifList:        config.VifList,
+		UUIDandVersion:     config.UUIDandVersion,
+		PendingAdd:         true,
+		DisplayName:        config.DisplayName,
+		DomainName:         name,
+		AppNum:             config.AppNum,
+		VifList:            config.VifList,
+		VirtualizationMode: config.VirtualizationMode,
+		EnableVnc:          config.EnableVnc,
 	}
 	status.DiskStatusList = make([]types.DiskStatus,
 		len(config.DiskConfigList))
@@ -467,21 +469,60 @@ func doInactivate(status *types.DomainStatus, aa *types.AssignableAdapters) {
 	if err == nil && domainId != status.DomainId {
 		status.DomainId = domainId
 	}
+	maxDelay := time.Second * 600 // 10 minutes
 	if status.DomainId != 0 {
-		if err := xlShutdown(status.DomainName,
-			status.DomainId); err != nil {
-			log.Printf("xl shutdown %s failed: %s\n",
-				status.DomainName, err)
-		} else {
-			// Wait for the domain to go away
-			log.Printf("doInactivate(%v) for %s: waiting for domain to shutdown\n",
-				status.UUIDandVersion, status.DisplayName)
-		}
-		gone := waitForDomainGone(*status)
-		if gone {
-			status.DomainId = 0
+		switch status.VirtualizationMode {
+		case types.HVM:
+			// Do a short shutdown wait, then a shutdown -F
+			// just in case there are PV tools in guest
+			shortDelay := time.Second * 10
+			if err := xlShutdown(status.DomainName,
+				status.DomainId, false); err != nil {
+				log.Printf("xl shutdown %s failed: %s\n",
+					status.DomainName, err)
+			} else {
+				// Wait for the domain to go away
+				log.Printf("doInactivate(%v) for %s: waiting for domain to shutdown\n",
+					status.UUIDandVersion, status.DisplayName)
+			}
+			gone := waitForDomainGone(*status, shortDelay)
+			if gone {
+				status.DomainId = 0
+				break
+			}
+			if err := xlShutdown(status.DomainName,
+				status.DomainId, true); err != nil {
+				log.Printf("xl shutdown -F %s failed: %s\n",
+					status.DomainName, err)
+			} else {
+				// Wait for the domain to go away
+				log.Printf("doInactivate(%v) for %s: waiting for domain to shutdown\n",
+					status.UUIDandVersion, status.DisplayName)
+			}
+			gone = waitForDomainGone(*status, maxDelay)
+			if gone {
+				status.DomainId = 0
+				break
+			}
+
+		case types.PV:
+			if err := xlShutdown(status.DomainName,
+				status.DomainId, false); err != nil {
+				log.Printf("xl shutdown %s failed: %s\n",
+					status.DomainName, err)
+			} else {
+				// Wait for the domain to go away
+				log.Printf("doInactivate(%v) for %s: waiting for domain to shutdown\n",
+					status.UUIDandVersion, status.DisplayName)
+			}
+			gone := waitForDomainGone(*status, maxDelay)
+			if gone {
+				status.DomainId = 0
+				break
+			}
 		}
 	}
+
 	if status.DomainId != 0 {
 		err := xlDestroy(status.DomainName, status.DomainId)
 		if err != nil {
@@ -492,7 +533,7 @@ func doInactivate(status *types.DomainStatus, aa *types.AssignableAdapters) {
 		log.Printf("doInactivate(%v) for %s: waiting for domain to be destroyed\n",
 			status.UUIDandVersion, status.DisplayName)
 
-		gone := waitForDomainGone(*status)
+		gone := waitForDomainGone(*status, maxDelay)
 		if gone {
 			status.DomainId = 0
 		}
@@ -918,10 +959,8 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 		config.UUIDandVersion, config.DisplayName)
 }
 
-var maxDelay = time.Second * 600 // 10 minutes
-
 // Used to wait both after shutdown and destroy
-func waitForDomainGone(status types.DomainStatus) bool {
+func waitForDomainGone(status types.DomainStatus, maxDelay time.Duration) bool {
 	gone := false
 	var delay time.Duration
 	for {
@@ -1145,12 +1184,21 @@ func xlUnpause(domainName string, domainId int) error {
 	return nil
 }
 
-func xlShutdown(domainName string, domainId int) error {
+func xlShutdown(domainName string, domainId int, force bool) error {
 	log.Printf("xlShutdown %s %d\n", domainName, domainId)
 	cmd := "xl"
-	args := []string{
-		"shutdown",
-		domainName,
+	var args []string
+	if force {
+		args = []string{
+			"shutdown",
+			"-F",
+			domainName,
+		}
+	} else {
+		args = []string{
+			"shutdown",
+			domainName,
+		}
 	}
 	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
 	if err != nil {
