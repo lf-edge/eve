@@ -782,7 +782,11 @@ func dumpDatabaseState() {
 		for _, rloc := range value.Rlocs {
 			msg += rloc.Rloc.String() + ", "
 		}
-		msg += "\b\b ]"
+		if len(value.Rlocs) > 0 {
+			msg += "\b\b ]"
+		} else {
+			msg += " ]"
+		}
 		msg = fmt.Sprintf("  RLOC-set: %s\n", msg)
 		w.WriteString(msg)
 	}
