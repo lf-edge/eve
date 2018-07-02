@@ -16,6 +16,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -778,16 +779,14 @@ func dumpDatabaseState() {
 		msg = fmt.Sprintf("EID: [%d]%s\n", key.IID, key.Eid)
 		w.WriteString(msg)
 
-		msg = "[ "
+		rlocStrs := []string{}
 		for _, rloc := range value.Rlocs {
-			msg += rloc.Rloc.String() + ", "
+			rlocStrs = append(rlocStrs, rloc.Rloc.String())
 		}
-		if len(value.Rlocs) > 0 {
-			msg += "\b\b ]"
-		} else {
-			msg += " ]"
-		}
-		msg = fmt.Sprintf("  RLOC-set: %s\n", msg)
+		rlocList := fmt.Sprintf("%s", rlocStrs)
+		rlocSet := strings.Replace(rlocList, " ", ", ", -1)
+		msg = "[ " + rlocSet + " ]"
+		msg = fmt.Sprintf("  RLOC-set: %s\n", rlocSet)
 		w.WriteString(msg)
 	}
 	cache.LockMe.RUnlock()
