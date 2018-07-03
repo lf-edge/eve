@@ -24,13 +24,6 @@ import (
 	"time"
 )
 
-const (
-	MaxReaderSmall      = 1 << 16 // 64k
-	MaxReaderMaxDefault = MaxReaderSmall
-	MaxReaderMedium     = 1 << 19 // 512k
-	MaxReaderHuge       = 1 << 21 // two megabytes
-)
-
 var configApi string = "api/v1/edgedevice/config"
 var statusApi string = "api/v1/edgedevice/info"
 var metricsApi string = "api/v1/edgedevice/metrics"
