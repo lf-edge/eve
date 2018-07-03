@@ -31,6 +31,7 @@ type deferredItem struct {
 	data        []byte
 	url         string
 	zedcloudCtx ZedCloudContext
+	ignore400   bool
 }
 
 type deferredItemList struct {
@@ -68,10 +69,14 @@ func HandleDeferred(event time.Time) {
 			}
 			log.Printf("Trying to send for %s item %d data len %d\n",
 				key, i, len(item.data))
-			_, _, err := SendOnAllIntf(item.zedcloudCtx, item.url,
+			resp, _, err := SendOnAllIntf(item.zedcloudCtx, item.url,
 				int64(len(item.data)), bytes.NewBuffer(item.data),
-				iteration)
-			if err != nil {
+				iteration, item.ignore400)
+			if item.ignore400 && resp != nil &&
+				resp.StatusCode >= 400 && resp.StatusCode < 500 {
+				log.Printf("HandleDeferred: for %s ignore code %d\n",
+					key, resp.StatusCode)
+			} else if err != nil {
 				log.Printf("HandleDeferred: for %s failed %s\n",
 					key, err)
 				failed = true
@@ -127,9 +132,9 @@ func RemoveDeferred(key string) {
 
 // Replace any item for the specified key. If timer not running start it
 func SetDeferred(key string, data []byte, url string,
-	zedcloudCtx ZedCloudContext) {
+	zedcloudCtx ZedCloudContext, ignore400 bool) {
 
-	log.Printf("QueueDeferred(%s) map %d\n", key, len(deferredItems))
+	log.Printf("SetDeferred(%s) map %d\n", key, len(deferredItems))
 	if len(deferredItems) == 0 {
 		startTimer()
 	}
@@ -145,6 +150,7 @@ func SetDeferred(key string, data []byte, url string,
 		data:        data,
 		url:         url,
 		zedcloudCtx: zedcloudCtx,
+		ignore400:   ignore400,
 	}
 	l := deferredItemList{}
 	l.list = append(l.list, item)
@@ -153,7 +159,7 @@ func SetDeferred(key string, data []byte, url string,
 
 // Add to slice for this key
 func AddDeferred(key string, data []byte, url string,
-	zedcloudCtx ZedCloudContext) {
+	zedcloudCtx ZedCloudContext, ignore400 bool) {
 
 	log.Printf("AddDeferred(%s) map %d\n", key, len(deferredItems))
 	if len(deferredItems) == 0 {
@@ -172,6 +178,7 @@ func AddDeferred(key string, data []byte, url string,
 		data:        data,
 		url:         url,
 		zedcloudCtx: zedcloudCtx,
+		ignore400:   ignore400,
 	}
 	l.list = append(l.list, item)
 	deferredItems[key] = l
