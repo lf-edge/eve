@@ -10,6 +10,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/satori/go.uuid"
 	"github.com/zededa/api/zconfig"
+	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
@@ -73,6 +74,8 @@ type getconfigContext struct {
 	metricsTickerHandle         interface{}
 	pubNetworkObjectConfig      *pubsub.Publication
 	pubNetworkServiceConfig     *pubsub.Publication
+	subAppInstanceStatus        *pubsub.Subscription
+	pubAppInstanceConfig        *pubsub.Publication
 }
 
 // tlsConfig is initialized once i.e. effectively a constant
@@ -353,7 +356,7 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCo
 	// XXX should check for different sha for baseOs and appInstances
 	// before looking for old
 	// clean up old config entries
-	if deleted := cleanupOldConfig(config); deleted {
+	if deleted := cleanupOldConfig(getconfigCtx, config); deleted {
 		log.Printf("Old Config removed, take a delay\n")
 		duration := time.Duration(immediate)
 		newConfigTimer := time.NewTimer(time.Second * duration)
@@ -370,55 +373,46 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCo
 
 // clean up oldConfig, after newConfig
 // to maintain the refcount for certs
-func cleanupOldConfig(config *zconfig.EdgeDevConfig) bool {
+func cleanupOldConfig(getconfigCtx *getconfigContext,
+	config *zconfig.EdgeDevConfig) bool {
 
 	// delete old app configs, if any
-	appDel := checkCurrentAppFiles(config)
+	appDel := checkCurrentAppInstances(getconfigCtx, config)
 
 	// delete old base os configs, if any
 	baseDel := checkCurrentBaseOsFiles(config)
 	return appDel || baseDel
 }
 
-func checkCurrentAppFiles(config *zconfig.EdgeDevConfig) bool {
-
-	deleted := false
-	// get the current set of App files
-	curAppFilenames, err := ioutil.ReadDir(zedmanagerConfigDirname)
-	if err != nil {
-		log.Printf("%v for %s\n", err, zedmanagerConfigDirname)
-		curAppFilenames = nil
-	}
+// Delete any app instances which are not present in the new set
+func checkCurrentAppInstances(getconfigCtx *getconfigContext,
+	config *zconfig.EdgeDevConfig) bool {
 
 	Apps := config.GetApps()
-	// delete any app instances which are not present in the new set
-	for _, curApp := range curAppFilenames {
-		curAppFilename := curApp.Name()
-
-		// file type json
-		if strings.HasSuffix(curAppFilename, ".json") {
-			found := false
-			for _, app := range Apps {
-				appFilename := app.Uuidandversion.Uuid + ".json"
-				if appFilename == curAppFilename {
-					found = true
-					break
-				}
+	deleted := false
+	// get the current set of App instances
+	pub := getconfigCtx.pubAppInstanceConfig
+	items := pub.GetAll()
+	for _, c := range items {
+		config := cast.CastAppInstanceConfig(c)
+		key := config.UUIDandVersion.UUID.String()
+		found := false
+		for _, app := range Apps {
+			if app.Uuidandversion.Uuid == key {
+				found = true
+				break
 			}
-			// app instance not found, delete app instance
-			// config holder file
 			if !found {
-				log.Printf("Remove app config %s\n", curAppFilename)
-				err := os.Remove(zedmanagerConfigDirname + "/" + curAppFilename)
-				if err != nil {
-					log.Println("Old config: ", err)
-				}
+				log.Printf("Remove app config %s\n", key)
+				pub.Unpublish(key)
+				deleted = true
+
 				// also remove the certificates config holder file
-				err = os.Remove(zedagentCertObjConfigDirname + "/" + curAppFilename)
+				curAppFilename := key + ".json"
+				err := os.Remove(zedagentCertObjConfigDirname + "/" + curAppFilename)
 				if err != nil {
 					log.Println("Old cert: ", err)
 				}
-				deleted = true
 			}
 		}
 	}

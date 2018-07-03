@@ -86,8 +86,22 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext) 
 	return false
 }
 
+// Walk published AppInstanceConfig's and set Activate=false
+// Note that we don't currently wait for the shutdown to complete.
 func shutdownApps(getconfigCtx *getconfigContext) {
-	// XXX walk published AppInstanceConfig's and set Activate=false
+	pub := getconfigCtx.pubAppInstanceConfig
+	items := pub.GetAll()
+	for _, c := range items {
+		config := cast.CastAppInstanceConfig(c)
+		if config.Activate {
+			log.Printf("shutdownApps: clearing Activate for %s uuid %s\n",
+				config.DisplayName,
+				config.UUIDandVersion.UUID.String())
+			config.Activate = false
+			pub.Publish(config.UUIDandVersion.UUID.String(),
+				config)
+		}
+	}
 }
 
 func validateConfig(config *zconfig.EdgeDevConfig) bool {
@@ -509,7 +523,7 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 
 			// write to zedmanager config directory
 			uuidStr := cfgApp.Uuidandversion.Uuid
-			writeAppInstanceConfig(appInstance, uuidStr)
+			updateAppInstanceConfig(getconfigCtx, appInstance)
 			if certInstance != nil {
 				writeCertObjConfig(certInstance, uuidStr)
 			}
@@ -1161,19 +1175,20 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 	}
 }
 
-func writeAppInstanceConfig(appInstance types.AppInstanceConfig,
-	uuidStr string) {
+func updateAppInstanceConfig(getconfigCtx *getconfigContext,
+	config types.AppInstanceConfig) {
 
-	log.Printf("Writing app instance UUID %s\n", uuidStr)
-	bytes, err := json.Marshal(appInstance)
-	if err != nil {
-		log.Fatal(err, "json Marshal AppInstanceConfig")
-	}
-	configFilename := zedmanagerConfigDirname + "/" + uuidStr + ".json"
-	err = pubsub.WriteRename(configFilename, bytes)
-	if err != nil {
-		log.Fatal(err)
-	}
+	key := config.UUIDandVersion.UUID.String()
+	log.Printf("Updating app instance UUID %s\n", key)
+	pub := getconfigCtx.pubAppInstanceConfig
+	pub.Publish(key, config)
+}
+
+func removeAppInstanceConfig(getconfigCtx *getconfigContext, key string) {
+
+	log.Printf("Removing app instance UUID %s\n", key)
+	pub := getconfigCtx.pubAppInstanceConfig
+	pub.Unpublish(key)
 }
 
 func writeBaseOsConfig(baseOsConfig *types.BaseOsConfig, uuidStr string) {

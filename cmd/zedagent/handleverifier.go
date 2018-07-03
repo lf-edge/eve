@@ -1,9 +1,6 @@
 // Copyright (c) 2017 Zededa, Inc.
 // All rights reserved.
 
-// Pull AppInstanceConfig from ZedCloud, make it available for zedmanager
-// publish AppInstanceStatus to ZedCloud.
-
 package zedagent
 
 import (
