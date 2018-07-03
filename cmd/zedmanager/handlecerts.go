@@ -14,6 +14,7 @@ var certObjStatus map[string]types.CertObjStatus
 func handleCertObjStatusModify(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
 	status := statusArg.(*types.CertObjStatus)
+	ctx := ctxArg.(*zedmanagerContext)
 	if status == nil {
 		return
 	}
@@ -43,7 +44,7 @@ func handleCertObjStatusModify(ctxArg interface{}, statusFilename string,
 	}
 	if changed {
 		certObjStatus[uuidStr] = *status
-		updateAIStatusUUID(uuidStr)
+		updateAIStatusUUID(ctx, uuidStr)
 	}
 
 	log.Printf("handleCertObjrStatusModify done for %s\n", uuidStr)

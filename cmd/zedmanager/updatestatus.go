@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"github.com/zededa/go-provision/types"
 	"log"
-	"os"
 	"reflect"
 	"time"
 )
@@ -31,7 +30,10 @@ func initMaps() {
 	}
 }
 
-func addOrUpdateConfig(uuidStr string, config types.AppInstanceConfig) {
+// XXX need ctx
+func addOrUpdateConfig(ctx *zedmanagerContext, uuidStr string,
+	config types.AppInstanceConfig) {
+
 	log.Printf("addOrUpdateConfig for %s\n", uuidStr)
 
 	initMaps()
@@ -73,20 +75,20 @@ func addOrUpdateConfig(uuidStr string, config types.AppInstanceConfig) {
 			status.EIDList = make([]types.EIDStatusDetails,
 				len(config.OverlayNetworkList))
 
+			// XXX remove AIS?
+			// XXX also AIC?
 			AIS[uuidStr] = status
-			statusFilename := fmt.Sprintf("%s/%s.json",
-				zedmanagerStatusDirname, uuidStr)
-			writeAppInstanceStatus(&status, statusFilename)
+			updateAppInstanceStatus(ctx, &status)
 		}
 	}
 
 	if changed {
-		updateAIStatusUUID(uuidStr)
+		updateAIStatusUUID(ctx, uuidStr)
 	}
 	log.Printf("addOrUpdateConfig done for %s\n", uuidStr)
 }
 
-func removeConfig(uuidStr string) {
+func removeConfig(ctx *zedmanagerContext, uuidStr string) {
 	log.Printf("removeConfig for %s\n", uuidStr)
 
 	if _, ok := AIC[uuidStr]; !ok {
@@ -94,11 +96,14 @@ func removeConfig(uuidStr string) {
 		return
 	}
 	delete(AIC, uuidStr)
-	removeAIStatusUUID(uuidStr)
+	removeAIStatusUUID(ctx, uuidStr)
 	log.Printf("removeConfig done for %s\n", uuidStr)
 }
 
-func addOrUpdateStatus(uuidStr string, status types.AppInstanceStatus) {
+// XXX unused function
+func addOrUpdateStatus(ctx *zedmanagerContext, uuidStr string,
+	status types.AppInstanceStatus) {
+
 	log.Printf("addOrUpdateStatus for %s\n", uuidStr)
 
 	initMaps()
@@ -118,14 +123,12 @@ func addOrUpdateStatus(uuidStr string, status types.AppInstanceStatus) {
 	}
 	if changed {
 		AIS[uuidStr] = status
-		statusFilename := fmt.Sprintf("%s/%s.json",
-			zedmanagerStatusDirname, uuidStr)
-		writeAppInstanceStatus(&status, statusFilename)
+		updateAppInstanceStatus(ctx, &status)
 	}
 }
 
 // Find all the AIStatus which refer to this safename.
-func updateAIStatusSafename(safename string) {
+func updateAIStatusSafename(ctx *zedmanagerContext, safename string) {
 	log.Printf("updateAIStatusSafename for %s\n", safename)
 
 	for _, config := range AIC {
@@ -138,7 +141,8 @@ func updateAIStatusSafename(safename string) {
 			if safename == safename2 {
 				log.Printf("Found StorageConfig URL %s safename %s\n",
 					sc.DownloadURL, safename2)
-				updateAIStatusUUID(config.UUIDandVersion.UUID.String())
+				updateAIStatusUUID(ctx,
+					config.UUIDandVersion.UUID.String())
 				break
 			}
 		}
@@ -147,7 +151,7 @@ func updateAIStatusSafename(safename string) {
 
 // Update the state for this AIS and generate config updates to
 // the microservices
-func updateAIStatusUUID(uuidStr string) {
+func updateAIStatusUUID(ctx *zedmanagerContext, uuidStr string) {
 	config, ok := AIC[uuidStr]
 	if !ok {
 		log.Printf("updateAIStatusUUID for %s: Missing AI Config\n",
@@ -165,15 +169,13 @@ func updateAIStatusUUID(uuidStr string) {
 		log.Printf("updateAIStatusUUID status change for %s\n",
 			uuidStr)
 		AIS[uuidStr] = status
-		statusFilename := fmt.Sprintf("%s/%s.json",
-			zedmanagerStatusDirname, uuidStr)
-		writeAppInstanceStatus(&status, statusFilename)
+		updateAppInstanceStatus(ctx, &status)
 	}
 }
 
 // remove the state for this AIS and generate config removes for
 // the microservices
-func removeAIStatusUUID(uuidStr string) {
+func removeAIStatusUUID(ctx *zedmanagerContext, uuidStr string) {
 	status, ok := AIS[uuidStr]
 	if !ok {
 		log.Printf("removeAIStatusUUID for %s: Missing AI Status\n",
@@ -185,25 +187,19 @@ func removeAIStatusUUID(uuidStr string) {
 		log.Printf("removeAIStatusUUID status change for %s\n",
 			uuidStr)
 		AIS[uuidStr] = status
-		statusFilename := fmt.Sprintf("%s/%s.json",
-			zedmanagerStatusDirname, uuidStr)
-		writeAppInstanceStatus(&status, statusFilename)
+		updateAppInstanceStatus(ctx, &status)
 	}
 	if del {
 		log.Printf("removeAIStatusUUID remove done for %s\n",
 			uuidStr)
 		// Write out what we modified to AppInstanceStatus aka delete
-		statusFilename := fmt.Sprintf("%s/%s.json",
-			zedmanagerStatusDirname, uuidStr)
-		if err := os.Remove(statusFilename); err != nil {
-			log.Println(err)
-		}
+		removeAppInstanceStatus(ctx, uuidStr)
 		delete(AIS, uuidStr)
 	}
 }
 
 // Find all the AIStatus which refer to this safename.
-func removeAIStatusSafename(safename string) {
+func removeAIStatusSafename(ctx *zedmanagerContext, safename string) {
 	log.Printf("removeAIStatusSafename for %s\n", safename)
 
 	for _, status := range AIS {
@@ -218,7 +214,8 @@ func removeAIStatusSafename(safename string) {
 					log.Printf("Found StorageStatus URL %s safename %s\n",
 						ss.DownloadURL, safename2)
 				}
-				removeAIStatusUUID(status.UUIDandVersion.UUID.String())
+				removeAIStatusUUID(ctx,
+					status.UUIDandVersion.UUID.String())
 				break
 			}
 		}

@@ -169,6 +169,7 @@ var appNetworkStatus map[string]types.AppNetworkStatus
 func handleAppNetworkStatusModify(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
 	status := statusArg.(*types.AppNetworkStatus)
+	ctx := ctxArg.(*zedmanagerContext)
 	key := status.UUIDandVersion.UUID.String()
 	log.Printf("handleAppNetworkStatusModify for %s\n", key)
 	// Ignore if any Pending* flag is set
@@ -189,7 +190,7 @@ func handleAppNetworkStatusModify(ctxArg interface{}, statusFilename string,
 		appNetworkStatus = make(map[string]types.AppNetworkStatus)
 	}
 	appNetworkStatus[key] = *status
-	updateAIStatusUUID(status.UUIDandVersion.UUID.String())
+	updateAIStatusUUID(ctx, status.UUIDandVersion.UUID.String())
 
 	log.Printf("handleAppNetworkStatusModify done for %s\n",
 		key)
@@ -207,6 +208,7 @@ func handleAppNetworkStatusDelete(ctxArg interface{}, statusFilename string) {
 	log.Printf("handleAppNetworkStatusDelete for %s\n",
 		statusFilename)
 
+	ctx := ctxArg.(*zedmanagerContext)
 	key := statusFilename
 	if m, ok := appNetworkStatus[key]; !ok {
 		log.Printf("handleAppNetworkStatusDelete for %s - not found\n",
@@ -216,7 +218,7 @@ func handleAppNetworkStatusDelete(ctxArg interface{}, statusFilename string) {
 			log.Printf("appNetwork Status map delete for %v\n", key)
 		}
 		delete(appNetworkStatus, key)
-		removeAIStatusUUID(m.UUIDandVersion.UUID.String())
+		removeAIStatusUUID(ctx, m.UUIDandVersion.UUID.String())
 	}
 	log.Printf("handleAppNetworkStatusDelete done for %s\n",
 		statusFilename)

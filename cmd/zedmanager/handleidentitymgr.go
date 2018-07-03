@@ -91,6 +91,7 @@ var EIDStatus map[string]types.EIDStatus
 func handleEIDStatusModify(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
 	status := statusArg.(*types.EIDStatus)
+	ctx := ctxArg.(*zedmanagerContext)
 	key := fmt.Sprintf("%s:%d",
 		status.UUIDandVersion.UUID.String(), status.IID)
 	log.Printf("handleEIDStatusModify for %s\n", key)
@@ -116,7 +117,7 @@ func handleEIDStatusModify(ctxArg interface{}, statusFilename string,
 	}
 	if changed {
 		EIDStatus[key] = *status
-		updateAIStatusUUID(status.UUIDandVersion.UUID.String())
+		updateAIStatusUUID(ctx, status.UUIDandVersion.UUID.String())
 	}
 
 	log.Printf("handleEIDStatusModify done for %s\n", key)
@@ -134,6 +135,7 @@ func LookupEIDStatus(UUIDandVersion types.UUIDandVersion, IID uint32) (types.EID
 func handleEIDStatusDelete(ctxArg interface{}, statusFilename string) {
 	log.Printf("handleEIDStatusDelete for %s\n", statusFilename)
 
+	ctx := ctxArg.(*zedmanagerContext)
 	key := statusFilename
 	if m, ok := EIDStatus[key]; !ok {
 		log.Printf("handleEIDStatusDelete for %s - not found\n",
@@ -143,7 +145,7 @@ func handleEIDStatusDelete(ctxArg interface{}, statusFilename string) {
 			log.Printf("EID map delete for %v\n", m.EID)
 		}
 		delete(EIDStatus, key)
-		removeAIStatusUUID(m.UUIDandVersion.UUID.String())
+		removeAIStatusUUID(ctx, m.UUIDandVersion.UUID.String())
 	}
 	log.Printf("handleEIDStatusDelete done for %s\n",
 		statusFilename)
