@@ -138,6 +138,7 @@ func Run() {
 	}
 	subAppInstanceConfig.ModifyHandler = handleAppInstanceConfigModify
 	subAppInstanceConfig.DeleteHandler = handleAppInstanceConfigDelete
+	subAppInstanceConfig.RestartHandler = handleConfigRestart
 
 	ctx.subAppInstanceConfig = subAppInstanceConfig
 
@@ -164,7 +165,6 @@ func Run() {
 	go watch.WatchStatus(zedagentCertObjStatusDirname,
 		zedagentCertObjStatusChanges)
 
-	var configRestartFn watch.ConfigRestartHandler = handleConfigRestart
 	var verifierRestartedFn watch.StatusRestartHandler = handleVerifierRestarted
 	var identitymgrRestartedFn watch.StatusRestartHandler = handleIdentitymgrRestarted
 	var zedrouterRestartedFn watch.StatusRestartHandler = handleZedrouterRestarted
@@ -249,8 +249,6 @@ func Run() {
 			}
 		case change := <-subAppInstanceConfig.C:
 			subAppInstanceConfig.ProcessChange(change)
-			// XXX where &configRestartFn? XXX add a handler in pubsub?
-			configRestartFn(&ctx, true)
 
 		case change := <-networkStatusChanges:
 			{

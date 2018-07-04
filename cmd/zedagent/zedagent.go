@@ -209,6 +209,9 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	// XXX defer this until we have some config from cloud or saved copy
+	pubAppInstanceConfig.SignalRestarted()
+
 	getconfigCtx.pubNetworkObjectConfig = pubNetworkObjectConfig
 	getconfigCtx.pubNetworkServiceConfig = pubNetworkServiceConfig
 	getconfigCtx.pubAppInstanceConfig = pubAppInstanceConfig
@@ -230,7 +233,7 @@ func Run() {
 	subNetworkServiceStatus.ModifyHandler = handleNetworkServiceModify
 	subNetworkServiceStatus.DeleteHandler = handleNetworkServiceDelete
 
-	// And AppInstanceStatus from zedmanager
+	// Look for AppInstanceStatus from zedmanager
 	subAppInstanceStatus, err := pubsub.Subscribe("zedmanager",
 		types.AppInstanceStatus{}, &devCtx)
 	if err != nil {
