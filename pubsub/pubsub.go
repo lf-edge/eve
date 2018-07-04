@@ -312,8 +312,6 @@ func (pub *Publication) ClearRestarted() error {
 
 // Record the restarted state and send over socket/file.
 // XXX TBD when sending/resynchronizing send the restarted indication last
-// XXX When ReadDir on the subscribe side process the restarted indication last.
-// XXX ReadDir in watch
 func (pub *Publication) restartImpl(restarted bool) error {
 	name := pub.nameString()
 	log.Printf("pub.restartImpl(%s, %v)\n", name, restarted)
@@ -449,6 +447,8 @@ func (sub *Subscription) nameString() string {
 // Init function for Subscribe; returns a context.
 // Assumption is that agent with call Get(key) later or specify
 // handleModify and/or handleDelete functions
+// watch ensures that any restart/restarted notification is after any other
+// notifications from ReadDir
 func Subscribe(agentName string, topicType interface{},
 	ctx interface{}) (*Subscription, error) {
 
