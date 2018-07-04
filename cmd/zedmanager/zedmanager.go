@@ -27,11 +27,6 @@ const (
 	agentName  = "zedmanager"
 	moduleName = agentName
 
-	// XXX are these two used?
-	baseDirname = "/var/tmp/" + agentName
-	runDirname  = "/var/run/" + agentName
-	// XXX remove these two
-	zedmanagerConfigDirname  = baseDirname + "/config"
 	verifierConfigDirname    = "/var/tmp/verifier/config"
 	downloaderConfigDirname  = "/var/tmp/downloader/config"
 	domainmgrConfigDirname   = "/var/tmp/domainmgr/config"
@@ -103,7 +98,6 @@ func Run() {
 	zedagentCertObjStatusDirname := "/var/run/zedagent/" + certObj + "/status"
 
 	dirs := []string{
-		zedmanagerConfigDirname,
 		identitymgrConfigDirname,
 		zedrouterConfigDirname,
 		domainmgrConfigDirname,
@@ -142,7 +136,6 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	// XXX define wrappers ...
 	subAppInstanceConfig.ModifyHandler = handleAppInstanceConfigModify
 	subAppInstanceConfig.DeleteHandler = handleAppInstanceConfigDelete
 
@@ -171,7 +164,7 @@ func Run() {
 	go watch.WatchStatus(zedagentCertObjStatusDirname,
 		zedagentCertObjStatusChanges)
 
-	// XXX var configRestartFn watch.ConfigRestartHandler = handleConfigRestart
+	var configRestartFn watch.ConfigRestartHandler = handleConfigRestart
 	var verifierRestartedFn watch.StatusRestartHandler = handleVerifierRestarted
 	var identitymgrRestartedFn watch.StatusRestartHandler = handleIdentitymgrRestarted
 	var zedrouterRestartedFn watch.StatusRestartHandler = handleZedrouterRestarted
@@ -256,7 +249,8 @@ func Run() {
 			}
 		case change := <-subAppInstanceConfig.C:
 			subAppInstanceConfig.ProcessChange(change)
-		// XXX where &configRestartFn? XXX add a handler in pubsub?
+			// XXX where &configRestartFn? XXX add a handler in pubsub?
+			configRestartFn(&ctx, true)
 
 		case change := <-networkStatusChanges:
 			{
@@ -326,8 +320,10 @@ func updateAppInstanceStatus(ctx *zedmanagerContext,
 	pub.Publish(key, status)
 }
 
-func removeAppInstanceStatus(ctx *zedmanagerContext, key string) {
+func removeAppInstanceStatus(ctx *zedmanagerContext,
+	status *types.AppInstanceStatus) {
 
+	key := status.UUIDandVersion.UUID.String()
 	log.Printf("removeAppInstanceStatus(%s)\n", key)
 	pub := ctx.pubAppInstanceStatus
 	pub.Unpublish(key)
@@ -361,14 +357,13 @@ func handleAppInstanceConfigDelete(ctxArg interface{}, key string) {
 	handleDelete(ctxArg, key, status)
 }
 
-// XXX remove AIC map
-
-// XXX Callers must be careful to publish any changes to NetworkObjectStatus
+// Callers must be careful to publish any changes to NetworkObjectStatus
 func lookupAppInstanceStatus(ctx *zedmanagerContext, key string) *types.AppInstanceStatus {
 
 	pub := ctx.pubAppInstanceStatus
 	st, _ := pub.Get(key)
 	if st == nil {
+		log.Printf("lookupAppInstanceStatus(%s) not found\n", key)
 		return nil
 	}
 	status := cast.CastAppInstanceStatus(st)
@@ -380,6 +375,23 @@ func lookupAppInstanceStatus(ctx *zedmanagerContext, key string) *types.AppInsta
 	return &status
 }
 
+func lookupAppInstanceConfig(ctx *zedmanagerContext, key string) *types.AppInstanceConfig {
+
+	sub := ctx.subAppInstanceConfig
+	c, _ := sub.Get(key)
+	if c == nil {
+		log.Printf("lookupAppInstanceConfig(%s) not found\n", key)
+		return nil
+	}
+	config := cast.CastAppInstanceConfig(c)
+	if config.UUIDandVersion.UUID.String() != key {
+		log.Printf("lookupAppInstanceConfig(%s) got %s; ignored %+v\n",
+			key, config.UUIDandVersion.UUID.String(), config)
+		return nil
+	}
+	return &config
+}
+
 func handleCreate(ctxArg interface{}, key string,
 	configArg interface{}) {
 	config := configArg.(*types.AppInstanceConfig)
@@ -388,10 +400,31 @@ func handleCreate(ctxArg interface{}, key string,
 	log.Printf("handleCreate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
-	addOrUpdateConfig(ctx, config.UUIDandVersion.UUID.String(), *config)
+	status := types.AppInstanceStatus{
+		UUIDandVersion: config.UUIDandVersion,
+		DisplayName:    config.DisplayName,
+	}
 
-	// Note that the status is written as we handle updates from the
-	// other services
+	status.StorageStatusList = make([]types.StorageStatus,
+		len(config.StorageConfigList))
+	for i, sc := range config.StorageConfigList {
+		ss := &status.StorageStatusList[i]
+		ss.DownloadURL = sc.DownloadURL
+		ss.ImageSha256 = sc.ImageSha256
+		ss.Target = sc.Target
+	}
+	status.EIDList = make([]types.EIDStatusDetails,
+		len(config.OverlayNetworkList))
+
+	updateAppInstanceStatus(ctx, &status)
+
+	uuidStr := status.UUIDandVersion.UUID.String()
+	changed := doUpdate(uuidStr, *config, &status)
+	if changed {
+		log.Printf("handleCreate status change for %s\n",
+			uuidStr)
+		updateAppInstanceStatus(ctx, &status)
+	}
 	log.Printf("handleCreate done for %s\n", config.DisplayName)
 }
 
@@ -410,11 +443,16 @@ func handleModify(ctxArg interface{}, key string,
 	}
 
 	status.UUIDandVersion = config.UUIDandVersion
+	// XXX what updates should we handle?
 	updateAppInstanceStatus(ctx, status)
 
-	addOrUpdateConfig(ctx, config.UUIDandVersion.UUID.String(), *config)
-	// Note that the status is written as we handle updates from the
-	// other services
+	uuidStr := status.UUIDandVersion.UUID.String()
+	changed := doUpdate(uuidStr, *config, status)
+	if changed {
+		log.Printf("handleModify status change for %s\n",
+			uuidStr)
+		updateAppInstanceStatus(ctx, status)
+	}
 	log.Printf("handleModify done for %s\n", config.DisplayName)
 }
 
@@ -425,10 +463,7 @@ func handleDelete(ctxArg interface{}, key string,
 	log.Printf("handleDelete(%v) for %s\n",
 		status.UUIDandVersion, status.DisplayName)
 
-	updateAppInstanceStatus(ctx, status)
-
-	// XXX change pattern to do delete from here? NO
-	removeConfig(ctx, status.UUIDandVersion.UUID.String())
+	removeAIStatus(ctx, status)
 	log.Printf("handleDelete done for %s\n", status.DisplayName)
 }
 
