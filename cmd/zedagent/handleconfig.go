@@ -402,17 +402,17 @@ func checkCurrentAppInstances(getconfigCtx *getconfigContext,
 				found = true
 				break
 			}
-			if !found {
-				log.Printf("Remove app config %s\n", key)
-				pub.Unpublish(key)
-				deleted = true
+		}
+		if !found {
+			log.Printf("Remove app config %s\n", key)
+			pub.Unpublish(key)
+			deleted = true
 
-				// also remove the certificates config holder file
-				curAppFilename := key + ".json"
-				err := os.Remove(zedagentCertObjConfigDirname + "/" + curAppFilename)
-				if err != nil {
-					log.Println("Old cert: ", err)
-				}
+			// also remove the certificates config holder file
+			curAppFilename := key + ".json"
+			err := os.Remove(zedagentCertObjConfigDirname + "/" + curAppFilename)
+			if err != nil {
+				log.Println("Old cert: ", err)
 			}
 		}
 	}
