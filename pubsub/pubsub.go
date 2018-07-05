@@ -189,9 +189,10 @@ func (pub *Publication) Publish(key string, item interface{}) error {
 			name, topic)
 		return errors.New(errStr)
 	}
+	// Perform a deepCopy so the Equal check will work
+	newItem := deepCopy(item)
 	if m, ok := pub.km.key[key]; ok {
-		// XXX fails to equal on e.g., /var/run/downloader/metricsMap/global.json
-		if cmp.Equal(m, item) {
+		if cmp.Equal(m, newItem) {
 			if debug {
 				log.Printf("Publish(%s/%s) unchanged\n",
 					name, key)
@@ -200,14 +201,13 @@ func (pub *Publication) Publish(key string, item interface{}) error {
 		}
 		if debug {
 			log.Printf("Publish(%s/%s) replacing due to diff %s\n",
-				name, key, cmp.Diff(m, item))
+				name, key, cmp.Diff(m, newItem))
 		}
 	} else if debug {
 		log.Printf("Publish(%s/%s) adding %+v\n",
-			name, key, item)
+			name, key, newItem)
 	}
-	// Perform a deep copy so the above Equal check will work
-	pub.km.key[key] = deepCopy(item)
+	pub.km.key[key] = newItem
 
 	if debug {
 		pub.dump("after Publish")
@@ -217,6 +217,7 @@ func (pub *Publication) Publish(key string, item interface{}) error {
 	if debug {
 		log.Printf("Publish writing %s\n", fileName)
 	}
+	// XXX already did a marshal in deepCopy; save that result?
 	b, err := json.Marshal(item)
 	if err != nil {
 		log.Fatal(err, "json Marshal in Publish")
@@ -517,30 +518,37 @@ func (sub *Subscription) ProcessChange(change string) {
 		handleModify, handleDelete, &restartFn)
 }
 
-func handleModify(ctxArg interface{}, key string, stateArg interface{}) {
+func handleModify(ctxArg interface{}, key string, item interface{}) {
 	sub := ctxArg.(*Subscription)
 	name := sub.nameString()
 	if debug {
 		log.Printf("pubsub.handleModify(%s) key %s\n", name, key)
 	}
-	m, ok := sub.km.key[key]
-	if debug {
-		if ok {
-			log.Printf("pubsub.handleModify(%s) replace %+v with %+v for key %s\n",
-				name, m, stateArg, key)
-		} else {
-			log.Printf("pubsub.handleModify(%s) add %+v for key %s\n",
-				name, stateArg, key)
-		}
-	}
 	// NOTE: without a deepCopy we would just save a pointer since
-	// stateArg is a pointer. That would cause failures.
-	sub.km.key[key] = deepCopy(stateArg)
+	// item is a pointer. That would cause failures.
+	// XXX deepCopy should help with cmp as well.
+	newItem := deepCopy(item)
+	m, ok := sub.km.key[key]
+	if ok {
+		if cmp.Equal(m, newItem) {
+			if debug {
+				log.Printf("pubsub.handleModify(%s/%s) unchanged\n",
+					name, key)
+			}
+			return
+		}
+		log.Printf("pubsub.handleModify(%s/%s) replacing due to diff %s\n",
+			name, key, cmp.Diff(m, newItem))
+	} else {
+		log.Printf("pubsub.handleModify(%s) add %+v for key %s\n",
+			name, newItem, key)
+	}
+	sub.km.key[key] = newItem
 	if debug {
 		sub.dump("after handleModify")
 	}
 	if sub.ModifyHandler != nil {
-		(sub.ModifyHandler)(sub.userCtx, key, stateArg)
+		(sub.ModifyHandler)(sub.userCtx, key, newItem)
 	}
 	if debug {
 		log.Printf("pubsub.handleModify(%s) done for key %s\n",
