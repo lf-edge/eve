@@ -31,7 +31,7 @@ type ZedCloudContext struct {
 // ensure load spreading across multiple interfaces.
 // Returns response for first success. Caller can not use resp.Body but can
 // use []byte contents return.
-func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffer, iteration int) (*http.Response, []byte, error) {
+func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffer, iteration int, return400 bool) (*http.Response, []byte, error) {
 	// If failed then try the non-free
 	for try := 0; try < 2; try += 1 {
 		var intfs []string
@@ -52,6 +52,12 @@ func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffe
 		}
 		for _, intf := range intfs {
 			resp, contents, err := sendOnIntf(ctx, url, intf, reqlen, b)
+			if return400 && resp != nil &&
+				resp.StatusCode >= 400 && resp.StatusCode < 500 {
+				log.Printf("sendOnAllIntf: for %s ignore code %\n",
+					url, resp.StatusCode)
+				return resp, nil, err
+			}
 			if err != nil {
 				continue
 			}
@@ -67,6 +73,8 @@ func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffe
 // Tries all source addresses on interface until one succeeds.
 // Returns response for first success. Caller can not use resp.Body but can
 // use []byte contents return.
+// If we get a http response, we return that even if it was an error
+// to allow the caller to look at StatusCode
 func sendOnIntf(ctx ZedCloudContext, url string, intf string, reqlen int64, b *bytes.Buffer) (*http.Response, []byte, error) {
 	addrCount := types.CountLocalAddrAny(*ctx.DeviceNetworkStatus, intf)
 	if ctx.Debug {
@@ -196,8 +204,8 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, reqlen int64, b *b
 				log.Printf("received response %v\n",
 					resp)
 			}
-			// Get caller to schedule a retry
-			return nil, nil, errors.New(errStr)
+			// Get caller to schedule a retry based on StatusCode
+			return resp, nil, errors.New(errStr)
 		}
 	}
 	if ctx.FailureFunc != nil {

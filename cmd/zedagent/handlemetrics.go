@@ -1032,7 +1032,8 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 	if err != nil {
 		log.Printf("PublishDeviceInfoToZedCloud failed: %s\n", err)
 		// Try sending later
-		zedcloud.SetDeferred(deviceUUID, data, statusUrl, zedcloudCtx)
+		zedcloud.SetDeferred(deviceUUID, data, statusUrl, zedcloudCtx,
+			true)
 	}
 }
 
@@ -1248,16 +1249,22 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 	if err != nil {
 		log.Printf("PublishAppInfoToZedCloud failed: %s\n", err)
 		// Try sending later
-		zedcloud.SetDeferred(uuid, data, statusUrl, zedcloudCtx)
+		zedcloud.SetDeferred(uuid, data, statusUrl, zedcloudCtx, true)
 	}
 }
 
 // This function is called per change, hence needs to try over all uplinks
 // send report on each uplink.
 // For each uplink we try different source IPs until we find a working one.
+// For any 400 error we give up (don't retry) by not returning an error
 func SendProtobuf(url string, data []byte, iteration int) error {
-	_, _, err := zedcloud.SendOnAllIntf(zedcloudCtx, url,
-		int64(len(data)), bytes.NewBuffer(data), iteration)
+	resp, _, err := zedcloud.SendOnAllIntf(zedcloudCtx, url,
+		int64(len(data)), bytes.NewBuffer(data), iteration, true)
+	if resp != nil && resp.StatusCode >= 400 && resp.StatusCode < 500 {
+		log.Printf("SendProtoBuf: %s silently ignore code %\n",
+			url, resp.StatusCode)
+		return nil
+	}
 	return err
 }
 
@@ -1273,7 +1280,7 @@ func SendMetricsProtobuf(ReportMetrics *zmet.ZMetricMsg,
 
 	metricsUrl := serverName + "/" + metricsApi
 	_, _, err = zedcloud.SendOnAllIntf(zedcloudCtx, metricsUrl,
-		int64(len(data)), bytes.NewBuffer(data), iteration)
+		int64(len(data)), bytes.NewBuffer(data), iteration, false)
 	if err != nil {
 		// Hopefully next timeout will be more successful
 		log.Printf("SendMetricsProtobuf failed: %s\n", err)

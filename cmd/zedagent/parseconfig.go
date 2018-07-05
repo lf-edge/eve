@@ -42,6 +42,8 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext) 
 
 	if parseOpCmds(config) == true {
 		log.Println("Reboot flag set, skipping config processing")
+		// Make sure we tell apps to shut down
+		shutdownApps(getconfigCtx)
 		return true
 	}
 
@@ -49,6 +51,8 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext) 
 	// XXX can we get stuck here? When do we set updating? As part of activate?
 	if zboot.IsOtherPartitionStateUpdating() {
 		log.Println("OtherPartitionStatusUpdating - returning rebootFlag")
+		// Make sure we tell apps to shut down
+		shutdownApps(getconfigCtx)
 		return true
 	}
 
@@ -80,6 +84,10 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext) 
 		// baseos config processing is complete
 	}
 	return false
+}
+
+func shutdownApps(getconfigCtx *getconfigContext) {
+	// XXX walk published AppInstanceConfig's and set Activate=false
 }
 
 func validateConfig(config *zconfig.EdgeDevConfig) bool {
