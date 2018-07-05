@@ -54,7 +54,7 @@ func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffe
 			resp, contents, err := sendOnIntf(ctx, url, intf, reqlen, b)
 			if return400 && resp != nil &&
 				resp.StatusCode >= 400 && resp.StatusCode < 500 {
-				log.Printf("sendOnAllIntf: for %s ignore code %\n",
+				log.Printf("sendOnAllIntf: for %s ignore code %d\n",
 					url, resp.StatusCode)
 				return resp, nil, err
 			}

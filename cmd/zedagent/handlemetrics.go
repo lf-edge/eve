@@ -1261,7 +1261,7 @@ func SendProtobuf(url string, data []byte, iteration int) error {
 	resp, _, err := zedcloud.SendOnAllIntf(zedcloudCtx, url,
 		int64(len(data)), bytes.NewBuffer(data), iteration, true)
 	if resp != nil && resp.StatusCode >= 400 && resp.StatusCode < 500 {
-		log.Printf("SendProtoBuf: %s silently ignore code %\n",
+		log.Printf("SendProtoBuf: %s silently ignore code %d\n",
 			url, resp.StatusCode)
 		return nil
 	}
