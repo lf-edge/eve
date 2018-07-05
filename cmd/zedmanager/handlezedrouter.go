@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"log"
@@ -169,12 +170,16 @@ func writeAppNetworkConfig(config types.AppNetworkConfig,
 // XXX use pubsub
 var appNetworkStatus map[string]types.AppNetworkStatus
 
-func handleAppNetworkStatusModify(ctxArg interface{}, statusFilename string,
+func handleAppNetworkStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
-	status := statusArg.(*types.AppNetworkStatus)
+	status := cast.CastAppNetworkStatus(statusArg)
 	ctx := ctxArg.(*zedmanagerContext)
-	key := status.UUIDandVersion.UUID.String()
 	log.Printf("handleAppNetworkStatusModify for %s\n", key)
+	if status.UUIDandVersion.UUID.String() != key {
+		log.Printf("handleAppNetworkStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, status.UUIDandVersion.UUID.String(), status)
+		return
+	}
 	// Ignore if any Pending* flag is set
 	if status.PendingAdd || status.PendingModify || status.PendingDelete {
 		log.Printf("handleAppNetworkStatusModify skipped due to Pending* for %s\n",
@@ -192,7 +197,7 @@ func handleAppNetworkStatusModify(ctxArg interface{}, statusFilename string,
 		}
 		appNetworkStatus = make(map[string]types.AppNetworkStatus)
 	}
-	appNetworkStatus[key] = *status
+	appNetworkStatus[key] = status
 	updateAIStatusUUID(ctx, status.UUIDandVersion.UUID.String())
 
 	log.Printf("handleAppNetworkStatusModify done for %s\n",
@@ -207,12 +212,10 @@ func LookupAppNetworkStatus(uuidStr string) (types.AppNetworkStatus, error) {
 	}
 }
 
-func handleAppNetworkStatusDelete(ctxArg interface{}, statusFilename string) {
-	log.Printf("handleAppNetworkStatusDelete for %s\n",
-		statusFilename)
+func handleAppNetworkStatusDelete(ctxArg interface{}, key string) {
+	log.Printf("handleAppNetworkStatusDelete for %s\n", key)
 
 	ctx := ctxArg.(*zedmanagerContext)
-	key := statusFilename
 	if m, ok := appNetworkStatus[key]; !ok {
 		log.Printf("handleAppNetworkStatusDelete for %s - not found\n",
 			key)
@@ -223,6 +226,5 @@ func handleAppNetworkStatusDelete(ctxArg interface{}, statusFilename string) {
 		delete(appNetworkStatus, key)
 		removeAIStatusUUID(ctx, m.UUIDandVersion.UUID.String())
 	}
-	log.Printf("handleAppNetworkStatusDelete done for %s\n",
-		statusFilename)
+	log.Printf("handleAppNetworkStatusDelete done for %s\n", key)
 }

@@ -19,6 +19,7 @@ import (
 	"github.com/vishvananda/netlink"
 	"github.com/zededa/go-provision/adapters"
 	"github.com/zededa/go-provision/agentlog"
+	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/devicenetwork"
 	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/hardware"
@@ -58,6 +59,8 @@ type zedrouterContext struct {
 	subNetworkServiceConfig *pubsub.Subscription
 	pubNetworkObjectStatus  *pubsub.Publication
 	pubNetworkServiceStatus *pubsub.Publication
+	subAppNetworkConfig  	*pubsub.Subscription
+	pubAppNetworkStatus  	*pubsub.Publication
 	assignableAdapters      *types.AssignableAdapters
 }
 
@@ -139,6 +142,7 @@ func Run() {
 		log.Fatal(err)
 	}
 
+	// XXX why dirname? Fix to read?
 	appNumAllocatorInit(statusDirname, configDirname)
 	model := hardware.GetHardwareModel()
 
@@ -177,9 +181,12 @@ func Run() {
 		types.NetworkObjectStatus{})
 	pubNetworkServiceStatus, err := pubsub.Publish(agentName,
 		types.NetworkServiceStatus{})
+	pubAppNetworkStatus, err := pubsub.Publish(agentName,
+		types.AppNetworkStatus{})
 
 	zedrouterCtx.pubNetworkObjectStatus = pubNetworkObjectStatus
 	zedrouterCtx.pubNetworkServiceStatus = pubNetworkServiceStatus
+	zedrouterCtx.pubAppNetworkStatus = pubAppNetworkStatus
 
 	// Subscribe to network objects and services from zedagent
 	subNetworkObjectConfig, err := pubsub.Subscribe("zedagent",
@@ -201,6 +208,18 @@ func Run() {
 	subNetworkServiceConfig.DeleteHandler = handleNetworkServiceDelete
 	zedrouterCtx.subNetworkServiceConfig = subNetworkServiceConfig
 	subNetworkServiceConfig.Activate()
+
+	// Subscribe to AppNetworkConfig from zedmanager
+	subAppNetworkConfig, err := pubsub.Subscribe("zedmanager",
+		types.AppNetworkConfig{}, false, &zedrouterCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subAppNetworkConfig.ModifyHandler = handleAppNetworkConfigModify
+	subAppNetworkConfig.DeleteHandler = handleAppNetworkConfigDelete
+	subAppNetworkConfig.RestartHandler = handleRestart
+	zedrouterCtx.subAppNetworkConfig = subAppNetworkConfig
+	subAppNetworkConfig.Activate()
 
 	// XXX should we make geoRedoTime configurable?
 	// We refresh the gelocation information when the underlay
@@ -268,7 +287,6 @@ func Run() {
 		addrChangeUplinkFn, addrChangeNonUplinkFn, suppressRoutesFn)
 
 	handleRestart(&zedrouterCtx, false)
-	var restartFn watch.ConfigRestartHandler = handleRestart
 
 	// Publish network metrics for zedagent every 10 seconds
 	nms := getNetworkMetrics() // Need type of data
@@ -288,17 +306,13 @@ func Run() {
 	go watch.WatchStatus(DNCDirname, deviceConfigChanges)
 	for {
 		select {
-		case change := <-configChanges:
-			watch.HandleConfigStatusEvent(change, &zedrouterCtx,
-				configDirname, statusDirname,
-				&types.AppNetworkConfig{},
-				&types.AppNetworkStatus{},
-				handleCreate, handleModify, handleDelete,
-				&restartFn)
+		case change := <-subAppNetworkConfig.C:
+			subAppNetworkConfig.ProcessChange(change)
 			// DNC handling also re-writes the lisp.config file.
 			// We should call the updateLisp with correct Dataplane
 			// flag inorder not to confuse lispers.net
 			DNCctx.separateDataPlane = zedrouterCtx.separateDataPlane
+
 		case change := <-deviceConfigChanges:
 			watch.HandleStatusEvent(change, &DNCctx,
 				DNCDirname,
@@ -329,6 +343,7 @@ func Run() {
 			if change {
 				updateDeviceNetworkStatus(pubDeviceNetworkStatus)
 			}
+
 		case change := <-subNetworkObjectConfig.C:
 			subNetworkObjectConfig.ProcessChange(change)
 
@@ -350,7 +365,7 @@ func handleRestart(ctxArg interface{}, done bool) {
 	if done {
 		// Since all work is done inline we can immediately say that
 		// we have restarted.
-		watch.SignalRestarted(agentName)
+		ctx.pubAppNetworkStatus.SignalRestarted()
 	}
 }
 
@@ -445,79 +460,22 @@ func updateDeviceNetworkStatus(pubDeviceNetworkStatus *pubsub.Publication) {
 	pubDeviceNetworkStatus.Publish("global", deviceNetworkStatus)
 }
 
-// Key is UUID
-var appNetworkStatus map[string]types.AppNetworkStatus
-var appNetworkConfig map[string]types.AppNetworkConfig
-
-// XXX rename to update? Remove statusFilename?
-//	statusFilename := fmt.Sprintf("/var/run/%s/%s/%s.json",
-//		agentName, topic, key)
-// XXX introduce separate baseDir whch is /var/run (or /var/run/zededa)??
-func writeAppNetworkStatus(status *types.AppNetworkStatus) {
+func updateAppNetworkStatus(ctx *zedrouterContext,
+	status *types.AppNetworkStatus) {
 
 	key := status.UUIDandVersion.UUID.String()
-	// topic := "AppNetworkStatus" // XXX reflect to get name of type?
-	topic := "status"
-	statusFilename := fmt.Sprintf("/var/run/%s/%s/%s.json",
-		agentName, topic, key)
-
-	if appNetworkStatus == nil {
-		if debug {
-			log.Printf("create appNetwork status map\n")
-		}
-		appNetworkStatus = make(map[string]types.AppNetworkStatus)
-	}
-	appNetworkStatus[key] = *status
-
-	b, err := json.Marshal(status)
-	if err != nil {
-		log.Fatal(err, "json Marshal AppNetworkStatus")
-	}
-	err = pubsub.WriteRename(statusFilename, b)
-	if err != nil {
-		log.Fatal(err, statusFilename)
-	}
+	log.Printf("updateAppNetworkStatus(%s)\n", key)
+	pub := ctx.pubAppNetworkStatus
+	pub.Publish(key, status)
 }
 
-// XXX make into generic function with myName as argument.
-func removeAppNetworkStatus(status *types.AppNetworkStatus) {
+func removeAppNetworkStatus(ctx *zedrouterContext,
+	status *types.AppNetworkStatus) {
+
 	key := status.UUIDandVersion.UUID.String()
-	// topic := "AppNetworkStatus" // XXX reflect to get name of type?
-	topic := "status"
-	statusFilename := fmt.Sprintf("/var/run/%s/%s/%s.json",
-		agentName, topic, key)
-	if err := os.Remove(statusFilename); err != nil {
-		log.Println(err)
-	}
-	if _, ok := appNetworkStatus[key]; !ok {
-		log.Printf("removeAppNetworkStatus for remove for %s\n", key)
-		return
-	}
-	delete(appNetworkStatus, key)
-	// pubsub.UnpublishStatus(agentName, topic, key)
-}
-
-// XXX temporary function until we use pubsub for AppNetworkConfig
-func recordAppNetworkConfig(config *types.AppNetworkConfig) {
-
-	key := config.UUIDandVersion.UUID.String()
-
-	if appNetworkConfig == nil {
-		if debug {
-			log.Printf("create appNetworkConfig map\n")
-		}
-		appNetworkConfig = make(map[string]types.AppNetworkConfig)
-	}
-	appNetworkConfig[key] = *config
-}
-
-// XXX temporary function until we use pubsub for AppNetworkConfig
-func removeAppNetworkConfig(key string) {
-	if _, ok := appNetworkConfig[key]; !ok {
-		log.Printf("removeAppNetworkConfig for remove for %s\n", key)
-		return
-	}
-	delete(appNetworkConfig, key)
+	log.Printf("removeAppNetworkStatus(%s)\n", key)
+	pub := ctx.pubAppNetworkStatus
+	pub.Unpublish(key)
 }
 
 // Format a json string with any additional info
@@ -559,7 +517,9 @@ func generateAdditionalInfo(status types.AppNetworkStatus, olConfig types.Overla
 	return additionalInfo
 }
 
+// XXX needs ctx arg
 func updateLispConfiglets(separateDataPlane bool) {
+	// XXX fix range
 	for _, status := range appNetworkStatus {
 		for i, olStatus := range status.OverlayNetworkList {
 			olNum := i + 1
@@ -585,6 +545,75 @@ func updateLispConfiglets(separateDataPlane bool) {
 	}
 }
 
+// Wrappers around handleCreate, handleModify, and handleDelete
+
+// Determine whether it is an create or modify
+func handleAppNetworkConfigModify(ctxArg interface{}, key string, configArg interface{}) {
+
+	log.Printf("handleAppNetworkConfigModify(%s)\n", key)
+	ctx := ctxArg.(*zedrouterContext)
+	config := cast.CastAppNetworkConfig(configArg)
+	if config.UUIDandVersion.UUID.String() != key {
+		log.Printf("handleAppNetworkConfigModify key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, config.UUIDandVersion.UUID.String(), config)
+		return
+	}
+	status := lookupAppNetworkStatus(ctx, key)
+	if status == nil {
+		handleCreate(ctx, key, config)
+	} else {
+		handleModify(ctx, key, config, status)
+	}
+	log.Printf("handleAppNetworkConfigModify(%s) done\n", key)
+}
+
+func handleAppNetworkConfigDelete(ctxArg interface{}, key string) {
+	log.Printf("handleAppNetworkConfigDelete(%s)\n", key)
+	ctx := ctxArg.(*zedrouterContext)
+	status := lookupAppNetworkStatus(ctx, key)
+	if status == nil {
+		log.Printf("handleAppNetworkConfigDelete: unknown %s\n", key)
+		return
+	}
+	handleDelete(ctx, key, status)
+	log.Printf("handleAppNetworkConfigDelete(%s) done\n", key)
+}
+
+// Callers must be careful to publish any changes to NetworkObjectStatus
+func lookupAppNetworkStatus(ctx *zedrouterContext, key string) *types.AppNetworkStatus {
+
+	pub := ctx.pubAppNetworkStatus
+	st, _ := pub.Get(key)
+	if st == nil {
+		log.Printf("lookupAppNetworkStatus(%s) not found\n", key)
+		return nil
+	}
+	status := cast.CastAppNetworkStatus(st)
+	if status.UUIDandVersion.UUID.String() != key {
+		log.Printf("lookupAppNetworkStatus(%s) got %s; ignored %+v\n",
+			key, status.UUIDandVersion.UUID.String(), status)
+		return nil
+	}
+	return &status
+}
+
+func lookupAppNetworkConfig(ctx *zedrouterContext, key string) *types.AppNetworkConfig {
+
+	sub := ctx.subAppNetworkConfig
+	c, _ := sub.Get(key)
+	if c == nil {
+		log.Printf("lookupAppNetworkConfig(%s) not found\n", key)
+		return nil
+	}
+	config := cast.CastAppNetworkConfig(c)
+	if config.UUIDandVersion.UUID.String() != key {
+		log.Printf("lookupAppNetworkConfig(%s) got %s; ignored %+v\n",
+			key, config.UUIDandVersion.UUID.String(), config)
+		return nil
+	}
+	return &config
+}
+
 // Track the device information so we can annotate the application EIDs
 // Note that when we start with zedrouter config files in place the
 // device one might be processed after application ones, in which case these
@@ -602,7 +631,6 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 	config := configArg.(*types.AppNetworkConfig)
 	log.Printf("handleCreate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
-	recordAppNetworkConfig(config)
 
 	// Pick a local number to identify the application instance
 	// Used for IP addresses as well bridge and file names.
@@ -1276,7 +1304,6 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 	status := statusArg.(*types.AppNetworkStatus)
 	log.Printf("handleModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
-	recordAppNetworkConfig(config)
 
 	if config.UUIDandVersion.Version == status.UUIDandVersion.Version {
 		log.Printf("Same version %s for %s\n",
@@ -1548,7 +1575,6 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 	status := statusArg.(*types.AppNetworkStatus)
 	log.Printf("handleDelete(%v) for %s\n",
 		status.UUIDandVersion, status.DisplayName)
-	removeAppNetworkConfig(status.UUIDandVersion.UUID.String())
 
 	appNum := status.AppNum
 	maxOlNum := status.OlNum

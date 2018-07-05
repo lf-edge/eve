@@ -95,3 +95,27 @@ func CastAppInstanceStatus(in interface{}) types.AppInstanceStatus {
 	}
 	return output
 }
+
+func CastAppNetworkConfig(in interface{}) types.AppNetworkConfig {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastAppNetworkConfig")
+	}
+	var output types.AppNetworkConfig
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "json Unmarshal in CastAppNetworkConfig")
+	}
+	return output
+}
+
+func CastAppNetworkStatus(in interface{}) types.AppNetworkStatus {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastAppNetworkStatus")
+	}
+	var output types.AppNetworkStatus
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "json Unmarshal in CastAppNetworkStatus")
+	}
+	return output
+}

@@ -43,11 +43,13 @@ var Version = "No version specified"
 
 // State used by handlers
 type zedmanagerContext struct {
-	configRestarted       bool
-	verifierRestarted     bool
-	subAppInstanceConfig  *pubsub.Subscription
-	pubAppInstanceStatus  *pubsub.Publication
+	configRestarted        bool
+	verifierRestarted      bool
+	subAppInstanceConfig   *pubsub.Subscription
+	pubAppInstanceStatus   *pubsub.Publication
 	subDeviceNetworkStatus *pubsub.Subscription
+	pubAppNetworkConfig    *pubsub.Publication
+	subAppNetworkStatus    *pubsub.Subscription
 }
 
 var deviceNetworkStatus types.DeviceNetworkStatus
@@ -126,6 +128,21 @@ func Run() {
 	// Any state needed by handler functions
 	ctx := zedmanagerContext{}
 
+	// Create publish before subscribing and activating subscriptions
+	pubAppInstanceStatus, err := pubsub.Publish(agentName,
+		types.AppInstanceStatus{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubAppInstanceStatus = pubAppInstanceStatus
+
+	pubAppNetworkConfig, err := pubsub.Publish(agentName,
+		types.AppNetworkConfig{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubAppNetworkConfig = pubAppNetworkConfig
+
 	// Get AppInstanceConfig from zedagent
 	subAppInstanceConfig, err := pubsub.Subscribe("zedagent",
 		types.AppInstanceConfig{}, false, &ctx)
@@ -138,12 +155,17 @@ func Run() {
 	ctx.subAppInstanceConfig = subAppInstanceConfig
 	subAppInstanceConfig.Activate()
 
-	pubAppInstanceStatus, err := pubsub.Publish(agentName,
-		types.AppInstanceStatus{})
+	// Get AppNetworkStatus from zedrouter
+	subAppNetworkStatus, err := pubsub.Subscribe("zedrouter",
+		types.AppNetworkStatus{}, false, &ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.pubAppInstanceStatus = pubAppInstanceStatus
+	subAppNetworkStatus.ModifyHandler = handleAppNetworkStatusModify
+	subAppNetworkStatus.DeleteHandler = handleAppNetworkStatusDelete
+	subAppNetworkStatus.RestartHandler = handleZedrouterRestarted
+	ctx.subAppNetworkStatus = subAppNetworkStatus
+	subAppNetworkStatus.Activate()
 
 	verifierChanges := make(chan string)
 	go watch.WatchStatus(verifierAppImgObjStatusDirname, verifierChanges)
@@ -171,7 +193,6 @@ func Run() {
 
 	var verifierRestartedFn watch.StatusRestartHandler = handleVerifierRestarted
 	var identitymgrRestartedFn watch.StatusRestartHandler = handleIdentitymgrRestarted
-	var zedrouterRestartedFn watch.StatusRestartHandler = handleZedrouterRestarted
 
 	// First we process the verifierStatus to avoid downloading
 	// an image we already have in place.
@@ -234,15 +255,10 @@ func Run() {
 					handleEIDStatusDelete,
 					&identitymgrRestartedFn)
 			}
-		case change := <-zedrouterChanges:
-			{
-				watch.HandleStatusEvent(change, &ctx,
-					zedrouterStatusDirname,
-					&types.AppNetworkStatus{},
-					handleAppNetworkStatusModify,
-					handleAppNetworkStatusDelete,
-					&zedrouterRestartedFn)
-			}
+
+		case change := <-subAppNetworkStatus.C:
+			subAppNetworkStatus.ProcessChange(change)
+
 		case change := <-domainmgrChanges:
 			{
 				watch.HandleStatusEvent(change, &ctx,
@@ -294,9 +310,11 @@ func handleVerifierRestarted(ctxArg interface{}, done bool) {
 }
 
 func handleIdentitymgrRestarted(ctxArg interface{}, done bool) {
+	ctx := ctxArg.(*zedmanagerContext)
+
 	log.Printf("handleIdentitymgrRestarted(%v)\n", done)
 	if done {
-		watch.SignalRestart("zedrouter")
+		ctx.pubAppNetworkConfig.SignalRestarted()
 	}
 }
 
