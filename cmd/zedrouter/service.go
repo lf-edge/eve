@@ -95,6 +95,7 @@ func handleNetworkServiceDelete(ctxArg interface{}, key string) {
 	}
 	doServiceDelete(status)
 	status.PendingDelete = false
+	pub.Publish(status.UUID.String(), *status)
 	pub.Unpublish(status.UUID.String())
 	log.Printf("handleNetworkServiceDelete(%s) done\n", key)
 }

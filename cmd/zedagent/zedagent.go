@@ -38,6 +38,7 @@ import (
 	"fmt"
 	"github.com/zededa/go-provision/adapters"
 	"github.com/zededa/go-provision/agentlog"
+	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
@@ -78,12 +79,6 @@ const (
 
 	verifierBaseDirname = zedBaseDirname + "/" + verifierModulename
 	verifierRunDirname  = zedRunDirname + "/" + verifierModulename
-
-	zedagentConfigDirname = baseDirname + "/config"
-	zedagentStatusDirname = runDirname + "/status"
-
-	zedmanagerConfigDirname = zedBaseDirname + "/" + zedmanagerModulename + "/config"
-	zedmanagerStatusDirname = zedRunDirname + "/" + zedmanagerModulename + "/status"
 
 	// base os config/status holder
 	zedagentBaseOsConfigDirname = baseDirname + "/" + baseOsObj + "/config"
@@ -177,18 +172,26 @@ func Run() {
 	}
 
 	log.Printf("Starting %s\n", agentName)
-	watch.CleanupRestarted(agentName)
 
 	// Tell ourselves to go ahead
 	// initialize the module specifig stuff
 	handleInit()
 
-	watch.SignalRestart(agentName)
-
 	// Context to pass around
 	getconfigCtx := getconfigContext{}
 
 	zedagentCtx := zedagentContext{}
+
+	// Pick up (mostly static) AssignableAdapters before we report
+	// any device info
+	model := hardware.GetHardwareModel()
+	log.Printf("HardwareModel %s\n", model)
+	aa := types.AssignableAdapters{}
+	aaChanges, aaFunc, aaCtx := adapters.Init(&aa, model)
+
+	verifierCtx := verifierContext{}
+	devCtx = deviceContext{assignableAdapters: &aa}
+	domainCtx := domainContext{}
 
 	// Publish NetworkConfig and NetworkServiceConfig for zedmanager/zedrouter
 	pubNetworkObjectConfig, err := pubsub.Publish(agentName,
@@ -201,10 +204,19 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	pubAppInstanceConfig, err := pubsub.Publish(agentName,
+		types.AppInstanceConfig{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	// XXX defer this until we have some config from cloud or saved copy
+	pubAppInstanceConfig.SignalRestarted()
+
 	getconfigCtx.pubNetworkObjectConfig = pubNetworkObjectConfig
 	getconfigCtx.pubNetworkServiceConfig = pubNetworkServiceConfig
+	getconfigCtx.pubAppInstanceConfig = pubAppInstanceConfig
 
-	// Look for errors from zedrouter
+	// Look for errors and status from zedrouter
 	subNetworkObjectStatus, err := pubsub.Subscribe("zedrouter",
 		types.NetworkObjectStatus{}, &zedagentCtx)
 	if err != nil {
@@ -221,13 +233,19 @@ func Run() {
 	subNetworkServiceStatus.ModifyHandler = handleNetworkServiceModify
 	subNetworkServiceStatus.DeleteHandler = handleNetworkServiceDelete
 
+	// Look for AppInstanceStatus from zedmanager
+	subAppInstanceStatus, err := pubsub.Subscribe("zedmanager",
+		types.AppInstanceStatus{}, &devCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subAppInstanceStatus.ModifyHandler = handleAppInstanceStatusModify
+	subAppInstanceStatus.DeleteHandler = handleAppInstanceStatusDelete
+
 	zedagentCtx.subNetworkObjectStatus = subNetworkObjectStatus
 	zedagentCtx.subNetworkServiceStatus = subNetworkServiceStatus
+	getconfigCtx.subAppInstanceStatus = subAppInstanceStatus
 
-	var restartFn watch.StatusRestartHandler = handleRestart
-
-	restartChanges := make(chan string)
-	appInstanceStatusChanges := make(chan string)
 	baseOsConfigStatusChanges := make(chan string)
 	baseOsDownloaderChanges := make(chan string)
 	baseOsVerifierChanges := make(chan string)
@@ -243,17 +261,6 @@ func Run() {
 
 	go watch.WatchStatus(verifierAppImgStatusDirname,
 		appImgVerifierChanges)
-
-	// Pick up (mostly static) AssignableAdapters before we report
-	// any device info
-	model := hardware.GetHardwareModel()
-	log.Printf("HardwareModel %s\n", model)
-	aa := types.AssignableAdapters{}
-	aaChanges, aaFunc, aaCtx := adapters.Init(&aa, model)
-
-	verifierCtx := verifierContext{}
-	devCtx = deviceContext{assignableAdapters: &aa}
-	domainCtx := domainContext{}
 
 	// First we process the verifierStatus to avoid downloading
 	// an base image we already have in place
@@ -376,9 +383,6 @@ func Run() {
 
 	updateSshAccess(configItemCurrent.sshAccess)
 
-	// app instance status event watcher
-	go watch.WatchStatus(zedmanagerStatusDirname, appInstanceStatusChanges)
-
 	// base os config/status event handler
 	go watch.WatchConfigStatus(zedagentBaseOsConfigDirname,
 		zedagentBaseOsStatusDirname, baseOsConfigStatusChanges)
@@ -395,9 +399,6 @@ func Run() {
 	go watch.WatchStatus(downloaderCertObjStatusDirname,
 		certObjDownloaderChanges)
 
-	// for restart flag handling
-	go watch.WatchStatus(zedagentStatusDirname, restartChanges)
-
 	domainStatusChanges := make(chan string)
 	go watch.WatchStatus(domainStatusDirname, domainStatusChanges)
 	for {
@@ -408,15 +409,6 @@ func Run() {
 		}
 
 		select {
-
-		case change := <-restartChanges:
-			// restart only, place holder
-			watch.HandleStatusEvent(change, &devCtx,
-				zedagentStatusDirname,
-				&types.AppInstanceStatus{},
-				handleAppInstanceStatusModify,
-				handleAppInstanceStatusDelete, &restartFn)
-
 		case change := <-certObjConfigStatusChanges:
 			watch.HandleConfigStatusEvent(change, dummyContext{},
 				zedagentCertObjConfigDirname,
@@ -427,12 +419,8 @@ func Run() {
 				handleCertObjModify,
 				handleCertObjDelete, nil)
 
-		case change := <-appInstanceStatusChanges:
-			watch.HandleStatusEvent(change, &devCtx,
-				zedmanagerStatusDirname,
-				&types.AppInstanceStatus{},
-				handleAppInstanceStatusModify,
-				handleAppInstanceStatusDelete, nil)
+		case change := <-subAppInstanceStatus.C:
+			subAppInstanceStatus.ProcessChange(change)
 
 		case change := <-baseOsConfigStatusChanges:
 			watch.HandleConfigStatusEvent(change, &devCtx,
@@ -561,16 +549,6 @@ func publishDevInfo(devCtx *deviceContext) {
 	devCtx.iteration += 1
 }
 
-// signal zedmanager, to restart
-// it would take care of orchestrating
-// all other module restart
-func handleRestart(ctxArg interface{}, done bool) {
-	log.Printf("handleRestart(%v)\n", done)
-	if done {
-		watch.SignalRestart("zedmanager")
-	}
-}
-
 func handleVerifierRestarted(ctxArg interface{}, done bool) {
 	ctx := ctxArg.(*verifierContext)
 	log.Printf("handleVerifierRestarted(%v)\n", done)
@@ -657,20 +635,26 @@ func createConfigStatusDirs(moduleName string, objTypes []string) {
 // app instance event watch to capture transitions
 // and publish to zedCloud
 
-func handleAppInstanceStatusModify(ctxArg interface{}, statusFilename string,
+func handleAppInstanceStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
-	status := statusArg.(*types.AppInstanceStatus)
+	status := cast.CastAppInstanceStatus(statusArg)
+	if status.UUIDandVersion.UUID.String() != key {
+		log.Printf("handleAppInstanceStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, status.UUIDandVersion.UUID.String(), status)
+		return
+	}
+	// XXX how do we use ctx? Define a single one?
 	ctx := ctxArg.(*deviceContext)
 	uuidStr := status.UUIDandVersion.UUID.String()
-	PublishAppInfoToZedCloud(uuidStr, status, ctx.assignableAdapters,
+	PublishAppInfoToZedCloud(uuidStr, &status, ctx.assignableAdapters,
 		ctx.iteration)
 	ctx.iteration += 1
 }
 
-func handleAppInstanceStatusDelete(ctxArg interface{}, statusFilename string) {
-	// statusFilename == key aka UUIDstr?
+func handleAppInstanceStatusDelete(ctxArg interface{}, key string) {
+	// XXX how do we use ctx? Define a single one?
 	ctx := ctxArg.(*deviceContext)
-	uuidStr := statusFilename
+	uuidStr := key
 	PublishAppInfoToZedCloud(uuidStr, nil, ctx.assignableAdapters,
 		ctx.iteration)
 	ctx.iteration += 1

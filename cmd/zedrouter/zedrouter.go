@@ -172,7 +172,7 @@ func Run() {
 		separateDataPlane:  false,
 		assignableAdapters: &aa,
 	}
-	// Subscribe to network metrics from zedrouter
+	// Subscribe to network objects and services from zedagent
 	subNetworkObjectConfig, err := pubsub.Subscribe("zedagent",
 		types.NetworkObjectConfig{}, &zedrouterCtx)
 	if err != nil {

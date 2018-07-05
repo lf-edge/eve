@@ -304,6 +304,8 @@ func doBaseOsActivate(uuidStr string, config types.BaseOsConfig,
 		status.Activated == false {
 		status.Activated = true
 		changed = true
+		// Make sure we tell apps to shut down
+		shutdownAppsGlobal()
 		startExecReboot()
 	}
 

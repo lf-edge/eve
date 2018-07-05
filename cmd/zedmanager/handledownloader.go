@@ -98,6 +98,7 @@ var downloaderStatus map[string]types.DownloaderStatus
 func handleDownloaderStatusModify(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
 	status := statusArg.(*types.DownloaderStatus)
+	ctx := ctxArg.(*zedmanagerContext)
 	log.Printf("handleDownloaderStatusModify for %s\n", status.Safename)
 
 	// Ignore if any Pending* flag is set
@@ -128,7 +129,7 @@ func handleDownloaderStatusModify(ctxArg interface{}, statusFilename string,
 	}
 	if changed {
 		downloaderStatus[key] = *status
-		updateAIStatusSafename(key)
+		updateAIStatusSafename(ctx, key)
 	}
 
 	log.Printf("handleDownloaderStatusModify done for %s\n",
@@ -146,6 +147,7 @@ func LookupDownloaderStatus(safename string) (types.DownloaderStatus, error) {
 func handleDownloaderStatusDelete(ctxArg interface{}, statusFilename string) {
 	log.Printf("handleDownloaderStatusDelete for %s\n", statusFilename)
 
+	ctx := ctxArg.(*zedmanagerContext)
 	key := statusFilename
 	if m, ok := downloaderStatus[key]; !ok {
 		log.Printf("handleDownloaderStatusDelete for %s - not found\n",
@@ -155,7 +157,7 @@ func handleDownloaderStatusDelete(ctxArg interface{}, statusFilename string) {
 			log.Printf("downloader map delete for %v\n", m.State)
 		}
 		delete(downloaderStatus, key)
-		removeAIStatusSafename(key)
+		removeAIStatusSafename(ctx, key)
 	}
 	log.Printf("handleDownloaderStatusDelete done for %s\n",
 		statusFilename)

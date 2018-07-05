@@ -76,6 +76,7 @@ func handleNetworkObjectDelete(ctxArg interface{}, key string) {
 	pub.Publish(status.UUID.String(), *status)
 	doNetworkDelete(status)
 	status.PendingDelete = false
+	pub.Publish(status.UUID.String(), *status)
 	pub.Unpublish(status.UUID.String())
 	log.Printf("handleNetworkObjectDelete(%s) done\n", key)
 }

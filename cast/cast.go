@@ -9,7 +9,7 @@ import (
 	"log"
 )
 
-// XXX move to library? template?
+// XXX template?
 // XXX alternative seems to be a deep copy of some sort
 
 func CastNetworkObjectConfig(in interface{}) types.NetworkObjectConfig {
@@ -56,6 +56,30 @@ func CastNetworkServiceStatus(in interface{}) types.NetworkServiceStatus {
 	var output types.NetworkServiceStatus
 	if err := json.Unmarshal(b, &output); err != nil {
 		log.Fatal(err, "json Unmarshal in CastNetworkServiceStatus")
+	}
+	return output
+}
+
+func CastAppInstanceConfig(in interface{}) types.AppInstanceConfig {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastAppInstanceConfig")
+	}
+	var output types.AppInstanceConfig
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "json Unmarshal in CastAppInstanceConfig")
+	}
+	return output
+}
+
+func CastAppInstanceStatus(in interface{}) types.AppInstanceStatus {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastAppInstanceStatus")
+	}
+	var output types.AppInstanceStatus
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "json Unmarshal in CastAppInstanceStatus")
 	}
 	return output
 }
