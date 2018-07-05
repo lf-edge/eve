@@ -40,6 +40,9 @@ var rebootTimer *time.Timer
 // Returns a rebootFlag
 func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext) bool {
 
+	// XXX hack for handlebaseos:
+	getconfigCtxGlobal = getconfigCtx
+
 	if parseOpCmds(config) == true {
 		log.Println("Reboot flag set, skipping config processing")
 		// Make sure we tell apps to shut down
@@ -101,6 +104,15 @@ func shutdownApps(getconfigCtx *getconfigContext) {
 			pub.Publish(config.UUIDandVersion.UUID.String(),
 				config)
 		}
+	}
+}
+
+// XXX hack for handlebaseos
+var getconfigCtxGlobal *getconfigContext
+
+func shutdownAppsGlobal() {
+	if getconfigCtxGlobal != nil {
+		shutdownApps(getconfigCtxGlobal)
 	}
 }
 
