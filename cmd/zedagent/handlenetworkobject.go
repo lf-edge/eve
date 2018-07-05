@@ -23,7 +23,7 @@ func handleNetworkObjectModify(ctxArg interface{}, key string, statusArg interfa
 	if !status.ErrorTime.IsZero() {
 		log.Printf("Received NetworkObject error %s\n", status.Error)
 	}
-	
+
 	log.Printf("handleNetworkObjectCreate(%s) done\n", key)
 }
 

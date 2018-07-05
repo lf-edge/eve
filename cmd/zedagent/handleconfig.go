@@ -24,13 +24,6 @@ import (
 	"time"
 )
 
-const (
-	MaxReaderSmall      = 1 << 16 // 64k
-	MaxReaderMaxDefault = MaxReaderSmall
-	MaxReaderMedium     = 1 << 19 // 512k
-	MaxReaderHuge       = 1 << 21 // two megabytes
-)
-
 var configApi string = "api/v1/edgedevice/config"
 var statusApi string = "api/v1/edgedevice/info"
 var metricsApi string = "api/v1/edgedevice/metrics"
@@ -202,7 +195,7 @@ func getLatestConfig(url string, iteration int, updateInprogress *bool,
 		}
 	}
 
-	resp, contents, err := zedcloud.SendOnAllIntf(zedcloudCtx, url, 0, nil, iteration)
+	resp, contents, err := zedcloud.SendOnAllIntf(zedcloudCtx, url, 0, nil, iteration, false)
 	if err != nil {
 		log.Printf("getLatestConfig failed: %s\n", err)
 		if getconfigCtx.ledManagerCount == 4 {

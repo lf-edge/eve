@@ -44,7 +44,7 @@ func createDnsmasqOverlayConfiglet(ctx *zedrouterContext,
 	}
 	defer file.Close()
 	file.WriteString(dnsmasqStatic)
-	file.WriteString(fmt.Sprintf("dhcp-range=::,static,0,infinite\n"))
+	file.WriteString(fmt.Sprintf("dhcp-range=::,static,0,10m\n"))
 	for _, ipset := range ipsets {
 		file.WriteString(fmt.Sprintf("ipset=/%s/ipv4.%s,ipv6.%s\n",
 			ipset, ipset, ipset))
@@ -207,7 +207,7 @@ func createDnsmasqUnderlayConfiglet(ctx *zedrouterContext,
 			dhcpRange = netconf.DhcpRange.Start.String()
 		}
 	}
-	file.WriteString(fmt.Sprintf("dhcp-range=%s,static,%s,infinite\n",
+	file.WriteString(fmt.Sprintf("dhcp-range=%s,static,%s,10m\n",
 		dhcpRange, netmask))
 }
 
@@ -335,9 +335,9 @@ func createDnsmasqConfiglet(bridgeName string, bridgeIPAddr string,
 		dhcpRange = netconf.DhcpRange.Start.String()
 	}
 	if isIPv6 {
-		file.WriteString(fmt.Sprintf("dhcp-range=::,static,0,infinite\n"))
+		file.WriteString(fmt.Sprintf("dhcp-range=::,static,0,10m\n"))
 	} else {
-		file.WriteString(fmt.Sprintf("dhcp-range=%s,static,%s,infinite\n",
+		file.WriteString(fmt.Sprintf("dhcp-range=%s,static,%s,10m\n",
 			dhcpRange, ipv4Netmask))
 	}
 }

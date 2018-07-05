@@ -232,7 +232,7 @@ func Run() {
 	// Returns true when done; false when retry
 	myPost := func(retryCount int, url string, reqlen int64, b *bytes.Buffer) bool {
 		resp, contents, err := zedcloud.SendOnAllIntf(zedcloudCtx,
-			serverNameAndPort+url, reqlen, b, retryCount)
+			serverNameAndPort+url, reqlen, b, retryCount, false)
 		if err != nil {
 			log.Println(err)
 			return false
@@ -318,7 +318,7 @@ func Run() {
 	// can use the contents []byte
 	myGet := func(url string, retryCount int) (bool, *http.Response, []byte) {
 		resp, contents, err := zedcloud.SendOnAllIntf(zedcloudCtx,
-			serverNameAndPort+url, 0, nil, retryCount)
+			serverNameAndPort+url, 0, nil, retryCount, false)
 		if err != nil {
 			log.Println(err)
 			return false, nil, nil
