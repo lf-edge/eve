@@ -304,10 +304,16 @@ func (pub *Publication) Unpublish(key string) error {
 }
 
 func (pub *Publication) SignalRestarted() error {
+	if debug {
+		log.Printf("pub.SignalRestarted(%s)\n", pub.nameString())
+	}
 	return pub.restartImpl(true)
 }
 
 func (pub *Publication) ClearRestarted() error {
+	if debug {
+		log.Printf("pub.ClearRestarted(%s)\n", pub.nameString())
+	}
 	return pub.restartImpl(false)
 }
 
