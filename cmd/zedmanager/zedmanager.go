@@ -329,6 +329,8 @@ func removeAppInstanceStatus(ctx *zedmanagerContext,
 
 // Determine whether it is an create or modify
 func handleAppInstanceConfigModify(ctxArg interface{}, key string, configArg interface{}) {
+
+	log.Printf("handleAppInstanceConfigModify(%s)\n", key)
 	ctx := ctxArg.(*zedmanagerContext)
 	config := cast.CastAppInstanceConfig(configArg)
 	if config.UUIDandVersion.UUID.String() != key {
@@ -337,11 +339,12 @@ func handleAppInstanceConfigModify(ctxArg interface{}, key string, configArg int
 		return
 	}
 	status := lookupAppInstanceStatus(ctx, key)
-	if status != nil {
-		handleModify(ctx, key, config, status)
-	} else {
+	if status == nil {
 		handleCreate(ctx, key, config)
+	} else {
+		handleModify(ctx, key, config, status)
 	}
+	log.Printf("handleAppInstanceConfigModify(%s) done\n", key)
 }
 
 func handleAppInstanceConfigDelete(ctxArg interface{}, key string) {
@@ -353,6 +356,7 @@ func handleAppInstanceConfigDelete(ctxArg interface{}, key string) {
 		return
 	}
 	handleDelete(ctx, key, status)
+	log.Printf("handleAppInstanceConfigDelete(%s) done\n", key)
 }
 
 // Callers must be careful to publish any changes to NetworkObjectStatus
