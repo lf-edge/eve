@@ -338,9 +338,9 @@ func handleAppInstanceConfigModify(ctxArg interface{}, key string, configArg int
 	}
 	status := lookupAppInstanceStatus(ctx, key)
 	if status != nil {
-		handleModify(ctxArg, key, configArg, status)
+		handleModify(ctx, key, config, status)
 	} else {
-		handleCreate(ctxArg, key, configArg)
+		handleCreate(ctx, key, config)
 	}
 }
 
@@ -352,7 +352,7 @@ func handleAppInstanceConfigDelete(ctxArg interface{}, key string) {
 		log.Printf("handleAppInstanceConfigDelete: unknown %s\n", key)
 		return
 	}
-	handleDelete(ctxArg, key, status)
+	handleDelete(ctx, key, status)
 }
 
 // Callers must be careful to publish any changes to NetworkObjectStatus
@@ -390,10 +390,8 @@ func lookupAppInstanceConfig(ctx *zedmanagerContext, key string) *types.AppInsta
 	return &config
 }
 
-func handleCreate(ctxArg interface{}, key string,
-	configArg interface{}) {
-	config := configArg.(*types.AppInstanceConfig)
-	ctx := ctxArg.(*zedmanagerContext)
+func handleCreate(ctx *zedmanagerContext, key string,
+	config types.AppInstanceConfig) {
 
 	log.Printf("handleCreate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
@@ -417,7 +415,7 @@ func handleCreate(ctxArg interface{}, key string,
 	updateAppInstanceStatus(ctx, &status)
 
 	uuidStr := status.UUIDandVersion.UUID.String()
-	changed := doUpdate(uuidStr, *config, &status)
+	changed := doUpdate(uuidStr, config, &status)
 	if changed {
 		log.Printf("handleCreate status change for %s\n",
 			uuidStr)
@@ -426,11 +424,8 @@ func handleCreate(ctxArg interface{}, key string,
 	log.Printf("handleCreate done for %s\n", config.DisplayName)
 }
 
-func handleModify(ctxArg interface{}, key string,
-	configArg interface{}, statusArg interface{}) {
-	config := configArg.(*types.AppInstanceConfig)
-	status := statusArg.(*types.AppInstanceStatus)
-	ctx := ctxArg.(*zedmanagerContext)
+func handleModify(ctx *zedmanagerContext, key string,
+	config types.AppInstanceConfig, status *types.AppInstanceStatus) {
 	log.Printf("handleModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
@@ -445,7 +440,7 @@ func handleModify(ctxArg interface{}, key string,
 	updateAppInstanceStatus(ctx, status)
 
 	uuidStr := status.UUIDandVersion.UUID.String()
-	changed := doUpdate(uuidStr, *config, status)
+	changed := doUpdate(uuidStr, config, status)
 	if changed {
 		log.Printf("handleModify status change for %s\n",
 			uuidStr)
@@ -454,10 +449,8 @@ func handleModify(ctxArg interface{}, key string,
 	log.Printf("handleModify done for %s\n", config.DisplayName)
 }
 
-func handleDelete(ctxArg interface{}, key string,
-	statusArg interface{}) {
-	status := statusArg.(*types.AppInstanceStatus)
-	ctx := ctxArg.(*zedmanagerContext)
+func handleDelete(ctx *zedmanagerContext, key string,
+	status *types.AppInstanceStatus) {
 	log.Printf("handleDelete(%v) for %s\n",
 		status.UUIDandVersion, status.DisplayName)
 
