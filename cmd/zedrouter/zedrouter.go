@@ -45,7 +45,6 @@ const (
 	statusDirname = runDirname + "/status"
 	tmpDirname    = "/var/tmp/zededa"
 	DNCDirname    = tmpDirname + "/DeviceNetworkConfig"
-	DNSDirname    = runDirname + "/DeviceNetworkStatus"
 	DataPlaneName = "lisp-ztr"
 )
 
@@ -68,9 +67,10 @@ type dummyContext struct {
 
 // Context for handleDNCModify
 type DNCContext struct {
-	usableAddressCount int
-	manufacturerModel  string
-	separateDataPlane  bool
+	usableAddressCount     int
+	manufacturerModel      string
+	separateDataPlane      bool
+	pubDeviceNetworkStatus *pubsub.Publication // XXX set
 }
 
 var debug = false
@@ -133,12 +133,12 @@ func Run() {
 			log.Fatal(err)
 		}
 	}
-	if _, err := os.Stat(DNSDirname); err != nil {
-		log.Printf("Create %s\n", DNSDirname)
-		if err := os.MkdirAll(DNSDirname, 0700); err != nil {
-			log.Fatal(err)
-		}
+	pubDeviceNetworkStatus, err := pubsub.Publish(agentName,
+		types.DeviceNetworkStatus{})
+	if err != nil {
+		log.Fatal(err)
 	}
+
 	appNumAllocatorInit(statusDirname, configDirname)
 	model := hardware.GetHardwareModel()
 
@@ -160,44 +160,47 @@ func Run() {
 	// for AssignableAdapter filename?
 
 	DNCFilename := fmt.Sprintf("%s/%s.json", DNCDirname, model)
-	handleInit(DNCFilename, DNSDirname+"/global.json",
-		runDirname)
+	handleInit(DNCFilename, runDirname, pubDeviceNetworkStatus)
 
 	DNCctx := DNCContext{}
 	DNCctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
 	DNCctx.manufacturerModel = model
 	DNCctx.separateDataPlane = false
+	DNCctx.pubDeviceNetworkStatus = pubDeviceNetworkStatus
 
 	zedrouterCtx := zedrouterContext{
 		separateDataPlane:  false,
 		assignableAdapters: &aa,
 	}
-	// Subscribe to network objects and services from zedagent
-	subNetworkObjectConfig, err := pubsub.Subscribe("zedagent",
-		types.NetworkObjectConfig{}, &zedrouterCtx)
-	if err != nil {
-		log.Fatal(err)
-	}
-	subNetworkObjectConfig.ModifyHandler = handleNetworkObjectModify
-	subNetworkObjectConfig.DeleteHandler = handleNetworkObjectDelete
-
-	subNetworkServiceConfig, err := pubsub.Subscribe("zedagent",
-		types.NetworkServiceConfig{}, &zedrouterCtx)
-	if err != nil {
-		log.Fatal(err)
-	}
-	subNetworkServiceConfig.ModifyHandler = handleNetworkServiceModify
-	subNetworkServiceConfig.DeleteHandler = handleNetworkServiceDelete
-
+	// Create publish before subscribing and activating subscriptions
 	pubNetworkObjectStatus, err := pubsub.Publish(agentName,
 		types.NetworkObjectStatus{})
 	pubNetworkServiceStatus, err := pubsub.Publish(agentName,
 		types.NetworkServiceStatus{})
 
-	zedrouterCtx.subNetworkObjectConfig = subNetworkObjectConfig
-	zedrouterCtx.subNetworkServiceConfig = subNetworkServiceConfig
 	zedrouterCtx.pubNetworkObjectStatus = pubNetworkObjectStatus
 	zedrouterCtx.pubNetworkServiceStatus = pubNetworkServiceStatus
+
+	// Subscribe to network objects and services from zedagent
+	subNetworkObjectConfig, err := pubsub.Subscribe("zedagent",
+		types.NetworkObjectConfig{}, false, &zedrouterCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subNetworkObjectConfig.ModifyHandler = handleNetworkObjectModify
+	subNetworkObjectConfig.DeleteHandler = handleNetworkObjectDelete
+	zedrouterCtx.subNetworkObjectConfig = subNetworkObjectConfig
+	subNetworkObjectConfig.Activate()
+
+	subNetworkServiceConfig, err := pubsub.Subscribe("zedagent",
+		types.NetworkServiceConfig{}, false, &zedrouterCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subNetworkServiceConfig.ModifyHandler = handleNetworkServiceModify
+	subNetworkServiceConfig.DeleteHandler = handleNetworkServiceDelete
+	zedrouterCtx.subNetworkServiceConfig = subNetworkServiceConfig
+	subNetworkServiceConfig.Activate()
 
 	// XXX should we make geoRedoTime configurable?
 	// We refresh the gelocation information when the underlay
@@ -324,7 +327,7 @@ func Run() {
 			change := devicenetwork.UpdateDeviceNetworkGeo(
 				geoRedoTime, &deviceNetworkStatus)
 			if change {
-				updateDeviceNetworkStatus()
+				updateDeviceNetworkStatus(pubDeviceNetworkStatus)
 			}
 		case change := <-subNetworkObjectConfig.C:
 			subNetworkObjectConfig.ProcessChange(change)
@@ -353,16 +356,15 @@ func handleRestart(ctxArg interface{}, done bool) {
 
 var deviceNetworkConfig types.DeviceNetworkConfig
 var deviceNetworkStatus types.DeviceNetworkStatus
-var deviceNetworkStatusFilename string
 var globalRunDirname string
 var lispRunDirname string
 
 // XXX hack to avoid the pslisp hang on Erik's laptop
 var broken = false
 
-func handleInit(configFilename string, statusFilename string,
-	runDirname string) {
-	deviceNetworkStatusFilename = statusFilename
+func handleInit(configFilename string, runDirname string,
+	pubDeviceNetworkStatus *pubsub.Publication) {
+
 	globalRunDirname = runDirname
 
 	// XXX should this be in the lisp code?
@@ -396,7 +398,7 @@ func handleInit(configFilename string, statusFilename string,
 	}
 
 	// Create and write with initial values
-	updateDeviceNetworkStatus()
+	updateDeviceNetworkStatus(pubDeviceNetworkStatus)
 
 	// Setup initial iptables rules
 	iptablesInit()
@@ -439,15 +441,8 @@ func handleInit(configFilename string, statusFilename string,
 	}
 }
 
-func updateDeviceNetworkStatus() {
-	b, err := json.Marshal(deviceNetworkStatus)
-	if err != nil {
-		log.Fatal(err, "json Marshal DeviceNetworkStatus")
-	}
-	err = pubsub.WriteRename(deviceNetworkStatusFilename, b)
-	if err != nil {
-		log.Fatal(err, deviceNetworkStatusFilename)
-	}
+func updateDeviceNetworkStatus(pubDeviceNetworkStatus *pubsub.Publication) {
+	pubDeviceNetworkStatus.Publish("global", deviceNetworkStatus)
 }
 
 // Key is UUID
@@ -1932,7 +1927,7 @@ func doDNSUpdate(ctx *DNCContext) {
 		types.UpdateLedManagerConfig(2)
 	}
 	ctx.usableAddressCount = newAddrCount
-	updateDeviceNetworkStatus()
+	updateDeviceNetworkStatus(ctx.pubDeviceNetworkStatus)
 	updateLispConfiglets(ctx.separateDataPlane)
 
 	setUplinks(deviceNetworkConfig.Uplink)

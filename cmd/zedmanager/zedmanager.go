@@ -32,7 +32,6 @@ const (
 	domainmgrConfigDirname   = "/var/tmp/domainmgr/config"
 	zedrouterConfigDirname   = "/var/tmp/zedrouter/config"
 	identitymgrConfigDirname = "/var/tmp/identitymgr/config"
-	DNSDirname               = "/var/run/zedrouter/DeviceNetworkStatus"
 	certificateDirname       = persistDir + "/certs"
 
 	downloaderAppImgObjConfigDirname = "/var/tmp/downloader/" + appImgObj + "/config"
@@ -42,16 +41,13 @@ const (
 // Set from Makefile
 var Version = "No version specified"
 
-// Dummy since we don't have anything to pass to DNS
-type dummyContext struct {
-}
-
 // State used by handlers
 type zedmanagerContext struct {
-	configRestarted      bool
-	verifierRestarted    bool
-	subAppInstanceConfig *pubsub.Subscription
-	pubAppInstanceStatus *pubsub.Publication
+	configRestarted       bool
+	verifierRestarted     bool
+	subAppInstanceConfig  *pubsub.Subscription
+	pubAppInstanceStatus  *pubsub.Publication
+	subDeviceNetworkStatus *pubsub.Subscription
 }
 
 var deviceNetworkStatus types.DeviceNetworkStatus
@@ -132,15 +128,15 @@ func Run() {
 
 	// Get AppInstanceConfig from zedagent
 	subAppInstanceConfig, err := pubsub.Subscribe("zedagent",
-		types.AppInstanceConfig{}, &ctx)
+		types.AppInstanceConfig{}, false, &ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
 	subAppInstanceConfig.ModifyHandler = handleAppInstanceConfigModify
 	subAppInstanceConfig.DeleteHandler = handleAppInstanceConfigDelete
 	subAppInstanceConfig.RestartHandler = handleConfigRestart
-
 	ctx.subAppInstanceConfig = subAppInstanceConfig
+	subAppInstanceConfig.Activate()
 
 	pubAppInstanceStatus, err := pubsub.Publish(agentName,
 		types.AppInstanceStatus{})
@@ -159,8 +155,16 @@ func Run() {
 	go watch.WatchStatus(zedrouterStatusDirname, zedrouterChanges)
 	domainmgrChanges := make(chan string)
 	go watch.WatchStatus(domainmgrStatusDirname, domainmgrChanges)
-	networkStatusChanges := make(chan string)
-	go watch.WatchStatus(DNSDirname, networkStatusChanges)
+	subDeviceNetworkStatus, err := pubsub.Subscribe("zedrouter",
+		types.DeviceNetworkStatus{}, false, &ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
+	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
+	ctx.subDeviceNetworkStatus = subDeviceNetworkStatus
+	subDeviceNetworkStatus.Activate()
+
 	zedagentCertObjStatusChanges := make(chan string)
 	go watch.WatchStatus(zedagentCertObjStatusDirname,
 		zedagentCertObjStatusChanges)
@@ -250,14 +254,8 @@ func Run() {
 		case change := <-subAppInstanceConfig.C:
 			subAppInstanceConfig.ProcessChange(change)
 
-		case change := <-networkStatusChanges:
-			{
-				watch.HandleStatusEvent(change, dummyContext{},
-					DNSDirname,
-					&types.DeviceNetworkStatus{},
-					handleDNSModify, handleDNSDelete,
-					nil)
-			}
+		case change := <-subDeviceNetworkStatus.C:
+			subDeviceNetworkStatus.ProcessChange(change)
 		}
 	}
 }

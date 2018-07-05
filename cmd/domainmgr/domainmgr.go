@@ -46,7 +46,6 @@ const (
 	imgCatalogDirname = downloadDirname + "/" + appImgObj
 	// Read-only images named based on sha256 hash each in its own directory
 	verifiedDirname = imgCatalogDirname + "/verified"
-	DNSDirname      = "/var/run/zedrouter/DeviceNetworkStatus"
 )
 
 // Really a constant
@@ -63,7 +62,8 @@ type dummyContext struct {
 
 // Information for handleDomainCreate/Modify/Delete
 type domainContext struct {
-	assignableAdapters *types.AssignableAdapters
+	assignableAdapters     *types.AssignableAdapters
+	subDeviceNetworkStatus *pubsub.Subscription
 }
 
 func Run() {
@@ -156,8 +156,15 @@ func Run() {
 	}
 	log.Printf("Have %d assignable adapters\n", len(aa.IoBundleList))
 
-	networkStatusChanges := make(chan string)
-	go watch.WatchStatus(DNSDirname, networkStatusChanges)
+	subDeviceNetworkStatus, err := pubsub.Subscribe("zedrouter",
+		types.DeviceNetworkStatus{}, false, &domainCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
+	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
+	domainCtx.subDeviceNetworkStatus = subDeviceNetworkStatus
+	subDeviceNetworkStatus.Activate()
 
 	for {
 		select {
@@ -167,12 +174,10 @@ func Run() {
 				&types.DomainConfig{}, &types.DomainStatus{},
 				handleCreate, handleModify, handleDelete,
 				&restartFn)
-		case change := <-networkStatusChanges:
-			watch.HandleStatusEvent(change, dummyContext{},
-				DNSDirname,
-				&types.DeviceNetworkStatus{},
-				handleDNSModify, handleDNSDelete,
-				nil)
+
+		case change := <-subDeviceNetworkStatus.C:
+			subDeviceNetworkStatus.ProcessChange(change)
+
 		case change := <-aaChanges:
 			aaFunc(&aaCtx, change)
 		}
@@ -1289,26 +1294,26 @@ func pciAssignableRem(long string) error {
 	return nil
 }
 
-func handleDNSModify(ctxArg interface{}, statusFilename string,
+func handleDNSModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	status := statusArg.(*types.DeviceNetworkStatus)
 
-	if statusFilename != "global" {
-		log.Printf("handleDNSModify: ignoring %s\n", statusFilename)
+	if key != "global" {
+		log.Printf("handleDNSModify: ignoring %s\n", key)
 		return
 	}
-	log.Printf("handleDNSModify for %s\n", statusFilename)
+	log.Printf("handleDNSModify for %s\n", key)
 	deviceNetworkStatus = *status
-	log.Printf("handleDNSModify done for %s\n", statusFilename)
+	log.Printf("handleDNSModify done for %s\n", key)
 }
 
-func handleDNSDelete(ctxArg interface{}, statusFilename string) {
-	log.Printf("handleDNSDelete for %s\n", statusFilename)
+func handleDNSDelete(ctxArg interface{}, key string) {
+	log.Printf("handleDNSDelete for %s\n", key)
 
-	if statusFilename != "global" {
-		log.Printf("handleDNSDelete: ignoring %s\n", statusFilename)
+	if key != "global" {
+		log.Printf("handleDNSDelete: ignoring %s\n", key)
 		return
 	}
 	deviceNetworkStatus = types.DeviceNetworkStatus{}
-	log.Printf("handleDNSDelete done for %s\n", statusFilename)
+	log.Printf("handleDNSDelete done for %s\n", key)
 }

@@ -48,7 +48,6 @@ const (
 	runDirname            = zedRunDirname + "/" + moduleName
 	persistDir            = "/persist"
 	objectDownloadDirname = persistDir + "/downloads"
-	DNSDirname            = "/var/run/zedrouter/DeviceNetworkStatus"
 
 	downloaderConfigDirname = baseDirname + "/config"
 	downloaderStatusDirname = runDirname + "/status"
@@ -72,7 +71,8 @@ var (
 var Version = "No version specified"
 
 type downloaderContext struct {
-	dCtx *zedUpload.DronaCtx
+	dCtx                   *zedUpload.DronaCtx
+	subDeviceNetworkStatus *pubsub.Subscription
 }
 
 // Dummy since where we don't have anything to pass
@@ -119,19 +119,22 @@ func Run() {
 	ctx := downloaderContext{}
 	ctx.dCtx = downloaderInit()
 
-	networkStatusChanges := make(chan string)
-	go watch.WatchStatus(DNSDirname, networkStatusChanges)
+	subDeviceNetworkStatus, err := pubsub.Subscribe("zedrouter",
+		types.DeviceNetworkStatus{}, false, &ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
+	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
+	ctx.subDeviceNetworkStatus = subDeviceNetworkStatus
+	subDeviceNetworkStatus.Activate()
 
 	// First wait to have some uplinks with addresses
 	// Looking at any uplinks since we can do baseOS download over all
 	for types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus) == 0 {
 		select {
-		case change := <-networkStatusChanges:
-			watch.HandleStatusEvent(change, dummyContext{},
-				DNSDirname,
-				&types.DeviceNetworkStatus{},
-				handleDNSModify, handleDNSDelete,
-				nil)
+		case change := <-subDeviceNetworkStatus.C:
+			subDeviceNetworkStatus.ProcessChange(change)
 		}
 	}
 	log.Printf("Have %d uplinks addresses to use\n",
@@ -153,12 +156,8 @@ func Run() {
 	for {
 		select {
 
-		case change := <-networkStatusChanges:
-			watch.HandleStatusEvent(change, dummyContext{},
-				DNSDirname,
-				&types.DeviceNetworkStatus{},
-				handleDNSModify, handleDNSDelete,
-				nil)
+		case change := <-subDeviceNetworkStatus.C:
+			subDeviceNetworkStatus.ProcessChange(change)
 
 		case change := <-certObjChanges:
 			watch.HandleConfigStatusEvent(change, &ctx,
@@ -912,30 +911,30 @@ func handleSyncOpResponse(config types.DownloaderConfig,
 	writeDownloaderStatus(status, statusFilename)
 }
 
-func handleDNSModify(ctxArg interface{}, statusFilename string,
+func handleDNSModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	status := statusArg.(*types.DeviceNetworkStatus)
 
-	if statusFilename != "global" {
-		log.Printf("handleDNSModify: ignoring %s\n", statusFilename)
+	if key != "global" {
+		log.Printf("handleDNSModify: ignoring %s\n", key)
 		return
 	}
 
-	log.Printf("handleDNSModify for %s\n", statusFilename)
+	log.Printf("handleDNSModify for %s\n", key)
 	deviceNetworkStatus = *status
 	log.Printf("handleDNSModify %d free uplinks addresses; %d any\n",
 		types.CountLocalAddrFree(deviceNetworkStatus, ""),
 		types.CountLocalAddrAny(deviceNetworkStatus, ""))
-	log.Printf("handleDNSModify done for %s\n", statusFilename)
+	log.Printf("handleDNSModify done for %s\n", key)
 }
 
-func handleDNSDelete(ctxArg interface{}, statusFilename string) {
-	log.Printf("handleDNSDelete for %s\n", statusFilename)
+func handleDNSDelete(ctxArg interface{}, key string) {
+	log.Printf("handleDNSDelete for %s\n", key)
 
-	if statusFilename != "global" {
-		log.Printf("handleDNSDelete: ignoring %s\n", statusFilename)
+	if key != "global" {
+		log.Printf("handleDNSDelete: ignoring %s\n", key)
 		return
 	}
 	deviceNetworkStatus = types.DeviceNetworkStatus{}
-	log.Printf("handleDNSDelete done for %s\n", statusFilename)
+	log.Printf("handleDNSDelete done for %s\n", key)
 }
