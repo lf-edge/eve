@@ -15,6 +15,7 @@ import (
 	"github.com/satori/go.uuid"
 	"github.com/zededa/go-provision/adapters"
 	"github.com/zededa/go-provision/agentlog"
+	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
@@ -1294,16 +1295,15 @@ func pciAssignableRem(long string) error {
 	return nil
 }
 
-func handleDNSModify(ctxArg interface{}, key string,
-	statusArg interface{}) {
-	status := statusArg.(*types.DeviceNetworkStatus)
+func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
+	status := cast.CastDeviceNetworkStatus(statusArg)
 	if key != "global" {
 		log.Printf("handleDNSModify: ignoring %s\n", key)
 		return
 	}
 	log.Printf("handleDNSModify for %s\n", key)
-	deviceNetworkStatus = *status
+	deviceNetworkStatus = status
 	log.Printf("handleDNSModify done for %s\n", key)
 }
 

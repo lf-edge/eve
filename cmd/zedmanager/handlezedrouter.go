@@ -16,6 +16,7 @@ import (
 
 // Key is UUID
 // XXX change from string to UUID?
+// XXX change to pubsub.
 var appNetworkConfig map[string]types.AppNetworkConfig
 
 func MaybeAddAppNetworkConfig(aiConfig types.AppInstanceConfig,
@@ -123,6 +124,7 @@ func MaybeAddAppNetworkConfig(aiConfig types.AppInstanceConfig,
 		appNetworkConfig[key] = nc
 		configFilename := fmt.Sprintf("%s/%s.json",
 			zedrouterConfigDirname, key)
+		// XXX Publish
 		writeAppNetworkConfig(appNetworkConfig[key], configFilename)
 	}
 	log.Printf("MaybeAddAppNetworkConfig done for %s\n", key)
@@ -164,6 +166,7 @@ func writeAppNetworkConfig(config types.AppNetworkConfig,
 
 // Key is UUID
 // XXX change from string to UUID?
+// XXX use pubsub
 var appNetworkStatus map[string]types.AppNetworkStatus
 
 func handleAppNetworkStatusModify(ctxArg interface{}, statusFilename string,

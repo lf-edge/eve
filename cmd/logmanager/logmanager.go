@@ -15,6 +15,7 @@ import (
 	"github.com/satori/go.uuid"
 	"github.com/zededa/api/zmet"
 	"github.com/zededa/go-provision/agentlog"
+	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
@@ -260,17 +261,16 @@ func Run() {
 	}
 }
 
-func handleDNSModify(ctxArg interface{}, key string,
-	statusArg interface{}) {
-	status := statusArg.(*types.DeviceNetworkStatus)
-	ctx := ctxArg.(*DNSContext)
+func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
+	status := cast.CastDeviceNetworkStatus(statusArg)
+	ctx := ctxArg.(*DNSContext)
 	if key != "global" {
 		log.Printf("handleDNSModify: ignoring %s\n", key)
 		return
 	}
 	log.Printf("handleDNSModify for %s\n", key)
-	deviceNetworkStatus = *status
+	deviceNetworkStatus = status
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
 	ctx.usableAddressCount = newAddrCount
 	log.Printf("handleDNSModify done for %s; %d usable\n",

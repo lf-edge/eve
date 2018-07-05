@@ -659,17 +659,16 @@ func handleAppInstanceStatusDelete(ctxArg interface{}, key string) {
 	ctx.iteration += 1
 }
 
-func handleDNSModify(ctxArg interface{}, key string,
-	statusArg interface{}) {
-	status := statusArg.(*types.DeviceNetworkStatus)
-	ctx := ctxArg.(*DNSContext)
+func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
+	status := cast.CastDeviceNetworkStatus(statusArg)
+	ctx := ctxArg.(*DNSContext)
 	if key != "global" {
 		log.Printf("handleDNSModify: ignoring %s\n", key)
 		return
 	}
 	log.Printf("handleDNSModify for %s\n", key)
-	deviceNetworkStatus = *status
+	deviceNetworkStatus = status
 	// Did we (re-)gain the first usable address?
 	// XXX should we also trigger if the count increases?
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)

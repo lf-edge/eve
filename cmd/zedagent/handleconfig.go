@@ -126,6 +126,7 @@ func handleConfigInit() {
 // Run a periodic fetch of the config
 func configTimerTask(handleChannel chan interface{},
 	getconfigCtx *getconfigContext) {
+
 	configUrl := serverName + "/" + configApi
 	getconfigCtx.startTime = time.Now()
 	getconfigCtx.lastReceivedConfigFromCloud = getconfigCtx.startTime

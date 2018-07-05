@@ -455,10 +455,9 @@ func handleDelete(ctx *zedmanagerContext, key string,
 	log.Printf("handleDelete done for %s\n", status.DisplayName)
 }
 
-func handleDNSModify(ctxArg interface{}, key string,
-	statusArg interface{}) {
-	status := statusArg.(*types.DeviceNetworkStatus)
+func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
+	status := cast.CastDeviceNetworkStatus(statusArg)
 	if key != "global" {
 		if debug {
 			log.Printf("handleDNSModify: ignoring %s\n",
@@ -467,7 +466,7 @@ func handleDNSModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Printf("handleDNSModify for %s\n", key)
-	deviceNetworkStatus = *status
+	deviceNetworkStatus = status
 	log.Printf("handleDNSModify done for %s\n", key)
 }
 

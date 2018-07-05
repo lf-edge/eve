@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"github.com/zededa/api/zconfig"
 	"github.com/zededa/go-provision/agentlog"
+	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
@@ -911,17 +912,16 @@ func handleSyncOpResponse(config types.DownloaderConfig,
 	writeDownloaderStatus(status, statusFilename)
 }
 
-func handleDNSModify(ctxArg interface{}, key string,
-	statusArg interface{}) {
-	status := statusArg.(*types.DeviceNetworkStatus)
+func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
+	status := cast.CastDeviceNetworkStatus(statusArg)
 	if key != "global" {
 		log.Printf("handleDNSModify: ignoring %s\n", key)
 		return
 	}
 
 	log.Printf("handleDNSModify for %s\n", key)
-	deviceNetworkStatus = *status
+	deviceNetworkStatus = status
 	log.Printf("handleDNSModify %d free uplinks addresses; %d any\n",
 		types.CountLocalAddrFree(deviceNetworkStatus, ""),
 		types.CountLocalAddrAny(deviceNetworkStatus, ""))
