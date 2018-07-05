@@ -433,14 +433,9 @@ func handleModify(ctx *zedmanagerContext, key string,
 	log.Printf("handleModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
-	if config.UUIDandVersion.Version == status.UUIDandVersion.Version {
-		log.Printf("Same version %s for %s\n",
-			config.UUIDandVersion.Version, key)
-		return
-	}
+	// XXX handle at least ACL and activate changes. What else?
 
 	status.UUIDandVersion = config.UUIDandVersion
-	// XXX what updates should we handle?
 	updateAppInstanceStatus(ctx, status)
 
 	uuidStr := status.UUIDandVersion.UUID.String()
