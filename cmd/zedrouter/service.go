@@ -465,6 +465,14 @@ func bridgeCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 			config.Adapter, config.UUID.String())
 		return errors.New(errStr)
 	}
+	// XXX check it isn't assigned to dom0? That's maintained
+	// in domainmgr so can't do it here.
+	// For now check it isn't an uplink instead.
+	if isUplink(config.Adapter) {
+		errStr := fmt.Sprintf("Uplink interface %s not available as bridge for %s",
+			config.Adapter, config.UUID.String())
+		return errors.New(errStr)
+	}
 	return nil
 }
 
