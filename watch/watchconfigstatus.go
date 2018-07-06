@@ -18,6 +18,7 @@ import (
 	"log"
 	"os"
 	"path"
+	"strings"
 	"time"
 )
 
@@ -80,7 +81,8 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 	}
 	// log.Println("WatchConfigStatus added", configDir)
 
-	watchReadDir(configDir, fileChanges, false)
+	foundRestart, foundRestarted := watchReadDir(configDir, fileChanges,
+		false)
 
 	if initialDelete {
 		statusFiles, err := ioutil.ReadDir(statusDir)
@@ -100,6 +102,12 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 	}
 	// Hook to tell restart is done
 	fileChanges <- "R done"
+	if foundRestart {
+		fileChanges <- "M " + "restart"
+	}
+	if foundRestarted {
+		fileChanges <- "M " + "restarted"
+	}
 
 	// Watch for changes or timeout
 	interval := 10 * time.Minute
@@ -125,18 +133,39 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 			if err != nil {
 				log.Fatal(err, "Add: ", configDir)
 			}
-			watchReadDir(configDir, fileChanges, true)
+			foundRestart, foundRestarted := watchReadDir(configDir,
+				fileChanges, true)
+			if foundRestart {
+				fileChanges <- "M " + "restart"
+			}
+			if foundRestarted {
+				fileChanges <- "M " + "restarted"
+			}
 		}
 	}
 }
 
-func watchReadDir(configDir string, fileChanges chan<- string, retry bool) {
+// Only reads json files. Returns restart, restarted booleans if files of those
+// names were found.
+// XXX remove "restart" once no longer needed
+func watchReadDir(configDir string, fileChanges chan<- string, retry bool) (bool, bool) {
+	foundRestart := false
+	foundRestarted := false
 	files, err := ioutil.ReadDir(configDir)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	for _, file := range files {
+		if !strings.HasSuffix(file.Name(), ".json") {
+			if file.Name() == "restart" {
+				foundRestart = true
+			}
+			if file.Name() == "restarted" {
+				foundRestarted = true
+			}
+			continue
+		}
 		if retry {
 			log.Println("watchReadDir retry modified",
 				configDir, file.Name())
@@ -148,6 +177,7 @@ func watchReadDir(configDir string, fileChanges chan<- string, retry bool) {
 	if !retry {
 		log.Printf("watchReadDir done for %s\n", configDir)
 	}
+	return foundRestart, foundRestarted
 }
 
 // Generates 'M' events for all existing and all creates/modify.
@@ -197,10 +227,18 @@ func WatchStatus(statusDir string, fileChanges chan<- string) {
 	}
 	// log.Println("WatchStatus added", statusDir)
 
-	watchReadDir(statusDir, fileChanges, false)
+	foundRestart, foundRestarted := watchReadDir(statusDir, fileChanges,
+		false)
 
 	// Hook to tell restart is done
 	fileChanges <- "R done"
+
+	if foundRestart {
+		fileChanges <- "M " + "restart"
+	}
+	if foundRestarted {
+		fileChanges <- "M " + "restarted"
+	}
 
 	// Watch for changes or timeout
 	interval := 10 * time.Minute
@@ -226,7 +264,14 @@ func WatchStatus(statusDir string, fileChanges chan<- string) {
 			if err != nil {
 				log.Fatal(err, "Add: ", statusDir)
 			}
-			watchReadDir(statusDir, fileChanges, true)
+			foundRestart, foundRestarted := watchReadDir(statusDir,
+				fileChanges, true)
+			if foundRestart {
+				fileChanges <- "M " + "restart"
+			}
+			if foundRestarted {
+				fileChanges <- "M " + "restarted"
+			}
 		}
 	}
 }

@@ -4,17 +4,14 @@
 // Get AppInstanceConfig from zedagent, drive config to Downloader, Verifier,
 // IdentityMgr, and Zedrouter. Collect status from those services and make
 // the combined AppInstanceStatus available to zedagent.
-//
-// This reads AppInstanceConfig from /var/tmp/zedmanager/config/*.json and
-// produces AppInstanceStatus in /var/run/zedmanager/status/*.json.
 
 package zedmanager
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 	"github.com/zededa/go-provision/agentlog"
+	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
@@ -30,10 +27,6 @@ const (
 	agentName  = "zedmanager"
 	moduleName = agentName
 
-	baseDirname              = "/var/tmp/" + agentName
-	runDirname               = "/var/run/" + agentName
-	zedmanagerConfigDirname  = baseDirname + "/config"
-	zedmanagerStatusDirname  = runDirname + "/status"
 	verifierConfigDirname    = "/var/tmp/verifier/config"
 	downloaderConfigDirname  = "/var/tmp/downloader/config"
 	domainmgrConfigDirname   = "/var/tmp/domainmgr/config"
@@ -55,8 +48,10 @@ type dummyContext struct {
 
 // State used by handlers
 type zedmanagerContext struct {
-	configRestarted   bool
-	verifierRestarted bool
+	configRestarted      bool
+	verifierRestarted    bool
+	subAppInstanceConfig *pubsub.Subscription
+	pubAppInstanceStatus *pubsub.Publication
 }
 
 var deviceNetworkStatus types.DeviceNetworkStatus
@@ -103,8 +98,6 @@ func Run() {
 	zedagentCertObjStatusDirname := "/var/run/zedagent/" + certObj + "/status"
 
 	dirs := []string{
-		zedmanagerConfigDirname,
-		zedmanagerStatusDirname,
 		identitymgrConfigDirname,
 		zedrouterConfigDirname,
 		domainmgrConfigDirname,
@@ -137,6 +130,25 @@ func Run() {
 	// Any state needed by handler functions
 	ctx := zedmanagerContext{}
 
+	// Get AppInstanceConfig from zedagent
+	subAppInstanceConfig, err := pubsub.Subscribe("zedagent",
+		types.AppInstanceConfig{}, &ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subAppInstanceConfig.ModifyHandler = handleAppInstanceConfigModify
+	subAppInstanceConfig.DeleteHandler = handleAppInstanceConfigDelete
+	subAppInstanceConfig.RestartHandler = handleConfigRestart
+
+	ctx.subAppInstanceConfig = subAppInstanceConfig
+
+	pubAppInstanceStatus, err := pubsub.Publish(agentName,
+		types.AppInstanceStatus{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubAppInstanceStatus = pubAppInstanceStatus
+
 	verifierChanges := make(chan string)
 	go watch.WatchStatus(verifierAppImgObjStatusDirname, verifierChanges)
 	downloaderChanges := make(chan string)
@@ -147,16 +159,12 @@ func Run() {
 	go watch.WatchStatus(zedrouterStatusDirname, zedrouterChanges)
 	domainmgrChanges := make(chan string)
 	go watch.WatchStatus(domainmgrStatusDirname, domainmgrChanges)
-	configChanges := make(chan string)
-	go watch.WatchConfigStatus(zedmanagerConfigDirname,
-		zedmanagerStatusDirname, configChanges)
 	networkStatusChanges := make(chan string)
 	go watch.WatchStatus(DNSDirname, networkStatusChanges)
 	zedagentCertObjStatusChanges := make(chan string)
 	go watch.WatchStatus(zedagentCertObjStatusDirname,
 		zedagentCertObjStatusChanges)
 
-	var configRestartFn watch.ConfigRestartHandler = handleConfigRestart
 	var verifierRestartedFn watch.StatusRestartHandler = handleVerifierRestarted
 	var identitymgrRestartedFn watch.StatusRestartHandler = handleIdentitymgrRestarted
 	var zedrouterRestartedFn watch.StatusRestartHandler = handleZedrouterRestarted
@@ -239,16 +247,9 @@ func Run() {
 					handleDomainStatusModify,
 					handleDomainStatusDelete, nil)
 			}
-		case change := <-configChanges:
-			{
-				watch.HandleConfigStatusEvent(change, &ctx,
-					zedmanagerConfigDirname,
-					zedmanagerStatusDirname,
-					&types.AppInstanceConfig{},
-					&types.AppInstanceStatus{},
-					handleCreate, handleModify,
-					handleDelete, &configRestartFn)
-			}
+		case change := <-subAppInstanceConfig.C:
+			subAppInstanceConfig.ProcessChange(change)
+
 		case change := <-networkStatusChanges:
 			{
 				watch.HandleStatusEvent(change, dummyContext{},
@@ -261,6 +262,10 @@ func Run() {
 	}
 }
 
+// XXX what does zedagent waiting for verifier already solve?
+// XXX why do we care about configRestarted? Avoid starting domUs which were
+// deleted while we down? But restarted from zedagent isn't sufficient? Need to
+// know it got some config...
 // Propagate a seqence of restart/restarted from the zedmanager config
 // and verifier status to identitymgr, then from identitymgr to zedrouter,
 // and finally from zedrouter to domainmgr.
@@ -304,101 +309,177 @@ func handleZedrouterRestarted(ctxArg interface{}, done bool) {
 	}
 }
 
-func writeAICStatus(status *types.AppInstanceStatus,
-	statusFilename string) {
-	b, err := json.Marshal(status)
-	if err != nil {
-		log.Fatal(err, "json Marshal AppInstanceStatus")
-	}
-	err = pubsub.WriteRename(statusFilename, b)
-	if err != nil {
-		log.Fatal(err, statusFilename)
-	}
+func updateAppInstanceStatus(ctx *zedmanagerContext,
+	status *types.AppInstanceStatus) {
+
+	key := status.UUIDandVersion.UUID.String()
+	log.Printf("updateAppInstanceStatus(%s)\n", key)
+	pub := ctx.pubAppInstanceStatus
+	pub.Publish(key, status)
 }
 
-func writeAppInstanceStatus(status *types.AppInstanceStatus,
-	statusFilename string) {
-	b, err := json.Marshal(status)
-	if err != nil {
-		log.Fatal(err, "json Marshal AppInstanceStatus")
-	}
-	err = pubsub.WriteRename(statusFilename, b)
-	if err != nil {
-		log.Fatal(err, statusFilename)
-	}
+func removeAppInstanceStatus(ctx *zedmanagerContext,
+	status *types.AppInstanceStatus) {
+
+	key := status.UUIDandVersion.UUID.String()
+	log.Printf("removeAppInstanceStatus(%s)\n", key)
+	pub := ctx.pubAppInstanceStatus
+	pub.Unpublish(key)
 }
 
-func handleCreate(ctxArg interface{}, statusFilename string,
-	configArg interface{}) {
-	config := configArg.(*types.AppInstanceConfig)
+// Determine whether it is an create or modify
+func handleAppInstanceConfigModify(ctxArg interface{}, key string, configArg interface{}) {
+
+	log.Printf("handleAppInstanceConfigModify(%s)\n", key)
+	ctx := ctxArg.(*zedmanagerContext)
+	config := cast.CastAppInstanceConfig(configArg)
+	if config.UUIDandVersion.UUID.String() != key {
+		log.Printf("handleAppInstanceConfigModify key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, config.UUIDandVersion.UUID.String(), config)
+		return
+	}
+	status := lookupAppInstanceStatus(ctx, key)
+	if status == nil {
+		handleCreate(ctx, key, config)
+	} else {
+		handleModify(ctx, key, config, status)
+	}
+	log.Printf("handleAppInstanceConfigModify(%s) done\n", key)
+}
+
+func handleAppInstanceConfigDelete(ctxArg interface{}, key string) {
+	log.Printf("handleAppInstanceConfigDelete(%s)\n", key)
+	ctx := ctxArg.(*zedmanagerContext)
+	status := lookupAppInstanceStatus(ctx, key)
+	if status == nil {
+		log.Printf("handleAppInstanceConfigDelete: unknown %s\n", key)
+		return
+	}
+	handleDelete(ctx, key, status)
+	log.Printf("handleAppInstanceConfigDelete(%s) done\n", key)
+}
+
+// Callers must be careful to publish any changes to NetworkObjectStatus
+func lookupAppInstanceStatus(ctx *zedmanagerContext, key string) *types.AppInstanceStatus {
+
+	pub := ctx.pubAppInstanceStatus
+	st, _ := pub.Get(key)
+	if st == nil {
+		log.Printf("lookupAppInstanceStatus(%s) not found\n", key)
+		return nil
+	}
+	status := cast.CastAppInstanceStatus(st)
+	if status.UUIDandVersion.UUID.String() != key {
+		log.Printf("lookupAppInstanceStatus(%s) got %s; ignored %+v\n",
+			key, status.UUIDandVersion.UUID.String(), status)
+		return nil
+	}
+	return &status
+}
+
+func lookupAppInstanceConfig(ctx *zedmanagerContext, key string) *types.AppInstanceConfig {
+
+	sub := ctx.subAppInstanceConfig
+	c, _ := sub.Get(key)
+	if c == nil {
+		log.Printf("lookupAppInstanceConfig(%s) not found\n", key)
+		return nil
+	}
+	config := cast.CastAppInstanceConfig(c)
+	if config.UUIDandVersion.UUID.String() != key {
+		log.Printf("lookupAppInstanceConfig(%s) got %s; ignored %+v\n",
+			key, config.UUIDandVersion.UUID.String(), config)
+		return nil
+	}
+	return &config
+}
+
+func handleCreate(ctx *zedmanagerContext, key string,
+	config types.AppInstanceConfig) {
 
 	log.Printf("handleCreate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
-	addOrUpdateConfig(config.UUIDandVersion.UUID.String(), *config)
+	status := types.AppInstanceStatus{
+		UUIDandVersion: config.UUIDandVersion,
+		DisplayName:    config.DisplayName,
+	}
 
-	// Note that the status is written as we handle updates from the
-	// other services
+	status.StorageStatusList = make([]types.StorageStatus,
+		len(config.StorageConfigList))
+	for i, sc := range config.StorageConfigList {
+		ss := &status.StorageStatusList[i]
+		ss.DownloadURL = sc.DownloadURL
+		ss.ImageSha256 = sc.ImageSha256
+		ss.Target = sc.Target
+	}
+	status.EIDList = make([]types.EIDStatusDetails,
+		len(config.OverlayNetworkList))
+
+	updateAppInstanceStatus(ctx, &status)
+
+	uuidStr := status.UUIDandVersion.UUID.String()
+	changed := doUpdate(uuidStr, config, &status)
+	if changed {
+		log.Printf("handleCreate status change for %s\n",
+			uuidStr)
+		updateAppInstanceStatus(ctx, &status)
+	}
 	log.Printf("handleCreate done for %s\n", config.DisplayName)
 }
 
-func handleModify(ctxArg interface{}, statusFilename string,
-	configArg interface{}, statusArg interface{}) {
-	config := configArg.(*types.AppInstanceConfig)
-	status := statusArg.(*types.AppInstanceStatus)
+func handleModify(ctx *zedmanagerContext, key string,
+	config types.AppInstanceConfig, status *types.AppInstanceStatus) {
 	log.Printf("handleModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
-	if config.UUIDandVersion.Version == status.UUIDandVersion.Version {
-		log.Printf("Same version %s for %s\n",
-			config.UUIDandVersion.Version, statusFilename)
-		return
-	}
+	// XXX handle at least ACL and activate changes. What else?
 
 	status.UUIDandVersion = config.UUIDandVersion
-	writeAppInstanceStatus(status, statusFilename)
+	updateAppInstanceStatus(ctx, status)
 
-	addOrUpdateConfig(config.UUIDandVersion.UUID.String(), *config)
-	// Note that the status is written as we handle updates from the
-	// other services
+	uuidStr := status.UUIDandVersion.UUID.String()
+	changed := doUpdate(uuidStr, config, status)
+	if changed {
+		log.Printf("handleModify status change for %s\n",
+			uuidStr)
+		updateAppInstanceStatus(ctx, status)
+	}
 	log.Printf("handleModify done for %s\n", config.DisplayName)
 }
 
-func handleDelete(ctxArg interface{}, statusFilename string,
-	statusArg interface{}) {
-	status := statusArg.(*types.AppInstanceStatus)
+func handleDelete(ctx *zedmanagerContext, key string,
+	status *types.AppInstanceStatus) {
 	log.Printf("handleDelete(%v) for %s\n",
 		status.UUIDandVersion, status.DisplayName)
 
-	writeAppInstanceStatus(status, statusFilename)
-
-	removeConfig(status.UUIDandVersion.UUID.String())
+	removeAIStatus(ctx, status)
 	log.Printf("handleDelete done for %s\n", status.DisplayName)
 }
 
-func handleDNSModify(ctxArg interface{}, statusFilename string,
+func handleDNSModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	status := statusArg.(*types.DeviceNetworkStatus)
 
-	if statusFilename != "global" {
+	if key != "global" {
 		if debug {
 			log.Printf("handleDNSModify: ignoring %s\n",
-				statusFilename)
+				key)
 		}
 		return
 	}
-	log.Printf("handleDNSModify for %s\n", statusFilename)
+	log.Printf("handleDNSModify for %s\n", key)
 	deviceNetworkStatus = *status
-	log.Printf("handleDNSModify done for %s\n", statusFilename)
+	log.Printf("handleDNSModify done for %s\n", key)
 }
 
-func handleDNSDelete(ctxArg interface{}, statusFilename string) {
-	log.Printf("handleDNSDelete for %s\n", statusFilename)
+func handleDNSDelete(ctxArg interface{}, key string) {
+	log.Printf("handleDNSDelete for %s\n", key)
 
-	if statusFilename != "global" {
-		log.Printf("handleDNSDelete: ignoring %s\n", statusFilename)
+	if key != "global" {
+		log.Printf("handleDNSDelete: ignoring %s\n", key)
 		return
 	}
 	deviceNetworkStatus = types.DeviceNetworkStatus{}
-	log.Printf("handleDNSDelete done for %s\n", statusFilename)
+	log.Printf("handleDNSDelete done for %s\n", key)
 }

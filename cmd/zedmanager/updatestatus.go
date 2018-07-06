@@ -5,132 +5,22 @@ package zedmanager
 
 import (
 	"fmt"
+	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/types"
 	"log"
-	"os"
-	"reflect"
 	"time"
 )
 
-// Maps from UUID (key) to AIConfig and AIStatus
-var AIC map[string]types.AppInstanceConfig
-var AIS map[string]types.AppInstanceStatus
-
-func initMaps() {
-	if AIC == nil {
-		if debug {
-			log.Printf("create AIC map\n")
-		}
-		AIC = make(map[string]types.AppInstanceConfig)
-	}
-	if AIS == nil {
-		if debug {
-			log.Printf("create AIS map\n")
-		}
-		AIS = make(map[string]types.AppInstanceStatus)
-	}
-}
-
-func addOrUpdateConfig(uuidStr string, config types.AppInstanceConfig) {
-	log.Printf("addOrUpdateConfig for %s\n", uuidStr)
-
-	initMaps()
-
-	changed := false
-	added := false
-	if m, ok := AIC[uuidStr]; ok {
-		// XXX or just compare version like elsewhere?
-		// XXX switch to Equal?
-		if !reflect.DeepEqual(m, config) {
-			log.Printf("AI config changed for %s\n", uuidStr)
-			changed = true
-		}
-	} else {
-		if debug {
-			log.Printf("AI config add for %s\n", uuidStr)
-		}
-		changed = true
-		added = true
-	}
-	if changed {
-		AIC[uuidStr] = config
-	}
-	if added {
-		if _, ok := AIS[uuidStr]; !ok {
-			status := types.AppInstanceStatus{
-				UUIDandVersion: config.UUIDandVersion,
-				DisplayName:    config.DisplayName,
-			}
-
-			status.StorageStatusList = make([]types.StorageStatus,
-				len(config.StorageConfigList))
-			for i, sc := range config.StorageConfigList {
-				ss := &status.StorageStatusList[i]
-				ss.DownloadURL = sc.DownloadURL
-				ss.ImageSha256 = sc.ImageSha256
-				ss.Target = sc.Target
-			}
-			status.EIDList = make([]types.EIDStatusDetails,
-				len(config.OverlayNetworkList))
-
-			AIS[uuidStr] = status
-			statusFilename := fmt.Sprintf("%s/%s.json",
-				zedmanagerStatusDirname, uuidStr)
-			writeAppInstanceStatus(&status, statusFilename)
-		}
-	}
-
-	if changed {
-		updateAIStatusUUID(uuidStr)
-	}
-	log.Printf("addOrUpdateConfig done for %s\n", uuidStr)
-}
-
-func removeConfig(uuidStr string) {
-	log.Printf("removeConfig for %s\n", uuidStr)
-
-	if _, ok := AIC[uuidStr]; !ok {
-		log.Printf("AI config missing for remove for %s\n", uuidStr)
-		return
-	}
-	delete(AIC, uuidStr)
-	removeAIStatusUUID(uuidStr)
-	log.Printf("removeConfig done for %s\n", uuidStr)
-}
-
-func addOrUpdateStatus(uuidStr string, status types.AppInstanceStatus) {
-	log.Printf("addOrUpdateStatus for %s\n", uuidStr)
-
-	initMaps()
-
-	changed := false
-	if m, ok := AIS[uuidStr]; ok {
-		// XXX switch to Equal?
-		if reflect.DeepEqual(m, status) {
-			log.Printf("AI status changed for %s\n", uuidStr)
-			changed = true
-		}
-	} else {
-		if debug {
-			log.Printf("AI status add for %s\n", uuidStr)
-		}
-		changed = true
-	}
-	if changed {
-		AIS[uuidStr] = status
-		statusFilename := fmt.Sprintf("%s/%s.json",
-			zedmanagerStatusDirname, uuidStr)
-		writeAppInstanceStatus(&status, statusFilename)
-	}
-}
-
-// Find all the AIStatus which refer to this safename.
-func updateAIStatusSafename(safename string) {
+// Find all the config and config which refer to this safename.
+func updateAIStatusSafename(ctx *zedmanagerContext, safename string) {
 	log.Printf("updateAIStatusSafename for %s\n", safename)
 
-	for _, config := range AIC {
+	sub := ctx.subAppInstanceConfig
+	items := sub.GetAll()
+	for _, c := range items {
+		config := cast.CastAppInstanceConfig(c)
 		if debug {
-			log.Printf("found AIC for UUID %s\n",
+			log.Printf("Processing AppInstanceConfig for UUID %s\n",
 				config.UUIDandVersion.UUID)
 		}
 		for _, sc := range config.StorageConfigList {
@@ -138,77 +28,74 @@ func updateAIStatusSafename(safename string) {
 			if safename == safename2 {
 				log.Printf("Found StorageConfig URL %s safename %s\n",
 					sc.DownloadURL, safename2)
-				updateAIStatusUUID(config.UUIDandVersion.UUID.String())
-				break
+				updateAIStatusUUID(ctx,
+					config.UUIDandVersion.UUID.String())
 			}
 		}
 	}
 }
 
-// Update the state for this AIS and generate config updates to
+// Update this AppInstanceStatus generate config updates to
 // the microservices
-func updateAIStatusUUID(uuidStr string) {
-	config, ok := AIC[uuidStr]
-	if !ok {
-		log.Printf("updateAIStatusUUID for %s: Missing AI Config\n",
+func updateAIStatusUUID(ctx *zedmanagerContext, uuidStr string) {
+	config := lookupAppInstanceConfig(ctx, uuidStr)
+	if config == nil {
+		log.Printf("updateAIStatusUUID for %s: Missing AppInstanceConfig\n",
 			uuidStr)
 		return
 	}
-	status, ok := AIS[uuidStr]
-	if !ok {
-		log.Printf("updateAIStatusUUID for %s: Missing AI Status\n",
+	status := lookupAppInstanceStatus(ctx, uuidStr)
+	if status == nil {
+		log.Printf("updateAIStatusUUID for %s: Missing AppInstanceStatus\n",
 			uuidStr)
 		return
 	}
-	changed := doUpdate(uuidStr, config, &status)
+	changed := doUpdate(uuidStr, *config, status)
 	if changed {
 		log.Printf("updateAIStatusUUID status change for %s\n",
 			uuidStr)
-		AIS[uuidStr] = status
-		statusFilename := fmt.Sprintf("%s/%s.json",
-			zedmanagerStatusDirname, uuidStr)
-		writeAppInstanceStatus(&status, statusFilename)
+		updateAppInstanceStatus(ctx, status)
 	}
 }
 
-// remove the state for this AIS and generate config removes for
+// Remove this AppInstanceStatus and generate config removes for
 // the microservices
-func removeAIStatusUUID(uuidStr string) {
-	status, ok := AIS[uuidStr]
-	if !ok {
-		log.Printf("removeAIStatusUUID for %s: Missing AI Status\n",
+func removeAIStatusUUID(ctx *zedmanagerContext, uuidStr string) {
+	status := lookupAppInstanceStatus(ctx, uuidStr)
+	if status == nil {
+		log.Printf("removeAIStatusUUID for %s: Missing AppInstanceStatus\n",
 			uuidStr)
 		return
 	}
-	changed, del := doRemove(uuidStr, &status)
+	removeAIStatus(ctx, status)
+}
+
+func removeAIStatus(ctx *zedmanagerContext, status *types.AppInstanceStatus) {
+	uuidStr := status.UUIDandVersion.UUID.String()
+	changed, del := doRemove(uuidStr, status)
 	if changed {
-		log.Printf("removeAIStatusUUID status change for %s\n",
+		log.Printf("removeAIStatus status change for %s\n",
 			uuidStr)
-		AIS[uuidStr] = status
-		statusFilename := fmt.Sprintf("%s/%s.json",
-			zedmanagerStatusDirname, uuidStr)
-		writeAppInstanceStatus(&status, statusFilename)
+		updateAppInstanceStatus(ctx, status)
 	}
 	if del {
-		log.Printf("removeAIStatusUUID remove done for %s\n",
+		log.Printf("removeAIStatus remove done for %s\n",
 			uuidStr)
 		// Write out what we modified to AppInstanceStatus aka delete
-		statusFilename := fmt.Sprintf("%s/%s.json",
-			zedmanagerStatusDirname, uuidStr)
-		if err := os.Remove(statusFilename); err != nil {
-			log.Println(err)
-		}
-		delete(AIS, uuidStr)
+		removeAppInstanceStatus(ctx, status)
 	}
 }
 
-// Find all the AIStatus which refer to this safename.
-func removeAIStatusSafename(safename string) {
+// Find all the Status which refer to this safename.
+func removeAIStatusSafename(ctx *zedmanagerContext, safename string) {
 	log.Printf("removeAIStatusSafename for %s\n", safename)
 
-	for _, status := range AIS {
+	pub := ctx.pubAppInstanceStatus
+	items := pub.GetAll()
+	for _, st := range items {
+		status := cast.CastAppInstanceStatus(st)
 		if debug {
-			log.Printf("found AIS for UUID %s\n",
+			log.Printf("Processing AppInstanceStatus for UUID %s\n",
 				status.UUIDandVersion.UUID)
 		}
 		for _, ss := range status.StorageStatusList {
@@ -218,8 +105,7 @@ func removeAIStatusSafename(safename string) {
 					log.Printf("Found StorageStatus URL %s safename %s\n",
 						ss.DownloadURL, safename2)
 				}
-				removeAIStatusUUID(status.UUIDandVersion.UUID.String())
-				break
+				removeAIStatus(ctx, &status)
 			}
 		}
 	}
@@ -230,7 +116,7 @@ func doUpdate(uuidStr string, config types.AppInstanceConfig,
 	log.Printf("doUpdate for %s\n", uuidStr)
 
 	// The existence of Config is interpreted to mean the
-	// AI should be INSTALLED. Activate is checked separately.
+	// AppInstance should be INSTALLED. Activate is checked separately.
 	changed, done := doInstall(uuidStr, config, status)
 	if !done {
 		return changed
@@ -471,7 +357,7 @@ func doInstall(uuidStr string, config types.AppInstanceConfig,
 		MaybeAddEIDConfig(config.UUIDandVersion,
 			config.DisplayName, &ec)
 	}
-	// Check EIDStatus for each overlay; update AI status
+	// Check EIDStatus for each overlay; update AppInstanceStatus
 	eidsAllocated := true
 	for i, ec := range config.OverlayNetworkList {
 		key := fmt.Sprintf("%s:%d",
@@ -548,7 +434,7 @@ func doActivate(uuidStr string, config types.AppInstanceConfig,
 		return changed
 	}
 
-	// Check DomainStatus; update AI status if error
+	// Check DomainStatus; update AppInstanceStatus if error
 	ds, err := LookupDomainStatus(uuidStr)
 	if err != nil {
 		log.Printf("Waiting for DomainStatus for %s\n", uuidStr)
@@ -624,7 +510,7 @@ func doInactivate(uuidStr string, status *types.AppInstanceStatus) bool {
 	// First halt the domain
 	MaybeRemoveDomainConfig(uuidStr)
 
-	// Check if DomainStatus gone; update AI status if error
+	// Check if DomainStatus gone; update AppInstanceStatus if error
 	ds, err := LookupDomainStatus(uuidStr)
 	if err == nil {
 		log.Printf("Waiting for DomainStatus removal for %s\n", uuidStr)
@@ -680,7 +566,7 @@ func doUninstall(uuidStr string, status *types.AppInstanceStatus) (bool, bool) {
 	for _, es := range status.EIDList {
 		MaybeRemoveEIDConfig(status.UUIDandVersion, &es)
 	}
-	// Check EIDStatus for each overlay; update AI status
+	// Check EIDStatus for each overlay; update AppInstanceStatus
 	eidsFreed := true
 	for i, es := range status.EIDList {
 		es, err := LookupEIDStatus(status.UUIDandVersion, es.IID)

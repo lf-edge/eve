@@ -122,6 +122,7 @@ func dumpVerifierStatus() {
 func handleVerifyImageStatusModify(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
 	status := statusArg.(*types.VerifyImageStatus)
+	ctx := ctxArg.(*zedmanagerContext)
 	log.Printf("handleVerifyImageStatusModify for %s\n",
 		status.Safename)
 	// Ignore if any Pending* flag is set
@@ -158,7 +159,7 @@ func handleVerifyImageStatusModify(ctxArg interface{}, statusFilename string,
 				key, status.ImageSha256, status.Safename)
 			dumpVerifierStatus()
 		}
-		updateAIStatusSafename(key)
+		updateAIStatusSafename(ctx, key)
 	}
 	log.Printf("handleVerifyImageStatusModify done for %s\n",
 		status.Safename)
@@ -221,6 +222,7 @@ func handleVerifyImageStatusDelete(ctxArg interface{}, statusFilename string) {
 	log.Printf("handleVerifyImageStatusDelete for %s\n",
 		statusFilename)
 
+	ctx := ctxArg.(*zedmanagerContext)
 	key := statusFilename
 	if m, ok := verifierStatus[key]; !ok {
 		log.Printf("handleVerifyImageStatusDelete for %s - not found\n",
@@ -234,7 +236,7 @@ func handleVerifyImageStatusDelete(ctxArg interface{}, statusFilename string) {
 			log.Printf("Deleted verifierStatus key %v\n", key)
 			dumpVerifierStatus()
 		}
-		removeAIStatusSafename(key)
+		removeAIStatusSafename(ctx, key)
 	}
 	log.Printf("handleVerifyImageStatusDelete done for %s\n",
 		statusFilename)

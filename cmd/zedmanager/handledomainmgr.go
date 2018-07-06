@@ -184,6 +184,7 @@ var domainStatus map[string]types.DomainStatus
 func handleDomainStatusModify(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
 	status := statusArg.(*types.DomainStatus)
+	ctx := ctxArg.(*zedmanagerContext)
 	key := status.UUIDandVersion.UUID.String()
 	log.Printf("handleDomainStatusModify for %s\n", key)
 	// Ignore if any Pending* flag is set
@@ -200,7 +201,7 @@ func handleDomainStatusModify(ctxArg interface{}, statusFilename string,
 		domainStatus = make(map[string]types.DomainStatus)
 	}
 	domainStatus[key] = *status
-	updateAIStatusUUID(status.UUIDandVersion.UUID.String())
+	updateAIStatusUUID(ctx, status.UUIDandVersion.UUID.String())
 
 	log.Printf("handleDomainStatusModify done for %s\n", key)
 }
@@ -216,6 +217,7 @@ func LookupDomainStatus(uuidStr string) (types.DomainStatus, error) {
 func handleDomainStatusDelete(ctxArg interface{}, statusFilename string) {
 	log.Printf("handleDomainStatusDelete for %s\n", statusFilename)
 
+	ctx := ctxArg.(*zedmanagerContext)
 	key := statusFilename
 	if m, ok := domainStatus[key]; !ok {
 		log.Printf("handleDomainStatusDelete for %s - not found\n",
@@ -225,7 +227,7 @@ func handleDomainStatusDelete(ctxArg interface{}, statusFilename string) {
 			log.Printf("Domain map delete for %v\n", key)
 		}
 		delete(domainStatus, key)
-		removeAIStatusUUID(m.UUIDandVersion.UUID.String())
+		removeAIStatusUUID(ctx, m.UUIDandVersion.UUID.String())
 	}
 	log.Printf("handleDomainStatusDelete done for %s\n",
 		statusFilename)

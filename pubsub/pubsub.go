@@ -22,20 +22,18 @@ import (
 	"time"
 )
 
-// XXX what do we need for restart/restarted?
-// XXX add functions; xxx vs. a key called "restart" and "restarted"? Would allow "global"?
-// XXX how to structure to have config and status? Matters for create vs. modify
-// notifications. Should we put that in a layer on top if the pubsub?
-
 // XXX add protocol over AF_UNIX later
 // "sync request", ... "update" "delete" followed by key then val
 // "sync done" once all have sent
+// Plus "restart" if application calls SignalRestarted()
+// After end of sync (aka ReadDir processing) then look for explicit application
+// restart/restarted signal.
 
 // Maintain a collection which is used to handle the restart of a subscriber
 // map of agentname, key to get a json string
 type keyMap struct {
-	// XXX restarted bool
-	key map[string]interface{}
+	restarted bool
+	key       map[string]interface{}
 }
 
 // We always publish to our collection.
@@ -50,6 +48,9 @@ const debug = false // XXX setable?
 // Usage:
 //  p1, err := pubsub.Publish("foo", fooStruct{})
 //  ...
+//  // Optional
+//  p1.SignalRestarted()
+//  ...
 //  p1.Publish(key, item)
 //  p1.Unpublish(key) to delete
 //
@@ -60,49 +61,61 @@ type Publication struct {
 	// Private fields
 	topicType  interface{}
 	agentName  string
-	agentScope string // XXX objType
+	agentScope string // XXX use for objType
 	topic      string
 	km         keyMap
 	sockName   string
 	listener   net.Listener
 }
 
+func Publish(agentName string, topicType interface{}) (*Publication, error) {
+	return publishImpl(agentName, "", topicType)
+}
+
+func PublishScope(agentName string, agentScope string, topicType interface{}) (*Publication, error) {
+	return publishImpl(agentName, agentScope, topicType)
+}
+
 // Init function to create directory and socket listener based on above settings
 // XXX should read current state from dirName and insert in pub.km as initial
-// values.
-// XXX add agentScope aka objType
-func Publish(agentName string, topicType interface{}) (*Publication, error) {
+// values. XXX also read restarted file to set restarted?
+func publishImpl(agentName string, agentScope string,
+	topicType interface{}) (*Publication, error) {
+
 	topic := TypeToName(topicType)
-	log.Printf("Publish(%s, %s)\n", agentName, topic)
-	// We always write to the directory as a checkpoint
-	dirName := PubDirName(agentName, topic)
-	if _, err := os.Stat(dirName); err != nil {
-		log.Printf("Publish Create %s\n", dirName)
-		if err := os.MkdirAll(dirName, 0700); err != nil {
-			errStr := fmt.Sprintf("Publish(%s, %s): %s",
-				agentName, topic, err)
-			return nil, errors.New(errStr)
-		}
-	}
 	pub := new(Publication)
 	pub.topicType = topicType
 	pub.agentName = agentName
+	pub.agentScope = agentScope
 	pub.topic = topic
 	pub.km = keyMap{key: make(map[string]interface{})}
+	name := pub.nameString()
 
+	log.Printf("Publish(%s)\n", name)
+
+	// We always write to the directory as a checkpoint
+	dirName := PubDirName(name)
+	if _, err := os.Stat(dirName); err != nil {
+		log.Printf("Publish Create %s\n", dirName)
+		if err := os.MkdirAll(dirName, 0700); err != nil {
+			errStr := fmt.Sprintf("Publish(%s): %s",
+				name, err)
+			return nil, errors.New(errStr)
+		}
+	}
 	if publishToSock {
-		sockName := SockName(agentName, topic)
+		sockName := SockName(name)
 		if _, err := os.Stat(sockName); err == nil {
 			if err := os.Remove(sockName); err != nil {
-				errStr := fmt.Sprintf("Publish(%s, %s): %s",
-					agentName, topic, err)
+				errStr := fmt.Sprintf("Publish(%s): %s",
+					name, err)
 				return nil, errors.New(errStr)
 			}
 		}
 		s, err := net.Listen("unix", sockName)
 		if err != nil {
-			errStr := fmt.Sprintf("Publish(%s/%s): failed %s",
-				agentName, topic, err)
+			errStr := fmt.Sprintf("Publish(%s): failed %s",
+				name, err)
 			return nil, errors.New(errStr)
 		}
 		pub.sockName = sockName
@@ -116,11 +129,11 @@ func Publish(agentName string, topicType interface{}) (*Publication, error) {
 // XXX would need some synchronization on the accesses to the published
 // collection?
 func (pub *Publication) publisher() {
+	name := pub.nameString()
 	for {
 		c, err := pub.listener.Accept()
 		if err != nil {
-			log.Printf("publisher(%s/%s) failed %s\n",
-				pub.agentName, pub.topic, err)
+			log.Printf("publisher(%s) failed %s\n", name, err)
 			continue
 		}
 		go pub.serveConnection(c)
@@ -129,20 +142,19 @@ func (pub *Publication) publisher() {
 
 // XXX can't close if we serve updates
 func (pub *Publication) serveConnection(s net.Conn) {
-	agentName := pub.agentName
-	topic := pub.topic
-	log.Printf("serveConnection(%s/%s)\n", agentName, topic)
+	name := pub.nameString()
+	log.Printf("serveConnection(%s)\n", name)
 	defer s.Close()
 
-	_, err := s.Write([]byte(fmt.Sprintf("Hello from %s for %s\n", agentName, topic)))
+	_, err := s.Write([]byte(fmt.Sprintf("Hello from %s\n", name)))
 	if err != nil {
-		log.Printf("serveConnection(%s/%s) failed %s\n",
-			agentName, topic, err)
+		log.Printf("serveConnection(%s) failed %s\n",
+			name, err)
 	}
 	err = pub.serialize(s)
 	if err != nil {
-		log.Printf("serveConnection(%s/%s) failed %s\n",
-			agentName, topic, err)
+		log.Printf("serveConnection(%s) failed %s\n",
+			name, err)
 	}
 }
 
@@ -152,53 +164,60 @@ func TypeToName(something interface{}) string {
 	return out[len(out)-1]
 }
 
-// XXX add agentScope aka objType
-func SockName(agentName string, topic string) string {
-	return fmt.Sprintf("/var/run/%s/%s.sock", agentName, topic)
+func SockName(name string) string {
+	return fmt.Sprintf("/var/run/%s.sock", name)
 }
 
-// XXX add agentScope aka objType
-func PubDirName(agentName string, topic string) string {
-	return fmt.Sprintf("/var/run/%s/%s", agentName, topic)
+func PubDirName(name string) string {
+	return fmt.Sprintf("/var/run/%s", name)
+}
+
+func (pub *Publication) nameString() string {
+	if pub.agentScope == "" {
+		return fmt.Sprintf("%s/%s", pub.agentName, pub.topic)
+	} else {
+		return fmt.Sprintf("%s/%s/%s", pub.agentName, pub.agentScope,
+			pub.topic)
+	}
 }
 
 func (pub *Publication) Publish(key string, item interface{}) error {
-	agentName := pub.agentName
 	topic := TypeToName(item)
+	name := pub.nameString()
 	if topic != pub.topic {
-		// XXX add agentScope aka objType
-		errStr := fmt.Sprintf("Publish(%s/%s): item is wrong topic %s",
-			agentName, pub.topic, topic)
+		errStr := fmt.Sprintf("Publish(%s): item is wrong topic %s",
+			name, topic)
 		return errors.New(errStr)
 	}
+	// Perform a deepCopy so the Equal check will work
+	newItem := deepCopy(item)
 	if m, ok := pub.km.key[key]; ok {
-		// XXX fails to equal on e.g., /var/run/downloader/metricsMap/global.json
-		if cmp.Equal(m, item) {
+		if cmp.Equal(m, newItem) {
 			if debug {
-				log.Printf("Publish(%s/%s/%s) unchanged\n",
-					agentName, topic, key)
+				log.Printf("Publish(%s/%s) unchanged\n",
+					name, key)
 			}
 			return nil
 		}
 		if debug {
-			log.Printf("Publish(%s/%s/%s) replacing due to diff %s\n",
-				agentName, topic, key, cmp.Diff(m, item))
+			log.Printf("Publish(%s/%s) replacing due to diff %s\n",
+				name, key, cmp.Diff(m, newItem))
 		}
 	} else if debug {
-		log.Printf("Publish(%s/%s/%s) adding %+v\n",
-			agentName, topic, key, item)
+		log.Printf("Publish(%s/%s) adding %+v\n",
+			name, key, newItem)
 	}
-	// Perform a deep copy so the above Equal check will work
-	pub.km.key[key] = deepCopy(item)
+	pub.km.key[key] = newItem
 
 	if debug {
 		pub.dump("after Publish")
 	}
-	dirName := PubDirName(agentName, topic)
+	dirName := PubDirName(name)
 	fileName := dirName + "/" + key + ".json"
 	if debug {
 		log.Printf("Publish writing %s\n", fileName)
 	}
+	// XXX already did a marshal in deepCopy; save that result?
 	b, err := json.Marshal(item)
 	if err != nil {
 		log.Fatal(err, "json Marshal in Publish")
@@ -254,17 +273,15 @@ func deepCopy(in interface{}) interface{} {
 }
 
 func (pub *Publication) Unpublish(key string) error {
-	agentName := pub.agentName
-	topic := pub.topic
+	name := pub.nameString()
 	if m, ok := pub.km.key[key]; ok {
 		if debug {
-			log.Printf("Unpublish(%s/%s/%s) removing %+v\n",
-				agentName, topic, key, m)
+			log.Printf("Unpublish(%s/%s) removing %+v\n",
+				name, key, m)
 		}
 	} else {
-		// XXX add agentScope aka objType
 		errStr := fmt.Sprintf("Unpublish(%s/%s): key %s does not exist",
-			agentName, pub.topic, key)
+			name, key)
 		log.Printf("XXX %s\n", errStr)
 		return errors.New(errStr)
 	}
@@ -272,23 +289,71 @@ func (pub *Publication) Unpublish(key string) error {
 	if debug {
 		pub.dump("after Unpublish")
 	}
-	dirName := PubDirName(agentName, topic)
+	dirName := PubDirName(name)
 	fileName := dirName + "/" + key + ".json"
 	if debug {
 		log.Printf("Unpublish deleting file %s\n", fileName)
 	}
 	if err := os.Remove(fileName); err != nil {
-		// XXX add agentScope aka objType
 		errStr := fmt.Sprintf("Unpublish(%s/%s): failed %s",
-			agentName, pub.topic, err)
+			name, key, err)
 		return errors.New(errStr)
 	}
 	// XXX send update to all listeners - how? channel to listener -> connections?
 	return nil
 }
 
+func (pub *Publication) SignalRestarted() error {
+	if debug {
+		log.Printf("pub.SignalRestarted(%s)\n", pub.nameString())
+	}
+	return pub.restartImpl(true)
+}
+
+func (pub *Publication) ClearRestarted() error {
+	if debug {
+		log.Printf("pub.ClearRestarted(%s)\n", pub.nameString())
+	}
+	return pub.restartImpl(false)
+}
+
+// Record the restarted state and send over socket/file.
+// XXX TBD when sending/resynchronizing send the restarted indication last
+func (pub *Publication) restartImpl(restarted bool) error {
+	name := pub.nameString()
+	log.Printf("pub.restartImpl(%s, %v)\n", name, restarted)
+	if restarted == pub.km.restarted {
+		log.Printf("pub.restartImpl(%s, %v) value unchanged\n",
+			name, restarted)
+		return nil
+	}
+	pub.km.restarted = restarted
+
+	// XXX socket case?
+	// XXX send update to all listeners - how? channel to listener -> connections?
+	dirName := PubDirName(name)
+	restartFile := dirName + "/" + "restarted"
+	if restarted {
+		f, err := os.OpenFile(restartFile, os.O_RDONLY|os.O_CREATE, 0600)
+		if err != nil {
+			errStr := fmt.Sprintf("pub.restartImpl(%s): openfile failed %s",
+				name, err)
+			return errors.New(errStr)
+		}
+		f.Close()
+	} else {
+		if err := os.Remove(restartFile); err != nil {
+			errStr := fmt.Sprintf("pub.restartImpl(%s): remove failed %s",
+				name, err)
+			return errors.New(errStr)
+		}
+	}
+	return nil
+}
+
 func (pub *Publication) serialize(sock net.Conn) error {
-	log.Printf("serialize(%s/%s)\n", pub.agentName, pub.topic)
+	name := pub.nameString()
+	log.Printf("serialize(%s)\n", name)
 	for key, s := range pub.km.key {
 		b, err := json.Marshal(s)
 		if err != nil {
@@ -296,8 +361,16 @@ func (pub *Publication) serialize(sock net.Conn) error {
 		}
 		_, err = sock.Write([]byte(fmt.Sprintf("key %s val %s\n", key, b)))
 		if err != nil {
-			log.Printf("serialize(%s/%s) write failed %s\n",
-				pub.agentName, pub.topic, err)
+			log.Printf("serialize(%s) write failed %s\n",
+				name, err)
+			return err
+		}
+	}
+	if pub.km.restarted {
+		_, err := sock.Write([]byte(fmt.Sprintf("restarted\n")))
+		if err != nil {
+			log.Printf("serialize(%s) write failed %s\n",
+				name, err)
 			return err
 		}
 	}
@@ -305,7 +378,8 @@ func (pub *Publication) serialize(sock net.Conn) error {
 }
 
 func (pub *Publication) dump(infoStr string) {
-	log.Printf("dump(%s/%s) %s\n", pub.agentName, pub.topic, infoStr)
+	name := pub.nameString()
+	log.Printf("dump(%s) %s\n", name, infoStr)
 	for key, s := range pub.km.key {
 		b, err := json.Marshal(s)
 		if err != nil {
@@ -315,19 +389,17 @@ func (pub *Publication) dump(infoStr string) {
 	}
 }
 
-// XXX add agentScope aka objType
 func (pub *Publication) Get(key string) (interface{}, error) {
 	m, ok := pub.km.key[key]
 	if ok {
 		return m, nil
 	} else {
-		errStr := fmt.Sprintf("Get(%s/%s) unknown key %s",
-			pub.agentName, pub.topic, key)
+		name := pub.nameString()
+		errStr := fmt.Sprintf("Get(%s) unknown key %s", name, key)
 		return nil, errors.New(errStr)
 	}
 }
 
-// XXX add agentScope aka objType
 // Enumerate all the key, value for the collection
 func (pub *Publication) GetAll() map[string]interface{} {
 	result := make(map[string]interface{})
@@ -340,69 +412,100 @@ func (pub *Publication) GetAll() map[string]interface{} {
 // Usage:
 //  s1 := pubsub.Subscribe("foo", fooStruct{})
 //  s1.ModifyHandler = func(...) // Optional
+//  s1.DeleteHandler = func(...) // Optional
+//  s1.RestartHandler = func(...) // Optional
 //  select {
 //     change := <- s1.C:
 //         s1.ProcessChange(change, ctx)
 //  }
-//  foo := s1.Get(key) // Optional
+//  The ProcessChange function calls the various handlers (if set) and updates
+//  the subscribed collection. The subscribed collection can be accessed using:
+//  foo := s1.Get(key)
 //  fooAll := s1.GetAll()
 
 type SubModifyHandler func(ctx interface{}, key string, status interface{})
 type SubDeleteHandler func(ctx interface{}, key string)
-type SubRestartHandler func(ctx interface{}, restarted bool) // XXX needed?
+type SubRestartHandler func(ctx interface{}, restarted bool)
 
 type Subscription struct {
-	C             <-chan string
-	ModifyHandler SubModifyHandler
-	DeleteHandler SubDeleteHandler
+	C              <-chan string
+	ModifyHandler  SubModifyHandler
+	DeleteHandler  SubDeleteHandler
+	RestartHandler SubRestartHandler
 
 	// Private fields
-	topicType interface{}
-	agentName string
-	// XXX add agentScope aka objType
-	topic   string
-	km      keyMap
-	userCtx interface{}
+	topicType  interface{}
+	agentName  string
+	agentScope string // XXX use for objType
+	topic      string
+	km         keyMap
+	userCtx    interface{}
+}
+
+func (sub *Subscription) nameString() string {
+	if sub.agentScope == "" {
+		return fmt.Sprintf("%s/%s", sub.agentName, sub.topic)
+	} else {
+		return fmt.Sprintf("%s/%s/%s", sub.agentName, sub.agentScope,
+			sub.topic)
+	}
 }
 
 // Init function for Subscribe; returns a context.
 // Assumption is that agent with call Get(key) later or specify
 // handleModify and/or handleDelete functions
-// XXX add agentScope aka objType
-func Subscribe(agentName string, topicType interface{}, ctx interface{}) (*Subscription, error) {
+// watch ensures that any restart/restarted notification is after any other
+// notifications from ReadDir
+func Subscribe(agentName string, topicType interface{},
+	ctx interface{}) (*Subscription, error) {
+
+	return subscribeImpl(agentName, "", topicType, ctx)
+}
+
+func SubscribeScope(agentName string, agentScope string, topicType interface{},
+	ctx interface{}) (*Subscription, error) {
+
+	return subscribeImpl(agentName, agentScope, topicType, ctx)
+}
+
+func subscribeImpl(agentName string, agentScope string, topicType interface{},
+	ctx interface{}) (*Subscription, error) {
+
 	topic := TypeToName(topicType)
-	log.Printf("Subscribe(%s/%s)\n", agentName, topic)
+	changes := make(chan string)
+	sub := new(Subscription)
+	sub.C = changes
+	sub.topicType = topicType
+	sub.agentName = agentName
+	sub.agentScope = agentScope
+	sub.topic = topic
+	sub.km = keyMap{key: make(map[string]interface{})}
+	sub.userCtx = ctx
+	name := sub.nameString()
+
+	log.Printf("Subscribe(%s)\n", name)
+
 	if subscribeFromDir {
 		// Waiting for directory to appear
-		dirName := PubDirName(agentName, topic)
+		dirName := PubDirName(name)
 		for {
 			if _, err := os.Stat(dirName); err != nil {
-				// XXX add agentScope aka objType
-				errStr := fmt.Sprintf("Subscribe(%s/%s): failed %s",
-					agentName, topic, err)
+				errStr := fmt.Sprintf("Subscribe(%s): failed %s; waiting",
+					name, err)
 				log.Println(errStr)
 				time.Sleep(10 * time.Second)
 			} else {
 				break
 			}
 		}
-		changes := make(chan string)
-		sub := new(Subscription)
-		sub.C = changes
-		sub.topicType = topicType
-		sub.agentName = agentName
-		sub.topic = topic
-		sub.km = keyMap{key: make(map[string]interface{})}
-		sub.userCtx = ctx
 		go watch.WatchStatus(dirName, changes)
 		return sub, nil
 	} else if subscribeFromSock {
 		errStr := fmt.Sprintf("subscribeFromSock not implemented")
 		return nil, errors.New(errStr)
 	} else {
-		// XXX add agentScope aka objType
-		errStr := fmt.Sprintf("Subscribe(%s/%s): failed %s",
-			agentName, topic, "nowhere to subscribe")
+		errStr := fmt.Sprintf("Subscribe(%s): failed %s",
+			name, "nowhere to subscribe")
 		return nil, errors.New(errStr)
 	}
 	return nil, nil
@@ -410,65 +513,70 @@ func Subscribe(agentName string, topicType interface{}, ctx interface{}) (*Subsc
 
 // XXX Currently only handles directory subscriptions; no AF_UNIX
 func (sub *Subscription) ProcessChange(change string) {
+	name := sub.nameString()
 	if debug {
-		log.Printf("ProcessEvent(%s/%s) %s\n",
-			sub.agentName, sub.topic, change)
+		log.Printf("ProcessEvent(%s) %s\n", name, change)
 	}
-	dirName := PubDirName(sub.agentName, sub.topic)
+	dirName := PubDirName(name)
+	var restartFn watch.StatusRestartHandler = handleRestart
 	watch.HandleStatusEvent(change, sub,
 		dirName, &sub.topicType,
-		handleModify, handleDelete, nil)
+		handleModify, handleDelete, &restartFn)
 }
 
-// XXX note that we could add a CreateHandler since we know if we've already
-// read it. Is that different than the handleConfigStatus notion of create??
-// XXX Yes, since that notion is about the existence or not of a status object.
-func handleModify(ctxArg interface{}, key string, stateArg interface{}) {
+func handleModify(ctxArg interface{}, key string, item interface{}) {
 	sub := ctxArg.(*Subscription)
+	name := sub.nameString()
 	if debug {
-		log.Printf("pubsub.handleModify(%s/%s) key %s\n",
-			sub.agentName, sub.topic, key)
+		log.Printf("pubsub.handleModify(%s) key %s\n", name, key)
 	}
+	// NOTE: without a deepCopy we would just save a pointer since
+	// item is a pointer. That would cause failures.
+	// XXX deepCopy should help with cmp as well.
+	newItem := deepCopy(item)
 	m, ok := sub.km.key[key]
-	if debug {
-		if ok {
-			log.Printf("pubsub.handleModify(%s/%s) replace %+v with %+v for key %s\n",
-				sub.agentName, sub.topic, m, stateArg, key)
-		} else {
-			log.Printf("pubsub.handleModify(%s/%s) add %+v for key %s\n",
-				sub.agentName, sub.topic, stateArg, key)
+	if ok {
+		if cmp.Equal(m, newItem) {
+			if debug {
+				log.Printf("pubsub.handleModify(%s/%s) unchanged\n",
+					name, key)
+			}
+			return
 		}
+		log.Printf("pubsub.handleModify(%s/%s) replacing due to diff %s\n",
+			name, key, cmp.Diff(m, newItem))
+	} else {
+		log.Printf("pubsub.handleModify(%s) add %+v for key %s\n",
+			name, newItem, key)
 	}
-	// XXX without a deepCopy we just save a pointer since stateArg is
-	// a pointer.
-	sub.km.key[key] = deepCopy(stateArg)
+	sub.km.key[key] = newItem
 	if debug {
 		sub.dump("after handleModify")
 	}
 	if sub.ModifyHandler != nil {
-		(sub.ModifyHandler)(sub.userCtx, key, stateArg)
+		(sub.ModifyHandler)(sub.userCtx, key, newItem)
 	}
 	if debug {
-		log.Printf("pubsub.handleModify(%s/%s) done for key %s\n",
-			sub.agentName, sub.topic, key)
+		log.Printf("pubsub.handleModify(%s) done for key %s\n",
+			name, key)
 	}
 }
 
 func handleDelete(ctxArg interface{}, key string) {
 	sub := ctxArg.(*Subscription)
+	name := sub.nameString()
 	if debug {
-		log.Printf("pubsub.handleDelete(%s/%s) key %s\n",
-			sub.agentName, sub.topic, key)
+		log.Printf("pubsub.handleDelete(%s) key %s\n", name, key)
 	}
 	m, ok := sub.km.key[key]
 	if !ok {
-		log.Printf("pubsub.handleDelete(%s/%s) %s key not found\n",
-			sub.agentName, sub.topic, key)
+		log.Printf("pubsub.handleDelete(%s) %s key not found\n",
+			name, key)
 		return
 	}
 	if debug {
-		log.Printf("pubsub.handleDelete(%s/%s) key %s value %+v\n",
-			sub.agentName, sub.topic, key, m)
+		log.Printf("pubsub.handleDelete(%s) key %s value %+v\n",
+			name, key, m)
 	}
 	delete(sub.km.key, key)
 	if debug {
@@ -477,10 +585,36 @@ func handleDelete(ctxArg interface{}, key string) {
 	if sub.DeleteHandler != nil {
 		(sub.DeleteHandler)(sub.userCtx, key)
 	}
+	if debug {
+		log.Printf("pubsub.handleModify(%s) done for key %s\n",
+			name, key)
+	}
+}
+
+func handleRestart(ctxArg interface{}, restarted bool) {
+	sub := ctxArg.(*Subscription)
+	name := sub.nameString()
+	if debug {
+		log.Printf("pubsub.handleRestart(%s) restarted %v\n",
+			name, restarted)
+	}
+	if restarted == sub.km.restarted {
+		log.Printf("pubsub.handleDelete(%s) value unchanged\n", name)
+		return
+	}
+	sub.km.restarted = restarted
+	if sub.RestartHandler != nil {
+		(sub.RestartHandler)(sub.userCtx, restarted)
+	}
+	if debug {
+		log.Printf("pubsub.handleRestart(%s) done for restarted %v\n",
+			name, restarted)
+	}
 }
 
 func (sub *Subscription) dump(infoStr string) {
-	log.Printf("dump(%s/%s) %s\n", sub.agentName, sub.topic, infoStr)
+	name := sub.nameString()
+	log.Printf("dump(%s) %s\n", name, infoStr)
 	for key, s := range sub.km.key {
 		b, err := json.Marshal(s)
 		if err != nil {
@@ -490,19 +624,17 @@ func (sub *Subscription) dump(infoStr string) {
 	}
 }
 
-// XXX add agentScope aka objType
 func (sub *Subscription) Get(key string) (interface{}, error) {
 	m, ok := sub.km.key[key]
 	if ok {
 		return m, nil
 	} else {
-		errStr := fmt.Sprintf("Get(%s/%s) unknown key %s",
-			sub.agentName, sub.topic, key)
+		name := sub.nameString()
+		errStr := fmt.Sprintf("Get(%s) unknown key %s", name, key)
 		return nil, errors.New(errStr)
 	}
 }
 
-// XXX add agentScope aka objType
 // Enumerate all the key, value for the collection
 func (sub *Subscription) GetAll() map[string]interface{} {
 	result := make(map[string]interface{})

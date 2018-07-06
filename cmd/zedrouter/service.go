@@ -95,6 +95,7 @@ func handleNetworkServiceDelete(ctxArg interface{}, key string) {
 	}
 	doServiceDelete(status)
 	status.PendingDelete = false
+	pub.Publish(status.UUID.String(), *status)
 	pub.Unpublish(status.UUID.String())
 	log.Printf("handleNetworkServiceDelete(%s) done\n", key)
 }
@@ -461,6 +462,14 @@ func bridgeCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 		config.Adapter)
 	if ib == nil {
 		errStr := fmt.Sprintf("bridge %s is not assignable for %s",
+			config.Adapter, config.UUID.String())
+		return errors.New(errStr)
+	}
+	// XXX check it isn't assigned to dom0? That's maintained
+	// in domainmgr so can't do it here.
+	// For now check it isn't an uplink instead.
+	if isUplink(config.Adapter) {
+		errStr := fmt.Sprintf("Uplink interface %s not available as bridge for %s",
 			config.Adapter, config.UUID.String())
 		return errors.New(errStr)
 	}
