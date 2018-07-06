@@ -41,6 +41,7 @@ var AllocReservedAppNums Bitmap
 // Read the existing appNums out of statusDir
 // Store in reserved map since we will be asked to allocate them later.
 // Set bit in bitmap.
+// XXX Use checkpointed state? Or switch dir for now?
 func appNumAllocatorInit(statusDir string, configDir string) {
 	AllocatedAppNum = make(map[uuid.UUID]int)
 	ReservedAppNum = make(map[uuid.UUID]int)

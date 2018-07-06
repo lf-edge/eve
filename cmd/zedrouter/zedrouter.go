@@ -59,21 +59,16 @@ type zedrouterContext struct {
 	subNetworkServiceConfig *pubsub.Subscription
 	pubNetworkObjectStatus  *pubsub.Publication
 	pubNetworkServiceStatus *pubsub.Publication
-	subAppNetworkConfig  	*pubsub.Subscription
-	pubAppNetworkStatus  	*pubsub.Publication
+	subAppNetworkConfig     *pubsub.Subscription
+	pubAppNetworkStatus     *pubsub.Publication
 	assignableAdapters      *types.AssignableAdapters
+	usableAddressCount      int
+	manufacturerModel       string
+	pubDeviceNetworkStatus  *pubsub.Publication
 }
 
 // Dummy since we don't have anything to pass
 type dummyContext struct {
-}
-
-// Context for handleDNCModify
-type DNCContext struct {
-	usableAddressCount     int
-	manufacturerModel      string
-	separateDataPlane      bool
-	pubDeviceNetworkStatus *pubsub.Publication // XXX set
 }
 
 var debug = false
@@ -142,7 +137,7 @@ func Run() {
 		log.Fatal(err)
 	}
 
-	// XXX why dirname? Fix to read?
+	// XXX why dirname? Fix to read collection?
 	appNumAllocatorInit(statusDirname, configDirname)
 	model := hardware.GetHardwareModel()
 
@@ -166,15 +161,12 @@ func Run() {
 	DNCFilename := fmt.Sprintf("%s/%s.json", DNCDirname, model)
 	handleInit(DNCFilename, runDirname, pubDeviceNetworkStatus)
 
-	DNCctx := DNCContext{}
-	DNCctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
-	DNCctx.manufacturerModel = model
-	DNCctx.separateDataPlane = false
-	DNCctx.pubDeviceNetworkStatus = pubDeviceNetworkStatus
-
 	zedrouterCtx := zedrouterContext{
-		separateDataPlane:  false,
-		assignableAdapters: &aa,
+		separateDataPlane:      false,
+		assignableAdapters:     &aa,
+		usableAddressCount:     types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus),
+		manufacturerModel:      model,
+		pubDeviceNetworkStatus: pubDeviceNetworkStatus,
 	}
 	// Create publish before subscribing and activating subscriptions
 	pubNetworkObjectStatus, err := pubsub.Publish(agentName,
@@ -254,7 +246,7 @@ func Run() {
 					ifname, deviceNetworkStatus, new)
 			}
 			deviceNetworkStatus = new
-			doDNSUpdate(&DNCctx)
+			doDNSUpdate(&zedrouterCtx)
 		} else {
 			log.Printf("No address change for %s\n", ifname)
 		}
@@ -308,13 +300,9 @@ func Run() {
 		select {
 		case change := <-subAppNetworkConfig.C:
 			subAppNetworkConfig.ProcessChange(change)
-			// DNC handling also re-writes the lisp.config file.
-			// We should call the updateLisp with correct Dataplane
-			// flag inorder not to confuse lispers.net
-			DNCctx.separateDataPlane = zedrouterCtx.separateDataPlane
 
 		case change := <-deviceConfigChanges:
-			watch.HandleStatusEvent(change, &DNCctx,
+			watch.HandleStatusEvent(change, &zedrouterCtx,
 				DNCDirname,
 				&types.DeviceNetworkConfig{},
 				handleDNCModify, handleDNCDelete,
@@ -517,10 +505,11 @@ func generateAdditionalInfo(status types.AppNetworkStatus, olConfig types.Overla
 	return additionalInfo
 }
 
-// XXX needs ctx arg
-func updateLispConfiglets(separateDataPlane bool) {
-	// XXX fix range
-	for _, status := range appNetworkStatus {
+func updateLispConfiglets(ctx *zedrouterContext, separateDataPlane bool) {
+	pub := ctx.pubAppNetworkStatus
+	items := pub.GetAll()
+	for _, st := range items {
+		status := cast.CastAppNetworkStatus(st)
 		for i, olStatus := range status.OverlayNetworkList {
 			olNum := i + 1
 			var olIfname string
@@ -647,7 +636,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		DisplayName:    config.DisplayName,
 		IsZedmanager:   config.IsZedmanager,
 	}
-	writeAppNetworkStatus(&status)
+	updateAppNetworkStatus(ctx, &status)
 
 	if config.IsZedmanager {
 		log.Printf("handleCreate: for %s IsZedmanager\n",
@@ -825,7 +814,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 				config.OverlayNetworkList[i]
 		}
 		status.PendingAdd = false
-		writeAppNetworkStatus(&status)
+		updateAppNetworkStatus(ctx, &status)
 		log.Printf("handleCreate done for %s\n", config.DisplayName)
 		return
 	}
@@ -986,7 +975,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 			}
 		}
 		// XXX createDnsmasq assumes it can read this to get netstatus
-		writeAppNetworkStatus(&status)
+		updateAppNetworkStatus(ctx, &status)
 
 		// Start clean
 		cfgFilename = "dnsmasq." + bridgeName + ".conf"
@@ -1115,7 +1104,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 			}
 		}
 		// XXX createDnsmasq assumes it can read this to get netstatus
-		writeAppNetworkStatus(&status)
+		updateAppNetworkStatus(ctx, &status)
 
 		// Start clean
 		cfgFilename := "dnsmasq." + bridgeName + ".conf"
@@ -1130,7 +1119,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 	}
 	// Write out what we created to AppNetworkStatus
 	status.PendingAdd = false
-	writeAppNetworkStatus(&status)
+	updateAppNetworkStatus(ctx, &status)
 	log.Printf("handleCreate done for %s\n", config.DisplayName)
 }
 
@@ -1286,8 +1275,7 @@ func addError(ctx *zedrouterContext,
 	log.Printf("%s: %s\n", tag, err.Error())
 	status.Error = appendError(status.Error, tag, err.Error())
 	status.ErrorTime = time.Now()
-	// XXX use ctx to publish
-	writeAppNetworkStatus(status)
+	updateAppNetworkStatus(ctx, status)
 }
 
 func appendError(allErrors string, prefix string, lasterr string) string {
@@ -1349,7 +1337,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 	status.SeparateDataPlane = ctx.separateDataPlane
 	status.PendingModify = true
 	status.UUIDandVersion = config.UUIDandVersion
-	writeAppNetworkStatus(status)
+	updateAppNetworkStatus(ctx, status)
 
 	if config.IsZedmanager {
 		if config.SeparateDataPlane != ctx.separateDataPlane {
@@ -1387,7 +1375,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 			addError(ctx, status, "updateACL", err)
 		}
 		status.PendingModify = false
-		writeAppNetworkStatus(status)
+		updateAppNetworkStatus(ctx, status)
 		log.Printf("handleModify done for %s\n", config.DisplayName)
 		return
 	}
@@ -1443,7 +1431,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 			}
 		}
 		// XXX createDnsmasq assumes it can read this to get netstatus
-		writeAppNetworkStatus(status)
+		updateAppNetworkStatus(ctx, status)
 
 		// updateAppInstanceIpsets told us whether there is a change
 		// to the set of ipsets, and that requires restarting dnsmasq
@@ -1516,7 +1504,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 			}
 		}
 		// XXX createDnsmasq assumes it can read this to get netstatus
-		writeAppNetworkStatus(status)
+		updateAppNetworkStatus(ctx, status)
 
 		if restartDnsmasq {
 			//update underlay dnsmasq configuration
@@ -1565,7 +1553,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 			config.UnderlayNetworkList[i]
 	}
 	status.PendingModify = false
-	writeAppNetworkStatus(status)
+	updateAppNetworkStatus(ctx, status)
 	log.Printf("handleModify done for %s\n", config.DisplayName)
 }
 
@@ -1585,7 +1573,7 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 	}
 
 	status.PendingDelete = true
-	writeAppNetworkStatus(status)
+	updateAppNetworkStatus(ctx, status)
 
 	if status.IsZedmanager {
 		if len(status.OverlayNetworkList) != 1 ||
@@ -1715,7 +1703,7 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 
 			// XXX need IPv6 allocate/free to do same as for ulConfig
 			// XXX createDnsmasq assumes it can read this to get netstatus
-			writeAppNetworkStatus(status)
+			updateAppNetworkStatus(ctx, status)
 
 			// radvd cleanup
 			// XXX not all of it; see dnsmasq below; if sharedBridge
@@ -1809,7 +1797,7 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 				}
 			}
 			// XXX createDnsmasq assumes it can read this to get netstatus
-			writeAppNetworkStatus(status)
+			updateAppNetworkStatus(ctx, status)
 
 			hostsDirpath := globalRunDirname + "/hosts." + bridgeName
 			cfgFilename := "dnsmasq." + bridgeName + ".conf"
@@ -1867,10 +1855,10 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 		}
 	}
 	status.PendingDelete = false
-	writeAppNetworkStatus(status)
+	updateAppNetworkStatus(ctx, status)
 
 	// Write out what we modified to AppNetworkStatus aka delete
-	removeAppNetworkStatus(status)
+	removeAppNetworkStatus(ctx, status)
 
 	appNumFree(status.UUIDandVersion.UUID)
 	log.Printf("handleDelete done for %s\n", status.DisplayName)
@@ -1894,7 +1882,7 @@ func pkillUserArgs(userName string, match string, printOnError bool) {
 func handleDNCModify(ctxArg interface{}, configFilename string,
 	configArg interface{}) {
 	config := configArg.(*types.DeviceNetworkConfig)
-	ctx := ctxArg.(*DNCContext)
+	ctx := ctxArg.(*zedrouterContext)
 
 	if configFilename != ctx.manufacturerModel {
 		if debug {
@@ -1920,7 +1908,7 @@ func handleDNCModify(ctxArg interface{}, configFilename string,
 
 func handleDNCDelete(ctxArg interface{}, configFilename string) {
 	log.Printf("handleDNCDelete for %s\n", configFilename)
-	ctx := ctxArg.(*DNCContext)
+	ctx := ctxArg.(*zedrouterContext)
 
 	if configFilename != "global" {
 		log.Printf("handleDNSDelete: ignoring %s\n", configFilename)
@@ -1937,7 +1925,7 @@ func handleDNCDelete(ctxArg interface{}, configFilename string) {
 	log.Printf("handleDNCDelete done for %s\n", configFilename)
 }
 
-func doDNSUpdate(ctx *DNCContext) {
+func doDNSUpdate(ctx *zedrouterContext) {
 	// Did we loose all usable addresses or gain the first usable
 	// address?
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
@@ -1954,7 +1942,7 @@ func doDNSUpdate(ctx *DNCContext) {
 	}
 	ctx.usableAddressCount = newAddrCount
 	updateDeviceNetworkStatus(ctx.pubDeviceNetworkStatus)
-	updateLispConfiglets(ctx.separateDataPlane)
+	updateLispConfiglets(ctx, ctx.separateDataPlane)
 
 	setUplinks(deviceNetworkConfig.Uplink)
 	setFreeUplinks(deviceNetworkConfig.FreeUplinks)

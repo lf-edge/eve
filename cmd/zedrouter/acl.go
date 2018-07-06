@@ -8,6 +8,7 @@ package zedrouter
 import (
 	"errors"
 	"fmt"
+	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/types"
 	"log"
 	"strconv"
@@ -86,7 +87,10 @@ func compileNetworkIpsetsStatus(ctx *zedrouterContext,
 		return ipsets
 	}
 	// walk all of netconfig - find all hosts which use this network
-	for _, status := range appNetworkStatus {
+	pub := ctx.pubAppNetworkStatus
+	items := pub.GetAll()
+	for _, st := range items {
+		status := cast.CastAppNetworkStatus(st)
 		for _, olStatus := range status.OverlayNetworkList {
 			if olStatus.Network != netconfig.UUID {
 				continue
@@ -113,7 +117,10 @@ func compileNetworkIpsetsConfig(ctx *zedrouterContext,
 		return ipsets
 	}
 	// walk all of netconfig - find all hosts which use this network
-	for _, config := range appNetworkConfig {
+	sub := ctx.subAppNetworkConfig
+	items := sub.GetAll()
+	for _, c := range items {
+		config := cast.CastAppNetworkConfig(c)
 		for _, olConfig := range config.OverlayNetworkList {
 			if olConfig.Network != netconfig.UUID {
 				continue
@@ -603,7 +610,10 @@ func updateNetworkACLConfiglet(ctx *zedrouterContext,
 
 	// Walk overlay/IPv6 first
 	ipVer := 6
-	for _, config := range appNetworkConfig {
+	sub := ctx.subAppNetworkConfig
+	items := sub.GetAll()
+	for _, c := range items {
+		config := cast.CastAppNetworkConfig(c)
 		for _, olConfig := range config.OverlayNetworkList {
 			if olConfig.Network != netstatus.UUID {
 				continue
@@ -623,7 +633,10 @@ func updateNetworkACLConfiglet(ctx *zedrouterContext,
 		}
 		newRules = append(newRules, dropRules...)
 	}
-	for _, status := range appNetworkStatus {
+	pub := ctx.pubAppNetworkStatus
+	items = pub.GetAll()
+	for _, st := range items {
+		status := cast.CastAppNetworkStatus(st)
 		for _, olStatus := range status.OverlayNetworkList {
 			if olStatus.Network != netstatus.UUID {
 				continue
@@ -650,7 +663,9 @@ func updateNetworkACLConfiglet(ctx *zedrouterContext,
 	newRules = IptablesRuleList{}
 	oldRules = IptablesRuleList{}
 	ipVer = 4
-	for _, config := range appNetworkConfig {
+
+	for _, c := range items {
+		config := cast.CastAppNetworkConfig(c)
 		for _, ulConfig := range config.UnderlayNetworkList {
 			if ulConfig.Network != netstatus.UUID {
 				continue
@@ -672,7 +687,8 @@ func updateNetworkACLConfiglet(ctx *zedrouterContext,
 		}
 		newRules = append(newRules, dropRules...)
 	}
-	for _, status := range appNetworkStatus {
+	for _, st := range items {
+		status := cast.CastAppNetworkStatus(st)
 		for _, ulStatus := range status.UnderlayNetworkList {
 			if ulStatus.Network != netstatus.UUID {
 				continue
