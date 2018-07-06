@@ -594,10 +594,8 @@ var deviceEID net.IP
 var deviceIID uint32
 var additionalInfoDevice *types.AdditionalInfoDevice
 
-func handleCreate(ctxArg interface{}, statusFilename string,
-	configArg interface{}) {
-	ctx := ctxArg.(*zedrouterContext)
-	config := configArg.(*types.AppNetworkConfig)
+func handleCreate(ctx *zedrouterContext, key string,
+	config types.AppNetworkConfig) {
 	log.Printf("handleCreate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
@@ -1265,17 +1263,15 @@ func appendError(allErrors string, prefix string, lasterr string) string {
 // Note that handleModify will not touch the EID; just ACLs and NameToEidList
 // XXX should we check that nothing else has changed?
 // XXX If so flag other changes as errors; would need lastError in status.
-func handleModify(ctxArg interface{}, statusFilename string, configArg interface{},
-	statusArg interface{}) {
-	ctx := ctxArg.(*zedrouterContext)
-	config := configArg.(*types.AppNetworkConfig)
-	status := statusArg.(*types.AppNetworkStatus)
+func handleModify(ctx *zedrouterContext, key string,
+	config types.AppNetworkConfig, status *types.AppNetworkStatus) {
+
 	log.Printf("handleModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
 	if config.UUIDandVersion.Version == status.UUIDandVersion.Version {
 		log.Printf("Same version %s for %s\n",
-			config.UUIDandVersion.Version, statusFilename)
+			config.UUIDandVersion.Version, key)
 		return
 	}
 
@@ -1537,10 +1533,9 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 	log.Printf("handleModify done for %s\n", config.DisplayName)
 }
 
-func handleDelete(ctxArg interface{}, statusFilename string,
-	statusArg interface{}) {
-	ctx := ctxArg.(*zedrouterContext)
-	status := statusArg.(*types.AppNetworkStatus)
+func handleDelete(ctx *zedrouterContext, key string,
+	status *types.AppNetworkStatus) {
+
 	log.Printf("handleDelete(%v) for %s\n",
 		status.UUIDandVersion, status.DisplayName)
 
