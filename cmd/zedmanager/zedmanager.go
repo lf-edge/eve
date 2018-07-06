@@ -29,7 +29,6 @@ const (
 
 	verifierConfigDirname    = "/var/tmp/verifier/config"
 	downloaderConfigDirname  = "/var/tmp/downloader/config"
-	domainmgrConfigDirname   = "/var/tmp/domainmgr/config"
 	identitymgrConfigDirname = "/var/tmp/identitymgr/config"
 	certificateDirname       = persistDir + "/certs"
 
@@ -49,6 +48,8 @@ type zedmanagerContext struct {
 	subDeviceNetworkStatus *pubsub.Subscription
 	pubAppNetworkConfig    *pubsub.Publication
 	subAppNetworkStatus    *pubsub.Subscription
+	pubDomainConfig        *pubsub.Publication
+	subDomainStatus        *pubsub.Subscription
 }
 
 var deviceNetworkStatus types.DeviceNetworkStatus
@@ -80,12 +81,10 @@ func Run() {
 	// XXX either we don't need this, or we need it for each objType
 	watch.CleanupRestart("verifier")
 	watch.CleanupRestart("identitymgr")
-	watch.CleanupRestart("domainmgr")
 	watch.CleanupRestart("zedagent")
 
 	verifierStatusDirname := "/var/run/verifier/status"
 	downloaderStatusDirname := "/var/run/downloader/status"
-	domainmgrStatusDirname := "/var/run/domainmgr/status"
 	identitymgrStatusDirname := "/var/run/identitymgr/status"
 
 	downloaderAppImgObjStatusDirname := "/var/run/downloader/" + appImgObj + "/status"
@@ -94,13 +93,11 @@ func Run() {
 
 	dirs := []string{
 		identitymgrConfigDirname,
-		domainmgrConfigDirname,
 		downloaderConfigDirname,
 		downloaderAppImgObjConfigDirname,
 		verifierConfigDirname,
 		verifierAppImgObjConfigDirname,
 		identitymgrStatusDirname,
-		domainmgrStatusDirname,
 		downloaderAppImgObjStatusDirname,
 		downloaderStatusDirname,
 		verifierAppImgObjStatusDirname,
@@ -135,6 +132,13 @@ func Run() {
 	}
 	ctx.pubAppNetworkConfig = pubAppNetworkConfig
 
+	pubDomainConfig, err := pubsub.Publish(agentName,
+		types.DomainConfig{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubDomainConfig = pubDomainConfig
+
 	// Get AppInstanceConfig from zedagent
 	subAppInstanceConfig, err := pubsub.Subscribe("zedagent",
 		types.AppInstanceConfig{}, false, &ctx)
@@ -159,14 +163,23 @@ func Run() {
 	ctx.subAppNetworkStatus = subAppNetworkStatus
 	subAppNetworkStatus.Activate()
 
+	// Get DomainStatus from domainmgr
+	subDomainStatus, err := pubsub.Subscribe("domainmgr",
+		types.DomainStatus{}, false, &ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subDomainStatus.ModifyHandler = handleDomainStatusModify
+	subDomainStatus.DeleteHandler = handleDomainStatusDelete
+	ctx.subDomainStatus = subDomainStatus
+	subDomainStatus.Activate()
+
 	verifierChanges := make(chan string)
 	go watch.WatchStatus(verifierAppImgObjStatusDirname, verifierChanges)
 	downloaderChanges := make(chan string)
 	go watch.WatchStatus(downloaderAppImgObjStatusDirname, downloaderChanges)
 	identitymgrChanges := make(chan string)
 	go watch.WatchStatus(identitymgrStatusDirname, identitymgrChanges)
-	domainmgrChanges := make(chan string)
-	go watch.WatchStatus(domainmgrStatusDirname, domainmgrChanges)
 
 	subDeviceNetworkStatus, err := pubsub.Subscribe("zedrouter",
 		types.DeviceNetworkStatus{}, false, &ctx)
@@ -250,14 +263,9 @@ func Run() {
 		case change := <-subAppNetworkStatus.C:
 			subAppNetworkStatus.ProcessChange(change)
 
-		case change := <-domainmgrChanges:
-			{
-				watch.HandleStatusEvent(change, &ctx,
-					domainmgrStatusDirname,
-					&types.DomainStatus{},
-					handleDomainStatusModify,
-					handleDomainStatusDelete, nil)
-			}
+		case change := <-subDomainStatus.C:
+			subDomainStatus.ProcessChange(change)
+
 		case change := <-subAppInstanceConfig.C:
 			subAppInstanceConfig.ProcessChange(change)
 
@@ -309,9 +317,11 @@ func handleIdentitymgrRestarted(ctxArg interface{}, done bool) {
 }
 
 func handleZedrouterRestarted(ctxArg interface{}, done bool) {
+	ctx := ctxArg.(*zedmanagerContext)
+
 	log.Printf("handleZedrouterRestarted(%v)\n", done)
 	if done {
-		watch.SignalRestart("domainmgr")
+		ctx.pubDomainConfig.SignalRestarted()
 	}
 }
 

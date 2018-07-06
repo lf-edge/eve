@@ -563,7 +563,7 @@ func handleAppNetworkConfigDelete(ctxArg interface{}, key string) {
 	log.Printf("handleAppNetworkConfigDelete(%s) done\n", key)
 }
 
-// Callers must be careful to publish any changes to NetworkObjectStatus
+// Callers must be careful to publish any changes to AppNetworkStatus
 func lookupAppNetworkStatus(ctx *zedrouterContext, key string) *types.AppNetworkStatus {
 
 	pub := ctx.pubAppNetworkStatus

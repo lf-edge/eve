@@ -127,7 +127,7 @@ func doUpdate(ctx *zedmanagerContext, uuidStr string,
 			changed = doInactivate(ctx, uuidStr, status)
 		} else {
 			// If we have a !ReadOnly disk this will create a copy
-			err := MaybeAddDomainConfig(config, nil)
+			err := MaybeAddDomainConfig(ctx, config, nil)
 			if err != nil {
 				log.Printf("Error from MaybeAddDomainConfig for %s: %s\n",
 					uuidStr, err)
@@ -423,7 +423,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		log.Printf("Done with AppNetworkStatus for %s\n", uuidStr)
 	}
 	// Make sure we have a DomainConfig
-	err := MaybeAddDomainConfig(config, ns)
+	err := MaybeAddDomainConfig(ctx, config, ns)
 	if err != nil {
 		log.Printf("Error from MaybeAddDomainConfig for %s: %s\n",
 			uuidStr, err)
@@ -437,8 +437,8 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	}
 
 	// Check DomainStatus; update AppInstanceStatus if error
-	ds, err := LookupDomainStatus(uuidStr)
-	if err != nil {
+	ds := lookupDomainStatus(ctx, uuidStr)
+	if ds == nil {
 		log.Printf("Waiting for DomainStatus for %s\n", uuidStr)
 		return changed
 	}
@@ -514,11 +514,11 @@ func doInactivate(ctx *zedmanagerContext, uuidStr string,
 	changed := false
 
 	// First halt the domain
-	MaybeRemoveDomainConfig(uuidStr)
+	removeDomainConfig(ctx, uuidStr)
 
 	// Check if DomainStatus gone; update AppInstanceStatus if error
-	ds, err := LookupDomainStatus(uuidStr)
-	if err == nil {
+	ds := lookupDomainStatus(ctx, uuidStr)
+	if ds != nil {
 		log.Printf("Waiting for DomainStatus removal for %s\n", uuidStr)
 		// Look for xen errors.
 		if !ds.Activated {

@@ -119,3 +119,27 @@ func CastAppNetworkStatus(in interface{}) types.AppNetworkStatus {
 	}
 	return output
 }
+
+func CastDomainConfig(in interface{}) types.DomainConfig {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastDomainConfig")
+	}
+	var output types.DomainConfig
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "json Unmarshal in CastDomainConfig")
+	}
+	return output
+}
+
+func CastDomainStatus(in interface{}) types.DomainStatus {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastDomainStatus")
+	}
+	var output types.DomainStatus
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "json Unmarshal in CastDomainStatus")
+	}
+	return output
+}

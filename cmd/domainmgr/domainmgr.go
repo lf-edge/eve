@@ -8,7 +8,6 @@
 package domainmgr
 
 import (
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -20,7 +19,6 @@ import (
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
-	"github.com/zededa/go-provision/watch"
 	"github.com/zededa/go-provision/wrap"
 	"io"
 	"io/ioutil"
@@ -36,10 +34,7 @@ const (
 	appImgObj = "appImg.obj"
 	agentName = "domainmgr"
 
-	baseDirname       = "/var/tmp/" + agentName
 	runDirname        = "/var/run/" + agentName
-	configDirname     = baseDirname + "/config"
-	statusDirname     = runDirname + "/status"
 	persistDir        = "/persist"
 	rwImgDirname      = persistDir + "/img" // We store images here
 	xenDirname        = runDirname + "/xen" // We store xen cfg files here
@@ -65,6 +60,8 @@ type dummyContext struct {
 type domainContext struct {
 	assignableAdapters     *types.AssignableAdapters
 	subDeviceNetworkStatus *pubsub.Subscription
+	subDomainConfig        *pubsub.Subscription
+	pubDomainStatus        *pubsub.Publication
 }
 
 func Run() {
@@ -84,29 +81,10 @@ func Run() {
 		log.Fatal(err)
 	}
 	log.Printf("Starting %s\n", agentName)
-	watch.CleanupRestarted(agentName)
 
-	if _, err := os.Stat(baseDirname); err != nil {
-		log.Printf("Create %s\n", baseDirname)
-		if err := os.MkdirAll(baseDirname, 0700); err != nil {
-			log.Fatal(err)
-		}
-	}
-	if _, err := os.Stat(configDirname); err != nil {
-		log.Printf("Create %s\n", configDirname)
-		if err := os.MkdirAll(configDirname, 0700); err != nil {
-			log.Fatal(err)
-		}
-	}
 	if _, err := os.Stat(runDirname); err != nil {
 		log.Printf("Create %s\n", runDirname)
 		if err := os.MkdirAll(runDirname, 0700); err != nil {
-			log.Fatal(err)
-		}
-	}
-	if _, err := os.Stat(statusDirname); err != nil {
-		log.Printf("Create %s\n", statusDirname)
-		if err := os.MkdirAll(statusDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -134,19 +112,17 @@ func Run() {
 		}
 	}
 
-	handleInit()
-
-	var restartFn watch.ConfigRestartHandler = handleRestart
-
-	fileChanges := make(chan string)
-	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
-
 	// Pick up (mostly static) AssignableAdapters before we process
 	// any DomainConfig
 	model := hardware.GetHardwareModel()
 	aa := types.AssignableAdapters{}
 	aaChanges, aaFunc, aaCtx := adapters.Init(&aa, model)
+
 	domainCtx := domainContext{assignableAdapters: &aa}
+
+	pubDomainStatus, err := pubsub.Publish(agentName,
+		types.DomainStatus{})
+	domainCtx.pubDomainStatus = pubDomainStatus
 
 	for !aaCtx.Found {
 		log.Printf("Waiting - aaCtx %v\n", aaCtx.Found)
@@ -156,6 +132,18 @@ func Run() {
 		}
 	}
 	log.Printf("Have %d assignable adapters\n", len(aa.IoBundleList))
+
+	// Subscribe to DomainConfig from zedmanager and from zedagent
+	subDomainConfig, err := pubsub.Subscribe("zedmanager",
+		types.DomainConfig{}, false, &domainCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subDomainConfig.ModifyHandler = handleDomainConfigModify
+	subDomainConfig.DeleteHandler = handleDomainConfigDelete
+	subDomainConfig.RestartHandler = handleRestart
+	domainCtx.subDomainConfig = subDomainConfig
+	subDomainConfig.Activate()
 
 	subDeviceNetworkStatus, err := pubsub.Subscribe("zedrouter",
 		types.DeviceNetworkStatus{}, false, &domainCtx)
@@ -169,12 +157,8 @@ func Run() {
 
 	for {
 		select {
-		case change := <-fileChanges:
-			watch.HandleConfigStatusEvent(change, &domainCtx,
-				configDirname, statusDirname,
-				&types.DomainConfig{}, &types.DomainStatus{},
-				handleCreate, handleModify, handleDelete,
-				&restartFn)
+		case change := <-subDomainConfig.C:
+			subDomainConfig.ProcessChange(change)
 
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
@@ -189,8 +173,10 @@ func Run() {
 // Clean up any unused files in rwImgDirname
 func handleRestart(ctxArg interface{}, done bool) {
 	log.Printf("handleRestart(%v)\n", done)
+	ctx := ctxArg.(*domainContext)
 	if done {
 		log.Printf("handleRestart: avoid cleanup\n")
+		ctx.pubDomainStatus.SignalRestarted()
 		// XXX
 		return
 
@@ -202,7 +188,7 @@ func handleRestart(ctxArg interface{}, done bool) {
 			filename := rwImgDirname + "/" + file.Name()
 			log.Println("handleRestart found existing",
 				filename)
-			if !findActiveFileLocation(filename) {
+			if !findActiveFileLocation(ctx, filename) {
 				log.Println("handleRestart removing",
 					filename)
 				if err := os.Remove(filename); err != nil {
@@ -214,9 +200,12 @@ func handleRestart(ctxArg interface{}, done bool) {
 }
 
 // Check if the filename is used as ActiveFileLocation
-func findActiveFileLocation(filename string) bool {
+func findActiveFileLocation(ctx *domainContext, filename string) bool {
 	log.Printf("findActiveFileLocation(%v)\n", filename)
-	for _, status := range domainStatusMap {
+	pub := ctx.pubDomainStatus
+	items := pub.GetAll()
+	for _, st := range items {
+		status := cast.CastDomainStatus(st)
 		for _, ds := range status.DiskStatusList {
 			if filename == ds.ActiveFileLocation {
 				return true
@@ -226,37 +215,97 @@ func findActiveFileLocation(filename string) bool {
 	return false
 }
 
-// Map from UUID to the DomainStatus to be able to findActiveFileLocation
-var domainStatusMap map[string]types.DomainStatus
+func updateDomainStatus(ctx *domainContext, status *types.DomainStatus) {
 
-func handleInit() {
-	if domainStatusMap == nil {
-		log.Printf("create domainStatusMap\n")
-		domainStatusMap = make(map[string]types.DomainStatus)
-	}
+	key := status.UUIDandVersion.UUID.String()
+	log.Printf("updateDomainStatus(%s)\n", key)
+	pub := ctx.pubDomainStatus
+	pub.Publish(key, status)
 }
 
-func writeDomainStatus(status *types.DomainStatus,
-	statusFilename string) {
-	domainStatusMap[status.UUIDandVersion.UUID.String()] = *status
-	b, err := json.Marshal(status)
-	if err != nil {
-		log.Fatal(err, "json Marshal DomainStatus")
-	}
-	err = pubsub.WriteRename(statusFilename, b)
-	if err != nil {
-		log.Fatal(err, statusFilename)
-	}
+func removeDomainStatus(ctx *domainContext, status *types.DomainStatus) {
+
+	key := status.UUIDandVersion.UUID.String()
+	log.Printf("removeDomainStatus(%s)\n", key)
+	pub := ctx.pubDomainStatus
+	pub.Unpublish(key)
 }
 
 func xenCfgFilename(appNum int) string {
 	return xenDirname + "/xen" + strconv.Itoa(appNum) + ".cfg"
 }
 
-func handleCreate(ctxArg interface{}, statusFilename string,
-	configArg interface{}) {
-	config := configArg.(*types.DomainConfig)
+// Wrappers around handleCreate, handleModify, and handleDelete
+
+// Determine whether it is an create or modify
+func handleDomainConfigModify(ctxArg interface{}, key string, configArg interface{}) {
+
+	log.Printf("handleDomainConfigModify(%s)\n", key)
 	ctx := ctxArg.(*domainContext)
+	config := cast.CastDomainConfig(configArg)
+	if config.UUIDandVersion.UUID.String() != key {
+		log.Printf("handleDomainConfigModify key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, config.UUIDandVersion.UUID.String(), config)
+		return
+	}
+	status := lookupDomainStatus(ctx, key)
+	if status == nil {
+		handleCreate(ctx, key, &config)
+	} else {
+		handleModify(ctx, key, &config, status)
+	}
+	log.Printf("handleDomainConfigModify(%s) done\n", key)
+}
+
+func handleDomainConfigDelete(ctxArg interface{}, key string) {
+	log.Printf("handleDomainConfigDelete(%s)\n", key)
+	ctx := ctxArg.(*domainContext)
+	status := lookupDomainStatus(ctx, key)
+	if status == nil {
+		log.Printf("handleDomainConfigDelete: unknown %s\n", key)
+		return
+	}
+	handleDelete(ctx, key, status)
+	log.Printf("handleDomainConfigDelete(%s) done\n", key)
+}
+
+// Callers must be careful to publish any changes to DomainStatus
+func lookupDomainStatus(ctx *domainContext, key string) *types.DomainStatus {
+
+	pub := ctx.pubDomainStatus
+	st, _ := pub.Get(key)
+	if st == nil {
+		log.Printf("lookupDomainStatus(%s) not found\n", key)
+		return nil
+	}
+	status := cast.CastDomainStatus(st)
+	if status.UUIDandVersion.UUID.String() != key {
+		log.Printf("lookupDomainStatus(%s) got %s; ignored %+v\n",
+			key, status.UUIDandVersion.UUID.String(), status)
+		return nil
+	}
+	return &status
+}
+
+func lookupDomainConfig(ctx *domainContext, key string) *types.DomainConfig {
+
+	sub := ctx.subDomainConfig
+	c, _ := sub.Get(key)
+	if c == nil {
+		log.Printf("lookupDomainConfig(%s) not found\n", key)
+		return nil
+	}
+	config := cast.CastDomainConfig(c)
+	if config.UUIDandVersion.UUID.String() != key {
+		log.Printf("lookupDomainConfig(%s) got %s; ignored %+v\n",
+			key, config.UUIDandVersion.UUID.String(), config)
+		return nil
+	}
+	return &config
+}
+
+func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
+
 	log.Printf("handleCreate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
@@ -278,7 +327,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 	}
 	status.DiskStatusList = make([]types.DiskStatus,
 		len(config.DiskConfigList))
-	writeDomainStatus(&status, statusFilename)
+	updateDomainStatus(ctx, &status)
 
 	if err := configToStatus(*config, ctx.assignableAdapters,
 		&status); err != nil {
@@ -287,7 +336,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		status.PendingAdd = false
 		status.LastErr = fmt.Sprintf("%v", err)
 		status.LastErrTime = time.Now()
-		writeDomainStatus(&status, statusFilename)
+		updateDomainStatus(ctx, &status)
 		cleanupAdapters(ctx, config.IoAdapterList,
 			config.UUIDandVersion.UUID)
 		return
@@ -296,7 +345,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 	status.IoAdapterList = config.IoAdapterList
 
 	// Write any Location so that it can later be deleted based on status
-	writeDomainStatus(&status, statusFilename)
+	updateDomainStatus(ctx, &status)
 
 	// Do we need to copy any rw files? !Preserve ones are copied upon
 	// activation.
@@ -317,7 +366,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 			status.PendingAdd = false
 			status.LastErr = fmt.Sprintf("%v", err)
 			status.LastErrTime = time.Now()
-			writeDomainStatus(&status, statusFilename)
+			updateDomainStatus(ctx, &status)
 			return
 		}
 		log.Printf("Copy DONE from %s to %s\n",
@@ -329,7 +378,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 	}
 	// work done
 	status.PendingAdd = false
-	writeDomainStatus(&status, statusFilename)
+	updateDomainStatus(ctx, &status)
 	log.Printf("handleCreate(%v) DONE for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 }
@@ -895,24 +944,22 @@ func cp(dst, src string) error {
 // then we need to reboot. Thus version can change but can't handle disk or
 // vif changes.
 // XXX should we reboot if there are such changes? Or reject with error?
-// XXX to save statusFilename when the goroutine is created.
+// XXX to save key when the goroutine is created.
 // XXX separate goroutine to run cp? Add "copy complete" status?
-func handleModify(ctxArg interface{}, statusFilename string, configArg interface{},
-	statusArg interface{}) {
-	config := configArg.(*types.DomainConfig)
-	status := statusArg.(*types.DomainStatus)
-	ctx := ctxArg.(*domainContext)
+func handleModify(ctx *domainContext, key string,
+	config *types.DomainConfig, status *types.DomainStatus) {
+
 	log.Printf("handleModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
 	status.PendingModify = true
-	writeDomainStatus(status, statusFilename)
+	updateDomainStatus(ctx, status)
 
 	if status.LastErr != "" {
 		log.Printf("handleModify(%v) existing error for %s\n",
 			config.UUIDandVersion, config.DisplayName)
 		status.PendingModify = false
-		writeDomainStatus(status, statusFilename)
+		updateDomainStatus(ctx, status)
 		return
 	}
 	changed := false
@@ -930,7 +977,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 		// XXX currently those reservations are only changed
 		// in handleDelete
 		status.PendingModify = false
-		writeDomainStatus(status, statusFilename)
+		updateDomainStatus(ctx, status)
 		log.Printf("handleModify(%v) DONE for %s\n",
 			config.UUIDandVersion, config.DisplayName)
 		return
@@ -943,16 +990,16 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 
 	if config.UUIDandVersion.Version == status.UUIDandVersion.Version {
 		log.Printf("Same version %s for %s\n",
-			config.UUIDandVersion.Version, statusFilename)
+			config.UUIDandVersion.Version, key)
 		status.PendingModify = false
-		writeDomainStatus(status, statusFilename)
+		updateDomainStatus(ctx, status)
 		return
 	}
 	// XXX dumping status to log
 	xlStatus(status.DomainName, status.DomainId)
 
 	status.PendingModify = true
-	writeDomainStatus(status, statusFilename)
+	updateDomainStatus(ctx, status)
 	// XXX Any work?
 	// XXX create tmp xen cfg and diff against existing xen cfg
 	// If different then stop and start. XXX xl shutdown takes a while
@@ -960,7 +1007,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 
 	status.PendingModify = false
 	status.UUIDandVersion = config.UUIDandVersion
-	writeDomainStatus(status, statusFilename)
+	updateDomainStatus(ctx, status)
 	log.Printf("handleModify(%v) DONE for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 }
@@ -991,10 +1038,8 @@ func waitForDomainGone(status types.DomainStatus, maxDelay time.Duration) bool {
 	return gone
 }
 
-func handleDelete(ctxArg interface{}, statusFilename string,
-	statusArg interface{}) {
-	status := statusArg.(*types.DomainStatus)
-	ctx := ctxArg.(*domainContext)
+func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
+
 	log.Printf("handleDelete(%v) for %s\n",
 		status.UUIDandVersion, status.DisplayName)
 
@@ -1002,7 +1047,7 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 	xlStatus(status.DomainName, status.DomainId)
 
 	status.PendingDelete = true
-	writeDomainStatus(status, statusFilename)
+	updateDomainStatus(ctx, status)
 
 	if status.Activated {
 		doInactivate(status, ctx.assignableAdapters)
@@ -1015,7 +1060,7 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 	// the delete of the DomainStatus. Check
 	cleanupAdapters(ctx, status.IoAdapterList, status.UUIDandVersion.UUID)
 
-	writeDomainStatus(status, statusFilename)
+	updateDomainStatus(ctx, status)
 
 	// Delete xen cfg file for good measure
 	filename := xenCfgFilename(status.AppNum)
@@ -1035,12 +1080,9 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 		}
 	}
 	status.PendingDelete = false
-	writeDomainStatus(status, statusFilename)
-	// Write out what we modified to AppNetworkStatus aka delete
-	delete(domainStatusMap, status.UUIDandVersion.UUID.String())
-	if err := os.Remove(statusFilename); err != nil {
-		log.Println(err)
-	}
+	updateDomainStatus(ctx, status)
+	// Write out what we modified to DomainStatus aka delete
+	removeDomainStatus(ctx, status)
 	log.Printf("handleDelete(%v) DONE for %s\n",
 		status.UUIDandVersion, status.DisplayName)
 }
