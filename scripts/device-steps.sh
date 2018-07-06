@@ -10,7 +10,7 @@ DNCDIR=$TMPDIR/DeviceNetworkConfig
 LISPDIR=/opt/zededa/lisp
 LOGDIRA=$PERSISTDIR/IMGA/log
 LOGDIRB=$PERSISTDIR/IMGB/log
-AGENTS="logmanager ledmanager zedrouter domainmgr downloader verifier identitymgr eidregister zedagent dataplane"
+AGENTS="logmanager ledmanager zedrouter domainmgr downloader verifier identitymgr zedagent dataplane"
 ALLAGENTS="zedmanager $AGENTS"
 
 PATH=$BINDIR:$PATH
@@ -556,13 +556,6 @@ fi
 
 echo "Starting downloader at" `date`
 downloader &
-if [ $WAIT = 1 ]; then
-    echo -n "Press any key to continue "; read dummy; echo; echo
-fi
-
-# XXX shouldn't we remove eidregister?
-echo "Starting eidregister at" `date`
-eidregister -d $CONFIGDIR &
 if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi

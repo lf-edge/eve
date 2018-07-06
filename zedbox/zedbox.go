@@ -8,7 +8,6 @@ import (
 	"github.com/zededa/go-provision/cmd/client"
 	"github.com/zededa/go-provision/cmd/domainmgr"
 	"github.com/zededa/go-provision/cmd/downloader"
-	"github.com/zededa/go-provision/cmd/eidregister"
 	"github.com/zededa/go-provision/cmd/hardwaremodel"
 	"github.com/zededa/go-provision/cmd/identitymgr"
 	"github.com/zededa/go-provision/cmd/ledmanager"
@@ -30,8 +29,6 @@ func main() {
 		domainmgr.Run()
 	case "downloader":
 		downloader.Run()
-	case "eidregister":
-		eidregister.Run()
 	case "hardwaremodel":
 		hardwaremodel.Run()
 	case "identitymgr":
