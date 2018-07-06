@@ -30,7 +30,6 @@ const (
 	verifierConfigDirname    = "/var/tmp/verifier/config"
 	downloaderConfigDirname  = "/var/tmp/downloader/config"
 	domainmgrConfigDirname   = "/var/tmp/domainmgr/config"
-	zedrouterConfigDirname   = "/var/tmp/zedrouter/config"
 	identitymgrConfigDirname = "/var/tmp/identitymgr/config"
 	certificateDirname       = persistDir + "/certs"
 
@@ -81,14 +80,12 @@ func Run() {
 	// XXX either we don't need this, or we need it for each objType
 	watch.CleanupRestart("verifier")
 	watch.CleanupRestart("identitymgr")
-	watch.CleanupRestart("zedrouter")
 	watch.CleanupRestart("domainmgr")
 	watch.CleanupRestart("zedagent")
 
 	verifierStatusDirname := "/var/run/verifier/status"
 	downloaderStatusDirname := "/var/run/downloader/status"
 	domainmgrStatusDirname := "/var/run/domainmgr/status"
-	zedrouterStatusDirname := "/var/run/zedrouter/status"
 	identitymgrStatusDirname := "/var/run/identitymgr/status"
 
 	downloaderAppImgObjStatusDirname := "/var/run/downloader/" + appImgObj + "/status"
@@ -97,14 +94,12 @@ func Run() {
 
 	dirs := []string{
 		identitymgrConfigDirname,
-		zedrouterConfigDirname,
 		domainmgrConfigDirname,
 		downloaderConfigDirname,
 		downloaderAppImgObjConfigDirname,
 		verifierConfigDirname,
 		verifierAppImgObjConfigDirname,
 		identitymgrStatusDirname,
-		zedrouterStatusDirname,
 		domainmgrStatusDirname,
 		downloaderAppImgObjStatusDirname,
 		downloaderStatusDirname,
@@ -173,10 +168,9 @@ func Run() {
 	go watch.WatchStatus(downloaderAppImgObjStatusDirname, downloaderChanges)
 	identitymgrChanges := make(chan string)
 	go watch.WatchStatus(identitymgrStatusDirname, identitymgrChanges)
-	zedrouterChanges := make(chan string)
-	go watch.WatchStatus(zedrouterStatusDirname, zedrouterChanges)
 	domainmgrChanges := make(chan string)
 	go watch.WatchStatus(domainmgrStatusDirname, domainmgrChanges)
+
 	subDeviceNetworkStatus, err := pubsub.Subscribe("zedrouter",
 		types.DeviceNetworkStatus{}, false, &ctx)
 	if err != nil {
@@ -435,7 +429,7 @@ func handleCreate(ctx *zedmanagerContext, key string,
 	updateAppInstanceStatus(ctx, &status)
 
 	uuidStr := status.UUIDandVersion.UUID.String()
-	changed := doUpdate(uuidStr, config, &status)
+	changed := doUpdate(ctx, uuidStr, config, &status)
 	if changed {
 		log.Printf("handleCreate status change for %s\n",
 			uuidStr)
@@ -450,12 +444,14 @@ func handleModify(ctx *zedmanagerContext, key string,
 		config.UUIDandVersion, config.DisplayName)
 
 	// XXX handle at least ACL and activate changes. What else?
+	// Not checking the version here; assume the microservices can handle
+	// some updates.
 
 	status.UUIDandVersion = config.UUIDandVersion
 	updateAppInstanceStatus(ctx, status)
 
 	uuidStr := status.UUIDandVersion.UUID.String()
-	changed := doUpdate(uuidStr, config, status)
+	changed := doUpdate(ctx, uuidStr, config, status)
 	if changed {
 		log.Printf("handleModify status change for %s\n",
 			uuidStr)

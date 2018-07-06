@@ -4,37 +4,23 @@
 package zedmanager
 
 import (
-	"encoding/json"
-	"errors"
-	"fmt"
 	"github.com/zededa/go-provision/cast"
-	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"log"
-	"os"
 	"reflect"
 )
 
-// Key is UUID
-// XXX change from string to UUID?
-// XXX change to pubsub.
-var appNetworkConfig map[string]types.AppNetworkConfig
+func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
+	aiConfig types.AppInstanceConfig, aiStatus *types.AppInstanceStatus) {
 
-func MaybeAddAppNetworkConfig(aiConfig types.AppInstanceConfig,
-	aiStatus *types.AppInstanceStatus) {
 	key := aiConfig.UUIDandVersion.UUID.String()
 	displayName := aiConfig.DisplayName
 	log.Printf("MaybeAddAppNetworkConfig for %s displayName %s\n", key,
 		displayName)
 
-	if appNetworkConfig == nil {
-		if debug {
-			log.Printf("create appNetwork config map\n")
-		}
-		appNetworkConfig = make(map[string]types.AppNetworkConfig)
-	}
 	changed := false
-	if m, ok := appNetworkConfig[key]; ok {
+	m := lookupAppNetworkConfig(ctx, key)
+	if m != nil {
 		log.Printf("appNetwork config already exists for %s\n", key)
 		if len(aiConfig.OverlayNetworkList) != len(m.OverlayNetworkList) {
 			log.Println("Unsupported: Changed number of overlays for ",
@@ -122,53 +108,60 @@ func MaybeAddAppNetworkConfig(aiConfig types.AppInstanceConfig,
 			ul := &nc.UnderlayNetworkList[i]
 			*ul = ulc
 		}
-		appNetworkConfig[key] = nc
-		configFilename := fmt.Sprintf("%s/%s.json",
-			zedrouterConfigDirname, key)
-		// XXX Publish
-		writeAppNetworkConfig(appNetworkConfig[key], configFilename)
+		updateAppNetworkConfig(ctx, &nc)
 	}
 	log.Printf("MaybeAddAppNetworkConfig done for %s\n", key)
 }
 
-func MaybeRemoveAppNetworkConfig(uuidStr string) {
-	log.Printf("MaybeRemoveAppNetworkConfig for %s\n", uuidStr)
+func lookupAppNetworkConfig(ctx *zedmanagerContext, key string) *types.AppNetworkConfig {
 
-	if appNetworkConfig == nil {
-		if debug {
-			log.Printf("create AppNetwork config map\n")
-		}
-		appNetworkConfig = make(map[string]types.AppNetworkConfig)
+	pub := ctx.pubAppNetworkConfig
+	c, _ := pub.Get(key)
+	if c == nil {
+		log.Printf("lookupAppNetworkConfig(%s) not found\n", key)
+		return nil
 	}
-	if _, ok := appNetworkConfig[uuidStr]; !ok {
-		log.Printf("AppNetwork config missing for remove for %s\n", uuidStr)
-		return
+	config := cast.CastAppNetworkConfig(c)
+	if config.UUIDandVersion.UUID.String() != key {
+		log.Printf("lookupAppNetworkConfig(%s) got %s; ignored %+v\n",
+			key, config.UUIDandVersion.UUID.String(), config)
+		return nil
 	}
-	delete(appNetworkConfig, uuidStr)
-	configFilename := fmt.Sprintf("%s/%s.json",
-		zedrouterConfigDirname, uuidStr)
-	if err := os.Remove(configFilename); err != nil {
-		log.Println(err)
-	}
-	log.Printf("MaybeRemoveAppNetworkConfig done for %s\n", uuidStr)
+	return &config
 }
 
-func writeAppNetworkConfig(config types.AppNetworkConfig,
-	configFilename string) {
-	b, err := json.Marshal(config)
-	if err != nil {
-		log.Fatal(err, "json Marshal AppNetworkConfig")
+func lookupAppNetworkStatus(ctx *zedmanagerContext, key string) *types.AppNetworkStatus {
+	sub := ctx.subAppNetworkStatus
+	st, _ := sub.Get(key)
+	if st == nil {
+		log.Printf("lookupAppNetworkStatus(%s) not found\n", key)
+		return nil
 	}
-	err = pubsub.WriteRename(configFilename, b)
-	if err != nil {
-		log.Fatal(err, configFilename)
+	status := cast.CastAppNetworkStatus(st)
+	if status.UUIDandVersion.UUID.String() != key {
+		log.Printf("lookupAppNetworkStatus(%s) got %s; ignored %+v\n",
+			key, status.UUIDandVersion.UUID.String(), status)
+		return nil
 	}
+	return &status
 }
 
-// Key is UUID
-// XXX change from string to UUID?
-// XXX use pubsub
-var appNetworkStatus map[string]types.AppNetworkStatus
+func updateAppNetworkConfig(ctx *zedmanagerContext,
+	status *types.AppNetworkConfig) {
+
+	key := status.UUIDandVersion.UUID.String()
+	log.Printf("updateAppNetworkConfig(%s)\n", key)
+	pub := ctx.pubAppNetworkConfig
+	pub.Publish(key, status)
+}
+
+func removeAppNetworkConfig(ctx *zedmanagerContext, uuidStr string) {
+
+	key := uuidStr
+	log.Printf("removeAppNetworkConfig(%s)\n", key)
+	pub := ctx.pubAppNetworkConfig
+	pub.Unpublish(key)
+}
 
 func handleAppNetworkStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
@@ -191,40 +184,16 @@ func handleAppNetworkStatusModify(ctxArg interface{}, key string,
 			key)
 		return
 	}
-	if appNetworkStatus == nil {
-		if debug {
-			log.Printf("create appNetwork status map\n")
-		}
-		appNetworkStatus = make(map[string]types.AppNetworkStatus)
-	}
-	appNetworkStatus[key] = status
 	updateAIStatusUUID(ctx, status.UUIDandVersion.UUID.String())
 
 	log.Printf("handleAppNetworkStatusModify done for %s\n",
 		key)
 }
 
-func LookupAppNetworkStatus(uuidStr string) (types.AppNetworkStatus, error) {
-	if m, ok := appNetworkStatus[uuidStr]; ok {
-		return m, nil
-	} else {
-		return types.AppNetworkStatus{}, errors.New("No AppNetworkStatus")
-	}
-}
-
 func handleAppNetworkStatusDelete(ctxArg interface{}, key string) {
-	log.Printf("handleAppNetworkStatusDelete for %s\n", key)
 
+	log.Printf("handleAppNetworkStatusDelete for %s\n", key)
 	ctx := ctxArg.(*zedmanagerContext)
-	if m, ok := appNetworkStatus[key]; !ok {
-		log.Printf("handleAppNetworkStatusDelete for %s - not found\n",
-			key)
-	} else {
-		if debug {
-			log.Printf("appNetwork Status map delete for %v\n", key)
-		}
-		delete(appNetworkStatus, key)
-		removeAIStatusUUID(ctx, m.UUIDandVersion.UUID.String())
-	}
+	removeAIStatusUUID(ctx, key)
 	log.Printf("handleAppNetworkStatusDelete done for %s\n", key)
 }

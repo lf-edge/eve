@@ -41,9 +41,6 @@ import (
 const (
 	agentName     = "zedrouter"
 	runDirname    = "/var/run/zedrouter"
-	baseDirname   = "/var/tmp/zedrouter"
-	configDirname = baseDirname + "/config"
-	statusDirname = runDirname + "/status"
 	tmpDirname    = "/var/tmp/zededa"
 	DNCDirname    = tmpDirname + "/DeviceNetworkConfig"
 	DataPlaneName = "lisp-ztr"
@@ -95,18 +92,6 @@ func Run() {
 	log.Printf("Starting %s\n", agentName)
 	watch.CleanupRestarted(agentName)
 
-	if _, err := os.Stat(baseDirname); err != nil {
-		log.Printf("Create %s\n", baseDirname)
-		if err := os.Mkdir(baseDirname, 0700); err != nil {
-			log.Fatal(err)
-		}
-	}
-	if _, err := os.Stat(configDirname); err != nil {
-		log.Printf("Create %s\n", configDirname)
-		if err := os.Mkdir(configDirname, 0700); err != nil {
-			log.Fatal(err)
-		}
-	}
 	if _, err := os.Stat(runDirname); err != nil {
 		log.Printf("Create %s\n", runDirname)
 		if err := os.Mkdir(runDirname, 0755); err != nil {
@@ -119,12 +104,6 @@ func Run() {
 		}
 	}
 
-	if _, err := os.Stat(statusDirname); err != nil {
-		log.Printf("Create %s\n", statusDirname)
-		if err := os.Mkdir(statusDirname, 0700); err != nil {
-			log.Fatal(err)
-		}
-	}
 	if _, err := os.Stat(DNCDirname); err != nil {
 		log.Printf("Create %s\n", DNCDirname)
 		if err := os.MkdirAll(DNCDirname, 0700); err != nil {
@@ -138,7 +117,8 @@ func Run() {
 	}
 
 	// XXX why dirname? Fix to read collection?
-	appNumAllocatorInit(statusDirname, configDirname)
+	appNumAllocatorInit("/var/run/zedrouter/AppNetworkStatus",
+		"/var/run/zedmanager/AppNetworkConfig")
 	model := hardware.GetHardwareModel()
 
 	// Pick up (mostly static) AssignableAdapters before we process
@@ -292,8 +272,6 @@ func Run() {
 	publishTimer := flextimer.NewRangeTicker(time.Duration(min),
 		time.Duration(max))
 
-	configChanges := make(chan string)
-	go watch.WatchConfigStatus(configDirname, statusDirname, configChanges)
 	deviceConfigChanges := make(chan string)
 	go watch.WatchStatus(DNCDirname, deviceConfigChanges)
 	for {
