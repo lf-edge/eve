@@ -116,9 +116,6 @@ func Run() {
 		log.Fatal(err)
 	}
 
-	// XXX why dirname? Fix to read collection?
-	appNumAllocatorInit("/var/run/zedrouter/AppNetworkStatus",
-		"/var/run/zedmanager/AppNetworkConfig")
 	model := hardware.GetHardwareModel()
 
 	// Pick up (mostly static) AssignableAdapters before we process
@@ -159,6 +156,10 @@ func Run() {
 	zedrouterCtx.pubNetworkObjectStatus = pubNetworkObjectStatus
 	zedrouterCtx.pubNetworkServiceStatus = pubNetworkServiceStatus
 	zedrouterCtx.pubAppNetworkStatus = pubAppNetworkStatus
+
+	// XXX why dirname? Fix to read collection?
+	appNumAllocatorInit("/var/run/zedrouter/AppNetworkStatus",
+		"/var/run/zedmanager/AppNetworkConfig")
 
 	// Subscribe to network objects and services from zedagent
 	subNetworkObjectConfig, err := pubsub.Subscribe("zedagent",
@@ -207,7 +208,8 @@ func Run() {
 
 	// Wait for zedmanager having populated the intial files to
 	// reduce the number of LISP-RESTARTs
-	restartFile := "/var/tmp/zedrouter/config/restart"
+	// XXX can't use handleRestart since it restarts LISP.
+	restartFile := "/var/run/zedmanager/AppNetworkConfig/restarted"
 	log.Printf("Waiting for zedmanager to report in %s\n", restartFile)
 	watch.WaitForFile(restartFile)
 	log.Printf("Zedmanager reported in %s\n", restartFile)
