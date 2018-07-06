@@ -117,9 +117,6 @@ func Run() {
 		}
 	}
 
-	// Tell ourselves to go ahead
-	watch.SignalRestart(agentName)
-
 	// Any state needed by handler functions
 	ctx := zedmanagerContext{}
 
