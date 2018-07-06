@@ -213,9 +213,15 @@ func Run() {
 	// XXX defer this until we have some config from cloud or saved copy
 	pubAppInstanceConfig.SignalRestarted()
 
+	pubAppNetworkConfig, err := pubsub.Publish(agentName,
+		types.AppNetworkConfig{})
+	if err != nil {
+		log.Fatal(err)
+	}
 	getconfigCtx.pubNetworkObjectConfig = pubNetworkObjectConfig
 	getconfigCtx.pubNetworkServiceConfig = pubNetworkServiceConfig
 	getconfigCtx.pubAppInstanceConfig = pubAppInstanceConfig
+	getconfigCtx.pubAppNetworkConfig = pubAppNetworkConfig
 
 	// Look for errors and status from zedrouter
 	subNetworkObjectStatus, err := pubsub.Subscribe("zedrouter",

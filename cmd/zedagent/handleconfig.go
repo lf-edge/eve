@@ -76,6 +76,7 @@ type getconfigContext struct {
 	pubNetworkServiceConfig     *pubsub.Publication
 	subAppInstanceStatus        *pubsub.Subscription
 	pubAppInstanceConfig        *pubsub.Publication
+	pubAppNetworkConfig         *pubsub.Publication
 }
 
 // tlsConfig is initialized once i.e. effectively a constant
@@ -352,7 +353,7 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCo
 
 		}
 	}
-	handleLookupParam(config)
+	handleLookupParam(getconfigCtx, config)
 
 	// XXX should check for different sha for baseOs and appInstances
 	// before looking for old

@@ -57,6 +57,7 @@ type zedrouterContext struct {
 	pubNetworkObjectStatus  *pubsub.Publication
 	pubNetworkServiceStatus *pubsub.Publication
 	subAppNetworkConfig     *pubsub.Subscription
+	subAppNetworkConfigAg   *pubsub.Subscription // From zedagent for dom0
 	pubAppNetworkStatus     *pubsub.Publication
 	assignableAdapters      *types.AssignableAdapters
 	usableAddressCount      int
@@ -182,7 +183,7 @@ func Run() {
 	zedrouterCtx.subNetworkServiceConfig = subNetworkServiceConfig
 	subNetworkServiceConfig.Activate()
 
-	// Subscribe to AppNetworkConfig from zedmanager
+	// Subscribe to AppNetworkConfig from zedmanager and from zedagent
 	subAppNetworkConfig, err := pubsub.Subscribe("zedmanager",
 		types.AppNetworkConfig{}, false, &zedrouterCtx)
 	if err != nil {
@@ -193,6 +194,17 @@ func Run() {
 	subAppNetworkConfig.RestartHandler = handleRestart
 	zedrouterCtx.subAppNetworkConfig = subAppNetworkConfig
 	subAppNetworkConfig.Activate()
+
+	// Subscribe to AppNetworkConfig from zedmanager
+	subAppNetworkConfigAg, err := pubsub.Subscribe("zedagent",
+		types.AppNetworkConfig{}, false, &zedrouterCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subAppNetworkConfigAg.ModifyHandler = handleAppNetworkConfigModify
+	subAppNetworkConfigAg.DeleteHandler = handleAppNetworkConfigDelete
+	zedrouterCtx.subAppNetworkConfigAg = subAppNetworkConfigAg
+	subAppNetworkConfigAg.Activate()
 
 	// XXX should we make geoRedoTime configurable?
 	// We refresh the gelocation information when the underlay
@@ -280,6 +292,9 @@ func Run() {
 		select {
 		case change := <-subAppNetworkConfig.C:
 			subAppNetworkConfig.ProcessChange(change)
+
+		case change := <-subAppNetworkConfigAg.C:
+			subAppNetworkConfigAg.ProcessChange(change)
 
 		case change := <-deviceConfigChanges:
 			watch.HandleStatusEvent(change, &zedrouterCtx,
@@ -571,8 +586,12 @@ func lookupAppNetworkConfig(ctx *zedrouterContext, key string) *types.AppNetwork
 	sub := ctx.subAppNetworkConfig
 	c, _ := sub.Get(key)
 	if c == nil {
-		log.Printf("lookupAppNetworkConfig(%s) not found\n", key)
-		return nil
+		sub = ctx.subAppNetworkConfigAg
+		c, _ = sub.Get(key)
+		if c == nil {
+			log.Printf("lookupAppNetworkConfig(%s) not found\n", key)
+			return nil
+		}
 	}
 	config := cast.CastAppNetworkConfig(c)
 	if config.UUIDandVersion.UUID.String() != key {
