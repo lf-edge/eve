@@ -908,6 +908,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 
 		// XXX need to get bridgeIPAddr from bridge and record it?
 		// XXX add AF_INET6 to getBridgeServiceIPv6Addr(ctx, olconfig.Network)
+		// Or configure this additional address?
 		bridgeIPAddr := "fd00::" + strconv.FormatInt(int64(olNum), 16) +
 			":" + strconv.FormatInt(int64(appNum), 16)
 		log.Printf("bridgeIPAddr %s EID %s\n", bridgeIPAddr, EID)
@@ -950,7 +951,11 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 			addError(ctx, &status, "updateNetworkACL", err)
 		}
 
-		// XXX need ipsets from all bn<N> users? Or apply to nbn at bridge?
+		// XXX need ipsets from all bn<N> users? Or apply to nbn at
+		// bridge? Still need across multiple interfaces for app
+		// Apply at bridge based on ACL, but track in dnsmasq?
+		// XXX foo.example.org and example.org on from different
+		// apps on same bridge??? Does dnsmasq populate both?
 
 		addhostDnsmasq(bridgeName, appMac, EID.String(),
 			config.UUIDandVersion.UUID.String())
@@ -1283,6 +1288,7 @@ func handleModify(ctxArg interface{}, statusFilename string, configArg interface
 
 		// Default EID ipset
 		// XXX shared with others; need union of all hosts on bridge
+		// or per client bridge port ACLs
 		updateEidIpsetConfiglet(bridgeName, olStatus.NameToEidList,
 			olConfig.NameToEidList)
 
@@ -1573,7 +1579,8 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 				status.DisplayName)
 
 			// Default EID ipset
-			// XXX not all of it
+			// XXX not all of it? Set per app/olifname and not
+			// shared across bridge?
 			deleteEidIpsetConfiglet(bridgeName, true)
 		}
 
