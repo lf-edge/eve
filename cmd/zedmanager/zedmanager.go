@@ -270,11 +270,10 @@ func Run() {
 	}
 }
 
-// XXX what does zedagent waiting for verifier already solve?
-// XXX why do we care about configRestarted? Avoid starting domUs which were
-// deleted while we down? But restarted from zedagent isn't sufficient? Need to
-// know it got some config...
-// Propagate a seqence of restart/restarted from the zedmanager config
+// After zedagent has waited for its config and set restarted for
+// AppInstanceConfig (which triggers this callback) we propagate a sequence of
+// restarts so that the agents don't do extra work.
+// We propagate a seqence of restarted from the zedmanager config
 // and verifier status to identitymgr, then from identitymgr to zedrouter,
 // and finally from zedrouter to domainmgr.
 // This removes the need for extra downloads/verifications and extra copying
