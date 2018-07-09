@@ -17,15 +17,14 @@ import (
 	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/binary"
-	"encoding/json"
 	"encoding/pem"
 	"flag"
 	"fmt"
 	"github.com/zededa/go-provision/agentlog"
+	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
-	"github.com/zededa/go-provision/watch"
 	"log"
 	"math/big"
 	"net"
@@ -36,24 +35,22 @@ import (
 
 // Keeping status in /var/run to be clean after a crash/reboot
 const (
-	agentName     = "identitymgr"
-	baseDirname   = "/var/tmp/identitymgr"
-	runDirname    = "/var/run/identitymgr"
-	configDirname = baseDirname + "/config"
-	statusDirname = runDirname + "/status"
+	agentName = "identitymgr"
 )
 
 // Set from Makefile
 var Version = "No version specified"
 
-// Dummy since we don't have anything to pass
-type dummyContext struct {
+// Information for handleCreate/Modify/Delete
+type identityContext struct {
+	subEIDConfig *pubsub.Subscription
+	pubEIDStatus *pubsub.Publication
 }
 
 func Run() {
 	logf, err := agentlog.Init(agentName)
 	if err != nil {
-	       log.Fatal(err)
+		log.Fatal(err)
 	}
 	defer logf.Close()
 
@@ -67,73 +64,137 @@ func Run() {
 		log.Fatal(err)
 	}
 	log.Printf("Starting %s\n", agentName)
-	watch.CleanupRestarted(agentName)
 
-	if _, err := os.Stat(baseDirname); err != nil {
-		log.Printf("Create %s\n", baseDirname)
-		if err := os.Mkdir(baseDirname, 0700); err != nil {
-			log.Fatal(err)
-		}
-	}
-	if _, err := os.Stat(configDirname); err != nil {
-		log.Printf("Create %s\n", configDirname)
-		if err := os.Mkdir(configDirname, 0700); err != nil {
-			log.Fatal(err)
-		}
-	}
-	if _, err := os.Stat(runDirname); err != nil {
-		log.Printf("Create %s\n", runDirname)
-		if err := os.Mkdir(runDirname, 0700); err != nil {
-			log.Fatal(err)
-		}
-	}
-	if _, err := os.Stat(statusDirname); err != nil {
-		log.Printf("Create %s\n", statusDirname)
-		if err := os.Mkdir(statusDirname, 0700); err != nil {
-			log.Fatal(err)
-		}
-	}
+	identityCtx := identityContext{}
 
-	var restartFn watch.ConfigRestartHandler = handleRestart
+	pubEIDStatus, err := pubsub.Publish(agentName,
+		types.EIDStatus{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	identityCtx.pubEIDStatus = pubEIDStatus
+	pubEIDStatus.ClearRestarted()
 
-	fileChanges := make(chan string)
-	go watch.WatchConfigStatus(configDirname, statusDirname, fileChanges)
+	// Subscribe to EIDConfig from zedmanager
+	subEIDConfig, err := pubsub.Subscribe("zedmanager",
+		types.EIDConfig{}, false, &identityCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subEIDConfig.ModifyHandler = handleEIDConfigModify
+	subEIDConfig.DeleteHandler = handleEIDConfigDelete
+	subEIDConfig.RestartHandler = handleRestart
+	identityCtx.subEIDConfig = subEIDConfig
+	subEIDConfig.Activate()
+
 	for {
-		change := <-fileChanges
-		watch.HandleConfigStatusEvent(change, dummyContext{},
-			configDirname, statusDirname,
-			&types.EIDConfig{},
-			&types.EIDStatus{},
-			handleCreate, handleModify, handleDelete, &restartFn)
+		select {
+		case change := <-subEIDConfig.C:
+			subEIDConfig.ProcessChange(change)
+		}
 	}
 }
 
 func handleRestart(ctxArg interface{}, done bool) {
 	log.Printf("handleRestart(%v)\n", done)
+	ctx := ctxArg.(*identityContext)
 	if done {
 		// Since all work is done inline we can immediately say that
 		// we have restarted.
-		watch.SignalRestarted(agentName)
+		ctx.pubEIDStatus.SignalRestarted()
 	}
 }
 
-func writeEIDStatus(status *types.EIDStatus,
-	statusFilename string) {
-	b, err := json.Marshal(status)
-	if err != nil {
-		log.Fatal(err, "json Marshal EIDStatus")
-	}
-	err = pubsub.WriteRename(statusFilename, b)
-	if err != nil {
-		log.Fatal(err, statusFilename)
-	}
+func updateEIDStatus(ctx *identityContext, key string, status *types.EIDStatus) {
+
+	log.Printf("updateEIDStatus(%s)\n", key)
+	pub := ctx.pubEIDStatus
+	pub.Publish(key, status)
 }
 
-func handleCreate(ctxArg interface{}, statusFilename string,
-	configArg interface{}) {
-	config := configArg.(*types.EIDConfig)
-	log.Printf("handleCreate(%v,%d) for %s\n",
-		config.UUIDandVersion, config.IID, config.DisplayName)
+func removeEIDStatus(ctx *identityContext, key string) {
+
+	log.Printf("removeEIDStatus(%s)\n", key)
+	pub := ctx.pubEIDStatus
+	st, _ := pub.Get(key)
+	if st == nil {
+		log.Printf("removeEIDStatus(%s) not found\n", key)
+		return
+	}
+	pub.Unpublish(key)
+}
+
+// Wrappers around handleCreate, handleModify, and handleDelete
+
+// Determine whether it is an create or modify
+func handleEIDConfigModify(ctxArg interface{}, key string, configArg interface{}) {
+
+	log.Printf("handleEIDConfigModify(%s)\n", key)
+	ctx := ctxArg.(*identityContext)
+	config := cast.CastEIDConfig(configArg)
+	if config.Key() != key {
+		log.Printf("handleEIDConfigModify key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, config.Key(), config)
+		return
+	}
+	status := lookupEIDStatus(ctx, key)
+	if status == nil {
+		handleCreate(ctx, key, &config)
+	} else {
+		handleModify(ctx, key, &config, status)
+	}
+	log.Printf("handleEIDConfigModify(%s) done\n", key)
+}
+
+func handleEIDConfigDelete(ctxArg interface{}, key string) {
+	log.Printf("handleEIDConfigDelete(%s)\n", key)
+	ctx := ctxArg.(*identityContext)
+	status := lookupEIDStatus(ctx, key)
+	if status == nil {
+		log.Printf("handleEIDConfigDelete: unknown %s\n", key)
+		return
+	}
+	handleDelete(ctx, key, status)
+	log.Printf("handleEIDConfigDelete(%s) done\n", key)
+}
+
+// Callers must be careful to publish any changes to EIDStatus
+func lookupEIDStatus(ctx *identityContext, key string) *types.EIDStatus {
+
+	pub := ctx.pubEIDStatus
+	st, _ := pub.Get(key)
+	if st == nil {
+		log.Printf("lookupEIDStatus(%s) not found\n", key)
+		return nil
+	}
+	status := cast.CastEIDStatus(st)
+	if status.Key() != key {
+		log.Printf("lookupEIDStatus(%s) got %s; ignored %+v\n",
+			key, status.Key(), status)
+		return nil
+	}
+	return &status
+}
+
+func lookupEIDConfig(ctx *identityContext, key string) *types.EIDConfig {
+
+	sub := ctx.subEIDConfig
+	c, _ := sub.Get(key)
+	if c == nil {
+		log.Printf("lookupEIDConfig(%s) not found\n", key)
+		return nil
+	}
+	config := cast.CastEIDConfig(c)
+	if config.Key() != key {
+		log.Printf("lookupEIDConfig(%s) got %s; ignored %+v\n",
+			key, config.Key(), config)
+		return nil
+	}
+	return &config
+}
+
+func handleCreate(ctx *identityContext, key string, config *types.EIDConfig) {
+	log.Printf("handleCreate(%s) for %s\n", key, config.DisplayName)
 
 	// Start by marking with PendingAdd
 	status := types.EIDStatus{
@@ -154,7 +215,7 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		config.AllocationPrefixLen = 8 * len(config.AllocationPrefix)
 		status.EIDAllocation = config.EIDAllocation
 	}
-	// writeEIDStatus(&status, statusFilename)
+	updateEIDStatus(ctx, key, &status)
 	pemPrivateKey := config.PemPrivateKey
 
 	var publicPem []byte
@@ -257,8 +318,8 @@ func handleCreate(ctxArg interface{}, statusFilename string,
 		status.PemPrivateKey = pemPrivateKey
 	}
 	status.PendingAdd = false
-	writeEIDStatus(&status, statusFilename)
-	log.Printf("handleCreate done for %s\n", config.DisplayName)
+	updateEIDStatus(ctx, key, &status)
+	log.Printf("handleCreate(%s) done for %s\n", key, config.DisplayName)
 }
 
 func extractPublicPem(pk interface{}) ([]byte, []byte, error) {
@@ -343,46 +404,40 @@ func encodePrivateKey(keypair *ecdsa.PrivateKey) ([]byte, error) {
 // Need to compare what might have changed. If any content change
 // then we need to reboot. Thus version by itself can change but nothing
 // else. Such a version change would be e.g. due to an ACL change.
-func handleModify(ctxArg interface{}, statusFilename string, configArg interface{},
-	statusArg interface{}) {
-	config := configArg.(*types.EIDConfig)
-	status := statusArg.(*types.EIDStatus)
-	log.Printf("handleModify(%v,%d) for %s\n",
-		config.UUIDandVersion, config.IID, config.DisplayName)
+func handleModify(ctx *identityContext, key string, config *types.EIDConfig,
+	status *types.EIDStatus) {
+
+	log.Printf("handleModify(%s) for %s\n", key, config.DisplayName)
 
 	if config.UUIDandVersion.Version == status.UUIDandVersion.Version {
 		log.Printf("Same version %s for %s\n",
-			config.UUIDandVersion.Version, statusFilename)
+			config.UUIDandVersion.Version, key)
 		return
 	}
 	// Reject any changes to EIDAllocation.
 	// XXX report internal error?
 	// XXX switch to Equal?
 	if !reflect.DeepEqual(status.EIDAllocation, config.EIDAllocation) {
-		log.Printf("handleModify(%v,%d) EIDAllocation changed for %s\n",
-			config.UUIDandVersion, config.IID, config.DisplayName)
+		log.Printf("handleModify(%s) EIDAllocation changed for %s\n",
+			key, config.DisplayName)
 		return
 	}
 	status.PendingModify = true
-	writeEIDStatus(status, statusFilename)
+	updateEIDStatus(ctx, key, status)
 	// XXX Any work in modify?
 	status.PendingModify = false
 	status.UUIDandVersion = config.UUIDandVersion
-	writeEIDStatus(status, statusFilename)
-	log.Printf("handleModify done for %s\n", config.DisplayName)
+	updateEIDStatus(ctx, key, status)
+	log.Printf("handleModify(%s) done for %s\n", key, config.DisplayName)
 }
 
-func handleDelete(ctxArg interface{}, statusFilename string,
-	statusArg interface{}) {
-	status := statusArg.(*types.EIDStatus)
-	log.Printf("handleDelete(%v,%d) for %s\n",
-		status.UUIDandVersion, status.IID, status.DisplayName)
+func handleDelete(ctx *identityContext, key string, status *types.EIDStatus) {
+
+	log.Printf("handleDelete(%s) for %s\n", key, status.DisplayName)
 
 	// No work to do other than deleting the status
 
 	// Write out what we modified aka delete
-	if err := os.Remove(statusFilename); err != nil {
-		log.Println(err)
-	}
-	log.Printf("handleDelete done for %s\n", status.DisplayName)
+	removeEIDStatus(ctx, key)
+	log.Printf("handleDelete(%s) done for %s\n", key, status.DisplayName)
 }

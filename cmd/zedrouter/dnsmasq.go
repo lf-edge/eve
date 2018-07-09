@@ -8,6 +8,7 @@ package zedrouter
 import (
 	"fmt"
 	"github.com/zededa/go-provision/agentlog"
+	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/types"
 	"log"
 	"net"
@@ -55,7 +56,10 @@ func createDnsmasqOverlayConfiglet(ctx *zedrouterContext,
 	file.WriteString(fmt.Sprintf("listen-address=%s\n", bridgeIPAddr))
 	if netconf != nil {
 		// walk all of netconf - find all hosts which use this network
-		for _, status := range appNetworkStatus {
+		pub := ctx.pubAppNetworkStatus
+		items := pub.GetAll()
+		for _, st := range items {
+			status := cast.CastAppNetworkStatus(st)
 			for _, olStatus := range status.OverlayNetworkList {
 				if olStatus.Network != netconf.UUID {
 					continue
@@ -124,7 +128,10 @@ func createDnsmasqUnderlayConfiglet(ctx *zedrouterContext,
 
 	if netconf != nil {
 		// walk all of netconf - find all hosts which use this network
-		for _, status := range appNetworkStatus {
+		pub := ctx.pubAppNetworkStatus
+		items := pub.GetAll()
+		for _, st := range items {
+			status := cast.CastAppNetworkStatus(st)
 			for _, ulStatus := range status.UnderlayNetworkList {
 				if ulStatus.Network != netconf.UUID {
 					continue

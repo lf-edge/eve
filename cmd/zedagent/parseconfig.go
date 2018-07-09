@@ -98,11 +98,9 @@ func shutdownApps(getconfigCtx *getconfigContext) {
 		config := cast.CastAppInstanceConfig(c)
 		if config.Activate {
 			log.Printf("shutdownApps: clearing Activate for %s uuid %s\n",
-				config.DisplayName,
-				config.UUIDandVersion.UUID.String())
+				config.DisplayName, config.Key())
 			config.Activate = false
-			pub.Publish(config.UUIDandVersion.UUID.String(),
-				config)
+			pub.Publish(config.Key(), config)
 		}
 	}
 }
@@ -268,7 +266,7 @@ func assignBaseOsPartition(baseOsList []*types.BaseOsConfig) bool {
 		if baseOs == nil {
 			continue
 		}
-		uuidStr := baseOs.UUIDandVersion.UUID.String()
+		uuidStr := baseOs.Key()
 		curBaseOsConfig := baseOsConfigGet(uuidStr)
 		// XXX isn't curBaseOsConfig the same as baseOs???
 		// We are iterating over all the baseOsConfigs.
@@ -352,7 +350,7 @@ func rejectReinstallFailed(config *types.BaseOsConfig, otherPartName string) {
 		config.BaseOsVersion, otherPartName)
 	log.Println(errString)
 	// XXX do we have a baseOsStatus yet? NO
-	uuidStr := config.UUIDandVersion.UUID.String()
+	uuidStr := config.Key()
 	status := baseOsStatusGet(uuidStr)
 	if status == nil {
 		log.Printf("XXX %s, rejectReinstallFailed can't find baseOsStatus uuid %s\n",
@@ -679,8 +677,10 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 			log.Printf("publishNetworkObjectConfig: LISP NetworkConfig not supported for %d in %v\n",
 				id.String(), netEnt)
 		default:
-			log.Printf("publishNetworkObjectConfig: Unknown NetworkConfig type %d for %d in %v\n",
+			log.Printf("publishNetworkObjectConfig: Unknown NetworkConfig type %d for %s in %v\n",
 				config.Type, id.String(), netEnt)
+			// XXX return error? Ignore for now
+			return
 		}
 		// XXX Hack to make existing Dhcp == 0 become an implicit
 		// XXX remove
@@ -1188,7 +1188,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 func updateAppInstanceConfig(getconfigCtx *getconfigContext,
 	config types.AppInstanceConfig) {
 
-	key := config.UUIDandVersion.UUID.String()
+	key := config.Key()
 	log.Printf("Updating app instance UUID %s\n", key)
 	pub := getconfigCtx.pubAppInstanceConfig
 	pub.Publish(key, config)
@@ -1198,6 +1198,11 @@ func removeAppInstanceConfig(getconfigCtx *getconfigContext, key string) {
 
 	log.Printf("Removing app instance UUID %s\n", key)
 	pub := getconfigCtx.pubAppInstanceConfig
+	c, _ := pub.Get(key)
+	if c == nil {
+		log.Printf("removeAppInstanceConfig(%s) not found\n", key)
+		return
+	}
 	pub.Unpublish(key)
 }
 
@@ -1358,7 +1363,7 @@ func createBaseOsConfig(baseOsList []*types.BaseOsConfig, certList []*types.Cert
 		if baseOs == nil {
 			continue
 		}
-		uuidStr := baseOs.UUIDandVersion.UUID.String()
+		uuidStr := baseOs.Key()
 		configFilename := zedagentBaseOsConfigDirname + "/" + uuidStr + ".json"
 		// file not present
 		if _, err := os.Stat(configFilename); err != nil {

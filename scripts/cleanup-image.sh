@@ -49,7 +49,6 @@ rm -rf var/log/domainmgr*
 rm -rf var/log/identitymgr*
 rm -rf var/log/downloader*
 rm -rf var/log/verifier*
-rm -rf var/log/eidregister*
 rm -rf var/log/xen/*
 
 rm -rf opt/zededa/lisp/logs/*

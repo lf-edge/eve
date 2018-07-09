@@ -4,32 +4,21 @@
 package zedmanager
 
 import (
-	"encoding/json"
-	"errors"
-	"fmt"
-	"github.com/zededa/go-provision/pubsub"
+	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/types"
 	"log"
-	"os"
 )
 
-// Key is UUID:IID
-var EIDConfig map[string]types.EIDConfig
-
-func MaybeAddEIDConfig(UUIDandVersion types.UUIDandVersion,
+func MaybeAddEIDConfig(ctx *zedmanagerContext,
+	UUIDandVersion types.UUIDandVersion,
 	displayName string, ec *types.EIDOverlayConfig) {
-	key := fmt.Sprintf("%s:%d", UUIDandVersion.UUID.String(), ec.IID)
 
+	key := types.EidKey(UUIDandVersion, ec.IID)
 	log.Printf("MaybeAddEIDConfig for %s displayName %s\n", key,
 		displayName)
 
-	if EIDConfig == nil {
-		if debug {
-			log.Printf("create EID config map\n")
-		}
-		EIDConfig = make(map[string]types.EIDConfig)
-	}
-	if _, ok := EIDConfig[key]; ok {
+	m := lookupEIDConfig(ctx, key)
+	if m != nil {
 		log.Printf("EID config already exists for %s\n", key)
 		// XXX check displayName and EIDConfigDetails didn't change?
 	} else {
@@ -37,116 +26,97 @@ func MaybeAddEIDConfig(UUIDandVersion types.UUIDandVersion,
 			log.Printf("EID config add for %s\n", key)
 		}
 
-		EIDConfig[key] = types.EIDConfig{
+		config := types.EIDConfig{
 			UUIDandVersion:   UUIDandVersion,
 			DisplayName:      displayName,
 			EIDConfigDetails: ec.EIDConfigDetails,
 		}
-		configFilename := fmt.Sprintf("%s/%s.json",
-			identitymgrConfigDirname, key)
-		writeEIDConfig(EIDConfig[key], configFilename)
+		updateEIDConfig(ctx, &config)
 	}
 	log.Printf("MaybeAddEIDConfig done for %s\n", key)
 }
 
-func MaybeRemoveEIDConfig(UUIDandVersion types.UUIDandVersion,
-	es *types.EIDStatusDetails) {
-	key := fmt.Sprintf("%s:%d", UUIDandVersion.UUID.String(), es.IID)
-	log.Printf("MaybeRemoveEIDConfig for %s\n", key)
+func lookupEIDConfig(ctx *zedmanagerContext, key string) *types.EIDConfig {
 
-	if EIDConfig == nil {
-		if debug {
-			log.Printf("create EID config map\n")
-		}
-		EIDConfig = make(map[string]types.EIDConfig)
+	pub := ctx.pubEIDConfig
+	c, _ := pub.Get(key)
+	if c == nil {
+		log.Printf("lookupEIDConfig(%s) not found\n", key)
+		return nil
 	}
-	if _, ok := EIDConfig[key]; !ok {
-		log.Printf("EID config missing for remove for %s\n", key)
+	config := cast.CastEIDConfig(c)
+	if config.Key() != key {
+		log.Printf("lookupEIDConfig(%s) got %s; ignored %+v\n",
+			key, config.Key(), config)
+		return nil
+	}
+	return &config
+}
+
+func lookupEIDStatus(ctx *zedmanagerContext, key string) *types.EIDStatus {
+	sub := ctx.subEIDStatus
+	st, _ := sub.Get(key)
+	if st == nil {
+		log.Printf("lookupEIDStatus(%s) not found\n", key)
+		return nil
+	}
+	status := cast.CastEIDStatus(st)
+	if status.Key() != key {
+		log.Printf("lookupEIDStatus(%s) got %s; ignored %+v\n",
+			key, status.Key(), status)
+		return nil
+	}
+	return &status
+}
+
+func updateEIDConfig(ctx *zedmanagerContext,
+	status *types.EIDConfig) {
+
+	key := status.Key()
+	log.Printf("updateEIDConfig(%s)\n", key)
+	pub := ctx.pubEIDConfig
+	pub.Publish(key, status)
+}
+
+func removeEIDConfig(ctx *zedmanagerContext, uuidAndVers types.UUIDandVersion,
+	es *types.EIDStatusDetails) {
+
+	key := types.EidKey(uuidAndVers, es.IID)
+	log.Printf("removeEIDConfig(%s)\n", key)
+	pub := ctx.pubEIDConfig
+	c, _ := pub.Get(key)
+	if c == nil {
+		log.Printf("removeEIDConfig(%s) not found\n", key)
 		return
 	}
-	delete(EIDConfig, key)
-	configFilename := fmt.Sprintf("%s/%s.json",
-		identitymgrConfigDirname, key)
-	if err := os.Remove(configFilename); err != nil {
-		log.Println(err)
-	}
-	log.Printf("MaybeRemoveEIDConfig done for %s\n", key)
+	pub.Unpublish(key)
 }
 
-func writeEIDConfig(config types.EIDConfig,
-	configFilename string) {
-	b, err := json.Marshal(config)
-	if err != nil {
-		log.Fatal(err, "json Marshal EIDConfig")
-	}
-	err = pubsub.WriteRename(configFilename, b)
-	if err != nil {
-		log.Fatal(err, configFilename)
-	}
-}
-
-// Key is UUID:IID
-var EIDStatus map[string]types.EIDStatus
-
-func handleEIDStatusModify(ctxArg interface{}, statusFilename string,
+func handleEIDStatusModify(ctxArg interface{}, keyArg string,
 	statusArg interface{}) {
-	status := statusArg.(*types.EIDStatus)
+	status := cast.CastEIDStatus(statusArg)
 	ctx := ctxArg.(*zedmanagerContext)
-	key := fmt.Sprintf("%s:%d",
-		status.UUIDandVersion.UUID.String(), status.IID)
+	key := status.Key()
 	log.Printf("handleEIDStatusModify for %s\n", key)
+	if key != keyArg {
+		log.Printf("handleEIDModify key/UUID mismatch %s vs %s; ignored %+v\n",
+			keyArg, key, status)
+		return
+	}
 	// Ignore if any Pending* flag is set
 	if status.PendingAdd || status.PendingModify || status.PendingDelete {
 		log.Printf("handleEIDStatusModify skipping due to Pending* for %s\n",
 			key)
 		return
 	}
-
-	if EIDStatus == nil {
-		if debug {
-			log.Printf("create EID map\n")
-		}
-		EIDStatus = make(map[string]types.EIDStatus)
-	}
-	changed := false
-	if _, ok := EIDStatus[key]; ok {
-		log.Printf("Exists means no change for %v\n", status.EID)
-	} else {
-		log.Printf("EID map add for %v\n", status.EID)
-		changed = true
-	}
-	if changed {
-		EIDStatus[key] = *status
-		updateAIStatusUUID(ctx, status.UUIDandVersion.UUID.String())
-	}
-
+	updateAIStatusUUID(ctx, status.Key())
 	log.Printf("handleEIDStatusModify done for %s\n", key)
 }
 
-func LookupEIDStatus(UUIDandVersion types.UUIDandVersion, IID uint32) (types.EIDStatus, error) {
-	key := fmt.Sprintf("%s:%d", UUIDandVersion.UUID.String(), IID)
-	if m, ok := EIDStatus[key]; ok {
-		return m, nil
-	} else {
-		return types.EIDStatus{}, errors.New("No EIDStatus")
-	}
-}
-
-func handleEIDStatusDelete(ctxArg interface{}, statusFilename string) {
-	log.Printf("handleEIDStatusDelete for %s\n", statusFilename)
+func handleEIDStatusDelete(ctxArg interface{}, key string) {
+	log.Printf("handleEIDStatusDelete for %s\n", key)
 
 	ctx := ctxArg.(*zedmanagerContext)
-	key := statusFilename
-	if m, ok := EIDStatus[key]; !ok {
-		log.Printf("handleEIDStatusDelete for %s - not found\n",
-			key)
-	} else {
-		if debug {
-			log.Printf("EID map delete for %v\n", m.EID)
-		}
-		delete(EIDStatus, key)
-		removeAIStatusUUID(ctx, m.UUIDandVersion.UUID.String())
-	}
-	log.Printf("handleEIDStatusDelete done for %s\n",
-		statusFilename)
+	removeAIStatusUUID(ctx, key)
+	log.Printf("handleEIDStatusDelete done for %s\n", key)
 }

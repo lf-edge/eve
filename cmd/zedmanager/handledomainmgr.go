@@ -4,19 +4,14 @@
 package zedmanager
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/zededa/go-provision/pubsub"
+	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/types"
 	"io/ioutil"
 	"log"
 	"os"
 )
-
-// Key is UUID
-// XXX change from string to UUID?
-var domainConfig map[string]types.DomainConfig
 
 const (
 	persistDir            = "/persist"
@@ -27,21 +22,18 @@ const (
 	finalDirname          = imgCatalogDirname + "/verified"
 )
 
-func MaybeAddDomainConfig(aiConfig types.AppInstanceConfig,
+func MaybeAddDomainConfig(ctx *zedmanagerContext,
+	aiConfig types.AppInstanceConfig,
 	ns *types.AppNetworkStatus) error {
-	key := aiConfig.UUIDandVersion.UUID.String()
+
+	key := aiConfig.Key()
 	displayName := aiConfig.DisplayName
 	log.Printf("MaybeAddDomainConfig for %s displayName %s\n", key,
 		displayName)
 
-	if domainConfig == nil {
-		if debug {
-			log.Printf("create Domain config map\n")
-		}
-		domainConfig = make(map[string]types.DomainConfig)
-	}
 	changed := false
-	if m, ok := domainConfig[key]; ok {
+	m := lookupDomainConfig(ctx, key)
+	if m != nil {
 		// XXX any other change? Compare nothing else changed?
 		if m.Activate != aiConfig.Activate {
 			log.Printf("Domain config: Activate changed %s\n", key)
@@ -134,58 +126,77 @@ func MaybeAddDomainConfig(aiConfig types.AppInstanceConfig,
 			dc.VifList[i+ns.UlNum] = ol.VifInfo
 		}
 	}
-	domainConfig[key] = dc
-	configFilename := fmt.Sprintf("%s/%s.json",
-		domainmgrConfigDirname, key)
-	writeDomainConfig(domainConfig[key], configFilename)
+	updateDomainConfig(ctx, &dc)
 
 	log.Printf("MaybeAddDomainConfig done for %s\n", key)
 	return nil
 }
 
-func MaybeRemoveDomainConfig(uuidStr string) {
-	log.Printf("MaybeRemoveDomainConfig for %s\n", uuidStr)
+func lookupDomainConfig(ctx *zedmanagerContext, key string) *types.DomainConfig {
 
-	if domainConfig == nil {
-		if debug {
-			log.Printf("create Domain config map\n")
-		}
-		domainConfig = make(map[string]types.DomainConfig)
+	pub := ctx.pubDomainConfig
+	c, _ := pub.Get(key)
+	if c == nil {
+		log.Printf("lookupDomainConfig(%s) not found\n", key)
+		return nil
 	}
-	if _, ok := domainConfig[uuidStr]; !ok {
-		log.Printf("Domain config missing for remove for %s\n", uuidStr)
+	config := cast.CastDomainConfig(c)
+	if config.Key() != key {
+		log.Printf("lookupDomainConfig(%s) got %s; ignored %+v\n",
+			key, config.Key(), config)
+		return nil
+	}
+	return &config
+}
+
+func lookupDomainStatus(ctx *zedmanagerContext, key string) *types.DomainStatus {
+	sub := ctx.subDomainStatus
+	st, _ := sub.Get(key)
+	if st == nil {
+		log.Printf("lookupDomainStatus(%s) not found\n", key)
+		return nil
+	}
+	status := cast.CastDomainStatus(st)
+	if status.Key() != key {
+		log.Printf("lookupDomainStatus(%s) got %s; ignored %+v\n",
+			key, status.Key(), status)
+		return nil
+	}
+	return &status
+}
+
+func updateDomainConfig(ctx *zedmanagerContext,
+	status *types.DomainConfig) {
+
+	key := status.Key()
+	log.Printf("updateDomainConfig(%s)\n", key)
+	pub := ctx.pubDomainConfig
+	pub.Publish(key, status)
+}
+
+func removeDomainConfig(ctx *zedmanagerContext, uuidStr string) {
+
+	key := uuidStr
+	log.Printf("removeDomainConfig(%s)\n", key)
+	pub := ctx.pubDomainConfig
+	c, _ := pub.Get(key)
+	if c == nil {
+		log.Printf("removeDomainConfig(%s) not found\n", key)
 		return
 	}
-	delete(domainConfig, uuidStr)
-	configFilename := fmt.Sprintf("%s/%s.json",
-		domainmgrConfigDirname, uuidStr)
-	if err := os.Remove(configFilename); err != nil {
-		log.Println(err)
-	}
-	log.Printf("MaybeRemoveDomainConfig done for %s\n", uuidStr)
+	pub.Unpublish(key)
 }
 
-func writeDomainConfig(config types.DomainConfig,
-	configFilename string) {
-	b, err := json.Marshal(config)
-	if err != nil {
-		log.Fatal(err, "json Marshal DomainConfig")
-	}
-	err = pubsub.WriteRename(configFilename, b)
-	if err != nil {
-		log.Fatal(err, configFilename)
-	}
-}
-
-// Key is UUID
-// XXX change from string to UUID?
-var domainStatus map[string]types.DomainStatus
-
-func handleDomainStatusModify(ctxArg interface{}, statusFilename string,
+func handleDomainStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
-	status := statusArg.(*types.DomainStatus)
+
+	status := cast.CastDomainStatus(statusArg)
 	ctx := ctxArg.(*zedmanagerContext)
-	key := status.UUIDandVersion.UUID.String()
+	if status.Key() != key {
+		log.Printf("handleDomainStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, status.Key(), status)
+		return
+	}
 	log.Printf("handleDomainStatusModify for %s\n", key)
 	// Ignore if any Pending* flag is set
 	if status.PendingAdd || status.PendingModify || status.PendingDelete {
@@ -193,44 +204,16 @@ func handleDomainStatusModify(ctxArg interface{}, statusFilename string,
 			key)
 		return
 	}
-
-	if domainStatus == nil {
-		if debug {
-			log.Printf("create Domain map\n")
-		}
-		domainStatus = make(map[string]types.DomainStatus)
-	}
-	domainStatus[key] = *status
-	updateAIStatusUUID(ctx, status.UUIDandVersion.UUID.String())
-
+	updateAIStatusUUID(ctx, status.Key())
 	log.Printf("handleDomainStatusModify done for %s\n", key)
 }
 
-func LookupDomainStatus(uuidStr string) (types.DomainStatus, error) {
-	if m, ok := domainStatus[uuidStr]; ok {
-		return m, nil
-	} else {
-		return types.DomainStatus{}, errors.New("No DomainStatus")
-	}
-}
-
-func handleDomainStatusDelete(ctxArg interface{}, statusFilename string) {
-	log.Printf("handleDomainStatusDelete for %s\n", statusFilename)
+func handleDomainStatusDelete(ctxArg interface{}, key string) {
+	log.Printf("handleDomainStatusDelete for %s\n", key)
 
 	ctx := ctxArg.(*zedmanagerContext)
-	key := statusFilename
-	if m, ok := domainStatus[key]; !ok {
-		log.Printf("handleDomainStatusDelete for %s - not found\n",
-			key)
-	} else {
-		if debug {
-			log.Printf("Domain map delete for %v\n", key)
-		}
-		delete(domainStatus, key)
-		removeAIStatusUUID(ctx, m.UUIDandVersion.UUID.String())
-	}
-	log.Printf("handleDomainStatusDelete done for %s\n",
-		statusFilename)
+	removeAIStatusUUID(ctx, key)
+	log.Printf("handleDomainStatusDelete done for %s\n", key)
 }
 
 func locationFromDir(locationDir string) (string, error) {

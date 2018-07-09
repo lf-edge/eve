@@ -29,7 +29,7 @@ func updateAIStatusSafename(ctx *zedmanagerContext, safename string) {
 				log.Printf("Found StorageConfig URL %s safename %s\n",
 					sc.DownloadURL, safename2)
 				updateAIStatusUUID(ctx,
-					config.UUIDandVersion.UUID.String())
+					config.Key())
 			}
 		}
 	}
@@ -50,7 +50,7 @@ func updateAIStatusUUID(ctx *zedmanagerContext, uuidStr string) {
 			uuidStr)
 		return
 	}
-	changed := doUpdate(uuidStr, *config, status)
+	changed := doUpdate(ctx, uuidStr, *config, status)
 	if changed {
 		log.Printf("updateAIStatusUUID status change for %s\n",
 			uuidStr)
@@ -71,8 +71,8 @@ func removeAIStatusUUID(ctx *zedmanagerContext, uuidStr string) {
 }
 
 func removeAIStatus(ctx *zedmanagerContext, status *types.AppInstanceStatus) {
-	uuidStr := status.UUIDandVersion.UUID.String()
-	changed, del := doRemove(uuidStr, status)
+	uuidStr := status.Key()
+	changed, del := doRemove(ctx, uuidStr, status)
 	if changed {
 		log.Printf("removeAIStatus status change for %s\n",
 			uuidStr)
@@ -111,22 +111,23 @@ func removeAIStatusSafename(ctx *zedmanagerContext, safename string) {
 	}
 }
 
-func doUpdate(uuidStr string, config types.AppInstanceConfig,
-	status *types.AppInstanceStatus) bool {
+func doUpdate(ctx *zedmanagerContext, uuidStr string,
+	config types.AppInstanceConfig, status *types.AppInstanceStatus) bool {
+
 	log.Printf("doUpdate for %s\n", uuidStr)
 
 	// The existence of Config is interpreted to mean the
 	// AppInstance should be INSTALLED. Activate is checked separately.
-	changed, done := doInstall(uuidStr, config, status)
+	changed, done := doInstall(ctx, uuidStr, config, status)
 	if !done {
 		return changed
 	}
 	if !config.Activate {
 		if status.Activated || status.ActivateInprogress {
-			changed = doInactivate(uuidStr, status)
+			changed = doInactivate(ctx, uuidStr, status)
 		} else {
 			// If we have a !ReadOnly disk this will create a copy
-			err := MaybeAddDomainConfig(config, nil)
+			err := MaybeAddDomainConfig(ctx, config, nil)
 			if err != nil {
 				log.Printf("Error from MaybeAddDomainConfig for %s: %s\n",
 					uuidStr, err)
@@ -140,13 +141,14 @@ func doUpdate(uuidStr string, config types.AppInstanceConfig,
 		return changed
 	}
 	log.Printf("Have config.Activate for %s\n", uuidStr)
-	changed = doActivate(uuidStr, config, status)
+	changed = doActivate(ctx, uuidStr, config, status)
 	log.Printf("doUpdate done for %s\n", uuidStr)
 	return changed
 }
 
-func doInstall(uuidStr string, config types.AppInstanceConfig,
-	status *types.AppInstanceStatus) (bool, bool) {
+func doInstall(ctx *zedmanagerContext, uuidStr string,
+	config types.AppInstanceConfig, status *types.AppInstanceStatus) (bool, bool) {
+
 	log.Printf("doInstall for %s\n", uuidStr)
 	minState := types.MAXSTATE
 	allErrors := ""
@@ -354,18 +356,17 @@ func doInstall(uuidStr string, config types.AppInstanceConfig,
 	// with zedcloud
 	// Make sure we have an EIDConfig for each overlay
 	for _, ec := range config.OverlayNetworkList {
-		MaybeAddEIDConfig(config.UUIDandVersion,
+		MaybeAddEIDConfig(ctx, config.UUIDandVersion,
 			config.DisplayName, &ec)
 	}
 	// Check EIDStatus for each overlay; update AppInstanceStatus
 	eidsAllocated := true
 	for i, ec := range config.OverlayNetworkList {
-		key := fmt.Sprintf("%s:%d",
-			config.UUIDandVersion.UUID.String(), ec.IID)
-		es, err := LookupEIDStatus(config.UUIDandVersion, ec.IID)
-		if err != nil {
-			log.Printf("LookupEIDStatus %s failed %s\n",
-				key, err)
+		key := types.EidKey(config.UUIDandVersion, ec.IID)
+		es := lookupEIDStatus(ctx, key)
+		if es == nil {
+			log.Printf("lookupEIDStatus %s failed %s\n",
+				key)
 			eidsAllocated = false
 			continue
 		}
@@ -391,8 +392,9 @@ func doInstall(uuidStr string, config types.AppInstanceConfig,
 	return changed, true
 }
 
-func doActivate(uuidStr string, config types.AppInstanceConfig,
-	status *types.AppInstanceStatus) bool {
+func doActivate(ctx *zedmanagerContext, uuidStr string,
+	config types.AppInstanceConfig, status *types.AppInstanceStatus) bool {
+
 	log.Printf("doActivate for %s\n", uuidStr)
 	changed := false
 
@@ -400,11 +402,11 @@ func doActivate(uuidStr string, config types.AppInstanceConfig,
 	status.ActivateInprogress = true
 
 	// Make sure we have an AppNetworkConfig
-	MaybeAddAppNetworkConfig(config, status)
+	MaybeAddAppNetworkConfig(ctx, config, status)
 
 	// Check AppNetworkStatus
-	ns, err := LookupAppNetworkStatus(uuidStr)
-	if err != nil {
+	ns := lookupAppNetworkStatus(ctx, uuidStr)
+	if ns == nil {
 		log.Printf("Waiting for AppNetworkStatus for %s\n", uuidStr)
 		return changed
 	}
@@ -421,7 +423,7 @@ func doActivate(uuidStr string, config types.AppInstanceConfig,
 		log.Printf("Done with AppNetworkStatus for %s\n", uuidStr)
 	}
 	// Make sure we have a DomainConfig
-	err = MaybeAddDomainConfig(config, &ns)
+	err := MaybeAddDomainConfig(ctx, config, ns)
 	if err != nil {
 		log.Printf("Error from MaybeAddDomainConfig for %s: %s\n",
 			uuidStr, err)
@@ -435,8 +437,8 @@ func doActivate(uuidStr string, config types.AppInstanceConfig,
 	}
 
 	// Check DomainStatus; update AppInstanceStatus if error
-	ds, err := LookupDomainStatus(uuidStr)
-	if err != nil {
+	ds := lookupDomainStatus(ctx, uuidStr)
+	if ds == nil {
 		log.Printf("Waiting for DomainStatus for %s\n", uuidStr)
 		return changed
 	}
@@ -488,31 +490,35 @@ func doActivate(uuidStr string, config types.AppInstanceConfig,
 	return changed
 }
 
-func doRemove(uuidStr string, status *types.AppInstanceStatus) (bool, bool) {
+func doRemove(ctx *zedmanagerContext, uuidStr string,
+	status *types.AppInstanceStatus) (bool, bool) {
+
 	log.Printf("doRemove for %s\n", uuidStr)
 
 	changed := false
 	del := false
 	if status.Activated || status.ActivateInprogress {
-		changed = doInactivate(uuidStr, status)
+		changed = doInactivate(ctx, uuidStr, status)
 	}
 	if !status.Activated {
-		changed, del = doUninstall(uuidStr, status)
+		changed, del = doUninstall(ctx, uuidStr, status)
 	}
 	log.Printf("doRemove done for %s\n", uuidStr)
 	return changed, del
 }
 
-func doInactivate(uuidStr string, status *types.AppInstanceStatus) bool {
+func doInactivate(ctx *zedmanagerContext, uuidStr string,
+	status *types.AppInstanceStatus) bool {
+
 	log.Printf("doInactivate for %s\n", uuidStr)
 	changed := false
 
 	// First halt the domain
-	MaybeRemoveDomainConfig(uuidStr)
+	removeDomainConfig(ctx, uuidStr)
 
 	// Check if DomainStatus gone; update AppInstanceStatus if error
-	ds, err := LookupDomainStatus(uuidStr)
-	if err == nil {
+	ds := lookupDomainStatus(ctx, uuidStr)
+	if ds != nil {
 		log.Printf("Waiting for DomainStatus removal for %s\n", uuidStr)
 		// Look for xen errors.
 		if !ds.Activated {
@@ -530,11 +536,11 @@ func doInactivate(uuidStr string, status *types.AppInstanceStatus) bool {
 
 	log.Printf("Done with DomainStatus removal for %s\n", uuidStr)
 
-	MaybeRemoveAppNetworkConfig(uuidStr)
+	removeAppNetworkConfig(ctx, uuidStr)
 
 	// Check if AppNetworkStatus gone
-	ns, err := LookupAppNetworkStatus(uuidStr)
-	if err == nil {
+	ns := lookupAppNetworkStatus(ctx, uuidStr)
+	if ns != nil {
 		log.Printf("Waiting for AppNetworkStatus removal for %s\n",
 			uuidStr)
 		if ns.Error != "" {
@@ -557,23 +563,24 @@ func doInactivate(uuidStr string, status *types.AppInstanceStatus) bool {
 	return changed
 }
 
-func doUninstall(uuidStr string, status *types.AppInstanceStatus) (bool, bool) {
+func doUninstall(ctx *zedmanagerContext, uuidStr string,
+	status *types.AppInstanceStatus) (bool, bool) {
+
 	log.Printf("doUninstall for %s\n", uuidStr)
 	changed := false
 	del := false
 
 	// Remove the EIDConfig for each overlay
 	for _, es := range status.EIDList {
-		MaybeRemoveEIDConfig(status.UUIDandVersion, &es)
+		removeEIDConfig(ctx, status.UUIDandVersion, &es)
 	}
 	// Check EIDStatus for each overlay; update AppInstanceStatus
 	eidsFreed := true
 	for i, es := range status.EIDList {
-		es, err := LookupEIDStatus(status.UUIDandVersion, es.IID)
-		if err == nil {
-			key := fmt.Sprintf("%s:%d",
-				status.UUIDandVersion.UUID.String(), es.IID)
-			log.Printf("LookupEIDStatus not gone on remove for %s\n",
+		key := types.EidKey(status.UUIDandVersion, es.IID)
+		es := lookupEIDStatus(ctx, key)
+		if es != nil {
+			log.Printf("lookupEIDStatus not gone on remove for %s\n",
 				key)
 			eidsFreed = false
 			continue

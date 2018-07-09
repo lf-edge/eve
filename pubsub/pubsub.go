@@ -410,10 +410,15 @@ func (pub *Publication) GetAll() map[string]interface{} {
 }
 
 // Usage:
-//  s1 := pubsub.Subscribe("foo", fooStruct{})
-//  s1.ModifyHandler = func(...) // Optional
-//  s1.DeleteHandler = func(...) // Optional
-//  s1.RestartHandler = func(...) // Optional
+//  s1 := pubsub.Subscribe("foo", fooStruct{}, true, &myctx)
+// Or
+//  s1 := pubsub.Subscribe("foo", fooStruct{}, false, &myctx)
+//  s1.ModifyHandler = func(...), // Optional
+//  s1.DeleteHandler = func(...), // Optional
+//  s1.RestartHandler = func(...), // Optional
+//  [ Initialize myctx ]
+//  s1.Activate()
+//  ...
 //  select {
 //     change := <- s1.C:
 //         s1.ProcessChange(change, ctx)
@@ -434,6 +439,7 @@ type Subscription struct {
 	RestartHandler SubRestartHandler
 
 	// Private fields
+	sendChan   chan<- string
 	topicType  interface{}
 	agentName  string
 	agentScope string // XXX use for objType
@@ -456,25 +462,26 @@ func (sub *Subscription) nameString() string {
 // handleModify and/or handleDelete functions
 // watch ensures that any restart/restarted notification is after any other
 // notifications from ReadDir
-func Subscribe(agentName string, topicType interface{},
+func Subscribe(agentName string, topicType interface{}, activate bool,
 	ctx interface{}) (*Subscription, error) {
 
-	return subscribeImpl(agentName, "", topicType, ctx)
+	return subscribeImpl(agentName, "", topicType, activate, ctx)
 }
 
 func SubscribeScope(agentName string, agentScope string, topicType interface{},
-	ctx interface{}) (*Subscription, error) {
+	activate bool, ctx interface{}) (*Subscription, error) {
 
-	return subscribeImpl(agentName, agentScope, topicType, ctx)
+	return subscribeImpl(agentName, agentScope, topicType, activate, ctx)
 }
 
 func subscribeImpl(agentName string, agentScope string, topicType interface{},
-	ctx interface{}) (*Subscription, error) {
+	activate bool, ctx interface{}) (*Subscription, error) {
 
 	topic := TypeToName(topicType)
 	changes := make(chan string)
 	sub := new(Subscription)
 	sub.C = changes
+	sub.sendChan = changes
 	sub.topicType = topicType
 	sub.agentName = agentName
 	sub.agentScope = agentScope
@@ -485,6 +492,17 @@ func subscribeImpl(agentName string, agentScope string, topicType interface{},
 
 	log.Printf("Subscribe(%s)\n", name)
 
+	if activate {
+		if err := sub.Activate(); err != nil {
+			return nil, err
+		}
+	}
+	return sub, nil
+}
+
+func (sub *Subscription) Activate() error {
+
+	name := sub.nameString()
 	if subscribeFromDir {
 		// Waiting for directory to appear
 		dirName := PubDirName(name)
@@ -498,17 +516,16 @@ func subscribeImpl(agentName string, agentScope string, topicType interface{},
 				break
 			}
 		}
-		go watch.WatchStatus(dirName, changes)
-		return sub, nil
+		go watch.WatchStatus(dirName, sub.sendChan)
+		return nil
 	} else if subscribeFromSock {
 		errStr := fmt.Sprintf("subscribeFromSock not implemented")
-		return nil, errors.New(errStr)
+		return errors.New(errStr)
 	} else {
 		errStr := fmt.Sprintf("Subscribe(%s): failed %s",
 			name, "nowhere to subscribe")
-		return nil, errors.New(errStr)
+		return errors.New(errStr)
 	}
-	return nil, nil
 }
 
 // XXX Currently only handles directory subscriptions; no AF_UNIX
@@ -599,7 +616,7 @@ func handleRestart(ctxArg interface{}, restarted bool) {
 			name, restarted)
 	}
 	if restarted == sub.km.restarted {
-		log.Printf("pubsub.handleDelete(%s) value unchanged\n", name)
+		log.Printf("pubsub.handleRestart(%s) value unchanged\n", name)
 		return
 	}
 	sub.km.restarted = restarted

@@ -96,8 +96,6 @@ const (
 	verifierBaseOsConfigDirname = verifierBaseDirname + "/" + baseOsObj + "/config"
 	verifierBaseOsStatusDirname = verifierRunDirname + "/" + baseOsObj + "/status"
 	verifierAppImgStatusDirname = verifierRunDirname + "/" + appImgObj + "/status"
-	DNSDirname                  = "/var/run/zedrouter/DeviceNetworkStatus"
-	domainStatusDirname         = "/var/run/domainmgr/status"
 )
 
 // Set from Makefile
@@ -106,6 +104,7 @@ var Version = "No version specified"
 var deviceNetworkStatus types.DeviceNetworkStatus
 
 // XXX globals filled in by subscription handlers and read by handlemetrics
+// XXX could alternatively access sub object when adding them.
 var clientMetrics interface{}
 var logmanagerMetrics interface{}
 var downloaderMetrics interface{}
@@ -117,18 +116,14 @@ type dummyContext struct {
 
 // Context for handleDNSModify
 type DNSContext struct {
-	usableAddressCount int
-	triggerGetConfig   bool
+	usableAddressCount     int
+	subDeviceNetworkStatus *pubsub.Subscription
+	triggerGetConfig       bool
 }
 
 // Information from handleVerifierRestarted
 type verifierContext struct {
 	verifierRestarted bool
-}
-
-// Information for handleDomainStatus*
-type domainContext struct {
-	TriggerDeviceInfo bool
 }
 
 // Information for handleBaseOsCreate/Modify/Delete and handleAppInstanceStatus*
@@ -140,6 +135,8 @@ type deviceContext struct {
 type zedagentContext struct {
 	subNetworkObjectStatus  *pubsub.Subscription
 	subNetworkServiceStatus *pubsub.Subscription
+	subDomainStatus         *pubsub.Subscription
+	TriggerDeviceInfo       bool
 }
 
 var debug = false
@@ -191,7 +188,6 @@ func Run() {
 
 	verifierCtx := verifierContext{}
 	devCtx = deviceContext{assignableAdapters: &aa}
-	domainCtx := domainContext{}
 
 	// Publish NetworkConfig and NetworkServiceConfig for zedmanager/zedrouter
 	pubNetworkObjectConfig, err := pubsub.Publish(agentName,
@@ -199,52 +195,76 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	getconfigCtx.pubNetworkObjectConfig = pubNetworkObjectConfig
+
 	pubNetworkServiceConfig, err := pubsub.Publish(agentName,
 		types.NetworkServiceConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}
+	getconfigCtx.pubNetworkServiceConfig = pubNetworkServiceConfig
+
 	pubAppInstanceConfig, err := pubsub.Publish(agentName,
 		types.AppInstanceConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}
+	getconfigCtx.pubAppInstanceConfig = pubAppInstanceConfig
+	pubAppInstanceConfig.ClearRestarted()
+
+	pubAppNetworkConfig, err := pubsub.Publish(agentName,
+		types.AppNetworkConfig{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	pubAppNetworkConfig.ClearRestarted()
+	getconfigCtx.pubAppNetworkConfig = pubAppNetworkConfig
+
 	// XXX defer this until we have some config from cloud or saved copy
 	pubAppInstanceConfig.SignalRestarted()
 
-	getconfigCtx.pubNetworkObjectConfig = pubNetworkObjectConfig
-	getconfigCtx.pubNetworkServiceConfig = pubNetworkServiceConfig
-	getconfigCtx.pubAppInstanceConfig = pubAppInstanceConfig
-
 	// Look for errors and status from zedrouter
 	subNetworkObjectStatus, err := pubsub.Subscribe("zedrouter",
-		types.NetworkObjectStatus{}, &zedagentCtx)
+		types.NetworkObjectStatus{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
 	subNetworkObjectStatus.ModifyHandler = handleNetworkObjectModify
 	subNetworkObjectStatus.DeleteHandler = handleNetworkObjectDelete
+	zedagentCtx.subNetworkObjectStatus = subNetworkObjectStatus
+	subNetworkObjectStatus.Activate()
 
 	subNetworkServiceStatus, err := pubsub.Subscribe("zedrouter",
-		types.NetworkServiceStatus{}, &zedagentCtx)
+		types.NetworkServiceStatus{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
 	subNetworkServiceStatus.ModifyHandler = handleNetworkServiceModify
 	subNetworkServiceStatus.DeleteHandler = handleNetworkServiceDelete
+	zedagentCtx.subNetworkServiceStatus = subNetworkServiceStatus
+	subNetworkServiceStatus.Activate()
 
 	// Look for AppInstanceStatus from zedmanager
 	subAppInstanceStatus, err := pubsub.Subscribe("zedmanager",
-		types.AppInstanceStatus{}, &devCtx)
+		types.AppInstanceStatus{}, false, &devCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
 	subAppInstanceStatus.ModifyHandler = handleAppInstanceStatusModify
 	subAppInstanceStatus.DeleteHandler = handleAppInstanceStatusDelete
-
-	zedagentCtx.subNetworkObjectStatus = subNetworkObjectStatus
-	zedagentCtx.subNetworkServiceStatus = subNetworkServiceStatus
 	getconfigCtx.subAppInstanceStatus = subAppInstanceStatus
+	subAppInstanceStatus.Activate()
+
+	// Get DomainStatus from domainmgr
+	subDomainStatus, err := pubsub.Subscribe("domainmgr",
+		types.DomainStatus{}, false, &zedagentCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subDomainStatus.ModifyHandler = handleDomainStatusModify
+	subDomainStatus.DeleteHandler = handleDomainStatusDelete
+	zedagentCtx.subDomainStatus = subDomainStatus
+	subDomainStatus.Activate()
 
 	baseOsConfigStatusChanges := make(chan string)
 	baseOsDownloaderChanges := make(chan string)
@@ -286,8 +306,15 @@ func Run() {
 	DNSctx := DNSContext{}
 	DNSctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
 
-	networkStatusChanges := make(chan string)
-	go watch.WatchStatus(DNSDirname, networkStatusChanges)
+	subDeviceNetworkStatus, err := pubsub.Subscribe("zedrouter",
+		types.DeviceNetworkStatus{}, false, &DNSctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
+	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
+	DNSctx.subDeviceNetworkStatus = subDeviceNetworkStatus
+	subDeviceNetworkStatus.Activate()
 
 	updateInprogress := zboot.IsCurrentPartitionStateInProgress()
 	time1 := time.Duration(configItemCurrent.resetIfCloudGoneTime)
@@ -303,20 +330,14 @@ func Run() {
 
 	log.Printf("Waiting until we have some uplinks with usable addresses\n")
 	waited := false
-	for types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus) == 0 ||
-		!aaCtx.Found {
+	for DNSctx.usableAddressCount == 0 || !aaCtx.Found {
 		log.Printf("Waiting - have %d addresses; aaCtx %v\n",
-			types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus),
-			aaCtx.Found)
+			DNSctx.usableAddressCount, aaCtx.Found)
 		waited = true
 
 		select {
-		case change := <-networkStatusChanges:
-			watch.HandleStatusEvent(change, &DNSctx,
-				DNSDirname,
-				&types.DeviceNetworkStatus{},
-				handleDNSModify, handleDNSDelete,
-				nil)
+		case change := <-subDeviceNetworkStatus.C:
+			subDeviceNetworkStatus.ProcessChange(change)
 		case change := <-aaChanges:
 			aaFunc(&aaCtx, change)
 		case <-t1.C:
@@ -332,8 +353,7 @@ func Run() {
 	t1.Stop()
 	t2.Stop()
 	log.Printf("Have %d uplinks addresses to use; aaCtx %v\n",
-		types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus),
-		aaCtx.Found)
+		DNSctx.usableAddressCount, aaCtx.Found)
 	if waited {
 		// Inform ledmanager that we have uplink addresses
 		types.UpdateLedManagerConfig(2)
@@ -342,24 +362,24 @@ func Run() {
 
 	// Subscribe to network metrics from zedrouter
 	subNetworkMetrics, err := pubsub.Subscribe("zedrouter",
-		types.NetworkMetrics{}, &dummyContext{})
+		types.NetworkMetrics{}, true, &dummyContext{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	// Subscribe to cloud metrics from different agents
 	cms := zedcloud.GetCloudMetrics()
 	subClientMetrics, err := pubsub.Subscribe("zedclient", cms,
-		&dummyContext{})
+		true, &dummyContext{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	subLogmanagerMetrics, err := pubsub.Subscribe("logmanager", cms,
-		&dummyContext{})
+		true, &dummyContext{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	subDownloaderMetrics, err := pubsub.Subscribe("downloader", cms,
-		&dummyContext{})
+		true, &dummyContext{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -399,8 +419,6 @@ func Run() {
 	go watch.WatchStatus(downloaderCertObjStatusDirname,
 		certObjDownloaderChanges)
 
-	domainStatusChanges := make(chan string)
-	go watch.WatchStatus(domainStatusDirname, domainStatusChanges)
 	for {
 		if publishDeviceInfo {
 			log.Printf("BaseOs triggered PublishDeviceInfo\n")
@@ -460,12 +478,8 @@ func Run() {
 				handleCertObjDownloadStatusModify,
 				handleCertObjDownloadStatusDelete, nil)
 
-		case change := <-networkStatusChanges:
-			watch.HandleStatusEvent(change, &DNSctx,
-				DNSDirname,
-				&types.DeviceNetworkStatus{},
-				handleDNSModify, handleDNSDelete,
-				nil)
+		case change := <-subDeviceNetworkStatus.C:
+			subDeviceNetworkStatus.ProcessChange(change)
 			if DNSctx.triggerGetConfig {
 				triggerGetConfig(configTickerHandle)
 				DNSctx.triggerGetConfig = false
@@ -476,17 +490,13 @@ func Run() {
 			log.Printf("NetworkStatus triggered PublishDeviceInfo\n")
 			publishDevInfo(&devCtx)
 
-		case change := <-domainStatusChanges:
-			watch.HandleStatusEvent(change, &domainCtx,
-				domainStatusDirname,
-				&types.DomainStatus{},
-				handleDomainStatusModify, handleDomainStatusDelete,
-				nil)
+		case change := <-subDomainStatus.C:
+			subDomainStatus.ProcessChange(change)
 			// UsedByUUID could have changed ...
-			if domainCtx.TriggerDeviceInfo {
+			if zedagentCtx.TriggerDeviceInfo {
 				log.Printf("UsedByUUID triggered PublishDeviceInfo\n")
 				publishDevInfo(&devCtx)
-				domainCtx.TriggerDeviceInfo = false
+				zedagentCtx.TriggerDeviceInfo = false
 			}
 
 		case change := <-aaChanges:
@@ -565,14 +575,15 @@ func handleInit() {
 
 func initializeDirs() {
 
-	noObjTypes := []string{}
+	// XXX remove noObjTypes := []string{}
 	zedagentObjTypes := []string{baseOsObj, certObj}
 	zedagentVerifierObjTypes := []string{baseOsObj}
 
 	// create the module object based config/status dirs
+	// XXX remove
 	createConfigStatusDirs(downloaderModulename, zedagentObjTypes)
-	createConfigStatusDirs(zedagentModulename, zedagentObjTypes)
-	createConfigStatusDirs(zedmanagerModulename, noObjTypes)
+	// createConfigStatusDirs(zedagentModulename, zedagentObjTypes)
+	// createConfigStatusDirs(zedmanagerModulename, noObjTypes)
 	createConfigStatusDirs(verifierModulename, zedagentVerifierObjTypes)
 
 	// create persistent holder directory
@@ -638,14 +649,14 @@ func createConfigStatusDirs(moduleName string, objTypes []string) {
 func handleAppInstanceStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	status := cast.CastAppInstanceStatus(statusArg)
-	if status.UUIDandVersion.UUID.String() != key {
+	if status.Key() != key {
 		log.Printf("handleAppInstanceStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.UUIDandVersion.UUID.String(), status)
+			key, status.Key(), status)
 		return
 	}
 	// XXX how do we use ctx? Define a single one?
 	ctx := ctxArg.(*deviceContext)
-	uuidStr := status.UUIDandVersion.UUID.String()
+	uuidStr := status.Key()
 	PublishAppInfoToZedCloud(uuidStr, &status, ctx.assignableAdapters,
 		ctx.iteration)
 	ctx.iteration += 1
@@ -660,17 +671,16 @@ func handleAppInstanceStatusDelete(ctxArg interface{}, key string) {
 	ctx.iteration += 1
 }
 
-func handleDNSModify(ctxArg interface{}, statusFilename string,
-	statusArg interface{}) {
-	status := statusArg.(*types.DeviceNetworkStatus)
-	ctx := ctxArg.(*DNSContext)
+func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
-	if statusFilename != "global" {
-		log.Printf("handleDNSModify: ignoring %s\n", statusFilename)
+	status := cast.CastDeviceNetworkStatus(statusArg)
+	ctx := ctxArg.(*DNSContext)
+	if key != "global" {
+		log.Printf("handleDNSModify: ignoring %s\n", key)
 		return
 	}
-	log.Printf("handleDNSModify for %s\n", statusFilename)
-	deviceNetworkStatus = *status
+	log.Printf("handleDNSModify for %s\n", key)
+	deviceNetworkStatus = status
 	// Did we (re-)gain the first usable address?
 	// XXX should we also trigger if the count increases?
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
@@ -680,21 +690,21 @@ func handleDNSModify(ctxArg interface{}, statusFilename string,
 		ctx.triggerGetConfig = true
 	}
 	ctx.usableAddressCount = newAddrCount
-	log.Printf("handleDNSModify done for %s\n", statusFilename)
+	log.Printf("handleDNSModify done for %s\n", key)
 }
 
-func handleDNSDelete(ctxArg interface{}, statusFilename string) {
-	log.Printf("handleDNSDelete for %s\n", statusFilename)
+func handleDNSDelete(ctxArg interface{}, key string) {
+	log.Printf("handleDNSDelete for %s\n", key)
 	ctx := ctxArg.(*DNSContext)
 
-	if statusFilename != "global" {
-		log.Printf("handleDNSDelete: ignoring %s\n", statusFilename)
+	if key != "global" {
+		log.Printf("handleDNSDelete: ignoring %s\n", key)
 		return
 	}
 	deviceNetworkStatus = types.DeviceNetworkStatus{}
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
 	ctx.usableAddressCount = newAddrCount
-	log.Printf("handleDNSDelete done for %s\n", statusFilename)
+	log.Printf("handleDNSDelete done for %s\n", key)
 }
 
 // base os config/status event handlers
@@ -702,7 +712,7 @@ func handleDNSDelete(ctxArg interface{}, statusFilename string) {
 func handleBaseOsCreate(ctxArg interface{}, statusFilename string,
 	configArg interface{}) {
 	config := configArg.(*types.BaseOsConfig)
-	uuidStr := config.UUIDandVersion.UUID.String()
+	uuidStr := config.Key()
 
 	log.Printf("handleBaseOsCreate for %s\n", uuidStr)
 	addOrUpdateBaseOsConfig(uuidStr, *config)
@@ -714,7 +724,7 @@ func handleBaseOsModify(ctxArg interface{}, statusFilename string,
 	configArg interface{}, statusArg interface{}) {
 	config := configArg.(*types.BaseOsConfig)
 	status := statusArg.(*types.BaseOsStatus)
-	uuidStr := config.UUIDandVersion.UUID.String()
+	uuidStr := config.Key()
 
 	log.Printf("handleBaseOsModify for %s\n", status.BaseOsVersion)
 	if config.UUIDandVersion.Version == status.UUIDandVersion.Version &&
@@ -739,7 +749,7 @@ func handleBaseOsDelete(ctxArg interface{}, statusFilename string,
 	status := statusArg.(*types.BaseOsStatus)
 
 	log.Printf("handleBaseOsDelete for %s\n", status.BaseOsVersion)
-	removeBaseOsConfig(status.UUIDandVersion.UUID.String())
+	removeBaseOsConfig(status.Key())
 	publishDeviceInfo = true
 }
 
@@ -748,7 +758,7 @@ func handleBaseOsDelete(ctxArg interface{}, statusFilename string,
 func handleCertObjCreate(ctxArg interface{}, statusFilename string,
 	configArg interface{}) {
 	config := configArg.(*types.CertObjConfig)
-	uuidStr := config.UUIDandVersion.UUID.String()
+	uuidStr := config.Key()
 
 	log.Printf("handleCertObjCreate for %s\n", uuidStr)
 	addOrUpdateCertObjConfig(uuidStr, *config)
@@ -759,7 +769,7 @@ func handleCertObjModify(ctxArg interface{}, statusFilename string,
 	configArg interface{}, statusArg interface{}) {
 	config := configArg.(*types.CertObjConfig)
 	status := statusArg.(*types.CertObjStatus)
-	uuidStr := config.UUIDandVersion.UUID.String()
+	uuidStr := config.Key()
 
 	log.Printf("handleCertObjModify for %s\n", uuidStr)
 
@@ -779,7 +789,7 @@ func handleCertObjModify(ctxArg interface{}, statusFilename string,
 func handleCertObjDelete(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
 	status := statusArg.(*types.CertObjStatus)
-	uuidStr := status.UUIDandVersion.UUID.String()
+	uuidStr := status.Key()
 
 	log.Printf("handleCertObjDelete for %s\n", uuidStr)
 

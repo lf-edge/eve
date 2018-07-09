@@ -49,7 +49,7 @@ func baseOsHandleStatusUpdateSafename(safename string) {
 			// base os config contains the current image
 			if safename == safename1 {
 
-				uuidStr := baseOsConfig.UUIDandVersion.UUID.String()
+				uuidStr := baseOsConfig.Key()
 				log.Printf("%s, found baseOs %s\n", safename, uuidStr)
 
 				// handle the change event for this base os config

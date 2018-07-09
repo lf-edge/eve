@@ -164,7 +164,9 @@ func watchReadDir(configDir string, fileChanges chan<- string, retry bool) (bool
 			if file.Name() == "restarted" {
 				foundRestarted = true
 			}
-			continue
+			if file.Name() != "global" {
+				continue
+			}
 		}
 		if retry {
 			log.Println("watchReadDir retry modified",

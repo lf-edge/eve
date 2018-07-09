@@ -24,12 +24,16 @@ type DownloaderConfig struct {
 	RefCount        uint   // Zero means can delete file/cancel download
 }
 
+func (config DownloaderConfig) Key() string {
+	return config.Safename
+}
+
 func (config DownloaderConfig) VerifyFilename(fileName string) bool {
-	name := config.Safename
-	ret := name+".json" == fileName
+	expect := config.Key() + ".json"
+	ret := expect == fileName
 	if !ret {
 		log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
-			fileName, name)
+			fileName, expect)
 	}
 	return ret
 }
@@ -62,12 +66,16 @@ type DownloaderStatus struct {
 	RetryCount     int
 }
 
+func (status DownloaderStatus) Key() string {
+	return status.Safename
+}
+
 func (status DownloaderStatus) VerifyFilename(fileName string) bool {
-	name := status.Safename
-	ret := name+".json" == fileName
+	expect := status.Key() + ".json"
+	ret := expect == fileName
 	if !ret {
 		log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
-			fileName, name)
+			fileName, expect)
 	}
 	return ret
 }
