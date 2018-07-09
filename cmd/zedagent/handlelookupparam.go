@@ -305,6 +305,11 @@ func removeAppNetworkConfig(getconfigCtx *getconfigContext, key string) {
 
 	log.Printf("Removing app instance UUID %s\n", key)
 	pub := getconfigCtx.pubAppNetworkConfig
+	c, _ := pub.Get(key)
+	if c == nil {
+		log.Printf("removeAppNetworkConfig(%s) not found\n", key)
+		return
+	}
 	pub.Unpublish(key)
 }
 

@@ -458,6 +458,11 @@ func removeAppNetworkStatus(ctx *zedrouterContext,
 	key := status.UUIDandVersion.UUID.String()
 	log.Printf("removeAppNetworkStatus(%s)\n", key)
 	pub := ctx.pubAppNetworkStatus
+	st, _ := pub.Get(key)
+	if st == nil {
+		log.Printf("removeAppNetworkStatus(%s) not found\n", key)
+		return
+	}
 	pub.Unpublish(key)
 }
 

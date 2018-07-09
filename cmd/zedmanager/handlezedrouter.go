@@ -160,6 +160,11 @@ func removeAppNetworkConfig(ctx *zedmanagerContext, uuidStr string) {
 	key := uuidStr
 	log.Printf("removeAppNetworkConfig(%s)\n", key)
 	pub := ctx.pubAppNetworkConfig
+	c, _ := pub.Get(key)
+	if c == nil {
+		log.Printf("removeAppNetworkConfig(%s) not found\n", key)
+		return
+	}
 	pub.Unpublish(key)
 }
 

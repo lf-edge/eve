@@ -1202,6 +1202,11 @@ func removeAppInstanceConfig(getconfigCtx *getconfigContext, key string) {
 
 	log.Printf("Removing app instance UUID %s\n", key)
 	pub := getconfigCtx.pubAppInstanceConfig
+	c, _ := pub.Get(key)
+	if c == nil {
+		log.Printf("removeAppInstanceConfig(%s) not found\n", key)
+		return
+	}
 	pub.Unpublish(key)
 }
 
