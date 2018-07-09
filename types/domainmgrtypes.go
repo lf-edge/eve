@@ -26,12 +26,16 @@ type DomainConfig struct {
 	IoAdapterList  []IoAdapter
 }
 
+func (config DomainConfig) Key() string {
+	return config.UUIDandVersion.UUID.String()
+}
+
 func (config DomainConfig) VerifyFilename(fileName string) bool {
-	uuid := config.UUIDandVersion.UUID
-	ret := uuid.String()+".json" == fileName
+	expect := config.Key() + ".json"
+	ret := expect == fileName
 	if !ret {
 		log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-			fileName, uuid.String())
+			fileName, expect)
 	}
 	return ret
 }
@@ -92,12 +96,16 @@ type DomainStatus struct {
 	LastErrTime        time.Time
 }
 
+func (status DomainStatus) Key() string {
+	return status.UUIDandVersion.UUID.String()
+}
+
 func (status DomainStatus) VerifyFilename(fileName string) bool {
-	uuid := status.UUIDandVersion.UUID
-	ret := uuid.String()+".json" == fileName
+	expect := status.Key() + ".json"
+	ret := expect == fileName
 	if !ret {
 		log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-			fileName, uuid.String())
+			fileName, expect)
 	}
 	return ret
 }

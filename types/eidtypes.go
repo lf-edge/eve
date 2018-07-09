@@ -41,9 +41,13 @@ type EIDConfigDetails struct {
 	PemPrivateKey []byte
 }
 
-func (config EIDConfig) VerifyFilename(fileName string) bool {
-	expect := fmt.Sprintf("%s:%d.json",
+func (config EIDConfig) Key() string {
+	return fmt.Sprintf("%s:%d",
 		config.UUIDandVersion.UUID.String(), config.IID)
+}
+
+func (config EIDConfig) VerifyFilename(fileName string) bool {
+	expect := config.Key() + ".json"
 	ret := expect == fileName
 	if !ret {
 		log.Printf("Mismatch between filename and contained uuid/iid: %s vs. %s\n",
@@ -73,9 +77,13 @@ type EIDStatusDetails struct {
 	CreateTime    time.Time // When EID was created
 }
 
-func (status EIDStatus) VerifyFilename(fileName string) bool {
-	expect := fmt.Sprintf("%s:%d.json",
+func (status EIDStatus) Key() string {
+	return fmt.Sprintf("%s:%d",
 		status.UUIDandVersion.UUID.String(), status.IID)
+}
+
+func (status EIDStatus) VerifyFilename(fileName string) bool {
+	expect := status.Key() + ".json"
 	ret := expect == fileName
 	if !ret {
 		log.Printf("Mismatch between filename and contained uuid/iid: %s vs. %s\n",

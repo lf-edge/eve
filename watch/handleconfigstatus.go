@@ -15,10 +15,12 @@ import (
 
 // Common interfaces for *Status and *Config
 type ZedConfig interface {
+	Key() string
 	VerifyFilename(fileName string) bool
 }
 
 type ZedStatus interface {
+	Key() string
 	VerifyFilename(fileName string) bool
 	CheckPendingAdd() bool
 	CheckPendingModify() bool

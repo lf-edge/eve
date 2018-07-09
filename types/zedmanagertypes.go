@@ -60,12 +60,16 @@ type IoAdapter struct {
 	Name string // Short hand name such as "com"
 }
 
+func (config AppInstanceConfig) Key() string {
+	return config.UUIDandVersion.UUID.String()
+}
+
 func (config AppInstanceConfig) VerifyFilename(fileName string) bool {
-	uuid := config.UUIDandVersion.UUID
-	ret := uuid.String()+".json" == fileName
+	expect := config.Key() + ".json"
+	ret := expect == fileName
 	if !ret {
 		log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-			fileName, uuid.String())
+			fileName, expect)
 	}
 	return ret
 }
@@ -86,12 +90,16 @@ type AppInstanceStatus struct {
 	ErrorTime time.Time
 }
 
+func (status AppInstanceStatus) Key() string {
+	return status.UUIDandVersion.UUID.String()
+}
+
 func (status AppInstanceStatus) VerifyFilename(fileName string) bool {
-	uuid := status.UUIDandVersion.UUID
-	ret := uuid.String()+".json" == fileName
+	expect := status.Key() + ".json"
+	ret := expect == fileName
 	if !ret {
 		log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-			fileName, uuid.String())
+			fileName, expect)
 	}
 	return ret
 }

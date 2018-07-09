@@ -105,19 +105,15 @@ func handleRestart(ctxArg interface{}, done bool) {
 	}
 }
 
-func updateEIDStatus(ctx *identityContext, status *types.EIDStatus) {
+func updateEIDStatus(ctx *identityContext, key string, status *types.EIDStatus) {
 
-	// XXX key fix
-	key := status.UUIDandVersion.UUID.String()
 	log.Printf("updateEIDStatus(%s)\n", key)
 	pub := ctx.pubEIDStatus
 	pub.Publish(key, status)
 }
 
-func removeEIDStatus(ctx *identityContext, status *types.EIDStatus) {
+func removeEIDStatus(ctx *identityContext, key string) {
 
-	// XXX key fix
-	key := status.UUIDandVersion.UUID.String()
 	log.Printf("removeEIDStatus(%s)\n", key)
 	pub := ctx.pubEIDStatus
 	st, _ := pub.Get(key)
@@ -172,10 +168,9 @@ func lookupEIDStatus(ctx *identityContext, key string) *types.EIDStatus {
 		return nil
 	}
 	status := cast.CastEIDStatus(st)
-	// XXX key fix
-	if status.UUIDandVersion.UUID.String() != key {
+	if status.Key() != key {
 		log.Printf("lookupEIDStatus(%s) got %s; ignored %+v\n",
-			key, status.UUIDandVersion.UUID.String(), status)
+			key, status.Key(), status)
 		return nil
 	}
 	return &status
@@ -190,18 +185,16 @@ func lookupEIDConfig(ctx *identityContext, key string) *types.EIDConfig {
 		return nil
 	}
 	config := cast.CastEIDConfig(c)
-	// XXX key fix
-	if config.UUIDandVersion.UUID.String() != key {
+	if config.Key() != key {
 		log.Printf("lookupEIDConfig(%s) got %s; ignored %+v\n",
-			key, config.UUIDandVersion.UUID.String(), config)
+			key, config.Key(), config)
 		return nil
 	}
 	return &config
 }
 
 func handleCreate(ctx *identityContext, key string, config *types.EIDConfig) {
-	log.Printf("handleCreate(%v,%d) for %s\n",
-		config.UUIDandVersion, config.IID, config.DisplayName)
+	log.Printf("handleCreate(%s) for %s\n", key, config.DisplayName)
 
 	// Start by marking with PendingAdd
 	status := types.EIDStatus{
@@ -222,7 +215,7 @@ func handleCreate(ctx *identityContext, key string, config *types.EIDConfig) {
 		config.AllocationPrefixLen = 8 * len(config.AllocationPrefix)
 		status.EIDAllocation = config.EIDAllocation
 	}
-	updateEIDStatus(ctx, &status)
+	updateEIDStatus(ctx, key, &status)
 	pemPrivateKey := config.PemPrivateKey
 
 	var publicPem []byte
@@ -325,8 +318,8 @@ func handleCreate(ctx *identityContext, key string, config *types.EIDConfig) {
 		status.PemPrivateKey = pemPrivateKey
 	}
 	status.PendingAdd = false
-	updateEIDStatus(ctx, &status)
-	log.Printf("handleCreate done for %s\n", config.DisplayName)
+	updateEIDStatus(ctx, key, &status)
+	log.Printf("handleCreate(%s) done for %s\n", key, config.DisplayName)
 }
 
 func extractPublicPem(pk interface{}) ([]byte, []byte, error) {
@@ -414,8 +407,7 @@ func encodePrivateKey(keypair *ecdsa.PrivateKey) ([]byte, error) {
 func handleModify(ctx *identityContext, key string, config *types.EIDConfig,
 	status *types.EIDStatus) {
 
-	log.Printf("handleModify(%v,%d) for %s\n",
-		config.UUIDandVersion, config.IID, config.DisplayName)
+	log.Printf("handleModify(%s) for %s\n", key, config.DisplayName)
 
 	if config.UUIDandVersion.Version == status.UUIDandVersion.Version {
 		log.Printf("Same version %s for %s\n",
@@ -426,27 +418,26 @@ func handleModify(ctx *identityContext, key string, config *types.EIDConfig,
 	// XXX report internal error?
 	// XXX switch to Equal?
 	if !reflect.DeepEqual(status.EIDAllocation, config.EIDAllocation) {
-		log.Printf("handleModify(%v,%d) EIDAllocation changed for %s\n",
-			config.UUIDandVersion, config.IID, config.DisplayName)
+		log.Printf("handleModify(%s) EIDAllocation changed for %s\n",
+			key, config.DisplayName)
 		return
 	}
 	status.PendingModify = true
-	updateEIDStatus(ctx, status)
+	updateEIDStatus(ctx, key, status)
 	// XXX Any work in modify?
 	status.PendingModify = false
 	status.UUIDandVersion = config.UUIDandVersion
-	updateEIDStatus(ctx, status)
-	log.Printf("handleModify done for %s\n", config.DisplayName)
+	updateEIDStatus(ctx, key, status)
+	log.Printf("handleModify(%s) done for %s\n", key, config.DisplayName)
 }
 
 func handleDelete(ctx *identityContext, key string, status *types.EIDStatus) {
 
-	log.Printf("handleDelete(%v,%d) for %s\n",
-		status.UUIDandVersion, status.IID, status.DisplayName)
+	log.Printf("handleDelete(%s) for %s\n", key, status.DisplayName)
 
 	// No work to do other than deleting the status
 
 	// Write out what we modified aka delete
-	removeEIDStatus(ctx, status)
-	log.Printf("handleDelete done for %s\n", status.DisplayName)
+	removeEIDStatus(ctx, key)
+	log.Printf("handleDelete(%s) done for %s\n", key, status.DisplayName)
 }
