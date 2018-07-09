@@ -14,11 +14,9 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"github.com/eriknordmark/ipinfo"
 	"github.com/zededa/api/zconfig"
-	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"log"
 	"net"
@@ -34,7 +32,6 @@ const (
 	infraFileName           = identityDirname + "/infra"
 	tmpDirname              = "/var/tmp/zededa"
 	zedserverConfigFileName = tmpDirname + "/zedserverconfig"
-	zedRouterConfigbaseDir  = "/var/tmp/zedrouter/config/"
 )
 
 // Assumes the config files are in identityDirname, which is /config. Files are:
@@ -52,7 +49,9 @@ const (
 var lispPrevConfigHash []byte
 var prevDevice types.DeviceDb
 
-func handleLookupParam(devConfig *zconfig.EdgeDevConfig) {
+func handleLookupParam(getconfigCtx *getconfigContext,
+	devConfig *zconfig.EdgeDevConfig) {
+
 	// XXX should we handle changes at all? Want to update zedserverconfig
 	// but not rest.
 
@@ -279,8 +278,7 @@ func handleLookupParam(devConfig *zconfig.EdgeDevConfig) {
 		matches[0].Type = "eidset"
 	}
 	// XXX if there is a change we need to change version string!
-	zedrouterConfigFileName := zedRouterConfigbaseDir + "" + devUUID.String() + ".json"
-	writeNetworkConfig(&config, zedrouterConfigFileName)
+	updateAppNetworkConfig(getconfigCtx, config)
 
 	// Add NameToEID to /etc/hosts
 	cmd := exec.Command("/opt/zededa/bin/handlezedserverconfig.sh")
@@ -294,17 +292,25 @@ func handleLookupParam(devConfig *zconfig.EdgeDevConfig) {
 	}
 }
 
-func writeNetworkConfig(config *types.AppNetworkConfig,
-	configFilename string) {
-	log.Printf("%s, Writing AppNetworkConfig\n", configFilename)
-	b, err := json.Marshal(config)
-	if err != nil {
-		log.Fatal(err, "json Marshal AppNetworkConfig")
+func updateAppNetworkConfig(getconfigCtx *getconfigContext,
+	config types.AppNetworkConfig) {
+
+	key := config.Key()
+	log.Printf("Updating app instance UUID %s\n", key)
+	pub := getconfigCtx.pubAppNetworkConfig
+	pub.Publish(key, config)
+}
+
+func removeAppNetworkConfig(getconfigCtx *getconfigContext, key string) {
+
+	log.Printf("Removing app instance UUID %s\n", key)
+	pub := getconfigCtx.pubAppNetworkConfig
+	c, _ := pub.Get(key)
+	if c == nil {
+		log.Printf("removeAppNetworkConfig(%s) not found\n", key)
+		return
 	}
-	err = pubsub.WriteRename(configFilename, b)
-	if err != nil {
-		log.Fatal(err, configFilename)
-	}
+	pub.Unpublish(key)
 }
 
 func addrStringToIP(addrString string) (net.IP, error) {

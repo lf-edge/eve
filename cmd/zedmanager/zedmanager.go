@@ -27,13 +27,9 @@ const (
 	agentName  = "zedmanager"
 	moduleName = agentName
 
-	verifierConfigDirname    = "/var/tmp/verifier/config"
-	downloaderConfigDirname  = "/var/tmp/downloader/config"
-	domainmgrConfigDirname   = "/var/tmp/domainmgr/config"
-	zedrouterConfigDirname   = "/var/tmp/zedrouter/config"
-	identitymgrConfigDirname = "/var/tmp/identitymgr/config"
-	DNSDirname               = "/var/run/zedrouter/DeviceNetworkStatus"
-	certificateDirname       = persistDir + "/certs"
+	verifierConfigDirname   = "/var/tmp/verifier/config"
+	downloaderConfigDirname = "/var/tmp/downloader/config"
+	certificateDirname      = persistDir + "/certs"
 
 	downloaderAppImgObjConfigDirname = "/var/tmp/downloader/" + appImgObj + "/config"
 	verifierAppImgObjConfigDirname   = "/var/tmp/verifier/" + appImgObj + "/config"
@@ -42,16 +38,19 @@ const (
 // Set from Makefile
 var Version = "No version specified"
 
-// Dummy since we don't have anything to pass to DNS
-type dummyContext struct {
-}
-
 // State used by handlers
 type zedmanagerContext struct {
-	configRestarted      bool
-	verifierRestarted    bool
-	subAppInstanceConfig *pubsub.Subscription
-	pubAppInstanceStatus *pubsub.Publication
+	configRestarted        bool
+	verifierRestarted      bool
+	subAppInstanceConfig   *pubsub.Subscription
+	pubAppInstanceStatus   *pubsub.Publication
+	subDeviceNetworkStatus *pubsub.Subscription
+	pubAppNetworkConfig    *pubsub.Publication
+	subAppNetworkStatus    *pubsub.Subscription
+	pubDomainConfig        *pubsub.Publication
+	subDomainStatus        *pubsub.Subscription
+	pubEIDConfig           *pubsub.Publication
+	subEIDStatus           *pubsub.Subscription
 }
 
 var deviceNetworkStatus types.DeviceNetworkStatus
@@ -82,32 +81,22 @@ func Run() {
 	watch.CleanupRestart("downloader")
 	// XXX either we don't need this, or we need it for each objType
 	watch.CleanupRestart("verifier")
-	watch.CleanupRestart("identitymgr")
-	watch.CleanupRestart("zedrouter")
-	watch.CleanupRestart("domainmgr")
 	watch.CleanupRestart("zedagent")
 
+	// XXX remove
 	verifierStatusDirname := "/var/run/verifier/status"
 	downloaderStatusDirname := "/var/run/downloader/status"
-	domainmgrStatusDirname := "/var/run/domainmgr/status"
-	zedrouterStatusDirname := "/var/run/zedrouter/status"
-	identitymgrStatusDirname := "/var/run/identitymgr/status"
 
 	downloaderAppImgObjStatusDirname := "/var/run/downloader/" + appImgObj + "/status"
 	verifierAppImgObjStatusDirname := "/var/run/verifier/" + appImgObj + "/status"
 	zedagentCertObjStatusDirname := "/var/run/zedagent/" + certObj + "/status"
 
+	// XXX remove
 	dirs := []string{
-		identitymgrConfigDirname,
-		zedrouterConfigDirname,
-		domainmgrConfigDirname,
 		downloaderConfigDirname,
 		downloaderAppImgObjConfigDirname,
 		verifierConfigDirname,
 		verifierAppImgObjConfigDirname,
-		identitymgrStatusDirname,
-		zedrouterStatusDirname,
-		domainmgrStatusDirname,
 		downloaderAppImgObjStatusDirname,
 		downloaderStatusDirname,
 		verifierAppImgObjStatusDirname,
@@ -115,6 +104,7 @@ func Run() {
 		zedagentCertObjStatusDirname,
 	}
 
+	// XXX remove
 	for _, dir := range dirs {
 		if _, err := os.Stat(dir); err != nil {
 			log.Printf("Create %s\n", dir)
@@ -124,50 +114,108 @@ func Run() {
 		}
 	}
 
-	// Tell ourselves to go ahead
-	watch.SignalRestart(agentName)
-
 	// Any state needed by handler functions
 	ctx := zedmanagerContext{}
 
-	// Get AppInstanceConfig from zedagent
-	subAppInstanceConfig, err := pubsub.Subscribe("zedagent",
-		types.AppInstanceConfig{}, &ctx)
-	if err != nil {
-		log.Fatal(err)
-	}
-	subAppInstanceConfig.ModifyHandler = handleAppInstanceConfigModify
-	subAppInstanceConfig.DeleteHandler = handleAppInstanceConfigDelete
-	subAppInstanceConfig.RestartHandler = handleConfigRestart
-
-	ctx.subAppInstanceConfig = subAppInstanceConfig
-
+	// Create publish before subscribing and activating subscriptions
 	pubAppInstanceStatus, err := pubsub.Publish(agentName,
 		types.AppInstanceStatus{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.pubAppInstanceStatus = pubAppInstanceStatus
+	pubAppInstanceStatus.ClearRestarted()
+
+	pubAppNetworkConfig, err := pubsub.Publish(agentName,
+		types.AppNetworkConfig{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubAppNetworkConfig = pubAppNetworkConfig
+	pubAppNetworkConfig.ClearRestarted()
+
+	pubDomainConfig, err := pubsub.Publish(agentName,
+		types.DomainConfig{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubDomainConfig = pubDomainConfig
+	pubDomainConfig.ClearRestarted()
+
+	pubEIDConfig, err := pubsub.Publish(agentName,
+		types.EIDConfig{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubEIDConfig = pubEIDConfig
+	pubEIDConfig.ClearRestarted()
+
+	// Get AppInstanceConfig from zedagent
+	subAppInstanceConfig, err := pubsub.Subscribe("zedagent",
+		types.AppInstanceConfig{}, false, &ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subAppInstanceConfig.ModifyHandler = handleAppInstanceConfigModify
+	subAppInstanceConfig.DeleteHandler = handleAppInstanceConfigDelete
+	subAppInstanceConfig.RestartHandler = handleConfigRestart
+	ctx.subAppInstanceConfig = subAppInstanceConfig
+	subAppInstanceConfig.Activate()
+
+	// Get AppNetworkStatus from zedrouter
+	subAppNetworkStatus, err := pubsub.Subscribe("zedrouter",
+		types.AppNetworkStatus{}, false, &ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subAppNetworkStatus.ModifyHandler = handleAppNetworkStatusModify
+	subAppNetworkStatus.DeleteHandler = handleAppNetworkStatusDelete
+	subAppNetworkStatus.RestartHandler = handleZedrouterRestarted
+	ctx.subAppNetworkStatus = subAppNetworkStatus
+	subAppNetworkStatus.Activate()
+
+	// Get DomainStatus from domainmgr
+	subDomainStatus, err := pubsub.Subscribe("domainmgr",
+		types.DomainStatus{}, false, &ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subDomainStatus.ModifyHandler = handleDomainStatusModify
+	subDomainStatus.DeleteHandler = handleDomainStatusDelete
+	ctx.subDomainStatus = subDomainStatus
+	subDomainStatus.Activate()
 
 	verifierChanges := make(chan string)
 	go watch.WatchStatus(verifierAppImgObjStatusDirname, verifierChanges)
 	downloaderChanges := make(chan string)
 	go watch.WatchStatus(downloaderAppImgObjStatusDirname, downloaderChanges)
-	identitymgrChanges := make(chan string)
-	go watch.WatchStatus(identitymgrStatusDirname, identitymgrChanges)
-	zedrouterChanges := make(chan string)
-	go watch.WatchStatus(zedrouterStatusDirname, zedrouterChanges)
-	domainmgrChanges := make(chan string)
-	go watch.WatchStatus(domainmgrStatusDirname, domainmgrChanges)
-	networkStatusChanges := make(chan string)
-	go watch.WatchStatus(DNSDirname, networkStatusChanges)
+	// Get IdentityStatus from identitymgr
+	subEIDStatus, err := pubsub.Subscribe("identitymgr",
+		types.EIDStatus{}, false, &ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subEIDStatus.ModifyHandler = handleEIDStatusModify
+	subEIDStatus.DeleteHandler = handleEIDStatusDelete
+	subEIDStatus.RestartHandler = handleIdentitymgrRestarted
+	ctx.subEIDStatus = subEIDStatus
+	subEIDStatus.Activate()
+
+	subDeviceNetworkStatus, err := pubsub.Subscribe("zedrouter",
+		types.DeviceNetworkStatus{}, false, &ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
+	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
+	ctx.subDeviceNetworkStatus = subDeviceNetworkStatus
+	subDeviceNetworkStatus.Activate()
+
 	zedagentCertObjStatusChanges := make(chan string)
 	go watch.WatchStatus(zedagentCertObjStatusDirname,
 		zedagentCertObjStatusChanges)
 
 	var verifierRestartedFn watch.StatusRestartHandler = handleVerifierRestarted
-	var identitymgrRestartedFn watch.StatusRestartHandler = handleIdentitymgrRestarted
-	var zedrouterRestartedFn watch.StatusRestartHandler = handleZedrouterRestarted
 
 	// First we process the verifierStatus to avoid downloading
 	// an image we already have in place.
@@ -221,52 +269,29 @@ func Run() {
 					handleVerifyImageStatusDelete,
 					&verifierRestartedFn)
 			}
-		case change := <-identitymgrChanges:
-			{
-				watch.HandleStatusEvent(change, &ctx,
-					identitymgrStatusDirname,
-					&types.EIDStatus{},
-					handleEIDStatusModify,
-					handleEIDStatusDelete,
-					&identitymgrRestartedFn)
-			}
-		case change := <-zedrouterChanges:
-			{
-				watch.HandleStatusEvent(change, &ctx,
-					zedrouterStatusDirname,
-					&types.AppNetworkStatus{},
-					handleAppNetworkStatusModify,
-					handleAppNetworkStatusDelete,
-					&zedrouterRestartedFn)
-			}
-		case change := <-domainmgrChanges:
-			{
-				watch.HandleStatusEvent(change, &ctx,
-					domainmgrStatusDirname,
-					&types.DomainStatus{},
-					handleDomainStatusModify,
-					handleDomainStatusDelete, nil)
-			}
+
+		case change := <-subEIDStatus.C:
+			subEIDStatus.ProcessChange(change)
+
+		case change := <-subAppNetworkStatus.C:
+			subAppNetworkStatus.ProcessChange(change)
+
+		case change := <-subDomainStatus.C:
+			subDomainStatus.ProcessChange(change)
+
 		case change := <-subAppInstanceConfig.C:
 			subAppInstanceConfig.ProcessChange(change)
 
-		case change := <-networkStatusChanges:
-			{
-				watch.HandleStatusEvent(change, dummyContext{},
-					DNSDirname,
-					&types.DeviceNetworkStatus{},
-					handleDNSModify, handleDNSDelete,
-					nil)
-			}
+		case change := <-subDeviceNetworkStatus.C:
+			subDeviceNetworkStatus.ProcessChange(change)
 		}
 	}
 }
 
-// XXX what does zedagent waiting for verifier already solve?
-// XXX why do we care about configRestarted? Avoid starting domUs which were
-// deleted while we down? But restarted from zedagent isn't sufficient? Need to
-// know it got some config...
-// Propagate a seqence of restart/restarted from the zedmanager config
+// After zedagent has waited for its config and set restarted for
+// AppInstanceConfig (which triggers this callback) we propagate a sequence of
+// restarts so that the agents don't do extra work.
+// We propagate a seqence of restarted from the zedmanager config
 // and verifier status to identitymgr, then from identitymgr to zedrouter,
 // and finally from zedrouter to domainmgr.
 // This removes the need for extra downloads/verifications and extra copying
@@ -278,7 +303,7 @@ func handleConfigRestart(ctxArg interface{}, done bool) {
 	if done {
 		ctx.configRestarted = true
 		if ctx.verifierRestarted {
-			watch.SignalRestart("identitymgr")
+			ctx.pubEIDConfig.SignalRestarted()
 		}
 	}
 }
@@ -290,29 +315,33 @@ func handleVerifierRestarted(ctxArg interface{}, done bool) {
 	if done {
 		ctx.verifierRestarted = true
 		if ctx.configRestarted {
-			watch.SignalRestart("identitymgr")
+			ctx.pubEIDConfig.SignalRestarted()
 		}
 	}
 }
 
 func handleIdentitymgrRestarted(ctxArg interface{}, done bool) {
+	ctx := ctxArg.(*zedmanagerContext)
+
 	log.Printf("handleIdentitymgrRestarted(%v)\n", done)
 	if done {
-		watch.SignalRestart("zedrouter")
+		ctx.pubAppNetworkConfig.SignalRestarted()
 	}
 }
 
 func handleZedrouterRestarted(ctxArg interface{}, done bool) {
+	ctx := ctxArg.(*zedmanagerContext)
+
 	log.Printf("handleZedrouterRestarted(%v)\n", done)
 	if done {
-		watch.SignalRestart("domainmgr")
+		ctx.pubDomainConfig.SignalRestarted()
 	}
 }
 
 func updateAppInstanceStatus(ctx *zedmanagerContext,
 	status *types.AppInstanceStatus) {
 
-	key := status.UUIDandVersion.UUID.String()
+	key := status.Key()
 	log.Printf("updateAppInstanceStatus(%s)\n", key)
 	pub := ctx.pubAppInstanceStatus
 	pub.Publish(key, status)
@@ -321,9 +350,14 @@ func updateAppInstanceStatus(ctx *zedmanagerContext,
 func removeAppInstanceStatus(ctx *zedmanagerContext,
 	status *types.AppInstanceStatus) {
 
-	key := status.UUIDandVersion.UUID.String()
+	key := status.Key()
 	log.Printf("removeAppInstanceStatus(%s)\n", key)
 	pub := ctx.pubAppInstanceStatus
+	st, _ := pub.Get(key)
+	if st == nil {
+		log.Printf("removeAppInstanceStatus(%s) not found\n", key)
+		return
+	}
 	pub.Unpublish(key)
 }
 
@@ -333,9 +367,9 @@ func handleAppInstanceConfigModify(ctxArg interface{}, key string, configArg int
 	log.Printf("handleAppInstanceConfigModify(%s)\n", key)
 	ctx := ctxArg.(*zedmanagerContext)
 	config := cast.CastAppInstanceConfig(configArg)
-	if config.UUIDandVersion.UUID.String() != key {
+	if config.Key() != key {
 		log.Printf("handleAppInstanceConfigModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.UUIDandVersion.UUID.String(), config)
+			key, config.Key(), config)
 		return
 	}
 	status := lookupAppInstanceStatus(ctx, key)
@@ -369,9 +403,9 @@ func lookupAppInstanceStatus(ctx *zedmanagerContext, key string) *types.AppInsta
 		return nil
 	}
 	status := cast.CastAppInstanceStatus(st)
-	if status.UUIDandVersion.UUID.String() != key {
+	if status.Key() != key {
 		log.Printf("lookupAppInstanceStatus(%s) got %s; ignored %+v\n",
-			key, status.UUIDandVersion.UUID.String(), status)
+			key, status.Key(), status)
 		return nil
 	}
 	return &status
@@ -386,9 +420,9 @@ func lookupAppInstanceConfig(ctx *zedmanagerContext, key string) *types.AppInsta
 		return nil
 	}
 	config := cast.CastAppInstanceConfig(c)
-	if config.UUIDandVersion.UUID.String() != key {
+	if config.Key() != key {
 		log.Printf("lookupAppInstanceConfig(%s) got %s; ignored %+v\n",
-			key, config.UUIDandVersion.UUID.String(), config)
+			key, config.Key(), config)
 		return nil
 	}
 	return &config
@@ -418,8 +452,8 @@ func handleCreate(ctx *zedmanagerContext, key string,
 
 	updateAppInstanceStatus(ctx, &status)
 
-	uuidStr := status.UUIDandVersion.UUID.String()
-	changed := doUpdate(uuidStr, config, &status)
+	uuidStr := status.Key()
+	changed := doUpdate(ctx, uuidStr, config, &status)
 	if changed {
 		log.Printf("handleCreate status change for %s\n",
 			uuidStr)
@@ -434,12 +468,14 @@ func handleModify(ctx *zedmanagerContext, key string,
 		config.UUIDandVersion, config.DisplayName)
 
 	// XXX handle at least ACL and activate changes. What else?
+	// Not checking the version here; assume the microservices can handle
+	// some updates.
 
 	status.UUIDandVersion = config.UUIDandVersion
 	updateAppInstanceStatus(ctx, status)
 
-	uuidStr := status.UUIDandVersion.UUID.String()
-	changed := doUpdate(uuidStr, config, status)
+	uuidStr := status.Key()
+	changed := doUpdate(ctx, uuidStr, config, status)
 	if changed {
 		log.Printf("handleModify status change for %s\n",
 			uuidStr)
@@ -457,10 +493,9 @@ func handleDelete(ctx *zedmanagerContext, key string,
 	log.Printf("handleDelete done for %s\n", status.DisplayName)
 }
 
-func handleDNSModify(ctxArg interface{}, key string,
-	statusArg interface{}) {
-	status := statusArg.(*types.DeviceNetworkStatus)
+func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
+	status := cast.CastDeviceNetworkStatus(statusArg)
 	if key != "global" {
 		if debug {
 			log.Printf("handleDNSModify: ignoring %s\n",
@@ -469,7 +504,7 @@ func handleDNSModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Printf("handleDNSModify for %s\n", key)
-	deviceNetworkStatus = *status
+	deviceNetworkStatus = status
 	log.Printf("handleDNSModify done for %s\n", key)
 }
 

@@ -26,12 +26,16 @@ type AppNetworkConfig struct {
 	UnderlayNetworkList []UnderlayNetworkConfig
 }
 
+func (config AppNetworkConfig) Key() string {
+	return config.UUIDandVersion.UUID.String()
+}
+
 func (config AppNetworkConfig) VerifyFilename(fileName string) bool {
-	uuid := config.UUIDandVersion.UUID
-	ret := uuid.String()+".json" == fileName
+	expect := config.Key() + ".json"
+	ret := expect == fileName
 	if !ret {
 		log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-			fileName, uuid.String())
+			fileName, expect)
 	}
 	return ret
 }
@@ -68,12 +72,16 @@ type AppNetworkStatus struct {
 	ErrorTime time.Time
 }
 
+func (status AppNetworkStatus) Key() string {
+	return status.UUIDandVersion.UUID.String()
+}
+
 func (status AppNetworkStatus) VerifyFilename(fileName string) bool {
-	uuid := status.UUIDandVersion.UUID
-	ret := uuid.String()+".json" == fileName
+	expect := status.Key() + ".json"
+	ret := expect == fileName
 	if !ret {
 		log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-			fileName, uuid.String())
+			fileName, expect)
 	}
 	return ret
 }
@@ -450,6 +458,10 @@ type IpRange struct {
 	End   net.IP
 }
 
+func (config NetworkObjectConfig) Key() string {
+	return config.UUID.String()
+}
+
 // XXX If Ifname is set it means the network is in use
 // TBD: allow multiple applications to connect to the same Network by adding
 // another vif to the ifname.
@@ -468,6 +480,10 @@ type NetworkObjectStatus struct {
 	// Any errrors from provisioning the network
 	Error     string
 	ErrorTime time.Time
+}
+
+func (status NetworkObjectStatus) Key() string {
+	return status.UUID.String()
 }
 
 type NetworkServiceType uint8
@@ -494,6 +510,10 @@ type NetworkServiceConfig struct {
 	OpaqueConfig string
 }
 
+func (config NetworkServiceConfig) Key() string {
+	return config.UUID.String()
+}
+
 type NetworkServiceStatus struct {
 	UUID          uuid.UUID
 	PendingAdd    bool
@@ -510,6 +530,10 @@ type NetworkServiceStatus struct {
 	// Any errrors from provisioning the service
 	Error     string
 	ErrorTime time.Time
+}
+
+func (status NetworkServiceStatus) Key() string {
+	return status.UUID.String()
 }
 
 // Network metrics for overlay and underlay

@@ -188,6 +188,7 @@ func initializeDirs() {
 	// downloader context
 	clearInProgressDownloadDirs(verifierObjTypes)
 
+	// XXX remove
 	// create the object based config/status dirs
 	createConfigStatusDirs(moduleName, verifierObjTypes)
 
@@ -309,6 +310,7 @@ func handleInitMarkedDeletePendingObjects() {
 	}
 }
 
+// XXX remove
 // create module and object based config/status directories
 func createConfigStatusDirs(moduleName string, objTypes []string) {
 
@@ -345,6 +347,7 @@ func createConfigStatusDirs(moduleName string, objTypes []string) {
 	}
 }
 
+// XXX here vs. in downloader? Who owns which dirs?
 // Create object download directories
 func createDownloadDirs(objTypes []string) {
 

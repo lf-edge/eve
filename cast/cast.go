@@ -60,6 +60,18 @@ func CastNetworkServiceStatus(in interface{}) types.NetworkServiceStatus {
 	return output
 }
 
+func CastDeviceNetworkStatus(in interface{}) types.DeviceNetworkStatus {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastDeviceNetworkStatus")
+	}
+	var output types.DeviceNetworkStatus
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "json Unmarshal in CastDeviceNetworkStatus")
+	}
+	return output
+}
+
 func CastAppInstanceConfig(in interface{}) types.AppInstanceConfig {
 	b, err := json.Marshal(in)
 	if err != nil {
@@ -80,6 +92,78 @@ func CastAppInstanceStatus(in interface{}) types.AppInstanceStatus {
 	var output types.AppInstanceStatus
 	if err := json.Unmarshal(b, &output); err != nil {
 		log.Fatal(err, "json Unmarshal in CastAppInstanceStatus")
+	}
+	return output
+}
+
+func CastAppNetworkConfig(in interface{}) types.AppNetworkConfig {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastAppNetworkConfig")
+	}
+	var output types.AppNetworkConfig
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "json Unmarshal in CastAppNetworkConfig")
+	}
+	return output
+}
+
+func CastAppNetworkStatus(in interface{}) types.AppNetworkStatus {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastAppNetworkStatus")
+	}
+	var output types.AppNetworkStatus
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "json Unmarshal in CastAppNetworkStatus")
+	}
+	return output
+}
+
+func CastDomainConfig(in interface{}) types.DomainConfig {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastDomainConfig")
+	}
+	var output types.DomainConfig
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "json Unmarshal in CastDomainConfig")
+	}
+	return output
+}
+
+func CastDomainStatus(in interface{}) types.DomainStatus {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastDomainStatus")
+	}
+	var output types.DomainStatus
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "json Unmarshal in CastDomainStatus")
+	}
+	return output
+}
+
+func CastEIDConfig(in interface{}) types.EIDConfig {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastEIDConfig")
+	}
+	var output types.EIDConfig
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "json Unmarshal in CastEIDConfig")
+	}
+	return output
+}
+
+func CastEIDStatus(in interface{}) types.EIDStatus {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastEIDStatus")
+	}
+	var output types.EIDStatus
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "json Unmarshal in CastEIDStatus")
 	}
 	return output
 }

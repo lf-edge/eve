@@ -31,12 +31,16 @@ type BaseOsConfig struct {
 	Activate          bool
 }
 
+func (config BaseOsConfig) Key() string {
+	return config.UUIDandVersion.UUID.String()
+}
+
 func (config BaseOsConfig) VerifyFilename(fileName string) bool {
-	uuid := config.UUIDandVersion.UUID
-	ret := uuid.String()+".json" == fileName
+	expect := config.Key() + ".json"
+	ret := expect == fileName
 	if !ret {
 		log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-			fileName, uuid.String())
+			fileName, expect)
 	}
 	return ret
 }
@@ -61,12 +65,16 @@ type BaseOsStatus struct {
 	ErrorTime time.Time
 }
 
+func (status BaseOsStatus) Key() string {
+	return status.UUIDandVersion.UUID.String()
+}
+
 func (status BaseOsStatus) VerifyFilename(fileName string) bool {
-	uuid := status.UUIDandVersion.UUID
-	ret := uuid.String()+".json" == fileName
+	expect := status.Key() + ".json"
+	ret := expect == fileName
 	if !ret {
 		log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-			fileName, uuid.String())
+			fileName, expect)
 	}
 	return ret
 }
@@ -95,12 +103,16 @@ type CertObjConfig struct {
 	StorageConfigList []StorageConfig
 }
 
+func (config CertObjConfig) Key() string {
+	return config.UUIDandVersion.UUID.String()
+}
+
 func (config CertObjConfig) VerifyFilename(fileName string) bool {
-	uuid := config.UUIDandVersion.UUID
-	ret := uuid.String()+".json" == fileName
+	expect := config.Key() + ".json"
+	ret := expect == fileName
 	if !ret {
 		log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-			fileName, uuid.String())
+			fileName, expect)
 	}
 	return ret
 }
@@ -118,12 +130,16 @@ type CertObjStatus struct {
 	ErrorTime time.Time
 }
 
+func (status CertObjStatus) Key() string {
+	return status.UUIDandVersion.UUID.String()
+}
+
 func (status CertObjStatus) VerifyFilename(fileName string) bool {
-	uuid := status.UUIDandVersion.UUID
-	ret := uuid.String()+".json" == fileName
+	expect := status.Key() + ".json"
+	ret := expect == fileName
 	if !ret {
 		log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-			fileName, uuid.String())
+			fileName, expect)
 	}
 	return ret
 }

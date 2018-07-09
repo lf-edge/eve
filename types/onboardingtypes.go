@@ -4,7 +4,6 @@
 package types
 
 import (
-	"github.com/satori/go.uuid"
 	"net"
 	"time"
 )
@@ -68,18 +67,4 @@ type ZedServerConfig struct {
 type NameToEid struct {
 	HostName string
 	EIDs     []net.IP
-}
-
-// Temporary approach to pass application EIDs back to prov1.zededa.net
-// to add to map servers
-type EIDRegister struct {
-	AppCert        []byte // XXX not currently used on server
-	AppPublicKey   []byte
-	UUID           uuid.UUID
-	DisplayName    string
-	IID            uint32
-	EID            net.IP
-	EIDHashLen     uint8
-	CreateTime     time.Time        // When EID was created
-	LispMapServers []LispServerInfo // XXX from here? Hard-coded for now
 }

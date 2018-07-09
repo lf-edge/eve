@@ -76,6 +76,7 @@ type getconfigContext struct {
 	pubNetworkServiceConfig     *pubsub.Publication
 	subAppInstanceStatus        *pubsub.Subscription
 	pubAppInstanceConfig        *pubsub.Publication
+	pubAppNetworkConfig         *pubsub.Publication
 }
 
 // tlsConfig is initialized once i.e. effectively a constant
@@ -126,6 +127,7 @@ func handleConfigInit() {
 // Run a periodic fetch of the config
 func configTimerTask(handleChannel chan interface{},
 	getconfigCtx *getconfigContext) {
+
 	configUrl := serverName + "/" + configApi
 	getconfigCtx.startTime = time.Now()
 	getconfigCtx.lastReceivedConfigFromCloud = getconfigCtx.startTime
@@ -351,7 +353,7 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCo
 
 		}
 	}
-	handleLookupParam(config)
+	handleLookupParam(getconfigCtx, config)
 
 	// XXX should check for different sha for baseOs and appInstances
 	// before looking for old
@@ -395,7 +397,7 @@ func checkCurrentAppInstances(getconfigCtx *getconfigContext,
 	items := pub.GetAll()
 	for _, c := range items {
 		config := cast.CastAppInstanceConfig(c)
-		key := config.UUIDandVersion.UUID.String()
+		key := config.Key()
 		found := false
 		for _, app := range Apps {
 			if app.Uuidandversion.Uuid == key {

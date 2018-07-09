@@ -85,7 +85,7 @@ func certObjHandleStatusUpdateSafename(safename string) {
 
 			safename1 := types.UrlToSafename(sc.DownloadURL, sc.ImageSha256)
 			if safename == safename1 {
-				uuidStr := certObjConfig.UUIDandVersion.UUID.String()
+				uuidStr := certObjConfig.Key()
 				log.Printf("%s, found certObj %s\n", safename, uuidStr)
 				certObjHandleStatusUpdate(uuidStr)
 			}

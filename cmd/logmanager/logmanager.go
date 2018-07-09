@@ -15,6 +15,7 @@ import (
 	"github.com/satori/go.uuid"
 	"github.com/zededa/api/zmet"
 	"github.com/zededa/go-provision/agentlog"
+	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
@@ -36,7 +37,6 @@ const (
 	identityDirname = "/config"
 	serverFilename  = identityDirname + "/server"
 	uuidFileName    = identityDirname + "/uuid"
-	DNSDirname      = "/var/run/zedrouter/DeviceNetworkStatus"
 	xenLogDirname   = "/var/log/xen"
 )
 
@@ -99,7 +99,8 @@ type imageLoggerContext struct {
 
 // Context for handleDNSModify
 type DNSContext struct {
-	usableAddressCount int
+	usableAddressCount     int
+	subDeviceNetworkStatus *pubsub.Subscription
 }
 
 type zedcloudLogs struct {
@@ -149,20 +150,25 @@ func Run() {
 	DNSctx := DNSContext{}
 	DNSctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
 
-	networkStatusChanges := make(chan string)
-	go watch.WatchStatus(DNSDirname, networkStatusChanges)
+	subDeviceNetworkStatus, err := pubsub.Subscribe("zedrouter",
+		types.DeviceNetworkStatus{}, false, &DNSctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
+	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
+	DNSctx.subDeviceNetworkStatus = subDeviceNetworkStatus
+	subDeviceNetworkStatus.Activate()
 
 	log.Printf("Waiting until we have some uplinks with usable addresses\n")
-	for types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus) == 0 && !force {
+	for DNSctx.usableAddressCount == 0 && !force {
 		select {
-		case change := <-networkStatusChanges:
-			watch.HandleStatusEvent(change, &DNSctx,
-				DNSDirname,
-				&types.DeviceNetworkStatus{},
-				handleDNSModify, handleDNSDelete,
-				nil)
+		case change := <-subDeviceNetworkStatus.C:
+			subDeviceNetworkStatus.ProcessChange(change)
 		}
 	}
+	log.Printf("Have %d uplinks with usable addresses\n",
+		DNSctx.usableAddressCount)
 
 	// Timer for deferred sends of info messages
 	deferredChan := zedcloud.InitDeferred()
@@ -237,12 +243,8 @@ func Run() {
 			HandleLogDirEvent(change, xenLogDirname, &xenCtx,
 				handleXenLogDirModify, handleXenLogDirDelete)
 
-		case change := <-networkStatusChanges:
-			watch.HandleStatusEvent(change, &DNSctx,
-				DNSDirname,
-				&types.DeviceNetworkStatus{},
-				handleDNSModify, handleDNSDelete,
-				nil)
+		case change := <-subDeviceNetworkStatus.C:
+			subDeviceNetworkStatus.ProcessChange(change)
 
 		case <-publishTimer.C:
 			if debug {
@@ -259,35 +261,34 @@ func Run() {
 	}
 }
 
-func handleDNSModify(ctxArg interface{}, statusFilename string,
-	statusArg interface{}) {
-	status := statusArg.(*types.DeviceNetworkStatus)
-	ctx := ctxArg.(*DNSContext)
+func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
-	if statusFilename != "global" {
-		log.Printf("handleDNSModify: ignoring %s\n", statusFilename)
+	status := cast.CastDeviceNetworkStatus(statusArg)
+	ctx := ctxArg.(*DNSContext)
+	if key != "global" {
+		log.Printf("handleDNSModify: ignoring %s\n", key)
 		return
 	}
-	log.Printf("handleDNSModify for %s\n", statusFilename)
-	deviceNetworkStatus = *status
+	log.Printf("handleDNSModify for %s\n", key)
+	deviceNetworkStatus = status
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
 	ctx.usableAddressCount = newAddrCount
 	log.Printf("handleDNSModify done for %s; %d usable\n",
-		statusFilename, newAddrCount)
+		key, newAddrCount)
 }
 
-func handleDNSDelete(ctxArg interface{}, statusFilename string) {
-	log.Printf("handleDNSDelete for %s\n", statusFilename)
+func handleDNSDelete(ctxArg interface{}, key string) {
+	log.Printf("handleDNSDelete for %s\n", key)
 	ctx := ctxArg.(*DNSContext)
 
-	if statusFilename != "global" {
-		log.Printf("handleDNSDelete: ignoring %s\n", statusFilename)
+	if key != "global" {
+		log.Printf("handleDNSDelete: ignoring %s\n", key)
 		return
 	}
 	deviceNetworkStatus = types.DeviceNetworkStatus{}
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
 	ctx.usableAddressCount = newAddrCount
-	log.Printf("handleDNSDelete done for %s\n", statusFilename)
+	log.Printf("handleDNSDelete done for %s\n", key)
 }
 
 // This runs as a separate go routine sending out data

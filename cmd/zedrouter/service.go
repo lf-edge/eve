@@ -326,9 +326,9 @@ func lookupNetworkServiceConfig(ctx *zedrouterContext, key string) *types.Networ
 		return nil
 	}
 	config := cast.CastNetworkServiceConfig(c)
-	if config.UUID.String() != key {
+	if config.Key() != key {
 		log.Printf("lookupNetworkServiceConfig(%s) got %s; ignored %+v\n",
-			key, config.UUID.String(), config)
+			key, config.Key(), config)
 		return nil
 	}
 	return &config
@@ -343,9 +343,9 @@ func lookupNetworkServiceStatus(ctx *zedrouterContext, key string) *types.Networ
 		return nil
 	}
 	status := cast.CastNetworkServiceStatus(st)
-	if status.UUID.String() != key {
+	if status.Key() != key {
 		log.Printf("lookupNetworkServiceStatus(%s) got %s; ignored %+v\n",
-			key, status.UUID.String(), status)
+			key, status.Key(), status)
 		return nil
 	}
 	return &status

@@ -18,7 +18,7 @@ func handleCertObjStatusModify(ctxArg interface{}, statusFilename string,
 	if status == nil {
 		return
 	}
-	uuidStr := status.UUIDandVersion.UUID.String()
+	uuidStr := status.Key()
 
 	log.Printf("handlCertObjStatusModify for %s\n", uuidStr)
 

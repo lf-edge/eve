@@ -31,12 +31,16 @@ type VerifyImageConfig struct {
 	SignatureKey     string   //certificate containing public key
 }
 
+func (config VerifyImageConfig) Key() string {
+	return config.Safename
+}
+
 func (config VerifyImageConfig) VerifyFilename(fileName string) bool {
-	name := config.Safename
-	ret := name+".json" == fileName
+	expect := config.Key() + ".json"
+	ret := expect == fileName
 	if !ret {
 		log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
-			fileName, name)
+			fileName, expect)
 	}
 	return ret
 }
@@ -57,12 +61,16 @@ type VerifyImageStatus struct {
 	RefCount      uint // Zero means deleted
 }
 
+func (status VerifyImageStatus) Key() string {
+	return status.Safename
+}
+
 func (status VerifyImageStatus) VerifyFilename(fileName string) bool {
-	name := status.Safename
-	ret := name+".json" == fileName
+	expect := status.Key() + ".json"
+	ret := expect == fileName
 	if !ret {
 		log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
-			fileName, name)
+			fileName, expect)
 	}
 	return ret
 }
