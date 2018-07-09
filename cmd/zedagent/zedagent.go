@@ -570,14 +570,15 @@ func handleInit() {
 
 func initializeDirs() {
 
-	noObjTypes := []string{}
+	// XXX remove noObjTypes := []string{}
 	zedagentObjTypes := []string{baseOsObj, certObj}
 	zedagentVerifierObjTypes := []string{baseOsObj}
 
 	// create the module object based config/status dirs
+	// XXX remove
 	createConfigStatusDirs(downloaderModulename, zedagentObjTypes)
-	createConfigStatusDirs(zedagentModulename, zedagentObjTypes)
-	createConfigStatusDirs(zedmanagerModulename, noObjTypes)
+	// createConfigStatusDirs(zedagentModulename, zedagentObjTypes)
+	// createConfigStatusDirs(zedmanagerModulename, noObjTypes)
 	createConfigStatusDirs(verifierModulename, zedagentVerifierObjTypes)
 
 	// create persistent holder directory

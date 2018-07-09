@@ -495,12 +495,14 @@ func initializeDirs() {
 	clearInProgressDownloadDirs(downloaderObjTypes)
 
 	// create the object based config/status dirs
+	// XXX remove
 	createConfigStatusDirs(moduleName, downloaderObjTypes)
 
 	// create the object download directories
 	createDownloadDirs(downloaderObjTypes)
 }
 
+// XXX remove
 // create module and object based config/status directories
 func createConfigStatusDirs(moduleName string, objTypes []string) {
 
@@ -537,6 +539,7 @@ func createConfigStatusDirs(moduleName string, objTypes []string) {
 	}
 }
 
+// XXX here vs. in verifier? Who owns which dirs?
 // create object download directories
 func createDownloadDirs(objTypes []string) {
 

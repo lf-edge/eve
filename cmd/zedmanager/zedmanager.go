@@ -83,6 +83,7 @@ func Run() {
 	watch.CleanupRestart("identitymgr")
 	watch.CleanupRestart("zedagent")
 
+	// XXX remove
 	verifierStatusDirname := "/var/run/verifier/status"
 	downloaderStatusDirname := "/var/run/downloader/status"
 	identitymgrStatusDirname := "/var/run/identitymgr/status"
@@ -91,6 +92,7 @@ func Run() {
 	verifierAppImgObjStatusDirname := "/var/run/verifier/" + appImgObj + "/status"
 	zedagentCertObjStatusDirname := "/var/run/zedagent/" + certObj + "/status"
 
+	// XXX remove
 	dirs := []string{
 		identitymgrConfigDirname,
 		downloaderConfigDirname,
@@ -105,6 +107,7 @@ func Run() {
 		zedagentCertObjStatusDirname,
 	}
 
+	// XXX remove
 	for _, dir := range dirs {
 		if _, err := os.Stat(dir); err != nil {
 			log.Printf("Create %s\n", dir)
