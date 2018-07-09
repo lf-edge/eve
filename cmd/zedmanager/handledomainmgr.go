@@ -185,7 +185,7 @@ func removeDomainConfig(ctx *zedmanagerContext, uuidStr string) {
 func handleDomainStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	status := statusArg.(*types.DomainStatus)
+	status := cast.CastDomainStatus(statusArg)
 	ctx := ctxArg.(*zedmanagerContext)
 	if status.UUIDandVersion.UUID.String() != key {
 		log.Printf("handleDomainStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
