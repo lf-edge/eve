@@ -679,8 +679,10 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 			log.Printf("publishNetworkObjectConfig: LISP NetworkConfig not supported for %d in %v\n",
 				id.String(), netEnt)
 		default:
-			log.Printf("publishNetworkObjectConfig: Unknown NetworkConfig type %d for %d in %v\n",
+			log.Printf("publishNetworkObjectConfig: Unknown NetworkConfig type %d for %s in %v\n",
 				config.Type, id.String(), netEnt)
+			// XXX return error? Ignore for now
+			return
 		}
 		// XXX Hack to make existing Dhcp == 0 become an implicit
 		// XXX remove
