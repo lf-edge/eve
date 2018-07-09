@@ -96,7 +96,6 @@ const (
 	verifierBaseOsConfigDirname = verifierBaseDirname + "/" + baseOsObj + "/config"
 	verifierBaseOsStatusDirname = verifierRunDirname + "/" + baseOsObj + "/status"
 	verifierAppImgStatusDirname = verifierRunDirname + "/" + appImgObj + "/status"
-	domainStatusDirname         = "/var/run/domainmgr/status"
 )
 
 // Set from Makefile
@@ -127,11 +126,6 @@ type verifierContext struct {
 	verifierRestarted bool
 }
 
-// Information for handleDomainStatus*
-type domainContext struct {
-	TriggerDeviceInfo bool
-}
-
 // Information for handleBaseOsCreate/Modify/Delete and handleAppInstanceStatus*
 type deviceContext struct {
 	assignableAdapters *types.AssignableAdapters
@@ -141,6 +135,8 @@ type deviceContext struct {
 type zedagentContext struct {
 	subNetworkObjectStatus  *pubsub.Subscription
 	subNetworkServiceStatus *pubsub.Subscription
+	subDomainStatus         *pubsub.Subscription
+	TriggerDeviceInfo       bool
 }
 
 var debug = false
@@ -192,7 +188,6 @@ func Run() {
 
 	verifierCtx := verifierContext{}
 	devCtx = deviceContext{assignableAdapters: &aa}
-	domainCtx := domainContext{}
 
 	// Publish NetworkConfig and NetworkServiceConfig for zedmanager/zedrouter
 	pubNetworkObjectConfig, err := pubsub.Publish(agentName,
@@ -259,6 +254,17 @@ func Run() {
 	subAppInstanceStatus.DeleteHandler = handleAppInstanceStatusDelete
 	getconfigCtx.subAppInstanceStatus = subAppInstanceStatus
 	subAppInstanceStatus.Activate()
+
+	// Get DomainStatus from domainmgr
+	subDomainStatus, err := pubsub.Subscribe("domainmgr",
+		types.DomainStatus{}, false, &zedagentCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subDomainStatus.ModifyHandler = handleDomainStatusModify
+	subDomainStatus.DeleteHandler = handleDomainStatusDelete
+	zedagentCtx.subDomainStatus = subDomainStatus
+	subDomainStatus.Activate()
 
 	baseOsConfigStatusChanges := make(chan string)
 	baseOsDownloaderChanges := make(chan string)
@@ -413,8 +419,6 @@ func Run() {
 	go watch.WatchStatus(downloaderCertObjStatusDirname,
 		certObjDownloaderChanges)
 
-	domainStatusChanges := make(chan string)
-	go watch.WatchStatus(domainStatusDirname, domainStatusChanges)
 	for {
 		if publishDeviceInfo {
 			log.Printf("BaseOs triggered PublishDeviceInfo\n")
@@ -486,17 +490,13 @@ func Run() {
 			log.Printf("NetworkStatus triggered PublishDeviceInfo\n")
 			publishDevInfo(&devCtx)
 
-		case change := <-domainStatusChanges:
-			watch.HandleStatusEvent(change, &domainCtx,
-				domainStatusDirname,
-				&types.DomainStatus{},
-				handleDomainStatusModify, handleDomainStatusDelete,
-				nil)
+		case change := <-subDomainStatus.C:
+			subDomainStatus.ProcessChange(change)
 			// UsedByUUID could have changed ...
-			if domainCtx.TriggerDeviceInfo {
+			if zedagentCtx.TriggerDeviceInfo {
 				log.Printf("UsedByUUID triggered PublishDeviceInfo\n")
 				publishDevInfo(&devCtx)
-				domainCtx.TriggerDeviceInfo = false
+				zedagentCtx.TriggerDeviceInfo = false
 			}
 
 		case change := <-aaChanges:

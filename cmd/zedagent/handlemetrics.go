@@ -18,6 +18,7 @@ import (
 	psutilnet "github.com/shirou/gopsutil/net"
 	"github.com/vishvananda/netlink"
 	"github.com/zededa/api/zmet"
+	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/diskmetrics"
 	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/hardware"
@@ -112,7 +113,7 @@ func verifyDomainExists(domainId int) bool {
 	}
 }
 
-// Key is UUID
+// Shadow copy of suscription to determine info for deletes. Key is UUID
 var domainStatus map[string]types.DomainStatus
 
 // Key is DomainName; value is array of interface names
@@ -121,11 +122,16 @@ var appInterfaceAndNameList map[string][]string
 // Key is DomainName; value is array of disk images
 var appDiskAndNameList map[string][]string
 
-func handleDomainStatusModify(ctxArg interface{}, statusFilename string,
+func handleDomainStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
-	status := statusArg.(*types.DomainStatus)
-	domainCtx := ctxArg.(*domainContext)
-	key := status.UUIDandVersion.UUID.String()
+
+	status := cast.CastDomainStatus(statusArg)
+	ctx := ctxArg.(*zedagentContext)
+	if status.UUIDandVersion.UUID.String() != key {
+		log.Printf("handleDomainStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, status.UUIDandVersion.UUID.String(), status)
+		return
+	}
 	if debug {
 		log.Printf("handleDomainStatusModify for %s\n", key)
 	}
@@ -144,16 +150,17 @@ func handleDomainStatusModify(ctxArg interface{}, statusFilename string,
 		domainStatus = make(map[string]types.DomainStatus)
 	}
 	// Detect if any changes relevant to the device status report
-	if old, ok := domainStatus[key]; ok {
-		if ioAdapterListChanged(old, *status) {
-			domainCtx.TriggerDeviceInfo = true
+	old := lookupDomainStatus(ctx, key)
+	if old != nil {
+		if ioAdapterListChanged(*old, status) {
+			ctx.TriggerDeviceInfo = true
 		}
 	} else {
-		if ioAdapterListChanged(types.DomainStatus{}, *status) {
-			domainCtx.TriggerDeviceInfo = true
+		if ioAdapterListChanged(types.DomainStatus{}, status) {
+			ctx.TriggerDeviceInfo = true
 		}
 	}
-	domainStatus[key] = *status
+	domainStatus[key] = status
 	if appInterfaceAndNameList == nil {
 		appInterfaceAndNameList = make(map[string][]string)
 	}
@@ -180,17 +187,18 @@ func handleDomainStatusModify(ctxArg interface{}, statusFilename string,
 	}
 }
 
-func handleDomainStatusDelete(ctxArg interface{}, statusFilename string) {
-	domainCtx := ctxArg.(*domainContext)
-	log.Printf("handleDomainStatusDelete for %s\n", statusFilename)
-	key := statusFilename
+func handleDomainStatusDelete(ctxArg interface{}, key string) {
+
+	ctx := ctxArg.(*zedagentContext)
+	log.Printf("handleDomainStatusDelete for %s\n", key)
+	// Use shadow copy to determine what changed
 	if m, ok := domainStatus[key]; !ok {
 		log.Printf("handleDomainStatusDelete for %s - not found\n",
 			key)
 	} else {
 		// Detect if any changes relevant to the device status report
 		if ioAdapterListChanged(m, types.DomainStatus{}) {
-			domainCtx.TriggerDeviceInfo = true
+			ctx.TriggerDeviceInfo = true
 		}
 
 		if _, ok := appInterfaceAndNameList[m.DomainName]; ok {
@@ -200,8 +208,23 @@ func handleDomainStatusDelete(ctxArg interface{}, statusFilename string) {
 		log.Printf("Domain map delete for %v\n", key)
 		delete(domainStatus, key)
 	}
-	log.Printf("handleDomainStatusDelete done for %s\n",
-		statusFilename)
+	log.Printf("handleDomainStatusDelete done for %s\n", key)
+}
+
+func lookupDomainStatus(ctx *zedagentContext, key string) *types.DomainStatus {
+	sub := ctx.subDomainStatus
+	st, _ := sub.Get(key)
+	if st == nil {
+		log.Printf("lookupDomainStatus(%s) not found\n", key)
+		return nil
+	}
+	status := cast.CastDomainStatus(st)
+	if status.UUIDandVersion.UUID.String() != key {
+		log.Printf("lookupDomainStatus(%s) got %s; ignored %+v\n",
+			key, status.UUIDandVersion.UUID.String(), status)
+		return nil
+	}
+	return &status
 }
 
 func ioAdapterListChanged(old types.DomainStatus, new types.DomainStatus) bool {

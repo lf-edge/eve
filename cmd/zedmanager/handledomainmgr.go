@@ -179,6 +179,11 @@ func removeDomainConfig(ctx *zedmanagerContext, uuidStr string) {
 	key := uuidStr
 	log.Printf("removeDomainConfig(%s)\n", key)
 	pub := ctx.pubDomainConfig
+	c, _ := pub.Get(key)
+	if c == nil {
+		log.Printf("removeDomainConfig(%s) not found\n", key)
+		return
+	}
 	pub.Unpublish(key)
 }
 
