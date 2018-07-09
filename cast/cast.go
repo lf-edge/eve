@@ -143,3 +143,27 @@ func CastDomainStatus(in interface{}) types.DomainStatus {
 	}
 	return output
 }
+
+func CastEIDConfig(in interface{}) types.EIDConfig {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastEIDConfig")
+	}
+	var output types.EIDConfig
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "json Unmarshal in CastEIDConfig")
+	}
+	return output
+}
+
+func CastEIDStatus(in interface{}) types.EIDStatus {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastEIDStatus")
+	}
+	var output types.EIDStatus
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "json Unmarshal in CastEIDStatus")
+	}
+	return output
+}

@@ -118,7 +118,7 @@ func doUpdate(ctx *zedmanagerContext, uuidStr string,
 
 	// The existence of Config is interpreted to mean the
 	// AppInstance should be INSTALLED. Activate is checked separately.
-	changed, done := doInstall(uuidStr, config, status)
+	changed, done := doInstall(ctx, uuidStr, config, status)
 	if !done {
 		return changed
 	}
@@ -146,8 +146,9 @@ func doUpdate(ctx *zedmanagerContext, uuidStr string,
 	return changed
 }
 
-func doInstall(uuidStr string, config types.AppInstanceConfig,
-	status *types.AppInstanceStatus) (bool, bool) {
+func doInstall(ctx *zedmanagerContext, uuidStr string,
+	config types.AppInstanceConfig, status *types.AppInstanceStatus) (bool, bool) {
+
 	log.Printf("doInstall for %s\n", uuidStr)
 	minState := types.MAXSTATE
 	allErrors := ""
@@ -355,18 +356,17 @@ func doInstall(uuidStr string, config types.AppInstanceConfig,
 	// with zedcloud
 	// Make sure we have an EIDConfig for each overlay
 	for _, ec := range config.OverlayNetworkList {
-		MaybeAddEIDConfig(config.UUIDandVersion,
+		MaybeAddEIDConfig(ctx, config.UUIDandVersion,
 			config.DisplayName, &ec)
 	}
 	// Check EIDStatus for each overlay; update AppInstanceStatus
 	eidsAllocated := true
 	for i, ec := range config.OverlayNetworkList {
-		key := fmt.Sprintf("%s:%d",
-			config.UUIDandVersion.UUID.String(), ec.IID)
-		es, err := LookupEIDStatus(config.UUIDandVersion, ec.IID)
-		if err != nil {
-			log.Printf("LookupEIDStatus %s failed %s\n",
-				key, err)
+		key := eidKey(config.UUIDandVersion, ec.IID)
+		es := lookupEIDStatus(ctx, key)
+		if es == nil {
+			log.Printf("lookupEIDStatus %s failed %s\n",
+				key)
 			eidsAllocated = false
 			continue
 		}
@@ -501,7 +501,7 @@ func doRemove(ctx *zedmanagerContext, uuidStr string,
 		changed = doInactivate(ctx, uuidStr, status)
 	}
 	if !status.Activated {
-		changed, del = doUninstall(uuidStr, status)
+		changed, del = doUninstall(ctx, uuidStr, status)
 	}
 	log.Printf("doRemove done for %s\n", uuidStr)
 	return changed, del
@@ -563,23 +563,24 @@ func doInactivate(ctx *zedmanagerContext, uuidStr string,
 	return changed
 }
 
-func doUninstall(uuidStr string, status *types.AppInstanceStatus) (bool, bool) {
+func doUninstall(ctx *zedmanagerContext, uuidStr string,
+	status *types.AppInstanceStatus) (bool, bool) {
+
 	log.Printf("doUninstall for %s\n", uuidStr)
 	changed := false
 	del := false
 
 	// Remove the EIDConfig for each overlay
 	for _, es := range status.EIDList {
-		MaybeRemoveEIDConfig(status.UUIDandVersion, &es)
+		removeEIDConfig(ctx, status.UUIDandVersion, &es)
 	}
 	// Check EIDStatus for each overlay; update AppInstanceStatus
 	eidsFreed := true
 	for i, es := range status.EIDList {
-		es, err := LookupEIDStatus(status.UUIDandVersion, es.IID)
-		if err == nil {
-			key := fmt.Sprintf("%s:%d",
-				status.UUIDandVersion.UUID.String(), es.IID)
-			log.Printf("LookupEIDStatus not gone on remove for %s\n",
+		key := eidKey(status.UUIDandVersion, es.IID)
+		es := lookupEIDStatus(ctx, key)
+		if es != nil {
+			log.Printf("lookupEIDStatus not gone on remove for %s\n",
 				key)
 			eidsFreed = false
 			continue
