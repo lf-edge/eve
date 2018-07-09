@@ -616,7 +616,7 @@ func handleRestart(ctxArg interface{}, restarted bool) {
 			name, restarted)
 	}
 	if restarted == sub.km.restarted {
-		log.Printf("pubsub.handleDelete(%s) value unchanged\n", name)
+		log.Printf("pubsub.handleRestart(%s) value unchanged\n", name)
 		return
 	}
 	sub.km.restarted = restarted
