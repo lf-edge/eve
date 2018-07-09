@@ -295,7 +295,7 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 func updateAppNetworkConfig(getconfigCtx *getconfigContext,
 	config types.AppNetworkConfig) {
 
-	key := config.UUIDandVersion.UUID.String()
+	key := config.Key()
 	log.Printf("Updating app instance UUID %s\n", key)
 	pub := getconfigCtx.pubAppNetworkConfig
 	pub.Publish(key, config)

@@ -29,7 +29,7 @@ func updateAIStatusSafename(ctx *zedmanagerContext, safename string) {
 				log.Printf("Found StorageConfig URL %s safename %s\n",
 					sc.DownloadURL, safename2)
 				updateAIStatusUUID(ctx,
-					config.UUIDandVersion.UUID.String())
+					config.Key())
 			}
 		}
 	}
@@ -71,7 +71,7 @@ func removeAIStatusUUID(ctx *zedmanagerContext, uuidStr string) {
 }
 
 func removeAIStatus(ctx *zedmanagerContext, status *types.AppInstanceStatus) {
-	uuidStr := status.UUIDandVersion.UUID.String()
+	uuidStr := status.Key()
 	changed, del := doRemove(ctx, uuidStr, status)
 	if changed {
 		log.Printf("removeAIStatus status change for %s\n",
@@ -362,7 +362,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 	// Check EIDStatus for each overlay; update AppInstanceStatus
 	eidsAllocated := true
 	for i, ec := range config.OverlayNetworkList {
-		key := eidKey(config.UUIDandVersion, ec.IID)
+		key := types.EidKey(config.UUIDandVersion, ec.IID)
 		es := lookupEIDStatus(ctx, key)
 		if es == nil {
 			log.Printf("lookupEIDStatus %s failed %s\n",
@@ -577,7 +577,7 @@ func doUninstall(ctx *zedmanagerContext, uuidStr string,
 	// Check EIDStatus for each overlay; update AppInstanceStatus
 	eidsFreed := true
 	for i, es := range status.EIDList {
-		key := eidKey(status.UUIDandVersion, es.IID)
+		key := types.EidKey(status.UUIDandVersion, es.IID)
 		es := lookupEIDStatus(ctx, key)
 		if es != nil {
 			log.Printf("lookupEIDStatus not gone on remove for %s\n",

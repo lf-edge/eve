@@ -13,7 +13,7 @@ import (
 func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
 	aiConfig types.AppInstanceConfig, aiStatus *types.AppInstanceStatus) {
 
-	key := aiConfig.UUIDandVersion.UUID.String()
+	key := aiConfig.Key()
 	displayName := aiConfig.DisplayName
 	log.Printf("MaybeAddAppNetworkConfig for %s displayName %s\n", key,
 		displayName)
@@ -122,9 +122,9 @@ func lookupAppNetworkConfig(ctx *zedmanagerContext, key string) *types.AppNetwor
 		return nil
 	}
 	config := cast.CastAppNetworkConfig(c)
-	if config.UUIDandVersion.UUID.String() != key {
+	if config.Key() != key {
 		log.Printf("lookupAppNetworkConfig(%s) got %s; ignored %+v\n",
-			key, config.UUIDandVersion.UUID.String(), config)
+			key, config.Key(), config)
 		return nil
 	}
 	return &config
@@ -138,9 +138,9 @@ func lookupAppNetworkStatus(ctx *zedmanagerContext, key string) *types.AppNetwor
 		return nil
 	}
 	status := cast.CastAppNetworkStatus(st)
-	if status.UUIDandVersion.UUID.String() != key {
+	if status.Key() != key {
 		log.Printf("lookupAppNetworkStatus(%s) got %s; ignored %+v\n",
-			key, status.UUIDandVersion.UUID.String(), status)
+			key, status.Key(), status)
 		return nil
 	}
 	return &status
@@ -149,7 +149,7 @@ func lookupAppNetworkStatus(ctx *zedmanagerContext, key string) *types.AppNetwor
 func updateAppNetworkConfig(ctx *zedmanagerContext,
 	status *types.AppNetworkConfig) {
 
-	key := status.UUIDandVersion.UUID.String()
+	key := status.Key()
 	log.Printf("updateAppNetworkConfig(%s)\n", key)
 	pub := ctx.pubAppNetworkConfig
 	pub.Publish(key, status)
@@ -173,9 +173,9 @@ func handleAppNetworkStatusModify(ctxArg interface{}, key string,
 	status := cast.CastAppNetworkStatus(statusArg)
 	ctx := ctxArg.(*zedmanagerContext)
 	log.Printf("handleAppNetworkStatusModify for %s\n", key)
-	if status.UUIDandVersion.UUID.String() != key {
+	if status.Key() != key {
 		log.Printf("handleAppNetworkStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.UUIDandVersion.UUID.String(), status)
+			key, status.Key(), status)
 		return
 	}
 	// Ignore if any Pending* flag is set
@@ -189,7 +189,7 @@ func handleAppNetworkStatusModify(ctxArg interface{}, key string,
 			key)
 		return
 	}
-	updateAIStatusUUID(ctx, status.UUIDandVersion.UUID.String())
+	updateAIStatusUUID(ctx, status.Key())
 
 	log.Printf("handleAppNetworkStatusModify done for %s\n",
 		key)

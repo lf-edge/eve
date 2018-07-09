@@ -132,9 +132,9 @@ func handleEIDConfigModify(ctxArg interface{}, key string, configArg interface{}
 	log.Printf("handleEIDConfigModify(%s)\n", key)
 	ctx := ctxArg.(*identityContext)
 	config := cast.CastEIDConfig(configArg)
-	if config.UUIDandVersion.UUID.String() != key {
+	if config.Key() != key {
 		log.Printf("handleEIDConfigModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.UUIDandVersion.UUID.String(), config)
+			key, config.Key(), config)
 		return
 	}
 	status := lookupEIDStatus(ctx, key)

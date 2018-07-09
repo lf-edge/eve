@@ -77,6 +77,10 @@ type EIDStatusDetails struct {
 	CreateTime    time.Time // When EID was created
 }
 
+func EidKey(uuidAndVers UUIDandVersion, iid uint32) string {
+	return fmt.Sprintf("%s:%d", uuidAndVers.UUID.String(), iid)
+}
+
 func (status EIDStatus) Key() string {
 	return fmt.Sprintf("%s:%d",
 		status.UUIDandVersion.UUID.String(), status.IID)

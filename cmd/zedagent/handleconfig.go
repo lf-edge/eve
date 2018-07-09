@@ -397,7 +397,7 @@ func checkCurrentAppInstances(getconfigCtx *getconfigContext,
 	items := pub.GetAll()
 	for _, c := range items {
 		config := cast.CastAppInstanceConfig(c)
-		key := config.UUIDandVersion.UUID.String()
+		key := config.Key()
 		found := false
 		for _, app := range Apps {
 			if app.Uuidandversion.Uuid == key {

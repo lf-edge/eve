@@ -217,7 +217,7 @@ func findActiveFileLocation(ctx *domainContext, filename string) bool {
 
 func updateDomainStatus(ctx *domainContext, status *types.DomainStatus) {
 
-	key := status.UUIDandVersion.UUID.String()
+	key := status.Key()
 	log.Printf("updateDomainStatus(%s)\n", key)
 	pub := ctx.pubDomainStatus
 	pub.Publish(key, status)
@@ -225,7 +225,7 @@ func updateDomainStatus(ctx *domainContext, status *types.DomainStatus) {
 
 func removeDomainStatus(ctx *domainContext, status *types.DomainStatus) {
 
-	key := status.UUIDandVersion.UUID.String()
+	key := status.Key()
 	log.Printf("removeDomainStatus(%s)\n", key)
 	pub := ctx.pubDomainStatus
 	st, _ := pub.Get(key)
@@ -248,9 +248,9 @@ func handleDomainConfigModify(ctxArg interface{}, key string, configArg interfac
 	log.Printf("handleDomainConfigModify(%s)\n", key)
 	ctx := ctxArg.(*domainContext)
 	config := cast.CastDomainConfig(configArg)
-	if config.UUIDandVersion.UUID.String() != key {
+	if config.Key() != key {
 		log.Printf("handleDomainConfigModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.UUIDandVersion.UUID.String(), config)
+			key, config.Key(), config)
 		return
 	}
 	status := lookupDomainStatus(ctx, key)
@@ -284,9 +284,9 @@ func lookupDomainStatus(ctx *domainContext, key string) *types.DomainStatus {
 		return nil
 	}
 	status := cast.CastDomainStatus(st)
-	if status.UUIDandVersion.UUID.String() != key {
+	if status.Key() != key {
 		log.Printf("lookupDomainStatus(%s) got %s; ignored %+v\n",
-			key, status.UUIDandVersion.UUID.String(), status)
+			key, status.Key(), status)
 		return nil
 	}
 	return &status
@@ -301,9 +301,9 @@ func lookupDomainConfig(ctx *domainContext, key string) *types.DomainConfig {
 		return nil
 	}
 	config := cast.CastDomainConfig(c)
-	if config.UUIDandVersion.UUID.String() != key {
+	if config.Key() != key {
 		log.Printf("lookupDomainConfig(%s) got %s; ignored %+v\n",
-			key, config.UUIDandVersion.UUID.String(), config)
+			key, config.Key(), config)
 		return nil
 	}
 	return &config
@@ -722,8 +722,7 @@ func configToStatus(config types.DomainConfig, aa *types.AssignableAdapters,
 			return err
 		}
 		log.Printf("configToStatus setting uuid %s for adapter %d %s\n",
-			config.UUIDandVersion.UUID.String(),
-			adapter.Type, adapter.Name)
+			config.Key(), adapter.Type, adapter.Name)
 		ib.UsedByUUID = config.UUIDandVersion.UUID
 		ib.PciLong = long
 		ib.PciShort = short

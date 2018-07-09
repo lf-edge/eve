@@ -4,21 +4,16 @@
 package zedmanager
 
 import (
-	"fmt"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/types"
 	"log"
 )
 
-func eidKey(uuidAndVers types.UUIDandVersion, iid uint32) string {
-	return fmt.Sprintf("%s:%d", uuidAndVers.UUID.String(), iid)
-}
-
 func MaybeAddEIDConfig(ctx *zedmanagerContext,
 	UUIDandVersion types.UUIDandVersion,
 	displayName string, ec *types.EIDOverlayConfig) {
 
-	key := eidKey(UUIDandVersion, ec.IID)
+	key := types.EidKey(UUIDandVersion, ec.IID)
 	log.Printf("MaybeAddEIDConfig for %s displayName %s\n", key,
 		displayName)
 
@@ -50,10 +45,9 @@ func lookupEIDConfig(ctx *zedmanagerContext, key string) *types.EIDConfig {
 		return nil
 	}
 	config := cast.CastEIDConfig(c)
-	ckey := eidKey(config.UUIDandVersion, config.IID)
-	if ckey != key {
+	if config.Key() != key {
 		log.Printf("lookupEIDConfig(%s) got %s; ignored %+v\n",
-			key, ckey, config)
+			key, config.Key(), config)
 		return nil
 	}
 	return &config
@@ -67,10 +61,9 @@ func lookupEIDStatus(ctx *zedmanagerContext, key string) *types.EIDStatus {
 		return nil
 	}
 	status := cast.CastEIDStatus(st)
-	skey := eidKey(status.UUIDandVersion, status.IID)
-	if skey != key {
+	if status.Key() != key {
 		log.Printf("lookupEIDStatus(%s) got %s; ignored %+v\n",
-			key, skey, status)
+			key, status.Key(), status)
 		return nil
 	}
 	return &status
@@ -79,7 +72,7 @@ func lookupEIDStatus(ctx *zedmanagerContext, key string) *types.EIDStatus {
 func updateEIDConfig(ctx *zedmanagerContext,
 	status *types.EIDConfig) {
 
-	key := eidKey(status.UUIDandVersion, status.IID)
+	key := status.Key()
 	log.Printf("updateEIDConfig(%s)\n", key)
 	pub := ctx.pubEIDConfig
 	pub.Publish(key, status)
@@ -88,7 +81,7 @@ func updateEIDConfig(ctx *zedmanagerContext,
 func removeEIDConfig(ctx *zedmanagerContext, uuidAndVers types.UUIDandVersion,
 	es *types.EIDStatusDetails) {
 
-	key := eidKey(uuidAndVers, es.IID)
+	key := types.EidKey(uuidAndVers, es.IID)
 	log.Printf("removeEIDConfig(%s)\n", key)
 	pub := ctx.pubEIDConfig
 	c, _ := pub.Get(key)
@@ -103,7 +96,7 @@ func handleEIDStatusModify(ctxArg interface{}, keyArg string,
 	statusArg interface{}) {
 	status := cast.CastEIDStatus(statusArg)
 	ctx := ctxArg.(*zedmanagerContext)
-	key := eidKey(status.UUIDandVersion, status.IID)
+	key := status.Key()
 	log.Printf("handleEIDStatusModify for %s\n", key)
 	if key != keyArg {
 		log.Printf("handleEIDModify key/UUID mismatch %s vs %s; ignored %+v\n",
@@ -116,7 +109,7 @@ func handleEIDStatusModify(ctxArg interface{}, keyArg string,
 			key)
 		return
 	}
-	updateAIStatusUUID(ctx, status.UUIDandVersion.UUID.String())
+	updateAIStatusUUID(ctx, status.Key())
 	log.Printf("handleEIDStatusModify done for %s\n", key)
 }
 

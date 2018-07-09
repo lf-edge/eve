@@ -127,9 +127,9 @@ func handleDomainStatusModify(ctxArg interface{}, key string,
 
 	status := cast.CastDomainStatus(statusArg)
 	ctx := ctxArg.(*zedagentContext)
-	if status.UUIDandVersion.UUID.String() != key {
+	if status.Key() != key {
 		log.Printf("handleDomainStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.UUIDandVersion.UUID.String(), status)
+			key, status.Key(), status)
 		return
 	}
 	if debug {
@@ -219,9 +219,9 @@ func lookupDomainStatus(ctx *zedagentContext, key string) *types.DomainStatus {
 		return nil
 	}
 	status := cast.CastDomainStatus(st)
-	if status.UUIDandVersion.UUID.String() != key {
+	if status.Key() != key {
 		log.Printf("lookupDomainStatus(%s) got %s; ignored %+v\n",
-			key, status.UUIDandVersion.UUID.String(), status)
+			key, status.Key(), status)
 		return nil
 	}
 	return &status
@@ -269,7 +269,7 @@ func LookupDomainStatus(domainName string) *types.DomainStatus {
 
 func LookupDomainStatusUUID(uuid string) *types.DomainStatus {
 	for _, ds := range domainStatus {
-		if strings.Compare(ds.UUIDandVersion.UUID.String(), uuid) == 0 {
+		if strings.Compare(ds.Key(), uuid) == 0 {
 			return &ds
 		}
 	}
@@ -633,7 +633,7 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 			ds = &types.DomainStatus{}
 		} else {
 			ReportAppMetric.AppName = ds.DisplayName
-			ReportAppMetric.AppID = ds.UUIDandVersion.UUID.String()
+			ReportAppMetric.AppID = ds.Key()
 		}
 
 		appCpuTotal, _ := strconv.ParseUint(cpuStorageStat[arr][3], 10, 0)
@@ -988,7 +988,7 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 		// lookup domains to see what is in use
 		ds := LookupDomainStatusIoBundle(ib.Type, ib.Name)
 		if ds != nil {
-			reportAA.UsedByAppUUID = ds.UUIDandVersion.UUID.String()
+			reportAA.UsedByAppUUID = ds.Key()
 		} else {
 			for _, m := range ib.Members {
 				if types.IsUplink(deviceNetworkStatus, m) {
@@ -1241,7 +1241,7 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 			reportAA := new(zmet.ZioBundle)
 			reportAA.Type = zmet.ZioType(ib.Type)
 			reportAA.Name = ib.Name
-			reportAA.UsedByAppUUID = ds.UUIDandVersion.UUID.String()
+			reportAA.UsedByAppUUID = ds.Key()
 			// Can we call
 			b := types.LookupIoBundle(aa, ib.Type, ib.Name)
 			if b != nil {

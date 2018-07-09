@@ -649,14 +649,14 @@ func createConfigStatusDirs(moduleName string, objTypes []string) {
 func handleAppInstanceStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	status := cast.CastAppInstanceStatus(statusArg)
-	if status.UUIDandVersion.UUID.String() != key {
+	if status.Key() != key {
 		log.Printf("handleAppInstanceStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.UUIDandVersion.UUID.String(), status)
+			key, status.Key(), status)
 		return
 	}
 	// XXX how do we use ctx? Define a single one?
 	ctx := ctxArg.(*deviceContext)
-	uuidStr := status.UUIDandVersion.UUID.String()
+	uuidStr := status.Key()
 	PublishAppInfoToZedCloud(uuidStr, &status, ctx.assignableAdapters,
 		ctx.iteration)
 	ctx.iteration += 1
@@ -712,7 +712,7 @@ func handleDNSDelete(ctxArg interface{}, key string) {
 func handleBaseOsCreate(ctxArg interface{}, statusFilename string,
 	configArg interface{}) {
 	config := configArg.(*types.BaseOsConfig)
-	uuidStr := config.UUIDandVersion.UUID.String()
+	uuidStr := config.Key()
 
 	log.Printf("handleBaseOsCreate for %s\n", uuidStr)
 	addOrUpdateBaseOsConfig(uuidStr, *config)
@@ -724,7 +724,7 @@ func handleBaseOsModify(ctxArg interface{}, statusFilename string,
 	configArg interface{}, statusArg interface{}) {
 	config := configArg.(*types.BaseOsConfig)
 	status := statusArg.(*types.BaseOsStatus)
-	uuidStr := config.UUIDandVersion.UUID.String()
+	uuidStr := config.Key()
 
 	log.Printf("handleBaseOsModify for %s\n", status.BaseOsVersion)
 	if config.UUIDandVersion.Version == status.UUIDandVersion.Version &&
@@ -749,7 +749,7 @@ func handleBaseOsDelete(ctxArg interface{}, statusFilename string,
 	status := statusArg.(*types.BaseOsStatus)
 
 	log.Printf("handleBaseOsDelete for %s\n", status.BaseOsVersion)
-	removeBaseOsConfig(status.UUIDandVersion.UUID.String())
+	removeBaseOsConfig(status.Key())
 	publishDeviceInfo = true
 }
 
@@ -758,7 +758,7 @@ func handleBaseOsDelete(ctxArg interface{}, statusFilename string,
 func handleCertObjCreate(ctxArg interface{}, statusFilename string,
 	configArg interface{}) {
 	config := configArg.(*types.CertObjConfig)
-	uuidStr := config.UUIDandVersion.UUID.String()
+	uuidStr := config.Key()
 
 	log.Printf("handleCertObjCreate for %s\n", uuidStr)
 	addOrUpdateCertObjConfig(uuidStr, *config)
@@ -769,7 +769,7 @@ func handleCertObjModify(ctxArg interface{}, statusFilename string,
 	configArg interface{}, statusArg interface{}) {
 	config := configArg.(*types.CertObjConfig)
 	status := statusArg.(*types.CertObjStatus)
-	uuidStr := config.UUIDandVersion.UUID.String()
+	uuidStr := config.Key()
 
 	log.Printf("handleCertObjModify for %s\n", uuidStr)
 
@@ -789,7 +789,7 @@ func handleCertObjModify(ctxArg interface{}, statusFilename string,
 func handleCertObjDelete(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
 	status := statusArg.(*types.CertObjStatus)
-	uuidStr := status.UUIDandVersion.UUID.String()
+	uuidStr := status.Key()
 
 	log.Printf("handleCertObjDelete for %s\n", uuidStr)
 

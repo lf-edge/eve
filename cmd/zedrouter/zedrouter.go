@@ -455,7 +455,7 @@ func updateDeviceNetworkStatus(pubDeviceNetworkStatus *pubsub.Publication) {
 func updateAppNetworkStatus(ctx *zedrouterContext,
 	status *types.AppNetworkStatus) {
 
-	key := status.UUIDandVersion.UUID.String()
+	key := status.Key()
 	log.Printf("updateAppNetworkStatus(%s)\n", key)
 	pub := ctx.pubAppNetworkStatus
 	pub.Publish(key, status)
@@ -464,7 +464,7 @@ func updateAppNetworkStatus(ctx *zedrouterContext,
 func removeAppNetworkStatus(ctx *zedrouterContext,
 	status *types.AppNetworkStatus) {
 
-	key := status.UUIDandVersion.UUID.String()
+	key := status.Key()
 	log.Printf("removeAppNetworkStatus(%s)\n", key)
 	pub := ctx.pubAppNetworkStatus
 	st, _ := pub.Get(key)
@@ -551,9 +551,9 @@ func handleAppNetworkConfigModify(ctxArg interface{}, key string, configArg inte
 	log.Printf("handleAppNetworkConfigModify(%s)\n", key)
 	ctx := ctxArg.(*zedrouterContext)
 	config := cast.CastAppNetworkConfig(configArg)
-	if config.UUIDandVersion.UUID.String() != key {
+	if config.Key() != key {
 		log.Printf("handleAppNetworkConfigModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.UUIDandVersion.UUID.String(), config)
+			key, config.Key(), config)
 		return
 	}
 	status := lookupAppNetworkStatus(ctx, key)
@@ -587,9 +587,9 @@ func lookupAppNetworkStatus(ctx *zedrouterContext, key string) *types.AppNetwork
 		return nil
 	}
 	status := cast.CastAppNetworkStatus(st)
-	if status.UUIDandVersion.UUID.String() != key {
+	if status.Key() != key {
 		log.Printf("lookupAppNetworkStatus(%s) got %s; ignored %+v\n",
-			key, status.UUIDandVersion.UUID.String(), status)
+			key, status.Key(), status)
 		return nil
 	}
 	return &status
@@ -608,9 +608,9 @@ func lookupAppNetworkConfig(ctx *zedrouterContext, key string) *types.AppNetwork
 		}
 	}
 	config := cast.CastAppNetworkConfig(c)
-	if config.UUIDandVersion.UUID.String() != key {
+	if config.Key() != key {
 		log.Printf("lookupAppNetworkConfig(%s) got %s; ignored %+v\n",
-			key, config.UUIDandVersion.UUID.String(), config)
+			key, config.Key(), config)
 		return nil
 	}
 	return &config
@@ -892,7 +892,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 		olStatus.BridgeMac = bridgeMac
 		olStatus.Vif = vifName
 		olStatus.Mac = olMac
-		olStatus.HostName = config.UUIDandVersion.UUID.String()
+		olStatus.HostName = config.Key()
 
 		netconfig := lookupNetworkObjectConfig(ctx,
 			olConfig.Network.String())
@@ -996,7 +996,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 
 		createDnsmasqOverlayConfiglet(ctx, cfgPathname, bridgeName, olAddr1,
 			EID.String(), olMac, hostsDirpath,
-			config.UUIDandVersion.UUID.String(), ipsets, netconfig)
+			config.Key(), ipsets, netconfig)
 		startDnsmasq(cfgPathname, bridgeName)
 
 		additionalInfo := generateAdditionalInfo(status, olConfig)
@@ -1048,7 +1048,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 		ulStatus.BridgeMac = bridgeMac
 		ulStatus.Vif = vifName
 		ulStatus.Mac = ulMac
-		ulStatus.HostName = config.UUIDandVersion.UUID.String()
+		ulStatus.HostName = config.Key()
 
 		netconfig := lookupNetworkObjectConfig(ctx,
 			ulConfig.Network.String())
@@ -1124,7 +1124,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 
 		createDnsmasqUnderlayConfiglet(ctx, cfgPathname, bridgeName, ulAddr1,
 			ulAddr2, ulMac, hostsDirpath,
-			config.UUIDandVersion.UUID.String(),
+			config.Key(),
 			ipsets, netconfig)
 		startDnsmasq(cfgPathname, bridgeName)
 	}
@@ -1455,7 +1455,7 @@ func handleModify(ctx *zedrouterContext, key string,
 			// XXX need to determine remaining ipsets. Inside function?
 			createDnsmasqOverlayConfiglet(ctx, cfgPathname, bridgeName,
 				olAddr1, EID.String(), olStatus.Mac, hostsDirpath,
-				config.UUIDandVersion.UUID.String(), newIpsets,
+				config.Key(), newIpsets,
 				netconfig)
 			startDnsmasq(cfgPathname, bridgeName)
 		}
@@ -1527,7 +1527,7 @@ func handleModify(ctx *zedrouterContext, key string,
 			createDnsmasqUnderlayConfiglet(ctx, cfgPathname, bridgeName,
 				ulAddr1, ulAddr2, ulStatus.Mac,
 				hostsDirpath,
-				config.UUIDandVersion.UUID.String(), newIpsets,
+				config.Key(), newIpsets,
 				netconfig)
 			startDnsmasq(cfgPathname, bridgeName)
 		}

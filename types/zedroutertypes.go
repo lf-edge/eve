@@ -458,6 +458,10 @@ type IpRange struct {
 	End   net.IP
 }
 
+func (config NetworkObjectConfig) Key() string {
+	return config.UUID.String()
+}
+
 // XXX If Ifname is set it means the network is in use
 // TBD: allow multiple applications to connect to the same Network by adding
 // another vif to the ifname.
@@ -476,6 +480,10 @@ type NetworkObjectStatus struct {
 	// Any errrors from provisioning the network
 	Error     string
 	ErrorTime time.Time
+}
+
+func (status NetworkObjectStatus) Key() string {
+	return status.UUID.String()
 }
 
 type NetworkServiceType uint8
@@ -502,6 +510,10 @@ type NetworkServiceConfig struct {
 	OpaqueConfig string
 }
 
+func (config NetworkServiceConfig) Key() string {
+	return config.UUID.String()
+}
+
 type NetworkServiceStatus struct {
 	UUID          uuid.UUID
 	PendingAdd    bool
@@ -518,6 +530,10 @@ type NetworkServiceStatus struct {
 	// Any errrors from provisioning the service
 	Error     string
 	ErrorTime time.Time
+}
+
+func (status NetworkServiceStatus) Key() string {
+	return status.UUID.String()
 }
 
 // Network metrics for overlay and underlay

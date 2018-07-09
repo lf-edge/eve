@@ -26,7 +26,7 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 	aiConfig types.AppInstanceConfig,
 	ns *types.AppNetworkStatus) error {
 
-	key := aiConfig.UUIDandVersion.UUID.String()
+	key := aiConfig.Key()
 	displayName := aiConfig.DisplayName
 	log.Printf("MaybeAddDomainConfig for %s displayName %s\n", key,
 		displayName)
@@ -141,9 +141,9 @@ func lookupDomainConfig(ctx *zedmanagerContext, key string) *types.DomainConfig 
 		return nil
 	}
 	config := cast.CastDomainConfig(c)
-	if config.UUIDandVersion.UUID.String() != key {
+	if config.Key() != key {
 		log.Printf("lookupDomainConfig(%s) got %s; ignored %+v\n",
-			key, config.UUIDandVersion.UUID.String(), config)
+			key, config.Key(), config)
 		return nil
 	}
 	return &config
@@ -157,9 +157,9 @@ func lookupDomainStatus(ctx *zedmanagerContext, key string) *types.DomainStatus 
 		return nil
 	}
 	status := cast.CastDomainStatus(st)
-	if status.UUIDandVersion.UUID.String() != key {
+	if status.Key() != key {
 		log.Printf("lookupDomainStatus(%s) got %s; ignored %+v\n",
-			key, status.UUIDandVersion.UUID.String(), status)
+			key, status.Key(), status)
 		return nil
 	}
 	return &status
@@ -168,7 +168,7 @@ func lookupDomainStatus(ctx *zedmanagerContext, key string) *types.DomainStatus 
 func updateDomainConfig(ctx *zedmanagerContext,
 	status *types.DomainConfig) {
 
-	key := status.UUIDandVersion.UUID.String()
+	key := status.Key()
 	log.Printf("updateDomainConfig(%s)\n", key)
 	pub := ctx.pubDomainConfig
 	pub.Publish(key, status)
@@ -192,9 +192,9 @@ func handleDomainStatusModify(ctxArg interface{}, key string,
 
 	status := cast.CastDomainStatus(statusArg)
 	ctx := ctxArg.(*zedmanagerContext)
-	if status.UUIDandVersion.UUID.String() != key {
+	if status.Key() != key {
 		log.Printf("handleDomainStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.UUIDandVersion.UUID.String(), status)
+			key, status.Key(), status)
 		return
 	}
 	log.Printf("handleDomainStatusModify for %s\n", key)
@@ -204,7 +204,7 @@ func handleDomainStatusModify(ctxArg interface{}, key string,
 			key)
 		return
 	}
-	updateAIStatusUUID(ctx, status.UUIDandVersion.UUID.String())
+	updateAIStatusUUID(ctx, status.Key())
 	log.Printf("handleDomainStatusModify done for %s\n", key)
 }
 

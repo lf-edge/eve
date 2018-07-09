@@ -341,7 +341,7 @@ func handleZedrouterRestarted(ctxArg interface{}, done bool) {
 func updateAppInstanceStatus(ctx *zedmanagerContext,
 	status *types.AppInstanceStatus) {
 
-	key := status.UUIDandVersion.UUID.String()
+	key := status.Key()
 	log.Printf("updateAppInstanceStatus(%s)\n", key)
 	pub := ctx.pubAppInstanceStatus
 	pub.Publish(key, status)
@@ -350,7 +350,7 @@ func updateAppInstanceStatus(ctx *zedmanagerContext,
 func removeAppInstanceStatus(ctx *zedmanagerContext,
 	status *types.AppInstanceStatus) {
 
-	key := status.UUIDandVersion.UUID.String()
+	key := status.Key()
 	log.Printf("removeAppInstanceStatus(%s)\n", key)
 	pub := ctx.pubAppInstanceStatus
 	st, _ := pub.Get(key)
@@ -367,9 +367,9 @@ func handleAppInstanceConfigModify(ctxArg interface{}, key string, configArg int
 	log.Printf("handleAppInstanceConfigModify(%s)\n", key)
 	ctx := ctxArg.(*zedmanagerContext)
 	config := cast.CastAppInstanceConfig(configArg)
-	if config.UUIDandVersion.UUID.String() != key {
+	if config.Key() != key {
 		log.Printf("handleAppInstanceConfigModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.UUIDandVersion.UUID.String(), config)
+			key, config.Key(), config)
 		return
 	}
 	status := lookupAppInstanceStatus(ctx, key)
@@ -403,9 +403,9 @@ func lookupAppInstanceStatus(ctx *zedmanagerContext, key string) *types.AppInsta
 		return nil
 	}
 	status := cast.CastAppInstanceStatus(st)
-	if status.UUIDandVersion.UUID.String() != key {
+	if status.Key() != key {
 		log.Printf("lookupAppInstanceStatus(%s) got %s; ignored %+v\n",
-			key, status.UUIDandVersion.UUID.String(), status)
+			key, status.Key(), status)
 		return nil
 	}
 	return &status
@@ -420,9 +420,9 @@ func lookupAppInstanceConfig(ctx *zedmanagerContext, key string) *types.AppInsta
 		return nil
 	}
 	config := cast.CastAppInstanceConfig(c)
-	if config.UUIDandVersion.UUID.String() != key {
+	if config.Key() != key {
 		log.Printf("lookupAppInstanceConfig(%s) got %s; ignored %+v\n",
-			key, config.UUIDandVersion.UUID.String(), config)
+			key, config.Key(), config)
 		return nil
 	}
 	return &config
@@ -452,7 +452,7 @@ func handleCreate(ctx *zedmanagerContext, key string,
 
 	updateAppInstanceStatus(ctx, &status)
 
-	uuidStr := status.UUIDandVersion.UUID.String()
+	uuidStr := status.Key()
 	changed := doUpdate(ctx, uuidStr, config, &status)
 	if changed {
 		log.Printf("handleCreate status change for %s\n",
@@ -474,7 +474,7 @@ func handleModify(ctx *zedmanagerContext, key string,
 	status.UUIDandVersion = config.UUIDandVersion
 	updateAppInstanceStatus(ctx, status)
 
-	uuidStr := status.UUIDandVersion.UUID.String()
+	uuidStr := status.Key()
 	changed := doUpdate(ctx, uuidStr, config, status)
 	if changed {
 		log.Printf("handleModify status change for %s\n",
