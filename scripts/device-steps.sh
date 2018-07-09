@@ -10,8 +10,7 @@ DNCDIR=$TMPDIR/DeviceNetworkConfig
 LISPDIR=/opt/zededa/lisp
 LOGDIRA=$PERSISTDIR/IMGA/log
 LOGDIRB=$PERSISTDIR/IMGB/log
-AGENTS="logmanager ledmanager zedrouter domainmgr downloader verifier identitymgr zedagent dataplane"
-ALLAGENTS="zedmanager $AGENTS"
+AGENTS="zedmanager logmanager ledmanager zedrouter domainmgr downloader verifier identitymgr zedagent dataplane"
 
 PATH=$BINDIR:$PATH
 
@@ -96,7 +95,7 @@ rm -rf /var/run/zedmanager/status/*.json
 # The following is a workaround for a racecondition between different agents
 # Make sure we have the required directories in place
 DIRS="$CONFIGDIR $PERSISTDIR $TMPDIR $TMPDIR/DeviceNetworkConfig/ /var/run/zedrouter/DeviceNetworkStatus/ /var/run/zedrouter/NetworkMetrics $TMPDIR/AssignableAdapters /var/run/zedclient/metricsMap /var/run/logmanager/metricsMap /var/run/downloader/metricsMap"
-for a in $ALLAGENTS; do
+for a in $AGENTS; do
     DIRS="$DIRS /var/tmp/$a/config /var/run/$a/status"
 done
 # Make sure we create these as well
