@@ -52,10 +52,6 @@ var Version = "No version specified"
 
 var deviceNetworkStatus types.DeviceNetworkStatus
 
-// Dummy used when we don't have anything to pass
-type dummyContext struct {
-}
-
 // Information for handleDomainCreate/Modify/Delete
 type domainContext struct {
 	assignableAdapters     *types.AssignableAdapters
@@ -137,7 +133,7 @@ func Run() {
 	}
 	log.Printf("Have %d assignable adapters\n", len(aa.IoBundleList))
 
-	// Subscribe to DomainConfig from zedmanager and from zedagent
+	// Subscribe to DomainConfig from zedmanager
 	subDomainConfig, err := pubsub.Subscribe("zedmanager",
 		types.DomainConfig{}, false, &domainCtx)
 	if err != nil {
@@ -232,6 +228,11 @@ func removeDomainStatus(ctx *domainContext, status *types.DomainStatus) {
 	key := status.UUIDandVersion.UUID.String()
 	log.Printf("removeDomainStatus(%s)\n", key)
 	pub := ctx.pubDomainStatus
+	st, _ := pub.Get(key)
+	if st == nil {
+		log.Printf("removeDomainStatus(%s) not found\n", key)
+		return
+	}
 	pub.Unpublish(key)
 }
 
