@@ -119,7 +119,8 @@ func createDownloaderConfig(objType string, safename string,
 	log.Printf("%s, createDownloaderConfig done\n", safename)
 }
 
-func updateDownloaderStatus(objType string, status *types.DownloaderStatus) {
+func updateDownloaderStatus(ctx *zedagentContext, objType string,
+	status *types.DownloaderStatus) {
 
 	initDownloaderMaps()
 
@@ -153,10 +154,10 @@ func updateDownloaderStatus(objType string, status *types.DownloaderStatus) {
 
 		switch objType {
 		case baseOsObj:
-			baseOsHandleStatusUpdateSafename(status.Safename)
+			baseOsHandleStatusUpdateSafename(ctx, status.Safename)
 
 		case certObj:
-			certObjHandleStatusUpdateSafename(status.Safename)
+			certObjHandleStatusUpdateSafename(ctx, status.Safename)
 
 		default:
 			log.Fatal("%s, unsupported objType <%s>\n",
@@ -188,8 +189,10 @@ func removeDownloaderConfig(objType string, safename string) {
 	}
 }
 
-func removeDownloaderStatus(objType string, statusFilename string) {
-	key := formLookupKey(objType, statusFilename)
+// XXX what is the key really? arg is safename?
+func removeDownloaderStatus(ctx *zedagentContext, objType string, key string) {
+
+	key = formLookupKey(objType, key)
 	downloaderStatusDelete(key)
 }
 

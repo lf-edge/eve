@@ -76,7 +76,7 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext) 
 		// if no baseOs config write, consider
 		// picking up application image config
 
-		if parseBaseOsConfig(config) == false {
+		if parseBaseOsConfig(getconfigCtx, config) == false {
 			parseNetworkObjectConfig(config, getconfigCtx)
 			parseNetworkServiceConfig(config, getconfigCtx)
 			parseAppInstanceConfig(config, getconfigCtx)
@@ -127,7 +127,9 @@ func validateConfig(config *zconfig.EdgeDevConfig) bool {
 var baseosPrevConfigHash []byte
 
 // Returns true if there is some baseOs work to do
-func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
+func parseBaseOsConfig(getconfigCtx *getconfigContext,
+	config *zconfig.EdgeDevConfig) bool {
+
 	cfgOsList := config.GetBase()
 	h := sha256.New()
 	for _, os := range cfgOsList {
@@ -237,7 +239,8 @@ func parseBaseOsConfig(config *zconfig.EdgeDevConfig) bool {
 	}
 	configCount := 0
 	if validateBaseOsConfig(baseOsList) == true {
-		configCount = createBaseOsConfig(baseOsList, certList)
+		configCount = createBaseOsConfig(getconfigCtx, baseOsList,
+			certList)
 	}
 
 	// baseOs config write, is true
@@ -348,29 +351,7 @@ func assignBaseOsPartition(baseOsList []*types.BaseOsConfig) bool {
 func rejectReinstallFailed(config *types.BaseOsConfig, otherPartName string) {
 	errString := fmt.Sprintf("Attempt to reinstall failed %s in %s: refused",
 		config.BaseOsVersion, otherPartName)
-	log.Println(errString)
-	// XXX do we have a baseOsStatus yet? NO
-	uuidStr := config.Key()
-	status := baseOsStatusGet(uuidStr)
-	if status == nil {
-		log.Printf("XXX %s, rejectReinstallFailed can't find baseOsStatus uuid %s\n",
-			config.BaseOsVersion, uuidStr)
-		// XXX this is a hack to report the error.
-		// The status should already exist once this code
-		// is moved from the parser to baseosmanager.
-		// XXX not clear this gets reported to zedcloud.
-		status = &types.BaseOsStatus{
-			UUIDandVersion: config.UUIDandVersion,
-			BaseOsVersion:  config.BaseOsVersion,
-			ConfigSha256:   config.ConfigSha256,
-			PartitionLabel: config.PartitionLabel,
-		}
-	}
-	status.Error = errString
-	status.ErrorTime = time.Now()
-
-	baseOsStatusSet(uuidStr, status)
-	writeBaseOsStatus(status, uuidStr)
+	log.Printf("rejectReinstallFailed: failed %s\n", errString)
 }
 
 func setStoragePartitionLabel(baseOs *types.BaseOsConfig) {
@@ -535,7 +516,8 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 			uuidStr := cfgApp.Uuidandversion.Uuid
 			updateAppInstanceConfig(getconfigCtx, appInstance)
 			if certInstance != nil {
-				writeCertObjConfig(certInstance, uuidStr)
+				publishCertObjConfig(getconfigCtx, certInstance,
+					uuidStr)
 			}
 		}
 	}
@@ -655,7 +637,7 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 		}
 
 		log.Printf("publishNetworkObjectConfig: processing %s type %d\n",
-			config.UUID.String(), config.Type)
+			config.Key(), config.Type)
 
 		switch config.Type {
 		case types.NT_IPV4, types.NT_IPV6:
@@ -689,7 +671,7 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 			config.Dhcp = types.DT_SERVER
 
 			// XXX Order since Service checks ...
-			ctx.pubNetworkObjectConfig.Publish(config.UUID.String(),
+			ctx.pubNetworkObjectConfig.Publish(config.Key(),
 				&config)
 
 			_, subnet, _ := net.ParseCIDR("172.28.1.10/24")
@@ -701,7 +683,7 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 				config.UUID, config.Type)
 			createNATNetworkService(ctx, config.UUID)
 		}
-		ctx.pubNetworkObjectConfig.Publish(config.UUID.String(),
+		ctx.pubNetworkObjectConfig.Publish(config.Key(),
 			&config)
 	}
 }
@@ -1357,7 +1339,7 @@ func validateBaseOsConfig(baseOsList []*types.BaseOsConfig) bool {
 // XXX not useful for caller if we want to catch failed updates up front.
 // XXX should we initially populate BaseOsStyatus with what we find in
 // the partitions? Makes the checks simpler.
-func createBaseOsConfig(baseOsList []*types.BaseOsConfig, certList []*types.CertObjConfig) int {
+func createBaseOsConfig(getconfigCtx *getconfigContext, baseOsList []*types.BaseOsConfig, certList []*types.CertObjConfig) int {
 
 	writeCount := 0
 	for idx, baseOs := range baseOsList {
@@ -1373,7 +1355,8 @@ func createBaseOsConfig(baseOsList []*types.BaseOsConfig, certList []*types.Cert
 				uuidStr, baseOs.BaseOsVersion)
 			writeBaseOsConfig(baseOs, uuidStr)
 			if certList[idx] != nil {
-				writeCertObjConfig(certList[idx], uuidStr)
+				publishCertObjConfig(getconfigCtx, certList[idx],
+					uuidStr)
 			}
 			writeCount++
 		} else {
@@ -1393,7 +1376,8 @@ func createBaseOsConfig(baseOsList []*types.BaseOsConfig, certList []*types.Cert
 			if !reflect.DeepEqual(curBaseOs, baseOs) {
 				writeBaseOsConfig(baseOs, uuidStr)
 				if certList[idx] != nil {
-					writeCertObjConfig(certList[idx], uuidStr)
+					publishCertObjConfig(getconfigCtx,
+						certList[idx], uuidStr)
 				}
 				writeCount++
 			}
@@ -1406,23 +1390,26 @@ func validateAppInstanceConfig(appInstance types.AppInstanceConfig) bool {
 	return true
 }
 
-func writeCertObjConfig(config *types.CertObjConfig, uuidStr string) {
+func publishCertObjConfig(getconfigCtx *getconfigContext,
+	config *types.CertObjConfig, uuidStr string) {
 
-	configFilename := zedagentCertObjConfigDirname + "/" + uuidStr + ".json"
+	key := uuidStr // XXX vs. config.Key()?
+	log.Printf("publishCertObjConfig(%s) key %s\n", uuidStr, config.Key())
+	pub := getconfigCtx.pubCertObjConfig
+	pub.Publish(key, config)
+}
 
-	bytes, err := json.Marshal(config)
-	if err != nil {
-		log.Fatal(err, "json Marshal certObjConfig")
+func unpublishCertObjConfig(getconfigCtx *getconfigContext, uuidStr string) {
+
+	key := uuidStr
+	log.Printf("removeCertObjConfig(%s)\n", key)
+	pub := getconfigCtx.pubCertObjConfig
+	c, _ := pub.Get(key)
+	if c == nil {
+		log.Printf("removeCertObjConfig(%s) not found\n", key)
+		return
 	}
-
-	if debug {
-		log.Printf("Writing CA config %s, %s\n", configFilename, bytes)
-	}
-
-	err = pubsub.WriteRename(configFilename, bytes)
-	if err != nil {
-		log.Fatal(err)
-	}
+	pub.Unpublish(key)
 }
 
 // Get sha256 for a subset of the protobuf message.

@@ -10,7 +10,6 @@ import (
 func initMaps() {
 
 	initBaseOsMaps()
-	initCertObjMaps()
 	initDownloaderMaps()
 	initVerifierMaps()
 }

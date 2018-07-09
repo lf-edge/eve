@@ -77,6 +77,7 @@ type getconfigContext struct {
 	subAppInstanceStatus        *pubsub.Subscription
 	pubAppInstanceConfig        *pubsub.Publication
 	pubAppNetworkConfig         *pubsub.Publication
+	pubCertObjConfig            *pubsub.Publication
 }
 
 // tlsConfig is initialized once i.e. effectively a constant
@@ -382,7 +383,7 @@ func cleanupOldConfig(getconfigCtx *getconfigContext,
 	appDel := checkCurrentAppInstances(getconfigCtx, config)
 
 	// delete old base os configs, if any
-	baseDel := checkCurrentBaseOsFiles(config)
+	baseDel := checkCurrentBaseOsFiles(getconfigCtx, config)
 	return appDel || baseDel
 }
 
@@ -410,18 +411,14 @@ func checkCurrentAppInstances(getconfigCtx *getconfigContext,
 			pub.Unpublish(key)
 			deleted = true
 
-			// also remove the certificates config holder file
-			curAppFilename := key + ".json"
-			err := os.Remove(zedagentCertObjConfigDirname + "/" + curAppFilename)
-			if err != nil {
-				log.Println("Old cert: ", err)
-			}
+			unpublishCertObjConfig(getconfigCtx, key)
 		}
 	}
 	return deleted
 }
 
-func checkCurrentBaseOsFiles(config *zconfig.EdgeDevConfig) bool {
+func checkCurrentBaseOsFiles(getconfigCtx *getconfigContext,
+	config *zconfig.EdgeDevConfig) bool {
 
 	deleted := false
 	// get the current set of baseOs files
@@ -448,7 +445,8 @@ func checkCurrentBaseOsFiles(config *zconfig.EdgeDevConfig) bool {
 			}
 			// baseOS instance not found, delete
 			if !found {
-				removeBaseOsEntry(curBaseOsFilename)
+				removeBaseOsEntry(getconfigCtx,
+					curBaseOsFilename)
 				deleted = true
 			}
 		}
@@ -456,7 +454,7 @@ func checkCurrentBaseOsFiles(config *zconfig.EdgeDevConfig) bool {
 	return deleted
 }
 
-func removeBaseOsEntry(baseOsFilename string) {
+func removeBaseOsEntry(getconfigCtx *getconfigContext, baseOsFilename string) {
 
 	uuidStr := strings.Split(baseOsFilename, ".")[0]
 	log.Printf("removeBaseOsEntry %s, remove baseOs entry\n", uuidStr)
@@ -466,9 +464,6 @@ func removeBaseOsEntry(baseOsFilename string) {
 	if err != nil {
 		log.Printf("removeBaseOsEntry: failed %s\n", err)
 	}
-	// remove certificates holder config file
-	err = os.Remove(zedagentCertObjConfigDirname + "/" + baseOsFilename)
-	if err != nil {
-		log.Printf("removeBaseOsEntry: failed %s\n", err)
-	}
+	// XXX what is the uuid for the vrty objects?
+	unpublishCertObjConfig(getconfigCtx, uuidStr)
 }
