@@ -76,10 +76,6 @@ type downloaderContext struct {
 	subDeviceNetworkStatus *pubsub.Subscription
 }
 
-// Dummy since where we don't have anything to pass
-type dummyContext struct {
-}
-
 var deviceNetworkStatus types.DeviceNetworkStatus
 
 func Run() {
