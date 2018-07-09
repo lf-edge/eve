@@ -116,6 +116,7 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	pubDeviceNetworkStatus.ClearRestarted()
 
 	model := hardware.GetHardwareModel()
 
@@ -146,17 +147,29 @@ func Run() {
 		manufacturerModel:      model,
 		pubDeviceNetworkStatus: pubDeviceNetworkStatus,
 	}
+
 	// Create publish before subscribing and activating subscriptions
 	pubNetworkObjectStatus, err := pubsub.Publish(agentName,
 		types.NetworkObjectStatus{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedrouterCtx.pubNetworkObjectStatus = pubNetworkObjectStatus
+
 	pubNetworkServiceStatus, err := pubsub.Publish(agentName,
 		types.NetworkServiceStatus{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedrouterCtx.pubNetworkServiceStatus = pubNetworkServiceStatus
+
 	pubAppNetworkStatus, err := pubsub.Publish(agentName,
 		types.AppNetworkStatus{})
-
-	zedrouterCtx.pubNetworkObjectStatus = pubNetworkObjectStatus
-	zedrouterCtx.pubNetworkServiceStatus = pubNetworkServiceStatus
+	if err != nil {
+		log.Fatal(err)
+	}
 	zedrouterCtx.pubAppNetworkStatus = pubAppNetworkStatus
+	pubAppNetworkStatus.ClearRestarted()
 
 	// XXX why dirname? Fix to read collection?
 	appNumAllocatorInit("/var/run/zedrouter/AppNetworkStatus",

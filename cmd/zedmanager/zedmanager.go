@@ -124,6 +124,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	ctx.pubAppInstanceStatus = pubAppInstanceStatus
+	pubAppInstanceStatus.ClearRestarted()
 
 	pubAppNetworkConfig, err := pubsub.Publish(agentName,
 		types.AppNetworkConfig{})
@@ -131,6 +132,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	ctx.pubAppNetworkConfig = pubAppNetworkConfig
+	pubAppNetworkConfig.ClearRestarted()
 
 	pubDomainConfig, err := pubsub.Publish(agentName,
 		types.DomainConfig{})
@@ -138,6 +140,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	ctx.pubDomainConfig = pubDomainConfig
+	pubDomainConfig.ClearRestarted()
 
 	pubEIDConfig, err := pubsub.Publish(agentName,
 		types.EIDConfig{})
@@ -145,6 +148,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	ctx.pubEIDConfig = pubEIDConfig
+	pubEIDConfig.ClearRestarted()
 
 	// Get AppInstanceConfig from zedagent
 	subAppInstanceConfig, err := pubsub.Subscribe("zedagent",

@@ -122,7 +122,11 @@ func Run() {
 
 	pubDomainStatus, err := pubsub.Publish(agentName,
 		types.DomainStatus{})
+	if err != nil {
+		log.Fatal(err)
+	}
 	domainCtx.pubDomainStatus = pubDomainStatus
+	pubDomainStatus.ClearRestarted()
 
 	for !aaCtx.Found {
 		log.Printf("Waiting - aaCtx %v\n", aaCtx.Found)
