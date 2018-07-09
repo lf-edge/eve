@@ -65,10 +65,6 @@ type zedrouterContext struct {
 	pubDeviceNetworkStatus  *pubsub.Publication
 }
 
-// Dummy since we don't have anything to pass
-type dummyContext struct {
-}
-
 var debug = false
 
 func Run() {
