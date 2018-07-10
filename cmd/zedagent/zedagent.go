@@ -106,10 +106,6 @@ var logmanagerMetrics interface{}
 var downloaderMetrics interface{}
 var networkMetrics types.NetworkMetrics
 
-// Dummy used when we don't have anything to pass
-type dummyContext struct {
-}
-
 // Context for handleDNSModify
 type DNSContext struct {
 	usableAddressCount     int
@@ -117,18 +113,10 @@ type DNSContext struct {
 	triggerGetConfig       bool
 }
 
-// Information from handleVerifierRestarted
-type verifierContext struct {
-	verifierRestarted bool
-}
-
-// Information for handleBaseOsCreate/Modify/Delete and handleAppInstanceStatus*
-type deviceContext struct {
-	assignableAdapters *types.AssignableAdapters
-	iteration          int
-}
-
 type zedagentContext struct {
+	verifierRestarted	bool // Information from handleVerifierRestarted
+	assignableAdapters	*types.AssignableAdapters
+	iteration          	int
 	subNetworkObjectStatus  *pubsub.Subscription
 	subNetworkServiceStatus *pubsub.Subscription
 	subDomainStatus         *pubsub.Subscription
@@ -140,7 +128,7 @@ type zedagentContext struct {
 var debug = false
 
 // XXX temporary hack for writeBaseOsStatus
-var devCtx deviceContext
+var zedagentCtx zedagentContext
 
 // XXX used by baseOs code to indicate that something changed
 // Will not be needed once we have a separate baseosmgr since
@@ -175,7 +163,6 @@ func Run() {
 	// Context to pass around
 	getconfigCtx := getconfigContext{}
 
-	zedagentCtx := zedagentContext{}
 
 	// Pick up (mostly static) AssignableAdapters before we report
 	// any device info
@@ -184,8 +171,7 @@ func Run() {
 	aa := types.AssignableAdapters{}
 	aaChanges, aaFunc, aaCtx := adapters.Init(&aa, model)
 
-	verifierCtx := verifierContext{}
-	devCtx = deviceContext{assignableAdapters: &aa}
+	zedagentCtx = zedagentContext{assignableAdapters: &aa}
 
 	// Publish NetworkConfig and NetworkServiceConfig for zedmanager/zedrouter
 	pubNetworkObjectConfig, err := pubsub.Publish(agentName,
@@ -260,7 +246,7 @@ func Run() {
 
 	// Look for AppInstanceStatus from zedmanager
 	subAppInstanceStatus, err := pubsub.Subscribe("zedmanager",
-		types.AppInstanceStatus{}, false, &devCtx)
+		types.AppInstanceStatus{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -309,16 +295,16 @@ func Run() {
 	// First we process the verifierStatus to avoid downloading
 	// an base image we already have in place
 	log.Printf("Handling initial verifier Status\n")
-	for !verifierCtx.verifierRestarted {
+	for !zedagentCtx.verifierRestarted {
 		select {
 		case change := <-baseOsVerifierChanges:
-			watch.HandleStatusEvent(change, &verifierCtx,
+			watch.HandleStatusEvent(change, &zedagentCtx,
 				verifierBaseOsStatusDirname,
 				&types.VerifyImageStatus{},
 				handleBaseOsVerifierStatusModify,
 				handleBaseOsVerifierStatusDelete,
 				&verifierRestartedFn)
-			if verifierCtx.verifierRestarted {
+			if zedagentCtx.verifierRestarted {
 				log.Printf("Verifier reported restarted\n")
 				break
 			}
@@ -386,24 +372,24 @@ func Run() {
 
 	// Subscribe to network metrics from zedrouter
 	subNetworkMetrics, err := pubsub.Subscribe("zedrouter",
-		types.NetworkMetrics{}, true, &dummyContext{})
+		types.NetworkMetrics{}, true, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
 	// Subscribe to cloud metrics from different agents
 	cms := zedcloud.GetCloudMetrics()
 	subClientMetrics, err := pubsub.Subscribe("zedclient", cms,
-		true, &dummyContext{})
+		true, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
 	subLogmanagerMetrics, err := pubsub.Subscribe("logmanager", cms,
-		true, &dummyContext{})
+		true, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
 	subDownloaderMetrics, err := pubsub.Subscribe("downloader", cms,
-		true, &dummyContext{})
+		true, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -412,7 +398,7 @@ func Run() {
 	deferredChan := zedcloud.InitDeferred()
 
 	// Publish initial device info. Retries all addresses on all uplinks.
-	publishDevInfo(&devCtx)
+	publishDevInfo(&zedagentCtx)
 
 	// start the metrics/config fetch tasks
 	handleChannel := make(chan interface{})
@@ -442,7 +428,7 @@ func Run() {
 	for {
 		if publishDeviceInfo {
 			log.Printf("BaseOs triggered PublishDeviceInfo\n")
-			publishDevInfo(&devCtx)
+			publishDevInfo(&zedagentCtx)
 			publishDeviceInfo = false
 		}
 
@@ -454,7 +440,7 @@ func Run() {
 			subAppInstanceStatus.ProcessChange(change)
 
 		case change := <-baseOsConfigStatusChanges:
-			watch.HandleConfigStatusEvent(change, &devCtx,
+			watch.HandleConfigStatusEvent(change, &zedagentCtx,
 				zedagentBaseOsConfigDirname,
 				zedagentBaseOsStatusDirname,
 				&types.BaseOsConfig{},
@@ -464,28 +450,28 @@ func Run() {
 				handleBaseOsDelete, nil)
 
 		case change := <-baseOsDownloaderChanges:
-			watch.HandleStatusEvent(change, dummyContext{},
+			watch.HandleStatusEvent(change, zedagentCtx,
 				downloaderBaseOsStatusDirname,
 				&types.DownloaderStatus{},
 				handleBaseOsDownloadStatusModify,
 				handleBaseOsDownloadStatusDelete, nil)
 
 		case change := <-baseOsVerifierChanges:
-			watch.HandleStatusEvent(change, dummyContext{},
+			watch.HandleStatusEvent(change, &zedagentCtx,
 				verifierBaseOsStatusDirname,
 				&types.VerifyImageStatus{},
 				handleBaseOsVerifierStatusModify,
 				handleBaseOsVerifierStatusDelete, nil)
 
 		case change := <-appImgVerifierChanges:
-			watch.HandleStatusEvent(change, dummyContext{},
+			watch.HandleStatusEvent(change, zedagentCtx,
 				verifierAppImgStatusDirname,
 				&types.VerifyImageStatus{},
 				handleAppImgVerifierStatusModify,
 				handleAppImgVerifierStatusDelete, nil)
 
 		case change := <-certObjDownloaderChanges:
-			watch.HandleStatusEvent(change, dummyContext{},
+			watch.HandleStatusEvent(change, zedagentCtx,
 				downloaderCertObjStatusDirname,
 				&types.DownloaderStatus{},
 				handleCertObjDownloadStatusModify,
@@ -501,14 +487,14 @@ func Run() {
 			// XXX could compare in handleDNSModify as we do
 			// for handleDomainStatus
 			log.Printf("NetworkStatus triggered PublishDeviceInfo\n")
-			publishDevInfo(&devCtx)
+			publishDevInfo(&zedagentCtx)
 
 		case change := <-subDomainStatus.C:
 			subDomainStatus.ProcessChange(change)
 			// UsedByUUID could have changed ...
 			if zedagentCtx.TriggerDeviceInfo {
 				log.Printf("UsedByUUID triggered PublishDeviceInfo\n")
-				publishDevInfo(&devCtx)
+				publishDevInfo(&zedagentCtx)
 				zedagentCtx.TriggerDeviceInfo = false
 			}
 
@@ -566,14 +552,14 @@ func Run() {
 	}
 }
 
-func publishDevInfo(devCtx *deviceContext) {
-	PublishDeviceInfoToZedCloud(baseOsStatusMap, devCtx.assignableAdapters,
-		devCtx.iteration)
-	devCtx.iteration += 1
+func publishDevInfo(ctx *zedagentContext) {
+	PublishDeviceInfoToZedCloud(baseOsStatusMap, ctx.assignableAdapters,
+		ctx.iteration)
+	ctx.iteration += 1
 }
 
 func handleVerifierRestarted(ctxArg interface{}, done bool) {
-	ctx := ctxArg.(*verifierContext)
+	ctx := ctxArg.(*zedagentContext)
 	log.Printf("handleVerifierRestarted(%v)\n", done)
 	if done {
 		ctx.verifierRestarted = true
@@ -667,8 +653,7 @@ func handleAppInstanceStatusModify(ctxArg interface{}, key string,
 			key, status.Key(), status)
 		return
 	}
-	// XXX how do we use ctx? Define a single one?
-	ctx := ctxArg.(*deviceContext)
+	ctx := ctxArg.(*zedagentContext)
 	uuidStr := status.Key()
 	PublishAppInfoToZedCloud(uuidStr, &status, ctx.assignableAdapters,
 		ctx.iteration)
@@ -676,8 +661,7 @@ func handleAppInstanceStatusModify(ctxArg interface{}, key string,
 }
 
 func handleAppInstanceStatusDelete(ctxArg interface{}, key string) {
-	// XXX how do we use ctx? Define a single one?
-	ctx := ctxArg.(*deviceContext)
+	ctx := ctxArg.(*zedagentContext)
 	uuidStr := key
 	PublishAppInfoToZedCloud(uuidStr, nil, ctx.assignableAdapters,
 		ctx.iteration)
