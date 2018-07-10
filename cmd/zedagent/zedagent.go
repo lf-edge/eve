@@ -724,20 +724,20 @@ func handleDNSDelete(ctxArg interface{}, key string) {
 // base os config create event
 func handleBaseOsCreate(ctxArg interface{}, key string,
 	configArg interface{}) {
-	config := configArg.(*types.BaseOsConfig)
+	config := cast.CastBaseOsConfig(configArg)
 	uuidStr := config.Key()
 	ctx := ctxArg.(*zedagentContext)
 
 	log.Printf("handleBaseOsCreate for %s\n", uuidStr)
-	addOrUpdateBaseOsConfig(ctx, uuidStr, *config)
+	addOrUpdateBaseOsConfig(ctx, uuidStr, config)
 	publishDeviceInfo = true
 }
 
 // base os config modify event
 func handleBaseOsModify(ctxArg interface{}, key string,
 	configArg interface{}, statusArg interface{}) {
-	config := configArg.(*types.BaseOsConfig)
-	status := statusArg.(*types.BaseOsStatus)
+	config := cast.CastBaseOsConfig(configArg)
+	status := cast.CastBaseOsStatus(statusArg)
 	uuidStr := config.Key()
 	ctx := ctxArg.(*zedagentContext)
 
@@ -751,17 +751,17 @@ func handleBaseOsModify(ctxArg interface{}, key string,
 
 	// update the version field, uuis being the same
 	status.UUIDandVersion = config.UUIDandVersion
-	baseOsStatusSet(uuidStr, status)
-	writeBaseOsStatus(status, uuidStr)
+	baseOsStatusSet(uuidStr, &status)
+	writeBaseOsStatus(&status, uuidStr)
 
-	addOrUpdateBaseOsConfig(ctx, uuidStr, *config)
+	addOrUpdateBaseOsConfig(ctx, uuidStr, config)
 	publishDeviceInfo = true
 }
 
 // base os config delete event
 func handleBaseOsDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
-	status := statusArg.(*types.BaseOsStatus)
+	status := cast.CastBaseOsStatus(statusArg)
 	ctx := ctxArg.(*zedagentContext)
 
 	log.Printf("handleBaseOsDelete for %s\n", status.BaseOsVersion)
@@ -861,11 +861,11 @@ func unpublishCertObjStatus(ctx *zedagentContext, uuidStr string) {
 func handleBaseOsDownloadStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	status := statusArg.(*types.DownloaderStatus)
+	status := cast.CastDownloaderStatus(statusArg)
 	ctx := ctxArg.(*zedagentContext)
 	log.Printf("handleBaseOsDownloadStatusModify for %s\n",
 		status.Safename)
-	updateDownloaderStatus(ctx, baseOsObj, status)
+	updateDownloaderStatus(ctx, baseOsObj, &status)
 }
 
 // base os download status delete event
@@ -880,11 +880,11 @@ func handleBaseOsDownloadStatusDelete(ctxArg interface{}, key string) {
 func handleBaseOsVerifierStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	status := statusArg.(*types.VerifyImageStatus)
+	status := cast.CastVerifyImageStatus(statusArg)
 	ctx := ctxArg.(*zedagentContext)
 	log.Printf("handleBaseOsVeriferStatusModify for %s\n",
 		status.Safename)
-	updateVerifierStatus(ctx, baseOsObj, status)
+	updateVerifierStatus(ctx, baseOsObj, &status)
 }
 
 // base os verification status delete event
@@ -899,11 +899,11 @@ func handleBaseOsVerifierStatusDelete(ctxArg interface{}, key string) {
 func handleAppImgVerifierStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	status := statusArg.(*types.VerifyImageStatus)
+	status := cast.CastVerifyImageStatus(statusArg)
 	ctx := ctxArg.(*zedagentContext)
 	log.Printf("handleAppImgVeriferStatusModify for %s\n",
 		status.Safename)
-	updateVerifierStatus(ctx, appImgObj, status)
+	updateVerifierStatus(ctx, appImgObj, &status)
 }
 
 // base os verification status delete event
@@ -917,11 +917,11 @@ func handleAppImgVerifierStatusDelete(ctxArg interface{}, key string) {
 // cerificate download status change event
 func handleCertObjDownloadStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
-	status := statusArg.(*types.DownloaderStatus)
+	status := cast.CastDownloaderStatus(statusArg)
 	ctx := ctxArg.(*zedagentContext)
 	log.Printf("handleCertObjDownloadStatusModify for %s\n",
 		status.Safename)
-	updateDownloaderStatus(ctx, certObj, status)
+	updateDownloaderStatus(ctx, certObj, &status)
 }
 
 // cerificate download status delete event

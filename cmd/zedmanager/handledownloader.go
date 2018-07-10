@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"log"
@@ -97,7 +98,7 @@ var downloaderStatus map[string]types.DownloaderStatus
 
 func handleDownloaderStatusModify(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
-	status := statusArg.(*types.DownloaderStatus)
+	status := cast.CastDownloaderStatus(statusArg)
 	ctx := ctxArg.(*zedmanagerContext)
 	log.Printf("handleDownloaderStatusModify for %s\n", status.Safename)
 
@@ -128,7 +129,7 @@ func handleDownloaderStatusModify(ctxArg interface{}, statusFilename string,
 		changed = true
 	}
 	if changed {
-		downloaderStatus[key] = *status
+		downloaderStatus[key] = status
 		updateAIStatusSafename(ctx, key)
 	}
 

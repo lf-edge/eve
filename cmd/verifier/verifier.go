@@ -25,6 +25,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/zededa/go-provision/agentlog"
+	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
@@ -477,20 +478,20 @@ func removeVerifyObjectStatus(status *types.VerifyImageStatus) {
 
 func handleAppImgObjCreate(ctxArg interface{}, statusFilename string,
 	configArg interface{}) {
-	config := configArg.(*types.VerifyImageConfig)
+	config := cast.CastVerifyImageConfig(configArg)
 	ctx := ctxArg.(*verifierContext)
 
 	log.Printf("handleCreate(%v) for %s\n",
 		config.Safename, config.DownloadURL)
-	handleCreate(ctx, appImgObj, config)
+	handleCreate(ctx, appImgObj, &config)
 }
 
 func handleBaseOsObjCreate(ctxArg interface{}, statusFilename string,
 	configArg interface{}) {
-	config := configArg.(*types.VerifyImageConfig)
+	config := cast.CastVerifyImageConfig(configArg)
 	ctx := ctxArg.(*verifierContext)
 
-	handleCreate(ctx, baseOsObj, config)
+	handleCreate(ctx, baseOsObj, &config)
 }
 
 func handleCreate(ctx *verifierContext, objType string,
@@ -857,8 +858,8 @@ func markObjectAsVerified(config *types.VerifyImageConfig,
 
 func handleModify(ctxArg interface{}, statusFilename string,
 	configArg interface{}, statusArg interface{}) {
-	config := configArg.(*types.VerifyImageConfig)
-	status := statusArg.(*types.VerifyImageStatus)
+	config := cast.CastVerifyImageConfig(configArg)
+	status := cast.CastVerifyImageStatus(statusArg)
 	ctx := ctxArg.(*verifierContext)
 
 	// Note no comparison on version
@@ -882,12 +883,12 @@ func handleModify(ctxArg interface{}, statusFilename string,
 
 	if status.RefCount == 0 {
 		status.PendingModify = true
-		updateVerifyObjectStatus(status)
+		updateVerifyObjectStatus(&status)
 		// XXX start gc timer instead
-		doDelete(status)
+		doDelete(&status)
 		status.PendingModify = false
 		status.State = 0 // XXX INITIAL implies failure
-		updateVerifyObjectStatus(status)
+		updateVerifyObjectStatus(&status)
 		log.Printf("handleModify done for %s\n", config.DownloadURL)
 		return
 	}
@@ -896,7 +897,7 @@ func handleModify(ctxArg interface{}, statusFilename string,
 	if config.Safename == status.Safename &&
 		config.ImageSha256 == status.ImageSha256 {
 		if changed {
-			updateVerifyObjectStatus(status)
+			updateVerifyObjectStatus(&status)
 		}
 		log.Printf("handleModify: no (other) change for %s\n",
 			config.DownloadURL)
@@ -904,17 +905,17 @@ func handleModify(ctxArg interface{}, statusFilename string,
 	}
 
 	status.PendingModify = true
-	updateVerifyObjectStatus(status)
+	updateVerifyObjectStatus(&status)
 	handleDelete(ctx, statusFilename, status)
-	handleCreate(ctx, status.ObjType, config)
+	handleCreate(ctx, status.ObjType, &config)
 	status.PendingModify = false
-	updateVerifyObjectStatus(status)
+	updateVerifyObjectStatus(&status)
 	log.Printf("handleModify done for %s\n", config.DownloadURL)
 }
 
 func handleDelete(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
-	status := statusArg.(*types.VerifyImageStatus)
+	status := cast.CastVerifyImageStatus(statusArg)
 
 	log.Printf("handleDelete(%v) objType %s\n",
 		status.Safename, status.ObjType)
@@ -925,11 +926,11 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 	}
 
 	// XXX start gc timer instead
-	doDelete(status)
+	doDelete(&status)
 
 	// XXX set refCount=0
 	// Write out what we modified to VerifyImageStatus aka delete
-	removeVerifyObjectStatus(status)
+	removeVerifyObjectStatus(&status)
 	log.Printf("handleDelete done for %s\n", status.Safename)
 }
 

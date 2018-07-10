@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"log"
@@ -121,7 +122,7 @@ func dumpVerifierStatus() {
 
 func handleVerifyImageStatusModify(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
-	status := statusArg.(*types.VerifyImageStatus)
+	status := cast.CastVerifyImageStatus(statusArg)
 	ctx := ctxArg.(*zedmanagerContext)
 	log.Printf("handleVerifyImageStatusModify for %s\n",
 		status.Safename)
@@ -153,7 +154,7 @@ func handleVerifyImageStatusModify(ctxArg interface{}, statusFilename string,
 		changed = true
 	}
 	if changed {
-		verifierStatus[key] = *status
+		verifierStatus[key] = status
 		if debug {
 			log.Printf("Added verifierStatus key %v sha %s safename %s\n",
 				key, status.ImageSha256, status.Safename)
