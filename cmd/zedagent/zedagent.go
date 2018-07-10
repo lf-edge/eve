@@ -282,7 +282,7 @@ func Run() {
 
 	// Look for CertObjConfig from ourselves!
 	subCertObjConfig, err := pubsub.Subscribe("zedagent",
-		types.CertObjConfig{}, false, &devCtx)
+		types.CertObjConfig{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}

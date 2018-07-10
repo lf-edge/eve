@@ -51,6 +51,7 @@ type zedmanagerContext struct {
 	subDomainStatus        *pubsub.Subscription
 	pubEIDConfig           *pubsub.Publication
 	subEIDStatus           *pubsub.Subscription
+	subCertObjStatus       *pubsub.Subscription
 }
 
 var deviceNetworkStatus types.DeviceNetworkStatus
@@ -89,7 +90,6 @@ func Run() {
 
 	downloaderAppImgObjStatusDirname := "/var/run/downloader/" + appImgObj + "/status"
 	verifierAppImgObjStatusDirname := "/var/run/verifier/" + appImgObj + "/status"
-	zedagentCertObjStatusDirname := "/var/run/zedagent/" + certObj + "/status"
 
 	// XXX remove
 	dirs := []string{
@@ -101,7 +101,6 @@ func Run() {
 		downloaderStatusDirname,
 		verifierAppImgObjStatusDirname,
 		verifierStatusDirname,
-		zedagentCertObjStatusDirname,
 	}
 
 	// XXX remove
@@ -211,9 +210,16 @@ func Run() {
 	ctx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
-	zedagentCertObjStatusChanges := make(chan string)
-	go watch.WatchStatus(zedagentCertObjStatusDirname,
-		zedagentCertObjStatusChanges)
+	// Look for CertObjStatus from zedagent
+	subCertObjStatus, err := pubsub.Subscribe("zedagent",
+		types.CertObjStatus{}, false, &ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subCertObjStatus.ModifyHandler = handleCertObjStatusModify
+	subCertObjStatus.DeleteHandler = handleCertObjStatusDelete
+	ctx.subCertObjStatus = subCertObjStatus
+	subCertObjStatus.Activate()
 
 	var verifierRestartedFn watch.StatusRestartHandler = handleVerifierRestarted
 
@@ -244,14 +250,9 @@ func Run() {
 	for {
 		select {
 		// handle cert ObjectsChanges
-		case change := <-zedagentCertObjStatusChanges:
-			{
-				watch.HandleStatusEvent(change, &ctx,
-					zedagentCertObjStatusDirname,
-					&types.CertObjStatus{},
-					handleCertObjStatusModify,
-					handleCertObjStatusDelete, nil)
-			}
+		case change := <-subCertObjStatus.C:
+			subCertObjStatus.ProcessChange(change)
+
 		case change := <-downloaderChanges:
 			{
 				watch.HandleStatusEvent(change, &ctx,
