@@ -1302,11 +1302,8 @@ func handleModify(ctx *zedrouterContext, key string,
 	log.Printf("handleModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
-	if config.UUIDandVersion.Version == status.UUIDandVersion.Version {
-		log.Printf("Same version %s for %s\n",
-			config.UUIDandVersion.Version, key)
-		return
-	}
+	// No check for version numbers since the ACLs etc might change
+	// even for the same version.
 
 	appNum := status.AppNum
 	if debug {
