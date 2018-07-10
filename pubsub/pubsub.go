@@ -560,9 +560,11 @@ func handleModify(ctxArg interface{}, key string, item interface{}) {
 			}
 			return
 		}
-		log.Printf("pubsub.handleModify(%s/%s) replacing due to diff %s\n",
-			name, key, cmp.Diff(m, newItem))
-	} else {
+		if debug {
+			log.Printf("pubsub.handleModify(%s/%s) replacing due to diff %s\n",
+				name, key, cmp.Diff(m, newItem))
+		}
+	} else if debug {
 		log.Printf("pubsub.handleModify(%s) add %+v for key %s\n",
 			name, newItem, key)
 	}
@@ -616,7 +618,10 @@ func handleRestart(ctxArg interface{}, restarted bool) {
 			name, restarted)
 	}
 	if restarted == sub.km.restarted {
-		log.Printf("pubsub.handleRestart(%s) value unchanged\n", name)
+		if debug {
+			log.Printf("pubsub.handleRestart(%s) value unchanged\n",
+				name)
+		}
 		return
 	}
 	sub.km.restarted = restarted
