@@ -450,7 +450,7 @@ func Run() {
 				handleBaseOsDelete, nil)
 
 		case change := <-baseOsDownloaderChanges:
-			watch.HandleStatusEvent(change, zedagentCtx,
+			watch.HandleStatusEvent(change, &zedagentCtx,
 				downloaderBaseOsStatusDirname,
 				&types.DownloaderStatus{},
 				handleBaseOsDownloadStatusModify,
@@ -464,14 +464,14 @@ func Run() {
 				handleBaseOsVerifierStatusDelete, nil)
 
 		case change := <-appImgVerifierChanges:
-			watch.HandleStatusEvent(change, zedagentCtx,
+			watch.HandleStatusEvent(change, &zedagentCtx,
 				verifierAppImgStatusDirname,
 				&types.VerifyImageStatus{},
 				handleAppImgVerifierStatusModify,
 				handleAppImgVerifierStatusDelete, nil)
 
 		case change := <-certObjDownloaderChanges:
-			watch.HandleStatusEvent(change, zedagentCtx,
+			watch.HandleStatusEvent(change, &zedagentCtx,
 				downloaderCertObjStatusDirname,
 				&types.DownloaderStatus{},
 				handleCertObjDownloadStatusModify,
@@ -763,7 +763,7 @@ func handleCertObjConfigModify(ctxArg interface{}, key string, configArg interfa
 		return
 	}
 	status := lookupCertObjStatus(ctx, key)
-	if status != nil {
+	if status == nil {
 		handleCertObjCreate(ctx, key, &config)
 	} else {
 		handleCertObjModify(ctx, key, &config, status)
