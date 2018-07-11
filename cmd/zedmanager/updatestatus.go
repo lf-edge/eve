@@ -124,7 +124,7 @@ func doUpdate(ctx *zedmanagerContext, uuidStr string,
 	}
 	if !config.Activate {
 		if status.Activated || status.ActivateInprogress {
-			changed = doInactivate(ctx, uuidStr, status)
+			changed = doInactivateHalt(ctx, uuidStr, config, status)
 		} else {
 			// If we have a !ReadOnly disk this will create a copy
 			err := MaybeAddDomainConfig(ctx, config, nil)
@@ -656,6 +656,73 @@ func doUninstall(ctx *zedmanagerContext, uuidStr string,
 	del = true
 	log.Printf("doUninstall done for %s\n", uuidStr)
 	return changed, del
+}
+
+// Handle Activate=false which is different than doInactivate
+func doInactivateHalt(ctx *zedmanagerContext, uuidStr string,
+	config types.AppInstanceConfig, status *types.AppInstanceStatus) bool {
+
+	log.Printf("doInactivateHalt for %s\n", uuidStr)
+	changed := false
+
+	// Check AppNetworkStatus
+	ns := lookupAppNetworkStatus(ctx, uuidStr)
+	if ns == nil {
+		log.Printf("Waiting for AppNetworkStatus for %s\n", uuidStr)
+		return changed
+	}
+	if ns.Error != "" {
+		log.Printf("Received error from zedrouter for %s: %s\n",
+			uuidStr, ns.Error)
+		status.State = types.INITIAL
+		status.Error = ns.Error
+		status.ErrorTime = ns.ErrorTime
+		changed = true
+		return changed
+	}
+	if debug {
+		log.Printf("Done with AppNetworkStatus for %s\n", uuidStr)
+	}
+
+	// Make sure we have a DomainConfig
+	err := MaybeAddDomainConfig(ctx, config, ns)
+	if err != nil {
+		log.Printf("Error from MaybeAddDomainConfig for %s: %s\n",
+			uuidStr, err)
+		status.State = types.INITIAL
+		status.Error = fmt.Sprintf("%s", err)
+		status.ErrorTime = time.Now()
+		changed = true
+		log.Printf("Waiting for DomainStatus Activated for %s\n",
+			uuidStr)
+		return changed
+	}
+
+	// Check DomainStatus; update AppInstanceStatus if error
+	ds := lookupDomainStatus(ctx, uuidStr)
+	if ds == nil {
+		log.Printf("Waiting for DomainStatus for %s\n", uuidStr)
+		return changed
+	}
+	// Look for xen errors.
+	if ds.Activated {
+		log.Printf("Waiting for Not Activated for DomainStatus %s\n",
+			uuidStr)
+		return changed
+	}
+	if ds.LastErr != "" {
+		log.Printf("Received error from domainmgr for %s: %s\n",
+			uuidStr, ds.LastErr)
+		status.State = types.INITIAL
+		status.Error = ds.LastErr
+		status.ErrorTime = ds.LastErrTime
+		changed = true
+	}
+	status.Activated = false
+	status.ActivateInprogress = false
+	changed = true
+	log.Printf("doInactivateHalt done for %s\n", uuidStr)
+	return changed
 }
 
 func appendError(allErrors string, prefix string, lasterr string) string {
