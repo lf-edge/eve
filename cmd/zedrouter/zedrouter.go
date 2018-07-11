@@ -42,7 +42,6 @@ const (
 	agentName     = "zedrouter"
 	runDirname    = "/var/run/zedrouter"
 	tmpDirname    = "/var/tmp/zededa"
-	DNCDirname    = tmpDirname + "/DeviceNetworkConfig"
 	DataPlaneName = "lisp-ztr"
 )
 
@@ -62,6 +61,7 @@ type zedrouterContext struct {
 	assignableAdapters      *types.AssignableAdapters
 	usableAddressCount      int
 	manufacturerModel       string
+	subDeviceNetworkConfig  *pubsub.Subscription
 	pubDeviceNetworkStatus  *pubsub.Publication
 }
 
@@ -101,12 +101,6 @@ func Run() {
 		}
 	}
 
-	if _, err := os.Stat(DNCDirname); err != nil {
-		log.Printf("Create %s\n", DNCDirname)
-		if err := os.MkdirAll(DNCDirname, 0700); err != nil {
-			log.Fatal(err)
-		}
-	}
 	pubDeviceNetworkStatus, err := pubsub.Publish(agentName,
 		types.DeviceNetworkStatus{})
 	if err != nil {
@@ -130,19 +124,36 @@ func Run() {
 	}
 	log.Printf("Have %d assignable adapters\n", len(aa.IoBundleList))
 
-	// XXX Should we wait for the DNCFilename same way as we wait
-	// for AssignableAdapter filename?
-
-	DNCFilename := fmt.Sprintf("%s/%s.json", DNCDirname, model)
-	handleInit(DNCFilename, runDirname, pubDeviceNetworkStatus)
-
 	zedrouterCtx := zedrouterContext{
 		separateDataPlane:      false,
 		assignableAdapters:     &aa,
-		usableAddressCount:     types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus),
 		manufacturerModel:      model,
 		pubDeviceNetworkStatus: pubDeviceNetworkStatus,
 	}
+
+	// Get the initial DeviceNetworkConfig
+	// Subscribe from "" means /var/tmp/zededa/
+	subDeviceNetworkConfig, err := pubsub.Subscribe("",
+		types.DeviceNetworkConfig{}, false, &zedrouterCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subDeviceNetworkConfig.ModifyHandler = handleDNCModify
+	subDeviceNetworkConfig.DeleteHandler = handleDNCDelete
+	zedrouterCtx.subDeviceNetworkConfig = subDeviceNetworkConfig
+	subDeviceNetworkConfig.Activate()
+
+	for zedrouterCtx.usableAddressCount == 0 {
+		log.Printf("Waiting for DeviceNetworkConfig\n")
+		select {
+		case change := <-subDeviceNetworkConfig.C:
+			subDeviceNetworkConfig.ProcessChange(change)
+		}
+	}
+	log.Printf("Got for DeviceNetworkConfig: %d usable addresses\n",
+		zedrouterCtx.usableAddressCount)
+
+	handleInit(runDirname, pubDeviceNetworkStatus)
 
 	// Create publish before subscribing and activating subscriptions
 	pubNetworkObjectStatus, err := pubsub.Publish(agentName,
@@ -295,8 +306,6 @@ func Run() {
 	publishTimer := flextimer.NewRangeTicker(time.Duration(min),
 		time.Duration(max))
 
-	deviceConfigChanges := make(chan string)
-	go watch.WatchStatus(DNCDirname, deviceConfigChanges)
 	for {
 		select {
 		case change := <-subAppNetworkConfig.C:
@@ -305,12 +314,9 @@ func Run() {
 		case change := <-subAppNetworkConfigAg.C:
 			subAppNetworkConfigAg.ProcessChange(change)
 
-		case change := <-deviceConfigChanges:
-			watch.HandleStatusEvent(change, &zedrouterCtx,
-				DNCDirname,
-				&types.DeviceNetworkConfig{},
-				handleDNCModify, handleDNCDelete,
-				nil)
+		case change := <-subDeviceNetworkConfig.C:
+			subDeviceNetworkConfig.ProcessChange(change)
+
 		case change := <-addrChanges:
 			PbrAddrChange(change)
 		case change := <-linkChanges:
@@ -369,8 +375,7 @@ var lispRunDirname string
 // XXX hack to avoid the pslisp hang on Erik's laptop
 var broken = false
 
-func handleInit(configFilename string, runDirname string,
-	pubDeviceNetworkStatus *pubsub.Publication) {
+func handleInit(runDirname string, pubDeviceNetworkStatus *pubsub.Publication) {
 
 	globalRunDirname = runDirname
 
@@ -391,29 +396,13 @@ func handleInit(configFilename string, runDirname string,
 		}
 	}
 
-	// Need initial deviceNetworkStatus for iptablesInit
-	var err error
-	deviceNetworkConfig, err = devicenetwork.GetDeviceNetworkConfig(configFilename)
-	if err != nil {
-		log.Printf("%s for %s\n", err, configFilename)
-		log.Fatal(err)
-	}
-	deviceNetworkStatus, err = devicenetwork.MakeDeviceNetworkStatus(deviceNetworkConfig, deviceNetworkStatus)
-	if err != nil {
-		log.Printf("%s from MakeDeviceNetworkStatus\n", err)
-		// Proceed even if some uplinks are missing
-	}
-
-	// Create and write with initial values
-	updateDeviceNetworkStatus(pubDeviceNetworkStatus)
-
 	// Setup initial iptables rules
 	iptablesInit()
 
 	// ipsets which are independent of config
 	createDefaultIpset()
 
-	_, err = wrap.Command("sysctl", "-w",
+	_, err := wrap.Command("sysctl", "-w",
 		"net.ipv4.ip_forward=1").Output()
 	if err != nil {
 		log.Fatal("Failed setting ip_forward ", err)
@@ -1882,74 +1871,4 @@ func pkillUserArgs(userName string, match string, printOnError bool) {
 	if err != nil && printOnError {
 		log.Printf("Command %v %v failed: %s\n", cmd, args, err)
 	}
-}
-
-func handleDNCModify(ctxArg interface{}, configFilename string,
-	configArg interface{}) {
-	config := cast.CastDeviceNetworkConfig(configArg)
-	ctx := ctxArg.(*zedrouterContext)
-
-	if configFilename != ctx.manufacturerModel {
-		if debug {
-			log.Printf("handleDNCModify: ignoring %s - expecting %s\n",
-				configFilename, ctx.manufacturerModel)
-		}
-		return
-	}
-	log.Printf("handleDNCModify for %s\n", configFilename)
-
-	deviceNetworkConfig = config
-	new, _ := devicenetwork.MakeDeviceNetworkStatus(config,
-		deviceNetworkStatus)
-	// XXX switch to Equal?
-	if !reflect.DeepEqual(deviceNetworkStatus, new) {
-		log.Printf("DeviceNetworkStatus change from %v to %v\n",
-			deviceNetworkStatus, new)
-		deviceNetworkStatus = new
-		doDNSUpdate(ctx)
-	}
-	log.Printf("handleDNCModify done for %s\n", configFilename)
-}
-
-func handleDNCDelete(ctxArg interface{}, configFilename string) {
-	log.Printf("handleDNCDelete for %s\n", configFilename)
-	ctx := ctxArg.(*zedrouterContext)
-
-	if configFilename != "global" {
-		log.Printf("handleDNSDelete: ignoring %s\n", configFilename)
-		return
-	}
-	new := types.DeviceNetworkStatus{}
-	// XXX switch to Equal?
-	if !reflect.DeepEqual(deviceNetworkStatus, new) {
-		log.Printf("DeviceNetworkStatus change from %v to %v\n",
-			deviceNetworkStatus, new)
-		deviceNetworkStatus = new
-		doDNSUpdate(ctx)
-	}
-	log.Printf("handleDNCDelete done for %s\n", configFilename)
-}
-
-func doDNSUpdate(ctx *zedrouterContext) {
-	// Did we loose all usable addresses or gain the first usable
-	// address?
-	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
-	if newAddrCount == 0 && ctx.usableAddressCount != 0 {
-		log.Printf("DeviceNetworkStatus from %d to %d addresses\n",
-			newAddrCount, ctx.usableAddressCount)
-		// Inform ledmanager that we have no addresses
-		types.UpdateLedManagerConfig(1)
-	} else if newAddrCount != 0 && ctx.usableAddressCount == 0 {
-		log.Printf("DeviceNetworkStatus from %d to %d addresses\n",
-			newAddrCount, ctx.usableAddressCount)
-		// Inform ledmanager that we have uplink addresses
-		types.UpdateLedManagerConfig(2)
-	}
-	ctx.usableAddressCount = newAddrCount
-	updateDeviceNetworkStatus(ctx.pubDeviceNetworkStatus)
-	updateLispConfiglets(ctx, ctx.separateDataPlane)
-
-	setUplinks(deviceNetworkConfig.Uplink)
-	setFreeUplinks(deviceNetworkConfig.FreeUplinks)
-	// XXX do a NatInactivate/NatActivate if freeuplinks/uplinks changed?
 }

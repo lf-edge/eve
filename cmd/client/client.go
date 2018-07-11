@@ -13,7 +13,6 @@ import (
 	"github.com/satori/go.uuid"
 	"github.com/zededa/api/zmet"
 	"github.com/zededa/go-provision/agentlog"
-	"github.com/zededa/go-provision/devicenetwork"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
@@ -35,6 +34,7 @@ const (
 	DNCDirname  = tmpDirname + "/DeviceNetworkConfig"
 	maxDelay    = time.Second * 600 // 10 minutes
 	uuidMaxWait = time.Second * 60  // 1 minute
+	debug       = false
 )
 
 // Really a constant
@@ -42,6 +42,15 @@ var nilUUID uuid.UUID
 
 // Set from Makefile
 var Version = "No version specified"
+
+// XXX generalize to DNCContext
+type clientContext struct {
+	usableAddressCount     int
+	manufacturerModel      string
+	subDeviceNetworkConfig *pubsub.Subscription
+	deviceNetworkConfig    types.DeviceNetworkConfig
+	deviceNetworkStatus    types.DeviceNetworkStatus
+}
 
 // Assumes the config files are in identityDirname, which is /config
 // by default. The files are
@@ -131,8 +140,6 @@ func Run() {
 		}
 	}
 
-	var deviceNetworkStatus types.DeviceNetworkStatus
-
 	model := hardware.GetHardwareModel()
 	DNCFilename := fmt.Sprintf("%s/%s.json", DNCDirname, model)
 	// To better handle new hardware platforms log and blink if we
@@ -148,21 +155,35 @@ func Run() {
 			DNCFilename)
 		time.Sleep(time.Second)
 	}
-	addrCount := 0
-	for addrCount == 0 {
-		deviceNetworkConfig, err := devicenetwork.GetDeviceNetworkConfig(DNCFilename)
-		if err != nil {
-			log.Fatal(err)
-		}
-		deviceNetworkStatus, err = devicenetwork.MakeDeviceNetworkStatus(deviceNetworkConfig, deviceNetworkStatus)
-		if err != nil {
-			log.Printf("%s from MakeDeviceNetworkStatus\n", err)
-			// Proceed even if some uplinks are missing
-		}
-		addrCount = types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
-		if addrCount == 0 {
+
+	clientCtx := clientContext{manufacturerModel: model}
+
+	// Get the initial DeviceNetworkConfig
+	// Subscribe from "" means /var/tmp/zededa/
+	subDeviceNetworkConfig, err := pubsub.Subscribe("",
+		types.DeviceNetworkConfig{}, false, &clientCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subDeviceNetworkConfig.ModifyHandler = handleDNCModify
+	subDeviceNetworkConfig.DeleteHandler = handleDNCDelete
+	clientCtx.subDeviceNetworkConfig = subDeviceNetworkConfig
+	subDeviceNetworkConfig.Activate()
+
+	// After 5 seconds we check if we have a UUID and proceed
+	t1 := time.NewTimer(5 * time.Second)
+
+	for clientCtx.usableAddressCount == 0 {
+		log.Printf("Waiting for DeviceNetworkConfig\n")
+		select {
+		case change := <-subDeviceNetworkConfig.C:
+			subDeviceNetworkConfig.ProcessChange(change)
+
+		case <-t1.C:
 			// If we already know a uuid we can skip
-			if operations["getUuid"] && oldUUID != nilUUID {
+			if clientCtx.usableAddressCount == 0 &&
+				operations["getUuid"] && oldUUID != nilUUID {
+
 				log.Printf("Already have a UUID %s; declaring success\n",
 					oldUUID.String())
 				// Likely zero metrics
@@ -172,20 +193,16 @@ func Run() {
 				}
 				return
 			}
-			log.Printf("Waiting for some uplink addresses to use\n")
-			delay := time.Second
-			log.Printf("Retrying in %d seconds\n",
-				delay/time.Second)
-			time.Sleep(delay)
 		}
 	}
-	log.Printf("Have %d uplinks addresses to use\n", addrCount)
+	log.Printf("Got for DeviceNetworkConfig: %d addresses\n",
+		clientCtx.usableAddressCount)
 
 	// Inform ledmanager that we have uplink addresses
 	types.UpdateLedManagerConfig(2)
 
 	zedcloudCtx := zedcloud.ZedCloudContext{
-		DeviceNetworkStatus: &deviceNetworkStatus,
+		DeviceNetworkStatus: &clientCtx.deviceNetworkStatus,
 		Debug:               true,
 		FailureFunc:         zedcloud.ZedCloudFailure,
 		SuccessFunc:         zedcloud.ZedCloudSuccess,
