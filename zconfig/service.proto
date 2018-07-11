@@ -54,6 +54,7 @@ message ServiceInstanceConfig {
 	// towards devices which phyiscal or logical adapter to use
 	Adapter devlink = 20;	// I/O adapters to assign to app
 
-	// Opaque configuration
+	// Opaque configuration 
 	ServiceOpaqueConfig cfg = 30;
+	ServiceLispConfig   lispCfg = 31; 
 }
