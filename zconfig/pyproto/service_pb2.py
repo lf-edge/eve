@@ -21,7 +21,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='service.proto',
   package='',
   syntax='proto3',
-  serialized_pb=_b('\n\rservice.proto\x1a\x0f\x64\x65vcommon.proto\"&\n\x13ServiceOpaqueConfig\x12\x0f\n\x07oconfig\x18\x01 \x01(\t\"\xb5\x01\n\x15ServiceInstanceConfig\x12\n\n\x02id\x18\x01 \x01(\t\x12\x13\n\x0b\x64isplayname\x18\x02 \x01(\t\x12\x1a\n\x07srvtype\x18\x03 \x01(\x0e\x32\t.ZSrvType\x12\x10\n\x08\x61\x63tivate\x18\x05 \x01(\x08\x12\x0f\n\x07\x61pplink\x18\n \x01(\t\x12\x19\n\x07\x64\x65vlink\x18\x14 \x01(\x0b\x32\x08.Adapter\x12!\n\x03\x63\x66g\x18\x1e \x01(\x0b\x32\x14.ServiceOpaqueConfig*s\n\x08ZSrvType\x12\r\n\tZsrvFirst\x10\x00\x12\x12\n\x0eZsrvStrongSwan\x10\x01\x12\x0c\n\x08ZsrvLISP\x10\x02\x12\x0e\n\nZsrvBridge\x10\x03\x12\x0b\n\x07ZsrvNAT\x10\x04\x12\n\n\x06ZsrvLB\x10\x05\x12\r\n\x08ZsrvLast\x10\xff\x01\x42@\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1dgithub.com/zededa/api/zconfigb\x06proto3')
+  serialized_pb=_b('\n\rservice.proto\x1a\x0f\x64\x65vcommon.proto\"&\n\x13ServiceOpaqueConfig\x12\x0f\n\x07oconfig\x18\x01 \x01(\t\"\xc3\x01\n\x11ServiceLispConfig\x12 \n\x07LispMSs\x18\x01 \x03(\x0b\x32\x0f.ZcServicePoint\x12\x16\n\x0eLispInstanceId\x18\x02 \x01(\r\x12\x10\n\x08\x61llocate\x18\x03 \x01(\x08\x12\x15\n\rexportprivate\x18\x04 \x01(\x08\x12\x18\n\x10\x61llocationprefix\x18\x05 \x01(\x0c\x12\x1b\n\x13\x61llocationprefixlen\x18\x06 \x01(\r\x12\x14\n\x0c\x65xperimental\x18\x14 \x01(\x08\"\xb5\x01\n\x15ServiceInstanceConfig\x12\n\n\x02id\x18\x01 \x01(\t\x12\x13\n\x0b\x64isplayname\x18\x02 \x01(\t\x12\x1a\n\x07srvtype\x18\x03 \x01(\x0e\x32\t.ZSrvType\x12\x10\n\x08\x61\x63tivate\x18\x05 \x01(\x08\x12\x0f\n\x07\x61pplink\x18\n \x01(\t\x12\x19\n\x07\x64\x65vlink\x18\x14 \x01(\x0b\x32\x08.Adapter\x12!\n\x03\x63\x66g\x18\x1e \x01(\x0b\x32\x14.ServiceOpaqueConfig*s\n\x08ZSrvType\x12\r\n\tZsrvFirst\x10\x00\x12\x12\n\x0eZsrvStrongSwan\x10\x01\x12\x0c\n\x08ZsrvLISP\x10\x02\x12\x0e\n\nZsrvBridge\x10\x03\x12\x0b\n\x07ZsrvNAT\x10\x04\x12\n\n\x06ZsrvLB\x10\x05\x12\r\n\x08ZsrvLast\x10\xff\x01\x42@\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1dgithub.com/zededa/api/zconfigb\x06proto3')
   ,
   dependencies=[devcommon__pb2.DESCRIPTOR,])
 
@@ -62,8 +62,8 @@ _ZSRVTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=258,
-  serialized_end=373,
+  serialized_start=456,
+  serialized_end=571,
 )
 _sym_db.RegisterEnumDescriptor(_ZSRVTYPE)
 
@@ -106,6 +106,79 @@ _SERVICEOPAQUECONFIG = _descriptor.Descriptor(
   ],
   serialized_start=34,
   serialized_end=72,
+)
+
+
+_SERVICELISPCONFIG = _descriptor.Descriptor(
+  name='ServiceLispConfig',
+  full_name='ServiceLispConfig',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='LispMSs', full_name='ServiceLispConfig.LispMSs', index=0,
+      number=1, type=11, cpp_type=10, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='LispInstanceId', full_name='ServiceLispConfig.LispInstanceId', index=1,
+      number=2, type=13, cpp_type=3, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='allocate', full_name='ServiceLispConfig.allocate', index=2,
+      number=3, type=8, cpp_type=7, label=1,
+      has_default_value=False, default_value=False,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='exportprivate', full_name='ServiceLispConfig.exportprivate', index=3,
+      number=4, type=8, cpp_type=7, label=1,
+      has_default_value=False, default_value=False,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='allocationprefix', full_name='ServiceLispConfig.allocationprefix', index=4,
+      number=5, type=12, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b(""),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='allocationprefixlen', full_name='ServiceLispConfig.allocationprefixlen', index=5,
+      number=6, type=13, cpp_type=3, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='experimental', full_name='ServiceLispConfig.experimental', index=6,
+      number=20, type=8, cpp_type=7, label=1,
+      has_default_value=False, default_value=False,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=75,
+  serialized_end=270,
 )
 
 
@@ -177,14 +250,16 @@ _SERVICEINSTANCECONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=75,
-  serialized_end=256,
+  serialized_start=273,
+  serialized_end=454,
 )
 
+_SERVICELISPCONFIG.fields_by_name['LispMSs'].message_type = devcommon__pb2._ZCSERVICEPOINT
 _SERVICEINSTANCECONFIG.fields_by_name['srvtype'].enum_type = _ZSRVTYPE
 _SERVICEINSTANCECONFIG.fields_by_name['devlink'].message_type = devcommon__pb2._ADAPTER
 _SERVICEINSTANCECONFIG.fields_by_name['cfg'].message_type = _SERVICEOPAQUECONFIG
 DESCRIPTOR.message_types_by_name['ServiceOpaqueConfig'] = _SERVICEOPAQUECONFIG
+DESCRIPTOR.message_types_by_name['ServiceLispConfig'] = _SERVICELISPCONFIG
 DESCRIPTOR.message_types_by_name['ServiceInstanceConfig'] = _SERVICEINSTANCECONFIG
 DESCRIPTOR.enum_types_by_name['ZSrvType'] = _ZSRVTYPE
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
@@ -195,6 +270,13 @@ ServiceOpaqueConfig = _reflection.GeneratedProtocolMessageType('ServiceOpaqueCon
   # @@protoc_insertion_point(class_scope:ServiceOpaqueConfig)
   ))
 _sym_db.RegisterMessage(ServiceOpaqueConfig)
+
+ServiceLispConfig = _reflection.GeneratedProtocolMessageType('ServiceLispConfig', (_message.Message,), dict(
+  DESCRIPTOR = _SERVICELISPCONFIG,
+  __module__ = 'service_pb2'
+  # @@protoc_insertion_point(class_scope:ServiceLispConfig)
+  ))
+_sym_db.RegisterMessage(ServiceLispConfig)
 
 ServiceInstanceConfig = _reflection.GeneratedProtocolMessageType('ServiceInstanceConfig', (_message.Message,), dict(
   DESCRIPTOR = _SERVICEINSTANCECONFIG,

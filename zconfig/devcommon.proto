@@ -27,6 +27,7 @@ enum ZCioType {
 }
 
 enum ZcServiceType {
+	zcloudInvalidSrv = 0;
         mapServer = 1;
         supportServer = 2;
 }
