@@ -8,6 +8,12 @@ message ipRange {
 	string end = 2;
 }
 
+// These are list of static mapping that can be added to network
+message ZnetStaticDNSEntry {
+        string HostName   = 1;
+        repeated string EID = 2;
+}
+
 enum DHCPType {
 	DHCPNoop = 0;
 	// used for device adapter
@@ -39,32 +45,9 @@ message ipspec {
 	ipRange dhcpRange = 9;
 }
 
-// FIXME: This will all move to network service rather than lispspec in 
-// network common
-message NameToEid {
-	string hostname = 1;
-	repeated string eids = 2;
-}
-
-message EIDAllocation {
-	bool allocate = 1;
-	bool exportprivate = 2;
-	bytes allocationprefix = 3;
-	uint32 allocationprefixlen = 4;
-}
-
-// XXX lispspec is no longer used. Remove?
-message lispspec {
-	uint32 iid = 1;
-	EIDAllocation eidalloc = 2;
-
-	repeated NameToEid nmtoeid = 3;
-}
-
 enum NetworkType {
 	NETWORKTYPENOOP = 0;
 	V4 = 4;
 	V6 = 6;
-	LISP = 10;	//  XXX deprecated
+	CryptoV4 = 14;
 }
-

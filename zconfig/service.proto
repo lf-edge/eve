@@ -21,6 +21,20 @@ message ServiceOpaqueConfig {
 	string oconfig = 1;
 }
 
+// Service Lisp config
+message ServiceLispConfig {
+        repeated ZcServicePoint LispMSs = 1;
+        uint32 LispInstanceId = 2;
+
+        bool allocate = 1;
+        bool exportprivate = 2;
+        bytes allocationprefix = 3;
+        uint32 allocationprefixlen = 4;
+
+	// various configuration to dataPlane, lispers.net vs Zededa
+	bool experimental = 20;
+}
+
 message ServiceInstanceConfig {
 	string id = 1;
 	string displayname = 2;

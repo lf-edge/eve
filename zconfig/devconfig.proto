@@ -10,7 +10,6 @@ import "netconfig.proto";
 import "storage.proto";
 import "service.proto";
 
-
 message MapServer {
         string NameOrIp   = 1;
         string Credential = 2;

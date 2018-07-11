@@ -25,3 +25,16 @@ enum ZCioType {
   ZCioHDMI = 4;	// HDMI Display
   ZCioOther = 255;
 }
+
+enum ZcServiceType {
+        mapServer = 1;
+        supportServer = 2;
+}
+
+// This is way to tell the device if there is service in cloud somewhere,
+// what type it is how to access it
+message ZcServicePoint {
+        ZcServiceType zsType = 3;
+        string NameOrIp   = 1;
+        string Credential = 2;
+}
