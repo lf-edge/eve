@@ -118,7 +118,8 @@ func createVerifierConfig(objType string, safename string,
 	return nil
 }
 
-func updateVerifierStatus(objType string, status *types.VerifyImageStatus) {
+func updateVerifierStatus(ctx *zedagentContext, objType string,
+	status *types.VerifyImageStatus) {
 
 	initVerifierMaps()
 
@@ -154,7 +155,7 @@ func updateVerifierStatus(objType string, status *types.VerifyImageStatus) {
 	if changed {
 		verifierStatusSet(key, status)
 		if objType == baseOsObj {
-			baseOsHandleStatusUpdateSafename(status.Safename)
+			baseOsHandleStatusUpdateSafename(ctx, status.Safename)
 		}
 	}
 
@@ -187,7 +188,7 @@ func MaybeRemoveVerifierConfigSha256(objType string, sha256 string) {
 	log.Printf("MaybeRemoveVerifierConfigSha256 done for %s\n", sha256)
 }
 
-func removeVerifierStatus(objType string, safename string) {
+func removeVerifierStatus(ctx *zedagentContext, objType string, safename string) {
 
 	key := formLookupKey(objType, safename)
 	verifierStatusDelete(key)

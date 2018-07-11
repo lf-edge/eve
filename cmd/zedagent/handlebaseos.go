@@ -36,7 +36,7 @@ func initBaseOsMaps() {
 
 // the storage download/verification event handler
 // through base of storage list
-func baseOsHandleStatusUpdateSafename(safename string) {
+func baseOsHandleStatusUpdateSafename(ctx *zedagentContext, safename string) {
 
 	log.Printf("baseOsStatusUpdateSafename for %s\n", safename)
 
@@ -53,13 +53,14 @@ func baseOsHandleStatusUpdateSafename(safename string) {
 				log.Printf("%s, found baseOs %s\n", safename, uuidStr)
 
 				// handle the change event for this base os config
-				baseOsHandleStatusUpdate(uuidStr)
+				baseOsHandleStatusUpdate(ctx, uuidStr)
 			}
 		}
 	}
 }
 
-func addOrUpdateBaseOsConfig(uuidStr string, config types.BaseOsConfig) {
+func addOrUpdateBaseOsConfig(ctx *zedagentContext, uuidStr string,
+	config types.BaseOsConfig) {
 
 	changed := false
 	added := false
@@ -111,7 +112,7 @@ func addOrUpdateBaseOsConfig(uuidStr string, config types.BaseOsConfig) {
 	}
 
 	if changed {
-		baseOsHandleStatusUpdate(uuidStr)
+		baseOsHandleStatusUpdate(ctx, uuidStr)
 	}
 }
 
@@ -183,7 +184,7 @@ func baseOsGetActivationStatus(status *types.BaseOsStatus) {
 	status.Activated = zboot.IsCurrentPartitionStateActive()
 }
 
-func baseOsHandleStatusUpdate(uuidStr string) {
+func baseOsHandleStatusUpdate(ctx *zedagentContext, uuidStr string) {
 
 	config := baseOsConfigGet(uuidStr)
 	if config == nil {
@@ -440,7 +441,7 @@ func checkBaseOsVerificationStatus(uuidStr string,
 	return ret.Changed, true
 }
 
-func removeBaseOsConfig(uuidStr string) {
+func removeBaseOsConfig(ctx *zedagentContext, uuidStr string) {
 
 	log.Printf("removeBaseOsConfig for %s\n", uuidStr)
 	if ok := baseOsConfigDelete(uuidStr); ok {

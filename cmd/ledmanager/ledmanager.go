@@ -149,6 +149,7 @@ var oldCounter = 0
 
 func handleLedBlinkModify(ctxArg interface{}, configFilename string,
 	configArg interface{}) {
+	// XXX switch to using cast?
 	config := configArg.(*types.LedBlinkCounter)
 	ctx := ctxArg.(*ledManagerContext)
 

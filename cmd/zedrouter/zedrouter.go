@@ -1886,7 +1886,7 @@ func pkillUserArgs(userName string, match string, printOnError bool) {
 
 func handleDNCModify(ctxArg interface{}, configFilename string,
 	configArg interface{}) {
-	config := configArg.(*types.DeviceNetworkConfig)
+	config := cast.CastDeviceNetworkConfig(configArg)
 	ctx := ctxArg.(*zedrouterContext)
 
 	if configFilename != ctx.manufacturerModel {
@@ -1898,8 +1898,8 @@ func handleDNCModify(ctxArg interface{}, configFilename string,
 	}
 	log.Printf("handleDNCModify for %s\n", configFilename)
 
-	deviceNetworkConfig = *config
-	new, _ := devicenetwork.MakeDeviceNetworkStatus(*config,
+	deviceNetworkConfig = config
+	new, _ := devicenetwork.MakeDeviceNetworkStatus(config,
 		deviceNetworkStatus)
 	// XXX switch to Equal?
 	if !reflect.DeepEqual(deviceNetworkStatus, new) {

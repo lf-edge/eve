@@ -5,9 +5,8 @@
 package zedagent
 
 import (
-	"encoding/json"
 	"fmt"
-	"github.com/zededa/go-provision/pubsub"
+	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/types"
 	"io"
 	"log"
@@ -16,89 +15,35 @@ import (
 	"time"
 )
 
-// zedagent punlishes these config/status files
-var certObjConfigMap map[string]types.CertObjConfig
-var certObjStatusMap map[string]types.CertObjStatus
-
-func initCertObjMaps() {
-
-	if certObjConfigMap == nil {
-		log.Printf("create certObjConfig map\n")
-		certObjConfigMap = make(map[string]types.CertObjConfig)
-	}
-
-	if certObjStatusMap == nil {
-		log.Printf("create certObjStatus map\n")
-		certObjStatusMap = make(map[string]types.CertObjStatus)
-	}
-}
-
-func certObjConfigGet(uuidStr string) *types.CertObjConfig {
-	if config, ok := certObjConfigMap[uuidStr]; ok {
-		return &config
-	}
-	log.Printf("%s, certObj config is absent\n", uuidStr)
-	return nil
-}
-
-func certObjConfigSet(uuidStr string, config *types.CertObjConfig) {
-	certObjConfigMap[uuidStr] = *config
-}
-
-func certObjConfigDelete(uuidStr string) bool {
-	log.Printf("%s, certObj config delete\n", uuidStr)
-	if config := certObjConfigGet(uuidStr); config != nil {
-		delete(certObjConfigMap, uuidStr)
-		return true
-	}
-	return false
-}
-
-func certObjStatusGet(uuidStr string) *types.CertObjStatus {
-	if status, ok := certObjStatusMap[uuidStr]; ok {
-		return &status
-	}
-	log.Printf("%s, certObj status is absent\n", uuidStr)
-	return nil
-}
-
-func certObjStatusSet(uuidStr string, status *types.CertObjStatus) {
-	certObjStatusMap[uuidStr] = *status
-}
-
-func certObjStatusDelete(uuidStr string) bool {
-	log.Printf("%s, certObj status delete\n", uuidStr)
-	if status := certObjStatusGet(uuidStr); status != nil {
-		delete(certObjStatusMap, uuidStr)
-		return true
-	}
-	return false
-}
-
 // handle Storage(download/verification) (Config/Status) events
-func certObjHandleStatusUpdateSafename(safename string) {
+func certObjHandleStatusUpdateSafename(ctx *zedagentContext, safename string) {
 
 	log.Printf("certObjHandleStatusUpdateSafename for %s\n", safename)
 
-	for _, certObjConfig := range certObjConfigMap {
-		for _, sc := range certObjConfig.StorageConfigList {
+	sub := ctx.subCertObjConfig
+	items := sub.GetAll()
+	for _, c := range items {
+		config := cast.CastCertObjConfig(c)
+		for _, sc := range config.StorageConfigList {
 
 			safename1 := types.UrlToSafename(sc.DownloadURL, sc.ImageSha256)
 			if safename == safename1 {
-				uuidStr := certObjConfig.Key()
+				uuidStr := config.Key()
 				log.Printf("%s, found certObj %s\n", safename, uuidStr)
-				certObjHandleStatusUpdate(uuidStr)
+				certObjHandleStatusUpdate(ctx, uuidStr)
 			}
 		}
 	}
 }
 
-func addOrUpdateCertObjConfig(uuidStr string, config types.CertObjConfig) {
+func addOrUpdateCertObjConfig(ctx *zedagentContext, uuidStr string, config types.CertObjConfig) {
 
 	added := false
 	changed := false
 
-	if m := certObjConfigGet(uuidStr); m != nil {
+	// XXX change caller?
+	uuidStr = config.Key()
+	if m := lookupCertObjConfig(ctx, uuidStr); m != nil {
 		// XXX or just compare version like elsewhere?
 		// XXX switch to Equal?
 		if !reflect.DeepEqual(*m, config) {
@@ -111,10 +56,6 @@ func addOrUpdateCertObjConfig(uuidStr string, config types.CertObjConfig) {
 		log.Printf("%s, certObj config add\n", uuidStr)
 		added = true
 		changed = true
-	}
-
-	if changed {
-		certObjConfigSet(uuidStr, &config)
 	}
 
 	if added {
@@ -133,56 +74,55 @@ func addOrUpdateCertObjConfig(uuidStr string, config types.CertObjConfig) {
 			ss.ImageSha256 = sc.ImageSha256
 		}
 
-		certObjStatusSet(uuidStr, &status)
-		writeCertObjStatus(&status, uuidStr)
+		updateCertObjStatus(ctx, &status)
 	}
 
 	if changed {
-		certObjHandleStatusUpdate(uuidStr)
+		certObjHandleStatusUpdate(ctx, uuidStr)
 	}
 }
 
-func certObjHandleStatusUpdate(uuidStr string) {
+// XXX do callers have config? Yes
+func certObjHandleStatusUpdate(ctx *zedagentContext, uuidStr string) {
 
 	log.Printf("%s, certObjHandleStatusUpdate\n", uuidStr)
 
-	config := certObjConfigGet(uuidStr)
+	config := lookupCertObjConfig(ctx, uuidStr)
 	if config == nil {
 		return
 	}
 
-	status := certObjStatusGet(uuidStr)
+	status := lookupCertObjStatus(ctx, uuidStr)
 	if status == nil {
 		return
 	}
 
-	changed := doCertObjStatusUpdate(uuidStr, *config, status)
+	changed := doCertObjStatusUpdate(ctx, uuidStr, *config, status)
 
 	if changed {
 		log.Printf("%s, certObj status changed\n",
 			uuidStr)
-		certObjStatusSet(uuidStr, status)
-		writeCertObjStatus(status, uuidStr)
+		updateCertObjStatus(ctx, status)
 	}
 }
 
-func doCertObjStatusUpdate(uuidStr string, config types.CertObjConfig,
+func doCertObjStatusUpdate(ctx *zedagentContext, uuidStr string, config types.CertObjConfig,
 	status *types.CertObjStatus) bool {
 
 	log.Printf("%s, doCertObjStatusUpdate\n", uuidStr)
 
-	changed, proceed := doCertObjInstall(uuidStr, config, status)
+	changed, proceed := doCertObjInstall(ctx, uuidStr, config, status)
 	if !proceed {
 		return changed
 	}
 
 	// call baseOs to pick up the certs
-	baseOsHandleStatusUpdate(uuidStr)
+	baseOsHandleStatusUpdate(ctx, uuidStr)
 	log.Printf("%s, doCertObjStatusUdate done %v\n", uuidStr, changed)
 	return changed
 }
 
-func doCertObjInstall(uuidStr string, config types.CertObjConfig,
+func doCertObjInstall(ctx *zedagentContext, uuidStr string, config types.CertObjConfig,
 	status *types.CertObjStatus) (bool, bool) {
 
 	log.Printf("%s, doCertObjInstall\n", uuidStr)
@@ -229,7 +169,7 @@ func doCertObjInstall(uuidStr string, config types.CertObjConfig,
 		changed = true
 	}
 
-	writeCertObjStatus(status, uuidStr)
+	updateCertObjStatus(ctx, status)
 	log.Printf("%s, doCertObjInstall done %v\n", uuidStr, changed)
 	return changed, true
 }
@@ -267,48 +207,26 @@ func checkCertObjStorageDownloadStatus(uuidStr string,
 	return ret.Changed, true
 }
 
-func removeCertObjConfig(uuidStr string) {
+func removeCertObjConfig(ctx *zedagentContext, uuidStr string) {
 
 	log.Printf("%s, removeCertObjConfig\n", uuidStr)
-	certObjConfigDelete(uuidStr)
-	removeCertObjStatus(uuidStr)
-	log.Printf("%s, removeCertObjConfig done\n", uuidStr)
-}
-
-func removeCertObjStatus(uuidStr string) {
-
-	status := certObjStatusGet(uuidStr)
+	status := lookupCertObjStatus(ctx, uuidStr)
 	if status == nil {
+		log.Printf("%s, removeCertObjConfig, no status\n", uuidStr)
 		return
 	}
 
-	changed, del := doCertObjRemove(uuidStr, status)
+	changed, del := doCertObjUninstall(uuidStr, status)
 	if changed {
-		log.Printf("%s, removeCertObjStatus, status changed\n", uuidStr)
-		certObjStatusSet(uuidStr, status)
-		writeCertObjStatus(status, uuidStr)
+		log.Printf("%s, removeCertObjConfig, status changed\n", uuidStr)
+		updateCertObjStatus(ctx, status)
 	}
 
 	if del {
 		// Write out what we modified to CertObj aka delete
-		// Delete the status file also
-		if ok := certObjStatusDelete(uuidStr); ok {
-			statusFilename := fmt.Sprintf("%s/%s.json",
-				zedagentCertObjStatusDirname, uuidStr)
-			if err := os.Remove(statusFilename); err != nil {
-				log.Println(err)
-			}
-			log.Printf("%d, removeCertObjStatus done\n", uuidStr)
-		}
+		removeCertObjStatus(ctx, status.Key())
 	}
-}
-
-func doCertObjRemove(uuidStr string, status *types.CertObjStatus) (bool, bool) {
-
-	log.Printf("%s, doCertObjRemove\n", uuidStr)
-	changed, del := doCertObjUninstall(uuidStr, status)
-	log.Printf("%s, doCertObjRemove done %v\n", uuidStr, del)
-	return changed, del
+	log.Printf("%s, removeCertObjConfig done\n", uuidStr)
 }
 
 func doCertObjUninstall(uuidStr string, status *types.CertObjStatus) (bool, bool) {
@@ -352,17 +270,57 @@ func doCertObjUninstall(uuidStr string, status *types.CertObjStatus) (bool, bool
 	return changed, del
 }
 
-func writeCertObjStatus(status *types.CertObjStatus, uuidStr string) {
-	statusFilename := zedagentCertObjStatusDirname + "/" + uuidStr + ".json"
-	bytes, err := json.Marshal(status)
-	if err != nil {
-		log.Fatal(err, "json Marshal certObjStatus")
-	}
+func lookupCertObjConfig(ctx *zedagentContext, key string) *types.CertObjConfig {
 
-	err = pubsub.WriteRename(statusFilename, bytes)
-	if err != nil {
-		log.Fatal(err)
+	sub := ctx.subCertObjConfig
+	c, _ := sub.Get(key)
+	if c == nil {
+		log.Printf("lookupCertObjConfig(%s) not found\n", key)
+		return nil
 	}
+	config := cast.CastCertObjConfig(c)
+	if config.Key() != key {
+		log.Printf("lookupCertObjConfig(%s) got %s; ignored %+v\n",
+			key, config.Key(), config)
+		return nil
+	}
+	return &config
+}
+
+func lookupCertObjStatus(ctx *zedagentContext, key string) *types.CertObjStatus {
+	pub := ctx.pubCertObjStatus
+	st, _ := pub.Get(key)
+	if st == nil {
+		log.Printf("lookupCertObjStatus(%s) not found\n", key)
+		return nil
+	}
+	status := cast.CastCertObjStatus(st)
+	if status.Key() != key {
+		log.Printf("lookupCertObjStatus(%s) got %s; ignored %+v\n",
+			key, status.Key(), status)
+		return nil
+	}
+	return &status
+}
+
+func updateCertObjStatus(ctx *zedagentContext, status *types.CertObjStatus) {
+
+	key := status.Key()
+	log.Printf("Updating CertObjStatus %s\n", key)
+	pub := ctx.pubCertObjStatus
+	pub.Publish(key, status)
+}
+
+func removeCertObjStatus(ctx *zedagentContext, key string) {
+
+	log.Printf("Removing CertObjStatus %s\n", key)
+	pub := ctx.pubCertObjStatus
+	st, _ := pub.Get(key)
+	if st == nil {
+		log.Printf("removeCertObjStatus(%s) not found\n", key)
+		return
+	}
+	pub.Unpublish(key)
 }
 
 func installCertObject(srcFilename string, dstDirname string, safename string) error {
