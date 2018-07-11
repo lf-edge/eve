@@ -43,6 +43,11 @@ const publishToSock = false     // XXX
 const subscribeFromDir = true   // XXX
 const subscribeFromSock = false // XXX
 
+// For a subscription, if the agentName is empty we interpret that as
+// being directory in /var/tmp/zededa
+const fixedName = "zededa"
+const fixedDir = "/var/tmp/" + fixedName
+
 const debug = false // XXX setable?
 
 // Usage:
@@ -170,6 +175,10 @@ func SockName(name string) string {
 
 func PubDirName(name string) string {
 	return fmt.Sprintf("/var/run/%s", name)
+}
+
+func FixedDirName(name string) string {
+	return fmt.Sprintf("%s/%s", fixedDir, name)
 }
 
 func (pub *Publication) nameString() string {
@@ -446,9 +455,16 @@ type Subscription struct {
 	topic      string
 	km         keyMap
 	userCtx    interface{}
+	// Handle special case of file only info
+	subscribeFromDir bool
+	dirName          string
 }
 
 func (sub *Subscription) nameString() string {
+	agentName := sub.agentName
+	if agentName == "" {
+		agentName = fixedName
+	}
 	if sub.agentScope == "" {
 		return fmt.Sprintf("%s/%s", sub.agentName, sub.topic)
 	} else {
@@ -490,6 +506,13 @@ func subscribeImpl(agentName string, agentScope string, topicType interface{},
 	sub.userCtx = ctx
 	name := sub.nameString()
 
+	if agentName == "" {
+		sub.subscribeFromDir = true
+		sub.dirName = FixedDirName(name)
+	} else {
+		sub.subscribeFromDir = subscribeFromDir
+		sub.dirName = PubDirName(name)
+	}
 	log.Printf("Subscribe(%s)\n", name)
 
 	if activate {
@@ -500,14 +523,14 @@ func subscribeImpl(agentName string, agentScope string, topicType interface{},
 	return sub, nil
 }
 
+// If the agentName is empty we interpret that as being dir /var/tmp/zededa
 func (sub *Subscription) Activate() error {
 
 	name := sub.nameString()
-	if subscribeFromDir {
+	if sub.subscribeFromDir {
 		// Waiting for directory to appear
-		dirName := PubDirName(name)
 		for {
-			if _, err := os.Stat(dirName); err != nil {
+			if _, err := os.Stat(sub.dirName); err != nil {
 				errStr := fmt.Sprintf("Subscribe(%s): failed %s; waiting",
 					name, err)
 				log.Println(errStr)
@@ -516,7 +539,7 @@ func (sub *Subscription) Activate() error {
 				break
 			}
 		}
-		go watch.WatchStatus(dirName, sub.sendChan)
+		go watch.WatchStatus(sub.dirName, sub.sendChan)
 		return nil
 	} else if subscribeFromSock {
 		errStr := fmt.Sprintf("subscribeFromSock not implemented")
@@ -534,10 +557,9 @@ func (sub *Subscription) ProcessChange(change string) {
 	if debug {
 		log.Printf("ProcessEvent(%s) %s\n", name, change)
 	}
-	dirName := PubDirName(name)
 	var restartFn watch.StatusRestartHandler = handleRestart
 	watch.HandleStatusEvent(change, sub,
-		dirName, &sub.topicType,
+		sub.dirName, &sub.topicType,
 		handleModify, handleDelete, &restartFn)
 }
 

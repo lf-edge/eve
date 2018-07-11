@@ -540,7 +540,8 @@ func flushRoutesTable(table int, ifindex int) {
 				table, ifindex, rt)
 		}
 		if err := netlink.RouteDel(&rt); err != nil {
-			log.Fatal("flushRoutesTable - RouteDel %v failed %s\n",
+			// XXX was Fatalf
+			log.Printf("flushRoutesTable - RouteDel %v failed %s\n",
 				rt, err)
 		}
 	}
