@@ -463,6 +463,7 @@ func Run() {
 				handleBaseOsVerifierStatusModify,
 				handleBaseOsVerifierStatusDelete, nil)
 
+				// XXX
 		case change := <-appImgVerifierChanges:
 			watch.HandleStatusEvent(change, &zedagentCtx,
 				verifierAppImgStatusDirname,
@@ -470,6 +471,7 @@ func Run() {
 				handleAppImgVerifierStatusModify,
 				handleAppImgVerifierStatusDelete, nil)
 
+				// XXX
 		case change := <-certObjDownloaderChanges:
 			watch.HandleStatusEvent(change, &zedagentCtx,
 				downloaderCertObjStatusDirname,

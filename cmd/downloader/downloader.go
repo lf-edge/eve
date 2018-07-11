@@ -59,6 +59,7 @@ const (
 	baseOsConfigDirname = baseDirname + "/" + baseOsObj + "/config"
 	baseOsStatusDirname = runDirname + "/" + baseOsObj + "/status"
 
+	// XXX
 	certObjConfigDirname = baseDirname + "/" + certObj + "/config"
 	certObjStatusDirname = runDirname + "/" + certObj + "/status"
 )
@@ -147,6 +148,7 @@ func Run() {
 	go watch.WatchConfigStatus(baseOsConfigDirname,
 		baseOsStatusDirname, baseOsChanges)
 
+		// XXX
 	go watch.WatchConfigStatus(certObjConfigDirname,
 		certObjStatusDirname, certObjChanges)
 
@@ -156,6 +158,7 @@ func Run() {
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
 
+			// XXX
 		case change := <-certObjChanges:
 			watch.HandleConfigStatusEvent(change, &ctx,
 				certObjConfigDirname,
@@ -166,6 +169,7 @@ func Run() {
 				handleModify,
 				handleDelete, nil)
 
+				// XXX
 		case change := <-appImgChanges:
 			watch.HandleConfigStatusEvent(change, &ctx,
 				appImgConfigDirname,

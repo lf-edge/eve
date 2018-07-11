@@ -231,6 +231,7 @@ func Run() {
 		select {
 		case change := <-verifierChanges:
 			{
+				// XXX
 				watch.HandleStatusEvent(change, &ctx,
 					verifierAppImgObjStatusDirname,
 					&types.VerifyImageStatus{},
@@ -255,12 +256,14 @@ func Run() {
 
 		case change := <-downloaderChanges:
 			{
+				// XXX
 				watch.HandleStatusEvent(change, &ctx,
 					downloaderAppImgObjStatusDirname,
 					&types.DownloaderStatus{},
 					handleDownloaderStatusModify,
 					handleDownloaderStatusDelete, nil)
 			}
+			// XXX 
 		case change := <-verifierChanges:
 			{
 				watch.HandleStatusEvent(change, &ctx,

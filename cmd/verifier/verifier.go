@@ -130,6 +130,7 @@ func Run() {
 		select {
 		case change := <-appImgChanges:
 			{
+			// XXX
 				watch.HandleConfigStatusEvent(change, &ctx,
 					appImgConfigDirname,
 					appImgStatusDirname,

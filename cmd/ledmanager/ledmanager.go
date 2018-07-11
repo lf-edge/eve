@@ -132,6 +132,8 @@ func Run() {
 
 	for {
 		select {
+		// XXX move to /var/tmp/zededa? Multiple publishers! Need
+		// diff pubsub support or everybody subscribes ...
 		case change := <-ledChanges:
 			{
 				watch.HandleStatusEvent(change, &ctx,
