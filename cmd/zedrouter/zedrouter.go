@@ -63,6 +63,7 @@ type zedrouterContext struct {
 	manufacturerModel       string
 	subDeviceNetworkConfig  *pubsub.Subscription
 	pubDeviceNetworkStatus  *pubsub.Publication
+	ready			bool
 }
 
 var debug = false
@@ -306,6 +307,13 @@ func Run() {
 	publishTimer := flextimer.NewRangeTicker(time.Duration(min),
 		time.Duration(max))
 
+	// Apply any changes from the uplink config to date.
+	updateDeviceNetworkStatus(zedrouterCtx.pubDeviceNetworkStatus)
+	updateLispConfiglets(&zedrouterCtx, zedrouterCtx.separateDataPlane)
+	setUplinks(deviceNetworkConfig.Uplink)
+	setFreeUplinks(deviceNetworkConfig.FreeUplinks)
+
+	zedrouterCtx.ready = true
 	for {
 		select {
 		case change := <-subAppNetworkConfig.C:
