@@ -63,12 +63,12 @@ func doDNSUpdate(ctx *clientContext) {
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus)
 	if newAddrCount == 0 && ctx.usableAddressCount != 0 {
 		log.Printf("DeviceNetworkStatus from %d to %d addresses\n",
-			newAddrCount, ctx.usableAddressCount)
+			ctx.usableAddressCount, newAddrCount)
 		// Inform ledmanager that we have no addresses
 		types.UpdateLedManagerConfig(1)
 	} else if newAddrCount != 0 && ctx.usableAddressCount == 0 {
 		log.Printf("DeviceNetworkStatus from %d to %d addresses\n",
-			newAddrCount, ctx.usableAddressCount)
+			ctx.usableAddressCount, newAddrCount)
 		// Inform ledmanager that we have uplink addresses
 		types.UpdateLedManagerConfig(2)
 	}
