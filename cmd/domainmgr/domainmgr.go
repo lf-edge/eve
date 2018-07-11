@@ -112,7 +112,7 @@ func Run() {
 	// any DomainConfig
 	model := hardware.GetHardwareModel()
 	aa := types.AssignableAdapters{}
-	aaChanges, aaFunc, aaCtx := adapters.Init(&aa, model)
+	subAa := adapters.Subscribe(&aa, model)
 
 	domainCtx := domainContext{assignableAdapters: &aa}
 
@@ -124,11 +124,11 @@ func Run() {
 	domainCtx.pubDomainStatus = pubDomainStatus
 	pubDomainStatus.ClearRestarted()
 
-	for !aaCtx.Found {
-		log.Printf("Waiting - aaCtx %v\n", aaCtx.Found)
+	for !subAa.Found {
+		log.Printf("Waiting for AssignableAdapters %v\n", subAa.Found)
 		select {
-		case change := <-aaChanges:
-			aaFunc(&aaCtx, change)
+		case change := <-subAa.C:
+			subAa.ProcessChange(change)
 		}
 	}
 	log.Printf("Have %d assignable adapters\n", len(aa.IoBundleList))
@@ -163,8 +163,8 @@ func Run() {
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
 
-		case change := <-aaChanges:
-			aaFunc(&aaCtx, change)
+		case change := <-subAa.C:
+			subAa.ProcessChange(change)
 		}
 	}
 }

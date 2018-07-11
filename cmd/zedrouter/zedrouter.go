@@ -63,7 +63,7 @@ type zedrouterContext struct {
 	manufacturerModel       string
 	subDeviceNetworkConfig  *pubsub.Subscription
 	pubDeviceNetworkStatus  *pubsub.Publication
-	ready			bool
+	ready                   bool
 }
 
 var debug = false
@@ -114,13 +114,13 @@ func Run() {
 	// Pick up (mostly static) AssignableAdapters before we process
 	// any Routes; Pbr needs to know which network adapters are assignable
 	aa := types.AssignableAdapters{}
-	aaChanges, aaFunc, aaCtx := adapters.Init(&aa, model)
+	subAa := adapters.Subscribe(&aa, model)
 
-	for !aaCtx.Found {
-		log.Printf("Waiting - aaCtx %v\n", aaCtx.Found)
+	for !subAa.Found {
+		log.Printf("Waiting for AssignableAdapters %v\n", subAa.Found)
 		select {
-		case change := <-aaChanges:
-			aaFunc(&aaCtx, change)
+		case change := <-subAa.C:
+			subAa.ProcessChange(change)
 		}
 	}
 	log.Printf("Have %d assignable adapters\n", len(aa.IoBundleList))
@@ -242,6 +242,7 @@ func Run() {
 	// Wait for zedmanager having populated the intial files to
 	// reduce the number of LISP-RESTARTs
 	// XXX can't use handleRestart since it restarts LISP.
+	// XXX introduce ready flag in context for that plus restarted/
 	restartFile := "/var/run/zedmanager/AppNetworkConfig/restarted"
 	log.Printf("Waiting for zedmanager to report in %s\n", restartFile)
 	watch.WaitForFile(restartFile)
@@ -356,8 +357,8 @@ func Run() {
 		case change := <-subNetworkServiceConfig.C:
 			subNetworkServiceConfig.ProcessChange(change)
 
-		case change := <-aaChanges:
-			aaFunc(&aaCtx, change)
+		case change := <-subAa.C:
+			subAa.ProcessChange(change)
 		}
 	}
 }

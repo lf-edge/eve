@@ -555,7 +555,7 @@ func (sub *Subscription) Activate() error {
 func (sub *Subscription) ProcessChange(change string) {
 	name := sub.nameString()
 	if debug {
-		log.Printf("ProcessEvent(%s) %s\n", name, change)
+		log.Printf("ProcessChange(%s) %s\n", name, change)
 	}
 	var restartFn watch.StatusRestartHandler = handleRestart
 	watch.HandleStatusEvent(change, sub,

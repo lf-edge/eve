@@ -60,7 +60,6 @@ func CastNetworkServiceStatus(in interface{}) types.NetworkServiceStatus {
 	return output
 }
 
-
 func CastDeviceNetworkConfig(in interface{}) types.DeviceNetworkConfig {
 	b, err := json.Marshal(in)
 	if err != nil {
@@ -273,6 +272,18 @@ func CastVerifyImageStatus(in interface{}) types.VerifyImageStatus {
 	var output types.VerifyImageStatus
 	if err := json.Unmarshal(b, &output); err != nil {
 		log.Fatal(err, "json Unmarshal in CastVerifyImageStatus")
+	}
+	return output
+}
+
+func CastAssignableAdapters(in interface{}) types.AssignableAdapters {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastAssignableAdapters")
+	}
+	var output types.AssignableAdapters
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "json Unmarshal in CastAssignableAdapters")
 	}
 	return output
 }

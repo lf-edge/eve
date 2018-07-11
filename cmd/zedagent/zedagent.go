@@ -169,7 +169,7 @@ func Run() {
 	model := hardware.GetHardwareModel()
 	log.Printf("HardwareModel %s\n", model)
 	aa := types.AssignableAdapters{}
-	aaChanges, aaFunc, aaCtx := adapters.Init(&aa, model)
+	subAa := adapters.Subscribe(&aa, model)
 
 	zedagentCtx = zedagentContext{assignableAdapters: &aa}
 
@@ -308,8 +308,9 @@ func Run() {
 				log.Printf("Verifier reported restarted\n")
 				break
 			}
-		case change := <-aaChanges:
-			aaFunc(&aaCtx, change)
+
+		case change := <-subAa.C:
+			subAa.ProcessChange(change)
 		}
 	}
 
@@ -340,19 +341,22 @@ func Run() {
 
 	log.Printf("Waiting until we have some uplinks with usable addresses\n")
 	waited := false
-	for DNSctx.usableAddressCount == 0 || !aaCtx.Found {
-		log.Printf("Waiting - have %d addresses; aaCtx %v\n",
-			DNSctx.usableAddressCount, aaCtx.Found)
+	for DNSctx.usableAddressCount == 0 || !subAa.Found {
+		log.Printf("Waiting - have %d addresses; subAa %v\n",
+			DNSctx.usableAddressCount, subAa.Found)
 		waited = true
 
 		select {
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
-		case change := <-aaChanges:
-			aaFunc(&aaCtx, change)
+
+		case change := <-subAa.C:
+			subAa.ProcessChange(change)
+
 		case <-t1.C:
 			log.Printf("Exceeded outage for cloud connectivity - rebooting\n")
 			execReboot(true)
+
 		case <-t2.C:
 			if updateInprogress {
 				log.Printf("Exceeded fallback outage for cloud connectivity - rebooting\n")
@@ -362,8 +366,8 @@ func Run() {
 	}
 	t1.Stop()
 	t2.Stop()
-	log.Printf("Have %d uplinks addresses to use; aaCtx %v\n",
-		DNSctx.usableAddressCount, aaCtx.Found)
+	log.Printf("Have %d uplinks addresses to use; subAa %v\n",
+		DNSctx.usableAddressCount, subAa.Found)
 	if waited {
 		// Inform ledmanager that we have uplink addresses
 		types.UpdateLedManagerConfig(2)
@@ -500,8 +504,8 @@ func Run() {
 				zedagentCtx.TriggerDeviceInfo = false
 			}
 
-		case change := <-aaChanges:
-			aaFunc(&aaCtx, change)
+		case change := <-subAa.C:
+			subAa.ProcessChange(change)
 
 		case change := <-subNetworkMetrics.C:
 			subNetworkMetrics.ProcessChange(change)
