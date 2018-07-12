@@ -79,6 +79,10 @@ var Version = "No version specified"
 
 // Any state used by handlers goes here
 type verifierContext struct {
+	subAppImgConfig *pubsub.Subscription
+	pubAppImgStatus *pubsub.Publication
+	subBaseOsConfig *pubsub.Subscription
+	pubBaseOsStatus *pubsub.Publication
 }
 
 func Run() {
