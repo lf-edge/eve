@@ -93,6 +93,7 @@ func Run() {
 	}
 	log.Printf("Starting %s\n", agentName)
 	for _, ot := range downloaderObjTypes {
+		// XXX fix restarted - can we remove it? Per objdir.
 		watch.CleanupRestartedObj(agentName, ot)
 	}
 
@@ -538,6 +539,7 @@ func downloaderInit() *zedUpload.DronaCtx {
 	// now start
 	globalStatusFilename = statusFilename
 
+	// Switch to pubsub... means /var/tmp/zededa/GlobalDownloadConfig/global.json and Status
 	// Read GlobalDownloadConfig to find MaxSpace
 	// Then determine currently used space and remaining.
 	cb, err := ioutil.ReadFile(configFilename)
@@ -594,7 +596,7 @@ func initializeDirs() {
 
 	// Create dirs for global info
 	// XXX move elsewhere and use pubsub?
-	dirs := []string{ downloaderConfigDirname, downloaderStatusDirname}
+	dirs := []string{downloaderConfigDirname, downloaderStatusDirname}
 	for _, dirName := range dirs {
 		if _, err := os.Stat(dirName); err != nil {
 			log.Printf("Create %s\n", dirName)

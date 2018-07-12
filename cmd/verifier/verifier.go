@@ -45,13 +45,14 @@ const (
 	baseOsObj = "baseOs.obj"
 	agentName = "verifier"
 
-	moduleName            = agentName
-	zedBaseDirname        = "/var/tmp"
-	zedRunDirname         = "/var/run"
-	baseDirname           = zedBaseDirname + "/" + moduleName
-	runDirname            = zedRunDirname + "/" + moduleName
-	configDirname         = baseDirname + "/config"
-	statusDirname         = runDirname + "/status"
+	moduleName = agentName
+	// XXX no global config - remove 6?
+	zedBaseDirname = "/var/tmp"
+	zedRunDirname  = "/var/run"
+	baseDirname    = zedBaseDirname + "/" + moduleName
+	runDirname     = zedRunDirname + "/" + moduleName
+	configDirname  = baseDirname + "/config"
+
 	persistDir            = "/persist"
 	objectDownloadDirname = persistDir + "/downloads"
 
@@ -61,12 +62,6 @@ const (
 
 	// If this file is present we don't delete verified files in handleDelete
 	preserveFilename = configDirname + "/preserve"
-
-	appImgConfigDirname = baseDirname + "/" + appImgObj + "/config"
-	appImgStatusDirname = runDirname + "/" + appImgObj + "/status"
-
-	baseOsConfigDirname = baseDirname + "/" + baseOsObj + "/config"
-	baseOsStatusDirname = runDirname + "/" + baseOsObj + "/status"
 )
 
 // Go doesn't like this as a constant
@@ -104,26 +99,56 @@ func Run() {
 	log.Printf("Starting %s\n", agentName)
 
 	for _, ot := range verifierObjTypes {
+		// XXX fix restarted - Per objdir.
 		watch.CleanupRestartedObj(agentName, ot)
 	}
 	handleInit()
 
 	// Report to zedmanager that init is done
 	for _, ot := range verifierObjTypes {
+		// XXX
 		watch.SignalRestartedObj(agentName, ot)
 	}
 
 	// Any state needed by handler functions
 	ctx := verifierContext{}
 
-	appImgChanges := make(chan string)
-	baseOsChanges := make(chan string)
+	// Set up our publications before the subscriptions so ctx is set
+	pubAppImgStatus, err := pubsub.Publish(agentName,
+		types.DownloaderStatus{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubAppImgStatus = pubAppImgStatus
+	pubAppImgStatus.ClearRestarted()
 
-	go watch.WatchConfigStatusAllowInitialConfig(appImgConfigDirname,
-		appImgStatusDirname, appImgChanges)
+	pubBaseOsStatus, err := pubsub.Publish(agentName,
+		types.DownloaderStatus{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubBaseOsStatus = pubBaseOsStatus
+	pubBaseOsStatus.ClearRestarted()
 
-	go watch.WatchConfigStatusAllowInitialConfig(baseOsConfigDirname,
-		baseOsStatusDirname, baseOsChanges)
+	subAppImgConfig, err := pubsub.Subscribe("zedmanager",
+		types.DownloaderConfig{}, false, &ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subAppImgConfig.ModifyHandler = handleAppImgModify
+	subAppImgConfig.DeleteHandler = handleAppImgDelete
+	ctx.subAppImgConfig = subAppImgConfig
+	subAppImgConfig.Activate()
+
+	subBaseOsConfig, err := pubsub.Subscribe("zedagent",
+		types.DownloaderConfig{}, false, &ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subBaseOsConfig.ModifyHandler = handleBaseOsModify
+	subBaseOsConfig.DeleteHandler = handleBaseOsDelete
+	ctx.subBaseOsConfig = subBaseOsConfig
+	subBaseOsConfig.Activate()
 
 	// We will cleanup zero RefCount objects after a while
 	// XXX hard-coded at 10 minutes
@@ -132,29 +157,12 @@ func Run() {
 
 	for {
 		select {
-		case change := <-appImgChanges:
-			{
-			// XXX
-				watch.HandleConfigStatusEvent(change, &ctx,
-					appImgConfigDirname,
-					appImgStatusDirname,
-					&types.VerifyImageConfig{},
-					&types.VerifyImageStatus{},
-					handleAppImgObjCreate,
-					handleModify,
-					handleDelete, nil)
-			}
-		case change := <-baseOsChanges:
-			{
-				watch.HandleConfigStatusEvent(change, &ctx,
-					baseOsConfigDirname,
-					baseOsStatusDirname,
-					&types.VerifyImageConfig{},
-					&types.VerifyImageStatus{},
-					handleBaseOsObjCreate,
-					handleModify,
-					handleDelete, nil)
-			}
+		case change := <-subAppImgConfig.C:
+			subAppImgConfig.ProcessChange(change)
+
+		case change := <-subBaseOsConfig.C:
+			subBaseOsConfig.ProcessChange(change)
+
 		case <-gc.C:
 			gcVerifiedObjects()
 		}
@@ -194,10 +202,6 @@ func initializeDirs() {
 	// downloader context
 	clearInProgressDownloadDirs(verifierObjTypes)
 
-	// XXX remove
-	// create the object based config/status dirs
-	createConfigStatusDirs(moduleName, verifierObjTypes)
-
 	// create the object download directories
 	createDownloadDirs(verifierObjTypes)
 }
@@ -211,6 +215,7 @@ func initializeDirs() {
 // XXX if we read existing status files into collection first.
 // then we can iterate over collection
 func handleInitWorkinProgressObjects() {
+	// XXX remove json checks...
 	for _, objType := range verifierObjTypes {
 		statusDirname := runDirname + "/" + objType + "/status"
 		if _, err := os.Stat(statusDirname); err == nil {
@@ -316,43 +321,6 @@ func handleInitMarkedDeletePendingObjects() {
 	}
 }
 
-// XXX remove
-// create module and object based config/status directories
-func createConfigStatusDirs(moduleName string, objTypes []string) {
-
-	jobDirs := []string{"config", "status"}
-	zedBaseDirs := []string{zedBaseDirname, zedRunDirname}
-	baseDirs := make([]string, len(zedBaseDirs))
-
-	log.Printf("Creating config/status dirs for %s\n", moduleName)
-
-	for idx, dir := range zedBaseDirs {
-		baseDirs[idx] = dir + "/" + moduleName
-	}
-
-	for idx, baseDir := range baseDirs {
-
-		dirName := baseDir + "/" + jobDirs[idx]
-		if _, err := os.Stat(dirName); err != nil {
-			log.Printf("Create %s\n", dirName)
-			if err := os.MkdirAll(dirName, 0700); err != nil {
-				log.Fatal(err)
-			}
-		}
-
-		// Creating object based holder dirs
-		for _, objType := range objTypes {
-			dirName := baseDir + "/" + objType + "/" + jobDirs[idx]
-			if _, err := os.Stat(dirName); err != nil {
-				log.Printf("Create %s\n", dirName)
-				if err := os.MkdirAll(dirName, 0700); err != nil {
-					log.Fatal(err)
-				}
-			}
-		}
-	}
-}
-
 // XXX here vs. in downloader? Who owns which dirs?
 // Create object download directories
 func createDownloadDirs(objTypes []string) {
@@ -421,6 +389,7 @@ func updateVerifyErrStatus(status *types.VerifyImageStatus,
 	updateVerifyObjectStatus(status)
 }
 
+// XXX remove. Fix Key() in VerifyImageStatus/Config?
 func verifyObjectConfigFilename(objType string, safename string) string {
 	return fmt.Sprintf("%s/%s/config/%s.json",
 		baseDirname, objType, safename)
@@ -481,38 +450,86 @@ func removeVerifyObjectStatus(status *types.VerifyImageStatus) {
 	}
 }
 
-func handleAppImgObjCreate(ctxArg interface{}, statusFilename string,
+// Wrappers
+func handleAppImgModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
 	config := cast.CastVerifyImageConfig(configArg)
-	// XXX change once key arg
-	key := config.Key()
+	ctx := ctxArg.(*verifierContext)
 	if config.Key() != key {
-		log.Printf("handleAppImgObjCreate key/UUID mismatch %s vs %s; ignored %+v\n",
+		log.Printf("handleAppImgModify key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, config.Key(), config)
 		return
 	}
-	ctx := ctxArg.(*verifierContext)
-
-	log.Printf("handleCreate(%v) for %s\n",
-		config.Safename, config.DownloadURL)
-	handleCreate(ctx, appImgObj, &config)
+	status := lookupVerifyImageStatus(ctx.pubAppImgStatus, key)
+	if status == nil {
+		handleCreate(ctx, appImgObj, &config)
+	} else {
+		handleModify(ctx, &config, status)
+	}
+	log.Printf("handleAppImgModify(%s) done\n", key)
 }
 
-func handleBaseOsObjCreate(ctxArg interface{}, statusFilename string,
+func handleAppImgDelete(ctxArg interface{}, key string, configArg interface{}) {
+
+	log.Printf("handleAppImgDelete(%s)\n", key)
+	ctx := ctxArg.(*verifierContext)
+	status := lookupVerifyImageStatus(ctx.pubAppImgStatus, key)
+	if status == nil {
+		log.Printf("handleAppImgDelete: unknown %s\n", key)
+		return
+	}
+	handleDelete(ctx, status)
+	log.Printf("handleAppImgDelete(%s) done\n", key)
+}
+
+func handleBaseOsModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
 	config := cast.CastVerifyImageConfig(configArg)
-	// XXX change once key arg
-	key := config.Key()
+	ctx := ctxArg.(*verifierContext)
 	if config.Key() != key {
-		log.Printf("handleBasePsObjCreate key/UUID mismatch %s vs %s; ignored %+v\n",
+		log.Printf("handleBaseOsModify key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, config.Key(), config)
 		return
 	}
-	ctx := ctxArg.(*verifierContext)
+	status := lookupVerifyImageStatus(ctx.pubBaseOsStatus, key)
+	if status == nil {
+		handleCreate(ctx, baseOsObj, &config)
+	} else {
+		handleModify(ctx, &config, status)
+	}
+	log.Printf("handleBaseOsModify(%s) done\n", key)
+}
 
-	handleCreate(ctx, baseOsObj, &config)
+func handleBaseOsDelete(ctxArg interface{}, key string, configArg interface{}) {
+
+	log.Printf("handleBaseOsDelete(%s)\n", key)
+	ctx := ctxArg.(*verifierContext)
+	status := lookupVerifyImageStatus(ctx.pubBaseOsStatus, key)
+	if status == nil {
+		log.Printf("handleBaseOsDelete: unknown %s\n", key)
+		return
+	}
+	handleDelete(ctx, status)
+	log.Printf("handleBaseOsDelete(%s) done\n", key)
+}
+
+// Callers must be careful to publish any changes to VerifyImageStatus
+func lookupVerifyImageStatus(pub *pubsub.Publication, key string) *types.VerifyImageStatus {
+
+	st, _ := pub.Get(key)
+	if st == nil {
+		log.Printf("lookupVerifyImageStatus(%s) not found\n", key)
+		return nil
+	}
+	status := cast.CastVerifyImageStatus(st)
+	if status.Key() != key {
+		log.Printf("lookupVerifyImageStatus(%s) got %s; ignored %+v\n",
+			key, status.Key(), status)
+		return nil
+	}
+	return &status
 }
 
 func handleCreate(ctx *verifierContext, objType string,
@@ -877,24 +894,8 @@ func markObjectAsVerified(config *types.VerifyImageConfig,
 	}
 }
 
-func handleModify(ctxArg interface{}, statusFilename string,
-	configArg interface{}, statusArg interface{}) {
-
-	config := cast.CastVerifyImageConfig(configArg)
-	// XXX change once key arg
-	key := config.Key()
-	if config.Key() != key {
-		log.Printf("handleModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return
-	}
-	status := cast.CastVerifyImageStatus(statusArg)
-	if status.Key() != key {
-		log.Printf("handleModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return
-	}
-	ctx := ctxArg.(*verifierContext)
+func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
+	status *types.VerifyImageStatus) {
 
 	// Note no comparison on version
 	changed := false
@@ -917,12 +918,12 @@ func handleModify(ctxArg interface{}, statusFilename string,
 
 	if status.RefCount == 0 {
 		status.PendingModify = true
-		updateVerifyObjectStatus(&status)
+		updateVerifyObjectStatus(status)
 		// XXX start gc timer instead
-		doDelete(&status)
+		doDelete(status)
 		status.PendingModify = false
 		status.State = 0 // XXX INITIAL implies failure
-		updateVerifyObjectStatus(&status)
+		updateVerifyObjectStatus(status)
 		log.Printf("handleModify done for %s\n", config.DownloadURL)
 		return
 	}
@@ -931,7 +932,7 @@ func handleModify(ctxArg interface{}, statusFilename string,
 	if config.Safename == status.Safename &&
 		config.ImageSha256 == status.ImageSha256 {
 		if changed {
-			updateVerifyObjectStatus(&status)
+			updateVerifyObjectStatus(status)
 		}
 		log.Printf("handleModify: no (other) change for %s\n",
 			config.DownloadURL)
@@ -939,25 +940,15 @@ func handleModify(ctxArg interface{}, statusFilename string,
 	}
 
 	status.PendingModify = true
-	updateVerifyObjectStatus(&status)
-	handleDelete(ctx, statusFilename, status)
-	handleCreate(ctx, status.ObjType, &config)
+	updateVerifyObjectStatus(status)
+	handleDelete(ctx, status)
+	handleCreate(ctx, status.ObjType, config)
 	status.PendingModify = false
-	updateVerifyObjectStatus(&status)
+	updateVerifyObjectStatus(status)
 	log.Printf("handleModify done for %s\n", config.DownloadURL)
 }
 
-func handleDelete(ctxArg interface{}, statusFilename string,
-	statusArg interface{}) {
-
-	status := statusArg.(*types.VerifyImageStatus)
-	// XXX change once key arg
-	key := status.Key()
-	if status.Key() != key {
-		log.Printf("handleDelete key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return
-	}
+func handleDelete(ctx *verifierContext, status *types.VerifyImageStatus) {
 
 	log.Printf("handleDelete(%v) objType %s\n",
 		status.Safename, status.ObjType)
