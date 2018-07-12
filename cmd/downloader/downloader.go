@@ -197,6 +197,7 @@ func Run() {
 // Object handlers
 func handleAppImgObjCreate(ctxArg interface{}, statusFilename string,
 	configArg interface{}) {
+
 	config := cast.CastDownloaderConfig(configArg)
 	// XXX change once key arg
 	key := config.Key()
@@ -212,6 +213,7 @@ func handleAppImgObjCreate(ctxArg interface{}, statusFilename string,
 
 func handleBaseOsObjCreate(ctxArg interface{}, statusFilename string,
 	configArg interface{}) {
+
 	config := cast.CastDownloaderConfig(configArg)
 	// XXX change once key arg
 	key := config.Key()
@@ -227,6 +229,7 @@ func handleBaseOsObjCreate(ctxArg interface{}, statusFilename string,
 
 func handleCertObjCreate(ctxArg interface{}, statusFilename string,
 	configArg interface{}) {
+
 	config := cast.CastDownloaderConfig(configArg)
 	// XXX change once key arg
 	key := config.Key()
@@ -310,6 +313,7 @@ func handleCreate(ctx *downloaderContext, objType string,
 // means download. Ignore other changes?
 func handleModify(ctxArg interface{}, statusFilename string,
 	configArg interface{}, statusArg interface{}) {
+
 	config := cast.CastDownloaderConfig(configArg)
 	// XXX change once key arg
 	key := config.Key()
@@ -418,7 +422,8 @@ func deletefile(dirname string, status *types.DownloaderStatus) {
 
 func handleDelete(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
-	status := cast.CastDownloaderStatus(statusArg)
+
+	status := statusArg.(*types.DownloaderStatus)
 	// XXX change once key arg
 	key := status.Key()
 	if status.Key() != key {
@@ -436,7 +441,7 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 	locDirname := objectDownloadDirname + "/" + status.ObjType
 
 	status.PendingDelete = true
-	writeDownloaderStatus(&status, statusFilename)
+	writeDownloaderStatus(status, statusFilename)
 
 	globalStatus.ReservedSpace -= status.ReservedSpace
 	status.ReservedSpace = 0
@@ -445,12 +450,12 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 
 	updateRemainingSpace()
 
-	writeDownloaderStatus(&status, statusFilename)
+	writeDownloaderStatus(status, statusFilename)
 
-	doDelete(statusFilename, locDirname, &status)
+	doDelete(statusFilename, locDirname, status)
 
 	status.PendingDelete = false
-	writeDownloaderStatus(&status, statusFilename)
+	writeDownloaderStatus(status, statusFilename)
 
 	// Write out what we modified to DownloaderStatus aka delete
 	if err := os.Remove(statusFilename); err != nil {

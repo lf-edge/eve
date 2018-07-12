@@ -564,17 +564,16 @@ func handleAppNetworkConfigModify(ctxArg interface{}, key string, configArg inte
 }
 
 func handleAppNetworkConfigDelete(ctxArg interface{}, key string,
-	statusArg interface{}) {
+	configArg interface{}) {
 
 	log.Printf("handleAppNetworkConfigDelete(%s)\n", key)
 	ctx := ctxArg.(*zedrouterContext)
-	status := cast.CastAppNetworkStatus(statusArg)
-	if status.Key() != key {
-		log.Printf("handleAppNetworkDelete key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
+	status := lookupAppNetworkStatus(ctx, key)
+	if status == nil {
+		log.Printf("handleAppNetworkConfigDelete: unknown %s\n", key)
 		return
 	}
-	handleDelete(ctx, key, &status)
+	handleDelete(ctx, key, status)
 	log.Printf("handleAppNetworkConfigDelete(%s) done\n", key)
 }
 

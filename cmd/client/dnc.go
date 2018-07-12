@@ -11,8 +11,8 @@ import (
 	"reflect"
 )
 
-func handleDNCModify(ctxArg interface{}, key string,
-	configArg interface{}) {
+func handleDNCModify(ctxArg interface{}, key string, configArg interface{}) {
+
 	config := cast.CastDeviceNetworkConfig(configArg)
 	ctx := ctxArg.(*clientContext)
 
@@ -38,7 +38,7 @@ func handleDNCModify(ctxArg interface{}, key string,
 	log.Printf("handleDNCModify done for %s\n", key)
 }
 
-func handleDNCDelete(ctxArg interface{}, key string, statusArg interface{}) {
+func handleDNCDelete(ctxArg interface{}, key string, configArg interface{}) {
 
 	log.Printf("handleDNCDelete for %s\n", key)
 	ctx := ctxArg.(*clientContext)

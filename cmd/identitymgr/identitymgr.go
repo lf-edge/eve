@@ -147,17 +147,17 @@ func handleEIDConfigModify(ctxArg interface{}, key string, configArg interface{}
 }
 
 func handleEIDConfigDelete(ctxArg interface{}, key string,
-	statusArg interface{}) {
+	configArg interface{}) {
 
 	log.Printf("handleEIDConfigDelete(%s)\n", key)
 	ctx := ctxArg.(*identityContext)
-	status := cast.CastEIDStatus(statusArg)
-	if status.Key() != key {
-		log.Printf("handleEIDConfigDelete key/UUID mismatch %s vs %s; ignored %+v\n",
+	status := lookupEIDStatus(ctx, key)
+	if status == nil {
+		log.Printf("handleEIDConfigDelete: unknown %s\n",
 			key, status.Key(), status)
 		return
 	}
-	handleDelete(ctx, key, &status)
+	handleDelete(ctx, key, status)
 	log.Printf("handleEIDConfigDelete(%s) done\n", key)
 }
 

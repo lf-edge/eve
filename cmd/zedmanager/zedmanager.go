@@ -383,17 +383,16 @@ func handleAppInstanceConfigModify(ctxArg interface{}, key string, configArg int
 }
 
 func handleAppInstanceConfigDelete(ctxArg interface{}, key string,
-	statusArg interface{}) {
+	configArg interface{}) {
 
 	log.Printf("handleAppInstanceConfigDelete(%s)\n", key)
 	ctx := ctxArg.(*zedmanagerContext)
-	status := cast.CastAppInstanceStatus(statusArg)
-	if status.Key() != key {
-		log.Printf("handleAppInstanceConfigDelete key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
+	status := lookupAppInstanceStatus(ctx, key)
+	if status == nil {
+		log.Printf("handleAppInstanceConfigDelete: unknown %s\n", key)
 		return
 	}
-	handleDelete(ctx, key, &status)
+	handleDelete(ctx, key, status)
 	log.Printf("handleAppInstanceConfigDelete(%s) done\n", key)
 }
 
@@ -491,8 +490,9 @@ func handleModify(ctx *zedmanagerContext, key string,
 func handleDelete(ctx *zedmanagerContext, key string,
 	status *types.AppInstanceStatus) {
 
+	// XXX Remove %+v
 	log.Printf("handleDelete(%v) for %s: %+v\n",
-		status.UUIDandVersion, status.DisplayName, status)
+		status.UUIDandVersion, status.DisplayName, status, status)
 
 	removeAIStatus(ctx, status)
 	log.Printf("handleDelete done for %s\n", status.DisplayName)

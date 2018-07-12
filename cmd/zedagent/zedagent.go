@@ -767,8 +767,8 @@ func handleBaseOsModify(ctxArg interface{}, statusFilename string,
 
 // base os config delete event
 func handleBaseOsDelete(ctxArg interface{}, statusFilename string,
-	statusArg interface{}) {
-	status := cast.CastBaseOsStatus(statusArg)
+	configArg interface{}) {
+	status := configArg.(*types.BaseOsStatus)
 	// XXX change once key arg
 	key := status.Key()
 	if status.Key() != key {
@@ -802,17 +802,16 @@ func handleCertObjConfigModify(ctxArg interface{}, key string, configArg interfa
 }
 
 func handleCertObjConfigDelete(ctxArg interface{}, key string,
-	statusArg interface{}) {
+	configArg interface{}) {
 
 	log.Printf("handleCertObjConfigDelete(%s)\n", key)
 	ctx := ctxArg.(*zedagentContext)
-	status := cast.CastCertObjStatus(statusArg)
-	if status.Key() != key {
-		log.Printf("handleCertObjConfigDelete key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
+	status := lookupCertObjStatus(ctx, key)
+	if status == nil {
+		log.Printf("handleCertObjConfigDelete: unknown %s\n", key)
 		return
 	}
-	handleCertObjDelete(ctx, key, &status)
+	handleCertObjDelete(ctx, key, status)
 	log.Printf("handleCertObjConfigDelete(%s) done\n", key)
 }
 

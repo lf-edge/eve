@@ -268,17 +268,16 @@ func handleDomainConfigModify(ctxArg interface{}, key string, configArg interfac
 }
 
 func handleDomainConfigDelete(ctxArg interface{}, key string,
-	statusArg interface{}) {
+	configArg interface{}) {
 
 	log.Printf("handleDomainConfigDelete(%s)\n", key)
 	ctx := ctxArg.(*domainContext)
-	status := cast.CastDomainStatus(statusArg)
-	if status.Key() != key {
-		log.Printf("handleDomainConfigDelete key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
+	status := lookupDomainStatus(ctx, key)
+	if status == nil {
+		log.Printf("handleDomainConfigDelete: unknown %s\n", key)
 		return
 	}
-	handleDelete(ctx, key, &status)
+	handleDelete(ctx, key, status)
 	log.Printf("handleDomainConfigDelete(%s) done\n", key)
 }
 

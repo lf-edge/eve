@@ -478,6 +478,7 @@ func removeVerifyObjectStatus(status *types.VerifyImageStatus) {
 
 func handleAppImgObjCreate(ctxArg interface{}, statusFilename string,
 	configArg interface{}) {
+
 	config := cast.CastVerifyImageConfig(configArg)
 	// XXX change once key arg
 	key := config.Key()
@@ -495,6 +496,7 @@ func handleAppImgObjCreate(ctxArg interface{}, statusFilename string,
 
 func handleBaseOsObjCreate(ctxArg interface{}, statusFilename string,
 	configArg interface{}) {
+
 	config := cast.CastVerifyImageConfig(configArg)
 	// XXX change once key arg
 	key := config.Key()
@@ -872,6 +874,7 @@ func markObjectAsVerified(config *types.VerifyImageConfig,
 
 func handleModify(ctxArg interface{}, statusFilename string,
 	configArg interface{}, statusArg interface{}) {
+
 	config := cast.CastVerifyImageConfig(configArg)
 	// XXX change once key arg
 	key := config.Key()
@@ -941,7 +944,8 @@ func handleModify(ctxArg interface{}, statusFilename string,
 
 func handleDelete(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
-	status := cast.CastVerifyImageStatus(statusArg)
+
+	status := statusArg.(*types.VerifyImageStatus)
 	// XXX change once key arg
 	key := status.Key()
 	if status.Key() != key {
@@ -959,11 +963,11 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 	}
 
 	// XXX start gc timer instead
-	doDelete(&status)
+	doDelete(status)
 
 	// XXX set refCount=0
 	// Write out what we modified to VerifyImageStatus aka delete
-	removeVerifyObjectStatus(&status)
+	removeVerifyObjectStatus(status)
 	log.Printf("handleDelete done for %s\n", status.Safename)
 }
 

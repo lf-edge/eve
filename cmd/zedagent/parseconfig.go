@@ -733,7 +733,7 @@ func publishNetworkServiceConfig(ctx *getconfigContext,
 		}
 		config := cast.CastNetworkServiceConfig(c)
 		if config.Key() != k {
-			log.Printf("shutdownApps key/UUID mismatch %s vs %s; ignored %+v\n",
+			log.Printf("publishNetworkServiceConfig key/UUID mismatch %s vs %s; ignored %+v\n",
 				k, config.Key(), config)
 			continue
 		}

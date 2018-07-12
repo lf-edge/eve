@@ -64,22 +64,21 @@ func handleNetworkObjectCreate(ctx *zedrouterContext, key string, config types.N
 }
 
 func handleNetworkObjectDelete(ctxArg interface{}, key string,
-	statusArg interface{}) {
+	configArg interface{}) {
 
 	log.Printf("handleNetworkObjectDelete(%s)\n", key)
 	ctx := ctxArg.(*zedrouterContext)
 	pub := ctx.pubNetworkObjectStatus
-	status := cast.CastNetworkObjectStatus(statusArg)
-	if status.Key() != key {
-		log.Printf("handleNetworkObjectDelete key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
+	status := lookupNetworkObjectStatus(ctx, key)
+	if status == nil {
+		log.Printf("handleNetworkObjectDelete: unknown %s\n", key)
 		return
 	}
 	status.PendingDelete = true
-	pub.Publish(status.Key(), status)
-	doNetworkDelete(&status)
+	pub.Publish(status.Key(), *status)
+	doNetworkDelete(status)
 	status.PendingDelete = false
-	pub.Publish(status.Key(), status)
+	pub.Publish(status.Key(), *status)
 	pub.Unpublish(status.Key())
 	log.Printf("handleNetworkObjectDelete(%s) done\n", key)
 }

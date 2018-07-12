@@ -79,26 +79,25 @@ func handleNetworkServiceCreate(ctx *zedrouterContext, key string, config types.
 }
 
 func handleNetworkServiceDelete(ctxArg interface{}, key string,
-	statusArg interface{}) {
+	configArg interface{}) {
 
 	log.Printf("handleNetworkServiceDelete(%s)\n", key)
 	ctx := ctxArg.(*zedrouterContext)
 	pub := ctx.pubNetworkServiceStatus
-	status := cast.CastNetworkServiceStatus(statusArg)
-	if status.Key() != key {
-		log.Printf("handleNetworkServiceDelete key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
+	status := lookupNetworkServiceStatus(ctx, key)
+	if status == nil {
+		log.Printf("handleNetworkServiceDelete: unknown %s\n", key)
 		return
 	}
 	status.PendingDelete = true
 	pub.Publish(status.Key(), status)
 	if status.Activated {
-		doServiceInactivate(ctx, &status)
-		pub.Publish(status.Key(), status)
+		doServiceInactivate(ctx, status)
+		pub.Publish(status.Key(), &status)
 	}
-	doServiceDelete(&status)
+	doServiceDelete(status)
 	status.PendingDelete = false
-	pub.Publish(status.Key(), status)
+	pub.Publish(status.Key(), &status)
 	pub.Unpublish(status.Key())
 	log.Printf("handleNetworkServiceDelete(%s) done\n", key)
 }

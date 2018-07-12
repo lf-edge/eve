@@ -684,6 +684,7 @@ func updateNetworkACLConfiglet(ctx *zedrouterContext,
 	oldRules = IptablesRuleList{}
 	ipVer = 4
 
+	items = sub.GetAll()
 	for key, c := range items {
 		config := cast.CastAppNetworkConfig(c)
 		if config.Key() != key {
@@ -712,6 +713,7 @@ func updateNetworkACLConfiglet(ctx *zedrouterContext,
 		}
 		newRules = append(newRules, dropRules...)
 	}
+	items = pub.GetAll()
 	for key, st := range items {
 		status := cast.CastAppNetworkStatus(st)
 		if status.Key() != key {
