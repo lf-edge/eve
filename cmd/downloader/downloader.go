@@ -52,10 +52,6 @@ const (
 
 	downloaderConfigDirname = baseDirname + "/config"
 	downloaderStatusDirname = runDirname + "/status"
-
-	// XXX
-	baseOsConfigDirname = baseDirname + "/" + baseOsObj + "/config"
-	baseOsStatusDirname = runDirname + "/" + baseOsObj + "/status"
 )
 
 // Go doesn't like this as a constant
@@ -169,7 +165,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subAppImgConfig.ModifyHandler = handleAppImgModify
-	subAppImgConfig.DeleteHandler = handleDelete
+	subAppImgConfig.DeleteHandler = handleAppImgDelete
 	ctx.subAppImgConfig = subAppImgConfig
 	subAppImgConfig.Activate()
 
@@ -179,7 +175,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subBaseOsConfig.ModifyHandler = handleBaseOsModify
-	subBaseOsConfig.DeleteHandler = handleDelete
+	subBaseOsConfig.DeleteHandler = handleBaseOsDelete
 	ctx.subBaseOsConfig = subBaseOsConfig
 	subBaseOsConfig.Activate()
 
@@ -189,14 +185,9 @@ func Run() {
 		log.Fatal(err)
 	}
 	subCertObjConfig.ModifyHandler = handleCertObjModify
-	subCertObjConfig.DeleteHandler = handleDelete
+	subCertObjConfig.DeleteHandler = handleCertObjDelete
 	ctx.subCertObjConfig = subCertObjConfig
 	subCertObjConfig.Activate()
-
-	// XXX remove
-	baseOsChanges := make(chan string)
-	go watch.WatchConfigStatus(baseOsConfigDirname,
-		baseOsStatusDirname, baseOsChanges)
 
 	for {
 		select {
@@ -212,17 +203,6 @@ func Run() {
 
 		case change := <-subBaseOsConfig.C:
 			subBaseOsConfig.ProcessChange(change)
-
-		// XXX
-		case change := <-baseOsChanges:
-			watch.HandleConfigStatusEvent(change, &ctx,
-				baseOsConfigDirname,
-				baseOsStatusDirname,
-				&types.DownloaderConfig{},
-				&types.DownloaderStatus{},
-				handleBaseOsObjCreate,
-				handleModify,
-				handleOldDelete, nil)
 
 		case <-publishTimer.C:
 			err := pub.Publish("global", zedcloud.GetCloudMetrics())
@@ -253,6 +233,19 @@ func handleAppImgModify(ctxArg interface{}, key string,
 	log.Printf("handleAppImgModify(%s) done\n", key)
 }
 
+func handleAppImgDelete(ctxArg interface{}, key string, configArg interface{}) {
+
+	log.Printf("handleAppImgDelete(%s)\n", key)
+	ctx := ctxArg.(*downloaderContext)
+	status := lookupDownloaderStatus(ctx.pubAppImgStatus, key)
+	if status == nil {
+		log.Printf("handleAppImgDelete: unknown %s\n", key)
+		return
+	}
+	handleDelete(ctx, key, status)
+	log.Printf("handleAppImgDelete(%s) done\n", key)
+}
+
 func handleBaseOsModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
@@ -270,6 +263,19 @@ func handleBaseOsModify(ctxArg interface{}, key string,
 		handleModify(ctx, key, config, status)
 	}
 	log.Printf("handleBaseOsModify(%s) done\n", key)
+}
+
+func handleBaseOsDelete(ctxArg interface{}, key string, configArg interface{}) {
+
+	log.Printf("handleBaseOsDelete(%s)\n", key)
+	ctx := ctxArg.(*downloaderContext)
+	status := lookupDownloaderStatus(ctx.pubBaseOsStatus, key)
+	if status == nil {
+		log.Printf("handleBaseOsDelete: unknown %s\n", key)
+		return
+	}
+	handleDelete(ctx, key, status)
+	log.Printf("handleBaseOsDelete(%s) done\n", key)
 }
 
 func handleCertObjModify(ctxArg interface{}, key string,
@@ -291,6 +297,19 @@ func handleCertObjModify(ctxArg interface{}, key string,
 	log.Printf("handleCertObjModify(%s) done\n", key)
 }
 
+func handleCertObjDelete(ctxArg interface{}, key string, configArg interface{}) {
+
+	log.Printf("handleCertObjDelete(%s)\n", key)
+	ctx := ctxArg.(*downloaderContext)
+	status := lookupDownloaderStatus(ctx.pubCertObjStatus, key)
+	if status == nil {
+		log.Printf("handleCertObjDelete: unknown %s\n", key)
+		return
+	}
+	handleDelete(ctx, key, status)
+	log.Printf("handleCertObjDelete(%s) done\n", key)
+}
+
 // Callers must be careful to publish any changes to DownloaderStatus
 func lookupDownloaderStatus(pub *pubsub.Publication, key string) *types.DownloaderStatus {
 
@@ -308,59 +327,8 @@ func lookupDownloaderStatus(pub *pubsub.Publication, key string) *types.Download
 	return &status
 }
 
-
-// Object handlers
-func handleAppImgObjCreate(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	config := cast.CastDownloaderConfig(configArg)
-	// XXX change once key arg
-	key := config.Key()
-	if config.Key() != key {
-		log.Printf("handleAppImgObjCreate key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return
-	}
-	ctx := ctxArg.(*downloaderContext)
-
-	handleCreate(ctx, appImgObj, config, key)
-}
-
-func handleBaseOsObjCreate(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	config := cast.CastDownloaderConfig(configArg)
-	// XXX change once key arg
-	key := config.Key()
-	if config.Key() != key {
-		log.Printf("handleBaseOsObjCreate key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return
-	}
-	ctx := ctxArg.(*downloaderContext)
-
-	handleCreate(ctx, baseOsObj, config, key)
-}
-
-func handleCertObjCreate(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	config := cast.CastDownloaderConfig(configArg)
-	// XXX change once key arg
-	key := config.Key()
-	if config.Key() != key {
-		log.Printf("handleCertObjCreate key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return
-	}
-	ctx := ctxArg.(*downloaderContext)
-
-	handleCreate(ctx, certObj, config, key)
-}
-
 func handleCreate(ctx *downloaderContext, objType string,
-	config types.DownloaderConfig,
-	key string) {
+	config types.DownloaderConfig, key string) {
 
 	log.Printf("handleCreate(%v) objType %s for %s\n",
 		config.Safename, objType, config.DownloadURL)
@@ -426,25 +394,8 @@ func handleCreate(ctx *downloaderContext, objType string,
 
 // Allow to cancel by setting RefCount = 0. Same as delete? RefCount 0->1
 // means download. Ignore other changes?
-// XXX remove extra casts
-func handleModify(ctxArg interface{}, key string,
-	configArg interface{}, statusArg interface{}) {
-
-	config := cast.CastDownloaderConfig(configArg)
-	// XXX change once key arg
-	key := config.Key()
-	if config.Key() != key {
-		log.Printf("handleModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return
-	}
-	status := cast.CastDownloaderStatus(statusArg)
-	if status.Key() != key {
-		log.Printf("handleModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return
-	}
-	ctx := ctxArg.(*downloaderContext)
+func handleModify(ctx *downloaderContext, key string,
+	config types.DownloaderConfig, status *types.DownloaderStatus) {
 
 	log.Printf("handleModify(%v) objType %s for %s\n",
 		status.Safename, status.ObjType, status.DownloadURL)
@@ -472,7 +423,7 @@ func handleModify(ctxArg interface{}, key string,
 		}
 		log.Printf("handleModify %s for %s\n",
 			reason, config.DownloadURL)
-		doDelete(key, locDirname, &status)
+		doDelete(key, locDirname, status)
 		handleCreate(ctx, status.ObjType, config, key)
 		log.Printf("handleModify done for %s\n", config.DownloadURL)
 		return
@@ -487,15 +438,15 @@ func handleModify(ctxArg interface{}, key string,
 		handleCreate(ctx, status.ObjType, config, key)
 		status.RefCount = config.RefCount
 		status.PendingModify = false
-		writeDownloaderStatus(&status, key)
+		writeDownloaderStatus(status, key)
 	} else if status.RefCount != 0 && config.RefCount == 0 {
 		log.Printf("handleModify deleting %s\n", config.DownloadURL)
-		doDelete(key, locDirname, &status)
+		doDelete(key, locDirname, status)
 	} else if status.RefCount != config.RefCount {
 		log.Printf("handleModify RefCount change %s from %d to %d\n",
 			config.DownloadURL, status.RefCount, config.RefCount)
 		status.RefCount = config.RefCount
-		writeDownloaderStatus(&status, key)
+		writeDownloaderStatus(status, key)
 	}
 	log.Printf("handleModify done for %s\n", config.DownloadURL)
 }
@@ -536,17 +487,9 @@ func deletefile(dirname string, status *types.DownloaderStatus) {
 	}
 }
 
-func handleDelete(ctxArg interface{}, statusFilename string,
-	statusArg interface{}) {
+func handleDelete(ctx *downloaderContext, key string,
+	status *types.DownloaderStatus) {
 
-	status := statusArg.(*types.DownloaderStatus)
-	// XXX change once key arg
-	key := status.Key()
-	if status.Key() != key {
-		log.Printf("handleDelete key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return
-	}
 	log.Printf("handleDelete(%v) objType %s for %s\n",
 		status.Safename, status.ObjType, status.DownloadURL)
 
@@ -557,7 +500,7 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 	locDirname := objectDownloadDirname + "/" + status.ObjType
 
 	status.PendingDelete = true
-	writeDownloaderStatus(status, statusFilename)
+	writeDownloaderStatus(status, key)
 
 	globalStatus.ReservedSpace -= status.ReservedSpace
 	status.ReservedSpace = 0
@@ -566,12 +509,12 @@ func handleDelete(ctxArg interface{}, statusFilename string,
 
 	updateRemainingSpace()
 
-	writeDownloaderStatus(status, statusFilename)
+	writeDownloaderStatus(status, key)
 
-	doDelete(statusFilename, locDirname, status)
+	doDelete(key, locDirname, status)
 
 	status.PendingDelete = false
-	writeDownloaderStatus(status, statusFilename)
+	writeDownloaderStatus(status, key)
 
 	// Write out what we modified to DownloaderStatus aka delete
 	if err := os.Remove(key); err != nil {
@@ -658,7 +601,7 @@ func initializeDirs() {
 	createDownloadDirs(downloaderObjTypes)
 }
 
-// XXX remove
+// XXX remove? Need global. Done elsewhere?
 // create module and object based config/status directories
 func createConfigStatusDirs(moduleName string, objTypes []string) {
 

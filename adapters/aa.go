@@ -72,7 +72,7 @@ func handleAAModify(ctxArg interface{}, key string, configArg interface{}) {
 	log.Printf("handleAAModify done for %s\n", key)
 }
 
-func handleAADelete(ctxArg interface{}, key string) {
+func handleAADelete(ctxArg interface{}, key string, configArg interface{}) {
 	log.Printf("handleAADelete for %s\n", key)
 	ctx := ctxArg.(*context)
 	// Only care about my model
