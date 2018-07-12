@@ -289,7 +289,7 @@ func (pub *Publication) Unpublish(key string) error {
 				name, key, m)
 		}
 	} else {
-		errStr := fmt.Sprintf("Unpublish(%s/%s): key %s does not exist",
+		errStr := fmt.Sprintf("Unpublish(%s/%s): key does not exist",
 			name, key)
 		log.Printf("XXX %s\n", errStr)
 		return errors.New(errStr)
