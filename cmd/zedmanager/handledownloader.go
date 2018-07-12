@@ -99,6 +99,13 @@ var downloaderStatus map[string]types.DownloaderStatus
 func handleDownloaderStatusModify(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
 	status := cast.CastDownloaderStatus(statusArg)
+	// XXX change once key arg
+	key := status.Key()
+	if status.Key() != key {
+		log.Printf("handleDownloaderStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, status.Key(), status)
+		return
+	}
 	ctx := ctxArg.(*zedmanagerContext)
 	log.Printf("handleDownloaderStatusModify for %s\n", status.Safename)
 
@@ -114,7 +121,7 @@ func handleDownloaderStatusModify(ctxArg interface{}, statusFilename string,
 		}
 		downloaderStatus = make(map[string]types.DownloaderStatus)
 	}
-	key := status.Safename
+	key = status.Safename
 	changed := false
 	if m, ok := downloaderStatus[key]; ok {
 		if status.State != m.State {
@@ -146,10 +153,12 @@ func LookupDownloaderStatus(safename string) (types.DownloaderStatus, error) {
 }
 
 func handleDownloaderStatusDelete(ctxArg interface{}, statusFilename string) {
-	log.Printf("handleDownloaderStatusDelete for %s\n", statusFilename)
+// XXX	statusArg interface{}) {
 
+	log.Printf("handleDownloaderStatusDelete for %s\n", statusFilename)
 	ctx := ctxArg.(*zedmanagerContext)
-	key := statusFilename
+	// XXX use statusArg??
+	key := statusFilename // XXX different than safename? Whole path?
 	if m, ok := downloaderStatus[key]; !ok {
 		log.Printf("handleDownloaderStatusDelete for %s - not found\n",
 			key)
@@ -160,6 +169,5 @@ func handleDownloaderStatusDelete(ctxArg interface{}, statusFilename string) {
 		delete(downloaderStatus, key)
 		removeAIStatusSafename(ctx, key)
 	}
-	log.Printf("handleDownloaderStatusDelete done for %s\n",
-		statusFilename)
+	log.Printf("handleDownloaderStatusDelete done for %s\n", statusFilename)
 }

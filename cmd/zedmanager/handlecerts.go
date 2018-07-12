@@ -26,7 +26,8 @@ func handleCertObjStatusModify(ctxArg interface{}, key string,
 	log.Printf("handleCertObjStatusModify done for %s\n", uuidStr)
 }
 
-func handleCertObjStatusDelete(ctxArg interface{}, key string) {
+func handleCertObjStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
 
 	ctx := ctxArg.(*zedmanagerContext)
 	log.Printf("handleCertObjtatusDelete for %s\n", key)
@@ -45,7 +46,7 @@ func lookupCertObjStatus(ctx *zedmanagerContext, key string) *types.CertObjStatu
 	}
 	status := cast.CastCertObjStatus(st)
 	if status.Key() != key {
-		log.Printf("lookupCertObjStatus(%s) got %s; ignored %+v\n",
+		log.Printf("lookupCertObjStatus key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
 		return nil
 	}

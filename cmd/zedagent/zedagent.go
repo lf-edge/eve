@@ -666,7 +666,9 @@ func handleAppInstanceStatusModify(ctxArg interface{}, key string,
 	ctx.iteration += 1
 }
 
-func handleAppInstanceStatusDelete(ctxArg interface{}, key string) {
+func handleAppInstanceStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
 	ctx := ctxArg.(*zedagentContext)
 	uuidStr := key
 	PublishAppInfoToZedCloud(uuidStr, nil, ctx.assignableAdapters,
@@ -696,7 +698,9 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	log.Printf("handleDNSModify done for %s\n", key)
 }
 
-func handleDNSDelete(ctxArg interface{}, key string) {
+func handleDNSDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
 	log.Printf("handleDNSDelete for %s\n", key)
 	ctx := ctxArg.(*DNSContext)
 
@@ -712,9 +716,16 @@ func handleDNSDelete(ctxArg interface{}, key string) {
 
 // base os config/status event handlers
 // base os config create event
-func handleBaseOsCreate(ctxArg interface{}, key string,
+func handleBaseOsCreate(ctxArg interface{}, statusFilename string,
 	configArg interface{}) {
 	config := cast.CastBaseOsConfig(configArg)
+	// XXX change once key arg
+	key := config.Key()
+	if config.Key() != key {
+		log.Printf("handleBaseOsCreate key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, config.Key(), config)
+		return
+	}
 	uuidStr := config.Key()
 	ctx := ctxArg.(*zedagentContext)
 
@@ -724,10 +735,22 @@ func handleBaseOsCreate(ctxArg interface{}, key string,
 }
 
 // base os config modify event
-func handleBaseOsModify(ctxArg interface{}, key string,
+func handleBaseOsModify(ctxArg interface{}, statusFilename string,
 	configArg interface{}, statusArg interface{}) {
 	config := cast.CastBaseOsConfig(configArg)
+	// XXX change once key arg
+	key := config.Key()
+	if config.Key() != key {
+		log.Printf("handleBaseOsModify key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, config.Key(), config)
+		return
+	}
 	status := cast.CastBaseOsStatus(statusArg)
+	if status.Key() != key {
+		log.Printf("handleBaseOsModify key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, status.Key(), status)
+		return
+	}
 	uuidStr := config.Key()
 	ctx := ctxArg.(*zedagentContext)
 
@@ -749,9 +772,16 @@ func handleBaseOsModify(ctxArg interface{}, key string,
 }
 
 // base os config delete event
-func handleBaseOsDelete(ctxArg interface{}, key string,
-	statusArg interface{}) {
-	status := cast.CastBaseOsStatus(statusArg)
+func handleBaseOsDelete(ctxArg interface{}, statusFilename string,
+	configArg interface{}) {
+	status := configArg.(*types.BaseOsStatus)
+	// XXX change once key arg
+	key := status.Key()
+	if status.Key() != key {
+		log.Printf("handleBaseOsDelete key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, status.Key(), status)
+		return
+	}
 	ctx := ctxArg.(*zedagentContext)
 
 	log.Printf("handleBaseOsDelete for %s\n", status.BaseOsVersion)
@@ -777,7 +807,9 @@ func handleCertObjConfigModify(ctxArg interface{}, key string, configArg interfa
 	log.Printf("handleCertObjConfigModify(%s) done\n", key)
 }
 
-func handleCertObjConfigDelete(ctxArg interface{}, key string) {
+func handleCertObjConfigDelete(ctxArg interface{}, key string,
+	configArg interface{}) {
+
 	log.Printf("handleCertObjConfigDelete(%s)\n", key)
 	ctx := ctxArg.(*zedagentContext)
 	status := lookupCertObjStatus(ctx, key)
@@ -848,10 +880,17 @@ func unpublishCertObjStatus(ctx *zedagentContext, uuidStr string) {
 }
 
 // base os download status change event
-func handleBaseOsDownloadStatusModify(ctxArg interface{}, key string,
+func handleBaseOsDownloadStatusModify(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
 
 	status := cast.CastDownloaderStatus(statusArg)
+	// XXX change once key arg
+	key := status.Key()
+	if status.Key() != key {
+		log.Printf("handleBaseOsDownloadStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, status.Key(), status)
+		return
+	}
 	ctx := ctxArg.(*zedagentContext)
 	log.Printf("handleBaseOsDownloadStatusModify for %s\n",
 		status.Safename)
@@ -859,18 +898,25 @@ func handleBaseOsDownloadStatusModify(ctxArg interface{}, key string,
 }
 
 // base os download status delete event
-func handleBaseOsDownloadStatusDelete(ctxArg interface{}, key string) {
+func handleBaseOsDownloadStatusDelete(ctxArg interface{}, statusFilename string) {
 
 	ctx := ctxArg.(*zedagentContext)
-	log.Printf("handleBaseOsDownloadStatusDelete for %s\n", key)
-	removeDownloaderStatus(ctx, baseOsObj, key)
+	log.Printf("handleBaseOsDownloadStatusDelete for %s\n", statusFilename)
+	removeDownloaderStatus(ctx, baseOsObj, statusFilename)
 }
 
 // base os verification status change event
-func handleBaseOsVerifierStatusModify(ctxArg interface{}, key string,
+func handleBaseOsVerifierStatusModify(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
 
 	status := cast.CastVerifyImageStatus(statusArg)
+	// XXX change once key arg
+	key := status.Key()
+	if status.Key() != key {
+		log.Printf("handleBaseOsVerifierStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, status.Key(), status)
+		return
+	}
 	ctx := ctxArg.(*zedagentContext)
 	log.Printf("handleBaseOsVeriferStatusModify for %s\n",
 		status.Safename)
@@ -878,18 +924,25 @@ func handleBaseOsVerifierStatusModify(ctxArg interface{}, key string,
 }
 
 // base os verification status delete event
-func handleBaseOsVerifierStatusDelete(ctxArg interface{}, key string) {
+func handleBaseOsVerifierStatusDelete(ctxArg interface{}, statusFilename string) {
 
 	ctx := ctxArg.(*zedagentContext)
-	log.Printf("handleBaseOsVeriferStatusDelete for %s\n", key)
-	removeVerifierStatus(ctx, baseOsObj, key)
+	log.Printf("handleBaseOsVeriferStatusDelete for %s\n", statusFilename)
+	removeVerifierStatus(ctx, baseOsObj, statusFilename)
 }
 
 // app img verification status change event; for disk usage tracking
-func handleAppImgVerifierStatusModify(ctxArg interface{}, key string,
+func handleAppImgVerifierStatusModify(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
 
 	status := cast.CastVerifyImageStatus(statusArg)
+	// XXX change once key arg
+	key := status.Key()
+	if status.Key() != key {
+		log.Printf("handleAppImgVerifierStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, status.Key(), status)
+		return
+	}
 	ctx := ctxArg.(*zedagentContext)
 	log.Printf("handleAppImgVeriferStatusModify for %s\n",
 		status.Safename)
@@ -897,17 +950,24 @@ func handleAppImgVerifierStatusModify(ctxArg interface{}, key string,
 }
 
 // base os verification status delete event
-func handleAppImgVerifierStatusDelete(ctxArg interface{}, key string) {
+func handleAppImgVerifierStatusDelete(ctxArg interface{}, statusFilename string) {
 
 	ctx := ctxArg.(*zedagentContext)
-	log.Printf("handleAppImgVeriferStatusDelete for %s\n", key)
-	removeVerifierStatus(ctx, appImgObj, key)
+	log.Printf("handleAppImgVeriferStatusDelete for %s\n", statusFilename)
+	removeVerifierStatus(ctx, appImgObj, statusFilename)
 }
 
 // cerificate download status change event
-func handleCertObjDownloadStatusModify(ctxArg interface{}, key string,
+func handleCertObjDownloadStatusModify(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
 	status := cast.CastDownloaderStatus(statusArg)
+	// XXX change once key arg
+	key := status.Key()
+	if status.Key() != key {
+		log.Printf("handleCertObjDownloadStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, status.Key(), status)
+		return
+	}
 	ctx := ctxArg.(*zedagentContext)
 	log.Printf("handleCertObjDownloadStatusModify for %s\n",
 		status.Safename)
@@ -915,9 +975,9 @@ func handleCertObjDownloadStatusModify(ctxArg interface{}, key string,
 }
 
 // cerificate download status delete event
-func handleCertObjDownloadStatusDelete(ctxArg interface{}, key string) {
+func handleCertObjDownloadStatusDelete(ctxArg interface{}, statusFilename string) {
 
 	ctx := ctxArg.(*zedagentContext)
-	log.Printf("handleCertObjDownloadStatusDelete for %s\n", key)
-	removeDownloaderStatus(ctx, certObj, key)
+	log.Printf("handleCertObjDownloadStatusDelete for %s\n", statusFilename)
+	removeDownloaderStatus(ctx, certObj, statusFilename)
 }

@@ -123,7 +123,7 @@ func lookupAppNetworkConfig(ctx *zedmanagerContext, key string) *types.AppNetwor
 	}
 	config := cast.CastAppNetworkConfig(c)
 	if config.Key() != key {
-		log.Printf("lookupAppNetworkConfig(%s) got %s; ignored %+v\n",
+		log.Printf("lookupAppNetworkConfig key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, config.Key(), config)
 		return nil
 	}
@@ -139,7 +139,7 @@ func lookupAppNetworkStatus(ctx *zedmanagerContext, key string) *types.AppNetwor
 	}
 	status := cast.CastAppNetworkStatus(st)
 	if status.Key() != key {
-		log.Printf("lookupAppNetworkStatus(%s) got %s; ignored %+v\n",
+		log.Printf("lookupAppNetworkStatus key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
 		return nil
 	}
@@ -195,7 +195,8 @@ func handleAppNetworkStatusModify(ctxArg interface{}, key string,
 		key)
 }
 
-func handleAppNetworkStatusDelete(ctxArg interface{}, key string) {
+func handleAppNetworkStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
 
 	log.Printf("handleAppNetworkStatusDelete for %s\n", key)
 	ctx := ctxArg.(*zedmanagerContext)

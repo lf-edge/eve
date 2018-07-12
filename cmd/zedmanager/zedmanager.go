@@ -385,7 +385,9 @@ func handleAppInstanceConfigModify(ctxArg interface{}, key string, configArg int
 	log.Printf("handleAppInstanceConfigModify(%s) done\n", key)
 }
 
-func handleAppInstanceConfigDelete(ctxArg interface{}, key string) {
+func handleAppInstanceConfigDelete(ctxArg interface{}, key string,
+	configArg interface{}) {
+
 	log.Printf("handleAppInstanceConfigDelete(%s)\n", key)
 	ctx := ctxArg.(*zedmanagerContext)
 	status := lookupAppInstanceStatus(ctx, key)
@@ -408,7 +410,7 @@ func lookupAppInstanceStatus(ctx *zedmanagerContext, key string) *types.AppInsta
 	}
 	status := cast.CastAppInstanceStatus(st)
 	if status.Key() != key {
-		log.Printf("lookupAppInstanceStatus(%s) got %s; ignored %+v\n",
+		log.Printf("lookupAppInstanceStatus key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
 		return nil
 	}
@@ -425,7 +427,7 @@ func lookupAppInstanceConfig(ctx *zedmanagerContext, key string) *types.AppInsta
 	}
 	config := cast.CastAppInstanceConfig(c)
 	if config.Key() != key {
-		log.Printf("lookupAppInstanceConfig(%s) got %s; ignored %+v\n",
+		log.Printf("lookupAppInstanceConfig key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, config.Key(), config)
 		return nil
 	}
@@ -490,8 +492,10 @@ func handleModify(ctx *zedmanagerContext, key string,
 
 func handleDelete(ctx *zedmanagerContext, key string,
 	status *types.AppInstanceStatus) {
-	log.Printf("handleDelete(%v) for %s\n",
-		status.UUIDandVersion, status.DisplayName)
+
+	// XXX Remove %+v
+	log.Printf("handleDelete(%v) for %s: %+v\n",
+		status.UUIDandVersion, status.DisplayName, status, status)
 
 	removeAIStatus(ctx, status)
 	log.Printf("handleDelete done for %s\n", status.DisplayName)
@@ -512,9 +516,9 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	log.Printf("handleDNSModify done for %s\n", key)
 }
 
-func handleDNSDelete(ctxArg interface{}, key string) {
-	log.Printf("handleDNSDelete for %s\n", key)
+func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 
+	log.Printf("handleDNSDelete for %s\n", key)
 	if key != "global" {
 		log.Printf("handleDNSDelete: ignoring %s\n", key)
 		return

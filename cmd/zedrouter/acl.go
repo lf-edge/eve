@@ -89,8 +89,13 @@ func compileNetworkIpsetsStatus(ctx *zedrouterContext,
 	// walk all of netconfig - find all hosts which use this network
 	pub := ctx.pubAppNetworkStatus
 	items := pub.GetAll()
-	for _, st := range items {
+	for key, st := range items {
 		status := cast.CastAppNetworkStatus(st)
+		if status.Key() != key {
+			log.Printf("compileNetworkIpsetsStatus key/UUID mismatch %s vs %s; ignored %+v\n",
+				key, status.Key(), status)
+			continue
+		}
 		for _, olStatus := range status.OverlayNetworkList {
 			if olStatus.Network != netconfig.UUID {
 				continue
@@ -119,8 +124,13 @@ func compileNetworkIpsetsConfig(ctx *zedrouterContext,
 	// walk all of netconfig - find all hosts which use this network
 	sub := ctx.subAppNetworkConfig
 	items := sub.GetAll()
-	for _, c := range items {
+	for key, c := range items {
 		config := cast.CastAppNetworkConfig(c)
+		if config.Key() != key {
+			log.Printf("compileNetworkIpsetsConfig key/UUID mismatch %s vs %s; ignored %+v\n",
+				key, config.Key(), config)
+			continue
+		}
 		for _, olConfig := range config.OverlayNetworkList {
 			if olConfig.Network != netconfig.UUID {
 				continue
@@ -612,8 +622,13 @@ func updateNetworkACLConfiglet(ctx *zedrouterContext,
 	ipVer := 6
 	sub := ctx.subAppNetworkConfig
 	items := sub.GetAll()
-	for _, c := range items {
+	for key, c := range items {
 		config := cast.CastAppNetworkConfig(c)
+		if config.Key() != key {
+			log.Printf("updateNetworkACLConfiglet key/UUID mismatch %s vs %s; ignored %+v\n",
+				key, config.Key(), config)
+			continue
+		}
 		for _, olConfig := range config.OverlayNetworkList {
 			if olConfig.Network != netstatus.UUID {
 				continue
@@ -635,8 +650,13 @@ func updateNetworkACLConfiglet(ctx *zedrouterContext,
 	}
 	pub := ctx.pubAppNetworkStatus
 	items = pub.GetAll()
-	for _, st := range items {
+	for key, st := range items {
 		status := cast.CastAppNetworkStatus(st)
+		if status.Key() != key {
+			log.Printf("updateNetworkACLConfiglet key/UUID mismatch %s vs %s; ignored %+v\n",
+				key, status.Key(), status)
+			continue
+		}
 		for _, olStatus := range status.OverlayNetworkList {
 			if olStatus.Network != netstatus.UUID {
 				continue
@@ -664,8 +684,14 @@ func updateNetworkACLConfiglet(ctx *zedrouterContext,
 	oldRules = IptablesRuleList{}
 	ipVer = 4
 
-	for _, c := range items {
+	items = sub.GetAll()
+	for key, c := range items {
 		config := cast.CastAppNetworkConfig(c)
+		if config.Key() != key {
+			log.Printf("updateNetworkACLConfiglet key/UUID mismatch %s vs %s; ignored %+v\n",
+				key, config.Key(), config)
+			continue
+		}
 		for _, ulConfig := range config.UnderlayNetworkList {
 			if ulConfig.Network != netstatus.UUID {
 				continue
@@ -687,8 +713,14 @@ func updateNetworkACLConfiglet(ctx *zedrouterContext,
 		}
 		newRules = append(newRules, dropRules...)
 	}
-	for _, st := range items {
+	items = pub.GetAll()
+	for key, st := range items {
 		status := cast.CastAppNetworkStatus(st)
+		if status.Key() != key {
+			log.Printf("updateNetworkACLConfiglet key/UUID mismatch %s vs %s; ignored %+v\n",
+				key, status.Key(), status)
+			continue
+		}
 		for _, ulStatus := range status.UnderlayNetworkList {
 			if ulStatus.Network != netstatus.UUID {
 				continue

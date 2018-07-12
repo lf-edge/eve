@@ -204,8 +204,13 @@ func findActiveFileLocation(ctx *domainContext, filename string) bool {
 	log.Printf("findActiveFileLocation(%v)\n", filename)
 	pub := ctx.pubDomainStatus
 	items := pub.GetAll()
-	for _, st := range items {
+	for key, st := range items {
 		status := cast.CastDomainStatus(st)
+		if status.Key() != key {
+			log.Printf("findActiveFileLocation key/UUID mismatch %s vs %s; ignored %+v\n",
+				key, status.Key(), status)
+			continue
+		}
 		for _, ds := range status.DiskStatusList {
 			if filename == ds.ActiveFileLocation {
 				return true
@@ -262,7 +267,9 @@ func handleDomainConfigModify(ctxArg interface{}, key string, configArg interfac
 	log.Printf("handleDomainConfigModify(%s) done\n", key)
 }
 
-func handleDomainConfigDelete(ctxArg interface{}, key string) {
+func handleDomainConfigDelete(ctxArg interface{}, key string,
+	configArg interface{}) {
+
 	log.Printf("handleDomainConfigDelete(%s)\n", key)
 	ctx := ctxArg.(*domainContext)
 	status := lookupDomainStatus(ctx, key)
@@ -285,7 +292,7 @@ func lookupDomainStatus(ctx *domainContext, key string) *types.DomainStatus {
 	}
 	status := cast.CastDomainStatus(st)
 	if status.Key() != key {
-		log.Printf("lookupDomainStatus(%s) got %s; ignored %+v\n",
+		log.Printf("lookupDomainStatus key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
 		return nil
 	}
@@ -302,7 +309,7 @@ func lookupDomainConfig(ctx *domainContext, key string) *types.DomainConfig {
 	}
 	config := cast.CastDomainConfig(c)
 	if config.Key() != key {
-		log.Printf("lookupDomainConfig(%s) got %s; ignored %+v\n",
+		log.Printf("lookupDomainConfig key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, config.Key(), config)
 		return nil
 	}
@@ -1353,7 +1360,7 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	log.Printf("handleDNSModify done for %s\n", key)
 }
 
-func handleDNSDelete(ctxArg interface{}, key string) {
+func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 	log.Printf("handleDNSDelete for %s\n", key)
 
 	if key != "global" {

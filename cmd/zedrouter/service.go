@@ -78,7 +78,9 @@ func handleNetworkServiceCreate(ctx *zedrouterContext, key string, config types.
 	log.Printf("handleNetworkServiceCreate(%s) done\n", key)
 }
 
-func handleNetworkServiceDelete(ctxArg interface{}, key string) {
+func handleNetworkServiceDelete(ctxArg interface{}, key string,
+	configArg interface{}) {
+
 	log.Printf("handleNetworkServiceDelete(%s)\n", key)
 	ctx := ctxArg.(*zedrouterContext)
 	pub := ctx.pubNetworkServiceStatus
@@ -88,14 +90,14 @@ func handleNetworkServiceDelete(ctxArg interface{}, key string) {
 		return
 	}
 	status.PendingDelete = true
-	pub.Publish(status.Key(), *status)
+	pub.Publish(status.Key(), status)
 	if status.Activated {
 		doServiceInactivate(ctx, status)
-		pub.Publish(status.Key(), *status)
+		pub.Publish(status.Key(), &status)
 	}
 	doServiceDelete(status)
 	status.PendingDelete = false
-	pub.Publish(status.Key(), *status)
+	pub.Publish(status.Key(), &status)
 	pub.Unpublish(status.Key())
 	log.Printf("handleNetworkServiceDelete(%s) done\n", key)
 }
@@ -163,8 +165,13 @@ func maybeUpdateBridgeIPAddr(ctx *zedrouterContext, ifname string) {
 	log.Printf("maybeUpdateBridgeIPAddr(%s)\n", ifname)
 	pub := ctx.pubNetworkServiceStatus
 	items := pub.GetAll()
-	for _, st := range items {
+	for key, st := range items {
 		status := cast.CastNetworkServiceStatus(st)
+		if status.Key() != key {
+			log.Printf("maybeUpdateBridgeIPAddr key/UUID mismatch %s vs %s; ignored %+v\n",
+				key, status.Key(), status)
+			continue
+		}
 
 		if status.Adapter != ifname {
 			log.Printf("maybeUpdateBridgeIPAddr(%s) wrong adapter %s\n",
@@ -327,7 +334,7 @@ func lookupNetworkServiceConfig(ctx *zedrouterContext, key string) *types.Networ
 	}
 	config := cast.CastNetworkServiceConfig(c)
 	if config.Key() != key {
-		log.Printf("lookupNetworkServiceConfig(%s) got %s; ignored %+v\n",
+		log.Printf("lookupNetworkServiceConfig key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, config.Key(), config)
 		return nil
 	}
@@ -344,7 +351,7 @@ func lookupNetworkServiceStatus(ctx *zedrouterContext, key string) *types.Networ
 	}
 	status := cast.CastNetworkServiceStatus(st)
 	if status.Key() != key {
-		log.Printf("lookupNetworkServiceStatus(%s) got %s; ignored %+v\n",
+		log.Printf("lookupNetworkServiceStatus key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
 		return nil
 	}
@@ -410,8 +417,13 @@ func lookupAppLink(ctx *zedrouterContext, appLink uuid.UUID) *types.NetworkServi
 	log.Printf("lookupAppLink(%s)\n", appLink.String())
 	pub := ctx.pubNetworkServiceStatus
 	items := pub.GetAll()
-	for _, st := range items {
+	for key, st := range items {
 		status := cast.CastNetworkServiceStatus(st)
+		if status.Key() != key {
+			log.Printf("lookupAppLink key/UUID mismatch %s vs %s; ignored %+v\n",
+				key, status.Key(), status)
+			continue
+		}
 		if status.AppLink == appLink {
 			log.Printf("lookupAppLink(%s) found %s\n",
 				appLink.String(), status.Key())

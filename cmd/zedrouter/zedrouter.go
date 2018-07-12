@@ -517,6 +517,7 @@ func updateLispConfiglets(ctx *zedrouterContext, separateDataPlane bool) {
 	items := pub.GetAll()
 	for _, st := range items {
 		status := cast.CastAppNetworkStatus(st)
+		// XXX Key
 		for i, olStatus := range status.OverlayNetworkList {
 			olNum := i + 1
 			var olIfname string
@@ -563,7 +564,9 @@ func handleAppNetworkConfigModify(ctxArg interface{}, key string, configArg inte
 	log.Printf("handleAppNetworkConfigModify(%s) done\n", key)
 }
 
-func handleAppNetworkConfigDelete(ctxArg interface{}, key string) {
+func handleAppNetworkConfigDelete(ctxArg interface{}, key string,
+	configArg interface{}) {
+
 	log.Printf("handleAppNetworkConfigDelete(%s)\n", key)
 	ctx := ctxArg.(*zedrouterContext)
 	status := lookupAppNetworkStatus(ctx, key)
@@ -586,7 +589,7 @@ func lookupAppNetworkStatus(ctx *zedrouterContext, key string) *types.AppNetwork
 	}
 	status := cast.CastAppNetworkStatus(st)
 	if status.Key() != key {
-		log.Printf("lookupAppNetworkStatus(%s) got %s; ignored %+v\n",
+		log.Printf("lookupAppNetworkStatus key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
 		return nil
 	}
@@ -607,7 +610,7 @@ func lookupAppNetworkConfig(ctx *zedrouterContext, key string) *types.AppNetwork
 	}
 	config := cast.CastAppNetworkConfig(c)
 	if config.Key() != key {
-		log.Printf("lookupAppNetworkConfig(%s) got %s; ignored %+v\n",
+		log.Printf("lookupAppNetworkConfig key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, config.Key(), config)
 		return nil
 	}

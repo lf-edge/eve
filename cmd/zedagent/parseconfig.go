@@ -94,8 +94,13 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext) 
 func shutdownApps(getconfigCtx *getconfigContext) {
 	pub := getconfigCtx.pubAppInstanceConfig
 	items := pub.GetAll()
-	for _, c := range items {
+	for key, c := range items {
 		config := cast.CastAppInstanceConfig(c)
+		if config.Key() != key {
+			log.Printf("shutdownApps key/UUID mismatch %s vs %s; ignored %+v\n",
+				key, config.Key(), config)
+			continue
+		}
 		if config.Activate {
 			log.Printf("shutdownApps: clearing Activate for %s uuid %s\n",
 				config.DisplayName, config.Key())
@@ -612,8 +617,6 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 
 	// Check for items to delete first
 	items := ctx.pubNetworkObjectConfig.GetAll()
-	// XXX remove log
-	log.Printf("pubNetworkObjectConfig.GetAll got %d, %v\n", len(items), items)
 	for k, _ := range items {
 		netEnt := lookupNetworkId(k, cfgNetworks)
 		if netEnt != nil {
@@ -664,56 +667,13 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 			// XXX return error? Ignore for now
 			return
 		}
-		// XXX Hack to make existing Dhcp == 0 become an implicit
-		// XXX remove
-		// DHCP = Server with an associated NAT service
-		if config.Dhcp == types.DT_NOOP {
-			config.Dhcp = types.DT_SERVER
-
-			// XXX Order since Service checks ...
-			ctx.pubNetworkObjectConfig.Publish(config.Key(),
-				&config)
-
-			_, subnet, _ := net.ParseCIDR("172.28.1.10/24")
-			config.Subnet = *subnet
-			// XXX dnsmasq should use BridgeIPAddr as the router?
-			config.DhcpRange.Start = net.ParseIP("172.28.1.10")
-			config.DhcpRange.End = net.ParseIP("172.28.1.254")
-			log.Printf("Converting DT_NOOP to DT_SERVER plus NAT service for %s type %d\n",
-				config.UUID, config.Type)
-			createNATNetworkService(ctx, config.UUID)
-		}
 		ctx.pubNetworkObjectConfig.Publish(config.Key(),
 			&config)
 	}
 }
 
-func createNATNetworkService(ctx *getconfigContext,
-	id uuid.UUID) {
-
-	// Generate a new UUID to avoid confusion between the NetworkObject
-	// and the NetworkService.
-	// V5 will be the same if the id and name are the same
-	name := "emulated NAT service"
-	id2 := uuid.NewV5(id, name)
-	service := types.NetworkServiceConfig{
-		UUID:        id2,
-		Internal:    true,
-		DisplayName: name,
-		Type:        types.NST_NAT,
-		Activate:    true,
-		AppLink:     id,
-		Adapter:     "freeuplink",
-	}
-	// XXX unpublish when DT_NOOP Network is deleted?
-	ctx.pubNetworkServiceConfig.Publish(service.UUID.String(),
-		&service)
-}
-
 func parseIpspec(ipspec *zconfig.Ipspec, config *types.NetworkObjectConfig) error {
 	config.Dhcp = types.DhcpType(ipspec.Dhcp)
-	// XXX
-	log.Printf("parseIpspec: dhcp %d\n", config.Dhcp)
 	config.DomainName = ipspec.GetDomain()
 	if s := ipspec.GetSubnet(); s != "" {
 		_, subnet, err := net.ParseCIDR(s)
@@ -766,14 +726,17 @@ func publishNetworkServiceConfig(ctx *getconfigContext,
 
 	// Check for items to delete first
 	items := ctx.pubNetworkServiceConfig.GetAll()
-	// XXX remove log
-	log.Printf("pubNetworkServiceConfig.GetAll got %d, %v\n", len(items), items)
 	for k, c := range items {
 		svcEnt := lookupServiceId(k, cfgServices)
 		if svcEnt != nil {
 			continue
 		}
 		config := cast.CastNetworkServiceConfig(c)
+		if config.Key() != k {
+			log.Printf("publishNetworkServiceConfig key/UUID mismatch %s vs %s; ignored %+v\n",
+				k, config.Key(), config)
+			continue
+		}
 		if config.Internal {
 			log.Printf("publishNetworkServiceConfig: not deleting internal %s: %v\n", k, config)
 			continue

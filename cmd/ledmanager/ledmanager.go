@@ -170,6 +170,7 @@ func handleLedBlinkModify(ctxArg interface{}, configFilename string,
 	log.Printf("handleLedBlinkModify done for %s\n", configFilename)
 }
 
+// XXX add configArg?
 func handleLedBlinkDelete(ctxArg interface{}, configFilename string) {
 	log.Printf("handleLedBlinkDelete for %s\n", configFilename)
 	ctx := ctxArg.(*ledManagerContext)

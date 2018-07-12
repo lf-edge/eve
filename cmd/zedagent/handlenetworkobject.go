@@ -10,6 +10,7 @@ import (
 	"log"
 )
 
+// XXX rename to NetworkObjectStatus?
 func handleNetworkObjectModify(ctxArg interface{}, key string, statusArg interface{}) {
 	log.Printf("handleNetworkObjectCreate(%s)\n", key)
 	// XXX ctx := ctxArg.(*zedagentContext)
@@ -27,7 +28,10 @@ func handleNetworkObjectModify(ctxArg interface{}, key string, statusArg interfa
 	log.Printf("handleNetworkObjectCreate(%s) done\n", key)
 }
 
-func handleNetworkObjectDelete(ctxArg interface{}, key string) {
+// XXX rename to NetworkObjectStatus?
+func handleNetworkObjectDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
 	log.Printf("handleNetworkObjectDelete(%s)\n", key)
 	// XXX how do we find and delete any error
 	// ctx := ctxArg.(*zedagentContext)

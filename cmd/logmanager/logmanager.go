@@ -277,7 +277,8 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 		key, newAddrCount)
 }
 
-func handleDNSDelete(ctxArg interface{}, key string) {
+func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
+
 	log.Printf("handleDNSDelete for %s\n", key)
 	ctx := ctxArg.(*DNSContext)
 
