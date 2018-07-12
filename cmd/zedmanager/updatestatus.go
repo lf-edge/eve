@@ -17,8 +17,13 @@ func updateAIStatusSafename(ctx *zedmanagerContext, safename string) {
 
 	sub := ctx.subAppInstanceConfig
 	items := sub.GetAll()
-	for _, c := range items {
+	for key, c := range items {
 		config := cast.CastAppInstanceConfig(c)
+		if config.Key() != key {
+			log.Printf("updateAIStatusSafename key/UUID mismatch %s vs %s; ignored %+v\n",
+				key, config.Key(), config)
+			continue
+		}
 		if debug {
 			log.Printf("Processing AppInstanceConfig for UUID %s\n",
 				config.UUIDandVersion.UUID)
@@ -92,8 +97,13 @@ func removeAIStatusSafename(ctx *zedmanagerContext, safename string) {
 
 	pub := ctx.pubAppInstanceStatus
 	items := pub.GetAll()
-	for _, st := range items {
+	for key, st := range items {
 		status := cast.CastAppInstanceStatus(st)
+		if status.Key() != key {
+			log.Printf("removeAIStatusSafename key/UUID mismatch %s vs %s; ignored %+v\n",
+				key, status.Key(), status)
+			continue
+		}
 		if debug {
 			log.Printf("Processing AppInstanceStatus for UUID %s\n",
 				status.UUIDandVersion.UUID)
@@ -718,6 +728,8 @@ func doInactivateHalt(ctx *zedmanagerContext, uuidStr string,
 		status.ErrorTime = ds.LastErrTime
 		changed = true
 	}
+	// XXX network is still around! Need to call doInactivate in doRemove?
+	// XXX fix assymetry
 	status.Activated = false
 	status.ActivateInprogress = false
 	changed = true

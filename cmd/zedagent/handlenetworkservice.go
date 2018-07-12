@@ -26,7 +26,9 @@ func handleNetworkServiceModify(ctxArg interface{}, key string, statusArg interf
 	log.Printf("handleNetworkServiceCreate(%s) done\n", key)
 }
 
-func handleNetworkServiceDelete(ctxArg interface{}, key string) {
+func handleNetworkServiceDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
 	log.Printf("handleNetworkServiceDelete(%s)\n", key)
 	// XXX how do we find and delete any error
 	// ctx := ctxArg.(*zedagentContext)

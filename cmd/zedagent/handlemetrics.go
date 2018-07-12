@@ -187,27 +187,31 @@ func handleDomainStatusModify(ctxArg interface{}, key string,
 	}
 }
 
-func handleDomainStatusDelete(ctxArg interface{}, key string) {
+func handleDomainStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
 
 	ctx := ctxArg.(*zedagentContext)
 	log.Printf("handleDomainStatusDelete for %s\n", key)
-	// Use shadow copy to determine what changed
-	if m, ok := domainStatus[key]; !ok {
-		log.Printf("handleDomainStatusDelete for %s - not found\n",
-			key)
-	} else {
-		// Detect if any changes relevant to the device status report
-		if ioAdapterListChanged(m, types.DomainStatus{}) {
-			ctx.TriggerDeviceInfo = true
-		}
-
-		if _, ok := appInterfaceAndNameList[m.DomainName]; ok {
-			log.Printf("appInterfaceAndnameList for %v\n", m.DomainName)
-			delete(appInterfaceAndNameList, m.DomainName)
-		}
-		log.Printf("Domain map delete for %v\n", key)
-		delete(domainStatus, key)
+	status := cast.CastDomainStatus(statusArg)
+	if status.Key() != key {
+		log.Printf("handleDomainStatusDelete key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, status.Key(), status)
+		return
 	}
+
+	// Detect if any changes relevant to the device status report
+	if ioAdapterListChanged(status, types.DomainStatus{}) {
+		ctx.TriggerDeviceInfo = true
+	}
+
+	if _, ok := appInterfaceAndNameList[status.DomainName]; ok {
+		log.Printf("appInterfaceAndnameList for %v\n",
+			status.DomainName)
+		delete(appInterfaceAndNameList, status.DomainName)
+	}
+
+	// XXX remove domainStatus once we can count it below
+	delete(domainStatus, key)
 	log.Printf("handleDomainStatusDelete done for %s\n", key)
 }
 
@@ -220,7 +224,7 @@ func lookupDomainStatus(ctx *zedagentContext, key string) *types.DomainStatus {
 	}
 	status := cast.CastDomainStatus(st)
 	if status.Key() != key {
-		log.Printf("lookupDomainStatus(%s) got %s; ignored %+v\n",
+		log.Printf("lookupDomainStatus key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
 		return nil
 	}
@@ -969,6 +973,8 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 		// XXX could have been assigned away; hack to check for domains
 		_, _, err := types.IoBundleToPci(ib)
 		if err != nil {
+			// XXX length of sub? Need ctx to look at items
+			// XXX separate global haveDomains bool?
 			if len(domainStatus) == 0 {
 				if debug {
 					log.Printf("Not reporting non-existent PCI device %d %s: %v\n",

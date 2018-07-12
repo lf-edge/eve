@@ -479,6 +479,13 @@ func removeVerifyObjectStatus(status *types.VerifyImageStatus) {
 func handleAppImgObjCreate(ctxArg interface{}, statusFilename string,
 	configArg interface{}) {
 	config := cast.CastVerifyImageConfig(configArg)
+	// XXX change once key arg
+	key := config.Key()
+	if config.Key() != key {
+		log.Printf("handleAppImgObjCreate key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, config.Key(), config)
+		return
+	}
 	ctx := ctxArg.(*verifierContext)
 
 	log.Printf("handleCreate(%v) for %s\n",
@@ -489,6 +496,13 @@ func handleAppImgObjCreate(ctxArg interface{}, statusFilename string,
 func handleBaseOsObjCreate(ctxArg interface{}, statusFilename string,
 	configArg interface{}) {
 	config := cast.CastVerifyImageConfig(configArg)
+	// XXX change once key arg
+	key := config.Key()
+	if config.Key() != key {
+		log.Printf("handleBasePsObjCreate key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, config.Key(), config)
+		return
+	}
 	ctx := ctxArg.(*verifierContext)
 
 	handleCreate(ctx, baseOsObj, &config)
@@ -859,7 +873,19 @@ func markObjectAsVerified(config *types.VerifyImageConfig,
 func handleModify(ctxArg interface{}, statusFilename string,
 	configArg interface{}, statusArg interface{}) {
 	config := cast.CastVerifyImageConfig(configArg)
+	// XXX change once key arg
+	key := config.Key()
+	if config.Key() != key {
+		log.Printf("handleModify key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, config.Key(), config)
+		return
+	}
 	status := cast.CastVerifyImageStatus(statusArg)
+	if status.Key() != key {
+		log.Printf("handleModify key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, status.Key(), status)
+		return
+	}
 	ctx := ctxArg.(*verifierContext)
 
 	// Note no comparison on version
@@ -916,6 +942,13 @@ func handleModify(ctxArg interface{}, statusFilename string,
 func handleDelete(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
 	status := cast.CastVerifyImageStatus(statusArg)
+	// XXX change once key arg
+	key := status.Key()
+	if status.Key() != key {
+		log.Printf("handleDelete key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, status.Key(), status)
+		return
+	}
 
 	log.Printf("handleDelete(%v) objType %s\n",
 		status.Safename, status.ObjType)

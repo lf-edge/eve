@@ -22,8 +22,13 @@ func certObjHandleStatusUpdateSafename(ctx *zedagentContext, safename string) {
 
 	sub := ctx.subCertObjConfig
 	items := sub.GetAll()
-	for _, c := range items {
+	for key, c := range items {
 		config := cast.CastCertObjConfig(c)
+		if config.Key() != key {
+			log.Printf("certObjHandleStatusUpdateSafename key/UUID mismatch %s vs %s; ignored %+v\n",
+				key, config.Key(), config)
+			continue
+		}
 		for _, sc := range config.StorageConfigList {
 
 			safename1 := types.UrlToSafename(sc.DownloadURL, sc.ImageSha256)
@@ -280,7 +285,7 @@ func lookupCertObjConfig(ctx *zedagentContext, key string) *types.CertObjConfig 
 	}
 	config := cast.CastCertObjConfig(c)
 	if config.Key() != key {
-		log.Printf("lookupCertObjConfig(%s) got %s; ignored %+v\n",
+		log.Printf("lookupCertObjConfig key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, config.Key(), config)
 		return nil
 	}
@@ -296,7 +301,7 @@ func lookupCertObjStatus(ctx *zedagentContext, key string) *types.CertObjStatus 
 	}
 	status := cast.CastCertObjStatus(st)
 	if status.Key() != key {
-		log.Printf("lookupCertObjStatus(%s) got %s; ignored %+v\n",
+		log.Printf("lookupCertObjStatus key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
 		return nil
 	}

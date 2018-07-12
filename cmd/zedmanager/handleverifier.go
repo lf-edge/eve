@@ -123,6 +123,13 @@ func dumpVerifierStatus() {
 func handleVerifyImageStatusModify(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
 	status := cast.CastVerifyImageStatus(statusArg)
+	// XXX change once key arg
+	key := status.Key()
+	if status.Key() != key {
+		log.Printf("handleVerifyImageStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, status.Key(), status)
+		return
+	}
 	ctx := ctxArg.(*zedmanagerContext)
 	log.Printf("handleVerifyImageStatusModify for %s\n",
 		status.Safename)
@@ -139,7 +146,7 @@ func handleVerifyImageStatusModify(ctxArg interface{}, statusFilename string,
 		}
 		verifierStatus = make(map[string]types.VerifyImageStatus)
 	}
-	key := status.Safename
+	key = status.Safename
 	changed := false
 	if m, ok := verifierStatus[key]; ok {
 		if status.State != m.State {
@@ -220,11 +227,12 @@ func LookupVerifyImageStatusAny(safename string,
 }
 
 func handleVerifyImageStatusDelete(ctxArg interface{}, statusFilename string) {
-	log.Printf("handleVerifyImageStatusDelete for %s\n",
-		statusFilename)
+// XXX	statusArg interface{}) {
 
+	log.Printf("handleVerifyImageStatusDelete for %s\n", statusFilename)
 	ctx := ctxArg.(*zedmanagerContext)
-	key := statusFilename
+	// XXX use statusArg
+	key := statusFilename // XXX different than safename? Whole path?
 	if m, ok := verifierStatus[key]; !ok {
 		log.Printf("handleVerifyImageStatusDelete for %s - not found\n",
 			key)
@@ -239,8 +247,7 @@ func handleVerifyImageStatusDelete(ctxArg interface{}, statusFilename string) {
 		}
 		removeAIStatusSafename(ctx, key)
 	}
-	log.Printf("handleVerifyImageStatusDelete done for %s\n",
-		statusFilename)
+	log.Printf("handleVerifyImageStatusDelete done for %s\n", statusFilename)
 }
 
 // check whether the cert files are installed

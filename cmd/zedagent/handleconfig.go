@@ -396,8 +396,13 @@ func checkCurrentAppInstances(getconfigCtx *getconfigContext,
 	// get the current set of App instances
 	pub := getconfigCtx.pubAppInstanceConfig
 	items := pub.GetAll()
-	for _, c := range items {
+	for key, c := range items {
 		config := cast.CastAppInstanceConfig(c)
+		if config.Key() != key {
+			log.Printf("checkCurrentAppInstances key/UUID mismatch %s vs %s; ignored %+v\n",
+				key, config.Key(), config)
+			continue
+		}
 		key := config.Key()
 		found := false
 		for _, app := range Apps {

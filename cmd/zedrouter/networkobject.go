@@ -63,20 +63,23 @@ func handleNetworkObjectCreate(ctx *zedrouterContext, key string, config types.N
 	log.Printf("handleNetworkObjectCreate(%s) done\n", key)
 }
 
-func handleNetworkObjectDelete(ctxArg interface{}, key string) {
+func handleNetworkObjectDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
 	log.Printf("handleNetworkObjectDelete(%s)\n", key)
 	ctx := ctxArg.(*zedrouterContext)
 	pub := ctx.pubNetworkObjectStatus
-	status := lookupNetworkObjectStatus(ctx, key)
-	if status == nil {
-		log.Printf("handleNetworkObjectDelete: unknown %s\n", key)
+	status := cast.CastNetworkObjectStatus(statusArg)
+	if status.Key() != key {
+		log.Printf("handleNetworkObjectDelete key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, status.Key(), status)
 		return
 	}
 	status.PendingDelete = true
-	pub.Publish(status.Key(), *status)
-	doNetworkDelete(status)
+	pub.Publish(status.Key(), status)
+	doNetworkDelete(&status)
 	status.PendingDelete = false
-	pub.Publish(status.Key(), *status)
+	pub.Publish(status.Key(), status)
 	pub.Unpublish(status.Key())
 	log.Printf("handleNetworkObjectDelete(%s) done\n", key)
 }
@@ -353,7 +356,7 @@ func lookupNetworkObjectConfig(ctx *zedrouterContext, key string) *types.Network
 	}
 	config := cast.CastNetworkObjectConfig(c)
 	if config.Key() != key {
-		log.Printf("lookupNetworkObjectConfig(%s) got %s; ignored %+v\n",
+		log.Printf("lookupNetworkObjectConfig: key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, config.Key(), config)
 		return nil
 	}
@@ -370,7 +373,7 @@ func lookupNetworkObjectStatus(ctx *zedrouterContext, key string) *types.Network
 	}
 	status := cast.CastNetworkObjectStatus(st)
 	if status.Key() != key {
-		log.Printf("lookupNetworkObjectStatus(%s) got %s; ignored %+v\n",
+		log.Printf("lookupNetworkObjectStatus: key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
 		return nil
 	}

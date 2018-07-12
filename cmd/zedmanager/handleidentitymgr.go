@@ -46,7 +46,7 @@ func lookupEIDConfig(ctx *zedmanagerContext, key string) *types.EIDConfig {
 	}
 	config := cast.CastEIDConfig(c)
 	if config.Key() != key {
-		log.Printf("lookupEIDConfig(%s) got %s; ignored %+v\n",
+		log.Printf("lookupEIDConfig key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, config.Key(), config)
 		return nil
 	}
@@ -62,7 +62,7 @@ func lookupEIDStatus(ctx *zedmanagerContext, key string) *types.EIDStatus {
 	}
 	status := cast.CastEIDStatus(st)
 	if status.Key() != key {
-		log.Printf("lookupEIDStatus(%s) got %s; ignored %+v\n",
+		log.Printf("lookupEIDStatus key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
 		return nil
 	}
@@ -113,9 +113,10 @@ func handleEIDStatusModify(ctxArg interface{}, keyArg string,
 	log.Printf("handleEIDStatusModify done for %s\n", key)
 }
 
-func handleEIDStatusDelete(ctxArg interface{}, key string) {
-	log.Printf("handleEIDStatusDelete for %s\n", key)
+func handleEIDStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
 
+	log.Printf("handleEIDStatusDelete for %s\n", key)
 	ctx := ctxArg.(*zedmanagerContext)
 	removeAIStatusUUID(ctx, key)
 	log.Printf("handleEIDStatusDelete done for %s\n", key)

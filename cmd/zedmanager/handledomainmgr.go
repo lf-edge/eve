@@ -142,7 +142,7 @@ func lookupDomainConfig(ctx *zedmanagerContext, key string) *types.DomainConfig 
 	}
 	config := cast.CastDomainConfig(c)
 	if config.Key() != key {
-		log.Printf("lookupDomainConfig(%s) got %s; ignored %+v\n",
+		log.Printf("lookupDomainConfig key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, config.Key(), config)
 		return nil
 	}
@@ -158,7 +158,7 @@ func lookupDomainStatus(ctx *zedmanagerContext, key string) *types.DomainStatus 
 	}
 	status := cast.CastDomainStatus(st)
 	if status.Key() != key {
-		log.Printf("lookupDomainStatus(%s) got %s; ignored %+v\n",
+		log.Printf("lookupDomainStatus key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
 		return nil
 	}
@@ -208,9 +208,10 @@ func handleDomainStatusModify(ctxArg interface{}, key string,
 	log.Printf("handleDomainStatusModify done for %s\n", key)
 }
 
-func handleDomainStatusDelete(ctxArg interface{}, key string) {
-	log.Printf("handleDomainStatusDelete for %s\n", key)
+func handleDomainStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
 
+	log.Printf("handleDomainStatusDelete for %s\n", key)
 	ctx := ctxArg.(*zedmanagerContext)
 	removeAIStatusUUID(ctx, key)
 	log.Printf("handleDomainStatusDelete done for %s\n", key)

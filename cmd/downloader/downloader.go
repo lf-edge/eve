@@ -198,6 +198,13 @@ func Run() {
 func handleAppImgObjCreate(ctxArg interface{}, statusFilename string,
 	configArg interface{}) {
 	config := cast.CastDownloaderConfig(configArg)
+	// XXX change once key arg
+	key := config.Key()
+	if config.Key() != key {
+		log.Printf("handleAppImgObjCreate key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, config.Key(), config)
+		return
+	}
 	ctx := ctxArg.(*downloaderContext)
 
 	handleCreate(ctx, appImgObj, config, statusFilename)
@@ -206,6 +213,13 @@ func handleAppImgObjCreate(ctxArg interface{}, statusFilename string,
 func handleBaseOsObjCreate(ctxArg interface{}, statusFilename string,
 	configArg interface{}) {
 	config := cast.CastDownloaderConfig(configArg)
+	// XXX change once key arg
+	key := config.Key()
+	if config.Key() != key {
+		log.Printf("handleBaseOsObjCreate key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, config.Key(), config)
+		return
+	}
 	ctx := ctxArg.(*downloaderContext)
 
 	handleCreate(ctx, baseOsObj, config, statusFilename)
@@ -214,6 +228,13 @@ func handleBaseOsObjCreate(ctxArg interface{}, statusFilename string,
 func handleCertObjCreate(ctxArg interface{}, statusFilename string,
 	configArg interface{}) {
 	config := cast.CastDownloaderConfig(configArg)
+	// XXX change once key arg
+	key := config.Key()
+	if config.Key() != key {
+		log.Printf("handleCertObjCreate key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, config.Key(), config)
+		return
+	}
 	ctx := ctxArg.(*downloaderContext)
 
 	handleCreate(ctx, certObj, config, statusFilename)
@@ -290,7 +311,19 @@ func handleCreate(ctx *downloaderContext, objType string,
 func handleModify(ctxArg interface{}, statusFilename string,
 	configArg interface{}, statusArg interface{}) {
 	config := cast.CastDownloaderConfig(configArg)
+	// XXX change once key arg
+	key := config.Key()
+	if config.Key() != key {
+		log.Printf("handleModify key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, config.Key(), config)
+		return
+	}
 	status := cast.CastDownloaderStatus(statusArg)
+	if status.Key() != key {
+		log.Printf("handleModify key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, status.Key(), status)
+		return
+	}
 	ctx := ctxArg.(*downloaderContext)
 
 	log.Printf("handleModify(%v) objType %s for %s\n",
@@ -386,7 +419,13 @@ func deletefile(dirname string, status *types.DownloaderStatus) {
 func handleDelete(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
 	status := cast.CastDownloaderStatus(statusArg)
-
+	// XXX change once key arg
+	key := status.Key()
+	if status.Key() != key {
+		log.Printf("handleDelete key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, status.Key(), status)
+		return
+	}
 	log.Printf("handleDelete(%v) objType %s for %s\n",
 		status.Safename, status.ObjType, status.DownloadURL)
 
@@ -927,9 +966,9 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	log.Printf("handleDNSModify done for %s\n", key)
 }
 
-func handleDNSDelete(ctxArg interface{}, key string) {
-	log.Printf("handleDNSDelete for %s\n", key)
+func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 
+	log.Printf("handleDNSDelete for %s\n", key)
 	if key != "global" {
 		log.Printf("handleDNSDelete: ignoring %s\n", key)
 		return

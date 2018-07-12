@@ -11,19 +11,19 @@ import (
 	"reflect"
 )
 
-func handleDNCModify(ctxArg interface{}, configFilename string,
+func handleDNCModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 	config := cast.CastDeviceNetworkConfig(configArg)
 	ctx := ctxArg.(*clientContext)
 
-	if configFilename != ctx.manufacturerModel {
+	if key != ctx.manufacturerModel {
 		if debug {
 			log.Printf("handleDNCModify: ignoring %s - expecting %s\n",
-				configFilename, ctx.manufacturerModel)
+				key, ctx.manufacturerModel)
 		}
 		return
 	}
-	log.Printf("handleDNCModify for %s\n", configFilename)
+	log.Printf("handleDNCModify for %s\n", key)
 
 	ctx.deviceNetworkConfig = config
 	new, _ := devicenetwork.MakeDeviceNetworkStatus(config,
@@ -35,15 +35,16 @@ func handleDNCModify(ctxArg interface{}, configFilename string,
 		ctx.deviceNetworkStatus = new
 		doDNSUpdate(ctx)
 	}
-	log.Printf("handleDNCModify done for %s\n", configFilename)
+	log.Printf("handleDNCModify done for %s\n", key)
 }
 
-func handleDNCDelete(ctxArg interface{}, configFilename string) {
-	log.Printf("handleDNCDelete for %s\n", configFilename)
+func handleDNCDelete(ctxArg interface{}, key string, statusArg interface{}) {
+
+	log.Printf("handleDNCDelete for %s\n", key)
 	ctx := ctxArg.(*clientContext)
 
-	if configFilename != "global" {
-		log.Printf("handleDNSDelete: ignoring %s\n", configFilename)
+	if key != "global" {
+		log.Printf("handleDNCDelete: ignoring %s\n", key)
 		return
 	}
 	new := types.DeviceNetworkStatus{}
@@ -54,7 +55,7 @@ func handleDNCDelete(ctxArg interface{}, configFilename string) {
 		ctx.deviceNetworkStatus = new
 		doDNSUpdate(ctx)
 	}
-	log.Printf("handleDNCDelete done for %s\n", configFilename)
+	log.Printf("handleDNCDelete done for %s\n", key)
 }
 
 func doDNSUpdate(ctx *clientContext) {

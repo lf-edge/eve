@@ -438,7 +438,7 @@ func (pub *Publication) GetAll() map[string]interface{} {
 //  fooAll := s1.GetAll()
 
 type SubModifyHandler func(ctx interface{}, key string, status interface{})
-type SubDeleteHandler func(ctx interface{}, key string)
+type SubDeleteHandler func(ctx interface{}, key string, status interface{})
 type SubRestartHandler func(ctx interface{}, restarted bool)
 
 type Subscription struct {
@@ -624,7 +624,7 @@ func handleDelete(ctxArg interface{}, key string) {
 		sub.dump("after handleDelete")
 	}
 	if sub.DeleteHandler != nil {
-		(sub.DeleteHandler)(sub.userCtx, key)
+		(sub.DeleteHandler)(sub.userCtx, key, m)
 	}
 	if debug {
 		log.Printf("pubsub.handleModify(%s) done for key %s\n",

@@ -146,15 +146,18 @@ func handleEIDConfigModify(ctxArg interface{}, key string, configArg interface{}
 	log.Printf("handleEIDConfigModify(%s) done\n", key)
 }
 
-func handleEIDConfigDelete(ctxArg interface{}, key string) {
+func handleEIDConfigDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
 	log.Printf("handleEIDConfigDelete(%s)\n", key)
 	ctx := ctxArg.(*identityContext)
-	status := lookupEIDStatus(ctx, key)
-	if status == nil {
-		log.Printf("handleEIDConfigDelete: unknown %s\n", key)
+	status := cast.CastEIDStatus(statusArg)
+	if status.Key() != key {
+		log.Printf("handleEIDConfigDelete key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, status.Key(), status)
 		return
 	}
-	handleDelete(ctx, key, status)
+	handleDelete(ctx, key, &status)
 	log.Printf("handleEIDConfigDelete(%s) done\n", key)
 }
 
@@ -169,7 +172,7 @@ func lookupEIDStatus(ctx *identityContext, key string) *types.EIDStatus {
 	}
 	status := cast.CastEIDStatus(st)
 	if status.Key() != key {
-		log.Printf("lookupEIDStatus(%s) got %s; ignored %+v\n",
+		log.Printf("lookupEIDStatus key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
 		return nil
 	}
@@ -186,7 +189,7 @@ func lookupEIDConfig(ctx *identityContext, key string) *types.EIDConfig {
 	}
 	config := cast.CastEIDConfig(c)
 	if config.Key() != key {
-		log.Printf("lookupEIDConfig(%s) got %s; ignored %+v\n",
+		log.Printf("lookupEIDConfig key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, config.Key(), config)
 		return nil
 	}

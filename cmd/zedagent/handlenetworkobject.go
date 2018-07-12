@@ -27,7 +27,9 @@ func handleNetworkObjectModify(ctxArg interface{}, key string, statusArg interfa
 	log.Printf("handleNetworkObjectCreate(%s) done\n", key)
 }
 
-func handleNetworkObjectDelete(ctxArg interface{}, key string) {
+func handleNetworkObjectDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
 	log.Printf("handleNetworkObjectDelete(%s)\n", key)
 	// XXX how do we find and delete any error
 	// ctx := ctxArg.(*zedagentContext)
