@@ -37,8 +37,7 @@ type keyMap struct {
 }
 
 // We always publish to our collection.
-// XXX always need to write directory to have a checkpoint on
-// XXX restart; need to read restart content in Publish?
+// We always write to a file in order to have a checkpoint on restart
 const publishToSock = false     // XXX
 const subscribeFromDir = true   // XXX
 const subscribeFromSock = false // XXX
@@ -82,8 +81,8 @@ func PublishScope(agentName string, agentScope string, topicType interface{}) (*
 }
 
 // Init function to create directory and socket listener based on above settings
-// XXX should read current state from dirName and insert in pub.km as initial
-// values. XXX also read restarted file to set restarted?
+// We read any checkpointed state from dirName and insert in pub.km as initial
+// values.
 func publishImpl(agentName string, agentScope string,
 	topicType interface{}) (*Publication, error) {
 
@@ -107,7 +106,14 @@ func publishImpl(agentName string, agentScope string,
 				name, err)
 			return nil, errors.New(errStr)
 		}
+	} else {
+		// Read existig status from dir
+		pub.populate()
+		if debug {
+			pub.dump("after populate")
+		}
 	}
+
 	if publishToSock {
 		sockName := SockName(name)
 		if _, err := os.Stat(sockName); err == nil {
@@ -128,6 +134,56 @@ func publishImpl(agentName string, agentScope string,
 		go pub.publisher()
 	}
 	return pub, nil
+}
+
+// Only reads json files. Sets restarted if that file was found.
+func (pub *Publication) populate() {
+	name := pub.nameString()
+	dirName := PubDirName(name)
+	foundRestarted := false
+
+	log.Printf("populate(%s)\n", name)
+
+	files, err := ioutil.ReadDir(dirName)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, file := range files {
+		if !strings.HasSuffix(file.Name(), ".json") {
+			if file.Name() == "restarted" {
+				foundRestarted = true
+			}
+			continue
+		}
+		// Remove .json from name */
+		key := strings.Split(file.Name(), ".json")[0]
+
+		statusFile := dirName + "/" + file.Name()
+		if _, err := os.Stat(statusFile); err != nil {
+			// File just vanished!
+			log.Printf("populate: File disappeared <%s>\n",
+				statusFile)
+			continue
+		}
+
+		log.Printf("populate found key %s file %s\n", key, statusFile)
+
+		sb, err := ioutil.ReadFile(statusFile)
+		if err != nil {
+			log.Printf("populate: %s for %s\n", err, statusFile)
+			continue
+		}
+		var item interface{}
+		if err := json.Unmarshal(sb, &item); err != nil {
+			log.Printf("populate: %s file: %s\n",
+				err, statusFile)
+			continue
+		}
+		pub.km.key[key] = item
+	}
+	pub.km.restarted = foundRestarted
+	log.Printf("populate(%s) done\n", name)
 }
 
 // go routine which runs the AF_UNIX server
@@ -291,7 +347,7 @@ func (pub *Publication) Unpublish(key string) error {
 	} else {
 		errStr := fmt.Sprintf("Unpublish(%s/%s): key does not exist",
 			name, key)
-		log.Printf("XXX %s\n", errStr)
+		log.Printf("%s\n", errStr)
 		return errors.New(errStr)
 	}
 	delete(pub.km.key, key)
@@ -327,7 +383,7 @@ func (pub *Publication) ClearRestarted() error {
 }
 
 // Record the restarted state and send over socket/file.
-// XXX TBD when sending/resynchronizing send the restarted indication last
+// XXXTBD when sending/resynchronizing send the restarted indication last
 func (pub *Publication) restartImpl(restarted bool) error {
 	name := pub.nameString()
 	log.Printf("pub.restartImpl(%s, %v)\n", name, restarted)
@@ -394,8 +450,9 @@ func (pub *Publication) dump(infoStr string) {
 		if err != nil {
 			log.Fatal(err, "json Marshal in dump")
 		}
-		log.Printf("key %s val %s\n", key, b)
+		log.Printf("\tkey %s val %s\n", key, b)
 	}
+	log.Printf("\trestarted %t\n", name, pub.km.restarted)
 }
 
 func (pub *Publication) Get(key string) (interface{}, error) {
@@ -571,7 +628,6 @@ func handleModify(ctxArg interface{}, key string, item interface{}) {
 	}
 	// NOTE: without a deepCopy we would just save a pointer since
 	// item is a pointer. That would cause failures.
-	// XXX deepCopy should help with cmp as well.
 	newItem := deepCopy(item)
 	m, ok := sub.km.key[key]
 	if ok {
@@ -664,8 +720,9 @@ func (sub *Subscription) dump(infoStr string) {
 		if err != nil {
 			log.Fatal(err, "json Marshal in dump")
 		}
-		log.Printf("key %s val %s\n", key, b)
+		log.Printf("\tkey %s val %s\n", key, b)
 	}
+	log.Printf("\trestarted %t\n", name, sub.km.restarted)
 }
 
 func (sub *Subscription) Get(key string) (interface{}, error) {
