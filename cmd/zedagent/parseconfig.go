@@ -236,7 +236,7 @@ func parseBaseOsConfig(getconfigCtx *getconfigContext,
 	}
 
 	// XXX defer until we have validated; call with BaseOsStatus
-	failedUpdate := assignBaseOsPartition(baseOsList)
+	failedUpdate := assignBaseOsPartition(getconfigCtx, baseOsList)
 	if failedUpdate {
 		// Proceed with applications etc. User has to retry with a
 		// different update than the one that failed.
@@ -257,7 +257,9 @@ func parseBaseOsConfig(getconfigCtx *getconfigContext,
 
 // XXX should work on BaseOsStatus once PartitionLabel moves to BaseOsStatus
 // Returns true if there is a failed ugrade in the config
-func assignBaseOsPartition(baseOsList []*types.BaseOsConfig) bool {
+func assignBaseOsPartition(getconfigCtx *getconfigContext,
+	baseOsList []*types.BaseOsConfig) bool {
+
 	curPartName := zboot.GetCurrentPartition()
 	otherPartName := zboot.GetOtherPartition()
 	curPartVersion := zboot.GetShortVersion(curPartName)
@@ -275,7 +277,7 @@ func assignBaseOsPartition(baseOsList []*types.BaseOsConfig) bool {
 			continue
 		}
 		uuidStr := baseOs.Key()
-		curBaseOsConfig := baseOsConfigGet(uuidStr)
+		curBaseOsConfig := lookupBaseOsConfigPub(getconfigCtx, uuidStr)
 		// XXX isn't curBaseOsConfig the same as baseOs???
 		// We are iterating over all the baseOsConfigs.
 
@@ -351,6 +353,23 @@ func assignBaseOsPartition(baseOsList []*types.BaseOsConfig) bool {
 			baseOs.BaseOsVersion, baseOs.PartitionLabel)
 	}
 	return false
+}
+
+func lookupBaseOsConfigPub(getconfigCtx *getconfigContext, key string) *types.BaseOsConfig {
+
+	sub := getconfigCtx.pubBaseOsConfig
+	c, _ := sub.Get(key)
+	if c == nil {
+		log.Printf("lookupBaseOsConfig(%s) not found\n", key)
+		return nil
+	}
+	config := cast.CastBaseOsConfig(c)
+	if config.Key() != key {
+		log.Printf("lookupBaseOsConfig(%s) got %s; ignored %+v\n",
+			key, config.Key(), config)
+		return nil
+	}
+	return &config
 }
 
 func rejectReinstallFailed(config *types.BaseOsConfig, otherPartName string) {
@@ -1153,43 +1172,28 @@ func removeAppInstanceConfig(getconfigCtx *getconfigContext, key string) {
 	pub.Unpublish(key)
 }
 
-func writeBaseOsConfig(baseOsConfig *types.BaseOsConfig, uuidStr string) {
+func publishBaseOsConfig(getconfigCtx *getconfigContext,
+	status *types.BaseOsConfig) {
 
-	log.Printf("writeBaseOsConfig UUID %s, %s\n",
-		uuidStr, baseOsConfig.BaseOsVersion)
-	configFilename := zedagentBaseOsConfigDirname + "/" + uuidStr + ".json"
-	bytes, err := json.Marshal(baseOsConfig)
-
-	if err != nil {
-		log.Fatal(err, "json Marshal BaseOsConfig")
-	}
-
-	if debug {
-		log.Printf("Writing baseOs config UUID %s, %s\n",
-			configFilename, bytes)
-	}
-
-	err = pubsub.WriteRename(configFilename, bytes)
-	if err != nil {
-		log.Fatal(err)
-	}
+	key := status.Key()
+	log.Printf("publishBaseOsConfig UUID %s, %s\n",
+		key, status.BaseOsVersion)
+	pub := getconfigCtx.pubBaseOsConfig
+	pub.Publish(key, status)
+	publishDeviceInfo = true
 }
 
-func writeBaseOsStatus(baseOsStatus *types.BaseOsStatus, uuidStr string) {
+func unpublishBaseOsConfig(getconfigCtx *getconfigContext, uuidStr string) {
 
-	log.Printf("writeBaseOsStatus UUID %s, %s\n",
-		uuidStr, baseOsStatus.BaseOsVersion)
-	statusFilename := zedagentBaseOsStatusDirname + "/" + uuidStr + ".json"
-	bytes, err := json.Marshal(baseOsStatus)
-	if err != nil {
-		log.Fatal(err, "json Marshal BaseOsStatus")
+	key := uuidStr
+	log.Printf("unpublishBaseOsConfig UUID %s\n", key)
+	pub := getconfigCtx.pubBaseOsConfig
+	c, _ := pub.Get(key)
+	if c == nil {
+		log.Printf("unpublishBaseOsConfig(%s) not found\n", key)
+		return
 	}
-
-	err = pubsub.WriteRename(statusFilename, bytes)
-	if err != nil {
-		log.Fatal(err)
-	}
-	publishDeviceInfo = true
+	pub.Unpublish(key)
 }
 
 func getCertObjects(uuidAndVersion types.UUIDandVersion,
@@ -1311,12 +1315,11 @@ func createBaseOsConfig(getconfigCtx *getconfigContext, baseOsList []*types.Base
 			continue
 		}
 		uuidStr := baseOs.Key()
-		configFilename := zedagentBaseOsConfigDirname + "/" + uuidStr + ".json"
-		// file not present
-		if _, err := os.Stat(configFilename); err != nil {
+		curBaseOs := lookupBaseOsConfigPub(getconfigCtx, uuidStr)
+		if curBaseOs == nil {
 			log.Printf("createBaseOsConfig new %s %s\n",
 				uuidStr, baseOs.BaseOsVersion)
-			writeBaseOsConfig(baseOs, uuidStr)
+			publishBaseOsConfig(getconfigCtx, baseOs)
 			if certList[idx] != nil {
 				publishCertObjConfig(getconfigCtx, certList[idx],
 					uuidStr)
@@ -1325,19 +1328,10 @@ func createBaseOsConfig(getconfigCtx *getconfigContext, baseOsList []*types.Base
 		} else {
 			log.Printf("createBaseOsConfig update %s %s\n",
 				uuidStr, baseOs.BaseOsVersion)
-			curBaseOs := &types.BaseOsConfig{}
-			bytes, err := ioutil.ReadFile(configFilename)
-			if err != nil {
-				log.Fatal(err)
-			}
-			err = json.Unmarshal(bytes, curBaseOs)
-			if err != nil {
-				log.Fatal(err)
-			}
-			// changed file
+			// changed content
 			// XXX switch to Equal?
 			if !reflect.DeepEqual(curBaseOs, baseOs) {
-				writeBaseOsConfig(baseOs, uuidStr)
+				publishBaseOsConfig(getconfigCtx, baseOs)
 				if certList[idx] != nil {
 					publishCertObjConfig(getconfigCtx,
 						certList[idx], uuidStr)

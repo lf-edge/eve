@@ -9,7 +9,7 @@ import (
 
 func initMaps() {
 
-	initBaseOsMaps()
+	// XXX remove
 	initDownloaderMaps()
 	initVerifierMaps()
 }

@@ -79,10 +79,6 @@ const (
 	verifierBaseDirname = zedBaseDirname + "/" + verifierModulename
 	verifierRunDirname  = zedRunDirname + "/" + verifierModulename
 
-	// base os config/status holder
-	zedagentBaseOsConfigDirname = baseDirname + "/" + baseOsObj + "/config"
-	zedagentBaseOsStatusDirname = runDirname + "/" + baseOsObj + "/status"
-
 	// base os download config/status holder
 	downloaderBaseOsStatusDirname  = downloaderRunDirname + "/" + baseOsObj + "/status"
 	downloaderCertObjStatusDirname = downloaderRunDirname + "/" + certObj + "/status"
@@ -122,7 +118,6 @@ type zedagentContext struct {
 	subCertObjConfig         *pubsub.Subscription
 	pubCertObjStatus         *pubsub.Publication
 	TriggerDeviceInfo        bool
-	pubBaseOsConfig          *pubsub.Publication
 	subBaseOsConfig          *pubsub.Subscription
 	pubBaseOsStatus          *pubsub.Publication
 	pubBaseOsDownloadConfig  *pubsub.Publication
@@ -135,9 +130,6 @@ type zedagentContext struct {
 }
 
 var debug = false
-
-// XXX temporary hack for writeBaseOsStatus
-var zedagentCtx zedagentContext
 
 // XXX used by baseOs code to indicate that something changed
 // Will not be needed once we have a separate baseosmgr since
@@ -179,7 +171,7 @@ func Run() {
 	aa := types.AssignableAdapters{}
 	subAa := adapters.Subscribe(&aa, model)
 
-	zedagentCtx = zedagentContext{assignableAdapters: &aa}
+	zedagentCtx := zedagentContext{assignableAdapters: &aa}
 
 	// Publish NetworkConfig and NetworkServiceConfig for zedmanager/zedrouter
 	pubNetworkObjectConfig, err := pubsub.Publish(agentName,
@@ -237,7 +229,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	pubBaseOsConfig.ClearRestarted()
-	zedagentCtx.pubBaseOsConfig = pubBaseOsConfig
+	getconfigCtx.pubBaseOsConfig = pubBaseOsConfig
 
 	pubBaseOsStatus, err := pubsub.Publish(agentName,
 		types.BaseOsStatus{})
@@ -607,7 +599,7 @@ func Run() {
 }
 
 func publishDevInfo(ctx *zedagentContext) {
-	PublishDeviceInfoToZedCloud(baseOsStatusMap, ctx.assignableAdapters,
+	PublishDeviceInfoToZedCloud(ctx.pubBaseOsStatus, ctx.assignableAdapters,
 		ctx.iteration)
 	ctx.iteration += 1
 }
@@ -628,17 +620,6 @@ func handleInit() {
 
 func initializeDirs() {
 
-	// XXX remove noObjTypes := []string{}
-	// zedagentObjTypes := []string{baseOsObj, certObj}
-	// zedagentVerifierObjTypes := []string{baseOsObj}
-
-	// create the module object based config/status dirs
-	// XXX remove
-	// createConfigStatusDirs(downloaderModulename, zedagentObjTypes)
-	// createConfigStatusDirs(zedagentModulename, zedagentObjTypes)
-	// createConfigStatusDirs(zedmanagerModulename, noObjTypes)
-	// createConfigStatusDirs(verifierModulename, zedagentVerifierObjTypes)
-
 	// create persistent holder directory
 	if _, err := os.Stat(persistDir); err != nil {
 		log.Printf("Create %s\n", persistDir)
@@ -656,42 +637,6 @@ func initializeDirs() {
 		log.Printf("Create %s\n", objectDownloadDirname)
 		if err := os.MkdirAll(objectDownloadDirname, 0700); err != nil {
 			log.Fatal(err)
-		}
-	}
-}
-
-// create module and object based config/status directories
-func createConfigStatusDirs(moduleName string, objTypes []string) {
-
-	jobDirs := []string{"config", "status"}
-	zedBaseDirs := []string{zedBaseDirname, zedRunDirname}
-	baseDirs := make([]string, len(zedBaseDirs))
-
-	log.Printf("Creating config/status dirs for %s\n", moduleName)
-
-	for idx, dir := range zedBaseDirs {
-		baseDirs[idx] = dir + "/" + moduleName
-	}
-
-	for idx, baseDir := range baseDirs {
-
-		dirName := baseDir + "/" + jobDirs[idx]
-		if _, err := os.Stat(dirName); err != nil {
-			log.Printf("Create %s\n", dirName)
-			if err := os.MkdirAll(dirName, 0700); err != nil {
-				log.Fatal(err)
-			}
-		}
-
-		// Creating Object based holder dirs
-		for _, objType := range objTypes {
-			dirName := baseDir + "/" + objType + "/" + jobDirs[idx]
-			if _, err := os.Stat(dirName); err != nil {
-				log.Printf("Create %s\n", dirName)
-				if err := os.MkdirAll(dirName, 0700); err != nil {
-					log.Fatal(err)
-				}
-			}
 		}
 	}
 }
@@ -840,8 +785,7 @@ func handleBaseOsModify(ctxArg interface{}, key string,
 
 	// update the version field, uuis being the same
 	status.UUIDandVersion = config.UUIDandVersion
-	baseOsStatusSet(uuidStr, &status)
-	writeBaseOsStatus(&status, uuidStr)
+	publishBaseOsStatus(ctx, &status)
 
 	addOrUpdateBaseOsConfig(ctx, uuidStr, config)
 	publishDeviceInfo = true
@@ -997,7 +941,6 @@ func handleBaseOsVerifierStatusModify(ctxArg interface{}, key string,
 }
 
 // base os verification status delete event
-// XXX -> key
 func handleBaseOsVerifierStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 

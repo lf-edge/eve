@@ -20,7 +20,6 @@ import (
 	"log"
 	"mime"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 )
@@ -78,6 +77,7 @@ type getconfigContext struct {
 	pubAppInstanceConfig        *pubsub.Publication
 	pubAppNetworkConfig         *pubsub.Publication
 	pubCertObjConfig            *pubsub.Publication
+	pubBaseOsConfig             *pubsub.Publication
 }
 
 // tlsConfig is initialized once i.e. effectively a constant
@@ -383,7 +383,7 @@ func cleanupOldConfig(getconfigCtx *getconfigContext,
 	appDel := checkCurrentAppInstances(getconfigCtx, config)
 
 	// delete old base os configs, if any
-	baseDel := checkCurrentBaseOsFiles(getconfigCtx, config)
+	baseDel := checkCurrentBaseOs(getconfigCtx, config)
 	return appDel || baseDel
 }
 
@@ -422,53 +422,30 @@ func checkCurrentAppInstances(getconfigCtx *getconfigContext,
 	return deleted
 }
 
-func checkCurrentBaseOsFiles(getconfigCtx *getconfigContext,
+func checkCurrentBaseOs(getconfigCtx *getconfigContext,
 	config *zconfig.EdgeDevConfig) bool {
 
 	deleted := false
-	// get the current set of baseOs files
-	curBaseOsFilenames, err := ioutil.ReadDir(zedagentBaseOsConfigDirname)
-	if err != nil {
-		log.Printf("%v for %s\n", err, zedagentBaseOsConfigDirname)
-		curBaseOsFilenames = nil
-	}
-
+	// get the current set of baseOs configs
+	pub := getconfigCtx.pubBaseOsConfig
+	items := pub.GetAll()
 	baseOses := config.GetBase()
 	// delete any baseOs config which is not present in the new set
-	for _, curBaseOs := range curBaseOsFilenames {
-		curBaseOsFilename := curBaseOs.Name()
-
-		// file type json
-		if strings.HasSuffix(curBaseOsFilename, ".json") {
-			found := false
-			for _, baseOs := range baseOses {
-				baseOsFilename := baseOs.Uuidandversion.Uuid + ".json"
-				if baseOsFilename == curBaseOsFilename {
-					found = true
-					break
-				}
+	for uuidStr, _ := range items {
+		found := false
+		for _, baseOs := range baseOses {
+			if baseOs.Uuidandversion.Uuid == uuidStr {
+				found = true
+				break
 			}
-			// baseOS instance not found, delete
-			if !found {
-				removeBaseOsEntry(getconfigCtx,
-					curBaseOsFilename)
-				deleted = true
-			}
+		}
+		// baseOS instance not found, delete
+		if !found {
+			unpublishBaseOsConfig(getconfigCtx, uuidStr)
+			// XXX what is the uuid for the cert objects?
+			unpublishCertObjConfig(getconfigCtx, uuidStr)
+			deleted = true
 		}
 	}
 	return deleted
-}
-
-func removeBaseOsEntry(getconfigCtx *getconfigContext, baseOsFilename string) {
-
-	uuidStr := strings.Split(baseOsFilename, ".")[0]
-	log.Printf("removeBaseOsEntry %s, remove baseOs entry\n", uuidStr)
-
-	// remove base os holder config file
-	err := os.Remove(zedagentBaseOsConfigDirname + "/" + baseOsFilename)
-	if err != nil {
-		log.Printf("removeBaseOsEntry: failed %s\n", err)
-	}
-	// XXX what is the uuid for the vrty objects?
-	unpublishCertObjConfig(getconfigCtx, uuidStr)
 }

@@ -23,6 +23,7 @@ import (
 	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/netclone"
+	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/zboot"
 	"github.com/zededa/go-provision/zedcloud"
@@ -764,7 +765,7 @@ func RoundFromKbytesToMbytes(byteCount uint64) uint64 {
 
 // This function is called per change, hence needs to try over all uplinks
 // send report on each uplink.
-func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
+func PublishDeviceInfoToZedCloud(pubBaseOsStatus *pubsub.Publication,
 	aa *types.AssignableAdapters, iteration int) {
 
 	var ReportInfo = &zmet.ZInfoMsg{}
@@ -891,7 +892,9 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 		// XXX sanity check on activated vs. curPart
 		// XXX are there cases where we've started download without
 		// having assigned a partLabel?
-		for _, bos := range baseOsStatus {
+		items := pubBaseOsStatus.GetAll()
+		for _, st := range items {
+			bos := cast.CastBaseOsStatus(st)
 			if bos.PartitionLabel == partLabel {
 				return &bos
 			}
