@@ -66,7 +66,7 @@ type Publication struct {
 	// Private fields
 	topicType  interface{}
 	agentName  string
-	agentScope string // XXX use for objType
+	agentScope string
 	topic      string
 	km         keyMap
 	sockName   string
@@ -451,7 +451,7 @@ type Subscription struct {
 	sendChan   chan<- string
 	topicType  interface{}
 	agentName  string
-	agentScope string // XXX use for objType
+	agentScope string
 	topic      string
 	km         keyMap
 	userCtx    interface{}

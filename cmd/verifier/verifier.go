@@ -114,7 +114,7 @@ func Run() {
 	ctx := verifierContext{}
 
 	// Set up our publications before the subscriptions so ctx is set
-	pubAppImgStatus, err := pubsub.Publish(agentName,
+	pubAppImgStatus, err := pubsub.PublishScope(agentName, appImgObj,
 		types.DownloaderStatus{})
 	if err != nil {
 		log.Fatal(err)
@@ -122,7 +122,7 @@ func Run() {
 	ctx.pubAppImgStatus = pubAppImgStatus
 	pubAppImgStatus.ClearRestarted()
 
-	pubBaseOsStatus, err := pubsub.Publish(agentName,
+	pubBaseOsStatus, err := pubsub.PublishScope(agentName, baseOsObj,
 		types.DownloaderStatus{})
 	if err != nil {
 		log.Fatal(err)
@@ -130,7 +130,7 @@ func Run() {
 	ctx.pubBaseOsStatus = pubBaseOsStatus
 	pubBaseOsStatus.ClearRestarted()
 
-	subAppImgConfig, err := pubsub.Subscribe("zedmanager",
+	subAppImgConfig, err := pubsub.SubscribeScope("zedmanager", appImgObj,
 		types.DownloaderConfig{}, false, &ctx)
 	if err != nil {
 		log.Fatal(err)
@@ -140,7 +140,7 @@ func Run() {
 	ctx.subAppImgConfig = subAppImgConfig
 	subAppImgConfig.Activate()
 
-	subBaseOsConfig, err := pubsub.Subscribe("zedagent",
+	subBaseOsConfig, err := pubsub.SubscribeScope("zedagent", baseOsObj,
 		types.DownloaderConfig{}, false, &ctx)
 	if err != nil {
 		log.Fatal(err)
