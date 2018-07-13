@@ -287,3 +287,15 @@ func CastAssignableAdapters(in interface{}) types.AssignableAdapters {
 	}
 	return output
 }
+
+func CastGlobalDownloadConfig(in interface{}) types.GlobalDownloadConfig {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastGlobalDownloadConfig")
+	}
+	var output types.GlobalDownloadConfig
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "json Unmarshal in CastGlobalDownloadConfig")
+	}
+	return output
+}

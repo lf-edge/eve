@@ -13,7 +13,6 @@
 package downloader
 
 import (
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -24,7 +23,6 @@ import (
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
-	"github.com/zededa/go-provision/watch"
 	"github.com/zededa/go-provision/wrap"
 	"github.com/zededa/go-provision/zedcloud"
 	"github.com/zededa/shared/libs/zedUpload"
@@ -42,16 +40,8 @@ const (
 	certObj   = "cert.obj"
 	agentName = "downloader"
 
-	moduleName            = agentName
-	zedBaseDirname        = "/var/tmp"
-	zedRunDirname         = "/var/run"
-	baseDirname           = zedBaseDirname + "/" + moduleName
-	runDirname            = zedRunDirname + "/" + moduleName
 	persistDir            = "/persist"
 	objectDownloadDirname = persistDir + "/downloads"
-
-	downloaderConfigDirname = baseDirname + "/config"
-	downloaderStatusDirname = runDirname + "/status"
 )
 
 // Go doesn't like this as a constant
@@ -63,17 +53,20 @@ var (
 var Version = "No version specified"
 
 type downloaderContext struct {
-	dCtx                   *zedUpload.DronaCtx
-	subDeviceNetworkStatus *pubsub.Subscription
-	subAppImgConfig        *pubsub.Subscription
-	pubAppImgStatus        *pubsub.Publication
-	subBaseOsConfig        *pubsub.Subscription
-	pubBaseOsStatus        *pubsub.Publication
-	subCertObjConfig       *pubsub.Subscription
-	pubCertObjStatus       *pubsub.Publication
+	dCtx                    *zedUpload.DronaCtx
+	subDeviceNetworkStatus  *pubsub.Subscription
+	subAppImgConfig         *pubsub.Subscription
+	pubAppImgStatus         *pubsub.Publication
+	subBaseOsConfig         *pubsub.Subscription
+	pubBaseOsStatus         *pubsub.Publication
+	subCertObjConfig        *pubsub.Subscription
+	pubCertObjStatus        *pubsub.Publication
+	subGlobalDownloadConfig *pubsub.Subscription
+	pubGlobalDownloadStatus *pubsub.Publication
+	deviceNetworkStatus     types.DeviceNetworkStatus
+	globalConfig            types.GlobalDownloadConfig
+	globalStatus            types.GlobalDownloadStatus
 }
-
-var deviceNetworkStatus types.DeviceNetworkStatus
 
 func Run() {
 	logf, err := agentlog.Init(agentName)
@@ -92,10 +85,6 @@ func Run() {
 		log.Fatal(err)
 	}
 	log.Printf("Starting %s\n", agentName)
-	for _, ot := range downloaderObjTypes {
-		// XXX fix restarted - can we remove it? Per objdir.
-		watch.CleanupRestartedObj(agentName, ot)
-	}
 
 	cms := zedcloud.GetCloudMetrics() // Need type of data
 	pub, err := pubsub.Publish(agentName, cms)
@@ -112,7 +101,6 @@ func Run() {
 
 	// Any state needed by handler functions
 	ctx := downloaderContext{}
-	ctx.dCtx = downloaderInit()
 
 	subDeviceNetworkStatus, err := pubsub.Subscribe("zedrouter",
 		types.DeviceNetworkStatus{}, false, &ctx)
@@ -124,16 +112,41 @@ func Run() {
 	ctx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
+	subGlobalDownloadConfig, err := pubsub.Subscribe("",
+		types.GlobalDownloadConfig{}, false, &ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subGlobalDownloadConfig.ModifyHandler = handleGlobalConfigModify
+	ctx.subGlobalDownloadConfig = subGlobalDownloadConfig
+	subGlobalDownloadConfig.Activate()
+
+	pubGlobalDownloadStatus, err := pubsub.Publish(agentName,
+		types.GlobalDownloadStatus{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubGlobalDownloadStatus = pubGlobalDownloadStatus
+
 	// First wait to have some uplinks with addresses
 	// Looking at any uplinks since we can do baseOS download over all
-	for types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus) == 0 {
+	// Also ensure GlobalDownloadConfig has been read
+	for types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus) == 0 ||
+		ctx.globalConfig.MaxSpace == 0 {
+		log.Printf("Waiting for uplink addresses or Global Config\n")
+
 		select {
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
+
+		case change := <-subGlobalDownloadConfig.C:
+			subGlobalDownloadConfig.ProcessChange(change)
 		}
 	}
 	log.Printf("Have %d uplinks addresses to use\n",
-		types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus))
+		types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus))
+
+	ctx.dCtx = downloaderInit(&ctx)
 
 	// Set up our publications before the subscriptions so ctx is set
 	pubAppImgStatus, err := pubsub.PublishScope(agentName, appImgObj,
@@ -190,6 +203,10 @@ func Run() {
 	ctx.subCertObjConfig = subCertObjConfig
 	subCertObjConfig.Activate()
 
+	pubAppImgStatus.SignalRestarted()
+	pubBaseOsStatus.SignalRestarted()
+	pubCertObjStatus.SignalRestarted()
+
 	for {
 		select {
 
@@ -204,6 +221,9 @@ func Run() {
 
 		case change := <-subBaseOsConfig.C:
 			subBaseOsConfig.ProcessChange(change)
+
+		case change := <-subGlobalDownloadConfig.C:
+			subGlobalDownloadConfig.ProcessChange(change)
 
 		case <-publishTimer.C:
 			err := pub.Publish("global", zedcloud.GetCloudMetrics())
@@ -321,7 +341,7 @@ func lookupDownloaderStatus(pub *pubsub.Publication, key string) *types.Download
 	}
 	status := cast.CastDownloaderStatus(st)
 	if status.Key() != key {
-		log.Printf("lookupDownloaderStatus(%s) got %s; ignored %+v\n",
+		log.Printf("lookupDownloaderStatus key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
 		return nil
 	}
@@ -352,9 +372,9 @@ func handleCreate(ctx *downloaderContext, objType string,
 
 	// Check if we have space
 	kb := types.RoundupToKB(config.Size)
-	if uint(kb) >= globalStatus.RemainingSpace {
+	if uint(kb) >= ctx.globalStatus.RemainingSpace {
 		errString := fmt.Sprintf("Would exceed remaining space %d vs %d\n",
-			kb, globalStatus.RemainingSpace)
+			kb, ctx.globalStatus.RemainingSpace)
 		log.Println(errString)
 		status.PendingAdd = false
 		status.Size = 0
@@ -370,8 +390,8 @@ func handleCreate(ctx *downloaderContext, objType string,
 	// Update reserved space. Keep reserved until doDelete
 	// XXX RefCount -> 0 should keep it reserved.
 	status.ReservedSpace = uint(types.RoundupToKB(config.Size))
-	globalStatus.ReservedSpace += status.ReservedSpace
-	updateRemainingSpace()
+	ctx.globalStatus.ReservedSpace += status.ReservedSpace
+	updateRemainingSpace(ctx)
 
 	// If RefCount == 0 then we don't yet download.
 	if config.RefCount == 0 {
@@ -462,12 +482,12 @@ func doDelete(ctx *downloaderContext, key string, locDirname string,
 	// verifier handles the verified directory
 
 	status.State = types.INITIAL
-	globalStatus.UsedSpace -= uint(types.RoundupToKB(status.Size))
+	ctx.globalStatus.UsedSpace -= uint(types.RoundupToKB(status.Size))
 	status.Size = 0
 
 	// XXX Asymmetric; handleCreate reserved on RefCount 0. We unreserve
 	// going back to RefCount 0. FIXed
-	updateRemainingSpace()
+	updateRemainingSpace(ctx)
 	updateDownloaderStatus(ctx, status)
 }
 
@@ -504,12 +524,12 @@ func handleDelete(ctx *downloaderContext, key string,
 	status.PendingDelete = true
 	updateDownloaderStatus(ctx, status)
 
-	globalStatus.ReservedSpace -= status.ReservedSpace
+	ctx.globalStatus.ReservedSpace -= status.ReservedSpace
 	status.ReservedSpace = 0
-	globalStatus.UsedSpace -= uint(types.RoundupToKB(status.Size))
+	ctx.globalStatus.UsedSpace -= uint(types.RoundupToKB(status.Size))
 	status.Size = 0
 
-	updateRemainingSpace()
+	updateRemainingSpace(ctx)
 
 	updateDownloaderStatus(ctx, status)
 
@@ -525,40 +545,15 @@ func handleDelete(ctx *downloaderContext, key string,
 
 // helper functions
 
-var globalConfig types.GlobalDownloadConfig
-var globalStatus types.GlobalDownloadStatus
-var globalStatusFilename string
-
-func downloaderInit() *zedUpload.DronaCtx {
+func downloaderInit(ctx *downloaderContext) *zedUpload.DronaCtx {
 
 	initializeDirs()
 
-	configFilename := downloaderConfigDirname + "/global"
-	statusFilename := downloaderStatusDirname + "/global"
+	log.Printf("MaxSpace %d\n", ctx.globalConfig.MaxSpace)
 
-	// now start
-	globalStatusFilename = statusFilename
-
-	// Switch to pubsub... means /var/tmp/zededa/GlobalDownloadConfig/global.json and Status
-	// Read GlobalDownloadConfig to find MaxSpace
-	// Then determine currently used space and remaining.
-	cb, err := ioutil.ReadFile(configFilename)
-	if err != nil {
-		log.Printf("%s for %s\n", err, configFilename)
-		log.Fatal(err)
-	}
-
-	if err := json.Unmarshal(cb, &globalConfig); err != nil {
-		log.Printf("%s GlobalDownloadConfig file: %s\n",
-			err, configFilename)
-		log.Fatal(err)
-	}
-
-	log.Printf("MaxSpace %d\n", globalConfig.MaxSpace)
-
-	globalStatus.UsedSpace = 0
-	globalStatus.ReservedSpace = 0
-	updateRemainingSpace()
+	ctx.globalStatus.UsedSpace = 0
+	ctx.globalStatus.ReservedSpace = 0
+	updateRemainingSpace(ctx)
 
 	// XXX how do we find out when verifier cleans up duplicates etc?
 	// XXX run this periodically... What about downloads inprogress
@@ -567,13 +562,13 @@ func downloaderInit() *zedUpload.DronaCtx {
 	// We read objectDownloadDirname/* and determine how much space
 	// is used. Place in GlobalDownloadStatus. Calculate remaining space.
 	totalUsed := sizeFromDir(objectDownloadDirname)
-	globalStatus.UsedSpace = uint(types.RoundupToKB(totalUsed))
+	ctx.globalStatus.UsedSpace = uint(types.RoundupToKB(totalUsed))
 	// Note that the UsedSpace calculated during initialization can exceed
 	// MaxSpace, and RemainingSpace is a uint!
-	if globalStatus.UsedSpace > globalConfig.MaxSpace {
-		globalStatus.UsedSpace = globalConfig.MaxSpace
+	if ctx.globalStatus.UsedSpace > ctx.globalConfig.MaxSpace {
+		ctx.globalStatus.UsedSpace = ctx.globalConfig.MaxSpace
 	}
-	updateRemainingSpace()
+	updateRemainingSpace(ctx)
 
 	// create drona interface
 	dCtx, err := zedUpload.NewDronaCtx("zdownloader", 0)
@@ -586,6 +581,20 @@ func downloaderInit() *zedUpload.DronaCtx {
 	return dCtx
 }
 
+func handleGlobalConfigModify(ctxArg interface{}, key string,
+	configArg interface{}) {
+
+	ctx := ctxArg.(*downloaderContext)
+	config := cast.CastGlobalDownloadConfig(configArg)
+	if key != "global" {
+		log.Printf("handleGlobalConfigModify: unexpected key %s\n", key)
+		return
+	}
+	log.Printf("handleGlobalConfigModify for %s\n", key)
+	ctx.globalConfig = config
+	log.Printf("handleGlobalConfigModify done for %s\n", key)
+}
+
 func initializeDirs() {
 
 	// Remove any files which didn't make it past the verifier.
@@ -593,18 +602,6 @@ func initializeDirs() {
 	// total available space
 	// XXX instead rely on verifier status
 	clearInProgressDownloadDirs(downloaderObjTypes)
-
-	// Create dirs for global info
-	// XXX move elsewhere and use pubsub?
-	dirs := []string{downloaderConfigDirname, downloaderStatusDirname}
-	for _, dirName := range dirs {
-		if _, err := os.Stat(dirName); err != nil {
-			log.Printf("Create %s\n", dirName)
-			if err := os.MkdirAll(dirName, 0700); err != nil {
-				log.Fatal(err)
-			}
-		}
-	}
 
 	// create the object download directories
 	createDownloadDirs(downloaderObjTypes)
@@ -669,28 +666,20 @@ func sizeFromDir(dirname string) uint64 {
 	return totalUsed
 }
 
-func updateRemainingSpace() {
+func updateRemainingSpace(ctx *downloaderContext) {
 
-	globalStatus.RemainingSpace = globalConfig.MaxSpace -
-		globalStatus.UsedSpace - globalStatus.ReservedSpace
+	ctx.globalStatus.RemainingSpace = ctx.globalConfig.MaxSpace -
+		ctx.globalStatus.UsedSpace - ctx.globalStatus.ReservedSpace
 
 	log.Printf("RemainingSpace %d, maxspace %d, usedspace %d, reserved %d\n",
-		globalStatus.RemainingSpace, globalConfig.MaxSpace,
-		globalStatus.UsedSpace, globalStatus.ReservedSpace)
+		ctx.globalStatus.RemainingSpace, ctx.globalConfig.MaxSpace,
+		ctx.globalStatus.UsedSpace, ctx.globalStatus.ReservedSpace)
 	// Create and write
-	writeGlobalStatus()
+	updateGlobalStatus(ctx)
 }
 
-// XXX Use pubsub
-func writeGlobalStatus() {
-
-	sb, err := json.Marshal(globalStatus)
-	if err != nil {
-		log.Fatal(err, "json Marshal GlobalDownloadStatus")
-	}
-	if err = pubsub.WriteRename(globalStatusFilename, sb); err != nil {
-		log.Fatal(err, globalStatusFilename)
-	}
+func updateGlobalStatus(ctx *downloaderContext) {
+	ctx.pubGlobalDownloadStatus.Publish("global", &ctx.globalStatus)
 }
 
 func updateDownloaderStatus(ctx *downloaderContext,
@@ -876,11 +865,11 @@ func handleSyncOp(ctx *downloaderContext, key string,
 
 	var addrCount int
 	if config.UseFreeUplinks {
-		addrCount = types.CountLocalAddrFree(deviceNetworkStatus, "")
+		addrCount = types.CountLocalAddrFree(ctx.deviceNetworkStatus, "")
 		log.Printf("Have %d free uplink addresses\n", addrCount)
 		err = errors.New("No free IP uplink addresses for download")
 	} else {
-		addrCount = types.CountLocalAddrAny(deviceNetworkStatus, "")
+		addrCount = types.CountLocalAddrAny(ctx.deviceNetworkStatus, "")
 		log.Printf("Have %d any uplink addresses\n", addrCount)
 		err = errors.New("No IP uplink addresses for download")
 	}
@@ -897,11 +886,11 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	for addrIndex := 0; addrIndex < addrCount; addrIndex += 1 {
 		var ipSrc net.IP
 		if config.UseFreeUplinks {
-			ipSrc, err = types.GetLocalAddrFree(deviceNetworkStatus,
+			ipSrc, err = types.GetLocalAddrFree(ctx.deviceNetworkStatus,
 				addrIndex, "")
 		} else {
 			// Note that GetLocalAddrAny has the free ones first
-			ipSrc, err = types.GetLocalAddrAny(deviceNetworkStatus,
+			ipSrc, err = types.GetLocalAddrAny(ctx.deviceNetworkStatus,
 				addrIndex, "")
 		}
 		if err != nil {
@@ -909,7 +898,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 			errStr = errStr + "\n" + err.Error()
 			continue
 		}
-		ifname := types.GetUplinkFromAddr(deviceNetworkStatus, ipSrc)
+		ifname := types.GetUplinkFromAddr(ctx.deviceNetworkStatus, ipSrc)
 		log.Printf("Using IP source %v if %s transport %v\n",
 			ipSrc, ifname, config.TransportMethod)
 		switch config.TransportMethod {
@@ -1004,10 +993,10 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 	}
 	status.Size = uint64(info.Size())
 
-	globalStatus.ReservedSpace -= status.ReservedSpace
+	ctx.globalStatus.ReservedSpace -= status.ReservedSpace
 	status.ReservedSpace = 0
-	globalStatus.UsedSpace += uint(types.RoundupToKB(status.Size))
-	updateRemainingSpace()
+	ctx.globalStatus.UsedSpace += uint(types.RoundupToKB(status.Size))
+	updateRemainingSpace(ctx)
 
 	log.Printf("handleSyncOpResponse successful <%s> <%s>\n",
 		config.DownloadURL, locFilename)
@@ -1022,6 +1011,7 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 
 func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
+	ctx := ctxArg.(*downloaderContext)
 	status := cast.CastDeviceNetworkStatus(statusArg)
 	if key != "global" {
 		log.Printf("handleDNSModify: ignoring %s\n", key)
@@ -1029,20 +1019,21 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	}
 
 	log.Printf("handleDNSModify for %s\n", key)
-	deviceNetworkStatus = status
+	ctx.deviceNetworkStatus = status
 	log.Printf("handleDNSModify %d free uplinks addresses; %d any\n",
-		types.CountLocalAddrFree(deviceNetworkStatus, ""),
-		types.CountLocalAddrAny(deviceNetworkStatus, ""))
+		types.CountLocalAddrFree(ctx.deviceNetworkStatus, ""),
+		types.CountLocalAddrAny(ctx.deviceNetworkStatus, ""))
 	log.Printf("handleDNSModify done for %s\n", key)
 }
 
 func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 
+	ctx := ctxArg.(*downloaderContext)
 	log.Printf("handleDNSDelete for %s\n", key)
 	if key != "global" {
 		log.Printf("handleDNSDelete: ignoring %s\n", key)
 		return
 	}
-	deviceNetworkStatus = types.DeviceNetworkStatus{}
+	ctx.deviceNetworkStatus = types.DeviceNetworkStatus{}
 	log.Printf("handleDNSDelete done for %s\n", key)
 }

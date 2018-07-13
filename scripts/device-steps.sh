@@ -449,7 +449,8 @@ fi
 # Half of /persist by default! Convert to kbytes
 size=`df -B1 --output=size /persist | tail -1`
 space=`expr $size / 2048`
-echo {\"MaxSpace\":$space} >/var/tmp/downloader/config/global
+mkdir -p /var/tmp/zededa/GlobalDownloadConfig/
+echo {\"MaxSpace\":$space} >/var/tmp/zededa/GlobalDownloadConfig/global.json
 
 for AGENT in $AGENTS; do
     # XXX conditional - how do we handle?
