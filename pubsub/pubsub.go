@@ -23,11 +23,17 @@ import (
 )
 
 // XXX add protocol over AF_UNIX later
-// "sync request", ... "update" "delete" followed by key then val
-// "sync done" once all have sent
-// Plus "restart" if application calls SignalRestarted()
-// After end of sync (aka ReadDir processing) then look for explicit application
-// restart/restarted signal.
+// "request" from client after connect, then sequence "update" followed by
+// key then val
+// "complete" once all initial keys/values in collection have been sent.
+// Finally "restarted" if/when pub.km.restarted is set.
+// Ongoing we send "update" and "delete" messages.
+// Include typeName after command word for sanity. Hence the message format is
+//	"request" typeName
+//	"update" typeName key json-val XXX we have spaces in keys!
+//	"delete" typeName key
+//	"complete" typeName
+//	"restarted" typeName
 
 // Maintain a collection which is used to handle the restart of a subscriber
 // map of agentname, key to get a json string
