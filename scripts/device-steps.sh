@@ -35,10 +35,12 @@ done
 
 mkdir -p $TMPDIR
 
+# XXX no longer needed
 if [ -d /var/tmp/zedmanager/downloads ]; then
     echo "Cleaning up old download dir: /var/tmp/zedmanager/downloads"
     rm -rf /var/tmp/zedmanager/downloads
 fi
+# XXX no longer needed
 if [ -d /var/tmp/domainmgr/img ]; then
     echo "Removing old domU img dir: /var/tmp/domainmgr/img"
     rm -rf /var/tmp/domainmgr/img
@@ -50,6 +52,7 @@ if [ $CLEANUP = 1 -a -d $PERSISTDIR/downloads ]; then
 fi
     
 # Move any uuid file to /config
+# XXX no longer needed
 if [ -f $TMPDIR/uuid ]; then
     if [ -f $CONFIGDIR/uuid ]; then
 	echo "Removing old $TMPDIR/uuid"
@@ -61,7 +64,6 @@ if [ -f $TMPDIR/uuid ]; then
 fi
 
 echo "Handling restart case at" `date`
-# XXX should we check if zedmanager is running?
 
 # If watchdog was running we restart it in a way where it will
 # no fail due to killing the agents below.
@@ -73,6 +75,7 @@ if [ -f /var/run/watchdog.pid ]; then
     kill `cat /var/run/watchdog.pid`
     /usr/sbin/watchdog -c $TMPDIR/watchdog.conf -F -s &
 fi
+
 # If we are re-running this script, clean up from last run
 pgrep zedmanager >/dev/null
 if [ $? = 0 ]; then
@@ -80,28 +83,13 @@ if [ $? = 0 ]; then
     killall dmesg
 fi
 
-echo "Removing old stale files"
-# Remove internal config files
-
-pkill zedmanager
-echo "Removing old zedmanager config files"
-rm -rf /var/tmp/zedmanager/config/*.json
-
-echo "Removing old zedmanager status files"
-rm -rf /var/run/zedmanager/status/*.json
-
-# XXX when we swich to pusub package make it wait for directories to appear
-
-# The following is a workaround for a racecondition between different agents
 # Make sure we have the required directories in place
-DIRS="$CONFIGDIR $PERSISTDIR $TMPDIR $TMPDIR/DeviceNetworkConfig/ /var/run/zedrouter/DeviceNetworkStatus/ /var/run/zedrouter/NetworkMetrics $TMPDIR/AssignableAdapters /var/run/zedclient/metricsMap /var/run/logmanager/metricsMap /var/run/downloader/metricsMap"
-for a in $AGENTS; do
+# Need /var/tmp/ledmanager/config; /var/run/ledmanager/status is empty. Needed?
+AGENTSWITHDIRS="ledmanager"
+DIRS="$CONFIGDIR $PERSISTDIR $TMPDIR $TMPDIR/DeviceNetworkConfig/ $TMPDIR/AssignableAdapters"
+
+for a in $AGENTSWITHDIRS; do
     DIRS="$DIRS /var/tmp/$a/config /var/run/$a/status"
-done
-# Make sure we create these as well
-OBJDIRS="verifier/appImg.obj verifier/baseOs.obj downloader/appImg.obj downloader/baseOs.obj downloader/cert.obj zedagent/baseOs.obj zedagent/cert.obj"
-for d in $OBJDIRS; do
-    DIRS="$DIRS /var/tmp/$d/config /var/run/$d/status"
 done
 for d in $DIRS; do
     d1=`dirname $d`
@@ -117,78 +105,21 @@ for d in $DIRS; do
     fi
 done
 
-# Some agents have multiple config and status files
-AGENTDIRS="$AGENTS verifier/appImg.obj verifier/baseOs.obj downloader/appImg.obj downloader/baseOs.obj downloader/cert.obj"
-for AGENTDIR in $AGENTDIRS; do
-    d=`dirname $AGENTDIR`
-    if [ $d != '.' ]; then
-	AGENT=$d
-    else
-	AGENT=$AGENTDIR
-    fi
-    # echo "XXX Looking in config $AGENTDIR for $AGENT"
-    if [ ! -d /var/tmp/$AGENTDIR ]; then
-	continue
-    fi
-    dir=/var/tmp/$AGENTDIR/config
-    if [ ! -d $dir ]; then
-	continue
-    fi
-    # echo "XXX Looking in config $dir"
-    for f in $dir/*; do
-	# echo "XXX: f is $f"
-	if [ "$f" = "$dir/*" ]; then
-		# echo "XXX: skipping $dir"
-		break
-	fi
-	if [ "$f" = "$dir/global" ]; then
-	    echo "Ignoring $f"
-	elif [ "$f" = "$dir/restarted" ]; then
-	    echo "Ignoring $f"
-	else
-	    # Note that this deletes domainmgr config which, unlike a reboot,
-	    # will remove the rootfs copy in /persist/img/
-	    echo "Deleting config file: $f"
-	    rm -f "$f"
-	fi
-    done
-done
-
-# Try to cleanup in case the agents are running or /var/run files are left over
-# If agents are running then the deletion of the /var/tmp/ files should
-# cleaned up all but /var/run/zedmanager/*.json
-
 if [ $CLEANUP = 0 ]; then
     # Add a tag to preserve any downloaded and verified files
-    touch /var/tmp/verifier/config/preserve
+    touch /var/tmp/zededa/preserve
 fi
 
-# If agents are running wait for the status files to disappear
-for AGENTDIR in $AGENTDIRS; do
-    d=`dirname $AGENTDIR`
-    if [ $d != '.' ]; then
-	AGENT=$d
-    else
-	AGENT=$AGENTDIR
-    fi
-    # echo "XXX Looking in status $AGENTDIR for $AGENT"
-    if [ ! -d /var/run/$AGENT ]; then
-	# Needed for zedagent
-	pkill $AGENT
-	continue
-    fi
-    if [ $AGENT = "verifier" ]; then
-	echo "Skipping check for /var/run/$AGENTDIR/status"
-	pkill $AGENT
-	continue
-    fi
-    dir=/var/run/$AGENTDIR/status
-    if [ ! -d $dir ]; then
-	continue
-    fi
-    # echo "XXX Looking in status $dir"
-    pid=`pgrep $AGENT`
-    if [ "$pid" != "" ]; then
+# XXX Untested support for re-running all the agents:
+# Even with IPC the checkpoint files will be there
+pkill zedagent
+dir=/var/run/zedagent
+if [ -d $dir ]; then
+    echo "XXX Removing $dir"
+    rm -rf $dir
+    AGENT=zedmanager
+    dir=/var/run/zedmanager/AppInstanceStatus
+    if [ -d $dir ]; then
 	while /bin/true; do
 	    wait=0
 	    for f in $dir/*; do
@@ -202,6 +133,7 @@ for AGENTDIR in $AGENTDIRS; do
 		elif [ "$f" = "$dir/restarted" ]; then
 		    echo "Ignoring $f"
 		else
+		    echo "Waiting due to $f"
 		    wait=1
 		fi
 	    done
@@ -212,25 +144,16 @@ for AGENTDIR in $AGENTDIRS; do
 		break
 	    fi
 	done
-    else
-	for f in $dir/*; do
-	    # echo "XXX: f is $f"
-	    if [ "$f" = "$dir/*" ]; then
-		# echo "XXX: skipping $dir"
-		break
-	    fi
-	    echo "Deleting status file: $f"
-	    rm -f "$f"
-	done
     fi
-done
+fi
+
 for AGENT in $AGENTS; do
     pkill $AGENT
 done
 
 if [ $CLEANUP = 0 ]; then
     # Remove the preserve tag
-    rm /var/tmp/verifier/config/preserve
+    rm /var/tmp/zededa/preserve
 fi
 
 echo "Handling restart done at" `date`
@@ -307,6 +230,7 @@ ln -s /persist/$CURPART/log/lisp $LISPDIR/logs
 # BlinkCounter 1 means we have started; might not yet have IP addresses
 # client/selfRegister and zedagent update this when the found at least
 # one free uplink with IP address(s)
+mkdir -p /var/tmp/ledmanager/config/
 echo '{"BlinkCounter": 1}' > '/var/tmp/ledmanager/config/ledconfig.json'
 
 # If ledmanager is already running we don't have to start it.
@@ -515,6 +439,7 @@ cp -p $CONFIGDIR/device.key.pem $LISPDIR/lisp-sig.pem
 # Pick up the device EID zedrouter config file from $TMPDIR and put
 # it in /var/tmp/zedrouter/config/
 # This will result in starting lispers.net when zedrouter starts
+# XXX No longer needed
 if [ -f $TMPDIR/zedrouterconfig.json ]; then
     uuid=`cat $CONFIGDIR/uuid`
     cp $TMPDIR/zedrouterconfig.json /var/tmp/zedrouter/config/${uuid}.json
@@ -525,9 +450,6 @@ fi
 size=`df -B1 --output=size /persist | tail -1`
 space=`expr $size / 2048`
 echo {\"MaxSpace\":$space} >/var/tmp/downloader/config/global
-
-rm -f /var/run/verifier/*/status/restarted
-rm -f /var/tmp/zedrouter/config/restart
 
 for AGENT in $AGENTS; do
     # XXX conditional - how do we handle?

@@ -43,12 +43,6 @@ const (
 	baseOsObj = "baseOs.obj"
 	agentName = "verifier"
 
-	moduleName = agentName
-	// XXX still have preserveFilename; means we need a configdir
-	zedBaseDirname = "/var/tmp"
-	baseDirname    = zedBaseDirname + "/" + moduleName
-	configDirname  = baseDirname + "/config"
-
 	persistDir            = "/persist"
 	objectDownloadDirname = persistDir + "/downloads"
 
@@ -57,7 +51,8 @@ const (
 	certificateDirname = persistDir + "/certs"
 
 	// If this file is present we don't delete verified files in handleDelete
-	preserveFilename = configDirname + "/preserve"
+	tmpDirname       = "/var/tmp/zededa"
+	preserveFilename = tmpDirname + "/preserve"
 )
 
 // Go doesn't like this as a constant
@@ -195,17 +190,6 @@ func initializeDirs() {
 
 	// create the object download directories
 	createDownloadDirs(verifierObjTypes)
-
-	// Create dirs for global info - XXX just preserveFilename in config
-	dirs := []string{configDirname}
-	for _, dirName := range dirs {
-		if _, err := os.Stat(dirName); err != nil {
-			log.Printf("Create %s\n", dirName)
-			if err := os.MkdirAll(dirName, 0700); err != nil {
-				log.Fatal(err)
-			}
-		}
-	}
 }
 
 // Mark all existing Status as PendingDelete.
