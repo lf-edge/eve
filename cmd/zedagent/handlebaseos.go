@@ -8,6 +8,7 @@ package zedagent
 import (
 	"errors"
 	"fmt"
+	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/zboot"
 	"log"
@@ -650,4 +651,57 @@ func checkInstalledVersion(config types.BaseOsConfig) string {
 		// XXX return errStr
 	}
 	return ""
+}
+
+func lookupBaseOsConfig(ctx *zedagentContext, key string) *types.BaseOsConfig {
+
+	sub := ctx.subBaseOsConfig
+	c, _ := sub.Get(key)
+	if c == nil {
+		log.Printf("lookupBaseOsConfig(%s) not found\n", key)
+		return nil
+	}
+	config := cast.CastBaseOsConfig(c)
+	if config.Key() != key {
+		log.Printf("lookupBaseOsConfig(%s) got %s; ignored %+v\n",
+			key, config.Key(), config)
+		return nil
+	}
+	return &config
+}
+
+func lookupBaseOsStatus(ctx *zedagentContext, key string) *types.BaseOsStatus {
+	pub := ctx.pubBaseOsStatus
+	st, _ := pub.Get(key)
+	if st == nil {
+		log.Printf("lookupBaseOsStatus(%s) not found\n", key)
+		return nil
+	}
+	status := cast.CastBaseOsStatus(st)
+	if status.Key() != key {
+		log.Printf("lookupBaseOsStatus(%s) got %s; ignored %+v\n",
+			key, status.Key(), status)
+		return nil
+	}
+	return &status
+}
+
+func publishBaseOsStatus(ctx *zedagentContext, status *types.BaseOsStatus) {
+
+	key := status.Key()
+	log.Printf("Publishing BaseOsStatus %s\n", key)
+	pub := ctx.pubBaseOsStatus
+	pub.Publish(key, status)
+}
+
+func unpublishBaseOsStatus(ctx *zedagentContext, key string) {
+
+	log.Printf("Unpublishing BaseOsStatus %s\n", key)
+	pub := ctx.pubBaseOsStatus
+	st, _ := pub.Get(key)
+	if st == nil {
+		log.Printf("unpublishBaseOsStatus(%s) not found\n", key)
+		return
+	}
+	pub.Unpublish(key)
 }
