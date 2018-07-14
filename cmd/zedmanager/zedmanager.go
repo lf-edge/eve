@@ -311,24 +311,24 @@ func handleZedrouterRestarted(ctxArg interface{}, done bool) {
 	}
 }
 
-func updateAppInstanceStatus(ctx *zedmanagerContext,
+func publishAppInstanceStatus(ctx *zedmanagerContext,
 	status *types.AppInstanceStatus) {
 
 	key := status.Key()
-	log.Printf("updateAppInstanceStatus(%s)\n", key)
+	log.Printf("publishAppInstanceStatus(%s)\n", key)
 	pub := ctx.pubAppInstanceStatus
 	pub.Publish(key, status)
 }
 
-func removeAppInstanceStatus(ctx *zedmanagerContext,
+func unpublishAppInstanceStatus(ctx *zedmanagerContext,
 	status *types.AppInstanceStatus) {
 
 	key := status.Key()
-	log.Printf("removeAppInstanceStatus(%s)\n", key)
+	log.Printf("unpublishAppInstanceStatus(%s)\n", key)
 	pub := ctx.pubAppInstanceStatus
 	st, _ := pub.Get(key)
 	if st == nil {
-		log.Printf("removeAppInstanceStatus(%s) not found\n", key)
+		log.Printf("unpublishAppInstanceStatus(%s) not found\n", key)
 		return
 	}
 	pub.Unpublish(key)
@@ -425,14 +425,14 @@ func handleCreate(ctx *zedmanagerContext, key string,
 	status.EIDList = make([]types.EIDStatusDetails,
 		len(config.OverlayNetworkList))
 
-	updateAppInstanceStatus(ctx, &status)
+	publishAppInstanceStatus(ctx, &status)
 
 	uuidStr := status.Key()
 	changed := doUpdate(ctx, uuidStr, config, &status)
 	if changed {
 		log.Printf("handleCreate status change for %s\n",
 			uuidStr)
-		updateAppInstanceStatus(ctx, &status)
+		publishAppInstanceStatus(ctx, &status)
 	}
 	log.Printf("handleCreate done for %s\n", config.DisplayName)
 }
@@ -447,14 +447,14 @@ func handleModify(ctx *zedmanagerContext, key string,
 	// some updates.
 
 	status.UUIDandVersion = config.UUIDandVersion
-	updateAppInstanceStatus(ctx, status)
+	publishAppInstanceStatus(ctx, status)
 
 	uuidStr := status.Key()
 	changed := doUpdate(ctx, uuidStr, config, status)
 	if changed {
 		log.Printf("handleModify status change for %s\n",
 			uuidStr)
-		updateAppInstanceStatus(ctx, status)
+		publishAppInstanceStatus(ctx, status)
 	}
 	log.Printf("handleModify done for %s\n", config.DisplayName)
 }

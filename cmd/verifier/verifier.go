@@ -217,7 +217,7 @@ func handleInitWorkinProgressObjects(ctx *verifierContext) {
 			}
 			log.Printf("Marking with PendingDelete: %s\n", key)
 			status.PendingDelete = true
-			publishVerifyObjectStatus(ctx, &status)
+			publishVerifyImageStatus(ctx, &status)
 		}
 	}
 }
@@ -277,7 +277,7 @@ func populateInitialStatusFromVerified(ctx *verifierContext,
 				Size:        info.Size(),
 			}
 
-			publishVerifyObjectStatus(ctx, &status)
+			publishVerifyImageStatus(ctx, &status)
 		}
 	}
 }
@@ -300,7 +300,7 @@ func handleInitMarkedDeletePendingObjects(ctx *verifierContext) {
 			if status.PendingDelete {
 				log.Printf("still PendingDelete; delete %s\n",
 					key)
-				unpublishVerifyObjectStatus(ctx, &status)
+				unpublishVerifyImageStatus(ctx, &status)
 			}
 		}
 	}
@@ -373,7 +373,7 @@ func gcVerifiedObjects(ctx *verifierContext) {
 			}
 			// XXX force delete ...
 			doDelete(&status)
-			unpublishVerifyObjectStatus(ctx, &status)
+			unpublishVerifyImageStatus(ctx, &status)
 		}
 	}
 }
@@ -385,45 +385,27 @@ func updateVerifyErrStatus(ctx *verifierContext,
 	status.LastErrTime = time.Now()
 	status.PendingAdd = false
 	status.State = types.INITIAL
-	publishVerifyObjectStatus(ctx, status)
+	publishVerifyImageStatus(ctx, status)
 }
 
-func publishVerifyObjectStatus(ctx *verifierContext,
+func publishVerifyImageStatus(ctx *verifierContext,
 	status *types.VerifyImageStatus) {
 
-	log.Printf("publishVerifyObjectStatus(%s, %s)\n",
+	log.Printf("publishVerifyImageStatus(%s, %s)\n",
 		status.ObjType, status.Safename)
 
-	var pub *pubsub.Publication
-	switch status.ObjType {
-	case appImgObj:
-		pub = ctx.pubAppImgStatus
-	case baseOsObj:
-		pub = ctx.pubBaseOsStatus
-	default:
-		log.Fatalf("updateVerifyImageStatus: Unknown ObjType %s for %s\n",
-			status.ObjType, status.Safename)
-	}
+	pub := verifierPublication(ctx, status.ObjType)
 	key := status.Key()
 	pub.Publish(key, status)
 }
 
-func unpublishVerifyObjectStatus(ctx *verifierContext,
+func unpublishVerifyImageStatus(ctx *verifierContext,
 	status *types.VerifyImageStatus) {
 
-	log.Printf("publishVerifyObjectStatus(%s, %s)\n",
+	log.Printf("publishVerifyImageStatus(%s, %s)\n",
 		status.ObjType, status.Safename)
 
-	var pub *pubsub.Publication
-	switch status.ObjType {
-	case appImgObj:
-		pub = ctx.pubAppImgStatus
-	case baseOsObj:
-		pub = ctx.pubBaseOsStatus
-	default:
-		log.Fatalf("removeVerifyImageStatus: Unknown ObjType %s for %s\n",
-			status.ObjType, status.Safename)
-	}
+	pub := verifierPublication(ctx, status.ObjType)
 	key := status.Key()
 	log.Printf("removeVerifyImageStatus(%s)\n", key)
 	st, _ := pub.Get(key)
@@ -432,6 +414,20 @@ func unpublishVerifyObjectStatus(ctx *verifierContext,
 		return
 	}
 	pub.Unpublish(key)
+}
+
+func verifierPublication(ctx *verifierContext, objType string) *pubsub.Publication {
+	var pub *pubsub.Publication
+	switch objType {
+	case appImgObj:
+		pub = ctx.pubAppImgStatus
+	case baseOsObj:
+		pub = ctx.pubBaseOsStatus
+	default:
+		log.Fatalf("verifierPublication: Unknown ObjType %s\n",
+			objType)
+	}
+	return pub
 }
 
 // Wrappers
@@ -534,7 +530,7 @@ func handleCreate(ctx *verifierContext, objType string,
 		State:       types.DOWNLOADED,
 		RefCount:    config.RefCount,
 	}
-	publishVerifyObjectStatus(ctx, &status)
+	publishVerifyImageStatus(ctx, &status)
 
 	ok, size := markObjectAsVerifying(ctx, config, &status)
 	if !ok {
@@ -542,18 +538,18 @@ func handleCreate(ctx *verifierContext, objType string,
 		return
 	}
 	status.Size = size
-	publishVerifyObjectStatus(ctx, &status)
+	publishVerifyImageStatus(ctx, &status)
 
 	if !verifyObjectSha(ctx, config, &status) {
 		log.Printf("handleCreate fail for %s\n", config.DownloadURL)
 		return
 	}
-	publishVerifyObjectStatus(ctx, &status)
+	publishVerifyImageStatus(ctx, &status)
 
 	markObjectAsVerified(ctx, config, &status)
 	status.PendingAdd = false
 	status.State = types.DELIVERED
-	publishVerifyObjectStatus(ctx, &status)
+	publishVerifyImageStatus(ctx, &status)
 	log.Printf("handleCreate done for %s\n", config.DownloadURL)
 }
 
@@ -906,12 +902,12 @@ func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 
 	if status.RefCount == 0 {
 		status.PendingModify = true
-		publishVerifyObjectStatus(ctx, status)
+		publishVerifyImageStatus(ctx, status)
 		// XXX start gc timer instead
 		doDelete(status)
 		status.PendingModify = false
 		status.State = 0 // XXX INITIAL implies failure
-		publishVerifyObjectStatus(ctx, status)
+		publishVerifyImageStatus(ctx, status)
 		log.Printf("handleModify done for %s\n", config.DownloadURL)
 		return
 	}
@@ -920,7 +916,7 @@ func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 	if config.Safename == status.Safename &&
 		config.ImageSha256 == status.ImageSha256 {
 		if changed {
-			publishVerifyObjectStatus(ctx, status)
+			publishVerifyImageStatus(ctx, status)
 		}
 		log.Printf("handleModify: no (other) change for %s\n",
 			config.DownloadURL)
@@ -928,11 +924,11 @@ func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 	}
 
 	status.PendingModify = true
-	publishVerifyObjectStatus(ctx, status)
+	publishVerifyImageStatus(ctx, status)
 	handleDelete(ctx, status)
 	handleCreate(ctx, status.ObjType, config)
 	status.PendingModify = false
-	publishVerifyObjectStatus(ctx, status)
+	publishVerifyImageStatus(ctx, status)
 	log.Printf("handleModify done for %s\n", config.DownloadURL)
 }
 
@@ -951,7 +947,7 @@ func handleDelete(ctx *verifierContext, status *types.VerifyImageStatus) {
 
 	// XXX set refCount=0
 	// Write out what we modified to VerifyImageStatus aka delete
-	unpublishVerifyObjectStatus(ctx, status)
+	unpublishVerifyImageStatus(ctx, status)
 	log.Printf("handleDelete done for %s\n", status.Safename)
 }
 

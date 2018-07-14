@@ -295,7 +295,7 @@ func Run() {
 		time.Duration(max))
 
 	// Apply any changes from the uplink config to date.
-	updateDeviceNetworkStatus(zedrouterCtx.pubDeviceNetworkStatus)
+	publishDeviceNetworkStatus(zedrouterCtx.pubDeviceNetworkStatus)
 	updateLispConfiglets(&zedrouterCtx, zedrouterCtx.separateDataPlane)
 	setUplinks(deviceNetworkConfig.Uplink)
 	setFreeUplinks(deviceNetworkConfig.FreeUplinks)
@@ -345,7 +345,7 @@ func Run() {
 			change := devicenetwork.UpdateDeviceNetworkGeo(
 				geoRedoTime, &deviceNetworkStatus)
 			if change {
-				updateDeviceNetworkStatus(pubDeviceNetworkStatus)
+				publishDeviceNetworkStatus(pubDeviceNetworkStatus)
 			}
 
 		case change := <-subNetworkObjectConfig.C:
@@ -443,28 +443,28 @@ func handleInit(runDirname string, pubDeviceNetworkStatus *pubsub.Publication) {
 	}
 }
 
-func updateDeviceNetworkStatus(pubDeviceNetworkStatus *pubsub.Publication) {
+func publishDeviceNetworkStatus(pubDeviceNetworkStatus *pubsub.Publication) {
 	pubDeviceNetworkStatus.Publish("global", deviceNetworkStatus)
 }
 
-func updateAppNetworkStatus(ctx *zedrouterContext,
+func publishAppNetworkStatus(ctx *zedrouterContext,
 	status *types.AppNetworkStatus) {
 
 	key := status.Key()
-	log.Printf("updateAppNetworkStatus(%s)\n", key)
+	log.Printf("publishAppNetworkStatus(%s)\n", key)
 	pub := ctx.pubAppNetworkStatus
 	pub.Publish(key, status)
 }
 
-func removeAppNetworkStatus(ctx *zedrouterContext,
+func unpublishAppNetworkStatus(ctx *zedrouterContext,
 	status *types.AppNetworkStatus) {
 
 	key := status.Key()
-	log.Printf("removeAppNetworkStatus(%s)\n", key)
+	log.Printf("unpublishAppNetworkStatus(%s)\n", key)
 	pub := ctx.pubAppNetworkStatus
 	st, _ := pub.Get(key)
 	if st == nil {
-		log.Printf("removeAppNetworkStatus(%s) not found\n", key)
+		log.Printf("unpublishAppNetworkStatus(%s) not found\n", key)
 		return
 	}
 	pub.Unpublish(key)
@@ -645,7 +645,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 		DisplayName:    config.DisplayName,
 		IsZedmanager:   config.IsZedmanager,
 	}
-	updateAppNetworkStatus(ctx, &status)
+	publishAppNetworkStatus(ctx, &status)
 
 	if config.IsZedmanager {
 		log.Printf("handleCreate: for %s IsZedmanager\n",
@@ -823,7 +823,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 				config.OverlayNetworkList[i]
 		}
 		status.PendingAdd = false
-		updateAppNetworkStatus(ctx, &status)
+		publishAppNetworkStatus(ctx, &status)
 		log.Printf("handleCreate done for %s\n", config.DisplayName)
 		return
 	}
@@ -984,7 +984,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 			}
 		}
 		// XXX createDnsmasq assumes it can read this to get netstatus
-		updateAppNetworkStatus(ctx, &status)
+		publishAppNetworkStatus(ctx, &status)
 
 		// Start clean
 		cfgFilename = "dnsmasq." + bridgeName + ".conf"
@@ -1113,7 +1113,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 			}
 		}
 		// XXX createDnsmasq assumes it can read this to get netstatus
-		updateAppNetworkStatus(ctx, &status)
+		publishAppNetworkStatus(ctx, &status)
 
 		// Start clean
 		cfgFilename := "dnsmasq." + bridgeName + ".conf"
@@ -1128,7 +1128,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 	}
 	// Write out what we created to AppNetworkStatus
 	status.PendingAdd = false
-	updateAppNetworkStatus(ctx, &status)
+	publishAppNetworkStatus(ctx, &status)
 	log.Printf("handleCreate done for %s\n", config.DisplayName)
 }
 
@@ -1284,7 +1284,7 @@ func addError(ctx *zedrouterContext,
 	log.Printf("%s: %s\n", tag, err.Error())
 	status.Error = appendError(status.Error, tag, err.Error())
 	status.ErrorTime = time.Now()
-	updateAppNetworkStatus(ctx, status)
+	publishAppNetworkStatus(ctx, status)
 }
 
 func appendError(allErrors string, prefix string, lasterr string) string {
@@ -1341,7 +1341,7 @@ func handleModify(ctx *zedrouterContext, key string,
 	status.SeparateDataPlane = ctx.separateDataPlane
 	status.PendingModify = true
 	status.UUIDandVersion = config.UUIDandVersion
-	updateAppNetworkStatus(ctx, status)
+	publishAppNetworkStatus(ctx, status)
 
 	if config.IsZedmanager {
 		if config.SeparateDataPlane != ctx.separateDataPlane {
@@ -1379,7 +1379,7 @@ func handleModify(ctx *zedrouterContext, key string,
 			addError(ctx, status, "updateACL", err)
 		}
 		status.PendingModify = false
-		updateAppNetworkStatus(ctx, status)
+		publishAppNetworkStatus(ctx, status)
 		log.Printf("handleModify done for %s\n", config.DisplayName)
 		return
 	}
@@ -1435,7 +1435,7 @@ func handleModify(ctx *zedrouterContext, key string,
 			}
 		}
 		// XXX createDnsmasq assumes it can read this to get netstatus
-		updateAppNetworkStatus(ctx, status)
+		publishAppNetworkStatus(ctx, status)
 
 		// updateAppInstanceIpsets told us whether there is a change
 		// to the set of ipsets, and that requires restarting dnsmasq
@@ -1508,7 +1508,7 @@ func handleModify(ctx *zedrouterContext, key string,
 			}
 		}
 		// XXX createDnsmasq assumes it can read this to get netstatus
-		updateAppNetworkStatus(ctx, status)
+		publishAppNetworkStatus(ctx, status)
 
 		if restartDnsmasq {
 			//update underlay dnsmasq configuration
@@ -1557,7 +1557,7 @@ func handleModify(ctx *zedrouterContext, key string,
 			config.UnderlayNetworkList[i]
 	}
 	status.PendingModify = false
-	updateAppNetworkStatus(ctx, status)
+	publishAppNetworkStatus(ctx, status)
 	log.Printf("handleModify done for %s\n", config.DisplayName)
 }
 
@@ -1576,7 +1576,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 	}
 
 	status.PendingDelete = true
-	updateAppNetworkStatus(ctx, status)
+	publishAppNetworkStatus(ctx, status)
 
 	if status.IsZedmanager {
 		if len(status.OverlayNetworkList) != 1 ||
@@ -1706,7 +1706,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 
 			// XXX need IPv6 allocate/free to do same as for ulConfig
 			// XXX createDnsmasq assumes it can read this to get netstatus
-			updateAppNetworkStatus(ctx, status)
+			publishAppNetworkStatus(ctx, status)
 
 			// radvd cleanup
 			// XXX not all of it; see dnsmasq below; if sharedBridge
@@ -1800,7 +1800,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 				}
 			}
 			// XXX createDnsmasq assumes it can read this to get netstatus
-			updateAppNetworkStatus(ctx, status)
+			publishAppNetworkStatus(ctx, status)
 
 			hostsDirpath := globalRunDirname + "/hosts." + bridgeName
 			cfgFilename := "dnsmasq." + bridgeName + ".conf"
@@ -1858,10 +1858,10 @@ func handleDelete(ctx *zedrouterContext, key string,
 		}
 	}
 	status.PendingDelete = false
-	updateAppNetworkStatus(ctx, status)
+	publishAppNetworkStatus(ctx, status)
 
 	// Write out what we modified to AppNetworkStatus aka delete
-	removeAppNetworkStatus(ctx, status)
+	unpublishAppNetworkStatus(ctx, status)
 
 	appNumFree(status.UUIDandVersion.UUID)
 	log.Printf("handleDelete done for %s\n", status.DisplayName)

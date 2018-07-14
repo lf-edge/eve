@@ -108,7 +108,7 @@ func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
 			ul := &nc.UnderlayNetworkList[i]
 			*ul = ulc
 		}
-		updateAppNetworkConfig(ctx, &nc)
+		publishAppNetworkConfig(ctx, &nc)
 	}
 	log.Printf("MaybeAddAppNetworkConfig done for %s\n", key)
 }
@@ -146,23 +146,23 @@ func lookupAppNetworkStatus(ctx *zedmanagerContext, key string) *types.AppNetwor
 	return &status
 }
 
-func updateAppNetworkConfig(ctx *zedmanagerContext,
+func publishAppNetworkConfig(ctx *zedmanagerContext,
 	status *types.AppNetworkConfig) {
 
 	key := status.Key()
-	log.Printf("updateAppNetworkConfig(%s)\n", key)
+	log.Printf("publishAppNetworkConfig(%s)\n", key)
 	pub := ctx.pubAppNetworkConfig
 	pub.Publish(key, status)
 }
 
-func removeAppNetworkConfig(ctx *zedmanagerContext, uuidStr string) {
+func unpublishAppNetworkConfig(ctx *zedmanagerContext, uuidStr string) {
 
 	key := uuidStr
-	log.Printf("removeAppNetworkConfig(%s)\n", key)
+	log.Printf("unpublishAppNetworkConfig(%s)\n", key)
 	pub := ctx.pubAppNetworkConfig
 	c, _ := pub.Get(key)
 	if c == nil {
-		log.Printf("removeAppNetworkConfig(%s) not found\n", key)
+		log.Printf("unpublishAppNetworkConfig(%s) not found\n", key)
 		return
 	}
 	pub.Unpublish(key)

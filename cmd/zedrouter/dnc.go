@@ -77,7 +77,7 @@ func doDNSUpdate(ctx *zedrouterContext) {
 	if !ctx.ready {
 		return
 	}
-	updateDeviceNetworkStatus(ctx.pubDeviceNetworkStatus)
+	publishDeviceNetworkStatus(ctx.pubDeviceNetworkStatus)
 	updateLispConfiglets(ctx, ctx.separateDataPlane)
 	setUplinks(deviceNetworkConfig.Uplink)
 	setFreeUplinks(deviceNetworkConfig.FreeUplinks)

@@ -529,7 +529,7 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 
 			// write to zedmanager config directory
 			uuidStr := cfgApp.Uuidandversion.Uuid
-			updateAppInstanceConfig(getconfigCtx, appInstance)
+			publishAppInstanceConfig(getconfigCtx, appInstance)
 			if certInstance != nil {
 				publishCertObjConfig(getconfigCtx, certInstance,
 					uuidStr)
@@ -1139,7 +1139,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 	}
 }
 
-func updateAppInstanceConfig(getconfigCtx *getconfigContext,
+func publishAppInstanceConfig(getconfigCtx *getconfigContext,
 	config types.AppInstanceConfig) {
 
 	key := config.Key()
@@ -1148,13 +1148,13 @@ func updateAppInstanceConfig(getconfigCtx *getconfigContext,
 	pub.Publish(key, config)
 }
 
-func removeAppInstanceConfig(getconfigCtx *getconfigContext, key string) {
+func unpublishAppInstanceConfig(getconfigCtx *getconfigContext, key string) {
 
 	log.Printf("Removing app instance UUID %s\n", key)
 	pub := getconfigCtx.pubAppInstanceConfig
 	c, _ := pub.Get(key)
 	if c == nil {
-		log.Printf("removeAppInstanceConfig(%s) not found\n", key)
+		log.Printf("unpublishAppInstanceConfig(%s) not found\n", key)
 		return
 	}
 	pub.Unpublish(key)
@@ -1347,11 +1347,11 @@ func publishCertObjConfig(getconfigCtx *getconfigContext,
 func unpublishCertObjConfig(getconfigCtx *getconfigContext, uuidStr string) {
 
 	key := uuidStr
-	log.Printf("removeCertObjConfig(%s)\n", key)
+	log.Printf("unpublishCertObjConfig(%s)\n", key)
 	pub := getconfigCtx.pubCertObjConfig
 	c, _ := pub.Get(key)
 	if c == nil {
-		log.Printf("removeCertObjConfig(%s) not found\n", key)
+		log.Printf("unpublishCertObjConfig(%s) not found\n", key)
 		return
 	}
 	pub.Unpublish(key)

@@ -31,7 +31,7 @@ func MaybeAddEIDConfig(ctx *zedmanagerContext,
 			DisplayName:      displayName,
 			EIDConfigDetails: ec.EIDConfigDetails,
 		}
-		updateEIDConfig(ctx, &config)
+		publishEIDConfig(ctx, &config)
 	}
 	log.Printf("MaybeAddEIDConfig done for %s\n", key)
 }
@@ -69,24 +69,24 @@ func lookupEIDStatus(ctx *zedmanagerContext, key string) *types.EIDStatus {
 	return &status
 }
 
-func updateEIDConfig(ctx *zedmanagerContext,
+func publishEIDConfig(ctx *zedmanagerContext,
 	status *types.EIDConfig) {
 
 	key := status.Key()
-	log.Printf("updateEIDConfig(%s)\n", key)
+	log.Printf("publishEIDConfig(%s)\n", key)
 	pub := ctx.pubEIDConfig
 	pub.Publish(key, status)
 }
 
-func removeEIDConfig(ctx *zedmanagerContext, uuidAndVers types.UUIDandVersion,
+func unpublishEIDConfig(ctx *zedmanagerContext, uuidAndVers types.UUIDandVersion,
 	es *types.EIDStatusDetails) {
 
 	key := types.EidKey(uuidAndVers, es.IID)
-	log.Printf("removeEIDConfig(%s)\n", key)
+	log.Printf("unpublishEIDConfig(%s)\n", key)
 	pub := ctx.pubEIDConfig
 	c, _ := pub.Get(key)
 	if c == nil {
-		log.Printf("removeEIDConfig(%s) not found\n", key)
+		log.Printf("unpublishEIDConfig(%s) not found\n", key)
 		return
 	}
 	pub.Unpublish(key)

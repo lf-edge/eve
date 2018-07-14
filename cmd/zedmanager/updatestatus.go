@@ -59,7 +59,7 @@ func updateAIStatusUUID(ctx *zedmanagerContext, uuidStr string) {
 	if changed {
 		log.Printf("updateAIStatusUUID status change for %s\n",
 			uuidStr)
-		updateAppInstanceStatus(ctx, status)
+		publishAppInstanceStatus(ctx, status)
 	}
 }
 
@@ -81,13 +81,13 @@ func removeAIStatus(ctx *zedmanagerContext, status *types.AppInstanceStatus) {
 	if changed {
 		log.Printf("removeAIStatus status change for %s\n",
 			uuidStr)
-		updateAppInstanceStatus(ctx, status)
+		publishAppInstanceStatus(ctx, status)
 	}
 	if del {
 		log.Printf("removeAIStatus remove done for %s\n",
 			uuidStr)
 		// Write out what we modified to AppInstanceStatus aka delete
-		removeAppInstanceStatus(ctx, status)
+		unpublishAppInstanceStatus(ctx, status)
 	}
 }
 
@@ -528,7 +528,7 @@ func doInactivate(ctx *zedmanagerContext, uuidStr string,
 	changed := false
 
 	// First halt the domain
-	removeDomainConfig(ctx, uuidStr)
+	unpublishDomainConfig(ctx, uuidStr)
 
 	// Check if DomainStatus gone; update AppInstanceStatus if error
 	ds := lookupDomainStatus(ctx, uuidStr)
@@ -550,7 +550,7 @@ func doInactivate(ctx *zedmanagerContext, uuidStr string,
 
 	log.Printf("Done with DomainStatus removal for %s\n", uuidStr)
 
-	removeAppNetworkConfig(ctx, uuidStr)
+	unpublishAppNetworkConfig(ctx, uuidStr)
 
 	// Check if AppNetworkStatus gone
 	ns := lookupAppNetworkStatus(ctx, uuidStr)
@@ -586,7 +586,7 @@ func doUninstall(ctx *zedmanagerContext, uuidStr string,
 
 	// Remove the EIDConfig for each overlay
 	for _, es := range status.EIDList {
-		removeEIDConfig(ctx, status.UUIDandVersion, &es)
+		unpublishEIDConfig(ctx, status.UUIDandVersion, &es)
 	}
 	// Check EIDStatus for each overlay; update AppInstanceStatus
 	eidsFreed := true

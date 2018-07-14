@@ -363,7 +363,7 @@ func handleCreate(ctx *downloaderContext, objType string,
 		ImageSha256:    config.ImageSha256,
 		PendingAdd:     true,
 	}
-	updateDownloaderStatus(ctx, &status)
+	publishDownloaderStatus(ctx, &status)
 
 	// Check if we have space
 	kb := types.RoundupToKB(config.Size)
@@ -377,7 +377,7 @@ func handleCreate(ctx *downloaderContext, objType string,
 		status.LastErrTime = time.Now()
 		status.RetryCount += 1
 		status.State = types.INITIAL
-		updateDownloaderStatus(ctx, &status)
+		publishDownloaderStatus(ctx, &status)
 		log.Printf("handleCreate failed for %s\n", config.DownloadURL)
 		return
 	}
@@ -400,7 +400,7 @@ func handleCreate(ctx *downloaderContext, objType string,
 		status.LastErrTime = time.Now()
 		status.RetryCount += 1
 		status.State = types.INITIAL
-		updateDownloaderStatus(ctx, &status)
+		publishDownloaderStatus(ctx, &status)
 		log.Printf("handleCreate deferred for %s\n", config.DownloadURL)
 		return
 	}
@@ -454,7 +454,7 @@ func handleModify(ctx *downloaderContext, key string,
 		handleCreate(ctx, status.ObjType, config, key)
 		status.RefCount = config.RefCount
 		status.PendingModify = false
-		updateDownloaderStatus(ctx, status)
+		publishDownloaderStatus(ctx, status)
 	} else if status.RefCount != 0 && config.RefCount == 0 {
 		log.Printf("handleModify deleting %s\n", config.DownloadURL)
 		doDelete(ctx, key, locDirname, status)
@@ -462,7 +462,7 @@ func handleModify(ctx *downloaderContext, key string,
 		log.Printf("handleModify RefCount change %s from %d to %d\n",
 			config.DownloadURL, status.RefCount, config.RefCount)
 		status.RefCount = config.RefCount
-		updateDownloaderStatus(ctx, status)
+		publishDownloaderStatus(ctx, status)
 	}
 	log.Printf("handleModify done for %s\n", config.DownloadURL)
 }
@@ -483,7 +483,7 @@ func doDelete(ctx *downloaderContext, key string, locDirname string,
 	// XXX Asymmetric; handleCreate reserved on RefCount 0. We unreserve
 	// going back to RefCount 0. FIXed
 	updateRemainingSpace(ctx)
-	updateDownloaderStatus(ctx, status)
+	publishDownloaderStatus(ctx, status)
 }
 
 func deletefile(dirname string, status *types.DownloaderStatus) {
@@ -517,7 +517,7 @@ func handleDelete(ctx *downloaderContext, key string,
 	locDirname := objectDownloadDirname + "/" + status.ObjType
 
 	status.PendingDelete = true
-	updateDownloaderStatus(ctx, status)
+	publishDownloaderStatus(ctx, status)
 
 	ctx.globalStatus.ReservedSpace -= status.ReservedSpace
 	status.ReservedSpace = 0
@@ -526,15 +526,15 @@ func handleDelete(ctx *downloaderContext, key string,
 
 	updateRemainingSpace(ctx)
 
-	updateDownloaderStatus(ctx, status)
+	publishDownloaderStatus(ctx, status)
 
 	doDelete(ctx, key, locDirname, status)
 
 	status.PendingDelete = false
-	updateDownloaderStatus(ctx, status)
+	publishDownloaderStatus(ctx, status)
 
 	// Write out what we modified to DownloaderStatus aka delete
-	removeDownloaderStatus(ctx, status)
+	unpublishDownloaderStatus(ctx, status)
 	log.Printf("handleDelete done for %s, %s\n", status.DownloadURL, locDirname)
 }
 
@@ -670,38 +670,39 @@ func updateRemainingSpace(ctx *downloaderContext) {
 		ctx.globalStatus.RemainingSpace, ctx.globalConfig.MaxSpace,
 		ctx.globalStatus.UsedSpace, ctx.globalStatus.ReservedSpace)
 	// Create and write
-	updateGlobalStatus(ctx)
+	publishGlobalStatus(ctx)
 }
 
-func updateGlobalStatus(ctx *downloaderContext) {
+func publishGlobalStatus(ctx *downloaderContext) {
 	ctx.pubGlobalDownloadStatus.Publish("global", &ctx.globalStatus)
 }
 
-func updateDownloaderStatus(ctx *downloaderContext,
+func publishDownloaderStatus(ctx *downloaderContext,
 	status *types.DownloaderStatus) {
 
-	var pub *pubsub.Publication
-	switch status.ObjType {
-	case appImgObj:
-		pub = ctx.pubAppImgStatus
-	case baseOsObj:
-		pub = ctx.pubBaseOsStatus
-	case certObj:
-		pub = ctx.pubCertObjStatus
-	default:
-		log.Fatalf("updateDownloaderStatus: Unknown ObjType %s for %s\n",
-			status.ObjType, status.Safename)
-	}
+	pub := downloaderPublication(ctx, status.ObjType)
 	key := status.Key()
-	log.Printf("updateDownloaderStatus(%s)\n", key)
+	log.Printf("publishDownloaderStatus(%s)\n", key)
 	pub.Publish(key, status)
 }
 
-func removeDownloaderStatus(ctx *downloaderContext,
+func unpublishDownloaderStatus(ctx *downloaderContext,
 	status *types.DownloaderStatus) {
 
+	pub := downloaderPublication(ctx, status.ObjType)
+	key := status.Key()
+	log.Printf("unpublishDownloaderStatus(%s)\n", key)
+	st, _ := pub.Get(key)
+	if st == nil {
+		log.Printf("unpublishDownloaderStatus(%s) not found\n", key)
+		return
+	}
+	pub.Unpublish(key)
+}
+
+func downloaderPublication(ctx *downloaderContext, objType string) *pubsub.Publication {
 	var pub *pubsub.Publication
-	switch status.ObjType {
+	switch objType {
 	case appImgObj:
 		pub = ctx.pubAppImgStatus
 	case baseOsObj:
@@ -709,17 +710,10 @@ func removeDownloaderStatus(ctx *downloaderContext,
 	case certObj:
 		pub = ctx.pubCertObjStatus
 	default:
-		log.Fatalf("removeDownloaderStatus: Unknown ObjType %s for %s\n",
-			status.ObjType, status.Safename)
+		log.Fatalf("downloaderPublication: Unknown ObjType %s\n",
+			objType)
 	}
-	key := status.Key()
-	log.Printf("removeDownloaderStatus(%s)\n", key)
-	st, _ := pub.Get(key)
-	if st == nil {
-		log.Printf("removeDownloaderStatus(%s) not found\n", key)
-		return
-	}
-	pub.Unpublish(key)
+	return pub
 }
 
 // cloud storage interface functions/APIs
@@ -838,7 +832,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 
 	// update status to DOWNLOAD STARTED
 	status.State = types.DOWNLOAD_STARTED
-	updateDownloaderStatus(ctx, status)
+	publishDownloaderStatus(ctx, status)
 
 	if config.ImageSha256 != "" {
 		locFilename = locFilename + "/" + config.ImageSha256
@@ -965,7 +959,7 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 		status.LastErrTime = time.Now()
 		status.RetryCount += 1
 		status.State = types.INITIAL
-		updateDownloaderStatus(ctx, status)
+		publishDownloaderStatus(ctx, status)
 		log.Printf("handleSyncOpResponse failed for %s, <%s>\n",
 			status.DownloadURL, errStr)
 		return
@@ -983,7 +977,7 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 		status.LastErrTime = time.Now()
 		status.RetryCount += 1
 		status.State = types.INITIAL
-		updateDownloaderStatus(ctx, status)
+		publishDownloaderStatus(ctx, status)
 		return
 	}
 	status.Size = uint64(info.Size())
@@ -1001,7 +995,7 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 	status.ModTime = time.Now()
 	status.PendingAdd = false
 	status.State = types.DOWNLOADED
-	updateDownloaderStatus(ctx, status)
+	publishDownloaderStatus(ctx, status)
 }
 
 func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
