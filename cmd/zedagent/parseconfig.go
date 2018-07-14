@@ -206,7 +206,8 @@ func parseBaseOsConfig(getconfigCtx *getconfigContext,
 		}
 
 		if imageCount != BaseOsImageCount {
-			log.Printf("%s, invalid storage config %d\n", baseOs.BaseOsVersion, imageCount)
+			log.Printf("parseBaseOsConfig(%s) invalid storage config %d\n",
+				baseOs.BaseOsVersion, imageCount)
 			log.Printf("Datastores %v\n", config.Datastores)
 			// XXX need to publish this as an error in baseOsStatus
 			continue
@@ -223,16 +224,6 @@ func parseBaseOsConfig(getconfigCtx *getconfigContext,
 			certList[idx] = certInstance
 		}
 		idx++
-
-		// Dump the config content
-		bytes, err := json.Marshal(baseOs)
-		if err != nil {
-			log.Fatal(err)
-		}
-		if debug {
-			log.Printf("New/updated BaseOs %d: %s\n", idx, bytes)
-		}
-		// XXX shouldn't the code write what it just marshalled?
 	}
 
 	// XXX defer until we have validated; call with BaseOsStatus
@@ -291,7 +282,7 @@ func assignBaseOsPartition(getconfigCtx *getconfigContext,
 		if curPartVersion == baseOs.BaseOsVersion {
 			baseOs.PartitionLabel = curPartName
 			setStoragePartitionLabel(baseOs)
-			log.Printf("%s, already installed in current partition %s\n",
+			log.Printf("parseBaseOsConfig(%s) already installed in current partition %s\n",
 				baseOs.BaseOsVersion, baseOs.PartitionLabel)
 			continue
 		}
@@ -299,7 +290,7 @@ func assignBaseOsPartition(getconfigCtx *getconfigContext,
 		if otherPartVersion == baseOs.BaseOsVersion {
 			baseOs.PartitionLabel = otherPartName
 			setStoragePartitionLabel(baseOs)
-			log.Printf("%s, already installed in other partition %s\n",
+			log.Printf("parseBaseOsConfig(%s) already installed in other partition %s\n",
 				baseOs.BaseOsVersion, baseOs.PartitionLabel)
 			continue
 		}
@@ -307,7 +298,7 @@ func assignBaseOsPartition(getconfigCtx *getconfigContext,
 			curBaseOsConfig.PartitionLabel != "" {
 			baseOs.PartitionLabel = curBaseOsConfig.PartitionLabel
 			setStoragePartitionLabel(baseOs)
-			log.Printf("%s, assigned with partition %s, %s\n",
+			log.Printf("parseBaseOsConfig(%s) assigned with partition %s, %s\n",
 				uuidStr, baseOs.BaseOsVersion, baseOs.PartitionLabel)
 			continue
 		}
@@ -331,7 +322,7 @@ func assignBaseOsPartition(getconfigCtx *getconfigContext,
 		if baseOs.Activate == true {
 			baseOs.PartitionLabel = otherPartName
 			setStoragePartitionLabel(baseOs)
-			log.Printf("%s, assigning with partition %s\n",
+			log.Printf("parseBaseOsConfig(%s) assigning with partition %s\n",
 				baseOs.BaseOsVersion, baseOs.PartitionLabel)
 			assignedPart = true
 			break
@@ -349,7 +340,7 @@ func assignBaseOsPartition(getconfigCtx *getconfigContext,
 		}
 		baseOs.PartitionLabel = otherPartName
 		setStoragePartitionLabel(baseOs)
-		log.Printf("%s, assigning with partition %s\n",
+		log.Printf("parseBaseOsConfig(%s) assigning with partition %s\n",
 			baseOs.BaseOsVersion, baseOs.PartitionLabel)
 	}
 	return false
@@ -669,9 +660,6 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 					id.String(), netEnt)
 				continue
 			}
-			// XXX here or in function?
-			config.Dhcp = types.DhcpType(ipspec.Dhcp)
-
 			err := parseIpspec(ipspec, &config)
 			if err != nil {
 				// XXX return how?
@@ -883,7 +871,7 @@ func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
 			if err != nil {
 				log.Printf("parseUnderlayNetworkConfig: bad MAC %s: %s\n",
 					intfEnt.MacAddress, err)
-				// XXX report?
+				// XXX report error?
 			}
 		}
 		if intfEnt.Addr != "" {
@@ -893,7 +881,7 @@ func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
 			if ulCfg.AppIPAddr == nil {
 				log.Printf("parseUnderlayNetworkConfig: bad IP %s\n",
 					intfEnt.Addr)
-				// XXX report?
+				// XXX report error?
 			}
 		}
 		ulCfg.ACLs = make([]types.ACE, len(intfEnt.Acls))
@@ -961,7 +949,7 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 			if err != nil {
 				log.Printf("parseUnderlayNetworkConfig: bad MAC %s: %s\n",
 					intfEnt.MacAddress, err)
-				// XXX report?
+				// XXX report error?
 			}
 		}
 		for aclIdx, acl := range intfEnt.Acls {

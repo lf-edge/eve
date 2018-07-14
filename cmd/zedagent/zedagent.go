@@ -62,36 +62,16 @@ const (
 	zedagentModulename   = agentName
 	zedmanagerModulename = "zedmanager"
 
-	moduleName     = agentName
-	zedBaseDirname = "/var/tmp"
-	zedRunDirname  = "/var/run"
-	baseDirname    = zedBaseDirname + "/" + moduleName
-	runDirname     = zedRunDirname + "/" + moduleName
-
 	configDir             = "/config"
 	persistDir            = "/persist"
 	objectDownloadDirname = persistDir + "/downloads"
 	certificateDirname    = persistDir + "/certs"
-	// XXX Remove dirnames
-	downloaderBaseDirname = zedBaseDirname + "/" + downloaderModulename
-	downloaderRunDirname  = zedRunDirname + "/" + downloaderModulename
-
-	verifierBaseDirname = zedBaseDirname + "/" + verifierModulename
-	verifierRunDirname  = zedRunDirname + "/" + verifierModulename
-
-	// base os download config/status holder
-	downloaderBaseOsStatusDirname  = downloaderRunDirname + "/" + baseOsObj + "/status"
-	downloaderCertObjStatusDirname = downloaderRunDirname + "/" + certObj + "/status"
-
-	// base os verifier status holder
-	verifierBaseOsConfigDirname = verifierBaseDirname + "/" + baseOsObj + "/config"
-	verifierBaseOsStatusDirname = verifierRunDirname + "/" + baseOsObj + "/status"
-	verifierAppImgStatusDirname = verifierRunDirname + "/" + appImgObj + "/status"
 )
 
 // Set from Makefile
 var Version = "No version specified"
 
+// XXX move to a context? Which? Used in handleconfig and handlemetrics!
 var deviceNetworkStatus types.DeviceNetworkStatus
 
 // XXX globals filled in by subscription handlers and read by handlemetrics
@@ -306,7 +286,8 @@ func Run() {
 	zedagentCtx.subDomainStatus = subDomainStatus
 	subDomainStatus.Activate()
 
-	// Look for CertObjConfig from ourselves!
+	// Look for CertObjConfig from ourselves! XXX introduce separate
+	// certmanager?
 	subCertObjConfig, err := pubsub.Subscribe("zedagent",
 		types.CertObjConfig{}, false, &zedagentCtx)
 	if err != nil {
@@ -334,8 +315,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	subBaseOsDownloadStatus.ModifyHandler = handleBaseOsDownloadStatusModify
-	subBaseOsDownloadStatus.DeleteHandler = handleBaseOsDownloadStatusDelete
+	subBaseOsDownloadStatus.ModifyHandler = handleDownloadStatusModify
+	subBaseOsDownloadStatus.DeleteHandler = handleDownloadStatusDelete
 	zedagentCtx.subBaseOsDownloadStatus = subBaseOsDownloadStatus
 	subBaseOsDownloadStatus.Activate()
 
@@ -345,9 +326,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	subCertObjDownloadStatus.ModifyHandler = handleCertObjDownloadStatusModify
-
-	subCertObjDownloadStatus.DeleteHandler = handleCertObjDownloadStatusDelete
+	subCertObjDownloadStatus.ModifyHandler = handleDownloadStatusModify
+	subCertObjDownloadStatus.DeleteHandler = handleDownloadStatusDelete
 	zedagentCtx.subCertObjDownloadStatus = subCertObjDownloadStatus
 	subCertObjDownloadStatus.Activate()
 
@@ -357,8 +337,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	subBaseOsVerifierStatus.ModifyHandler = handleBaseOsVerifierStatusModify
-	subBaseOsVerifierStatus.DeleteHandler = handleBaseOsVerifierStatusDelete
+	subBaseOsVerifierStatus.ModifyHandler = handleVerifierStatusModify
+	subBaseOsVerifierStatus.DeleteHandler = handleVerifierStatusDelete
 	subBaseOsVerifierStatus.RestartHandler = handleVerifierRestarted
 	zedagentCtx.subBaseOsVerifierStatus = subBaseOsVerifierStatus
 	subBaseOsVerifierStatus.Activate()
@@ -369,8 +349,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	subAppImgVerifierStatus.ModifyHandler = handleAppImgVerifierStatusModify
-	subAppImgVerifierStatus.DeleteHandler = handleAppImgVerifierStatusDelete
+	subAppImgVerifierStatus.ModifyHandler = handleVerifierStatusModify
+	subAppImgVerifierStatus.DeleteHandler = handleVerifierStatusDelete
 	zedagentCtx.subAppImgVerifierStatus = subAppImgVerifierStatus
 	subAppImgVerifierStatus.Activate()
 
@@ -486,7 +466,7 @@ func Run() {
 	go configTimerTask(handleChannel, &getconfigCtx)
 	log.Printf("Waiting for flexticker handle\n")
 	configTickerHandle := <-handleChannel
-	go metricsTimerTask(handleChannel)
+	go metricsTimerTask(&zedagentCtx, handleChannel)
 	metricsTickerHandle := <-handleChannel
 	// XXX close handleChannels?
 	getconfigCtx.configTickerHandle = configTickerHandle
@@ -614,7 +594,6 @@ func handleVerifierRestarted(ctxArg interface{}, done bool) {
 
 func handleInit() {
 	initializeDirs()
-	initMaps()
 	handleConfigInit()
 }
 
@@ -753,7 +732,28 @@ func handleBaseOsCreate(ctxArg interface{}, key string,
 	ctx := ctxArg.(*zedagentContext)
 
 	log.Printf("handleBaseOsCreate for %s\n", uuidStr)
-	addOrUpdateBaseOsConfig(ctx, uuidStr, config)
+	status := types.BaseOsStatus{
+		UUIDandVersion: config.UUIDandVersion,
+		BaseOsVersion:  config.BaseOsVersion,
+		ConfigSha256:   config.ConfigSha256,
+		PartitionLabel: config.PartitionLabel,
+	}
+
+	status.StorageStatusList = make([]types.StorageStatus,
+		len(config.StorageConfigList))
+
+	for i, sc := range config.StorageConfigList {
+		ss := &status.StorageStatusList[i]
+		ss.DownloadURL = sc.DownloadURL
+		ss.ImageSha256 = sc.ImageSha256
+		ss.Target = sc.Target
+	}
+
+	baseOsGetActivationStatus(&status)
+	publishBaseOsStatus(ctx, &status)
+
+	baseOsHandleStatusUpdate(ctx, &config, &status)
+
 	publishDeviceInfo = true
 }
 
@@ -787,7 +787,8 @@ func handleBaseOsModify(ctxArg interface{}, key string,
 	status.UUIDandVersion = config.UUIDandVersion
 	publishBaseOsStatus(ctx, &status)
 
-	addOrUpdateBaseOsConfig(ctx, uuidStr, config)
+	baseOsHandleStatusUpdate(ctx, &config, &status)
+
 	publishDeviceInfo = true
 }
 
@@ -843,9 +844,25 @@ func handleCertObjConfigDelete(ctxArg interface{}, key string,
 // certificate config create event
 func handleCertObjCreate(ctx *zedagentContext, key string, config *types.CertObjConfig) {
 
-	uuidStr := config.Key()
-	log.Printf("handleCertObjCreate for %s\n", uuidStr)
-	addOrUpdateCertObjConfig(ctx, uuidStr, *config)
+	log.Printf("handleCertObjCreate for %s\n", key)
+
+	status := types.CertObjStatus{
+		UUIDandVersion: config.UUIDandVersion,
+		ConfigSha256:   config.ConfigSha256,
+	}
+
+	status.StorageStatusList = make([]types.StorageStatus,
+		len(config.StorageConfigList))
+
+	for i, sc := range config.StorageConfigList {
+		ss := &status.StorageStatusList[i]
+		ss.DownloadURL = sc.DownloadURL
+		ss.ImageSha256 = sc.ImageSha256
+	}
+
+	publishCertObjStatus(ctx, &status)
+
+	certObjHandleStatusUpdate(ctx, config, &status)
 }
 
 // certificate config modify event
@@ -862,8 +879,9 @@ func handleCertObjModify(ctx *zedagentContext, key string, config *types.CertObj
 	}
 
 	status.UUIDandVersion = config.UUIDandVersion
-	publishCertObjStatus(ctx, status, uuidStr)
-	addOrUpdateCertObjConfig(ctx, uuidStr, *config)
+	publishCertObjStatus(ctx, status)
+
+	certObjHandleStatusUpdate(ctx, config, status)
 }
 
 // certificate config delete event
@@ -875,124 +893,50 @@ func handleCertObjDelete(ctx *zedagentContext, key string,
 	removeCertObjConfig(ctx, uuidStr)
 }
 
-func publishCertObjStatus(ctx *zedagentContext,
-	config *types.CertObjStatus, uuidStr string) {
-
-	key := uuidStr // XXX vs. config.Key()?
-	log.Printf("publishCertObjStatus(%s) key %s\n", uuidStr, config.Key())
-	pub := ctx.pubCertObjStatus
-	pub.Publish(key, config)
-}
-
-func unpublishCertObjStatus(ctx *zedagentContext, uuidStr string) {
-
-	key := uuidStr
-	log.Printf("removeCertObjStatus(%s)\n", key)
-	pub := ctx.pubCertObjStatus
-	c, _ := pub.Get(key)
-	if c == nil {
-		log.Printf("removeCertObjStatus(%s) not found\n", key)
-		return
-	}
-	pub.Unpublish(key)
-}
-
-// XXX wrappers around handleBaseOsDownloadStatusModify/Delete? Not needed
-
-// base os download status change event
-func handleBaseOsDownloadStatusModify(ctxArg interface{}, key string,
+func handleDownloadStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	status := cast.CastDownloaderStatus(statusArg)
 	if status.Key() != key {
-		log.Printf("handleBaseOsDownloadStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
+		log.Printf("handleDownloadStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
 		return
 	}
 	ctx := ctxArg.(*zedagentContext)
-	log.Printf("handleBaseOsDownloadStatusModify for %s\n",
+	log.Printf("handleDownloadStatusModify for %s\n",
 		status.Safename)
-	updateDownloaderStatus(ctx, baseOsObj, &status)
+	updateDownloaderStatus(ctx, &status)
 }
 
 // base os download status delete event
-func handleBaseOsDownloadStatusDelete(ctxArg interface{}, key string,
+func handleDownloadStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	ctx := ctxArg.(*zedagentContext)
-	log.Printf("handleBaseOsDownloadStatusDelete for %s\n", key)
-	removeDownloaderStatus(ctx, baseOsObj, key)
+	log.Printf("handleDownloadStatusDelete for %s\n", key)
+	// Nothing to do
 }
 
-// base os verification status change event
-func handleBaseOsVerifierStatusModify(ctxArg interface{}, key string,
-	statusArg interface{}) {
-
-	status := cast.CastVerifyImageStatus(statusArg)
-	if status.Key() != key {
-		log.Printf("handleBaseOsVerifierStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return
-	}
-	ctx := ctxArg.(*zedagentContext)
-	log.Printf("handleBaseOsVeriferStatusModify for %s\n",
-		status.Safename)
-	updateVerifierStatus(ctx, baseOsObj, &status)
-}
-
-// base os verification status delete event
-func handleBaseOsVerifierStatusDelete(ctxArg interface{}, key string,
-	statusArg interface{}) {
-
-	ctx := ctxArg.(*zedagentContext)
-	log.Printf("handleBaseOsVeriferStatusDelete for %s\n", key)
-	removeVerifierStatus(ctx, baseOsObj, key)
-}
-
-// app img verification status change event; for disk usage tracking
-func handleAppImgVerifierStatusModify(ctxArg interface{}, key string,
+func handleVerifierStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	status := cast.CastVerifyImageStatus(statusArg)
 	if status.Key() != key {
-		log.Printf("handleAppImgVerifierStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
+		log.Printf("handleVerifierStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
 		return
 	}
 	ctx := ctxArg.(*zedagentContext)
-	log.Printf("handleAppImgVeriferStatusModify for %s\n",
-		status.Safename)
-	updateVerifierStatus(ctx, appImgObj, &status)
+	log.Printf("handleVerifierStatusModify for %s\n", status.Safename)
+	updateVerifierStatus(ctx, &status)
 }
 
-// base os verification status delete event
-func handleAppImgVerifierStatusDelete(ctxArg interface{}, key string, statusArg interface{}) {
-
-	ctx := ctxArg.(*zedagentContext)
-	log.Printf("handleAppImgVeriferStatusDelete for %s\n", key)
-	removeVerifierStatus(ctx, appImgObj, key)
-}
-
-// cerificate download status change event
-func handleCertObjDownloadStatusModify(ctxArg interface{}, key string,
-	statusArg interface{}) {
-	status := cast.CastDownloaderStatus(statusArg)
-	if status.Key() != key {
-		log.Printf("handleCertObjDownloadStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return
-	}
-	ctx := ctxArg.(*zedagentContext)
-	log.Printf("handleCertObjDownloadStatusModify for %s\n",
-		status.Safename)
-	updateDownloaderStatus(ctx, certObj, &status)
-}
-
-// cerificate download status delete event
-func handleCertObjDownloadStatusDelete(ctxArg interface{}, key string,
+func handleVerifierStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	ctx := ctxArg.(*zedagentContext)
-	log.Printf("handleCertObjDownloadStatusDelete for %s\n", key)
-	removeDownloaderStatus(ctx, certObj, key)
+	log.Printf("handleVeriferStatusDelete for %s\n", key)
+	// Nothing to do
+}
+
+func appendError(allErrors string, prefix string, lasterr string) string {
+	return fmt.Sprintf("%s%s: %s\n\n", allErrors, prefix, lasterr)
 }

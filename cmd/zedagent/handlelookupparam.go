@@ -53,7 +53,7 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 	devConfig *zconfig.EdgeDevConfig) {
 
 	// XXX should we handle changes at all? Want to update zedserverconfig
-	// but not rest.
+	// and eids for ACLs.
 
 	//Fill DeviceDb struct with LispInfo config...
 	var device = types.DeviceDb{}
@@ -277,7 +277,6 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 	} else {
 		matches[0].Type = "eidset"
 	}
-	// XXX if there is a change we need to change version string!
 	updateAppNetworkConfig(getconfigCtx, config)
 
 	// Add NameToEID to /etc/hosts

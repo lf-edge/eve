@@ -46,17 +46,17 @@ const persistPath = "/persist"
 
 var reportPaths = []string{"/", "/config", persistPath}
 
-func publishMetrics(iteration int) {
+func publishMetrics(ctx *zedagentContext, iteration int) {
 	cpuStorageStat := ExecuteXentopCmd()
-	PublishMetricsToZedCloud(cpuStorageStat, iteration)
+	PublishMetricsToZedCloud(ctx, cpuStorageStat, iteration)
 }
 
 // Run a periodic post of the metrics
 
-func metricsTimerTask(handleChannel chan interface{}) {
+func metricsTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
 	iteration := 0
 	log.Println("starting report metrics timer task")
-	publishMetrics(iteration)
+	publishMetrics(ctx, iteration)
 
 	interval := time.Duration(configItemCurrent.metricInterval) * time.Second
 	max := float64(interval)
@@ -66,7 +66,7 @@ func metricsTimerTask(handleChannel chan interface{}) {
 	handleChannel <- ticker
 	for range ticker.C {
 		iteration += 1
-		publishMetrics(iteration)
+		publishMetrics(ctx, iteration)
 	}
 }
 
@@ -211,7 +211,9 @@ func handleDomainStatusDelete(ctxArg interface{}, key string,
 		delete(appInterfaceAndNameList, status.DomainName)
 	}
 
-	// XXX remove domainStatus once we can count it below
+	// XXX remove domainStatus once we can count it below? But
+	// assigning away devices to /dev/null aka pciback means not visible
+	// at boot.
 	delete(domainStatus, key)
 	log.Printf("handleDomainStatusDelete done for %s\n", key)
 }
@@ -390,7 +392,8 @@ func ExecuteXentopCmd() [][]string {
 	return cpuStorageStat
 }
 
-func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
+func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
+	iteration int) {
 
 	var ReportMetrics = &zmet.ZMetricMsg{}
 
@@ -563,7 +566,9 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 	}
 	// Walk all verified downloads and report their size (faked
 	// as disks)
-	for _, vs := range verifierStatusMap {
+	verifierStatusMap := verifierGetAll(ctx)
+	for _, st := range verifierStatusMap {
+		vs := cast.CastVerifyImageStatus(st)
 		if debug {
 			log.Printf("verifierStatusMap %s size %d\n",
 				vs.Safename, vs.Size)
@@ -575,7 +580,9 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
 	}
 	// XXX TBD: Avoid dups with verifierStatusMap above
-	for _, ds := range downloaderStatusMap {
+	downloaderStatusMap := downloaderGetAll(ctx)
+	for _, st := range downloaderStatusMap {
+		ds := cast.CastDownloaderStatus(st)
 		if debug {
 			log.Printf("downloaderStatusMap %s size %d\n",
 				ds.Safename, ds.Size)
@@ -976,8 +983,6 @@ func PublishDeviceInfoToZedCloud(pubBaseOsStatus *pubsub.Publication,
 		// XXX could have been assigned away; hack to check for domains
 		_, _, err := types.IoBundleToPci(ib)
 		if err != nil {
-			// XXX length of sub? Need ctx to look at items
-			// XXX separate global haveDomains bool?
 			if len(domainStatus) == 0 {
 				if debug {
 					log.Printf("Not reporting non-existent PCI device %d %s: %v\n",
