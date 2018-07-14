@@ -179,9 +179,7 @@ func Run() {
 	zedrouterCtx.pubAppNetworkStatus = pubAppNetworkStatus
 	pubAppNetworkStatus.ClearRestarted()
 
-	// XXX why dirname? Fix to read collection?
-	appNumAllocatorInit("/var/run/zedrouter/AppNetworkStatus",
-		"/var/run/zedmanager/AppNetworkConfig")
+	appNumAllocatorInit(pubAppNetworkStatus)
 
 	// Subscribe to network objects and services from zedagent
 	subNetworkObjectConfig, err := pubsub.Subscribe("zedagent",
