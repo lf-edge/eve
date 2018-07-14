@@ -134,7 +134,8 @@ func doUpdate(ctx *zedmanagerContext, uuidStr string,
 	}
 	if !config.Activate {
 		if status.Activated || status.ActivateInprogress {
-			changed = doInactivateHalt(ctx, uuidStr, config, status)
+			c := doInactivateHalt(ctx, uuidStr, config, status)
+			changed = changed || c
 		} else {
 			// If we have a !ReadOnly disk this will create a copy
 			err := MaybeAddDomainConfig(ctx, config, nil)
@@ -151,7 +152,8 @@ func doUpdate(ctx *zedmanagerContext, uuidStr string,
 		return changed
 	}
 	log.Printf("Have config.Activate for %s\n", uuidStr)
-	changed = doActivate(ctx, uuidStr, config, status)
+	c := doActivate(ctx, uuidStr, config, status)
+	changed = changed || c
 	log.Printf("doUpdate done for %s\n", uuidStr)
 	return changed
 }
@@ -512,10 +514,13 @@ func doRemove(ctx *zedmanagerContext, uuidStr string,
 	changed := false
 	del := false
 	if status.Activated || status.ActivateInprogress {
-		changed = doInactivate(ctx, uuidStr, status)
+		c := doInactivate(ctx, uuidStr, status)
+		changed = changed || c
 	}
 	if !status.Activated {
-		changed, del = doUninstall(ctx, uuidStr, status)
+		c, d := doUninstall(ctx, uuidStr, status)
+		changed = changed ||  c
+		del = del || d
 	}
 	log.Printf("doRemove done for %s\n", uuidStr)
 	return changed, del

@@ -62,10 +62,8 @@ func MaybeAddVerifyImageConfig(ctx *zedmanagerContext, safename string,
 	m := lookupVerifyImageConfig(ctx, safename)
 	if m != nil {
 		m.RefCount += 1
-		if debug {
-			log.Printf("createVerifyImageConfig: refcnt %d for %s\n",
-				m.RefCount, safename)
-		}
+		log.Printf("MaybeAddVerifyImageConfig: refcnt %d for %s\n",
+			m.RefCount, safename)
 		publishVerifyImageConfig(ctx, m)
 	} else {
 		log.Printf("MaybeAddVerifyImageConfig: add for %s\n",
