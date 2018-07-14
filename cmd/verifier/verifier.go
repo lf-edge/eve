@@ -100,7 +100,7 @@ func Run() {
 
 	// Set up our publications before the subscriptions so ctx is set
 	pubAppImgStatus, err := pubsub.PublishScope(agentName, appImgObj,
-		types.DownloaderStatus{})
+		types.VerifyImageStatus{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func Run() {
 	pubAppImgStatus.ClearRestarted()
 
 	pubBaseOsStatus, err := pubsub.PublishScope(agentName, baseOsObj,
-		types.DownloaderStatus{})
+		types.VerifyImageStatus{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -116,7 +116,7 @@ func Run() {
 	pubBaseOsStatus.ClearRestarted()
 
 	subAppImgConfig, err := pubsub.SubscribeScope("zedmanager", appImgObj,
-		types.DownloaderConfig{}, false, &ctx)
+		types.VerifyImageConfig{}, false, &ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -126,7 +126,7 @@ func Run() {
 	subAppImgConfig.Activate()
 
 	subBaseOsConfig, err := pubsub.SubscribeScope("zedagent", baseOsObj,
-		types.DownloaderConfig{}, false, &ctx)
+		types.VerifyImageConfig{}, false, &ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -217,7 +217,7 @@ func handleInitWorkinProgressObjects(ctx *verifierContext) {
 			}
 			log.Printf("Marking with PendingDelete: %s\n", key)
 			status.PendingDelete = true
-			updateVerifyObjectStatus(ctx, &status)
+			publishVerifyObjectStatus(ctx, &status)
 		}
 	}
 }
@@ -277,7 +277,7 @@ func populateInitialStatusFromVerified(ctx *verifierContext,
 				Size:        info.Size(),
 			}
 
-			updateVerifyObjectStatus(ctx, &status)
+			publishVerifyObjectStatus(ctx, &status)
 		}
 	}
 }
@@ -300,7 +300,7 @@ func handleInitMarkedDeletePendingObjects(ctx *verifierContext) {
 			if status.PendingDelete {
 				log.Printf("still PendingDelete; delete %s\n",
 					key)
-				removeVerifyObjectStatus(ctx, &status)
+				unpublishVerifyObjectStatus(ctx, &status)
 			}
 		}
 	}
@@ -373,7 +373,7 @@ func gcVerifiedObjects(ctx *verifierContext) {
 			}
 			// XXX force delete ...
 			doDelete(&status)
-			removeVerifyObjectStatus(ctx, &status)
+			unpublishVerifyObjectStatus(ctx, &status)
 		}
 	}
 }
@@ -385,13 +385,13 @@ func updateVerifyErrStatus(ctx *verifierContext,
 	status.LastErrTime = time.Now()
 	status.PendingAdd = false
 	status.State = types.INITIAL
-	updateVerifyObjectStatus(ctx, status)
+	publishVerifyObjectStatus(ctx, status)
 }
 
-func updateVerifyObjectStatus(ctx *verifierContext,
+func publishVerifyObjectStatus(ctx *verifierContext,
 	status *types.VerifyImageStatus) {
 
-	log.Printf("updateVerifyObjectStatus(%s, %s)\n",
+	log.Printf("publishVerifyObjectStatus(%s, %s)\n",
 		status.ObjType, status.Safename)
 
 	var pub *pubsub.Publication
@@ -401,16 +401,18 @@ func updateVerifyObjectStatus(ctx *verifierContext,
 	case baseOsObj:
 		pub = ctx.pubBaseOsStatus
 	default:
-		log.Fatalf("updateDownloaderStatus: Unknown ObjType %s for %s\n",
+		log.Fatalf("updateVerifyImageStatus: Unknown ObjType %s for %s\n",
 			status.ObjType, status.Safename)
 	}
 	key := status.Key()
-	log.Printf("updateDownloaderStatus(%s)\n", key)
 	pub.Publish(key, status)
 }
 
-func removeVerifyObjectStatus(ctx *verifierContext,
+func unpublishVerifyObjectStatus(ctx *verifierContext,
 	status *types.VerifyImageStatus) {
+
+	log.Printf("publishVerifyObjectStatus(%s, %s)\n",
+		status.ObjType, status.Safename)
 
 	var pub *pubsub.Publication
 	switch status.ObjType {
@@ -419,14 +421,14 @@ func removeVerifyObjectStatus(ctx *verifierContext,
 	case baseOsObj:
 		pub = ctx.pubBaseOsStatus
 	default:
-		log.Fatalf("removeDownloaderStatus: Unknown ObjType %s for %s\n",
+		log.Fatalf("removeVerifyImageStatus: Unknown ObjType %s for %s\n",
 			status.ObjType, status.Safename)
 	}
 	key := status.Key()
-	log.Printf("removeDownloaderStatus(%s)\n", key)
+	log.Printf("removeVerifyImageStatus(%s)\n", key)
 	st, _ := pub.Get(key)
 	if st == nil {
-		log.Printf("removeDownloaderStatus(%s) not found\n", key)
+		log.Printf("removeVerifyImageStatus(%s) not found\n", key)
 		return
 	}
 	pub.Unpublish(key)
@@ -532,7 +534,7 @@ func handleCreate(ctx *verifierContext, objType string,
 		State:       types.DOWNLOADED,
 		RefCount:    config.RefCount,
 	}
-	updateVerifyObjectStatus(ctx, &status)
+	publishVerifyObjectStatus(ctx, &status)
 
 	ok, size := markObjectAsVerifying(ctx, config, &status)
 	if !ok {
@@ -540,18 +542,18 @@ func handleCreate(ctx *verifierContext, objType string,
 		return
 	}
 	status.Size = size
-	updateVerifyObjectStatus(ctx, &status)
+	publishVerifyObjectStatus(ctx, &status)
 
 	if !verifyObjectSha(ctx, config, &status) {
 		log.Printf("handleCreate fail for %s\n", config.DownloadURL)
 		return
 	}
-	updateVerifyObjectStatus(ctx, &status)
+	publishVerifyObjectStatus(ctx, &status)
 
 	markObjectAsVerified(ctx, config, &status)
 	status.PendingAdd = false
 	status.State = types.DELIVERED
-	updateVerifyObjectStatus(ctx, &status)
+	publishVerifyObjectStatus(ctx, &status)
 	log.Printf("handleCreate done for %s\n", config.DownloadURL)
 }
 
@@ -904,12 +906,12 @@ func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 
 	if status.RefCount == 0 {
 		status.PendingModify = true
-		updateVerifyObjectStatus(ctx, status)
+		publishVerifyObjectStatus(ctx, status)
 		// XXX start gc timer instead
 		doDelete(status)
 		status.PendingModify = false
 		status.State = 0 // XXX INITIAL implies failure
-		updateVerifyObjectStatus(ctx, status)
+		publishVerifyObjectStatus(ctx, status)
 		log.Printf("handleModify done for %s\n", config.DownloadURL)
 		return
 	}
@@ -918,7 +920,7 @@ func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 	if config.Safename == status.Safename &&
 		config.ImageSha256 == status.ImageSha256 {
 		if changed {
-			updateVerifyObjectStatus(ctx, status)
+			publishVerifyObjectStatus(ctx, status)
 		}
 		log.Printf("handleModify: no (other) change for %s\n",
 			config.DownloadURL)
@@ -926,11 +928,11 @@ func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 	}
 
 	status.PendingModify = true
-	updateVerifyObjectStatus(ctx, status)
+	publishVerifyObjectStatus(ctx, status)
 	handleDelete(ctx, status)
 	handleCreate(ctx, status.ObjType, config)
 	status.PendingModify = false
-	updateVerifyObjectStatus(ctx, status)
+	publishVerifyObjectStatus(ctx, status)
 	log.Printf("handleModify done for %s\n", config.DownloadURL)
 }
 
@@ -949,7 +951,7 @@ func handleDelete(ctx *verifierContext, status *types.VerifyImageStatus) {
 
 	// XXX set refCount=0
 	// Write out what we modified to VerifyImageStatus aka delete
-	removeVerifyObjectStatus(ctx, status)
+	unpublishVerifyObjectStatus(ctx, status)
 	log.Printf("handleDelete done for %s\n", status.Safename)
 }
 
