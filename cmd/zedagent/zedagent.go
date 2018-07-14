@@ -100,6 +100,7 @@ type zedagentContext struct {
 	subCertObjDownloadStatus *pubsub.Subscription
 	pubBaseOsVerifierConfig  *pubsub.Publication
 	subBaseOsVerifierStatus  *pubsub.Subscription
+	subAppImgDownloadStatus  *pubsub.Subscription
 	subAppImgVerifierStatus  *pubsub.Subscription
 }
 
@@ -339,7 +340,7 @@ func Run() {
 
 	// Look for VerifyImageStatus from verifier
 	subAppImgVerifierStatus, err := pubsub.SubscribeScope("verifier",
-		baseOsObj, types.VerifyImageStatus{}, false, &zedagentCtx)
+		appImgObj, types.VerifyImageStatus{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -347,6 +348,17 @@ func Run() {
 	subAppImgVerifierStatus.DeleteHandler = handleVerifierStatusDelete
 	zedagentCtx.subAppImgVerifierStatus = subAppImgVerifierStatus
 	subAppImgVerifierStatus.Activate()
+
+	// Look for DownloaderStatus from downloader for metric reporting
+	subAppImgDownloadStatus, err := pubsub.SubscribeScope("downloader",
+		appImgObj, types.DownloaderStatus{}, false, &zedagentCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subAppImgDownloadStatus.ModifyHandler = handleDownloadStatusModify
+	subAppImgDownloadStatus.DeleteHandler = handleDownloadStatusDelete
+	zedagentCtx.subAppImgDownloadStatus = subAppImgDownloadStatus
+	subAppImgDownloadStatus.Activate()
 
 	// First we process the verifierStatus to avoid downloading
 	// an base image we already have in place
@@ -493,6 +505,9 @@ func Run() {
 
 		case change := <-subAppImgVerifierStatus.C:
 			subAppImgVerifierStatus.ProcessChange(change)
+
+		case change := <-subAppImgDownloadStatus.C:
+			subAppImgDownloadStatus.ProcessChange(change)
 
 		case change := <-subCertObjDownloadStatus.C:
 			subCertObjDownloadStatus.ProcessChange(change)
