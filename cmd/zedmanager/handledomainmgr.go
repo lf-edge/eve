@@ -23,8 +23,7 @@ const (
 )
 
 func MaybeAddDomainConfig(ctx *zedmanagerContext,
-	aiConfig types.AppInstanceConfig,
-	ns *types.AppNetworkStatus) error {
+	aiConfig types.AppInstanceConfig, ns *types.AppNetworkStatus) error {
 
 	key := aiConfig.Key()
 	displayName := aiConfig.DisplayName

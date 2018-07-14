@@ -15,24 +15,18 @@ import (
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
-	"github.com/zededa/go-provision/watch"
 	"log"
 	"os"
 )
 
+// XXX remove references to /var/run in comments
 // Keeping status in /var/run to be clean after a crash/reboot
 const (
-	appImgObj  = "appImg.obj"
-	certObj    = "cert.obj"
-	agentName  = "zedmanager"
-	moduleName = agentName
+	appImgObj = "appImg.obj"
+	certObj   = "cert.obj"
+	agentName = "zedmanager"
 
-	verifierConfigDirname   = "/var/tmp/verifier/config"
-	downloaderConfigDirname = "/var/tmp/downloader/config"
-	certificateDirname      = persistDir + "/certs"
-
-	downloaderAppImgObjConfigDirname = "/var/tmp/downloader/" + appImgObj + "/config"
-	verifierAppImgObjConfigDirname   = "/var/tmp/verifier/" + appImgObj + "/config"
+	certificateDirname = persistDir + "/certs"
 )
 
 // Set from Makefile
@@ -40,18 +34,22 @@ var Version = "No version specified"
 
 // State used by handlers
 type zedmanagerContext struct {
-	configRestarted        bool
-	verifierRestarted      bool
-	subAppInstanceConfig   *pubsub.Subscription
-	pubAppInstanceStatus   *pubsub.Publication
-	subDeviceNetworkStatus *pubsub.Subscription
-	pubAppNetworkConfig    *pubsub.Publication
-	subAppNetworkStatus    *pubsub.Subscription
-	pubDomainConfig        *pubsub.Publication
-	subDomainStatus        *pubsub.Subscription
-	pubEIDConfig           *pubsub.Publication
-	subEIDStatus           *pubsub.Subscription
-	subCertObjStatus       *pubsub.Subscription
+	configRestarted         bool
+	verifierRestarted       bool
+	subAppInstanceConfig    *pubsub.Subscription
+	pubAppInstanceStatus    *pubsub.Publication
+	subDeviceNetworkStatus  *pubsub.Subscription
+	pubAppNetworkConfig     *pubsub.Publication
+	subAppNetworkStatus     *pubsub.Subscription
+	pubDomainConfig         *pubsub.Publication
+	subDomainStatus         *pubsub.Subscription
+	pubEIDConfig            *pubsub.Publication
+	subEIDStatus            *pubsub.Subscription
+	subCertObjStatus        *pubsub.Subscription
+	pubAppImgDownloadConfig *pubsub.Publication
+	subAppImgDownloadStatus *pubsub.Subscription
+	pubAppImgVerifierConfig *pubsub.Publication
+	subAppImgVerifierStatus *pubsub.Subscription
 }
 
 var deviceNetworkStatus types.DeviceNetworkStatus
@@ -77,41 +75,6 @@ func Run() {
 		log.Fatal(err)
 	}
 	log.Printf("Starting %s\n", agentName)
-	watch.CleanupRestarted(agentName)
-	// XXX either we don't need this, or we need it for each objType
-	watch.CleanupRestart("downloader")
-	// XXX either we don't need this, or we need it for each objType
-	watch.CleanupRestart("verifier")
-	watch.CleanupRestart("zedagent")
-
-	// XXX remove
-	verifierStatusDirname := "/var/run/verifier/status"
-	downloaderStatusDirname := "/var/run/downloader/status"
-
-	downloaderAppImgObjStatusDirname := "/var/run/downloader/" + appImgObj + "/status"
-	verifierAppImgObjStatusDirname := "/var/run/verifier/" + appImgObj + "/status"
-
-	// XXX remove
-	dirs := []string{
-		downloaderConfigDirname,
-		downloaderAppImgObjConfigDirname,
-		verifierConfigDirname,
-		verifierAppImgObjConfigDirname,
-		downloaderAppImgObjStatusDirname,
-		downloaderStatusDirname,
-		verifierAppImgObjStatusDirname,
-		verifierStatusDirname,
-	}
-
-	// XXX remove
-	for _, dir := range dirs {
-		if _, err := os.Stat(dir); err != nil {
-			log.Printf("Create %s\n", dir)
-			if err := os.MkdirAll(dir, 0700); err != nil {
-				log.Fatal(err)
-			}
-		}
-	}
 
 	// Any state needed by handler functions
 	ctx := zedmanagerContext{}
@@ -149,6 +112,22 @@ func Run() {
 	ctx.pubEIDConfig = pubEIDConfig
 	pubEIDConfig.ClearRestarted()
 
+	pubAppImgDownloadConfig, err := pubsub.PublishScope(agentName,
+		appImgObj, types.DownloaderConfig{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	pubAppImgDownloadConfig.ClearRestarted()
+	ctx.pubAppImgDownloadConfig = pubAppImgDownloadConfig
+
+	pubAppImgVerifierConfig, err := pubsub.PublishScope(agentName,
+		appImgObj, types.VerifyImageConfig{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	pubAppImgVerifierConfig.ClearRestarted()
+	ctx.pubAppImgVerifierConfig = pubAppImgVerifierConfig
+
 	// Get AppInstanceConfig from zedagent
 	subAppInstanceConfig, err := pubsub.Subscribe("zedagent",
 		types.AppInstanceConfig{}, false, &ctx)
@@ -184,10 +163,29 @@ func Run() {
 	ctx.subDomainStatus = subDomainStatus
 	subDomainStatus.Activate()
 
-	verifierChanges := make(chan string)
-	go watch.WatchStatus(verifierAppImgObjStatusDirname, verifierChanges)
-	downloaderChanges := make(chan string)
-	go watch.WatchStatus(downloaderAppImgObjStatusDirname, downloaderChanges)
+	// Look for DownloaderStatus from downloader
+	subAppImgDownloadStatus, err := pubsub.SubscribeScope("downloader",
+		appImgObj, types.DownloaderStatus{}, false, &ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subAppImgDownloadStatus.ModifyHandler = handleDownloaderStatusModify
+	subAppImgDownloadStatus.DeleteHandler = handleDownloaderStatusDelete
+	ctx.subAppImgDownloadStatus = subAppImgDownloadStatus
+	subAppImgDownloadStatus.Activate()
+
+	// Look for VerifyImageStatus from verifier
+	subAppImgVerifierStatus, err := pubsub.SubscribeScope("verifier",
+		appImgObj, types.VerifyImageStatus{}, false, &ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subAppImgVerifierStatus.ModifyHandler = handleVerifyImageStatusModify
+	subAppImgVerifierStatus.DeleteHandler = handleVerifyImageStatusDelete
+	subAppImgVerifierStatus.RestartHandler = handleVerifierRestarted
+	ctx.subAppImgVerifierStatus = subAppImgVerifierStatus
+	subAppImgVerifierStatus.Activate()
+
 	// Get IdentityStatus from identitymgr
 	subEIDStatus, err := pubsub.Subscribe("identitymgr",
 		types.EIDStatus{}, false, &ctx)
@@ -221,28 +219,15 @@ func Run() {
 	ctx.subCertObjStatus = subCertObjStatus
 	subCertObjStatus.Activate()
 
-	var verifierRestartedFn watch.StatusRestartHandler = handleVerifierRestarted
-
 	// First we process the verifierStatus to avoid downloading
 	// an image we already have in place.
 	log.Printf("Handling initial verifier Status\n")
-	done := false
-	for !done {
+	for !ctx.verifierRestarted {
 		select {
-		case change := <-verifierChanges:
-			{
-				// XXX
-				watch.HandleStatusEvent(change, &ctx,
-					verifierAppImgObjStatusDirname,
-					&types.VerifyImageStatus{},
-					handleVerifyImageStatusModify,
-					handleVerifyImageStatusDelete,
-					&verifierRestartedFn)
-				if ctx.verifierRestarted {
-					log.Printf("Verifier reported restarted\n")
-					done = true
-					break
-				}
+		case change := <-subAppImgVerifierStatus.C:
+			subAppImgVerifierStatus.ProcessChange(change)
+			if ctx.verifierRestarted {
+				log.Printf("Verifier reported restarted\n")
 			}
 		}
 	}
@@ -254,25 +239,11 @@ func Run() {
 		case change := <-subCertObjStatus.C:
 			subCertObjStatus.ProcessChange(change)
 
-		case change := <-downloaderChanges:
-			{
-				// XXX
-				watch.HandleStatusEvent(change, &ctx,
-					downloaderAppImgObjStatusDirname,
-					&types.DownloaderStatus{},
-					handleDownloaderStatusModify,
-					handleDownloaderStatusDelete, nil)
-			}
-			// XXX 
-		case change := <-verifierChanges:
-			{
-				watch.HandleStatusEvent(change, &ctx,
-					verifierAppImgObjStatusDirname,
-					&types.VerifyImageStatus{},
-					handleVerifyImageStatusModify,
-					handleVerifyImageStatusDelete,
-					&verifierRestartedFn)
-			}
+		case change := <-subAppImgDownloadStatus.C:
+			subAppImgDownloadStatus.ProcessChange(change)
+
+		case change := <-subAppImgVerifierStatus.C:
+			subAppImgVerifierStatus.ProcessChange(change)
 
 		case change := <-subEIDStatus.C:
 			subEIDStatus.ProcessChange(change)
@@ -493,9 +464,8 @@ func handleModify(ctx *zedmanagerContext, key string,
 func handleDelete(ctx *zedmanagerContext, key string,
 	status *types.AppInstanceStatus) {
 
-	// XXX Remove %+v
-	log.Printf("handleDelete(%v) for %s: %+v\n",
-		status.UUIDandVersion, status.DisplayName, status, status)
+	log.Printf("handleDelete(%v) for %s\n",
+		status.UUIDandVersion, status.DisplayName)
 
 	removeAIStatus(ctx, status)
 	log.Printf("handleDelete done for %s\n", status.DisplayName)

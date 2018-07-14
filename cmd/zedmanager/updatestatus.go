@@ -212,7 +212,8 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 			sc.DownloadURL, safename)
 
 		// Shortcut if image is already verified
-		vs, err := LookupVerifyImageStatusAny(safename, sc.ImageSha256)
+		vs, err := LookupVerifyImageStatusAny(ctx, safename,
+			sc.ImageSha256)
 		if err == nil && vs.State == types.DELIVERED {
 			log.Printf("doUpdate found verified image for %s sha %s\n",
 				safename, sc.ImageSha256)
@@ -227,7 +228,8 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 					vs.RefCount, vs.Safename)
 				// We don't need certs since Status already
 				// exists
-				MaybeAddVerifyImageConfig(vs.Safename, &sc, false)
+				MaybeAddVerifyImageConfig(ctx, vs.Safename,
+					&sc, false)
 				ss.HasVerifierRef = true
 				changed = true
 			}
@@ -243,14 +245,14 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		if !ss.HasDownloaderRef {
 			log.Printf("doUpdate !HasDownloaderRef for %s\n",
 				safename)
-			AddOrRefcountDownloaderConfig(safename, &sc)
+			AddOrRefcountDownloaderConfig(ctx, safename, &sc)
 			ss.HasDownloaderRef = true
 			changed = true
 		}
-		ds, err := LookupDownloaderStatus(safename)
-		if err != nil {
-			log.Printf("LookupDownloaderStatus %s failed %v\n",
-				safename, err)
+		ds := lookupDownloaderStatus(ctx, safename)
+		if ds == nil {
+			log.Printf("lookupDownloaderStatus %s failed\n",
+				safename)
 			minState = types.DOWNLOAD_STARTED
 			continue
 		}
@@ -276,7 +278,8 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		case types.DOWNLOADED:
 			// Kick verifier to start if it hasn't already
 			if !ss.HasVerifierRef {
-				if MaybeAddVerifyImageConfig(safename, &sc, true) {
+				if MaybeAddVerifyImageConfig(ctx, safename,
+					&sc, true) {
 					ss.HasVerifierRef = true
 					changed = true
 				} else {
@@ -314,7 +317,8 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		log.Printf("Found StorageConfig URL %s safename %s\n",
 			sc.DownloadURL, safename)
 
-		vs, err := LookupVerifyImageStatusAny(safename, sc.ImageSha256)
+		vs, err := LookupVerifyImageStatusAny(ctx, safename,
+			sc.ImageSha256)
 		if err != nil {
 			log.Printf("LookupVerifyImageStatusAny %s sha %s failed %v\n",
 				safename, sc.ImageSha256, err)
@@ -610,12 +614,12 @@ func doUninstall(ctx *zedmanagerContext, uuidStr string,
 		ss := &status.StorageStatusList[i]
 		// Decrease refcount if we had increased it
 		if ss.HasVerifierRef {
-			MaybeRemoveVerifyImageConfigSha256(ss.ImageSha256)
+			MaybeRemoveVerifyImageConfigSha256(ctx, ss.ImageSha256)
 			ss.HasVerifierRef = false
 			changed = true
 		}
 
-		_, err := LookupVerifyImageStatusSha256(ss.ImageSha256)
+		_, err := LookupVerifyImageStatusSha256(ctx, ss.ImageSha256)
 		// XXX if additional refs it will not go away
 		if false && err == nil {
 			log.Printf("LookupVerifyImageStatus %s not yet gone\n",
@@ -641,15 +645,15 @@ func doUninstall(ctx *zedmanagerContext, uuidStr string,
 		}
 		// Decrease refcount if we had increased it
 		if ss.HasDownloaderRef {
-			MaybeRemoveDownloaderConfig(safename)
+			MaybeRemoveDownloaderConfig(ctx, safename)
 			ss.HasDownloaderRef = false
 			changed = true
 		}
 
-		_, err := LookupDownloaderStatus(ss.ImageSha256)
+		ds := lookupDownloaderStatus(ctx, ss.ImageSha256)
 		// XXX if additional refs it will not go away
-		if false && err == nil {
-			log.Printf("LookupDownloaderStatus %s not yet gone\n",
+		if false && ds != nil {
+			log.Printf("lookupDownloaderStatus %s not yet gone\n",
 				safename)
 			removedAll = false
 			continue

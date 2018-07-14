@@ -4,51 +4,72 @@
 package zedmanager
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/zededa/go-provision/cast"
-	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"log"
 	"os"
 )
 
-// Key is Safename string.
-var verifyImageConfig map[string]types.VerifyImageConfig
+func lookupVerifyImageConfig(ctx *zedmanagerContext,
+	safename string) *types.VerifyImageConfig {
+
+	pub := ctx.pubAppImgVerifierConfig
+	c, _ := pub.Get(safename)
+	if c == nil {
+		log.Printf("lookupVerifyImageConfig(%s) not found\n",
+			safename)
+		return nil
+	}
+	config := cast.CastVerifyImageConfig(c)
+	if config.Key() != safename {
+		log.Printf("lookupVerifyImageConfig(%s) got %s; ignored %+v\n",
+			safename, config.Key(), config)
+		return nil
+	}
+	return &config
+}
+
+func lookupVerifyImageConfigSha256(ctx *zedmanagerContext,
+	sha256 string) *types.VerifyImageConfig {
+
+	pub := ctx.pubAppImgVerifierConfig
+	items := pub.GetAll()
+	for _, c := range items {
+		config := cast.CastVerifyImageConfig(c)
+		if config.ImageSha256 == sha256 {
+			return &config
+		}
+	}
+	return nil
+}
 
 // If checkCerts is set this can return false. Otherwise not.
-func MaybeAddVerifyImageConfig(safename string, sc *types.StorageConfig,
-	checkCerts bool) bool {
+func MaybeAddVerifyImageConfig(ctx *zedmanagerContext, safename string,
+	sc *types.StorageConfig, checkCerts bool) bool {
 
 	log.Printf("MaybeAddVerifyImageConfig for %s\n", safename)
 
 	// check the certificate files, if not present,
 	// we can not start verification
 	if checkCerts && !checkCertsForObject(safename, sc) {
-		log.Printf("createVerifierConfig for %s, Certs are still not installed\n",
+		log.Printf("MaybeAddVerifyImageConfig for %s, Certs are still not installed\n",
 			safename)
 		return false
 	}
 
-	if verifyImageConfig == nil {
-		if debug {
-			log.Printf("create verifier config map\n")
-		}
-		verifyImageConfig = make(map[string]types.VerifyImageConfig)
-	}
-	key := safename
-	if m, ok := verifyImageConfig[key]; ok {
+	m := lookupVerifyImageConfig(ctx, safename)
+	if m != nil {
 		m.RefCount += 1
 		if debug {
-			log.Printf("verifier config already exists refcnt %d for %s\n",
+			log.Printf("createVerifyImageConfig: refcnt %d for %s\n",
 				m.RefCount, safename)
 		}
-		verifyImageConfig[key] = m
+		publishVerifyImageConfig(ctx, m)
 	} else {
-		if debug {
-			log.Printf("verifier config add for %s\n", safename)
-		}
+		log.Printf("MaybeAddVerifyImageConfig: add for %s\n",
+			safename)
 		n := types.VerifyImageConfig{
 			Safename:         safename,
 			DownloadURL:      sc.DownloadURL,
@@ -58,73 +79,59 @@ func MaybeAddVerifyImageConfig(safename string, sc *types.StorageConfig,
 			ImageSignature:   sc.ImageSignature,
 			SignatureKey:     sc.SignatureKey,
 		}
-		verifyImageConfig[key] = n
+		publishVerifyImageConfig(ctx, &n)
 	}
-	configFilename := fmt.Sprintf("%s/%s.json",
-		verifierAppImgObjConfigDirname, safename)
-	writeVerifyImageConfig(verifyImageConfig[key], configFilename)
 	log.Printf("MaybeAddVerifyImageConfig done for %s\n", safename)
 	return true
 }
 
-func MaybeRemoveVerifyImageConfigSha256(sha256 string) {
+func MaybeRemoveVerifyImageConfigSha256(ctx *zedmanagerContext, sha256 string) {
+
 	log.Printf("MaybeRemoveVerifyImageConfig for %s\n", sha256)
 
-	// XXX Looking in status to remove config??? Assumes status made
-	// it back from verifier before we want to delete it.
-	m, err := lookupVerifyImageStatusSha256Impl(sha256)
-	if err != nil {
-		log.Printf("VerifyImage config missing for remove for %s\n",
+	m := lookupVerifyImageConfigSha256(ctx, sha256)
+	if m == nil {
+		log.Printf("MaybeRemoveVerifyImageConfigSha256: config missing for %s\n",
 			sha256)
 		return
 	}
 	m.RefCount -= 1
 	if m.RefCount != 0 {
-		log.Printf("MaybeRemoveVerifyImageConfig remaining RefCount %d for %s\n",
+		log.Printf("MaybeRemoveVerifyImageConfigSha256: RefCount %d for %s\n",
 			m.RefCount, sha256)
+		publishVerifyImageConfig(ctx, m)
 		return
 	}
-	if debug {
-		log.Printf("MaybeRemoveVerifyImageConfig RefCount zero for %s\n",
-			sha256)
-	}
-	key := m.Safename
-	delete(verifyImageConfig, key)
-	configFilename := fmt.Sprintf("%s/%s.json",
-		verifierAppImgObjConfigDirname, key)
-	if err := os.Remove(configFilename); err != nil {
-		log.Println(err)
-	}
+	log.Printf("MaybeRemoveVerifyImageConfigSha256: RefCount zero for %s\n",
+		sha256)
+	unpublishVerifyImageConfig(ctx, m)
 	log.Printf("MaybeRemoveVerifyImageConfigSha256 done for %s\n", sha256)
 }
 
-func writeVerifyImageConfig(config types.VerifyImageConfig,
-	configFilename string) {
-	b, err := json.Marshal(config)
-	if err != nil {
-		log.Fatal(err, "json Marshal VerifyImageConfig")
-	}
-	err = pubsub.WriteRename(configFilename, b)
-	if err != nil {
-		log.Fatal(err, configFilename)
-	}
+func publishVerifyImageConfig(ctx *zedmanagerContext,
+	config *types.VerifyImageConfig) {
+
+	key := config.Key()
+	log.Printf("publishVerifyImageConfig(%s)\n", key)
+
+	pub := ctx.pubAppImgVerifierConfig
+	pub.Publish(key, config)
 }
 
-// Key is Safename string.
-var verifierStatus map[string]types.VerifyImageStatus
+func unpublishVerifyImageConfig(ctx *zedmanagerContext,
+	config *types.VerifyImageConfig) {
 
-func dumpVerifierStatus() {
-	for key, m := range verifierStatus {
-		log.Printf("\tverifierStatus[%v]: sha256 %s safename %s\n",
-			key, m.ImageSha256, m.Safename)
-	}
+	key := config.Key()
+	log.Printf("removeVerifyImageConfig(%s)\n", key)
+
+	pub := ctx.pubAppImgVerifierConfig
+	pub.Unpublish(key)
 }
 
-func handleVerifyImageStatusModify(ctxArg interface{}, statusFilename string,
+func handleVerifyImageStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
+
 	status := cast.CastVerifyImageStatus(statusArg)
-	// XXX change once key arg
-	key := status.Key()
 	if status.Key() != key {
 		log.Printf("handleVerifyImageStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
@@ -140,66 +147,51 @@ func handleVerifyImageStatusModify(ctxArg interface{}, statusFilename string,
 		return
 	}
 
-	if verifierStatus == nil {
-		if debug {
-			log.Printf("create verifier map\n")
-		}
-		verifierStatus = make(map[string]types.VerifyImageStatus)
-	}
-	key = status.Safename
-	changed := false
-	if m, ok := verifierStatus[key]; ok {
-		if status.State != m.State {
-			log.Printf("verifier map changed from %v to %v\n",
-				m.State, status.State)
-			changed = true
-		}
-	} else {
-		if debug {
-			log.Printf("verifier map add for %v\n", status.State)
-		}
-		changed = true
-	}
-	if changed {
-		verifierStatus[key] = status
-		if debug {
-			log.Printf("Added verifierStatus key %v sha %s safename %s\n",
-				key, status.ImageSha256, status.Safename)
-			dumpVerifierStatus()
-		}
-		updateAIStatusSafename(ctx, key)
-	}
+	updateAIStatusSafename(ctx, key)
 	log.Printf("handleVerifyImageStatusModify done for %s\n",
 		status.Safename)
 }
 
-func LookupVerifyImageStatus(safename string) (types.VerifyImageStatus, error) {
-	if m, ok := verifierStatus[safename]; ok {
-		if debug {
-			log.Printf("LookupVerifyImageStatus: found based on safename %s\n",
-				safename)
-		}
-		return m, nil
-	} else {
-		return types.VerifyImageStatus{}, errors.New("No VerifyImageStatus for safename")
+func lookupVerifyImageStatus(ctx *zedmanagerContext,
+	safename string) *types.VerifyImageStatus {
+
+	sub := ctx.subAppImgVerifierStatus
+	c, _ := sub.Get(safename)
+	if c == nil {
+		log.Printf("lookupVerifyImageStatus(%s) not found\n", safename)
+		return nil
 	}
+	status := cast.CastVerifyImageStatus(c)
+	if status.Key() != safename {
+		log.Printf("lookupVerifyImageStatus(%s) got %s; ignored %+v\n",
+			safename, status.Key(), status)
+		return nil
+	}
+	return &status
 }
 
-func lookupVerifyImageStatusSha256Impl(sha256 string) (*types.VerifyImageStatus,
-	error) {
-	for _, m := range verifierStatus {
-		if m.ImageSha256 == sha256 {
-			return &m, nil
+func lookupVerifyImageStatusSha256Impl(ctx *zedmanagerContext,
+	sha256 string) *types.VerifyImageStatus {
+
+	sub := ctx.subAppImgVerifierStatus
+	items := sub.GetAll()
+	for _, st := range items {
+		status := cast.CastVerifyImageStatus(st)
+		if status.ImageSha256 == sha256 {
+			return &status
 		}
 	}
-	return nil, errors.New("No VerifyImageStatus for sha")
+	return nil
 }
 
-func LookupVerifyImageStatusSha256(sha256 string) (types.VerifyImageStatus,
-	error) {
-	m, err := lookupVerifyImageStatusSha256Impl(sha256)
-	if err != nil {
-		return types.VerifyImageStatus{}, err
+func LookupVerifyImageStatusSha256(ctx *zedmanagerContext,
+	sha256 string) (types.VerifyImageStatus, error) {
+
+	m := lookupVerifyImageStatusSha256Impl(ctx, sha256)
+	if m != nil {
+		errStr := fmt.Sprintf("LookupVerifyImageStatus: no sha %s",
+			sha256)
+		return types.VerifyImageStatus{}, errors.New(errStr)
 	} else {
 		log.Printf("LookupVerifyImageStatusSha256: found based on sha256 %s safename %s\n",
 			sha256, m.Safename)
@@ -207,47 +199,34 @@ func LookupVerifyImageStatusSha256(sha256 string) (types.VerifyImageStatus,
 	}
 }
 
-func LookupVerifyImageStatusAny(safename string,
+func LookupVerifyImageStatusAny(ctx *zedmanagerContext, safename string,
 	sha256 string) (types.VerifyImageStatus, error) {
-	m0, err := LookupVerifyImageStatus(safename)
-	if err == nil {
-		return m0, nil
+
+	m := lookupVerifyImageStatus(ctx, safename)
+	if m != nil {
+		return *m, nil
 	}
-	m1, err := lookupVerifyImageStatusSha256Impl(sha256)
-	if err == nil {
+	m = lookupVerifyImageStatusSha256Impl(ctx, sha256)
+	if m != nil {
 		if debug {
 			log.Printf("LookupVerifyImageStatusAny: found based on sha %s\n",
 				sha256)
 		}
-		return *m1, nil
+		return *m, nil
 	} else {
 		return types.VerifyImageStatus{},
 			errors.New("No VerifyImageStatus for safename nor sha")
 	}
 }
 
-func handleVerifyImageStatusDelete(ctxArg interface{}, statusFilename string) {
-// XXX	statusArg interface{}) {
+func handleVerifyImageStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
 
-	log.Printf("handleVerifyImageStatusDelete for %s\n", statusFilename)
+	log.Printf("handleVerifyImageStatusDelete for %s\n", key)
 	ctx := ctxArg.(*zedmanagerContext)
-	// XXX use statusArg
-	key := statusFilename // XXX different than safename? Whole path?
-	if m, ok := verifierStatus[key]; !ok {
-		log.Printf("handleVerifyImageStatusDelete for %s - not found\n",
-			key)
-	} else {
-		if debug {
-			log.Printf("verifier map delete for %v\n", m.State)
-		}
-		delete(verifierStatus, key)
-		if debug {
-			log.Printf("Deleted verifierStatus key %v\n", key)
-			dumpVerifierStatus()
-		}
-		removeAIStatusSafename(ctx, key)
-	}
-	log.Printf("handleVerifyImageStatusDelete done for %s\n", statusFilename)
+
+	removeAIStatusSafename(ctx, key)
+	log.Printf("handleVerifyImageStatusDelete done for %s\n", key)
 }
 
 // check whether the cert files are installed

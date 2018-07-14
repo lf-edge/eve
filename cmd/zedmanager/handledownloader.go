@@ -4,37 +4,26 @@
 package zedmanager
 
 import (
-	"encoding/json"
-	"errors"
-	"fmt"
 	"github.com/zededa/go-provision/cast"
-	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"log"
-	"os"
 )
 
-// Key is Safename string.
-var downloaderConfig map[string]types.DownloaderConfig
+func AddOrRefcountDownloaderConfig(ctx *zedmanagerContext, safename string,
+	sc *types.StorageConfig) {
 
-func AddOrRefcountDownloaderConfig(safename string, sc *types.StorageConfig) {
 	log.Printf("AddOrRefcountDownloaderConfig for %s\n", safename)
 
-	if downloaderConfig == nil {
-		if debug {
-			log.Printf("create downloader config map\n")
-		}
-		downloaderConfig = make(map[string]types.DownloaderConfig)
-	}
-	key := safename
-	if m, ok := downloaderConfig[key]; ok {
+	m := lookupDownloaderConfig(ctx, safename)
+	if m != nil {
 		m.RefCount += 1
 		log.Printf("downloader config exists for %s refcount %d\n",
 			safename, m.RefCount)
-		downloaderConfig[key] = m
+		publishDownloaderConfig(ctx, m)
 	} else {
 		if debug {
-			log.Printf("downloader config add for %s\n", safename)
+			log.Printf("AddOrRefcountDownloaderConfig: add for %s\n",
+				safename)
 		}
 		n := types.DownloaderConfig{
 			Safename:        safename,
@@ -48,59 +37,57 @@ func AddOrRefcountDownloaderConfig(safename string, sc *types.StorageConfig) {
 			ImageSha256:     sc.ImageSha256,
 			RefCount:        1,
 		}
-		downloaderConfig[key] = n
+		publishDownloaderConfig(ctx, &n)
 	}
-	configFilename := fmt.Sprintf("%s/%s.json",
-		downloaderAppImgObjConfigDirname, safename)
-	writeDownloaderConfig(downloaderConfig[key], configFilename)
-
 	log.Printf("AddOrRefcountDownloaderConfig done for %s\n",
 		safename)
 }
 
-func MaybeRemoveDownloaderConfig(safename string) {
+func MaybeRemoveDownloaderConfig(ctx *zedmanagerContext, safename string) {
 	log.Printf("MaybeRemoveDownloaderConfig for %s\n", safename)
 
-	if downloaderConfig == nil {
-		if debug {
-			log.Printf("create Downloader config map\n")
-		}
-		downloaderConfig = make(map[string]types.DownloaderConfig)
-	}
-	if _, ok := downloaderConfig[safename]; !ok {
-		log.Printf("Downloader config missing for remove for %s\n",
+	m := lookupDownloaderConfig(ctx, safename)
+	if m == nil {
+		log.Printf("MaybeRemoveDownloaderConfig: config missing for %s\n",
 			safename)
 		return
 	}
-	delete(downloaderConfig, safename)
-	configFilename := fmt.Sprintf("%s/%s.json",
-		downloaderAppImgObjConfigDirname, safename)
-	if err := os.Remove(configFilename); err != nil {
-		log.Println(err)
+	m.RefCount -= 1
+	if m.RefCount != 0 {
+		log.Printf("MaybeRemoveDownloaderConfig remaining RefCount %d for %s\n",
+			m.RefCount, safename)
+		publishDownloaderConfig(ctx, m)
+		return
 	}
+	log.Printf("MaybeRemoveDownloaderConfig RefCount zero for %s\n",
+		safename)
+	unpublishDownloaderConfig(ctx, m)
 	log.Printf("MaybeRemoveDownloaderConfig done for %s\n", safename)
 }
 
-func writeDownloaderConfig(config types.DownloaderConfig,
-	configFilename string) {
-	b, err := json.Marshal(config)
-	if err != nil {
-		log.Fatal(err, "json Marshal DownloaderConfig")
-	}
-	err = pubsub.WriteRename(configFilename, b)
-	if err != nil {
-		log.Fatal(err, configFilename)
-	}
+func publishDownloaderConfig(ctx *zedmanagerContext,
+	config *types.DownloaderConfig) {
+
+	key := config.Key()
+	log.Printf("publishDownloaderConfig(%s)\n", key)
+
+	pub := ctx.pubAppImgDownloadConfig
+	pub.Publish(key, config)
 }
 
-// Key is Safename string.
-var downloaderStatus map[string]types.DownloaderStatus
+func unpublishDownloaderConfig(ctx *zedmanagerContext,
+	config *types.DownloaderConfig) {
 
-func handleDownloaderStatusModify(ctxArg interface{}, statusFilename string,
+	key := config.Key()
+	log.Printf("removeDownloaderConfig(%s)\n", key)
+
+	pub := ctx.pubAppImgDownloadConfig
+	pub.Unpublish(key)
+}
+
+func handleDownloaderStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	status := cast.CastDownloaderStatus(statusArg)
-	// XXX change once key arg
-	key := status.Key()
 	if status.Key() != key {
 		log.Printf("handleDownloaderStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
@@ -115,59 +102,53 @@ func handleDownloaderStatusModify(ctxArg interface{}, statusFilename string,
 			status.Safename)
 		return
 	}
-	if downloaderStatus == nil {
-		if debug {
-			log.Printf("create downloader map\n")
-		}
-		downloaderStatus = make(map[string]types.DownloaderStatus)
-	}
-	key = status.Safename
-	changed := false
-	if m, ok := downloaderStatus[key]; ok {
-		if status.State != m.State {
-			log.Printf("downloader map changed from %v to %v\n",
-				m.State, status.State)
-			changed = true
-		}
-	} else {
-		if debug {
-			log.Printf("downloader map add for %v\n", status.State)
-		}
-		changed = true
-	}
-	if changed {
-		downloaderStatus[key] = status
-		updateAIStatusSafename(ctx, key)
-	}
-
+	updateAIStatusSafename(ctx, key)
 	log.Printf("handleDownloaderStatusModify done for %s\n",
 		status.Safename)
 }
 
-func LookupDownloaderStatus(safename string) (types.DownloaderStatus, error) {
-	if m, ok := downloaderStatus[safename]; ok {
-		return m, nil
-	} else {
-		return types.DownloaderStatus{}, errors.New("No DownloaderStatus")
+func lookupDownloaderConfig(ctx *zedmanagerContext,
+	safename string) *types.DownloaderConfig {
+
+	pub := ctx.pubAppImgDownloadConfig
+	c, _ := pub.Get(safename)
+	if c == nil {
+		log.Printf("lookupDownloaderConfig(%s) not found\n", safename)
+		return nil
 	}
+	config := cast.CastDownloaderConfig(c)
+	if config.Key() != safename {
+		log.Printf("lookupDownloaderConfig(%s) got %s; ignored %+v\n",
+			safename, config.Key(), config)
+		return nil
+	}
+	return &config
 }
 
-func handleDownloaderStatusDelete(ctxArg interface{}, statusFilename string) {
-// XXX	statusArg interface{}) {
+func lookupDownloaderStatus(ctx *zedmanagerContext,
+	safename string) *types.DownloaderStatus {
 
-	log.Printf("handleDownloaderStatusDelete for %s\n", statusFilename)
-	ctx := ctxArg.(*zedmanagerContext)
-	// XXX use statusArg??
-	key := statusFilename // XXX different than safename? Whole path?
-	if m, ok := downloaderStatus[key]; !ok {
-		log.Printf("handleDownloaderStatusDelete for %s - not found\n",
-			key)
-	} else {
-		if debug {
-			log.Printf("downloader map delete for %v\n", m.State)
-		}
-		delete(downloaderStatus, key)
-		removeAIStatusSafename(ctx, key)
+	sub := ctx.subAppImgDownloadStatus
+	c, _ := sub.Get(safename)
+	if c == nil {
+		log.Printf("lookupDownloaderStatus(%s) not found\n", safename)
+		return nil
 	}
-	log.Printf("handleDownloaderStatusDelete done for %s\n", statusFilename)
+	status := cast.CastDownloaderStatus(c)
+	if status.Key() != safename {
+		log.Printf("lookupDownloaderStatus(%s) got %s; ignored %+v\n",
+			safename, status.Key(), status)
+		return nil
+	}
+	return &status
+}
+
+func handleDownloaderStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	log.Printf("handleDownloaderStatusDelete for %s\n", key)
+	ctx := ctxArg.(*zedmanagerContext)
+
+	removeAIStatusSafename(ctx, key)
+	log.Printf("handleDownloaderStatusDelete done for %s\n", key)
 }
