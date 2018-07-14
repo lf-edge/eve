@@ -123,26 +123,6 @@ func Run() {
 	}
 	ctx.pubGlobalDownloadStatus = pubGlobalDownloadStatus
 
-	// First wait to have some uplinks with addresses
-	// Looking at any uplinks since we can do baseOS download over all
-	// Also ensure GlobalDownloadConfig has been read
-	for types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus) == 0 ||
-		ctx.globalConfig.MaxSpace == 0 {
-		log.Printf("Waiting for uplink addresses or Global Config\n")
-
-		select {
-		case change := <-subDeviceNetworkStatus.C:
-			subDeviceNetworkStatus.ProcessChange(change)
-
-		case change := <-subGlobalDownloadConfig.C:
-			subGlobalDownloadConfig.ProcessChange(change)
-		}
-	}
-	log.Printf("Have %d uplinks addresses to use\n",
-		types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus))
-
-	ctx.dCtx = downloaderInit(&ctx)
-
 	// Set up our publications before the subscriptions so ctx is set
 	pubAppImgStatus, err := pubsub.PublishScope(agentName, appImgObj,
 		types.DownloaderStatus{})
@@ -201,6 +181,26 @@ func Run() {
 	pubAppImgStatus.SignalRestarted()
 	pubBaseOsStatus.SignalRestarted()
 	pubCertObjStatus.SignalRestarted()
+
+	// First wait to have some uplinks with addresses
+	// Looking at any uplinks since we can do baseOS download over all
+	// Also ensure GlobalDownloadConfig has been read
+	for types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus) == 0 ||
+		ctx.globalConfig.MaxSpace == 0 {
+		log.Printf("Waiting for uplink addresses or Global Config\n")
+
+		select {
+		case change := <-subDeviceNetworkStatus.C:
+			subDeviceNetworkStatus.ProcessChange(change)
+
+		case change := <-subGlobalDownloadConfig.C:
+			subGlobalDownloadConfig.ProcessChange(change)
+		}
+	}
+	log.Printf("Have %d uplinks addresses to use\n",
+		types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus))
+
+	ctx.dCtx = downloaderInit(&ctx)
 
 	for {
 		select {
