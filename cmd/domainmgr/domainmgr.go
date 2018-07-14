@@ -169,6 +169,8 @@ func Run() {
 
 // XXX need to run this sometime after boot to clean up
 // Clean up any unused files in rwImgDirname
+// XXX but need to preserve ones that might become in use. Switch to manual
+// deletes from zedcloud i.e. explicit storage management?
 func handleRestart(ctxArg interface{}, done bool) {
 	log.Printf("handleRestart(%v)\n", done)
 	ctx := ctxArg.(*domainContext)
