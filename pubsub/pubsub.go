@@ -458,7 +458,7 @@ func (pub *Publication) dump(infoStr string) {
 		}
 		log.Printf("\tkey %s val %s\n", key, b)
 	}
-	log.Printf("\trestarted %t\n", name, pub.km.restarted)
+	log.Printf("\trestarted %t\n", pub.km.restarted)
 }
 
 func (pub *Publication) Get(key string) (interface{}, error) {
@@ -728,7 +728,7 @@ func (sub *Subscription) dump(infoStr string) {
 		}
 		log.Printf("\tkey %s val %s\n", key, b)
 	}
-	log.Printf("\trestarted %t\n", name, sub.km.restarted)
+	log.Printf("\trestarted %t\n", sub.km.restarted)
 }
 
 func (sub *Subscription) Get(key string) (interface{}, error) {
