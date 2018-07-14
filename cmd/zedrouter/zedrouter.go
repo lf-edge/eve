@@ -86,7 +86,6 @@ func Run() {
 		log.Fatal(err)
 	}
 	log.Printf("Starting %s\n", agentName)
-	watch.CleanupRestarted(agentName)
 
 	if _, err := os.Stat(runDirname); err != nil {
 		log.Printf("Create %s\n", runDirname)
@@ -235,15 +234,6 @@ func Run() {
 	geoTimer := flextimer.NewRangeTicker(time.Duration(geoMin),
 		time.Duration(geoMax))
 
-	// Wait for zedmanager having populated the intial files to
-	// reduce the number of LISP-RESTARTs
-	// XXX can't use handleRestart since it restarts LISP.
-	// XXX introduce ready flag in context for that plus restarted/
-	restartFile := "/var/run/zedmanager/AppNetworkConfig/restarted"
-	log.Printf("Waiting for zedmanager to report in %s\n", restartFile)
-	watch.WaitForFile(restartFile)
-	log.Printf("Zedmanager reported in %s\n", restartFile)
-
 	// This function is called from PBR when some uplink interface changes
 	// its IP address(es)
 	addrChangeUplinkFn := func(ifname string) {
@@ -311,6 +301,17 @@ func Run() {
 	setFreeUplinks(deviceNetworkConfig.FreeUplinks)
 
 	zedrouterCtx.ready = true
+
+	// Wait for zedmanager having populated the intial files to
+	// reduce the number of LISP-RESTARTs
+	// XXX can't use handleRestart since it restarts LISP.
+	// XXX introduce ready flag in context for that plus restarted/
+	// XXX FIXME remove use of watch
+	restartFile := "/var/run/zedmanager/AppNetworkConfig/restarted"
+	log.Printf("Waiting for zedmanager to report in %s\n", restartFile)
+	watch.WaitForFile(restartFile)
+	log.Printf("Zedmanager reported in %s\n", restartFile)
+
 	for {
 		select {
 		case change := <-subAppNetworkConfig.C:
