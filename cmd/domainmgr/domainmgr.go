@@ -1,9 +1,8 @@
-// Copyright (c) 2017 Zededa, Inc.
+// Copyright (c) 2017-2018 Zededa, Inc.
 // All rights reserved.
 
-// Manage Xen guest domains based on the collection of DomainConfig structs
-// in /var/tmp/domainmgr/config/*.json and report on status in the
-// collection of DomainStatus structs in /var/run/domainmgr/status/*.json
+// Manage Xen guest domains based on the subscribed collection of DomainConfig
+// and publish the result in a collection of DomainStatus structs.
 
 package domainmgr
 
@@ -29,7 +28,6 @@ import (
 	"time"
 )
 
-// Keeping status in /var/run to be clean after a crash/reboot
 const (
 	appImgObj = "appImg.obj"
 	agentName = "domainmgr"

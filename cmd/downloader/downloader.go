@@ -1,14 +1,9 @@
-// Copyright (c) 2017 Zededa, Inc.
+// Copyright (c) 2017-2018 Zededa, Inc.
 // All rights reserved.
 
-// Process input changes from a config directory containing json encoded files
-// with DownloaderConfig and compare against DownloaderStatus in the status
-// dir.
-// ZedManager can stop the download by removing from config directory.
-//
-// Input directory with config (URL, refcount, maxLength, dstDir)
-// Output directory with status (URL, refcount, state, ModTime, lastErr, lastErrTime, retryCount)
-// refCount -> 0 means delete from dstDir? Who owns dstDir? Separate mount.
+// Process input in the form of collections of DownloaderConfig structs
+// and publish the results as collections of DownloaderStatus structs.
+// There are several inputs and outputs based on the objType.
 
 package downloader
 

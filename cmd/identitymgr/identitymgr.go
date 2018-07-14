@@ -1,10 +1,9 @@
-// Copyright (c) 2017 Zededa, Inc.
+// Copyright (c) 2017-2018 Zededa, Inc.
 // All rights reserved.
 
 // Manage the allocation of EIDs for application instances based on input
-// as EIDConfig structs in /var/tmp/identitymgr/config/*.json and report
-// on status in the collection of EIDStatus structs in
-// /var/run/identitymgr/status/*.json
+// as EIDConfig structs and publish the status in the collection of EIDStatus
+// structs.
 
 package identitymgr
 
@@ -33,7 +32,6 @@ import (
 	"time"
 )
 
-// Keeping status in /var/run to be clean after a crash/reboot
 const (
 	agentName = "identitymgr"
 )

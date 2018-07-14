@@ -1,9 +1,8 @@
-// Copyright (c) 2017 Zededa, Inc.
+// Copyright (c) 2017-2018 Zededa, Inc.
 // All rights reserved.
 
-// Process input changes from a config directory containing json encoded files
-// with AppNetworkConfig and compare against AppNetworkStatus in the status
-// dir.
+// Process input in the form of a collection of AppNetworkConfig structs
+// from zedmanager and zedagent. Publish the status as AppNetworkStatus.
 // Produce the updated configlets (for radvd, dnsmasq, ip*tables, lisp.config,
 // ipset, ip link/addr/route configuration) based on that and apply those
 // configlets.
@@ -37,7 +36,6 @@ import (
 	"time"
 )
 
-// Keeping status in /var/run to be clean after a crash/reboot
 const (
 	agentName     = "zedrouter"
 	runDirname    = "/var/run/zedrouter"

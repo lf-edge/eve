@@ -50,17 +50,11 @@ import (
 	"time"
 )
 
-// Keeping status in /var/run to be clean after a crash/reboot
 const (
 	appImgObj = "appImg.obj"
 	baseOsObj = "baseOs.obj"
 	certObj   = "cert.obj"
 	agentName = "zedagent"
-
-	downloaderModulename = "downloader"
-	verifierModulename   = "verifier"
-	zedagentModulename   = agentName
-	zedmanagerModulename = "zedmanager"
 
 	configDir             = "/config"
 	persistDir            = "/persist"

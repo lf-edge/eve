@@ -1,4 +1,4 @@
-// Copyright (c) 2017 Zededa, Inc.
+// Copyright (c) 2017-2018 Zededa, Inc.
 // All rights reserved.
 
 // Get AppInstanceConfig from zedagent, drive config to Downloader, Verifier,
@@ -19,8 +19,6 @@ import (
 	"os"
 )
 
-// XXX remove references to /var/run in comments
-// Keeping status in /var/run to be clean after a crash/reboot
 const (
 	appImgObj = "appImg.obj"
 	certObj   = "cert.obj"

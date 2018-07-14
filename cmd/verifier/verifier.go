@@ -1,9 +1,13 @@
-// Copyright (c) 2017 Zededa, Inc.
+// Copyright (c) 2017-2018 Zededa, Inc.
 // All rights reserved.
 
+// Process input in the form of collections of VerifyImageConfig structs
+// and publish the results as collections of VerifyImageStatus structs.
+// There are several inputs and outputs based on the objType.
 // Process input changes from a config directory containing json encoded files
 // with VerifyImageConfig and compare against VerifyImageStatus in the status
 // dir.
+//
 // Move the file from objectDownloadDirname/pending/<claimedsha>/<safename> to
 // to objectDownloadDirname/verifier/<claimedsha>/<safename> and make RO,
 // then attempt to verify sum.
@@ -37,7 +41,6 @@ import (
 	"time"
 )
 
-// Keeping status in /var/run to be clean after a crash/reboot
 const (
 	appImgObj = "appImg.obj"
 	baseOsObj = "baseOs.obj"
