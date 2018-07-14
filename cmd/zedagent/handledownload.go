@@ -408,6 +408,8 @@ func downloaderSubscription(ctx *zedagentContext, objType string) *pubsub.Subscr
 		sub = ctx.subBaseOsDownloadStatus
 	case certObj:
 		sub = ctx.subCertObjDownloadStatus
+	case appImgObj:
+		sub = ctx.subAppImgDownloadStatus
 	default:
 		log.Fatalf("downloaderSubscription: Unknown ObjType %s\n",
 			objType)
@@ -420,12 +422,17 @@ func downloaderGetAll(ctx *zedagentContext) map[string]interface{} {
 	items1 := sub1.GetAll()
 	sub2 := downloaderSubscription(ctx, certObj)
 	items2 := sub2.GetAll()
+	sub3 := downloaderSubscription(ctx, appImgObj)
+	items3 := sub3.GetAll()
 
 	items := make(map[string]interface{})
 	for k, i := range items1 {
 		items[k] = i
 	}
 	for k, i := range items2 {
+		items[k] = i
+	}
+	for k, i := range items3 {
 		items[k] = i
 	}
 	return items
