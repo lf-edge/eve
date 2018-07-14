@@ -579,7 +579,7 @@ func markObjectAsVerifying(ctx *verifierContext,
 	if err != nil {
 		// XXX hits sometimes; attempting to verify before download
 		// is complete?
-		log.Printf("%s\n", err)
+		log.Printf("markObjectAsVerifying failed %s\n", err)
 		cerr := fmt.Sprintf("%v", err)
 		updateVerifyErrStatus(ctx, status, cerr)
 		log.Printf("handleCreate failed for %s\n", config.DownloadURL)
@@ -634,7 +634,8 @@ func verifyObjectSha(ctx *verifierContext, config *types.VerifyImageConfig,
 	if err != nil {
 		cerr := fmt.Sprintf("%v", err)
 		updateVerifyErrStatus(ctx, status, cerr)
-		log.Printf("%s for %s\n", cerr, config.DownloadURL)
+		log.Printf("verifyObjectSha: %s failed %s\n",
+			config.DownloadURL, cerr)
 		return false
 	}
 	defer f.Close()
@@ -645,7 +646,8 @@ func verifyObjectSha(ctx *verifierContext, config *types.VerifyImageConfig,
 	if _, err := io.Copy(h, f); err != nil {
 		cerr := fmt.Sprintf("%v", err)
 		updateVerifyErrStatus(ctx, status, cerr)
-		log.Printf("%s for %s\n", cerr, config.DownloadURL)
+		log.Printf("verifyObjectSha %s failed %s\n",
+			config.DownloadURL, cerr)
 		return false
 	}
 
@@ -658,7 +660,8 @@ func verifyObjectSha(ctx *verifierContext, config *types.VerifyImageConfig,
 			got, config.ImageSha256)
 		status.PendingAdd = false
 		updateVerifyErrStatus(ctx, status, cerr)
-		log.Printf("%s for %s\n", cerr, config.DownloadURL)
+		log.Printf("verifyObjectSha %s failed %s\n",
+			config.DownloadURL, cerr)
 		return false
 	}
 
