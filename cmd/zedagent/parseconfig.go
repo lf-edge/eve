@@ -144,7 +144,9 @@ func parseBaseOsConfig(getconfigCtx *getconfigContext,
 	same := bytes.Equal(configHash, baseosPrevConfigHash)
 	baseosPrevConfigHash = configHash
 	if same {
-		log.Printf("parseBaseOsConfig: baseos sha is unchanged\n")
+		if debug {
+			log.Printf("parseBaseOsConfig: baseos sha is unchanged\n")
+		}
 		return false
 	}
 	log.Printf("parseBaseOsConfig: Applying updated config %v\n",
@@ -391,7 +393,9 @@ func parseNetworkObjectConfig(config *zconfig.EdgeDevConfig,
 	same := bytes.Equal(configHash, networkConfigPrevConfigHash)
 	networkConfigPrevConfigHash = configHash
 	if same {
-		log.Printf("parseNetworkObjectConfig: network sha is unchanged\n")
+		if debug {
+			log.Printf("parseNetworkObjectConfig: network sha is unchanged\n")
+		}
 		return
 	}
 	log.Printf("parseNetworkObjectConfig: Applying updated config %v\n",
@@ -418,7 +422,9 @@ func parseNetworkServiceConfig(config *zconfig.EdgeDevConfig,
 	same := bytes.Equal(configHash, networkServicePrevConfigHash)
 	networkServicePrevConfigHash = configHash
 	if same {
-		log.Printf("parseNetworkServiceConfig: service sha is unchanged\n")
+		if debug {
+			log.Printf("parseNetworkServiceConfig: service sha is unchanged\n")
+		}
 		return
 	}
 	log.Printf("parseNetworkServiceConfig: Applying updated config %v\n",
@@ -448,7 +454,9 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 	same := bytes.Equal(configHash, appinstancePrevConfigHash)
 	appinstancePrevConfigHash = configHash
 	if same {
-		log.Printf("parseAppInstanceConfig: appinstance sha is unchanged\n")
+		if debug {
+			log.Printf("parseAppInstanceConfig: appinstance sha is unchanged\n")
+		}
 		return
 	}
 	log.Printf("parseAppInstanceConfig: Applying updated config %v\n", Apps)
@@ -1030,7 +1038,9 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 	same := bytes.Equal(configHash, itemsPrevConfigHash)
 	itemsPrevConfigHash = configHash
 	if same {
-		log.Printf("parseConfigItems: items sha is unchanged\n")
+		if debug {
+			log.Printf("parseConfigItems: items sha is unchanged\n")
+		}
 		return
 	}
 	log.Printf("parseConfigItems: Applying updated config %v\n", items)
@@ -1409,7 +1419,9 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd) bool {
 	same := bytes.Equal(configHash, rebootPrevConfigHash)
 	rebootPrevConfigHash = configHash
 	if same {
-		log.Printf("scheduleReboot: reboot sha is unchanged\n")
+		if debug {
+			log.Printf("scheduleReboot: reboot sha is unchanged\n")
+		}
 		return rebootPrevReturn
 	}
 	log.Printf("scheduleReboot: Applying updated config %v\n", reboot)
@@ -1481,7 +1493,6 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd) bool {
 var backupPrevConfigHash []byte
 
 func scheduleBackup(backup *zconfig.DeviceOpsCmd) {
-	log.Printf("scheduleBackup(%v)\n", backup)
 	// XXX:FIXME  handle backup semantics
 	if backup == nil {
 		return
@@ -1490,7 +1501,9 @@ func scheduleBackup(backup *zconfig.DeviceOpsCmd) {
 	same := bytes.Equal(configHash, backupPrevConfigHash)
 	backupPrevConfigHash = configHash
 	if same {
-		log.Printf("scheduleBackup: backup sha is unchanged\n")
+		if debug {
+			log.Printf("scheduleBackup: backup sha is unchanged\n")
+		}
 	}
 	log.Printf("scheduleBackup: Applying updated config %v\n", backup)
 	log.Printf("XXX handle Backup Config: %v\n", backup)

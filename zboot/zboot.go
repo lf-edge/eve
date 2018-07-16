@@ -142,7 +142,6 @@ func GetPartitionState(partName string) string {
 	}
 	partState := string(ret)
 	partState = strings.TrimSpace(partState)
-	log.Printf("zboot partstate %s: %v\n", partName, partState)
 	return partState
 }
 
@@ -153,13 +152,6 @@ func IsPartitionState(partName string, partState string) bool {
 
 	curPartState := GetPartitionState(partName)
 	res := curPartState == partState
-	if res {
-		log.Printf("IsPartitionState(%s, %s) TRUE\n",
-			partName, partState)
-	} else {
-		log.Printf("IsPartitionState(%s, %s) FALSE - is %s\n",
-			partName, partState, curPartState)
-	}
 	return res
 }
 
@@ -362,7 +354,6 @@ func GetLongVersion(part string) string {
 	return ""
 }
 
-// XXX return IMGA's version ...
 func getVersion(part string, verFilename string) string {
 	validatePartitionName(part)
 
@@ -413,7 +404,6 @@ func getVersion(part string, verFilename string) string {
 func IsAvailable() bool {
 	filename := "/usr/bin/zboot"
 	if _, err := os.Stat(filename); err != nil {
-		// XXX log.Printf("zboot not available on this platform: %s\n", err)
 		return false
 	} else {
 		return true
