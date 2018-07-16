@@ -750,3 +750,8 @@ func (sub *Subscription) GetAll() map[string]interface{} {
 	}
 	return result
 }
+
+func (sub *Subscription) Restarted() bool {
+	return sub.km.restarted
+}
+

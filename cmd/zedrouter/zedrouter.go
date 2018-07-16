@@ -25,7 +25,6 @@ import (
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
-	"github.com/zededa/go-provision/watch"
 	"github.com/zededa/go-provision/wrap"
 	"log"
 	"net"
@@ -280,8 +279,6 @@ func Run() {
 		deviceNetworkConfig.Uplink, deviceNetworkConfig.FreeUplinks,
 		addrChangeUplinkFn, addrChangeNonUplinkFn, suppressRoutesFn)
 
-	handleRestart(&zedrouterCtx, false)
-
 	// Publish network metrics for zedagent every 10 seconds
 	nms := getNetworkMetrics() // Need type of data
 	pub, err := pubsub.Publish(agentName, nms)
@@ -302,15 +299,15 @@ func Run() {
 
 	zedrouterCtx.ready = true
 
-	// Wait for zedmanager having populated the intial files to
-	// reduce the number of LISP-RESTARTs
-	// XXX can't use handleRestart since it restarts LISP.
-	// XXX introduce ready flag in context for that plus restarted/
-	// XXX FIXME remove use of watch
-	restartFile := "/var/run/zedmanager/AppNetworkConfig/restarted"
-	log.Printf("Waiting for zedmanager to report in %s\n", restartFile)
-	watch.WaitForFile(restartFile)
-	log.Printf("Zedmanager reported in %s\n", restartFile)
+	// First wait for restarted from zedmanager
+	for !subAppNetworkConfig.Restarted() {
+		log.Printf("Waiting for zedmanager to report restarted\n")
+		select {
+		case change := <-subAppNetworkConfig.C:
+			subAppNetworkConfig.ProcessChange(change)
+		}
+	}
+	log.Printf("Zedmanager has restarted\n")
 
 	for {
 		select {
@@ -365,7 +362,9 @@ func handleRestart(ctxArg interface{}, done bool) {
 		log.Printf("handleRestart(%v)\n", done)
 	}
 	ctx := ctxArg.(*zedrouterContext)
-	handleLispRestart(done, ctx.separateDataPlane)
+	if ctx.ready {
+		handleLispRestart(done, ctx.separateDataPlane)
+	}
 	if done {
 		// Since all work is done inline we can immediately say that
 		// we have restarted.
