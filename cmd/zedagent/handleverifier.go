@@ -319,10 +319,6 @@ func verifierPublication(ctx *zedagentContext, objType string) *pubsub.Publicati
 	switch objType {
 	case baseOsObj:
 		pub = ctx.pubBaseOsVerifierConfig
-		// XXX	case certObj:
-		//		pub = ctx.pubCertObjVerifierConfig
-		// XXX	case appImgObj:
-		//		pub = ctx.pubAppImgVerifierConfig
 	default:
 		log.Fatalf("verifierPublication: Unknown ObjType %s\n",
 			objType)
@@ -335,8 +331,6 @@ func verifierSubscription(ctx *zedagentContext, objType string) *pubsub.Subscrip
 	switch objType {
 	case baseOsObj:
 		sub = ctx.subBaseOsVerifierStatus
-		// XXX	case certObj:
-		//		sub = ctx.subCertObjVerifierStatus
 	case appImgObj:
 		sub = ctx.subAppImgVerifierStatus
 	default:

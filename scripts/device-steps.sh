@@ -35,34 +35,11 @@ done
 
 mkdir -p $TMPDIR
 
-# XXX no longer needed
-if [ -d /var/tmp/zedmanager/downloads ]; then
-    echo "Cleaning up old download dir: /var/tmp/zedmanager/downloads"
-    rm -rf /var/tmp/zedmanager/downloads
-fi
-# XXX no longer needed
-if [ -d /var/tmp/domainmgr/img ]; then
-    echo "Removing old domU img dir: /var/tmp/domainmgr/img"
-    rm -rf /var/tmp/domainmgr/img
-fi
-
 if [ $CLEANUP = 1 -a -d $PERSISTDIR/downloads ]; then
     echo "Cleaning up download dir $PERSISTDIR/downloads"
     rm -rf $PERSISTDIR/downloads
 fi
     
-# Move any uuid file to /config
-# XXX no longer needed
-if [ -f $TMPDIR/uuid ]; then
-    if [ -f $CONFIGDIR/uuid ]; then
-	echo "Removing old $TMPDIR/uuid"
-	rm -f $TMPDIR/uuid
-    else
-	echo "Moving old $TMPDIR/uuid to $CONFIGDIR/uuid"
-	mv $TMPDIR/uuid $CONFIGDIR/uuid
-    fi
-fi
-
 echo "Handling restart case at" `date`
 
 # If watchdog was running we restart it in a way where it will
@@ -435,15 +412,6 @@ fi
 
 # Need a key for device-to-device map-requests
 cp -p $CONFIGDIR/device.key.pem $LISPDIR/lisp-sig.pem
-
-# Pick up the device EID zedrouter config file from $TMPDIR and put
-# it in /var/tmp/zedrouter/config/
-# This will result in starting lispers.net when zedrouter starts
-# XXX No longer needed
-if [ -f $TMPDIR/zedrouterconfig.json ]; then
-    uuid=`cat $CONFIGDIR/uuid`
-    cp $TMPDIR/zedrouterconfig.json /var/tmp/zedrouter/config/${uuid}.json
-fi
 
 # Setup default amount of space for images
 # Half of /persist by default! Convert to kbytes
