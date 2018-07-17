@@ -1,4 +1,4 @@
-// Copyright (c) 2017 Zededa, Inc.
+// Copyright (c) 2017-2018 Zededa, Inc.
 // All rights reserved.
 
 // Allocate a small integer for each application UUID.
@@ -12,14 +12,11 @@
 package zedrouter
 
 import (
-	"encoding/json"
 	"fmt"
 	"github.com/satori/go.uuid"
-	"github.com/zededa/go-provision/types"
-	"io/ioutil"
+	"github.com/zededa/go-provision/cast"
+	"github.com/zededa/go-provision/pubsub"
 	"log"
-	"os"
-	"strings"
 )
 
 // The allocated numbers
@@ -38,55 +35,30 @@ func (bits *Bitmap) Clear(i int)      { bits[i/8] &^= 1 << uint(7-i%8) }
 
 var AllocReservedAppNums Bitmap
 
-// Read the existing appNums out of statusDir
+// Read the existing appNums out of what we published/checkpointed.
 // Store in reserved map since we will be asked to allocate them later.
 // Set bit in bitmap.
-// XXX Use checkpointed state? Or switch dir for now?
-func appNumAllocatorInit(statusDir string, configDir string) {
+func appNumAllocatorInit(pubAppNetworkStatus *pubsub.Publication) {
 	AllocatedAppNum = make(map[uuid.UUID]int)
 	ReservedAppNum = make(map[uuid.UUID]int)
 
-	statusFiles, err := ioutil.ReadDir(statusDir)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	for _, statusFile := range statusFiles {
-		fileName := statusFile.Name()
-		if !strings.HasSuffix(fileName, ".json") {
-			if debug {
-				log.Printf("Ignoring file <%s>\n", fileName)
-			}
-			continue
-		}
-		sb, err := ioutil.ReadFile(statusDir + "/" + fileName)
-		if err != nil {
-			log.Printf("%s for %s\n", err, fileName)
-			continue
-		}
-		status := types.AppNetworkStatus{}
-		if err := json.Unmarshal(sb, &status); err != nil {
-			log.Printf("%s AppNetworkStatus file: %s\n",
-				err, fileName)
-			continue
-		}
-		uuid := status.UUIDandVersion.UUID
-		if uuid.String()+".json" != fileName {
-			log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-				fileName, uuid.String())
+	items := pubAppNetworkStatus.GetAll()
+	for key, st := range items {
+		status := cast.CastAppNetworkStatus(st)
+		if status.Key() != key {
+			log.Printf("appNumAllocatorInit key/UUID mismatch %s vs %s; ignored %+v\n",
+				key, status.Key(), status)
 			continue
 		}
 		appNum := status.AppNum
+		uuid := status.UUIDandVersion.UUID
+
 		// If we have a config for the UUID we should mark it as
 		// allocated; otherwise mark it as reserved.
-		if _, err := os.Stat(configDir + "/" + fileName); err != nil {
-			log.Printf("Reserving appNum %d for %s\n", appNum, uuid)
-			ReservedAppNum[uuid] = appNum
-		} else {
-			log.Printf("Allocating appNum %d for %s\n",
-				appNum, uuid)
-			AllocatedAppNum[uuid] = appNum
-		}
+		// XXX however, on startup we are not likely to have any
+		// config yet.
+		log.Printf("Reserving appNum %d for %s\n", appNum, uuid)
+		ReservedAppNum[uuid] = appNum
 		if AllocReservedAppNums.IsSet(appNum) {
 			panic(fmt.Sprintf("AllocReservedAppNums already set for %d\n",
 				appNum))

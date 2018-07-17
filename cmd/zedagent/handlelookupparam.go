@@ -53,7 +53,7 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 	devConfig *zconfig.EdgeDevConfig) {
 
 	// XXX should we handle changes at all? Want to update zedserverconfig
-	// but not rest.
+	// and eids for ACLs.
 
 	//Fill DeviceDb struct with LispInfo config...
 	var device = types.DeviceDb{}
@@ -277,8 +277,7 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 	} else {
 		matches[0].Type = "eidset"
 	}
-	// XXX if there is a change we need to change version string!
-	updateAppNetworkConfig(getconfigCtx, config)
+	publishAppNetworkConfig(getconfigCtx, config)
 
 	// Add NameToEID to /etc/hosts
 	cmd := exec.Command("/opt/zededa/bin/handlezedserverconfig.sh")
@@ -292,22 +291,22 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 	}
 }
 
-func updateAppNetworkConfig(getconfigCtx *getconfigContext,
+func publishAppNetworkConfig(getconfigCtx *getconfigContext,
 	config types.AppNetworkConfig) {
 
 	key := config.Key()
-	log.Printf("Updating app instance UUID %s\n", key)
+	log.Printf("publishAppNetworkConfig %s\n", key)
 	pub := getconfigCtx.pubAppNetworkConfig
 	pub.Publish(key, config)
 }
 
-func removeAppNetworkConfig(getconfigCtx *getconfigContext, key string) {
+func unpublishAppNetworkConfig(getconfigCtx *getconfigContext, key string) {
 
-	log.Printf("Removing app instance UUID %s\n", key)
+	log.Printf("unpublishAppNetworkConfig %s\n", key)
 	pub := getconfigCtx.pubAppNetworkConfig
 	c, _ := pub.Get(key)
 	if c == nil {
-		log.Printf("removeAppNetworkConfig(%s) not found\n", key)
+		log.Printf("unpublishAppNetworkConfig(%s) not found\n", key)
 		return
 	}
 	pub.Unpublish(key)

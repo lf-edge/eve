@@ -169,8 +169,10 @@ func watchReadDir(configDir string, fileChanges chan<- string, retry bool) (bool
 			}
 		}
 		if retry {
-			log.Println("watchReadDir retry modified",
-				configDir, file.Name())
+			if debug {
+				log.Println("watchReadDir retry modified",
+					configDir, file.Name())
+			}
 		} else {
 			log.Println("watchReadDir modified", file.Name())
 		}

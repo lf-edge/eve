@@ -1,9 +1,8 @@
-// Copyright (c) 2017 Zededa, Inc.
+// Copyright (c) 2017-2018 Zededa, Inc.
 // All rights reserved.
 
-// Manage Xen guest domains based on the collection of DomainConfig structs
-// in /var/tmp/domainmgr/config/*.json and report on status in the
-// collection of DomainStatus structs in /var/run/domainmgr/status/*.json
+// Manage Xen guest domains based on the subscribed collection of DomainConfig
+// and publish the result in a collection of DomainStatus structs.
 
 package domainmgr
 
@@ -29,7 +28,6 @@ import (
 	"time"
 )
 
-// Keeping status in /var/run to be clean after a crash/reboot
 const (
 	appImgObj = "appImg.obj"
 	agentName = "domainmgr"
@@ -112,7 +110,7 @@ func Run() {
 	// any DomainConfig
 	model := hardware.GetHardwareModel()
 	aa := types.AssignableAdapters{}
-	aaChanges, aaFunc, aaCtx := adapters.Init(&aa, model)
+	subAa := adapters.Subscribe(&aa, model)
 
 	domainCtx := domainContext{assignableAdapters: &aa}
 
@@ -124,11 +122,11 @@ func Run() {
 	domainCtx.pubDomainStatus = pubDomainStatus
 	pubDomainStatus.ClearRestarted()
 
-	for !aaCtx.Found {
-		log.Printf("Waiting - aaCtx %v\n", aaCtx.Found)
+	for !subAa.Found {
+		log.Printf("Waiting for AssignableAdapters %v\n", subAa.Found)
 		select {
-		case change := <-aaChanges:
-			aaFunc(&aaCtx, change)
+		case change := <-subAa.C:
+			subAa.ProcessChange(change)
 		}
 	}
 	log.Printf("Have %d assignable adapters\n", len(aa.IoBundleList))
@@ -163,14 +161,16 @@ func Run() {
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
 
-		case change := <-aaChanges:
-			aaFunc(&aaCtx, change)
+		case change := <-subAa.C:
+			subAa.ProcessChange(change)
 		}
 	}
 }
 
 // XXX need to run this sometime after boot to clean up
 // Clean up any unused files in rwImgDirname
+// XXX but need to preserve ones that might become in use. Switch to manual
+// deletes from zedcloud i.e. explicit storage management?
 func handleRestart(ctxArg interface{}, done bool) {
 	log.Printf("handleRestart(%v)\n", done)
 	ctx := ctxArg.(*domainContext)
@@ -220,22 +220,22 @@ func findActiveFileLocation(ctx *domainContext, filename string) bool {
 	return false
 }
 
-func updateDomainStatus(ctx *domainContext, status *types.DomainStatus) {
+func publishDomainStatus(ctx *domainContext, status *types.DomainStatus) {
 
 	key := status.Key()
-	log.Printf("updateDomainStatus(%s)\n", key)
+	log.Printf("publishDomainStatus(%s)\n", key)
 	pub := ctx.pubDomainStatus
 	pub.Publish(key, status)
 }
 
-func removeDomainStatus(ctx *domainContext, status *types.DomainStatus) {
+func unpublishDomainStatus(ctx *domainContext, status *types.DomainStatus) {
 
 	key := status.Key()
-	log.Printf("removeDomainStatus(%s)\n", key)
+	log.Printf("unpublishDomainStatus(%s)\n", key)
 	pub := ctx.pubDomainStatus
 	st, _ := pub.Get(key)
 	if st == nil {
-		log.Printf("removeDomainStatus(%s) not found\n", key)
+		log.Printf("unpublishDomainStatus(%s) not found\n", key)
 		return
 	}
 	pub.Unpublish(key)
@@ -339,7 +339,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 	}
 	status.DiskStatusList = make([]types.DiskStatus,
 		len(config.DiskConfigList))
-	updateDomainStatus(ctx, &status)
+	publishDomainStatus(ctx, &status)
 
 	if err := configToStatus(*config, ctx.assignableAdapters,
 		&status); err != nil {
@@ -348,7 +348,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		status.PendingAdd = false
 		status.LastErr = fmt.Sprintf("%v", err)
 		status.LastErrTime = time.Now()
-		updateDomainStatus(ctx, &status)
+		publishDomainStatus(ctx, &status)
 		cleanupAdapters(ctx, config.IoAdapterList,
 			config.UUIDandVersion.UUID)
 		return
@@ -357,7 +357,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 	status.IoAdapterList = config.IoAdapterList
 
 	// Write any Location so that it can later be deleted based on status
-	updateDomainStatus(ctx, &status)
+	publishDomainStatus(ctx, &status)
 
 	// Do we need to copy any rw files? !Preserve ones are copied upon
 	// activation.
@@ -378,7 +378,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 			status.PendingAdd = false
 			status.LastErr = fmt.Sprintf("%v", err)
 			status.LastErrTime = time.Now()
-			updateDomainStatus(ctx, &status)
+			publishDomainStatus(ctx, &status)
 			return
 		}
 		log.Printf("Copy DONE from %s to %s\n",
@@ -390,7 +390,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 	}
 	// work done
 	status.PendingAdd = false
-	updateDomainStatus(ctx, &status)
+	publishDomainStatus(ctx, &status)
 	log.Printf("handleCreate(%v) DONE for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 }
@@ -964,13 +964,13 @@ func handleModify(ctx *domainContext, key string,
 		config.UUIDandVersion, config.DisplayName)
 
 	status.PendingModify = true
-	updateDomainStatus(ctx, status)
+	publishDomainStatus(ctx, status)
 
 	if status.LastErr != "" {
 		log.Printf("handleModify(%v) existing error for %s\n",
 			config.UUIDandVersion, config.DisplayName)
 		status.PendingModify = false
-		updateDomainStatus(ctx, status)
+		publishDomainStatus(ctx, status)
 		return
 	}
 	changed := false
@@ -988,7 +988,7 @@ func handleModify(ctx *domainContext, key string,
 		// XXX currently those reservations are only changed
 		// in handleDelete
 		status.PendingModify = false
-		updateDomainStatus(ctx, status)
+		publishDomainStatus(ctx, status)
 		log.Printf("handleModify(%v) DONE for %s\n",
 			config.UUIDandVersion, config.DisplayName)
 		return
@@ -1003,14 +1003,14 @@ func handleModify(ctx *domainContext, key string,
 		log.Printf("Same version %s for %s\n",
 			config.UUIDandVersion.Version, key)
 		status.PendingModify = false
-		updateDomainStatus(ctx, status)
+		publishDomainStatus(ctx, status)
 		return
 	}
 	// XXX dumping status to log
 	xlStatus(status.DomainName, status.DomainId)
 
 	status.PendingModify = true
-	updateDomainStatus(ctx, status)
+	publishDomainStatus(ctx, status)
 	// XXX Any work?
 	// XXX create tmp xen cfg and diff against existing xen cfg
 	// If different then stop and start. XXX xl shutdown takes a while
@@ -1018,7 +1018,7 @@ func handleModify(ctx *domainContext, key string,
 
 	status.PendingModify = false
 	status.UUIDandVersion = config.UUIDandVersion
-	updateDomainStatus(ctx, status)
+	publishDomainStatus(ctx, status)
 	log.Printf("handleModify(%v) DONE for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 }
@@ -1058,7 +1058,7 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 	xlStatus(status.DomainName, status.DomainId)
 
 	status.PendingDelete = true
-	updateDomainStatus(ctx, status)
+	publishDomainStatus(ctx, status)
 
 	if status.Activated {
 		doInactivate(status, ctx.assignableAdapters)
@@ -1071,7 +1071,7 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 	// the delete of the DomainStatus. Check
 	cleanupAdapters(ctx, status.IoAdapterList, status.UUIDandVersion.UUID)
 
-	updateDomainStatus(ctx, status)
+	publishDomainStatus(ctx, status)
 
 	// Delete xen cfg file for good measure
 	filename := xenCfgFilename(status.AppNum)
@@ -1091,9 +1091,9 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 		}
 	}
 	status.PendingDelete = false
-	updateDomainStatus(ctx, status)
+	publishDomainStatus(ctx, status)
 	// Write out what we modified to DomainStatus aka delete
-	removeDomainStatus(ctx, status)
+	unpublishDomainStatus(ctx, status)
 	log.Printf("handleDelete(%v) DONE for %s\n",
 		status.UUIDandVersion, status.DisplayName)
 }
