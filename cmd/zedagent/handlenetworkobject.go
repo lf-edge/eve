@@ -10,12 +10,13 @@ import (
 	"log"
 )
 
+// XXX rename to NetworkObjectStatus?
 func handleNetworkObjectModify(ctxArg interface{}, key string, statusArg interface{}) {
 	log.Printf("handleNetworkObjectCreate(%s)\n", key)
 	// XXX ctx := ctxArg.(*zedagentContext)
 	status := cast.CastNetworkObjectStatus(statusArg)
-	if status.UUID.String() != key {
-		log.Printf("handleNetworkObjectModify key/UUID mismatch %s vs %s; ignored %+v\n", key, status.UUID.String(), status)
+	if status.Key() != key {
+		log.Printf("handleNetworkObjectModify key/UUID mismatch %s vs %s; ignored %+v\n", key, status.Key(), status)
 		return
 	}
 	// XXX look for error; copy to device error; need device error in proto
@@ -27,7 +28,10 @@ func handleNetworkObjectModify(ctxArg interface{}, key string, statusArg interfa
 	log.Printf("handleNetworkObjectCreate(%s) done\n", key)
 }
 
-func handleNetworkObjectDelete(ctxArg interface{}, key string) {
+// XXX rename to NetworkObjectStatus?
+func handleNetworkObjectDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
 	log.Printf("handleNetworkObjectDelete(%s)\n", key)
 	// XXX how do we find and delete any error
 	// ctx := ctxArg.(*zedagentContext)

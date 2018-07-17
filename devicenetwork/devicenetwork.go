@@ -4,51 +4,15 @@
 package devicenetwork
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/eriknordmark/ipinfo"
 	"github.com/vishvananda/netlink"
 	"github.com/zededa/go-provision/types"
-	"io/ioutil"
 	"log"
 	"net"
 	"time"
 )
-
-// Parse the file with DeviceNetworkConfig2
-// XXX Use this - convert old
-func GetNewDeviceNetworkConfig(configFilename string) (types.DeviceNetworkConfig2, error) {
-	var globalConfig types.DeviceNetworkConfig2
-	cb, err := ioutil.ReadFile(configFilename)
-	if err != nil {
-		return types.DeviceNetworkConfig2{}, err
-	}
-	if err := json.Unmarshal(cb, &globalConfig); err != nil {
-		return types.DeviceNetworkConfig2{}, err
-	}
-	return globalConfig, nil
-}
-
-// Parse the file with DeviceNetworkConfig
-func GetDeviceNetworkConfig(configFilename string) (types.DeviceNetworkConfig, error) {
-	var globalConfig types.DeviceNetworkConfig
-	cb, err := ioutil.ReadFile(configFilename)
-	if err != nil {
-		return types.DeviceNetworkConfig{}, err
-	}
-	if err := json.Unmarshal(cb, &globalConfig); err != nil {
-		return types.DeviceNetworkConfig{}, err
-	}
-	// Workaround for old config with FreeUplinks not set
-	if len(globalConfig.FreeUplinks) == 0 {
-		log.Printf("Setting FreeUplinks from Uplink: %v\n",
-			globalConfig.Uplink)
-		globalConfig.FreeUplinks = globalConfig.Uplink
-	}
-	// XXX Convert to DeviceNetworkConfig2?
-	return globalConfig, nil
-}
 
 // Calculate local IP addresses to make a types.DeviceNetworkStatus
 func MakeDeviceNetworkStatus(globalConfig types.DeviceNetworkConfig, oldStatus types.DeviceNetworkStatus) (types.DeviceNetworkStatus, error) {

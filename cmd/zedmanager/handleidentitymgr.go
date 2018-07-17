@@ -1,4 +1,4 @@
-// Copyright (c) 2017 Zededa, Inc.
+// Copyright (c) 2017-2018 Zededa, Inc.
 // All rights reserved.
 
 package zedmanager
@@ -31,7 +31,7 @@ func MaybeAddEIDConfig(ctx *zedmanagerContext,
 			DisplayName:      displayName,
 			EIDConfigDetails: ec.EIDConfigDetails,
 		}
-		updateEIDConfig(ctx, &config)
+		publishEIDConfig(ctx, &config)
 	}
 	log.Printf("MaybeAddEIDConfig done for %s\n", key)
 }
@@ -46,7 +46,7 @@ func lookupEIDConfig(ctx *zedmanagerContext, key string) *types.EIDConfig {
 	}
 	config := cast.CastEIDConfig(c)
 	if config.Key() != key {
-		log.Printf("lookupEIDConfig(%s) got %s; ignored %+v\n",
+		log.Printf("lookupEIDConfig key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, config.Key(), config)
 		return nil
 	}
@@ -62,31 +62,31 @@ func lookupEIDStatus(ctx *zedmanagerContext, key string) *types.EIDStatus {
 	}
 	status := cast.CastEIDStatus(st)
 	if status.Key() != key {
-		log.Printf("lookupEIDStatus(%s) got %s; ignored %+v\n",
+		log.Printf("lookupEIDStatus key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
 		return nil
 	}
 	return &status
 }
 
-func updateEIDConfig(ctx *zedmanagerContext,
+func publishEIDConfig(ctx *zedmanagerContext,
 	status *types.EIDConfig) {
 
 	key := status.Key()
-	log.Printf("updateEIDConfig(%s)\n", key)
+	log.Printf("publishEIDConfig(%s)\n", key)
 	pub := ctx.pubEIDConfig
 	pub.Publish(key, status)
 }
 
-func removeEIDConfig(ctx *zedmanagerContext, uuidAndVers types.UUIDandVersion,
+func unpublishEIDConfig(ctx *zedmanagerContext, uuidAndVers types.UUIDandVersion,
 	es *types.EIDStatusDetails) {
 
 	key := types.EidKey(uuidAndVers, es.IID)
-	log.Printf("removeEIDConfig(%s)\n", key)
+	log.Printf("unpublishEIDConfig(%s)\n", key)
 	pub := ctx.pubEIDConfig
 	c, _ := pub.Get(key)
 	if c == nil {
-		log.Printf("removeEIDConfig(%s) not found\n", key)
+		log.Printf("unpublishEIDConfig(%s) not found\n", key)
 		return
 	}
 	pub.Unpublish(key)
@@ -113,9 +113,10 @@ func handleEIDStatusModify(ctxArg interface{}, keyArg string,
 	log.Printf("handleEIDStatusModify done for %s\n", key)
 }
 
-func handleEIDStatusDelete(ctxArg interface{}, key string) {
-	log.Printf("handleEIDStatusDelete for %s\n", key)
+func handleEIDStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
 
+	log.Printf("handleEIDStatusDelete for %s\n", key)
 	ctx := ctxArg.(*zedmanagerContext)
 	removeAIStatusUUID(ctx, key)
 	log.Printf("handleEIDStatusDelete done for %s\n", key)

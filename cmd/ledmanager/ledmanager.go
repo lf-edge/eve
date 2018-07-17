@@ -132,6 +132,8 @@ func Run() {
 
 	for {
 		select {
+		// XXX move to /var/tmp/zededa? Multiple publishers! Need
+		// diff pubsub support or everybody subscribes ...
 		case change := <-ledChanges:
 			{
 				watch.HandleStatusEvent(change, &ctx,
@@ -149,6 +151,7 @@ var oldCounter = 0
 
 func handleLedBlinkModify(ctxArg interface{}, configFilename string,
 	configArg interface{}) {
+	// XXX switch to using cast?
 	config := configArg.(*types.LedBlinkCounter)
 	ctx := ctxArg.(*ledManagerContext)
 
@@ -167,6 +170,7 @@ func handleLedBlinkModify(ctxArg interface{}, configFilename string,
 	log.Printf("handleLedBlinkModify done for %s\n", configFilename)
 }
 
+// XXX add configArg?
 func handleLedBlinkDelete(ctxArg interface{}, configFilename string) {
 	log.Printf("handleLedBlinkDelete for %s\n", configFilename)
 	ctx := ctxArg.(*ledManagerContext)

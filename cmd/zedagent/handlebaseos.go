@@ -1,4 +1,4 @@
-// Copyright (c) 2017 Zededa, Inc.
+// Copyright (c) 2017-2018 Zededa, Inc.
 // All rights reserved.
 
 // base os event handlers
@@ -8,154 +8,51 @@ package zedagent
 import (
 	"errors"
 	"fmt"
+	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/zboot"
 	"log"
 	"os"
-	"reflect"
 	"time"
 )
 
-// zedagent publishes these config/status files
-// and also the consumer
-var baseOsConfigMap map[string]types.BaseOsConfig
-var baseOsStatusMap map[string]types.BaseOsStatus
-
-func initBaseOsMaps() {
-
-	if baseOsConfigMap == nil {
-		log.Printf("create baseOsConfig map\n")
-		baseOsConfigMap = make(map[string]types.BaseOsConfig)
-	}
-
-	if baseOsStatusMap == nil {
-		log.Printf("create baseOsStatus map\n")
-		baseOsStatusMap = make(map[string]types.BaseOsStatus)
-	}
-}
-
-// the storage download/verification event handler
-// through base of storage list
-func baseOsHandleStatusUpdateSafename(safename string) {
-
-	log.Printf("baseOsStatusUpdateSafename for %s\n", safename)
-
-	for _, baseOsConfig := range baseOsConfigMap {
-
-		for _, sc := range baseOsConfig.StorageConfigList {
-
-			safename1 := types.UrlToSafename(sc.DownloadURL, sc.ImageSha256)
+func lookupBaseOsSafename(ctx *zedagentContext, safename string) *types.BaseOsConfig {
+	items := ctx.subBaseOsConfig.GetAll()
+	for _, c := range items {
+		config := cast.CastBaseOsConfig(c)
+		for _, sc := range config.StorageConfigList {
+			safename1 := types.UrlToSafename(sc.DownloadURL,
+				sc.ImageSha256)
 
 			// base os config contains the current image
 			if safename == safename1 {
-
-				uuidStr := baseOsConfig.Key()
-				log.Printf("%s, found baseOs %s\n", safename, uuidStr)
-
-				// handle the change event for this base os config
-				baseOsHandleStatusUpdate(uuidStr)
+				return &config
 			}
 		}
 	}
+	return nil
 }
+func baseOsHandleStatusUpdateSafename(ctx *zedagentContext, safename string) {
 
-func addOrUpdateBaseOsConfig(uuidStr string, config types.BaseOsConfig) {
-
-	changed := false
-	added := false
-
-	if m := baseOsConfigGet(uuidStr); m != nil {
-		// XXX or just compare version like elsewhere?
-		// XXX switch to Equal?
-		if !reflect.DeepEqual(m, config) {
-			log.Printf("addOrUpdateBaseOsConfig(%v) for %s, Config change\n",
-				config.BaseOsVersion, uuidStr)
-			changed = true
-		} else {
-			log.Printf("addOrUpdateBaseOsConfig(%v) for %s, No change\n",
-				config.BaseOsVersion, uuidStr)
-		}
-	} else {
-		log.Printf("addOrUpdateBaseOsConfig(%v) for %s, Config add\n",
-			config.BaseOsVersion, uuidStr)
-		added = true
-		changed = true
+	log.Printf("baseOsStatusUpdateSafename for %s\n", safename)
+	config := lookupBaseOsSafename(ctx, safename)
+	if config == nil {
+		log.Printf("baseOsHandleStatusUpdateSafename(%s) not found\n",
+			safename)
+		return
 	}
-
-	if changed {
-		baseOsConfigSet(uuidStr, &config)
+	uuidStr := config.Key()
+	status := lookupBaseOsStatus(ctx, uuidStr)
+	if status == nil {
+		log.Printf("baseOsHandleStatusUpdateSafename(%s) no status\n",
+			safename)
+		return
 	}
+	log.Printf("baseOsHandleStatusUpdateSafename(%s) found %s\n",
+		safename, uuidStr)
 
-	if added {
-
-		status := types.BaseOsStatus{
-			UUIDandVersion: config.UUIDandVersion,
-			BaseOsVersion:  config.BaseOsVersion,
-			ConfigSha256:   config.ConfigSha256,
-			PartitionLabel: config.PartitionLabel,
-		}
-
-		status.StorageStatusList = make([]types.StorageStatus,
-			len(config.StorageConfigList))
-
-		for i, sc := range config.StorageConfigList {
-			ss := &status.StorageStatusList[i]
-			ss.DownloadURL = sc.DownloadURL
-			ss.ImageSha256 = sc.ImageSha256
-			ss.Target = sc.Target
-		}
-
-		baseOsGetActivationStatus(&status)
-		baseOsStatusSet(uuidStr, &status)
-		writeBaseOsStatus(&status, uuidStr)
-	}
-
-	if changed {
-		baseOsHandleStatusUpdate(uuidStr)
-	}
-}
-
-func baseOsConfigGet(uuidStr string) *types.BaseOsConfig {
-	config, ok := baseOsConfigMap[uuidStr]
-	if !ok {
-		log.Printf("%s, baseOs config is absent\n", uuidStr)
-		return nil
-	}
-	return &config
-}
-
-func baseOsConfigSet(uuidStr string, config *types.BaseOsConfig) {
-	baseOsConfigMap[uuidStr] = *config
-}
-
-func baseOsConfigDelete(uuidStr string) bool {
-	log.Printf("%s, baseOs config delete\n", uuidStr)
-	if config := baseOsConfigGet(uuidStr); config != nil {
-		delete(baseOsConfigMap, uuidStr)
-		return true
-	}
-	return false
-}
-
-func baseOsStatusGet(uuidStr string) *types.BaseOsStatus {
-	status, ok := baseOsStatusMap[uuidStr]
-	if !ok {
-		log.Printf("%s, baseOs status is absent\n", uuidStr)
-		return nil
-	}
-	return &status
-}
-
-func baseOsStatusSet(uuidStr string, status *types.BaseOsStatus) {
-	baseOsStatusMap[uuidStr] = *status
-}
-
-func baseOsStatusDelete(uuidStr string) bool {
-	if status := baseOsStatusGet(uuidStr); status != nil {
-		delete(baseOsStatusMap, uuidStr)
-		return true
-	}
-	return false
+	// handle the change event for this base os config
+	baseOsHandleStatusUpdate(ctx, config, status)
 }
 
 func baseOsGetActivationStatus(status *types.BaseOsStatus) {
@@ -183,37 +80,30 @@ func baseOsGetActivationStatus(status *types.BaseOsStatus) {
 	status.Activated = zboot.IsCurrentPartitionStateActive()
 }
 
-func baseOsHandleStatusUpdate(uuidStr string) {
+func baseOsHandleStatusUpdate(ctx *zedagentContext, config *types.BaseOsConfig,
+	status *types.BaseOsStatus) {
 
-	config := baseOsConfigGet(uuidStr)
-	if config == nil {
-		return
-	}
-
-	status := baseOsStatusGet(uuidStr)
-	if status == nil {
-		return
-	}
+	uuidStr := config.Key()
+	log.Printf("baseOsHandleStatusUpdate(%s)\n", uuidStr)
 
 	baseOsGetActivationStatus(status)
 
-	changed := doBaseOsStatusUpdate(uuidStr, *config, status)
+	changed := doBaseOsStatusUpdate(ctx, uuidStr, *config, status)
 
 	if changed {
 		log.Printf("baseOsHandleStatusUpdate(%s) for %s, Status changed\n",
 			config.BaseOsVersion, uuidStr)
-		baseOsStatusSet(uuidStr, status)
-		writeBaseOsStatus(status, uuidStr)
+		publishBaseOsStatus(ctx, status)
 	}
 }
 
-func doBaseOsStatusUpdate(uuidStr string, config types.BaseOsConfig,
-	status *types.BaseOsStatus) bool {
+func doBaseOsStatusUpdate(ctx *zedagentContext, uuidStr string,
+	config types.BaseOsConfig, status *types.BaseOsStatus) bool {
 
 	log.Printf("doBaseOsStatusUpdate(%s) for %s\n",
 		config.BaseOsVersion, uuidStr)
 
-	changed, proceed := doBaseOsInstall(uuidStr, config, status)
+	changed, proceed := doBaseOsInstall(ctx, uuidStr, config, status)
 	if !proceed {
 		return changed
 	}
@@ -231,15 +121,16 @@ func doBaseOsStatusUpdate(uuidStr string, config types.BaseOsConfig,
 		return false
 	}
 
-	changed = doBaseOsActivate(uuidStr, config, status)
+	changed = doBaseOsActivate(ctx, uuidStr, config, status)
 	log.Printf("doBaseOsStatusUpdate(%s) done for %s\n",
 		config.BaseOsVersion, uuidStr)
 	return changed
 }
 
 // Returns changed boolean when the status was changed
-func doBaseOsActivate(uuidStr string, config types.BaseOsConfig,
-	status *types.BaseOsStatus) bool {
+func doBaseOsActivate(ctx *zedagentContext, uuidStr string,
+	config types.BaseOsConfig, status *types.BaseOsStatus) bool {
+
 	log.Printf("doBaseOsActivate(%s) uuid %s\n",
 		config.BaseOsVersion, uuidStr)
 
@@ -312,10 +203,10 @@ func doBaseOsActivate(uuidStr string, config types.BaseOsConfig,
 	return changed
 }
 
-func doBaseOsInstall(uuidStr string, config types.BaseOsConfig,
-	status *types.BaseOsStatus) (bool, bool) {
+func doBaseOsInstall(ctx *zedagentContext, uuidStr string,
+	config types.BaseOsConfig, status *types.BaseOsStatus) (bool, bool) {
 
-	log.Printf("%s, doBaseOsInstall(%s) \n", uuidStr, config.BaseOsVersion)
+	log.Printf("doBaseOsInstall(%s) %s\n", uuidStr, config.BaseOsVersion)
 	changed := false
 	proceed := false
 
@@ -338,7 +229,7 @@ func doBaseOsInstall(uuidStr string, config types.BaseOsConfig,
 
 	// check for the download status change
 	downloadchange, downloaded :=
-		checkBaseOsStorageDownloadStatus(uuidStr, config, status)
+		checkBaseOsStorageDownloadStatus(ctx, uuidStr, config, status)
 
 	if downloaded == false {
 		log.Printf(" %s, Still not downloaded\n", config.BaseOsVersion)
@@ -347,10 +238,11 @@ func doBaseOsInstall(uuidStr string, config types.BaseOsConfig,
 
 	// check for the verification status change
 	verifychange, verified :=
-		checkBaseOsVerificationStatus(uuidStr, config, status)
+		checkBaseOsVerificationStatus(ctx, uuidStr, config, status)
 
 	if verified == false {
-		log.Printf("%s, Still not verified\n", config.BaseOsVersion)
+		log.Printf("doBaseOsInstall(%s) still not verified %s\n",
+			uuidStr, config.BaseOsVersion)
 		return changed || verifychange, proceed
 	}
 
@@ -371,20 +263,19 @@ func doBaseOsInstall(uuidStr string, config types.BaseOsConfig,
 		}
 	}
 
-	baseOsStatusSet(uuidStr, status)
-	writeBaseOsStatus(status, uuidStr)
+	publishBaseOsStatus(ctx, status)
 	log.Printf("doBaseOsInstall(%s), Done %v\n",
 		config.BaseOsVersion, proceed)
 	return changed, proceed
 }
 
-func checkBaseOsStorageDownloadStatus(uuidStr string,
+func checkBaseOsStorageDownloadStatus(ctx *zedagentContext, uuidStr string,
 	config types.BaseOsConfig,
 	status *types.BaseOsStatus) (bool, bool) {
 
 	log.Printf("checkBaseOsStorageDownloadStatus(%s) for %s\n",
 		config.BaseOsVersion, uuidStr)
-	ret := checkStorageDownloadStatus(baseOsObj, uuidStr,
+	ret := checkStorageDownloadStatus(ctx, baseOsObj, uuidStr,
 		config.StorageConfigList, status.StorageStatusList)
 
 	status.State = ret.MinState
@@ -414,10 +305,10 @@ func checkBaseOsStorageDownloadStatus(uuidStr string,
 	return ret.Changed, true
 }
 
-func checkBaseOsVerificationStatus(uuidStr string,
+func checkBaseOsVerificationStatus(ctx *zedagentContext, uuidStr string,
 	config types.BaseOsConfig, status *types.BaseOsStatus) (bool, bool) {
 
-	ret := checkStorageVerifierStatus(baseOsObj,
+	ret := checkStorageVerifierStatus(ctx, baseOsObj,
 		uuidStr, config.StorageConfigList, status.StorageStatusList)
 
 	status.State = ret.MinState
@@ -440,50 +331,39 @@ func checkBaseOsVerificationStatus(uuidStr string,
 	return ret.Changed, true
 }
 
-func removeBaseOsConfig(uuidStr string) {
+func removeBaseOsConfig(ctx *zedagentContext, uuidStr string) {
 
 	log.Printf("removeBaseOsConfig for %s\n", uuidStr)
-	if ok := baseOsConfigDelete(uuidStr); ok {
-		removeBaseOsStatus(uuidStr)
-		log.Printf("removeBaseOSConfig for %s, done\n", uuidStr)
-	} else {
-		log.Printf("removeBaseOsConfig failed for %s\n", uuidStr)
-	}
+	removeBaseOsStatus(ctx, uuidStr)
+	log.Printf("removeBaseOSConfig for %s, done\n", uuidStr)
 }
 
-func removeBaseOsStatus(uuidStr string) {
+func removeBaseOsStatus(ctx *zedagentContext, uuidStr string) {
 
 	log.Printf("removeBaseOsStatus for %s\n", uuidStr)
-	status := baseOsStatusGet(uuidStr)
+	status := lookupBaseOsStatus(ctx, uuidStr)
 	if status == nil {
 		log.Printf("removeBaseOsStatus: no status\n")
 		return
 	}
 
-	changed, del := doBaseOsRemove(uuidStr, status)
+	changed, del := doBaseOsRemove(ctx, uuidStr, status)
 	if changed {
 		log.Printf("removeBaseOsStatus for %s, Status change\n", uuidStr)
-		baseOsStatusSet(uuidStr, status)
-		writeBaseOsStatus(status, uuidStr)
+		publishBaseOsStatus(ctx, status)
 	}
 
 	if del {
 		log.Printf("removeBaseOsStatus %s, Deleting\n", uuidStr)
 
 		// Write out what we modified to BaseOsStatus aka delete
-		// Remove the status file also
-		if ok := baseOsStatusDelete(uuidStr); ok {
-			statusFilename := fmt.Sprintf("%s/%s.json",
-				zedagentBaseOsStatusDirname, uuidStr)
-			if err := os.Remove(statusFilename); err != nil {
-				log.Println(err)
-			}
-		}
+		unpublishBaseOsStatus(ctx, status.Key())
 	}
 	log.Printf("removeBaseOsStatus %s, Done\n", uuidStr)
 }
 
-func doBaseOsRemove(uuidStr string, status *types.BaseOsStatus) (bool, bool) {
+func doBaseOsRemove(ctx *zedagentContext, uuidStr string,
+	status *types.BaseOsStatus) (bool, bool) {
 
 	log.Printf("doBaseOsRemove(%s) for %s\n", status.BaseOsVersion, uuidStr)
 
@@ -492,7 +372,7 @@ func doBaseOsRemove(uuidStr string, status *types.BaseOsStatus) (bool, bool) {
 
 	changed = doBaseOsInactivate(uuidStr, status)
 
-	changed, del = doBaseOsUninstall(uuidStr, status)
+	changed, del = doBaseOsUninstall(ctx, uuidStr, status)
 
 	log.Printf("doBaseOsRemove(%s) for %s, Done\n",
 		status.BaseOsVersion, uuidStr)
@@ -507,7 +387,9 @@ func doBaseOsInactivate(uuidStr string, status *types.BaseOsStatus) bool {
 	return true
 }
 
-func doBaseOsUninstall(uuidStr string, status *types.BaseOsStatus) (bool, bool) {
+func doBaseOsUninstall(ctx *zedagentContext, uuidStr string,
+	status *types.BaseOsStatus) (bool, bool) {
+
 	log.Printf("doBaseOsUninstall(%s) for %s\n",
 		status.BaseOsVersion, uuidStr)
 
@@ -535,7 +417,7 @@ func doBaseOsUninstall(uuidStr string, status *types.BaseOsStatus) (bool, bool) 
 		if ss.HasVerifierRef {
 			log.Printf("doBaseOsUninstall(%s) for %s, HasVerifierRef %s\n",
 				status.BaseOsVersion, uuidStr, ss.ImageSha256)
-			MaybeRemoveVerifierConfigSha256(baseOsObj,
+			MaybeRemoveVerifierConfigSha256(ctx, baseOsObj,
 				ss.ImageSha256)
 			ss.HasVerifierRef = false
 			changed = true
@@ -544,10 +426,10 @@ func doBaseOsUninstall(uuidStr string, status *types.BaseOsStatus) (bool, bool) 
 				status.BaseOsVersion, uuidStr)
 		}
 
-		vs, err := lookupVerificationStatusSha256(baseOsObj,
+		vs := lookupVerificationStatusSha256(ctx, baseOsObj,
 			ss.ImageSha256)
 
-		if err == nil {
+		if vs != nil {
 			log.Printf("doBaseOsUninstall(%s) for %s, Verifier %s not yet gone; RefCount %d\n",
 				status.BaseOsVersion, uuidStr, ss.ImageSha256,
 				vs.RefCount)
@@ -557,7 +439,7 @@ func doBaseOsUninstall(uuidStr string, status *types.BaseOsStatus) (bool, bool) 
 	}
 
 	if !removedAll {
-		// XXX not that we hit this all the time, and
+		// XXX Note that we hit this all the time, and
 		// we proceed to not look at the downloads and proceed
 		// to delete all the config and status for this baseos, which
 		// is odd.
@@ -578,7 +460,7 @@ func doBaseOsUninstall(uuidStr string, status *types.BaseOsStatus) (bool, bool) 
 			log.Printf("doBaseOsUninstall(%s) for %s, HasDownloaderRef %s\n",
 				status.BaseOsVersion, uuidStr, safename)
 
-			removeDownloaderConfig(baseOsObj, safename)
+			removeDownloaderConfig(ctx, baseOsObj, safename)
 			ss.HasDownloaderRef = false
 			changed = true
 		} else {
@@ -586,8 +468,8 @@ func doBaseOsUninstall(uuidStr string, status *types.BaseOsStatus) (bool, bool) 
 				status.BaseOsVersion, uuidStr)
 		}
 
-		ds, err := lookupDownloaderStatus(baseOsObj, ss.ImageSha256)
-		if err == nil {
+		ds := lookupDownloaderStatus(ctx, baseOsObj, ss.ImageSha256)
+		if ds != nil {
 			log.Printf("doBaseOsUninstall(%s) for %s, Download %s not yet gone; RefCount %d\n",
 				status.BaseOsVersion, uuidStr, safename,
 				ds.RefCount)
@@ -629,11 +511,12 @@ func installBaseOsObject(srcFilename string, dstFilename string) error {
 // config version string
 func checkInstalledVersion(config types.BaseOsConfig) string {
 
-	log.Printf("%s, check baseOs installation %s\n",
-		config.PartitionLabel, config.BaseOsVersion)
+	log.Printf("checkInstalledVersion(%s) %s %s\n",
+		config.UUIDandVersion.UUID.String(), config.PartitionLabel,
+		config.BaseOsVersion)
 
 	if config.PartitionLabel == "" {
-		errStr := fmt.Sprintf("%s, invalid partition", config.BaseOsVersion)
+		errStr := fmt.Sprintf("checkInstalledVersion(%s) invalid partition", config.BaseOsVersion)
 		log.Println(errStr)
 		return errStr
 	}
@@ -649,4 +532,57 @@ func checkInstalledVersion(config types.BaseOsConfig) string {
 		// XXX return errStr
 	}
 	return ""
+}
+
+func lookupBaseOsConfig(ctx *zedagentContext, key string) *types.BaseOsConfig {
+
+	sub := ctx.subBaseOsConfig
+	c, _ := sub.Get(key)
+	if c == nil {
+		log.Printf("lookupBaseOsConfig(%s) not found\n", key)
+		return nil
+	}
+	config := cast.CastBaseOsConfig(c)
+	if config.Key() != key {
+		log.Printf("lookupBaseOsConfig(%s) got %s; ignored %+v\n",
+			key, config.Key(), config)
+		return nil
+	}
+	return &config
+}
+
+func lookupBaseOsStatus(ctx *zedagentContext, key string) *types.BaseOsStatus {
+	pub := ctx.pubBaseOsStatus
+	st, _ := pub.Get(key)
+	if st == nil {
+		log.Printf("lookupBaseOsStatus(%s) not found\n", key)
+		return nil
+	}
+	status := cast.CastBaseOsStatus(st)
+	if status.Key() != key {
+		log.Printf("lookupBaseOsStatus(%s) got %s; ignored %+v\n",
+			key, status.Key(), status)
+		return nil
+	}
+	return &status
+}
+
+func publishBaseOsStatus(ctx *zedagentContext, status *types.BaseOsStatus) {
+
+	key := status.Key()
+	log.Printf("Publishing BaseOsStatus %s\n", key)
+	pub := ctx.pubBaseOsStatus
+	pub.Publish(key, status)
+}
+
+func unpublishBaseOsStatus(ctx *zedagentContext, key string) {
+
+	log.Printf("Unpublishing BaseOsStatus %s\n", key)
+	pub := ctx.pubBaseOsStatus
+	st, _ := pub.Get(key)
+	if st == nil {
+		log.Printf("unpublishBaseOsStatus(%s) not found\n", key)
+		return
+	}
+	pub.Unpublish(key)
 }

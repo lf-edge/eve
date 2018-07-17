@@ -1,10 +1,9 @@
-// Copyright (c) 2017 Zededa, Inc.
+// Copyright (c) 2017-2018 Zededa, Inc.
 // All rights reserved.
 
 // Manage the allocation of EIDs for application instances based on input
-// as EIDConfig structs in /var/tmp/identitymgr/config/*.json and report
-// on status in the collection of EIDStatus structs in
-// /var/run/identitymgr/status/*.json
+// as EIDConfig structs and publish the status in the collection of EIDStatus
+// structs.
 
 package identitymgr
 
@@ -33,7 +32,6 @@ import (
 	"time"
 )
 
-// Keeping status in /var/run to be clean after a crash/reboot
 const (
 	agentName = "identitymgr"
 )
@@ -105,20 +103,20 @@ func handleRestart(ctxArg interface{}, done bool) {
 	}
 }
 
-func updateEIDStatus(ctx *identityContext, key string, status *types.EIDStatus) {
+func publishEIDStatus(ctx *identityContext, key string, status *types.EIDStatus) {
 
-	log.Printf("updateEIDStatus(%s)\n", key)
+	log.Printf("publishEIDStatus(%s)\n", key)
 	pub := ctx.pubEIDStatus
 	pub.Publish(key, status)
 }
 
-func removeEIDStatus(ctx *identityContext, key string) {
+func unpublishEIDStatus(ctx *identityContext, key string) {
 
-	log.Printf("removeEIDStatus(%s)\n", key)
+	log.Printf("unpublishEIDStatus(%s)\n", key)
 	pub := ctx.pubEIDStatus
 	st, _ := pub.Get(key)
 	if st == nil {
-		log.Printf("removeEIDStatus(%s) not found\n", key)
+		log.Printf("unpublishEIDStatus(%s) not found\n", key)
 		return
 	}
 	pub.Unpublish(key)
@@ -146,12 +144,15 @@ func handleEIDConfigModify(ctxArg interface{}, key string, configArg interface{}
 	log.Printf("handleEIDConfigModify(%s) done\n", key)
 }
 
-func handleEIDConfigDelete(ctxArg interface{}, key string) {
+func handleEIDConfigDelete(ctxArg interface{}, key string,
+	configArg interface{}) {
+
 	log.Printf("handleEIDConfigDelete(%s)\n", key)
 	ctx := ctxArg.(*identityContext)
 	status := lookupEIDStatus(ctx, key)
 	if status == nil {
-		log.Printf("handleEIDConfigDelete: unknown %s\n", key)
+		log.Printf("handleEIDConfigDelete: unknown %s\n",
+			key, status.Key(), status)
 		return
 	}
 	handleDelete(ctx, key, status)
@@ -169,7 +170,7 @@ func lookupEIDStatus(ctx *identityContext, key string) *types.EIDStatus {
 	}
 	status := cast.CastEIDStatus(st)
 	if status.Key() != key {
-		log.Printf("lookupEIDStatus(%s) got %s; ignored %+v\n",
+		log.Printf("lookupEIDStatus key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
 		return nil
 	}
@@ -186,7 +187,7 @@ func lookupEIDConfig(ctx *identityContext, key string) *types.EIDConfig {
 	}
 	config := cast.CastEIDConfig(c)
 	if config.Key() != key {
-		log.Printf("lookupEIDConfig(%s) got %s; ignored %+v\n",
+		log.Printf("lookupEIDConfig key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, config.Key(), config)
 		return nil
 	}
@@ -215,7 +216,7 @@ func handleCreate(ctx *identityContext, key string, config *types.EIDConfig) {
 		config.AllocationPrefixLen = 8 * len(config.AllocationPrefix)
 		status.EIDAllocation = config.EIDAllocation
 	}
-	updateEIDStatus(ctx, key, &status)
+	publishEIDStatus(ctx, key, &status)
 	pemPrivateKey := config.PemPrivateKey
 
 	var publicPem []byte
@@ -318,7 +319,7 @@ func handleCreate(ctx *identityContext, key string, config *types.EIDConfig) {
 		status.PemPrivateKey = pemPrivateKey
 	}
 	status.PendingAdd = false
-	updateEIDStatus(ctx, key, &status)
+	publishEIDStatus(ctx, key, &status)
 	log.Printf("handleCreate(%s) done for %s\n", key, config.DisplayName)
 }
 
@@ -423,11 +424,11 @@ func handleModify(ctx *identityContext, key string, config *types.EIDConfig,
 		return
 	}
 	status.PendingModify = true
-	updateEIDStatus(ctx, key, status)
+	publishEIDStatus(ctx, key, status)
 	// XXX Any work in modify?
 	status.PendingModify = false
 	status.UUIDandVersion = config.UUIDandVersion
-	updateEIDStatus(ctx, key, status)
+	publishEIDStatus(ctx, key, status)
 	log.Printf("handleModify(%s) done for %s\n", key, config.DisplayName)
 }
 
@@ -438,6 +439,6 @@ func handleDelete(ctx *identityContext, key string, status *types.EIDStatus) {
 	// No work to do other than deleting the status
 
 	// Write out what we modified aka delete
-	removeEIDStatus(ctx, key)
+	unpublishEIDStatus(ctx, key)
 	log.Printf("handleDelete(%s) done for %s\n", key, status.DisplayName)
 }

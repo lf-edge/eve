@@ -60,6 +60,18 @@ func CastNetworkServiceStatus(in interface{}) types.NetworkServiceStatus {
 	return output
 }
 
+func CastDeviceNetworkConfig(in interface{}) types.DeviceNetworkConfig {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastDeviceNetworkConfig")
+	}
+	var output types.DeviceNetworkConfig
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "json Unmarshal in CastDeviceNetworkConfig")
+	}
+	return output
+}
+
 func CastDeviceNetworkStatus(in interface{}) types.DeviceNetworkStatus {
 	b, err := json.Marshal(in)
 	if err != nil {
@@ -164,6 +176,126 @@ func CastEIDStatus(in interface{}) types.EIDStatus {
 	var output types.EIDStatus
 	if err := json.Unmarshal(b, &output); err != nil {
 		log.Fatal(err, "json Unmarshal in CastEIDStatus")
+	}
+	return output
+}
+
+func CastCertObjConfig(in interface{}) types.CertObjConfig {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastCertObjConfig")
+	}
+	var output types.CertObjConfig
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "json Unmarshal in CastCertObjConfig")
+	}
+	return output
+}
+
+func CastCertObjStatus(in interface{}) types.CertObjStatus {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastCertObjStatus")
+	}
+	var output types.CertObjStatus
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "json Unmarshal in CastCertObjStatus")
+	}
+	return output
+}
+
+func CastBaseOsConfig(in interface{}) types.BaseOsConfig {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastBaseOsConfig")
+	}
+	var output types.BaseOsConfig
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "json Unmarshal in CastBaseOsConfig")
+	}
+	return output
+}
+
+func CastBaseOsStatus(in interface{}) types.BaseOsStatus {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastBaseOsStatus")
+	}
+	var output types.BaseOsStatus
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "json Unmarshal in CastBaseOsStatus")
+	}
+	return output
+}
+
+func CastDownloaderConfig(in interface{}) types.DownloaderConfig {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastDownloaderConfig")
+	}
+	var output types.DownloaderConfig
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "json Unmarshal in CastDownloaderConfig")
+	}
+	return output
+}
+
+func CastDownloaderStatus(in interface{}) types.DownloaderStatus {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastDownloaderStatus")
+	}
+	var output types.DownloaderStatus
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "json Unmarshal in CastDownloaderStatus")
+	}
+	return output
+}
+
+func CastVerifyImageConfig(in interface{}) types.VerifyImageConfig {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastVerifyImageConfig")
+	}
+	var output types.VerifyImageConfig
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "json Unmarshal in CastVerifyImageConfig")
+	}
+	return output
+}
+
+func CastVerifyImageStatus(in interface{}) types.VerifyImageStatus {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastVerifyImageStatus")
+	}
+	var output types.VerifyImageStatus
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "json Unmarshal in CastVerifyImageStatus")
+	}
+	return output
+}
+
+func CastAssignableAdapters(in interface{}) types.AssignableAdapters {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastAssignableAdapters")
+	}
+	var output types.AssignableAdapters
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "json Unmarshal in CastAssignableAdapters")
+	}
+	return output
+}
+
+func CastGlobalDownloadConfig(in interface{}) types.GlobalDownloadConfig {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastGlobalDownloadConfig")
+	}
+	var output types.GlobalDownloadConfig
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "json Unmarshal in CastGlobalDownloadConfig")
 	}
 	return output
 }

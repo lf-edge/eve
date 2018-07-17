@@ -11,6 +11,7 @@ import (
 	"github.com/zededa/go-provision/types"
 	"io/ioutil"
 	"log"
+	"os"
 )
 
 const (
@@ -39,7 +40,9 @@ func readLTE(filename string, verbatim string) []types.MetricItem {
 
 	bytes, err := ioutil.ReadFile(filename)
 	if err != nil {
-		log.Printf("readLTE: %s\n", err)
+		if !os.IsNotExist(err) {
+			log.Printf("readLTE: %s\n", err)
+		}
 		return items
 	}
 	if verbatim != "" {

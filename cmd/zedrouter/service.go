@@ -22,18 +22,18 @@ func handleNetworkServiceModify(ctxArg interface{}, key string, configArg interf
 	ctx := ctxArg.(*zedrouterContext)
 	pub := ctx.pubNetworkServiceStatus
 	config := cast.CastNetworkServiceConfig(configArg)
-	if config.UUID.String() != key {
-		log.Printf("handleNetworkServiceModify key/UUID mismatch %s vs %s; ignored %+v\n", key, config.UUID.String(), config)
+	if config.Key() != key {
+		log.Printf("handleNetworkServiceModify key/UUID mismatch %s vs %s; ignored %+v\n", key, config.Key(), config)
 		return
 	}
 	status := lookupNetworkServiceStatus(ctx, key)
 	if status != nil {
 		log.Printf("handleNetworkServiceModify(%s)\n", key)
 		status.PendingModify = true
-		pub.Publish(status.UUID.String(), *status)
+		pub.Publish(status.Key(), *status)
 		doServiceModify(ctx, config, status)
 		status.PendingModify = false
-		pub.Publish(status.UUID.String(), *status)
+		pub.Publish(status.Key(), *status)
 		log.Printf("handleNetworkServiceModify(%s) done\n", key)
 	} else {
 		handleNetworkServiceCreate(ctx, key, config)
@@ -52,17 +52,17 @@ func handleNetworkServiceCreate(ctx *zedrouterContext, key string, config types.
 		Adapter:     config.Adapter,
 	}
 	status.PendingAdd = true
-	pub.Publish(status.UUID.String(), status)
+	pub.Publish(status.Key(), status)
 	err := doServiceCreate(ctx, config, &status)
 	if err != nil {
 		log.Printf("doServiceCreate(%s) failed: %s\n", key, err)
 		status.Error = err.Error()
 		status.ErrorTime = time.Now()
 		status.PendingAdd = false
-		pub.Publish(status.UUID.String(), status)
+		pub.Publish(status.Key(), status)
 		return
 	}
-	pub.Publish(status.UUID.String(), status)
+	pub.Publish(status.Key(), status)
 	if config.Activate {
 		err := doServiceActivate(ctx, config, &status)
 		if err != nil {
@@ -74,11 +74,13 @@ func handleNetworkServiceCreate(ctx *zedrouterContext, key string, config types.
 		}
 	}
 	status.PendingAdd = false
-	pub.Publish(status.UUID.String(), status)
+	pub.Publish(status.Key(), status)
 	log.Printf("handleNetworkServiceCreate(%s) done\n", key)
 }
 
-func handleNetworkServiceDelete(ctxArg interface{}, key string) {
+func handleNetworkServiceDelete(ctxArg interface{}, key string,
+	configArg interface{}) {
+
 	log.Printf("handleNetworkServiceDelete(%s)\n", key)
 	ctx := ctxArg.(*zedrouterContext)
 	pub := ctx.pubNetworkServiceStatus
@@ -88,15 +90,15 @@ func handleNetworkServiceDelete(ctxArg interface{}, key string) {
 		return
 	}
 	status.PendingDelete = true
-	pub.Publish(status.UUID.String(), *status)
+	pub.Publish(status.Key(), status)
 	if status.Activated {
 		doServiceInactivate(ctx, status)
-		pub.Publish(status.UUID.String(), *status)
+		pub.Publish(status.Key(), &status)
 	}
 	doServiceDelete(status)
 	status.PendingDelete = false
-	pub.Publish(status.UUID.String(), *status)
-	pub.Unpublish(status.UUID.String())
+	pub.Publish(status.Key(), &status)
+	pub.Unpublish(status.Key())
 	log.Printf("handleNetworkServiceDelete(%s) done\n", key)
 }
 
@@ -146,7 +148,7 @@ func doServiceModify(ctx *zedrouterContext, config types.NetworkServiceConfig,
 		err := doServiceActivate(ctx, config, status)
 		if err != nil {
 			log.Printf("doServiceActivate(%s) failed: %s\n",
-				config.UUID.String(), err)
+				config.Key(), err)
 			status.Error = err.Error()
 			status.ErrorTime = time.Now()
 		} else {
@@ -163,8 +165,13 @@ func maybeUpdateBridgeIPAddr(ctx *zedrouterContext, ifname string) {
 	log.Printf("maybeUpdateBridgeIPAddr(%s)\n", ifname)
 	pub := ctx.pubNetworkServiceStatus
 	items := pub.GetAll()
-	for _, st := range items {
+	for key, st := range items {
 		status := cast.CastNetworkServiceStatus(st)
+		if status.Key() != key {
+			log.Printf("maybeUpdateBridgeIPAddr key/UUID mismatch %s vs %s; ignored %+v\n",
+				key, status.Key(), status)
+			continue
+		}
 
 		if status.Adapter != ifname {
 			log.Printf("maybeUpdateBridgeIPAddr(%s) wrong adapter %s\n",
@@ -184,7 +191,7 @@ func maybeUpdateBridgeIPAddr(ctx *zedrouterContext, ifname string) {
 		netstatus := lookupNetworkObjectStatus(ctx, status.AppLink.String())
 		if netstatus == nil {
 			log.Printf("maybeUpdateBridgeIPAddr(%s) no applink for %s\n",
-				ifname, status.UUID.String())
+				ifname, status.Key())
 			continue
 		}
 		updateBridgeIPAddr(ctx, netstatus)
@@ -204,7 +211,7 @@ func doServiceActivate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	}
 
 	log.Printf("doServiceActivate found NetworkObjectStatus %s\n",
-		netstatus.UUID.String())
+		netstatus.Key())
 
 	// Check that Adapter is either "uplink", "freeuplink", or
 	// an existing ifname assigned to doServicemO/zedrouter. A Bridge
@@ -268,12 +275,12 @@ func doServiceInactivate(ctx *zedrouterContext,
 	netstatus := lookupNetworkObjectStatus(ctx, status.AppLink.String())
 	if netstatus == nil {
 		// Should have been caught at time of activate
-		log.Printf("No AppLink for %s", status.UUID.String())
+		log.Printf("No AppLink for %s", status.Key())
 		return
 	}
 
 	log.Printf("doServiceInactivate found NetworkObjectStatus %s\n",
-		netstatus.UUID.String())
+		netstatus.Key())
 
 	switch status.Type {
 	case types.NST_STRONGSWAN:
@@ -327,7 +334,7 @@ func lookupNetworkServiceConfig(ctx *zedrouterContext, key string) *types.Networ
 	}
 	config := cast.CastNetworkServiceConfig(c)
 	if config.Key() != key {
-		log.Printf("lookupNetworkServiceConfig(%s) got %s; ignored %+v\n",
+		log.Printf("lookupNetworkServiceConfig key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, config.Key(), config)
 		return nil
 	}
@@ -344,7 +351,7 @@ func lookupNetworkServiceStatus(ctx *zedrouterContext, key string) *types.Networ
 	}
 	status := cast.CastNetworkServiceStatus(st)
 	if status.Key() != key {
-		log.Printf("lookupNetworkServiceStatus(%s) got %s; ignored %+v\n",
+		log.Printf("lookupNetworkServiceStatus key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
 		return nil
 	}
@@ -410,11 +417,16 @@ func lookupAppLink(ctx *zedrouterContext, appLink uuid.UUID) *types.NetworkServi
 	log.Printf("lookupAppLink(%s)\n", appLink.String())
 	pub := ctx.pubNetworkServiceStatus
 	items := pub.GetAll()
-	for _, st := range items {
+	for key, st := range items {
 		status := cast.CastNetworkServiceStatus(st)
+		if status.Key() != key {
+			log.Printf("lookupAppLink key/UUID mismatch %s vs %s; ignored %+v\n",
+				key, status.Key(), status)
+			continue
+		}
 		if status.AppLink == appLink {
 			log.Printf("lookupAppLink(%s) found %s\n",
-				appLink.String(), status.UUID.String())
+				appLink.String(), status.Key())
 			return &status
 		}
 	}
@@ -462,7 +474,7 @@ func bridgeCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 		config.Adapter)
 	if ib == nil {
 		errStr := fmt.Sprintf("bridge %s is not assignable for %s",
-			config.Adapter, config.UUID.String())
+			config.Adapter, config.Key())
 		return errors.New(errStr)
 	}
 	// XXX check it isn't assigned to dom0? That's maintained
@@ -470,7 +482,7 @@ func bridgeCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	// For now check it isn't an uplink instead.
 	if isUplink(config.Adapter) {
 		errStr := fmt.Sprintf("Uplink interface %s not available as bridge for %s",
-			config.Adapter, config.UUID.String())
+			config.Adapter, config.Key())
 		return errors.New(errStr)
 	}
 	return nil
@@ -484,7 +496,7 @@ func bridgeActivate(config types.NetworkServiceConfig,
 	// For now we only support passthrough
 	if netstatus.Dhcp != types.DT_PASSTHROUGH {
 		errStr := fmt.Sprintf("Unsupported DHCP type %d for bridge service for %s",
-			netstatus.Dhcp, status.UUID.String())
+			netstatus.Dhcp, status.Key())
 		return errors.New(errStr)
 	}
 
@@ -563,7 +575,7 @@ func natActivate(config types.NetworkServiceConfig,
 	log.Printf("natActivate(%s)\n", status.DisplayName)
 	if netstatus.Subnet.IP == nil {
 		errStr := fmt.Sprintf("Missing subnet for NAT service for %s",
-			status.UUID.String())
+			status.Key())
 		return errors.New(errStr)
 	}
 	status.Subnet = netstatus.Subnet

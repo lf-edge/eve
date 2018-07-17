@@ -23,6 +23,7 @@ import (
 	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/netclone"
+	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/zboot"
 	"github.com/zededa/go-provision/zedcloud"
@@ -45,17 +46,17 @@ const persistPath = "/persist"
 
 var reportPaths = []string{"/", "/config", persistPath}
 
-func publishMetrics(iteration int) {
+func publishMetrics(ctx *zedagentContext, iteration int) {
 	cpuStorageStat := ExecuteXentopCmd()
-	PublishMetricsToZedCloud(cpuStorageStat, iteration)
+	PublishMetricsToZedCloud(ctx, cpuStorageStat, iteration)
 }
 
 // Run a periodic post of the metrics
 
-func metricsTimerTask(handleChannel chan interface{}) {
+func metricsTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
 	iteration := 0
 	log.Println("starting report metrics timer task")
-	publishMetrics(iteration)
+	publishMetrics(ctx, iteration)
 
 	interval := time.Duration(configItemCurrent.metricInterval) * time.Second
 	max := float64(interval)
@@ -65,7 +66,7 @@ func metricsTimerTask(handleChannel chan interface{}) {
 	handleChannel <- ticker
 	for range ticker.C {
 		iteration += 1
-		publishMetrics(iteration)
+		publishMetrics(ctx, iteration)
 	}
 }
 
@@ -187,27 +188,33 @@ func handleDomainStatusModify(ctxArg interface{}, key string,
 	}
 }
 
-func handleDomainStatusDelete(ctxArg interface{}, key string) {
+func handleDomainStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
 
 	ctx := ctxArg.(*zedagentContext)
 	log.Printf("handleDomainStatusDelete for %s\n", key)
-	// Use shadow copy to determine what changed
-	if m, ok := domainStatus[key]; !ok {
-		log.Printf("handleDomainStatusDelete for %s - not found\n",
-			key)
-	} else {
-		// Detect if any changes relevant to the device status report
-		if ioAdapterListChanged(m, types.DomainStatus{}) {
-			ctx.TriggerDeviceInfo = true
-		}
-
-		if _, ok := appInterfaceAndNameList[m.DomainName]; ok {
-			log.Printf("appInterfaceAndnameList for %v\n", m.DomainName)
-			delete(appInterfaceAndNameList, m.DomainName)
-		}
-		log.Printf("Domain map delete for %v\n", key)
-		delete(domainStatus, key)
+	status := cast.CastDomainStatus(statusArg)
+	if status.Key() != key {
+		log.Printf("handleDomainStatusDelete key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, status.Key(), status)
+		return
 	}
+
+	// Detect if any changes relevant to the device status report
+	if ioAdapterListChanged(status, types.DomainStatus{}) {
+		ctx.TriggerDeviceInfo = true
+	}
+
+	if _, ok := appInterfaceAndNameList[status.DomainName]; ok {
+		log.Printf("appInterfaceAndnameList for %v\n",
+			status.DomainName)
+		delete(appInterfaceAndNameList, status.DomainName)
+	}
+
+	// XXX remove domainStatus once we can count it below? But
+	// assigning away devices to /dev/null aka pciback means not visible
+	// at boot.
+	delete(domainStatus, key)
 	log.Printf("handleDomainStatusDelete done for %s\n", key)
 }
 
@@ -220,7 +227,7 @@ func lookupDomainStatus(ctx *zedagentContext, key string) *types.DomainStatus {
 	}
 	status := cast.CastDomainStatus(st)
 	if status.Key() != key {
-		log.Printf("lookupDomainStatus(%s) got %s; ignored %+v\n",
+		log.Printf("lookupDomainStatus key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
 		return nil
 	}
@@ -385,7 +392,8 @@ func ExecuteXentopCmd() [][]string {
 	return cpuStorageStat
 }
 
-func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
+func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
+	iteration int) {
 
 	var ReportMetrics = &zmet.ZMetricMsg{}
 
@@ -558,7 +566,9 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 	}
 	// Walk all verified downloads and report their size (faked
 	// as disks)
-	for _, vs := range verifierStatusMap {
+	verifierStatusMap := verifierGetAll(ctx)
+	for _, st := range verifierStatusMap {
+		vs := cast.CastVerifyImageStatus(st)
 		if debug {
 			log.Printf("verifierStatusMap %s size %d\n",
 				vs.Safename, vs.Size)
@@ -570,7 +580,9 @@ func PublishMetricsToZedCloud(cpuStorageStat [][]string, iteration int) {
 		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
 	}
 	// XXX TBD: Avoid dups with verifierStatusMap above
-	for _, ds := range downloaderStatusMap {
+	downloaderStatusMap := downloaderGetAll(ctx)
+	for _, st := range downloaderStatusMap {
+		ds := cast.CastDownloaderStatus(st)
 		if debug {
 			log.Printf("downloaderStatusMap %s size %d\n",
 				ds.Safename, ds.Size)
@@ -760,7 +772,7 @@ func RoundFromKbytesToMbytes(byteCount uint64) uint64 {
 
 // This function is called per change, hence needs to try over all uplinks
 // send report on each uplink.
-func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
+func PublishDeviceInfoToZedCloud(pubBaseOsStatus *pubsub.Publication,
 	aa *types.AssignableAdapters, iteration int) {
 
 	var ReportInfo = &zmet.ZInfoMsg{}
@@ -887,7 +899,9 @@ func PublishDeviceInfoToZedCloud(baseOsStatus map[string]types.BaseOsStatus,
 		// XXX sanity check on activated vs. curPart
 		// XXX are there cases where we've started download without
 		// having assigned a partLabel?
-		for _, bos := range baseOsStatus {
+		items := pubBaseOsStatus.GetAll()
+		for _, st := range items {
+			bos := cast.CastBaseOsStatus(st)
 			if bos.PartitionLabel == partLabel {
 				return &bos
 			}

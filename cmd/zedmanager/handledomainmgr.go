@@ -1,4 +1,4 @@
-// Copyright (c) 2017 Zededa, Inc.
+// Copyright (c) 2017-2018 Zededa, Inc.
 // All rights reserved.
 
 package zedmanager
@@ -23,8 +23,7 @@ const (
 )
 
 func MaybeAddDomainConfig(ctx *zedmanagerContext,
-	aiConfig types.AppInstanceConfig,
-	ns *types.AppNetworkStatus) error {
+	aiConfig types.AppInstanceConfig, ns *types.AppNetworkStatus) error {
 
 	key := aiConfig.Key()
 	displayName := aiConfig.DisplayName
@@ -126,7 +125,7 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 			dc.VifList[i+ns.UlNum] = ol.VifInfo
 		}
 	}
-	updateDomainConfig(ctx, &dc)
+	publishDomainConfig(ctx, &dc)
 
 	log.Printf("MaybeAddDomainConfig done for %s\n", key)
 	return nil
@@ -142,7 +141,7 @@ func lookupDomainConfig(ctx *zedmanagerContext, key string) *types.DomainConfig 
 	}
 	config := cast.CastDomainConfig(c)
 	if config.Key() != key {
-		log.Printf("lookupDomainConfig(%s) got %s; ignored %+v\n",
+		log.Printf("lookupDomainConfig key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, config.Key(), config)
 		return nil
 	}
@@ -158,30 +157,30 @@ func lookupDomainStatus(ctx *zedmanagerContext, key string) *types.DomainStatus 
 	}
 	status := cast.CastDomainStatus(st)
 	if status.Key() != key {
-		log.Printf("lookupDomainStatus(%s) got %s; ignored %+v\n",
+		log.Printf("lookupDomainStatus key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
 		return nil
 	}
 	return &status
 }
 
-func updateDomainConfig(ctx *zedmanagerContext,
+func publishDomainConfig(ctx *zedmanagerContext,
 	status *types.DomainConfig) {
 
 	key := status.Key()
-	log.Printf("updateDomainConfig(%s)\n", key)
+	log.Printf("publishDomainConfig(%s)\n", key)
 	pub := ctx.pubDomainConfig
 	pub.Publish(key, status)
 }
 
-func removeDomainConfig(ctx *zedmanagerContext, uuidStr string) {
+func unpublishDomainConfig(ctx *zedmanagerContext, uuidStr string) {
 
 	key := uuidStr
-	log.Printf("removeDomainConfig(%s)\n", key)
+	log.Printf("unpublishDomainConfig(%s)\n", key)
 	pub := ctx.pubDomainConfig
 	c, _ := pub.Get(key)
 	if c == nil {
-		log.Printf("removeDomainConfig(%s) not found\n", key)
+		log.Printf("unpublishDomainConfig(%s) not found\n", key)
 		return
 	}
 	pub.Unpublish(key)
@@ -208,9 +207,10 @@ func handleDomainStatusModify(ctxArg interface{}, key string,
 	log.Printf("handleDomainStatusModify done for %s\n", key)
 }
 
-func handleDomainStatusDelete(ctxArg interface{}, key string) {
-	log.Printf("handleDomainStatusDelete for %s\n", key)
+func handleDomainStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
 
+	log.Printf("handleDomainStatusDelete for %s\n", key)
 	ctx := ctxArg.(*zedmanagerContext)
 	removeAIStatusUUID(ctx, key)
 	log.Printf("handleDomainStatusDelete done for %s\n", key)

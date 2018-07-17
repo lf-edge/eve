@@ -20,8 +20,8 @@ import (
 func handleNetworkObjectModify(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*zedrouterContext)
 	config := cast.CastNetworkObjectConfig(configArg)
-	if config.UUID.String() != key {
-		log.Printf("handleNetworkObjectModify key/UUID mismatch %s vs %s; ignored %+v\n", key, config.UUID.String(), config)
+	if config.Key() != key {
+		log.Printf("handleNetworkObjectModify key/UUID mismatch %s vs %s; ignored %+v\n", key, config.Key(), config)
 		return
 	}
 	status := lookupNetworkObjectStatus(ctx, key)
@@ -29,10 +29,10 @@ func handleNetworkObjectModify(ctxArg interface{}, key string, configArg interfa
 		log.Printf("handleNetworkObjectModify(%s)\n", key)
 		pub := ctx.pubNetworkObjectStatus
 		status.PendingModify = true
-		pub.Publish(status.UUID.String(), *status)
+		pub.Publish(status.Key(), *status)
 		doNetworkModify(ctx, config, status)
 		status.PendingModify = false
-		pub.Publish(status.UUID.String(), *status)
+		pub.Publish(status.Key(), *status)
 		log.Printf("handleNetworkObjectModify(%s) done\n", key)
 	} else {
 		handleNetworkObjectCreate(ctx, key, config)
@@ -48,22 +48,24 @@ func handleNetworkObjectCreate(ctx *zedrouterContext, key string, config types.N
 		IPAssignments:       make(map[string]net.IP),
 	}
 	status.PendingAdd = true
-	pub.Publish(status.UUID.String(), status)
+	pub.Publish(status.Key(), status)
 	err := doNetworkCreate(ctx, config, &status)
 	if err != nil {
 		log.Printf("doNetworkCreate(%s) failed: %s\n", key, err)
 		status.Error = err.Error()
 		status.ErrorTime = time.Now()
 		status.PendingAdd = false
-		pub.Publish(status.UUID.String(), status)
+		pub.Publish(status.Key(), status)
 		return
 	}
 	status.PendingAdd = false
-	pub.Publish(status.UUID.String(), status)
+	pub.Publish(status.Key(), status)
 	log.Printf("handleNetworkObjectCreate(%s) done\n", key)
 }
 
-func handleNetworkObjectDelete(ctxArg interface{}, key string) {
+func handleNetworkObjectDelete(ctxArg interface{}, key string,
+	configArg interface{}) {
+
 	log.Printf("handleNetworkObjectDelete(%s)\n", key)
 	ctx := ctxArg.(*zedrouterContext)
 	pub := ctx.pubNetworkObjectStatus
@@ -73,11 +75,11 @@ func handleNetworkObjectDelete(ctxArg interface{}, key string) {
 		return
 	}
 	status.PendingDelete = true
-	pub.Publish(status.UUID.String(), *status)
+	pub.Publish(status.Key(), *status)
 	doNetworkDelete(status)
 	status.PendingDelete = false
-	pub.Publish(status.UUID.String(), *status)
-	pub.Unpublish(status.UUID.String())
+	pub.Publish(status.Key(), *status)
+	pub.Unpublish(status.Key())
 	log.Printf("handleNetworkObjectDelete(%s) done\n", key)
 }
 
@@ -110,7 +112,7 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 	bridgeName := fmt.Sprintf("bn%d", bridgeNum)
 	status.BridgeNum = bridgeNum
 	status.BridgeName = bridgeName
-	pub.Publish(status.UUID.String(), *status)
+	pub.Publish(status.Key(), *status)
 
 	// Create bridge
 
@@ -194,7 +196,7 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 // Call when we have a network and a service?
 func setBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) error {
 
-	log.Printf("setBridgeIPAddr for %s\n", status.UUID.String())
+	log.Printf("setBridgeIPAddr for %s\n", status.Key())
 	pub := ctx.pubNetworkObjectStatus
 	if status.BridgeName == "" {
 		// Called too early
@@ -253,11 +255,11 @@ func setBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) e
 		}
 	}
 	status.BridgeIPAddr = ipAddr
-	pub.Publish(status.UUID.String(), *status)
+	pub.Publish(status.Key(), *status)
 
 	if status.BridgeIPAddr == "" {
 		log.Printf("Does not yet have a bridge IP address for %s\n",
-			status.UUID.String())
+			status.Key())
 		return nil
 	}
 
@@ -287,7 +289,7 @@ func lookupOrAllocateIPv4(ctx *zedrouterContext,
 	}
 
 	log.Printf("lookupOrAllocateIPv4 status: %s dhcp %d bridgeName %s Subnet %v range %v-%v\n",
-		status.UUID.String(), status.Dhcp, status.BridgeName,
+		status.Key(), status.Dhcp, status.BridgeName,
 		status.Subnet, status.DhcpRange.Start, status.DhcpRange.End)
 	if status.Dhcp == types.DT_PASSTHROUGH {
 		// XXX do we have a local IP? If so caller would have found it
@@ -297,13 +299,13 @@ func lookupOrAllocateIPv4(ctx *zedrouterContext,
 
 	if status.Dhcp != types.DT_SERVER {
 		errStr := fmt.Sprintf("Unsupported DHCP type %d for %s",
-			status.Dhcp, status.UUID.String())
+			status.Dhcp, status.Key())
 		return "", errors.New(errStr)
 	}
 	// XXX should we fall back to using Subnet?
 	if status.DhcpRange.Start == nil {
 		errStr := fmt.Sprintf("no NetworkOjectStatus DhcpRange for %s",
-			status.UUID.String())
+			status.Key())
 		return "", errors.New(errStr)
 	}
 	// Starting guess based on number allocated
@@ -323,11 +325,11 @@ func lookupOrAllocateIPv4(ctx *zedrouterContext,
 		status.IPAssignments[mac.String()] = a
 		// Publish the allocation
 		pub := ctx.pubNetworkObjectStatus
-		pub.Publish(status.UUID.String(), *status)
+		pub.Publish(status.Key(), *status)
 		return a.String(), nil
 	}
 	errStr := fmt.Sprintf("lookupOrAllocateIPv4(%s) no free address in DhcpRange",
-		status.UUID.String())
+		status.Key())
 	return "", errors.New(errStr)
 }
 
@@ -341,12 +343,12 @@ func releaseIPv4(ctx *zedrouterContext,
 	// Lookup to see if it exists
 	if _, ok := status.IPAssignments[mac.String()]; !ok {
 		errStr := fmt.Sprintf("releaseIPv4: not found %s for %s",
-			mac.String(), status.UUID.String())
+			mac.String(), status.Key())
 		return false, errors.New(errStr)
 	}
 	delete(status.IPAssignments, mac.String())
 	last := len(status.IPAssignments) == 0
-	pub.Publish(status.UUID.String(), *status)
+	pub.Publish(status.Key(), *status)
 	return last, nil
 }
 
@@ -385,7 +387,7 @@ func lookupNetworkObjectConfig(ctx *zedrouterContext, key string) *types.Network
 	}
 	config := cast.CastNetworkObjectConfig(c)
 	if config.Key() != key {
-		log.Printf("lookupNetworkObjectConfig(%s) got %s; ignored %+v\n",
+		log.Printf("lookupNetworkObjectConfig: key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, config.Key(), config)
 		return nil
 	}
@@ -402,8 +404,8 @@ func lookupNetworkObjectStatus(ctx *zedrouterContext, key string) *types.Network
 	}
 	status := cast.CastNetworkObjectStatus(st)
 	if status.Key() != key {
-		log.Printf("lookupNetworkObjectStatus(%s) got %s; ignored %+v\n",
-			key, status.UUID.String(), status)
+		log.Printf("lookupNetworkObjectStatus: key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, status.Key(), status)
 		return nil
 	}
 	return &status
@@ -412,7 +414,7 @@ func lookupNetworkObjectStatus(ctx *zedrouterContext, key string) *types.Network
 // Called from service code when a bridge has been added/updated/deleted
 // XXX need to re-run this when the eth1 IP address might have been set
 func updateBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) {
-	log.Printf("updateBridgeIPAddr(%s)\n", status.UUID.String())
+	log.Printf("updateBridgeIPAddr(%s)\n", status.Key())
 
 	err := setBridgeIPAddr(ctx, status)
 	if err != nil {

@@ -1,4 +1,4 @@
-// Copyright (c) 2017 Zededa, Inc.
+// Copyright (c) 2017-2018 Zededa, Inc.
 // All rights reserved.
 
 package zedmanager
@@ -17,8 +17,13 @@ func updateAIStatusSafename(ctx *zedmanagerContext, safename string) {
 
 	sub := ctx.subAppInstanceConfig
 	items := sub.GetAll()
-	for _, c := range items {
+	for key, c := range items {
 		config := cast.CastAppInstanceConfig(c)
+		if config.Key() != key {
+			log.Printf("updateAIStatusSafename key/UUID mismatch %s vs %s; ignored %+v\n",
+				key, config.Key(), config)
+			continue
+		}
 		if debug {
 			log.Printf("Processing AppInstanceConfig for UUID %s\n",
 				config.UUIDandVersion.UUID)
@@ -54,7 +59,7 @@ func updateAIStatusUUID(ctx *zedmanagerContext, uuidStr string) {
 	if changed {
 		log.Printf("updateAIStatusUUID status change for %s\n",
 			uuidStr)
-		updateAppInstanceStatus(ctx, status)
+		publishAppInstanceStatus(ctx, status)
 	}
 }
 
@@ -76,13 +81,13 @@ func removeAIStatus(ctx *zedmanagerContext, status *types.AppInstanceStatus) {
 	if changed {
 		log.Printf("removeAIStatus status change for %s\n",
 			uuidStr)
-		updateAppInstanceStatus(ctx, status)
+		publishAppInstanceStatus(ctx, status)
 	}
 	if del {
 		log.Printf("removeAIStatus remove done for %s\n",
 			uuidStr)
 		// Write out what we modified to AppInstanceStatus aka delete
-		removeAppInstanceStatus(ctx, status)
+		unpublishAppInstanceStatus(ctx, status)
 	}
 }
 
@@ -92,8 +97,13 @@ func removeAIStatusSafename(ctx *zedmanagerContext, safename string) {
 
 	pub := ctx.pubAppInstanceStatus
 	items := pub.GetAll()
-	for _, st := range items {
+	for key, st := range items {
 		status := cast.CastAppInstanceStatus(st)
+		if status.Key() != key {
+			log.Printf("removeAIStatusSafename key/UUID mismatch %s vs %s; ignored %+v\n",
+				key, status.Key(), status)
+			continue
+		}
 		if debug {
 			log.Printf("Processing AppInstanceStatus for UUID %s\n",
 				status.UUIDandVersion.UUID)
@@ -124,7 +134,8 @@ func doUpdate(ctx *zedmanagerContext, uuidStr string,
 	}
 	if !config.Activate {
 		if status.Activated || status.ActivateInprogress {
-			changed = doInactivate(ctx, uuidStr, status)
+			c := doInactivateHalt(ctx, uuidStr, config, status)
+			changed = changed || c
 		} else {
 			// If we have a !ReadOnly disk this will create a copy
 			err := MaybeAddDomainConfig(ctx, config, nil)
@@ -141,7 +152,8 @@ func doUpdate(ctx *zedmanagerContext, uuidStr string,
 		return changed
 	}
 	log.Printf("Have config.Activate for %s\n", uuidStr)
-	changed = doActivate(ctx, uuidStr, config, status)
+	c := doActivate(ctx, uuidStr, config, status)
+	changed = changed || c
 	log.Printf("doUpdate done for %s\n", uuidStr)
 	return changed
 }
@@ -202,7 +214,8 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 			sc.DownloadURL, safename)
 
 		// Shortcut if image is already verified
-		vs, err := LookupVerifyImageStatusAny(safename, sc.ImageSha256)
+		vs, err := LookupVerifyImageStatusAny(ctx, safename,
+			sc.ImageSha256)
 		if err == nil && vs.State == types.DELIVERED {
 			log.Printf("doUpdate found verified image for %s sha %s\n",
 				safename, sc.ImageSha256)
@@ -217,7 +230,8 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 					vs.RefCount, vs.Safename)
 				// We don't need certs since Status already
 				// exists
-				MaybeAddVerifyImageConfig(vs.Safename, &sc, false)
+				MaybeAddVerifyImageConfig(ctx, vs.Safename,
+					&sc, false)
 				ss.HasVerifierRef = true
 				changed = true
 			}
@@ -233,14 +247,14 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		if !ss.HasDownloaderRef {
 			log.Printf("doUpdate !HasDownloaderRef for %s\n",
 				safename)
-			AddOrRefcountDownloaderConfig(safename, &sc)
+			AddOrRefcountDownloaderConfig(ctx, safename, &sc)
 			ss.HasDownloaderRef = true
 			changed = true
 		}
-		ds, err := LookupDownloaderStatus(safename)
-		if err != nil {
-			log.Printf("LookupDownloaderStatus %s failed %v\n",
-				safename, err)
+		ds := lookupDownloaderStatus(ctx, safename)
+		if ds == nil {
+			log.Printf("lookupDownloaderStatus %s failed\n",
+				safename)
 			minState = types.DOWNLOAD_STARTED
 			continue
 		}
@@ -266,7 +280,8 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		case types.DOWNLOADED:
 			// Kick verifier to start if it hasn't already
 			if !ss.HasVerifierRef {
-				if MaybeAddVerifyImageConfig(safename, &sc, true) {
+				if MaybeAddVerifyImageConfig(ctx, safename,
+					&sc, true) {
 					ss.HasVerifierRef = true
 					changed = true
 				} else {
@@ -304,7 +319,8 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		log.Printf("Found StorageConfig URL %s safename %s\n",
 			sc.DownloadURL, safename)
 
-		vs, err := LookupVerifyImageStatusAny(safename, sc.ImageSha256)
+		vs, err := LookupVerifyImageStatusAny(ctx, safename,
+			sc.ImageSha256)
 		if err != nil {
 			log.Printf("LookupVerifyImageStatusAny %s sha %s failed %v\n",
 				safename, sc.ImageSha256, err)
@@ -498,10 +514,13 @@ func doRemove(ctx *zedmanagerContext, uuidStr string,
 	changed := false
 	del := false
 	if status.Activated || status.ActivateInprogress {
-		changed = doInactivate(ctx, uuidStr, status)
+		c := doInactivate(ctx, uuidStr, status)
+		changed = changed || c
 	}
 	if !status.Activated {
-		changed, del = doUninstall(ctx, uuidStr, status)
+		c, d := doUninstall(ctx, uuidStr, status)
+		changed = changed ||  c
+		del = del || d
 	}
 	log.Printf("doRemove done for %s\n", uuidStr)
 	return changed, del
@@ -514,7 +533,7 @@ func doInactivate(ctx *zedmanagerContext, uuidStr string,
 	changed := false
 
 	// First halt the domain
-	removeDomainConfig(ctx, uuidStr)
+	unpublishDomainConfig(ctx, uuidStr)
 
 	// Check if DomainStatus gone; update AppInstanceStatus if error
 	ds := lookupDomainStatus(ctx, uuidStr)
@@ -536,7 +555,7 @@ func doInactivate(ctx *zedmanagerContext, uuidStr string,
 
 	log.Printf("Done with DomainStatus removal for %s\n", uuidStr)
 
-	removeAppNetworkConfig(ctx, uuidStr)
+	unpublishAppNetworkConfig(ctx, uuidStr)
 
 	// Check if AppNetworkStatus gone
 	ns := lookupAppNetworkStatus(ctx, uuidStr)
@@ -572,7 +591,7 @@ func doUninstall(ctx *zedmanagerContext, uuidStr string,
 
 	// Remove the EIDConfig for each overlay
 	for _, es := range status.EIDList {
-		removeEIDConfig(ctx, status.UUIDandVersion, &es)
+		unpublishEIDConfig(ctx, status.UUIDandVersion, &es)
 	}
 	// Check EIDStatus for each overlay; update AppInstanceStatus
 	eidsFreed := true
@@ -600,12 +619,12 @@ func doUninstall(ctx *zedmanagerContext, uuidStr string,
 		ss := &status.StorageStatusList[i]
 		// Decrease refcount if we had increased it
 		if ss.HasVerifierRef {
-			MaybeRemoveVerifyImageConfigSha256(ss.ImageSha256)
+			MaybeRemoveVerifyImageConfigSha256(ctx, ss.ImageSha256)
 			ss.HasVerifierRef = false
 			changed = true
 		}
 
-		_, err := LookupVerifyImageStatusSha256(ss.ImageSha256)
+		_, err := LookupVerifyImageStatusSha256(ctx, ss.ImageSha256)
 		// XXX if additional refs it will not go away
 		if false && err == nil {
 			log.Printf("LookupVerifyImageStatus %s not yet gone\n",
@@ -631,15 +650,15 @@ func doUninstall(ctx *zedmanagerContext, uuidStr string,
 		}
 		// Decrease refcount if we had increased it
 		if ss.HasDownloaderRef {
-			MaybeRemoveDownloaderConfig(safename)
+			MaybeRemoveDownloaderConfig(ctx, safename)
 			ss.HasDownloaderRef = false
 			changed = true
 		}
 
-		_, err := LookupDownloaderStatus(ss.ImageSha256)
+		ds := lookupDownloaderStatus(ctx, ss.ImageSha256)
 		// XXX if additional refs it will not go away
-		if false && err == nil {
-			log.Printf("LookupDownloaderStatus %s not yet gone\n",
+		if false && ds != nil {
+			log.Printf("lookupDownloaderStatus %s not yet gone\n",
 				safename)
 			removedAll = false
 			continue
@@ -656,6 +675,75 @@ func doUninstall(ctx *zedmanagerContext, uuidStr string,
 	del = true
 	log.Printf("doUninstall done for %s\n", uuidStr)
 	return changed, del
+}
+
+// Handle Activate=false which is different than doInactivate
+func doInactivateHalt(ctx *zedmanagerContext, uuidStr string,
+	config types.AppInstanceConfig, status *types.AppInstanceStatus) bool {
+
+	log.Printf("doInactivateHalt for %s\n", uuidStr)
+	changed := false
+
+	// Check AppNetworkStatus
+	ns := lookupAppNetworkStatus(ctx, uuidStr)
+	if ns == nil {
+		log.Printf("Waiting for AppNetworkStatus for %s\n", uuidStr)
+		return changed
+	}
+	if ns.Error != "" {
+		log.Printf("Received error from zedrouter for %s: %s\n",
+			uuidStr, ns.Error)
+		status.State = types.INITIAL
+		status.Error = ns.Error
+		status.ErrorTime = ns.ErrorTime
+		changed = true
+		return changed
+	}
+	if debug {
+		log.Printf("Done with AppNetworkStatus for %s\n", uuidStr)
+	}
+
+	// Make sure we have a DomainConfig
+	err := MaybeAddDomainConfig(ctx, config, ns)
+	if err != nil {
+		log.Printf("Error from MaybeAddDomainConfig for %s: %s\n",
+			uuidStr, err)
+		status.State = types.INITIAL
+		status.Error = fmt.Sprintf("%s", err)
+		status.ErrorTime = time.Now()
+		changed = true
+		log.Printf("Waiting for DomainStatus Activated for %s\n",
+			uuidStr)
+		return changed
+	}
+
+	// Check DomainStatus; update AppInstanceStatus if error
+	ds := lookupDomainStatus(ctx, uuidStr)
+	if ds == nil {
+		log.Printf("Waiting for DomainStatus for %s\n", uuidStr)
+		return changed
+	}
+	// Look for xen errors.
+	if ds.Activated {
+		log.Printf("Waiting for Not Activated for DomainStatus %s\n",
+			uuidStr)
+		return changed
+	}
+	if ds.LastErr != "" {
+		log.Printf("Received error from domainmgr for %s: %s\n",
+			uuidStr, ds.LastErr)
+		status.State = types.INITIAL
+		status.Error = ds.LastErr
+		status.ErrorTime = ds.LastErrTime
+		changed = true
+	}
+	// XXX network is still around! Need to call doInactivate in doRemove?
+	// XXX fix assymetry
+	status.Activated = false
+	status.ActivateInprogress = false
+	changed = true
+	log.Printf("doInactivateHalt done for %s\n", uuidStr)
+	return changed
 }
 
 func appendError(allErrors string, prefix string, lasterr string) string {

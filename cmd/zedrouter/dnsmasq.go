@@ -1,4 +1,4 @@
-// Copyright (c) 2017 Zededa, Inc.
+// Copyright (c) 2017-2018 Zededa, Inc.
 // All rights reserved.
 
 // dnsmasq configlets for overlay and underlay interfaces towards domU
@@ -58,8 +58,13 @@ func createDnsmasqOverlayConfiglet(ctx *zedrouterContext,
 		// walk all of netconf - find all hosts which use this network
 		pub := ctx.pubAppNetworkStatus
 		items := pub.GetAll()
-		for _, st := range items {
+		for key, st := range items {
 			status := cast.CastAppNetworkStatus(st)
+			if status.Key() != key {
+				log.Printf("createDnsmasqOverlayConfiglet key/UUID mismatch %s vs %s; ignored %+v\n",
+					key, status.Key(), status)
+				continue
+			}
 			for _, olStatus := range status.OverlayNetworkList {
 				if olStatus.Network != netconf.UUID {
 					continue
@@ -130,8 +135,13 @@ func createDnsmasqUnderlayConfiglet(ctx *zedrouterContext,
 		// walk all of netconf - find all hosts which use this network
 		pub := ctx.pubAppNetworkStatus
 		items := pub.GetAll()
-		for _, st := range items {
+		for key, st := range items {
 			status := cast.CastAppNetworkStatus(st)
+			if status.Key() != key {
+				log.Printf("createDnsmasqUnderlayConfiglet key/UUID mismatch %s vs %s; ignored %+v\n",
+					key, status.Key(), status)
+				continue
+			}
 			for _, ulStatus := range status.UnderlayNetworkList {
 				if ulStatus.Network != netconf.UUID {
 					continue

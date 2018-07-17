@@ -1,4 +1,4 @@
-// Copyright (c) 2017 Zededa, Inc.
+// Copyright (c) 2017-2018 Zededa, Inc.
 // All rights reserved.
 
 package zedmanager
@@ -102,7 +102,7 @@ func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
 			ul := &nc.UnderlayNetworkList[i]
 			*ul = ulc
 		}
-		updateAppNetworkConfig(ctx, &nc)
+		publishAppNetworkConfig(ctx, &nc)
 	}
 	log.Printf("MaybeAddAppNetworkConfig done for %s\n", key)
 }
@@ -117,7 +117,7 @@ func lookupAppNetworkConfig(ctx *zedmanagerContext, key string) *types.AppNetwor
 	}
 	config := cast.CastAppNetworkConfig(c)
 	if config.Key() != key {
-		log.Printf("lookupAppNetworkConfig(%s) got %s; ignored %+v\n",
+		log.Printf("lookupAppNetworkConfig key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, config.Key(), config)
 		return nil
 	}
@@ -133,30 +133,30 @@ func lookupAppNetworkStatus(ctx *zedmanagerContext, key string) *types.AppNetwor
 	}
 	status := cast.CastAppNetworkStatus(st)
 	if status.Key() != key {
-		log.Printf("lookupAppNetworkStatus(%s) got %s; ignored %+v\n",
+		log.Printf("lookupAppNetworkStatus key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
 		return nil
 	}
 	return &status
 }
 
-func updateAppNetworkConfig(ctx *zedmanagerContext,
+func publishAppNetworkConfig(ctx *zedmanagerContext,
 	status *types.AppNetworkConfig) {
 
 	key := status.Key()
-	log.Printf("updateAppNetworkConfig(%s)\n", key)
+	log.Printf("publishAppNetworkConfig(%s)\n", key)
 	pub := ctx.pubAppNetworkConfig
 	pub.Publish(key, status)
 }
 
-func removeAppNetworkConfig(ctx *zedmanagerContext, uuidStr string) {
+func unpublishAppNetworkConfig(ctx *zedmanagerContext, uuidStr string) {
 
 	key := uuidStr
-	log.Printf("removeAppNetworkConfig(%s)\n", key)
+	log.Printf("unpublishAppNetworkConfig(%s)\n", key)
 	pub := ctx.pubAppNetworkConfig
 	c, _ := pub.Get(key)
 	if c == nil {
-		log.Printf("removeAppNetworkConfig(%s) not found\n", key)
+		log.Printf("unpublishAppNetworkConfig(%s) not found\n", key)
 		return
 	}
 	pub.Unpublish(key)
@@ -189,7 +189,8 @@ func handleAppNetworkStatusModify(ctxArg interface{}, key string,
 		key)
 }
 
-func handleAppNetworkStatusDelete(ctxArg interface{}, key string) {
+func handleAppNetworkStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
 
 	log.Printf("handleAppNetworkStatusDelete for %s\n", key)
 	ctx := ctxArg.(*zedmanagerContext)
