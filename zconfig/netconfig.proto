@@ -9,7 +9,11 @@ import "netcmn.proto";
 message NetworkConfig {
 	string id = 1;
 	NetworkType type = 5;
+
+	// network ip specification
 	ipspec ip = 6;
+
+	repeated ZnetStaticDNSEntry dns = 7;
 }
 
 message NetworkAdapter {

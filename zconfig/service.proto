@@ -21,6 +21,20 @@ message ServiceOpaqueConfig {
 	string oconfig = 1;
 }
 
+// Service Lisp config
+message ServiceLispConfig {
+        repeated ZcServicePoint LispMSs = 1;
+        uint32 LispInstanceId = 2;
+
+        bool allocate = 3;
+        bool exportprivate = 4;
+        bytes allocationprefix = 5;
+        uint32 allocationprefixlen = 6;
+
+	// various configuration to dataPlane, lispers.net vs Zededa
+	bool experimental = 20;
+}
+
 message ServiceInstanceConfig {
 	string id = 1;
 	string displayname = 2;
@@ -40,6 +54,7 @@ message ServiceInstanceConfig {
 	// towards devices which phyiscal or logical adapter to use
 	Adapter devlink = 20;	// I/O adapters to assign to app
 
-	// Opaque configuration
+	// Opaque configuration 
 	ServiceOpaqueConfig cfg = 30;
+	ServiceLispConfig   lispCfg = 31; 
 }
