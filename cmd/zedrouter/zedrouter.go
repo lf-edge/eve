@@ -853,7 +853,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 	if !allNetworksExist {
 		log.Printf("handleCreate(%v) for %s: missing networks XXX defer\n",
 			config.UUIDandVersion, config.DisplayName)
-		removeAppNetworkStatus(&status)
+		unpublishAppNetworkStatus(ctx, &status)
 		return
 	}
 
