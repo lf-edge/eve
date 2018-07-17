@@ -51,8 +51,11 @@ type ZcServiceType int32
 
 const (
 	ZcServiceType_zcloudInvalidSrv ZcServiceType = 0
-	ZcServiceType_mapServer        ZcServiceType = 1
-	ZcServiceType_supportServer    ZcServiceType = 2
+	// mapping service for zededa overlay service
+	ZcServiceType_mapServer ZcServiceType = 1
+	// if device has support feature enabled, this is cloud service from
+	// device can be reached
+	ZcServiceType_supportServer ZcServiceType = 2
 )
 
 var ZcServiceType_name = map[int32]string{

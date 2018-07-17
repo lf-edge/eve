@@ -11,7 +11,7 @@ message ipRange {
 // These are list of static mapping that can be added to network
 message ZnetStaticDNSEntry {
         string HostName   = 1;
-        repeated string EID = 2;
+        repeated string Address = 2;
 }
 
 enum DHCPType {
@@ -49,5 +49,5 @@ enum NetworkType {
 	NETWORKTYPENOOP = 0;
 	V4 = 4;
 	V6 = 6;
-	CryptoV4 = 14;
+	CryptoEID = 14;
 }
