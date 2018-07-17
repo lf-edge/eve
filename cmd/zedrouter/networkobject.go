@@ -105,10 +105,8 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 		return errors.New(errStr)
 	}
 
-	// Allocate bridgeNum. Note that we reuse appNum even
-	// though XXX appNumAllocatorInit doesn't know about
-	// these numbers
-	bridgeNum := appNumAllocate(config.UUID, false)
+	// Allocate bridgeNum.
+	bridgeNum := bridgeNumAllocate(config.UUID)
 	bridgeName := fmt.Sprintf("bn%d", bridgeNum)
 	status.BridgeNum = bridgeNum
 	status.BridgeName = bridgeName

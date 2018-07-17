@@ -173,6 +173,7 @@ func Run() {
 	pubAppNetworkStatus.ClearRestarted()
 
 	appNumAllocatorInit(pubAppNetworkStatus)
+	bridgeNumAllocatorInit(pubNetworkObjectStatus)
 
 	// Subscribe to network objects and services from zedagent
 	subNetworkObjectConfig, err := pubsub.Subscribe("zedagent",
