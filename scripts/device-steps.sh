@@ -142,6 +142,12 @@ echo "Configuration from factory/install:"
 (cd $CONFIGDIR; ls -l)
 echo
 
+if [ -f $CONFIGDIR/proxy ]; then
+    proxy=`cat $CONFIGDIR/proxy`
+    echo "Using HTTPS_PROXY $proxy"
+    export HTTPS_PROXY="$proxy"
+fi
+
 P3=`zboot partdev P3`
 if [ $? = 0 -a x$P3 != x ]; then
     echo "Using $P3 for /persist"
