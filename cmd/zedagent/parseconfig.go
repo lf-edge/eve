@@ -673,9 +673,6 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 				// XXX return how?
 				log.Printf("publishNetworkObjectConfig: parseIpspec failed: %s\n", err)
 			}
-		case types.NT_LISP:
-			log.Printf("publishNetworkObjectConfig: LISP NetworkConfig not supported for %d in %v\n",
-				id.String(), netEnt)
 		default:
 			log.Printf("publishNetworkObjectConfig: Unknown NetworkConfig type %d for %s in %v\n",
 				config.Type, id.String(), netEnt)
@@ -821,10 +818,8 @@ func parseAppNetworkConfig(appInstance *types.AppInstanceConfig,
 		// underlay interface
 		case zconfig.NetworkType_V4, zconfig.NetworkType_V6:
 			ulMaxIdx++
-		// overlay interface
-		// XXX turn LISP into a service?? What happens to overlay config?
-		case zconfig.NetworkType_LISP:
-			olMaxIdx++
+
+		// XXX turned LISP into a service?? What happens to overlay config?
 		}
 	}
 
@@ -863,9 +858,6 @@ func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
 		switch netEnt.Type {
 		case zconfig.NetworkType_V4, zconfig.NetworkType_V6:
 			// Do nothing
-		// XXX turn LISP into a service
-		case zconfig.NetworkType_LISP:
-			continue
 		default:
 			continue
 		}
@@ -946,9 +938,10 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 		}
 
 		// XXX turn LISP into a service?? What happens to overlay config?
-		if netEnt.Type != zconfig.NetworkType_LISP {
+		if true {
 			continue
 		}
+		// XXX dead code
 		olCfg := new(types.EIDOverlayConfig)
 		olCfg.ACLs = make([]types.ACE, len(intfEnt.Acls))
 		olCfg.Network = uuid
@@ -991,35 +984,7 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 		olCfg.EIDConfigDetails.PemCert = intfEnt.Pemcert
 		olCfg.EIDConfigDetails.PemPrivateKey = intfEnt.Pemprivatekey
 
-		// XXX removed nlisp := netEnt.GetNlisp()
-		// XXX This is dead code
-		var nlisp *zconfig.Lispspec
-		if nlisp != nil {
-			if nlisp.Eidalloc != nil {
-				olCfg.EIDConfigDetails.IID = nlisp.Iid
-				olCfg.EIDConfigDetails.EIDAllocation.Allocate = nlisp.Eidalloc.Allocate
-				olCfg.EIDConfigDetails.EIDAllocation.ExportPrivate = nlisp.Eidalloc.Exportprivate
-				olCfg.EIDConfigDetails.EIDAllocation.AllocationPrefix = nlisp.Eidalloc.Allocationprefix
-				olCfg.EIDConfigDetails.EIDAllocation.AllocationPrefixLen = int(nlisp.Eidalloc.Allocationprefixlen)
-			}
-
-			if len(nlisp.Nmtoeid) != 0 {
-				olCfg.NameToEidList = make([]types.NameToEid,
-					len(nlisp.Nmtoeid))
-				for nameIdx, nametoeid := range nlisp.Nmtoeid {
-					nameCfg := new(types.NameToEid)
-					nameCfg.HostName = nametoeid.Hostname
-					nameCfg.EIDs = make([]net.IP,
-						len(nametoeid.Eids))
-					for eIdx, eid := range nametoeid.Eids {
-						nameCfg.EIDs[eIdx] = net.ParseIP(eid)
-					}
-					olCfg.NameToEidList[nameIdx] = *nameCfg
-				}
-			}
-		} else {
-			log.Printf("No Nlisp in for %v\n", netEnt.Id)
-		}
+		// XXX lisp needs to come from the service somehow
 		appInstance.OverlayNetworkList[olIdx] = *olCfg
 		olIdx++
 	}
