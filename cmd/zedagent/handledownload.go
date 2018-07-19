@@ -82,7 +82,7 @@ func updateDownloaderStatus(ctx *zedagentContext,
 		certObjHandleStatusUpdateSafename(ctx, status.Safename)
 
 	default:
-		log.Fatalf("updateDownloaderStatus for %s, unsupported objType <%s>\n",
+		log.Printf("updateDownloaderStatus for %s, unsupported objType <%s>\n",
 			key, objType)
 		return
 	}
