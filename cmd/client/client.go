@@ -436,6 +436,12 @@ func Run() {
 				log.Printf("Failed parsing uuid: %s\n",
 					err)
 			}
+			if oldUUID != nilUUID && retryCount > 2 {
+				log.Printf("Sticking with old UUID\n")
+				devUUID = oldUUID
+				done = true
+			}
+
 			retryCount += 1
 			delay = 2 * (delay + time.Second)
 			if delay > maxDelay {
@@ -443,6 +449,7 @@ func Run() {
 			}
 			log.Printf("Retrying config in %d seconds\n",
 				delay/time.Second)
+
 		}
 		if oldUUID != nilUUID {
 			if oldUUID != devUUID {
