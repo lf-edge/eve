@@ -8,6 +8,7 @@ package zedrouter
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/zededa/go-provision/types"
 	"log"
 )
@@ -63,10 +64,11 @@ func strongswanCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 		}
 		localClientConfig.PreSharedKey = clientConfig.PreSharedKey
 		localClientConfig.SubnetBlock = clientConfig.SubnetBlock
-		localClientConfig.TunnelConfig.Name = baseTunnelName + "_" + string(idx)
+		localClientConfig.TunnelConfig.Name = fmt.Sprintf("%s_%d", baseTunnelName, idx)
 
 		if vpnLocalConfig.VpnRole == "awsStrongSwanVpnClient" {
-			localClientConfig.TunnelConfig.Key = string(100 + idx)
+			keyVal := 100 + idx
+			localClientConfig.TunnelConfig.Key = fmt.Sprintf("%d", keyVal)
 			localClientConfig.TunnelConfig.Mtu = "1419"
 			localClientConfig.TunnelConfig.Metric = "50"
 			localClientConfig.TunnelConfig.LocalIpAddr = clientConfig.TunnelConfig.LocalIpAddr
@@ -100,7 +102,6 @@ func strongswanCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 		if err := onPremStrongSwanServerCreate(vpnLocalConfig); err != nil {
 			return err
 		}
-
 	}
 
 	return nil

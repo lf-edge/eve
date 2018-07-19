@@ -647,8 +647,8 @@ func ipSecSecretConfigCreate(vpnLocalConfig types.VpnServiceLocalConfig) error {
 	case "awsStrongSwanVpnClient":
 		// always one client
 		for _, clientConfig := range clientConfigList {
-			writeStr = writeStr + clientConfig.IpAddr
-			writeStr = writeStr + gatewayConfig.IpAddr + " "
+			writeStr = writeStr + clientConfig.IpAddr + " "
+			writeStr = writeStr + gatewayConfig.IpAddr
 			writeStr = writeStr + " : PSK " + clientConfig.PreSharedKey
 			writeStr = writeStr + "\n"
 		}
@@ -656,8 +656,8 @@ func ipSecSecretConfigCreate(vpnLocalConfig types.VpnServiceLocalConfig) error {
 	case "onPremStrongSwanVpnClient":
 		// always one client
 		for _, clientConfig := range clientConfigList {
-			writeStr = writeStr + clientConfig.IpAddr
-			writeStr = writeStr + gatewayConfig.IpAddr + " "
+			writeStr = writeStr + clientConfig.IpAddr + " "
+			writeStr = writeStr + gatewayConfig.IpAddr
 			writeStr = writeStr + " : PSK " + clientConfig.PreSharedKey
 			writeStr = writeStr + "\n"
 		}
