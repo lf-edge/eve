@@ -674,10 +674,10 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 				log.Printf("publishNetworkObjectConfig: parseIpspec failed: %s\n", err)
 			}
 		default:
-			log.Printf("publishNetworkObjectConfig: Unknown NetworkConfig type %d for %s in %v\n",
+			log.Printf("publishNetworkObjectConfig: Unknown NetworkConfig type %d for %s in %v; ignored\n",
 				config.Type, id.String(), netEnt)
 			// XXX return error? Ignore for now
-			return
+			continue
 		}
 		ctx.pubNetworkObjectConfig.Publish(config.Key(),
 			&config)
