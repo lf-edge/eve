@@ -216,9 +216,9 @@ func getLatestConfig(url string, iteration int, updateInprogress *bool,
 		}
 		// If we didn't yet get a config, then look for a file
 		// XXX should we try a few times?
-		// XXX different policy if updateInProgress?
+		// XXX different policy if updateInProgress? No fallback for now
 		if !*updateInprogress &&
-			getconfigCtx.lastReceivedConfigFromCloud.IsZero() {
+			getconfigCtx.lastReceivedConfigFromCloud == getconfigCtx.startTime {
 
 			config, err := readSavedProtoMessage()
 			if err != nil {
