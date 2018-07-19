@@ -159,7 +159,9 @@ func HandleStatusEvent(change string, ctx interface{},
 		return
 	}
 	if fileName == "restarted" && operation == "M" {
-		log.Printf("Found restarted file\n")
+		if debug {
+			log.Printf("Found restarted file\n")
+		}
 		if handleRestart != nil {
 			(*handleRestart)(ctx, true)
 		}

@@ -64,12 +64,12 @@ func doDNSUpdate(ctx *zedrouterContext) {
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
 	if newAddrCount == 0 && ctx.usableAddressCount != 0 {
 		log.Printf("DeviceNetworkStatus from %d to %d addresses\n",
-			newAddrCount, ctx.usableAddressCount)
+			ctx.usableAddressCount, newAddrCount)
 		// Inform ledmanager that we have no addresses
 		types.UpdateLedManagerConfig(1)
 	} else if newAddrCount != 0 && ctx.usableAddressCount == 0 {
 		log.Printf("DeviceNetworkStatus from %d to %d addresses\n",
-			newAddrCount, ctx.usableAddressCount)
+			ctx.usableAddressCount, newAddrCount)
 		// Inform ledmanager that we have uplink addresses
 		types.UpdateLedManagerConfig(2)
 	}
@@ -77,7 +77,7 @@ func doDNSUpdate(ctx *zedrouterContext) {
 	if !ctx.ready {
 		return
 	}
-	updateDeviceNetworkStatus(ctx.pubDeviceNetworkStatus)
+	publishDeviceNetworkStatus(ctx.pubDeviceNetworkStatus)
 	updateLispConfiglets(ctx, ctx.separateDataPlane)
 	setUplinks(deviceNetworkConfig.Uplink)
 	setFreeUplinks(deviceNetworkConfig.FreeUplinks)

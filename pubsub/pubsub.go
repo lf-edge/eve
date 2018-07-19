@@ -23,11 +23,17 @@ import (
 )
 
 // XXX add protocol over AF_UNIX later
-// "sync request", ... "update" "delete" followed by key then val
-// "sync done" once all have sent
-// Plus "restart" if application calls SignalRestarted()
-// After end of sync (aka ReadDir processing) then look for explicit application
-// restart/restarted signal.
+// "request" from client after connect, then sequence "update" followed by
+// key then val
+// "complete" once all initial keys/values in collection have been sent.
+// Finally "restarted" if/when pub.km.restarted is set.
+// Ongoing we send "update" and "delete" messages.
+// Include typeName after command word for sanity. Hence the message format is
+//	"request" typeName
+//	"update" typeName key json-val XXX we have spaces in keys!
+//	"delete" typeName key
+//	"complete" typeName
+//	"restarted" typeName
 
 // Maintain a collection which is used to handle the restart of a subscriber
 // map of agentname, key to get a json string
@@ -37,8 +43,7 @@ type keyMap struct {
 }
 
 // We always publish to our collection.
-// XXX always need to write directory to have a checkpoint on
-// XXX restart; need to read restart content in Publish?
+// We always write to a file in order to have a checkpoint on restart
 const publishToSock = false     // XXX
 const subscribeFromDir = true   // XXX
 const subscribeFromSock = false // XXX
@@ -66,7 +71,7 @@ type Publication struct {
 	// Private fields
 	topicType  interface{}
 	agentName  string
-	agentScope string // XXX use for objType
+	agentScope string
 	topic      string
 	km         keyMap
 	sockName   string
@@ -82,8 +87,8 @@ func PublishScope(agentName string, agentScope string, topicType interface{}) (*
 }
 
 // Init function to create directory and socket listener based on above settings
-// XXX should read current state from dirName and insert in pub.km as initial
-// values. XXX also read restarted file to set restarted?
+// We read any checkpointed state from dirName and insert in pub.km as initial
+// values.
 func publishImpl(agentName string, agentScope string,
 	topicType interface{}) (*Publication, error) {
 
@@ -107,7 +112,14 @@ func publishImpl(agentName string, agentScope string,
 				name, err)
 			return nil, errors.New(errStr)
 		}
+	} else {
+		// Read existig status from dir
+		pub.populate()
+		if debug {
+			pub.dump("after populate")
+		}
 	}
+
 	if publishToSock {
 		sockName := SockName(name)
 		if _, err := os.Stat(sockName); err == nil {
@@ -128,6 +140,56 @@ func publishImpl(agentName string, agentScope string,
 		go pub.publisher()
 	}
 	return pub, nil
+}
+
+// Only reads json files. Sets restarted if that file was found.
+func (pub *Publication) populate() {
+	name := pub.nameString()
+	dirName := PubDirName(name)
+	foundRestarted := false
+
+	log.Printf("populate(%s)\n", name)
+
+	files, err := ioutil.ReadDir(dirName)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, file := range files {
+		if !strings.HasSuffix(file.Name(), ".json") {
+			if file.Name() == "restarted" {
+				foundRestarted = true
+			}
+			continue
+		}
+		// Remove .json from name */
+		key := strings.Split(file.Name(), ".json")[0]
+
+		statusFile := dirName + "/" + file.Name()
+		if _, err := os.Stat(statusFile); err != nil {
+			// File just vanished!
+			log.Printf("populate: File disappeared <%s>\n",
+				statusFile)
+			continue
+		}
+
+		log.Printf("populate found key %s file %s\n", key, statusFile)
+
+		sb, err := ioutil.ReadFile(statusFile)
+		if err != nil {
+			log.Printf("populate: %s for %s\n", err, statusFile)
+			continue
+		}
+		var item interface{}
+		if err := json.Unmarshal(sb, &item); err != nil {
+			log.Printf("populate: %s file: %s\n",
+				err, statusFile)
+			continue
+		}
+		pub.km.key[key] = item
+	}
+	pub.km.restarted = foundRestarted
+	log.Printf("populate(%s) done\n", name)
 }
 
 // go routine which runs the AF_UNIX server
@@ -291,7 +353,7 @@ func (pub *Publication) Unpublish(key string) error {
 	} else {
 		errStr := fmt.Sprintf("Unpublish(%s/%s): key does not exist",
 			name, key)
-		log.Printf("XXX %s\n", errStr)
+		log.Printf("%s\n", errStr)
 		return errors.New(errStr)
 	}
 	delete(pub.km.key, key)
@@ -327,7 +389,7 @@ func (pub *Publication) ClearRestarted() error {
 }
 
 // Record the restarted state and send over socket/file.
-// XXX TBD when sending/resynchronizing send the restarted indication last
+// XXXTBD when sending/resynchronizing send the restarted indication last
 func (pub *Publication) restartImpl(restarted bool) error {
 	name := pub.nameString()
 	log.Printf("pub.restartImpl(%s, %v)\n", name, restarted)
@@ -394,8 +456,9 @@ func (pub *Publication) dump(infoStr string) {
 		if err != nil {
 			log.Fatal(err, "json Marshal in dump")
 		}
-		log.Printf("key %s val %s\n", key, b)
+		log.Printf("\tkey %s val %s\n", key, b)
 	}
+	log.Printf("\trestarted %t\n", pub.km.restarted)
 }
 
 func (pub *Publication) Get(key string) (interface{}, error) {
@@ -451,7 +514,7 @@ type Subscription struct {
 	sendChan   chan<- string
 	topicType  interface{}
 	agentName  string
-	agentScope string // XXX use for objType
+	agentScope string
 	topic      string
 	km         keyMap
 	userCtx    interface{}
@@ -555,7 +618,7 @@ func (sub *Subscription) Activate() error {
 func (sub *Subscription) ProcessChange(change string) {
 	name := sub.nameString()
 	if debug {
-		log.Printf("ProcessEvent(%s) %s\n", name, change)
+		log.Printf("ProcessChange(%s) %s\n", name, change)
 	}
 	var restartFn watch.StatusRestartHandler = handleRestart
 	watch.HandleStatusEvent(change, sub,
@@ -571,7 +634,6 @@ func handleModify(ctxArg interface{}, key string, item interface{}) {
 	}
 	// NOTE: without a deepCopy we would just save a pointer since
 	// item is a pointer. That would cause failures.
-	// XXX deepCopy should help with cmp as well.
 	newItem := deepCopy(item)
 	m, ok := sub.km.key[key]
 	if ok {
@@ -664,8 +726,9 @@ func (sub *Subscription) dump(infoStr string) {
 		if err != nil {
 			log.Fatal(err, "json Marshal in dump")
 		}
-		log.Printf("key %s val %s\n", key, b)
+		log.Printf("\tkey %s val %s\n", key, b)
 	}
+	log.Printf("\trestarted %t\n", sub.km.restarted)
 }
 
 func (sub *Subscription) Get(key string) (interface{}, error) {
@@ -687,3 +750,8 @@ func (sub *Subscription) GetAll() map[string]interface{} {
 	}
 	return result
 }
+
+func (sub *Subscription) Restarted() bool {
+	return sub.km.restarted
+}
+
