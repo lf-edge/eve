@@ -74,6 +74,7 @@ type getconfigContext struct {
 	ledManagerCount             int // Current count
 	startTime                   time.Time
 	lastReceivedConfigFromCloud time.Time
+	readSavedConfig		    bool
 	configTickerHandle          interface{}
 	metricsTickerHandle         interface{}
 	pubNetworkObjectConfig      *pubsub.Publication
@@ -218,6 +219,7 @@ func getLatestConfig(url string, iteration int, updateInprogress *bool,
 		// XXX should we try a few times?
 		// XXX different policy if updateInProgress? No fallback for now
 		if !*updateInprogress &&
+			!getconfigCtx.readSavedConfig &&
 			getconfigCtx.lastReceivedConfigFromCloud == getconfigCtx.startTime {
 
 			config, err := readSavedProtoMessage()
@@ -227,6 +229,7 @@ func getLatestConfig(url string, iteration int, updateInprogress *bool,
 			}
 			if config != nil {
 				log.Printf("Using saved config %v\n", config)
+				getconfigCtx.readSavedConfig = true
 				return inhaleDeviceConfig(config, getconfigCtx)
 			}
 		}
