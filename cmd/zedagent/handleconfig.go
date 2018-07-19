@@ -74,7 +74,7 @@ type getconfigContext struct {
 	ledManagerCount             int // Current count
 	startTime                   time.Time
 	lastReceivedConfigFromCloud time.Time
-	readSavedConfig		    bool
+	readSavedConfig             bool
 	configTickerHandle          interface{}
 	metricsTickerHandle         interface{}
 	pubNetworkObjectConfig      *pubsub.Publication
@@ -326,7 +326,26 @@ func validateConfigMessage(url string, r *http.Response) error {
 }
 
 func writeReceivedProtoMessage(contents []byte) {
-	filename := checkpointDirname + "/lastconfig"
+	writeProtoMessage("lastconfig", contents)
+}
+
+// XXX for debug we track these
+func writeSentMetricsProtoMessage(contents []byte) {
+	writeProtoMessage("lastmetrics", contents)
+}
+
+// XXX for debug we track these
+func writeSentDeviceInfoProtoMessage(contents []byte) {
+	writeProtoMessage("lastdeviceinfo", contents)
+}
+
+// XXX for debug we track these
+func writeSentAppInfoProtoMessage(contents []byte) {
+	writeProtoMessage("lastappinfo", contents)
+}
+
+func writeProtoMessage(filename string, contents []byte) {
+	filename = checkpointDirname + "/" + filename
 	err := ioutil.WriteFile(filename, contents, 0744)
 	if err != nil {
 		log.Fatal("writeReceiveProtoMessage", err)
