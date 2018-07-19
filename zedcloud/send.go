@@ -105,6 +105,7 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, reqlen int64, b *b
 		}
 		d := net.Dialer{LocalAddr: &localTCPAddr}
 		transport := &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
 			TLSClientConfig: ctx.TlsConfig,
 			Dial:            d.Dial,
 		}
