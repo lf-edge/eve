@@ -53,7 +53,7 @@ func strongswanCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 		len(vpnConfig.ClientConfigList))
 
 	for idx, clientConfig := range vpnConfig.ClientConfigList {
-		localClientConfig := new (types.VpnClientConfig)
+		localClientConfig := new(types.VpnClientConfig)
 		localClientConfig.IpAddr = clientConfig.IpAddr
 		if localClientConfig.IpAddr == "" {
 			localClientConfig.IpAddr = "%any"
@@ -262,9 +262,9 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 	vpnConfig.VpnRole = strongSwanConfig.VpnRole
 	vpnConfig.GatewayConfig.SubnetBlock = strongSwanConfig.VpnSubnetBlock
 	vpnConfig.GatewayConfig.IpAddr = strongSwanConfig.VpnGatewayIpAddr
-	vpnConfig.ClientConfigList = make ([]types.VpnClientConfig, len(strongSwanConfig.ClientConfigList))
+	vpnConfig.ClientConfigList = make([]types.VpnClientConfig, len(strongSwanConfig.ClientConfigList))
 	for idx, clientConfig := range strongSwanConfig.ClientConfigList {
-		localClientConfig := new (types.VpnClientConfig)
+		localClientConfig := new(types.VpnClientConfig)
 		localClientConfig.IpAddr = clientConfig.IpAddr
 		localClientConfig.SubnetBlock = clientConfig.SubnetBlock
 
