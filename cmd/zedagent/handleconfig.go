@@ -230,7 +230,8 @@ func getLatestConfig(url string, iteration int, updateInprogress *bool,
 			if config != nil {
 				log.Printf("Using saved config %v\n", config)
 				getconfigCtx.readSavedConfig = true
-				return inhaleDeviceConfig(config, getconfigCtx)
+				return inhaleDeviceConfig(config, getconfigCtx,
+					true)
 			}
 		}
 		return false
@@ -300,7 +301,7 @@ func getLatestConfig(url string, iteration int, updateInprogress *bool,
 		}
 		return false
 	}
-	return inhaleDeviceConfig(config, getconfigCtx)
+	return inhaleDeviceConfig(config, getconfigCtx, false)
 }
 
 func validateConfigMessage(url string, r *http.Response) error {
@@ -414,7 +415,7 @@ func readDeviceConfigProtoMessage(contents []byte) (bool, *zconfig.EdgeDevConfig
 }
 
 // Returns a rebootFlag
-func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext) bool {
+func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext, usingSaved bool) bool {
 	if debug {
 		log.Printf("Inhaling config %v\n", config)
 	}
@@ -457,7 +458,7 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCo
 	}
 
 	// add new BaseOS/App instances; returns rebootFlag
-	if parseConfig(config, getconfigCtx) {
+	if parseConfig(config, getconfigCtx, usingSaved) {
 		return true
 	}
 
