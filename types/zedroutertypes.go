@@ -626,22 +626,54 @@ type AdditionalInfoApp struct {
 	Hostname    string `json:",omitempty"` // From reverse DNS
 }
 
-type IpSecLocalConfig struct {
-	AwsVpnGateway string
-	AwsVpcSubnet  string
-	TunnelName    string
-	UpLinkName    string
-	UpLinkIpAddr  string
-	IpTable       string
-	TunnelKey     string
-	Mtu           string
-	Metric        string
+// Input Opaque Config
+type StrongSwanServiceConfig struct {
+	VpnRole          string
+	VpnGatewayIpAddr string
+	VpnSubnetBlock   string
+	VpnLocalIpAddr   string
+	VpnRemoteIpAddr  string
+	PreSharedKey     string
+	ClientConfigList []VpnClientConfig
 }
 
-type AwsSSIpSecService struct {
-	AwsVpnGateway   string
-	AwsVpcSubnet    string
-	VpnLocalIpAddr  string
-	VpnRemoteIpAddr string
-	PreSharedKey    string
+// structure for internal handling
+type VpnServiceConfig struct {
+	VpnRole          string
+	GatewayConfig    VpnGatewayConfig
+	ClientConfigList []VpnClientConfig
+}
+
+// also used to store status
+type VpnServiceLocalConfig struct {
+	VpnRole          string
+	GatewayConfig    VpnGatewayConfig
+	UpLinkConfig     VpnUpLinkConfig
+	ClientConfigList []VpnClientConfig
+}
+
+type VpnUpLinkConfig struct {
+	Name   string
+	IpAddr string
+}
+
+type VpnGatewayConfig struct {
+	IpAddr      string
+	SubnetBlock string
+}
+
+type VpnClientConfig struct {
+	IpAddr       string
+	PreSharedKey string
+	SubnetBlock  string
+	TunnelConfig VpnTunnelConfig
+}
+
+type VpnTunnelConfig struct {
+	Name         string
+	Key          string
+	Mtu          string
+	Metric       string
+	LocalIpAddr  string
+	RemoteIpAddr string
 }

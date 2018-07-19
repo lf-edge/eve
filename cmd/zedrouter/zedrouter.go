@@ -63,7 +63,7 @@ type zedrouterContext struct {
 	manufacturerModel       string
 	subDeviceNetworkConfig  *pubsub.Subscription
 	pubDeviceNetworkStatus  *pubsub.Publication
-	ready			bool
+	ready                   bool
 }
 
 var debug = false
