@@ -819,7 +819,7 @@ func parseAppNetworkConfig(appInstance *types.AppInstanceConfig,
 		case zconfig.NetworkType_V4, zconfig.NetworkType_V6:
 			ulMaxIdx++
 
-		// XXX turned LISP into a service?? What happens to overlay config?
+			// XXX turned LISP into a service?? What happens to overlay config?
 		}
 	}
 
@@ -1106,6 +1106,18 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 					newBool)
 				configItemCurrent.sshAccess = newBool
 				updateSshAccess(configItemCurrent.sshAccess)
+			}
+		case "staleConfigTime":
+			if newU32 == 0 {
+				// Revert to default
+				newU32 = configItemDefaults.staleConfigTime
+			}
+			if newU32 != configItemCurrent.staleConfigTime {
+				log.Printf("parseConfigItems: %s change from %d to %d\n",
+					item.Key,
+					configItemCurrent.staleConfigTime,
+					newU32)
+				configItemCurrent.staleConfigTime = newU32
 			}
 		default:
 			log.Printf("Unknown configItem %s\n", item.Key)

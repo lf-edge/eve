@@ -20,6 +20,7 @@ import (
 	"log"
 	"mime"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
@@ -47,6 +48,7 @@ type configItems struct {
 	mintimeUpdateSuccess    uint32 // time before zedagent declares success
 	usbAccess               bool   // domU has all PCI including USB controllers
 	sshAccess               bool
+	staleConfigTime         uint32 // On reboot use saved config if not stale
 	// XXX add max space for downloads?
 	// XXX add LTE uplink usage policy?
 }
@@ -56,9 +58,12 @@ type configItems struct {
 // PUT of metrics every 60 seconds,
 // if we don't hear anything from the cloud in a week, then we reboot,
 // and during a post-update boot that time is reduced to 10 minutes.
+// On reboot if we can't get a config, then we use a saved one if
+// not older than 10 minutes.
 var configItemDefaults = configItems{configInterval: 60, metricInterval: 60,
 	resetIfCloudGoneTime: 7 * 24 * 3600, fallbackIfCloudGoneTime: 600,
-	mintimeUpdateSuccess: 300, usbAccess: true, sshAccess: true}
+	mintimeUpdateSuccess: 300, usbAccess: true, sshAccess: true,
+	staleConfigTime: 600}
 
 // XXX shorter counters for testing fallback:
 // 	resetIfCloudGoneTime: 300, fallbackIfCloudGoneTime: 60,
@@ -209,6 +214,22 @@ func getLatestConfig(url string, iteration int, updateInprogress *bool,
 			types.UpdateLedManagerConfig(3)
 			getconfigCtx.ledManagerCount = 3
 		}
+		// If we didn't yet get a config, then look for a file
+		// XXX should we try a few times?
+		// XXX different policy if updateInProgress?
+		if !*updateInprogress &&
+			getconfigCtx.lastReceivedConfigFromCloud.IsZero() {
+
+			config, err := readSavedProtoMessage()
+			if err != nil {
+				log.Printf("getconfig: %v\n", err)
+				return false
+			}
+			if config != nil {
+				log.Printf("Using saved config %v\n", config)
+				return inhaleDeviceConfig(config, getconfigCtx)
+			}
+		}
 		return false
 	}
 	// now cloud connectivity is good, consider marking partition state as
@@ -268,6 +289,8 @@ func getLatestConfig(url string, iteration int, updateInprogress *bool,
 	getconfigCtx.ledManagerCount = 4
 
 	getconfigCtx.lastReceivedConfigFromCloud = time.Now()
+	writeReceivedProtoMessage(contents)
+
 	if !changed {
 		if debug {
 			log.Printf("Configuration from zedcloud is unchanged\n")
@@ -297,6 +320,51 @@ func validateConfigMessage(url string, r *http.Response) error {
 		return fmt.Errorf("Content-type %s not supported",
 			mimeType)
 	}
+}
+
+func writeReceivedProtoMessage(contents []byte) {
+	filename := checkpointDirname + "/lastconfig"
+	err := ioutil.WriteFile(filename, contents, 0744)
+	if err != nil {
+		log.Fatal("writeReceiveProtoMessage", err)
+		return
+	}
+}
+
+// If the file exists then read the config
+// Ignore if if older than staleConfigTime seconds
+func readSavedProtoMessage() (*zconfig.EdgeDevConfig, error) {
+	filename := checkpointDirname + "/lastconfig"
+	info, err := os.Stat(filename)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		} else {
+			return nil, err
+		}
+	}
+	age := time.Since(info.ModTime())
+	staleLimit := time.Second * time.Duration(configItemCurrent.staleConfigTime)
+	if age > staleLimit {
+		errStr := fmt.Sprintf("savedProto too old: age %v limit %d\n",
+			age, staleLimit)
+		log.Println(errStr)
+		return nil, nil
+	}
+	contents, err := ioutil.ReadFile(filename)
+	if err != nil {
+		log.Println("readSavedProtoMessage", err)
+		return nil, err
+	}
+	var config = &zconfig.EdgeDevConfig{}
+
+	err = proto.Unmarshal(contents, config)
+	if err != nil {
+		log.Println("readSavedProtoMessage Unmarshalling failed: %v",
+			err)
+		return nil, err
+	}
+	return config, nil
 }
 
 var prevConfigHash []byte

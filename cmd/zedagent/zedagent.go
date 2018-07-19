@@ -60,6 +60,7 @@ const (
 	persistDir            = "/persist"
 	objectDownloadDirname = persistDir + "/downloads"
 	certificateDirname    = persistDir + "/certs"
+	checkpointDirname     = persistDir + "/checkpoint"
 )
 
 // Set from Makefile
@@ -618,6 +619,12 @@ func initializeDirs() {
 	if _, err := os.Stat(certificateDirname); err != nil {
 		log.Printf("Create %s\n", certificateDirname)
 		if err := os.MkdirAll(certificateDirname, 0700); err != nil {
+			log.Fatal(err)
+		}
+	}
+	if _, err := os.Stat(checkpointDirname); err != nil {
+		log.Printf("Create %s\n", checkpointDirname)
+		if err := os.MkdirAll(checkpointDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
