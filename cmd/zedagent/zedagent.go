@@ -36,6 +36,7 @@ package zedagent
 import (
 	"flag"
 	"fmt"
+	"github.com/google/go-cmp/cmp"
 	"github.com/zededa/go-provision/adapters"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
@@ -60,6 +61,7 @@ const (
 	persistDir            = "/persist"
 	objectDownloadDirname = persistDir + "/downloads"
 	certificateDirname    = persistDir + "/certs"
+	checkpointDirname     = persistDir + "/checkpoint"
 )
 
 // Set from Makefile
@@ -80,6 +82,7 @@ type DNSContext struct {
 	usableAddressCount     int
 	subDeviceNetworkStatus *pubsub.Subscription
 	triggerGetConfig       bool
+	triggerDeviceInfo      bool
 }
 
 type zedagentContext struct {
@@ -518,11 +521,12 @@ func Run() {
 				triggerGetConfig(configTickerHandle)
 				DNSctx.triggerGetConfig = false
 			}
-			// IP/DNS in device info could have changed
-			// XXX could compare in handleDNSModify as we do
-			// for handleDomainStatus
-			log.Printf("NetworkStatus triggered PublishDeviceInfo\n")
-			publishDevInfo(&zedagentCtx)
+			if DNSctx.triggerDeviceInfo {
+				// IP/DNS in device info could have changed
+				log.Printf("NetworkStatus triggered PublishDeviceInfo\n")
+				publishDevInfo(&zedagentCtx)
+				DNSctx.triggerDeviceInfo = false
+			}
 
 		case change := <-subDomainStatus.C:
 			subDomainStatus.ProcessChange(change)
@@ -621,6 +625,12 @@ func initializeDirs() {
 			log.Fatal(err)
 		}
 	}
+	if _, err := os.Stat(checkpointDirname); err != nil {
+		log.Printf("Create %s\n", checkpointDirname)
+		if err := os.MkdirAll(checkpointDirname, 0700); err != nil {
+			log.Fatal(err)
+		}
+	}
 	if _, err := os.Stat(objectDownloadDirname); err != nil {
 		log.Printf("Create %s\n", objectDownloadDirname)
 		if err := os.MkdirAll(objectDownloadDirname, 0700); err != nil {
@@ -666,6 +676,11 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 		return
 	}
 	log.Printf("handleDNSModify for %s\n", key)
+	if cmp.Equal(deviceNetworkStatus, status) {
+		return
+	}
+	log.Printf("handleDNSModify: changed %v",
+		cmp.Diff(deviceNetworkStatus, status))
 	deviceNetworkStatus = status
 	// Did we (re-)gain the first usable address?
 	// XXX should we also trigger if the count increases?
@@ -676,6 +691,7 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 		ctx.triggerGetConfig = true
 	}
 	ctx.usableAddressCount = newAddrCount
+	ctx.triggerDeviceInfo = true
 	log.Printf("handleDNSModify done for %s\n", key)
 }
 

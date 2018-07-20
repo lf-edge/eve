@@ -1071,6 +1071,8 @@ func PublishDeviceInfoToZedCloud(pubBaseOsStatus *pubsub.Publication,
 		// Try sending later
 		zedcloud.SetDeferred(deviceUUID, data, statusUrl, zedcloudCtx,
 			true)
+	} else {
+		writeSentDeviceInfoProtoMessage(data)
 	}
 }
 
@@ -1287,6 +1289,8 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 		log.Printf("PublishAppInfoToZedCloud failed: %s\n", err)
 		// Try sending later
 		zedcloud.SetDeferred(uuid, data, statusUrl, zedcloudCtx, true)
+	} else {
+		writeSentAppInfoProtoMessage(data)
 	}
 }
 
@@ -1322,6 +1326,8 @@ func SendMetricsProtobuf(ReportMetrics *zmet.ZMetricMsg,
 		// Hopefully next timeout will be more successful
 		log.Printf("SendMetricsProtobuf failed: %s\n", err)
 		return
+	} else {
+		writeSentMetricsProtoMessage(data)
 	}
 }
 

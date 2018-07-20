@@ -429,13 +429,23 @@ func Run() {
 				var err error
 				devUUID, err = parseUUID(url, resp, contents)
 				if err == nil {
+					// Inform ledmanager about config received from cloud
+					types.UpdateLedManagerConfig(4)
 					continue
 				}
 				// Keep on trying until it parses
 				done = false
 				log.Printf("Failed parsing uuid: %s\n",
 					err)
+				continue
 			}
+			if oldUUID != nilUUID && retryCount > 2 {
+				log.Printf("Sticking with old UUID\n")
+				devUUID = oldUUID
+				done = true
+				continue
+			}
+
 			retryCount += 1
 			delay = 2 * (delay + time.Second)
 			if delay > maxDelay {
@@ -443,6 +453,7 @@ func Run() {
 			}
 			log.Printf("Retrying config in %d seconds\n",
 				delay/time.Second)
+
 		}
 		if oldUUID != nilUUID {
 			if oldUUID != devUUID {
@@ -456,8 +467,6 @@ func Run() {
 		} else {
 			log.Printf("Got config with UUID %s\n", devUUID)
 		}
-		// Inform ledmanager about config received from cloud
-		types.UpdateLedManagerConfig(4)
 
 		if doWrite {
 			b := []byte(fmt.Sprintf("%s\n", devUUID))

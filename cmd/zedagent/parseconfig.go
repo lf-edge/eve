@@ -38,11 +38,13 @@ var immediate int = 30 // take a 30 second delay
 var rebootTimer *time.Timer
 
 // Returns a rebootFlag
-func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext) bool {
+func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
+	usingSaved bool) bool {
 
 	// XXX hack for handlebaseos:
 	getconfigCtxGlobal = getconfigCtx
 
+	// XXX can this happen when usingSaved is set?
 	if parseOpCmds(config) == true {
 		log.Println("Reboot flag set, skipping config processing")
 		// Make sure we tell apps to shut down
@@ -52,6 +54,7 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext) 
 
 	// updating/rebooting, ignore config??
 	// XXX can we get stuck here? When do we set updating? As part of activate?
+	// XXX can this happen when usingSaved is set?
 	if zboot.IsOtherPartitionStateUpdating() {
 		log.Println("OtherPartitionStatusUpdating - returning rebootFlag")
 		// Make sure we tell apps to shut down
@@ -76,7 +79,8 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext) 
 		// if no baseOs config write, consider
 		// picking up application image config
 
-		if parseBaseOsConfig(getconfigCtx, config) == false {
+		if parseBaseOsConfig(getconfigCtx, config) == false ||
+			usingSaved {
 			parseNetworkObjectConfig(config, getconfigCtx)
 			parseNetworkServiceConfig(config, getconfigCtx)
 			parseAppInstanceConfig(config, getconfigCtx)
@@ -819,7 +823,7 @@ func parseAppNetworkConfig(appInstance *types.AppInstanceConfig,
 		case zconfig.NetworkType_V4, zconfig.NetworkType_V6:
 			ulMaxIdx++
 
-		// XXX turned LISP into a service?? What happens to overlay config?
+			// XXX turned LISP into a service?? What happens to overlay config?
 		}
 	}
 
@@ -1106,6 +1110,18 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 					newBool)
 				configItemCurrent.sshAccess = newBool
 				updateSshAccess(configItemCurrent.sshAccess)
+			}
+		case "staleConfigTime":
+			if newU32 == 0 {
+				// Revert to default
+				newU32 = configItemDefaults.staleConfigTime
+			}
+			if newU32 != configItemCurrent.staleConfigTime {
+				log.Printf("parseConfigItems: %s change from %d to %d\n",
+					item.Key,
+					configItemCurrent.staleConfigTime,
+					newU32)
+				configItemCurrent.staleConfigTime = newU32
 			}
 		default:
 			log.Printf("Unknown configItem %s\n", item.Key)

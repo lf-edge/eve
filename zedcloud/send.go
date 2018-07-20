@@ -16,7 +16,11 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptrace"
+	"os"
 )
+
+// XXX needs to match device-steps.sh
+const proxyFile = "/config/proxy"
 
 // XXX should we add some Init() function to create this?
 type ZedCloudContext struct {
@@ -108,6 +112,11 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, reqlen int64, b *b
 			TLSClientConfig: ctx.TlsConfig,
 			Dial:            d.Dial,
 		}
+		// XXX Enable debugging by looking for the file at runtime
+		if proxyFileExists() {
+			transport.Proxy = http.ProxyFromEnvironment
+		}
+
 		client := &http.Client{Transport: transport}
 		var req *http.Request
 		if b != nil {
@@ -215,4 +224,12 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, reqlen int64, b *b
 		url, intf)
 	log.Println(errStr)
 	return nil, nil, errors.New(errStr)
+}
+
+func proxyFileExists() bool {
+	if _, err := os.Stat(proxyFile); err == nil {
+		return true
+	} else {
+		return false
+	}
 }
