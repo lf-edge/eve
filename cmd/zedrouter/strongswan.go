@@ -396,7 +396,6 @@ func awsStrongSwanClientDelete(vpnLocalConfig types.VpnServiceLocalConfig) error
 
 func awsStrongSwanClientActivate(vpnLocalConfig types.VpnServiceLocalConfig) error {
 
-	gatewayConfig := vpnLocalConfig.GatewayConfig
 	clientConfig := vpnLocalConfig.ClientConfigList[0]
 	tunnelConfig := clientConfig.TunnelConfig
 
@@ -425,7 +424,7 @@ func awsStrongSwanClientActivate(vpnLocalConfig types.VpnServiceLocalConfig) err
 		return err
 	}
 
-	// check ipsec tunnel up status
+	// check ipsec tunnel status
 	if err := ipSecTunnelStateCheck(vpnLocalConfig.VpnRole, tunnelConfig.Name); err != nil {
 		log.Printf("%s for %s ipSec status", err.Error(), tunnelConfig.Name)
 		if err := ipSecServiceActivate(vpnLocalConfig); err != nil {
@@ -435,8 +434,7 @@ func awsStrongSwanClientActivate(vpnLocalConfig types.VpnServiceLocalConfig) err
 	}
 
 	// request ip route create
-	if err := ipRouteCheck(vpnLocalConfig.VpnRole, tunnelConfig.Name,
-		gatewayConfig.SubnetBlock); err != nil {
+	if err := ipRouteCheck(vpnLocalConfig); err != nil {
 		if err := ipRouteCreate(vpnLocalConfig); err != nil {
 			return err
 		}
