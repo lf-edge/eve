@@ -5,9 +5,9 @@ init:
   - GRUB_TAG
   - DTREES_TAG
   - XEN_TAG
-  - linuxkit/init:v0.3
-  - linuxkit/runc:v0.3
-  - linuxkit/getty:v0.3
+  - linuxkit/init:v0.5
+  - linuxkit/runc:v0.5
+  - linuxkit/getty:v0.5
 onboot:
   - name: installer
     image: MKFLASH_TAG

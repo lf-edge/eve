@@ -8,7 +8,7 @@ required = ["github.com/linuxkit/linuxkit/src/cmd/linuxkit"]
 
 [[constraint]]
   name = "github.com/linuxkit/linuxkit"
-  version = "v0.4"
+  version = "v0.5"
 
 [[override]]
   name = "github.com/docker/docker"

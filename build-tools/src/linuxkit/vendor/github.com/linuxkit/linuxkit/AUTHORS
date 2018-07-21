@@ -3,12 +3,14 @@
 
 Ajeet Singh Raina, Docker Captain, {Code} Catalysts, Dell EMC R&D <ajeetraina@gmail.com>
 Akihiro Suda <suda.akihiro@lab.ntt.co.jp>
+Alan Raison <alanraison@users.noreply.github.com>
 Alex Johnson <hello@alex-johnson.net>
 Alice Frosi <alice@linux.vnet.ibm.com>
 Amir Chaudhry <amir.chaudhry@docker.com>
 Anil Madhavapeddy <anil.madhavapeddy@docker.com>
 Avi Deitcher <avi@deitcher.net>
 Bill Kerr <bill@generalbill.com>
+Brice Figureau <brice-puppet@daysofwonder.com>
 Carlton-Semple <carlton.semple@ibm.com>
 Craig Ingram <cingram@heroku.com>
 Damiano Donati <damiano.donati@gmail.com>
@@ -47,9 +49,11 @@ Jes Ferrier <jes.ferrier@gmail.com>
 Jesse Adametz <jesseadametz@gmail.com>
 John Albietz <inthecloud247@gmail.com>
 Jose Carlos Venegas Munoz <jose.carlos.venegas.munoz@intel.com>
+Justin Barrick <jbarrick@cloudflare.com>
 Justin Cormack <justin.cormack@docker.com>
 Justin Ko <justin.ko@oracle.com>
 Ken Cochrane <ken.cochrane@docker.com>
+Krister Johansen <krister.johansen@oracle.com>
 Kunal Kushwaha <kushwaha_kunal_v7@lab.ntt.co.jp>
 Liqdfire <liqdfire@gmail.com>
 Lorenzo Fontana <lo@linux.com>
@@ -59,6 +63,7 @@ Magnus Skjegstad <magnus.skjegstad@docker.com>
 Marco Mariani <marco.mariani@alterway.fr>
 Marcus van Dam <marcus@marcusvandam.nl>
 marten <marten.cassel@gmail.com>
+Mathieu Champlon <mathieu.champlon@docker.com>
 Mathieu Pasquet <mathieu.pasquet@alterway.fr>
 Matt Bajor <matt.bajor@workday.com>
 Matt Bentley <matt.bentley@docker.com>
@@ -66,6 +71,7 @@ Matt Johnson <matjohn2@cisco.com>
 Michel Courtine <michel.courtine@docker.com>
 Mickaël Salaün <mic@digikod.net>
 Mindy Preston <mindy.preston@docker.com>
+MinJae Kwon <mingrammer@gmail.com>
 Natanael Copa <natanael.copa@docker.com>
 Nathan Dautenhahn <ndd@seas.upenn.edu>
 Nathan LeClaire <nathan.leclaire@docker.com>
@@ -74,6 +80,7 @@ Niclas Mietz <niclas@mietz.io>
 Nico Di Rocco <dirocco.nico@gmail.com>
 Olaf Bergner <olaf.bergner@gmx.de>
 Olaf Flebbe <of@oflebbe.de>
+Patrik Cyvoct <patrik@ptrk.io>
 Phil Estes <estesp@linux.vnet.ibm.com>
 Pierre Gayvallet <pierre.gayvallet@docker.com>
 Pratik Mallya <mallya@us.ibm.com>
@@ -93,6 +100,7 @@ Sotiris Salloumis <sotiris.salloumis@gmail.com>
 Stefan Bourlon <stefan.bourlon@ca.com>
 Stephen J Day <stephen.day@docker.com>
 Steve Hiehn <shiehn@pivotal.io>
+Sukchan Lee <acetcom@gmail.com>
 Theo Koulouris <theo.koulouris@hpe.com>
 Thomas Conte <thomas@conte.com>
 Thomas Gazagnaire <thomas.gazagnaire@docker.com>

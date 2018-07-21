@@ -20,7 +20,7 @@ import (
 
 // QemuImg is the version of qemu container
 const (
-	QemuImg       = "linuxkit/qemu:e85ce22b5c133eafbd3e6f110512e53d2e1e1596"
+	QemuImg       = "linuxkit/qemu:5d89b7a57b638eba986df318c97fa9d5905135a5"
 	defaultFWPath = "/usr/share/ovmf/bios.bin"
 )
 

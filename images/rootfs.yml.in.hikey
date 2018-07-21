@@ -7,26 +7,26 @@ init:
   - XEN_TAG
   - GPTTOOLS_TAG
   - DOM0ZTOOLS_TAG
-  - linuxkit/init:v0.3
-  - linuxkit/runc:v0.3
-  - linuxkit/containerd:v0.3
-  - linuxkit/getty:v0.3
+  - linuxkit/init:v0.5
+  - linuxkit/runc:v0.5
+  - linuxkit/containerd:v0.5
+  - linuxkit/getty:v0.5
 onboot:
    - name: sysctl
-     image: linuxkit/sysctl:v0.3
+     image: linuxkit/sysctl:v0.5
    - name: modprobe
-     image: linuxkit/modprobe:v0.3
+     image: linuxkit/modprobe:v0.5
      command: ["dd", "if=/dev/mmcblk0", "of=/dev/random", "conv=notrunc", "bs=1M", "count=256"]
      binds:
        - /dev:/dev
 services:
    - name: dhcpcd
-     image: linuxkit/dhcpcd:v0.3
+     image: linuxkit/dhcpcd:v0.5
      binds:
        - /run:/etc
      command: ["/sbin/dhcpcd", "--nobackground", "-f", "/dhcpcd.conf", "-z", "eth*,wlan*"]
    - name: ntpd
-     image: linuxkit/openntpd:v0.3
+     image: linuxkit/openntpd:v0.5
    - name: wwan
      image: WWAN_TAG
    - name: wlan
