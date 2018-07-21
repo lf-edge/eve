@@ -60,7 +60,7 @@ GPTPRIO_ACTIVE=01020000000
 GPTPRIO_UNUSED=0000000000000000
 
 # Empty GPT partition
-sgdisk --clear $IMGFILE 2> /dev/null
+sgdisk -g --clear $IMGFILE 2> /dev/null
 
 # Add EFI partition
 ESP_SECTOR_START=2048
