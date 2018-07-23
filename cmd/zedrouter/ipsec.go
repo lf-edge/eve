@@ -77,19 +77,19 @@ const (
 func ipSecServiceActivate(vpnLocalConfig types.VpnServiceLocalConfig) error {
 	tunnelConfig := vpnLocalConfig.ClientConfigList[0].TunnelConfig
 	switch vpnLocalConfig.VpnRole {
-	case "awsStrongSwanVpnClient":
+	case AwsVpnClient:
 		cmd := exec.Command("ipsec", "start")
 		if _, err := cmd.Output(); err != nil {
 			log.Printf("%s for %s start\n", err.Error(), "ipsec")
 			return err
 		}
-	case "onPremStrongSwanVpnClient":
+	case OnPremVpnClient:
 		cmd := exec.Command("ipsec", "start")
 		if _, err := cmd.Output(); err != nil {
 			log.Printf("%s for %s start\n", err.Error(), "ipsec")
 			return err
 		}
-	case "onPremStrongSwanVpnServer":
+	case OnPremVpnServer:
 		cmd := exec.Command("ipsec", "start")
 		if _, err := cmd.Output(); err != nil {
 			log.Printf("%s for %s start\n", err.Error(), "ipsec")
@@ -103,19 +103,19 @@ func ipSecServiceActivate(vpnLocalConfig types.VpnServiceLocalConfig) error {
 func ipSecServiceInactivate(vpnLocalConfig types.VpnServiceLocalConfig) error {
 	tunnelConfig := vpnLocalConfig.ClientConfigList[0].TunnelConfig
 	switch vpnLocalConfig.VpnRole {
-	case "awsStrongSwanVpnClient":
+	case AwsVpnClient:
 		cmd := exec.Command("ipsec", "stop")
 		if _, err := cmd.Output(); err != nil {
 			log.Printf("%s for %s stop\n", err.Error(), "ipsec")
 			return err
 		}
-	case "onPremStrongSwanVpnClient":
+	case OnPremVpnClient:
 		cmd := exec.Command("ipsec", "stop")
 		if _, err := cmd.Output(); err != nil {
 			log.Printf("%s for %s stop\n", err.Error(), "ipsec")
 			return err
 		}
-	case "onPremStrongSwanVpnServer":
+	case OnPremVpnServer:
 		cmd := exec.Command("ipsec", "stop")
 		if _, err := cmd.Output(); err != nil {
 			log.Printf("%s for %s stop\n", err.Error(), "ipsec")
@@ -154,14 +154,14 @@ func ipTablesRuleCreate(vpnLocalConfig types.VpnServiceLocalConfig) error {
 	tunnelConfig := clientConfig.TunnelConfig
 
 	switch vpnLocalConfig.VpnRole {
-	case "awsStrongSwanVpnClient":
+	case AwsVpnClient:
 		return ipTablesAwsClientRulesSet(tunnelConfig.Name, gatewayConfig.IpAddr,
 			tunnelConfig.Key)
 
-	case "onPremStrongSwanVpnClient":
+	case OnPremVpnClient:
 		return ipTablesSSClientRulesSet(tunnelConfig.Name, gatewayConfig.IpAddr)
 
-	case "onPremStrongSwanVpnServer":
+	case OnPremVpnServer:
 		return ipTablesSSServerRulesSet(tunnelConfig.Name, gatewayConfig.IpAddr)
 	}
 
@@ -174,14 +174,14 @@ func ipTablesRulesDelete(vpnLocalConfig types.VpnServiceLocalConfig) error {
 	tunnelConfig := clientConfig.TunnelConfig
 
 	switch vpnLocalConfig.VpnRole {
-	case "awsStrongSwanVpnClient":
+	case AwsVpnClient:
 		return ipTablesAwsClientRulesReset(tunnelConfig.Name, gatewayConfig.IpAddr,
 			tunnelConfig.Key)
 
-	case "onPremStrongSwanVpnClient":
+	case OnPremVpnClient:
 		return ipTablesSSClientRulesReset(tunnelConfig.Name, gatewayConfig.IpAddr)
 
-	case "onPremStrongSwanVpnServer":
+	case OnPremVpnServer:
 		return ipTablesSSServerRulesReset(tunnelConfig.Name, gatewayConfig.IpAddr)
 	}
 	return nil
@@ -212,7 +212,7 @@ func ipTablesAwsClientRulesSet(tunnelName string, gatewayIpAddr string,
 			err.Error(), "iptables", tunnelName)
 		return err
 	}
-	log.Printf("ipTablesRuleSet(%s) succesful\n", tunnelName)
+	log.Printf("ipTablesRuleSet(%s) OK\n", tunnelName)
 	return nil
 }
 
@@ -248,7 +248,7 @@ func ipTablesSSClientRulesSet(tunnelName string, gatewayIpAddr string) error {
 			err.Error(), "iptables", tunnelName)
 		return err
 	}
-	log.Printf("ipTablesRuleSet(%s) succesful\n", tunnelName)
+	log.Printf("ipTablesRuleSet(%s) OK\n", tunnelName)
 	return nil
 }
 
@@ -285,7 +285,7 @@ func ipTablesSSServerRulesSet(tunnelName string, gatewayIpAddr string) error {
 			err.Error(), "iptables", tunnelName)
 		return err
 	}
-	log.Printf("ipTablesRuleSet(%s) successful\n", tunnelName)
+	log.Printf("ipTablesRuleSet(%s) OK\n", tunnelName)
 	return nil
 }
 
@@ -314,7 +314,7 @@ func ipTablesAwsClientRulesReset(tunnelName string, gatewayIpAddr string,
 			err.Error(), "iptables", tunnelName)
 		return err
 	}
-	log.Printf("ipTablesRuleReset(%s) successful\n", tunnelName)
+	log.Printf("ipTablesRuleReset(%s) OK\n", tunnelName)
 	return nil
 }
 
@@ -352,7 +352,7 @@ func ipTablesSSClientRulesReset(tunnelName string, vpnGateway string) error {
 		return err
 	}
 
-	log.Printf("ipTablesRuleReset(%s) successful\n", tunnelName)
+	log.Printf("ipTablesRuleReset(%s) OK\n", tunnelName)
 	return nil
 }
 
@@ -389,7 +389,7 @@ func ipTablesSSServerRulesReset(tunnelName string, gatewayIpAddr string) error {
 		return err
 	}
 
-	log.Printf("ipTablesRule(%s) reset OK\n", tunnelName)
+	log.Printf("ipTablesRuleRset(%s) reset OK\n", tunnelName)
 	return nil
 }
 
@@ -400,7 +400,7 @@ func ipTablesRuleCheck(vpnLocalConfig types.VpnServiceLocalConfig) error {
 	gatewayConfig := vpnLocalConfig.GatewayConfig
 
 	switch vpnLocalConfig.VpnRole {
-	case "awsStrongSwanVpnClient":
+	case AwsVpnClient:
 		tableName := "mangle"
 		if err := ipTablesChainMatch(tableName,
 			"FORWARD", tunnelConfig.Name); err != nil {
@@ -411,9 +411,9 @@ func ipTablesRuleCheck(vpnLocalConfig types.VpnServiceLocalConfig) error {
 			return err
 		}
 		log.Printf("pTable(%s) check OK\n", tunnelConfig.Name)
-	case "onPremStrongSwanVpnClient":
+	case OnPremVpnClient:
 		log.Printf("ipTable(%s) check OK\n", tunnelConfig.Name)
-	case "onPremStrongSwanVpnServer":
+	case OnPremVpnServer:
 		log.Printf("ipTable(%s) check OK\n", tunnelConfig.Name)
 	}
 	return nil
@@ -450,7 +450,7 @@ func ipTablesChainMatch(tableName string, chainName string,
 // correct table or add/delete from the correct table
 func ipRouteCreate(vpnLocalConfig types.VpnServiceLocalConfig) error {
 
-	if vpnLocalConfig.VpnRole != "awsStrongSwanVpnClient" {
+	if vpnLocalConfig.VpnRole != AwsVpnClient {
 		return errors.New("invalid operation")
 	}
 
@@ -471,7 +471,7 @@ func ipRouteCreate(vpnLocalConfig types.VpnServiceLocalConfig) error {
 
 func ipRouteDelete(vpnLocalConfig types.VpnServiceLocalConfig) error {
 
-	if vpnLocalConfig.VpnRole != "awsStrongSwanVpnClient" {
+	if vpnLocalConfig.VpnRole != AwsVpnClient {
 		return errors.New("invalid operation")
 	}
 	gatewayConfig := vpnLocalConfig.GatewayConfig
@@ -489,7 +489,7 @@ func ipRouteDelete(vpnLocalConfig types.VpnServiceLocalConfig) error {
 
 func ipRouteCheck(vpnLocalConfig types.VpnServiceLocalConfig) error {
 
-	if vpnLocalConfig.VpnRole != "awsStrongSwanVpnClient" {
+	if vpnLocalConfig.VpnRole != AwsVpnClient {
 		return errors.New("invalid operation")
 	}
 
@@ -528,7 +528,7 @@ func ipRouteMatch(outStr, matchString string) error {
 
 func ipLinkTunnelCreate(vpnLocalConfig types.VpnServiceLocalConfig) error {
 
-	if vpnLocalConfig.VpnRole != "awsStrongSwanVpnClient" {
+	if vpnLocalConfig.VpnRole != AwsVpnClient {
 		return errors.New("invalid operation")
 	}
 	gatewayConfig := vpnLocalConfig.GatewayConfig
@@ -573,7 +573,7 @@ func ipLinkTunnelCreate(vpnLocalConfig types.VpnServiceLocalConfig) error {
 
 func ipLinkTunnelDelete(vpnLocalConfig types.VpnServiceLocalConfig) error {
 
-	if vpnLocalConfig.VpnRole != "awsStrongSwanVpnClient" {
+	if vpnLocalConfig.VpnRole != AwsVpnClient {
 		return errors.New("invalid operation")
 	}
 
@@ -624,7 +624,7 @@ func ipSecServiceConfigCreate(vpnLocalConfig types.VpnServiceLocalConfig) error 
 
 	writeStr := ipSecConfHdrStr
 	switch vpnLocalConfig.VpnRole {
-	case "awsStrongSwanVpnClient":
+	case AwsVpnClient:
 		// only one client
 		tunnelConfig := clientConfigList[0].TunnelConfig
 		writeStr = writeStr + ipSecTunHdrStr + tunnelConfig.Name
@@ -632,7 +632,7 @@ func ipSecServiceConfigCreate(vpnLocalConfig types.VpnServiceLocalConfig) error 
 		writeStr = writeStr + awsIpSecTunAttribSpecStr + tunnelConfig.Key
 		writeStr = writeStr + "\n"
 
-	case "onPremStrongSwanVpnClient":
+	case OnPremVpnClient:
 		// only one client
 		clientConfig := clientConfigList[0]
 		tunnelConfig := clientConfig.TunnelConfig
@@ -644,7 +644,7 @@ func ipSecServiceConfigCreate(vpnLocalConfig types.VpnServiceLocalConfig) error 
 		writeStr = writeStr + gatewayConfig.SubnetBlock
 		writeStr = writeStr + ipSecClientTunDpdSpecStr
 
-	case "onPremStrongSwanVpnServer":
+	case OnPremVpnServer:
 		// one or more clients
 		writeStr = writeStr + ipSecSvrTunHdrSpecStr
 		writeStr = writeStr + ipSecSvrTunLeftHdrSpecStr + gatewayConfig.IpAddr
@@ -655,6 +655,9 @@ func ipSecServiceConfigCreate(vpnLocalConfig types.VpnServiceLocalConfig) error 
 			writeStr = writeStr + ipSecSvrTunRightSpecStr + clientConfig.IpAddr
 			writeStr = writeStr + ipSecSvrTunRightAttribSpecStr
 		}
+
+	default:
+		return errors.New("unsupported vpn role: " + vpnLocalConfig.VpnRole)
 	}
 	writeStr = writeStr + "\n"
 	filename := "/etc/ipsec.conf"
@@ -684,7 +687,7 @@ func ipSecSecretConfigCreate(vpnLocalConfig types.VpnServiceLocalConfig) error {
 
 	writeStr := ipSecSecretHdrStr
 	switch vpnLocalConfig.VpnRole {
-	case "awsStrongSwanVpnClient":
+	case AwsVpnClient:
 		// always one client
 		for _, clientConfig := range clientConfigList {
 			writeStr = writeStr + clientConfig.IpAddr + " "
@@ -693,7 +696,7 @@ func ipSecSecretConfigCreate(vpnLocalConfig types.VpnServiceLocalConfig) error {
 			writeStr = writeStr + "\n"
 		}
 
-	case "onPremStrongSwanVpnClient":
+	case OnPremVpnClient:
 		// always one client
 		for _, clientConfig := range clientConfigList {
 			writeStr = writeStr + clientConfig.IpAddr + " "
@@ -702,7 +705,7 @@ func ipSecSecretConfigCreate(vpnLocalConfig types.VpnServiceLocalConfig) error {
 			writeStr = writeStr + "\n"
 		}
 
-	case "onPremStrongSwanVpnServer":
+	case OnPremVpnServer:
 		// one or more client(s)
 		for _, clientConfig := range clientConfigList {
 			writeStr = writeStr + gatewayConfig.IpAddr + " "
@@ -722,7 +725,7 @@ func ipSecSecretConfigCreate(vpnLocalConfig types.VpnServiceLocalConfig) error {
 		log.Printf("%s for %s %s\n", err.Error(), "chmod", filename)
 		return err
 	}
-	log.Printf("ipSecSecretConfigWrite(%s) OK\n", gatewayConfig.IpAddr)
+	log.Printf("ipSecSecretWrite(%s) OK\n", gatewayConfig.IpAddr)
 	return nil
 }
 
@@ -756,14 +759,19 @@ func sysctlConfigCreate(vpnLocalConfig types.VpnServiceLocalConfig) error {
 
 	// XXX ip_forward is already set by zedrouter.
 	writeStr := "\n net.ipv4.ip_forward = 1"
-	if vpnLocalConfig.VpnRole == "awsStrongSwanVpnClient" {
+	if vpnLocalConfig.VpnRole == AwsVpnClient {
 		writeStr = writeStr + "\n net.ipv4.conf." + tunnelConfig.Name + ".rp_filter=2"
 		writeStr = writeStr + "\n net.ipv4.conf." + tunnelConfig.Name + ".disable_policy=1"
 	}
 	writeStr = writeStr + "\n net.ipv4.conf." + upLinkConfig.Name + ".disable_xfrm=1"
 	writeStr = writeStr + "\n net.ipv4.conf." + upLinkConfig.Name + ".disable_policy=1\n"
 	filename := "/etc/sysctl.conf"
-	return ipSecConfigFileWrite(filename, writeStr)
+	if err := ipSecConfigFileWrite(filename, writeStr); err != nil {
+		log.Printf("sysctlConfigWrite() Fail\n")
+		return err
+	}
+	log.Printf("sysctlConfigWrite() OK\n")
+	return nil
 }
 
 func sysctlConfigSet() error {
@@ -773,7 +781,7 @@ func sysctlConfigSet() error {
 		log.Printf("%s for %s set \n", err.Error(), "sysctl")
 		return err
 	}
-	log.Printf("%s: ConfigSet OK\n", "sysctl")
+	log.Printf("sysctlConfigSet() OK\n")
 	return nil
 }
 

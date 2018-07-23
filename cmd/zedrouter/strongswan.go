@@ -13,6 +13,12 @@ import (
 	"log"
 )
 
+const (
+	AwsVpnClient    = "awsClient"
+	OnPremVpnClient = "onPremClient"
+	OnPremVpnServer = "onPremServer"
+)
+
 // XXX currently, only AwsVpn StrongSwan Client IpSec Tunnel handling
 // XXX add support for standalone StrongSwan Server/client
 
@@ -29,13 +35,11 @@ func strongswanCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	// if adapter is not set, return
 	// XXX:FIXME add logic to pick up some uplink
 	if config.Adapter == "" {
-		err := errors.New("uplink config is absent")
-		return err
+		return errors.New("uplink config is absent")
 	}
 
 	// if address error
-	srcIp, err := types.GetLocalAddrAny(deviceNetworkStatus, 0,
-		config.Adapter)
+	srcIp, err := types.GetLocalAddrAny(deviceNetworkStatus, 0, config.Adapter)
 	if err != nil {
 		return err
 	}
@@ -66,7 +70,7 @@ func strongswanCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 		localClientConfig.SubnetBlock = clientConfig.SubnetBlock
 		localClientConfig.TunnelConfig.Name = fmt.Sprintf("%s_%d", baseTunnelName, idx)
 
-		if vpnLocalConfig.VpnRole == "awsStrongSwanVpnClient" {
+		if vpnLocalConfig.VpnRole == AwsVpnClient {
 			keyVal := 100 + idx
 			localClientConfig.TunnelConfig.Key = fmt.Sprintf("%d", keyVal)
 			localClientConfig.TunnelConfig.Mtu = "1419"
@@ -80,7 +84,7 @@ func strongswanCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	// stringify and store in status
 	bytes, err := json.Marshal(vpnLocalConfig)
 	if err != nil {
-		return nil
+		return err
 	}
 
 	status.OpaqueStatus = string(bytes)
@@ -88,22 +92,24 @@ func strongswanCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 
 	// create the ipsec config files, tunnel and filter-rules
 	switch vpnConfig.VpnRole {
-	case "awsStrongSwanVpnClient":
+	case AwsVpnClient:
 		if err := awsStrongSwanClientCreate(vpnLocalConfig); err != nil {
+			log.Printf("%s AwsStrongSwanVpnClient create\n", err.Error())
 			return err
 		}
 
-	case "onPremStrongSwanVpnClient":
+	case OnPremVpnClient:
 		if err := onPremStrongSwanClientCreate(vpnLocalConfig); err != nil {
+			log.Printf("%s OnPremStrongSwanVpnClient create\n", err.Error())
 			return err
 		}
 
-	case "onPremStrongSwanVpnServer":
+	case OnPremVpnServer:
 		if err := onPremStrongSwanServerCreate(vpnLocalConfig); err != nil {
+			log.Printf("%s OnPremStrongSwanVpnServer create\n", err.Error())
 			return err
 		}
 	}
-
 	return nil
 }
 
@@ -118,19 +124,19 @@ func strongswanDelete(status *types.NetworkServiceStatus) {
 	}
 
 	switch vpnLocalConfig.VpnRole {
-	case "awsStrongSwanVpnClient":
+	case AwsVpnClient:
 		if err := awsStrongSwanClientDelete(vpnLocalConfig); err != nil {
-			log.Printf("%s awsStrongSwanVpnClient delete\n", err.Error())
+			log.Printf("%s AwsStrongSwanVpnClient delete\n", err.Error())
 		}
 
-	case "onPremStrongSwanVpnClient":
+	case OnPremVpnClient:
 		if err := onPremStrongSwanClientDelete(vpnLocalConfig); err != nil {
-			log.Printf("%s OnPremStrongSwanClient delete\n", err.Error())
+			log.Printf("%s OnPremStrongSwanVpnClient delete\n", err.Error())
 		}
 
-	case "onPremStrongSwanVpnServer":
+	case OnPremVpnServer:
 		if err := onPremStrongSwanServerDelete(vpnLocalConfig); err != nil {
-			log.Printf("%s OnPremStrongSwanServer delete\n", err.Error())
+			log.Printf("%s OnPremStrongSwanVpnServer delete\n", err.Error())
 		}
 	}
 }
@@ -147,20 +153,21 @@ func strongswanActivate(config types.NetworkServiceConfig,
 	}
 
 	switch vpnLocalConfig.VpnRole {
-	case "awsStrongSwanVpnClient":
+	case AwsVpnClient:
 		if err := awsStrongSwanClientActivate(vpnLocalConfig); err != nil {
+			log.Printf("%s AwstrongSwanVpnClient activate\n", err.Error())
 			return err
 		}
 
-	case "onPremStrongSwanVpnClient":
+	case OnPremVpnClient:
 		if err := onPremStrongSwanClientActivate(vpnLocalConfig); err != nil {
-			log.Printf("%s OnPremStrongSwanClient activate\n", err.Error())
+			log.Printf("%s OnPremStrongSwanVpnClient activate\n", err.Error())
 			return err
 		}
 
-	case "onPremStrongSwanVpnServer":
+	case OnPremVpnServer:
 		if err := onPremStrongSwanServerActivate(vpnLocalConfig); err != nil {
-			log.Printf("%s OnPremStrongSwanServer activate\n", err.Error())
+			log.Printf("%s OnPremStrongSwanVpnServer activate\n", err.Error())
 			return err
 		}
 	}
@@ -178,19 +185,19 @@ func strongswanInactivate(status *types.NetworkServiceStatus,
 	}
 
 	switch vpnLocalConfig.VpnRole {
-	case "awsStrongSwanVpnClient":
+	case AwsVpnClient:
 		if err := awsStrongSwanClientInactivate(vpnLocalConfig); err != nil {
-			log.Printf("%s awsStrongSwanVpnClient inactivate\n", err.Error())
+			log.Printf("%s AwsStrongSwanVpnClient inactivate\n", err.Error())
 		}
 
-	case "onPremStrongSwanVpnClient":
+	case OnPremVpnClient:
 		if err := onPremStrongSwanClientInactivate(vpnLocalConfig); err != nil {
-			log.Printf("%s OnPremStrongSwanClient inactivate\n", err.Error())
+			log.Printf("%s OnPremStrongSwanVpnClient inactivate\n", err.Error())
 		}
 
-	case "onPremStrongSwanVpnServer":
+	case OnPremVpnServer:
 		if err := onPremStrongSwanServerInactivate(vpnLocalConfig); err != nil {
-			log.Printf("%s OnPremStrongSwanServer inactivate\n", err.Error())
+			log.Printf("%s OnPremStrongSwanVpnServer inactivate\n", err.Error())
 		}
 	}
 }
@@ -198,6 +205,7 @@ func strongswanInactivate(status *types.NetworkServiceStatus,
 // aws Vpn IpSec Tenneling handler routines
 func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, error) {
 
+	oldConfig := false
 	log.Printf("strongSwanVpnConfigParse: parsing %s\n", opaqueConfig)
 	vpnConfig := types.VpnServiceConfig{}
 
@@ -208,10 +216,11 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 		return vpnConfig, err
 	}
 
-	// noting in, assume it to be aws strongswan client
+	// role not set, assume it to be aws strongswan client
+	// XXX:FIXME, remove later
 	if strongSwanConfig.VpnRole == "" {
-		strongSwanConfig.VpnRole = "awsStrongSwanVpnClient"
-		strongSwanConfig.ClientConfigList = make([]types.VpnClientConfig, 1)
+		oldConfig = true
+		strongSwanConfig.VpnRole = AwsVpnClient
 	}
 
 	if strongSwanConfig.VpnGatewayIpAddr == "" {
@@ -224,17 +233,43 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 		}
 	}
 
-	switch vpnConfig.VpnRole {
+	switch strongSwanConfig.VpnRole {
+	case AwsVpnClient:
 
-	case "awsStrongSwanVpnClient":
-		if strongSwanConfig.VpnSubnetBlock == "" ||
-			strongSwanConfig.VpnLocalIpAddr == "" ||
-			strongSwanConfig.VpnRemoteIpAddr == "" ||
-			strongSwanConfig.PreSharedKey == "" {
-			return vpnConfig, errors.New("invalid parameters")
+		// XXX:FIXME, remove old config handling
+		if len(strongSwanConfig.ClientConfigList) == 0 {
+
+			if strongSwanConfig.VpnSubnetBlock == "" ||
+				strongSwanConfig.PreSharedKey == "" {
+				return vpnConfig, errors.New("invalid vpn parameters")
+			}
+			if strongSwanConfig.VpnLocalIpAddr == "" ||
+				strongSwanConfig.VpnRemoteIpAddr == "" {
+				return vpnConfig, errors.New("invalid tunnel parameters")
+			}
+			// copy the paramters to the new structure
+			strongSwanConfig.ClientConfigList = make([]types.VpnClientConfig, 1)
+			localClientConfig := new(types.VpnClientConfig)
+			localClientConfig.SubnetBlock = strongSwanConfig.VpnSubnetBlock
+			localClientConfig.PreSharedKey = strongSwanConfig.PreSharedKey
+			localClientConfig.TunnelConfig.LocalIpAddr = strongSwanConfig.VpnLocalIpAddr
+			localClientConfig.TunnelConfig.RemoteIpAddr = strongSwanConfig.VpnRemoteIpAddr
+			strongSwanConfig.ClientConfigList[0] = *localClientConfig
 		}
 
-	case "onPremStrongSwanVpnClient":
+		for _, clientConfig := range strongSwanConfig.ClientConfigList {
+			if clientConfig.SubnetBlock == "" ||
+				clientConfig.PreSharedKey == "" {
+				return vpnConfig, errors.New("invalid vpn parameters")
+			}
+			tunnelConfig := clientConfig.TunnelConfig
+			if tunnelConfig.LocalIpAddr == "" ||
+				tunnelConfig.RemoteIpAddr == "" {
+				return vpnConfig, errors.New("invalid tunnel parameters")
+			}
+		}
+
+	case OnPremVpnClient:
 		if len(strongSwanConfig.ClientConfigList) != 1 {
 			return vpnConfig, errors.New("invalid client config")
 		}
@@ -247,8 +282,7 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 			}
 		}
 
-	case "onPremStrongSwanVpnServer":
-
+	case OnPremVpnServer:
 		if len(strongSwanConfig.ClientConfigList) == 0 {
 			return vpnConfig, errors.New("invalid client config")
 		}
@@ -257,22 +291,31 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 				return vpnConfig, errors.New("client IpAddr not set set")
 			}
 		}
+	default:
+		return vpnConfig, errors.New("unsupported vpn role, " + strongSwanConfig.VpnRole)
 	}
 
 	// fill up our structure
 	vpnConfig.VpnRole = strongSwanConfig.VpnRole
 	vpnConfig.GatewayConfig.SubnetBlock = strongSwanConfig.VpnSubnetBlock
 	vpnConfig.GatewayConfig.IpAddr = strongSwanConfig.VpnGatewayIpAddr
-	vpnConfig.ClientConfigList = make([]types.VpnClientConfig, len(strongSwanConfig.ClientConfigList))
+	vpnConfig.ClientConfigList = make([]types.VpnClientConfig,
+		len(strongSwanConfig.ClientConfigList))
+
 	for idx, clientConfig := range strongSwanConfig.ClientConfigList {
 		localClientConfig := new(types.VpnClientConfig)
 		localClientConfig.IpAddr = clientConfig.IpAddr
 		localClientConfig.SubnetBlock = clientConfig.SubnetBlock
 
-		if strongSwanConfig.VpnRole == "awsStrongSwanVpnClient" {
+		if strongSwanConfig.VpnRole == AwsVpnClient {
 			localClientConfig.PreSharedKey = strongSwanConfig.PreSharedKey
-			localClientConfig.TunnelConfig.LocalIpAddr = strongSwanConfig.VpnLocalIpAddr
-			localClientConfig.TunnelConfig.LocalIpAddr = strongSwanConfig.VpnRemoteIpAddr
+			if oldConfig == true {
+				localClientConfig.TunnelConfig.LocalIpAddr = strongSwanConfig.VpnLocalIpAddr
+				localClientConfig.TunnelConfig.RemoteIpAddr = strongSwanConfig.VpnRemoteIpAddr
+			} else {
+				localClientConfig.TunnelConfig.LocalIpAddr = clientConfig.TunnelConfig.LocalIpAddr
+				localClientConfig.TunnelConfig.RemoteIpAddr = clientConfig.TunnelConfig.RemoteIpAddr
+			}
 		} else {
 			localClientConfig.PreSharedKey = clientConfig.PreSharedKey
 			localClientConfig.SubnetBlock = clientConfig.SubnetBlock
