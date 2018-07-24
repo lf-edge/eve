@@ -50,27 +50,32 @@ const (
 
 	ipSecSvrTunHdrSpecStr = "\nconfig setup" + "\n" +
 		"\nconn %default" +
-		"\n\tikelifetime=60m" +
 		"\n\tkeylife=20m" +
 		"\n\trekeymargin=3m" +
 		"\n\tkeyingtries=1" +
+		"\n\tauthby=psk" +
+		"\n\tleftauth=psk" +
+		"\n\trightauth=psk" +
 		"\n\tkeyexchange=ikev1" +
-		"\n\tauthby=secret" +
+		"\n\tike=aes128-sha1-modp1024" +
+		"\n\tikelifetime=8h" +
+		"\n\tesp=aes128-sha1" +
+		"\n\tlifetime=1h" +
 		"\n"
 
-	ipSecSvrTunLeftHdrSpecStr = "\nconn roadWarrior" +
+	ipSecSvrTunLeftHdrSpecStr = "\nconn rw" +
 		"\n\tleftid=%any" + "\n\tleft="
 
 	ipSecSvrTunLeftAttribSpecStr = "\n\tleftfirewall=yes" +
 		"\n\tleftsubnet=0.0.0.0/0" +
 		"\n"
 
-	ipSecSvrTunRightHdrSpecStr = "\nconn roadWarrior-"
-	ipSecSvrTunRightSpecStr    = "\n\tauto=add" +
-		"\n\talso=roadWarrior" +
+	ipSecSvrTunRightHdrSpecStr = "\nconn rw-"
+	ipSecSvrTunRightSpecStr    = "\n\talso=rw" +
+		"\n\trightid=%any" +
 		"\n\tright="
-	ipSecSvrTunRightAttribSpecStr = "\n\tauto=add" +
-		"\n\trightsubnet=0.0.0.0/0" +
+	ipSecSvrTunRightAttribSpecStr = "\n\trightsubnet=0.0.0.0/0" +
+ 		"\n\tauto=add" +
 		"\n"
 )
 
@@ -239,6 +244,15 @@ func ipTablesSSClientRulesSet(tunnelName string, gatewayIpAddr string) error {
 		return err
 	}
 
+	cmd = exec.Command("iptables",
+		"-I", "INPUT", "1", "-p", "udp", "--dport", "4500",
+		"-j", "ACCEPT")
+	if _, err := cmd.Output(); err != nil {
+		log.Printf("%s for %s, %s input rule create\n",
+			err.Error(), "iptables", tunnelName)
+		return err
+	}
+
 	// output rule
 	cmd = exec.Command("iptables",
 		"-I", "OUTPUT", "1", "-p", "udp", "--sport", "500",
@@ -248,6 +262,16 @@ func ipTablesSSClientRulesSet(tunnelName string, gatewayIpAddr string) error {
 			err.Error(), "iptables", tunnelName)
 		return err
 	}
+
+	cmd = exec.Command("iptables",
+		"-I", "OUTPUT", "1", "-p", "udp", "--sport", "4500",
+		"-j", "ACCEPT")
+	if _, err := cmd.Output(); err != nil {
+		log.Printf("%s for %s, %s output rule create\n",
+			err.Error(), "iptables", tunnelName)
+		return err
+	}
+
 	log.Printf("ipTablesRuleSet(%s) OK\n", tunnelName)
 	return nil
 }
@@ -276,9 +300,27 @@ func ipTablesSSServerRulesSet(tunnelName string, gatewayIpAddr string) error {
 		return err
 	}
 
+	cmd = exec.Command("iptables",
+		"-I", "INPUT", "1", "-p", "udp", "--dport", "4500",
+		"-j", "ACCEPT")
+	if _, err := cmd.Output(); err != nil {
+		log.Printf("%s for %s, %s input rule create\n",
+			err.Error(), "iptables", tunnelName)
+		return err
+	}
+
 	// output rule
 	cmd = exec.Command("iptables",
 		"-I", "OUTPUT", "1", "-p", "udp", "--sport", "500",
+		"-j", "ACCEPT")
+	if _, err := cmd.Output(); err != nil {
+		log.Printf("%s for %s, %s output rule create\n",
+			err.Error(), "iptables", tunnelName)
+		return err
+	}
+
+	cmd = exec.Command("iptables",
+		"-I", "OUTPUT", "1", "-p", "udp", "--sport", "4500",
 		"-j", "ACCEPT")
 	if _, err := cmd.Output(); err != nil {
 		log.Printf("%s for %s, %s output rule create\n",
@@ -342,6 +384,15 @@ func ipTablesSSClientRulesReset(tunnelName string, vpnGateway string) error {
 		return err
 	}
 
+	cmd = exec.Command("iptables",
+		"-D", "INPUT", "-p", "udp", "--dport", "4500",
+		"-j", "ACCEPT")
+	if _, err := cmd.Output(); err != nil {
+		log.Printf("%s for %s, %s input rule delete\n",
+			err.Error(), "iptables", tunnelName)
+		return err
+	}
+
 	// output rule
 	cmd = exec.Command("iptables",
 		"-D", "OUTPUT", "-p", "udp", "--sport", "500",
@@ -352,6 +403,14 @@ func ipTablesSSClientRulesReset(tunnelName string, vpnGateway string) error {
 		return err
 	}
 
+	cmd = exec.Command("iptables",
+		"-D", "OUTPUT", "-p", "udp", "--sport", "4500",
+		"-j", "ACCEPT")
+	if _, err := cmd.Output(); err != nil {
+		log.Printf("%s for %s, %s output rule delete\n",
+			err.Error(), "iptables", tunnelName)
+		return err
+	}
 	log.Printf("ipTablesRuleReset(%s) OK\n", tunnelName)
 	return nil
 }
