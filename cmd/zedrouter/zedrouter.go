@@ -796,7 +796,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 
 		// Set up ACLs
 		err = createACLConfiglet(olIfname, true, olConfig.ACLs,
-			6, "", "", nil)
+			6, "", "", 0, nil)
 		if err != nil {
 			addError(ctx, &status, "createACL", err)
 		}
@@ -1258,8 +1258,9 @@ func handleModify(ctx *zedrouterContext, key string,
 			olConfig.NameToEidList)
 
 		// Update ACLs
+		// No sshPortMap for IsMgmt
 		err := updateACLConfiglet(olIfname, true, olStatus.ACLs,
-			olConfig.ACLs, 6, "", "", nil)
+			olConfig.ACLs, 6, "", "", 0, nil)
 		if err != nil {
 			addError(ctx, status, "updateACL", err)
 		}
@@ -1540,8 +1541,9 @@ func handleDelete(ctx *zedrouterContext, key string,
 		deleteEidIpsetConfiglet(olIfname, true)
 
 		// Delete ACLs
+		// No sshPortMap for IsMgmt
 		err = deleteACLConfiglet(olIfname, true, olStatus.ACLs,
-			6, "", "", nil)
+			6, "", "", 0, nil)
 		if err != nil {
 			addError(ctx, status, "deleteACL", err)
 		}

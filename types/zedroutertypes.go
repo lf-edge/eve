@@ -412,6 +412,7 @@ type UnderlayNetworkConfig struct {
 	AppIPAddr  net.IP           // If set use DHCP to assign to app
 	Network    uuid.UUID
 	ACLs       []ACE
+	SshPortMap bool
 }
 
 type UnderlayNetworkStatus struct {

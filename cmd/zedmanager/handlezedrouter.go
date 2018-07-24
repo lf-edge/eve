@@ -67,6 +67,12 @@ func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
 				changed = true
 				break
 			}
+			if new.SshPortMap != old.SshPortMap {
+				log.Printf("SshPortMap changed from %v to %v\n",
+					old.SshPortMap, new.SshPortMap)
+				changed = true
+				break
+			}
 		}
 	} else {
 		if debug {
