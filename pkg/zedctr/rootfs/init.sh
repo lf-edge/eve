@@ -20,6 +20,9 @@ done
 # For convenice's sake we're putting SSH inisde of a root container 
 /usr/sbin/sshd
 
+# Need this for logrotate
+/usr/sbin/crond
+
 # Finally, we need to start Xen
 XENCONSOLED_ARGS='--log=all --log-dir=/var/log/xen' /etc/init.d/xencommons start
 
