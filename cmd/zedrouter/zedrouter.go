@@ -951,6 +951,11 @@ func handleCreate(ctx *zedrouterContext, key string,
 		createEidIpsetConfiglet(bridgeName, olConfig.NameToEidList,
 			EID.String())
 
+		// XXX need to publish AssignedIPAddress but not rest since
+		// the difference between config and status is used in
+		// in updateNetworkACLConfiglet
+		// XXX create baseStatus without any ACLs? Pass AssignedIPv6Address?
+
 		netstatus := lookupNetworkObjectStatus(ctx,
 			olConfig.Network.String())
 		if netstatus == nil {
@@ -966,7 +971,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 		}
 
 		// Set up ACLs before we setup dnsmasq
-		err = updateNetworkACLConfiglet(ctx, netstatus)
+		err = updateNetworkACLConfiglet(ctx, netstatus, nil)
 		if err != nil {
 			addError(ctx, &status, "updateNetworkACL", err)
 		}
@@ -1064,8 +1069,12 @@ func handleCreate(ctx *zedrouterContext, key string,
 
 		// Create iptables with optional ipset's based ACL
 		// XXX Doesn't handle IPv6 underlay ACLs
-
-		err = updateNetworkACLConfiglet(ctx, netstatus)
+		// XXX need to publish AssignedIPAddress but not rest since
+		// the difference between config and status is used in
+		// in updateNetworkACLConfiglet
+		// XXX passing ulStatus for now until we refactor to bridge
+		// ACLs
+		err = updateNetworkACLConfiglet(ctx, netstatus, ulStatus)
 		if err != nil {
 			addError(ctx, &status, "updateNetworkACL", err)
 		}
@@ -1310,12 +1319,15 @@ func handleModify(ctx *zedrouterContext, key string,
 		updateEidIpsetConfiglet(bridgeName, olStatus.NameToEidList,
 			olConfig.NameToEidList)
 
+		// XXX could there be a change to AssignedIPv6Address?
+		// If so updateNetworkACLConfiglet needs to know old and new
+
 		netstatus := lookupNetworkObjectStatus(ctx,
 			olConfig.Network.String())
 		// XXX could the netstatus have disappeared after the create?
 		// Update ACLs
 		if netstatus != nil {
-			err := updateNetworkACLConfiglet(ctx, netstatus)
+			err := updateNetworkACLConfiglet(ctx, netstatus, nil)
 			if err != nil {
 				addError(ctx, status, "updateNetworkACL", err)
 			}
@@ -1374,11 +1386,14 @@ func handleModify(ctx *zedrouterContext, key string,
 		netconfig := lookupNetworkObjectConfig(ctx,
 			ulConfig.Network.String())
 
+		// XXX could there be a change to AssignedIPAddress?
+		// If so updateNetworkACLConfiglet needs to know old and new
+
 		netstatus := lookupNetworkObjectStatus(ctx,
 			ulConfig.Network.String())
 		// XXX could the netstatus have disappeared after the create?
 		if netstatus != nil {
-			err := updateNetworkACLConfiglet(ctx, netstatus)
+			err := updateNetworkACLConfiglet(ctx, netstatus, nil)
 			if err != nil {
 				addError(ctx, status, "updateNetworkACL", err)
 			}
@@ -1579,7 +1594,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 				olStatus.Network.String())
 			// XXX could the netstatus have disappeared after the create?
 			if netstatus != nil {
-				err := updateNetworkACLConfiglet(ctx, netstatus)
+				err := updateNetworkACLConfiglet(ctx, netstatus, nil)
 				if err != nil {
 					addError(ctx, status,
 						"updateNetworkACL", err)
@@ -1644,7 +1659,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 
 			// Delete ACLs
 			if netstatus != nil {
-				err := updateNetworkACLConfiglet(ctx, netstatus)
+				err := updateNetworkACLConfiglet(ctx, netstatus, nil)
 				if err != nil {
 					addError(ctx, status,
 						"updateNetworkACL", err)

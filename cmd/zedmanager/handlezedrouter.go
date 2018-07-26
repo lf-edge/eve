@@ -130,6 +130,7 @@ func lookupAppNetworkConfig(ctx *zedmanagerContext, key string) *types.AppNetwor
 	return &config
 }
 
+// Note that this function returns the entry even if Pending* is set.
 func lookupAppNetworkStatus(ctx *zedmanagerContext, key string) *types.AppNetworkStatus {
 	sub := ctx.subAppNetworkStatus
 	st, _ := sub.Get(key)
@@ -179,7 +180,7 @@ func handleAppNetworkStatusModify(ctxArg interface{}, key string,
 		return
 	}
 	// Ignore if any Pending* flag is set
-	if status.PendingAdd || status.PendingModify || status.PendingDelete {
+	if status.Pending() {
 		log.Printf("handleAppNetworkStatusModify skipped due to Pending* for %s\n",
 			key)
 		return

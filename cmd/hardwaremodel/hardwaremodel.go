@@ -15,10 +15,16 @@ var Version = "No version specified"
 
 func Run() {
 	versionPtr := flag.Bool("v", false, "Version")
+	cPtr := flag.Bool("c", false, "No CRLF")
 	flag.Parse()
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
-	fmt.Println(hardware.GetHardwareModel())
+	model := hardware.GetHardwareModelNoOverride()
+	if *cPtr {
+		fmt.Printf("%s", model)
+	} else {
+		fmt.Printf("%s\n", model)
+	}
 }
