@@ -437,10 +437,10 @@ func aceToRules(ifname string, ace types.ACE, ipVer int, myIP string, appIP stri
 	foundLimit := false
 	unlimitedInArgs := inArgs
 	unlimitedOutArgs := outArgs
+	actionCount := 0
 	for _, action := range ace.Actions {
 		// We check and reject combinations of Drop, Limit, and PortMap
 		// At most one allowed
-		actionCount = 0
 		if action.Drop {
 			actionCount += 1
 			foundDrop = true
