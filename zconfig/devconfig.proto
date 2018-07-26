@@ -100,6 +100,9 @@ message EdgeDevConfig {
 	repeated SystemAdapter systemAdapterList = 12; 
 
 	repeated ServiceInstanceConfig services = 13;
+	// Override dmidecode info if set
+	string manufacturer = 14;
+	string productName = 15;
 }
 
 // Timers and other per-device policy which relates to the interaction
