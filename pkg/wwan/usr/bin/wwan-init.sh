@@ -88,7 +88,8 @@ function bringup_iface() {
   # NOTE we may want to disable /proc/sys/net/ipv4/conf/default/rp_filter instead
   #      Verify it by cat /proc/net/netstat | awk '{print $80}'
   ip route add default via `echo "$JSON" | jq -r .ipv4.gateway` dev $IFACE metric 65000
-  cat > $BBS/resolv.conf <<__EOT__
+  mkdir $BBS/resolv.conf || :
+  cat > $BBS/resolv.conf/${IFACE}.dhcp <<__EOT__
 nameserver `echo "$JSON" | jq -r .ipv4.dns1`
 nameserver `echo "$JSON" | jq -r .ipv4.dns2`
 __EOT__
