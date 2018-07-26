@@ -8,6 +8,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/satori/go.uuid"
 	"github.com/zededa/api/zconfig"
+	"github.com/zededa/go-provision/hardware"
 	"log"
 	"mime"
 	"net/http"
@@ -29,8 +30,13 @@ func parseConfig(configUrl string, resp *http.Response, contents []byte) (uuid.U
 		log.Println("readDeviceConfigProtoMessage: ", err)
 		return devUUID, hardwaremodel, err
 	}
-	// XXX hardwaremodel = config.GetHardwareModel()
-
+	// Check if we have an override from the device config
+	manufacturer := config.GetManufacturer()
+	productName := config.GetProductName()
+	if manufacturer != "" && productName != "" {
+		hardwaremodel = hardware.FormatModel(manufacturer, productName,
+			"")
+	}
 	uuidStr := strings.TrimSpace(config.GetId().Uuid)
 	devUUID, err = uuid.FromString(uuidStr)
 	if err != nil {

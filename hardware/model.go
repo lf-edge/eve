@@ -31,7 +31,6 @@ const (
 // XXX Note that this function (and the ones below) log if there is an
 // error. That's impolite for a library to do.
 func GetHardwareModel() string {
-	model := ""
 	product := ""
 	manufacturer := ""
 
@@ -40,20 +39,28 @@ func GetHardwareModel() string {
 	if err != nil {
 		log.Println("dmidecode system-product-name:", err)
 	} else {
-		product = strings.TrimSpace(string(pname))
+		product = string(pname)
 	}
 	cmd = exec.Command("dmidecode", "-s", "system-manufacturer")
 	manu, err := cmd.Output()
 	if err != nil {
 		log.Println("dmidecode system-manufacturer:", err)
 	} else {
-		manufacturer = strings.TrimSpace(string(manu))
+		manufacturer = string(manu)
 	}
 	compatible := GetCompatible()
+	return FormatModel(manufacturer, product, compatible)
+}
+
+func FormatModel(manufacturer, product, compatible string) string {
+	var model string
+
 	if manufacturer != "" {
+		manufacturer = strings.TrimSpace(manufacturer)
 		model = manufacturer + "."
 	}
 	if product != "" {
+		product = strings.TrimSpace(product)
 		model = model + product
 	}
 	if compatible != "" {
