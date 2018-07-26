@@ -142,16 +142,21 @@ func Run() {
 		}
 	}
 	var oldHardwaremodel string
+	var model string
 	b, err = ioutil.ReadFile(hardwaremodelFileName)
 	if err == nil {
 		oldHardwaremodel = strings.TrimSpace(string(b))
+		model = oldHardwaremodel
+	} else {
+		model = hardware.GetHardwareModel()
 	}
 
-	model := hardware.GetHardwareModel()
-	DNCFilename := fmt.Sprintf("%s/%s.json", DNCDirname, model)
 	// To better handle new hardware platforms log and blink if we
 	// don't have a DeviceNetworkConfig
+	// After some tries we fall back to default.json which is eth0
+	tries := 0
 	for {
+		DNCFilename := fmt.Sprintf("%s/%s.json", DNCDirname, model)
 		if _, err := os.Stat(DNCFilename); err == nil {
 			break
 		}
@@ -161,6 +166,11 @@ func Run() {
 		log.Printf("You need to create this file for this hardware: %s\n",
 			DNCFilename)
 		time.Sleep(time.Second)
+		tries += 1
+		if tries == 120 {	// Two minutes
+			log.Printf("Falling back to using default.json\n")
+			model = "default.json"
+		}
 	}
 
 	clientCtx := clientContext{manufacturerModel: model}
