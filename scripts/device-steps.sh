@@ -339,7 +339,8 @@ if [ $SELF_REGISTER = 1 ]; then
     echo $BINDIR/client -d $CONFIGDIR getUuid 
     $BINDIR/client -d $CONFIGDIR getUuid
     if [ ! -f $CONFIGDIR/hardwaremodel ]; then
-	/opt/zededa/bin/hardwaremodel >$CONFIGDIR/hardwaremodel
+	/opt/zededa/bin/hardwaremodel -c >$CONFIGDIR/hardwaremodel
+	echo "Created default hardwaremodel" `/opt/zededa/bin/hardwaremodel -c`
     fi
     # Make sure we set the dom0 hostname, used by LISP nat traversal, to
     # a unique string. Using the uuid
@@ -364,8 +365,8 @@ else
     if [ ! -f $CONFIGDIR/hardwaremodel ]; then
 	# XXX for upgrade path
 	# XXX do we need a way to override?
-	/opt/zededa/bin/hardwaremodel >$CONFIGDIR/hardwaremodel
-	echo "Created hardwaremodel" `/opt/zededa/bin/hardwaremodel`
+	/opt/zededa/bin/hardwaremodel -c >$CONFIGDIR/hardwaremodel
+	echo "Created hardwaremodel" `/opt/zededa/bin/hardwaremodel -c`
     fi
 
     uuid=`cat $CONFIGDIR/uuid`
