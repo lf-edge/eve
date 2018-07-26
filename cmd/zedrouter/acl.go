@@ -480,7 +480,30 @@ func aceToRules(ifname string, ace types.ACE, ipVer int, myIP string, appIP stri
 				"-p", protocol, "-o", ifname,
 				"--dport", targetPort, "-j", "SNAT",
 				"--to-source", myIP}
-			// Below we make sure the packets get through
+			// Below we make sure the mapped packets get through
+			// Note that port/targetport change relative
+			// no normal ACL above.
+			outArgs = []string{"-i", ifname}
+			inArgs = []string{"-o", ifname}
+			if ip != "" {
+				outArgs = append(outArgs, "-d", ip)
+				inArgs = append(inArgs, "-s", ip)
+			}
+			// Make sure we put the protocol before any port numbers
+			outArgs = append(outArgs, "-p", protocol)
+			inArgs = append(inArgs, "-p", protocol)
+			if fport != "" {
+				outArgs = append(outArgs, "--dport", fport)
+				inArgs = append(inArgs, "--sport", fport)
+			}
+			outArgs = append(outArgs, "--sport", targetPort)
+			inArgs = append(inArgs, "--dport", targetPort)
+			if ipsetName != "" {
+				outArgs = append(outArgs, "-m", "set",
+					"--match-set", ipsetName, "dst")
+				inArgs = append(inArgs, "-m", "set",
+					"--match-set", ipsetName, "src")
+			}
 			rulesList = append(rulesList, rule1, rule2)
 		}
 	}
