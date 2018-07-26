@@ -419,9 +419,15 @@ func aceToRules(ifname string, ace types.ACE, ipVer int, myIP string, appIP stri
 	unlimitedInArgs := inArgs
 	unlimitedOutArgs := outArgs
 	for _, action := range ace.Actions {
+		// We check and reject combinations of Drop, Limit, and PortMap
+		// At most one allowed
+		actionCount = 0
 		if action.Drop {
+			actionCount += 1
 			foundDrop = true
-		} else if action.Limit {
+		}
+		if action.Limit {
+			actionCount += 1
 			foundLimit = true
 			// -m limit --limit 4/s --limit-burst 4
 			add := []string{"-m", "limit"}
@@ -437,7 +443,9 @@ func aceToRules(ifname string, ace types.ACE, ipVer int, myIP string, appIP stri
 			}
 			outArgs = append(outArgs, add...)
 			inArgs = append(inArgs, add...)
-		} else if action.PortMap {
+		}
+		if action.PortMap {
+			actionCount += 1
 			// Generate NAT and ACCEPT rules based on protocol,
 			// lport, and TargetPort
 			if lport == "" || protocol == "" {
@@ -468,6 +476,12 @@ func aceToRules(ifname string, ace types.ACE, ipVer int, myIP string, appIP stri
 			inArgs = append(inArgs, rule3...)
 			outArgs = append(outArgs, rule2...)
 			outArgs = append(outArgs, rule4...)
+		}
+		if actionCount > 1 {
+			errStr := fmt.Sprintf("ACL with combination of Drop, Limit and/or PortMap rejected: %v",
+					ace)
+			log.Println(errStr)
+			return nil, errors.New(errStr)
 		}
 	}
 	if foundDrop {
