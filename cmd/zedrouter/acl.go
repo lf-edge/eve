@@ -735,7 +735,8 @@ func updateNetworkACLConfiglet(ctx *zedrouterContext,
 				ulAddr2 = ulStatus.AssignedIPAddr
 			}
 			var sshPort uint
-			if ulStatus.SshPortMap {
+			// XXX disable this?
+			if false && ulStatus.SshPortMap {
 				sshPort = 8022 + 100*uint(status.AppNum)
 			}
 			rules, err := aclToRules(ifname, ulStatus.ACLs, ipVer,
@@ -778,7 +779,8 @@ func updateNetworkACLConfiglet(ctx *zedrouterContext,
 				ulAddr2 = getIPAddrFromStatus(statusItems, key, ulNum)
 			}
 			var sshPort uint
-			if ulConfig.SshPortMap {
+			// XXX disable this?
+			if false && ulConfig.SshPortMap {
 				status := lookupAppNetworkStatus(ctx, config.Key())
 				if status != nil {
 					sshPort = 8022 + 100*uint(status.AppNum)
