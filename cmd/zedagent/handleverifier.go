@@ -92,7 +92,7 @@ func updateVerifierStatus(ctx *zedagentContext,
 		objType, key, status.State)
 
 	// Ignore if any Pending* flag is set
-	if status.PendingAdd || status.PendingModify || status.PendingDelete {
+	if status.Pending() {
 		log.Printf("updateVerifierStatus(%s) Skipping due to Pending*\n", key)
 		return
 	}
@@ -129,6 +129,7 @@ func MaybeRemoveVerifierConfigSha256(ctx *zedagentContext, objType string,
 	log.Printf("MaybeRemoveVerifierConfigSha256 done for %s\n", sha256)
 }
 
+// Note that this function returns the entry even if Pending* is set.
 func lookupVerificationStatusSha256(ctx *zedagentContext, objType string,
 	sha256 string) *types.VerifyImageStatus {
 
@@ -143,6 +144,7 @@ func lookupVerificationStatusSha256(ctx *zedagentContext, objType string,
 	return nil
 }
 
+// Note that this function returns the entry even if Pending* is set.
 func lookupVerificationStatus(ctx *zedagentContext, objType string,
 	safename string) *types.VerifyImageStatus {
 
@@ -162,6 +164,7 @@ func lookupVerificationStatus(ctx *zedagentContext, objType string,
 	return &status
 }
 
+// Note that this function returns the entry even if Pending* is set.
 func lookupVerificationStatusAny(ctx *zedagentContext, objType string,
 	safename string, sha256 string) *types.VerifyImageStatus {
 
@@ -203,7 +206,7 @@ func checkStorageVerifierStatus(ctx *zedagentContext, objType string, uuidStr st
 
 		vs := lookupVerificationStatusAny(ctx, objType, safename,
 			sc.ImageSha256)
-		if vs == nil {
+		if vs == nil || vs.Pending() {
 			log.Printf("checkStorageVerifierStatus: %s not found\n", safename)
 			ret.MinState = types.DOWNLOADED
 			continue

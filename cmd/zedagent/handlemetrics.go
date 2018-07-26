@@ -137,7 +137,7 @@ func handleDomainStatusModify(ctxArg interface{}, key string,
 		log.Printf("handleDomainStatusModify for %s\n", key)
 	}
 	// Ignore if any Pending* flag is set
-	if status.PendingAdd || status.PendingModify || status.PendingDelete {
+	if status.Pending() {
 		if debug {
 			log.Printf("handleDomainstatusModify skipped due to Pending* for %s\n",
 				key)
@@ -152,7 +152,7 @@ func handleDomainStatusModify(ctxArg interface{}, key string,
 	}
 	// Detect if any changes relevant to the device status report
 	old := lookupDomainStatus(ctx, key)
-	if old != nil {
+	if old != nil && !old.Pending() {
 		if ioAdapterListChanged(*old, status) {
 			ctx.TriggerDeviceInfo = true
 		}
@@ -218,6 +218,7 @@ func handleDomainStatusDelete(ctxArg interface{}, key string,
 	log.Printf("handleDomainStatusDelete done for %s\n", key)
 }
 
+// Note that this function returns the entry even if Pending* is set.
 func lookupDomainStatus(ctx *zedagentContext, key string) *types.DomainStatus {
 	sub := ctx.subDomainStatus
 	st, _ := sub.Get(key)
