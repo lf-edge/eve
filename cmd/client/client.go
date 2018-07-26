@@ -188,8 +188,10 @@ func Run() {
 
 		case <-t1.C:
 			// If we already know a uuid we can skip
-			// This might not set hardwaremodel in when upgrading
+			// This might not set hardwaremodel when upgrading
 			// an onboarded system without /config/hardwaremodel.
+			// Unlikely to have a network outage during that
+			// upgrade *and* require an override.
 			if clientCtx.usableAddressCount == 0 &&
 				operations["getUuid"] && oldUUID != nilUUID {
 
