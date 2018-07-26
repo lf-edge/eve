@@ -27,6 +27,7 @@ import (
 	"os"
 	"strconv"
 	"time"
+	"strings"
 )
 
 const (
@@ -833,7 +834,7 @@ func doSftp(ctx *downloaderContext, syncOp zedUpload.SyncOpType,
 	dEndPoint.WithSrcIpSelection(ipSrc)
 	var respChan = make(chan *zedUpload.DronaRequest)
 
-	log.Printf("syncOp for <%s>/<%s>\n", dpath, filename)
+	log.Printf("syncOp for <%s>/<%s>\n", serverUrl, filename)
 	// create Request
 	// Round up from bytes to Mbytes
 	maxMB := (maxsize + 1024*1024 - 1) / (1024 * 1024)
@@ -953,9 +954,10 @@ func handleSyncOp(ctx *downloaderContext, key string,
 					locFilename, key, "")
 				return
 			}
-		case zconfig.DsType_Sftp.String():
+		case zconfig.DsType_DsSFTP.String():
+			serverUrl := strings.Split(config.DownloadURL,"/")[0]
 			err = doSftp(ctx, syncOp, config.ApiKey,
-				config.Password, config.ServerUrl,
+				config.Password, serverUrl,
 				config.Size, ipSrc, filename, locFilename)
 			if err != nil {
 				log.Printf("Source IP %s failed: %s\n",
