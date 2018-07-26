@@ -164,9 +164,12 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 		[]string{status.BridgeIPAddr})
 
 	deleteDnsmasqConfiglet(bridgeName)
+	stopDnsmasq(bridgeName, false)
+
 	// XXX collect ipsets?
 	createDnsmasqConfiglet(bridgeName, status.BridgeIPAddr, &config,
 		hostsDirpath, nil)
+	startDnsmasq(bridgeName)
 
 	// For IPv6 and LISP, but LISP will become a service
 	isIPv6 := false
@@ -184,6 +187,7 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 
 		//    Start clean; kill just in case
 		//    pkill -u radvd -f radvd.${BRIDGENAME}.conf
+		deleteRadvdConfiglet(cfgPathname)
 		stopRadvd(cfgFilename, false)
 		createRadvdConfiglet(cfgPathname, bridgeName)
 		startRadvd(cfgPathname, bridgeName)
