@@ -34,8 +34,6 @@ const (
 func GetHardwareModel() string {
 	model := getOverride(overrideFile)
 	if model != "" {
-		// XXX remove
-		log.Printf("GetHardwareModel override <%s>\n", model)
 		return model
 	}
 	product := ""
