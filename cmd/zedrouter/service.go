@@ -13,6 +13,8 @@ import (
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/types"
 	"log"
+	"os"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -437,6 +439,31 @@ func lookupAppLink(ctx *zedrouterContext, appLink uuid.UUID) *types.NetworkServi
 
 func lispCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	status *types.NetworkServiceStatus) error {
+	status.LispStatus = config.LispConfig
+	
+	// XXX Create Lisp IID & map-server configlets here
+	iid := config.LispConfig.IID
+	mapServers := config.LispConfig.MapServers
+	cfgPathnameIID := lispRunDirname + "/"
+		strconv.FormatUint(uint64(iid), 10)
+	file, err := os.Create(cfgPathnameIID)
+	if err != nil {
+		log.Fatal("os.Create for ", cfgPathnameIID, err)
+	}
+	defer file.Close()
+
+	// Write map-servers to configlet
+	for _, ms := range mapServers {
+		name := ms.NameOrIp
+		credential := ms.Credential
+		msConfigLine := fmt.Sprintf(lispMStemplate, iid,
+			name, credential)
+		file.WriteString(msConfigLine)
+	}
+
+	// Write Lisp IID template
+	iidConfig := fmt.Sprintf(lispIIDtemplate, iid)
+	file.WriteString(iidConfig)
 
 	log.Printf("lispCreate(%s)\n", config.DisplayName)
 	return nil
@@ -445,6 +472,21 @@ func lispCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 func lispActivate(config types.NetworkServiceConfig,
 	status *types.NetworkServiceStatus,
 	netstatus *types.NetworkObjectStatus) error {
+	// XXX We do not have enough information at point to write
+	// any lisp configlets. We have the adapter list but, we
+	// do not yet have EIDs to whose database-mappings these adapters
+	// should be included as RLOCs.
+	//
+	// Just go ahead and restart lisp now.
+	// XXX Later when we process AppNetworkConfig list in AppInstanceConfig
+	// we check if the service is in activated state and restart. If not, we
+	// just create the lisp configlets along with dnsmasq, radvd and bail.
+	// Restart as part of lispActivate should take care of activating latest
+	// config written to lisp, dnsmasq, radvd configlets.
+
+	// Create lisp.config and restart lispers.net
+	separateDataPlane := status.LispStatus.Experimental
+	updateLisp(lispRunDirname, deviceNetworkStatus.UplinkStatus, separateDataPlane)
 
 	log.Printf("lispActivate(%s)\n", status.DisplayName)
 	return nil
@@ -453,10 +495,21 @@ func lispActivate(config types.NetworkServiceConfig,
 func lispInactivate(status *types.NetworkServiceStatus,
 	netstatus *types.NetworkObjectStatus) {
 
+	// XXX What should we do?
+	// TODO:
+	// Should we just remove all database-mappings, IIDs and interface{}
+	// stanzas corresponding to this service and bridge. Then restart lisp??
+
 	log.Printf("lispInactivate(%s)\n", status.DisplayName)
 }
 
 func lispDelete(status *types.NetworkServiceStatus) {
+	// XXX What should we do?
+	// TODO:
+	// Do something similar to lispInactivate??
+	// Or should we do something similar to handleDelete in zedrouter.go??
+	// We have the EIDs as part of AppNetworkStatus and IID as part of NetworkServiceStatus.
+	// We will have to bring them together somehow to clear the lisp configlets, ACLs etc.
 
 	log.Printf("lispDelete(%s)\n", status.DisplayName)
 }

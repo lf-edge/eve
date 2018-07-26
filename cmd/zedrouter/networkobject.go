@@ -14,6 +14,7 @@ import (
 	"github.com/zededa/go-provision/types"
 	"log"
 	"net"
+	"strconv"
 	"time"
 )
 
@@ -97,7 +98,7 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 		// Nothing to do
 	case types.NT_IPV4:
 		// Nothing to do
-	case types.NT_LISP: // XXX turn into a service?
+	case types.NT_CryptoEID: // XXX turn into a service?
 		// Nothing to do
 	default:
 		errStr := fmt.Sprintf("doNetworkCreate type %d not supported",
@@ -190,13 +191,18 @@ func setBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) e
 			err)
 	}
 	var ipAddr string
-	if st == types.NST_BRIDGE {
+	switch st {
+	case types.NST_BRIDGE:
 		ipAddr, err = getBridgeServiceIPv4Addr(ctx, status.UUID)
 		if err != nil {
 			log.Printf("setBridgeIPAddr: getBridgeServiceIPv4Addr failed: %s\n",
 				err)
 			return err
 		}
+	case types.NST_LISP:
+		ipAddr := "fd00::" + strconv.FormatInt(int64(status.BridgeNum), 16)
+		log.Printf("setBridgeIPAddr: Bridge %s assigned IPv6 address %s\n",
+			status.BridgeName, ipAddr)
 	}
 	// If not we do a local allocation
 	if ipAddr == "" {
@@ -232,8 +238,14 @@ func setBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) e
 		return nil
 	}
 
+	if st == types.NST_LISP {
+		// EID (Lisp) bridges have /128 IPv6 addresses
+		ipAddr += "/128"
+	} else {
+		ipAddr += "/24"
+	}
 	//    ip addr add ${ipAddr}/24 dev ${bridgeName}
-	addr, err := netlink.ParseAddr(ipAddr + "/24")
+	addr, err := netlink.ParseAddr(ipAddr)
 	if err != nil {
 		errStr := fmt.Sprintf("ParseAddr %s failed: %s", ipAddr, err)
 		return errors.New(errStr)
@@ -242,6 +254,18 @@ func setBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) e
 		errStr := fmt.Sprintf("AddrAdd %s failed: %s", ipAddr, err)
 		return errors.New(errStr)
 	}
+
+	// create new radvd configuration and restart radvd if service type is Lisp
+	if st == types.NST_LISP {
+		cfgFilename := "radvd." + status.BridgeName + ".conf"
+		cfgPathname := runDirname + "/" + cfgFilename
+
+		// kill existing radvd instance
+		stopRadvd(cfgFilename, false)
+		createRadvdConfiglet(cfgPathname, status.BridgeName)
+		startRadvd(cfgPathname, status.BridgeName)
+	}
+
 	return nil
 }
 
