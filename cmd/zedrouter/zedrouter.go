@@ -890,9 +890,22 @@ func handleCreate(ctx *zedrouterContext, key string,
 			log.Printf("olNum %d network %s ACLs %v\n",
 				olNum, olConfig.Network.String(), olConfig.ACLs)
 		}
+		netstatus := lookupNetworkObjectStatus(ctx,
+			olConfig.Network.String())
+		if netstatus == nil {
+			// We had a netconfig but no status!
+			status.PendingAdd = false
+			errStr := fmt.Sprintf("no status for %s",
+				olConfig.Network.String())
+			err := errors.New(errStr)
+			addError(ctx, &status, "lookupNetworkObjectStatus", err)
+			log.Printf("handleCreate done for %s\n",
+				config.DisplayName)
+			return
+		}
+
 		EID := olConfig.EID
-		bridgeName := "bo" + strconv.Itoa(olNum) + "x" +
-			strconv.Itoa(appNum)
+		bridgeName := netstatus.BridgeName
 		vifName := "nbo" + strconv.Itoa(olNum) + "x" +
 			strconv.Itoa(appNum)
 		oLink, err := findBridge(bridgeName)
@@ -903,7 +916,6 @@ func handleCreate(ctx *zedrouterContext, key string,
 				config.DisplayName)
 			return
 		}
-		bridgeName = oLink.Name
 		bridgeMac := oLink.HardwareAddr
 		log.Printf("bridgeName %s MAC %s\n",
 			bridgeName, bridgeMac.String())
@@ -956,20 +968,6 @@ func handleCreate(ctx *zedrouterContext, key string,
 		// in updateNetworkACLConfiglet
 		// XXX create baseStatus without any ACLs? Pass AssignedIPv6Address?
 
-		netstatus := lookupNetworkObjectStatus(ctx,
-			olConfig.Network.String())
-		if netstatus == nil {
-			// We had a netconfig but no status!
-			status.PendingAdd = false
-			errStr := fmt.Sprintf("no status for %s",
-				olConfig.Network.String())
-			err = errors.New(errStr)
-			addError(ctx, &status, "lookupNetworkObjectStatus", err)
-			log.Printf("handleCreate done for %s\n",
-				config.DisplayName)
-			return
-		}
-
 		// Set up ACLs before we setup dnsmasq
 		err = updateNetworkACLConfiglet(ctx, netstatus, nil)
 		if err != nil {
@@ -1002,7 +1000,20 @@ func handleCreate(ctx *zedrouterContext, key string,
 			log.Printf("ulNum %d network %s ACLs %v\n",
 				ulNum, ulConfig.Network.String(), ulConfig.ACLs)
 		}
-		bridgeName := "bu" + strconv.Itoa(appNum)
+		netstatus := lookupNetworkObjectStatus(ctx,
+			ulConfig.Network.String())
+		if netstatus == nil {
+			// We had a netconfig but no status!
+			status.PendingAdd = false
+			errStr := fmt.Sprintf("no status for %s",
+				ulConfig.Network.String())
+			err := errors.New(errStr)
+			addError(ctx, &status, "lookupNetworkObjectStatus", err)
+			log.Printf("handleCreate done for %s\n",
+				config.DisplayName)
+			return
+		}
+		bridgeName := netstatus.BridgeName
 		vifName := "nbu" + strconv.Itoa(ulNum) + "x" +
 			strconv.Itoa(appNum)
 		uLink, err := findBridge(bridgeName)
@@ -1013,7 +1024,6 @@ func handleCreate(ctx *zedrouterContext, key string,
 				config.DisplayName)
 			return
 		}
-		bridgeName = uLink.Name
 		bridgeMac := uLink.HardwareAddr
 
 		log.Printf("bridgeName %s MAC %s\n",
@@ -1037,19 +1047,6 @@ func handleCreate(ctx *zedrouterContext, key string,
 		ulStatus.Mac = appMac
 		ulStatus.HostName = config.Key()
 
-		netstatus := lookupNetworkObjectStatus(ctx,
-			ulConfig.Network.String())
-		if netstatus == nil {
-			// We had a netconfig but no status!
-			status.PendingAdd = false
-			errStr := fmt.Sprintf("no status for %s",
-				ulConfig.Network.String())
-			err = errors.New(errStr)
-			addError(ctx, &status, "lookupNetworkObjectStatus", err)
-			log.Printf("handleCreate done for %s\n",
-				config.DisplayName)
-			return
-		}
 		bridgeIPAddr, appIPAddr := getUlAddrs(ctx, ulNum-1, appNum, ulStatus,
 			netstatus)
 		// Check if we already have an address on the bridge
@@ -1062,10 +1059,13 @@ func handleCreate(ctx *zedrouterContext, key string,
 		}
 		log.Printf("bridgeIPAddr %s appIPAddr %s\n", bridgeIPAddr, appIPAddr)
 		ulStatus.BridgeIPAddr = bridgeIPAddr
+		// XXX appIPAddr is "" if bridge service
 		ulStatus.AssignedIPAddr = appIPAddr
 		hostsDirpath := globalRunDirname + "/hosts." + bridgeName
-		addToHostsConfiglet(hostsDirpath, config.DisplayName,
-			[]string{appIPAddr})
+		if appIPAddr != "" {
+			addToHostsConfiglet(hostsDirpath, config.DisplayName,
+				[]string{appIPAddr})
+		}
 
 		// Create iptables with optional ipset's based ACL
 		// XXX Doesn't handle IPv6 underlay ACLs
@@ -1083,8 +1083,10 @@ func handleCreate(ctx *zedrouterContext, key string,
 
 		// XXX need ipsets from all bn<N> users? Or apply to nbn at bridge?
 
-		addhostDnsmasq(bridgeName, appMac, appIPAddr,
-			config.UUIDandVersion.UUID.String())
+		if appIPAddr != "" {
+			addhostDnsmasq(bridgeName, appMac, appIPAddr,
+				config.UUIDandVersion.UUID.String())
+		}
 	}
 	// Write out what we created to AppNetworkStatus
 	status.PendingAdd = false
