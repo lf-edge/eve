@@ -813,6 +813,46 @@ func doS3(ctx *downloaderContext, syncOp zedUpload.SyncOpType,
 	}
 }
 
+func doSftp(ctx *downloaderContext, syncOp zedUpload.SyncOpType,
+	apiKey string, password string, serverUrl string, maxsize uint64,
+	ipSrc net.IP, filename string, locFilename string) error {
+	auth := &zedUpload.AuthInput{
+		AuthType: "sftp",
+		Uname:    apiKey,
+		Password: password,
+	}
+
+	trType := zedUpload.SyncSftpTr
+
+	// create Endpoint
+	dEndPoint, err := ctx.dCtx.NewSyncerDest(trType, serverUrl, "", auth)
+	if err != nil {
+		log.Printf("NewSyncerDest failed: %s\n", err)
+		return err
+	}
+	dEndPoint.WithSrcIpSelection(ipSrc)
+	var respChan = make(chan *zedUpload.DronaRequest)
+
+	log.Printf("syncOp for <%s>/<%s>\n", dpath, filename)
+	// create Request
+	// Round up from bytes to Mbytes
+	maxMB := (maxsize + 1024*1024 - 1) / (1024 * 1024)
+	req := dEndPoint.NewRequest(syncOp, filename, locFilename,
+		int64(maxMB), true, respChan)
+	if req == nil {
+		return errors.New("NewRequest failed")
+	}
+
+	req.Post()
+	resp := <-respChan
+	_, err = resp.GetUpStatus()
+	if resp.IsError() == false {
+		return nil
+	} else {
+		return err
+	}
+}
+
 // Drona APIs for object Download
 
 func handleSyncOp(ctx *downloaderContext, key string,
@@ -894,6 +934,28 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		case zconfig.DsType_DsS3.String():
 			err = doS3(ctx, syncOp, config.ApiKey,
 				config.Password, config.Dpath,
+				config.Size, ipSrc, filename, locFilename)
+			if err != nil {
+				log.Printf("Source IP %s failed: %s\n",
+					ipSrc.String(), err)
+				errStr = errStr + "\n" + err.Error()
+				// XXX don't know how much we downloaded!
+				// Could have failed half-way. Using zero.
+				zedcloud.ZedCloudFailure(ifname,
+					metricsUrl, 1024, 0)
+			} else {
+				// Record how much we downloaded
+				info, _ := os.Stat(locFilename)
+				size := info.Size()
+				zedcloud.ZedCloudSuccess(ifname,
+					metricsUrl, 1024, size)
+				handleSyncOpResponse(ctx, config, status,
+					locFilename, key, "")
+				return
+			}
+		case zconfig.DsType_Sftp.String():
+			err = doSftp(ctx, syncOp, config.ApiKey,
+				config.Password, config.ServerUrl,
 				config.Size, ipSrc, filename, locFilename)
 			if err != nil {
 				log.Printf("Source IP %s failed: %s\n",
