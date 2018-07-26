@@ -588,6 +588,11 @@ func natActivate(config types.NetworkServiceConfig,
 			return err
 		}
 	}
+	// Add to Pbr table
+	err := PbrNATAdd(subnetStr)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -613,6 +618,11 @@ func natInactivate(status *types.NetworkServiceStatus,
 		if err != nil {
 			log.Println(err)
 		}
+	}
+	// Add to Pbr table
+	err := PbrNATDel(subnetStr)
+	if err != nil {
+		log.Println(err)
 	}
 }
 
