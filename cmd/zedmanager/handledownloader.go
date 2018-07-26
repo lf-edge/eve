@@ -97,7 +97,7 @@ func handleDownloaderStatusModify(ctxArg interface{}, key string,
 	log.Printf("handleDownloaderStatusModify for %s\n", status.Safename)
 
 	// Ignore if any Pending* flag is set
-	if status.PendingAdd || status.PendingModify || status.PendingDelete {
+	if status.Pending() {
 		log.Printf("handleDownloaderStatusModify skipping due to Pending* for %s\n",
 			status.Safename)
 		return
@@ -125,6 +125,7 @@ func lookupDownloaderConfig(ctx *zedmanagerContext,
 	return &config
 }
 
+// Note that this function returns the entry even if Pending* is set.
 func lookupDownloaderStatus(ctx *zedmanagerContext,
 	safename string) *types.DownloaderStatus {
 

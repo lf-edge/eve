@@ -52,6 +52,10 @@ func (status AppNetworkStatus) CheckPendingDelete() bool {
 	return status.PendingDelete
 }
 
+func (status AppNetworkStatus) Pending() bool {
+	return status.PendingAdd || status.PendingModify || status.PendingDelete
+}
+
 // Indexed by UUID
 type AppNetworkStatus struct {
 	UUIDandVersion UUIDandVersion

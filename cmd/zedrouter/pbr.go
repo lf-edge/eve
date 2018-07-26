@@ -49,26 +49,6 @@ func PbrInit(uplinks []string, freeUplinks []string,
 	// flush any old rules using RuleList
 	flushRules(0)
 
-	// Create rule for FreeTable; src NAT range
-	// XXX for IPv6 underlay we also need rules.
-	// Can we use iif match for all the bo* interfaces?
-	// If so, use bu* matches for this rule
-	freeRule := netlink.NewRule()
-	// XXX need this rule for all NAT subnets
-	_, prefix, err := net.ParseCIDR("172.16.0.0/12")
-	if err != nil {
-		log.Fatal(err)
-	}
-	freeRule.Src = prefix
-	freeRule.Table = FreeTable
-	freeRule.Family = syscall.AF_INET
-	// Avoid duplicate rules
-	_ = netlink.RuleDel(freeRule)
-	err = netlink.RuleAdd(freeRule)
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	// Need links to get name to ifindex? Or lookup each time?
 	linkchan := make(chan netlink.LinkUpdate)
 	linkopt := netlink.LinkSubscribeOptions{ListExisting: true}
@@ -90,6 +70,50 @@ func PbrInit(uplinks []string, freeUplinks []string,
 		log.Fatal(err)
 	}
 	return routechan, addrchan, linkchan
+}
+
+func PbrNATAdd(prefix string) error {
+	freeRule, err := pbrGetFreeRule(prefix)
+	if err != nil {
+		return err
+	}
+	// Avoid duplicate rules
+	_ = netlink.RuleDel(freeRule)
+	err = netlink.RuleAdd(freeRule)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func PbrNATDel(prefix string) error {
+	freeRule, err := pbrGetFreeRule(prefix)
+	if err != nil {
+		return err
+	}
+	// Avoid duplicate rules
+	err = netlink.RuleDel(freeRule)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func pbrGetFreeRule(prefixStr string) (*netlink.Rule, error) {
+
+	// Create rule for FreeTable; src NAT range
+	// XXX for IPv6 underlay we also need rules.
+	// Can we use iif match for all the bo* interfaces?
+	// If so, use bu* matches for this rule
+	freeRule := netlink.NewRule()
+	_, prefix, err := net.ParseCIDR(prefixStr)
+	if err != nil {
+		return nil, err
+	}
+	freeRule.Src = prefix
+	freeRule.Table = FreeTable
+	freeRule.Family = syscall.AF_INET
+	return freeRule, nil
 }
 
 // Handle a route change

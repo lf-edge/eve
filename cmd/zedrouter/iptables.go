@@ -6,6 +6,8 @@
 package zedrouter
 
 import (
+	"errors"
+	"fmt"
 	"github.com/zededa/go-provision/wrap"
 	"log"
 	"os/exec"
@@ -23,8 +25,10 @@ func iptableCmdOut(dolog bool, args ...string) (string, error) {
 		out, err = exec.Command(cmd, args...).Output()
 	}
 	if err != nil {
-		log.Println("iptables command failed: ", args, err)
-		return "", err
+		errStr := fmt.Sprintf("iptables command %s failed %s output %s",
+			args, err, out)
+		log.Println(errStr)
+		return "", errors.New(errStr)
 	}
 	return string(out), nil
 }
@@ -44,8 +48,10 @@ func ip6tableCmdOut(dolog bool, args ...string) (string, error) {
 		out, err = exec.Command(cmd, args...).Output()
 	}
 	if err != nil {
-		log.Println("ip6tables command failed: ", args, err)
-		return "", err
+		errStr := fmt.Sprintf("ip6tables command %s failed %s output %s",
+			args, err, out)
+		log.Println(errStr)
+		return "", errors.New(errStr)
 	}
 	return string(out), nil
 }
