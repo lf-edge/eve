@@ -139,7 +139,7 @@ func handleVerifyImageStatusModify(ctxArg interface{}, key string,
 	log.Printf("handleVerifyImageStatusModify for %s\n",
 		status.Safename)
 	// Ignore if any Pending* flag is set
-	if status.PendingAdd || status.PendingModify || status.PendingDelete {
+	if status.Pending() {
 		log.Printf("handleVerifyImageStatusModify skipped due to Pending* for %s\n",
 			status.Safename)
 		return
@@ -150,6 +150,7 @@ func handleVerifyImageStatusModify(ctxArg interface{}, key string,
 		status.Safename)
 }
 
+// Note that this function returns the entry even if Pending* is set.
 func lookupVerifyImageStatus(ctx *zedmanagerContext,
 	safename string) *types.VerifyImageStatus {
 
@@ -182,6 +183,7 @@ func lookupVerifyImageStatusSha256Impl(ctx *zedmanagerContext,
 	return nil
 }
 
+// Note that this function returns the entry even if Pending* is set.
 func LookupVerifyImageStatusSha256(ctx *zedmanagerContext,
 	sha256 string) (types.VerifyImageStatus, error) {
 
@@ -197,6 +199,7 @@ func LookupVerifyImageStatusSha256(ctx *zedmanagerContext,
 	}
 }
 
+// Note that this function returns the entry even if Pending* is set.
 func LookupVerifyImageStatusAny(ctx *zedmanagerContext, safename string,
 	sha256 string) (types.VerifyImageStatus, error) {
 

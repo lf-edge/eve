@@ -216,7 +216,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		// Shortcut if image is already verified
 		vs, err := LookupVerifyImageStatusAny(ctx, safename,
 			sc.ImageSha256)
-		if err == nil && vs.State == types.DELIVERED {
+		if err == nil && !vs.Pending() && vs.State == types.DELIVERED {
 			log.Printf("doUpdate found verified image for %s sha %s\n",
 				safename, sc.ImageSha256)
 			if vs.Safename != safename {
@@ -252,7 +252,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 			changed = true
 		}
 		ds := lookupDownloaderStatus(ctx, safename)
-		if ds == nil {
+		if ds == nil || ds.Pending() {
 			log.Printf("lookupDownloaderStatus %s failed\n",
 				safename)
 			minState = types.DOWNLOAD_STARTED
@@ -321,7 +321,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 
 		vs, err := LookupVerifyImageStatusAny(ctx, safename,
 			sc.ImageSha256)
-		if err != nil {
+		if err != nil || vs.Pending() {
 			log.Printf("LookupVerifyImageStatusAny %s sha %s failed %v\n",
 				safename, sc.ImageSha256, err)
 			minState = types.DOWNLOADED
@@ -380,7 +380,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 	for i, ec := range config.OverlayNetworkList {
 		key := types.EidKey(config.UUIDandVersion, ec.IID)
 		es := lookupEIDStatus(ctx, key)
-		if es == nil {
+		if es == nil || es.Pending() {
 			log.Printf("lookupEIDStatus %s failed %s\n",
 				key)
 			eidsAllocated = false
@@ -422,7 +422,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 
 	// Check AppNetworkStatus
 	ns := lookupAppNetworkStatus(ctx, uuidStr)
-	if ns == nil {
+	if ns == nil || ns.Pending() {
 		log.Printf("Waiting for AppNetworkStatus for %s\n", uuidStr)
 		return changed
 	}
@@ -454,7 +454,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 
 	// Check DomainStatus; update AppInstanceStatus if error
 	ds := lookupDomainStatus(ctx, uuidStr)
-	if ds == nil {
+	if ds == nil || ds.Pending() {
 		log.Printf("Waiting for DomainStatus for %s\n", uuidStr)
 		return changed
 	}
@@ -519,7 +519,7 @@ func doRemove(ctx *zedmanagerContext, uuidStr string,
 	}
 	if !status.Activated {
 		c, d := doUninstall(ctx, uuidStr, status)
-		changed = changed ||  c
+		changed = changed || c
 		del = del || d
 	}
 	log.Printf("doRemove done for %s\n", uuidStr)
@@ -686,7 +686,7 @@ func doInactivateHalt(ctx *zedmanagerContext, uuidStr string,
 
 	// Check AppNetworkStatus
 	ns := lookupAppNetworkStatus(ctx, uuidStr)
-	if ns == nil {
+	if ns == nil || ns.Pending() {
 		log.Printf("Waiting for AppNetworkStatus for %s\n", uuidStr)
 		return changed
 	}
@@ -719,7 +719,7 @@ func doInactivateHalt(ctx *zedmanagerContext, uuidStr string,
 
 	// Check DomainStatus; update AppInstanceStatus if error
 	ds := lookupDomainStatus(ctx, uuidStr)
-	if ds == nil {
+	if ds == nil || ds.Pending() {
 		log.Printf("Waiting for DomainStatus for %s\n", uuidStr)
 		return changed
 	}

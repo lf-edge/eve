@@ -148,6 +148,7 @@ func lookupDomainConfig(ctx *zedmanagerContext, key string) *types.DomainConfig 
 	return &config
 }
 
+// Note that this function returns the entry even if Pending* is set.
 func lookupDomainStatus(ctx *zedmanagerContext, key string) *types.DomainStatus {
 	sub := ctx.subDomainStatus
 	st, _ := sub.Get(key)
@@ -198,7 +199,7 @@ func handleDomainStatusModify(ctxArg interface{}, key string,
 	}
 	log.Printf("handleDomainStatusModify for %s\n", key)
 	// Ignore if any Pending* flag is set
-	if status.PendingAdd || status.PendingModify || status.PendingDelete {
+	if status.Pending() {
 		log.Printf("handleDomainstatusModify skipped due to Pending* for %s\n",
 			key)
 		return
