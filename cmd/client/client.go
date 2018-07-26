@@ -62,6 +62,7 @@ type clientContext struct {
 //  device.key.pem		Device certificate/key created before this
 //  		     		client is started.
 //  uuid			Written by getUuid operation
+//  hardwaremodel		Written by getUuid if server returns a hardwaremodel
 //
 //
 func Run() {
@@ -123,6 +124,7 @@ func Run() {
 	deviceKeyName := identityDirname + "/device.key.pem"
 	serverFileName := identityDirname + "/server"
 	uuidFileName := identityDirname + "/uuid"
+	hardwaremodelFileName := identityDirname + "/hardwaremodel"
 
 	cms := zedcloud.GetCloudMetrics() // Need type of data
 	pub, err := pubsub.Publish(agentName, cms)
@@ -138,6 +140,11 @@ func Run() {
 		if err != nil {
 			log.Printf("Malformed UUID file ignored: %s\n", err)
 		}
+	}
+	var oldHardwaremodel string
+	b, err = ioutil.ReadFile(hardwaremodelFileName)
+	if err == nil {
+		oldHardwaremodel = strings.TrimSpace(string(b))
 	}
 
 	model := hardware.GetHardwareModel()
@@ -181,6 +188,8 @@ func Run() {
 
 		case <-t1.C:
 			// If we already know a uuid we can skip
+			// This might not set hardwaremodel in when upgrading
+			// an onboarded system without /config/hardwaremodel.
 			if clientCtx.usableAddressCount == 0 &&
 				operations["getUuid"] && oldUUID != nilUUID {
 
@@ -414,6 +423,8 @@ func Run() {
 
 	if operations["getUuid"] {
 		var devUUID uuid.UUID
+		var hardwaremodel string
+
 		doWrite := true
 		url := "/api/v1/edgedevice/config"
 		retryCount := 0
@@ -427,7 +438,8 @@ func Run() {
 			done, resp, contents = myGet(url, retryCount)
 			if done {
 				var err error
-				devUUID, err = parseUUID(url, resp, contents)
+
+				devUUID, hardwaremodel, err = parseConfig(url, resp, contents)
 				if err == nil {
 					// Inform ledmanager about config received from cloud
 					types.UpdateLedManagerConfig(4)
@@ -475,6 +487,31 @@ func Run() {
 				log.Fatal("WriteFile", err, uuidFileName)
 			}
 			log.Printf("Wrote UUID %s\n", devUUID)
+		}
+		doWrite = true
+		if hardwaremodel != "" {
+			if oldHardwaremodel != hardwaremodel {
+				log.Printf("Replacing existing hardwaremodel %s\n",
+					oldHardwaremodel)
+			} else {
+				log.Printf("No change to hardwaremodel %s\n",
+					hardwaremodel)
+				doWrite = false
+			}
+		} else {
+			log.Printf("Got config with no hardwaremodel\n")
+			doWrite = false
+		}
+
+		if doWrite {
+			// Note that no CRLF
+			b := []byte(hardwaremodel)
+			err = ioutil.WriteFile(hardwaremodelFileName, b, 0644)
+			if err != nil {
+				log.Fatal("WriteFile", err,
+					hardwaremodelFileName)
+			}
+			log.Printf("Wrote hardwaremodel %s\n", hardwaremodel)
 		}
 	}
 
