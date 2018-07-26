@@ -516,7 +516,7 @@ func aceToRules(ifname string, ace types.ACE, ipVer int, myIP string, appIP stri
 		}
 		if actionCount > 1 {
 			errStr := fmt.Sprintf("ACL with combination of Drop, Limit and/or PortMap rejected: %v",
-					ace)
+				ace)
 			log.Println(errStr)
 			return nil, errors.New(errStr)
 		}
