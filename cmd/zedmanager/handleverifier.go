@@ -4,8 +4,6 @@
 package zedmanager
 
 import (
-	"errors"
-	"fmt"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/types"
 	"log"
@@ -169,7 +167,7 @@ func lookupVerifyImageStatus(ctx *zedmanagerContext,
 	return &status
 }
 
-func lookupVerifyImageStatusSha256Impl(ctx *zedmanagerContext,
+func lookupVerifyImageStatusSha256(ctx *zedmanagerContext,
 	sha256 string) *types.VerifyImageStatus {
 
 	sub := ctx.subAppImgVerifierStatus
@@ -184,40 +182,22 @@ func lookupVerifyImageStatusSha256Impl(ctx *zedmanagerContext,
 }
 
 // Note that this function returns the entry even if Pending* is set.
-func LookupVerifyImageStatusSha256(ctx *zedmanagerContext,
-	sha256 string) (types.VerifyImageStatus, error) {
-
-	m := lookupVerifyImageStatusSha256Impl(ctx, sha256)
-	if m != nil {
-		errStr := fmt.Sprintf("LookupVerifyImageStatus: no sha %s",
-			sha256)
-		return types.VerifyImageStatus{}, errors.New(errStr)
-	} else {
-		log.Printf("LookupVerifyImageStatusSha256: found based on sha256 %s safename %s\n",
-			sha256, m.Safename)
-		return *m, nil
-	}
-}
-
-// Note that this function returns the entry even if Pending* is set.
-func LookupVerifyImageStatusAny(ctx *zedmanagerContext, safename string,
-	sha256 string) (types.VerifyImageStatus, error) {
+func lookupVerifyImageStatusAny(ctx *zedmanagerContext, safename string,
+	sha256 string) *types.VerifyImageStatus {
 
 	m := lookupVerifyImageStatus(ctx, safename)
 	if m != nil {
-		return *m, nil
+		return m
 	}
-	m = lookupVerifyImageStatusSha256Impl(ctx, sha256)
+	m = lookupVerifyImageStatusSha256(ctx, sha256)
 	if m != nil {
 		if debug {
-			log.Printf("LookupVerifyImageStatusAny: found based on sha %s\n",
+			log.Printf("lookupVerifyImageStatusAny: found based on sha %s\n",
 				sha256)
 		}
-		return *m, nil
-	} else {
-		return types.VerifyImageStatus{},
-			errors.New("No VerifyImageStatus for safename nor sha")
+		return m
 	}
+	return nil
 }
 
 func handleVerifyImageStatusDelete(ctxArg interface{}, key string,
