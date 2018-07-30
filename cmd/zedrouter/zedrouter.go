@@ -858,165 +858,6 @@ func handleCreate(ctx *zedrouterContext, key string,
 	// XXX
 	processOverlayNetworkConfig(ctx, config, ipsets, status)
 
-	/*
-	for i, olConfig := range config.OverlayNetworkList {
-		olNum := i + 1
-		if debug {
-			log.Printf("olNum %d network %s ACLs %v\n",
-				olNum, olConfig.Network.String(), olConfig.ACLs)
-		}
-		EID := olConfig.EID
-		bridgeName := "bo" + strconv.Itoa(olNum) + "x" +
-			strconv.Itoa(appNum)
-		vifName := "nbo" + strconv.Itoa(olNum) + "x" +
-			strconv.Itoa(appNum)
-		oLink, created, err := findOrCreateBridge(ctx, bridgeName,
-			olNum, appNum, olConfig.Network)
-		if err != nil {
-			status.PendingAdd = false
-			addError(ctx, &status, "findOrCreateBridge", err)
-			log.Printf("handleCreate done for %s\n",
-				config.DisplayName)
-			return
-		}
-		bridgeName = oLink.Name
-		bridgeMac := oLink.HardwareAddr
-		log.Printf("bridgeName %s MAC %s\n",
-			bridgeName, bridgeMac.String())
-
-		var olMac string // Handed to domU
-		if olConfig.AppMacAddr != nil {
-			olMac = olConfig.AppMacAddr.String()
-		} else {
-			olMac = "00:16:3e:01:" +
-				strconv.FormatInt(int64(olNum), 16) + ":" +
-				strconv.FormatInt(int64(appNum), 16)
-		}
-		log.Printf("olMac %s\n", olMac)
-
-		// Record what we have so far
-		olStatus := &status.OverlayNetworkList[olNum-1]
-		olStatus.Bridge = bridgeName
-		olStatus.BridgeMac = bridgeMac
-		olStatus.Vif = vifName
-		olStatus.Mac = olMac
-		olStatus.HostName = config.Key()
-
-		netconfig := lookupNetworkObjectConfig(ctx,
-			olConfig.Network.String())
-
-		// XXX need to get olAddr1 from bridge and record it
-		// XXX add AF_INET6 to getBridgeServiceIPv6Addr(ctx, olconfig.Network)
-		olAddr1 := "fd00::" + strconv.FormatInt(int64(olNum), 16) +
-			":" + strconv.FormatInt(int64(appNum), 16)
-		log.Printf("olAddr1 %s EID %s\n", olAddr1, EID)
-
-		olStatus.BridgeIPAddr = olAddr1
-
-		// XXX set sharedBridge base on bn prefix; remove created return
-		if created {
-			//    ip addr add ${olAddr1}/128 dev ${bridgeName}
-			addr, err := netlink.ParseAddr(olAddr1 + "/128")
-			if err != nil {
-				errStr := fmt.Sprintf("ParseAddr %s failed: %s",
-					olAddr1, err)
-				addError(ctx, &status, "handleCreate",
-					errors.New(errStr))
-			}
-			if err := netlink.AddrAdd(oLink, addr); err != nil {
-				errStr := fmt.Sprintf("AddrAdd %s failed: %s",
-					olAddr1, err)
-				addError(ctx, &status, "handleCreate",
-					errors.New(errStr))
-			}
-
-			//    ip -6 route add ${EID}/128 dev ${bridgeName}
-			_, ipnet, err := net.ParseCIDR(EID.String() + "/128")
-			if err != nil {
-				errStr := fmt.Sprintf("ParseCIDR %s failed: %v",
-					EID, err)
-				addError(ctx, &status, "handleCreate",
-					errors.New(errStr))
-			}
-			rt := netlink.Route{Dst: ipnet, LinkIndex: oLink.Index}
-			if err := netlink.RouteAdd(&rt); err != nil {
-				errStr := fmt.Sprintf("RouteAdd %s failed: %s",
-					EID, err)
-				addError(ctx, &status, "handleCreate",
-					errors.New(errStr))
-			}
-		}
-
-		// Write radvd configlet; start radvd
-		cfgFilename := "radvd." + bridgeName + ".conf"
-		cfgPathname := runDirname + "/" + cfgFilename
-
-		//    Start clean; kill just in case
-		//    pkill -u radvd -f radvd.${BRIDGENAME}.conf
-		stopRadvd(cfgFilename, false)
-		createRadvdConfiglet(cfgPathname, bridgeName)
-		startRadvd(cfgPathname, bridgeName)
-
-		// Create a hosts file for the overlay based on NameToEidList
-		// Directory is /var/run/zedrouter/hosts.${BRIDGENAME}
-		// Each hostname in a separate file in directory to facilitate
-		// adds and deletes
-		hostsDirpath := globalRunDirname + "/hosts." + bridgeName
-		if created {
-			deleteHostsConfiglet(hostsDirpath, false)
-			createHostsConfiglet(hostsDirpath, olConfig.NameToEidList)
-		} else {
-			// XXX add bulk add function? Separate create from add?
-			for _, ne := range olConfig.NameToEidList {
-				addIPToHostsConfiglet(hostsDirpath, ne.HostName,
-					ne.EIDs)
-			}
-		}
-		// Create default ipset with all the EIDs in NameToEidList
-		// Can be used in ACLs by specifying "alleids" as match.
-		deleteEidIpsetConfiglet(bridgeName, false)
-		createEidIpsetConfiglet(bridgeName, olConfig.NameToEidList,
-			EID.String())
-
-		netstatus := lookupNetworkObjectStatus(ctx,
-			olConfig.Network.String())
-		// Set up ACLs before we setup dnsmasq
-		if netstatus != nil {
-			err = updateNetworkACLConfiglet(ctx, netstatus)
-			if err != nil {
-				addError(ctx, &status, "updateNetworkACL", err)
-			}
-		} else {
-			err = createACLConfiglet(bridgeName, false, olConfig.ACLs, 6,
-				olAddr1, "", 0, netconfig)
-			if err != nil {
-				addError(ctx, &status, "createACL", err)
-			}
-		}
-		// XXX createDnsmasq assumes it can read this to get netstatus
-		publishAppNetworkStatus(ctx, &status)
-
-		// Start clean
-		cfgFilename = "dnsmasq." + bridgeName + ".conf"
-		cfgPathname = runDirname + "/" + cfgFilename
-		stopDnsmasq(cfgFilename, false)
-		// XXX need ipsets from all bn<N> users
-
-		createDnsmasqOverlayConfiglet(ctx, cfgPathname, bridgeName, olAddr1,
-			EID.String(), olMac, hostsDirpath,
-			config.Key(), ipsets, netconfig)
-		startDnsmasq(cfgPathname, bridgeName)
-
-		additionalInfo := generateAdditionalInfo(status, olConfig)
-		// Create LISP configlets for IID and EID/signature
-		createLispConfiglet(lispRunDirname, config.IsZedmanager,
-			olConfig.IID, olConfig.EID, olConfig.LispSignature,
-			deviceNetworkStatus, bridgeName, bridgeName,
-			additionalInfo, olConfig.LispServers,
-			ctx.separateDataPlane)
-	}
-	*/
-
 	for i, ulConfig := range config.UnderlayNetworkList {
 		ulNum := i + 1
 		if debug {
@@ -1305,24 +1146,6 @@ func processOverlayNetworkConfig(ctx *zedrouterContext,
 			// code take care of creating the Lisp configlets.
 			return
 		}
-		/*
-		additionalInfo := generateAdditionalInfo(status, olConfig)
-		adapters := getAdapters(serviceStatus.Adapter)
-		adapterMap := make(map[string]bool)
-		for _, adapter := range adapters {
-			adapterMap[adapter] = true
-		}
-		deviceNetworkParams := types.DeviceNetworkStatus{}
-		for _, uplink := range deviceNetworkStatus.UplinkStatus {
-			if _, ok := adapterMap[uplink.IfName]; ok == true {
-				deviceNetworkParams.UplinkStatus = 
-					append(deviceNetworkParams.UplinkStatus, uplink)
-			}
-		}
-		createLispEidConfiglet(lispRunDirname, serviceStatus.LispStatus.IID, olConfig.EID,
-			olConfig.LispSignature, deviceNetworkParams, bridgeName, bridgeName,
-			additionalInfo, olConfig.LispServers, ctx.separateDataPlane)
-			*/
 
 		createAndStartLisp(ctx, status, olConfig,
 			serviceStatus, lispRunDirname, bridgeName)
@@ -1334,6 +1157,11 @@ func createAndStartLisp(ctx *zedrouterContext,
 	olConfig types.OverlayNetworkConfig,
 	serviceStatus *types.NetworkServiceStatus,
 	lispRunDirname, bridgeName string) {
+	
+	if serviceStatus == nil {
+		log.Printf("createAndStartLisp: No service configured yet\n")
+		return
+	}
 
 	additionalInfo := generateAdditionalInfo(status, olConfig)
 	adapters := getAdapters(serviceStatus.Adapter)
