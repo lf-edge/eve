@@ -815,7 +815,7 @@ func doS3(ctx *downloaderContext, syncOp zedUpload.SyncOpType,
 }
 
 func doSftp(ctx *downloaderContext, syncOp zedUpload.SyncOpType,
-	apiKey string, password string, serverUrl string, maxsize uint64,
+	apiKey string, password string, serverUrl string, dpath string, maxsize uint64,
 	ipSrc net.IP, filename string, locFilename string) error {
 	auth := &zedUpload.AuthInput{
 		AuthType: "sftp",
@@ -826,7 +826,7 @@ func doSftp(ctx *downloaderContext, syncOp zedUpload.SyncOpType,
 	trType := zedUpload.SyncSftpTr
 
 	// create Endpoint
-	dEndPoint, err := ctx.dCtx.NewSyncerDest(trType, serverUrl, "", auth)
+	dEndPoint, err := ctx.dCtx.NewSyncerDest(trType, serverUrl, dpath, auth)
 	if err != nil {
 		log.Printf("NewSyncerDest failed: %s\n", err)
 		return err
@@ -834,7 +834,7 @@ func doSftp(ctx *downloaderContext, syncOp zedUpload.SyncOpType,
 	dEndPoint.WithSrcIpSelection(ipSrc)
 	var respChan = make(chan *zedUpload.DronaRequest)
 
-	log.Printf("syncOp for <%s>/<%s>\n", serverUrl, filename)
+	log.Printf("syncOp for <%s>/<%s>\n", dpath, filename)
 	// create Request
 	// Round up from bytes to Mbytes
 	maxMB := (maxsize + 1024*1024 - 1) / (1024 * 1024)
@@ -957,7 +957,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		case zconfig.DsType_DsSFTP.String():
 			serverUrl := strings.Split(config.DownloadURL,"/")[0]
 			err = doSftp(ctx, syncOp, config.ApiKey,
-				config.Password, serverUrl,
+				config.Password, serverUrl, config.Dpath,
 				config.Size, ipSrc, filename, locFilename)
 			if err != nil {
 				log.Printf("Source IP %s failed: %s\n",
