@@ -500,6 +500,7 @@ type NetworkObjectStatus struct {
 	BridgeNum     int
 	BridgeName    string // bn<N>
 	BridgeIPAddr  string
+	NameToEidList []NameToEid
 	// XXX Adapter        string // AKA Adapter - from NetworkServiceConfig???
 	// Collection of address assignments; from MAC address to IP address
 	// XXX record hostnames as well?

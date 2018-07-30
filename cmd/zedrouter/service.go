@@ -229,7 +229,7 @@ func doServiceActivate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	case types.NST_STRONGSWAN:
 		err = strongswanActivate(config, status, netstatus)
 	case types.NST_LISP:
-		err = lispActivate(config, status, netstatus)
+		err = lispActivate(ctx, config, status, netstatus)
 	case types.NST_BRIDGE:
 		err = bridgeActivate(config, status, netstatus)
 		if err != nil {
@@ -469,7 +469,8 @@ func lispCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	return nil
 }
 
-func lispActivate(config types.NetworkServiceConfig,
+func lispActivate(ctx *zedrouterContext,
+	config types.NetworkServiceConfig,
 	status *types.NetworkServiceStatus,
 	netstatus *types.NetworkObjectStatus) error {
 	// XXX We do not have enough information at point to write
@@ -484,9 +485,37 @@ func lispActivate(config types.NetworkServiceConfig,
 	// Restart as part of lispActivate should take care of activating latest
 	// config written to lisp, dnsmasq, radvd configlets.
 
-	// Create lisp.config and restart lispers.net
-	separateDataPlane := status.LispStatus.Experimental
-	updateLisp(lispRunDirname, deviceNetworkStatus.UplinkStatus, separateDataPlane)
+	// Go through the AppNetworkConfigs and create Lisp parameters that use
+	// this service.
+	sub := ctx.subAppNetworkConfig
+	items := sub.GetAll()
+
+	for _, anc := range items {
+		appNetConfig := cast.CastAppNetworkConfig(anc)
+		if len(appNetConfig.OverlayNetworkList) == 0 {
+			continue
+		}
+		key := appNetConfig.Key()
+		pub := ctx.pubAppNetworkStatus
+		ans, _ := pub.Get(key)
+
+		if ans == nil {
+			// Application Networks configuration might not have arrived yet.
+			// Let the Application network configuration handling code create
+			// lisp configlets for this overlay.
+			continue
+		}
+		appNetStatus := cast.CastAppNetworkStatus(ans)
+		for _, olconfig := range appNetConfig.OverlayNetworkList {
+			//olconfig := &appNetConfig.OverlayNetworkList[i]
+			if olconfig.Network == status.AppLink {
+				// We are interconnected
+				// Try and create the Lisp configlets
+				createAndStartLisp(ctx, appNetStatus,
+					olconfig, status, lispRunDirname, netstatus.BridgeName)
+			}
+		}
+	}
 
 	log.Printf("lispActivate(%s)\n", status.DisplayName)
 	return nil

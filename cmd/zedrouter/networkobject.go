@@ -199,8 +199,10 @@ func setBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) e
 				err)
 			return err
 		}
-	case types.NST_LISP:
-		ipAddr := "fd00::" + strconv.FormatInt(int64(status.BridgeNum), 16)
+	}
+	if status.Type == types.NT_CryptoEID {
+		ipAddr = "fd00::" + strconv.FormatInt(int64(status.BridgeNum), 16)
+		ipAddr += "/128"
 		log.Printf("setBridgeIPAddr: Bridge %s assigned IPv6 address %s\n",
 			status.BridgeName, ipAddr)
 	}
@@ -238,10 +240,7 @@ func setBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) e
 		return nil
 	}
 
-	if st == types.NST_LISP {
-		// EID (Lisp) bridges have /128 IPv6 addresses
-		ipAddr += "/128"
-	} else {
+	if status.Type != types.NT_CryptoEID {
 		ipAddr += "/24"
 	}
 	//    ip addr add ${ipAddr}/24 dev ${bridgeName}
@@ -256,7 +255,7 @@ func setBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) e
 	}
 
 	// create new radvd configuration and restart radvd if service type is Lisp
-	if st == types.NST_LISP {
+	if status.Type == types.NT_CryptoEID {
 		cfgFilename := "radvd." + status.BridgeName + ".conf"
 		cfgPathname := runDirname + "/" + cfgFilename
 
@@ -264,6 +263,9 @@ func setBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) e
 		stopRadvd(cfgFilename, false)
 		createRadvdConfiglet(cfgPathname, status.BridgeName)
 		startRadvd(cfgPathname, status.BridgeName)
+
+		// Create EID ipset
+		createEidIpsetConfiglet(status.BridgeName, status.NameToEidList, "")
 	}
 
 	return nil
@@ -427,6 +429,16 @@ func doNetworkModify(ctx *zedrouterContext, config types.NetworkObjectConfig,
 		status.ErrorTime = time.Now()
 		return
 	}
+	// For cryptoEid network delete the old EID ipset and create new EID ipset
+	if config.Type == types.NT_CryptoEID {
+		bridgeName := status.BridgeName
+		// Destroy old EID Ipset
+		deleteEidIpsetConfiglet(bridgeName, true)
+
+		// Create new ipset
+		createEidIpsetConfiglet(bridgeName, config.ZedServConfig.NameToEidList, "")
+	}
+
 	// Update other fields; potentially useful for testing
 	status.NetworkObjectConfig = config
 }
@@ -437,6 +449,22 @@ func doNetworkDelete(status *types.NetworkObjectStatus) {
 
 	if status.BridgeName == "" {
 		return
+	}
+	// For lisp networks delete radvd, dnsmasq configlets
+	if status.Type == types.NT_CryptoEID {
+		bridgeName := status.BridgeName
+		cfgFilename := "radvd." + bridgeName + ".conf"
+		cfgPathname := runDirname + "/" + cfgFilename
+		stopRadvd(cfgFilename, true)
+		deleteRadvdConfiglet(cfgPathname)
+
+		cfgFilename = "dnsmasq." + bridgeName + ".conf"
+		cfgPathname = runDirname + "/" + cfgFilename
+		stopDnsmasq(cfgFilename, true)
+		deleteDnsmasqConfiglet(cfgPathname)
+
+		// Destroy EID Ipset
+		deleteEidIpsetConfiglet(bridgeName, true)
 	}
 	attrs := netlink.NewLinkAttrs()
 	attrs.Name = status.BridgeName

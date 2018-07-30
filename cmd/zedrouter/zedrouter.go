@@ -454,6 +454,14 @@ func publishAppNetworkStatus(ctx *zedrouterContext,
 	pub.Publish(key, status)
 }
 
+func publishNetworkObjectStatus(ctx *zedrouterContext,
+status *types.NetworkObjectStatus) {
+	key := status.Key()
+	log.Printf("publishNetworkObjectStatus(%s)\n", key)
+	pub := ctx.pubNetworkObjectStatus
+	pub.Publish(key, status)
+}
+
 func unpublishAppNetworkStatus(ctx *zedrouterContext,
 	status *types.AppNetworkStatus) {
 
@@ -1145,6 +1153,12 @@ func processOverlayNetworkConfig(ctx *zedrouterContext,
 				olNum, olConfig.Network.String(), olConfig.ACLs)
 		}
 		netconfig := lookupNetworkObjectConfig(ctx, olConfig.Network.String())
+		if netconfig == nil {
+			log.Printf("processOverlayNetworkConfig: Network %s that the overlay" +
+				" uses is not present in configuration database\n",
+				olConfig.Network.String())
+			continue
+		}
 
 		// Fetch the network that this overlay is attached to
 		netstatus := lookupNetworkObjectStatus(ctx, olConfig.Network.String())
@@ -1218,11 +1232,31 @@ func processOverlayNetworkConfig(ctx *zedrouterContext,
 			addIPToHostsConfiglet(hostsDirpath, ne.HostName, ne.EIDs)
 		}
 
-		// Create default ipset with all the EIDs in NameToEidList
-		// Can be used in ACLs by specifying "alleids" as match.
-		deleteEidIpsetConfiglet(bridgeName, false)
-		createEidIpsetConfiglet(bridgeName, olConfig.NameToEidList,
-			EID.String())
+		brNameToEidList := []types.NameToEid{}
+		brNameToEidList = append(brNameToEidList, netstatus.NameToEidList...)
+
+		// Add the current overlay's EID if not present in list.
+		// Check for any new entries in the current overlay's NameToEid list.
+		// If the bridge's NameToEid list does not already have them, add now.
+		for _, nameToEid := range olConfig.NameToEidList {
+			// XXX Assuming that App will have only one EID per IID
+			if !containsEID(brNameToEidList, nameToEid.EIDs[0]) {
+				brNameToEidList = append(brNameToEidList, nameToEid)
+			}
+		}
+
+		if len(netstatus.NameToEidList) == 0 {
+			deleteEidIpsetConfiglet(bridgeName, false)
+			createEidIpsetConfiglet(bridgeName, brNameToEidList, EID.String())
+		} else {
+			// Overlays in a particular IID should all ideally have the same
+			// NameToEidList. We check for differences and add just in case.
+			updateEidIpsetConfiglet(bridgeName,
+				netstatus.NameToEidList, brNameToEidList)
+		}
+		netstatus.NameToEidList = append(netstatus.NameToEidList,
+			brNameToEidList...)
+		publishNetworkObjectStatus(ctx, netstatus)
 
 		// Set up ACLs before we setup dnsmasq
 		if netstatus != nil {
@@ -1258,9 +1292,21 @@ func processOverlayNetworkConfig(ctx *zedrouterContext,
 			config.Key(), ipsets, netconfig)
 		startDnsmasq(cfgPathname, bridgeName)
 
-		additionalInfo := generateAdditionalInfo(status, olConfig)
 		// Create LISP configlets for IID and EID/signature
 		serviceStatus := lookupAppLink(ctx, olConfig.Network)
+		if serviceStatus == nil {
+			// Lisp service might not have arrived as part of configuration.
+			// Bail now and let the service activation take care of creating
+			// Lisp configlets and re-start lispers.net
+			return
+		}
+		if serviceStatus.Activated == false {
+			// Lisp service is not activate yet. Let the Lisp service activation
+			// code take care of creating the Lisp configlets.
+			return
+		}
+		/*
+		additionalInfo := generateAdditionalInfo(status, olConfig)
 		adapters := getAdapters(serviceStatus.Adapter)
 		adapterMap := make(map[string]bool)
 		for _, adapter := range adapters {
@@ -1273,10 +1319,38 @@ func processOverlayNetworkConfig(ctx *zedrouterContext,
 					append(deviceNetworkParams.UplinkStatus, uplink)
 			}
 		}
-		createLispEidConfiglet(lispRunDirname, olConfig.IID, olConfig.EID,
+		createLispEidConfiglet(lispRunDirname, serviceStatus.LispStatus.IID, olConfig.EID,
 			olConfig.LispSignature, deviceNetworkParams, bridgeName, bridgeName,
 			additionalInfo, olConfig.LispServers, ctx.separateDataPlane)
+			*/
+
+		createAndStartLisp(ctx, status, olConfig,
+			serviceStatus, lispRunDirname, bridgeName)
 	}
+}
+
+func createAndStartLisp(ctx *zedrouterContext,
+	status types.AppNetworkStatus,
+	olConfig types.OverlayNetworkConfig,
+	serviceStatus *types.NetworkServiceStatus,
+	lispRunDirname, bridgeName string) {
+
+	additionalInfo := generateAdditionalInfo(status, olConfig)
+	adapters := getAdapters(serviceStatus.Adapter)
+	adapterMap := make(map[string]bool)
+	for _, adapter := range adapters {
+		adapterMap[adapter] = true
+	}
+	deviceNetworkParams := types.DeviceNetworkStatus{}
+	for _, uplink := range deviceNetworkStatus.UplinkStatus {
+		if _, ok := adapterMap[uplink.IfName]; ok == true {
+			deviceNetworkParams.UplinkStatus = 
+				append(deviceNetworkParams.UplinkStatus, uplink)
+		}
+	}
+	createLispEidConfiglet(lispRunDirname, serviceStatus.LispStatus.IID, olConfig.EID,
+		olConfig.LispSignature, deviceNetworkParams, bridgeName, bridgeName,
+		additionalInfo, olConfig.LispServers, ctx.separateDataPlane)
 }
 
 var nilUUID uuid.UUID // Really a constant
@@ -1563,8 +1637,12 @@ func handleModify(ctx *zedrouterContext, key string,
 
 		// Default EID ipset
 		// XXX shared with others
+
+		// XXX EID Ipset handling should happen as part of NetworkObjectConfig processing
+		/*
 		updateEidIpsetConfiglet(bridgeName, olStatus.NameToEidList,
 			olConfig.NameToEidList)
+			*/
 
 		netstatus := lookupNetworkObjectStatus(ctx,
 			olConfig.Network.String())
@@ -1602,6 +1680,14 @@ func handleModify(ctx *zedrouterContext, key string,
 			startDnsmasq(cfgPathname, bridgeName)
 		}
 
+		serviceStatus := lookupAppLink(ctx, olConfig.Network)
+		if serviceStatus == nil {
+			// Lisp service might not have arrived as part of configuration.
+			// Bail now and let the service activation take care of creating
+			// Lisp configlets and re-start lispers.net
+			return
+		}
+
 		additionalInfo := generateAdditionalInfo(*status, olConfig)
 
 		// Update any signature changes
@@ -1609,7 +1695,8 @@ func handleModify(ctx *zedrouterContext, key string,
 
 		// Create LISP configlets for IID and EID/signature
 		// XXX shared with others???
-		updateLispConfiglet(lispRunDirname, false, olConfig.IID,
+		updateLispConfiglet(lispRunDirname, false,
+			serviceStatus.LispStatus.IID,
 			olConfig.EID, olConfig.LispSignature,
 			deviceNetworkStatus, bridgeName, bridgeName,
 			additionalInfo, olConfig.LispServers, ctx.separateDataPlane)
@@ -1850,29 +1937,23 @@ func handleDelete(ctx *zedrouterContext, key string,
 			}
 			netconfig := lookupNetworkObjectConfig(ctx,
 				olStatus.Network.String())
+			if netconfig == nil {
+				log.Printf("Network %s already deleted\n", olStatus.Network.String())
+			}
 
 			// XXX need IPv6 allocate/free to do same as for ulConfig
 			// XXX createDnsmasq assumes it can read this to get netstatus
 			publishAppNetworkStatus(ctx, status)
 
-			// radvd cleanup
-			// XXX not all of it; see dnsmasq below; if sharedBridge
-			cfgFilename := "radvd." + bridgeName + ".conf"
-			cfgPathname := runDirname + "/" + cfgFilename
-			stopRadvd(cfgFilename, true)
-			deleteRadvdConfiglet(cfgPathname)
-
-			// dnsmasq cleanup
-			// XXX not all of it - see ulStatus below
-			cfgFilename = "dnsmasq." + bridgeName + ".conf"
-			cfgPathname = runDirname + "/" + cfgFilename
-			stopDnsmasq(cfgFilename, true)
-			deleteDnsmasqConfiglet(cfgPathname)
+			// Radvd, Dnsmasq configlets will be removed
+			// as part of Network object deletion.
 
 			// Delete ACLs
 			netstatus := lookupNetworkObjectStatus(ctx,
 				olStatus.Network.String())
 			if netstatus != nil {
+				// Network bridge still exists. It means there are
+				// other ovelays still using this bridge network.
 				err := updateNetworkACLConfiglet(ctx, netstatus)
 				if err != nil {
 					addError(ctx, status, "updateNetworkACL", err)
@@ -1901,7 +1982,12 @@ func handleDelete(ctx *zedrouterContext, key string,
 			}
 			// Default EID ipset
 			// XXX not all of it
+			// TODO: Only the EID of current overlay should be removed.
+
+			// Eid Ipset updation/deletion should happen as part of NetworkObjectConfig processing
+			/*
 			deleteEidIpsetConfiglet(bridgeName, true)
+			*/
 		}
 
 		// XXX check if any IIDs are now unreferenced and delete them
