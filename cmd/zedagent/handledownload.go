@@ -69,7 +69,7 @@ func updateDownloaderStatus(ctx *zedagentContext,
 		objType, key, status.State)
 
 	// Ignore if any Pending* flag is set
-	if status.PendingAdd || status.PendingModify || status.PendingDelete {
+	if status.Pending() {
 		log.Printf("updateDownloaderStatus for %s, Skipping due to Pending*\n", key)
 		return
 	}
@@ -113,6 +113,7 @@ func removeDownloaderConfig(ctx *zedagentContext, objType string, safename strin
 	log.Printf("removeDownloaderConfig(%s/%s) done\n", objType, safename)
 }
 
+// Note that this function returns the entry even if Pending* is set.
 func lookupDownloaderStatus(ctx *zedagentContext, objType string,
 	safename string) *types.DownloaderStatus {
 
@@ -162,7 +163,9 @@ func checkStorageDownloadStatus(ctx *zedagentContext,
 			vs := lookupVerificationStatusAny(ctx, objType,
 				safename, sc.ImageSha256)
 
-			if vs != nil && vs.State == types.DELIVERED {
+			if vs != nil && !vs.Pending() &&
+				vs.State == types.DELIVERED {
+
 				log.Printf(" %s, exists verified with sha %s\n",
 					safename, sc.ImageSha256)
 				if vs.Safename != safename {
@@ -199,7 +202,7 @@ func checkStorageDownloadStatus(ctx *zedagentContext,
 		}
 
 		ds := lookupDownloaderStatus(ctx, objType, safename)
-		if ds == nil {
+		if ds == nil || ds.Pending() {
 			log.Printf("LookupDownloaderStatus %s not yet\n",
 				safename)
 			ret.MinState = types.DOWNLOAD_STARTED

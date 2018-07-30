@@ -86,3 +86,7 @@ func (status VerifyImageStatus) CheckPendingModify() bool {
 func (status VerifyImageStatus) CheckPendingDelete() bool {
 	return status.PendingDelete
 }
+
+func (status VerifyImageStatus) Pending() bool {
+	return status.PendingAdd || status.PendingModify || status.PendingDelete
+}
