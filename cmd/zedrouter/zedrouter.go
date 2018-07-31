@@ -1144,7 +1144,7 @@ func processOverlayNetworkConfig(ctx *zedrouterContext,
 		if serviceStatus.Activated == false {
 			// Lisp service is not activate yet. Let the Lisp service activation
 			// code take care of creating the Lisp configlets.
-			return
+			continue
 		}
 
 		createAndStartLisp(ctx, status, olConfig,
@@ -1513,7 +1513,7 @@ func handleModify(ctx *zedrouterContext, key string,
 			// Lisp service might not have arrived as part of configuration.
 			// Bail now and let the service activation take care of creating
 			// Lisp configlets and re-start lispers.net
-			return
+			continue
 		}
 
 		additionalInfo := generateAdditionalInfo(*status, olConfig)
@@ -1794,12 +1794,6 @@ func handleDelete(ctx *zedrouterContext, key string,
 				}
 			}
 
-			// Delete LISP configlets
-			deleteLispConfiglet(lispRunDirname, false,
-				olStatus.IID, olStatus.EID,
-				deviceNetworkStatus,
-				ctx.separateDataPlane)
-
 			// Delete overlay hosts file or directory
 			hostsDirpath := globalRunDirname + "/hosts." + bridgeName
 			if sharedBridge {
@@ -1808,6 +1802,22 @@ func handleDelete(ctx *zedrouterContext, key string,
 			} else {
 				deleteHostsConfiglet(hostsDirpath, true)
 			}
+
+			// XXX check if the service configuration exists.
+			// If service does not exist overlays would not have been created
+			serviceStatus := lookupAppLink(ctx, olStatus.Network)
+			if serviceStatus == nil {
+				// Lisp service might already have been deleted.
+				// As part of Lisp service deletion, we delete all overlays.
+				continue
+			}
+
+			// Delete LISP configlets
+			deleteLispConfiglet(lispRunDirname, false,
+				olStatus.IID, olStatus.EID,
+				deviceNetworkStatus,
+				ctx.separateDataPlane)
+
 			// Default EID ipset
 			// XXX not all of it
 			// TODO: Only the EID of current overlay should be removed.

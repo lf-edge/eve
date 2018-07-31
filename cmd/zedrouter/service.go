@@ -97,7 +97,7 @@ func handleNetworkServiceDelete(ctxArg interface{}, key string,
 		doServiceInactivate(ctx, status)
 		pub.Publish(status.Key(), &status)
 	}
-	doServiceDelete(status)
+	doServiceDelete(ctx, status)
 	status.PendingDelete = false
 	pub.Publish(status.Key(), &status)
 	pub.Unpublish(status.Key())
@@ -288,7 +288,7 @@ func doServiceInactivate(ctx *zedrouterContext,
 	case types.NST_STRONGSWAN:
 		strongswanInactivate(status, netstatus)
 	case types.NST_LISP:
-		lispInactivate(status, netstatus)
+		lispInactivate(ctx, status, netstatus)
 	case types.NST_BRIDGE:
 		bridgeInactivate(status, netstatus)
 		updateBridgeIPAddr(ctx, netstatus)
@@ -304,7 +304,7 @@ func doServiceInactivate(ctx *zedrouterContext,
 	}
 }
 
-func doServiceDelete(status *types.NetworkServiceStatus) {
+func doServiceDelete(ctx *zedrouterContext, status *types.NetworkServiceStatus) {
 	log.Printf("doServiceDelete NetworkService key %s type %d\n",
 		status.UUID, status.Type)
 	// Anything to do except the inactivate already done?
@@ -312,7 +312,7 @@ func doServiceDelete(status *types.NetworkServiceStatus) {
 	case types.NST_STRONGSWAN:
 		strongswanDelete(status)
 	case types.NST_LISP:
-		lispDelete(status)
+		lispDelete(ctx, status)
 	case types.NST_BRIDGE:
 		bridgeDelete(status)
 	case types.NST_NAT:
@@ -521,7 +521,8 @@ func lispActivate(ctx *zedrouterContext,
 	return nil
 }
 
-func lispInactivate(status *types.NetworkServiceStatus,
+func lispInactivate(ctx *zedrouterContext,
+	status *types.NetworkServiceStatus,
 	netstatus *types.NetworkObjectStatus) {
 
 	// XXX What should we do?
@@ -529,16 +530,47 @@ func lispInactivate(status *types.NetworkServiceStatus,
 	// Should we just remove all database-mappings, IIDs and interface{}
 	// stanzas corresponding to this service and bridge. Then restart lisp??
 
+	// Go through the AppNetworkConfigs and create Lisp parameters that use
+	// this service.
+	pub := ctx.pubAppNetworkStatus
+	items := pub.GetAll()
+
+	for _, ans := range items {
+		if ans == nil {
+			continue
+		}
+		appNetStatus := cast.CastAppNetworkStatus(ans)
+		if len(appNetStatus.OverlayNetworkList) == 0 {
+			continue
+		}
+		for _, olStatus := range appNetStatus.OverlayNetworkList {
+			if olStatus.Network == status.AppLink {
+				// XXX What should we pass for deviceNetworkStatus???
+				deleteLispConfiglet(lispRunDirname, false,
+					status.LispStatus.IID, olStatus.EID,
+					deviceNetworkStatus, ctx.separateDataPlane)
+			}
+		}
+	}
+
+
 	log.Printf("lispInactivate(%s)\n", status.DisplayName)
 }
 
-func lispDelete(status *types.NetworkServiceStatus) {
+func lispDelete(ctx *zedrouterContext, status *types.NetworkServiceStatus) {
 	// XXX What should we do?
 	// TODO:
 	// Do something similar to lispInactivate??
 	// Or should we do something similar to handleDelete in zedrouter.go??
 	// We have the EIDs as part of AppNetworkStatus and IID as part of NetworkServiceStatus.
 	// We will have to bring them together somehow to clear the lisp configlets, ACLs etc.
+	netstatus := lookupNetworkObjectStatus(ctx, status.AppLink.String())
+	if netstatus == nil {
+		// Should have been caught at time of activate
+		log.Printf("No AppLink for %s", status.Key())
+		return
+	}
+	lispInactivate(ctx, status, netstatus)
 
 	log.Printf("lispDelete(%s)\n", status.DisplayName)
 }

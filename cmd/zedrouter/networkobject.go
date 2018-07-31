@@ -77,7 +77,7 @@ func handleNetworkObjectDelete(ctxArg interface{}, key string,
 	}
 	status.PendingDelete = true
 	pub.Publish(status.Key(), *status)
-	doNetworkDelete(status)
+	doNetworkDelete(ctx, status)
 	status.PendingDelete = false
 	pub.Publish(status.Key(), *status)
 	pub.Unpublish(status.Key())
@@ -443,14 +443,16 @@ func doNetworkModify(ctx *zedrouterContext, config types.NetworkObjectConfig,
 	status.NetworkObjectConfig = config
 }
 
-func doNetworkDelete(status *types.NetworkObjectStatus) {
+func doNetworkDelete(ctx *zedrouterContext,
+	status *types.NetworkObjectStatus) {
 	log.Printf("doNetworkDelete NetworkObjectStatus key %s type %d\n",
 		status.UUID, status.Type)
 
 	if status.BridgeName == "" {
 		return
 	}
-	// For lisp networks delete radvd, dnsmasq configlets
+	// For lisp networks delete radvd, dnsmasq configlets,
+	// dns hosts files and ACLs attached.
 	if status.Type == types.NT_CryptoEID {
 		bridgeName := status.BridgeName
 		cfgFilename := "radvd." + bridgeName + ".conf"
@@ -465,6 +467,37 @@ func doNetworkDelete(status *types.NetworkObjectStatus) {
 
 		// Destroy EID Ipset
 		deleteEidIpsetConfiglet(bridgeName, true)
+
+		// XXX Delte hosts configlet also
+		hostsDirpath := globalRunDirname + "/hosts." + bridgeName
+		deleteHostsConfiglet(hostsDirpath, true)
+
+		// Delete ACLs attached to this bridge
+		// Go through app instances using this bridge for Lisp
+		// and gather the list of ACLS attached.
+		pub := ctx.pubAppNetworkStatus
+		items := pub.GetAll()
+		acls := []types.ACE{}
+		for _, ans := range items {
+			if ans == nil {
+				continue
+			}
+			appNetStatus := cast.CastAppNetworkStatus(ans)
+			if len(appNetStatus.OverlayNetworkList) == 0 {
+				continue
+			}
+			for _, olStatus := range appNetStatus.OverlayNetworkList {
+				if olStatus.Network == status.UUID {
+					acls = append(acls, olStatus.ACLs...)
+				}
+			}
+		}
+
+		err := deleteACLConfiglet(bridgeName, false, acls,
+				6, status.BridgeIPAddr, "", 0, nil)
+		if err != nil {
+			log.Printf("doNetworkDelete: deleteACL failed: %s\n", err)
+		}
 	}
 	attrs := netlink.NewLinkAttrs()
 	attrs.Name = status.BridgeName
