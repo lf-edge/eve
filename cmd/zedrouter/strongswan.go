@@ -90,6 +90,11 @@ func strongswanCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	status.OpaqueStatus = string(bytes)
 	log.Printf("strongswanCreate :%s\n", status.OpaqueStatus)
 
+	// reset any previous config
+	if err := ipSecServiceInactivate(vpnLocalConfig); err != nil {
+		return err
+	}
+
 	// create the ipsec config files, tunnel and filter-rules
 	switch vpnConfig.VpnRole {
 	case AwsVpnClient:
@@ -504,6 +509,10 @@ func onPremStrongSwanClientCreate(vpnLocalConfig types.VpnServiceLocalConfig) er
 		tunnelConfig.Name, gatewayConfig.IpAddr,
 		gatewayConfig.SubnetBlock)
 
+	if err := charonRouteConfigCreate(); err != nil {
+		return err
+	}
+
 	// create ipsec.conf
 	if err := ipSecServiceConfigCreate(vpnLocalConfig); err != nil {
 		return err
@@ -584,7 +593,6 @@ func onPremStrongSwanClientActivate(vpnLocalConfig types.VpnServiceLocalConfig) 
 }
 
 func onPremStrongSwanClientInactivate(vpnLocalConfig types.VpnServiceLocalConfig) error {
-
 	if err := ipSecServiceInactivate(vpnLocalConfig); err != nil {
 		return err
 	}
@@ -598,9 +606,13 @@ func onPremStrongSwanServerCreate(vpnLocalConfig types.VpnServiceLocalConfig) er
 	gatewayConfig := vpnLocalConfig.GatewayConfig
 	clientConfig := vpnLocalConfig.ClientConfigList[0]
 	tunnelConfig := clientConfig.TunnelConfig
+
 	log.Printf("StrongSwan Vpn Server Create %s:%s, %s\n",
 		tunnelConfig.Name, gatewayConfig.IpAddr, gatewayConfig.SubnetBlock)
 
+	if err := charonRouteConfigCreate(); err != nil {
+		return err
+	}
 	// create ipsec.conf
 	if err := ipSecServiceConfigCreate(vpnLocalConfig); err != nil {
 		return err
