@@ -107,3 +107,7 @@ func (status EIDStatus) CheckPendingModify() bool {
 func (status EIDStatus) CheckPendingDelete() bool {
 	return status.PendingDelete
 }
+
+func (status EIDStatus) Pending() bool {
+	return status.PendingAdd || status.PendingModify || status.PendingDelete
+}

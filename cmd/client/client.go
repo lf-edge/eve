@@ -62,6 +62,7 @@ type clientContext struct {
 //  device.key.pem		Device certificate/key created before this
 //  		     		client is started.
 //  uuid			Written by getUuid operation
+//  hardwaremodel		Written by getUuid if server returns a hardwaremodel
 //
 //
 func Run() {
@@ -123,6 +124,7 @@ func Run() {
 	deviceKeyName := identityDirname + "/device.key.pem"
 	serverFileName := identityDirname + "/server"
 	uuidFileName := identityDirname + "/uuid"
+	hardwaremodelFileName := identityDirname + "/hardwaremodel"
 
 	cms := zedcloud.GetCloudMetrics() // Need type of data
 	pub, err := pubsub.Publish(agentName, cms)
@@ -139,12 +141,22 @@ func Run() {
 			log.Printf("Malformed UUID file ignored: %s\n", err)
 		}
 	}
+	var oldHardwaremodel string
+	var model string
+	b, err = ioutil.ReadFile(hardwaremodelFileName)
+	if err == nil {
+		oldHardwaremodel = strings.TrimSpace(string(b))
+		model = oldHardwaremodel
+	} else {
+		model = hardware.GetHardwareModel()
+	}
 
-	model := hardware.GetHardwareModel()
-	DNCFilename := fmt.Sprintf("%s/%s.json", DNCDirname, model)
 	// To better handle new hardware platforms log and blink if we
 	// don't have a DeviceNetworkConfig
+	// After some tries we fall back to default.json which is eth0
+	tries := 0
 	for {
+		DNCFilename := fmt.Sprintf("%s/%s.json", DNCDirname, model)
 		if _, err := os.Stat(DNCFilename); err == nil {
 			break
 		}
@@ -154,6 +166,11 @@ func Run() {
 		log.Printf("You need to create this file for this hardware: %s\n",
 			DNCFilename)
 		time.Sleep(time.Second)
+		tries += 1
+		if tries == 120 {	// Two minutes
+			log.Printf("Falling back to using default.json\n")
+			model = "default.json"
+		}
 	}
 
 	clientCtx := clientContext{manufacturerModel: model}
@@ -181,6 +198,10 @@ func Run() {
 
 		case <-t1.C:
 			// If we already know a uuid we can skip
+			// This might not set hardwaremodel when upgrading
+			// an onboarded system without /config/hardwaremodel.
+			// Unlikely to have a network outage during that
+			// upgrade *and* require an override.
 			if clientCtx.usableAddressCount == 0 &&
 				operations["getUuid"] && oldUUID != nilUUID {
 
@@ -414,6 +435,8 @@ func Run() {
 
 	if operations["getUuid"] {
 		var devUUID uuid.UUID
+		var hardwaremodel string
+
 		doWrite := true
 		url := "/api/v1/edgedevice/config"
 		retryCount := 0
@@ -427,15 +450,26 @@ func Run() {
 			done, resp, contents = myGet(url, retryCount)
 			if done {
 				var err error
-				devUUID, err = parseUUID(url, resp, contents)
+
+				devUUID, hardwaremodel, err = parseConfig(url, resp, contents)
 				if err == nil {
+					// Inform ledmanager about config received from cloud
+					types.UpdateLedManagerConfig(4)
 					continue
 				}
 				// Keep on trying until it parses
 				done = false
 				log.Printf("Failed parsing uuid: %s\n",
 					err)
+				continue
 			}
+			if oldUUID != nilUUID && retryCount > 2 {
+				log.Printf("Sticking with old UUID\n")
+				devUUID = oldUUID
+				done = true
+				continue
+			}
+
 			retryCount += 1
 			delay = 2 * (delay + time.Second)
 			if delay > maxDelay {
@@ -443,6 +477,7 @@ func Run() {
 			}
 			log.Printf("Retrying config in %d seconds\n",
 				delay/time.Second)
+
 		}
 		if oldUUID != nilUUID {
 			if oldUUID != devUUID {
@@ -456,8 +491,6 @@ func Run() {
 		} else {
 			log.Printf("Got config with UUID %s\n", devUUID)
 		}
-		// Inform ledmanager about config received from cloud
-		types.UpdateLedManagerConfig(4)
 
 		if doWrite {
 			b := []byte(fmt.Sprintf("%s\n", devUUID))
@@ -466,6 +499,31 @@ func Run() {
 				log.Fatal("WriteFile", err, uuidFileName)
 			}
 			log.Printf("Wrote UUID %s\n", devUUID)
+		}
+		doWrite = true
+		if hardwaremodel != "" {
+			if oldHardwaremodel != hardwaremodel {
+				log.Printf("Replacing existing hardwaremodel %s\n",
+					oldHardwaremodel)
+			} else {
+				log.Printf("No change to hardwaremodel %s\n",
+					hardwaremodel)
+				doWrite = false
+			}
+		} else {
+			log.Printf("Got config with no hardwaremodel\n")
+			doWrite = false
+		}
+
+		if doWrite {
+			// Note that no CRLF
+			b := []byte(hardwaremodel)
+			err = ioutil.WriteFile(hardwaremodelFileName, b, 0644)
+			if err != nil {
+				log.Fatal("WriteFile", err,
+					hardwaremodelFileName)
+			}
+			log.Printf("Wrote hardwaremodel %s\n", hardwaremodel)
 		}
 	}
 
