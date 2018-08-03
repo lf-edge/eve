@@ -37,6 +37,7 @@ func getSftpClient(host, user, pass string) (*sftp.Client, error) {
 					return answers, nil
 				}),
 		},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 	}
 
 	// We break this up into a DNS lookup and a Dial only to be able to detect
