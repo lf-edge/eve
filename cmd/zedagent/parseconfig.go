@@ -446,6 +446,9 @@ var appinstancePrevConfigHash []byte
 
 func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 	getconfigCtx *getconfigContext) {
+	if debug {
+		log.Printf("EdgeDevConfig: %v\n", *config)
+	}
 
 	var appInstance = types.AppInstanceConfig{}
 
@@ -831,7 +834,7 @@ func publishNetworkServiceConfig(ctx *getconfigContext,
 				mapServer := types.MapServer {
 					ServiceType: types.MapServerType(ms.ZsType),
 					NameOrIp: ms.NameOrIp,
-					Credential: ms.NameOrIp,
+					Credential: ms.Credential,
 				}
 				mapServers = append(mapServers, mapServer)
 			}
@@ -987,6 +990,9 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 				intfEnt.NetworkId)
 			continue
 		}
+		if netEnt.Type != zconfig.NetworkType_CryptoEID {
+			continue
+		}
 		uuid, err := uuid.FromString(netEnt.Id)
 		if err != nil {
 			log.Printf("OverlayNetworkConfig: Malformed UUID ignored: %s\n",
@@ -1002,7 +1008,7 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 		if intfEnt.MacAddress != "" {
 			olCfg.AppMacAddr, err = net.ParseMAC(intfEnt.MacAddress)
 			if err != nil {
-				log.Printf("parseUnderlayNetworkConfig: bad MAC %s: %s\n",
+				log.Printf("parseOverlayNetworkConfig: bad MAC %s: %s\n",
 					intfEnt.MacAddress, err)
 				// XXX report error?
 			}

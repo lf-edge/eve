@@ -1127,9 +1127,14 @@ func processOverlayNetworkConfig(ctx *zedrouterContext,
 		stopDnsmasq(cfgFilename, false)
 		// XXX need ipsets from all bn<N> users
 
+		bridgeIP, _, err := net.ParseCIDR(netstatus.BridgeIPAddr)
+		if err != nil {
+			log.Printf("processOverlayNetworkConfig: Bridge %s has invalid ip address %s\n",
+				bridgeName, netstatus.BridgeIPAddr)
+				continue
+		}
 		createDnsmasqOverlayConfiglet(ctx, cfgPathname, bridgeName,
-			netstatus.BridgeIPAddr,
-			EID.String(), olMac, hostsDirpath,
+			bridgeIP.String(), EID.String(), olMac, hostsDirpath,
 			config.Key(), ipsets, netconfig)
 		startDnsmasq(cfgPathname, bridgeName)
 
@@ -1139,11 +1144,15 @@ func processOverlayNetworkConfig(ctx *zedrouterContext,
 			// Lisp service might not have arrived as part of configuration.
 			// Bail now and let the service activation take care of creating
 			// Lisp configlets and re-start lispers.net
+			log.Printf("processOverlayNetworkConfig: Network %s is not attached to any service\n",
+				netconfig.Key())
 			return
 		}
 		if serviceStatus.Activated == false {
 			// Lisp service is not activate yet. Let the Lisp service activation
 			// code take care of creating the Lisp configlets.
+			log.Printf("processOverlayNetworkConfig: Network service %s in not activated.\n",
+				serviceStatus.Key())
 			continue
 		}
 

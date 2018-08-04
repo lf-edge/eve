@@ -444,20 +444,20 @@ func lispCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	// XXX Create Lisp IID & map-server configlets here
 	iid := config.LispConfig.IID
 	mapServers := config.LispConfig.MapServers
-	cfgPathnameIID := lispRunDirname + "/"
+	cfgPathnameIID := lispRunDirname + "/" +
 		strconv.FormatUint(uint64(iid), 10)
 	file, err := os.Create(cfgPathnameIID)
 	if err != nil {
-		log.Fatal("os.Create for ", cfgPathnameIID, err)
+		//log.Fatal("os.Create for ", cfgPathnameIID, err)
+		log.Printf("os.Create for ", cfgPathnameIID, err)
+		return err
 	}
 	defer file.Close()
 
 	// Write map-servers to configlet
 	for _, ms := range mapServers {
-		name := ms.NameOrIp
-		credential := ms.Credential
 		msConfigLine := fmt.Sprintf(lispMStemplate, iid,
-			name, credential)
+			ms.NameOrIp, ms.Credential)
 		file.WriteString(msConfigLine)
 	}
 

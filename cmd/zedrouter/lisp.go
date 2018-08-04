@@ -143,7 +143,6 @@ lisp database-mapping {
 %s
 }
 `
-
 const (
 	baseFilename = tmpDirname + "/lisp.config.base"
 
@@ -430,6 +429,11 @@ func updateLisp(lispRunDirname string,
 	if err := os.Rename(tmpfile.Name(), destFilename); err != nil {
 		log.Println("Rename ", tmpfile.Name(), destFilename, err)
 		return
+	}
+	if dat, err := ioutil.ReadFile(destFilename); err == nil {
+		f, _ := os.Create(destFilename + ".orig")
+		f.WriteString(string(dat))
+		f.Sync()
 	}
 
 	// Determine the set of devices from the above config file

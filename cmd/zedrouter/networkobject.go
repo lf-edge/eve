@@ -47,6 +47,7 @@ func handleNetworkObjectCreate(ctx *zedrouterContext, key string, config types.N
 	status := types.NetworkObjectStatus{
 		NetworkObjectConfig: config,
 		IPAssignments:       make(map[string]net.IP),
+		NameToEidList:      config.ZedServConfig.NameToEidList,
 	}
 	status.PendingAdd = true
 	pub.Publish(status.Key(), status)
