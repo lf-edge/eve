@@ -110,7 +110,7 @@ func handleEIDStatusModify(ctxArg interface{}, keyArg string,
 			key)
 		return
 	}
-	updateAIStatusUUID(ctx, status.Key())
+	updateAIStatusUUID(ctx, status.UUIDandVersion.UUID.String())
 	log.Printf("handleEIDStatusModify done for %s\n", key)
 }
 
