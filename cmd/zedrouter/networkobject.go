@@ -200,12 +200,18 @@ func setBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) e
 				err)
 			return err
 		}
-	case types.NT_CryptoEID:
+	}
+
+	// Unlike bridge service Lisp will not need a service now for generating ip address.
+	// Hence, cannot move this check into the previous service type check.
+	// We check for network type here.
+	if status.Type == types.NT_CryptoEID {
 		ipAddr = "fd00::" + strconv.FormatInt(int64(status.BridgeNum), 16)
 		ipAddr += "/128"
 		log.Printf("setBridgeIPAddr: Bridge %s assigned IPv6 address %s\n",
 			status.BridgeName, ipAddr)
 	}
+
 	// If not we do a local allocation
 	if ipAddr == "" {
 		var bridgeMac net.HardwareAddr
