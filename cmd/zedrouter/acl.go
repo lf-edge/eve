@@ -277,6 +277,12 @@ func applyACLRules(rules IptablesRuleList, ifname string, isMgmt bool,
 func aclToRules(ifname string, ACLs []types.ACE, ipVer int,
 	myIP string, appIP string, underlaySshPortMap uint) (IptablesRuleList, error) {
 	rulesList := IptablesRuleList{}
+
+	if debug {
+		log.Printf("aclToRules(%s, %v, %d, %s, %s, %d\n",
+			ifname, ACLs, ipVer, myIP, appIP, underlaySshPortMap)
+	}
+
 	// XXX should we check isMgmt instead of myIP?
 	if ipVer == 6 && myIP != "" {
 		// Need to allow local communication */
@@ -338,32 +344,33 @@ func aclDropRules(ifname string) (IptablesRuleList, error) {
 // Handling "uplink" and "freeuplink" is TBD
 // XXX could we create/maintain ... some uplink rule
 func aceToRules(ifname string, ace types.ACE, ipVer int, myIP string, appIP string) (IptablesRuleList, error) {
+	rulesList := IptablesRuleList{}
+
+	// Extract lport and protocol from the Matches to use for PortMap
+	// Keep others to make sure we put the protocol before the port
+	// number(s)
+	var ip string
+	var ipsetName string
+	var protocol string
+	var lport string
+	var fport string
+
+	// Always match on interface
+	// XXX move to bridge port!
 	outArgs := []string{"-i", ifname}
 	inArgs := []string{"-o", ifname}
-	// Extract lport and protocol from the Matches to use for PortMap
-	lport := ""
-	protocol := ""
-	fport := ""
+
 	for _, match := range ace.Matches {
-		addOut := []string{}
-		addIn := []string{}
 		switch match.Type {
 		case "ip":
-			addOut = []string{"-d", match.Value}
-			addIn = []string{"-s", match.Value}
+			ip = match.Value
 		case "protocol":
-			addOut = []string{"-p", match.Value}
-			addIn = []string{"-p", match.Value}
 			protocol = match.Value
 		case "fport":
 			// Need a protocol as well. Checked below.
-			addOut = []string{"--dport", match.Value}
-			addIn = []string{"--sport", match.Value}
 			fport = match.Value
 		case "lport":
 			// Need a protocol as well. Checked below.
-			addOut = []string{"--sport", match.Value}
-			addIn = []string{"--dport", match.Value}
 			lport = match.Value
 		case "host":
 			// Ensure the sets exists; create if not
@@ -372,33 +379,21 @@ func aceToRules(ifname string, ace types.ACE, ipVer int, myIP string, appIP stri
 				log.Println("ipset create for ",
 					match.Value, err)
 			}
-
-			var ipsetName string
 			if ipVer == 4 {
 				ipsetName = "ipv4." + match.Value
 			} else if ipVer == 6 {
 				ipsetName = "ipv6." + match.Value
 			}
-			addOut = []string{"-m", "set", "--match-set",
-				ipsetName, "dst"}
-			addIn = []string{"-m", "set", "--match-set",
-				ipsetName, "src"}
 		case "eidset":
 			// The eidset only applies to IPv6 overlay
 			// Caller adds local EID to set
-			ipsetName := "eids." + ifname
-			addOut = []string{"-m", "set", "--match-set",
-				ipsetName, "dst"}
-			addIn = []string{"-m", "set", "--match-set",
-				ipsetName, "src"}
+			ipsetName = "eids." + ifname
 		default:
 			errStr := fmt.Sprintf("Unsupported ACE match type: %s",
 				match.Type)
 			log.Println(errStr)
 			return nil, errors.New(errStr)
 		}
-		outArgs = append(outArgs, addOut...)
-		inArgs = append(inArgs, addIn...)
 	}
 	// Consistency checks
 	if fport != "" && protocol == "" {
@@ -412,6 +407,30 @@ func aceToRules(ifname string, ace types.ACE, ipVer int, myIP string, appIP stri
 			lport, ace)
 		log.Println(errStr)
 		return nil, errors.New(errStr)
+	}
+
+	if ip != "" {
+		outArgs = append(outArgs, "-d", ip)
+		inArgs = append(inArgs, "-s", ip)
+	}
+	// Make sure we put the protocol before any port numbers
+	if protocol != "" {
+		outArgs = append(outArgs, "-p", protocol)
+		inArgs = append(inArgs, "-p", protocol)
+	}
+	if fport != "" {
+		outArgs = append(outArgs, "--dport", fport)
+		inArgs = append(inArgs, "--sport", fport)
+	}
+	if lport != "" {
+		outArgs = append(outArgs, "--sport", lport)
+		inArgs = append(inArgs, "--dport", lport)
+	}
+	if ipsetName != "" {
+		outArgs = append(outArgs, "-m", "set", "--match-set",
+			ipsetName, "dst")
+		inArgs = append(inArgs, "-m", "set", "--match-set",
+			ipsetName, "src")
 	}
 
 	foundDrop := false
@@ -447,10 +466,11 @@ func aceToRules(ifname string, ace types.ACE, ipVer int, myIP string, appIP stri
 				return nil, errors.New(errStr)
 			}
 			targetPort := fmt.Sprintf("%d", action.TargetPort)
-			target := fmt.Sprintf("%s:22", appIP, action.TargetPort)
+			target := fmt.Sprintf("%s:%d", appIP, action.TargetPort)
 			// These rules should only apply on the uplink
 			// interfaces but for now we just compare the protocol
 			// and port number.
+			// The DNAT/SNAT rules do not compare fport and ipset
 			rule1 := []string{"PREROUTING",
 				"-p", protocol, "--dport", lport,
 				"-j", "DNAT", "--to-destination", target}
@@ -460,14 +480,31 @@ func aceToRules(ifname string, ace types.ACE, ipVer int, myIP string, appIP stri
 				"-p", protocol, "-o", ifname,
 				"--dport", targetPort, "-j", "SNAT",
 				"--to-source", myIP}
-			rule3 := []string{"-o", ifname, "-p", protocol,
-				"--dport", lport, "-j", "ACCEPT"}
-			rule4 := []string{"-i", ifname, "-p", protocol,
-				"--sport", lport, "-j", "ACCEPT"}
-			inArgs = append(inArgs, rule1...)
-			inArgs = append(inArgs, rule3...)
-			outArgs = append(outArgs, rule2...)
-			outArgs = append(outArgs, rule4...)
+			// Below we make sure the mapped packets get through
+			// Note that port/targetport change relative
+			// no normal ACL above.
+			outArgs = []string{"-i", ifname}
+			inArgs = []string{"-o", ifname}
+			if ip != "" {
+				outArgs = append(outArgs, "-d", ip)
+				inArgs = append(inArgs, "-s", ip)
+			}
+			// Make sure we put the protocol before any port numbers
+			outArgs = append(outArgs, "-p", protocol)
+			inArgs = append(inArgs, "-p", protocol)
+			if fport != "" {
+				outArgs = append(outArgs, "--dport", fport)
+				inArgs = append(inArgs, "--sport", fport)
+			}
+			outArgs = append(outArgs, "--sport", targetPort)
+			inArgs = append(inArgs, "--dport", targetPort)
+			if ipsetName != "" {
+				outArgs = append(outArgs, "-m", "set",
+					"--match-set", ipsetName, "dst")
+				inArgs = append(inArgs, "-m", "set",
+					"--match-set", ipsetName, "src")
+			}
+			rulesList = append(rulesList, rule1, rule2)
 		}
 	}
 	if foundDrop {
@@ -478,11 +515,6 @@ func aceToRules(ifname string, ace types.ACE, ipVer int, myIP string, appIP stri
 		outArgs = append(outArgs, []string{"-j", "ACCEPT"}...)
 		inArgs = append(inArgs, []string{"-j", "ACCEPT"}...)
 	}
-	if debug {
-		log.Printf("outArgs %v\n", outArgs)
-		log.Printf("inArgs %v\n", inArgs)
-	}
-	rulesList := IptablesRuleList{}
 	rulesList = append(rulesList, outArgs, inArgs)
 	if foundLimit {
 		// Add separate DROP without the limit to count the excess
@@ -495,6 +527,9 @@ func aceToRules(ifname string, ace types.ACE, ipVer int, myIP string, appIP stri
 			log.Printf("unlimitedInArgs %v\n", unlimitedInArgs)
 		}
 		rulesList = append(rulesList, unlimitedOutArgs, unlimitedInArgs)
+	}
+	if debug {
+		log.Printf("rulesList %v\n", rulesList)
 	}
 	return rulesList, nil
 }
@@ -607,7 +642,7 @@ func updateAppInstanceIpsets(ctx *zedrouterContext,
 
 // Perform an update across all of the bridge aka NetworkObjectStatus
 func updateNetworkACLConfiglet(ctx *zedrouterContext,
-	netstatus *types.NetworkObjectStatus) error {
+	netstatus *types.NetworkObjectStatus, ulStatusArg *types.UnderlayNetworkStatus) error {
 
 	if debug {
 		log.Printf("updateNetworkACLConfiglet: ifname %s IP %s\n",
@@ -618,11 +653,48 @@ func updateNetworkACLConfiglet(ctx *zedrouterContext,
 	ifname := netstatus.BridgeName
 	bridgeIPAddr := netstatus.BridgeIPAddr
 
+	pub := ctx.pubAppNetworkStatus
+	statusItems := pub.GetAll()
+	sub := ctx.subAppNetworkConfig
+	configItems := sub.GetAll()
+
 	// Walk overlay/IPv6 first
 	ipVer := 6
-	sub := ctx.subAppNetworkConfig
-	items := sub.GetAll()
-	for key, c := range items {
+	for key, st := range statusItems {
+		status := cast.CastAppNetworkStatus(st)
+		if status.Key() != key {
+			log.Printf("updateNetworkACLConfiglet key/UUID mismatch %s vs %s; ignored %+v\n",
+				key, status.Key(), status)
+			continue
+		}
+		for _, olStatus := range status.OverlayNetworkList {
+			if olStatus.Network != netstatus.UUID {
+				if debug {
+					log.Printf("updateNetworkACLConfiglet different network %s vs %s\n",
+						olStatus.Network.String(),
+						netstatus.UUID.String())
+				}
+				continue
+			}
+			// XXX where can we get olAddr2 := olStatus.AssignedIPv6Addr
+			olAddr2 := ""
+			rules, err := aclToRules(ifname, olStatus.ACLs, ipVer,
+				bridgeIPAddr, olAddr2, 0)
+			if err != nil {
+				return err
+			}
+			oldRules = append(oldRules, rules...)
+		}
+	}
+	if len(oldRules) != 0 {
+		dropRules, err := aclDropRules(ifname)
+		if err != nil {
+			return err
+		}
+		oldRules = append(oldRules, dropRules...)
+	}
+
+	for key, c := range configItems {
 		config := cast.CastAppNetworkConfig(c)
 		if config.Key() != key {
 			log.Printf("updateNetworkACLConfiglet key/UUID mismatch %s vs %s; ignored %+v\n",
@@ -631,10 +703,17 @@ func updateNetworkACLConfiglet(ctx *zedrouterContext,
 		}
 		for _, olConfig := range config.OverlayNetworkList {
 			if olConfig.Network != netstatus.UUID {
+				if debug {
+					log.Printf("updateNetworkACLConfiglet different network %s vs %s\n",
+						olConfig.Network.String(),
+						netstatus.UUID.String())
+				}
 				continue
 			}
+			// XXX where can we get olAddr2 := olStatus.AssignedIPv6Addr
+			olAddr2 := ""
 			rules, err := aclToRules(ifname, olConfig.ACLs, ipVer,
-				bridgeIPAddr, "", 0)
+				bridgeIPAddr, olAddr2, 0)
 			if err != nil {
 				return err
 			}
@@ -648,21 +727,43 @@ func updateNetworkACLConfiglet(ctx *zedrouterContext,
 		}
 		newRules = append(newRules, dropRules...)
 	}
-	pub := ctx.pubAppNetworkStatus
-	items = pub.GetAll()
-	for key, st := range items {
+	err := applyACLUpdate(false, ipVer, oldRules, newRules)
+	if err != nil {
+		return nil
+	}
+	newRules = IptablesRuleList{}
+	oldRules = IptablesRuleList{}
+	ipVer = 4
+
+	for key, st := range statusItems {
 		status := cast.CastAppNetworkStatus(st)
 		if status.Key() != key {
 			log.Printf("updateNetworkACLConfiglet key/UUID mismatch %s vs %s; ignored %+v\n",
 				key, status.Key(), status)
 			continue
 		}
-		for _, olStatus := range status.OverlayNetworkList {
-			if olStatus.Network != netstatus.UUID {
+		for _, ulStatus := range status.UnderlayNetworkList {
+			if ulStatus.Network != netstatus.UUID {
+				if debug {
+					log.Printf("updateNetworkACLConfiglet different network %s vs %s\n",
+						ulStatus.Network.String(),
+						netstatus.UUID.String())
+				}
 				continue
 			}
-			rules, err := aclToRules(ifname, olStatus.ACLs, ipVer,
-				bridgeIPAddr, "", 0)
+			var ulAddr2 string
+			if ulStatusArg != nil {
+				ulAddr2 = ulStatusArg.AssignedIPAddr
+			} else {
+				ulAddr2 = ulStatus.AssignedIPAddr
+			}
+			var sshPort uint
+			// XXX disable this?
+			if false && ulStatus.SshPortMap {
+				sshPort = 8022 + 100*uint(status.AppNum)
+			}
+			rules, err := aclToRules(ifname, ulStatus.ACLs, ipVer,
+				bridgeIPAddr, ulAddr2, sshPort)
 			if err != nil {
 				return err
 			}
@@ -676,30 +777,40 @@ func updateNetworkACLConfiglet(ctx *zedrouterContext,
 		}
 		oldRules = append(oldRules, dropRules...)
 	}
-	err := applyACLUpdate(false, ipVer, oldRules, newRules)
-	if err != nil {
-		return nil
-	}
-	newRules = IptablesRuleList{}
-	oldRules = IptablesRuleList{}
-	ipVer = 4
 
-	items = sub.GetAll()
-	for key, c := range items {
+	for key, c := range configItems {
 		config := cast.CastAppNetworkConfig(c)
 		if config.Key() != key {
 			log.Printf("updateNetworkACLConfiglet key/UUID mismatch %s vs %s; ignored %+v\n",
 				key, config.Key(), config)
 			continue
 		}
-		for _, ulConfig := range config.UnderlayNetworkList {
+		for ulNum, ulConfig := range config.UnderlayNetworkList {
 			if ulConfig.Network != netstatus.UUID {
+				if debug {
+					log.Printf("updateNetworkACLConfiglet different network %s vs %s\n",
+						ulConfig.Network.String(),
+						netstatus.UUID.String())
+				}
 				continue
 			}
-			// XXX where can we get ulAddr2 := ulStatus.AssignedIPAddr
-			// XXX no sshPortMap
+			// XXX need the new ulAddr2. This is the old. Could it have changed?
+			var ulAddr2 string
+			if ulStatusArg != nil {
+				ulAddr2 = ulStatusArg.AssignedIPAddr
+			} else {
+				ulAddr2 = getIPAddrFromStatus(statusItems, key, ulNum)
+			}
+			var sshPort uint
+			// XXX disable this?
+			if false && ulConfig.SshPortMap {
+				status := lookupAppNetworkStatus(ctx, config.Key())
+				if status != nil {
+					sshPort = 8022 + 100*uint(status.AppNum)
+				}
+			}
 			rules, err := aclToRules(ifname, ulConfig.ACLs, ipVer,
-				bridgeIPAddr, "", 0)
+				bridgeIPAddr, ulAddr2, sshPort)
 			if err != nil {
 				return err
 			}
@@ -713,36 +824,34 @@ func updateNetworkACLConfiglet(ctx *zedrouterContext,
 		}
 		newRules = append(newRules, dropRules...)
 	}
-	items = pub.GetAll()
-	for key, st := range items {
+	return applyACLUpdate(false, ipVer, oldRules, newRules)
+}
+
+func getIPAddrFromStatus(statusItems map[string]interface{}, key string,
+	ulNum int) string {
+
+	if debug {
+		log.Printf("getIPAddrFromStatus(len %d, %s, %d)\n",
+			len(statusItems), key, ulNum)
+	}
+	for _, st := range statusItems {
 		status := cast.CastAppNetworkStatus(st)
 		if status.Key() != key {
-			log.Printf("updateNetworkACLConfiglet key/UUID mismatch %s vs %s; ignored %+v\n",
-				key, status.Key(), status)
 			continue
 		}
-		for _, ulStatus := range status.UnderlayNetworkList {
-			if ulStatus.Network != netstatus.UUID {
-				continue
-			}
-			ulAddr2 := ulStatus.AssignedIPAddr
-			// XXX no sshPortMap
-			rules, err := aclToRules(ifname, ulStatus.ACLs, ipVer,
-				bridgeIPAddr, ulAddr2, 0)
-			if err != nil {
-				return err
-			}
-			oldRules = append(oldRules, rules...)
+		if len(status.UnderlayNetworkList) <= ulNum {
+			log.Printf("getIPAddrFromStatus: too few uls %d vs %d\n",
+				len(status.UnderlayNetworkList), ulNum)
+			return ""
 		}
+		ulStatus := &status.UnderlayNetworkList[ulNum]
+		log.Printf("getIPAddrFromStatus: got %s for %s\n",
+			ulStatus.AssignedIPAddr, key)
+		return ulStatus.AssignedIPAddr
 	}
-	if len(oldRules) != 0 {
-		dropRules, err := aclDropRules(ifname)
-		if err != nil {
-			return err
-		}
-		oldRules = append(oldRules, dropRules...)
-	}
-	return applyACLUpdate(false, ipVer, oldRules, newRules)
+	log.Printf("getIPAddrFromStatus: no matching status for %s\n", key)
+	return ""
+
 }
 
 // XXX old update function

@@ -99,7 +99,7 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 		// Nothing to do
 	case types.NT_IPV4:
 		// Nothing to do
-	case types.NT_CryptoEID: // XXX turn into a service?
+	case types.NT_CryptoEID:
 		// Nothing to do
 	default:
 		errStr := fmt.Sprintf("doNetworkCreate type %d not supported",
@@ -200,8 +200,7 @@ func setBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) e
 				err)
 			return err
 		}
-	}
-	if status.Type == types.NT_CryptoEID {
+	case types.NT_CryptoEID:
 		ipAddr = "fd00::" + strconv.FormatInt(int64(status.BridgeNum), 16)
 		ipAddr += "/128"
 		log.Printf("setBridgeIPAddr: Bridge %s assigned IPv6 address %s\n",
@@ -209,7 +208,6 @@ func setBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) e
 	}
 	// If not we do a local allocation
 	if ipAddr == "" {
-		// XXX Need IPV6/LISP logic to get IPv6 addresses
 		var bridgeMac net.HardwareAddr
 
 		switch link.(type) {
@@ -255,7 +253,7 @@ func setBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) e
 		return errors.New(errStr)
 	}
 
-	// create new radvd configuration and restart radvd if service type is Lisp
+	// create new radvd configuration and restart radvd if network type is CryptoEID
 	if status.Type == types.NT_CryptoEID {
 		cfgFilename := "radvd." + status.BridgeName + ".conf"
 		cfgPathname := runDirname + "/" + cfgFilename

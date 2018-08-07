@@ -142,10 +142,33 @@ echo "Configuration from factory/install:"
 (cd $CONFIGDIR; ls -l)
 echo
 
+# Note that if the /config/proxy file is removed at runtime , the device will stop using it.
+# That is useful for tesing.
 if [ -f $CONFIGDIR/proxy ]; then
     proxy=`cat $CONFIGDIR/proxy`
-    echo "Using HTTPS_PROXY $proxy"
+    echo "Using default $proxy"
     export HTTPS_PROXY="$proxy"
+    export HTTP_PROXY="$proxy"
+    export FTP_PROXY="$proxy"
+fi
+if [ -f $CONFIGDIR/http_proxy ]; then
+    proxy=`cat $CONFIGDIR/http_proxy`
+    echo "Using HTTP_PROXY $proxy"
+    export HTTP_PROXY="$proxy"
+fi
+if [ -f $CONFIGDIR/ftp_proxy ]; then
+    proxy=`cat $CONFIGDIR/ftp_proxy`
+    echo "Using FTP_PROXY $proxy"
+    export FTP_PROXY="$proxy"
+fi
+if [ -f $CONFIGDIR/no_cache ]; then
+    # By default localhost is not proxied. Contains a comma-separated list
+    # of domain names.
+    # This can include example.com (which means example.com and *.example.com)
+    # or .example.com (which means *.example.com)
+    no_cache=`cat $CONFIGDIR/no_cache`
+    echo "Using NO_CACHE $no_cache"
+    export NO_CACHE="$no_cache"
 fi
 
 P3=`zboot partdev P3`
@@ -338,7 +361,10 @@ if [ $SELF_REGISTER = 1 ]; then
     fi
     echo $BINDIR/client -d $CONFIGDIR getUuid 
     $BINDIR/client -d $CONFIGDIR getUuid
-
+    if [ ! -f $CONFIGDIR/hardwaremodel ]; then
+	/opt/zededa/bin/hardwaremodel -c >$CONFIGDIR/hardwaremodel
+	echo "Created default hardwaremodel" `/opt/zededa/bin/hardwaremodel -c`
+    fi
     # Make sure we set the dom0 hostname, used by LISP nat traversal, to
     # a unique string. Using the uuid
     uuid=`cat $CONFIGDIR/uuid`
@@ -359,6 +385,12 @@ else
     echo "XXX until cloud keeps state across upgrades redo getUuid"
     echo $BINDIR/client -d $CONFIGDIR getUuid 
     $BINDIR/client -d $CONFIGDIR getUuid
+    if [ ! -f $CONFIGDIR/hardwaremodel ]; then
+	# XXX for upgrade path
+	# XXX do we need a way to override?
+	/opt/zededa/bin/hardwaremodel -c >$CONFIGDIR/hardwaremodel
+	echo "Created hardwaremodel" `/opt/zededa/bin/hardwaremodel -c`
+    fi
 
     uuid=`cat $CONFIGDIR/uuid`
     /bin/hostname $uuid

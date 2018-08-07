@@ -53,6 +53,7 @@ func lookupEIDConfig(ctx *zedmanagerContext, key string) *types.EIDConfig {
 	return &config
 }
 
+// Note that this function returns the entry even if Pending* is set.
 func lookupEIDStatus(ctx *zedmanagerContext, key string) *types.EIDStatus {
 	sub := ctx.subEIDStatus
 	st, _ := sub.Get(key)
@@ -104,7 +105,7 @@ func handleEIDStatusModify(ctxArg interface{}, keyArg string,
 		return
 	}
 	// Ignore if any Pending* flag is set
-	if status.PendingAdd || status.PendingModify || status.PendingDelete {
+	if status.Pending() {
 		log.Printf("handleEIDStatusModify skipping due to Pending* for %s\n",
 			key)
 		return

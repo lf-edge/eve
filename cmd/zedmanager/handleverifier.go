@@ -4,8 +4,6 @@
 package zedmanager
 
 import (
-	"errors"
-	"fmt"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/types"
 	"log"
@@ -139,7 +137,7 @@ func handleVerifyImageStatusModify(ctxArg interface{}, key string,
 	log.Printf("handleVerifyImageStatusModify for %s\n",
 		status.Safename)
 	// Ignore if any Pending* flag is set
-	if status.PendingAdd || status.PendingModify || status.PendingDelete {
+	if status.Pending() {
 		log.Printf("handleVerifyImageStatusModify skipped due to Pending* for %s\n",
 			status.Safename)
 		return
@@ -150,6 +148,7 @@ func handleVerifyImageStatusModify(ctxArg interface{}, key string,
 		status.Safename)
 }
 
+// Note that this function returns the entry even if Pending* is set.
 func lookupVerifyImageStatus(ctx *zedmanagerContext,
 	safename string) *types.VerifyImageStatus {
 
@@ -168,7 +167,7 @@ func lookupVerifyImageStatus(ctx *zedmanagerContext,
 	return &status
 }
 
-func lookupVerifyImageStatusSha256Impl(ctx *zedmanagerContext,
+func lookupVerifyImageStatusSha256(ctx *zedmanagerContext,
 	sha256 string) *types.VerifyImageStatus {
 
 	sub := ctx.subAppImgVerifierStatus
@@ -182,39 +181,23 @@ func lookupVerifyImageStatusSha256Impl(ctx *zedmanagerContext,
 	return nil
 }
 
-func LookupVerifyImageStatusSha256(ctx *zedmanagerContext,
-	sha256 string) (types.VerifyImageStatus, error) {
-
-	m := lookupVerifyImageStatusSha256Impl(ctx, sha256)
-	if m != nil {
-		errStr := fmt.Sprintf("LookupVerifyImageStatus: no sha %s",
-			sha256)
-		return types.VerifyImageStatus{}, errors.New(errStr)
-	} else {
-		log.Printf("LookupVerifyImageStatusSha256: found based on sha256 %s safename %s\n",
-			sha256, m.Safename)
-		return *m, nil
-	}
-}
-
-func LookupVerifyImageStatusAny(ctx *zedmanagerContext, safename string,
-	sha256 string) (types.VerifyImageStatus, error) {
+// Note that this function returns the entry even if Pending* is set.
+func lookupVerifyImageStatusAny(ctx *zedmanagerContext, safename string,
+	sha256 string) *types.VerifyImageStatus {
 
 	m := lookupVerifyImageStatus(ctx, safename)
 	if m != nil {
-		return *m, nil
+		return m
 	}
-	m = lookupVerifyImageStatusSha256Impl(ctx, sha256)
+	m = lookupVerifyImageStatusSha256(ctx, sha256)
 	if m != nil {
 		if debug {
-			log.Printf("LookupVerifyImageStatusAny: found based on sha %s\n",
+			log.Printf("lookupVerifyImageStatusAny: found based on sha %s\n",
 				sha256)
 		}
-		return *m, nil
-	} else {
-		return types.VerifyImageStatus{},
-			errors.New("No VerifyImageStatus for safename nor sha")
+		return m
 	}
+	return nil
 }
 
 func handleVerifyImageStatusDelete(ctxArg interface{}, key string,

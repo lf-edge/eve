@@ -92,6 +92,10 @@ func (status DownloaderStatus) CheckPendingDelete() bool {
 	return status.PendingDelete
 }
 
+func (status DownloaderStatus) Pending() bool {
+	return status.PendingAdd || status.PendingModify || status.PendingDelete
+}
+
 type GlobalDownloadConfig struct {
 	MaxSpace uint // Number of kbytes allowed in /var/tmp/zedmanager/downloads
 }

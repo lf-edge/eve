@@ -430,6 +430,8 @@ func updateLisp(lispRunDirname string,
 		log.Println("Rename ", tmpfile.Name(), destFilename, err)
 		return
 	}
+	// XXX We write configuration to lisp.config.orig for debugging
+	// lispers.net lisp.config file overwrite issue.
 	if dat, err := ioutil.ReadFile(destFilename); err == nil {
 		f, _ := os.Create(destFilename + ".orig")
 		f.WriteString(string(dat))
