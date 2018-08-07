@@ -371,17 +371,14 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 	// XXX could allocate EIDs before we download for better parallelism
 	// with zedcloud
 	// Make sure we have an EIDConfig for each overlay
-	/*
 	for _, ec := range config.OverlayNetworkList {
 		MaybeAddEIDConfig(ctx, config.UUIDandVersion,
 			config.DisplayName, &ec)
 	}
-	*/
 	// Check EIDStatus for each overlay; update AppInstanceStatus
 	eidsAllocated := true
 	for i, ec := range config.OverlayNetworkList {
 		key := types.EidKey(config.UUIDandVersion, ec.IID)
-		/*
 		es := lookupEIDStatus(ctx, key)
 		if es == nil {
 			log.Printf("lookupEIDStatus %s failed\n",
@@ -390,7 +387,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 			continue
 		}
 		status.EIDList[i] = es.EIDStatusDetails
-		*/
+		/*
 		log.Printf("XXXXX Parsing IID %d, EID %s\n",
 			ec.IID, ec.EID.String())
 		status.EIDList[i].IID = ec.IID
@@ -398,6 +395,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		status.EIDList[i].LispSignature = ec.LispSignature
 		status.EIDList[i].PemCert = ec.PemCert
 		status.EIDList[i].PemPrivateKey = ec.PemPrivateKey
+		*/
 		if status.EIDList[i].EID == nil {
 			log.Printf("Missing EID for %s\n", key)
 			eidsAllocated = false
