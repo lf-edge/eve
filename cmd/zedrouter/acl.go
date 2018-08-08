@@ -373,6 +373,12 @@ func aceToRules(ifname string, ace types.ACE, ipVer int, myIP string, appIP stri
 			// Need a protocol as well. Checked below.
 			lport = match.Value
 		case "host":
+			if ipsetName != "" {
+				errStr := fmt.Sprintf("ACE with eidset and host not supported: %+v",
+					ace)
+				log.Println(errStr)
+				return nil, errors.New(errStr)
+			}
 			// Ensure the sets exists; create if not
 			// need to feed it into dnsmasq as well; restart
 			if err := ipsetCreatePair(match.Value); err != nil {
@@ -385,6 +391,12 @@ func aceToRules(ifname string, ace types.ACE, ipVer int, myIP string, appIP stri
 				ipsetName = "ipv6." + match.Value
 			}
 		case "eidset":
+			if ipsetName != "" {
+				errStr := fmt.Sprintf("ACE with eidset and host not supported: %+v",
+					ace)
+				log.Println(errStr)
+				return nil, errors.New(errStr)
+			}
 			// The eidset only applies to IPv6 overlay
 			// Caller adds local EID to set
 			ipsetName = "eids." + ifname
