@@ -34,9 +34,9 @@ lisp enable {
     ddt-node = no
 }
 lisp debug {
-    core = yes
-    itr = yes
-    etr = yes
+    core = no
+    itr = no
+    etr = no
     rtr = no
     map-server = no
     map-resolver = no
@@ -57,7 +57,4 @@ lisp xtr-parameters {
     checkpoint-map-cache = no
 	register-reachable-rtrs = yes
 	ipc-data-plane = %s
-}
-lisp map-resolver {
-    dns-name = zedcloud.alpha.zededa.net
 }

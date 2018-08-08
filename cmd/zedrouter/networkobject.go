@@ -155,7 +155,12 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 	// Directory is /var/run/zedrouter/hosts.${BRIDGENAME}
 	hostsDirpath := globalRunDirname + "/hosts." + bridgeName
 	deleteHostsConfiglet(hostsDirpath, false)
-	createHostsConfiglet(hostsDirpath, nil)
+	if config.Type == types.NT_CryptoEID {
+		createHostsConfiglet(hostsDirpath,
+			config.ZedServConfig.NameToEidList)
+	} else {
+		createHostsConfiglet(hostsDirpath, nil)
+	}
 	if status.BridgeIPAddr != "" {
 		// XXX arbitrary name "router"!!
 		addToHostsConfiglet(hostsDirpath, "router",
@@ -261,16 +266,23 @@ func setBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) e
 
 	// create new radvd configuration and restart radvd if network type is CryptoEID
 	if status.Type == types.NT_CryptoEID {
+		// Create EID ipset
+		createEidIpsetConfiglet(status.BridgeName, status.NameToEidList, "")
+	}
+
+	isIPv6 := false
+	if status.Subnet.IP != nil {
+		isIPv6 = (status.Subnet.IP.To4() == nil)
+	}
+	if (status.Type == types.NT_CryptoEID) || isIPv6 {
 		cfgFilename := "radvd." + status.BridgeName + ".conf"
 		cfgPathname := runDirname + "/" + cfgFilename
 
 		// kill existing radvd instance
+		deleteRadvdConfiglet(cfgPathname)
 		stopRadvd(cfgFilename, false)
 		createRadvdConfiglet(cfgPathname, status.BridgeName)
 		startRadvd(cfgPathname, status.BridgeName)
-
-		// Create EID ipset
-		createEidIpsetConfiglet(status.BridgeName, status.NameToEidList, "")
 	}
 
 	return nil

@@ -21,6 +21,9 @@ import (
 // Template per map server. Pass in (dns-name, authentication-key)
 // Use this for the Mgmt IID
 const lispMStemplateMgmt = `
+lisp map-resolver {
+	dns-name = %s
+}
 lisp map-server {
     dns-name = %s
     authentication-key = %s
@@ -227,7 +230,7 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	for _, ms := range lispServers {
 		if isMgmt {
 			file1.WriteString(fmt.Sprintf(lispMStemplateMgmt,
-				ms.NameOrIp, ms.Credential))
+				ms.NameOrIp, ms.NameOrIp, ms.Credential))
 		} else {
 			file1.WriteString(fmt.Sprintf(lispMStemplate,
 				IID, ms.NameOrIp, ms.Credential))
@@ -246,7 +249,7 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 		file2.WriteString(fmt.Sprintf(lispDBtemplate,
 			IID, EID, IID, tag, tag, rlocString))
 	}
-	updateLisp(lispRunDirname, globalStatus.UplinkStatus, separateDataPlane)
+	updateLisp(lispRunDirname, &globalStatus, separateDataPlane)
 }
 
 func createLispEidConfiglet(lispRunDirname string,
@@ -305,7 +308,7 @@ func createLispEidConfiglet(lispRunDirname string,
 		olIfname, IID))
 	file.WriteString(fmt.Sprintf(lispDBtemplate,
 		IID, EID, IID, tag, tag, rlocString))
-	updateLisp(lispRunDirname, globalStatus.UplinkStatus, separateDataPlane)
+	updateLisp(lispRunDirname, &globalStatus, separateDataPlane)
 }
 
 func updateLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
@@ -346,20 +349,20 @@ func deleteLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	// cfgPathnameIID := lispRunDirname + "/" +
 	//	strconv.FormatUint(uint64(IID), 10)
 
-	updateLisp(lispRunDirname, globalStatus.UplinkStatus, separateDataPlane)
+	updateLisp(lispRunDirname, &globalStatus, separateDataPlane)
 }
 
 func updateLisp(lispRunDirname string,
-	upLinkStatus []types.NetworkUplink,
+	globalStatus *types.DeviceNetworkStatus,
 	separateDataPlane bool) {
 	if debug {
-		log.Printf("updateLisp: %s %v\n", lispRunDirname, upLinkStatus)
+		log.Printf("updateLisp: %s %v\n", lispRunDirname, globalStatus.UplinkStatus)
 	}
 
 	if deferUpdate {
 		log.Printf("updateLisp deferred\n")
 		deferLispRunDirname = lispRunDirname
-		deferUpLinkStatus = upLinkStatus
+		deferGlobalStatus = globalStatus
 		return
 	}
 
@@ -459,6 +462,10 @@ func updateLisp(lispRunDirname string,
 		log.Printf("updateLisp: found %d EIDs devices <%v>\n",
 			eidCount, devices)
 	}
+	freeUpLinks := types.GetUplinkFreeNoLocal(*globalStatus)
+	for _, u := range freeUpLinks {
+		devices += " " + u.IfName
+	}
 	// Check how many EIDs we have configured. If none we stop lisp
 	if eidCount == 0 {
 		stopLisp()
@@ -469,13 +476,13 @@ func updateLisp(lispRunDirname string,
 		if separateDataPlane {
 			maybeStartLispDataPlane()
 		}
-		restartLisp(upLinkStatus, devices)
+		restartLisp(globalStatus.UplinkStatus, devices)
 	}
 }
 
 var deferUpdate = false
 var deferLispRunDirname = ""
-var deferUpLinkStatus []types.NetworkUplink = nil
+var deferGlobalStatus *types.DeviceNetworkStatus
 
 func handleLispRestart(done bool, separateDataPlane bool) {
 	if debug {
@@ -486,9 +493,9 @@ func handleLispRestart(done bool, separateDataPlane bool) {
 			deferUpdate = false
 			if deferLispRunDirname != "" {
 				updateLisp(deferLispRunDirname,
-					deferUpLinkStatus, separateDataPlane)
+					deferGlobalStatus, separateDataPlane)
 				deferLispRunDirname = ""
-				deferUpLinkStatus = nil
+				deferGlobalStatus = nil
 			}
 		}
 	} else {

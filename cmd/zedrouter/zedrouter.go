@@ -455,7 +455,7 @@ func publishAppNetworkStatus(ctx *zedrouterContext,
 }
 
 func publishNetworkObjectStatus(ctx *zedrouterContext,
-status *types.NetworkObjectStatus) {
+	status *types.NetworkObjectStatus) {
 	key := status.Key()
 	log.Printf("publishNetworkObjectStatus(%s)\n", key)
 	pub := ctx.pubNetworkObjectStatus
@@ -855,8 +855,178 @@ func handleCreate(ctx *zedrouterContext, key string,
 	// XXX use different compile??
 	ipsets := compileAppInstanceIpsets(ctx, config.OverlayNetworkList,
 		config.UnderlayNetworkList)
-	// XXX
-	processOverlayNetworkConfig(ctx, config, ipsets, status)
+	for i, olConfig := range config.OverlayNetworkList {
+		olNum := i + 1
+		if debug {
+			log.Printf("olNum %d network %s ACLs %v\n",
+				olNum, olConfig.Network.String(), olConfig.ACLs)
+		}
+		netconfig := lookupNetworkObjectConfig(ctx, olConfig.Network.String())
+		if netconfig == nil {
+			log.Printf("handleCreate: Network %s that the overlay" +
+				" uses is not present in configuration database\n",
+				olConfig.Network.String())
+			continue
+		}
+
+		// Fetch the network that this overlay is attached to
+		netstatus := lookupNetworkObjectStatus(ctx, olConfig.Network.String())
+		if netstatus == nil {
+			log.Printf("handleCreate: Network %s not found\n",
+				olConfig.Network.String())
+			continue
+		}
+		bridgeNum  := netstatus.BridgeNum
+		bridgeName := netstatus.BridgeName
+
+		EID := olConfig.EID
+		vifName := "nbo" + strconv.Itoa(olNum) + "x" +
+			strconv.Itoa(bridgeNum)
+
+		oLink, err := findBridge(bridgeName)
+		if err != nil {
+			status.PendingAdd = false
+			addError(ctx, &status, "findBridge", err)
+			log.Printf("handleCreate done for %s\n",
+				config.DisplayName)
+			return
+		}
+		bridgeName = oLink.Name
+		bridgeMac := oLink.HardwareAddr
+		log.Printf("bridgeName %s MAC %s\n",
+			bridgeName, bridgeMac.String())
+
+		var olMac string // Handed to domU
+		if olConfig.AppMacAddr != nil {
+			olMac = olConfig.AppMacAddr.String()
+		} else {
+			olMac = "00:16:3e:01:" +
+				strconv.FormatInt(int64(olNum), 16) + ":" +
+				strconv.FormatInt(int64(bridgeNum), 16)
+		}
+		log.Printf("olMac %s\n", olMac)
+
+		// Record what we have so far
+		olStatus := &status.OverlayNetworkList[olNum-1]
+		olStatus.Bridge = bridgeName
+		olStatus.BridgeMac = bridgeMac
+		olStatus.Vif = vifName
+		olStatus.Mac = olMac
+		olStatus.HostName = config.Key()
+
+		olStatus.BridgeIPAddr = netstatus.BridgeIPAddr
+
+		// XXX set sharedBridge base on bn prefix; remove created return
+		//    ip -6 route add ${EID}/128 dev ${bridgeName}
+		_, ipnet, err := net.ParseCIDR(EID.String() + "/128")
+		if err != nil {
+			errStr := fmt.Sprintf("ParseCIDR %s failed: %v",
+				EID, err)
+			addError(ctx, &status, "handleCreate",
+				errors.New(errStr))
+		}
+		rt := netlink.Route{Dst: ipnet, LinkIndex: oLink.Index}
+		if err := netlink.RouteAdd(&rt); err != nil {
+			errStr := fmt.Sprintf("RouteAdd %s failed: %s",
+				EID, err)
+			addError(ctx, &status, "handleCreate",
+				errors.New(errStr))
+		}
+
+		// Wirte each EID hostname in a separate file in directory to facilitate
+		// adds and deletes
+		hostsDirpath := globalRunDirname + "/hosts." + bridgeName
+		// XXX add bulk add function? Separate create from add?
+		for _, ne := range olConfig.NameToEidList {
+			addIPToHostsConfiglet(hostsDirpath, ne.HostName, ne.EIDs)
+		}
+
+		brNameToEidList := []types.NameToEid{}
+		brNameToEidList = append(brNameToEidList, netstatus.NameToEidList...)
+
+		// Add the current overlay's EID if not present in list.
+		// Check for any new entries in the current overlay's NameToEid list.
+		// If the bridge's NameToEid list does not already have them, add now.
+		for _, nameToEid := range olConfig.NameToEidList {
+			// XXX Assuming that App will have only one EID per IID
+			if !containsEID(brNameToEidList, nameToEid.EIDs[0]) {
+				brNameToEidList = append(brNameToEidList, nameToEid)
+			}
+		}
+
+		if len(netstatus.NameToEidList) == 0 {
+			deleteEidIpsetConfiglet(bridgeName, false)
+			createEidIpsetConfiglet(bridgeName, brNameToEidList, EID.String())
+		} else {
+			// Overlays in a particular IID should all ideally have the same
+			// NameToEidList. We check for differences and add just in case.
+			updateEidIpsetConfiglet(bridgeName,
+				netstatus.NameToEidList, brNameToEidList)
+		}
+		netstatus.NameToEidList = append(netstatus.NameToEidList,
+			brNameToEidList...)
+		publishNetworkObjectStatus(ctx, netstatus)
+
+		// Set up ACLs before we setup dnsmasq
+		if netstatus != nil {
+			err = updateNetworkACLConfiglet(ctx, netstatus, nil)
+			if err != nil {
+				addError(ctx, &status, "updateNetworkACL", err)
+			}
+		} else {
+			// This should not happen since we process NetworkObjects
+			// before AppNetworkConfig. We should have the NetworkObjectStatus
+			// with corresponding bridge created already.
+
+			/*
+			err = createACLConfiglet(bridgeName, false, olConfig.ACLs, 6,
+				olAddr1, "", 0, netconfig)
+			if err != nil {
+				addError(ctx, &status, "createACL", err)
+			}
+			*/
+		}
+		// XXX createDnsmasq assumes it can read this to get netstatus
+		publishAppNetworkStatus(ctx, &status)
+
+		// Start clean
+		cfgFilename := "dnsmasq." + bridgeName + ".conf"
+		cfgPathname := runDirname + "/" + cfgFilename
+		stopDnsmasq(cfgFilename, false)
+		// XXX need ipsets from all bn<N> users
+
+		bridgeIP, _, err := net.ParseCIDR(netstatus.BridgeIPAddr)
+		if err != nil {
+			log.Printf("handleCreate: Bridge %s has invalid ip address %s\n",
+				bridgeName, netstatus.BridgeIPAddr)
+				continue
+		}
+		createDnsmasqOverlayConfiglet(ctx, cfgPathname, bridgeName,
+			bridgeIP.String(), EID.String(), olMac, hostsDirpath,
+			config.Key(), ipsets, netconfig)
+		startDnsmasq(cfgPathname, bridgeName)
+
+		// Create LISP configlets for IID and EID/signature
+		serviceStatus := lookupAppLink(ctx, olConfig.Network)
+		if serviceStatus == nil {
+			// Lisp service might not have arrived as part of configuration.
+			// Bail now and let the service activation take care of creating
+			// Lisp configlets and re-start lispers.net
+			log.Printf("handleCreate: Network %s is not attached to any service\n",
+				netconfig.Key())
+			return
+		}
+		if serviceStatus.Activated == false {
+			// Lisp service is not activate yet. Let the Lisp service activation
+			// code take care of creating the Lisp configlets.
+			log.Printf("handleCreate: Network service %s in not activated.\n",
+				serviceStatus.Key())
+			continue
+		}
+
+		createAndStartLisp(ctx, status, olConfig,
+			serviceStatus, lispRunDirname, bridgeName)
+	}
 
 	for i, ulConfig := range config.UnderlayNetworkList {
 		ulNum := i + 1
@@ -988,183 +1158,6 @@ func handleCreate(ctx *zedrouterContext, key string,
 	status.PendingAdd = false
 	publishAppNetworkStatus(ctx, &status)
 	log.Printf("handleCreate done for %s\n", config.DisplayName)
-}
-
-func processOverlayNetworkConfig(ctx *zedrouterContext,
-	config types.AppNetworkConfig, ipsets []string,
-    status types.AppNetworkStatus) {
-	for i, olConfig := range config.OverlayNetworkList {
-		olNum := i + 1
-		if debug {
-			log.Printf("olNum %d network %s ACLs %v\n",
-				olNum, olConfig.Network.String(), olConfig.ACLs)
-		}
-		netconfig := lookupNetworkObjectConfig(ctx, olConfig.Network.String())
-		if netconfig == nil {
-			log.Printf("processOverlayNetworkConfig: Network %s that the overlay" +
-				" uses is not present in configuration database\n",
-				olConfig.Network.String())
-			continue
-		}
-
-		// Fetch the network that this overlay is attached to
-		netstatus := lookupNetworkObjectStatus(ctx, olConfig.Network.String())
-		if netstatus == nil {
-			log.Printf("processOverlayNetworkConfig: Network %s not found\n",
-				olConfig.Network.String())
-			continue
-		}
-		bridgeNum  := netstatus.BridgeNum
-		bridgeName := netstatus.BridgeName
-
-		EID := olConfig.EID
-		vifName := "nbo" + strconv.Itoa(olNum) + "x" +
-			strconv.Itoa(bridgeNum)
-
-		oLink, err := findBridge(bridgeName)
-		if err != nil {
-			status.PendingAdd = false
-			addError(ctx, &status, "findBridge", err)
-			log.Printf("handleCreate done for %s\n",
-				config.DisplayName)
-			return
-		}
-		bridgeName = oLink.Name
-		bridgeMac := oLink.HardwareAddr
-		log.Printf("bridgeName %s MAC %s\n",
-			bridgeName, bridgeMac.String())
-
-		var olMac string // Handed to domU
-		if olConfig.AppMacAddr != nil {
-			olMac = olConfig.AppMacAddr.String()
-		} else {
-			olMac = "00:16:3e:01:" +
-				strconv.FormatInt(int64(olNum), 16) + ":" +
-				strconv.FormatInt(int64(bridgeNum), 16)
-		}
-		log.Printf("olMac %s\n", olMac)
-
-		// Record what we have so far
-		olStatus := &status.OverlayNetworkList[olNum-1]
-		olStatus.Bridge = bridgeName
-		olStatus.BridgeMac = bridgeMac
-		olStatus.Vif = vifName
-		olStatus.Mac = olMac
-		olStatus.HostName = config.Key()
-
-		olStatus.BridgeIPAddr = netstatus.BridgeIPAddr
-
-		// XXX set sharedBridge base on bn prefix; remove created return
-		//    ip -6 route add ${EID}/128 dev ${bridgeName}
-		_, ipnet, err := net.ParseCIDR(EID.String() + "/128")
-		if err != nil {
-			errStr := fmt.Sprintf("ParseCIDR %s failed: %v",
-				EID, err)
-			addError(ctx, &status, "handleCreate",
-				errors.New(errStr))
-		}
-		rt := netlink.Route{Dst: ipnet, LinkIndex: oLink.Index}
-		if err := netlink.RouteAdd(&rt); err != nil {
-			errStr := fmt.Sprintf("RouteAdd %s failed: %s",
-				EID, err)
-			addError(ctx, &status, "handleCreate",
-				errors.New(errStr))
-		}
-
-		// Wirte each EID hostname in a separate file in directory to facilitate
-		// adds and deletes
-		hostsDirpath := globalRunDirname + "/hosts." + bridgeName
-		// XXX add bulk add function? Separate create from add?
-		for _, ne := range olConfig.NameToEidList {
-			addIPToHostsConfiglet(hostsDirpath, ne.HostName, ne.EIDs)
-		}
-
-		brNameToEidList := []types.NameToEid{}
-		brNameToEidList = append(brNameToEidList, netstatus.NameToEidList...)
-
-		// Add the current overlay's EID if not present in list.
-		// Check for any new entries in the current overlay's NameToEid list.
-		// If the bridge's NameToEid list does not already have them, add now.
-		for _, nameToEid := range olConfig.NameToEidList {
-			// XXX Assuming that App will have only one EID per IID
-			if !containsEID(brNameToEidList, nameToEid.EIDs[0]) {
-				brNameToEidList = append(brNameToEidList, nameToEid)
-			}
-		}
-
-		if len(netstatus.NameToEidList) == 0 {
-			deleteEidIpsetConfiglet(bridgeName, false)
-			createEidIpsetConfiglet(bridgeName, brNameToEidList, EID.String())
-		} else {
-			// Overlays in a particular IID should all ideally have the same
-			// NameToEidList. We check for differences and add just in case.
-			updateEidIpsetConfiglet(bridgeName,
-				netstatus.NameToEidList, brNameToEidList)
-		}
-		netstatus.NameToEidList = append(netstatus.NameToEidList,
-			brNameToEidList...)
-		publishNetworkObjectStatus(ctx, netstatus)
-
-		// Set up ACLs before we setup dnsmasq
-		if netstatus != nil {
-			err = updateNetworkACLConfiglet(ctx, netstatus, nil)
-			if err != nil {
-				addError(ctx, &status, "updateNetworkACL", err)
-			}
-		} else {
-			// This should not happen since we process NetworkObjects
-			// before AppNetworkConfig. We should have the NetworkObjectStatus
-			// with corresponding bridge created already.
-
-			/*
-			err = createACLConfiglet(bridgeName, false, olConfig.ACLs, 6,
-				olAddr1, "", 0, netconfig)
-			if err != nil {
-				addError(ctx, &status, "createACL", err)
-			}
-			*/
-		}
-		// XXX createDnsmasq assumes it can read this to get netstatus
-		publishAppNetworkStatus(ctx, &status)
-
-		// Start clean
-		cfgFilename := "dnsmasq." + bridgeName + ".conf"
-		cfgPathname := runDirname + "/" + cfgFilename
-		stopDnsmasq(cfgFilename, false)
-		// XXX need ipsets from all bn<N> users
-
-		bridgeIP, _, err := net.ParseCIDR(netstatus.BridgeIPAddr)
-		if err != nil {
-			log.Printf("processOverlayNetworkConfig: Bridge %s has invalid ip address %s\n",
-				bridgeName, netstatus.BridgeIPAddr)
-				continue
-		}
-		createDnsmasqOverlayConfiglet(ctx, cfgPathname, bridgeName,
-			bridgeIP.String(), EID.String(), olMac, hostsDirpath,
-			config.Key(), ipsets, netconfig)
-		startDnsmasq(cfgPathname, bridgeName)
-
-		// Create LISP configlets for IID and EID/signature
-		serviceStatus := lookupAppLink(ctx, olConfig.Network)
-		if serviceStatus == nil {
-			// Lisp service might not have arrived as part of configuration.
-			// Bail now and let the service activation take care of creating
-			// Lisp configlets and re-start lispers.net
-			log.Printf("processOverlayNetworkConfig: Network %s is not attached to any service\n",
-				netconfig.Key())
-			return
-		}
-		if serviceStatus.Activated == false {
-			// Lisp service is not activate yet. Let the Lisp service activation
-			// code take care of creating the Lisp configlets.
-			log.Printf("processOverlayNetworkConfig: Network service %s in not activated.\n",
-				serviceStatus.Key())
-			continue
-		}
-
-		createAndStartLisp(ctx, status, olConfig,
-			serviceStatus, lispRunDirname, bridgeName)
-	}
 }
 
 func createAndStartLisp(ctx *zedrouterContext,
@@ -1480,12 +1473,6 @@ func handleModify(ctx *zedrouterContext, key string,
 
 		// Default EID ipset
 		// XXX shared with others
-
-		// XXX EID Ipset handling should happen as part of NetworkObjectConfig processing
-		/*
-		updateEidIpsetConfiglet(bridgeName, olStatus.NameToEidList,
-			olConfig.NameToEidList)
-			*/
 
 		// XXX could there be a change to AssignedIPv6Address?
 		// If so updateNetworkACLConfiglet needs to know old and new

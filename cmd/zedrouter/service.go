@@ -473,46 +473,21 @@ func lispActivate(ctx *zedrouterContext,
 	config types.NetworkServiceConfig,
 	status *types.NetworkServiceStatus,
 	netstatus *types.NetworkObjectStatus) error {
-	// XXX We do not have enough information at point to write
-	// any lisp configlets. We have the adapter list but, we
-	// do not yet have EIDs to whose database-mappings these adapters
-	// should be included as RLOCs.
-	//
-	// Just go ahead and restart lisp now.
-	// XXX Later when we process AppNetworkConfig list in AppInstanceConfig
-	// we check if the service is in activated state and restart. If not, we
-	// just create the lisp configlets along with dnsmasq, radvd and bail.
-	// Restart as part of lispActivate should take care of activating latest
-	// config written to lisp, dnsmasq, radvd configlets.
 
-	// Go through the AppNetworkConfigs and create Lisp parameters that use
+	// Go through the AppNetworkStatus and create Lisp configlets that use
 	// this service.
-	sub := ctx.subAppNetworkConfig
-	items := sub.GetAll()
+	pub := ctx.pubAppNetworkStatus
+	items := pub.GetAll()
 
-	for _, anc := range items {
-		appNetConfig := cast.CastAppNetworkConfig(anc)
-		if len(appNetConfig.OverlayNetworkList) == 0 {
-			continue
-		}
-		key := appNetConfig.Key()
-		pub := ctx.pubAppNetworkStatus
-		ans, _ := pub.Get(key)
-
-		if ans == nil {
-			// Application Networks configuration might not have arrived yet.
-			// Let the Application network configuration handling code create
-			// lisp configlets for this overlay.
-			continue
-		}
+	for _, ans := range items {
 		appNetStatus := cast.CastAppNetworkStatus(ans)
-		for _, olconfig := range appNetConfig.OverlayNetworkList {
-			//olconfig := &appNetConfig.OverlayNetworkList[i]
+		for _, olconfig := range appNetStatus.OverlayNetworkList {
 			if olconfig.Network == status.AppLink {
 				// We are interconnected
 				// Try and create the Lisp configlets
 				createAndStartLisp(ctx, appNetStatus,
-					olconfig, status, lispRunDirname, netstatus.BridgeName)
+					olconfig.OverlayNetworkConfig,
+					status, lispRunDirname, netstatus.BridgeName)
 			}
 		}
 	}
@@ -536,16 +511,13 @@ func lispInactivate(ctx *zedrouterContext,
 	items := pub.GetAll()
 
 	for _, ans := range items {
-		if ans == nil {
-			continue
-		}
 		appNetStatus := cast.CastAppNetworkStatus(ans)
 		if len(appNetStatus.OverlayNetworkList) == 0 {
 			continue
 		}
 		for _, olStatus := range appNetStatus.OverlayNetworkList {
 			if olStatus.Network == status.AppLink {
-				// XXX What should we pass for deviceNetworkStatus???
+				// Pass global deviceNetworkStatus
 				deleteLispConfiglet(lispRunDirname, false,
 					status.LispStatus.IID, olStatus.EID,
 					deviceNetworkStatus, ctx.separateDataPlane)
