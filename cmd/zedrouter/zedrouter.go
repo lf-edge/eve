@@ -459,7 +459,7 @@ func publishNetworkObjectStatus(ctx *zedrouterContext,
 	key := status.Key()
 	log.Printf("publishNetworkObjectStatus(%s)\n", key)
 	pub := ctx.pubNetworkObjectStatus
-	pub.Publish(key, status)
+	pub.Publish(key, *status)
 }
 
 func unpublishAppNetworkStatus(ctx *zedrouterContext,
@@ -471,6 +471,19 @@ func unpublishAppNetworkStatus(ctx *zedrouterContext,
 	st, _ := pub.Get(key)
 	if st == nil {
 		log.Printf("unpublishAppNetworkStatus(%s) not found\n", key)
+		return
+	}
+	pub.Unpublish(key)
+}
+
+func unpublishNetworkObjectStatus(ctx *zedrouterContext,
+	status *types.NetworkObjectStatus) {
+	key := status.Key()
+	log.Printf("unpublishNetworkObjectStatus(%s)\n", key)
+	pub := ctx.pubNetworkObjectStatus
+	st, _ := pub.Get(key)
+	if st == nil {
+		log.Printf("unpublishNetworkObjectStatus(%s) not found\n", key)
 		return
 	}
 	pub.Unpublish(key)
