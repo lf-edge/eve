@@ -7,6 +7,7 @@
 package pubsub
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,20 +24,24 @@ import (
 )
 
 // XXX add protocol over AF_UNIX later
-// "request" from client after connect, then sequence "update" followed by
-// key then val
+// "request" from client after connect to sanity check subject.
+// Server sends the other messages; "update" for initial values.
 // "complete" once all initial keys/values in collection have been sent.
-// Finally "restarted" if/when pub.km.restarted is set.
+// "restarted" if/when pub.km.restarted is set.
 // Ongoing we send "update" and "delete" messages.
-// Include typeName after command word for sanity. Hence the message format is
+// They keys are base64-encoded since they might contain spaces
+// Include typeName after command word for sanity checks.
+// Hence the message format is
 //	"request" typeName
-//	"update" typeName key json-val XXX we have spaces in keys!
+//	"hello"  string
+//	"update" typeName key json-val
 //	"delete" typeName key
 //	"complete" typeName
 //	"restarted" typeName
 
 // Maintain a collection which is used to handle the restart of a subscriber
 // map of agentname, key to get a json string
+// XXX need mutex for keyMap for publisher
 type keyMap struct {
 	restarted bool
 	key       map[string]interface{}
@@ -129,7 +134,7 @@ func publishImpl(agentName string, agentScope string,
 				return nil, errors.New(errStr)
 			}
 		}
-		s, err := net.Listen("unix", sockName)
+		s, err := net.Listen("unixpacket", sockName)
 		if err != nil {
 			errStr := fmt.Sprintf("Publish(%s): failed %s",
 				name, err)
@@ -137,6 +142,8 @@ func publishImpl(agentName string, agentScope string,
 		}
 		pub.sockName = sockName
 		pub.listener = s
+		// XXX Needs a channel with notifications or at least keys
+		// Avoid blocking due to slow reader?
 		go pub.publisher()
 	}
 	return pub, nil
@@ -198,31 +205,59 @@ func (pub *Publication) populate() {
 func (pub *Publication) publisher() {
 	name := pub.nameString()
 	for {
+		// XXX select on listner plus on channel
+		// XXX or just have per-socket channels? Collection of them?
+		// buffered? Slow receivers resulting in deadlock?
+		// XXX Implement update compression using km+deleted bool
+		// XXX per socket!
 		c, err := pub.listener.Accept()
 		if err != nil {
 			log.Printf("publisher(%s) failed %s\n", name, err)
 			continue
 		}
+		// XXX Create channel for each connection, plus reverse for closing
+		// XXX maintain notification channels ...
 		go pub.serveConnection(c)
 	}
 }
 
 // XXX can't close if we serve updates
+// XXX not safe to iterate collection here; mutex? Or use of channel?
 func (pub *Publication) serveConnection(s net.Conn) {
 	name := pub.nameString()
 	log.Printf("serveConnection(%s)\n", name)
 	defer s.Close()
 
-	_, err := s.Write([]byte(fmt.Sprintf("Hello from %s\n", name)))
+	// Read request
+	buf := make([]byte, 1024)
+	res, err := s.Read(buf)
+	request := strings.Split(string(buf[0:res]), " ")
+	log.Printf("serveConnection read %d: %v\n", len(request), request)
+	if len(request) != 2 || request[0] != "request" || request[1] != pub.topic {
+		log.Printf("Invalid request message: %v\n", request)
+		return
+	}
+
+	_, err = s.Write([]byte(fmt.Sprintf("hello %s", name)))
 	if err != nil {
 		log.Printf("serveConnection(%s) failed %s\n",
 			name, err)
+		return
 	}
 	err = pub.serialize(s)
 	if err != nil {
 		log.Printf("serveConnection(%s) failed %s\n",
 			name, err)
+		return
 	}
+	_, err = s.Write([]byte(fmt.Sprintf("complete %s", pub.topic)))
+	if err != nil {
+		log.Printf("serveConnection(%s) failed %s\n",
+			name, err)
+		return
+	}
+	// XXX wait on channel for adds and deletes somehow ...
+	time.Sleep(time.Minute)
 }
 
 func TypeToName(something interface{}) string {
@@ -425,12 +460,8 @@ func (pub *Publication) restartImpl(restarted bool) error {
 func (pub *Publication) serialize(sock net.Conn) error {
 	name := pub.nameString()
 	log.Printf("serialize(%s)\n", name)
-	for key, s := range pub.km.key {
-		b, err := json.Marshal(s)
-		if err != nil {
-			log.Fatal(err, "json Marshal in serialize")
-		}
-		_, err = sock.Write([]byte(fmt.Sprintf("key %s val %s\n", key, b)))
+	for key, val := range pub.km.key {
+		err := pub.sendUpdate(sock, key, val)
 		if err != nil {
 			log.Printf("serialize(%s) write failed %s\n",
 				name, err)
@@ -438,7 +469,9 @@ func (pub *Publication) serialize(sock net.Conn) error {
 		}
 	}
 	if pub.km.restarted {
-		_, err := sock.Write([]byte(fmt.Sprintf("restarted\n")))
+		log.Printf("serialize(%s) restarted\n", name)
+		_, err := sock.Write([]byte(fmt.Sprintf("restarted %s",
+			pub.topic)))
 		if err != nil {
 			log.Printf("serialize(%s) write failed %s\n",
 				name, err)
@@ -446,6 +479,34 @@ func (pub *Publication) serialize(sock net.Conn) error {
 		}
 	}
 	return nil
+}
+
+func (pub *Publication) sendUpdate(sock net.Conn, key string,
+	val interface{}) error {
+
+	if debug {
+		log.Printf("sendUpdate: key %s\n", key)
+	}
+	b, err := json.Marshal(val)
+	if err != nil {
+		log.Fatal(err, "json Marshal in serialize")
+	}
+	// base64-encode to avoid having spaces in the key
+	sendKey := base64.StdEncoding.EncodeToString([]byte(key))
+	_, err = sock.Write([]byte(fmt.Sprintf("update %s %s %s",
+		pub.topic, sendKey, b)))
+	return err
+}
+
+func (pub *Publication) sendDelete(sock net.Conn, key string) error {
+	if debug {
+		log.Printf("sendDelete: key %s\n", key)
+	}
+	// base64-encode to avoid having spaces in the key
+	sendKey := base64.StdEncoding.EncodeToString([]byte(key))
+	_, err := sock.Write([]byte(fmt.Sprintf("delete %s %s",
+		pub.topic, sendKey)))
+	return err
 }
 
 func (pub *Publication) dump(infoStr string) {
@@ -754,4 +815,3 @@ func (sub *Subscription) GetAll() map[string]interface{} {
 func (sub *Subscription) Restarted() bool {
 	return sub.km.restarted
 }
-
