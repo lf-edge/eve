@@ -55,6 +55,6 @@ lisp xtr-parameters {
     data-plane-logging = no
     flow-logging = no
     checkpoint-map-cache = no
-	register-reachable-rtrs = yes
-	ipc-data-plane = %s
+    register-reachable-rtrs = yes
+    ipc-data-plane = %s
 }
