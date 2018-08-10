@@ -26,8 +26,6 @@ func handleDNCModify(ctxArg interface{}, key string, configArg interface{}) {
 	log.Printf("handleDNCModify for %s\n", key)
 
 	ctx.deviceNetworkConfig = config
-	// XXX Using golang builtin keyword "new" for variable name.
-	// Should we change it?
 	new, _ := devicenetwork.MakeDeviceNetworkStatus(config,
 		ctx.deviceNetworkStatus)
 	// XXX switch to Equal?
@@ -49,8 +47,6 @@ func handleDNCDelete(ctxArg interface{}, key string, configArg interface{}) {
 		log.Printf("handleDNCDelete: ignoring %s\n", key)
 		return
 	}
-	// XXX Using golang builtin keyword "new" for variable name.
-	// Should we change it?
 	new := types.DeviceNetworkStatus{}
 	// XXX switch to Equal?
 	if !reflect.DeepEqual(ctx.deviceNetworkStatus, new) {

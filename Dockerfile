@@ -26,7 +26,7 @@ RUN cd /opt/zededa/bin ; ln -s /go/bin/* .
 RUN cd /opt/zededa/bin ; ln -s zedbox client; ln -s zedbox domainmgr; ln -s zedbox downloader; ln -s zedbox hardwaremodel; ln -s zedbox identitymgr; ln -s zedbox ledmanager; ln -s zedbox logmanager; ln -s zedbox verifier; ln -s zedbox zedagent; ln -s zedbox zedmanager; ln -s zedbox zedrouter
 
 # Now building LISP
-FROM zededa/lisp:alpha AS lisp
+FROM zededa/lisp:latest AS lisp
 
 # Second stage of the build is creating a minimalistic container
 FROM scratch

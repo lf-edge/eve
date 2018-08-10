@@ -387,15 +387,6 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 			continue
 		}
 		status.EIDList[i] = es.EIDStatusDetails
-		/*
-		log.Printf("XXXXX Parsing IID %d, EID %s\n",
-			ec.IID, ec.EID.String())
-		status.EIDList[i].IID = ec.IID
-		status.EIDList[i].EID = ec.EID
-		status.EIDList[i].LispSignature = ec.LispSignature
-		status.EIDList[i].PemCert = ec.PemCert
-		status.EIDList[i].PemPrivateKey = ec.PemPrivateKey
-		*/
 		if status.EIDList[i].EID == nil {
 			log.Printf("Missing EID for %s\n", key)
 			eidsAllocated = false
