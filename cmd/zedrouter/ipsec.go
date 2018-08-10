@@ -223,19 +223,8 @@ func ipTablesAwsClientRulesSet(tunnelName string, gatewayIpAddr string,
 
 func ipTablesSSClientRulesSet(tunnelName string, gatewayIpAddr string) error {
 	// set the iptable rules
-	// forward rule
-	cmd := exec.Command("iptables",
-		"-I", "FORWARD", "1", "--match", "policy",
-		"--pol", "ipsec", "--proto", "esp",
-		"-j", "ACCEPT")
-	if _, err := cmd.Output(); err != nil {
-		log.Printf("%s for %s, %s forward rule create\n",
-			err.Error(), "iptables", tunnelName)
-		return err
-	}
-
 	// input rule
-	cmd = exec.Command("iptables",
+	cmd := exec.Command("iptables",
 		"-I", "INPUT", "1", "-p", "udp", "--dport", "500",
 		"-j", "ACCEPT")
 	if _, err := cmd.Output(); err != nil {
@@ -279,19 +268,8 @@ func ipTablesSSClientRulesSet(tunnelName string, gatewayIpAddr string) error {
 func ipTablesSSServerRulesSet(tunnelName string, gatewayIpAddr string) error {
 
 	// setup the iptable rules
-	// forward rule
-	cmd := exec.Command("iptables",
-		"-I", "FORWARD", "1", "--match", "policy",
-		"--pol", "ipsec", "--proto", "esp",
-		"-j", "ACCEPT")
-	if _, err := cmd.Output(); err != nil {
-		log.Printf("%s for %s, %s forward rule create\n",
-			err.Error(), "iptables", tunnelName)
-		return err
-	}
-
 	// input rule
-	cmd = exec.Command("iptables",
+	cmd := exec.Command("iptables",
 		"-I", "INPUT", "1", "-p", "udp", "--dport", "500",
 		"-j", "ACCEPT")
 	if _, err := cmd.Output(); err != nil {
@@ -363,19 +341,8 @@ func ipTablesAwsClientRulesReset(tunnelName string, gatewayIpAddr string,
 func ipTablesSSClientRulesReset(tunnelName string, vpnGateway string) error {
 
 	// delete the iptable rules
-	// forward rule
-	cmd := exec.Command("iptables",
-		"-D", "FORWARD", "--match", "policy",
-		"--pol", "ipsec", "--proto", "esp",
-		"-j", "ACCEPT")
-	if _, err := cmd.Output(); err != nil {
-		log.Printf("%s for %s, %s forward rule delete\n",
-			err.Error(), "iptables", tunnelName)
-		return err
-	}
-
 	// input rule
-	cmd = exec.Command("iptables",
+	cmd := exec.Command("iptables",
 		"-D", "INPUT", "-p", "udp", "--dport", "500",
 		"-j", "ACCEPT")
 	if _, err := cmd.Output(); err != nil {
@@ -418,19 +385,8 @@ func ipTablesSSClientRulesReset(tunnelName string, vpnGateway string) error {
 func ipTablesSSServerRulesReset(tunnelName string, gatewayIpAddr string) error {
 
 	// delete the iptable rules
-	// forward rule
-	cmd := exec.Command("iptables",
-		"-D", "FORWARD", "--match", "policy",
-		"--pol", "ipsec", "--proto", "esp",
-		"-j", "ACCEPT")
-	if _, err := cmd.Output(); err != nil {
-		log.Printf("%s for %s forward rule delete\n",
-			err.Error(), "iptables")
-		return err
-	}
-
 	// input rule
-	cmd = exec.Command("iptables",
+	cmd := exec.Command("iptables",
 		"-D", "INPUT", "-p", "udp", "--dport", "500",
 		"-j", "ACCEPT")
 	if _, err := cmd.Output(); err != nil {
@@ -439,9 +395,27 @@ func ipTablesSSServerRulesReset(tunnelName string, gatewayIpAddr string) error {
 		return err
 	}
 
+	cmd = exec.Command("iptables",
+		"-D", "INPUT", "-p", "udp", "--dport", "4500",
+		"-j", "ACCEPT")
+	if _, err := cmd.Output(); err != nil {
+		log.Printf("%s for %s, %s output rule delete\n",
+			err.Error(), "iptables", tunnelName)
+		return err
+	}
+
 	// output rule
 	cmd = exec.Command("iptables",
 		"-D", "OUTPUT", "-p", "udp", "--sport", "500",
+		"-j", "ACCEPT")
+	if _, err := cmd.Output(); err != nil {
+		log.Printf("%s for %s, %s output rule delete\n",
+			err.Error(), "iptables", tunnelName)
+		return err
+	}
+
+	cmd = exec.Command("iptables",
+		"-D", "OUTPUT", "-p", "udp", "--sport", "4500",
 		"-j", "ACCEPT")
 	if _, err := cmd.Output(); err != nil {
 		log.Printf("%s for %s, %s output rule delete\n",
@@ -886,14 +860,13 @@ func ipSecSecretConfigDelete() error {
 	return ipSecConfigFileWrite(filename, writeStr)
 }
 
-func charonNoRouteConfigCreate() error {
+func charonRouteConfigCreate(policyflag bool) error {
 	filename := "/etc/strongswan.d/charon.conf"
+	if policyflag == true {
+		return ipSecConfigFileWrite(filename, charonRouteConfStr)
+	}
 	return ipSecConfigFileWrite(filename, charonNoRouteConfStr)
-}
 
-func charonRouteConfigCreate() error {
-	filename := "/etc/strongswan.d/charon.conf"
-	return ipSecConfigFileWrite(filename, charonRouteConfStr)
 }
 
 func charonConfigReset() error {
