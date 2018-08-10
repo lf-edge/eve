@@ -633,6 +633,7 @@ type AdditionalInfoApp struct {
 // Input Opaque Config
 type StrongSwanServiceConfig struct {
 	VpnRole          string
+	PolicyBased      bool
 	VpnGatewayIpAddr string
 	VpnSubnetBlock   string
 	VpnLocalIpAddr   string
@@ -644,6 +645,7 @@ type StrongSwanServiceConfig struct {
 // structure for internal handling
 type VpnServiceConfig struct {
 	VpnRole          string
+	PolicyBased      bool
 	GatewayConfig    VpnGatewayConfig
 	ClientConfigList []VpnClientConfig
 }
@@ -651,6 +653,7 @@ type VpnServiceConfig struct {
 // also used to store status
 type VpnServiceLocalConfig struct {
 	VpnRole          string
+	PolicyBased      bool
 	GatewayConfig    VpnGatewayConfig
 	UpLinkConfig     VpnUpLinkConfig
 	ClientConfigList []VpnClientConfig

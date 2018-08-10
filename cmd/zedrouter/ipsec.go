@@ -36,7 +36,7 @@ const (
 		"\n\tdpdtimeout=30s" + "\n\tdpdaction=restart" +
 		"\n\tmark="
 
-	ipSecClientTunAttribSpecStr = "\n\trightid=%any" +
+	ipSecClientTunAttribSpecStr = "\n\tleftfirewall=yes" + "\n\trightid=%any" +
 		"\n\ttype=tunnel" + "\n\tleftauth=psk" +
 		"\n\trightauth=psk" + "\n\tkeyexchange=ikev1" +
 		"\n\tike=aes128-sha1-modp1024" +
@@ -48,8 +48,7 @@ const (
 		"\n\tdpdtimeout=30s" +
 		"\n\tdpdaction=restart" + "\n"
 
-	ipSecSvrTunHdrSpecStr = "\nconfig setup" + "\n" +
-		"\nconn %default" +
+	ipSecSvrTunHdrSpecStr = "\nconn %default" +
 		"\n\tkeylife=20m" +
 		"\n\trekeymargin=3m" +
 		"\n\tkeyingtries=1" +
@@ -68,6 +67,7 @@ const (
 
 	ipSecSvrTunLeftAttribSpecStr = "\n\tleftfirewall=yes" +
 		"\n\tleftsubnet=0.0.0.0/0" +
+		"\n\ttype=tunnel" +
 		"\n"
 
 	ipSecSvrTunRightHdrSpecStr = "\nconn rw-"
@@ -75,7 +75,7 @@ const (
 		"\n\trightid=%any" +
 		"\n\tright="
 	ipSecSvrTunRightAttribSpecStr = "\n\trightsubnet=0.0.0.0/0" +
- 		"\n\tauto=add" +
+		"\n\tauto=add" +
 		"\n"
 )
 
@@ -226,8 +226,8 @@ func ipTablesSSClientRulesSet(tunnelName string, gatewayIpAddr string) error {
 	// forward rule
 	cmd := exec.Command("iptables",
 		"-I", "FORWARD", "1", "--match", "policy",
-		"--pol", "ipsec", "--dir", "out", "--proto", "esp",
-		"-s", "0.0.0.0/0", "-j", "ACCEPT")
+		"--pol", "ipsec", "--proto", "esp",
+		"-j", "ACCEPT")
 	if _, err := cmd.Output(); err != nil {
 		log.Printf("%s for %s, %s forward rule create\n",
 			err.Error(), "iptables", tunnelName)
@@ -282,8 +282,8 @@ func ipTablesSSServerRulesSet(tunnelName string, gatewayIpAddr string) error {
 	// forward rule
 	cmd := exec.Command("iptables",
 		"-I", "FORWARD", "1", "--match", "policy",
-		"--pol", "ipsec", "--dir", "out", "--proto", "esp",
-		"-s", "0.0.0.0/0", "-j", "ACCEPT")
+		"--pol", "ipsec", "--proto", "esp",
+		"-j", "ACCEPT")
 	if _, err := cmd.Output(); err != nil {
 		log.Printf("%s for %s, %s forward rule create\n",
 			err.Error(), "iptables", tunnelName)
@@ -366,8 +366,8 @@ func ipTablesSSClientRulesReset(tunnelName string, vpnGateway string) error {
 	// forward rule
 	cmd := exec.Command("iptables",
 		"-D", "FORWARD", "--match", "policy",
-		"--pol", "ipsec", "--dir", "out", "--proto", "esp",
-		"-s", "0.0.0.0/0", "-j", "ACCEPT")
+		"--pol", "ipsec", "--proto", "esp",
+		"-j", "ACCEPT")
 	if _, err := cmd.Output(); err != nil {
 		log.Printf("%s for %s, %s forward rule delete\n",
 			err.Error(), "iptables", tunnelName)
@@ -421,13 +421,14 @@ func ipTablesSSServerRulesReset(tunnelName string, gatewayIpAddr string) error {
 	// forward rule
 	cmd := exec.Command("iptables",
 		"-D", "FORWARD", "--match", "policy",
-		"--pol", "ipsec", "--dir", "out", "--proto", "esp",
-		"-s", "0.0.0.0/0", "-j", "ACCEPT")
+		"--pol", "ipsec", "--proto", "esp",
+		"-j", "ACCEPT")
 	if _, err := cmd.Output(); err != nil {
 		log.Printf("%s for %s forward rule delete\n",
 			err.Error(), "iptables")
 		return err
 	}
+
 	// input rule
 	cmd = exec.Command("iptables",
 		"-D", "INPUT", "-p", "udp", "--dport", "500",
@@ -509,67 +510,140 @@ func ipTablesChainMatch(tableName string, chainName string,
 // correct table or add/delete from the correct table
 func ipRouteCreate(vpnLocalConfig types.VpnServiceLocalConfig) error {
 
-	if vpnLocalConfig.VpnRole != AwsVpnClient {
-		return errors.New("invalid operation")
+	if vpnLocalConfig.PolicyBased == true {
+		return nil
 	}
-
 	gatewayConfig := vpnLocalConfig.GatewayConfig
-	clientConfig := vpnLocalConfig.ClientConfigList[0]
-	tunnelConfig := clientConfig.TunnelConfig
 
-	cmd := exec.Command("ip", "route", "add", gatewayConfig.SubnetBlock,
-		"dev", tunnelConfig.Name, "metric", tunnelConfig.Metric)
-	if _, err := cmd.Output(); err != nil {
-		log.Printf("%s for %s %s add\n",
-			err.Error(), "iproute", gatewayConfig.SubnetBlock)
-		return err
+	// for client config setup, create server subnet block route
+	if vpnLocalConfig.VpnRole == AwsVpnClient ||
+		vpnLocalConfig.VpnRole == OnPremVpnClient {
+		clientConfig := vpnLocalConfig.ClientConfigList[0]
+		tunnelConfig := clientConfig.TunnelConfig
+
+		cmd := exec.Command("ip", "route", "add", gatewayConfig.SubnetBlock,
+			"dev", tunnelConfig.Name, "metric", tunnelConfig.Metric)
+		if _, err := cmd.Output(); err != nil {
+			log.Printf("%s for %s %s add\n",
+				err.Error(), "iproute", gatewayConfig.SubnetBlock)
+			return err
+		}
+		log.Printf("ipRoute(%s) add OK\n", tunnelConfig.Name)
+		return nil
 	}
-	log.Printf("ipRoute(%s) add OK\n", tunnelConfig.Name)
-	return nil
+
+	// for server config, create all client subnet block routes
+	if vpnLocalConfig.VpnRole == OnPremVpnServer {
+		for _, clientConfig := range vpnLocalConfig.ClientConfigList {
+			tunnelConfig := clientConfig.TunnelConfig
+			cmd := exec.Command("ip", "route", "add", clientConfig.SubnetBlock,
+				"dev", tunnelConfig.Name, "metric", tunnelConfig.Metric)
+			if _, err := cmd.Output(); err != nil {
+				log.Printf("%s for %s %s add\n",
+					err.Error(), "iproute", clientConfig.SubnetBlock)
+				return err
+			}
+			log.Printf("ipRoute(%s) %s create OK\n",
+				tunnelConfig.Name, clientConfig.SubnetBlock)
+		}
+		return nil
+	}
+	return errors.New("unknown VpnRole: " + vpnLocalConfig.VpnRole)
 }
 
 func ipRouteDelete(vpnLocalConfig types.VpnServiceLocalConfig) error {
 
-	if vpnLocalConfig.VpnRole != AwsVpnClient {
-		return errors.New("invalid operation")
+	if vpnLocalConfig.PolicyBased == true {
+		return nil
 	}
 	gatewayConfig := vpnLocalConfig.GatewayConfig
-	tunnelConfig := vpnLocalConfig.ClientConfigList[0].TunnelConfig
 
-	cmd := exec.Command("ip", "route", "delete", gatewayConfig.SubnetBlock)
-	if _, err := cmd.Output(); err != nil {
-		log.Printf("%s for %s %s add\n",
-			err.Error(), "iproute", gatewayConfig.SubnetBlock)
-		return err
+	// for client config setup, create server subnet route
+	if vpnLocalConfig.VpnRole == AwsVpnClient ||
+		vpnLocalConfig.VpnRole == OnPremVpnClient {
+
+		tunnelConfig := vpnLocalConfig.ClientConfigList[0].TunnelConfig
+		cmd := exec.Command("ip", "route", "delete", gatewayConfig.SubnetBlock)
+		if _, err := cmd.Output(); err != nil {
+			log.Printf("%s for %s %s add\n",
+				err.Error(), "iproute", gatewayConfig.SubnetBlock)
+			return err
+		}
+		log.Printf("ipRoute(%s) %s delete OK\n", tunnelConfig.Name,
+			gatewayConfig.SubnetBlock)
+		return nil
 	}
-	log.Printf("ipRoute(%s) delete OK\n", tunnelConfig.Name)
-	return nil
+
+	// for server config, remove all client routes
+	if vpnLocalConfig.VpnRole == OnPremVpnServer {
+		for _, clientConfig := range vpnLocalConfig.ClientConfigList {
+			tunnelConfig := clientConfig.TunnelConfig
+			cmd := exec.Command("ip", "route", "delete", clientConfig.SubnetBlock)
+			if _, err := cmd.Output(); err != nil {
+				log.Printf("%s for %s %s add\n",
+					err.Error(), "iproute", clientConfig.SubnetBlock)
+				return err
+			}
+			log.Printf("ipRoute(%s) %s delete OK\n",
+				tunnelConfig.Name, clientConfig.SubnetBlock)
+		}
+		return nil
+	}
+	return errors.New("unknown VpnRole: " + vpnLocalConfig.VpnRole)
 }
 
 func ipRouteCheck(vpnLocalConfig types.VpnServiceLocalConfig) error {
 
-	if vpnLocalConfig.VpnRole != AwsVpnClient {
-		return errors.New("invalid operation")
+	if vpnLocalConfig.PolicyBased == true {
+		return nil
 	}
 
 	gatewayConfig := vpnLocalConfig.GatewayConfig
 	clientConfig := vpnLocalConfig.ClientConfigList[0]
 	tunnelConfig := clientConfig.TunnelConfig
 
-	cmd := exec.Command("ip", "route", "get", gatewayConfig.SubnetBlock)
-	out, err := cmd.Output()
-	if err != nil {
-		log.Printf("%s for %s %s check, no route\n",
-			err.Error(), "iproute", gatewayConfig.SubnetBlock)
-		return err
+	// for client config setup, check server subnet block route
+	if vpnLocalConfig.VpnRole == AwsVpnClient ||
+		vpnLocalConfig.VpnRole == OnPremVpnClient {
+		cmd := exec.Command("ip", "route", "get", gatewayConfig.SubnetBlock)
+		out, err := cmd.Output()
+		if err != nil {
+			log.Printf("%s for %s %s check, no route\n",
+				err.Error(), "iproute", gatewayConfig.SubnetBlock)
+			return err
+		}
+
+		if err := ipRouteMatch(string(out), tunnelConfig.Name); err != nil {
+			log.Printf("%s for ipRoute(%s) check fail\n", err, tunnelConfig.Name)
+			return err
+		}
+		log.Printf("ipRoute(%s) check OK\n", tunnelConfig.Name)
+		return nil
 	}
 
-	if err := ipRouteMatch(string(out), tunnelConfig.Name); err != nil {
-		log.Printf("%s for ipRoute(%s) check fail\n", err, tunnelConfig.Name)
-		return err
+	// for server config, check all client subnet block routes
+	if vpnLocalConfig.VpnRole == OnPremVpnServer {
+		for _, clientConfig := range vpnLocalConfig.ClientConfigList {
+			tunnelConfig := clientConfig.TunnelConfig
+			cmd := exec.Command("ip", "route", "get", clientConfig.SubnetBlock)
+			out, err := cmd.Output()
+			if err != nil {
+				log.Printf("%s for %s %s check, no route\n",
+					err.Error(), "iproute", clientConfig.SubnetBlock)
+				return err
+			}
+
+			if err := ipRouteMatch(string(out), tunnelConfig.Name); err != nil {
+				log.Printf("%s for ipRoute(%s) check fail\n",
+					err, tunnelConfig.Name)
+				return err
+			}
+			log.Printf("ipRoute(%s) %s check OK\n",
+				tunnelConfig.Name, clientConfig.SubnetBlock)
+		}
+		return nil
 	}
-	log.Printf("ipRoute(%s) check OK\n", tunnelConfig.Name)
-	return nil
+	return errors.New("unknown VpnRole: " + vpnLocalConfig.VpnRole)
 }
 
 func ipRouteMatch(outStr, matchString string) error {
@@ -587,8 +661,8 @@ func ipRouteMatch(outStr, matchString string) error {
 
 func ipLinkTunnelCreate(vpnLocalConfig types.VpnServiceLocalConfig) error {
 
-	if vpnLocalConfig.VpnRole != AwsVpnClient {
-		return errors.New("invalid operation")
+	if vpnLocalConfig.PolicyBased == true {
+		return nil
 	}
 	gatewayConfig := vpnLocalConfig.GatewayConfig
 	clientConfig := vpnLocalConfig.ClientConfigList[0]
@@ -597,28 +671,46 @@ func ipLinkTunnelCreate(vpnLocalConfig types.VpnServiceLocalConfig) error {
 
 	log.Printf("%s: %s %s %s\n", tunnelConfig.Name, "ip link add",
 		upLinkConfig.IpAddr, gatewayConfig.IpAddr)
-	cmd := exec.Command("ip", "link", "add",
-		tunnelConfig.Name, "type", "vti", "local", upLinkConfig.IpAddr,
-		"remote", gatewayConfig.IpAddr, "key", tunnelConfig.Key)
-	if _, err := cmd.Output(); err != nil {
-		log.Printf("%s for %s %s add on %s\n", err.Error(), "ip link",
-			tunnelConfig.Name, upLinkConfig.IpAddr, gatewayConfig.IpAddr)
-		return err
+	if vpnLocalConfig.VpnRole == AwsVpnClient ||
+		vpnLocalConfig.VpnRole == OnPremVpnClient {
+		cmd := exec.Command("ip", "link", "add",
+			tunnelConfig.Name, "type", "vti", "local", upLinkConfig.IpAddr,
+			"remote", gatewayConfig.IpAddr, "key", tunnelConfig.Key)
+		if _, err := cmd.Output(); err != nil {
+			log.Printf("%s for %s %s add on %s\n", err.Error(), "ip link",
+				tunnelConfig.Name, upLinkConfig.IpAddr, gatewayConfig.IpAddr)
+			return err
+		}
 	}
 
-	log.Printf("%s: %s %s %s\n", tunnelConfig.Name, "ip link addr",
-		tunnelConfig.LocalIpAddr, tunnelConfig.RemoteIpAddr)
-	cmd = exec.Command("ip", "addr", "add",
-		tunnelConfig.LocalIpAddr, "remote", tunnelConfig.RemoteIpAddr,
-		"dev", tunnelConfig.Name)
-	if _, err := cmd.Output(); err != nil {
-		log.Printf("%s for %s %s addr add\n",
-			err.Error(), "ip link", tunnelConfig.Name, tunnelConfig.LocalIpAddr,
-			tunnelConfig.RemoteIpAddr)
-		return err
+	// for server, create remote any
+	if vpnLocalConfig.VpnRole == OnPremVpnServer {
+		cmd := exec.Command("ip", "link", "add",
+			tunnelConfig.Name, "type", "vti", "local", upLinkConfig.IpAddr,
+			"remote", "0.0.0.0")
+		if _, err := cmd.Output(); err != nil {
+			log.Printf("%s for %s %s add on %s\n", err.Error(), "ip link",
+				tunnelConfig.Name, upLinkConfig.IpAddr, gatewayConfig.IpAddr)
+			return err
+		}
 	}
+
+	if vpnLocalConfig.VpnRole == AwsVpnClient {
+		log.Printf("%s: %s %s %s\n", tunnelConfig.Name, "ip link addr",
+			tunnelConfig.LocalIpAddr, tunnelConfig.RemoteIpAddr)
+		cmd := exec.Command("ip", "addr", "add",
+			tunnelConfig.LocalIpAddr, "remote", tunnelConfig.RemoteIpAddr,
+			"dev", tunnelConfig.Name)
+		if _, err := cmd.Output(); err != nil {
+			log.Printf("%s for %s %s addr add\n",
+				err.Error(), "ip link", tunnelConfig.Name, tunnelConfig.LocalIpAddr,
+				tunnelConfig.RemoteIpAddr)
+			return err
+		}
+	}
+
 	log.Printf("%s: %s %s\n", tunnelConfig.Name, "ip link mtu", tunnelConfig.Mtu)
-	cmd = exec.Command("ip", "link", "set",
+	cmd := exec.Command("ip", "link", "set",
 		tunnelConfig.Name, "up", "mtu", tunnelConfig.Mtu)
 	if _, err := cmd.Output(); err != nil {
 		log.Printf("%s for %s %s set mtu up\n",
@@ -632,8 +724,8 @@ func ipLinkTunnelCreate(vpnLocalConfig types.VpnServiceLocalConfig) error {
 
 func ipLinkTunnelDelete(vpnLocalConfig types.VpnServiceLocalConfig) error {
 
-	if vpnLocalConfig.VpnRole != AwsVpnClient {
-		return errors.New("invalid operation")
+	if vpnLocalConfig.PolicyBased == true {
+		return nil
 	}
 
 	clientConfig := vpnLocalConfig.ClientConfigList[0]
@@ -811,19 +903,24 @@ func charonConfigReset() error {
 
 func sysctlConfigCreate(vpnLocalConfig types.VpnServiceLocalConfig) error {
 
-	clientConfig := vpnLocalConfig.ClientConfigList[0]
-	tunnelConfig := clientConfig.TunnelConfig
 	upLinkConfig := vpnLocalConfig.UpLinkConfig
-	log.Printf("%s: %s config %s\n", tunnelConfig.Name, "sysctl", upLinkConfig.Name)
+	log.Printf("%s: %s config\n", upLinkConfig.Name, "sysctl")
 
 	// XXX ip_forward is already set by zedrouter.
 	writeStr := "\n net.ipv4.ip_forward = 1"
-	if vpnLocalConfig.VpnRole == AwsVpnClient {
-		writeStr = writeStr + "\n net.ipv4.conf." + tunnelConfig.Name + ".rp_filter=2"
-		writeStr = writeStr + "\n net.ipv4.conf." + tunnelConfig.Name + ".disable_policy=1"
+	if vpnLocalConfig.PolicyBased == true {
+		writeStr = writeStr + "\n net.ipv4.conf." + upLinkConfig.Name + ".disable_xfrm=0"
+		writeStr = writeStr + "\n net.ipv4.conf." + upLinkConfig.Name + ".disable_policy=0\n"
+	} else {
+		writeStr = writeStr + "\n net.ipv4.conf." + upLinkConfig.Name + ".disable_xfrm=1"
+		writeStr = writeStr + "\n net.ipv4.conf." + upLinkConfig.Name + ".disable_policy=1\n"
+		for _, clientConfig := range vpnLocalConfig.ClientConfigList {
+			tunnelConfig := clientConfig.TunnelConfig
+			log.Printf("%s: %s config\n", tunnelConfig.Name, "sysctl")
+			writeStr = writeStr + "\n net.ipv4.conf." + tunnelConfig.Name + ".rp_filter=2"
+			writeStr = writeStr + "\n net.ipv4.conf." + tunnelConfig.Name + ".disable_policy=1"
+		}
 	}
-	writeStr = writeStr + "\n net.ipv4.conf." + upLinkConfig.Name + ".disable_xfrm=1"
-	writeStr = writeStr + "\n net.ipv4.conf." + upLinkConfig.Name + ".disable_policy=1\n"
 	filename := "/etc/sysctl.conf"
 	if err := ipSecConfigFileWrite(filename, writeStr); err != nil {
 		log.Printf("sysctlConfigWrite() Fail\n")
