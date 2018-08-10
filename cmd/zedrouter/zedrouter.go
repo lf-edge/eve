@@ -1027,7 +1027,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 			// Lisp configlets and re-start lispers.net
 			log.Printf("handleCreate: Network %s is not attached to any service\n",
 				netconfig.Key())
-			return
+			continue
 		}
 		if serviceStatus.Activated == false {
 			// Lisp service is not activate yet. Let the Lisp service activation

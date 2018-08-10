@@ -510,6 +510,14 @@ func lispInactivate(ctx *zedrouterContext,
 	pub := ctx.pubAppNetworkStatus
 	items := pub.GetAll()
 
+	// When service is deactivated we should delete IID and map-server
+	// configuration also
+	cfgPathnameIID := lispRunDirname + "/" +
+		strconv.FormatUint(uint64(status.LispStatus.IID), 10)
+	if err := os.Remove(cfgPathnameIID); err != nil {
+		log.Println(err)
+	}
+
 	for _, ans := range items {
 		appNetStatus := cast.CastAppNetworkStatus(ans)
 		if len(appNetStatus.OverlayNetworkList) == 0 {
