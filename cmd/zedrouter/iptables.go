@@ -95,6 +95,9 @@ func fetchIprulesCounters() []AclCounters {
 			counters = append(counters, c...)
 		}
 	}
+	// XXX also need
+	// out, err = iptableCmdOut(false, "-t", "raw", "-S", "PREROUTING", "-v")
+
 	// XXX Only needed to get dbo1x0 stats
 	out, err = ip6tableCmdOut(false, "-t", "filter", "-S", "OUTPUT", "-v")
 	if err != nil {
@@ -126,6 +129,8 @@ func fetchIprulesCounters() []AclCounters {
 	return counters
 }
 
+// XXX is overlay really ipv6?
+// XXX IIf/OIf match needs to be on vifname not bridgename
 func getIpRuleCounters(counters []AclCounters, match AclCounters) *AclCounters {
 	for i, c := range counters {
 		if c.Overlay != match.Overlay || c.Log != match.Log ||
@@ -142,6 +147,7 @@ func getIpRuleCounters(counters []AclCounters, match AclCounters) *AclCounters {
 
 // Look for a LOG entry without More; we don't have those for rate limits
 func getIpRuleAclDrop(counters []AclCounters, ifname string, input bool) uint64 {
+	// XXX can't match on bo!
 	overlay := strings.HasPrefix(ifname, "bo") ||
 		strings.HasPrefix(ifname, "dbo")
 	var iif string
@@ -161,6 +167,7 @@ func getIpRuleAclDrop(counters []AclCounters, ifname string, input bool) uint64 
 
 // Look for a DROP entry with More set.
 func getIpRuleAclRateLimitDrop(counters []AclCounters, ifname string, input bool) uint64 {
+	// XXX can't match on bo
 	overlay := strings.HasPrefix(ifname, "bo") ||
 		strings.HasPrefix(ifname, "dbo")
 	var iif string

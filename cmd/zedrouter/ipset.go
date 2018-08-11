@@ -12,6 +12,7 @@ import (
 )
 
 // Create local IPv6 ipset called "local.ipv6".
+// XXX also a local.ipv4 with 0 and 255
 func createDefaultIpset() {
 	if debug {
 		log.Printf("createDefaultIpset()\n")

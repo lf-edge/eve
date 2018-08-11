@@ -274,6 +274,7 @@ func applyACLRules(rules IptablesRuleList, ifname string, isMgmt bool,
 }
 
 // Returns a list of iptables commands, witout the initial "-A FORWARD"
+// XXX rename myIP to bridgeIP
 func aclToRules(ifname string, ACLs []types.ACE, ipVer int,
 	myIP string, appIP string, underlaySshPortMap uint) (IptablesRuleList, error) {
 	rulesList := IptablesRuleList{}
@@ -295,6 +296,7 @@ func aclToRules(ifname string, ACLs []types.ACE, ipVer int,
 		rule4 := []string{"-i", ifname, "-s", myIP, "-j", "ACCEPT"}
 		rulesList = append(rulesList, rule1, rule2, rule3, rule4)
 	}
+	// XXX do the same rules as above for IPv4.
 	if underlaySshPortMap != 0 {
 		port := fmt.Sprintf("%d", underlaySshPortMap)
 		dest := fmt.Sprintf("%s:22", appIP)
@@ -602,6 +604,7 @@ func rulePrefix(operation string, isMgmt bool, ipVer int,
 			// NAT verbatim rule
 			prefix = []string{"-t", "nat", operation}
 		} else {
+			// XXX do same as IPv6
 			prefix = []string{operation, "FORWARD"}
 		}
 	}
