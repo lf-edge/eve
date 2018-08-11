@@ -876,7 +876,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 		}
 		netconfig := lookupNetworkObjectConfig(ctx, olConfig.Network.String())
 		if netconfig == nil {
-			log.Printf("handleCreate: Network %s that the overlay" +
+			log.Printf("handleCreate: Network %s that the overlay"+
 				" uses is not present in configuration database\n",
 				olConfig.Network.String())
 			continue
@@ -889,7 +889,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 				olConfig.Network.String())
 			continue
 		}
-		bridgeNum  := netstatus.BridgeNum
+		bridgeNum := netstatus.BridgeNum
 		bridgeName := netstatus.BridgeName
 
 		EID := olConfig.EID
@@ -992,11 +992,11 @@ func handleCreate(ctx *zedrouterContext, key string,
 			// with corresponding bridge created already.
 
 			/*
-			err = createACLConfiglet(bridgeName, false, olConfig.ACLs, 6,
-				olAddr1, "", 0, netconfig)
-			if err != nil {
-				addError(ctx, &status, "createACL", err)
-			}
+				err = createACLConfiglet(bridgeName, false, olConfig.ACLs, 6,
+					olAddr1, "", 0, netconfig)
+				if err != nil {
+					addError(ctx, &status, "createACL", err)
+				}
 			*/
 		}
 		// XXX createDnsmasq assumes it can read this to get netstatus
@@ -1012,7 +1012,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 		if err != nil {
 			log.Printf("handleCreate: Bridge %s has invalid ip address %s\n",
 				bridgeName, netstatus.BridgeIPAddr)
-				continue
+			continue
 		}
 		createDnsmasqOverlayConfiglet(ctx, cfgPathname, bridgeName,
 			bridgeIP.String(), EID.String(), olMac, hostsDirpath,
@@ -1178,7 +1178,7 @@ func createAndStartLisp(ctx *zedrouterContext,
 	olConfig types.OverlayNetworkConfig,
 	serviceStatus *types.NetworkServiceStatus,
 	lispRunDirname, bridgeName string) {
-	
+
 	if serviceStatus == nil {
 		log.Printf("createAndStartLisp: No service configured yet\n")
 		return
@@ -1193,7 +1193,7 @@ func createAndStartLisp(ctx *zedrouterContext,
 	deviceNetworkParams := types.DeviceNetworkStatus{}
 	for _, uplink := range deviceNetworkStatus.UplinkStatus {
 		if _, ok := adapterMap[uplink.IfName]; ok == true {
-			deviceNetworkParams.UplinkStatus = 
+			deviceNetworkParams.UplinkStatus =
 				append(deviceNetworkParams.UplinkStatus, uplink)
 		}
 	}
@@ -1846,7 +1846,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 
 			// Eid Ipset updation/deletion should happen as part of NetworkObjectConfig processing
 			/*
-			deleteEidIpsetConfiglet(bridgeName, true)
+				deleteEidIpsetConfiglet(bridgeName, true)
 			*/
 		}
 
