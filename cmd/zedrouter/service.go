@@ -440,7 +440,7 @@ func lookupAppLink(ctx *zedrouterContext, appLink uuid.UUID) *types.NetworkServi
 func lispCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	status *types.NetworkServiceStatus) error {
 	status.LispStatus = config.LispConfig
-	
+
 	// XXX Create Lisp IID & map-server configlets here
 	iid := config.LispConfig.IID
 	mapServers := config.LispConfig.MapServers
@@ -532,7 +532,6 @@ func lispInactivate(ctx *zedrouterContext,
 			}
 		}
 	}
-
 
 	log.Printf("lispInactivate(%s)\n", status.DisplayName)
 }

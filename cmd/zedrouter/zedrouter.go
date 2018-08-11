@@ -939,8 +939,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 				config.DisplayName)
 			return
 		}
-
-		bridgeNum  := netstatus.BridgeNum
+		bridgeNum := netstatus.BridgeNum
 		bridgeName := netstatus.BridgeName
 
 		EID := olConfig.EID
@@ -1178,7 +1177,7 @@ func createAndStartLisp(ctx *zedrouterContext,
 	olConfig types.OverlayNetworkConfig,
 	serviceStatus *types.NetworkServiceStatus,
 	lispRunDirname, bridgeName string) {
-	
+
 	if serviceStatus == nil {
 		log.Printf("createAndStartLisp: No service configured yet\n")
 		return
@@ -1193,7 +1192,7 @@ func createAndStartLisp(ctx *zedrouterContext,
 	deviceNetworkParams := types.DeviceNetworkStatus{}
 	for _, uplink := range deviceNetworkStatus.UplinkStatus {
 		if _, ok := adapterMap[uplink.IfName]; ok == true {
-			deviceNetworkParams.UplinkStatus = 
+			deviceNetworkParams.UplinkStatus =
 				append(deviceNetworkParams.UplinkStatus, uplink)
 		}
 	}

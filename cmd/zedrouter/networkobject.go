@@ -45,7 +45,7 @@ func handleNetworkObjectCreate(ctx *zedrouterContext, key string, config types.N
 	status := types.NetworkObjectStatus{
 		NetworkObjectConfig: config,
 		IPAssignments:       make(map[string]net.IP),
-		NameToEidList:      config.ZedServConfig.NameToEidList,
+		NameToEidList:       config.ZedServConfig.NameToEidList,
 	}
 	status.PendingAdd = true
 	publishNetworkObjectStatus(ctx, &status)
@@ -539,7 +539,7 @@ func doNetworkDelete(ctx *zedrouterContext,
 		}
 
 		err := deleteACLConfiglet(bridgeName, false, acls,
-				6, status.BridgeIPAddr, "", 0, nil)
+			6, status.BridgeIPAddr, "", 0, nil)
 		if err != nil {
 			log.Printf("doNetworkDelete: deleteACL failed: %s\n", err)
 		}

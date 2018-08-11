@@ -246,6 +246,7 @@ func doBaseOsInstall(ctx *zedagentContext, uuidStr string,
 		return changed || verifychange, proceed
 	}
 
+	// XXX can we check the version before installing to the partition?
 	// install the image at proper partition
 	if ret := installDownloadedObjects(baseOsObj, uuidStr,
 		config.StorageConfigList, status.StorageStatusList); ret == true {
@@ -530,6 +531,7 @@ func checkInstalledVersion(config types.BaseOsConfig) string {
 
 		log.Println(errStr)
 		// XXX return errStr
+		// XXX restore
 	}
 	return ""
 }

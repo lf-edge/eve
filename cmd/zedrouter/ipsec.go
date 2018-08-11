@@ -75,7 +75,7 @@ const (
 		"\n\trightid=%any" +
 		"\n\tright="
 	ipSecSvrTunRightAttribSpecStr = "\n\trightsubnet=0.0.0.0/0" +
- 		"\n\tauto=add" +
+		"\n\tauto=add" +
 		"\n"
 )
 
