@@ -14,6 +14,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/satori/go.uuid"
 	"github.com/vishvananda/netlink"
 	"github.com/zededa/go-provision/adapters"
 	"github.com/zededa/go-provision/agentlog"
@@ -29,6 +30,7 @@ import (
 	"net"
 	"os"
 	"reflect"
+	"strings"
 	"strconv"
 	"time"
 )
@@ -1046,9 +1048,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 		addhostDnsmasq(bridgeName, appMac, EID.String(),
 			config.UUIDandVersion.UUID.String())
 		// Start clean
-		cfgFilename := "dnsmasq." + bridgeName + ".conf"
-		cfgPathname := runDirname + "/" + cfgFilename
-		stopDnsmasq(cfgFilename, false)
+		stopDnsmasq(bridgeName, false)
 		// XXX need ipsets from all bn<N> users
 
 		// Create LISP configlets for IID and EID/signature
@@ -1766,7 +1766,6 @@ func handleDelete(ctx *zedrouterContext, key string,
 
 			olStatus := status.OverlayNetworkList[olNum-1]
 			bridgeName := olStatus.Bridge
-			olAddr1 := olStatus.BridgeIPAddr
 
 			sharedBridge := true
 			if !strings.HasPrefix(bridgeName, "bn") {
