@@ -639,6 +639,7 @@ type StrongSwanServiceConfig struct {
 	VpnLocalIpAddr   string
 	VpnRemoteIpAddr  string
 	PreSharedKey     string
+	LocalSubnetBlock string
 	ClientConfigList []VpnClientConfig
 }
 
@@ -646,33 +647,22 @@ type StrongSwanServiceConfig struct {
 type VpnServiceConfig struct {
 	VpnRole          string
 	PolicyBased      bool
-	GatewayConfig    VpnGatewayConfig
+	UpLinkConfig     NetLinkConfig
+	AppLinkConfig    NetLinkConfig
+	GatewayConfig    NetLinkConfig
 	ClientConfigList []VpnClientConfig
 }
 
-// also used to store status
-type VpnServiceLocalConfig struct {
-	VpnRole          string
-	PolicyBased      bool
-	GatewayConfig    VpnGatewayConfig
-	UpLinkConfig     VpnUpLinkConfig
-	ClientConfigList []VpnClientConfig
-}
-
-type VpnUpLinkConfig struct {
-	Name   string
-	IpAddr string
-}
-
-type VpnGatewayConfig struct {
+type NetLinkConfig struct {
+	Name        string
 	IpAddr      string
 	SubnetBlock string
 }
 
 type VpnClientConfig struct {
 	IpAddr       string
-	PreSharedKey string
 	SubnetBlock  string
+	PreSharedKey string
 	TunnelConfig VpnTunnelConfig
 }
 

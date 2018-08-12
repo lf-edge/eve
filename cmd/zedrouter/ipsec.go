@@ -35,7 +35,6 @@ const (
 		"\n\trightsubnet=0.0.0.0/0" + "\n\tdpddelay=10s" +
 		"\n\tdpdtimeout=30s" + "\n\tdpdaction=restart" +
 		"\n\tmark="
-
 	ipSecClientTunAttribSpecStr = "\n\tleftfirewall=yes" + "\n\trightid=%any" +
 		"\n\ttype=tunnel" + "\n\tleftauth=psk" +
 		"\n\trightauth=psk" + "\n\tkeyexchange=ikev1" +
@@ -47,7 +46,6 @@ const (
 	ipSecClientTunDpdSpecStr         = "\n\tdpddelay=10s" +
 		"\n\tdpdtimeout=30s" +
 		"\n\tdpdaction=restart" + "\n"
-
 	ipSecSvrTunHdrSpecStr = "\nconn %default" +
 		"\n\tkeylife=20m" +
 		"\n\trekeymargin=3m" +
@@ -61,27 +59,23 @@ const (
 		"\n\tesp=aes128-sha1" +
 		"\n\tlifetime=1h" +
 		"\n"
-
 	ipSecSvrTunLeftHdrSpecStr = "\nconn rw" +
-		"\n\tleftid=%any" + "\n\tleft="
-
+		"\n\tauto=add" + "\n\tleftid=%any" + "\n\tleft="
 	ipSecSvrTunLeftAttribSpecStr = "\n\tleftfirewall=yes" +
 		"\n\tleftsubnet=0.0.0.0/0" +
-		"\n\ttype=tunnel" +
-		"\n"
-
-	ipSecSvrTunRightHdrSpecStr = "\nconn rw-"
+		"\n\ttype=tunnel" + "\n"
+	ipSecSvrTunRightHdrSpecStr = "\nconn "
 	ipSecSvrTunRightSpecStr    = "\n\talso=rw" +
 		"\n\trightid=%any" +
 		"\n\tright="
 	ipSecSvrTunRightAttribSpecStr = "\n\trightsubnet=0.0.0.0/0" +
-		"\n\tauto=add" +
-		"\n"
+		"\n\tdpddelay=10s" + "\n\tdpdtimeout=30s" +
+		"\n\tdpdaction=clear" + "\n"
 )
 
-func ipSecServiceActivate(vpnLocalConfig types.VpnServiceLocalConfig) error {
-	tunnelConfig := vpnLocalConfig.ClientConfigList[0].TunnelConfig
-	switch vpnLocalConfig.VpnRole {
+func ipSecServiceActivate(vpnConfig types.VpnServiceConfig) error {
+	tunnelConfig := vpnConfig.ClientConfigList[0].TunnelConfig
+	switch vpnConfig.VpnRole {
 	case AwsVpnClient:
 		cmd := exec.Command("ipsec", "start")
 		if _, err := cmd.Output(); err != nil {
@@ -105,29 +99,13 @@ func ipSecServiceActivate(vpnLocalConfig types.VpnServiceLocalConfig) error {
 	return nil
 }
 
-func ipSecServiceInactivate(vpnLocalConfig types.VpnServiceLocalConfig) error {
-	tunnelConfig := vpnLocalConfig.ClientConfigList[0].TunnelConfig
-	switch vpnLocalConfig.VpnRole {
-	case AwsVpnClient:
-		cmd := exec.Command("ipsec", "stop")
-		if _, err := cmd.Output(); err != nil {
-			log.Printf("%s for %s stop\n", err.Error(), "ipsec")
-			return err
-		}
-	case OnPremVpnClient:
-		cmd := exec.Command("ipsec", "stop")
-		if _, err := cmd.Output(); err != nil {
-			log.Printf("%s for %s stop\n", err.Error(), "ipsec")
-			return err
-		}
-	case OnPremVpnServer:
-		cmd := exec.Command("ipsec", "stop")
-		if _, err := cmd.Output(); err != nil {
-			log.Printf("%s for %s stop\n", err.Error(), "ipsec")
-			return err
-		}
+func ipSecServiceInactivate(vpnConfig types.VpnServiceConfig) error {
+	cmd := exec.Command("ipsec", "stop")
+	if _, err := cmd.Output(); err != nil {
+		log.Printf("%s for %s stop\n", err.Error(), "ipsec")
+		return err
 	}
-	log.Printf("ipSecService(%s) stop OK\n", tunnelConfig.Name)
+	log.Printf("ipSecService stop OK\n")
 	return nil
 }
 
@@ -142,9 +120,8 @@ func ipSecServiceStatus() (string, error) {
 	return string(out), nil
 }
 
+// check whether ipsec tunnel is up
 func ipSecTunnelStateCheck(vpnRole string, tunnelName string) error {
-	// check whether ipsec tunnel is up
-	// if not, do ipsec restart
 	if err := checkIpSecServiceStatusCmd(tunnelName); err != nil {
 		return err
 	}
@@ -152,13 +129,13 @@ func ipSecTunnelStateCheck(vpnRole string, tunnelName string) error {
 	return nil
 }
 
-func ipTablesRuleCreate(vpnLocalConfig types.VpnServiceLocalConfig) error {
+func ipTablesRuleCreate(vpnConfig types.VpnServiceConfig) error {
 
-	gatewayConfig := vpnLocalConfig.GatewayConfig
-	clientConfig := vpnLocalConfig.ClientConfigList[0]
+	gatewayConfig := vpnConfig.GatewayConfig
+	clientConfig := vpnConfig.ClientConfigList[0]
 	tunnelConfig := clientConfig.TunnelConfig
 
-	switch vpnLocalConfig.VpnRole {
+	switch vpnConfig.VpnRole {
 	case AwsVpnClient:
 		return ipTablesAwsClientRulesSet(tunnelConfig.Name, gatewayConfig.IpAddr,
 			tunnelConfig.Key)
@@ -173,12 +150,12 @@ func ipTablesRuleCreate(vpnLocalConfig types.VpnServiceLocalConfig) error {
 	return nil
 }
 
-func ipTablesRulesDelete(vpnLocalConfig types.VpnServiceLocalConfig) error {
-	gatewayConfig := vpnLocalConfig.GatewayConfig
-	clientConfig := vpnLocalConfig.ClientConfigList[0]
+func ipTablesRulesDelete(vpnConfig types.VpnServiceConfig) error {
+	gatewayConfig := vpnConfig.GatewayConfig
+	clientConfig := vpnConfig.ClientConfigList[0]
 	tunnelConfig := clientConfig.TunnelConfig
 
-	switch vpnLocalConfig.VpnRole {
+	switch vpnConfig.VpnRole {
 	case AwsVpnClient:
 		return ipTablesAwsClientRulesReset(tunnelConfig.Name, gatewayConfig.IpAddr,
 			tunnelConfig.Key)
@@ -428,12 +405,12 @@ func ipTablesSSServerRulesReset(tunnelName string, gatewayIpAddr string) error {
 }
 
 // check iptables rule status
-func ipTablesRuleCheck(vpnLocalConfig types.VpnServiceLocalConfig) error {
-	clientConfig := vpnLocalConfig.ClientConfigList[0]
+func ipTablesRuleCheck(vpnConfig types.VpnServiceConfig) error {
+	clientConfig := vpnConfig.ClientConfigList[0]
 	tunnelConfig := clientConfig.TunnelConfig
-	gatewayConfig := vpnLocalConfig.GatewayConfig
+	gatewayConfig := vpnConfig.GatewayConfig
 
-	switch vpnLocalConfig.VpnRole {
+	switch vpnConfig.VpnRole {
 	case AwsVpnClient:
 		tableName := "mangle"
 		if err := ipTablesChainMatch(tableName,
@@ -482,17 +459,17 @@ func ipTablesChainMatch(tableName string, chainName string,
 
 // XXX need to make sure the added route is duplicated by ipr.go to the
 // correct table or add/delete from the correct table
-func ipRouteCreate(vpnLocalConfig types.VpnServiceLocalConfig) error {
+func ipRouteCreate(vpnConfig types.VpnServiceConfig) error {
 
-	if vpnLocalConfig.PolicyBased == true {
+	if vpnConfig.PolicyBased == true {
 		return nil
 	}
-	gatewayConfig := vpnLocalConfig.GatewayConfig
+	gatewayConfig := vpnConfig.GatewayConfig
 
 	// for client config setup, create server subnet block route
-	if vpnLocalConfig.VpnRole == AwsVpnClient ||
-		vpnLocalConfig.VpnRole == OnPremVpnClient {
-		clientConfig := vpnLocalConfig.ClientConfigList[0]
+	if vpnConfig.VpnRole == AwsVpnClient ||
+		vpnConfig.VpnRole == OnPremVpnClient {
+		clientConfig := vpnConfig.ClientConfigList[0]
 		tunnelConfig := clientConfig.TunnelConfig
 
 		cmd := exec.Command("ip", "route", "add", gatewayConfig.SubnetBlock,
@@ -507,8 +484,8 @@ func ipRouteCreate(vpnLocalConfig types.VpnServiceLocalConfig) error {
 	}
 
 	// for server config, create all client subnet block routes
-	if vpnLocalConfig.VpnRole == OnPremVpnServer {
-		for _, clientConfig := range vpnLocalConfig.ClientConfigList {
+	if vpnConfig.VpnRole == OnPremVpnServer {
+		for _, clientConfig := range vpnConfig.ClientConfigList {
 			tunnelConfig := clientConfig.TunnelConfig
 			cmd := exec.Command("ip", "route", "add", clientConfig.SubnetBlock,
 				"dev", tunnelConfig.Name, "metric", tunnelConfig.Metric)
@@ -522,21 +499,21 @@ func ipRouteCreate(vpnLocalConfig types.VpnServiceLocalConfig) error {
 		}
 		return nil
 	}
-	return errors.New("unknown VpnRole: " + vpnLocalConfig.VpnRole)
+	return errors.New("unknown VpnRole: " + vpnConfig.VpnRole)
 }
 
-func ipRouteDelete(vpnLocalConfig types.VpnServiceLocalConfig) error {
+func ipRouteDelete(vpnConfig types.VpnServiceConfig) error {
 
-	if vpnLocalConfig.PolicyBased == true {
+	if vpnConfig.PolicyBased == true {
 		return nil
 	}
-	gatewayConfig := vpnLocalConfig.GatewayConfig
+	gatewayConfig := vpnConfig.GatewayConfig
 
 	// for client config setup, create server subnet route
-	if vpnLocalConfig.VpnRole == AwsVpnClient ||
-		vpnLocalConfig.VpnRole == OnPremVpnClient {
+	if vpnConfig.VpnRole == AwsVpnClient ||
+		vpnConfig.VpnRole == OnPremVpnClient {
 
-		tunnelConfig := vpnLocalConfig.ClientConfigList[0].TunnelConfig
+		tunnelConfig := vpnConfig.ClientConfigList[0].TunnelConfig
 		cmd := exec.Command("ip", "route", "delete", gatewayConfig.SubnetBlock)
 		if _, err := cmd.Output(); err != nil {
 			log.Printf("%s for %s %s add\n",
@@ -549,8 +526,8 @@ func ipRouteDelete(vpnLocalConfig types.VpnServiceLocalConfig) error {
 	}
 
 	// for server config, remove all client routes
-	if vpnLocalConfig.VpnRole == OnPremVpnServer {
-		for _, clientConfig := range vpnLocalConfig.ClientConfigList {
+	if vpnConfig.VpnRole == OnPremVpnServer {
+		for _, clientConfig := range vpnConfig.ClientConfigList {
 			tunnelConfig := clientConfig.TunnelConfig
 			cmd := exec.Command("ip", "route", "delete", clientConfig.SubnetBlock)
 			if _, err := cmd.Output(); err != nil {
@@ -563,22 +540,21 @@ func ipRouteDelete(vpnLocalConfig types.VpnServiceLocalConfig) error {
 		}
 		return nil
 	}
-	return errors.New("unknown VpnRole: " + vpnLocalConfig.VpnRole)
+	return errors.New("unknown VpnRole: " + vpnConfig.VpnRole)
 }
 
-func ipRouteCheck(vpnLocalConfig types.VpnServiceLocalConfig) error {
+func ipRouteCheck(vpnConfig types.VpnServiceConfig) error {
 
-	if vpnLocalConfig.PolicyBased == true {
+	if vpnConfig.PolicyBased == true {
 		return nil
 	}
-
-	gatewayConfig := vpnLocalConfig.GatewayConfig
-	clientConfig := vpnLocalConfig.ClientConfigList[0]
+	gatewayConfig := vpnConfig.GatewayConfig
+	clientConfig := vpnConfig.ClientConfigList[0]
 	tunnelConfig := clientConfig.TunnelConfig
 
-	// for client config setup, check server subnet block route
-	if vpnLocalConfig.VpnRole == AwsVpnClient ||
-		vpnLocalConfig.VpnRole == OnPremVpnClient {
+	// for client configs, check server subnet block route
+	if vpnConfig.VpnRole == AwsVpnClient ||
+		vpnConfig.VpnRole == OnPremVpnClient {
 		cmd := exec.Command("ip", "route", "get", gatewayConfig.SubnetBlock)
 		out, err := cmd.Output()
 		if err != nil {
@@ -596,8 +572,8 @@ func ipRouteCheck(vpnLocalConfig types.VpnServiceLocalConfig) error {
 	}
 
 	// for server config, check all client subnet block routes
-	if vpnLocalConfig.VpnRole == OnPremVpnServer {
-		for _, clientConfig := range vpnLocalConfig.ClientConfigList {
+	if vpnConfig.VpnRole == OnPremVpnServer {
+		for _, clientConfig := range vpnConfig.ClientConfigList {
 			tunnelConfig := clientConfig.TunnelConfig
 			cmd := exec.Command("ip", "route", "get", clientConfig.SubnetBlock)
 			out, err := cmd.Output()
@@ -617,7 +593,7 @@ func ipRouteCheck(vpnLocalConfig types.VpnServiceLocalConfig) error {
 		}
 		return nil
 	}
-	return errors.New("unknown VpnRole: " + vpnLocalConfig.VpnRole)
+	return errors.New("unknown VpnRole: " + vpnConfig.VpnRole)
 }
 
 func ipRouteMatch(outStr, matchString string) error {
@@ -633,20 +609,20 @@ func ipRouteMatch(outStr, matchString string) error {
 	return errors.New("not found")
 }
 
-func ipLinkTunnelCreate(vpnLocalConfig types.VpnServiceLocalConfig) error {
+func ipLinkTunnelCreate(vpnConfig types.VpnServiceConfig) error {
 
-	if vpnLocalConfig.PolicyBased == true {
+	if vpnConfig.PolicyBased == true {
 		return nil
 	}
-	gatewayConfig := vpnLocalConfig.GatewayConfig
-	clientConfig := vpnLocalConfig.ClientConfigList[0]
+	gatewayConfig := vpnConfig.GatewayConfig
+	clientConfig := vpnConfig.ClientConfigList[0]
 	tunnelConfig := clientConfig.TunnelConfig
-	upLinkConfig := vpnLocalConfig.UpLinkConfig
+	upLinkConfig := vpnConfig.UpLinkConfig
 
 	log.Printf("%s: %s %s %s\n", tunnelConfig.Name, "ip link add",
 		upLinkConfig.IpAddr, gatewayConfig.IpAddr)
-	if vpnLocalConfig.VpnRole == AwsVpnClient ||
-		vpnLocalConfig.VpnRole == OnPremVpnClient {
+	if vpnConfig.VpnRole == AwsVpnClient ||
+		vpnConfig.VpnRole == OnPremVpnClient {
 		cmd := exec.Command("ip", "link", "add",
 			tunnelConfig.Name, "type", "vti", "local", upLinkConfig.IpAddr,
 			"remote", gatewayConfig.IpAddr, "key", tunnelConfig.Key)
@@ -658,7 +634,7 @@ func ipLinkTunnelCreate(vpnLocalConfig types.VpnServiceLocalConfig) error {
 	}
 
 	// for server, create remote any
-	if vpnLocalConfig.VpnRole == OnPremVpnServer {
+	if vpnConfig.VpnRole == OnPremVpnServer {
 		cmd := exec.Command("ip", "link", "add",
 			tunnelConfig.Name, "type", "vti", "local", upLinkConfig.IpAddr,
 			"remote", "0.0.0.0")
@@ -669,7 +645,7 @@ func ipLinkTunnelCreate(vpnLocalConfig types.VpnServiceLocalConfig) error {
 		}
 	}
 
-	if vpnLocalConfig.VpnRole == AwsVpnClient {
+	if vpnConfig.VpnRole == AwsVpnClient {
 		log.Printf("%s: %s %s %s\n", tunnelConfig.Name, "ip link addr",
 			tunnelConfig.LocalIpAddr, tunnelConfig.RemoteIpAddr)
 		cmd := exec.Command("ip", "addr", "add",
@@ -696,13 +672,12 @@ func ipLinkTunnelCreate(vpnLocalConfig types.VpnServiceLocalConfig) error {
 	return nil
 }
 
-func ipLinkTunnelDelete(vpnLocalConfig types.VpnServiceLocalConfig) error {
+func ipLinkTunnelDelete(vpnConfig types.VpnServiceConfig) error {
 
-	if vpnLocalConfig.PolicyBased == true {
+	if vpnConfig.PolicyBased == true {
 		return nil
 	}
-
-	clientConfig := vpnLocalConfig.ClientConfigList[0]
+	clientConfig := vpnConfig.ClientConfigList[0]
 	tunnelConfig := clientConfig.TunnelConfig
 
 	cmd := exec.Command("ip", "link", "delete", tunnelConfig.Name)
@@ -742,13 +717,13 @@ func ipLinkIntfStateCheck(tunnelName string) error {
 	return nil
 }
 
-func ipSecServiceConfigCreate(vpnLocalConfig types.VpnServiceLocalConfig) error {
+func ipSecServiceConfigCreate(vpnConfig types.VpnServiceConfig) error {
 
-	clientConfigList := vpnLocalConfig.ClientConfigList
-	gatewayConfig := vpnLocalConfig.GatewayConfig
+	clientConfigList := vpnConfig.ClientConfigList
+	gatewayConfig := vpnConfig.GatewayConfig
 
 	writeStr := ipSecConfHdrStr
-	switch vpnLocalConfig.VpnRole {
+	switch vpnConfig.VpnRole {
 	case AwsVpnClient:
 		// only one client
 		tunnelConfig := clientConfigList[0].TunnelConfig
@@ -771,18 +746,17 @@ func ipSecServiceConfigCreate(vpnLocalConfig types.VpnServiceLocalConfig) error 
 
 	case OnPremVpnServer:
 		// one or more clients
+		clientConfig := clientConfigList[0]
+		tunnelConfig := clientConfig.TunnelConfig
 		writeStr = writeStr + ipSecSvrTunHdrSpecStr
 		writeStr = writeStr + ipSecSvrTunLeftHdrSpecStr + gatewayConfig.IpAddr
 		writeStr = writeStr + ipSecSvrTunLeftAttribSpecStr
-		for _, clientConfig := range clientConfigList {
-			tunnelConfig := clientConfig.TunnelConfig
-			writeStr = writeStr + ipSecSvrTunRightHdrSpecStr + tunnelConfig.Name
-			writeStr = writeStr + ipSecSvrTunRightSpecStr + clientConfig.IpAddr
-			writeStr = writeStr + ipSecSvrTunRightAttribSpecStr
-		}
+		writeStr = writeStr + ipSecSvrTunRightHdrSpecStr + tunnelConfig.Name
+		writeStr = writeStr + ipSecSvrTunRightSpecStr + clientConfig.IpAddr
+		writeStr = writeStr + ipSecSvrTunRightAttribSpecStr
 
 	default:
-		return errors.New("unsupported vpn role: " + vpnLocalConfig.VpnRole)
+		return errors.New("unsupported vpn role: " + vpnConfig.VpnRole)
 	}
 	writeStr = writeStr + "\n"
 	filename := "/etc/ipsec.conf"
@@ -805,13 +779,13 @@ func ipSecServiceConfigDelete() error {
 	return ipSecConfigFileWrite(filename, writeStr)
 }
 
-func ipSecSecretConfigCreate(vpnLocalConfig types.VpnServiceLocalConfig) error {
+func ipSecSecretConfigCreate(vpnConfig types.VpnServiceConfig) error {
 
-	clientConfigList := vpnLocalConfig.ClientConfigList
-	gatewayConfig := vpnLocalConfig.GatewayConfig
+	clientConfigList := vpnConfig.ClientConfigList
+	gatewayConfig := vpnConfig.GatewayConfig
 
 	writeStr := ipSecSecretHdrStr
-	switch vpnLocalConfig.VpnRole {
+	switch vpnConfig.VpnRole {
 	case AwsVpnClient:
 		// always one client
 		for _, clientConfig := range clientConfigList {
@@ -874,20 +848,19 @@ func charonConfigReset() error {
 	return ipSecConfigFileWrite(filename, charonConfStr)
 }
 
-func sysctlConfigCreate(vpnLocalConfig types.VpnServiceLocalConfig) error {
+func sysctlConfigCreate(vpnConfig types.VpnServiceConfig) error {
 
-	upLinkConfig := vpnLocalConfig.UpLinkConfig
+	upLinkConfig := vpnConfig.UpLinkConfig
 	log.Printf("%s: %s config\n", upLinkConfig.Name, "sysctl")
 
-	// XXX ip_forward is already set by zedrouter.
-	writeStr := "\n net.ipv4.ip_forward = 1"
-	if vpnLocalConfig.PolicyBased == true {
+	writeStr := ""
+	if vpnConfig.PolicyBased == true {
 		writeStr = writeStr + "\n net.ipv4.conf." + upLinkConfig.Name + ".disable_xfrm=0"
 		writeStr = writeStr + "\n net.ipv4.conf." + upLinkConfig.Name + ".disable_policy=0\n"
 	} else {
 		writeStr = writeStr + "\n net.ipv4.conf." + upLinkConfig.Name + ".disable_xfrm=1"
 		writeStr = writeStr + "\n net.ipv4.conf." + upLinkConfig.Name + ".disable_policy=1\n"
-		for _, clientConfig := range vpnLocalConfig.ClientConfigList {
+		for _, clientConfig := range vpnConfig.ClientConfigList {
 			tunnelConfig := clientConfig.TunnelConfig
 			log.Printf("%s: %s config\n", tunnelConfig.Name, "sysctl")
 			writeStr = writeStr + "\n net.ipv4.conf." + tunnelConfig.Name + ".rp_filter=2"
@@ -900,6 +873,10 @@ func sysctlConfigCreate(vpnLocalConfig types.VpnServiceLocalConfig) error {
 		return err
 	}
 	log.Printf("sysctlConfigWrite() OK\n")
+	return nil
+}
+
+func sysctlConfigReset(vpnConfig types.VpnServiceConfig) error {
 	return nil
 }
 
