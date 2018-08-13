@@ -24,8 +24,11 @@ func updateDhcpClient(newConfig, oldConfig types.DeviceUplinkConfig) {
 			*oldU = newU
 		}
 		if oldU == nil {
+			log.Printf("updateDhcpClient: new %s\n", newU.IfName)
 			doDhcpClientActivate(newU)
-		} else if reflect.DeepEqual(newU, oldU) {
+		} else if !reflect.DeepEqual(newU, oldU) {
+			log.Printf("updateDhcpClient: changed %s\n",
+				newU.IfName)
 			doDhcpClientInactivate(*oldU)
 			doDhcpClientActivate(newU)
 		}
@@ -34,6 +37,8 @@ func updateDhcpClient(newConfig, oldConfig types.DeviceUplinkConfig) {
 	for _, oldU := range newConfig.Uplinks {
 		newU := lookupOnIfname(newConfig, oldU.IfName)
 		if newU == nil {
+			log.Printf("updateDhcpClient: deleted %s\n",
+				oldU.IfName)
 			doDhcpClientInactivate(oldU)
 		}
 	}
@@ -49,7 +54,6 @@ func lookupOnIfname(config types.DeviceUplinkConfig, ifname string) *types.Netwo
 	return nil
 }
 
-// XXX determine static; determine -G
 func doDhcpClientActivate(nuc types.NetworkUplinkConfig) {
 	log.Printf("doDhcpClientActivate(%s) dhcp %v addr %s gateway %s\n",
 		nuc.IfName, nuc.Dhcp, nuc.Addr.String(),
@@ -75,16 +79,17 @@ func doDhcpClientActivate(nuc types.NetworkUplinkConfig) {
 				nuc.IfName)
 		}
 	case types.DT_STATIC:
-		// XXX Addr vs. Subnet? Need netmask.
+		// XXX Addr vs. Subnet? Need netmask. --static subnet_mask=255.255.255.0
 		args := []string{fmt.Sprintf("ip_addr=%s", nuc.Addr.String())}
 
-		extras := []string{"-K", "--noipv4ll"}
+		extras := []string{"-K"}
 		if ng != "" {
 			extras = append(extras, ng)
 		} else if nuc.Gateway.String() != "" {
 			args = append(args, "--static",
-				fmt.Sprintf("router=%s", nuc.Gateway.String()))
+				fmt.Sprintf("routers=%s", nuc.Gateway.String()))
 		}
+		// XXX is there a "dns"? Not in source
 		for _, dns := range nuc.DnsServers {
 			args = append(args, "--static",
 				fmt.Sprintf("dns=%s", dns.String()))
