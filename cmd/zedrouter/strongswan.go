@@ -588,7 +588,7 @@ func strongSwanVpnInactivate(vpnConfig types.VpnServiceConfig) error {
 }
 
 func strongSwanValidateSubnet(subnet string) error {
-	if subnet != "" || subnet != AppLinkSubnetType {
+	if subnet != "" && subnet != AppLinkSubnetType {
 		if _, _, err := net.ParseCIDR(subnet); err != nil {
 			return err
 		}
@@ -597,7 +597,7 @@ func strongSwanValidateSubnet(subnet string) error {
 }
 
 func strongSwanValidateIpAddr(ipAddr string) error {
-	if ipAddr != "" || ipAddr != "%any" {
+	if ipAddr != "" && ipAddr != "%any" {
 		if ip := net.ParseIP(ipAddr); ip == nil {
 			return  errors.New("invalid ip address: " + ipAddr)
 		}
