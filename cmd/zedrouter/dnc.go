@@ -85,7 +85,8 @@ func handleDUCModify(ctxArg interface{}, key string, configArg interface{}) {
 	if !reflect.DeepEqual(*ctx.deviceUplinkConfig, uplinkConfig) {
 		log.Printf("DeviceUplinkConfig change from %v to %v\n",
 			*ctx.deviceUplinkConfig, uplinkConfig)
-		updateDhcpClient(uplinkConfig, *ctx.deviceUplinkConfig)
+		devicenetwork.UpdateDhcpClient(uplinkConfig,
+			*ctx.deviceUplinkConfig)
 		*ctx.deviceUplinkConfig = uplinkConfig
 	}
 	dnStatus, _ := devicenetwork.MakeDeviceNetworkStatus(uplinkConfig,
@@ -112,7 +113,8 @@ func handleDUCDelete(ctxArg interface{}, key string, configArg interface{}) {
 	if !reflect.DeepEqual(*ctx.deviceUplinkConfig, uplinkConfig) {
 		log.Printf("DeviceUplinkConfig change from %v to %v\n",
 			*ctx.deviceUplinkConfig, uplinkConfig)
-		updateDhcpClient(uplinkConfig, *ctx.deviceUplinkConfig)
+		devicenetwork.UpdateDhcpClient(uplinkConfig,
+			*ctx.deviceUplinkConfig)
 		*ctx.deviceUplinkConfig = uplinkConfig
 	}
 	dnStatus := types.DeviceNetworkStatus{}

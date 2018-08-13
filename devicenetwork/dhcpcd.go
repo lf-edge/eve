@@ -4,7 +4,7 @@
 // Manage dhcpcd for uplinks including static
 // XXX wwan0? Skip for now
 
-package zedrouter
+package devicenetwork
 
 import (
 	"fmt"
@@ -15,7 +15,7 @@ import (
 )
 
 // Start/modify/delete dhcpcd per interface
-func updateDhcpClient(newConfig, oldConfig types.DeviceUplinkConfig) {
+func UpdateDhcpClient(newConfig, oldConfig types.DeviceUplinkConfig) {
 	// Look for adds or changes
 	for _, newU := range newConfig.Uplinks {
 		oldU := lookupOnIfname(oldConfig, newU.IfName)

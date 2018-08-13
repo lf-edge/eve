@@ -27,6 +27,14 @@ func handleDNCModify(ctxArg interface{}, key string, configArg interface{}) {
 
 	ctx.deviceNetworkConfig = config
 	uplinkConfig := devicenetwork.MakeNetworkUplinkConfig(config)
+	if !reflect.DeepEqual(*ctx.deviceUplinkConfig, uplinkConfig) {
+		log.Printf("DeviceUplinkConfig change from %v to %v\n",
+			*ctx.deviceUplinkConfig, uplinkConfig)
+		devicenetwork.UpdateDhcpClient(uplinkConfig,
+			*ctx.deviceUplinkConfig)
+		*ctx.deviceUplinkConfig = uplinkConfig
+	}
+
 	dnStatus, _ := devicenetwork.MakeDeviceNetworkStatus(uplinkConfig,
 		ctx.deviceNetworkStatus)
 	if !reflect.DeepEqual(ctx.deviceNetworkStatus, dnStatus) {
@@ -51,6 +59,14 @@ func handleDNCDelete(ctxArg interface{}, key string, configArg interface{}) {
 	if key != ctx.manufacturerModel {
 		log.Printf("handleDNCDelete: ignoring %s\n", key)
 		return
+	}
+	uplinkConfig := types.DeviceUplinkConfig{}
+	if !reflect.DeepEqual(*ctx.deviceUplinkConfig, uplinkConfig) {
+		log.Printf("DeviceUplinkConfig change from %v to %v\n",
+			*ctx.deviceUplinkConfig, uplinkConfig)
+		devicenetwork.UpdateDhcpClient(uplinkConfig,
+			*ctx.deviceUplinkConfig)
+		*ctx.deviceUplinkConfig = uplinkConfig
 	}
 	dnStatus := types.DeviceNetworkStatus{}
 	if !reflect.DeepEqual(ctx.deviceNetworkStatus, dnStatus) {
