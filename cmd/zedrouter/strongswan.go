@@ -113,6 +113,7 @@ func strongSwanConfigGet(ctx *zedrouterContext,
 	upLink := types.NetLinkConfig{}
 	appLink := types.NetLinkConfig{}
 	vpnConfig := types.VpnServiceConfig{}
+	appNetPresent := false
 
 	// if adapter is not set, return
 	if config.Adapter == "" {
@@ -131,12 +132,12 @@ func strongSwanConfigGet(ctx *zedrouterContext,
 	// app net information
 	appNet := lookupNetworkObjectConfig(ctx, config.AppLink.String())
 	if appNet != nil {
-		return vpnConfig, errors.New("appnet config is absent")
+		appNetPresent = true
+		if appNet.Type != types.NT_IPV4 {
+			return vpnConfig, errors.New("appnet is not IPv4")
+		}
+		appLink.SubnetBlock = appNet.Subnet.String()
 	}
-	if appNet.Type != types.NT_IPV4 {
-		return vpnConfig, errors.New("appnet is not IPv4")
-	}
-	appLink.SubnetBlock = appNet.Subnet.String()
 
 	vpnCloudConfig, err := strongSwanVpnConfigParse(config.OpaqueConfig)
 	if err != nil {
@@ -156,7 +157,8 @@ func strongSwanConfigGet(ctx *zedrouterContext,
 	if ip := net.ParseIP(vpnConfig.GatewayConfig.IpAddr); ip == nil {
 		return vpnConfig, errors.New("invalid ip address")
 	}
-	if vpnConfig.GatewayConfig.SubnetBlock == AppLinkSubnetType {
+	if appNetPresent &&
+		vpnConfig.GatewayConfig.SubnetBlock == AppLinkSubnetType {
 		vpnConfig.GatewayConfig.SubnetBlock = appLink.SubnetBlock
 	}
 	if vpnConfig.GatewayConfig.SubnetBlock != "" {
@@ -182,7 +184,8 @@ func strongSwanConfigGet(ctx *zedrouterContext,
 		if clientConfig.IpAddr == UpLinkIpAddrType {
 			clientConfig.IpAddr = upLink.IpAddr
 		}
-		if clientConfig.SubnetBlock == AppLinkSubnetType {
+		if appNetPresent &&
+			clientConfig.SubnetBlock == AppLinkSubnetType {
 			clientConfig.SubnetBlock = appLink.SubnetBlock
 		}
 		if clientConfig.IpAddr != "" {
@@ -211,30 +214,31 @@ func strongSwanConfigGet(ctx *zedrouterContext,
 		vpnConfig.ClientConfigList[idx] = *clientConfig
 	}
 
-	// check appLink match
-	switch vpnConfig.VpnRole {
-	case AwsVpnClient:
-		for _, clientConfig := range vpnConfig.ClientConfigList {
-			if clientConfig.SubnetBlock != appLink.SubnetBlock {
-				return vpnConfig, errors.New("Client Subnet Mismatch, not appLink" + appLink.SubnetBlock)
-			}
-		}
-	case OnPremVpnClient:
-		for _, clientConfig := range vpnConfig.ClientConfigList {
-			if clientConfig.SubnetBlock != appLink.SubnetBlock {
-				return vpnConfig, errors.New("Client Subnet Mismatch, not appLink" + appLink.SubnetBlock)
-			}
-		}
-	case OnPremVpnServer:
-		// for onPremServer, validate ip/subnet with uplink/appnet
+	if vpnConfig.VpnRole == OnPremVpnServer {
 		if vpnConfig.GatewayConfig.IpAddr != upLink.IpAddr {
-			return vpnConfig, errors.New("Gateway Ip Mismatch, not upLink" + upLink.IpAddr)
+			errorStr := vpnConfig.GatewayConfig.IpAddr
+			errorStr = errorStr + ", upLink: " + upLink.IpAddr
+			return vpnConfig, errors.New("IpAddr Mismatch, GatewayIp: " + errorStr)
 		}
-		if vpnConfig.GatewayConfig.SubnetBlock != appLink.SubnetBlock {
-			return vpnConfig, errors.New("Gateway Subnet Mismatch, not appLink" + appLink.SubnetBlock)
+		// ensure appNet match
+		if appNetPresent == true &&
+			vpnConfig.GatewayConfig.SubnetBlock != "" &&
+			vpnConfig.GatewayConfig.SubnetBlock != appLink.SubnetBlock {
+			errorStr := vpnConfig.GatewayConfig.SubnetBlock + ", appNet: " + appLink.SubnetBlock
+			return vpnConfig, errors.New("Subnet Mismatch: " + errorStr)
+		}
+	} else {
+		if appNetPresent == true {
+			for _, clientConfig := range vpnConfig.ClientConfigList {
+				if clientConfig.SubnetBlock != "" &&
+					clientConfig.SubnetBlock != appLink.SubnetBlock {
+					errorStr := clientConfig.SubnetBlock
+					errorStr = errorStr + ", appNet: " + appLink.SubnetBlock
+					return vpnConfig, errors.New("Subnet Mismatch: " + errorStr)
+				}
+			}
 		}
 	}
-
 	return vpnConfig, nil
 }
 
@@ -286,12 +290,13 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 				strongSwanConfig.VpnRemoteIpAddr == "" {
 				return vpnConfig, errors.New("invalid tunnel parameters")
 			}
-			// copy the paramters to the new structure
+			// copy the parameters to the new structure
 			strongSwanConfig.ClientConfigList = make([]types.VpnClientConfig, 1)
 			clientConfig := new(types.VpnClientConfig)
 			clientConfig.PreSharedKey = strongSwanConfig.PreSharedKey
 			clientConfig.TunnelConfig.LocalIpAddr = strongSwanConfig.VpnLocalIpAddr
 			clientConfig.TunnelConfig.RemoteIpAddr = strongSwanConfig.VpnRemoteIpAddr
+			clientConfig.SubnetBlock = strongSwanConfig.LocalSubnetBlock
 			strongSwanConfig.ClientConfigList[0] = *clientConfig
 		}
 		for _, clientConfig := range strongSwanConfig.ClientConfigList {
@@ -302,9 +307,6 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 				clientConfig.TunnelConfig.RemoteIpAddr == "" {
 				return vpnConfig, errors.New("invalid tunnel parameters")
 			}
-			// reset these, if set
-			clientConfig.IpAddr = ""
-			clientConfig.SubnetBlock = AppLinkSubnetType
 		}
 
 	case OnPremVpnClient:
@@ -331,6 +333,10 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 			clientConfig := new(types.VpnClientConfig)
 			clientConfig.PreSharedKey = strongSwanConfig.PreSharedKey
 			clientConfig.SubnetBlock = strongSwanConfig.LocalSubnetBlock
+			if clientConfig.SubnetBlock == "" &&
+				vpnConfig.PolicyBased == true {
+				clientConfig.SubnetBlock = AppLinkSubnetType
+			}
 			strongSwanConfig.ClientConfigList[0] = *clientConfig
 		}
 		for _, clientConfig := range strongSwanConfig.ClientConfigList {
@@ -339,18 +345,11 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 					return vpnConfig, errors.New("invalid ip address")
 				}
 			}
-			// for policy based, if not set, assume appnet subnet
-			if clientConfig.SubnetBlock == "" {
-				if strongSwanConfig.PolicyBased == true {
-					clientConfig.SubnetBlock = AppLinkSubnetType
-				}
-			} else {
+			if clientConfig.SubnetBlock != "" &&
+				clientConfig.SubnetBlock != AppLinkSubnetType {
 				if _, _, err := net.ParseCIDR(clientConfig.SubnetBlock); err != nil {
 					return vpnConfig, err
 				}
-			}
-			if clientConfig.PreSharedKey == "" {
-				clientConfig.PreSharedKey = strongSwanConfig.PreSharedKey
 			}
 		}
 
@@ -396,12 +395,9 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 					return vpnConfig, err
 				}
 			}
-			if clientConfig.PreSharedKey == "" {
-				clientConfig.PreSharedKey = strongSwanConfig.PreSharedKey
-			}
 		}
 	default:
-		return vpnConfig, errors.New("unsupported vpn role, " + strongSwanConfig.VpnRole)
+		return vpnConfig, errors.New("invalid vpn role: " + strongSwanConfig.VpnRole)
 	}
 
 	// fill up our structure
@@ -417,9 +413,23 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 		clientConfig.IpAddr = ssClientConfig.IpAddr
 		clientConfig.SubnetBlock = ssClientConfig.SubnetBlock
 		clientConfig.PreSharedKey = ssClientConfig.PreSharedKey
+
+		if vpnConfig.VpnRole == OnPremVpnClient &&
+			clientConfig.SubnetBlock == "" {
+			clientConfig.SubnetBlock = AppLinkSubnetType
+		}
+
+		if clientConfig.PreSharedKey == "" {
+			clientConfig.PreSharedKey = strongSwanConfig.PreSharedKey
+		}
 		clientConfig.TunnelConfig.LocalIpAddr = ssClientConfig.TunnelConfig.LocalIpAddr
 		clientConfig.TunnelConfig.RemoteIpAddr = ssClientConfig.TunnelConfig.RemoteIpAddr
 		vpnConfig.ClientConfigList[idx] = *clientConfig
+	}
+
+	// XXX:FIXME only for debug
+	if bytes, err := json.Marshal(vpnConfig); err == nil {
+		log.Printf("strongSwanConfigParse(): %s\n", string(bytes))
 	}
 	return vpnConfig, nil
 }

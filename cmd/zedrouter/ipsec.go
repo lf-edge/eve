@@ -840,7 +840,6 @@ func charonRouteConfigCreate(policyflag bool) error {
 		return ipSecConfigFileWrite(filename, charonRouteConfStr)
 	}
 	return ipSecConfigFileWrite(filename, charonNoRouteConfStr)
-
 }
 
 func charonConfigReset() error {
