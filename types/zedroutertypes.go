@@ -477,7 +477,7 @@ type NetworkObjectConfig struct {
 	Gateway       net.IP
 	DomainName    string
 	NtpServer     net.IP
-	DnsServers    []net.IP // If not set we use Gateway as DMS server
+	DnsServers    []net.IP // If not set we use Gateway as DNS server
 	DhcpRange     IpRange
 	ZedServConfig ZedServerConfig
 }

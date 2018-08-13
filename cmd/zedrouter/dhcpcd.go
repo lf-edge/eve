@@ -87,11 +87,22 @@ func doDhcpClientActivate(nuc types.NetworkUplinkConfig) {
 				fmt.Sprintf("routers=%s", nuc.Gateway.String()))
 		}
 		// XXX is there a "dns"? Not in source
-		// XXX need static dns somehow
+		// XXX do we need to calculate a list for option?
 		for _, dns := range nuc.DnsServers {
 			args = append(args, "--static",
-				fmt.Sprintf("dns=%s", dns.String()))
+				fmt.Sprintf("domain_name_servers=%s", dns.String()))
 		}
+		if nuc.DomainName != "" {
+			args = append(args, "--static",
+				fmt.Sprintf("domain_name=%s", nuc.DomainName))
+		}
+		// dhcpcd.conf needs this: #option ntp_servers
+		if !nuc.NtpServer.IsUnspecified() {
+			args = append(args, "--static",
+				fmt.Sprintf("ntp_servers=%s",
+					nuc.NtpServer.String()))
+		}
+
 		args = append(args, extras...)
 		if !dhcpcdCmd("--static", args, nuc.IfName) {
 			log.Printf("doDhcpClientActivate: request failed for %s\n",
