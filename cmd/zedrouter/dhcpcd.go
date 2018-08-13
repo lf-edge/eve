@@ -63,16 +63,13 @@ func doDhcpClientActivate(nuc types.NetworkUplinkConfig) {
 			nuc.IfName)
 		return
 	}
-	ng := ""
-	if nuc.Gateway.String() == "0.0.0.0" {
-		ng = "--nogateway"
-	}
 
 	switch nuc.Dhcp {
 	case types.DT_CLIENT:
-		extras := []string{"-K", "--noipv4ll"}
-		if ng != "" {
-			extras = append(extras, ng)
+		extras := []string{"-f", "/etc/dhcpcd.conf", "-b", "-K",
+			"--noipv4ll"}
+		if nuc.Gateway.String() == "0.0.0.0" {
+			extras = append(extras, "--nogateway")
 		}
 		if !dhcpcdCmd("--request", extras, nuc.IfName) {
 			log.Printf("doDhcpClientActivate: request failed for %s\n",
@@ -82,14 +79,15 @@ func doDhcpClientActivate(nuc types.NetworkUplinkConfig) {
 		// XXX Addr vs. Subnet? Need netmask. --static subnet_mask=255.255.255.0
 		args := []string{fmt.Sprintf("ip_addr=%s", nuc.Addr.String())}
 
-		extras := []string{"-K"}
-		if ng != "" {
-			extras = append(extras, ng)
+		extras := []string{"-f", "/etc/dhcpcd.conf", "-b", "-K"}
+		if nuc.Gateway.String() == "0.0.0.0" {
+			extras = append(extras, "--nogateway")
 		} else if nuc.Gateway.String() != "" {
 			args = append(args, "--static",
 				fmt.Sprintf("routers=%s", nuc.Gateway.String()))
 		}
 		// XXX is there a "dns"? Not in source
+		// XXX need static dns somehow
 		for _, dns := range nuc.DnsServers {
 			args = append(args, "--static",
 				fmt.Sprintf("dns=%s", dns.String()))
