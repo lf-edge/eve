@@ -77,7 +77,7 @@ func doDhcpClientActivate(nuc types.NetworkUplinkConfig) {
 		}
 	case types.DT_STATIC:
 		// XXX Addr vs. Subnet? Need netmask. --static subnet_mask=255.255.255.0
-		args := []string{fmt.Sprintf("ip_addr=%s", nuc.Addr.String())}
+		args := []string{fmt.Sprintf("ip_address=%s", nuc.Addr.String())}
 
 		extras := []string{"-f", "/etc/dhcpcd.conf", "-b", "-K"}
 		if nuc.Gateway.String() == "0.0.0.0" {
