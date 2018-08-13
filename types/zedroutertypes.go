@@ -388,8 +388,8 @@ const (
 
 type MapServer struct {
 	ServiceType MapServerType
-	NameOrIp string
-	Credential string
+	NameOrIp    string
+	Credential  string
 }
 
 type ServiceLispConfig struct {
@@ -400,7 +400,7 @@ type ServiceLispConfig struct {
 	EidPrefix     net.IP
 	EidPrefixLen  uint32
 
-	Experimental  bool
+	Experimental bool
 }
 
 type OverlayNetworkConfig struct {
@@ -457,9 +457,9 @@ type UnderlayNetworkStatus struct {
 type NetworkType uint8
 
 const (
-	NT_IPV4 NetworkType = 4
-	NT_IPV6             = 6
-	NT_CryptoEID        = 14
+	NT_IPV4      NetworkType = 4
+	NT_IPV6                  = 6
+	NT_CryptoEID             = 14
 	// XXX Do we need a NT_DUAL/NT_IPV46? Implies two subnets/dhcp ranges?
 )
 
@@ -475,12 +475,12 @@ type NetworkObjectConfig struct {
 	// XXX LocalDhcp  bool   // Run a DHCP server
 	// XXX LocalDns   bool   // Run a DNS server
 	// XXX LocalAddr  net.IP // For local DHCP/DNS; could be same as Gateway
-	Subnet     net.IPNet
-	Gateway    net.IP
-	DomainName string
-	NtpServer  net.IP
-	DnsServers []net.IP // If not set we pass LocalAddr/Gateway to application
-	DhcpRange  IpRange
+	Subnet        net.IPNet
+	Gateway       net.IP
+	DomainName    string
+	NtpServer     net.IP
+	DnsServers    []net.IP // If not set we pass LocalAddr/Gateway to application
+	DhcpRange     IpRange
 	ZedServConfig ZedServerConfig
 }
 
