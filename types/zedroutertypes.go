@@ -101,6 +101,8 @@ type DeviceUplinkConfig struct {
 	Uplinks []NetworkUplinkConfig
 }
 
+// XXX don't we also need to configure e.g., eth1 to provide a bridge
+// service? Not an uplink!
 type NetworkUplinkConfig struct {
 	IfName string
 	Free   bool
