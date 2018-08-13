@@ -14,22 +14,37 @@ import (
 	"time"
 )
 
+// Genetate NetworkUplinkConfig based on DeviceNetworkConfig
+func MakeNetworkUplinkConfig(globalConfig types.DeviceNetworkConfig) types.DeviceUplinkConfig {
+	var config types.DeviceUplinkConfig
+
+	config.Uplinks = make([]types.NetworkUplinkConfig,
+		len(globalConfig.Uplink))
+	for ix, u := range globalConfig.Uplink {
+		config.Uplinks[ix].IfName = u
+		for _, f := range globalConfig.FreeUplinks {
+			if f == u {
+				config.Uplinks[ix].Free = true
+				break
+			}
+		}
+		config.Uplinks[ix].Dhcp = types.DT_CLIENT
+	}
+	return config
+}
+
 // Calculate local IP addresses to make a types.DeviceNetworkStatus
-func MakeDeviceNetworkStatus(globalConfig types.DeviceNetworkConfig, oldStatus types.DeviceNetworkStatus) (types.DeviceNetworkStatus, error) {
+func MakeDeviceNetworkStatus(globalConfig types.DeviceUplinkConfig, oldStatus types.DeviceNetworkStatus) (types.DeviceNetworkStatus, error) {
 	var globalStatus types.DeviceNetworkStatus
 	var err error = nil
 
 	globalStatus.UplinkStatus = make([]types.NetworkUplink,
-		len(globalConfig.Uplink))
-	for ix, u := range globalConfig.Uplink {
-		globalStatus.UplinkStatus[ix].IfName = u
-		for _, f := range globalConfig.FreeUplinks {
-			if f == u {
-				globalStatus.UplinkStatus[ix].Free = true
-				break
-			}
-		}
-		link, err := netlink.LinkByName(u)
+		len(globalConfig.Uplinks))
+	for ix, u := range globalConfig.Uplinks {
+		globalStatus.UplinkStatus[ix].IfName = u.IfName
+		globalStatus.UplinkStatus[ix].Free = u.Free
+		// XXX should we get statics?
+		link, err := netlink.LinkByName(u.IfName)
 		if err != nil {
 			log.Printf("MakeDeviceNetworkStatus LinkByName %s: %s\n", u, err)
 			err = errors.New(fmt.Sprintf("Uplink in config/global does not exist: %v", u))
@@ -106,7 +121,7 @@ func UpdateDeviceNetworkGeo(timelimit time.Duration, globalStatus *types.DeviceN
 			}
 			// geoloc with short timeout
 			opt := ipinfo.Options{
-				Timeout: 5 * time.Second,
+				Timeout:  5 * time.Second,
 				SourceIp: ai.Addr,
 			}
 			info, err := ipinfo.MyIPWithOptions(opt)

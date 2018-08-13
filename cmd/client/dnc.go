@@ -26,13 +26,18 @@ func handleDNCModify(ctxArg interface{}, key string, configArg interface{}) {
 	log.Printf("handleDNCModify for %s\n", key)
 
 	ctx.deviceNetworkConfig = config
-	new, _ := devicenetwork.MakeDeviceNetworkStatus(config,
+	uplinkConfig := devicenetwork.MakeNetworkUplinkConfig(config)
+	dnStatus, _ := devicenetwork.MakeDeviceNetworkStatus(uplinkConfig,
 		ctx.deviceNetworkStatus)
-	// XXX switch to Equal?
-	if !reflect.DeepEqual(ctx.deviceNetworkStatus, new) {
+	if !reflect.DeepEqual(ctx.deviceNetworkStatus, dnStatus) {
+		// XXX We publish uplinkConfig even though it might not change
+		// XXX needed for initial conversion? Modify files in build
+		// from old format?
+		*ctx.deviceUplinkConfig = uplinkConfig
+		ctx.pubDeviceUplinkConfig.Publish("global", uplinkConfig)
 		log.Printf("DeviceNetworkStatus change from %v to %v\n",
-			ctx.deviceNetworkStatus, new)
-		ctx.deviceNetworkStatus = new
+			ctx.deviceNetworkStatus, dnStatus)
+		ctx.deviceNetworkStatus = dnStatus
 		doDNSUpdate(ctx)
 	}
 	log.Printf("handleDNCModify done for %s\n", key)
@@ -43,16 +48,15 @@ func handleDNCDelete(ctxArg interface{}, key string, configArg interface{}) {
 	log.Printf("handleDNCDelete for %s\n", key)
 	ctx := ctxArg.(*clientContext)
 
-	if key != "global" {
+	if key != ctx.manufacturerModel {
 		log.Printf("handleDNCDelete: ignoring %s\n", key)
 		return
 	}
-	new := types.DeviceNetworkStatus{}
-	// XXX switch to Equal?
-	if !reflect.DeepEqual(ctx.deviceNetworkStatus, new) {
+	dnStatus := types.DeviceNetworkStatus{}
+	if !reflect.DeepEqual(ctx.deviceNetworkStatus, dnStatus) {
 		log.Printf("DeviceNetworkStatus change from %v to %v\n",
-			ctx.deviceNetworkStatus, new)
-		ctx.deviceNetworkStatus = new
+			ctx.deviceNetworkStatus, dnStatus)
+		ctx.deviceNetworkStatus = dnStatus
 		doDNSUpdate(ctx)
 	}
 	log.Printf("handleDNCDelete done for %s\n", key)

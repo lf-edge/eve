@@ -47,7 +47,9 @@ var Version = "No version specified"
 type clientContext struct {
 	usableAddressCount     int
 	manufacturerModel      string
+	deviceUplinkConfig     *types.DeviceUplinkConfig
 	subDeviceNetworkConfig *pubsub.Subscription
+	pubDeviceUplinkConfig  *pubsub.Publication
 	deviceNetworkConfig    types.DeviceNetworkConfig
 	deviceNetworkStatus    types.DeviceNetworkStatus
 }
@@ -167,13 +169,24 @@ func Run() {
 			DNCFilename)
 		time.Sleep(time.Second)
 		tries += 1
-		if tries == 120 {	// Two minutes
+		if tries == 120 { // Two minutes
 			log.Printf("Falling back to using default.json\n")
 			model = "default.json"
 		}
 	}
 
-	clientCtx := clientContext{manufacturerModel: model}
+	pubDeviceUplinkConfig, err := pubsub.Publish(agentName,
+		types.DeviceUplinkConfig{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	pubDeviceUplinkConfig.ClearRestarted()
+
+	clientCtx := clientContext{
+		manufacturerModel:     model,
+		deviceUplinkConfig:    &types.DeviceUplinkConfig{},
+		pubDeviceUplinkConfig: pubDeviceUplinkConfig,
+	}
 
 	// Get the initial DeviceNetworkConfig
 	// Subscribe from "" means /var/tmp/zededa/

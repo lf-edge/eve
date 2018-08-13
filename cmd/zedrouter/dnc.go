@@ -24,16 +24,19 @@ func handleDNCModify(ctxArg interface{}, key string, configArg interface{}) {
 		return
 	}
 	log.Printf("handleDNCModify for %s\n", key)
-
-	deviceNetworkConfig = config
-	new, _ := devicenetwork.MakeDeviceNetworkStatus(config,
-		deviceNetworkStatus)
-	// XXX switch to Equal?
-	if !reflect.DeepEqual(deviceNetworkStatus, new) {
-		log.Printf("DeviceNetworkStatus change from %v to %v\n",
-			deviceNetworkStatus, new)
-		deviceNetworkStatus = new
-		doDNSUpdate(ctx)
+	// Get old value
+	var oldConfig types.DeviceUplinkConfig
+	c, _ := ctx.pubDeviceUplinkConfig.Get("global")
+	if c != nil {
+		oldConfig = cast.CastDeviceUplinkConfig(c)
+	} else {
+		oldConfig = types.DeviceUplinkConfig{}
+	}
+	uplinkConfig := devicenetwork.MakeNetworkUplinkConfig(config)
+	if !reflect.DeepEqual(oldConfig, uplinkConfig) {
+		log.Printf("DeviceUplinkConfig change from %v to %v\n",
+			oldConfig, uplinkConfig)
+		ctx.pubDeviceUplinkConfig.Publish("global", uplinkConfig)
 	}
 	log.Printf("handleDNCModify done for %s\n", key)
 }
@@ -43,19 +46,72 @@ func handleDNCDelete(ctxArg interface{}, key string, configArg interface{}) {
 	log.Printf("handleDNCDelete for %s\n", key)
 	ctx := ctxArg.(*zedrouterContext)
 
-	if key != "global" {
+	if key != ctx.manufacturerModel {
 		log.Printf("handleDNCDelete: ignoring %s\n", key)
 		return
 	}
-	new := types.DeviceNetworkStatus{}
-	// XXX switch to Equal?
+	// Get old value
+	var oldConfig types.DeviceUplinkConfig
+	c, _ := ctx.pubDeviceUplinkConfig.Get("global")
+	if c != nil {
+		oldConfig = cast.CastDeviceUplinkConfig(c)
+	} else {
+		oldConfig = types.DeviceUplinkConfig{}
+	}
+	// XXX what's the default? eth0 aka default.json? Use empty for now
+	deviceNetworkConfig = types.DeviceNetworkConfig{}
+	uplinkConfig := devicenetwork.MakeNetworkUplinkConfig(deviceNetworkConfig)
+	if !reflect.DeepEqual(oldConfig, uplinkConfig) {
+		log.Printf("DeviceUplinkConfig change from %v to %v\n",
+			oldConfig, uplinkConfig)
+		ctx.pubDeviceUplinkConfig.Publish("global", uplinkConfig)
+	}
+	log.Printf("handleDNCDelete done for %s\n", key)
+}
+
+func handleDUCModify(ctxArg interface{}, key string, configArg interface{}) {
+
+	uplinkConfig := cast.CastDeviceUplinkConfig(configArg)
+	ctx := ctxArg.(*zedrouterContext)
+
+	if key != "global" {
+		if debug {
+			log.Printf("handleDUCModify: ignoring %s - expecting %s\n",
+				key, "global")
+		}
+		return
+	}
+	log.Printf("handleDUCModify for %s\n", key)
+	*ctx.deviceUplinkConfig = uplinkConfig
+	new, _ := devicenetwork.MakeDeviceNetworkStatus(uplinkConfig,
+		deviceNetworkStatus)
 	if !reflect.DeepEqual(deviceNetworkStatus, new) {
 		log.Printf("DeviceNetworkStatus change from %v to %v\n",
 			deviceNetworkStatus, new)
 		deviceNetworkStatus = new
 		doDNSUpdate(ctx)
 	}
-	log.Printf("handleDNCDelete done for %s\n", key)
+	log.Printf("handleDUCModify done for %s\n", key)
+}
+
+func handleDUCDelete(ctxArg interface{}, key string, configArg interface{}) {
+
+	log.Printf("handleDUCDelete for %s\n", key)
+	ctx := ctxArg.(*zedrouterContext)
+
+	if key != "global" {
+		log.Printf("handleDUCDelete: ignoring %s\n", key)
+		return
+	}
+	*ctx.deviceUplinkConfig = types.DeviceUplinkConfig{}
+	new := types.DeviceNetworkStatus{}
+	if !reflect.DeepEqual(deviceNetworkStatus, new) {
+		log.Printf("DeviceNetworkStatus change from %v to %v\n",
+			deviceNetworkStatus, new)
+		deviceNetworkStatus = new
+		doDNSUpdate(ctx)
+	}
+	log.Printf("handleDUCDelete done for %s\n", key)
 }
 
 func doDNSUpdate(ctx *zedrouterContext) {

@@ -96,16 +96,15 @@ type DeviceNetworkConfig struct {
 	FreeUplinks []string // subset used for image downloads
 }
 
-// XXX new - replacement for above
-type DeviceNetworkConfig2 struct {
-	Uplinks []DeviceNetwork
+// XXX new - replacement for above DeviceNetworkConfig.
+type DeviceUplinkConfig struct {
+	Uplinks []NetworkUplinkConfig
 }
 
-// XXX new - replacement for above
-type DeviceNetwork struct {
+type NetworkUplinkConfig struct {
 	IfName string
 	Free   bool
-	// If Dhcp (in NetworkConfig) is DT_STATIC we use the static
+	// If Dhcp (in NetworkObjectConfig) is DT_STATIC we use the static
 	// Addr and the rest of NetworkConfig
 	Addr net.IP
 	NetworkObjectConfig
@@ -388,8 +387,8 @@ const (
 
 type MapServer struct {
 	ServiceType MapServerType
-	NameOrIp string
-	Credential string
+	NameOrIp    string
+	Credential  string
 }
 
 type ServiceLispConfig struct {
@@ -400,7 +399,7 @@ type ServiceLispConfig struct {
 	EidPrefix     net.IP
 	EidPrefixLen  uint32
 
-	Experimental  bool
+	Experimental bool
 }
 
 type OverlayNetworkConfig struct {
@@ -457,9 +456,9 @@ type UnderlayNetworkStatus struct {
 type NetworkType uint8
 
 const (
-	NT_IPV4 NetworkType = 4
-	NT_IPV6             = 6
-	NT_CryptoEID        = 14
+	NT_IPV4      NetworkType = 4
+	NT_IPV6                  = 6
+	NT_CryptoEID             = 14
 	// XXX Do we need a NT_DUAL/NT_IPV46? Implies two subnets/dhcp ranges?
 )
 
@@ -469,18 +468,15 @@ const (
 // If there is no such reference the NetworkConfig ends up being local to the
 // host.
 type NetworkObjectConfig struct {
-	UUID uuid.UUID
-	Type NetworkType
-	Dhcp DhcpType // If DT_STATIC or DT_SERVER use below
-	// XXX LocalDhcp  bool   // Run a DHCP server
-	// XXX LocalDns   bool   // Run a DNS server
-	// XXX LocalAddr  net.IP // For local DHCP/DNS; could be same as Gateway
-	Subnet     net.IPNet
-	Gateway    net.IP
-	DomainName string
-	NtpServer  net.IP
-	DnsServers []net.IP // If not set we pass LocalAddr/Gateway to application
-	DhcpRange  IpRange
+	UUID          uuid.UUID
+	Type          NetworkType
+	Dhcp          DhcpType // If DT_STATIC or DT_SERVER use below
+	Subnet        net.IPNet
+	Gateway       net.IP
+	DomainName    string
+	NtpServer     net.IP
+	DnsServers    []net.IP // If not set we use Gateway as DMS server
+	DhcpRange     IpRange
 	ZedServConfig ZedServerConfig
 }
 
@@ -493,9 +489,6 @@ func (config NetworkObjectConfig) Key() string {
 	return config.UUID.String()
 }
 
-// XXX If Ifname is set it means the network is in use
-// TBD: allow multiple applications to connect to the same Network by adding
-// another vif to the ifname.
 type NetworkObjectStatus struct {
 	NetworkObjectConfig
 	PendingAdd    bool
