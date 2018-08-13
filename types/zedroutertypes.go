@@ -377,6 +377,32 @@ func ReportInterfaces(deviceNetworkStatus DeviceNetworkStatus) []string {
 	return names
 }
 
+type MapServerType uint8
+
+const (
+	MST_INVALID MapServerType = iota
+	MST_MAPSERVER
+	MST_SUPPORT_SERVER
+	MST_LAST = 255
+)
+
+type MapServer struct {
+	ServiceType MapServerType
+	NameOrIp    string
+	Credential  string
+}
+
+type ServiceLispConfig struct {
+	MapServers    []MapServer
+	IID           uint32
+	Allocate      bool
+	ExportPrivate bool
+	EidPrefix     net.IP
+	EidPrefixLen  uint32
+
+	Experimental bool
+}
+
 type OverlayNetworkConfig struct {
 	IID           uint32
 	EID           net.IP
@@ -431,9 +457,9 @@ type UnderlayNetworkStatus struct {
 type NetworkType uint8
 
 const (
-	NT_IPV4 NetworkType = 4
-	NT_IPV6             = 6
-	NT_LISP             = 10 // XXX TBD make it a service
+	NT_IPV4      NetworkType = 4
+	NT_IPV6                  = 6
+	NT_CryptoEID             = 14
 	// XXX Do we need a NT_DUAL/NT_IPV46? Implies two subnets/dhcp ranges?
 )
 
@@ -449,12 +475,13 @@ type NetworkObjectConfig struct {
 	// XXX LocalDhcp  bool   // Run a DHCP server
 	// XXX LocalDns   bool   // Run a DNS server
 	// XXX LocalAddr  net.IP // For local DHCP/DNS; could be same as Gateway
-	Subnet     net.IPNet
-	Gateway    net.IP
-	DomainName string
-	NtpServer  net.IP
-	DnsServers []net.IP // If not set we pass LocalAddr/Gateway to application
-	DhcpRange  IpRange
+	Subnet        net.IPNet
+	Gateway       net.IP
+	DomainName    string
+	NtpServer     net.IP
+	DnsServers    []net.IP // If not set we pass LocalAddr/Gateway to application
+	DhcpRange     IpRange
+	ZedServConfig ZedServerConfig
 }
 
 type IpRange struct {
@@ -477,6 +504,7 @@ type NetworkObjectStatus struct {
 	BridgeNum     int
 	BridgeName    string // bn<N>
 	BridgeIPAddr  string
+	NameToEidList []NameToEid
 	// XXX Adapter        string // AKA Adapter - from NetworkServiceConfig???
 	// Collection of address assignments; from MAC address to IP address
 	// XXX record hostnames as well?
@@ -512,6 +540,7 @@ type NetworkServiceConfig struct {
 	AppLink      uuid.UUID
 	Adapter      string // Ifname or group like "uplink", or empty
 	OpaqueConfig string
+	LispConfig   ServiceLispConfig
 }
 
 func (config NetworkServiceConfig) Key() string {
@@ -529,6 +558,7 @@ type NetworkServiceStatus struct {
 	AppLink       uuid.UUID
 	Adapter       string // Ifname or group like "uplink", or empty
 	OpaqueStatus  string
+	LispStatus    ServiceLispConfig
 	AdapterList   []string  // Recorded at time of activate
 	Subnet        net.IPNet // Recorded at time of activate
 	// Any errrors from provisioning the service

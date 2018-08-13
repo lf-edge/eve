@@ -55,11 +55,6 @@ lisp xtr-parameters {
     data-plane-logging = no
     flow-logging = no
     checkpoint-map-cache = no
-	ipc-data-plane = %s
-}
-lisp map-resolver {
-    dns-name = ms1.zededa.net
-}
-lisp map-resolver {
-    dns-name = ms2.zededa.net
+    register-reachable-rtrs = yes
+    ipc-data-plane = %s
 }

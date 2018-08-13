@@ -446,6 +446,9 @@ var appinstancePrevConfigHash []byte
 
 func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 	getconfigCtx *getconfigContext) {
+	if debug {
+		log.Printf("EdgeDevConfig: %v\n", *config)
+	}
 
 	var appInstance = types.AppInstanceConfig{}
 
@@ -677,6 +680,34 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 				// XXX return how?
 				log.Printf("publishNetworkObjectConfig: parseIpspec failed: %s\n", err)
 			}
+			fallthrough
+		case types.NT_CryptoEID:
+			// Parse and store NameToEidList form Network configuration
+			dnsEntries := netEnt.GetDns()
+
+			// Parse and populate the name to EID list
+			// This is what we will publish to zedrouter
+			nameToEids := []types.NameToEid{}
+			for _, dnsEntry := range dnsEntries {
+				hostName := dnsEntry.HostName
+
+				eids := []net.IP{}
+				for _, strAddr := range dnsEntry.Address {
+					eid := net.ParseIP(strAddr)
+					if eid != nil {
+						eids = append(eids, eid)
+					}
+				}
+
+				nameToEid := types.NameToEid {
+					HostName: hostName,
+					EIDs: eids,
+				}
+				nameToEids = append(nameToEids, nameToEid)
+			}
+			config.ZedServConfig = types.ZedServerConfig {
+				NameToEidList: nameToEids,
+			}
 		default:
 			log.Printf("publishNetworkObjectConfig: Unknown NetworkConfig type %d for %s in %v; ignored\n",
 				config.Type, id.String(), netEnt)
@@ -797,6 +828,29 @@ func publishNetworkServiceConfig(ctx *getconfigContext,
 		if svcEnt.Cfg != nil {
 			service.OpaqueConfig = svcEnt.Cfg.Oconfig
 		}
+		if svcEnt.LispCfg != nil {
+			mapServers := []types.MapServer{}
+			for _, ms := range svcEnt.LispCfg.LispMSs {
+				mapServer := types.MapServer {
+					ServiceType: types.MapServerType(ms.ZsType),
+					NameOrIp: ms.NameOrIp,
+					Credential: ms.Credential,
+				}
+				mapServers = append(mapServers, mapServer)
+			}
+			eidPrefix := net.IP(svcEnt.LispCfg.Allocationprefix)
+
+			// Populate service Lisp config that should be sent to zedrouter
+			service.LispConfig = types.ServiceLispConfig {
+				MapServers: mapServers,
+				IID: svcEnt.LispCfg.LispInstanceId,
+				Allocate: svcEnt.LispCfg.Allocate,
+				ExportPrivate: svcEnt.LispCfg.Exportprivate,
+				EidPrefix: eidPrefix,
+				EidPrefixLen: svcEnt.LispCfg.Allocationprefixlen,
+				Experimental: svcEnt.LispCfg.Experimental,
+			}
+		}
 		ctx.pubNetworkServiceConfig.Publish(service.UUID.String(),
 			&service)
 	}
@@ -822,6 +876,8 @@ func parseAppNetworkConfig(appInstance *types.AppInstanceConfig,
 		// underlay interface
 		case zconfig.NetworkType_V4, zconfig.NetworkType_V6:
 			ulMaxIdx++
+		case zconfig.NetworkType_CryptoEID:
+			olMaxIdx++
 
 			// XXX turned LISP into a service?? What happens to overlay config?
 		}
@@ -934,6 +990,9 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 				intfEnt.NetworkId)
 			continue
 		}
+		if netEnt.Type != zconfig.NetworkType_CryptoEID {
+			continue
+		}
 		uuid, err := uuid.FromString(netEnt.Id)
 		if err != nil {
 			log.Printf("OverlayNetworkConfig: Malformed UUID ignored: %s\n",
@@ -942,17 +1001,14 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 		}
 
 		// XXX turn LISP into a service?? What happens to overlay config?
-		if true {
-			continue
-		}
-		// XXX dead code
+
 		olCfg := new(types.EIDOverlayConfig)
 		olCfg.ACLs = make([]types.ACE, len(intfEnt.Acls))
 		olCfg.Network = uuid
 		if intfEnt.MacAddress != "" {
 			olCfg.AppMacAddr, err = net.ParseMAC(intfEnt.MacAddress)
 			if err != nil {
-				log.Printf("parseUnderlayNetworkConfig: bad MAC %s: %s\n",
+				log.Printf("parseOverlayNetworkConfig: bad MAC %s: %s\n",
 					intfEnt.MacAddress, err)
 				// XXX report error?
 			}

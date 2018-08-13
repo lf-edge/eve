@@ -70,7 +70,7 @@ const (
 		"\n\tright="
 	ipSecSvrTunRightAttribSpecStr = "\n\trightsubnet=0.0.0.0/0" +
 		"\n\tdpddelay=10s" + "\n\tdpdtimeout=30s" +
-		"\n\tdpdaction=clear" + "\n"
+		"\n\tdpdaction=clear" + "\n\tauto=add" + "\n"
 )
 
 func ipSecServiceActivate(vpnConfig types.VpnServiceConfig) error {

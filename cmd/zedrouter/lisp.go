@@ -21,6 +21,9 @@ import (
 // Template per map server. Pass in (dns-name, authentication-key)
 // Use this for the Mgmt IID
 const lispMStemplateMgmt = `
+lisp map-resolver {
+	dns-name = %s
+}
 lisp map-server {
     dns-name = %s
     authentication-key = %s
@@ -143,7 +146,6 @@ lisp database-mapping {
 %s
 }
 `
-
 const (
 	baseFilename = tmpDirname + "/lisp.config.base"
 
@@ -228,7 +230,7 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	for _, ms := range lispServers {
 		if isMgmt {
 			file1.WriteString(fmt.Sprintf(lispMStemplateMgmt,
-				ms.NameOrIp, ms.Credential))
+				ms.NameOrIp, ms.NameOrIp, ms.Credential))
 		} else {
 			file1.WriteString(fmt.Sprintf(lispMStemplate,
 				IID, ms.NameOrIp, ms.Credential))
@@ -247,7 +249,66 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 		file2.WriteString(fmt.Sprintf(lispDBtemplate,
 			IID, EID, IID, tag, tag, rlocString))
 	}
-	updateLisp(lispRunDirname, globalStatus.UplinkStatus, separateDataPlane)
+	updateLisp(lispRunDirname, &globalStatus, separateDataPlane)
+}
+
+func createLispEidConfiglet(lispRunDirname string,
+	IID uint32, EID net.IP, lispSignature string,
+	globalStatus types.DeviceNetworkStatus,
+	tag string, olIfname string, additionalInfo string,
+	lispServers []types.LispServerInfo, separateDataPlane bool) {
+	if debug {
+		log.Printf("createLispConfiglet: %s %d %s %v %s %s %s %s %v\n",
+			lispRunDirname, IID, EID, lispSignature, globalStatus,
+			tag, olIfname, additionalInfo, lispServers)
+	}
+
+	var cfgPathnameEID string
+	cfgPathnameEID = lispRunDirname + "/" + EID.String()
+	file, err := os.Create(cfgPathnameEID)
+	if err != nil {
+		log.Fatal("os.Create for ", cfgPathnameEID, err)
+	}
+	defer file.Close()
+
+	rlocString := ""
+	for _, u := range globalStatus.UplinkStatus {
+		// Skip interfaces which are not free or have no usable address
+		if !u.Free {
+			continue
+		}
+		if len(u.AddrInfoList) == 0 {
+			continue
+		}
+		found := false
+		for _, i := range u.AddrInfoList {
+			if !i.Addr.IsLinkLocalUnicast() {
+				found = true
+				break
+			}
+		}
+		if !found {
+			continue
+		}
+
+		one := fmt.Sprintf("    rloc {\n        interface = %s\n    }\n",
+			u.IfName)
+		rlocString += one
+		for _, i := range u.AddrInfoList {
+			prio := 0
+			if i.Addr.IsLinkLocalUnicast() {
+				prio = 2
+			}
+			one := fmt.Sprintf("    rloc {\n        address = %s\n        priority = %d\n    }\n", i.Addr, prio)
+			rlocString += one
+		}
+	}
+	file.WriteString(fmt.Sprintf(lispEIDtemplate,
+		tag, lispSignature, tag, additionalInfo, olIfname,
+		olIfname, IID))
+	file.WriteString(fmt.Sprintf(lispDBtemplate,
+		IID, EID, IID, tag, tag, rlocString))
+	updateLisp(lispRunDirname, &globalStatus, separateDataPlane)
 }
 
 func updateLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
@@ -288,20 +349,20 @@ func deleteLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	// cfgPathnameIID := lispRunDirname + "/" +
 	//	strconv.FormatUint(uint64(IID), 10)
 
-	updateLisp(lispRunDirname, globalStatus.UplinkStatus, separateDataPlane)
+	updateLisp(lispRunDirname, &globalStatus, separateDataPlane)
 }
 
 func updateLisp(lispRunDirname string,
-	upLinkStatus []types.NetworkUplink,
+	globalStatus *types.DeviceNetworkStatus,
 	separateDataPlane bool) {
 	if debug {
-		log.Printf("updateLisp: %s %v\n", lispRunDirname, upLinkStatus)
+		log.Printf("updateLisp: %s %v\n", lispRunDirname, globalStatus.UplinkStatus)
 	}
 
 	if deferUpdate {
 		log.Printf("updateLisp deferred\n")
 		deferLispRunDirname = lispRunDirname
-		deferUpLinkStatus = upLinkStatus
+		deferGlobalStatus = globalStatus
 		return
 	}
 
@@ -329,20 +390,7 @@ func updateLisp(lispRunDirname string,
 	} else {
 		tmpfile.WriteString(fmt.Sprintf(baseConfig, "no"))
 	}
-	/*
-		s, err := os.Open(baseFilename)
-		if err != nil {
-			log.Println("os.Open ", baseFilename, err)
-			return
-		}
-		defer s.Close()
-		var cnt int64
-		if cnt, err = io.Copy(tmpfile, s); err != nil {
-			log.Println("io.Copy ", baseFilename, err)
-			return
-		}
-		fmt.Printf("Copied %d bytes from %s\n", cnt, baseFilename)
-	*/
+
 	var cnt int64
 	files, err := ioutil.ReadDir(lispRunDirname)
 	if err != nil {
@@ -385,6 +433,13 @@ func updateLisp(lispRunDirname string,
 		log.Println("Rename ", tmpfile.Name(), destFilename, err)
 		return
 	}
+	// XXX We write configuration to lisp.config.orig for debugging
+	// lispers.net lisp.config file overwrite issue.
+	if dat, err := ioutil.ReadFile(destFilename); err == nil {
+		f, _ := os.Create(destFilename + ".orig")
+		f.WriteString(string(dat))
+		f.Sync()
+	}
 
 	// Determine the set of devices from the above config file
 	grep := wrap.Command("grep", "device = ", destFilename)
@@ -407,6 +462,10 @@ func updateLisp(lispRunDirname string,
 		log.Printf("updateLisp: found %d EIDs devices <%v>\n",
 			eidCount, devices)
 	}
+	freeUpLinks := types.GetUplinkFreeNoLocal(*globalStatus)
+	for _, u := range freeUpLinks {
+		devices += " " + u.IfName
+	}
 	// Check how many EIDs we have configured. If none we stop lisp
 	if eidCount == 0 {
 		stopLisp()
@@ -417,13 +476,13 @@ func updateLisp(lispRunDirname string,
 		if separateDataPlane {
 			maybeStartLispDataPlane()
 		}
-		restartLisp(upLinkStatus, devices)
+		restartLisp(globalStatus.UplinkStatus, devices)
 	}
 }
 
 var deferUpdate = false
 var deferLispRunDirname = ""
-var deferUpLinkStatus []types.NetworkUplink = nil
+var deferGlobalStatus *types.DeviceNetworkStatus
 
 func handleLispRestart(done bool, separateDataPlane bool) {
 	if debug {
@@ -434,9 +493,9 @@ func handleLispRestart(done bool, separateDataPlane bool) {
 			deferUpdate = false
 			if deferLispRunDirname != "" {
 				updateLisp(deferLispRunDirname,
-					deferUpLinkStatus, separateDataPlane)
+					deferGlobalStatus, separateDataPlane)
 				deferLispRunDirname = ""
-				deferUpLinkStatus = nil
+				deferGlobalStatus = nil
 			}
 		}
 	} else {
@@ -546,7 +605,7 @@ func maybeStartLispDataPlane() {
 	if isRunning {
 		return
 	}
-	// Dataplane is currently running. Start it.
+	// Dataplane is currently not running. Start it.
 	cmd := "nohup"
 	args := []string{
 		"/opt/zededa/bin/lisp-ztr",

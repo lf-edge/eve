@@ -14,6 +14,7 @@ import (
 	"github.com/zededa/go-provision/types"
 	"log"
 	"net"
+	"strconv"
 	"time"
 )
 
@@ -27,12 +28,11 @@ func handleNetworkObjectModify(ctxArg interface{}, key string, configArg interfa
 	status := lookupNetworkObjectStatus(ctx, key)
 	if status != nil {
 		log.Printf("handleNetworkObjectModify(%s)\n", key)
-		pub := ctx.pubNetworkObjectStatus
 		status.PendingModify = true
-		pub.Publish(status.Key(), *status)
+		publishNetworkObjectStatus(ctx, status)
 		doNetworkModify(ctx, config, status)
 		status.PendingModify = false
-		pub.Publish(status.Key(), *status)
+		publishNetworkObjectStatus(ctx, status)
 		log.Printf("handleNetworkObjectModify(%s) done\n", key)
 	} else {
 		handleNetworkObjectCreate(ctx, key, config)
@@ -42,24 +42,24 @@ func handleNetworkObjectModify(ctxArg interface{}, key string, configArg interfa
 func handleNetworkObjectCreate(ctx *zedrouterContext, key string, config types.NetworkObjectConfig) {
 	log.Printf("handleNetworkObjectCreate(%s)\n", key)
 
-	pub := ctx.pubNetworkObjectStatus
 	status := types.NetworkObjectStatus{
 		NetworkObjectConfig: config,
 		IPAssignments:       make(map[string]net.IP),
+		NameToEidList:       config.ZedServConfig.NameToEidList,
 	}
 	status.PendingAdd = true
-	pub.Publish(status.Key(), status)
+	publishNetworkObjectStatus(ctx, &status)
 	err := doNetworkCreate(ctx, config, &status)
 	if err != nil {
 		log.Printf("doNetworkCreate(%s) failed: %s\n", key, err)
 		status.Error = err.Error()
 		status.ErrorTime = time.Now()
 		status.PendingAdd = false
-		pub.Publish(status.Key(), status)
+		publishNetworkObjectStatus(ctx, &status)
 		return
 	}
 	status.PendingAdd = false
-	pub.Publish(status.Key(), status)
+	publishNetworkObjectStatus(ctx, &status)
 	log.Printf("handleNetworkObjectCreate(%s) done\n", key)
 }
 
@@ -68,18 +68,17 @@ func handleNetworkObjectDelete(ctxArg interface{}, key string,
 
 	log.Printf("handleNetworkObjectDelete(%s)\n", key)
 	ctx := ctxArg.(*zedrouterContext)
-	pub := ctx.pubNetworkObjectStatus
 	status := lookupNetworkObjectStatus(ctx, key)
 	if status == nil {
 		log.Printf("handleNetworkObjectDelete: unknown %s\n", key)
 		return
 	}
 	status.PendingDelete = true
-	pub.Publish(status.Key(), *status)
-	doNetworkDelete(status)
+	publishNetworkObjectStatus(ctx, status)
+	doNetworkDelete(ctx, status)
 	status.PendingDelete = false
-	pub.Publish(status.Key(), *status)
-	pub.Unpublish(status.Key())
+	publishNetworkObjectStatus(ctx, status)
+	unpublishNetworkObjectStatus(ctx, status)
 	log.Printf("handleNetworkObjectDelete(%s) done\n", key)
 }
 
@@ -89,15 +88,13 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 	log.Printf("doNetworkCreate NetworkObjectStatus key %s type %d\n",
 		config.UUID, config.Type)
 
-	pub := ctx.pubNetworkObjectStatus
-
 	// Check for valid types
 	switch config.Type {
 	case types.NT_IPV6:
 		// Nothing to do
 	case types.NT_IPV4:
 		// Nothing to do
-	case types.NT_LISP: // XXX turn into a service?
+	case types.NT_CryptoEID:
 		// Nothing to do
 	default:
 		errStr := fmt.Sprintf("doNetworkCreate type %d not supported",
@@ -112,7 +109,7 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 	bridgeName := fmt.Sprintf("bn%d", bridgeNum)
 	status.BridgeNum = bridgeNum
 	status.BridgeName = bridgeName
-	pub.Publish(status.Key(), *status)
+	publishNetworkObjectStatus(ctx, status)
 
 	// Create bridge
 
@@ -153,7 +150,12 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 	// Directory is /var/run/zedrouter/hosts.${BRIDGENAME}
 	hostsDirpath := globalRunDirname + "/hosts." + bridgeName
 	deleteHostsConfiglet(hostsDirpath, false)
-	createHostsConfiglet(hostsDirpath, nil)
+	if config.Type == types.NT_CryptoEID {
+		createHostsConfiglet(hostsDirpath,
+			config.ZedServConfig.NameToEidList)
+	} else {
+		createHostsConfiglet(hostsDirpath, nil)
+	}
 	if status.BridgeIPAddr != "" {
 		// XXX arbitrary name "router"!!
 		addToHostsConfiglet(hostsDirpath, "router",
@@ -166,7 +168,6 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 func setBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) error {
 
 	log.Printf("setBridgeIPAddr for %s\n", status.Key())
-	pub := ctx.pubNetworkObjectStatus
 	if status.BridgeName == "" {
 		// Called too early
 		log.Printf("setBridgeIPAddr: don't yet have a bridgeName for %s\n",
@@ -190,7 +191,8 @@ func setBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) e
 			err)
 	}
 	var ipAddr string
-	if st == types.NST_BRIDGE {
+	switch st {
+	case types.NST_BRIDGE:
 		ipAddr, err = getBridgeServiceIPv4Addr(ctx, status.UUID)
 		if err != nil {
 			log.Printf("setBridgeIPAddr: getBridgeServiceIPv4Addr failed: %s\n",
@@ -198,9 +200,19 @@ func setBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) e
 			return err
 		}
 	}
+
+	// Unlike bridge service Lisp will not need a service now for generating ip address.
+	// Hence, cannot move this check into the previous service type check.
+	// We check for network type here.
+	if status.Type == types.NT_CryptoEID {
+		ipAddr = "fd00::" + strconv.FormatInt(int64(status.BridgeNum), 16)
+		ipAddr += "/128"
+		log.Printf("setBridgeIPAddr: Bridge %s assigned IPv6 address %s\n",
+			status.BridgeName, ipAddr)
+	}
+
 	// If not we do a local allocation
 	if ipAddr == "" {
-		// XXX Need IPV6/LISP logic to get IPv6 addresses
 		var bridgeMac net.HardwareAddr
 
 		switch link.(type) {
@@ -224,7 +236,7 @@ func setBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) e
 		}
 	}
 	status.BridgeIPAddr = ipAddr
-	pub.Publish(status.Key(), *status)
+	publishNetworkObjectStatus(ctx, status)
 
 	if status.BridgeIPAddr == "" {
 		log.Printf("Does not yet have a bridge IP address for %s\n",
@@ -232,8 +244,11 @@ func setBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) e
 		return nil
 	}
 
+	if status.Type != types.NT_CryptoEID {
+		ipAddr += "/24"
+	}
 	//    ip addr add ${ipAddr}/24 dev ${bridgeName}
-	addr, err := netlink.ParseAddr(ipAddr + "/24")
+	addr, err := netlink.ParseAddr(ipAddr)
 	if err != nil {
 		errStr := fmt.Sprintf("ParseAddr %s failed: %s", ipAddr, err)
 		return errors.New(errStr)
@@ -242,6 +257,28 @@ func setBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) e
 		errStr := fmt.Sprintf("AddrAdd %s failed: %s", ipAddr, err)
 		return errors.New(errStr)
 	}
+
+	// create new radvd configuration and restart radvd if network type is CryptoEID
+	if status.Type == types.NT_CryptoEID {
+		// Create EID ipset
+		createEidIpsetConfiglet(status.BridgeName, status.NameToEidList, "")
+	}
+
+	isIPv6 := false
+	if status.Subnet.IP != nil {
+		isIPv6 = (status.Subnet.IP.To4() == nil)
+	}
+	if (status.Type == types.NT_CryptoEID) || isIPv6 {
+		cfgFilename := "radvd." + status.BridgeName + ".conf"
+		cfgPathname := runDirname + "/" + cfgFilename
+
+		// kill existing radvd instance
+		deleteRadvdConfiglet(cfgPathname)
+		stopRadvd(cfgFilename, false)
+		createRadvdConfiglet(cfgPathname, status.BridgeName)
+		startRadvd(cfgPathname, status.BridgeName)
+	}
+
 	return nil
 }
 
@@ -293,8 +330,7 @@ func lookupOrAllocateIPv4(ctx *zedrouterContext,
 			mac.String(), a.String())
 		status.IPAssignments[mac.String()] = a
 		// Publish the allocation
-		pub := ctx.pubNetworkObjectStatus
-		pub.Publish(status.Key(), *status)
+		publishNetworkObjectStatus(ctx, status)
 		return a.String(), nil
 	}
 	errStr := fmt.Sprintf("lookupOrAllocateIPv4(%s) no free address in DhcpRange",
@@ -307,7 +343,6 @@ func releaseIPv4(ctx *zedrouterContext,
 	status *types.NetworkObjectStatus, mac net.HardwareAddr) (bool, error) {
 
 	log.Printf("releaseIPv4(%s)\n", mac.String())
-	pub := ctx.pubNetworkObjectStatus
 	// Lookup to see if it exists
 	if _, ok := status.IPAssignments[mac.String()]; !ok {
 		errStr := fmt.Sprintf("releaseIPv4: not found %s for %s",
@@ -316,7 +351,7 @@ func releaseIPv4(ctx *zedrouterContext,
 	}
 	delete(status.IPAssignments, mac.String())
 	last := len(status.IPAssignments) == 0
-	pub.Publish(status.Key(), *status)
+	publishNetworkObjectStatus(ctx, status)
 	return last, nil
 }
 
@@ -403,16 +438,75 @@ func doNetworkModify(ctx *zedrouterContext, config types.NetworkObjectConfig,
 		status.ErrorTime = time.Now()
 		return
 	}
+	// For cryptoEid network delete the old EID ipset and create new EID ipset
+	if config.Type == types.NT_CryptoEID {
+		bridgeName := status.BridgeName
+		// Destroy old EID Ipset
+		deleteEidIpsetConfiglet(bridgeName, true)
+
+		// Create new ipset
+		createEidIpsetConfiglet(bridgeName, config.ZedServConfig.NameToEidList, "")
+	}
+
 	// Update other fields; potentially useful for testing
 	status.NetworkObjectConfig = config
 }
 
-func doNetworkDelete(status *types.NetworkObjectStatus) {
+func doNetworkDelete(ctx *zedrouterContext,
+	status *types.NetworkObjectStatus) {
 	log.Printf("doNetworkDelete NetworkObjectStatus key %s type %d\n",
 		status.UUID, status.Type)
 
 	if status.BridgeName == "" {
 		return
+	}
+	// For lisp networks delete radvd, dnsmasq configlets,
+	// dns hosts files and ACLs attached.
+	if status.Type == types.NT_CryptoEID {
+		bridgeName := status.BridgeName
+		cfgFilename := "radvd." + bridgeName + ".conf"
+		cfgPathname := runDirname + "/" + cfgFilename
+		stopRadvd(cfgFilename, true)
+		deleteRadvdConfiglet(cfgPathname)
+
+		cfgFilename = "dnsmasq." + bridgeName + ".conf"
+		cfgPathname = runDirname + "/" + cfgFilename
+		stopDnsmasq(cfgFilename, true)
+		deleteDnsmasqConfiglet(cfgPathname)
+
+		// Destroy EID Ipset
+		deleteEidIpsetConfiglet(bridgeName, true)
+
+		// XXX Delte hosts configlet also
+		hostsDirpath := globalRunDirname + "/hosts." + bridgeName
+		deleteHostsConfiglet(hostsDirpath, true)
+
+		// Delete ACLs attached to this bridge
+		// Go through app instances using this bridge for Lisp
+		// and gather the list of ACLS attached.
+		pub := ctx.pubAppNetworkStatus
+		items := pub.GetAll()
+		acls := []types.ACE{}
+		for _, ans := range items {
+			if ans == nil {
+				continue
+			}
+			appNetStatus := cast.CastAppNetworkStatus(ans)
+			if len(appNetStatus.OverlayNetworkList) == 0 {
+				continue
+			}
+			for _, olStatus := range appNetStatus.OverlayNetworkList {
+				if olStatus.Network == status.UUID {
+					acls = append(acls, olStatus.ACLs...)
+				}
+			}
+		}
+
+		err := deleteACLConfiglet(bridgeName, false, acls,
+			6, status.BridgeIPAddr, "", 0, nil)
+		if err != nil {
+			log.Printf("doNetworkDelete: deleteACL failed: %s\n", err)
+		}
 	}
 	attrs := netlink.NewLinkAttrs()
 	attrs.Name = status.BridgeName
