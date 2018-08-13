@@ -29,12 +29,13 @@ import (
 )
 
 const (
-	agentName   = "zedclient"
-	tmpDirname  = "/var/tmp/zededa"
-	DNCDirname  = tmpDirname + "/DeviceNetworkConfig"
-	maxDelay    = time.Second * 600 // 10 minutes
-	uuidMaxWait = time.Second * 60  // 1 minute
-	debug       = false
+	agentName      = "zedclient"
+	tmpDirname     = "/var/tmp/zededa"
+	DNCDirname     = tmpDirname + "/DeviceNetworkConfig"
+	maxDelay       = time.Second * 600 // 10 minutes
+	uuidMaxWait    = time.Second * 60  // 1 minute
+	debug          = false
+	maxPingRetries = 5
 )
 
 // Really a constant
@@ -68,6 +69,7 @@ type clientContext struct {
 //
 //
 func Run() {
+	exitCode := 0
 	versionPtr := flag.Bool("v", false, "Version")
 	forcePtr := flag.Bool("f", false, "Force using onboarding cert")
 	dirPtr := flag.String("d", "/config", "Directory with certs etc")
@@ -421,6 +423,12 @@ func Run() {
 			if delay > maxDelay {
 				delay = maxDelay
 			}
+			if retryCount > maxPingRetries {
+				done = true
+				exitCode = 1
+				log.Printf("Giving up on ping\n")
+				continue
+			}
 			log.Printf("Retrying ping in %d seconds\n",
 				delay/time.Second)
 		}
@@ -544,4 +552,5 @@ func Run() {
 	if err != nil {
 		log.Println(err)
 	}
+	os.Exit(exitCode)
 }

@@ -251,9 +251,16 @@ if [ $? != 0 ]; then
 fi
 
 # Use ping to kick of dhcpcd; XXX will fail if not onboarded??
-echo $BINDIR/client -d $CONFIGDIR ping
-$BINDIR/client -d $CONFIGDIR ping
-
+# XXX hack to loop since client doesn't detect IP address changes
+while /bin/true; do
+    echo $BINDIR/client -d $CONFIGDIR ping
+    $BINDIR/client -d $CONFIGDIR ping
+    if [ $? == 0 ]; then
+	break
+    fi
+    echo "Retrying ping"
+    ifconfig
+done
 # We need to try our best to setup time *before* we generate the certifiacte.
 # Otherwise it may have start date in the future
 echo "Check for NTP config"
