@@ -658,43 +658,36 @@ type AdditionalInfoApp struct {
 // Input Opaque Config
 type StrongSwanServiceConfig struct {
 	VpnRole          string
+	PolicyBased      bool
 	VpnGatewayIpAddr string
 	VpnSubnetBlock   string
 	VpnLocalIpAddr   string
 	VpnRemoteIpAddr  string
 	PreSharedKey     string
+	LocalSubnetBlock string
 	ClientConfigList []VpnClientConfig
 }
 
 // structure for internal handling
 type VpnServiceConfig struct {
 	VpnRole          string
-	GatewayConfig    VpnGatewayConfig
+	PolicyBased      bool
+	UpLinkConfig     NetLinkConfig
+	AppLinkConfig    NetLinkConfig
+	GatewayConfig    NetLinkConfig
 	ClientConfigList []VpnClientConfig
 }
 
-// also used to store status
-type VpnServiceLocalConfig struct {
-	VpnRole          string
-	GatewayConfig    VpnGatewayConfig
-	UpLinkConfig     VpnUpLinkConfig
-	ClientConfigList []VpnClientConfig
-}
-
-type VpnUpLinkConfig struct {
-	Name   string
-	IpAddr string
-}
-
-type VpnGatewayConfig struct {
+type NetLinkConfig struct {
+	Name        string
 	IpAddr      string
 	SubnetBlock string
 }
 
 type VpnClientConfig struct {
 	IpAddr       string
-	PreSharedKey string
 	SubnetBlock  string
+	PreSharedKey string
 	TunnelConfig VpnTunnelConfig
 }
 
