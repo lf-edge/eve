@@ -57,6 +57,7 @@ const (
 		"\n\tike=aes128-sha1-modp1024" +
 		"\n\tikelifetime=8h" +
 		"\n\tesp=aes128-sha1" +
+		"\n\tforceencaps=yes" +
 		"\n\tlifetime=1h" +
 		"\n"
 	ipSecSvrTunLeftHdrSpecStr = "\nconn rw" +
