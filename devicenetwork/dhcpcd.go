@@ -27,6 +27,7 @@ func UpdateDhcpClient(newConfig, oldConfig types.DeviceUplinkConfig) {
 		if oldU == nil {
 			log.Printf("updateDhcpClient: new %s\n", newU.IfName)
 			// Inactivate in case a dhcpcd is running
+			// XXX seems to be needed for second active in client. Why??
 			doDhcpClientInactivate(newU)
 			doDhcpClientActivate(newU)
 		} else if !reflect.DeepEqual(newU, oldU) {
@@ -75,7 +76,7 @@ func doDhcpClientActivate(nuc types.NetworkUplinkConfig) {
 		if nuc.Gateway.String() == "0.0.0.0" {
 			extras = append(extras, "--nogateway")
 		}
-		if !dhcpcdCmd("--request", extras, nuc.IfName) {
+		if !dhcpcdCmd("--request", extras, nuc.IfName, true) {
 			log.Printf("doDhcpClientActivate: request failed for %s\n",
 				nuc.IfName)
 		}
@@ -107,7 +108,7 @@ func doDhcpClientActivate(nuc types.NetworkUplinkConfig) {
 		}
 
 		args = append(args, extras...)
-		if !dhcpcdCmd("--static", args, nuc.IfName) {
+		if !dhcpcdCmd("--static", args, nuc.IfName, true) {
 			log.Printf("doDhcpClientActivate: request failed for %s\n",
 				nuc.IfName)
 		}
@@ -128,25 +129,36 @@ func doDhcpClientInactivate(nuc types.NetworkUplinkConfig) {
 		return
 	}
 	extras := []string{"-K"}
-	// XXX should we do release without stderr/go routine?
-	if !dhcpcdCmd("--release", extras, nuc.IfName) {
+	if !dhcpcdCmd("--release", extras, nuc.IfName, false) {
 		log.Printf("doDhcpClientInactivate: release failed for %s\n",
 			nuc.IfName)
 	}
 }
 
-func dhcpcdCmd(op string, extras []string, ifname string) bool {
+func dhcpcdCmd(op string, extras []string, ifname string, dolog bool) bool {
 	name := "dhcpcd"
 	args := append([]string{op}, extras...)
 	args = append(args, ifname)
-	logFilename := fmt.Sprintf("dhcpcd.%s", ifname)
-	logf, err := agentlog.InitChild(logFilename)
-	if err != nil {
-		log.Fatalf("agentlog dhcpcdCmd failed: %s\n", err)
+	if dolog {
+		logFilename := fmt.Sprintf("dhcpcd.%s", ifname)
+		logf, err := agentlog.InitChild(logFilename)
+		if err != nil {
+			log.Fatalf("agentlog dhcpcdCmd failed: %s\n", err)
+		}
+		cmd := exec.Command(name, args...)
+		cmd.Stdout = logf
+		cmd.Stderr = logf
+		log.Printf("Background command %s %v\n", name, args)
+		go cmd.Run()
+	} else {
+		log.Printf("Calling command %s %v\n", name, args)
+		out, err := exec.Command(name, args...).CombinedOutput()
+		if err != nil {
+			errStr := fmt.Sprintf("dhcpcd command %s failed %s output %s",
+				args, err, out)
+			log.Println(errStr)
+			return false
+		}
 	}
-	cmd := exec.Command(name, args...)
-	cmd.Stderr = logf
-	log.Printf("Calling command %s %v\n", name, args)
-	go cmd.Run()
 	return true
 }
