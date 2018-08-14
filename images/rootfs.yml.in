@@ -18,12 +18,6 @@ onboot:
      image: linuxkit/modprobe:v0.5
      command: ["modprobe", "-a", "nct6775", "w83627hf_wdt"]
 services:
-   - name: dhcpcd
-     image: linuxkit/dhcpcd:v0.5
-     binds:
-       - /run:/etc
-       - /run:/run
-     command: ["/sbin/dhcpcd", "--nobackground", "-f", "/dhcpcd.conf", "-z", "eth*,wlan*"]
    - name: ntpd
      image: linuxkit/openntpd:v0.5
    - name: wwan
