@@ -60,7 +60,7 @@ const (
 		"\n\tlifetime=1h" +
 		"\n"
 	ipSecSvrTunLeftHdrSpecStr = "\nconn rw" +
-		"\n\tauto=add" + "\n\tleftid=%any" + "\n\tleft="
+		"\n\tleftid=%any" + "\n\tleft="
 	ipSecSvrTunLeftAttribSpecStr = "\n\tleftfirewall=yes" +
 		"\n\tleftsubnet=0.0.0.0/0" +
 		"\n\ttype=tunnel" + "\n"
@@ -69,8 +69,7 @@ const (
 		"\n\trightid=%any" +
 		"\n\tright="
 	ipSecSvrTunRightAttribSpecStr = "\n\trightsubnet=0.0.0.0/0" +
-		"\n\tdpddelay=10s" + "\n\tdpdtimeout=30s" +
-		"\n\tdpdaction=clear" + "\n\tauto=add" + "\n"
+		"\n\tauto=add" + "\n"
 )
 
 func ipSecServiceActivate(vpnConfig types.VpnServiceConfig) error {
