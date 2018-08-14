@@ -8,9 +8,10 @@ package devicenetwork
 
 import (
 	"fmt"
+	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/types"
-	"github.com/zededa/go-provision/wrap"
 	"log"
+	"os/exec"
 	"reflect"
 )
 
@@ -66,8 +67,8 @@ func doDhcpClientActivate(nuc types.NetworkUplinkConfig) {
 
 	switch nuc.Dhcp {
 	case types.DT_CLIENT:
-		extras := []string{"-f", "/etc/dhcpcd.conf", "-b", "-K",
-			"--noipv4ll"}
+		extras := []string{"-f", "/etc/dhcpcd.conf", "--nobackground",
+			"-K", "-d", "--noipv4ll"}
 		if nuc.Gateway.String() == "0.0.0.0" {
 			extras = append(extras, "--nogateway")
 		}
@@ -79,7 +80,8 @@ func doDhcpClientActivate(nuc types.NetworkUplinkConfig) {
 		// XXX Addr vs. Subnet? Need netmask. --static subnet_mask=255.255.255.0
 		args := []string{fmt.Sprintf("ip_address=%s", nuc.Addr.String())}
 
-		extras := []string{"-f", "/etc/dhcpcd.conf", "-b", "-K"}
+		extras := []string{"-f", "/etc/dhcpcd.conf", "--nobackground",
+			"-K", "-d"}
 		if nuc.Gateway.String() == "0.0.0.0" {
 			extras = append(extras, "--nogateway")
 		} else if nuc.Gateway.String() != "" {
@@ -131,11 +133,17 @@ func doDhcpClientInactivate(nuc types.NetworkUplinkConfig) {
 }
 
 func dhcpcdCmd(op string, extras []string, ifname string) bool {
-	cmd := "dhcpcd"
+	name := "dhcpcd"
 	args := append([]string{op}, extras...)
 	args = append(args, ifname)
-	if _, err := wrap.Command(cmd, args...).Output(); err != nil {
-		return false
+	logFilename := fmt.Sprintf("dhcpcd.%s", ifname)
+	logf, err := agentlog.InitChild(logFilename)
+	if err != nil {
+		log.Fatalf("agentlog dhcpcdCmd failed: %s\n", err)
 	}
+	cmd := exec.Command(name, args...)
+	cmd.Stderr = logf
+	log.Printf("Calling command %s %v\n", name, args)
+	go cmd.Run()
 	return true
 }
