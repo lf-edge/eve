@@ -251,6 +251,7 @@ if [ $? != 0 ]; then
 fi
 
 # XXX hack to loop since client doesn't detect IP address changes
+RELEASED=0
 while /bin/true; do
     echo $BINDIR/client -d $CONFIGDIR dhcpcd
     $BINDIR/client -d $CONFIGDIR dhcpcd
@@ -259,6 +260,13 @@ while /bin/true; do
     fi
     echo "Retrying dhcpcd"
     ifconfig
+    if [ $RELEASED == 0 ]; then
+	    echo "Releasing lease"
+	    dhcpcd --release eth0
+	    dhcpcd --release eth1
+	    dhcpcd --release wlan0
+	    RELEASED=1
+    fi
 done
 
 # We need to try our best to setup time *before* we generate the certifiacte.
@@ -506,7 +514,7 @@ if [ $WAIT = 1 ]; then
 fi
 
 echo "Starting ZedRouter at" `date`
-zedrouter &
+zedrouter -d &
 if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
