@@ -49,7 +49,7 @@ type keyMap struct {
 
 // We always publish to our collection.
 // We always write to a file in order to have a checkpoint on restart
-const publishToSock = true      // XXX
+const publishToSock = false     // XXX
 const subscribeFromDir = true   // XXX
 const subscribeFromSock = false // XXX
 
