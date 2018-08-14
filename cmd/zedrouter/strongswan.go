@@ -262,7 +262,7 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 	if err := strongSwanValidateIpAddr(strongSwanConfig.VpnGatewayIpAddr); err != nil {
 		return vpnConfig, err
 	}
-	if err :=strongSwanValidateSubnet(strongSwanConfig.VpnSubnetBlock); err != nil {
+	if err := strongSwanValidateSubnet(strongSwanConfig.VpnSubnetBlock); err != nil {
 		return vpnConfig, err
 	}
 	if err := strongSwanValidateSubnet(strongSwanConfig.LocalSubnetBlock); err != nil {
@@ -303,7 +303,7 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 			return vpnConfig, errors.New("vpn gateway not set")
 		}
 		if strongSwanConfig.VpnSubnetBlock == "" ||
-		   strongSwanConfig.VpnSubnetBlock == AppLinkSubnetType  {
+			strongSwanConfig.VpnSubnetBlock == AppLinkSubnetType {
 			return vpnConfig, errors.New("vpn subnet not set")
 		}
 		// flat configuration
@@ -341,7 +341,7 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 		}
 		// for client, server side subnet information, is must
 		if strongSwanConfig.VpnSubnetBlock == "" ||
-		   strongSwanConfig.VpnSubnetBlock == AppLinkSubnetType  {
+			strongSwanConfig.VpnSubnetBlock == AppLinkSubnetType {
 			return vpnConfig, errors.New("server subnet block not set")
 		}
 		// flat configuration
@@ -377,7 +377,7 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 		for _, clientConfig := range strongSwanConfig.ClientConfigList {
 			// for route based server, client subnet information is must
 			if clientConfig.SubnetBlock == "" ||
-			   clientConfig.SubnetBlock == AppLinkSubnetType {
+				clientConfig.SubnetBlock == AppLinkSubnetType {
 				if strongSwanConfig.PolicyBased == false {
 					return vpnConfig, errors.New("client subnet block not set")
 				}
@@ -600,7 +600,7 @@ func strongSwanValidateSubnet(subnet string) error {
 func strongSwanValidateIpAddr(ipAddr string) error {
 	if ipAddr != "" && ipAddr != "%any" {
 		if ip := net.ParseIP(ipAddr); ip == nil {
-			return  errors.New("invalid ip address: " + ipAddr)
+			return errors.New("invalid ip address: " + ipAddr)
 		}
 	}
 	return nil
