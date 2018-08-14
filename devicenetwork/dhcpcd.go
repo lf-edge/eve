@@ -28,7 +28,9 @@ func UpdateDhcpClient(newConfig, oldConfig types.DeviceUplinkConfig) {
 			log.Printf("updateDhcpClient: new %s\n", newU.IfName)
 			// Inactivate in case a dhcpcd is running
 			// XXX seems to be needed for second active in client. Why??
-			doDhcpClientInactivate(newU)
+			// XXX need to have client react to ip address changes
+			// XXX means pbr subset to get addrChangeUplinkFn()
+			// doDhcpClientInactivate(newU)
 			doDhcpClientActivate(newU)
 		} else if !reflect.DeepEqual(newU, oldU) {
 			log.Printf("updateDhcpClient: changed %s\n",
@@ -56,6 +58,15 @@ func lookupOnIfname(config types.DeviceUplinkConfig, ifname string) *types.Netwo
 		}
 	}
 	return nil
+}
+
+func IsUplink(config types.DeviceUplinkConfig, ifname string) bool {
+	return lookupOnIfname(config, ifname) != nil
+}
+
+func IsFreeUplink(config types.DeviceUplinkConfig, ifname string) bool {
+	c := lookupOnIfname(config, ifname)
+	return c != nil && c.Free
 }
 
 func doDhcpClientActivate(nuc types.NetworkUplinkConfig) {
