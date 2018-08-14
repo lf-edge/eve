@@ -144,3 +144,39 @@ func UpdateDeviceNetworkGeo(timelimit time.Duration, globalStatus *types.DeviceN
 	}
 	return change
 }
+
+func lookupOnIfname(config types.DeviceUplinkConfig, ifname string) *types.NetworkUplinkConfig {
+	for _, c := range config.Uplinks {
+		if c.IfName == ifname {
+			return &c
+		}
+	}
+	return nil
+}
+
+func IsUplink(config types.DeviceUplinkConfig, ifname string) bool {
+	return lookupOnIfname(config, ifname) != nil
+}
+
+func IsFreeUplink(config types.DeviceUplinkConfig, ifname string) bool {
+	c := lookupOnIfname(config, ifname)
+	return c != nil && c.Free
+}
+
+func GetUplinks(config types.DeviceUplinkConfig) []string {
+	var result []string
+	for _, c := range config.Uplinks {
+		result = append(result, c.IfName)
+	}
+	return result
+}
+
+func GetFreeUplinks(config types.DeviceUplinkConfig) []string {
+	var result []string
+	for _, c := range config.Uplinks {
+		if c.Free {
+			result = append(result, c.IfName)
+		}
+	}
+	return result
+}

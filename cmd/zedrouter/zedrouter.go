@@ -300,14 +300,8 @@ func Run() {
 		}
 		maybeUpdateBridgeIPAddr(&zedrouterCtx, ifname)
 	}
-	// XXX can't depend on deviceNetworkConfig - need to look at DeviceUplinkConfig
-
-	// XXX need to pass pointer to uplink/freeuplinks??? Or callbacks?
-	// XXX freeuplinks maintained by pbr code to detect changes
 	routeChanges, addrChanges, linkChanges := PbrInit(
-		zedrouterCtx.deviceNetworkConfig.Uplink,
-		zedrouterCtx.deviceNetworkConfig.FreeUplinks,
-		addrChangeUplinkFn, addrChangeNonUplinkFn)
+		&zedrouterCtx, addrChangeUplinkFn, addrChangeNonUplinkFn)
 
 	// Publish network metrics for zedagent every 10 seconds
 	nms := getNetworkMetrics() // Need type of data
@@ -324,9 +318,8 @@ func Run() {
 	// Apply any changes from the uplink config to date.
 	publishDeviceNetworkStatus(&zedrouterCtx)
 	updateLispConfiglets(&zedrouterCtx, zedrouterCtx.separateDataPlane)
-	// XXX can't depend on deviceNetworkConfig - need to look at DeviceUplinkConfig
-	setUplinks(zedrouterCtx.deviceNetworkConfig.Uplink)
-	setFreeUplinks(zedrouterCtx.deviceNetworkConfig.FreeUplinks)
+
+	setFreeUplinks(devicenetwork.GetFreeUplinks(*zedrouterCtx.deviceUplinkConfig))
 
 	zedrouterCtx.ready = true
 
@@ -355,11 +348,11 @@ func Run() {
 			subDeviceUplinkConfig.ProcessChange(change)
 
 		case change := <-addrChanges:
-			PbrAddrChange(change)
+			PbrAddrChange(zedrouterCtx.deviceUplinkConfig, change)
 		case change := <-linkChanges:
-			PbrLinkChange(change)
+			PbrLinkChange(zedrouterCtx.deviceUplinkConfig, change)
 		case change := <-routeChanges:
-			PbrRouteChange(change)
+			PbrRouteChange(zedrouterCtx.deviceUplinkConfig, change)
 		case <-publishTimer.C:
 			if debug {
 				log.Println("publishTimer at",

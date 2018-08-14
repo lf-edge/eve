@@ -51,24 +51,6 @@ func UpdateDhcpClient(newConfig, oldConfig types.DeviceUplinkConfig) {
 
 }
 
-func lookupOnIfname(config types.DeviceUplinkConfig, ifname string) *types.NetworkUplinkConfig {
-	for _, c := range config.Uplinks {
-		if c.IfName == ifname {
-			return &c
-		}
-	}
-	return nil
-}
-
-func IsUplink(config types.DeviceUplinkConfig, ifname string) bool {
-	return lookupOnIfname(config, ifname) != nil
-}
-
-func IsFreeUplink(config types.DeviceUplinkConfig, ifname string) bool {
-	c := lookupOnIfname(config, ifname)
-	return c != nil && c.Free
-}
-
 func doDhcpClientActivate(nuc types.NetworkUplinkConfig) {
 	log.Printf("doDhcpClientActivate(%s) dhcp %v addr %s gateway %s\n",
 		nuc.IfName, nuc.Dhcp, nuc.Addr.String(),

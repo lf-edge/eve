@@ -11,6 +11,7 @@ import (
 	"github.com/satori/go.uuid"
 	"github.com/vishvananda/netlink"
 	"github.com/zededa/go-provision/cast"
+	"github.com/zededa/go-provision/devicenetwork"
 	"github.com/zededa/go-provision/types"
 	"log"
 	"os"
@@ -574,7 +575,7 @@ func bridgeCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	// XXX check it isn't assigned to dom0? That's maintained
 	// in domainmgr so can't do it here.
 	// For now check it isn't an uplink instead.
-	if isUplink(config.Adapter) {
+	if devicenetwork.IsUplink(*ctx.deviceUplinkConfig, config.Adapter) {
 		errStr := fmt.Sprintf("Uplink interface %s not available as bridge for %s",
 			config.Adapter, config.Key())
 		return errors.New(errStr)
@@ -691,15 +692,12 @@ func natActivate(config types.NetworkServiceConfig,
 }
 
 // Expand the generic names
-// XXX can't depend on deviceNetworkConfig
 func getAdapters(ctx *zedrouterContext, adapter string) []string {
 	if strings.EqualFold(adapter, "uplink") {
-		// XXX walk ctx.deviceUplinkConfig
-		return ctx.deviceNetworkConfig.Uplink
+		return devicenetwork.GetUplinks(*ctx.deviceUplinkConfig)
 	}
 	if strings.EqualFold(adapter, "freeuplink") {
-		// XXX walk ctx.deviceUplinkConfig
-		return ctx.deviceNetworkConfig.FreeUplinks
+		return devicenetwork.GetFreeUplinks(*ctx.deviceUplinkConfig)
 	}
 	return []string{adapter}
 }

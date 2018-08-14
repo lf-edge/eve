@@ -10,6 +10,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/vishvananda/netlink"
+	"github.com/zededa/go-provision/devicenetwork"
+	"github.com/zededa/go-provision/types"
 	"log"
 	"net"
 	"syscall"
@@ -24,16 +26,14 @@ var addrChangeFuncUplink addrChangeFnType
 var addrChangeFuncNonUplink addrChangeFnType
 
 // Returns the channels for route, addr, link updates
-func PbrInit(uplinks []string, freeUplinks []string,
-	addrChange addrChangeFnType,
+func PbrInit(ctx *zedrouterContext, addrChange addrChangeFnType,
 	addrChangeNon addrChangeFnType) (chan netlink.RouteUpdate,
 	chan netlink.AddrUpdate, chan netlink.LinkUpdate) {
 
 	if debug {
-		log.Printf("PbrInit(%v, %v)\n", uplinks, freeUplinks)
+		log.Printf("PbrInit()\n")
 	}
-	setUplinks(uplinks)
-	setFreeUplinks(freeUplinks)
+	setFreeUplinks(devicenetwork.GetFreeUplinks(*ctx.deviceUplinkConfig))
 	addrChangeFuncUplink = addrChange
 	addrChangeFuncNonUplink = addrChangeNon
 
@@ -113,7 +113,9 @@ func pbrGetFreeRule(prefixStr string) (*netlink.Rule, error) {
 }
 
 // Handle a route change
-func PbrRouteChange(change netlink.RouteUpdate) {
+func PbrRouteChange(deviceUplinkConfig *types.DeviceUplinkConfig,
+	change netlink.RouteUpdate) {
+
 	rt := change.Route
 	if rt.Table != syscall.RT_TABLE_MAIN {
 		// Ignore since we will not add to other table
@@ -126,7 +128,7 @@ func PbrRouteChange(change netlink.RouteUpdate) {
 		log.Printf("PbrRouteChange IfindexToName failed for %d: %s\n",
 			rt.LinkIndex, err)
 	} else {
-		if isFreeUplink(ifname) {
+		if devicenetwork.IsFreeUplink(*deviceUplinkConfig, ifname) {
 			if debug {
 				log.Printf("Applying to FreeTable: %v\n", rt)
 			}
@@ -190,7 +192,9 @@ func PbrRouteChange(change netlink.RouteUpdate) {
 }
 
 // Handle an IP address change
-func PbrAddrChange(change netlink.AddrUpdate) {
+func PbrAddrChange(deviceUplinkConfig *types.DeviceUplinkConfig,
+	change netlink.AddrUpdate) {
+
 	changed := false
 	if change.NewAddr {
 		changed = IfindexToAddrsAdd(change.LinkIndex,
@@ -210,7 +214,7 @@ func PbrAddrChange(change netlink.AddrUpdate) {
 		if err != nil {
 			log.Printf("PbrAddrChange IfindexToName failed for %d: %s\n",
 				change.LinkIndex, err)
-		} else if isUplink(ifname) {
+		} else if devicenetwork.IsUplink(*deviceUplinkConfig, ifname) {
 			if debug {
 				log.Printf("Address change for uplink: %v\n",
 					change)
@@ -229,21 +233,25 @@ func PbrAddrChange(change netlink.AddrUpdate) {
 }
 
 // Handle a link being added or deleted
-func PbrLinkChange(change netlink.LinkUpdate) {
+func PbrLinkChange(deviceUplinkConfig *types.DeviceUplinkConfig,
+	change netlink.LinkUpdate) {
+
 	ifindex := change.Attrs().Index
 	ifname := change.Attrs().Name
 	switch change.Header.Type {
 	case syscall.RTM_NEWLINK:
 		new := IfindexToNameAdd(ifindex, ifname)
 		if new {
-			if isFreeUplink(ifname) {
+			if devicenetwork.IsFreeUplink(*deviceUplinkConfig,
+				ifname) {
+
 				if debug {
 					log.Printf("PbrLinkChange moving to FreeTable %s\n",
 						ifname)
 				}
 				moveRoutesTable(0, ifindex, FreeTable)
 			}
-			if isUplink(ifname) {
+			if devicenetwork.IsUplink(*deviceUplinkConfig, ifname) {
 				if debug {
 					log.Printf("Link change for uplink: %s\n",
 						ifname)
@@ -263,13 +271,15 @@ func PbrLinkChange(change netlink.LinkUpdate) {
 	case syscall.RTM_DELLINK:
 		gone := IfindexToNameDel(ifindex, ifname)
 		if gone {
-			if isFreeUplink(ifname) {
+			if devicenetwork.IsFreeUplink(*deviceUplinkConfig,
+				ifname) {
+
 				flushRoutesTable(FreeTable, ifindex)
 			}
 			MyTable := FreeTable + ifindex
 			flushRoutesTable(MyTable, 0)
 			flushRules(ifindex)
-			if isUplink(ifname) {
+			if devicenetwork.IsUplink(*deviceUplinkConfig, ifname) {
 				if debug {
 					log.Printf("Link change for uplink: %s\n",
 						ifname)
@@ -289,7 +299,8 @@ func PbrLinkChange(change netlink.LinkUpdate) {
 	}
 }
 
-var uplinkList []string     // All uplinks
+// XXX needed to detect changes to free
+
 var freeUplinkList []string // The subset we add to FreeTable
 
 // Can be called to update the list.
@@ -329,31 +340,6 @@ func setFreeUplinks(freeUplinks []string) {
 		}
 	}
 	freeUplinkList = freeUplinks
-}
-
-func isFreeUplink(ifname string) bool {
-	for _, fu := range freeUplinkList {
-		if fu == ifname {
-			return true
-		}
-	}
-	return false
-}
-
-// Can be called to to initial set and later update the list. However,
-// the caller needs to call updateListConfiglets after an update.
-func setUplinks(uplinks []string) {
-	log.Printf("setUplinks(%v)\n", uplinks)
-	uplinkList = uplinks
-}
-
-func isUplink(ifname string) bool {
-	for _, u := range uplinkList {
-		if u == ifname {
-			return true
-		}
-	}
-	return false
 }
 
 // ===== map from ifindex to ifname

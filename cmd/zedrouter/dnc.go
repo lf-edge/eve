@@ -149,7 +149,6 @@ func doDNSUpdate(ctx *zedrouterContext) {
 	}
 	publishDeviceNetworkStatus(ctx)
 	updateLispConfiglets(ctx, ctx.separateDataPlane)
-	setUplinks(ctx.deviceNetworkConfig.Uplink)
-	setFreeUplinks(ctx.deviceNetworkConfig.FreeUplinks)
+	setFreeUplinks(devicenetwork.GetFreeUplinks(*ctx.deviceUplinkConfig))
 	// XXX do a NatInactivate/NatActivate if freeuplinks/uplinks changed?
 }
