@@ -256,7 +256,7 @@ mkdir -p $DUCDIR
 # Look for a USB stick with a key'ed file
 # If found it replaces any build override file in /config
 SPECIAL=/dev/sdb1
-if [ -f $CONFIGDIR/allow-usb-override -a -b $SPECIAL]; then
+if [ -f $CONFIGDIR/allow-usb-override -a -b $SPECIAL ]; then
     key=`cat /config/root-certificate.pem /config/server /config/device.cert.pem | openssl sha256 | awk '{print $2}'`
     # XXX specific to E100?
     mount -t vfat $SPECIAL /mnt
