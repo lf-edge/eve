@@ -805,10 +805,9 @@ func ipSecSecretConfigCreate(vpnConfig types.VpnServiceConfig) error {
 
 	case OnPremVpnServer:
 		// one or more client(s)
+		secretStr := ""
 		for _, clientConfig := range clientConfigList {
-			secretStr := gatewayConfig.IpAddr + " " + clientConfig.IpAddr
-			//writeStr = writeStr + gatewayConfig.IpAddr + " "
-			//writeStr = writeStr + clientConfig.IpAddr
+			secretStr = gatewayConfig.IpAddr + " " + clientConfig.IpAddr
 			secretStr = secretStr + " : PSK " + clientConfig.PreSharedKey
 			secretStr = secretStr + "\n"
 		}
