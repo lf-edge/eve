@@ -27,10 +27,6 @@ func UpdateDhcpClient(newConfig, oldConfig types.DeviceUplinkConfig) {
 		if oldU == nil {
 			log.Printf("updateDhcpClient: new %s\n", newU.IfName)
 			// Inactivate in case a dhcpcd is running
-			// XXX seems to be needed for second active in client. Why??
-			// XXX need to have client react to ip address changes
-			// XXX means pbr subset to get addrChangeUplinkFn()
-			// doDhcpClientInactivate(newU)
 			doDhcpClientActivate(newU)
 		} else if !reflect.DeepEqual(newU, oldU) {
 			log.Printf("updateDhcpClient: changed %s\n",
@@ -74,8 +70,18 @@ func doDhcpClientActivate(nuc types.NetworkUplinkConfig) {
 				nuc.IfName)
 		}
 	case types.DT_STATIC:
-		// XXX Addr vs. Subnet? Need netmask. --static subnet_mask=255.255.255.0
-		args := []string{fmt.Sprintf("ip_address=%s", nuc.Addr.String())}
+		// Require that Subnet is set and that Addr fits in it
+		if !nuc.Subnet.Contains(nuc.Addr) {
+			log.Printf("doDhcpClientActivate: failed addr %s not in subnet %s for %s\n",
+				nuc.Addr.String(), nuc.Subnet.String(),
+				nuc.IfName)
+			// XXX return error?
+			return
+		}
+		addrSubnet := nuc.Subnet
+		addrSubnet.Mask = nuc.Subnet.Mask
+		args := []string{fmt.Sprintf("ip_address=%s",
+			addrSubnet.String())}
 
 		extras := []string{"-f", "/dhcpcd.conf", "--nobackground",
 			"-K", "-d"}
