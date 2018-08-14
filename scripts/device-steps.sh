@@ -215,7 +215,7 @@ if [ ! -d $PERSISTDIR/log ]; then
 fi
 
 echo "Set up log capture"
-DOM0LOGFILES="dhcpcd.err.log ntpd.err.log wlan.err.log wwan.err.log dhcpcd.out.log ntpd.out.log wlan.out.log wwan.out.log zededa-tools.out.log zededa-tools.err.log"
+DOM0LOGFILES="ntpd.err.log wlan.err.log wwan.err.log ntpd.out.log wlan.out.log wwan.out.log zededa-tools.out.log zededa-tools.err.log"
 for f in $DOM0LOGFILES; do
     tail -c +0 -F /var/log/dom0/$f >/persist/$CURPART/log/$f &
 done
