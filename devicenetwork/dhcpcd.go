@@ -26,6 +26,8 @@ func UpdateDhcpClient(newConfig, oldConfig types.DeviceUplinkConfig) {
 		}
 		if oldU == nil {
 			log.Printf("updateDhcpClient: new %s\n", newU.IfName)
+			// Inactivate in case a dhcpcd is running
+			doDhcpClientInactivate(newU)
 			doDhcpClientActivate(newU)
 		} else if !reflect.DeepEqual(newU, oldU) {
 			log.Printf("updateDhcpClient: changed %s\n",
