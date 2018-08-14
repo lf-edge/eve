@@ -35,7 +35,7 @@ const (
 	maxDelay       = time.Second * 600 // 10 minutes
 	uuidMaxWait    = time.Second * 60  // 1 minute
 	debug          = false
-	maxPingRetries = 5
+	maxPingRetries = 5 // XXX remove; dhcpcd operation instead
 )
 
 // Really a constant
@@ -111,6 +111,7 @@ func Run() {
 		"selfRegister": false,
 		"ping":         false,
 		"getUuid":      false,
+		"dhcpcd":	false,
 	}
 	for _, op := range args {
 		if _, ok := operations[op]; ok {
@@ -229,10 +230,25 @@ func Run() {
 				}
 				return
 			}
+			if clientCtx.usableAddressCount == 0 &&
+				operations["dhcpcd"] {
+				log.Printf("Giving up on usableAddresssCount for dhcpcd\n")
+				os.Exit(1)
+			}
+			// XXX remove
+			if clientCtx.usableAddressCount == 0 &&
+				operations["ping"] {
+				log.Printf("Giving up on usableAddresssCount for ping\n")
+				os.Exit(1)
+			}
 		}
 	}
 	log.Printf("Got for DeviceNetworkConfig: %d addresses\n",
 		clientCtx.usableAddressCount)
+	if operations["dhcpcd"] {
+		log.Printf("dhcpcd operation done\n")
+		return
+	}
 
 	// Inform ledmanager that we have uplink addresses
 	types.UpdateLedManagerConfig(2)

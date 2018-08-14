@@ -59,6 +59,7 @@ func doDhcpClientActivate(nuc types.NetworkUplinkConfig) {
 	log.Printf("doDhcpClientActivate(%s) dhcp %v addr %s gateway %s\n",
 		nuc.IfName, nuc.Dhcp, nuc.Addr.String(),
 		nuc.Gateway.String())
+	// XXX skipping wwan0
 	if nuc.IfName == "wwan0" {
 		log.Printf("doDhcpClientActivate: skipping %s\n",
 			nuc.IfName)
@@ -67,7 +68,7 @@ func doDhcpClientActivate(nuc types.NetworkUplinkConfig) {
 
 	switch nuc.Dhcp {
 	case types.DT_CLIENT:
-		extras := []string{"-f", "/etc/dhcpcd.conf", "--nobackground",
+		extras := []string{"-f", "/dhcpcd.conf", "--nobackground",
 			"-K", "-d", "--noipv4ll"}
 		if nuc.Gateway.String() == "0.0.0.0" {
 			extras = append(extras, "--nogateway")
@@ -80,7 +81,7 @@ func doDhcpClientActivate(nuc types.NetworkUplinkConfig) {
 		// XXX Addr vs. Subnet? Need netmask. --static subnet_mask=255.255.255.0
 		args := []string{fmt.Sprintf("ip_address=%s", nuc.Addr.String())}
 
-		extras := []string{"-f", "/etc/dhcpcd.conf", "--nobackground",
+		extras := []string{"-f", "/dhcpcd.conf", "--nobackground",
 			"-K", "-d"}
 		if nuc.Gateway.String() == "0.0.0.0" {
 			extras = append(extras, "--nogateway")
@@ -88,7 +89,6 @@ func doDhcpClientActivate(nuc types.NetworkUplinkConfig) {
 			args = append(args, "--static",
 				fmt.Sprintf("routers=%s", nuc.Gateway.String()))
 		}
-		// XXX is there a "dns"? Not in source
 		// XXX do we need to calculate a list for option?
 		for _, dns := range nuc.DnsServers {
 			args = append(args, "--static",
@@ -98,7 +98,6 @@ func doDhcpClientActivate(nuc types.NetworkUplinkConfig) {
 			args = append(args, "--static",
 				fmt.Sprintf("domain_name=%s", nuc.DomainName))
 		}
-		// dhcpcd.conf needs this: #option ntp_servers
 		if !nuc.NtpServer.IsUnspecified() {
 			args = append(args, "--static",
 				fmt.Sprintf("ntp_servers=%s",
@@ -120,12 +119,14 @@ func doDhcpClientInactivate(nuc types.NetworkUplinkConfig) {
 	log.Printf("doDhcpClientInactivate(%s) dhcp %v addr %s gateway %s\n",
 		nuc.IfName, nuc.Dhcp, nuc.Addr.String(),
 		nuc.Gateway.String())
+	// XXX skipping wwan0
 	if nuc.IfName == "wwan0" {
 		log.Printf("doDhcpClientInactivate: skipping %s\n",
 			nuc.IfName)
 		return
 	}
 	extras := []string{"-K"}
+	// XXX should we do release without stderr/go routine?
 	if !dhcpcdCmd("--release", extras, nuc.IfName) {
 		log.Printf("doDhcpClientInactivate: release failed for %s\n",
 			nuc.IfName)
