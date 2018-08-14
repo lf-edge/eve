@@ -39,7 +39,8 @@ func strongswanCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	}
 
 	// if address error
-	srcIp, err := types.GetLocalAddrAny(deviceNetworkStatus, 0, config.Adapter)
+	srcIp, err := types.GetLocalAddrAny(*ctx.deviceNetworkStatus, 0,
+		config.Adapter)
 	if err != nil {
 		return err
 	}

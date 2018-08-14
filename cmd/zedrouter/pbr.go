@@ -18,18 +18,15 @@ import (
 var FreeTable = 500 // Need a FreeUplink policy for NAT+underlay
 
 type addrChangeFnType func(ifname string)
-type suppressRoutesFnType func(ifname string) bool
 
 // XXX should really be in a context returned by Init
 var addrChangeFuncUplink addrChangeFnType
 var addrChangeFuncNonUplink addrChangeFnType
-var suppressRoutesFunc suppressRoutesFnType
 
 // Returns the channels for route, addr, link updates
 func PbrInit(uplinks []string, freeUplinks []string,
 	addrChange addrChangeFnType,
-	addrChangeNon addrChangeFnType,
-	suppressRoutes suppressRoutesFnType) (chan netlink.RouteUpdate,
+	addrChangeNon addrChangeFnType) (chan netlink.RouteUpdate,
 	chan netlink.AddrUpdate, chan netlink.LinkUpdate) {
 
 	if debug {
@@ -39,7 +36,6 @@ func PbrInit(uplinks []string, freeUplinks []string,
 	setFreeUplinks(freeUplinks)
 	addrChangeFuncUplink = addrChange
 	addrChangeFuncNonUplink = addrChangeNon
-	suppressRoutesFunc = suppressRoutes
 
 	IfindexToNameInit()
 	IfindexToAddrsInit()
@@ -135,26 +131,6 @@ func PbrRouteChange(change netlink.RouteUpdate) {
 				log.Printf("Applying to FreeTable: %v\n", rt)
 			}
 			doFreeTable = true
-		}
-		if !isUplink(ifname) && suppressRoutesFunc != nil &&
-			suppressRoutesFunc(ifname) {
-			// Delete any route which was added on an assignable
-			// adapter.
-			// XXX alternative is to add it with a very high metric
-			// but that requires a delete and re-add since the
-			// metric can't be changed.
-			// XXX needs work to handle adding a link as an uplink
-			// on a running system, but perhaps that will only be
-			// done using a reboot
-			if err := netlink.RouteDel(&rt); err != nil {
-				// XXX Fatal?
-				log.Printf("PbrRouteChange suppress RouteDel %v failed %s\n",
-					rt, err)
-			} else {
-				log.Printf("PbrRouteChange suppress RouteDel %v\n",
-					rt)
-			}
-			return
 		}
 	}
 	srt := rt

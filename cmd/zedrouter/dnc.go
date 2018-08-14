@@ -32,10 +32,7 @@ func handleDNCModify(ctxArg interface{}, key string, configArg interface{}) {
 	} else {
 		oldConfig = types.DeviceUplinkConfig{}
 	}
-	deviceNetworkConfig = config
-	// XXX just in case ... cleanup
-	setUplinks(deviceNetworkConfig.Uplink)
-	setFreeUplinks(deviceNetworkConfig.FreeUplinks)
+	*ctx.deviceNetworkConfig = config
 	uplinkConfig := devicenetwork.MakeNetworkUplinkConfig(config)
 	if !reflect.DeepEqual(oldConfig, uplinkConfig) {
 		log.Printf("DeviceUplinkConfig change from %v to %v\n",
@@ -63,8 +60,8 @@ func handleDNCDelete(ctxArg interface{}, key string, configArg interface{}) {
 		oldConfig = types.DeviceUplinkConfig{}
 	}
 	// XXX what's the default? eth0 aka default.json? Use empty for now
-	deviceNetworkConfig = types.DeviceNetworkConfig{}
-	uplinkConfig := devicenetwork.MakeNetworkUplinkConfig(deviceNetworkConfig)
+	*ctx.deviceNetworkConfig = types.DeviceNetworkConfig{}
+	uplinkConfig := devicenetwork.MakeNetworkUplinkConfig(*ctx.deviceNetworkConfig)
 	if !reflect.DeepEqual(oldConfig, uplinkConfig) {
 		log.Printf("DeviceUplinkConfig change from %v to %v\n",
 			oldConfig, uplinkConfig)
@@ -94,11 +91,11 @@ func handleDUCModify(ctxArg interface{}, key string, configArg interface{}) {
 		*ctx.deviceUplinkConfig = uplinkConfig
 	}
 	dnStatus, _ := devicenetwork.MakeDeviceNetworkStatus(uplinkConfig,
-		deviceNetworkStatus)
-	if !reflect.DeepEqual(deviceNetworkStatus, dnStatus) {
+		*ctx.deviceNetworkStatus)
+	if !reflect.DeepEqual(*ctx.deviceNetworkStatus, dnStatus) {
 		log.Printf("DeviceNetworkStatus change from %v to %v\n",
-			deviceNetworkStatus, dnStatus)
-		deviceNetworkStatus = dnStatus
+			*ctx.deviceNetworkStatus, dnStatus)
+		*ctx.deviceNetworkStatus = dnStatus
 		doDNSUpdate(ctx)
 	}
 	log.Printf("handleDUCModify done for %s\n", key)
@@ -122,10 +119,10 @@ func handleDUCDelete(ctxArg interface{}, key string, configArg interface{}) {
 		*ctx.deviceUplinkConfig = uplinkConfig
 	}
 	dnStatus := types.DeviceNetworkStatus{}
-	if !reflect.DeepEqual(deviceNetworkStatus, dnStatus) {
+	if !reflect.DeepEqual(*ctx.deviceNetworkStatus, dnStatus) {
 		log.Printf("DeviceNetworkStatus change from %v to %v\n",
-			deviceNetworkStatus, dnStatus)
-		deviceNetworkStatus = dnStatus
+			*ctx.deviceNetworkStatus, dnStatus)
+		*ctx.deviceNetworkStatus = dnStatus
 		doDNSUpdate(ctx)
 	}
 	log.Printf("handleDUCDelete done for %s\n", key)
@@ -134,7 +131,7 @@ func handleDUCDelete(ctxArg interface{}, key string, configArg interface{}) {
 func doDNSUpdate(ctx *zedrouterContext) {
 	// Did we loose all usable addresses or gain the first usable
 	// address?
-	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
+	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*ctx.deviceNetworkStatus)
 	if newAddrCount == 0 && ctx.usableAddressCount != 0 {
 		log.Printf("DeviceNetworkStatus from %d to %d addresses\n",
 			ctx.usableAddressCount, newAddrCount)
@@ -150,9 +147,9 @@ func doDNSUpdate(ctx *zedrouterContext) {
 	if !ctx.ready {
 		return
 	}
-	publishDeviceNetworkStatus(ctx.pubDeviceNetworkStatus)
+	publishDeviceNetworkStatus(ctx)
 	updateLispConfiglets(ctx, ctx.separateDataPlane)
-	setUplinks(deviceNetworkConfig.Uplink)
-	setFreeUplinks(deviceNetworkConfig.FreeUplinks)
+	setUplinks(ctx.deviceNetworkConfig.Uplink)
+	setFreeUplinks(ctx.deviceNetworkConfig.FreeUplinks)
 	// XXX do a NatInactivate/NatActivate if freeuplinks/uplinks changed?
 }

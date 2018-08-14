@@ -223,7 +223,7 @@ func doServiceActivate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	if err != nil {
 		return err
 	}
-	status.AdapterList = getAdapters(config.Adapter)
+	status.AdapterList = getAdapters(ctx, config.Adapter)
 
 	switch config.Type {
 	case types.NST_STRONGSWAN:
@@ -528,7 +528,8 @@ func lispInactivate(ctx *zedrouterContext,
 				// Pass global deviceNetworkStatus
 				deleteLispConfiglet(lispRunDirname, false,
 					status.LispStatus.IID, olStatus.EID,
-					deviceNetworkStatus, ctx.separateDataPlane)
+					*ctx.deviceNetworkStatus,
+					ctx.separateDataPlane)
 			}
 		}
 	}
@@ -690,12 +691,15 @@ func natActivate(config types.NetworkServiceConfig,
 }
 
 // Expand the generic names
-func getAdapters(adapter string) []string {
+// XXX can't depend on deviceNetworkConfig
+func getAdapters(ctx *zedrouterContext, adapter string) []string {
 	if strings.EqualFold(adapter, "uplink") {
-		return deviceNetworkConfig.Uplink
+		// XXX walk ctx.deviceUplinkConfig
+		return ctx.deviceNetworkConfig.Uplink
 	}
 	if strings.EqualFold(adapter, "freeuplink") {
-		return deviceNetworkConfig.FreeUplinks
+		// XXX walk ctx.deviceUplinkConfig
+		return ctx.deviceNetworkConfig.FreeUplinks
 	}
 	return []string{adapter}
 }
