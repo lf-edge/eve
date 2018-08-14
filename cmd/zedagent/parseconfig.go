@@ -699,13 +699,13 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 					}
 				}
 
-				nameToEid := types.NameToEid {
+				nameToEid := types.NameToEid{
 					HostName: hostName,
-					EIDs: eids,
+					EIDs:     eids,
 				}
 				nameToEids = append(nameToEids, nameToEid)
 			}
-			config.ZedServConfig = types.ZedServerConfig {
+			config.ZedServConfig = types.ZedServerConfig{
 				NameToEidList: nameToEids,
 			}
 		default:
@@ -831,24 +831,24 @@ func publishNetworkServiceConfig(ctx *getconfigContext,
 		if svcEnt.LispCfg != nil {
 			mapServers := []types.MapServer{}
 			for _, ms := range svcEnt.LispCfg.LispMSs {
-				mapServer := types.MapServer {
+				mapServer := types.MapServer{
 					ServiceType: types.MapServerType(ms.ZsType),
-					NameOrIp: ms.NameOrIp,
-					Credential: ms.Credential,
+					NameOrIp:    ms.NameOrIp,
+					Credential:  ms.Credential,
 				}
 				mapServers = append(mapServers, mapServer)
 			}
 			eidPrefix := net.IP(svcEnt.LispCfg.Allocationprefix)
 
 			// Populate service Lisp config that should be sent to zedrouter
-			service.LispConfig = types.ServiceLispConfig {
-				MapServers: mapServers,
-				IID: svcEnt.LispCfg.LispInstanceId,
-				Allocate: svcEnt.LispCfg.Allocate,
+			service.LispConfig = types.ServiceLispConfig{
+				MapServers:    mapServers,
+				IID:           svcEnt.LispCfg.LispInstanceId,
+				Allocate:      svcEnt.LispCfg.Allocate,
 				ExportPrivate: svcEnt.LispCfg.Exportprivate,
-				EidPrefix: eidPrefix,
-				EidPrefixLen: svcEnt.LispCfg.Allocationprefixlen,
-				Experimental: svcEnt.LispCfg.Experimental,
+				EidPrefix:     eidPrefix,
+				EidPrefixLen:  svcEnt.LispCfg.Allocationprefixlen,
+				Experimental:  svcEnt.LispCfg.Experimental,
 			}
 		}
 		ctx.pubNetworkServiceConfig.Publish(service.UUID.String(),
