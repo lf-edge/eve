@@ -60,9 +60,12 @@ type zedrouterContext struct {
 	manufacturerModel       string
 	deviceNetworkConfig     *types.DeviceNetworkConfig
 	deviceUplinkConfig      *types.DeviceUplinkConfig
+	deviceUplinkConfigPrio	int
 	deviceNetworkStatus     *types.DeviceNetworkStatus
 	subDeviceNetworkConfig  *pubsub.Subscription
-	subDeviceUplinkConfig   *pubsub.Subscription
+	subDeviceUplinkConfigA  *pubsub.Subscription
+	subDeviceUplinkConfigO  *pubsub.Subscription
+	subDeviceUplinkConfigS  *pubsub.Subscription
 	pubDeviceUplinkConfig   *pubsub.Publication
 	pubDeviceNetworkStatus  *pubsub.Publication
 	ready                   bool
@@ -155,26 +158,54 @@ func Run() {
 	zedrouterCtx.subDeviceNetworkConfig = subDeviceNetworkConfig
 	subDeviceNetworkConfig.Activate()
 
-	// XXX subscribe from ourselves
-	// XXX TBD: need to take static/manufacturing input plus a local
-	// file which overrides. Done in device-steps.sh?
-	subDeviceUplinkConfig, err := pubsub.Subscribe(agentName,
+	// We get DeviceUplinkConfig from three sources in this priority:
+	// 1. zedagent
+	// 2. override file in /var/tmp/zededa/NetworkUplinkConfig/override.json
+	// 3. self-generated file derived from per-platform DeviceNetworkConfig
+	subDeviceUplinkConfigA, err := pubsub.Subscribe("zedagent",
 		types.DeviceUplinkConfig{}, false, &zedrouterCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	subDeviceUplinkConfig.ModifyHandler = handleDUCModify
-	subDeviceUplinkConfig.DeleteHandler = handleDUCDelete
-	zedrouterCtx.subDeviceUplinkConfig = subDeviceUplinkConfig
-	subDeviceUplinkConfig.Activate()
+	subDeviceUplinkConfigA.ModifyHandler = handleDUCModify
+	subDeviceUplinkConfigA.DeleteHandler = handleDUCDelete
+	zedrouterCtx.subDeviceUplinkConfigA = subDeviceUplinkConfigA
+	subDeviceUplinkConfigA.Activate()
+
+	subDeviceUplinkConfigO, err := pubsub.Subscribe("",
+		types.DeviceUplinkConfig{}, false, &zedrouterCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subDeviceUplinkConfigO.ModifyHandler = handleDUCModify
+	subDeviceUplinkConfigO.DeleteHandler = handleDUCDelete
+	zedrouterCtx.subDeviceUplinkConfigO = subDeviceUplinkConfigO
+	subDeviceUplinkConfigO.Activate()
+
+	subDeviceUplinkConfigS, err := pubsub.Subscribe(agentName,
+		types.DeviceUplinkConfig{}, false, &zedrouterCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subDeviceUplinkConfigS.ModifyHandler = handleDUCModify
+	subDeviceUplinkConfigS.DeleteHandler = handleDUCDelete
+	zedrouterCtx.subDeviceUplinkConfigS = subDeviceUplinkConfigS
+	subDeviceUplinkConfigS.Activate()
 
 	for zedrouterCtx.usableAddressCount == 0 {
 		log.Printf("Waiting for DeviceNetworkConfig\n")
 		select {
 		case change := <-subDeviceNetworkConfig.C:
 			subDeviceNetworkConfig.ProcessChange(change)
-		case change := <-subDeviceUplinkConfig.C:
-			subDeviceUplinkConfig.ProcessChange(change)
+
+		case change := <-subDeviceUplinkConfigA.C:
+			subDeviceUplinkConfigA.ProcessChange(change)
+
+		case change := <-subDeviceUplinkConfigO.C:
+			subDeviceUplinkConfigO.ProcessChange(change)
+
+		case change := <-subDeviceUplinkConfigS.C:
+			subDeviceUplinkConfigS.ProcessChange(change)
 		}
 	}
 	log.Printf("Got for DeviceNetworkConfig: %d usable addresses\n",
@@ -344,8 +375,14 @@ func Run() {
 		case change := <-subDeviceNetworkConfig.C:
 			subDeviceNetworkConfig.ProcessChange(change)
 
-		case change := <-subDeviceUplinkConfig.C:
-			subDeviceUplinkConfig.ProcessChange(change)
+		case change := <-subDeviceUplinkConfigA.C:
+			subDeviceUplinkConfigA.ProcessChange(change)
+
+		case change := <-subDeviceUplinkConfigO.C:
+			subDeviceUplinkConfigO.ProcessChange(change)
+
+		case change := <-subDeviceUplinkConfigS.C:
+			subDeviceUplinkConfigS.ProcessChange(change)
 
 		case change := <-addrChanges:
 			PbrAddrChange(zedrouterCtx.deviceUplinkConfig, change)

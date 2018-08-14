@@ -70,19 +70,35 @@ func handleDNCDelete(ctxArg interface{}, key string, configArg interface{}) {
 	log.Printf("handleDNCDelete done for %s\n", key)
 }
 
+// Handle three different sources in this priority order:
+// 1. zedagent with any key
+// 2. "override" key from build or USB stick file
+// 3. "global" key derived from per-platform DeviceNetworkConfig
 func handleDUCModify(ctxArg interface{}, key string, configArg interface{}) {
 
 	uplinkConfig := cast.CastDeviceUplinkConfig(configArg)
 	ctx := ctxArg.(*zedrouterContext)
 
-	if key != "global" {
-		if debug {
-			log.Printf("handleDUCModify: ignoring %s - expecting %s\n",
-				key, "global")
-		}
+	curPriority := ctx.deviceUplinkConfigPrio
+	log.Printf("handleDUCModify for %s current priority %d\n",
+		key, curPriority)
+
+	var priority int
+	switch key {
+	case "global":
+		priority = 3
+	case "override":
+		priority = 2
+	default:
+		priority = 1
+	}
+	if curPriority != 0 && priority > curPriority {
+		log.Printf("handleDUCModify: ignoring lower priority %s\n",
+			key)
 		return
 	}
-	log.Printf("handleDUCModify for %s\n", key)
+	ctx.deviceUplinkConfigPrio = priority
+
 	if !reflect.DeepEqual(*ctx.deviceUplinkConfig, uplinkConfig) {
 		log.Printf("DeviceUplinkConfig change from %v to %v\n",
 			*ctx.deviceUplinkConfig, uplinkConfig)
@@ -106,10 +122,28 @@ func handleDUCDelete(ctxArg interface{}, key string, configArg interface{}) {
 	log.Printf("handleDUCDelete for %s\n", key)
 	ctx := ctxArg.(*zedrouterContext)
 
-	if key != "global" {
-		log.Printf("handleDUCDelete: ignoring %s\n", key)
+	curPriority := ctx.deviceUplinkConfigPrio
+	log.Printf("handleDUCModify for %s current priority %d\n",
+		key, curPriority)
+
+	var priority int
+	switch key {
+	case "global":
+		priority = 3
+	case "override":
+		priority = 2
+	default:
+		priority = 1
+	}
+	if curPriority != priority {
+		log.Printf("handleDUCDelete: not removing current priority %d for %s\n",
+			curPriority, key)
 		return
 	}
+	// XXX we have no idea what the next in line priority is; set to zero
+	// as if we have none
+	ctx.deviceUplinkConfigPrio = 0
+
 	uplinkConfig := types.DeviceUplinkConfig{}
 	if !reflect.DeepEqual(*ctx.deviceUplinkConfig, uplinkConfig) {
 		log.Printf("DeviceUplinkConfig change from %v to %v\n",

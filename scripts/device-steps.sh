@@ -7,6 +7,7 @@ PERSISTDIR=/persist
 BINDIR=/opt/zededa/bin
 TMPDIR=/var/tmp/zededa
 DNCDIR=$TMPDIR/DeviceNetworkConfig
+DUCDIR=$TMPDIR/DeviceUplinkConfig
 LISPDIR=/opt/zededa/lisp
 LOGDIRA=$PERSISTDIR/IMGA/log
 LOGDIRB=$PERSISTDIR/IMGB/log
@@ -142,6 +143,7 @@ echo "Configuration from factory/install:"
 (cd $CONFIGDIR; ls -l)
 echo
 
+# XXX move to DeviceUplinkConfig
 # Note that if the /config/proxy file is removed at runtime , the device will stop using it.
 # That is useful for tesing.
 if [ -f $CONFIGDIR/proxy ]; then
@@ -248,6 +250,35 @@ if [ $? != 0 ]; then
     if [ $WAIT = 1 ]; then
 	echo -n "Press any key to continue "; read dummy; echo; echo
     fi
+fi
+
+mkdir -p $DUCDIR
+# Look for a USB stick with a key'ed file
+# If found it replaces any build override file in /config
+SPECIAL=/dev/sdb1
+if [ -f $CONFIGDIR/allow-usb-override -a -b $SPECIAL]; then
+    key=`cat /config/root-certificate.pem /config/server /config/device.cert.pem | openssl sha256 | awk '{print $2}'`
+    # XXX specific to E100?
+    mount -t vfat $SPECIAL /mnt
+    if [ $? != 0 ]; then
+	echo "mount $SPECIAL failed: $?"
+    else
+	echo "Mounted $SPECIAL"
+	keyfile=/mnt/$key.json
+	if [ -f $keyfile ]; then
+	    echo "Found $keyfile on $SPECIAL"
+	    echo "Copying from $keyfile to $CONFIGDIR/DeviceUplinkConfig/override.json"
+	    cp -p $keyfile $CONFIGDIR/DeviceUplinkConfig/override.json
+	    # XXX test before removing file?
+	    rm $CONFIGDIR/allow-usb-override
+	else
+	    echo "$keyfile not found on $SPECIAL"
+	fi
+    fi
+fi
+if [ -f $CONFIGDIR/DeviceUplinkConfig/override.json ]; then
+    echo "Copying from $CONFIGDIR/DeviceUplinkConfig/override.json"
+    cp -p $CONFIGDIR/DeviceUplinkConfig/override.json $DUCDIR
 fi
 
 # XXX hack to loop since client doesn't detect IP address changes
@@ -514,7 +545,7 @@ if [ $WAIT = 1 ]; then
 fi
 
 echo "Starting ZedRouter at" `date`
-zedrouter -d &
+zedrouter &
 if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi

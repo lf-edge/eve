@@ -151,6 +151,14 @@ func Run() {
 
 	zedagentCtx := zedagentContext{assignableAdapters: &aa}
 
+	// XXX placeholder for uplink config from zedcloud
+	pubDeviceUplinkConfig, err := pubsub.Publish(agentName,
+		types.DeviceUplinkConfig{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	getconfigCtx.pubDeviceUplinkConfig = pubDeviceUplinkConfig
+
 	// Publish NetworkConfig and NetworkServiceConfig for zedmanager/zedrouter
 	pubNetworkObjectConfig, err := pubsub.Publish(agentName,
 		types.NetworkObjectConfig{})

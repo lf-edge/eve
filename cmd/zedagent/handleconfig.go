@@ -77,6 +77,7 @@ type getconfigContext struct {
 	readSavedConfig             bool
 	configTickerHandle          interface{}
 	metricsTickerHandle         interface{}
+	pubDeviceUplinkConfig       *pubsub.Publication
 	pubNetworkObjectConfig      *pubsub.Publication
 	pubNetworkServiceConfig     *pubsub.Publication
 	subAppInstanceStatus        *pubsub.Subscription
