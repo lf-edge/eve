@@ -32,6 +32,10 @@ func handleDNCModify(ctxArg interface{}, key string, configArg interface{}) {
 	} else {
 		oldConfig = types.DeviceUplinkConfig{}
 	}
+	deviceNetworkConfig = config
+	// XXX just in case ... cleanup
+	setUplinks(deviceNetworkConfig.Uplink)
+	setFreeUplinks(deviceNetworkConfig.FreeUplinks)
 	uplinkConfig := devicenetwork.MakeNetworkUplinkConfig(config)
 	if !reflect.DeepEqual(oldConfig, uplinkConfig) {
 		log.Printf("DeviceUplinkConfig change from %v to %v\n",

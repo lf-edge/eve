@@ -367,6 +367,7 @@ func isFreeUplink(ifname string) bool {
 // Can be called to to initial set and later update the list. However,
 // the caller needs to call updateListConfiglets after an update.
 func setUplinks(uplinks []string) {
+	log.Printf("setUplinks(%v)\n", uplinks)
 	uplinkList = uplinks
 }
 

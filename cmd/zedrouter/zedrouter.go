@@ -173,8 +173,9 @@ func Run() {
 			subDeviceUplinkConfig.ProcessChange(change)
 		}
 	}
-	log.Printf("Got for DeviceNetworkConfig: %d usable addresses\n",
-		zedrouterCtx.usableAddressCount)
+	log.Printf("Got for DeviceNetworkConfig: %d usable addresses, uplinks %v, freeuplinks %v\n",
+		zedrouterCtx.usableAddressCount,
+		deviceNetworkConfig.Uplink, deviceNetworkConfig.FreeUplinks)
 
 	handleInit(runDirname, pubDeviceNetworkStatus)
 
@@ -296,10 +297,20 @@ func Run() {
 		if debug {
 			log.Printf("suppressRoutesFn(%s) called\n", ifname)
 		}
+		// XXX might not know the uplinks yet!
+		for _, u := range deviceNetworkConfig.Uplink {
+			if u == ifname {
+				log.Printf("suppressRoutesFn(%s) uplink\n",
+					ifname)
+				return false
+			}
+		}
 		ib := types.LookupIoBundle(&aa, types.IoEth, ifname)
 		return ib != nil
 	}
+	// XXX can't depend on deviceNetworkConfig - need to look at DeviceUplinkConfig
 
+	// XXX need to pass pointer to uplink/freeuplinks??? Or callbacks?
 	routeChanges, addrChanges, linkChanges := PbrInit(
 		deviceNetworkConfig.Uplink, deviceNetworkConfig.FreeUplinks,
 		addrChangeUplinkFn, addrChangeNonUplinkFn, suppressRoutesFn)
@@ -319,6 +330,7 @@ func Run() {
 	// Apply any changes from the uplink config to date.
 	publishDeviceNetworkStatus(zedrouterCtx.pubDeviceNetworkStatus)
 	updateLispConfiglets(&zedrouterCtx, zedrouterCtx.separateDataPlane)
+	// XXX can't depend on deviceNetworkConfig - need to look at DeviceUplinkConfig
 	setUplinks(deviceNetworkConfig.Uplink)
 	setFreeUplinks(deviceNetworkConfig.FreeUplinks)
 
