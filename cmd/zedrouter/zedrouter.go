@@ -60,7 +60,7 @@ type zedrouterContext struct {
 	manufacturerModel       string
 	deviceNetworkConfig     *types.DeviceNetworkConfig
 	deviceUplinkConfig      *types.DeviceUplinkConfig
-	deviceUplinkConfigPrio	int
+	deviceUplinkConfigPrio  int
 	deviceNetworkStatus     *types.DeviceNetworkStatus
 	subDeviceNetworkConfig  *pubsub.Subscription
 	subDeviceUplinkConfigA  *pubsub.Subscription
