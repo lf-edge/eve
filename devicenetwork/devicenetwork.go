@@ -11,6 +11,7 @@ import (
 	"github.com/zededa/go-provision/types"
 	"log"
 	"net"
+	"os"
 	"time"
 )
 
@@ -89,6 +90,8 @@ func MakeDeviceNetworkStatus(globalConfig types.DeviceUplinkConfig, oldStatus ty
 	}
 	// Immediate check
 	UpdateDeviceNetworkGeo(time.Second, &globalStatus)
+	// Copy proxy settings
+	globalStatus.ProxyConfig = globalConfig.ProxyConfig
 	return globalStatus, err
 }
 
@@ -179,4 +182,30 @@ func GetFreeUplinks(config types.DeviceUplinkConfig) []string {
 		}
 	}
 	return result
+}
+
+func ProxyToEnv(config types.ProxyConfig) {
+	log.Printf("ProxyToEnv: %s, %s, %s, %s\n",
+		config.HttpsProxy, config.HttpProxy, config.FtpProxy,
+		config.NoProxy)
+	if config.HttpsProxy == "" {
+		os.Unsetenv("HTTPS_PROXY")
+	} else {
+		os.Setenv("HTTPS_PROXY", config.HttpsProxy)
+	}
+	if config.HttpProxy == "" {
+		os.Unsetenv("HTTP_PROXY")
+	} else {
+		os.Setenv("HTTP_PROXY", config.HttpProxy)
+	}
+	if config.FtpProxy == "" {
+		os.Unsetenv("FTP_PROXY")
+	} else {
+		os.Setenv("FTP_PROXY", config.FtpProxy)
+	}
+	if config.NoProxy == "" {
+		os.Unsetenv("NO_PROXY")
+	} else {
+		os.Setenv("NO_PROXY", config.NoProxy)
+	}
 }

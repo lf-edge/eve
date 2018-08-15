@@ -90,19 +90,25 @@ func (status AppNetworkStatus) VerifyFilename(fileName string) bool {
 	return ret
 }
 
-// Global network config and status
+// Global network config. For backwards compatibility with build artifacts
+// XXX move to using DeviceUplinkConfig in build?
 type DeviceNetworkConfig struct {
 	Uplink      []string // ifname; all uplinks
 	FreeUplinks []string // subset used for image downloads
 }
 
-// XXX new - replacement for above DeviceNetworkConfig.
 type DeviceUplinkConfig struct {
 	Uplinks []NetworkUplinkConfig
+	ProxyConfig
 }
 
-// XXX don't we also need to configure e.g., eth1 to provide a bridge
-// service? Not an uplink!
+type ProxyConfig struct {
+	HttpsProxy string // HTTPS_PROXY environment variable
+	HttpProxy  string // HTTP_PROXY environment variable
+	FtpProxy   string // FTP_PROXY environment variable
+	NoProxy    string // NO_PROXY environment variable
+}
+
 type NetworkUplinkConfig struct {
 	IfName string
 	Free   bool
@@ -127,6 +133,7 @@ type AddrInfo struct {
 
 type DeviceNetworkStatus struct {
 	UplinkStatus []NetworkUplink
+	ProxyConfig
 }
 
 // Pick one of the uplinks

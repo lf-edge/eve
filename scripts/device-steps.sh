@@ -163,14 +163,14 @@ if [ -f $CONFIGDIR/ftp_proxy ]; then
     echo "Using FTP_PROXY $proxy"
     export FTP_PROXY="$proxy"
 fi
-if [ -f $CONFIGDIR/no_cache ]; then
+if [ -f $CONFIGDIR/no_proxy ]; then
     # By default localhost is not proxied. Contains a comma-separated list
     # of domain names.
     # This can include example.com (which means example.com and *.example.com)
     # or .example.com (which means *.example.com)
-    no_cache=`cat $CONFIGDIR/no_cache`
-    echo "Using NO_CACHE $no_cache"
-    export NO_CACHE="$no_cache"
+    no_proxy=`cat $CONFIGDIR/no_proxy`
+    echo "Using NO_PROXY $no_proxy"
+    export NO_PROXY="$no_proxy"
 fi
 
 P3=`zboot partdev P3`
