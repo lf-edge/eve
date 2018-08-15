@@ -143,36 +143,6 @@ echo "Configuration from factory/install:"
 (cd $CONFIGDIR; ls -l)
 echo
 
-# XXX move to DeviceUplinkConfig
-# Note that if the /config/proxy file is removed at runtime , the device will stop using it.
-# That is useful for tesing.
-if [ -f $CONFIGDIR/proxy ]; then
-    proxy=`cat $CONFIGDIR/proxy`
-    echo "Using default $proxy"
-    export HTTPS_PROXY="$proxy"
-    export HTTP_PROXY="$proxy"
-    export FTP_PROXY="$proxy"
-fi
-if [ -f $CONFIGDIR/http_proxy ]; then
-    proxy=`cat $CONFIGDIR/http_proxy`
-    echo "Using HTTP_PROXY $proxy"
-    export HTTP_PROXY="$proxy"
-fi
-if [ -f $CONFIGDIR/ftp_proxy ]; then
-    proxy=`cat $CONFIGDIR/ftp_proxy`
-    echo "Using FTP_PROXY $proxy"
-    export FTP_PROXY="$proxy"
-fi
-if [ -f $CONFIGDIR/no_proxy ]; then
-    # By default localhost is not proxied. Contains a comma-separated list
-    # of domain names.
-    # This can include example.com (which means example.com and *.example.com)
-    # or .example.com (which means *.example.com)
-    no_proxy=`cat $CONFIGDIR/no_proxy`
-    echo "Using NO_PROXY $no_proxy"
-    export NO_PROXY="$no_proxy"
-fi
-
 P3=`zboot partdev P3`
 if [ $? = 0 -a x$P3 != x ]; then
     echo "Using $P3 for /persist"
