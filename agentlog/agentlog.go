@@ -12,15 +12,8 @@ import (
 
 func initImpl(agentName string, logdir string, redirect bool) (*os.File, error) {
 	logfile := fmt.Sprintf("%s/%s.log", logdir, agentName)
-	var logf *os.File
-	var err error
-	if _, err := os.Stat(logfile); err == nil {
-		logf, err = os.OpenFile(logfile,
-			os.O_RDWR|os.O_APPEND, 0666)
-	} else {
-		logf, err = os.OpenFile(logfile,
-			os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	}
+	logf, err := os.OpenFile(logfile, os.O_RDWR|os.O_CREATE|os.O_APPEND,
+		0666)
 	if err != nil {
 		return nil, err
 	}
