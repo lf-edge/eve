@@ -71,7 +71,7 @@ func doDhcpClientActivate(nuc types.NetworkUplinkConfig) {
 	case types.DT_CLIENT:
 		extras := []string{"-f", "/dhcpcd.conf", "--nobackground",
 			"-d", "--noipv4ll"}
-		if nuc.Gateway == nil || nuc.Gateway.String() == "0.0.0.0" {
+		if nuc.Gateway != nil && nuc.Gateway.String() == "0.0.0.0" {
 			extras = append(extras, "--nogateway")
 		}
 		if !dhcpcdCmd("--request", extras, nuc.IfName, true) {
