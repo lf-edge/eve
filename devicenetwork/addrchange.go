@@ -46,18 +46,24 @@ func AddrChange(ctx *DeviceNetworkContext, change netlink.AddrUpdate) {
 			change.LinkAddress)
 	}
 	if changed {
-		// Check if we have more or less addresses
-		status, _ := MakeDeviceNetworkStatus(*ctx.DeviceUplinkConfig,
-			*ctx.DeviceNetworkStatus)
-		if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, status) {
-			if debug {
-				log.Printf("Address change from %v to %v\n",
-					*ctx.DeviceNetworkStatus,
-					status)
-			}
-			*ctx.DeviceNetworkStatus = status
-			DoDNSUpdate(ctx)
+		HandleAddressChange(ctx, "any")
+	}
+}
+
+// The ifname arg can only be used for logging
+func HandleAddressChange(ctx *DeviceNetworkContext, ifname string) {
+	// Check if we have more or less addresses
+	status, _ := MakeDeviceNetworkStatus(*ctx.DeviceUplinkConfig,
+		*ctx.DeviceNetworkStatus)
+	if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, status) {
+		if debug {
+			log.Printf("HandleAddressChange: change for %s from %v to %v\n",
+				ifname, *ctx.DeviceNetworkStatus, status)
 		}
+		*ctx.DeviceNetworkStatus = status
+		DoDNSUpdate(ctx)
+	} else {
+		log.Printf("HandleAddressChange: No change for %s\n", ifname)
 	}
 }
 
