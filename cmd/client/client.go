@@ -25,6 +25,7 @@ import (
 	"mime"
 	"net/http"
 	"os"
+	"reflect"
 	"strings"
 	"time"
 )
@@ -174,11 +175,11 @@ func Run() {
 	pubDeviceUplinkConfig.ClearRestarted()
 
 	clientCtx := devicenetwork.DeviceNetworkContext{
-		ManufacturerModel:     model,
-		DeviceNetworkConfig:   &types.DeviceNetworkConfig{},
-		DeviceUplinkConfig:    &types.DeviceUplinkConfig{},
-		DeviceNetworkStatus:   &types.DeviceNetworkStatus{},
-		PubDeviceUplinkConfig: pubDeviceUplinkConfig,
+		ManufacturerModel:      model,
+		DeviceNetworkConfig:    &types.DeviceNetworkConfig{},
+		DeviceUplinkConfig:     &types.DeviceUplinkConfig{},
+		DeviceNetworkStatus:    &types.DeviceNetworkStatus{},
+		PubDeviceUplinkConfig:  pubDeviceUplinkConfig,
 		PubDeviceNetworkStatus: nil,
 	}
 
@@ -218,7 +219,10 @@ func Run() {
 	clientCtx.SubDeviceUplinkConfigS = subDeviceUplinkConfigS
 	subDeviceUplinkConfigS.Activate()
 
-	// After 5 seconds we check if we have a UUID and proceed
+	// After 5 seconds we check if we:
+	// - have acquired addresses
+	// - if not, have a UUID and proceed if so
+	// XXX watch for address changes instead? Need longer time for DHCP?
 	t1 := time.NewTimer(5 * time.Second)
 
 	for clientCtx.UsableAddressCount == 0 {
@@ -234,6 +238,19 @@ func Run() {
 			subDeviceUplinkConfigS.ProcessChange(change)
 
 		case <-t1.C:
+			// Check if we have more addresses
+			status, _ := devicenetwork.MakeDeviceNetworkStatus(*clientCtx.DeviceUplinkConfig,
+				*clientCtx.DeviceNetworkStatus)
+			if !reflect.DeepEqual(*clientCtx.DeviceNetworkStatus, status) {
+				if debug {
+					log.Printf("Address change from %v to %v\n",
+						*clientCtx.DeviceNetworkStatus,
+						status)
+				}
+				*clientCtx.DeviceNetworkStatus = status
+				devicenetwork.DoDNSUpdate(&clientCtx)
+			}
+
 			// If we already know a uuid we can skip
 			// This might not set hardwaremodel when upgrading
 			// an onboarded system without /config/hardwaremodel.
