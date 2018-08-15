@@ -56,19 +56,8 @@ type zedrouterContext struct {
 	subAppNetworkConfigAg   *pubsub.Subscription // From zedagent for dom0
 	pubAppNetworkStatus     *pubsub.Publication
 	assignableAdapters      *types.AssignableAdapters
-	usableAddressCount      int
-	manufacturerModel       string
-	deviceNetworkConfig     *types.DeviceNetworkConfig
-	deviceUplinkConfig      *types.DeviceUplinkConfig
-	deviceUplinkConfigPrio  int
-	deviceNetworkStatus     *types.DeviceNetworkStatus
-	subDeviceNetworkConfig  *pubsub.Subscription
-	subDeviceUplinkConfigA  *pubsub.Subscription
-	subDeviceUplinkConfigO  *pubsub.Subscription
-	subDeviceUplinkConfigS  *pubsub.Subscription
-	pubDeviceUplinkConfig   *pubsub.Publication
-	pubDeviceNetworkStatus  *pubsub.Publication
-	ready                   bool
+	devicenetwork.DeviceNetworkContext
+	ready bool
 }
 
 var debug = false
@@ -136,15 +125,15 @@ func Run() {
 	log.Printf("Have %d assignable adapters\n", len(aa.IoBundleList))
 
 	zedrouterCtx := zedrouterContext{
-		separateDataPlane:      false,
-		assignableAdapters:     &aa,
-		manufacturerModel:      model,
-		deviceNetworkConfig:    &types.DeviceNetworkConfig{},
-		deviceUplinkConfig:     &types.DeviceUplinkConfig{},
-		deviceNetworkStatus:    &types.DeviceNetworkStatus{},
-		pubDeviceUplinkConfig:  pubDeviceUplinkConfig,
-		pubDeviceNetworkStatus: pubDeviceNetworkStatus,
+		separateDataPlane:  false,
+		assignableAdapters: &aa,
 	}
+	zedrouterCtx.ManufacturerModel = model
+	zedrouterCtx.DeviceNetworkConfig = &types.DeviceNetworkConfig{}
+	zedrouterCtx.DeviceUplinkConfig = &types.DeviceUplinkConfig{}
+	zedrouterCtx.DeviceNetworkStatus = &types.DeviceNetworkStatus{}
+	zedrouterCtx.PubDeviceUplinkConfig = pubDeviceUplinkConfig
+	zedrouterCtx.PubDeviceNetworkStatus = pubDeviceNetworkStatus
 
 	// Get the initial DeviceNetworkConfig
 	// Subscribe from "" means /var/tmp/zededa/
@@ -153,9 +142,9 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	subDeviceNetworkConfig.ModifyHandler = handleDNCModify
-	subDeviceNetworkConfig.DeleteHandler = handleDNCDelete
-	zedrouterCtx.subDeviceNetworkConfig = subDeviceNetworkConfig
+	subDeviceNetworkConfig.ModifyHandler = devicenetwork.HandleDNCModify
+	subDeviceNetworkConfig.DeleteHandler = devicenetwork.HandleDNCDelete
+	zedrouterCtx.SubDeviceNetworkConfig = subDeviceNetworkConfig
 	subDeviceNetworkConfig.Activate()
 
 	// We get DeviceUplinkConfig from three sources in this priority:
@@ -167,9 +156,9 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	subDeviceUplinkConfigA.ModifyHandler = handleDUCModify
-	subDeviceUplinkConfigA.DeleteHandler = handleDUCDelete
-	zedrouterCtx.subDeviceUplinkConfigA = subDeviceUplinkConfigA
+	subDeviceUplinkConfigA.ModifyHandler = devicenetwork.HandleDUCModify
+	subDeviceUplinkConfigA.DeleteHandler = devicenetwork.HandleDUCDelete
+	zedrouterCtx.SubDeviceUplinkConfigA = subDeviceUplinkConfigA
 	subDeviceUplinkConfigA.Activate()
 
 	subDeviceUplinkConfigO, err := pubsub.Subscribe("",
@@ -177,9 +166,9 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	subDeviceUplinkConfigO.ModifyHandler = handleDUCModify
-	subDeviceUplinkConfigO.DeleteHandler = handleDUCDelete
-	zedrouterCtx.subDeviceUplinkConfigO = subDeviceUplinkConfigO
+	subDeviceUplinkConfigO.ModifyHandler = devicenetwork.HandleDUCModify
+	subDeviceUplinkConfigO.DeleteHandler = devicenetwork.HandleDUCDelete
+	zedrouterCtx.SubDeviceUplinkConfigO = subDeviceUplinkConfigO
 	subDeviceUplinkConfigO.Activate()
 
 	subDeviceUplinkConfigS, err := pubsub.Subscribe(agentName,
@@ -187,29 +176,33 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	subDeviceUplinkConfigS.ModifyHandler = handleDUCModify
-	subDeviceUplinkConfigS.DeleteHandler = handleDUCDelete
-	zedrouterCtx.subDeviceUplinkConfigS = subDeviceUplinkConfigS
+	subDeviceUplinkConfigS.ModifyHandler = devicenetwork.HandleDUCModify
+	subDeviceUplinkConfigS.DeleteHandler = devicenetwork.HandleDUCDelete
+	zedrouterCtx.SubDeviceUplinkConfigS = subDeviceUplinkConfigS
 	subDeviceUplinkConfigS.Activate()
 
-	for zedrouterCtx.usableAddressCount == 0 {
+	for zedrouterCtx.UsableAddressCount == 0 {
 		log.Printf("Waiting for DeviceNetworkConfig\n")
 		select {
 		case change := <-subDeviceNetworkConfig.C:
 			subDeviceNetworkConfig.ProcessChange(change)
+			maybeHandleDUC(&zedrouterCtx)
 
 		case change := <-subDeviceUplinkConfigA.C:
 			subDeviceUplinkConfigA.ProcessChange(change)
+			maybeHandleDUC(&zedrouterCtx)
 
 		case change := <-subDeviceUplinkConfigO.C:
 			subDeviceUplinkConfigO.ProcessChange(change)
+			maybeHandleDUC(&zedrouterCtx)
 
 		case change := <-subDeviceUplinkConfigS.C:
 			subDeviceUplinkConfigS.ProcessChange(change)
+			maybeHandleDUC(&zedrouterCtx)
 		}
 	}
 	log.Printf("Got for DeviceNetworkConfig: %d usable addresses\n",
-		zedrouterCtx.usableAddressCount)
+		zedrouterCtx.UsableAddressCount)
 
 	handleInit(runDirname, pubDeviceNetworkStatus)
 
@@ -300,17 +293,17 @@ func Run() {
 		if debug {
 			log.Printf("addrChangeUplinkFn(%s) called\n", ifname)
 		}
-		status, _ := devicenetwork.MakeDeviceNetworkStatus(*zedrouterCtx.deviceUplinkConfig,
-			*zedrouterCtx.deviceNetworkStatus)
-		if !reflect.DeepEqual(*zedrouterCtx.deviceNetworkStatus, status) {
+		status, _ := devicenetwork.MakeDeviceNetworkStatus(*zedrouterCtx.DeviceUplinkConfig,
+			*zedrouterCtx.DeviceNetworkStatus)
+		if !reflect.DeepEqual(*zedrouterCtx.DeviceNetworkStatus, status) {
 			if debug {
 				log.Printf("Address change for %s from %v to %v\n",
 					ifname,
-					*zedrouterCtx.deviceNetworkStatus,
+					*zedrouterCtx.DeviceNetworkStatus,
 					status)
 			}
-			*zedrouterCtx.deviceNetworkStatus = status
-			doDNSUpdate(&zedrouterCtx)
+			*zedrouterCtx.DeviceNetworkStatus = status
+			devicenetwork.DoDNSUpdate(&zedrouterCtx.DeviceNetworkContext)
 		} else {
 			log.Printf("No address change for %s\n", ifname)
 		}
@@ -350,7 +343,7 @@ func Run() {
 	publishDeviceNetworkStatus(&zedrouterCtx)
 	updateLispConfiglets(&zedrouterCtx, zedrouterCtx.separateDataPlane)
 
-	setFreeUplinks(devicenetwork.GetFreeUplinks(*zedrouterCtx.deviceUplinkConfig))
+	setFreeUplinks(devicenetwork.GetFreeUplinks(*zedrouterCtx.DeviceUplinkConfig))
 
 	zedrouterCtx.ready = true
 
@@ -374,22 +367,26 @@ func Run() {
 
 		case change := <-subDeviceNetworkConfig.C:
 			subDeviceNetworkConfig.ProcessChange(change)
+			maybeHandleDUC(&zedrouterCtx)
 
 		case change := <-subDeviceUplinkConfigA.C:
 			subDeviceUplinkConfigA.ProcessChange(change)
+			maybeHandleDUC(&zedrouterCtx)
 
 		case change := <-subDeviceUplinkConfigO.C:
 			subDeviceUplinkConfigO.ProcessChange(change)
+			maybeHandleDUC(&zedrouterCtx)
 
 		case change := <-subDeviceUplinkConfigS.C:
 			subDeviceUplinkConfigS.ProcessChange(change)
+			maybeHandleDUC(&zedrouterCtx)
 
 		case change := <-addrChanges:
-			PbrAddrChange(zedrouterCtx.deviceUplinkConfig, change)
+			PbrAddrChange(zedrouterCtx.DeviceUplinkConfig, change)
 		case change := <-linkChanges:
-			PbrLinkChange(zedrouterCtx.deviceUplinkConfig, change)
+			PbrLinkChange(zedrouterCtx.DeviceUplinkConfig, change)
 		case change := <-routeChanges:
-			PbrRouteChange(zedrouterCtx.deviceUplinkConfig, change)
+			PbrRouteChange(zedrouterCtx.DeviceUplinkConfig, change)
 		case <-publishTimer.C:
 			if debug {
 				log.Println("publishTimer at",
@@ -404,7 +401,7 @@ func Run() {
 				log.Println("geoTimer at", time.Now())
 			}
 			change := devicenetwork.UpdateDeviceNetworkGeo(
-				geoRedoTime, zedrouterCtx.deviceNetworkStatus)
+				geoRedoTime, zedrouterCtx.DeviceNetworkStatus)
 			if change {
 				publishDeviceNetworkStatus(&zedrouterCtx)
 			}
@@ -419,6 +416,20 @@ func Run() {
 			subAa.ProcessChange(change)
 		}
 	}
+}
+
+func maybeHandleDUC(ctx *zedrouterContext) {
+	if !ctx.Changed {
+		return
+	}
+	ctx.Changed = false
+	if !ctx.ready {
+		return
+	}
+	publishDeviceNetworkStatus(ctx)
+	updateLispConfiglets(ctx, ctx.separateDataPlane)
+	setFreeUplinks(devicenetwork.GetFreeUplinks(*ctx.DeviceUplinkConfig))
+	// XXX do a NatInactivate/NatActivate if freeuplinks/uplinks changed?
 }
 
 func handleRestart(ctxArg interface{}, done bool) {
@@ -505,7 +516,7 @@ func handleInit(runDirname string, pubDeviceNetworkStatus *pubsub.Publication) {
 }
 
 func publishDeviceNetworkStatus(ctx *zedrouterContext) {
-	ctx.pubDeviceNetworkStatus.Publish("global", ctx.deviceNetworkStatus)
+	ctx.PubDeviceNetworkStatus.Publish("global", ctx.DeviceNetworkStatus)
 }
 
 func publishAppNetworkStatus(ctx *zedrouterContext,
@@ -615,7 +626,7 @@ func updateLispConfiglets(ctx *zedrouterContext, separateDataPlane bool) {
 			}
 			createLispConfiglet(lispRunDirname, status.IsZedmanager,
 				olStatus.IID, olStatus.EID, olStatus.LispSignature,
-				*ctx.deviceNetworkStatus, olIfname, olIfname,
+				*ctx.DeviceNetworkStatus, olIfname, olIfname,
 				additionalInfo, olStatus.LispServers, separateDataPlane)
 		}
 	}
@@ -896,7 +907,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 		// Create LISP configlets for IID and EID/signature
 		createLispConfiglet(lispRunDirname, config.IsZedmanager,
 			olConfig.IID, olConfig.EID, olConfig.LispSignature,
-			*ctx.deviceNetworkStatus, olIfname, olIfname,
+			*ctx.DeviceNetworkStatus, olIfname, olIfname,
 			additionalInfo, olConfig.LispServers, ctx.separateDataPlane)
 		status.OverlayNetworkList = make([]types.OverlayNetworkStatus,
 			len(config.OverlayNetworkList))
@@ -1254,7 +1265,7 @@ func createAndStartLisp(ctx *zedrouterContext,
 		adapterMap[adapter] = true
 	}
 	deviceNetworkParams := types.DeviceNetworkStatus{}
-	for _, uplink := range ctx.deviceNetworkStatus.UplinkStatus {
+	for _, uplink := range ctx.DeviceNetworkStatus.UplinkStatus {
 		if _, ok := adapterMap[uplink.IfName]; ok == true {
 			deviceNetworkParams.UplinkStatus =
 				append(deviceNetworkParams.UplinkStatus, uplink)
@@ -1607,7 +1618,7 @@ func handleModify(ctx *zedrouterContext, key string,
 		updateLispConfiglet(lispRunDirname, false,
 			serviceStatus.LispStatus.IID,
 			olConfig.EID, olConfig.LispSignature,
-			*ctx.deviceNetworkStatus, bridgeName, bridgeName,
+			*ctx.DeviceNetworkStatus, bridgeName, bridgeName,
 			additionalInfo, olConfig.LispServers, ctx.separateDataPlane)
 
 	}
@@ -1820,7 +1831,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 
 		// Delete LISP configlets
 		deleteLispConfiglet(lispRunDirname, true, olStatus.IID,
-			olStatus.EID, *ctx.deviceNetworkStatus,
+			olStatus.EID, *ctx.DeviceNetworkStatus,
 			ctx.separateDataPlane)
 	} else {
 		// Delete everything for overlay
@@ -1901,7 +1912,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 			// Delete LISP configlets
 			deleteLispConfiglet(lispRunDirname, false,
 				olStatus.IID, olStatus.EID,
-				*ctx.deviceNetworkStatus,
+				*ctx.DeviceNetworkStatus,
 				ctx.separateDataPlane)
 
 			// Default EID ipset

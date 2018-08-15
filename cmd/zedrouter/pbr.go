@@ -33,7 +33,7 @@ func PbrInit(ctx *zedrouterContext, addrChange addrChangeFnType,
 	if debug {
 		log.Printf("PbrInit()\n")
 	}
-	setFreeUplinks(devicenetwork.GetFreeUplinks(*ctx.deviceUplinkConfig))
+	setFreeUplinks(devicenetwork.GetFreeUplinks(*ctx.DeviceUplinkConfig))
 	addrChangeFuncUplink = addrChange
 	addrChangeFuncNonUplink = addrChangeNon
 
