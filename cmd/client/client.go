@@ -175,8 +175,11 @@ func Run() {
 
 	clientCtx := devicenetwork.DeviceNetworkContext{
 		ManufacturerModel:     model,
+		DeviceNetworkConfig:   &types.DeviceNetworkConfig{},
 		DeviceUplinkConfig:    &types.DeviceUplinkConfig{},
+		DeviceNetworkStatus:   &types.DeviceNetworkStatus{},
 		PubDeviceUplinkConfig: pubDeviceUplinkConfig,
+		PubDeviceNetworkStatus: nil,
 	}
 
 	// Get the initial DeviceNetworkConfig
@@ -192,19 +195,9 @@ func Run() {
 	subDeviceNetworkConfig.Activate()
 
 	// We get DeviceUplinkConfig from three sources in this priority:
-	// 1. zedagent
+	// 1. zedagent - used in zedrouter but not here
 	// 2. override file in /var/tmp/zededa/NetworkUplinkConfig/override.json
 	// 3. self-generated file derived from per-platform DeviceNetworkConfig
-	subDeviceUplinkConfigA, err := pubsub.Subscribe("zedagent",
-		types.DeviceUplinkConfig{}, false, &clientCtx)
-	if err != nil {
-		log.Fatal(err)
-	}
-	subDeviceUplinkConfigA.ModifyHandler = devicenetwork.HandleDUCModify
-	subDeviceUplinkConfigA.DeleteHandler = devicenetwork.HandleDUCDelete
-	clientCtx.SubDeviceUplinkConfigA = subDeviceUplinkConfigA
-	subDeviceUplinkConfigA.Activate()
-
 	subDeviceUplinkConfigO, err := pubsub.Subscribe("",
 		types.DeviceUplinkConfig{}, false, &clientCtx)
 	if err != nil {
@@ -233,9 +226,6 @@ func Run() {
 		select {
 		case change := <-subDeviceNetworkConfig.C:
 			subDeviceNetworkConfig.ProcessChange(change)
-
-		case change := <-subDeviceUplinkConfigA.C:
-			subDeviceUplinkConfigA.ProcessChange(change)
 
 		case change := <-subDeviceUplinkConfigO.C:
 			subDeviceUplinkConfigO.ProcessChange(change)
