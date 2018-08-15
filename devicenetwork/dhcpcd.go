@@ -71,7 +71,7 @@ func doDhcpClientActivate(nuc types.NetworkUplinkConfig) {
 	case types.DT_CLIENT:
 		extras := []string{"-f", "/dhcpcd.conf", "--nobackground",
 			"-d", "--noipv4ll"}
-		if nuc.Gateway.String() == "0.0.0.0" {
+		if nuc.Gateway == nil || nuc.Gateway.String() == "0.0.0.0" {
 			extras = append(extras, "--nogateway")
 		}
 		if !dhcpcdCmd("--request", extras, nuc.IfName, true) {
@@ -94,7 +94,7 @@ func doDhcpClientActivate(nuc types.NetworkUplinkConfig) {
 
 		extras := []string{"-f", "/dhcpcd.conf", "--nobackground",
 			"-d"}
-		if nuc.Gateway.String() == "0.0.0.0" {
+		if nuc.Gateway == nil || nuc.Gateway.String() == "0.0.0.0" {
 			extras = append(extras, "--nogateway")
 		} else if nuc.Gateway.String() != "" {
 			args = append(args, "--static",
@@ -109,7 +109,7 @@ func doDhcpClientActivate(nuc types.NetworkUplinkConfig) {
 			args = append(args, "--static",
 				fmt.Sprintf("domain_name=%s", nuc.DomainName))
 		}
-		if !nuc.NtpServer.IsUnspecified() {
+		if nuc.NtpServer == nil || !nuc.NtpServer.IsUnspecified() {
 			args = append(args, "--static",
 				fmt.Sprintf("ntp_servers=%s",
 					nuc.NtpServer.String()))
