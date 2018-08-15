@@ -8,15 +8,17 @@ package zedrouter
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"github.com/zededa/go-provision/types"
 	"log"
+	"net"
 )
 
 const (
-	AwsVpnClient    = "awsClient"
-	OnPremVpnClient = "onPremClient"
-	OnPremVpnServer = "onPremServer"
+	AwsVpnClient      = "awsClient"
+	OnPremVpnClient   = "onPremClient"
+	OnPremVpnServer   = "onPremServer"
+	UpLinkIpAddrType  = "upLink"
+	AppLinkSubnetType = "appNet"
 )
 
 // XXX currently, only AwsVpn StrongSwan Client IpSec Tunnel handling
@@ -27,93 +29,30 @@ func strongswanCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 
 	log.Printf("strongswanCreate(%s)\n", config.DisplayName)
 
-	vpnConfig, err := strongSwanVpnConfigParse(config.OpaqueConfig)
+	// parse and structure the config
+	vpnConfig, err := strongSwanConfigGet(ctx, config)
 	if err != nil {
 		return err
-	}
-
-	// if adapter is not set, return
-	// XXX:FIXME add logic to pick up some uplink
-	if config.Adapter == "" {
-		return errors.New("uplink config is absent")
-	}
-
-	// if address error
-	srcIp, err := types.GetLocalAddrAny(deviceNetworkStatus, 0, config.Adapter)
-	if err != nil {
-		return err
-	}
-
-	// set the local config
-	baseTunnelName := "tun_" + vpnConfig.VpnRole
-	vpnLocalConfig := types.VpnServiceLocalConfig{}
-
-	vpnLocalConfig.VpnRole = vpnConfig.VpnRole
-	vpnLocalConfig.GatewayConfig = vpnConfig.GatewayConfig
-	vpnLocalConfig.ClientConfigList = vpnConfig.ClientConfigList
-	vpnLocalConfig.UpLinkConfig.Name = config.Adapter
-	vpnLocalConfig.UpLinkConfig.IpAddr = srcIp.String()
-
-	vpnLocalConfig.ClientConfigList = make([]types.VpnClientConfig,
-		len(vpnConfig.ClientConfigList))
-
-	for idx, clientConfig := range vpnConfig.ClientConfigList {
-		localClientConfig := new(types.VpnClientConfig)
-		localClientConfig.IpAddr = clientConfig.IpAddr
-		if localClientConfig.IpAddr == "" {
-			localClientConfig.IpAddr = "%any"
-		}
-		if localClientConfig.IpAddr == "upLink" {
-			localClientConfig.IpAddr = srcIp.String()
-		}
-		localClientConfig.PreSharedKey = clientConfig.PreSharedKey
-		localClientConfig.SubnetBlock = clientConfig.SubnetBlock
-		localClientConfig.TunnelConfig.Name = fmt.Sprintf("%s_%d", baseTunnelName, idx)
-
-		if vpnLocalConfig.VpnRole == AwsVpnClient {
-			keyVal := 100 + idx
-			localClientConfig.TunnelConfig.Key = fmt.Sprintf("%d", keyVal)
-			localClientConfig.TunnelConfig.Mtu = "1419"
-			localClientConfig.TunnelConfig.Metric = "50"
-			localClientConfig.TunnelConfig.LocalIpAddr = clientConfig.TunnelConfig.LocalIpAddr
-			localClientConfig.TunnelConfig.RemoteIpAddr = clientConfig.TunnelConfig.RemoteIpAddr
-		}
-		vpnLocalConfig.ClientConfigList[idx] = *localClientConfig
 	}
 
 	// stringify and store in status
-	bytes, err := json.Marshal(vpnLocalConfig)
+	bytes, err := json.Marshal(vpnConfig)
 	if err != nil {
 		return err
 	}
 
 	status.OpaqueStatus = string(bytes)
-	log.Printf("strongswanCreate :%s\n", status.OpaqueStatus)
+	log.Printf("StrongSwanCreate: %s\n", status.OpaqueStatus)
 
 	// reset any previous config
-	if err := ipSecServiceInactivate(vpnLocalConfig); err != nil {
+	if err := ipSecServiceInactivate(vpnConfig); err != nil {
 		return err
 	}
 
-	// create the ipsec config files, tunnel and filter-rules
-	switch vpnConfig.VpnRole {
-	case AwsVpnClient:
-		if err := awsStrongSwanClientCreate(vpnLocalConfig); err != nil {
-			log.Printf("%s AwsStrongSwanVpnClient create\n", err.Error())
-			return err
-		}
-
-	case OnPremVpnClient:
-		if err := onPremStrongSwanClientCreate(vpnLocalConfig); err != nil {
-			log.Printf("%s OnPremStrongSwanVpnClient create\n", err.Error())
-			return err
-		}
-
-	case OnPremVpnServer:
-		if err := onPremStrongSwanServerCreate(vpnLocalConfig); err != nil {
-			log.Printf("%s OnPremStrongSwanVpnServer create\n", err.Error())
-			return err
-		}
+	// create the ipsec config files, tunnel, routes  and filter-rules
+	if err := strongSwanVpnCreate(vpnConfig); err != nil {
+		log.Printf("%s StrongSwanVpn create\n", err.Error())
+		return err
 	}
 	return nil
 }
@@ -122,27 +61,14 @@ func strongswanDelete(status *types.NetworkServiceStatus) {
 
 	log.Printf("strongswanDelete(%s)\n", status.DisplayName)
 
-	vpnLocalConfig, err := strongSwanVpnStatusParse(status.OpaqueStatus)
+	vpnConfig, err := strongSwanVpnStatusParse(status.OpaqueStatus)
 	if err != nil {
 		log.Printf("strongswanDelete config absent")
 		return
 	}
 
-	switch vpnLocalConfig.VpnRole {
-	case AwsVpnClient:
-		if err := awsStrongSwanClientDelete(vpnLocalConfig); err != nil {
-			log.Printf("%s AwsStrongSwanVpnClient delete\n", err.Error())
-		}
-
-	case OnPremVpnClient:
-		if err := onPremStrongSwanClientDelete(vpnLocalConfig); err != nil {
-			log.Printf("%s OnPremStrongSwanVpnClient delete\n", err.Error())
-		}
-
-	case OnPremVpnServer:
-		if err := onPremStrongSwanServerDelete(vpnLocalConfig); err != nil {
-			log.Printf("%s OnPremStrongSwanVpnServer delete\n", err.Error())
-		}
+	if err := strongSwanVpnDelete(vpnConfig); err != nil {
+		log.Printf("%s StrongSwanVpn delete\n", err.Error())
 	}
 }
 
@@ -151,30 +77,15 @@ func strongswanActivate(config types.NetworkServiceConfig,
 
 	log.Printf("strongswanActivate(%s)\n", status.DisplayName)
 
-	vpnLocalConfig, err := strongSwanVpnStatusParse(status.OpaqueStatus)
+	vpnConfig, err := strongSwanVpnStatusParse(status.OpaqueStatus)
 	if err != nil {
-		log.Printf("strongswan local config absent")
+		log.Printf("StrongSwanVpn config absent")
 		return err
 	}
 
-	switch vpnLocalConfig.VpnRole {
-	case AwsVpnClient:
-		if err := awsStrongSwanClientActivate(vpnLocalConfig); err != nil {
-			log.Printf("%s AwstrongSwanVpnClient activate\n", err.Error())
-			return err
-		}
-
-	case OnPremVpnClient:
-		if err := onPremStrongSwanClientActivate(vpnLocalConfig); err != nil {
-			log.Printf("%s OnPremStrongSwanVpnClient activate\n", err.Error())
-			return err
-		}
-
-	case OnPremVpnServer:
-		if err := onPremStrongSwanServerActivate(vpnLocalConfig); err != nil {
-			log.Printf("%s OnPremStrongSwanVpnServer activate\n", err.Error())
-			return err
-		}
+	if err := strongSwanVpnActivate(vpnConfig); err != nil {
+		log.Printf("%s StrongSwanVpn activate\n", err.Error())
+		return err
 	}
 	return nil
 }
@@ -183,205 +94,379 @@ func strongswanInactivate(status *types.NetworkServiceStatus,
 	netstatus *types.NetworkObjectStatus) {
 
 	log.Printf("strongswanInactivate(%s)\n", status.DisplayName)
-	vpnLocalConfig, err := strongSwanVpnStatusParse(status.OpaqueStatus)
+	vpnConfig, err := strongSwanVpnStatusParse(status.OpaqueStatus)
 	if err != nil {
-		log.Printf("strongswan local config absent")
+		log.Printf("StrongSwanVpn config absent")
 		return
 	}
 
-	switch vpnLocalConfig.VpnRole {
-	case AwsVpnClient:
-		if err := awsStrongSwanClientInactivate(vpnLocalConfig); err != nil {
-			log.Printf("%s AwsStrongSwanVpnClient inactivate\n", err.Error())
-		}
-
-	case OnPremVpnClient:
-		if err := onPremStrongSwanClientInactivate(vpnLocalConfig); err != nil {
-			log.Printf("%s OnPremStrongSwanVpnClient inactivate\n", err.Error())
-		}
-
-	case OnPremVpnServer:
-		if err := onPremStrongSwanServerInactivate(vpnLocalConfig); err != nil {
-			log.Printf("%s OnPremStrongSwanVpnServer inactivate\n", err.Error())
-		}
+	if err := strongSwanVpnInactivate(vpnConfig); err != nil {
+		log.Printf("%s StrongSwanVpn inactivate\n", err.Error())
 	}
 }
 
-// aws Vpn IpSec Tenneling handler routines
-func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, error) {
+// StrongSwan Vpn IpSec Tenneling handler routines
 
-	oldConfig := false
-	log.Printf("strongSwanVpnConfigParse: parsing %s\n", opaqueConfig)
+func strongSwanConfigGet(ctx *zedrouterContext,
+	config types.NetworkServiceConfig) (types.VpnServiceConfig, error) {
+
+	upLink := types.NetLinkConfig{}
+	appLink := types.NetLinkConfig{}
+	vpnConfig := types.VpnServiceConfig{}
+	appNetPresent := false
+
+	// if adapter is not set, return
+	if config.Adapter == "" {
+		return vpnConfig, errors.New("uplink config is absent")
+	}
+
+	// uplink ip address error
+	srcIp, err := types.GetLocalAddrAny(deviceNetworkStatus, 0, config.Adapter)
+	if err != nil {
+		return vpnConfig, err
+	}
+
+	upLink.Name = config.Adapter
+	upLink.IpAddr = srcIp.String()
+
+	// app net information
+	appNet := lookupNetworkObjectConfig(ctx, config.AppLink.String())
+	if appNet != nil {
+		appNetPresent = true
+		if appNet.Type != types.NT_IPV4 {
+			return vpnConfig, errors.New("appnet is not IPv4")
+		}
+		appLink.SubnetBlock = appNet.Subnet.String()
+	}
+
+	vpnCloudConfig, err := strongSwanVpnConfigParse(config.OpaqueConfig)
+	if err != nil {
+		return vpnConfig, err
+	}
+
+	// XXX:TBD  host names to ip addresses in the configuration
+	vpnConfig.VpnRole = vpnCloudConfig.VpnRole
+	vpnConfig.PolicyBased = vpnCloudConfig.PolicyBased
+	vpnConfig.GatewayConfig = vpnCloudConfig.GatewayConfig
+	vpnConfig.UpLinkConfig = upLink
+	vpnConfig.AppLinkConfig = appLink
+
+	// fill and validate the ip address/subnet
+	if vpnConfig.GatewayConfig.IpAddr == UpLinkIpAddrType {
+		vpnConfig.GatewayConfig.IpAddr = upLink.IpAddr
+	}
+	if appNetPresent &&
+		vpnConfig.GatewayConfig.SubnetBlock == AppLinkSubnetType {
+		vpnConfig.GatewayConfig.SubnetBlock = appLink.SubnetBlock
+	}
+	if err := strongSwanValidateIpAddr(vpnConfig.GatewayConfig.IpAddr); err != nil {
+		return vpnConfig, err
+	}
+	if err := strongSwanValidateSubnet(vpnConfig.GatewayConfig.SubnetBlock); err != nil {
+		return vpnConfig, err
+	}
+	vpnConfig.ClientConfigList = make([]types.VpnClientConfig,
+		len(vpnCloudConfig.ClientConfigList))
+
+	for idx, ssClientConfig := range vpnCloudConfig.ClientConfigList {
+		clientConfig := new(types.VpnClientConfig)
+		clientConfig.IpAddr = ssClientConfig.IpAddr
+		clientConfig.SubnetBlock = ssClientConfig.SubnetBlock
+		clientConfig.PreSharedKey = ssClientConfig.PreSharedKey
+		clientConfig.TunnelConfig.Name = vpnConfig.VpnRole
+		clientConfig.TunnelConfig.Key = "100"
+		clientConfig.TunnelConfig.Mtu = "1419"
+		clientConfig.TunnelConfig.Metric = "50"
+		clientConfig.TunnelConfig.LocalIpAddr = ssClientConfig.TunnelConfig.LocalIpAddr
+		clientConfig.TunnelConfig.RemoteIpAddr = ssClientConfig.TunnelConfig.RemoteIpAddr
+
+		if clientConfig.IpAddr == UpLinkIpAddrType {
+			clientConfig.IpAddr = upLink.IpAddr
+		}
+		if appNetPresent &&
+			clientConfig.SubnetBlock == AppLinkSubnetType {
+			clientConfig.SubnetBlock = appLink.SubnetBlock
+		}
+		if clientConfig.IpAddr == "" {
+			clientConfig.IpAddr = "%any"
+		}
+		// validate the ip address/subnet values
+		if err := strongSwanValidateIpAddr(clientConfig.IpAddr); err != nil {
+			return vpnConfig, err
+		}
+		if err := strongSwanValidateSubnet(clientConfig.SubnetBlock); err != nil {
+			return vpnConfig, err
+		}
+		if err := strongSwanValidateSubnet(clientConfig.TunnelConfig.LocalIpAddr); err != nil {
+			return vpnConfig, err
+		}
+		if err := strongSwanValidateSubnet(clientConfig.TunnelConfig.RemoteIpAddr); err != nil {
+			return vpnConfig, err
+		}
+		vpnConfig.ClientConfigList[idx] = *clientConfig
+	}
+
+	if vpnConfig.VpnRole == OnPremVpnServer {
+		if vpnConfig.GatewayConfig.IpAddr != upLink.IpAddr {
+			errorStr := vpnConfig.GatewayConfig.IpAddr
+			errorStr = errorStr + ", upLink: " + upLink.IpAddr
+			return vpnConfig, errors.New("IpAddr Mismatch, GatewayIp: " + errorStr)
+		}
+		// ensure appNet match
+		if appNetPresent == true &&
+			vpnConfig.GatewayConfig.SubnetBlock != "" &&
+			vpnConfig.GatewayConfig.SubnetBlock != appLink.SubnetBlock {
+			errorStr := vpnConfig.GatewayConfig.SubnetBlock + ", appNet: " + appLink.SubnetBlock
+			return vpnConfig, errors.New("Subnet Mismatch: " + errorStr)
+		}
+		return vpnConfig, nil
+	}
+
+	// for clients
+	if appNetPresent == true {
+		for _, clientConfig := range vpnConfig.ClientConfigList {
+			if clientConfig.SubnetBlock != "" &&
+				clientConfig.SubnetBlock != appLink.SubnetBlock {
+				errorStr := clientConfig.SubnetBlock
+				errorStr = errorStr + ", appNet: " + appLink.SubnetBlock
+				return vpnConfig, errors.New("Subnet Mismatch: " + errorStr)
+			}
+		}
+	}
+	return vpnConfig, nil
+}
+
+func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, error) {
+	log.Printf("strongSwanVpnConfigParse(): parsing %s\n", opaqueConfig)
 	vpnConfig := types.VpnServiceConfig{}
 
 	cb := []byte(opaqueConfig)
 	strongSwanConfig := types.StrongSwanServiceConfig{}
 	if err := json.Unmarshal(cb, &strongSwanConfig); err != nil {
-		log.Printf("%s for StrongSwanVpnConfig\n", err.Error())
+		log.Printf("%s for strongSwanVpnConfigParse()\n", err.Error())
 		return vpnConfig, err
 	}
 
-	// role not set, assume it to be aws strongswan client
-	// XXX:FIXME, remove later
-	if strongSwanConfig.VpnRole == "" {
-		oldConfig = true
-		strongSwanConfig.VpnRole = AwsVpnClient
+	// check for pre-shared key configuration
+	if strongSwanConfig.PreSharedKey == "" {
+		for _, clientConfig := range strongSwanConfig.ClientConfigList {
+			if clientConfig.IpAddr == "" &&
+				clientConfig.PreSharedKey == "" {
+				return vpnConfig, errors.New("preshared key not set")
+			}
+		}
 	}
 
-	if strongSwanConfig.VpnGatewayIpAddr == "" {
-		return vpnConfig, errors.New("vpn gateway not set")
+	// validate ip address/subnet configurations
+	if err := strongSwanValidateIpAddr(strongSwanConfig.VpnGatewayIpAddr); err != nil {
+		return vpnConfig, err
+	}
+	if err := strongSwanValidateSubnet(strongSwanConfig.VpnSubnetBlock); err != nil {
+		return vpnConfig, err
+	}
+	if err := strongSwanValidateSubnet(strongSwanConfig.LocalSubnetBlock); err != nil {
+		return vpnConfig, err
+	}
+	if err := strongSwanValidateSubnet(strongSwanConfig.VpnLocalIpAddr); err != nil {
+		return vpnConfig, err
+	}
+	if err := strongSwanValidateSubnet(strongSwanConfig.VpnRemoteIpAddr); err != nil {
+		return vpnConfig, err
 	}
 
 	for _, clientConfig := range strongSwanConfig.ClientConfigList {
-		if clientConfig.PreSharedKey == "" {
-			return vpnConfig, errors.New("preshared key not set")
+		if err := strongSwanValidateIpAddr(clientConfig.IpAddr); err != nil {
+			return vpnConfig, err
+		}
+		if err := strongSwanValidateSubnet(clientConfig.SubnetBlock); err != nil {
+			return vpnConfig, err
+		}
+		if err := strongSwanValidateSubnet(clientConfig.TunnelConfig.LocalIpAddr); err != nil {
+			return vpnConfig, err
+		}
+		if err := strongSwanValidateSubnet(clientConfig.TunnelConfig.RemoteIpAddr); err != nil {
+			return vpnConfig, err
 		}
 	}
 
 	switch strongSwanConfig.VpnRole {
 	case AwsVpnClient:
+		// its always route based Vpn Service
+		strongSwanConfig.PolicyBased = false
 
-		// XXX:FIXME, remove old config handling
+		if len(strongSwanConfig.ClientConfigList) > 1 {
+			return vpnConfig, errors.New("invalid client config")
+		}
+		// server ip address/subnet is must
+		if strongSwanConfig.VpnGatewayIpAddr == "" {
+			return vpnConfig, errors.New("vpn gateway not set")
+		}
+		if strongSwanConfig.VpnSubnetBlock == "" ||
+			strongSwanConfig.VpnSubnetBlock == AppLinkSubnetType {
+			return vpnConfig, errors.New("vpn subnet not set")
+		}
+		// flat configuration
 		if len(strongSwanConfig.ClientConfigList) == 0 {
-
-			if strongSwanConfig.VpnSubnetBlock == "" ||
-				strongSwanConfig.PreSharedKey == "" {
-				return vpnConfig, errors.New("invalid vpn parameters")
-			}
 			if strongSwanConfig.VpnLocalIpAddr == "" ||
 				strongSwanConfig.VpnRemoteIpAddr == "" {
 				return vpnConfig, errors.New("invalid tunnel parameters")
 			}
-			// copy the paramters to the new structure
+			// copy the parameters to the new structure
 			strongSwanConfig.ClientConfigList = make([]types.VpnClientConfig, 1)
-			localClientConfig := new(types.VpnClientConfig)
-			localClientConfig.SubnetBlock = strongSwanConfig.VpnSubnetBlock
-			localClientConfig.PreSharedKey = strongSwanConfig.PreSharedKey
-			localClientConfig.TunnelConfig.LocalIpAddr = strongSwanConfig.VpnLocalIpAddr
-			localClientConfig.TunnelConfig.RemoteIpAddr = strongSwanConfig.VpnRemoteIpAddr
-			strongSwanConfig.ClientConfigList[0] = *localClientConfig
+			clientConfig := new(types.VpnClientConfig)
+			clientConfig.PreSharedKey = strongSwanConfig.PreSharedKey
+			clientConfig.TunnelConfig.LocalIpAddr = strongSwanConfig.VpnLocalIpAddr
+			clientConfig.TunnelConfig.RemoteIpAddr = strongSwanConfig.VpnRemoteIpAddr
+			clientConfig.SubnetBlock = strongSwanConfig.LocalSubnetBlock
+			strongSwanConfig.ClientConfigList[0] = *clientConfig
 		}
-
 		for _, clientConfig := range strongSwanConfig.ClientConfigList {
-			if clientConfig.SubnetBlock == "" ||
-				clientConfig.PreSharedKey == "" {
+			if clientConfig.PreSharedKey == "" {
 				return vpnConfig, errors.New("invalid vpn parameters")
 			}
-			tunnelConfig := clientConfig.TunnelConfig
-			if tunnelConfig.LocalIpAddr == "" ||
-				tunnelConfig.RemoteIpAddr == "" {
+			if clientConfig.TunnelConfig.LocalIpAddr == "" ||
+				clientConfig.TunnelConfig.RemoteIpAddr == "" {
 				return vpnConfig, errors.New("invalid tunnel parameters")
 			}
 		}
 
 	case OnPremVpnClient:
-		if len(strongSwanConfig.ClientConfigList) != 1 {
+		if len(strongSwanConfig.ClientConfigList) > 1 {
 			return vpnConfig, errors.New("invalid client config")
 		}
-		if strongSwanConfig.VpnSubnetBlock == "" {
-			return vpnConfig, errors.New("invalid parameters")
+		// server ip address is must
+		if strongSwanConfig.VpnGatewayIpAddr == "" {
+			return vpnConfig, errors.New("vpn gateway not set")
 		}
-		for _, clientConfig := range strongSwanConfig.ClientConfigList {
-			if clientConfig.SubnetBlock == "" {
-				return vpnConfig, errors.New("subnet block not set")
+		// for client, server side subnet information, is must
+		if strongSwanConfig.VpnSubnetBlock == "" ||
+			strongSwanConfig.VpnSubnetBlock == AppLinkSubnetType {
+			return vpnConfig, errors.New("server subnet block not set")
+		}
+		// flat configuration
+		if len(strongSwanConfig.ClientConfigList) == 0 {
+			strongSwanConfig.ClientConfigList = make([]types.VpnClientConfig, 1)
+			clientConfig := new(types.VpnClientConfig)
+			clientConfig.PreSharedKey = strongSwanConfig.PreSharedKey
+			clientConfig.SubnetBlock = strongSwanConfig.LocalSubnetBlock
+			if clientConfig.SubnetBlock == "" &&
+				vpnConfig.PolicyBased == true {
+				clientConfig.SubnetBlock = AppLinkSubnetType
 			}
+			strongSwanConfig.ClientConfigList[0] = *clientConfig
 		}
 
 	case OnPremVpnServer:
+		// if not mentioned, assume upLink ip address
+		if strongSwanConfig.VpnGatewayIpAddr == "" {
+			strongSwanConfig.VpnGatewayIpAddr = UpLinkIpAddrType
+		}
+		// if not mentioned, assume appnet subnet
+		if strongSwanConfig.VpnSubnetBlock == "" {
+			strongSwanConfig.VpnSubnetBlock = AppLinkSubnetType
+		}
+		// single client/profile flat configuration
 		if len(strongSwanConfig.ClientConfigList) == 0 {
-			return vpnConfig, errors.New("invalid client config")
+			strongSwanConfig.ClientConfigList = make([]types.VpnClientConfig, 1)
+			clientConfig := new(types.VpnClientConfig)
+			clientConfig.PreSharedKey = strongSwanConfig.PreSharedKey
+			clientConfig.SubnetBlock = strongSwanConfig.LocalSubnetBlock
+			strongSwanConfig.ClientConfigList[0] = *clientConfig
 		}
 		for _, clientConfig := range strongSwanConfig.ClientConfigList {
-			if clientConfig.IpAddr == "" {
-				return vpnConfig, errors.New("client IpAddr not set set")
+			// for route based server, client subnet information is must
+			if clientConfig.SubnetBlock == "" ||
+				clientConfig.SubnetBlock == AppLinkSubnetType {
+				if strongSwanConfig.PolicyBased == false {
+					return vpnConfig, errors.New("client subnet block not set")
+				}
 			}
 		}
 	default:
-		return vpnConfig, errors.New("unsupported vpn role, " + strongSwanConfig.VpnRole)
+		return vpnConfig, errors.New("invalid vpn role: " + strongSwanConfig.VpnRole)
 	}
 
 	// fill up our structure
 	vpnConfig.VpnRole = strongSwanConfig.VpnRole
-	vpnConfig.GatewayConfig.SubnetBlock = strongSwanConfig.VpnSubnetBlock
+	vpnConfig.PolicyBased = strongSwanConfig.PolicyBased
 	vpnConfig.GatewayConfig.IpAddr = strongSwanConfig.VpnGatewayIpAddr
+	vpnConfig.GatewayConfig.SubnetBlock = strongSwanConfig.VpnSubnetBlock
 	vpnConfig.ClientConfigList = make([]types.VpnClientConfig,
 		len(strongSwanConfig.ClientConfigList))
 
-	for idx, clientConfig := range strongSwanConfig.ClientConfigList {
-		localClientConfig := new(types.VpnClientConfig)
-		localClientConfig.IpAddr = clientConfig.IpAddr
-		localClientConfig.SubnetBlock = clientConfig.SubnetBlock
+	for idx, ssClientConfig := range strongSwanConfig.ClientConfigList {
+		clientConfig := new(types.VpnClientConfig)
+		clientConfig.IpAddr = ssClientConfig.IpAddr
+		clientConfig.SubnetBlock = ssClientConfig.SubnetBlock
+		clientConfig.PreSharedKey = ssClientConfig.PreSharedKey
 
-		if strongSwanConfig.VpnRole == AwsVpnClient {
-			localClientConfig.PreSharedKey = strongSwanConfig.PreSharedKey
-			if oldConfig == true {
-				localClientConfig.TunnelConfig.LocalIpAddr = strongSwanConfig.VpnLocalIpAddr
-				localClientConfig.TunnelConfig.RemoteIpAddr = strongSwanConfig.VpnRemoteIpAddr
-			} else {
-				localClientConfig.TunnelConfig.LocalIpAddr = clientConfig.TunnelConfig.LocalIpAddr
-				localClientConfig.TunnelConfig.RemoteIpAddr = clientConfig.TunnelConfig.RemoteIpAddr
-			}
-		} else {
-			localClientConfig.PreSharedKey = clientConfig.PreSharedKey
-			localClientConfig.SubnetBlock = clientConfig.SubnetBlock
+		if vpnConfig.VpnRole == OnPremVpnClient &&
+			clientConfig.SubnetBlock == "" {
+			clientConfig.SubnetBlock = AppLinkSubnetType
 		}
-		vpnConfig.ClientConfigList[idx] = *localClientConfig
+
+		if clientConfig.PreSharedKey == "" {
+			clientConfig.PreSharedKey = strongSwanConfig.PreSharedKey
+		}
+		clientConfig.TunnelConfig.LocalIpAddr = ssClientConfig.TunnelConfig.LocalIpAddr
+		clientConfig.TunnelConfig.RemoteIpAddr = ssClientConfig.TunnelConfig.RemoteIpAddr
+		vpnConfig.ClientConfigList[idx] = *clientConfig
 	}
 
+	// XXX:FIXME only for debug
+	if bytes, err := json.Marshal(vpnConfig); err == nil {
+		log.Printf("strongSwanConfigParse(): %s\n", string(bytes))
+	}
 	return vpnConfig, nil
 }
 
-func strongSwanVpnStatusParse(opaqueStatus string) (types.VpnServiceLocalConfig, error) {
+func strongSwanVpnStatusParse(opaqueStatus string) (types.VpnServiceConfig, error) {
 
 	log.Printf("strongSwanVpnStatusParse: parsing %s\n", opaqueStatus)
 
 	cb := []byte(opaqueStatus)
-	vpnLocalConfig := types.VpnServiceLocalConfig{}
-	if err := json.Unmarshal(cb, &vpnLocalConfig); err != nil {
+	vpnConfig := types.VpnServiceConfig{}
+	if err := json.Unmarshal(cb, &vpnConfig); err != nil {
 		log.Printf("%s awsStrongSwanLocalConfig \n", err.Error())
-		return vpnLocalConfig, err
+		return vpnConfig, err
 	}
-	return vpnLocalConfig, nil
+	return vpnConfig, nil
 }
 
-func awsStrongSwanClientCreate(vpnLocalConfig types.VpnServiceLocalConfig) error {
+func strongSwanVpnCreate(vpnConfig types.VpnServiceConfig) error {
 
-	gatewayConfig := vpnLocalConfig.GatewayConfig
-	clientConfig := vpnLocalConfig.ClientConfigList[0]
-	tunnelConfig := clientConfig.TunnelConfig
+	gatewayConfig := vpnConfig.GatewayConfig
 
-	// set charon config
-	if err := charonNoRouteConfigCreate(); err != nil {
+	log.Printf("StrongSwan IpSec Vpn Create %s:%s, %s:%s\n",
+		vpnConfig.VpnRole, vpnConfig.PolicyBased,
+		gatewayConfig.IpAddr, gatewayConfig.SubnetBlock)
+
+	if err := charonRouteConfigCreate(vpnConfig.PolicyBased); err != nil {
 		return err
 	}
 
-	log.Printf("Aws StrongSwan IpSec Client Create %s:%s, %s, %s, %s\n",
-		tunnelConfig.Name, gatewayConfig.IpAddr,
-		gatewayConfig.SubnetBlock, tunnelConfig.LocalIpAddr,
-		tunnelConfig.RemoteIpAddr)
-
 	// create ipsec.conf
-	if err := ipSecServiceConfigCreate(vpnLocalConfig); err != nil {
+	if err := ipSecServiceConfigCreate(vpnConfig); err != nil {
 		return err
 	}
 
 	// create ipsec.secrets
-	if err := ipSecSecretConfigCreate(vpnLocalConfig); err != nil {
+	if err := ipSecSecretConfigCreate(vpnConfig); err != nil {
 		return err
 	}
 
 	// create tunnel interface
-	if err := ipLinkTunnelCreate(vpnLocalConfig); err != nil {
+	if err := ipLinkTunnelCreate(vpnConfig); err != nil {
 		return err
 	}
 
 	// create iptable rules
-	if err := ipTablesRuleCreate(vpnLocalConfig); err != nil {
+	if err := ipTablesRuleCreate(vpnConfig); err != nil {
 		return err
 	}
 
 	// issue sysctl for ipsec
-	if err := sysctlConfigCreate(vpnLocalConfig); err != nil {
+	if err := sysctlConfigCreate(vpnConfig); err != nil {
 		return err
 	}
 
@@ -390,30 +475,24 @@ func awsStrongSwanClientCreate(vpnLocalConfig types.VpnServiceLocalConfig) error
 	}
 
 	// request ipsec service start
-	if err := ipSecServiceActivate(vpnLocalConfig); err != nil {
+	if err := ipSecServiceActivate(vpnConfig); err != nil {
 		return err
 	}
 
 	// request ip route create
-	if err := ipRouteCreate(vpnLocalConfig); err != nil {
+	if err := ipRouteCreate(vpnConfig); err != nil {
 		return err
 	}
 	return nil
 }
 
-func awsStrongSwanClientDelete(vpnLocalConfig types.VpnServiceLocalConfig) error {
+func strongSwanVpnDelete(vpnConfig types.VpnServiceConfig) error {
 
-	gatewayConfig := vpnLocalConfig.GatewayConfig
-	clientConfig := vpnLocalConfig.ClientConfigList[0]
-	tunnelConfig := clientConfig.TunnelConfig
+	gatewayConfig := vpnConfig.GatewayConfig
 
-	log.Printf("Aws StrongSwan IpSec Client Delete %s:%s, %s\n",
-		tunnelConfig.Name, gatewayConfig.IpAddr, gatewayConfig.SubnetBlock)
-
-	// reset charon config
-	if err := charonConfigReset(); err != nil {
-		return err
-	}
+	log.Printf("strongSwan IpSec Vpn Delete %s:%s, %s, %s\n",
+		vpnConfig.VpnRole, vpnConfig.PolicyBased,
+		gatewayConfig.IpAddr, gatewayConfig.SubnetBlock)
 
 	// reset ipsec.conf/ipsec.secrets
 	// set default files in place of existing
@@ -426,276 +505,102 @@ func awsStrongSwanClientDelete(vpnLocalConfig types.VpnServiceLocalConfig) error
 	}
 
 	// request iptables rule delete
-	if err := ipTablesRulesDelete(vpnLocalConfig); err != nil {
+	if err := ipTablesRulesDelete(vpnConfig); err != nil {
 		return err
 	}
 
 	// request ip route delete
-	if err := ipRouteDelete(vpnLocalConfig); err != nil {
+	if err := ipRouteDelete(vpnConfig); err != nil {
 		return err
 	}
 
 	// request tunnel interface delete
-	if err := ipLinkTunnelDelete(vpnLocalConfig); err != nil {
+	if err := ipLinkTunnelDelete(vpnConfig); err != nil {
 		return err
 	}
+
+	// sysctl for ipsec config reset
+	if err := sysctlConfigReset(vpnConfig); err != nil {
+		return err
+	}
+
+	// reset charon config
+	charonConfigReset()
 	return nil
 }
 
-func awsStrongSwanClientActivate(vpnLocalConfig types.VpnServiceLocalConfig) error {
+func strongSwanVpnActivate(vpnConfig types.VpnServiceConfig) error {
 
-	clientConfig := vpnLocalConfig.ClientConfigList[0]
+	clientConfig := vpnConfig.ClientConfigList[0]
 	tunnelConfig := clientConfig.TunnelConfig
 
-	// check iplink interface existence
-	if err := ipLinkInfExists(tunnelConfig.Name); err != nil {
-		log.Printf("%s for %s ipLink status", err.Error(), tunnelConfig.Name)
-		return err
-	}
-
-	// check iplink interface status
-	if err := ipLinkIntfStateCheck(tunnelConfig.Name); err != nil {
-		log.Printf("%s for %s ipLink status", err.Error(), tunnelConfig.Name)
-		// issue ifup command for the tunnel
-		if err := issueIfUpCmd(tunnelConfig.Name); err != nil {
+	if vpnConfig.PolicyBased == false {
+		// check iplink interface existence
+		if err := ipLinkInfExists(tunnelConfig.Name); err != nil {
+			log.Printf("%s for %s ipLink status", err.Error(),
+				tunnelConfig.Name)
 			return err
 		}
-		return err
+		// check iplink interface status
+		if err := ipLinkIntfStateCheck(tunnelConfig.Name); err != nil {
+			log.Printf("%s for %s ipLink status", err.Error(),
+				tunnelConfig.Name)
+			// issue ifup command for the tunnel
+			if err := issueIfUpCmd(tunnelConfig.Name); err != nil {
+				return err
+			}
+			return err
+		}
 	}
 
 	// check iptables rule status
-	if err := ipTablesRuleCheck(vpnLocalConfig); err != nil {
+	if err := ipTablesRuleCheck(vpnConfig); err != nil {
 		log.Printf("%s for %s ipTables status", err.Error(), tunnelConfig.Name)
-		if err := ipTablesRuleCreate(vpnLocalConfig); err != nil {
+		if err := ipTablesRuleCreate(vpnConfig); err != nil {
 			return err
 		}
 		return err
 	}
 
 	// check ipsec tunnel status
-	if err := ipSecTunnelStateCheck(vpnLocalConfig.VpnRole, tunnelConfig.Name); err != nil {
+	if err := ipSecTunnelStateCheck(vpnConfig.VpnRole, tunnelConfig.Name); err != nil {
 		log.Printf("%s for %s ipSec status", err.Error(), tunnelConfig.Name)
-		if err := ipSecServiceActivate(vpnLocalConfig); err != nil {
+		if err := ipSecServiceActivate(vpnConfig); err != nil {
 			return err
 		}
 		return err
 	}
 
-	// request ip route create
-	if err := ipRouteCheck(vpnLocalConfig); err != nil {
-		if err := ipRouteCreate(vpnLocalConfig); err != nil {
+	// check ip routes
+	if err := ipRouteCheck(vpnConfig); err != nil {
+		if err := ipRouteCreate(vpnConfig); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func awsStrongSwanClientInactivate(vpnLocalConfig types.VpnServiceLocalConfig) error {
-	if err := ipSecServiceInactivate(vpnLocalConfig); err != nil {
+func strongSwanVpnInactivate(vpnConfig types.VpnServiceConfig) error {
+	if err := ipSecServiceInactivate(vpnConfig); err != nil {
 		return err
 	}
 	return nil
 }
 
-// StrongSwan Client connecting to OnPrem Standalone Strongswan server
-
-func onPremStrongSwanClientCreate(vpnLocalConfig types.VpnServiceLocalConfig) error {
-
-	gatewayConfig := vpnLocalConfig.GatewayConfig
-	clientConfig := vpnLocalConfig.ClientConfigList[0]
-	tunnelConfig := clientConfig.TunnelConfig
-
-	log.Printf("StrongSwan IpSec Client Create %s:%s, %s\n",
-		tunnelConfig.Name, gatewayConfig.IpAddr,
-		gatewayConfig.SubnetBlock)
-
-	if err := charonRouteConfigCreate(); err != nil {
-		return err
-	}
-
-	// create ipsec.conf
-	if err := ipSecServiceConfigCreate(vpnLocalConfig); err != nil {
-		return err
-	}
-
-	// create ipsec.secrets
-	if err := ipSecSecretConfigCreate(vpnLocalConfig); err != nil {
-		return err
-	}
-
-	// create iptable rules
-	if err := ipTablesRuleCreate(vpnLocalConfig); err != nil {
-		return err
-	}
-
-	// issue sysctl for ipsec
-	if err := sysctlConfigCreate(vpnLocalConfig); err != nil {
-		return err
-	}
-
-	if err := sysctlConfigSet(); err != nil {
-		return err
-	}
-
-	// request ipsec service start
-	if err := ipSecServiceActivate(vpnLocalConfig); err != nil {
-		return err
-	}
-	return nil
-}
-
-func onPremStrongSwanClientDelete(vpnLocalConfig types.VpnServiceLocalConfig) error {
-
-	gatewayConfig := vpnLocalConfig.GatewayConfig
-	clientConfig := vpnLocalConfig.ClientConfigList[0]
-	tunnelConfig := clientConfig.TunnelConfig
-	log.Printf("StrongSwan IpSec Client Delete %s:%s, %s\n",
-		tunnelConfig.Name, gatewayConfig.IpAddr, gatewayConfig.SubnetBlock)
-
-	// reset ipsec.conf/ipsec.secrets
-	// set default files in place of existing
-	if err := ipSecServiceConfigDelete(); err != nil {
-		return err
-	}
-
-	if err := ipSecSecretConfigDelete(); err != nil {
-		return err
-	}
-
-	// request iptables rule delete
-	if err := ipTablesRulesDelete(vpnLocalConfig); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func onPremStrongSwanClientActivate(vpnLocalConfig types.VpnServiceLocalConfig) error {
-
-	clientConfig := vpnLocalConfig.ClientConfigList[0]
-	tunnelConfig := clientConfig.TunnelConfig
-
-	// check iptables rule status
-	if err := ipTablesRuleCheck(vpnLocalConfig); err != nil {
-		log.Printf("%s for %s ipTables status", err.Error(), tunnelConfig.Name)
-		if err := ipTablesRuleCreate(vpnLocalConfig); err != nil {
+func strongSwanValidateSubnet(subnet string) error {
+	if subnet != "" && subnet != AppLinkSubnetType {
+		if _, _, err := net.ParseCIDR(subnet); err != nil {
 			return err
 		}
-		return err
-	}
-
-	// activate ipsec service
-	if err := ipSecServiceActivate(vpnLocalConfig); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func onPremStrongSwanClientInactivate(vpnLocalConfig types.VpnServiceLocalConfig) error {
-	if err := ipSecServiceInactivate(vpnLocalConfig); err != nil {
-		return err
 	}
 	return nil
 }
 
-// OnPrem Standalone Strongswan server
-
-func onPremStrongSwanServerCreate(vpnLocalConfig types.VpnServiceLocalConfig) error {
-
-	gatewayConfig := vpnLocalConfig.GatewayConfig
-	clientConfig := vpnLocalConfig.ClientConfigList[0]
-	tunnelConfig := clientConfig.TunnelConfig
-
-	log.Printf("StrongSwan Vpn Server Create %s:%s, %s\n",
-		tunnelConfig.Name, gatewayConfig.IpAddr, gatewayConfig.SubnetBlock)
-
-	if err := charonRouteConfigCreate(); err != nil {
-		return err
-	}
-	// create ipsec.conf
-	if err := ipSecServiceConfigCreate(vpnLocalConfig); err != nil {
-		return err
-	}
-
-	// create ipsec.secrets
-	if err := ipSecSecretConfigCreate(vpnLocalConfig); err != nil {
-		return err
-	}
-
-	// create iptable rules
-	if err := ipTablesRuleCreate(vpnLocalConfig); err != nil {
-		return err
-	}
-
-	// issue sysctl for ipsec
-	if err := sysctlConfigCreate(vpnLocalConfig); err != nil {
-		return err
-	}
-
-	if err := sysctlConfigSet(); err != nil {
-		return err
-	}
-
-	// request ipsec service start
-	if err := ipSecServiceActivate(vpnLocalConfig); err != nil {
-		return err
-	}
-	return nil
-}
-
-func onPremStrongSwanServerDelete(vpnLocalConfig types.VpnServiceLocalConfig) error {
-
-	gatewayConfig := vpnLocalConfig.GatewayConfig
-	clientConfig := vpnLocalConfig.ClientConfigList[0]
-	tunnelConfig := clientConfig.TunnelConfig
-
-	log.Printf("StrongSwan Vpn Server Delete %s:%s, %s\n",
-		tunnelConfig.Name, gatewayConfig.IpAddr, gatewayConfig.SubnetBlock)
-
-	// reset ipsec.conf/ipsec.secrets
-	// set default files in place of existing
-	if err := ipSecServiceConfigDelete(); err != nil {
-		return err
-	}
-
-	if err := ipSecSecretConfigDelete(); err != nil {
-		return err
-	}
-
-	// request iptables rule delete
-	if err := ipTablesRulesDelete(vpnLocalConfig); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func onPremStrongSwanServerActivate(vpnLocalConfig types.VpnServiceLocalConfig) error {
-
-	clientConfig := vpnLocalConfig.ClientConfigList[0]
-	tunnelConfig := clientConfig.TunnelConfig
-
-	// check iptables rule status
-	if err := ipTablesRuleCheck(vpnLocalConfig); err != nil {
-		log.Printf("%s for %s ipTables status", err.Error(), tunnelConfig.Name)
-		if err := ipTablesRuleCreate(vpnLocalConfig); err != nil {
-			return err
+func strongSwanValidateIpAddr(ipAddr string) error {
+	if ipAddr != "" && ipAddr != "%any" {
+		if ip := net.ParseIP(ipAddr); ip == nil {
+			return errors.New("invalid ip address: " + ipAddr)
 		}
-		return err
-	}
-
-	// activate ipsec service
-	if err := ipSecServiceActivate(vpnLocalConfig); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func onPremStrongSwanServerInactivate(vpnLocalConfig types.VpnServiceLocalConfig) error {
-	if err := ipSecServiceInactivate(vpnLocalConfig); err != nil {
-		return err
 	}
 	return nil
 }
