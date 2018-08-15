@@ -426,7 +426,6 @@ func maybeHandleDUC(ctx *zedrouterContext) {
 	if !ctx.ready {
 		return
 	}
-	publishDeviceNetworkStatus(ctx)
 	updateLispConfiglets(ctx, ctx.separateDataPlane)
 	setFreeUplinks(devicenetwork.GetFreeUplinks(*ctx.DeviceUplinkConfig))
 	// XXX do a NatInactivate/NatActivate if freeuplinks/uplinks changed?

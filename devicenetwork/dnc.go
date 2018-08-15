@@ -196,5 +196,6 @@ func DoDNSUpdate(ctx *DeviceNetworkContext) {
 		types.UpdateLedManagerConfig(2)
 	}
 	ctx.UsableAddressCount = newAddrCount
+	ctx.PubDeviceNetworkStatus.Publish("global", ctx.DeviceNetworkStatus)
 	ctx.Changed = true
 }
