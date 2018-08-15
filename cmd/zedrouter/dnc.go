@@ -123,7 +123,7 @@ func handleDUCDelete(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*zedrouterContext)
 
 	curPriority := ctx.deviceUplinkConfigPrio
-	log.Printf("handleDUCModify for %s current priority %d\n",
+	log.Printf("handleDUCDelete for %s current priority %d\n",
 		key, curPriority)
 
 	var priority int

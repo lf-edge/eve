@@ -18,6 +18,8 @@ import (
 // Start/modify/delete dhcpcd per interface
 func UpdateDhcpClient(newConfig, oldConfig types.DeviceUplinkConfig) {
 	// Look for adds or changes
+	log.Printf("updateDhcpClient: new %v old %v\n",
+		newConfig, oldConfig)
 	for _, newU := range newConfig.Uplinks {
 		oldU := lookupOnIfname(oldConfig, newU.IfName)
 		if false {
@@ -28,20 +30,27 @@ func UpdateDhcpClient(newConfig, oldConfig types.DeviceUplinkConfig) {
 			log.Printf("updateDhcpClient: new %s\n", newU.IfName)
 			// Inactivate in case a dhcpcd is running
 			doDhcpClientActivate(newU)
-		} else if !reflect.DeepEqual(newU, oldU) {
-			log.Printf("updateDhcpClient: changed %s\n",
-				newU.IfName)
-			doDhcpClientInactivate(*oldU)
-			doDhcpClientActivate(newU)
+		} else {
+			log.Printf("updateDhcpClient: found old %v\n",
+				oldU)
+			if !reflect.DeepEqual(newU, oldU) {
+				log.Printf("updateDhcpClient: changed %s\n",
+					newU.IfName)
+				doDhcpClientInactivate(*oldU)
+				doDhcpClientActivate(newU)
+			}
 		}
 	}
 	// Look for deletes from oldConfig to newConfig
-	for _, oldU := range newConfig.Uplinks {
+	for _, oldU := range oldConfig.Uplinks {
 		newU := lookupOnIfname(newConfig, oldU.IfName)
 		if newU == nil {
 			log.Printf("updateDhcpClient: deleted %s\n",
 				oldU.IfName)
 			doDhcpClientInactivate(oldU)
+		} else {
+			log.Printf("updateDhcpClient: found new %v\n",
+				newU)
 		}
 	}
 
