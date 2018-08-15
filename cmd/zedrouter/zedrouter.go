@@ -138,7 +138,8 @@ func Run() {
 	// Get the initial DeviceNetworkConfig
 	// Subscribe from "" means /var/tmp/zededa/
 	subDeviceNetworkConfig, err := pubsub.Subscribe("",
-		types.DeviceNetworkConfig{}, false, &zedrouterCtx)
+		types.DeviceNetworkConfig{}, false,
+		&zedrouterCtx.DeviceNetworkContext)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -152,7 +153,8 @@ func Run() {
 	// 2. override file in /var/tmp/zededa/NetworkUplinkConfig/override.json
 	// 3. self-generated file derived from per-platform DeviceNetworkConfig
 	subDeviceUplinkConfigA, err := pubsub.Subscribe("zedagent",
-		types.DeviceUplinkConfig{}, false, &zedrouterCtx)
+		types.DeviceUplinkConfig{}, false,
+		&zedrouterCtx.DeviceNetworkContext)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -162,7 +164,8 @@ func Run() {
 	subDeviceUplinkConfigA.Activate()
 
 	subDeviceUplinkConfigO, err := pubsub.Subscribe("",
-		types.DeviceUplinkConfig{}, false, &zedrouterCtx)
+		types.DeviceUplinkConfig{}, false,
+		&zedrouterCtx.DeviceNetworkContext)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -172,7 +175,8 @@ func Run() {
 	subDeviceUplinkConfigO.Activate()
 
 	subDeviceUplinkConfigS, err := pubsub.Subscribe(agentName,
-		types.DeviceUplinkConfig{}, false, &zedrouterCtx)
+		types.DeviceUplinkConfig{}, false,
+		&zedrouterCtx.DeviceNetworkContext)
 	if err != nil {
 		log.Fatal(err)
 	}
