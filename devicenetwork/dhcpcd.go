@@ -70,7 +70,7 @@ func doDhcpClientActivate(nuc types.NetworkUplinkConfig) {
 	switch nuc.Dhcp {
 	case types.DT_CLIENT:
 		extras := []string{"-f", "/dhcpcd.conf", "--nobackground",
-			"-K", "-d", "--noipv4ll"}
+			"-d", "--noipv4ll"}
 		if nuc.Gateway.String() == "0.0.0.0" {
 			extras = append(extras, "--nogateway")
 		}
@@ -93,7 +93,7 @@ func doDhcpClientActivate(nuc types.NetworkUplinkConfig) {
 			addrSubnet.String())}
 
 		extras := []string{"-f", "/dhcpcd.conf", "--nobackground",
-			"-K", "-d"}
+			"-d"}
 		if nuc.Gateway.String() == "0.0.0.0" {
 			extras = append(extras, "--nogateway")
 		} else if nuc.Gateway.String() != "" {
@@ -136,7 +136,7 @@ func doDhcpClientInactivate(nuc types.NetworkUplinkConfig) {
 			nuc.IfName)
 		return
 	}
-	extras := []string{"-K"}
+	extras := []string{}
 	if !dhcpcdCmd("--release", extras, nuc.IfName, false) {
 		log.Printf("doDhcpClientInactivate: release failed for %s\n",
 			nuc.IfName)
