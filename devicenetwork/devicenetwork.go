@@ -63,13 +63,13 @@ func MakeDeviceNetworkStatus(globalConfig types.DeviceUplinkConfig, oldStatus ty
 			len(addrs4)+len(addrs6))
 		for i, addr := range addrs4 {
 			log.Printf("UplinkAddrs(%s) found IPv4 %v\n",
-				u, addr.IP)
+				u.IfName, addr.IP)
 			globalStatus.UplinkStatus[ix].AddrInfoList[i].Addr = addr.IP
 		}
 		for i, addr := range addrs6 {
 			// We include link-locals since they can be used for LISP behind nats
 			log.Printf("UplinkAddrs(%s) found IPv6 %v\n",
-				u, addr.IP)
+				u.IfName, addr.IP)
 			globalStatus.UplinkStatus[ix].AddrInfoList[i+len(addrs4)].Addr = addr.IP
 		}
 	}

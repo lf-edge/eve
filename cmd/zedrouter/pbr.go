@@ -299,7 +299,9 @@ func PbrLinkChange(deviceUplinkConfig *types.DeviceUplinkConfig,
 	}
 }
 
-// XXX needed to detect changes to free
+// We track the freeuplink list to be able to detect changes and
+// update the free table with the routes from all the free uplinks.
+// XXX TBD: do we need a separate table for all the uplinks?
 
 var freeUplinkList []string // The subset we add to FreeTable
 
