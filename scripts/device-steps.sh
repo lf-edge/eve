@@ -281,24 +281,11 @@ if [ -f $CONFIGDIR/DeviceUplinkConfig/override.json ]; then
     cp -p $CONFIGDIR/DeviceUplinkConfig/override.json $DUCDIR
 fi
 
-# XXX hack to loop since client doesn't detect IP address changes
-RELEASED=0
-while /bin/true; do
-    echo $BINDIR/client -d $CONFIGDIR dhcpcd
-    $BINDIR/client -d $CONFIGDIR dhcpcd
-    if [ $? == 0 ]; then
-	break
-    fi
-    echo "Retrying dhcpcd"
-    ifconfig
-    if [ $RELEASED == 0 ]; then
-	    echo "Releasing lease"
-	    dhcpcd --release eth0
-	    dhcpcd --release eth1
-	    dhcpcd --release wlan0
-	    RELEASED=1
-    fi
-done
+// Get IP addresses
+// XXX we should be able to do this in the initial call
+echo $BINDIR/client -d $CONFIGDIR dhcpcd
+$BINDIR/client -d $CONFIGDIR dhcpcd
+ifconfig
 
 # We need to try our best to setup time *before* we generate the certifiacte.
 # Otherwise it may have start date in the future

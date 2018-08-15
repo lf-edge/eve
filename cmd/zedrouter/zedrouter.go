@@ -29,7 +29,6 @@ import (
 	"log"
 	"net"
 	"os"
-	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -297,35 +296,18 @@ func Run() {
 		if debug {
 			log.Printf("addrChangeUplinkFn(%s) called\n", ifname)
 		}
-		status, _ := devicenetwork.MakeDeviceNetworkStatus(*zedrouterCtx.DeviceUplinkConfig,
-			*zedrouterCtx.DeviceNetworkStatus)
-		if !reflect.DeepEqual(*zedrouterCtx.DeviceNetworkStatus, status) {
-			if debug {
-				log.Printf("Address change for %s from %v to %v\n",
-					ifname,
-					*zedrouterCtx.DeviceNetworkStatus,
-					status)
-			}
-			*zedrouterCtx.DeviceNetworkStatus = status
-			devicenetwork.DoDNSUpdate(&zedrouterCtx.DeviceNetworkContext)
-		} else {
-			log.Printf("No address change for %s\n", ifname)
-		}
+		devicenetwork.HandleAddressChange(&zedrouterCtx.DeviceNetworkContext,
+			ifname)
 	}
+
+	// This function is called from PBR when some non-uplink interface
+	// changes its IP address(es)
 	addrChangeNonUplinkFn := func(ifname string) {
 		if debug {
 			log.Printf("addrChangeNonUplinkFn(%s) called\n", ifname)
 		}
-		// XXX even if ethN isn't individually assignable, it
-		// coild be used for a bridge.
-		ib := types.LookupIoBundle(&aa, types.IoEth, ifname)
-		if ib == nil {
-			if debug {
-				log.Printf("addrChangeNonUplinkFn(%s) not assignable\n",
-					ifname)
-			}
-			return
-		}
+		// Even if ethN isn't individually assignable, it
+		// could be used for a bridge.
 		maybeUpdateBridgeIPAddr(&zedrouterCtx, ifname)
 	}
 	routeChanges, addrChanges, linkChanges := PbrInit(

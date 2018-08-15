@@ -25,7 +25,6 @@ import (
 	"mime"
 	"net/http"
 	"os"
-	"reflect"
 	"strings"
 	"time"
 )
@@ -183,6 +182,9 @@ func Run() {
 		PubDeviceNetworkStatus: nil,
 	}
 
+	// Look for address changes
+	addrChanges := devicenetwork.AddrChangeInit(&clientCtx)
+
 	// Get the initial DeviceNetworkConfig
 	// Subscribe from "" means /var/tmp/zededa/
 	subDeviceNetworkConfig, err := pubsub.Subscribe("",
@@ -219,10 +221,8 @@ func Run() {
 	clientCtx.SubDeviceUplinkConfigS = subDeviceUplinkConfigS
 	subDeviceUplinkConfigS.Activate()
 
-	// After 5 seconds we check if we:
-	// - have acquired addresses
-	// - if not, have a UUID and proceed if so
-	// XXX watch for address changes instead? Need longer time for DHCP?
+	// After 5 seconds we check; if we already have a UUID we continue
+	// with that one
 	t1 := time.NewTimer(5 * time.Second)
 
 	for clientCtx.UsableAddressCount == 0 {
@@ -237,20 +237,11 @@ func Run() {
 		case change := <-subDeviceUplinkConfigS.C:
 			subDeviceUplinkConfigS.ProcessChange(change)
 
-		case <-t1.C:
-			// Check if we have more addresses
-			status, _ := devicenetwork.MakeDeviceNetworkStatus(*clientCtx.DeviceUplinkConfig,
-				*clientCtx.DeviceNetworkStatus)
-			if !reflect.DeepEqual(*clientCtx.DeviceNetworkStatus, status) {
-				if debug {
-					log.Printf("Address change from %v to %v\n",
-						*clientCtx.DeviceNetworkStatus,
-						status)
-				}
-				*clientCtx.DeviceNetworkStatus = status
-				devicenetwork.DoDNSUpdate(&clientCtx)
-			}
+		case change := <-addrChanges:
+			log.Printf("Got address change\n")
+			devicenetwork.AddrChange(&clientCtx, change)
 
+		case <-t1.C:
 			// If we already know a uuid we can skip
 			// This might not set hardwaremodel when upgrading
 			// an onboarded system without /config/hardwaremodel.
@@ -267,11 +258,6 @@ func Run() {
 					log.Println(err)
 				}
 				return
-			}
-			if clientCtx.UsableAddressCount == 0 &&
-				operations["dhcpcd"] {
-				log.Printf("Giving up on usableAddresssCount for dhcpcd\n")
-				os.Exit(1)
 			}
 		}
 	}
