@@ -87,8 +87,9 @@ func doDhcpClientActivate(nuc types.NetworkUplinkConfig) {
 			// XXX return error?
 			return
 		}
+		// Get mask from the subnet and IP from Addr
 		addrSubnet := nuc.Subnet
-		addrSubnet.Mask = nuc.Subnet.Mask
+		addrSubnet.IP = nuc.Addr
 		args := []string{fmt.Sprintf("ip_address=%s",
 			addrSubnet.String())}
 
