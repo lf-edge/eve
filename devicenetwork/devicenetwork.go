@@ -203,6 +203,11 @@ func ProxyToEnv(config types.ProxyConfig) {
 	} else {
 		os.Setenv("FTP_PROXY", config.FtpProxy)
 	}
+	if config.SocksProxy == "" {
+		os.Unsetenv("SOCKS_PROXY")
+	} else {
+		os.Setenv("SOCKS_PROXY", config.SocksProxy)
+	}
 	if config.NoProxy == "" {
 		os.Unsetenv("NO_PROXY")
 	} else {

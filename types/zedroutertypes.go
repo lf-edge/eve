@@ -106,6 +106,7 @@ type ProxyConfig struct {
 	HttpsProxy string // HTTPS_PROXY environment variable
 	HttpProxy  string // HTTP_PROXY environment variable
 	FtpProxy   string // FTP_PROXY environment variable
+	SocksProxy string // SOCKS_PROXY environment variable
 	NoProxy    string // NO_PROXY environment variable
 }
 
