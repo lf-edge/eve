@@ -7,6 +7,7 @@ PERSISTDIR=/persist
 BINDIR=/opt/zededa/bin
 TMPDIR=/var/tmp/zededa
 DNCDIR=$TMPDIR/DeviceNetworkConfig
+DUCDIR=$TMPDIR/DeviceUplinkConfig
 LISPDIR=/opt/zededa/lisp
 LOGDIRA=$PERSISTDIR/IMGA/log
 LOGDIRB=$PERSISTDIR/IMGB/log
@@ -142,35 +143,6 @@ echo "Configuration from factory/install:"
 (cd $CONFIGDIR; ls -l)
 echo
 
-# Note that if the /config/proxy file is removed at runtime , the device will stop using it.
-# That is useful for tesing.
-if [ -f $CONFIGDIR/proxy ]; then
-    proxy=`cat $CONFIGDIR/proxy`
-    echo "Using default $proxy"
-    export HTTPS_PROXY="$proxy"
-    export HTTP_PROXY="$proxy"
-    export FTP_PROXY="$proxy"
-fi
-if [ -f $CONFIGDIR/http_proxy ]; then
-    proxy=`cat $CONFIGDIR/http_proxy`
-    echo "Using HTTP_PROXY $proxy"
-    export HTTP_PROXY="$proxy"
-fi
-if [ -f $CONFIGDIR/ftp_proxy ]; then
-    proxy=`cat $CONFIGDIR/ftp_proxy`
-    echo "Using FTP_PROXY $proxy"
-    export FTP_PROXY="$proxy"
-fi
-if [ -f $CONFIGDIR/no_cache ]; then
-    # By default localhost is not proxied. Contains a comma-separated list
-    # of domain names.
-    # This can include example.com (which means example.com and *.example.com)
-    # or .example.com (which means *.example.com)
-    no_cache=`cat $CONFIGDIR/no_cache`
-    echo "Using NO_CACHE $no_cache"
-    export NO_CACHE="$no_cache"
-fi
-
 P3=`zboot partdev P3`
 if [ $? = 0 -a x$P3 != x ]; then
     echo "Using $P3 for /persist"
@@ -215,7 +187,7 @@ if [ ! -d $PERSISTDIR/log ]; then
 fi
 
 echo "Set up log capture"
-DOM0LOGFILES="dhcpcd.err.log ntpd.err.log wlan.err.log wwan.err.log dhcpcd.out.log ntpd.out.log wlan.out.log wwan.out.log zededa-tools.out.log zededa-tools.err.log"
+DOM0LOGFILES="ntpd.err.log wlan.err.log wwan.err.log ntpd.out.log wlan.out.log wwan.out.log zededa-tools.out.log zededa-tools.err.log"
 for f in $DOM0LOGFILES; do
     tail -c +0 -F /var/log/dom0/$f >/persist/$CURPART/log/$f &
 done
@@ -249,6 +221,42 @@ if [ $? != 0 ]; then
 	echo -n "Press any key to continue "; read dummy; echo; echo
     fi
 fi
+
+mkdir -p $DUCDIR
+# Look for a USB stick with a key'ed file
+# If found it replaces any build override file in /config
+SPECIAL=/dev/sdb1
+if [ -f $CONFIGDIR/allow-usb-override -a -b $SPECIAL ]; then
+    key=`cat /config/root-certificate.pem /config/server /config/device.cert.pem | openssl sha256 | awk '{print $2}'`
+    # XXX specific to E100?
+    mount -t vfat $SPECIAL /mnt
+    if [ $? != 0 ]; then
+	echo "mount $SPECIAL failed: $?"
+    else
+	echo "Mounted $SPECIAL"
+	keyfile=/mnt/$key.json
+	if [ -f $keyfile ]; then
+	    echo "Found $keyfile on $SPECIAL"
+	    echo "Copying from $keyfile to $CONFIGDIR/DeviceUplinkConfig/override.json"
+	    cp -p $keyfile $CONFIGDIR/DeviceUplinkConfig/override.json
+	    # XXX test before removing file?
+	    rm $CONFIGDIR/allow-usb-override
+	else
+	    echo "$keyfile not found on $SPECIAL"
+	fi
+    fi
+fi
+if [ -f $CONFIGDIR/DeviceUplinkConfig/override.json ]; then
+    echo "Copying from $CONFIGDIR/DeviceUplinkConfig/override.json"
+    cp -p $CONFIGDIR/DeviceUplinkConfig/override.json $DUCDIR
+fi
+
+// Get IP addresses
+// XXX we should be able to do this in the initial call
+// However, we need it before we run ntpd
+echo $BINDIR/client -d $CONFIGDIR dhcpcd
+$BINDIR/client -d $CONFIGDIR dhcpcd
+ifconfig
 
 # We need to try our best to setup time *before* we generate the certifiacte.
 # Otherwise it may have start date in the future

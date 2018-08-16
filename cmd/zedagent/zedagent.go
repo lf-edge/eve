@@ -40,6 +40,7 @@ import (
 	"github.com/zededa/go-provision/adapters"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
+	"github.com/zededa/go-provision/devicenetwork"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
@@ -150,6 +151,14 @@ func Run() {
 	subAa := adapters.Subscribe(&aa, model)
 
 	zedagentCtx := zedagentContext{assignableAdapters: &aa}
+
+	// XXX placeholder for uplink config from zedcloud
+	pubDeviceUplinkConfig, err := pubsub.Publish(agentName,
+		types.DeviceUplinkConfig{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	getconfigCtx.pubDeviceUplinkConfig = pubDeviceUplinkConfig
 
 	// Publish NetworkConfig and NetworkServiceConfig for zedmanager/zedrouter
 	pubNetworkObjectConfig, err := pubsub.Publish(agentName,
@@ -692,6 +701,7 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	}
 	ctx.usableAddressCount = newAddrCount
 	ctx.triggerDeviceInfo = true
+	devicenetwork.ProxyToEnv(deviceNetworkStatus.ProxyConfig)
 	log.Printf("handleDNSModify done for %s\n", key)
 }
 
@@ -708,6 +718,7 @@ func handleDNSDelete(ctxArg interface{}, key string,
 	deviceNetworkStatus = types.DeviceNetworkStatus{}
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
 	ctx.usableAddressCount = newAddrCount
+	devicenetwork.ProxyToEnv(deviceNetworkStatus.ProxyConfig)
 	log.Printf("handleDNSDelete done for %s\n", key)
 }
 

@@ -90,22 +90,30 @@ func (status AppNetworkStatus) VerifyFilename(fileName string) bool {
 	return ret
 }
 
-// Global network config and status
+// Global network config. For backwards compatibility with build artifacts
+// XXX move to using DeviceUplinkConfig in build?
 type DeviceNetworkConfig struct {
 	Uplink      []string // ifname; all uplinks
 	FreeUplinks []string // subset used for image downloads
 }
 
-// XXX new - replacement for above
-type DeviceNetworkConfig2 struct {
-	Uplinks []DeviceNetwork
+type DeviceUplinkConfig struct {
+	Uplinks []NetworkUplinkConfig
+	ProxyConfig
 }
 
-// XXX new - replacement for above
-type DeviceNetwork struct {
+type ProxyConfig struct {
+	HttpsProxy string // HTTPS_PROXY environment variable
+	HttpProxy  string // HTTP_PROXY environment variable
+	FtpProxy   string // FTP_PROXY environment variable
+	SocksProxy string // SOCKS_PROXY environment variable
+	NoProxy    string // NO_PROXY environment variable
+}
+
+type NetworkUplinkConfig struct {
 	IfName string
 	Free   bool
-	// If Dhcp (in NetworkConfig) is DT_STATIC we use the static
+	// If Dhcp (in NetworkObjectConfig) is DT_STATIC we use the static
 	// Addr and the rest of NetworkConfig
 	Addr net.IP
 	NetworkObjectConfig
@@ -126,6 +134,7 @@ type AddrInfo struct {
 
 type DeviceNetworkStatus struct {
 	UplinkStatus []NetworkUplink
+	ProxyConfig
 }
 
 // Pick one of the uplinks
@@ -469,17 +478,14 @@ const (
 // If there is no such reference the NetworkConfig ends up being local to the
 // host.
 type NetworkObjectConfig struct {
-	UUID uuid.UUID
-	Type NetworkType
-	Dhcp DhcpType // If DT_STATIC or DT_SERVER use below
-	// XXX LocalDhcp  bool   // Run a DHCP server
-	// XXX LocalDns   bool   // Run a DNS server
-	// XXX LocalAddr  net.IP // For local DHCP/DNS; could be same as Gateway
+	UUID          uuid.UUID
+	Type          NetworkType
+	Dhcp          DhcpType // If DT_STATIC or DT_SERVER use below
 	Subnet        net.IPNet
 	Gateway       net.IP
 	DomainName    string
 	NtpServer     net.IP
-	DnsServers    []net.IP // If not set we pass LocalAddr/Gateway to application
+	DnsServers    []net.IP // If not set we use Gateway as DNS server
 	DhcpRange     IpRange
 	ZedServConfig ZedServerConfig
 }
@@ -493,9 +499,6 @@ func (config NetworkObjectConfig) Key() string {
 	return config.UUID.String()
 }
 
-// XXX If Ifname is set it means the network is in use
-// TBD: allow multiple applications to connect to the same Network by adding
-// another vif to the ifname.
 type NetworkObjectStatus struct {
 	NetworkObjectConfig
 	PendingAdd    bool

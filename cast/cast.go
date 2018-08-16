@@ -72,6 +72,19 @@ func CastDeviceNetworkConfig(in interface{}) types.DeviceNetworkConfig {
 	return output
 }
 
+func CastDeviceUplinkConfig(in interface{}) types.DeviceUplinkConfig {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastDeviceUplinkConfig")
+	}
+	var output types.DeviceUplinkConfig
+	if err := json.Unmarshal(b, &output); err != nil {
+		// XXX Comes from outside sources like USB stick?
+		log.Println(err, "json Unmarshal in CastDeviceUplinkConfig")
+	}
+	return output
+}
+
 func CastDeviceNetworkStatus(in interface{}) types.DeviceNetworkStatus {
 	b, err := json.Marshal(in)
 	if err != nil {

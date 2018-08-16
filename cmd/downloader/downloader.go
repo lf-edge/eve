@@ -14,6 +14,7 @@ import (
 	"github.com/zededa/api/zconfig"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
+	"github.com/zededa/go-provision/devicenetwork"
 	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
@@ -1076,6 +1077,8 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	log.Printf("handleDNSModify %d free uplinks addresses; %d any\n",
 		types.CountLocalAddrFree(ctx.deviceNetworkStatus, ""),
 		types.CountLocalAddrAny(ctx.deviceNetworkStatus, ""))
+
+	devicenetwork.ProxyToEnv(ctx.deviceNetworkStatus.ProxyConfig)
 	log.Printf("handleDNSModify done for %s\n", key)
 }
 
@@ -1088,5 +1091,6 @@ func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 		return
 	}
 	ctx.deviceNetworkStatus = types.DeviceNetworkStatus{}
+	devicenetwork.ProxyToEnv(ctx.deviceNetworkStatus.ProxyConfig)
 	log.Printf("handleDNSDelete done for %s\n", key)
 }
