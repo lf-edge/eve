@@ -5,6 +5,8 @@ package diskmetrics
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 )
@@ -26,9 +28,11 @@ func GetImgInfo(diskfile string) (*ImgInfo, error) {
 		return nil, err
 	}
 	output, err := exec.Command("/usr/lib/xen/bin/qemu-img",
-		"info", "--output=json", diskfile).Output()
+		"info", "--output=json", diskfile).CombinedOutput()
 	if err != nil {
-		return nil, err
+		errStr := fmt.Sprintf("qemu-img failed: %s, %s\n",
+			err, output)
+		return nil, errors.New(errStr)
 	}
 	if err := json.Unmarshal(output, &imgInfo); err != nil {
 		return nil, err
