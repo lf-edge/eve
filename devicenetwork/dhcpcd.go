@@ -110,7 +110,7 @@ func doDhcpClientActivate(nuc types.NetworkUplinkConfig) {
 			args = append(args, "--static",
 				fmt.Sprintf("domain_name=%s", nuc.DomainName))
 		}
-		if nuc.NtpServer == nil || !nuc.NtpServer.IsUnspecified() {
+		if nuc.NtpServer != nil && !nuc.NtpServer.IsUnspecified() {
 			args = append(args, "--static",
 				fmt.Sprintf("ntp_servers=%s",
 					nuc.NtpServer.String()))
