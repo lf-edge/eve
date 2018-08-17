@@ -28,7 +28,7 @@ func GetImgInfo(diskfile string) (*ImgInfo, error) {
 		return nil, err
 	}
 	output, err := exec.Command("/usr/lib/xen/bin/qemu-img",
-		"info", "--output=json", diskfile).CombinedOutput()
+		"info", "-U", "--output=json", diskfile).CombinedOutput()
 	if err != nil {
 		errStr := fmt.Sprintf("qemu-img failed: %s, %s\n",
 			err, output)
