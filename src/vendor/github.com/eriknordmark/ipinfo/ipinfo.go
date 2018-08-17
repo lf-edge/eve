@@ -61,7 +61,8 @@ func getInfo(url string, opt *Options) (*IPInfo, error) {
 		d.Timeout = opt.Timeout
 	}
 	transport := &http.Transport{
-		Dial: d.Dial,
+		Dial:  d.Dial,
+		Proxy: http.ProxyFromEnvironment,
 	}
 	client := &http.Client{Transport: transport}
 	response, err := client.Get(url)
