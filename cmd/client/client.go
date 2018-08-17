@@ -66,7 +66,7 @@ func Run() {
 	// DUCDir is used for testing a new DeviceUplinkConfig. Note that
 	// the file in that directory must be called something different than
 	// "override.json" and "global.json" since those have lower priority.
-	DUCDirPtr := flag.String("u", "xyzzy", "Uplink override subdir")
+	DUCDirPtr := flag.String("u", "", "Uplink override subdir")
 	maxRetriesPtr := flag.Int("r", 0, "Max ping retries")
 
 	flag.Parse()
@@ -211,15 +211,19 @@ func Run() {
 	// for testing instead
 	// 2. override file in /var/tmp/zededa/NetworkUplinkConfig/override.json
 	// 3. self-generated file derived from per-platform DeviceNetworkConfig
-	subDeviceUplinkConfigT, err := pubsub.SubscribeScope("", DUCDir,
-		types.DeviceUplinkConfig{}, false, &clientCtx)
-	if err != nil {
-		log.Fatal(err)
+	var subDeviceUplinkConfigT *pubsub.Subscription
+	if DUCDir != "" {
+		var err error
+		subDeviceUplinkConfigT, err = pubsub.SubscribeScope("", DUCDir,
+			types.DeviceUplinkConfig{}, false, &clientCtx)
+		if err != nil {
+			log.Fatal(err)
+		}
+		subDeviceUplinkConfigT.ModifyHandler = devicenetwork.HandleDUCModify
+		subDeviceUplinkConfigT.DeleteHandler = devicenetwork.HandleDUCDelete
+		clientCtx.SubDeviceUplinkConfigA = subDeviceUplinkConfigT
+		subDeviceUplinkConfigT.Activate()
 	}
-	subDeviceUplinkConfigT.ModifyHandler = devicenetwork.HandleDUCModify
-	subDeviceUplinkConfigT.DeleteHandler = devicenetwork.HandleDUCDelete
-	clientCtx.SubDeviceUplinkConfigA = subDeviceUplinkConfigT
-	subDeviceUplinkConfigT.Activate()
 
 	subDeviceUplinkConfigO, err := pubsub.Subscribe("",
 		types.DeviceUplinkConfig{}, false, &clientCtx)
@@ -241,17 +245,26 @@ func Run() {
 	clientCtx.SubDeviceUplinkConfigS = subDeviceUplinkConfigS
 	subDeviceUplinkConfigS.Activate()
 
+	if DUCDir == "" {
+		// Avoid a nil pointer check in select statement
+		subDeviceUplinkConfigT = subDeviceUplinkConfigO
+	}
+
 	// After 5 seconds we check; if we already have a UUID we continue
 	// with that one
 	t1 := time.NewTimer(5 * time.Second)
+	done := clientCtx.UsableAddressCount != 0
 
-	for clientCtx.UsableAddressCount == 0 {
+	// Make sure we wait for a while to process all the DeviceUplinkConfigs
+	for clientCtx.UsableAddressCount == 0 || !done {
 		log.Printf("Waiting for UsableAddreessCount\n")
 		select {
 		case change := <-subDeviceNetworkConfig.C:
+			log.Printf("Got subDeviceNetworkConfig\n")
 			subDeviceNetworkConfig.ProcessChange(change)
 
 		case change := <-subDeviceUplinkConfigT.C:
+			// If DUCDir == "" this will process "O" which is fine
 			subDeviceUplinkConfigT.ProcessChange(change)
 
 		case change := <-subDeviceUplinkConfigO.C:
@@ -261,10 +274,10 @@ func Run() {
 			subDeviceUplinkConfigS.ProcessChange(change)
 
 		case change := <-addrChanges:
-			log.Printf("Got address change\n")
 			devicenetwork.AddrChange(&clientCtx, change)
 
 		case <-t1.C:
+			done = true
 			// If we already know a uuid we can skip
 			// This might not set hardwaremodel when upgrading
 			// an onboarded system without /config/hardwaremodel.

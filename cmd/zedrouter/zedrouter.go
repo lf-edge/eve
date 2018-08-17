@@ -212,7 +212,10 @@ func Run() {
 	zedrouterCtx.SubDeviceUplinkConfigS = subDeviceUplinkConfigS
 	subDeviceUplinkConfigS.Activate()
 
-	for zedrouterCtx.UsableAddressCount == 0 {
+	// Make sure we wait for a while to process all the DeviceUplinkConfigs
+	done := zedrouterCtx.UsableAddressCount != 0
+	t1 := time.NewTimer(5 * time.Second)
+	for zedrouterCtx.UsableAddressCount == 0 || !done {
 		log.Printf("Waiting for UsableAddreessCount\n")
 		select {
 		case change := <-subDeviceNetworkConfig.C:
@@ -230,6 +233,9 @@ func Run() {
 		case change := <-subDeviceUplinkConfigS.C:
 			subDeviceUplinkConfigS.ProcessChange(change)
 			maybeHandleDUC(&zedrouterCtx)
+
+		case <-t1.C:
+			done = true
 		}
 	}
 	log.Printf("Got for DeviceNetworkConfig: %d usable addresses\n",

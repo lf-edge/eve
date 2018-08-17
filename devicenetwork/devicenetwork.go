@@ -39,6 +39,11 @@ func MakeDeviceNetworkStatus(globalConfig types.DeviceUplinkConfig, oldStatus ty
 	var globalStatus types.DeviceNetworkStatus
 	var err error = nil
 
+	// Copy proxy settings
+	globalStatus.ProxyConfig = globalConfig.ProxyConfig
+	// Apply proxy before we do geolocation calls
+	ProxyToEnv(globalStatus.ProxyConfig)
+
 	globalStatus.UplinkStatus = make([]types.NetworkUplink,
 		len(globalConfig.Uplinks))
 	for ix, u := range globalConfig.Uplinks {
@@ -47,7 +52,7 @@ func MakeDeviceNetworkStatus(globalConfig types.DeviceUplinkConfig, oldStatus ty
 		// XXX should we get statics?
 		link, err := netlink.LinkByName(u.IfName)
 		if err != nil {
-			log.Printf("MakeDeviceNetworkStatus LinkByName %s: %s\n", u, err)
+			log.Printf("MakeDeviceNetworkStatus LinkByName %s: %s\n", u.IfName, err)
 			err = errors.New(fmt.Sprintf("Uplink in config/global does not exist: %v", u))
 			continue
 		}
@@ -90,8 +95,6 @@ func MakeDeviceNetworkStatus(globalConfig types.DeviceUplinkConfig, oldStatus ty
 	}
 	// Immediate check
 	UpdateDeviceNetworkGeo(time.Second, &globalStatus)
-	// Copy proxy settings
-	globalStatus.ProxyConfig = globalConfig.ProxyConfig
 	return globalStatus, err
 }
 
