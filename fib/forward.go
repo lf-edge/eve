@@ -170,7 +170,6 @@ func GetIVArray(itrLocalData *dptypes.ITRLocalData, ivArray []byte) []byte {
 }
 
 func ComputeICV(buf []byte, icvKey []byte) []byte {
-	//mac := hmac.New(sha1.New, icvKey)
 	mac := hmac.New(sha256.New, icvKey)
 	if debug {
 		log.Printf("ICV: ICV will be computed on %s\n", PrintHexBytes(buf))
@@ -217,7 +216,6 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 	capLen uint32,
 	timeStamp time.Time,
 	hash32 uint32,
-	//mapEntry *dptypes.MapCacheEntry,
 	rloc *dptypes.Rloc,
 	iid uint32,
 	itrLocalData *dptypes.ITRLocalData) {
@@ -225,7 +223,6 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 	var fd4 int = itrLocalData.Fd4
 	var useCrypto bool = false
 	var keyId byte = 0
-	//var padLen uint32 = 0
 	var extraLen int = 0
 	var icvKey []byte
 
@@ -261,17 +258,14 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 
 		// Get the offset where IV would start.
 		// Inner payload (encrypted) would follow the IV
-		//offsetStart := dptypes.MAXHEADERLEN + dptypes.ETHHEADERLEN - uint32(aes.BlockSize)
 		offsetStart := dptypes.MAXHEADERLEN + dptypes.ETHHEADERLEN - uint32(dptypes.GCMIVLENGTH)
 		offsetEnd := dptypes.MAXHEADERLEN + capLen
 		payloadLen := offsetEnd - offsetStart
 
 		ok := false
-		//ok, padLen = encryptPayload(
 		// payloadLen includes the IV length
 		// GetIVArray gets and writes the IV to packet buffer
 		ok, extraLen = encryptPayload(
-			//pktBuf[offsetStart:offsetEnd],
 			pktBuf[offsetStart:],
 			payloadLen, encKey, key.EncBlock,
 			GetIVArray(itrLocalData,
@@ -279,8 +273,6 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 		if ok == false {
 			keyId = 0
 			useCrypto = false
-		} else {
-			log.Println("XXXXX Using CRYPTO")
 		}
 	}
 
@@ -318,10 +310,8 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 		if srcPort != -1 {
 			udp.SrcPort = layers.UDPPort(uint16(srcPort))
 		}
-		//udp.SrcPort = layers.UDPPort(rloc.Port)
 		// UDP length changes with crypto
 		// original length + any padding + 20 bytes ICV
-		//udp.Length += dptypes.GCMIVLENGTH + uint16(padLen) + dptypes.ICVLEN
 		udp.Length += dptypes.GCMIVLENGTH + uint16(extraLen) + dptypes.ICVLEN
 	}
 
@@ -345,13 +335,9 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 	// will be len(outerHdr) + capture length - 14 (ethernet header)
 	offsetEnd := uint32(offset) + uint32(outerHdrLen) + (capLen - dptypes.ETHHEADERLEN)
 	if useCrypto == true {
-		//offset = offset - aes.BlockSize
 		offset = offset - dptypes.GCMIVLENGTH
 
 		// add IV, padding and ICV lengths
-		//offsetEnd = offsetEnd + aes.BlockSize + padLen + dptypes.ICVLEN
-		//offsetEnd = offsetEnd + dptypes.GCMIVLENGTH + padLen + dptypes.ICVLEN
-		//offsetEnd = offsetEnd + dptypes.GCMIVLENGTH + uint32(extraLen) + dptypes.ICVLEN
 		offsetEnd = offsetEnd + uint32(extraLen) + dptypes.ICVLEN
 
 		// We do not include outer UDP header for ICV computation
@@ -368,16 +354,17 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 
 	outputSlice := pktBuf[offset:offsetEnd]
 
-	log.Printf("XXXXX Writing %d bytes into ITR socket\n", len(outputSlice))
 	if debug {
+		log.Printf("craftAndSendIPv4LispPacket: Writing %d bytes into ITR socket\n",
+			len(outputSlice))
 		if useCrypto {
-			log.Printf("ITR: LISP %s, IV %s, Crypto %s, ICV %s\n",
+			log.Printf("craftAndSendIPv4LispPacket: ITR: LISP %s, IV %s, Crypto %s, ICV %s\n",
 				PrintHexBytes(outputSlice[28:36]),
 				PrintHexBytes(outputSlice[36:48]),
 				PrintHexBytes(outputSlice[38:len(outputSlice)-20]),
 				PrintHexBytes(outputSlice[len(outputSlice)-20:]))
 		} else {
-			log.Printf("ITR: LISP %s, PlainText %s\n",
+			log.Printf("craftAndSendIPv4LispPacket: ITR: LISP %s, PlainText %s\n",
 				PrintHexBytes(outputSlice[28:36]),
 				PrintHexBytes(outputSlice[36:]))
 		}
@@ -410,12 +397,10 @@ func craftAndSendIPv6LispPacket(packet gopacket.Packet,
 	var fd6 int = itrLocalData.Fd6
 	var useCrypto bool = false
 	var keyId byte = 0
-	//var padLen uint32 = 0
 	var extraLen int = 0
 	var icvKey []byte
 
 	srcAddr := GetIPv6UplinkAddr()
-	log.Printf("XXXXX craftAndSendIPv6LispPacket: UPLINK address is %s.\n", srcAddr)
 
 	// XXX
 	// Should we have a static per-thread entry for this header?
@@ -444,14 +429,12 @@ func craftAndSendIPv6LispPacket(packet gopacket.Packet,
 		encKey := key.EncKey
 		icvKey = key.IcvKey
 
-		//offsetStart := dptypes.MAXHEADERLEN + dptypes.ETHHEADERLEN - uint32(aes.BlockSize)
 		offsetStart := dptypes.MAXHEADERLEN + dptypes.ETHHEADERLEN - uint32(dptypes.GCMIVLENGTH)
 		offsetEnd := dptypes.MAXHEADERLEN + capLen
 		payloadLen := offsetEnd - offsetStart
 
 		ok := false
 		ok, extraLen = encryptPayload(
-			//pktBuf[offsetStart:offsetEnd],
 			pktBuf[offsetStart:],
 			payloadLen,
 			encKey, key.EncBlock,
@@ -459,8 +442,6 @@ func craftAndSendIPv6LispPacket(packet gopacket.Packet,
 		if ok == false {
 			keyId = 0
 			useCrypto = false
-		} else {
-			log.Println("XXXXX Using CRYPTO")
 		}
 	}
 
@@ -474,7 +455,6 @@ func craftAndSendIPv6LispPacket(packet gopacket.Packet,
 	// Can we have it globally and re-use?
 	udp := &layers.UDP{
 		// XXX Source port should be a hash from packet
-		// Hard coding for now.
 		SrcPort: layers.UDPPort(srcPort),
 		DstPort: 4341,
 		Length:  uint16(udpLen),
@@ -501,7 +481,6 @@ func craftAndSendIPv6LispPacket(packet gopacket.Packet,
 		}
 		// UDP length changes with crypto
 		// original length + any padding + 20 bytes ICV
-		//udp.Length += aes.BlockSize + uint16(padLen) + dptypes.ICVLEN
 		udp.Length += dptypes.GCMIVLENGTH + uint16(extraLen) + dptypes.ICVLEN
 	}
 
@@ -529,7 +508,6 @@ func craftAndSendIPv6LispPacket(packet gopacket.Packet,
 		offset = offset - dptypes.GCMIVLENGTH
 
 		// add IV length
-		//offsetEnd = offsetEnd + aes.BlockSize + padLen + dptypes.ICVLEN
 		offsetEnd = offsetEnd + dptypes.GCMIVLENGTH + uint32(extraLen) + dptypes.ICVLEN
 
 		// We do not include outer IP/UDP headers for ICV computation
@@ -542,16 +520,16 @@ func craftAndSendIPv6LispPacket(packet gopacket.Packet,
 	}
 	outputSlice := pktBuf[offset:offsetEnd]
 
-	log.Printf("XXXXX Writing %d bytes into ITR socket\n", len(outputSlice))
 	if debug {
+		log.Printf("craftAndSendIPv6LispPacket: Writing %d bytes into ITR socket\n", len(outputSlice))
 		if useCrypto {
-			log.Printf("ITR: LISP %s, IV %s, Crypto %s, ICV %s\n",
+			log.Printf("craftAndSendIPv6LispPacket: ITR: LISP %s, IV %s, Crypto %s, ICV %s\n",
 				PrintHexBytes(outputSlice[48:56]),
 				PrintHexBytes(outputSlice[56:68]),
 				PrintHexBytes(outputSlice[68:len(outputSlice)-20]),
 				PrintHexBytes(outputSlice[len(outputSlice)-20:]))
 		} else {
-			log.Printf("ITR: LISP %s, PlainText %s\n",
+			log.Printf("craftAndSendIPv6LispPacket: ITR: LISP %s, PlainText %s\n",
 				PrintHexBytes(outputSlice[48:56]),
 				PrintHexBytes(outputSlice[56:]))
 		}

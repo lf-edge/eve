@@ -137,7 +137,6 @@ func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
 			if EtrTable.EphPort != -1 {
 				//ring, fd = StartEtrNat(EtrTable.EphPort, link.IfName)
 				handle, fd = StartEtrNat(EtrTable.EphPort, link.IfName, killChannel)
-				log.Printf("XXXXX Creating ETR thread for UP link %s\n", link.IfName)
 				if debug {
 					log.Printf("HandleDeviceNetworkChange: Creating ETR thread "+
 						"for UP link %s\n", link.IfName)
@@ -189,7 +188,6 @@ func HandleEtrEphPort(ephPort int) {
 	for ifName, link := range EtrTable.EtrTable {
 		//if (link.Ring == nil) && (link.RingFD == -1) {
 		if (link.Handle == nil) && (link.RingFD == -1) {
-			log.Printf("XXXXX Creating ETR thread for UP link %s\n", link.IfName)
 			if debug {
 				log.Printf("HandleEtrEphPort: Creating ETR thread for UP link %s\n",
 					link.IfName)
@@ -210,7 +208,7 @@ func HandleEtrEphPort(ephPort int) {
 		filter := fmt.Sprintf(etrNatPortMatch, ephPort)
 		//link.Ring.SetBPFFilter(filter)
 
-		// For AF_PACKET sockers old filter is replaced with new one.
+		// For AF_PACKET socket case old filter is replaced with new one.
 		ins, err := pcap.CompileBPFFilter(layers.LinkTypeEthernet,
 			1600, filter)
 		if err != nil {
@@ -279,25 +277,23 @@ func verifyAndInject(fd6 int,
 	if iid == uint32(0xFFFFFF) {
 		return true
 	}
-	log.Println("XXXXX IID of packet is:", iid)
+	if debug {
+		log.Println("verifyAndInject: IID of input packet is:", iid)
+	}
 	packetOffset := dptypes.LISPHEADERLEN
 
 	// offset of destination address inside ipv6 header
-	//destAddrOffset := 24
 	gcmOverhead := 0
 	icvLen := 0
 
 	keyId := fib.GetLispKeyId(buf[0:8])
 	if keyId != 0 {
 		if decapKeys == nil {
-			log.Printf("verifyAndInject: Decap keys for this RLOC have not arrived yet\n")
+			log.Printf("verifyAndInject: Decap keys for RLOC have not arrived yet\n")
 			fib.AddDecapStatistics("no-decrypt-key", 1, uint64(n), currUnixSeconds)
 			return false
 		}
 
-		//destAddrOffset += aes.BlockSize
-		//destAddrOffset += dptypes.GCMIVLENGTH
-		//packetOffset += aes.BlockSize
 		packetOffset += dptypes.GCMIVLENGTH
 
 		// Compute and compare ICV of packet.
@@ -306,12 +302,14 @@ func verifyAndInject(fd6 int,
 		key := decapKeys.Keys[keyId-1]
 		icvKey := key.IcvKey
 		if icvKey == nil {
-			log.Printf("verifyAndInject: ETR Key id %d had nil ICV key value\n", keyId)
+			log.Printf("verifyAndInject: ETR Key id %d has nil ICV key value\n", keyId)
 			return false
 		}
 		icv := fib.ComputeICV(buf[0:n-dptypes.ICVLEN], icvKey)
+		// Get ICV present in the incoming packet
 		pktIcv := buf[n-dptypes.ICVLEN : n]
 
+		// Compare computed ICV with ICV that's present in the input packet
 		if !bytes.Equal(icv, pktIcv) {
 			log.Printf(
 				"verifyAndInject: Pkt ICV %x and calculated ICV %x do not match.\n",
@@ -319,25 +317,12 @@ func verifyAndInject(fd6 int,
 			fib.AddDecapStatistics("ICV-error", 1, uint64(n), currUnixSeconds)
 			return false
 		}
-		log.Println("XXXXX ICVs match")
 
 		// Decrypt the packet before sending out.
 		// Read the IV from packet buffer.
 		ivArray := buf[dptypes.LISPHEADERLEN:packetOffset]
 
 		packet := buf[packetOffset : n-dptypes.ICVLEN]
-
-		// The following check is not necessary with AES/GCM.
-		// 16 byte boundary is not used while encrypting.
-		/*
-			cryptoLen := n - packetOffset - dptypes.ICVLEN
-			if cryptoLen%16 != 0 {
-				// AES encrypted packet should have a lenght that is multiple of 16
-				// aes.BlockSize is 16
-				log.Printf("verifyAndInject: Invalid Crypto packet length %d\n", cryptoLen)
-				return false
-			}
-		*/
 
 		if len(decapKeys.Keys) == 0 {
 			log.Printf(
@@ -346,7 +331,6 @@ func verifyAndInject(fd6 int,
 		}
 
 		block := key.DecBlock
-		//mode := cipher.NewCBCDecrypter(block, ivArray)
 		aesGcm, err := cipher.NewGCM(block)
 		if err != nil {
 			log.Printf("VerifyAndInject: GCM cipher creation failed: %s\n", err)
@@ -359,7 +343,6 @@ func verifyAndInject(fd6 int,
 				fib.PrintHexBytes(packet),
 				fib.PrintHexBytes(pktIcv))
 		}
-		//mode.CryptBlocks(packet, packet)
 		_, err = aesGcm.Open(packet[:0], ivArray, packet, nil)
 		if err != nil {
 			log.Printf("verifyAndInject: Packet decryption failed: %s\n", err)
@@ -369,7 +352,7 @@ func verifyAndInject(fd6 int,
 		icvLen = dptypes.ICVLEN
 	}
 
-	// Zededa's use case only have ipv6 EIDs. Check if the version
+	// Zededa's use case only has ipv6 EIDs. Check if the version
 	// of inner packet is ipv6. Else drop the packet and increment
 	// error count.
 	var msb byte = buf[packetOffset]
@@ -385,9 +368,7 @@ func verifyAndInject(fd6 int,
 	var destAddr [16]byte
 	for i, _ := range destAddr {
 		// offset is lisp hdr size + start offset of ip addresses in v6 hdr
-		//destAddr[i] = buf[dptypes.LISPHEADERLEN+destAddrOffset+i]
 		destAddr[i] = buf[destAddrOffset+i]
-		//pktEid[i] = destAddr[i]
 	}
 
 	err := syscall.Sendto(fd6, buf[packetOffset:packetEnd], 0, &syscall.SockaddrInet6{
@@ -396,7 +377,7 @@ func verifyAndInject(fd6 int,
 		Addr:   destAddr,
 	})
 	if err != nil {
-		log.Printf("verifyAndInject: Failed injecting ETR packet: %s.\n", err)
+		log.Printf("verifyAndInject: Failed decapsulating ETR packet: %s.\n", err)
 		return false
 	}
 	fib.AddDecapStatistics("good-packets", 1, uint64(n), currUnixSeconds)
@@ -488,7 +469,9 @@ func ProcessETRPkts(fd6 int, serverConn *net.UDPConn) bool {
 
 	for {
 		n, saddr, err := serverConn.ReadFromUDP(buf)
-		log.Println("XXXXX Received", n, "bytes in ETR")
+		if debug {
+			log.Println("ProcessETRPkts: Received", n, "bytes in ETR")
+		}
 		if err != nil {
 			log.Fatal("ProcessETRPkts: Fatal error during ETR processing\n")
 			return false
@@ -497,7 +480,7 @@ func ProcessETRPkts(fd6 int, serverConn *net.UDPConn) bool {
 		decapKeys := fib.LookupDecapKeys(saddr.IP)
 		ok := verifyAndInject(fd6, buf, n, decapKeys, currUnixSeconds)
 		if ok == false {
-			log.Printf("Failed injecting ETR packet from port 4341\n")
+			log.Printf("Failed consuming ETR packet with dest port 4341\n")
 		}
 	}
 }
@@ -520,7 +503,7 @@ func ProcessCapturedPkts(fd6 int,
 			case <-killChannel:
 				log.Printf("ProcessCapturedPkts: Error capturing packets: %s\n", err)
 				log.Printf(
-					"ProcessCapturedPkts: It could be the handle closure leading to this.\n")
+					"ProcessCapturedPkts: It could be the ETR thread handle closure leading to this.\n")
 				return
 			default:
 				continue
@@ -528,7 +511,9 @@ func ProcessCapturedPkts(fd6 int,
 		}
 		capLen := ci.CaptureLength
 		currUnixSeconds := ci.Timestamp.Unix()
-		log.Printf("XXXXX Captured ETR packet of length %d\n", capLen)
+		if debug {
+			log.Printf("ProcessCapturedPkts: Captured ETR packet of length %d\n", capLen)
+		}
 		packet := gopacket.NewPacket(
 			pktBuf[:capLen],
 			layers.LinkTypeEthernet,
@@ -572,7 +557,7 @@ func ProcessCapturedPkts(fd6 int,
 
 		ok := verifyAndInject(fd6, payload, len(payload), decapKeys, currUnixSeconds)
 		if ok == false {
-			log.Printf("ProcessCapturedPkts: ETR Failed injecting packet from RLOC %s\n",
+			log.Printf("ProcessCapturedPkts: ETR Failed consuming packet from RLOC %s\n",
 				srcIP.String())
 		}
 	}

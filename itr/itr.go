@@ -201,7 +201,12 @@ func SetupPacketCapture(iface string, snapLen int) *afpacket.TPacket {
 		// Make PF_RING capture only transmitted packet
 		ring.SetDirection(pfring.TransmitOnly)
 	*/
-	filter := "ip6"
+	filter := ""
+	if iface == "dbo1x0" {
+		filter = "ip6"
+	} else {
+		filter = "inbound and ip6"
+	}
 	if debug {
 		log.Printf("SetupPacketCapture: Compiling BPF filter (%s) for interface %s\n",
 			filter, iface)
@@ -409,7 +414,10 @@ eidLoop:
 
 			var hash32 uint32 = srcAddrBytes ^ dstAddrBytes ^ ports
 
-			log.Printf("XXXXX Packet capture length is %d\n", pktLen)
+			if debug {
+				log.Printf("startWorking: Packet of length %d captured on interface %s\n",
+					pktLen, ifname)
+			}
 			LookupAndSend(packet, pktBuf[:],
 				uint32(pktLen), ci.Timestamp, iid, hash32,
 				ifname, srcAddr, dstAddr,

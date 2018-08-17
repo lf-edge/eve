@@ -25,6 +25,7 @@ import (
 // 5 minutes scrub threshold
 const SCRUBTHRESHOLD = 5 * 60
 const DATABASEWRITEFILE = "/show-ztr"
+const STATSPUNTINTERVAL = 5
 
 var cache *dptypes.MapCacheTable
 var decaps *dptypes.DecapTable
@@ -523,6 +524,10 @@ func LookupDecapKeys(ip net.IP) *dptypes.DecapKeys {
 	if ok {
 		return decapKeys
 	}
+	if debug {
+		log.Printf("LookupDecapKeys: Decap keys cannot be found for %s\n",
+			ip.String())
+	}
 	return nil
 }
 
@@ -809,12 +814,13 @@ func dumpDatabaseState() {
 	w.Flush()
 }
 
-// Stats thread starts every 5 seconds and punts map cache statistics to lispers.net.
+// Stats thread starts every STATSPUNTINTERVAL seconds
+// and punts map cache statistics to lispers.net.
 func StatsThread(puntChannel chan []byte) {
 	log.Printf("Starting statistics thread.\n")
 	for {
 		// We collect and transport statistic to lispers.net every 5 seconds
-		time.Sleep(5 * time.Second)
+		time.Sleep(STATSPUNTINTERVAL * time.Second)
 
 		// Send out encap & decap statistics to lispers.net
 		sendEncapStatistics(puntChannel)
