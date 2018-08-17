@@ -237,10 +237,18 @@ if [ -f $CONFIGDIR/allow-usb-override -a -b $SPECIAL ]; then
 	keyfile=/mnt/$key.json
 	if [ -f $keyfile ]; then
 	    echo "Found $keyfile on $SPECIAL"
-	    echo "Copying from $keyfile to $CONFIGDIR/DeviceUplinkConfig/override.json"
-	    cp -p $keyfile $CONFIGDIR/DeviceUplinkConfig/override.json
-	    # XXX test before removing file?
-	    rm $CONFIGDIR/allow-usb-override
+	    echo "Testing $keyfile"
+	    mkdir -p $TMPDIR/try/
+	    cp -p $keyfile $TMPDIR/try/
+	    /opt/zededa/bin/client -s -r 5 -u try ping
+	    if [ $? == 0 ] ; then
+		echo "Copying from $keyfile to $CONFIGDIR/DeviceUplinkConfig/override.json"
+		cp -p $keyfile $CONFIGDIR/DeviceUplinkConfig/override.json
+		# No more override allowed
+		rm $CONFIGDIR/allow-usb-override
+	    else
+		echo "Failed to connect to zedcloud using $keyfile; ignored"
+	    fi
 	else
 	    echo "$keyfile not found on $SPECIAL"
 	fi
