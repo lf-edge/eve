@@ -246,7 +246,7 @@ func Run() {
 	t1 := time.NewTimer(5 * time.Second)
 
 	for clientCtx.UsableAddressCount == 0 {
-		log.Printf("Waiting for DeviceNetworkConfig\n")
+		log.Printf("Waiting for UsableAddreessCount\n")
 		select {
 		case change := <-subDeviceNetworkConfig.C:
 			subDeviceNetworkConfig.ProcessChange(change)
