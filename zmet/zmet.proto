@@ -371,3 +371,65 @@ message ZMetricMsg {
    }
    repeated appMetric am = 5;
 }
+
+message DatabaseMap {
+	uint64 IID = 1;
+	repeated string EIDs = 2;
+}
+
+message MapCacheEntry {
+	uint64 IID = 1;
+	string EID = 2;
+	repeated string Rlocs = 3;
+}
+
+message DecapKey {
+	string Rloc = 1;
+	uint64 Port = 2;
+	uint64 KeyCount = 3;
+}
+
+message ZInfoLisp {
+	uint64 ItrCryptoPort = 1;
+	uint64 EtrNatPort = 2;
+	repeated string Interfaces = 3;
+	repeated DatabaseMap DatabaseMaps = 4;
+	repeated MapCacheEntry MapCacheEntries = 5;
+	repeated DecapKey DecapKeys = 6;
+}
+
+message RlocStats {
+	string Rloc = 1;
+	uint64 Packets = 2;
+	uint64 Bytes = 3;
+	uint64 SecondsSinceLastPacket = 4;
+}
+
+message EidStats {
+	uint64 IID = 1;
+	string EID = 2;
+	repeated RlocStats RlocStatsEntries = 3;
+}
+
+message PktStat {
+	uint64 Packets = 1;
+	uint64 Bytes = 2;
+}
+
+message ZMetricLisp {
+	// Encap Statistics
+	repeated EidStats EidStatsEntries = 1; // ITR Statistics
+	PktStat ItrPacketSendError = 2;
+	PktStat InvalidEidError = 3;
+
+	// Decap Statistics
+	PktStat NoDecryptKey = 4;
+	PktStat OuterHeaderError = 5;
+	PktStat BadInnerVersion = 6;
+	PktStat GoodPackets = 7;
+	PktStat ICVError = 8;
+	PktStat LispHeaderError = 9;
+	PktStat CheckSumError = 10;
+	PktStat DecapReInjectError = 11;
+	PktStat DecryptError = 12;
+}
