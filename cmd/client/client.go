@@ -63,10 +63,9 @@ func Run() {
 	dirPtr := flag.String("d", "/config", "Directory with certs etc")
 	stdoutPtr := flag.Bool("s", false, "Use stdout instead of console")
 	noPidPtr := flag.Bool("p", false, "Do not check for running client")
-	// XXX how can we pull a DeviceUplinkConfig from a dir/file into
-	// the code? Subagent for ""?
-	// Note that file must be called something different than override
-	// and global. test.json?
+	// DUCDir is used for testing a new DeviceUplinkConfig. Note that
+	// the file in that directory must be called something different than
+	// "override.json" and "global.json" since those have lower priority.
 	DUCDirPtr := flag.String("u", "xyzzy", "Uplink override subdir")
 	maxRetriesPtr := flag.Int("r", 0, "Max ping retries")
 
