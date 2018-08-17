@@ -225,10 +225,16 @@ fi
 mkdir -p $DUCDIR
 # Look for a USB stick with a key'ed file
 # If found it replaces any build override file in /config
-SPECIAL=/dev/sdb1
+# XXX alternative is to use a designated UUID and -t.
+# cgpt find -t ebd0a0a2-b9e5-4433-87c0-68b6b72699c7
+# XXX invent a unique uuid for the above?
+SPECIAL=`cgpt find -l DeviceUplinkConfig`
+echo "Found SPECIAL: $SPECIAL"
+if [ -z $SPECIAL ]; then
+    SPECIAL=/dev/sdb1
+fi
 if [ -f $CONFIGDIR/allow-usb-override -a -b $SPECIAL ]; then
     key=`cat /config/root-certificate.pem /config/server /config/device.cert.pem | openssl sha256 | awk '{print $2}'`
-    # XXX specific to E100?
     mount -t vfat $SPECIAL /mnt
     if [ $? != 0 ]; then
 	echo "mount $SPECIAL failed: $?"
