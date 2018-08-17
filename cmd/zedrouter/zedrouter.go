@@ -134,6 +134,34 @@ func Run() {
 	zedrouterCtx.PubDeviceUplinkConfig = pubDeviceUplinkConfig
 	zedrouterCtx.PubDeviceNetworkStatus = pubDeviceNetworkStatus
 
+	// Create publish before subscribing and activating subscriptions
+	// Also need to do this before we wait for IP addresses since
+	// zedagent waits for these to be published/exist, and zedagent
+	// runs the fallback timers after that wait.
+	pubNetworkObjectStatus, err := pubsub.Publish(agentName,
+		types.NetworkObjectStatus{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedrouterCtx.pubNetworkObjectStatus = pubNetworkObjectStatus
+
+	pubNetworkServiceStatus, err := pubsub.Publish(agentName,
+		types.NetworkServiceStatus{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedrouterCtx.pubNetworkServiceStatus = pubNetworkServiceStatus
+
+	pubAppNetworkStatus, err := pubsub.Publish(agentName,
+		types.AppNetworkStatus{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedrouterCtx.pubAppNetworkStatus = pubAppNetworkStatus
+	pubAppNetworkStatus.ClearRestarted()
+
+	appNumAllocatorInit(pubAppNetworkStatus)
+
 	// Get the initial DeviceNetworkConfig
 	// Subscribe from "" means /var/tmp/zededa/
 	subDeviceNetworkConfig, err := pubsub.Subscribe("",
@@ -208,31 +236,6 @@ func Run() {
 		zedrouterCtx.UsableAddressCount)
 
 	handleInit(runDirname, pubDeviceNetworkStatus)
-
-	// Create publish before subscribing and activating subscriptions
-	pubNetworkObjectStatus, err := pubsub.Publish(agentName,
-		types.NetworkObjectStatus{})
-	if err != nil {
-		log.Fatal(err)
-	}
-	zedrouterCtx.pubNetworkObjectStatus = pubNetworkObjectStatus
-
-	pubNetworkServiceStatus, err := pubsub.Publish(agentName,
-		types.NetworkServiceStatus{})
-	if err != nil {
-		log.Fatal(err)
-	}
-	zedrouterCtx.pubNetworkServiceStatus = pubNetworkServiceStatus
-
-	pubAppNetworkStatus, err := pubsub.Publish(agentName,
-		types.AppNetworkStatus{})
-	if err != nil {
-		log.Fatal(err)
-	}
-	zedrouterCtx.pubAppNetworkStatus = pubAppNetworkStatus
-	pubAppNetworkStatus.ClearRestarted()
-
-	appNumAllocatorInit(pubAppNetworkStatus)
 
 	// Subscribe to network objects and services from zedagent
 	subNetworkObjectConfig, err := pubsub.Subscribe("zedagent",
