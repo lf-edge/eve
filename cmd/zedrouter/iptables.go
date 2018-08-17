@@ -20,7 +20,7 @@ func iptableCmdOut(dolog bool, args ...string) (string, error) {
 	var out []byte
 	var err error
 	if dolog {
-		out, err = wrap.Command(cmd, args...).Output()
+		out, err = wrap.Command(cmd, args...).CombinedOutput()
 	} else {
 		out, err = exec.Command(cmd, args...).Output()
 	}
@@ -43,7 +43,7 @@ func ip6tableCmdOut(dolog bool, args ...string) (string, error) {
 	var out []byte
 	var err error
 	if dolog {
-		out, err = wrap.Command(cmd, args...).Output()
+		out, err = wrap.Command(cmd, args...).CombinedOutput()
 	} else {
 		out, err = exec.Command(cmd, args...).Output()
 	}

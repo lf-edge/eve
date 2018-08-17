@@ -13,6 +13,7 @@ import (
 	"github.com/satori/go.uuid"
 	"github.com/zededa/api/zmet"
 	"github.com/zededa/go-provision/agentlog"
+	"github.com/zededa/go-provision/devicenetwork"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
@@ -42,15 +43,6 @@ var nilUUID uuid.UUID
 
 // Set from Makefile
 var Version = "No version specified"
-
-// XXX generalize to DNCContext
-type clientContext struct {
-	usableAddressCount     int
-	manufacturerModel      string
-	subDeviceNetworkConfig *pubsub.Subscription
-	deviceNetworkConfig    types.DeviceNetworkConfig
-	deviceNetworkStatus    types.DeviceNetworkStatus
-}
 
 // Assumes the config files are in identityDirname, which is /config
 // by default. The files are
@@ -107,6 +99,7 @@ func Run() {
 		"selfRegister": false,
 		"ping":         false,
 		"getUuid":      false,
+		"dhcpcd":       false,
 	}
 	for _, op := range args {
 		if _, ok := operations[op]; ok {
@@ -167,13 +160,30 @@ func Run() {
 			DNCFilename)
 		time.Sleep(time.Second)
 		tries += 1
-		if tries == 120 {	// Two minutes
+		if tries == 120 { // Two minutes
 			log.Printf("Falling back to using default.json\n")
 			model = "default.json"
 		}
 	}
 
-	clientCtx := clientContext{manufacturerModel: model}
+	pubDeviceUplinkConfig, err := pubsub.Publish(agentName,
+		types.DeviceUplinkConfig{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	pubDeviceUplinkConfig.ClearRestarted()
+
+	clientCtx := devicenetwork.DeviceNetworkContext{
+		ManufacturerModel:      model,
+		DeviceNetworkConfig:    &types.DeviceNetworkConfig{},
+		DeviceUplinkConfig:     &types.DeviceUplinkConfig{},
+		DeviceNetworkStatus:    &types.DeviceNetworkStatus{},
+		PubDeviceUplinkConfig:  pubDeviceUplinkConfig,
+		PubDeviceNetworkStatus: nil,
+	}
+
+	// Look for address changes
+	addrChanges := devicenetwork.AddrChangeInit(&clientCtx)
 
 	// Get the initial DeviceNetworkConfig
 	// Subscribe from "" means /var/tmp/zededa/
@@ -182,19 +192,54 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	subDeviceNetworkConfig.ModifyHandler = handleDNCModify
-	subDeviceNetworkConfig.DeleteHandler = handleDNCDelete
-	clientCtx.subDeviceNetworkConfig = subDeviceNetworkConfig
+	subDeviceNetworkConfig.ModifyHandler = devicenetwork.HandleDNCModify
+	subDeviceNetworkConfig.DeleteHandler = devicenetwork.HandleDNCDelete
+	clientCtx.SubDeviceNetworkConfig = subDeviceNetworkConfig
 	subDeviceNetworkConfig.Activate()
 
-	// After 5 seconds we check if we have a UUID and proceed
+	// We get DeviceUplinkConfig from three sources in this priority:
+	// 1. zedagent - used in zedrouter but not here
+	// 2. override file in /var/tmp/zededa/NetworkUplinkConfig/override.json
+	// 3. self-generated file derived from per-platform DeviceNetworkConfig
+	subDeviceUplinkConfigO, err := pubsub.Subscribe("",
+		types.DeviceUplinkConfig{}, false, &clientCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subDeviceUplinkConfigO.ModifyHandler = devicenetwork.HandleDUCModify
+	subDeviceUplinkConfigO.DeleteHandler = devicenetwork.HandleDUCDelete
+	clientCtx.SubDeviceUplinkConfigO = subDeviceUplinkConfigO
+	subDeviceUplinkConfigO.Activate()
+
+	subDeviceUplinkConfigS, err := pubsub.Subscribe(agentName,
+		types.DeviceUplinkConfig{}, false, &clientCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subDeviceUplinkConfigS.ModifyHandler = devicenetwork.HandleDUCModify
+	subDeviceUplinkConfigS.DeleteHandler = devicenetwork.HandleDUCDelete
+	clientCtx.SubDeviceUplinkConfigS = subDeviceUplinkConfigS
+	subDeviceUplinkConfigS.Activate()
+
+	// After 5 seconds we check; if we already have a UUID we continue
+	// with that one
 	t1 := time.NewTimer(5 * time.Second)
 
-	for clientCtx.usableAddressCount == 0 {
+	for clientCtx.UsableAddressCount == 0 {
 		log.Printf("Waiting for DeviceNetworkConfig\n")
 		select {
 		case change := <-subDeviceNetworkConfig.C:
 			subDeviceNetworkConfig.ProcessChange(change)
+
+		case change := <-subDeviceUplinkConfigO.C:
+			subDeviceUplinkConfigO.ProcessChange(change)
+
+		case change := <-subDeviceUplinkConfigS.C:
+			subDeviceUplinkConfigS.ProcessChange(change)
+
+		case change := <-addrChanges:
+			log.Printf("Got address change\n")
+			devicenetwork.AddrChange(&clientCtx, change)
 
 		case <-t1.C:
 			// If we already know a uuid we can skip
@@ -202,7 +247,7 @@ func Run() {
 			// an onboarded system without /config/hardwaremodel.
 			// Unlikely to have a network outage during that
 			// upgrade *and* require an override.
-			if clientCtx.usableAddressCount == 0 &&
+			if clientCtx.UsableAddressCount == 0 &&
 				operations["getUuid"] && oldUUID != nilUUID {
 
 				log.Printf("Already have a UUID %s; declaring success\n",
@@ -217,13 +262,18 @@ func Run() {
 		}
 	}
 	log.Printf("Got for DeviceNetworkConfig: %d addresses\n",
-		clientCtx.usableAddressCount)
+		clientCtx.UsableAddressCount)
+	if operations["dhcpcd"] {
+		log.Printf("dhcpcd operation done\n")
+		return
+	}
 
 	// Inform ledmanager that we have uplink addresses
 	types.UpdateLedManagerConfig(2)
 
+	devicenetwork.ProxyToEnv(clientCtx.DeviceNetworkStatus.ProxyConfig)
 	zedcloudCtx := zedcloud.ZedCloudContext{
-		DeviceNetworkStatus: &clientCtx.deviceNetworkStatus,
+		DeviceNetworkStatus: clientCtx.DeviceNetworkStatus,
 		Debug:               true,
 		FailureFunc:         zedcloud.ZedCloudFailure,
 		SuccessFunc:         zedcloud.ZedCloudSuccess,
