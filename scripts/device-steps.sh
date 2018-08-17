@@ -265,9 +265,9 @@ if [ -f $CONFIGDIR/DeviceUplinkConfig/override.json ]; then
     cp -p $CONFIGDIR/DeviceUplinkConfig/override.json $DUCDIR
 fi
 
-// Get IP addresses
-// XXX we should be able to do this in the initial call
-// However, we need it before we run ntpd
+# Get IP addresses
+# XXX we should be able to do this in the initial call
+# However, we need it before we run ntpd
 echo $BINDIR/client -d $CONFIGDIR dhcpcd
 $BINDIR/client -d $CONFIGDIR dhcpcd
 ifconfig
