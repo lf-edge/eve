@@ -244,8 +244,8 @@ if [ -f $CONFIGDIR/allow-usb-override -a -b $SPECIAL ]; then
 	if [ -f $keyfile ]; then
 	    echo "Found $keyfile on $SPECIAL"
 	    echo "Testing $keyfile"
-	    mkdir -p $TMPDIR/try/
-	    cp -p $keyfile $TMPDIR/try/
+	    mkdir -p $TMPDIR/try/DeviceUplinkConfig
+	    cp -p $keyfile $TMPDIR/try/DeviceUplinkConfig
 	    /opt/zededa/bin/client -s -r 5 -u try ping
 	    if [ $? == 0 ] ; then
 		echo "Copying from $keyfile to $CONFIGDIR/DeviceUplinkConfig/override.json"
