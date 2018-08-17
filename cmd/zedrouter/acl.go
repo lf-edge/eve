@@ -275,6 +275,7 @@ func applyACLRules(rules IptablesRuleList, ifname string, isMgmt bool,
 
 // Returns a list of iptables commands, witout the initial "-A FORWARD"
 // XXX rename myIP to bridgeIP
+// XXX need bridgeName + vifName?
 func aclToRules(ifname string, ACLs []types.ACE, ipVer int,
 	myIP string, appIP string, underlaySshPortMap uint) (IptablesRuleList, error) {
 	rulesList := IptablesRuleList{}
