@@ -63,12 +63,21 @@ func Run() {
 	dirPtr := flag.String("d", "/config", "Directory with certs etc")
 	stdoutPtr := flag.Bool("s", false, "Use stdout instead of console")
 	noPidPtr := flag.Bool("p", false, "Do not check for running client")
+	// DUCDir is used for testing a new DeviceUplinkConfig. Note that
+	// the file in that directory must be called something different than
+	// "override.json" and "global.json" since those have lower priority.
+	DUCDirPtr := flag.String("u", "", "Uplink override subdir")
+	maxRetriesPtr := flag.Int("r", 0, "Max ping retries")
+
 	flag.Parse()
+
 	versionFlag := *versionPtr
 	forceOnboardingCert := *forcePtr
 	identityDirname := *dirPtr
 	useStdout := *stdoutPtr
 	noPidFlag := *noPidPtr
+	DUCDir := *DUCDirPtr
+	maxRetries := *maxRetriesPtr
 	args := flag.Args()
 	if versionFlag {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
@@ -198,9 +207,24 @@ func Run() {
 	subDeviceNetworkConfig.Activate()
 
 	// We get DeviceUplinkConfig from three sources in this priority:
-	// 1. zedagent - used in zedrouter but not here
+	// 1. zedagent - used in zedrouter but not here, but we have the DUCDir
+	// for testing instead
 	// 2. override file in /var/tmp/zededa/NetworkUplinkConfig/override.json
 	// 3. self-generated file derived from per-platform DeviceNetworkConfig
+	var subDeviceUplinkConfigT *pubsub.Subscription
+	if DUCDir != "" {
+		var err error
+		subDeviceUplinkConfigT, err = pubsub.SubscribeScope("", DUCDir,
+			types.DeviceUplinkConfig{}, false, &clientCtx)
+		if err != nil {
+			log.Fatal(err)
+		}
+		subDeviceUplinkConfigT.ModifyHandler = devicenetwork.HandleDUCModify
+		subDeviceUplinkConfigT.DeleteHandler = devicenetwork.HandleDUCDelete
+		clientCtx.SubDeviceUplinkConfigA = subDeviceUplinkConfigT
+		subDeviceUplinkConfigT.Activate()
+	}
+
 	subDeviceUplinkConfigO, err := pubsub.Subscribe("",
 		types.DeviceUplinkConfig{}, false, &clientCtx)
 	if err != nil {
@@ -221,15 +245,28 @@ func Run() {
 	clientCtx.SubDeviceUplinkConfigS = subDeviceUplinkConfigS
 	subDeviceUplinkConfigS.Activate()
 
+	if DUCDir == "" {
+		// Avoid a nil pointer check in select statement
+		subDeviceUplinkConfigT = subDeviceUplinkConfigO
+	}
+
 	// After 5 seconds we check; if we already have a UUID we continue
 	// with that one
 	t1 := time.NewTimer(5 * time.Second)
+	done := clientCtx.UsableAddressCount != 0
 
-	for clientCtx.UsableAddressCount == 0 {
-		log.Printf("Waiting for DeviceNetworkConfig\n")
+	// Make sure we wait for a while to process all the DeviceUplinkConfigs
+	for clientCtx.UsableAddressCount == 0 || !done {
+		log.Printf("Waiting for UsableAddressCount %d and done %v\n",
+			clientCtx.UsableAddressCount, done)
 		select {
 		case change := <-subDeviceNetworkConfig.C:
+			log.Printf("Got subDeviceNetworkConfig\n")
 			subDeviceNetworkConfig.ProcessChange(change)
+
+		case change := <-subDeviceUplinkConfigT.C:
+			// If DUCDir == "" this will process "O" which is fine
+			subDeviceUplinkConfigT.ProcessChange(change)
 
 		case change := <-subDeviceUplinkConfigO.C:
 			subDeviceUplinkConfigO.ProcessChange(change)
@@ -238,10 +275,10 @@ func Run() {
 			subDeviceUplinkConfigS.ProcessChange(change)
 
 		case change := <-addrChanges:
-			log.Printf("Got address change\n")
 			devicenetwork.AddrChange(&clientCtx, change)
 
 		case <-t1.C:
+			done = true
 			// If we already know a uuid we can skip
 			// This might not set hardwaremodel when upgrading
 			// an onboarded system without /config/hardwaremodel.
@@ -454,6 +491,11 @@ func Run() {
 				continue
 			}
 			retryCount += 1
+			if maxRetries != 0 && retryCount > maxRetries {
+				log.Printf("Exceeded %d retries for ping\n",
+					maxRetries)
+				os.Exit(1)
+			}
 			delay = 2 * (delay + time.Second)
 			if delay > maxDelay {
 				delay = maxDelay
@@ -474,6 +516,11 @@ func Run() {
 				continue
 			}
 			retryCount += 1
+			if maxRetries != 0 && retryCount > maxRetries {
+				log.Printf("Exceeded %d retries for selfRegister\n",
+					maxRetries)
+				os.Exit(1)
+			}
 			delay = 2 * (delay + time.Second)
 			if delay > maxDelay {
 				delay = maxDelay
@@ -521,6 +568,11 @@ func Run() {
 			}
 
 			retryCount += 1
+			if maxRetries != 0 && retryCount > maxRetries {
+				log.Printf("Exceeded %d retries for getUuid\n",
+					maxRetries)
+				os.Exit(1)
+			}
 			delay = 2 * (delay + time.Second)
 			if delay > maxDelay {
 				delay = maxDelay
