@@ -95,7 +95,7 @@ func fetchIprulesCounters() []AclCounters {
 			counters = append(counters, c...)
 		}
 	}
-	// XXX also need
+	// XXX also need this for the counters
 	// out, err = iptableCmdOut(false, "-t", "raw", "-S", "PREROUTING", "-v")
 
 	// XXX Only needed to get dbo1x0 stats
@@ -204,7 +204,7 @@ func parseCounters(out string, table string, overlay bool) []AclCounters {
 type AclCounters struct {
 	Table   string
 	Chain   string
-	Overlay bool
+	Overlay bool // XXX IpVersion
 	IIf     string
 	OIf     string
 	Log     bool

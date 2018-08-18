@@ -166,7 +166,8 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 	deleteDnsmasqConfiglet(bridgeName)
 	stopDnsmasq(bridgeName, false)
 
-	// XXX collect ipsets?
+	// No need to pass any ipsets, since the network is created before
+	// the applications which use it.
 	createDnsmasqConfiglet(bridgeName, status.BridgeIPAddr, &config,
 		hostsDirpath, nil)
 	startDnsmasq(bridgeName)
