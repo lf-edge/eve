@@ -248,6 +248,7 @@ if [ -f $CONFIGDIR/allow-usb-override -a -b $SPECIAL ]; then
 	    cp -p $keyfile $TMPDIR/try/DeviceUplinkConfig
 	    /opt/zededa/bin/client -s -r 5 -u try ping
 	    if [ $? == 0 ] ; then
+		echo "Tested $keyfile - passed"
 		echo "Copying from $keyfile to $CONFIGDIR/DeviceUplinkConfig/override.json"
 		cp -p $keyfile $CONFIGDIR/DeviceUplinkConfig/override.json
 		# No more override allowed
