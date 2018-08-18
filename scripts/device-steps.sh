@@ -225,10 +225,16 @@ fi
 mkdir -p $DUCDIR
 # Look for a USB stick with a key'ed file
 # If found it replaces any build override file in /config
-SPECIAL=/dev/sdb1
+# XXX alternative is to use a designated UUID and -t.
+# cgpt find -t ebd0a0a2-b9e5-4433-87c0-68b6b72699c7
+# XXX invent a unique uuid for the above?
+SPECIAL=`cgpt find -l DeviceUplinkConfig`
+echo "Found SPECIAL: $SPECIAL"
+if [ -z $SPECIAL ]; then
+    SPECIAL=/dev/sdb1
+fi
 if [ -f $CONFIGDIR/allow-usb-override -a -b $SPECIAL ]; then
     key=`cat /config/root-certificate.pem /config/server /config/device.cert.pem | openssl sha256 | awk '{print $2}'`
-    # XXX specific to E100?
     mount -t vfat $SPECIAL /mnt
     if [ $? != 0 ]; then
 	echo "mount $SPECIAL failed: $?"
@@ -237,10 +243,19 @@ if [ -f $CONFIGDIR/allow-usb-override -a -b $SPECIAL ]; then
 	keyfile=/mnt/$key.json
 	if [ -f $keyfile ]; then
 	    echo "Found $keyfile on $SPECIAL"
-	    echo "Copying from $keyfile to $CONFIGDIR/DeviceUplinkConfig/override.json"
-	    cp -p $keyfile $CONFIGDIR/DeviceUplinkConfig/override.json
-	    # XXX test before removing file?
-	    rm $CONFIGDIR/allow-usb-override
+	    echo "Testing $keyfile"
+	    mkdir -p $TMPDIR/try/DeviceUplinkConfig
+	    cp -p $keyfile $TMPDIR/try/DeviceUplinkConfig
+	    /opt/zededa/bin/client -s -r 5 -u try ping
+	    if [ $? == 0 ] ; then
+		echo "Tested $keyfile - passed"
+		echo "Copying from $keyfile to $CONFIGDIR/DeviceUplinkConfig/override.json"
+		cp -p $keyfile $CONFIGDIR/DeviceUplinkConfig/override.json
+		# No more override allowed
+		rm $CONFIGDIR/allow-usb-override
+	    else
+		echo "Failed to connect to zedcloud using $keyfile; ignored"
+	    fi
 	else
 	    echo "$keyfile not found on $SPECIAL"
 	fi
@@ -251,9 +266,9 @@ if [ -f $CONFIGDIR/DeviceUplinkConfig/override.json ]; then
     cp -p $CONFIGDIR/DeviceUplinkConfig/override.json $DUCDIR
 fi
 
-// Get IP addresses
-// XXX we should be able to do this in the initial call
-// However, we need it before we run ntpd
+# Get IP addresses
+# XXX we should be able to do this in the initial call
+# However, we need it before we run ntpd
 echo $BINDIR/client -d $CONFIGDIR dhcpcd
 $BINDIR/client -d $CONFIGDIR dhcpcd
 ifconfig

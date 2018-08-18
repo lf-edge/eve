@@ -134,6 +134,35 @@ func Run() {
 	zedrouterCtx.PubDeviceUplinkConfig = pubDeviceUplinkConfig
 	zedrouterCtx.PubDeviceNetworkStatus = pubDeviceNetworkStatus
 
+	// Create publish before subscribing and activating subscriptions
+	// Also need to do this before we wait for IP addresses since
+	// zedagent waits for these to be published/exist, and zedagent
+	// runs the fallback timers after that wait.
+	pubNetworkObjectStatus, err := pubsub.Publish(agentName,
+		types.NetworkObjectStatus{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedrouterCtx.pubNetworkObjectStatus = pubNetworkObjectStatus
+
+	pubNetworkServiceStatus, err := pubsub.Publish(agentName,
+		types.NetworkServiceStatus{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedrouterCtx.pubNetworkServiceStatus = pubNetworkServiceStatus
+
+	pubAppNetworkStatus, err := pubsub.Publish(agentName,
+		types.AppNetworkStatus{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedrouterCtx.pubAppNetworkStatus = pubAppNetworkStatus
+	pubAppNetworkStatus.ClearRestarted()
+
+	appNumAllocatorInit(pubAppNetworkStatus)
+	bridgeNumAllocatorInit(pubNetworkObjectStatus)
+
 	// Get the initial DeviceNetworkConfig
 	// Subscribe from "" means /var/tmp/zededa/
 	subDeviceNetworkConfig, err := pubsub.Subscribe("",
@@ -184,8 +213,12 @@ func Run() {
 	zedrouterCtx.SubDeviceUplinkConfigS = subDeviceUplinkConfigS
 	subDeviceUplinkConfigS.Activate()
 
-	for zedrouterCtx.UsableAddressCount == 0 {
-		log.Printf("Waiting for DeviceNetworkConfig\n")
+	// Make sure we wait for a while to process all the DeviceUplinkConfigs
+	done := zedrouterCtx.UsableAddressCount != 0
+	t1 := time.NewTimer(5 * time.Second)
+	for zedrouterCtx.UsableAddressCount == 0 || !done {
+		log.Printf("Waiting for UsableAddressCount %d and done %v\n",
+			zedrouterCtx.UsableAddressCount, done)
 		select {
 		case change := <-subDeviceNetworkConfig.C:
 			subDeviceNetworkConfig.ProcessChange(change)
@@ -202,38 +235,15 @@ func Run() {
 		case change := <-subDeviceUplinkConfigS.C:
 			subDeviceUplinkConfigS.ProcessChange(change)
 			maybeHandleDUC(&zedrouterCtx)
+
+		case <-t1.C:
+			done = true
 		}
 	}
 	log.Printf("Got for DeviceNetworkConfig: %d usable addresses\n",
 		zedrouterCtx.UsableAddressCount)
 
 	handleInit(runDirname, pubDeviceNetworkStatus)
-
-	// Create publish before subscribing and activating subscriptions
-	pubNetworkObjectStatus, err := pubsub.Publish(agentName,
-		types.NetworkObjectStatus{})
-	if err != nil {
-		log.Fatal(err)
-	}
-	zedrouterCtx.pubNetworkObjectStatus = pubNetworkObjectStatus
-
-	pubNetworkServiceStatus, err := pubsub.Publish(agentName,
-		types.NetworkServiceStatus{})
-	if err != nil {
-		log.Fatal(err)
-	}
-	zedrouterCtx.pubNetworkServiceStatus = pubNetworkServiceStatus
-
-	pubAppNetworkStatus, err := pubsub.Publish(agentName,
-		types.AppNetworkStatus{})
-	if err != nil {
-		log.Fatal(err)
-	}
-	zedrouterCtx.pubAppNetworkStatus = pubAppNetworkStatus
-	pubAppNetworkStatus.ClearRestarted()
-
-	appNumAllocatorInit(pubAppNetworkStatus)
-	bridgeNumAllocatorInit(pubNetworkObjectStatus)
 
 	// Subscribe to network objects and services from zedagent
 	subNetworkObjectConfig, err := pubsub.Subscribe("zedagent",
