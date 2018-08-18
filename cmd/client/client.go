@@ -257,7 +257,8 @@ func Run() {
 
 	// Make sure we wait for a while to process all the DeviceUplinkConfigs
 	for clientCtx.UsableAddressCount == 0 || !done {
-		log.Printf("Waiting for UsableAddreessCount\n")
+		log.Printf("Waiting for UsableAddressCount %d and done %v\n",
+			clientCtx.UsableAddressCount, done)
 		select {
 		case change := <-subDeviceNetworkConfig.C:
 			log.Printf("Got subDeviceNetworkConfig\n")

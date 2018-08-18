@@ -216,7 +216,8 @@ func Run() {
 	done := zedrouterCtx.UsableAddressCount != 0
 	t1 := time.NewTimer(5 * time.Second)
 	for zedrouterCtx.UsableAddressCount == 0 || !done {
-		log.Printf("Waiting for UsableAddreessCount\n")
+		log.Printf("Waiting for UsableAddressCount %d and done %v\n",
+			zedrouterCtx.UsableAddressCount, done)
 		select {
 		case change := <-subDeviceNetworkConfig.C:
 			subDeviceNetworkConfig.ProcessChange(change)
