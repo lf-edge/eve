@@ -199,35 +199,35 @@ func compileOldAppInstanceIpsets(ctx *zedrouterContext,
 	return ipsets
 }
 
-// XXX old function when the bridge is not shared.
 // For a shared bridge call aclToRules for each ifname, then aclDropRules,
 // then concat all the rules and pass to applyACLrules
-func createACLConfiglet(ifname string, isMgmt bool, ACLs []types.ACE,
-	ipVer int, myIP string, appIP string, underlaySshPortMap uint,
-	netconfig *types.NetworkObjectConfig) error {
+// Note that only bridgeName is set with ifMgmt
+func createACLConfiglet(bridgeName string, vifName string, isMgmt bool,
+	ACLs []types.ACE, ipVer int, bridgeIP string, appIP string,
+	underlaySshPortMap uint) error {
 	if debug {
-		log.Printf("createACLConfiglet: ifname %s, ACLs %v, IP %s/%s, ssh %d\n",
-			ifname, ACLs, myIP, appIP, underlaySshPortMap)
+		log.Printf("createACLConfiglet: ifname %s, vifName %s, ACLs %v, IP %s/%s, ssh %d\n",
+			bridgeName, vifName, ACLs, bridgeIP, appIP, underlaySshPortMap)
 	}
-	rules, err := aclToRules(ifname, ACLs, ipVer, myIP, appIP,
-		underlaySshPortMap)
+	rules, err := aclToRules(bridgeName, vifName, ACLs, ipVer,
+		bridgeIP, appIP, underlaySshPortMap)
 	if err != nil {
 		return err
 	}
-	dropRules, err := aclDropRules(ifname)
+	dropRules, err := aclDropRules(bridgeName, vifName)
 	if err != nil {
 		return err
 	}
 	rules = append(rules, dropRules...)
-	return applyACLRules(rules, ifname, isMgmt, ipVer)
+	return applyACLRules(rules, bridgeName, isMgmt, ipVer)
 }
 
-func applyACLRules(rules IptablesRuleList, ifname string, isMgmt bool,
+func applyACLRules(rules IptablesRuleList, bridgeName string, isMgmt bool,
 	ipVer int) error {
 
 	if debug {
-		log.Printf("applyACLRules: ifname %s ipVer %d with %d rules\n",
-			ifname, ipVer, len(rules))
+		log.Printf("applyACLRules: bridgeName %s ipVer %d with %d rules\n",
+			bridgeName, ipVer, len(rules))
 	}
 	var err error
 	for _, rule := range rules {
@@ -259,9 +259,9 @@ func applyACLRules(rules IptablesRuleList, ifname string, isMgmt bool,
 		// underlay) since netfront/netback thinks there is checksum
 		// offload
 		// XXX add error checks?
-		ip6tableCmd("-t", "mangle", "-A", "PREROUTING", "-i", ifname,
+		ip6tableCmd("-t", "mangle", "-A", "PREROUTING", "-i", bridgeName,
 			"-p", "tcp", "-j", "CHECKSUM", "--checksum-fill")
-		ip6tableCmd("-t", "mangle", "-A", "PREROUTING", "-i", ifname,
+		ip6tableCmd("-t", "mangle", "-A", "PREROUTING", "-i", bridgeName,
 			"-p", "udp", "-j", "CHECKSUM", "--checksum-fill")
 	}
 	// XXX isMgmt is painful; related to commenting out eidset accepts
@@ -271,34 +271,35 @@ func applyACLRules(rules IptablesRuleList, ifname string, isMgmt bool,
 		// Manually add rules so that lispers.net doesn't see and drop
 		// the packet on dbo1x0
 		// XXX add error checks?
-		ip6tableCmd("-A", "FORWARD", "-i", ifname, "-o", "dbo1x0",
+		ip6tableCmd("-A", "FORWARD", "-i", bridgeName, "-o", "dbo1x0",
 			"-j", "DROP")
 	}
 	return nil
 }
 
 // Returns a list of iptables commands, witout the initial "-A FORWARD"
-// XXX rename myIP to bridgeIP
-// XXX need bridgeName + vifName?
-func aclToRules(ifname string, ACLs []types.ACE, ipVer int,
-	myIP string, appIP string, underlaySshPortMap uint) (IptablesRuleList, error) {
+func aclToRules(bridgeName string, vifName string, ACLs []types.ACE, ipVer int,
+	bridgeIP string, appIP string,
+	underlaySshPortMap uint) (IptablesRuleList, error) {
+
 	rulesList := IptablesRuleList{}
 
 	if debug {
-		log.Printf("aclToRules(%s, %v, %d, %s, %s, %d\n",
-			ifname, ACLs, ipVer, myIP, appIP, underlaySshPortMap)
+		log.Printf("aclToRules(%s, %s, %v, %d, %s, %s, %d\n",
+			bridgeName, vifName, ACLs, ipVer, bridgeIP, appIP,
+			underlaySshPortMap)
 	}
 
-	// XXX should we check isMgmt instead of myIP?
-	if ipVer == 6 && myIP != "" {
+	// XXX should we check isMgmt instead of bridgeIP?
+	if ipVer == 6 && bridgeIP != "" {
 		// Need to allow local communication */
 		// Note that sufficient for src or dst to be local
-		rule1 := []string{"-i", ifname, "-m", "set", "--match-set",
+		rule1 := []string{"-i", bridgeName, "-m", "set", "--match-set",
 			"local.ipv6", "dst", "-j", "ACCEPT"}
-		rule2 := []string{"-i", ifname, "-m", "set", "--match-set",
+		rule2 := []string{"-i", bridgeName, "-m", "set", "--match-set",
 			"local.ipv6", "src", "-j", "ACCEPT"}
-		rule3 := []string{"-i", ifname, "-d", myIP, "-j", "ACCEPT"}
-		rule4 := []string{"-i", ifname, "-s", myIP, "-j", "ACCEPT"}
+		rule3 := []string{"-i", bridgeName, "-d", bridgeIP, "-j", "ACCEPT"}
+		rule4 := []string{"-i", bridgeName, "-s", bridgeIP, "-j", "ACCEPT"}
 		rulesList = append(rulesList, rule1, rule2, rule3, rule4)
 	}
 	// XXX do the same rules as above for IPv4.
@@ -313,16 +314,17 @@ func aclToRules(ifname string, ACLs []types.ACE, ipVer int,
 		// Make sure packets are returned to zedrouter and not e.g.,
 		// out a directly attached interface in the domU
 		rule2 := []string{"POSTROUTING",
-			"-p", "tcp", "-o", ifname, "--dport", "22", "-j", "SNAT",
-			"--to-source", myIP}
-		rule3 := []string{"-o", ifname, "-p", "tcp", "--dport", "22",
+			"-p", "tcp", "-o", bridgeName, "--dport", "22", "-j", "SNAT",
+			"--to-source", bridgeIP}
+		rule3 := []string{"-o", bridgeName, "-p", "tcp", "--dport", "22",
 			"-j", "ACCEPT"}
-		rule4 := []string{"-i", ifname, "-p", "tcp", "--sport", "22",
+		rule4 := []string{"-i", bridgeName, "-p", "tcp", "--sport", "22",
 			"-j", "ACCEPT"}
 		rulesList = append(rulesList, rule1, rule2, rule3, rule4)
 	}
 	for _, ace := range ACLs {
-		rules, err := aceToRules(ifname, ace, ipVer, myIP, appIP)
+		rules, err := aceToRules(bridgeName, vifName, ace, ipVer,
+			bridgeIP, appIP)
 		if err != nil {
 			return nil, err
 		}
@@ -331,10 +333,14 @@ func aclToRules(ifname string, ACLs []types.ACE, ipVer int,
 	return rulesList, nil
 }
 
-func aclDropRules(ifname string) (IptablesRuleList, error) {
+// XXX separate rules for in and out?
+func aclDropRules(bridgeName, vifName string) (IptablesRuleList, error) {
 	if debug {
-		log.Printf("aclDropRules: ifname %s\n", ifname)
+		log.Printf("aclDropRules: bridgeName %s, vifName %s\n",
+			bridgeName, vifName)
 	}
+	// XXX replace
+	ifname := bridgeName
 	rulesList := IptablesRuleList{}
 	// Implicit drop at the end with log before it
 	outArgs1 := []string{"-i", ifname, "-j", "LOG", "--log-prefix",
@@ -347,10 +353,10 @@ func aclDropRules(ifname string) (IptablesRuleList, error) {
 	return rulesList, nil
 }
 
-// XXX Pass uplinkIf as argument? Caller sets if specific interface.
+// XXX Pass uplinkIf as argument for portmap? Caller sets if specific interface.
 // Handling "uplink" and "freeuplink" is TBD
 // XXX could we create/maintain ... some uplink rule
-func aceToRules(ifname string, ace types.ACE, ipVer int, myIP string, appIP string) (IptablesRuleList, error) {
+func aceToRules(bridgeName string, vifName string, ace types.ACE, ipVer int, bridgeIP string, appIP string) (IptablesRuleList, error) {
 	rulesList := IptablesRuleList{}
 
 	// Extract lport and protocol from the Matches to use for PortMap
@@ -364,6 +370,7 @@ func aceToRules(ifname string, ace types.ACE, ipVer int, myIP string, appIP stri
 
 	// Always match on interface
 	// XXX move to bridge port!
+	ifname := bridgeName // XXX replace
 	outArgs := []string{"-i", ifname}
 	inArgs := []string{"-o", ifname}
 
@@ -406,7 +413,7 @@ func aceToRules(ifname string, ace types.ACE, ipVer int, myIP string, appIP stri
 			}
 			// The eidset only applies to IPv6 overlay
 			// Caller adds local EID to set
-			ipsetName = "eids." + ifname
+			ipsetName = "eids." + vifName
 		default:
 			errStr := fmt.Sprintf("Unsupported ACE match type: %s",
 				match.Type)
@@ -506,7 +513,7 @@ func aceToRules(ifname string, ace types.ACE, ipVer int, myIP string, appIP stri
 			rule2 := []string{"POSTROUTING",
 				"-p", protocol, "-o", ifname,
 				"--dport", targetPort, "-j", "SNAT",
-				"--to-source", myIP}
+				"--to-source", bridgeIP}
 			// Below we make sure the mapped packets get through
 			// Note that port/targetport change relative
 			// no normal ACL above.
@@ -668,240 +675,21 @@ func diffIpsets(newIpsets, oldIpsets []string) ([]string, []string, bool) {
 	return newIpsets, staleIpsets, restartDnsmasq
 }
 
-// XXX separate out getNetworkOverlayApps() function?
-// Perform an update across all of the bridge aka NetworkObjectStatus
-// XXX put ACLs on bridge and revert to old structure with ACLs for each
-// AppNetworkConfig. Means we can do the sshPortMap as well.
-// XXX why do we need a ulStatusArg
-func updateNetworkACLConfiglet(ctx *zedrouterContext,
-	netstatus *types.NetworkObjectStatus, ulStatusArg *types.UnderlayNetworkStatus) error {
+func updateACLConfiglet(bridgeName string, vifName string, isMgmt bool,
+	oldACLs []types.ACE, newACLs []types.ACE, ipVer int, bridgeIP string,
+	appIP string, underlaySshPortMap uint) error {
 
 	if debug {
-		log.Printf("updateNetworkACLConfiglet: ifname %s IP %s\n",
-			netstatus.BridgeName, netstatus.BridgeIPAddr)
+		log.Printf("updateACLConfiglet: bridgeName %s, vifName %s, oldACLs %v newACLs %v\n",
+			bridgeName, vifName, oldACLs, newACLs)
 	}
-	newRules := IptablesRuleList{}
-	oldRules := IptablesRuleList{}
-	ifname := netstatus.BridgeName
-	bridgeIPAddr := netstatus.BridgeIPAddr
-
-	pub := ctx.pubAppNetworkStatus
-	statusItems := pub.GetAll()
-	sub := ctx.subAppNetworkConfig
-	configItems := sub.GetAll()
-
-	// Walk overlay/IPv6 first
-	ipVer := 6
-	for key, st := range statusItems {
-		status := cast.CastAppNetworkStatus(st)
-		if status.Key() != key {
-			log.Printf("updateNetworkACLConfiglet key/UUID mismatch %s vs %s; ignored %+v\n",
-				key, status.Key(), status)
-			continue
-		}
-		for _, olStatus := range status.OverlayNetworkList {
-			if olStatus.Network != netstatus.UUID {
-				if debug {
-					log.Printf("updateNetworkACLConfiglet different network %s vs %s\n",
-						olStatus.Network.String(),
-						netstatus.UUID.String())
-				}
-				continue
-			}
-			// XXX where can we get olAddr2 := olStatus.AssignedIPv6Addr
-			olAddr2 := ""
-			rules, err := aclToRules(ifname, olStatus.ACLs, ipVer,
-				bridgeIPAddr, olAddr2, 0)
-			if err != nil {
-				return err
-			}
-			oldRules = append(oldRules, rules...)
-		}
-	}
-	if len(oldRules) != 0 {
-		dropRules, err := aclDropRules(ifname)
-		if err != nil {
-			return err
-		}
-		oldRules = append(oldRules, dropRules...)
-	}
-
-	for key, c := range configItems {
-		config := cast.CastAppNetworkConfig(c)
-		if config.Key() != key {
-			log.Printf("updateNetworkACLConfiglet key/UUID mismatch %s vs %s; ignored %+v\n",
-				key, config.Key(), config)
-			continue
-		}
-		for _, olConfig := range config.OverlayNetworkList {
-			if olConfig.Network != netstatus.UUID {
-				if debug {
-					log.Printf("updateNetworkACLConfiglet different network %s vs %s\n",
-						olConfig.Network.String(),
-						netstatus.UUID.String())
-				}
-				continue
-			}
-			// XXX where can we get olAddr2 := olStatus.AssignedIPv6Addr
-			olAddr2 := ""
-			rules, err := aclToRules(ifname, olConfig.ACLs, ipVer,
-				bridgeIPAddr, olAddr2, 0)
-			if err != nil {
-				return err
-			}
-			newRules = append(newRules, rules...)
-		}
-	}
-	if len(newRules) != 0 {
-		dropRules, err := aclDropRules(ifname)
-		if err != nil {
-			return err
-		}
-		newRules = append(newRules, dropRules...)
-	}
-	err := applyACLUpdate(false, ipVer, oldRules, newRules)
-	if err != nil {
-		return nil
-	}
-	newRules = IptablesRuleList{}
-	oldRules = IptablesRuleList{}
-	ipVer = 4
-
-	for key, st := range statusItems {
-		status := cast.CastAppNetworkStatus(st)
-		if status.Key() != key {
-			log.Printf("updateNetworkACLConfiglet key/UUID mismatch %s vs %s; ignored %+v\n",
-				key, status.Key(), status)
-			continue
-		}
-		for _, ulStatus := range status.UnderlayNetworkList {
-			if ulStatus.Network != netstatus.UUID {
-				if debug {
-					log.Printf("updateNetworkACLConfiglet different network %s vs %s\n",
-						ulStatus.Network.String(),
-						netstatus.UUID.String())
-				}
-				continue
-			}
-			var ulAddr2 string
-			if ulStatusArg != nil {
-				ulAddr2 = ulStatusArg.AssignedIPAddr
-			} else {
-				ulAddr2 = ulStatus.AssignedIPAddr
-			}
-			var sshPort uint
-			// XXX disable this?
-			if false && ulStatus.SshPortMap {
-				sshPort = 8022 + 100*uint(status.AppNum)
-			}
-			rules, err := aclToRules(ifname, ulStatus.ACLs, ipVer,
-				bridgeIPAddr, ulAddr2, sshPort)
-			if err != nil {
-				return err
-			}
-			oldRules = append(oldRules, rules...)
-		}
-	}
-	if len(oldRules) != 0 {
-		dropRules, err := aclDropRules(ifname)
-		if err != nil {
-			return err
-		}
-		oldRules = append(oldRules, dropRules...)
-	}
-
-	for key, c := range configItems {
-		config := cast.CastAppNetworkConfig(c)
-		if config.Key() != key {
-			log.Printf("updateNetworkACLConfiglet key/UUID mismatch %s vs %s; ignored %+v\n",
-				key, config.Key(), config)
-			continue
-		}
-		for ulNum, ulConfig := range config.UnderlayNetworkList {
-			if ulConfig.Network != netstatus.UUID {
-				if debug {
-					log.Printf("updateNetworkACLConfiglet different network %s vs %s\n",
-						ulConfig.Network.String(),
-						netstatus.UUID.String())
-				}
-				continue
-			}
-			// XXX need the new ulAddr2. This is the old. Could it have changed?
-			var ulAddr2 string
-			if ulStatusArg != nil {
-				ulAddr2 = ulStatusArg.AssignedIPAddr
-			} else {
-				ulAddr2 = getIPAddrFromStatus(statusItems, key, ulNum)
-			}
-			var sshPort uint
-			// XXX disable this?
-			if false && ulConfig.SshPortMap {
-				status := lookupAppNetworkStatus(ctx, config.Key())
-				if status != nil {
-					sshPort = 8022 + 100*uint(status.AppNum)
-				}
-			}
-			rules, err := aclToRules(ifname, ulConfig.ACLs, ipVer,
-				bridgeIPAddr, ulAddr2, sshPort)
-			if err != nil {
-				return err
-			}
-			newRules = append(newRules, rules...)
-		}
-	}
-	if newRules != nil {
-		dropRules, err := aclDropRules(ifname)
-		if err != nil {
-			return err
-		}
-		newRules = append(newRules, dropRules...)
-	}
-	return applyACLUpdate(false, ipVer, oldRules, newRules)
-}
-
-func getIPAddrFromStatus(statusItems map[string]interface{}, key string,
-	ulNum int) string {
-
-	if debug {
-		log.Printf("getIPAddrFromStatus(len %d, %s, %d)\n",
-			len(statusItems), key, ulNum)
-	}
-	for _, st := range statusItems {
-		status := cast.CastAppNetworkStatus(st)
-		if status.Key() != key {
-			continue
-		}
-		if len(status.UnderlayNetworkList) <= ulNum {
-			log.Printf("getIPAddrFromStatus: too few uls %d vs %d\n",
-				len(status.UnderlayNetworkList), ulNum)
-			return ""
-		}
-		ulStatus := &status.UnderlayNetworkList[ulNum]
-		log.Printf("getIPAddrFromStatus: got %s for %s\n",
-			ulStatus.AssignedIPAddr, key)
-		return ulStatus.AssignedIPAddr
-	}
-	log.Printf("getIPAddrFromStatus: no matching status for %s\n", key)
-	return ""
-
-}
-
-// XXX old update function
-// Keep and move to bridge
-func updateACLConfiglet(ifname string, isMgmt bool, oldACLs []types.ACE,
-	newACLs []types.ACE, ipVer int, myIP string, appIP string,
-	underlaySshPortMap uint, netconfig *types.NetworkObjectConfig) error {
-	if debug {
-		log.Printf("updateACLConfiglet: ifname %s, oldACLs %v newACLs %v\n",
-			ifname, oldACLs, newACLs)
-	}
-	oldRules, err := aclToRules(ifname, oldACLs, ipVer, myIP, appIP,
-		underlaySshPortMap)
+	oldRules, err := aclToRules(bridgeName, vifName, oldACLs, ipVer,
+		bridgeIP, appIP, underlaySshPortMap)
 	if err != nil {
 		return err
 	}
-	newRules, err := aclToRules(ifname, newACLs, ipVer, myIP, appIP,
-		underlaySshPortMap)
+	newRules, err := aclToRules(bridgeName, vifName, newACLs, ipVer,
+		bridgeIP, appIP, underlaySshPortMap)
 	if err != nil {
 		return err
 	}
@@ -980,16 +768,16 @@ func applyACLUpdate(isMgmt bool, ipVer int,
 	return nil
 }
 
-func deleteACLConfiglet(ifname string, isMgmt bool, ACLs []types.ACE,
-	ipVer int, myIP string, appIP string, underlaySshPortMap uint,
-	netconfig *types.NetworkObjectConfig) error {
+func deleteACLConfiglet(bridgeName string, vifName string, isMgmt bool,
+	ACLs []types.ACE, ipVer int, bridgeIP string, appIP string,
+	underlaySshPortMap uint) error {
 
 	if debug {
-		log.Printf("deleteACLConfiglet: ifname %s ACLs %v\n",
-			ifname, ACLs)
+		log.Printf("deleteACLConfiglet: ifname %s `ACLs %v\n",
+			bridgeName, vifName, ACLs)
 	}
-	rules, err := aclToRules(ifname, ACLs, ipVer, myIP, appIP,
-		underlaySshPortMap)
+	rules, err := aclToRules(bridgeName, vifName, ACLs, ipVer,
+		bridgeIP, appIP, underlaySshPortMap)
 	if err != nil {
 		return err
 	}
@@ -1020,16 +808,17 @@ func deleteACLConfiglet(ifname string, isMgmt bool, ACLs []types.ACE,
 	if !isMgmt {
 		// Remove mangle rules for IPv6 packets added above
 		// XXX error checks?
-		ip6tableCmd("-t", "mangle", "-D", "PREROUTING", "-i", ifname,
+		ip6tableCmd("-t", "mangle", "-D", "PREROUTING", "-i", bridgeName,
 			"-p", "tcp", "-j", "CHECKSUM", "--checksum-fill")
-		ip6tableCmd("-t", "mangle", "-D", "PREROUTING", "-i", ifname,
+		ip6tableCmd("-t", "mangle", "-D", "PREROUTING", "-i", bridgeName,
 			"-p", "udp", "-j", "CHECKSUM", "--checksum-fill")
 	}
 	// XXX see above
 	if false && ipVer == 6 && !isMgmt {
 		// Manually delete the manual add above
 		// XXX error checks?
-		ip6tableCmd("-D", "FORWARD", "-i", ifname, "-j", "DROP")
+		ip6tableCmd("-D", "FORWARD", "-i", bridgeName, "-o", "dbo1x0",
+			"-j", "DROP")
 	}
 	return nil
 }

@@ -885,8 +885,8 @@ func handleCreate(ctx *zedrouterContext, key string,
 			EID.String())
 
 		// Set up ACLs
-		err = createACLConfiglet(olIfname, true, olConfig.ACLs,
-			6, "", "", 0, nil)
+		err = createACLConfiglet(olIfname, "", true, olConfig.ACLs,
+			6, "", "", 0)
 		if err != nil {
 			addError(ctx, &status, "createACL", err)
 		}
@@ -1059,14 +1059,17 @@ func handleCreate(ctx *zedrouterContext, key string,
 		createEidIpsetConfiglet(vifName, olConfig.NameToEidList,
 			EID.String())
 
+		// XXX createDnsmasq assumes it can read this to get netstatus
 		publishNetworkObjectStatus(ctx, netstatus)
 
-		// XXX the ACLs should be per vif not per network
-		// Set up ACLs before we setup dnsmasq
-		err = updateNetworkACLConfiglet(ctx, netstatus, nil)
+		// Set up ACLs
+		// XXX remove sshPortMap globally
+		err = createACLConfiglet(bridgeName, vifName, false, olConfig.ACLs,
+			6, olStatus.BridgeIPAddr, EID.String(), 0)
 		if err != nil {
-			addError(ctx, &status, "updateNetworkACL", err)
+			addError(ctx, &status, "createACL", err)
 		}
+
 		// XXX createDnsmasq assumes it can read this to get netstatus
 		publishAppNetworkStatus(ctx, &status)
 
@@ -1080,7 +1083,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 		if restartDnsmasq {
 			stopDnsmasq(bridgeName, false)
 			createDnsmasqConfiglet(bridgeName,
-				netstatus.BridgeIPAddr, netconfig, hostsDirpath,
+				olStatus.BridgeIPAddr, netconfig, hostsDirpath,
 				newIpsets)
 			startDnsmasq(bridgeName)
 		}
@@ -1184,13 +1187,13 @@ func handleCreate(ctx *zedrouterContext, key string,
 				[]string{appIPAddr})
 		}
 
-		// XXX the ACLs should be per vif not per network
-		// XXX passing ulStatus for now until we refactor to bridge
-		// ACLs
-		err = updateNetworkACLConfiglet(ctx, netstatus, ulStatus)
+		// Set up ACLs
+		err = createACLConfiglet(bridgeName, vifName, false, ulConfig.ACLs,
+			4, bridgeIPAddr, appIPAddr, 0)
 		if err != nil {
-			addError(ctx, &status, "updateNetworkACL", err)
+			addError(ctx, &status, "createACL", err)
 		}
+
 		// XXX createDnsmasq assumes it can read this to get netstatus
 		publishAppNetworkStatus(ctx, &status)
 
@@ -1206,7 +1209,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 		if restartDnsmasq {
 			stopDnsmasq(bridgeName, false)
 			createDnsmasqConfiglet(bridgeName,
-				netstatus.BridgeIPAddr, netconfig, hostsDirpath,
+				ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
 				newIpsets)
 			startDnsmasq(bridgeName)
 		}
@@ -1423,8 +1426,8 @@ func handleModify(ctx *zedrouterContext, key string,
 
 		// Update ACLs
 		// No sshPortMap for IsMgmt
-		err := updateACLConfiglet(olIfname, true, olStatus.ACLs,
-			olConfig.ACLs, 6, "", "", 0, nil)
+		err := updateACLConfiglet(olIfname, "", true, olStatus.ACLs,
+			olConfig.ACLs, 6, "", "", 0)
 		if err != nil {
 			addError(ctx, status, "updateACL", err)
 		}
@@ -1484,14 +1487,14 @@ func handleModify(ctx *zedrouterContext, key string,
 		updateEidIpsetConfiglet(olStatus.Vif, olStatus.NameToEidList,
 			olConfig.NameToEidList)
 
-		// XXX could there be a change to AssignedIPv6Address?
-		// If so updateNetworkACLConfiglet needs to know old and new
+		// XXX could there be a change to AssignedIPv6Address aka EID?
+		// If so updateACLConfiglet needs to know old and new
 
-		// XXX per vif
-		// Update ACLs
-		err := updateNetworkACLConfiglet(ctx, netstatus, nil)
+		err := updateACLConfiglet(bridgeName, olStatus.Vif, false,
+			olStatus.ACLs, olConfig.ACLs, 6, olStatus.BridgeIPAddr,
+			olConfig.EID.String(), 0)
 		if err != nil {
-			addError(ctx, status, "updateNetworkACL", err)
+			addError(ctx, status, "updateACL", err)
 		}
 		// XXX createDnsmasq assumes it can read this to get netstatus
 		publishAppNetworkStatus(ctx, status)
@@ -1503,7 +1506,7 @@ func handleModify(ctx *zedrouterContext, key string,
 		if restartDnsmasq {
 			stopDnsmasq(bridgeName, false)
 			createDnsmasqConfiglet(bridgeName,
-				netstatus.BridgeIPAddr, netconfig, hostsDirpath,
+				olStatus.BridgeIPAddr, netconfig, hostsDirpath,
 				newIpsets)
 			startDnsmasq(bridgeName)
 		}
@@ -1548,7 +1551,7 @@ func handleModify(ctx *zedrouterContext, key string,
 		}
 		ulStatus := status.UnderlayNetworkList[ulNum-1]
 		bridgeName := ulStatus.Bridge
-		// XXX needed for acls? appIPAddr := ulStatus.AssignedIPAddr
+		appIPAddr := ulStatus.AssignedIPAddr
 
 		netconfig := lookupNetworkObjectConfig(ctx,
 			ulConfig.Network.String())
@@ -1571,11 +1574,11 @@ func handleModify(ctx *zedrouterContext, key string,
 		}
 		// XXX could there be a change to AssignedIPAddress?
 		// If so updateNetworkACLConfiglet needs to know old and new
-
-		// XXX per vif
-		err := updateNetworkACLConfiglet(ctx, netstatus, nil)
+		err := updateACLConfiglet(bridgeName, ulStatus.Vif, false,
+			ulStatus.ACLs, ulConfig.ACLs, 4, ulStatus.BridgeIPAddr,
+			appIPAddr, 0)
 		if err != nil {
-			addError(ctx, status, "updateNetworkACL", err)
+			addError(ctx, status, "updateACL", err)
 		}
 		// XXX createDnsmasq assumes it can read this to get netstatus
 		publishAppNetworkStatus(ctx, status)
@@ -1587,7 +1590,7 @@ func handleModify(ctx *zedrouterContext, key string,
 			hostsDirpath := globalRunDirname + "/hosts." + bridgeName
 			stopDnsmasq(bridgeName, false)
 			createDnsmasqConfiglet(bridgeName,
-				netstatus.BridgeIPAddr, netconfig, hostsDirpath,
+				ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
 				newIpsets)
 			startDnsmasq(bridgeName)
 		}
@@ -1735,8 +1738,8 @@ func handleDelete(ctx *zedrouterContext, key string,
 
 		// Delete ACLs
 		// No sshPortMap for IsMgmt
-		err = deleteACLConfiglet(olIfname, true, olStatus.ACLs,
-			6, "", "", 0, nil)
+		err = deleteACLConfiglet(olIfname, "", true, olStatus.ACLs,
+			6, "", "", 0)
 		if err != nil {
 			addError(ctx, status, "deleteACL", err)
 		}
@@ -1801,16 +1804,14 @@ func handleDelete(ctx *zedrouterContext, key string,
 		publishAppNetworkStatus(ctx, status)
 
 		// Delete ACLs
-		// XXX per vif
-		// Network bridge still exists. It means there are
-		// other ovelays still using this bridge network.
-		err := updateNetworkACLConfiglet(ctx, netstatus, nil)
+		err := deleteACLConfiglet(bridgeName, olStatus.Vif, false,
+			olStatus.ACLs, 6, olStatus.BridgeIPAddr,
+			olStatus.EID.String(), 0)
 		if err != nil {
-			addError(ctx, status,
-				"updateNetworkACL", err)
+			addError(ctx, status, "deleteACL", err)
 		}
 
-		// Delete overlay hosts file or directory
+		// Delete underlay hosts file for this app
 		hostsDirpath := globalRunDirname + "/hosts." + bridgeName
 		removeFromHostsConfiglet(hostsDirpath, status.DisplayName)
 
@@ -1838,7 +1839,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 		if restartDnsmasq {
 			stopDnsmasq(bridgeName, false)
 			createDnsmasqConfiglet(bridgeName,
-				netstatus.BridgeIPAddr, netconfig, hostsDirpath,
+				olStatus.BridgeIPAddr, netconfig, hostsDirpath,
 				newIpsets)
 			startDnsmasq(bridgeName)
 		}
@@ -1902,15 +1903,13 @@ func handleDelete(ctx *zedrouterContext, key string,
 		appIPAddr := ulStatus.AssignedIPAddr
 		removehostDnsmasq(bridgeName, appMac, appIPAddr)
 
-		// Delete ACLs
-		if netstatus != nil {
-			err := updateNetworkACLConfiglet(ctx, netstatus, nil)
-			if err != nil {
-				addError(ctx, status,
-					"updateNetworkACL", err)
-			}
+		err = deleteACLConfiglet(bridgeName, ulStatus.Vif, false,
+			ulStatus.ACLs, 4, ulStatus.BridgeIPAddr, appIPAddr, 0)
+		if err != nil {
+			addError(ctx, status, "deleteACL", err)
 		}
-		// Delete underlay hosts file
+
+		// Delete underlay hosts file for this app
 		hostsDirpath := globalRunDirname + "/hosts." + bridgeName
 		removeFromHostsConfiglet(hostsDirpath,
 			status.DisplayName)
@@ -1921,7 +1920,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 		if restartDnsmasq {
 			stopDnsmasq(bridgeName, false)
 			createDnsmasqConfiglet(bridgeName,
-				netstatus.BridgeIPAddr, netconfig, hostsDirpath,
+				ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
 				newIpsets)
 			startDnsmasq(bridgeName)
 		}

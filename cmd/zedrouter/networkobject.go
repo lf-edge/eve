@@ -481,51 +481,39 @@ func doNetworkDelete(ctx *zedrouterContext,
 	}
 	bridgeName := status.BridgeName
 
-	// For lisp networks delete radvd, dnsmasq configlets,
-	// dns hosts files and ACLs attached.
-	if status.Type == types.NT_CryptoEID {
-		cfgFilename := "radvd." + bridgeName + ".conf"
-		cfgPathname := runDirname + "/" + cfgFilename
-		stopRadvd(cfgFilename, true)
-		deleteRadvdConfiglet(cfgPathname)
-
-		cfgFilename = "dnsmasq." + bridgeName + ".conf"
-		cfgPathname = runDirname + "/" + cfgFilename
-		stopDnsmasq(cfgFilename, true)
-		deleteDnsmasqConfiglet(cfgPathname)
-
-		// Destroy EID Ipset
-		deleteEidIpsetConfiglet(bridgeName, true)
-
-		// XXX Delte hosts configlet also
-		hostsDirpath := globalRunDirname + "/hosts." + bridgeName
-		deleteHostsConfiglet(hostsDirpath, true)
-
-		// Delete ACLs attached to this bridge
-		// Go through app instances using this bridge for Lisp
-		// and gather the list of ACLS attached.
-		pub := ctx.pubAppNetworkStatus
-		items := pub.GetAll()
-		acls := []types.ACE{}
-		for _, ans := range items {
-			if ans == nil {
+	// Delete ACLs attached to this network aka linux bridge
+	pub := ctx.pubAppNetworkStatus
+	items := pub.GetAll()
+	for _, ans := range items {
+		appNetStatus := cast.CastAppNetworkStatus(ans)
+		for _, olStatus := range appNetStatus.OverlayNetworkList {
+			if olStatus.Network != status.UUID {
 				continue
 			}
-			appNetStatus := cast.CastAppNetworkStatus(ans)
-			if len(appNetStatus.OverlayNetworkList) == 0 {
-				continue
-			}
-			for _, olStatus := range appNetStatus.OverlayNetworkList {
-				if olStatus.Network == status.UUID {
-					acls = append(acls, olStatus.ACLs...)
-				}
+			// Destroy EID Ipset
+			deleteEidIpsetConfiglet(olStatus.Vif, true)
+
+			err := deleteACLConfiglet(olStatus.Bridge,
+				olStatus.Vif, false, olStatus.ACLs, 6,
+				olStatus.BridgeIPAddr,
+				olStatus.EID.String(), 0)
+			if err != nil {
+				log.Printf("doNetworkDelete ACL failed: %s\n",
+					err)
 			}
 		}
-
-		err := deleteACLConfiglet(bridgeName, false, acls,
-			6, status.BridgeIPAddr, "", 0, nil)
-		if err != nil {
-			log.Printf("doNetworkDelete: deleteACL failed: %s\n", err)
+		for _, ulStatus := range appNetStatus.UnderlayNetworkList {
+			if ulStatus.Network != status.UUID {
+				continue
+			}
+			err := deleteACLConfiglet(ulStatus.Bridge,
+				ulStatus.Vif, false, ulStatus.ACLs, 4,
+				ulStatus.BridgeIPAddr, ulStatus.AssignedIPAddr,
+				0)
+			if err != nil {
+				log.Printf("doNetworkDelete ACL failed: %s\n",
+					err)
+			}
 		}
 	}
 	attrs := netlink.NewLinkAttrs()
@@ -537,15 +525,17 @@ func doNetworkDelete(ctx *zedrouterContext,
 	deleteDnsmasqConfiglet(bridgeName)
 	stopDnsmasq(bridgeName, true)
 
-	hostsDirpath := globalRunDirname + "/hosts." + bridgeName
-	deleteHostsConfiglet(hostsDirpath, false)
+	// XXX shared! only delete unused when this app is gone.
+	// XXX or leave in place? Ditto in zedrouter.go
+	// hostsDirpath := globalRunDirname + "/hosts." + bridgeName
+	// deleteHostsConfiglet(hostsDirpath, true)
 
 	// For IPv6 and LISP, but LISP will become a service
 	isIPv6 := false
 	if status.Subnet.IP != nil {
 		isIPv6 = (status.Subnet.IP.To4() == nil)
 	}
-	if isIPv6 {
+	if isIPv6 || status.Type == types.NT_CryptoEID {
 		// radvd cleanup
 		cfgFilename := "radvd." + bridgeName + ".conf"
 		cfgPathname := runDirname + "/" + cfgFilename
@@ -555,5 +545,5 @@ func doNetworkDelete(ctx *zedrouterContext,
 
 	status.BridgeName = ""
 	status.BridgeNum = 0
-	appNumFree(status.UUID)
+	bridgeNumFree(status.UUID)
 }
