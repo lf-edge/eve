@@ -366,22 +366,19 @@ func lookupOrAllocateIPv4(ctx *zedrouterContext,
 	return "", errors.New(errStr)
 }
 
-// Returns true if the last entry was removed
-// XXX last return no longer used
 func releaseIPv4(ctx *zedrouterContext,
-	status *types.NetworkObjectStatus, mac net.HardwareAddr) (bool, error) {
+	status *types.NetworkObjectStatus, mac net.HardwareAddr) error {
 
 	log.Printf("releaseIPv4(%s)\n", mac.String())
 	// Lookup to see if it exists
 	if _, ok := status.IPAssignments[mac.String()]; !ok {
 		errStr := fmt.Sprintf("releaseIPv4: not found %s for %s",
 			mac.String(), status.Key())
-		return false, errors.New(errStr)
+		return errors.New(errStr)
 	}
 	delete(status.IPAssignments, mac.String())
-	last := len(status.IPAssignments) == 0
 	publishNetworkObjectStatus(ctx, status)
-	return last, nil
+	return nil
 }
 
 // Returns true if found

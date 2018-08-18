@@ -1875,10 +1875,10 @@ func handleDelete(ctx *zedrouterContext, key string,
 			log.Fatal("ParseMAC failed: ",
 				ulStatus.Mac, err)
 		}
-		_, err = releaseIPv4(ctx, netstatus, mac)
-		// XXX publish error?
+		err = releaseIPv4(ctx, netstatus, mac)
 		if err != nil {
-			addError(ctx, status, "freeIPv4", err)
+			// XXX publish error?
+			addError(ctx, status, "releaseIPv4", err)
 		}
 
 		appMac := ulStatus.Mac
