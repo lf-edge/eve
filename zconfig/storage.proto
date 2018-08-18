@@ -48,13 +48,11 @@ enum Format {
 }
 
 message Image {
-	string id = 100;		// deprecated
 	UUIDandVersion uuidandversion = 1;
 	// it could be relative path/name as well
 	string name = 2;
 
 	string sha256 = 3;
-	int64 size = 7;           // deprecated
 	Format iformat = 4;
 
 	// if its signed image
@@ -78,11 +76,13 @@ enum DriveType {
 	CDROM   = 1;
 	HDD     = 2;
 	NET     = 3;
+
+	// this type is allocate the empty disk of maxsizebytes specified
+	HDD_EMPTY  = 4;
 }
 
 message Drive {
 	Image image = 1;
-	int64 maxsize = 2;     // deprecated
 	bool readonly = 5;
 	bool preserve = 6;
 	DriveType drvtype = 8;

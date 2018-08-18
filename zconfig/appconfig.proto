@@ -10,14 +10,34 @@ import "netconfig.proto";
 // XXX import "zededa/api/zmet/zmet.proto";
 // import "zmet/zmet.proto";
 
+message InstanceOpsCmd {
+	uint32 counter = 2;
+	string opsTime = 4;
+}
+
 message AppInstanceConfig {
 	UUIDandVersion uuidandversion = 1;
 	string displayname = 2;
 	VmConfig fixedresources = 3;
 	repeated Drive drives = 4;
 	bool activate = 5;
+
 	// NetworkAdapter are virtual adapters assigned to the application
 	// Physical adapters such as eth1 are part of Adapter
 	repeated NetworkAdapter interfaces = 6;
 	repeated Adapter adapters = 7;	// I/O adapters to assign to app
+
+	// zcli instance restart, will increment restart counter
+	// zcli instance restart --new-manifest, will increment restart counter
+	//    if drives haven't changed
+	// zcli instance restart --new-manifest will fail, if drive has changed.
+	//    you would have to apply purge flag.
+	// zcli instance restart --new-manifest will fail, if #adapters has changed 
+        InstanceOpsCmd restart = 9;
+
+	// zcli instance restart --purge
+	//    if the manifest is changed it will automatically updated and 
+	//    disk that have changed will be purged automatically.
+	//    phase 1: we would purge all disks irrepsective for time being
+        InstanceOpsCmd purge = 10;
 }
