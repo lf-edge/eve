@@ -85,6 +85,14 @@ enum ZSwState {
   INSTALLED		= 5;	// Installed, ready for activation
 }
 
+enum ZDomState {
+  DomINVALID		= 0;
+  PREPARING		= 1; // Look at ZSwState
+  RUNNING		= 2; // DomU has been created, domId exists. This is not
+			     // domU xen state
+  ERROR			= 3; // Look at ErrInfo
+}
+
 // Deprecate since we can't determine it on the device
 message ZinfoPeripheral {
   ZPeripheralTypes ztype = 1;
@@ -97,7 +105,6 @@ message ZInfoSW {
   string swVersion = 2;
   string swHash = 3;
   ZSwState state = 4;		// State of Software Image download/install
-  bool activated = 5;		// Activation flag -- deprecated
   string target = 6;		// E.g., "disk", "kernel", "device-tree"
   string vdev = 7;		// E.g., "xvda"
 }
@@ -117,12 +124,9 @@ message ZInfoDevice {
   uint64 memory = 8;	// in Mbytes
   uint64 storage = 9;	// in MBytes for the currently active image filesystem
 
-  repeated ZinfoPeripheral devices = 10; // Deprecated
   ZInfoManufacturer minfo = 11;
 
-  ZInfoSW software = 12;		// Deprecated;
   repeated ZInfoNetwork network = 13;
-  repeated ZInfoSW softwareList = 14;	// Deprecated
   repeated ZioBundle assignableAdapters = 15;
   ZInfoDNS dns = 16; // What is used in resolv.conf
   repeated ZInfoStorage storageList = 17;
@@ -166,17 +170,11 @@ message ZInfoHypervisor {
 
 message ZInfoApp {
   string AppID = 1;
-  uint32 ncpu = 2;          // deprecated
-  uint32 memory = 3;        // deprecated
-  uint32 storage = 4;       // deprecated
-
-  ZInfoSW software = 5;     // deprecated
 
   bool systemApp = 6;
   string AppName = 7;
   repeated ZInfoSW softwareList = 8;
   bool activated = 9;
-  string error = 10;  // deprecated, use ErrorInfo
   google.protobuf.Timestamp errorTime = 11; //deprecated, use ErrorInfo
 
   google.protobuf.Timestamp bootTime = 12;
@@ -184,6 +182,7 @@ message ZInfoApp {
   repeated ErrorInfo appErr = 14;
   ZSwState state = 15;
   repeated ZInfoNetwork network = 16;	// XXX add?
+  ZDomState runState = 17; 
 }
 
 message ZInfoMsg {
@@ -191,7 +190,6 @@ message ZInfoMsg {
   string devId = 2;
   oneof InfoContent {
   	ZInfoDevice dinfo = 3;
-  	ZInfoHypervisor hinfo = 4;	// Deprecated
   	ZInfoApp ainfo = 5;
    }
   google.protobuf.Timestamp atTimeStamp = 6;
