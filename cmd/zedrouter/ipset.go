@@ -11,8 +11,8 @@ import (
 	"log"
 )
 
-// Create local IPv6 ipset called "local.ipv6".
-// XXX also a local.ipv4 with 0 and 255
+// Create local IPv6 ipset called "local.ipv6" and "local.ipv4"
+// XXX should we add 169.254.0.0/16 as well?
 func createDefaultIpset() {
 	if debug {
 		log.Printf("createDefaultIpset()\n")
@@ -34,18 +34,35 @@ func createDefaultIpset() {
 			log.Println("ipset add ", ipsetName, prefix, err)
 		}
 	}
+	ipsetName = "local.ipv4"
+	if !ipsetExists(ipsetName) {
+		if err := ipsetCreate(ipsetName, "hash:net", 4); err != nil {
+			log.Fatal("ipset create for ", ipsetName, err)
+		}
+	} else {
+		if err := ipsetFlush(ipsetName); err != nil {
+			log.Fatal("ipset flush for ", ipsetName, err)
+		}
+	}
+	prefixes = []string{"0.0.0.0/32", "255.255.255.255/32", "224.0.0.0/4"}
+	for _, prefix := range prefixes {
+		err := ipsetAdd(ipsetName, prefix)
+		if err != nil {
+			log.Println("ipset add ", ipsetName, prefix, err)
+		}
+	}
 }
 
-// Create an ipset called eids.<olIfname> with all the addresses from
+// Create an ipset called eids.<vifname> with all the addresses from
 // the nameToEidList.
 // Would be more polite to return an error then to Fatal
-func createEidIpsetConfiglet(olIfname string, nameToEidList []types.NameToEid,
+func createEidIpsetConfiglet(vifname string, nameToEidList []types.NameToEid,
 	myEid string) {
 	if debug {
 		log.Printf("createEidIpsetConfiglet: olifName %s nameToEidList %v myEid %s\n",
-			olIfname, nameToEidList, myEid)
+			vifname, nameToEidList, myEid)
 	}
-	ipsetName := "eids." + olIfname
+	ipsetName := "eids." + vifname
 	if !ipsetExists(ipsetName) {
 		if err := ipsetCreate(ipsetName, "hash:ip", 6); err != nil {
 			log.Fatal("ipset create for ", ipsetName, err)
@@ -73,13 +90,13 @@ func createEidIpsetConfiglet(olIfname string, nameToEidList []types.NameToEid,
 	}
 }
 
-func updateEidIpsetConfiglet(olIfname string,
+func updateEidIpsetConfiglet(vifname string,
 	oldNameToEidList []types.NameToEid, newNameToEidList []types.NameToEid) {
 	if debug {
-		log.Printf("updateEidIpsetConfiglet: olIfname %s old %v, new %v\n",
-			olIfname, oldNameToEidList, newNameToEidList)
+		log.Printf("updateEidIpsetConfiglet: vifname %s old %v, new %v\n",
+			vifname, oldNameToEidList, newNameToEidList)
 	}
-	ipsetName := "eids." + olIfname
+	ipsetName := "eids." + vifname
 
 	// Look for EIDs which should be deleted
 	for _, ne := range oldNameToEidList {
@@ -108,11 +125,11 @@ func updateEidIpsetConfiglet(olIfname string,
 	}
 }
 
-func deleteEidIpsetConfiglet(olIfname string, printOnError bool) {
+func deleteEidIpsetConfiglet(vifname string, printOnError bool) {
 	if debug {
-		log.Printf("deleteEidIpsetConfiglet: olIfname %s\n", olIfname)
+		log.Printf("deleteEidIpsetConfiglet: vifname %s\n", vifname)
 	}
-	ipsetName := "eids." + olIfname
+	ipsetName := "eids." + vifname
 
 	err := ipsetDestroy(ipsetName)
 	if err != nil && printOnError {

@@ -45,7 +45,7 @@ func handleNetworkObjectCreate(ctx *zedrouterContext, key string, config types.N
 	status := types.NetworkObjectStatus{
 		NetworkObjectConfig: config,
 		IPAssignments:       make(map[string]net.IP),
-		NameToEidList:       config.ZedServConfig.NameToEidList,
+		DnsNameToIPList:     config.ZedServConfig.NameToEidList,
 	}
 	status.PendingAdd = true
 	publishNetworkObjectStatus(ctx, &status)
@@ -154,12 +154,9 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 	// Directory is /var/run/zedrouter/hosts.${BRIDGENAME}
 	hostsDirpath := globalRunDirname + "/hosts." + bridgeName
 	deleteHostsConfiglet(hostsDirpath, false)
-	if config.Type == types.NT_CryptoEID {
-		createHostsConfiglet(hostsDirpath,
-			config.ZedServConfig.NameToEidList)
-	} else {
-		createHostsConfiglet(hostsDirpath, nil)
-	}
+	createHostsConfiglet(hostsDirpath,
+		status.DnsNameToIPList)
+
 	if status.BridgeIPAddr != "" {
 		// XXX arbitrary name "router"!!
 		addToHostsConfiglet(hostsDirpath, "router",
@@ -292,12 +289,8 @@ func setBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) e
 		return errors.New(errStr)
 	}
 
-	// create new radvd configuration and restart radvd if network type is CryptoEID
-	if status.Type == types.NT_CryptoEID {
-		// Create EID ipset
-		createEidIpsetConfiglet(status.BridgeName, status.NameToEidList, "")
-	}
-
+	// Create new radvd configuration and restart radvd if ipv6
+	// XXX shouldn't do that for IPv4 cryptoEIDs!
 	isIPv6 := false
 	if status.Subnet.IP != nil {
 		isIPv6 = (status.Subnet.IP.To4() == nil)
@@ -472,15 +465,6 @@ func doNetworkModify(ctx *zedrouterContext, config types.NetworkObjectConfig,
 		status.Error = errStr
 		status.ErrorTime = time.Now()
 		return
-	}
-	// For cryptoEid network delete the old EID ipset and create new EID ipset
-	if config.Type == types.NT_CryptoEID {
-		bridgeName := status.BridgeName
-		// Destroy old EID Ipset
-		deleteEidIpsetConfiglet(bridgeName, true)
-
-		// Create new ipset
-		createEidIpsetConfiglet(bridgeName, config.ZedServConfig.NameToEidList, "")
 	}
 
 	// Update other fields; potentially useful for testing

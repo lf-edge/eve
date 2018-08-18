@@ -44,8 +44,6 @@ func compileOverlayIpsets(ctx *zedrouterContext,
 			// All ipsets from everybody on this network
 			ipsets = append(ipsets, compileNetworkIpsetsConfig(ctx,
 				netconfig)...)
-		} else {
-			ipsets = append(ipsets, compileAceIpsets(olConfig.ACLs)...)
 		}
 	}
 	return ipsets
@@ -62,8 +60,6 @@ func compileUnderlayIpsets(ctx *zedrouterContext,
 			// All ipsets from everybody on this network
 			ipsets = append(ipsets, compileNetworkIpsetsConfig(ctx,
 				netconfig)...)
-		} else {
-			ipsets = append(ipsets, compileAceIpsets(ulConfig.ACLs)...)
 		}
 	}
 	return ipsets
@@ -79,8 +75,9 @@ func compileAppInstanceIpsets(ctx *zedrouterContext,
 	return ipsets
 }
 
+// If skipKey is set ignore any AppNetworkConfig with that key
 func compileNetworkIpsetsStatus(ctx *zedrouterContext,
-	netconfig *types.NetworkObjectConfig) []string {
+	netconfig *types.NetworkObjectConfig, skipKey string) []string {
 
 	ipsets := []string{}
 	if netconfig == nil {
@@ -96,6 +93,14 @@ func compileNetworkIpsetsStatus(ctx *zedrouterContext,
 				key, status.Key(), status)
 			continue
 		}
+		if skipKey != "" && status.Key() == skipKey {
+			if debug {
+				log.Printf("compileNetworkIpsetsStatus skipping %s\n",
+					skipKey)
+			}
+			continue
+		}
+
 		for _, olStatus := range status.OverlayNetworkList {
 			if olStatus.Network != netconfig.UUID {
 				continue
@@ -149,8 +154,9 @@ func compileNetworkIpsetsConfig(ctx *zedrouterContext,
 	return ipsets
 }
 
+// If skipKey is set ignore any AppNetworkStatus with that key
 func compileOldOverlayIpsets(ctx *zedrouterContext,
-	ollist []types.OverlayNetworkStatus) []string {
+	ollist []types.OverlayNetworkStatus, skipKey string) []string {
 
 	ipsets := []string{}
 	for _, olStatus := range ollist {
@@ -159,16 +165,15 @@ func compileOldOverlayIpsets(ctx *zedrouterContext,
 		if netconfig != nil {
 			// All ipsets from everybody on this network
 			ipsets = append(ipsets, compileNetworkIpsetsStatus(ctx,
-				netconfig)...)
-		} else {
-			ipsets = append(ipsets, compileAceIpsets(olStatus.ACLs)...)
+				netconfig, skipKey)...)
 		}
 	}
 	return ipsets
 }
 
+// If skipKey is set ignore any AppNetworkStatus with that key
 func compileOldUnderlayIpsets(ctx *zedrouterContext,
-	ullist []types.UnderlayNetworkStatus) []string {
+	ullist []types.UnderlayNetworkStatus, skipKey string) []string {
 
 	ipsets := []string{}
 	for _, ulStatus := range ullist {
@@ -177,21 +182,20 @@ func compileOldUnderlayIpsets(ctx *zedrouterContext,
 		if netconfig != nil {
 			// All ipsets from everybody on this network
 			ipsets = append(ipsets, compileNetworkIpsetsStatus(ctx,
-				netconfig)...)
-		} else {
-			ipsets = append(ipsets, compileAceIpsets(ulStatus.ACLs)...)
+				netconfig, skipKey)...)
 		}
 	}
 	return ipsets
 }
 
+// If skipKey is set ignore any AppNetworkStatus with that key
 func compileOldAppInstanceIpsets(ctx *zedrouterContext,
 	ollist []types.OverlayNetworkStatus,
-	ullist []types.UnderlayNetworkStatus) []string {
+	ullist []types.UnderlayNetworkStatus, skipKey string) []string {
 
 	ipsets := []string{}
-	ipsets = append(ipsets, compileOldOverlayIpsets(ctx, ollist)...)
-	ipsets = append(ipsets, compileOldUnderlayIpsets(ctx, ullist)...)
+	ipsets = append(ipsets, compileOldOverlayIpsets(ctx, ollist, skipKey)...)
+	ipsets = append(ipsets, compileOldUnderlayIpsets(ctx, ullist, skipKey)...)
 	return ipsets
 }
 
@@ -633,17 +637,11 @@ func containsRule(set IptablesRuleList, member IptablesRule) bool {
 	return false
 }
 
-func updateAppInstanceIpsets(ctx *zedrouterContext,
-	newolConfig []types.OverlayNetworkConfig,
-	newulConfig []types.UnderlayNetworkConfig,
-	oldolConfig []types.OverlayNetworkStatus,
-	oldulConfig []types.UnderlayNetworkStatus) ([]string, []string, bool) {
+func diffIpsets(newIpsets, oldIpsets []string) ([]string, []string, bool) {
+
 	staleIpsets := []string{}
 	newIpsetMap := make(map[string]bool)
 	restartDnsmasq := false
-
-	newIpsets := compileAppInstanceIpsets(ctx, newolConfig, newulConfig)
-	oldIpsets := compileOldAppInstanceIpsets(ctx, oldolConfig, oldulConfig)
 
 	// Add all new ipsets in a map
 	for _, ipset := range newIpsets {
@@ -674,6 +672,7 @@ func updateAppInstanceIpsets(ctx *zedrouterContext,
 // Perform an update across all of the bridge aka NetworkObjectStatus
 // XXX put ACLs on bridge and revert to old structure with ACLs for each
 // AppNetworkConfig. Means we can do the sshPortMap as well.
+// XXX why do we need a ulStatusArg
 func updateNetworkACLConfiglet(ctx *zedrouterContext,
 	netstatus *types.NetworkObjectStatus, ulStatusArg *types.UnderlayNetworkStatus) error {
 

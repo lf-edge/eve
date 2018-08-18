@@ -14,7 +14,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/satori/go.uuid"
 	"github.com/vishvananda/netlink"
 	"github.com/zededa/go-provision/adapters"
 	"github.com/zededa/go-provision/agentlog"
@@ -30,7 +29,6 @@ import (
 	"net"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -968,14 +966,12 @@ func handleCreate(ctx *zedrouterContext, key string,
 			config.UnderlayNetworkList[i]
 	}
 
-	// XXX note that with IPv4/IPV6/LISP interfaces the domU can do
-	// dns lookups on either, hence should configure the ipsets
-	// for all the domU's interfaces/bridges.
-	// XXX plus dnsmasq serves the Linux bridge hence need a loop
-	// akin to that in updateNetworkACLConfiglet()
+	// Note that with IPv4/IPv6/LISP interfaces the domU can do
+	// dns lookups on either IPv4 and IPv6 on any interface, hence we
+	// configure the ipsets for all the domU's interfaces/bridges.
+	ipsets := compileAppInstanceIpsets(ctx, config.OverlayNetworkList,
+		config.UnderlayNetworkList)
 
-	// XXX ipsets := compileAppInstanceIpsets(ctx, config.OverlayNetworkList,
-	// 	config.UnderlayNetworkList)
 	for i, olConfig := range config.OverlayNetworkList {
 		olNum := i + 1
 		if debug {
@@ -984,13 +980,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 		}
 		netconfig := lookupNetworkObjectConfig(ctx, olConfig.Network.String())
 		if netconfig == nil {
-			status.PendingAdd = false
-			errStr := fmt.Sprintf("no network config for %s",
-				olConfig.Network.String())
-			err := errors.New(errStr)
-			addError(ctx, &status, "lookupNetworkObjectStatus", err)
-			log.Printf("handleCreate done for %s\n",
-				config.DisplayName)
+			// Checked for nil above
 			return
 		}
 
@@ -999,19 +989,14 @@ func handleCreate(ctx *zedrouterContext, key string,
 			olConfig.Network.String())
 		if netstatus == nil {
 			// We had a netconfig but no status!
-			status.PendingAdd = false
 			errStr := fmt.Sprintf("no network status for %s",
 				olConfig.Network.String())
 			err := errors.New(errStr)
 			addError(ctx, &status, "lookupNetworkObjectStatus", err)
-			log.Printf("handleCreate done for %s\n",
-				config.DisplayName)
-			return
+			continue
 		}
 		bridgeNum := netstatus.BridgeNum
 		bridgeName := netstatus.BridgeName
-
-		EID := olConfig.EID
 		vifName := "nbo" + strconv.Itoa(olNum) + "x" +
 			strconv.Itoa(bridgeNum)
 
@@ -1031,9 +1016,8 @@ func handleCreate(ctx *zedrouterContext, key string,
 		if olConfig.AppMacAddr != nil {
 			appMac = olConfig.AppMacAddr.String()
 		} else {
-			appMac = "00:16:3e:01:" +
-				strconv.FormatInt(int64(olNum), 16) + ":" +
-				strconv.FormatInt(int64(bridgeNum), 16)
+			appMac = fmt.Sprintf("00:16:3e:01:%02x:%02x",
+				olNum, appNum)
 		}
 		log.Printf("appMac %s\n", appMac)
 
@@ -1047,7 +1031,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 
 		olStatus.BridgeIPAddr = netstatus.BridgeIPAddr
 
-		// XXX set sharedBridge base on bn prefix; remove created return
+		EID := olConfig.EID
 		//    ip -6 route add ${EID}/128 dev ${bridgeName}
 		_, ipnet, err := net.ParseCIDR(EID.String() + "/128")
 		if err != nil {
@@ -1064,41 +1048,20 @@ func handleCreate(ctx *zedrouterContext, key string,
 				errors.New(errStr))
 		}
 
-		// Wirte each EID hostname in a separate file in directory to facilitate
-		// adds and deletes
+		// XXX We already do this for the network for over and underlay
+		// Write each EID hostname in a separate file in directory to
+		// facilitate adds and deletes
 		hostsDirpath := globalRunDirname + "/hosts." + bridgeName
-		// XXX add bulk add function? Separate create from add?
-		for _, ne := range olConfig.NameToEidList {
-			addIPToHostsConfiglet(hostsDirpath, ne.HostName,
-				ne.EIDs)
-		}
+		createHostsConfiglet(hostsDirpath, olConfig.NameToEidList)
 
-		brNameToEidList := []types.NameToEid{}
-		brNameToEidList = append(brNameToEidList, netstatus.NameToEidList...)
+		// Default EID ipset
+		deleteEidIpsetConfiglet(vifName, false)
+		createEidIpsetConfiglet(vifName, olConfig.NameToEidList,
+			EID.String())
 
-		// Add the current overlay's EID if not present in list.
-		// Check for any new entries in the current overlay's NameToEid list.
-		// If the bridge's NameToEid list does not already have them, add now.
-		for _, nameToEid := range olConfig.NameToEidList {
-			// XXX Assuming that App will have only one EID per IID
-			if !containsEID(brNameToEidList, nameToEid.EIDs[0]) {
-				brNameToEidList = append(brNameToEidList, nameToEid)
-			}
-		}
-
-		if len(netstatus.NameToEidList) == 0 {
-			deleteEidIpsetConfiglet(bridgeName, false)
-			createEidIpsetConfiglet(bridgeName, brNameToEidList, EID.String())
-		} else {
-			// Overlays in a particular IID should all ideally have the same
-			// NameToEidList. We check for differences and add just in case.
-			updateEidIpsetConfiglet(bridgeName,
-				netstatus.NameToEidList, brNameToEidList)
-		}
-		netstatus.NameToEidList = append(netstatus.NameToEidList,
-			brNameToEidList...)
 		publishNetworkObjectStatus(ctx, netstatus)
 
+		// XXX the ACLs should be per vif not per network
 		// Set up ACLs before we setup dnsmasq
 		err = updateNetworkACLConfiglet(ctx, netstatus, nil)
 		if err != nil {
@@ -1107,17 +1070,21 @@ func handleCreate(ctx *zedrouterContext, key string,
 		// XXX createDnsmasq assumes it can read this to get netstatus
 		publishAppNetworkStatus(ctx, &status)
 
-		// XXX need ipsets from all bn<N> users? Or apply to nbn at
-		// bridge? Still need across multiple interfaces for app
-		// Apply at bridge based on ACL, but track in dnsmasq?
-		// XXX foo.example.org and example.org on from different
-		// apps on same bridge??? Does dnsmasq populate both?
-
 		addhostDnsmasq(bridgeName, appMac, EID.String(),
 			config.UUIDandVersion.UUID.String())
-		// Start clean
-		stopDnsmasq(bridgeName, false)
-		// XXX need ipsets from all bn<N> users
+
+		// Look for added or deleted ipsets
+		newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
+			netstatus.BridgeIPSets)
+
+		if restartDnsmasq {
+			stopDnsmasq(bridgeName, false)
+			createDnsmasqConfiglet(bridgeName,
+				netstatus.BridgeIPAddr, netconfig, hostsDirpath,
+				newIpsets)
+			startDnsmasq(bridgeName)
+		}
+		netstatus.BridgeIPSets = newIpsets
 
 		// Create LISP configlets for IID and EID/signature
 		serviceStatus := lookupAppLink(ctx, olConfig.Network)
@@ -1139,6 +1106,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 
 		createAndStartLisp(ctx, status, olConfig,
 			serviceStatus, lispRunDirname, bridgeName)
+		maybeRemoveStaleIpsets(staleIpsets)
 	}
 
 	for i, ulConfig := range config.UnderlayNetworkList {
@@ -1147,18 +1115,21 @@ func handleCreate(ctx *zedrouterContext, key string,
 			log.Printf("ulNum %d network %s ACLs %v\n",
 				ulNum, ulConfig.Network.String(), ulConfig.ACLs)
 		}
+		netconfig := lookupNetworkObjectConfig(ctx, ulConfig.Network.String())
+		if netconfig == nil {
+			// Checked for nil above
+			return
+		}
+
+		// Fetch the network that this underlay is attached to
 		netstatus := lookupNetworkObjectStatus(ctx,
 			ulConfig.Network.String())
 		if netstatus == nil {
-			// We had a netconfig but no status!
-			status.PendingAdd = false
 			errStr := fmt.Sprintf("no status for %s",
 				ulConfig.Network.String())
 			err := errors.New(errStr)
 			addError(ctx, &status, "lookupNetworkObjectStatus", err)
-			log.Printf("handleCreate done for %s\n",
-				config.DisplayName)
-			return
+			continue
 		}
 		bridgeName := netstatus.BridgeName
 		vifName := "nbu" + strconv.Itoa(ulNum) + "x" +
@@ -1172,7 +1143,6 @@ func handleCreate(ctx *zedrouterContext, key string,
 			return
 		}
 		bridgeMac := uLink.HardwareAddr
-
 		log.Printf("bridgeName %s MAC %s\n",
 			bridgeName, bridgeMac.String())
 
@@ -1194,9 +1164,9 @@ func handleCreate(ctx *zedrouterContext, key string,
 		ulStatus.Mac = appMac
 		ulStatus.HostName = config.Key()
 
-		bridgeIPAddr, appIPAddr := getUlAddrs(ctx, ulNum-1, appNum, ulStatus,
-			netstatus)
-		// Check if we already have an address on the bridge
+		bridgeIPAddr, appIPAddr := getUlAddrs(ctx, ulNum-1, appNum,
+			ulStatus, netstatus)
+		// Check if we have a bridge service with an address
 		bridgeIP, err := getBridgeServiceIPv4Addr(ctx, ulConfig.Network)
 		if err != nil {
 			log.Printf("handleCreate getBridgeServiceIPv4Addr %s\n",
@@ -1214,11 +1184,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 				[]string{appIPAddr})
 		}
 
-		// Create iptables with optional ipset's based ACL
-		// XXX Doesn't handle IPv6 underlay ACLs
-		// XXX need to publish AssignedIPAddress but not rest since
-		// the difference between config and status is used in
-		// in updateNetworkACLConfiglet
+		// XXX the ACLs should be per vif not per network
 		// XXX passing ulStatus for now until we refactor to bridge
 		// ACLs
 		err = updateNetworkACLConfiglet(ctx, netstatus, ulStatus)
@@ -1228,12 +1194,24 @@ func handleCreate(ctx *zedrouterContext, key string,
 		// XXX createDnsmasq assumes it can read this to get netstatus
 		publishAppNetworkStatus(ctx, &status)
 
-		// XXX need ipsets from all bn<N> users? Or apply to nbn at bridge?
-
 		if appIPAddr != "" {
 			addhostDnsmasq(bridgeName, appMac, appIPAddr,
 				config.UUIDandVersion.UUID.String())
 		}
+
+		// Look for added or deleted ipsets
+		newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
+			netstatus.BridgeIPSets)
+
+		if restartDnsmasq {
+			stopDnsmasq(bridgeName, false)
+			createDnsmasqConfiglet(bridgeName,
+				netstatus.BridgeIPAddr, netconfig, hostsDirpath,
+				newIpsets)
+			startDnsmasq(bridgeName)
+		}
+		netstatus.BridgeIPSets = newIpsets
+		maybeRemoveStaleIpsets(staleIpsets)
 	}
 	// Write out what we created to AppNetworkStatus
 	status.PendingAdd = false
@@ -1270,72 +1248,6 @@ func createAndStartLisp(ctx *zedrouterContext,
 		additionalInfo, olConfig.LispServers, ctx.separateDataPlane)
 }
 
-var nilUUID uuid.UUID // Really a constant
-
-// Returns the link and whether or not is was created (as opposed to found)
-// XXX remove createBridge/deleteBridge logic once everything
-// on nbN is working
-func findOrCreateBridge(ctx *zedrouterContext, bridgeName string, ifNum int,
-	appNum int, netUUID uuid.UUID) (*netlink.Bridge, bool, error) {
-
-	// Make sure we have a NetworkObjectConfig if we have a UUID
-	// Returns nil if UUID is zero
-	if netUUID != nilUUID {
-		netstatus := lookupNetworkObjectStatus(ctx, netUUID.String())
-		if netstatus == nil {
-			log.Printf("findOrCreateBridge no NetworkObjectStatus for %s\n",
-				netUUID.String())
-			// XXX need a fallback/retry!!
-		} else if netstatus.BridgeName != "" {
-			bridgeName = netstatus.BridgeName
-			log.Printf("Found Bridge %s for %s\n",
-				bridgeName, netUUID.String())
-			bridgeLink, err := findBridge(bridgeName)
-			if err != nil {
-				return nil, false, err
-			}
-			return bridgeLink, false, nil
-		}
-	}
-
-	// Create
-
-	// Start clean
-	attrs := netlink.NewLinkAttrs()
-	attrs.Name = bridgeName
-	bridgeLink := &netlink.Bridge{LinkAttrs: attrs}
-	netlink.LinkDel(bridgeLink)
-
-	//    ip link add ${bridgeName} type bridge
-	attrs = netlink.NewLinkAttrs()
-	attrs.Name = bridgeName
-
-	var bridgeMac string
-	if ifNum != 0 {
-		bridgeMac = fmt.Sprintf("00:16:3e:02:%02x:%02x", ifNum, appNum)
-	} else {
-		bridgeMac = fmt.Sprintf("00:16:3e:04:00:%02x", appNum)
-	}
-	hw, err := net.ParseMAC(bridgeMac)
-	if err != nil {
-		log.Fatal("ParseMAC failed: ", bridgeMac, err)
-	}
-	attrs.HardwareAddr = hw
-	bridgeLink = &netlink.Bridge{LinkAttrs: attrs}
-	if err := netlink.LinkAdd(bridgeLink); err != nil {
-		errStr := fmt.Sprintf("LinkAdd on %s failed: %s",
-			bridgeName, err)
-		return nil, true, errors.New(errStr)
-	}
-	//    ip link set ${bridgeName} up
-	if err := netlink.LinkSetUp(bridgeLink); err != nil {
-		errStr := fmt.Sprintf("LinkSetUp on %s failed: %s",
-			bridgeName, err)
-		return nil, true, errors.New(errStr)
-	}
-	return bridgeLink, true, nil
-}
-
 // Returns the link
 func findBridge(bridgeName string) (*netlink.Bridge, error) {
 
@@ -1344,8 +1256,7 @@ func findBridge(bridgeName string) (*netlink.Bridge, error) {
 	if link == nil {
 		errStr := fmt.Sprintf("findBridge(%s) failed %s",
 			bridgeName, err)
-		// XXX how to handle this failure? bridge
-		// disappeared?
+		// XXX how to handle this failure? bridge disappeared?
 		return nil, errors.New(errStr)
 	}
 	switch link.(type) {
@@ -1360,7 +1271,7 @@ func findBridge(bridgeName string) (*netlink.Bridge, error) {
 	return bridgeLink, nil
 }
 
-// XXX IPv6? LISP? Same? getOlAddrs???
+// XXX Need additional logic for IPv6 underlays.
 func getUlAddrs(ctx *zedrouterContext, ifnum int, appNum int,
 	status *types.UnderlayNetworkStatus,
 	netstatus *types.NetworkObjectStatus) (string, string) {
@@ -1501,10 +1412,10 @@ func handleModify(ctx *zedrouterContext, key string,
 
 		// Note: we ignore olConfig.AppMacAddr for IsMgmt
 
-		// Update hosts
+		// Update hosts; we don't bother to delete stale
+		// XXX would have to look across bridge to delete stale
 		hostsDirpath := globalRunDirname + "/hosts." + olIfname
-		updateHostsConfiglet(hostsDirpath, olStatus.NameToEidList,
-			olConfig.NameToEidList)
+		createHostsConfiglet(hostsDirpath, olStatus.NameToEidList)
 
 		// Default EID ipset
 		updateEidIpsetConfiglet(olIfname, olStatus.NameToEidList,
@@ -1523,14 +1434,11 @@ func handleModify(ctx *zedrouterContext, key string,
 		return
 	}
 
-	// XXX note that with IPv4/IPV6/LISP interfaces the domU can do
-	// dns lookups on either, hence should configure the ipsets
-	// for all the domU's interfaces/bridges.
-	newIpsets, staleIpsets, restartDnsmasq := updateAppInstanceIpsets(ctx,
-		config.OverlayNetworkList,
-		config.UnderlayNetworkList,
-		status.OverlayNetworkList,
-		status.UnderlayNetworkList)
+	// Note that with IPv4/IPv6/LISP interfaces the domU can do
+	// dns lookups on either IPv4 and IPv6 on any interface, hence should
+	// configure the ipsets for all the domU's interfaces/bridges.
+	ipsets := compileAppInstanceIpsets(ctx, config.OverlayNetworkList,
+		config.UnderlayNetworkList)
 
 	// Look for ACL and NametoEidList changes in overlay
 	for i, olConfig := range config.OverlayNetworkList {
@@ -1546,56 +1454,60 @@ func handleModify(ctx *zedrouterContext, key string,
 		}
 		olStatus := status.OverlayNetworkList[olNum-1]
 		bridgeName := olStatus.Bridge
-		bridgeIPAddr := olStatus.BridgeIPAddr
 
 		netconfig := lookupNetworkObjectConfig(ctx,
 			olConfig.Network.String())
-		// Update hosts
-		// XXX doesn't handle a sharedBridge; need union of
-		// all hosts on bridge
+		if netconfig == nil {
+			errStr := fmt.Sprintf("no network config for %s",
+				olConfig.Network.String())
+			err := errors.New(errStr)
+			addError(ctx, status, "lookupNetworkObjectConfig", err)
+			continue
+		}
+		netstatus := lookupNetworkObjectStatus(ctx,
+			olConfig.Network.String())
+		if netstatus == nil {
+			// We had a netconfig but no status!
+			errStr := fmt.Sprintf("no network status for %s",
+				olConfig.Network.String())
+			err := errors.New(errStr)
+			addError(ctx, status, "lookupNetworkObjectStatus", err)
+			continue
+		}
+
+		// Update hosts; we don't bother to delete stale
+		// XXX would have to look across bridge to delete stale
 		hostsDirpath := globalRunDirname + "/hosts." + bridgeName
-		updateHostsConfiglet(hostsDirpath, olStatus.NameToEidList,
-			olConfig.NameToEidList)
+		createHostsConfiglet(hostsDirpath, olStatus.NameToEidList)
 
 		// Default EID ipset
-		// XXX shared with others; need union of all hosts on bridge
-		// or per client bridge port ACLs
-		updateEidIpsetConfiglet(bridgeName, olStatus.NameToEidList,
+		updateEidIpsetConfiglet(olStatus.Vif, olStatus.NameToEidList,
 			olConfig.NameToEidList)
 
 		// XXX could there be a change to AssignedIPv6Address?
 		// If so updateNetworkACLConfiglet needs to know old and new
 
-		netstatus := lookupNetworkObjectStatus(ctx,
-			olConfig.Network.String())
-		// XXX could the netstatus have disappeared after the create?
+		// XXX per vif
 		// Update ACLs
-		if netstatus != nil {
-			err := updateNetworkACLConfiglet(ctx, netstatus, nil)
-			if err != nil {
-				addError(ctx, status, "updateNetworkACL", err)
-			}
+		err := updateNetworkACLConfiglet(ctx, netstatus, nil)
+		if err != nil {
+			addError(ctx, status, "updateNetworkACL", err)
 		}
 		// XXX createDnsmasq assumes it can read this to get netstatus
 		publishAppNetworkStatus(ctx, status)
 
-		// updateAppInstanceIpsets told us whether there is a change
-		// to the set of ipsets, and that requires restarting dnsmasq
-		// XXX shared with others
-		if false && restartDnsmasq {
-			cfgFilename := "dnsmasq." + bridgeName + ".conf"
-			cfgPathname := runDirname + "/" + cfgFilename
-			EID := olConfig.EID
+		// Look for added or deleted ipsets
+		newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
+			netstatus.BridgeIPSets)
+
+		if restartDnsmasq {
 			stopDnsmasq(bridgeName, false)
-			//remove old dnsmasq configuration file
-			os.Remove(cfgPathname)
-			// XXX need to determine remaining ipsets. Inside function?
-			createDnsmasqOverlayConfiglet(ctx, cfgPathname, bridgeName,
-				bridgeIPAddr, EID.String(), olStatus.Mac, hostsDirpath,
-				config.Key(), newIpsets,
-				netconfig)
+			createDnsmasqConfiglet(bridgeName,
+				netstatus.BridgeIPAddr, netconfig, hostsDirpath,
+				newIpsets)
 			startDnsmasq(bridgeName)
 		}
+		netstatus.BridgeIPSets = newIpsets
 
 		serviceStatus := lookupAppLink(ctx, olConfig.Network)
 		if serviceStatus == nil {
@@ -1616,7 +1528,10 @@ func handleModify(ctx *zedrouterContext, key string,
 			serviceStatus.LispStatus.IID,
 			olConfig.EID, olConfig.LispSignature,
 			*ctx.DeviceNetworkStatus, bridgeName, bridgeName,
-			additionalInfo, olConfig.LispServers, ctx.separateDataPlane)
+			additionalInfo, olConfig.LispServers,
+			ctx.separateDataPlane)
+
+		maybeRemoveStaleIpsets(staleIpsets)
 
 	}
 	// Look for ACL changes in underlay
@@ -1633,58 +1548,51 @@ func handleModify(ctx *zedrouterContext, key string,
 		}
 		ulStatus := status.UnderlayNetworkList[ulNum-1]
 		bridgeName := ulStatus.Bridge
-		bridgeIPAddr := ulStatus.BridgeIPAddr
-		appIPAddr := ulStatus.AssignedIPAddr
+		// XXX needed for acls? appIPAddr := ulStatus.AssignedIPAddr
 
 		netconfig := lookupNetworkObjectConfig(ctx,
 			ulConfig.Network.String())
-
+		if netconfig == nil {
+			errStr := fmt.Sprintf("no network config for %s",
+				ulConfig.Network.String())
+			err := errors.New(errStr)
+			addError(ctx, status, "lookupNetworkObjectConfig", err)
+			continue
+		}
+		netstatus := lookupNetworkObjectStatus(ctx,
+			ulConfig.Network.String())
+		if netstatus == nil {
+			// We had a netconfig but no status!
+			errStr := fmt.Sprintf("no network status for %s",
+				ulConfig.Network.String())
+			err := errors.New(errStr)
+			addError(ctx, status, "lookupNetworkObjectStatus", err)
+			continue
+		}
 		// XXX could there be a change to AssignedIPAddress?
 		// If so updateNetworkACLConfiglet needs to know old and new
 
-		netstatus := lookupNetworkObjectStatus(ctx,
-			ulConfig.Network.String())
-		// XXX could the netstatus have disappeared after the create?
-		if netstatus != nil {
-			err := updateNetworkACLConfiglet(ctx, netstatus, nil)
-			if err != nil {
-				addError(ctx, status, "updateNetworkACL", err)
-			}
+		// XXX per vif
+		err := updateNetworkACLConfiglet(ctx, netstatus, nil)
+		if err != nil {
+			addError(ctx, status, "updateNetworkACL", err)
 		}
 		// XXX createDnsmasq assumes it can read this to get netstatus
 		publishAppNetworkStatus(ctx, status)
 
-		if false && restartDnsmasq {
-			//update underlay dnsmasq configuration
+		newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
+			netstatus.BridgeIPSets)
+
+		if restartDnsmasq {
 			hostsDirpath := globalRunDirname + "/hosts." + bridgeName
-			cfgFilename := "dnsmasq." + bridgeName + ".conf"
-			cfgPathname := runDirname + "/" + cfgFilename
 			stopDnsmasq(bridgeName, false)
-			//remove old dnsmasq configuration file
-			os.Remove(cfgPathname)
-			// XXX need ipsets from all bn<N> users
-			createDnsmasqUnderlayConfiglet(ctx, cfgPathname, bridgeName,
-				bridgeIPAddr, appIPAddr, ulStatus.Mac,
-				hostsDirpath,
-				config.Key(), newIpsets,
-				netconfig)
+			createDnsmasqConfiglet(bridgeName,
+				netstatus.BridgeIPAddr, netconfig, hostsDirpath,
+				newIpsets)
 			startDnsmasq(bridgeName)
 		}
-	}
-
-	// Remove stale ipsets
-	// In case if there are any references to these ipsets from other
-	// domUs, then the kernel would not remove them.
-	// The ipset destroy command would just fail.
-	for _, ipset := range staleIpsets {
-		err := ipsetDestroy(fmt.Sprintf("ipv4.%s", ipset))
-		if err != nil {
-			log.Println("ipset destroy ipv4", ipset, err)
-		}
-		err = ipsetDestroy(fmt.Sprintf("ipv6.%s", ipset))
-		if err != nil {
-			log.Println("ipset destroy ipv6", ipset, err)
-		}
+		netstatus.BridgeIPSets = newIpsets
+		maybeRemoveStaleIpsets(staleIpsets)
 	}
 
 	// Write out what we modified to AppNetworkStatus
@@ -1703,6 +1611,23 @@ func handleModify(ctx *zedrouterContext, key string,
 	status.PendingModify = false
 	publishAppNetworkStatus(ctx, status)
 	log.Printf("handleModify done for %s\n", config.DisplayName)
+}
+
+func maybeRemoveStaleIpsets(staleIpsets []string) {
+	// Remove stale ipsets
+	// In case if there are any references to these ipsets from other
+	// domUs, then the kernel would not remove them.
+	// The ipset destroy command would just fail.
+	for _, ipset := range staleIpsets {
+		err := ipsetDestroy(fmt.Sprintf("ipv4.%s", ipset))
+		if err != nil {
+			log.Println("ipset destroy ipv4", ipset, err)
+		}
+		err = ipsetDestroy(fmt.Sprintf("ipv6.%s", ipset))
+		if err != nil {
+			log.Println("ipset destroy ipv6", ipset, err)
+		}
+	}
 }
 
 func handleDelete(ctx *zedrouterContext, key string,
@@ -1820,140 +1745,188 @@ func handleDelete(ctx *zedrouterContext, key string,
 		deleteLispConfiglet(lispRunDirname, true, olStatus.IID,
 			olStatus.EID, *ctx.DeviceNetworkStatus,
 			ctx.separateDataPlane)
-	} else {
-		// Delete everything for overlay
-		for olNum := 1; olNum <= maxOlNum; olNum++ {
-			if debug {
-				log.Printf("handleDelete olNum %d\n", olNum)
-			}
-			// Need to check that index exists
-			if len(status.OverlayNetworkList) < olNum {
-				log.Println("Missing status for overlay %d; can not clean up\n",
-					olNum)
-				continue
-			}
+		status.PendingDelete = false
+		publishAppNetworkStatus(ctx, status)
 
-			olStatus := status.OverlayNetworkList[olNum-1]
-			bridgeName := olStatus.Bridge
+		// Write out what we modified to AppNetworkStatus aka delete
+		unpublishAppNetworkStatus(ctx, status)
 
-			sharedBridge := true
-			if !strings.HasPrefix(bridgeName, "bn") {
-				sharedBridge = false
-				log.Printf("Deleting bridge %s\n", bridgeName)
-				attrs := netlink.NewLinkAttrs()
-				attrs.Name = bridgeName
-				oLink := &netlink.Bridge{LinkAttrs: attrs}
-				// Remove link and associated addresses
-				netlink.LinkDel(oLink)
-			}
-			netconfig := lookupNetworkObjectConfig(ctx,
-				olStatus.Network.String())
-			if netconfig == nil {
-				log.Printf("Network %s already deleted\n", olStatus.Network.String())
-			}
+		appNumFree(status.UUIDandVersion.UUID)
+		log.Printf("handleDelete done for %s\n", status.DisplayName)
+		return
+	}
+	// Note that with IPv4/IPv6/LISP interfaces the domU can do
+	// dns lookups on either IPv4 and IPv6 on any interface, hence should
+	// configure the ipsets for all the domU's interfaces/bridges.
+	// We skip our own contributions since we're going away
+	ipsets := compileOldAppInstanceIpsets(ctx, status.OverlayNetworkList,
+		status.UnderlayNetworkList, status.Key())
 
-			// XXX need IPv6 allocate/free to do same as for ulConfig
-			// XXX createDnsmasq assumes it can read this to get netstatus
-			publishAppNetworkStatus(ctx, status)
-
-			// Delete ACLs
-			netstatus := lookupNetworkObjectStatus(ctx,
-				olStatus.Network.String())
-			// XXX could the netstatus have disappeared after the create?
-			if netstatus != nil {
-				// Network bridge still exists. It means there are
-				// other ovelays still using this bridge network.
-				err := updateNetworkACLConfiglet(ctx, netstatus, nil)
-				if err != nil {
-					addError(ctx, status,
-						"updateNetworkACL", err)
-				}
-			}
-
-			// Delete overlay hosts file or directory
-			hostsDirpath := globalRunDirname + "/hosts." + bridgeName
-			if sharedBridge {
-				removeFromHostsConfiglet(hostsDirpath,
-					status.DisplayName)
-			} else {
-				deleteHostsConfiglet(hostsDirpath, true)
-			}
-
-			// XXX check if the service configuration exists.
-			// If service does not exist overlays would not have been created
-			serviceStatus := lookupAppLink(ctx, olStatus.Network)
-			if serviceStatus == nil {
-				// Lisp service might already have been deleted.
-				// As part of Lisp service deletion, we delete all overlays.
-				continue
-			}
-
-			// Delete LISP configlets
-			deleteLispConfiglet(lispRunDirname, false,
-				olStatus.IID, olStatus.EID,
-				*ctx.DeviceNetworkStatus,
-				ctx.separateDataPlane)
-
-			// Default EID ipset
-			// XXX not all of it
-			// TODO: Only the EID of current overlay should be removed.
-
-			// Eid Ipset updation/deletion should happen as part of NetworkObjectConfig processing
-			// XXX deleteEidIpsetConfiglet(bridgeName, true)
+	// Delete everything for overlay
+	for olNum := 1; olNum <= maxOlNum; olNum++ {
+		if debug {
+			log.Printf("handleDelete olNum %d\n", olNum)
+		}
+		// Need to check that index exists
+		if len(status.OverlayNetworkList) < olNum {
+			log.Println("Missing status for overlay %d; can not clean up\n",
+				olNum)
+			continue
 		}
 
-		// XXX check if any IIDs are now unreferenced and delete them
-		// XXX requires looking at all of configDir and statusDir
+		olStatus := status.OverlayNetworkList[olNum-1]
+		bridgeName := olStatus.Bridge
 
-		// Delete everything in underlay
-		for ulNum := 1; ulNum <= maxUlNum; ulNum++ {
-			if debug {
-				log.Printf("handleDelete ulNum %d\n", ulNum)
-			}
-			// Need to check that index exists
-			if len(status.UnderlayNetworkList) < ulNum {
-				log.Println("Missing status for underlay %d; can not clean up\n",
-					ulNum)
-				continue
-			}
-			ulStatus := status.UnderlayNetworkList[ulNum-1]
-			bridgeName := ulStatus.Bridge
+		netconfig := lookupNetworkObjectConfig(ctx,
+			olStatus.Network.String())
+		if netconfig == nil {
+			errStr := fmt.Sprintf("no network config for %s",
+				olStatus.Network.String())
+			err := errors.New(errStr)
+			addError(ctx, status, "lookupNetworkObjectStatus", err)
+			continue
+		}
+		netstatus := lookupNetworkObjectStatus(ctx,
+			olStatus.Network.String())
+		if netstatus == nil {
+			// We had a netconfig but no status!
+			errStr := fmt.Sprintf("no network status for %s",
+				olStatus.Network.String())
+			err := errors.New(errStr)
+			addError(ctx, status, "lookupNetworkObjectStatus", err)
+			continue
+		}
 
-			netstatus := lookupNetworkObjectStatus(ctx,
+		// XXX createDnsmasq assumes it can read this to get netstatus
+		publishAppNetworkStatus(ctx, status)
+
+		// Delete ACLs
+		// XXX per vif
+		// Network bridge still exists. It means there are
+		// other ovelays still using this bridge network.
+		err := updateNetworkACLConfiglet(ctx, netstatus, nil)
+		if err != nil {
+			addError(ctx, status,
+				"updateNetworkACL", err)
+		}
+
+		// Delete overlay hosts file or directory
+		hostsDirpath := globalRunDirname + "/hosts." + bridgeName
+		removeFromHostsConfiglet(hostsDirpath, status.DisplayName)
+
+		// XXX check if the service configuration exists.
+		// If service does not exist overlays would not have been created
+		serviceStatus := lookupAppLink(ctx, olStatus.Network)
+		if serviceStatus == nil {
+			// Lisp service might already have been deleted.
+			// As part of Lisp service deletion, we delete all overlays.
+			continue
+		}
+
+		// Delete LISP configlets
+		deleteLispConfiglet(lispRunDirname, false,
+			olStatus.IID, olStatus.EID,
+			*ctx.DeviceNetworkStatus,
+			ctx.separateDataPlane)
+
+		deleteEidIpsetConfiglet(olStatus.Vif, true)
+
+		// Look for added or deleted ipsets
+		newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
+			netstatus.BridgeIPSets)
+
+		if restartDnsmasq {
+			stopDnsmasq(bridgeName, false)
+			createDnsmasqConfiglet(bridgeName,
+				netstatus.BridgeIPAddr, netconfig, hostsDirpath,
+				newIpsets)
+			startDnsmasq(bridgeName)
+		}
+		netstatus.BridgeIPSets = newIpsets
+		maybeRemoveStaleIpsets(staleIpsets)
+	}
+
+	// XXX check if any IIDs are now unreferenced and delete them
+	// XXX requires looking at all of configDir and statusDir
+
+	// Delete everything in underlay
+	for ulNum := 1; ulNum <= maxUlNum; ulNum++ {
+		if debug {
+			log.Printf("handleDelete ulNum %d\n", ulNum)
+		}
+		// Need to check that index exists
+		if len(status.UnderlayNetworkList) < ulNum {
+			log.Println("Missing status for underlay %d; can not clean up\n",
+				ulNum)
+			continue
+		}
+		ulStatus := status.UnderlayNetworkList[ulNum-1]
+		bridgeName := ulStatus.Bridge
+
+		netconfig := lookupNetworkObjectConfig(ctx,
+			ulStatus.Network.String())
+		if netconfig == nil {
+			errStr := fmt.Sprintf("no network config for %s",
 				ulStatus.Network.String())
-			// XXX could the netstatus have disappeared after the create?
-			if netstatus != nil {
-				// XXX or change type of VifInfo.Mac?
-				mac, err := net.ParseMAC(ulStatus.Mac)
-				if err != nil {
-					log.Fatal("ParseMAC failed: ",
-						ulStatus.Mac, err)
-				}
-				_, err = releaseIPv4(ctx, netstatus, mac)
-				// XXX publish error?
-				if err != nil {
-					addError(ctx, status, "freeIPv4", err)
-				}
-			}
-			// XXX createDnsmasq assumes it can read this to get netstatus
-			publishAppNetworkStatus(ctx, status)
-
-			appMac := ulStatus.Mac
-			removehostDnsmasq(bridgeName, appMac)
-
-			// Delete ACLs
-			if netstatus != nil {
-				err := updateNetworkACLConfiglet(ctx, netstatus, nil)
-				if err != nil {
-					addError(ctx, status,
-						"updateNetworkACL", err)
-				}
-			}
-			// Delete underlay hosts file
-			hostsDirpath := globalRunDirname + "/hosts." + bridgeName
-			removeFromHostsConfiglet(hostsDirpath,
-				status.DisplayName)
+			err := errors.New(errStr)
+			addError(ctx, status, "lookupNetworkObjectConfig", err)
+			continue
 		}
+		netstatus := lookupNetworkObjectStatus(ctx,
+			ulStatus.Network.String())
+		if netstatus == nil {
+			// We had a netconfig but no status!
+			errStr := fmt.Sprintf("no network status for %s",
+				ulStatus.Network.String())
+			err := errors.New(errStr)
+			addError(ctx, status, "lookupNetworkObjectStatus", err)
+			continue
+		}
+
+		// XXX or change type of VifInfo.Mac?
+		mac, err := net.ParseMAC(ulStatus.Mac)
+		if err != nil {
+			log.Fatal("ParseMAC failed: ",
+				ulStatus.Mac, err)
+		}
+		_, err = releaseIPv4(ctx, netstatus, mac)
+		// XXX publish error?
+		if err != nil {
+			addError(ctx, status, "freeIPv4", err)
+		}
+
+		// XXX createDnsmasq assumes it can read this to get netstatus
+		publishAppNetworkStatus(ctx, status)
+
+		appMac := ulStatus.Mac
+		appIPAddr := ulStatus.AssignedIPAddr
+		removehostDnsmasq(bridgeName, appMac, appIPAddr)
+
+		// Delete ACLs
+		if netstatus != nil {
+			err := updateNetworkACLConfiglet(ctx, netstatus, nil)
+			if err != nil {
+				addError(ctx, status,
+					"updateNetworkACL", err)
+			}
+		}
+		// Delete underlay hosts file
+		hostsDirpath := globalRunDirname + "/hosts." + bridgeName
+		removeFromHostsConfiglet(hostsDirpath,
+			status.DisplayName)
+		// Look for added or deleted ipsets
+		newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
+			netstatus.BridgeIPSets)
+
+		if restartDnsmasq {
+			stopDnsmasq(bridgeName, false)
+			createDnsmasqConfiglet(bridgeName,
+				netstatus.BridgeIPAddr, netconfig, hostsDirpath,
+				newIpsets)
+			startDnsmasq(bridgeName)
+		}
+		netstatus.BridgeIPSets = newIpsets
+		maybeRemoveStaleIpsets(staleIpsets)
 	}
 	status.PendingDelete = false
 	publishAppNetworkStatus(ctx, status)
