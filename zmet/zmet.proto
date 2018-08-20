@@ -205,7 +205,7 @@ message ZInfoVpnLink {
 message ZInfoVpnConn {
   string reqid = 1;      // tunnel reqest id
   string routeTable = 2; // default or, 220 for route/policy based
-  repeated ZInfoVpnLink link = 3; // connection details
+  repeated ZInfoVpnLink link = 10; // connection details
 }
 
 message ZInfoVpn {
@@ -253,7 +253,7 @@ message ZInfoService {
   google.protobuf.Timestamp upTime = 5;
   repeated ZioBundle assignedAdapters = 6;
   repeated ErrorInfo svcErr = 7;
-  repeated ZInfoNetwork network = 9;
+  repeated ZInfoNetwork network = 8;
   oneof InfoContent {
     ZInfoVpn vinfo =  20;
     ZInfoLisp linfo =  21;
@@ -267,6 +267,7 @@ message ZInfoMsg {
   	ZInfoDevice dinfo = 3;
   	ZInfoHypervisor hinfo = 4;	// Deprecated
   	ZInfoApp ainfo = 5;
+	ZInfoService sinfo = 10;
    }
   google.protobuf.Timestamp atTimeStamp = 6;
 }
@@ -490,14 +491,15 @@ message ZMetricVpn {
 message ZMetricService {
   string serviceID = 1;
   string serviceName = 2;
-  repeated networkMetric network = 5;
+  repeated networkMetric network = 3;
   oneof ServiceContent {
     ZMetricVpn  vpnm = 20;
     ZMetricLisp lispm = 21;
   }
 }
 
-message ZMetricMsg { string devID = 1;
+message ZMetricMsg {
+  string devID = 1;
   ZmetricTypes ztype = 2;  // deprecated
   google.protobuf.Timestamp atTimeStamp = 3;
 
