@@ -186,6 +186,80 @@ message ZInfoApp {
   repeated ZInfoNetwork network = 16;	// XXX add?
 }
 
+// ipSec state information
+enum ZInfoVpnState {
+  VPN_INVALID     = 0;
+  VPN_INITIAL     = 1;	// Config received
+  VPN_CONNECTING  = 2;	// Connection is in-progress
+  VPN_ESTABLISHED = 3;	// Connection established
+  VPN_INSTALLED   = 4;	// SAs/Routes Installed
+}
+
+message ZInfoVpnLink {
+  string ipAddr = 1;   // End point Ip Address
+  string subNet = 2;   // Associate Subnet
+  string spiId = 3;    // Security Parameter Index
+  bool direction = 4;  // 0 = in, 1 = out
+}
+
+message ZInfoVpnConn {
+  string reqid = 1;      // tunnel reqest id
+  string routeTable = 2; // default or, 220 for route/policy based
+  repeated ZInfoVpnLink link = 3; // connection details
+}
+
+message ZInfoVpn {
+  string id = 1;	// connection id
+  string name = 2;	// connection name
+  string ikeProposals = 3; // ike proposals
+  ZInfoVpnState state = 4;	// vpn connection state
+  repeated string listeningIpAddrs = 5; //listening on
+  repeated ZInfoVpnConn conn = 10; // Connection Information
+}
+
+// Lisp state information
+message DatabaseMap {
+	uint64 IID = 1;
+	repeated string EIDs = 2;
+}
+
+message MapCacheEntry {
+	uint64 IID = 1;
+	string EID = 2;
+	repeated string Rlocs = 3;
+}
+
+message DecapKey {
+	string Rloc = 1;
+	uint64 Port = 2;
+	uint64 KeyCount = 3;
+}
+
+message ZInfoLisp {
+	uint64 ItrCryptoPort = 1;
+	uint64 EtrNatPort = 2;
+	repeated string Interfaces = 3;
+	repeated DatabaseMap DatabaseMaps = 4;
+	repeated MapCacheEntry MapCacheEntries = 5;
+	repeated DecapKey DecapKeys = 6;
+}
+
+// Service instance state information
+message ZInfoService {
+  string serviceID = 1;
+  string serviceName = 2;
+  ZInfoSW softwareList = 3;
+  bool activated = 4;
+  google.protobuf.Timestamp upTime = 5;
+  repeated ZioBundle assignedAdapters = 6;
+  repeated ErrorInfo svcErr = 7;
+  repeated ZInfoNetwork network = 9;
+  oneof InfoContent {
+    ZInfoVpn vinfo =  20;
+    ZInfoLisp linfo =  21;
+  }
+}
+
 message ZInfoMsg {
   ZInfoTypes ztype = 1;
   string devId = 2;
@@ -361,43 +435,7 @@ message appMetric {
   repeated appDiskMetric disk = 6;
 }
 
-message ZMetricMsg {
-  string devID = 1;
-  ZmetricTypes ztype = 2;  // deprecated
-  google.protobuf.Timestamp atTimeStamp = 3;
-
-  oneof MetricContent {
-  	deviceMetric dm = 4;
-   }
-   repeated appMetric am = 5;
-}
-
-message DatabaseMap {
-	uint64 IID = 1;
-	repeated string EIDs = 2;
-}
-
-message MapCacheEntry {
-	uint64 IID = 1;
-	string EID = 2;
-	repeated string Rlocs = 3;
-}
-
-message DecapKey {
-	string Rloc = 1;
-	uint64 Port = 2;
-	uint64 KeyCount = 3;
-}
-
-message ZInfoLisp {
-	uint64 ItrCryptoPort = 1;
-	uint64 EtrNatPort = 2;
-	repeated string Interfaces = 3;
-	repeated DatabaseMap DatabaseMaps = 4;
-	repeated MapCacheEntry MapCacheEntries = 5;
-	repeated DecapKey DecapKeys = 6;
-}
-
+// Lisp stats
 message RlocStats {
 	string Rloc = 1;
 	uint64 Packets = 2;
@@ -432,4 +470,40 @@ message ZMetricLisp {
 	PktStat CheckSumError = 10;
 	PktStat DecapReInjectError = 11;
 	PktStat DecryptError = 12;
+}
+
+// Vpn Stats
+message ZMetricConn {
+	PktStat InPkts = 1;
+	PktStat OutPkts = 2;
+	PktStat ErrPkts = 3;
+	PktStat CarierErrPkts = 4;
+}
+
+message ZMetricVpn {
+	ZMetricConn ConnStat = 1;
+	ZMetricConn IkeStat = 2;
+	ZMetricConn NatTStat = 3;
+	ZMetricConn EspStat = 4;
+}
+
+message ZMetricService {
+  string serviceID = 1;
+  string serviceName = 2;
+  repeated networkMetric network = 5;
+  oneof ServiceContent {
+    ZMetricVpn  vpnm = 20;
+    ZMetricLisp lispm = 21;
+  }
+}
+
+message ZMetricMsg { string devID = 1;
+  ZmetricTypes ztype = 2;  // deprecated
+  google.protobuf.Timestamp atTimeStamp = 3;
+
+  oneof MetricContent {
+  	deviceMetric dm = 4;
+   }
+   repeated appMetric am = 5;
+   repeated ZMetricService sm = 6;
 }
