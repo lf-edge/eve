@@ -494,7 +494,7 @@ func doNetworkDelete(ctx *zedrouterContext,
 			err := deleteACLConfiglet(olStatus.Bridge,
 				olStatus.Vif, false, olStatus.ACLs, 6,
 				olStatus.BridgeIPAddr,
-				olStatus.EID.String(), 0)
+				olStatus.EID.String())
 			if err != nil {
 				log.Printf("doNetworkDelete ACL failed: %s\n",
 					err)
@@ -506,8 +506,7 @@ func doNetworkDelete(ctx *zedrouterContext,
 			}
 			err := deleteACLConfiglet(ulStatus.Bridge,
 				ulStatus.Vif, false, ulStatus.ACLs, 4,
-				ulStatus.BridgeIPAddr, ulStatus.AssignedIPAddr,
-				0)
+				ulStatus.BridgeIPAddr, ulStatus.AssignedIPAddr)
 			if err != nil {
 				log.Printf("doNetworkDelete ACL failed: %s\n",
 					err)

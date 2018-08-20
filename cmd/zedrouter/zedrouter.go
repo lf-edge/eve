@@ -886,7 +886,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 
 		// Set up ACLs
 		err = createACLConfiglet(olIfname, "", true, olConfig.ACLs,
-			6, "", "", 0)
+			6, "", "")
 		if err != nil {
 			addError(ctx, &status, "createACL", err)
 		}
@@ -1061,9 +1061,8 @@ func handleCreate(ctx *zedrouterContext, key string,
 			EID.String())
 
 		// Set up ACLs
-		// XXX remove sshPortMap globally
-		err = createACLConfiglet(bridgeName, vifName, false, olConfig.ACLs,
-			6, olStatus.BridgeIPAddr, EID.String(), 0)
+		err = createACLConfiglet(bridgeName, vifName, false,
+			olConfig.ACLs, 6, olStatus.BridgeIPAddr, EID.String())
 		if err != nil {
 			addError(ctx, &status, "createACL", err)
 		}
@@ -1183,8 +1182,8 @@ func handleCreate(ctx *zedrouterContext, key string,
 		}
 
 		// Set up ACLs
-		err = createACLConfiglet(bridgeName, vifName, false, ulConfig.ACLs,
-			4, bridgeIPAddr, appIPAddr, 0)
+		err = createACLConfiglet(bridgeName, vifName, false,
+			ulConfig.ACLs, 4, bridgeIPAddr, appIPAddr)
 		if err != nil {
 			addError(ctx, &status, "createACL", err)
 		}
@@ -1417,9 +1416,8 @@ func handleModify(ctx *zedrouterContext, key string,
 			olConfig.NameToEidList)
 
 		// Update ACLs
-		// No sshPortMap for IsMgmt
 		err := updateACLConfiglet(olIfname, "", true, olStatus.ACLs,
-			olConfig.ACLs, 6, "", "", 0)
+			olConfig.ACLs, 6, "", "")
 		if err != nil {
 			addError(ctx, status, "updateACL", err)
 		}
@@ -1484,7 +1482,7 @@ func handleModify(ctx *zedrouterContext, key string,
 
 		err := updateACLConfiglet(bridgeName, olStatus.Vif, false,
 			olStatus.ACLs, olConfig.ACLs, 6, olStatus.BridgeIPAddr,
-			olConfig.EID.String(), 0)
+			olConfig.EID.String())
 		if err != nil {
 			addError(ctx, status, "updateACL", err)
 		}
@@ -1566,7 +1564,7 @@ func handleModify(ctx *zedrouterContext, key string,
 		// If so updateNetworkACLConfiglet needs to know old and new
 		err := updateACLConfiglet(bridgeName, ulStatus.Vif, false,
 			ulStatus.ACLs, ulConfig.ACLs, 4, ulStatus.BridgeIPAddr,
-			appIPAddr, 0)
+			appIPAddr)
 		if err != nil {
 			addError(ctx, status, "updateACL", err)
 		}
@@ -1725,9 +1723,8 @@ func handleDelete(ctx *zedrouterContext, key string,
 		deleteEidIpsetConfiglet(olIfname, true)
 
 		// Delete ACLs
-		// No sshPortMap for IsMgmt
 		err = deleteACLConfiglet(olIfname, "", true, olStatus.ACLs,
-			6, "", "", 0)
+			6, "", "")
 		if err != nil {
 			addError(ctx, status, "deleteACL", err)
 		}
@@ -1791,7 +1788,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 		// Delete ACLs
 		err := deleteACLConfiglet(bridgeName, olStatus.Vif, false,
 			olStatus.ACLs, 6, olStatus.BridgeIPAddr,
-			olStatus.EID.String(), 0)
+			olStatus.EID.String())
 		if err != nil {
 			addError(ctx, status, "deleteACL", err)
 		}
@@ -1886,7 +1883,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 		removehostDnsmasq(bridgeName, appMac, appIPAddr)
 
 		err = deleteACLConfiglet(bridgeName, ulStatus.Vif, false,
-			ulStatus.ACLs, 4, ulStatus.BridgeIPAddr, appIPAddr, 0)
+			ulStatus.ACLs, 4, ulStatus.BridgeIPAddr, appIPAddr)
 		if err != nil {
 			addError(ctx, status, "deleteACL", err)
 		}

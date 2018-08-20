@@ -203,14 +203,13 @@ func compileOldAppInstanceIpsets(ctx *zedrouterContext,
 // then concat all the rules and pass to applyACLrules
 // Note that only bridgeName is set with ifMgmt
 func createACLConfiglet(bridgeName string, vifName string, isMgmt bool,
-	ACLs []types.ACE, ipVer int, bridgeIP string, appIP string,
-	underlaySshPortMap uint) error {
+	ACLs []types.ACE, ipVer int, bridgeIP string, appIP string) error {
 	if debug {
-		log.Printf("createACLConfiglet: ifname %s, vifName %s, ACLs %v, IP %s/%s, ssh %d\n",
-			bridgeName, vifName, ACLs, bridgeIP, appIP, underlaySshPortMap)
+		log.Printf("createACLConfiglet: ifname %s, vifName %s, ACLs %v, IP %s/%s\n",
+			bridgeName, vifName, ACLs, bridgeIP, appIP)
 	}
 	rules, err := aclToRules(bridgeName, vifName, ACLs, ipVer,
-		bridgeIP, appIP, underlaySshPortMap)
+		bridgeIP, appIP)
 	if err != nil {
 		return err
 	}
@@ -279,15 +278,13 @@ func applyACLRules(rules IptablesRuleList, bridgeName string, isMgmt bool,
 
 // Returns a list of iptables commands, witout the initial "-A FORWARD"
 func aclToRules(bridgeName string, vifName string, ACLs []types.ACE, ipVer int,
-	bridgeIP string, appIP string,
-	underlaySshPortMap uint) (IptablesRuleList, error) {
+	bridgeIP string, appIP string) (IptablesRuleList, error) {
 
 	rulesList := IptablesRuleList{}
 
 	if debug {
-		log.Printf("aclToRules(%s, %s, %v, %d, %s, %s, %d\n",
-			bridgeName, vifName, ACLs, ipVer, bridgeIP, appIP,
-			underlaySshPortMap)
+		log.Printf("aclToRules(%s, %s, %v, %d, %s, %s\n",
+			bridgeName, vifName, ACLs, ipVer, bridgeIP, appIP)
 	}
 
 	// XXX should we check isMgmt instead of bridgeIP?
@@ -303,25 +300,6 @@ func aclToRules(bridgeName string, vifName string, ACLs []types.ACE, ipVer int,
 		rulesList = append(rulesList, rule1, rule2, rule3, rule4)
 	}
 	// XXX do the same rules as above for IPv4.
-	if underlaySshPortMap != 0 {
-		port := fmt.Sprintf("%d", underlaySshPortMap)
-		dest := fmt.Sprintf("%s:22", appIP)
-		// These rules should only apply on the uplink interfaces
-		// but for now we just compare the TCP port number.
-		rule1 := []string{"PREROUTING",
-			"-p", "tcp", "--dport", port, "-j", "DNAT",
-			"--to-destination", dest}
-		// Make sure packets are returned to zedrouter and not e.g.,
-		// out a directly attached interface in the domU
-		rule2 := []string{"POSTROUTING",
-			"-p", "tcp", "-o", bridgeName, "--dport", "22", "-j", "SNAT",
-			"--to-source", bridgeIP}
-		rule3 := []string{"-o", bridgeName, "-p", "tcp", "--dport", "22",
-			"-j", "ACCEPT"}
-		rule4 := []string{"-i", bridgeName, "-p", "tcp", "--sport", "22",
-			"-j", "ACCEPT"}
-		rulesList = append(rulesList, rule1, rule2, rule3, rule4)
-	}
 	for _, ace := range ACLs {
 		rules, err := aceToRules(bridgeName, vifName, ace, ipVer,
 			bridgeIP, appIP)
@@ -677,19 +655,19 @@ func diffIpsets(newIpsets, oldIpsets []string) ([]string, []string, bool) {
 
 func updateACLConfiglet(bridgeName string, vifName string, isMgmt bool,
 	oldACLs []types.ACE, newACLs []types.ACE, ipVer int, bridgeIP string,
-	appIP string, underlaySshPortMap uint) error {
+	appIP string) error {
 
 	if debug {
 		log.Printf("updateACLConfiglet: bridgeName %s, vifName %s, oldACLs %v newACLs %v\n",
 			bridgeName, vifName, oldACLs, newACLs)
 	}
 	oldRules, err := aclToRules(bridgeName, vifName, oldACLs, ipVer,
-		bridgeIP, appIP, underlaySshPortMap)
+		bridgeIP, appIP)
 	if err != nil {
 		return err
 	}
 	newRules, err := aclToRules(bridgeName, vifName, newACLs, ipVer,
-		bridgeIP, appIP, underlaySshPortMap)
+		bridgeIP, appIP)
 	if err != nil {
 		return err
 	}
@@ -769,15 +747,14 @@ func applyACLUpdate(isMgmt bool, ipVer int,
 }
 
 func deleteACLConfiglet(bridgeName string, vifName string, isMgmt bool,
-	ACLs []types.ACE, ipVer int, bridgeIP string, appIP string,
-	underlaySshPortMap uint) error {
+	ACLs []types.ACE, ipVer int, bridgeIP string, appIP string) error {
 
 	if debug {
 		log.Printf("deleteACLConfiglet: ifname %s `ACLs %v\n",
 			bridgeName, vifName, ACLs)
 	}
 	rules, err := aclToRules(bridgeName, vifName, ACLs, ipVer,
-		bridgeIP, appIP, underlaySshPortMap)
+		bridgeIP, appIP)
 	if err != nil {
 		return err
 	}
