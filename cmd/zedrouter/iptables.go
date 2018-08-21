@@ -226,18 +226,20 @@ func parseCounters(out string, table string, ipVer int) []AclCounters {
 }
 
 type AclCounters struct {
-	Table string
-	Chain string
-	IpVer int
-	IIf   string
-	Piif  string
-	OIf   string
-	Poif  string
-	Log   bool
-	Drop  bool
-	More  bool // Has fields we didn't explicitly parse
-	Bytes uint64
-	Pkts  uint64
+	Table  string
+	Chain  string
+	IpVer  int
+	IIf    string
+	Piif   string
+	OIf    string
+	Poif   string
+	Log    bool
+	Drop   bool
+	More   bool // Has fields we didn't explicitly parse
+	Accept bool
+	Dest   string
+	Bytes  uint64
+	Pkts   uint64
 }
 
 func parseline(line string, table string, ipVer int) *AclCounters {
@@ -255,9 +257,22 @@ func parseline(line string, table string, ipVer int) *AclCounters {
 	}
 	i := 2
 	for i < len(items) {
+		// Ignore any xen-related entries.
 		if items[i] == "--physdev-is-bridged" {
 			return nil
 		}
+		// Skip things which are normal in the entries such as physdev
+		// and the destination match
+		if items[i] == "-m" && items[i+1] == "physdev" {
+			i += 2
+			continue
+		}
+		if items[i] == "-d" {
+			ac.Dest = items[i+1]
+			i += 2
+			continue
+		}
+		// Extract interface information
 		if items[i] == "-i" {
 			ac.IIf = items[i+1]
 			i += 2
@@ -284,6 +299,8 @@ func parseline(line string, table string, ipVer int) *AclCounters {
 				ac.Drop = true
 			case "LOG":
 				ac.Log = true
+			case "ACCEPT":
+				ac.Accept = true
 			}
 			i += 2
 			continue
@@ -307,7 +324,7 @@ func parseline(line string, table string, ipVer int) *AclCounters {
 			continue
 		}
 
-		/// log.Printf("Got %d %s\n", i, items[i])
+		log.Printf("XXX Got more items %d %s\n", i, items[i])
 		ac.More = true
 		i += 1
 	}
