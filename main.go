@@ -12,9 +12,10 @@ import (
 	"encoding/json"
 	"flag"
 	"github.com/zededa/go-provision/agentlog"
+	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/pidfile"
+	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
-	"github.com/zededa/go-provision/watch"
 	"github.com/zededa/lisp/dataplane/dptypes"
 	"github.com/zededa/lisp/dataplane/etr"
 	"github.com/zededa/lisp/dataplane/fib"
@@ -266,18 +267,18 @@ var deviceNetworkStatus types.DeviceNetworkStatus
 
 func handleDNSModify(ctxArg interface{}, statusFilename string,
 	statusArg interface{}) {
-	status := statusArg.(*types.DeviceNetworkStatus)
+	status := cast.CastDeviceNetworkStatus(statusArg)
 
 	if statusFilename != "global" {
 		log.Printf("ETR: handleDNSModify: ignoring %s\n", statusFilename)
 		return
 	}
 	log.Printf("ETR: handleDNSModify for %s\n", statusFilename)
-	deviceNetworkStatus = *status
+	deviceNetworkStatus = status
 	log.Printf("ETR: handleDNSModify done for %s\n", statusFilename)
 }
 
-func handleDNSDelete(ctxArg interface{}, statusFilename string) {
+func handleDNSDelete(ctxArg interface{}, statusFilename string, statusArg interface{}) {
 	log.Printf("ETR: handleDNSDelete for %s\n", statusFilename)
 
 	if statusFilename != "global" {
@@ -291,19 +292,23 @@ func handleDNSDelete(ctxArg interface{}, statusFilename string) {
 func handleConfig(c *net.UnixConn) {
 	defer c.Close()
 
-	deviceStatusChanges := make(chan string)
-	go watch.WatchStatus(dnsDirname, deviceStatusChanges)
+	ctx := dataplaneContext{}
+	subDeviceNetworkStatus, err := pubsub.Subscribe("zedrouter",
+	types.DeviceNetworkStatus{}, false, &ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
+	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
+	ctx.subDeviceNetworkStatus = subDeviceNetworkStatus
+	subDeviceNetworkStatus.Activate()
 
 	// Create 8k bytes buffer for reading configuration messages.
 	buf := make([]byte, 8192)
 	for {
 		select {
-		case change := <-deviceStatusChanges:
-			watch.HandleStatusEvent(change, dummyContext{},
-				dnsDirname,
-				&types.DeviceNetworkStatus{},
-				handleDNSModify, handleDNSDelete,
-				nil)
+		case change := <-subDeviceNetworkStatus.C:
+			subDeviceNetworkStatus.ProcessChange(change)
 			if debug {
 				log.Println("Detected a change in DeviceNetworkStatus")
 			}
