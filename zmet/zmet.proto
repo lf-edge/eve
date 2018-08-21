@@ -252,15 +252,16 @@ message ZInfoLisp {
 message ZInfoService {
   string serviceID = 1;
   string serviceName = 2;
-  ZInfoSW softwareList = 3;
-  bool activated = 4;
-  google.protobuf.Timestamp upTime = 5;
-  repeated ZioBundle assignedAdapters = 6;
-  repeated ErrorInfo svcErr = 7;
-  repeated ZInfoNetwork network = 8;
+  uint32 serviceType = 3;
+  ZInfoSW softwareList = 4;
+  bool activated = 5;
+  google.protobuf.Timestamp upTime = 6;
+  repeated ZioBundle assignedAdapters = 7;
+  repeated ErrorInfo svcErr = 8;
+  repeated ZInfoNetwork network = 9;
   oneof InfoContent {
-    ZInfoVpn vinfo =  20;
-    ZInfoLisp linfo =  21;
+    ZInfoVpn vinfo = 20;
+    ZInfoLisp linfo = 21;
   }
 }
 
