@@ -943,6 +943,12 @@ func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
 					intfEnt.Addr)
 				// XXX report error?
 			}
+			// XXX workaround for bad config from zedcloud
+			if ulCfg.AppIPAddr.To4() == nil {
+				log.Printf("XXX parseUnderlayNetworkConfig: ignoring static IPv6 %s\n",
+					intfEnt.Addr)
+				ulCfg.AppIPAddr = nil
+			}
 		}
 		ulCfg.ACLs = make([]types.ACE, len(intfEnt.Acls))
 		for aclIdx, acl := range intfEnt.Acls {
