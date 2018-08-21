@@ -583,7 +583,7 @@ func ShowDecapKeys() {
 	log.Println()
 }
 
-// This thread wakes up every minutes, to find the map cache entries that are
+// This thread wakes up every minute, to find the map cache entries that are
 // in resolve state for more than 5 minutes. Resolve entries that are older than
 // 5 minutes will be deleted.
 func MapcacheScrubThread() {
@@ -596,7 +596,7 @@ func MapcacheScrubThread() {
 
 		cache.LockMe.RLock()
 
-		// Iterate through the map-cache table and make of note of the entries
+		// Iterate through the map-cache table and make note of the entries
 		// that need removal (entries in resolve state for more than 5 minutes).
 		// We take write lock later and delete the required entries.
 		for key, entry := range cache.MapCache {
@@ -604,7 +604,7 @@ func MapcacheScrubThread() {
 
 				currTime := time.Now()
 
-				// 5 * 60 * 1000 milli seconds threshold interval
+				// SCRUBTHRESHOLD * 1000 milli seconds threshold interval
 				var scrubThreshold time.Duration = SCRUBTHRESHOLD * 1000
 
 				// elapsed time is in Nano seconds
