@@ -138,13 +138,7 @@ func fetchIprulesCounters() []AclCounters {
 }
 
 func getIpRuleCounters(counters []AclCounters, match AclCounters) *AclCounters {
-	if debug {
-		log.Printf("getIpRuleCounters: match %+v\n", match)
-	}
 	for i, c := range counters {
-		if debug {
-			log.Printf("getIpRuleCounters: c %+v\n", c)
-		}
 		if c.IpVer != match.IpVer || c.Log != match.Log ||
 			c.Drop != match.Drop || c.More != match.More {
 			continue
@@ -178,7 +172,7 @@ func getIpRuleAclDrop(counters []AclCounters, bridgeName string, vifName string,
 		oif = bridgeName
 	}
 	match := AclCounters{IIf: iif, Piif: piif, OIf: oif, IpVer: ipVer,
-		Drop: true}
+		Drop: true, More: false}
 	c := getIpRuleCounters(counters, match)
 	if c == nil {
 		return 0
@@ -216,9 +210,6 @@ func parseCounters(out string, table string, ipVer int) []AclCounters {
 	for _, line := range lines {
 		ac := parseline(line, table, ipVer)
 		if ac != nil {
-			if debug {
-				log.Printf("XXX ACL counters %+v\n", *ac)
-			}
 			counters = append(counters, *ac)
 		}
 	}
@@ -235,7 +226,7 @@ type AclCounters struct {
 	Poif   string
 	Log    bool
 	Drop   bool
-	More   bool // Has fields we didn't explicitly parse
+	More   bool // Has fields we didn't explicitly parse; user specified
 	Accept bool
 	Dest   string
 	Bytes  uint64
@@ -251,10 +242,8 @@ func parseline(line string, table string, ipVer int) *AclCounters {
 	if items[0] != "-A" {
 		return nil
 	}
+	forward := items[1] == "FORWARD"
 	ac := AclCounters{Table: table, Chain: items[1], IpVer: ipVer}
-	if debug {
-		log.Printf("parseline: items %v\n", items)
-	}
 	i := 2
 	for i < len(items) {
 		// Ignore any xen-related entries.
@@ -267,11 +256,19 @@ func parseline(line string, table string, ipVer int) *AclCounters {
 			i += 2
 			continue
 		}
-		if items[i] == "-d" {
+		// Need to allow -A FORWARD -d 10.0.1.11/32 -o bn1
+		// without setting More.
+		if forward && items[i] == "-d" && i == 2 {
 			ac.Dest = items[i+1]
 			i += 2
 			continue
 		}
+		// Ignore any log-prefix and log-level if present
+		if items[i] == "--log-prefix" || items[i] == "--log-level" {
+			i += 2
+			continue
+		}
+
 		// Extract interface information
 		if items[i] == "-i" {
 			ac.IIf = items[i+1]
@@ -324,7 +321,7 @@ func parseline(line string, table string, ipVer int) *AclCounters {
 			continue
 		}
 
-		log.Printf("XXX Got more items %d %s\n", i, items[i])
+		// log.Printf("Got more items %d %s\n", i, items[i])
 		ac.More = true
 		i += 1
 	}
