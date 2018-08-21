@@ -495,7 +495,8 @@ message ZMetricVpn {
 message ZMetricService {
   string serviceID = 1;
   string serviceName = 2;
-  repeated networkMetric network = 3;
+  uint32 serviceType = 3;
+  repeated networkMetric network = 4;
   oneof ServiceContent {
     ZMetricVpn  vpnm = 20;
     ZMetricLisp lispm = 21;
