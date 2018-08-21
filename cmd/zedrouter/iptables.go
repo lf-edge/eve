@@ -137,9 +137,14 @@ func fetchIprulesCounters() []AclCounters {
 	return counters
 }
 
-// XXX IIf match needs to be on vifname not bridgename; Piif
 func getIpRuleCounters(counters []AclCounters, match AclCounters) *AclCounters {
+	if debug {
+		log.Printf("getIpRuleCounters: match %+v\n", match)
+	}
 	for i, c := range counters {
+		if debug {
+			log.Printf("getIpRuleCounters: c %+v\n", c)
+		}
 		if c.IpVer != match.IpVer || c.Log != match.Log ||
 			c.Drop != match.Drop || c.More != match.More {
 			continue
@@ -147,11 +152,12 @@ func getIpRuleCounters(counters []AclCounters, match AclCounters) *AclCounters {
 		if c.IIf != match.IIf || c.OIf != match.OIf {
 			continue
 		}
-		// XXX
-		if false {
-			if c.Piif != match.Piif || c.Poif != match.Poif {
-				continue
-			}
+		if c.Piif != match.Piif || c.Poif != match.Poif {
+			continue
+		}
+		if debug {
+			log.Printf("getIpRuleCounters: matched counters %+v\n",
+				&counters[i])
 		}
 		return &counters[i]
 	}
@@ -163,14 +169,16 @@ func getIpRuleAclDrop(counters []AclCounters, bridgeName string, vifName string,
 	ipVer int, input bool) uint64 {
 
 	var iif string
+	var piif string
 	var oif string
 	if input {
 		iif = bridgeName
-		// XXX piif = vifName
+		piif = vifName
 	} else {
 		oif = bridgeName
 	}
-	match := AclCounters{IIf: iif, OIf: oif, IpVer: ipVer, Drop: true}
+	match := AclCounters{IIf: iif, Piif: piif, OIf: oif, IpVer: ipVer,
+		Drop: true}
 	c := getIpRuleCounters(counters, match)
 	if c == nil {
 		return 0
@@ -183,15 +191,16 @@ func getIpRuleAclRateLimitDrop(counters []AclCounters, bridgeName string,
 	vifName string, ipVer int, input bool) uint64 {
 
 	var iif string
+	var piif string
 	var oif string
 	if input {
 		iif = bridgeName
-		// XXX piif = vifName
+		piif = vifName
 	} else {
 		oif = bridgeName
 	}
-	match := AclCounters{IIf: iif, OIf: oif, IpVer: ipVer, Drop: true,
-		More: true}
+	match := AclCounters{IIf: iif, Piif: piif, OIf: oif, IpVer: ipVer,
+		Drop: true, More: true}
 	c := getIpRuleCounters(counters, match)
 	if c == nil {
 		return 0
@@ -207,7 +216,9 @@ func parseCounters(out string, table string, ipVer int) []AclCounters {
 	for _, line := range lines {
 		ac := parseline(line, table, ipVer)
 		if ac != nil {
-			log.Printf("XXX ACL counters %v\n", *ac)
+			if debug {
+				log.Printf("XXX ACL counters %+v\n", *ac)
+			}
 			counters = append(counters, *ac)
 		}
 	}
