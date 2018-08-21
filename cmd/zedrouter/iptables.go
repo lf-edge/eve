@@ -1,4 +1,4 @@
-// Copyright (c) 2017 Zededa, Inc.
+// Copyright (c) 2017,2018 Zededa, Inc.
 // All rights reserved.
 
 // iptables support code
@@ -95,10 +95,18 @@ func fetchIprulesCounters() []AclCounters {
 			counters = append(counters, c...)
 		}
 	}
-	// XXX also need this for the counters
-	// out, err = iptableCmdOut(false, "-t", "raw", "-S", "PREROUTING", "-v")
 
-	// XXX Only needed to get dbo1x0 stats
+	out, err = iptableCmdOut(false, "-t", "raw", "-S", "PREROUTING", "-v")
+	if err != nil {
+		log.Printf("fetchIprulesCounters: iptables -S failed %s\n", err)
+	} else {
+		c := parseCounters(out, "filter", false)
+		if c != nil {
+			counters = append(counters, c...)
+		}
+	}
+
+	// Only needed to get dbo1x0 stats
 	out, err = ip6tableCmdOut(false, "-t", "filter", "-S", "OUTPUT", "-v")
 	if err != nil {
 		log.Printf("fetchIprulesCounters: iptables -S failed %s\n", err)
@@ -130,7 +138,7 @@ func fetchIprulesCounters() []AclCounters {
 }
 
 // XXX is overlay really ipv6?
-// XXX IIf/OIf match needs to be on vifname not bridgename
+// XXX IIf match needs to be on vifname not bridgename; Piif
 func getIpRuleCounters(counters []AclCounters, match AclCounters) *AclCounters {
 	for i, c := range counters {
 		if c.Overlay != match.Overlay || c.Log != match.Log ||
@@ -140,19 +148,29 @@ func getIpRuleCounters(counters []AclCounters, match AclCounters) *AclCounters {
 		if c.IIf != match.IIf || c.OIf != match.OIf {
 			continue
 		}
+		// XXX
+		if false {
+			if c.Piif != match.Piif || c.Poif != match.Poif {
+				continue
+			}
+		}
 		return &counters[i]
 	}
 	return nil
 }
 
 // Look for a LOG entry without More; we don't have those for rate limits
-func getIpRuleAclDrop(counters []AclCounters, ifname string, input bool) uint64 {
+// XXX add ipVer arg. How does caller set? bridgeNameToAF??
+func getIpRuleAclDrop(counters []AclCounters, bridgeName string, vifName string, input bool) uint64 {
+	// XXX fix
+	ifname := bridgeName
 	// XXX can't match on bo!
 	overlay := strings.HasPrefix(ifname, "bo") ||
 		strings.HasPrefix(ifname, "dbo")
 	var iif string
 	var oif string
 	if input {
+		// XXX vifName
 		iif = ifname
 	} else {
 		oif = ifname
@@ -166,7 +184,9 @@ func getIpRuleAclDrop(counters []AclCounters, ifname string, input bool) uint64 
 }
 
 // Look for a DROP entry with More set.
-func getIpRuleAclRateLimitDrop(counters []AclCounters, ifname string, input bool) uint64 {
+func getIpRuleAclRateLimitDrop(counters []AclCounters, bridgeName string, vifName string, input bool) uint64 {
+	// XXX fix
+	ifname := bridgeName
 	// XXX can't match on bo
 	overlay := strings.HasPrefix(ifname, "bo") ||
 		strings.HasPrefix(ifname, "dbo")
@@ -194,7 +214,7 @@ func parseCounters(out string, table string, overlay bool) []AclCounters {
 	for _, line := range lines {
 		ac := parseline(line, table, overlay)
 		if ac != nil {
-			// XXX log.Printf("ACL counters %v\n", *ac)
+			log.Printf("XXX ACL counters %v\n", *ac)
 			counters = append(counters, *ac)
 		}
 	}
@@ -206,7 +226,9 @@ type AclCounters struct {
 	Chain   string
 	Overlay bool // XXX IpVersion
 	IIf     string
+	Piif    string
 	OIf     string
+	Poif    string
 	Log     bool
 	Drop    bool
 	More    bool // Has fields we didn't explicitly parse
@@ -224,15 +246,31 @@ func parseline(line string, table string, overlay bool) *AclCounters {
 		return nil
 	}
 	ac := AclCounters{Table: table, Chain: items[1], Overlay: overlay}
+	if debug {
+		log.Printf("parseline: items %v\n", items)
+	}
 	i := 2
 	for i < len(items) {
+		if items[i] == "-m" && items[i+1] == "physdev" {
+			return nil
+		}
 		if items[i] == "-i" {
 			ac.IIf = items[i+1]
 			i += 2
 			continue
 		}
+		if items[i] == "--physdev-in" {
+			ac.Piif = items[i+1]
+			i += 2
+			continue
+		}
 		if items[i] == "-o" {
 			ac.OIf = items[i+1]
+			i += 2
+			continue
+		}
+		if items[i] == "--physdev-out" {
+			ac.Poif = items[i+1]
 			i += 2
 			continue
 		}

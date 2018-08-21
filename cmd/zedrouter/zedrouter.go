@@ -323,7 +323,7 @@ func Run() {
 		&zedrouterCtx, addrChangeUplinkFn, addrChangeNonUplinkFn)
 
 	// Publish network metrics for zedagent every 10 seconds
-	nms := getNetworkMetrics() // Need type of data
+	nms := getNetworkMetrics(&zedrouterCtx) // Need type of data
 	pub, err := pubsub.Publish(agentName, nms)
 	if err != nil {
 		log.Fatal(err)
@@ -387,7 +387,8 @@ func Run() {
 				log.Println("publishTimer at",
 					time.Now())
 			}
-			err := pub.Publish("global", getNetworkMetrics())
+			err := pub.Publish("global",
+				getNetworkMetrics(&zedrouterCtx))
 			if err != nil {
 				log.Println(err)
 			}
@@ -1276,6 +1277,7 @@ func getUlAddrs(ctx *zedrouterContext, ifnum int, appNum int,
 	// Not clear how to handle multiple ul from the same appInstance;
 	// use /30 prefix? Require user to pick private addrs?
 	// XXX limited number of ifnums for the default range - just to 27 to 31
+	// XXX remove these defaults
 	bridgeIPAddr := fmt.Sprintf("172.%d.%d.1", 27+ifnum, appNum)
 	appIPAddr := fmt.Sprintf("172.%d.%d.2", 27+ifnum, appNum)
 

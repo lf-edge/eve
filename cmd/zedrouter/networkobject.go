@@ -440,6 +440,27 @@ func lookupNetworkObjectStatus(ctx *zedrouterContext, key string) *types.Network
 	return &status
 }
 
+func lookupNetworkObjectStatusByBridgeName(ctx *zedrouterContext, bridgeName string) *types.NetworkObjectStatus {
+
+	pub := ctx.pubNetworkObjectStatus
+	items := pub.GetAll()
+	for _, st := range items {
+		status := cast.CastNetworkObjectStatus(st)
+		if status.BridgeName == bridgeName {
+			return &status
+		}
+	}
+	return nil
+}
+
+func networkObjectType(ctx *zedrouterContext, bridgeName string) types.NetworkType {
+	status := lookupNetworkObjectStatusByBridgeName(ctx, bridgeName)
+	if status == nil {
+		return 0
+	}
+	return status.Type
+}
+
 // Called from service code when a bridge has been added/updated/deleted
 // XXX need to re-run this when the eth1 IP address might have been set
 func updateBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) {

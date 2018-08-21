@@ -13,7 +13,7 @@ import (
 	"log"
 )
 
-func getNetworkMetrics() types.NetworkMetrics {
+func getNetworkMetrics(ctx *zedrouterContext) types.NetworkMetrics {
 	metrics := []types.NetworkMetric{}
 	network, err := psutilnet.IOCounters(true)
 	if err != nil {
@@ -36,10 +36,15 @@ func getNetworkMetrics() types.NetworkMetrics {
 			RxErrors: ni.Errin,
 		}
 		// Note that Tx is transmitted to bu/bo interface
-		metric.TxAclDrops = getIpRuleAclDrop(ac, ni.Name, false)
-		metric.RxAclDrops = getIpRuleAclDrop(ac, ni.Name, true)
-		metric.TxAclRateLimitDrops = getIpRuleAclRateLimitDrop(ac, ni.Name, false)
-		metric.RxAclRateLimitDrops = getIpRuleAclRateLimitDrop(ac, ni.Name, true)
+		// XXX vifName?
+		// Match either as bridgeName or vifName?
+		// XXX lookup bridgeName to find whether IPv4 or IPv6?
+		// XXX how do we do lookups on the the vifName?
+		// XXX dbo1x0 check
+		metric.TxAclDrops = getIpRuleAclDrop(ac, ni.Name, "", false)
+		metric.RxAclDrops = getIpRuleAclDrop(ac, ni.Name, "", true)
+		metric.TxAclRateLimitDrops = getIpRuleAclRateLimitDrop(ac, ni.Name, "", false)
+		metric.RxAclRateLimitDrops = getIpRuleAclRateLimitDrop(ac, ni.Name, "", true)
 		metrics = append(metrics, metric)
 	}
 	return types.NetworkMetrics{MetricList: metrics}

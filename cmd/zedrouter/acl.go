@@ -218,22 +218,22 @@ func createACLConfiglet(bridgeName string, vifName string, isMgmt bool,
 		return err
 	}
 	rules = append(rules, dropRules...)
-	return applyACLRules(rules, bridgeName, isMgmt, ipVer)
+	return applyACLRules(rules, bridgeName, vifName, isMgmt, ipVer, appIP)
 }
 
-func applyACLRules(rules IptablesRuleList, bridgeName string, isMgmt bool,
-	ipVer int) error {
+func applyACLRules(rules IptablesRuleList, bridgeName string, vifName string,
+	isMgmt bool, ipVer int, appIP string) error {
 
 	if debug {
-		log.Printf("applyACLRules: bridgeName %s ipVer %d with %d rules\n",
-			bridgeName, ipVer, len(rules))
+		log.Printf("applyACLRules: bridgeName %s ipVer %d appIP %s with %d rules\n",
+			bridgeName, ipVer, appIP, len(rules))
 	}
 	var err error
 	for _, rule := range rules {
 		if debug {
 			log.Printf("createACLConfiglet: rule %v\n", rule)
 		}
-		args := rulePrefix("-A", isMgmt, ipVer, rule)
+		args := rulePrefix("-A", isMgmt, ipVer, vifName, appIP, rule)
 		if args == nil {
 			if debug {
 				log.Printf("createACLConfiglet: skipping rule %v\n",
@@ -299,7 +299,19 @@ func aclToRules(bridgeName string, vifName string, ACLs []types.ACE, ipVer int,
 		rule4 := []string{"-i", bridgeName, "-s", bridgeIP, "-j", "ACCEPT"}
 		rulesList = append(rulesList, rule1, rule2, rule3, rule4)
 	}
-	// XXX do the same rules as above for IPv4.
+	// The same rules as above for IPv4.
+	// If we have a bridge service then bridgeIP might be "".
+	if ipVer == 4 && bridgeIP != "" {
+		// Need to allow local communication */
+		// Note that sufficient for src or dst to be local
+		rule1 := []string{"-i", bridgeName, "-m", "set", "--match-set",
+			"local.ipv4", "dst", "-j", "ACCEPT"}
+		rule2 := []string{"-i", bridgeName, "-m", "set", "--match-set",
+			"local.ipv4", "src", "-j", "ACCEPT"}
+		rule3 := []string{"-i", bridgeName, "-d", bridgeIP, "-j", "ACCEPT"}
+		rule4 := []string{"-i", bridgeName, "-s", bridgeIP, "-j", "ACCEPT"}
+		rulesList = append(rulesList, rule1, rule2, rule3, rule4)
+	}
 	for _, ace := range ACLs {
 		rules, err := aceToRules(bridgeName, vifName, ace, ipVer,
 			bridgeIP, appIP)
@@ -311,29 +323,26 @@ func aclToRules(bridgeName string, vifName string, ACLs []types.ACE, ipVer int,
 	return rulesList, nil
 }
 
-// XXX separate rules for in and out?
 func aclDropRules(bridgeName, vifName string) (IptablesRuleList, error) {
 	if debug {
 		log.Printf("aclDropRules: bridgeName %s, vifName %s\n",
 			bridgeName, vifName)
 	}
-	// XXX replace
-	ifname := bridgeName
+	// Always match on interface. Note that rulesPrefix adds physdev-in
 	rulesList := IptablesRuleList{}
 	// Implicit drop at the end with log before it
-	outArgs1 := []string{"-i", ifname, "-j", "LOG", "--log-prefix",
+	outArgs1 := []string{"-i", bridgeName, "-j", "LOG", "--log-prefix",
 		"FORWARD:FROM:", "--log-level", "3"}
-	inArgs1 := []string{"-o", ifname, "-j", "LOG", "--log-prefix",
+	inArgs1 := []string{"-o", bridgeName, "-j", "LOG", "--log-prefix",
 		"FORWARD:TO:", "--log-level", "3"}
-	outArgs2 := []string{"-i", ifname, "-j", "DROP"}
-	inArgs2 := []string{"-o", ifname, "-j", "DROP"}
+	outArgs2 := []string{"-i", bridgeName, "-j", "DROP"}
+	inArgs2 := []string{"-o", bridgeName, "-j", "DROP"}
 	rulesList = append(rulesList, outArgs1, inArgs1, outArgs2, inArgs2)
 	return rulesList, nil
 }
 
 // XXX Pass uplinkIf as argument for portmap? Caller sets if specific interface.
 // Handling "uplink" and "freeuplink" is TBD
-// XXX could we create/maintain ... some uplink rule
 func aceToRules(bridgeName string, vifName string, ace types.ACE, ipVer int, bridgeIP string, appIP string) (IptablesRuleList, error) {
 	rulesList := IptablesRuleList{}
 
@@ -346,11 +355,9 @@ func aceToRules(bridgeName string, vifName string, ace types.ACE, ipVer int, bri
 	var lport string
 	var fport string
 
-	// Always match on interface
-	// XXX move to bridge port!
-	ifname := bridgeName // XXX replace
-	outArgs := []string{"-i", ifname}
-	inArgs := []string{"-o", ifname}
+	// Always match on interface. Note that rulesPrefix adds physdev-in
+	outArgs := []string{"-i", bridgeName}
+	inArgs := []string{"-o", bridgeName}
 
 	for _, match := range ace.Matches {
 		switch match.Type {
@@ -489,14 +496,14 @@ func aceToRules(bridgeName string, vifName string, ace types.ACE, ipVer int, bri
 			// Make sure packets are returned to zedrouter and not
 			// e.g., out a directly attached interface in the domU
 			rule2 := []string{"POSTROUTING",
-				"-p", protocol, "-o", ifname,
+				"-p", protocol, "-o", bridgeName,
 				"--dport", targetPort, "-j", "SNAT",
 				"--to-source", bridgeIP}
 			// Below we make sure the mapped packets get through
 			// Note that port/targetport change relative
 			// no normal ACL above.
-			outArgs = []string{"-i", ifname}
-			inArgs = []string{"-o", ifname}
+			outArgs = []string{"-i", bridgeName}
+			inArgs = []string{"-o", bridgeName}
 			if ip != "" {
 				outArgs = append(outArgs, "-d", ip)
 				inArgs = append(inArgs, "-s", ip)
@@ -553,8 +560,9 @@ func aceToRules(bridgeName string, vifName string, ace types.ACE, ipVer int, bri
 }
 
 // Determine which rules to skip and what prefix/table to use
-func rulePrefix(operation string, isMgmt bool, ipVer int,
-	rule IptablesRule) IptablesRule {
+func rulePrefix(operation string, isMgmt bool, ipVer int, vifName string,
+	appIP string, rule IptablesRule) IptablesRule {
+
 	prefix := []string{}
 	if isMgmt {
 		// Enforcing sending on OUTPUT. Enforcing receiving
@@ -582,20 +590,36 @@ func rulePrefix(operation string, isMgmt bool, ipVer int,
 		// decap.
 		// Note that the counter parsing code assumes this.
 		if rule[0] == "-i" {
-			prefix = []string{"-t", "raw", operation, "PREROUTING"}
+			prefix = []string{"-t", "raw", operation, "PREROUTING",
+				"-m", "physdev", "--physdev-in", vifName}
 		} else if rule[0] == "-o" {
-			prefix = []string{operation, "FORWARD"}
+			if appIP != "" {
+				prefix = []string{operation, "FORWARD",
+					"-d", appIP}
+			} else {
+				prefix = []string{operation, "FORWARD"}
+			}
 		} else {
 			return nil
 		}
 	} else {
-		// Underlay
+		// Underlay; we have NAT rules and otherwise the same as
+		// for IPv6
 		if rule[0] == "PREROUTING" || rule[0] == "POSTROUTING" {
 			// NAT verbatim rule
 			prefix = []string{"-t", "nat", operation}
+		} else if rule[0] == "-i" {
+			prefix = []string{"-t", "raw", operation, "PREROUTING",
+				"-m", "physdev", "--physdev-in", vifName}
+		} else if rule[0] == "-o" {
+			if appIP != "" {
+				prefix = []string{operation, "FORWARD",
+					"-d", appIP}
+			} else {
+				prefix = []string{operation, "FORWARD"}
+			}
 		} else {
-			// XXX do same as IPv6
-			prefix = []string{operation, "FORWARD"}
+			return nil
 		}
 	}
 	return prefix
@@ -658,8 +682,8 @@ func updateACLConfiglet(bridgeName string, vifName string, isMgmt bool,
 	appIP string) error {
 
 	if debug {
-		log.Printf("updateACLConfiglet: bridgeName %s, vifName %s, oldACLs %v newACLs %v\n",
-			bridgeName, vifName, oldACLs, newACLs)
+		log.Printf("updateACLConfiglet: bridgeName %s, vifName %s, appIP %s, oldACLs %v newACLs %v\n",
+			bridgeName, vifName, appIP, oldACLs, newACLs)
 	}
 	oldRules, err := aclToRules(bridgeName, vifName, oldACLs, ipVer,
 		bridgeIP, appIP)
@@ -671,15 +695,15 @@ func updateACLConfiglet(bridgeName string, vifName string, isMgmt bool,
 	if err != nil {
 		return err
 	}
-	return applyACLUpdate(isMgmt, ipVer, oldRules, newRules)
+	return applyACLUpdate(isMgmt, ipVer, vifName, appIP, oldRules, newRules)
 }
 
-func applyACLUpdate(isMgmt bool, ipVer int,
+func applyACLUpdate(isMgmt bool, ipVer int, vifName string, appIP string,
 	oldRules IptablesRuleList, newRules IptablesRuleList) error {
 
 	if debug {
-		log.Printf("applyACLUpdate: isMgmt %v ipVer %d oldRules %v newRules %v\n",
-			isMgmt, ipVer, oldRules, newRules)
+		log.Printf("applyACLUpdate: isMgmt %v ipVer %d vifName %s appIP %s oldRules %v newRules %v\n",
+			isMgmt, ipVer, vifName, appIP, oldRules, newRules)
 	}
 	var err error
 	// Look for old which should be deleted
@@ -690,7 +714,7 @@ func applyACLUpdate(isMgmt bool, ipVer int,
 		if debug {
 			log.Printf("modifyACLConfiglet: delete rule %v\n", rule)
 		}
-		args := rulePrefix("-D", isMgmt, ipVer, rule)
+		args := rulePrefix("-D", isMgmt, ipVer, vifName, appIP, rule)
 		if args == nil {
 			if debug {
 				log.Printf("modifyACLConfiglet: skipping delete rule %v\n",
@@ -723,7 +747,7 @@ func applyACLUpdate(isMgmt bool, ipVer int,
 		if debug {
 			log.Printf("modifyACLConfiglet: add rule %v\n", rule)
 		}
-		args := rulePrefix("-I", isMgmt, ipVer, rule)
+		args := rulePrefix("-I", isMgmt, ipVer, vifName, appIP, rule)
 		if args == nil {
 			if debug {
 				log.Printf("modifyACLConfiglet: skipping insert rule %v\n",
@@ -762,7 +786,7 @@ func deleteACLConfiglet(bridgeName string, vifName string, isMgmt bool,
 		if debug {
 			log.Printf("deleteACLConfiglet: rule %v\n", rule)
 		}
-		args := rulePrefix("-D", isMgmt, ipVer, rule)
+		args := rulePrefix("-D", isMgmt, ipVer, vifName, appIP, rule)
 		if args == nil {
 			if debug {
 				log.Printf("deleteACLConfiglet: skipping rule %v\n",
