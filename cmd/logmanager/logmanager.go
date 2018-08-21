@@ -531,6 +531,12 @@ func createXenLogger(ctx *imageLoggerContext, filename string, source string) {
 	// process associated channel
 	go processEvents(source, r.logChan)
 
+	// Write start event to ensure log is not empty
+	datestr := time.Now().Format("2006-01-02 15:04:05")
+	line := fmt.Sprintf("%s logmanager starting to log %s\n",
+		datestr, r.source)
+	r.logChan <- logEntry{source: r.source, content: line,
+		timestamp: ptypes.TimestampNow()}
 	// read initial entries until EOF
 	readLineToEvent(&r.logfileReader, r.logChan)
 	ctx.logfileReaders = append(ctx.logfileReaders, r)
@@ -580,6 +586,12 @@ func createLogger(ctx *loggerContext, filename, source string) {
 		fileDesc: fileDesc,
 		reader:   reader,
 	}
+	// Write start event to ensure log is not empty
+	datestr := time.Now().Format("2006-01-02 15:04:05")
+	line := fmt.Sprintf("%s logmanager starting to log %s\n",
+		datestr, r.source)
+	ctx.logChan <- logEntry{source: r.source, content: line,
+		timestamp: ptypes.TimestampNow()}
 	// read initial entries until EOF
 	readLineToEvent(&r, ctx.logChan)
 	ctx.logfileReaders = append(ctx.logfileReaders, r)
