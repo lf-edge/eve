@@ -218,16 +218,21 @@ message ZInfoVpn {
 }
 
 // Lisp state information
-message DatabaseMap {
-	uint64 IID = 1;
-	repeated string EIDs = 2;
+message RlocState {
+	string Rloc = 1;
+	bool Reachable = 2;
 }
 
 message MapCacheEntry {
-	uint64 IID = 1;
-	string EID = 2;
-	repeated string Rlocs = 3;
+	string EID = 1;
+	repeated RlocState Rlocs = 2;
 }
+
+message DatabaseMap {
+	uint64 IID = 1;
+	repeated MapCacheEntry MapCacheEntries = 2;
+}
+
 
 message DecapKey {
 	string Rloc = 1;
@@ -240,8 +245,7 @@ message ZInfoLisp {
 	uint64 EtrNatPort = 2;
 	repeated string Interfaces = 3;
 	repeated DatabaseMap DatabaseMaps = 4;
-	repeated MapCacheEntry MapCacheEntries = 5;
-	repeated DecapKey DecapKeys = 6;
+	repeated DecapKey DecapKeys = 5;
 }
 
 // Service instance state information
@@ -437,22 +441,21 @@ message appMetric {
 }
 
 // Lisp stats
+message PktStat {
+	uint64 Packets = 1;
+	uint64 Bytes = 2;
+}
+
 message RlocStats {
 	string Rloc = 1;
-	uint64 Packets = 2;
-	uint64 Bytes = 3;
-	uint64 SecondsSinceLastPacket = 4;
+	PktStat Stats = 2;
+	uint64 SecondsSinceLastPacket = 3;
 }
 
 message EidStats {
 	uint64 IID = 1;
 	string EID = 2;
 	repeated RlocStats RlocStatsEntries = 3;
-}
-
-message PktStat {
-	uint64 Packets = 1;
-	uint64 Bytes = 2;
 }
 
 message ZMetricLisp {
