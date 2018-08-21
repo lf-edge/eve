@@ -423,7 +423,6 @@ func lookupNetworkObjectConfig(ctx *zedrouterContext, key string) *types.Network
 	return &config
 }
 
-// XXX Callers must be careful to publish any changes to NetworkObjectStatus
 func lookupNetworkObjectStatus(ctx *zedrouterContext, key string) *types.NetworkObjectStatus {
 
 	pub := ctx.pubNetworkObjectStatus
@@ -462,7 +461,6 @@ func networkObjectType(ctx *zedrouterContext, bridgeName string) types.NetworkTy
 }
 
 // Called from service code when a bridge has been added/updated/deleted
-// XXX need to re-run this when the eth1 IP address might have been set
 func updateBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) {
 	log.Printf("updateBridgeIPAddr(%s)\n", status.Key())
 
@@ -564,4 +562,52 @@ func doNetworkDelete(ctx *zedrouterContext,
 	status.BridgeName = ""
 	status.BridgeNum = 0
 	bridgeNumFree(status.UUID)
+}
+
+func findVifInBridge(status *types.NetworkObjectStatus, vifName string) bool {
+	for _, vif := range status.VifNames {
+		if vif == vifName {
+			return true
+		}
+	}
+	return false
+}
+
+func addVifToBridge(status *types.NetworkObjectStatus, vifName string) {
+	log.Printf("addVifToBridge(%s, %s)\n", status.BridgeName, vifName)
+	if findVifInBridge(status, vifName) {
+		log.Printf("XXX addVifToBridge(%s, %s) exists\n",
+			status.BridgeName, vifName)
+		return
+	}
+	status.VifNames = append(status.VifNames, vifName)
+}
+
+func removeVifFromBridge(status *types.NetworkObjectStatus, vifName string) {
+	log.Printf("removeVifFromBridge(%s, %s)\n", status.BridgeName, vifName)
+	if !findVifInBridge(status, vifName) {
+		log.Printf("XXX removeVifFromBridge(%s, %s) not there\n",
+			status.BridgeName, vifName)
+		return
+	}
+	vifNames := []string{}
+	for _, vif := range status.VifNames {
+		if vif != vifName {
+			vifNames = append(vifNames, vif)
+		}
+	}
+	status.VifNames = vifNames
+}
+
+func vifNameToBridgeName(ctx *zedrouterContext, vifName string) string {
+
+	pub := ctx.pubNetworkObjectStatus
+	items := pub.GetAll()
+	for _, st := range items {
+		status := cast.CastNetworkObjectStatus(st)
+		if findVifInBridge(&status, vifName) {
+			return status.BridgeName
+		}
+	}
+	return ""
 }

@@ -1082,7 +1082,9 @@ func handleCreate(ctx *zedrouterContext, key string,
 				newIpsets)
 			startDnsmasq(bridgeName)
 		}
+		addVifToBridge(netstatus, vifName)
 		netstatus.BridgeIPSets = newIpsets
+		publishNetworkObjectStatus(ctx, netstatus)
 
 		// Create LISP configlets for IID and EID/signature
 		serviceStatus := lookupAppLink(ctx, olConfig.Network)
@@ -1205,7 +1207,10 @@ func handleCreate(ctx *zedrouterContext, key string,
 				newIpsets)
 			startDnsmasq(bridgeName)
 		}
+		addVifToBridge(netstatus, vifName)
 		netstatus.BridgeIPSets = newIpsets
+		publishNetworkObjectStatus(ctx, netstatus)
+
 		maybeRemoveStaleIpsets(staleIpsets)
 	}
 	// Write out what we created to AppNetworkStatus
@@ -1500,7 +1505,9 @@ func handleModify(ctx *zedrouterContext, key string,
 				newIpsets)
 			startDnsmasq(bridgeName)
 		}
+		removeVifFromBridge(netstatus, olStatus.Vif)
 		netstatus.BridgeIPSets = newIpsets
+		publishNetworkObjectStatus(ctx, netstatus)
 
 		serviceStatus := lookupAppLink(ctx, olConfig.Network)
 		if serviceStatus == nil {
@@ -1525,7 +1532,6 @@ func handleModify(ctx *zedrouterContext, key string,
 			ctx.separateDataPlane)
 
 		maybeRemoveStaleIpsets(staleIpsets)
-
 	}
 	// Look for ACL changes in underlay
 	for i, ulConfig := range config.UnderlayNetworkList {
@@ -1582,7 +1588,10 @@ func handleModify(ctx *zedrouterContext, key string,
 				newIpsets)
 			startDnsmasq(bridgeName)
 		}
+		removeVifFromBridge(netstatus, ulStatus.Vif)
 		netstatus.BridgeIPSets = newIpsets
+		publishNetworkObjectStatus(ctx, netstatus)
+
 		maybeRemoveStaleIpsets(staleIpsets)
 	}
 
