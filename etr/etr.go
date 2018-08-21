@@ -282,7 +282,6 @@ func verifyAndInject(fd6 int,
 	}
 	packetOffset := dptypes.LISPHEADERLEN
 
-	// offset of destination address inside ipv6 header
 	gcmOverhead := 0
 	icvLen := 0
 
