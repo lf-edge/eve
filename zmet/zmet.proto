@@ -204,7 +204,7 @@ message ZInfoVpnLink {
 
 message ZInfoVpnConn {
   string reqId = 1;      // tunnel reqest id
-  string routeTable = 2; // default or, 220 for route/policy based
+  string routeTable = 2; // "default" or "220" for VTI-based vs. Policy-based IPSEC VPN
   repeated ZInfoVpnLink link = 10; // connection details
 }
 
