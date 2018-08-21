@@ -282,7 +282,7 @@ eidLoop:
 			}
 
 			if itrConfig.ItrCryptoPortValid == true {
-				log.Printf("XXXXXX Changing ITR crpto port from %d to %d\n",
+				log.Printf("startWorking: Changing ITR crpto port from %d to %d\n",
 					itrLocalData.ItrCryptoPort, itrConfig.ItrCryptoPort)
 				itrLocalData.ItrCryptoPort = itrConfig.ItrCryptoPort
 			}
@@ -320,7 +320,7 @@ eidLoop:
 				return
 			}
 			if itrConfig.ItrCryptoPortValid == true {
-				log.Printf("XXXXX Changing ITR crpto port from %d to %d\n",
+				log.Printf("startWorking: Changing ITR crpto port from %d to %d\n",
 					itrLocalData.ItrCryptoPort, itrConfig.ItrCryptoPort)
 				itrLocalData.ItrCryptoPort = itrConfig.ItrCryptoPort
 			}

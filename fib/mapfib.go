@@ -144,8 +144,6 @@ func SetUplinkAddrs(ipv4 net.IP, ipv6 net.IP) {
 	}
 	uplinks.Ipv4 = ipv4
 	uplinks.Ipv6 = ipv6
-	log.Printf("XXXXX Storing pointer %p with ip4 %s, ipv6 %s\n",
-		&uplinks, uplinks.Ipv4, uplinks.Ipv6)
 	if debug {
 		log.Printf("SetUplinkAddrs: Storing pointer %p with ip4 %s, ipv6 %s\n",
 			&uplinks, uplinks.Ipv4, uplinks.Ipv6)
@@ -828,8 +826,8 @@ func StatsThread(puntChannel chan []byte) {
 
 		// Keep dumping our encap & decap state to a file on disk
 		// Do it only when the debug flag is enabled
-		if debug {
+		//if debug {
 			dumpDatabaseState()
-		}
+		//}
 	}
 }
