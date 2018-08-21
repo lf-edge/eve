@@ -290,6 +290,7 @@ func aclToRules(bridgeName string, vifName string, ACLs []types.ACE, ipVer int,
 	// XXX should we check isMgmt instead of bridgeIP?
 	if ipVer == 6 && bridgeIP != "" {
 		// Need to allow local communication */
+		// XXX check for dhcp, dns (tcp/udp), and icmp/nd
 		// Note that sufficient for src or dst to be local
 		rule1 := []string{"-i", bridgeName, "-m", "set", "--match-set",
 			"local.ipv6", "dst", "-j", "ACCEPT"}
@@ -303,6 +304,7 @@ func aclToRules(bridgeName string, vifName string, ACLs []types.ACE, ipVer int,
 	// If we have a bridge service then bridgeIP might be "".
 	if ipVer == 4 && bridgeIP != "" {
 		// Need to allow local communication */
+		// XXX check for dhcp, dns (tcp/udp)
 		// Note that sufficient for src or dst to be local
 		rule1 := []string{"-i", bridgeName, "-m", "set", "--match-set",
 			"local.ipv4", "dst", "-j", "ACCEPT"}

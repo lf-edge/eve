@@ -213,7 +213,6 @@ func setBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) e
 		return errors.New(errStr)
 	}
 	// Check if we have a bridge service, and if so return error or address
-	// XXX call getServiceInfo first?
 	st, _, err := getServiceInfo(ctx, status.UUID)
 	if err != nil {
 		// There might not be a service associated with this network

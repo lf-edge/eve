@@ -36,12 +36,6 @@ func getNetworkMetrics(ctx *zedrouterContext) types.NetworkMetrics {
 			TxErrors: ni.Errout,
 			RxErrors: ni.Errin,
 		}
-		// Note that Tx is transmitted to bu/bo interface
-		// XXX vifName?
-		// Match either as bridgeName or vifName?
-		// XXX lookup bridgeName to find whether IPv4 or IPv6?
-		// XXX how do we do lookups on the the vifName?
-		// XXX dbo1x0 check
 		var ntype types.NetworkType
 		bridgeName := ni.Name
 		vifName := ""
@@ -76,6 +70,7 @@ func getNetworkMetrics(ctx *zedrouterContext) types.NetworkMetrics {
 			// XXX IPv4 EIDs?
 			ipVer = 6
 		}
+		// Note that Tx is transmitted from domU to bridge interface
 		metric.TxAclDrops = getIpRuleAclDrop(ac, bridgeName, vifName,
 			ipVer, false)
 		metric.RxAclDrops = getIpRuleAclDrop(ac, bridgeName, vifName,

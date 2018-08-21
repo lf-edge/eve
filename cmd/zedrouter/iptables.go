@@ -159,19 +159,16 @@ func getIpRuleCounters(counters []AclCounters, match AclCounters) *AclCounters {
 }
 
 // Look for a LOG entry without More; we don't have those for rate limits
-// XXX add ipVer arg. How does caller set? bridgeNameToAF??
 func getIpRuleAclDrop(counters []AclCounters, bridgeName string, vifName string,
 	ipVer int, input bool) uint64 {
-	// XXX fix
-	ifname := bridgeName
 
 	var iif string
 	var oif string
 	if input {
-		// XXX vifName
-		iif = ifname
+		iif = bridgeName
+		// XXX piif = vifName
 	} else {
-		oif = ifname
+		oif = bridgeName
 	}
 	match := AclCounters{IIf: iif, OIf: oif, IpVer: ipVer, Drop: true}
 	c := getIpRuleCounters(counters, match)
@@ -185,15 +182,13 @@ func getIpRuleAclDrop(counters []AclCounters, bridgeName string, vifName string,
 func getIpRuleAclRateLimitDrop(counters []AclCounters, bridgeName string,
 	vifName string, ipVer int, input bool) uint64 {
 
-	// XXX fix
-	ifname := bridgeName
-
 	var iif string
 	var oif string
 	if input {
-		iif = ifname
+		iif = bridgeName
+		// XXX piif = vifName
 	} else {
-		oif = ifname
+		oif = bridgeName
 	}
 	match := AclCounters{IIf: iif, OIf: oif, IpVer: ipVer, Drop: true,
 		More: true}

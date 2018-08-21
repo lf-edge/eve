@@ -602,7 +602,6 @@ func updateLispConfiglets(ctx *zedrouterContext, separateDataPlane bool) {
 	items := pub.GetAll()
 	for _, st := range items {
 		status := cast.CastAppNetworkStatus(st)
-		// XXX Key
 		for i, olStatus := range status.OverlayNetworkList {
 			olNum := i + 1
 			var olIfname string
@@ -1086,6 +1085,8 @@ func handleCreate(ctx *zedrouterContext, key string,
 		netstatus.BridgeIPSets = newIpsets
 		publishNetworkObjectStatus(ctx, netstatus)
 
+		maybeRemoveStaleIpsets(staleIpsets)
+
 		// Create LISP configlets for IID and EID/signature
 		serviceStatus := lookupAppLink(ctx, olConfig.Network)
 		if serviceStatus == nil {
@@ -1106,7 +1107,6 @@ func handleCreate(ctx *zedrouterContext, key string,
 
 		createAndStartLisp(ctx, status, olConfig,
 			serviceStatus, lispRunDirname, bridgeName)
-		maybeRemoveStaleIpsets(staleIpsets)
 	}
 
 	for i, ulConfig := range config.UnderlayNetworkList {
@@ -1509,6 +1509,8 @@ func handleModify(ctx *zedrouterContext, key string,
 		netstatus.BridgeIPSets = newIpsets
 		publishNetworkObjectStatus(ctx, netstatus)
 
+		maybeRemoveStaleIpsets(staleIpsets)
+
 		serviceStatus := lookupAppLink(ctx, olConfig.Network)
 		if serviceStatus == nil {
 			// Lisp service might not have arrived as part of configuration.
@@ -1530,8 +1532,6 @@ func handleModify(ctx *zedrouterContext, key string,
 			*ctx.DeviceNetworkStatus, bridgeName, bridgeName,
 			additionalInfo, olConfig.LispServers,
 			ctx.separateDataPlane)
-
-		maybeRemoveStaleIpsets(staleIpsets)
 	}
 	// Look for ACL changes in underlay
 	for i, ulConfig := range config.UnderlayNetworkList {
@@ -1808,21 +1808,6 @@ func handleDelete(ctx *zedrouterContext, key string,
 		hostsDirpath := globalRunDirname + "/hosts." + bridgeName
 		removeFromHostsConfiglet(hostsDirpath, status.DisplayName)
 
-		// XXX check if the service configuration exists.
-		// If service does not exist overlays would not have been created
-		serviceStatus := lookupAppLink(ctx, olStatus.Network)
-		if serviceStatus == nil {
-			// Lisp service might already have been deleted.
-			// As part of Lisp service deletion, we delete all overlays.
-			continue
-		}
-
-		// Delete LISP configlets
-		deleteLispConfiglet(lispRunDirname, false,
-			olStatus.IID, olStatus.EID,
-			*ctx.DeviceNetworkStatus,
-			ctx.separateDataPlane)
-
 		deleteEidIpsetConfiglet(olStatus.Vif, true)
 
 		// Look for added or deleted ipsets
@@ -1838,6 +1823,20 @@ func handleDelete(ctx *zedrouterContext, key string,
 		}
 		netstatus.BridgeIPSets = newIpsets
 		maybeRemoveStaleIpsets(staleIpsets)
+
+		// If service does not exist overlays would not have been created
+		serviceStatus := lookupAppLink(ctx, olStatus.Network)
+		if serviceStatus == nil {
+			// Lisp service might already have been deleted.
+			// As part of Lisp service deletion, we delete all overlays.
+			continue
+		}
+
+		// Delete LISP configlets
+		deleteLispConfiglet(lispRunDirname, false,
+			olStatus.IID, olStatus.EID,
+			*ctx.DeviceNetworkStatus,
+			ctx.separateDataPlane)
 	}
 
 	// XXX check if any IIDs are now unreferenced and delete them
