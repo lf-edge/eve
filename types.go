@@ -5,8 +5,6 @@
 
 package main
 
-import "github.com/zededa/go-provision/pubsub"
-
 const CRYPTO_KEY_LEN = 32
 
 // These message type definitions should be in sync with lispers.net
@@ -88,8 +86,4 @@ type EtrNatPort struct {
 type ItrCryptoPort struct {
 	Type string `json:"type"`
 	Port int    `json:"port"`
-}
-
-type dataplaneContext struct {
-	subDeviceNetworkStatus  *pubsub.Subscription
 }

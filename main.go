@@ -265,42 +265,40 @@ func registerSignalHandler() {
 
 var deviceNetworkStatus types.DeviceNetworkStatus
 
-func handleDNSModify(ctxArg interface{}, statusFilename string,
+func handleDNSModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	status := cast.CastDeviceNetworkStatus(statusArg)
 
-	if statusFilename != "global" {
-		log.Printf("ETR: handleDNSModify: ignoring %s\n", statusFilename)
+	if key != "global" {
+		log.Printf("ETR: handleDNSModify: ignoring %s\n", key)
 		return
 	}
-	log.Printf("ETR: handleDNSModify for %s\n", statusFilename)
+	log.Printf("ETR: handleDNSModify for %s\n", key)
 	deviceNetworkStatus = status
-	log.Printf("ETR: handleDNSModify done for %s\n", statusFilename)
+	log.Printf("ETR: handleDNSModify done for %s\n", key)
 }
 
-func handleDNSDelete(ctxArg interface{}, statusFilename string, statusArg interface{}) {
-	log.Printf("ETR: handleDNSDelete for %s\n", statusFilename)
+func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
+	log.Printf("ETR: handleDNSDelete for %s\n", key)
 
-	if statusFilename != "global" {
-		log.Printf("ETR: handleDNSDelete: ignoring %s\n", statusFilename)
+	if key != "global" {
+		log.Printf("ETR: handleDNSDelete: ignoring %s\n", key)
 		return
 	}
 	deviceNetworkStatus = types.DeviceNetworkStatus{}
-	log.Printf("ETR: handleDNSDelete done for %s\n", statusFilename)
+	log.Printf("ETR: handleDNSDelete done for %s\n", key)
 }
 
 func handleConfig(c *net.UnixConn) {
 	defer c.Close()
 
-	ctx := dataplaneContext{}
 	subDeviceNetworkStatus, err := pubsub.Subscribe("zedrouter",
-	types.DeviceNetworkStatus{}, false, &ctx)
+		types.DeviceNetworkStatus{}, false, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
 	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
-	ctx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
 	// Create 8k bytes buffer for reading configuration messages.
