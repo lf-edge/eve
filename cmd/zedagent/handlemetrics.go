@@ -169,11 +169,8 @@ func handleDomainStatusModify(ctxArg interface{}, key string,
 		appDiskAndNameList = make(map[string][]string)
 	}
 	var interfaceList []string
-	// We report the vif and bridge since the ACL drops are on the Bridge
-	// XXX move ACLs to vif??
 	for _, vif := range status.VifList {
 		interfaceList = append(interfaceList, vif.Vif)
-		interfaceList = append(interfaceList, vif.Bridge)
 	}
 	appInterfaceAndNameList[status.DomainName] = interfaceList
 	var diskList []string

@@ -1,4 +1,4 @@
-// Copyright (c) 2017 Zededa, Inc.
+// Copyright (c) 2017,2018 Zededa, Inc.
 // All rights reserved.
 
 // iptables support code
@@ -90,17 +90,28 @@ func fetchIprulesCounters() []AclCounters {
 	if err != nil {
 		log.Printf("fetchIprulesCounters: iptables -S failed %s\n", err)
 	} else {
-		c := parseCounters(out, "filter", false)
+		c := parseCounters(out, "filter", 4)
 		if c != nil {
 			counters = append(counters, c...)
 		}
 	}
-	// XXX Only needed to get dbo1x0 stats
+
+	out, err = iptableCmdOut(false, "-t", "raw", "-S", "PREROUTING", "-v")
+	if err != nil {
+		log.Printf("fetchIprulesCounters: iptables -S failed %s\n", err)
+	} else {
+		c := parseCounters(out, "filter", 4)
+		if c != nil {
+			counters = append(counters, c...)
+		}
+	}
+
+	// Only needed to get dbo1x0 stats
 	out, err = ip6tableCmdOut(false, "-t", "filter", "-S", "OUTPUT", "-v")
 	if err != nil {
 		log.Printf("fetchIprulesCounters: iptables -S failed %s\n", err)
 	} else {
-		c := parseCounters(out, "filter", true)
+		c := parseCounters(out, "filter", 6)
 		if c != nil {
 			counters = append(counters, c...)
 		}
@@ -109,7 +120,7 @@ func fetchIprulesCounters() []AclCounters {
 	if err != nil {
 		log.Printf("fetchIprulesCounters: ip6tables failed %s\n", err)
 	} else {
-		c := parseCounters(out, "filter", true)
+		c := parseCounters(out, "filter", 6)
 		if c != nil {
 			counters = append(counters, c...)
 		}
@@ -118,7 +129,7 @@ func fetchIprulesCounters() []AclCounters {
 	if err != nil {
 		log.Printf("fetchIprulesCounters: ip6tables -S failed %s\n", err)
 	} else {
-		c := parseCounters(out, "filter", true)
+		c := parseCounters(out, "filter", 6)
 		if c != nil {
 			counters = append(counters, c...)
 		}
@@ -128,12 +139,19 @@ func fetchIprulesCounters() []AclCounters {
 
 func getIpRuleCounters(counters []AclCounters, match AclCounters) *AclCounters {
 	for i, c := range counters {
-		if c.Overlay != match.Overlay || c.Log != match.Log ||
+		if c.IpVer != match.IpVer || c.Log != match.Log ||
 			c.Drop != match.Drop || c.More != match.More {
 			continue
 		}
 		if c.IIf != match.IIf || c.OIf != match.OIf {
 			continue
+		}
+		if c.Piif != match.Piif || c.Poif != match.Poif {
+			continue
+		}
+		if debug {
+			log.Printf("getIpRuleCounters: matched counters %+v\n",
+				&counters[i])
 		}
 		return &counters[i]
 	}
@@ -141,17 +159,20 @@ func getIpRuleCounters(counters []AclCounters, match AclCounters) *AclCounters {
 }
 
 // Look for a LOG entry without More; we don't have those for rate limits
-func getIpRuleAclDrop(counters []AclCounters, ifname string, input bool) uint64 {
-	overlay := strings.HasPrefix(ifname, "bo") ||
-		strings.HasPrefix(ifname, "dbo")
+func getIpRuleAclDrop(counters []AclCounters, bridgeName string, vifName string,
+	ipVer int, input bool) uint64 {
+
 	var iif string
+	var piif string
 	var oif string
 	if input {
-		iif = ifname
+		iif = bridgeName
+		piif = vifName
 	} else {
-		oif = ifname
+		oif = bridgeName
 	}
-	match := AclCounters{IIf: iif, OIf: oif, Overlay: overlay, Drop: true}
+	match := AclCounters{IIf: iif, Piif: piif, OIf: oif, IpVer: ipVer,
+		Drop: true, More: false}
 	c := getIpRuleCounters(counters, match)
 	if c == nil {
 		return 0
@@ -160,18 +181,20 @@ func getIpRuleAclDrop(counters []AclCounters, ifname string, input bool) uint64 
 }
 
 // Look for a DROP entry with More set.
-func getIpRuleAclRateLimitDrop(counters []AclCounters, ifname string, input bool) uint64 {
-	overlay := strings.HasPrefix(ifname, "bo") ||
-		strings.HasPrefix(ifname, "dbo")
+func getIpRuleAclRateLimitDrop(counters []AclCounters, bridgeName string,
+	vifName string, ipVer int, input bool) uint64 {
+
 	var iif string
+	var piif string
 	var oif string
 	if input {
-		iif = ifname
+		iif = bridgeName
+		piif = vifName
 	} else {
-		oif = ifname
+		oif = bridgeName
 	}
-	match := AclCounters{IIf: iif, OIf: oif, Overlay: overlay, Drop: true,
-		More: true}
+	match := AclCounters{IIf: iif, Piif: piif, OIf: oif, IpVer: ipVer,
+		Drop: true, More: true}
 	c := getIpRuleCounters(counters, match)
 	if c == nil {
 		return 0
@@ -180,14 +203,13 @@ func getIpRuleAclRateLimitDrop(counters []AclCounters, ifname string, input bool
 }
 
 // Parse the output of iptables -S -v
-func parseCounters(out string, table string, overlay bool) []AclCounters {
+func parseCounters(out string, table string, ipVer int) []AclCounters {
 	var counters []AclCounters
 
 	lines := strings.Split(out, "\n")
 	for _, line := range lines {
-		ac := parseline(line, table, overlay)
+		ac := parseline(line, table, ipVer)
 		if ac != nil {
-			// XXX log.Printf("ACL counters %v\n", *ac)
 			counters = append(counters, *ac)
 		}
 	}
@@ -195,19 +217,23 @@ func parseCounters(out string, table string, overlay bool) []AclCounters {
 }
 
 type AclCounters struct {
-	Table   string
-	Chain   string
-	Overlay bool
-	IIf     string
-	OIf     string
-	Log     bool
-	Drop    bool
-	More    bool // Has fields we didn't explicitly parse
-	Bytes   uint64
-	Pkts    uint64
+	Table  string
+	Chain  string
+	IpVer  int
+	IIf    string
+	Piif   string
+	OIf    string
+	Poif   string
+	Log    bool
+	Drop   bool
+	More   bool // Has fields we didn't explicitly parse; user specified
+	Accept bool
+	Dest   string
+	Bytes  uint64
+	Pkts   uint64
 }
 
-func parseline(line string, table string, overlay bool) *AclCounters {
+func parseline(line string, table string, ipVer int) *AclCounters {
 	items := strings.Split(line, " ")
 	if len(items) < 4 {
 		// log.Printf("Too short: %s\n", line)
@@ -216,16 +242,51 @@ func parseline(line string, table string, overlay bool) *AclCounters {
 	if items[0] != "-A" {
 		return nil
 	}
-	ac := AclCounters{Table: table, Chain: items[1], Overlay: overlay}
+	forward := items[1] == "FORWARD"
+	ac := AclCounters{Table: table, Chain: items[1], IpVer: ipVer}
 	i := 2
 	for i < len(items) {
+		// Ignore any xen-related entries.
+		if items[i] == "--physdev-is-bridged" {
+			return nil
+		}
+		// Skip things which are normal in the entries such as physdev
+		// and the destination match
+		if items[i] == "-m" && items[i+1] == "physdev" {
+			i += 2
+			continue
+		}
+		// Need to allow -A FORWARD -d 10.0.1.11/32 -o bn1
+		// without setting More.
+		if forward && items[i] == "-d" && i == 2 {
+			ac.Dest = items[i+1]
+			i += 2
+			continue
+		}
+		// Ignore any log-prefix and log-level if present
+		if items[i] == "--log-prefix" || items[i] == "--log-level" {
+			i += 2
+			continue
+		}
+
+		// Extract interface information
 		if items[i] == "-i" {
 			ac.IIf = items[i+1]
 			i += 2
 			continue
 		}
+		if items[i] == "--physdev-in" {
+			ac.Piif = items[i+1]
+			i += 2
+			continue
+		}
 		if items[i] == "-o" {
 			ac.OIf = items[i+1]
+			i += 2
+			continue
+		}
+		if items[i] == "--physdev-out" {
+			ac.Poif = items[i+1]
 			i += 2
 			continue
 		}
@@ -235,6 +296,8 @@ func parseline(line string, table string, overlay bool) *AclCounters {
 				ac.Drop = true
 			case "LOG":
 				ac.Log = true
+			case "ACCEPT":
+				ac.Accept = true
 			}
 			i += 2
 			continue
@@ -258,7 +321,7 @@ func parseline(line string, table string, overlay bool) *AclCounters {
 			continue
 		}
 
-		/// log.Printf("Got %d %s\n", i, items[i])
+		// log.Printf("Got more items %d %s\n", i, items[i])
 		ac.More = true
 		i += 1
 	}

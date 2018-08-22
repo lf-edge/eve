@@ -451,7 +451,6 @@ type UnderlayNetworkConfig struct {
 	AppIPAddr  net.IP           // If set use DHCP to assign to app
 	Network    uuid.UUID
 	ACLs       []ACE
-	SshPortMap bool
 }
 
 type UnderlayNetworkStatus struct {
@@ -469,7 +468,9 @@ const (
 	NT_IPV4      NetworkType = 4
 	NT_IPV6                  = 6
 	NT_CryptoEID             = 14
+	// XXX IPV4 EIDs?
 	// XXX Do we need a NT_DUAL/NT_IPV46? Implies two subnets/dhcp ranges?
+	// XXX how do we represent a bridge? NT_L2??
 )
 
 // Extracted from the protobuf NetworkConfig
@@ -507,11 +508,19 @@ type NetworkObjectStatus struct {
 	BridgeNum     int
 	BridgeName    string // bn<N>
 	BridgeIPAddr  string
-	NameToEidList []NameToEid
-	// XXX Adapter        string // AKA Adapter - from NetworkServiceConfig???
+
+	// Used to populate DNS
+	DnsNameToIPList []NameToEid
+
 	// Collection of address assignments; from MAC address to IP address
-	// XXX record hostnames as well?
 	IPAssignments map[string]net.IP
+
+	// Union of all ipsets fed to dnsmasq for the linux bridge
+	BridgeIPSets []string
+
+	// Set of vifs on this bridge
+	VifNames []string
+
 	// Any errrors from provisioning the network
 	Error     string
 	ErrorTime time.Time
