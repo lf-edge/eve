@@ -12,9 +12,11 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type ipSecCmdOut struct {
+	upTime             time.Time
 	ipAddrs            string
 	activeTunCount     uint32
 	connectingTunCount uint32
@@ -52,6 +54,7 @@ func ipSecStatusCmdGet(vpnStatus *types.ServiceVpnStatus) {
 	}
 	ipSecCmdOut := ipSecCmdParse(string(bytes))
 	vpnStatus.IpAddrs = ipSecCmdOut.ipAddrs
+	vpnStatus.UpTime = ipSecCmdOut.upTime
 	vpnStatus.ActiveTunCount = ipSecCmdOut.activeTunCount
 	vpnStatus.ConnectingTunCount = ipSecCmdOut.connectingTunCount
 	return
@@ -98,16 +101,31 @@ func ipSecCmdParse(outStr string) ipSecCmdOut {
 
 	saStr := "Security Associations"
 	connStr := "Connections:"
+	upTimeStr := "uptime:"
+	sinceStr := "since"
 	listeningStr := "Listening IP addresses:"
 
 	outLines := strings.Split(outStr, "\n")
 	// get Listening IpAddresses
 	for idx, line := range outLines {
+		// check for "uptime:"
+		if strings.Contains(line, upTimeStr) {
+			upTimeStr := strings.Split(line, sinceStr)
+			len := len(upTimeStr)
+			if len > 1 {
+				upTime, err := time.Parse(time.RFC3339, upTimeStr[len-1])
+				if err != nil {
+					ipSecCmdOut.upTime = upTime
+				}
+			}
+		}
+
 		// contains "Listening IP Addresses"
 		if strings.Contains(line, listeningStr) {
 			addrIdx := idx + 1
 			// until Connections:
-			for !strings.Contains(outLines[addrIdx], connStr) {
+			for addrIdx < len(outLines) &&
+				!strings.Contains(outLines[addrIdx], connStr) {
 				outArr := strings.Fields(outLines[addrIdx])
 				for _, field := range outArr {
 					if ip := net.ParseIP(field); ip != nil {

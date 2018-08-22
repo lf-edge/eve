@@ -634,5 +634,44 @@ func strongSwanVpnStatusGet(status *types.NetworkServiceStatus) {
 }
 
 func isVpnStatusChanged(oldStatus, newStatus types.ServiceVpnStatus) bool {
+
+	if oldStatus.ActiveTunCount != newStatus.ActiveTunCount ||
+		oldStatus.ConnectingTunCount != newStatus.ConnectingTunCount {
+		return true
+	}
+	for _, oldConn := range oldStatus.ConnStatus {
+		found := false
+		for _, newConn := range newStatus.ConnStatus {
+			if oldConn.Name == newConn.Name &&
+				oldConn.Id == newConn.Id {
+				found = true
+				if ret := matchConn(oldConn, newConn); ret == false {
+					return true
+				}
+				break
+			}
+		}
+		if found == false {
+			return true
+		}
+	}
+	return false
+}
+
+func matchConn(oldConn, newConn types.VpnConnStatus) bool {
+	if oldConn.State != newConn.State ||
+		oldConn.ReqId != newConn.ReqId {
+		return false
+	}
+	if oldConn.LocalLink.SpiId != newConn.LocalLink.SpiId ||
+		oldConn.LocalLink.BytesCount != newConn.LocalLink.BytesCount ||
+		oldConn.LocalLink.PktsCount != newConn.LocalLink.PktsCount {
+		return false
+	}
+	if oldConn.RemoteLink.SpiId != newConn.RemoteLink.SpiId ||
+		oldConn.RemoteLink.BytesCount != newConn.RemoteLink.BytesCount ||
+		oldConn.RemoteLink.PktsCount != newConn.RemoteLink.PktsCount {
+		return false
+	}
 	return true
 }
