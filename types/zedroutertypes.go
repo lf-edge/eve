@@ -567,7 +567,7 @@ type NetworkServiceStatus struct {
 	// Any errrors from provisioning the service
 	Error     string
 	ErrorTime time.Time
-	VpnStatus     ServiceVpnStatus
+	VpnStatus ServiceVpnStatus
 }
 
 func (status NetworkServiceStatus) Key() string {
@@ -720,10 +720,10 @@ const (
 )
 
 type VpnLinkStatus struct {
-	IpAddr    string
-	Subnet    string
-	SpiId     string
-	Direction bool
+	IpAddr     string
+	Subnet     string
+	SpiId      string
+	Direction  bool
 	BytesCount uint64
 	PktsCount  uint64
 }
@@ -739,10 +739,10 @@ type VpnConnStatus struct {
 }
 
 type ServiceVpnStatus struct {
-	RouteTable   string
-	UpTime       time.Time
-	IpAddrs      string // listening ip addresses
-	ConnStatus   []VpnConnStatus
-	ActiveTunCount  uint32
+	RouteTable         string
+	UpTime             time.Time
+	IpAddrs            string // listening ip addresses
+	ConnStatus         []VpnConnStatus
+	ActiveTunCount     uint32
 	ConnectingTunCount uint32
 }

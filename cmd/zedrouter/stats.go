@@ -15,7 +15,7 @@ import (
 )
 
 type ipSecCmdOut struct {
-	ipAddrs         string
+	ipAddrs            string
 	activeTunCount     uint32
 	connectingTunCount uint32
 }
@@ -93,7 +93,7 @@ func swanCtlCmdGet(vpnStatus *types.ServiceVpnStatus) {
 func ipSecCmdParse(outStr string) ipSecCmdOut {
 	ipSecCmdOut := ipSecCmdOut{}
 	if len(outStr) == 0 {
-		return ipSecCmdOut 
+		return ipSecCmdOut
 	}
 
 	saStr := "Security Associations"
@@ -105,7 +105,7 @@ func ipSecCmdParse(outStr string) ipSecCmdOut {
 	for idx, line := range outLines {
 		// contains "Listening IP Addresses"
 		if strings.Contains(line, listeningStr) {
-			addrIdx := idx + 1 
+			addrIdx := idx + 1
 			// until Connections:
 			for !strings.Contains(outLines[addrIdx], connStr) {
 				outArr := strings.Fields(outLines[addrIdx])
@@ -113,8 +113,8 @@ func ipSecCmdParse(outStr string) ipSecCmdOut {
 					if ip := net.ParseIP(field); ip != nil {
 						if ipSecCmdOut.ipAddrs == "" {
 							ipSecCmdOut.ipAddrs = field
-						}  else { 
-						    ipSecCmdOut.ipAddrs = ipSecCmdOut.ipAddrs + " " + field
+						} else {
+							ipSecCmdOut.ipAddrs = ipSecCmdOut.ipAddrs + " " + field
 						}
 					}
 				}
@@ -126,13 +126,13 @@ func ipSecCmdParse(outStr string) ipSecCmdOut {
 			outArr := strings.Fields(line)
 			for fidx, field := range outArr {
 				if field == "up," {
-					countStr := outArr[fidx - 1]
+					countStr := outArr[fidx-1]
 					if count, err := strconv.ParseUint(countStr, 10, 32); err != nil {
 						ipSecCmdOut.activeTunCount = uint32(count)
 					}
 				}
 				if field == "connecting)" {
-					countStr := outArr[fidx - 1]
+					countStr := outArr[fidx-1]
 					if count, err := strconv.ParseUint(countStr, 10, 32); err != nil {
 						ipSecCmdOut.connectingTunCount = uint32(count)
 					}
@@ -153,8 +153,8 @@ func swanCtlCmdParse(outStr string) swanCtlCmdOut {
 	// get active connection count
 	for _, line := range outLines {
 		if line[0] != ' ' &&
-			 line[0] != '\t' && line[0] != '\n' {
-			swanCtlCmdOut.tunnelCount ++
+			line[0] != '\t' && line[0] != '\n' {
+			swanCtlCmdOut.tunnelCount++
 		}
 	}
 	if swanCtlCmdOut.tunnelCount == 0 {
@@ -170,7 +170,7 @@ func swanCtlCmdParse(outStr string) swanCtlCmdOut {
 		if line[0] != ' ' && line[0] != '\t' && line[0] != '\n' {
 			swanCtlCmdOut.tunnelList[tunIdx].startLine = idx
 			if tunIdx != 0 {
-				swanCtlCmdOut.tunnelList[tunIdx -1].endLine = cidx
+				swanCtlCmdOut.tunnelList[tunIdx-1].endLine = cidx
 			}
 			if idx != 0 {
 				cidx = idx - 1
@@ -228,10 +228,10 @@ func swanCtlCmdParse(outStr string) swanCtlCmdOut {
 			outArr := strings.Fields(line)
 			for fidx, field := range outArr {
 				if field == "established" {
-					tunnelInfo.estTime = outArr[fidx + 1]
+					tunnelInfo.estTime = outArr[fidx+1]
 				}
 				if field == "reauth" {
-					tunnelInfo.reauthTime = outArr[fidx + 2]
+					tunnelInfo.reauthTime = outArr[fidx+2]
 				}
 			}
 		}
@@ -247,7 +247,7 @@ func swanCtlCmdParse(outStr string) swanCtlCmdOut {
 				outArr := strings.Fields(line)
 				for fidx, field := range outArr {
 					if field == "reqid" {
-						tunnelInfo.reqId = outArr[fidx + 1]
+						tunnelInfo.reqId = outArr[fidx+1]
 					}
 				}
 			}
@@ -261,11 +261,11 @@ func swanCtlCmdParse(outStr string) swanCtlCmdOut {
 			for fidx, field := range outArr {
 				switch field {
 				case "installed":
-					tunnelInfo.instTime = outArr[fidx + 1]
+					tunnelInfo.instTime = outArr[fidx+1]
 				case "rekeying":
-					tunnelInfo.rekeyTime = outArr[fidx + 2]
+					tunnelInfo.rekeyTime = outArr[fidx+2]
 				case "expires":
-					tunnelInfo.expTime = outArr[fidx + 2]
+					tunnelInfo.expTime = outArr[fidx+2]
 				}
 			}
 		}
@@ -330,4 +330,4 @@ func swanCtlCmdParse(outStr string) swanCtlCmdOut {
 	}
 
 	return swanCtlCmdOut
-} 
+}
