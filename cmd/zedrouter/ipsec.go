@@ -120,6 +120,7 @@ func ipSecServiceStatus() (string, error) {
 	return string(out), nil
 }
 
+
 // check whether ipsec tunnel is up
 func ipSecTunnelStateCheck(vpnRole string, tunnelName string) error {
 	if err := checkIpSecServiceStatusCmd(tunnelName); err != nil {

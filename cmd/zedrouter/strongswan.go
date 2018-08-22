@@ -54,6 +54,7 @@ func strongswanCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 		log.Printf("%s StrongSwanVpn create\n", err.Error())
 		return err
 	}
+	strongSwanVpnStatusGet(status)
 	return nil
 }
 
@@ -70,6 +71,7 @@ func strongswanDelete(status *types.NetworkServiceStatus) {
 	if err := strongSwanVpnDelete(vpnConfig); err != nil {
 		log.Printf("%s StrongSwanVpn delete\n", err.Error())
 	}
+	strongSwanVpnStatusGet(status)
 }
 
 func strongswanActivate(config types.NetworkServiceConfig,
@@ -87,6 +89,7 @@ func strongswanActivate(config types.NetworkServiceConfig,
 		log.Printf("%s StrongSwanVpn activate\n", err.Error())
 		return err
 	}
+	strongSwanVpnStatusGet(status)
 	return nil
 }
 
@@ -102,7 +105,9 @@ func strongswanInactivate(status *types.NetworkServiceStatus,
 
 	if err := strongSwanVpnInactivate(vpnConfig); err != nil {
 		log.Printf("%s StrongSwanVpn inactivate\n", err.Error())
+		return
 	}
+	strongSwanVpnStatusGet(status)
 }
 
 // StrongSwan Vpn IpSec Tenneling handler routines
@@ -604,4 +609,30 @@ func strongSwanValidateIpAddr(ipAddr string) error {
 		}
 	}
 	return nil
+}
+
+func strongSwanVpnStatusGet(status *types.NetworkServiceStatus) {
+	vpnConfig, err := strongSwanVpnStatusParse(status.OpaqueStatus)
+	if err != nil {
+		log.Printf("StrongSwanVpn config absent")
+		return
+	}
+	vpnStatus := types.ServiceVpnStatus{}
+	ipSecStatusCmdGet(&vpnStatus)
+	swanCtlCmdGet(&vpnStatus)
+
+	if vpnConfig.PolicyBased == true {
+		vpnStatus.RouteTable = "220"
+	} else {
+		vpnStatus.RouteTable = "default"
+	}
+
+	// if tunnel states have changed, update
+	if isVpnStatusChanged(status.VpnStatus, vpnStatus) {
+		status.VpnStatus = vpnStatus
+	}
+}
+
+func isVpnStatusChanged(oldStatus, newStatus types.ServiceVpnStatus) bool {
+	return true
 }
