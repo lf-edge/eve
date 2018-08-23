@@ -89,7 +89,6 @@ func swanCtlCmdGet(vpnStatus *types.ServiceVpnStatus) {
 		connStatus.ReqId = swanCtlCmdOut.tunnelList[idx].reqId
 		connStatus.State = swanCtlCmdOut.tunnelList[idx].state
 		connStatus.LocalLink = swanCtlCmdOut.tunnelList[idx].localLink
-		connStatus.LocalLink.Direction = false
 		connStatus.RemoteLink = swanCtlCmdOut.tunnelList[idx].remoteLink
 		vpnStatus.ConnStatus[idx] = connStatus
 	}
