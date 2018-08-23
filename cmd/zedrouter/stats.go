@@ -16,6 +16,7 @@ import (
 )
 
 type ipSecCmdOut struct {
+	version            string
 	upTime             time.Time
 	ipAddrs            string
 	activeTunCount     uint32
@@ -55,6 +56,7 @@ func ipSecStatusCmdGet(vpnStatus *types.ServiceVpnStatus) {
 	ipSecCmdOut := ipSecCmdParse(string(bytes))
 	vpnStatus.IpAddrs = ipSecCmdOut.ipAddrs
 	vpnStatus.UpTime = ipSecCmdOut.upTime
+	vpnStatus.Version = ipSecCmdOut.version
 	vpnStatus.ActiveTunCount = ipSecCmdOut.activeTunCount
 	vpnStatus.ConnectingTunCount = ipSecCmdOut.connectingTunCount
 	return
@@ -103,11 +105,18 @@ func ipSecCmdParse(outStr string) ipSecCmdOut {
 	connStr := "Connections:"
 	upTimeStr := "uptime:"
 	sinceStr := "since"
+	statusStr := "Status of IKE charon daemon"
 	listeningStr := "Listening IP addresses:"
 
 	outLines := strings.Split(outStr, "\n")
 	// get Listening IpAddresses
 	for idx, line := range outLines {
+		// check for version
+		if strings.Contains(line, statusStr) {
+			versionStr := strings.Split(line, "(")[1]
+			versionStr = strings.Split(versionStr, ")")[0]
+			ipSecCmdOut.version = versionStr
+		}
 		// check for "uptime:"
 		if strings.Contains(line, upTimeStr) {
 			upTimeStr := strings.Split(line, sinceStr)
@@ -207,8 +216,11 @@ func swanCtlCmdParse(outStr string) swanCtlCmdOut {
 		if lidx <= tunnelInfo.endLine {
 			line := outLines[lidx]
 			outArr := strings.Fields(line)
-			tunnelInfo.name = outArr[0]
-			tunnelInfo.id = outArr[1]
+			tunnelName := strings.Split(outArr[0], ":")[0]
+			tunnelId := strings.Split(outArr[1], "#")[1]
+			tunnelId = strings.Split(tunnelId, ",")[0]
+			tunnelInfo.name = tunnelName
+			tunnelInfo.id = tunnelId
 		}
 
 		// tunnel local ip address
@@ -246,10 +258,12 @@ func swanCtlCmdParse(outStr string) swanCtlCmdOut {
 			outArr := strings.Fields(line)
 			for fidx, field := range outArr {
 				if field == "established" {
-					tunnelInfo.estTime = outArr[fidx+1]
+					estTime := strings.Split(outArr[fidx+1], "s")[0]
+					tunnelInfo.estTime = estTime
 				}
 				if field == "reauth" {
-					tunnelInfo.reauthTime = outArr[fidx+2]
+					reauthTime := strings.Split(outArr[fidx+2], "s")[0]
+					tunnelInfo.reauthTime = reauthTime
 				}
 			}
 		}
@@ -265,7 +279,8 @@ func swanCtlCmdParse(outStr string) swanCtlCmdOut {
 				outArr := strings.Fields(line)
 				for fidx, field := range outArr {
 					if field == "reqid" {
-						tunnelInfo.reqId = outArr[fidx+1]
+						reqId := strings.Split(outArr[fidx+1], ",")[0]
+						tunnelInfo.reqId = reqId
 					}
 				}
 			}
@@ -279,11 +294,14 @@ func swanCtlCmdParse(outStr string) swanCtlCmdOut {
 			for fidx, field := range outArr {
 				switch field {
 				case "installed":
-					tunnelInfo.instTime = outArr[fidx+1]
+					instTime := strings.Split(outArr[fidx+1], "s")[0]
+					tunnelInfo.instTime = instTime
 				case "rekeying":
-					tunnelInfo.rekeyTime = outArr[fidx+2]
+					rekeyTime := strings.Split(outArr[fidx+2], "s")[0]
+					tunnelInfo.rekeyTime = rekeyTime
 				case "expires":
-					tunnelInfo.expTime = outArr[fidx+2]
+					expTime := strings.Split(outArr[fidx+2], "s")[0]
+					tunnelInfo.expTime = expTime
 				}
 			}
 		}
@@ -323,6 +341,7 @@ func swanCtlCmdParse(outStr string) swanCtlCmdOut {
 				}
 			}
 		}
+
 		// local subnet
 		lidx++
 		if lidx <= tunnelInfo.endLine {
@@ -332,6 +351,7 @@ func swanCtlCmdParse(outStr string) swanCtlCmdOut {
 				tunnelInfo.localLink.SubNet = outArr[1]
 			}
 		}
+
 		// remote subnet
 		lidx++
 		if lidx <= tunnelInfo.endLine {
@@ -341,11 +361,11 @@ func swanCtlCmdParse(outStr string) swanCtlCmdOut {
 				tunnelInfo.remoteLink.SubNet = outArr[1]
 			}
 		}
+
 		// set the direction flags
 		tunnelInfo.localLink.Direction = false
 		tunnelInfo.remoteLink.Direction = true
 		swanCtlCmdOut.tunnelList[idx] = tunnelInfo
 	}
-
 	return swanCtlCmdOut
 }
