@@ -329,7 +329,7 @@ func swanCtlCmdParse(outStr string) swanCtlCmdOut {
 			line := outLines[lidx]
 			outArr := strings.Fields(line)
 			if outArr[0] == "local" {
-				tunnelInfo.localLink.Subnet = outArr[1]
+				tunnelInfo.localLink.SubNet = outArr[1]
 			}
 		}
 		// remote subnet
@@ -338,7 +338,7 @@ func swanCtlCmdParse(outStr string) swanCtlCmdOut {
 			line := outLines[lidx]
 			outArr := strings.Fields(line)
 			if outArr[0] == "remote" {
-				tunnelInfo.remoteLink.Subnet = outArr[1]
+				tunnelInfo.remoteLink.SubNet = outArr[1]
 			}
 		}
 		// set the direction flags

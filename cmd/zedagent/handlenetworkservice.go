@@ -6,13 +6,18 @@
 package zedagent
 
 import (
+	"github.com/golang/protobuf/proto"
+	"github.com/golang/protobuf/ptypes"
+	"github.com/zededa/api/zmet"
 	"github.com/zededa/go-provision/cast"
+	"github.com/zededa/go-provision/types"
+	"github.com/zededa/go-provision/zedcloud"
 	"log"
 )
 
 func handleNetworkServiceModify(ctxArg interface{}, key string, statusArg interface{}) {
 	log.Printf("handleNetworkServiceCreate(%s)\n", key)
-	// XXX ctx := ctxArg.(*zedagentContext)
+	ctx := ctxArg.(*zedagentContext)
 	status := cast.CastNetworkServiceStatus(statusArg)
 	if status.Key() != key {
 		log.Printf("handleNetworkServiceModify key/UUID mismatch %s vs %s; ignored %+v\n", key, status.Key(), status)
@@ -23,14 +28,155 @@ func handleNetworkServiceModify(ctxArg interface{}, key string, statusArg interf
 	if !status.ErrorTime.IsZero() {
 		log.Printf("Received NetworkService error %s\n", status.Error)
 	}
-	log.Printf("handleNetworkServiceCreate(%s) done\n", key)
+	switch status.Type {
+	case types.NST_LISP:
+		handleNetworkLispServiceStatusModify(ctx, status)
+	case types.NST_STRONGSWAN:
+		handleNetworkVpnServiceStatusModify(ctx, status)
+	default:
+	}
+	log.Printf("handleNetworkServiceModify(%s) done\n", key)
 }
 
 func handleNetworkServiceDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	log.Printf("handleNetworkServiceDelete(%s)\n", key)
+	status := cast.CastNetworkServiceStatus(statusArg)
+	if status.Key() != key {
+		log.Printf("handleNetworkServiceDelete key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, status.Key(), status)
+		return
+	}
 	// XXX how do we find and delete any error
-	// ctx := ctxArg.(*zedagentContext)
+	ctx := ctxArg.(*zedagentContext)
+	switch status.Type {
+	case types.NST_LISP:
+		handleNetworkLispServiceStatusDelete(ctx, status)
+	case types.NST_STRONGSWAN:
+		handleNetworkVpnServiceStatusDelete(ctx, status)
+	default:
+	}
 	log.Printf("handleNetworkServiceDelete(%s) done\n", key)
+}
+
+// we may need to post multiple Vpn messages
+func handleNetworkVpnServiceStatusModify(ctx *zedagentContext,
+	status types.NetworkServiceStatus) {
+	prepareVpnServiceInfoMsg(ctx, status, false)
+}
+
+func handleNetworkVpnServiceStatusDelete(ctx *zedagentContext, status types.NetworkServiceStatus) {
+	prepareVpnServiceInfoMsg(ctx, status, true)
+}
+
+func handleNetworkLispServiceStatusModify(ctx *zedagentContext, status types.NetworkServiceStatus) {
+	// XXX, fill in Lisp Details
+
+}
+
+func handleNetworkLispServiceStatusDelete(ctx *zedagentContext, status types.NetworkServiceStatus) {
+	// XXX, fill in Lisp Details
+}
+
+func prepareVpnServiceInfoMsg(ctx *zedagentContext, status types.NetworkServiceStatus, delete bool) {
+	infoMsg := &zmet.ZInfoMsg{}
+	infoType := new(zmet.ZInfoTypes)
+	// XXX:define in api zmet proto
+	//*infoType = zmet.ZInfoTypes_ZiService 
+	infoMsg.DevId = *proto.String(zcdevUUID.String())
+	infoMsg.Ztype = *infoType
+
+	vpnStatus := status.VpnStatus
+	svcInfo := new(zmet.ZInfoService)
+	svcInfo.ServiceID = status.Key()
+	svcInfo.ServiceName = status.DisplayName
+	svcInfo.ServiceType = uint32(status.Type)
+	svcInfo.SoftwareList = new(zmet.ZInfoSW)
+	svcInfo.SoftwareList.SwVersion = vpnStatus.Version
+	upTime, _ := ptypes.TimestampProto(vpnStatus.UpTime)
+	svcInfo.UpTime = upTime
+	svcInfo.SvcErr = make([]*zmet.ErrorInfo, 1)
+	if !status.ErrorTime.IsZero() {
+		errInfo := new(zmet.ErrorInfo)
+		errInfo.Description = status.Error
+		errTime, _ := ptypes.TimestampProto(status.ErrorTime)
+		errInfo.Timestamp = errTime
+		svcInfo.SvcErr[0] = errInfo
+	}
+
+	// this can be multiple of event info messages
+	for _, vpnConn := range vpnStatus.ConnStatus {
+		vpnInfo := new(zmet.ZInfoVpn)
+		vpnInfo.Id = vpnConn.Id
+		vpnInfo.Name = vpnConn.Name
+		vpnInfo.IkeProposals = vpnConn.Ikes
+		if delete == false {
+			vpnInfo.State = zmet.ZInfoVpnState(vpnConn.State)
+		}
+		vpnInfo.State = zmet.ZInfoVpnState(vpnConn.State)
+		vpnInfo.ListeningIpAddrs[0] = vpnStatus.IpAddrs
+
+		vpnConnInfo := new(zmet.ZInfoVpnConn)
+		vpnConnInfo.ReqId = vpnConn.ReqId
+		vpnConnInfo.RouteTable = vpnStatus.RouteTable
+
+		localLinkInfo := new(zmet.ZInfoVpnLink)
+		localLinkInfo.IpAddr = vpnConn.LocalLink.IpAddr
+		localLinkInfo.SubNet = vpnConn.LocalLink.SubNet
+		localLinkInfo.SpiId = vpnConn.LocalLink.SpiId
+		localLinkInfo.Direction = vpnConn.LocalLink.Direction
+
+		remoteLinkInfo := new(zmet.ZInfoVpnLink)
+		remoteLinkInfo.IpAddr = vpnConn.RemoteLink.IpAddr
+		remoteLinkInfo.SubNet = vpnConn.RemoteLink.SubNet
+		remoteLinkInfo.SpiId = vpnConn.RemoteLink.SpiId
+		remoteLinkInfo.Direction = vpnConn.RemoteLink.Direction
+
+		vpnConnInfo.Link = make([]*zmet.ZInfoVpnLink, 2)
+		vpnConnInfo.Link[0] = localLinkInfo
+		vpnConnInfo.Link[1] = localLinkInfo
+
+		vpnInfo.Conn = make([]*zmet.ZInfoVpnConn, 1)
+		vpnInfo.Conn[0] = vpnConnInfo
+
+		svcInfo.InfoContent = new(zmet.ZInfoService_Vinfo)
+		if x, ok := svcInfo.GetInfoContent().(*zmet.ZInfoService_Vinfo); ok {
+			x.Vinfo = vpnInfo
+		}
+
+		// prapare the final stuff
+		infoMsg.InfoContent = new(zmet.ZInfoMsg_Sinfo)
+		if x, ok := infoMsg.GetInfoContent().(*zmet.ZInfoMsg_Sinfo); ok {
+			x.Sinfo = svcInfo
+		}
+		publishServiceInfo(ctx, infoMsg)
+	}
+}
+
+func publishServiceInfo(ctx *zedagentContext, infoMsg *zmet.ZInfoMsg) {
+	publishServiceInfoToZedCloud(infoMsg, ctx.iteration)
+	ctx.iteration += 1
+}
+
+func publishServiceInfoToZedCloud(infoMsg *zmet.ZInfoMsg, iteration int) {
+	if debug {
+		log.Printf("publishServiceInfoToZedCloud sending %v\n", infoMsg)
+	}
+	data, err := proto.Marshal(infoMsg)
+	if err != nil {
+		log.Fatal("publishServiceInfoToZedCloud proto marshaling error: ", err)
+	}
+	deviceUUID := zcdevUUID.String()
+	statusUrl := serverName + "/" + statusApi
+	zedcloud.RemoveDeferred(deviceUUID)
+	err = SendProtobuf(statusUrl, data, iteration)
+	if err != nil {
+		log.Printf("PublishDeviceInfoToZedCloud failed: %s\n", err)
+		// Try sending later
+		zedcloud.SetDeferred(deviceUUID, data, statusUrl, zedcloudCtx,
+			true)
+	} else {
+		writeSentDeviceInfoProtoMessage(data)
+	}
 }

@@ -730,7 +730,7 @@ const (
 
 type VpnLinkStatus struct {
 	IpAddr     string
-	Subnet     string
+	SubNet     string
 	SpiId      string
 	Direction  bool
 	BytesCount uint64
@@ -738,20 +738,25 @@ type VpnLinkStatus struct {
 }
 
 type VpnConnStatus struct {
-	Id         string
-	Name       string
-	ReqId      string
-	State      VpnState
-	Ikes       string
-	LocalLink  VpnLinkStatus
-	RemoteLink VpnLinkStatus
+	Id          string
+	Name        string
+	ReqId       string
+	State       VpnState
+	Ikes        string
+	LocalLink   VpnLinkStatus
+	RemoteLink  VpnLinkStatus
+	StateChange bool
+	StatsChange bool
 }
 
 type ServiceVpnStatus struct {
+	Version            string
 	RouteTable         string
 	UpTime             time.Time
 	IpAddrs            string // listening ip addresses
 	ConnStatus         []VpnConnStatus
 	ActiveTunCount     uint32
 	ConnectingTunCount uint32
+	StateChange        bool
+	StatsChange        bool
 }
