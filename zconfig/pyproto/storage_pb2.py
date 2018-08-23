@@ -21,7 +21,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='storage.proto',
   package='',
   syntax='proto3',
-  serialized_pb=_b('\n\rstorage.proto\x1a\x0f\x64\x65vcommon.proto\"P\n\rSignatureInfo\x12\x15\n\rintercertsurl\x18\x01 \x01(\t\x12\x15\n\rsignercerturl\x18\x02 \x01(\t\x12\x11\n\tsignature\x18\x03 \x01(\x0c\"t\n\x0f\x44\x61tastoreConfig\x12\n\n\x02id\x18\x64 \x01(\t\x12\x16\n\x05\x64Type\x18\x01 \x01(\x0e\x32\x07.DsType\x12\x0c\n\x04\x66qdn\x18\x02 \x01(\t\x12\x0e\n\x06\x61piKey\x18\x03 \x01(\t\x12\x10\n\x08password\x18\x04 \x01(\t\x12\r\n\x05\x64path\x18\x05 \x01(\t\"\xc4\x01\n\x05Image\x12\n\n\x02id\x18\x64 \x01(\t\x12\'\n\x0euuidandversion\x18\x01 \x01(\x0b\x32\x0f.UUIDandVersion\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0e\n\x06sha256\x18\x03 \x01(\t\x12\x0c\n\x04size\x18\x07 \x01(\x03\x12\x18\n\x07iformat\x18\x04 \x01(\x0e\x32\x07.Format\x12\x1f\n\x07siginfo\x18\x05 \x01(\x0b\x32\x0e.SignatureInfo\x12\x0c\n\x04\x64sId\x18\x06 \x01(\t\x12\x11\n\tsizeBytes\x18\x08 \x01(\x03\"\x9f\x01\n\x05\x44rive\x12\x15\n\x05image\x18\x01 \x01(\x0b\x32\x06.Image\x12\x0f\n\x07maxsize\x18\x02 \x01(\x03\x12\x10\n\x08readonly\x18\x05 \x01(\x08\x12\x10\n\x08preserve\x18\x06 \x01(\x08\x12\x1b\n\x07\x64rvtype\x18\x08 \x01(\x0e\x32\n.DriveType\x12\x17\n\x06target\x18\t \x01(\x0e\x32\x07.Target\x12\x14\n\x0cmaxsizebytes\x18\n \x01(\x03*F\n\x06\x44sType\x12\r\n\tDsUnknown\x10\x00\x12\n\n\x06\x44sHttp\x10\x01\x12\x0b\n\x07\x44sHttps\x10\x02\x12\x08\n\x04\x44sS3\x10\x03\x12\n\n\x06\x44sSFTP\x10\x04*\\\n\x06\x46ormat\x12\x0e\n\nFmtUnknown\x10\x00\x12\x07\n\x03RAW\x10\x01\x12\x08\n\x04QCOW\x10\x02\x12\t\n\x05QCOW2\x10\x03\x12\x07\n\x03VHD\x10\x04\x12\x08\n\x04VMDK\x10\x05\x12\x07\n\x03OVA\x10\x06\x12\x08\n\x04VHDX\x10\x07*G\n\x06Target\x12\x0e\n\nTgtUnknown\x10\x00\x12\x08\n\x04\x44isk\x10\x01\x12\n\n\x06Kernel\x10\x02\x12\n\n\x06Initrd\x10\x03\x12\x0b\n\x07RamDisk\x10\x04*:\n\tDriveType\x12\x10\n\x0cUnclassified\x10\x00\x12\t\n\x05\x43\x44ROM\x10\x01\x12\x07\n\x03HDD\x10\x02\x12\x07\n\x03NET\x10\x03\x42@\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1dgithub.com/zededa/api/zconfigb\x06proto3')
+  serialized_pb=_b('\n\rstorage.proto\x1a\x0f\x64\x65vcommon.proto\"P\n\rSignatureInfo\x12\x15\n\rintercertsurl\x18\x01 \x01(\t\x12\x15\n\rsignercerturl\x18\x02 \x01(\t\x12\x11\n\tsignature\x18\x03 \x01(\x0c\"t\n\x0f\x44\x61tastoreConfig\x12\n\n\x02id\x18\x64 \x01(\t\x12\x16\n\x05\x64Type\x18\x01 \x01(\x0e\x32\x07.DsType\x12\x0c\n\x04\x66qdn\x18\x02 \x01(\t\x12\x0e\n\x06\x61piKey\x18\x03 \x01(\t\x12\x10\n\x08password\x18\x04 \x01(\t\x12\r\n\x05\x64path\x18\x05 \x01(\t\"\xaa\x01\n\x05Image\x12\'\n\x0euuidandversion\x18\x01 \x01(\x0b\x32\x0f.UUIDandVersion\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0e\n\x06sha256\x18\x03 \x01(\t\x12\x18\n\x07iformat\x18\x04 \x01(\x0e\x32\x07.Format\x12\x1f\n\x07siginfo\x18\x05 \x01(\x0b\x32\x0e.SignatureInfo\x12\x0c\n\x04\x64sId\x18\x06 \x01(\t\x12\x11\n\tsizeBytes\x18\x08 \x01(\x03\"\x8e\x01\n\x05\x44rive\x12\x15\n\x05image\x18\x01 \x01(\x0b\x32\x06.Image\x12\x10\n\x08readonly\x18\x05 \x01(\x08\x12\x10\n\x08preserve\x18\x06 \x01(\x08\x12\x1b\n\x07\x64rvtype\x18\x08 \x01(\x0e\x32\n.DriveType\x12\x17\n\x06target\x18\t \x01(\x0e\x32\x07.Target\x12\x14\n\x0cmaxsizebytes\x18\n \x01(\x03*F\n\x06\x44sType\x12\r\n\tDsUnknown\x10\x00\x12\n\n\x06\x44sHttp\x10\x01\x12\x0b\n\x07\x44sHttps\x10\x02\x12\x08\n\x04\x44sS3\x10\x03\x12\n\n\x06\x44sSFTP\x10\x04*\\\n\x06\x46ormat\x12\x0e\n\nFmtUnknown\x10\x00\x12\x07\n\x03RAW\x10\x01\x12\x08\n\x04QCOW\x10\x02\x12\t\n\x05QCOW2\x10\x03\x12\x07\n\x03VHD\x10\x04\x12\x08\n\x04VMDK\x10\x05\x12\x07\n\x03OVA\x10\x06\x12\x08\n\x04VHDX\x10\x07*G\n\x06Target\x12\x0e\n\nTgtUnknown\x10\x00\x12\x08\n\x04\x44isk\x10\x01\x12\n\n\x06Kernel\x10\x02\x12\n\n\x06Initrd\x10\x03\x12\x0b\n\x07RamDisk\x10\x04*I\n\tDriveType\x12\x10\n\x0cUnclassified\x10\x00\x12\t\n\x05\x43\x44ROM\x10\x01\x12\x07\n\x03HDD\x10\x02\x12\x07\n\x03NET\x10\x03\x12\r\n\tHDD_EMPTY\x10\x04\x42@\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1dgithub.com/zededa/api/zconfigb\x06proto3')
   ,
   dependencies=[devcommon__pb2.DESCRIPTOR,])
 
@@ -54,8 +54,8 @@ _DSTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=595,
-  serialized_end=665,
+  serialized_start=552,
+  serialized_end=622,
 )
 _sym_db.RegisterEnumDescriptor(_DSTYPE)
 
@@ -101,8 +101,8 @@ _FORMAT = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=667,
-  serialized_end=759,
+  serialized_start=624,
+  serialized_end=716,
 )
 _sym_db.RegisterEnumDescriptor(_FORMAT)
 
@@ -136,8 +136,8 @@ _TARGET = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=761,
-  serialized_end=832,
+  serialized_start=718,
+  serialized_end=789,
 )
 _sym_db.RegisterEnumDescriptor(_TARGET)
 
@@ -164,11 +164,15 @@ _DRIVETYPE = _descriptor.EnumDescriptor(
       name='NET', index=3, number=3,
       options=None,
       type=None),
+    _descriptor.EnumValueDescriptor(
+      name='HDD_EMPTY', index=4, number=4,
+      options=None,
+      type=None),
   ],
   containing_type=None,
   options=None,
-  serialized_start=834,
-  serialized_end=892,
+  serialized_start=791,
+  serialized_end=864,
 )
 _sym_db.RegisterEnumDescriptor(_DRIVETYPE)
 
@@ -195,6 +199,7 @@ Unclassified = 0
 CDROM = 1
 HDD = 2
 NET = 3
+HDD_EMPTY = 4
 
 
 
@@ -317,63 +322,49 @@ _IMAGE = _descriptor.Descriptor(
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='id', full_name='Image.id', index=0,
-      number=100, type=9, cpp_type=9, label=1,
-      has_default_value=False, default_value=_b("").decode('utf-8'),
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      options=None, file=DESCRIPTOR),
-    _descriptor.FieldDescriptor(
-      name='uuidandversion', full_name='Image.uuidandversion', index=1,
+      name='uuidandversion', full_name='Image.uuidandversion', index=0,
       number=1, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='name', full_name='Image.name', index=2,
+      name='name', full_name='Image.name', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='sha256', full_name='Image.sha256', index=3,
+      name='sha256', full_name='Image.sha256', index=2,
       number=3, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='size', full_name='Image.size', index=4,
-      number=7, type=3, cpp_type=2, label=1,
-      has_default_value=False, default_value=0,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      options=None, file=DESCRIPTOR),
-    _descriptor.FieldDescriptor(
-      name='iformat', full_name='Image.iformat', index=5,
+      name='iformat', full_name='Image.iformat', index=3,
       number=4, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='siginfo', full_name='Image.siginfo', index=6,
+      name='siginfo', full_name='Image.siginfo', index=4,
       number=5, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='dsId', full_name='Image.dsId', index=7,
+      name='dsId', full_name='Image.dsId', index=5,
       number=6, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='sizeBytes', full_name='Image.sizeBytes', index=8,
+      name='sizeBytes', full_name='Image.sizeBytes', index=6,
       number=8, type=3, cpp_type=2, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
@@ -392,7 +383,7 @@ _IMAGE = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=235,
-  serialized_end=431,
+  serialized_end=405,
 )
 
 
@@ -411,42 +402,35 @@ _DRIVE = _descriptor.Descriptor(
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='maxsize', full_name='Drive.maxsize', index=1,
-      number=2, type=3, cpp_type=2, label=1,
-      has_default_value=False, default_value=0,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      options=None, file=DESCRIPTOR),
-    _descriptor.FieldDescriptor(
-      name='readonly', full_name='Drive.readonly', index=2,
+      name='readonly', full_name='Drive.readonly', index=1,
       number=5, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='preserve', full_name='Drive.preserve', index=3,
+      name='preserve', full_name='Drive.preserve', index=2,
       number=6, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='drvtype', full_name='Drive.drvtype', index=4,
+      name='drvtype', full_name='Drive.drvtype', index=3,
       number=8, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='target', full_name='Drive.target', index=5,
+      name='target', full_name='Drive.target', index=4,
       number=9, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='maxsizebytes', full_name='Drive.maxsizebytes', index=6,
+      name='maxsizebytes', full_name='Drive.maxsizebytes', index=5,
       number=10, type=3, cpp_type=2, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
@@ -464,8 +448,8 @@ _DRIVE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=434,
-  serialized_end=593,
+  serialized_start=408,
+  serialized_end=550,
 )
 
 _DATASTORECONFIG.fields_by_name['dType'].enum_type = _DSTYPE
