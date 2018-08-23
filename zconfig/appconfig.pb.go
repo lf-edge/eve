@@ -46,17 +46,16 @@ type AppInstanceConfig struct {
 	// Physical adapters such as eth1 are part of Adapter
 	Interfaces []*NetworkAdapter `protobuf:"bytes,6,rep,name=interfaces" json:"interfaces,omitempty"`
 	Adapters   []*Adapter        `protobuf:"bytes,7,rep,name=adapters" json:"adapters,omitempty"`
-	// zcli instance restart, will increment restart counter
-	// zcli instance restart --new-manifest, will increment restart counter
-	//    if drives haven't changed
-	// zcli instance restart --new-manifest will fail, if drive has changed.
-	//    you would have to apply purge flag.
-	// zcli instance restart --new-manifest will fail, if #adapters has changed
-	Restart *InstanceOpsCmd `protobuf:"bytes,9,opt,name=restart" json:"restart,omitempty"`
-	// zcli instance restart --purge
-	//    if the manifest is changed it will automatically updated and
-	//    disk that have changed will be purged automatically.
-	//    phase 1: we would purge all disks irrepsective for time being
+	Restart    *InstanceOpsCmd   `protobuf:"bytes,9,opt,name=restart" json:"restart,omitempty"`
+	// The device behavior for a purge command is to restart the domU.
+	// with the disks/drives recreated from the downloaded images
+	// (whether preserve is set or not).
+	//    if the manifest is changed with purge option, new manfist will
+	//    be used. Device doesn't know what has changed, it will get the
+	//    changed config.
+	//
+	//    if disks section have changed will be purged automatically.
+	//    phase 1: we would purge all disks irrepsective preserve flag
 	Purge *InstanceOpsCmd `protobuf:"bytes,10,opt,name=purge" json:"purge,omitempty"`
 }
 
