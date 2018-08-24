@@ -885,7 +885,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 			EID.String())
 
 		// Set up ACLs
-		err = createACLConfiglet(olIfname, "", true, olConfig.ACLs,
+		err = createACLConfiglet(olIfname, olIfname, true, olConfig.ACLs,
 			6, "", "")
 		if err != nil {
 			addError(ctx, &status, "createACL", err)
@@ -1423,7 +1423,7 @@ func handleModify(ctx *zedrouterContext, key string,
 			olConfig.NameToEidList)
 
 		// Update ACLs
-		err := updateACLConfiglet(olIfname, "", true, olStatus.ACLs,
+		err := updateACLConfiglet(olIfname, olIfname, true, olStatus.ACLs,
 			olConfig.ACLs, 6, "", "")
 		if err != nil {
 			addError(ctx, status, "updateACL", err)
@@ -1734,7 +1734,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 		deleteEidIpsetConfiglet(olIfname, true)
 
 		// Delete ACLs
-		err = deleteACLConfiglet(olIfname, "", true, olStatus.ACLs,
+		err = deleteACLConfiglet(olIfname, olIfname, true, olStatus.ACLs,
 			6, "", "")
 		if err != nil {
 			addError(ctx, status, "deleteACL", err)
