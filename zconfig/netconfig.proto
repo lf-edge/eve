@@ -19,15 +19,15 @@ message NetworkConfig {
 message NetworkAdapter {
 	// this is deviceName....
 	string name =1;
-	string id   =2;
+	string id   =2;		// UUID of adapter?
 
 	string networkId =3;	// UUID of NetworkConfig object
 
-	// eid=lisp, v4=ipv4 etc...
-	string addr =4;		// Only used as EID so far
+	string addr = 4;	// Static IP address; could be IPv4 EID
 	string hostname = 5;	// Not currently used
 
-	// more configuration for getting addr
+	// more configuration for getting addr/EID
+	string cryptoEid = 10;
 	string lispsignature = 6;
 	bytes  pemcert = 7;
 	bytes  pemprivatekey = 8;
