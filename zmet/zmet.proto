@@ -16,6 +16,7 @@ enum ZInfoTypes {
   ZiDevice = 1;
   ZiHypervisor = 2;	// Deprecated
   ZiApp = 3;
+  ZiService = 4;
 }
 
 // Manufacturing info, product name, model, version etc.
