@@ -878,8 +878,6 @@ func parseAppNetworkConfig(appInstance *types.AppInstanceConfig,
 			ulMaxIdx++
 		case zconfig.NetworkType_CryptoEID:
 			olMaxIdx++
-
-			// XXX turned LISP into a service?? What happens to overlay config?
 		}
 	}
 
@@ -1004,8 +1002,6 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 			continue
 		}
 
-		// XXX turn LISP into a service?? What happens to overlay config?
-
 		olCfg := new(types.EIDOverlayConfig)
 		olCfg.ACLs = make([]types.ACE, len(intfEnt.Acls))
 		olCfg.Network = uuid
@@ -1048,7 +1044,6 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 		olCfg.EIDConfigDetails.PemCert = intfEnt.Pemcert
 		olCfg.EIDConfigDetails.PemPrivateKey = intfEnt.Pemprivatekey
 
-		// XXX lisp needs to come from the service somehow
 		appInstance.OverlayNetworkList[olIdx] = *olCfg
 		olIdx++
 	}
@@ -1368,7 +1363,6 @@ func createBaseOsConfig(getconfigCtx *getconfigContext, baseOsList []*types.Base
 			log.Printf("createBaseOsConfig update %s %s\n",
 				uuidStr, baseOs.BaseOsVersion)
 			// changed content
-			// XXX switch to Equal?
 			if !reflect.DeepEqual(curBaseOs, baseOs) {
 				publishBaseOsConfig(getconfigCtx, baseOs)
 				if certList[idx] != nil {
@@ -1595,8 +1589,6 @@ func handleExecReboot() {
 }
 
 func execReboot(state bool) {
-
-	// XXX:FIXME perform graceful service stop/ state backup
 
 	// do a sync
 	log.Printf("Doing a sync..\n")
