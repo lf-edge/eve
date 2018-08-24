@@ -172,10 +172,18 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 		hostsDirpath, nil)
 	startDnsmasq(bridgeName)
 
-	// For IPv6 and LISP, but LISP will become a service
-	isIPv6 := false
-	if config.Subnet.IP != nil {
-		isIPv6 = (config.Subnet.IP.To4() == nil)
+	var isIPv6 bool
+	switch config.Type {
+	case types.NT_IPV4:
+		isIPv6 = false
+	case types.NT_IPV6:
+		isIPv6 = true
+	case types.NT_CryptoEID:
+		if config.Subnet.IP != nil {
+			isIPv6 = (config.Subnet.IP.To4() == nil)
+		} else {
+			isIPv6 = true
+		}
 	}
 	if isIPv6 {
 		// XXX do we need same logic as for IPv4 dnsmasq to not
@@ -237,7 +245,6 @@ func setBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) e
 	// We check for network type here.
 	if status.Type == types.NT_CryptoEID {
 		ipAddr = "fd00::" + strconv.FormatInt(int64(status.BridgeNum), 16)
-		ipAddr += "/128"
 		log.Printf("setBridgeIPAddr: Bridge %s assigned IPv6 address %s\n",
 			status.BridgeName, ipAddr)
 	}
@@ -275,27 +282,39 @@ func setBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) e
 		return nil
 	}
 
-	if status.Type != types.NT_CryptoEID {
-		ipAddr += "/24"
+	ip := net.ParseIP(ipAddr)
+	if ip == nil {
+		errStr := fmt.Sprintf("setBridgeIPAddr ParseIP failed for %s: %s",
+			ipAddr, err)
+		log.Println(errStr)
+		return errors.New(errStr)
 	}
-	//    ip addr add ${ipAddr}/24 dev ${bridgeName}
+	isIPv6 := (ip.To4() == nil)
+	var prefixLen int
+	if status.Subnet.IP != nil {
+		prefixLen, _ = status.Subnet.Mask.Size()
+	} else if isIPv6 {
+		prefixLen = 128
+	} else {
+		prefixLen = 24
+	}
+	ipAddr = fmt.Sprintf("%s/%d", ipAddr, prefixLen)
+
+	//    ip addr add ${ipAddr}/N dev ${bridgeName}
 	addr, err := netlink.ParseAddr(ipAddr)
 	if err != nil {
 		errStr := fmt.Sprintf("ParseAddr %s failed: %s", ipAddr, err)
+		log.Println(errStr)
 		return errors.New(errStr)
 	}
 	if err := netlink.AddrAdd(link, addr); err != nil {
 		errStr := fmt.Sprintf("AddrAdd %s failed: %s", ipAddr, err)
+		log.Println(errStr)
 		return errors.New(errStr)
 	}
 
 	// Create new radvd configuration and restart radvd if ipv6
-	// XXX shouldn't do that for IPv4 cryptoEIDs!
-	isIPv6 := false
-	if status.Subnet.IP != nil {
-		isIPv6 = (status.Subnet.IP.To4() == nil)
-	}
-	if (status.Type == types.NT_CryptoEID) || isIPv6 {
+	if isIPv6 {
 		cfgFilename := "radvd." + status.BridgeName + ".conf"
 		cfgPathname := runDirname + "/" + cfgFilename
 
@@ -373,6 +392,7 @@ func releaseIPv4(ctx *zedrouterContext,
 	if _, ok := status.IPAssignments[mac.String()]; !ok {
 		errStr := fmt.Sprintf("releaseIPv4: not found %s for %s",
 			mac.String(), status.Key())
+		log.Println(errStr)
 		return errors.New(errStr)
 	}
 	delete(status.IPAssignments, mac.String())
@@ -547,10 +567,14 @@ func doNetworkDelete(ctx *zedrouterContext,
 
 	// For IPv6 and LISP, but LISP will become a service
 	isIPv6 := false
-	if status.Subnet.IP != nil {
-		isIPv6 = (status.Subnet.IP.To4() == nil)
+	// BridgeIPAddr might not be set
+	if status.BridgeIPAddr != "" {
+		ip := net.ParseIP(status.BridgeIPAddr)
+		if ip != nil {
+			isIPv6 = (ip.To4() == nil)
+		}
 	}
-	if isIPv6 || status.Type == types.NT_CryptoEID {
+	if isIPv6 {
 		// radvd cleanup
 		cfgFilename := "radvd." + bridgeName + ".conf"
 		cfgPathname := runDirname + "/" + cfgFilename
