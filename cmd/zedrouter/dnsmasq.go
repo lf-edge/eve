@@ -90,6 +90,8 @@ func createDnsmasqConfiglet(bridgeName string, bridgeIPAddr string,
 		isIPv6 = (ip.To4() == nil)
 		file.WriteString(fmt.Sprintf("listen-address=%s\n",
 			bridgeIPAddr))
+	} else {
+		// XXX error if there is no bridgeIPAddr?
 	}
 	file.WriteString(fmt.Sprintf("hostsdir=%s\n", hostsDir))
 	file.WriteString(fmt.Sprintf("dhcp-hostsdir=%s\n", dhcphostsDir))
@@ -141,11 +143,16 @@ func createDnsmasqConfiglet(bridgeName string, bridgeIPAddr string,
 			ipv4Netmask))
 	}
 	if advertizeRouter {
-		file.WriteString(fmt.Sprintf("dhcp-option=option:router,%s\n",
-			router))
+		// IPv6 XXX needs to be handled in radvd
+		if !isIPv6 {
+			file.WriteString(fmt.Sprintf("dhcp-option=option:router,%s\n",
+				router))
+		}
 	} else {
 		log.Printf("createDnsmasqConfiglet: no router\n")
-		file.WriteString(fmt.Sprintf("dhcp-option=option:router\n"))
+		if !isIPv6 {
+			file.WriteString(fmt.Sprintf("dhcp-option=option:router\n"))
+		}
 		if !advertizedDns {
 			// Handle isolated network by making sure
 			// we are not a DNS server. Can be overridden
