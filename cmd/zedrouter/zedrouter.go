@@ -1286,13 +1286,8 @@ func getUlAddrs(ctx *zedrouterContext, ifnum int, appNum int,
 
 	log.Printf("getUlAddrs(%d/%d)\n", ifnum, appNum)
 
-	// Default
-	// Not clear how to handle multiple ul from the same appInstance;
-	// use /30 prefix? Require user to pick private addrs?
-	// XXX limited number of ifnums for the default range - just to 27 to 31
-	// XXX remove these defaults
-	bridgeIPAddr := fmt.Sprintf("172.%d.%d.1", 27+ifnum, appNum)
-	appIPAddr := fmt.Sprintf("172.%d.%d.2", 27+ifnum, appNum)
+	bridgeIPAddr := ""
+	appIPAddr := ""
 
 	// Allocate bridgeIPAddr based on BridgeMac
 	log.Printf("getUlAddrs(%d/%d for %s) bridgeMac %s\n",
@@ -1302,7 +1297,6 @@ func getUlAddrs(ctx *zedrouterContext, ifnum int, appNum int,
 		status.BridgeMac)
 	if err != nil {
 		log.Printf("lookupOrAllocatePv4 failed %s\n", err)
-		// Keep above default
 	} else {
 		bridgeIPAddr = addr
 	}
@@ -1314,7 +1308,7 @@ func getUlAddrs(ctx *zedrouterContext, ifnum int, appNum int,
 		// in the same subnet as the static address.
 		appIPAddr = status.AppIPAddr.String()
 	} else {
-		// XXX or change type of VifInfo.Mac?
+		// XXX or change type of VifInfo.Mac to avoid parsing?
 		mac, err := net.ParseMAC(status.Mac)
 		if err != nil {
 			log.Fatal("ParseMAC failed: ", status.Mac, err)
@@ -1324,7 +1318,6 @@ func getUlAddrs(ctx *zedrouterContext, ifnum int, appNum int,
 		addr, err := lookupOrAllocateIPv4(ctx, netstatus, mac)
 		if err != nil {
 			log.Printf("lookupOrAllocateIPv4 failed %s\n", err)
-			// Keep above default
 		} else {
 			appIPAddr = addr
 		}

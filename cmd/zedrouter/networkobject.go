@@ -143,12 +143,6 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 	if err := setBridgeIPAddr(ctx, status); err != nil {
 		return err
 	}
-	// Should be ensured by setBridgeIPAddr
-	if status.BridgeIPAddr == "" {
-		errStr := fmt.Sprintf("No BridgeIPAddr on %s",
-			bridgeName)
-		return errors.New(errStr)
-	}
 
 	// Create a hosts directory for the new bridge
 	// Directory is /var/run/zedrouter/hosts.${BRIDGENAME}
@@ -166,11 +160,13 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 	deleteDnsmasqConfiglet(bridgeName)
 	stopDnsmasq(bridgeName, false)
 
-	// No need to pass any ipsets, since the network is created before
-	// the applications which use it.
-	createDnsmasqConfiglet(bridgeName, status.BridgeIPAddr, &config,
-		hostsDirpath, nil)
-	startDnsmasq(bridgeName)
+	if status.BridgeIPAddr != "" {
+		// No need to pass any ipsets, since the network is created
+		// before the applications which use it.
+		createDnsmasqConfiglet(bridgeName, status.BridgeIPAddr, &config,
+			hostsDirpath, nil)
+		startDnsmasq(bridgeName)
+	}
 
 	var isIPv6 bool
 	switch config.Type {
@@ -344,6 +340,7 @@ func lookupOrAllocateIPv4(ctx *zedrouterContext,
 	log.Printf("lookupOrAllocateIPv4 status: %s dhcp %d bridgeName %s Subnet %v range %v-%v\n",
 		status.Key(), status.Dhcp, status.BridgeName,
 		status.Subnet, status.DhcpRange.Start, status.DhcpRange.End)
+
 	if status.Dhcp == types.DT_PASSTHROUGH {
 		// XXX do we have a local IP? If so caller would have found it
 		// Might appear later
@@ -355,7 +352,7 @@ func lookupOrAllocateIPv4(ctx *zedrouterContext,
 			status.Dhcp, status.Key())
 		return "", errors.New(errStr)
 	}
-	// XXX should we fall back to using Subnet?
+
 	if status.DhcpRange.Start == nil {
 		errStr := fmt.Sprintf("no NetworkOjectStatus DhcpRange for %s",
 			status.Key())
@@ -484,10 +481,28 @@ func networkObjectType(ctx *zedrouterContext, bridgeName string) types.NetworkTy
 func updateBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) {
 	log.Printf("updateBridgeIPAddr(%s)\n", status.Key())
 
+	old := status.BridgeIPAddr
 	err := setBridgeIPAddr(ctx, status)
 	if err != nil {
 		log.Printf("updateBridgeIPAddr: %s\n", err)
 		return
+	}
+	if status.BridgeIPAddr != old && status.BridgeIPAddr != "" {
+		config := lookupNetworkObjectConfig(ctx, status.Key())
+		if config == nil {
+			log.Printf("updateBridgeIPAddr: no config for %s\n",
+				status.Key())
+			return
+		}
+		bridgeName := status.BridgeName
+		deleteDnsmasqConfiglet(bridgeName)
+		stopDnsmasq(bridgeName, false)
+
+		hostsDirpath := globalRunDirname + "/hosts." + bridgeName
+
+		createDnsmasqConfiglet(bridgeName, status.BridgeIPAddr,
+			config, hostsDirpath, status.BridgeIPSets)
+		startDnsmasq(bridgeName)
 	}
 }
 
