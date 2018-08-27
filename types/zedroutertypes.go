@@ -486,7 +486,7 @@ type NetworkObjectConfig struct {
 	NtpServer     net.IP
 	DnsServers    []net.IP // If not set we use Gateway as DNS server
 	DhcpRange     IpRange
-	ZedServConfig ZedServerConfig // Use for DNS and ACL ipset
+	NameToEidList []NameToEid // Used for DNS and ACL ipset
 }
 
 type IpRange struct {

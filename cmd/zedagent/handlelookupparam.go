@@ -37,11 +37,11 @@ const (
 // This is local to handlelookupparam. Used to determine any changes in
 // the device/mgmt LISP config.
 type DeviceLispConfig struct {
-	MapServers   []types.MapServer
-	LispInstance uint32
-	EID          net.IP
-	ZedServers   types.ZedServerConfig
-	ClientAddr   string // To detect NATs
+	MapServers    []types.MapServer
+	LispInstance  uint32
+	EID           net.IP
+	NameToEidList []types.NameToEid
+	ClientAddr    string // To detect NATs
 }
 
 // Assumes the config files are in identityDirname, which is /config. Files are:
@@ -103,7 +103,7 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 		lispConfig.MapServers[lmsx] = *mapServer
 		lmsx++
 	}
-	lispConfig.ZedServers.NameToEidList = make([]types.NameToEid,
+	lispConfig.NameToEidList = make([]types.NameToEid,
 		len(lispInfo.ZedServers))
 	var zsx int = 0
 	for _, zs := range lispInfo.ZedServers {
@@ -116,15 +116,15 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 			nameToEidInfo.EIDs[eidx] = net.ParseIP(eid)
 			eidx++
 		}
-		lispConfig.ZedServers.NameToEidList[zsx] = *nameToEidInfo
+		lispConfig.NameToEidList[zsx] = *nameToEidInfo
 		zsx++
 	}
 
 	// compare lispConfig against a prevLispConfig
-	sort.Slice(lispConfig.ZedServers.NameToEidList[:],
+	sort.Slice(lispConfig.NameToEidList[:],
 		func(i, j int) bool {
-			return lispConfig.ZedServers.NameToEidList[i].HostName <
-				lispConfig.ZedServers.NameToEidList[j].HostName
+			return lispConfig.NameToEidList[i].HostName <
+				lispConfig.NameToEidList[j].HostName
 		})
 	if reflect.DeepEqual(prevLispConfig, lispConfig) {
 		if debug {
@@ -222,7 +222,7 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 		log.Fatal(err)
 	}
 	defer f.Close()
-	for _, ne := range lispConfig.ZedServers.NameToEidList {
+	for _, ne := range lispConfig.NameToEidList {
 		for _, eid := range ne.EIDs {
 			output := fmt.Sprintf("%-46v %s\n",
 				eid, ne.HostName)
@@ -261,7 +261,7 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 	olconf[0].LispSignature = signature
 	olconf[0].AdditionalInfoDevice = addInfoDevice
 	olconf[0].MgmtIID = lispConfig.LispInstance
-	olconf[0].MgmtNameToEidList = lispConfig.ZedServers.NameToEidList
+	olconf[0].MgmtNameToEidList = lispConfig.NameToEidList
 	olconf[0].MgmtMapServers = lispConfig.MapServers
 	acl := make([]types.ACE, 1)
 	olconf[0].ACLs = acl
