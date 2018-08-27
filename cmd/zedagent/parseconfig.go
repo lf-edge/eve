@@ -450,8 +450,6 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 		log.Printf("EdgeDevConfig: %v\n", *config)
 	}
 
-	var appInstance = types.AppInstanceConfig{}
-
 	Apps := config.GetApps()
 	h := sha256.New()
 	for _, a := range Apps {
@@ -474,6 +472,8 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 		if debug {
 			log.Printf("New/updated app instance %v\n", cfgApp)
 		}
+		var appInstance types.AppInstanceConfig
+
 		appInstance.UUIDandVersion.UUID, _ = uuid.FromString(cfgApp.Uuidandversion.Uuid)
 		appInstance.UUIDandVersion.Version = cfgApp.Uuidandversion.Version
 		appInstance.DisplayName = cfgApp.Displayname
@@ -858,47 +858,13 @@ func parseAppNetworkConfig(appInstance *types.AppInstanceConfig,
 	cfgApp *zconfig.AppInstanceConfig,
 	cfgNetworks []*zconfig.NetworkConfig) {
 
-	log.Printf("parseAppNetworkConfig: %v\n", cfgNetworks)
-	var ulMaxIdx int = 0
-	var olMaxIdx int = 0
-
-	// count the interfaces and allocate
-	for _, intfEnt := range cfgApp.Interfaces {
-		netEnt := lookupNetworkId(intfEnt.NetworkId, cfgNetworks)
-		if netEnt == nil {
-			log.Printf("parseAppNetworkConfig: Can't find network id %s; ignored\n",
-				intfEnt.NetworkId)
-			continue
-		}
-		switch netEnt.Type {
-		// underlay interface
-		case zconfig.NetworkType_V4, zconfig.NetworkType_V6:
-			ulMaxIdx++
-		case zconfig.NetworkType_CryptoEID:
-			olMaxIdx++
-		}
-	}
-
-	if ulMaxIdx != 0 {
-		log.Printf("parseAppNetworkConfig: %d underlays\n", ulMaxIdx)
-		appInstance.UnderlayNetworkList = make([]types.UnderlayNetworkConfig,
-			ulMaxIdx)
-		parseUnderlayNetworkConfig(appInstance, cfgApp, cfgNetworks)
-	}
-
-	if olMaxIdx != 0 {
-		log.Printf("parseAppNetworkConfig: %d overlays\n", olMaxIdx)
-		appInstance.OverlayNetworkList = make([]types.EIDOverlayConfig,
-			olMaxIdx)
-		parseOverlayNetworkConfig(appInstance, cfgApp, cfgNetworks)
-	}
+	parseUnderlayNetworkConfig(appInstance, cfgApp, cfgNetworks)
+	parseOverlayNetworkConfig(appInstance, cfgApp, cfgNetworks)
 }
 
 func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
 	cfgApp *zconfig.AppInstanceConfig,
 	cfgNetworks []*zconfig.NetworkConfig) {
-
-	var ulIdx int = 0
 
 	for _, intfEnt := range cfgApp.Interfaces {
 		netEnt := lookupNetworkId(intfEnt.NetworkId, cfgNetworks)
@@ -909,7 +875,7 @@ func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
 		}
 		uuid, err := uuid.FromString(netEnt.Id)
 		if err != nil {
-			log.Printf("UnderlayNetworkConfig: Malformed UUID %s ignored: %s\n",
+			log.Printf("parseUnderlayNetworkConfig: Malformed UUID %s ignored: %s\n",
 				netEnt.Id, err)
 			continue
 		}
@@ -919,6 +885,8 @@ func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
 		default:
 			continue
 		}
+		log.Printf("parseUnderlayNetworkConfig: app %v net %v type %v\n",
+			cfgApp.Displayname, uuid.String(), netEnt.Type)
 
 		ulCfg := new(types.UnderlayNetworkConfig)
 		ulCfg.Network = uuid
@@ -975,15 +943,14 @@ func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
 			}
 			ulCfg.ACLs[aclIdx] = *aclCfg
 		}
-		appInstance.UnderlayNetworkList[ulIdx] = *ulCfg
-		ulIdx++
+		appInstance.UnderlayNetworkList = append(appInstance.UnderlayNetworkList,
+			*ulCfg)
 	}
 }
 
 func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 	cfgApp *zconfig.AppInstanceConfig,
 	cfgNetworks []*zconfig.NetworkConfig) {
-	var olIdx int = 0
 
 	for _, intfEnt := range cfgApp.Interfaces {
 		netEnt := lookupNetworkId(intfEnt.NetworkId, cfgNetworks)
@@ -992,18 +959,19 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 				intfEnt.NetworkId)
 			continue
 		}
-		if netEnt.Type != zconfig.NetworkType_CryptoEID {
-			continue
-		}
 		uuid, err := uuid.FromString(netEnt.Id)
 		if err != nil {
-			log.Printf("OverlayNetworkConfig: Malformed UUID ignored: %s\n",
+			log.Printf("parseOverlayNetworkConfig: Malformed UUID ignored: %s\n",
 				err)
 			continue
 		}
+		if netEnt.Type != zconfig.NetworkType_CryptoEID {
+			continue
+		}
+		log.Printf("parseOverlayNetworkConfig: app %v net %v type %v\n",
+			cfgApp.Displayname, uuid.String(), netEnt.Type)
 
 		olCfg := new(types.EIDOverlayConfig)
-		olCfg.ACLs = make([]types.ACE, len(intfEnt.Acls))
 		olCfg.Network = uuid
 		if intfEnt.MacAddress != "" {
 			olCfg.AppMacAddr, err = net.ParseMAC(intfEnt.MacAddress)
@@ -1013,6 +981,9 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 				// XXX report error?
 			}
 		}
+		// XXX insert static IPv4 EID based on new intfEnt.EIDv4?
+
+		olCfg.ACLs = make([]types.ACE, len(intfEnt.Acls))
 		for aclIdx, acl := range intfEnt.Acls {
 			aclCfg := new(types.ACE)
 			aclCfg.Matches = make([]types.ACEMatch,
@@ -1044,8 +1015,8 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 		olCfg.EIDConfigDetails.PemCert = intfEnt.Pemcert
 		olCfg.EIDConfigDetails.PemPrivateKey = intfEnt.Pemprivatekey
 
-		appInstance.OverlayNetworkList[olIdx] = *olCfg
-		olIdx++
+		appInstance.OverlayNetworkList = append(appInstance.OverlayNetworkList,
+			*olCfg)
 	}
 }
 
