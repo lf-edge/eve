@@ -618,7 +618,8 @@ func updateLispConfiglets(ctx *zedrouterContext, separateDataPlane bool) {
 					olIfname, status.IsZedmanager)
 			}
 			createLispConfiglet(lispRunDirname, status.IsZedmanager,
-				olStatus.MgmtIID, olStatus.EID, olStatus.LispSignature,
+				olStatus.MgmtIID, olStatus.EID,
+				olStatus.LispSignature,
 				*ctx.DeviceNetworkStatus, olIfname,
 				olIfname, additionalInfo,
 				olStatus.MgmtMapServers, separateDataPlane)
@@ -871,17 +872,17 @@ func handleCreate(ctx *zedrouterContext, key string,
 
 		// XXX NOTE: this hosts file is not read!
 		// XXX easier when Zedmanager is in separate domU!
-		// Create a hosts file for the overlay based on NameToEidList
+		// Create a hosts file for the overlay based on DnsNameToIPList
 		// Directory is /var/run/zedrouter/hosts.${OLIFNAME}
 		// Each hostname in a separate file in directory to facilitate
 		// adds and deletes
 		hostsDirpath := globalRunDirname + "/hosts." + olIfname
 		deleteHostsConfiglet(hostsDirpath, false)
-		createHostsConfiglet(hostsDirpath, olConfig.MgmtNameToEidList)
+		createHostsConfiglet(hostsDirpath, olConfig.MgmtDnsNameToIPList)
 
-		// Default EID ipset
-		deleteEidIpsetConfiglet(olIfname, false)
-		createEidIpsetConfiglet(olIfname, olConfig.MgmtNameToEidList,
+		// Default ipset
+		deleteDefaultIpsetConfiglet(olIfname, false)
+		createDefaultIpsetConfiglet(olIfname, olConfig.MgmtDnsNameToIPList,
 			EID.String())
 
 		// Set up ACLs
@@ -1056,9 +1057,9 @@ func handleCreate(ctx *zedrouterContext, key string,
 		addToHostsConfiglet(hostsDirpath, config.DisplayName,
 			[]string{EID.String()})
 
-		// Default EID ipset
-		deleteEidIpsetConfiglet(vifName, false)
-		createEidIpsetConfiglet(vifName, netstatus.DnsNameToIPList,
+		// Default ipset
+		deleteDefaultIpsetConfiglet(vifName, false)
+		createDefaultIpsetConfiglet(vifName, netstatus.DnsNameToIPList,
 			EID.String())
 
 		// Set up ACLs
@@ -1186,8 +1187,8 @@ func handleCreate(ctx *zedrouterContext, key string,
 		}
 
 		// Default ipset
-		deleteEidIpsetConfiglet(vifName, false)
-		createEidIpsetConfiglet(vifName, netstatus.DnsNameToIPList,
+		deleteDefaultIpsetConfiglet(vifName, false)
+		createDefaultIpsetConfiglet(vifName, netstatus.DnsNameToIPList,
 			appIPAddr)
 
 		// Set up ACLs
@@ -1720,8 +1721,8 @@ func handleDelete(ctx *zedrouterContext, key string,
 		hostsDirpath := globalRunDirname + "/hosts." + olIfname
 		deleteHostsConfiglet(hostsDirpath, true)
 
-		// Default EID ipset
-		deleteEidIpsetConfiglet(olIfname, true)
+		// Default ipset
+		deleteDefaultIpsetConfiglet(olIfname, true)
 
 		// Delete ACLs
 		err = deleteACLConfiglet(olIfname, olIfname, true, olStatus.ACLs,
@@ -1798,7 +1799,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 		hostsDirpath := globalRunDirname + "/hosts." + bridgeName
 		removeFromHostsConfiglet(hostsDirpath, status.DisplayName)
 
-		deleteEidIpsetConfiglet(olStatus.Vif, true)
+		deleteDefaultIpsetConfiglet(olStatus.Vif, true)
 
 		// Look for added or deleted ipsets
 		newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,

@@ -67,16 +67,12 @@ func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
 		for i, ols := range aiStatus.EIDList {
 			olc := &aiConfig.OverlayNetworkList[i]
 			ol := &nc.OverlayNetworkList[i]
-			// XXX ol.IID = ols.IID
 			ol.EID = ols.EID
 			ol.LispSignature = ols.LispSignature
 			ol.ACLs = olc.ACLs
-			// XXX ol.NameToEidList = olc.NameToEidList
-			// XXX Default is to use the device list? Need device
-			// config for that.
-			// XXX ol.LispServers = olc.LispServers
 			ol.AppMacAddr = olc.AppMacAddr
 			ol.Network = olc.Network
+			ol.MgmtIID = ols.IID
 		}
 		nc.UnderlayNetworkList = make([]types.UnderlayNetworkConfig,
 			len(aiConfig.UnderlayNetworkList))

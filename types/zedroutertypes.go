@@ -413,7 +413,8 @@ type ServiceLispConfig struct {
 }
 
 type OverlayNetworkConfig struct {
-	EID           net.IP
+	EID net.IP
+	// XXX add separate EIDv4 net.IP?
 	LispSignature string
 	ACLs          []ACE
 	// Optional additional information
@@ -421,9 +422,9 @@ type OverlayNetworkConfig struct {
 	AppMacAddr           net.HardwareAddr // If set use it for vif
 	Network              uuid.UUID
 	// These field are only for isMgmt. XXX remove when isMgmt is removed
-	MgmtIID           uint32
-	MgmtNameToEidList []NameToEid // Used to populate DNS for the overlay
-	MgmtMapServers    []MapServer
+	MgmtIID             uint32
+	MgmtDnsNameToIPList []DnsNameToIP // Used to populate DNS for the overlay
+	MgmtMapServers      []MapServer
 }
 
 type OverlayNetworkStatus struct {
@@ -465,8 +466,8 @@ type NetworkType uint8
 const (
 	NT_IPV4      NetworkType = 4
 	NT_IPV6                  = 6
-	NT_CryptoEID             = 14
-	// XXX IPV4 EIDs?
+	NT_CryptoEID             = 14 // Either IPv6 or IPv4; adapter Addr
+	// determines whether IPv4 EIDs are in use.
 	// XXX Do we need a NT_DUAL/NT_IPV46? Implies two subnets/dhcp ranges?
 	// XXX how do we represent a bridge? NT_L2??
 )
@@ -477,16 +478,16 @@ const (
 // If there is no such reference the NetworkConfig ends up being local to the
 // host.
 type NetworkObjectConfig struct {
-	UUID          uuid.UUID
-	Type          NetworkType
-	Dhcp          DhcpType // If DT_STATIC or DT_SERVER use below
-	Subnet        net.IPNet
-	Gateway       net.IP
-	DomainName    string
-	NtpServer     net.IP
-	DnsServers    []net.IP // If not set we use Gateway as DNS server
-	DhcpRange     IpRange
-	NameToEidList []NameToEid // Used for DNS and ACL ipset
+	UUID            uuid.UUID
+	Type            NetworkType
+	Dhcp            DhcpType // If DT_STATIC or DT_SERVER use below
+	Subnet          net.IPNet
+	Gateway         net.IP
+	DomainName      string
+	NtpServer       net.IP
+	DnsServers      []net.IP // If not set we use Gateway as DNS server
+	DhcpRange       IpRange
+	DnsNameToIPList []DnsNameToIP // Used for DNS and ACL ipset
 }
 
 type IpRange struct {
@@ -508,7 +509,7 @@ type NetworkObjectStatus struct {
 	BridgeIPAddr  string
 
 	// Used to populate DNS and eid ipset
-	DnsNameToIPList []NameToEid
+	DnsNameToIPList []DnsNameToIP
 
 	// Collection of address assignments; from MAC address to IP address
 	IPAssignments map[string]net.IP
@@ -535,8 +536,9 @@ const (
 	NST_STRONGSWAN
 	NST_LISP
 	NST_BRIDGE
-	NST_NAT  // Default?
-	NST_LB   // What is this?
+	NST_NAT // Default?
+	NST_LB  // What is this?
+	// XXX Add a NST_L3/NST_ROUTER to describe IP forwarding?
 	NST_LAST = 255
 )
 
@@ -631,7 +633,7 @@ type ACE struct {
 // XXX Add directionality? Different ragte limits in different directions?
 // Value is always a string.
 // There is an implicit reject rule at the end.
-// The "eidset" type is special for the overlay. Matches all the EID which
+// The "eidset" type is special for the overlay. Matches all the IPs which
 // are part of the DnsNameToIPList.
 type ACEMatch struct {
 	Type  string

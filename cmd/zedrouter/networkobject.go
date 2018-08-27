@@ -45,7 +45,7 @@ func handleNetworkObjectCreate(ctx *zedrouterContext, key string, config types.N
 	status := types.NetworkObjectStatus{
 		NetworkObjectConfig: config,
 		IPAssignments:       make(map[string]net.IP),
-		DnsNameToIPList:     config.NameToEidList,
+		DnsNameToIPList:     config.DnsNameToIPList,
 	}
 	status.PendingAdd = true
 	publishNetworkObjectStatus(ctx, &status)
@@ -243,6 +243,7 @@ func setBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) e
 	// Unlike bridge service Lisp will not need a service now for generating ip address.
 	// Hence, cannot move this check into the previous service type check.
 	// We check for network type here.
+	// XXX IPv4 EIDs if netconfig.Addr is IPv4
 	if status.Type == types.NT_CryptoEID {
 		ipAddr = "fd00::" + strconv.FormatInt(int64(status.BridgeNum), 16)
 		log.Printf("setBridgeIPAddr: Bridge %s assigned IPv6 address %s\n",
@@ -526,8 +527,8 @@ func doNetworkDelete(ctx *zedrouterContext,
 			if olStatus.Network != status.UUID {
 				continue
 			}
-			// Destroy EID Ipset
-			deleteEidIpsetConfiglet(olStatus.Vif, true)
+			// Destroy default ipset
+			deleteDefaultIpsetConfiglet(olStatus.Vif, true)
 
 			err := deleteACLConfiglet(olStatus.Bridge,
 				olStatus.Vif, false, olStatus.ACLs, 6,

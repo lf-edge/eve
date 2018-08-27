@@ -398,8 +398,7 @@ func aceToRules(bridgeName string, vifName string, ace types.ACE, ipVer int, bri
 				log.Println(errStr)
 				return nil, errors.New(errStr)
 			}
-			// The eidset only applies to IPv6 overlay
-			// Caller adds local EID to set
+			// Caller adds any EIDs/IPs to set
 			ipsetName = "eids." + vifName
 		default:
 			errStr := fmt.Sprintf("Unsupported ACE match type: %s",

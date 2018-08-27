@@ -682,30 +682,30 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 			}
 			fallthrough
 		case types.NT_CryptoEID:
-			// Parse and store NameToEidList form Network configuration
+			// Parse and store DnsNameToIPList form Network configuration
 			dnsEntries := netEnt.GetDns()
 
-			// Parse and populate the name to EID list
+			// Parse and populate the DnsNameToIP list
 			// This is what we will publish to zedrouter
-			nameToEids := []types.NameToEid{}
+			nameToIPs := []types.DnsNameToIP{}
 			for _, dnsEntry := range dnsEntries {
 				hostName := dnsEntry.HostName
 
-				eids := []net.IP{}
+				ips := []net.IP{}
 				for _, strAddr := range dnsEntry.Address {
-					eid := net.ParseIP(strAddr)
-					if eid != nil {
-						eids = append(eids, eid)
+					ip := net.ParseIP(strAddr)
+					if ip != nil {
+						ips = append(ips, ip)
 					}
 				}
 
-				nameToEid := types.NameToEid{
+				nameToIP := types.DnsNameToIP{
 					HostName: hostName,
-					EIDs:     eids,
+					IPs:      ips,
 				}
-				nameToEids = append(nameToEids, nameToEid)
+				nameToIPs = append(nameToIPs, nameToIP)
 			}
-			config.NameToEidList = nameToEids
+			config.DnsNameToIPList = nameToIPs
 		default:
 			log.Printf("publishNetworkObjectConfig: Unknown NetworkConfig type %d for %s in %v; ignored\n",
 				config.Type, id.String(), netEnt)
@@ -881,13 +881,15 @@ func parseAppNetworkConfig(appInstance *types.AppInstanceConfig,
 
 	if ulMaxIdx != 0 {
 		log.Printf("parseAppNetworkConfig: %d underlays\n", ulMaxIdx)
-		appInstance.UnderlayNetworkList = make([]types.UnderlayNetworkConfig, ulMaxIdx)
+		appInstance.UnderlayNetworkList = make([]types.UnderlayNetworkConfig,
+			ulMaxIdx)
 		parseUnderlayNetworkConfig(appInstance, cfgApp, cfgNetworks)
 	}
 
 	if olMaxIdx != 0 {
 		log.Printf("parseAppNetworkConfig: %d overlays\n", olMaxIdx)
-		appInstance.OverlayNetworkList = make([]types.EIDOverlayConfig, olMaxIdx)
+		appInstance.OverlayNetworkList = make([]types.EIDOverlayConfig,
+			olMaxIdx)
 		parseOverlayNetworkConfig(appInstance, cfgApp, cfgNetworks)
 	}
 }

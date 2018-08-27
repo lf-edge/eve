@@ -7,8 +7,7 @@ import (
 	"net"
 )
 
-// XXX rename to NameToIP; IP field
-type NameToEid struct {
+type DnsNameToIP struct {
 	HostName string
-	EIDs     []net.IP
+	IPs      []net.IP
 }

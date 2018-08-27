@@ -47,7 +47,7 @@ lisp map-cache {
     prefix {
         instance-id = %d
         eid-prefix = fd00::/8
-		send-map-request = yes
+	send-map-request = yes
     }
 }
 `

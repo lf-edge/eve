@@ -1,7 +1,7 @@
 // Copyright (c) 2017 Zededa, Inc.
 // All rights reserved.
 
-// default eid ipset configlet for overlay interface towards domU
+// default ipset configlet for interfaces towards domU
 
 package zedrouter
 
@@ -54,13 +54,13 @@ func createDefaultIpset() {
 }
 
 // Create an ipset called eids.<vifname> with all the addresses from
-// the nameToEidList.
+// the DnsNameToIPList.
 // Would be more polite to return an error then to Fatal
-func createEidIpsetConfiglet(vifname string, nameToEidList []types.NameToEid,
-	myEid string) {
+func createDefaultIpsetConfiglet(vifname string, nameToIPList []types.DnsNameToIP,
+	myIp string) {
 	if debug {
-		log.Printf("createEidIpsetConfiglet: olifName %s nameToEidList %v myEid %s\n",
-			vifname, nameToEidList, myEid)
+		log.Printf("createDefaultIpsetConfiglet: olifName %s nameToIPList %v myIp %s\n",
+			vifname, nameToIPList, myIp)
 	}
 	ipsetName := "eids." + vifname
 	if !ipsetExists(ipsetName) {
@@ -72,62 +72,62 @@ func createEidIpsetConfiglet(vifname string, nameToEidList []types.NameToEid,
 			log.Fatal("ipset flush for ", ipsetName, err)
 		}
 	}
-	for _, ne := range nameToEidList {
-		for _, eid := range ne.EIDs {
-			err := ipsetAdd(ipsetName, eid.String())
+	for _, ne := range nameToIPList {
+		for _, ip := range ne.IPs {
+			err := ipsetAdd(ipsetName, ip.String())
 			if err != nil {
 				log.Println("ipset add ", ipsetName,
-					eid.String(), err)
+					ip.String(), err)
 			}
 		}
 	}
-	if myEid != "" {
-		err := ipsetAdd(ipsetName, myEid)
+	if myIp != "" {
+		err := ipsetAdd(ipsetName, myIp)
 		if err != nil {
 			log.Println("ipset add ", ipsetName,
-				myEid, err)
+				myIp, err)
 		}
 	}
 }
 
-func updateEidIpsetConfiglet(vifname string,
-	oldNameToEidList []types.NameToEid, newNameToEidList []types.NameToEid) {
+func updateDefaultIpsetConfiglet(vifname string,
+	oldList []types.DnsNameToIP, newList []types.DnsNameToIP) {
 	if debug {
-		log.Printf("updateEidIpsetConfiglet: vifname %s old %v, new %v\n",
-			vifname, oldNameToEidList, newNameToEidList)
+		log.Printf("updateDefaultIpsetConfiglet: vifname %s old %v, new %v\n",
+			vifname, oldList, newList)
 	}
 	ipsetName := "eids." + vifname
 
-	// Look for EIDs which should be deleted
-	for _, ne := range oldNameToEidList {
-		for _, eid := range ne.EIDs {
-			if !containsEID(newNameToEidList, eid) {
-				err := ipsetDel(ipsetName, eid.String())
+	// Look for IPs which should be deleted
+	for _, ne := range oldList {
+		for _, ip := range ne.IPs {
+			if !containsIP(newList, ip) {
+				err := ipsetDel(ipsetName, ip.String())
 				if err != nil {
 					log.Println("ipset del ", ipsetName,
-						eid.String(), err)
+						ip.String(), err)
 				}
 			}
 		}
 	}
 
-	// Look for EIDs which should be added
-	for _, ne := range newNameToEidList {
-		for _, eid := range ne.EIDs {
-			if !containsEID(oldNameToEidList, eid) {
-				err := ipsetAdd(ipsetName, eid.String())
+	// Look for IPs which should be added
+	for _, ne := range newList {
+		for _, ip := range ne.IPs {
+			if !containsIP(oldList, ip) {
+				err := ipsetAdd(ipsetName, ip.String())
 				if err != nil {
 					log.Println("ipset add ", ipsetName,
-						eid.String(), err)
+						ip.String(), err)
 				}
 			}
 		}
 	}
 }
 
-func deleteEidIpsetConfiglet(vifname string, printOnError bool) {
+func deleteDefaultIpsetConfiglet(vifname string, printOnError bool) {
 	if debug {
-		log.Printf("deleteEidIpsetConfiglet: vifname %s\n", vifname)
+		log.Printf("deleteDefaultIpsetConfiglet: vifname %s\n", vifname)
 	}
 	ipsetName := "eids." + vifname
 

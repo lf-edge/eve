@@ -70,6 +70,7 @@ func getNetworkMetrics(ctx *zedrouterContext) types.NetworkMetrics {
 			// XXX IPv4 EIDs?
 			ipVer = 6
 		}
+		// XXX are the in/out swapped?
 		// Note that Tx is transmitted from domU to bridge interface
 		metric.TxAclDrops = getIpRuleAclDrop(ac, bridgeName, vifName,
 			ipVer, false)
