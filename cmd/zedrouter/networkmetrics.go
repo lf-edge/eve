@@ -39,9 +39,11 @@ func getNetworkMetrics(ctx *zedrouterContext) types.NetworkMetrics {
 		var ntype types.NetworkType
 		bridgeName := ni.Name
 		vifName := ""
+		inout := true
 		if strings.HasPrefix(ni.Name, "dbo") {
 			// Special check for dbo1x0 goes away when disagg
 			ntype = types.NT_CryptoEID
+			inout = false // Swapped in and out counters
 		} else {
 			// If this a vif in a bridge?
 			bn := vifNameToBridgeName(ctx, ni.Name)
@@ -70,16 +72,14 @@ func getNetworkMetrics(ctx *zedrouterContext) types.NetworkMetrics {
 			// XXX IPv4 EIDs?
 			ipVer = 6
 		}
-		// XXX are the in/out swapped?
-		// Note that Tx is transmitted from domU to bridge interface
 		metric.TxAclDrops = getIpRuleAclDrop(ac, bridgeName, vifName,
-			ipVer, false)
+			ipVer, inout)
 		metric.RxAclDrops = getIpRuleAclDrop(ac, bridgeName, vifName,
-			ipVer, true)
+			ipVer, !inout)
 		metric.TxAclRateLimitDrops = getIpRuleAclRateLimitDrop(ac,
-			bridgeName, vifName, ipVer, false)
+			bridgeName, vifName, ipVer, inout)
 		metric.RxAclRateLimitDrops = getIpRuleAclRateLimitDrop(ac,
-			bridgeName, vifName, ipVer, true)
+			bridgeName, vifName, ipVer, !inout)
 		metrics = append(metrics, metric)
 	}
 	return types.NetworkMetrics{MetricList: metrics}
