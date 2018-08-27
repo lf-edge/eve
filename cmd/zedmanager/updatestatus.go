@@ -195,12 +195,6 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		}
 	}
 
-	// XXX not an error. why does xenial2-nodered have overlays
-	// 1 vs. 0
-	// Wrong network uuid?
-	// parseNetworkObjectConfig: Applying ...
-	// type:CryptoEID dns:<HostName:"testLisp-usb-b" Address:"fd5f:ce07:7bc5:45df:488f:193d:332a:3fa5" >  id:"cc8c4a95-d400-456d-a066-8210d9960c25"
-
 	if len(config.OverlayNetworkList) != len(status.EIDList) {
 		errString := fmt.Sprintf("Mismatch in OLList config vs. status length: %d vs %d\n",
 			len(config.OverlayNetworkList),
