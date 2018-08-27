@@ -618,10 +618,10 @@ func updateLispConfiglets(ctx *zedrouterContext, separateDataPlane bool) {
 					olIfname, status.IsZedmanager)
 			}
 			createLispConfiglet(lispRunDirname, status.IsZedmanager,
-				olStatus.IID, olStatus.EID, olStatus.LispSignature,
+				olStatus.MgmtIID, olStatus.EID, olStatus.LispSignature,
 				*ctx.DeviceNetworkStatus, olIfname,
 				olIfname, additionalInfo,
-				olStatus.LispServers, separateDataPlane)
+				olStatus.MgmtMapServers, separateDataPlane)
 		}
 	}
 }
@@ -877,11 +877,11 @@ func handleCreate(ctx *zedrouterContext, key string,
 		// adds and deletes
 		hostsDirpath := globalRunDirname + "/hosts." + olIfname
 		deleteHostsConfiglet(hostsDirpath, false)
-		createHostsConfiglet(hostsDirpath, olConfig.NameToEidList)
+		createHostsConfiglet(hostsDirpath, olConfig.MgmtNameToEidList)
 
 		// Default EID ipset
 		deleteEidIpsetConfiglet(olIfname, false)
-		createEidIpsetConfiglet(olIfname, olConfig.NameToEidList,
+		createEidIpsetConfiglet(olIfname, olConfig.MgmtNameToEidList,
 			EID.String())
 
 		// Set up ACLs
@@ -893,16 +893,17 @@ func handleCreate(ctx *zedrouterContext, key string,
 
 		// Save information about zedmanger EID and additional info
 		deviceEID = EID
-		deviceIID = olConfig.IID
+		deviceIID = olConfig.MgmtIID
 		additionalInfoDevice = olConfig.AdditionalInfoDevice
 
 		additionalInfo := generateAdditionalInfo(status, olConfig)
 
 		// Create LISP configlets for IID and EID/signature
 		createLispConfiglet(lispRunDirname, config.IsZedmanager,
-			olConfig.IID, olConfig.EID, olConfig.LispSignature,
+			olConfig.MgmtIID, olConfig.EID, olConfig.LispSignature,
 			*ctx.DeviceNetworkStatus, olIfname, olIfname,
-			additionalInfo, olConfig.LispServers, ctx.separateDataPlane)
+			additionalInfo, olConfig.MgmtMapServers,
+			ctx.separateDataPlane)
 		status.OverlayNetworkList = make([]types.OverlayNetworkStatus,
 			len(config.OverlayNetworkList))
 		for i, _ := range config.OverlayNetworkList {
@@ -920,7 +921,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 	// XXX if not, for now just delete status and the periodic walk will
 	// retry
 	allNetworksExist := true
-	for _, olConfig := range config.UnderlayNetworkList {
+	for _, olConfig := range config.OverlayNetworkList {
 		netconfig := lookupNetworkObjectConfig(ctx,
 			olConfig.Network.String())
 		if netconfig != nil {
@@ -1049,15 +1050,15 @@ func handleCreate(ctx *zedrouterContext, key string,
 				errors.New(errStr))
 		}
 
-		// XXX We already do this for the network for over and underlay
-		// Write each EID hostname in a separate file in directory to
+		// Write our EID hostname in a separate file in directory to
 		// facilitate adds and deletes
 		hostsDirpath := globalRunDirname + "/hosts." + bridgeName
-		createHostsConfiglet(hostsDirpath, olConfig.NameToEidList)
+		addToHostsConfiglet(hostsDirpath, config.DisplayName,
+			[]string{EID.String()})
 
 		// Default EID ipset
 		deleteEidIpsetConfiglet(vifName, false)
-		createEidIpsetConfiglet(vifName, olConfig.NameToEidList,
+		createEidIpsetConfiglet(vifName, netstatus.DnsNameToIPList,
 			EID.String())
 
 		// Set up ACLs
@@ -1184,6 +1185,11 @@ func handleCreate(ctx *zedrouterContext, key string,
 				[]string{appIPAddr})
 		}
 
+		// Default ipset
+		deleteEidIpsetConfiglet(vifName, false)
+		createEidIpsetConfiglet(vifName, netstatus.DnsNameToIPList,
+			appIPAddr)
+
 		// Set up ACLs
 		err = createACLConfiglet(bridgeName, vifName, false,
 			ulConfig.ACLs, 4, bridgeIPAddr, appIPAddr)
@@ -1243,9 +1249,10 @@ func createAndStartLisp(ctx *zedrouterContext,
 				append(deviceNetworkParams.UplinkStatus, uplink)
 		}
 	}
-	createLispEidConfiglet(lispRunDirname, serviceStatus.LispStatus.IID, olConfig.EID,
-		olConfig.LispSignature, deviceNetworkParams, bridgeName, bridgeName,
-		additionalInfo, olConfig.LispServers, ctx.separateDataPlane)
+	createLispEidConfiglet(lispRunDirname, serviceStatus.LispStatus.IID,
+		olConfig.EID, olConfig.LispSignature, deviceNetworkParams,
+		bridgeName, bridgeName, additionalInfo,
+		serviceStatus.LispStatus.MapServers, ctx.separateDataPlane)
 }
 
 // Returns the link
@@ -1341,7 +1348,7 @@ func appendError(allErrors string, prefix string, lasterr string) string {
 	return fmt.Sprintf("%s%s: %s\n\n", allErrors, prefix, lasterr)
 }
 
-// Note that handleModify will not touch the EID; just ACLs and NameToEidList
+// Note that handleModify will not touch the EID; just ACLs
 // XXX should we check that nothing else has changed?
 // XXX If so flag other changes as errors; would need lastError in status.
 func handleModify(ctx *zedrouterContext, key string,
@@ -1413,15 +1420,6 @@ func handleModify(ctx *zedrouterContext, key string,
 
 		// Note: we ignore olConfig.AppMacAddr for IsMgmt
 
-		// Update hosts; we don't bother to delete stale
-		// XXX would have to look across bridge to delete stale
-		hostsDirpath := globalRunDirname + "/hosts." + olIfname
-		createHostsConfiglet(hostsDirpath, olStatus.NameToEidList)
-
-		// Default EID ipset
-		updateEidIpsetConfiglet(olIfname, olStatus.NameToEidList,
-			olConfig.NameToEidList)
-
 		// Update ACLs
 		err := updateACLConfiglet(olIfname, olIfname, true, olStatus.ACLs,
 			olConfig.ACLs, 6, "", "")
@@ -1440,7 +1438,7 @@ func handleModify(ctx *zedrouterContext, key string,
 	ipsets := compileAppInstanceIpsets(ctx, config.OverlayNetworkList,
 		config.UnderlayNetworkList)
 
-	// Look for ACL and NametoEidList changes in overlay
+	// Look for ACL changes in overlay
 	for i, olConfig := range config.OverlayNetworkList {
 		olNum := i + 1
 		if debug {
@@ -1475,15 +1473,6 @@ func handleModify(ctx *zedrouterContext, key string,
 			continue
 		}
 
-		// Update hosts; we don't bother to delete stale
-		// XXX would have to look across bridge to delete stale
-		hostsDirpath := globalRunDirname + "/hosts." + bridgeName
-		createHostsConfiglet(hostsDirpath, olStatus.NameToEidList)
-
-		// Default EID ipset
-		updateEidIpsetConfiglet(olStatus.Vif, olStatus.NameToEidList,
-			olConfig.NameToEidList)
-
 		// XXX could there be a change to AssignedIPv6Address aka EID?
 		// If so updateACLConfiglet needs to know old and new
 
@@ -1499,6 +1488,7 @@ func handleModify(ctx *zedrouterContext, key string,
 			netstatus.BridgeIPSets)
 
 		if restartDnsmasq {
+			hostsDirpath := globalRunDirname + "/hosts." + bridgeName
 			stopDnsmasq(bridgeName, false)
 			createDnsmasqConfiglet(bridgeName,
 				olStatus.BridgeIPAddr, netconfig, hostsDirpath,
@@ -1530,7 +1520,7 @@ func handleModify(ctx *zedrouterContext, key string,
 			serviceStatus.LispStatus.IID,
 			olConfig.EID, olConfig.LispSignature,
 			*ctx.DeviceNetworkStatus, bridgeName, bridgeName,
-			additionalInfo, olConfig.LispServers,
+			additionalInfo, serviceStatus.LispStatus.MapServers,
 			ctx.separateDataPlane)
 	}
 	// Look for ACL changes in underlay
@@ -1741,7 +1731,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 		}
 
 		// Delete LISP configlets
-		deleteLispConfiglet(lispRunDirname, true, olStatus.IID,
+		deleteLispConfiglet(lispRunDirname, true, olStatus.MgmtIID,
 			olStatus.EID, *ctx.DeviceNetworkStatus,
 			ctx.separateDataPlane)
 		status.PendingDelete = false
@@ -1834,7 +1824,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 
 		// Delete LISP configlets
 		deleteLispConfiglet(lispRunDirname, false,
-			olStatus.IID, olStatus.EID,
+			serviceStatus.LispStatus.IID, olStatus.EID,
 			*ctx.DeviceNetworkStatus,
 			ctx.separateDataPlane)
 	}

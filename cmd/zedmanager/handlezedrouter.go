@@ -34,33 +34,15 @@ func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
 		}
 		for i, new := range aiConfig.OverlayNetworkList {
 			old := m.OverlayNetworkList[i]
-			// XXX switch to Equal?
 			if !reflect.DeepEqual(new.ACLs, old.ACLs) {
 				log.Printf("Over ACLs changed from %v to %v\n",
 					old.ACLs, new.ACLs)
 				changed = true
 				break
 			}
-			// XXX switch to Equal?
-			if !reflect.DeepEqual(new.NameToEidList,
-				old.NameToEidList) {
-				log.Printf("NameToEidList changed from %v to %v\n",
-					old.NameToEidList, new.NameToEidList)
-				changed = true
-				break
-			}
-			// XXX switch to Equal?
-			if !reflect.DeepEqual(new.LispServers,
-				old.LispServers) {
-				log.Printf("LispServers changed from %v to %v\n",
-					old.LispServers, new.LispServers)
-				changed = true
-				break
-			}
 		}
 		for i, new := range aiConfig.UnderlayNetworkList {
 			old := m.UnderlayNetworkList[i]
-			// XXX switch to Equal?
 			if !reflect.DeepEqual(new.ACLs, old.ACLs) {
 				log.Printf("Under ACLs changed from %v to %v\n",
 					old.ACLs, new.ACLs)
@@ -85,14 +67,14 @@ func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
 		for i, ols := range aiStatus.EIDList {
 			olc := &aiConfig.OverlayNetworkList[i]
 			ol := &nc.OverlayNetworkList[i]
-			ol.IID = ols.IID
+			// XXX ol.IID = ols.IID
 			ol.EID = ols.EID
 			ol.LispSignature = ols.LispSignature
 			ol.ACLs = olc.ACLs
-			ol.NameToEidList = olc.NameToEidList
+			// XXX ol.NameToEidList = olc.NameToEidList
 			// XXX Default is to use the device list? Need device
 			// config for that.
-			ol.LispServers = olc.LispServers
+			// XXX ol.LispServers = olc.LispServers
 			ol.AppMacAddr = olc.AppMacAddr
 			ol.Network = olc.Network
 		}

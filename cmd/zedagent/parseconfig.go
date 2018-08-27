@@ -705,6 +705,7 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 				}
 				nameToEids = append(nameToEids, nameToEid)
 			}
+			// XXX rename from eid to ip? acl vs. dns use?
 			config.ZedServConfig = types.ZedServerConfig{
 				NameToEidList: nameToEids,
 			}

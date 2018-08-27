@@ -413,19 +413,17 @@ type ServiceLispConfig struct {
 }
 
 type OverlayNetworkConfig struct {
-	IID           uint32
 	EID           net.IP
 	LispSignature string
-	// Any additional LISP parameters?
 	ACLs          []ACE
-	NameToEidList []NameToEid // Used to populate DNS for the overlay
-	LispServers   []LispServerInfo
-	// Optional additional informat
+	// Optional additional information
 	AdditionalInfoDevice *AdditionalInfoDevice
-	// XXX Externalize IID, NameToEidList, and LispServers to the network
-	// XXX use Network uuid?
-	AppMacAddr net.HardwareAddr // If set use it for vif
-	Network    uuid.UUID
+	AppMacAddr           net.HardwareAddr // If set use it for vif
+	Network              uuid.UUID
+	// These field are only for isMgmt. XXX remove when isMgmt is removed
+	MgmtIID           uint32
+	MgmtNameToEidList []NameToEid // Used to populate DNS for the overlay
+	MgmtMapServers    []MapServer
 }
 
 type OverlayNetworkStatus struct {
@@ -488,7 +486,7 @@ type NetworkObjectConfig struct {
 	NtpServer     net.IP
 	DnsServers    []net.IP // If not set we use Gateway as DNS server
 	DhcpRange     IpRange
-	ZedServConfig ZedServerConfig
+	ZedServConfig ZedServerConfig // Use for DNS and ACL ipset
 }
 
 type IpRange struct {
@@ -509,7 +507,7 @@ type NetworkObjectStatus struct {
 	BridgeName    string // bn<N>
 	BridgeIPAddr  string
 
-	// Used to populate DNS
+	// Used to populate DNS and eid ipset
 	DnsNameToIPList []NameToEid
 
 	// Collection of address assignments; from MAC address to IP address
@@ -634,7 +632,7 @@ type ACE struct {
 // Value is always a string.
 // There is an implicit reject rule at the end.
 // The "eidset" type is special for the overlay. Matches all the EID which
-// are part of the NameToEidList.
+// are part of the DnsNameToIPList.
 type ACEMatch struct {
 	Type  string
 	Value string
