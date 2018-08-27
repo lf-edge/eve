@@ -1076,7 +1076,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 		newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
 			netstatus.BridgeIPSets)
 
-		if restartDnsmasq {
+		if restartDnsmasq && olStatus.BridgeIPAddr != "" {
 			stopDnsmasq(bridgeName, false)
 			createDnsmasqConfiglet(bridgeName,
 				olStatus.BridgeIPAddr, netconfig, hostsDirpath,
@@ -1207,7 +1207,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 		newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
 			netstatus.BridgeIPSets)
 
-		if restartDnsmasq {
+		if restartDnsmasq && ulStatus.BridgeIPAddr != "" {
 			stopDnsmasq(bridgeName, false)
 			createDnsmasqConfiglet(bridgeName,
 				ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
@@ -1481,7 +1481,7 @@ func handleModify(ctx *zedrouterContext, key string,
 		newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
 			netstatus.BridgeIPSets)
 
-		if restartDnsmasq {
+		if restartDnsmasq && olStatus.BridgeIPAddr != "" {
 			hostsDirpath := globalRunDirname + "/hosts." + bridgeName
 			stopDnsmasq(bridgeName, false)
 			createDnsmasqConfiglet(bridgeName,
@@ -1564,7 +1564,7 @@ func handleModify(ctx *zedrouterContext, key string,
 		newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
 			netstatus.BridgeIPSets)
 
-		if restartDnsmasq {
+		if restartDnsmasq && ulStatus.BridgeIPAddr != "" {
 			hostsDirpath := globalRunDirname + "/hosts." + bridgeName
 			stopDnsmasq(bridgeName, false)
 			createDnsmasqConfiglet(bridgeName,
@@ -1798,7 +1798,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 		newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
 			netstatus.BridgeIPSets)
 
-		if restartDnsmasq {
+		if restartDnsmasq && olStatus.BridgeIPAddr != "" {
 			stopDnsmasq(bridgeName, false)
 			createDnsmasqConfiglet(bridgeName,
 				olStatus.BridgeIPAddr, netconfig, hostsDirpath,
@@ -1890,7 +1890,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 		newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
 			netstatus.BridgeIPSets)
 
-		if restartDnsmasq {
+		if restartDnsmasq && ulStatus.BridgeIPAddr != "" {
 			stopDnsmasq(bridgeName, false)
 			createDnsmasqConfiglet(bridgeName,
 				ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
