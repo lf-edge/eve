@@ -747,6 +747,7 @@ type VpnConnStatus struct {
 	RemoteLink  VpnLinkStatus
 	StateChange bool
 	StatsChange bool
+	MarkDelete  bool
 }
 
 type ServiceVpnStatus struct {
@@ -754,7 +755,8 @@ type ServiceVpnStatus struct {
 	RouteTable         string
 	UpTime             time.Time
 	IpAddrs            string // listening ip addresses
-	ConnStatus         []VpnConnStatus
+	ActiveVpnConns     []VpnConnStatus
+	StaleVpnConns      []VpnConnStatus
 	ActiveTunCount     uint32
 	ConnectingTunCount uint32
 	StateChange        bool

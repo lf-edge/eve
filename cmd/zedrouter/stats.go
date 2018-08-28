@@ -76,8 +76,8 @@ func swanCtlCmdGet(vpnStatus *types.ServiceVpnStatus) {
 		return
 	}
 
-	vpnStatus.ConnStatus = make([]types.VpnConnStatus, vpnStatus.ActiveTunCount)
-	for idx, _ := range vpnStatus.ConnStatus {
+	vpnStatus.ActiveVpnConns = make([]types.VpnConnStatus, vpnStatus.ActiveTunCount)
+	for idx, _ := range vpnStatus.ActiveVpnConns {
 		connStatus := types.VpnConnStatus{}
 		connStatus.Id = swanCtlCmdOut.tunnelList[idx].id
 		connStatus.Name = swanCtlCmdOut.tunnelList[idx].name
@@ -86,7 +86,7 @@ func swanCtlCmdGet(vpnStatus *types.ServiceVpnStatus) {
 		connStatus.State = swanCtlCmdOut.tunnelList[idx].state
 		connStatus.LocalLink = swanCtlCmdOut.tunnelList[idx].localLink
 		connStatus.RemoteLink = swanCtlCmdOut.tunnelList[idx].remoteLink
-		vpnStatus.ConnStatus[idx] = connStatus
+		vpnStatus.ActiveVpnConns[idx] = connStatus
 	}
 }
 

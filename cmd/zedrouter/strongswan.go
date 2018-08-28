@@ -638,13 +638,14 @@ func strongSwanVpnStatusGet(status *types.NetworkServiceStatus) bool {
 
 func isVpnStatusChanged(oldStatus, newStatus *types.ServiceVpnStatus) bool {
 
+	staleConnCount := 0
 	if oldStatus.ActiveTunCount != newStatus.ActiveTunCount ||
 		oldStatus.ConnectingTunCount != newStatus.ConnectingTunCount {
 		newStatus.StateChange = true
 	}
-	for _, oldConn := range oldStatus.ConnStatus {
+	for _, oldConn := range oldStatus.ActiveVpnConns {
 		found := false
-		for _, newConn := range newStatus.ConnStatus {
+		for _, newConn := range newStatus.ActiveVpnConns {
 			if oldConn.Name == newConn.Name &&
 				oldConn.Id == newConn.Id {
 				found = true
@@ -661,12 +662,14 @@ func isVpnStatusChanged(oldStatus, newStatus *types.ServiceVpnStatus) bool {
 		}
 		if found == false {
 			newStatus.StateChange = true
+			oldConn.MarkDelete = true
+			staleConnCount++
 		}
 	}
 
-	for _, newConn := range newStatus.ConnStatus {
+	for _, newConn := range newStatus.ActiveVpnConns {
 		found := false
-		for _, oldConn := range oldStatus.ConnStatus {
+		for _, oldConn := range oldStatus.ActiveVpnConns {
 			if oldConn.Name == newConn.Name &&
 				oldConn.Id == newConn.Id {
 				found = true
@@ -675,6 +678,18 @@ func isVpnStatusChanged(oldStatus, newStatus *types.ServiceVpnStatus) bool {
 		}
 		if found == false {
 			newStatus.StateChange = true
+		}
+	}
+
+	if staleConnCount != 0 {
+		newStatus.StaleVpnConns = make([]types.VpnConnStatus, staleConnCount)
+		connIdx := 0
+		for _, conn := range oldStatus.ActiveVpnConns {
+			if conn.MarkDelete == true {
+				conn.State = types.VPN_INITIAL
+				newStatus.StaleVpnConns[connIdx] = conn
+				connIdx++
+			}
 		}
 	}
 	return newStatus.StateChange || newStatus.StatsChange
