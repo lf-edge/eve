@@ -103,7 +103,7 @@ func prepareVpnServiceInfoMsg(ctx *zedagentContext, status types.NetworkServiceS
 		errInfo.Description = status.Error
 		errTime, _ := ptypes.TimestampProto(status.ErrorTime)
 		errInfo.Timestamp = errTime
-		svcInfo.SvcErr = append(svInfo.SvcErr, errInfo)
+		svcInfo.SvcErr = append(svcInfo.SvcErr, errInfo)
 	}
 
 	// this can be multiple of event info messages
