@@ -165,7 +165,7 @@ const (
 //
 // Would be more polite to return an error then to Fatal
 func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
-	EID net.IP, lispSignature string,
+	EID net.IP, AppIPAddr net.IP, lispSignature string,
 	globalStatus types.DeviceNetworkStatus,
 	tag string, olIfname string, additionalInfo string,
 	mapservers []types.MapServer, separateDataPlane bool) {
@@ -243,6 +243,12 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 		file2.WriteString(fmt.Sprintf(lispDBtemplateMgmt,
 			IID, EID, rlocString))
 	} else {
+		// Append to rlocString based on AppIPAddr
+		if AppIPAddr != nil && !EID.Equal(AppIPAddr) {
+			one := fmt.Sprintf("        prefix {\n        instance-id = %d\n        eid-prefix = %s/32        ms-name = ms-%d\n    }\n",
+				IID, AppIPAddr.String(), IID)
+			rlocString += one
+		}
 		file2.WriteString(fmt.Sprintf(lispEIDtemplate,
 			tag, lispSignature, tag, additionalInfo, olIfname,
 			olIfname, IID))
@@ -253,7 +259,7 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 }
 
 func createLispEidConfiglet(lispRunDirname string,
-	IID uint32, EID net.IP, lispSignature string,
+	IID uint32, EID net.IP, AppIPAddr net.IP, lispSignature string,
 	globalStatus types.DeviceNetworkStatus,
 	tag string, olIfname string, additionalInfo string,
 	mapservers []types.MapServer, separateDataPlane bool) {
@@ -312,7 +318,7 @@ func createLispEidConfiglet(lispRunDirname string,
 }
 
 func updateLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
-	EID net.IP, lispSignature string,
+	EID net.IP, AppIPAddr net.IP, lispSignature string,
 	globalStatus types.DeviceNetworkStatus,
 	tag string, olIfname string, additionalInfo string,
 	mapservers []types.MapServer,
@@ -322,12 +328,15 @@ func updateLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 			lispRunDirname, isMgmt, IID, EID, lispSignature, globalStatus,
 			tag, olIfname, additionalInfo, mapservers)
 	}
-	createLispConfiglet(lispRunDirname, isMgmt, IID, EID, lispSignature,
-		globalStatus, tag, olIfname, additionalInfo, mapservers, separateDataPlane)
+	createLispConfiglet(lispRunDirname, isMgmt, IID, EID, AppIPAddr,
+		lispSignature, globalStatus, tag, olIfname, additionalInfo,
+		mapservers, separateDataPlane)
 }
 
 func deleteLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
-	EID net.IP, globalStatus types.DeviceNetworkStatus, separateDataPlane bool) {
+	EID net.IP, AppIPAddr net.IP, globalStatus types.DeviceNetworkStatus,
+	separateDataPlane bool) {
+
 	if debug {
 		log.Printf("deleteLispConfiglet: %s %d %s %v\n",
 			lispRunDirname, IID, EID, globalStatus)

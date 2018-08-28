@@ -538,6 +538,7 @@ func lispInactivate(ctx *zedrouterContext,
 				// Pass global deviceNetworkStatus
 				deleteLispConfiglet(lispRunDirname, false,
 					status.LispStatus.IID, olStatus.EID,
+					olStatus.AppIPAddr,
 					*ctx.DeviceNetworkStatus,
 					ctx.separateDataPlane)
 			}

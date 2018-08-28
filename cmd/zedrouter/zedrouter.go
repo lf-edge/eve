@@ -619,7 +619,7 @@ func updateLispConfiglets(ctx *zedrouterContext, separateDataPlane bool) {
 			}
 			createLispConfiglet(lispRunDirname, status.IsZedmanager,
 				olStatus.MgmtIID, olStatus.EID,
-				olStatus.LispSignature,
+				olStatus.AppIPAddr, olStatus.LispSignature,
 				*ctx.DeviceNetworkStatus, olIfname,
 				olIfname, additionalInfo,
 				olStatus.MgmtMapServers, separateDataPlane)
@@ -901,7 +901,8 @@ func handleCreate(ctx *zedrouterContext, key string,
 
 		// Create LISP configlets for IID and EID/signature
 		createLispConfiglet(lispRunDirname, config.IsZedmanager,
-			olConfig.MgmtIID, olConfig.EID, olConfig.LispSignature,
+			olConfig.MgmtIID, olConfig.EID, nil,
+			olConfig.LispSignature,
 			*ctx.DeviceNetworkStatus, olIfname, olIfname,
 			additionalInfo, olConfig.MgmtMapServers,
 			ctx.separateDataPlane)
@@ -1269,8 +1270,8 @@ func createAndStartLisp(ctx *zedrouterContext,
 		}
 	}
 	createLispEidConfiglet(lispRunDirname, serviceStatus.LispStatus.IID,
-		olConfig.EID, olConfig.LispSignature, deviceNetworkParams,
-		bridgeName, bridgeName, additionalInfo,
+		olConfig.EID, olConfig.AppIPAddr, olConfig.LispSignature,
+		deviceNetworkParams, bridgeName, bridgeName, additionalInfo,
 		serviceStatus.LispStatus.MapServers, ctx.separateDataPlane)
 }
 
@@ -1529,8 +1530,8 @@ func handleModify(ctx *zedrouterContext, key string,
 		// Create LISP configlets for IID and EID/signature
 		// XXX shared with others???
 		updateLispConfiglet(lispRunDirname, false,
-			serviceStatus.LispStatus.IID,
-			olConfig.EID, olConfig.LispSignature,
+			serviceStatus.LispStatus.IID, olConfig.EID,
+			olConfig.AppIPAddr, olConfig.LispSignature,
 			*ctx.DeviceNetworkStatus, bridgeName, bridgeName,
 			additionalInfo, serviceStatus.LispStatus.MapServers,
 			ctx.separateDataPlane)
@@ -1744,8 +1745,8 @@ func handleDelete(ctx *zedrouterContext, key string,
 
 		// Delete LISP configlets
 		deleteLispConfiglet(lispRunDirname, true, olStatus.MgmtIID,
-			olStatus.EID, *ctx.DeviceNetworkStatus,
-			ctx.separateDataPlane)
+			olStatus.EID, olStatus.AppIPAddr,
+			*ctx.DeviceNetworkStatus, ctx.separateDataPlane)
 		status.PendingDelete = false
 		publishAppNetworkStatus(ctx, status)
 
@@ -1837,7 +1838,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 		// Delete LISP configlets
 		deleteLispConfiglet(lispRunDirname, false,
 			serviceStatus.LispStatus.IID, olStatus.EID,
-			*ctx.DeviceNetworkStatus,
+			olStatus.AppIPAddr, *ctx.DeviceNetworkStatus,
 			ctx.separateDataPlane)
 	}
 
