@@ -994,16 +994,24 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 				olCfg.AppIPAddr = net.ParseIP(intfEnt.Addr)
 				if olCfg.AppIPAddr == nil {
 					log.Printf("parseOverlayNetworkConfig: bad IP %s\n",
-					intfEnt.Addr)
+						intfEnt.Addr)
 					// XXX report error?
 				}
 			}
-		} else {
+		} else if intfEnt.Addr != "" {
 			olCfg.EIDConfigDetails.EID = net.ParseIP(intfEnt.Addr)
 			if olCfg.EIDConfigDetails.EID == nil {
 				log.Printf("parseOverrlayNetworkConfig: bad IP %s\n",
 					intfEnt.Addr)
 				// XXX report error?
+			}
+			// XXX testing hack
+			if forceLisp {
+				appIP := "224.1.0.99"
+				olCfg.AppIPAddr = net.ParseIP(appIP)
+				log.Printf("Using %s with %s\n",
+					olCfg.AppIPAddr.String(),
+					olCfg.EIDConfigDetails.EID.String())
 			}
 		}
 		if olCfg.AppIPAddr == nil {
