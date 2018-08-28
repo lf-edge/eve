@@ -1034,6 +1034,9 @@ func handleCreate(ctx *zedrouterContext, key string,
 
 		olStatus.BridgeIPAddr = netstatus.BridgeIPAddr
 
+		// XXX add isIPv6 check
+		// XXX do we need an IPv4 in-subnet EID for route+dnsmasq?
+		// BridgeIPAddr is set when network is up.
 		EID := olConfig.EID
 		//    ip -6 route add ${EID}/128 dev ${bridgeName}
 		_, ipnet, err := net.ParseCIDR(EID.String() + "/128")
@@ -1063,6 +1066,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 			EID.String())
 
 		// Set up ACLs
+		// XXX remove 6/4 arg? From bridgeIPAddr
 		err = createACLConfiglet(bridgeName, vifName, false,
 			olConfig.ACLs, 6, olStatus.BridgeIPAddr, EID.String())
 		if err != nil {

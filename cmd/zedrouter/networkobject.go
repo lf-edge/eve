@@ -499,7 +499,11 @@ func updateBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus
 		stopDnsmasq(bridgeName, false)
 
 		hostsDirpath := globalRunDirname + "/hosts." + bridgeName
+		// XXX arbitrary name "router"!!
+		addToHostsConfiglet(hostsDirpath, "router",
+			[]string{status.BridgeIPAddr})
 
+		// Use existing BridgeIPSets
 		createDnsmasqConfiglet(bridgeName, status.BridgeIPAddr,
 			config, hostsDirpath, status.BridgeIPSets)
 		startDnsmasq(bridgeName)
@@ -520,6 +524,7 @@ func doNetworkModify(ctx *zedrouterContext, config types.NetworkObjectConfig,
 	}
 
 	// Update other fields; potentially useful for testing
+	// XXX update ACLs/dns
 	status.NetworkObjectConfig = config
 }
 

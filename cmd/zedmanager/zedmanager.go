@@ -447,6 +447,12 @@ func handleModify(ctx *zedmanagerContext, key string,
 	// Not checking the version here; assume the microservices can handle
 	// some updates.
 
+	// XXX detect significant changes which require a reboot and/or
+	// purge of disk changes
+	needReboot, needPurge := quantifyChanges(config, *status)
+	log.Printf("handleModify needReboot %v needPurge %v\n",
+		needReboot, needPurge)
+
 	status.UUIDandVersion = config.UUIDandVersion
 	publishAppInstanceStatus(ctx, status)
 
@@ -468,6 +474,14 @@ func handleDelete(ctx *zedmanagerContext, key string,
 
 	removeAIStatus(ctx, status)
 	log.Printf("handleDelete done for %s\n", status.DisplayName)
+}
+
+func quantifyChanges(config types.AppInstanceConfig,
+	status types.AppInstanceStatus) (bool, bool) {
+
+	log.Printf("quantifyChanges for %s %s\n",
+		config.Key(), config.DisplayName)
+	return false, false
 }
 
 func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
