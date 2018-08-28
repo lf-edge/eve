@@ -490,6 +490,16 @@ func lispActivate(ctx *zedrouterContext,
 		}
 	}
 
+	// Add ACL filter rule in FORWARD chain to drop packets
+	// input from lisp bn<> bridge interfaces.
+	args := IptablesRule{"-t", "filter", "-I", "FORWARD", "1",
+		"-i", netstatus.BridgeName, "-j", "DROP"}
+	err := ip6tableCmd(args...)
+	if err != nil {
+		log.Printf("%s\n", err)
+		return err
+	}
+
 	log.Printf("lispActivate(%s)\n", status.DisplayName)
 	return nil
 }
@@ -530,6 +540,13 @@ func lispInactivate(ctx *zedrouterContext,
 					ctx.separateDataPlane)
 			}
 		}
+	}
+
+	args := IptablesRule{"-t", "filter", "-D", "FORWARD", "-i",
+		netstatus.BridgeName, "-j", "DROP"}
+	err := ip6tableCmd(args...)
+	if err != nil {
+		log.Printf("%s\n", err)
 	}
 
 	log.Printf("lispInactivate(%s)\n", status.DisplayName)
