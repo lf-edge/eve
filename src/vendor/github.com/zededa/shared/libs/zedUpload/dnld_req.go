@@ -75,7 +75,7 @@ func (req *DronaRequest) GetDnStatus() error {
 func (req *DronaRequest) GetUpStatus() (string, error) {
 	req.Lock()
 	defer req.Unlock()
-	return req.objloc, fmt.Errorf("Syncer Download Status on %s - error %s", req.name, req.status)
+	return req.objloc, fmt.Errorf("Syncer Upload Status on %s - error %s", req.name, req.status)
 }
 
 // Return is it update
