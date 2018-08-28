@@ -72,6 +72,7 @@ func getNetworkMetrics(ctx *zedrouterContext) types.NetworkMetrics {
 			// XXX IPv4 EIDs?
 			ipVer = 6
 		}
+		// XXX test RX filter counters.
 		metric.TxAclDrops = getIpRuleAclDrop(ac, bridgeName, vifName,
 			ipVer, inout)
 		metric.RxAclDrops = getIpRuleAclDrop(ac, bridgeName, vifName,

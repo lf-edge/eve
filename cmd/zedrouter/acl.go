@@ -290,28 +290,63 @@ func aclToRules(bridgeName string, vifName string, ACLs []types.ACE, ipVer int,
 	// XXX should we check isMgmt instead of bridgeIP?
 	if ipVer == 6 && bridgeIP != "" {
 		// Need to allow local communication */
-		// XXX check for dhcp, dns (tcp/udp), and icmp/nd
+		// Only allow dhcp, dns (tcp/udp), and icmp6/nd
 		// Note that sufficient for src or dst to be local
 		rule1 := []string{"-i", bridgeName, "-m", "set", "--match-set",
-			"local.ipv6", "dst", "-j", "ACCEPT"}
+			"local.ipv6", "dst", "-p", "ipv6-icmp", "-j", "ACCEPT"}
 		rule2 := []string{"-i", bridgeName, "-m", "set", "--match-set",
-			"local.ipv6", "src", "-j", "ACCEPT"}
-		rule3 := []string{"-i", bridgeName, "-d", bridgeIP, "-j", "ACCEPT"}
-		rule4 := []string{"-i", bridgeName, "-s", bridgeIP, "-j", "ACCEPT"}
+			"local.ipv6", "src", "-p", "ipv6-icmp", "-j", "ACCEPT"}
+		rule3 := []string{"-i", bridgeName, "-d", bridgeIP,
+			"-p", "ipv6-icmp", "-j", "ACCEPT"}
+		rule4 := []string{"-i", bridgeName, "-s", bridgeIP,
+			"-p", "ipv6-icmp", "-j", "ACCEPT"}
+		rulesList = append(rulesList, rule1, rule2, rule3, rule4)
+		rule1 = []string{"-i", bridgeName, "-m", "set", "--match-set",
+			"local.ipv6", "dst", "-p", "udp", "--dport", "dhcpv6-server",
+			"-j", "ACCEPT"}
+		rule2 = []string{"-i", bridgeName, "-m", "set", "--match-set",
+			"local.ipv6", "src", "-p", "udp", "--sport", "dhcpv6-server",
+			"-j", "ACCEPT"}
+		rule3 = []string{"-i", bridgeName, "-d", bridgeIP,
+			"-p", "udp", "--dport", "dhcpv6-server", "-j", "ACCEPT"}
+		rule4 = []string{"-i", bridgeName, "-s", bridgeIP,
+			"-p", "udp", "--sport", "dhcpv6-server", "-j", "ACCEPT"}
+		rulesList = append(rulesList, rule1, rule2, rule3, rule4)
+		rule1 = []string{"-i", bridgeName, "-d", bridgeIP,
+			"-p", "udp", "--dport", "domain", "-j", "ACCEPT"}
+		rule2 = []string{"-i", bridgeName, "-s", bridgeIP,
+			"-p", "udp", "--sport", "domain", "-j", "ACCEPT"}
+		rule3 = []string{"-i", bridgeName, "-d", bridgeIP,
+			"-p", "tcp", "--dport", "domain", "-j", "ACCEPT"}
+		rule4 = []string{"-i", bridgeName, "-s", bridgeIP,
+			"-p", "tcp", "--sport", "domain", "-j", "ACCEPT"}
 		rulesList = append(rulesList, rule1, rule2, rule3, rule4)
 	}
 	// The same rules as above for IPv4.
 	// If we have a bridge service then bridgeIP might be "".
 	if ipVer == 4 && bridgeIP != "" {
 		// Need to allow local communication */
-		// XXX check for dhcp, dns (tcp/udp)
+		// Only allow dhcp and dns (tcp/udp)
 		// Note that sufficient for src or dst to be local
 		rule1 := []string{"-i", bridgeName, "-m", "set", "--match-set",
-			"local.ipv4", "dst", "-j", "ACCEPT"}
+			"local.ipv4", "dst", "-p", "udp", "--dport", "bootps",
+			"-j", "ACCEPT"}
 		rule2 := []string{"-i", bridgeName, "-m", "set", "--match-set",
-			"local.ipv4", "src", "-j", "ACCEPT"}
-		rule3 := []string{"-i", bridgeName, "-d", bridgeIP, "-j", "ACCEPT"}
-		rule4 := []string{"-i", bridgeName, "-s", bridgeIP, "-j", "ACCEPT"}
+			"local.ipv4", "src", "-p", "udp", "--sport", "bootps",
+			"-j", "ACCEPT"}
+		rule3 := []string{"-i", bridgeName, "-d", bridgeIP,
+			"-p", "udp", "--dport", "bootps", "-j", "ACCEPT"}
+		rule4 := []string{"-i", bridgeName, "-s", bridgeIP,
+			"-p", "udp", "--sport", "bootps", "-j", "ACCEPT"}
+		rulesList = append(rulesList, rule1, rule2, rule3, rule4)
+		rule1 = []string{"-i", bridgeName, "-d", bridgeIP,
+			"-p", "udp", "--dport", "domain", "-j", "ACCEPT"}
+		rule2 = []string{"-i", bridgeName, "-s", bridgeIP,
+			"-p", "udp", "--sport", "domain", "-j", "ACCEPT"}
+		rule3 = []string{"-i", bridgeName, "-d", bridgeIP,
+			"-p", "tcp", "--dport", "domain", "-j", "ACCEPT"}
+		rule4 = []string{"-i", bridgeName, "-s", bridgeIP,
+			"-p", "tcp", "--sport", "domain", "-j", "ACCEPT"}
 		rulesList = append(rulesList, rule1, rule2, rule3, rule4)
 	}
 	for _, ace := range ACLs {
