@@ -523,9 +523,39 @@ func doNetworkModify(ctx *zedrouterContext, config types.NetworkObjectConfig,
 		return
 	}
 
+	// Update ipsets and dns hosts.
+
+	bridgeName := status.BridgeName
+	if bridgeName != "" {
+		hostsDirpath := globalRunDirname + "/hosts." + bridgeName
+		updateHostsConfiglet(hostsDirpath, status.DnsNameToIPList,
+			config.DnsNameToIPList)
+
+		pub := ctx.pubAppNetworkStatus
+		items := pub.GetAll()
+		for _, ans := range items {
+			appNetStatus := cast.CastAppNetworkStatus(ans)
+			for _, olStatus := range appNetStatus.OverlayNetworkList {
+				if olStatus.Network != status.UUID {
+					continue
+				}
+				updateDefaultIpsetConfiglet(olStatus.Vif,
+					status.DnsNameToIPList,
+					config.DnsNameToIPList)
+			}
+			for _, ulStatus := range appNetStatus.UnderlayNetworkList {
+				if ulStatus.Network != status.UUID {
+					continue
+				}
+				updateDefaultIpsetConfiglet(ulStatus.Vif,
+					status.DnsNameToIPList,
+					config.DnsNameToIPList)
+			}
+		}
+	}
 	// Update other fields; potentially useful for testing
-	// XXX update ACLs/dns
 	status.NetworkObjectConfig = config
+	log.Printf("doNetworkModify DONE key %s\n", config.UUID)
 }
 
 func doNetworkDelete(ctx *zedrouterContext,
