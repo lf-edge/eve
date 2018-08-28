@@ -195,8 +195,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		}
 	}
 
-// XXX not an error
-   if len(config.OverlayNetworkList) != len(status.EIDList) {
+	if len(config.OverlayNetworkList) != len(status.EIDList) {
 		errString := fmt.Sprintf("Mismatch in OLList config vs. status length: %d vs %d\n",
 			len(config.OverlayNetworkList),
 			len(status.EIDList))

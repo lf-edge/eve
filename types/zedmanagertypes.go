@@ -118,11 +118,9 @@ func (status AppInstanceStatus) CheckPendingDelete() bool {
 
 type EIDOverlayConfig struct {
 	EIDConfigDetails
-	ACLs          []ACE
-	NameToEidList []NameToEid // Used to populate DNS for the overlay
-	LispServers   []LispServerInfo
-	AppMacAddr    net.HardwareAddr // If set use it for vif
-	Network       uuid.UUID
+	ACLs       []ACE
+	AppMacAddr net.HardwareAddr // If set use it for vif
+	Network    uuid.UUID
 }
 
 // If the Target is "" or "disk", then this becomes a vdisk for the domU
