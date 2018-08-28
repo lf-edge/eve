@@ -435,6 +435,8 @@ func lookupAppLink(ctx *zedrouterContext, appLink uuid.UUID) *types.NetworkServi
 
 // ==== Lisp
 
+// XXX note that we can't change the mapservers nor IID unless we move
+// those configlets to Activate
 func lispCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	status *types.NetworkServiceStatus) error {
 	status.LispStatus = config.LispConfig

@@ -499,7 +499,11 @@ func updateBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus
 		stopDnsmasq(bridgeName, false)
 
 		hostsDirpath := globalRunDirname + "/hosts." + bridgeName
+		// XXX arbitrary name "router"!!
+		addToHostsConfiglet(hostsDirpath, "router",
+			[]string{status.BridgeIPAddr})
 
+		// Use existing BridgeIPSets
 		createDnsmasqConfiglet(bridgeName, status.BridgeIPAddr,
 			config, hostsDirpath, status.BridgeIPSets)
 		startDnsmasq(bridgeName)
@@ -519,8 +523,39 @@ func doNetworkModify(ctx *zedrouterContext, config types.NetworkObjectConfig,
 		return
 	}
 
+	// Update ipsets and dns hosts.
+
+	bridgeName := status.BridgeName
+	if bridgeName != "" {
+		hostsDirpath := globalRunDirname + "/hosts." + bridgeName
+		updateHostsConfiglet(hostsDirpath, status.DnsNameToIPList,
+			config.DnsNameToIPList)
+
+		pub := ctx.pubAppNetworkStatus
+		items := pub.GetAll()
+		for _, ans := range items {
+			appNetStatus := cast.CastAppNetworkStatus(ans)
+			for _, olStatus := range appNetStatus.OverlayNetworkList {
+				if olStatus.Network != status.UUID {
+					continue
+				}
+				updateDefaultIpsetConfiglet(olStatus.Vif,
+					status.DnsNameToIPList,
+					config.DnsNameToIPList)
+			}
+			for _, ulStatus := range appNetStatus.UnderlayNetworkList {
+				if ulStatus.Network != status.UUID {
+					continue
+				}
+				updateDefaultIpsetConfiglet(ulStatus.Vif,
+					status.DnsNameToIPList,
+					config.DnsNameToIPList)
+			}
+		}
+	}
 	// Update other fields; potentially useful for testing
 	status.NetworkObjectConfig = config
+	log.Printf("doNetworkModify DONE key %s\n", config.UUID)
 }
 
 func doNetworkDelete(ctx *zedrouterContext,
