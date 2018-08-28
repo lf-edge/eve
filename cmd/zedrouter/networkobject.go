@@ -236,14 +236,28 @@ func setBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) e
 		}
 	}
 
-	// Unlike bridge service Lisp will not need a service now for generating ip address.
-	// Hence, cannot move this check into the previous service type check.
-	// We check for network type here.
-	// XXX IPv4 EIDs if netconfig.Addr is IPv4
+	// Unlike bridge service Lisp will not need a service now for
+	// generating ip address.
+	// So we check the type of the network instead of the type of the
+	// service
+
 	if status.Type == types.NT_CryptoEID {
-		ipAddr = "fd00::" + strconv.FormatInt(int64(status.BridgeNum), 16)
-		log.Printf("setBridgeIPAddr: Bridge %s assigned IPv6 address %s\n",
-			status.BridgeName, ipAddr)
+		if status.Subnet.IP != nil && status.Subnet.IP.To4() != nil {
+			// Require an IPv4 gateway
+			if status.Gateway == nil {
+				errStr := fmt.Sprintf("No IPv4 gateway for bridge %s network %s subnet %s",
+					status.BridgeName, status.Key(),
+					status.Subnet.String())
+				return errors.New(errStr)
+			}
+			ipAddr = status.Gateway.String()
+			log.Printf("setBridgeIPAddr: Bridge %s assigned IPv4 EID %s\n",
+				status.BridgeName, ipAddr)
+		} else {
+			ipAddr = "fd00::" + strconv.FormatInt(int64(status.BridgeNum), 16)
+			log.Printf("setBridgeIPAddr: Bridge %s assigned IPv6 EID %s\n",
+				status.BridgeName, ipAddr)
+		}
 	}
 
 	// If not we do a local allocation

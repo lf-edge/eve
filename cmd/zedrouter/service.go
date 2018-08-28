@@ -398,7 +398,7 @@ func getBridgeServiceIPv4Addr(ctx *zedrouterContext, appLink uuid.UUID) (string,
 	if err != nil {
 		return "", err
 	}
-	// XXX Add IPv6; ignore link-locals.
+	// XXX Add IPv6 underlay; ignore link-locals.
 	addrs, err := netlink.AddrList(link, syscall.AF_INET)
 	if err != nil {
 		return "", err

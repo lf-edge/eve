@@ -1032,19 +1032,31 @@ func handleCreate(ctx *zedrouterContext, key string,
 		olStatus.Mac = appMac
 		olStatus.HostName = config.Key()
 
-		olStatus.BridgeIPAddr = netstatus.BridgeIPAddr
-
-		// XXX add isIPv6 check
-		// XXX do we need an IPv4 in-subnet EID for route+dnsmasq?
 		// BridgeIPAddr is set when network is up.
-		EID := olConfig.EID
+		olStatus.BridgeIPAddr = netstatus.BridgeIPAddr
+		log.Printf("bridgeIPAddr %s\n", olStatus.BridgeIPAddr)
+
+		// Create a host route towards the domU EID
+		EID := olConfig.AppIPAddr
+		isIPv6 := (EID.To4() == nil)
+		var subnetSuffix string
+		if isIPv6 {
+			subnetSuffix = "/128"
+		} else {
+			subnetSuffix = "/32"
+		}
 		//    ip -6 route add ${EID}/128 dev ${bridgeName}
-		_, ipnet, err := net.ParseCIDR(EID.String() + "/128")
+		// or
+		//    ip route add ${EID}/32 dev ${bridgeName}
+		_, ipnet, err := net.ParseCIDR(EID.String() + subnetSuffix)
 		if err != nil {
 			errStr := fmt.Sprintf("ParseCIDR %s failed: %v",
-				EID, err)
+				EID.String()+subnetSuffix, err)
 			addError(ctx, &status, "handleCreate",
 				errors.New(errStr))
+			log.Printf("handleCreate done for %s\n",
+				config.DisplayName)
+			return
 		}
 		rt := netlink.Route{Dst: ipnet, LinkIndex: oLink.Index}
 		if err := netlink.RouteAdd(&rt); err != nil {
@@ -1052,6 +1064,9 @@ func handleCreate(ctx *zedrouterContext, key string,
 				EID, err)
 			addError(ctx, &status, "handleCreate",
 				errors.New(errStr))
+			log.Printf("handleCreate done for %s\n",
+				config.DisplayName)
+			return
 		}
 
 		// Write our EID hostname in a separate file in directory to

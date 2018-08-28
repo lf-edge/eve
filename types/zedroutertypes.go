@@ -413,14 +413,16 @@ type ServiceLispConfig struct {
 }
 
 type OverlayNetworkConfig struct {
-	EID net.IP
-	// XXX add separate EIDv4 net.IP?
+	EID           net.IP // Always EIDv6
 	LispSignature string
 	ACLs          []ACE
+	AppMacAddr    net.HardwareAddr // If set use it for vif
+	AppIPAddr     net.IP           // EIDv4 or EIDv6
+	Network       uuid.UUID
+
 	// Optional additional information
 	AdditionalInfoDevice *AdditionalInfoDevice
-	AppMacAddr           net.HardwareAddr // If set use it for vif
-	Network              uuid.UUID
+
 	// These field are only for isMgmt. XXX remove when isMgmt is removed
 	MgmtIID             uint32
 	MgmtDnsNameToIPList []DnsNameToIP // Used to populate DNS for the overlay

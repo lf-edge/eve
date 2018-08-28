@@ -981,7 +981,34 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 				// XXX report error?
 			}
 		}
-		// XXX insert static IPv4 EID based on new intfEnt.EIDv4?
+		// Handle old and new location of EIDv6
+		if intfEnt.CryptoEid != "" {
+			olCfg.EIDConfigDetails.EID = net.ParseIP(intfEnt.CryptoEid)
+			if olCfg.EIDConfigDetails.EID == nil {
+				log.Printf("parseOverrlayNetworkConfig: bad IP %s\n",
+					intfEnt.CryptoEid)
+				// XXX report error?
+			}
+			// Any IPv4 EID?
+			if intfEnt.Addr != "" {
+				olCfg.AppIPAddr = net.ParseIP(intfEnt.Addr)
+				if olCfg.AppIPAddr == nil {
+					log.Printf("parseOverlayNetworkConfig: bad IP %s\n",
+					intfEnt.Addr)
+					// XXX report error?
+				}
+			}
+		} else {
+			olCfg.EIDConfigDetails.EID = net.ParseIP(intfEnt.Addr)
+			if olCfg.EIDConfigDetails.EID == nil {
+				log.Printf("parseOverrlayNetworkConfig: bad IP %s\n",
+					intfEnt.Addr)
+				// XXX report error?
+			}
+		}
+		if olCfg.AppIPAddr == nil {
+			olCfg.AppIPAddr = olCfg.EIDConfigDetails.EID
+		}
 
 		olCfg.ACLs = make([]types.ACE, len(intfEnt.Acls))
 		for aclIdx, acl := range intfEnt.Acls {
@@ -1010,7 +1037,6 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 			olCfg.ACLs[aclIdx] = *aclCfg
 		}
 
-		olCfg.EIDConfigDetails.EID = net.ParseIP(intfEnt.Addr)
 		olCfg.EIDConfigDetails.LispSignature = intfEnt.Lispsignature
 		olCfg.EIDConfigDetails.PemCert = intfEnt.Pemcert
 		olCfg.EIDConfigDetails.PemPrivateKey = intfEnt.Pemprivatekey

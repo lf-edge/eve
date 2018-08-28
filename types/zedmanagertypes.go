@@ -120,6 +120,7 @@ type EIDOverlayConfig struct {
 	EIDConfigDetails
 	ACLs       []ACE
 	AppMacAddr net.HardwareAddr // If set use it for vif
+	AppIPAddr  net.IP           // EIDv4 or EIDv6
 	Network    uuid.UUID
 }
 
