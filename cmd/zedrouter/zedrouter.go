@@ -887,7 +887,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 
 		// Set up ACLs
 		err = createACLConfiglet(olIfname, olIfname, true, olConfig.ACLs,
-			6, "", "")
+			"", "")
 		if err != nil {
 			addError(ctx, &status, "createACL", err)
 		}
@@ -1081,9 +1081,8 @@ func handleCreate(ctx *zedrouterContext, key string,
 			EID.String())
 
 		// Set up ACLs
-		// XXX remove 6/4 arg? From bridgeIPAddr
 		err = createACLConfiglet(bridgeName, vifName, false,
-			olConfig.ACLs, 6, olStatus.BridgeIPAddr, EID.String())
+			olConfig.ACLs, olStatus.BridgeIPAddr, EID.String())
 		if err != nil {
 			addError(ctx, &status, "createACL", err)
 		}
@@ -1212,7 +1211,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 
 		// Set up ACLs
 		err = createACLConfiglet(bridgeName, vifName, false,
-			ulConfig.ACLs, 4, bridgeIPAddr, appIPAddr)
+			ulConfig.ACLs, bridgeIPAddr, appIPAddr)
 		if err != nil {
 			addError(ctx, &status, "createACL", err)
 		}
@@ -1435,7 +1434,7 @@ func handleModify(ctx *zedrouterContext, key string,
 
 		// Update ACLs
 		err := updateACLConfiglet(olIfname, olIfname, true, olStatus.ACLs,
-			olConfig.ACLs, 6, "", "")
+			olConfig.ACLs, "", "")
 		if err != nil {
 			addError(ctx, status, "updateACL", err)
 		}
@@ -1490,7 +1489,7 @@ func handleModify(ctx *zedrouterContext, key string,
 		// If so updateACLConfiglet needs to know old and new
 
 		err := updateACLConfiglet(bridgeName, olStatus.Vif, false,
-			olStatus.ACLs, olConfig.ACLs, 6, olStatus.BridgeIPAddr,
+			olStatus.ACLs, olConfig.ACLs, olStatus.BridgeIPAddr,
 			olConfig.EID.String())
 		if err != nil {
 			addError(ctx, status, "updateACL", err)
@@ -1574,7 +1573,7 @@ func handleModify(ctx *zedrouterContext, key string,
 		// XXX could there be a change to AssignedIPAddress?
 		// If so updateNetworkACLConfiglet needs to know old and new
 		err := updateACLConfiglet(bridgeName, ulStatus.Vif, false,
-			ulStatus.ACLs, ulConfig.ACLs, 4, ulStatus.BridgeIPAddr,
+			ulStatus.ACLs, ulConfig.ACLs, ulStatus.BridgeIPAddr,
 			appIPAddr)
 		if err != nil {
 			addError(ctx, status, "updateACL", err)
@@ -1738,7 +1737,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 
 		// Delete ACLs
 		err = deleteACLConfiglet(olIfname, olIfname, true, olStatus.ACLs,
-			6, "", "")
+			"", "")
 		if err != nil {
 			addError(ctx, status, "deleteACL", err)
 		}
@@ -1801,7 +1800,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 
 		// Delete ACLs
 		err := deleteACLConfiglet(bridgeName, olStatus.Vif, false,
-			olStatus.ACLs, 6, olStatus.BridgeIPAddr,
+			olStatus.ACLs, olStatus.BridgeIPAddr,
 			olStatus.EID.String())
 		if err != nil {
 			addError(ctx, status, "deleteACL", err)
@@ -1896,7 +1895,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 		removehostDnsmasq(bridgeName, appMac, appIPAddr)
 
 		err = deleteACLConfiglet(bridgeName, ulStatus.Vif, false,
-			ulStatus.ACLs, 4, ulStatus.BridgeIPAddr, appIPAddr)
+			ulStatus.ACLs, ulStatus.BridgeIPAddr, appIPAddr)
 		if err != nil {
 			addError(ctx, status, "deleteACL", err)
 		}

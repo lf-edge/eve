@@ -591,11 +591,8 @@ func doNetworkDelete(ctx *zedrouterContext,
 			if olStatus.Network != status.UUID {
 				continue
 			}
-			// Destroy default ipset
-			deleteDefaultIpsetConfiglet(olStatus.Vif, true)
-
 			err := deleteACLConfiglet(olStatus.Bridge,
-				olStatus.Vif, false, olStatus.ACLs, 6,
+				olStatus.Vif, false, olStatus.ACLs,
 				olStatus.BridgeIPAddr,
 				olStatus.EID.String())
 			if err != nil {
@@ -608,7 +605,7 @@ func doNetworkDelete(ctx *zedrouterContext,
 				continue
 			}
 			err := deleteACLConfiglet(ulStatus.Bridge,
-				ulStatus.Vif, false, ulStatus.ACLs, 4,
+				ulStatus.Vif, false, ulStatus.ACLs,
 				ulStatus.BridgeIPAddr, ulStatus.AssignedIPAddr)
 			if err != nil {
 				log.Printf("doNetworkDelete ACL failed: %s\n",

@@ -11,6 +11,7 @@ import (
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/types"
 	"log"
+	"net"
 	"strconv"
 )
 
@@ -203,11 +204,12 @@ func compileOldAppInstanceIpsets(ctx *zedrouterContext,
 // then concat all the rules and pass to applyACLrules
 // Note that only bridgeName is set with ifMgmt
 func createACLConfiglet(bridgeName string, vifName string, isMgmt bool,
-	ACLs []types.ACE, ipVer int, bridgeIP string, appIP string) error {
+	ACLs []types.ACE, bridgeIP string, appIP string) error {
 	if debug {
 		log.Printf("createACLConfiglet: ifname %s, vifName %s, ACLs %v, IP %s/%s\n",
 			bridgeName, vifName, ACLs, bridgeIP, appIP)
 	}
+	ipVer := determineIpVer(isMgmt, bridgeIP)
 	rules, err := aclToRules(bridgeName, vifName, ACLs, ipVer,
 		bridgeIP, appIP)
 	if err != nil {
@@ -219,6 +221,26 @@ func createACLConfiglet(bridgeName string, vifName string, isMgmt bool,
 	}
 	rules = append(rules, dropRules...)
 	return applyACLRules(rules, bridgeName, vifName, isMgmt, ipVer, appIP)
+}
+
+// If no valid bridgeIP we assume IPv4
+func determineIpVer(isMgmt bool, bridgeIP string) int {
+	if isMgmt {
+		return 6
+	}
+	if bridgeIP == "" {
+		return 4
+	}
+	ip := net.ParseIP(bridgeIP)
+	if ip == nil {
+		log.Fatalf("determineIpVer: ParseIP %s failed\n",
+			bridgeIP)
+	}
+	if ip.To4() == nil {
+		return 6
+	} else {
+		return 4
+	}
 }
 
 func applyACLRules(rules IptablesRuleList, bridgeName string, vifName string,
@@ -714,13 +736,14 @@ func diffIpsets(newIpsets, oldIpsets []string) ([]string, []string, bool) {
 }
 
 func updateACLConfiglet(bridgeName string, vifName string, isMgmt bool,
-	oldACLs []types.ACE, newACLs []types.ACE, ipVer int, bridgeIP string,
+	oldACLs []types.ACE, newACLs []types.ACE, bridgeIP string,
 	appIP string) error {
 
 	if debug {
 		log.Printf("updateACLConfiglet: bridgeName %s, vifName %s, appIP %s, oldACLs %v newACLs %v\n",
 			bridgeName, vifName, appIP, oldACLs, newACLs)
 	}
+	ipVer := determineIpVer(isMgmt, bridgeIP)
 	oldRules, err := aclToRules(bridgeName, vifName, oldACLs, ipVer,
 		bridgeIP, appIP)
 	if err != nil {
@@ -807,12 +830,13 @@ func applyACLUpdate(isMgmt bool, ipVer int, vifName string, appIP string,
 }
 
 func deleteACLConfiglet(bridgeName string, vifName string, isMgmt bool,
-	ACLs []types.ACE, ipVer int, bridgeIP string, appIP string) error {
+	ACLs []types.ACE, bridgeIP string, appIP string) error {
 
 	if debug {
 		log.Printf("deleteACLConfiglet: ifname %s `ACLs %v\n",
 			bridgeName, vifName, ACLs)
 	}
+	ipVer := determineIpVer(isMgmt, bridgeIP)
 	rules, err := aclToRules(bridgeName, vifName, ACLs, ipVer,
 		bridgeIP, appIP)
 	if err != nil {
