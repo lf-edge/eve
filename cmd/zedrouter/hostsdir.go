@@ -15,15 +15,15 @@ import (
 
 // Create the hosts file for the overlay DNS resolution
 // Would be more polite to return an error then to Fatal
-func createHostsConfiglet(cfgDirname string, nameToEidList []types.NameToEid) {
+func createHostsConfiglet(cfgDirname string, nameToIPList []types.DnsNameToIP) {
 	if debug {
-		log.Printf("createHostsConfiglet: dir %s nameToEidList %v\n",
-			cfgDirname, nameToEidList)
+		log.Printf("createHostsConfiglet: dir %s nameToIPList %v\n",
+			cfgDirname, nameToIPList)
 	}
 	ensureDir(cfgDirname)
 
-	for _, ne := range nameToEidList {
-		addIPToHostsConfiglet(cfgDirname, ne.HostName, ne.EIDs)
+	for _, ne := range nameToIPList {
+		addIPToHostsConfiglet(cfgDirname, ne.HostName, ne.IPs)
 	}
 }
 
@@ -72,8 +72,8 @@ func removeFromHostsConfiglet(cfgDirname string, hostname string) {
 	}
 }
 
-func containsHostName(nameToEidList []types.NameToEid, hostname string) bool {
-	for _, ne := range nameToEidList {
+func containsHostName(nameToIPList []types.DnsNameToIP, hostname string) bool {
+	for _, ne := range nameToIPList {
 		if hostname == ne.HostName {
 			return true
 		}
@@ -81,10 +81,10 @@ func containsHostName(nameToEidList []types.NameToEid, hostname string) bool {
 	return false
 }
 
-func containsEID(nameToEidList []types.NameToEid, EID net.IP) bool {
-	for _, ne := range nameToEidList {
-		for _, eid := range ne.EIDs {
-			if eid.Equal(EID) {
+func containsIP(nameToIPList []types.DnsNameToIP, ip net.IP) bool {
+	for _, ne := range nameToIPList {
+		for _, i := range ne.IPs {
+			if i.Equal(ip) {
 				return true
 			}
 		}
@@ -93,14 +93,14 @@ func containsEID(nameToEidList []types.NameToEid, EID net.IP) bool {
 }
 
 func updateHostsConfiglet(cfgDirname string,
-	oldNameToEidList []types.NameToEid, newNameToEidList []types.NameToEid) {
+	oldList []types.DnsNameToIP, newList []types.DnsNameToIP) {
 	if debug {
 		log.Printf("updateHostsConfiglet: dir %s old %v, new %v\n",
-			cfgDirname, oldNameToEidList, newNameToEidList)
+			cfgDirname, oldList, newList)
 	}
 	// Look for hosts which should be deleted
-	for _, ne := range oldNameToEidList {
-		if !containsHostName(newNameToEidList, ne.HostName) {
+	for _, ne := range oldList {
+		if !containsHostName(newList, ne.HostName) {
 			cfgPathname := cfgDirname + "/" + ne.HostName
 			if err := os.Remove(cfgPathname); err != nil {
 				log.Println("updateHostsConfiglet: ", err)
@@ -108,16 +108,16 @@ func updateHostsConfiglet(cfgDirname string,
 		}
 	}
 
-	for _, ne := range newNameToEidList {
+	for _, ne := range newList {
 		cfgPathname := cfgDirname + "/" + ne.HostName
 		file, err := os.Create(cfgPathname)
 		if err != nil {
 			log.Fatal(err)
 		}
 		defer file.Close()
-		for _, eid := range ne.EIDs {
+		for _, ip := range ne.IPs {
 			file.WriteString(fmt.Sprintf("%s	%s\n",
-				eid, ne.HostName))
+				ip, ne.HostName))
 		}
 	}
 }

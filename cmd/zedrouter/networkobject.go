@@ -45,7 +45,7 @@ func handleNetworkObjectCreate(ctx *zedrouterContext, key string, config types.N
 	status := types.NetworkObjectStatus{
 		NetworkObjectConfig: config,
 		IPAssignments:       make(map[string]net.IP),
-		DnsNameToIPList:     config.ZedServConfig.NameToEidList,
+		DnsNameToIPList:     config.DnsNameToIPList,
 	}
 	status.PendingAdd = true
 	publishNetworkObjectStatus(ctx, &status)
@@ -143,12 +143,6 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 	if err := setBridgeIPAddr(ctx, status); err != nil {
 		return err
 	}
-	// Should be ensured by setBridgeIPAddr
-	if status.BridgeIPAddr == "" {
-		errStr := fmt.Sprintf("No BridgeIPAddr on %s",
-			bridgeName)
-		return errors.New(errStr)
-	}
 
 	// Create a hosts directory for the new bridge
 	// Directory is /var/run/zedrouter/hosts.${BRIDGENAME}
@@ -166,16 +160,26 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 	deleteDnsmasqConfiglet(bridgeName)
 	stopDnsmasq(bridgeName, false)
 
-	// No need to pass any ipsets, since the network is created before
-	// the applications which use it.
-	createDnsmasqConfiglet(bridgeName, status.BridgeIPAddr, &config,
-		hostsDirpath, nil)
-	startDnsmasq(bridgeName)
+	if status.BridgeIPAddr != "" {
+		// No need to pass any ipsets, since the network is created
+		// before the applications which use it.
+		createDnsmasqConfiglet(bridgeName, status.BridgeIPAddr, &config,
+			hostsDirpath, nil)
+		startDnsmasq(bridgeName)
+	}
 
-	// For IPv6 and LISP, but LISP will become a service
-	isIPv6 := false
-	if config.Subnet.IP != nil {
-		isIPv6 = (config.Subnet.IP.To4() == nil)
+	var isIPv6 bool
+	switch config.Type {
+	case types.NT_IPV4:
+		isIPv6 = false
+	case types.NT_IPV6:
+		isIPv6 = true
+	case types.NT_CryptoEID:
+		if config.Subnet.IP != nil {
+			isIPv6 = (config.Subnet.IP.To4() == nil)
+		} else {
+			isIPv6 = true
+		}
 	}
 	if isIPv6 {
 		// XXX do we need same logic as for IPv4 dnsmasq to not
@@ -235,9 +239,9 @@ func setBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) e
 	// Unlike bridge service Lisp will not need a service now for generating ip address.
 	// Hence, cannot move this check into the previous service type check.
 	// We check for network type here.
+	// XXX IPv4 EIDs if netconfig.Addr is IPv4
 	if status.Type == types.NT_CryptoEID {
 		ipAddr = "fd00::" + strconv.FormatInt(int64(status.BridgeNum), 16)
-		ipAddr += "/128"
 		log.Printf("setBridgeIPAddr: Bridge %s assigned IPv6 address %s\n",
 			status.BridgeName, ipAddr)
 	}
@@ -275,27 +279,39 @@ func setBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) e
 		return nil
 	}
 
-	if status.Type != types.NT_CryptoEID {
-		ipAddr += "/24"
+	ip := net.ParseIP(ipAddr)
+	if ip == nil {
+		errStr := fmt.Sprintf("setBridgeIPAddr ParseIP failed for %s: %s",
+			ipAddr, err)
+		log.Println(errStr)
+		return errors.New(errStr)
 	}
-	//    ip addr add ${ipAddr}/24 dev ${bridgeName}
+	isIPv6 := (ip.To4() == nil)
+	var prefixLen int
+	if status.Subnet.IP != nil {
+		prefixLen, _ = status.Subnet.Mask.Size()
+	} else if isIPv6 {
+		prefixLen = 128
+	} else {
+		prefixLen = 24
+	}
+	ipAddr = fmt.Sprintf("%s/%d", ipAddr, prefixLen)
+
+	//    ip addr add ${ipAddr}/N dev ${bridgeName}
 	addr, err := netlink.ParseAddr(ipAddr)
 	if err != nil {
 		errStr := fmt.Sprintf("ParseAddr %s failed: %s", ipAddr, err)
+		log.Println(errStr)
 		return errors.New(errStr)
 	}
 	if err := netlink.AddrAdd(link, addr); err != nil {
 		errStr := fmt.Sprintf("AddrAdd %s failed: %s", ipAddr, err)
+		log.Println(errStr)
 		return errors.New(errStr)
 	}
 
 	// Create new radvd configuration and restart radvd if ipv6
-	// XXX shouldn't do that for IPv4 cryptoEIDs!
-	isIPv6 := false
-	if status.Subnet.IP != nil {
-		isIPv6 = (status.Subnet.IP.To4() == nil)
-	}
-	if (status.Type == types.NT_CryptoEID) || isIPv6 {
+	if isIPv6 {
 		cfgFilename := "radvd." + status.BridgeName + ".conf"
 		cfgPathname := runDirname + "/" + cfgFilename
 
@@ -324,6 +340,7 @@ func lookupOrAllocateIPv4(ctx *zedrouterContext,
 	log.Printf("lookupOrAllocateIPv4 status: %s dhcp %d bridgeName %s Subnet %v range %v-%v\n",
 		status.Key(), status.Dhcp, status.BridgeName,
 		status.Subnet, status.DhcpRange.Start, status.DhcpRange.End)
+
 	if status.Dhcp == types.DT_PASSTHROUGH {
 		// XXX do we have a local IP? If so caller would have found it
 		// Might appear later
@@ -335,7 +352,7 @@ func lookupOrAllocateIPv4(ctx *zedrouterContext,
 			status.Dhcp, status.Key())
 		return "", errors.New(errStr)
 	}
-	// XXX should we fall back to using Subnet?
+
 	if status.DhcpRange.Start == nil {
 		errStr := fmt.Sprintf("no NetworkOjectStatus DhcpRange for %s",
 			status.Key())
@@ -373,6 +390,7 @@ func releaseIPv4(ctx *zedrouterContext,
 	if _, ok := status.IPAssignments[mac.String()]; !ok {
 		errStr := fmt.Sprintf("releaseIPv4: not found %s for %s",
 			mac.String(), status.Key())
+		log.Println(errStr)
 		return errors.New(errStr)
 	}
 	delete(status.IPAssignments, mac.String())
@@ -463,10 +481,28 @@ func networkObjectType(ctx *zedrouterContext, bridgeName string) types.NetworkTy
 func updateBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) {
 	log.Printf("updateBridgeIPAddr(%s)\n", status.Key())
 
+	old := status.BridgeIPAddr
 	err := setBridgeIPAddr(ctx, status)
 	if err != nil {
 		log.Printf("updateBridgeIPAddr: %s\n", err)
 		return
+	}
+	if status.BridgeIPAddr != old && status.BridgeIPAddr != "" {
+		config := lookupNetworkObjectConfig(ctx, status.Key())
+		if config == nil {
+			log.Printf("updateBridgeIPAddr: no config for %s\n",
+				status.Key())
+			return
+		}
+		bridgeName := status.BridgeName
+		deleteDnsmasqConfiglet(bridgeName)
+		stopDnsmasq(bridgeName, false)
+
+		hostsDirpath := globalRunDirname + "/hosts." + bridgeName
+
+		createDnsmasqConfiglet(bridgeName, status.BridgeIPAddr,
+			config, hostsDirpath, status.BridgeIPSets)
+		startDnsmasq(bridgeName)
 	}
 }
 
@@ -506,8 +542,8 @@ func doNetworkDelete(ctx *zedrouterContext,
 			if olStatus.Network != status.UUID {
 				continue
 			}
-			// Destroy EID Ipset
-			deleteEidIpsetConfiglet(olStatus.Vif, true)
+			// Destroy default ipset
+			deleteDefaultIpsetConfiglet(olStatus.Vif, true)
 
 			err := deleteACLConfiglet(olStatus.Bridge,
 				olStatus.Vif, false, olStatus.ACLs, 6,
@@ -547,10 +583,14 @@ func doNetworkDelete(ctx *zedrouterContext,
 
 	// For IPv6 and LISP, but LISP will become a service
 	isIPv6 := false
-	if status.Subnet.IP != nil {
-		isIPv6 = (status.Subnet.IP.To4() == nil)
+	// BridgeIPAddr might not be set
+	if status.BridgeIPAddr != "" {
+		ip := net.ParseIP(status.BridgeIPAddr)
+		if ip != nil {
+			isIPv6 = (ip.To4() == nil)
+		}
 	}
-	if isIPv6 || status.Type == types.NT_CryptoEID {
+	if isIPv6 {
 		// radvd cleanup
 		cfgFilename := "radvd." + bridgeName + ".conf"
 		cfgPathname := runDirname + "/" + cfgFilename

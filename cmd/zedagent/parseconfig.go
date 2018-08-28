@@ -450,8 +450,6 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 		log.Printf("EdgeDevConfig: %v\n", *config)
 	}
 
-	var appInstance = types.AppInstanceConfig{}
-
 	Apps := config.GetApps()
 	h := sha256.New()
 	for _, a := range Apps {
@@ -474,6 +472,8 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 		if debug {
 			log.Printf("New/updated app instance %v\n", cfgApp)
 		}
+		var appInstance types.AppInstanceConfig
+
 		appInstance.UUIDandVersion.UUID, _ = uuid.FromString(cfgApp.Uuidandversion.Uuid)
 		appInstance.UUIDandVersion.Version = cfgApp.Uuidandversion.Version
 		appInstance.DisplayName = cfgApp.Displayname
@@ -682,32 +682,30 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 			}
 			fallthrough
 		case types.NT_CryptoEID:
-			// Parse and store NameToEidList form Network configuration
+			// Parse and store DnsNameToIPList form Network configuration
 			dnsEntries := netEnt.GetDns()
 
-			// Parse and populate the name to EID list
+			// Parse and populate the DnsNameToIP list
 			// This is what we will publish to zedrouter
-			nameToEids := []types.NameToEid{}
+			nameToIPs := []types.DnsNameToIP{}
 			for _, dnsEntry := range dnsEntries {
 				hostName := dnsEntry.HostName
 
-				eids := []net.IP{}
+				ips := []net.IP{}
 				for _, strAddr := range dnsEntry.Address {
-					eid := net.ParseIP(strAddr)
-					if eid != nil {
-						eids = append(eids, eid)
+					ip := net.ParseIP(strAddr)
+					if ip != nil {
+						ips = append(ips, ip)
 					}
 				}
 
-				nameToEid := types.NameToEid{
+				nameToIP := types.DnsNameToIP{
 					HostName: hostName,
-					EIDs:     eids,
+					IPs:      ips,
 				}
-				nameToEids = append(nameToEids, nameToEid)
+				nameToIPs = append(nameToIPs, nameToIP)
 			}
-			config.ZedServConfig = types.ZedServerConfig{
-				NameToEidList: nameToEids,
-			}
+			config.DnsNameToIPList = nameToIPs
 		default:
 			log.Printf("publishNetworkObjectConfig: Unknown NetworkConfig type %d for %s in %v; ignored\n",
 				config.Type, id.String(), netEnt)
@@ -860,47 +858,13 @@ func parseAppNetworkConfig(appInstance *types.AppInstanceConfig,
 	cfgApp *zconfig.AppInstanceConfig,
 	cfgNetworks []*zconfig.NetworkConfig) {
 
-	log.Printf("parseAppNetworkConfig: %v\n", cfgNetworks)
-	var ulMaxIdx int = 0
-	var olMaxIdx int = 0
-
-	// count the interfaces and allocate
-	for _, intfEnt := range cfgApp.Interfaces {
-		netEnt := lookupNetworkId(intfEnt.NetworkId, cfgNetworks)
-		if netEnt == nil {
-			log.Printf("parseAppNetworkConfig: Can't find network id %s; ignored\n",
-				intfEnt.NetworkId)
-			continue
-		}
-		switch netEnt.Type {
-		// underlay interface
-		case zconfig.NetworkType_V4, zconfig.NetworkType_V6:
-			ulMaxIdx++
-		case zconfig.NetworkType_CryptoEID:
-			olMaxIdx++
-
-			// XXX turned LISP into a service?? What happens to overlay config?
-		}
-	}
-
-	if ulMaxIdx != 0 {
-		log.Printf("parseAppNetworkConfig: %d underlays\n", ulMaxIdx)
-		appInstance.UnderlayNetworkList = make([]types.UnderlayNetworkConfig, ulMaxIdx)
-		parseUnderlayNetworkConfig(appInstance, cfgApp, cfgNetworks)
-	}
-
-	if olMaxIdx != 0 {
-		log.Printf("parseAppNetworkConfig: %d overlays\n", olMaxIdx)
-		appInstance.OverlayNetworkList = make([]types.EIDOverlayConfig, olMaxIdx)
-		parseOverlayNetworkConfig(appInstance, cfgApp, cfgNetworks)
-	}
+	parseUnderlayNetworkConfig(appInstance, cfgApp, cfgNetworks)
+	parseOverlayNetworkConfig(appInstance, cfgApp, cfgNetworks)
 }
 
 func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
 	cfgApp *zconfig.AppInstanceConfig,
 	cfgNetworks []*zconfig.NetworkConfig) {
-
-	var ulIdx int = 0
 
 	for _, intfEnt := range cfgApp.Interfaces {
 		netEnt := lookupNetworkId(intfEnt.NetworkId, cfgNetworks)
@@ -911,7 +875,7 @@ func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
 		}
 		uuid, err := uuid.FromString(netEnt.Id)
 		if err != nil {
-			log.Printf("UnderlayNetworkConfig: Malformed UUID %s ignored: %s\n",
+			log.Printf("parseUnderlayNetworkConfig: Malformed UUID %s ignored: %s\n",
 				netEnt.Id, err)
 			continue
 		}
@@ -921,6 +885,8 @@ func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
 		default:
 			continue
 		}
+		log.Printf("parseUnderlayNetworkConfig: app %v net %v type %v\n",
+			cfgApp.Displayname, uuid.String(), netEnt.Type)
 
 		ulCfg := new(types.UnderlayNetworkConfig)
 		ulCfg.Network = uuid
@@ -977,15 +943,14 @@ func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
 			}
 			ulCfg.ACLs[aclIdx] = *aclCfg
 		}
-		appInstance.UnderlayNetworkList[ulIdx] = *ulCfg
-		ulIdx++
+		appInstance.UnderlayNetworkList = append(appInstance.UnderlayNetworkList,
+			*ulCfg)
 	}
 }
 
 func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 	cfgApp *zconfig.AppInstanceConfig,
 	cfgNetworks []*zconfig.NetworkConfig) {
-	var olIdx int = 0
 
 	for _, intfEnt := range cfgApp.Interfaces {
 		netEnt := lookupNetworkId(intfEnt.NetworkId, cfgNetworks)
@@ -994,20 +959,19 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 				intfEnt.NetworkId)
 			continue
 		}
-		if netEnt.Type != zconfig.NetworkType_CryptoEID {
-			continue
-		}
 		uuid, err := uuid.FromString(netEnt.Id)
 		if err != nil {
-			log.Printf("OverlayNetworkConfig: Malformed UUID ignored: %s\n",
+			log.Printf("parseOverlayNetworkConfig: Malformed UUID ignored: %s\n",
 				err)
 			continue
 		}
-
-		// XXX turn LISP into a service?? What happens to overlay config?
+		if netEnt.Type != zconfig.NetworkType_CryptoEID {
+			continue
+		}
+		log.Printf("parseOverlayNetworkConfig: app %v net %v type %v\n",
+			cfgApp.Displayname, uuid.String(), netEnt.Type)
 
 		olCfg := new(types.EIDOverlayConfig)
-		olCfg.ACLs = make([]types.ACE, len(intfEnt.Acls))
 		olCfg.Network = uuid
 		if intfEnt.MacAddress != "" {
 			olCfg.AppMacAddr, err = net.ParseMAC(intfEnt.MacAddress)
@@ -1017,6 +981,9 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 				// XXX report error?
 			}
 		}
+		// XXX insert static IPv4 EID based on new intfEnt.EIDv4?
+
+		olCfg.ACLs = make([]types.ACE, len(intfEnt.Acls))
 		for aclIdx, acl := range intfEnt.Acls {
 			aclCfg := new(types.ACE)
 			aclCfg.Matches = make([]types.ACEMatch,
@@ -1048,9 +1015,8 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 		olCfg.EIDConfigDetails.PemCert = intfEnt.Pemcert
 		olCfg.EIDConfigDetails.PemPrivateKey = intfEnt.Pemprivatekey
 
-		// XXX lisp needs to come from the service somehow
-		appInstance.OverlayNetworkList[olIdx] = *olCfg
-		olIdx++
+		appInstance.OverlayNetworkList = append(appInstance.OverlayNetworkList,
+			*olCfg)
 	}
 }
 
@@ -1294,15 +1260,20 @@ func getCertObjConfig(config *types.CertObjConfig,
 		return
 	}
 
-	// XXX:FIXME dpath/key/pwd from image storage
-	// should be coming from Drive
-	// also the sha for the cert should be set
+	// XXX replace -images with -certs in dpath
+	dpath := strings.Replace(image.Dpath, "-images", "-certs", 1)
+
+	// XXX is the dpath for the image?
+	log.Printf("getCertObjConfig url %s ts %s dpath %s to %s\n", certUrl,
+		image.TransportMethod, image.Dpath, dpath)
+
+	// XXX the sha for the cert should be set
 	// XXX:FIXME hardcoding Size as 100KB
 	var drive = &types.StorageConfig{
 		DownloadURL:     certUrl,
 		Size:            100 * 1024,
 		TransportMethod: image.TransportMethod,
-		Dpath:           "zededa-cert-repo",
+		Dpath:           dpath,
 		ApiKey:          image.ApiKey,
 		Password:        image.Password,
 		ImageSha256:     "",
@@ -1368,7 +1339,6 @@ func createBaseOsConfig(getconfigCtx *getconfigContext, baseOsList []*types.Base
 			log.Printf("createBaseOsConfig update %s %s\n",
 				uuidStr, baseOs.BaseOsVersion)
 			// changed content
-			// XXX switch to Equal?
 			if !reflect.DeepEqual(curBaseOs, baseOs) {
 				publishBaseOsConfig(getconfigCtx, baseOs)
 				if certList[idx] != nil {
@@ -1595,8 +1565,6 @@ func handleExecReboot() {
 }
 
 func execReboot(state bool) {
-
-	// XXX:FIXME perform graceful service stop/ state backup
 
 	// do a sync
 	log.Printf("Doing a sync..\n")

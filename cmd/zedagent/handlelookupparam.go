@@ -34,6 +34,16 @@ const (
 	zedserverConfigFileName = tmpDirname + "/zedserverconfig"
 )
 
+// This is local to handlelookupparam. Used to determine any changes in
+// the device/mgmt LISP config.
+type DeviceLispConfig struct {
+	MapServers      []types.MapServer
+	LispInstance    uint32
+	EID             net.IP
+	DnsNameToIPList []types.DnsNameToIP
+	ClientAddr      string // To detect NATs
+}
+
 // Assumes the config files are in identityDirname, which is /config. Files are:
 //  device.cert.pem,
 //  device.key.pem		Device certificate/key created before this
@@ -47,7 +57,7 @@ const (
 //  /var/tmp/zededa/uuid	Written by us
 //
 var lispPrevConfigHash []byte
-var prevDevice types.DeviceDb
+var prevLispConfig DeviceLispConfig
 
 func handleLookupParam(getconfigCtx *getconfigContext,
 	devConfig *zconfig.EdgeDevConfig) {
@@ -55,8 +65,8 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 	// XXX should we handle changes at all? Want to update zedserverconfig
 	// and eids for ACLs.
 
-	//Fill DeviceDb struct with LispInfo config...
-	var device = types.DeviceDb{}
+	//Fill DeviceLispConfig struct with LispInfo config...
+	var lispConfig = DeviceLispConfig{}
 
 	if debug {
 		log.Printf("handleLookupParam got config %v\n", devConfig)
@@ -71,59 +81,56 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 	lispPrevConfigHash = configHash
 
 	if same {
-		// We normally don't his this since the order in
-		// the NameToEidList from the prot.Encode is random.
+		// We normally don't hit this since the order in
+		// the DnsNameToIPList from the proto.Encode is random.
 		// Hence we check again after sorting.
 		if debug {
 			log.Printf("handleLookupParam: lispInfo sha is unchanged\n")
 		}
 		return
 	}
-	device.LispInstance = lispInfo.LispInstance
-	device.EID = net.ParseIP(lispInfo.EID)
-	device.EIDHashLen = uint8(lispInfo.EIDHashLen)
-	device.EidAllocationPrefix = lispInfo.EidAllocationPrefix
-	device.EidAllocationPrefixLen = int(lispInfo.EidAllocationPrefixLen)
-	device.ClientAddr = lispInfo.ClientAddr
-	device.LispMapServers = make([]types.LispServerInfo, len(lispInfo.LispMapServers))
+	lispConfig.LispInstance = lispInfo.LispInstance
+	lispConfig.EID = net.ParseIP(lispInfo.EID)
+	lispConfig.ClientAddr = lispInfo.ClientAddr
+	lispConfig.MapServers = make([]types.MapServer, len(lispInfo.LispMapServers))
 	var lmsx int = 0
 	for _, lms := range lispInfo.LispMapServers {
 
-		lispServerDetail := new(types.LispServerInfo)
-		lispServerDetail.NameOrIp = lms.NameOrIp
-		lispServerDetail.Credential = lms.Credential
-		device.LispMapServers[lmsx] = *lispServerDetail
+		mapServer := new(types.MapServer)
+		mapServer.ServiceType = types.MST_MAPSERVER
+		mapServer.NameOrIp = lms.NameOrIp
+		mapServer.Credential = lms.Credential
+		lispConfig.MapServers[lmsx] = *mapServer
 		lmsx++
 	}
-	device.ZedServers.NameToEidList = make([]types.NameToEid, len(lispInfo.ZedServers))
+	lispConfig.DnsNameToIPList = make([]types.DnsNameToIP,
+		len(lispInfo.ZedServers))
 	var zsx int = 0
 	for _, zs := range lispInfo.ZedServers {
 
-		nameToEidInfo := new(types.NameToEid)
-		nameToEidInfo.HostName = zs.HostName
-		nameToEidInfo.EIDs = make([]net.IP, len(zs.EID))
-		var eidx int = 0
-		for _, eid := range zs.EID {
-			nameToEidInfo.EIDs[eidx] = net.ParseIP(eid)
-			eidx++
+		nameToIP := new(types.DnsNameToIP)
+		nameToIP.HostName = zs.HostName
+		nameToIP.IPs = make([]net.IP, len(zs.EID))
+		for i, ip := range zs.EID {
+			nameToIP.IPs[i] = net.ParseIP(ip)
 		}
-		device.ZedServers.NameToEidList[zsx] = *nameToEidInfo
+		lispConfig.DnsNameToIPList[zsx] = *nameToIP
 		zsx++
 	}
 
-	// compare device against a prevDevice
-	sort.Slice(device.ZedServers.NameToEidList[:],
+	// compare lispConfig against a prevLispConfig
+	sort.Slice(lispConfig.DnsNameToIPList[:],
 		func(i, j int) bool {
-			return device.ZedServers.NameToEidList[i].HostName <
-				device.ZedServers.NameToEidList[j].HostName
+			return lispConfig.DnsNameToIPList[i].HostName <
+				lispConfig.DnsNameToIPList[j].HostName
 		})
-	if reflect.DeepEqual(prevDevice, device) {
+	if reflect.DeepEqual(prevLispConfig, lispConfig) {
 		if debug {
 			log.Printf("handleLookupParam: sorted lispInfo is unchanged\n")
 		}
 		return
 	}
-	prevDevice = device
+	prevLispConfig = lispConfig
 
 	log.Printf("handleLookupParam: updated lispInfo %v\n", lispInfo)
 
@@ -156,21 +163,17 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 	}
 
 	// If we got a StatusNotFound the EID will be zero
-	if device.EID == nil {
+	if lispConfig.EID == nil {
 		log.Printf("Did not receive an EID\n")
 		os.Remove(zedserverConfigFileName)
 		return
 	}
 
-	// XXX add Redirect support and store + retry
-	// XXX try redirected once and then fall back to original; repeat
-	// XXX once redirect successful, then save server and rootCert
-
 	// Convert from IID and IPv6 EID to a string with
 	// [iid]eid, where the eid uses the textual format defined in
 	// RFC 5952. The iid is printed as an integer.
 	sigdata := fmt.Sprintf("[%d]%s",
-		device.LispInstance, device.EID.String())
+		lispConfig.LispInstance, lispConfig.EID.String())
 	if debug {
 		log.Printf("sigdata (len %d) %s\n", len(sigdata), sigdata)
 	}
@@ -207,11 +210,9 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 		}
 	}
 	if debug {
-		log.Printf("UserName %s\n", device.UserName)
-		log.Printf("MapServers %s\n", device.LispMapServers)
-		log.Printf("Lisp IID %d\n", device.LispInstance)
-		log.Printf("EID %s\n", device.EID)
-		log.Printf("EID hash length %d\n", device.EIDHashLen)
+		log.Printf("MapServers %s\n", lispConfig.MapServers)
+		log.Printf("Lisp IID %d\n", lispConfig.LispInstance)
+		log.Printf("EID %s\n", lispConfig.EID)
 	}
 	// write zedserverconfig file with hostname to EID mappings
 	f, err := os.Create(zedserverConfigFileName)
@@ -219,10 +220,10 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 		log.Fatal(err)
 	}
 	defer f.Close()
-	for _, ne := range device.ZedServers.NameToEidList {
-		for _, eid := range ne.EIDs {
+	for _, ne := range lispConfig.DnsNameToIPList {
+		for _, ip := range ne.IPs {
 			output := fmt.Sprintf("%-46v %s\n",
-				eid, ne.HostName)
+				ip, ne.HostName)
 			_, err := f.WriteString(output)
 			if err != nil {
 				log.Fatal(err)
@@ -232,9 +233,9 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 	f.Sync()
 
 	// Determine whether NAT is in use
-	if publicIP, err := addrStringToIP(device.ClientAddr); err != nil {
+	if publicIP, err := addrStringToIP(lispConfig.ClientAddr); err != nil {
 		log.Printf("Failed to convert %s, error %s\n",
-			device.ClientAddr, err)
+			lispConfig.ClientAddr, err)
 	} else {
 		nat := !IsMyAddress(publicIP)
 		log.Printf("NAT %v, publicIP %v\n", nat, publicIP)
@@ -254,17 +255,12 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 
 	olconf := make([]types.OverlayNetworkConfig, 1)
 	config.OverlayNetworkList = olconf
-	olconf[0].IID = device.LispInstance
-	olconf[0].EID = device.EID
+	olconf[0].EID = lispConfig.EID
 	olconf[0].LispSignature = signature
 	olconf[0].AdditionalInfoDevice = addInfoDevice
-	olconf[0].NameToEidList = device.ZedServers.NameToEidList
-	lispServers := make([]types.LispServerInfo, len(device.LispMapServers))
-	olconf[0].LispServers = lispServers
-	for count, lispMapServer := range device.LispMapServers {
-		lispServers[count].NameOrIp = lispMapServer.NameOrIp
-		lispServers[count].Credential = lispMapServer.Credential
-	}
+	olconf[0].MgmtIID = lispConfig.LispInstance
+	olconf[0].MgmtDnsNameToIPList = lispConfig.DnsNameToIPList
+	olconf[0].MgmtMapServers = lispConfig.MapServers
 	acl := make([]types.ACE, 1)
 	olconf[0].ACLs = acl
 	matches := make([]types.ACEMatch, 1)
@@ -279,7 +275,7 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 	}
 	publishAppNetworkConfig(getconfigCtx, config)
 
-	// Add NameToEID to /etc/hosts
+	// Add DnsNameToIPList to /etc/hosts
 	cmd := exec.Command("/opt/zededa/bin/handlezedserverconfig.sh")
 	stdout, err := cmd.Output()
 	if err != nil {

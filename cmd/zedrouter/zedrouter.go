@@ -619,10 +619,11 @@ func updateLispConfiglets(ctx *zedrouterContext, separateDataPlane bool) {
 					olIfname, status.IsZedmanager)
 			}
 			createLispConfiglet(lispRunDirname, status.IsZedmanager,
-				olStatus.IID, olStatus.EID, olStatus.LispSignature,
+				olStatus.MgmtIID, olStatus.EID,
+				olStatus.LispSignature,
 				*ctx.DeviceNetworkStatus, olIfname,
 				olIfname, additionalInfo,
-				olStatus.LispServers, separateDataPlane)
+				olStatus.MgmtMapServers, separateDataPlane)
 		}
 	}
 }
@@ -872,21 +873,21 @@ func handleCreate(ctx *zedrouterContext, key string,
 
 		// XXX NOTE: this hosts file is not read!
 		// XXX easier when Zedmanager is in separate domU!
-		// Create a hosts file for the overlay based on NameToEidList
+		// Create a hosts file for the overlay based on DnsNameToIPList
 		// Directory is /var/run/zedrouter/hosts.${OLIFNAME}
 		// Each hostname in a separate file in directory to facilitate
 		// adds and deletes
 		hostsDirpath := globalRunDirname + "/hosts." + olIfname
 		deleteHostsConfiglet(hostsDirpath, false)
-		createHostsConfiglet(hostsDirpath, olConfig.NameToEidList)
+		createHostsConfiglet(hostsDirpath, olConfig.MgmtDnsNameToIPList)
 
-		// Default EID ipset
-		deleteEidIpsetConfiglet(olIfname, false)
-		createEidIpsetConfiglet(olIfname, olConfig.NameToEidList,
+		// Default ipset
+		deleteDefaultIpsetConfiglet(olIfname, false)
+		createDefaultIpsetConfiglet(olIfname, olConfig.MgmtDnsNameToIPList,
 			EID.String())
 
 		// Set up ACLs
-		err = createACLConfiglet(olIfname, "", true, olConfig.ACLs,
+		err = createACLConfiglet(olIfname, olIfname, true, olConfig.ACLs,
 			6, "", "")
 		if err != nil {
 			addError(ctx, &status, "createACL", err)
@@ -894,16 +895,17 @@ func handleCreate(ctx *zedrouterContext, key string,
 
 		// Save information about zedmanger EID and additional info
 		deviceEID = EID
-		deviceIID = olConfig.IID
+		deviceIID = olConfig.MgmtIID
 		additionalInfoDevice = olConfig.AdditionalInfoDevice
 
 		additionalInfo := generateAdditionalInfo(status, olConfig)
 
 		// Create LISP configlets for IID and EID/signature
 		createLispConfiglet(lispRunDirname, config.IsZedmanager,
-			olConfig.IID, olConfig.EID, olConfig.LispSignature,
+			olConfig.MgmtIID, olConfig.EID, olConfig.LispSignature,
 			*ctx.DeviceNetworkStatus, olIfname, olIfname,
-			additionalInfo, olConfig.LispServers, ctx.separateDataPlane)
+			additionalInfo, olConfig.MgmtMapServers,
+			ctx.separateDataPlane)
 		status.OverlayNetworkList = make([]types.OverlayNetworkStatus,
 			len(config.OverlayNetworkList))
 		for i, _ := range config.OverlayNetworkList {
@@ -921,7 +923,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 	// XXX if not, for now just delete status and the periodic walk will
 	// retry
 	allNetworksExist := true
-	for _, olConfig := range config.UnderlayNetworkList {
+	for _, olConfig := range config.OverlayNetworkList {
 		netconfig := lookupNetworkObjectConfig(ctx,
 			olConfig.Network.String())
 		if netconfig != nil {
@@ -1050,15 +1052,15 @@ func handleCreate(ctx *zedrouterContext, key string,
 				errors.New(errStr))
 		}
 
-		// XXX We already do this for the network for over and underlay
-		// Write each EID hostname in a separate file in directory to
+		// Write our EID hostname in a separate file in directory to
 		// facilitate adds and deletes
 		hostsDirpath := globalRunDirname + "/hosts." + bridgeName
-		createHostsConfiglet(hostsDirpath, olConfig.NameToEidList)
+		addToHostsConfiglet(hostsDirpath, config.DisplayName,
+			[]string{EID.String()})
 
-		// Default EID ipset
-		deleteEidIpsetConfiglet(vifName, false)
-		createEidIpsetConfiglet(vifName, olConfig.NameToEidList,
+		// Default ipset
+		deleteDefaultIpsetConfiglet(vifName, false)
+		createDefaultIpsetConfiglet(vifName, netstatus.DnsNameToIPList,
 			EID.String())
 
 		// Set up ACLs
@@ -1075,7 +1077,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 		newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
 			netstatus.BridgeIPSets)
 
-		if restartDnsmasq {
+		if restartDnsmasq && olStatus.BridgeIPAddr != "" {
 			stopDnsmasq(bridgeName, false)
 			createDnsmasqConfiglet(bridgeName,
 				olStatus.BridgeIPAddr, netconfig, hostsDirpath,
@@ -1185,6 +1187,11 @@ func handleCreate(ctx *zedrouterContext, key string,
 				[]string{appIPAddr})
 		}
 
+		// Default ipset
+		deleteDefaultIpsetConfiglet(vifName, false)
+		createDefaultIpsetConfiglet(vifName, netstatus.DnsNameToIPList,
+			appIPAddr)
+
 		// Set up ACLs
 		err = createACLConfiglet(bridgeName, vifName, false,
 			ulConfig.ACLs, 4, bridgeIPAddr, appIPAddr)
@@ -1201,7 +1208,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 		newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
 			netstatus.BridgeIPSets)
 
-		if restartDnsmasq {
+		if restartDnsmasq && ulStatus.BridgeIPAddr != "" {
 			stopDnsmasq(bridgeName, false)
 			createDnsmasqConfiglet(bridgeName,
 				ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
@@ -1244,9 +1251,10 @@ func createAndStartLisp(ctx *zedrouterContext,
 				append(deviceNetworkParams.UplinkStatus, uplink)
 		}
 	}
-	createLispEidConfiglet(lispRunDirname, serviceStatus.LispStatus.IID, olConfig.EID,
-		olConfig.LispSignature, deviceNetworkParams, bridgeName, bridgeName,
-		additionalInfo, olConfig.LispServers, ctx.separateDataPlane)
+	createLispEidConfiglet(lispRunDirname, serviceStatus.LispStatus.IID,
+		olConfig.EID, olConfig.LispSignature, deviceNetworkParams,
+		bridgeName, bridgeName, additionalInfo,
+		serviceStatus.LispStatus.MapServers, ctx.separateDataPlane)
 }
 
 // Returns the link
@@ -1279,13 +1287,8 @@ func getUlAddrs(ctx *zedrouterContext, ifnum int, appNum int,
 
 	log.Printf("getUlAddrs(%d/%d)\n", ifnum, appNum)
 
-	// Default
-	// Not clear how to handle multiple ul from the same appInstance;
-	// use /30 prefix? Require user to pick private addrs?
-	// XXX limited number of ifnums for the default range - just to 27 to 31
-	// XXX remove these defaults
-	bridgeIPAddr := fmt.Sprintf("172.%d.%d.1", 27+ifnum, appNum)
-	appIPAddr := fmt.Sprintf("172.%d.%d.2", 27+ifnum, appNum)
+	bridgeIPAddr := ""
+	appIPAddr := ""
 
 	// Allocate bridgeIPAddr based on BridgeMac
 	log.Printf("getUlAddrs(%d/%d for %s) bridgeMac %s\n",
@@ -1295,7 +1298,6 @@ func getUlAddrs(ctx *zedrouterContext, ifnum int, appNum int,
 		status.BridgeMac)
 	if err != nil {
 		log.Printf("lookupOrAllocatePv4 failed %s\n", err)
-		// Keep above default
 	} else {
 		bridgeIPAddr = addr
 	}
@@ -1307,7 +1309,7 @@ func getUlAddrs(ctx *zedrouterContext, ifnum int, appNum int,
 		// in the same subnet as the static address.
 		appIPAddr = status.AppIPAddr.String()
 	} else {
-		// XXX or change type of VifInfo.Mac?
+		// XXX or change type of VifInfo.Mac to avoid parsing?
 		mac, err := net.ParseMAC(status.Mac)
 		if err != nil {
 			log.Fatal("ParseMAC failed: ", status.Mac, err)
@@ -1317,7 +1319,6 @@ func getUlAddrs(ctx *zedrouterContext, ifnum int, appNum int,
 		addr, err := lookupOrAllocateIPv4(ctx, netstatus, mac)
 		if err != nil {
 			log.Printf("lookupOrAllocateIPv4 failed %s\n", err)
-			// Keep above default
 		} else {
 			appIPAddr = addr
 		}
@@ -1342,7 +1343,7 @@ func appendError(allErrors string, prefix string, lasterr string) string {
 	return fmt.Sprintf("%s%s: %s\n\n", allErrors, prefix, lasterr)
 }
 
-// Note that handleModify will not touch the EID; just ACLs and NameToEidList
+// Note that handleModify will not touch the EID; just ACLs
 // XXX should we check that nothing else has changed?
 // XXX If so flag other changes as errors; would need lastError in status.
 func handleModify(ctx *zedrouterContext, key string,
@@ -1414,17 +1415,8 @@ func handleModify(ctx *zedrouterContext, key string,
 
 		// Note: we ignore olConfig.AppMacAddr for IsMgmt
 
-		// Update hosts; we don't bother to delete stale
-		// XXX would have to look across bridge to delete stale
-		hostsDirpath := globalRunDirname + "/hosts." + olIfname
-		createHostsConfiglet(hostsDirpath, olStatus.NameToEidList)
-
-		// Default EID ipset
-		updateEidIpsetConfiglet(olIfname, olStatus.NameToEidList,
-			olConfig.NameToEidList)
-
 		// Update ACLs
-		err := updateACLConfiglet(olIfname, "", true, olStatus.ACLs,
+		err := updateACLConfiglet(olIfname, olIfname, true, olStatus.ACLs,
 			olConfig.ACLs, 6, "", "")
 		if err != nil {
 			addError(ctx, status, "updateACL", err)
@@ -1441,7 +1433,7 @@ func handleModify(ctx *zedrouterContext, key string,
 	ipsets := compileAppInstanceIpsets(ctx, config.OverlayNetworkList,
 		config.UnderlayNetworkList)
 
-	// Look for ACL and NametoEidList changes in overlay
+	// Look for ACL changes in overlay
 	for i, olConfig := range config.OverlayNetworkList {
 		olNum := i + 1
 		if debug {
@@ -1476,15 +1468,6 @@ func handleModify(ctx *zedrouterContext, key string,
 			continue
 		}
 
-		// Update hosts; we don't bother to delete stale
-		// XXX would have to look across bridge to delete stale
-		hostsDirpath := globalRunDirname + "/hosts." + bridgeName
-		createHostsConfiglet(hostsDirpath, olStatus.NameToEidList)
-
-		// Default EID ipset
-		updateEidIpsetConfiglet(olStatus.Vif, olStatus.NameToEidList,
-			olConfig.NameToEidList)
-
 		// XXX could there be a change to AssignedIPv6Address aka EID?
 		// If so updateACLConfiglet needs to know old and new
 
@@ -1499,7 +1482,8 @@ func handleModify(ctx *zedrouterContext, key string,
 		newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
 			netstatus.BridgeIPSets)
 
-		if restartDnsmasq {
+		if restartDnsmasq && olStatus.BridgeIPAddr != "" {
+			hostsDirpath := globalRunDirname + "/hosts." + bridgeName
 			stopDnsmasq(bridgeName, false)
 			createDnsmasqConfiglet(bridgeName,
 				olStatus.BridgeIPAddr, netconfig, hostsDirpath,
@@ -1531,7 +1515,7 @@ func handleModify(ctx *zedrouterContext, key string,
 			serviceStatus.LispStatus.IID,
 			olConfig.EID, olConfig.LispSignature,
 			*ctx.DeviceNetworkStatus, bridgeName, bridgeName,
-			additionalInfo, olConfig.LispServers,
+			additionalInfo, serviceStatus.LispStatus.MapServers,
 			ctx.separateDataPlane)
 	}
 	// Look for ACL changes in underlay
@@ -1581,7 +1565,7 @@ func handleModify(ctx *zedrouterContext, key string,
 		newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
 			netstatus.BridgeIPSets)
 
-		if restartDnsmasq {
+		if restartDnsmasq && ulStatus.BridgeIPAddr != "" {
 			hostsDirpath := globalRunDirname + "/hosts." + bridgeName
 			stopDnsmasq(bridgeName, false)
 			createDnsmasqConfiglet(bridgeName,
@@ -1731,18 +1715,18 @@ func handleDelete(ctx *zedrouterContext, key string,
 		hostsDirpath := globalRunDirname + "/hosts." + olIfname
 		deleteHostsConfiglet(hostsDirpath, true)
 
-		// Default EID ipset
-		deleteEidIpsetConfiglet(olIfname, true)
+		// Default ipset
+		deleteDefaultIpsetConfiglet(olIfname, true)
 
 		// Delete ACLs
-		err = deleteACLConfiglet(olIfname, "", true, olStatus.ACLs,
+		err = deleteACLConfiglet(olIfname, olIfname, true, olStatus.ACLs,
 			6, "", "")
 		if err != nil {
 			addError(ctx, status, "deleteACL", err)
 		}
 
 		// Delete LISP configlets
-		deleteLispConfiglet(lispRunDirname, true, olStatus.IID,
+		deleteLispConfiglet(lispRunDirname, true, olStatus.MgmtIID,
 			olStatus.EID, *ctx.DeviceNetworkStatus,
 			ctx.separateDataPlane)
 		status.PendingDelete = false
@@ -1809,13 +1793,13 @@ func handleDelete(ctx *zedrouterContext, key string,
 		hostsDirpath := globalRunDirname + "/hosts." + bridgeName
 		removeFromHostsConfiglet(hostsDirpath, status.DisplayName)
 
-		deleteEidIpsetConfiglet(olStatus.Vif, true)
+		deleteDefaultIpsetConfiglet(olStatus.Vif, true)
 
 		// Look for added or deleted ipsets
 		newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
 			netstatus.BridgeIPSets)
 
-		if restartDnsmasq {
+		if restartDnsmasq && olStatus.BridgeIPAddr != "" {
 			stopDnsmasq(bridgeName, false)
 			createDnsmasqConfiglet(bridgeName,
 				olStatus.BridgeIPAddr, netconfig, hostsDirpath,
@@ -1835,7 +1819,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 
 		// Delete LISP configlets
 		deleteLispConfiglet(lispRunDirname, false,
-			olStatus.IID, olStatus.EID,
+			serviceStatus.LispStatus.IID, olStatus.EID,
 			*ctx.DeviceNetworkStatus,
 			ctx.separateDataPlane)
 	}
@@ -1907,7 +1891,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 		newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
 			netstatus.BridgeIPSets)
 
-		if restartDnsmasq {
+		if restartDnsmasq && ulStatus.BridgeIPAddr != "" {
 			stopDnsmasq(bridgeName, false)
 			createDnsmasqConfiglet(bridgeName,
 				ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
