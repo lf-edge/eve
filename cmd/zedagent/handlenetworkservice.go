@@ -16,7 +16,7 @@ import (
 )
 
 func handleNetworkServiceModify(ctxArg interface{}, key string, statusArg interface{}) {
-	log.Printf("handleNetworkServiceCreate(%s)\n", key)
+	log.Printf("handleNetworkServiceStatusModify(%s)\n", key)
 	ctx := ctxArg.(*zedagentContext)
 	status := cast.CastNetworkServiceStatus(statusArg)
 	if status.Key() != key {
@@ -80,10 +80,12 @@ func handleNetworkLispServiceStatusDelete(ctx *zedagentContext, status types.Net
 }
 
 func prepareVpnServiceInfoMsg(ctx *zedagentContext, status types.NetworkServiceStatus, delete bool) {
+	log.Printf("prepareVpnServiceInfoMsg:\n")
 	infoMsg := &zmet.ZInfoMsg{}
 	infoType := new(zmet.ZInfoTypes)
 	// XXX:define in api zmet proto
-	//*infoType = zmet.ZInfoTypes_ZiService 
+	//*infoType = zmet.ZInfoTypes_ZiService
+	*infoType = zmet.ZInfoTypes_ZiHypervisor
 	infoMsg.DevId = *proto.String(zcdevUUID.String())
 	infoMsg.Ztype = *infoType
 
@@ -96,13 +98,12 @@ func prepareVpnServiceInfoMsg(ctx *zedagentContext, status types.NetworkServiceS
 	svcInfo.SoftwareList.SwVersion = vpnStatus.Version
 	upTime, _ := ptypes.TimestampProto(vpnStatus.UpTime)
 	svcInfo.UpTime = upTime
-	svcInfo.SvcErr = make([]*zmet.ErrorInfo, 1)
 	if !status.ErrorTime.IsZero() {
 		errInfo := new(zmet.ErrorInfo)
 		errInfo.Description = status.Error
 		errTime, _ := ptypes.TimestampProto(status.ErrorTime)
 		errInfo.Timestamp = errTime
-		svcInfo.SvcErr[0] = errInfo
+		svcInfo.SvcErr = append(svInfo.SvcErr, errInfo)
 	}
 
 	// this can be multiple of event info messages
@@ -111,10 +112,11 @@ func prepareVpnServiceInfoMsg(ctx *zedagentContext, status types.NetworkServiceS
 		vpnInfo.Id = vpnConn.Id
 		vpnInfo.Name = vpnConn.Name
 		vpnInfo.IkeProposals = vpnConn.Ikes
+		vpnInfo.State = zmet.ZInfoVpnState(types.VPN_INITIAL)
 		if delete == false {
 			vpnInfo.State = zmet.ZInfoVpnState(vpnConn.State)
 		}
-		vpnInfo.State = zmet.ZInfoVpnState(vpnConn.State)
+		vpnInfo.ListeningIpAddrs = make([]string, 1)
 		vpnInfo.ListeningIpAddrs[0] = vpnStatus.IpAddrs
 
 		vpnConnInfo := new(zmet.ZInfoVpnConn)
@@ -135,7 +137,7 @@ func prepareVpnServiceInfoMsg(ctx *zedagentContext, status types.NetworkServiceS
 
 		vpnConnInfo.Link = make([]*zmet.ZInfoVpnLink, 2)
 		vpnConnInfo.Link[0] = localLinkInfo
-		vpnConnInfo.Link[1] = localLinkInfo
+		vpnConnInfo.Link[1] = remoteLinkInfo
 
 		vpnInfo.Conn = make([]*zmet.ZInfoVpnConn, 1)
 		vpnInfo.Conn[0] = vpnConnInfo
@@ -150,19 +152,19 @@ func prepareVpnServiceInfoMsg(ctx *zedagentContext, status types.NetworkServiceS
 		if x, ok := infoMsg.GetInfoContent().(*zmet.ZInfoMsg_Sinfo); ok {
 			x.Sinfo = svcInfo
 		}
-		publishServiceInfo(ctx, infoMsg)
+		publishNetworkServiceInfo(ctx, infoMsg)
 	}
 }
 
-func publishServiceInfo(ctx *zedagentContext, infoMsg *zmet.ZInfoMsg) {
-	publishServiceInfoToZedCloud(infoMsg, ctx.iteration)
+func publishNetworkServiceInfo(ctx *zedagentContext, infoMsg *zmet.ZInfoMsg) {
+	publishNetworkServiceInfoToZedCloud(infoMsg, ctx.iteration)
 	ctx.iteration += 1
 }
 
-func publishServiceInfoToZedCloud(infoMsg *zmet.ZInfoMsg, iteration int) {
-	if debug {
-		log.Printf("publishServiceInfoToZedCloud sending %v\n", infoMsg)
-	}
+func publishNetworkServiceInfoToZedCloud(infoMsg *zmet.ZInfoMsg, iteration int) {
+	//	if debug {
+	log.Printf("publishServiceInfoToZedCloud sending %v\n", infoMsg)
+	//	}
 	data, err := proto.Marshal(infoMsg)
 	if err != nil {
 		log.Fatal("publishServiceInfoToZedCloud proto marshaling error: ", err)

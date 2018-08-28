@@ -54,7 +54,6 @@ func strongswanCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 		log.Printf("%s StrongSwanVpn create\n", err.Error())
 		return err
 	}
-	strongSwanVpnStatusGet(status)
 	return nil
 }
 
@@ -64,14 +63,13 @@ func strongswanDelete(status *types.NetworkServiceStatus) {
 
 	vpnConfig, err := strongSwanVpnStatusParse(status.OpaqueStatus)
 	if err != nil {
-		log.Printf("strongswanDelete config absent")
+		log.Printf("strongswanDelete config absent\n")
 		return
 	}
 
 	if err := strongSwanVpnDelete(vpnConfig); err != nil {
 		log.Printf("%s StrongSwanVpn delete\n", err.Error())
 	}
-	strongSwanVpnStatusGet(status)
 }
 
 func strongswanActivate(config types.NetworkServiceConfig,
@@ -81,7 +79,7 @@ func strongswanActivate(config types.NetworkServiceConfig,
 
 	vpnConfig, err := strongSwanVpnStatusParse(status.OpaqueStatus)
 	if err != nil {
-		log.Printf("StrongSwanVpn config absent")
+		log.Printf("StrongSwanVpn config absent\n")
 		return err
 	}
 
@@ -89,7 +87,6 @@ func strongswanActivate(config types.NetworkServiceConfig,
 		log.Printf("%s StrongSwanVpn activate\n", err.Error())
 		return err
 	}
-	strongSwanVpnStatusGet(status)
 	return nil
 }
 
@@ -99,7 +96,7 @@ func strongswanInactivate(status *types.NetworkServiceStatus,
 	log.Printf("strongswanInactivate(%s)\n", status.DisplayName)
 	vpnConfig, err := strongSwanVpnStatusParse(status.OpaqueStatus)
 	if err != nil {
-		log.Printf("StrongSwanVpn config absent")
+		log.Printf("StrongSwanVpn config absent\n")
 		return
 	}
 
@@ -107,7 +104,6 @@ func strongswanInactivate(status *types.NetworkServiceStatus,
 		log.Printf("%s StrongSwanVpn inactivate\n", err.Error())
 		return
 	}
-	strongSwanVpnStatusGet(status)
 }
 
 // StrongSwan Vpn IpSec Tenneling handler routines
@@ -428,7 +424,9 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 
 func strongSwanVpnStatusParse(opaqueStatus string) (types.VpnServiceConfig, error) {
 
-	log.Printf("strongSwanVpnStatusParse: parsing %s\n", opaqueStatus)
+	if debug {
+		log.Printf("strongSwanVpnStatusParse: parsing %s\n", opaqueStatus)
+	}
 
 	cb := []byte(opaqueStatus)
 	vpnConfig := types.VpnServiceConfig{}
@@ -611,11 +609,12 @@ func strongSwanValidateIpAddr(ipAddr string) error {
 	return nil
 }
 
-func strongSwanVpnStatusGet(status *types.NetworkServiceStatus) {
+func strongSwanVpnStatusGet(status *types.NetworkServiceStatus) bool {
+	change := false
 	vpnConfig, err := strongSwanVpnStatusParse(status.OpaqueStatus)
 	if err != nil {
-		log.Printf("StrongSwanVpn config absent")
-		return
+		log.Printf("StrongSwanVpn config absent\n")
+		return change
 	}
 	vpnStatus := types.ServiceVpnStatus{}
 	ipSecStatusCmdGet(&vpnStatus)
@@ -627,17 +626,21 @@ func strongSwanVpnStatusGet(status *types.NetworkServiceStatus) {
 		vpnStatus.RouteTable = "default"
 	}
 
-	// if tunnel states have changed, update
-	if isVpnStatusChanged(status.VpnStatus, vpnStatus) {
+	// if tunnel state have changed, update
+	if change = isVpnStatusChanged(&status.VpnStatus, &vpnStatus); change == true {
+		if debug {
+			log.Printf("vpn state change:%v\n", vpnStatus)
+		}
 		status.VpnStatus = vpnStatus
 	}
+	return change
 }
 
-func isVpnStatusChanged(oldStatus, newStatus types.ServiceVpnStatus) bool {
+func isVpnStatusChanged(oldStatus, newStatus *types.ServiceVpnStatus) bool {
 
 	if oldStatus.ActiveTunCount != newStatus.ActiveTunCount ||
 		oldStatus.ConnectingTunCount != newStatus.ConnectingTunCount {
-		return true
+		newStatus.StateChange = true
 	}
 	for _, oldConn := range oldStatus.ConnStatus {
 		found := false
@@ -645,31 +648,55 @@ func isVpnStatusChanged(oldStatus, newStatus types.ServiceVpnStatus) bool {
 			if oldConn.Name == newConn.Name &&
 				oldConn.Id == newConn.Id {
 				found = true
+				if ret := matchConnStats(oldConn, newConn); ret == false {
+					newConn.StatsChange = true
+					newStatus.StatsChange = true
+				}
 				if ret := matchConn(oldConn, newConn); ret == false {
-					return true
+					newConn.StateChange = true
+					newStatus.StateChange = true
 				}
 				break
 			}
 		}
 		if found == false {
-			return true
+			newStatus.StateChange = true
 		}
 	}
-	return false
+
+	for _, newConn := range newStatus.ConnStatus {
+		found := false
+		for _, oldConn := range oldStatus.ConnStatus {
+			if oldConn.Name == newConn.Name &&
+				oldConn.Id == newConn.Id {
+				found = true
+				break
+			}
+		}
+		if found == false {
+			newStatus.StateChange = true
+		}
+	}
+	return newStatus.StateChange || newStatus.StatsChange
 }
 
 func matchConn(oldConn, newConn types.VpnConnStatus) bool {
 	if oldConn.State != newConn.State ||
-		oldConn.ReqId != newConn.ReqId {
+		oldConn.ReqId != newConn.ReqId ||
+		oldConn.LocalLink.SpiId != newConn.LocalLink.SpiId ||
+		oldConn.RemoteLink.SpiId != newConn.RemoteLink.SpiId {
+		log.Printf("match failed %v, %v \n", oldConn, newConn)
 		return false
 	}
-	if oldConn.LocalLink.SpiId != newConn.LocalLink.SpiId ||
-		oldConn.LocalLink.BytesCount != newConn.LocalLink.BytesCount ||
+	return true
+}
+
+func matchConnStats(oldConn, newConn types.VpnConnStatus) bool {
+	if oldConn.LocalLink.BytesCount != newConn.LocalLink.BytesCount ||
 		oldConn.LocalLink.PktsCount != newConn.LocalLink.PktsCount {
 		return false
 	}
-	if oldConn.RemoteLink.SpiId != newConn.RemoteLink.SpiId ||
-		oldConn.RemoteLink.BytesCount != newConn.RemoteLink.BytesCount ||
+	if oldConn.RemoteLink.BytesCount != newConn.RemoteLink.BytesCount ||
 		oldConn.RemoteLink.PktsCount != newConn.RemoteLink.PktsCount {
 		return false
 	}
