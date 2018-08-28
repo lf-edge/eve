@@ -1260,15 +1260,20 @@ func getCertObjConfig(config *types.CertObjConfig,
 		return
 	}
 
-	// XXX:FIXME dpath/key/pwd from image storage
-	// should be coming from Drive
-	// also the sha for the cert should be set
+	// XXX replace -images with -certs in dpath
+	dpath := strings.Replace(image.Dpath, "-images", "-certs", 1)
+
+	// XXX is the dpath for the image?
+	log.Printf("getCertObjConfig url %s ts %s dpath %s to %s\n", certUrl,
+		image.TransportMethod, image.Dpath, dpath)
+
+	// XXX the sha for the cert should be set
 	// XXX:FIXME hardcoding Size as 100KB
 	var drive = &types.StorageConfig{
 		DownloadURL:     certUrl,
 		Size:            100 * 1024,
 		TransportMethod: image.TransportMethod,
-		Dpath:           "zededa-cert-repo",
+		Dpath:           dpath,
 		ApiKey:          image.ApiKey,
 		Password:        image.Password,
 		ImageSha256:     "",
