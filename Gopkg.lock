@@ -212,18 +212,18 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:254d71dd792cf2552829046b78906e78e8768f9c4711b9d05dfe29094b785c9d"
+  digest = "1:751dd0422635cf8323fb304ae146059b1daf7309e3264b4b00f6b57712bb35fd"
   name = "github.com/zededa/api"
   packages = [
     "zconfig",
     "zmet",
   ]
   pruneopts = "NUT"
-  revision = "f6b70bdfbd7e616916e3935ad616c8fdcce16371"
+  revision = "6447d2064fc2fceb0a321bb063d7e0e9845b3f36"
 
 [[projects]]
   branch = "master"
-  digest = "1:645a95a6d2877436c026b0c7db2e9f56b4ccbc932e69f2db1eceb6370e46d331"
+  digest = "1:2ea5466a758e076ec17bb98db6a97be1857fcb484a26fe5d8328ba5ec94fe1fe"
   name = "github.com/zededa/shared"
   packages = [
     "libs/zedUpload",
@@ -231,7 +231,7 @@
     "srvs/drona/sftp",
   ]
   pruneopts = "NUT"
-  revision = "674b998714a837c9a854f74ba0d306550ccd5f69"
+  revision = "5b0bb7dbaf18c8653d405dda0dd67bbd83065020"
 
 [[projects]]
   branch = "master"

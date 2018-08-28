@@ -60,6 +60,9 @@ func (ep *SftpTransportMethod) Action(req *DronaRequest) error {
 	}
 
 	req.asize = int64(size)
+	if err != nil {
+		req.status = fmt.Sprintf("%v", err)
+	}
 	return err
 }
 
