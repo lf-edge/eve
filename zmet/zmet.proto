@@ -194,6 +194,7 @@ enum ZInfoVpnState {
   VPN_CONNECTING  = 2;	// Connection is in-progress
   VPN_ESTABLISHED = 3;	// Connection established
   VPN_INSTALLED   = 4;	// SAs/Routes Installed
+  VPN_DELETED     = 5;  // Connection deleted
 }
 
 message ZInfoVpnLink {
