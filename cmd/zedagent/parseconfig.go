@@ -668,7 +668,7 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 			config.Key(), config.Type)
 
 		switch config.Type {
-		case types.NT_IPV4, types.NT_IPV6:
+		case types.NT_IPV4, types.NT_IPV6, types.NT_CryptoEID:
 			ipspec := netEnt.GetIp()
 			if ipspec == nil {
 				log.Printf("publishNetworkObjectConfig: Missing ipspec for %d in %v\n",
@@ -680,8 +680,6 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 				// XXX return how?
 				log.Printf("publishNetworkObjectConfig: parseIpspec failed: %s\n", err)
 			}
-			fallthrough
-		case types.NT_CryptoEID:
 			// Parse and store DnsNameToIPList form Network configuration
 			dnsEntries := netEnt.GetDns()
 
