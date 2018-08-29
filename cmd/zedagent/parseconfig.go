@@ -667,9 +667,9 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 		log.Printf("publishNetworkObjectConfig: processing %s type %d\n",
 			config.Key(), config.Type)
 
+		ipspec := netEnt.GetIp()
 		switch config.Type {
 		case types.NT_IPV4, types.NT_IPV6, types.NT_CryptoEID:
-			ipspec := netEnt.GetIp()
 			if ipspec == nil {
 				log.Printf("publishNetworkObjectConfig: Missing ipspec for %d in %v\n",
 					id.String(), netEnt)
@@ -709,6 +709,38 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 				config.Type, id.String(), netEnt)
 			// XXX return error? Ignore for now
 			continue
+		}
+		// XXX testing hack
+		if forceLisp && config.Type == types.NT_CryptoEID &&
+			ipspec.GetSubnet() == "" && ipspec.GetGateway() == "" &&
+			ipspec.GetDhcpRange() == nil {
+
+			log.Printf("XXX adding cryptoeid IPv4\n")
+			tmp := "224.1.0.0/16"
+			_, subnet, err := net.ParseCIDR(tmp)
+			if err != nil {
+				log.Printf("Failed to parse %s\n", tmp)
+			} else {
+				config.Subnet = *subnet
+			}
+			tmp = "224.1.0.1"
+			config.Gateway = net.ParseIP(tmp)
+			if config.Gateway == nil {
+				log.Printf("Failed to parse %s\n", tmp)
+			}
+			tmp = "224.1.0.2"
+			start := net.ParseIP(tmp)
+			if start == nil {
+				log.Printf("Failed to parse %s\n", tmp)
+			}
+			tmp = "224.1.255.255"
+			end := net.ParseIP(tmp)
+			if end == nil {
+				log.Printf("Failed to parse %s\n", tmp)
+			}
+			config.DhcpRange.Start = start
+			config.DhcpRange.End = end
+			// XXX end testing hack
 		}
 		ctx.pubNetworkObjectConfig.Publish(config.Key(),
 			&config)
