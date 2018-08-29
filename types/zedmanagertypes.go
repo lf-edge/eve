@@ -79,9 +79,14 @@ type AppInstanceStatus struct {
 	UUIDandVersion     UUIDandVersion
 	DisplayName        string
 	Activated          bool
-	ActivateInprogress bool // Needed for cleanup after failure
+	ActivateInprogress bool     // Needed for cleanup after failure
+	FixedResources     VmConfig // CPU etc
 	StorageStatusList  []StorageStatus
 	EIDList            []EIDStatusDetails
+	// Copies of config to determine diffs
+	OverlayNetworkList  []EIDOverlayConfig
+	UnderlayNetworkList []UnderlayNetworkConfig
+	IoAdapterList       []IoAdapter
 	// Mininum state across all steps and all StorageStatus.
 	// INITIAL implies error.
 	State SwState
@@ -159,7 +164,11 @@ func RoundupToKB(b uint64) uint64 {
 
 type StorageStatus struct {
 	DownloadURL        string
-	ImageSha256        string  // sha256 of immutable image
+	ImageSha256        string // sha256 of immutable image
+	ReadOnly           bool
+	Preserve           bool
+	Format             string
+	Devtype            string
 	Target             string  // Default "" is interpreted as "disk"
 	State              SwState // DOWNLOADED etc
 	HasDownloaderRef   bool    // Reference against downloader to clean up
