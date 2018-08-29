@@ -551,7 +551,7 @@ func quantifyChanges(config types.AppInstanceConfig,
 					cmp.Diff(oc.EIDConfigDetails, os.EIDConfigDetails))
 				needPurge = true
 			}
-			if false { // XXX os.AppMacAddr.Equal(oc.AppMacAddr) {
+			if os.AppMacAddr.String() != oc.AppMacAddr.String() {
 				log.Printf("quantifyChanges AppMacAddr changed from %v to %v\n",
 					os.AppMacAddr, oc.AppMacAddr)
 				needPurge = true
@@ -580,7 +580,7 @@ func quantifyChanges(config types.AppInstanceConfig,
 	} else {
 		for i, uc := range config.UnderlayNetworkList {
 			us := status.UnderlayNetworkList[i]
-			if false { // XXX us.AppMacAddr.Equal(uc.AppMacAddr) {
+			if us.AppMacAddr.String() != uc.AppMacAddr.String() {
 				log.Printf("quantifyChanges AppMacAddr changed from %v to %v\n",
 					us.AppMacAddr, uc.AppMacAddr)
 				needPurge = true
