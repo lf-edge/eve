@@ -673,6 +673,10 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 			if ipspec == nil {
 				log.Printf("publishNetworkObjectConfig: Missing ipspec for %d in %v\n",
 					id.String(), netEnt)
+				// XXX hack waiting for cloud
+				if config.Type == types.NT_CryptoEID {
+					break
+				}
 				continue
 			}
 			err := parseIpspec(ipspec, &config)
@@ -680,40 +684,48 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 				// XXX return how?
 				log.Printf("publishNetworkObjectConfig: parseIpspec failed: %s\n", err)
 			}
-			// Parse and store DnsNameToIPList form Network configuration
-			dnsEntries := netEnt.GetDns()
-
-			// Parse and populate the DnsNameToIP list
-			// This is what we will publish to zedrouter
-			nameToIPs := []types.DnsNameToIP{}
-			for _, dnsEntry := range dnsEntries {
-				hostName := dnsEntry.HostName
-
-				ips := []net.IP{}
-				for _, strAddr := range dnsEntry.Address {
-					ip := net.ParseIP(strAddr)
-					if ip != nil {
-						ips = append(ips, ip)
-					}
-				}
-
-				nameToIP := types.DnsNameToIP{
-					HostName: hostName,
-					IPs:      ips,
-				}
-				nameToIPs = append(nameToIPs, nameToIP)
-			}
-			config.DnsNameToIPList = nameToIPs
 		default:
 			log.Printf("publishNetworkObjectConfig: Unknown NetworkConfig type %d for %s in %v; ignored\n",
 				config.Type, id.String(), netEnt)
 			// XXX return error? Ignore for now
 			continue
 		}
+
+		// Parse and store DnsNameToIPList form Network configuration
+		dnsEntries := netEnt.GetDns()
+
+		// Parse and populate the DnsNameToIP list
+		// This is what we will publish to zedrouter
+		nameToIPs := []types.DnsNameToIP{}
+		for _, dnsEntry := range dnsEntries {
+			hostName := dnsEntry.HostName
+
+			ips := []net.IP{}
+			for _, strAddr := range dnsEntry.Address {
+				ip := net.ParseIP(strAddr)
+				if ip != nil {
+					ips = append(ips, ip)
+				}
+			}
+
+			nameToIP := types.DnsNameToIP{
+				HostName: hostName,
+				IPs:      ips,
+			}
+			nameToIPs = append(nameToIPs, nameToIP)
+		}
+		config.DnsNameToIPList = nameToIPs
+
 		// XXX testing hack
+		if forceLisp {
+			log.Printf("XXX forceLisp type %v subnet %v gateway %v dhcprange %v\n",
+				config.Type, ipspec.GetSubnet(),
+				ipspec.GetGateway(), ipspec.GetDhcpRange())
+		}
+		// XXX suspect DhcpRange is not nil but has empty start/end
 		if forceLisp && config.Type == types.NT_CryptoEID &&
-			ipspec.GetSubnet() == "" && ipspec.GetGateway() == "" &&
-			ipspec.GetDhcpRange() == nil {
+			ipspec.GetSubnet() == "" && ipspec.GetGateway() == "" {
+			// XXX add && ipspec.GetDhcpRange() == nil {
 
 			log.Printf("XXX adding cryptoeid IPv4\n")
 			tmp := "224.1.0.0/16"
@@ -740,6 +752,11 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 			}
 			config.DhcpRange.Start = start
 			config.DhcpRange.End = end
+			if config.Dhcp != types.DT_SERVER {
+				log.Printf("XXX forcing DT_SERVER from %v\n",
+					config.Dhcp)
+				config.Dhcp = types.DT_SERVER
+			}
 			// XXX end testing hack
 		}
 		ctx.pubNetworkObjectConfig.Publish(config.Key(),
