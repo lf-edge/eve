@@ -76,9 +76,9 @@ func swanCtlCmdGet(vpnStatus *types.ServiceVpnStatus) {
 		return
 	}
 
-	vpnStatus.ActiveVpnConns = make([]types.VpnConnStatus, vpnStatus.ActiveTunCount)
+	vpnStatus.ActiveVpnConns = make([]*types.VpnConnStatus, vpnStatus.ActiveTunCount)
 	for idx, _ := range vpnStatus.ActiveVpnConns {
-		connStatus := types.VpnConnStatus{}
+		connStatus := new(types.VpnConnStatus)
 		connStatus.Id = swanCtlCmdOut.tunnelList[idx].id
 		connStatus.Name = swanCtlCmdOut.tunnelList[idx].name
 		connStatus.Ikes = swanCtlCmdOut.tunnelList[idx].ikes
@@ -200,11 +200,11 @@ func swanCtlCmdParse(outStr string) swanCtlCmdOut {
 		if len(line) != 0 &&
 			line[0] != ' ' && line[0] != '\t' {
 			swanCtlCmdOut.tunnelList[tunIdx].startLine = idx
-			if tunIdx != 0 {
-				swanCtlCmdOut.tunnelList[tunIdx-1].endLine = cidx
-			}
 			if idx != 0 {
 				cidx = idx - 1
+			}
+			if cidx != 0 {
+				swanCtlCmdOut.tunnelList[tunIdx-1].endLine = cidx
 			}
 			tunIdx++
 		}
@@ -213,6 +213,7 @@ func swanCtlCmdParse(outStr string) swanCtlCmdOut {
 	if tunIdx != 0 {
 		swanCtlCmdOut.tunnelList[tunIdx-1].endLine = idx - 1
 	}
+	log.Printf("tunnel-count:%d\n", tunIdx)
 
 	// fill in the structure, with values
 	for idx, tunnel := range swanCtlCmdOut.tunnelList {
@@ -220,8 +221,9 @@ func swanCtlCmdParse(outStr string) swanCtlCmdOut {
 
 		// get tunnel name, identifier
 		lidx := tunnel.startLine
+		line := outLines[lidx]
+		log.Printf("%d, %s\n", lidx, line)
 		if lidx <= tunnel.endLine && len(outLines[lidx]) != 0 {
-			line := outLines[lidx]
 			outArr := strings.Fields(line)
 			tunnelName := strings.Split(outArr[0], ":")[0]
 			tunnelId := strings.Split(outArr[1], "#")[1]
@@ -232,8 +234,8 @@ func swanCtlCmdParse(outStr string) swanCtlCmdOut {
 
 		// tunnel local ip address
 		lidx++
+		line = outLines[lidx]
 		if lidx <= tunnel.endLine && len(outLines[lidx]) != 0 {
-			line := outLines[lidx]
 			outArr := strings.Fields(line)
 			if outArr[0] == "local" {
 				ipAddr := strings.Split(outArr[1], "'")[1]
@@ -243,8 +245,8 @@ func swanCtlCmdParse(outStr string) swanCtlCmdOut {
 
 		// tunnel remote ip address
 		lidx++
+		line = outLines[lidx]
 		if lidx <= tunnel.endLine && len(outLines[lidx]) != 0 {
-			line := outLines[lidx]
 			outArr := strings.Fields(line)
 			if outArr[0] == "remote" {
 				ipAddr := strings.Split(outArr[1], "'")[1]
@@ -254,16 +256,16 @@ func swanCtlCmdParse(outStr string) swanCtlCmdOut {
 
 		// tunnel ike
 		lidx++
+		line = outLines[lidx]
 		if lidx <= tunnel.endLine && len(outLines[lidx]) != 0 {
-			line := outLines[lidx]
 			outArr := strings.Fields(line)
 			tunnelInfo.ikes = outArr[0]
 		}
 
 		// tunnel up time
 		lidx++
+		line = outLines[lidx]
 		if lidx <= tunnel.endLine && len(outLines[lidx]) != 0 {
-			line := outLines[lidx]
 			outArr := strings.Fields(line)
 			for fidx, field := range outArr {
 				if field == "established" {
@@ -279,9 +281,9 @@ func swanCtlCmdParse(outStr string) swanCtlCmdOut {
 
 		// get tunnel state, reqId
 		lidx++
-		tunnelInfo.state = types.VPN_ESTABLISHED
+		line = outLines[lidx]
 		if lidx <= tunnel.endLine && len(outLines[lidx]) != 0 {
-			line := outLines[lidx]
+			tunnelInfo.state = types.VPN_ESTABLISHED
 			if strings.Contains(line, tunnelInfo.name) &&
 				strings.Contains(line, "INSTALLED") {
 				tunnelInfo.state = types.VPN_INSTALLED
@@ -297,8 +299,8 @@ func swanCtlCmdParse(outStr string) swanCtlCmdOut {
 
 		// installed time and other timing details
 		lidx++
+		line = outLines[lidx]
 		if lidx <= tunnel.endLine && len(outLines[lidx]) != 0 {
-			line := outLines[lidx]
 			outArr := strings.Fields(line)
 			for fidx, field := range outArr {
 				switch field {
@@ -317,8 +319,8 @@ func swanCtlCmdParse(outStr string) swanCtlCmdOut {
 
 		// local ESP-SPI, packet/byte count
 		lidx++
+		line = outLines[lidx]
 		if lidx <= tunnel.endLine && len(outLines[lidx]) != 0 {
-			line := outLines[lidx]
 			outArr := strings.Fields(line)
 			if outArr[0] == "in" {
 				spiId := strings.Split(outArr[1], ",")[0]
@@ -336,8 +338,8 @@ func swanCtlCmdParse(outStr string) swanCtlCmdOut {
 
 		// remote ESP-SPI, packet/byte count
 		lidx++
+		line = outLines[lidx]
 		if lidx <= tunnel.endLine && len(outLines[lidx]) != 0 {
-			line := outLines[lidx]
 			outArr := strings.Fields(line)
 			if outArr[0] == "out" {
 				spiId := strings.Split(outArr[1], ",")[0]
@@ -355,8 +357,8 @@ func swanCtlCmdParse(outStr string) swanCtlCmdOut {
 
 		// local subnet
 		lidx++
+		line = outLines[lidx]
 		if lidx <= tunnel.endLine && len(outLines[lidx]) != 0 {
-			line := outLines[lidx]
 			outArr := strings.Fields(line)
 			if outArr[0] == "local" {
 				tunnelInfo.localLink.SubNet = outArr[1]
@@ -365,8 +367,8 @@ func swanCtlCmdParse(outStr string) swanCtlCmdOut {
 
 		// remote subnet
 		lidx++
+		line = outLines[lidx]
 		if lidx <= tunnel.endLine && len(outLines[lidx]) != 0 {
-			line := outLines[lidx]
 			outArr := strings.Fields(line)
 			if outArr[0] == "remote" {
 				tunnelInfo.remoteLink.SubNet = outArr[1]

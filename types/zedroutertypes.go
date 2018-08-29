@@ -576,7 +576,7 @@ type NetworkServiceStatus struct {
 	// Any errrors from provisioning the service
 	Error     string
 	ErrorTime time.Time
-	VpnStatus ServiceVpnStatus
+	VpnStatus *ServiceVpnStatus
 }
 
 func (status NetworkServiceStatus) Key() string {
@@ -721,7 +721,8 @@ type VpnTunnelConfig struct {
 type VpnState uint8
 
 const (
-	VPN_INITIAL VpnState = iota + 1
+	VPN_INVALID VpnState = iota 
+	VPN_INITIAL
 	VPN_CONNECTING
 	VPN_ESTABLISHED
 	VPN_INSTALLED
@@ -755,10 +756,11 @@ type ServiceVpnStatus struct {
 	RouteTable         string
 	UpTime             time.Time
 	IpAddrs            string // listening ip addresses
-	ActiveVpnConns     []VpnConnStatus
-	StaleVpnConns      []VpnConnStatus
+	ActiveVpnConns     []*VpnConnStatus
+	StaleVpnConns      []*VpnConnStatus
 	ActiveTunCount     uint32
 	ConnectingTunCount uint32
+	PolicyBased        bool
 	StateChange        bool
 	StatsChange        bool
 }

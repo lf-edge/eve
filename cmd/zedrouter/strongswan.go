@@ -97,7 +97,6 @@ func strongswanInactivate(status *types.NetworkServiceStatus,
 	vpnConfig, err := strongSwanVpnStatusParse(status.OpaqueStatus)
 	if err != nil {
 		log.Printf("StrongSwanVpn config absent\n")
-		return
 	}
 
 	if err := strongSwanVpnInactivate(vpnConfig); err != nil {
@@ -616,18 +615,14 @@ func strongSwanVpnStatusGet(status *types.NetworkServiceStatus) bool {
 		log.Printf("StrongSwanVpn config absent\n")
 		return change
 	}
-	vpnStatus := types.ServiceVpnStatus{}
-	ipSecStatusCmdGet(&vpnStatus)
-	swanCtlCmdGet(&vpnStatus)
+	vpnStatus := new(types.ServiceVpnStatus)
+	ipSecStatusCmdGet(vpnStatus)
+	swanCtlCmdGet(vpnStatus)
 
-	if vpnConfig.PolicyBased == true {
-		vpnStatus.RouteTable = "220"
-	} else {
-		vpnStatus.RouteTable = "default"
-	}
+	vpnStatus.PolicyBased = vpnConfig.PolicyBased
 
 	// if tunnel state have changed, update
-	if change = isVpnStatusChanged(&status.VpnStatus, &vpnStatus); change == true {
+	if change = isVpnStatusChanged(status.VpnStatus, vpnStatus); change == true {
 		if debug {
 			log.Printf("vpn state change:%v\n", vpnStatus)
 		}
@@ -637,56 +632,67 @@ func strongSwanVpnStatusGet(status *types.NetworkServiceStatus) bool {
 }
 
 func isVpnStatusChanged(oldStatus, newStatus *types.ServiceVpnStatus) bool {
-
+	if oldStatus == nil {
+		return true
+	}
 	staleConnCount := 0
 	if oldStatus.ActiveTunCount != newStatus.ActiveTunCount ||
 		oldStatus.ConnectingTunCount != newStatus.ConnectingTunCount {
 		newStatus.StateChange = true
 	}
-	for _, oldConn := range oldStatus.ActiveVpnConns {
+	// stale connections
+	for idx, oldConn := range oldStatus.ActiveVpnConns {
 		found := false
 		for _, newConn := range newStatus.ActiveVpnConns {
 			if oldConn.Name == newConn.Name &&
 				oldConn.Id == newConn.Id {
 				found = true
-				if ret := matchConnStats(oldConn, newConn); ret == false {
-					newConn.StatsChange = true
-					newStatus.StatsChange = true
-				}
-				if ret := matchConn(oldConn, newConn); ret == false {
-					newConn.StateChange = true
-					newStatus.StateChange = true
-				}
 				break
 			}
 		}
 		if found == false {
 			newStatus.StateChange = true
-			oldConn.MarkDelete = true
+			oldStatus.ActiveVpnConns[idx].MarkDelete = true
 			staleConnCount++
 		}
 	}
 
-	for _, newConn := range newStatus.ActiveVpnConns {
+	// check for new or, state/stats change
+	for idx, newConn := range newStatus.ActiveVpnConns {
 		found := false
 		for _, oldConn := range oldStatus.ActiveVpnConns {
 			if oldConn.Name == newConn.Name &&
 				oldConn.Id == newConn.Id {
+				if ret := matchConnStats(oldConn, newConn); ret == false {
+					newStatus.ActiveVpnConns[idx].StatsChange = true
+					newStatus.StatsChange = true
+				}
+				if ret := matchConn(oldConn, newConn); ret == false {
+					newStatus.ActiveVpnConns[idx].StateChange = true
+					newStatus.StateChange = true
+				}
 				found = true
 				break
 			}
 		}
+		// new connection
 		if found == false {
+			newStatus.ActiveVpnConns[idx].StatsChange = true
+			newStatus.ActiveVpnConns[idx].StateChange = true
 			newStatus.StateChange = true
+			newStatus.StatsChange = true
 		}
 	}
 
 	if staleConnCount != 0 {
-		newStatus.StaleVpnConns = make([]types.VpnConnStatus, staleConnCount)
+		newStatus.StaleVpnConns = make([]*types.VpnConnStatus, staleConnCount)
 		connIdx := 0
-		for _, conn := range oldStatus.ActiveVpnConns {
-			if conn.MarkDelete == true {
-				conn.State = types.VPN_INITIAL
+		for _, oldConn := range oldStatus.ActiveVpnConns {
+			if oldConn.MarkDelete == true {
+				log.Printf("stale connection:%v\n", oldConn)
+				conn := new(types.VpnConnStatus)
+				conn = oldConn
+				conn.State = types.VPN_INVALID
 				newStatus.StaleVpnConns[connIdx] = conn
 				connIdx++
 			}
@@ -695,18 +701,17 @@ func isVpnStatusChanged(oldStatus, newStatus *types.ServiceVpnStatus) bool {
 	return newStatus.StateChange || newStatus.StatsChange
 }
 
-func matchConn(oldConn, newConn types.VpnConnStatus) bool {
+func matchConn(oldConn, newConn *types.VpnConnStatus) bool {
 	if oldConn.State != newConn.State ||
 		oldConn.ReqId != newConn.ReqId ||
 		oldConn.LocalLink.SpiId != newConn.LocalLink.SpiId ||
 		oldConn.RemoteLink.SpiId != newConn.RemoteLink.SpiId {
-		log.Printf("match failed %v, %v \n", oldConn, newConn)
 		return false
 	}
 	return true
 }
 
-func matchConnStats(oldConn, newConn types.VpnConnStatus) bool {
+func matchConnStats(oldConn, newConn *types.VpnConnStatus) bool {
 	if oldConn.LocalLink.BytesCount != newConn.LocalLink.BytesCount ||
 		oldConn.LocalLink.PktsCount != newConn.LocalLink.PktsCount {
 		return false

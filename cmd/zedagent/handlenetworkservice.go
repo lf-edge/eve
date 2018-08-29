@@ -80,18 +80,22 @@ func handleNetworkLispServiceStatusDelete(ctx *zedagentContext, status types.Net
 }
 
 func prepareVpnServiceInfoMsg(ctx *zedagentContext, status types.NetworkServiceStatus, delete bool) {
+	if status.VpnStatus == nil {
+		log.Printf("vpnStatus is not absent\n")
+		return
+	}
 	published := false
 	infoMsg := &zmet.ZInfoMsg{}
 	infoType := new(zmet.ZInfoTypes)
 	// XXX:define in api zmet proto
-	//*infoType = zmet.ZInfoTypes_ZiService
-	*infoType = zmet.ZInfoTypes_ZiHypervisor
+	*infoType = zmet.ZInfoTypes_ZiService
 	infoMsg.DevId = *proto.String(zcdevUUID.String())
 	infoMsg.Ztype = *infoType
 
+	serviceUUID := status.Key()
 	vpnStatus := status.VpnStatus
 	svcInfo := new(zmet.ZInfoService)
-	svcInfo.ServiceID = status.Key()
+	svcInfo.ServiceID = serviceUUID
 	svcInfo.ServiceName = status.DisplayName
 	svcInfo.ServiceType = uint32(status.Type)
 	svcInfo.SoftwareList = new(zmet.ZInfoSW)
@@ -108,23 +112,25 @@ func prepareVpnServiceInfoMsg(ctx *zedagentContext, status types.NetworkServiceS
 
 	// stale connections
 	for _, vpnConn := range vpnStatus.StaleVpnConns {
-		publishVpnConnection(ctx, vpnStatus, vpnConn, infoMsg, svcInfo)
+		publishVpnConnection(ctx, serviceUUID, vpnStatus,
+			vpnConn, infoMsg, svcInfo)
 		published = true
 	}
 	// active connections
 	for _, vpnConn := range vpnStatus.ActiveVpnConns {
-		publishVpnConnection(ctx, vpnStatus, vpnConn, infoMsg, svcInfo)
+		publishVpnConnection(ctx, serviceUUID, vpnStatus,
+			vpnConn, infoMsg, svcInfo)
 		published = true
 	}
 
 	// if nothing published, publish summary
 	if published == false {
-		publishNetworkServiceInfo(ctx, infoMsg)
+		publishNetworkServiceInfo(ctx, serviceUUID, infoMsg)
 	}
 }
 
-func publishVpnConnection(ctx *zedagentContext,
-	vpnStatus types.ServiceVpnStatus, vpnConn types.VpnConnStatus,
+func publishVpnConnection(ctx *zedagentContext, serviceUUID string,
+	vpnStatus *types.ServiceVpnStatus, vpnConn *types.VpnConnStatus,
 	infoMsg *zmet.ZInfoMsg, svcInfo *zmet.ZInfoService) {
 
 	vpnInfo := new(zmet.ZInfoVpn)
@@ -168,31 +174,30 @@ func publishVpnConnection(ctx *zedagentContext,
 	if x, ok := infoMsg.GetInfoContent().(*zmet.ZInfoMsg_Sinfo); ok {
 		x.Sinfo = svcInfo
 	}
-	publishNetworkServiceInfo(ctx, infoMsg)
+	publishNetworkServiceInfo(ctx, serviceUUID, infoMsg)
 }
 
-func publishNetworkServiceInfo(ctx *zedagentContext, infoMsg *zmet.ZInfoMsg) {
-	publishNetworkServiceInfoToZedCloud(infoMsg, ctx.iteration)
+func publishNetworkServiceInfo(ctx *zedagentContext, serviceUUID string, infoMsg *zmet.ZInfoMsg) {
+	publishNetworkServiceInfoToZedCloud(serviceUUID, infoMsg, ctx.iteration)
 	ctx.iteration += 1
 }
 
-func publishNetworkServiceInfoToZedCloud(infoMsg *zmet.ZInfoMsg, iteration int) {
+func publishNetworkServiceInfoToZedCloud(serviceUUID string, infoMsg *zmet.ZInfoMsg, iteration int) {
 	if debug {
-		log.Printf("publishServiceInfoToZedCloud sending %v\n", infoMsg)
+		log.Printf("publishNetworkServiceInfoToZedCloud sending %v\n", infoMsg)
 	}
-	log.Printf("publishServiceInfoToZedCloud sending %v\n", infoMsg)
+	log.Printf("publishNetworkServiceInfoToZedCloud sending %v\n", infoMsg)
 	data, err := proto.Marshal(infoMsg)
 	if err != nil {
-		log.Fatal("publishServiceInfoToZedCloud proto marshaling error: ", err)
+		log.Fatal("publishNetworkServiceInfoToZedCloud proto marshaling error: ", err)
 	}
-	deviceUUID := zcdevUUID.String()
 	statusUrl := serverName + "/" + statusApi
-	zedcloud.RemoveDeferred(deviceUUID)
+	zedcloud.RemoveDeferred(serviceUUID)
 	err = SendProtobuf(statusUrl, data, iteration)
 	if err != nil {
-		log.Printf("PublishDeviceInfoToZedCloud failed: %s\n", err)
+		log.Printf("publishNetworkServiceInfoToZedCloud failed: %s\n", err)
 		// Try sending later
-		zedcloud.SetDeferred(deviceUUID, data, statusUrl, zedcloudCtx,
+		zedcloud.SetDeferred(serviceUUID, data, statusUrl, zedcloudCtx,
 			true)
 	} else {
 		writeSentDeviceInfoProtoMessage(data)
