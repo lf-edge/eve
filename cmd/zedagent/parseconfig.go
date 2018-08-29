@@ -669,20 +669,25 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 
 		ipspec := netEnt.GetIp()
 		switch config.Type {
-		case types.NT_IPV4, types.NT_IPV6, types.NT_CryptoEID:
+		case types.NT_CryptoEID:
+			// XXX hack waiting for cloud
 			if ipspec == nil {
-				log.Printf("publishNetworkObjectConfig: Missing ipspec for %d in %v\n",
+				log.Printf("XXX CryptoEID publishNetworkObjectConfig: Missing ipspec for %s in %v\n",
 					id.String(), netEnt)
-				// XXX hack waiting for cloud
-				if config.Type == types.NT_CryptoEID {
-					break
-				}
+				break
+			}
+			fallthrough
+		case types.NT_IPV4, types.NT_IPV6:
+			if ipspec == nil {
+				log.Printf("publishNetworkObjectConfig: Missing ipspec for %s in %v\n",
+					id.String(), netEnt)
 				continue
 			}
 			err := parseIpspec(ipspec, &config)
 			if err != nil {
 				// XXX return how?
 				log.Printf("publishNetworkObjectConfig: parseIpspec failed: %s\n", err)
+				continue
 			}
 		default:
 			log.Printf("publishNetworkObjectConfig: Unknown NetworkConfig type %d for %s in %v; ignored\n",
@@ -716,16 +721,9 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 		}
 		config.DnsNameToIPList = nameToIPs
 
-		// XXX testing hack
-		if forceLisp {
-			log.Printf("XXX forceLisp type %v subnet %v gateway %v dhcprange %v\n",
-				config.Type, ipspec.GetSubnet(),
-				ipspec.GetGateway(), ipspec.GetDhcpRange())
-		}
 		// XXX suspect DhcpRange is not nil but has empty start/end
 		if forceLisp && config.Type == types.NT_CryptoEID &&
-			ipspec.GetSubnet() == "" && ipspec.GetGateway() == "" {
-			// XXX add && ipspec.GetDhcpRange() == nil {
+			ipspec == nil {
 
 			log.Printf("XXX adding cryptoeid IPv4\n")
 			tmp := "224.1.0.0/16"
