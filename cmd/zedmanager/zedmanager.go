@@ -556,7 +556,7 @@ func quantifyChanges(config types.AppInstanceConfig,
 					os.AppMacAddr, oc.AppMacAddr)
 				needPurge = true
 			}
-			if os.AppIPAddr.Equal(oc.AppIPAddr) {
+			if !os.AppIPAddr.Equal(oc.AppIPAddr) {
 				log.Printf("quantifyChanges AppIPAddr changed from %v to %v\n",
 					os.AppIPAddr, oc.AppIPAddr)
 				needPurge = true
@@ -585,7 +585,7 @@ func quantifyChanges(config types.AppInstanceConfig,
 					us.AppMacAddr, uc.AppMacAddr)
 				needPurge = true
 			}
-			if us.AppIPAddr.Equal(uc.AppIPAddr) {
+			if !us.AppIPAddr.Equal(uc.AppIPAddr) {
 				log.Printf("quantifyChanges AppIPAddr changed from %v to %v\n",
 					us.AppIPAddr, uc.AppIPAddr)
 				needPurge = true
