@@ -929,9 +929,12 @@ func handleCreate(ctx *zedrouterContext, key string,
 		if netconfig != nil {
 			continue
 		}
-		log.Printf("handleCreate(%v) for %s: missing overlay network %s\n",
-			config.UUIDandVersion, config.DisplayName,
-			olConfig.Network.String())
+		errStr := fmt.Sprintf("Missing overlay network %s for %s/%s",
+			olConfig.Network.String(),
+			config.UUIDandVersion, config.DisplayName)
+		log.Printf("handleCreate failed: %s\n", errStr)
+		addError(ctx, &status, "lookupNetworkObjectStatus",
+			errors.New(errStr))
 		allNetworksExist = false
 	}
 	for _, ulConfig := range config.UnderlayNetworkList {
@@ -940,15 +943,20 @@ func handleCreate(ctx *zedrouterContext, key string,
 		if netconfig != nil {
 			continue
 		}
-		log.Printf("handleCreate(%v) for %s: missing underlay network %s\n",
-			config.UUIDandVersion, config.DisplayName,
-			ulConfig.Network.String())
+		errStr := fmt.Sprintf("Missing underlay network %s for %s/%s",
+			ulConfig.Network.String(),
+			config.UUIDandVersion, config.DisplayName)
+		log.Printf("handleCreate failed: %s\n", errStr)
+		addError(ctx, &status, "lookupNetworkObjectStatus",
+			errors.New(errStr))
 		allNetworksExist = false
 	}
 	if !allNetworksExist {
-		log.Printf("handleCreate(%v) for %s: missing networks XXX defer\n",
+		// XXX would need special logic to retry if the networks
+		// appear later.
+		log.Printf("handleCreate(%v) for %s: missing networks\n",
 			config.UUIDandVersion, config.DisplayName)
-		unpublishAppNetworkStatus(ctx, &status)
+		publishAppNetworkStatus(ctx, &status)
 		return
 	}
 
