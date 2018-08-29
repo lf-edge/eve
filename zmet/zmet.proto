@@ -205,16 +205,21 @@ message ZInfoVpnLink {
 
 message ZInfoVpnConn {
   string reqId = 1;      // tunnel reqest id
-  string routeTable = 2; // "default" or "220" for VTI-based vs. Policy-based IPSEC VPN
+  string routeTable = 2; // deprecated
+  string id = 3;    // connection id
+  string name = 4;  // connection name
+  ZInfoVpnState state = 5; // vpn connection state
+  string ikeProposals = 6; // ike proposals
   repeated ZInfoVpnLink link = 10; // connection details
 }
 
 message ZInfoVpn {
-  string id = 1;	// connection id
-  string name = 2;	// connection name
-  string ikeProposals = 3; // ike proposals
-  ZInfoVpnState state = 4;	// vpn connection state
+  string id = 1;    // deprecated
+  string name = 2;  // depcrecated
+  string ikeProposals = 3; // deprecated
+  ZInfoVpnState state = 4; // deprecated
   repeated string listeningIpAddrs = 5; //listening on
+  bool policyBased = 6; // Policy-based vs. VTI-based IPSEC VPN
   repeated ZInfoVpnConn conn = 10; // Connection Information
 }
 
