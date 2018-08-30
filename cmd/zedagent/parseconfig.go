@@ -729,7 +729,7 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 			ipspec == nil {
 
 			log.Printf("XXX adding cryptoeid IPv4\n")
-			tmp := "224.1.0.0/16"
+			tmp := "240.1.0.0/16"
 			_, subnet, err := net.ParseCIDR(tmp)
 			if err != nil {
 				log.Printf("Failed to parse tmp: %s\n",
@@ -737,17 +737,17 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 			} else {
 				config.Subnet = *subnet
 			}
-			tmp = "224.1.0.1"
+			tmp = "240.1.0.1"
 			config.Gateway = net.ParseIP(tmp)
 			if config.Gateway == nil {
 				log.Printf("Failed to parse %s\n", tmp)
 			}
-			tmp = "224.1.0.2"
+			tmp = "240.1.0.2"
 			start := net.ParseIP(tmp)
 			if start == nil {
 				log.Printf("Failed to parse %s\n", tmp)
 			}
-			tmp = "224.1.255.255"
+			tmp = "240.1.255.255"
 			end := net.ParseIP(tmp)
 			if end == nil {
 				log.Printf("Failed to parse %s\n", tmp)
@@ -1057,7 +1057,7 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 			}
 			// XXX testing hack
 			if forceLisp {
-				appIP := "224.1.0.99"
+				appIP := "240.1.0.99"
 				olCfg.AppIPAddr = net.ParseIP(appIP)
 				log.Printf("XXX Using %s with %s\n",
 					olCfg.AppIPAddr.String(),
