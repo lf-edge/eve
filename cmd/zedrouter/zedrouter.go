@@ -605,20 +605,35 @@ func updateLispConfiglets(ctx *zedrouterContext, separateDataPlane bool) {
 		for i, olStatus := range status.OverlayNetworkList {
 			olNum := i + 1
 			var olIfname string
+			var IID uint32
 			if status.IsZedmanager {
 				olIfname = "dbo" + strconv.Itoa(olNum) + "x" +
 					strconv.Itoa(status.AppNum)
+				IID = olStatus.MgmtIID
 			} else {
 				olIfname = olStatus.Bridge
+				// Need to get the IID from the service
+				serviceStatus := lookupAppLink(ctx, olStatus.Network)
+				if serviceStatus == nil {
+					log.Printf("updateLispConfiglets: Network %s is not attached to any service\n",
+						olStatus.Network.String())
+					continue
+				}
+				if serviceStatus.Activated == false {
+					log.Printf("updateLispConfiglets: Network service %s not activated\n",
+						serviceStatus.Key())
+					continue
+				}
+				IID = serviceStatus.LispStatus.IID
 			}
 			additionalInfo := generateAdditionalInfo(status,
 				olStatus.OverlayNetworkConfig)
 			if debug {
-				log.Printf("updateLispConfiglets for %s isMgmt %v\n",
-					olIfname, status.IsZedmanager)
+				log.Printf("updateLispConfiglets for %s isMgmt %v IID %d\n",
+					olIfname, status.IsZedmanager, IID)
 			}
 			createLispConfiglet(lispRunDirname, status.IsZedmanager,
-				olStatus.MgmtIID, olStatus.EID,
+				IID, olStatus.EID,
 				olStatus.AppIPAddr, olStatus.LispSignature,
 				*ctx.DeviceNetworkStatus, olIfname,
 				olIfname, additionalInfo,
@@ -1123,13 +1138,13 @@ func handleCreate(ctx *zedrouterContext, key string,
 			// Bail now and let the service activation take care of creating
 			// Lisp configlets and re-start lispers.net
 			log.Printf("handleCreate: Network %s is not attached to any service\n",
-				netconfig.Key())
+				olConfig.Network.String())
 			continue
 		}
 		if serviceStatus.Activated == false {
 			// Lisp service is not activate yet. Let the Lisp service activation
 			// code take care of creating the Lisp configlets.
-			log.Printf("handleCreate: Network service %s in not activated.\n",
+			log.Printf("handleCreate: Network service %s not activated\n",
 				serviceStatus.Key())
 			continue
 		}
