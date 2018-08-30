@@ -171,7 +171,7 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	tag string, olIfname string, additionalInfo string,
 	mapservers []types.MapServer, separateDataPlane bool) {
 	if debug {
-		log.Printf("createLispConfiglet: %s %v %d %s %v %s %s %s %s %v\n",
+		log.Printf("createLispConfiglet: %s %v %d %s %v %v %s %s %s %v\n",
 			lispRunDirname, isMgmt, IID, EID, lispSignature, globalStatus,
 			tag, olIfname, additionalInfo, mapservers)
 	}
@@ -248,7 +248,7 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 		log.Printf("lisp: EID %s AppIPAddr %s\n",
 			EID.String(), AppIPAddr.String())
 		if AppIPAddr != nil && !EID.Equal(AppIPAddr) {
-			one := fmt.Sprintf("        prefix {\n        instance-id = %d\n        eid-prefix = %s/32        ms-name = ms-%d\n    }\n",
+			one := fmt.Sprintf("    prefix {\n        instance-id = %d\n        eid-prefix = %s/32\n        ms-name = ms-%d\n    }\n",
 				IID, AppIPAddr.String(), IID)
 			rlocString += one
 		}
@@ -267,7 +267,7 @@ func createLispEidConfiglet(lispRunDirname string,
 	tag string, olIfname string, additionalInfo string,
 	mapservers []types.MapServer, separateDataPlane bool) {
 	if debug {
-		log.Printf("createLispConfiglet: %s %d %s %v %s %s %s %s %v\n",
+		log.Printf("createLispEidConfiglet: %s %d %s %v %v %s %s %s %v\n",
 			lispRunDirname, IID, EID, lispSignature, globalStatus,
 			tag, olIfname, additionalInfo, mapservers)
 	}
@@ -316,7 +316,7 @@ func createLispEidConfiglet(lispRunDirname string,
 	log.Printf("lisp: EID %s AppIPAddr %s\n",
 		EID.String(), AppIPAddr.String())
 	if AppIPAddr != nil && !EID.Equal(AppIPAddr) {
-		one := fmt.Sprintf("        prefix {\n        instance-id = %d\n        eid-prefix = %s/32        ms-name = ms-%d\n    }\n",
+		one := fmt.Sprintf("    prefix {\n        instance-id = %d\n        eid-prefix = %s/32\n        ms-name = ms-%d\n    }\n",
 			IID, AppIPAddr.String(), IID)
 		rlocString += one
 	}
@@ -335,7 +335,7 @@ func updateLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	mapservers []types.MapServer,
 	separateDataPlane bool) {
 	if debug {
-		log.Printf("updateLispConfiglet: %s %v %d %s %v %s %s %s %s %v\n",
+		log.Printf("updateLispConfiglet: %s %v %d %s %v %v %s %s %s %v\n",
 			lispRunDirname, isMgmt, IID, EID, lispSignature, globalStatus,
 			tag, olIfname, additionalInfo, mapservers)
 	}
