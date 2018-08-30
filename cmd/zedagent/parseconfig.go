@@ -710,6 +710,9 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 				ip := net.ParseIP(strAddr)
 				if ip != nil {
 					ips = append(ips, ip)
+				} else {
+					log.Printf("Bad dnsEntry %s ignored\n",
+						strAddr)
 				}
 			}
 
@@ -729,7 +732,8 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 			tmp := "224.1.0.0/16"
 			_, subnet, err := net.ParseCIDR(tmp)
 			if err != nil {
-				log.Printf("Failed to parse %s\n", tmp)
+				log.Printf("Failed to parse tmp: %s\n",
+					tmp, err)
 			} else {
 				config.Subnet = *subnet
 			}
@@ -768,41 +772,42 @@ func parseIpspec(ipspec *zconfig.Ipspec, config *types.NetworkObjectConfig) erro
 	if s := ipspec.GetSubnet(); s != "" {
 		_, subnet, err := net.ParseCIDR(s)
 		if err != nil {
-			return err
+			return errors.New(fmt.Sprintf("parseIpspec: bad subnet %s: %s",
+				s, err))
 		}
 		config.Subnet = *subnet
 	}
 	if g := ipspec.GetGateway(); g != "" {
 		config.Gateway = net.ParseIP(g)
 		if config.Gateway == nil {
-			return errors.New(fmt.Sprintf("parseIpspec: bad IP %s",
+			return errors.New(fmt.Sprintf("parseIpspec: bad gateway IP %s",
 				g))
 		}
 	}
 	if n := ipspec.GetNtp(); n != "" {
 		config.NtpServer = net.ParseIP(n)
 		if config.NtpServer == nil {
-			return errors.New(fmt.Sprintf("parseIpspec: bad IP %s",
+			return errors.New(fmt.Sprintf("parseIpspec: bad ntp IP %s",
 				n))
 		}
 	}
 	for _, dsStr := range ipspec.GetDns() {
 		ds := net.ParseIP(dsStr)
 		if ds == nil {
-			return errors.New(fmt.Sprintf("parseIpspec: bad IP %s",
+			return errors.New(fmt.Sprintf("parseIpspec: bad dns IP %s",
 				dsStr))
 		}
 		config.DnsServers = append(config.DnsServers, ds)
 	}
-	if dr := ipspec.GetDhcpRange(); dr != nil {
+	if dr := ipspec.GetDhcpRange(); dr != nil && dr.GetStart() != "" {
 		start := net.ParseIP(dr.GetStart())
 		if start == nil {
-			return errors.New(fmt.Sprintf("parseIpspec: bad IP %s",
+			return errors.New(fmt.Sprintf("parseIpspec: bad start IP %s",
 				dr.GetStart()))
 		}
 		end := net.ParseIP(dr.GetEnd())
-		if end == nil {
-			return errors.New(fmt.Sprintf("parseIpspec: bad IP %s",
+		if end == nil && dr.GetEnd() != "" {
+			return errors.New(fmt.Sprintf("parseIpspec: bad end IP %s",
 				dr.GetEnd()))
 		}
 		config.DhcpRange.Start = start
@@ -950,7 +955,7 @@ func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
 				intfEnt.Addr)
 			ulCfg.AppIPAddr = net.ParseIP(intfEnt.Addr)
 			if ulCfg.AppIPAddr == nil {
-				log.Printf("parseUnderlayNetworkConfig: bad IP %s\n",
+				log.Printf("parseUnderlayNetworkConfig: bad AppIPAddr %s\n",
 					intfEnt.Addr)
 				// XXX report error?
 			}
@@ -1030,7 +1035,7 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 		if intfEnt.CryptoEid != "" {
 			olCfg.EIDConfigDetails.EID = net.ParseIP(intfEnt.CryptoEid)
 			if olCfg.EIDConfigDetails.EID == nil {
-				log.Printf("parseOverrlayNetworkConfig: bad IP %s\n",
+				log.Printf("parseOverrlayNetworkConfig: bad CryptoEid %s\n",
 					intfEnt.CryptoEid)
 				// XXX report error?
 			}
@@ -1038,7 +1043,7 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 			if intfEnt.Addr != "" {
 				olCfg.AppIPAddr = net.ParseIP(intfEnt.Addr)
 				if olCfg.AppIPAddr == nil {
-					log.Printf("parseOverlayNetworkConfig: bad IP %s\n",
+					log.Printf("parseOverlayNetworkConfig: bad Addr %s\n",
 						intfEnt.Addr)
 					// XXX report error?
 				}
@@ -1046,7 +1051,7 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 		} else if intfEnt.Addr != "" {
 			olCfg.EIDConfigDetails.EID = net.ParseIP(intfEnt.Addr)
 			if olCfg.EIDConfigDetails.EID == nil {
-				log.Printf("parseOverrlayNetworkConfig: bad IP %s\n",
+				log.Printf("parseOverrlayNetworkConfig: bad Addr %s\n",
 					intfEnt.Addr)
 				// XXX report error?
 			}
@@ -1054,7 +1059,7 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 			if forceLisp {
 				appIP := "224.1.0.99"
 				olCfg.AppIPAddr = net.ParseIP(appIP)
-				log.Printf("Using %s with %s\n",
+				log.Printf("XXX Using %s with %s\n",
 					olCfg.AppIPAddr.String(),
 					olCfg.EIDConfigDetails.EID.String())
 			}
