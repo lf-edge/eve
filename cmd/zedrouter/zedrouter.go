@@ -1122,7 +1122,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 			stopDnsmasq(bridgeName, false)
 			createDnsmasqConfiglet(bridgeName,
 				olStatus.BridgeIPAddr, netconfig, hostsDirpath,
-				newIpsets)
+				newIpsets, netstatus.Ipv4Eid)
 			startDnsmasq(bridgeName)
 		}
 		addVifToBridge(netstatus, vifName)
@@ -1255,7 +1255,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 			stopDnsmasq(bridgeName, false)
 			createDnsmasqConfiglet(bridgeName,
 				ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
-				newIpsets)
+				newIpsets, false)
 			startDnsmasq(bridgeName)
 		}
 		addVifToBridge(netstatus, vifName)
@@ -1530,7 +1530,7 @@ func handleModify(ctx *zedrouterContext, key string,
 			stopDnsmasq(bridgeName, false)
 			createDnsmasqConfiglet(bridgeName,
 				olStatus.BridgeIPAddr, netconfig, hostsDirpath,
-				newIpsets)
+				newIpsets, netstatus.Ipv4Eid)
 			startDnsmasq(bridgeName)
 		}
 		removeVifFromBridge(netstatus, olStatus.Vif)
@@ -1613,7 +1613,7 @@ func handleModify(ctx *zedrouterContext, key string,
 			stopDnsmasq(bridgeName, false)
 			createDnsmasqConfiglet(bridgeName,
 				ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
-				newIpsets)
+				newIpsets, false)
 			startDnsmasq(bridgeName)
 		}
 		removeVifFromBridge(netstatus, ulStatus.Vif)
@@ -1846,7 +1846,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 			stopDnsmasq(bridgeName, false)
 			createDnsmasqConfiglet(bridgeName,
 				olStatus.BridgeIPAddr, netconfig, hostsDirpath,
-				newIpsets)
+				newIpsets, netstatus.Ipv4Eid)
 			startDnsmasq(bridgeName)
 		}
 		netstatus.BridgeIPSets = newIpsets
@@ -1938,7 +1938,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 			stopDnsmasq(bridgeName, false)
 			createDnsmasqConfiglet(bridgeName,
 				ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
-				newIpsets)
+				newIpsets, false)
 			startDnsmasq(bridgeName)
 		}
 		netstatus.BridgeIPSets = newIpsets

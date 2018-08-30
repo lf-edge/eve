@@ -49,7 +49,7 @@ func dnsmasqDhcpHostDir(bridgeName string) string {
 // Also called when we need to update the ipsets
 func createDnsmasqConfiglet(bridgeName string, bridgeIPAddr string,
 	netconf *types.NetworkObjectConfig, hostsDir string,
-	ipsets []string) {
+	ipsets []string, Ipv4Eid bool) {
 
 	if debug {
 		log.Printf("createDnsmasqConfiglet: %s netconf %v\n",
@@ -139,6 +139,15 @@ func createDnsmasqConfiglet(bridgeName string, bridgeIPAddr string,
 	}
 	if netconf.Subnet.IP != nil {
 		ipv4Netmask = net.IP(netconf.Subnet.Mask).String()
+	}
+	// Special handling for IPv4 EID case to avoid ARP for EIDs
+	// XXX Ideally we'd also like to send a classless-static-route for
+	// the subnet and not a default route, but at least ubuntu clients
+	// don't handle that. This doesn't work with an all-ones netmask:
+	// dhcp-option=option:classless-static-route,240.1.0.0/16,240.1.0.1
+	if Ipv4Eid {
+		file.WriteString(fmt.Sprintf("dhcp-option=option:netmask,255.255.255.255\n"))
+	} else if netconf.Subnet.IP != nil {
 		file.WriteString(fmt.Sprintf("dhcp-option=option:netmask,%s\n",
 			ipv4Netmask))
 	}

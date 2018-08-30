@@ -164,7 +164,7 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 		// No need to pass any ipsets, since the network is created
 		// before the applications which use it.
 		createDnsmasqConfiglet(bridgeName, status.BridgeIPAddr, &config,
-			hostsDirpath, nil)
+			hostsDirpath, nil, status.Ipv4Eid)
 		startDnsmasq(bridgeName)
 	}
 
@@ -253,6 +253,7 @@ func setBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) e
 			ipAddr = status.Gateway.String()
 			log.Printf("setBridgeIPAddr: Bridge %s assigned IPv4 EID %s\n",
 				status.BridgeName, ipAddr)
+			status.Ipv4Eid = true
 		} else {
 			ipAddr = "fd00::" + strconv.FormatInt(int64(status.BridgeNum), 16)
 			log.Printf("setBridgeIPAddr: Bridge %s assigned IPv6 EID %s\n",
@@ -519,7 +520,8 @@ func updateBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus
 
 		// Use existing BridgeIPSets
 		createDnsmasqConfiglet(bridgeName, status.BridgeIPAddr,
-			config, hostsDirpath, status.BridgeIPSets)
+			config, hostsDirpath, status.BridgeIPSets,
+			status.Ipv4Eid)
 		startDnsmasq(bridgeName)
 	}
 }
