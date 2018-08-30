@@ -522,6 +522,8 @@ type NetworkObjectStatus struct {
 	// Set of vifs on this bridge
 	VifNames []string
 
+	Ipv4Eid	 bool   // Track if this is a CryptoEid with IPv4 EIDs
+
 	// Any errrors from provisioning the network
 	Error     string
 	ErrorTime time.Time
