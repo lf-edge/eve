@@ -315,19 +315,19 @@ func aclToRules(bridgeName string, vifName string, ACLs []types.ACE, ipVer int,
 		// Only allow dhcp, dns (tcp/udp), and icmp6/nd
 		// Note that sufficient for src or dst to be local
 		rule1 := []string{"-i", bridgeName, "-m", "set", "--match-set",
-			"local.ipv6", "dst", "-p", "ipv6-icmp", "-j", "ACCEPT"}
+			"ipv6.local", "dst", "-p", "ipv6-icmp", "-j", "ACCEPT"}
 		rule2 := []string{"-i", bridgeName, "-m", "set", "--match-set",
-			"local.ipv6", "src", "-p", "ipv6-icmp", "-j", "ACCEPT"}
+			"ipv6.local", "src", "-p", "ipv6-icmp", "-j", "ACCEPT"}
 		rule3 := []string{"-i", bridgeName, "-d", bridgeIP,
 			"-p", "ipv6-icmp", "-j", "ACCEPT"}
 		rule4 := []string{"-i", bridgeName, "-s", bridgeIP,
 			"-p", "ipv6-icmp", "-j", "ACCEPT"}
 		rulesList = append(rulesList, rule1, rule2, rule3, rule4)
 		rule1 = []string{"-i", bridgeName, "-m", "set", "--match-set",
-			"local.ipv6", "dst", "-p", "udp", "--dport", "dhcpv6-server",
+			"ipv6.local", "dst", "-p", "udp", "--dport", "dhcpv6-server",
 			"-j", "ACCEPT"}
 		rule2 = []string{"-i", bridgeName, "-m", "set", "--match-set",
-			"local.ipv6", "src", "-p", "udp", "--sport", "dhcpv6-server",
+			"ipv6.local", "src", "-p", "udp", "--sport", "dhcpv6-server",
 			"-j", "ACCEPT"}
 		rule3 = []string{"-i", bridgeName, "-d", bridgeIP,
 			"-p", "udp", "--dport", "dhcpv6-server", "-j", "ACCEPT"}
@@ -351,10 +351,10 @@ func aclToRules(bridgeName string, vifName string, ACLs []types.ACE, ipVer int,
 		// Only allow dhcp and dns (tcp/udp)
 		// Note that sufficient for src or dst to be local
 		rule1 := []string{"-i", bridgeName, "-m", "set", "--match-set",
-			"local.ipv4", "dst", "-p", "udp", "--dport", "bootps",
+			"ipv4.local", "dst", "-p", "udp", "--dport", "bootps",
 			"-j", "ACCEPT"}
 		rule2 := []string{"-i", bridgeName, "-m", "set", "--match-set",
-			"local.ipv4", "src", "-p", "udp", "--sport", "bootps",
+			"ipv4.local", "src", "-p", "udp", "--sport", "bootps",
 			"-j", "ACCEPT"}
 		rule3 := []string{"-i", bridgeName, "-d", bridgeIP,
 			"-p", "udp", "--dport", "bootps", "-j", "ACCEPT"}
@@ -439,13 +439,15 @@ func aceToRules(bridgeName string, vifName string, ace types.ACE, ipVer int, bri
 			}
 			// Ensure the sets exists; create if not
 			// need to feed it into dnsmasq as well; restart
-			if err := ipsetCreatePair(match.Value); err != nil {
+			err := ipsetCreatePair(match.Value, "hash:ip")
+			if err != nil {
 				log.Println("ipset create for ",
 					match.Value, err)
 			}
-			if ipVer == 4 {
+			switch ipVer {
+			case 4:
 				ipsetName = "ipv4." + match.Value
-			} else if ipVer == 6 {
+			case 6:
 				ipsetName = "ipv6." + match.Value
 			}
 		case "eidset":
@@ -456,7 +458,12 @@ func aceToRules(bridgeName string, vifName string, ace types.ACE, ipVer int, bri
 				return nil, errors.New(errStr)
 			}
 			// Caller adds any EIDs/IPs to set
-			ipsetName = "eids." + vifName
+			switch ipVer {
+			case 4:
+				ipsetName = "ipv4.eids." + vifName
+			case 6:
+				ipsetName = "ipv6.eids." + vifName
+			}
 		default:
 			errStr := fmt.Sprintf("Unsupported ACE match type: %s",
 				match.Type)
