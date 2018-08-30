@@ -1226,6 +1226,8 @@ func handleCreate(ctx *zedrouterContext, key string,
 		}
 
 		if appIPAddr != "" {
+			// XXX clobber any IPv6 EID entry since same name
+			// but that's probably OK since we're doing IPv4 EIDs
 			addhostDnsmasq(bridgeName, appMac, appIPAddr,
 				config.UUIDandVersion.UUID.String())
 		}

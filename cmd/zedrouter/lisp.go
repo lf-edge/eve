@@ -128,6 +128,7 @@ lisp interface {
 //        address = %s
 //        priority = %d
 // }
+// rlocs could also include additional IPv4 prefix stanzas
 const lispDBtemplate = `
 lisp database-mapping {
     prefix {
@@ -244,6 +245,8 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 			IID, EID, rlocString))
 	} else {
 		// Append to rlocString based on AppIPAddr
+		log.Printf("lisp: EID %s AppIPAddr %s\n",
+			EID.String(), AppIPAddr.String())
 		if AppIPAddr != nil && !EID.Equal(AppIPAddr) {
 			one := fmt.Sprintf("        prefix {\n        instance-id = %d\n        eid-prefix = %s/32        ms-name = ms-%d\n    }\n",
 				IID, AppIPAddr.String(), IID)
@@ -308,6 +311,14 @@ func createLispEidConfiglet(lispRunDirname string,
 			one := fmt.Sprintf("    rloc {\n        address = %s\n        priority = %d\n    }\n", i.Addr, prio)
 			rlocString += one
 		}
+	}
+	// Append to rlocString based on AppIPAddr
+	log.Printf("lisp: EID %s AppIPAddr %s\n",
+		EID.String(), AppIPAddr.String())
+	if AppIPAddr != nil && !EID.Equal(AppIPAddr) {
+		one := fmt.Sprintf("        prefix {\n        instance-id = %d\n        eid-prefix = %s/32        ms-name = ms-%d\n    }\n",
+			IID, AppIPAddr.String(), IID)
+		rlocString += one
 	}
 	file.WriteString(fmt.Sprintf(lispEIDtemplate,
 		tag, lispSignature, tag, additionalInfo, olIfname,
