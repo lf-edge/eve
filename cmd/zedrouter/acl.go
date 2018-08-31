@@ -625,9 +625,12 @@ func aceToRules(bridgeName string, vifName string, ace types.ACE, ipVer int, bri
 }
 
 // Determine which rules to skip and what prefix/table to use
+// We append a '+' to the vifname to handle PV/qemu which for some
+// reason have a second <vifname>-emu bridge interface.
 func rulePrefix(operation string, isMgmt bool, ipVer int, vifName string,
 	appIP string, rule IptablesRule) IptablesRule {
 
+	vifName += "+"
 	prefix := []string{}
 	if isMgmt {
 		// Enforcing sending on OUTPUT. Enforcing receiving
