@@ -12,7 +12,6 @@ import (
 	"github.com/vishvananda/netlink"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/types"
-	"github.com/zededa/go-provision/wrap"
 	"log"
 	"net"
 	"strconv"
@@ -144,15 +143,6 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 		return errors.New(errStr)
 	}
 
-	// Disable redirects for the bridge for IPv4 EID case
-	if status.Ipv4Eid {
-		sc := fmt.Sprintf("net.ipv4.conf.%s.send_redirects=0",
-			bridgeName)
-		_, err = wrap.Command("sysctl", "-w", sc).Output()
-		if err != nil {
-			log.Printf("Failed clearing %s: %s\n", sc, err)
-		}
-	}
 	// Check if we have a bridge service
 	if err := setBridgeIPAddr(ctx, status); err != nil {
 		return err

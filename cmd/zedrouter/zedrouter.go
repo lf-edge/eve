@@ -501,13 +501,6 @@ func handleInit(runDirname string, pubDeviceNetworkStatus *pubsub.Publication) {
 	if err != nil {
 		log.Fatal("Failed setting net.bridge-nf-call-arptables ", err)
 	}
-	// Need to clear this globally and for every IPv4 EID bridge
-	_, err = wrap.Command("sysctl", "-w",
-		"net.ipv4.conf.all.send_redirects=0").Output()
-	if err != nil {
-		log.Fatal("Failed clearing net.ipv4.conf.all.send_redirects ",
-			err)
-	}
 
 	// XXX hack to determine whether a real system or Erik's laptop
 	_, err = wrap.Command("xl", "list").Output()
