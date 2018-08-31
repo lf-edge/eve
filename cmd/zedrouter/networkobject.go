@@ -313,7 +313,9 @@ func setBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) e
 	}
 	isIPv6 := (ip.To4() == nil)
 	var prefixLen int
-	if status.Subnet.IP != nil {
+	if status.Ipv4Eid {
+		prefixLen = 32
+	} else if status.Subnet.IP != nil {
 		prefixLen, _ = status.Subnet.Mask.Size()
 	} else if isIPv6 {
 		prefixLen = 128
@@ -502,7 +504,7 @@ func networkObjectType(ctx *zedrouterContext, bridgeName string) types.NetworkTy
 	return status.Type
 }
 
-// Called from service code when a bridge has been added/updated/deleted
+// Called from service code when a bridge service has been added/updated/deleted
 func updateBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus) {
 	log.Printf("updateBridgeIPAddr(%s)\n", status.Key())
 
