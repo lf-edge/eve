@@ -36,8 +36,8 @@ QEMU_OPTS_aarch64= -machine virt,gic_version=3 -machine virtualization=true -cpu
 QEMU_OPTS_x86_64= -cpu SandyBridge
 QEMU_OPTS_COMMON= -m 4096 -smp 4 -display none -serial mon:stdio -bios ./bios/OVMF.fd \
         -rtc base=utc,clock=rt \
-	-net nic,vlan=0 -net user,id=eth0,vlan=0,net=192.168.1.0/24,dhcpstart=192.168.1.10,hostfwd=tcp::$(SSH_PORT)-:22 \
-	-net nic,vlan=1 -net user,id=eth1,vlan=1,net=192.168.2.0/24,dhcpstart=192.168.2.10
+        -nic user,id=eth0,net=192.168.1.0/24,dhcpstart=192.168.1.10,hostfwd=tcp::$(SSH_PORT)-:22 \
+        -nic user,id=eth1,net=192.168.2.0/24,dhcpstart=192.168.2.10
 QEMU_OPTS=$(QEMU_OPTS_COMMON) $(QEMU_OPTS_$(ZARCH))
 
 DOCKER_UNPACK= _() { C=`docker create $$1 fake` ; docker export $$C | tar -xf - $$2 ; docker rm $$C ; } ; _
