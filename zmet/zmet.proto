@@ -194,35 +194,54 @@ enum ZInfoVpnState {
   VPN_CONNECTING  = 2;	// Connection is in-progress
   VPN_ESTABLISHED = 3;	// Connection established
   VPN_INSTALLED   = 4;	// SAs/Routes Installed
-  VPN_DELETED     = 5;  // Connection deleted
+  VPN_REKEYED     = 5;  // SAs Rekeyed
+  VPN_DELETED     = 10; // Connection deleted
 }
 
+// tunnel link details
+message ZInfoVpnLinkInfo {
+  string spiId = 1;   // Security Parameter Index
+  string subNet = 2;  // Associate Subnet
+  bool direction = 3; // 0 = local, 1 = remote
+}
+
+// Esp details
 message ZInfoVpnLink {
-  string ipAddr = 1;   // End point Ip Address
-  string subNet = 2;   // Associate Subnet
-  string spiId = 3;    // Security Parameter Index
-  bool direction = 4;  // 0 = in, 1 = out
+  string id = 1;       // esp id
+  string name = 2;     // connection name
+  string reqId = 3;    // request id
+  uint64 instTime = 4; // in seconds
+  string espInfo = 5;  // esp info
+  ZInfoVpnState state = 6; // esp state
+  ZInfoVpnLinkInfo lInfo = 10; // local
+  ZInfoVpnLinkInfo rInfo = 11; // remote
 }
 
+// ipsec left/right end-point info
+message ZInfoVpnEndPoint {
+  string id     = 1; // ipSec id
+  string ipAddr = 2; // Ip Address
+  uint32 port   = 3; // udp port
+}
+
+// Ike details
 message ZInfoVpnConn {
-  string reqId = 1;      // tunnel reqest id
-  string routeTable = 2; // deprecated
-  string id = 3;    // connection id
-  string name = 4;  // connection name
-  uint64 estTime = 5;   // in seconds
-  uint64 instTime = 6;  // in seconds
-  ZInfoVpnState state = 7; // vpn connection state
-  string ikeProposals = 8; // ike proposals
-  repeated ZInfoVpnLink link = 10; // connection details
+  string id = 1;      // ike id
+  string name = 2;    // connection name
+  string version = 3; // ike-v1/v2
+  uint64 estTime = 4; // in seconds
+  string ikes = 5;    // ike proposals
+  ZInfoVpnState state = 6; // ike state
+  ZInfoVpnEndPoint lInfo = 7;  // local
+  ZInfoVpnEndPoint rInfo = 8;  // remote
+  repeated ZInfoVpnLink links = 10; // can be more than one
 }
 
+// ipsec level information
 message ZInfoVpn {
-  string id = 1;    // deprecated
-  string name = 2;  // depcrecated
-  string ikeProposals = 3; // deprecated
-  ZInfoVpnState state = 4; // deprecated
-  repeated string listeningIpAddrs = 5; //listening on
-  bool policyBased = 6; // Policy-based vs. VTI-based IPSEC VPN
+  uint64 upTime = 1; // in seconds
+  bool policyBased = 2; // Policy-based vs. VTI-based IPSEC VPN
+  repeated string listeningIpAddrs = 3; //listening on
   repeated ZInfoVpnConn conn = 10; // Connection Information
 }
 
@@ -241,7 +260,6 @@ message DatabaseMap {
 	uint64 IID = 1;
 	repeated MapCacheEntry MapCacheEntries = 2;
 }
-
 
 message DecapKey {
 	string Rloc = 1;
@@ -264,7 +282,7 @@ message ZInfoService {
   uint32 serviceType = 3;
   ZInfoSW softwareList = 4;
   bool activated = 5;
-  google.protobuf.Timestamp upTime = 6;
+  google.protobuf.Timestamp upTimeStamp = 6;
   repeated ZioBundle assignedAdapters = 7;
   repeated ErrorInfo svcErr = 8;
   repeated ZInfoNetwork network = 9;
