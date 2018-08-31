@@ -6,6 +6,8 @@
 package zedrouter
 
 import (
+	"errors"
+	"fmt"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/wrap"
 	"log"
@@ -46,10 +48,10 @@ func createDefaultIpset() {
 // the DnsNameToIPList.
 // Would be more polite to return an error then to Fatal
 func createDefaultIpsetConfiglet(vifname string, nameToIPList []types.DnsNameToIP,
-	myIp string) {
+	appIPAddr string) {
 	if debug {
-		log.Printf("createDefaultIpsetConfiglet: olifName %s nameToIPList %v myIp %s\n",
-			vifname, nameToIPList, myIp)
+		log.Printf("createDefaultIpsetConfiglet: olifName %s nameToIPList %v appIPAddr %s\n",
+			vifname, nameToIPList, appIPAddr)
 	}
 	ipsetName := "eids." + vifname
 	err := ipsetCreatePair(ipsetName, "hash:ip")
@@ -58,6 +60,16 @@ func createDefaultIpsetConfiglet(vifname string, nameToIPList []types.DnsNameToI
 	}
 	set4 := "ipv4." + ipsetName
 	set6 := "ipv6." + ipsetName
+	var appIP net.IP
+	if appIPAddr != "" {
+		// XXX should we change strings to net.IP across the board
+		// to avoid parsing in places like this?
+		appIP = net.ParseIP(appIPAddr)
+		if appIP == nil {
+			log.Printf("ipset failed to parse appIPAddr %s\n",
+				appIPAddr)
+		}
+	}
 	for _, ne := range nameToIPList {
 		for _, ip := range ne.IPs {
 			var set string
@@ -71,26 +83,22 @@ func createDefaultIpsetConfiglet(vifname string, nameToIPList []types.DnsNameToI
 				log.Println("ipset add ", set,
 					ip.String(), err)
 			}
+			// Is appIP in nameToIPList?
+			if appIP != nil && ip.Equal(appIP) {
+				appIP = nil
+			}
 		}
 	}
-	if myIp != "" {
-		// XXX should we change strings to net.IP across the board
-		// to avoid parsing in places like this?
-		ip := net.ParseIP(myIp)
-		if ip == nil {
-			log.Printf("ipset failed to parse myIP %s\n", myIp)
+	if appIP != nil {
+		var set string
+		if appIP.To4() == nil {
+			set = set6
 		} else {
-			var set string
-			if ip.To4() == nil {
-				set = set6
-			} else {
-				set = set4
-			}
-			err = ipsetAdd(set, ip.String())
-			if err != nil {
-				log.Println("ipset add ", set,
-					ip.String(), err)
-			}
+			set = set4
+		}
+		err = ipsetAdd(set, appIP.String())
+		if err != nil {
+			log.Println("ipset add ", set, appIP.String(), err)
 		}
 	}
 }
@@ -196,7 +204,7 @@ func ipsetCreate(ipsetName string, setType string, ipVer int) error {
 		family = "inet6"
 	}
 	args := []string{"create", ipsetName, setType, "family", family}
-	if _, err := wrap.Command(cmd, args...).Output(); err != nil {
+	if _, err := wrap.Command(cmd, args...).CombinedOutput(); err != nil {
 		return err
 	}
 	return nil
@@ -205,8 +213,10 @@ func ipsetCreate(ipsetName string, setType string, ipVer int) error {
 func ipsetDestroy(ipsetName string) error {
 	cmd := "ipset"
 	args := []string{"destroy", ipsetName}
-	if _, err := wrap.Command(cmd, args...).Output(); err != nil {
-		return err
+	if res, err := wrap.Command(cmd, args...).CombinedOutput(); err != nil {
+		errStr := fmt.Sprintf("ipset destroy %s failed %s: %s",
+			ipsetName, res, err)
+		return errors.New(errStr)
 	}
 	return nil
 }
@@ -214,8 +224,10 @@ func ipsetDestroy(ipsetName string) error {
 func ipsetFlush(ipsetName string) error {
 	cmd := "ipset"
 	args := []string{"flush", ipsetName}
-	if _, err := wrap.Command(cmd, args...).Output(); err != nil {
-		return err
+	if res, err := wrap.Command(cmd, args...).CombinedOutput(); err != nil {
+		errStr := fmt.Sprintf("ipset flush %s failed %s: %s",
+			ipsetName, res, err)
+		return errors.New(errStr)
 	}
 	return nil
 }
@@ -223,8 +235,10 @@ func ipsetFlush(ipsetName string) error {
 func ipsetAdd(ipsetName string, member string) error {
 	cmd := "ipset"
 	args := []string{"add", ipsetName, member}
-	if _, err := wrap.Command(cmd, args...).Output(); err != nil {
-		return err
+	if res, err := wrap.Command(cmd, args...).CombinedOutput(); err != nil {
+		errStr := fmt.Sprintf("ipset add %s failed %s: %s",
+			ipsetName, res, err)
+		return errors.New(errStr)
 	}
 	return nil
 }
@@ -232,8 +246,10 @@ func ipsetAdd(ipsetName string, member string) error {
 func ipsetDel(ipsetName string, member string) error {
 	cmd := "ipset"
 	args := []string{"del", ipsetName, member}
-	if _, err := wrap.Command(cmd, args...).Output(); err != nil {
-		return err
+	if res, err := wrap.Command(cmd, args...).CombinedOutput(); err != nil {
+		errStr := fmt.Sprintf("ipset del %s failed %s: %s",
+			ipsetName, res, err)
+		return errors.New(errStr)
 	}
 	return nil
 }
