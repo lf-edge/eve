@@ -170,7 +170,10 @@ func parseBaseOsConfig(getconfigCtx *getconfigContext,
 
 	idx := 0
 	for _, cfgOs := range cfgOsList {
-
+		if cfgOs.GetBaseOSVersion() == "" {
+			// Empty slot - silently ignore
+			continue
+		}
 		baseOs := new(types.BaseOsConfig)
 
 		baseOs.UUIDandVersion.UUID, _ = uuid.FromString(cfgOs.Uuidandversion.Uuid)
