@@ -146,22 +146,31 @@ func createDnsmasqConfiglet(bridgeName string, bridgeIPAddr string,
 	if netconf.Subnet.IP != nil {
 		ipv4Netmask = net.IP(netconf.Subnet.Mask).String()
 	}
-	// Special handling for IPv4 EID case to avoid ARP for EIDs
+	// Special handling for IPv4 EID case to avoid ARP for EIDs.
 	// We add a router for the BridgeIPAddr plus a subnet route
 	// for the EID subnet, and no default route by clearing advertizeRouter
-	// above
-	// XXX TBD test with windows clients
+	// above. We configure an all ones netmask. In addition, since the
+	// default broadcast address ends up being the bridgeIPAddr, we force
+	// a bogus one as the first .0 address in the subnet.
+	//
 	if Ipv4Eid {
 		file.WriteString("dhcp-option=option:netmask,255.255.255.255\n")
 		// Onlink aka ARPing route for our IP
 		route1 := fmt.Sprintf("%s/32,0.0.0.0", bridgeIPAddr)
 		var route2 string
+		var broadcast string
 		if netconf.Subnet.IP != nil {
 			route2 = fmt.Sprintf(",%s,%s", netconf.Subnet.String(),
 				bridgeIPAddr)
+			broadcast = netconf.Subnet.IP.String()
 		}
 		file.WriteString(fmt.Sprintf("dhcp-option=option:classless-static-route,%s%s\n",
 			route1, route2))
+		// Broadcast address option
+		if broadcast != "" {
+			file.WriteString(fmt.Sprintf("dhcp-option=28,%s\n",
+				broadcast))
+		}
 	} else if netconf.Subnet.IP != nil {
 		file.WriteString(fmt.Sprintf("dhcp-option=option:netmask,%s\n",
 			ipv4Netmask))
