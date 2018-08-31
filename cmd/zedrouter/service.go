@@ -398,7 +398,7 @@ func getBridgeServiceIPv4Addr(ctx *zedrouterContext, appLink uuid.UUID) (string,
 	if err != nil {
 		return "", err
 	}
-	// XXX Add IPv6; ignore link-locals.
+	// XXX Add IPv6 underlay; ignore link-locals.
 	addrs, err := netlink.AddrList(link, syscall.AF_INET)
 	if err != nil {
 		return "", err
@@ -538,6 +538,7 @@ func lispInactivate(ctx *zedrouterContext,
 				// Pass global deviceNetworkStatus
 				deleteLispConfiglet(lispRunDirname, false,
 					status.LispStatus.IID, olStatus.EID,
+					olStatus.AppIPAddr,
 					*ctx.DeviceNetworkStatus,
 					ctx.separateDataPlane)
 			}

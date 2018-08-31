@@ -12,6 +12,7 @@ LISPDIR=/opt/zededa/lisp
 LOGDIRA=$PERSISTDIR/IMGA/log
 LOGDIRB=$PERSISTDIR/IMGB/log
 AGENTS="zedmanager logmanager ledmanager zedrouter domainmgr downloader verifier identitymgr zedagent dataplane"
+LISPOPT=""
 
 PATH=$BINDIR:$PATH
 
@@ -266,6 +267,11 @@ fi
 if [ -f $CONFIGDIR/DeviceUplinkConfig/override.json ]; then
     echo "Copying from $CONFIGDIR/DeviceUplinkConfig/override.json"
     cp -p $CONFIGDIR/DeviceUplinkConfig/override.json $DUCDIR
+fi
+
+# XXX hack to get -l dynamically
+if [ -f $CONFIGDIR/lispopt ]; then
+    LISPOPT=`cat $CONFIGDIR/lispopt`
 fi
 
 # Get IP addresses
@@ -533,7 +539,7 @@ if [ $WAIT = 1 ]; then
 fi
 
 echo "Starting zedagent at" `date`
-zedagent &
+zedagent $LISPOPT &
 if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
