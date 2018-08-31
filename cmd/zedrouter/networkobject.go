@@ -12,6 +12,7 @@ import (
 	"github.com/vishvananda/netlink"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/types"
+	"github.com/zededa/go-provision/wrap"
 	"log"
 	"net"
 	"strconv"
@@ -88,6 +89,7 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 	log.Printf("doNetworkCreate NetworkObjectStatus key %s type %d\n",
 		config.UUID, config.Type)
 
+	Ipv4Eid := false
 	// Check for valid types
 	switch config.Type {
 	case types.NT_IPV6:
@@ -95,7 +97,9 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 	case types.NT_IPV4:
 		// Nothing to do
 	case types.NT_CryptoEID:
-		// Nothing to do
+		if config.Subnet.IP != nil {
+			Ipv4Eid = (config.Subnet.IP.To4() != nil)
+		}
 	default:
 		errStr := fmt.Sprintf("doNetworkCreate type %d not supported",
 			config.Type)
@@ -107,6 +111,7 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 	bridgeName := fmt.Sprintf("bn%d", bridgeNum)
 	status.BridgeNum = bridgeNum
 	status.BridgeName = bridgeName
+	status.Ipv4Eid = Ipv4Eid
 	publishNetworkObjectStatus(ctx, status)
 
 	// Create bridge
@@ -139,6 +144,15 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 		return errors.New(errStr)
 	}
 
+	// Disable redirects for the bridge for IPv4 EID case
+	if status.Ipv4Eid {
+		sc := fmt.Sprintf("net.ipv4.conf.%s.send_redirects=0",
+			bridgeName)
+		_, err = wrap.Command("sysctl", "-w", sc).Output()
+		if err != nil {
+			log.Printf("Failed clearing %s: %s\n", sc, err)
+		}
+	}
 	// Check if we have a bridge service
 	if err := setBridgeIPAddr(ctx, status); err != nil {
 		return err
@@ -175,11 +189,7 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 	case types.NT_IPV6:
 		isIPv6 = true
 	case types.NT_CryptoEID:
-		if config.Subnet.IP != nil {
-			isIPv6 = (config.Subnet.IP.To4() == nil)
-		} else {
-			isIPv6 = true
-		}
+		isIPv6 = !status.Ipv4Eid
 	}
 	if isIPv6 {
 		// XXX do we need same logic as for IPv4 dnsmasq to not
