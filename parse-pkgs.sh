@@ -61,6 +61,7 @@ WLAN_TAG=$(linuxkit_tag pkg/wlan)$ARCH
 GPTTOOLS_TAG=$(linuxkit_tag pkg/gpt-tools)$ARCH
 WATCHDOG_TAG=$(linuxkit_tag pkg/watchdog)$ARCH
 MKFLASH_TAG=$(linuxkit_tag pkg/mkflash)$ARCH
+DEBUG_TAG=$(linuxkit_tag pkg/debug)$ARCH
 
 # Plugin tags: the following tags will default to
 # 'scratch' Docker container if not available.
@@ -90,4 +91,5 @@ sed -e "s#ZENBUILD_VERSION#"$ZENBUILD_VERSION"#" \
     -e "s#GPTTOOLS_TAG#"$GPTTOOLS_TAG"#" \
     -e "s#WATCHDOG_TAG#"$WATCHDOG_TAG"#" \
     -e "s#MKFLASH_TAG#"$MKFLASH_TAG"#" \
+    -e "s#DEBUG_TAG#"$DEBUG_TAG"#" \
     $1
