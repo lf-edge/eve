@@ -4,6 +4,7 @@ kernel:
 init:
   - GRUB_TAG
   - DTREES_TAG
+  - FW_TAG
   - XEN_TAG
   - GPTTOOLS_TAG
   - DOM0ZTOOLS_TAG

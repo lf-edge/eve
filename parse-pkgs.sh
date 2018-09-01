@@ -45,6 +45,7 @@ fi
 ZENBUILD_VERSION=`zenbuild_version`$ARCH
 
 KERNEL_TAG=$(linuxkit_tag pkg/kernel)$ARCH
+FW_TAG=$(linuxkit_tag pkg/fw)$ARCH
 XENTOOLS_TAG=$(linuxkit_tag pkg/xen-tools)$ARCH
 XEN_TAG=$(linuxkit_tag pkg/xen)$ARCH
 GRUB_TAG=$(linuxkit_tag pkg/grub)$ARCH
@@ -71,6 +72,7 @@ ZTOOLS_TAG=${ZTOOLS_TAG:-$(plugin_tag zededa/ztools:latest)}
 
 sed -e "s#ZENBUILD_VERSION#"$ZENBUILD_VERSION"#" \
     -e "s#KERNEL_TAG#"$KERNEL_TAG"#" \
+    -e "s#FW_TAG#"$FW_TAG"#" \
     -e "s#XENTOOLS_TAG#"$XENTOOLS_TAG"#" \
     -e "s#DOM0ZTOOLS_TAG#"$DOM0ZTOOLS_TAG"#" \
     -e "s#XEN_TAG#"$XEN_TAG"#" \

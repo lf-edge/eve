@@ -2,7 +2,7 @@
 PATH := $(CURDIR)/../build-tools/bin:$(PATH)
 LINUXKIT_OPTS= --disable-content-trust
 
-PKGS = grub xen kernel xen-tools dnsmasq strongswan gpt-tools dom0-ztools	\
+PKGS = grub xen kernel fw xen-tools dnsmasq strongswan gpt-tools dom0-ztools	\
 	qrexec-lib qrexec-dom0 wwan wlan	\
 	watchdog \
         device-trees \
