@@ -68,12 +68,16 @@ func PbrInit(ctx *zedrouterContext, addrChange addrChangeFnType,
 	return routechan, addrchan, linkchan
 }
 
+// XXX The PbrNAT functions are no-ops for now.
+// The prefix for the NAT linux bridge interface is in its own pbr table
+// XXX put the default route(s) for the selected Adapter for the service
+// into the table for the bridge to avoid using other uplinks.
 func PbrNATAdd(prefix string) error {
 	if debug {
 		log.Printf("PbrNATAdd(%s)\n", prefix)
 	}
-	// XXX not needed?
 	return nil
+
 	freeRule, err := pbrGetFreeRule(prefix)
 	if err != nil {
 		return err
@@ -87,12 +91,13 @@ func PbrNATAdd(prefix string) error {
 	return nil
 }
 
+// XXX The PbrNAT functions are no-ops for now.
 func PbrNATDel(prefix string) error {
 	if debug {
 		log.Printf("PbrNATDel(%s)\n", prefix)
 	}
-	// XXX not needed?
 	return nil
+
 	freeRule, err := pbrGetFreeRule(prefix)
 	if err != nil {
 		return err
