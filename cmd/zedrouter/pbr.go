@@ -69,6 +69,11 @@ func PbrInit(ctx *zedrouterContext, addrChange addrChangeFnType,
 }
 
 func PbrNATAdd(prefix string) error {
+	if debug {
+		log.Printf("PbrNATAdd(%s)\n", prefix)
+	}
+	// XXX not needed?
+	return nil
 	freeRule, err := pbrGetFreeRule(prefix)
 	if err != nil {
 		return err
@@ -83,6 +88,11 @@ func PbrNATAdd(prefix string) error {
 }
 
 func PbrNATDel(prefix string) error {
+	if debug {
+		log.Printf("PbrNATDel(%s)\n", prefix)
+	}
+	// XXX not needed?
+	return nil
 	freeRule, err := pbrGetFreeRule(prefix)
 	if err != nil {
 		return err
@@ -122,7 +132,7 @@ func PbrRouteChange(deviceUplinkConfig *types.DeviceUplinkConfig,
 		return
 	}
 	doFreeTable := false
-	ifname, err := IfindexToName(rt.LinkIndex)
+	ifname, _, err := IfindexToName(rt.LinkIndex)
 	if err != nil {
 		// We'll check on ifname when we see a linkchange
 		log.Printf("PbrRouteChange IfindexToName failed for %d: %s\n",
@@ -200,17 +210,31 @@ func PbrAddrChange(deviceUplinkConfig *types.DeviceUplinkConfig,
 		changed = IfindexToAddrsAdd(change.LinkIndex,
 			change.LinkAddress)
 		if changed {
-			addSourceRule(change.LinkIndex, change.LinkAddress)
+			_, linkType, err := IfindexToName(change.LinkIndex)
+			if err != nil {
+				log.Printf("XXX NewAddr IfindexToName(%d) failed %s\n",
+					change.LinkIndex, err)
+			}
+			// XXX only call for uplinks and bridges?
+			addSourceRule(change.LinkIndex, change.LinkAddress,
+				linkType == "bridge")
 		}
 	} else {
 		changed = IfindexToAddrsDel(change.LinkIndex,
 			change.LinkAddress)
 		if changed {
-			delSourceRule(change.LinkIndex, change.LinkAddress)
+			_, linkType, err := IfindexToName(change.LinkIndex)
+			if err != nil {
+				log.Printf("XXX DelAddr IfindexToName(%d) failed %s\n",
+					change.LinkIndex, err)
+			}
+			// XXX only call for uplinks and bridges?
+			delSourceRule(change.LinkIndex, change.LinkAddress,
+				linkType == "bridge")
 		}
 	}
 	if changed {
-		ifname, err := IfindexToName(change.LinkIndex)
+		ifname, _, err := IfindexToName(change.LinkIndex)
 		if err != nil {
 			log.Printf("PbrAddrChange IfindexToName failed for %d: %s\n",
 				change.LinkIndex, err)
@@ -238,9 +262,12 @@ func PbrLinkChange(deviceUplinkConfig *types.DeviceUplinkConfig,
 
 	ifindex := change.Attrs().Index
 	ifname := change.Attrs().Name
+	linkType := change.Link.Type()
+	log.Printf("PbrLinkChange: index %d name %s type %s\n", ifindex, ifname,
+		linkType)
 	switch change.Header.Type {
 	case syscall.RTM_NEWLINK:
-		new := IfindexToNameAdd(ifindex, ifname)
+		new := IfindexToNameAdd(ifindex, ifname, linkType)
 		if new {
 			if devicenetwork.IsFreeUplink(*deviceUplinkConfig,
 				ifname) {
@@ -346,28 +373,40 @@ func setFreeUplinks(freeUplinks []string) {
 
 // ===== map from ifindex to ifname
 
-var ifindexToName map[int]string
+type linkNameType struct {
+	linkName string
+	linkType string
+}
+
+var ifindexToName map[int]linkNameType
 
 func IfindexToNameInit() {
-	ifindexToName = make(map[int]string)
+	ifindexToName = make(map[int]linkNameType)
 }
 
 // Returns true if new
-func IfindexToNameAdd(index int, name string) bool {
+func IfindexToNameAdd(index int, linkName string, linkType string) bool {
 	m, ok := ifindexToName[index]
 	if !ok {
 		// Note that we get RTM_NEWLINK even for link changes
 		// hence we don't print unless the entry is new
-		log.Printf("IfindexToNameAdd index %d name %s\n", index, name)
-		ifindexToName[index] = name
+		log.Printf("IfindexToNameAdd index %d name %s type %s\n",
+			index, linkName, linkType)
+		ifindexToName[index] = linkNameType{
+			linkName: linkName,
+			linkType: linkType,
+		}
 		// log.Printf("ifindexToName post add %v\n", ifindexToName)
 		return true
-	} else if m != name {
+	} else if m.linkName != linkName {
 		// We get this when the vifs are created with "vif*" names
 		// and then changed to "bu*" etc.
 		log.Printf("IfindexToNameAdd name mismatch %s vs %s for %d\n",
-			m, name, index)
-		ifindexToName[index] = name
+			m.linkName, linkName, index)
+		ifindexToName[index] = linkNameType{
+			linkName: linkName,
+			linkType: linkType,
+		}
 		// log.Printf("ifindexToName post add %v\n", ifindexToName)
 		return false
 	} else {
@@ -376,21 +415,21 @@ func IfindexToNameAdd(index int, name string) bool {
 }
 
 // Returns true if deleted
-func IfindexToNameDel(index int, name string) bool {
+func IfindexToNameDel(index int, linkName string) bool {
 	m, ok := ifindexToName[index]
 	if !ok {
 		log.Printf("IfindexToNameDel unknown index %d\n", index)
 		return false
-	} else if m != name {
+	} else if m.linkName != linkName {
 		log.Printf("IfindexToNameDel name mismatch %s vs %s for %d\n",
-			m, name, index)
+			m.linkName, linkName, index)
 		delete(ifindexToName, index)
 		// log.Printf("ifindexToName post delete %v\n", ifindexToName)
 		return true
 	} else {
 		if debug {
 			log.Printf("IfindexToNameDel index %d name %s\n",
-				index, name)
+				index, linkName)
 		}
 		delete(ifindexToName, index)
 		// log.Printf("ifindexToName post delete %v\n", ifindexToName)
@@ -398,25 +437,27 @@ func IfindexToNameDel(index int, name string) bool {
 	}
 }
 
-func IfindexToName(index int) (string, error) {
+// Returns linkName, linkType
+func IfindexToName(index int) (string, string, error) {
 	n, ok := ifindexToName[index]
 	if ok {
-		return n, nil
+		return n.linkName, n.linkType, nil
 	}
 	// Try a lookup to handle race
 	link, err := netlink.LinkByIndex(index)
 	if err != nil {
-		return "", errors.New(fmt.Sprintf("Unknown ifindex %d", index))
+		return "", "", errors.New(fmt.Sprintf("Unknown ifindex %d", index))
 	}
-	name := link.Attrs().Name
-	log.Printf("IfindexToName(%d) fallback lookup done: %s\n",
-		index, name)
-	return name, nil
+	linkName := link.Attrs().Name
+	linkType := link.Type()
+	log.Printf("IfindexToName(%d) fallback lookup done: %s, %s\n",
+		index, linkName, linkType)
+	return linkName, linkType, nil
 }
 
 func IfnameToIndex(ifname string) (int, error) {
-	for i, name := range ifindexToName {
-		if name == ifname {
+	for i, lnt := range ifindexToName {
+		if lnt.linkName == ifname {
 			return i, nil
 		}
 	}
@@ -621,16 +662,30 @@ func flushRules(ifindex int) {
 	}
 }
 
-func addSourceRule(ifindex int, p net.IPNet) {
+// If it is a bridge interface we add a rule for the subnet. Otherwise
+// just for the host.
+func addSourceRule(ifindex int, p net.IPNet, bridge bool) {
+	if debug {
+		log.Printf("addSourceRule(%d, %v, %v)\n",
+			ifindex, p.String(), bridge)
+	}
 	r := netlink.NewRule()
 	r.Table = FreeTable + ifindex
 	// Add rule for /32 or /128
 	if p.IP.To4() != nil {
 		r.Family = syscall.AF_INET
-		r.Src = &net.IPNet{IP: p.IP, Mask: net.CIDRMask(32, 32)}
+		if bridge {
+			r.Src = &p
+		} else {
+			r.Src = &net.IPNet{IP: p.IP, Mask: net.CIDRMask(32, 32)}
+		}
 	} else {
 		r.Family = syscall.AF_INET6
-		r.Src = &net.IPNet{IP: p.IP, Mask: net.CIDRMask(128, 128)}
+		if bridge {
+			r.Src = &p
+		} else {
+			r.Src = &net.IPNet{IP: p.IP, Mask: net.CIDRMask(128, 128)}
+		}
 	}
 	if debug {
 		log.Printf("addSourceRule: RuleAdd %v\n", r)
@@ -643,16 +698,30 @@ func addSourceRule(ifindex int, p net.IPNet) {
 	}
 }
 
-func delSourceRule(ifindex int, p net.IPNet) {
+// If it is a bridge interface we add a rule for the subnet. Otherwise
+// just for the host.
+func delSourceRule(ifindex int, p net.IPNet, bridge bool) {
+	if debug {
+		log.Printf("delSourceRule(%d, %v, %v)\n",
+			ifindex, p.String(), bridge)
+	}
 	r := netlink.NewRule()
 	r.Table = FreeTable + ifindex
 	// Add rule for /32 or /128
 	if p.IP.To4() != nil {
 		r.Family = syscall.AF_INET
-		r.Src = &net.IPNet{IP: p.IP, Mask: net.CIDRMask(32, 32)}
+		if bridge {
+			r.Src = &p
+		} else {
+			r.Src = &net.IPNet{IP: p.IP, Mask: net.CIDRMask(32, 32)}
+		}
 	} else {
 		r.Family = syscall.AF_INET6
-		r.Src = &net.IPNet{IP: p.IP, Mask: net.CIDRMask(128, 128)}
+		if bridge {
+			r.Src = &p
+		} else {
+			r.Src = &net.IPNet{IP: p.IP, Mask: net.CIDRMask(128, 128)}
+		}
 	}
 	if debug {
 		log.Printf("delSourceRule: RuleDel %v\n", r)
