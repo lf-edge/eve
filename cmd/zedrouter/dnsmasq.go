@@ -49,7 +49,7 @@ func dnsmasqDhcpHostDir(bridgeName string) string {
 // Also called when we need to update the ipsets
 func createDnsmasqConfiglet(bridgeName string, bridgeIPAddr string,
 	netconf *types.NetworkObjectConfig, hostsDir string,
-	ipsets []string) {
+	ipsets []string, Ipv4Eid bool) {
 
 	if debug {
 		log.Printf("createDnsmasqConfiglet: %s netconf %v\n",
@@ -107,7 +107,10 @@ func createDnsmasqConfiglet(bridgeName string, bridgeIPAddr string,
 	// advertising that as well.
 	advertizeRouter := true
 	var router string
-	if netconf.Gateway != nil {
+
+	if Ipv4Eid {
+		advertizeRouter = false
+	} else if netconf.Gateway != nil {
 		if netconf.Gateway.IsUnspecified() {
 			advertizeRouter = false
 		} else {
@@ -127,9 +130,12 @@ func createDnsmasqConfiglet(bridgeName string, bridgeIPAddr string,
 				netconf.DomainName))
 		}
 	}
-	advertizedDns := false
+	advertizeDns := false
+	if Ipv4Eid {
+		advertizeDns = true
+	}
 	for _, ns := range netconf.DnsServers {
-		advertizedDns = true
+		advertizeDns = true
 		file.WriteString(fmt.Sprintf("dhcp-option=option:dns-server,%s\n",
 			ns.String()))
 	}
@@ -139,6 +145,33 @@ func createDnsmasqConfiglet(bridgeName string, bridgeIPAddr string,
 	}
 	if netconf.Subnet.IP != nil {
 		ipv4Netmask = net.IP(netconf.Subnet.Mask).String()
+	}
+	// Special handling for IPv4 EID case to avoid ARP for EIDs.
+	// We add a router for the BridgeIPAddr plus a subnet route
+	// for the EID subnet, and no default route by clearing advertizeRouter
+	// above. We configure an all ones netmask. In addition, since the
+	// default broadcast address ends up being the bridgeIPAddr, we force
+	// a bogus one as the first .0 address in the subnet.
+	//
+	if Ipv4Eid {
+		file.WriteString("dhcp-option=option:netmask,255.255.255.255\n")
+		// Onlink aka ARPing route for our IP
+		route1 := fmt.Sprintf("%s/32,0.0.0.0", bridgeIPAddr)
+		var route2 string
+		var broadcast string
+		if netconf.Subnet.IP != nil {
+			route2 = fmt.Sprintf(",%s,%s", netconf.Subnet.String(),
+				bridgeIPAddr)
+			broadcast = netconf.Subnet.IP.String()
+		}
+		file.WriteString(fmt.Sprintf("dhcp-option=option:classless-static-route,%s%s\n",
+			route1, route2))
+		// Broadcast address option
+		if broadcast != "" {
+			file.WriteString(fmt.Sprintf("dhcp-option=28,%s\n",
+				broadcast))
+		}
+	} else if netconf.Subnet.IP != nil {
 		file.WriteString(fmt.Sprintf("dhcp-option=option:netmask,%s\n",
 			ipv4Netmask))
 	}
@@ -153,7 +186,7 @@ func createDnsmasqConfiglet(bridgeName string, bridgeIPAddr string,
 		if !isIPv6 {
 			file.WriteString(fmt.Sprintf("dhcp-option=option:router\n"))
 		}
-		if !advertizedDns {
+		if !advertizeDns {
 			// Handle isolated network by making sure
 			// we are not a DNS server. Can be overridden
 			// with the DnsServers above

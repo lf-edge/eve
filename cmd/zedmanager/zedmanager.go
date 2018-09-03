@@ -10,6 +10,7 @@ package zedmanager
 import (
 	"flag"
 	"fmt"
+	"github.com/google/go-cmp/cmp"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/devicenetwork"
@@ -411,8 +412,12 @@ func handleCreate(ctx *zedmanagerContext, key string,
 		config.UUIDandVersion, config.DisplayName)
 
 	status := types.AppInstanceStatus{
-		UUIDandVersion: config.UUIDandVersion,
-		DisplayName:    config.DisplayName,
+		UUIDandVersion:      config.UUIDandVersion,
+		DisplayName:         config.DisplayName,
+		FixedResources:      config.FixedResources,
+		OverlayNetworkList:  config.OverlayNetworkList,
+		UnderlayNetworkList: config.UnderlayNetworkList,
+		IoAdapterList:       config.IoAdapterList,
 	}
 
 	status.StorageStatusList = make([]types.StorageStatus,
@@ -421,6 +426,10 @@ func handleCreate(ctx *zedmanagerContext, key string,
 		ss := &status.StorageStatusList[i]
 		ss.DownloadURL = sc.DownloadURL
 		ss.ImageSha256 = sc.ImageSha256
+		ss.ReadOnly = sc.ReadOnly
+		ss.Preserve = sc.Preserve
+		ss.Format = sc.Format
+		ss.Devtype = sc.Devtype
 		ss.Target = sc.Target
 	}
 	status.EIDList = make([]types.EIDStatusDetails,
@@ -449,7 +458,7 @@ func handleModify(ctx *zedmanagerContext, key string,
 
 	// XXX detect significant changes which require a reboot and/or
 	// purge of disk changes
-	needReboot, needPurge := quantifyChanges(config, *status)
+	needPurge, needReboot := quantifyChanges(config, *status)
 	log.Printf("handleModify needReboot %v needPurge %v\n",
 		needReboot, needPurge)
 
@@ -463,6 +472,10 @@ func handleModify(ctx *zedmanagerContext, key string,
 			uuidStr)
 		publishAppInstanceStatus(ctx, status)
 	}
+	status.FixedResources = config.FixedResources
+	status.OverlayNetworkList = config.OverlayNetworkList
+	status.UnderlayNetworkList = config.UnderlayNetworkList
+	status.IoAdapterList = config.IoAdapterList
 	log.Printf("handleModify done for %s\n", config.DisplayName)
 }
 
@@ -476,12 +489,131 @@ func handleDelete(ctx *zedmanagerContext, key string,
 	log.Printf("handleDelete done for %s\n", status.DisplayName)
 }
 
+// Returns needReboot, needPurge
+// XXX return an enum instead?
+// If there is a change to the disks, adapters, or network interfaces
+// it returns needPurge.
+// If there is a change to the CPU etc resources it returns needReboot
+// Changes to ACLs don't result in either being returned.
 func quantifyChanges(config types.AppInstanceConfig,
 	status types.AppInstanceStatus) (bool, bool) {
 
+	needPurge := false
+	needReboot := false
 	log.Printf("quantifyChanges for %s %s\n",
 		config.Key(), config.DisplayName)
-	return false, false
+	if len(status.StorageStatusList) != len(config.StorageConfigList) {
+		log.Printf("quantifyChanges len storage changed from %d to %d\n",
+			len(status.StorageStatusList),
+			len(config.StorageConfigList))
+		needPurge = true
+	} else {
+		for i, sc := range config.StorageConfigList {
+			ss := status.StorageStatusList[i]
+			if ss.ImageSha256 != sc.ImageSha256 {
+				log.Printf("quantifyChanges storage sha changed from %s to %s\n",
+					ss.ImageSha256, sc.ImageSha256)
+				needPurge = true
+			}
+			if ss.ReadOnly != sc.ReadOnly {
+				log.Printf("quantifyChanges storage ReadOnly changed from %v to %v\n",
+					ss.ReadOnly, sc.ReadOnly)
+				needPurge = true
+			}
+			if ss.Preserve != sc.Preserve {
+				log.Printf("quantifyChanges storage Preserve changed from %v to %v\n",
+					ss.Preserve, sc.Preserve)
+				needPurge = true
+			}
+			if ss.Format != sc.Format {
+				log.Printf("quantifyChanges storage Format changed from %v to %v\n",
+					ss.Format, sc.Format)
+				needPurge = true
+			}
+			if ss.Devtype != sc.Devtype {
+				log.Printf("quantifyChanges storage Devtype changed from %v to %v\n",
+					ss.Devtype, sc.Devtype)
+				needPurge = true
+			}
+		}
+	}
+	// Compare networks without comparing ACLs
+	if len(status.OverlayNetworkList) != len(config.OverlayNetworkList) {
+		log.Printf("quantifyChanges len storage changed from %d to %d\n",
+			len(status.OverlayNetworkList),
+			len(config.OverlayNetworkList))
+		needPurge = true
+	} else {
+		for i, oc := range config.OverlayNetworkList {
+			os := status.OverlayNetworkList[i]
+			if !cmp.Equal(oc.EIDConfigDetails, os.EIDConfigDetails) {
+				log.Printf("quantifyChanges EIDConfigDetails changed: %v\n",
+					cmp.Diff(oc.EIDConfigDetails, os.EIDConfigDetails))
+				needPurge = true
+			}
+			if os.AppMacAddr.String() != oc.AppMacAddr.String() {
+				log.Printf("quantifyChanges AppMacAddr changed from %v to %v\n",
+					os.AppMacAddr, oc.AppMacAddr)
+				needPurge = true
+			}
+			if !os.AppIPAddr.Equal(oc.AppIPAddr) {
+				log.Printf("quantifyChanges AppIPAddr changed from %v to %v\n",
+					os.AppIPAddr, oc.AppIPAddr)
+				needPurge = true
+			}
+			if os.Network != oc.Network {
+				log.Printf("quantifyChanges Network changed from %v to %v\n",
+					os.Network, oc.Network)
+				needPurge = true
+			}
+			if !cmp.Equal(oc.ACLs, os.ACLs) {
+				log.Printf("quantifyChanges FYI ACLs changed: %v\n",
+					cmp.Diff(oc.ACLs, os.ACLs))
+			}
+		}
+	}
+	if len(status.UnderlayNetworkList) != len(config.UnderlayNetworkList) {
+		log.Printf("quantifyChanges len storage changed from %d to %d\n",
+			len(status.UnderlayNetworkList),
+			len(config.UnderlayNetworkList))
+		needPurge = true
+	} else {
+		for i, uc := range config.UnderlayNetworkList {
+			us := status.UnderlayNetworkList[i]
+			if us.AppMacAddr.String() != uc.AppMacAddr.String() {
+				log.Printf("quantifyChanges AppMacAddr changed from %v to %v\n",
+					us.AppMacAddr, uc.AppMacAddr)
+				needPurge = true
+			}
+			if !us.AppIPAddr.Equal(uc.AppIPAddr) {
+				log.Printf("quantifyChanges AppIPAddr changed from %v to %v\n",
+					us.AppIPAddr, uc.AppIPAddr)
+				needPurge = true
+			}
+			if us.Network != uc.Network {
+				log.Printf("quantifyChanges Network changed from %v to %v\n",
+					us.Network, uc.Network)
+				needPurge = true
+			}
+			if !cmp.Equal(uc.ACLs, us.ACLs) {
+				log.Printf("quantifyChanges FYI ACLs changed: %v\n",
+					cmp.Diff(uc.ACLs, us.ACLs))
+			}
+		}
+	}
+	if !cmp.Equal(config.IoAdapterList, status.IoAdapterList) {
+		log.Printf("quantifyChanges IoAdapterList changed: %v\n",
+			cmp.Diff(config.IoAdapterList, status.IoAdapterList))
+		needPurge = true
+	}
+	if !cmp.Equal(config.FixedResources, status.FixedResources) {
+		log.Printf("quantifyChanges FixedResources changed: %v\n",
+			cmp.Diff(config.FixedResources, status.FixedResources))
+		needReboot = true
+	}
+	log.Printf("quantifyChanges for %s %s returns %v, %v\n",
+		config.Key(), config.DisplayName, needPurge, needReboot)
+	return needPurge, needReboot
 }
 
 func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
