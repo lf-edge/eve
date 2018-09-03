@@ -272,8 +272,8 @@ func PbrLinkChange(deviceUplinkConfig *types.DeviceUplinkConfig,
 		linkType)
 	switch change.Header.Type {
 	case syscall.RTM_NEWLINK:
-		new := IfindexToNameAdd(ifindex, ifname, linkType)
-		if new {
+		added := IfindexToNameAdd(ifindex, ifname, linkType)
+		if added {
 			if devicenetwork.IsFreeUplink(*deviceUplinkConfig,
 				ifname) {
 
@@ -343,16 +343,16 @@ func setFreeUplinks(freeUplinks []string) {
 		log.Printf("setFreeUplinks(%v)\n", freeUplinks)
 	}
 	// Determine which ones were added; moveRoutesTable to add to free table
-	for _, new := range freeUplinks {
+	for _, u := range freeUplinks {
 		found := false
 		for _, old := range freeUplinkList {
-			if old == new {
+			if old == u {
 				found = true
 				break
 			}
 		}
 		if !found {
-			if ifindex, err := IfnameToIndex(new); err == nil {
+			if ifindex, err := IfnameToIndex(u); err == nil {
 				moveRoutesTable(0, ifindex, FreeTable)
 			}
 		}
@@ -361,8 +361,8 @@ func setFreeUplinks(freeUplinks []string) {
 	// free table
 	for _, old := range freeUplinkList {
 		found := false
-		for _, new := range freeUplinks {
-			if old == new {
+		for _, u := range freeUplinks {
+			if old == u {
 				found = true
 				break
 			}
@@ -389,7 +389,7 @@ func IfindexToNameInit() {
 	ifindexToName = make(map[int]linkNameType)
 }
 
-// Returns true if new
+// Returns true if added
 func IfindexToNameAdd(index int, linkName string, linkType string) bool {
 	m, ok := ifindexToName[index]
 	if !ok {
