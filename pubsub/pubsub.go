@@ -32,7 +32,7 @@ import (
 // "restarted" if/when pub.km.restarted is set.
 // Ongoing we send "update" and "delete" messages.
 // They keys and values are base64-encoded since they might contain spaces.
-// Wc include the typeName after command word for sanity checks.
+// We include typeName after command word for sanity checks.
 // Hence the message format is
 //	"request" typeName
 //	"hello"  string
@@ -106,9 +106,9 @@ func updatersNotify() {
 	for i, server := range updaterList.servers {
 		select {
 		case server <- notify{}:
-			fmt.Printf("updaterNotify sent to %s\n", i)
+			log.Printf("updaterNotify sent to %d\n", i)
 		default:
-			fmt.Printf("updaterNotify NOT sent to %s\n", i)
+			log.Printf("updaterNotify NOT sent to %d\n", i)
 		}
 	}
 	updaterList.lock.Unlock()
