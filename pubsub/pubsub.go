@@ -742,6 +742,7 @@ type Subscription struct {
 	topic      string
 	km         keyMap
 	userCtx    interface{}
+	sock       net.Conn // For socket subscriptions
 	// Handle special case of file only info
 	subscribeFromDir bool
 	dirName          string
@@ -828,27 +829,7 @@ func (sub *Subscription) Activate() error {
 		go watch.WatchStatus(sub.dirName, sub.sendChan)
 		return nil
 	} else if subscribeFromSock {
-		sockName := SockName(name)
-		// Waiting for publisher to appear
-		var s net.Conn
-		for {
-			var err error
-			s, err = net.Dial("unixpacket", sockName)
-			if err != nil {
-				errStr := fmt.Sprintf("Subscribe(%s): sock failed %s; waiting",
-					name, err)
-				log.Println(errStr)
-				time.Sleep(10 * time.Second)
-			} else {
-				break
-			}
-		}
-		req := fmt.Sprintf("request %s", sub.topic)
-		_, err := s.Write([]byte(req))
-		if err != nil {
-			// XXX error handling to reconnect?
-		}
-		go sub.watchSock(s)
+		go sub.watchSock()
 		return nil
 	} else {
 		errStr := fmt.Sprintf("Subscribe(%s): failed %s",
@@ -857,14 +838,203 @@ func (sub *Subscription) Activate() error {
 	}
 }
 
-func (sub *Subscription) watchSock(sock net.Conn) {
-	// XXX send events to sub.sendChan
-	// XXX do we update collection here? If so need to check if
-	// unchanged as in handleModify
-	// XXX then ProcessChange looks at M/D key, and R to call handlers?
+// XXX incorrectly modifies collections.
+// XXX Need to pass new value as part of chan!a
+func (sub *Subscription) watchSock() {
+
+	name := sub.nameString()
+	for {
+		msg, key, val := sub.connectAndRead()
+		switch msg {
+		case "hello", "complete":
+			if debug {
+				log.Printf("watchSock: %s\n", msg)
+			}
+			// XXX anything for complete? Do we have an initial loop?
+		case "restarted":
+			if debug {
+				log.Printf("watchSock: %s\n", msg)
+			}
+			// XXX update sub? No
+			sub.sendChan <- "R done"
+
+		case "delete":
+			if debug {
+				log.Printf("delete key %s\n", key)
+			}
+			// Delete key. Does it exist?
+			_, ok := sub.km.key.Load(key)
+			if !ok {
+				log.Printf("watchSock(%s) delete %s key not found\n",
+					name, key)
+			} else {
+				sub.km.key.Delete(key)
+				sub.sendChan <- "D " + key
+			}
+
+		case "update":
+			var newItem interface{}
+			err := json.Unmarshal([]byte(val), &newItem)
+			if err != nil {
+				errStr := fmt.Sprintf("watchSock(%s): json failed %s",
+					name, err)
+				log.Println(errStr)
+				continue
+			}
+			if debug {
+				log.Printf("update key %s val %+v\n",
+					key, newItem)
+			}
+
+			// XXX do we update collection here? If so need to check if
+			// unchanged as in handleModify
+			m, ok := sub.km.key.Load(key)
+			if ok {
+				if cmp.Equal(m, newItem) {
+					if debug {
+						log.Printf("watchSock(%s/%s) unchanged\n",
+							name, key)
+					}
+					break
+				}
+				if debug {
+					log.Printf("watchSock(%s/%s) replacing due to diff %s\n",
+						name, key, cmp.Diff(m, newItem))
+				}
+			} else if debug {
+				log.Printf("watchSock(%s) add %+v for key %s\n",
+					name, newItem, key)
+			}
+			sub.km.key.Store(key, newItem)
+			sub.sendChan <- "M " + key
+		}
+	}
 }
 
-// XXX Currently only handles directory subscriptions; no AF_UNIX
+// Returns msg, key, val
+func (sub *Subscription) connectAndRead() (string, string, string) {
+
+	name := sub.nameString()
+	sockName := SockName(name)
+	buf := make([]byte, 65535)
+
+	// Waiting for publisher to appear; retry on error
+	for {
+		if sub.sock == nil {
+			s, err := net.Dial("unixpacket", sockName)
+			if err != nil {
+				errStr := fmt.Sprintf("connectAndRead(%s): Dial failed %s",
+					name, err)
+				log.Println(errStr)
+				time.Sleep(10 * time.Second)
+				continue
+			}
+			sub.sock = s
+			req := fmt.Sprintf("request %s", sub.topic)
+			_, err = s.Write([]byte(req))
+			if err != nil {
+				errStr := fmt.Sprintf("connectAndRead(%s): sock write failed %s",
+					name, err)
+				log.Println(errStr)
+				sub.sock.Close()
+				sub.sock = nil
+				continue
+			}
+		}
+
+		res, err := sub.sock.Read(buf)
+		if err != nil {
+			errStr := fmt.Sprintf("connectAndRead(%s): sock read failed %s",
+				name, err)
+			log.Println(errStr)
+			sub.sock.Close()
+			sub.sock = nil
+			continue
+		}
+
+		// XXX check if res == 65536
+		reply := strings.Split(string(buf[0:res]), " ")
+		count := len(reply)
+		if count < 2 {
+			errStr := fmt.Sprintf("connectAndRead(%s): too short read",
+				name)
+			log.Println(errStr)
+			continue
+		}
+		msg := reply[0]
+		t := reply[1]
+
+		// XXX check type against sub.topic
+
+		// XXX are there error cases where we should
+		switch msg {
+		case "hello", "restarted", "complete":
+			if debug {
+				log.Printf("connectAndRead(%s) Got message %s type %s\n",
+					msg, t)
+			}
+			return msg, "", ""
+
+		case "delete":
+			if count < 3 {
+				errStr := fmt.Sprintf("connectAndRead(%s): too short delete",
+					name)
+				log.Println(errStr)
+				continue
+			}
+			recvKey := reply[2]
+
+			key, err := base64.StdEncoding.DecodeString(recvKey)
+			if err != nil {
+				errStr := fmt.Sprintf("connectAndRead(%s): base64 failed %s",
+					name, err)
+				log.Println(errStr)
+				continue
+			}
+			log.Printf("delete type %s key %s\n", t, string(key))
+			return msg, string(key), ""
+
+		case "update":
+			if count < 4 {
+				errStr := fmt.Sprintf("connectAndRead(%s): too short update",
+					name)
+				log.Println(errStr)
+				continue
+			}
+			if count > 4 {
+				errStr := fmt.Sprintf("connectAndRead(%s): too long update",
+					name)
+				log.Println(errStr)
+				continue
+			}
+			recvKey := reply[2]
+			key, err := base64.StdEncoding.DecodeString(recvKey)
+			if err != nil {
+				errStr := fmt.Sprintf("connectAndRead(%s): base64 failed %s",
+					name, err)
+				log.Println(errStr)
+				continue
+			}
+			recvVal := reply[3]
+			val, err := base64.StdEncoding.DecodeString(recvVal)
+			if err != nil {
+				errStr := fmt.Sprintf("connectAndRead(%s): base64 val failed %s",
+					name, err)
+				log.Println(errStr)
+				continue
+			}
+			return msg, string(key), string(val)
+
+		default:
+			errStr := fmt.Sprintf("connectAndRead(%s): unknown message %s",
+				name, msg)
+			log.Println(errStr)
+			continue
+		}
+	}
+}
+
+// XXX note that change filename includes .json for files
 func (sub *Subscription) ProcessChange(change string) {
 	name := sub.nameString()
 	if debug {
@@ -876,9 +1046,25 @@ func (sub *Subscription) ProcessChange(change string) {
 			sub.dirName, &sub.topicType,
 			handleModify, handleDelete, &restartFn)
 	} else if subscribeFromSock {
-		// XXX todo;
-		// XXX note that change includes .json for files
-		// XXX handleModify has it removed
+		operation := string(change[0])
+		key := string(change[2:])
+
+		switch operation {
+		case "R":
+			handleRestart(sub, true)
+		case "D":
+			// XXX why old value m?? Use?
+			// Already deleted from collection
+			if sub.DeleteHandler != nil {
+				(sub.DeleteHandler)(sub.userCtx, key, nil)
+			}
+
+		case "M":
+			m, ok := sub.km.key.Load(key)
+			if ok && sub.ModifyHandler != nil {
+				(sub.ModifyHandler)(sub.userCtx, key, m)
+			}
+		}
 	}
 }
 
