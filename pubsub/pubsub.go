@@ -828,13 +828,40 @@ func (sub *Subscription) Activate() error {
 		go watch.WatchStatus(sub.dirName, sub.sendChan)
 		return nil
 	} else if subscribeFromSock {
-		errStr := fmt.Sprintf("subscribeFromSock not implemented")
-		return errors.New(errStr)
+		sockName := SockName(name)
+		// Waiting for publisher to appear
+		var s net.Conn
+		for {
+			var err error
+			s, err = net.Dial("unixpacket", sockName)
+			if err != nil {
+				errStr := fmt.Sprintf("Subscribe(%s): sock failed %s; waiting",
+					name, err)
+				log.Println(errStr)
+				time.Sleep(10 * time.Second)
+			} else {
+				break
+			}
+		}
+		req := fmt.Sprintf("request %s", sub.topic)
+		_, err := s.Write([]byte(req))
+		if err != nil {
+			// XXX error handling to reconnect?
+		}
+		go sub.watchSock(s)
+		return nil
 	} else {
 		errStr := fmt.Sprintf("Subscribe(%s): failed %s",
 			name, "nowhere to subscribe")
 		return errors.New(errStr)
 	}
+}
+
+func (sub *Subscription) watchSock(sock net.Conn) {
+	// XXX send events to sub.sendChan
+	// XXX do we update collection here? If so need to check if
+	// unchanged as in handleModify
+	// XXX then ProcessChange looks at M/D key, and R to call handlers?
 }
 
 // XXX Currently only handles directory subscriptions; no AF_UNIX
@@ -843,10 +870,16 @@ func (sub *Subscription) ProcessChange(change string) {
 	if debug {
 		log.Printf("ProcessChange(%s) %s\n", name, change)
 	}
-	var restartFn watch.StatusRestartHandler = handleRestart
-	watch.HandleStatusEvent(change, sub,
-		sub.dirName, &sub.topicType,
-		handleModify, handleDelete, &restartFn)
+	if sub.subscribeFromDir {
+		var restartFn watch.StatusRestartHandler = handleRestart
+		watch.HandleStatusEvent(change, sub,
+			sub.dirName, &sub.topicType,
+			handleModify, handleDelete, &restartFn)
+	} else if subscribeFromSock {
+		// XXX todo;
+		// XXX note that change includes .json for files
+		// XXX handleModify has it removed
+	}
 }
 
 func handleModify(ctxArg interface{}, key string, item interface{}) {
@@ -858,6 +891,8 @@ func handleModify(ctxArg interface{}, key string, item interface{}) {
 	// NOTE: without a deepCopy we would just save a pointer since
 	// item is a pointer. That would cause failures.
 	newItem := deepCopy(item)
+	// XXX only lookup if sub.subscribeFromDir
+	// Otherwise already updated
 	m, ok := sub.km.key.Load(key)
 	if ok {
 		if cmp.Equal(m, newItem) {
@@ -894,6 +929,8 @@ func handleDelete(ctxArg interface{}, key string) {
 	if debug {
 		log.Printf("pubsub.handleDelete(%s) key %s\n", name, key)
 	}
+	// XXX only lookup if sub.subscribeFromDir
+	// Otherwise already deleted
 	m, ok := sub.km.key.Load(key)
 	if !ok {
 		log.Printf("pubsub.handleDelete(%s) %s key not found\n",
