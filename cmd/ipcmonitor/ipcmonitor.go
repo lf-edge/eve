@@ -71,15 +71,25 @@ func Run() {
 				log.Printf("Too short update: %v\n", reply)
 				continue
 			}
+			if count > 4 {
+				log.Printf("Too long update: %v\n", reply)
+				continue
+			}
 			recvKey := reply[2]
 			key, err := base64.StdEncoding.DecodeString(recvKey)
 			if err != nil {
 				log.Printf("base64: %s\n", err)
 			}
-			log.Printf("update type %s key %s vallen %s val <%s>\n",
-				t, key, len(reply[3]), reply[3])
+			recvVal := reply[3]
+			val, err := base64.StdEncoding.DecodeString(recvVal)
+			if err != nil {
+				log.Printf("base64: %s\n", err)
+			}
+
+			log.Printf("update type %s key %s val <%s>\n",
+				t, key, val)
 			var output interface{}
-			if err := json.Unmarshal([]byte(reply[3]), &output); err != nil {
+			if err := json.Unmarshal(val, &output); err != nil {
 				log.Fatal(err, "json Unmarshal")
 			}
 			log.Printf("update type %s key %s val %+v\n",

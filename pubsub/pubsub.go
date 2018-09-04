@@ -31,8 +31,8 @@ import (
 // "complete" once all initial keys/values in collection have been sent.
 // "restarted" if/when pub.km.restarted is set.
 // Ongoing we send "update" and "delete" messages.
-// They keys are base64-encoded since they might contain spaces
-// Include typeName after command word for sanity checks.
+// They keys and values are base64-encoded since they might contain spaces.
+// Wc include the typeName after command word for sanity checks.
 // Hence the message format is
 //	"request" typeName
 //	"hello"  string
@@ -632,10 +632,11 @@ func (pub *Publication) sendUpdate(sock net.Conn, key string,
 	if err != nil {
 		log.Fatal(err, "json Marshal in serialize")
 	}
-	// base64-encode to avoid having spaces in the key
+	// base64-encode to avoid having spaces in the key and val
 	sendKey := base64.StdEncoding.EncodeToString([]byte(key))
+	sendVal := base64.StdEncoding.EncodeToString(b)
 	_, err = sock.Write([]byte(fmt.Sprintf("update %s %s %s",
-		pub.topic, sendKey, b)))
+		pub.topic, sendKey, sendVal)))
 	return err
 }
 
