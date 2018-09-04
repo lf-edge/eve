@@ -24,7 +24,8 @@ import (
 	"time"
 )
 
-// XXX add protocol over AF_UNIX later
+// Protocol over AF_UNIX or other IPC mechanism
+// XXX add receive side code later
 // "request" from client after connect to sanity check subject.
 // Server sends the other messages; "update" for initial values.
 // "complete" once all initial keys/values in collection have been sent.
@@ -51,6 +52,8 @@ type keyMap struct {
 
 // We always publish to our collection.
 // We always write to a file in order to have a checkpoint on restart
+// The special agent name "" implies always reading from the /var/run/zededa/
+// directory.
 const publishToSock = true      // XXX
 const subscribeFromDir = true   // XXX
 const subscribeFromSock = false // XXX
@@ -61,6 +64,55 @@ const fixedName = "zededa"
 const fixedDir = "/var/tmp/" + fixedName
 
 const debug = true // XXX setable?
+
+type notify struct{}
+
+// The set of channels to which we need to send notifications
+type updaters struct {
+	lock    sync.Mutex
+	servers []chan<- notify
+}
+
+var updaterList updaters
+
+func updatersAdd(updater chan notify) {
+	updaterList.lock.Lock()
+	updaterList.servers = append(updaterList.servers, updater)
+	updaterList.lock.Unlock()
+}
+
+func updatersRemove(updater chan notify) {
+	updaterList.lock.Lock()
+	servers := make([]chan<- notify, len(updaterList.servers))
+	found := false
+	for _, old := range updaterList.servers {
+		if old == updater {
+			found = true
+		} else {
+			servers = append(servers, old)
+		}
+	}
+	if !found {
+		log.Fatal("updatersRemove: not found\n")
+	}
+	updaterList.servers = servers
+	updaterList.lock.Unlock()
+}
+
+// Send a notification to all the channels which does not yet
+// have one queued
+func updatersNotify() {
+	updaterList.lock.Lock()
+	for i, server := range updaterList.servers {
+		select {
+		case server <- notify{}:
+			fmt.Printf("updaterNotify sent to %s\n", i)
+		default:
+			fmt.Printf("updaterNotify NOT sent to %s\n", i)
+		}
+	}
+	updaterList.lock.Unlock()
+}
 
 // Usage:
 //  p1, err := pubsub.Publish("foo", fooStruct{})
@@ -143,8 +195,6 @@ func publishImpl(agentName string, agentScope string,
 		}
 		pub.sockName = sockName
 		pub.listener = s
-		// XXX Needs a channel with notifications or at least keys
-		// Avoid blocking due to slow reader?
 		go pub.publisher()
 	}
 	return pub, nil
@@ -200,35 +250,31 @@ func (pub *Publication) populate() {
 	log.Printf("populate(%s) done\n", name)
 }
 
-// go routine which runs the AF_UNIX server
-// XXX would need some synchronization on the accesses to the published
-// collection?
+// go routine which runs the AF_UNIX server.
 func (pub *Publication) publisher() {
 	name := pub.nameString()
 	for {
-		// XXX select on listner plus on channel
-		// XXX or just have per-socket channels? Collection of them?
-		// buffered? Slow receivers resulting in deadlock?
-		// XXX Implement update compression using km+deleted bool
-		// XXX per socket!
 		c, err := pub.listener.Accept()
 		if err != nil {
 			log.Printf("publisher(%s) failed %s\n", name, err)
 			continue
 		}
-		// XXX Create channel for each connection, plus reverse for closing
-		// XXX maintain notification channels ...
 		go pub.serveConnection(c)
 	}
 }
 
-// XXX can't close if we serve updates
-// XXX not safe to iterate collection here; mutex? Or use of channel?
+// Used locally by each serverConnection goroutine to track updates
+// to send.
+type localCollection map[string]interface{}
+
 func (pub *Publication) serveConnection(s net.Conn) {
 	name := pub.nameString()
 	log.Printf("serveConnection(%s)\n", name)
 	defer s.Close()
 
+	// Track the set of keys/values we are sending to the peer
+	sendToPeer := make(localCollection)
+	sentRestarted := false
 	// Read request
 	buf := make([]byte, 1024)
 	res, err := s.Read(buf)
@@ -245,20 +291,109 @@ func (pub *Publication) serveConnection(s net.Conn) {
 			name, err)
 		return
 	}
-	err = pub.serialize(s)
+	// Insert our notification channel before we get the initial
+	// snapshot to avoid missing any updates/deletes.
+	updater := make(chan notify)
+	updatersAdd(updater)
+	defer updatersRemove(updater)
+
+	// Get a local snapshot of the collection and the set of keys
+	// we need to send these. Updates the slave collection.
+	keys := pub.determineDiffs(sendToPeer)
+
+	// Send the keys we just determined; all since this is the initial
+	err = pub.serialize(s, keys, sendToPeer)
 	if err != nil {
 		log.Printf("serveConnection(%s) failed %s\n",
 			name, err)
 		return
 	}
-	_, err = s.Write([]byte(fmt.Sprintf("complete %s", pub.topic)))
+	err = pub.sendComplete(s)
 	if err != nil {
 		log.Printf("serveConnection(%s) failed %s\n",
 			name, err)
 		return
 	}
-	// XXX wait on channel for adds and deletes somehow ...
-	time.Sleep(time.Minute)
+	if pub.km.restarted && !sentRestarted {
+		err = pub.sendRestarted(s)
+		if err != nil {
+			log.Printf("serveConnection(%s) failed %s\n",
+				name, err)
+			return
+		}
+		sentRestarted = true
+	}
+
+	// Handle any changes
+	for {
+		<-updater
+		log.Printf("Received notification\n")
+		// Update and determine which keys changed
+		keys := pub.determineDiffs(sendToPeer)
+
+		// Send the updates and deletes for those keys
+		err = pub.serialize(s, keys, sendToPeer)
+		if err != nil {
+			log.Printf("serveConnection(%s) failed %s\n",
+				name, err)
+			return
+		}
+
+		if pub.km.restarted && !sentRestarted {
+			err = pub.sendRestarted(s)
+			if err != nil {
+				log.Printf("serveConnection(%s) failed %s\n",
+					name, err)
+				return
+			}
+			sentRestarted = true
+		}
+	}
+}
+
+// Returns the deleted keys before the added/modified ones
+func (pub *Publication) determineDiffs(slaveCollection localCollection) []string {
+	var keys []string
+	items := pub.GetAll()
+	// Look for deleted
+	for slaveKey, _ := range slaveCollection {
+		master, _ := pub.Get(slaveKey)
+		if master == nil {
+			log.Printf("determineDiffs: key %s deleted\n",
+				slaveKey)
+			delete(slaveCollection, slaveKey)
+			keys = append(keys, slaveKey)
+		}
+	}
+	// Look for new/changed
+	for masterKey, master := range items {
+		slave := lookupSlave(slaveCollection, masterKey)
+		if slave == nil {
+			log.Printf("determineDiffs: key %s added\n",
+				masterKey)
+			slaveCollection[masterKey] = master
+			keys = append(keys, masterKey)
+		} else if !cmp.Equal(master, slave) {
+			log.Printf("determineDiffs: key %s changed %v\n",
+				masterKey, cmp.Diff(master, slave))
+			slaveCollection[masterKey] = master
+			keys = append(keys, masterKey)
+		} else {
+			log.Printf("determineDiffs: key %s unchanged\n",
+				masterKey)
+		}
+	}
+	return keys
+}
+
+func lookupSlave(slaveCollection localCollection, key string) *interface{} {
+	for slaveKey, _ := range slaveCollection {
+		if slaveKey == key {
+			res := slaveCollection[slaveKey]
+			return &res
+		}
+	}
+	return nil
 }
 
 func TypeToName(something interface{}) string {
@@ -333,7 +468,7 @@ func (pub *Publication) Publish(key string, item interface{}) error {
 	if err != nil {
 		return err
 	}
-	// XXX send update to all listeners - how? channel to listener -> connections?
+	updatersNotify()
 	return nil
 }
 
@@ -406,7 +541,7 @@ func (pub *Publication) Unpublish(key string) error {
 			name, key, err)
 		return errors.New(errStr)
 	}
-	// XXX send update to all listeners - how? channel to listener -> connections?
+	updatersNotify()
 	return nil
 }
 
@@ -425,7 +560,6 @@ func (pub *Publication) ClearRestarted() error {
 }
 
 // Record the restarted state and send over socket/file.
-// XXXTBD when sending/resynchronizing send the restarted indication last
 func (pub *Publication) restartImpl(restarted bool) error {
 	name := pub.nameString()
 	log.Printf("pub.restartImpl(%s, %v)\n", name, restarted)
@@ -436,8 +570,6 @@ func (pub *Publication) restartImpl(restarted bool) error {
 	}
 	pub.km.restarted = restarted
 
-	// XXX socket case?
-	// XXX send update to all listeners - how? channel to listener -> connections?
 	dirName := PubDirName(name)
 	restartFile := dirName + "/" + "restarted"
 	if restarted {
@@ -455,31 +587,35 @@ func (pub *Publication) restartImpl(restarted bool) error {
 			return errors.New(errStr)
 		}
 	}
+	// No disable for the socket case
+	if restarted {
+		updatersNotify()
+	}
 	return nil
 }
 
-func (pub *Publication) serialize(sock net.Conn) error {
-	name := pub.nameString()
-	log.Printf("serialize(%s)\n", name)
-	sender := func(key, val interface{}) bool {
-		err := pub.sendUpdate(sock, key.(string), val)
-		if err != nil {
-			log.Printf("serialize(%s) write failed %s\n",
-				name, err)
-			return false
-		}
-		return true
-	}
-	pub.km.key.Range(sender)
+func (pub *Publication) serialize(sock net.Conn, keys []string,
+	sendToPeer localCollection) error {
 
-	if pub.km.restarted {
-		log.Printf("serialize(%s) restarted\n", name)
-		_, err := sock.Write([]byte(fmt.Sprintf("restarted %s",
-			pub.topic)))
-		if err != nil {
-			log.Printf("serialize(%s) write failed %s\n",
-				name, err)
-			return err
+	name := pub.nameString()
+	log.Printf("serialize(%s, %v)\n", name, keys)
+	// Any initial deletes?
+	for _, key := range keys {
+		val, ok := sendToPeer[key]
+		if ok {
+			err := pub.sendUpdate(sock, key, val)
+			if err != nil {
+				log.Printf("serialize(%s) write failed %s\n",
+					name, err)
+				return err
+			}
+		} else {
+			err := pub.sendDelete(sock, key)
+			if err != nil {
+				log.Printf("serialize(%s) write failed %s\n",
+					name, err)
+				return err
+			}
 		}
 	}
 	return nil
@@ -510,6 +646,22 @@ func (pub *Publication) sendDelete(sock net.Conn, key string) error {
 	sendKey := base64.StdEncoding.EncodeToString([]byte(key))
 	_, err := sock.Write([]byte(fmt.Sprintf("delete %s %s",
 		pub.topic, sendKey)))
+	return err
+}
+
+func (pub *Publication) sendRestarted(sock net.Conn) error {
+	if debug {
+		log.Printf("sendRestarted\n")
+	}
+	_, err := sock.Write([]byte(fmt.Sprintf("restarted %s", pub.topic)))
+	return err
+}
+
+func (pub *Publication) sendComplete(sock net.Conn) error {
+	if debug {
+		log.Printf("sendComplete\n")
+	}
+	_, err := sock.Write([]byte(fmt.Sprintf("complete %s", pub.topic)))
 	return err
 }
 
