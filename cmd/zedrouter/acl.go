@@ -549,6 +549,12 @@ func aceToRules(bridgeName string, vifName string, ace types.ACE, ipVer int, bri
 				log.Println(errStr)
 				return nil, errors.New(errStr)
 			}
+			if appIP == "" {
+				errStr := fmt.Sprintf("PortMap without appIP %s/protocol %d: %s",
+					lport, protocol)
+				log.Println(errStr)
+				return nil, errors.New(errStr)
+			}
 			targetPort := fmt.Sprintf("%d", action.TargetPort)
 			target := fmt.Sprintf("%s:%d", appIP, action.TargetPort)
 			// These rules should only apply on the uplink

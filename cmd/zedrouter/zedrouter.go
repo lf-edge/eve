@@ -1824,6 +1824,9 @@ func handleDelete(ctx *zedrouterContext, key string,
 			continue
 		}
 
+		removehostDnsmasq(bridgeName, olStatus.Mac,
+			olStatus.EID.String())
+
 		// Delete ACLs
 		err := deleteACLConfiglet(bridgeName, olStatus.Vif, false,
 			olStatus.ACLs, olStatus.BridgeIPAddr,
@@ -1916,9 +1919,11 @@ func handleDelete(ctx *zedrouterContext, key string,
 			addError(ctx, status, "releaseIPv4", err)
 		}
 
-		appMac := ulStatus.Mac
 		appIPAddr := ulStatus.AssignedIPAddr
-		removehostDnsmasq(bridgeName, appMac, appIPAddr)
+		if appIPAddr != "" {
+			removehostDnsmasq(bridgeName, ulStatus.appMac,
+				appIPAddr)
+		}
 
 		err = deleteACLConfiglet(bridgeName, ulStatus.Vif, false,
 			ulStatus.ACLs, ulStatus.BridgeIPAddr, appIPAddr)
