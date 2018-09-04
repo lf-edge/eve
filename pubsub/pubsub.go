@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -41,15 +42,16 @@ import (
 
 // Maintain a collection which is used to handle the restart of a subscriber
 // map of agentname, key to get a json string
-// XXX need mutex for keyMap for publisher
+// We use sync.Map to allow concurrent access, and handle notifications
+// to work with the relaxed output from the sync.Map's Range function
 type keyMap struct {
 	restarted bool
-	key       map[string]interface{}
+	key       sync.Map
 }
 
 // We always publish to our collection.
 // We always write to a file in order to have a checkpoint on restart
-const publishToSock = false     // XXX
+const publishToSock = true      // XXX
 const subscribeFromDir = true   // XXX
 const subscribeFromSock = false // XXX
 
@@ -58,7 +60,7 @@ const subscribeFromSock = false // XXX
 const fixedName = "zededa"
 const fixedDir = "/var/tmp/" + fixedName
 
-const debug = false // XXX setable?
+const debug = true // XXX setable?
 
 // Usage:
 //  p1, err := pubsub.Publish("foo", fooStruct{})
@@ -103,7 +105,6 @@ func publishImpl(agentName string, agentScope string,
 	pub.agentName = agentName
 	pub.agentScope = agentScope
 	pub.topic = topic
-	pub.km = keyMap{key: make(map[string]interface{})}
 	name := pub.nameString()
 
 	log.Printf("Publish(%s)\n", name)
@@ -193,7 +194,7 @@ func (pub *Publication) populate() {
 				err, statusFile)
 			continue
 		}
-		pub.km.key[key] = item
+		pub.km.key.Store(key, item)
 	}
 	pub.km.restarted = foundRestarted
 	log.Printf("populate(%s) done\n", name)
@@ -297,7 +298,7 @@ func (pub *Publication) Publish(key string, item interface{}) error {
 	}
 	// Perform a deepCopy so the Equal check will work
 	newItem := deepCopy(item)
-	if m, ok := pub.km.key[key]; ok {
+	if m, ok := pub.km.key.Load(key); ok {
 		if cmp.Equal(m, newItem) {
 			if debug {
 				log.Printf("Publish(%s/%s) unchanged\n",
@@ -313,7 +314,7 @@ func (pub *Publication) Publish(key string, item interface{}) error {
 		log.Printf("Publish(%s/%s) adding %+v\n",
 			name, key, newItem)
 	}
-	pub.km.key[key] = newItem
+	pub.km.key.Store(key, newItem)
 
 	if debug {
 		pub.dump("after Publish")
@@ -380,7 +381,7 @@ func deepCopy(in interface{}) interface{} {
 
 func (pub *Publication) Unpublish(key string) error {
 	name := pub.nameString()
-	if m, ok := pub.km.key[key]; ok {
+	if m, ok := pub.km.key.Load(key); ok {
 		if debug {
 			log.Printf("Unpublish(%s/%s) removing %+v\n",
 				name, key, m)
@@ -391,7 +392,7 @@ func (pub *Publication) Unpublish(key string) error {
 		log.Printf("%s\n", errStr)
 		return errors.New(errStr)
 	}
-	delete(pub.km.key, key)
+	pub.km.key.Delete(key)
 	if debug {
 		pub.dump("after Unpublish")
 	}
@@ -460,14 +461,17 @@ func (pub *Publication) restartImpl(restarted bool) error {
 func (pub *Publication) serialize(sock net.Conn) error {
 	name := pub.nameString()
 	log.Printf("serialize(%s)\n", name)
-	for key, val := range pub.km.key {
-		err := pub.sendUpdate(sock, key, val)
+	sender := func(key, val interface{}) bool {
+		err := pub.sendUpdate(sock, key.(string), val)
 		if err != nil {
 			log.Printf("serialize(%s) write failed %s\n",
 				name, err)
-			return err
+			return false
 		}
+		return true
 	}
+	pub.km.key.Range(sender)
+
 	if pub.km.restarted {
 		log.Printf("serialize(%s) restarted\n", name)
 		_, err := sock.Write([]byte(fmt.Sprintf("restarted %s",
@@ -512,18 +516,21 @@ func (pub *Publication) sendDelete(sock net.Conn, key string) error {
 func (pub *Publication) dump(infoStr string) {
 	name := pub.nameString()
 	log.Printf("dump(%s) %s\n", name, infoStr)
-	for key, s := range pub.km.key {
-		b, err := json.Marshal(s)
+	dumper := func(key, val interface{}) bool {
+		b, err := json.Marshal(val)
 		if err != nil {
 			log.Fatal(err, "json Marshal in dump")
 		}
-		log.Printf("\tkey %s val %s\n", key, b)
+		log.Printf("\tkey %s val %s\n", key.(string), b)
+		return true
 	}
+	pub.km.key.Range(dumper)
+
 	log.Printf("\trestarted %t\n", pub.km.restarted)
 }
 
 func (pub *Publication) Get(key string) (interface{}, error) {
-	m, ok := pub.km.key[key]
+	m, ok := pub.km.key.Load(key)
 	if ok {
 		return m, nil
 	} else {
@@ -536,9 +543,11 @@ func (pub *Publication) Get(key string) (interface{}, error) {
 // Enumerate all the key, value for the collection
 func (pub *Publication) GetAll() map[string]interface{} {
 	result := make(map[string]interface{})
-	for k, e := range pub.km.key {
-		result[k] = e
+	assigner := func(key, val interface{}) bool {
+		result[key.(string)] = val
+		return true
 	}
+	pub.km.key.Range(assigner)
 	return result
 }
 
@@ -626,7 +635,6 @@ func subscribeImpl(agentName string, agentScope string, topicType interface{},
 	sub.agentName = agentName
 	sub.agentScope = agentScope
 	sub.topic = topic
-	sub.km = keyMap{key: make(map[string]interface{})}
 	sub.userCtx = ctx
 	name := sub.nameString()
 
@@ -696,7 +704,7 @@ func handleModify(ctxArg interface{}, key string, item interface{}) {
 	// NOTE: without a deepCopy we would just save a pointer since
 	// item is a pointer. That would cause failures.
 	newItem := deepCopy(item)
-	m, ok := sub.km.key[key]
+	m, ok := sub.km.key.Load(key)
 	if ok {
 		if cmp.Equal(m, newItem) {
 			if debug {
@@ -713,7 +721,7 @@ func handleModify(ctxArg interface{}, key string, item interface{}) {
 		log.Printf("pubsub.handleModify(%s) add %+v for key %s\n",
 			name, newItem, key)
 	}
-	sub.km.key[key] = newItem
+	sub.km.key.Store(key, newItem)
 	if debug {
 		sub.dump("after handleModify")
 	}
@@ -732,7 +740,7 @@ func handleDelete(ctxArg interface{}, key string) {
 	if debug {
 		log.Printf("pubsub.handleDelete(%s) key %s\n", name, key)
 	}
-	m, ok := sub.km.key[key]
+	m, ok := sub.km.key.Load(key)
 	if !ok {
 		log.Printf("pubsub.handleDelete(%s) %s key not found\n",
 			name, key)
@@ -742,7 +750,7 @@ func handleDelete(ctxArg interface{}, key string) {
 		log.Printf("pubsub.handleDelete(%s) key %s value %+v\n",
 			name, key, m)
 	}
-	delete(sub.km.key, key)
+	sub.km.key.Delete(key)
 	if debug {
 		sub.dump("after handleDelete")
 	}
@@ -782,18 +790,20 @@ func handleRestart(ctxArg interface{}, restarted bool) {
 func (sub *Subscription) dump(infoStr string) {
 	name := sub.nameString()
 	log.Printf("dump(%s) %s\n", name, infoStr)
-	for key, s := range sub.km.key {
-		b, err := json.Marshal(s)
+	dumper := func(key, val interface{}) bool {
+		b, err := json.Marshal(val)
 		if err != nil {
 			log.Fatal(err, "json Marshal in dump")
 		}
-		log.Printf("\tkey %s val %s\n", key, b)
+		log.Printf("\tkey %s val %s\n", key.(string), b)
+		return true
 	}
+	sub.km.key.Range(dumper)
 	log.Printf("\trestarted %t\n", sub.km.restarted)
 }
 
 func (sub *Subscription) Get(key string) (interface{}, error) {
-	m, ok := sub.km.key[key]
+	m, ok := sub.km.key.Load(key)
 	if ok {
 		return m, nil
 	} else {
@@ -806,9 +816,11 @@ func (sub *Subscription) Get(key string) (interface{}, error) {
 // Enumerate all the key, value for the collection
 func (sub *Subscription) GetAll() map[string]interface{} {
 	result := make(map[string]interface{})
-	for k, e := range sub.km.key {
-		result[k] = e
+	assigner := func(key, val interface{}) bool {
+		result[key.(string)] = val
+		return true
 	}
+	sub.km.key.Range(assigner)
 	return result
 }
 
