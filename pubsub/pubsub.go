@@ -134,7 +134,7 @@ type Publication struct {
 	topic      string
 	km         keyMap
 	sockName   string
-	listener   net.Listener
+	listener   net.UnixListener
 }
 
 func Publish(agentName string, topicType interface{}) (*Publication, error) {
@@ -187,14 +187,15 @@ func publishImpl(agentName string, agentScope string,
 				return nil, errors.New(errStr)
 			}
 		}
-		s, err := net.Listen("unixpacket", sockName)
+		laddr := net.UnixAddr{Name: sockName, Net: "unixpacket"}
+		s, err := net.ListenUnix("unixpacket", &laddr)
 		if err != nil {
 			errStr := fmt.Sprintf("Publish(%s): failed %s",
 				name, err)
 			return nil, errors.New(errStr)
 		}
 		pub.sockName = sockName
-		pub.listener = s
+		pub.listener = *s
 		go pub.publisher()
 	}
 	return pub, nil
@@ -254,10 +255,18 @@ func (pub *Publication) populate() {
 func (pub *Publication) publisher() {
 	name := pub.nameString()
 	for {
-		c, err := pub.listener.Accept()
+		c, err := pub.listener.AcceptUnix()
 		if err != nil {
 			log.Printf("publisher(%s) failed %s\n", name, err)
 			continue
+		}
+		err = c.SetWriteBuffer(65535)
+		if err != nil {
+			log.Printf("SetWriteBuffer failed:", err)
+		}
+		err = c.SetReadBuffer(65535)
+		if err != nil {
+			log.Printf("SetReadBuffer failed:", err)
 		}
 		go pub.serveConnection(c)
 	}

@@ -30,9 +30,18 @@ func Run() {
 	// args := flag.Args()
 	name := nameString(agentName, agentScope, topic)
 	sockName := fmt.Sprintf("/var/run/%s.sock", name)
-	s, err := net.Dial("unixpacket", sockName)
+	raddr := net.UnixAddr{Name: sockName, Net: "unixpacket"}
+	s, err := net.DialUnix("unixpacket", nil, &raddr)
 	if err != nil {
 		log.Fatal("Dial:", err)
+	}
+	err = s.SetWriteBuffer(65535)
+	if err != nil {
+		log.Printf("SetWriteBuffer failed:", err)
+	}
+	err = s.SetReadBuffer(65535)
+	if err != nil {
+		log.Printf("SetReadBuffer failed:", err)
 	}
 	req := fmt.Sprintf("request %s", topic)
 	s.Write([]byte(req))
@@ -76,8 +85,8 @@ func Run() {
 			if err != nil {
 				log.Printf("base64: %s\n", err)
 			}
-			log.Printf("update type %s key %s val <%s>\n",
-				t, key, reply[3])
+			log.Printf("update type %s key %s vallen %s val <%s>\n",
+				t, key, len(reply[3]), reply[3])
 			var output interface{}
 			if err := json.Unmarshal([]byte(reply[3]), &output); err != nil {
 				log.Fatal(err, "json Unmarshal")
