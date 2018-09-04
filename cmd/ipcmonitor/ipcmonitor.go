@@ -29,27 +29,19 @@ func Run() {
 	// args := flag.Args()
 	name := nameString(agentName, agentScope, topic)
 	sockName := fmt.Sprintf("/var/run/%s.sock", name)
-	raddr := net.UnixAddr{Name: sockName, Net: "unixpacket"}
-	s, err := net.DialUnix("unixpacket", nil, &raddr)
+	s, err := net.Dial("unixpacket", sockName)
 	if err != nil {
 		log.Fatal("Dial:", err)
 	}
-	err = s.SetWriteBuffer(65535)
-	if err != nil {
-		log.Printf("SetWriteBuffer failed:", err)
-	}
-	err = s.SetReadBuffer(65535)
-	if err != nil {
-		log.Printf("SetReadBuffer failed:", err)
-	}
 	req := fmt.Sprintf("request %s", topic)
 	s.Write([]byte(req))
-	buf := make([]byte, 1024)
+	buf := make([]byte, 65535)
 	for {
 		res, err := s.Read(buf)
 		if err != nil {
 			log.Fatal("Read:", err)
 		}
+		// XXX check if res == 65536
 		reply := strings.Split(string(buf[0:res]), " ")
 		count := len(reply)
 		log.Printf("Got %d: %v\n", count, reply)

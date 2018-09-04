@@ -134,7 +134,7 @@ type Publication struct {
 	topic      string
 	km         keyMap
 	sockName   string
-	listener   net.UnixListener
+	listener   net.Listener
 }
 
 func Publish(agentName string, topicType interface{}) (*Publication, error) {
@@ -187,15 +187,14 @@ func publishImpl(agentName string, agentScope string,
 				return nil, errors.New(errStr)
 			}
 		}
-		laddr := net.UnixAddr{Name: sockName, Net: "unixpacket"}
-		s, err := net.ListenUnix("unixpacket", &laddr)
+		s, err := net.Listen("unixpacket", sockName)
 		if err != nil {
 			errStr := fmt.Sprintf("Publish(%s): failed %s",
 				name, err)
 			return nil, errors.New(errStr)
 		}
 		pub.sockName = sockName
-		pub.listener = *s
+		pub.listener = s
 		go pub.publisher()
 	}
 	return pub, nil
@@ -255,18 +254,10 @@ func (pub *Publication) populate() {
 func (pub *Publication) publisher() {
 	name := pub.nameString()
 	for {
-		c, err := pub.listener.AcceptUnix()
+		c, err := pub.listener.Accept()
 		if err != nil {
 			log.Printf("publisher(%s) failed %s\n", name, err)
 			continue
-		}
-		err = c.SetWriteBuffer(65535)
-		if err != nil {
-			log.Printf("SetWriteBuffer failed:", err)
-		}
-		err = c.SetReadBuffer(65535)
-		if err != nil {
-			log.Printf("SetReadBuffer failed:", err)
 		}
 		go pub.serveConnection(c)
 	}
@@ -285,8 +276,9 @@ func (pub *Publication) serveConnection(s net.Conn) {
 	sendToPeer := make(localCollection)
 	sentRestarted := false
 	// Read request
-	buf := make([]byte, 1024)
+	buf := make([]byte, 65536)
 	res, err := s.Read(buf)
+	// XXX check if res == 65536
 	request := strings.Split(string(buf[0:res]), " ")
 	log.Printf("serveConnection read %d: %v\n", len(request), request)
 	if len(request) != 2 || request[0] != "request" || request[1] != pub.topic {
