@@ -40,6 +40,9 @@ ENV KERNEL_SOURCE=https://www.kernel.org/pub/linux/kernel/v4.x/linux-${KERNEL_VE
 ENV KERNEL_SHA256_SUMS=https://www.kernel.org/pub/linux/kernel/v4.x/sha256sums.asc
 ENV KERNEL_PGP2_SIGN=https://www.kernel.org/pub/linux/kernel/v4.x/linux-${KERNEL_VERSION}.tar.sign
 
+ENV IXGBE_URL=https://sourceforge.net/projects/e1000/files/ixgbe%20stable/
+ENV IXGBE_VERSION=5.3.7
+
 # PGP keys: 589DA6B1 (greg@kroah.com) & 6092693E (autosigner@kernel.org) & 00411886 (torvalds@linux-foundation.org)
 COPY keys.asc keys.asc
 
@@ -64,6 +67,13 @@ RUN set -e && for patch in /patches/*.patch; do \
         echo "Applying $patch"; \
         patch -p1 < "$patch"; \
     done
+
+# FIXME: for now, make sure that Intel ixgbe drivers are taken out of tree
+#        Once we upgrade to a newer kernel we should revisit this 
+COPY ixgbe-${IXGBE_VERSION}.tgz /tmp/ixgbe.tgz
+RUN tar -C /tmp -xzvf /tmp/ixgbe.tgz && \
+    rm -rf /linux/drivers/net/ethernet/intel/ixgbe && \
+    cp -r /tmp/ixgbe-${IXGBE_VERSION}/src /linux/drivers/net/ethernet/intel/ixgbe
 
 # Kernel config
 COPY kernel_config* /linux/
