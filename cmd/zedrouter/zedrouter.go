@@ -1922,7 +1922,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 
 		appIPAddr := ulStatus.AssignedIPAddr
 		if appIPAddr != "" {
-			removehostDnsmasq(bridgeName, ulStatus.appMac,
+			removehostDnsmasq(bridgeName, ulStatus.Mac,
 				appIPAddr)
 		}
 
