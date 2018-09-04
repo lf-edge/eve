@@ -716,3 +716,71 @@ type VpnTunnelConfig struct {
 	LocalIpAddr  string
 	RemoteIpAddr string
 }
+
+type LispRlocState struct {
+	Rloc      net.IP
+	Reachable bool
+}
+
+type LispMapCacheEntry struct {
+	EID   net.IP
+	Rlocs []LispRlocState
+}
+
+type LispDatabaseMap struct {
+	IID             uint64
+	MapCacheEntries []LispMapCacheEntry
+}
+
+type LispDecapKey struct {
+	Rloc     net.IP
+	Port     uint64
+	KeyCount uint64
+}
+
+type LispInfoStatus struct {
+	ItrCryptoPort  uint64
+	EtrNatPort     uint64
+	Interfaces     []string
+	DatabaseMaps   []LispDatabaseMap
+	DecapKeys      []LispDecapKey
+}
+
+type LispPktStat struct {
+	Pkts  uint64
+	Bytes uint64
+}
+
+type LispRlocStatistics struct {
+	Rloc                   net.IP
+	Stats                  LispPktStat
+	SecondsSinceLastPacket uint64
+}
+
+type EidStatistics struct {
+	IID       uint64
+	Eid       net.IP
+	RlocStats []LispRlocStatistics
+}
+
+type LispMetrics struct {
+	// Encap Statistics
+	EidStats           []EidStatistics
+	ItrPacketSendError LispPktStat
+	InvalidEidError    LispPktStat
+
+	// Decap Statistics
+	NoDecryptKey       LispPktStat
+	OuterHeaderError   LispPktStat
+	BadInnerVersion    LispPktStat
+	GoodPackets        LispPktStat
+	ICVError           LispPktStat
+	LispHeaderError    LispPktStat
+	CheckSumError      LispPktStat
+	DecapReInjectError LispPktStat
+	DecryptError       LispPktStat
+}
+
+type LispDataplaneConfig struct {
+	Experimental bool
+}

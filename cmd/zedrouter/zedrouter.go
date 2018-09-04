@@ -52,6 +52,9 @@ type zedrouterContext struct {
 	subAppNetworkConfig     *pubsub.Subscription
 	subAppNetworkConfigAg   *pubsub.Subscription // From zedagent for dom0
 	pubAppNetworkStatus     *pubsub.Publication
+	pubLispDataplaneConfig  *pubsub.Publication
+	subLispInfoStatus       *pubsub.Subscription
+	subLispMetrics          *pubsub.Subscription
 	assignableAdapters      *types.AssignableAdapters
 	devicenetwork.DeviceNetworkContext
 	ready bool
@@ -157,6 +160,13 @@ func Run() {
 	}
 	zedrouterCtx.pubAppNetworkStatus = pubAppNetworkStatus
 	pubAppNetworkStatus.ClearRestarted()
+
+	pubLispDataplaneConfig, err := pubsub.Publish(agentName,
+		types.LispDataplaneConfig{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedrouterCtx.pubLispDataplaneConfig = pubLispDataplaneConfig
 
 	appNumAllocatorInit(pubAppNetworkStatus)
 	bridgeNumAllocatorInit(pubNetworkObjectStatus)
@@ -286,6 +296,26 @@ func Run() {
 	subAppNetworkConfigAg.DeleteHandler = handleAppNetworkConfigDelete
 	zedrouterCtx.subAppNetworkConfigAg = subAppNetworkConfigAg
 	subAppNetworkConfigAg.Activate()
+
+	subLispInfoStatus, err := pubsub.Subscribe("lisp-ztr",
+		types.LispInfoStatus{}, false, &zedrouterCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subLispInfoStatus.ModifyHandler = handleLispInfoModify
+	subLispInfoStatus.DeleteHandler = handleLispInfoDelete
+	zedrouterCtx.subLispInfoStatus = subLispInfoStatus
+	subLispInfoStatus.Activate()
+
+	subLispMetrics, err := pubsub.Subscribe("lisp-ztr",
+		types.LispMetrics{}, false, &zedrouterCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subLispMetrics.ModifyHandler = handleLispMetricsModify
+	subLispMetrics.DeleteHandler = handleLispMetricsDelete
+	zedrouterCtx.subLispMetrics = subLispMetrics
+	subLispMetrics.Activate()
 
 	// XXX should we make geoRedoTime configurable?
 	// We refresh the gelocation information when the underlay
@@ -514,6 +544,14 @@ func publishDeviceNetworkStatus(ctx *zedrouterContext) {
 	ctx.PubDeviceNetworkStatus.Publish("global", ctx.DeviceNetworkStatus)
 }
 
+func publishLispDataplaneConfig(ctx *zedrouterContext,
+	status *types.LispDataplaneConfig) {
+	key := "global"
+	log.Printf("publishLispDataplaneConfig(%s)\n", key)
+	pub := ctx.pubLispDataplaneConfig
+	pub.Publish(key, status)
+}
+
 func publishAppNetworkStatus(ctx *zedrouterContext,
 	status *types.AppNetworkStatus) {
 
@@ -553,6 +591,19 @@ func unpublishNetworkObjectStatus(ctx *zedrouterContext,
 	st, _ := pub.Get(key)
 	if st == nil {
 		log.Printf("unpublishNetworkObjectStatus(%s) not found\n", key)
+		return
+	}
+	pub.Unpublish(key)
+}
+
+func unpublishLispDataplaneConfig(ctx *zedrouterContext,
+	status *types.LispDataplaneConfig) {
+	key := "global"
+	log.Printf("unpublishLispDataplaneConfig(%s)\n", key)
+	pub := ctx.pubLispDataplaneConfig
+	st, _ := pub.Get(key)
+	if st == nil {
+		log.Printf("unpublishLispDataplaneConfig(%s) not found\n", key)
 		return
 	}
 	pub.Unpublish(key)
@@ -663,6 +714,65 @@ func handleAppNetworkConfigDelete(ctxArg interface{}, key string,
 	log.Printf("handleAppNetworkConfigDelete(%s) done\n", key)
 }
 
+func parseLispServiceInfo(lispInfo types.LispInfoStatus) {
+	// map for splitting the status info per IID
+	infoMap := make(map[uint64]*types.LispInfoStatus)
+
+	for _, dbMap := range lispInfo.DatabaseMaps {
+		iid := dbMap.IID
+
+		// check we have entry for this iid in our infoMap
+		var infoEntry *types.LispInfoStatus
+		var ok bool
+		infoEntry, ok = infoMap[iid]
+		if !ok {
+			infoEntry = &types.LispInfoStatus{}
+			infoEntry.ItrCryptoPort = lispInfo.ItrCryptoPort
+			infoEntry.EtrNatPort    = lispInfo.EtrNatPort
+			infoEntry.Interfaces    = lispInfo.Interfaces
+			infoEntry.DecapKeys     = lispInfo.DecapKeys
+			infoMap[iid] = infoEntry
+		}
+		infoEntry.DatabaseMaps = append(infoEntry.DatabaseMaps, dbMap)
+	}
+	// XXX Code to publish these changes to zedagent.
+}
+
+func handleLispInfoModify(ctxArg interface{}, key string, configArg interface{}) {
+	log.Printf("handleLispInfoModify(%s)\n", key)
+	//ctx := ctxArg.(*zedrouterContext)
+	lispInfo := cast.CastLispInfoStatus(configArg)
+
+	if key != "global" {
+		log.Printf("handleLispInfoModify: ignoring %s\n", key)
+		return
+	}
+	parseLispServiceInfo(lispInfo)
+	log.Printf("handleLispInfoModify(%s) done\n", key)
+}
+
+func handleLispInfoDelete(ctxArg interface{}, key string, configArg interface{}) {
+	log.Printf("handleLispInfoDelete(%s)\n", key)
+	log.Printf("handleLispInfoDelete(%s) done\n", key)
+}
+
+func handleLispMetricsModify(ctxArg interface{}, key string, configArg interface{}) {
+	log.Printf("handleLispMetricsModify(%s)\n", key)
+	//ctx := ctxArg.(*zedrouterContext)
+	//lispMetrics := cast.CastLispMetrics(configArg)
+
+	if key != "global" {
+		log.Printf("handleLispMetricsModify: ignoring %s\n", key)
+		return
+	}
+	log.Printf("handleLispMetricsModify(%s) done\n", key)
+}
+
+func handleLispMetricsDelete(ctxArg interface{}, key string, configArg interface{}) {
+	log.Printf("handleLispMetricsDelete(%s)\n", key)
+	log.Printf("handleLispMetricsDelete(%s) done\n", key)
+}
+
 // Callers must be careful to publish any changes to AppNetworkStatus
 func lookupAppNetworkStatus(ctx *zedrouterContext, key string) *types.AppNetworkStatus {
 
@@ -749,6 +859,10 @@ func handleCreate(ctx *zedrouterContext, key string,
 			return
 		}
 		ctx.separateDataPlane = config.SeparateDataPlane
+		dataplaneConfig := types.LispDataplaneConfig{
+			Experimental: ctx.separateDataPlane,
+		}
+		publishLispDataplaneConfig(ctx, &dataplaneConfig)
 
 		// Use this olIfname to name files
 		// XXX some files might not be used until Zedmanager becomes

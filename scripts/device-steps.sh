@@ -11,7 +11,7 @@ DUCDIR=$TMPDIR/DeviceUplinkConfig
 LISPDIR=/opt/zededa/lisp
 LOGDIRA=$PERSISTDIR/IMGA/log
 LOGDIRB=$PERSISTDIR/IMGB/log
-AGENTS="zedmanager logmanager ledmanager zedrouter domainmgr downloader verifier identitymgr zedagent dataplane"
+AGENTS="zedmanager logmanager ledmanager zedrouter domainmgr downloader verifier identitymgr zedagent lisp-ztr"
 
 PATH=$BINDIR:$PATH
 
@@ -484,10 +484,6 @@ mkdir -p /var/tmp/zededa/GlobalDownloadConfig/
 echo {\"MaxSpace\":$space} >/var/tmp/zededa/GlobalDownloadConfig/global.json
 
 for AGENT in $AGENTS; do
-    # XXX conditional - how do we handle?
-    if [ $AGENT == "dataplane" ]; then
-	continue
-    fi
     echo "pidfile = /var/run/$AGENT.pid" >>$TMPDIR/watchdog.conf
 done
 if [ -f /var/run/watchdog.pid ]; then
@@ -534,6 +530,12 @@ fi
 
 echo "Starting zedagent at" `date`
 zedagent &
+if [ $WAIT = 1 ]; then
+    echo -n "Press any key to continue "; read dummy; echo; echo
+fi
+
+echo "Starting lisp-ztr at" `date`
+lisp-ztr &
 if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi

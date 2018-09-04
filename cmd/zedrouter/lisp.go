@@ -469,13 +469,17 @@ func updateLisp(lispRunDirname string,
 	// Check how many EIDs we have configured. If none we stop lisp
 	if eidCount == 0 {
 		stopLisp()
+		/*
 		if separateDataPlane {
 			maybeStopLispDataPlane()
 		}
+		*/
 	} else {
+		/*
 		if separateDataPlane {
 			maybeStartLispDataPlane()
 		}
+		*/
 		restartLisp(globalStatus.UplinkStatus, devices)
 	}
 }
