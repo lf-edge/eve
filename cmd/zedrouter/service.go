@@ -36,7 +36,7 @@ func handleNetworkServiceModify(ctxArg interface{}, key string, configArg interf
 		pub.Publish(status.Key(), *status)
 		doServiceModify(ctx, config, status)
 		status.PendingModify = false
-		pub.Publish(status.Key(), *status)
+		publishNetworkServiceStatus(ctx, status, true)
 		log.Printf("handleNetworkServiceModify(%s) done\n", key)
 	} else {
 		handleNetworkServiceCreate(ctx, key, config)
@@ -62,7 +62,7 @@ func handleNetworkServiceCreate(ctx *zedrouterContext, key string, config types.
 		status.Error = err.Error()
 		status.ErrorTime = time.Now()
 		status.PendingAdd = false
-		pub.Publish(status.Key(), status)
+		publishNetworkServiceStatus(ctx, &status, true)
 		return
 	}
 	pub.Publish(status.Key(), status)
@@ -77,7 +77,7 @@ func handleNetworkServiceCreate(ctx *zedrouterContext, key string, config types.
 		}
 	}
 	status.PendingAdd = false
-	pub.Publish(status.Key(), status)
+	publishNetworkServiceStatus(ctx, &status, true)
 	log.Printf("handleNetworkServiceCreate(%s) done\n", key)
 }
 
@@ -96,11 +96,10 @@ func handleNetworkServiceDelete(ctxArg interface{}, key string,
 	pub.Publish(status.Key(), status)
 	if status.Activated {
 		doServiceInactivate(ctx, status)
-		pub.Publish(status.Key(), &status)
 	}
 	doServiceDelete(ctx, status)
 	status.PendingDelete = false
-	pub.Publish(status.Key(), &status)
+	publishNetworkServiceStatus(ctx, status, true)
 	pub.Unpublish(status.Key())
 	log.Printf("handleNetworkServiceDelete(%s) done\n", key)
 }
@@ -398,7 +397,7 @@ func getBridgeServiceIPv4Addr(ctx *zedrouterContext, appLink uuid.UUID) (string,
 	if err != nil {
 		return "", err
 	}
-	// XXX Add IPv6; ignore link-locals.
+	// XXX Add IPv6 underlay; ignore link-locals.
 	addrs, err := netlink.AddrList(link, syscall.AF_INET)
 	if err != nil {
 		return "", err
@@ -431,6 +430,35 @@ func lookupAppLink(ctx *zedrouterContext, appLink uuid.UUID) *types.NetworkServi
 		}
 	}
 	return nil
+}
+
+// this is periodic state change handler
+func publishNetworkServiceStatusAll(ctx *zedrouterContext) {
+	pub := ctx.pubNetworkServiceStatus
+	stlist := pub.GetAll()
+	if stlist == nil {
+		return
+	}
+	for _, st := range stlist {
+		status := cast.CastNetworkServiceStatus(st)
+		publishNetworkServiceStatus(ctx, &status, false)
+	}
+	return
+}
+
+func publishNetworkServiceStatus(ctx *zedrouterContext, status *types.NetworkServiceStatus, force bool) {
+	pub := ctx.pubNetworkServiceStatus
+	change := false
+	switch status.Type {
+	case types.NST_STRONGSWAN:
+		change = strongSwanVpnStatusGet(status)
+
+	case types.NST_LISP:
+		log.Printf("Lisp Service\n")
+	}
+	if force == true || change == true {
+		pub.Publish(status.Key(), &status)
+	}
 }
 
 // ==== Lisp
@@ -538,6 +566,7 @@ func lispInactivate(ctx *zedrouterContext,
 				// Pass global deviceNetworkStatus
 				deleteLispConfiglet(lispRunDirname, false,
 					status.LispStatus.IID, olStatus.EID,
+					olStatus.AppIPAddr,
 					*ctx.DeviceNetworkStatus,
 					ctx.separateDataPlane)
 			}

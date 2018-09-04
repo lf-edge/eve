@@ -104,6 +104,7 @@ func Run() {
 			log.Fatal(err)
 		}
 	}
+	log.Printf("Starting %s\n", agentName)
 	operations := map[string]bool{
 		"selfRegister": false,
 		"ping":         false,

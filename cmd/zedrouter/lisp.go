@@ -128,6 +128,7 @@ lisp interface {
 //        address = %s
 //        priority = %d
 // }
+// rlocs could also include additional IPv4 prefix stanzas
 const lispDBtemplate = `
 lisp database-mapping {
     prefix {
@@ -165,12 +166,12 @@ const (
 //
 // Would be more polite to return an error then to Fatal
 func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
-	EID net.IP, lispSignature string,
+	EID net.IP, AppIPAddr net.IP, lispSignature string,
 	globalStatus types.DeviceNetworkStatus,
 	tag string, olIfname string, additionalInfo string,
 	mapservers []types.MapServer, separateDataPlane bool) {
 	if debug {
-		log.Printf("createLispConfiglet: %s %v %d %s %v %s %s %s %s %v\n",
+		log.Printf("createLispConfiglet: %s %v %d %s %v %v %s %s %s %v\n",
 			lispRunDirname, isMgmt, IID, EID, lispSignature, globalStatus,
 			tag, olIfname, additionalInfo, mapservers)
 	}
@@ -243,6 +244,14 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 		file2.WriteString(fmt.Sprintf(lispDBtemplateMgmt,
 			IID, EID, rlocString))
 	} else {
+		// Append to rlocString based on AppIPAddr
+		log.Printf("lisp: EID %s AppIPAddr %s\n",
+			EID.String(), AppIPAddr.String())
+		if AppIPAddr != nil && !EID.Equal(AppIPAddr) {
+			one := fmt.Sprintf("    prefix {\n        instance-id = %d\n        eid-prefix = %s/32\n        ms-name = ms-%d\n    }\n",
+				IID, AppIPAddr.String(), IID)
+			rlocString += one
+		}
 		file2.WriteString(fmt.Sprintf(lispEIDtemplate,
 			tag, lispSignature, tag, additionalInfo, olIfname,
 			olIfname, IID))
@@ -253,12 +262,12 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 }
 
 func createLispEidConfiglet(lispRunDirname string,
-	IID uint32, EID net.IP, lispSignature string,
+	IID uint32, EID net.IP, AppIPAddr net.IP, lispSignature string,
 	globalStatus types.DeviceNetworkStatus,
 	tag string, olIfname string, additionalInfo string,
 	mapservers []types.MapServer, separateDataPlane bool) {
 	if debug {
-		log.Printf("createLispConfiglet: %s %d %s %v %s %s %s %s %v\n",
+		log.Printf("createLispEidConfiglet: %s %d %s %v %v %s %s %s %v\n",
 			lispRunDirname, IID, EID, lispSignature, globalStatus,
 			tag, olIfname, additionalInfo, mapservers)
 	}
@@ -303,6 +312,14 @@ func createLispEidConfiglet(lispRunDirname string,
 			rlocString += one
 		}
 	}
+	// Append to rlocString based on AppIPAddr
+	log.Printf("lisp: EID %s AppIPAddr %s\n",
+		EID.String(), AppIPAddr.String())
+	if AppIPAddr != nil && !EID.Equal(AppIPAddr) {
+		one := fmt.Sprintf("    prefix {\n        instance-id = %d\n        eid-prefix = %s/32\n        ms-name = ms-%d\n    }\n",
+			IID, AppIPAddr.String(), IID)
+		rlocString += one
+	}
 	file.WriteString(fmt.Sprintf(lispEIDtemplate,
 		tag, lispSignature, tag, additionalInfo, olIfname,
 		olIfname, IID))
@@ -312,22 +329,25 @@ func createLispEidConfiglet(lispRunDirname string,
 }
 
 func updateLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
-	EID net.IP, lispSignature string,
+	EID net.IP, AppIPAddr net.IP, lispSignature string,
 	globalStatus types.DeviceNetworkStatus,
 	tag string, olIfname string, additionalInfo string,
 	mapservers []types.MapServer,
 	separateDataPlane bool) {
 	if debug {
-		log.Printf("updateLispConfiglet: %s %v %d %s %v %s %s %s %s %v\n",
+		log.Printf("updateLispConfiglet: %s %v %d %s %v %v %s %s %s %v\n",
 			lispRunDirname, isMgmt, IID, EID, lispSignature, globalStatus,
 			tag, olIfname, additionalInfo, mapservers)
 	}
-	createLispConfiglet(lispRunDirname, isMgmt, IID, EID, lispSignature,
-		globalStatus, tag, olIfname, additionalInfo, mapservers, separateDataPlane)
+	createLispConfiglet(lispRunDirname, isMgmt, IID, EID, AppIPAddr,
+		lispSignature, globalStatus, tag, olIfname, additionalInfo,
+		mapservers, separateDataPlane)
 }
 
 func deleteLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
-	EID net.IP, globalStatus types.DeviceNetworkStatus, separateDataPlane bool) {
+	EID net.IP, AppIPAddr net.IP, globalStatus types.DeviceNetworkStatus,
+	separateDataPlane bool) {
+
 	if debug {
 		log.Printf("deleteLispConfiglet: %s %d %s %v\n",
 			lispRunDirname, IID, EID, globalStatus)

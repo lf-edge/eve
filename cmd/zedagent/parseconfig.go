@@ -170,7 +170,10 @@ func parseBaseOsConfig(getconfigCtx *getconfigContext,
 
 	idx := 0
 	for _, cfgOs := range cfgOsList {
-
+		if cfgOs.GetBaseOSVersion() == "" {
+			// Empty slot - silently ignore
+			continue
+		}
 		baseOs := new(types.BaseOsConfig)
 
 		baseOs.UUIDandVersion.UUID, _ = uuid.FromString(cfgOs.Uuidandversion.Uuid)
@@ -667,11 +670,19 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 		log.Printf("publishNetworkObjectConfig: processing %s type %d\n",
 			config.Key(), config.Type)
 
+		ipspec := netEnt.GetIp()
 		switch config.Type {
-		case types.NT_IPV4, types.NT_IPV6:
-			ipspec := netEnt.GetIp()
+		case types.NT_CryptoEID:
+			// XXX hack waiting for cloud
 			if ipspec == nil {
-				log.Printf("publishNetworkObjectConfig: Missing ipspec for %d in %v\n",
+				log.Printf("XXX CryptoEID publishNetworkObjectConfig: Missing ipspec for %s in %v\n",
+					id.String(), netEnt)
+				break
+			}
+			fallthrough
+		case types.NT_IPV4, types.NT_IPV6:
+			if ipspec == nil {
+				log.Printf("publishNetworkObjectConfig: Missing ipspec for %s in %v\n",
 					id.String(), netEnt)
 				continue
 			}
@@ -679,38 +690,79 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 			if err != nil {
 				// XXX return how?
 				log.Printf("publishNetworkObjectConfig: parseIpspec failed: %s\n", err)
+				continue
 			}
-			fallthrough
-		case types.NT_CryptoEID:
-			// Parse and store DnsNameToIPList form Network configuration
-			dnsEntries := netEnt.GetDns()
-
-			// Parse and populate the DnsNameToIP list
-			// This is what we will publish to zedrouter
-			nameToIPs := []types.DnsNameToIP{}
-			for _, dnsEntry := range dnsEntries {
-				hostName := dnsEntry.HostName
-
-				ips := []net.IP{}
-				for _, strAddr := range dnsEntry.Address {
-					ip := net.ParseIP(strAddr)
-					if ip != nil {
-						ips = append(ips, ip)
-					}
-				}
-
-				nameToIP := types.DnsNameToIP{
-					HostName: hostName,
-					IPs:      ips,
-				}
-				nameToIPs = append(nameToIPs, nameToIP)
-			}
-			config.DnsNameToIPList = nameToIPs
 		default:
 			log.Printf("publishNetworkObjectConfig: Unknown NetworkConfig type %d for %s in %v; ignored\n",
 				config.Type, id.String(), netEnt)
 			// XXX return error? Ignore for now
 			continue
+		}
+
+		// Parse and store DnsNameToIPList form Network configuration
+		dnsEntries := netEnt.GetDns()
+
+		// Parse and populate the DnsNameToIP list
+		// This is what we will publish to zedrouter
+		nameToIPs := []types.DnsNameToIP{}
+		for _, dnsEntry := range dnsEntries {
+			hostName := dnsEntry.HostName
+
+			ips := []net.IP{}
+			for _, strAddr := range dnsEntry.Address {
+				ip := net.ParseIP(strAddr)
+				if ip != nil {
+					ips = append(ips, ip)
+				} else {
+					log.Printf("Bad dnsEntry %s ignored\n",
+						strAddr)
+				}
+			}
+
+			nameToIP := types.DnsNameToIP{
+				HostName: hostName,
+				IPs:      ips,
+			}
+			nameToIPs = append(nameToIPs, nameToIP)
+		}
+		config.DnsNameToIPList = nameToIPs
+
+		// XXX suspect DhcpRange is not nil but has empty start/end
+		if forceLisp && config.Type == types.NT_CryptoEID &&
+			ipspec == nil {
+
+			log.Printf("XXX adding cryptoeid IPv4\n")
+			tmp := "40.1.0.0/16"
+			_, subnet, err := net.ParseCIDR(tmp)
+			if err != nil {
+				log.Printf("Failed to parse tmp: %s\n",
+					tmp, err)
+			} else {
+				config.Subnet = *subnet
+			}
+			tmp = "40.1.0.1"
+			config.Gateway = net.ParseIP(tmp)
+			if config.Gateway == nil {
+				log.Printf("Failed to parse %s\n", tmp)
+			}
+			tmp = "40.1.0.2"
+			start := net.ParseIP(tmp)
+			if start == nil {
+				log.Printf("Failed to parse %s\n", tmp)
+			}
+			tmp = "40.1.255.255"
+			end := net.ParseIP(tmp)
+			if end == nil {
+				log.Printf("Failed to parse %s\n", tmp)
+			}
+			config.DhcpRange.Start = start
+			config.DhcpRange.End = end
+			if config.Dhcp != types.DT_SERVER {
+				log.Printf("XXX forcing DT_SERVER from %v\n",
+					config.Dhcp)
+				config.Dhcp = types.DT_SERVER
+			}
+			// XXX end testing hack
 		}
 		ctx.pubNetworkObjectConfig.Publish(config.Key(),
 			&config)
@@ -723,41 +775,42 @@ func parseIpspec(ipspec *zconfig.Ipspec, config *types.NetworkObjectConfig) erro
 	if s := ipspec.GetSubnet(); s != "" {
 		_, subnet, err := net.ParseCIDR(s)
 		if err != nil {
-			return err
+			return errors.New(fmt.Sprintf("parseIpspec: bad subnet %s: %s",
+				s, err))
 		}
 		config.Subnet = *subnet
 	}
 	if g := ipspec.GetGateway(); g != "" {
 		config.Gateway = net.ParseIP(g)
 		if config.Gateway == nil {
-			return errors.New(fmt.Sprintf("parseIpspec: bad IP %s",
+			return errors.New(fmt.Sprintf("parseIpspec: bad gateway IP %s",
 				g))
 		}
 	}
 	if n := ipspec.GetNtp(); n != "" {
 		config.NtpServer = net.ParseIP(n)
 		if config.NtpServer == nil {
-			return errors.New(fmt.Sprintf("parseIpspec: bad IP %s",
+			return errors.New(fmt.Sprintf("parseIpspec: bad ntp IP %s",
 				n))
 		}
 	}
 	for _, dsStr := range ipspec.GetDns() {
 		ds := net.ParseIP(dsStr)
 		if ds == nil {
-			return errors.New(fmt.Sprintf("parseIpspec: bad IP %s",
+			return errors.New(fmt.Sprintf("parseIpspec: bad dns IP %s",
 				dsStr))
 		}
 		config.DnsServers = append(config.DnsServers, ds)
 	}
-	if dr := ipspec.GetDhcpRange(); dr != nil {
+	if dr := ipspec.GetDhcpRange(); dr != nil && dr.GetStart() != "" {
 		start := net.ParseIP(dr.GetStart())
 		if start == nil {
-			return errors.New(fmt.Sprintf("parseIpspec: bad IP %s",
+			return errors.New(fmt.Sprintf("parseIpspec: bad start IP %s",
 				dr.GetStart()))
 		}
 		end := net.ParseIP(dr.GetEnd())
-		if end == nil {
-			return errors.New(fmt.Sprintf("parseIpspec: bad IP %s",
+		if end == nil && dr.GetEnd() != "" {
+			return errors.New(fmt.Sprintf("parseIpspec: bad end IP %s",
 				dr.GetEnd()))
 		}
 		config.DhcpRange.Start = start
@@ -905,7 +958,7 @@ func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
 				intfEnt.Addr)
 			ulCfg.AppIPAddr = net.ParseIP(intfEnt.Addr)
 			if ulCfg.AppIPAddr == nil {
-				log.Printf("parseUnderlayNetworkConfig: bad IP %s\n",
+				log.Printf("parseUnderlayNetworkConfig: bad AppIPAddr %s\n",
 					intfEnt.Addr)
 				// XXX report error?
 			}
@@ -981,7 +1034,42 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 				// XXX report error?
 			}
 		}
-		// XXX insert static IPv4 EID based on new intfEnt.EIDv4?
+		// Handle old and new location of EIDv6
+		if intfEnt.CryptoEid != "" {
+			olCfg.EIDConfigDetails.EID = net.ParseIP(intfEnt.CryptoEid)
+			if olCfg.EIDConfigDetails.EID == nil {
+				log.Printf("parseOverrlayNetworkConfig: bad CryptoEid %s\n",
+					intfEnt.CryptoEid)
+				// XXX report error?
+			}
+			// Any IPv4 EID?
+			if intfEnt.Addr != "" {
+				olCfg.AppIPAddr = net.ParseIP(intfEnt.Addr)
+				if olCfg.AppIPAddr == nil {
+					log.Printf("parseOverlayNetworkConfig: bad Addr %s\n",
+						intfEnt.Addr)
+					// XXX report error?
+				}
+			}
+		} else if intfEnt.Addr != "" {
+			olCfg.EIDConfigDetails.EID = net.ParseIP(intfEnt.Addr)
+			if olCfg.EIDConfigDetails.EID == nil {
+				log.Printf("parseOverrlayNetworkConfig: bad Addr %s\n",
+					intfEnt.Addr)
+				// XXX report error?
+			}
+			// XXX testing hack
+			if forceLisp {
+				appIP := "40.1.0.99"
+				olCfg.AppIPAddr = net.ParseIP(appIP)
+				log.Printf("XXX Using %s with %s\n",
+					olCfg.AppIPAddr.String(),
+					olCfg.EIDConfigDetails.EID.String())
+			}
+		}
+		if olCfg.AppIPAddr == nil {
+			olCfg.AppIPAddr = olCfg.EIDConfigDetails.EID
+		}
 
 		olCfg.ACLs = make([]types.ACE, len(intfEnt.Acls))
 		for aclIdx, acl := range intfEnt.Acls {
@@ -1010,7 +1098,6 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 			olCfg.ACLs[aclIdx] = *aclCfg
 		}
 
-		olCfg.EIDConfigDetails.EID = net.ParseIP(intfEnt.Addr)
 		olCfg.EIDConfigDetails.LispSignature = intfEnt.Lispsignature
 		olCfg.EIDConfigDetails.PemCert = intfEnt.Pemcert
 		olCfg.EIDConfigDetails.PemPrivateKey = intfEnt.Pemprivatekey
