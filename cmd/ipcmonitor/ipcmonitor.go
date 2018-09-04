@@ -16,7 +16,6 @@ import (
 	"strings"
 )
 
-
 func Run() {
 	agentNamePtr := flag.String("a", "zedrouter",
 		"Agent name")
@@ -25,7 +24,7 @@ func Run() {
 		"topic")
 	flag.Parse()
 	agentName := *agentNamePtr
-	agentScope := *agentScopePtr	
+	agentScope := *agentScopePtr
 	topic := *topicPtr
 	// args := flag.Args()
 	name := nameString(agentName, agentScope, topic)
@@ -74,7 +73,7 @@ func Run() {
 				log.Printf("base64: %s\n", err)
 			}
 			log.Printf("delete type %s key %s\n", t, key)
-			
+
 		case "update":
 			if count < 4 {
 				log.Printf("Too short update: %v\n", reply)
