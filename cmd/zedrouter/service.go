@@ -397,7 +397,7 @@ func getBridgeServiceIPv4Addr(ctx *zedrouterContext, appLink uuid.UUID) (string,
 	if err != nil {
 		return "", err
 	}
-	// XXX Add IPv6; ignore link-locals.
+	// XXX Add IPv6 underlay; ignore link-locals.
 	addrs, err := netlink.AddrList(link, syscall.AF_INET)
 	if err != nil {
 		return "", err
@@ -463,6 +463,8 @@ func publishNetworkServiceStatus(ctx *zedrouterContext, status *types.NetworkSer
 
 // ==== Lisp
 
+// XXX note that we can't change the mapservers nor IID unless we move
+// those configlets to Activate
 func lispCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	status *types.NetworkServiceStatus) error {
 	status.LispStatus = config.LispConfig
@@ -518,6 +520,16 @@ func lispActivate(ctx *zedrouterContext,
 		}
 	}
 
+	// Add ACL filter rule in FORWARD chain to drop packets
+	// input from lisp bn<> bridge interfaces.
+	args := IptablesRule{"-t", "filter", "-I", "FORWARD", "1",
+		"-i", netstatus.BridgeName, "-j", "DROP"}
+	err := ip6tableCmd(args...)
+	if err != nil {
+		log.Printf("%s\n", err)
+		return err
+	}
+
 	log.Printf("lispActivate(%s)\n", status.DisplayName)
 	return nil
 }
@@ -554,10 +566,18 @@ func lispInactivate(ctx *zedrouterContext,
 				// Pass global deviceNetworkStatus
 				deleteLispConfiglet(lispRunDirname, false,
 					status.LispStatus.IID, olStatus.EID,
+					olStatus.AppIPAddr,
 					*ctx.DeviceNetworkStatus,
 					ctx.separateDataPlane)
 			}
 		}
+	}
+
+	args := IptablesRule{"-t", "filter", "-D", "FORWARD", "-i",
+		netstatus.BridgeName, "-j", "DROP"}
+	err := ip6tableCmd(args...)
+	if err != nil {
+		log.Printf("%s\n", err)
 	}
 
 	log.Printf("lispInactivate(%s)\n", status.DisplayName)

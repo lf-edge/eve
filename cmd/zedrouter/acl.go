@@ -11,6 +11,7 @@ import (
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/types"
 	"log"
+	"net"
 	"strconv"
 )
 
@@ -203,11 +204,12 @@ func compileOldAppInstanceIpsets(ctx *zedrouterContext,
 // then concat all the rules and pass to applyACLrules
 // Note that only bridgeName is set with ifMgmt
 func createACLConfiglet(bridgeName string, vifName string, isMgmt bool,
-	ACLs []types.ACE, ipVer int, bridgeIP string, appIP string) error {
+	ACLs []types.ACE, bridgeIP string, appIP string) error {
 	if debug {
 		log.Printf("createACLConfiglet: ifname %s, vifName %s, ACLs %v, IP %s/%s\n",
 			bridgeName, vifName, ACLs, bridgeIP, appIP)
 	}
+	ipVer := determineIpVer(isMgmt, bridgeIP)
 	rules, err := aclToRules(bridgeName, vifName, ACLs, ipVer,
 		bridgeIP, appIP)
 	if err != nil {
@@ -219,6 +221,26 @@ func createACLConfiglet(bridgeName string, vifName string, isMgmt bool,
 	}
 	rules = append(rules, dropRules...)
 	return applyACLRules(rules, bridgeName, vifName, isMgmt, ipVer, appIP)
+}
+
+// If no valid bridgeIP we assume IPv4
+func determineIpVer(isMgmt bool, bridgeIP string) int {
+	if isMgmt {
+		return 6
+	}
+	if bridgeIP == "" {
+		return 4
+	}
+	ip := net.ParseIP(bridgeIP)
+	if ip == nil {
+		log.Fatalf("determineIpVer: ParseIP %s failed\n",
+			bridgeIP)
+	}
+	if ip.To4() == nil {
+		return 6
+	} else {
+		return 4
+	}
 }
 
 func applyACLRules(rules IptablesRuleList, bridgeName string, vifName string,
@@ -293,19 +315,19 @@ func aclToRules(bridgeName string, vifName string, ACLs []types.ACE, ipVer int,
 		// Only allow dhcp, dns (tcp/udp), and icmp6/nd
 		// Note that sufficient for src or dst to be local
 		rule1 := []string{"-i", bridgeName, "-m", "set", "--match-set",
-			"local.ipv6", "dst", "-p", "ipv6-icmp", "-j", "ACCEPT"}
+			"ipv6.local", "dst", "-p", "ipv6-icmp", "-j", "ACCEPT"}
 		rule2 := []string{"-i", bridgeName, "-m", "set", "--match-set",
-			"local.ipv6", "src", "-p", "ipv6-icmp", "-j", "ACCEPT"}
+			"ipv6.local", "src", "-p", "ipv6-icmp", "-j", "ACCEPT"}
 		rule3 := []string{"-i", bridgeName, "-d", bridgeIP,
 			"-p", "ipv6-icmp", "-j", "ACCEPT"}
 		rule4 := []string{"-i", bridgeName, "-s", bridgeIP,
 			"-p", "ipv6-icmp", "-j", "ACCEPT"}
 		rulesList = append(rulesList, rule1, rule2, rule3, rule4)
 		rule1 = []string{"-i", bridgeName, "-m", "set", "--match-set",
-			"local.ipv6", "dst", "-p", "udp", "--dport", "dhcpv6-server",
+			"ipv6.local", "dst", "-p", "udp", "--dport", "dhcpv6-server",
 			"-j", "ACCEPT"}
 		rule2 = []string{"-i", bridgeName, "-m", "set", "--match-set",
-			"local.ipv6", "src", "-p", "udp", "--sport", "dhcpv6-server",
+			"ipv6.local", "src", "-p", "udp", "--sport", "dhcpv6-server",
 			"-j", "ACCEPT"}
 		rule3 = []string{"-i", bridgeName, "-d", bridgeIP,
 			"-p", "udp", "--dport", "dhcpv6-server", "-j", "ACCEPT"}
@@ -329,10 +351,10 @@ func aclToRules(bridgeName string, vifName string, ACLs []types.ACE, ipVer int,
 		// Only allow dhcp and dns (tcp/udp)
 		// Note that sufficient for src or dst to be local
 		rule1 := []string{"-i", bridgeName, "-m", "set", "--match-set",
-			"local.ipv4", "dst", "-p", "udp", "--dport", "bootps",
+			"ipv4.local", "dst", "-p", "udp", "--dport", "bootps",
 			"-j", "ACCEPT"}
 		rule2 := []string{"-i", bridgeName, "-m", "set", "--match-set",
-			"local.ipv4", "src", "-p", "udp", "--sport", "bootps",
+			"ipv4.local", "src", "-p", "udp", "--sport", "bootps",
 			"-j", "ACCEPT"}
 		rule3 := []string{"-i", bridgeName, "-d", bridgeIP,
 			"-p", "udp", "--dport", "bootps", "-j", "ACCEPT"}
@@ -417,13 +439,15 @@ func aceToRules(bridgeName string, vifName string, ace types.ACE, ipVer int, bri
 			}
 			// Ensure the sets exists; create if not
 			// need to feed it into dnsmasq as well; restart
-			if err := ipsetCreatePair(match.Value); err != nil {
+			err := ipsetCreatePair(match.Value, "hash:ip")
+			if err != nil {
 				log.Println("ipset create for ",
 					match.Value, err)
 			}
-			if ipVer == 4 {
+			switch ipVer {
+			case 4:
 				ipsetName = "ipv4." + match.Value
-			} else if ipVer == 6 {
+			case 6:
 				ipsetName = "ipv6." + match.Value
 			}
 		case "eidset":
@@ -434,7 +458,12 @@ func aceToRules(bridgeName string, vifName string, ace types.ACE, ipVer int, bri
 				return nil, errors.New(errStr)
 			}
 			// Caller adds any EIDs/IPs to set
-			ipsetName = "eids." + vifName
+			switch ipVer {
+			case 4:
+				ipsetName = "ipv4.eids." + vifName
+			case 6:
+				ipsetName = "ipv6.eids." + vifName
+			}
 		default:
 			errStr := fmt.Sprintf("Unsupported ACE match type: %s",
 				match.Type)
@@ -596,9 +625,12 @@ func aceToRules(bridgeName string, vifName string, ace types.ACE, ipVer int, bri
 }
 
 // Determine which rules to skip and what prefix/table to use
+// We append a '+' to the vifname to handle PV/qemu which for some
+// reason have a second <vifname>-emu bridge interface.
 func rulePrefix(operation string, isMgmt bool, ipVer int, vifName string,
 	appIP string, rule IptablesRule) IptablesRule {
 
+	vifName += "+"
 	prefix := []string{}
 	if isMgmt {
 		// Enforcing sending on OUTPUT. Enforcing receiving
@@ -714,13 +746,14 @@ func diffIpsets(newIpsets, oldIpsets []string) ([]string, []string, bool) {
 }
 
 func updateACLConfiglet(bridgeName string, vifName string, isMgmt bool,
-	oldACLs []types.ACE, newACLs []types.ACE, ipVer int, bridgeIP string,
+	oldACLs []types.ACE, newACLs []types.ACE, bridgeIP string,
 	appIP string) error {
 
 	if debug {
 		log.Printf("updateACLConfiglet: bridgeName %s, vifName %s, appIP %s, oldACLs %v newACLs %v\n",
 			bridgeName, vifName, appIP, oldACLs, newACLs)
 	}
+	ipVer := determineIpVer(isMgmt, bridgeIP)
 	oldRules, err := aclToRules(bridgeName, vifName, oldACLs, ipVer,
 		bridgeIP, appIP)
 	if err != nil {
@@ -807,12 +840,13 @@ func applyACLUpdate(isMgmt bool, ipVer int, vifName string, appIP string,
 }
 
 func deleteACLConfiglet(bridgeName string, vifName string, isMgmt bool,
-	ACLs []types.ACE, ipVer int, bridgeIP string, appIP string) error {
+	ACLs []types.ACE, bridgeIP string, appIP string) error {
 
 	if debug {
 		log.Printf("deleteACLConfiglet: ifname %s `ACLs %v\n",
 			bridgeName, vifName, ACLs)
 	}
+	ipVer := determineIpVer(isMgmt, bridgeIP)
 	rules, err := aclToRules(bridgeName, vifName, ACLs, ipVer,
 		bridgeIP, appIP)
 	if err != nil {

@@ -976,10 +976,14 @@ func handleModify(ctx *domainContext, key string,
 	}
 	changed := false
 	if config.Activate && !status.Activated {
+		status.VirtualizationMode = config.VirtualizationMode
+		status.EnableVnc = config.EnableVnc
 		doActivate(*config, status, ctx.assignableAdapters)
 		changed = true
 	} else if !config.Activate && status.Activated {
 		doInactivate(status, ctx.assignableAdapters)
+		status.VirtualizationMode = config.VirtualizationMode
+		status.EnableVnc = config.EnableVnc
 		changed = true
 	}
 	if changed {

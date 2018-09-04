@@ -24,7 +24,9 @@ It has these top-level messages:
 	ZInfoStorage
 	ZInfoHypervisor
 	ZInfoApp
+	ZInfoVpnLinkInfo
 	ZInfoVpnLink
+	ZInfoVpnEndPoint
 	ZInfoVpnConn
 	ZInfoVpn
 	RlocState

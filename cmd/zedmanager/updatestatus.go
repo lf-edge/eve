@@ -381,7 +381,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		key := types.EidKey(config.UUIDandVersion, ec.IID)
 		es := lookupEIDStatus(ctx, key)
 		if es == nil || es.Pending() {
-			log.Printf("lookupEIDStatus %s failed %s\n",
+			log.Printf("lookupEIDStatus %s failed\n",
 				key)
 			eidsAllocated = false
 			continue

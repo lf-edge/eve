@@ -71,6 +71,7 @@ func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
 			ol.LispSignature = ols.LispSignature
 			ol.ACLs = olc.ACLs
 			ol.AppMacAddr = olc.AppMacAddr
+			ol.AppIPAddr = olc.AppIPAddr
 			ol.Network = olc.Network
 			ol.MgmtIID = ols.IID
 		}
