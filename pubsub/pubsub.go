@@ -54,9 +54,9 @@ type keyMap struct {
 // We always write to a file in order to have a checkpoint on restart
 // The special agent name "" implies always reading from the /var/run/zededa/
 // directory.
-const publishToSock = true      // XXX
-const subscribeFromDir = true   // XXX
-const subscribeFromSock = false // XXX
+const publishToSock = true     // XXX
+const subscribeFromDir = false // XXX
+const subscribeFromSock = true // XXX
 
 // For a subscription, if the agentName is empty we interpret that as
 // being directory in /var/tmp/zededa
@@ -278,7 +278,7 @@ func (pub *Publication) serveConnection(s net.Conn) {
 	// Read request
 	buf := make([]byte, 65536)
 	res, err := s.Read(buf)
-	// XXX check if res == 65536
+	// XXX check if res == 65536 i.e., truncated
 	request := strings.Split(string(buf[0:res]), " ")
 	log.Printf("serveConnection read %d: %v\n", len(request), request)
 	if len(request) != 2 || request[0] != "request" || request[1] != pub.topic {
@@ -838,11 +838,8 @@ func (sub *Subscription) Activate() error {
 	}
 }
 
-// XXX incorrectly modifies collections.
-// XXX Need to pass new value as part of chan!a
 func (sub *Subscription) watchSock() {
 
-	name := sub.nameString()
 	for {
 		msg, key, val := sub.connectAndRead()
 		switch msg {
@@ -855,63 +852,26 @@ func (sub *Subscription) watchSock() {
 			if debug {
 				log.Printf("watchSock: %s\n", msg)
 			}
-			// XXX update sub? No
 			sub.sendChan <- "R done"
 
 		case "delete":
 			if debug {
-				log.Printf("delete key %s\n", key)
+				log.Printf("delete base64 key %s\n", key)
 			}
-			// Delete key. Does it exist?
-			_, ok := sub.km.key.Load(key)
-			if !ok {
-				log.Printf("watchSock(%s) delete %s key not found\n",
-					name, key)
-			} else {
-				sub.km.key.Delete(key)
-				sub.sendChan <- "D " + key
-			}
+			sub.sendChan <- "D " + key
 
 		case "update":
-			var newItem interface{}
-			err := json.Unmarshal([]byte(val), &newItem)
-			if err != nil {
-				errStr := fmt.Sprintf("watchSock(%s): json failed %s",
-					name, err)
-				log.Println(errStr)
-				continue
-			}
 			if debug {
-				log.Printf("update key %s val %+v\n",
-					key, newItem)
+				log.Printf("update base64 key %s\n", key)
 			}
-
-			// XXX do we update collection here? If so need to check if
-			// unchanged as in handleModify
-			m, ok := sub.km.key.Load(key)
-			if ok {
-				if cmp.Equal(m, newItem) {
-					if debug {
-						log.Printf("watchSock(%s/%s) unchanged\n",
-							name, key)
-					}
-					break
-				}
-				if debug {
-					log.Printf("watchSock(%s/%s) replacing due to diff %s\n",
-						name, key, cmp.Diff(m, newItem))
-				}
-			} else if debug {
-				log.Printf("watchSock(%s) add %+v for key %s\n",
-					name, newItem, key)
-			}
-			sub.km.key.Store(key, newItem)
-			sub.sendChan <- "M " + key
+			// XXX is size of val any issue? pointer?
+			sub.sendChan <- "M " + key + " " + val
 		}
 	}
 }
 
 // Returns msg, key, val
+// key and val are base64-encoded
 func (sub *Subscription) connectAndRead() (string, string, string) {
 
 	name := sub.nameString()
@@ -952,7 +912,7 @@ func (sub *Subscription) connectAndRead() (string, string, string) {
 			continue
 		}
 
-		// XXX check if res == 65536
+		// XXX check if res == 65536 i.e. truncated?
 		reply := strings.Split(string(buf[0:res]), " ")
 		count := len(reply)
 		if count < 2 {
@@ -966,7 +926,8 @@ func (sub *Subscription) connectAndRead() (string, string, string) {
 
 		// XXX check type against sub.topic
 
-		// XXX are there error cases where we should
+		// XXX are there error cases where we should Close and
+		// continue aka reconnect?
 		switch msg {
 		case "hello", "restarted", "complete":
 			if debug {
@@ -984,15 +945,18 @@ func (sub *Subscription) connectAndRead() (string, string, string) {
 			}
 			recvKey := reply[2]
 
-			key, err := base64.StdEncoding.DecodeString(recvKey)
-			if err != nil {
-				errStr := fmt.Sprintf("connectAndRead(%s): base64 failed %s",
-					name, err)
-				log.Println(errStr)
-				continue
+			if debug {
+				key, err := base64.StdEncoding.DecodeString(recvKey)
+				if err != nil {
+					errStr := fmt.Sprintf("connectAndRead(%s): base64 failed %s",
+						name, err)
+					log.Println(errStr)
+					continue
+				}
+				log.Printf("delete type %s key %s\n",
+					t, string(key))
 			}
-			log.Printf("delete type %s key %s\n", t, string(key))
-			return msg, string(key), ""
+			return msg, recvKey, ""
 
 		case "update":
 			if count < 4 {
@@ -1008,22 +972,26 @@ func (sub *Subscription) connectAndRead() (string, string, string) {
 				continue
 			}
 			recvKey := reply[2]
-			key, err := base64.StdEncoding.DecodeString(recvKey)
-			if err != nil {
-				errStr := fmt.Sprintf("connectAndRead(%s): base64 failed %s",
-					name, err)
-				log.Println(errStr)
-				continue
-			}
 			recvVal := reply[3]
-			val, err := base64.StdEncoding.DecodeString(recvVal)
-			if err != nil {
-				errStr := fmt.Sprintf("connectAndRead(%s): base64 val failed %s",
-					name, err)
-				log.Println(errStr)
-				continue
+			if debug {
+				key, err := base64.StdEncoding.DecodeString(recvKey)
+				if err != nil {
+					errStr := fmt.Sprintf("connectAndRead(%s): base64 failed %s",
+						name, err)
+					log.Println(errStr)
+					continue
+				}
+				val, err := base64.StdEncoding.DecodeString(recvVal)
+				if err != nil {
+					errStr := fmt.Sprintf("connectAndRead(%s): base64 val failed %s",
+						name, err)
+					log.Println(errStr)
+					continue
+				}
+				log.Printf("update type %s key %s val %s\n",
+					t, string(key), string(val))
 			}
-			return msg, string(key), string(val)
+			return msg, recvKey, recvVal
 
 		default:
 			errStr := fmt.Sprintf("connectAndRead(%s): unknown message %s",
@@ -1034,7 +1002,8 @@ func (sub *Subscription) connectAndRead() (string, string, string) {
 	}
 }
 
-// XXX note that change filename includes .json for files
+// XXX note that change filename includes .json for files. Removed by
+// HandleStatusEvent
 func (sub *Subscription) ProcessChange(change string) {
 	name := sub.nameString()
 	if debug {
@@ -1046,24 +1015,48 @@ func (sub *Subscription) ProcessChange(change string) {
 			sub.dirName, &sub.topicType,
 			handleModify, handleDelete, &restartFn)
 	} else if subscribeFromSock {
-		operation := string(change[0])
-		key := string(change[2:])
+		reply := strings.Split(change, " ")
+		operation := reply[0]
 
 		switch operation {
 		case "R":
 			handleRestart(sub, true)
 		case "D":
-			// XXX why old value m?? Use?
-			// Already deleted from collection
-			if sub.DeleteHandler != nil {
-				(sub.DeleteHandler)(sub.userCtx, key, nil)
+			recvKey := reply[1]
+			key, err := base64.StdEncoding.DecodeString(recvKey)
+			if err != nil {
+				errStr := fmt.Sprintf("ProcessChange(%s): base64 failed %s",
+					name, err)
+				log.Println(errStr)
+				return
 			}
+			handleDelete(sub, string(key))
 
 		case "M":
-			m, ok := sub.km.key.Load(key)
-			if ok && sub.ModifyHandler != nil {
-				(sub.ModifyHandler)(sub.userCtx, key, m)
+			recvKey := reply[1]
+			recvVal := reply[2]
+			key, err := base64.StdEncoding.DecodeString(recvKey)
+			if err != nil {
+				errStr := fmt.Sprintf("ProcessChange(%s): base64 failed %s",
+					name, err)
+				log.Println(errStr)
+				return
 			}
+			val, err := base64.StdEncoding.DecodeString(recvVal)
+			if err != nil {
+				errStr := fmt.Sprintf("ProcessChange(%s): base64 val failed %s",
+					name, err)
+				log.Println(errStr)
+				return
+			}
+			var output interface{}
+			if err := json.Unmarshal(val, &output); err != nil {
+				errStr := fmt.Sprintf("ProcessChange(%s): json failed %s",
+					name, err)
+				log.Println(errStr)
+				return
+			}
+			handleModify(sub, string(key), output)
 		}
 	}
 }
@@ -1077,8 +1070,6 @@ func handleModify(ctxArg interface{}, key string, item interface{}) {
 	// NOTE: without a deepCopy we would just save a pointer since
 	// item is a pointer. That would cause failures.
 	newItem := deepCopy(item)
-	// XXX only lookup if sub.subscribeFromDir
-	// Otherwise already updated
 	m, ok := sub.km.key.Load(key)
 	if ok {
 		if cmp.Equal(m, newItem) {
@@ -1115,8 +1106,6 @@ func handleDelete(ctxArg interface{}, key string) {
 	if debug {
 		log.Printf("pubsub.handleDelete(%s) key %s\n", name, key)
 	}
-	// XXX only lookup if sub.subscribeFromDir
-	// Otherwise already deleted
 	m, ok := sub.km.key.Load(key)
 	if !ok {
 		log.Printf("pubsub.handleDelete(%s) %s key not found\n",
