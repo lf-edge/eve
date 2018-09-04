@@ -134,7 +134,7 @@ images/%.yml: build-tools zedctr-workaround parse-pkgs.sh images/%.yml.in FORCE
 	   echo "WARNING: We are assembling a $(ZARCH) image on `uname -m`. Things may break." ;\
         fi
 
-config.img: conf/server conf/onboard.cert.pem conf/
+config.img: conf/server conf/onboard.cert.pem conf/wpa_supplicant.conf conf/
 	./maketestconfig.sh $(CONF_DIR) config.img
 
 $(ROOTFS_IMG): images/rootfs.yml
