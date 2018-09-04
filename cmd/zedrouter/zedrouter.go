@@ -392,6 +392,7 @@ func Run() {
 			if err != nil {
 				log.Println(err)
 			}
+			publishNetworkServiceStatusAll(&zedrouterCtx)
 		case <-geoTimer.C:
 			if debug {
 				log.Println("geoTimer at", time.Now())

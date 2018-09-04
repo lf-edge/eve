@@ -580,6 +580,7 @@ type NetworkServiceStatus struct {
 	// Any errrors from provisioning the service
 	Error     string
 	ErrorTime time.Time
+	VpnStatus *ServiceVpnStatus
 }
 
 func (status NetworkServiceStatus) Key() string {
@@ -719,4 +720,72 @@ type VpnTunnelConfig struct {
 	Metric       string
 	LocalIpAddr  string
 	RemoteIpAddr string
+}
+
+type VpnState uint8
+
+const (
+	VPN_INVALID VpnState = iota
+	VPN_INITIAL
+	VPN_CONNECTING
+	VPN_ESTABLISHED
+	VPN_INSTALLED
+	VPN_REKEYED
+	VPN_DELETED VpnState = 10
+	VPN_MAXSTATE VpnState = 255
+)
+
+type VpnLinkInfo struct {
+	SubNet     string // connecting subnet
+	SpiId      string // security parameter index
+	Direction  bool   // 0 - in, 1 - out
+	BytesCount uint64
+	PktsCount  uint64
+}
+
+type VpnLinkStatus struct {
+	Id         string
+    Name       string
+	ReqId      string
+	InstTime   uint64 // installation time
+	ExpTime    uint64 // expiry time
+	RekeyTime  uint64 // rekey time
+	EspInfo    string
+	State      VpnState 
+	LInfo      VpnLinkInfo
+	RInfo      VpnLinkInfo
+	MarkDelete bool
+}
+
+type VpnEndPoint struct {
+	Id     string // ipsec id
+	IpAddr string // end point ip address
+	Port   uint32 // udp port
+}
+
+type VpnConnStatus struct {
+	Id         string   // ipsec connection id
+	Name       string   // connection name
+	State      VpnState // vpn state
+	Version    string   // ike version
+	Ikes       string   // ike parameters
+	EstTime    uint64   // established time
+	ReauthTime uint64   // reauth time
+	LInfo      VpnEndPoint
+	RInfo      VpnEndPoint
+	Links      []*VpnLinkStatus
+	StartLine  uint32
+	EndLine    uint32
+	MarkDelete bool
+}
+
+type ServiceVpnStatus struct {
+	Version            string    // strongswan package version
+	UpTime             time.Time // service start time stamp
+	IpAddrs            string    // listening ip addresses, can be multiple
+	ActiveVpnConns     []*VpnConnStatus
+	StaleVpnConns      []*VpnConnStatus
+	ActiveTunCount     uint32
+	ConnectingTunCount uint32
+	PolicyBased        bool
 }
