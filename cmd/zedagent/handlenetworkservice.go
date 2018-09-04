@@ -13,6 +13,7 @@ import (
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/zedcloud"
 	"log"
+	"strings"
 )
 
 func handleNetworkServiceModify(ctxArg interface{}, key string, statusArg interface{}) {
@@ -60,7 +61,6 @@ func handleNetworkServiceDelete(ctxArg interface{}, key string,
 	log.Printf("handleNetworkServiceDelete(%s) done\n", key)
 }
 
-// we may need to post multiple Vpn messages
 func handleNetworkVpnServiceStatusModify(ctx *zedagentContext,
 	status types.NetworkServiceStatus) {
 	prepareVpnServiceInfoMsg(ctx, status, false)
@@ -72,7 +72,6 @@ func handleNetworkVpnServiceStatusDelete(ctx *zedagentContext, status types.Netw
 
 func handleNetworkLispServiceStatusModify(ctx *zedagentContext, status types.NetworkServiceStatus) {
 	// XXX, fill in Lisp Details
-
 }
 
 func handleNetworkLispServiceStatusDelete(ctx *zedagentContext, status types.NetworkServiceStatus) {
@@ -81,13 +80,10 @@ func handleNetworkLispServiceStatusDelete(ctx *zedagentContext, status types.Net
 
 func prepareVpnServiceInfoMsg(ctx *zedagentContext, status types.NetworkServiceStatus, delete bool) {
 	if status.VpnStatus == nil {
-		log.Printf("vpnStatus is not absent\n")
 		return
 	}
-	published := false
 	infoMsg := &zmet.ZInfoMsg{}
 	infoType := new(zmet.ZInfoTypes)
-	// XXX:define in api zmet proto
 	*infoType = zmet.ZInfoTypes_ZiService
 	infoMsg.DevId = *proto.String(zcdevUUID.String())
 	infoMsg.Ztype = *infoType
@@ -101,7 +97,7 @@ func prepareVpnServiceInfoMsg(ctx *zedagentContext, status types.NetworkServiceS
 	svcInfo.SoftwareList = new(zmet.ZInfoSW)
 	svcInfo.SoftwareList.SwVersion = vpnStatus.Version
 	upTime, _ := ptypes.TimestampProto(vpnStatus.UpTime)
-	svcInfo.UpTime = upTime
+	svcInfo.UpTimeStamp = upTime
 	if !status.ErrorTime.IsZero() {
 		errInfo := new(zmet.ErrorInfo)
 		errInfo.Description = status.Error
@@ -110,59 +106,50 @@ func prepareVpnServiceInfoMsg(ctx *zedagentContext, status types.NetworkServiceS
 		svcInfo.SvcErr = append(svcInfo.SvcErr, errInfo)
 	}
 
-	// stale connections
-	for _, vpnConn := range vpnStatus.StaleVpnConns {
-		publishVpnConnection(ctx, serviceUUID, vpnStatus,
-			vpnConn, infoMsg, svcInfo)
-		published = true
+	vpnInfo := new(zmet.ZInfoVpn)
+	vpnInfo.PolicyBased = vpnStatus.PolicyBased
+	listeningIpAddrs := strings.Split(vpnStatus.IpAddrs, " ")
+	vpnInfo.ListeningIpAddrs = make([]string, len(listeningIpAddrs))
+	for idx, ipAddr := range listeningIpAddrs {
+		vpnInfo.ListeningIpAddrs[idx] = ipAddr
 	}
+
+	totalConnCount := len(vpnStatus.StaleVpnConns) + len(vpnStatus.ActiveVpnConns)
+
+	if totalConnCount == 0 {
+		svcInfo.InfoContent = new(zmet.ZInfoService_Vinfo)
+		if x, ok := svcInfo.GetInfoContent().(*zmet.ZInfoService_Vinfo); ok {
+			x.Vinfo = vpnInfo
+		}
+
+		// prapare the final stuff
+		infoMsg.InfoContent = new(zmet.ZInfoMsg_Sinfo)
+		if x, ok := infoMsg.GetInfoContent().(*zmet.ZInfoMsg_Sinfo); ok {
+			x.Sinfo = svcInfo
+		}
+		publishNetworkServiceInfo(ctx, serviceUUID, infoMsg)
+		return
+	}
+
+	vpnInfo.Conn = make([]*zmet.ZInfoVpnConn, totalConnCount)
+	// stale connections
+	connIdx := 0
+	for _, vpnConn := range vpnStatus.StaleVpnConns {
+		vpnConnInfo := publishVpnConnection(vpnInfo, vpnConn)
+		if vpnConnInfo != nil {
+			vpnInfo.Conn[connIdx] = vpnConnInfo
+			connIdx++
+		}
+	}
+
 	// active connections
 	for _, vpnConn := range vpnStatus.ActiveVpnConns {
-		publishVpnConnection(ctx, serviceUUID, vpnStatus,
-			vpnConn, infoMsg, svcInfo)
-		published = true
+		vpnConnInfo := publishVpnConnection(vpnInfo, vpnConn)
+		if vpnConnInfo != nil {
+			vpnInfo.Conn[connIdx] = vpnConnInfo
+			connIdx++
+		}
 	}
-
-	// if nothing published, publish summary
-	if published == false {
-		publishNetworkServiceInfo(ctx, serviceUUID, infoMsg)
-	}
-}
-
-func publishVpnConnection(ctx *zedagentContext, serviceUUID string,
-	vpnStatus *types.ServiceVpnStatus, vpnConn *types.VpnConnStatus,
-	infoMsg *zmet.ZInfoMsg, svcInfo *zmet.ZInfoService) {
-
-	vpnInfo := new(zmet.ZInfoVpn)
-	vpnInfo.Id = vpnConn.Id
-	vpnInfo.Name = vpnConn.Name
-	vpnInfo.IkeProposals = vpnConn.Ikes
-	vpnInfo.State = zmet.ZInfoVpnState(vpnConn.State)
-	vpnInfo.ListeningIpAddrs = make([]string, 1)
-	vpnInfo.ListeningIpAddrs[0] = vpnStatus.IpAddrs
-
-	vpnConnInfo := new(zmet.ZInfoVpnConn)
-	vpnConnInfo.ReqId = vpnConn.ReqId
-	vpnConnInfo.RouteTable = vpnStatus.RouteTable
-
-	localLinkInfo := new(zmet.ZInfoVpnLink)
-	localLinkInfo.IpAddr = vpnConn.LocalLink.IpAddr
-	localLinkInfo.SubNet = vpnConn.LocalLink.SubNet
-	localLinkInfo.SpiId = vpnConn.LocalLink.SpiId
-	localLinkInfo.Direction = vpnConn.LocalLink.Direction
-
-	remoteLinkInfo := new(zmet.ZInfoVpnLink)
-	remoteLinkInfo.IpAddr = vpnConn.RemoteLink.IpAddr
-	remoteLinkInfo.SubNet = vpnConn.RemoteLink.SubNet
-	remoteLinkInfo.SpiId = vpnConn.RemoteLink.SpiId
-	remoteLinkInfo.Direction = vpnConn.RemoteLink.Direction
-
-	vpnConnInfo.Link = make([]*zmet.ZInfoVpnLink, 2)
-	vpnConnInfo.Link[0] = localLinkInfo
-	vpnConnInfo.Link[1] = remoteLinkInfo
-
-	vpnInfo.Conn = make([]*zmet.ZInfoVpnConn, 1)
-	vpnInfo.Conn[0] = vpnConnInfo
 
 	svcInfo.InfoContent = new(zmet.ZInfoService_Vinfo)
 	if x, ok := svcInfo.GetInfoContent().(*zmet.ZInfoService_Vinfo); ok {
@@ -175,6 +162,62 @@ func publishVpnConnection(ctx *zedagentContext, serviceUUID string,
 		x.Sinfo = svcInfo
 	}
 	publishNetworkServiceInfo(ctx, serviceUUID, infoMsg)
+}
+
+func publishVpnConnection(vpnInfo *zmet.ZInfoVpn,
+	vpnConn *types.VpnConnStatus) *zmet.ZInfoVpnConn {
+	if vpnConn == nil {
+		return nil
+	}
+	vpnConnInfo := new(zmet.ZInfoVpnConn)
+	vpnConnInfo.Id = vpnConn.Id
+	vpnConnInfo.Name = vpnConn.Name
+	vpnConnInfo.State = zmet.ZInfoVpnState(vpnConn.State)
+	vpnConnInfo.Ikes = vpnConn.Ikes
+	vpnConnInfo.EstTime = vpnConn.EstTime
+	vpnConnInfo.Version = vpnConn.Version
+
+	lEndPointInfo := new(zmet.ZInfoVpnEndPoint)
+	lEndPointInfo.Id = vpnConn.LInfo.Id
+	lEndPointInfo.IpAddr = vpnConn.LInfo.IpAddr
+	lEndPointInfo.Port = vpnConn.LInfo.Port
+	vpnConnInfo.LInfo = lEndPointInfo
+
+	rEndPointInfo := new(zmet.ZInfoVpnEndPoint)
+	rEndPointInfo.Id = vpnConn.RInfo.Id
+	rEndPointInfo.IpAddr = vpnConn.RInfo.IpAddr
+	rEndPointInfo.Port = vpnConn.RInfo.Port
+	vpnConnInfo.RInfo = rEndPointInfo
+
+	if len(vpnConn.Links) == 0 {
+		return vpnConnInfo
+	}
+	vpnConnInfo.Links = make([]*zmet.ZInfoVpnLink, len(vpnConn.Links))
+
+	for idx, linkData := range vpnConn.Links {
+		linkInfo := new(zmet.ZInfoVpnLink)
+		linkInfo.Id = linkData.Id
+		linkInfo.ReqId = linkData.ReqId
+		linkInfo.InstTime = linkData.InstTime
+		linkInfo.EspInfo = linkData.EspInfo
+		linkInfo.State = zmet.ZInfoVpnState(linkData.State)
+
+		linfo := new(zmet.ZInfoVpnLinkInfo)
+		linfo.SubNet = linkData.LInfo.SubNet
+		linfo.SpiId = linkData.LInfo.SpiId
+		linfo.Direction = linkData.LInfo.Direction
+		linkInfo.LInfo = linfo
+
+		rinfo := new(zmet.ZInfoVpnLinkInfo)
+		rinfo.SubNet = linkData.RInfo.SubNet
+		rinfo.SpiId = linkData.RInfo.SpiId
+		rinfo.Direction = linkData.RInfo.Direction
+		linkInfo.RInfo = rinfo
+
+		vpnConnInfo.Links[idx] = linkInfo
+	}
+
+	return vpnConnInfo
 }
 
 func publishNetworkServiceInfo(ctx *zedagentContext, serviceUUID string, infoMsg *zmet.ZInfoMsg) {

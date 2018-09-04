@@ -616,8 +616,12 @@ func strongSwanVpnStatusGet(status *types.NetworkServiceStatus) bool {
 		return change
 	}
 	vpnStatus := new(types.ServiceVpnStatus)
-	ipSecStatusCmdGet(vpnStatus)
-	swanCtlCmdGet(vpnStatus)
+	if err := ipSecStatusCmdGet(vpnStatus); err != nil {
+		return false
+	}
+	if err := swanCtlCmdGet(vpnStatus); err != nil {
+		return false
+	}
 
 	vpnStatus.PolicyBased = vpnConfig.PolicyBased
 
@@ -636,12 +640,14 @@ func isVpnStatusChanged(oldStatus, newStatus *types.ServiceVpnStatus) bool {
 		return true
 	}
 	staleConnCount := 0
+	var stateChange, statsChange bool
 	if oldStatus.ActiveTunCount != newStatus.ActiveTunCount ||
 		oldStatus.ConnectingTunCount != newStatus.ConnectingTunCount {
-		newStatus.StateChange = true
+		stateChange = true
 	}
+
 	// stale connections
-	for idx, oldConn := range oldStatus.ActiveVpnConns {
+	for _, oldConn := range oldStatus.ActiveVpnConns {
 		found := false
 		for _, newConn := range newStatus.ActiveVpnConns {
 			if oldConn.Name == newConn.Name &&
@@ -651,25 +657,23 @@ func isVpnStatusChanged(oldStatus, newStatus *types.ServiceVpnStatus) bool {
 			}
 		}
 		if found == false {
-			newStatus.StateChange = true
-			oldStatus.ActiveVpnConns[idx].MarkDelete = true
+			stateChange = true
+			oldConn.MarkDelete = true
 			staleConnCount++
 		}
 	}
 
 	// check for new or, state/stats change
-	for idx, newConn := range newStatus.ActiveVpnConns {
+	for _, newConn := range newStatus.ActiveVpnConns {
 		found := false
 		for _, oldConn := range oldStatus.ActiveVpnConns {
 			if oldConn.Name == newConn.Name &&
 				oldConn.Id == newConn.Id {
 				if ret := matchConnStats(oldConn, newConn); ret == false {
-					newStatus.ActiveVpnConns[idx].StatsChange = true
-					newStatus.StatsChange = true
+					statsChange = true
 				}
-				if ret := matchConn(oldConn, newConn); ret == false {
-					newStatus.ActiveVpnConns[idx].StateChange = true
-					newStatus.StateChange = true
+				if ret := matchConnState(oldConn, newConn); ret == false {
+					stateChange = true
 				}
 				found = true
 				break
@@ -677,10 +681,7 @@ func isVpnStatusChanged(oldStatus, newStatus *types.ServiceVpnStatus) bool {
 		}
 		// new connection
 		if found == false {
-			newStatus.ActiveVpnConns[idx].StatsChange = true
-			newStatus.ActiveVpnConns[idx].StateChange = true
-			newStatus.StateChange = true
-			newStatus.StatsChange = true
+			stateChange = true
 		}
 	}
 
@@ -689,36 +690,55 @@ func isVpnStatusChanged(oldStatus, newStatus *types.ServiceVpnStatus) bool {
 		connIdx := 0
 		for _, oldConn := range oldStatus.ActiveVpnConns {
 			if oldConn.MarkDelete == true {
-				log.Printf("stale connection:%v\n", oldConn)
-				conn := new(types.VpnConnStatus)
-				conn = oldConn
-				conn.State = types.VPN_INVALID
-				newStatus.StaleVpnConns[connIdx] = conn
+				oldConn.State = types.VPN_DELETED
+				for _, oldLink := range oldConn.Links {
+					oldLink.State = types.VPN_DELETED
+				}
+				newStatus.StaleVpnConns[connIdx] = oldConn
 				connIdx++
 			}
 		}
 	}
-	return newStatus.StateChange || newStatus.StatsChange
+	return stateChange || statsChange
 }
 
-func matchConn(oldConn, newConn *types.VpnConnStatus) bool {
+func matchConnState(oldConn, newConn *types.VpnConnStatus) bool {
 	if oldConn.State != newConn.State ||
-		oldConn.ReqId != newConn.ReqId ||
-		oldConn.LocalLink.SpiId != newConn.LocalLink.SpiId ||
-		oldConn.RemoteLink.SpiId != newConn.RemoteLink.SpiId {
+		len(oldConn.Links) != len(newConn.Links) {
 		return false
+	}
+	for _, oldLinkInfo := range oldConn.Links {
+		for _, newLinkInfo := range newConn.Links {
+			if oldLinkInfo.Id == newLinkInfo.Id {
+				if oldLinkInfo.ReqId != newLinkInfo.ReqId ||
+					oldLinkInfo.LInfo.SpiId != newLinkInfo.LInfo.SpiId ||
+					oldLinkInfo.RInfo.SpiId != newLinkInfo.RInfo.SpiId {
+					return false
+				}
+			}
+		}
 	}
 	return true
 }
 
 func matchConnStats(oldConn, newConn *types.VpnConnStatus) bool {
-	if oldConn.LocalLink.BytesCount != newConn.LocalLink.BytesCount ||
-		oldConn.LocalLink.PktsCount != newConn.LocalLink.PktsCount {
+	if oldConn.State != newConn.State ||
+		len(oldConn.Links) != len(newConn.Links) {
 		return false
 	}
-	if oldConn.RemoteLink.BytesCount != newConn.RemoteLink.BytesCount ||
-		oldConn.RemoteLink.PktsCount != newConn.RemoteLink.PktsCount {
-		return false
+	for _, oldLinkInfo := range oldConn.Links {
+		for _, newLinkInfo := range newConn.Links {
+			if oldLinkInfo.Id == newLinkInfo.Id {
+				if oldLinkInfo.LInfo.BytesCount != newLinkInfo.LInfo.BytesCount ||
+					oldLinkInfo.LInfo.PktsCount != newLinkInfo.LInfo.PktsCount {
+					return false
+				}
+				if oldLinkInfo.RInfo.BytesCount != newLinkInfo.RInfo.BytesCount ||
+					oldLinkInfo.RInfo.PktsCount != newLinkInfo.RInfo.PktsCount {
+					return false
+				}
+			}
+		}
 	}
 	return true
 }

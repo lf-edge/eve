@@ -6,6 +6,7 @@
 package zedrouter
 
 import (
+	"errors"
 	"github.com/zededa/go-provision/types"
 	"log"
 	"net"
@@ -23,35 +24,19 @@ type ipSecCmdOut struct {
 	ipAddrs            string
 }
 
-type swanCtlCmdOut struct {
-	tunnelCount uint32
-	tunnelList  []tunnelStatus
+type readBlock struct {
+	startLine   int
+	endLine     int
+	childCount  uint32
+	childBlocks []*readBlock
 }
 
-type tunnelStatus struct {
-	id         string
-	name       string
-	reqId      string
-	state      types.VpnState
-	ikes       string
-	esp        string
-	estTime    string
-	reauthTime string
-	instTime   string
-	expTime    string
-	rekeyTime  string
-	localLink  types.VpnLinkStatus
-	remoteLink types.VpnLinkStatus
-	startLine  int
-	endLine    int
-}
-
-func ipSecStatusCmdGet(vpnStatus *types.ServiceVpnStatus) {
+func ipSecStatusCmdGet(vpnStatus *types.ServiceVpnStatus) error {
 	cmd := exec.Command("ipsec", "statusall")
 	bytes, err := cmd.Output()
 	if err != nil {
 		log.Printf("%s for %s statusall\n", err.Error(), "ipsec")
-		return
+		return err
 	}
 	ipSecCmdOut := ipSecCmdParse(string(bytes))
 	vpnStatus.IpAddrs = ipSecCmdOut.ipAddrs
@@ -59,35 +44,23 @@ func ipSecStatusCmdGet(vpnStatus *types.ServiceVpnStatus) {
 	vpnStatus.Version = ipSecCmdOut.version
 	vpnStatus.ActiveTunCount = ipSecCmdOut.activeTunCount
 	vpnStatus.ConnectingTunCount = ipSecCmdOut.connectingTunCount
-	return
+	return nil
 }
 
-func swanCtlCmdGet(vpnStatus *types.ServiceVpnStatus) {
+func swanCtlCmdGet(vpnStatus *types.ServiceVpnStatus) error {
 	cmd := exec.Command("swanctl", "-l")
 	bytes, err := cmd.Output()
 	if err != nil {
 		log.Printf("%s for %s -l\n", err.Error(), "swanctl")
-		return
+		return err
 	}
-	swanCtlCmdOut := swanCtlCmdParse(string(bytes))
-	if swanCtlCmdOut.tunnelCount != vpnStatus.ActiveTunCount {
+	tunCount := swanCtlCmdParse(vpnStatus, string(bytes))
+	if vpnStatus.ActiveTunCount != tunCount {
 		log.Printf("Tunnel count mismatch (%d, %d)\n",
-			swanCtlCmdOut.tunnelCount, vpnStatus.ActiveTunCount)
-		return
+			vpnStatus.ActiveTunCount, tunCount)
+		return errors.New("active tunnel count mismatch")
 	}
-
-	vpnStatus.ActiveVpnConns = make([]*types.VpnConnStatus, vpnStatus.ActiveTunCount)
-	for idx, _ := range vpnStatus.ActiveVpnConns {
-		connStatus := new(types.VpnConnStatus)
-		connStatus.Id = swanCtlCmdOut.tunnelList[idx].id
-		connStatus.Name = swanCtlCmdOut.tunnelList[idx].name
-		connStatus.Ikes = swanCtlCmdOut.tunnelList[idx].ikes
-		connStatus.ReqId = swanCtlCmdOut.tunnelList[idx].reqId
-		connStatus.State = swanCtlCmdOut.tunnelList[idx].state
-		connStatus.LocalLink = swanCtlCmdOut.tunnelList[idx].localLink
-		connStatus.RemoteLink = swanCtlCmdOut.tunnelList[idx].remoteLink
-		vpnStatus.ActiveVpnConns[idx] = connStatus
-	}
+	return nil
 }
 
 func ipSecCmdParse(outStr string) ipSecCmdOut {
@@ -121,8 +94,8 @@ func ipSecCmdParse(outStr string) ipSecCmdOut {
 			len := len(upTimeStr)
 			if len > 1 {
 				layout := "Jan 2 15:04:05 2006"
-				upTimeSt := strings.TrimSpace(upTimeStr[len-1])
-				if upTime, err := time.Parse(layout, upTimeSt); err == nil {
+				timeStr := strings.TrimSpace(upTimeStr[len-1])
+				if upTime, err := time.Parse(layout, timeStr); err == nil {
 					ipSecCmdOut.upTime = upTime
 				}
 			}
@@ -172,216 +145,341 @@ func ipSecCmdParse(outStr string) ipSecCmdOut {
 	return ipSecCmdOut
 }
 
-func swanCtlCmdParse(outStr string) swanCtlCmdOut {
-	swanCtlCmdOut := swanCtlCmdOut{}
+func swanCtlCmdParse(vpnStatus *types.ServiceVpnStatus, outStr string) uint32 {
 	if len(outStr) == 0 {
-		return swanCtlCmdOut
+		return 0
 	}
+	cmdOut := new(readBlock)
 	outLines := strings.Split(outStr, "\n")
 
-	// get active connection count
-	for _, line := range outLines {
-		if len(line) != 0 &&
-			line[0] != ' ' && line[0] != '\t' {
-			swanCtlCmdOut.tunnelCount++
-		}
+	// make the block partition for the command output
+	swanCtlCmdGetBlockInfo(cmdOut, outLines)
+	if cmdOut.childCount == 0 {
+		return cmdOut.childCount
 	}
-	if swanCtlCmdOut.tunnelCount == 0 {
-		return swanCtlCmdOut
-	}
-	swanCtlCmdOut.tunnelList = make([]tunnelStatus, swanCtlCmdOut.tunnelCount)
 
-	// fill up the tunnel details
-	idx := 0
-	cidx := 0
-	tunIdx := 0
-	// get active connection count
-	for _, line := range outLines {
-		if len(line) != 0 &&
-			line[0] != ' ' && line[0] != '\t' {
-			swanCtlCmdOut.tunnelList[tunIdx].startLine = idx
-			if idx != 0 {
-				cidx = idx - 1
-			}
-			if cidx != 0 {
-				swanCtlCmdOut.tunnelList[tunIdx-1].endLine = cidx
-			}
-			tunIdx++
-		}
-		idx++
-	}
-	if tunIdx != 0 {
-		swanCtlCmdOut.tunnelList[tunIdx-1].endLine = idx - 1
-	}
-	log.Printf("tunnel-count:%d\n", tunIdx)
-
+	vpnStatus.ActiveVpnConns = make([]*types.VpnConnStatus, cmdOut.childCount)
 	// fill in the structure, with values
-	for idx, tunnel := range swanCtlCmdOut.tunnelList {
-		tunnelInfo := tunnelStatus{}
+	for idx, cblock := range cmdOut.childBlocks {
+		connInfo := populateConnInfo(cblock, outLines)
+		vpnStatus.ActiveVpnConns[idx] = connInfo
+	}
+	return cmdOut.childCount
+}
 
-		// get tunnel name, identifier
-		lidx := tunnel.startLine
-		line := outLines[lidx]
-		log.Printf("%d, %s\n", lidx, line)
-		if lidx <= tunnel.endLine && len(outLines[lidx]) != 0 {
-			outArr := strings.Fields(line)
-			tunnelName := strings.Split(outArr[0], ":")[0]
-			tunnelId := strings.Split(outArr[1], "#")[1]
-			tunnelId = strings.Split(tunnelId, ",")[0]
-			tunnelInfo.name = tunnelName
-			tunnelInfo.id = tunnelId
+func swanCtlCmdGetBlockInfo(cmdOut *readBlock, outLines []string) {
+	cmdOut.startLine = 0
+	cmdOut.endLine = len(outLines)
+	// get active connection count
+	for _, line := range outLines {
+		if len(line) == 0 {
+			cmdOut.endLine--
+			continue
 		}
+		if line[0] != ' ' && line[0] != '\t' {
+			cmdOut.childCount++
+		}
+	}
+	if cmdOut.childCount == 0 {
+		return
+	}
 
-		// tunnel local ip address
-		lidx++
-		line = outLines[lidx]
-		if lidx <= tunnel.endLine && len(outLines[lidx]) != 0 {
-			outArr := strings.Fields(line)
-			if outArr[0] == "local" {
-				ipAddr := strings.Split(outArr[1], "'")[1]
-				tunnelInfo.localLink.IpAddr = ipAddr
+	cmdOut.childBlocks = make([]*readBlock, cmdOut.childCount)
+	bidx := 0
+	// get active connection count
+	// and figureout start line/end line for connection blocks
+	for idx, line := range outLines {
+		if len(line) != 0 &&
+			line[0] != ' ' && line[0] != '\t' {
+			childBlock := new(readBlock)
+			childBlock.startLine = idx
+			cmdOut.childBlocks[bidx] = childBlock
+			if bidx != 0 {
+				cmdOut.childBlocks[bidx-1].endLine = idx - 1
 			}
+			bidx++
 		}
+	}
+	if bidx != 0 {
+		cmdOut.childBlocks[bidx-1].endLine = cmdOut.endLine
+	}
 
-		// tunnel remote ip address
-		lidx++
-		line = outLines[lidx]
-		if lidx <= tunnel.endLine && len(outLines[lidx]) != 0 {
-			outArr := strings.Fields(line)
-			if outArr[0] == "remote" {
-				ipAddr := strings.Split(outArr[1], "'")[1]
-				tunnelInfo.remoteLink.IpAddr = ipAddr
+	// get start line/end line for the link blocks
+	for _, cblock := range cmdOut.childBlocks {
+		for idx, line := range outLines {
+			if idx < cblock.startLine ||
+				idx >= cblock.endLine {
+				continue
 			}
-		}
-
-		// tunnel ike
-		lidx++
-		line = outLines[lidx]
-		if lidx <= tunnel.endLine && len(outLines[lidx]) != 0 {
-			outArr := strings.Fields(line)
-			tunnelInfo.ikes = outArr[0]
-		}
-
-		// tunnel up time
-		lidx++
-		line = outLines[lidx]
-		if lidx <= tunnel.endLine && len(outLines[lidx]) != 0 {
-			outArr := strings.Fields(line)
-			for fidx, field := range outArr {
-				if field == "established" {
-					estTime := strings.Split(outArr[fidx+1], "s")[0]
-					tunnelInfo.estTime = estTime
-				}
-				if field == "reauth" {
-					reauthTime := strings.Split(outArr[fidx+2], "s")[0]
-					tunnelInfo.reauthTime = reauthTime
+			if len(line) != 0 &&
+				line[2] != ' ' && line[2] != '\t' {
+				line0 := outLines[idx+1]
+				if len(line0) != 0 &&
+					(line0[2] == ' ' || line0[2] == '\t') {
+					cblock.childCount++
 				}
 			}
 		}
-
-		// get tunnel state, reqId
-		lidx++
-		line = outLines[lidx]
-		if lidx <= tunnel.endLine && len(outLines[lidx]) != 0 {
-			tunnelInfo.state = types.VPN_ESTABLISHED
-			if strings.Contains(line, tunnelInfo.name) &&
-				strings.Contains(line, "INSTALLED") {
-				tunnelInfo.state = types.VPN_INSTALLED
+		if cblock.childCount == 0 {
+			continue
+		}
+		cblock.childBlocks = make([]*readBlock, cblock.childCount)
+		lidx := 0
+		for idx, line := range outLines {
+			if idx < cblock.startLine ||
+				idx >= cblock.endLine {
+				continue
 			}
-			outArr := strings.Fields(line)
-			for fidx, field := range outArr {
-				if field == "reqid" {
-					reqId := strings.Split(outArr[fidx+1], ",")[0]
-					tunnelInfo.reqId = reqId
+			if len(line) != 0 &&
+				line[2] != ' ' && line[2] != '\t' {
+				line0 := outLines[idx+1]
+				if len(line0) != 0 &&
+					(line0[2] == ' ' || line0[2] == '\t') {
+					childBlock := new(readBlock)
+					childBlock.startLine = idx
+					cblock.childBlocks[lidx] = childBlock
+					if lidx != 0 {
+						cblock.childBlocks[lidx-1].endLine = idx - 1
+					}
+					lidx++
 				}
 			}
 		}
-
-		// installed time and other timing details
-		lidx++
-		line = outLines[lidx]
-		if lidx <= tunnel.endLine && len(outLines[lidx]) != 0 {
-			outArr := strings.Fields(line)
-			for fidx, field := range outArr {
-				switch field {
-				case "installed":
-					instTime := strings.Split(outArr[fidx+1], "s")[0]
-					tunnelInfo.instTime = instTime
-				case "rekeying":
-					rekeyTime := strings.Split(outArr[fidx+2], "s")[0]
-					tunnelInfo.rekeyTime = rekeyTime
-				case "expires":
-					expTime := strings.Split(outArr[fidx+2], "s")[0]
-					tunnelInfo.expTime = expTime
-				}
-			}
+		if lidx != 0 {
+			cblock.childBlocks[lidx-1].endLine = cblock.endLine
 		}
-
-		// local ESP-SPI, packet/byte count
-		lidx++
-		line = outLines[lidx]
-		if lidx <= tunnel.endLine && len(outLines[lidx]) != 0 {
-			outArr := strings.Fields(line)
-			if outArr[0] == "in" {
-				spiId := strings.Split(outArr[1], ",")[0]
-				tunnelInfo.localLink.SpiId = spiId
-				countStr := outArr[2]
-				if count, err := strconv.ParseUint(countStr, 10, 64); err == nil {
-					tunnelInfo.localLink.BytesCount = count
-				}
-				countStr = outArr[4]
-				if count, err := strconv.ParseUint(countStr, 10, 64); err == nil {
-					tunnelInfo.localLink.PktsCount = count
-				}
-			}
-		}
-
-		// remote ESP-SPI, packet/byte count
-		lidx++
-		line = outLines[lidx]
-		if lidx <= tunnel.endLine && len(outLines[lidx]) != 0 {
-			outArr := strings.Fields(line)
-			if outArr[0] == "out" {
-				spiId := strings.Split(outArr[1], ",")[0]
-				tunnelInfo.remoteLink.SpiId = spiId
-				countStr := outArr[2]
-				if count, err := strconv.ParseUint(countStr, 10, 64); err == nil {
-					tunnelInfo.remoteLink.BytesCount = count
-				}
-				countStr = outArr[4]
-				if count, err := strconv.ParseUint(countStr, 10, 64); err == nil {
-					tunnelInfo.remoteLink.PktsCount = count
-				}
-			}
-		}
-
-		// local subnet
-		lidx++
-		line = outLines[lidx]
-		if lidx <= tunnel.endLine && len(outLines[lidx]) != 0 {
-			outArr := strings.Fields(line)
-			if outArr[0] == "local" {
-				tunnelInfo.localLink.SubNet = outArr[1]
-			}
-		}
-
-		// remote subnet
-		lidx++
-		line = outLines[lidx]
-		if lidx <= tunnel.endLine && len(outLines[lidx]) != 0 {
-			outArr := strings.Fields(line)
-			if outArr[0] == "remote" {
-				tunnelInfo.remoteLink.SubNet = outArr[1]
-			}
-		}
-
-		// set the direction flags
-		tunnelInfo.localLink.Direction = false
-		tunnelInfo.remoteLink.Direction = true
-		swanCtlCmdOut.tunnelList[idx] = tunnelInfo
 	}
 	if debug {
-		log.Printf("swanCtlCmdParse:%v\n", swanCtlCmdOut)
+		swanCtlCmdOutPrint(cmdOut, 0)
 	}
-	return swanCtlCmdOut
+}
+
+func swanCtlCmdOutPrint(cb *readBlock, depth int) {
+	if cb == nil {
+		return
+	}
+	log.Printf("%d-%d:%d,%d\n", depth, cb.childCount, cb.startLine, cb.endLine)
+	for _, childBlock := range cb.childBlocks {
+		swanCtlCmdOutPrint(childBlock, depth+1)
+	}
+}
+
+func populateConnInfo(cblock *readBlock, outLines []string) *types.VpnConnStatus {
+	connInfo := new(types.VpnConnStatus)
+	// get tunnel name, identifier, state, version
+	lidx := cblock.startLine
+	line := outLines[lidx]
+	if lidx <= cblock.endLine && len(outLines[lidx]) != 0 {
+		outArr := strings.Fields(line)
+		tunnelName := strings.Split(outArr[0], ":")[0]
+		tunnelId := strings.Split(outArr[1], "#")[1]
+		tunnelId = strings.Split(tunnelId, ",")[0]
+		connInfo.Name = tunnelName
+		connInfo.Id = tunnelId
+		if strings.Contains(line, "ESTABLISHED") {
+			connInfo.State = types.VPN_ESTABLISHED
+		}
+		if strings.Contains(line, "IKEv1") {
+			connInfo.Version = "IKEv1"
+		}
+		if strings.Contains(line, "IKEv2") {
+			connInfo.Version = "IKEv2"
+		}
+	}
+
+	// tunnel local ip address
+	lidx++
+	line = outLines[lidx]
+	if lidx <= cblock.endLine && len(outLines[lidx]) != 0 {
+		outArr := strings.Fields(line)
+		if outArr[0] == "local" {
+			idStr := strings.Split(outArr[1], "'")[1]
+			connInfo.LInfo.Id = idStr
+			ipAddrStr := strings.Split(outArr[3], "[")[0]
+			connInfo.LInfo.IpAddr = ipAddrStr
+			portStr := strings.Split(outArr[3], "[")[1]
+			portStr = strings.Split(portStr, "]")[0]
+			if udpPort, err := strconv.ParseUint(portStr, 10, 32); err == nil {
+				connInfo.LInfo.Port = uint32(udpPort)
+			}
+		}
+	}
+
+	// tunnel remote ip address
+	lidx++
+	line = outLines[lidx]
+	if lidx <= cblock.endLine && len(outLines[lidx]) != 0 {
+		outArr := strings.Fields(line)
+		if outArr[0] == "remote" {
+			idStr := strings.Split(outArr[1], "'")[1]
+			connInfo.RInfo.Id = idStr
+			ipAddrStr := strings.Split(outArr[3], "[")[0]
+			connInfo.RInfo.IpAddr = ipAddrStr
+			portStr := strings.Split(outArr[3], "[")[1]
+			portStr = strings.Split(portStr, "]")[0]
+			if udpPort, err := strconv.ParseUint(portStr, 10, 32); err == nil {
+				connInfo.RInfo.Port = uint32(udpPort)
+			}
+		}
+	}
+
+	// tunnel ike
+	lidx++
+	line = outLines[lidx]
+	if lidx <= cblock.endLine && len(outLines[lidx]) != 0 {
+		outArr := strings.Fields(line)
+		connInfo.Ikes = outArr[0]
+	}
+
+	// tunnel up time
+	lidx++
+	line = outLines[lidx]
+	if lidx <= cblock.endLine && len(outLines[lidx]) != 0 {
+		outArr := strings.Fields(line)
+		for fidx, field := range outArr {
+			if field == "established" {
+				timeStr := strings.Split(outArr[fidx+1], "s")[0]
+				if estTime, err := strconv.ParseUint(timeStr, 10, 64); err == nil {
+					connInfo.EstTime = estTime
+				}
+			}
+			if field == "reauth" {
+				timeStr := strings.Split(outArr[fidx+2], "s")[0]
+				if reauthTime, err := strconv.ParseUint(timeStr, 10, 64); err == nil {
+					connInfo.ReauthTime = reauthTime
+				}
+			}
+		}
+	}
+
+	if cblock.childCount == 0 {
+		return connInfo
+	}
+	connInfo.Links = make([]*types.VpnLinkStatus, cblock.childCount)
+	idx := 0
+	for _, linkBlock := range cblock.childBlocks {
+		if linkBlock == nil {
+			continue
+		}
+		linkInfo := populateLinkInfo(linkBlock, outLines)
+		connInfo.Links[idx] = linkInfo
+		idx++
+	}
+	return connInfo
+}
+
+func populateLinkInfo(linkBlock *readBlock, outLines []string) *types.VpnLinkStatus {
+	lidx := linkBlock.startLine
+	line := outLines[lidx]
+	linkInfo := new(types.VpnLinkStatus)
+	// get tunnel state, reqId
+	if lidx <= linkBlock.endLine && len(outLines[lidx]) != 0 {
+		if strings.Contains(line, "INSTALLED") {
+			linkInfo.State = types.VPN_INSTALLED
+		}
+		if strings.Contains(line, "REKEYED") {
+			linkInfo.State = types.VPN_REKEYED
+		}
+		outArr := strings.Fields(line)
+		for fidx, field := range outArr {
+			if field == "reqid" {
+				reqId := strings.Split(outArr[fidx+1], ",")[0]
+				linkInfo.ReqId = reqId
+				id := strings.Split(outArr[fidx-1], ",")[0]
+				linkInfo.Id = strings.Split(id, "#")[1]
+			}
+			if strings.Contains(field, "ESP:") {
+				linkInfo.EspInfo = strings.Split(field, "ESP:")[1]
+			}
+		}
+	}
+
+	// installed time and other timing details
+	lidx++
+	line = outLines[lidx]
+	if lidx <= linkBlock.endLine && len(outLines[lidx]) != 0 {
+		outArr := strings.Fields(line)
+		for fidx, field := range outArr {
+			switch field {
+			case "installed":
+				timeStr := strings.Split(outArr[fidx+1], "s")[0]
+				if instTime, err := strconv.ParseUint(timeStr, 10, 64); err == nil {
+					linkInfo.InstTime = instTime
+				}
+			case "rekeying":
+				timeStr := strings.Split(outArr[fidx+2], "s")[0]
+				if rekeyTime, err := strconv.ParseUint(timeStr, 10, 64); err == nil {
+					linkInfo.RekeyTime = rekeyTime
+				}
+			case "expires":
+				timeStr := strings.Split(outArr[fidx+2], "s")[0]
+				if expTime, err := strconv.ParseUint(timeStr, 10, 64); err == nil {
+					linkInfo.ExpTime = expTime
+				}
+			}
+		}
+	}
+
+	// local ESP-SPI, packet/byte count
+	lidx++
+	line = outLines[lidx]
+	if lidx <= linkBlock.endLine && len(outLines[lidx]) != 0 {
+		outArr := strings.Fields(line)
+		if outArr[0] == "in" {
+			spiId := strings.Split(outArr[1], ",")[0]
+			linkInfo.LInfo.SpiId = spiId
+			countStr := outArr[2]
+			if count, err := strconv.ParseUint(countStr, 10, 64); err == nil {
+				linkInfo.LInfo.BytesCount = count
+			}
+			countStr = outArr[4]
+			if count, err := strconv.ParseUint(countStr, 10, 64); err == nil {
+				linkInfo.LInfo.PktsCount = count
+			}
+		}
+	}
+
+	// remote ESP-SPI, packet/byte count
+	lidx++
+	line = outLines[lidx]
+	if lidx <= linkBlock.endLine && len(outLines[lidx]) != 0 {
+		outArr := strings.Fields(line)
+		if outArr[0] == "out" {
+			spiId := strings.Split(outArr[1], ",")[0]
+			linkInfo.RInfo.SpiId = spiId
+			countStr := outArr[2]
+			if count, err := strconv.ParseUint(countStr, 10, 64); err == nil {
+				linkInfo.RInfo.BytesCount = count
+			}
+			countStr = outArr[4]
+			if count, err := strconv.ParseUint(countStr, 10, 64); err == nil {
+				linkInfo.RInfo.PktsCount = count
+			}
+		}
+	}
+
+	// local subnet
+	lidx++
+	line = outLines[lidx]
+	if lidx <= linkBlock.endLine && len(outLines[lidx]) != 0 {
+		outArr := strings.Fields(line)
+		if outArr[0] == "local" {
+			linkInfo.LInfo.SubNet = outArr[1]
+		}
+	}
+
+	// remote subnet
+	lidx++
+	line = outLines[lidx]
+	if lidx <= linkBlock.endLine && len(outLines[lidx]) != 0 {
+		outArr := strings.Fields(line)
+		if outArr[0] == "remote" {
+			linkInfo.RInfo.SubNet = outArr[1]
+		}
+	}
+
+	// set the direction flags
+	linkInfo.LInfo.Direction = false
+	linkInfo.RInfo.Direction = true
+	return linkInfo
 }
