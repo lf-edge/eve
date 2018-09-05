@@ -391,7 +391,7 @@ func (pub *Publication) determineDiffs(slaveCollection localCollection) []string
 			keys = append(keys, masterKey)
 		} else if !cmp.Equal(master, *slave) {
 			if debug {
-				log.Printf("determineDiffs(%s): key %s changed %v\n",
+				log.Printf("determineDiffs(%s): key %s replacing due to diff %v\n",
 					name, masterKey,
 					cmp.Diff(master, *slave))
 			}
