@@ -33,12 +33,12 @@ import (
 // They keys and values are base64-encoded since they might contain spaces.
 // We include typeName after command word for sanity checks.
 // Hence the message format is
-//	"request" typeName
-//	"hello"  string
-//	"update" typeName key json-val
-//	"delete" typeName key
-//	"complete" typeName
-//	"restarted" typeName
+//	"request" topic
+//	"hello"  topic
+//	"update" topic key json-val
+//	"delete" topic key
+//	"complete" topic
+//	"restarted" topic
 
 // Maintain a collection which is used to handle the restart of a subscriber
 // map of agentname, key to get a json string
@@ -294,7 +294,7 @@ func (pub *Publication) serveConnection(s net.Conn) {
 		return
 	}
 
-	_, err = s.Write([]byte(fmt.Sprintf("hello %s", name)))
+	_, err = s.Write([]byte(fmt.Sprintf("hello %s", pub.topic)))
 	if err != nil {
 		log.Printf("serveConnection(%s) failed %s\n",
 			name, err)
@@ -893,7 +893,7 @@ func (sub *Subscription) connectAndRead() (string, string, string) {
 
 	name := sub.nameString()
 	sockName := SockName(name)
-	buf := make([]byte, 65535)
+	buf := make([]byte, 65536)
 
 	// Waiting for publisher to appear; retry on error
 	for {
@@ -946,10 +946,10 @@ func (sub *Subscription) connectAndRead() (string, string, string) {
 		t := reply[1]
 
 		if t != sub.topic {
-			errStr := fmt.Sprintf("connectAndRead(%s): mismatched type/topic %s vs. %s",
-				name, t, sub.topic)
+			errStr := fmt.Sprintf("connectAndRead(%s): mismatched topic %s vs. %s for %s",
+				name, t, sub.topic, msg)
 			log.Println(errStr)
-			continue
+			// XXX continue
 		}
 
 		// XXX are there error cases where we should Close and
@@ -958,7 +958,7 @@ func (sub *Subscription) connectAndRead() (string, string, string) {
 		case "hello", "restarted", "complete":
 			if debug {
 				log.Printf("connectAndRead(%s) Got message %s type %s\n",
-					msg, t)
+					name, msg, t)
 			}
 			return msg, "", ""
 
