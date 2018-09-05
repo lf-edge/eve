@@ -362,41 +362,44 @@ func (pub *Publication) serveConnection(s net.Conn) {
 
 // Returns the deleted keys before the added/modified ones
 func (pub *Publication) determineDiffs(slaveCollection localCollection) []string {
+
 	var keys []string
+	name := pub.nameString()
 	items := pub.GetAll()
 	// Look for deleted
 	for slaveKey, _ := range slaveCollection {
 		master, _ := pub.Get(slaveKey)
 		if master == nil {
 			if debug {
-				log.Printf("determineDiffs: key %s deleted\n",
-					slaveKey)
+				log.Printf("determineDiffs(%s): key %s deleted\n",
+					name, slaveKey)
 			}
 			delete(slaveCollection, slaveKey)
 			keys = append(keys, slaveKey)
 		}
+
 	}
 	// Look for new/changed
 	for masterKey, master := range items {
 		slave := lookupSlave(slaveCollection, masterKey)
 		if slave == nil {
 			if debug {
-				log.Printf("determineDiffs: key %s added\n",
-					masterKey)
+				log.Printf("determineDiffs(%s): key %s added\n",
+					name, masterKey)
 			}
-			slaveCollection[masterKey] = master
+			slaveCollection[masterKey] = deepCopy(master)
 			keys = append(keys, masterKey)
 		} else if !cmp.Equal(master, slave) {
 			if debug {
-				log.Printf("determineDiffs: key %s changed %v\n",
-					masterKey, cmp.Diff(master, slave))
+				log.Printf("determineDiffs(%s): key %s changed %v\n",
+					name, masterKey, cmp.Diff(master, slave))
 			}
-			slaveCollection[masterKey] = master
+			slaveCollection[masterKey] = deepCopy(master)
 			keys = append(keys, masterKey)
 		} else {
 			if debug {
-				log.Printf("determineDiffs: key %s unchanged\n",
-					masterKey)
+				log.Printf("determineDiffs(%s): key %s unchanged\n",
+					name, masterKey)
 			}
 		}
 	}
