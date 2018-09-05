@@ -35,13 +35,16 @@ func Run() {
 	}
 	req := fmt.Sprintf("request %s", topic)
 	s.Write([]byte(req))
-	buf := make([]byte, 65535)
+	buf := make([]byte, 65536)
 	for {
 		res, err := s.Read(buf)
 		if err != nil {
 			log.Fatal("Read:", err)
 		}
-		// XXX check if res == 65536
+		if res == len(buf) {
+			// Likely truncated
+			log.Fatalf("Message likely truncated\n")
+		}
 		reply := strings.Split(string(buf[0:res]), " ")
 		count := len(reply)
 		log.Printf("Got %d: %v\n", count, reply)
@@ -49,10 +52,19 @@ func Run() {
 			log.Printf("Too short: %v\n", reply)
 			continue
 		}
+		msg := reply[0]
 		t := reply[1]
-		switch reply[0] {
+
+		if t != topic {
+			log.Printf("Mismatched topic %s vs. %s for %s\n",
+				t, topic, msg)
+			continue
+		}
+
+		switch msg {
 		case "hello", "restarted", "complete":
-			log.Printf("Got message %s type %s\n", reply[0], t)
+			log.Printf("Got message %s type %s\n", msg, t)
+
 		case "delete":
 			if count < 3 {
 				log.Printf("Too short delete: %v\n", reply)
@@ -86,8 +98,6 @@ func Run() {
 				log.Printf("base64: %s\n", err)
 			}
 
-			log.Printf("update type %s key %s val <%s>\n",
-				t, key, val)
 			var output interface{}
 			if err := json.Unmarshal(val, &output); err != nil {
 				log.Fatal(err, "json Unmarshal")
@@ -96,7 +106,7 @@ func Run() {
 				t, key, output)
 
 		default:
-			log.Printf("Unknown command: %s\n", reply[0])
+			log.Printf("Unknown message: %s\n", msg)
 		}
 	}
 }
