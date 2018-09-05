@@ -389,10 +389,10 @@ func (pub *Publication) determineDiffs(slaveCollection localCollection) []string
 			}
 			slaveCollection[masterKey] = deepCopy(master)
 			keys = append(keys, masterKey)
-		} else if !cmp.Equal(master, slave) {
+		} else if !cmp.Equal(master, *slave) {
 			if debug {
 				log.Printf("determineDiffs(%s): key %s changed %v\n",
-					name, masterKey, cmp.Diff(master, slave))
+					name, masterKey, cmp.Diff(m, *slave))
 			}
 			slaveCollection[masterKey] = deepCopy(master)
 			keys = append(keys, masterKey)
