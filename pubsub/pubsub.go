@@ -52,16 +52,16 @@ type keyMap struct {
 // We always write to a file in order to have a checkpoint on restart
 // The special agent name "" implies always reading from the /var/run/zededa/
 // directory.
-const publishToSock = true     // XXX
-const subscribeFromDir = false // XXX
-const subscribeFromSock = true // XXX
+const publishToSock = true      // XXX
+const subscribeFromDir = true   // XXX
+const subscribeFromSock = false // XXX
 
 // For a subscription, if the agentName is empty we interpret that as
 // being directory in /var/tmp/zededa
 const fixedName = "zededa"
 const fixedDir = "/var/tmp/" + fixedName
 
-const debug = true // XXX setable?
+const debug = false // XXX setable?
 
 type notify struct{}
 
