@@ -1,4 +1,5 @@
-FROM alpine:3.6 as build
+# derived from Alpine 3.8
+FROM linuxkit/alpine:4d13c6209a679fc7c4e850f144b7aef879914d01 as build
 
 ENV POPT_VERSION 1.16
 ENV GPTFDISK_VERSION 1.0.3
@@ -7,7 +8,6 @@ ENV VBOOT_COMMIT e0b3841863281a3fc3b188bfbab55d401fabdc73
 
 RUN apk add --no-cache \
     gcc \
-    git \
     make \
     patch \
     libc-dev \
@@ -57,9 +57,8 @@ RUN cp sgdisk /out/sgdisk
 #
 
 WORKDIR /
-RUN git clone ${VBOOT_REPO} && \
-    cd vboot_reference && \
-    git checkout ${VBOOT_COMMIT}
+COPY vboot_reference-${VBOOT_COMMIT}.tar.gz /
+RUN tar xvzf vboot_reference-${VBOOT_COMMIT}.tar.gz
 
 WORKDIR /vboot_reference
 RUN make cgpt LDFLAGS=-static

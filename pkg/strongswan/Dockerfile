@@ -2,7 +2,8 @@
 # StrongSwan VPN + Alpine Linux
 #
 
-FROM alpine:3.6 as build
+# derived from Alpine 3.8
+FROM linuxkit/alpine:4d13c6209a679fc7c4e850f144b7aef879914d01 as build
 
 ENV STRONGSWAN_RELEASE https://download.strongswan.org/strongswan.tar.bz2
 ENV CONFIGURE_OPTS_x86_64 --enable-aesni
@@ -56,12 +57,17 @@ RUN apk --update add build-base \
             ca-certificates \
             iptables \
             iproute2 \
-			openssl \
-			openssl-dev \
-            curl\
-            curl-dev
+	    openssl \
+            openssl-dev
 
-RUN  curl -Lo /tmp/strongswan/strongswan.tar.bz2 $STRONGSWAN_RELEASE 
+# FIXME: two reasons to build it instead of using the
+# stock one:
+#    1. alpine 3.6+ now has a conflict with libressl for curl-dev
+#    2. linuxkit alpine image doesn't have curl-dev (because of #1?)
+COPY curl-7.61.1.tar.bz2 /tmp/curl-7.61.1.tar.bz2
+RUN tar -C /tmp -xjvf /tmp/curl-7.61.1.tar.bz2 ; cd /tmp/curl-7.61.1 ; ./configure --prefix=/usr ; make install
+
+COPY strongswan.tar.bz2 /tmp/strongswan/strongswan.tar.bz2 
 RUN  tar --strip-components=1 -C /tmp/strongswan -xjf /tmp/strongswan/strongswan.tar.bz2
 RUN  eval ./configure $CONFIGURE_OPTS \$CONFIGURE_OPTS_`uname -m`
 RUN    make 

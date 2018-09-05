@@ -1,0 +1,11 @@
+--- ./tools/xenstat/xentop/xentop.c
++++ ./tools/xenstat/xentop/xentop.c
+@@ -301,7 +301,7 @@
+ 	if (!batch) {
+ 		if((current_row() < lines()-1)) {
+ 			va_start(args, fmt);
+-			vwprintw(stdscr, (curses_str_t)fmt, args);
++			vw_printw(stdscr, (curses_str_t)fmt, args);
+ 			va_end(args);
+ 		}
+ 	} else {

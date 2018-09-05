@@ -5,7 +5,7 @@ FROM STRONGSWAN_TAG as strongswan
 FROM GPTTOOLS_TAG as gpttools
 FROM WATCHDOG_TAG as watchdog
 
-FROM alpine:3.6
+FROM alpine:3.8
 RUN apk add --no-cache \
     yajl xz bash openssl iptables ip6tables iproute2 dhcpcd \
     apk-cron coreutils dmidecode sudo libbz2 libuuid ipset \
