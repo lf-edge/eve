@@ -43,11 +43,10 @@ import (
 
 // Maintain a collection which is used to handle the restart of a subscriber
 // map of agentname, key to get a json string
-// We use sync.Map to allow concurrent access, and handle notifications
-// to work with the relaxed output from the sync.Map's Range function
+// We use StringMap with a RWlock to allow concurrent access.
 type keyMap struct {
 	restarted bool
-	key       sync.Map
+	key       *LockedStringMap
 }
 
 // We always publish to our collection.
@@ -157,6 +156,7 @@ func publishImpl(agentName string, agentScope string,
 	pub.agentName = agentName
 	pub.agentScope = agentScope
 	pub.topic = topic
+	pub.km = keyMap{key: NewLockedStringMap()}
 	name := pub.nameString()
 
 	log.Printf("Publish(%s)\n", name)
@@ -670,12 +670,12 @@ func (pub *Publication) sendComplete(sock net.Conn) error {
 func (pub *Publication) dump(infoStr string) {
 	name := pub.nameString()
 	log.Printf("dump(%s) %s\n", name, infoStr)
-	dumper := func(key, val interface{}) bool {
+	dumper := func(key string, val interface{}) bool {
 		b, err := json.Marshal(val)
 		if err != nil {
 			log.Fatal(err, "json Marshal in dump")
 		}
-		log.Printf("\tkey %s val %s\n", key.(string), b)
+		log.Printf("\tkey %s val %s\n", key, b)
 		return true
 	}
 	pub.km.key.Range(dumper)
@@ -697,8 +697,8 @@ func (pub *Publication) Get(key string) (interface{}, error) {
 // Enumerate all the key, value for the collection
 func (pub *Publication) GetAll() map[string]interface{} {
 	result := make(map[string]interface{})
-	assigner := func(key, val interface{}) bool {
-		result[key.(string)] = val
+	assigner := func(key string, val interface{}) bool {
+		result[key] = val
 		return true
 	}
 	pub.km.key.Range(assigner)
@@ -791,6 +791,7 @@ func subscribeImpl(agentName string, agentScope string, topicType interface{},
 	sub.agentScope = agentScope
 	sub.topic = topic
 	sub.userCtx = ctx
+	sub.km = keyMap{key: NewLockedStringMap()}
 	name := sub.nameString()
 
 	if agentName == "" {
@@ -1156,12 +1157,12 @@ func handleRestart(ctxArg interface{}, restarted bool) {
 func (sub *Subscription) dump(infoStr string) {
 	name := sub.nameString()
 	log.Printf("dump(%s) %s\n", name, infoStr)
-	dumper := func(key, val interface{}) bool {
+	dumper := func(key string, val interface{}) bool {
 		b, err := json.Marshal(val)
 		if err != nil {
 			log.Fatal(err, "json Marshal in dump")
 		}
-		log.Printf("\tkey %s val %s\n", key.(string), b)
+		log.Printf("\tkey %s val %s\n", key, b)
 		return true
 	}
 	sub.km.key.Range(dumper)
@@ -1182,8 +1183,8 @@ func (sub *Subscription) Get(key string) (interface{}, error) {
 // Enumerate all the key, value for the collection
 func (sub *Subscription) GetAll() map[string]interface{} {
 	result := make(map[string]interface{})
-	assigner := func(key, val interface{}) bool {
-		result[key.(string)] = val
+	assigner := func(key string, val interface{}) bool {
+		result[key] = val
 		return true
 	}
 	sub.km.key.Range(assigner)
