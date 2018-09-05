@@ -60,6 +60,7 @@ type domainContext struct {
 }
 
 func Run() {
+	handlersInit()
 	logf, err := agentlog.Init(agentName)
 	if err != nil {
 		log.Fatal(err)
@@ -246,6 +247,19 @@ func xenCfgFilename(appNum int) string {
 	return xenDirname + "/xen" + strconv.Itoa(appNum) + ".cfg"
 }
 
+// We have one goroutine per provisioned domU object.
+// Channel is used to send config (new and updates)
+// Channel is closed when the object is deleted
+// The go-routine owns writing status for the object
+// The key in the map is the objects Key() - UUID in this case
+type handlers map[string]chan<- interface{}
+
+var handlerMap handlers
+
+func handlersInit() {
+	handlerMap = make(handlers)
+}
+
 // Wrappers around handleCreate, handleModify, and handleDelete
 
 // Determine whether it is an create or modify
@@ -259,12 +273,16 @@ func handleDomainConfigModify(ctxArg interface{}, key string, configArg interfac
 			key, config.Key(), config)
 		return
 	}
-	status := lookupDomainStatus(ctx, key)
-	if status == nil {
-		handleCreate(ctx, key, &config)
-	} else {
-		handleModify(ctx, key, &config, status)
+	// Do we have a channel/goroutine?
+	h, ok := handlerMap[config.Key()]
+	if !ok {
+		c := make(chan interface{})
+		handlerMap[config.Key()] = c
+		go runHandler(ctx, c)
+		h = c
 	}
+	log.Printf("Sending config to handler\n")
+	h <- configArg
 	log.Printf("handleDomainConfigModify(%s) done\n", key)
 }
 
@@ -272,14 +290,50 @@ func handleDomainConfigDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
 	log.Printf("handleDomainConfigDelete(%s)\n", key)
-	ctx := ctxArg.(*domainContext)
-	status := lookupDomainStatus(ctx, key)
-	if status == nil {
+	// Do we have a channel/goroutine?
+	h, ok := handlerMap[key]
+	if ok {
+		log.Printf("Closing channel\n")
+		close(h)
+		delete(handlerMap, key)
+	} else {
 		log.Printf("handleDomainConfigDelete: unknown %s\n", key)
 		return
 	}
-	handleDelete(ctx, key, status)
 	log.Printf("handleDomainConfigDelete(%s) done\n", key)
+}
+
+// Server for each domU
+// XXX Add timer for periodic check on running domU
+func runHandler(ctx *domainContext, c <-chan interface{}) {
+
+	log.Printf("runHandler starting\n")
+	var key string
+	closed := false
+	for !closed {
+		select {
+		case configArg, ok := <-c:
+			if ok {
+				config := cast.CastDomainConfig(configArg)
+				key = config.Key()
+				status := lookupDomainStatus(ctx, key)
+				if status == nil {
+					handleCreate(ctx, key, &config)
+				} else {
+					handleModify(ctx, key, &config, status)
+				}
+			} else {
+				// Closed
+				status := lookupDomainStatus(ctx, key)
+				if status != nil {
+					handleDelete(ctx, key, status)
+				}
+				closed = true
+			}
+			// XXX add timer
+		}
+	}
+	log.Printf("runHandler done for %s\n", key)
 }
 
 // Callers must be careful to publish any changes to DomainStatus
@@ -324,8 +378,6 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 
 	// Name of Xen domain must be unique; uniqify AppNum
 	name := config.DisplayName + "." + strconv.Itoa(config.AppNum)
-
-	// XXX need a channel in memory. Spawn go domainHandler(name, ...)
 
 	// Start by marking with PendingAdd
 	status := types.DomainStatus{
