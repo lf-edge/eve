@@ -25,7 +25,6 @@ import (
 )
 
 // Protocol over AF_UNIX or other IPC mechanism
-// XXX add receive side code later
 // "request" from client after connect to sanity check subject.
 // Server sends the other messages; "update" for initial values.
 // "complete" once all initial keys/values in collection have been sent.
@@ -105,9 +104,13 @@ func updatersNotify() {
 	for i, server := range updaterList.servers {
 		select {
 		case server <- notify{}:
-			log.Printf("updaterNotify sent to %d\n", i)
+			if debug {
+				log.Printf("updaterNotify sent to %d\n", i)
+			}
 		default:
-			log.Printf("updaterNotify NOT sent to %d\n", i)
+			if debug {
+				log.Printf("updaterNotify NOT sent to %d\n", i)
+			}
 		}
 	}
 	updaterList.lock.Unlock()
@@ -278,7 +281,12 @@ func (pub *Publication) serveConnection(s net.Conn) {
 	// Read request
 	buf := make([]byte, 65536)
 	res, err := s.Read(buf)
-	// XXX check if res == 65536 i.e., truncated
+	if res == len(buf) {
+		// Likely truncated
+		log.Fatalf("serveConnection(%s) request likely truncated\n",
+			name)
+	}
+
 	request := strings.Split(string(buf[0:res]), " ")
 	log.Printf("serveConnection read %d: %v\n", len(request), request)
 	if len(request) != 2 || request[0] != "request" || request[1] != pub.topic {
@@ -305,20 +313,20 @@ func (pub *Publication) serveConnection(s net.Conn) {
 	// Send the keys we just determined; all since this is the initial
 	err = pub.serialize(s, keys, sendToPeer)
 	if err != nil {
-		log.Printf("serveConnection(%s) failed %s\n",
+		log.Printf("serveConnection(%s) serialize failed %s\n",
 			name, err)
 		return
 	}
 	err = pub.sendComplete(s)
 	if err != nil {
-		log.Printf("serveConnection(%s) failed %s\n",
+		log.Printf("serveConnection(%s) sendComplete failed %s\n",
 			name, err)
 		return
 	}
 	if pub.km.restarted && !sentRestarted {
 		err = pub.sendRestarted(s)
 		if err != nil {
-			log.Printf("serveConnection(%s) failed %s\n",
+			log.Printf("serveConnection(%s) sendRestarted failed %s\n",
 				name, err)
 			return
 		}
@@ -335,7 +343,7 @@ func (pub *Publication) serveConnection(s net.Conn) {
 		// Send the updates and deletes for those keys
 		err = pub.serialize(s, keys, sendToPeer)
 		if err != nil {
-			log.Printf("serveConnection(%s) failed %s\n",
+			log.Printf("serveConnection(%s) serialize failed %s\n",
 				name, err)
 			return
 		}
@@ -343,7 +351,7 @@ func (pub *Publication) serveConnection(s net.Conn) {
 		if pub.km.restarted && !sentRestarted {
 			err = pub.sendRestarted(s)
 			if err != nil {
-				log.Printf("serveConnection(%s) failed %s\n",
+				log.Printf("serveConnection(%s) sendRestarted failed %s\n",
 					name, err)
 				return
 			}
@@ -360,8 +368,10 @@ func (pub *Publication) determineDiffs(slaveCollection localCollection) []string
 	for slaveKey, _ := range slaveCollection {
 		master, _ := pub.Get(slaveKey)
 		if master == nil {
-			log.Printf("determineDiffs: key %s deleted\n",
-				slaveKey)
+			if debug {
+				log.Printf("determineDiffs: key %s deleted\n",
+					slaveKey)
+			}
 			delete(slaveCollection, slaveKey)
 			keys = append(keys, slaveKey)
 		}
@@ -370,18 +380,24 @@ func (pub *Publication) determineDiffs(slaveCollection localCollection) []string
 	for masterKey, master := range items {
 		slave := lookupSlave(slaveCollection, masterKey)
 		if slave == nil {
-			log.Printf("determineDiffs: key %s added\n",
-				masterKey)
+			if debug {
+				log.Printf("determineDiffs: key %s added\n",
+					masterKey)
+			}
 			slaveCollection[masterKey] = master
 			keys = append(keys, masterKey)
 		} else if !cmp.Equal(master, slave) {
-			log.Printf("determineDiffs: key %s changed %v\n",
-				masterKey, cmp.Diff(master, slave))
+			if debug {
+				log.Printf("determineDiffs: key %s changed %v\n",
+					masterKey, cmp.Diff(master, slave))
+			}
 			slaveCollection[masterKey] = master
 			keys = append(keys, masterKey)
 		} else {
-			log.Printf("determineDiffs: key %s unchanged\n",
-				masterKey)
+			if debug {
+				log.Printf("determineDiffs: key %s unchanged\n",
+					masterKey)
+			}
 		}
 	}
 	return keys
@@ -455,6 +471,8 @@ func (pub *Publication) Publish(key string, item interface{}) error {
 	if debug {
 		pub.dump("after Publish")
 	}
+	updatersNotify()
+
 	dirName := PubDirName(name)
 	fileName := dirName + "/" + key + ".json"
 	if debug {
@@ -463,13 +481,12 @@ func (pub *Publication) Publish(key string, item interface{}) error {
 	// XXX already did a marshal in deepCopy; save that result?
 	b, err := json.Marshal(item)
 	if err != nil {
-		log.Fatal(err, "json Marshal in Publish")
+		log.Fatal("json Marshal in Publish", err)
 	}
 	err = WriteRename(fileName, b)
 	if err != nil {
 		return err
 	}
-	updatersNotify()
 	return nil
 }
 
@@ -506,7 +523,7 @@ func WriteRename(fileName string, b []byte) error {
 func deepCopy(in interface{}) interface{} {
 	b, err := json.Marshal(in)
 	if err != nil {
-		log.Fatal(err, "json Marshal in deepCopy")
+		log.Fatal("json Marshal in deepCopy", err)
 	}
 	var output interface{}
 	if err := json.Unmarshal(b, &output); err != nil {
@@ -564,10 +581,15 @@ func (pub *Publication) ClearRestarted() error {
 // Record the restarted state and send over socket/file.
 func (pub *Publication) restartImpl(restarted bool) error {
 	name := pub.nameString()
-	log.Printf("pub.restartImpl(%s, %v)\n", name, restarted)
+	if debug {
+		log.Printf("pub.restartImpl(%s, %v)\n", name, restarted)
+	}
+
 	if restarted == pub.km.restarted {
-		log.Printf("pub.restartImpl(%s, %v) value unchanged\n",
-			name, restarted)
+		if debug {
+			log.Printf("pub.restartImpl(%s, %v) value unchanged\n",
+				name, restarted)
+		}
 		return nil
 	}
 	pub.km.restarted = restarted
@@ -599,21 +621,23 @@ func (pub *Publication) serialize(sock net.Conn, keys []string,
 	sendToPeer localCollection) error {
 
 	name := pub.nameString()
-	log.Printf("serialize(%s, %v)\n", name, keys)
-	// Any initial deletes?
+	if debug {
+		log.Printf("serialize(%s, %v)\n", name, keys)
+	}
+
 	for _, key := range keys {
 		val, ok := sendToPeer[key]
 		if ok {
 			err := pub.sendUpdate(sock, key, val)
 			if err != nil {
-				log.Printf("serialize(%s) write failed %s\n",
+				log.Printf("serialize(%s) sendUpdate failed %s\n",
 					name, err)
 				return err
 			}
 		} else {
 			err := pub.sendDelete(sock, key)
 			if err != nil {
-				log.Printf("serialize(%s) write failed %s\n",
+				log.Printf("serialize(%s) sendDelete failed %s\n",
 					name, err)
 				return err
 			}
@@ -626,11 +650,11 @@ func (pub *Publication) sendUpdate(sock net.Conn, key string,
 	val interface{}) error {
 
 	if debug {
-		log.Printf("sendUpdate: key %s\n", key)
+		log.Printf("sendUpdate(%s): key %s\n", pub.nameString(), key)
 	}
 	b, err := json.Marshal(val)
 	if err != nil {
-		log.Fatal(err, "json Marshal in serialize")
+		log.Fatal("json Marshal in sendUpdate", err)
 	}
 	// base64-encode to avoid having spaces in the key and val
 	sendKey := base64.StdEncoding.EncodeToString([]byte(key))
@@ -642,7 +666,7 @@ func (pub *Publication) sendUpdate(sock net.Conn, key string,
 
 func (pub *Publication) sendDelete(sock net.Conn, key string) error {
 	if debug {
-		log.Printf("sendDelete: key %s\n", key)
+		log.Printf("sendDelete(%s): key %s\n", pub.nameString(), key)
 	}
 	// base64-encode to avoid having spaces in the key
 	sendKey := base64.StdEncoding.EncodeToString([]byte(key))
@@ -653,7 +677,7 @@ func (pub *Publication) sendDelete(sock net.Conn, key string) error {
 
 func (pub *Publication) sendRestarted(sock net.Conn) error {
 	if debug {
-		log.Printf("sendRestarted\n")
+		log.Printf("sendRestarted(%s)\n", pub.nameString())
 	}
 	_, err := sock.Write([]byte(fmt.Sprintf("restarted %s", pub.topic)))
 	return err
@@ -661,7 +685,7 @@ func (pub *Publication) sendRestarted(sock net.Conn) error {
 
 func (pub *Publication) sendComplete(sock net.Conn) error {
 	if debug {
-		log.Printf("sendComplete\n")
+		log.Printf("sendComplete(%s)\n", pub.nameString())
 	}
 	_, err := sock.Write([]byte(fmt.Sprintf("complete %s", pub.topic)))
 	return err
@@ -673,7 +697,7 @@ func (pub *Publication) dump(infoStr string) {
 	dumper := func(key string, val interface{}) bool {
 		b, err := json.Marshal(val)
 		if err != nil {
-			log.Fatal(err, "json Marshal in dump")
+			log.Fatal("json Marshal in dump", err)
 		}
 		log.Printf("\tkey %s val %s\n", key, b)
 		return true
@@ -845,26 +869,14 @@ func (sub *Subscription) watchSock() {
 		msg, key, val := sub.connectAndRead()
 		switch msg {
 		case "hello", "complete":
-			if debug {
-				log.Printf("watchSock: %s\n", msg)
-			}
 			// XXX anything for complete? Do we have an initial loop?
 		case "restarted":
-			if debug {
-				log.Printf("watchSock: %s\n", msg)
-			}
 			sub.sendChan <- "R done"
 
 		case "delete":
-			if debug {
-				log.Printf("delete base64 key %s\n", key)
-			}
 			sub.sendChan <- "D " + key
 
 		case "update":
-			if debug {
-				log.Printf("update base64 key %s\n", key)
-			}
 			// XXX is size of val any issue? pointer?
 			sub.sendChan <- "M " + key + " " + val
 		}
@@ -913,7 +925,11 @@ func (sub *Subscription) connectAndRead() (string, string, string) {
 			continue
 		}
 
-		// XXX check if res == 65536 i.e. truncated?
+		if res == len(buf) {
+			// Likely truncated
+			log.Fatalf("connectAndRead(%s) request likely truncated\n",
+				name)
+		}
 		reply := strings.Split(string(buf[0:res]), " ")
 		count := len(reply)
 		if count < 2 {
@@ -925,7 +941,12 @@ func (sub *Subscription) connectAndRead() (string, string, string) {
 		msg := reply[0]
 		t := reply[1]
 
-		// XXX check type against sub.topic
+		if t != sub.topic {
+			errStr := fmt.Sprintf("connectAndRead(%s): mismatched type/topic %s vs. %s",
+				name, t, sub.topic)
+			log.Println(errStr)
+			continue
+		}
 
 		// XXX are there error cases where we should Close and
 		// continue aka reconnect?
@@ -954,8 +975,8 @@ func (sub *Subscription) connectAndRead() (string, string, string) {
 					log.Println(errStr)
 					continue
 				}
-				log.Printf("delete type %s key %s\n",
-					t, string(key))
+				log.Printf("connectAndRead(%s): delete type %s key %s\n",
+					name, t, string(key))
 			}
 			return msg, recvKey, ""
 
@@ -989,8 +1010,8 @@ func (sub *Subscription) connectAndRead() (string, string, string) {
 					log.Println(errStr)
 					continue
 				}
-				log.Printf("update type %s key %s val %s\n",
-					t, string(key), string(val))
+				log.Printf("connectAndRead(%s): update type %s key %s val %s\n",
+					name, t, string(key), string(val))
 			}
 			return msg, recvKey, recvVal
 
@@ -1003,19 +1024,18 @@ func (sub *Subscription) connectAndRead() (string, string, string) {
 	}
 }
 
-// XXX note that change filename includes .json for files. Removed by
-// HandleStatusEvent
+// We handle both subscribeFromDir and subscribeFromSock
+// Note that change filename includes .json for subscribeFromDir. That
+// is removed by HandleStatusEvent.
 func (sub *Subscription) ProcessChange(change string) {
-	name := sub.nameString()
-	if debug {
-		log.Printf("ProcessChange(%s) %s\n", name, change)
-	}
+
 	if sub.subscribeFromDir {
 		var restartFn watch.StatusRestartHandler = handleRestart
 		watch.HandleStatusEvent(change, sub,
 			sub.dirName, &sub.topicType,
 			handleModify, handleDelete, &restartFn)
 	} else if subscribeFromSock {
+		name := sub.nameString()
 		reply := strings.Split(change, " ")
 		operation := reply[0]
 
@@ -1059,6 +1079,9 @@ func (sub *Subscription) ProcessChange(change string) {
 			}
 			handleModify(sub, string(key), output)
 		}
+	} else {
+		// Enforced in Subscribe()
+		log.Fatal("ProcessChange: neither subscribeFromDir nor subscribeFromSock")
 	}
 }
 
@@ -1160,7 +1183,7 @@ func (sub *Subscription) dump(infoStr string) {
 	dumper := func(key string, val interface{}) bool {
 		b, err := json.Marshal(val)
 		if err != nil {
-			log.Fatal(err, "json Marshal in dump")
+			log.Fatal("json Marshal in dump", err)
 		}
 		log.Printf("\tkey %s val %s\n", key, b)
 		return true
