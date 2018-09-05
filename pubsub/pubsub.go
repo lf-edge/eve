@@ -821,10 +821,15 @@ func subscribeImpl(agentName string, agentScope string, topicType interface{},
 	sub.km = keyMap{key: NewLockedStringMap()}
 	name := sub.nameString()
 
-	// XXX need to handle zedclient going away yet metrics being read
-	if agentName == "" || agentName == "zedclient" {
+	// Special case for files in /var/tmp/zededa/ and also
+	// for zedclient going away yet metrics being read after it
+	// is gone.
+	if agentName == "" {
 		sub.subscribeFromDir = true
 		sub.dirName = FixedDirName(name)
+	} else if agentName == "zedclient" {
+		sub.subscribeFromDir = true
+		sub.dirName = PubDirName(name)
 	} else {
 		sub.subscribeFromDir = subscribeFromDir
 		sub.dirName = PubDirName(name)
