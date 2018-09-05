@@ -532,6 +532,8 @@ func (pub *Publication) Unpublish(key string) error {
 	if debug {
 		pub.dump("after Unpublish")
 	}
+	updatersNotify()
+
 	dirName := PubDirName(name)
 	fileName := dirName + "/" + key + ".json"
 	if debug {
@@ -542,7 +544,6 @@ func (pub *Publication) Unpublish(key string) error {
 			name, key, err)
 		return errors.New(errStr)
 	}
-	updatersNotify()
 	return nil
 }
 
@@ -570,6 +571,9 @@ func (pub *Publication) restartImpl(restarted bool) error {
 		return nil
 	}
 	pub.km.restarted = restarted
+	if restarted {
+		updatersNotify()
+	}
 
 	dirName := PubDirName(name)
 	restartFile := dirName + "/" + "restarted"
@@ -587,10 +591,6 @@ func (pub *Publication) restartImpl(restarted bool) error {
 				name, err)
 			return errors.New(errStr)
 		}
-	}
-	// No disable for the socket case
-	if restarted {
-		updatersNotify()
 	}
 	return nil
 }
