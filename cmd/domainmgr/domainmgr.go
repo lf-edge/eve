@@ -15,6 +15,7 @@ import (
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/devicenetwork"
+	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
@@ -304,10 +305,17 @@ func handleDomainConfigDelete(ctxArg interface{}, key string,
 }
 
 // Server for each domU
-// XXX Add timer for periodic check on running domU
+// Runs timer every 30 seconds to update status
 func runHandler(ctx *domainContext, c <-chan interface{}) {
 
 	log.Printf("runHandler starting\n")
+
+	interval := 30 * time.Second
+	max := float64(interval)
+	min := max * 0.3
+	ticker := flextimer.NewRangeTicker(time.Duration(min),
+		time.Duration(max))
+
 	var key string
 	closed := false
 	for !closed {
@@ -330,10 +338,42 @@ func runHandler(ctx *domainContext, c <-chan interface{}) {
 				}
 				closed = true
 			}
-			// XXX add timer
+		case <-ticker.C:
+			// XXX remove/debug log
+			log.Printf("runHandler(%s) timer\n", key)
+			status := lookupDomainStatus(ctx, key)
+			if status != nil {
+				verifyStatus(ctx, status)
+			}
 		}
 	}
-	log.Printf("runHandler done for %s\n", key)
+	log.Printf("runHandler(%s) DONE\n", key)
+}
+
+// Check if it is still running
+// XXX would xen state be useful?
+func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
+	domainId, err := xlDomid(status.DomainName, status.DomainId)
+	if err != nil {
+		if status.Activated {
+			errStr := fmt.Sprintf("verifyStatus(%s) failed %s",
+				status.Key(), err)
+			log.Println(errStr)
+			status.LastErr = errStr
+			status.LastErrTime = time.Now()
+			status.Activated = false
+			status.Failed = true // XXX useful?
+		}
+		status.DomainId = 0
+		publishDomainStatus(ctx, status)
+	} else {
+		if domainId != status.DomainId {
+			log.Printf("verifyDomain(%s) domainId changed from %d to %d\n",
+				status.Key(), status.DomainId, domainId)
+			status.DomainId = domainId
+			publishDomainStatus(ctx, status)
+		}
+	}
 }
 
 // Callers must be careful to publish any changes to DomainStatus
@@ -580,8 +620,6 @@ func doActivate(config types.DomainConfig, status *types.DomainStatus,
 }
 
 // shutdown and wait for the domain to go away; if that fails destroy and wait
-// XXX this should run in a goroutine to prevent handling other operations
-// XXX one goroutine per UUIDandVersion to also handle copy and xlCreate?
 func doInactivate(status *types.DomainStatus, aa *types.AssignableAdapters) {
 	log.Printf("doInactivate(%v) for %s\n",
 		status.UUIDandVersion, status.DisplayName)

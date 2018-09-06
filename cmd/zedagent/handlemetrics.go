@@ -102,18 +102,6 @@ func ExecuteXlInfoCmd() map[string]string {
 	return dict
 }
 
-//Returns boolean depending upon the existence of domain
-func verifyDomainExists(domainId int) bool {
-	cmd := exec.Command("xl", "list", strconv.Itoa(domainId))
-	_, err := cmd.Output()
-	if err != nil {
-		log.Println(err.Error())
-		return false
-	} else {
-		return true
-	}
-}
-
 // Shadow copy of suscription to determine info for deletes. Key is UUID
 var domainStatus map[string]types.DomainStatus
 
@@ -1211,7 +1199,8 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 			// Avoid nil checks
 			ds = &types.DomainStatus{}
 		} else {
-			ReportAppInfo.Activated = aiStatus.Activated && verifyDomainExists(ds.DomainId)
+			// XXX add failed? More states?
+			ReportAppInfo.Activated = aiStatus.Activated
 		}
 
 		if !aiStatus.ErrorTime.IsZero() {
