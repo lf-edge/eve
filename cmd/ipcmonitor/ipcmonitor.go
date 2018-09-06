@@ -1,8 +1,16 @@
 // Copyright (c) 2017,2018 Zededa, Inc.
 // All rights reserved.
 
-// Connect to and watch for updates for a given agent, agentScope, and topic
+// Connect to and watch for updates for a given agent, agentScope, and topic.
 // Uses AF_UNIX socket
+//
+// Example usage: to monitor what zedmanager publishes in DomainConfig use
+// ipcmonitor -a zedmanager -t DomainConfig
+//     That corresponds to the state in /var/run/zedmanager/DomainConfig/*.json
+//     but with ongoing updates and deletes.
+// For agents with agentScope, such as downloader and verifier, use e.g.,
+// ipcmonitor -a zedmanager -s appImg.obj -t DownloaderConfiga
+//     which corresponds to /var/run/zedmanager/appImg.obj/DownloaderConfig/
 
 package ipcmonitor
 

@@ -387,6 +387,7 @@ func (pub *Publication) determineDiffs(slaveCollection localCollection) []string
 				log.Printf("determineDiffs(%s): key %s added\n",
 					name, masterKey)
 			}
+			// XXX is deepCopy needed?
 			slaveCollection[masterKey] = deepCopy(master)
 			keys = append(keys, masterKey)
 		} else if !cmp.Equal(master, *slave) {
@@ -395,6 +396,7 @@ func (pub *Publication) determineDiffs(slaveCollection localCollection) []string
 					name, masterKey,
 					cmp.Diff(master, *slave))
 			}
+			// XXX is deepCopy needed?
 			slaveCollection[masterKey] = deepCopy(master)
 			keys = append(keys, masterKey)
 		} else {
@@ -744,7 +746,7 @@ func (pub *Publication) GetAll() map[string]interface{} {
 //  s1.Activate()
 //  ...
 //  select {
-//     change := <- s1.C:
+//     case change := <- s1.C:
 //         s1.ProcessChange(change, ctx)
 //  }
 //  The ProcessChange function calls the various handlers (if set) and updates
