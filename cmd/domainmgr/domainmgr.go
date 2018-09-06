@@ -27,6 +27,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
@@ -1232,12 +1233,14 @@ func xlCreate(domainName string, xenCfgFilename string) (int, error) {
 		"domid",
 		domainName,
 	}
-	out, err := wrap.Command(cmd, args...).Output()
+	stdoutStderr, err = wrap.Command(cmd, args...).CombinedOutput()
 	if err != nil {
 		log.Println("xl domid failed ", err)
-		return 0, err
+		log.Println("xl domid output ", string(stdoutStderr))
+		return 0, errors.New(fmt.Sprintf("xl domid failed: %s\n",
+			string(stdoutStderr)))
 	}
-	res := strings.TrimSpace(string(out))
+	res := strings.TrimSpace(string(stdoutStderr))
 	domainId, err := strconv.Atoi(res)
 	if err != nil {
 		log.Printf("Can't extract domainId from %s: %s\n", res, err)
@@ -1256,13 +1259,15 @@ func xlStatus(domainName string, domainId int) error {
 		"-l",
 		domainName,
 	}
-	res, err := wrap.Command(cmd, args...).Output()
+	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
 	if err != nil {
 		log.Println("xl list failed ", err)
-		return err
+		log.Println("xl list output ", string(stdoutStderr))
+		return errors.New(fmt.Sprintf("xl list failed: %s\n",
+			string(stdoutStderr)))
 	}
 	// XXX parse json to look at state? Not currently included
-	log.Printf("xl list done. Result %s\n", string(res))
+	log.Printf("xl list done. Result %s\n", string(stdoutStderr))
 	return nil
 }
 
@@ -1277,12 +1282,15 @@ func xlDomid(domainName string, domainId int) (int, error) {
 		"domid",
 		domainName,
 	}
-	out, err := wrap.Command(cmd, args...).Output()
+	// Avoid wrap since we are called periodically
+	stdoutStderr, err := exec.Command(cmd, args...).CombinedOutput()
 	if err != nil {
 		log.Println("xl domid failed ", err)
-		return domainId, err
+		log.Println("xl domid output ", string(stdoutStderr))
+		return domainId, errors.New(fmt.Sprintf("xl domid failed: %s\n",
+			string(stdoutStderr)))
 	}
-	res := strings.TrimSpace(string(out))
+	res := strings.TrimSpace(string(stdoutStderr))
 	domainId2, err := strconv.Atoi(res)
 	if err != nil {
 		log.Printf("xl domid not integer %s: failed %s\n", res, err)
@@ -1327,13 +1335,15 @@ func xlDisableVifOffload(domainName string, domainId int, vifCount int) error {
 				varName,
 				"0",
 			}
-			res, err := wrap.Command(cmd, args...).Output()
+			stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
 			if err != nil {
 				log.Println("xenstore write failed ", err)
-				return err
+				log.Println("xenstore write output ", string(stdoutStderr))
+				return errors.New(fmt.Sprintf("xenstore write failed: %s\n",
+					string(stdoutStderr)))
 			}
 			log.Printf("xenstore write done. Result %s\n",
-				string(res))
+				string(stdoutStderr))
 		}
 	}
 
@@ -1348,12 +1358,14 @@ func xlUnpause(domainName string, domainId int) error {
 		"unpause",
 		domainName,
 	}
-	res, err := wrap.Command(cmd, args...).Output()
+	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
 	if err != nil {
-		log.Println("xlUnpause failed ", err)
-		return err
+		log.Println("xl unpause failed ", err)
+		log.Println("xl unpause output ", string(stdoutStderr))
+		return errors.New(fmt.Sprintf("xl unpause failed: %s\n",
+			string(stdoutStderr)))
 	}
-	log.Printf("xlUnpause done. Result %s\n", string(res))
+	log.Printf("xlUnpause done. Result %s\n", string(stdoutStderr))
 	return nil
 }
 
@@ -1377,7 +1389,8 @@ func xlShutdown(domainName string, domainId int, force bool) error {
 	if err != nil {
 		log.Println("xl shutdown failed ", err)
 		log.Println("xl shutdown output ", string(stdoutStderr))
-		return err
+		return errors.New(fmt.Sprintf("xl shutdown failed: %s\n",
+			string(stdoutStderr)))
 	}
 	log.Printf("xl shutdown done\n")
 	return nil
@@ -1394,6 +1407,8 @@ func xlDestroy(domainName string, domainId int) error {
 	if err != nil {
 		log.Println("xl destroy failed ", err)
 		log.Println("xl destroy output ", string(stdoutStderr))
+		return errors.New(fmt.Sprintf("xl destroy failed: %s\n",
+			string(stdoutStderr)))
 		return err
 	}
 	log.Printf("xl destroy done\n")
