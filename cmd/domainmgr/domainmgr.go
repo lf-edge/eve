@@ -3,6 +3,8 @@
 
 // Manage Xen guest domains based on the subscribed collection of DomainConfig
 // and publish the result in a collection of DomainStatus structs.
+// We run a separate go routine for each domU to be able to boot and halt
+// them concurrently and also pick up their state periodically.
 
 package domainmgr
 
@@ -60,6 +62,8 @@ type domainContext struct {
 	pubDomainStatus        *pubsub.Publication
 }
 
+var debug = false
+
 func Run() {
 	handlersInit()
 	logf, err := agentlog.Init(agentName)
@@ -69,7 +73,9 @@ func Run() {
 	defer logf.Close()
 
 	versionPtr := flag.Bool("v", false, "Version")
+	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
+	debug = *debugPtr
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
@@ -339,8 +345,9 @@ func runHandler(ctx *domainContext, c <-chan interface{}) {
 				closed = true
 			}
 		case <-ticker.C:
-			// XXX remove/debug log
-			log.Printf("runHandler(%s) timer\n", key)
+			if debug {
+				log.Printf("runHandler(%s) timer\n", key)
+			}
 			status := lookupDomainStatus(ctx, key)
 			if status != nil {
 				verifyStatus(ctx, status)
@@ -805,6 +812,7 @@ func configToStatus(config types.DomainConfig, aa *types.AssignableAdapters,
 			return errors.New(fmt.Sprintf("Adapter %d %s used by %s\n",
 				adapter.Type, adapter.Name, ib.UsedByUUID))
 		}
+		// XXX potential need for locking for deviceNetworkStatus
 		for _, m := range ib.Members {
 			if types.IsUplink(deviceNetworkStatus, m) {
 				return errors.New(fmt.Sprintf("Adapter %d %s member %s is (part of) an uplink\n",
@@ -1252,7 +1260,9 @@ func xlStatus(domainName string, domainId int) error {
 // If we have a domain reboot issue the domainId
 // can change.
 func xlDomid(domainName string, domainId int) (int, error) {
-	log.Printf("xlDomid %s %d\n", domainName, domainId)
+	if debug {
+		log.Printf("xlDomid %s %d\n", domainName, domainId)
+	}
 	cmd := "xl"
 	args := []string{
 		"domid",
