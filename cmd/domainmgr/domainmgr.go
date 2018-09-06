@@ -29,6 +29,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -52,9 +53,18 @@ var nilUUID = uuid.UUID{}
 // Set from Makefile
 var Version = "No version specified"
 
+// The isUplink function is called by different goroutines
+// hence we serialize the calls on a mutex.
 var deviceNetworkStatus types.DeviceNetworkStatus
+var dnsLock sync.Mutex
 
-// Information for handleDomainCreate/Modify/Delete
+func isUplink(ifname string) bool {
+	dnsLock.Lock()
+	defer dnsLock.Unlock()
+	return types.IsUplink(deviceNetworkStatus, ifname)
+}
+
+// Information for handleCreate/Modify/Delete
 type domainContext struct {
 	assignableAdapters     *types.AssignableAdapters
 	subDeviceNetworkStatus *pubsub.Subscription
@@ -146,8 +156,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	subDomainConfig.ModifyHandler = handleDomainConfigModify
-	subDomainConfig.DeleteHandler = handleDomainConfigDelete
+	subDomainConfig.ModifyHandler = handleDomainModify
+	subDomainConfig.DeleteHandler = handleDomainDelete
 	subDomainConfig.RestartHandler = handleRestart
 	domainCtx.subDomainConfig = subDomainConfig
 	subDomainConfig.Activate()
@@ -270,33 +280,33 @@ func handlersInit() {
 // Wrappers around handleCreate, handleModify, and handleDelete
 
 // Determine whether it is an create or modify
-func handleDomainConfigModify(ctxArg interface{}, key string, configArg interface{}) {
+func handleDomainModify(ctxArg interface{}, key string, configArg interface{}) {
 
-	log.Printf("handleDomainConfigModify(%s)\n", key)
+	log.Printf("handleDomainModify(%s)\n", key)
 	ctx := ctxArg.(*domainContext)
 	config := cast.CastDomainConfig(configArg)
 	if config.Key() != key {
-		log.Printf("handleDomainConfigModify key/UUID mismatch %s vs %s; ignored %+v\n",
+		log.Printf("handleDomainModify key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, config.Key(), config)
 		return
 	}
 	// Do we have a channel/goroutine?
 	h, ok := handlerMap[config.Key()]
 	if !ok {
-		c := make(chan interface{})
-		handlerMap[config.Key()] = c
-		go runHandler(ctx, c)
-		h = c
+		h1 := make(chan interface{})
+		handlerMap[config.Key()] = h1
+		go runHandler(ctx, h1)
+		h = h1
 	}
 	log.Printf("Sending config to handler\n")
 	h <- configArg
-	log.Printf("handleDomainConfigModify(%s) done\n", key)
+	log.Printf("handleDomainModify(%s) done\n", key)
 }
 
-func handleDomainConfigDelete(ctxArg interface{}, key string,
+func handleDomainDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	log.Printf("handleDomainConfigDelete(%s)\n", key)
+	log.Printf("handleDomainDelete(%s)\n", key)
 	// Do we have a channel/goroutine?
 	h, ok := handlerMap[key]
 	if ok {
@@ -304,10 +314,10 @@ func handleDomainConfigDelete(ctxArg interface{}, key string,
 		close(h)
 		delete(handlerMap, key)
 	} else {
-		log.Printf("handleDomainConfigDelete: unknown %s\n", key)
+		log.Printf("handleDomainDelete: unknown %s\n", key)
 		return
 	}
-	log.Printf("handleDomainConfigDelete(%s) done\n", key)
+	log.Printf("handleDomainDelete(%s) done\n", key)
 }
 
 // Server for each domU
@@ -812,9 +822,8 @@ func configToStatus(config types.DomainConfig, aa *types.AssignableAdapters,
 			return errors.New(fmt.Sprintf("Adapter %d %s used by %s\n",
 				adapter.Type, adapter.Name, ib.UsedByUUID))
 		}
-		// XXX potential need for locking for deviceNetworkStatus
 		for _, m := range ib.Members {
-			if types.IsUplink(deviceNetworkStatus, m) {
+			if isUplink(m) {
 				return errors.New(fmt.Sprintf("Adapter %d %s member %s is (part of) an uplink\n",
 					adapter.Type, adapter.Name, m))
 			}
