@@ -296,7 +296,7 @@ func handleDomainModify(ctxArg interface{}, key string, configArg interface{}) {
 	if !ok {
 		h1 := make(chan interface{})
 		handlerMap[config.Key()] = h1
-		go runHandler(ctx, h1)
+		go runHandler(ctx, key, h1)
 		h = h1
 	}
 	log.Printf("Sending config to handler\n")
@@ -323,7 +323,7 @@ func handleDomainDelete(ctxArg interface{}, key string,
 
 // Server for each domU
 // Runs timer every 30 seconds to update status
-func runHandler(ctx *domainContext, c <-chan interface{}) {
+func runHandler(ctx *domainContext, key string, c <-chan interface{}) {
 
 	log.Printf("runHandler starting\n")
 
@@ -333,14 +333,12 @@ func runHandler(ctx *domainContext, c <-chan interface{}) {
 	ticker := flextimer.NewRangeTicker(time.Duration(min),
 		time.Duration(max))
 
-	var key string
 	closed := false
 	for !closed {
 		select {
 		case configArg, ok := <-c:
 			if ok {
 				config := cast.CastDomainConfig(configArg)
-				key = config.Key()
 				status := lookupDomainStatus(ctx, key)
 				if status == nil {
 					handleCreate(ctx, key, &config)
