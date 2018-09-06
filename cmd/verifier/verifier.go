@@ -465,8 +465,10 @@ func handleBaseOsDelete(ctxArg interface{}, key string, configArg interface{}) {
 }
 
 // Callers must be careful to publish any changes to VerifyImageStatus
-func lookupVerifyImageStatus(pub *pubsub.Publication, key string) *types.VerifyImageStatus {
+func lookupVerifyImageStatus(ctx *verifierContext, objType string,
+	key string) *types.VerifyImageStatus {
 
+	pub := verifierPublication(ctx, objType)
 	st, _ := pub.Get(key)
 	if st == nil {
 		log.Printf("lookupVerifyImageStatus(%s) not found\n", key)
@@ -513,7 +515,7 @@ func handleVerifyImageModify(ctxArg interface{}, objType string,
 	if !ok {
 		h1 := make(chan interface{})
 		handlerMap[config.Key()] = h1
-		go runHandler(ctx, objType, h1)
+		go runHandler(ctx, objType, key, h1)
 		h = h1
 	}
 	log.Printf("Sending config to handler\n")
@@ -539,19 +541,19 @@ func handleVerifyImageDelete(ctxArg interface{}, key string,
 }
 
 // Server for each domU
-func runHandler(ctx *verifierContext, objType string, c <-chan interface{}) {
+func runHandler(ctx *verifierContext, objType string, key string,
+	c <-chan interface{}) {
 
 	log.Printf("runHandler starting\n")
 
-	var key string
 	closed := false
 	for !closed {
 		select {
 		case configArg, ok := <-c:
 			if ok {
 				config := cast.CastVerifyImageConfig(configArg)
-				key = config.Key()
-				status := lookupVerifyImageStatus(ctx.pubAppImgStatus, key)
+				status := lookupVerifyImageStatus(ctx,
+					objType, key)
 				if status == nil {
 					handleCreate(ctx, objType, &config)
 				} else {
@@ -559,7 +561,8 @@ func runHandler(ctx *verifierContext, objType string, c <-chan interface{}) {
 				}
 			} else {
 				// Closed
-				status := lookupVerifyImageStatus(ctx.pubAppImgStatus, key)
+				status := lookupVerifyImageStatus(ctx,
+					objType, key)
 				if status != nil {
 					handleDelete(ctx, status)
 				}

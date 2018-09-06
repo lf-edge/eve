@@ -265,8 +265,10 @@ func handleCertObjDelete(ctxArg interface{}, key string, configArg interface{}) 
 }
 
 // Callers must be careful to publish any changes to DownloaderStatus
-func lookupDownloaderStatus(pub *pubsub.Publication, key string) *types.DownloaderStatus {
+func lookupDownloaderStatus(ctx *downloaderContext, objType string,
+	key string) *types.DownloaderStatus {
 
+	pub := downloaderPublication(ctx, objType)
 	st, _ := pub.Get(key)
 	if st == nil {
 		log.Printf("lookupDownloaderStatus(%s) not found\n", key)
@@ -313,7 +315,7 @@ func handleDownloaderModify(ctxArg interface{}, objType string,
 	if !ok {
 		h1 := make(chan interface{})
 		handlerMap[config.Key()] = h1
-		go runHandler(ctx, objType, h1)
+		go runHandler(ctx, objType, key, h1)
 		h = h1
 	}
 	log.Printf("Sending config to handler\n")
@@ -339,19 +341,19 @@ func handleDownloaderDelete(ctxArg interface{}, key string,
 }
 
 // Server for each domU
-func runHandler(ctx *downloaderContext, objType string, c <-chan interface{}) {
+func runHandler(ctx *downloaderContext, objType string, key string,
+	c <-chan interface{}) {
 
 	log.Printf("runHandler starting\n")
 
-	var key string
 	closed := false
 	for !closed {
 		select {
 		case configArg, ok := <-c:
 			if ok {
 				config := cast.CastDownloaderConfig(configArg)
-				key = config.Key()
-				status := lookupDownloaderStatus(ctx.pubAppImgStatus, key)
+				status := lookupDownloaderStatus(ctx,
+					objType, key)
 				if status == nil {
 					handleCreate(ctx, objType, config, key)
 				} else {
@@ -359,7 +361,8 @@ func runHandler(ctx *downloaderContext, objType string, c <-chan interface{}) {
 				}
 			} else {
 				// Closed
-				status := lookupDownloaderStatus(ctx.pubAppImgStatus, key)
+				status := lookupDownloaderStatus(ctx,
+					objType, key)
 				if status != nil {
 					handleDelete(ctx, key, status)
 				}
