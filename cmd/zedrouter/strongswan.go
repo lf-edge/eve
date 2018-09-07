@@ -19,6 +19,7 @@ const (
 	OnPremVpnServer   = "onPremServer"
 	UpLinkIpAddrType  = "upLink"
 	AppLinkSubnetType = "appNet"
+	AnyIpAddr         = "%any"
 )
 
 // XXX currently, only AwsVpn StrongSwan Client IpSec Tunnel handling
@@ -106,7 +107,6 @@ func strongswanInactivate(status *types.NetworkServiceStatus,
 }
 
 // StrongSwan Vpn IpSec Tenneling handler routines
-
 func strongSwanConfigGet(ctx *zedrouterContext,
 	config types.NetworkServiceConfig) (types.VpnServiceConfig, error) {
 
@@ -133,10 +133,10 @@ func strongSwanConfigGet(ctx *zedrouterContext,
 	// app net information
 	appNet := lookupNetworkObjectConfig(ctx, config.AppLink.String())
 	if appNet != nil {
-		appNetPresent = true
 		if appNet.Type != types.NT_IPV4 {
 			return vpnConfig, errors.New("appnet is not IPv4")
 		}
+		appNetPresent = true
 		appLink.SubnetBlock = appNet.Subnet.String()
 	}
 
@@ -156,11 +156,11 @@ func strongSwanConfigGet(ctx *zedrouterContext,
 	if vpnConfig.GatewayConfig.IpAddr == UpLinkIpAddrType {
 		vpnConfig.GatewayConfig.IpAddr = upLink.IpAddr
 	}
-	if appNetPresent &&
+	if appNetPresent == true &&
 		vpnConfig.GatewayConfig.SubnetBlock == AppLinkSubnetType {
 		vpnConfig.GatewayConfig.SubnetBlock = appLink.SubnetBlock
 	}
-	if err := strongSwanValidateIpAddr(vpnConfig.GatewayConfig.IpAddr); err != nil {
+	if err := strongSwanValidateIpAddr(vpnConfig.GatewayConfig.IpAddr, true); err != nil {
 		return vpnConfig, err
 	}
 	if err := strongSwanValidateSubnet(vpnConfig.GatewayConfig.SubnetBlock); err != nil {
@@ -184,24 +184,25 @@ func strongSwanConfigGet(ctx *zedrouterContext,
 		if clientConfig.IpAddr == UpLinkIpAddrType {
 			clientConfig.IpAddr = upLink.IpAddr
 		}
-		if appNetPresent &&
+		if appNetPresent == true &&
 			clientConfig.SubnetBlock == AppLinkSubnetType {
 			clientConfig.SubnetBlock = appLink.SubnetBlock
 		}
 		if clientConfig.IpAddr == "" {
-			clientConfig.IpAddr = "%any"
+			clientConfig.IpAddr = AnyIpAddr
 		}
 		// validate the ip address/subnet values
-		if err := strongSwanValidateIpAddr(clientConfig.IpAddr); err != nil {
+		if err := strongSwanValidateIpAddr(clientConfig.IpAddr, false); err != nil {
 			return vpnConfig, err
 		}
 		if err := strongSwanValidateSubnet(clientConfig.SubnetBlock); err != nil {
 			return vpnConfig, err
 		}
-		if err := strongSwanValidateSubnet(clientConfig.TunnelConfig.LocalIpAddr); err != nil {
+		tunnelConfig := clientConfig.TunnelConfig
+		if err := strongSwanValidateLinkLocal(tunnelConfig.LocalIpAddr); err != nil {
 			return vpnConfig, err
 		}
-		if err := strongSwanValidateSubnet(clientConfig.TunnelConfig.RemoteIpAddr); err != nil {
+		if err := strongSwanValidateLinkLocal(tunnelConfig.RemoteIpAddr); err != nil {
 			return vpnConfig, err
 		}
 		vpnConfig.ClientConfigList[idx] = *clientConfig
@@ -248,18 +249,13 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 		return vpnConfig, err
 	}
 
-	// check for pre-shared key configuration
-	if strongSwanConfig.PreSharedKey == "" {
-		for _, clientConfig := range strongSwanConfig.ClientConfigList {
-			if clientConfig.IpAddr == "" &&
-				clientConfig.PreSharedKey == "" {
-				return vpnConfig, errors.New("preshared key not set")
-			}
-		}
+	// check for unique client profiles
+	if err := checkForClientDups(strongSwanConfig); err != nil {
+		return vpnConfig, err
 	}
 
 	// validate ip address/subnet configurations
-	if err := strongSwanValidateIpAddr(strongSwanConfig.VpnGatewayIpAddr); err != nil {
+	if err := strongSwanValidateIpAddr(strongSwanConfig.VpnGatewayIpAddr, false); err != nil {
 		return vpnConfig, err
 	}
 	if err := strongSwanValidateSubnet(strongSwanConfig.VpnSubnetBlock); err != nil {
@@ -268,24 +264,25 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 	if err := strongSwanValidateSubnet(strongSwanConfig.LocalSubnetBlock); err != nil {
 		return vpnConfig, err
 	}
-	if err := strongSwanValidateSubnet(strongSwanConfig.VpnLocalIpAddr); err != nil {
+	if err := strongSwanValidateLinkLocal(strongSwanConfig.VpnLocalIpAddr); err != nil {
 		return vpnConfig, err
 	}
-	if err := strongSwanValidateSubnet(strongSwanConfig.VpnRemoteIpAddr); err != nil {
+	if err := strongSwanValidateLinkLocal(strongSwanConfig.VpnRemoteIpAddr); err != nil {
 		return vpnConfig, err
 	}
 
 	for _, clientConfig := range strongSwanConfig.ClientConfigList {
-		if err := strongSwanValidateIpAddr(clientConfig.IpAddr); err != nil {
+		if err := strongSwanValidateIpAddr(clientConfig.IpAddr, false); err != nil {
 			return vpnConfig, err
 		}
 		if err := strongSwanValidateSubnet(clientConfig.SubnetBlock); err != nil {
 			return vpnConfig, err
 		}
-		if err := strongSwanValidateSubnet(clientConfig.TunnelConfig.LocalIpAddr); err != nil {
+		tunnelConfig := clientConfig.TunnelConfig
+		if err := strongSwanValidateLinkLocal(tunnelConfig.LocalIpAddr); err != nil {
 			return vpnConfig, err
 		}
-		if err := strongSwanValidateSubnet(clientConfig.TunnelConfig.RemoteIpAddr); err != nil {
+		if err := strongSwanValidateLinkLocal(tunnelConfig.RemoteIpAddr); err != nil {
 			return vpnConfig, err
 		}
 	}
@@ -299,7 +296,9 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 			return vpnConfig, errors.New("invalid client config")
 		}
 		// server ip address/subnet is must
-		if strongSwanConfig.VpnGatewayIpAddr == "" {
+		if strongSwanConfig.VpnGatewayIpAddr == "" ||
+			strongSwanConfig.VpnGatewayIpAddr == AnyIpAddr ||
+			strongSwanConfig.VpnGatewayIpAddr == UpLinkIpAddrType {
 			return vpnConfig, errors.New("vpn gateway not set")
 		}
 		if strongSwanConfig.VpnSubnetBlock == "" ||
@@ -315,6 +314,7 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 			// copy the parameters to the new structure
 			strongSwanConfig.ClientConfigList = make([]types.VpnClientConfig, 1)
 			clientConfig := new(types.VpnClientConfig)
+			clientConfig.IpAddr = AnyIpAddr
 			clientConfig.PreSharedKey = strongSwanConfig.PreSharedKey
 			clientConfig.TunnelConfig.LocalIpAddr = strongSwanConfig.VpnLocalIpAddr
 			clientConfig.TunnelConfig.RemoteIpAddr = strongSwanConfig.VpnRemoteIpAddr
@@ -336,7 +336,9 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 			return vpnConfig, errors.New("invalid client config")
 		}
 		// server ip address is must
-		if strongSwanConfig.VpnGatewayIpAddr == "" {
+		if strongSwanConfig.VpnGatewayIpAddr == "" ||
+			strongSwanConfig.VpnGatewayIpAddr == AnyIpAddr ||
+			strongSwanConfig.VpnGatewayIpAddr == UpLinkIpAddrType {
 			return vpnConfig, errors.New("vpn gateway not set")
 		}
 		// for client, server side subnet information, is must
@@ -348,10 +350,10 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 		if len(strongSwanConfig.ClientConfigList) == 0 {
 			strongSwanConfig.ClientConfigList = make([]types.VpnClientConfig, 1)
 			clientConfig := new(types.VpnClientConfig)
+			clientConfig.IpAddr = UpLinkIpAddrType
 			clientConfig.PreSharedKey = strongSwanConfig.PreSharedKey
 			clientConfig.SubnetBlock = strongSwanConfig.LocalSubnetBlock
-			if clientConfig.SubnetBlock == "" &&
-				vpnConfig.PolicyBased == true {
+			if clientConfig.SubnetBlock == "" {
 				clientConfig.SubnetBlock = AppLinkSubnetType
 			}
 			strongSwanConfig.ClientConfigList[0] = *clientConfig
@@ -370,11 +372,15 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 		if len(strongSwanConfig.ClientConfigList) == 0 {
 			strongSwanConfig.ClientConfigList = make([]types.VpnClientConfig, 1)
 			clientConfig := new(types.VpnClientConfig)
+			clientConfig.IpAddr = AnyIpAddr
 			clientConfig.PreSharedKey = strongSwanConfig.PreSharedKey
 			clientConfig.SubnetBlock = strongSwanConfig.LocalSubnetBlock
 			strongSwanConfig.ClientConfigList[0] = *clientConfig
 		}
 		for _, clientConfig := range strongSwanConfig.ClientConfigList {
+			if clientConfig.IpAddr == UpLinkIpAddrType {
+				return vpnConfig, errors.New("client can not take uplink Addr")
+			}
 			// for route based server, client subnet information is must
 			if clientConfig.SubnetBlock == "" ||
 				clientConfig.SubnetBlock == AppLinkSubnetType {
@@ -401,9 +407,13 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 		clientConfig.SubnetBlock = ssClientConfig.SubnetBlock
 		clientConfig.PreSharedKey = ssClientConfig.PreSharedKey
 
-		if vpnConfig.VpnRole == OnPremVpnClient &&
-			clientConfig.SubnetBlock == "" {
-			clientConfig.SubnetBlock = AppLinkSubnetType
+		if vpnConfig.VpnRole == OnPremVpnClient {
+			if clientConfig.IpAddr == "" {
+				clientConfig.IpAddr = UpLinkIpAddrType
+			}
+			if clientConfig.SubnetBlock == "" {
+				clientConfig.SubnetBlock = AppLinkSubnetType
+			}
 		}
 
 		if clientConfig.PreSharedKey == "" {
@@ -414,9 +424,10 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 		vpnConfig.ClientConfigList[idx] = *clientConfig
 	}
 
-	// XXX:FIXME only for debug
-	if bytes, err := json.Marshal(vpnConfig); err == nil {
-		log.Printf("strongSwanConfigParse(): %s\n", string(bytes))
+	if debug {
+		if bytes, err := json.Marshal(vpnConfig); err == nil {
+			log.Printf("strongSwanConfigParse(): %s\n", string(bytes))
+		}
 	}
 	return vpnConfig, nil
 }
@@ -440,7 +451,7 @@ func strongSwanVpnCreate(vpnConfig types.VpnServiceConfig) error {
 
 	gatewayConfig := vpnConfig.GatewayConfig
 
-	log.Printf("StrongSwan IpSec Vpn Create %s:%s, %s:%s\n",
+	log.Printf("StrongSwan IpSec Vpn Create %s:%v, %s:%s\n",
 		vpnConfig.VpnRole, vpnConfig.PolicyBased,
 		gatewayConfig.IpAddr, gatewayConfig.SubnetBlock)
 
@@ -590,20 +601,107 @@ func strongSwanVpnInactivate(vpnConfig types.VpnServiceConfig) error {
 	return nil
 }
 
-func strongSwanValidateSubnet(subnet string) error {
-	if subnet != "" && subnet != AppLinkSubnetType {
-		if _, _, err := net.ParseCIDR(subnet); err != nil {
+// misc utility routines
+func checkForClientDups(config types.StrongSwanServiceConfig) error {
+
+	// check for atleast one pre-shared key configuration
+	if config.PreSharedKey == "" {
+		if len(config.ClientConfigList) == 0 {
+			return errors.New("preshared key not set")
+		}
+		for _, clientConfig := range config.ClientConfigList {
+			if clientConfig.PreSharedKey == "" {
+				return errors.New("preshared key not set")
+			}
+		}
+	}
+
+	// validate client config profiles, for
+	// duplication of wild-card entries with
+	// different PSKs or, duplicate ipaddress/subnets
+	wildMatch := false
+	wildCardPsk := config.PreSharedKey
+	for idx0, client0 := range config.ClientConfigList {
+		isWild0 := isClientWildCard(client0)
+		if isWild0 == true {
+			if wildCardPsk == "" && client0.PreSharedKey != "" {
+				wildCardPsk = client0.PreSharedKey
+			}
+			if wildMatch == true && client0.PreSharedKey != "" &&
+				wildCardPsk != client0.PreSharedKey {
+				return errors.New("wild-card client pre-shared key mismatch")
+			}
+			wildMatch = true
+		}
+
+		for idx1, client1 := range config.ClientConfigList {
+			if idx1 <= idx0 {
+				continue
+			}
+			isWild1 := isClientWildCard(client1)
+			if isWild0 == false && isWild1 == false &&
+				client0.IpAddr == client1.IpAddr {
+				return errors.New("duplicate client config")
+			}
+			if client0.SubnetBlock != "" &&
+				client0.SubnetBlock == client1.SubnetBlock {
+				return errors.New("duplicate client subnet")
+			}
+		}
+	}
+	return nil
+}
+
+func isClientWildCard(client types.VpnClientConfig) bool {
+	log.Printf("isClientWildCard %s\n", client.IpAddr)
+	if client.IpAddr == "" || client.IpAddr == AnyIpAddr ||
+		client.IpAddr == UpLinkIpAddrType {
+		return true
+	}
+	if ip := net.ParseIP(client.IpAddr); ip != nil {
+		return ip.IsUnspecified()
+	}
+	return false
+}
+
+func strongSwanValidateSubnet(netStr string) error {
+	if netStr != "" && netStr != AppLinkSubnetType {
+		if _, _, err := net.ParseCIDR(netStr); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func strongSwanValidateIpAddr(ipAddr string) error {
-	if ipAddr != "" && ipAddr != "%any" {
-		if ip := net.ParseIP(ipAddr); ip == nil {
-			return errors.New("invalid ip address: " + ipAddr)
+func strongSwanValidateLinkLocal(ipNetStr string) error {
+	if ipNetStr == "" {
+		return nil
+	}
+	ip, _, err := net.ParseCIDR(ipNetStr)
+	if err != nil {
+		return err
+	}
+	if ip.IsLinkLocalUnicast() == false {
+		return errors.New("invalid link local: " + ipNetStr)
+	}
+	return nil
+}
+
+func strongSwanValidateIpAddr(ipAddrStr string, isValid bool) error {
+	if ipAddrStr == "" || ipAddrStr == AnyIpAddr ||
+		ipAddrStr == UpLinkIpAddrType {
+		if isValid == true {
+			return errors.New("invalid ip address: " + ipAddrStr)
 		}
+		return nil
+	}
+
+	ip := net.ParseIP(ipAddrStr)
+	if ip == nil {
+		return errors.New("invalid ip address: " + ipAddrStr)
+	}
+	if ip.IsGlobalUnicast() == false {
+		return errors.New("not unicast ip address: " + ipAddrStr)
 	}
 	return nil
 }
