@@ -70,7 +70,8 @@ func handleNetworkVpnServiceStatusDelete(ctx *zedagentContext, status types.Netw
 	prepareVpnServiceInfoMsg(ctx, status, true)
 }
 
-func prepareLispServiceInfoMsg(ctx *zedagentContext, status types.NetworkServiceStatus) {
+func prepareAndPublishLispServiceInfoMsg(ctx *zedagentContext,
+	status types.NetworkServiceStatus, deleted bool) {
 	infoMsg := &zmet.ZInfoMsg{}
 	infoType := new(zmet.ZInfoTypes)
 	*infoType = zmet.ZInfoTypes_ZiService
@@ -84,9 +85,17 @@ func prepareLispServiceInfoMsg(ctx *zedagentContext, status types.NetworkService
 	svcInfo.ServiceType = uint32(status.Type)
 	svcInfo.Activated = status.Activated
 
-	lispInfo := new(zmet.ZInfoLisp)
+	var lispInfo *zmet.ZInfoLisp = nil
+	// XXX When a service instance is deleted it is ideal to send
+	// a flag such as deleted/gone inside ZInfoService message.
+	// Having a separate flag (indicating deletion) make is explicit
+	// and easy for the cloud process.
+	// For now we just send lispInfo as nil to indicate deletion to cloud.
+	if !deleted {
+		lispInfo := new(zmet.ZInfoLisp)
+	}
 	lispStatus := status.LispInfoStatus
-	if lispStatus != nil {
+	if (lispStatus != nil) && (lispInfo != nil) {
 		lispInfo.ItrCryptoPort = lispStatus.ItrCryptoPort
 		lispInfo.EtrNatPort = lispStatus.EtrNatPort
 		for _, intf := range lispStatus.Interfaces {
@@ -136,16 +145,16 @@ func prepareLispServiceInfoMsg(ctx *zedagentContext, status types.NetworkService
 	if x, ok := infoMsg.GetInfoContent().(*zmet.ZInfoMsg_Sinfo); ok {
 		x.Sinfo = svcInfo
 	}
-	log.Printf("XXXXX Publish LispInfo message to zedcloud\n")
+	log.Printf("XXX Publish LispInfo message to zedcloud\n")
 	publishNetworkServiceInfo(ctx, serviceUUID, infoMsg)
 }
 
 func handleNetworkLispServiceStatusModify(ctx *zedagentContext, status types.NetworkServiceStatus) {
-	prepareLispServiceInfoMsg(ctx, status)
+	prepareAndPublishLispServiceInfoMsg(ctx, status, false)
 }
 
 func handleNetworkLispServiceStatusDelete(ctx *zedagentContext, status types.NetworkServiceStatus) {
-	prepareLispServiceInfoMsg(ctx, status)
+	prepareAndPublishLispServiceInfoMsg(ctx, status, true)
 }
 
 func prepareVpnServiceInfoMsg(ctx *zedagentContext, status types.NetworkServiceStatus, delete bool) {
@@ -347,7 +356,7 @@ func publishNetworkServiceMetric(status types.NetworkServiceStatus) *zmet.ZMetri
 		publishVpnServiceMetric(status, serviceMetric)
 
 	case types.NST_LISP:
-		log.Printf("XXXXX Lisp Service Metric\n")
+		log.Printf("XXX Publish Lisp Service Metric to Zedcloud\n")
 		publishLispServiceMetric(status, serviceMetric)
 	}
 

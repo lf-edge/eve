@@ -489,17 +489,30 @@ func updateLisp(lispRunDirname string,
 	// Check how many EIDs we have configured. If none we stop lisp
 	if eidCount == 0 {
 		stopLisp()
-		/*
-		if separateDataPlane {
-			maybeStopLispDataPlane()
+
+		// XXX We have changed the design to have lisp-ztr dataplane
+		// always run and not do anything unless zedrouter sends `Experimental = true`
+		// configuration to lisp-ztr process via pubsub.
+		// When separateDataPlane flag is true zedrouter sends `Experimantal = true`
+		// to lisp-ztr dataplane.
+		// The below code that stops dataplane should be removed at some point of time.
+		if false {
+			if separateDataPlane {
+				maybeStopLispDataPlane()
+			}
 		}
-		*/
 	} else {
-		/*
-		if separateDataPlane {
-			maybeStartLispDataPlane()
+		// XXX We have changed the design to have lisp-ztr dataplane
+		// always run and not do anything unless zedrouter sends `Experimental = true`
+		// configuration to lisp-ztr process via pubsub.
+		// When separateDataPlane flag is true zedrouter sends `Experimantal = true`
+		// to lisp-ztr dataplane.
+		// The below code that stops dataplane should be removed at some point of time.
+		if false {
+			if separateDataPlane {
+				maybeStartLispDataPlane()
+			}
 		}
-		*/
 		restartLisp(globalStatus.UplinkStatus, devices)
 	}
 }

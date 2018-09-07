@@ -442,6 +442,9 @@ func publishNetworkServiceStatusAll(ctx *zedrouterContext) {
 	for _, st := range stlist {
 		status := cast.CastNetworkServiceStatus(st)
 		if status.Type == types.NST_LISP {
+			// For Lisp, service info update is triggered when we receive
+			// update from lisp-ztr with changes to its state info.
+			// Lisp does not need a timer to check for updates.
 			continue
 		}
 		publishNetworkServiceStatus(ctx, &status, false)

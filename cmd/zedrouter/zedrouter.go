@@ -18,6 +18,7 @@ import (
 	"github.com/zededa/go-provision/adapters"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
+	"github.com/google/go-cmp/cmp"
 	"github.com/zededa/go-provision/devicenetwork"
 	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/hardware"
@@ -28,7 +29,6 @@ import (
 	"log"
 	"net"
 	"os"
-	"reflect"
 	"strconv"
 	"time"
 )
@@ -731,7 +731,10 @@ func handleAppNetworkConfigDelete(ctxArg interface{}, key string,
 	log.Printf("handleAppNetworkConfigDelete(%s) done\n", key)
 }
 
-func parseLispServiceInfo(ctx *zedrouterContext, lispInfo *types.LispInfoStatus) {
+// This function separates Lisp service info/status into separate
+// LispInfoStatus messages based on IID. This function also publishes the separated
+// lisp info/status messages to correspoinding NetworkServiceStatus objects.
+func parseAndPublishLispServiceInfo(ctx *zedrouterContext, lispInfo *types.LispInfoStatus) {
 	// map for splitting the status info per IID
 	infoMap := make(map[uint64]*types.LispInfoStatus)
 
@@ -769,10 +772,18 @@ func parseLispServiceInfo(ctx *zedrouterContext, lispInfo *types.LispInfoStatus)
 	}
 
 	for iid, lispStatus := range infoMap {
-		status := stMap[iid]
-		// XXX Check if there are changes in the status
-		if reflect.DeepEqual(status.LispStatus, lispStatus) == true {
+		status, ok := stMap[iid]
+		if !ok {
 			continue
+		}
+		// XXX Check if there are changes in the status
+		if cmp.Equal(status.LispStatus, lispStatus) {
+			continue
+		} else {
+			if debug {
+				difference := cmd.Diff(status.LispStatus, lispStatus)
+				log.Printf("parseAndPublishLispServiceInfo: Publish diff %s to zedcloud\n", difference)
+			}
 		}
 		status.LispInfoStatus = lispStatus
 
@@ -790,7 +801,7 @@ func handleLispInfoModify(ctxArg interface{}, key string, configArg interface{})
 		log.Printf("handleLispInfoModify: ignoring %s\n", key)
 		return
 	}
-	parseLispServiceInfo(ctx, &lispInfo)
+	parseAndPublishLispServiceInfo(ctx, &lispInfo)
 	log.Printf("handleLispInfoModify(%s) done\n", key)
 }
 
@@ -800,7 +811,11 @@ func handleLispInfoDelete(ctxArg interface{}, key string, configArg interface{})
 	log.Printf("handleLispInfoDelete(%s) done\n", key)
 }
 
-func parseLispMetrics(ctx *zedrouterContext, lispMetrics *types.LispMetrics) {
+// This function separates Lisp metrics by IID. lisp-ztr dataplane sends statistics
+// of all IIDs together. We need to separate statistics per IID and associate them to
+// the NetworkServiceStatus to which a given IID (statistics) belong.
+// This function also publishes the Lisp metrics to NetworkServiceStatus.
+func parseAndPublishLispMetrics(ctx *zedrouterContext, lispMetrics *types.LispMetrics) {
 	// map for splitting the metrics per IID
 	metricMap := make(map[uint64]*types.LispMetrics)
 
@@ -814,6 +829,7 @@ func parseLispMetrics(ctx *zedrouterContext, lispMetrics *types.LispMetrics) {
 		metricEntry, ok = metricMap[iid]
 		if !ok {
 			metricEntry = &types.LispMetrics{}
+			/*
 			metricEntry.ItrPacketSendError = lispMetrics.ItrPacketSendError
 			metricEntry.InvalidEidError    = lispMetrics.InvalidEidError
 			metricEntry.NoDecryptKey       = lispMetrics.NoDecryptKey
@@ -825,6 +841,9 @@ func parseLispMetrics(ctx *zedrouterContext, lispMetrics *types.LispMetrics) {
 			metricEntry.CheckSumError      = lispMetrics.CheckSumError
 			metricEntry.DecapReInjectError = lispMetrics.DecapReInjectError
 			metricEntry.DecryptError       = lispMetrics.DecryptError
+			*/
+			*metricEntry = *lispMetrics
+			metricEntry.EidStats = []types.EidStatistics{}
 			metricMap[iid] = metricEntry
 		}
 		metricEntry.EidStats = append(metricEntry.EidStats, dbMap)
@@ -847,10 +866,18 @@ func parseLispMetrics(ctx *zedrouterContext, lispMetrics *types.LispMetrics) {
 	// Populate the metrics that we have in NetworkServiceStatus objects
 	// of corresponding IID.
 	for iid, metrics := range metricMap {
-		status := stMap[iid]
-		// XXX Check if there are changes in metrics
-		if reflect.DeepEqual(status.LispMetrics, metrics) == true {
+		status, ok := stMap[iid]
+		if !ok {
 			continue
+		}
+		// XXX Check if there are changes in metrics
+		if cmp.Equal(status.LispMetrics, metrics) {
+			continue
+		} else {
+			if debug {
+				difference := cmd.Diff(status.LispMetrics, metrics)
+				log.Printf("parseAndPublishLispMetrics: Publish diff %s to zedcloud\n")
+			}
 		}
 		status.LispMetrics = metrics
 
@@ -868,7 +895,7 @@ func handleLispMetricsModify(ctxArg interface{}, key string, configArg interface
 		log.Printf("handleLispMetricsModify: ignoring %s\n", key)
 		return
 	}
-	parseLispMetrics(ctx, &lispMetrics)
+	parseAndPublishLispMetrics(ctx, &lispMetrics)
 	log.Printf("handleLispMetricsModify(%s) done\n", key)
 }
 
