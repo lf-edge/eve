@@ -1064,6 +1064,25 @@ func handleCreate(ctx *zedrouterContext, key string,
 		// Create a host route towards the domU EID
 		EID := olConfig.AppIPAddr
 		isIPv6 := (EID.To4() == nil)
+
+		// Consistency check
+		if isIPv6 != !netstatus.Ipv4Eid {
+			var errStr string
+			if isIPv6 {
+				errStr = fmt.Sprintf("IPv4 EID network %s and no IPv4 EID",
+					olConfig.Network.String())
+			} else {
+				errStr = fmt.Sprintf("IPv6 EID network %s with an IPv4 EID %s",
+					olConfig.Network.String(),
+					olConfig.AppIPAddr.String())
+			}
+			addError(ctx, &status, "handleCreate",
+				errors.New(errStr))
+			log.Printf("handleCreate done for %s\n",
+				config.DisplayName)
+			return
+		}
+
 		var subnetSuffix string
 		if isIPv6 {
 			subnetSuffix = "/128"
@@ -1825,6 +1844,9 @@ func handleDelete(ctx *zedrouterContext, key string,
 			continue
 		}
 
+		removehostDnsmasq(bridgeName, olStatus.Mac,
+			olStatus.EID.String())
+
 		// Delete ACLs
 		err := deleteACLConfiglet(bridgeName, olStatus.Vif, false,
 			olStatus.ACLs, olStatus.BridgeIPAddr,
@@ -1917,9 +1939,11 @@ func handleDelete(ctx *zedrouterContext, key string,
 			addError(ctx, status, "releaseIPv4", err)
 		}
 
-		appMac := ulStatus.Mac
 		appIPAddr := ulStatus.AssignedIPAddr
-		removehostDnsmasq(bridgeName, appMac, appIPAddr)
+		if appIPAddr != "" {
+			removehostDnsmasq(bridgeName, ulStatus.Mac,
+				appIPAddr)
+		}
 
 		err = deleteACLConfiglet(bridgeName, ulStatus.Vif, false,
 			ulStatus.ACLs, ulStatus.BridgeIPAddr, appIPAddr)

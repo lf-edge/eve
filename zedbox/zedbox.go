@@ -10,6 +10,7 @@ import (
 	"github.com/zededa/go-provision/cmd/downloader"
 	"github.com/zededa/go-provision/cmd/hardwaremodel"
 	"github.com/zededa/go-provision/cmd/identitymgr"
+	"github.com/zededa/go-provision/cmd/ipcmonitor"
 	"github.com/zededa/go-provision/cmd/ledmanager"
 	"github.com/zededa/go-provision/cmd/logmanager"
 	"github.com/zededa/go-provision/cmd/verifier"
@@ -45,6 +46,8 @@ func main() {
 		zedmanager.Run()
 	case "zedrouter":
 		zedrouter.Run()
+	case "ipcmonitor":
+		ipcmonitor.Run()
 	default:
 		fmt.Printf("Unknown package: %s\n", basename)
 	}
