@@ -36,6 +36,8 @@ func lookupCertObjSafename(ctx *zedagentContext, safename string) *types.CertObj
 	return nil
 }
 
+// XXX but there can be multiple CertObjConfig/Status with the same safename!
+// This only looks for one.
 func certObjHandleStatusUpdateSafename(ctx *zedagentContext, safename string) {
 
 	log.Printf("certObjHandleStatusUpdateSafename(%s)\n", safename)
@@ -307,6 +309,11 @@ func unpublishCertObjStatus(ctx *zedagentContext, key string) {
 
 func installCertObject(srcFilename string, dstDirname string, safename string) error {
 
+	st, err := os.Stat(srcFilename)
+	if err != nil {
+		log.Fatal("installCertObject: ", err, srcFilename)
+	}
+	srcCnt := st.Size()
 	// create the destination directory
 	if _, err := os.Stat(dstDirname); err != nil {
 		log.Printf("Create %s\n", dstDirname)
@@ -317,6 +324,7 @@ func installCertObject(srcFilename string, dstDirname string, safename string) e
 
 	dstFilename := dstDirname + "/" + types.SafenameToFilename(safename)
 
+	// XXX needed? Check for truncated file and replace??
 	if _, err := os.Stat(dstFilename); err == nil {
 		// Remove amd replace
 		log.Printf("installCertObject: replacing %s\n",
@@ -332,28 +340,37 @@ func installCertObject(srcFilename string, dstDirname string, safename string) e
 	// XXX:FIXME its copy, not move
 	// need to refactor the certs placement properly
 	// this should be on safename or, holder object uuid context
-	_, err := copyFile(srcFilename, dstFilename)
+	dstCnt, err := copyFile(srcFilename, dstFilename)
+	if err != nil {
+		log.Println("installCertObject: ", err, dstFilename)
+	}
+	if dstCnt != srcCnt {
+		log.Printf("installCertObject: mismatched copy len %d vs %d, %s\n",
+			dstCnt, srcCnt, dstFilename)
+	}
 	return err
 }
 
-func copyFile(srcFilename string, dstFilename string) (bool, error) {
+// Returns the number of bytes copied
+func copyFile(srcFilename string, dstFilename string) (int64, error) {
 
 	in, err := os.Open(srcFilename)
 	if err != nil {
-		return false, err
+		return 0, err
 	}
 	defer in.Close()
 
 	out, err := os.Create(dstFilename)
 	if err != nil {
-		return false, err
+		return 0, err
 	}
 	defer out.Close()
 
-	if _, err = io.Copy(out, in); err != nil {
-		return false, err
+	cnt, err := io.Copy(out, in)
+	if err != nil {
+		return cnt, err
 	}
 
 	err = out.Sync()
-	return true, err
+	return cnt, err
 }
