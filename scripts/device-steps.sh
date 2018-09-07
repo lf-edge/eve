@@ -1,6 +1,7 @@
 #!/bin/sh
 
-echo "Starting device-steps.sh at" `date`
+STARTTIME=`date`
+echo "Starting device-steps.sh at" $STARTTIME
 
 CONFIGDIR=/config
 PERSISTDIR=/persist
@@ -146,22 +147,22 @@ echo
 
 P3=`zboot partdev P3`
 if [ $? = 0 -a x$P3 != x ]; then
-    echo "Using $P3 for /persist"
+    echo "Using $P3 for $PERSISTDIR"
     fsck.ext3 -y $P3
     if [ $? != 0 ]; then
-	echo "mkfs on $P3 for /persist"
+	echo "mkfs on $P3 for $PERSISTDIR"
 	mkfs -t ext3 -v $P3
         if [ $? != 0 ]; then
             echo "mkfs $P3 failed: $?"
 	    # Try mounting below
         fi
     fi
-    mount -t ext3 $P3 /persist
+    mount -t ext3 $P3 $PERSISTDIR
     if [ $? != 0 ]; then
 	echo "mount $P3 failed: $?"
     fi
 else
-    echo "No separate /persist partition"
+    echo "No separate $PERSISTDIR partition"
 fi
 
 echo "Current downloaded files:"
@@ -190,21 +191,30 @@ fi
 echo "Set up log capture"
 DOM0LOGFILES="ntpd.err.log wlan.err.log wwan.err.log ntpd.out.log wlan.out.log wwan.out.log zededa-tools.out.log zededa-tools.err.log"
 for f in $DOM0LOGFILES; do
-    tail -c +0 -F /var/log/dom0/$f >/persist/$CURPART/log/$f &
+    tail -c +0 -F /var/log/dom0/$f >$PERSISTDIR/$CURPART/log/$f &
 done
-tail -c +0 -F /var/log/xen/hypervisor.log >/persist/$CURPART/log/hypervisor.log &
-dmesg -T -w -l 1,2,3 --time-format iso >/persist/$CURPART/log/dmesg.log &
+tail -c +0 -F /var/log/xen/hypervisor.log >$PERSISTDIR/$CURPART/log/hypervisor.log &
+dmesg -T -w -l 1,2,3 --time-format iso >$PERSISTDIR/$CURPART/log/dmesg.log &
 
 if [ -d $LISPDIR/logs ]; then
     echo "Saving old lisp logs in $LISPDIR/logs.old"
     mv $LISPDIR/logs $LISPDIR/logs.old
 fi
+
+# Save any device-steps.log's to /persist/log/ so we can look for watchdog's
+# in there. Also save dmesg in case it tells something about reboots.
+# XXX redundant files to try to capture any info about reboots
+tail -c +0 -F /var/log/device-steps.log >$PERSISTDIR/log/device-steps.log."$STARTTIME" &
+tail -c +0 -F /var/log/dom0/zededa-tools.out.log >$PERSISTDIR/log/zededa-tools.out.log."$STARTTIME" &
+dmesg -T -w -l 1,2,3 --time-format iso >$PERSISTDIR/log/dmesg.log."$STARTTIME" &
+
+#
 # Remove any old symlink to different IMG directory
 rm -f $LISPDIR/logs
-if [ ! -d /persist/$CURPART/log/lisp ]; then
-    mkdir -p /persist/$CURPART/log/lisp
+if [ ! -d $PERSISTDIR/$CURPART/log/lisp ]; then
+    mkdir -p $PERSISTDIR/$CURPART/log/lisp
 fi
-ln -s /persist/$CURPART/log/lisp $LISPDIR/logs
+ln -s $PERSISTDIR/$CURPART/log/lisp $LISPDIR/logs
 
 # BlinkCounter 1 means we have started; might not yet have IP addresses
 # client/selfRegister and zedagent update this when the found at least
@@ -484,7 +494,7 @@ cp -p $CONFIGDIR/device.key.pem $LISPDIR/lisp-sig.pem
 
 # Setup default amount of space for images
 # Half of /persist by default! Convert to kbytes
-size=`df -B1 --output=size /persist | tail -1`
+size=`df -B1 --output=size $PERSISTDIR | tail -1`
 space=`expr $size / 2048`
 mkdir -p /var/tmp/zededa/GlobalDownloadConfig/
 echo {\"MaxSpace\":$space} >/var/tmp/zededa/GlobalDownloadConfig/global.json
