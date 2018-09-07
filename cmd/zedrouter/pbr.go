@@ -206,6 +206,9 @@ func PbrRouteChange(deviceUplinkConfig *types.DeviceUplinkConfig,
 	}
 }
 
+// XXX
+var once = true
+
 // Handle an IP address change
 func PbrAddrChange(deviceUplinkConfig *types.DeviceUplinkConfig,
 	change netlink.AddrUpdate) {
@@ -223,6 +226,13 @@ func PbrAddrChange(deviceUplinkConfig *types.DeviceUplinkConfig,
 			// XXX only call for uplinks and bridges?
 			addSourceRule(change.LinkIndex, change.LinkAddress,
 				linkType == "bridge")
+		}
+	} else if change.LinkIndex == 0 {
+		// XXX why?
+		if once {
+			log.Printf("XXX PbrAddrChange: index 0 for %s\n",
+				change.LinkAddress.String())
+			once = false
 		}
 	} else {
 		changed = IfindexToAddrsDel(change.LinkIndex,
