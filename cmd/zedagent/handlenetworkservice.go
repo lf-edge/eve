@@ -94,19 +94,19 @@ func prepareLispServiceInfoMsg(ctx *zedagentContext, status types.NetworkService
 		}
 
 		// Copy ITR database map entries
-		for  _, dbMap := range lispStatus.DatabaseMaps {
-			dbMapEntry := &zmet.DatabaseMap {
+		for _, dbMap := range lispStatus.DatabaseMaps {
+			dbMapEntry := &zmet.DatabaseMap{
 				IID: dbMap.IID,
 			}
 
 			for _, mapEntry := range dbMap.MapCacheEntries {
-				mapCacheEntry := &zmet.MapCacheEntry {
+				mapCacheEntry := &zmet.MapCacheEntry{
 					EID: mapEntry.EID.String(),
 				}
 
 				for _, rloc := range mapEntry.Rlocs {
-					rlocEntry := &zmet.RlocState {
-						Rloc: rloc.Rloc.String(),
+					rlocEntry := &zmet.RlocState{
+						Rloc:      rloc.Rloc.String(),
 						Reachable: rloc.Reachable,
 					}
 					mapCacheEntry.Rlocs = append(mapCacheEntry.Rlocs, rlocEntry)
@@ -118,9 +118,9 @@ func prepareLispServiceInfoMsg(ctx *zedagentContext, status types.NetworkService
 
 		// Copy ETR decap entries
 		for _, decapKey := range lispStatus.DecapKeys {
-			decap := &zmet.DecapKey {
-				Rloc: decapKey.Rloc.String(),
-				Port: decapKey.Port,
+			decap := &zmet.DecapKey{
+				Rloc:     decapKey.Rloc.String(),
+				Port:     decapKey.Port,
 				KeyCount: decapKey.KeyCount,
 			}
 			lispInfo.DecapKeys = append(lispInfo.DecapKeys, decap)
@@ -318,7 +318,7 @@ func publishNetworkServiceInfoToZedCloud(serviceUUID string, infoMsg *zmet.ZInfo
 	}
 }
 
-func publishNetworkServiceMetrics(ctx *zedagentContext,
+func createNetworkServiceMetrics(ctx *zedagentContext,
 	reportMetrics *zmet.ZMetricMsg) {
 	sub := ctx.subNetworkServiceStatus
 	stlist := sub.GetAll()
@@ -327,7 +327,7 @@ func publishNetworkServiceMetrics(ctx *zedagentContext,
 	}
 	for _, st := range stlist {
 		status := cast.CastNetworkServiceStatus(st)
-		metricService := publishNetworkServiceMetric(status)
+		metricService := protoEncodeNetworkServiceMetricProto(status)
 		reportMetrics.Sm = append(reportMetrics.Sm, metricService)
 	}
 	if debug {
@@ -336,7 +336,7 @@ func publishNetworkServiceMetrics(ctx *zedagentContext,
 	}
 }
 
-func publishNetworkServiceMetric(status types.NetworkServiceStatus) *zmet.ZMetricService {
+func protoEncodeNetworkServiceMetricProto(status types.NetworkServiceStatus) *zmet.ZMetricService {
 
 	serviceMetric := new(zmet.ZMetricService)
 	serviceMetric.ServiceID = status.Key()
@@ -344,17 +344,17 @@ func publishNetworkServiceMetric(status types.NetworkServiceStatus) *zmet.ZMetri
 	serviceMetric.ServiceType = uint32(status.Type)
 	switch status.Type {
 	case types.NST_STRONGSWAN:
-		publishVpnServiceMetric(status, serviceMetric)
+		protoEncodeVpnServiceMetric(status, serviceMetric)
 
 	case types.NST_LISP:
 		log.Printf("XXXXX Lisp Service Metric\n")
-		publishLispServiceMetric(status, serviceMetric)
+		protoEncodeLispServiceMetric(status, serviceMetric)
 	}
 
 	return serviceMetric
 }
 
-func publishLispServiceMetric(status types.NetworkServiceStatus,
+func protoEncodeLispServiceMetric(status types.NetworkServiceStatus,
 	serviceMetric *zmet.ZMetricService) {
 	if status.LispMetrics == nil {
 		return
@@ -363,47 +363,47 @@ func publishLispServiceMetric(status types.NetworkServiceStatus,
 	lispMetric := new(zmet.ZMetricLisp)
 	lispMetric.ItrPacketSendError = &zmet.PktStat{
 		Packets: metrics.ItrPacketSendError.Pkts,
-		Bytes: metrics.ItrPacketSendError.Bytes,
+		Bytes:   metrics.ItrPacketSendError.Bytes,
 	}
 	lispMetric.InvalidEidError = &zmet.PktStat{
 		Packets: metrics.InvalidEidError.Pkts,
-		Bytes: metrics.InvalidEidError.Bytes,
+		Bytes:   metrics.InvalidEidError.Bytes,
 	}
 	lispMetric.NoDecryptKey = &zmet.PktStat{
 		Packets: metrics.NoDecryptKey.Pkts,
-		Bytes: metrics.NoDecryptKey.Bytes,
+		Bytes:   metrics.NoDecryptKey.Bytes,
 	}
 	lispMetric.OuterHeaderError = &zmet.PktStat{
 		Packets: metrics.OuterHeaderError.Pkts,
-		Bytes: metrics.OuterHeaderError.Bytes,
+		Bytes:   metrics.OuterHeaderError.Bytes,
 	}
 	lispMetric.BadInnerVersion = &zmet.PktStat{
 		Packets: metrics.BadInnerVersion.Pkts,
-		Bytes: metrics.BadInnerVersion.Bytes,
+		Bytes:   metrics.BadInnerVersion.Bytes,
 	}
 	lispMetric.GoodPackets = &zmet.PktStat{
 		Packets: metrics.GoodPackets.Pkts,
-		Bytes: metrics.GoodPackets.Bytes,
+		Bytes:   metrics.GoodPackets.Bytes,
 	}
 	lispMetric.ICVError = &zmet.PktStat{
 		Packets: metrics.ICVError.Pkts,
-		Bytes: metrics.ICVError.Bytes,
+		Bytes:   metrics.ICVError.Bytes,
 	}
 	lispMetric.LispHeaderError = &zmet.PktStat{
 		Packets: metrics.LispHeaderError.Pkts,
-		Bytes: metrics.LispHeaderError.Bytes,
+		Bytes:   metrics.LispHeaderError.Bytes,
 	}
 	lispMetric.CheckSumError = &zmet.PktStat{
 		Packets: metrics.CheckSumError.Pkts,
-		Bytes: metrics.CheckSumError.Bytes,
+		Bytes:   metrics.CheckSumError.Bytes,
 	}
 	lispMetric.DecapReInjectError = &zmet.PktStat{
 		Packets: metrics.DecapReInjectError.Pkts,
-		Bytes: metrics.DecapReInjectError.Bytes,
+		Bytes:   metrics.DecapReInjectError.Bytes,
 	}
 	lispMetric.DecryptError = &zmet.PktStat{
 		Packets: metrics.DecryptError.Pkts,
-		Bytes: metrics.DecryptError.Bytes,
+		Bytes:   metrics.DecryptError.Bytes,
 	}
 
 	lispStats := []*zmet.EidStats{}
@@ -415,11 +415,11 @@ func publishLispServiceMetric(status types.NetworkServiceStatus,
 
 		rlocStats := []*zmet.RlocStats{}
 		for _, rloc := range eidStat.RlocStats {
-			rlocStat := &zmet.RlocStats {
+			rlocStat := &zmet.RlocStats{
 				Rloc: rloc.Rloc.String(),
 				Stats: &zmet.PktStat{
 					Packets: rloc.Stats.Pkts,
-					Bytes: rloc.Stats.Bytes,
+					Bytes:   rloc.Stats.Bytes,
 				},
 				SecondsSinceLastPacket: rloc.SecondsSinceLastPacket,
 			}
@@ -436,7 +436,7 @@ func publishLispServiceMetric(status types.NetworkServiceStatus,
 	}
 }
 
-func publishVpnServiceMetric(status types.NetworkServiceStatus,
+func protoEncodeVpnServiceMetric(status types.NetworkServiceStatus,
 	serviceMetric *zmet.ZMetricService) {
 	if status.VpnStatus == nil {
 		return

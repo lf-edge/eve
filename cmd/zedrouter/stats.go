@@ -166,7 +166,9 @@ func swanCtlCmdParse(vpnStatus *types.ServiceVpnStatus, outStr string) uint32 {
 		vpnStatus.ActiveVpnConns[idx] = connInfo
 	}
 	if debug {
-		log.Println(json.Marshal(vpnStatus))
+		if bytes, err := json.Marshal(vpnStatus); err != nil {
+			log.Printf("swanCtlCmdParse(): %s\n", bytes)
+		}
 	}
 	return cmdOut.childCount
 }
