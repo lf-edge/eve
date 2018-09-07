@@ -442,6 +442,10 @@ func Run() {
 
 		case change := <-subAa.C:
 			subAa.ProcessChange(change)
+		case change := <-subLispInfoStatus.C:
+			subLispInfoStatus.ProcessChange(change)
+		case change := <-subLispMetrics.C:
+			subLispMetrics.ProcessChange(change)
 		}
 	}
 }
