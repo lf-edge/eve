@@ -781,7 +781,7 @@ func parseAndPublishLispServiceInfo(ctx *zedrouterContext, lispInfo *types.LispI
 			continue
 		} else {
 			if debug {
-				difference := cmd.Diff(status.LispStatus, lispStatus)
+				difference := cmp.Diff(status.LispStatus, lispStatus)
 				log.Printf("parseAndPublishLispServiceInfo: Publish diff %s to zedcloud\n", difference)
 			}
 		}
@@ -875,8 +875,8 @@ func parseAndPublishLispMetrics(ctx *zedrouterContext, lispMetrics *types.LispMe
 			continue
 		} else {
 			if debug {
-				difference := cmd.Diff(status.LispMetrics, metrics)
-				log.Printf("parseAndPublishLispMetrics: Publish diff %s to zedcloud\n")
+				difference := cmp.Diff(status.LispMetrics, metrics)
+				log.Printf("parseAndPublishLispMetrics: Publish diff %s to zedcloud\n", difference)
 			}
 		}
 		status.LispMetrics = metrics

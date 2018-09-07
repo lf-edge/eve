@@ -461,7 +461,7 @@ func ipTablesChainMatch(tableName string, chainName string,
 // correct table or add/delete from the correct table
 func ipRouteCreate(vpnConfig types.VpnServiceConfig) error {
 
-	if vpnConfig.PolicyBased == true {
+	if vpnConfig.PolicyBased {
 		return nil
 	}
 	gatewayConfig := vpnConfig.GatewayConfig
@@ -504,7 +504,7 @@ func ipRouteCreate(vpnConfig types.VpnServiceConfig) error {
 
 func ipRouteDelete(vpnConfig types.VpnServiceConfig) error {
 
-	if vpnConfig.PolicyBased == true {
+	if vpnConfig.PolicyBased {
 		return nil
 	}
 	gatewayConfig := vpnConfig.GatewayConfig
@@ -545,7 +545,7 @@ func ipRouteDelete(vpnConfig types.VpnServiceConfig) error {
 
 func ipRouteCheck(vpnConfig types.VpnServiceConfig) error {
 
-	if vpnConfig.PolicyBased == true {
+	if vpnConfig.PolicyBased {
 		return nil
 	}
 	gatewayConfig := vpnConfig.GatewayConfig
@@ -611,7 +611,7 @@ func ipRouteMatch(outStr, matchString string) error {
 
 func ipLinkTunnelCreate(vpnConfig types.VpnServiceConfig) error {
 
-	if vpnConfig.PolicyBased == true {
+	if vpnConfig.PolicyBased {
 		return nil
 	}
 	gatewayConfig := vpnConfig.GatewayConfig
@@ -674,7 +674,7 @@ func ipLinkTunnelCreate(vpnConfig types.VpnServiceConfig) error {
 
 func ipLinkTunnelDelete(vpnConfig types.VpnServiceConfig) error {
 
-	if vpnConfig.PolicyBased == true {
+	if vpnConfig.PolicyBased {
 		return nil
 	}
 	clientConfig := vpnConfig.ClientConfigList[0]
@@ -752,9 +752,9 @@ func ipSecServiceConfigCreate(vpnConfig types.VpnServiceConfig) error {
 		// one or more clients
 		wildMatch := false
 		for _, clientConfig := range clientConfigList {
-			if match := isClientWildCard(clientConfig); match == true {
+			if match := isClientWildCard(clientConfig); match {
 				log.Printf("wildCard Client %s\n", clientConfig.IpAddr)
-				if wildMatch == true {
+				if wildMatch {
 					continue
 				}
 				wildMatch = true
@@ -818,11 +818,11 @@ func ipSecSecretConfigCreate(vpnConfig types.VpnServiceConfig) error {
 		wildMatch := false
 		// one or more client(s)
 		for _, clientConfig := range clientConfigList {
-			if match := isClientWildCard(clientConfig); match == true {
+			if match := isClientWildCard(clientConfig); match {
 				log.Printf("wildCard Client %s\n", clientConfig.IpAddr)
 				// contains the preshared key
 				if clientConfig.PreSharedKey == "" ||
-					wildMatch == true {
+					wildMatch {
 					continue
 				}
 				wildMatch = true
@@ -858,7 +858,7 @@ func ipSecSecretConfigDelete() error {
 
 func charonRouteConfigCreate(policyflag bool) error {
 	filename := "/etc/strongswan.d/charon.conf"
-	if policyflag == true {
+	if policyflag {
 		return ipSecConfigFileWrite(filename, charonRouteConfStr)
 	}
 	return ipSecConfigFileWrite(filename, charonNoRouteConfStr)
@@ -875,7 +875,7 @@ func sysctlConfigCreate(vpnConfig types.VpnServiceConfig) error {
 	log.Printf("%s: %s config\n", upLinkConfig.Name, "sysctl")
 
 	writeStr := ""
-	if vpnConfig.PolicyBased == true {
+	if vpnConfig.PolicyBased {
 		writeStr = writeStr + "\n net.ipv4.conf." + upLinkConfig.Name + ".disable_xfrm=0"
 		writeStr = writeStr + "\n net.ipv4.conf." + upLinkConfig.Name + ".disable_policy=0\n"
 	} else {
