@@ -96,6 +96,7 @@ func prepareVpnServiceInfoMsg(ctx *zedagentContext, status types.NetworkServiceS
 	svcInfo.ServiceType = uint32(status.Type)
 	svcInfo.SoftwareList = new(zmet.ZInfoSW)
 	svcInfo.SoftwareList.SwVersion = vpnStatus.Version
+	svcInfo.Activated = status.Activated
 	upTime, _ := ptypes.TimestampProto(vpnStatus.UpTime)
 	svcInfo.UpTimeStamp = upTime
 	if !status.ErrorTime.IsZero() {
@@ -244,5 +245,64 @@ func publishNetworkServiceInfoToZedCloud(serviceUUID string, infoMsg *zmet.ZInfo
 			true)
 	} else {
 		writeSentDeviceInfoProtoMessage(data)
+	}
+}
+
+func publishNetworkServiceMetrics(ctx *zedagentContext,
+	reportMetrics *zmet.ZMetricMsg) {
+	sub := ctx.subNetworkServiceStatus
+	stlist := sub.GetAll()
+	if stlist == nil || len(stlist) == 0 {
+		return
+	}
+	for _, st := range stlist {
+		status := cast.CastNetworkServiceStatus(st)
+		metricService := publishNetworkServiceMetric(status)
+		reportMetrics.Sm = append(reportMetrics.Sm, metricService)
+	}
+	if debug {
+		log.Println("network service metrics: ",
+			reportMetrics.Sm)
+	}
+}
+
+func publishNetworkServiceMetric(status types.NetworkServiceStatus) *zmet.ZMetricService {
+
+	serviceMetric := new(zmet.ZMetricService)
+	serviceMetric.ServiceID = status.Key()
+	serviceMetric.ServiceName = status.DisplayName
+	serviceMetric.ServiceType = uint32(status.Type)
+	switch status.Type {
+	case types.NST_STRONGSWAN:
+		publishVpnServiceMetric(status, serviceMetric)
+
+	case types.NST_LISP:
+		log.Printf("Lisp Service Metric\n")
+	}
+
+	return serviceMetric
+}
+
+func publishVpnServiceMetric(status types.NetworkServiceStatus,
+	serviceMetric *zmet.ZMetricService) {
+	if status.VpnStatus == nil {
+		return
+	}
+	vpnStatus := status.VpnStatus
+	vpnMetric := new(zmet.ZMetricVpn)
+	vpnMetric.ConnStat = new(zmet.ZMetricConn)
+	vpnMetric.ConnStat.InPkts = new(zmet.PktStat)
+	vpnMetric.ConnStat.OutPkts = new(zmet.PktStat)
+	for _, vpnConn := range vpnStatus.ActiveVpnConns {
+		for _, linkData := range vpnConn.Links {
+			vpnMetric.ConnStat.InPkts.Packets += linkData.LInfo.PktsCount
+			vpnMetric.ConnStat.InPkts.Bytes += linkData.LInfo.BytesCount
+			vpnMetric.ConnStat.OutPkts.Packets += linkData.RInfo.PktsCount
+			vpnMetric.ConnStat.OutPkts.Bytes += linkData.RInfo.BytesCount
+		}
+	}
+	serviceMetric.ServiceContent = new(zmet.ZMetricService_Vpnm)
+	if x, ok := serviceMetric.GetServiceContent().(*zmet.ZMetricService_Vpnm); ok {
+		x.Vpnm = vpnMetric
 	}
 }

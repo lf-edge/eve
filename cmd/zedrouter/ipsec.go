@@ -745,15 +745,25 @@ func ipSecServiceConfigCreate(vpnConfig types.VpnServiceConfig) error {
 		writeStr = writeStr + ipSecClientTunDpdSpecStr
 
 	case OnPremVpnServer:
-		// one or more clients
-		clientConfig := clientConfigList[0]
-		tunnelConfig := clientConfig.TunnelConfig
 		writeStr = writeStr + ipSecSvrTunHdrSpecStr
 		writeStr = writeStr + ipSecSvrTunLeftHdrSpecStr + gatewayConfig.IpAddr
 		writeStr = writeStr + ipSecSvrTunLeftAttribSpecStr
-		writeStr = writeStr + ipSecSvrTunRightHdrSpecStr + tunnelConfig.Name
-		writeStr = writeStr + ipSecSvrTunRightSpecStr + clientConfig.IpAddr
-		writeStr = writeStr + ipSecSvrTunRightAttribSpecStr
+
+		// one or more clients
+		wildMatch := false
+		for _, clientConfig := range clientConfigList {
+			if match := isClientWildCard(clientConfig); match == true {
+				log.Printf("wildCard Client %s\n", clientConfig.IpAddr)
+				if wildMatch == true {
+					continue
+				}
+				wildMatch = true
+			}
+			tunnelConfig := clientConfig.TunnelConfig
+			writeStr = writeStr + ipSecSvrTunRightHdrSpecStr + tunnelConfig.Name
+			writeStr = writeStr + ipSecSvrTunRightSpecStr + clientConfig.IpAddr
+			writeStr = writeStr + ipSecSvrTunRightAttribSpecStr
+		}
 
 	default:
 		return errors.New("unsupported vpn role: " + vpnConfig.VpnRole)
@@ -805,8 +815,18 @@ func ipSecSecretConfigCreate(vpnConfig types.VpnServiceConfig) error {
 		}
 
 	case OnPremVpnServer:
+		wildMatch := false
 		// one or more client(s)
 		for _, clientConfig := range clientConfigList {
+			if match := isClientWildCard(clientConfig); match == true {
+				log.Printf("wildCard Client %s\n", clientConfig.IpAddr)
+				// contains the preshared key
+				if clientConfig.PreSharedKey == "" ||
+					wildMatch == true {
+					continue
+				}
+				wildMatch = true
+			}
 			secretStr := gatewayConfig.IpAddr + " " + clientConfig.IpAddr
 			secretStr = secretStr + " : PSK " + clientConfig.PreSharedKey
 			secretStr = secretStr + "\n"
