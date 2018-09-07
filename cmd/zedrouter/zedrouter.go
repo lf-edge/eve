@@ -829,19 +829,6 @@ func parseAndPublishLispMetrics(ctx *zedrouterContext, lispMetrics *types.LispMe
 		metricEntry, ok = metricMap[iid]
 		if !ok {
 			metricEntry = &types.LispMetrics{}
-			/*
-			metricEntry.ItrPacketSendError = lispMetrics.ItrPacketSendError
-			metricEntry.InvalidEidError    = lispMetrics.InvalidEidError
-			metricEntry.NoDecryptKey       = lispMetrics.NoDecryptKey
-			metricEntry.OuterHeaderError   = lispMetrics.OuterHeaderError
-			metricEntry.BadInnerVersion    = lispMetrics.BadInnerVersion
-			metricEntry.GoodPackets        = lispMetrics.GoodPackets
-			metricEntry.ICVError           = lispMetrics.ICVError
-			metricEntry.LispHeaderError    = lispMetrics.LispHeaderError
-			metricEntry.CheckSumError      = lispMetrics.CheckSumError
-			metricEntry.DecapReInjectError = lispMetrics.DecapReInjectError
-			metricEntry.DecryptError       = lispMetrics.DecryptError
-			*/
 			*metricEntry = *lispMetrics
 			metricEntry.EidStats = []types.EidStatistics{}
 			metricMap[iid] = metricEntry
