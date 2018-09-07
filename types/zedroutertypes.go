@@ -581,6 +581,8 @@ type NetworkServiceStatus struct {
 	Error     string
 	ErrorTime time.Time
 	VpnStatus *ServiceVpnStatus
+	LispInfoStatus *LispInfoStatus
+	LispMetrics    *LispMetrics
 }
 
 func (status NetworkServiceStatus) Key() string {

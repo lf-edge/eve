@@ -441,6 +441,9 @@ func publishNetworkServiceStatusAll(ctx *zedrouterContext) {
 	}
 	for _, st := range stlist {
 		status := cast.CastNetworkServiceStatus(st)
+		if status.Type == types.NST_LISP {
+			continue
+		}
 		publishNetworkServiceStatus(ctx, &status, false)
 	}
 	return
@@ -452,9 +455,6 @@ func publishNetworkServiceStatus(ctx *zedrouterContext, status *types.NetworkSer
 	switch status.Type {
 	case types.NST_STRONGSWAN:
 		change = strongSwanVpnStatusGet(status)
-
-	case types.NST_LISP:
-		log.Printf("Lisp Service\n")
 	}
 	if force == true || change == true {
 		pub.Publish(status.Key(), &status)

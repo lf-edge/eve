@@ -28,6 +28,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"reflect"
 	"strconv"
 	"time"
 )
@@ -730,10 +731,11 @@ func handleAppNetworkConfigDelete(ctxArg interface{}, key string,
 	log.Printf("handleAppNetworkConfigDelete(%s) done\n", key)
 }
 
-func parseLispServiceInfo(lispInfo types.LispInfoStatus) {
+func parseLispServiceInfo(ctx *zedrouterContext, lispInfo *types.LispInfoStatus) {
 	// map for splitting the status info per IID
 	infoMap := make(map[uint64]*types.LispInfoStatus)
 
+	// Separate lispInfo into multiple LispInfoStatus structure based on IID
 	for _, dbMap := range lispInfo.DatabaseMaps {
 		iid := dbMap.IID
 
@@ -751,40 +753,127 @@ func parseLispServiceInfo(lispInfo types.LispInfoStatus) {
 		}
 		infoEntry.DatabaseMaps = append(infoEntry.DatabaseMaps, dbMap)
 	}
-	// XXX Code to publish these changes to zedagent.
+
+	// Update LispStatus in service instance status based on it's IID
+	pub := ctx.pubNetworkServiceStatus
+	stList := pub.GetAll()
+	// IID to service status map for Lisp service instances
+	stMap := make(map[uint64]types.NetworkServiceStatus)
+	for _, st := range stList {
+		status := cast.CastNetworkServiceStatus(st)
+		if status.Type != types.NST_LISP {
+			continue
+		}
+		serviceIID := uint64(status.LispStatus.IID)
+		stMap[serviceIID] = status
+	}
+
+	for iid, lispStatus := range infoMap {
+		status := stMap[iid]
+		// XXX Check if there are changes in the status
+		if reflect.DeepEqual(status.LispStatus, lispStatus) == true {
+			continue
+		}
+		status.LispInfoStatus = lispStatus
+
+		// publish the changes
+		publishNetworkServiceStatus(ctx, &status, true)
+	}
 }
 
 func handleLispInfoModify(ctxArg interface{}, key string, configArg interface{}) {
 	log.Printf("handleLispInfoModify(%s)\n", key)
-	//ctx := ctxArg.(*zedrouterContext)
+	ctx := ctxArg.(*zedrouterContext)
 	lispInfo := cast.CastLispInfoStatus(configArg)
 
 	if key != "global" {
 		log.Printf("handleLispInfoModify: ignoring %s\n", key)
 		return
 	}
-	parseLispServiceInfo(lispInfo)
+	parseLispServiceInfo(ctx, &lispInfo)
 	log.Printf("handleLispInfoModify(%s) done\n", key)
 }
 
 func handleLispInfoDelete(ctxArg interface{}, key string, configArg interface{}) {
+	// XXX No-op.
 	log.Printf("handleLispInfoDelete(%s)\n", key)
 	log.Printf("handleLispInfoDelete(%s) done\n", key)
 }
 
+func parseLispMetrics(ctx *zedrouterContext, lispMetrics *types.LispMetrics) {
+	// map for splitting the metrics per IID
+	metricMap := make(map[uint64]*types.LispMetrics)
+
+	// Separate lispMetrics into multiple LispMetrics based on IID
+	for _, dbMap := range lispMetrics.EidStats {
+		iid := dbMap.IID
+
+		// check we have entry for this iid in our metricMap
+		var metricEntry *types.LispMetrics
+		var ok bool
+		metricEntry, ok = metricMap[iid]
+		if !ok {
+			metricEntry = &types.LispMetrics{}
+			metricEntry.ItrPacketSendError = lispMetrics.ItrPacketSendError
+			metricEntry.InvalidEidError    = lispMetrics.InvalidEidError
+			metricEntry.NoDecryptKey       = lispMetrics.NoDecryptKey
+			metricEntry.OuterHeaderError   = lispMetrics.OuterHeaderError
+			metricEntry.BadInnerVersion    = lispMetrics.BadInnerVersion
+			metricEntry.GoodPackets        = lispMetrics.GoodPackets
+			metricEntry.ICVError           = lispMetrics.ICVError
+			metricEntry.LispHeaderError    = lispMetrics.LispHeaderError
+			metricEntry.CheckSumError      = lispMetrics.CheckSumError
+			metricEntry.DecapReInjectError = lispMetrics.DecapReInjectError
+			metricEntry.DecryptError       = lispMetrics.DecryptError
+			metricMap[iid] = metricEntry
+		}
+		metricEntry.EidStats = append(metricEntry.EidStats, dbMap)
+	}
+
+	// Update Lisp metrics in service instance status based on it's IID
+	pub := ctx.pubNetworkServiceStatus
+	stList := pub.GetAll()
+	// IID to service status map for Lisp service instances
+	stMap := make(map[uint64]types.NetworkServiceStatus)
+	for _, st := range stList {
+		status := cast.CastNetworkServiceStatus(st)
+		if status.Type != types.NST_LISP {
+			continue
+		}
+		serviceIID := uint64(status.LispStatus.IID)
+		stMap[serviceIID] = status
+	}
+
+	// Populate the metrics that we have in NetworkServiceStatus objects
+	// of corresponding IID.
+	for iid, metrics := range metricMap {
+		status := stMap[iid]
+		// XXX Check if there are changes in metrics
+		if reflect.DeepEqual(status.LispMetrics, metrics) == true {
+			continue
+		}
+		status.LispMetrics = metrics
+
+		// publish the changes
+		publishNetworkServiceStatus(ctx, &status, true)
+	}
+}
+
 func handleLispMetricsModify(ctxArg interface{}, key string, configArg interface{}) {
 	log.Printf("handleLispMetricsModify(%s)\n", key)
-	//ctx := ctxArg.(*zedrouterContext)
-	//lispMetrics := cast.CastLispMetrics(configArg)
+	ctx := ctxArg.(*zedrouterContext)
+	lispMetrics := cast.CastLispMetrics(configArg)
 
 	if key != "global" {
 		log.Printf("handleLispMetricsModify: ignoring %s\n", key)
 		return
 	}
+	parseLispMetrics(ctx, &lispMetrics)
 	log.Printf("handleLispMetricsModify(%s) done\n", key)
 }
 
 func handleLispMetricsDelete(ctxArg interface{}, key string, configArg interface{}) {
+	// No-op
 	log.Printf("handleLispMetricsDelete(%s)\n", key)
 	log.Printf("handleLispMetricsDelete(%s) done\n", key)
 }
