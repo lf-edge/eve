@@ -156,7 +156,7 @@ func strongSwanConfigGet(ctx *zedrouterContext,
 	if vpnConfig.GatewayConfig.IpAddr == UpLinkIpAddrType {
 		vpnConfig.GatewayConfig.IpAddr = upLink.IpAddr
 	}
-	if appNetPresent == true &&
+	if appNetPresent &&
 		vpnConfig.GatewayConfig.SubnetBlock == AppLinkSubnetType {
 		vpnConfig.GatewayConfig.SubnetBlock = appLink.SubnetBlock
 	}
@@ -184,7 +184,7 @@ func strongSwanConfigGet(ctx *zedrouterContext,
 		if clientConfig.IpAddr == UpLinkIpAddrType {
 			clientConfig.IpAddr = upLink.IpAddr
 		}
-		if appNetPresent == true &&
+		if appNetPresent &&
 			clientConfig.SubnetBlock == AppLinkSubnetType {
 			clientConfig.SubnetBlock = appLink.SubnetBlock
 		}
@@ -215,7 +215,7 @@ func strongSwanConfigGet(ctx *zedrouterContext,
 			return vpnConfig, errors.New("IpAddr Mismatch, GatewayIp: " + errorStr)
 		}
 		// ensure appNet match
-		if appNetPresent == true &&
+		if appNetPresent &&
 			vpnConfig.GatewayConfig.SubnetBlock != "" &&
 			vpnConfig.GatewayConfig.SubnetBlock != appLink.SubnetBlock {
 			errorStr := vpnConfig.GatewayConfig.SubnetBlock + ", appNet: " + appLink.SubnetBlock
@@ -225,7 +225,7 @@ func strongSwanConfigGet(ctx *zedrouterContext,
 	}
 
 	// for clients
-	if appNetPresent == true {
+	if appNetPresent {
 		for _, clientConfig := range vpnConfig.ClientConfigList {
 			if clientConfig.SubnetBlock != "" &&
 				clientConfig.SubnetBlock != appLink.SubnetBlock {
@@ -384,7 +384,7 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 			// for route based server, client subnet information is must
 			if clientConfig.SubnetBlock == "" ||
 				clientConfig.SubnetBlock == AppLinkSubnetType {
-				if strongSwanConfig.PolicyBased == false {
+				if !strongSwanConfig.PolicyBased {
 					return vpnConfig, errors.New("client subnet block not set")
 				}
 			}
@@ -548,7 +548,7 @@ func strongSwanVpnActivate(vpnConfig types.VpnServiceConfig) error {
 	clientConfig := vpnConfig.ClientConfigList[0]
 	tunnelConfig := clientConfig.TunnelConfig
 
-	if vpnConfig.PolicyBased == false {
+	if !vpnConfig.PolicyBased {
 		// check iplink interface existence
 		if err := ipLinkInfExists(tunnelConfig.Name); err != nil {
 			log.Printf("%s for %s ipLink status", err.Error(),
@@ -623,11 +623,11 @@ func checkForClientDups(config types.StrongSwanServiceConfig) error {
 	wildCardPsk := config.PreSharedKey
 	for idx0, client0 := range config.ClientConfigList {
 		isWild0 := isClientWildCard(client0)
-		if isWild0 == true {
+		if isWild0 {
 			if wildCardPsk == "" && client0.PreSharedKey != "" {
 				wildCardPsk = client0.PreSharedKey
 			}
-			if wildMatch == true && client0.PreSharedKey != "" &&
+			if wildMatch && client0.PreSharedKey != "" &&
 				wildCardPsk != client0.PreSharedKey {
 				return errors.New("wild-card client pre-shared key mismatch")
 			}
@@ -639,8 +639,7 @@ func checkForClientDups(config types.StrongSwanServiceConfig) error {
 				continue
 			}
 			isWild1 := isClientWildCard(client1)
-			if isWild0 == false && isWild1 == false &&
-				client0.IpAddr == client1.IpAddr {
+			if !isWild0 && !isWild1 && client0.IpAddr == client1.IpAddr {
 				return errors.New("duplicate client config")
 			}
 			if client0.SubnetBlock != "" &&
@@ -681,7 +680,7 @@ func strongSwanValidateLinkLocal(ipNetStr string) error {
 	if err != nil {
 		return err
 	}
-	if ip.IsLinkLocalUnicast() == false {
+	if !ip.IsLinkLocalUnicast() {
 		return errors.New("invalid link local: " + ipNetStr)
 	}
 	return nil
@@ -690,7 +689,7 @@ func strongSwanValidateLinkLocal(ipNetStr string) error {
 func strongSwanValidateIpAddr(ipAddrStr string, isValid bool) error {
 	if ipAddrStr == "" || ipAddrStr == AnyIpAddr ||
 		ipAddrStr == UpLinkIpAddrType {
-		if isValid == true {
+		if isValid {
 			return errors.New("invalid ip address: " + ipAddrStr)
 		}
 		return nil
@@ -700,7 +699,7 @@ func strongSwanValidateIpAddr(ipAddrStr string, isValid bool) error {
 	if ip == nil {
 		return errors.New("invalid ip address: " + ipAddrStr)
 	}
-	if ip.IsGlobalUnicast() == false {
+	if !ip.IsGlobalUnicast() {
 		return errors.New("not unicast ip address: " + ipAddrStr)
 	}
 	return nil
@@ -724,7 +723,7 @@ func strongSwanVpnStatusGet(status *types.NetworkServiceStatus) bool {
 	vpnStatus.PolicyBased = vpnConfig.PolicyBased
 
 	// if tunnel state have changed, update
-	if change = isVpnStatusChanged(status.VpnStatus, vpnStatus); change == true {
+	if change = isVpnStatusChanged(status.VpnStatus, vpnStatus); change {
 		if debug {
 			log.Printf("vpn state change:%v\n", vpnStatus)
 		}
@@ -754,7 +753,7 @@ func isVpnStatusChanged(oldStatus, newStatus *types.ServiceVpnStatus) bool {
 				break
 			}
 		}
-		if found == false {
+		if !found {
 			stateChange = true
 			oldConn.MarkDelete = true
 			staleConnCount++
@@ -767,10 +766,10 @@ func isVpnStatusChanged(oldStatus, newStatus *types.ServiceVpnStatus) bool {
 		for _, oldConn := range oldStatus.ActiveVpnConns {
 			if oldConn.Name == newConn.Name &&
 				oldConn.Id == newConn.Id {
-				if ret := matchConnStats(oldConn, newConn); ret == false {
+				if ret := matchConnStats(oldConn, newConn); !ret {
 					statsChange = true
 				}
-				if ret := matchConnState(oldConn, newConn); ret == false {
+				if ret := matchConnState(oldConn, newConn); !ret {
 					stateChange = true
 				}
 				found = true
@@ -778,7 +777,7 @@ func isVpnStatusChanged(oldStatus, newStatus *types.ServiceVpnStatus) bool {
 			}
 		}
 		// new connection
-		if found == false {
+		if !found {
 			stateChange = true
 		}
 	}
@@ -787,7 +786,7 @@ func isVpnStatusChanged(oldStatus, newStatus *types.ServiceVpnStatus) bool {
 		newStatus.StaleVpnConns = make([]*types.VpnConnStatus, staleConnCount)
 		connIdx := 0
 		for _, oldConn := range oldStatus.ActiveVpnConns {
-			if oldConn.MarkDelete == true {
+			if oldConn.MarkDelete {
 				oldConn.State = types.VPN_DELETED
 				for _, oldLink := range oldConn.Links {
 					oldLink.State = types.VPN_DELETED
