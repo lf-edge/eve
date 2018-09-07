@@ -522,7 +522,7 @@ type NetworkObjectStatus struct {
 	// Set of vifs on this bridge
 	VifNames []string
 
-	Ipv4Eid	 bool   // Track if this is a CryptoEid with IPv4 EIDs
+	Ipv4Eid bool // Track if this is a CryptoEid with IPv4 EIDs
 
 	// Any errrors from provisioning the network
 	Error     string
@@ -799,7 +799,7 @@ const (
 	VPN_ESTABLISHED
 	VPN_INSTALLED
 	VPN_REKEYED
-	VPN_DELETED VpnState = 10
+	VPN_DELETED  VpnState = 10
 	VPN_MAXSTATE VpnState = 255
 )
 
@@ -813,13 +813,13 @@ type VpnLinkInfo struct {
 
 type VpnLinkStatus struct {
 	Id         string
-    Name       string
+	Name       string
 	ReqId      string
 	InstTime   uint64 // installation time
 	ExpTime    uint64 // expiry time
 	RekeyTime  uint64 // rekey time
 	EspInfo    string
-	State      VpnState 
+	State      VpnState
 	LInfo      VpnLinkInfo
 	RInfo      VpnLinkInfo
 	MarkDelete bool
