@@ -336,7 +336,6 @@ func (pub *Publication) serveConnection(s net.Conn) {
 	// Handle any changes
 	for {
 		<-updater
-		log.Printf("Received notification\n")
 		// Update and determine which keys changed
 		keys := pub.determineDiffs(sendToPeer)
 
