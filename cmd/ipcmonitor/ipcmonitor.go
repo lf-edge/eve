@@ -55,7 +55,6 @@ func Run() {
 		}
 		reply := strings.Split(string(buf[0:res]), " ")
 		count := len(reply)
-		log.Printf("Got %d: %v\n", count, reply)
 		if count < 2 {
 			log.Printf("Too short: %v\n", reply)
 			continue

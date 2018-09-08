@@ -96,7 +96,7 @@ func (status BaseOsStatus) CheckPendingDelete() bool {
 // the UUIDandVersion/Config Sha are just
 // copied from the holder object configuration
 // for indexing
-
+// XXX shouldn't it be keyed by safename
 type CertObjConfig struct {
 	UUIDandVersion    UUIDandVersion
 	ConfigSha256      string
@@ -118,6 +118,7 @@ func (config CertObjConfig) VerifyFilename(fileName string) bool {
 }
 
 // Indexed by UUIDandVersion as above
+// XXX shouldn't it be keyed by safename
 type CertObjStatus struct {
 	UUIDandVersion    UUIDandVersion
 	ConfigSha256      string

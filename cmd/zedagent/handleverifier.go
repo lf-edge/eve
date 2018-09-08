@@ -300,6 +300,7 @@ func checkCertsForObject(safename string, sc *types.StorageConfig) error {
 				filename, err)
 			return err
 		}
+		// XXX check for valid or non-zero length?
 	}
 
 	for _, certUrl := range sc.CertificateChain {
@@ -312,6 +313,7 @@ func checkCertsForObject(safename string, sc *types.StorageConfig) error {
 					filename, err)
 				return err
 			}
+			// XXX check for valid or non-zero length?
 		}
 	}
 	return nil

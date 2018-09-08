@@ -27,8 +27,8 @@ import (
 	"net"
 	"os"
 	"strconv"
-	"time"
 	"strings"
+	"time"
 )
 
 const (
@@ -66,6 +66,7 @@ type downloaderContext struct {
 }
 
 func Run() {
+	handlersInit()
 	logf, err := agentlog.Init(agentName)
 	if err != nil {
 		log.Fatal(err)
@@ -231,106 +232,43 @@ func Run() {
 	}
 }
 
-// Wrappers
+// Wrappers to add objType for create. The Delete wrappers are merely
+// for function name consistency
 func handleAppImgModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	config := cast.CastDownloaderConfig(configArg)
-	ctx := ctxArg.(*downloaderContext)
-	if config.Key() != key {
-		log.Printf("handleAppImgModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return
-	}
-	status := lookupDownloaderStatus(ctx.pubAppImgStatus, key)
-	if status == nil {
-		handleCreate(ctx, appImgObj, config, key)
-	} else {
-		handleModify(ctx, key, config, status)
-	}
-	log.Printf("handleAppImgModify(%s) done\n", key)
+	handleDownloaderModify(ctxArg, appImgObj, key, configArg)
 }
 
 func handleAppImgDelete(ctxArg interface{}, key string, configArg interface{}) {
-
-	log.Printf("handleAppImgDelete(%s)\n", key)
-	ctx := ctxArg.(*downloaderContext)
-	status := lookupDownloaderStatus(ctx.pubAppImgStatus, key)
-	if status == nil {
-		log.Printf("handleAppImgDelete: unknown %s\n", key)
-		return
-	}
-	handleDelete(ctx, key, status)
-	log.Printf("handleAppImgDelete(%s) done\n", key)
+	handleDownloaderDelete(ctxArg, key, configArg)
 }
 
 func handleBaseOsModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	config := cast.CastDownloaderConfig(configArg)
-	ctx := ctxArg.(*downloaderContext)
-	if config.Key() != key {
-		log.Printf("handleBaseOsModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return
-	}
-	status := lookupDownloaderStatus(ctx.pubBaseOsStatus, key)
-	if status == nil {
-		handleCreate(ctx, baseOsObj, config, key)
-	} else {
-		handleModify(ctx, key, config, status)
-	}
-	log.Printf("handleBaseOsModify(%s) done\n", key)
+	handleDownloaderModify(ctxArg, baseOsObj, key, configArg)
 }
 
 func handleBaseOsDelete(ctxArg interface{}, key string, configArg interface{}) {
-
-	log.Printf("handleBaseOsDelete(%s)\n", key)
-	ctx := ctxArg.(*downloaderContext)
-	status := lookupDownloaderStatus(ctx.pubBaseOsStatus, key)
-	if status == nil {
-		log.Printf("handleBaseOsDelete: unknown %s\n", key)
-		return
-	}
-	handleDelete(ctx, key, status)
-	log.Printf("handleBaseOsDelete(%s) done\n", key)
+	handleDownloaderDelete(ctxArg, key, configArg)
 }
 
 func handleCertObjModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	config := cast.CastDownloaderConfig(configArg)
-	ctx := ctxArg.(*downloaderContext)
-	if config.Key() != key {
-		log.Printf("handleCertObjModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return
-	}
-	status := lookupDownloaderStatus(ctx.pubCertObjStatus, key)
-	if status == nil {
-		handleCreate(ctx, certObj, config, key)
-	} else {
-		handleModify(ctx, key, config, status)
-	}
-	log.Printf("handleCertObjModify(%s) done\n", key)
+	handleDownloaderModify(ctxArg, certObj, key, configArg)
 }
 
 func handleCertObjDelete(ctxArg interface{}, key string, configArg interface{}) {
-
-	log.Printf("handleCertObjDelete(%s)\n", key)
-	ctx := ctxArg.(*downloaderContext)
-	status := lookupDownloaderStatus(ctx.pubCertObjStatus, key)
-	if status == nil {
-		log.Printf("handleCertObjDelete: unknown %s\n", key)
-		return
-	}
-	handleDelete(ctx, key, status)
-	log.Printf("handleCertObjDelete(%s) done\n", key)
+	handleDownloaderDelete(ctxArg, key, configArg)
 }
 
 // Callers must be careful to publish any changes to DownloaderStatus
-func lookupDownloaderStatus(pub *pubsub.Publication, key string) *types.DownloaderStatus {
+func lookupDownloaderStatus(ctx *downloaderContext, objType string,
+	key string) *types.DownloaderStatus {
 
+	pub := downloaderPublication(ctx, objType)
 	st, _ := pub.Get(key)
 	if st == nil {
 		log.Printf("lookupDownloaderStatus(%s) not found\n", key)
@@ -343,6 +281,96 @@ func lookupDownloaderStatus(pub *pubsub.Publication, key string) *types.Download
 		return nil
 	}
 	return &status
+}
+
+// We have one goroutine per provisioned domU object.
+// Channel is used to send config (new and updates)
+// Channel is closed when the object is deleted
+// The go-routine owns writing status for the object
+// The key in the map is the objects Key().
+type handlers map[string]chan<- interface{}
+
+var handlerMap handlers
+
+func handlersInit() {
+	handlerMap = make(handlers)
+}
+
+// Wrappers around handleCreate, handleModify, and handleDelete
+
+// Determine whether it is an create or modify
+func handleDownloaderModify(ctxArg interface{}, objType string,
+	key string, configArg interface{}) {
+
+	log.Printf("handleDownloaderModify(%s)\n", key)
+	ctx := ctxArg.(*downloaderContext)
+	config := cast.CastDownloaderConfig(configArg)
+	if config.Key() != key {
+		log.Printf("handleDownloaderModify key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, config.Key(), config)
+		return
+	}
+	// Do we have a channel/goroutine?
+	h, ok := handlerMap[config.Key()]
+	if !ok {
+		h1 := make(chan interface{})
+		handlerMap[config.Key()] = h1
+		go runHandler(ctx, objType, key, h1)
+		h = h1
+	}
+	log.Printf("Sending config to handler\n")
+	h <- configArg
+	log.Printf("handleDownloaderModify(%s) done\n", key)
+}
+
+func handleDownloaderDelete(ctxArg interface{}, key string,
+	configArg interface{}) {
+
+	log.Printf("handleDownloaderDelete(%s)\n", key)
+	// Do we have a channel/goroutine?
+	h, ok := handlerMap[key]
+	if ok {
+		log.Printf("Closing channel\n")
+		close(h)
+		delete(handlerMap, key)
+	} else {
+		log.Printf("handleDownloaderDelete: unknown %s\n", key)
+		return
+	}
+	log.Printf("handleDownloaderDelete(%s) done\n", key)
+}
+
+// Server for each domU
+func runHandler(ctx *downloaderContext, objType string, key string,
+	c <-chan interface{}) {
+
+	log.Printf("runHandler starting\n")
+
+	closed := false
+	for !closed {
+		select {
+		case configArg, ok := <-c:
+			if ok {
+				config := cast.CastDownloaderConfig(configArg)
+				status := lookupDownloaderStatus(ctx,
+					objType, key)
+				if status == nil {
+					handleCreate(ctx, objType, config, key)
+				} else {
+					handleModify(ctx, key, config, status)
+				}
+			} else {
+				// Closed
+				status := lookupDownloaderStatus(ctx,
+					objType, key)
+				if status != nil {
+					handleDelete(ctx, key, status)
+				}
+				closed = true
+			}
+		}
+	}
+	log.Printf("runHandler(%s) DONE\n", key)
 }
 
 func handleCreate(ctx *downloaderContext, objType string,
@@ -956,7 +984,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 				return
 			}
 		case zconfig.DsType_DsSFTP.String():
-			serverUrl := strings.Split(config.DownloadURL,"/")[0]
+			serverUrl := strings.Split(config.DownloadURL, "/")[0]
 			err = doSftp(ctx, syncOp, config.ApiKey,
 				config.Password, serverUrl, config.Dpath,
 				config.Size, ipSrc, filename, locFilename)

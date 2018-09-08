@@ -75,6 +75,7 @@ type verifierContext struct {
 }
 
 func Run() {
+	handlersInit()
 	logf, err := agentlog.Init(agentName)
 	if err != nil {
 		log.Fatal(err)
@@ -345,6 +346,9 @@ func clearInProgressDownloadDirs(objTypes []string) {
 }
 
 // Look for and delete objects and status where the RefCount is still zero
+// By definition those should not have any goroutine in handlerMap but
+// we check that the key is not in handlerMap to make sure we don't
+// touch an object owned by a running goroutine.
 func gcVerifiedObjects(ctx *verifierContext) {
 	log.Printf("gcVerifiedObjects()\n")
 	publications := []*pubsub.Publication{
@@ -354,6 +358,14 @@ func gcVerifiedObjects(ctx *verifierContext) {
 	for _, pub := range publications {
 		items := pub.GetAll()
 		for key, st := range items {
+			// Check of thread is running
+			_, ok := handlerMap[key]
+			if ok {
+				log.Printf("gcVerifiedObjects handler running for %s; skipping\n",
+					key)
+				continue
+			}
+
 			status := cast.CastVerifyImageStatus(st)
 			if status.Key() != key {
 				log.Printf("gcVerifiedObjects key/UUID mismatch %s vs %s; ignored %+v\n",
@@ -430,74 +442,33 @@ func verifierPublication(ctx *verifierContext, objType string) *pubsub.Publicati
 	return pub
 }
 
-// Wrappers
+// Wrappers to add objType for create. The Delete wrappers are merely
+// for function name consistency
 func handleAppImgModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	config := cast.CastVerifyImageConfig(configArg)
-	ctx := ctxArg.(*verifierContext)
-	if config.Key() != key {
-		log.Printf("handleAppImgModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return
-	}
-	status := lookupVerifyImageStatus(ctx.pubAppImgStatus, key)
-	if status == nil {
-		handleCreate(ctx, appImgObj, &config)
-	} else {
-		handleModify(ctx, &config, status)
-	}
-	log.Printf("handleAppImgModify(%s) done\n", key)
+	handleVerifyImageModify(ctxArg, appImgObj, key, configArg)
 }
 
 func handleAppImgDelete(ctxArg interface{}, key string, configArg interface{}) {
-
-	log.Printf("handleAppImgDelete(%s)\n", key)
-	ctx := ctxArg.(*verifierContext)
-	status := lookupVerifyImageStatus(ctx.pubAppImgStatus, key)
-	if status == nil {
-		log.Printf("handleAppImgDelete: unknown %s\n", key)
-		return
-	}
-	handleDelete(ctx, status)
-	log.Printf("handleAppImgDelete(%s) done\n", key)
+	handleVerifyImageDelete(ctxArg, key, configArg)
 }
 
 func handleBaseOsModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	config := cast.CastVerifyImageConfig(configArg)
-	ctx := ctxArg.(*verifierContext)
-	if config.Key() != key {
-		log.Printf("handleBaseOsModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return
-	}
-	status := lookupVerifyImageStatus(ctx.pubBaseOsStatus, key)
-	if status == nil {
-		handleCreate(ctx, baseOsObj, &config)
-	} else {
-		handleModify(ctx, &config, status)
-	}
-	log.Printf("handleBaseOsModify(%s) done\n", key)
+	handleVerifyImageModify(ctxArg, baseOsObj, key, configArg)
 }
 
 func handleBaseOsDelete(ctxArg interface{}, key string, configArg interface{}) {
-
-	log.Printf("handleBaseOsDelete(%s)\n", key)
-	ctx := ctxArg.(*verifierContext)
-	status := lookupVerifyImageStatus(ctx.pubBaseOsStatus, key)
-	if status == nil {
-		log.Printf("handleBaseOsDelete: unknown %s\n", key)
-		return
-	}
-	handleDelete(ctx, status)
-	log.Printf("handleBaseOsDelete(%s) done\n", key)
+	handleVerifyImageDelete(ctxArg, key, configArg)
 }
 
 // Callers must be careful to publish any changes to VerifyImageStatus
-func lookupVerifyImageStatus(pub *pubsub.Publication, key string) *types.VerifyImageStatus {
+func lookupVerifyImageStatus(ctx *verifierContext, objType string,
+	key string) *types.VerifyImageStatus {
 
+	pub := verifierPublication(ctx, objType)
 	st, _ := pub.Get(key)
 	if st == nil {
 		log.Printf("lookupVerifyImageStatus(%s) not found\n", key)
@@ -510,6 +481,96 @@ func lookupVerifyImageStatus(pub *pubsub.Publication, key string) *types.VerifyI
 		return nil
 	}
 	return &status
+}
+
+// We have one goroutine per provisioned domU object.
+// Channel is used to send config (new and updates)
+// Channel is closed when the object is deleted
+// The go-routine owns writing status for the object
+// The key in the map is the objects Key()
+type handlers map[string]chan<- interface{}
+
+var handlerMap handlers
+
+func handlersInit() {
+	handlerMap = make(handlers)
+}
+
+// Wrappers around handleCreate, handleModify, and handleDelete
+
+// Determine whether it is an create or modify
+func handleVerifyImageModify(ctxArg interface{}, objType string,
+	key string, configArg interface{}) {
+
+	log.Printf("handleVerifyImageModify(%s)\n", key)
+	ctx := ctxArg.(*verifierContext)
+	config := cast.CastVerifyImageConfig(configArg)
+	if config.Key() != key {
+		log.Printf("handleVerifyImageModify key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, config.Key(), config)
+		return
+	}
+	// Do we have a channel/goroutine?
+	h, ok := handlerMap[config.Key()]
+	if !ok {
+		h1 := make(chan interface{})
+		handlerMap[config.Key()] = h1
+		go runHandler(ctx, objType, key, h1)
+		h = h1
+	}
+	log.Printf("Sending config to handler\n")
+	h <- configArg
+	log.Printf("handleVerifyImageModify(%s) done\n", key)
+}
+
+func handleVerifyImageDelete(ctxArg interface{}, key string,
+	configArg interface{}) {
+
+	log.Printf("handleVerifyImageDelete(%s)\n", key)
+	// Do we have a channel/goroutine?
+	h, ok := handlerMap[key]
+	if ok {
+		log.Printf("Closing channel\n")
+		close(h)
+		delete(handlerMap, key)
+	} else {
+		log.Printf("handleVerifyImageDelete: unknown %s\n", key)
+		return
+	}
+	log.Printf("handleVerifyImageDelete(%s) done\n", key)
+}
+
+// Server for each domU
+func runHandler(ctx *verifierContext, objType string, key string,
+	c <-chan interface{}) {
+
+	log.Printf("runHandler starting\n")
+
+	closed := false
+	for !closed {
+		select {
+		case configArg, ok := <-c:
+			if ok {
+				config := cast.CastVerifyImageConfig(configArg)
+				status := lookupVerifyImageStatus(ctx,
+					objType, key)
+				if status == nil {
+					handleCreate(ctx, objType, &config)
+				} else {
+					handleModify(ctx, &config, status)
+				}
+			} else {
+				// Closed
+				status := lookupVerifyImageStatus(ctx,
+					objType, key)
+				if status != nil {
+					handleDelete(ctx, status)
+				}
+				closed = true
+			}
+		}
+	}
+	log.Printf("runHandler(%s) DONE\n", key)
 }
 
 func handleCreate(ctx *verifierContext, objType string,
@@ -903,7 +964,7 @@ func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 	if status.RefCount == 0 {
 		status.PendingModify = true
 		publishVerifyImageStatus(ctx, status)
-		// XXX start gc timer instead
+		// XXX start gc timer instead, or run it all the time?
 		doDelete(status)
 		status.PendingModify = false
 		status.State = 0 // XXX INITIAL implies failure

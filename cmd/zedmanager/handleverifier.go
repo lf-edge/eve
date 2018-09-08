@@ -239,6 +239,7 @@ func checkCertsForObject(safename string, sc *types.StorageConfig) bool {
 			log.Printf("checkCertsForObject() for %s, %v\n", filename, err)
 			return false
 		}
+		// XXX check for valid or non-zero length?
 	}
 
 	for _, certUrl := range sc.CertificateChain {
@@ -250,6 +251,7 @@ func checkCertsForObject(safename string, sc *types.StorageConfig) bool {
 				log.Printf("checkCertsForObject() for %s, %v\n", filename, err)
 				return false
 			}
+			// XXX check for valid or non-zero length?
 		}
 	}
 	return true

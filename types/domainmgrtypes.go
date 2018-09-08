@@ -80,6 +80,7 @@ type DomainStatus struct {
 	UUIDandVersion     UUIDandVersion
 	DisplayName        string
 	Activated          bool
+	Failed             bool // XXX pause, shutdown, failed, ...
 	AppNum             int
 	PendingAdd         bool
 	PendingModify      bool

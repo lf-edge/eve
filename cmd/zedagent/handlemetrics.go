@@ -102,18 +102,6 @@ func ExecuteXlInfoCmd() map[string]string {
 	return dict
 }
 
-//Returns boolean depending upon the existence of domain
-func verifyDomainExists(domainId int) bool {
-	cmd := exec.Command("xl", "list", strconv.Itoa(domainId))
-	_, err := cmd.Output()
-	if err != nil {
-		log.Println(err.Error())
-		return false
-	} else {
-		return true
-	}
-}
-
 // Shadow copy of suscription to determine info for deletes. Key is UUID
 var domainStatus map[string]types.DomainStatus
 
@@ -126,6 +114,10 @@ var appDiskAndNameList map[string][]string
 func handleDomainStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
+	// XXX
+	if true || debug {
+		log.Printf("handleDomainStatusModify for %s\n", key)
+	}
 	status := cast.CastDomainStatus(statusArg)
 	ctx := ctxArg.(*zedagentContext)
 	if status.Key() != key {
@@ -133,12 +125,10 @@ func handleDomainStatusModify(ctxArg interface{}, key string,
 			key, status.Key(), status)
 		return
 	}
-	if debug {
-		log.Printf("handleDomainStatusModify for %s\n", key)
-	}
 	// Ignore if any Pending* flag is set
 	if status.Pending() {
-		if debug {
+		// XXX
+		if true || debug {
 			log.Printf("handleDomainstatusModify skipped due to Pending* for %s\n",
 				key)
 		}
@@ -152,11 +142,15 @@ func handleDomainStatusModify(ctxArg interface{}, key string,
 	}
 	// Detect if any changes relevant to the device status report
 	old := lookupDomainStatus(ctx, key)
-	if old != nil && !old.Pending() {
+	if old != nil {
+		log.Printf("handleDomainStatusModify change for %s domainname %s\n",
+			key, status.DomainName)
 		if ioAdapterListChanged(*old, status) {
 			ctx.TriggerDeviceInfo = true
 		}
 	} else {
+		log.Printf("handleDomainStatusModify add for %s domainname %s\n",
+			key, status.DomainName)
 		if ioAdapterListChanged(types.DomainStatus{}, status) {
 			ctx.TriggerDeviceInfo = true
 		}
@@ -1211,7 +1205,8 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 			// Avoid nil checks
 			ds = &types.DomainStatus{}
 		} else {
-			ReportAppInfo.Activated = aiStatus.Activated && verifyDomainExists(ds.DomainId)
+			// XXX add failed? More states?
+			ReportAppInfo.Activated = aiStatus.Activated
 		}
 
 		if !aiStatus.ErrorTime.IsZero() {

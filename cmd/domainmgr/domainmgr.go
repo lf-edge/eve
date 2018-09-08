@@ -3,6 +3,8 @@
 
 // Manage Xen guest domains based on the subscribed collection of DomainConfig
 // and publish the result in a collection of DomainStatus structs.
+// We run a separate go routine for each domU to be able to boot and halt
+// them concurrently and also pick up their state periodically.
 
 package domainmgr
 
@@ -15,6 +17,7 @@ import (
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/devicenetwork"
+	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
@@ -24,8 +27,10 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -49,9 +54,18 @@ var nilUUID = uuid.UUID{}
 // Set from Makefile
 var Version = "No version specified"
 
+// The isUplink function is called by different goroutines
+// hence we serialize the calls on a mutex.
 var deviceNetworkStatus types.DeviceNetworkStatus
+var dnsLock sync.Mutex
 
-// Information for handleDomainCreate/Modify/Delete
+func isUplink(ifname string) bool {
+	dnsLock.Lock()
+	defer dnsLock.Unlock()
+	return types.IsUplink(deviceNetworkStatus, ifname)
+}
+
+// Information for handleCreate/Modify/Delete
 type domainContext struct {
 	assignableAdapters     *types.AssignableAdapters
 	subDeviceNetworkStatus *pubsub.Subscription
@@ -59,7 +73,10 @@ type domainContext struct {
 	pubDomainStatus        *pubsub.Publication
 }
 
+var debug = false
+
 func Run() {
+	handlersInit()
 	logf, err := agentlog.Init(agentName)
 	if err != nil {
 		log.Fatal(err)
@@ -67,7 +84,9 @@ func Run() {
 	defer logf.Close()
 
 	versionPtr := flag.Bool("v", false, "Version")
+	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
+	debug = *debugPtr
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
@@ -138,8 +157,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	subDomainConfig.ModifyHandler = handleDomainConfigModify
-	subDomainConfig.DeleteHandler = handleDomainConfigDelete
+	subDomainConfig.ModifyHandler = handleDomainModify
+	subDomainConfig.DeleteHandler = handleDomainDelete
 	subDomainConfig.RestartHandler = handleRestart
 	domainCtx.subDomainConfig = subDomainConfig
 	subDomainConfig.Activate()
@@ -224,7 +243,9 @@ func findActiveFileLocation(ctx *domainContext, filename string) bool {
 func publishDomainStatus(ctx *domainContext, status *types.DomainStatus) {
 
 	key := status.Key()
-	log.Printf("publishDomainStatus(%s)\n", key)
+	if debug {
+		log.Printf("publishDomainStatus(%s)\n", key)
+	}
 	pub := ctx.pubDomainStatus
 	pub.Publish(key, status)
 }
@@ -232,7 +253,9 @@ func publishDomainStatus(ctx *domainContext, status *types.DomainStatus) {
 func unpublishDomainStatus(ctx *domainContext, status *types.DomainStatus) {
 
 	key := status.Key()
-	log.Printf("unpublishDomainStatus(%s)\n", key)
+	if debug {
+		log.Printf("unpublishDomainStatus(%s)\n", key)
+	}
 	pub := ctx.pubDomainStatus
 	st, _ := pub.Get(key)
 	if st == nil {
@@ -246,40 +269,131 @@ func xenCfgFilename(appNum int) string {
 	return xenDirname + "/xen" + strconv.Itoa(appNum) + ".cfg"
 }
 
+// We have one goroutine per provisioned domU object.
+// Channel is used to send config (new and updates)
+// Channel is closed when the object is deleted
+// The go-routine owns writing status for the object
+// The key in the map is the objects Key() - UUID in this case
+type handlers map[string]chan<- interface{}
+
+var handlerMap handlers
+
+func handlersInit() {
+	handlerMap = make(handlers)
+}
+
 // Wrappers around handleCreate, handleModify, and handleDelete
 
 // Determine whether it is an create or modify
-func handleDomainConfigModify(ctxArg interface{}, key string, configArg interface{}) {
+func handleDomainModify(ctxArg interface{}, key string, configArg interface{}) {
 
-	log.Printf("handleDomainConfigModify(%s)\n", key)
+	log.Printf("handleDomainModify(%s)\n", key)
 	ctx := ctxArg.(*domainContext)
 	config := cast.CastDomainConfig(configArg)
 	if config.Key() != key {
-		log.Printf("handleDomainConfigModify key/UUID mismatch %s vs %s; ignored %+v\n",
+		log.Printf("handleDomainModify key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, config.Key(), config)
 		return
 	}
-	status := lookupDomainStatus(ctx, key)
-	if status == nil {
-		handleCreate(ctx, key, &config)
-	} else {
-		handleModify(ctx, key, &config, status)
+	// Do we have a channel/goroutine?
+	h, ok := handlerMap[config.Key()]
+	if !ok {
+		h1 := make(chan interface{})
+		handlerMap[config.Key()] = h1
+		go runHandler(ctx, key, h1)
+		h = h1
 	}
-	log.Printf("handleDomainConfigModify(%s) done\n", key)
+	log.Printf("Sending config to handler\n")
+	h <- configArg
+	log.Printf("handleDomainModify(%s) done\n", key)
 }
 
-func handleDomainConfigDelete(ctxArg interface{}, key string,
+func handleDomainDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	log.Printf("handleDomainConfigDelete(%s)\n", key)
-	ctx := ctxArg.(*domainContext)
-	status := lookupDomainStatus(ctx, key)
-	if status == nil {
-		log.Printf("handleDomainConfigDelete: unknown %s\n", key)
+	log.Printf("handleDomainDelete(%s)\n", key)
+	// Do we have a channel/goroutine?
+	h, ok := handlerMap[key]
+	if ok {
+		log.Printf("Closing channel\n")
+		close(h)
+		delete(handlerMap, key)
+	} else {
+		log.Printf("handleDomainDelete: unknown %s\n", key)
 		return
 	}
-	handleDelete(ctx, key, status)
-	log.Printf("handleDomainConfigDelete(%s) done\n", key)
+	log.Printf("handleDomainDelete(%s) done\n", key)
+}
+
+// Server for each domU
+// Runs timer every 30 seconds to update status
+func runHandler(ctx *domainContext, key string, c <-chan interface{}) {
+
+	log.Printf("runHandler starting\n")
+
+	interval := 30 * time.Second
+	max := float64(interval)
+	min := max * 0.3
+	ticker := flextimer.NewRangeTicker(time.Duration(min),
+		time.Duration(max))
+
+	closed := false
+	for !closed {
+		select {
+		case configArg, ok := <-c:
+			if ok {
+				config := cast.CastDomainConfig(configArg)
+				status := lookupDomainStatus(ctx, key)
+				if status == nil {
+					handleCreate(ctx, key, &config)
+				} else {
+					handleModify(ctx, key, &config, status)
+				}
+			} else {
+				// Closed
+				status := lookupDomainStatus(ctx, key)
+				if status != nil {
+					handleDelete(ctx, key, status)
+				}
+				closed = true
+			}
+		case <-ticker.C:
+			if debug {
+				log.Printf("runHandler(%s) timer\n", key)
+			}
+			status := lookupDomainStatus(ctx, key)
+			if status != nil {
+				verifyStatus(ctx, status)
+			}
+		}
+	}
+	log.Printf("runHandler(%s) DONE\n", key)
+}
+
+// Check if it is still running
+// XXX would xen state be useful?
+func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
+	domainId, err := xlDomid(status.DomainName, status.DomainId)
+	if err != nil {
+		if status.Activated {
+			errStr := fmt.Sprintf("verifyStatus(%s) failed %s",
+				status.Key(), err)
+			log.Println(errStr)
+			status.LastErr = errStr
+			status.LastErrTime = time.Now()
+			status.Activated = false
+			status.Failed = true // XXX useful?
+		}
+		status.DomainId = 0
+		publishDomainStatus(ctx, status)
+	} else {
+		if domainId != status.DomainId {
+			log.Printf("verifyDomain(%s) domainId changed from %d to %d\n",
+				status.Key(), status.DomainId, domainId)
+			status.DomainId = domainId
+			publishDomainStatus(ctx, status)
+		}
+	}
 }
 
 // Callers must be careful to publish any changes to DomainStatus
@@ -324,8 +438,6 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 
 	// Name of Xen domain must be unique; uniqify AppNum
 	name := config.DisplayName + "." + strconv.Itoa(config.AppNum)
-
-	// XXX need a channel in memory. Spawn go domainHandler(name, ...)
 
 	// Start by marking with PendingAdd
 	status := types.DomainStatus{
@@ -528,8 +640,6 @@ func doActivate(config types.DomainConfig, status *types.DomainStatus,
 }
 
 // shutdown and wait for the domain to go away; if that fails destroy and wait
-// XXX this should run in a goroutine to prevent handling other operations
-// XXX one goroutine per UUIDandVersion to also handle copy and xlCreate?
 func doInactivate(status *types.DomainStatus, aa *types.AssignableAdapters) {
 	log.Printf("doInactivate(%v) for %s\n",
 		status.UUIDandVersion, status.DisplayName)
@@ -716,7 +826,7 @@ func configToStatus(config types.DomainConfig, aa *types.AssignableAdapters,
 				adapter.Type, adapter.Name, ib.UsedByUUID))
 		}
 		for _, m := range ib.Members {
-			if types.IsUplink(deviceNetworkStatus, m) {
+			if isUplink(m) {
 				return errors.New(fmt.Sprintf("Adapter %d %s member %s is (part of) an uplink\n",
 					adapter.Type, adapter.Name, m))
 			}
@@ -967,24 +1077,36 @@ func handleModify(ctx *domainContext, key string,
 	status.PendingModify = true
 	publishDomainStatus(ctx, status)
 
-	if status.LastErr != "" {
-		log.Printf("handleModify(%v) existing error for %s\n",
-			config.UUIDandVersion, config.DisplayName)
-		status.PendingModify = false
-		publishDomainStatus(ctx, status)
-		return
-	}
 	changed := false
 	if config.Activate && !status.Activated {
+		if status.LastErr != "" {
+			log.Printf("handleModify(%v) existing error for %s\n",
+				config.UUIDandVersion, config.DisplayName)
+			status.PendingModify = false
+			publishDomainStatus(ctx, status)
+			return
+		}
 		status.VirtualizationMode = config.VirtualizationMode
 		status.EnableVnc = config.EnableVnc
 		doActivate(*config, status, ctx.assignableAdapters)
 		changed = true
-	} else if !config.Activate && status.Activated {
-		doInactivate(status, ctx.assignableAdapters)
-		status.VirtualizationMode = config.VirtualizationMode
-		status.EnableVnc = config.EnableVnc
-		changed = true
+	} else if !config.Activate {
+		if status.LastErr != "" {
+			log.Printf("handleModify(%v) clearing existing error for %s\n",
+				config.UUIDandVersion, config.DisplayName)
+			status.LastErr = ""
+			status.LastErrTime = time.Time{}
+			publishDomainStatus(ctx, status)
+			doInactivate(status, ctx.assignableAdapters)
+			status.VirtualizationMode = config.VirtualizationMode
+			status.EnableVnc = config.EnableVnc
+			changed = true
+		} else if status.Activated {
+			doInactivate(status, ctx.assignableAdapters)
+			status.VirtualizationMode = config.VirtualizationMode
+			status.EnableVnc = config.EnableVnc
+			changed = true
+		}
 	}
 	if changed {
 		// XXX could we also have changes in the IoBundle?
@@ -1011,10 +1133,7 @@ func handleModify(ctx *domainContext, key string,
 		publishDomainStatus(ctx, status)
 		return
 	}
-	// XXX dumping status to log
-	xlStatus(status.DomainName, status.DomainId)
 
-	status.PendingModify = true
 	publishDomainStatus(ctx, status)
 	// XXX Any work?
 	// XXX create tmp xen cfg and diff against existing xen cfg
@@ -1125,12 +1244,14 @@ func xlCreate(domainName string, xenCfgFilename string) (int, error) {
 		"domid",
 		domainName,
 	}
-	out, err := wrap.Command(cmd, args...).Output()
+	stdoutStderr, err = wrap.Command(cmd, args...).CombinedOutput()
 	if err != nil {
 		log.Println("xl domid failed ", err)
-		return 0, err
+		log.Println("xl domid output ", string(stdoutStderr))
+		return 0, errors.New(fmt.Sprintf("xl domid failed: %s\n",
+			string(stdoutStderr)))
 	}
-	res := strings.TrimSpace(string(out))
+	res := strings.TrimSpace(string(stdoutStderr))
 	domainId, err := strconv.Atoi(res)
 	if err != nil {
 		log.Printf("Can't extract domainId from %s: %s\n", res, err)
@@ -1149,31 +1270,40 @@ func xlStatus(domainName string, domainId int) error {
 		"-l",
 		domainName,
 	}
-	res, err := wrap.Command(cmd, args...).Output()
+	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
 	if err != nil {
 		log.Println("xl list failed ", err)
-		return err
+		log.Println("xl list output ", string(stdoutStderr))
+		return errors.New(fmt.Sprintf("xl list failed: %s\n",
+			string(stdoutStderr)))
 	}
 	// XXX parse json to look at state? Not currently included
-	log.Printf("xl list done. Result %s\n", string(res))
+	log.Printf("xl list done. Result %s\n", string(stdoutStderr))
 	return nil
 }
 
 // If we have a domain reboot issue the domainId
 // can change.
 func xlDomid(domainName string, domainId int) (int, error) {
-	log.Printf("xlDomid %s %d\n", domainName, domainId)
+	if debug {
+		log.Printf("xlDomid %s %d\n", domainName, domainId)
+	}
 	cmd := "xl"
 	args := []string{
 		"domid",
 		domainName,
 	}
-	out, err := wrap.Command(cmd, args...).Output()
+	// Avoid wrap since we are called periodically
+	stdoutStderr, err := exec.Command(cmd, args...).CombinedOutput()
 	if err != nil {
-		log.Println("xl domid failed ", err)
-		return domainId, err
+		if debug {
+			log.Println("xl domid failed ", err)
+			log.Println("xl domid output ", string(stdoutStderr))
+		}
+		return domainId, errors.New(fmt.Sprintf("xl domid failed: %s\n",
+			string(stdoutStderr)))
 	}
-	res := strings.TrimSpace(string(out))
+	res := strings.TrimSpace(string(stdoutStderr))
 	domainId2, err := strconv.Atoi(res)
 	if err != nil {
 		log.Printf("xl domid not integer %s: failed %s\n", res, err)
@@ -1218,13 +1348,15 @@ func xlDisableVifOffload(domainName string, domainId int, vifCount int) error {
 				varName,
 				"0",
 			}
-			res, err := wrap.Command(cmd, args...).Output()
+			stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
 			if err != nil {
 				log.Println("xenstore write failed ", err)
-				return err
+				log.Println("xenstore write output ", string(stdoutStderr))
+				return errors.New(fmt.Sprintf("xenstore write failed: %s\n",
+					string(stdoutStderr)))
 			}
 			log.Printf("xenstore write done. Result %s\n",
-				string(res))
+				string(stdoutStderr))
 		}
 	}
 
@@ -1239,12 +1371,14 @@ func xlUnpause(domainName string, domainId int) error {
 		"unpause",
 		domainName,
 	}
-	res, err := wrap.Command(cmd, args...).Output()
+	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
 	if err != nil {
-		log.Println("xlUnpause failed ", err)
-		return err
+		log.Println("xl unpause failed ", err)
+		log.Println("xl unpause output ", string(stdoutStderr))
+		return errors.New(fmt.Sprintf("xl unpause failed: %s\n",
+			string(stdoutStderr)))
 	}
-	log.Printf("xlUnpause done. Result %s\n", string(res))
+	log.Printf("xlUnpause done. Result %s\n", string(stdoutStderr))
 	return nil
 }
 
@@ -1268,7 +1402,8 @@ func xlShutdown(domainName string, domainId int, force bool) error {
 	if err != nil {
 		log.Println("xl shutdown failed ", err)
 		log.Println("xl shutdown output ", string(stdoutStderr))
-		return err
+		return errors.New(fmt.Sprintf("xl shutdown failed: %s\n",
+			string(stdoutStderr)))
 	}
 	log.Printf("xl shutdown done\n")
 	return nil
@@ -1285,6 +1420,8 @@ func xlDestroy(domainName string, domainId int) error {
 	if err != nil {
 		log.Println("xl destroy failed ", err)
 		log.Println("xl destroy output ", string(stdoutStderr))
+		return errors.New(fmt.Sprintf("xl destroy failed: %s\n",
+			string(stdoutStderr)))
 		return err
 	}
 	log.Printf("xl destroy done\n")
