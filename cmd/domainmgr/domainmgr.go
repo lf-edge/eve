@@ -243,7 +243,9 @@ func findActiveFileLocation(ctx *domainContext, filename string) bool {
 func publishDomainStatus(ctx *domainContext, status *types.DomainStatus) {
 
 	key := status.Key()
-	log.Printf("publishDomainStatus(%s)\n", key)
+	if debug {
+		log.Printf("publishDomainStatus(%s)\n", key)
+	}
 	pub := ctx.pubDomainStatus
 	pub.Publish(key, status)
 }
@@ -251,7 +253,9 @@ func publishDomainStatus(ctx *domainContext, status *types.DomainStatus) {
 func unpublishDomainStatus(ctx *domainContext, status *types.DomainStatus) {
 
 	key := status.Key()
-	log.Printf("unpublishDomainStatus(%s)\n", key)
+	if debug {
+		log.Printf("unpublishDomainStatus(%s)\n", key)
+	}
 	pub := ctx.pubDomainStatus
 	st, _ := pub.Get(key)
 	if st == nil {
@@ -1073,24 +1077,36 @@ func handleModify(ctx *domainContext, key string,
 	status.PendingModify = true
 	publishDomainStatus(ctx, status)
 
-	if status.LastErr != "" {
-		log.Printf("handleModify(%v) existing error for %s\n",
-			config.UUIDandVersion, config.DisplayName)
-		status.PendingModify = false
-		publishDomainStatus(ctx, status)
-		return
-	}
 	changed := false
 	if config.Activate && !status.Activated {
+		if status.LastErr != "" {
+			log.Printf("handleModify(%v) existing error for %s\n",
+				config.UUIDandVersion, config.DisplayName)
+			status.PendingModify = false
+			publishDomainStatus(ctx, status)
+			return
+		}
 		status.VirtualizationMode = config.VirtualizationMode
 		status.EnableVnc = config.EnableVnc
 		doActivate(*config, status, ctx.assignableAdapters)
 		changed = true
-	} else if !config.Activate && status.Activated {
-		doInactivate(status, ctx.assignableAdapters)
-		status.VirtualizationMode = config.VirtualizationMode
-		status.EnableVnc = config.EnableVnc
-		changed = true
+	} else if !config.Activate {
+		if status.LastErr != "" {
+			log.Printf("handleModify(%v) clearing existing error for %s\n",
+				config.UUIDandVersion, config.DisplayName)
+			status.LastErr = ""
+			status.LastErrTime = time.Time{}
+			publishDomainStatus(ctx, status)
+			doInactivate(status, ctx.assignableAdapters)
+			status.VirtualizationMode = config.VirtualizationMode
+			status.EnableVnc = config.EnableVnc
+			changed = true
+		} else if status.Activated {
+			doInactivate(status, ctx.assignableAdapters)
+			status.VirtualizationMode = config.VirtualizationMode
+			status.EnableVnc = config.EnableVnc
+			changed = true
+		}
 	}
 	if changed {
 		// XXX could we also have changes in the IoBundle?
@@ -1117,10 +1133,7 @@ func handleModify(ctx *domainContext, key string,
 		publishDomainStatus(ctx, status)
 		return
 	}
-	// XXX dumping status to log
-	xlStatus(status.DomainName, status.DomainId)
 
-	status.PendingModify = true
 	publishDomainStatus(ctx, status)
 	// XXX Any work?
 	// XXX create tmp xen cfg and diff against existing xen cfg
@@ -1283,8 +1296,10 @@ func xlDomid(domainName string, domainId int) (int, error) {
 	// Avoid wrap since we are called periodically
 	stdoutStderr, err := exec.Command(cmd, args...).CombinedOutput()
 	if err != nil {
-		log.Println("xl domid failed ", err)
-		log.Println("xl domid output ", string(stdoutStderr))
+		if debug {
+			log.Println("xl domid failed ", err)
+			log.Println("xl domid output ", string(stdoutStderr))
+		}
 		return domainId, errors.New(fmt.Sprintf("xl domid failed: %s\n",
 			string(stdoutStderr)))
 	}
