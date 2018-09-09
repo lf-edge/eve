@@ -256,6 +256,14 @@ func Run() {
 	pubBaseOsVerifierConfig.ClearRestarted()
 	zedagentCtx.pubBaseOsVerifierConfig = pubBaseOsVerifierConfig
 
+	pubDatastoreConfig, err := pubsub.Publish(agentName,
+		types.DatastoreConfig{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	getconfigCtx.pubDatastoreConfig = pubDatastoreConfig
+	pubDatastoreConfig.ClearRestarted()
+
 	// Look for errors and status from zedrouter
 	subNetworkObjectStatus, err := pubsub.Subscribe("zedrouter",
 		types.NetworkObjectStatus{}, false, &zedagentCtx)

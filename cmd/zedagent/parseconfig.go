@@ -201,7 +201,7 @@ func parseBaseOsConfig(getconfigCtx *getconfigContext,
 					baseOs.BaseOsVersion, drive)
 				continue
 			}
-			ds := lookupDatastore(config, drive.Image.DsId)
+			ds := lookupDatastore(config.Datastores, drive.Image.DsId)
 			if ds == nil {
 				// XXX have to report to zedcloud by moving
 				// this check out of the parser
@@ -502,7 +502,7 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 					drive)
 				continue
 			}
-			ds := lookupDatastore(config, drive.Image.DsId)
+			ds := lookupDatastore(config.Datastores, drive.Image.DsId)
 			if ds == nil {
 				// XXX have to report to zedcloud by moving
 				// this check out of the parser
@@ -556,13 +556,64 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 	}
 }
 
-func lookupDatastore(config *zconfig.EdgeDevConfig, dsid string) *zconfig.DatastoreConfig {
-	for _, ds := range config.Datastores {
+func lookupDatastore(datastores []*zconfig.DatastoreConfig,
+	dsid string) *zconfig.DatastoreConfig {
+
+	for _, ds := range datastores {
 		if dsid == ds.Id {
 			return ds
 		}
 	}
 	return nil
+}
+
+var datastoreConfigPrevConfigHash []byte
+
+func parseDatastoreConfig(config *zconfig.EdgeDevConfig,
+	getconfigCtx *getconfigContext) {
+
+	stores := config.GetDatastores()
+	h := sha256.New()
+	for _, ds := range stores {
+		computeConfigElementSha(h, ds)
+	}
+	configHash := h.Sum(nil)
+	same := bytes.Equal(configHash, datastoreConfigPrevConfigHash)
+	datastoreConfigPrevConfigHash = configHash
+	if same {
+		if debug {
+			log.Printf("parseDatastoreConfig: sha is unchanged\n")
+		}
+		return
+	}
+	log.Printf("parseDatastoreConfig: Applying updated datastore config %v\n",
+		stores)
+	publishDatastoreConfig(getconfigCtx, stores)
+}
+
+func publishDatastoreConfig(ctx *getconfigContext,
+	cfgDatastores []*zconfig.DatastoreConfig) {
+
+	// Check for items to delete first
+	items := ctx.pubDatastoreConfig.GetAll()
+	for k, _ := range items {
+		ds := lookupDatastore(cfgDatastores, k)
+		if ds != nil {
+			continue
+		}
+		log.Printf("publishDatastoresConfig: deleting %s\n", k)
+		ctx.pubDatastoreConfig.Unpublish(k)
+	}
+	for _, ds := range cfgDatastores {
+		datastore := new(types.DatastoreConfig)
+		datastore.UUID, _ = uuid.FromString(ds.Id)
+		datastore.Fqdn = ds.Fqdn
+		datastore.Dpath = ds.Dpath
+		datastore.DsType = types.DsType(ds.DType)
+		datastore.ApiKey = ds.ApiKey
+		datastore.Password = ds.Password
+		ctx.pubDatastoreConfig.Publish(datastore.Key(), &datastore)
+	}
 }
 
 func parseStorageConfigList(config *zconfig.EdgeDevConfig, objType string,
@@ -579,7 +630,7 @@ func parseStorageConfigList(config *zconfig.EdgeDevConfig, objType string,
 				drive)
 			continue
 		}
-		ds := lookupDatastore(config, drive.Image.DsId)
+		ds := lookupDatastore(config.Datastores, drive.Image.DsId)
 		if ds == nil {
 			// XXX have to report to zedcloud by moving
 			// this check out of the parser
@@ -622,6 +673,7 @@ func parseStorageConfigList(config *zconfig.EdgeDevConfig, objType string,
 	}
 }
 
+// XXX duplicate for datastore
 func lookupNetworkId(id string, cfgNetworks []*zconfig.NetworkConfig) *zconfig.NetworkConfig {
 	for _, netEnt := range cfgNetworks {
 		if id == netEnt.Id {
