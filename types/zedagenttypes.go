@@ -191,31 +191,14 @@ const (
 	MetricItemState                         // Toggles on and off; count transitions
 )
 
-// Should match definition and values in storage.proto
-type DsType uint8
-
-const (
-	DsUnknown DsType = 0
-	DsHttp    DsType = 1
-	DsHttps   DsType = 2
-	DsS3      DsType = 3
-	DsSFTP    DsType = 4
-)
-
 type DatastoreConfig struct {
 	UUID     uuid.UUID
-	DsType   DsType
+	DsType   string
 	Fqdn     string
 	ApiKey   string
 	Password string
-	// depending on datastore types, it could be bucket or path
-	Dpath  string
-	Region string // XXX default to "us-west-2"
-}
-
-// XXX Anything we can report?
-type DatastoreStatus struct {
-	UUID uuid.UUID
+	Dpath    string // depending on DsType, it could be bucket or path
+	Region   string
 }
 
 func (config DatastoreConfig) Key() string {

@@ -6,6 +6,7 @@ package zedagent
 import (
 	"errors"
 	"fmt"
+	"github.com/satori/go.uuid"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
@@ -34,7 +35,7 @@ func lookupDownloaderConfig(ctx *zedagentContext, objType string,
 }
 
 func createDownloaderConfig(ctx *zedagentContext, objType string,
-	safename string, sc *types.StorageConfig) {
+	safename string, sc *types.StorageConfig, ds *types.DatastoreConfig) {
 
 	log.Printf("createDownloaderConfig(%s/%s)\n", objType, safename)
 
@@ -45,13 +46,13 @@ func createDownloaderConfig(ctx *zedagentContext, objType string,
 		log.Printf("createDownloaderConfig(%s) add\n", safename)
 		n := types.DownloaderConfig{
 			Safename:        safename,
-			DownloadURL:     sc.DownloadURL,
+			DownloadURL:     ds.Fqdn + "/" + ds.Dpath + "/" + sc.Name,
+			TransportMethod: ds.DsType,
+			ApiKey:          ds.ApiKey,
+			Password:        ds.Password,
+			Dpath:           ds.Dpath,
 			UseFreeUplinks:  false,
 			Size:            sc.Size,
-			TransportMethod: sc.TransportMethod,
-			Dpath:           sc.Dpath,
-			ApiKey:          sc.ApiKey,
-			Password:        sc.Password,
 			ImageSha256:     sc.ImageSha256,
 			RefCount:        1,
 		}
@@ -149,7 +150,7 @@ func checkStorageDownloadStatus(ctx *zedagentContext,
 
 		ss := &status[i]
 
-		safename := types.UrlToSafename(sc.DownloadURL, sc.ImageSha256)
+		safename := types.UrlToSafename(sc.Name, sc.ImageSha256)
 
 		log.Printf("checkStorageDownloadStatus %s, image status %v\n", safename, ss.State)
 		if ss.State == types.INSTALLED {
@@ -196,7 +197,18 @@ func checkStorageDownloadStatus(ctx *zedagentContext,
 
 		if !ss.HasDownloaderRef {
 			log.Printf("checkStorageDownloadStatus %s, !HasDownloaderRef\n", safename)
-			createDownloaderConfig(ctx, objType, safename, &sc)
+			dst, err := lookupDatastoreConfig(ctx, sc.DatastoreId,
+				sc.Name)
+			if err != nil {
+				ss.Error = fmt.Sprintf("%v", err)
+				ret.AllErrors = appendError(ret.AllErrors, "datastore",
+					ss.Error)
+				ss.ErrorTime = time.Now()
+				ret.ErrorTime = ss.ErrorTime
+				ret.Changed = true
+				continue
+			}
+			createDownloaderConfig(ctx, objType, safename, &sc, dst)
 			ss.HasDownloaderRef = true
 			ret.Changed = true
 		}
@@ -258,6 +270,28 @@ func checkStorageDownloadStatus(ctx *zedagentContext,
 	return ret
 }
 
+// Check for nil UUID (an indication the drive was missing in parseconfig)
+// and a missing datastore id.
+func lookupDatastoreConfig(ctx *zedagentContext,
+	datastoreId uuid.UUID, name string) (*types.DatastoreConfig, error) {
+
+	if datastoreId == nilUUID {
+		errStr := fmt.Sprintf("lookupDatastoreConfig(%s) for %s: No datastore ID",
+			datastoreId.String(), name)
+		log.Println(errStr)
+		return nil, errors.New(errStr)
+	}
+	cfg, err := ctx.subDatastoreConfig.Get(datastoreId.String())
+	if err != nil {
+		errStr := fmt.Sprintf("lookupDatastoreConfig(%s) for %s: %v",
+			datastoreId.String(), name, err)
+		log.Println(errStr)
+		return nil, errors.New(errStr)
+	}
+	dst := cast.CastDatastoreConfig(cfg)
+	return &dst, nil
+}
+
 func installDownloadedObjects(objType string, uuidStr string,
 	config []types.StorageConfig, status []types.StorageStatus) bool {
 
@@ -268,7 +302,7 @@ func installDownloadedObjects(objType string, uuidStr string,
 
 		ss := &status[i]
 
-		safename := types.UrlToSafename(sc.DownloadURL, sc.ImageSha256)
+		safename := types.UrlToSafename(sc.Name, sc.ImageSha256)
 
 		installDownloadedObject(objType, safename, sc, ss)
 

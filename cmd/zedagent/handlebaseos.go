@@ -21,7 +21,7 @@ func lookupBaseOsSafename(ctx *zedagentContext, safename string) *types.BaseOsCo
 	for _, c := range items {
 		config := cast.CastBaseOsConfig(c)
 		for _, sc := range config.StorageConfigList {
-			safename1 := types.UrlToSafename(sc.DownloadURL,
+			safename1 := types.UrlToSafename(sc.Name,
 				sc.ImageSha256)
 
 			// base os config contains the current image
@@ -212,12 +212,12 @@ func doBaseOsInstall(ctx *zedagentContext, uuidStr string,
 
 	for i, sc := range config.StorageConfigList {
 		ss := &status.StorageStatusList[i]
-		if ss.DownloadURL != sc.DownloadURL ||
+		if ss.Name != sc.Name ||
 			ss.ImageSha256 != sc.ImageSha256 {
 			// Report to zedcloud
 			errString := fmt.Sprintf("%s, for %s, Storage config mismatch:\n\t%s\n\t%s\n\t%s\n\t%s\n\n", uuidStr,
 				config.BaseOsVersion,
-				sc.DownloadURL, ss.DownloadURL,
+				sc.Name, ss.Name,
 				sc.ImageSha256, ss.ImageSha256)
 			log.Println(errString)
 			status.Error = errString
@@ -455,7 +455,7 @@ func doBaseOsUninstall(ctx *zedagentContext, uuidStr string,
 	for i, _ := range status.StorageStatusList {
 
 		ss := &status.StorageStatusList[i]
-		safename := types.UrlToSafename(ss.DownloadURL, ss.ImageSha256)
+		safename := types.UrlToSafename(ss.Name, ss.ImageSha256)
 		// Decrease refcount if we had increased it
 		if ss.HasDownloaderRef {
 			log.Printf("doBaseOsUninstall(%s) for %s, HasDownloaderRef %s\n",

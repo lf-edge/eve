@@ -70,7 +70,7 @@ func createVerifierConfig(ctx *zedagentContext, objType string, safename string,
 		log.Printf("createVerifierConfig(%s) add\n", safename)
 		n := types.VerifyImageConfig{
 			Safename:         safename,
-			DownloadURL:      sc.DownloadURL,
+			Name:             sc.Name,
 			ImageSha256:      sc.ImageSha256,
 			CertificateChain: sc.CertificateChain,
 			ImageSignature:   sc.ImageSignature,
@@ -194,10 +194,10 @@ func checkStorageVerifierStatus(ctx *zedagentContext, objType string, uuidStr st
 	for i, sc := range config {
 		ss := &status[i]
 
-		safename := types.UrlToSafename(sc.DownloadURL, sc.ImageSha256)
+		safename := types.UrlToSafename(sc.Name, sc.ImageSha256)
 
 		log.Printf("checkStorageVerifierStatus: url %s stat %v\n",
-			sc.DownloadURL, ss.State)
+			sc.Name, ss.State)
 
 		if ss.State == types.INSTALLED {
 			ret.MinState = ss.State

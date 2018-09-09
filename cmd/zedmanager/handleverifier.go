@@ -68,7 +68,7 @@ func MaybeAddVerifyImageConfig(ctx *zedmanagerContext, safename string,
 			safename)
 		n := types.VerifyImageConfig{
 			Safename:         safename,
-			DownloadURL:      sc.DownloadURL,
+			Name:             sc.Name,
 			ImageSha256:      sc.ImageSha256,
 			RefCount:         1,
 			CertificateChain: sc.CertificateChain,

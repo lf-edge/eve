@@ -92,27 +92,27 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 			i++
 		case "kernel":
 			if dc.Kernel != "" {
-				log.Printf("Overriding kernel %s with URL %s location %s\n",
-					dc.Kernel, sc.DownloadURL, location)
+				log.Printf("Overriding kernel %s with location %s\n",
+					dc.Kernel, location)
 			}
 			dc.Kernel = location
 		case "ramdisk":
 			if dc.Ramdisk != "" {
-				log.Printf("Overriding ramdisk %s with URL %s location %s\n",
-					dc.Ramdisk, sc.DownloadURL, location)
+				log.Printf("Overriding ramdisk %s with location %s\n",
+					dc.Ramdisk, location)
 			}
 			dc.Ramdisk = location
 		case "device_tree":
 			if dc.DeviceTree != "" {
-				log.Printf("Overriding device_tree %s with URL %s location %s\n",
-					dc.DeviceTree, sc.DownloadURL, location)
+				log.Printf("Overriding device_tree %s with %s location %s\n",
+					dc.DeviceTree, location)
 			}
 			dc.DeviceTree = location
 		default:
-			err := errors.New(fmt.Sprintf(
-				"Unknown target %s for %s", sc.Target, sc.DownloadURL))
-			log.Printf("Got error %v for %s\n", err, displayName)
-			return err
+			errStr := fmt.Sprintf("Unknown target %s for %s",
+				sc.Target, displayName)
+			log.Println(errStr)
+			return errors.New(errStr)
 		}
 	}
 	if ns != nil {

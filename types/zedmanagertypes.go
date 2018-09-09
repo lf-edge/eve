@@ -135,15 +135,12 @@ type EIDOverlayConfig struct {
 // - "ramdisk"
 // - "device_tree"
 type StorageConfig struct {
-	DownloadURL      string
+	DatastoreId      uuid.UUID
+	Name             string   // XXX Do depend on URL for clobber avoidance?
 	Size             uint64   // In bytes
-	TransportMethod  string   // Download method S3/HTTP/SFTP etc.
 	CertificateChain []string //name of intermediate certificates
 	ImageSignature   []byte   //signature of image
 	SignatureKey     string   //certificate containing public key
-	ApiKey           string
-	Password         string
-	Dpath            string
 
 	ImageSha256 string // sha256 of immutable image
 	ReadOnly    bool
@@ -163,7 +160,7 @@ func RoundupToKB(b uint64) uint64 {
 }
 
 type StorageStatus struct {
-	DownloadURL        string
+	Name               string
 	ImageSha256        string // sha256 of immutable image
 	ReadOnly           bool
 	Preserve           bool

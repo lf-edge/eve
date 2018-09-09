@@ -802,7 +802,7 @@ func doCurl(url string, ifname string, maxsize uint64, destFilename string) erro
 }
 
 func doS3(ctx *downloaderContext, syncOp zedUpload.SyncOpType,
-	apiKey string, password string, dpath string, maxsize uint64,
+	apiKey string, password string, dpath string, region string, maxsize uint64,
 	ipSrc net.IP, filename string, locFilename string) error {
 	auth := &zedUpload.AuthInput{
 		AuthType: "s3",
@@ -811,8 +811,6 @@ func doS3(ctx *downloaderContext, syncOp zedUpload.SyncOpType,
 	}
 
 	trType := zedUpload.SyncAwsTr
-	// XXX:FIXME , will come as part of data store
-	region := "us-west-2"
 
 	// create Endpoint
 	dEndPoint, err := ctx.dCtx.NewSyncerDest(trType, region, dpath, auth)
@@ -963,7 +961,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		switch config.TransportMethod {
 		case zconfig.DsType_DsS3.String():
 			err = doS3(ctx, syncOp, config.ApiKey,
-				config.Password, config.Dpath,
+				config.Password, config.Dpath, config.Region,
 				config.Size, ipSrc, filename, locFilename)
 			if err != nil {
 				log.Printf("Source IP %s failed: %s\n",

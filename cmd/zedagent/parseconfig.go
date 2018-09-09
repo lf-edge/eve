@@ -76,7 +76,7 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 		// Look for timers and other settings in configItems
 		parseConfigItems(config, getconfigCtx)
 		parseDatastoreConfig(config, getconfigCtx)
-		
+
 		// if no baseOs config write, consider
 		// picking up application image config
 
@@ -610,9 +610,11 @@ func publishDatastoreConfig(ctx *getconfigContext,
 		datastore.UUID, _ = uuid.FromString(ds.Id)
 		datastore.Fqdn = ds.Fqdn
 		datastore.Dpath = ds.Dpath
-		datastore.DsType = types.DsType(ds.DType)
+		datastore.DsType = ds.DType.String()
 		datastore.ApiKey = ds.ApiKey
 		datastore.Password = ds.Password
+		// XXX add to device API to avoid hardcoding "us-west-2"
+		datastore.Region = "us-west-2"
 		ctx.pubDatastoreConfig.Publish(datastore.Key(), &datastore)
 	}
 }
@@ -631,19 +633,8 @@ func parseStorageConfigList(config *zconfig.EdgeDevConfig, objType string,
 				drive)
 			continue
 		}
-		ds := lookupDatastore(config.Datastores, drive.Image.DsId)
-		if ds == nil {
-			// XXX have to report to zedcloud by moving
-			// this check out of the parser
-			log.Printf("Did not find datastore %v for drive %s\n",
-				drive.Image.DsId, drive.Image.Sha256)
-			continue
-		}
-		image.DownloadURL = ds.Fqdn + "/" + ds.Dpath + "/" + drive.Image.Name
-		image.TransportMethod = ds.DType.String()
-		image.ApiKey = ds.ApiKey
-		image.Password = ds.Password
-		image.Dpath = ds.Dpath
+		id, _ := uuid.FromString(drive.Image.DsId)
+		image.DatastoreId = id
 
 		image.Format = strings.ToLower(drive.Image.Iformat.String())
 		image.Size = uint64(drive.Image.SizeBytes)
@@ -1393,33 +1384,35 @@ func getCertObjects(uuidAndVersion types.UUIDandVersion,
 	return config
 }
 
+// XXX need to redo with ds := lookupDatastore(config.Datastores, drive.Image.DsId)??
 func getCertObjConfig(config *types.CertObjConfig,
 	image types.StorageConfig, certUrl string, idx int) {
+	/* XXX
+		if certUrl == "" {
+			return
+		}
 
-	if certUrl == "" {
-		return
-	}
+		// XXX replace -images with -certs in dpath
+		dpath := strings.Replace(image.Dpath, "-images", "-certs", 1)
 
-	// XXX replace -images with -certs in dpath
-	dpath := strings.Replace(image.Dpath, "-images", "-certs", 1)
+		// XXX is the dpath for the image?
+		log.Printf("getCertObjConfig url %s ts %s dpath %s to %s\n", certUrl,
+			image.TransportMethod, image.Dpath, dpath)
 
-	// XXX is the dpath for the image?
-	log.Printf("getCertObjConfig url %s ts %s dpath %s to %s\n", certUrl,
-		image.TransportMethod, image.Dpath, dpath)
-
-	// XXX the sha for the cert should be set
-	// XXX:FIXME hardcoding Size as 100KB
-	var drive = &types.StorageConfig{
-		DownloadURL:     certUrl,
-		Size:            100 * 1024,
-		TransportMethod: image.TransportMethod,
-		Dpath:           dpath,
-		ApiKey:          image.ApiKey,
-		Password:        image.Password,
-		ImageSha256:     "",
-		FinalObjDir:     certificateDirname,
-	}
-	config.StorageConfigList[idx] = *drive
+		// XXX the sha for the cert should be set
+		// XXX:FIXME hardcoding Size as 100KB
+		var drive = &types.StorageConfig{
+			DownloadURL:     certUrl,
+			Size:            100 * 1024,
+			TransportMethod: image.TransportMethod,
+			Dpath:           dpath,
+			ApiKey:          image.ApiKey,
+			Password:        image.Password,
+			ImageSha256:     "",
+			FinalObjDir:     certificateDirname,
+		}
+		config.StorageConfigList[idx] = *drive
+	XXX */
 }
 
 func validateBaseOsConfig(baseOsList []*types.BaseOsConfig) bool {

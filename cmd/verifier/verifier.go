@@ -577,7 +577,7 @@ func handleCreate(ctx *verifierContext, objType string,
 	config *types.VerifyImageConfig) {
 
 	log.Printf("handleCreate(%v) objType %s for %s\n",
-		config.Safename, objType, config.DownloadURL)
+		config.Safename, objType, config.Name)
 	if objType == "" {
 		log.Fatalf("handleCreate: No ObjType for %s\n",
 			config.Safename)
@@ -595,14 +595,14 @@ func handleCreate(ctx *verifierContext, objType string,
 
 	ok, size := markObjectAsVerifying(ctx, config, &status)
 	if !ok {
-		log.Printf("handleCreate fail for %s\n", config.DownloadURL)
+		log.Printf("handleCreate fail for %s\n", config.Name)
 		return
 	}
 	status.Size = size
 	publishVerifyImageStatus(ctx, &status)
 
 	if !verifyObjectSha(ctx, config, &status) {
-		log.Printf("handleCreate fail for %s\n", config.DownloadURL)
+		log.Printf("handleCreate fail for %s\n", config.Name)
 		return
 	}
 	publishVerifyImageStatus(ctx, &status)
@@ -611,7 +611,7 @@ func handleCreate(ctx *verifierContext, objType string,
 	status.PendingAdd = false
 	status.State = types.DELIVERED
 	publishVerifyImageStatus(ctx, &status)
-	log.Printf("handleCreate done for %s\n", config.DownloadURL)
+	log.Printf("handleCreate done for %s\n", config.Name)
 }
 
 // Returns ok, size of object
@@ -644,7 +644,7 @@ func markObjectAsVerifying(ctx *verifierContext,
 		log.Printf("markObjectAsVerifying failed %s\n", err)
 		cerr := fmt.Sprintf("%v", err)
 		updateVerifyErrStatus(ctx, status, cerr)
-		log.Printf("handleCreate failed for %s\n", config.DownloadURL)
+		log.Printf("handleCreate failed for %s\n", config.Name)
 		return false, 0
 	}
 
@@ -690,14 +690,14 @@ func verifyObjectSha(ctx *verifierContext, config *types.VerifyImageConfig,
 	verifierFilename := verifierDirname + "/" + config.Safename
 
 	log.Printf("Verifying URL %s file %s\n",
-		config.DownloadURL, verifierFilename)
+		config.Name, verifierFilename)
 
 	f, err := os.Open(verifierFilename)
 	if err != nil {
 		cerr := fmt.Sprintf("%v", err)
 		updateVerifyErrStatus(ctx, status, cerr)
 		log.Printf("verifyObjectSha: %s failed %s\n",
-			config.DownloadURL, cerr)
+			config.Name, cerr)
 		return false
 	}
 	defer f.Close()
@@ -709,7 +709,7 @@ func verifyObjectSha(ctx *verifierContext, config *types.VerifyImageConfig,
 		cerr := fmt.Sprintf("%v", err)
 		updateVerifyErrStatus(ctx, status, cerr)
 		log.Printf("verifyObjectSha %s failed %s\n",
-			config.DownloadURL, cerr)
+			config.Name, cerr)
 		return false
 	}
 
@@ -723,16 +723,16 @@ func verifyObjectSha(ctx *verifierContext, config *types.VerifyImageConfig,
 		status.PendingAdd = false
 		updateVerifyErrStatus(ctx, status, cerr)
 		log.Printf("verifyObjectSha %s failed %s\n",
-			config.DownloadURL, cerr)
+			config.Name, cerr)
 		return false
 	}
 
-	log.Printf("Sha validation successful for %s\n", config.DownloadURL)
+	log.Printf("Sha validation successful for %s\n", config.Name)
 
 	if cerr := verifyObjectShaSignature(status, config, imageHash); cerr != "" {
 		updateVerifyErrStatus(ctx, status, cerr)
 		log.Printf("Signature validation failed for %s, %s\n",
-			config.DownloadURL, cerr)
+			config.Name, cerr)
 		return false
 	}
 	return true
@@ -747,12 +747,12 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 	if (config.ImageSignature == nil) ||
 		(len(config.ImageSignature) == 0) {
 		log.Printf("No signature to verify for %s\n",
-			config.DownloadURL)
+			config.Name)
 		return ""
 	}
 
 	log.Printf("Validating %s using cert %s sha %s\n",
-		config.DownloadURL, config.SignatureKey,
+		config.Name, config.SignatureKey,
 		config.ImageSha256)
 
 	//Read the server certificate
@@ -828,7 +828,7 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 		return cerr
 	}
 
-	log.Printf("certificate options verified for %s\n", config.DownloadURL)
+	log.Printf("certificate options verified for %s\n", config.Name)
 
 	//Read the signature from config file...
 	imgSig := config.ImageSignature
@@ -842,7 +842,7 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 			return cerr
 		}
 		log.Printf("VerifyPKCS1v15 successful for %s\n",
-			config.DownloadURL)
+			config.Name)
 	case *ecdsa.PublicKey:
 		log.Printf("pub is of type ecdsa: ", pub)
 		imgSignature, err := base64.StdEncoding.DecodeString(string(imgSig))
@@ -867,7 +867,7 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 			return cerr
 		}
 		log.Printf("ecdsa Verify successful for %s\n",
-			config.DownloadURL)
+			config.Name)
 	default:
 		cerr := fmt.Sprintf("unknown type of public key")
 		return cerr
@@ -946,7 +946,7 @@ func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 	changed := false
 
 	log.Printf("handleModify(%v) objType %s for %s\n",
-		status.Safename, status.ObjType, config.DownloadURL)
+		status.Safename, status.ObjType, config.Name)
 
 	if status.ObjType == "" {
 		log.Fatalf("handleModify: No ObjType for %s\n",
@@ -956,7 +956,7 @@ func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 	// Always update RefCount
 	if status.RefCount != config.RefCount {
 		log.Printf("handleModify RefCount change %s from %d to %d\n",
-			config.DownloadURL, status.RefCount, config.RefCount)
+			config.Name, status.RefCount, config.RefCount)
 		status.RefCount = config.RefCount
 		changed = true
 	}
@@ -969,7 +969,7 @@ func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 		status.PendingModify = false
 		status.State = 0 // XXX INITIAL implies failure
 		publishVerifyImageStatus(ctx, status)
-		log.Printf("handleModify done for %s\n", config.DownloadURL)
+		log.Printf("handleModify done for %s\n", config.Name)
 		return
 	}
 
@@ -980,7 +980,7 @@ func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 			publishVerifyImageStatus(ctx, status)
 		}
 		log.Printf("handleModify: no (other) change for %s\n",
-			config.DownloadURL)
+			config.Name)
 		return
 	}
 
@@ -990,7 +990,7 @@ func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 	handleCreate(ctx, status.ObjType, config)
 	status.PendingModify = false
 	publishVerifyImageStatus(ctx, status)
-	log.Printf("handleModify done for %s\n", config.DownloadURL)
+	log.Printf("handleModify done for %s\n", config.Name)
 }
 
 func handleDelete(ctx *verifierContext, status *types.VerifyImageStatus) {

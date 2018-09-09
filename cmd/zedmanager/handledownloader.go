@@ -10,7 +10,7 @@ import (
 )
 
 func AddOrRefcountDownloaderConfig(ctx *zedmanagerContext, safename string,
-	sc *types.StorageConfig) {
+	sc *types.StorageConfig, ds *types.DatastoreConfig) {
 
 	log.Printf("AddOrRefcountDownloaderConfig for %s\n", safename)
 
@@ -27,13 +27,14 @@ func AddOrRefcountDownloaderConfig(ctx *zedmanagerContext, safename string,
 		}
 		n := types.DownloaderConfig{
 			Safename:        safename,
-			DownloadURL:     sc.DownloadURL,
+			DownloadURL:     ds.Fqdn + "/" + ds.Dpath + "/" + sc.Name,
+			TransportMethod: ds.DsType,
+			ApiKey:          ds.ApiKey,
+			Password:        ds.Password,
+			Dpath:           ds.Dpath,
+			Region:          ds.Region,
 			UseFreeUplinks:  true,
 			Size:            sc.Size,
-			TransportMethod: sc.TransportMethod,
-			Dpath:           sc.Dpath,
-			ApiKey:          sc.ApiKey,
-			Password:        sc.Password,
 			ImageSha256:     sc.ImageSha256,
 			RefCount:        1,
 		}

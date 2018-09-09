@@ -97,6 +97,7 @@ type zedagentContext struct {
 	pubCertObjStatus         *pubsub.Publication
 	TriggerDeviceInfo        bool
 	subBaseOsConfig          *pubsub.Subscription
+	subDatastoreConfig       *pubsub.Subscription
 	pubBaseOsStatus          *pubsub.Publication
 	pubBaseOsDownloadConfig  *pubsub.Publication
 	subBaseOsDownloadStatus  *pubsub.Subscription
@@ -330,6 +331,17 @@ func Run() {
 	zedagentCtx.subBaseOsConfig = subBaseOsConfig
 	subBaseOsConfig.Activate()
 
+	// Look for DatastoreConfig from ourselves!
+	subDatastoreConfig, err := pubsub.Subscribe("zedagent",
+		types.DatastoreConfig{}, false, &zedagentCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subDatastoreConfig.ModifyHandler = handleDatastoreConfigModify
+	subDatastoreConfig.DeleteHandler = handleDatastoreConfigDelete
+	zedagentCtx.subDatastoreConfig = subDatastoreConfig
+	subDatastoreConfig.Activate()
+
 	// Look for DownloaderStatus from downloader
 	subBaseOsDownloadStatus, err := pubsub.SubscribeScope("downloader",
 		baseOsObj, types.DownloaderStatus{}, false, &zedagentCtx)
@@ -522,6 +534,9 @@ func Run() {
 
 		case change := <-subBaseOsConfig.C:
 			subBaseOsConfig.ProcessChange(change)
+
+		case change := <-subDatastoreConfig.C:
+			subDatastoreConfig.ProcessChange(change)
 
 		case change := <-subBaseOsDownloadStatus.C:
 			subBaseOsDownloadStatus.ProcessChange(change)
@@ -794,7 +809,7 @@ func handleBaseOsCreate(ctxArg interface{}, key string,
 
 	for i, sc := range config.StorageConfigList {
 		ss := &status.StorageStatusList[i]
-		ss.DownloadURL = sc.DownloadURL
+		ss.Name = sc.Name
 		ss.ImageSha256 = sc.ImageSha256
 		ss.Target = sc.Target
 	}
@@ -906,7 +921,7 @@ func handleCertObjCreate(ctx *zedagentContext, key string, config *types.CertObj
 
 	for i, sc := range config.StorageConfigList {
 		ss := &status.StorageStatusList[i]
-		ss.DownloadURL = sc.DownloadURL
+		ss.Name = sc.Name
 		ss.ImageSha256 = sc.ImageSha256
 	}
 
@@ -985,6 +1000,17 @@ func handleVerifierStatusDelete(ctxArg interface{}, key string,
 
 	log.Printf("handleVeriferStatusDelete for %s\n", key)
 	// Nothing to do
+}
+
+func handleDatastoreConfigModify(ctxArg interface{}, key string,
+	configArg interface{}) {
+
+	// XXX empty since we look at collection when we need it
+}
+
+func handleDatastoreConfigDelete(ctxArg interface{}, key string,
+	configArg interface{}) {
+	// XXX empty since we look at collection when we need it
 }
 
 func appendError(allErrors string, prefix string, lasterr string) string {

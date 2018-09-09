@@ -50,6 +50,7 @@ type zedmanagerContext struct {
 	subAppImgDownloadStatus *pubsub.Subscription
 	pubAppImgVerifierConfig *pubsub.Publication
 	subAppImgVerifierStatus *pubsub.Subscription
+	subDatastoreConfig      *pubsub.Subscription
 }
 
 var deviceNetworkStatus types.DeviceNetworkStatus
@@ -139,6 +140,15 @@ func Run() {
 	subAppInstanceConfig.RestartHandler = handleConfigRestart
 	ctx.subAppInstanceConfig = subAppInstanceConfig
 	subAppInstanceConfig.Activate()
+
+	// Look for DatastoreConfig from zedagent
+	// No handlers since we look at collection when we need to
+	subDatastoreConfig, err := pubsub.Subscribe("zedagent",
+		types.DatastoreConfig{}, true, &ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subDatastoreConfig = subDatastoreConfig
 
 	// Get AppNetworkStatus from zedrouter
 	subAppNetworkStatus, err := pubsub.Subscribe("zedrouter",
@@ -424,7 +434,7 @@ func handleCreate(ctx *zedmanagerContext, key string,
 		len(config.StorageConfigList))
 	for i, sc := range config.StorageConfigList {
 		ss := &status.StorageStatusList[i]
-		ss.DownloadURL = sc.DownloadURL
+		ss.Name = sc.Name
 		ss.ImageSha256 = sc.ImageSha256
 		ss.ReadOnly = sc.ReadOnly
 		ss.Preserve = sc.Preserve
