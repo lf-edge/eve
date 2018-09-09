@@ -22,7 +22,6 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"reflect"
 	"strings"
 	"syscall"
 	"time"
@@ -226,6 +225,7 @@ func XXXmisc() {
 }
  XXX */
 
+// XXX move/remove
 // XXX should work on BaseOsStatus once PartitionLabel moves to BaseOsStatus
 // Returns true if there is a failed ugrade in the config
 func assignBaseOsPartition(getconfigCtx *getconfigContext,
@@ -1249,18 +1249,6 @@ func publishAppInstanceConfig(getconfigCtx *getconfigContext,
 	pub.Publish(key, config)
 }
 
-func unpublishAppInstanceConfig(getconfigCtx *getconfigContext, key string) {
-
-	log.Printf("Removing app instance UUID %s\n", key)
-	pub := getconfigCtx.pubAppInstanceConfig
-	c, _ := pub.Get(key)
-	if c == nil {
-		log.Printf("unpublishAppInstanceConfig(%s) not found\n", key)
-		return
-	}
-	pub.Unpublish(key)
-}
-
 func publishBaseOsConfig(getconfigCtx *getconfigContext,
 	status *types.BaseOsConfig) {
 
@@ -1270,19 +1258,6 @@ func publishBaseOsConfig(getconfigCtx *getconfigContext,
 	pub := getconfigCtx.pubBaseOsConfig
 	pub.Publish(key, status)
 	publishDeviceInfo = true
-}
-
-func unpublishBaseOsConfig(getconfigCtx *getconfigContext, uuidStr string) {
-
-	key := uuidStr
-	log.Printf("unpublishBaseOsConfig UUID %s\n", key)
-	pub := getconfigCtx.pubBaseOsConfig
-	c, _ := pub.Get(key)
-	if c == nil {
-		log.Printf("unpublishBaseOsConfig(%s) not found\n", key)
-		return
-	}
-	pub.Unpublish(key)
 }
 
 func getCertObjects(uuidAndVersion types.UUIDandVersion,
@@ -1355,6 +1330,7 @@ func getCertObjConfig(config *types.CertObjConfig,
 	config.StorageConfigList[idx] = *drive
 }
 
+// XXX move/remove
 // XXX should go away. Some checks belong in baseos.go
 func validateBaseOsConfig(baseOsList []*types.BaseOsConfig) bool {
 
@@ -1384,47 +1360,6 @@ func validateBaseOsConfig(baseOsList []*types.BaseOsConfig) bool {
 		}
 	}
 	return true
-}
-
-// XXX Remove
-// Returns the number of BaseOsConfig that are new or modified
-// XXX not useful for caller if we want to catch failed updates up front.
-// XXX should we initially populate BaseOsStyatus with what we find in
-// the partitions? Makes the checks simpler.
-func createBaseOsConfig(getconfigCtx *getconfigContext, baseOsList []*types.BaseOsConfig, certList []*types.CertObjConfig) int {
-
-	writeCount := 0
-	for idx, baseOs := range baseOsList {
-
-		if baseOs == nil {
-			continue
-		}
-		uuidStr := baseOs.Key()
-		curBaseOs := lookupBaseOsConfigPub(getconfigCtx, uuidStr)
-		if curBaseOs == nil {
-			log.Printf("createBaseOsConfig new %s %s\n",
-				uuidStr, baseOs.BaseOsVersion)
-			publishBaseOsConfig(getconfigCtx, baseOs)
-			if certList[idx] != nil {
-				publishCertObjConfig(getconfigCtx, certList[idx],
-					uuidStr)
-			}
-			writeCount++
-		} else {
-			log.Printf("createBaseOsConfig update %s %s\n",
-				uuidStr, baseOs.BaseOsVersion)
-			// changed content
-			if !reflect.DeepEqual(curBaseOs, baseOs) {
-				publishBaseOsConfig(getconfigCtx, baseOs)
-				if certList[idx] != nil {
-					publishCertObjConfig(getconfigCtx,
-						certList[idx], uuidStr)
-				}
-				writeCount++
-			}
-		}
-	}
-	return writeCount
 }
 
 func publishCertObjConfig(getconfigCtx *getconfigContext,
