@@ -12,6 +12,7 @@ import (
 	"github.com/zededa/go-provision/types"
 	"log"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -44,13 +45,23 @@ func createDownloaderConfig(ctx *zedagentContext, objType string,
 		publishDownloaderConfig(ctx, objType, m)
 	} else {
 		log.Printf("createDownloaderConfig(%s) add\n", safename)
+		// XXX rewrite Dpath for certs. Can't zedcloud use
+		// a separate datastore for the certs to remove this hack
+		dpath := ds.Dpath
+		if objType == certObj {
+			// Replacing -images with -certs in dpath
+			dpath := strings.Replace(dpath, "-images", "-certs", 1)
+			log.Printf("createDownloaderConfig fqdn %s ts %s dpath %s to %s\n",
+				ds.Fqdn, ds.DsType, ds.Dpath, dpath)
+		}
+
 		n := types.DownloaderConfig{
 			Safename:        safename,
-			DownloadURL:     ds.Fqdn + "/" + ds.Dpath + "/" + sc.Name,
+			DownloadURL:     ds.Fqdn + "/" + dpath + "/" + sc.Name,
 			TransportMethod: ds.DsType,
 			ApiKey:          ds.ApiKey,
 			Password:        ds.Password,
-			Dpath:           ds.Dpath,
+			Dpath:           dpath,
 			UseFreeUplinks:  false,
 			Size:            sc.Size,
 			ImageSha256:     sc.ImageSha256,

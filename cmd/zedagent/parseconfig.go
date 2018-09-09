@@ -544,15 +544,12 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 		certInstance := getCertObjects(appInstance.UUIDandVersion,
 			appInstance.ConfigSha256, appInstance.StorageConfigList)
 
-		if validateAppInstanceConfig(appInstance) == true {
-
-			// write to zedmanager config directory
-			uuidStr := cfgApp.Uuidandversion.Uuid
-			publishAppInstanceConfig(getconfigCtx, appInstance)
-			if certInstance != nil {
-				publishCertObjConfig(getconfigCtx, certInstance,
-					uuidStr)
-			}
+		// write to zedmanager config directory
+		uuidStr := cfgApp.Uuidandversion.Uuid
+		publishAppInstanceConfig(getconfigCtx, appInstance)
+		if certInstance != nil {
+			publishCertObjConfig(getconfigCtx, certInstance,
+				uuidStr)
 		}
 	}
 }
@@ -627,39 +624,35 @@ func parseStorageConfigList(config *zconfig.EdgeDevConfig, objType string,
 	for _, drive := range drives {
 		image := new(types.StorageConfig)
 		if drive.Image == nil {
-			// XXX have to report to zedcloud by moving
-			// this check out of the parser
 			log.Printf("No drive.Image for drive %v\n",
 				drive)
-			continue
-		}
-		id, _ := uuid.FromString(drive.Image.DsId)
-		image.DatastoreId = id
+			// Pass on for error reporting
+			image.DatastoreId = nilUUID
+		} else {
+			id, _ := uuid.FromString(drive.Image.DsId)
+			image.DatastoreId = id
+			image.Name = drive.Image.Name
 
-		image.Format = strings.ToLower(drive.Image.Iformat.String())
-		image.Size = uint64(drive.Image.SizeBytes)
+			image.Format = strings.ToLower(drive.Image.Iformat.String())
+			image.Size = uint64(drive.Image.SizeBytes)
+			image.ImageSignature = drive.Image.Siginfo.Signature
+			image.SignatureKey = drive.Image.Siginfo.Signercerturl
+
+			// XXX:FIXME certificates can be many
+			// this list, currently contains the certUrls
+			// should be the sha/uuid of cert filenames
+			// as proper DataStore Entries
+
+			if drive.Image.Siginfo.Intercertsurl != "" {
+				image.CertificateChain = make([]string, 1)
+				image.CertificateChain[0] = drive.Image.Siginfo.Intercertsurl
+			}
+		}
 		image.ReadOnly = drive.Readonly
 		image.Preserve = drive.Preserve
 		image.Target = strings.ToLower(drive.Target.String())
 		image.Devtype = strings.ToLower(drive.Drvtype.String())
-		image.ImageSignature = drive.Image.Siginfo.Signature
 		image.ImageSha256 = drive.Image.Sha256
-
-		// copy the certificates
-		if drive.Image.Siginfo.Signercerturl != "" {
-			image.SignatureKey = drive.Image.Siginfo.Signercerturl
-		}
-
-		// XXX:FIXME certificates can be many
-		// this list, currently contains the certUrls
-		// should be the sha/uuid of cert filenames
-		// as proper DataStore Entries
-
-		if drive.Image.Siginfo.Intercertsurl != "" {
-			image.CertificateChain = make([]string, 1)
-			image.CertificateChain[0] = drive.Image.Siginfo.Intercertsurl
-		}
-
 		storageList[idx] = *image
 		idx++
 	}
@@ -1367,7 +1360,6 @@ func getCertObjects(uuidAndVersion types.UUIDandVersion,
 
 	cidx = 0
 	for _, image := range drives {
-
 		if image.SignatureKey != "" {
 			getCertObjConfig(config, image, image.SignatureKey, cidx)
 			cidx++
@@ -1384,35 +1376,23 @@ func getCertObjects(uuidAndVersion types.UUIDandVersion,
 	return config
 }
 
-// XXX need to redo with ds := lookupDatastore(config.Datastores, drive.Image.DsId)??
 func getCertObjConfig(config *types.CertObjConfig,
 	image types.StorageConfig, certUrl string, idx int) {
-	/* XXX
-		if certUrl == "" {
-			return
-		}
 
-		// XXX replace -images with -certs in dpath
-		dpath := strings.Replace(image.Dpath, "-images", "-certs", 1)
+	if certUrl == "" {
+		return
+	}
 
-		// XXX is the dpath for the image?
-		log.Printf("getCertObjConfig url %s ts %s dpath %s to %s\n", certUrl,
-			image.TransportMethod, image.Dpath, dpath)
-
-		// XXX the sha for the cert should be set
-		// XXX:FIXME hardcoding Size as 100KB
-		var drive = &types.StorageConfig{
-			DownloadURL:     certUrl,
-			Size:            100 * 1024,
-			TransportMethod: image.TransportMethod,
-			Dpath:           dpath,
-			ApiKey:          image.ApiKey,
-			Password:        image.Password,
-			ImageSha256:     "",
-			FinalObjDir:     certificateDirname,
-		}
-		config.StorageConfigList[idx] = *drive
-	XXX */
+	// XXX the sha for the cert should be set
+	// XXX:FIXME hardcoding Size as 100KB
+	var drive = &types.StorageConfig{
+		DatastoreId: image.DatastoreId,
+		Name:        certUrl, // XXX FIXME use??
+		Size:        100 * 1024,
+		ImageSha256: "",
+		FinalObjDir: certificateDirname,
+	}
+	config.StorageConfigList[idx] = *drive
 }
 
 func validateBaseOsConfig(baseOsList []*types.BaseOsConfig) bool {
@@ -1483,10 +1463,6 @@ func createBaseOsConfig(getconfigCtx *getconfigContext, baseOsList []*types.Base
 		}
 	}
 	return writeCount
-}
-
-func validateAppInstanceConfig(appInstance types.AppInstanceConfig) bool {
-	return true
 }
 
 func publishCertObjConfig(getconfigCtx *getconfigContext,
