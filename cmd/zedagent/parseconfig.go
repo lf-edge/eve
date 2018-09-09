@@ -75,7 +75,8 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 	if validateConfig(config) {
 		// Look for timers and other settings in configItems
 		parseConfigItems(config, getconfigCtx)
-
+		parseDatastoreConfig(config, getconfigCtx)
+		
 		// if no baseOs config write, consider
 		// picking up application image config
 
