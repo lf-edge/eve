@@ -76,14 +76,11 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 	parseConfigItems(config, getconfigCtx)
 	parseDatastoreConfig(config, getconfigCtx)
 
-	// if no baseOs config write, consider
-	// picking up application image config
+	parseBaseOsConfig(getconfigCtx, config)
+	parseNetworkObjectConfig(config, getconfigCtx)
+	parseNetworkServiceConfig(config, getconfigCtx)
+	parseAppInstanceConfig(config, getconfigCtx)
 
-	if parseBaseOsConfig(getconfigCtx, config) == false || usingSaved {
-		parseNetworkObjectConfig(config, getconfigCtx)
-		parseNetworkServiceConfig(config, getconfigCtx)
-		parseAppInstanceConfig(config, getconfigCtx)
-	}
 	return false
 }
 
@@ -119,9 +116,8 @@ func shutdownAppsGlobal() {
 
 var baseosPrevConfigHash []byte
 
-// Returns true if there is some baseOs work to do
 func parseBaseOsConfig(getconfigCtx *getconfigContext,
-	config *zconfig.EdgeDevConfig) bool {
+	config *zconfig.EdgeDevConfig) {
 
 	cfgOsList := config.GetBase()
 	h := sha256.New()
@@ -135,24 +131,39 @@ func parseBaseOsConfig(getconfigCtx *getconfigContext,
 		if debug {
 			log.Printf("parseBaseOsConfig: baseos sha is unchanged\n")
 		}
-		return false
+		return
 	}
 	log.Printf("parseBaseOsConfig: Applying updated config %v\n",
 		cfgOsList)
 
 	baseOsCount := len(cfgOsList)
 	if baseOsCount == 0 {
-		return false
+		return
 	}
 	if !zboot.IsAvailable() {
 		log.Printf("No zboot; ignoring baseOsConfig\n")
-		return false
+		return
 	}
 
-	baseOsList := make([]*types.BaseOsConfig, len(cfgOsList))
-	certList := make([]*types.CertObjConfig, len(cfgOsList))
+	// First look for deleted ones
+	items := getconfigCtx.pubBaseOsConfig.GetAll()
+	for uuidStr, _ := range items {
+		found := false
+		for _, baseOs := range cfgOsList {
+			if baseOs.Uuidandversion.Uuid == uuidStr {
+				found = true
+				break
+			}
+		}
+		// baseOS instance not found, delete
+		if !found {
+			log.Printf("parseBaseOsConfig: deleting %s\n", uuidStr)
+			getconfigCtx.pubBaseOsConfig.Unpublish(uuidStr)
 
-	idx := 0
+			unpublishCertObjConfig(getconfigCtx, uuidStr)
+		}
+	}
+
 	for _, cfgOs := range cfgOsList {
 		if cfgOs.GetBaseOSVersion() == "" {
 			// Empty slot - silently ignore
@@ -181,15 +192,19 @@ func parseBaseOsConfig(getconfigCtx *getconfigContext,
 		parseStorageConfigList(config, baseOsObj,
 			baseOs.StorageConfigList, cfgOs.Drives)
 
-		baseOsList[idx] = baseOs
 		certInstance := getCertObjects(baseOs.UUIDandVersion,
 			baseOs.ConfigSha256, baseOs.StorageConfigList)
+		publishBaseOsConfig(getconfigCtx, baseOs)
 		if certInstance != nil {
-			certList[idx] = certInstance
+			publishCertObjConfig(getconfigCtx, certInstance,
+				baseOs.Key())
 		}
-		idx++
 	}
+}
 
+/* XXX
+func XXXmisc() {
+// XXX move to baseos.go
 	// XXX defer until we have validated; call with BaseOsStatus
 	failedUpdate := assignBaseOsPartition(getconfigCtx, baseOsList)
 	if failedUpdate {
@@ -209,6 +224,7 @@ func parseBaseOsConfig(getconfigCtx *getconfigContext,
 	}
 	return false
 }
+ XXX */
 
 // XXX should work on BaseOsStatus once PartitionLabel moves to BaseOsStatus
 // Returns true if there is a failed ugrade in the config
@@ -312,8 +328,8 @@ func assignBaseOsPartition(getconfigCtx *getconfigContext,
 
 func lookupBaseOsConfigPub(getconfigCtx *getconfigContext, key string) *types.BaseOsConfig {
 
-	sub := getconfigCtx.pubBaseOsConfig
-	c, _ := sub.Get(key)
+	pub := getconfigCtx.pubBaseOsConfig
+	c, _ := pub.Get(key)
 	if c == nil {
 		log.Printf("lookupBaseOsConfig(%s) not found\n", key)
 		return nil
@@ -333,6 +349,7 @@ func rejectReinstallFailed(config *types.BaseOsConfig, otherPartName string) {
 	log.Printf("rejectReinstallFailed: failed %s\n", errString)
 }
 
+// XXX move/remove?
 func setStoragePartitionLabel(baseOs *types.BaseOsConfig) {
 
 	for idx, _ := range baseOs.StorageConfigList {
@@ -423,6 +440,24 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 		return
 	}
 	log.Printf("parseAppInstanceConfig: Applying updated config %v\n", Apps)
+
+	// First look for deleted ones
+	items := getconfigCtx.pubAppInstanceConfig.GetAll()
+	for uuidStr, _ := range items {
+		found := false
+		for _, app := range Apps {
+			if app.Uuidandversion.Uuid == uuidStr {
+				found = true
+				break
+			}
+		}
+		if !found {
+			log.Printf("Remove app config %s\n", uuidStr)
+			getconfigCtx.pubAppInstanceConfig.Unpublish(uuidStr)
+
+			unpublishCertObjConfig(getconfigCtx, uuidStr)
+		}
+	}
 
 	for _, cfgApp := range Apps {
 		// Note that we repeat this even if the app config didn't
@@ -1320,6 +1355,7 @@ func getCertObjConfig(config *types.CertObjConfig,
 	config.StorageConfigList[idx] = *drive
 }
 
+// XXX should go away. Some checks belong in baseos.go
 func validateBaseOsConfig(baseOsList []*types.BaseOsConfig) bool {
 
 	var osCount, activateCount int
@@ -1350,6 +1386,7 @@ func validateBaseOsConfig(baseOsList []*types.BaseOsConfig) bool {
 	return true
 }
 
+// XXX Remove
 // Returns the number of BaseOsConfig that are new or modified
 // XXX not useful for caller if we want to catch failed updates up front.
 // XXX should we initially populate BaseOsStyatus with what we find in

@@ -10,7 +10,6 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/satori/go.uuid"
 	"github.com/zededa/api/zconfig"
-	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
@@ -449,96 +448,6 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCo
 	}
 	handleLookupParam(getconfigCtx, config)
 
-	// XXX should check for different sha for baseOs and appInstances
-	// before looking for old
-	// clean up old config entries
-	if deleted := cleanupOldConfig(getconfigCtx, config); deleted {
-		log.Printf("Old Config removed, take a delay\n")
-		duration := time.Duration(immediate)
-		newConfigTimer := time.NewTimer(time.Second * duration)
-		<-newConfigTimer.C
-	}
-
 	// add new BaseOS/App instances; returns rebootFlag
-	if parseConfig(config, getconfigCtx, usingSaved) {
-		return true
-	}
-
-	return false
-}
-
-// clean up oldConfig, after newConfig
-// to maintain the refcount for certs
-func cleanupOldConfig(getconfigCtx *getconfigContext,
-	config *zconfig.EdgeDevConfig) bool {
-
-	// delete old app configs, if any
-	appDel := checkCurrentAppInstances(getconfigCtx, config)
-
-	// delete old base os configs, if any
-	baseDel := checkCurrentBaseOs(getconfigCtx, config)
-	return appDel || baseDel
-}
-
-// Delete any app instances which are not present in the new set
-func checkCurrentAppInstances(getconfigCtx *getconfigContext,
-	config *zconfig.EdgeDevConfig) bool {
-
-	Apps := config.GetApps()
-	deleted := false
-	// get the current set of App instances
-	pub := getconfigCtx.pubAppInstanceConfig
-	items := pub.GetAll()
-	for key, c := range items {
-		config := cast.CastAppInstanceConfig(c)
-		if config.Key() != key {
-			log.Printf("checkCurrentAppInstances key/UUID mismatch %s vs %s; ignored %+v\n",
-				key, config.Key(), config)
-			continue
-		}
-		key := config.Key()
-		found := false
-		for _, app := range Apps {
-			if app.Uuidandversion.Uuid == key {
-				found = true
-				break
-			}
-		}
-		if !found {
-			log.Printf("Remove app config %s\n", key)
-			pub.Unpublish(key)
-			deleted = true
-
-			unpublishCertObjConfig(getconfigCtx, key)
-		}
-	}
-	return deleted
-}
-
-func checkCurrentBaseOs(getconfigCtx *getconfigContext,
-	config *zconfig.EdgeDevConfig) bool {
-
-	deleted := false
-	// get the current set of baseOs configs
-	pub := getconfigCtx.pubBaseOsConfig
-	items := pub.GetAll()
-	baseOses := config.GetBase()
-	// delete any baseOs config which is not present in the new set
-	for uuidStr, _ := range items {
-		found := false
-		for _, baseOs := range baseOses {
-			if baseOs.Uuidandversion.Uuid == uuidStr {
-				found = true
-				break
-			}
-		}
-		// baseOS instance not found, delete
-		if !found {
-			unpublishBaseOsConfig(getconfigCtx, uuidStr)
-			// XXX what is the uuid for the cert objects?
-			unpublishCertObjConfig(getconfigCtx, uuidStr)
-			deleted = true
-		}
-	}
-	return deleted
+	return parseConfig(config, getconfigCtx, usingSaved)
 }
