@@ -72,24 +72,17 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 			otherPart)
 	}
 
-	if validateConfig(config) {
-		// Look for timers and other settings in configItems
-		parseConfigItems(config, getconfigCtx)
-		parseDatastoreConfig(config, getconfigCtx)
+	// Look for timers and other settings in configItems
+	parseConfigItems(config, getconfigCtx)
+	parseDatastoreConfig(config, getconfigCtx)
 
-		// if no baseOs config write, consider
-		// picking up application image config
+	// if no baseOs config write, consider
+	// picking up application image config
 
-		if parseBaseOsConfig(getconfigCtx, config) == false ||
-			usingSaved {
-			parseNetworkObjectConfig(config, getconfigCtx)
-			parseNetworkServiceConfig(config, getconfigCtx)
-			parseAppInstanceConfig(config, getconfigCtx)
-		}
-
-		// XXX:FIXME, otherwise, dont process
-		// app image config, until the current
-		// baseos config processing is complete
+	if parseBaseOsConfig(getconfigCtx, config) == false || usingSaved {
+		parseNetworkObjectConfig(config, getconfigCtx)
+		parseNetworkServiceConfig(config, getconfigCtx)
+		parseAppInstanceConfig(config, getconfigCtx)
 	}
 	return false
 }
@@ -122,16 +115,6 @@ func shutdownAppsGlobal() {
 	if getconfigCtxGlobal != nil {
 		shutdownApps(getconfigCtxGlobal)
 	}
-}
-
-func validateConfig(config *zconfig.EdgeDevConfig) bool {
-
-	//XXX:FIXME, check if any validation required
-
-	// Check the drives entries  MaxSize
-	// for baseOs/App has non-zero value
-
-	return true
 }
 
 var baseosPrevConfigHash []byte
@@ -193,37 +176,8 @@ func parseBaseOsConfig(getconfigCtx *getconfigContext,
 			baseOs.OsParams[jdx] = *param
 		}
 
-		imageCount := 0
-		for _, drive := range cfgOs.Drives {
-			if drive.Image == nil {
-				// XXX have to report to zedcloud by moving
-				// this check out of the parser
-				log.Printf("No drive.Image for baseos %s drive %v\n",
-					baseOs.BaseOsVersion, drive)
-				continue
-			}
-			ds := lookupDatastore(config.Datastores, drive.Image.DsId)
-			if ds == nil {
-				// XXX have to report to zedcloud by moving
-				// this check out of the parser
-				log.Printf("Did not find datastore %v for baseos %s, drive %s\n",
-					drive.Image.DsId,
-					baseOs.BaseOsVersion,
-					drive.Image.Sha256)
-				continue
-			}
-			imageCount++
-		}
-
-		if imageCount != BaseOsImageCount {
-			log.Printf("parseBaseOsConfig(%s) invalid storage config %d\n",
-				baseOs.BaseOsVersion, imageCount)
-			log.Printf("Datastores %v\n", config.Datastores)
-			// XXX need to publish this as an error in baseOsStatus
-			continue
-		}
-
-		baseOs.StorageConfigList = make([]types.StorageConfig, imageCount)
+		baseOs.StorageConfigList = make([]types.StorageConfig,
+			len(cfgOs.Drives))
 		parseStorageConfigList(config, baseOsObj,
 			baseOs.StorageConfigList, cfgOs.Drives)
 
@@ -493,38 +447,10 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 		appInstance.FixedResources.VirtualizationMode = types.VmMode(cfgApp.Fixedresources.VirtualizationMode)
 		appInstance.FixedResources.EnableVnc = cfgApp.Fixedresources.EnableVnc
 
-		var imageCount int
-		for _, drive := range cfgApp.Drives {
-			if drive.Image == nil {
-				// XXX have to report to zedcloud by moving
-				// this check out of the parser
-				log.Printf("No drive.Image for app %s drive %v\n",
-					appInstance.DisplayName,
-					drive)
-				continue
-			}
-			ds := lookupDatastore(config.Datastores, drive.Image.DsId)
-			if ds == nil {
-				// XXX have to report to zedcloud by moving
-				// this check out of the parser
-				log.Printf("Did not find datastore %v for app %s, drive %s\n",
-					drive.Image.DsId,
-					appInstance.DisplayName,
-					drive.Image.Sha256)
-				continue
-			}
-			imageCount++
-		}
-
-		log.Printf("Found %d images for %s uuid %v\n",
-			imageCount, appInstance.DisplayName,
-			appInstance.UUIDandVersion)
-
-		if imageCount != 0 {
-			appInstance.StorageConfigList = make([]types.StorageConfig, imageCount)
-			parseStorageConfigList(config, appImgObj,
-				appInstance.StorageConfigList, cfgApp.Drives)
-		}
+		appInstance.StorageConfigList = make([]types.StorageConfig,
+			len(cfgApp.Drives))
+		parseStorageConfigList(config, appImgObj,
+			appInstance.StorageConfigList, cfgApp.Drives)
 
 		// fill the overlay/underlay config
 		parseAppNetworkConfig(&appInstance, cfgApp, config.Networks)
@@ -658,7 +584,6 @@ func parseStorageConfigList(config *zconfig.EdgeDevConfig, objType string,
 	}
 }
 
-// XXX duplicate for datastore
 func lookupNetworkId(id string, cfgNetworks []*zconfig.NetworkConfig) *zconfig.NetworkConfig {
 	for _, netEnt := range cfgNetworks {
 		if id == netEnt.Id {
