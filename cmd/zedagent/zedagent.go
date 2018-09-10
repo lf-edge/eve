@@ -115,27 +115,21 @@ var debug = false
 // we'll react to baseOsStatus changes.
 var publishDeviceInfo bool
 
-// XXX temporary hack for testing
-var forceLisp bool
-
 func Run() {
+
+	versionPtr := flag.Bool("v", false, "Version")
+	debugPtr := flag.Bool("d", false, "Debug flag")
+	flag.Parse()
+	debug = *debugPtr
+	if *versionPtr {
+		fmt.Printf("%s: %s\n", os.Args[0], Version)
+		return
+	}
 	logf, err := agentlog.Init(agentName)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer logf.Close()
-
-	versionPtr := flag.Bool("v", false, "Version")
-	debugPtr := flag.Bool("d", false, "Debug flag")
-	// XXX temporary hack while cloud catches up
-	forceLispPtr := flag.Bool("l", false, "Force IPv4 LISP flag")
-	flag.Parse()
-	debug = *debugPtr
-	forceLisp = *forceLispPtr
-	if *versionPtr {
-		fmt.Printf("%s: %s\n", os.Args[0], Version)
-		return
-	}
 	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 		log.Fatal(err)
 	}
