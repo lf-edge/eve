@@ -110,16 +110,24 @@ func doBaseOsStatusUpdate(ctx *zedagentContext, uuidStr string,
 	curPartName := zboot.GetCurrentPartition()
 	if status.BaseOsVersion == zboot.GetShortVersion(curPartName) {
 		status.PartitionLabel = curPartName
+		// some partition specific attributes
+		status.PartitionState = zboot.GetPartitionState(curPartName)
+		status.PartitionDevice = zboot.GetPartitionDevname(curPartName)
+		status.Activated = true
 		return true
 	}
-	// XXX do we also need to set PartitionLabel for the version
-	// in otherPartName? handlemetrics reports in any case. Check!
-	if false && status.PartitionLabel == "" {
-		otherPartName := zboot.GetOtherPartition()
-		if status.BaseOsVersion == zboot.GetShortVersion(otherPartName) {
-			status.PartitionLabel = otherPartName
-			changed = true
-		}
+	// Update other partition info
+	// XXX in validate etc
+	otherPartName := zboot.GetOtherPartition()
+	if false && status.BaseOsVersion == zboot.GetShortVersion(otherPartName) &&
+		status.PartitionLabel == "" {
+
+		status.PartitionLabel = otherPartName
+		// some partition specific attributes
+		status.PartitionState = zboot.GetPartitionState(otherPartName)
+		status.PartitionDevice = zboot.GetPartitionDevname(otherPartName)
+		status.Activated = false
+		changed = true
 	}
 
 	c, proceed := doBaseOsInstall(ctx, uuidStr, config, status)
@@ -320,6 +328,13 @@ func validateAndAssignPartition(ctx *zedagentContext,
 	}
 
 	if zboot.IsOtherPartitionStateActive() {
+		if otherPartVersion == config.BaseOsVersion {
+			// Don't try to download what is already in otherPartVersion
+			log.Printf("validateAndAssignPartition(%s) not overwriting other with same version since testing inprogress\n",
+				config.BaseOsVersion)
+			return changed, proceed
+		}
+
 		// Must still be testing the current version; don't overwrite
 		// fallback
 		errStr := fmt.Sprintf("Attempt to install baseOs update %s while testing is in progress for %s: refused",
@@ -331,10 +346,12 @@ func validateAndAssignPartition(ctx *zedagentContext,
 		return changed, proceed
 	}
 
-	if config.Activate {
+	if config.Activate && status.PartitionLabel == "" {
 		log.Printf("validateAndAssignPartition(%s) assigning with partition %s\n",
 			config.BaseOsVersion, status.PartitionLabel)
 		status.PartitionLabel = otherPartName
+		status.PartitionState = zboot.GetPartitionState(otherPartName)
+		status.PartitionDevice = zboot.GetPartitionDevname(otherPartName)
 
 		// List has only one element but ...
 		for idx, _ := range status.StorageStatusList {
