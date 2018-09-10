@@ -137,7 +137,7 @@ func doCertObjInstall(ctx *zedagentContext, uuidStr string, config types.CertObj
 	downloadchange, downloaded :=
 		checkCertObjStorageDownloadStatus(ctx, uuidStr, config, status)
 
-	if downloaded == false {
+	if !downloaded {
 		return changed || downloadchange, false
 	}
 
@@ -157,6 +157,22 @@ func doCertObjInstall(ctx *zedagentContext, uuidStr string, config types.CertObj
 func checkCertObjStorageDownloadStatus(ctx *zedagentContext, uuidStr string,
 	config types.CertObjConfig, status *types.CertObjStatus) (bool, bool) {
 
+	// XXX check if it already exists in FinalObjDir
+	// XXX slight risk of not fixing corrupt file! Check for zero length
+	for i, sc := range config.StorageConfigList {
+		ss := &status.StorageStatusList[i]
+		if ss.FinalObjDir != "" {
+			safename := types.UrlToSafename(sc.Name, sc.ImageSha256)
+			dstFilename := ss.FinalObjDir + "/" + types.SafenameToFilename(safename)
+			st, err := os.Stat(dstFilename)
+			if err == nil && st.Size() != 0 {
+				log.Printf("XXX found cert in Final %s\n",
+					dstFilename)
+			}
+			// XXX get checkStorageDownloadStatus to do the above?
+			// XXX can't for IMGA/IMGB?
+		}
+	}
 	ret := checkStorageDownloadStatus(ctx, certObj, uuidStr,
 		config.StorageConfigList, status.StorageStatusList)
 
