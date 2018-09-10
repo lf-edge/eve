@@ -113,8 +113,8 @@ func doBaseOsStatusUpdate(ctx *zedagentContext, uuidStr string,
 		return true
 	}
 	// XXX do we also need to set PartitionLabel for the version
-	// in otherPartName? FYI back to zedcloud
-	if status.PartitionLabel == "" {
+	// in otherPartName? handlemetrics reports in any case. Check!
+	if false && status.PartitionLabel == "" {
 		otherPartName := zboot.GetOtherPartition()
 		if status.BaseOsVersion == zboot.GetShortVersion(otherPartName) {
 			status.PartitionLabel = otherPartName
@@ -155,8 +155,7 @@ func doBaseOsActivate(ctx *zedagentContext, uuidStr string,
 		config.BaseOsVersion, uuidStr)
 
 	changed := false
-	// XXX do we already know the partitionLabel? Or assign here?
-	// XXX based on other comments the image is already dd'd in place
+
 	log.Printf("doBaseOsActivate(%s) for %s, partition %s\n",
 		config.BaseOsVersion, uuidStr, status.PartitionLabel)
 
@@ -187,11 +186,6 @@ func doBaseOsActivate(ctx *zedagentContext, uuidStr string,
 		log.Printf("Installing %s over updating\n",
 			config.BaseOsVersion)
 	default:
-		// XXX we seem to hit this in some cases
-		// Happens when a new baseOs config appears while
-		// we are still testing the previous update in
-		// which case the current is inprogress and the other/fallback
-		// partition is active.
 		errString := fmt.Sprintf("Wrong partition state %s for %s",
 			partState, status.PartitionLabel)
 		log.Println(errString)
@@ -258,7 +252,7 @@ func doBaseOsInstall(ctx *zedagentContext, uuidStr string,
 	downloadchange, downloaded :=
 		checkBaseOsStorageDownloadStatus(ctx, uuidStr, config, status)
 
-	if downloaded == false {
+	if !downloaded {
 		log.Printf(" %s, Still not downloaded\n", config.BaseOsVersion)
 		return changed || downloadchange, proceed
 	}
@@ -267,7 +261,7 @@ func doBaseOsInstall(ctx *zedagentContext, uuidStr string,
 	verifychange, verified :=
 		checkBaseOsVerificationStatus(ctx, uuidStr, config, status)
 
-	if verified == false {
+	if !verified {
 		log.Printf("doBaseOsInstall(%s) still not verified %s\n",
 			uuidStr, config.BaseOsVersion)
 		return changed || verifychange, proceed
@@ -275,8 +269,8 @@ func doBaseOsInstall(ctx *zedagentContext, uuidStr string,
 
 	// XXX can we check the version before installing to the partition?
 	// install the image at proper partition
-	if ret := installDownloadedObjects(baseOsObj, uuidStr,
-		config.StorageConfigList, status.StorageStatusList); ret == true {
+	if installDownloadedObjects(baseOsObj, uuidStr,
+		config.StorageConfigList, status.StorageStatusList) {
 
 		changed = true
 		//match the version string
@@ -340,10 +334,10 @@ func validateAndAssignPartition(ctx *zedagentContext,
 			config.BaseOsVersion, status.PartitionLabel)
 		status.PartitionLabel = otherPartName
 
-		// XXX changing the config!!??? Do that in DownloaderConfig?
-		for idx, _ := range config.StorageConfigList {
-			sc := &config.StorageConfigList[idx]
-			sc.FinalObjDir = status.PartitionLabel
+		// List has only one element but ...
+		for idx, _ := range status.StorageStatusList {
+			ss := &status.StorageStatusList[idx]
+			ss.FinalObjDir = status.PartitionLabel
 		}
 		changed = true
 	}

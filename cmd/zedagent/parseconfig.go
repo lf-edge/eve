@@ -1185,7 +1185,6 @@ func getCertObjConfig(config *types.CertObjConfig,
 		Name:        certUrl, // XXX FIXME use??
 		Size:        100 * 1024,
 		ImageSha256: "",
-		FinalObjDir: certificateDirname,
 	}
 	config.StorageConfigList[idx] = *drive
 }

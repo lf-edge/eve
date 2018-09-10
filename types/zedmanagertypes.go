@@ -149,10 +149,6 @@ type StorageConfig struct {
 	Format  string // Default "raw"; could be raw, qcow, qcow2, vhd
 	Devtype string // Default ""; could be e.g. "cdrom"
 	Target  string // Default "" is interpreted as "disk"
-
-	// XXX FinalObjDir shouldn't be setable from the cloud. Local to
-	// device.
-	FinalObjDir string // installation dir, may differ from verified
 }
 
 func RoundupToKB(b uint64) uint64 {
@@ -171,6 +167,7 @@ type StorageStatus struct {
 	HasDownloaderRef   bool    // Reference against downloader to clean up
 	HasVerifierRef     bool    // Reference against verifier to clean up
 	ActiveFileLocation string  // Location of filestystem
+	FinalObjDir        string  // Installation dir; may differ from verified
 	Error              string  // Download or verify error
 	ErrorTime          time.Time
 }

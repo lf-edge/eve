@@ -946,6 +946,7 @@ func handleCertObjCreate(ctx *zedagentContext, key string, config *types.CertObj
 		ss := &status.StorageStatusList[i]
 		ss.Name = sc.Name
 		ss.ImageSha256 = sc.ImageSha256
+		ss.FinalObjDir = certificateDirname
 	}
 
 	publishCertObjStatus(ctx, &status)

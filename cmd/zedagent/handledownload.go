@@ -350,6 +350,7 @@ func installDownloadedObject(objType string, safename string,
 		return nil
 
 	case types.DOWNLOADED:
+		// XXX status?
 		if config.ImageSha256 != "" {
 			log.Printf("installDownloadedObject %s, verification pending\n",
 				safename)
@@ -375,10 +376,10 @@ func installDownloadedObject(objType string, safename string,
 		log.Fatal(err)
 	}
 
-	// move to final installation point
-	if config.FinalObjDir != "" {
+	// Move to final installation point
+	if status.FinalObjDir != "" {
 
-		var dstFilename string = config.FinalObjDir
+		var dstFilename string = status.FinalObjDir
 
 		switch objType {
 		case certObj:
