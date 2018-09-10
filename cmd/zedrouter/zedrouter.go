@@ -14,11 +14,11 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/google/go-cmp/cmp"
 	"github.com/vishvananda/netlink"
 	"github.com/zededa/go-provision/adapters"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
-	"github.com/google/go-cmp/cmp"
 	"github.com/zededa/go-provision/devicenetwork"
 	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/hardware"
@@ -753,9 +753,9 @@ func parseAndPublishLispServiceInfo(ctx *zedrouterContext, lispInfo *types.LispI
 		if !ok {
 			infoEntry = &types.LispInfoStatus{}
 			infoEntry.ItrCryptoPort = lispInfo.ItrCryptoPort
-			infoEntry.EtrNatPort    = lispInfo.EtrNatPort
-			infoEntry.Interfaces    = lispInfo.Interfaces
-			infoEntry.DecapKeys     = lispInfo.DecapKeys
+			infoEntry.EtrNatPort = lispInfo.EtrNatPort
+			infoEntry.Interfaces = lispInfo.Interfaces
+			infoEntry.DecapKeys = lispInfo.DecapKeys
 			infoMap[iid] = infoEntry
 		}
 		infoEntry.DatabaseMaps = append(infoEntry.DatabaseMaps, dbMap)
