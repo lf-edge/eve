@@ -27,7 +27,6 @@ type BaseOsConfig struct {
 	ConfigSignature   string
 	OsParams          []OsVerParams // From GetLongVersion
 	StorageConfigList []StorageConfig
-	PartitionLabel    string // XXX Remove
 	RetryCount        int32
 	Activate          bool
 }

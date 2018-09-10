@@ -201,131 +201,6 @@ func parseBaseOsConfig(getconfigCtx *getconfigContext,
 	}
 }
 
-/* XXX
-func XXXmisc() {
-// XXX move to baseos.go
-	// XXX defer until we have validated; call with BaseOsStatus
-	failedUpdate := assignBaseOsPartition(getconfigCtx, baseOsList)
-	if failedUpdate {
-		// Proceed with applications etc. User has to retry with a
-		// different update than the one that failed.
-		return false
-	}
-	configCount := 0
-	if validateBaseOsConfig(baseOsList) == true {
-		configCount = createBaseOsConfig(getconfigCtx, baseOsList,
-			certList)
-	}
-
-	// baseOs config write, is true
-	if configCount > 0 {
-		return true
-	}
-	return false
-}
- XXX */
-
-// XXX move/remove
-// XXX should work on BaseOsStatus once PartitionLabel moves to BaseOsStatus
-// Returns true if there is a failed ugrade in the config
-func assignBaseOsPartition(getconfigCtx *getconfigContext,
-	baseOsList []*types.BaseOsConfig) bool {
-
-	curPartName := zboot.GetCurrentPartition()
-	otherPartName := zboot.GetOtherPartition()
-	curPartVersion := zboot.GetShortVersion(curPartName)
-	otherPartVersion := zboot.GetShortVersion(otherPartName)
-
-	ignoreVersion := ""
-	if zboot.IsOtherPartitionStateInProgress() {
-		ignoreVersion = otherPartVersion
-	}
-
-	assignedPart := true
-	// older assignments/installations
-	for _, baseOs := range baseOsList {
-		if baseOs == nil {
-			continue
-		}
-		uuidStr := baseOs.Key()
-		curBaseOsConfig := lookupBaseOsConfigPub(getconfigCtx, uuidStr)
-		// XXX isn't curBaseOsConfig the same as baseOs???
-		// We are iterating over all the baseOsConfigs.
-
-		if ignoreVersion == baseOs.BaseOsVersion {
-			rejectReinstallFailed(baseOs, otherPartName)
-			baseOs.PartitionLabel = ""
-			assignedPart = false
-			continue
-		}
-
-		if curPartVersion == baseOs.BaseOsVersion {
-			baseOs.PartitionLabel = curPartName
-			setStoragePartitionLabel(baseOs)
-			log.Printf("parseBaseOsConfig(%s) already installed in current partition %s\n",
-				baseOs.BaseOsVersion, baseOs.PartitionLabel)
-			continue
-		}
-
-		if otherPartVersion == baseOs.BaseOsVersion {
-			baseOs.PartitionLabel = otherPartName
-			setStoragePartitionLabel(baseOs)
-			log.Printf("parseBaseOsConfig(%s) already installed in other partition %s\n",
-				baseOs.BaseOsVersion, baseOs.PartitionLabel)
-			continue
-		}
-		if curBaseOsConfig != nil &&
-			curBaseOsConfig.PartitionLabel != "" {
-			baseOs.PartitionLabel = curBaseOsConfig.PartitionLabel
-			setStoragePartitionLabel(baseOs)
-			log.Printf("parseBaseOsConfig(%s) assigned with partition %s, %s\n",
-				uuidStr, baseOs.BaseOsVersion, baseOs.PartitionLabel)
-			continue
-		}
-
-		assignedPart = false
-	}
-
-	if assignedPart == true {
-		return false
-	}
-
-	// if activate set, assign partition
-	for _, baseOs := range baseOsList {
-		if baseOs == nil || baseOs.PartitionLabel != "" {
-			continue
-		}
-
-		if ignoreVersion == baseOs.BaseOsVersion {
-			continue
-		}
-		if baseOs.Activate == true {
-			baseOs.PartitionLabel = otherPartName
-			setStoragePartitionLabel(baseOs)
-			log.Printf("parseBaseOsConfig(%s) assigning with partition %s\n",
-				baseOs.BaseOsVersion, baseOs.PartitionLabel)
-			assignedPart = true
-			break
-		}
-	}
-
-	if assignedPart == true {
-		return false
-	}
-
-	// still not assigned, assign partition
-	for _, baseOs := range baseOsList {
-		if baseOs == nil || baseOs.PartitionLabel != "" {
-			continue
-		}
-		baseOs.PartitionLabel = otherPartName
-		setStoragePartitionLabel(baseOs)
-		log.Printf("parseBaseOsConfig(%s) assigning with partition %s\n",
-			baseOs.BaseOsVersion, baseOs.PartitionLabel)
-	}
-	return false
-}
-
 func lookupBaseOsConfigPub(getconfigCtx *getconfigContext, key string) *types.BaseOsConfig {
 
 	pub := getconfigCtx.pubBaseOsConfig
@@ -341,21 +216,6 @@ func lookupBaseOsConfigPub(getconfigCtx *getconfigContext, key string) *types.Ba
 		return nil
 	}
 	return &config
-}
-
-func rejectReinstallFailed(config *types.BaseOsConfig, otherPartName string) {
-	errString := fmt.Sprintf("Attempt to reinstall failed %s in %s: refused",
-		config.BaseOsVersion, otherPartName)
-	log.Printf("rejectReinstallFailed: failed %s\n", errString)
-}
-
-// XXX move/remove?
-func setStoragePartitionLabel(baseOs *types.BaseOsConfig) {
-
-	for idx, _ := range baseOs.StorageConfigList {
-		sc := &baseOs.StorageConfigList[idx]
-		sc.FinalObjDir = baseOs.PartitionLabel
-	}
 }
 
 var networkConfigPrevConfigHash []byte
@@ -1328,38 +1188,6 @@ func getCertObjConfig(config *types.CertObjConfig,
 		FinalObjDir: certificateDirname,
 	}
 	config.StorageConfigList[idx] = *drive
-}
-
-// XXX move/remove
-// XXX should go away. Some checks belong in baseos.go
-func validateBaseOsConfig(baseOsList []*types.BaseOsConfig) bool {
-
-	var osCount, activateCount int
-
-	//count base os instance activate count
-	for _, baseOs := range baseOsList {
-		if baseOs != nil {
-			osCount++
-			if baseOs.Activate == true {
-				activateCount++
-			}
-		}
-	}
-
-	// not more than max base os count(2)
-	if osCount > MaxBaseOsCount {
-		log.Printf("baseOs: Unsupported Instance Count %d\n", osCount)
-		return false
-	}
-
-	// can not be more than one activate as true
-	if osCount != 0 {
-		if activateCount != 1 {
-			log.Printf("baseOs: Unsupported Activate Count %v\n", activateCount)
-			return false
-		}
-	}
-	return true
 }
 
 func publishCertObjConfig(getconfigCtx *getconfigContext,

@@ -103,7 +103,27 @@ func doBaseOsStatusUpdate(ctx *zedagentContext, uuidStr string,
 	log.Printf("doBaseOsStatusUpdate(%s) for %s\n",
 		config.BaseOsVersion, uuidStr)
 
-	changed, proceed := doBaseOsInstall(ctx, uuidStr, config, status)
+	changed := false
+	// Are we already running this version? If so nothing to do.
+	// Note that we don't return errors if someone tries to deactivate
+	// the running version, but we don't act on it either.
+	curPartName := zboot.GetCurrentPartition()
+	if status.BaseOsVersion == zboot.GetShortVersion(curPartName) {
+		status.PartitionLabel = curPartName
+		return true
+	}
+	// XXX do we also need to set PartitionLabel for the version
+	// in otherPartName? FYI back to zedcloud
+	if status.PartitionLabel == "" {
+		otherPartName := zboot.GetOtherPartition()
+		if status.BaseOsVersion == zboot.GetShortVersion(otherPartName) {
+			status.PartitionLabel = otherPartName
+			changed = true
+		}
+	}
+
+	c, proceed := doBaseOsInstall(ctx, uuidStr, config, status)
+	changed = changed || c
 	if !proceed {
 		return changed
 	}
@@ -135,10 +155,12 @@ func doBaseOsActivate(ctx *zedagentContext, uuidStr string,
 		config.BaseOsVersion, uuidStr)
 
 	changed := false
+	// XXX do we already know the partitionLabel? Or assign here?
+	// XXX based on other comments the image is already dd'd in place
 	log.Printf("doBaseOsActivate(%s) for %s, partition %s\n",
-		config.BaseOsVersion, uuidStr, config.PartitionLabel)
+		config.BaseOsVersion, uuidStr, status.PartitionLabel)
 
-	if config.PartitionLabel == "" {
+	if status.PartitionLabel == "" {
 		log.Printf("doBaseOsActivate(%s) for %s, unassigned partition\n",
 			config.BaseOsVersion, uuidStr)
 		return changed
@@ -150,10 +172,10 @@ func doBaseOsActivate(ctx *zedagentContext, uuidStr string,
 	// hence can't compare versions here. Version check was done when
 	// processing the baseOsConfig.
 
-	if !zboot.IsOtherPartition(config.PartitionLabel) {
+	if !zboot.IsOtherPartition(status.PartitionLabel) {
 		return changed
 	}
-	partState := zboot.GetPartitionState(config.PartitionLabel)
+	partState := zboot.GetPartitionState(status.PartitionLabel)
 	switch partState {
 	case "unused":
 		log.Printf("Installing %s over unused\n",
@@ -171,7 +193,7 @@ func doBaseOsActivate(ctx *zedagentContext, uuidStr string,
 		// which case the current is inprogress and the other/fallback
 		// partition is active.
 		errString := fmt.Sprintf("Wrong partition state %s for %s",
-			partState, config.PartitionLabel)
+			partState, status.PartitionLabel)
 		log.Println(errString)
 		status.Error = errString
 		status.ErrorTime = time.Now()
@@ -184,7 +206,7 @@ func doBaseOsActivate(ctx *zedagentContext, uuidStr string,
 	publishDeviceInfo = true
 
 	// Remove any old log files for a previous instance
-	logdir := fmt.Sprintf("/persist/%s/log", config.PartitionLabel)
+	logdir := fmt.Sprintf("/persist/%s/log", status.PartitionLabel)
 	log.Printf("Clearing old logs in %s\n", logdir)
 	if err := os.RemoveAll(logdir); err != nil {
 		log.Println(err)
@@ -227,6 +249,11 @@ func doBaseOsInstall(ctx *zedagentContext, uuidStr string,
 		}
 	}
 
+	changed, proceed = validateAndAssignPartition(ctx, config, status)
+	if !proceed {
+		return changed, proceed
+	}
+
 	// check for the download status change
 	downloadchange, downloaded :=
 		checkBaseOsStorageDownloadStatus(ctx, uuidStr, config, status)
@@ -253,7 +280,7 @@ func doBaseOsInstall(ctx *zedagentContext, uuidStr string,
 
 		changed = true
 		//match the version string
-		if errString := checkInstalledVersion(config); errString != "" {
+		if errString := checkInstalledVersion(*status); errString != "" {
 			status.State = types.INITIAL
 			status.Error = errString
 			status.ErrorTime = time.Now()
@@ -267,6 +294,60 @@ func doBaseOsInstall(ctx *zedagentContext, uuidStr string,
 	publishBaseOsStatus(ctx, status)
 	log.Printf("doBaseOsInstall(%s), Done %v\n",
 		config.BaseOsVersion, proceed)
+	return changed, proceed
+}
+
+// Returns changed, proceed as above
+func validateAndAssignPartition(ctx *zedagentContext,
+	config types.BaseOsConfig, status *types.BaseOsStatus) (bool, bool) {
+
+	log.Printf("validateAndAssignPartition(%s)\n", config.BaseOsVersion)
+	changed := false
+	proceed := false
+	curPartName := zboot.GetCurrentPartition()
+	otherPartName := zboot.GetOtherPartition()
+	curPartVersion := zboot.GetShortVersion(curPartName)
+	otherPartVersion := zboot.GetShortVersion(otherPartName)
+
+	// Does the other partition contain a failed update with the same
+	// version?
+	if zboot.IsOtherPartitionStateInProgress() &&
+		otherPartVersion == config.BaseOsVersion {
+
+		errStr := fmt.Sprintf("Attempt to reinstall failed update %s in %s: refused",
+			config.BaseOsVersion, otherPartName)
+		log.Println(errStr)
+		status.Error = errStr
+		status.ErrorTime = time.Now()
+		changed = true
+		return changed, proceed
+	}
+
+	if zboot.IsOtherPartitionStateActive() {
+		// Must still be testing the current version; don't overwrite
+		// fallback
+		errStr := fmt.Sprintf("Attempt to install baseOs update %s while testing is in progress for %s: refused",
+			config.BaseOsVersion, curPartVersion)
+		log.Println(errStr)
+		status.Error = errStr
+		status.ErrorTime = time.Now()
+		changed = true
+		return changed, proceed
+	}
+
+	if config.Activate {
+		log.Printf("validateAndAssignPartition(%s) assigning with partition %s\n",
+			config.BaseOsVersion, status.PartitionLabel)
+		status.PartitionLabel = otherPartName
+
+		// XXX changing the config!!??? Do that in DownloaderConfig?
+		for idx, _ := range config.StorageConfigList {
+			sc := &config.StorageConfigList[idx]
+			sc.FinalObjDir = status.PartitionLabel
+		}
+		changed = true
+	}
+	proceed = true
 	return changed, proceed
 }
 
@@ -400,6 +481,7 @@ func doBaseOsUninstall(ctx *zedagentContext, uuidStr string,
 
 	// If this image is on the !active partition we mark that
 	// as unused.
+	// XXX revisit
 	if status.PartitionLabel != "" {
 		partName := status.PartitionLabel
 		if status.BaseOsVersion == zboot.GetShortVersion(partName) &&
@@ -510,24 +592,25 @@ func installBaseOsObject(srcFilename string, dstFilename string) error {
 
 // validate whether the image version matches with
 // config version string
-func checkInstalledVersion(config types.BaseOsConfig) string {
+// XXX usage? Operate on status?
+func checkInstalledVersion(status types.BaseOsStatus) string {
 
 	log.Printf("checkInstalledVersion(%s) %s %s\n",
-		config.UUIDandVersion.UUID.String(), config.PartitionLabel,
-		config.BaseOsVersion)
+		status.UUIDandVersion.UUID.String(), status.PartitionLabel,
+		status.BaseOsVersion)
 
-	if config.PartitionLabel == "" {
-		errStr := fmt.Sprintf("checkInstalledVersion(%s) invalid partition", config.BaseOsVersion)
+	if status.PartitionLabel == "" {
+		errStr := fmt.Sprintf("checkInstalledVersion(%s) invalid partition", status.BaseOsVersion)
 		log.Println(errStr)
 		return errStr
 	}
 
-	partVersion := zboot.GetShortVersion(config.PartitionLabel)
+	partVersion := zboot.GetShortVersion(status.PartitionLabel)
 	// XXX this check can result in failures when multiple updates in progress in zedcloud!
 	// XXX remove?
-	if config.BaseOsVersion != partVersion {
+	if status.BaseOsVersion != partVersion {
 		errStr := fmt.Sprintf("baseOs %s, %s, does not match installed %s",
-			config.PartitionLabel, config.BaseOsVersion, partVersion)
+			status.PartitionLabel, status.BaseOsVersion, partVersion)
 
 		log.Println(errStr)
 		// XXX return errStr
@@ -587,4 +670,47 @@ func unpublishBaseOsStatus(ctx *zedagentContext, key string) {
 		return
 	}
 	pub.Unpublish(key)
+}
+
+// Check the number of baseos and number of actvated
+// Also check number of images in this config.
+func validateBaseOsConfig(ctx *zedagentContext, config types.BaseOsConfig) error {
+
+	var osCount, activateCount int
+	items := ctx.subBaseOsConfig.GetAll()
+	for key, c := range items {
+		config := cast.CastBaseOsConfig(c)
+		if config.Key() != key {
+			log.Printf("validateBaseOsConfig(%s) got %s; ignored %+v\n",
+				key, config.Key(), config)
+			continue
+		}
+		osCount++
+		if config.Activate == true {
+			activateCount++
+		}
+	}
+
+	// not more than max base os count(2)
+	if osCount > MaxBaseOsCount {
+		errStr := fmt.Sprintf("baseOs: Unsupported Instance Count %d",
+			osCount)
+		return errors.New(errStr)
+	}
+
+	// can not be more than one activate as true
+	if osCount != 0 && activateCount != 1 {
+		errStr := fmt.Sprintf("baseOs: Unsupported Activate Count %v\n",
+			activateCount)
+		return errors.New(errStr)
+	}
+
+	imageCount := len(config.StorageConfigList)
+	if imageCount > BaseOsImageCount {
+		errStr := fmt.Sprintf("baseOs(%s) invalid image count %d",
+			config.BaseOsVersion, imageCount)
+		return errors.New(errStr)
+	}
+
+	return nil
 }

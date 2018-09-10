@@ -801,7 +801,6 @@ func handleBaseOsCreate(ctxArg interface{}, key string,
 		UUIDandVersion: config.UUIDandVersion,
 		BaseOsVersion:  config.BaseOsVersion,
 		ConfigSha256:   config.ConfigSha256,
-		PartitionLabel: config.PartitionLabel,
 	}
 
 	status.StorageStatusList = make([]types.StorageStatus,
@@ -812,6 +811,18 @@ func handleBaseOsCreate(ctxArg interface{}, key string,
 		ss.Name = sc.Name
 		ss.ImageSha256 = sc.ImageSha256
 		ss.Target = sc.Target
+	}
+
+	// Check total and activated counts
+	err := validateBaseOsConfig(ctx, config)
+	if err != nil {
+		errStr := fmt.Sprintf("%v", err)
+		log.Println(errStr)
+		status.Error = errStr
+		status.ErrorTime = time.Now()
+		publishBaseOsStatus(ctx, &status)
+		publishDeviceInfo = true
+		return
 	}
 
 	baseOsGetActivationStatus(&status)
@@ -845,6 +856,18 @@ func handleBaseOsModify(ctxArg interface{}, key string,
 		config.Activate == status.Activated {
 		log.Printf("Same version %v for %s\n",
 			config.UUIDandVersion.Version, uuidStr)
+		return
+	}
+
+	// Check total and activated counts
+	err := validateBaseOsConfig(ctx, config)
+	if err != nil {
+		errStr := fmt.Sprintf("%v", err)
+		log.Println(errStr)
+		status.Error = errStr
+		status.ErrorTime = time.Now()
+		publishBaseOsStatus(ctx, &status)
+		publishDeviceInfo = true
 		return
 	}
 
