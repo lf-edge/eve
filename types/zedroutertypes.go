@@ -578,9 +578,9 @@ type NetworkServiceStatus struct {
 	AdapterList   []string  // Recorded at time of activate
 	Subnet        net.IPNet // Recorded at time of activate
 	// Any errrors from provisioning the service
-	Error     string
-	ErrorTime time.Time
-	VpnStatus *ServiceVpnStatus
+	Error          string
+	ErrorTime      time.Time
+	VpnStatus      *ServiceVpnStatus
 	LispInfoStatus *LispInfoStatus
 	LispMetrics    *LispMetrics
 }
@@ -746,11 +746,11 @@ type LispDecapKey struct {
 }
 
 type LispInfoStatus struct {
-	ItrCryptoPort  uint64
-	EtrNatPort     uint64
-	Interfaces     []string
-	DatabaseMaps   []LispDatabaseMap
-	DecapKeys      []LispDecapKey
+	ItrCryptoPort uint64
+	EtrNatPort    uint64
+	Interfaces    []string
+	DatabaseMaps  []LispDatabaseMap
+	DecapKeys     []LispDecapKey
 }
 
 type LispPktStat struct {
