@@ -145,9 +145,9 @@ func lookupDownloaderStatus(ctx *zedagentContext, objType string,
 	return &status
 }
 
-func checkStorageDownloadStatus(ctx *zedagentContext,
-	objType string, uuidStr string,
-	config []types.StorageConfig, status []types.StorageStatus) *types.RetStatus {
+func checkStorageDownloadStatus(ctx *zedagentContext, objType string,
+	uuidStr string,	config []types.StorageConfig,
+	status []types.StorageStatus) *types.RetStatus {
 
 	ret := &types.RetStatus{}
 	log.Printf("checkStorageDownloadStatus for %s\n", uuidStr)

@@ -154,7 +154,7 @@ func configTimerTask(handleChannel chan interface{},
 	for range ticker.C {
 		iteration += 1
 		// reboot flag is not set, go fetch new config
-		if rebootFlag == false {
+		if !rebootFlag {
 			rebootFlag = getLatestConfig(configUrl, iteration,
 				&updateInprogress, getconfigCtx)
 		} else {

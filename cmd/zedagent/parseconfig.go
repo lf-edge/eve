@@ -44,7 +44,7 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 	getconfigCtxGlobal = getconfigCtx
 
 	// XXX can this happen when usingSaved is set?
-	if parseOpCmds(config) == true {
+	if parseOpCmds(config) {
 		log.Println("Reboot flag set, skipping config processing")
 		// Make sure we tell apps to shut down
 		shutdownApps(getconfigCtx)

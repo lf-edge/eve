@@ -128,14 +128,14 @@ func doBaseOsStatusUpdate(ctx *zedagentContext, uuidStr string,
 		return changed
 	}
 
-	if config.Activate == false {
+	if !config.Activate {
 		log.Printf("doBaseOsStatusUpdate(%s) for %s, Activate is not set\n",
 			config.BaseOsVersion, uuidStr)
 		changed = doBaseOsInactivate(uuidStr, status)
 		return changed
 	}
 
-	if status.Activated == true {
+	if status.Activated {
 		log.Printf("doBaseOsStatusUpdate(%s) for %s, is already activated\n",
 			config.BaseOsVersion, uuidStr)
 		return false
@@ -207,8 +207,7 @@ func doBaseOsActivate(ctx *zedagentContext, uuidStr string,
 	}
 
 	// if it is installed, flip the activated status
-	if status.State == types.INSTALLED ||
-		status.Activated == false {
+	if status.State == types.INSTALLED || !status.Activated {
 		status.Activated = true
 		changed = true
 		// Make sure we tell apps to shut down
@@ -680,7 +679,7 @@ func validateBaseOsConfig(ctx *zedagentContext, config types.BaseOsConfig) error
 			continue
 		}
 		osCount++
-		if config.Activate == true {
+		if config.Activate {
 			activateCount++
 		}
 	}
