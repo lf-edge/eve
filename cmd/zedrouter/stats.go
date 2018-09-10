@@ -6,6 +6,7 @@
 package zedrouter
 
 import (
+	"encoding/json"
 	"errors"
 	"github.com/zededa/go-provision/types"
 	"log"
@@ -163,6 +164,11 @@ func swanCtlCmdParse(vpnStatus *types.ServiceVpnStatus, outStr string) uint32 {
 	for idx, cblock := range cmdOut.childBlocks {
 		connInfo := populateConnInfo(cblock, outLines)
 		vpnStatus.ActiveVpnConns[idx] = connInfo
+	}
+	if debug {
+		if bytes, err := json.Marshal(vpnStatus); err != nil {
+			log.Printf("swanCtlCmdParse(): %s\n", bytes)
+		}
 	}
 	return cmdOut.childCount
 }

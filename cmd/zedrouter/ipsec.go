@@ -461,7 +461,7 @@ func ipTablesChainMatch(tableName string, chainName string,
 // correct table or add/delete from the correct table
 func ipRouteCreate(vpnConfig types.VpnServiceConfig) error {
 
-	if vpnConfig.PolicyBased == true {
+	if vpnConfig.PolicyBased {
 		return nil
 	}
 	gatewayConfig := vpnConfig.GatewayConfig
@@ -504,7 +504,7 @@ func ipRouteCreate(vpnConfig types.VpnServiceConfig) error {
 
 func ipRouteDelete(vpnConfig types.VpnServiceConfig) error {
 
-	if vpnConfig.PolicyBased == true {
+	if vpnConfig.PolicyBased {
 		return nil
 	}
 	gatewayConfig := vpnConfig.GatewayConfig
@@ -545,7 +545,7 @@ func ipRouteDelete(vpnConfig types.VpnServiceConfig) error {
 
 func ipRouteCheck(vpnConfig types.VpnServiceConfig) error {
 
-	if vpnConfig.PolicyBased == true {
+	if vpnConfig.PolicyBased {
 		return nil
 	}
 	gatewayConfig := vpnConfig.GatewayConfig
@@ -611,7 +611,7 @@ func ipRouteMatch(outStr, matchString string) error {
 
 func ipLinkTunnelCreate(vpnConfig types.VpnServiceConfig) error {
 
-	if vpnConfig.PolicyBased == true {
+	if vpnConfig.PolicyBased {
 		return nil
 	}
 	gatewayConfig := vpnConfig.GatewayConfig
@@ -674,7 +674,7 @@ func ipLinkTunnelCreate(vpnConfig types.VpnServiceConfig) error {
 
 func ipLinkTunnelDelete(vpnConfig types.VpnServiceConfig) error {
 
-	if vpnConfig.PolicyBased == true {
+	if vpnConfig.PolicyBased {
 		return nil
 	}
 	clientConfig := vpnConfig.ClientConfigList[0]
@@ -745,15 +745,25 @@ func ipSecServiceConfigCreate(vpnConfig types.VpnServiceConfig) error {
 		writeStr = writeStr + ipSecClientTunDpdSpecStr
 
 	case OnPremVpnServer:
-		// one or more clients
-		clientConfig := clientConfigList[0]
-		tunnelConfig := clientConfig.TunnelConfig
 		writeStr = writeStr + ipSecSvrTunHdrSpecStr
 		writeStr = writeStr + ipSecSvrTunLeftHdrSpecStr + gatewayConfig.IpAddr
 		writeStr = writeStr + ipSecSvrTunLeftAttribSpecStr
-		writeStr = writeStr + ipSecSvrTunRightHdrSpecStr + tunnelConfig.Name
-		writeStr = writeStr + ipSecSvrTunRightSpecStr + clientConfig.IpAddr
-		writeStr = writeStr + ipSecSvrTunRightAttribSpecStr
+
+		// one or more clients
+		wildMatch := false
+		for _, clientConfig := range clientConfigList {
+			if match := isClientWildCard(clientConfig); match {
+				log.Printf("wildCard Client %s\n", clientConfig.IpAddr)
+				if wildMatch {
+					continue
+				}
+				wildMatch = true
+			}
+			tunnelConfig := clientConfig.TunnelConfig
+			writeStr = writeStr + ipSecSvrTunRightHdrSpecStr + tunnelConfig.Name
+			writeStr = writeStr + ipSecSvrTunRightSpecStr + clientConfig.IpAddr
+			writeStr = writeStr + ipSecSvrTunRightAttribSpecStr
+		}
 
 	default:
 		return errors.New("unsupported vpn role: " + vpnConfig.VpnRole)
@@ -805,8 +815,18 @@ func ipSecSecretConfigCreate(vpnConfig types.VpnServiceConfig) error {
 		}
 
 	case OnPremVpnServer:
+		wildMatch := false
 		// one or more client(s)
 		for _, clientConfig := range clientConfigList {
+			if match := isClientWildCard(clientConfig); match {
+				log.Printf("wildCard Client %s\n", clientConfig.IpAddr)
+				// contains the preshared key
+				if clientConfig.PreSharedKey == "" ||
+					wildMatch {
+					continue
+				}
+				wildMatch = true
+			}
 			secretStr := gatewayConfig.IpAddr + " " + clientConfig.IpAddr
 			secretStr = secretStr + " : PSK " + clientConfig.PreSharedKey
 			secretStr = secretStr + "\n"
@@ -838,7 +858,7 @@ func ipSecSecretConfigDelete() error {
 
 func charonRouteConfigCreate(policyflag bool) error {
 	filename := "/etc/strongswan.d/charon.conf"
-	if policyflag == true {
+	if policyflag {
 		return ipSecConfigFileWrite(filename, charonRouteConfStr)
 	}
 	return ipSecConfigFileWrite(filename, charonNoRouteConfStr)
@@ -855,7 +875,7 @@ func sysctlConfigCreate(vpnConfig types.VpnServiceConfig) error {
 	log.Printf("%s: %s config\n", upLinkConfig.Name, "sysctl")
 
 	writeStr := ""
-	if vpnConfig.PolicyBased == true {
+	if vpnConfig.PolicyBased {
 		writeStr = writeStr + "\n net.ipv4.conf." + upLinkConfig.Name + ".disable_xfrm=0"
 		writeStr = writeStr + "\n net.ipv4.conf." + upLinkConfig.Name + ".disable_policy=0\n"
 	} else {
