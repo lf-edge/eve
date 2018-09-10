@@ -267,9 +267,12 @@ func doBaseOsInstall(ctx *zedagentContext, uuidStr string,
 	}
 
 	// XXX can we check the version before installing to the partition?
+	// XXX requires loopback mounting the image. We dd as part of
+	// this install call:
+
 	// install the image at proper partition
 	if installDownloadedObjects(baseOsObj, uuidStr,
-		config.StorageConfigList, status.StorageStatusList) {
+		status.StorageStatusList) {
 
 		changed = true
 		//match the version string
@@ -474,7 +477,6 @@ func doBaseOsUninstall(ctx *zedagentContext, uuidStr string,
 
 	// If this image is on the !active partition we mark that
 	// as unused.
-	// XXX revisit
 	if status.PartitionLabel != "" {
 		partName := status.PartitionLabel
 		if status.BaseOsVersion == zboot.GetShortVersion(partName) &&
@@ -484,6 +486,8 @@ func doBaseOsUninstall(ctx *zedagentContext, uuidStr string,
 			log.Printf("Mark other partition %s, unused\n", partName)
 			zboot.SetOtherPartitionStateUnused()
 		}
+		status.PartitionLabel = ""
+		changed = true
 	}
 	for i, _ := range status.StorageStatusList {
 
@@ -570,22 +574,25 @@ func installBaseOsObject(srcFilename string, dstFilename string) error {
 	log.Printf("installBaseOsObject: %s to %s\n", srcFilename, dstFilename)
 
 	if dstFilename == "" {
-		log.Printf("installBaseOsObject: unssigned destination partition\n")
-		err := errors.New("no destination partition")
-		return err
+		errStr := fmt.Sprintf("installBaseOsObject: unassigned destination partition for %s",
+			srcFilename)
+		log.Println(errStr)
+		return errors.New(errStr)
 	}
 
 	err := zboot.WriteToPartition(srcFilename, dstFilename)
 	if err != nil {
-		log.Printf("installBaseOsObject: write failed %s\n", err)
-		return err
+		errStr := fmt.Sprintf("installBaseOsObject: WriteToPartition failed %s: %s",
+			dstFilename, err)
+		log.Println(errStr)
+		return errors.New(errStr)
 	}
 	return nil
 }
 
 // validate whether the image version matches with
 // config version string
-// XXX usage? Operate on status?
+// XXX callers??
 func checkInstalledVersion(status types.BaseOsStatus) string {
 
 	log.Printf("checkInstalledVersion(%s) %s %s\n",

@@ -142,8 +142,7 @@ func doCertObjInstall(ctx *zedagentContext, uuidStr string, config types.CertObj
 	}
 
 	// install the certs now
-	if installDownloadedObjects(certObj, uuidStr, config.StorageConfigList,
-		status.StorageStatusList) {
+	if installDownloadedObjects(certObj, uuidStr, status.StorageStatusList) {
 		// Automatically move from DOWNLOADED to INSTALLED
 		status.State = types.INSTALLED
 		changed = true

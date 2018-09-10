@@ -888,9 +888,6 @@ func PublishDeviceInfoToZedCloud(pubBaseOsStatus *pubsub.Publication,
 	// Report BaseOs Status for the two partitions
 	getBaseOsStatus := func(partLabel string) *types.BaseOsStatus {
 		// Look for a matching IMGA/IMGB in baseOsStatus
-		// XXX sanity check on activated vs. curPart
-		// XXX are there cases where we've started download without
-		// having assigned a partLabel?
 		items := pubBaseOsStatus.GetAll()
 		for _, st := range items {
 			bos := cast.CastBaseOsStatus(st)

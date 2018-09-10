@@ -146,7 +146,7 @@ func lookupDownloaderStatus(ctx *zedagentContext, objType string,
 }
 
 func checkStorageDownloadStatus(ctx *zedagentContext, objType string,
-	uuidStr string,	config []types.StorageConfig,
+	uuidStr string, config []types.StorageConfig,
 	status []types.StorageStatus) *types.RetStatus {
 
 	ret := &types.RetStatus{}
@@ -304,18 +304,17 @@ func lookupDatastoreConfig(ctx *zedagentContext,
 }
 
 func installDownloadedObjects(objType string, uuidStr string,
-	config []types.StorageConfig, status []types.StorageStatus) bool {
+	status []types.StorageStatus) bool {
 
 	ret := true
 	log.Printf("installDownloadedObjects(%s)\n", uuidStr)
 
-	for i, sc := range config {
-
+	for i, _ := range status {
 		ss := &status[i]
 
-		safename := types.UrlToSafename(sc.Name, sc.ImageSha256)
+		safename := types.UrlToSafename(ss.Name, ss.ImageSha256)
 
-		installDownloadedObject(objType, safename, sc, ss)
+		installDownloadedObject(objType, safename, ss)
 
 		// if something is still not installed, mark accordingly
 		if ss.State != types.INSTALLED {
@@ -331,7 +330,7 @@ func installDownloadedObjects(objType string, uuidStr string,
 // the final installation directory is mentioned,
 // move the object there
 func installDownloadedObject(objType string, safename string,
-	config types.StorageConfig, status *types.StorageStatus) error {
+	status *types.StorageStatus) error {
 
 	var ret error
 	var srcFilename string = objectDownloadDirname + "/" + objType
@@ -350,8 +349,9 @@ func installDownloadedObject(objType string, safename string,
 		return nil
 
 	case types.DOWNLOADED:
-		// XXX status?
-		if config.ImageSha256 != "" {
+		// XXX should fix code elsewhere to advance to DELIVERED in
+		// this case.
+		if status.ImageSha256 != "" {
 			log.Printf("installDownloadedObject %s, verification pending\n",
 				safename)
 			return nil
@@ -360,7 +360,7 @@ func installDownloadedObject(objType string, safename string,
 		break
 
 	case types.DELIVERED:
-		srcFilename += "/verified/" + config.ImageSha256 + "/" +
+		srcFilename += "/verified/" + status.ImageSha256 + "/" +
 			types.SafenameToFilename(safename)
 		break
 
