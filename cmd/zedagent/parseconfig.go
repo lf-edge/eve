@@ -584,43 +584,6 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 		}
 		config.DnsNameToIPList = nameToIPs
 
-		// XXX suspect DhcpRange is not nil but has empty start/end
-		if forceLisp && config.Type == types.NT_CryptoEID &&
-			ipspec == nil {
-
-			log.Printf("XXX adding cryptoeid IPv4\n")
-			tmp := "40.1.0.0/16"
-			_, subnet, err := net.ParseCIDR(tmp)
-			if err != nil {
-				log.Printf("Failed to parse tmp: %s\n",
-					tmp, err)
-			} else {
-				config.Subnet = *subnet
-			}
-			tmp = "40.1.0.1"
-			config.Gateway = net.ParseIP(tmp)
-			if config.Gateway == nil {
-				log.Printf("Failed to parse %s\n", tmp)
-			}
-			tmp = "40.1.0.2"
-			start := net.ParseIP(tmp)
-			if start == nil {
-				log.Printf("Failed to parse %s\n", tmp)
-			}
-			tmp = "40.1.255.255"
-			end := net.ParseIP(tmp)
-			if end == nil {
-				log.Printf("Failed to parse %s\n", tmp)
-			}
-			config.DhcpRange.Start = start
-			config.DhcpRange.End = end
-			if config.Dhcp != types.DT_SERVER {
-				log.Printf("XXX forcing DT_SERVER from %v\n",
-					config.Dhcp)
-				config.Dhcp = types.DT_SERVER
-			}
-			// XXX end testing hack
-		}
 		ctx.pubNetworkObjectConfig.Publish(config.Key(),
 			&config)
 	}
@@ -914,14 +877,6 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 				log.Printf("parseOverrlayNetworkConfig: bad Addr %s\n",
 					intfEnt.Addr)
 				// XXX report error?
-			}
-			// XXX testing hack
-			if forceLisp {
-				appIP := "40.1.0.99"
-				olCfg.AppIPAddr = net.ParseIP(appIP)
-				log.Printf("XXX Using %s with %s\n",
-					olCfg.AppIPAddr.String(),
-					olCfg.EIDConfigDetails.EID.String())
 			}
 		}
 		if olCfg.AppIPAddr == nil {

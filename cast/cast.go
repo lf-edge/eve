@@ -324,3 +324,39 @@ func CastDatastoreConfig(in interface{}) types.DatastoreConfig {
 	}
 	return output
 }
+
+func CastLispDataplaneConfig(in interface{}) types.LispDataplaneConfig {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastLispDataplaneConfig")
+	}
+	var output types.LispDataplaneConfig
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "json Unmarshal in CastLispDataplaneConfig")
+	}
+	return output
+}
+
+func CastLispInfoStatus(in interface{}) types.LispInfoStatus {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastLispInfoStatus")
+	}
+	var output types.LispInfoStatus
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "json Unmarshal in CastLispInfoStatus")
+	}
+	return output
+}
+
+func CastLispMetrics(in interface{}) types.LispMetrics {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastLispMetrics")
+	}
+	var output types.LispMetrics
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "json Unmarshal in CastLispMetrics")
+	}
+	return output
+}

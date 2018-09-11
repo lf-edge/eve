@@ -223,7 +223,7 @@ func getLatestConfig(url string, iteration int, updateInprogress *bool,
 			!getconfigCtx.readSavedConfig &&
 			getconfigCtx.lastReceivedConfigFromCloud == getconfigCtx.startTime {
 
-			config, err := readSavedProtoMessage()
+			config, err := readSavedProtoMessage(checkpointDirname+"/lastconfig", false)
 			if err != nil {
 				log.Printf("getconfig: %v\n", err)
 				return false
@@ -357,8 +357,7 @@ func writeProtoMessage(filename string, contents []byte) {
 
 // If the file exists then read the config
 // Ignore if if older than staleConfigTime seconds
-func readSavedProtoMessage() (*zconfig.EdgeDevConfig, error) {
-	filename := checkpointDirname + "/lastconfig"
+func readSavedProtoMessage(filename string, force bool) (*zconfig.EdgeDevConfig, error) {
 	info, err := os.Stat(filename)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -369,7 +368,7 @@ func readSavedProtoMessage() (*zconfig.EdgeDevConfig, error) {
 	}
 	age := time.Since(info.ModTime())
 	staleLimit := time.Second * time.Duration(configItemCurrent.staleConfigTime)
-	if age > staleLimit {
+	if !force && age > staleLimit {
 		errStr := fmt.Sprintf("savedProto too old: age %v limit %d\n",
 			age, staleLimit)
 		log.Println(errStr)

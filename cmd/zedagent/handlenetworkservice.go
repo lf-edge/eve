@@ -70,12 +70,91 @@ func handleNetworkVpnServiceStatusDelete(ctx *zedagentContext, status types.Netw
 	prepareVpnServiceInfoMsg(ctx, status, true)
 }
 
+func prepareAndPublishLispServiceInfoMsg(ctx *zedagentContext,
+	status types.NetworkServiceStatus, deleted bool) {
+	infoMsg := &zmet.ZInfoMsg{}
+	infoType := new(zmet.ZInfoTypes)
+	*infoType = zmet.ZInfoTypes_ZiService
+	infoMsg.DevId = *proto.String(zcdevUUID.String())
+	infoMsg.Ztype = *infoType
+
+	serviceUUID := status.Key()
+	svcInfo := new(zmet.ZInfoService)
+	svcInfo.ServiceID = serviceUUID
+	svcInfo.ServiceName = status.DisplayName
+	svcInfo.ServiceType = uint32(status.Type)
+	svcInfo.Activated = status.Activated
+
+	var lispInfo *zmet.ZInfoLisp = nil
+	// XXX When a service instance is deleted it is ideal to send
+	// a flag such as deleted/gone inside ZInfoService message.
+	// Having a separate flag (indicating deletion) make is explicit
+	// and easy for the cloud process.
+	// For now we just send lispInfo as nil to indicate deletion to cloud.
+	if !deleted {
+		lispInfo = new(zmet.ZInfoLisp)
+	}
+	lispStatus := status.LispInfoStatus
+	if (lispStatus != nil) && (lispInfo != nil) {
+		lispInfo.ItrCryptoPort = lispStatus.ItrCryptoPort
+		lispInfo.EtrNatPort = lispStatus.EtrNatPort
+		for _, intf := range lispStatus.Interfaces {
+			lispInfo.Interfaces = append(lispInfo.Interfaces, intf)
+		}
+
+		// Copy ITR database map entries
+		for _, dbMap := range lispStatus.DatabaseMaps {
+			dbMapEntry := &zmet.DatabaseMap{
+				IID: dbMap.IID,
+			}
+
+			for _, mapEntry := range dbMap.MapCacheEntries {
+				mapCacheEntry := &zmet.MapCacheEntry{
+					EID: mapEntry.EID.String(),
+				}
+
+				for _, rloc := range mapEntry.Rlocs {
+					rlocEntry := &zmet.RlocState{
+						Rloc:      rloc.Rloc.String(),
+						Reachable: rloc.Reachable,
+					}
+					mapCacheEntry.Rlocs = append(mapCacheEntry.Rlocs, rlocEntry)
+				}
+				dbMapEntry.MapCacheEntries = append(dbMapEntry.MapCacheEntries, mapCacheEntry)
+			}
+			lispInfo.DatabaseMaps = append(lispInfo.DatabaseMaps, dbMapEntry)
+		}
+
+		// Copy ETR decap entries
+		for _, decapKey := range lispStatus.DecapKeys {
+			decap := &zmet.DecapKey{
+				Rloc:     decapKey.Rloc.String(),
+				Port:     decapKey.Port,
+				KeyCount: decapKey.KeyCount,
+			}
+			lispInfo.DecapKeys = append(lispInfo.DecapKeys, decap)
+		}
+	}
+
+	svcInfo.InfoContent = new(zmet.ZInfoService_Linfo)
+	if x, ok := svcInfo.GetInfoContent().(*zmet.ZInfoService_Linfo); ok {
+		x.Linfo = lispInfo
+	}
+
+	infoMsg.InfoContent = new(zmet.ZInfoMsg_Sinfo)
+	if x, ok := infoMsg.GetInfoContent().(*zmet.ZInfoMsg_Sinfo); ok {
+		x.Sinfo = svcInfo
+	}
+	log.Printf("XXX Publish LispInfo message to zedcloud\n")
+	publishNetworkServiceInfo(ctx, serviceUUID, infoMsg)
+}
+
 func handleNetworkLispServiceStatusModify(ctx *zedagentContext, status types.NetworkServiceStatus) {
-	// XXX, fill in Lisp Details
+	prepareAndPublishLispServiceInfoMsg(ctx, status, false)
 }
 
 func handleNetworkLispServiceStatusDelete(ctx *zedagentContext, status types.NetworkServiceStatus) {
-	// XXX, fill in Lisp Details
+	prepareAndPublishLispServiceInfoMsg(ctx, status, true)
 }
 
 func prepareVpnServiceInfoMsg(ctx *zedagentContext, status types.NetworkServiceStatus, delete bool) {
@@ -96,6 +175,7 @@ func prepareVpnServiceInfoMsg(ctx *zedagentContext, status types.NetworkServiceS
 	svcInfo.ServiceType = uint32(status.Type)
 	svcInfo.SoftwareList = new(zmet.ZInfoSW)
 	svcInfo.SoftwareList.SwVersion = vpnStatus.Version
+	svcInfo.Activated = status.Activated
 	upTime, _ := ptypes.TimestampProto(vpnStatus.UpTime)
 	svcInfo.UpTimeStamp = upTime
 	if !status.ErrorTime.IsZero() {
@@ -244,5 +324,147 @@ func publishNetworkServiceInfoToZedCloud(serviceUUID string, infoMsg *zmet.ZInfo
 			true)
 	} else {
 		writeSentDeviceInfoProtoMessage(data)
+	}
+}
+
+func createNetworkServiceMetrics(ctx *zedagentContext,
+	reportMetrics *zmet.ZMetricMsg) {
+	sub := ctx.subNetworkServiceStatus
+	stlist := sub.GetAll()
+	if stlist == nil || len(stlist) == 0 {
+		return
+	}
+	for _, st := range stlist {
+		status := cast.CastNetworkServiceStatus(st)
+		metricService := protoEncodeNetworkServiceMetricProto(status)
+		reportMetrics.Sm = append(reportMetrics.Sm, metricService)
+	}
+	if debug {
+		log.Println("network service metrics: ",
+			reportMetrics.Sm)
+	}
+}
+
+func protoEncodeNetworkServiceMetricProto(status types.NetworkServiceStatus) *zmet.ZMetricService {
+
+	serviceMetric := new(zmet.ZMetricService)
+	serviceMetric.ServiceID = status.Key()
+	serviceMetric.ServiceName = status.DisplayName
+	serviceMetric.ServiceType = uint32(status.Type)
+	switch status.Type {
+	case types.NST_STRONGSWAN:
+		protoEncodeVpnServiceMetric(status, serviceMetric)
+
+	case types.NST_LISP:
+		log.Printf("XXX Publish Lisp Service Metric to Zedcloud\n")
+		protoEncodeLispServiceMetric(status, serviceMetric)
+	}
+
+	return serviceMetric
+}
+
+func protoEncodeLispServiceMetric(status types.NetworkServiceStatus,
+	serviceMetric *zmet.ZMetricService) {
+	if status.LispMetrics == nil {
+		return
+	}
+	metrics := status.LispMetrics
+	lispMetric := new(zmet.ZMetricLisp)
+	lispMetric.ItrPacketSendError = &zmet.PktStat{
+		Packets: metrics.ItrPacketSendError.Pkts,
+		Bytes:   metrics.ItrPacketSendError.Bytes,
+	}
+	lispMetric.InvalidEidError = &zmet.PktStat{
+		Packets: metrics.InvalidEidError.Pkts,
+		Bytes:   metrics.InvalidEidError.Bytes,
+	}
+	lispMetric.NoDecryptKey = &zmet.PktStat{
+		Packets: metrics.NoDecryptKey.Pkts,
+		Bytes:   metrics.NoDecryptKey.Bytes,
+	}
+	lispMetric.OuterHeaderError = &zmet.PktStat{
+		Packets: metrics.OuterHeaderError.Pkts,
+		Bytes:   metrics.OuterHeaderError.Bytes,
+	}
+	lispMetric.BadInnerVersion = &zmet.PktStat{
+		Packets: metrics.BadInnerVersion.Pkts,
+		Bytes:   metrics.BadInnerVersion.Bytes,
+	}
+	lispMetric.GoodPackets = &zmet.PktStat{
+		Packets: metrics.GoodPackets.Pkts,
+		Bytes:   metrics.GoodPackets.Bytes,
+	}
+	lispMetric.ICVError = &zmet.PktStat{
+		Packets: metrics.ICVError.Pkts,
+		Bytes:   metrics.ICVError.Bytes,
+	}
+	lispMetric.LispHeaderError = &zmet.PktStat{
+		Packets: metrics.LispHeaderError.Pkts,
+		Bytes:   metrics.LispHeaderError.Bytes,
+	}
+	lispMetric.CheckSumError = &zmet.PktStat{
+		Packets: metrics.CheckSumError.Pkts,
+		Bytes:   metrics.CheckSumError.Bytes,
+	}
+	lispMetric.DecapReInjectError = &zmet.PktStat{
+		Packets: metrics.DecapReInjectError.Pkts,
+		Bytes:   metrics.DecapReInjectError.Bytes,
+	}
+	lispMetric.DecryptError = &zmet.PktStat{
+		Packets: metrics.DecryptError.Pkts,
+		Bytes:   metrics.DecryptError.Bytes,
+	}
+
+	lispStats := []*zmet.EidStats{}
+	for _, eidStat := range metrics.EidStats {
+		lispStat := &zmet.EidStats{
+			IID: eidStat.IID,
+			EID: eidStat.Eid.String(),
+		}
+
+		rlocStats := []*zmet.RlocStats{}
+		for _, rloc := range eidStat.RlocStats {
+			rlocStat := &zmet.RlocStats{
+				Rloc: rloc.Rloc.String(),
+				Stats: &zmet.PktStat{
+					Packets: rloc.Stats.Pkts,
+					Bytes:   rloc.Stats.Bytes,
+				},
+				SecondsSinceLastPacket: rloc.SecondsSinceLastPacket,
+			}
+			rlocStats = append(rlocStats, rlocStat)
+		}
+		lispStat.RlocStatsEntries = rlocStats
+		lispStats = append(lispStats, lispStat)
+	}
+	lispMetric.EidStatsEntries = lispStats
+
+	serviceMetric.ServiceContent = new(zmet.ZMetricService_Lispm)
+	if x, ok := serviceMetric.GetServiceContent().(*zmet.ZMetricService_Lispm); ok {
+		x.Lispm = lispMetric
+	}
+}
+
+func protoEncodeVpnServiceMetric(status types.NetworkServiceStatus,
+	serviceMetric *zmet.ZMetricService) {
+	if status.VpnStatus == nil {
+		return
+	}
+	vpnStatus := status.VpnStatus
+	vpnMetric := new(zmet.ZMetricVpn)
+	vpnMetric.ConnStat = new(zmet.ZMetricConn)
+	vpnMetric.ConnStat.InPkts = new(zmet.PktStat)
+	vpnMetric.ConnStat.OutPkts = new(zmet.PktStat)
+	for _, vpnConn := range vpnStatus.ActiveVpnConns {
+		for _, linkData := range vpnConn.Links {
+			vpnMetric.ConnStat.InPkts.Packets += linkData.LInfo.PktsCount
+			vpnMetric.ConnStat.InPkts.Bytes += linkData.LInfo.BytesCount
+			vpnMetric.ConnStat.OutPkts.Packets += linkData.RInfo.PktsCount
+			vpnMetric.ConnStat.OutPkts.Bytes += linkData.RInfo.BytesCount
+		}
+	}
+	serviceMetric.ServiceContent = new(zmet.ZMetricService_Vpnm)
+	if x, ok := serviceMetric.GetServiceContent().(*zmet.ZMetricService_Vpnm); ok {
+		x.Vpnm = vpnMetric
 	}
 }
