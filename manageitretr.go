@@ -12,8 +12,8 @@ import (
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/lisp/dataplane/dptypes"
 	"github.com/zededa/lisp/dataplane/etr"
-	"github.com/zededa/lisp/dataplane/itr"
 	"github.com/zededa/lisp/dataplane/fib"
+	"github.com/zededa/lisp/dataplane/itr"
 	"log"
 )
 

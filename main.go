@@ -29,7 +29,7 @@ import (
 )
 
 const (
-	agentName  = "dataplane"
+	agentName  = "lisp-ztr"
 	dnsDirname = "/var/run/zedrouter/DeviceNetworkStatus"
 )
 
@@ -73,6 +73,25 @@ func main() {
 	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 		log.Fatal(err)
 	}
+	// Initialize pubsub channels
+	// We subsribe to Lisp configuration channel from zedrouter
+	// and wait for our configuration. Dataplane will only start
+	// processing packets when the configuration from zedrouter has
+	// Experimental set to true.
+	dataplaneContext := initPubsubChannels()
+
+	log.Printf("Waiting for configuration from zedrouter\n")
+	for {
+		select {
+		case change := <-dataplaneContext.SubLispConfig.C:
+			dataplaneContext.SubLispConfig.ProcessChange(change)
+		}
+		// We keep waiting till we are enabled
+		if dataplaneContext.Experimental == true {
+			break
+		}
+	}
+
 	log.Printf("Starting %s\n", agentName)
 
 	// Initialize databases
@@ -120,13 +139,64 @@ func main() {
 	etr.StartEtrNonNat()
 
 	// Initialize and start stats thread
-	InitAndStartStatsThread(puntChannel)
+	InitAndStartStatsThread(puntChannel, dataplaneContext)
 
 	// start map cache scrub thread
 	StartMapcacheScrubThread()
 
 	// This function should not return.
-	handleConfig(configPipe)
+	handleConfig(configPipe, dataplaneContext)
+}
+
+func handleExpModify(ctxArg interface{}, key string, statusArg interface{}) {
+	ctx := ctxArg.(*dptypes.DataplaneContext)
+
+	status := cast.CastLispDataplaneConfig(statusArg)
+	if key != "global" {
+		log.Printf("handleExpModify: ignoring %s\n", key)
+		return
+	}
+	ctx.Experimental = status.Experimental
+	log.Printf("handleExpModify: Experimental status %v\n", ctx.Experimental)
+	log.Printf("handleExpModify: done\n")
+}
+
+func handleExpDelete(ctxArg interface{}, key string, statusArg interface{}) {
+	// There is no valid reason for deleting configuration
+	// XXX For now just mark our local experimental flag to false and return
+	ctx := ctxArg.(*dptypes.DataplaneContext)
+	ctx.Experimental = false
+}
+
+func initPubsubChannels() *dptypes.DataplaneContext {
+	dataplaneContext := &dptypes.DataplaneContext{}
+
+	// Create pubsub publish channels for LispInfo and Metrics
+	pubLispInfoStatus, err := pubsub.Publish("lisp-ztr",
+		types.LispInfoStatus{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	dataplaneContext.PubLispInfoStatus = pubLispInfoStatus
+
+	pubLispMetrics, err := pubsub.Publish("lisp-ztr",
+		types.LispMetrics{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	dataplaneContext.PubLispMetrics = pubLispMetrics
+
+	subLispConfig, err := pubsub.Subscribe("zedrouter",
+		types.LispDataplaneConfig{}, false, dataplaneContext)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subLispConfig.ModifyHandler = handleExpModify
+	subLispConfig.DeleteHandler = handleExpDelete
+	dataplaneContext.SubLispConfig = subLispConfig
+	subLispConfig.Activate()
+
+	return dataplaneContext
 }
 
 func connectToLispersDotNet() net.Conn {
@@ -239,8 +309,9 @@ func StartMapcacheScrubThread() {
 	go fib.MapcacheScrubThread()
 }
 
-func InitAndStartStatsThread(puntChannel chan []byte) {
-	go fib.StatsThread(puntChannel)
+func InitAndStartStatsThread(puntChannel chan []byte,
+	ctx *dptypes.DataplaneContext) {
+	go fib.StatsThread(puntChannel, ctx)
 }
 
 func registerSignalHandler() {
@@ -289,7 +360,7 @@ func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 	log.Printf("ETR: handleDNSDelete done for %s\n", key)
 }
 
-func handleConfig(c *net.UnixConn) {
+func handleConfig(c *net.UnixConn, dpContext *dptypes.DataplaneContext) {
 	defer c.Close()
 
 	subDeviceNetworkStatus, err := pubsub.Subscribe("zedrouter",
@@ -319,6 +390,7 @@ func handleConfig(c *net.UnixConn) {
 				return
 			} else {
 				handleLispMsg(buf[0:n])
+				fib.PublishLispInfoStatus(dpContext)
 			}
 		}
 	}
