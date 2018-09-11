@@ -274,6 +274,33 @@ message ZInfoLisp {
 	repeated DecapKey DecapKeys = 5;
 }
 
+// flow information
+message ZInfoFlowLink {
+  oneof Link {
+    string subNet = 1; // IpSec: Subnet
+    string eid = 2;    // LISP: EID
+  }
+}
+
+message ZInfoFlowEndPoint {
+  string iid  = 1;  // LISP: IID
+  string spiId = 2; // IpSec: SpiId
+  oneof Endpoint {
+    string ipAddr = 5; // IpSec: Endpoint Ip Address
+    string rloc = 6;   // LISP: RLOC
+  }
+  repeated ZInfoFlowLink linkInfo = 10;
+}
+
+message ZInfoFlow {
+  string id = 1;  // IpSec Conn-Id/Lisp
+  string name = 2; // IpSec Tun-Name
+  uint32 type = 3; // IpSec-Vpn or, LISP
+  uint64 estTime = 4; // in seconds
+  ZInfoFlowEndPoint lEndPoint = 10;
+  repeated ZInfoFlowEndPoint rEndPoint = 11;
+}
+
 // Service instance state information
 message ZInfoService {
   string serviceID = 1;
@@ -289,6 +316,7 @@ message ZInfoService {
     ZInfoVpn vinfo = 20;
     ZInfoLisp linfo = 21;
   }
+  repeated ZInfoFlow flowInfo = 10;
 }
 
 message ZInfoMsg {
@@ -517,6 +545,33 @@ message ZMetricVpn {
 	ZMetricConn EspStat = 4;
 }
 
+// flow stats
+message ZMetricFlowLink {
+  oneof Link {
+    string subNet = 1; // IpSec: Subnet
+    string eid = 2;    // LISP: EID
+  }
+  PktStat stats = 10;
+}
+
+message ZMetricFlowEndPoint {
+  string iid  = 1;  // LISP: IID
+  string spiId = 2; // IpSec: SpiId
+  oneof Endpoint {
+    string ipAddr = 5; // IpSec: Endpoint Ip Address
+    string rloc = 6;   // LISP: RLOC
+  }
+  repeated ZMetricFlowLink linkMetric = 10;
+}
+
+message ZMetricFlow {
+  string id = 1;  // IpSec Conn-Id/Lisp
+  string name = 2; // IpSec Tun-Name
+  uint32 type = 3; // IpSec-Vpn or, LISP
+  ZMetricFlowEndPoint lEndPoint = 10;
+  repeated ZMetricFlowEndPoint rEndPoint = 11;
+}
+
 message ZMetricService {
   string serviceID = 1;
   string serviceName = 2;
@@ -526,6 +581,7 @@ message ZMetricService {
     ZMetricVpn  vpnm = 20;
     ZMetricLisp lispm = 21;
   }
+  repeated ZMetricFlow flowStats = 10;
 }
 
 message ZMetricMsg {
