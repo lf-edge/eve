@@ -128,12 +128,13 @@ func parseBaseOsConfig(getconfigCtx *getconfigContext,
 	baseosPrevConfigHash = configHash
 	if same {
 		if debug {
-			log.Printf("parseBaseOsConfig: baseos sha is unchanged\n")
+			log.Printf("parseBaseOsConfig: baseos sha is unchanged: % x\n",
+				configHash)
 		}
 		return
 	}
-	log.Printf("parseBaseOsConfig: Applying updated config %v\n",
-		cfgOsList)
+	log.Printf("parseBaseOsConfig: Applying updated config sha % x vs. % x: %v\n",
+		baseosPrevConfigHash, configHash, cfgOsList)
 
 	baseOsCount := len(cfgOsList)
 	if baseOsCount == 0 {
@@ -233,12 +234,13 @@ func parseNetworkObjectConfig(config *zconfig.EdgeDevConfig,
 	networkConfigPrevConfigHash = configHash
 	if same {
 		if debug {
-			log.Printf("parseNetworkObjectConfig: network sha is unchanged\n")
+			log.Printf("parseNetworkObjectConfig: network sha is unchanged: % x\n",
+				configHash)
 		}
 		return
 	}
-	log.Printf("parseNetworkObjectConfig: Applying updated config %v\n",
-		nets)
+	log.Printf("parseNetworkObjectConfig: Applying updated config sha % x vs. % x: %v\n",
+		networkConfigPrevConfigHash, configHash, nets)
 	// Export NetworkObjectConfig to zedrouter
 	publishNetworkObjectConfig(getconfigCtx, nets)
 
@@ -262,12 +264,13 @@ func parseNetworkServiceConfig(config *zconfig.EdgeDevConfig,
 	networkServicePrevConfigHash = configHash
 	if same {
 		if debug {
-			log.Printf("parseNetworkServiceConfig: service sha is unchanged\n")
+			log.Printf("parseNetworkServiceConfig: service sha is unchanged: % x\n",
+				configHash)
 		}
 		return
 	}
-	log.Printf("parseNetworkServiceConfig: Applying updated config %v\n",
-		svcs)
+	log.Printf("parseNetworkServiceConfig: Applying updated config sha % x vs. % x: %v\n",
+		networkServicePrevConfigHash, configHash, svcs)
 
 	// Export NetworkServiceConfig to zedrouter
 	publishNetworkServiceConfig(getconfigCtx, svcs)
@@ -295,11 +298,13 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 	appinstancePrevConfigHash = configHash
 	if same {
 		if debug {
-			log.Printf("parseAppInstanceConfig: appinstance sha is unchanged\n")
+			log.Printf("parseAppInstanceConfig: appinstance sha is unchanged: % x\n",
+				configHash)
 		}
 		return
 	}
-	log.Printf("parseAppInstanceConfig: Applying updated config %v\n", Apps)
+	log.Printf("parseAppInstanceConfig: Applying updated config sha % x vs. % x: %v\n",
+		appinstancePrevConfigHash, configHash, Apps)
 
 	// First look for deleted ones
 	items := getconfigCtx.pubAppInstanceConfig.GetAll()
@@ -401,12 +406,13 @@ func parseDatastoreConfig(config *zconfig.EdgeDevConfig,
 	datastoreConfigPrevConfigHash = configHash
 	if same {
 		if debug {
-			log.Printf("parseDatastoreConfig: sha is unchanged\n")
+			log.Printf("parseDatastoreConfig: datastore sha is unchanged: % x\n",
+				configHash)
 		}
 		return
 	}
-	log.Printf("parseDatastoreConfig: Applying updated datastore config %v\n",
-		stores)
+	log.Printf("parseDatastoreConfig: Applying updated datastore config shaa % x vs. % x:  %v\n",
+		datastoreConfigPrevConfigHash, configHash, stores)
 	publishDatastoreConfig(getconfigCtx, stores)
 }
 
@@ -933,11 +939,13 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 	itemsPrevConfigHash = configHash
 	if same {
 		if debug {
-			log.Printf("parseConfigItems: items sha is unchanged\n")
+			log.Printf("parseConfigItems: items sha is unchanged: % x\n",
+				configHash)
 		}
 		return
 	}
-	log.Printf("parseConfigItems: Applying updated config %v\n", items)
+	log.Printf("parseConfigItems: Applying updated config sha % x vs. % x: %v\n",
+		itemsPrevConfigHash, configHash, items)
 
 	for _, item := range items {
 		log.Printf("parseConfigItems key %s\n", item.Key)
@@ -1138,6 +1146,7 @@ func getCertObjConfig(config *types.CertObjConfig,
 	var drive = &types.StorageConfig{
 		DatastoreId: image.DatastoreId,
 		Name:        certUrl, // XXX FIXME use??
+		NameIsURL:   true,
 		Size:        100 * 1024,
 		ImageSha256: "",
 	}
@@ -1219,7 +1228,8 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd) bool {
 	rebootPrevConfigHash = configHash
 	if same {
 		if debug {
-			log.Printf("scheduleReboot: reboot sha is unchanged\n")
+			log.Printf("scheduleReboot: reboot sha is unchanged: % x\n",
+				configHash)
 		}
 		return rebootPrevReturn
 	}
@@ -1301,7 +1311,8 @@ func scheduleBackup(backup *zconfig.DeviceOpsCmd) {
 	backupPrevConfigHash = configHash
 	if same {
 		if debug {
-			log.Printf("scheduleBackup: backup sha is unchanged\n")
+			log.Printf("scheduleBackup: backup sha is unchanged: % x\n",
+				configHash)
 		}
 	}
 	log.Printf("scheduleBackup: Applying updated config %v\n", backup)

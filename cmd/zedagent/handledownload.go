@@ -46,7 +46,9 @@ func createDownloaderConfig(ctx *zedagentContext, objType string,
 	} else {
 		log.Printf("createDownloaderConfig(%s) add\n", safename)
 		// XXX rewrite Dpath for certs. Can't zedcloud use
-		// a separate datastore for the certs to remove this hack
+		// a separate datastore for the certs to remove this hack?
+		// Note that the certs seem to come as complete URLs hence
+		// this code might not be required?
 		dpath := ds.Dpath
 		if objType == certObj {
 			// Replacing -images with -certs in dpath
@@ -55,9 +57,15 @@ func createDownloaderConfig(ctx *zedagentContext, objType string,
 				ds.Fqdn, ds.DsType, ds.Dpath, dpath)
 		}
 
+		var downloadURL string
+		if sc.NameIsURL {
+			downloadURL = sc.Name
+		} else {
+			downloadURL = ds.Fqdn + "/" + dpath + "/" + sc.Name
+		}
 		n := types.DownloaderConfig{
 			Safename:        safename,
-			DownloadURL:     ds.Fqdn + "/" + dpath + "/" + sc.Name,
+			DownloadURL:     downloadURL,
 			TransportMethod: ds.DsType,
 			ApiKey:          ds.ApiKey,
 			Password:        ds.Password,

@@ -103,7 +103,6 @@ func doBaseOsStatusUpdate(ctx *zedagentContext, uuidStr string,
 	log.Printf("doBaseOsStatusUpdate(%s) for %s\n",
 		config.BaseOsVersion, uuidStr)
 
-	changed := false
 	// Are we already running this version? If so nothing to do.
 	// Note that we don't return errors if someone tries to deactivate
 	// the running version, but we don't act on it either.
@@ -116,22 +115,8 @@ func doBaseOsStatusUpdate(ctx *zedagentContext, uuidStr string,
 		status.Activated = true
 		return true
 	}
-	// Update other partition info
-	// XXX in validate etc
-	otherPartName := zboot.GetOtherPartition()
-	if false && status.BaseOsVersion == zboot.GetShortVersion(otherPartName) &&
-		status.PartitionLabel == "" {
 
-		status.PartitionLabel = otherPartName
-		// some partition specific attributes
-		status.PartitionState = zboot.GetPartitionState(otherPartName)
-		status.PartitionDevice = zboot.GetPartitionDevname(otherPartName)
-		status.Activated = false
-		changed = true
-	}
-
-	c, proceed := doBaseOsInstall(ctx, uuidStr, config, status)
-	changed = changed || c
+	changed, proceed := doBaseOsInstall(ctx, uuidStr, config, status)
 	if !proceed {
 		return changed
 	}
@@ -276,14 +261,14 @@ func doBaseOsInstall(ctx *zedagentContext, uuidStr string,
 
 	// XXX can we check the version before installing to the partition?
 	// XXX requires loopback mounting the image. We dd as part of
-	// this install call:
+	// the installDownloadedObjects
 
 	// install the image at proper partition
 	if installDownloadedObjects(baseOsObj, uuidStr,
 		status.StorageStatusList) {
 
 		changed = true
-		//match the version string
+		// Match the version string inside image?
 		if errString := checkInstalledVersion(*status); errString != "" {
 			status.State = types.INITIAL
 			status.Error = errString
@@ -609,7 +594,6 @@ func installBaseOsObject(srcFilename string, dstFilename string) error {
 
 // validate whether the image version matches with
 // config version string
-// XXX callers??
 func checkInstalledVersion(status types.BaseOsStatus) string {
 
 	log.Printf("checkInstalledVersion(%s) %s %s\n",

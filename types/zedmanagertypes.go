@@ -137,6 +137,7 @@ type EIDOverlayConfig struct {
 type StorageConfig struct {
 	DatastoreId      uuid.UUID
 	Name             string   // XXX Do depend on URL for clobber avoidance?
+	NameIsURL        bool     // If not we form URL based on datastore info
 	Size             uint64   // In bytes
 	CertificateChain []string //name of intermediate certificates
 	ImageSignature   []byte   //signature of image
