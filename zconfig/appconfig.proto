@@ -37,11 +37,11 @@ message AppInstanceConfig {
 	// The device behavior for a purge command is to restart the domU.
 	// with the disks/drives recreated from the downloaded images 
 	// (whether preserve is set or not).
-	//    if the manifest is changed with purge option, new manfist will
+	//    if the manifest is changed with purge option, new manifest will
 	//    be used. Device doesn't know what has changed, it will get the
 	//    changed config.
 	// 
 	//    if disks section have changed will be purged automatically.
-	//    phase 1: we would purge all disks irrepsective preserve flag
+	//    phase 1: we would purge all disks irrespective preserve flag
         InstanceOpsCmd purge = 10;
 }
