@@ -10,6 +10,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"github.com/zededa/go-provision/types"
 	"github.com/zededa/lisp/dataplane/dptypes"
 	"log"
 	"math/rand"
@@ -25,7 +26,7 @@ import (
 // 5 minutes scrub threshold
 const SCRUBTHRESHOLD = 5 * 60
 const DATABASEWRITEFILE = "/show-ztr"
-const STATSPUNTINTERVAL = 5
+const STATSPUNTINTERVAL = 10
 
 var cache *dptypes.MapCacheTable
 var decaps *dptypes.DecapTable
@@ -634,7 +635,7 @@ func MapcacheScrubThread() {
 	}
 }
 
-func sendEncapStatistics(puntChannel chan []byte) {
+func sendEncapStatistics(puntChannel chan []byte) *dptypes.LispStatistics {
 	// Take read lock of map cache table
 	// and go through each entry while preparing statistics message
 	// We hold the lock while we iterate through the table.
@@ -671,15 +672,18 @@ func sendEncapStatistics(puntChannel chan []byte) {
 
 	// Send out ITR encap statistics to lispers.net
 	statsMsg, err := json.Marshal(lispStatistics)
-	log.Println(string(statsMsg))
+	if debug {
+		log.Println("sendEncapStatistics:" + string(statsMsg))
+	}
 	if err != nil {
 		log.Printf("Error: Encoding encap statistics\n")
 	} else {
 		puntChannel <- statsMsg
 	}
+	return &lispStatistics
 }
 
-func sendDecapStatistics(puntChannel chan []byte) {
+func sendDecapStatistics(puntChannel chan []byte) *dptypes.DecapStatistics {
 	var decapStatistics dptypes.DecapStatistics
 	decapStatistics.Type = "decap-statistics"
 	currUnixSecs := time.Now().Unix()
@@ -720,12 +724,15 @@ func sendDecapStatistics(puntChannel chan []byte) {
 
 	// Send out ETR decap statistics to lispers.net
 	decapStatsMsg, err := json.Marshal(decapStatistics)
-	log.Println(string(decapStatsMsg))
+	if debug {
+		log.Println("sendDecapStatistics:" + string(decapStatsMsg))
+	}
 	if err != nil {
 		log.Printf("Error: Encoding decap statistics\n")
 	} else {
 		puntChannel <- decapStatsMsg
 	}
+	return &decapStatistics
 }
 
 func dumpDatabaseState() {
@@ -814,20 +821,219 @@ func dumpDatabaseState() {
 
 // Stats thread starts every STATSPUNTINTERVAL seconds
 // and punts map cache statistics to lispers.net.
-func StatsThread(puntChannel chan []byte) {
+func StatsThread(puntChannel chan []byte,
+	ctx *dptypes.DataplaneContext) {
 	log.Printf("Starting statistics thread.\n")
 	for {
 		// We collect and transport statistic to lispers.net every 5 seconds
 		time.Sleep(STATSPUNTINTERVAL * time.Second)
 
 		// Send out encap & decap statistics to lispers.net
-		sendEncapStatistics(puntChannel)
-		sendDecapStatistics(puntChannel)
+		encapStats := sendEncapStatistics(puntChannel)
+		decapStats := sendDecapStatistics(puntChannel)
+		PublishLispMetrics(ctx, encapStats, decapStats)
 
 		// Keep dumping our encap & decap state to a file on disk
 		// Do it only when the debug flag is enabled
 		//if debug {
-			dumpDatabaseState()
+		dumpDatabaseState()
 		//}
 	}
+}
+
+func publishLispInfoStatus(ctx *dptypes.DataplaneContext,
+	status *types.LispInfoStatus) {
+	// XXX What key should I use?
+	// It is just one message for all services.
+	// Hardcoded for now.
+	key := "global"
+	pub := ctx.PubLispInfoStatus
+	pub.Publish(key, *status)
+	log.Printf("publishLispInfoStatus: Done\n")
+}
+
+func unpublishLispInfoStatus(ctx *dptypes.DataplaneContext,
+	status *types.LispInfoStatus) {
+	// XXX What key should I use?
+	// It is just one message for all services.
+	// Hardcoded for now.
+	key := "global"
+	pub := ctx.PubLispInfoStatus
+	st, _ := pub.Get(key)
+	if st == nil {
+		log.Printf("unpublishLispInfoStatus(%s) not found\n", key)
+		return
+	}
+	pub.Unpublish(key)
+	log.Printf("unpublishLispInfoStatus: Done\n")
+}
+
+func PublishLispInfoStatus(ctx *dptypes.DataplaneContext) {
+	// Prepare Lisp info status and publish to zedrouter
+	etrNatPort := GetEtrNatPort()
+	if etrNatPort == -1 {
+		etrNatPort = 0
+	}
+	status := &types.LispInfoStatus{
+		ItrCryptoPort: uint64(GetItrCryptoPort()),
+		EtrNatPort:    uint64(etrNatPort),
+		Interfaces:    GetInterfaces(),
+	}
+
+	// Fill map cache entries
+	dbMap := make(map[uint32]*types.LispDatabaseMap)
+	if dbMap == nil {
+		return
+	}
+	cache.LockMe.RLock()
+	for key, value := range cache.MapCache {
+		var mapEntry *types.LispDatabaseMap
+		ok := false
+		mapEntry, ok = dbMap[key.IID]
+		if !ok {
+			mapEntry = &types.LispDatabaseMap{
+				IID: uint64(key.IID),
+			}
+			dbMap[key.IID] = mapEntry
+		}
+		lispRlocs := []types.LispRlocState{}
+		for _, rloc := range value.Rlocs {
+			lispRloc := types.LispRlocState{
+				Rloc: rloc.Rloc,
+				// XXX Reachability is always true for now.
+				// Later when we have a way to figure out reachability,
+				// we should fill the right value.
+				Reachable: true,
+			}
+			lispRlocs = append(lispRlocs, lispRloc)
+		}
+		mapCacheEntry := types.LispMapCacheEntry{
+			EID:   value.Eid,
+			Rlocs: lispRlocs,
+		}
+		mapEntry.MapCacheEntries = append(mapEntry.MapCacheEntries, mapCacheEntry)
+	}
+	cache.LockMe.RUnlock()
+
+	for _, entry := range dbMap {
+		status.DatabaseMaps = append(status.DatabaseMaps, *entry)
+	}
+
+	// Fill decap keys
+	decaps.LockMe.RLock()
+	for _, keys := range decaps.DecapEntries {
+		decapEntry := types.LispDecapKey{
+			Rloc:     keys.Rloc,
+			Port:     uint64(keys.Port),
+			KeyCount: uint64(len(keys.Keys)),
+		}
+		status.DecapKeys = append(status.DecapKeys, decapEntry)
+	}
+	decaps.LockMe.RUnlock()
+
+	publishLispInfoStatus(ctx, status)
+}
+
+func publishLispMetrics(ctx *dptypes.DataplaneContext,
+	status *types.LispMetrics) {
+	// XXX What key should I use?
+	// It is just one message for all services.
+	// Hardcoded for now.
+	key := "global"
+	pub := ctx.PubLispMetrics
+	pub.Publish(key, *status)
+	log.Printf("publishLispMetrics: Done\n")
+}
+
+func unpublishLispMetrics(ctx *dptypes.DataplaneContext,
+	status *types.LispMetrics) {
+	// XXX What key should I use?
+	// It is just one message for all services.
+	// Hardcoded for now.
+	key := "global"
+	pub := ctx.PubLispMetrics
+	st, _ := pub.Get(key)
+	if st == nil {
+		log.Printf("unpublishLispMetrics(%s) not found\n", key)
+		return
+	}
+	pub.Unpublish(key)
+	log.Printf("unpublishLispMetrics: Done\n")
+}
+
+func PublishLispMetrics(ctx *dptypes.DataplaneContext,
+	encapStatistics *dptypes.LispStatistics,
+	decapStatistics *dptypes.DecapStatistics) {
+
+	// Fill decap statistics
+	status := types.LispMetrics{
+		NoDecryptKey: types.LispPktStat{
+			Pkts:  decapStatistics.NoDecryptKey.Pkts,
+			Bytes: decapStatistics.NoDecryptKey.Bytes,
+		},
+		OuterHeaderError: types.LispPktStat{
+			Pkts:  decapStatistics.OuterHeaderError.Pkts,
+			Bytes: decapStatistics.OuterHeaderError.Bytes,
+		},
+		BadInnerVersion: types.LispPktStat{
+			Pkts:  decapStatistics.BadInnerVersion.Pkts,
+			Bytes: decapStatistics.BadInnerVersion.Bytes,
+		},
+		GoodPackets: types.LispPktStat{
+			Pkts:  decapStatistics.GoodPackets.Pkts,
+			Bytes: decapStatistics.GoodPackets.Bytes,
+		},
+		ICVError: types.LispPktStat{
+			Pkts:  decapStatistics.ICVError.Pkts,
+			Bytes: decapStatistics.ICVError.Bytes,
+		},
+		LispHeaderError: types.LispPktStat{
+			Pkts:  decapStatistics.LispHeaderError.Pkts,
+			Bytes: decapStatistics.LispHeaderError.Bytes,
+		},
+		CheckSumError: types.LispPktStat{
+			Pkts:  decapStatistics.ChecksumError.Pkts,
+			Bytes: decapStatistics.ChecksumError.Bytes,
+		},
+	}
+
+	// Parse encap statistics
+	for _, entry := range encapStatistics.Entries {
+		iid, err := strconv.ParseUint(entry.InstanceId, 10, 64)
+		if err != nil {
+			continue
+		}
+		eidAddr, _, err := net.ParseCIDR(entry.EidPrefix)
+		if err != nil {
+			continue
+		}
+		rlocStats := []types.LispRlocStatistics{}
+
+		for _, rlocStat := range entry.Rlocs {
+			rloc := net.ParseIP(rlocStat.Rloc)
+			if rloc == nil {
+				continue
+			}
+			pktCount := rlocStat.PacketCount
+			byteCount := rlocStat.ByteCount
+			sslp := rlocStat.SecondsSinceLastPkt
+
+			rlocStatEntry := types.LispRlocStatistics{
+				Rloc: rloc,
+				SecondsSinceLastPacket: uint64(sslp),
+				Stats: types.LispPktStat{
+					Pkts:  pktCount,
+					Bytes: byteCount,
+				},
+			}
+			rlocStats = append(rlocStats, rlocStatEntry)
+		}
+		eidStat := types.EidStatistics{
+			IID:       iid,
+			Eid:       eidAddr,
+			RlocStats: rlocStats,
+		}
+		status.EidStats = append(status.EidStats, eidStat)
+	}
+	publishLispMetrics(ctx, &status)
 }

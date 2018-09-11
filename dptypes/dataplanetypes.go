@@ -11,6 +11,7 @@ import (
 	"time"
 	//"github.com/google/gopacket/pfring"
 	"github.com/google/gopacket/afpacket"
+	"github.com/zededa/go-provision/pubsub"
 	"syscall"
 )
 
@@ -151,7 +152,7 @@ type DecapTable struct {
 	DecapEntries map[string]*DecapKeys
 
 	// ETR ephemeral NAT port
-	EtrNatPort   int32
+	EtrNatPort int32
 
 	// ETR statistics
 	NoDecryptKey     PktStat
@@ -199,8 +200,8 @@ type DecapStatistics struct {
 }
 
 type LispStatistics struct {
-	Type       string          `json:"type"`
-	Entries    []EidStatsEntry `json:"entries"`
+	Type    string          `json:"type"`
+	Entries []EidStatsEntry `json:"entries"`
 }
 
 type EtrRunStatus struct {
@@ -248,4 +249,11 @@ type ITRConfiguration struct {
 	ItrCryptoPort      int
 	ItrCryptoPortValid bool
 	Quit               bool
+}
+
+type DataplaneContext struct {
+	PubLispInfoStatus *pubsub.Publication
+	PubLispMetrics    *pubsub.Publication
+	SubLispConfig     *pubsub.Subscription
+	Experimental      bool
 }
