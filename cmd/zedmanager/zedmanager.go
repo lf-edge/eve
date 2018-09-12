@@ -144,11 +144,14 @@ func Run() {
 	// Look for DatastoreConfig from zedagent
 	// No handlers since we look at collection when we need to
 	subDatastoreConfig, err := pubsub.Subscribe("zedagent",
-		types.DatastoreConfig{}, true, &ctx)
+		types.DatastoreConfig{}, false, &ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
+	subDatastoreConfig.ModifyHandler = handleDatastoreConfigModify
+	subDatastoreConfig.DeleteHandler = handleDatastoreConfigDelete
 	ctx.subDatastoreConfig = subDatastoreConfig
+	subDatastoreConfig.Activate()
 
 	// Get AppNetworkStatus from zedrouter
 	subAppNetworkStatus, err := pubsub.Subscribe("zedrouter",
@@ -266,6 +269,9 @@ func Run() {
 
 		case change := <-subAppInstanceConfig.C:
 			subAppInstanceConfig.ProcessChange(change)
+
+		case change := <-subDatastoreConfig.C:
+			subDatastoreConfig.ProcessChange(change)
 
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
@@ -652,4 +658,18 @@ func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 	deviceNetworkStatus = types.DeviceNetworkStatus{}
 	devicenetwork.ProxyToEnv(deviceNetworkStatus.ProxyConfig)
 	log.Printf("handleDNSDelete done for %s\n", key)
+}
+
+func handleDatastoreConfigModify(ctxArg interface{}, key string,
+	configArg interface{}) {
+
+	// XXX empty since we look at collection when we need it
+	log.Printf("handleDatastoreConfigModify for %s\n", key)
+}
+
+func handleDatastoreConfigDelete(ctxArg interface{}, key string,
+	configArg interface{}) {
+
+	// XXX empty since we look at collection when we need it
+	log.Printf("handleDatastoreConfigDelete for %s\n", key)
 }

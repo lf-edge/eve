@@ -821,7 +821,7 @@ func doS3(ctx *downloaderContext, syncOp zedUpload.SyncOpType,
 	dEndPoint.WithSrcIpSelection(ipSrc)
 	var respChan = make(chan *zedUpload.DronaRequest)
 
-	log.Printf("syncOp for <%s>/<%s>\n", dpath, filename)
+	log.Printf("syncOp for <%s>, <%s>, <%s>\n", dpath, region, filename)
 	// create Request
 	// Round up from bytes to Mbytes
 	maxMB := (maxsize + 1024*1024 - 1) / (1024 * 1024)
@@ -861,7 +861,7 @@ func doSftp(ctx *downloaderContext, syncOp zedUpload.SyncOpType,
 	dEndPoint.WithSrcIpSelection(ipSrc)
 	var respChan = make(chan *zedUpload.DronaRequest)
 
-	log.Printf("syncOp for <%s>/<%s>\n", dpath, filename)
+	log.Printf("syncOp for <%s>, <%s>\n", dpath, filename)
 	// create Request
 	// Round up from bytes to Mbytes
 	maxMB := (maxsize + 1024*1024 - 1) / (1024 * 1024)

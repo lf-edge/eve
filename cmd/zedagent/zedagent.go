@@ -865,7 +865,7 @@ func handleBaseOsModify(ctxArg interface{}, key string,
 		return
 	}
 
-	// update the version field, uuis being the same
+	// update the version field, uuids being the same
 	status.UUIDandVersion = config.UUIDandVersion
 	publishBaseOsStatus(ctx, &status)
 
@@ -1024,11 +1024,14 @@ func handleDatastoreConfigModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
 	// XXX empty since we look at collection when we need it
+	log.Printf("handleDatastoreConfigModify for %s\n", key)
 }
 
 func handleDatastoreConfigDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
+
 	// XXX empty since we look at collection when we need it
+	log.Printf("handleDatastoreConfigDelete for %s\n", key)
 }
 
 func appendError(allErrors string, prefix string, lasterr string) string {

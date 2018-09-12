@@ -42,6 +42,8 @@ func createDownloaderConfig(ctx *zedagentContext, objType string,
 
 	if m := lookupDownloaderConfig(ctx, objType, safename); m != nil {
 		m.RefCount += 1
+		log.Printf("createDownloaderConfig(%s) refcount to %d\n",
+			safename, m.RefCount)
 		publishDownloaderConfig(ctx, objType, m)
 	} else {
 		log.Printf("createDownloaderConfig(%s) add\n", safename)
@@ -52,7 +54,7 @@ func createDownloaderConfig(ctx *zedagentContext, objType string,
 		dpath := ds.Dpath
 		if objType == certObj {
 			// Replacing -images with -certs in dpath
-			dpath := strings.Replace(dpath, "-images", "-certs", 1)
+			dpath = strings.Replace(dpath, "-images", "-certs", 1)
 			log.Printf("createDownloaderConfig fqdn %s ts %s dpath %s to %s\n",
 				ds.Fqdn, ds.DsType, ds.Dpath, dpath)
 		}
@@ -124,9 +126,9 @@ func removeDownloaderConfig(ctx *zedagentContext, objType string, safename strin
 	}
 
 	if config.RefCount > 1 {
-		log.Printf("removeDownloaderConfig(%s/%s) decrementing refCount %d\n",
-			objType, safename, config.RefCount)
 		config.RefCount -= 1
+		log.Printf("removeDownloaderConfig(%s/%s) decrementing refCount to %d\n",
+			objType, safename, config.RefCount)
 		publishDownloaderConfig(ctx, objType, config)
 		return
 	}

@@ -257,6 +257,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 					ss.Error)
 				ss.ErrorTime = time.Now()
 				changed = true
+				minState = types.INITIAL // Error
 				continue
 			}
 			AddOrRefcountDownloaderConfig(ctx, safename, &sc, dst)

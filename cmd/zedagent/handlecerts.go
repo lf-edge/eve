@@ -134,6 +134,8 @@ func doCertObjInstall(ctx *zedagentContext, uuidStr string, config types.CertObj
 		}
 	}
 
+	// XXX Want an overall checkCertObjAvailable ...
+	// look in /persist/certs, then ...
 	downloadchange, downloaded :=
 		checkCertObjStorageDownloadStatus(ctx, uuidStr, config, status)
 

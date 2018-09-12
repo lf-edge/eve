@@ -680,17 +680,22 @@ func validateBaseOsConfig(ctx *zedagentContext, config types.BaseOsConfig) error
 	var osCount, activateCount int
 	items := ctx.subBaseOsConfig.GetAll()
 	for key, c := range items {
-		config := cast.CastBaseOsConfig(c)
-		if config.Key() != key {
+		boc := cast.CastBaseOsConfig(c)
+		if boc.Key() != key {
 			log.Printf("validateBaseOsConfig(%s) got %s; ignored %+v\n",
-				key, config.Key(), config)
+				key, boc.Key(), boc)
 			continue
 		}
+
+		log.Printf("validateBaseOsConfig(%s) activate %v\n",
+			boc.Key(), boc.Activate)
 		osCount++
-		if config.Activate {
+		if boc.Activate {
 			activateCount++
 		}
 	}
+	log.Printf("validateBaseOsConfig(%s) osCount %d activateCount %d\n",
+		config.Key(), osCount, activateCount)
 
 	// not more than max base os count(2)
 	if osCount > MaxBaseOsCount {
