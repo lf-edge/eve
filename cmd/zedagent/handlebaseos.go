@@ -103,20 +103,44 @@ func doBaseOsStatusUpdate(ctx *zedagentContext, uuidStr string,
 	log.Printf("doBaseOsStatusUpdate(%s) for %s\n",
 		config.BaseOsVersion, uuidStr)
 
+	changed := false
+
 	// Are we already running this version? If so nothing to do.
 	// Note that we don't return errors if someone tries to deactivate
 	// the running version, but we don't act on it either.
 	curPartName := zboot.GetCurrentPartition()
 	if status.BaseOsVersion == zboot.GetShortVersion(curPartName) {
+		log.Printf("doBaseOsStatusUpdate(%s) for %s found in current %s\n",
+			config.BaseOsVersion, uuidStr, curPartName)
 		status.PartitionLabel = curPartName
 		// some partition specific attributes
 		status.PartitionState = zboot.GetPartitionState(curPartName)
 		status.PartitionDevice = zboot.GetPartitionDevname(curPartName)
+		status.State = types.INSTALLED
 		status.Activated = true
 		return true
 	}
 
-	changed, proceed := doBaseOsInstall(ctx, uuidStr, config, status)
+	// Is this already in otherPartName? If so we update status
+	// but proceed in case we need to overwrite the partition
+	otherPartName := zboot.GetOtherPartition()
+	if status.PartitionLabel == "" &&
+		status.BaseOsVersion == zboot.GetShortVersion(otherPartName) {
+
+		log.Printf("doBaseOsStatusUpdate(%s) for %s found in other %s\n",
+			config.BaseOsVersion, uuidStr, otherPartName)
+		status.PartitionLabel = otherPartName
+		// some partition specific attributes
+		status.PartitionState = zboot.GetPartitionState(otherPartName)
+		status.PartitionDevice = zboot.GetPartitionDevname(otherPartName)
+		// Might be corrupt?
+		status.State = types.DOWNLOADED
+		status.Activated = false
+		changed = true
+	}
+
+	c, proceed := doBaseOsInstall(ctx, uuidStr, config, status)
+	changed = changed || c
 	if !proceed {
 		return changed
 	}
@@ -290,7 +314,8 @@ func doBaseOsInstall(ctx *zedagentContext, uuidStr string,
 func validateAndAssignPartition(ctx *zedagentContext,
 	config types.BaseOsConfig, status *types.BaseOsStatus) (bool, bool) {
 
-	log.Printf("validateAndAssignPartition(%s)\n", config.BaseOsVersion)
+	log.Printf("validateAndAssignPartition(%s) for %s\n",
+		config.Key(), config.BaseOsVersion)
 	changed := false
 	proceed := false
 	curPartName := zboot.GetCurrentPartition()
@@ -694,8 +719,8 @@ func validateBaseOsConfig(ctx *zedagentContext, config types.BaseOsConfig) error
 			activateCount++
 		}
 	}
-	log.Printf("validateBaseOsConfig(%s) osCount %d activateCount %d\n",
-		config.Key(), osCount, activateCount)
+	log.Printf("validateBaseOsConfig(%s) %s osCount %d activateCount %d\n",
+		config.Key(), config.BaseOsVersion, osCount, activateCount)
 
 	// not more than max base os count(2)
 	if osCount > MaxBaseOsCount {
