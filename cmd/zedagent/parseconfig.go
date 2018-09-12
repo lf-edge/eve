@@ -164,9 +164,29 @@ func parseBaseOsConfig(getconfigCtx *getconfigContext,
 		}
 	}
 
+	// We need to publish the Activate=false first then those with
+	// true to avoid the subscriber seeing two activated
+	expectActivate := false
+	for {
+		parseAndPublish(getconfigCtx, cfgOsList, expectActivate)
+		if expectActivate {
+			break
+		} else {
+			expectActivate = true
+		}
+	}
+}
+
+func parseAndPublish(getconfigCtx *getconfigContext,
+	cfgOsList []*zconfig.BaseOSConfig, expectActivate bool) {
+
 	for _, cfgOs := range cfgOsList {
 		if cfgOs.GetBaseOSVersion() == "" {
 			// Empty slot - silently ignore
+			continue
+		}
+		if cfgOs.GetActivate() != expectActivate {
+			// Skip until next round
 			continue
 		}
 		baseOs := new(types.BaseOsConfig)
@@ -189,8 +209,8 @@ func parseBaseOsConfig(getconfigCtx *getconfigContext,
 
 		baseOs.StorageConfigList = make([]types.StorageConfig,
 			len(cfgOs.Drives))
-		parseStorageConfigList(config, baseOsObj,
-			baseOs.StorageConfigList, cfgOs.Drives)
+		parseStorageConfigList(baseOsObj, baseOs.StorageConfigList,
+			cfgOs.Drives)
 
 		certInstance := getCertObjects(baseOs.UUIDandVersion,
 			baseOs.ConfigSha256, baseOs.StorageConfigList)
@@ -349,8 +369,8 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 
 		appInstance.StorageConfigList = make([]types.StorageConfig,
 			len(cfgApp.Drives))
-		parseStorageConfigList(config, appImgObj,
-			appInstance.StorageConfigList, cfgApp.Drives)
+		parseStorageConfigList(appImgObj, appInstance.StorageConfigList,
+			cfgApp.Drives)
 
 		// fill the overlay/underlay config
 		parseAppNetworkConfig(&appInstance, cfgApp, config.Networks)
@@ -443,7 +463,7 @@ func publishDatastoreConfig(ctx *getconfigContext,
 	}
 }
 
-func parseStorageConfigList(config *zconfig.EdgeDevConfig, objType string,
+func parseStorageConfigList(objType string,
 	storageList []types.StorageConfig, drives []*zconfig.Drive) {
 
 	var idx int = 0
