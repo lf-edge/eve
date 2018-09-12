@@ -47,7 +47,7 @@ func createDownloaderConfig(ctx *zedagentContext, objType string,
 		publishDownloaderConfig(ctx, objType, m)
 	} else {
 		log.Printf("createDownloaderConfig(%s) add\n", safename)
-		// XXX rewrite Dpath for certs. Can't zedcloud use
+		// XXX We rewrite Dpath for certs. Can't zedcloud use
 		// a separate datastore for the certs to remove this hack?
 		// Note that the certs seem to come as complete URLs hence
 		// this code might not be required?
@@ -177,10 +177,24 @@ func checkStorageDownloadStatus(ctx *zedagentContext, objType string,
 		log.Printf("checkStorageDownloadStatus %s, image status %v\n", safename, ss.State)
 		if ss.State == types.INSTALLED {
 			ret.MinState = ss.State
-			log.Printf("checkStorageDownloadStatus %s,is already installed\n", safename)
+			log.Printf("checkStorageDownloadStatus %s is already installed\n", safename)
 			continue
 		}
 
+		// Check if cert already exists in FinalObjDir
+		// Sanity check that length isn't zero
+		// XXX other sanity checks?
+		// Only meaningful for certObj
+		if ss.FinalObjDir != "" {
+			dstFilename := ss.FinalObjDir + "/" + types.SafenameToFilename(safename)
+			st, err := os.Stat(dstFilename)
+			if err == nil && st.Size() != 0 {
+				ret.MinState = types.INSTALLED
+				log.Printf("checkStorageDownloadStatus %s is in FinalObjDir %s\n",
+					safename, dstFilename)
+				continue
+			}
+		}
 		if sc.ImageSha256 != "" {
 			// Shortcut if image is already verified
 			vs := lookupVerificationStatusAny(ctx, objType,
@@ -361,19 +375,17 @@ func installDownloadedObject(objType string, safename string,
 
 	case types.DOWNLOADED:
 		// XXX should fix code elsewhere to advance to DELIVERED in
-		// this case.
+		// this case??
 		if status.ImageSha256 != "" {
 			log.Printf("installDownloadedObject %s, verification pending\n",
 				safename)
 			return nil
 		}
 		srcFilename += "/pending/" + safename
-		break
 
 	case types.DELIVERED:
 		srcFilename += "/verified/" + status.ImageSha256 + "/" +
 			types.SafenameToFilename(safename)
-		break
 
 		// XXX do we need to handle types.INITIAL for failures?
 	default:
