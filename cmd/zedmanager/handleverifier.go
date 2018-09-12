@@ -60,7 +60,7 @@ func MaybeAddVerifyImageConfig(ctx *zedmanagerContext, safename string,
 	m := lookupVerifyImageConfig(ctx, safename)
 	if m != nil {
 		m.RefCount += 1
-		log.Printf("MaybeAddVerifyImageConfig: refcnt %d for %s\n",
+		log.Printf("MaybeAddVerifyImageConfig: refcnt to %d for %s\n",
 			m.RefCount, safename)
 		publishVerifyImageConfig(ctx, m)
 	} else {
@@ -93,7 +93,7 @@ func MaybeRemoveVerifyImageConfigSha256(ctx *zedmanagerContext, sha256 string) {
 	}
 	m.RefCount -= 1
 	if m.RefCount != 0 {
-		log.Printf("MaybeRemoveVerifyImageConfigSha256: RefCount %d for %s\n",
+		log.Printf("MaybeRemoveVerifyImageConfigSha256: RefCount to %d for %s\n",
 			m.RefCount, sha256)
 		publishVerifyImageConfig(ctx, m)
 		return

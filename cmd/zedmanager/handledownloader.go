@@ -17,7 +17,7 @@ func AddOrRefcountDownloaderConfig(ctx *zedmanagerContext, safename string,
 	m := lookupDownloaderConfig(ctx, safename)
 	if m != nil {
 		m.RefCount += 1
-		log.Printf("downloader config exists for %s refcount %d\n",
+		log.Printf("downloader config exists for %s to refcount %d\n",
 			safename, m.RefCount)
 		publishDownloaderConfig(ctx, m)
 	} else {
