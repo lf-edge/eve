@@ -66,7 +66,6 @@ func parseRloc(rlocStr *Rloc) (dptypes.Rloc, bool) {
 		return dptypes.Rloc{}, false
 	}
 
-	//keys := make([]dptypes.Key, len(rlocStr.Keys))
 	// Max number of keys per RLOC can only be 3. Look at RFC 8061 lisp header
 	keys := make([]dptypes.Key, 3)
 
@@ -174,12 +173,14 @@ func createMapCache(mapCache *MapCacheEntry) {
 		// XXX Should we log.Fatal here?
 		return
 	}
-	v6 := isAddressIPv6(eid)
+	//v6 := isAddressIPv6(eid)
 	maskLen, _ := ipNet.Mask.Size()
 
-	if (maskLen != 128) && ((maskLen != 0) || !v6) {
-		// We are not interested in prefixes shorter than 128 except 0 prefix length
-		// If we do not find a more specific route (prefix length 128), we forward
+	//if (maskLen != 128) && ((maskLen != 0) || !v6) {
+	if (maskLen != 128) && (maskLen != 0) && (maskLen != 32) {
+		// We are not interested in prefixes shorter than 128 except 0 and 32 (IPv4)
+		// prefix length.
+		// If we do not find a more specific route (prefix length 128(v6) or 32(v4)), we forward
 		// our packets to the default route.
 		log.Println("createMapCache: Ignoring EID with mask length:", maskLen)
 		return

@@ -18,7 +18,6 @@ import (
 )
 
 type ThreadEntry struct {
-	//killChannel chan bool
 	umblical chan dptypes.ITRConfiguration
 	//ring        *pfring.Ring
 	handle *afpacket.TPacket
