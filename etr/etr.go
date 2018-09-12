@@ -2,7 +2,7 @@
 // All rights reserved.
 
 // This implements the ETR functionality. Listens on UDP destination port 4341 for
-// receiving packets behind the same NAT. Cross NAT packets are captured using pfring
+// receiving packets behind the same NAT. Cross NAT packets are captured using afpacket
 // listening for packets with source port 4341 and destination ephemeral port received
 // from lispers.net.
 
@@ -67,18 +67,28 @@ func StartEtrNonNat() {
 		return
 	}
 
-	// Create a raw socket for injecting decapsulated packets
-	fd, err := syscall.Socket(syscall.AF_INET6, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
+	// Create raw socket for forwarding decapsulated IPv4 packets
+	fd4, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
+	if err != nil {
+		serverConn.Close()
+		log.Printf("StartEtrNonNat: Creating ETR IPv4 raw socket for packet injection failed: %s\n",
+			err)
+		return
+	}
+
+
+	// Create raw socket for forwarding decapsulated IPv6 packets
+	fd6, err := syscall.Socket(syscall.AF_INET6, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
 	if err != nil {
 		serverConn.Close()
 		log.Fatal(
-			"StartEtrNonNat: Creating ETR raw socket for packet injection failed: %s\n",
+			"StartEtrNonNat: Creating ETR IPv6 raw socket for packet injection failed: %s\n",
 			err)
 		return
 	}
 
 	// start processing packets. This loop should never end.
-	go ProcessETRPkts(fd, serverConn)
+	go ProcessETRPkts(fd4, fd6, serverConn)
 }
 
 func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
@@ -128,7 +138,7 @@ func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
 		if ok == false {
 			//var ring *pfring.Ring = nil
 			var handle *afpacket.TPacket
-			var fd int = -1
+			var fd4, fd6 int = -1, -1
 
 			// Send a message on channel to kill the ETR thread when required.
 			killChannel := make(chan bool, 1)
@@ -136,7 +146,7 @@ func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
 			// Create new ETR thread
 			if EtrTable.EphPort != -1 {
 				//ring, fd = StartEtrNat(EtrTable.EphPort, link.IfName)
-				handle, fd = StartEtrNat(EtrTable.EphPort, link.IfName, killChannel)
+				handle, fd4, fd6 = StartEtrNat(EtrTable.EphPort, link.IfName, killChannel)
 				if debug {
 					log.Printf("HandleDeviceNetworkChange: Creating ETR thread "+
 						"for UP link %s\n", link.IfName)
@@ -145,8 +155,9 @@ func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
 			EtrTable.EtrTable[link.IfName] = &dptypes.EtrRunStatus{
 				IfName: link.IfName,
 				//Ring:   ring,
-				Handle:      handle,
-				RingFD:      fd,
+				Handle: handle,
+				Fd4:    fd4,
+				Fd6:    fd6,
 				KillChannel: killChannel,
 			}
 			if debug {
@@ -160,7 +171,8 @@ func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
 	for key, link := range EtrTable.EtrTable {
 		if _, ok := validList[key]; ok == false {
 			link.KillChannel <- true
-			syscall.Close(link.RingFD)
+			syscall.Close(link.Fd4)
+			syscall.Close(link.Fd6)
 			//link.Ring.Disable()
 			//link.Ring.Close()
 			link.Handle.Close()
@@ -187,16 +199,17 @@ func HandleEtrEphPort(ephPort int) {
 	// Create new threads if required and change BPF filters of running threads
 	for ifName, link := range EtrTable.EtrTable {
 		//if (link.Ring == nil) && (link.RingFD == -1) {
-		if (link.Handle == nil) && (link.RingFD == -1) {
+		if (link.Handle == nil) && (link.Fd4 == -1) && (link.Fd6 == -1) {
 			if debug {
 				log.Printf("HandleEtrEphPort: Creating ETR thread for UP link %s\n",
 					link.IfName)
 			}
 			//ring, fd := StartEtrNat(EtrTable.EphPort, link.IfName)
 			//ling.Ring = ring
-			handle, fd := StartEtrNat(EtrTable.EphPort, link.IfName, link.KillChannel)
+			handle, fd4, fd6 := StartEtrNat(EtrTable.EphPort, link.IfName, link.KillChannel)
 			link.Handle = handle
-			link.RingFD = fd
+			link.Fd4 = fd4
+			link.Fd6 = fd6
 			//return
 			continue
 		}
@@ -230,7 +243,7 @@ func HandleEtrEphPort(ephPort int) {
 //func StartEtrNat(ephPort int, upLink string) (*pfring.Ring, int) {
 func StartEtrNat(ephPort int,
 	upLink string,
-	killChannel chan bool) (*afpacket.TPacket, int) {
+	killChannel chan bool) (*afpacket.TPacket, int, int) {
 
 	//ring := SetupEtrPktCapture(ephPort, upLink)
 	//if ring == nil {
@@ -241,27 +254,39 @@ func StartEtrNat(ephPort int,
 	handle := SetupEtrPktCapture(ephPort, upLink)
 	if handle == nil {
 		log.Fatal("StartEtrNat: Unable to create ETR packet capture.\n")
-		return nil, -1
+		return nil, -1, -1
 	}
 
-	fd, err := syscall.Socket(syscall.AF_INET6, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
+	// Create raw socket for forwarding decapsulated IPv4 packets
+	fd4, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
+	if err != nil {
+		handle.Close()
+		log.Fatal(
+			"StartEtrNat: Creating second ETR IPv4 raw socker for packet injection failed: %s\n",
+			err)
+		return nil, -1, -1
+	}
+
+	fd6, err := syscall.Socket(syscall.AF_INET6, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
 	if err != nil {
 		//ring.Disable()
 		//ring.Close()
 		handle.Close()
 		log.Fatal(
-			"StartEtrNat:Creating second ETR raw socket for packet injection failed: %s\n",
+			"StartEtrNat: Creating second ETR IPv6 raw socket for packet injection failed: %s\n",
 			err)
-		return nil, -1
+		syscall.Close(fd4)
+		return nil, -1, -1
 	}
 	//go ProcessCapturedPkts(fd, ring)
-	go ProcessCapturedPkts(fd, handle, killChannel)
+	go ProcessCapturedPkts(fd4, fd6, handle, killChannel)
 
 	//return ring, fd
-	return handle, fd
+	return handle, fd4, fd6
 }
 
-func verifyAndInject(fd6 int,
+func verifyAndInject(fd4 int,
+	fd6 int,
 	buf []byte, n int,
 	decapKeys *dptypes.DecapKeys,
 	currUnixSeconds int64) bool {
@@ -272,7 +297,6 @@ func verifyAndInject(fd6 int,
 		return false
 	}
 
-	//var pktEid net.IP
 	iid := fib.GetLispIID(buf[0:8])
 	if iid == uint32(0xFFFFFF) {
 		return true
@@ -351,33 +375,59 @@ func verifyAndInject(fd6 int,
 		icvLen = dptypes.ICVLEN
 	}
 
-	// Zededa's use case only has ipv6 EIDs. Check if the version
-	// of inner packet is ipv6. Else drop the packet and increment
+	// Zededa's use case only has IPv4 & IPv6 EIDs. Check if the version
+	// of inner packet is one of IPv4 or IPv6. Else drop the packet and increment
 	// error count.
 	var msb byte = buf[packetOffset]
+
+	// Most significant 4 bits of in the first byte of IP header has version
 	version := msb >> 4
-	if version != 6 {
+	if (version != dptypes.IPVERSION4) && (version != dptypes.IPVERSION6) {
 		fib.AddDecapStatistics("bad-inner-version", 1, uint64(n), currUnixSeconds)
 		return false
 	}
 
-	// 24 is the offset of destination ipv6 address in ipv6 header
-	destAddrOffset := packetOffset + 24
 	packetEnd := n - gcmOverhead - icvLen
-	var destAddr [16]byte
-	for i, _ := range destAddr {
-		// offset is lisp hdr size + start offset of ip addresses in v6 hdr
-		destAddr[i] = buf[destAddrOffset+i]
-	}
+	if version == dptypes.IPVERSION6 {
+		// dptypes.IP6DESTADDROFFSET (24) is the offset of
+		// destination ipv6 address in ipv6 header.
+		destAddrOffset := packetOffset + dptypes.IP6DESTADDROFFSET
+		var destAddr [16]byte
+		for i, _ := range destAddr {
+			// offset is lisp hdr size + start offset of ip addresses in v6 hdr
+			destAddr[i] = buf[destAddrOffset+i]
+		}
 
-	err := syscall.Sendto(fd6, buf[packetOffset:packetEnd], 0, &syscall.SockaddrInet6{
-		Port:   0,
-		ZoneId: 0,
-		Addr:   destAddr,
-	})
-	if err != nil {
-		log.Printf("verifyAndInject: Failed decapsulating ETR packet: %s.\n", err)
-		return false
+		err := syscall.Sendto(fd6, buf[packetOffset:packetEnd], 0, &syscall.SockaddrInet6{
+			Port:   0,
+			ZoneId: 0,
+			Addr:   destAddr,
+		})
+		if err != nil {
+			log.Printf("verifyAndInject: Failed decapsulating ETR packet: %s.\n", err)
+			return false
+		}
+	} else {
+		// Assuming the version to be IPv4. Otherwise packet would have been
+		// dropped by code that checks for inner payload version.
+
+		// dptypes.IP4DESTADDROFFSET (16) is the offset of
+		// destination IPv4 address in IPv4 header
+		destAddrOffset := packetOffset + dptypes.IP4DESTADDROFFSET
+		var destAddr [4]byte
+		for i, _ := range destAddr {
+			// offset is lisp hdr size + start offset of ip addresses in v4 hdr
+			destAddr[i] = buf[destAddrOffset+i]
+		}
+
+		err := syscall.Sendto(fd4, buf[packetOffset:packetEnd], 0, &syscall.SockaddrInet4{
+			Port:   0,
+			Addr:   destAddr,
+		})
+		if err != nil {
+			log.Printf("verifyAndInject: Failed decapsulating ETR packet: %s.\n", err)
+			return false
+		}
 	}
 	fib.AddDecapStatistics("good-packets", 1, uint64(n), currUnixSeconds)
 	return true
@@ -459,7 +509,7 @@ func SetupEtrPktCapture(ephemeralPort int, upLink string) *afpacket.TPacket {
 	return tPacket
 }
 
-func ProcessETRPkts(fd6 int, serverConn *net.UDPConn) bool {
+func ProcessETRPkts(fd4 int, fd6 int, serverConn *net.UDPConn) bool {
 	// start processing packets. This loop should never end.
 	buf := make([]byte, 65536)
 	if debug {
@@ -477,7 +527,7 @@ func ProcessETRPkts(fd6 int, serverConn *net.UDPConn) bool {
 		}
 		currUnixSeconds := time.Now().Unix()
 		decapKeys := fib.LookupDecapKeys(saddr.IP)
-		ok := verifyAndInject(fd6, buf, n, decapKeys, currUnixSeconds)
+		ok := verifyAndInject(fd4, fd6, buf, n, decapKeys, currUnixSeconds)
 		if ok == false {
 			log.Printf("Failed consuming ETR packet with dest port 4341\n")
 		}
@@ -485,7 +535,7 @@ func ProcessETRPkts(fd6 int, serverConn *net.UDPConn) bool {
 }
 
 //func ProcessCapturedPkts(fd6 int, ring *pfring.Ring) {
-func ProcessCapturedPkts(fd6 int,
+func ProcessCapturedPkts(fd4 int, fd6 int,
 	handle *afpacket.TPacket,
 	killChannel chan bool) {
 
@@ -554,7 +604,7 @@ func ProcessCapturedPkts(fd6 int,
 
 		decapKeys := fib.LookupDecapKeys(srcIP)
 
-		ok := verifyAndInject(fd6, payload, len(payload), decapKeys, currUnixSeconds)
+		ok := verifyAndInject(fd4, fd6, payload, len(payload), decapKeys, currUnixSeconds)
 		if ok == false {
 			log.Printf("ProcessCapturedPkts: ETR Failed consuming packet from RLOC %s\n",
 				srcIP.String())

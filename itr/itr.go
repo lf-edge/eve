@@ -203,9 +203,9 @@ func SetupPacketCapture(iface string, snapLen int) *afpacket.TPacket {
 	*/
 	filter := ""
 	if iface == "dbo1x0" {
-		filter = "ip6"
+		filter = "ip or ip6"
 	} else {
-		filter = "inbound and ip6"
+		filter = "inbound and (ip or ip6)"
 	}
 	if debug {
 		log.Printf("SetupPacketCapture: Compiling BPF filter (%s) for interface %s\n",
@@ -351,20 +351,30 @@ eidLoop:
 			packet := gopacket.NewPacket(
 				pktBuf[dptypes.MAXHEADERLEN:ci.CaptureLength+dptypes.MAXHEADERLEN],
 				layers.LinkTypeEthernet,
-				//gopacket.DecodeOptions{Lazy: true, NoCopy: true})
 				gopacket.DecodeOptions{Lazy: false, NoCopy: true})
-			ip6Layer := packet.Layer(layers.LayerTypeIPv6)
-			if ip6Layer == nil {
-				// XXX May be add a per thread stat here
-				// Ignore this packet.
+
+			var srcAddr, dstAddr net.IP
+			var protocol layers.IPProtocol
+
+			if ip4Layer := packet.Layer(layers.LayerTypeIPv4); ip4Layer != nil{
+				ipHeader := ip4Layer.(*layers.IPv4)
+
+				srcAddr  = ipHeader.SrcIP
+				dstAddr  = ipHeader.DstIP
+				protocol = ipHeader.Protocol
+			} else if ip6Layer := packet.Layer(layers.LayerTypeIPv6); ip6Layer != nil {
+				ipHeader := ip6Layer.(*layers.IPv6)
+
+				srcAddr  = ipHeader.SrcIP
+				dstAddr  = ipHeader.DstIP
+				protocol = ipHeader.NextHeader
+			} else {
+				// XXX May be have a global error stat here
 				continue
 			}
 
-			ipHeader := ip6Layer.(*layers.IPv6)
-
 			// Check if the source address of packet matches with any of the eids
 			// assigned to input interface.
-			srcAddr := ipHeader.SrcIP
 			matchFound := false
 			for _, eid := range eids {
 				if srcAddr.Equal(eid) == true {
@@ -382,8 +392,6 @@ eidLoop:
 				continue
 			}
 
-			dstAddr := ipHeader.DstIP
-
 			/**
 			 * Compute hash of packet.
 			 * LSB 4 bytes of src addr (xor) LSB 4 bytes of dst addr (xor)
@@ -398,8 +406,8 @@ eidLoop:
 			transportLayer := packet.TransportLayer()
 
 			var ports uint32 = 0
-			if (ipHeader.NextHeader == layers.IPProtocolUDP) ||
-				(ipHeader.NextHeader == layers.IPProtocolTCP) {
+			if (protocol == layers.IPProtocolUDP) ||
+				(protocol == layers.IPProtocolTCP) {
 				// This is a byte array of the header
 				transportContents := transportLayer.LayerContents()
 
@@ -504,15 +512,25 @@ func LookupAndSend(packet gopacket.Packet,
 				atomic.AddUint64(&mapEntry.BuffdPkts, ^uint64(0))
 
 				// Increment packet, byte counts
-				atomic.AddUint64(&mapEntry.Packets, 1)
-				atomic.AddUint64(&mapEntry.Bytes, uint64(capLen))
+				//atomic.AddUint64(&mapEntry.Packets, 1)
+				//atomic.AddUint64(&mapEntry.Bytes, uint64(capLen))
 			default:
 				// We do not want to get blocked and keep waiting
 				// when there are no packets in the buffer channel.
 			}
 		} else {
 			// Look for the default route
-			defaultPrefix := net.ParseIP("::")
+			// Prepare lookup key based on the packet family (IPv4 or IPv6)
+			isIPv6 := false
+			if dstAddr.To4() == nil {
+				isIPv6 = true
+			}
+			var defaultPrefix net.IP
+			if isIPv6 {
+				defaultPrefix = net.ParseIP("::")
+			} else {
+				defaultPrefix = net.ParseIP("0.0.0.0")
+			}
 			defaultMap, _ := fib.LookupAndAdd(iid, defaultPrefix, timeStamp)
 			if defaultMap.Resolved {
 				fib.CraftAndSendLispPacket(packet, pktBuf, capLen, timeStamp,
@@ -523,8 +541,8 @@ func LookupAndSend(packet gopacket.Packet,
 		// Craft the LISP header, outer layers here and send packet out
 		fib.CraftAndSendLispPacket(packet, pktBuf, capLen, timeStamp,
 			hash32, mapEntry, iid, itrLocalData)
-		atomic.AddUint64(&mapEntry.Packets, 1)
-		atomic.AddUint64(&mapEntry.Bytes, uint64(capLen))
+		//atomic.AddUint64(&mapEntry.Packets, 1)
+		//atomic.AddUint64(&mapEntry.Bytes, uint64(capLen))
 	}
 	if punt == true {
 		// We will have to put a punt request on the control

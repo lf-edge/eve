@@ -126,7 +126,6 @@ func encryptPayload(payload []byte,
 		log.Printf("encryptPayload: GCM extra length is %d, Padding length is %d\n",
 			extraLen, padLen)
 	}
-	//return true, (aes.BlockSize - remainder)
 	return true, extraLen + padLen
 }
 
@@ -259,6 +258,7 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 		// Get the offset where IV would start.
 		// Inner payload (encrypted) would follow the IV
 		offsetStart := dptypes.MAXHEADERLEN + dptypes.ETHHEADERLEN - uint32(dptypes.GCMIVLENGTH)
+		// "capLen" includes the ethernet header length of capture packet
 		offsetEnd := dptypes.MAXHEADERLEN + capLen
 		payloadLen := offsetEnd - offsetStart
 
@@ -277,7 +277,7 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 	}
 
 	// Should we have a static per-thread entry for this header?
-	// Can we have it globally and re-use?
+	// XXX Can we have it globally and re-use?
 
 	// make sure the source port is one of the ephemeral one's
 	var srcPort uint16 = 0xC000
@@ -287,7 +287,7 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 	udp := &layers.UDP{
 		// Source port is a hash from packet
 		SrcPort: layers.UDPPort(srcPort),
-		DstPort: 4341,
+		DstPort: 4341, // Lisp data traffic port
 		Length:  uint16(udpLen),
 	}
 
@@ -305,7 +305,6 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 	if useCrypto == true {
 		SetLispKeyId(lispHdr, keyId)
 
-		//srcPort := GetItrCryptoPort()
 		srcPort := itrLocalData.ItrCryptoPort
 		if srcPort != -1 {
 			udp.SrcPort = layers.UDPPort(uint16(srcPort))

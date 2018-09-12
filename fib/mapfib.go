@@ -192,7 +192,7 @@ func LookupAndAdd(iid uint32,
 	}
 	key := makeMapCacheKey(iid, eid)
 
-	// we take a read look and check if the entry that we are looking for
+	// we take a read lock and check if the entry that we are looking for
 	// is already present in MapCacheTable
 	cache.LockMe.RLock()
 	entry, ok := cache.MapCache[key]
@@ -262,7 +262,7 @@ func LookupAndAdd(iid uint32,
 	}
 }
 
-// Add/update map cache entry. Along with that process and send out and
+// Add/update map cache entry. Along with that, process and send out any
 // buffered packets attached to this entry.
 func UpdateMapCacheEntry(iid uint32, eid net.IP, rlocs []dptypes.Rloc) {
 	if debug {
@@ -308,8 +308,8 @@ func UpdateMapCacheEntry(iid uint32, eid net.IP, rlocs []dptypes.Rloc) {
 
 				// decrement buffered packet count and increment pkt, byte counts
 				atomic.AddUint64(&entry.BuffdPkts, ^uint64(0))
-				atomic.AddUint64(&entry.Packets, 1)
-				atomic.AddUint64(&entry.Bytes, uint64(capLen))
+				//atomic.AddUint64(&entry.Packets, 1)
+				//atomic.AddUint64(&entry.Bytes, uint64(capLen))
 			} else {
 				// channel might have been closed
 				return
@@ -389,7 +389,7 @@ func LookupAndUpdate(iid uint32, eid net.IP, rlocs []dptypes.Rloc) *dptypes.MapC
 	selectRlocs, totWeight = compileRlocs(rlocs)
 
 	resolved := true
-	// If RLOC list is empty we mark the map-cache entry as resolved.
+	// If RLOC list is empty we mark the map-cache entry as un-resolved.
 	if len(selectRlocs) == 0 {
 		resolved = false
 	}
@@ -423,7 +423,6 @@ func LookupAndUpdate(iid uint32, eid net.IP, rlocs []dptypes.Rloc) *dptypes.MapC
 			log.Printf("LookupAndUpdate: Resolving unresolved entry with EID %s, IID %v\n",
 				key.Eid, key.IID)
 		}
-		//selectRlocs, totWeight = compileRlocs(rlocs)
 		entry.Rlocs = selectRlocs
 		entry.RlocTotWeight = totWeight
 		entry.Resolved = resolved
@@ -433,7 +432,6 @@ func LookupAndUpdate(iid uint32, eid net.IP, rlocs []dptypes.Rloc) *dptypes.MapC
 	// allocate new MapCacheEntry and add to table
 	// We will only use the highest priority rlocs and ignore rlocs with
 	// other priorities
-	//selectRlocs, totWeight = compileRlocs(rlocs)
 	newEntry := dptypes.MapCacheEntry{
 		InstanceId:    iid,
 		Eid:           eid,

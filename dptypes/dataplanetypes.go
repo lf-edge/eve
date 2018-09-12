@@ -31,6 +31,10 @@ const (
 	IP6HEADERLEN  = 40
 	LISPHEADERLEN = 8
 	GCMIVLENGTH   = 12
+	IPVERSION4    = 4
+	IPVERSION6    = 6
+	IP4DESTADDROFFSET = 16
+	IP6DESTADDROFFSET = 24
 )
 
 type Key struct {
@@ -215,9 +219,10 @@ type EtrRunStatus struct {
 
 	// ETR Natted packet capture ring
 	Handle *afpacket.TPacket
-	// Raw socket FD used by ETR packet capture thread
+	// Raw socket FDs used by ETR packet capture thread
 	// for injecting decapsulated packets
-	RingFD int
+	Fd4 int // IPv4 raw socket FD
+	Fd6 int // IPv6 raw socket FD
 }
 
 type EtrTable struct {
