@@ -118,7 +118,6 @@ var debug = false
 var publishDeviceInfo bool
 
 func Run() {
-
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
