@@ -97,6 +97,7 @@ type zedagentContext struct {
 	pubCertObjStatus         *pubsub.Publication
 	TriggerDeviceInfo        bool
 	subBaseOsConfig          *pubsub.Subscription
+	subDatastoreConfig       *pubsub.Subscription
 	pubBaseOsStatus          *pubsub.Publication
 	pubBaseOsDownloadConfig  *pubsub.Publication
 	subBaseOsDownloadStatus  *pubsub.Subscription
@@ -250,6 +251,14 @@ func Run() {
 	pubBaseOsVerifierConfig.ClearRestarted()
 	zedagentCtx.pubBaseOsVerifierConfig = pubBaseOsVerifierConfig
 
+	pubDatastoreConfig, err := pubsub.Publish(agentName,
+		types.DatastoreConfig{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	getconfigCtx.pubDatastoreConfig = pubDatastoreConfig
+	pubDatastoreConfig.ClearRestarted()
+
 	// Look for errors and status from zedrouter
 	subNetworkObjectStatus, err := pubsub.Subscribe("zedrouter",
 		types.NetworkObjectStatus{}, false, &zedagentCtx)
@@ -315,6 +324,17 @@ func Run() {
 	subBaseOsConfig.DeleteHandler = handleBaseOsConfigDelete
 	zedagentCtx.subBaseOsConfig = subBaseOsConfig
 	subBaseOsConfig.Activate()
+
+	// Look for DatastoreConfig from ourselves!
+	subDatastoreConfig, err := pubsub.Subscribe("zedagent",
+		types.DatastoreConfig{}, false, &zedagentCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subDatastoreConfig.ModifyHandler = handleDatastoreConfigModify
+	subDatastoreConfig.DeleteHandler = handleDatastoreConfigDelete
+	zedagentCtx.subDatastoreConfig = subDatastoreConfig
+	subDatastoreConfig.Activate()
 
 	// Look for DownloaderStatus from downloader
 	subBaseOsDownloadStatus, err := pubsub.SubscribeScope("downloader",
@@ -508,6 +528,9 @@ func Run() {
 
 		case change := <-subBaseOsConfig.C:
 			subBaseOsConfig.ProcessChange(change)
+
+		case change := <-subDatastoreConfig.C:
+			subDatastoreConfig.ProcessChange(change)
 
 		case change := <-subBaseOsDownloadStatus.C:
 			subBaseOsDownloadStatus.ProcessChange(change)
@@ -772,7 +795,6 @@ func handleBaseOsCreate(ctxArg interface{}, key string,
 		UUIDandVersion: config.UUIDandVersion,
 		BaseOsVersion:  config.BaseOsVersion,
 		ConfigSha256:   config.ConfigSha256,
-		PartitionLabel: config.PartitionLabel,
 	}
 
 	status.StorageStatusList = make([]types.StorageStatus,
@@ -780,9 +802,21 @@ func handleBaseOsCreate(ctxArg interface{}, key string,
 
 	for i, sc := range config.StorageConfigList {
 		ss := &status.StorageStatusList[i]
-		ss.DownloadURL = sc.DownloadURL
+		ss.Name = sc.Name
 		ss.ImageSha256 = sc.ImageSha256
 		ss.Target = sc.Target
+	}
+
+	// Check total and activated counts
+	err := validateBaseOsConfig(ctx, config)
+	if err != nil {
+		errStr := fmt.Sprintf("%v", err)
+		log.Println(errStr)
+		status.Error = errStr
+		status.ErrorTime = time.Now()
+		publishBaseOsStatus(ctx, &status)
+		publishDeviceInfo = true
+		return
 	}
 
 	baseOsGetActivationStatus(&status)
@@ -819,7 +853,19 @@ func handleBaseOsModify(ctxArg interface{}, key string,
 		return
 	}
 
-	// update the version field, uuis being the same
+	// Check total and activated counts
+	err := validateBaseOsConfig(ctx, config)
+	if err != nil {
+		errStr := fmt.Sprintf("%v", err)
+		log.Println(errStr)
+		status.Error = errStr
+		status.ErrorTime = time.Now()
+		publishBaseOsStatus(ctx, &status)
+		publishDeviceInfo = true
+		return
+	}
+
+	// update the version field, uuids being the same
 	status.UUIDandVersion = config.UUIDandVersion
 	publishBaseOsStatus(ctx, &status)
 
@@ -892,8 +938,9 @@ func handleCertObjCreate(ctx *zedagentContext, key string, config *types.CertObj
 
 	for i, sc := range config.StorageConfigList {
 		ss := &status.StorageStatusList[i]
-		ss.DownloadURL = sc.DownloadURL
+		ss.Name = sc.Name
 		ss.ImageSha256 = sc.ImageSha256
+		ss.FinalObjDir = certificateDirname
 	}
 
 	publishCertObjStatus(ctx, &status)
@@ -971,6 +1018,20 @@ func handleVerifierStatusDelete(ctxArg interface{}, key string,
 
 	log.Printf("handleVeriferStatusDelete for %s\n", key)
 	// Nothing to do
+}
+
+func handleDatastoreConfigModify(ctxArg interface{}, key string,
+	configArg interface{}) {
+
+	// XXX empty since we look at collection when we need it
+	log.Printf("handleDatastoreConfigModify for %s\n", key)
+}
+
+func handleDatastoreConfigDelete(ctxArg interface{}, key string,
+	configArg interface{}) {
+
+	// XXX empty since we look at collection when we need it
+	log.Printf("handleDatastoreConfigDelete for %s\n", key)
 }
 
 func appendError(allErrors string, prefix string, lasterr string) string {

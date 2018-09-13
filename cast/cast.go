@@ -313,6 +313,18 @@ func CastGlobalDownloadConfig(in interface{}) types.GlobalDownloadConfig {
 	return output
 }
 
+func CastDatastoreConfig(in interface{}) types.DatastoreConfig {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastDatastoreConfig")
+	}
+	var output types.DatastoreConfig
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "json Unmarshal in CastDatastoreConfig")
+	}
+	return output
+}
+
 func CastLispDataplaneConfig(in interface{}) types.LispDataplaneConfig {
 	b, err := json.Marshal(in)
 	if err != nil {

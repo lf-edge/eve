@@ -354,6 +354,7 @@ func GetLongVersion(part string) string {
 	return ""
 }
 
+// XXX explore a loopback mount!
 func getVersion(part string, verFilename string) string {
 	validatePartitionName(part)
 

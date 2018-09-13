@@ -135,15 +135,13 @@ type EIDOverlayConfig struct {
 // - "ramdisk"
 // - "device_tree"
 type StorageConfig struct {
-	DownloadURL      string
+	DatastoreId      uuid.UUID
+	Name             string   // XXX Do depend on URL for clobber avoidance?
+	NameIsURL        bool     // If not we form URL based on datastore info
 	Size             uint64   // In bytes
-	TransportMethod  string   // Download method S3/HTTP/SFTP etc.
 	CertificateChain []string //name of intermediate certificates
 	ImageSignature   []byte   //signature of image
 	SignatureKey     string   //certificate containing public key
-	ApiKey           string
-	Password         string
-	Dpath            string
 
 	ImageSha256 string // sha256 of immutable image
 	ReadOnly    bool
@@ -152,10 +150,6 @@ type StorageConfig struct {
 	Format  string // Default "raw"; could be raw, qcow, qcow2, vhd
 	Devtype string // Default ""; could be e.g. "cdrom"
 	Target  string // Default "" is interpreted as "disk"
-
-	// XXX FinalObjDir shouldn't be setable from the cloud. Local to
-	// device.
-	FinalObjDir string // installation dir, may differ from verified
 }
 
 func RoundupToKB(b uint64) uint64 {
@@ -163,7 +157,7 @@ func RoundupToKB(b uint64) uint64 {
 }
 
 type StorageStatus struct {
-	DownloadURL        string
+	Name               string
 	ImageSha256        string // sha256 of immutable image
 	ReadOnly           bool
 	Preserve           bool
@@ -174,6 +168,7 @@ type StorageStatus struct {
 	HasDownloaderRef   bool    // Reference against downloader to clean up
 	HasVerifierRef     bool    // Reference against verifier to clean up
 	ActiveFileLocation string  // Location of filestystem
+	FinalObjDir        string  // Installation dir; may differ from verified
 	Error              string  // Download or verify error
 	ErrorTime          time.Time
 }

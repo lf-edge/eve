@@ -4,6 +4,7 @@
 package types
 
 import (
+	"github.com/satori/go.uuid"
 	"log"
 	"time"
 )
@@ -26,7 +27,6 @@ type BaseOsConfig struct {
 	ConfigSignature   string
 	OsParams          []OsVerParams // From GetLongVersion
 	StorageConfigList []StorageConfig
-	PartitionLabel    string // XXX Remove
 	RetryCount        int32
 	Activate          bool
 }
@@ -189,3 +189,17 @@ const (
 	MetricItemCounter                       // Monotonically increasing (until reboot)
 	MetricItemState                         // Toggles on and off; count transitions
 )
+
+type DatastoreConfig struct {
+	UUID     uuid.UUID
+	DsType   string
+	Fqdn     string
+	ApiKey   string
+	Password string
+	Dpath    string // depending on DsType, it could be bucket or path
+	Region   string
+}
+
+func (config DatastoreConfig) Key() string {
+	return config.UUID.String()
+}
