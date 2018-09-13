@@ -511,7 +511,7 @@ func Run() {
 	}
 
 	// Timer for deferred sends of info messages
-	deferredChan := zedcloud.InitDeferred()
+	deferredChan := zedcloud.InitDeferredWithDebug(&debug)
 
 	// Publish initial device info. Retries all addresses on all uplinks.
 	publishDevInfo(&zedagentCtx)

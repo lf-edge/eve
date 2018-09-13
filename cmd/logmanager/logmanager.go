@@ -193,7 +193,7 @@ func Run() {
 		DNSctx.usableAddressCount)
 
 	// Timer for deferred sends of info messages
-	deferredChan := zedcloud.InitDeferred()
+	deferredChan := zedcloud.InitDeferredWithDebug(&debug)
 
 	//Get servername, set logUrl, get device id and initialize zedcloudCtx
 	sendCtxInit()
