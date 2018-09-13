@@ -554,7 +554,7 @@ if [ $WAIT = 1 ]; then
 fi
 
 echo "Starting zedagent at" `date`
-zedagent -d $LISPOPT &
+zedagent $LISPOPT &
 if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
