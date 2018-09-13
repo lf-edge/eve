@@ -249,6 +249,10 @@ func doServiceActivate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 }
 
 func validateAdapter(adapter string, allowUplink bool) error {
+	if adapter == "" {
+		errStr := fmt.Sprintf("Adapter not specified")
+		return errors.New(errStr)
+	}
 	if allowUplink {
 		if strings.EqualFold(adapter, "uplink") {
 			return nil
@@ -260,6 +264,7 @@ func validateAdapter(adapter string, allowUplink bool) error {
 	// XXX look for ifname; this assumes it exists in dom0/zedrouter
 	// and not assigned to pciback
 	// XXX also check not uplink? assignable checked for bridge ...
+	// XXX need a resourcemgr to track use of resources
 	link, _ := netlink.LinkByName(adapter)
 	if link == nil {
 		errStr := fmt.Sprintf("Unknown adapter %s", adapter)
