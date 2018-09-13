@@ -1,12 +1,12 @@
 # Build watchdogd for alpine
 
-FROM linuxkit/alpine:d307c8a386fa3f32cddda9409b9687e191cdd6f1 AS watchdog-build
+# derived from Alpine 3.8
+FROM linuxkit/alpine:4d13c6209a679fc7c4e850f144b7aef879914d01 AS watchdog-build
 RUN apk add \
     build-base \
     file \
     libtirpc-dev \
     linux-headers \
-    curl \
     tar
 
 # Version 5.15
@@ -17,14 +17,9 @@ ENV WATCHDOGD_SRC_TGZ ${WATCHDOGD_SRC_TAR}.gz
 ENV WATCHDOGD_MIRROR_URL https://jaist.dl.sourceforge.net/project/watchdog/watchdog/
 ENV WATCHDOGD_SRC_URL ${WATCHDOGD_MIRROR_URL}/${WATCHDOGD_VERSION}/${WATCHDOGD_SRC_TGZ}
 
-RUN \
-    [ -f ${WATCHDOGD_SRC_TGZ} ] || \
-    echo "Downloading ${WATCHDOGD_SRC_TGZ}" && curl -#fSLO ${WATCHDOGD_SRC_URL}
-
-RUN \
-    echo "Extracting ${WATCHDOGD_SRC_TGZ} -> /${WATCHDOGD_SRC_DIR}" && \
-    gzip -d ${WATCHDOGD_SRC_TGZ} && \
-    cat ${WATCHDOGD_SRC_TAR} | tar --absolute-names -x && mv /${WATCHDOGD_SRC_DIR} /
+WORKDIR /
+COPY ${WATCHDOGD_SRC_TGZ} /
+RUN tar --absolute-names -zxf /${WATCHDOGD_SRC_TGZ}
 
 # Apply local patches
 COPY patches-${WATCHDOGD_SRC_DIR} /patches

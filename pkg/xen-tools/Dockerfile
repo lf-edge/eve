@@ -1,4 +1,4 @@
-FROM alpine:3.6 as kernel-build
+FROM alpine:3.8 as kernel-build
 RUN apk add --no-cache \
     	    gcc make libc-dev dev86 xz-dev perl bash python-dev \
 	    gettext iasl util-linux-dev ncurses-dev glib-dev \

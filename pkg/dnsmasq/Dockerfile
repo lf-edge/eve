@@ -1,4 +1,5 @@
-FROM alpine:3.6 as build
+# derived from Alpine 3.8
+FROM linuxkit/alpine:4d13c6209a679fc7c4e850f144b7aef879914d01 as build
 
 ENV DNSMASQ_VERSION 2.78
 
