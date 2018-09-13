@@ -151,6 +151,7 @@ func Run() {
 	zedrouterCtx.DeviceNetworkStatus = &types.DeviceNetworkStatus{}
 	zedrouterCtx.PubDeviceUplinkConfig = pubDeviceUplinkConfig
 	zedrouterCtx.PubDeviceNetworkStatus = pubDeviceNetworkStatus
+	zedrouterCtx.DebugPtr = &debug
 
 	// Create publish before subscribing and activating subscriptions
 	// Also need to do this before we wait for IP addresses since

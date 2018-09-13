@@ -193,6 +193,7 @@ func Run() {
 		DeviceNetworkStatus:    &types.DeviceNetworkStatus{},
 		PubDeviceUplinkConfig:  pubDeviceUplinkConfig,
 		PubDeviceNetworkStatus: nil,
+		DebugPtr:		&debug,
 	}
 
 	// Look for global config like debug
