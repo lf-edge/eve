@@ -58,7 +58,8 @@ type zedrouterContext struct {
 	subLispMetrics          *pubsub.Subscription
 	assignableAdapters      *types.AssignableAdapters
 	devicenetwork.DeviceNetworkContext
-	ready bool
+	ready           bool
+	subGlobalConfig *pubsub.Subscription
 }
 
 var debug = false
@@ -116,19 +117,34 @@ func Run() {
 	aa := types.AssignableAdapters{}
 	subAa := adapters.Subscribe(&aa, model)
 
+	zedrouterCtx := zedrouterContext{
+		separateDataPlane:  false,
+		assignableAdapters: &aa,
+	}
+
+	// Look for global config like debug
+	subGlobalConfig, err := pubsub.Subscribe("",
+		agentlog.GlobalConfig{}, false, &zedrouterCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
+	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
+	zedrouterCtx.subGlobalConfig = subGlobalConfig
+	subGlobalConfig.Activate()
+
 	for !subAa.Found {
 		log.Printf("Waiting for AssignableAdapters %v\n", subAa.Found)
 		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+
 		case change := <-subAa.C:
 			subAa.ProcessChange(change)
 		}
 	}
 	log.Printf("Have %d assignable adapters\n", len(aa.IoBundleList))
 
-	zedrouterCtx := zedrouterContext{
-		separateDataPlane:  false,
-		assignableAdapters: &aa,
-	}
 	zedrouterCtx.ManufacturerModel = model
 	zedrouterCtx.DeviceNetworkConfig = &types.DeviceNetworkConfig{}
 	zedrouterCtx.DeviceUplinkConfig = &types.DeviceUplinkConfig{}
@@ -229,6 +245,9 @@ func Run() {
 		log.Printf("Waiting for UsableAddressCount %d and done %v\n",
 			zedrouterCtx.UsableAddressCount, done)
 		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+
 		case change := <-subDeviceNetworkConfig.C:
 			subDeviceNetworkConfig.ProcessChange(change)
 			maybeHandleDUC(&zedrouterCtx)
@@ -377,6 +396,9 @@ func Run() {
 	for !subAppNetworkConfig.Restarted() {
 		log.Printf("Waiting for zedmanager to report restarted\n")
 		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+
 		case change := <-subAppNetworkConfig.C:
 			subAppNetworkConfig.ProcessChange(change)
 		}
@@ -385,6 +407,9 @@ func Run() {
 
 	for {
 		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+
 		case change := <-subAppNetworkConfig.C:
 			subAppNetworkConfig.ProcessChange(change)
 
@@ -2213,4 +2238,36 @@ func pkillUserArgs(userName string, match string, printOnError bool) {
 	if err != nil && printOnError {
 		log.Printf("Command %v %v failed: %s\n", cmd, args, err)
 	}
+}
+
+func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*zedrouterContext)
+	if key != "global" {
+		log.Printf("handleGlobalConfigModify: ignoring %s\n", key)
+		return
+	}
+	log.Printf("handleGlobalConfigModify for %s\n", key)
+	if val, ok := agentlog.GetDebug(ctx.subGlobalConfig, agentName); ok {
+		debug = val
+		log.Printf("handleGlobalConfigModify: debug %v\n", debug)
+	}
+	// XXX add loglevel etc
+	log.Printf("handleGlobalConfigModify done for %s\n", key)
+}
+
+func handleGlobalConfigDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	log.Printf("handleGlobalConfigDelete for %s\n", key)
+
+	if key != "global" {
+		log.Printf("handleGlobalConfigDelete: ignoring %s\n", key)
+		return
+	}
+	debug = false
+	log.Printf("handleGlobalConfigDelete: debug %v\n", debug)
+	// XXX add loglevel etc
+	log.Printf("handleGlobalConfigDelete done for %s\n", key)
 }

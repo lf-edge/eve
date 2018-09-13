@@ -71,6 +71,7 @@ type domainContext struct {
 	subDeviceNetworkStatus *pubsub.Subscription
 	subDomainConfig        *pubsub.Subscription
 	pubDomainStatus        *pubsub.Publication
+	subGlobalConfig        *pubsub.Subscription
 }
 
 var debug = false
@@ -142,9 +143,23 @@ func Run() {
 	domainCtx.pubDomainStatus = pubDomainStatus
 	pubDomainStatus.ClearRestarted()
 
+	// Look for global config like debug
+	subGlobalConfig, err := pubsub.Subscribe("",
+		agentlog.GlobalConfig{}, false, &domainCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
+	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
+	domainCtx.subGlobalConfig = subGlobalConfig
+	subGlobalConfig.Activate()
+
 	for !subAa.Found {
 		log.Printf("Waiting for AssignableAdapters %v\n", subAa.Found)
 		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+
 		case change := <-subAa.C:
 			subAa.ProcessChange(change)
 		}
@@ -175,6 +190,9 @@ func Run() {
 
 	for {
 		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+
 		case change := <-subDomainConfig.C:
 			subDomainConfig.ProcessChange(change)
 
@@ -1513,4 +1531,36 @@ func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 	deviceNetworkStatus = types.DeviceNetworkStatus{}
 	devicenetwork.ProxyToEnv(deviceNetworkStatus.ProxyConfig)
 	log.Printf("handleDNSDelete done for %s\n", key)
+}
+
+func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*domainContext)
+	if key != "global" {
+		log.Printf("handleGlobalConfigModify: ignoring %s\n", key)
+		return
+	}
+	log.Printf("handleGlobalConfigModify for %s\n", key)
+	if val, ok := agentlog.GetDebug(ctx.subGlobalConfig, agentName); ok {
+		debug = val
+		log.Printf("handleGlobalConfigModify: debug %v\n", debug)
+	}
+	// XXX add loglevel etc
+	log.Printf("handleGlobalConfigModify done for %s\n", key)
+}
+
+func handleGlobalConfigDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	log.Printf("handleGlobalConfigDelete for %s\n", key)
+
+	if key != "global" {
+		log.Printf("handleGlobalConfigDelete: ignoring %s\n", key)
+		return
+	}
+	debug = false
+	log.Printf("handleGlobalConfigDelete: debug %v\n", debug)
+	// XXX add loglevel etc
+	log.Printf("handleGlobalConfigDelete done for %s\n", key)
 }

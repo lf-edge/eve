@@ -51,6 +51,7 @@ type zedmanagerContext struct {
 	pubAppImgVerifierConfig *pubsub.Publication
 	subAppImgVerifierStatus *pubsub.Subscription
 	subDatastoreConfig      *pubsub.Subscription
+	subGlobalConfig         *pubsub.Subscription
 }
 
 var deviceNetworkStatus types.DeviceNetworkStatus
@@ -128,6 +129,17 @@ func Run() {
 	}
 	pubAppImgVerifierConfig.ClearRestarted()
 	ctx.pubAppImgVerifierConfig = pubAppImgVerifierConfig
+
+	// Look for global config like debug
+	subGlobalConfig, err := pubsub.Subscribe("",
+		agentlog.GlobalConfig{}, false, &ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
+	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
+	ctx.subGlobalConfig = subGlobalConfig
+	subGlobalConfig.Activate()
 
 	// Get AppInstanceConfig from zedagent
 	subAppInstanceConfig, err := pubsub.Subscribe("zedagent",
@@ -237,6 +249,9 @@ func Run() {
 	log.Printf("Handling initial verifier Status\n")
 	for !ctx.verifierRestarted {
 		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+
 		case change := <-subAppImgVerifierStatus.C:
 			subAppImgVerifierStatus.ProcessChange(change)
 			if ctx.verifierRestarted {
@@ -248,6 +263,9 @@ func Run() {
 	log.Printf("Handling all inputs\n")
 	for {
 		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+
 		// handle cert ObjectsChanges
 		case change := <-subCertObjStatus.C:
 			subCertObjStatus.ProcessChange(change)
@@ -672,4 +690,36 @@ func handleDatastoreConfigDelete(ctxArg interface{}, key string,
 
 	// XXX empty since we look at collection when we need it
 	log.Printf("handleDatastoreConfigDelete for %s\n", key)
+}
+
+func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*zedmanagerContext)
+	if key != "global" {
+		log.Printf("handleGlobalConfigModify: ignoring %s\n", key)
+		return
+	}
+	log.Printf("handleGlobalConfigModify for %s\n", key)
+	if val, ok := agentlog.GetDebug(ctx.subGlobalConfig, agentName); ok {
+		debug = val
+		log.Printf("handleGlobalConfigModify: debug %v\n", debug)
+	}
+	// XXX add loglevel etc
+	log.Printf("handleGlobalConfigModify done for %s\n", key)
+}
+
+func handleGlobalConfigDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	log.Printf("handleGlobalConfigDelete for %s\n", key)
+
+	if key != "global" {
+		log.Printf("handleGlobalConfigDelete: ignoring %s\n", key)
+		return
+	}
+	debug = false
+	log.Printf("handleGlobalConfigDelete: debug %v\n", debug)
+	// XXX add loglevel etc
+	log.Printf("handleGlobalConfigDelete done for %s\n", key)
 }

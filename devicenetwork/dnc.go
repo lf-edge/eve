@@ -27,6 +27,7 @@ type DeviceNetworkContext struct {
 	PubDeviceUplinkConfig  *pubsub.Publication
 	PubDeviceNetworkStatus *pubsub.Publication
 	Changed                bool
+	SubGlobalConfig        *pubsub.Subscription
 }
 
 func HandleDNCModify(ctxArg interface{}, key string, configArg interface{}) {

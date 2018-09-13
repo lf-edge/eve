@@ -104,6 +104,8 @@ type DNSContext struct {
 	subDeviceNetworkStatus *pubsub.Subscription
 }
 
+// XXX add context and handleGlobalConfig stuff
+
 type zedcloudLogs struct {
 	FailureCount uint64
 	SuccessCount uint64

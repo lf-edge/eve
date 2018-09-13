@@ -107,6 +107,7 @@ type zedagentContext struct {
 	subBaseOsVerifierStatus  *pubsub.Subscription
 	subAppImgDownloadStatus  *pubsub.Subscription
 	subAppImgVerifierStatus  *pubsub.Subscription
+	subGlobalConfig          *pubsub.Subscription
 }
 
 var debug = false
@@ -259,6 +260,17 @@ func Run() {
 	getconfigCtx.pubDatastoreConfig = pubDatastoreConfig
 	pubDatastoreConfig.ClearRestarted()
 
+	// Look for global config like debug
+	subGlobalConfig, err := pubsub.Subscribe("",
+		agentlog.GlobalConfig{}, false, &zedagentCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
+	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
+	zedagentCtx.subGlobalConfig = subGlobalConfig
+	subGlobalConfig.Activate()
+
 	// Look for errors and status from zedrouter
 	subNetworkObjectStatus, err := pubsub.Subscribe("zedrouter",
 		types.NetworkObjectStatus{}, false, &zedagentCtx)
@@ -397,6 +409,9 @@ func Run() {
 	log.Printf("Handling initial verifier Status\n")
 	for !zedagentCtx.verifierRestarted {
 		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+
 		case change := <-subBaseOsVerifierStatus.C:
 			subBaseOsVerifierStatus.ProcessChange(change)
 			if zedagentCtx.verifierRestarted {
@@ -442,6 +457,9 @@ func Run() {
 		waited = true
 
 		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
 
@@ -520,6 +538,9 @@ func Run() {
 		}
 
 		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+
 		case change := <-subCertObjConfig.C:
 			subCertObjConfig.ProcessChange(change)
 
@@ -1036,4 +1057,36 @@ func handleDatastoreConfigDelete(ctxArg interface{}, key string,
 
 func appendError(allErrors string, prefix string, lasterr string) string {
 	return fmt.Sprintf("%s%s: %s\n\n", allErrors, prefix, lasterr)
+}
+
+func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*zedagentContext)
+	if key != "global" {
+		log.Printf("handleGlobalConfigModify: ignoring %s\n", key)
+		return
+	}
+	log.Printf("handleGlobalConfigModify for %s\n", key)
+	if val, ok := agentlog.GetDebug(ctx.subGlobalConfig, agentName); ok {
+		debug = val
+		log.Printf("handleGlobalConfigModify: debug %v\n", debug)
+	}
+	// XXX add loglevel etc
+	log.Printf("handleGlobalConfigModify done for %s\n", key)
+}
+
+func handleGlobalConfigDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	log.Printf("handleGlobalConfigDelete for %s\n", key)
+
+	if key != "global" {
+		log.Printf("handleGlobalConfigDelete: ignoring %s\n", key)
+		return
+	}
+	debug = false
+	log.Printf("handleGlobalConfigDelete: debug %v\n", debug)
+	// XXX add loglevel etc
+	log.Printf("handleGlobalConfigDelete done for %s\n", key)
 }
