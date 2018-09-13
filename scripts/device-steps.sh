@@ -13,7 +13,6 @@ LISPDIR=/opt/zededa/lisp
 LOGDIRA=$PERSISTDIR/IMGA/log
 LOGDIRB=$PERSISTDIR/IMGB/log
 AGENTS="zedmanager logmanager ledmanager zedrouter domainmgr downloader verifier identitymgr zedagent lisp-ztr"
-LISPOPT=""
 
 PATH=$BINDIR:$PATH
 
@@ -45,16 +44,33 @@ fi
     
 echo "Handling restart case at" `date`
 
-# If watchdog was running we restart it in a way where it will
-# no fail due to killing the agents below.
-cat >$TMPDIR/watchdog.conf <<EOF
+# Create the watchdog(8) config files we will use
+# XXX should we enable realtime in the kernel?
+cat >$TMPDIR/watchdogbase.conf <<EOF
 watchdog-device = /dev/watchdog
 admin =
+#realtime = yes
+#priority = 1
+interval = 10
+logtick  = 60
 EOF
+cp $TMPDIR/watchdogbase.conf $TMPDIR/watchdogled.conf
+echo "pidfile = /var/run/ledmanager.pid" >>$TMPDIR/watchdogled.conf
+cp $TMPDIR/watchdogled.conf $TMPDIR/watchdogclient.conf
+echo "pidfile = /var/run/zedclient.pid" >>$TMPDIR/watchdogclient.conf
+
+cp $TMPDIR/watchdogled.conf $TMPDIR/watchdogall.conf
+for AGENT in $AGENTS; do
+    echo "pidfile = /var/run/$AGENT.pid" >>$TMPDIR/watchdogall.conf
+done
+
+# If watchdog was running we restart it in a way where it will
+# no fail due to killing the agents below.
 if [ -f /var/run/watchdog.pid ]; then
     kill `cat /var/run/watchdog.pid`
-    /usr/sbin/watchdog -c $TMPDIR/watchdog.conf -F -s &
 fi
+# Always run watchdog(8) since we have a hardware timer to advance
+/usr/sbin/watchdog -c $TMPDIR/watchdogbase.conf -F -s &
 
 # If we are re-running this script, clean up from last run
 pgrep zedmanager >/dev/null
@@ -242,6 +258,12 @@ if [ $? != 0 ]; then
     fi
 fi
 
+# Restart watchdog - just for ledmanager so far
+if [ -f /var/run/watchdog.pid ]; then
+    kill `cat /var/run/watchdog.pid`
+fi
+/usr/sbin/watchdog -c $TMPDIR/watchdogled.conf -F -s &
+
 mkdir -p $DUCDIR
 if [ -f $CONFIGDIR/allow-usb-override ]; then
     # Look for a USB stick with a key'ed file
@@ -288,17 +310,26 @@ if [ -f $CONFIGDIR/DeviceUplinkConfig/override.json ]; then
     cp -p $CONFIGDIR/DeviceUplinkConfig/override.json $DUCDIR
 fi
 
-# XXX hack to get -l dynamically
-if [ -f $CONFIGDIR/lispopt ]; then
-    LISPOPT=`cat $CONFIGDIR/lispopt`
-fi
-
 # Get IP addresses
 # XXX we should be able to do this in the initial call
 # However, we need it before we run ntpd
+# XXX need a networkinterfacemgr to do this separately.
+
+# Restart watchdog ledmanager and client
+if [ -f /var/run/watchdog.pid ]; then
+    kill `cat /var/run/watchdog.pid`
+fi
+/usr/sbin/watchdog -c $TMPDIR/watchdogclient.conf -F -s &
+
 echo $BINDIR/client -d $CONFIGDIR dhcpcd
 $BINDIR/client -d $CONFIGDIR dhcpcd
 ifconfig
+
+# Restart watchdog with only ledmanager since we don't know how long ntp will take
+if [ -f /var/run/watchdog.pid ]; then
+    kill `cat /var/run/watchdog.pid`
+fi
+/usr/sbin/watchdog -c $TMPDIR/watchdogled.conf -F -s &
 
 # We need to try our best to setup time *before* we generate the certifiacte.
 # Otherwise it may have start date in the future
@@ -334,27 +365,11 @@ if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
-# Create config file for watchdog(8)
-# XXX should we enable realtime in the kernel?
-cat >$TMPDIR/watchdog.conf <<EOF
-watchdog-device = /dev/watchdog
-admin =
-#realtime = yes
-#priority = 1
-interval = 10
-logtick  = 60
-EOF
-echo "pidfile = /var/run/ledmanager.pid" >>$TMPDIR/watchdog.conf
-
-# The client should start soon
-cp $TMPDIR/watchdog.conf $TMPDIR/watchdogc.conf
-echo "pidfile = /var/run/zedclient.pid" >>$TMPDIR/watchdogc.conf
-
+# Restart watchdog ledmanager and client
 if [ -f /var/run/watchdog.pid ]; then
     kill `cat /var/run/watchdog.pid`
 fi
-# Make sure client.go doesn't fail
-/usr/sbin/watchdog -c $TMPDIR/watchdogc.conf -F -s &
+/usr/sbin/watchdog -c $TMPDIR/watchdogclient.conf -F -s &
 
 if [ ! \( -f $CONFIGDIR/device.cert.pem -a -f $CONFIGDIR/device.key.pem \) ]; then
     echo "Generating a device key pair and self-signed cert (using TPM/TEE if available) at" `date`
@@ -508,13 +523,11 @@ space=`expr $size / 2048`
 mkdir -p /var/tmp/zededa/GlobalDownloadConfig/
 echo {\"MaxSpace\":$space} >/var/tmp/zededa/GlobalDownloadConfig/global.json
 
-for AGENT in $AGENTS; do
-    echo "pidfile = /var/run/$AGENT.pid" >>$TMPDIR/watchdog.conf
-done
+# Now run watchdog for all agents
 if [ -f /var/run/watchdog.pid ]; then
     kill `cat /var/run/watchdog.pid`
 fi
-/usr/sbin/watchdog -c $TMPDIR/watchdog.conf -F -s &
+/usr/sbin/watchdog -c $TMPDIR/watchdogall.conf -F -s &
 
 echo "Starting verifier at" `date`
 verifier &
@@ -554,7 +567,7 @@ if [ $WAIT = 1 ]; then
 fi
 
 echo "Starting zedagent at" `date`
-zedagent $LISPOPT &
+zedagent &
 if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
