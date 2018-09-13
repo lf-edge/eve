@@ -14,15 +14,15 @@ import (
 )
 
 type perAgentSettings struct {
-	debug          bool
-	localLogLevel  int // What we log to files
-	remoteLogLevel int // What we log to zedcloud
+	Debug          bool
+	LocalLogLevel  int // What we log to files
+	RemoteLogLevel int // What we log to zedcloud
 }
 
 // Agents subscribe to this info
 type GlobalConfig struct {
 	// "global" or agentName is the index to the map
-	agentSettings map[string]perAgentSettings
+	AgentSettings map[string]perAgentSettings
 
 	// Any future globals such as timers we want to save across reboot
 }
@@ -36,14 +36,14 @@ func GetDebug(sub *pubsub.Subscription, agentName string) (bool, bool) {
 	}
 	gc := CastGlobalConfig(m)
 	// Do we have an entry for this agent?
-	as, ok := gc.agentSettings[agentName]
+	as, ok := gc.AgentSettings[agentName]
 	if ok {
-		return as.debug, true
+		return as.Debug, true
 	}
 	// Do we have a global entry?
-	as, ok = gc.agentSettings["global"]
+	as, ok = gc.AgentSettings["global"]
 	if ok {
-		return as.debug, true
+		return as.Debug, true
 	}
 	return false, false
 }
@@ -57,14 +57,14 @@ func GetLocalLogLevel(sub *pubsub.Subscription, agentName string) (int, bool) {
 	}
 	gc := CastGlobalConfig(m)
 	// Do we have an entry for this agent?
-	as, ok := gc.agentSettings[agentName]
+	as, ok := gc.AgentSettings[agentName]
 	if ok {
-		return as.localLogLevel, true
+		return as.LocalLogLevel, true
 	}
 	// Do we have a global entry?
-	as, ok = gc.agentSettings["global"]
+	as, ok = gc.AgentSettings["global"]
 	if ok {
-		return as.localLogLevel, true
+		return as.LocalLogLevel, true
 	}
 	return 0, false
 }
@@ -78,14 +78,14 @@ func GetRemoteLogLevel(sub *pubsub.Subscription, agentName string) (int, bool) {
 	}
 	gc := CastGlobalConfig(m)
 	// Do we have an entry for this agent?
-	as, ok := gc.agentSettings[agentName]
+	as, ok := gc.AgentSettings[agentName]
 	if ok {
-		return as.remoteLogLevel, true
+		return as.RemoteLogLevel, true
 	}
 	// Do we have a global entry?
-	as, ok = gc.agentSettings["global"]
+	as, ok = gc.AgentSettings["global"]
 	if ok {
-		return as.remoteLogLevel, true
+		return as.RemoteLogLevel, true
 	}
 	return 0, false
 }
@@ -100,4 +100,19 @@ func CastGlobalConfig(in interface{}) GlobalConfig {
 		log.Fatal(err, "json Unmarshal in CastGlobalConfig")
 	}
 	return output
+}
+
+// To print a struct in json
+// XXX remove?
+func PrintGlobalConfig() {
+	gc := GlobalConfig{}
+	gc.AgentSettings = make(map[string]perAgentSettings)
+	gc.AgentSettings["global"] = perAgentSettings{Debug: true}
+	gc.AgentSettings["zedagent"] = perAgentSettings{Debug: true}
+	log.Printf("GlobalConfig: %+v\n", gc)
+	b, err := json.Marshal(gc)
+	if err != nil {
+		log.Fatal(err, "json Marshal in PrintGlobalConfig")
+	}
+	log.Printf("%s\n", b)
 }
