@@ -20,7 +20,7 @@ import (
 //		devicenetwork.AddrChange(&clientCtx, change)
 //
 func AddrChangeInit(ctx *DeviceNetworkContext) chan netlink.AddrUpdate {
-	if debug {
+	if ctx.debug() {
 		log.Printf("AddrChangeInit()\n")
 	}
 	IfindexToAddrsInit()
@@ -39,10 +39,10 @@ func AddrChange(ctx *DeviceNetworkContext, change netlink.AddrUpdate) {
 
 	changed := false
 	if change.NewAddr {
-		changed = IfindexToAddrsAdd(change.LinkIndex,
+		changed = IfindexToAddrsAdd(ctx, change.LinkIndex,
 			change.LinkAddress)
 	} else {
-		changed = IfindexToAddrsDel(change.LinkIndex,
+		changed = IfindexToAddrsDel(ctx, change.LinkIndex,
 			change.LinkAddress)
 	}
 	if changed {
@@ -56,7 +56,7 @@ func HandleAddressChange(ctx *DeviceNetworkContext, ifname string) {
 	status, _ := MakeDeviceNetworkStatus(*ctx.DeviceUplinkConfig,
 		*ctx.DeviceNetworkStatus)
 	if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, status) {
-		if debug {
+		if ctx.debug() {
 			log.Printf("HandleAddressChange: change for %s from %v to %v\n",
 				ifname, *ctx.DeviceNetworkStatus, status)
 		}
@@ -76,10 +76,10 @@ func IfindexToAddrsInit() {
 }
 
 // Returns true if added
-func IfindexToAddrsAdd(index int, addr net.IPNet) bool {
+func IfindexToAddrsAdd(ctx *DeviceNetworkContext, index int, addr net.IPNet) bool {
 	addrs, ok := ifindexToAddrs[index]
 	if !ok {
-		if debug {
+		if ctx.debug() {
 			log.Printf("IfindexToAddrsAdd add %v for %d\n",
 				addr, index)
 		}
@@ -97,7 +97,7 @@ func IfindexToAddrsAdd(index int, addr net.IPNet) bool {
 		}
 	}
 	if !found {
-		if debug {
+		if ctx.debug() {
 			log.Printf("IfindexToAddrsAdd add %v for %d\n",
 				addr, index)
 		}
@@ -108,7 +108,7 @@ func IfindexToAddrsAdd(index int, addr net.IPNet) bool {
 }
 
 // Returns true if deleted
-func IfindexToAddrsDel(index int, addr net.IPNet) bool {
+func IfindexToAddrsDel(ctx *DeviceNetworkContext, index int, addr net.IPNet) bool {
 	addrs, ok := ifindexToAddrs[index]
 	if !ok {
 		log.Printf("IfindexToAddrsDel unknown index %d\n", index)
@@ -119,7 +119,7 @@ func IfindexToAddrsDel(index int, addr net.IPNet) bool {
 		// Equal if containment in both directions?
 		if a.IP.Equal(addr.IP) &&
 			a.Contains(addr.IP) && addr.Contains(a.IP) {
-			if debug {
+			if ctx.debug() {
 				log.Printf("IfindexToAddrsDel del %v for %d\n",
 					addr, index)
 			}

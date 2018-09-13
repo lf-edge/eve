@@ -25,7 +25,11 @@ type ZedCloudContext struct {
 	TlsConfig           *tls.Config
 	FailureFunc         func(intf string, url string, reqLen int64, respLen int64)
 	SuccessFunc         func(intf string, url string, reqLen int64, respLen int64)
-	Debug               bool
+	DebugPtr            *bool
+}
+
+func (ctx *ZedCloudContext) debug() bool {
+	return (ctx.DebugPtr != nil) && *ctx.DebugPtr
 }
 
 // Tries all interfaces (free first) until one succeeds. interation arg
@@ -39,14 +43,14 @@ func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffe
 		if try == 0 {
 			intfs = types.GetUplinksFree(*ctx.DeviceNetworkStatus,
 				iteration)
-			if ctx.Debug {
+			if ctx.debug() {
 				log.Printf("sendOnAllIntf trying free %v\n",
 					intfs)
 			}
 		} else {
 			intfs = types.GetUplinksNonFree(*ctx.DeviceNetworkStatus,
 				iteration)
-			if ctx.Debug {
+			if ctx.debug() {
 				log.Printf("sendOnAllIntf non-free %v\n",
 					intfs)
 			}
@@ -78,7 +82,7 @@ func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffe
 // to allow the caller to look at StatusCode
 func sendOnIntf(ctx ZedCloudContext, url string, intf string, reqlen int64, b *bytes.Buffer) (*http.Response, []byte, error) {
 	addrCount := types.CountLocalAddrAny(*ctx.DeviceNetworkStatus, intf)
-	if ctx.Debug {
+	if ctx.debug() {
 		log.Printf("Connecting to %s using intf %s #sources %d\n",
 			url, intf, addrCount)
 	}
@@ -88,7 +92,7 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, reqlen int64, b *b
 		}
 		errStr := fmt.Sprintf("No IP addresses to connect to %s using intf %s",
 			url, intf)
-		if ctx.Debug {
+		if ctx.debug() {
 			log.Println(errStr)
 		}
 		return nil, nil, errors.New(errStr)
@@ -100,7 +104,7 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, reqlen int64, b *b
 			log.Fatal(err)
 		}
 		localTCPAddr := net.TCPAddr{IP: localAddr}
-		if ctx.Debug {
+		if ctx.debug() {
 			log.Printf("Connecting to %s using intf %s source %v\n",
 				url, intf, localTCPAddr)
 		}
@@ -127,7 +131,7 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, reqlen int64, b *b
 		}
 		trace := &httptrace.ClientTrace{
 			GotConn: func(connInfo httptrace.GotConnInfo) {
-				if ctx.Debug {
+				if ctx.debug() {
 					log.Printf("Got RemoteAddr: %+v, LocalAddr: %+v\n",
 						connInfo.Conn.RemoteAddr(),
 						connInfo.Conn.LocalAddr())
@@ -165,7 +169,7 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, reqlen int64, b *b
 			!stapledCheck(connState) {
 			if connState.OCSPResponse == nil {
 				// XXX remove debug check
-				if ctx.Debug {
+				if ctx.debug() {
 					log.Printf("no OCSP response for %s\n",
 						url)
 				}
@@ -193,7 +197,7 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, reqlen int64, b *b
 
 		switch resp.StatusCode {
 		case http.StatusOK:
-			if ctx.Debug {
+			if ctx.debug() {
 				log.Printf("sendOnIntf to %s StatusOK\n",
 					url)
 			}
@@ -203,7 +207,7 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, reqlen int64, b *b
 				url, resp.StatusCode,
 				http.StatusText(resp.StatusCode))
 			log.Println(errStr)
-			if ctx.Debug {
+			if ctx.debug() {
 				log.Printf("received response %v\n",
 					resp)
 			}

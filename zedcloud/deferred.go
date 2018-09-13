@@ -23,6 +23,7 @@ import (
 // 	zedcloud.SetDeferred(key, data, url, zedcloudCtx)
 // or AddDeferred to build a queue for each key
 
+// XXX pass pointer to debug for dynamic?
 var debug = false // XXX or use zedcloudCtx.Debug?
 
 var deferredChan chan string
@@ -49,6 +50,8 @@ const longTime2 = time.Hour * 48
 var ticker = flextimer.NewRangeTicker(longTime1, longTime2)
 
 // Create and return a channel to the
+// XXX need to return a struct with a chan plus debugPtr??
+// Do callers of HandleDeferred have ctx?
 func InitDeferred() <-chan time.Time {
 	deferredItems = make(map[string]deferredItemList)
 	return ticker.C

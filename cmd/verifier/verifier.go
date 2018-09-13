@@ -105,16 +105,16 @@ func Run() {
 	ctx := verifierContext{}
 
 	// Set up our publications before the subscriptions so ctx is set
-	pubAppImgStatus, err := pubsub.PublishScope(agentName, appImgObj,
-		types.VerifyImageStatus{})
+	pubAppImgStatus, err := pubsub.PublishScopeWithDebug(agentName, appImgObj,
+		types.VerifyImageStatus{}, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.pubAppImgStatus = pubAppImgStatus
 	pubAppImgStatus.ClearRestarted()
 
-	pubBaseOsStatus, err := pubsub.PublishScope(agentName, baseOsObj,
-		types.VerifyImageStatus{})
+	pubBaseOsStatus, err := pubsub.PublishScopeWithDebug(agentName, baseOsObj,
+		types.VerifyImageStatus{}, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -122,8 +122,8 @@ func Run() {
 	pubBaseOsStatus.ClearRestarted()
 
 	// Look for global config like debug
-	subGlobalConfig, err := pubsub.Subscribe("",
-		agentlog.GlobalConfig{}, false, &ctx)
+	subGlobalConfig, err := pubsub.SubscribeWithDebug("",
+		agentlog.GlobalConfig{}, false, &ctx, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -132,8 +132,8 @@ func Run() {
 	ctx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
-	subAppImgConfig, err := pubsub.SubscribeScope("zedmanager", appImgObj,
-		types.VerifyImageConfig{}, false, &ctx)
+	subAppImgConfig, err := pubsub.SubscribeScopeWithDebug("zedmanager",
+		appImgObj, types.VerifyImageConfig{}, false, &ctx, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -142,8 +142,8 @@ func Run() {
 	ctx.subAppImgConfig = subAppImgConfig
 	subAppImgConfig.Activate()
 
-	subBaseOsConfig, err := pubsub.SubscribeScope("zedagent", baseOsObj,
-		types.VerifyImageConfig{}, false, &ctx)
+	subBaseOsConfig, err := pubsub.SubscribeScopeWithDebug("zedagent",
+		baseOsObj, types.VerifyImageConfig{}, false, &ctx, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}

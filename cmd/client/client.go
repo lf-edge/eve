@@ -61,6 +61,7 @@ var debug = false
 
 func Run() {
 	versionPtr := flag.Bool("v", false, "Version")
+	// XXX add -D for debug
 	forcePtr := flag.Bool("f", false, "Force using onboarding cert")
 	dirPtr := flag.String("d", "/config", "Directory with certs etc")
 	stdoutPtr := flag.Bool("s", false, "Use stdout instead of console")
@@ -132,7 +133,7 @@ func Run() {
 	hardwaremodelFileName := identityDirname + "/hardwaremodel"
 
 	cms := zedcloud.GetCloudMetrics() // Need type of data
-	pub, err := pubsub.Publish(agentName, cms)
+	pub, err := pubsub.PublishWithDebug(agentName, cms, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -178,8 +179,8 @@ func Run() {
 		}
 	}
 
-	pubDeviceUplinkConfig, err := pubsub.Publish(agentName,
-		types.DeviceUplinkConfig{})
+	pubDeviceUplinkConfig, err := pubsub.PublishWithDebug(agentName,
+		types.DeviceUplinkConfig{}, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -195,8 +196,8 @@ func Run() {
 	}
 
 	// Look for global config like debug
-	subGlobalConfig, err := pubsub.Subscribe("",
-		agentlog.GlobalConfig{}, false, &clientCtx)
+	subGlobalConfig, err := pubsub.SubscribeWithDebug("",
+		agentlog.GlobalConfig{}, false, &clientCtx, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -210,8 +211,8 @@ func Run() {
 
 	// Get the initial DeviceNetworkConfig
 	// Subscribe from "" means /var/tmp/zededa/
-	subDeviceNetworkConfig, err := pubsub.Subscribe("",
-		types.DeviceNetworkConfig{}, false, &clientCtx)
+	subDeviceNetworkConfig, err := pubsub.SubscribeWithDebug("",
+		types.DeviceNetworkConfig{}, false, &clientCtx, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -228,8 +229,8 @@ func Run() {
 	var subDeviceUplinkConfigT *pubsub.Subscription
 	if DUCDir != "" {
 		var err error
-		subDeviceUplinkConfigT, err = pubsub.SubscribeScope("", DUCDir,
-			types.DeviceUplinkConfig{}, false, &clientCtx)
+		subDeviceUplinkConfigT, err = pubsub.SubscribeScopeWithDebug("", DUCDir,
+			types.DeviceUplinkConfig{}, false, &clientCtx, &debug)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -239,8 +240,8 @@ func Run() {
 		subDeviceUplinkConfigT.Activate()
 	}
 
-	subDeviceUplinkConfigO, err := pubsub.Subscribe("",
-		types.DeviceUplinkConfig{}, false, &clientCtx)
+	subDeviceUplinkConfigO, err := pubsub.SubscribeWithDebug("",
+		types.DeviceUplinkConfig{}, false, &clientCtx, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -249,8 +250,8 @@ func Run() {
 	clientCtx.SubDeviceUplinkConfigO = subDeviceUplinkConfigO
 	subDeviceUplinkConfigO.Activate()
 
-	subDeviceUplinkConfigS, err := pubsub.Subscribe(agentName,
-		types.DeviceUplinkConfig{}, false, &clientCtx)
+	subDeviceUplinkConfigS, err := pubsub.SubscribeWithDebug(agentName,
+		types.DeviceUplinkConfig{}, false, &clientCtx, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -328,7 +329,7 @@ func Run() {
 	devicenetwork.ProxyToEnv(clientCtx.DeviceNetworkStatus.ProxyConfig)
 	zedcloudCtx := zedcloud.ZedCloudContext{
 		DeviceNetworkStatus: clientCtx.DeviceNetworkStatus,
-		Debug:               debug,
+		DebugPtr:            &debug,
 		FailureFunc:         zedcloud.ZedCloudFailure,
 		SuccessFunc:         zedcloud.ZedCloudSuccess,
 	}

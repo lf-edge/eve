@@ -11,8 +11,6 @@ import (
 	"reflect"
 )
 
-const debug = false
-
 type DeviceNetworkContext struct {
 	UsableAddressCount     int
 	ManufacturerModel      string
@@ -28,6 +26,11 @@ type DeviceNetworkContext struct {
 	PubDeviceNetworkStatus *pubsub.Publication
 	Changed                bool
 	SubGlobalConfig        *pubsub.Subscription
+	DebugPtr               *bool
+}
+
+func (ctx *DeviceNetworkContext) debug() bool {
+	return (ctx.DebugPtr != nil) && *ctx.DebugPtr
 }
 
 func HandleDNCModify(ctxArg interface{}, key string, configArg interface{}) {
@@ -36,7 +39,7 @@ func HandleDNCModify(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*DeviceNetworkContext)
 
 	if key != ctx.ManufacturerModel {
-		if debug {
+		if ctx.debug() {
 			log.Printf("HandleDNCModify: ignoring %s - expecting %s\n",
 				key, ctx.ManufacturerModel)
 		}

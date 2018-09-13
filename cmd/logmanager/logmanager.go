@@ -148,15 +148,15 @@ func Run() {
 	log.Printf("watching %s\n", lispLogDirName)
 
 	cms := zedcloud.GetCloudMetrics() // Need type of data
-	pub, err := pubsub.Publish(agentName, cms)
+	pub, err := pubsub.PublishWithDebug(agentName, cms, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	logmanagerCtx := logmanagerContext{}
 	// Look for global config like debug
-	subGlobalConfig, err := pubsub.Subscribe("",
-		agentlog.GlobalConfig{}, false, &logmanagerCtx)
+	subGlobalConfig, err := pubsub.SubscribeWithDebug("",
+		agentlog.GlobalConfig{}, false, &logmanagerCtx, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -169,8 +169,8 @@ func Run() {
 	DNSctx := DNSContext{}
 	DNSctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
 
-	subDeviceNetworkStatus, err := pubsub.Subscribe("zedrouter",
-		types.DeviceNetworkStatus{}, false, &DNSctx)
+	subDeviceNetworkStatus, err := pubsub.SubscribeWithDebug("zedrouter",
+		types.DeviceNetworkStatus{}, false, &DNSctx, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -453,7 +453,7 @@ func sendCtxInit() {
 	}
 	zedcloudCtx.DeviceNetworkStatus = &deviceNetworkStatus
 	zedcloudCtx.TlsConfig = tlsConfig
-	zedcloudCtx.Debug = debug
+	zedcloudCtx.DebugPtr = &debug
 	zedcloudCtx.FailureFunc = zedcloud.ZedCloudFailure
 	zedcloudCtx.SuccessFunc = zedcloud.ZedCloudSuccess
 
