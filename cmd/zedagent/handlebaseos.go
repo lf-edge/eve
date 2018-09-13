@@ -712,8 +712,8 @@ func validateBaseOsConfig(ctx *zedagentContext, config types.BaseOsConfig) error
 			continue
 		}
 
-		log.Printf("validateBaseOsConfig(%s) activate %v\n",
-			boc.Key(), boc.Activate)
+		log.Printf("validateBaseOsConfig(%s) %s activate %v\n",
+			boc.Key(), boc.BaseOsVersion, boc.Activate)
 		osCount++
 		if boc.Activate {
 			activateCount++

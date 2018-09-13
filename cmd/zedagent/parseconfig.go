@@ -1093,13 +1093,13 @@ func publishAppInstanceConfig(getconfigCtx *getconfigContext,
 }
 
 func publishBaseOsConfig(getconfigCtx *getconfigContext,
-	status *types.BaseOsConfig) {
+	config *types.BaseOsConfig) {
 
-	key := status.Key()
-	log.Printf("publishBaseOsConfig UUID %s, %s\n",
-		key, status.BaseOsVersion)
+	key := config.Key()
+	log.Printf("publishBaseOsConfig UUID %s, %s, activate %v\n",
+		key, config.BaseOsVersion, config.Activate)
 	pub := getconfigCtx.pubBaseOsConfig
-	pub.Publish(key, status)
+	pub.Publish(key, config)
 	publishDeviceInfo = true
 }
 
