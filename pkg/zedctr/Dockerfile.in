@@ -30,6 +30,8 @@ COPY --from=watchdog /usr/sbin /usr/sbin
 
 # And now a few local tweaks
 COPY rootfs/ /
+# logrotate requires restricted permissions
+RUN chmod 644 /etc/logrotate.d/zededa
 
 # FIXME: replace with tini+monit ASAP
 CMD /init.sh
