@@ -590,11 +590,11 @@ func (status NetworkServiceStatus) Key() string {
 }
 
 type NetworkServiceMetrics struct {
-	UUID          uuid.UUID
-	DisplayName   string
-	Type          NetworkServiceType
-	VpnMetrics    *VpnMetrics
-	LispMetrics   *LispMetrics
+	UUID        uuid.UUID
+	DisplayName string
+	Type        NetworkServiceType
+	VpnMetrics  *VpnMetrics
+	LispMetrics *LispMetrics
 }
 
 func (metrics NetworkServiceMetrics) Key() string {
@@ -766,8 +766,8 @@ type LispInfoStatus struct {
 }
 
 type LispPktStat struct {
-	Pkts uint64
-	Bytes   uint64
+	Pkts  uint64
+	Bytes uint64
 }
 
 type LispRlocStatistics struct {
@@ -818,11 +818,11 @@ const (
 )
 
 type VpnLinkInfo struct {
-	SubNet     string // connecting subnet
-	SpiId      string // security parameter index
-	Direction  bool   // 0 - in, 1 - out
-	Bytes      uint64
-	Pkts       uint64
+	SubNet    string // connecting subnet
+	SpiId     string // security parameter index
+	Direction bool   // 0 - in, 1 - out
+	Bytes     uint64
+	Pkts      uint64
 }
 
 type VpnLinkStatus struct {
@@ -873,8 +873,8 @@ type ServiceVpnStatus struct {
 }
 
 type PktStats struct {
-	Pkts   uint64
-	Bytes  uint64
+	Pkts  uint64
+	Bytes uint64
 }
 
 type LinkPktStats struct {
@@ -883,24 +883,23 @@ type LinkPktStats struct {
 }
 
 type VpnLinkMetrics struct {
-	SubNet  string // connecting subnet
-	SpiId   string // security parameter index
+	SubNet string // connecting subnet
+	SpiId  string // security parameter index
 }
 
 type VpnEndPointMetrics struct {
 	IpAddr   string // end point ip address
 	LinkInfo VpnLinkMetrics
 	PktStats PktStats
-
 }
 
 type VpnConnMetrics struct {
-	Id         string   // ipsec connection id
-	Name       string   // connection name
-	EstTime    uint64   // established time
-	Type       NetworkServiceType
-	LEndPoint  VpnEndPointMetrics
-	REndPoint  VpnEndPointMetrics
+	Id        string // ipsec connection id
+	Name      string // connection name
+	EstTime   uint64 // established time
+	Type      NetworkServiceType
+	LEndPoint VpnEndPointMetrics
+	REndPoint VpnEndPointMetrics
 }
 
 type VpnMetrics struct {
@@ -908,6 +907,7 @@ type VpnMetrics struct {
 	InPkts         PktStats
 	OutPkts        PktStats
 	IkePkts        LinkPktStats
+	NatPkts        LinkPktStats
 	EspPkts        LinkPktStats
 	ErrPkts        LinkPktStats
 	CarrierErrPkts LinkPktStats

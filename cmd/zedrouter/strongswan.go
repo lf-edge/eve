@@ -714,7 +714,7 @@ func strongSwanValidateIpAddr(ipAddrStr string, isValid bool) error {
 }
 
 func strongSwanVpnStatusGet(ctx *zedrouterContext,
-		status *types.NetworkServiceStatus) bool {
+	status *types.NetworkServiceStatus) bool {
 	change := false
 	vpnConfig, err := strongSwanVpnStatusParse(status.OpaqueStatus)
 	if err != nil {
@@ -838,7 +838,7 @@ func matchConnStats(oldConn, newConn *types.VpnConnStatus) bool {
 					oldLinkInfo.LInfo.Pkts != newLinkInfo.LInfo.Pkts {
 					return false
 				}
-				if oldLinkInfo.RInfo.Bytes != newLinkInfo.RInfo.Bytes  ||
+				if oldLinkInfo.RInfo.Bytes != newLinkInfo.RInfo.Bytes ||
 					oldLinkInfo.RInfo.Pkts != newLinkInfo.RInfo.Pkts {
 					return false
 				}
@@ -849,10 +849,10 @@ func matchConnStats(oldConn, newConn *types.VpnConnStatus) bool {
 }
 
 func publishVpnMetrics(ctx *zedrouterContext, status *types.NetworkServiceStatus,
-		vpnStatus *types.ServiceVpnStatus) {
+	vpnStatus *types.ServiceVpnStatus) {
 	metrics := new(types.NetworkServiceMetrics)
 	metrics.UUID = status.UUID
-	metrics.DisplayName  = status.DisplayName
+	metrics.DisplayName = status.DisplayName
 	metrics.Type = status.Type
 	vpnMetrics := new(types.VpnMetrics)
 	vpnMetrics.VpnConns = make([]*types.VpnConnMetrics, vpnStatus.ActiveTunCount)

@@ -45,18 +45,18 @@ var Version = "No version specified"
 
 type zedrouterContext struct {
 	// Experimental Zededa data plane enable/disable flag
-	separateDataPlane       bool
-	subNetworkObjectConfig  *pubsub.Subscription
-	subNetworkServiceConfig *pubsub.Subscription
-	pubNetworkObjectStatus  *pubsub.Publication
-	pubNetworkServiceStatus *pubsub.Publication
-	subAppNetworkConfig     *pubsub.Subscription
-	subAppNetworkConfigAg   *pubsub.Subscription // From zedagent for dom0
-	pubAppNetworkStatus     *pubsub.Publication
-	pubLispDataplaneConfig  *pubsub.Publication
-	subLispInfoStatus       *pubsub.Subscription
-	subLispMetrics          *pubsub.Subscription
-	assignableAdapters      *types.AssignableAdapters
+	separateDataPlane        bool
+	subNetworkObjectConfig   *pubsub.Subscription
+	subNetworkServiceConfig  *pubsub.Subscription
+	pubNetworkObjectStatus   *pubsub.Publication
+	pubNetworkServiceStatus  *pubsub.Publication
+	subAppNetworkConfig      *pubsub.Subscription
+	subAppNetworkConfigAg    *pubsub.Subscription // From zedagent for dom0
+	pubAppNetworkStatus      *pubsub.Publication
+	pubLispDataplaneConfig   *pubsub.Publication
+	subLispInfoStatus        *pubsub.Subscription
+	subLispMetrics           *pubsub.Subscription
+	assignableAdapters       *types.AssignableAdapters
 	pubNetworkServiceMetrics *pubsub.Publication
 	devicenetwork.DeviceNetworkContext
 	ready bool
