@@ -6,7 +6,6 @@ package logmanager
 import (
 	"bufio"
 	"bytes"
-	"errors"
 	"flag"
 	"fmt"
 	"github.com/golang/protobuf/proto"
@@ -28,18 +27,17 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
-	"regexp"
 	"strings"
 	"time"
 )
 
 const (
-	agentName        = "logmanager"
-	identityDirname  = "/config"
-	serverFilename   = identityDirname + "/server"
-	uuidFileName     = identityDirname + "/uuid"
-	xenLogDirname    = "/var/log/xen"
-	lastSentFilename = "lastlogsent" // File in /persist/IMGx/
+	agentName       = "logmanager"
+	identityDirname = "/config"
+	serverFilename  = identityDirname + "/server"
+	uuidFileName    = identityDirname + "/uuid"
+	xenLogDirname   = "/var/log/xen"
+	lastSentDirname = "lastlogsent" // Directory in /persist/
 )
 
 var devUUID uuid.UUID
@@ -146,6 +144,13 @@ func Run() {
 	log.Printf("Starting %s watching %s\n", agentName, logDirName)
 	log.Printf("watching %s\n", lispLogDirName)
 
+	// Make sure we have the last sent directory
+	dirname := fmt.Sprintf("/persist/%s", lastSentDirname)
+	if _, err := os.Stat(dirname); err != nil {
+		if err := os.MkdirAll(dirname, 0700); err != nil {
+			log.Fatal(err)
+		}
+	}
 	cms := zedcloud.GetCloudMetrics() // Need type of data
 	pub, err := pubsub.PublishWithDebug(agentName, cms, &debug)
 	if err != nil {
@@ -210,8 +215,8 @@ func Run() {
 	xenCtx := imageLoggerContext{}
 	lastSent := readLastSent(currentPartition)
 	lastSentStr, _ := lastSent.MarshalText()
-	log.Printf("Current partition logs were last sent at %v\n",
-		lastSentStr)
+	log.Printf("Current partition logs were last sent at %s\n",
+		string(lastSentStr))
 
 	// Start sender of log events
 	go processEvents(currentPartition, loggerChan)
@@ -234,8 +239,8 @@ func Run() {
 		otherPartition := zboot.GetOtherPartition()
 		lastSent := readLastSent(otherPartition)
 		lastSentStr, _ := lastSent.MarshalText()
-		log.Printf("Other partition logs were last sent at %v\n",
-			lastSentStr)
+		log.Printf("Other partition logs were last sent at %s\n",
+			string(lastSentStr))
 
 		go processEvents(otherPartition, otherLoggerChan)
 
@@ -387,7 +392,10 @@ func processEvents(image string, logChan <-chan logEntry) {
 
 // Touch/create a file to keep track of when things where sent before a reboot
 func recordLastSent(image string) {
-	filename := fmt.Sprintf("/persist/%s/%s", image, lastSentFilename)
+	if debug {
+		log.Printf("recordLastSent(%s)\n", image)
+	}
+	filename := fmt.Sprintf("/persist/%s/%s", lastSentDirname, image)
 	_, err := os.Stat(filename)
 	if err != nil {
 		file, err := os.Create(filename)
@@ -411,7 +419,7 @@ func recordLastSent(image string) {
 }
 
 func readLastSent(image string) time.Time {
-	filename := fmt.Sprintf("/persist/%s/%s", image, lastSentFilename)
+	filename := fmt.Sprintf("/persist/%s/%s", lastSentDirname, image)
 	st, err := os.Stat(filename)
 	if err != nil {
 		if !os.IsNotExist(err) {
@@ -698,6 +706,9 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 			return
 		}
 	}
+	// Remember last time and level
+	var lastTime time.Time
+	var lastLevel int
 	for {
 		line, err := r.reader.ReadString('\n')
 		if err != nil {
@@ -713,17 +724,15 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 		}
 		// remove trailing "/n" from line
 		line = line[0 : len(line)-1]
-		// XXX parse timestamp and remove it from line (if present)
-		// otherwise leave timestamp unitialized
-		parsedDateAndTime, err := parseDateTime(line)
+		// XXX
+		line, lastTime, lastLevel := parseDateTime(line, lastTime,
+			lastLevel)
+		// XXX lint
+		lastLevel = lastLevel
 		// XXX set iid to PID?
-		if err != nil {
-			logChan <- logEntry{source: r.source, content: line,
-				timestamp: ptypes.TimestampNow()}
-		} else {
-			logChan <- logEntry{source: r.source, content: line,
-				timestamp: parsedDateAndTime}
-		}
+		protoDateAndTime, _ := ptypes.TimestampProto(lastTime)
+		logChan <- logEntry{source: r.source, content: line,
+			timestamp: protoDateAndTime}
 
 	}
 	// Update size
@@ -733,41 +742,6 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 		return
 	}
 	r.size = fi.Size()
-}
-
-//parse date and time from agent logs
-func parseDateTime(line string) (*google_protobuf.Timestamp, error) {
-
-	var protoDateAndTime *google_protobuf.Timestamp
-	re := regexp.MustCompile(`^\d{4}/\d{2}/\d{2}`)
-	matched := re.MatchString(line)
-	if matched {
-		dateAndTime := strings.Split(line, " ")
-		re := regexp.MustCompile("/")
-		newDateFormat := re.ReplaceAllLiteralString(dateAndTime[0], "-")
-
-		timeFormat := strings.Split(dateAndTime[1], ".")[0]
-		newDateAndTime := newDateFormat + "T" + timeFormat
-		layout := "2006-01-02T15:04:05"
-
-		///convert newDateAndTime type string to type time.time
-		dt, err := time.Parse(layout, newDateAndTime)
-		if err != nil {
-			log.Println(err)
-			return nil, err
-		} else {
-			//convert dt type time.time to type proto
-			protoDateAndTime, err = ptypes.TimestampProto(dt)
-			if err != nil {
-				log.Println("Error while converting timestamp in proto format: ", err)
-				return nil, err
-			} else {
-				return protoDateAndTime, nil
-			}
-		}
-	} else {
-		return nil, errors.New("date and time format not found")
-	}
 }
 
 // Read unchanging files until EOF
