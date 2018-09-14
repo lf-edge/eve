@@ -327,16 +327,41 @@ func publishNetworkServiceInfoToZedCloud(serviceUUID string, infoMsg *zmet.ZInfo
 	}
 }
 
-func createNetworkServiceMetrics(ctx *zedagentContext,
-	reportMetrics *zmet.ZMetricMsg) {
-	sub := ctx.subNetworkServiceStatus
-	stlist := sub.GetAll()
-	if stlist == nil || len(stlist) == 0 {
+func handleNetworkServiceMetricsModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	log.Printf("handleNetworkServiceMetricsModify(%s)\n", key)
+	metrics := cast.CastNetworkServiceMetrics(statusArg)
+	if metrics.Key() != key {
+		log.Printf("handleNetworkServiceMetricsModify key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, metrics.Key(), metrics)
 		return
 	}
-	for _, st := range stlist {
-		status := cast.CastNetworkServiceStatus(st)
-		metricService := protoEncodeNetworkServiceMetricProto(status)
+	log.Printf("handleNetworkServiceMetricsModify(%s) done\n", key)
+}
+
+func handleNetworkServiceMetricsDelete (ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	log.Printf("handleNetworkServiceMetricsDelete(%s)\n", key)
+	metrics := cast.CastNetworkServiceMetrics(statusArg)
+	if metrics.Key() != key {
+		log.Printf("handleNetworkServiceMetricsDelete key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, metrics.Key(), metrics)
+		return
+	}
+	log.Printf("handleNetworkServiceMetricsDelete(%s) done\n", key)
+}
+
+func createNetworkServiceMetrics(ctx *zedagentContext, reportMetrics *zmet.ZMetricMsg) {
+
+	sub := ctx.subNetworkServiceMetrics
+	metlist := sub.GetAll()
+	if metlist == nil || len(metlist) == 0 {
+		return
+	}
+	for _, met := range metlist {
+		metrics := cast.CastNetworkServiceMetrics(met)
+		metricService := protoEncodeNetworkServiceMetricProto(metrics)
 		reportMetrics.Sm = append(reportMetrics.Sm, metricService)
 	}
 	if debug {
@@ -345,7 +370,8 @@ func createNetworkServiceMetrics(ctx *zedagentContext,
 	}
 }
 
-func protoEncodeNetworkServiceMetricProto(status types.NetworkServiceStatus) *zmet.ZMetricService {
+
+func protoEncodeNetworkServiceMetricProto(status types.NetworkServiceMetrics) *zmet.ZMetricService {
 
 	serviceMetric := new(zmet.ZMetricService)
 	serviceMetric.ServiceID = status.Key()
@@ -363,7 +389,7 @@ func protoEncodeNetworkServiceMetricProto(status types.NetworkServiceStatus) *zm
 	return serviceMetric
 }
 
-func protoEncodeLispServiceMetric(status types.NetworkServiceStatus,
+func protoEncodeLispServiceMetric(status types.NetworkServiceMetrics,
 	serviceMetric *zmet.ZMetricService) {
 	if status.LispMetrics == nil {
 		return
@@ -445,26 +471,79 @@ func protoEncodeLispServiceMetric(status types.NetworkServiceStatus,
 	}
 }
 
-func protoEncodeVpnServiceMetric(status types.NetworkServiceStatus,
-	serviceMetric *zmet.ZMetricService) {
-	if status.VpnStatus == nil {
+func protoEncodeVpnServiceMetric(metrics types.NetworkServiceMetrics,
+	serviceMetrics *zmet.ZMetricService) {
+	if metrics.VpnMetrics == nil {
 		return
 	}
-	vpnStatus := status.VpnStatus
+
+	flowStats := metrics.VpnMetrics
 	vpnMetric := new(zmet.ZMetricVpn)
-	vpnMetric.ConnStat = new(zmet.ZMetricConn)
 	vpnMetric.ConnStat.InPkts = new(zmet.PktStat)
 	vpnMetric.ConnStat.OutPkts = new(zmet.PktStat)
-	for _, vpnConn := range vpnStatus.ActiveVpnConns {
-		for _, linkData := range vpnConn.Links {
-			vpnMetric.ConnStat.InPkts.Packets += linkData.LInfo.PktsCount
-			vpnMetric.ConnStat.InPkts.Bytes += linkData.LInfo.BytesCount
-			vpnMetric.ConnStat.OutPkts.Packets += linkData.RInfo.PktsCount
-			vpnMetric.ConnStat.OutPkts.Bytes += linkData.RInfo.BytesCount
-		}
-	}
-	serviceMetric.ServiceContent = new(zmet.ZMetricService_Vpnm)
-	if x, ok := serviceMetric.GetServiceContent().(*zmet.ZMetricService_Vpnm); ok {
+	vpnMetric.ConnStat.InPkts.Packets  = flowStats.InPkts.Pkts
+	vpnMetric.ConnStat.InPkts.Bytes = flowStats.InPkts.Bytes
+	vpnMetric.ConnStat.OutPkts.Packets = flowStats.OutPkts.Pkts
+	vpnMetric.ConnStat.OutPkts.Bytes = flowStats.OutPkts.Bytes
+	serviceMetrics.ServiceContent = new(zmet.ZMetricService_Vpnm)
+	if x, ok := serviceMetrics.GetServiceContent().(*zmet.ZMetricService_Vpnm); ok {
 		x.Vpnm = vpnMetric
 	}
+	protoEncodeVpnServiceFlowMetric(metrics, serviceMetrics)
+}
+
+func protoEncodeVpnServiceFlowMetric(metrics types.NetworkServiceMetrics,
+		serviceMetrics *zmet.ZMetricService) {
+	if len(metrics.VpnMetrics.VpnConns) == 0  {
+		return
+	}
+
+// XXX:FIXME uncomment when api is ready
+/*
+	vpnMetrics := metrics.VpnMetrics
+	serviceMetrics.FlowStats = make([]*zmet.ZMetricFlow, len(vpnStatus.VpnConns))
+	for _, connStats := range vpnMetrics.VpnConns {
+		flowStats := new(zmet.ZMetricFlow)
+		flowStats.Id = connStats.Id
+		flowStats.Name = connStats.Name
+		flowStats.Type = connStats.Type
+		flowStats.EstTime = connStats.EstTime
+		lEndPoint := new (zmet.ZMetricFlowEndPoint)
+		rEndPoint := new (zmet.ZMetricFlowEndPoint)
+		lEndPoint.EndPoint = new(zmet.ZMetricFlowEndPoint_IpAddr)
+		if x, ok := lEndPoint.GetEndPoint().(*zmet.ZMetricFlowEndPoint_IpAddr); ok {
+			x.IpAddr = connStats.LEndPoint.IpAddr
+		}
+		rEndPoint.EndPoint = new(zmet.ZMetricFlowEndPoint_IpAddr)
+		if x, ok := rEndPoint.GetEndPoint().(*zmet.ZMetricFlowEndPoint_IpAddr); ok {
+			x.IpAddr = connStats.REndPoint.IpAddr
+		}
+		lLink := new(zmet.ZMetricLink)
+		rLink := new(zmet.ZMetricLink)
+		lLink.SpiId = connStats.LEndPoint.LinkInfo.SpiId
+		lLink.Link = new(zmet.ZMetricFlowLink_Subnet)
+		if x, ok := lLink.GetLink().(*zmet.ZMetricFlowLink_Link); ok {
+			x.SubNet = connStats.LEndPoint.LinkInfo.SubNet
+		}
+		rLink.SpiId = connStats.REndPoint.LinkInfo.SpiId
+		rLink.Link = new(zmet.ZMetricFlowLink_Subnet)
+		if x, ok := rLink.GetLink().(*zmet.ZMetricFlowLink_Link); ok {
+			x.SubNet = connStats.REndPoint.LinkInfo.SubNet
+		}
+		lendPoint.Link = llink
+		rendPoint.Link = rlink
+		lPktStats := new(zmet.PktStat)
+		rPktStats := new(zmet.PktStat)
+		lPktStats.Bytes = connStats.LEndPoint.PktStatss.Bytes
+		lPktStats.Packets = connStats.LEndPoint.PktStatss.Pkts
+		rPktStats.Bytes = connStats.REndPoint.PktStatss.Bytes
+		rPktStats.Packets = connStats.REndPoint.PktStatss.Pkts
+		lEndPoint.Stats = lPktStats
+		rEndPoint.Stats = lPktStats
+		flowStats.lEndPoint = lEndPoint
+		flowStats.rEndPoint = make([]*zmet.ZMetricFlowEndPoint, 1)
+		flowStats.rEndPoint[0] = rEndPoint
+		serviceMetrics.FlowStats[idx] = flowStats
+	}
+*/
 }

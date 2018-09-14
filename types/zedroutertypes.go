@@ -597,6 +597,10 @@ type NetworkServiceMetrics struct {
 	LispMetrics   *LispMetrics
 }
 
+func (metrics NetworkServiceMetrics) Key() string {
+	return metrics.UUID.String()
+}
+
 // Network metrics for overlay and underlay
 // Matches networkMetrics protobuf message
 type NetworkMetrics struct {
@@ -762,8 +766,8 @@ type LispInfoStatus struct {
 }
 
 type LispPktStat struct {
-	Pkts  uint64
-	Bytes uint64
+	Pkts uint64
+	Bytes   uint64
 }
 
 type LispRlocStatistics struct {
@@ -817,8 +821,8 @@ type VpnLinkInfo struct {
 	SubNet     string // connecting subnet
 	SpiId      string // security parameter index
 	Direction  bool   // 0 - in, 1 - out
-	BytesCount uint64
-	PktsCount  uint64
+	Bytes      uint64
+	Pkts       uint64
 }
 
 type VpnLinkStatus struct {
@@ -868,9 +872,14 @@ type ServiceVpnStatus struct {
 	PolicyBased        bool
 }
 
+type PktStats struct {
+	Pkts   uint64
+	Bytes  uint64
+}
+
 type LinkPktStats struct {
-	Pkts  uint64
-	Bytes uint64
+	InPkts  PktStats
+	OutPkts PktStats
 }
 
 type VpnLinkMetrics struct {
@@ -881,7 +890,7 @@ type VpnLinkMetrics struct {
 type VpnEndPointMetrics struct {
 	IpAddr   string // end point ip address
 	LinkInfo VpnLinkMetrics
-	PktStats LinkPktStats
+	PktStats PktStats
 
 }
 
@@ -895,6 +904,12 @@ type VpnConnMetrics struct {
 }
 
 type VpnMetrics struct {
-	UpTime    time.Time // service start time stamp
-	VpnConns  []*VpnConnMetrics
+	UpTime         time.Time // service start time stamp
+	InPkts         PktStats
+	OutPkts        PktStats
+	IkePkts        LinkPktStats
+	EspPkts        LinkPktStats
+	ErrPkts        LinkPktStats
+	CarrierErrPkts LinkPktStats
+	VpnConns       []*VpnConnMetrics
 }

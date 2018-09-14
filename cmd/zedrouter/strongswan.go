@@ -834,12 +834,12 @@ func matchConnStats(oldConn, newConn *types.VpnConnStatus) bool {
 	for _, oldLinkInfo := range oldConn.Links {
 		for _, newLinkInfo := range newConn.Links {
 			if oldLinkInfo.Id == newLinkInfo.Id {
-				if oldLinkInfo.LInfo.BytesCount != newLinkInfo.LInfo.BytesCount ||
-					oldLinkInfo.LInfo.PktsCount != newLinkInfo.LInfo.PktsCount {
+				if oldLinkInfo.LInfo.Bytes != newLinkInfo.LInfo.Bytes ||
+					oldLinkInfo.LInfo.Pkts != newLinkInfo.LInfo.Pkts {
 					return false
 				}
-				if oldLinkInfo.RInfo.BytesCount != newLinkInfo.RInfo.BytesCount ||
-					oldLinkInfo.RInfo.PktsCount != newLinkInfo.RInfo.PktsCount {
+				if oldLinkInfo.RInfo.Bytes != newLinkInfo.RInfo.Bytes  ||
+					oldLinkInfo.RInfo.Pkts != newLinkInfo.RInfo.Pkts {
 					return false
 				}
 			}
@@ -869,19 +869,23 @@ func publishVpnMetrics(ctx *zedrouterContext, status *types.NetworkServiceStatus
 				lStats := linkStatus.LInfo
 				connMetrics.LEndPoint.LinkInfo.SpiId = lStats.SpiId
 				connMetrics.LEndPoint.LinkInfo.SubNet = lStats.SubNet
-				connMetrics.LEndPoint.PktStats.Bytes = lStats.BytesCount
-				connMetrics.LEndPoint.PktStats.Pkts = lStats.PktsCount
+				connMetrics.LEndPoint.PktStats.Bytes = lStats.Bytes
+				connMetrics.LEndPoint.PktStats.Pkts = lStats.Pkts
+				vpnMetrics.InPkts.Bytes += lStats.Bytes
+				vpnMetrics.InPkts.Pkts += lStats.Pkts
 				rStats := linkStatus.RInfo
 				connMetrics.REndPoint.LinkInfo.SpiId = rStats.SpiId
 				connMetrics.REndPoint.LinkInfo.SubNet = rStats.SubNet
-				connMetrics.REndPoint.PktStats.Bytes = rStats.BytesCount
-				connMetrics.REndPoint.PktStats.Pkts = rStats.PktsCount
+				connMetrics.REndPoint.PktStats.Bytes = rStats.Bytes
+				connMetrics.REndPoint.PktStats.Pkts = rStats.Pkts
+				vpnMetrics.OutPkts.Bytes += rStats.Bytes
+				vpnMetrics.OutPkts.Pkts += rStats.Pkts
 			}
 		}
 		vpnMetrics.VpnConns[idx] = connMetrics
 	}
 	metrics.VpnMetrics = vpnMetrics
 	pub := ctx.pubNetworkServiceMetrics
-	pub.Publish(status.Key(), &metrics)
+	pub.Publish(metrics.Key(), &metrics)
 	return
 }
