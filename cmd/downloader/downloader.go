@@ -63,7 +63,10 @@ type downloaderContext struct {
 	deviceNetworkStatus     types.DeviceNetworkStatus
 	globalConfig            types.GlobalDownloadConfig
 	globalStatus            types.GlobalDownloadStatus
+	subGlobalConfig         *pubsub.Subscription
 }
+
+var debug = false
 
 func Run() {
 	handlersInit()
@@ -74,7 +77,9 @@ func Run() {
 	defer logf.Close()
 
 	versionPtr := flag.Bool("v", false, "Version")
+	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
+	debug = *debugPtr
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
@@ -85,7 +90,7 @@ func Run() {
 	log.Printf("Starting %s\n", agentName)
 
 	cms := zedcloud.GetCloudMetrics() // Need type of data
-	pub, err := pubsub.Publish(agentName, cms)
+	pub, err := pubsub.PublishWithDebug(agentName, cms, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -100,8 +105,19 @@ func Run() {
 	// Any state needed by handler functions
 	ctx := downloaderContext{}
 
-	subDeviceNetworkStatus, err := pubsub.Subscribe("zedrouter",
-		types.DeviceNetworkStatus{}, false, &ctx)
+	// Look for global config like debug
+	subGlobalConfig, err := pubsub.SubscribeWithDebug("",
+		agentlog.GlobalConfig{}, false, &ctx, &debug)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
+	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
+	ctx.subGlobalConfig = subGlobalConfig
+	subGlobalConfig.Activate()
+
+	subDeviceNetworkStatus, err := pubsub.SubscribeWithDebug("zedrouter",
+		types.DeviceNetworkStatus{}, false, &ctx, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -110,49 +126,49 @@ func Run() {
 	ctx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
-	subGlobalDownloadConfig, err := pubsub.Subscribe("",
-		types.GlobalDownloadConfig{}, false, &ctx)
+	subGlobalDownloadConfig, err := pubsub.SubscribeWithDebug("",
+		types.GlobalDownloadConfig{}, false, &ctx, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
-	subGlobalDownloadConfig.ModifyHandler = handleGlobalConfigModify
+	subGlobalDownloadConfig.ModifyHandler = handleGlobalDownloadConfigModify
 	ctx.subGlobalDownloadConfig = subGlobalDownloadConfig
 	subGlobalDownloadConfig.Activate()
 
-	pubGlobalDownloadStatus, err := pubsub.Publish(agentName,
-		types.GlobalDownloadStatus{})
+	pubGlobalDownloadStatus, err := pubsub.PublishWithDebug(agentName,
+		types.GlobalDownloadStatus{}, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.pubGlobalDownloadStatus = pubGlobalDownloadStatus
 
 	// Set up our publications before the subscriptions so ctx is set
-	pubAppImgStatus, err := pubsub.PublishScope(agentName, appImgObj,
-		types.DownloaderStatus{})
+	pubAppImgStatus, err := pubsub.PublishScopeWithDebug(agentName, appImgObj,
+		types.DownloaderStatus{}, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.pubAppImgStatus = pubAppImgStatus
 	pubAppImgStatus.ClearRestarted()
 
-	pubBaseOsStatus, err := pubsub.PublishScope(agentName, baseOsObj,
-		types.DownloaderStatus{})
+	pubBaseOsStatus, err := pubsub.PublishScopeWithDebug(agentName, baseOsObj,
+		types.DownloaderStatus{}, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.pubBaseOsStatus = pubBaseOsStatus
 	pubBaseOsStatus.ClearRestarted()
 
-	pubCertObjStatus, err := pubsub.PublishScope(agentName, certObj,
-		types.DownloaderStatus{})
+	pubCertObjStatus, err := pubsub.PublishScopeWithDebug(agentName, certObj,
+		types.DownloaderStatus{}, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.pubCertObjStatus = pubCertObjStatus
 	pubCertObjStatus.ClearRestarted()
 
-	subAppImgConfig, err := pubsub.SubscribeScope("zedmanager", appImgObj,
-		types.DownloaderConfig{}, false, &ctx)
+	subAppImgConfig, err := pubsub.SubscribeScopeWithDebug("zedmanager",
+		appImgObj, types.DownloaderConfig{}, false, &ctx, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -161,8 +177,8 @@ func Run() {
 	ctx.subAppImgConfig = subAppImgConfig
 	subAppImgConfig.Activate()
 
-	subBaseOsConfig, err := pubsub.SubscribeScope("zedagent", baseOsObj,
-		types.DownloaderConfig{}, false, &ctx)
+	subBaseOsConfig, err := pubsub.SubscribeScopeWithDebug("zedagent",
+		baseOsObj, types.DownloaderConfig{}, false, &ctx, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -171,8 +187,8 @@ func Run() {
 	ctx.subBaseOsConfig = subBaseOsConfig
 	subBaseOsConfig.Activate()
 
-	subCertObjConfig, err := pubsub.SubscribeScope("zedagent", certObj,
-		types.DownloaderConfig{}, false, &ctx)
+	subCertObjConfig, err := pubsub.SubscribeScopeWithDebug("zedagent",
+		certObj, types.DownloaderConfig{}, false, &ctx, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -193,6 +209,9 @@ func Run() {
 		log.Printf("Waiting for uplink addresses or Global Config\n")
 
 		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
 
@@ -207,6 +226,8 @@ func Run() {
 
 	for {
 		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
 
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
@@ -606,18 +627,18 @@ func downloaderInit(ctx *downloaderContext) *zedUpload.DronaCtx {
 	return dCtx
 }
 
-func handleGlobalConfigModify(ctxArg interface{}, key string,
+func handleGlobalDownloadConfigModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
 	ctx := ctxArg.(*downloaderContext)
 	config := cast.CastGlobalDownloadConfig(configArg)
 	if key != "global" {
-		log.Printf("handleGlobalConfigModify: unexpected key %s\n", key)
+		log.Printf("handleGlobalDownloadConfigModify: unexpected key %s\n", key)
 		return
 	}
-	log.Printf("handleGlobalConfigModify for %s\n", key)
+	log.Printf("handleGlobalDownloadConfigModify for %s\n", key)
 	ctx.globalConfig = config
-	log.Printf("handleGlobalConfigModify done for %s\n", key)
+	log.Printf("handleGlobalDownloadConfigModify done for %s\n", key)
 }
 
 func initializeDirs() {
@@ -1119,4 +1140,36 @@ func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 	ctx.deviceNetworkStatus = types.DeviceNetworkStatus{}
 	devicenetwork.ProxyToEnv(ctx.deviceNetworkStatus.ProxyConfig)
 	log.Printf("handleDNSDelete done for %s\n", key)
+}
+
+func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*downloaderContext)
+	if key != "global" {
+		log.Printf("handleGlobalConfigModify: ignoring %s\n", key)
+		return
+	}
+	log.Printf("handleGlobalConfigModify for %s\n", key)
+	if val, ok := agentlog.GetDebug(ctx.subGlobalConfig, agentName); ok {
+		debug = val
+		log.Printf("handleGlobalConfigModify: debug %v\n", debug)
+	}
+	// XXX add loglevel etc
+	log.Printf("handleGlobalConfigModify done for %s\n", key)
+}
+
+func handleGlobalConfigDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	log.Printf("handleGlobalConfigDelete for %s\n", key)
+
+	if key != "global" {
+		log.Printf("handleGlobalConfigDelete: ignoring %s\n", key)
+		return
+	}
+	debug = false
+	log.Printf("handleGlobalConfigDelete: debug %v\n", debug)
+	// XXX add loglevel etc
+	log.Printf("handleGlobalConfigDelete done for %s\n", key)
 }

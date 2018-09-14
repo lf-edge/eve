@@ -58,6 +58,10 @@ var logs map[string]zedcloudLogs
 type logDirModifyHandler func(ctx interface{}, logFileName string, source string)
 type logDirDeleteHandler func(ctx interface{}, logFileName string, source string)
 
+type logmanagerContext struct {
+	subGlobalConfig *pubsub.Subscription
+}
+
 // Set from Makefile
 var Version = "No version specified"
 
@@ -104,6 +108,8 @@ type DNSContext struct {
 	subDeviceNetworkStatus *pubsub.Subscription
 }
 
+// XXX add context and handleGlobalConfig stuff
+
 type zedcloudLogs struct {
 	FailureCount uint64
 	SuccessCount uint64
@@ -142,17 +148,29 @@ func Run() {
 	log.Printf("watching %s\n", lispLogDirName)
 
 	cms := zedcloud.GetCloudMetrics() // Need type of data
-	pub, err := pubsub.Publish(agentName, cms)
+	pub, err := pubsub.PublishWithDebug(agentName, cms, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	logmanagerCtx := logmanagerContext{}
+	// Look for global config like debug
+	subGlobalConfig, err := pubsub.SubscribeWithDebug("",
+		agentlog.GlobalConfig{}, false, &logmanagerCtx, &debug)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
+	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
+	logmanagerCtx.subGlobalConfig = subGlobalConfig
+	subGlobalConfig.Activate()
 
 	// Wait until we have at least one useable address?
 	DNSctx := DNSContext{}
 	DNSctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
 
-	subDeviceNetworkStatus, err := pubsub.Subscribe("zedrouter",
-		types.DeviceNetworkStatus{}, false, &DNSctx)
+	subDeviceNetworkStatus, err := pubsub.SubscribeWithDebug("zedrouter",
+		types.DeviceNetworkStatus{}, false, &DNSctx, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -164,6 +182,9 @@ func Run() {
 	log.Printf("Waiting until we have some uplinks with usable addresses\n")
 	for DNSctx.usableAddressCount == 0 && !force {
 		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
 		}
@@ -172,7 +193,7 @@ func Run() {
 		DNSctx.usableAddressCount)
 
 	// Timer for deferred sends of info messages
-	deferredChan := zedcloud.InitDeferred()
+	deferredChan := zedcloud.InitDeferredWithDebug(&debug)
 
 	//Get servername, set logUrl, get device id and initialize zedcloudCtx
 	sendCtxInit()
@@ -227,6 +248,8 @@ func Run() {
 	log.Println("called watcher...")
 	for {
 		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
 
 		case change := <-logDirChanges:
 			HandleLogDirEvent(change, logDirName, &ctx,
@@ -430,7 +453,7 @@ func sendCtxInit() {
 	}
 	zedcloudCtx.DeviceNetworkStatus = &deviceNetworkStatus
 	zedcloudCtx.TlsConfig = tlsConfig
-	zedcloudCtx.Debug = debug
+	zedcloudCtx.DebugPtr = &debug
 	zedcloudCtx.FailureFunc = zedcloud.ZedCloudFailure
 	zedcloudCtx.SuccessFunc = zedcloud.ZedCloudSuccess
 
@@ -712,4 +735,36 @@ func logReader(logFile string, source string, logChan chan<- logEntry) {
 	// read entries until EOF
 	readLineToEvent(&r, logChan)
 	log.Printf("logReader done for %s\n", logFile)
+}
+
+func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*logmanagerContext)
+	if key != "global" {
+		log.Printf("handleGlobalConfigModify: ignoring %s\n", key)
+		return
+	}
+	log.Printf("handleGlobalConfigModify for %s\n", key)
+	if val, ok := agentlog.GetDebug(ctx.subGlobalConfig, agentName); ok {
+		debug = val
+		log.Printf("handleGlobalConfigModify: debug %v\n", debug)
+	}
+	// XXX add loglevel etc
+	log.Printf("handleGlobalConfigModify done for %s\n", key)
+}
+
+func handleGlobalConfigDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	log.Printf("handleGlobalConfigDelete for %s\n", key)
+
+	if key != "global" {
+		log.Printf("handleGlobalConfigDelete: ignoring %s\n", key)
+		return
+	}
+	debug = false
+	log.Printf("handleGlobalConfigDelete: debug %v\n", debug)
+	// XXX add loglevel etc
+	log.Printf("handleGlobalConfigDelete done for %s\n", key)
 }

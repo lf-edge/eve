@@ -22,24 +22,32 @@ import (
 	"log"
 )
 
-var debug = false
-
 // Context used for the underlaying pubsub subscription.
 // this package
 type context struct {
 	Found bool
 	C     <-chan string
 	// Private info
-	aa    *types.AssignableAdapters
-	model string
-	sub   *pubsub.Subscription
+	aa       *types.AssignableAdapters
+	model    string
+	sub      *pubsub.Subscription
+	debugPtr *bool
+}
+
+func (ctx *context) debug() bool {
+	return (ctx.debugPtr != nil) && *ctx.debugPtr
 }
 
 func Subscribe(aa *types.AssignableAdapters, model string) *context {
-	ctx := context{model: model, aa: aa}
+	return SubscribeWithDebug(aa, model, nil)
+}
 
-	sub, err := pubsub.Subscribe("", types.AssignableAdapters{},
-		false, &ctx)
+func SubscribeWithDebug(aa *types.AssignableAdapters, model string,
+	debugPtr *bool) *context {
+	ctx := context{model: model, aa: aa, debugPtr: debugPtr}
+
+	sub, err := pubsub.SubscribeWithDebug("", types.AssignableAdapters{},
+		false, &ctx, debugPtr)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -60,7 +68,7 @@ func handleAAModify(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*context)
 	// Only care about my model
 	if key != ctx.model {
-		if debug {
+		if ctx.debug() {
 			log.Printf("handleAAModify: ignoring %s, expecting %s\n",
 				key, ctx.model)
 		}
@@ -77,7 +85,7 @@ func handleAADelete(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*context)
 	// Only care about my model
 	if key != ctx.model {
-		if debug {
+		if ctx.debug() {
 			log.Printf("handleAADelete: ignoring %s, expecting %s\n",
 				key, ctx.model)
 		}

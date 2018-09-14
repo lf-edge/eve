@@ -185,6 +185,15 @@ echo "Current downloaded files:"
 ls -lt $PERSISTDIR/downloads/*/*
 echo
 
+# Place for surviving global config
+if [ ! -d $PERSISTDIR/config/GlobalConfig ]; then
+    mkdir -p $PERSISTDIR/config/GlobalConfig
+fi
+if [ -f $PERSISTDIR/config/GlobalConfig ]; then
+    rm -f /var/tmp/zededa/GlobalConfig
+fi
+ln -s $PERSISTDIR/config/GlobalConfig /var/tmp/zededa/GlobalConfig
+
 CURPART=`zboot curpart`
 if [ $? != 0 ]; then
     CURPART="IMGA"
@@ -558,7 +567,7 @@ if [ $WAIT = 1 ]; then
 fi
 
 echo "Starting zedagent at" `date`
-zedagent -d &
+zedagent &
 if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
