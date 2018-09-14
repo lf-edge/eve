@@ -57,6 +57,7 @@ type zedrouterContext struct {
 	subLispInfoStatus       *pubsub.Subscription
 	subLispMetrics          *pubsub.Subscription
 	assignableAdapters      *types.AssignableAdapters
+	pubNetworkServiceMetrics *pubsub.Publication
 	devicenetwork.DeviceNetworkContext
 	ready bool
 }
@@ -168,6 +169,13 @@ func Run() {
 		log.Fatal(err)
 	}
 	zedrouterCtx.pubLispDataplaneConfig = pubLispDataplaneConfig
+
+	pubNetworkServiceMetrics, err := pubsub.Publish(agentName,
+		types.NetworkServiceMetrics{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedrouterCtx.pubNetworkServiceMetrics = pubNetworkServiceMetrics
 
 	appNumAllocatorInit(pubAppNetworkStatus)
 	bridgeNumAllocatorInit(pubNetworkObjectStatus)

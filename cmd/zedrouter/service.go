@@ -457,7 +457,7 @@ func publishNetworkServiceStatus(ctx *zedrouterContext, status *types.NetworkSer
 	change := false
 	switch status.Type {
 	case types.NST_STRONGSWAN:
-		change = strongSwanVpnStatusGet(status)
+		change = strongSwanVpnStatusGet(ctx, status)
 	}
 	if force == true || change == true {
 		pub.Publish(status.Key(), &status)

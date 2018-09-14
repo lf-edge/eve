@@ -589,6 +589,14 @@ func (status NetworkServiceStatus) Key() string {
 	return status.UUID.String()
 }
 
+type NetworkServiceMetrics struct {
+	UUID          uuid.UUID
+	DisplayName   string
+	Type          NetworkServiceType
+	VpnMetrics    *VpnMetrics
+	LispMetrics   *LispMetrics
+}
+
 // Network metrics for overlay and underlay
 // Matches networkMetrics protobuf message
 type NetworkMetrics struct {
@@ -858,4 +866,35 @@ type ServiceVpnStatus struct {
 	ActiveTunCount     uint32
 	ConnectingTunCount uint32
 	PolicyBased        bool
+}
+
+type LinkPktStats struct {
+	Pkts  uint64
+	Bytes uint64
+}
+
+type VpnLinkMetrics struct {
+	SubNet  string // connecting subnet
+	SpiId   string // security parameter index
+}
+
+type VpnEndPointMetrics struct {
+	IpAddr   string // end point ip address
+	LinkInfo VpnLinkMetrics
+	PktStats LinkPktStats
+
+}
+
+type VpnConnMetrics struct {
+	Id         string   // ipsec connection id
+	Name       string   // connection name
+	EstTime    uint64   // established time
+	Type       NetworkServiceType
+	LEndPoint  VpnEndPointMetrics
+	REndPoint  VpnEndPointMetrics
+}
+
+type VpnMetrics struct {
+	UpTime    time.Time // service start time stamp
+	VpnConns  []*VpnConnMetrics
 }
