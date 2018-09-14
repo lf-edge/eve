@@ -355,14 +355,17 @@ eidLoop:
 
 			var srcAddr, dstAddr net.IP
 			var protocol layers.IPProtocol
+			var ipVersion byte
 
 			if ip4Layer := packet.Layer(layers.LayerTypeIPv4); ip4Layer != nil{
+				ipVersion = dptypes.IPVERSION4
 				ipHeader := ip4Layer.(*layers.IPv4)
 
 				srcAddr  = ipHeader.SrcIP
 				dstAddr  = ipHeader.DstIP
 				protocol = ipHeader.Protocol
 			} else if ip6Layer := packet.Layer(layers.LayerTypeIPv6); ip6Layer != nil {
+				ipVersion = dptypes.IPVERSION6
 				ipHeader := ip6Layer.(*layers.IPv6)
 
 				srcAddr  = ipHeader.SrcIP
@@ -394,15 +397,31 @@ eidLoop:
 
 			/**
 			 * Compute hash of packet.
-			 * LSB 4 bytes of src addr (xor) LSB 4 bytes of dst addr (xor)
-			 * (src port << 16 | dst port)
 			 */
-			var srcAddrBytes uint32 = (uint32(srcAddr[12])<<24 |
-				uint32(srcAddr[13])<<16 |
-				uint32(srcAddr[14])<<8 | uint32(srcAddr[15]))
-			var dstAddrBytes uint32 = (uint32(dstAddr[12])<<24 |
-				uint32(dstAddr[13])<<16 |
-				uint32(dstAddr[14])<<8 | uint32(dstAddr[15]))
+			var srcAddrBytes, dstAddrBytes uint32
+			if ipVersion == dptypes.IPVERSION4 {
+				/*
+				 * 4 bytes of src addr (xor) 4 bytes of dst addr (xor)
+				 * (src port << 16 | dst port)
+				 */
+				srcAddrBytes = (uint32(srcAddr[0])<<24 |
+					uint32(srcAddr[1])<<16 |
+					uint32(srcAddr[2])<<8 | uint32(srcAddr[3]))
+				dstAddrBytes = (uint32(dstAddr[0])<<24 |
+					uint32(dstAddr[1])<<16 |
+					uint32(dstAddr[2])<<8 | uint32(dstAddr[3]))
+			} else {
+				/*
+				 * LSB 4 bytes of src addr (xor) LSB 4 bytes of dst addr (xor)
+				 * (src port << 16 | dst port)
+				 */
+				srcAddrBytes = (uint32(srcAddr[12])<<24 |
+					uint32(srcAddr[13])<<16 |
+					uint32(srcAddr[14])<<8 | uint32(srcAddr[15]))
+				dstAddrBytes = (uint32(dstAddr[12])<<24 |
+					uint32(dstAddr[13])<<16 |
+					uint32(dstAddr[14])<<8 | uint32(dstAddr[15]))
+			}
 			transportLayer := packet.TransportLayer()
 
 			var ports uint32 = 0
