@@ -4,7 +4,9 @@
 package zedmanager
 
 import (
+	"errors"
 	"fmt"
+	"github.com/satori/go.uuid"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/types"
 	"log"
@@ -29,10 +31,10 @@ func updateAIStatusSafename(ctx *zedmanagerContext, safename string) {
 				config.UUIDandVersion.UUID)
 		}
 		for _, sc := range config.StorageConfigList {
-			safename2 := types.UrlToSafename(sc.DownloadURL, sc.ImageSha256)
+			safename2 := types.UrlToSafename(sc.Name, sc.ImageSha256)
 			if safename == safename2 {
 				log.Printf("Found StorageConfig URL %s safename %s\n",
-					sc.DownloadURL, safename2)
+					sc.Name, safename2)
 				updateAIStatusUUID(ctx,
 					config.Key())
 			}
@@ -109,11 +111,11 @@ func removeAIStatusSafename(ctx *zedmanagerContext, safename string) {
 				status.UUIDandVersion.UUID)
 		}
 		for _, ss := range status.StorageStatusList {
-			safename2 := types.UrlToSafename(ss.DownloadURL, ss.ImageSha256)
+			safename2 := types.UrlToSafename(ss.Name, ss.ImageSha256)
 			if safename == safename2 {
 				if debug {
 					log.Printf("Found StorageStatus URL %s safename %s\n",
-						ss.DownloadURL, safename2)
+						ss.Name, safename2)
 				}
 				removeAIStatus(ctx, &status)
 			}
@@ -180,11 +182,11 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 	}
 	for i, sc := range config.StorageConfigList {
 		ss := &status.StorageStatusList[i]
-		if ss.DownloadURL != sc.DownloadURL ||
+		if ss.Name != sc.Name ||
 			ss.ImageSha256 != sc.ImageSha256 {
 			// Report to zedcloud
 			errString := fmt.Sprintf("Mismatch in storageConfig vs. Status:\n\t%s\n\t%s\n\t%s\n\t%s\n\n",
-				sc.DownloadURL, ss.DownloadURL,
+				sc.Name, ss.Name,
 				sc.ImageSha256, ss.ImageSha256)
 			log.Println(errString)
 			status.State = types.INITIAL
@@ -209,9 +211,9 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 	waitingForCerts := false
 	for i, sc := range config.StorageConfigList {
 		ss := &status.StorageStatusList[i]
-		safename := types.UrlToSafename(sc.DownloadURL, sc.ImageSha256)
+		safename := types.UrlToSafename(sc.Name, sc.ImageSha256)
 		log.Printf("Found StorageConfig URL %s safename %s\n",
-			sc.DownloadURL, safename)
+			sc.Name, safename)
 
 		// Shortcut if image is already verified
 		vs := lookupVerifyImageStatusAny(ctx, safename,
@@ -247,7 +249,18 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		if !ss.HasDownloaderRef {
 			log.Printf("doUpdate !HasDownloaderRef for %s\n",
 				safename)
-			AddOrRefcountDownloaderConfig(ctx, safename, &sc)
+			dst, err := lookupDatastoreConfig(ctx, sc.DatastoreId,
+				sc.Name)
+			if err != nil {
+				ss.Error = fmt.Sprintf("%v", err)
+				allErrors = appendError(allErrors, "datastore",
+					ss.Error)
+				ss.ErrorTime = time.Now()
+				changed = true
+				minState = types.INITIAL // Error
+				continue
+			}
+			AddOrRefcountDownloaderConfig(ctx, safename, &sc, dst)
 			ss.HasDownloaderRef = true
 			changed = true
 		}
@@ -315,9 +328,9 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 	minState = types.MAXSTATE
 	for i, sc := range config.StorageConfigList {
 		ss := &status.StorageStatusList[i]
-		safename := types.UrlToSafename(sc.DownloadURL, sc.ImageSha256)
+		safename := types.UrlToSafename(sc.Name, sc.ImageSha256)
 		log.Printf("Found StorageConfig URL %s safename %s\n",
-			sc.DownloadURL, safename)
+			sc.Name, safename)
 
 		vs := lookupVerifyImageStatusAny(ctx, safename,
 			sc.ImageSha256)
@@ -406,6 +419,31 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 	log.Printf("Done with EID allocations for %s\n", uuidStr)
 	log.Printf("doInstall done for %s\n", uuidStr)
 	return changed, true
+}
+
+// Really a constant
+var nilUUID uuid.UUID
+
+// Check for nil UUID (an indication the drive was missing in parseconfig)
+// and a missing datastore id.
+func lookupDatastoreConfig(ctx *zedmanagerContext,
+	datastoreId uuid.UUID, name string) (*types.DatastoreConfig, error) {
+
+	if datastoreId == nilUUID {
+		errStr := fmt.Sprintf("lookupDatastoreConfig(%s) for %s: No datastore ID",
+			datastoreId.String(), name)
+		log.Println(errStr)
+		return nil, errors.New(errStr)
+	}
+	cfg, err := ctx.subDatastoreConfig.Get(datastoreId.String())
+	if err != nil {
+		errStr := fmt.Sprintf("lookupDatastoreConfig(%s) for %s: %v",
+			datastoreId.String(), name, err)
+		log.Println(errStr)
+		return nil, errors.New(errStr)
+	}
+	dst := cast.CastDatastoreConfig(cfg)
+	return &dst, nil
 }
 
 func doActivate(ctx *zedmanagerContext, uuidStr string,
@@ -643,10 +681,10 @@ func doUninstall(ctx *zedmanagerContext, uuidStr string,
 	removedAll = true
 	for i, _ := range status.StorageStatusList {
 		ss := &status.StorageStatusList[i]
-		safename := types.UrlToSafename(ss.DownloadURL, ss.ImageSha256)
+		safename := types.UrlToSafename(ss.Name, ss.ImageSha256)
 		if debug {
 			log.Printf("Found StorageStatus URL %s safename %s\n",
-				ss.DownloadURL, safename)
+				ss.Name, safename)
 		}
 		// Decrease refcount if we had increased it
 		if ss.HasDownloaderRef {

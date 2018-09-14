@@ -50,6 +50,7 @@ type zedmanagerContext struct {
 	subAppImgDownloadStatus *pubsub.Subscription
 	pubAppImgVerifierConfig *pubsub.Publication
 	subAppImgVerifierStatus *pubsub.Subscription
+	subDatastoreConfig      *pubsub.Subscription
 }
 
 var deviceNetworkStatus types.DeviceNetworkStatus
@@ -139,6 +140,18 @@ func Run() {
 	subAppInstanceConfig.RestartHandler = handleConfigRestart
 	ctx.subAppInstanceConfig = subAppInstanceConfig
 	subAppInstanceConfig.Activate()
+
+	// Look for DatastoreConfig from zedagent
+	// No handlers since we look at collection when we need to
+	subDatastoreConfig, err := pubsub.Subscribe("zedagent",
+		types.DatastoreConfig{}, false, &ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subDatastoreConfig.ModifyHandler = handleDatastoreConfigModify
+	subDatastoreConfig.DeleteHandler = handleDatastoreConfigDelete
+	ctx.subDatastoreConfig = subDatastoreConfig
+	subDatastoreConfig.Activate()
 
 	// Get AppNetworkStatus from zedrouter
 	subAppNetworkStatus, err := pubsub.Subscribe("zedrouter",
@@ -256,6 +269,9 @@ func Run() {
 
 		case change := <-subAppInstanceConfig.C:
 			subAppInstanceConfig.ProcessChange(change)
+
+		case change := <-subDatastoreConfig.C:
+			subDatastoreConfig.ProcessChange(change)
 
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
@@ -424,7 +440,7 @@ func handleCreate(ctx *zedmanagerContext, key string,
 		len(config.StorageConfigList))
 	for i, sc := range config.StorageConfigList {
 		ss := &status.StorageStatusList[i]
-		ss.DownloadURL = sc.DownloadURL
+		ss.Name = sc.Name
 		ss.ImageSha256 = sc.ImageSha256
 		ss.ReadOnly = sc.ReadOnly
 		ss.Preserve = sc.Preserve
@@ -642,4 +658,18 @@ func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 	deviceNetworkStatus = types.DeviceNetworkStatus{}
 	devicenetwork.ProxyToEnv(deviceNetworkStatus.ProxyConfig)
 	log.Printf("handleDNSDelete done for %s\n", key)
+}
+
+func handleDatastoreConfigModify(ctxArg interface{}, key string,
+	configArg interface{}) {
+
+	// XXX empty since we look at collection when we need it
+	log.Printf("handleDatastoreConfigModify for %s\n", key)
+}
+
+func handleDatastoreConfigDelete(ctxArg interface{}, key string,
+	configArg interface{}) {
+
+	// XXX empty since we look at collection when we need it
+	log.Printf("handleDatastoreConfigDelete for %s\n", key)
 }

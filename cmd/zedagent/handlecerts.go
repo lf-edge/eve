@@ -26,7 +26,7 @@ func lookupCertObjSafename(ctx *zedagentContext, safename string) *types.CertObj
 			continue
 		}
 		for _, sc := range config.StorageConfigList {
-			safename1 := types.UrlToSafename(sc.DownloadURL,
+			safename1 := types.UrlToSafename(sc.Name,
 				sc.ImageSha256)
 			if safename == safename1 {
 				return &config
@@ -120,11 +120,11 @@ func doCertObjInstall(ctx *zedagentContext, uuidStr string, config types.CertObj
 	for i, sc := range config.StorageConfigList {
 		ss := &status.StorageStatusList[i]
 
-		if ss.DownloadURL != sc.DownloadURL ||
+		if ss.Name != sc.Name ||
 			ss.ImageSha256 != sc.ImageSha256 {
 			// Report to zedcloud
 			errString := fmt.Sprintf("%s, Storage config mismatch:\n\t%s\n\t%s\n\t%s\n\t%s\n\n", uuidStr,
-				sc.DownloadURL, ss.DownloadURL,
+				sc.Name, ss.Name,
 				sc.ImageSha256, ss.ImageSha256)
 			log.Println(errString)
 			status.Error = errString
@@ -137,13 +137,12 @@ func doCertObjInstall(ctx *zedagentContext, uuidStr string, config types.CertObj
 	downloadchange, downloaded :=
 		checkCertObjStorageDownloadStatus(ctx, uuidStr, config, status)
 
-	if downloaded == false {
+	if !downloaded {
 		return changed || downloadchange, false
 	}
 
 	// install the certs now
-	if ret := installDownloadedObjects(certObj, uuidStr, config.StorageConfigList,
-		status.StorageStatusList); ret == true {
+	if installDownloadedObjects(certObj, uuidStr, status.StorageStatusList) {
 		// Automatically move from DOWNLOADED to INSTALLED
 		status.State = types.INSTALLED
 		changed = true
@@ -220,7 +219,7 @@ func doCertObjUninstall(ctx *zedagentContext, uuidStr string,
 	for i, _ := range status.StorageStatusList {
 
 		ss := &status.StorageStatusList[i]
-		safename := types.UrlToSafename(ss.DownloadURL, ss.ImageSha256)
+		safename := types.UrlToSafename(ss.Name, ss.ImageSha256)
 		log.Printf("doCertObjUninstall(%s) safename %s\n",
 			uuidStr, safename)
 		// Decrease refcount if we had increased it

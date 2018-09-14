@@ -6,11 +6,13 @@ package zedagent
 import (
 	"errors"
 	"fmt"
+	"github.com/satori/go.uuid"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"log"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -34,24 +36,45 @@ func lookupDownloaderConfig(ctx *zedagentContext, objType string,
 }
 
 func createDownloaderConfig(ctx *zedagentContext, objType string,
-	safename string, sc *types.StorageConfig) {
+	safename string, sc *types.StorageConfig, ds *types.DatastoreConfig) {
 
 	log.Printf("createDownloaderConfig(%s/%s)\n", objType, safename)
 
 	if m := lookupDownloaderConfig(ctx, objType, safename); m != nil {
 		m.RefCount += 1
+		log.Printf("createDownloaderConfig(%s) refcount to %d\n",
+			safename, m.RefCount)
 		publishDownloaderConfig(ctx, objType, m)
 	} else {
 		log.Printf("createDownloaderConfig(%s) add\n", safename)
+		// XXX We rewrite Dpath for certs. Can't zedcloud use
+		// a separate datastore for the certs to remove this hack?
+		// Note that the certs seem to come as complete URLs hence
+		// this code might not be required?
+		dpath := ds.Dpath
+		if objType == certObj {
+			// Replacing -images with -certs in dpath
+			dpath = strings.Replace(dpath, "-images", "-certs", 1)
+			log.Printf("createDownloaderConfig fqdn %s ts %s dpath %s to %s\n",
+				ds.Fqdn, ds.DsType, ds.Dpath, dpath)
+		}
+
+		var downloadURL string
+		if sc.NameIsURL {
+			downloadURL = sc.Name
+		} else {
+			downloadURL = ds.Fqdn + "/" + dpath + "/" + sc.Name
+		}
 		n := types.DownloaderConfig{
 			Safename:        safename,
-			DownloadURL:     sc.DownloadURL,
+			DownloadURL:     downloadURL,
+			TransportMethod: ds.DsType,
+			ApiKey:          ds.ApiKey,
+			Password:        ds.Password,
+			Dpath:           dpath,
+			Region:          ds.Region,
 			UseFreeUplinks:  false,
 			Size:            sc.Size,
-			TransportMethod: sc.TransportMethod,
-			Dpath:           sc.Dpath,
-			ApiKey:          sc.ApiKey,
-			Password:        sc.Password,
 			ImageSha256:     sc.ImageSha256,
 			RefCount:        1,
 		}
@@ -103,9 +126,9 @@ func removeDownloaderConfig(ctx *zedagentContext, objType string, safename strin
 	}
 
 	if config.RefCount > 1 {
-		log.Printf("removeDownloaderConfig(%s/%s) decrementing refCount %d\n",
-			objType, safename, config.RefCount)
 		config.RefCount -= 1
+		log.Printf("removeDownloaderConfig(%s/%s) decrementing refCount to %d\n",
+			objType, safename, config.RefCount)
 		publishDownloaderConfig(ctx, objType, config)
 		return
 	}
@@ -133,9 +156,9 @@ func lookupDownloaderStatus(ctx *zedagentContext, objType string,
 	return &status
 }
 
-func checkStorageDownloadStatus(ctx *zedagentContext,
-	objType string, uuidStr string,
-	config []types.StorageConfig, status []types.StorageStatus) *types.RetStatus {
+func checkStorageDownloadStatus(ctx *zedagentContext, objType string,
+	uuidStr string, config []types.StorageConfig,
+	status []types.StorageStatus) *types.RetStatus {
 
 	ret := &types.RetStatus{}
 	log.Printf("checkStorageDownloadStatus for %s\n", uuidStr)
@@ -149,15 +172,29 @@ func checkStorageDownloadStatus(ctx *zedagentContext,
 
 		ss := &status[i]
 
-		safename := types.UrlToSafename(sc.DownloadURL, sc.ImageSha256)
+		safename := types.UrlToSafename(sc.Name, sc.ImageSha256)
 
 		log.Printf("checkStorageDownloadStatus %s, image status %v\n", safename, ss.State)
 		if ss.State == types.INSTALLED {
 			ret.MinState = ss.State
-			log.Printf("checkStorageDownloadStatus %s,is already installed\n", safename)
+			log.Printf("checkStorageDownloadStatus %s is already installed\n", safename)
 			continue
 		}
 
+		// Check if cert already exists in FinalObjDir
+		// Sanity check that length isn't zero
+		// XXX other sanity checks?
+		// Only meaningful for certObj
+		if ss.FinalObjDir != "" {
+			dstFilename := ss.FinalObjDir + "/" + types.SafenameToFilename(safename)
+			st, err := os.Stat(dstFilename)
+			if err == nil && st.Size() != 0 {
+				ret.MinState = types.INSTALLED
+				log.Printf("checkStorageDownloadStatus %s is in FinalObjDir %s\n",
+					safename, dstFilename)
+				continue
+			}
+		}
 		if sc.ImageSha256 != "" {
 			// Shortcut if image is already verified
 			vs := lookupVerificationStatusAny(ctx, objType,
@@ -196,7 +233,18 @@ func checkStorageDownloadStatus(ctx *zedagentContext,
 
 		if !ss.HasDownloaderRef {
 			log.Printf("checkStorageDownloadStatus %s, !HasDownloaderRef\n", safename)
-			createDownloaderConfig(ctx, objType, safename, &sc)
+			dst, err := lookupDatastoreConfig(ctx, sc.DatastoreId,
+				sc.Name)
+			if err != nil {
+				ss.Error = fmt.Sprintf("%v", err)
+				ret.AllErrors = appendError(ret.AllErrors, "datastore",
+					ss.Error)
+				ss.ErrorTime = time.Now()
+				ret.ErrorTime = ss.ErrorTime
+				ret.Changed = true
+				continue
+			}
+			createDownloaderConfig(ctx, objType, safename, &sc, dst)
 			ss.HasDownloaderRef = true
 			ret.Changed = true
 		}
@@ -258,19 +306,40 @@ func checkStorageDownloadStatus(ctx *zedagentContext,
 	return ret
 }
 
+// Check for nil UUID (an indication the drive was missing in parseconfig)
+// and a missing datastore id.
+func lookupDatastoreConfig(ctx *zedagentContext,
+	datastoreId uuid.UUID, name string) (*types.DatastoreConfig, error) {
+
+	if datastoreId == nilUUID {
+		errStr := fmt.Sprintf("lookupDatastoreConfig(%s) for %s: No datastore ID",
+			datastoreId.String(), name)
+		log.Println(errStr)
+		return nil, errors.New(errStr)
+	}
+	cfg, err := ctx.subDatastoreConfig.Get(datastoreId.String())
+	if err != nil {
+		errStr := fmt.Sprintf("lookupDatastoreConfig(%s) for %s: %v",
+			datastoreId.String(), name, err)
+		log.Println(errStr)
+		return nil, errors.New(errStr)
+	}
+	dst := cast.CastDatastoreConfig(cfg)
+	return &dst, nil
+}
+
 func installDownloadedObjects(objType string, uuidStr string,
-	config []types.StorageConfig, status []types.StorageStatus) bool {
+	status []types.StorageStatus) bool {
 
 	ret := true
 	log.Printf("installDownloadedObjects(%s)\n", uuidStr)
 
-	for i, sc := range config {
-
+	for i, _ := range status {
 		ss := &status[i]
 
-		safename := types.UrlToSafename(sc.DownloadURL, sc.ImageSha256)
+		safename := types.UrlToSafename(ss.Name, ss.ImageSha256)
 
-		installDownloadedObject(objType, safename, sc, ss)
+		installDownloadedObject(objType, safename, ss)
 
 		// if something is still not installed, mark accordingly
 		if ss.State != types.INSTALLED {
@@ -286,7 +355,7 @@ func installDownloadedObjects(objType string, uuidStr string,
 // the final installation directory is mentioned,
 // move the object there
 func installDownloadedObject(objType string, safename string,
-	config types.StorageConfig, status *types.StorageStatus) error {
+	status *types.StorageStatus) error {
 
 	var ret error
 	var srcFilename string = objectDownloadDirname + "/" + objType
@@ -305,18 +374,18 @@ func installDownloadedObject(objType string, safename string,
 		return nil
 
 	case types.DOWNLOADED:
-		if config.ImageSha256 != "" {
+		// XXX should fix code elsewhere to advance to DELIVERED in
+		// this case??
+		if status.ImageSha256 != "" {
 			log.Printf("installDownloadedObject %s, verification pending\n",
 				safename)
 			return nil
 		}
 		srcFilename += "/pending/" + safename
-		break
 
 	case types.DELIVERED:
-		srcFilename += "/verified/" + config.ImageSha256 + "/" +
+		srcFilename += "/verified/" + status.ImageSha256 + "/" +
 			types.SafenameToFilename(safename)
-		break
 
 		// XXX do we need to handle types.INITIAL for failures?
 	default:
@@ -330,10 +399,10 @@ func installDownloadedObject(objType string, safename string,
 		log.Fatal(err)
 	}
 
-	// move to final installation point
-	if config.FinalObjDir != "" {
+	// Move to final installation point
+	if status.FinalObjDir != "" {
 
-		var dstFilename string = config.FinalObjDir
+		var dstFilename string = status.FinalObjDir
 
 		switch objType {
 		case certObj:

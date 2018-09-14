@@ -18,6 +18,7 @@ type DownloaderConfig struct {
 	Dpath           string
 	ApiKey          string
 	Password        string
+	Region          string
 	Size            uint64 // In bytes
 	ImageSha256     string // sha256 of immutable image
 	FinalObjDir     string // final Object Store
