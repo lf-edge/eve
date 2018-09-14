@@ -114,8 +114,7 @@ var appDiskAndNameList map[string][]string
 func handleDomainStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	// XXX
-	if true || debug {
+	if debug {
 		log.Printf("handleDomainStatusModify for %s\n", key)
 	}
 	status := cast.CastDomainStatus(statusArg)
@@ -127,8 +126,7 @@ func handleDomainStatusModify(ctxArg interface{}, key string,
 	}
 	// Ignore if any Pending* flag is set
 	if status.Pending() {
-		// XXX
-		if true || debug {
+		if debug {
 			log.Printf("handleDomainstatusModify skipped due to Pending* for %s\n",
 				key)
 		}

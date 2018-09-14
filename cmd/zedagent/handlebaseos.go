@@ -32,6 +32,7 @@ func lookupBaseOsSafename(ctx *zedagentContext, safename string) *types.BaseOsCo
 	}
 	return nil
 }
+
 func baseOsHandleStatusUpdateSafename(ctx *zedagentContext, safename string) {
 
 	log.Printf("baseOsStatusUpdateSafename for %s\n", safename)
@@ -55,7 +56,9 @@ func baseOsHandleStatusUpdateSafename(ctx *zedagentContext, safename string) {
 	baseOsHandleStatusUpdate(ctx, config, status)
 }
 
-func baseOsGetActivationStatus(status *types.BaseOsStatus) {
+func baseOsGetActivationStatus(ctx *zedagentContext,
+	status *types.BaseOsStatus) {
+
 	log.Printf("baseOsGetActivationStatus(%s): partitionLabel %s\n",
 		status.BaseOsVersion, status.PartitionLabel)
 
@@ -78,6 +81,20 @@ func baseOsGetActivationStatus(status *types.BaseOsStatus) {
 	}
 	// if current Partition, get the status from zboot
 	status.Activated = zboot.IsCurrentPartitionStateActive()
+	publishBaseOsStatus(ctx, status)
+}
+
+func baseOsGetActivationStatusAll(ctx *zedagentContext) {
+	items := ctx.pubBaseOsStatus.GetAll()
+	for key, st := range items {
+		status := cast.CastBaseOsStatus(st)
+		if status.Key() != key {
+			log.Printf("baseOsGetActivationStatusAll(%s) got %s; ignored %+v\n",
+				key, status.Key(), status)
+			continue
+		}
+		baseOsGetActivationStatus(ctx, &status)
+	}
 }
 
 func baseOsHandleStatusUpdate(ctx *zedagentContext, config *types.BaseOsConfig,
@@ -86,7 +103,7 @@ func baseOsHandleStatusUpdate(ctx *zedagentContext, config *types.BaseOsConfig,
 	uuidStr := config.Key()
 	log.Printf("baseOsHandleStatusUpdate(%s)\n", uuidStr)
 
-	baseOsGetActivationStatus(status)
+	baseOsGetActivationStatus(ctx, status)
 
 	changed := doBaseOsStatusUpdate(ctx, uuidStr, *config, status)
 
@@ -214,7 +231,6 @@ func doBaseOsActivate(ctx *zedagentContext, uuidStr string,
 
 	log.Printf("doBaseOsActivate: %s activating\n", uuidStr)
 	zboot.SetOtherPartitionStateUpdating()
-	publishDeviceInfo = true
 
 	// Remove any old log files for a previous instance
 	logdir := fmt.Sprintf("/persist/%s/log", status.PartitionLabel)
@@ -228,7 +244,7 @@ func doBaseOsActivate(ctx *zedagentContext, uuidStr string,
 		status.Activated = true
 		changed = true
 		// Make sure we tell apps to shut down
-		shutdownAppsGlobal()
+		shutdownAppsGlobal(ctx)
 		startExecReboot()
 	}
 
@@ -284,8 +300,8 @@ func doBaseOsInstall(ctx *zedagentContext, uuidStr string,
 	}
 
 	// XXX can we check the version before installing to the partition?
-	// XXX requires loopback mounting the image. We dd as part of
-	// the installDownloadedObjects
+	// XXX requires loopback mounting the image; not part of syscall.Mount
+	// Note that we dd as part of the installDownloadedObjects call
 
 	// install the image at proper partition
 	if installDownloadedObjects(baseOsObj, uuidStr,
@@ -684,6 +700,7 @@ func publishBaseOsStatus(ctx *zedagentContext, status *types.BaseOsStatus) {
 	log.Printf("Publishing BaseOsStatus %s\n", key)
 	pub := ctx.pubBaseOsStatus
 	pub.Publish(key, status)
+	publishDeviceInfo = true
 }
 
 func unpublishBaseOsStatus(ctx *zedagentContext, key string) {
@@ -696,6 +713,7 @@ func unpublishBaseOsStatus(ctx *zedagentContext, key string) {
 		return
 	}
 	pub.Unpublish(key)
+	publishDeviceInfo = true
 }
 
 // Check the number of baseos and number of actvated
