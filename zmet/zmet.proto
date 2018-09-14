@@ -531,7 +531,7 @@ message ZMetricFlowEndPoint {
     string ipAddr = 1; // IpSec: Endpoint Ip Address
     string rloc = 2;   // LISP: RLOC
   }
-  ZMetricFlowLink link = 5;
+  repeated ZMetricFlowLink link = 5;
   PktStat stats = 10;  // traffic
 }
 
