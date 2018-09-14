@@ -11,6 +11,7 @@ import (
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/types"
 	"log"
+	"net"
 	"os/exec"
 	"reflect"
 )
@@ -58,7 +59,7 @@ func UpdateDhcpClient(newConfig, oldConfig types.DeviceUplinkConfig) {
 
 func doDhcpClientActivate(nuc types.NetworkUplinkConfig) {
 	log.Printf("doDhcpClientActivate(%s) dhcp %v addr %s gateway %s\n",
-		nuc.IfName, nuc.Dhcp, nuc.Addr.String(),
+		nuc.IfName, nuc.Dhcp, nuc.AddrSubnet,
 		nuc.Gateway.String())
 	// XXX skipping wwan0
 	if nuc.IfName == "wwan0" {
@@ -79,19 +80,21 @@ func doDhcpClientActivate(nuc types.NetworkUplinkConfig) {
 				nuc.IfName)
 		}
 	case types.DT_STATIC:
-		// Require that Subnet is set and that Addr fits in it
-		if !nuc.Subnet.Contains(nuc.Addr) {
-			log.Printf("doDhcpClientActivate: failed addr %s not in subnet %s for %s\n",
-				nuc.Addr.String(), nuc.Subnet.String(),
+		if nuc.AddrSubnet == "" {
+			log.Printf("doDhcpClientActivate: missing AddrSubnet for %s\n",
 				nuc.IfName)
 			// XXX return error?
 			return
 		}
-		// Get mask from the subnet and IP from Addr
-		addrSubnet := nuc.Subnet
-		addrSubnet.IP = nuc.Addr
-		args := []string{fmt.Sprintf("ip_address=%s",
-			addrSubnet.String())}
+		// Check that we can parse it
+		_, _, err := net.ParseCIDR(nuc.AddrSubnet)
+		if err != nil {
+			log.Printf("doDhcpClientActivate: failed to parse %s for %s: %s\n",
+				nuc.AddrSubnet, nuc.IfName, err)
+			// XXX return error?
+			return
+		}
+		args := []string{fmt.Sprintf("ip_address=%s", nuc.AddrSubnet)}
 
 		extras := []string{"-f", "/dhcpcd.conf", "--nobackground",
 			"-d"}
@@ -129,7 +132,7 @@ func doDhcpClientActivate(nuc types.NetworkUplinkConfig) {
 
 func doDhcpClientInactivate(nuc types.NetworkUplinkConfig) {
 	log.Printf("doDhcpClientInactivate(%s) dhcp %v addr %s gateway %s\n",
-		nuc.IfName, nuc.Dhcp, nuc.Addr.String(),
+		nuc.IfName, nuc.Dhcp, nuc.AddrSubnet,
 		nuc.Gateway.String())
 	// XXX skipping wwan0
 	if nuc.IfName == "wwan0" {
