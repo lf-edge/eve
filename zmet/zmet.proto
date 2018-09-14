@@ -545,6 +545,23 @@ message ZMetricFlow {
   repeated ZMetricFlowEndPoint rEndPoint = 11;
 }
 
+message ZMetricLispGlobal {
+	// Encap/ITR Statistics
+	PktStat ItrPacketSendError = 2;
+	PktStat InvalidEidError = 3;
+
+	// Decap/ETR Statistics
+	PktStat NoDecryptKey = 4;
+	PktStat OuterHeaderError = 5;
+	PktStat BadInnerVersion = 6;
+	PktStat GoodPackets = 7;
+	PktStat ICVError = 8;
+	PktStat LispHeaderError = 9;
+	PktStat CheckSumError = 10;
+	PktStat DecapReInjectError = 11;
+	PktStat DecryptError = 12;
+}
+
 message ZMetricService {
   string serviceID = 1;
   string serviceName = 2;
@@ -555,6 +572,7 @@ message ZMetricService {
     ZMetricLisp lispm = 21;
   }
   repeated ZMetricFlow flowStats = 10;
+  ZMetricLispGlobal lispGlobalStats = 11;
 }
 
 message ZMetricMsg {
