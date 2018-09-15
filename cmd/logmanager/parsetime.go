@@ -49,9 +49,6 @@ func parseTime(ts string) (time.Time, bool) {
 	var t time.Time
 	// Check that it is a potential timestamp
 	if strings.Index(ts, "T") != 10 {
-		if debug {
-			log.Printf("Not 10 for %s\n", ts)
-		}
 		return t, false
 	}
 	err := t.UnmarshalText([]byte(ts))

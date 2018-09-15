@@ -46,6 +46,7 @@ var (
 	devUUID             uuid.UUID
 	deviceNetworkStatus types.DeviceNetworkStatus
 	debug               bool
+	debugOverride       bool // From command line arg
 	serverName          string
 	logsUrl             string
 	zedcloudCtx         zedcloud.ZedCloudContext
@@ -126,7 +127,8 @@ func Run() {
 	forcePtr := flag.Bool("f", false, "Force")
 	logdirPtr := flag.String("l", defaultLogdirname, "Log file directory")
 	flag.Parse()
-	debug = *debugPtr
+	debugOverride = *debugPtr
+	debug = debugOverride
 	logDirName := *logdirPtr
 	force := *forcePtr
 	if *versionPtr {
@@ -332,8 +334,10 @@ func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 
 // This runs as a separate go routine sending out data
 // Compares and drops events which have already been sent to the cloud
-func processEvents(image string, lastSentToCloud time.Time,
+func processEvents(image string, prevLastSent time.Time,
 	logChan <-chan logEntry) {
+
+	log.Printf("processEvents(%s, %s)\n", image, prevLastSent.String())
 
 	reportLogs := new(zmet.LogBundle)
 	// XXX should we make the log interval configurable?
@@ -350,7 +354,7 @@ func processEvents(image string, lastSentToCloud time.Time,
 		case event, more := <-logChan:
 			sent := false
 			if !more {
-				log.Printf("processEvents: %s end\n",
+				log.Printf("processEvents(%s) end\n",
 					image)
 				if messageCount > 0 {
 					sent = sendProtoStrForLogs(reportLogs, image,
@@ -361,23 +365,37 @@ func processEvents(image string, lastSentToCloud time.Time,
 				}
 				return
 			}
-			if event.timestamp.Before(lastSentToCloud) {
+			if event.timestamp.Before(prevLastSent) {
 				if debug {
-					log.Printf("processEvents: %d (%d) too old: %s\n",
-						dropped+messageCount, dropped,
-						event.content)
+					log.Printf("processEvents(%s): %d (%d) too old: %s\n",
+						image, dropped+messageCount,
+						dropped, event.content)
 				}
 				dropped++
 				break
+			} else if debug {
+				log.Printf("processEvents(%s): %d (%d) %s vs %s\n",
+					image, dropped+messageCount, dropped,
+					prevLastSent.String(),
+					event.timestamp.String())
+
 			}
 			HandleLogEvent(event, reportLogs, messageCount)
 			messageCount++
 			// Aproximate; excludes headers!
 			byteCount += len(event.content)
+			if debug {
+				log.Printf("processEvents: messageCount %d, byteCount %d\n",
+					messageCount, byteCount)
+			}
 
 			if messageCount >= logMaxMessages ||
 				byteCount >= logMaxBytes {
 
+				if debug {
+					log.Printf("processEvents: sending at messageCount %d, byteCount %d\n",
+						messageCount, byteCount)
+				}
 				sent = sendProtoStrForLogs(reportLogs, image,
 					iteration)
 				messageCount = 0
@@ -390,8 +408,9 @@ func processEvents(image string, lastSentToCloud time.Time,
 
 		case <-flushTimer.C:
 			if debug {
-				log.Printf("Logger Flush at %v %v\n",
-					image, reportLogs.Timestamp)
+				log.Printf("processEvents(%s) flush at %s dropped %d messageCount %d\n",
+					image, time.Now().String(), dropped,
+					messageCount)
 			}
 			if messageCount > 0 {
 				sent := sendProtoStrForLogs(reportLogs, image,
@@ -634,7 +653,7 @@ func createXenLogger(ctx *imageLoggerContext, filename string, source string) {
 
 	lastSent := readLastSent(source)
 	lastSentStr, _ := lastSent.MarshalText()
-	log.Printf("createXenLogger: source %s lastSent at %s\n",
+	log.Printf("createXenLogger: source %s last sent at %s\n",
 		source, string(lastSentStr))
 
 	// process associated channel
@@ -801,7 +820,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	}
 	log.Printf("handleGlobalConfigModify for %s\n", key)
 	if val, ok := agentlog.GetDebug(ctx.subGlobalConfig, agentName); ok {
-		debug = val
+		debug = val || debugOverride
 		log.Printf("handleGlobalConfigModify: debug %v\n", debug)
 	}
 	// XXX add loglevel etc
@@ -817,7 +836,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		log.Printf("handleGlobalConfigDelete: ignoring %s\n", key)
 		return
 	}
-	debug = false
+	debug = false || debugOverride
 	log.Printf("handleGlobalConfigDelete: debug %v\n", debug)
 	// XXX add loglevel etc
 	log.Printf("handleGlobalConfigDelete done for %s\n", key)
