@@ -517,6 +517,51 @@ message ZMetricVpn {
 	ZMetricConn EspStat = 4;
 }
 
+// flow stats
+message ZMetricFlowLink {
+  oneof Link {
+    string subNet = 1; // IpSec: Subnet
+    string eid = 2;    // LISP: EID
+  }
+  string spiId = 3;    // IpSec: SpiId
+}
+
+message ZMetricFlowEndPoint {
+  oneof Endpoint {
+    string ipAddr = 1; // IpSec: Endpoint Ip Address
+    string rloc = 2;   // LISP: RLOC
+  }
+  repeated ZMetricFlowLink link = 5;
+  PktStat stats = 10;  // traffic
+}
+
+message ZMetricFlow {
+  string id = 1;      // IpSec Conn-Id/Lisp
+  string name = 2;    // IpSec Tun-Name
+  uint32 type = 3;    // IpSec-Vpn or, LISP
+  string iid  = 4;    // LISP: IID
+  uint64 estTime = 5; // in seconds
+  ZMetricFlowEndPoint lEndPoint = 10;
+  repeated ZMetricFlowEndPoint rEndPoint = 11;
+}
+
+message ZMetricLispGlobal {
+	// Encap/ITR Statistics
+	PktStat ItrPacketSendError = 2;
+	PktStat InvalidEidError = 3;
+
+	// Decap/ETR Statistics
+	PktStat NoDecryptKey = 4;
+	PktStat OuterHeaderError = 5;
+	PktStat BadInnerVersion = 6;
+	PktStat GoodPackets = 7;
+	PktStat ICVError = 8;
+	PktStat LispHeaderError = 9;
+	PktStat CheckSumError = 10;
+	PktStat DecapReInjectError = 11;
+	PktStat DecryptError = 12;
+}
+
 message ZMetricService {
   string serviceID = 1;
   string serviceName = 2;
@@ -526,6 +571,8 @@ message ZMetricService {
     ZMetricVpn  vpnm = 20;
     ZMetricLisp lispm = 21;
   }
+  repeated ZMetricFlow flowStats = 10;
+  ZMetricLispGlobal lispGlobalStats = 11;
 }
 
 message ZMetricMsg {
