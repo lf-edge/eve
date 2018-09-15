@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
-	google_protobuf "github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/satori/go.uuid"
 	"github.com/zededa/api/zmet"
 	"github.com/zededa/go-provision/agentlog"
@@ -70,7 +69,7 @@ type logEntry struct {
 	source    string // basename of filename?
 	iid       string // XXX e.g. PID - where do we get it from?
 	content   string // One line
-	timestamp *google_protobuf.Timestamp
+	timestamp time.Time
 }
 
 // List of log files we watch
@@ -219,7 +218,7 @@ func Run() {
 		string(lastSentStr))
 
 	// Start sender of log events
-	go processEvents(currentPartition, loggerChan)
+	go processEvents(currentPartition, lastSent, loggerChan)
 
 	// If we have a logdir from a failed update, then set that up
 	// as well.
@@ -242,7 +241,7 @@ func Run() {
 		log.Printf("Other partition logs were last sent at %s\n",
 			string(lastSentStr))
 
-		go processEvents(otherPartition, otherLoggerChan)
+		go processEvents(otherPartition, lastSent, otherLoggerChan)
 
 		go watch.WatchStatus(otherLogDirname, otherLogDirChanges)
 		otherCtx = loggerContext{logChan: otherLoggerChan,
@@ -332,7 +331,9 @@ func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 }
 
 // This runs as a separate go routine sending out data
-func processEvents(image string, logChan <-chan logEntry) {
+// Compares and drops events which have already been sent to the cloud
+func processEvents(image string, lastSentToCloud time.Time,
+	logChan <-chan logEntry) {
 
 	reportLogs := new(zmet.LogBundle)
 	// XXX should we make the log interval configurable?
@@ -342,7 +343,7 @@ func processEvents(image string, logChan <-chan logEntry) {
 	flushTimer := flextimer.NewRangeTicker(time.Duration(min),
 		time.Duration(max))
 	counter := 0
-
+	dropped := 0
 	for {
 		select {
 		case event, more := <-logChan:
@@ -358,6 +359,15 @@ func processEvents(image string, logChan <-chan logEntry) {
 					recordLastSent(image)
 				}
 				return
+			}
+			if event.timestamp.Before(lastSentToCloud) {
+				if debug {
+					log.Printf("processEvents: %d (%d) too old: %s\n",
+						dropped+counter, dropped,
+						event.content)
+				}
+				dropped++
+				break
 			}
 			HandleLogEvent(event, reportLogs, counter)
 			counter++
@@ -410,7 +420,7 @@ func recordLastSent(image string) {
 		log.Printf("recordLastSent: %s\n", err)
 		return
 	}
-	now := time.Now() // XXX .Local()?
+	now := time.Now()
 	err = os.Chtimes(filename, now, now)
 	if err != nil {
 		log.Printf("recordLastSent: %s\n", err)
@@ -443,7 +453,7 @@ func HandleLogEvent(event logEntry, reportLogs *zmet.LogBundle, counter int) {
 	}
 	logDetails := &zmet.LogEntry{}
 	logDetails.Content = event.content
-	logDetails.Timestamp = event.timestamp
+	logDetails.Timestamp, _ = ptypes.TimestampProto(event.timestamp)
 	logDetails.Source = event.source
 	logDetails.Iid = event.iid
 	logDetails.Msgid = uint64(msgId)
@@ -616,15 +626,21 @@ func createXenLogger(ctx *imageLoggerContext, filename string, source string) {
 		logChan: make(chan logEntry),
 	}
 
+	lastSent := readLastSent(source)
+	lastSentStr, _ := lastSent.MarshalText()
+	log.Printf("createXenLogger: source %s lastSent at %s\n",
+		source, string(lastSentStr))
+
 	// process associated channel
-	go processEvents(source, r.logChan)
+	go processEvents(source, lastSent, r.logChan)
 
 	// Write start event to ensure log is not empty
-	datestr := time.Now().Format("2006-01-02 15:04:05")
+	now := time.Now()
+	nowStr, _ := now.MarshalText()
 	line := fmt.Sprintf("%s logmanager starting to log %s\n",
-		datestr, r.source)
+		nowStr, r.source)
 	r.logChan <- logEntry{source: r.source, content: line,
-		timestamp: ptypes.TimestampNow()}
+		timestamp: now}
 	// read initial entries until EOF
 	readLineToEvent(&r.logfileReader, r.logChan)
 	ctx.logfileReaders = append(ctx.logfileReaders, r)
@@ -669,17 +685,20 @@ func createLogger(ctx *loggerContext, filename, source string) {
 		log.Printf("Log file ignored due to %s\n", err)
 		return
 	}
+	// XXX entry per image,source?
+	// XXX get prevSentToCloud
 	r := logfileReader{filename: filename,
 		source:   source,
 		fileDesc: fileDesc,
 		reader:   reader,
 	}
 	// Write start event to ensure log is not empty
-	datestr := time.Now().Format("2006-01-02 15:04:05")
+	now := time.Now()
+	nowStr, _ := now.MarshalText()
 	line := fmt.Sprintf("%s logmanager starting to log %s\n",
-		datestr, r.source)
+		nowStr, r.source)
 	ctx.logChan <- logEntry{source: r.source, content: line,
-		timestamp: ptypes.TimestampNow()}
+		timestamp: now}
 	// read initial entries until EOF
 	readLineToEvent(&r, ctx.logChan)
 	ctx.logfileReaders = append(ctx.logfileReaders, r)
@@ -724,16 +743,14 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 		}
 		// remove trailing "/n" from line
 		line = line[0 : len(line)-1]
-		// XXX
+		// Reformat/add timestamp to front of line
 		line, lastTime, lastLevel := parseDateTime(line, lastTime,
 			lastLevel)
 		// XXX lint
 		lastLevel = lastLevel
-		// XXX set iid to PID?
-		protoDateAndTime, _ := ptypes.TimestampProto(lastTime)
+		// XXX set iid to PID? From where?
 		logChan <- logEntry{source: r.source, content: line,
-			timestamp: protoDateAndTime}
-
+			timestamp: lastTime}
 	}
 	// Update size
 	fi, err = r.fileDesc.Stat()
