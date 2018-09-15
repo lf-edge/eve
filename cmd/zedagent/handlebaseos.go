@@ -751,7 +751,13 @@ func validateBaseOsConfig(ctx *zedagentContext, config types.BaseOsConfig) error
 	if osCount != 0 && activateCount != 1 {
 		errStr := fmt.Sprintf("baseOs: Unsupported Activate Count %v\n",
 			activateCount)
-		return errors.New(errStr)
+		// XXX we process the BaseOsStatus in the random map order
+		// hence we can see an Activate to true transition before
+		// the Activate to false transition when they happen
+		// at the same time on different BaseOsConfig objects.
+		// XXX check if condition stays?? Where and how?
+		log.Println(errStr)
+		// XXX return errors.New(errStr)
 	}
 
 	imageCount := len(config.StorageConfigList)
