@@ -37,22 +37,20 @@ const (
 	uuidFileName    = identityDirname + "/uuid"
 	xenLogDirname   = "/var/log/xen"
 	lastSentDirname = "lastlogsent" // Directory in /persist/
-	logsApi 	= "api/v1/edgedevice/logs"
-	logMaxMessages = 100
-	logMaxBytes = 32768 // Approximate - no headers counted
+	logsApi         = "api/v1/edgedevice/logs"
+	logMaxMessages  = 100
+	logMaxBytes     = 32768 // Approximate - no headers counted
 )
 
 var (
-	devUUID uuid.UUID
+	devUUID             uuid.UUID
 	deviceNetworkStatus types.DeviceNetworkStatus
-	debug bool
-	serverName string
-	 logsUrl string
-	 zedcloudCtx zedcloud.ZedCloudContext
+	debug               bool
+	serverName          string
+	logsUrl             string
+	zedcloudCtx         zedcloud.ZedCloudContext
+	logs                map[string]zedcloudLogs // Key is ifname string
 )
-
-// Key is ifname string
-var logs map[string]zedcloudLogs
 
 // global stuff
 type logDirModifyHandler func(ctx interface{}, logFileName string, source string)
