@@ -37,18 +37,19 @@ const (
 	uuidFileName    = identityDirname + "/uuid"
 	xenLogDirname   = "/var/log/xen"
 	lastSentDirname = "lastlogsent" // Directory in /persist/
+	logsApi 	= "api/v1/edgedevice/logs"
+	logMaxMessages = 100
+	logMaxBytes = 32768 // Approximate - no headers counted
 )
 
-var devUUID uuid.UUID
-var deviceNetworkStatus types.DeviceNetworkStatus
-var debug bool
-var serverName string
-var logsApi string = "api/v1/edgedevice/logs"
-var logsUrl string
-var zedcloudCtx zedcloud.ZedCloudContext
-
-var logMaxMessages = 100
-var logMaxBytes = 32768 // Approximate - no headers counted. zedcloud max is 64k
+var (
+	devUUID uuid.UUID
+	deviceNetworkStatus types.DeviceNetworkStatus
+	debug bool
+	serverName string
+	 logsUrl string
+	 zedcloudCtx zedcloud.ZedCloudContext
+)
 
 // Key is ifname string
 var logs map[string]zedcloudLogs
