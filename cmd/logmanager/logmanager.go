@@ -127,8 +127,8 @@ func Run() {
 	forcePtr := flag.Bool("f", false, "Force")
 	logdirPtr := flag.String("l", defaultLogdirname, "Log file directory")
 	flag.Parse()
-	debugOverride = *debugPtr
-	debug = debugOverride
+	debug = *debugPtr
+	debugOverride = debug
 	logDirName := *logdirPtr
 	force := *forcePtr
 	if *versionPtr {
