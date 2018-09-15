@@ -47,7 +47,8 @@ var logsApi string = "api/v1/edgedevice/logs"
 var logsUrl string
 var zedcloudCtx zedcloud.ZedCloudContext
 
-var logMaxSize = 100
+var logMaxMessages = 100
+var logMaxBytes = 32768 // Approximate - no headers counted. zedcloud max is 64k
 
 // Key is ifname string
 var logs map[string]zedcloudLogs
@@ -342,7 +343,8 @@ func processEvents(image string, lastSentToCloud time.Time,
 	min := max * 0.3
 	flushTimer := flextimer.NewRangeTicker(time.Duration(min),
 		time.Duration(max))
-	counter := 0
+	messageCount := 0
+	byteCount := 0
 	dropped := 0
 	for {
 		select {
@@ -351,7 +353,7 @@ func processEvents(image string, lastSentToCloud time.Time,
 			if !more {
 				log.Printf("processEvents: %s end\n",
 					image)
-				if counter > 0 {
+				if messageCount > 0 {
 					sent = sendProtoStrForLogs(reportLogs, image,
 						iteration)
 				}
@@ -363,19 +365,24 @@ func processEvents(image string, lastSentToCloud time.Time,
 			if event.timestamp.Before(lastSentToCloud) {
 				if debug {
 					log.Printf("processEvents: %d (%d) too old: %s\n",
-						dropped+counter, dropped,
+						dropped+messageCount, dropped,
 						event.content)
 				}
 				dropped++
 				break
 			}
-			HandleLogEvent(event, reportLogs, counter)
-			counter++
+			HandleLogEvent(event, reportLogs, messageCount)
+			messageCount++
+			// Aproximate; excludes headers!
+			byteCount += len(event.content)
 
-			if counter >= logMaxSize {
+			if messageCount >= logMaxMessages ||
+				byteCount >= logMaxBytes {
+
 				sent = sendProtoStrForLogs(reportLogs, image,
 					iteration)
-				counter = 0
+				messageCount = 0
+				byteCount = 0
 				iteration += 1
 			}
 			if sent {
@@ -387,10 +394,11 @@ func processEvents(image string, lastSentToCloud time.Time,
 				log.Printf("Logger Flush at %v %v\n",
 					image, reportLogs.Timestamp)
 			}
-			if counter > 0 {
+			if messageCount > 0 {
 				sent := sendProtoStrForLogs(reportLogs, image,
 					iteration)
-				counter = 0
+				messageCount = 0
+				byteCount = 0
 				iteration += 1
 				if sent {
 					recordLastSent(image)
@@ -458,7 +466,6 @@ func HandleLogEvent(event logEntry, reportLogs *zmet.LogBundle, counter int) {
 	logDetails.Iid = event.iid
 	logDetails.Msgid = uint64(msgId)
 	reportLogs.Log = append(reportLogs.Log, logDetails)
-	// XXX count bytes instead of messages? Limit to << 64k
 }
 
 // Returns true if a message was successfully sent
