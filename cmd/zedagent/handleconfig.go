@@ -189,6 +189,11 @@ func updateConfigTimer(tickerHandle interface{}) {
 func getLatestConfig(url string, iteration int, updateInprogress *bool,
 	getconfigCtx *getconfigContext) bool {
 
+	if debug {
+		log.Printf("getLastestConfig(%s, %d, %v)\n", url, iteration,
+			*updateInprogress)
+	}
+
 	// Did we exceed the time limits?
 	timePassed := time.Since(getconfigCtx.lastReceivedConfigFromCloud)
 
