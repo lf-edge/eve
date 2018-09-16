@@ -366,19 +366,8 @@ func processEvents(image string, prevLastSent time.Time,
 				return
 			}
 			if event.timestamp.Before(prevLastSent) {
-				if debug {
-					log.Printf("processEvents(%s): %d (%d) too old: %s\n",
-						image, dropped+messageCount,
-						dropped, event.content)
-				}
 				dropped++
 				break
-			} else if debug {
-				log.Printf("processEvents(%s): %d (%d) %s vs %s\n",
-					image, dropped+messageCount, dropped,
-					prevLastSent.String(),
-					event.timestamp.String())
-
 			}
 			HandleLogEvent(event, reportLogs, messageCount)
 			messageCount++
