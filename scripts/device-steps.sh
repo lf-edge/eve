@@ -554,7 +554,7 @@ if [ $WAIT = 1 ]; then
 fi
 
 echo "Starting ZedRouter at" `date`
-zedrouter -d &
+zedrouter &
 if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
