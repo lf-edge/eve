@@ -64,7 +64,10 @@ func baseOsGetActivationStatus(ctx *zedagentContext,
 
 	// PartitionLabel can be empty here!
 	if status.PartitionLabel == "" {
-		status.Activated = false
+		if status.Activated {
+			status.Activated = false
+			publishBaseOsStatus(ctx, status)
+		}
 		return
 	}
 
@@ -77,10 +80,10 @@ func baseOsGetActivationStatus(ctx *zedagentContext,
 	// for otherPartition, its always false
 	if !zboot.IsCurrentPartition(partName) {
 		status.Activated = false
-		return
+	} else {
+		// if current Partition, get the status from zboot
+		status.Activated = zboot.IsCurrentPartitionStateActive()
 	}
-	// if current Partition, get the status from zboot
-	status.Activated = zboot.IsCurrentPartitionStateActive()
 	publishBaseOsStatus(ctx, status)
 }
 
