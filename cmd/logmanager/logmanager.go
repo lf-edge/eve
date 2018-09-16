@@ -373,17 +373,13 @@ func processEvents(image string, prevLastSent time.Time,
 			messageCount++
 			// Aproximate; excludes headers!
 			byteCount += len(event.content)
-			if debug {
-				log.Printf("processEvents: messageCount %d, byteCount %d\n",
-					messageCount, byteCount)
-			}
 
 			if messageCount >= logMaxMessages ||
 				byteCount >= logMaxBytes {
 
 				if debug {
-					log.Printf("processEvents: sending at messageCount %d, byteCount %d\n",
-						messageCount, byteCount)
+					log.Printf("processEvents(%s): sending at messageCount %d, byteCount %d\n",
+						image, messageCount, byteCount)
 				}
 				sent = sendProtoStrForLogs(reportLogs, image,
 					iteration)
@@ -396,12 +392,13 @@ func processEvents(image string, prevLastSent time.Time,
 			}
 
 		case <-flushTimer.C:
-			if debug {
-				log.Printf("processEvents(%s) flush at %s dropped %d messageCount %d\n",
-					image, time.Now().String(), dropped,
-					messageCount)
-			}
 			if messageCount > 0 {
+				if debug {
+					log.Printf("processEvents(%s) flush at %s dropped %d messageCount %d bytecount %d\n",
+						image, time.Now().String(),
+						dropped, messageCount,
+						byteCount)
+				}
 				sent := sendProtoStrForLogs(reportLogs, image,
 					iteration)
 				messageCount = 0
