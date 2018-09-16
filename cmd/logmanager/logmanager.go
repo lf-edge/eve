@@ -34,11 +34,12 @@ import (
 )
 
 const (
-	agentName       = "logmanager"
-	identityDirname = "/config"
-	serverFilename  = identityDirname + "/server"
-	uuidFileName    = identityDirname + "/uuid"
-	xenLogDirname   = "/var/log/xen"
+	agentName        = "logmanager"
+	identityDirname  = "/config"
+	serverFilename   = identityDirname + "/server"
+	uuidFileName     = identityDirname + "/uuid"
+	xenLogDirname    = "/var/log/xen"
+	lastSentFilename = "lastlogsent" // File in /persist/IMGx/
 )
 
 var devUUID uuid.UUID
@@ -107,8 +108,6 @@ type DNSContext struct {
 	usableAddressCount     int
 	subDeviceNetworkStatus *pubsub.Subscription
 }
-
-// XXX add context and handleGlobalConfig stuff
 
 type zedcloudLogs struct {
 	FailureCount uint64
@@ -209,6 +208,10 @@ func Run() {
 	loggerChan := make(chan logEntry)
 	ctx := loggerContext{logChan: loggerChan, image: currentPartition}
 	xenCtx := imageLoggerContext{}
+	lastSent := readLastSent(currentPartition)
+	lastSentStr, _ := lastSent.MarshalText()
+	log.Printf("Current partition logs were last sent at %v\n",
+		lastSentStr)
 
 	// Start sender of log events
 	go processEvents(currentPartition, loggerChan)
@@ -216,7 +219,7 @@ func Run() {
 	// If we have a logdir from a failed update, then set that up
 	// as well.
 	// XXX we can close this down once we've reached EOF for all the
-	// files in otherLofdirname. This is TBD
+	// files in otherLogdirname. This is TBD
 	// Closing otherLoggerChan would the effect of terminating the
 	// processEvents go routine but we need to tell when all the files
 	// have reached the end.
@@ -229,6 +232,11 @@ func Run() {
 			otherLogDirname)
 		otherLoggerChan := make(chan logEntry)
 		otherPartition := zboot.GetOtherPartition()
+		lastSent := readLastSent(otherPartition)
+		lastSentStr, _ := lastSent.MarshalText()
+		log.Printf("Other partition logs were last sent at %v\n",
+			lastSentStr)
+
 		go processEvents(otherPartition, otherLoggerChan)
 
 		go watch.WatchStatus(otherLogDirname, otherLogDirChanges)
@@ -333,12 +341,16 @@ func processEvents(image string, logChan <-chan logEntry) {
 	for {
 		select {
 		case event, more := <-logChan:
+			sent := false
 			if !more {
 				log.Printf("processEvents: %s end\n",
 					image)
 				if counter > 0 {
-					sendProtoStrForLogs(reportLogs, image,
+					sent = sendProtoStrForLogs(reportLogs, image,
 						iteration)
+				}
+				if sent {
+					recordLastSent(image)
 				}
 				return
 			}
@@ -346,10 +358,13 @@ func processEvents(image string, logChan <-chan logEntry) {
 			counter++
 
 			if counter >= logMaxSize {
-				sendProtoStrForLogs(reportLogs, image,
+				sent = sendProtoStrForLogs(reportLogs, image,
 					iteration)
 				counter = 0
 				iteration += 1
+			}
+			if sent {
+				recordLastSent(image)
 			}
 
 		case <-flushTimer.C:
@@ -358,13 +373,53 @@ func processEvents(image string, logChan <-chan logEntry) {
 					image, reportLogs.Timestamp)
 			}
 			if counter > 0 {
-				sendProtoStrForLogs(reportLogs, image,
+				sent := sendProtoStrForLogs(reportLogs, image,
 					iteration)
 				counter = 0
 				iteration += 1
+				if sent {
+					recordLastSent(image)
+				}
 			}
 		}
 	}
+}
+
+// Touch/create a file to keep track of when things where sent before a reboot
+func recordLastSent(image string) {
+	filename := fmt.Sprintf("/persist/%s/%s", image, lastSentFilename)
+	_, err := os.Stat(filename)
+	if err != nil {
+		file, err := os.Create(filename)
+		if err != nil {
+			log.Printf("recordLastSent: %s\n", err)
+			return
+		}
+		file.Close()
+	}
+	_, err = os.Stat(filename)
+	if err != nil {
+		log.Printf("recordLastSent: %s\n", err)
+		return
+	}
+	now := time.Now() // XXX .Local()?
+	err = os.Chtimes(filename, now, now)
+	if err != nil {
+		log.Printf("recordLastSent: %s\n", err)
+		return
+	}
+}
+
+func readLastSent(image string) time.Time {
+	filename := fmt.Sprintf("/persist/%s/%s", image, lastSentFilename)
+	st, err := os.Stat(filename)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			log.Printf("readLastSent: %s\n", err)
+		}
+		return time.Time{}
+	}
+	return st.ModTime()
 }
 
 var msgIdCounter = 1
@@ -388,8 +443,9 @@ func HandleLogEvent(event logEntry, reportLogs *zmet.LogBundle, counter int) {
 	// XXX count bytes instead of messages? Limit to << 64k
 }
 
+// Returns true if a message was successfully sent
 func sendProtoStrForLogs(reportLogs *zmet.LogBundle, image string,
-	iteration int) {
+	iteration int) bool {
 	reportLogs.Timestamp = ptypes.TimestampNow()
 	reportLogs.DevID = *proto.String(devUUID.String())
 	reportLogs.Image = image
@@ -414,7 +470,7 @@ func sendProtoStrForLogs(reportLogs *zmet.LogBundle, image string,
 			image)
 		zedcloud.AddDeferred(image, data, logsUrl, zedcloudCtx, false)
 		reportLogs.Log = []*zmet.LogEntry{}
-		return
+		return false
 	}
 	_, _, err = zedcloud.SendOnAllIntf(zedcloudCtx, logsUrl,
 		int64(len(data)), buf, iteration, false)
@@ -426,13 +482,14 @@ func sendProtoStrForLogs(reportLogs *zmet.LogBundle, image string,
 		// hence we'll keep things in order for a given image
 		zedcloud.AddDeferred(image, data, logsUrl, zedcloudCtx, false)
 		reportLogs.Log = []*zmet.LogEntry{}
-		return
+		return false
 	}
 	if debug {
 		log.Printf("Sent %d bytes image %s to %s\n",
 			len(data), image, logsUrl)
 	}
 	reportLogs.Log = []*zmet.LogEntry{}
+	return true
 }
 
 func sendCtxInit() {

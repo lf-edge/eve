@@ -40,9 +40,6 @@ var rebootTimer *time.Timer
 func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 	usingSaved bool) bool {
 
-	// XXX hack for handlebaseos:
-	getconfigCtxGlobal = getconfigCtx
-
 	// XXX can this happen when usingSaved is set?
 	if parseOpCmds(config) {
 		log.Println("Reboot flag set, skipping config processing")
@@ -104,12 +101,9 @@ func shutdownApps(getconfigCtx *getconfigContext) {
 	}
 }
 
-// XXX hack for handlebaseos
-var getconfigCtxGlobal *getconfigContext
-
-func shutdownAppsGlobal() {
-	if getconfigCtxGlobal != nil {
-		shutdownApps(getconfigCtxGlobal)
+func shutdownAppsGlobal(ctx *zedagentContext) {
+	if ctx.getconfigCtx != nil {
+		shutdownApps(ctx.getconfigCtx)
 	}
 }
 
@@ -1093,14 +1087,13 @@ func publishAppInstanceConfig(getconfigCtx *getconfigContext,
 }
 
 func publishBaseOsConfig(getconfigCtx *getconfigContext,
-	status *types.BaseOsConfig) {
+	config *types.BaseOsConfig) {
 
-	key := status.Key()
-	log.Printf("publishBaseOsConfig UUID %s, %s\n",
-		key, status.BaseOsVersion)
+	key := config.Key()
+	log.Printf("publishBaseOsConfig UUID %s, %s, activate %v\n",
+		key, config.BaseOsVersion, config.Activate)
 	pub := getconfigCtx.pubBaseOsConfig
-	pub.Publish(key, status)
-	publishDeviceInfo = true
+	pub.Publish(key, config)
 }
 
 func getCertObjects(uuidAndVersion types.UUIDandVersion,

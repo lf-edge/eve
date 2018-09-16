@@ -87,7 +87,8 @@ type DNSContext struct {
 }
 
 type zedagentContext struct {
-	verifierRestarted        bool // Information from handleVerifierRestarted
+	getconfigCtx             *getconfigContext // Cross link
+	verifierRestarted        bool              // Information from handleVerifierRestarted
 	assignableAdapters       *types.AssignableAdapters
 	iteration                int
 	subNetworkObjectStatus   *pubsub.Subscription
@@ -152,6 +153,9 @@ func Run() {
 	subAa := adapters.SubscribeWithDebug(&aa, model, &debug)
 
 	zedagentCtx := zedagentContext{assignableAdapters: &aa}
+	// Cross link
+	getconfigCtx.zedagentCtx = &zedagentCtx
+	zedagentCtx.getconfigCtx = &getconfigCtx
 
 	// XXX placeholder for uplink config from zedcloud
 	pubDeviceUplinkConfig, err := pubsub.PublishWithDebug(agentName,
@@ -835,16 +839,13 @@ func handleBaseOsCreate(ctxArg interface{}, key string,
 		status.Error = errStr
 		status.ErrorTime = time.Now()
 		publishBaseOsStatus(ctx, &status)
-		publishDeviceInfo = true
 		return
 	}
 
-	baseOsGetActivationStatus(&status)
+	baseOsGetActivationStatus(ctx, &status)
 	publishBaseOsStatus(ctx, &status)
 
 	baseOsHandleStatusUpdate(ctx, &config, &status)
-
-	publishDeviceInfo = true
 }
 
 // base os config modify event
@@ -881,7 +882,6 @@ func handleBaseOsModify(ctxArg interface{}, key string,
 		status.Error = errStr
 		status.ErrorTime = time.Now()
 		publishBaseOsStatus(ctx, &status)
-		publishDeviceInfo = true
 		return
 	}
 
@@ -890,8 +890,6 @@ func handleBaseOsModify(ctxArg interface{}, key string,
 	publishBaseOsStatus(ctx, &status)
 
 	baseOsHandleStatusUpdate(ctx, &config, &status)
-
-	publishDeviceInfo = true
 }
 
 // base os config delete event
@@ -907,7 +905,6 @@ func handleBaseOsDelete(ctxArg interface{}, key string,
 
 	log.Printf("handleBaseOsDelete for %s\n", status.BaseOsVersion)
 	removeBaseOsConfig(ctx, status.Key())
-	publishDeviceInfo = true
 }
 
 // Wrappers around handleCertObjCreate/Modify/Delete

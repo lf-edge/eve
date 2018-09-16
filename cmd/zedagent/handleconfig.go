@@ -70,7 +70,8 @@ var configItemDefaults = configItems{configInterval: 60, metricInterval: 60,
 var configItemCurrent = configItemDefaults
 
 type getconfigContext struct {
-	ledManagerCount             int // Current count
+	zedagentCtx                 *zedagentContext // Cross link
+	ledManagerCount             int              // Current count
 	startTime                   time.Time
 	lastReceivedConfigFromCloud time.Time
 	readSavedConfig             bool
@@ -258,8 +259,9 @@ func getLatestConfig(url string, iteration int, updateInprogress *bool,
 			if err := zboot.MarkOtherPartitionStateActive(); err != nil {
 				log.Println(err)
 			} else {
+				// Update and publish the change
+				baseOsGetActivationStatusAll(getconfigCtx.zedagentCtx)
 				*updateInprogress = false
-				publishDeviceInfo = true
 			}
 		}
 	}
