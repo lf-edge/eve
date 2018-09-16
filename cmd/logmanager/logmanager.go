@@ -750,8 +750,9 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 			return
 		}
 	}
-	// Remember last time and level
-	var lastTime time.Time
+	// Remember last time and level. Start with now in case the file
+	// has no date.
+	lastTime := time.Now()
 	var lastLevel int
 	for {
 		line, err := r.reader.ReadString('\n')

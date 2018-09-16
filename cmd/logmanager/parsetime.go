@@ -83,18 +83,22 @@ func parseTime(ts string) (time.Time, bool) {
 	return t, true
 }
 
-// Look for 2018/09/13 23:01:20.214433
+// Look for 2018/09/13 23:01:20.214433 or
+// for 2018-09-13 23:01:20.214433
 func parseOldTime(date, timeStr string) (time.Time, bool) {
 	var t time.Time
-	re := regexp.MustCompile(`^\d{4}/\d{2}/\d{2}`)
-	matched := re.MatchString(date)
+	reDash := regexp.MustCompile(`^\d{4}-\d{2}-\d{2}`)
+	matched := reDash.MatchString(date)
 	if !matched {
-		return t, false
+		re := regexp.MustCompile(`^\d{4}/\d{2}/\d{2}`)
+		matched := re.MatchString(date)
+		if !matched {
+			return t, false
+		}
+		re = regexp.MustCompile("/")
+		date = re.ReplaceAllLiteralString(date, "-")
 	}
-	re = regexp.MustCompile("/")
-	newDateFormat := re.ReplaceAllLiteralString(date, "-")
-
-	newDateAndTime := newDateFormat + "T" + timeStr
+	newDateAndTime := date + "T" + timeStr
 	layout := "2006-01-02T15:04:05"
 
 	///convert newDateAndTime type string to type time.time
