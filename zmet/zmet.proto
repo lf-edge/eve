@@ -539,7 +539,7 @@ message ZMetricFlow {
   string id = 1;      // IpSec Conn-Id/Lisp
   string name = 2;    // IpSec Tun-Name
   uint32 type = 3;    // IpSec-Vpn or, LISP
-  string iid  = 4;    // LISP: IID
+  uint64 iid  = 4;    // LISP: IID
   uint64 estTime = 5; // in seconds
   ZMetricFlowEndPoint lEndPoint = 10;
   repeated ZMetricFlowEndPoint rEndPoint = 11;
