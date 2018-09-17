@@ -101,18 +101,3 @@ func CastGlobalConfig(in interface{}) GlobalConfig {
 	}
 	return output
 }
-
-// To print a struct in json
-// XXX remove?
-func PrintGlobalConfig() {
-	gc := GlobalConfig{}
-	gc.AgentSettings = make(map[string]perAgentSettings)
-	gc.AgentSettings["global"] = perAgentSettings{Debug: true}
-	gc.AgentSettings["zedagent"] = perAgentSettings{Debug: true}
-	log.Printf("GlobalConfig: %+v\n", gc)
-	b, err := json.Marshal(gc)
-	if err != nil {
-		log.Fatal(err, "json Marshal in PrintGlobalConfig")
-	}
-	log.Printf("%s\n", b)
-}

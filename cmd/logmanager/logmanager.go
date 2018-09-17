@@ -11,6 +11,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/satori/go.uuid"
+	"github.com/sirupsen/logrus"
 	"github.com/zededa/api/zmet"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
@@ -755,14 +756,45 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 		}
 		// remove trailing "/n" from line
 		line = line[0 : len(line)-1]
-		// Reformat/add timestamp to front of line
-		line, lastTime, lastLevel := parseDateTime(line, lastTime,
-			lastLevel)
-		// XXX lint
-		lastLevel = lastLevel
-		// XXX set iid to PID? From where?
-		logChan <- logEntry{source: r.source, content: line,
-			timestamp: lastTime}
+		// Check if the line is json output from logrus
+		loginfo, ok := agentlog.ParseLoginfo(line)
+		if ok {
+			if debug {
+				log.Printf("Parsed json %+v\n", loginfo)
+			}
+			// XXX parse time
+			timestamp, ok := parseTime(loginfo.Time)
+			if !ok {
+				timestamp = time.Now()
+			} else {
+				lastTime = timestamp
+			}
+			level, err := logrus.ParseLevel(loginfo.Level)
+			if err != nil {
+				log.Printf("ParseLevel failed: %s\n", err)
+				level = logrus.DebugLevel
+			}
+			// XXX add level comparison to see whether we should
+			// drop. Here or in processEvents?
+
+			// XXX string for local/removeLogLevel?
+
+			// XXX set iid to PID? From where?
+			// We add time to front of msg.
+			logChan <- logEntry{source: r.source,
+				content:   loginfo.Time + ": " + loginfo.Msg,
+				severity:  loginfo.Level,
+				timestamp: timestamp,
+			}
+			lastLevel = int(level)
+		} else {
+			// Reformat/add timestamp to front of line
+			line, lastTime, lastLevel = parseDateTime(line, lastTime,
+				lastLevel)
+			// XXX set iid to PID? From where?
+			logChan <- logEntry{source: r.source, content: line,
+				timestamp: lastTime}
+		}
 	}
 	// Update size
 	fi, err = r.fileDesc.Stat()
