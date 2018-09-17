@@ -84,14 +84,12 @@ enum ZSwState {
   DOWNLOADED		= 3;	// Download completed, verification in-progress
   DELIVERED		= 4;	// Verification completed
   INSTALLED		= 5;	// Installed, ready for activation
-}
-
-enum ZDomState {
-  DomINVALID		= 0;
-  PREPARING		= 1; // Look at ZSwState
-  RUNNING		= 2; // DomU has been created, domId exists. This is not
-			     // domU xen state
-  ERROR			= 3; // Look at ErrInfo
+  BOOTING               = 6;    // booting
+  RUNNING               = 7;    // running
+  HALTING               = 8;    // being halted
+  HALTED                = 9;    // Halted
+  REFRESHING            = 10;   // Refreshing due to config change
+  PURGING               = 11;   // Purging due to config change
 }
 
 // Deprecate since we can't determine it on the device
@@ -175,7 +173,7 @@ message ZInfoApp {
   bool systemApp = 6;
   string AppName = 7;
   repeated ZInfoSW softwareList = 8;
-  bool activated = 9;
+  bool activated = 9;                       // deprecated
   google.protobuf.Timestamp errorTime = 11; //deprecated, use ErrorInfo
 
   google.protobuf.Timestamp bootTime = 12;
@@ -183,7 +181,6 @@ message ZInfoApp {
   repeated ErrorInfo appErr = 14;
   ZSwState state = 15;
   repeated ZInfoNetwork network = 16;	// XXX add?
-  ZDomState runState = 17; 
 }
 
 // ipSec state information
