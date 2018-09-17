@@ -4,9 +4,9 @@
 package zedmanager
 
 import (
+	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/types"
-	"log"
 )
 
 func AddOrRefcountDownloaderConfig(ctx *zedmanagerContext, safename string,

@@ -5,9 +5,8 @@ package agentlog
 
 import (
 	"fmt"
-	"github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/zboot"
-	"log"
 	"os"
 	runtimedebug "runtime/debug"
 	"time"
@@ -22,21 +21,20 @@ func initImpl(agentName string, logdir string, redirect bool) (*os.File, error) 
 	}
 	if redirect {
 		log.SetOutput(logf)
-		log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
-
 		// Report nano timestamps
-		formatter := logrus.JSONFormatter{
+		formatter := log.JSONFormatter{
 			TimestampFormat: time.RFC3339Nano,
 		}
-		logrus.SetFormatter(&formatter)
-		logrus.RegisterExitHandler(printStack)
+		log.SetFormatter(&formatter)
+		log.RegisterExitHandler(printStack)
+		log.SetLevel(log.DebugLevel)
 	}
 	return logf, nil
 }
 
 func printStack() {
 	st := runtimedebug.Stack()
-	logrus.Error("fatal stack trace:\n%v\n", string(st))
+	log.Error("fatal stack trace:\n%v\n", string(st))
 }
 
 func Init(agentName string) (*os.File, error) {

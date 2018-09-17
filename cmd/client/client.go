@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"github.com/golang/protobuf/proto"
 	"github.com/satori/go.uuid"
+	log "github.com/sirupsen/logrus"
 	"github.com/zededa/api/zmet"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/devicenetwork"
@@ -21,7 +22,6 @@ import (
 	"github.com/zededa/go-provision/zedcloud"
 	"io"
 	"io/ioutil"
-	"log"
 	"mime"
 	"net/http"
 	"os"
@@ -89,6 +89,7 @@ func Run() {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
+	// XXX json to file; text to stdout/console?
 	logf, err := agentlog.Init("client")
 	if err != nil {
 		log.Fatal(err)
@@ -110,7 +111,9 @@ func Run() {
 			log.Fatal(err)
 		}
 	}
-	log.Printf("Starting %s\n", agentName)
+	log.Infof("info Starting %s\n", agentName)
+	log.Printf("printf Starting %s\n", agentName)
+	log.Debugf("debug Starting %s\n", agentName)
 	operations := map[string]bool{
 		"selfRegister": false,
 		"ping":         false,
@@ -121,7 +124,7 @@ func Run() {
 		if _, ok := operations[op]; ok {
 			operations[op] = true
 		} else {
-			log.Printf("Unknown arg %s\n", op)
+			log.Error("Unknown arg %s\n", op)
 			log.Fatal("Usage: " + os.Args[0] +
 				"[-o] [-d <identityDirname> [<operations>...]]")
 		}
@@ -147,7 +150,7 @@ func Run() {
 		uuidStr := strings.TrimSpace(string(b))
 		oldUUID, err = uuid.FromString(uuidStr)
 		if err != nil {
-			log.Printf("Malformed UUID file ignored: %s\n", err)
+			log.Warningf("Malformed UUID file ignored: %s\n", err)
 		}
 	}
 	var oldHardwaremodel string
@@ -171,8 +174,8 @@ func Run() {
 		}
 		// Tell the world that we have issues
 		types.UpdateLedManagerConfig(10)
-		log.Println(err)
-		log.Printf("You need to create this file for this hardware: %s\n",
+		log.Warningln(err)
+		log.Warningf("You need to create this file for this hardware: %s\n",
 			DNCFilename)
 		time.Sleep(time.Second)
 		tries += 1

@@ -7,9 +7,9 @@ package zedrouter
 
 import (
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/types"
-	"log"
 	"net"
 	"os"
 	"os/exec"

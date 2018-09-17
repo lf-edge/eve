@@ -11,7 +11,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/satori/go.uuid"
-	"github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 	"github.com/zededa/api/zmet"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
@@ -25,7 +25,6 @@ import (
 	"github.com/zededa/go-provision/zedcloud"
 	"io"
 	"io/ioutil"
-	"log"
 	"os"
 	"strings"
 	"time"
@@ -466,6 +465,7 @@ func HandleLogEvent(event logEntry, reportLogs *zmet.LogBundle, counter int) {
 	}
 	logDetails := &zmet.LogEntry{}
 	logDetails.Content = event.content
+	logDetails.Severity = event.severity
 	logDetails.Timestamp, _ = ptypes.TimestampProto(event.timestamp)
 	logDetails.Source = event.source
 	logDetails.Iid = event.iid
@@ -769,10 +769,10 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 			} else {
 				lastTime = timestamp
 			}
-			level, err := logrus.ParseLevel(loginfo.Level)
+			level, err := log.ParseLevel(loginfo.Level)
 			if err != nil {
 				log.Printf("ParseLevel failed: %s\n", err)
-				level = logrus.DebugLevel
+				level = log.DebugLevel
 			}
 			// XXX add level comparison to see whether we should
 			// drop. Here or in processEvents?

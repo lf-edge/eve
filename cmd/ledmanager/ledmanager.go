@@ -20,6 +20,7 @@ package ledmanager
 import (
 	"flag"
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/pidfile"
@@ -27,7 +28,6 @@ import (
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch" // XXX remove
 	"io/ioutil"
-	"log"
 	"os"
 	"os/exec"
 	"time"

@@ -8,7 +8,7 @@ package watch
 import (
 	"fmt"
 	"github.com/fsnotify/fsnotify"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"os"
 	"path/filepath"
 )

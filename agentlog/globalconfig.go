@@ -9,8 +9,8 @@ package agentlog
 
 import (
 	"encoding/json"
+	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/pubsub"
-	"log"
 )
 
 type perAgentSettings struct {

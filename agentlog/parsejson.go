@@ -5,7 +5,7 @@ package agentlog
 
 import (
 	"encoding/json"
-	"log"
+	log "github.com/sirupsen/logrus"
 )
 
 const debug = true // XXX remove?

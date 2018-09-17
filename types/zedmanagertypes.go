@@ -5,7 +5,7 @@ package types
 
 import (
 	"github.com/satori/go.uuid"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"net"
 	"time"
 )
