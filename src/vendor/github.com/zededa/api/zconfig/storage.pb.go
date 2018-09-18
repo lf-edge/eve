@@ -40,7 +40,7 @@ var DsType_value = map[string]int32{
 func (x DsType) String() string {
 	return proto.EnumName(DsType_name, int32(x))
 }
-func (DsType) EnumDescriptor() ([]byte, []int) { return fileDescriptor5, []int{0} }
+func (DsType) EnumDescriptor() ([]byte, []int) { return fileDescriptor1, []int{0} }
 
 type Format int32
 
@@ -79,7 +79,7 @@ var Format_value = map[string]int32{
 func (x Format) String() string {
 	return proto.EnumName(Format_name, int32(x))
 }
-func (Format) EnumDescriptor() ([]byte, []int) { return fileDescriptor5, []int{1} }
+func (Format) EnumDescriptor() ([]byte, []int) { return fileDescriptor1, []int{1} }
 
 type Target int32
 
@@ -109,7 +109,7 @@ var Target_value = map[string]int32{
 func (x Target) String() string {
 	return proto.EnumName(Target_name, int32(x))
 }
-func (Target) EnumDescriptor() ([]byte, []int) { return fileDescriptor5, []int{2} }
+func (Target) EnumDescriptor() ([]byte, []int) { return fileDescriptor1, []int{2} }
 
 type DriveType int32
 
@@ -140,7 +140,7 @@ var DriveType_value = map[string]int32{
 func (x DriveType) String() string {
 	return proto.EnumName(DriveType_name, int32(x))
 }
-func (DriveType) EnumDescriptor() ([]byte, []int) { return fileDescriptor5, []int{3} }
+func (DriveType) EnumDescriptor() ([]byte, []int) { return fileDescriptor1, []int{3} }
 
 type SignatureInfo struct {
 	Intercertsurl string `protobuf:"bytes,1,opt,name=intercertsurl" json:"intercertsurl,omitempty"`
@@ -151,7 +151,7 @@ type SignatureInfo struct {
 func (m *SignatureInfo) Reset()                    { *m = SignatureInfo{} }
 func (m *SignatureInfo) String() string            { return proto.CompactTextString(m) }
 func (*SignatureInfo) ProtoMessage()               {}
-func (*SignatureInfo) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{0} }
+func (*SignatureInfo) Descriptor() ([]byte, []int) { return fileDescriptor1, []int{0} }
 
 func (m *SignatureInfo) GetIntercertsurl() string {
 	if m != nil {
@@ -187,7 +187,7 @@ type DatastoreConfig struct {
 func (m *DatastoreConfig) Reset()                    { *m = DatastoreConfig{} }
 func (m *DatastoreConfig) String() string            { return proto.CompactTextString(m) }
 func (*DatastoreConfig) ProtoMessage()               {}
-func (*DatastoreConfig) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{1} }
+func (*DatastoreConfig) Descriptor() ([]byte, []int) { return fileDescriptor1, []int{1} }
 
 func (m *DatastoreConfig) GetId() string {
 	if m != nil {
@@ -246,7 +246,7 @@ type Image struct {
 func (m *Image) Reset()                    { *m = Image{} }
 func (m *Image) String() string            { return proto.CompactTextString(m) }
 func (*Image) ProtoMessage()               {}
-func (*Image) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{2} }
+func (*Image) Descriptor() ([]byte, []int) { return fileDescriptor1, []int{2} }
 
 func (m *Image) GetUuidandversion() *UUIDandVersion {
 	if m != nil {
@@ -309,7 +309,7 @@ type Drive struct {
 func (m *Drive) Reset()                    { *m = Drive{} }
 func (m *Drive) String() string            { return proto.CompactTextString(m) }
 func (*Drive) ProtoMessage()               {}
-func (*Drive) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{3} }
+func (*Drive) Descriptor() ([]byte, []int) { return fileDescriptor1, []int{3} }
 
 func (m *Drive) GetImage() *Image {
 	if m != nil {
@@ -364,9 +364,9 @@ func init() {
 	proto.RegisterEnum("DriveType", DriveType_name, DriveType_value)
 }
 
-func init() { proto.RegisterFile("storage.proto", fileDescriptor5) }
+func init() { proto.RegisterFile("storage.proto", fileDescriptor1) }
 
-var fileDescriptor5 = []byte{
+var fileDescriptor1 = []byte{
 	// 698 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x5c, 0x54, 0xd1, 0x6e, 0xea, 0x46,
 	0x10, 0xbd, 0x06, 0x6c, 0x60, 0x12, 0xc8, 0x6a, 0x55, 0x55, 0xd6, 0xd5, 0xbd, 0x4a, 0x8a, 0xf2,

@@ -152,10 +152,10 @@
   version = "v2.18.05"
 
 [[projects]]
-  branch = "master"
-  name = "github.com/shirou/w32"
+  name = "github.com/sirupsen/logrus"
   packages = ["."]
-  revision = "bb4de0191aa41b5507caa14b0650cdbddcd9280b"
+  revision = "3e01752db0189b9157070a0e1668a620f9a85da2"
+  version = "v1.0.6"
 
 [[projects]]
   name = "github.com/vishvananda/netlink"
@@ -179,7 +179,7 @@
     "zconfig",
     "zmet"
   ]
-  revision = "2555d52f952cd71be77836b579cf65653b1e4251"
+  revision = "cbedf85ae2defab80085ebe0d3d7904c44a2f0ef"
 
 [[projects]]
   branch = "master"
@@ -202,7 +202,8 @@
     "internal/subtle",
     "ocsp",
     "poly1305",
-    "ssh"
+    "ssh",
+    "ssh/terminal"
   ]
   revision = "a49355c7e3f8fe157a85be2f77e6e269a0f89602"
 
@@ -218,6 +219,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "ed5fbd3882a0e564d035d72128221a5f2ce6f8fd47830325e9e9fcccafef4eb1"
+  inputs-digest = "92a7c6d53ca9e922d478177d9740cb5a825fcbc7effc8b45d7f8280c7999d424"
   solver-name = "gps-cdcl"
   solver-version = 1
