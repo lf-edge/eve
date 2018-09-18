@@ -27,7 +27,6 @@ func initImpl(agentName string, logdir string, redirect bool) (*os.File, error) 
 		}
 		log.SetFormatter(&formatter)
 		log.RegisterExitHandler(printStack)
-		log.SetLevel(log.DebugLevel)
 	}
 	return logf, nil
 }

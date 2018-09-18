@@ -129,6 +129,11 @@ func Run() {
 	flag.Parse()
 	debug = *debugPtr
 	debugOverride = debug
+	if debugOverride {
+		log.SetLevel(log.DebugLevel)
+	} else {
+		log.SetLevel(log.InfoLevel)
+	}
 	logDirName := *logdirPtr
 	force := *forcePtr
 	if *versionPtr {
@@ -285,10 +290,7 @@ func Run() {
 			subDeviceNetworkStatus.ProcessChange(change)
 
 		case <-publishTimer.C:
-			if debug {
-				log.Println("publishTimer at",
-					time.Now())
-			}
+			log.Debugln("publishTimer at", time.Now())
 			err := pub.Publish("global", zedcloud.GetCloudMetrics())
 			if err != nil {
 				log.Println(err)
@@ -377,10 +379,8 @@ func processEvents(image string, prevLastSent time.Time,
 			if messageCount >= logMaxMessages ||
 				byteCount >= logMaxBytes {
 
-				if debug {
-					log.Printf("processEvents(%s): sending at messageCount %d, byteCount %d\n",
-						image, messageCount, byteCount)
-				}
+				log.Debugf("processEvents(%s): sending at messageCount %d, byteCount %d\n",
+					image, messageCount, byteCount)
 				sent = sendProtoStrForLogs(reportLogs, image,
 					iteration)
 				messageCount = 0
@@ -393,12 +393,10 @@ func processEvents(image string, prevLastSent time.Time,
 
 		case <-flushTimer.C:
 			if messageCount > 0 {
-				if debug {
-					log.Printf("processEvents(%s) flush at %s dropped %d messageCount %d bytecount %d\n",
-						image, time.Now().String(),
-						dropped, messageCount,
-						byteCount)
-				}
+				log.Debugf("processEvents(%s) flush at %s dropped %d messageCount %d bytecount %d\n",
+					image, time.Now().String(),
+					dropped, messageCount,
+					byteCount)
 				sent := sendProtoStrForLogs(reportLogs, image,
 					iteration)
 				messageCount = 0
@@ -414,9 +412,7 @@ func processEvents(image string, prevLastSent time.Time,
 
 // Touch/create a file to keep track of when things where sent before a reboot
 func recordLastSent(image string) {
-	if debug {
-		log.Printf("recordLastSent(%s)\n", image)
-	}
+	log.Debugf("recordLastSent(%s)\n", image)
 	filename := fmt.Sprintf("/persist/%s/%s", lastSentDirname, image)
 	_, err := os.Stat(filename)
 	if err != nil {
@@ -459,10 +455,8 @@ func HandleLogEvent(event logEntry, reportLogs *zmet.LogBundle, counter int) {
 	// Assign a unique msgId for each message
 	msgId := msgIdCounter
 	msgIdCounter += 1
-	if debug {
-		log.Printf("Read event from %s time %v id %d: %s\n",
-			event.source, event.timestamp, msgId, event.content)
-	}
+	log.Debugf("Read event from %s time %v id %d: %s\n",
+		event.source, event.timestamp, msgId, event.content)
 	logDetails := &zmet.LogEntry{}
 	logDetails.Content = event.content
 	logDetails.Severity = event.severity
@@ -480,16 +474,12 @@ func sendProtoStrForLogs(reportLogs *zmet.LogBundle, image string,
 	reportLogs.DevID = *proto.String(devUUID.String())
 	reportLogs.Image = image
 
-	if debug {
-		log.Println("sendProtoStrForLogs called...", iteration)
-	}
+	log.Debugln("sendProtoStrForLogs called...", iteration)
 	data, err := proto.Marshal(reportLogs)
 	if err != nil {
 		log.Fatal("sendProtoStrForLogs proto marshaling error: ", err)
 	}
-	if debug {
-		log.Printf("Log Details (len %d): %s\n", len(data), reportLogs)
-	}
+	log.Debugf("Log Details (len %d): %s\n", len(data), reportLogs)
 	buf := bytes.NewBuffer(data)
 	if buf == nil {
 		log.Fatal("sendProtoStrForLogs malloc error:")
@@ -514,10 +504,7 @@ func sendProtoStrForLogs(reportLogs *zmet.LogBundle, image string,
 		reportLogs.Log = []*zmet.LogEntry{}
 		return false
 	}
-	if debug {
-		log.Printf("Sent %d bytes image %s to %s\n",
-			len(data), image, logsUrl)
-	}
+	log.Debugf("Sent %d bytes image %s to %s\n", len(data), image, logsUrl)
 	reportLogs.Log = []*zmet.LogEntry{}
 	return true
 }
@@ -571,10 +558,8 @@ func HandleLogDirEvent(change string, logDirName string, ctx interface{},
 	operation := string(change[0])
 	fileName := string(change[2:])
 	if !strings.HasSuffix(fileName, ".log") {
-		if debug {
-			log.Printf("Ignoring file <%s> operation %s\n",
-				fileName, operation)
-		}
+		log.Debugf("Ignoring file <%s> operation %s\n",
+			fileName, operation)
 		return
 	}
 	logFilePath := logDirName + "/" + fileName
@@ -596,9 +581,7 @@ func handleXenLogDirModify(context interface{},
 	filename string, source string) {
 
 	if strings.Compare(source, "hypervisor") == 0 {
-		if debug {
-			log.Println("Ignoring hypervisor log while sending domU log")
-		}
+		log.Debugln("Ignoring hypervisor log while sending domU log")
 		return
 	}
 	ctx := context.(*imageLoggerContext)
@@ -746,9 +729,7 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 		if err != nil {
 			// XXX do we need to look for file truncation during
 			// this loop?
-			if debug {
-				log.Println(err)
-			}
+			log.Debugln(err)
 			if err != io.EOF {
 				log.Printf(" > Failed!: %v\n", err)
 			}
@@ -759,9 +740,7 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 		// Check if the line is json output from logrus
 		loginfo, ok := agentlog.ParseLoginfo(line)
 		if ok {
-			if debug {
-				log.Printf("Parsed json %+v\n", loginfo)
-			}
+			log.Debugf("Parsed json %+v\n", loginfo)
 			// XXX parse time
 			timestamp, ok := parseTime(loginfo.Time)
 			if !ok {
@@ -838,25 +817,21 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Printf("handleGlobalConfigModify for %s\n", key)
-	if val, ok := agentlog.GetDebug(ctx.subGlobalConfig, agentName); ok {
-		debug = val || debugOverride
-		log.Printf("handleGlobalConfigModify: debug %v\n", debug)
-	}
-	// XXX add loglevel etc
+	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		debugOverride)
 	log.Printf("handleGlobalConfigModify done for %s\n", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Printf("handleGlobalConfigDelete for %s\n", key)
-
+	ctx := ctxArg.(*logmanagerContext)
 	if key != "global" {
 		log.Printf("handleGlobalConfigDelete: ignoring %s\n", key)
 		return
 	}
-	debug = false || debugOverride
-	log.Printf("handleGlobalConfigDelete: debug %v\n", debug)
-	// XXX add loglevel etc
+	log.Printf("handleGlobalConfigDelete for %s\n", key)
+	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		debugOverride)
 	log.Printf("handleGlobalConfigDelete done for %s\n", key)
 }

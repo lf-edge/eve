@@ -78,6 +78,11 @@ func Run() {
 	versionFlag := *versionPtr
 	debug = *debugPtr
 	debugOverride = debug
+	if debugOverride {
+		log.SetLevel(log.DebugLevel)
+	} else {
+		log.SetLevel(log.InfoLevel)
+	}
 	forceOnboardingCert := *forcePtr
 	identityDirname := *dirPtr
 	useStdout := *stdoutPtr
@@ -111,9 +116,9 @@ func Run() {
 			log.Fatal(err)
 		}
 	}
-	log.Infof("info Starting %s\n", agentName)
-	log.Printf("printf Starting %s\n", agentName)
-	log.Debugf("debug Starting %s\n", agentName)
+	log.Printf("Starting %s\n", agentName)
+	log.Debugf("debug Starting %s\n", agentName) // XXX
+	log.Infof("info Starting %s\n", agentName) // XXX
 	operations := map[string]bool{
 		"selfRegister": false,
 		"ping":         false,
@@ -669,25 +674,21 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Printf("handleGlobalConfigModify for %s\n", key)
-	if val, ok := agentlog.GetDebug(ctx.SubGlobalConfig, agentName); ok {
-		debug = val || debugOverride
-		log.Printf("handleGlobalConfigModify: debug %v\n", debug)
-	}
-	// XXX add loglevel etc
+	debug = agentlog.HandleGlobalConfig(ctx.SubGlobalConfig, agentName,
+		debugOverride)
 	log.Printf("handleGlobalConfigModify done for %s\n", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Printf("handleGlobalConfigDelete for %s\n", key)
-
+	ctx := ctxArg.(*devicenetwork.DeviceNetworkContext)
 	if key != "global" {
 		log.Printf("handleGlobalConfigDelete: ignoring %s\n", key)
 		return
 	}
-	debug = false || debugOverride
-	log.Printf("handleGlobalConfigDelete: debug %v\n", debug)
-	// XXX add loglevel etc
+	log.Printf("handleGlobalConfigDelete for %s\n", key)
+	debug = agentlog.HandleGlobalConfig(ctx.SubGlobalConfig, agentName,
+		debugOverride)
 	log.Printf("handleGlobalConfigDelete done for %s\n", key)
 }
