@@ -909,5 +909,9 @@ func dropEvent(source string, level log.Level) bool {
 	if l, ok := remoteMap[source]; ok {
 		return level > l
 	}
+	// Any default setting?
+	if l, ok := remoteMap["default"]; ok {
+		return level > l
+	}
 	return false
 }
