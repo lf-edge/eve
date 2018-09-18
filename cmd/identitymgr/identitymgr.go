@@ -41,9 +41,13 @@ var Version = "No version specified"
 
 // Information for handleCreate/Modify/Delete
 type identityContext struct {
-	subEIDConfig *pubsub.Subscription
-	pubEIDStatus *pubsub.Publication
+	subEIDConfig    *pubsub.Subscription
+	pubEIDStatus    *pubsub.Publication
+	subGlobalConfig *pubsub.Subscription
 }
+
+var debug = false
+var debugOverride bool // From command line arg
 
 func Run() {
 	logf, err := agentlog.Init(agentName)
@@ -53,7 +57,10 @@ func Run() {
 	defer logf.Close()
 
 	versionPtr := flag.Bool("v", false, "Version")
+	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
+	debug = *debugPtr
+	debugOverride = debug
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
@@ -65,17 +72,28 @@ func Run() {
 
 	identityCtx := identityContext{}
 
-	pubEIDStatus, err := pubsub.Publish(agentName,
-		types.EIDStatus{})
+	pubEIDStatus, err := pubsub.PublishWithDebug(agentName,
+		types.EIDStatus{}, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
 	identityCtx.pubEIDStatus = pubEIDStatus
 	pubEIDStatus.ClearRestarted()
 
+	// Look for global config like debug
+	subGlobalConfig, err := pubsub.SubscribeWithDebug("",
+		agentlog.GlobalConfig{}, false, &identityCtx, &debug)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
+	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
+	identityCtx.subGlobalConfig = subGlobalConfig
+	subGlobalConfig.Activate()
+
 	// Subscribe to EIDConfig from zedmanager
-	subEIDConfig, err := pubsub.Subscribe("zedmanager",
-		types.EIDConfig{}, false, &identityCtx)
+	subEIDConfig, err := pubsub.SubscribeWithDebug("zedmanager",
+		types.EIDConfig{}, false, &identityCtx, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -87,6 +105,9 @@ func Run() {
 
 	for {
 		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+
 		case change := <-subEIDConfig.C:
 			subEIDConfig.ProcessChange(change)
 		}
@@ -441,4 +462,36 @@ func handleDelete(ctx *identityContext, key string, status *types.EIDStatus) {
 	// Write out what we modified aka delete
 	unpublishEIDStatus(ctx, key)
 	log.Printf("handleDelete(%s) done for %s\n", key, status.DisplayName)
+}
+
+func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*identityContext)
+	if key != "global" {
+		log.Printf("handleGlobalConfigModify: ignoring %s\n", key)
+		return
+	}
+	log.Printf("handleGlobalConfigModify for %s\n", key)
+	if val, ok := agentlog.GetDebug(ctx.subGlobalConfig, agentName); ok {
+		debug = val || debugOverride
+		log.Printf("handleGlobalConfigModify: debug %v\n", debug)
+	}
+	// XXX add loglevel etc
+	log.Printf("handleGlobalConfigModify done for %s\n", key)
+}
+
+func handleGlobalConfigDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	log.Printf("handleGlobalConfigDelete for %s\n", key)
+
+	if key != "global" {
+		log.Printf("handleGlobalConfigDelete: ignoring %s\n", key)
+		return
+	}
+	debug = false || debugOverride
+	log.Printf("handleGlobalConfigDelete: debug %v\n", debug)
+	// XXX add loglevel etc
+	log.Printf("handleGlobalConfigDelete done for %s\n", key)
 }

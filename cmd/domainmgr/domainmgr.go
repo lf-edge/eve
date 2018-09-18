@@ -71,9 +71,11 @@ type domainContext struct {
 	subDeviceNetworkStatus *pubsub.Subscription
 	subDomainConfig        *pubsub.Subscription
 	pubDomainStatus        *pubsub.Publication
+	subGlobalConfig        *pubsub.Subscription
 }
 
 var debug = false
+var debugOverride bool // From command line arg
 
 func Run() {
 	handlersInit()
@@ -87,6 +89,7 @@ func Run() {
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
 	debug = *debugPtr
+	debugOverride = debug
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
@@ -130,21 +133,35 @@ func Run() {
 	// any DomainConfig
 	model := hardware.GetHardwareModel()
 	aa := types.AssignableAdapters{}
-	subAa := adapters.Subscribe(&aa, model)
+	subAa := adapters.SubscribeWithDebug(&aa, model, &debug)
 
 	domainCtx := domainContext{assignableAdapters: &aa}
 
-	pubDomainStatus, err := pubsub.Publish(agentName,
-		types.DomainStatus{})
+	pubDomainStatus, err := pubsub.PublishWithDebug(agentName,
+		types.DomainStatus{}, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
 	domainCtx.pubDomainStatus = pubDomainStatus
 	pubDomainStatus.ClearRestarted()
 
+	// Look for global config like debug
+	subGlobalConfig, err := pubsub.SubscribeWithDebug("",
+		agentlog.GlobalConfig{}, false, &domainCtx, &debug)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
+	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
+	domainCtx.subGlobalConfig = subGlobalConfig
+	subGlobalConfig.Activate()
+
 	for !subAa.Found {
 		log.Printf("Waiting for AssignableAdapters %v\n", subAa.Found)
 		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+
 		case change := <-subAa.C:
 			subAa.ProcessChange(change)
 		}
@@ -152,8 +169,8 @@ func Run() {
 	log.Printf("Have %d assignable adapters\n", len(aa.IoBundleList))
 
 	// Subscribe to DomainConfig from zedmanager
-	subDomainConfig, err := pubsub.Subscribe("zedmanager",
-		types.DomainConfig{}, false, &domainCtx)
+	subDomainConfig, err := pubsub.SubscribeWithDebug("zedmanager",
+		types.DomainConfig{}, false, &domainCtx, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -163,8 +180,8 @@ func Run() {
 	domainCtx.subDomainConfig = subDomainConfig
 	subDomainConfig.Activate()
 
-	subDeviceNetworkStatus, err := pubsub.Subscribe("zedrouter",
-		types.DeviceNetworkStatus{}, false, &domainCtx)
+	subDeviceNetworkStatus, err := pubsub.SubscribeWithDebug("zedrouter",
+		types.DeviceNetworkStatus{}, false, &domainCtx, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -175,6 +192,9 @@ func Run() {
 
 	for {
 		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+
 		case change := <-subDomainConfig.C:
 			subDomainConfig.ProcessChange(change)
 
@@ -1513,4 +1533,36 @@ func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 	deviceNetworkStatus = types.DeviceNetworkStatus{}
 	devicenetwork.ProxyToEnv(deviceNetworkStatus.ProxyConfig)
 	log.Printf("handleDNSDelete done for %s\n", key)
+}
+
+func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*domainContext)
+	if key != "global" {
+		log.Printf("handleGlobalConfigModify: ignoring %s\n", key)
+		return
+	}
+	log.Printf("handleGlobalConfigModify for %s\n", key)
+	if val, ok := agentlog.GetDebug(ctx.subGlobalConfig, agentName); ok {
+		debug = val || debugOverride
+		log.Printf("handleGlobalConfigModify: debug %v\n", debug)
+	}
+	// XXX add loglevel etc
+	log.Printf("handleGlobalConfigModify done for %s\n", key)
+}
+
+func handleGlobalConfigDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	log.Printf("handleGlobalConfigDelete for %s\n", key)
+
+	if key != "global" {
+		log.Printf("handleGlobalConfigDelete: ignoring %s\n", key)
+		return
+	}
+	debug = false || debugOverride
+	log.Printf("handleGlobalConfigDelete: debug %v\n", debug)
+	// XXX add loglevel etc
+	log.Printf("handleGlobalConfigDelete done for %s\n", key)
 }

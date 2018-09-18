@@ -72,7 +72,11 @@ type verifierContext struct {
 	pubAppImgStatus *pubsub.Publication
 	subBaseOsConfig *pubsub.Subscription
 	pubBaseOsStatus *pubsub.Publication
+	subGlobalConfig *pubsub.Subscription
 }
+
+var debug = false
+var debugOverride bool // From command line arg
 
 func Run() {
 	handlersInit()
@@ -83,7 +87,10 @@ func Run() {
 	defer logf.Close()
 
 	versionPtr := flag.Bool("v", false, "Version")
+	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
+	debug = *debugPtr
+	debugOverride = debug
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
@@ -100,24 +107,35 @@ func Run() {
 	ctx := verifierContext{}
 
 	// Set up our publications before the subscriptions so ctx is set
-	pubAppImgStatus, err := pubsub.PublishScope(agentName, appImgObj,
-		types.VerifyImageStatus{})
+	pubAppImgStatus, err := pubsub.PublishScopeWithDebug(agentName, appImgObj,
+		types.VerifyImageStatus{}, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.pubAppImgStatus = pubAppImgStatus
 	pubAppImgStatus.ClearRestarted()
 
-	pubBaseOsStatus, err := pubsub.PublishScope(agentName, baseOsObj,
-		types.VerifyImageStatus{})
+	pubBaseOsStatus, err := pubsub.PublishScopeWithDebug(agentName, baseOsObj,
+		types.VerifyImageStatus{}, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.pubBaseOsStatus = pubBaseOsStatus
 	pubBaseOsStatus.ClearRestarted()
 
-	subAppImgConfig, err := pubsub.SubscribeScope("zedmanager", appImgObj,
-		types.VerifyImageConfig{}, false, &ctx)
+	// Look for global config like debug
+	subGlobalConfig, err := pubsub.SubscribeWithDebug("",
+		agentlog.GlobalConfig{}, false, &ctx, &debug)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
+	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
+	ctx.subGlobalConfig = subGlobalConfig
+	subGlobalConfig.Activate()
+
+	subAppImgConfig, err := pubsub.SubscribeScopeWithDebug("zedmanager",
+		appImgObj, types.VerifyImageConfig{}, false, &ctx, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -126,8 +144,8 @@ func Run() {
 	ctx.subAppImgConfig = subAppImgConfig
 	subAppImgConfig.Activate()
 
-	subBaseOsConfig, err := pubsub.SubscribeScope("zedagent", baseOsObj,
-		types.VerifyImageConfig{}, false, &ctx)
+	subBaseOsConfig, err := pubsub.SubscribeScopeWithDebug("zedagent",
+		baseOsObj, types.VerifyImageConfig{}, false, &ctx, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -149,6 +167,9 @@ func Run() {
 
 	for {
 		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+
 		case change := <-subAppImgConfig.C:
 			subAppImgConfig.ProcessChange(change)
 
@@ -1036,4 +1057,36 @@ func doDelete(status *types.VerifyImageStatus) {
 		}
 	}
 	log.Printf("doDelete(%v) done\n", status.Safename)
+}
+
+func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*verifierContext)
+	if key != "global" {
+		log.Printf("handleGlobalConfigModify: ignoring %s\n", key)
+		return
+	}
+	log.Printf("handleGlobalConfigModify for %s\n", key)
+	if val, ok := agentlog.GetDebug(ctx.subGlobalConfig, agentName); ok {
+		debug = val || debugOverride
+		log.Printf("handleGlobalConfigModify: debug %v\n", debug)
+	}
+	// XXX add loglevel etc
+	log.Printf("handleGlobalConfigModify done for %s\n", key)
+}
+
+func handleGlobalConfigDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	log.Printf("handleGlobalConfigDelete for %s\n", key)
+
+	if key != "global" {
+		log.Printf("handleGlobalConfigDelete: ignoring %s\n", key)
+		return
+	}
+	debug = false || debugOverride
+	log.Printf("handleGlobalConfigDelete: debug %v\n", debug)
+	// XXX add loglevel etc
+	log.Printf("handleGlobalConfigDelete done for %s\n", key)
 }

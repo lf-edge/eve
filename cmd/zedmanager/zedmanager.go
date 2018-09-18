@@ -51,11 +51,13 @@ type zedmanagerContext struct {
 	pubAppImgVerifierConfig *pubsub.Publication
 	subAppImgVerifierStatus *pubsub.Subscription
 	subDatastoreConfig      *pubsub.Subscription
+	subGlobalConfig         *pubsub.Subscription
 }
 
 var deviceNetworkStatus types.DeviceNetworkStatus
 
 var debug = false
+var debugOverride bool // From command line arg
 
 func Run() {
 	logf, err := agentlog.Init(agentName)
@@ -68,6 +70,7 @@ func Run() {
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
 	debug = *debugPtr
+	debugOverride = debug
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
@@ -81,57 +84,68 @@ func Run() {
 	ctx := zedmanagerContext{}
 
 	// Create publish before subscribing and activating subscriptions
-	pubAppInstanceStatus, err := pubsub.Publish(agentName,
-		types.AppInstanceStatus{})
+	pubAppInstanceStatus, err := pubsub.PublishWithDebug(agentName,
+		types.AppInstanceStatus{}, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.pubAppInstanceStatus = pubAppInstanceStatus
 	pubAppInstanceStatus.ClearRestarted()
 
-	pubAppNetworkConfig, err := pubsub.Publish(agentName,
-		types.AppNetworkConfig{})
+	pubAppNetworkConfig, err := pubsub.PublishWithDebug(agentName,
+		types.AppNetworkConfig{}, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.pubAppNetworkConfig = pubAppNetworkConfig
 	pubAppNetworkConfig.ClearRestarted()
 
-	pubDomainConfig, err := pubsub.Publish(agentName,
-		types.DomainConfig{})
+	pubDomainConfig, err := pubsub.PublishWithDebug(agentName,
+		types.DomainConfig{}, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.pubDomainConfig = pubDomainConfig
 	pubDomainConfig.ClearRestarted()
 
-	pubEIDConfig, err := pubsub.Publish(agentName,
-		types.EIDConfig{})
+	pubEIDConfig, err := pubsub.PublishWithDebug(agentName,
+		types.EIDConfig{}, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.pubEIDConfig = pubEIDConfig
 	pubEIDConfig.ClearRestarted()
 
-	pubAppImgDownloadConfig, err := pubsub.PublishScope(agentName,
-		appImgObj, types.DownloaderConfig{})
+	pubAppImgDownloadConfig, err := pubsub.PublishScopeWithDebug(agentName,
+		appImgObj, types.DownloaderConfig{}, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
 	pubAppImgDownloadConfig.ClearRestarted()
 	ctx.pubAppImgDownloadConfig = pubAppImgDownloadConfig
 
-	pubAppImgVerifierConfig, err := pubsub.PublishScope(agentName,
-		appImgObj, types.VerifyImageConfig{})
+	pubAppImgVerifierConfig, err := pubsub.PublishScopeWithDebug(agentName,
+		appImgObj, types.VerifyImageConfig{}, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
 	pubAppImgVerifierConfig.ClearRestarted()
 	ctx.pubAppImgVerifierConfig = pubAppImgVerifierConfig
 
+	// Look for global config like debug
+	subGlobalConfig, err := pubsub.SubscribeWithDebug("",
+		agentlog.GlobalConfig{}, false, &ctx, &debug)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
+	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
+	ctx.subGlobalConfig = subGlobalConfig
+	subGlobalConfig.Activate()
+
 	// Get AppInstanceConfig from zedagent
-	subAppInstanceConfig, err := pubsub.Subscribe("zedagent",
-		types.AppInstanceConfig{}, false, &ctx)
+	subAppInstanceConfig, err := pubsub.SubscribeWithDebug("zedagent",
+		types.AppInstanceConfig{}, false, &ctx, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -143,8 +157,8 @@ func Run() {
 
 	// Look for DatastoreConfig from zedagent
 	// No handlers since we look at collection when we need to
-	subDatastoreConfig, err := pubsub.Subscribe("zedagent",
-		types.DatastoreConfig{}, false, &ctx)
+	subDatastoreConfig, err := pubsub.SubscribeWithDebug("zedagent",
+		types.DatastoreConfig{}, false, &ctx, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -154,8 +168,8 @@ func Run() {
 	subDatastoreConfig.Activate()
 
 	// Get AppNetworkStatus from zedrouter
-	subAppNetworkStatus, err := pubsub.Subscribe("zedrouter",
-		types.AppNetworkStatus{}, false, &ctx)
+	subAppNetworkStatus, err := pubsub.SubscribeWithDebug("zedrouter",
+		types.AppNetworkStatus{}, false, &ctx, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -166,8 +180,8 @@ func Run() {
 	subAppNetworkStatus.Activate()
 
 	// Get DomainStatus from domainmgr
-	subDomainStatus, err := pubsub.Subscribe("domainmgr",
-		types.DomainStatus{}, false, &ctx)
+	subDomainStatus, err := pubsub.SubscribeWithDebug("domainmgr",
+		types.DomainStatus{}, false, &ctx, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -177,8 +191,8 @@ func Run() {
 	subDomainStatus.Activate()
 
 	// Look for DownloaderStatus from downloader
-	subAppImgDownloadStatus, err := pubsub.SubscribeScope("downloader",
-		appImgObj, types.DownloaderStatus{}, false, &ctx)
+	subAppImgDownloadStatus, err := pubsub.SubscribeScopeWithDebug("downloader",
+		appImgObj, types.DownloaderStatus{}, false, &ctx, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -188,8 +202,8 @@ func Run() {
 	subAppImgDownloadStatus.Activate()
 
 	// Look for VerifyImageStatus from verifier
-	subAppImgVerifierStatus, err := pubsub.SubscribeScope("verifier",
-		appImgObj, types.VerifyImageStatus{}, false, &ctx)
+	subAppImgVerifierStatus, err := pubsub.SubscribeScopeWithDebug("verifier",
+		appImgObj, types.VerifyImageStatus{}, false, &ctx, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -200,8 +214,8 @@ func Run() {
 	subAppImgVerifierStatus.Activate()
 
 	// Get IdentityStatus from identitymgr
-	subEIDStatus, err := pubsub.Subscribe("identitymgr",
-		types.EIDStatus{}, false, &ctx)
+	subEIDStatus, err := pubsub.SubscribeWithDebug("identitymgr",
+		types.EIDStatus{}, false, &ctx, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -211,8 +225,8 @@ func Run() {
 	ctx.subEIDStatus = subEIDStatus
 	subEIDStatus.Activate()
 
-	subDeviceNetworkStatus, err := pubsub.Subscribe("zedrouter",
-		types.DeviceNetworkStatus{}, false, &ctx)
+	subDeviceNetworkStatus, err := pubsub.SubscribeWithDebug("zedrouter",
+		types.DeviceNetworkStatus{}, false, &ctx, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -222,8 +236,8 @@ func Run() {
 	subDeviceNetworkStatus.Activate()
 
 	// Look for CertObjStatus from zedagent
-	subCertObjStatus, err := pubsub.Subscribe("zedagent",
-		types.CertObjStatus{}, false, &ctx)
+	subCertObjStatus, err := pubsub.SubscribeWithDebug("zedagent",
+		types.CertObjStatus{}, false, &ctx, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -237,6 +251,9 @@ func Run() {
 	log.Printf("Handling initial verifier Status\n")
 	for !ctx.verifierRestarted {
 		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+
 		case change := <-subAppImgVerifierStatus.C:
 			subAppImgVerifierStatus.ProcessChange(change)
 			if ctx.verifierRestarted {
@@ -248,6 +265,9 @@ func Run() {
 	log.Printf("Handling all inputs\n")
 	for {
 		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+
 		// handle cert ObjectsChanges
 		case change := <-subCertObjStatus.C:
 			subCertObjStatus.ProcessChange(change)
@@ -672,4 +692,36 @@ func handleDatastoreConfigDelete(ctxArg interface{}, key string,
 
 	// XXX empty since we look at collection when we need it
 	log.Printf("handleDatastoreConfigDelete for %s\n", key)
+}
+
+func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*zedmanagerContext)
+	if key != "global" {
+		log.Printf("handleGlobalConfigModify: ignoring %s\n", key)
+		return
+	}
+	log.Printf("handleGlobalConfigModify for %s\n", key)
+	if val, ok := agentlog.GetDebug(ctx.subGlobalConfig, agentName); ok {
+		debug = val || debugOverride
+		log.Printf("handleGlobalConfigModify: debug %v\n", debug)
+	}
+	// XXX add loglevel etc
+	log.Printf("handleGlobalConfigModify done for %s\n", key)
+}
+
+func handleGlobalConfigDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	log.Printf("handleGlobalConfigDelete for %s\n", key)
+
+	if key != "global" {
+		log.Printf("handleGlobalConfigDelete: ignoring %s\n", key)
+		return
+	}
+	debug = false || debugOverride
+	log.Printf("handleGlobalConfigDelete: debug %v\n", debug)
+	// XXX add loglevel etc
+	log.Printf("handleGlobalConfigDelete done for %s\n", key)
 }

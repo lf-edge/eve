@@ -59,10 +59,12 @@ type zedrouterContext struct {
 	assignableAdapters       *types.AssignableAdapters
 	pubNetworkServiceMetrics *pubsub.Publication
 	devicenetwork.DeviceNetworkContext
-	ready bool
+	ready           bool
+	subGlobalConfig *pubsub.Subscription
 }
 
 var debug = false
+var debugOverride bool // From command line arg
 
 func Run() {
 	logf, err := agentlog.Init(agentName)
@@ -75,6 +77,7 @@ func Run() {
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
 	debug = *debugPtr
+	debugOverride = debug
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
@@ -96,15 +99,15 @@ func Run() {
 		}
 	}
 
-	pubDeviceNetworkStatus, err := pubsub.Publish(agentName,
-		types.DeviceNetworkStatus{})
+	pubDeviceNetworkStatus, err := pubsub.PublishWithDebug(agentName,
+		types.DeviceNetworkStatus{}, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
 	pubDeviceNetworkStatus.ClearRestarted()
 
-	pubDeviceUplinkConfig, err := pubsub.Publish(agentName,
-		types.DeviceUplinkConfig{})
+	pubDeviceUplinkConfig, err := pubsub.PublishWithDebug(agentName,
+		types.DeviceUplinkConfig{}, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -115,56 +118,72 @@ func Run() {
 	// Pick up (mostly static) AssignableAdapters before we process
 	// any Routes; Pbr needs to know which network adapters are assignable
 	aa := types.AssignableAdapters{}
-	subAa := adapters.Subscribe(&aa, model)
+	subAa := adapters.SubscribeWithDebug(&aa, model, &debug)
+
+	zedrouterCtx := zedrouterContext{
+		separateDataPlane:  false,
+		assignableAdapters: &aa,
+	}
+
+	// Look for global config like debug
+	subGlobalConfig, err := pubsub.SubscribeWithDebug("",
+		agentlog.GlobalConfig{}, false, &zedrouterCtx, &debug)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
+	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
+	zedrouterCtx.subGlobalConfig = subGlobalConfig
+	subGlobalConfig.Activate()
 
 	for !subAa.Found {
 		log.Printf("Waiting for AssignableAdapters %v\n", subAa.Found)
 		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+
 		case change := <-subAa.C:
 			subAa.ProcessChange(change)
 		}
 	}
 	log.Printf("Have %d assignable adapters\n", len(aa.IoBundleList))
 
-	zedrouterCtx := zedrouterContext{
-		separateDataPlane:  false,
-		assignableAdapters: &aa,
-	}
 	zedrouterCtx.ManufacturerModel = model
 	zedrouterCtx.DeviceNetworkConfig = &types.DeviceNetworkConfig{}
 	zedrouterCtx.DeviceUplinkConfig = &types.DeviceUplinkConfig{}
 	zedrouterCtx.DeviceNetworkStatus = &types.DeviceNetworkStatus{}
 	zedrouterCtx.PubDeviceUplinkConfig = pubDeviceUplinkConfig
 	zedrouterCtx.PubDeviceNetworkStatus = pubDeviceNetworkStatus
+	zedrouterCtx.DebugPtr = &debug
 
 	// Create publish before subscribing and activating subscriptions
 	// Also need to do this before we wait for IP addresses since
 	// zedagent waits for these to be published/exist, and zedagent
 	// runs the fallback timers after that wait.
-	pubNetworkObjectStatus, err := pubsub.Publish(agentName,
-		types.NetworkObjectStatus{})
+	pubNetworkObjectStatus, err := pubsub.PublishWithDebug(agentName,
+		types.NetworkObjectStatus{}, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
 	zedrouterCtx.pubNetworkObjectStatus = pubNetworkObjectStatus
 
-	pubNetworkServiceStatus, err := pubsub.Publish(agentName,
-		types.NetworkServiceStatus{})
+	pubNetworkServiceStatus, err := pubsub.PublishWithDebug(agentName,
+		types.NetworkServiceStatus{}, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
 	zedrouterCtx.pubNetworkServiceStatus = pubNetworkServiceStatus
 
-	pubAppNetworkStatus, err := pubsub.Publish(agentName,
-		types.AppNetworkStatus{})
+	pubAppNetworkStatus, err := pubsub.PublishWithDebug(agentName,
+		types.AppNetworkStatus{}, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
 	zedrouterCtx.pubAppNetworkStatus = pubAppNetworkStatus
 	pubAppNetworkStatus.ClearRestarted()
 
-	pubLispDataplaneConfig, err := pubsub.Publish(agentName,
-		types.LispDataplaneConfig{})
+	pubLispDataplaneConfig, err := pubsub.PublishWithDebug(agentName,
+		types.LispDataplaneConfig{}, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -182,9 +201,9 @@ func Run() {
 
 	// Get the initial DeviceNetworkConfig
 	// Subscribe from "" means /var/tmp/zededa/
-	subDeviceNetworkConfig, err := pubsub.Subscribe("",
+	subDeviceNetworkConfig, err := pubsub.SubscribeWithDebug("",
 		types.DeviceNetworkConfig{}, false,
-		&zedrouterCtx.DeviceNetworkContext)
+		&zedrouterCtx.DeviceNetworkContext, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -197,9 +216,9 @@ func Run() {
 	// 1. zedagent
 	// 2. override file in /var/tmp/zededa/NetworkUplinkConfig/override.json
 	// 3. self-generated file derived from per-platform DeviceNetworkConfig
-	subDeviceUplinkConfigA, err := pubsub.Subscribe("zedagent",
+	subDeviceUplinkConfigA, err := pubsub.SubscribeWithDebug("zedagent",
 		types.DeviceUplinkConfig{}, false,
-		&zedrouterCtx.DeviceNetworkContext)
+		&zedrouterCtx.DeviceNetworkContext, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -208,9 +227,9 @@ func Run() {
 	zedrouterCtx.SubDeviceUplinkConfigA = subDeviceUplinkConfigA
 	subDeviceUplinkConfigA.Activate()
 
-	subDeviceUplinkConfigO, err := pubsub.Subscribe("",
+	subDeviceUplinkConfigO, err := pubsub.SubscribeWithDebug("",
 		types.DeviceUplinkConfig{}, false,
-		&zedrouterCtx.DeviceNetworkContext)
+		&zedrouterCtx.DeviceNetworkContext, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -219,9 +238,9 @@ func Run() {
 	zedrouterCtx.SubDeviceUplinkConfigO = subDeviceUplinkConfigO
 	subDeviceUplinkConfigO.Activate()
 
-	subDeviceUplinkConfigS, err := pubsub.Subscribe(agentName,
+	subDeviceUplinkConfigS, err := pubsub.SubscribeWithDebug(agentName,
 		types.DeviceUplinkConfig{}, false,
-		&zedrouterCtx.DeviceNetworkContext)
+		&zedrouterCtx.DeviceNetworkContext, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -237,6 +256,9 @@ func Run() {
 		log.Printf("Waiting for UsableAddressCount %d and done %v\n",
 			zedrouterCtx.UsableAddressCount, done)
 		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+
 		case change := <-subDeviceNetworkConfig.C:
 			subDeviceNetworkConfig.ProcessChange(change)
 			maybeHandleDUC(&zedrouterCtx)
@@ -263,8 +285,8 @@ func Run() {
 	handleInit(runDirname, pubDeviceNetworkStatus)
 
 	// Subscribe to network objects and services from zedagent
-	subNetworkObjectConfig, err := pubsub.Subscribe("zedagent",
-		types.NetworkObjectConfig{}, false, &zedrouterCtx)
+	subNetworkObjectConfig, err := pubsub.SubscribeWithDebug("zedagent",
+		types.NetworkObjectConfig{}, false, &zedrouterCtx, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -273,8 +295,8 @@ func Run() {
 	zedrouterCtx.subNetworkObjectConfig = subNetworkObjectConfig
 	subNetworkObjectConfig.Activate()
 
-	subNetworkServiceConfig, err := pubsub.Subscribe("zedagent",
-		types.NetworkServiceConfig{}, false, &zedrouterCtx)
+	subNetworkServiceConfig, err := pubsub.SubscribeWithDebug("zedagent",
+		types.NetworkServiceConfig{}, false, &zedrouterCtx, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -284,8 +306,8 @@ func Run() {
 	subNetworkServiceConfig.Activate()
 
 	// Subscribe to AppNetworkConfig from zedmanager and from zedagent
-	subAppNetworkConfig, err := pubsub.Subscribe("zedmanager",
-		types.AppNetworkConfig{}, false, &zedrouterCtx)
+	subAppNetworkConfig, err := pubsub.SubscribeWithDebug("zedmanager",
+		types.AppNetworkConfig{}, false, &zedrouterCtx, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -296,8 +318,8 @@ func Run() {
 	subAppNetworkConfig.Activate()
 
 	// Subscribe to AppNetworkConfig from zedmanager
-	subAppNetworkConfigAg, err := pubsub.Subscribe("zedagent",
-		types.AppNetworkConfig{}, false, &zedrouterCtx)
+	subAppNetworkConfigAg, err := pubsub.SubscribeWithDebug("zedagent",
+		types.AppNetworkConfig{}, false, &zedrouterCtx, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -306,8 +328,8 @@ func Run() {
 	zedrouterCtx.subAppNetworkConfigAg = subAppNetworkConfigAg
 	subAppNetworkConfigAg.Activate()
 
-	subLispInfoStatus, err := pubsub.Subscribe("lisp-ztr",
-		types.LispInfoStatus{}, false, &zedrouterCtx)
+	subLispInfoStatus, err := pubsub.SubscribeWithDebug("lisp-ztr",
+		types.LispInfoStatus{}, false, &zedrouterCtx, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -316,8 +338,8 @@ func Run() {
 	zedrouterCtx.subLispInfoStatus = subLispInfoStatus
 	subLispInfoStatus.Activate()
 
-	subLispMetrics, err := pubsub.Subscribe("lisp-ztr",
-		types.LispMetrics{}, false, &zedrouterCtx)
+	subLispMetrics, err := pubsub.SubscribeWithDebug("lisp-ztr",
+		types.LispMetrics{}, false, &zedrouterCtx, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -363,7 +385,7 @@ func Run() {
 
 	// Publish network metrics for zedagent every 10 seconds
 	nms := getNetworkMetrics(&zedrouterCtx) // Need type of data
-	pub, err := pubsub.Publish(agentName, nms)
+	pub, err := pubsub.PublishWithDebug(agentName, nms, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -385,6 +407,9 @@ func Run() {
 	for !subAppNetworkConfig.Restarted() {
 		log.Printf("Waiting for zedmanager to report restarted\n")
 		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+
 		case change := <-subAppNetworkConfig.C:
 			subAppNetworkConfig.ProcessChange(change)
 		}
@@ -393,6 +418,9 @@ func Run() {
 
 	for {
 		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+
 		case change := <-subAppNetworkConfig.C:
 			subAppNetworkConfig.ProcessChange(change)
 
@@ -2243,4 +2271,36 @@ func pkillUserArgs(userName string, match string, printOnError bool) {
 	if err != nil && printOnError {
 		log.Printf("Command %v %v failed: %s\n", cmd, args, err)
 	}
+}
+
+func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*zedrouterContext)
+	if key != "global" {
+		log.Printf("handleGlobalConfigModify: ignoring %s\n", key)
+		return
+	}
+	log.Printf("handleGlobalConfigModify for %s\n", key)
+	if val, ok := agentlog.GetDebug(ctx.subGlobalConfig, agentName); ok {
+		debug = val || debugOverride
+		log.Printf("handleGlobalConfigModify: debug %v\n", debug)
+	}
+	// XXX add loglevel etc
+	log.Printf("handleGlobalConfigModify done for %s\n", key)
+}
+
+func handleGlobalConfigDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	log.Printf("handleGlobalConfigDelete for %s\n", key)
+
+	if key != "global" {
+		log.Printf("handleGlobalConfigDelete: ignoring %s\n", key)
+		return
+	}
+	debug = false || debugOverride
+	log.Printf("handleGlobalConfigDelete: debug %v\n", debug)
+	// XXX add loglevel etc
+	log.Printf("handleGlobalConfigDelete done for %s\n", key)
 }

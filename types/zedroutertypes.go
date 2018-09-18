@@ -111,12 +111,14 @@ type ProxyConfig struct {
 }
 
 type NetworkUplinkConfig struct {
-	IfName string
-	Free   bool
-	// If Dhcp (in NetworkObjectConfig) is DT_STATIC we use the static
-	// Addr and the rest of NetworkConfig
-	Addr net.IP
-	NetworkObjectConfig
+	IfName     string
+	Free       bool
+	Dhcp       DhcpType // If DT_STATIC use below
+	AddrSubnet string   // In CIDR e.g., 192.168.1.44/24
+	Gateway    net.IP
+	DomainName string
+	NtpServer  net.IP
+	DnsServers []net.IP // If not set we use Gateway as DNS server
 }
 
 type NetworkUplink struct {

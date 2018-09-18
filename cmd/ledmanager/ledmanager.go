@@ -23,8 +23,9 @@ import (
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/pidfile"
+	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
-	"github.com/zededa/go-provision/watch"
+	"github.com/zededa/go-provision/watch" // XXX remove
 	"io/ioutil"
 	"log"
 	"os"
@@ -33,13 +34,14 @@ import (
 )
 
 const (
-	agentName = "ledmanager"
+	agentName        = "ledmanager"
 	ledConfigDirName = "/var/tmp/ledmanager/config"
 )
 
 // State passed to handlers
 type ledManagerContext struct {
-	countChange chan int
+	countChange     chan int
+	subGlobalConfig *pubsub.Subscription
 }
 
 type Blink200msFunc func()
@@ -75,6 +77,7 @@ var mToF = []modelToFuncs{
 }
 
 var debug bool
+var debugOverride bool // From command line arg
 
 // Set from Makefile
 var Version = "No version specified"
@@ -82,7 +85,7 @@ var Version = "No version specified"
 func Run() {
 	logf, err := agentlog.Init(agentName)
 	if err != nil {
-	       log.Fatal(err)
+		log.Fatal(err)
 	}
 	defer logf.Close()
 
@@ -90,6 +93,7 @@ func Run() {
 	debugPtr := flag.Bool("d", false, "Debug")
 	flag.Parse()
 	debug = *debugPtr
+	debugOverride = debug
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
@@ -130,8 +134,22 @@ func Run() {
 	ctx.countChange = make(chan int)
 	go TriggerBlinkOnDevice(ctx.countChange, blinkFunc)
 
+	// Look for global config like debug
+	subGlobalConfig, err := pubsub.SubscribeWithDebug("",
+		agentlog.GlobalConfig{}, false, &ctx, &debug)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
+	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
+	ctx.subGlobalConfig = subGlobalConfig
+	subGlobalConfig.Activate()
+
 	for {
 		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+
 		// XXX move to /var/tmp/zededa? Multiple publishers! Need
 		// diff pubsub support or everybody subscribes ...
 		case change := <-ledChanges:
@@ -258,4 +276,36 @@ func ExecuteWifiLedCmd() {
 	if err != nil {
 		log.Fatal(err, brightnessFilename)
 	}
+}
+
+func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*ledManagerContext)
+	if key != "global" {
+		log.Printf("handleGlobalConfigModify: ignoring %s\n", key)
+		return
+	}
+	log.Printf("handleGlobalConfigModify for %s\n", key)
+	if val, ok := agentlog.GetDebug(ctx.subGlobalConfig, agentName); ok {
+		debug = val || debugOverride
+		log.Printf("handleGlobalConfigModify: debug %v\n", debug)
+	}
+	// XXX add loglevel etc
+	log.Printf("handleGlobalConfigModify done for %s\n", key)
+}
+
+func handleGlobalConfigDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	log.Printf("handleGlobalConfigDelete for %s\n", key)
+
+	if key != "global" {
+		log.Printf("handleGlobalConfigDelete: ignoring %s\n", key)
+		return
+	}
+	debug = false || debugOverride
+	log.Printf("handleGlobalConfigDelete: debug %v\n", debug)
+	// XXX add loglevel etc
+	log.Printf("handleGlobalConfigDelete done for %s\n", key)
 }

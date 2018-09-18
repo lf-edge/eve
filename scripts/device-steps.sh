@@ -185,6 +185,15 @@ echo "Current downloaded files:"
 ls -lt $PERSISTDIR/downloads/*/*
 echo
 
+# Place for surviving global config
+if [ ! -d $PERSISTDIR/config/GlobalConfig ]; then
+    mkdir -p $PERSISTDIR/config/GlobalConfig
+fi
+if [ -f $PERSISTDIR/config/GlobalConfig ]; then
+    rm -f /var/tmp/zededa/GlobalConfig
+fi
+ln -s $PERSISTDIR/config/GlobalConfig /var/tmp/zededa/GlobalConfig
+
 CURPART=`zboot curpart`
 if [ $? != 0 ]; then
     CURPART="IMGA"
@@ -312,8 +321,8 @@ if [ -f /var/run/watchdog.pid ]; then
 fi
 /usr/sbin/watchdog -c $TMPDIR/watchdogclient.conf -F -s &
 
-echo $BINDIR/client -d $CONFIGDIR dhcpcd
-$BINDIR/client -d $CONFIGDIR dhcpcd
+echo $BINDIR/client dhcpcd
+$BINDIR/client dhcpcd
 ifconfig
 
 # Restart watchdog with only ledmanager since we don't know how long ntp will take
@@ -409,14 +418,14 @@ if [ $SELF_REGISTER = 1 ]; then
 	echo "Missing onboarding certificate. Giving up"
 	exit 1
     fi
-    echo $BINDIR/client -d $CONFIGDIR selfRegister
-    $BINDIR/client -d $CONFIGDIR selfRegister
+    echo $BINDIR/client selfRegister
+    $BINDIR/client selfRegister
     rm -f $TMPDIR/self-register-failed
     if [ $WAIT = 1 ]; then
 	echo -n "Press any key to continue "; read dummy; echo; echo
     fi
-    echo $BINDIR/client -d $CONFIGDIR getUuid 
-    $BINDIR/client -d $CONFIGDIR getUuid
+    echo $BINDIR/client getUuid 
+    $BINDIR/client getUuid
     if [ ! -f $CONFIGDIR/hardwaremodel ]; then
 	/opt/zededa/bin/hardwaremodel -c >$CONFIGDIR/hardwaremodel
 	echo "Created default hardwaremodel" `/opt/zededa/bin/hardwaremodel -c`
@@ -439,8 +448,8 @@ if [ $SELF_REGISTER = 1 ]; then
     fi
 else
     echo "XXX until cloud keeps state across upgrades redo getUuid"
-    echo $BINDIR/client -d $CONFIGDIR getUuid 
-    $BINDIR/client -d $CONFIGDIR getUuid
+    echo $BINDIR/client getUuid 
+    $BINDIR/client getUuid
     if [ ! -f $CONFIGDIR/hardwaremodel ]; then
 	# XXX for upgrade path
 	# XXX do we need a way to override?
@@ -545,7 +554,7 @@ if [ $WAIT = 1 ]; then
 fi
 
 echo "Starting ZedRouter at" `date`
-zedrouter -d &
+zedrouter &
 if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
@@ -558,7 +567,7 @@ if [ $WAIT = 1 ]; then
 fi
 
 echo "Starting zedagent at" `date`
-zedagent -d &
+zedagent &
 if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi

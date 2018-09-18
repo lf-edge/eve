@@ -35,7 +35,6 @@ const (
 	DNCDirname  = tmpDirname + "/DeviceNetworkConfig"
 	maxDelay    = time.Second * 600 // 10 minutes
 	uuidMaxWait = time.Second * 60  // 1 minute
-	debug       = false
 )
 
 // Really a constant
@@ -57,10 +56,15 @@ var Version = "No version specified"
 //  hardwaremodel		Written by getUuid if server returns a hardwaremodel
 //
 //
+
+var debug = false
+var debugOverride bool // From command line arg
+
 func Run() {
 	versionPtr := flag.Bool("v", false, "Version")
+	debugPtr := flag.Bool("d", false, "Debug flag")
 	forcePtr := flag.Bool("f", false, "Force using onboarding cert")
-	dirPtr := flag.String("d", "/config", "Directory with certs etc")
+	dirPtr := flag.String("D", "/config", "Directory with certs etc")
 	stdoutPtr := flag.Bool("s", false, "Use stdout instead of console")
 	noPidPtr := flag.Bool("p", false, "Do not check for running client")
 	// DUCDir is used for testing a new DeviceUplinkConfig. Note that
@@ -72,6 +76,8 @@ func Run() {
 	flag.Parse()
 
 	versionFlag := *versionPtr
+	debug = *debugPtr
+	debugOverride = debug
 	forceOnboardingCert := *forcePtr
 	identityDirname := *dirPtr
 	useStdout := *stdoutPtr
@@ -130,7 +136,7 @@ func Run() {
 	hardwaremodelFileName := identityDirname + "/hardwaremodel"
 
 	cms := zedcloud.GetCloudMetrics() // Need type of data
-	pub, err := pubsub.Publish(agentName, cms)
+	pub, err := pubsub.PublishWithDebug(agentName, cms, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -176,8 +182,8 @@ func Run() {
 		}
 	}
 
-	pubDeviceUplinkConfig, err := pubsub.Publish(agentName,
-		types.DeviceUplinkConfig{})
+	pubDeviceUplinkConfig, err := pubsub.PublishWithDebug(agentName,
+		types.DeviceUplinkConfig{}, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -190,15 +196,27 @@ func Run() {
 		DeviceNetworkStatus:    &types.DeviceNetworkStatus{},
 		PubDeviceUplinkConfig:  pubDeviceUplinkConfig,
 		PubDeviceNetworkStatus: nil,
+		DebugPtr:               &debug,
 	}
+
+	// Look for global config like debug
+	subGlobalConfig, err := pubsub.SubscribeWithDebug("",
+		agentlog.GlobalConfig{}, false, &clientCtx, &debug)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
+	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
+	clientCtx.SubGlobalConfig = subGlobalConfig
+	subGlobalConfig.Activate()
 
 	// Look for address changes
 	addrChanges := devicenetwork.AddrChangeInit(&clientCtx)
 
 	// Get the initial DeviceNetworkConfig
 	// Subscribe from "" means /var/tmp/zededa/
-	subDeviceNetworkConfig, err := pubsub.Subscribe("",
-		types.DeviceNetworkConfig{}, false, &clientCtx)
+	subDeviceNetworkConfig, err := pubsub.SubscribeWithDebug("",
+		types.DeviceNetworkConfig{}, false, &clientCtx, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -215,8 +233,8 @@ func Run() {
 	var subDeviceUplinkConfigT *pubsub.Subscription
 	if DUCDir != "" {
 		var err error
-		subDeviceUplinkConfigT, err = pubsub.SubscribeScope("", DUCDir,
-			types.DeviceUplinkConfig{}, false, &clientCtx)
+		subDeviceUplinkConfigT, err = pubsub.SubscribeScopeWithDebug("", DUCDir,
+			types.DeviceUplinkConfig{}, false, &clientCtx, &debug)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -226,8 +244,8 @@ func Run() {
 		subDeviceUplinkConfigT.Activate()
 	}
 
-	subDeviceUplinkConfigO, err := pubsub.Subscribe("",
-		types.DeviceUplinkConfig{}, false, &clientCtx)
+	subDeviceUplinkConfigO, err := pubsub.SubscribeWithDebug("",
+		types.DeviceUplinkConfig{}, false, &clientCtx, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -236,8 +254,8 @@ func Run() {
 	clientCtx.SubDeviceUplinkConfigO = subDeviceUplinkConfigO
 	subDeviceUplinkConfigO.Activate()
 
-	subDeviceUplinkConfigS, err := pubsub.Subscribe(agentName,
-		types.DeviceUplinkConfig{}, false, &clientCtx)
+	subDeviceUplinkConfigS, err := pubsub.SubscribeWithDebug(agentName,
+		types.DeviceUplinkConfig{}, false, &clientCtx, &debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -261,6 +279,9 @@ func Run() {
 		log.Printf("Waiting for UsableAddressCount %d and done %v\n",
 			clientCtx.UsableAddressCount, done)
 		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+
 		case change := <-subDeviceNetworkConfig.C:
 			log.Printf("Got subDeviceNetworkConfig\n")
 			subDeviceNetworkConfig.ProcessChange(change)
@@ -312,7 +333,7 @@ func Run() {
 	devicenetwork.ProxyToEnv(clientCtx.DeviceNetworkStatus.ProxyConfig)
 	zedcloudCtx := zedcloud.ZedCloudContext{
 		DeviceNetworkStatus: clientCtx.DeviceNetworkStatus,
-		Debug:               true,
+		DebugPtr:            &debug,
 		FailureFunc:         zedcloud.ZedCloudFailure,
 		SuccessFunc:         zedcloud.ZedCloudSuccess,
 	}
@@ -634,4 +655,36 @@ func Run() {
 	if err != nil {
 		log.Println(err)
 	}
+}
+
+func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*devicenetwork.DeviceNetworkContext)
+	if key != "global" {
+		log.Printf("handleGlobalConfigModify: ignoring %s\n", key)
+		return
+	}
+	log.Printf("handleGlobalConfigModify for %s\n", key)
+	if val, ok := agentlog.GetDebug(ctx.SubGlobalConfig, agentName); ok {
+		debug = val || debugOverride
+		log.Printf("handleGlobalConfigModify: debug %v\n", debug)
+	}
+	// XXX add loglevel etc
+	log.Printf("handleGlobalConfigModify done for %s\n", key)
+}
+
+func handleGlobalConfigDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	log.Printf("handleGlobalConfigDelete for %s\n", key)
+
+	if key != "global" {
+		log.Printf("handleGlobalConfigDelete: ignoring %s\n", key)
+		return
+	}
+	debug = false || debugOverride
+	log.Printf("handleGlobalConfigDelete: debug %v\n", debug)
+	// XXX add loglevel etc
+	log.Printf("handleGlobalConfigDelete done for %s\n", key)
 }
