@@ -2,8 +2,9 @@
 // All rights reserved.
 
 // Code to dynamically be able to change settings such as debug flags and
-// log levels in running agents
-// Intention is to also use this for state we need to save across reboots
+// log levels in running agents.
+// Intention is to also use the GlobalConfig for state we need to save across
+// reboots
 
 package agentlog
 
@@ -14,38 +15,16 @@ import (
 )
 
 type perAgentSettings struct {
-	Debug          bool
 	LogLevel       string // What we log to files
 	RemoteLogLevel string // What we log to zedcloud
 }
 
 // Agents subscribe to this info
 type GlobalConfig struct {
-	// "global" or agentName is the index to the map
+	// "default" or agentName is the index to the map
 	AgentSettings map[string]perAgentSettings
 
 	// Any future globals such as timers we want to save across reboot
-}
-
-// Returns (value, ok)
-func GetDebug(sub *pubsub.Subscription, agentName string) (bool, bool) {
-	m, err := sub.Get("global")
-	if err != nil {
-		log.Printf("GetDebug failed %s\n", err)
-		return false, false
-	}
-	gc := CastGlobalConfig(m)
-	// Do we have an entry for this agent?
-	as, ok := gc.AgentSettings[agentName]
-	if ok {
-		return as.Debug, true
-	}
-	// Do we have a global entry?
-	as, ok = gc.AgentSettings["global"]
-	if ok {
-		return as.Debug, true
-	}
-	return false, false
 }
 
 // Returns (value, ok)
@@ -61,8 +40,8 @@ func GetLogLevel(sub *pubsub.Subscription, agentName string) (string, bool) {
 	if ok {
 		return as.LogLevel, true
 	}
-	// Do we have a global entry?
-	as, ok = gc.AgentSettings["global"]
+	// Do we have a default entry?
+	as, ok = gc.AgentSettings["default"]
 	if ok {
 		return as.LogLevel, true
 	}
@@ -82,8 +61,8 @@ func GetRemoteLogLevel(sub *pubsub.Subscription, agentName string) (string, bool
 	if ok {
 		return as.RemoteLogLevel, true
 	}
-	// Do we have a global entry?
-	as, ok = gc.AgentSettings["global"]
+	// Do we have a default entry?
+	as, ok = gc.AgentSettings["default"]
 	if ok {
 		return as.RemoteLogLevel, true
 	}
@@ -98,14 +77,10 @@ func HandleGlobalConfig(sub *pubsub.Subscription, agentName string,
 	log.Printf("HandleGlobalConfig(%s, %v)\n", agentName, debugOverride)
 	level := log.InfoLevel
 	debug := false
-	if val, ok := GetDebug(sub, agentName); ok {
-		debug = val || debugOverride
-		if debugOverride {
-			level = log.DebugLevel
-		}
-		log.Printf("handleGlobalConfigModify: debug %v\n", debug)
-	}
-	if loglevel, ok := GetLogLevel(sub, agentName); ok {
+	if debugOverride {
+		debug = true
+		level = log.DebugLevel
+	} else if loglevel, ok := GetLogLevel(sub, agentName); ok {
 		l, err := log.ParseLevel(loglevel)
 		if err != nil {
 			log.Printf("ParseLevel failed: %s\n", err)
@@ -113,6 +88,9 @@ func HandleGlobalConfig(sub *pubsub.Subscription, agentName string,
 			level = l
 			log.Printf("handleGlobalConfigModify: level %v\n",
 				level)
+		}
+		if level == log.DebugLevel {
+			debug = true
 		}
 	}
 	log.SetLevel(level)
