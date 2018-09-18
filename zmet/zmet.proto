@@ -84,7 +84,7 @@ enum ZSwState {
   DOWNLOADED		= 3;	// Download completed, verification in-progress
   DELIVERED		= 4;	// Verification completed
   INSTALLED		= 5;	// Installed, ready for activation
-  BOOTING               = 6;    // booting
+  BOOTING               = 6;    // booting. Booting and above means that App is activated.
   RUNNING               = 7;    // running
   HALTING               = 8;    // being halted
   HALTED                = 9;    // Halted
