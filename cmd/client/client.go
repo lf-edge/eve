@@ -58,12 +58,13 @@ var Version = "No version specified"
 //
 
 var debug = false
+var debugOverride bool // From command line arg
 
 func Run() {
 	versionPtr := flag.Bool("v", false, "Version")
-	// XXX add -D for debug
+	debugPtr := flag.Bool("d", false, "Debug flag")
 	forcePtr := flag.Bool("f", false, "Force using onboarding cert")
-	dirPtr := flag.String("d", "/config", "Directory with certs etc")
+	dirPtr := flag.String("D", "/config", "Directory with certs etc")
 	stdoutPtr := flag.Bool("s", false, "Use stdout instead of console")
 	noPidPtr := flag.Bool("p", false, "Do not check for running client")
 	// DUCDir is used for testing a new DeviceUplinkConfig. Note that
@@ -75,6 +76,8 @@ func Run() {
 	flag.Parse()
 
 	versionFlag := *versionPtr
+	debug = *debugPtr
+	debugOverride = debug
 	forceOnboardingCert := *forcePtr
 	identityDirname := *dirPtr
 	useStdout := *stdoutPtr
@@ -193,7 +196,7 @@ func Run() {
 		DeviceNetworkStatus:    &types.DeviceNetworkStatus{},
 		PubDeviceUplinkConfig:  pubDeviceUplinkConfig,
 		PubDeviceNetworkStatus: nil,
-		DebugPtr:		&debug,
+		DebugPtr:               &debug,
 	}
 
 	// Look for global config like debug
@@ -664,7 +667,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	}
 	log.Printf("handleGlobalConfigModify for %s\n", key)
 	if val, ok := agentlog.GetDebug(ctx.SubGlobalConfig, agentName); ok {
-		debug = val
+		debug = val || debugOverride
 		log.Printf("handleGlobalConfigModify: debug %v\n", debug)
 	}
 	// XXX add loglevel etc
@@ -680,7 +683,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		log.Printf("handleGlobalConfigDelete: ignoring %s\n", key)
 		return
 	}
-	debug = false
+	debug = false || debugOverride
 	log.Printf("handleGlobalConfigDelete: debug %v\n", debug)
 	// XXX add loglevel etc
 	log.Printf("handleGlobalConfigDelete done for %s\n", key)

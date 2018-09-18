@@ -112,6 +112,7 @@ type zedagentContext struct {
 }
 
 var debug = false
+var debugOverride bool // From command line arg
 
 // XXX used by baseOs code to indicate that something changed
 // Will not be needed once we have a separate baseosmgr since
@@ -123,6 +124,7 @@ func Run() {
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
 	debug = *debugPtr
+	debugOverride = debug
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return

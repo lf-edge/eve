@@ -52,15 +52,11 @@ func getNetworkMetrics(ctx *zedrouterContext) types.NetworkMetrics {
 				if ntype != 0 {
 					vifName = ni.Name
 					bridgeName = bn
-					log.Printf("vif %s bridge %s type %d\n",
-						vifName, bridgeName, ntype)
 				}
 			} else {
 				ntype = networkObjectType(ctx, ni.Name)
 				if ntype != 0 {
 					bridgeName = ni.Name
-					log.Printf("bridge %s type %d\n",
-						ni.Name, ntype)
 				}
 			}
 		}
@@ -72,7 +68,6 @@ func getNetworkMetrics(ctx *zedrouterContext) types.NetworkMetrics {
 			// XXX IPv4 EIDs?
 			ipVer = 6
 		}
-		// XXX test RX filter counters.
 		metric.TxAclDrops = getIpRuleAclDrop(ac, bridgeName, vifName,
 			ipVer, inout)
 		metric.RxAclDrops = getIpRuleAclDrop(ac, bridgeName, vifName,

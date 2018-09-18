@@ -6,12 +6,10 @@ package logmanager
 import (
 	"bufio"
 	"bytes"
-	"errors"
 	"flag"
 	"fmt"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
-	google_protobuf "github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/satori/go.uuid"
 	"github.com/zededa/api/zmet"
 	"github.com/zededa/go-provision/agentlog"
@@ -28,32 +26,32 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
-	"regexp"
 	"strings"
 	"time"
 )
 
 const (
-	agentName        = "logmanager"
-	identityDirname  = "/config"
-	serverFilename   = identityDirname + "/server"
-	uuidFileName     = identityDirname + "/uuid"
-	xenLogDirname    = "/var/log/xen"
-	lastSentFilename = "lastlogsent" // File in /persist/IMGx/
+	agentName       = "logmanager"
+	identityDirname = "/config"
+	serverFilename  = identityDirname + "/server"
+	uuidFileName    = identityDirname + "/uuid"
+	xenLogDirname   = "/var/log/xen"
+	lastSentDirname = "lastlogsent" // Directory in /persist/
+	logsApi         = "api/v1/edgedevice/logs"
+	logMaxMessages  = 100
+	logMaxBytes     = 32768 // Approximate - no headers counted
 )
 
-var devUUID uuid.UUID
-var deviceNetworkStatus types.DeviceNetworkStatus
-var debug bool
-var serverName string
-var logsApi string = "api/v1/edgedevice/logs"
-var logsUrl string
-var zedcloudCtx zedcloud.ZedCloudContext
-
-var logMaxSize = 100
-
-// Key is ifname string
-var logs map[string]zedcloudLogs
+var (
+	devUUID             uuid.UUID
+	deviceNetworkStatus types.DeviceNetworkStatus
+	debug               bool
+	debugOverride       bool // From command line arg
+	serverName          string
+	logsUrl             string
+	zedcloudCtx         zedcloud.ZedCloudContext
+	logs                map[string]zedcloudLogs // Key is ifname string
+)
 
 // global stuff
 type logDirModifyHandler func(ctx interface{}, logFileName string, source string)
@@ -72,7 +70,7 @@ type logEntry struct {
 	source    string // basename of filename?
 	iid       string // XXX e.g. PID - where do we get it from?
 	content   string // One line
-	timestamp *google_protobuf.Timestamp
+	timestamp time.Time
 }
 
 // List of log files we watch
@@ -130,6 +128,7 @@ func Run() {
 	logdirPtr := flag.String("l", defaultLogdirname, "Log file directory")
 	flag.Parse()
 	debug = *debugPtr
+	debugOverride = debug
 	logDirName := *logdirPtr
 	force := *forcePtr
 	if *versionPtr {
@@ -146,6 +145,13 @@ func Run() {
 	log.Printf("Starting %s watching %s\n", agentName, logDirName)
 	log.Printf("watching %s\n", lispLogDirName)
 
+	// Make sure we have the last sent directory
+	dirname := fmt.Sprintf("/persist/%s", lastSentDirname)
+	if _, err := os.Stat(dirname); err != nil {
+		if err := os.MkdirAll(dirname, 0700); err != nil {
+			log.Fatal(err)
+		}
+	}
 	cms := zedcloud.GetCloudMetrics() // Need type of data
 	pub, err := pubsub.PublishWithDebug(agentName, cms, &debug)
 	if err != nil {
@@ -210,11 +216,11 @@ func Run() {
 	xenCtx := imageLoggerContext{}
 	lastSent := readLastSent(currentPartition)
 	lastSentStr, _ := lastSent.MarshalText()
-	log.Printf("Current partition logs were last sent at %v\n",
-		lastSentStr)
+	log.Printf("Current partition logs were last sent at %s\n",
+		string(lastSentStr))
 
 	// Start sender of log events
-	go processEvents(currentPartition, loggerChan)
+	go processEvents(currentPartition, lastSent, loggerChan)
 
 	// If we have a logdir from a failed update, then set that up
 	// as well.
@@ -234,10 +240,10 @@ func Run() {
 		otherPartition := zboot.GetOtherPartition()
 		lastSent := readLastSent(otherPartition)
 		lastSentStr, _ := lastSent.MarshalText()
-		log.Printf("Other partition logs were last sent at %v\n",
-			lastSentStr)
+		log.Printf("Other partition logs were last sent at %s\n",
+			string(lastSentStr))
 
-		go processEvents(otherPartition, otherLoggerChan)
+		go processEvents(otherPartition, lastSent, otherLoggerChan)
 
 		go watch.WatchStatus(otherLogDirname, otherLogDirChanges)
 		otherCtx = loggerContext{logChan: otherLoggerChan,
@@ -327,7 +333,11 @@ func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 }
 
 // This runs as a separate go routine sending out data
-func processEvents(image string, logChan <-chan logEntry) {
+// Compares and drops events which have already been sent to the cloud
+func processEvents(image string, prevLastSent time.Time,
+	logChan <-chan logEntry) {
+
+	log.Printf("processEvents(%s, %s)\n", image, prevLastSent.String())
 
 	reportLogs := new(zmet.LogBundle)
 	// XXX should we make the log interval configurable?
@@ -336,16 +346,17 @@ func processEvents(image string, logChan <-chan logEntry) {
 	min := max * 0.3
 	flushTimer := flextimer.NewRangeTicker(time.Duration(min),
 		time.Duration(max))
-	counter := 0
-
+	messageCount := 0
+	byteCount := 0
+	dropped := 0
 	for {
 		select {
 		case event, more := <-logChan:
 			sent := false
 			if !more {
-				log.Printf("processEvents: %s end\n",
+				log.Printf("processEvents(%s) end\n",
 					image)
-				if counter > 0 {
+				if messageCount > 0 {
 					sent = sendProtoStrForLogs(reportLogs, image,
 						iteration)
 				}
@@ -354,13 +365,26 @@ func processEvents(image string, logChan <-chan logEntry) {
 				}
 				return
 			}
-			HandleLogEvent(event, reportLogs, counter)
-			counter++
+			if event.timestamp.Before(prevLastSent) {
+				dropped++
+				break
+			}
+			HandleLogEvent(event, reportLogs, messageCount)
+			messageCount++
+			// Aproximate; excludes headers!
+			byteCount += len(event.content)
 
-			if counter >= logMaxSize {
+			if messageCount >= logMaxMessages ||
+				byteCount >= logMaxBytes {
+
+				if debug {
+					log.Printf("processEvents(%s): sending at messageCount %d, byteCount %d\n",
+						image, messageCount, byteCount)
+				}
 				sent = sendProtoStrForLogs(reportLogs, image,
 					iteration)
-				counter = 0
+				messageCount = 0
+				byteCount = 0
 				iteration += 1
 			}
 			if sent {
@@ -368,14 +392,17 @@ func processEvents(image string, logChan <-chan logEntry) {
 			}
 
 		case <-flushTimer.C:
-			if debug {
-				log.Printf("Logger Flush at %v %v\n",
-					image, reportLogs.Timestamp)
-			}
-			if counter > 0 {
+			if messageCount > 0 {
+				if debug {
+					log.Printf("processEvents(%s) flush at %s dropped %d messageCount %d bytecount %d\n",
+						image, time.Now().String(),
+						dropped, messageCount,
+						byteCount)
+				}
 				sent := sendProtoStrForLogs(reportLogs, image,
 					iteration)
-				counter = 0
+				messageCount = 0
+				byteCount = 0
 				iteration += 1
 				if sent {
 					recordLastSent(image)
@@ -387,7 +414,10 @@ func processEvents(image string, logChan <-chan logEntry) {
 
 // Touch/create a file to keep track of when things where sent before a reboot
 func recordLastSent(image string) {
-	filename := fmt.Sprintf("/persist/%s/%s", image, lastSentFilename)
+	if debug {
+		log.Printf("recordLastSent(%s)\n", image)
+	}
+	filename := fmt.Sprintf("/persist/%s/%s", lastSentDirname, image)
 	_, err := os.Stat(filename)
 	if err != nil {
 		file, err := os.Create(filename)
@@ -402,7 +432,7 @@ func recordLastSent(image string) {
 		log.Printf("recordLastSent: %s\n", err)
 		return
 	}
-	now := time.Now() // XXX .Local()?
+	now := time.Now()
 	err = os.Chtimes(filename, now, now)
 	if err != nil {
 		log.Printf("recordLastSent: %s\n", err)
@@ -411,7 +441,7 @@ func recordLastSent(image string) {
 }
 
 func readLastSent(image string) time.Time {
-	filename := fmt.Sprintf("/persist/%s/%s", image, lastSentFilename)
+	filename := fmt.Sprintf("/persist/%s/%s", lastSentDirname, image)
 	st, err := os.Stat(filename)
 	if err != nil {
 		if !os.IsNotExist(err) {
@@ -435,12 +465,11 @@ func HandleLogEvent(event logEntry, reportLogs *zmet.LogBundle, counter int) {
 	}
 	logDetails := &zmet.LogEntry{}
 	logDetails.Content = event.content
-	logDetails.Timestamp = event.timestamp
+	logDetails.Timestamp, _ = ptypes.TimestampProto(event.timestamp)
 	logDetails.Source = event.source
 	logDetails.Iid = event.iid
 	logDetails.Msgid = uint64(msgId)
 	reportLogs.Log = append(reportLogs.Log, logDetails)
-	// XXX count bytes instead of messages? Limit to << 64k
 }
 
 // Returns true if a message was successfully sent
@@ -608,15 +637,21 @@ func createXenLogger(ctx *imageLoggerContext, filename string, source string) {
 		logChan: make(chan logEntry),
 	}
 
+	lastSent := readLastSent(source)
+	lastSentStr, _ := lastSent.MarshalText()
+	log.Printf("createXenLogger: source %s last sent at %s\n",
+		source, string(lastSentStr))
+
 	// process associated channel
-	go processEvents(source, r.logChan)
+	go processEvents(source, lastSent, r.logChan)
 
 	// Write start event to ensure log is not empty
-	datestr := time.Now().Format("2006-01-02 15:04:05")
+	now := time.Now()
+	nowStr, _ := now.MarshalText()
 	line := fmt.Sprintf("%s logmanager starting to log %s\n",
-		datestr, r.source)
+		nowStr, r.source)
 	r.logChan <- logEntry{source: r.source, content: line,
-		timestamp: ptypes.TimestampNow()}
+		timestamp: now}
 	// read initial entries until EOF
 	readLineToEvent(&r.logfileReader, r.logChan)
 	ctx.logfileReaders = append(ctx.logfileReaders, r)
@@ -661,17 +696,20 @@ func createLogger(ctx *loggerContext, filename, source string) {
 		log.Printf("Log file ignored due to %s\n", err)
 		return
 	}
+	// XXX entry per image,source?
+	// XXX get prevSentToCloud
 	r := logfileReader{filename: filename,
 		source:   source,
 		fileDesc: fileDesc,
 		reader:   reader,
 	}
 	// Write start event to ensure log is not empty
-	datestr := time.Now().Format("2006-01-02 15:04:05")
+	now := time.Now()
+	nowStr, _ := now.MarshalText()
 	line := fmt.Sprintf("%s logmanager starting to log %s\n",
-		datestr, r.source)
+		nowStr, r.source)
 	ctx.logChan <- logEntry{source: r.source, content: line,
-		timestamp: ptypes.TimestampNow()}
+		timestamp: now}
 	// read initial entries until EOF
 	readLineToEvent(&r, ctx.logChan)
 	ctx.logfileReaders = append(ctx.logfileReaders, r)
@@ -698,6 +736,10 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 			return
 		}
 	}
+	// Remember last time and level. Start with now in case the file
+	// has no date.
+	lastTime := time.Now()
+	var lastLevel int
 	for {
 		line, err := r.reader.ReadString('\n')
 		if err != nil {
@@ -713,18 +755,14 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 		}
 		// remove trailing "/n" from line
 		line = line[0 : len(line)-1]
-		// XXX parse timestamp and remove it from line (if present)
-		// otherwise leave timestamp unitialized
-		parsedDateAndTime, err := parseDateTime(line)
-		// XXX set iid to PID?
-		if err != nil {
-			logChan <- logEntry{source: r.source, content: line,
-				timestamp: ptypes.TimestampNow()}
-		} else {
-			logChan <- logEntry{source: r.source, content: line,
-				timestamp: parsedDateAndTime}
-		}
-
+		// Reformat/add timestamp to front of line
+		line, lastTime, lastLevel := parseDateTime(line, lastTime,
+			lastLevel)
+		// XXX lint
+		lastLevel = lastLevel
+		// XXX set iid to PID? From where?
+		logChan <- logEntry{source: r.source, content: line,
+			timestamp: lastTime}
 	}
 	// Update size
 	fi, err = r.fileDesc.Stat()
@@ -733,41 +771,6 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 		return
 	}
 	r.size = fi.Size()
-}
-
-//parse date and time from agent logs
-func parseDateTime(line string) (*google_protobuf.Timestamp, error) {
-
-	var protoDateAndTime *google_protobuf.Timestamp
-	re := regexp.MustCompile(`^\d{4}/\d{2}/\d{2}`)
-	matched := re.MatchString(line)
-	if matched {
-		dateAndTime := strings.Split(line, " ")
-		re := regexp.MustCompile("/")
-		newDateFormat := re.ReplaceAllLiteralString(dateAndTime[0], "-")
-
-		timeFormat := strings.Split(dateAndTime[1], ".")[0]
-		newDateAndTime := newDateFormat + "T" + timeFormat
-		layout := "2006-01-02T15:04:05"
-
-		///convert newDateAndTime type string to type time.time
-		dt, err := time.Parse(layout, newDateAndTime)
-		if err != nil {
-			log.Println(err)
-			return nil, err
-		} else {
-			//convert dt type time.time to type proto
-			protoDateAndTime, err = ptypes.TimestampProto(dt)
-			if err != nil {
-				log.Println("Error while converting timestamp in proto format: ", err)
-				return nil, err
-			} else {
-				return protoDateAndTime, nil
-			}
-		}
-	} else {
-		return nil, errors.New("date and time format not found")
-	}
 }
 
 // Read unchanging files until EOF
@@ -804,7 +807,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	}
 	log.Printf("handleGlobalConfigModify for %s\n", key)
 	if val, ok := agentlog.GetDebug(ctx.subGlobalConfig, agentName); ok {
-		debug = val
+		debug = val || debugOverride
 		log.Printf("handleGlobalConfigModify: debug %v\n", debug)
 	}
 	// XXX add loglevel etc
@@ -820,7 +823,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		log.Printf("handleGlobalConfigDelete: ignoring %s\n", key)
 		return
 	}
-	debug = false
+	debug = false || debugOverride
 	log.Printf("handleGlobalConfigDelete: debug %v\n", debug)
 	// XXX add loglevel etc
 	log.Printf("handleGlobalConfigDelete done for %s\n", key)

@@ -933,6 +933,33 @@ func PublishDeviceInfoToZedCloud(pubBaseOsStatus *pubsub.Publication,
 	ReportDeviceInfo.SwList = make([]*zmet.ZInfoDevSW, 2)
 	ReportDeviceInfo.SwList[0] = getSwInfo(zboot.GetCurrentPartition())
 	ReportDeviceInfo.SwList[1] = getSwInfo(zboot.GetOtherPartition())
+	// Report any other BaseOsStatus which might have errors
+	items := pubBaseOsStatus.GetAll()
+	for _, st := range items {
+		bos := cast.CastBaseOsStatus(st)
+		if bos.PartitionLabel != "" {
+			continue
+		}
+		if debug {
+			log.Printf("reportMetrics sending unattached bos for %s\n",
+				bos.BaseOsVersion)
+		}
+		swInfo := new(zmet.ZInfoDevSW)
+		swInfo.Status = zmet.ZSwState(bos.State)
+		swInfo.ShortVersion = bos.BaseOsVersion
+		swInfo.LongVersion = "" // XXX
+		if !bos.ErrorTime.IsZero() {
+			log.Printf("reportMetrics sending error time %v error %v for %s\n",
+				bos.ErrorTime, bos.Error, bos.BaseOsVersion)
+			errInfo := new(zmet.ErrorInfo)
+			errInfo.Description = bos.Error
+			errTime, _ := ptypes.TimestampProto(bos.ErrorTime)
+			errInfo.Timestamp = errTime
+			swInfo.SwErr = errInfo
+		}
+		ReportDeviceInfo.SwList = append(ReportDeviceInfo.SwList,
+			swInfo)
+	}
 
 	// Read interface name from library and match it with uplink name from
 	// global status. Only report the uplinks plus dbo1x0

@@ -189,6 +189,11 @@ func updateConfigTimer(tickerHandle interface{}) {
 func getLatestConfig(url string, iteration int, updateInprogress *bool,
 	getconfigCtx *getconfigContext) bool {
 
+	if debug {
+		log.Printf("getLastestConfig(%s, %d, %v)\n", url, iteration,
+			*updateInprogress)
+	}
+
 	// Did we exceed the time limits?
 	timePassed := time.Since(getconfigCtx.lastReceivedConfigFromCloud)
 
@@ -407,7 +412,10 @@ func readDeviceConfigProtoMessage(contents []byte) (bool, *zconfig.EdgeDevConfig
 	configHash := h.Sum(nil)
 	same := bytes.Equal(configHash, prevConfigHash)
 	prevConfigHash = configHash
-
+	if debug {
+		log.Printf("readDeviceConfigProtoMessage: same %v config sha % x vs. % x\n",
+			same, prevConfigHash, configHash)
+	}
 	err := proto.Unmarshal(contents, config)
 	if err != nil {
 		log.Println("Unmarshalling failed: %v", err)

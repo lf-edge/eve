@@ -162,18 +162,25 @@ func parseBaseOsConfig(getconfigCtx *getconfigContext,
 	// true to avoid the subscriber seeing two activated
 	expectActivate := false
 	for {
-		parseAndPublish(getconfigCtx, cfgOsList, expectActivate)
+		published := parseAndPublish(getconfigCtx, cfgOsList,
+			expectActivate)
 		if expectActivate {
 			break
 		} else {
 			expectActivate = true
+			if published {
+				// XXX hack - wait for a bit for XXX ourselves
+				// to receive update!
+			}
 		}
 	}
 }
 
+// Returns true if something was updated
 func parseAndPublish(getconfigCtx *getconfigContext,
-	cfgOsList []*zconfig.BaseOSConfig, expectActivate bool) {
+	cfgOsList []*zconfig.BaseOSConfig, expectActivate bool) bool {
 
+	published := false
 	for _, cfgOs := range cfgOsList {
 		if cfgOs.GetBaseOSVersion() == "" {
 			// Empty slot - silently ignore
@@ -213,7 +220,9 @@ func parseAndPublish(getconfigCtx *getconfigContext,
 			publishCertObjConfig(getconfigCtx, certInstance,
 				baseOs.Key())
 		}
+		published = true
 	}
+	return published
 }
 
 func lookupBaseOsConfigPub(getconfigCtx *getconfigContext, key string) *types.BaseOsConfig {

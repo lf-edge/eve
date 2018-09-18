@@ -75,6 +75,7 @@ type domainContext struct {
 }
 
 var debug = false
+var debugOverride bool // From command line arg
 
 func Run() {
 	handlersInit()
@@ -88,6 +89,7 @@ func Run() {
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
 	debug = *debugPtr
+	debugOverride = debug
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
@@ -1543,7 +1545,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	}
 	log.Printf("handleGlobalConfigModify for %s\n", key)
 	if val, ok := agentlog.GetDebug(ctx.subGlobalConfig, agentName); ok {
-		debug = val
+		debug = val || debugOverride
 		log.Printf("handleGlobalConfigModify: debug %v\n", debug)
 	}
 	// XXX add loglevel etc
@@ -1559,7 +1561,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		log.Printf("handleGlobalConfigDelete: ignoring %s\n", key)
 		return
 	}
-	debug = false
+	debug = false || debugOverride
 	log.Printf("handleGlobalConfigDelete: debug %v\n", debug)
 	// XXX add loglevel etc
 	log.Printf("handleGlobalConfigDelete done for %s\n", key)
