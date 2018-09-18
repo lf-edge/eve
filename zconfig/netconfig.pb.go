@@ -6,11 +6,11 @@ Package zconfig is a generated protocol buffer package.
 
 It is generated from these files:
 	netconfig.proto
-	service.proto
-	fw.proto
-	vm.proto
-	devconfig.proto
 	storage.proto
+	service.proto
+	vm.proto
+	fw.proto
+	devconfig.proto
 	devcommon.proto
 	appconfig.proto
 	netcmn.proto
@@ -19,13 +19,17 @@ It is generated from these files:
 It has these top-level messages:
 	NetworkConfig
 	NetworkAdapter
+	SignatureInfo
+	DatastoreConfig
+	Image
+	Drive
 	ServiceOpaqueConfig
 	ServiceLispConfig
 	ServiceInstanceConfig
+	VmConfig
 	ACEMatch
 	ACEAction
 	ACE
-	VmConfig
 	MapServer
 	ZedServer
 	DeviceLispDetails
@@ -36,10 +40,6 @@ It has these top-level messages:
 	ConfigItem
 	ConfigRequest
 	ConfigResponse
-	SignatureInfo
-	DatastoreConfig
-	Image
-	Drive
 	UUIDandVersion
 	Adapter
 	ZcServicePoint
