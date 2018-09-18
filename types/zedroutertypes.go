@@ -782,8 +782,14 @@ type EidStatistics struct {
 	RlocStats []LispRlocStatistics
 }
 
+type EidMap struct {
+	IID  uint64
+	Eids []net.IP
+}
+
 type LispMetrics struct {
 	// Encap Statistics
+	EidMaps            []EidMap
 	EidStats           []EidStatistics
 	ItrPacketSendError LispPktStat
 	InvalidEidError    LispPktStat
