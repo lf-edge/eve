@@ -11,6 +11,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/satori/go.uuid"
+	log "github.com/sirupsen/logrus"
 	"github.com/zededa/api/zmet"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
@@ -24,9 +25,9 @@ import (
 	"github.com/zededa/go-provision/zedcloud"
 	"io"
 	"io/ioutil"
-	"log"
 	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -129,6 +130,11 @@ func Run() {
 	flag.Parse()
 	debug = *debugPtr
 	debugOverride = debug
+	if debugOverride {
+		log.SetLevel(log.DebugLevel)
+	} else {
+		log.SetLevel(log.InfoLevel)
+	}
 	logDirName := *logdirPtr
 	force := *forcePtr
 	if *versionPtr {
@@ -285,10 +291,7 @@ func Run() {
 			subDeviceNetworkStatus.ProcessChange(change)
 
 		case <-publishTimer.C:
-			if debug {
-				log.Println("publishTimer at",
-					time.Now())
-			}
+			log.Debugln("publishTimer at", time.Now())
 			err := pub.Publish("global", zedcloud.GetCloudMetrics())
 			if err != nil {
 				log.Println(err)
@@ -377,10 +380,8 @@ func processEvents(image string, prevLastSent time.Time,
 			if messageCount >= logMaxMessages ||
 				byteCount >= logMaxBytes {
 
-				if debug {
-					log.Printf("processEvents(%s): sending at messageCount %d, byteCount %d\n",
-						image, messageCount, byteCount)
-				}
+				log.Debugf("processEvents(%s): sending at messageCount %d, byteCount %d\n",
+					image, messageCount, byteCount)
 				sent = sendProtoStrForLogs(reportLogs, image,
 					iteration)
 				messageCount = 0
@@ -393,12 +394,10 @@ func processEvents(image string, prevLastSent time.Time,
 
 		case <-flushTimer.C:
 			if messageCount > 0 {
-				if debug {
-					log.Printf("processEvents(%s) flush at %s dropped %d messageCount %d bytecount %d\n",
-						image, time.Now().String(),
-						dropped, messageCount,
-						byteCount)
-				}
+				log.Debugf("processEvents(%s) flush at %s dropped %d messageCount %d bytecount %d\n",
+					image, time.Now().String(),
+					dropped, messageCount,
+					byteCount)
 				sent := sendProtoStrForLogs(reportLogs, image,
 					iteration)
 				messageCount = 0
@@ -414,9 +413,7 @@ func processEvents(image string, prevLastSent time.Time,
 
 // Touch/create a file to keep track of when things where sent before a reboot
 func recordLastSent(image string) {
-	if debug {
-		log.Printf("recordLastSent(%s)\n", image)
-	}
+	log.Debugf("recordLastSent(%s)\n", image)
 	filename := fmt.Sprintf("/persist/%s/%s", lastSentDirname, image)
 	_, err := os.Stat(filename)
 	if err != nil {
@@ -459,12 +456,11 @@ func HandleLogEvent(event logEntry, reportLogs *zmet.LogBundle, counter int) {
 	// Assign a unique msgId for each message
 	msgId := msgIdCounter
 	msgIdCounter += 1
-	if debug {
-		log.Printf("Read event from %s time %v id %d: %s\n",
-			event.source, event.timestamp, msgId, event.content)
-	}
+	log.Debugf("Read event from %s time %v id %d: %s\n",
+		event.source, event.timestamp, msgId, event.content)
 	logDetails := &zmet.LogEntry{}
 	logDetails.Content = event.content
+	logDetails.Severity = event.severity
 	logDetails.Timestamp, _ = ptypes.TimestampProto(event.timestamp)
 	logDetails.Source = event.source
 	logDetails.Iid = event.iid
@@ -479,16 +475,12 @@ func sendProtoStrForLogs(reportLogs *zmet.LogBundle, image string,
 	reportLogs.DevID = *proto.String(devUUID.String())
 	reportLogs.Image = image
 
-	if debug {
-		log.Println("sendProtoStrForLogs called...", iteration)
-	}
+	log.Debugln("sendProtoStrForLogs called...", iteration)
 	data, err := proto.Marshal(reportLogs)
 	if err != nil {
 		log.Fatal("sendProtoStrForLogs proto marshaling error: ", err)
 	}
-	if debug {
-		log.Printf("Log Details (len %d): %s\n", len(data), reportLogs)
-	}
+	log.Debugf("Log Details (len %d): %s\n", len(data), reportLogs)
 	buf := bytes.NewBuffer(data)
 	if buf == nil {
 		log.Fatal("sendProtoStrForLogs malloc error:")
@@ -513,10 +505,7 @@ func sendProtoStrForLogs(reportLogs *zmet.LogBundle, image string,
 		reportLogs.Log = []*zmet.LogEntry{}
 		return false
 	}
-	if debug {
-		log.Printf("Sent %d bytes image %s to %s\n",
-			len(data), image, logsUrl)
-	}
+	log.Debugf("Sent %d bytes image %s to %s\n", len(data), image, logsUrl)
 	reportLogs.Log = []*zmet.LogEntry{}
 	return true
 }
@@ -570,10 +559,8 @@ func HandleLogDirEvent(change string, logDirName string, ctx interface{},
 	operation := string(change[0])
 	fileName := string(change[2:])
 	if !strings.HasSuffix(fileName, ".log") {
-		if debug {
-			log.Printf("Ignoring file <%s> operation %s\n",
-				fileName, operation)
-		}
+		log.Debugf("Ignoring file <%s> operation %s\n",
+			fileName, operation)
 		return
 	}
 	logFilePath := logDirName + "/" + fileName
@@ -595,9 +582,7 @@ func handleXenLogDirModify(context interface{},
 	filename string, source string) {
 
 	if strings.Compare(source, "hypervisor") == 0 {
-		if debug {
-			log.Println("Ignoring hypervisor log while sending domU log")
-		}
+		log.Debugln("Ignoring hypervisor log while sending domU log")
 		return
 	}
 	ctx := context.(*imageLoggerContext)
@@ -745,9 +730,7 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 		if err != nil {
 			// XXX do we need to look for file truncation during
 			// this loop?
-			if debug {
-				log.Println(err)
-			}
+			log.Debugln(err)
 			if err != io.EOF {
 				log.Printf(" > Failed!: %v\n", err)
 			}
@@ -755,14 +738,49 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 		}
 		// remove trailing "/n" from line
 		line = line[0 : len(line)-1]
-		// Reformat/add timestamp to front of line
-		line, lastTime, lastLevel := parseDateTime(line, lastTime,
-			lastLevel)
-		// XXX lint
-		lastLevel = lastLevel
-		// XXX set iid to PID? From where?
-		logChan <- logEntry{source: r.source, content: line,
-			timestamp: lastTime}
+		// Check if the line is json output from logrus
+		loginfo, ok := agentlog.ParseLoginfo(line)
+		if ok {
+			log.Debugf("Parsed json %+v\n", loginfo)
+			// XXX parse time
+			timestamp, ok := parseTime(loginfo.Time)
+			if !ok {
+				timestamp = time.Now()
+			} else {
+				lastTime = timestamp
+			}
+			level, err := log.ParseLevel(loginfo.Level)
+			if err != nil {
+				log.Printf("ParseLevel failed: %s\n", err)
+				level = log.DebugLevel
+			}
+			if dropEvent(r.source, level) {
+				log.Debugf("Dropping source %s level %v\n",
+					r.source, level)
+				continue
+			}
+			// XXX set iid to PID? From where?
+			// We add time to front of msg.
+			logChan <- logEntry{source: r.source,
+				content:   loginfo.Time + ": " + loginfo.Msg,
+				severity:  loginfo.Level,
+				timestamp: timestamp,
+			}
+			lastLevel = int(level)
+		} else {
+			// Reformat/add timestamp to front of line
+			line, lastTime, lastLevel = parseDateTime(line, lastTime,
+				lastLevel)
+			level := log.InfoLevel
+			if dropEvent(r.source, level) {
+				log.Debugf("Dropping source %s level %v\n",
+					r.source, level)
+				continue
+			}
+			// XXX set iid to PID? From where?
+			logChan <- logEntry{source: r.source, content: line,
+				timestamp: lastTime}
+		}
 	}
 	// Update size
 	fi, err = r.fileDesc.Stat()
@@ -806,25 +824,94 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Printf("handleGlobalConfigModify for %s\n", key)
-	if val, ok := agentlog.GetDebug(ctx.subGlobalConfig, agentName); ok {
-		debug = val || debugOverride
-		log.Printf("handleGlobalConfigModify: debug %v\n", debug)
+	status := agentlog.CastGlobalConfig(statusArg)
+	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		debugOverride)
+	foundAgents := make(map[string]bool)
+	for agentName, perAgentSetting := range status.AgentSettings {
+		log.Printf("Processing agentName %s\n", agentName)
+		foundAgents[agentName] = true
+		if perAgentSetting.RemoteLogLevel != "" {
+			addRemoteMap(agentName, perAgentSetting.RemoteLogLevel)
+		}
 	}
-	// XXX add loglevel etc
+	// Any deletes?
+	delRemoteMapAgents(foundAgents)
 	log.Printf("handleGlobalConfigModify done for %s\n", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Printf("handleGlobalConfigDelete for %s\n", key)
-
+	ctx := ctxArg.(*logmanagerContext)
 	if key != "global" {
 		log.Printf("handleGlobalConfigDelete: ignoring %s\n", key)
 		return
 	}
-	debug = false || debugOverride
-	log.Printf("handleGlobalConfigDelete: debug %v\n", debug)
-	// XXX add loglevel etc
+	log.Printf("handleGlobalConfigDelete for %s\n", key)
+	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		debugOverride)
+	delRemoteMapAll()
 	log.Printf("handleGlobalConfigDelete done for %s\n", key)
+}
+
+// Cache of loglevels per agent. Protected by mutex since accessed by
+// multiple goroutines
+var remoteMapLock sync.Mutex
+var remoteMap map[string]log.Level = make(map[string]log.Level)
+
+func addRemoteMap(agentName string, logLevel string) {
+	log.Printf("addRemoteMap(%s, %s)\n", agentName, logLevel)
+	level, err := log.ParseLevel(logLevel)
+	if err != nil {
+		log.Printf("addRemoteMap: ParseLevel failed: %s\n", err)
+		return
+	}
+	remoteMapLock.Lock()
+	defer remoteMapLock.Unlock()
+	remoteMap[agentName] = level
+	log.Printf("addRemoteMap after %v\n", remoteMap)
+}
+
+// Delete everything not in foundAgents
+func delRemoteMapAgents(foundAgents map[string]bool) {
+	log.Printf("delRemoteMapAgents(%v)\n", foundAgents)
+	remoteMapLock.Lock()
+	defer remoteMapLock.Unlock()
+	for agentName, _ := range remoteMap {
+		log.Printf("delRemoteMapAgents: processing %s\n", agentName)
+		if _, ok := foundAgents[agentName]; !ok {
+			delete(remoteMap, agentName)
+		}
+	}
+	log.Printf("delRemoteMapAgents after %v\n", remoteMap)
+}
+
+func delRemoteMap(agentName string) {
+	log.Printf("delRemoteMap(%s)\n", agentName)
+	remoteMapLock.Lock()
+	defer remoteMapLock.Unlock()
+	delete(remoteMap, agentName)
+}
+
+func delRemoteMapAll() {
+	log.Printf("delRemoteMapAll()\n")
+	remoteMapLock.Lock()
+	defer remoteMapLock.Unlock()
+	remoteMap = make(map[string]log.Level)
+}
+
+// If source exists in GlobalConfig and has a remoteLogLevel, then
+// we compare. If not we accept all
+func dropEvent(source string, level log.Level) bool {
+	remoteMapLock.Lock()
+	defer remoteMapLock.Unlock()
+	if l, ok := remoteMap[source]; ok {
+		return level > l
+	}
+	// Any default setting?
+	if l, ok := remoteMap["default"]; ok {
+		return level > l
+	}
+	return false
 }

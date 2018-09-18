@@ -7,11 +7,11 @@ package zedrouter
 
 import (
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/wrap"
 	"io"
 	"io/ioutil"
-	"log"
 	"net"
 	"os"
 	"strconv"

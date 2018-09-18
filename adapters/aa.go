@@ -16,10 +16,10 @@
 package adapters
 
 import (
+	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
-	"log"
 )
 
 // Context used for the underlaying pubsub subscription.

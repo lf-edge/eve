@@ -8,8 +8,8 @@ package pidfile
 import (
 	"errors"
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"io/ioutil"
-	"log"
 	"os"
 	"strconv"
 	"syscall"

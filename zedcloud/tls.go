@@ -8,9 +8,9 @@ package zedcloud
 import (
 	"crypto/tls"
 	"crypto/x509"
+	log "github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ocsp"
 	"io/ioutil"
-	"log"
 	"strings"
 	"time"
 )

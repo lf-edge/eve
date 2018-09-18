@@ -17,8 +17,8 @@ package hardware
 
 import (
 	"bytes"
+	log "github.com/sirupsen/logrus"
 	"io/ioutil"
-	"log"
 	"os"
 	"os/exec"
 	"strings"

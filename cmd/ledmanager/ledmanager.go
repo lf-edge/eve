@@ -20,6 +20,7 @@ package ledmanager
 import (
 	"flag"
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/pidfile"
@@ -27,7 +28,6 @@ import (
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/watch" // XXX remove
 	"io/ioutil"
-	"log"
 	"os"
 	"os/exec"
 	"time"
@@ -287,25 +287,21 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Printf("handleGlobalConfigModify for %s\n", key)
-	if val, ok := agentlog.GetDebug(ctx.subGlobalConfig, agentName); ok {
-		debug = val || debugOverride
-		log.Printf("handleGlobalConfigModify: debug %v\n", debug)
-	}
-	// XXX add loglevel etc
+	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		debugOverride)
 	log.Printf("handleGlobalConfigModify done for %s\n", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Printf("handleGlobalConfigDelete for %s\n", key)
-
+	ctx := ctxArg.(*ledManagerContext)
 	if key != "global" {
 		log.Printf("handleGlobalConfigDelete: ignoring %s\n", key)
 		return
 	}
-	debug = false || debugOverride
-	log.Printf("handleGlobalConfigDelete: debug %v\n", debug)
-	// XXX add loglevel etc
+	log.Printf("handleGlobalConfigDelete for %s\n", key)
+	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		debugOverride)
 	log.Printf("handleGlobalConfigDelete done for %s\n", key)
 }

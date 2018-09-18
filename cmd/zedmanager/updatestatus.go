@@ -7,9 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"github.com/satori/go.uuid"
+	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/types"
-	"log"
 	"time"
 )
 

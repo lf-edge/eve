@@ -9,7 +9,7 @@ package zedcloud
 
 import (
 	"encoding/json"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"sync"
 	"time"
 )
