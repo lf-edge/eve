@@ -2,79 +2,58 @@
 // All rights reserved.
 
 // Code to dynamically be able to change settings such as debug flags and
-// log levels in running agents
-// Intention is to also use this for state we need to save across reboots
+// log levels in running agents.
+// Intention is to also use the GlobalConfig for state we need to save across
+// reboots
 
 package agentlog
 
 import (
 	"encoding/json"
+	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/pubsub"
-	"log"
 )
 
 type perAgentSettings struct {
-	Debug          bool
-	LocalLogLevel  int // What we log to files
-	RemoteLogLevel int // What we log to zedcloud
+	LogLevel       string // What we log to files
+	RemoteLogLevel string // What we log to zedcloud
 }
 
 // Agents subscribe to this info
 type GlobalConfig struct {
-	// "global" or agentName is the index to the map
+	// "default" or agentName is the index to the map
 	AgentSettings map[string]perAgentSettings
 
 	// Any future globals such as timers we want to save across reboot
 }
 
 // Returns (value, ok)
-func GetDebug(sub *pubsub.Subscription, agentName string) (bool, bool) {
+func GetLogLevel(sub *pubsub.Subscription, agentName string) (string, bool) {
 	m, err := sub.Get("global")
 	if err != nil {
-		log.Printf("GetDebug failed %s\n", err)
-		return false, false
+		log.Printf("GetLogLevel failed %s\n", err)
+		return "", false
 	}
 	gc := CastGlobalConfig(m)
 	// Do we have an entry for this agent?
 	as, ok := gc.AgentSettings[agentName]
 	if ok {
-		return as.Debug, true
+		return as.LogLevel, true
 	}
-	// Do we have a global entry?
-	as, ok = gc.AgentSettings["global"]
+	// Do we have a default entry?
+	as, ok = gc.AgentSettings["default"]
 	if ok {
-		return as.Debug, true
+		return as.LogLevel, true
 	}
-	return false, false
+	return "", false
 }
 
 // Returns (value, ok)
-func GetLocalLogLevel(sub *pubsub.Subscription, agentName string) (int, bool) {
-	m, err := sub.Get("global")
-	if err != nil {
-		log.Printf("GetLocalLogLevel failed %s\n", err)
-		return 0, false
-	}
-	gc := CastGlobalConfig(m)
-	// Do we have an entry for this agent?
-	as, ok := gc.AgentSettings[agentName]
-	if ok {
-		return as.LocalLogLevel, true
-	}
-	// Do we have a global entry?
-	as, ok = gc.AgentSettings["global"]
-	if ok {
-		return as.LocalLogLevel, true
-	}
-	return 0, false
-}
-
-// Returns (value, ok)
-func GetRemoteLogLevel(sub *pubsub.Subscription, agentName string) (int, bool) {
+func GetRemoteLogLevel(sub *pubsub.Subscription, agentName string) (string, bool) {
 	m, err := sub.Get("global")
 	if err != nil {
 		log.Printf("GetRemoteLogLevel failed %s\n", err)
-		return 0, false
+		return "", false
 	}
 	gc := CastGlobalConfig(m)
 	// Do we have an entry for this agent?
@@ -82,12 +61,40 @@ func GetRemoteLogLevel(sub *pubsub.Subscription, agentName string) (int, bool) {
 	if ok {
 		return as.RemoteLogLevel, true
 	}
-	// Do we have a global entry?
-	as, ok = gc.AgentSettings["global"]
+	// Do we have a default entry?
+	as, ok = gc.AgentSettings["default"]
 	if ok {
 		return as.RemoteLogLevel, true
 	}
-	return 0, false
+	return "", false
+}
+
+// Update LogLevel setting based on GlobalConfig and debugOverride
+// Return debug bool
+func HandleGlobalConfig(sub *pubsub.Subscription, agentName string,
+	debugOverride bool) bool {
+
+	log.Printf("HandleGlobalConfig(%s, %v)\n", agentName, debugOverride)
+	level := log.InfoLevel
+	debug := false
+	if debugOverride {
+		debug = true
+		level = log.DebugLevel
+	} else if loglevel, ok := GetLogLevel(sub, agentName); ok {
+		l, err := log.ParseLevel(loglevel)
+		if err != nil {
+			log.Printf("ParseLevel failed: %s\n", err)
+		} else if !debugOverride {
+			level = l
+			log.Printf("handleGlobalConfigModify: level %v\n",
+				level)
+		}
+		if level == log.DebugLevel {
+			debug = true
+		}
+	}
+	log.SetLevel(level)
+	return debug
 }
 
 func CastGlobalConfig(in interface{}) GlobalConfig {
@@ -100,19 +107,4 @@ func CastGlobalConfig(in interface{}) GlobalConfig {
 		log.Fatal(err, "json Unmarshal in CastGlobalConfig")
 	}
 	return output
-}
-
-// To print a struct in json
-// XXX remove?
-func PrintGlobalConfig() {
-	gc := GlobalConfig{}
-	gc.AgentSettings = make(map[string]perAgentSettings)
-	gc.AgentSettings["global"] = perAgentSettings{Debug: true}
-	gc.AgentSettings["zedagent"] = perAgentSettings{Debug: true}
-	log.Printf("GlobalConfig: %+v\n", gc)
-	b, err := json.Marshal(gc)
-	if err != nil {
-		log.Fatal(err, "json Marshal in PrintGlobalConfig")
-	}
-	log.Printf("%s\n", b)
 }

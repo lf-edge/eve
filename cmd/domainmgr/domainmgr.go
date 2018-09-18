@@ -13,6 +13,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/satori/go.uuid"
+	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/adapters"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
@@ -25,7 +26,6 @@ import (
 	"github.com/zededa/go-provision/wrap"
 	"io"
 	"io/ioutil"
-	"log"
 	"os"
 	"os/exec"
 	"strconv"
@@ -1544,25 +1544,21 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Printf("handleGlobalConfigModify for %s\n", key)
-	if val, ok := agentlog.GetDebug(ctx.subGlobalConfig, agentName); ok {
-		debug = val || debugOverride
-		log.Printf("handleGlobalConfigModify: debug %v\n", debug)
-	}
-	// XXX add loglevel etc
+	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		debugOverride)
 	log.Printf("handleGlobalConfigModify done for %s\n", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Printf("handleGlobalConfigDelete for %s\n", key)
-
+	ctx := ctxArg.(*domainContext)
 	if key != "global" {
 		log.Printf("handleGlobalConfigDelete: ignoring %s\n", key)
 		return
 	}
-	debug = false || debugOverride
-	log.Printf("handleGlobalConfigDelete: debug %v\n", debug)
-	// XXX add loglevel etc
+	log.Printf("handleGlobalConfigDelete for %s\n", key)
+	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		debugOverride)
 	log.Printf("handleGlobalConfigDelete done for %s\n", key)
 }

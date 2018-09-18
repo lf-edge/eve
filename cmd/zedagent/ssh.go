@@ -8,8 +8,8 @@
 package zedagent
 
 import (
+	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/wrap"
-	"log"
 	"os/exec"
 )
 

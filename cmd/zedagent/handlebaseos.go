@@ -8,10 +8,10 @@ package zedagent
 import (
 	"errors"
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/zboot"
-	"log"
 	"os"
 	"time"
 )

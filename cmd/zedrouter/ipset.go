@@ -8,9 +8,9 @@ package zedrouter
 import (
 	"errors"
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/wrap"
-	"log"
 	"net"
 )
 

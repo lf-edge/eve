@@ -8,7 +8,7 @@ package types
 
 import (
 	"fmt"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"net"
 	"time"
 )

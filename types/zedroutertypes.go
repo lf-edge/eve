@@ -8,7 +8,7 @@ import (
 	"errors"
 	"github.com/eriknordmark/ipinfo"
 	"github.com/satori/go.uuid"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"net"
 	"time"
 )
