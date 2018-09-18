@@ -829,6 +829,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		debugOverride)
 	foundAgents := make(map[string]bool)
 	for agentName, perAgentSetting := range status.AgentSettings {
+		log.Printf("Processing agentName %s\n", agentName)
 		foundAgents[agentName] = true
 		if perAgentSetting.RemoteLogLevel != "" {
 			addRemoteMap(agentName, perAgentSetting.RemoteLogLevel)
@@ -869,6 +870,7 @@ func addRemoteMap(agentName string, logLevel string) {
 	remoteMapLock.Lock()
 	defer remoteMapLock.Unlock()
 	remoteMap[agentName] = level
+	log.Printf("addRemoteMap after %v\n", remoteMap)
 }
 
 // Delete everything not in foundAgents
@@ -877,10 +879,12 @@ func delRemoteMapAgents(foundAgents map[string]bool) {
 	remoteMapLock.Lock()
 	defer remoteMapLock.Unlock()
 	for agentName, _ := range remoteMap {
+		log.Printf("delRemoteMapAgents: processing %s\n", agentName)
 		if _, ok := foundAgents[agentName]; !ok {
-			delRemoteMap(agentName)
+			delete(remoteMap, agentName)
 		}
 	}
+	log.Printf("delRemoteMapAgents after %v\n", remoteMap)
 }
 
 func delRemoteMap(agentName string) {

@@ -95,6 +95,7 @@ func GetRemoteLogLevel(sub *pubsub.Subscription, agentName string) (string, bool
 func HandleGlobalConfig(sub *pubsub.Subscription, agentName string,
 	debugOverride bool) bool {
 
+	log.Printf("HandleGlobalConfig(%s, %v)\n", agentName, debugOverride)
 	level := log.InfoLevel
 	debug := false
 	if val, ok := GetDebug(sub, agentName); ok {
