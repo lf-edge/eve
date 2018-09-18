@@ -27,6 +27,7 @@ import (
 	"io/ioutil"
 	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -753,11 +754,11 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 				log.Printf("ParseLevel failed: %s\n", err)
 				level = log.DebugLevel
 			}
-			// XXX add level comparison to see whether we should
-			// drop. Here or in processEvents?
-
-			// XXX string for local/removeLogLevel?
-
+			if dropEvent(r.source, level) {
+				log.Debugf("Dropping source %s level %v\n",
+					r.source, level)
+				continue
+			}
 			// XXX set iid to PID? From where?
 			// We add time to front of msg.
 			logChan <- logEntry{source: r.source,
@@ -770,6 +771,12 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 			// Reformat/add timestamp to front of line
 			line, lastTime, lastLevel = parseDateTime(line, lastTime,
 				lastLevel)
+			level := log.InfoLevel
+			if dropEvent(r.source, level) {
+				log.Debugf("Dropping source %s level %v\n",
+					r.source, level)
+				continue
+			}
 			// XXX set iid to PID? From where?
 			logChan <- logEntry{source: r.source, content: line,
 				timestamp: lastTime}
@@ -817,8 +824,18 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Printf("handleGlobalConfigModify for %s\n", key)
+	status := agentlog.CastGlobalConfig(statusArg)
 	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
+	foundAgents := make(map[string]bool)
+	for agentName, perAgentSetting := range status.AgentSettings {
+		foundAgents[agentName] = true
+		if perAgentSetting.RemoteLogLevel != "" {
+			addRemoteMap(agentName, perAgentSetting.RemoteLogLevel)
+		}
+	}
+	// Any deletes?
+	delRemoteMapAgents(foundAgents)
 	log.Printf("handleGlobalConfigModify done for %s\n", key)
 }
 
@@ -833,5 +850,60 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Printf("handleGlobalConfigDelete for %s\n", key)
 	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
+	delRemoteMapAll()
 	log.Printf("handleGlobalConfigDelete done for %s\n", key)
+}
+
+// Cache of loglevels per agent. Protected by mutex since accessed by
+// multiple goroutines
+var remoteMapLock sync.Mutex
+var remoteMap map[string]log.Level = make(map[string]log.Level)
+
+func addRemoteMap(agentName string, logLevel string) {
+	log.Printf("addRemoteMap(%s, %s)\n", agentName, logLevel)
+	level, err := log.ParseLevel(logLevel)
+	if err != nil {
+		log.Printf("addRemoteMap: ParseLevel failed: %s\n", err)
+		return
+	}
+	remoteMapLock.Lock()
+	defer remoteMapLock.Unlock()
+	remoteMap[agentName] = level
+}
+
+// Delete everything not in foundAgents
+func delRemoteMapAgents(foundAgents map[string]bool) {
+	log.Printf("delRemoteMapAgents(%v)\n", foundAgents)
+	remoteMapLock.Lock()
+	defer remoteMapLock.Unlock()
+	for agentName, _ := range remoteMap {
+		if _, ok := foundAgents[agentName]; !ok {
+			delRemoteMap(agentName)
+		}
+	}
+}
+
+func delRemoteMap(agentName string) {
+	log.Printf("delRemoteMap(%s)\n", agentName)
+	remoteMapLock.Lock()
+	defer remoteMapLock.Unlock()
+	delete(remoteMap, agentName)
+}
+
+func delRemoteMapAll() {
+	log.Printf("delRemoteMapAll()\n")
+	remoteMapLock.Lock()
+	defer remoteMapLock.Unlock()
+	remoteMap = make(map[string]log.Level)
+}
+
+// If source exists in GlobalConfig and has a remoteLogLevel, then
+// we compare. If not we accept all
+func dropEvent(source string, level log.Level) bool {
+	remoteMapLock.Lock()
+	defer remoteMapLock.Unlock()
+	if l, ok := remoteMap[source]; ok {
+		return level > l
+	}
+	return false
 }
