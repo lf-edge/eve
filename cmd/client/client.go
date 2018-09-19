@@ -183,7 +183,7 @@ func Run() {
 		time.Sleep(time.Second)
 		tries += 1
 		if tries == 120 { // Two minutes
-			log.Printf("Falling back to using default.json\n")
+			log.Infof("Falling back to using default.json\n")
 			model = "default.json"
 		}
 	}
@@ -281,14 +281,14 @@ func Run() {
 
 	// Make sure we wait for a while to process all the DeviceUplinkConfigs
 	for clientCtx.UsableAddressCount == 0 || !done {
-		log.Printf("Waiting for UsableAddressCount %d and done %v\n",
+		log.Infof("Waiting for UsableAddressCount %d and done %v\n",
 			clientCtx.UsableAddressCount, done)
 		select {
 		case change := <-subGlobalConfig.C:
 			subGlobalConfig.ProcessChange(change)
 
 		case change := <-subDeviceNetworkConfig.C:
-			log.Printf("Got subDeviceNetworkConfig\n")
+			log.Debugf("Got subDeviceNetworkConfig\n")
 			subDeviceNetworkConfig.ProcessChange(change)
 
 		case change := <-subDeviceUplinkConfigT.C:
@@ -314,21 +314,21 @@ func Run() {
 			if clientCtx.UsableAddressCount == 0 &&
 				operations["getUuid"] && oldUUID != nilUUID {
 
-				log.Printf("Already have a UUID %s; declaring success\n",
+				log.Infof("Already have a UUID %s; declaring success\n",
 					oldUUID.String())
 				// Likely zero metrics
 				err := pub.Publish("global", zedcloud.GetCloudMetrics())
 				if err != nil {
-					log.Println(err)
+					log.Errorln(err)
 				}
 				return
 			}
 		}
 	}
-	log.Printf("Got for DeviceNetworkConfig: %d addresses\n",
+	log.Infof("Got for DeviceNetworkConfig: %d addresses\n",
 		clientCtx.UsableAddressCount)
 	if operations["dhcpcd"] {
-		log.Printf("dhcpcd operation done\n")
+		log.Infof("dhcpcd operation done\n")
 		return
 	}
 
@@ -385,7 +385,7 @@ func Run() {
 		resp, contents, err := zedcloud.SendOnAllIntf(zedcloudCtx,
 			serverNameAndPort+url, reqlen, b, retryCount, false)
 		if err != nil {
-			log.Println(err)
+			log.Errorln(err)
 			return false
 		}
 
@@ -396,48 +396,48 @@ func Run() {
 		case http.StatusOK:
 			// Inform ledmanager about existence in cloud
 			types.UpdateLedManagerConfig(4)
-			log.Printf("%s StatusOK\n", url)
+			log.Infof("%s StatusOK\n", url)
 		case http.StatusCreated:
 			// Inform ledmanager about existence in cloud
 			types.UpdateLedManagerConfig(4)
-			log.Printf("%s StatusCreated\n", url)
+			log.Infof("%s StatusCreated\n", url)
 		case http.StatusConflict:
 			// Inform ledmanager about brokenness
 			types.UpdateLedManagerConfig(10)
-			log.Printf("%s StatusConflict\n", url)
+			log.Errorf("%s StatusConflict\n", url)
 			// Retry until fixed
-			log.Printf("%s\n", string(contents))
+			log.Errorf("%s\n", string(contents))
 			return false
 		case http.StatusNotModified: // XXX from zedcloud
 			// Inform ledmanager about brokenness
 			types.UpdateLedManagerConfig(10)
-			log.Printf("%s StatusNotModified\n", url)
+			log.Errorf("%s StatusNotModified\n", url)
 			// Retry until fixed
-			log.Printf("%s\n", string(contents))
+			log.Errorf("%s\n", string(contents))
 			return false
 		default:
-			log.Printf("%s statuscode %d %s\n",
+			log.Errorf("%s statuscode %d %s\n",
 				url, resp.StatusCode,
 				http.StatusText(resp.StatusCode))
-			log.Printf("%s\n", string(contents))
+			log.Errorf("%s\n", string(contents))
 			return false
 		}
 
 		contentType := resp.Header.Get("Content-Type")
 		if contentType == "" {
-			log.Printf("%s no content-type\n", url)
+			log.Errorf("%s no content-type\n", url)
 			return false
 		}
 		mimeType, _, err := mime.ParseMediaType(contentType)
 		if err != nil {
-			log.Printf("%s ParseMediaType failed %v\n", url, err)
+			log.Errorf("%s ParseMediaType failed %v\n", url, err)
 			return false
 		}
 		switch mimeType {
 		case "application/x-proto-binary", "application/json", "text/plain":
-			log.Printf("Received reply %s\n", string(contents))
+			log.Debugf("Received reply %s\n", string(contents))
 		default:
-			log.Println("Incorrect Content-Type " + mimeType)
+			log.Errorln("Incorrect Content-Type " + mimeType)
 			return false
 		}
 		return true
@@ -447,7 +447,7 @@ func Run() {
 	selfRegister := func(retryCount int) bool {
 		tlsConfig, err := zedcloud.GetTlsConfig(serverName, &onboardCert)
 		if err != nil {
-			log.Println(err)
+			log.Errorln(err)
 			return false
 		}
 		zedcloudCtx.TlsConfig = tlsConfig
@@ -456,7 +456,7 @@ func Run() {
 		}
 		b, err := proto.Marshal(registerCreate)
 		if err != nil {
-			log.Println(err)
+			log.Errorln(err)
 			return false
 		}
 		return myPost(retryCount, "/api/v1/edgedevice/register",
@@ -471,19 +471,19 @@ func Run() {
 		resp, contents, err := zedcloud.SendOnAllIntf(zedcloudCtx,
 			serverNameAndPort+url, 0, nil, retryCount, false)
 		if err != nil {
-			log.Println(err)
+			log.Errorln(err)
 			return false, nil, nil
 		}
 
 		switch resp.StatusCode {
 		case http.StatusOK:
-			log.Printf("%s StatusOK\n", url)
+			log.Infof("%s StatusOK\n", url)
 			return true, resp, contents
 		default:
-			log.Printf("%s statuscode %d %s\n",
+			log.Errorf("%s statuscode %d %s\n",
 				url, resp.StatusCode,
 				http.StatusText(resp.StatusCode))
-			log.Printf("Received %s\n", string(contents))
+			log.Errorf("Received %s\n", string(contents))
 			return false, nil, nil
 		}
 	}
@@ -491,10 +491,10 @@ func Run() {
 	// Setup HTTPS client for deviceCert unless force
 	var cert tls.Certificate
 	if forceOnboardingCert || operations["selfRegister"] {
-		log.Printf("Using onboarding cert\n")
+		log.Infof("Using onboarding cert\n")
 		cert = onboardCert
 	} else if deviceCertSet {
-		log.Printf("Using device cert\n")
+		log.Infof("Using device cert\n")
 		cert = deviceCert
 	} else {
 		log.Fatalf("No device certificate for %v\n", operations)
@@ -518,7 +518,7 @@ func Run() {
 			}
 			retryCount += 1
 			if maxRetries != 0 && retryCount > maxRetries {
-				log.Printf("Exceeded %d retries for ping\n",
+				log.Infof("Exceeded %d retries for ping\n",
 					maxRetries)
 				os.Exit(1)
 			}
@@ -526,7 +526,7 @@ func Run() {
 			if delay > maxDelay {
 				delay = maxDelay
 			}
-			log.Printf("Retrying ping in %d seconds\n",
+			log.Infof("Retrying ping in %d seconds\n",
 				delay/time.Second)
 		}
 	}
@@ -543,7 +543,7 @@ func Run() {
 			}
 			retryCount += 1
 			if maxRetries != 0 && retryCount > maxRetries {
-				log.Printf("Exceeded %d retries for selfRegister\n",
+				log.Errorf("Exceeded %d retries for selfRegister\n",
 					maxRetries)
 				os.Exit(1)
 			}
@@ -551,7 +551,7 @@ func Run() {
 			if delay > maxDelay {
 				delay = maxDelay
 			}
-			log.Printf("Retrying selfRegister in %d seconds\n",
+			log.Infof("Retrying selfRegister in %d seconds\n",
 				delay/time.Second)
 		}
 	}
@@ -582,12 +582,12 @@ func Run() {
 				}
 				// Keep on trying until it parses
 				done = false
-				log.Printf("Failed parsing uuid: %s\n",
+				log.Errorf("Failed parsing uuid: %s\n",
 					err)
 				continue
 			}
 			if oldUUID != nilUUID && retryCount > 2 {
-				log.Printf("Sticking with old UUID\n")
+				log.Infof("Sticking with old UUID\n")
 				devUUID = oldUUID
 				done = true
 				continue
@@ -595,7 +595,7 @@ func Run() {
 
 			retryCount += 1
 			if maxRetries != 0 && retryCount > maxRetries {
-				log.Printf("Exceeded %d retries for getUuid\n",
+				log.Errorf("Exceeded %d retries for getUuid\n",
 					maxRetries)
 				os.Exit(1)
 			}
@@ -603,21 +603,21 @@ func Run() {
 			if delay > maxDelay {
 				delay = maxDelay
 			}
-			log.Printf("Retrying config in %d seconds\n",
+			log.Infof("Retrying config in %d seconds\n",
 				delay/time.Second)
 
 		}
 		if oldUUID != nilUUID {
 			if oldUUID != devUUID {
-				log.Printf("Replacing existing UUID %s\n",
+				log.Infof("Replacing existing UUID %s\n",
 					oldUUID.String())
 			} else {
-				log.Printf("No change to UUID %s\n",
+				log.Infof("No change to UUID %s\n",
 					devUUID)
 				doWrite = false
 			}
 		} else {
-			log.Printf("Got config with UUID %s\n", devUUID)
+			log.Infof("Got config with UUID %s\n", devUUID)
 		}
 
 		if doWrite {
@@ -626,20 +626,20 @@ func Run() {
 			if err != nil {
 				log.Fatal("WriteFile", err, uuidFileName)
 			}
-			log.Printf("Wrote UUID %s\n", devUUID)
+			log.Debugf("Wrote UUID %s\n", devUUID)
 		}
 		doWrite = true
 		if hardwaremodel != "" {
 			if oldHardwaremodel != hardwaremodel {
-				log.Printf("Replacing existing hardwaremodel %s\n",
+				log.Infof("Replacing existing hardwaremodel %s\n",
 					oldHardwaremodel)
 			} else {
-				log.Printf("No change to hardwaremodel %s\n",
+				log.Infof("No change to hardwaremodel %s\n",
 					hardwaremodel)
 				doWrite = false
 			}
 		} else {
-			log.Printf("Got config with no hardwaremodel\n")
+			log.Infof("Got config with no hardwaremodel\n")
 			doWrite = false
 		}
 
@@ -651,13 +651,13 @@ func Run() {
 				log.Fatal("WriteFile", err,
 					hardwaremodelFileName)
 			}
-			log.Printf("Wrote hardwaremodel %s\n", hardwaremodel)
+			log.Debugf("Wrote hardwaremodel %s\n", hardwaremodel)
 		}
 	}
 
 	err = pub.Publish("global", zedcloud.GetCloudMetrics())
 	if err != nil {
-		log.Println(err)
+		log.Errorln(err)
 	}
 }
 
@@ -666,13 +666,13 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*devicenetwork.DeviceNetworkContext)
 	if key != "global" {
-		log.Printf("handleGlobalConfigModify: ignoring %s\n", key)
+		log.Debugf("handleGlobalConfigModify: ignoring %s\n", key)
 		return
 	}
-	log.Printf("handleGlobalConfigModify for %s\n", key)
+	log.Infof("handleGlobalConfigModify for %s\n", key)
 	debug = agentlog.HandleGlobalConfig(ctx.SubGlobalConfig, agentName,
 		debugOverride)
-	log.Printf("handleGlobalConfigModify done for %s\n", key)
+	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,
@@ -680,11 +680,11 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*devicenetwork.DeviceNetworkContext)
 	if key != "global" {
-		log.Printf("handleGlobalConfigDelete: ignoring %s\n", key)
+		log.Debugf("handleGlobalConfigDelete: ignoring %s\n", key)
 		return
 	}
-	log.Printf("handleGlobalConfigDelete for %s\n", key)
+	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	debug = agentlog.HandleGlobalConfig(ctx.SubGlobalConfig, agentName,
 		debugOverride)
-	log.Printf("handleGlobalConfigDelete done for %s\n", key)
+	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
