@@ -94,6 +94,11 @@ func Run() {
 	flag.Parse()
 	debug = *debugPtr
 	debugOverride = debug
+	if debugOverride {
+		log.SetLevel(log.DebugLevel)
+	} else {
+		log.SetLevel(log.InfoLevel)
+	}
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
@@ -101,10 +106,10 @@ func Run() {
 	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("Starting %s\n", agentName)
+	log.Infof("Starting %s\n", agentName)
 
 	model := hardware.GetHardwareModel()
-	log.Printf("Got HardwareModel %s\n", model)
+	log.Infof("Got HardwareModel %s\n", model)
 
 	var blinkFunc Blink200msFunc
 	var initFunc BlinkInitFunc
@@ -115,7 +120,7 @@ func Run() {
 			break
 		}
 		if m.model == "" {
-			log.Printf("No blink function for %s\n", model)
+			log.Infof("No blink function for %s\n", model)
 			blinkFunc = m.blinkFunc
 			initFunc = m.initFunc
 			break
@@ -127,7 +132,7 @@ func Run() {
 	}
 	ledChanges := make(chan string)
 	go watch.WatchStatus(ledConfigDirName, ledChanges)
-	log.Println("called watcher...")
+	log.Debugln("called watcher...")
 
 	// Any state needed by handler functions
 	ctx := ledManagerContext{}
@@ -174,7 +179,8 @@ func handleLedBlinkModify(ctxArg interface{}, configFilename string,
 	ctx := ctxArg.(*ledManagerContext)
 
 	if configFilename != "ledconfig" {
-		log.Printf("handleLedBlinkModify: ignoring %s\n", configFilename)
+		log.Errorf("handleLedBlinkModify: ignoring %s\n",
+			configFilename)
 		return
 	}
 	// Supress work and logging if no change
@@ -182,26 +188,26 @@ func handleLedBlinkModify(ctxArg interface{}, configFilename string,
 		return
 	}
 	oldCounter = config.BlinkCounter
-	log.Printf("handleLedBlinkModify for %s\n", configFilename)
-	log.Println("value of blinkCount: ", config.BlinkCounter)
+	log.Infof("handleLedBlinkModify for %s\n", configFilename)
+	log.Infoln("value of blinkCount: ", config.BlinkCounter)
 	ctx.countChange <- config.BlinkCounter
-	log.Printf("handleLedBlinkModify done for %s\n", configFilename)
+	log.Infof("handleLedBlinkModify done for %s\n", configFilename)
 }
 
 // XXX add configArg?
 func handleLedBlinkDelete(ctxArg interface{}, configFilename string) {
-	log.Printf("handleLedBlinkDelete for %s\n", configFilename)
+	log.Infof("handleLedBlinkDelete for %s\n", configFilename)
 	ctx := ctxArg.(*ledManagerContext)
 
 	if configFilename != "ledconfig" {
-		log.Printf("handleLedBlinkDelete: ignoring %s\n", configFilename)
+		log.Errorf("handleLedBlinkDelete: ignoring %s\n", configFilename)
 		return
 	}
 	// XXX or should we tell the blink go routine to exit?
 	ctx.countChange <- 0
 	// Update our own input... XXX need something different when pubsub
 	types.UpdateLedManagerConfig(0)
-	log.Printf("handleLedBlinkDelete done for %s\n", configFilename)
+	log.Infof("handleLedBlinkDelete done for %s\n", configFilename)
 }
 
 func TriggerBlinkOnDevice(countChange chan int, blinkFunc Blink200msFunc) {
@@ -209,7 +215,7 @@ func TriggerBlinkOnDevice(countChange chan int, blinkFunc Blink200msFunc) {
 	for {
 		select {
 		case counter = <-countChange:
-			log.Printf("Received counter update: %d\n",
+			log.Debugf("Received counter update: %d\n",
 				counter)
 		default:
 			log.Debugf("Unchanged counter: %d\n", counter)
@@ -233,7 +239,7 @@ func ExecuteDDCmd() {
 	cmd := exec.Command("dd", "if=/dev/sda", "of=/dev/null", "bs=4M", "count=22", "iflag=nocache")
 	stdout, err := cmd.Output()
 	if err != nil {
-		log.Println("dd error: ", err)
+		log.Errorln("dd error: ", err)
 		return
 	}
 	log.Debugf("ddinfo: %s\n", stdout)
@@ -248,7 +254,7 @@ const (
 // Disable existimg trigger
 // Write "none\n" to /sys/class/leds/wifi_active/trigger
 func InitWifiLedCmd() {
-	log.Printf("InitWifiLedCmd\n")
+	log.Infof("InitWifiLedCmd\n")
 	b := []byte("none")
 	err := ioutil.WriteFile(triggerFilename, b, 0644)
 	if err != nil {
@@ -276,13 +282,13 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*ledManagerContext)
 	if key != "global" {
-		log.Printf("handleGlobalConfigModify: ignoring %s\n", key)
+		log.Infof("handleGlobalConfigModify: ignoring %s\n", key)
 		return
 	}
-	log.Printf("handleGlobalConfigModify for %s\n", key)
+	log.Infof("handleGlobalConfigModify for %s\n", key)
 	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
-	log.Printf("handleGlobalConfigModify done for %s\n", key)
+	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,
@@ -290,11 +296,11 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*ledManagerContext)
 	if key != "global" {
-		log.Printf("handleGlobalConfigDelete: ignoring %s\n", key)
+		log.Infof("handleGlobalConfigDelete: ignoring %s\n", key)
 		return
 	}
-	log.Printf("handleGlobalConfigDelete for %s\n", key)
+	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
-	log.Printf("handleGlobalConfigDelete done for %s\n", key)
+	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
