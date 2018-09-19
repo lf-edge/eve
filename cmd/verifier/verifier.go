@@ -103,7 +103,7 @@ func Run() {
 	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("Starting %s\n", agentName)
+	log.Infof("Starting %s\n", agentName)
 
 	// create the directories
 	initializeDirs()
@@ -189,7 +189,7 @@ func Run() {
 
 func handleInit(ctx *verifierContext) {
 
-	log.Println("handleInit")
+	log.Infoln("handleInit")
 
 	// mark all status file to PendingDelete
 	handleInitWorkinProgressObjects(ctx)
@@ -200,13 +200,13 @@ func handleInit(ctx *verifierContext) {
 	// delete status files marked PendingDelete
 	handleInitMarkedDeletePendingObjects(ctx)
 
-	log.Println("handleInit done")
+	log.Infoln("handleInit done")
 }
 
 func initializeDirs() {
 	// first the certs directory
 	if _, err := os.Stat(certificateDirname); err != nil {
-		log.Printf("Create %s\n", certificateDirname)
+		log.Debugf("Create %s\n", certificateDirname)
 		if err := os.MkdirAll(certificateDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
@@ -238,11 +238,11 @@ func handleInitWorkinProgressObjects(ctx *verifierContext) {
 		for key, st := range items {
 			status := cast.CastVerifyImageStatus(st)
 			if status.Key() != key {
-				log.Printf("handleInitWorkin key/UUID mismatch %s vs %s; ignored %+v\n",
+				log.Errorf("handleInitWorkin key/UUID mismatch %s vs %s; ignored %+v\n",
 					key, status.Key(), status)
 				continue
 			}
-			log.Printf("Marking with PendingDelete: %s\n", key)
+			log.Debugf("Marking with PendingDelete: %s\n", key)
 			status.PendingDelete = true
 			publishVerifyImageStatus(ctx, &status)
 		}
@@ -267,7 +267,7 @@ func handleInitVerifiedObjects(ctx *verifierContext) {
 func populateInitialStatusFromVerified(ctx *verifierContext,
 	objType string, objDirname string, parentDirname string) {
 
-	log.Printf("populateInitialStatusFromVerified(%s, %s)\n", objDirname,
+	log.Infof("populateInitialStatusFromVerified(%s, %s)\n", objDirname,
 		parentDirname)
 
 	locations, err := ioutil.ReadDir(objDirname)
@@ -281,14 +281,14 @@ func populateInitialStatusFromVerified(ctx *verifierContext,
 		filename := objDirname + "/" + location.Name()
 
 		if location.IsDir() {
-			log.Printf("populateInitialStatusFromVerified: Looking in %s\n", filename)
+			log.Debugf("populateInitialStatusFromVerified: Looking in %s\n", filename)
 			if _, err := os.Stat(filename); err == nil {
 				populateInitialStatusFromVerified(ctx,
 					objType, filename, location.Name())
 			}
 		} else {
 			info, _ := os.Stat(filename)
-			log.Printf("populateInitialStatusFromVerified: Processing %d Mbytes %s \n",
+			log.Debugf("populateInitialStatusFromVerified: Processing %d Mbytes %s \n",
 				info.Size()/(1024*1024), filename)
 
 			// XXX should really re-verify the image on reboot/restart
@@ -320,12 +320,12 @@ func handleInitMarkedDeletePendingObjects(ctx *verifierContext) {
 		for key, st := range items {
 			status := cast.CastVerifyImageStatus(st)
 			if status.Key() != key {
-				log.Printf("handleInitMarked key/UUID mismatch %s vs %s; ignored %+v\n",
+				log.Errorf("handleInitMarked key/UUID mismatch %s vs %s; ignored %+v\n",
 					key, status.Key(), status)
 				continue
 			}
 			if status.PendingDelete {
-				log.Printf("still PendingDelete; delete %s\n",
+				log.Infof("still PendingDelete; delete %s\n",
 					key)
 				unpublishVerifyImageStatus(ctx, &status)
 			}
@@ -344,7 +344,7 @@ func createDownloadDirs(objTypes []string) {
 		for _, dirType := range workingDirTypes {
 			dirName := objectDownloadDirname + "/" + objType + "/" + dirType
 			if _, err := os.Stat(dirName); err != nil {
-				log.Printf("Create %s\n", dirName)
+				log.Debugf("Create %s\n", dirName)
 				if err := os.MkdirAll(dirName, 0700); err != nil {
 					log.Fatal(err)
 				}
@@ -376,7 +376,7 @@ func clearInProgressDownloadDirs(objTypes []string) {
 // we check that the key is not in handlerMap to make sure we don't
 // touch an object owned by a running goroutine.
 func gcVerifiedObjects(ctx *verifierContext) {
-	log.Printf("gcVerifiedObjects()\n")
+	log.Infof("gcVerifiedObjects()\n")
 	publications := []*pubsub.Publication{
 		ctx.pubAppImgStatus,
 		ctx.pubBaseOsStatus,
@@ -387,23 +387,23 @@ func gcVerifiedObjects(ctx *verifierContext) {
 			// Check of thread is running
 			_, ok := handlerMap[key]
 			if ok {
-				log.Printf("gcVerifiedObjects handler running for %s; skipping\n",
+				log.Infof("gcVerifiedObjects handler running for %s; skipping\n",
 					key)
 				continue
 			}
 
 			status := cast.CastVerifyImageStatus(st)
 			if status.Key() != key {
-				log.Printf("gcVerifiedObjects key/UUID mismatch %s vs %s; ignored %+v\n",
+				log.Errorf("gcVerifiedObjects key/UUID mismatch %s vs %s; ignored %+v\n",
 					key, status.Key(), status)
 				continue
 			}
 			if status.RefCount != 0 {
-				log.Printf("gcVerifiedObjects: skipping RefCount %d: %s\n",
+				log.Infof("gcVerifiedObjects: skipping RefCount %d: %s\n",
 					status.RefCount, key)
 				continue
 			}
-			log.Printf("gcVerifiedObjects: removing %s\n", key)
+			log.Infof("gcVerifiedObjects: removing %s\n", key)
 			objType := status.ObjType
 			if objType == "" {
 				log.Fatalf("gcVerifiedObjects: No ObjType for %s\n",
@@ -429,7 +429,7 @@ func updateVerifyErrStatus(ctx *verifierContext,
 func publishVerifyImageStatus(ctx *verifierContext,
 	status *types.VerifyImageStatus) {
 
-	log.Printf("publishVerifyImageStatus(%s, %s)\n",
+	log.Debugf("publishVerifyImageStatus(%s, %s)\n",
 		status.ObjType, status.Safename)
 
 	pub := verifierPublication(ctx, status.ObjType)
@@ -440,15 +440,14 @@ func publishVerifyImageStatus(ctx *verifierContext,
 func unpublishVerifyImageStatus(ctx *verifierContext,
 	status *types.VerifyImageStatus) {
 
-	log.Printf("publishVerifyImageStatus(%s, %s)\n",
+	log.Debugf("publishVerifyImageStatus(%s, %s)\n",
 		status.ObjType, status.Safename)
 
 	pub := verifierPublication(ctx, status.ObjType)
 	key := status.Key()
-	log.Printf("removeVerifyImageStatus(%s)\n", key)
 	st, _ := pub.Get(key)
 	if st == nil {
-		log.Printf("removeVerifyImageStatus(%s) not found\n", key)
+		log.Errorf("unpublishVerifyImageStatus(%s) not found\n", key)
 		return
 	}
 	pub.Unpublish(key)
@@ -497,12 +496,12 @@ func lookupVerifyImageStatus(ctx *verifierContext, objType string,
 	pub := verifierPublication(ctx, objType)
 	st, _ := pub.Get(key)
 	if st == nil {
-		log.Printf("lookupVerifyImageStatus(%s) not found\n", key)
+		log.Infof("lookupVerifyImageStatus(%s) not found\n", key)
 		return nil
 	}
 	status := cast.CastVerifyImageStatus(st)
 	if status.Key() != key {
-		log.Printf("lookupVerifyImageStatus(%s) got %s; ignored %+v\n",
+		log.Errorf("lookupVerifyImageStatus(%s) got %s; ignored %+v\n",
 			key, status.Key(), status)
 		return nil
 	}
@@ -528,11 +527,11 @@ func handlersInit() {
 func handleVerifyImageModify(ctxArg interface{}, objType string,
 	key string, configArg interface{}) {
 
-	log.Printf("handleVerifyImageModify(%s)\n", key)
+	log.Infof("handleVerifyImageModify(%s)\n", key)
 	ctx := ctxArg.(*verifierContext)
 	config := cast.CastVerifyImageConfig(configArg)
 	if config.Key() != key {
-		log.Printf("handleVerifyImageModify key/UUID mismatch %s vs %s; ignored %+v\n",
+		log.Errorf("handleVerifyImageModify key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, config.Key(), config)
 		return
 	}
@@ -544,33 +543,33 @@ func handleVerifyImageModify(ctxArg interface{}, objType string,
 		go runHandler(ctx, objType, key, h1)
 		h = h1
 	}
-	log.Printf("Sending config to handler\n")
+	log.Debugf("Sending config to handler\n")
 	h <- configArg
-	log.Printf("handleVerifyImageModify(%s) done\n", key)
+	log.Infof("handleVerifyImageModify(%s) done\n", key)
 }
 
 func handleVerifyImageDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	log.Printf("handleVerifyImageDelete(%s)\n", key)
+	log.Infof("handleVerifyImageDelete(%s)\n", key)
 	// Do we have a channel/goroutine?
 	h, ok := handlerMap[key]
 	if ok {
-		log.Printf("Closing channel\n")
+		log.Debugf("Closing channel\n")
 		close(h)
 		delete(handlerMap, key)
 	} else {
-		log.Printf("handleVerifyImageDelete: unknown %s\n", key)
+		log.Debugf("handleVerifyImageDelete: unknown %s\n", key)
 		return
 	}
-	log.Printf("handleVerifyImageDelete(%s) done\n", key)
+	log.Infof("handleVerifyImageDelete(%s) done\n", key)
 }
 
 // Server for each domU
 func runHandler(ctx *verifierContext, objType string, key string,
 	c <-chan interface{}) {
 
-	log.Printf("runHandler starting\n")
+	log.Infof("runHandler starting\n")
 
 	closed := false
 	for !closed {
@@ -596,13 +595,13 @@ func runHandler(ctx *verifierContext, objType string, key string,
 			}
 		}
 	}
-	log.Printf("runHandler(%s) DONE\n", key)
+	log.Infof("runHandler(%s) DONE\n", key)
 }
 
 func handleCreate(ctx *verifierContext, objType string,
 	config *types.VerifyImageConfig) {
 
-	log.Printf("handleCreate(%v) objType %s for %s\n",
+	log.Infof("handleCreate(%v) objType %s for %s\n",
 		config.Safename, objType, config.Name)
 	if objType == "" {
 		log.Fatalf("handleCreate: No ObjType for %s\n",
@@ -621,14 +620,14 @@ func handleCreate(ctx *verifierContext, objType string,
 
 	ok, size := markObjectAsVerifying(ctx, config, &status)
 	if !ok {
-		log.Printf("handleCreate fail for %s\n", config.Name)
+		log.Errorf("handleCreate fail for %s\n", config.Name)
 		return
 	}
 	status.Size = size
 	publishVerifyImageStatus(ctx, &status)
 
 	if !verifyObjectSha(ctx, config, &status) {
-		log.Printf("handleCreate fail for %s\n", config.Name)
+		log.Errorf("handleCreate fail for %s\n", config.Name)
 		return
 	}
 	publishVerifyImageStatus(ctx, &status)
@@ -637,7 +636,7 @@ func handleCreate(ctx *verifierContext, objType string,
 	status.PendingAdd = false
 	status.State = types.DELIVERED
 	publishVerifyImageStatus(ctx, &status)
-	log.Printf("handleCreate done for %s\n", config.Name)
+	log.Infof("handleCreate done for %s\n", config.Name)
 }
 
 // Returns ok, size of object
@@ -661,16 +660,16 @@ func markObjectAsVerifying(ctx *verifierContext,
 
 	// Move to verifier directory which is RO
 	// XXX should have dom0 do this and/or have RO mounts
-	log.Printf("Move from %s to %s\n", pendingFilename, verifierFilename)
+	log.Infof("Move from %s to %s\n", pendingFilename, verifierFilename)
 
 	info, err := os.Stat(pendingFilename)
 	if err != nil {
 		// XXX hits sometimes; attempting to verify before download
 		// is complete?
-		log.Printf("markObjectAsVerifying failed %s\n", err)
+		log.Errorf("markObjectAsVerifying failed %s\n", err)
 		cerr := fmt.Sprintf("%v", err)
 		updateVerifyErrStatus(ctx, status, cerr)
-		log.Printf("handleCreate failed for %s\n", config.Name)
+		log.Errorf("handleCreate failed for %s\n", config.Name)
 		return false, 0
 	}
 
@@ -683,7 +682,7 @@ func markObjectAsVerifying(ctx *verifierContext,
 			log.Fatal(err)
 		}
 	}
-	log.Printf("Create %s\n", verifierDirname)
+	log.Debugf("Create %s\n", verifierDirname)
 	if err := os.MkdirAll(verifierDirname, 0700); err != nil {
 		log.Fatal(err)
 	}
@@ -715,14 +714,14 @@ func verifyObjectSha(ctx *verifierContext, config *types.VerifyImageConfig,
 	verifierDirname := downloadDirname + "/verifier/" + status.ImageSha256
 	verifierFilename := verifierDirname + "/" + config.Safename
 
-	log.Printf("Verifying URL %s file %s\n",
+	log.Infof("Verifying URL %s file %s\n",
 		config.Name, verifierFilename)
 
 	f, err := os.Open(verifierFilename)
 	if err != nil {
 		cerr := fmt.Sprintf("%v", err)
 		updateVerifyErrStatus(ctx, status, cerr)
-		log.Printf("verifyObjectSha: %s failed %s\n",
+		log.Errorf("verifyObjectSha: %s failed %s\n",
 			config.Name, cerr)
 		return false
 	}
@@ -734,7 +733,7 @@ func verifyObjectSha(ctx *verifierContext, config *types.VerifyImageConfig,
 	if _, err := io.Copy(h, f); err != nil {
 		cerr := fmt.Sprintf("%v", err)
 		updateVerifyErrStatus(ctx, status, cerr)
-		log.Printf("verifyObjectSha %s failed %s\n",
+		log.Errorf("verifyObjectSha %s failed %s\n",
 			config.Name, cerr)
 		return false
 	}
@@ -742,22 +741,22 @@ func verifyObjectSha(ctx *verifierContext, config *types.VerifyImageConfig,
 	imageHash := h.Sum(nil)
 	got := fmt.Sprintf("%x", h.Sum(nil))
 	if got != strings.ToLower(config.ImageSha256) {
-		log.Printf("computed   %s\n", got)
-		log.Printf("configured %s\n", strings.ToLower(config.ImageSha256))
+		log.Errorf("computed   %s\n", got)
+		log.Errorf("configured %s\n", strings.ToLower(config.ImageSha256))
 		cerr := fmt.Sprintf("computed %s configured %s",
 			got, config.ImageSha256)
 		status.PendingAdd = false
 		updateVerifyErrStatus(ctx, status, cerr)
-		log.Printf("verifyObjectSha %s failed %s\n",
+		log.Errorf("verifyObjectSha %s failed %s\n",
 			config.Name, cerr)
 		return false
 	}
 
-	log.Printf("Sha validation successful for %s\n", config.Name)
+	log.Infof("Sha validation successful for %s\n", config.Name)
 
 	if cerr := verifyObjectShaSignature(status, config, imageHash); cerr != "" {
 		updateVerifyErrStatus(ctx, status, cerr)
-		log.Printf("Signature validation failed for %s, %s\n",
+		log.Errorf("Signature validation failed for %s, %s\n",
 			config.Name, cerr)
 		return false
 	}
@@ -772,12 +771,12 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 	//  as valid may not hold good always!!!
 	if (config.ImageSignature == nil) ||
 		(len(config.ImageSignature) == 0) {
-		log.Printf("No signature to verify for %s\n",
+		log.Infof("No signature to verify for %s\n",
 			config.Name)
 		return ""
 	}
 
-	log.Printf("Validating %s using cert %s sha %s\n",
+	log.Infof("Validating %s using cert %s sha %s\n",
 		config.Name, config.SignatureKey,
 		config.ImageSha256)
 
@@ -820,7 +819,7 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 	// Read the root cerificates from /config
 	rootCertificate, err := ioutil.ReadFile(rootCertFileName)
 	if err != nil {
-		log.Println(err)
+		log.Errorln(err)
 		cerr := fmt.Sprintf("failed to find root certificate: %s", err)
 		return cerr
 	}
@@ -854,7 +853,7 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 		return cerr
 	}
 
-	log.Printf("certificate options verified for %s\n", config.Name)
+	log.Infof("certificate options verified for %s\n", config.Name)
 
 	//Read the signature from config file...
 	imgSig := config.ImageSignature
@@ -867,32 +866,31 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 			cerr := fmt.Sprintf("rsa image signature verification failed: %s", err)
 			return cerr
 		}
-		log.Printf("VerifyPKCS1v15 successful for %s\n",
+		log.Infof("VerifyPKCS1v15 successful for %s\n",
 			config.Name)
 	case *ecdsa.PublicKey:
-		log.Printf("pub is of type ecdsa: ", pub)
 		imgSignature, err := base64.StdEncoding.DecodeString(string(imgSig))
 		if err != nil {
 			cerr := fmt.Sprintf("DecodeString failed: %v ", err)
 			return cerr
 		}
 
-		log.Printf("Decoded imgSignature (len %d): % x\n",
+		log.Debugf("Decoded imgSignature (len %d): % x\n",
 			len(imgSignature), imgSignature)
 		rbytes := imgSignature[0:32]
 		sbytes := imgSignature[32:]
-		log.Printf("Decoded r %d s %d\n", len(rbytes), len(sbytes))
+		log.Debugf("Decoded r %d s %d\n", len(rbytes), len(sbytes))
 		r := new(big.Int)
 		s := new(big.Int)
 		r.SetBytes(rbytes)
 		s.SetBytes(sbytes)
-		log.Printf("Decoded r, s: %v, %v\n", r, s)
+		log.Debugf("Decoded r, s: %v, %v\n", r, s)
 		ok := ecdsa.Verify(pub, imageHash, r, s)
 		if !ok {
 			cerr := fmt.Sprintf("ecdsa image signature verification failed")
 			return cerr
 		}
-		log.Printf("ecdsa Verify successful for %s\n",
+		log.Infof("ecdsa Verify successful for %s\n",
 			config.Name)
 	default:
 		cerr := fmt.Sprintf("unknown type of public key")
@@ -917,7 +915,7 @@ func markObjectAsVerified(ctx *verifierContext, config *types.VerifyImageConfig,
 	// XXX should have dom0 do this and/or have RO mounts
 	filename := types.SafenameToFilename(config.Safename)
 	verifiedFilename = verifiedDirname + "/" + filename
-	log.Printf("Move from %s to %s\n", verifierFilename, verifiedFilename)
+	log.Infof("Move from %s to %s\n", verifierFilename, verifiedFilename)
 
 	if _, err := os.Stat(verifierFilename); err != nil {
 		log.Fatal(err)
@@ -937,7 +935,7 @@ func markObjectAsVerified(ctx *verifierContext, config *types.VerifyImageConfig,
 			log.Fatal(err)
 		}
 		for _, location := range locations {
-			log.Printf("Identical sha256 (%s) for safenames %s and %s; deleting old\n",
+			log.Debugf("Identical sha256 (%s) for safenames %s and %s; deleting old\n",
 				config.ImageSha256, location.Name(),
 				config.Safename)
 		}
@@ -946,7 +944,7 @@ func markObjectAsVerified(ctx *verifierContext, config *types.VerifyImageConfig,
 		}
 	}
 
-	log.Printf("Create %s\n", verifiedDirname)
+	log.Errorf("Create %s\n", verifiedDirname)
 	if err := os.MkdirAll(verifiedDirname, 0700); err != nil {
 		log.Fatal(err)
 	}
@@ -971,7 +969,7 @@ func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 	// Note no comparison on version
 	changed := false
 
-	log.Printf("handleModify(%v) objType %s for %s\n",
+	log.Infof("handleModify(%v) objType %s for %s\n",
 		status.Safename, status.ObjType, config.Name)
 
 	if status.ObjType == "" {
@@ -981,7 +979,7 @@ func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 
 	// Always update RefCount
 	if status.RefCount != config.RefCount {
-		log.Printf("handleModify RefCount change %s from %d to %d\n",
+		log.Infof("handleModify RefCount change %s from %d to %d\n",
 			config.Name, status.RefCount, config.RefCount)
 		status.RefCount = config.RefCount
 		changed = true
@@ -995,7 +993,7 @@ func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 		status.PendingModify = false
 		status.State = 0 // XXX INITIAL implies failure
 		publishVerifyImageStatus(ctx, status)
-		log.Printf("handleModify done for %s\n", config.Name)
+		log.Infof("handleModify done for %s\n", config.Name)
 		return
 	}
 
@@ -1005,7 +1003,7 @@ func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 		if changed {
 			publishVerifyImageStatus(ctx, status)
 		}
-		log.Printf("handleModify: no (other) change for %s\n",
+		log.Infof("handleModify: no (other) change for %s\n",
 			config.Name)
 		return
 	}
@@ -1016,12 +1014,12 @@ func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 	handleCreate(ctx, status.ObjType, config)
 	status.PendingModify = false
 	publishVerifyImageStatus(ctx, status)
-	log.Printf("handleModify done for %s\n", config.Name)
+	log.Infof("handleModify done for %s\n", config.Name)
 }
 
 func handleDelete(ctx *verifierContext, status *types.VerifyImageStatus) {
 
-	log.Printf("handleDelete(%v) objType %s\n",
+	log.Infof("handleDelete(%v) objType %s\n",
 		status.Safename, status.ObjType)
 
 	if status.ObjType == "" {
@@ -1035,7 +1033,7 @@ func handleDelete(ctx *verifierContext, status *types.VerifyImageStatus) {
 	// XXX set refCount=0
 	// Write out what we modified to VerifyImageStatus aka delete
 	unpublishVerifyImageStatus(ctx, status)
-	log.Printf("handleDelete done for %s\n", status.Safename)
+	log.Infof("handleDelete done for %s\n", status.Safename)
 }
 
 // Remove the file from any of the three directories
@@ -1043,7 +1041,7 @@ func handleDelete(ctx *verifierContext, status *types.VerifyImageStatus) {
 // to avoid deleting a different verified file with same sha as this claimed
 // to have
 func doDelete(status *types.VerifyImageStatus) {
-	log.Printf("doDelete(%v)\n", status.Safename)
+	log.Infof("doDelete(%v)\n", status.Safename)
 
 	objType := status.ObjType
 	downloadDirname := objectDownloadDirname + "/" + objType
@@ -1053,15 +1051,15 @@ func doDelete(status *types.VerifyImageStatus) {
 	_, err := os.Stat(verifiedDirname)
 	if err == nil && status.State == types.DELIVERED {
 		if _, err := os.Stat(preserveFilename); err != nil {
-			log.Printf("doDelete removing %s\n", verifiedDirname)
+			log.Infof("doDelete removing %s\n", verifiedDirname)
 			if err := os.RemoveAll(verifiedDirname); err != nil {
 				log.Fatal(err)
 			}
 		} else {
-			log.Printf("doDelete preserving %s\n", verifiedDirname)
+			log.Infof("doDelete preserving %s\n", verifiedDirname)
 		}
 	}
-	log.Printf("doDelete(%v) done\n", status.Safename)
+	log.Infof("doDelete(%v) done\n", status.Safename)
 }
 
 func handleGlobalConfigModify(ctxArg interface{}, key string,
@@ -1069,13 +1067,13 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*verifierContext)
 	if key != "global" {
-		log.Printf("handleGlobalConfigModify: ignoring %s\n", key)
+		log.Infof("handleGlobalConfigModify: ignoring %s\n", key)
 		return
 	}
-	log.Printf("handleGlobalConfigModify for %s\n", key)
+	log.Infof("handleGlobalConfigModify for %s\n", key)
 	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
-	log.Printf("handleGlobalConfigModify done for %s\n", key)
+	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,
@@ -1083,11 +1081,11 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*verifierContext)
 	if key != "global" {
-		log.Printf("handleGlobalConfigDelete: ignoring %s\n", key)
+		log.Infof("handleGlobalConfigDelete: ignoring %s\n", key)
 		return
 	}
-	log.Printf("handleGlobalConfigDelete for %s\n", key)
+	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
-	log.Printf("handleGlobalConfigDelete done for %s\n", key)
+	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
