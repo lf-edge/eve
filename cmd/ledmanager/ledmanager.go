@@ -53,9 +53,16 @@ type modelToFuncs struct {
 	blinkFunc Blink200msFunc
 }
 
+// XXX introduce wildcard matching on mondel names?
 var mToF = []modelToFuncs{
 	modelToFuncs{
 		model:     "Supermicro.SYS-E100-9APP",
+		blinkFunc: ExecuteDDCmd},
+	modelToFuncs{
+		model:     "Supermicro.SYS-E100-9S",
+		blinkFunc: ExecuteDDCmd},
+	modelToFuncs{
+		model:     "Supermicro.SYS-E50-9AP",
 		blinkFunc: ExecuteDDCmd},
 	modelToFuncs{ // XXX temporary fix for old BIOS
 		model:     "Supermicro.Super Server",
@@ -73,7 +80,7 @@ var mToF = []modelToFuncs{
 	// Last in table as a default
 	modelToFuncs{
 		model:     "",
-		blinkFunc: DummyCmd},
+		blinkFunc: ExecuteDDCmd},
 }
 
 var debug bool
