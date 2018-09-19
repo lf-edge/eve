@@ -51,26 +51,27 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 			select {
 			case event := <-w.Events:
 				baseName := path.Base(event.Name)
-				// log.Println("WatchConfigStatus event:", event)
+				// log.Debugln("WatchConfigStatus event:", event)
 
 				// We get create events when file is moved into
 				// the watched directory.
 				if event.Op&
 					(fsnotify.Write|fsnotify.Create) != 0 {
-					// log.Println("WatchConfigStatus modified", baseName)
+					// log.Debugln("WatchConfigStatus modified", baseName)
 					fileChanges <- "M " + baseName
 				} else if event.Op&fsnotify.Chmod != 0 {
-					// log.Println("WatchConfigStatus chmod", baseName)
+					// log.Debugln("WatchConfigStatus chmod", baseName)
 					fileChanges <- "M " + baseName
 				} else if event.Op&
 					(fsnotify.Rename|fsnotify.Remove) != 0 {
-					// log.Println("WatchConfigStatus deleted", baseName)
+					// log.Debugln("WatchConfigStatus deleted", baseName)
 					fileChanges <- "D " + baseName
 				} else {
-					log.Println("WatchConfigStatus unknown ", event, baseName)
+					log.Errorln("WatchConfigStatus unknown ",
+						event, baseName)
 				}
 			case err := <-w.Errors:
-				log.Println("WatchConfigStatus error:", err)
+				log.Errorln("WatchConfigStatus error:", err)
 			}
 		}
 	}()
@@ -79,7 +80,7 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 	if err != nil {
 		log.Fatal(err, ": ", configDir)
 	}
-	// log.Println("WatchConfigStatus added", configDir)
+	// log.Debugln("WatchConfigStatus added", configDir)
 
 	foundRestart, foundRestarted := watchReadDir(configDir, fileChanges,
 		false)
@@ -94,11 +95,11 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 			fileName := configDir + "/" + file.Name()
 			if _, err := os.Stat(fileName); err != nil {
 				// File does not exist in configDir
-				log.Println("Initial delete", file.Name())
+				log.Infoln("Initial delete", file.Name())
 				fileChanges <- "D " + file.Name()
 			}
 		}
-		log.Printf("Initial deletes done for %s\n", statusDir)
+		log.Infof("Initial deletes done for %s\n", statusDir)
 	}
 	// Hook to tell restart is done
 	fileChanges <- "R done"
@@ -118,13 +119,12 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 	for {
 		select {
 		case <-done:
-			log.Println("WatchConfigStatus channel done; terminating")
-			// XXX log.Fatal?
+			log.Errorln("WatchConfigStatus channel done; terminating")
 			break
 		case <-ticker.C:
 			// Remove and re-add
 			// XXX do we also need to re-scan?
-			// log.Println("WatchConfigStatus remove/re-add", configDir)
+			// log.Debugln("WatchConfigStatus remove/re-add", configDir)
 			err = w.Remove(configDir)
 			if err != nil {
 				log.Fatal(err, "Remove: ", configDir)
@@ -172,12 +172,12 @@ func watchReadDir(configDir string, fileChanges chan<- string, retry bool) (bool
 			log.Debugln("watchReadDir retry modified",
 				configDir, file.Name())
 		} else {
-			log.Println("watchReadDir modified", file.Name())
+			log.Infoln("watchReadDir modified", file.Name())
 		}
 		fileChanges <- "M " + file.Name()
 	}
 	if !retry {
-		log.Printf("watchReadDir done for %s\n", configDir)
+		log.Infof("watchReadDir done for %s\n", configDir)
 	}
 	return foundRestart, foundRestarted
 }
@@ -198,27 +198,27 @@ func WatchStatus(statusDir string, fileChanges chan<- string) {
 			select {
 			case event := <-w.Events:
 				baseName := path.Base(event.Name)
-				// log.Println("WatchStatus event:", event)
+				// log.Debugln("WatchStatus event:", event)
 
 				// We get create events when file is moved into
 				// the watched directory.
 				if event.Op&
 					(fsnotify.Write|fsnotify.Create) != 0 {
-					// log.Println("WatchStatus modified", baseName)
+					// log.Debugln("WatchStatus modified", baseName)
 					fileChanges <- "M " + baseName
 				} else if event.Op&fsnotify.Chmod != 0 {
-					// log.Println("WatchStatus chmod", baseName)
+					// log.Debugln("WatchStatus chmod", baseName)
 					fileChanges <- "M " + baseName
 				} else if event.Op&
 					(fsnotify.Rename|fsnotify.Remove) != 0 {
-					// log.Println("WatchStatus deleted", baseName)
+					// log.Debugln("WatchStatus deleted", baseName)
 					fileChanges <- "D " + baseName
 				} else {
-					log.Println("WatchStatus unknown", event, baseName)
+					log.Errorln("WatchStatus unknown", event, baseName)
 				}
 
 			case err := <-w.Errors:
-				log.Println("WatchStatus error:", err)
+				log.Errorln("WatchStatus error:", err)
 			}
 		}
 	}()
@@ -227,7 +227,7 @@ func WatchStatus(statusDir string, fileChanges chan<- string) {
 	if err != nil {
 		log.Fatal(err, ": ", statusDir)
 	}
-	// log.Println("WatchStatus added", statusDir)
+	// log.Debugln("WatchStatus added", statusDir)
 
 	foundRestart, foundRestarted := watchReadDir(statusDir, fileChanges,
 		false)
@@ -251,13 +251,12 @@ func WatchStatus(statusDir string, fileChanges chan<- string) {
 	for {
 		select {
 		case <-done:
-			log.Println("WatchStatus channel done; terminating")
-			// XXX log.Fatal?
+			log.Errorln("WatchStatus channel done; terminating")
 			break
 		case <-ticker.C:
 			// Remove and re-add
 			// XXX do we also need to re-scan?
-			// log.Println("WatchStatus remove/re-add", statusDir)
+			// log.Debugln("WatchStatus remove/re-add", statusDir)
 			err = w.Remove(statusDir)
 			if err != nil {
 				log.Fatal(err, "Remove: ", statusDir)

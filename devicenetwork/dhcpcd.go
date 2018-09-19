@@ -18,24 +18,21 @@ import (
 
 // Start/modify/delete dhcpcd per interface
 func UpdateDhcpClient(newConfig, oldConfig types.DeviceUplinkConfig) {
+
 	// Look for adds or changes
-	log.Printf("updateDhcpClient: new %v old %v\n",
+	log.Infof("updateDhcpClient: new %v old %v\n",
 		newConfig, oldConfig)
 	for _, newU := range newConfig.Uplinks {
 		oldU := lookupOnIfname(oldConfig, newU.IfName)
-		if false {
-			// XXX type check - remove
-			*oldU = newU
-		}
 		if oldU == nil {
-			log.Printf("updateDhcpClient: new %s\n", newU.IfName)
+			log.Infof("updateDhcpClient: new %s\n", newU.IfName)
 			// Inactivate in case a dhcpcd is running
 			doDhcpClientActivate(newU)
 		} else {
-			log.Printf("updateDhcpClient: found old %v\n",
+			log.Infof("updateDhcpClient: found old %v\n",
 				oldU)
 			if !reflect.DeepEqual(newU, oldU) {
-				log.Printf("updateDhcpClient: changed %s\n",
+				log.Infof("updateDhcpClient: changed %s\n",
 					newU.IfName)
 				doDhcpClientInactivate(*oldU)
 				doDhcpClientActivate(newU)
@@ -46,11 +43,11 @@ func UpdateDhcpClient(newConfig, oldConfig types.DeviceUplinkConfig) {
 	for _, oldU := range oldConfig.Uplinks {
 		newU := lookupOnIfname(newConfig, oldU.IfName)
 		if newU == nil {
-			log.Printf("updateDhcpClient: deleted %s\n",
+			log.Infof("updateDhcpClient: deleted %s\n",
 				oldU.IfName)
 			doDhcpClientInactivate(oldU)
 		} else {
-			log.Printf("updateDhcpClient: found new %v\n",
+			log.Infof("updateDhcpClient: found new %v\n",
 				newU)
 		}
 	}
@@ -58,12 +55,13 @@ func UpdateDhcpClient(newConfig, oldConfig types.DeviceUplinkConfig) {
 }
 
 func doDhcpClientActivate(nuc types.NetworkUplinkConfig) {
-	log.Printf("doDhcpClientActivate(%s) dhcp %v addr %s gateway %s\n",
+
+	log.Infof("doDhcpClientActivate(%s) dhcp %v addr %s gateway %s\n",
 		nuc.IfName, nuc.Dhcp, nuc.AddrSubnet,
 		nuc.Gateway.String())
 	// XXX skipping wwan0
 	if nuc.IfName == "wwan0" {
-		log.Printf("doDhcpClientActivate: skipping %s\n",
+		log.Infof("doDhcpClientActivate: skipping %s\n",
 			nuc.IfName)
 		return
 	}
@@ -76,12 +74,12 @@ func doDhcpClientActivate(nuc types.NetworkUplinkConfig) {
 			extras = append(extras, "--nogateway")
 		}
 		if !dhcpcdCmd("--request", extras, nuc.IfName, true) {
-			log.Printf("doDhcpClientActivate: request failed for %s\n",
+			log.Errorf("doDhcpClientActivate: request failed for %s\n",
 				nuc.IfName)
 		}
 	case types.DT_STATIC:
 		if nuc.AddrSubnet == "" {
-			log.Printf("doDhcpClientActivate: missing AddrSubnet for %s\n",
+			log.Errorf("doDhcpClientActivate: missing AddrSubnet for %s\n",
 				nuc.IfName)
 			// XXX return error?
 			return
@@ -89,7 +87,7 @@ func doDhcpClientActivate(nuc types.NetworkUplinkConfig) {
 		// Check that we can parse it
 		_, _, err := net.ParseCIDR(nuc.AddrSubnet)
 		if err != nil {
-			log.Printf("doDhcpClientActivate: failed to parse %s for %s: %s\n",
+			log.Errorf("doDhcpClientActivate: failed to parse %s for %s: %s\n",
 				nuc.AddrSubnet, nuc.IfName, err)
 			// XXX return error?
 			return
@@ -121,28 +119,29 @@ func doDhcpClientActivate(nuc types.NetworkUplinkConfig) {
 
 		args = append(args, extras...)
 		if !dhcpcdCmd("--static", args, nuc.IfName, true) {
-			log.Printf("doDhcpClientActivate: request failed for %s\n",
+			log.Errorf("doDhcpClientActivate: request failed for %s\n",
 				nuc.IfName)
 		}
 	default:
-		log.Printf("doDhcpClientActivate: unsupported dhcp %v\n",
+		log.Errorf("doDhcpClientActivate: unsupported dhcp %v\n",
 			nuc.Dhcp)
 	}
 }
 
 func doDhcpClientInactivate(nuc types.NetworkUplinkConfig) {
-	log.Printf("doDhcpClientInactivate(%s) dhcp %v addr %s gateway %s\n",
+
+	log.Infof("doDhcpClientInactivate(%s) dhcp %v addr %s gateway %s\n",
 		nuc.IfName, nuc.Dhcp, nuc.AddrSubnet,
 		nuc.Gateway.String())
 	// XXX skipping wwan0
 	if nuc.IfName == "wwan0" {
-		log.Printf("doDhcpClientInactivate: skipping %s\n",
+		log.Infof("doDhcpClientInactivate: skipping %s\n",
 			nuc.IfName)
 		return
 	}
 	extras := []string{}
 	if !dhcpcdCmd("--release", extras, nuc.IfName, false) {
-		log.Printf("doDhcpClientInactivate: release failed for %s\n",
+		log.Errorf("doDhcpClientInactivate: release failed for %s\n",
 			nuc.IfName)
 	}
 }
@@ -160,15 +159,15 @@ func dhcpcdCmd(op string, extras []string, ifname string, dolog bool) bool {
 		cmd := exec.Command(name, args...)
 		cmd.Stdout = logf
 		cmd.Stderr = logf
-		log.Printf("Background command %s %v\n", name, args)
+		log.Infof("Background command %s %v\n", name, args)
 		go cmd.Run()
 	} else {
-		log.Printf("Calling command %s %v\n", name, args)
+		log.Infof("Calling command %s %v\n", name, args)
 		out, err := exec.Command(name, args...).CombinedOutput()
 		if err != nil {
 			errStr := fmt.Sprintf("dhcpcd command %s failed %s output %s",
 				args, err, out)
-			log.Println(errStr)
+			log.Errorln(errStr)
 			return false
 		}
 	}

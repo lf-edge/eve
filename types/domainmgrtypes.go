@@ -34,7 +34,7 @@ func (config DomainConfig) VerifyFilename(fileName string) bool {
 	expect := config.Key() + ".json"
 	ret := expect == fileName
 	if !ret {
-		log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
+		log.Errorf("Mismatch between filename and contained uuid: %s vs. %s\n",
 			fileName, expect)
 	}
 	return ret
@@ -105,7 +105,7 @@ func (status DomainStatus) VerifyFilename(fileName string) bool {
 	expect := status.Key() + ".json"
 	ret := expect == fileName
 	if !ret {
-		log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
+		log.Errorf("Mismatch between filename and contained uuid: %s vs. %s\n",
 			fileName, expect)
 	}
 	return ret

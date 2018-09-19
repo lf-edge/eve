@@ -39,7 +39,7 @@ func WaitForFile(filename string) {
 					done <- true
 				}
 			case err := <-w.Errors:
-				log.Println("WaitForFile error:", err)
+				log.Errorln("WaitForFile error:", err)
 			}
 		}
 	}()
@@ -60,7 +60,8 @@ func WaitForFile(filename string) {
 }
 
 func signalRestartImpl(agent string, objType string) {
-	log.Printf("SignalRestart(%s, %s)\n", agent, objType)
+
+	log.Infof("SignalRestart(%s, %s)\n", agent, objType)
 	var restartFile string
 	if objType != "" {
 		restartFile = fmt.Sprintf("/var/tmp/%s/%s/config/restart",
@@ -76,7 +77,8 @@ func signalRestartImpl(agent string, objType string) {
 }
 
 func signalRestartedImpl(agent string, objType string) {
-	log.Printf("SignalRestarted(%s, %s)\n", agent, objType)
+
+	log.Infof("SignalRestarted(%s, %s)\n", agent, objType)
 	var restartedFile string
 	if objType != "" {
 		restartedFile = fmt.Sprintf("/var/run/%s/%s/status/restarted",
@@ -93,7 +95,8 @@ func signalRestartedImpl(agent string, objType string) {
 }
 
 func cleanupRestartImpl(agent string, objType string) {
-	log.Printf("CleanupRestart(%s, %s)\n", agent, objType)
+
+	log.Infof("CleanupRestart(%s, %s)\n", agent, objType)
 	var restartFile string
 	if objType != "" {
 		restartFile = fmt.Sprintf("/var/tmp/%s/%s/config/restart",
@@ -109,7 +112,8 @@ func cleanupRestartImpl(agent string, objType string) {
 }
 
 func cleanupRestartedImpl(agent string, objType string) {
-	log.Printf("CleanupRestarted(%s, %s)\n", agent, objType)
+
+	log.Infof("CleanupRestarted(%s, %s)\n", agent, objType)
 	var restartedFile string
 	if objType != "" {
 		restartedFile = fmt.Sprintf("/var/run/%s/%s/status/restarted",

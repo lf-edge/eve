@@ -33,7 +33,7 @@ func (config DownloaderConfig) VerifyFilename(fileName string) bool {
 	expect := config.Key() + ".json"
 	ret := expect == fileName
 	if !ret {
-		log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
+		log.Errorf("Mismatch between filename and contained Safename: %s vs. %s\n",
 			fileName, expect)
 	}
 	return ret
@@ -75,7 +75,7 @@ func (status DownloaderStatus) VerifyFilename(fileName string) bool {
 	expect := status.Key() + ".json"
 	ret := expect == fileName
 	if !ret {
-		log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
+		log.Errorf("Mismatch between filename and contained Safename: %s vs. %s\n",
 			fileName, expect)
 	}
 	return ret

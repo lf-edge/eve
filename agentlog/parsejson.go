@@ -5,7 +5,6 @@ package agentlog
 
 import (
 	"encoding/json"
-	log "github.com/sirupsen/logrus"
 )
 
 // Extend this structure with optional specific tags from
@@ -23,13 +22,4 @@ func ParseLoginfo(line string) (Loginfo, bool) {
 		return output, false
 	}
 	return output, true
-}
-
-// XXX dev
-func PrintLoginfo(li Loginfo) {
-	b, err := json.MarshalIndent(li, "", "    ")
-	if err != nil {
-		log.Fatal(err, "json Marshal in printLoginfo")
-	}
-	log.Printf("%s\n", b)
 }

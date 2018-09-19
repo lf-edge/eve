@@ -40,12 +40,7 @@ const longTime2 = time.Hour * 48
 // Some day we might return this; right now only for the defaultCtx
 type DeferredContext struct {
 	deferredItems map[string]deferredItemList
-	debugPtr      *bool
 	ticker        flextimer.FlexTickerHandle
-}
-
-func (ctx *DeferredContext) debug() bool {
-	return (ctx.debugPtr != nil) && *ctx.debugPtr
 }
 
 // From first InitDeferred
@@ -56,22 +51,22 @@ func InitDeferred() <-chan time.Time {
 	if defaultCtx != nil {
 		log.Fatal("InitDeferred called twice")
 	}
-	defaultCtx = initImpl(nil)
+	defaultCtx = initImpl()
 	return defaultCtx.ticker.C
 }
 
+// XXX remove. Not using debugPtr any more
 func InitDeferredWithDebug(debugPtr *bool) <-chan time.Time {
 	if defaultCtx != nil {
 		log.Fatal("InitDeferred called twice")
 	}
-	defaultCtx = initImpl(debugPtr)
+	defaultCtx = initImpl()
 	return defaultCtx.ticker.C
 }
 
-func initImpl(debugPtr *bool) *DeferredContext {
+func initImpl() *DeferredContext {
 	ctx := new(DeferredContext)
 	ctx.deferredItems = make(map[string]deferredItemList)
-	ctx.debugPtr = debugPtr
 	// We always keep a flextimer running so that we can return
 	// the associated channel. We adjust the times when we start and stop
 	// the timer.
@@ -89,27 +84,28 @@ func HandleDeferred(event time.Time) {
 }
 
 func (ctx *DeferredContext) handleDeferred(event time.Time) {
-	log.Printf("HandleDeferred(%v) map %d\n",
+
+	log.Infof("HandleDeferred(%v) map %d\n",
 		event, len(ctx.deferredItems))
 	iteration := 0 // Do some load spreading
 	for key, l := range ctx.deferredItems {
-		log.Printf("Trying to send for %s len %d\n", key, len(l.list))
+		log.Infof("Trying to send for %s len %d\n", key, len(l.list))
 		failed := false
 		for i, item := range l.list {
 			if item.data == nil {
 				continue
 			}
-			log.Printf("Trying to send for %s item %d data len %d\n",
+			log.Infof("Trying to send for %s item %d data len %d\n",
 				key, i, len(item.data))
 			resp, _, err := SendOnAllIntf(item.zedcloudCtx, item.url,
 				int64(len(item.data)), bytes.NewBuffer(item.data),
 				iteration, item.ignore400)
 			if item.ignore400 && resp != nil &&
 				resp.StatusCode >= 400 && resp.StatusCode < 500 {
-				log.Printf("HandleDeferred: for %s ignore code %d\n",
+				log.Infof("HandleDeferred: for %s ignore code %d\n",
 					key, resp.StatusCode)
 			} else if err != nil {
-				log.Printf("HandleDeferred: for %s failed %s\n",
+				log.Infof("HandleDeferred: for %s failed %s\n",
 					key, err)
 				failed = true
 				break
@@ -126,7 +122,7 @@ func (ctx *DeferredContext) handleDeferred(event time.Time) {
 	if len(ctx.deferredItems) == 0 {
 		stopTimer(ctx)
 	}
-	log.Printf("HandleDeferred() done map %d\n", len(ctx.deferredItems))
+	log.Infof("HandleDeferred() done map %d\n", len(ctx.deferredItems))
 }
 
 // Check if there are any deferred items for this key
@@ -139,10 +135,7 @@ func HasDeferred(key string) bool {
 
 func (ctx *DeferredContext) hasDeferred(key string) bool {
 
-	if ctx.debug() {
-		log.Printf("HasDeferred(%s) map %d\n",
-			key, len(ctx.deferredItems))
-	}
+	log.Debugf("HasDeferred(%s) map %d\n", key, len(ctx.deferredItems))
 	_, ok := ctx.deferredItems[key]
 	return ok
 }
@@ -156,20 +149,14 @@ func RemoveDeferred(key string) {
 }
 
 func (ctx *DeferredContext) removeDeferred(key string) {
-	if ctx.debug() {
-		log.Printf("RemoveDeferred(%s) map %d\n",
-			key, len(ctx.deferredItems))
-	}
+
+	log.Debugf("RemoveDeferred(%s) map %d\n", key, len(ctx.deferredItems))
 	_, ok := ctx.deferredItems[key]
 	if !ok {
-		if ctx.debug() {
-			log.Printf("Non-existing key %s\n", key)
-		}
+		log.Errorf("removeDeferred: Non-existing key %s\n", key)
 		return
 	}
-	if ctx.debug() {
-		log.Printf("Deleting key %s\n", key)
-	}
+	log.Debugf("Deleting key %s\n", key)
 	delete(ctx.deferredItems, key)
 
 	if len(ctx.deferredItems) == 0 {
@@ -190,17 +177,15 @@ func SetDeferred(key string, data []byte, url string,
 func (ctx *DeferredContext) setDeferred(key string, data []byte, url string,
 	zedcloudCtx ZedCloudContext, ignore400 bool) {
 
-	log.Printf("SetDeferred(%s) map %d\n", key, len(ctx.deferredItems))
+	log.Infof("SetDeferred(%s) map %d\n", key, len(ctx.deferredItems))
 	if len(ctx.deferredItems) == 0 {
 		startTimer(ctx)
 	}
 	_, ok := ctx.deferredItems[key]
-	if ctx.debug() {
-		if ok {
-			log.Printf("Replacing key %s\n", key)
-		} else {
-			log.Printf("Adding key %s\n", key)
-		}
+	if ok {
+		log.Debugf("Replacing key %s\n", key)
+	} else {
+		log.Debugf("Adding key %s\n", key)
 	}
 	item := deferredItem{
 		data:        data,
@@ -226,18 +211,15 @@ func AddDeferred(key string, data []byte, url string,
 func (ctx *DeferredContext) addDeferred(key string, data []byte, url string,
 	zedcloudCtx ZedCloudContext, ignore400 bool) {
 
-	log.Printf("AddDeferred(%s) map %d\n", key, len(ctx.deferredItems))
+	log.Infof("AddDeferred(%s) map %d\n", key, len(ctx.deferredItems))
 	if len(ctx.deferredItems) == 0 {
 		startTimer(ctx)
 	}
 	l, ok := ctx.deferredItems[key]
-	if ctx.debug() {
-		if ok {
-			log.Printf("Appening to key %s len %d\n",
-				key, len(l.list))
-		} else {
-			log.Printf("Adding key %s\n", key)
-		}
+	if ok {
+		log.Debugf("Appening to key %s len %d\n", key, len(l.list))
+	} else {
+		log.Debugf("Adding key %s\n", key)
 	}
 	item := deferredItem{
 		data:        data,
@@ -251,17 +233,15 @@ func (ctx *DeferredContext) addDeferred(key string, data []byte, url string,
 
 // Try every minute backoff to every 15 minutes
 func startTimer(ctx *DeferredContext) {
-	if ctx.debug() {
-		log.Printf("startTimer()\n")
-	}
+
+	log.Debugf("startTimer()\n")
 	min := 1 * time.Minute
 	max := 15 * time.Minute
 	ctx.ticker.UpdateExpTicker(min, max, 0.3)
 }
 
 func stopTimer(ctx *DeferredContext) {
-	if ctx.debug() {
-		log.Printf("stopTimer()\n")
-	}
+
+	log.Debugf("stopTimer()\n")
 	ctx.ticker.UpdateRangeTicker(longTime1, longTime2)
 }

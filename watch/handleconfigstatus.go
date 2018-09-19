@@ -41,19 +41,19 @@ func HandleConfigStatusEvent(change string, ctx interface{},
 	operation := string(change[0])
 	fileName := string(change[2:])
 	if operation == "R" {
-		log.Printf("Received restart <%s> ignored\n", fileName)
+		log.Infof("Received restart <%s> ignored\n", fileName)
 		return
 	}
 	// XXX implicit assumption that this is last in ReadDir?
 	if fileName == "restart" && operation == "M" {
-		log.Printf("Found restart file\n")
+		log.Infof("Found restart file\n")
 		if handleRestart != nil {
 			(*handleRestart)(ctx, true)
 		}
 		return
 	}
 	if !strings.HasSuffix(fileName, ".json") {
-		// log.Printf("Ignoring file <%s> operation %s\n",
+		// log.Debugf("Ignoring file <%s> operation %s\n",
 		//	fileName, operation)
 		return
 	}
@@ -61,16 +61,16 @@ func HandleConfigStatusEvent(change string, ctx interface{},
 		statusFile := statusDirname + "/" + fileName
 		if _, err := os.Stat(statusFile); err != nil {
 			// File just vanished!
-			log.Printf("File disappeared <%s>\n", fileName)
+			log.Errorf("File disappeared <%s>\n", fileName)
 			return
 		}
 		sb, err := ioutil.ReadFile(statusFile)
 		if err != nil {
-			log.Printf("%s for %s\n", err, statusFile)
+			log.Errorf("%s for %s\n", err, statusFile)
 			return
 		}
 		if err := json.Unmarshal(sb, status); err != nil {
-			log.Printf("%s %T file: %s\n",
+			log.Errorf("%s %T file: %s\n",
 				err, status, statusFile)
 			return
 		}
@@ -89,11 +89,11 @@ func HandleConfigStatusEvent(change string, ctx interface{},
 	configFile := configDirname + "/" + fileName
 	cb, err := ioutil.ReadFile(configFile)
 	if err != nil {
-		log.Printf("%s for %s\n", err, configFile)
+		log.Errorf("%s for %s\n", err, configFile)
 		return
 	}
 	if err := json.Unmarshal(cb, config); err != nil {
-		log.Printf("%s %T file: %s\n",
+		log.Errorf("%s %T file: %s\n",
 			err, config, configFile)
 		return
 	}
@@ -110,11 +110,11 @@ func HandleConfigStatusEvent(change string, ctx interface{},
 	// Read and check status
 	sb, err := ioutil.ReadFile(statusFile)
 	if err != nil {
-		log.Printf("%s for %s\n", err, statusFile)
+		log.Errorf("%s for %s\n", err, statusFile)
 		return
 	}
 	if err := json.Unmarshal(sb, status); err != nil {
-		log.Printf("%s %T file: %s\n",
+		log.Errorf("%s %T file: %s\n",
 			err, status, statusFile)
 		return
 	}
@@ -155,7 +155,7 @@ func HandleStatusEvent(change string, ctx interface{},
 	operation := string(change[0])
 	fileName := string(change[2:])
 	if operation == "R" {
-		log.Printf("Received restart <%s>; ignored\n", fileName)
+		log.Infof("Received restart <%s>; ignored\n", fileName)
 		return
 	}
 	if fileName == "restarted" && operation == "M" {
@@ -167,7 +167,7 @@ func HandleStatusEvent(change string, ctx interface{},
 	}
 
 	if !strings.HasSuffix(fileName, ".json") {
-		// log.Printf("Ignoring file <%s> operation %s\n",
+		// log.Debugf("Ignoring file <%s> operation %s\n",
 		//	fileName, operation)
 		return
 	}
@@ -184,11 +184,11 @@ func HandleStatusEvent(change string, ctx interface{},
 	statusFile := statusDirname + "/" + fileName
 	cb, err := ioutil.ReadFile(statusFile)
 	if err != nil {
-		log.Printf("%s for %s\n", err, statusFile)
+		log.Errorf("%s for %s\n", err, statusFile)
 		return
 	}
 	if err := json.Unmarshal(cb, status); err != nil {
-		log.Printf("%s %T file: %s\n",
+		log.Errorf("%s %T file: %s\n",
 			err, status, statusFile)
 		return
 	}

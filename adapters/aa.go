@@ -37,13 +37,13 @@ func Subscribe(aa *types.AssignableAdapters, model string) *context {
 	return SubscribeWithDebug(aa, model, nil)
 }
 
-// XXX remove - no different than Subscribe
+// XXX remove - no different than Subscribe except call to pubsub!
 func SubscribeWithDebug(aa *types.AssignableAdapters, model string,
 	debugPtr *bool) *context {
 	ctx := context{model: model, aa: aa}
 
-	sub, err := pubsub.SubscribeWithDebug("", types.AssignableAdapters{},
-		false, &ctx, debugPtr)
+	sub, err := pubsub.Subscribe("", types.AssignableAdapters{},
+		false, &ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -68,14 +68,13 @@ func handleAAModify(ctxArg interface{}, key string, configArg interface{}) {
 			key, ctx.model)
 		return
 	}
-	log.Printf("handleAAModify found %s\n", key)
+	log.Infof("handleAAModify found %s\n", key)
 	*ctx.aa = config
 	ctx.Found = true
-	log.Printf("handleAAModify done for %s\n", key)
+	log.Infof("handleAAModify done for %s\n", key)
 }
 
 func handleAADelete(ctxArg interface{}, key string, configArg interface{}) {
-	log.Printf("handleAADelete for %s\n", key)
 	ctx := ctxArg.(*context)
 	// Only care about my model
 	if key != ctx.model {
@@ -83,8 +82,8 @@ func handleAADelete(ctxArg interface{}, key string, configArg interface{}) {
 			key, ctx.model)
 		return
 	}
-	log.Printf("handleAADelete: found %s\n", ctx.model)
+	log.Infof("handleAADelete: found %s\n", ctx.model)
 	ctx.Found = false
 	ctx.aa = &types.AssignableAdapters{}
-	log.Printf("handleAADelete done for %s\n", key)
+	log.Infof("handleAADelete done for %s\n", key)
 }

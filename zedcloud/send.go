@@ -25,11 +25,6 @@ type ZedCloudContext struct {
 	TlsConfig           *tls.Config
 	FailureFunc         func(intf string, url string, reqLen int64, respLen int64)
 	SuccessFunc         func(intf string, url string, reqLen int64, respLen int64)
-	DebugPtr            *bool
-}
-
-func (ctx *ZedCloudContext) debug() bool {
-	return (ctx.DebugPtr != nil) && *ctx.DebugPtr
 }
 
 // Tries all interfaces (free first) until one succeeds. interation arg
@@ -43,23 +38,17 @@ func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffe
 		if try == 0 {
 			intfs = types.GetUplinksFree(*ctx.DeviceNetworkStatus,
 				iteration)
-			if ctx.debug() {
-				log.Printf("sendOnAllIntf trying free %v\n",
-					intfs)
-			}
+			log.Debugf("sendOnAllIntf trying free %v\n", intfs)
 		} else {
 			intfs = types.GetUplinksNonFree(*ctx.DeviceNetworkStatus,
 				iteration)
-			if ctx.debug() {
-				log.Printf("sendOnAllIntf non-free %v\n",
-					intfs)
-			}
+			log.Debugf("sendOnAllIntf non-free %v\n", intfs)
 		}
 		for _, intf := range intfs {
 			resp, contents, err := sendOnIntf(ctx, url, intf, reqlen, b)
 			if return400 && resp != nil &&
 				resp.StatusCode >= 400 && resp.StatusCode < 500 {
-				log.Printf("sendOnAllIntf: for %s ignore code %d\n",
+				log.Infof("sendOnAllIntf: for %s ignore code %d\n",
 					url, resp.StatusCode)
 				return resp, nil, err
 			}
@@ -71,7 +60,7 @@ func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffe
 	}
 	errStr := fmt.Sprintf("All attempts to connect to %s failed",
 		url)
-	log.Println(errStr)
+	log.Errorln(errStr)
 	return nil, nil, errors.New(errStr)
 }
 
@@ -81,20 +70,18 @@ func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffe
 // If we get a http response, we return that even if it was an error
 // to allow the caller to look at StatusCode
 func sendOnIntf(ctx ZedCloudContext, url string, intf string, reqlen int64, b *bytes.Buffer) (*http.Response, []byte, error) {
+
 	addrCount := types.CountLocalAddrAny(*ctx.DeviceNetworkStatus, intf)
-	if ctx.debug() {
-		log.Printf("Connecting to %s using intf %s #sources %d\n",
-			url, intf, addrCount)
-	}
+	log.Debugf("Connecting to %s using intf %s #sources %d\n",
+		url, intf, addrCount)
+
 	if addrCount == 0 {
 		if ctx.FailureFunc != nil {
 			ctx.FailureFunc(intf, url, 0, 0)
 		}
 		errStr := fmt.Sprintf("No IP addresses to connect to %s using intf %s",
 			url, intf)
-		if ctx.debug() {
-			log.Println(errStr)
-		}
+		log.Debugln(errStr)
 		return nil, nil, errors.New(errStr)
 	}
 	for retryCount := 0; retryCount < addrCount; retryCount += 1 {
@@ -104,10 +91,8 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, reqlen int64, b *b
 			log.Fatal(err)
 		}
 		localTCPAddr := net.TCPAddr{IP: localAddr}
-		if ctx.debug() {
-			log.Printf("Connecting to %s using intf %s source %v\n",
-				url, intf, localTCPAddr)
-		}
+		log.Debugf("Connecting to %s using intf %s source %v\n",
+			url, intf, localTCPAddr)
 		d := net.Dialer{LocalAddr: &localTCPAddr}
 		transport := &http.Transport{
 			TLSClientConfig: ctx.TlsConfig,
@@ -123,7 +108,7 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, reqlen int64, b *b
 			req, err = http.NewRequest("GET", "https://"+url, nil)
 		}
 		if err != nil {
-			log.Println(err)
+			log.Errorln(err)
 			continue
 		}
 		if b != nil {
@@ -131,32 +116,30 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, reqlen int64, b *b
 		}
 		trace := &httptrace.ClientTrace{
 			GotConn: func(connInfo httptrace.GotConnInfo) {
-				if ctx.debug() {
-					log.Printf("Got RemoteAddr: %+v, LocalAddr: %+v\n",
-						connInfo.Conn.RemoteAddr(),
-						connInfo.Conn.LocalAddr())
-				}
+				log.Debugf("Got RemoteAddr: %+v, LocalAddr: %+v\n",
+					connInfo.Conn.RemoteAddr(),
+					connInfo.Conn.LocalAddr())
 			},
 		}
 		req = req.WithContext(httptrace.WithClientTrace(req.Context(),
 			trace))
 		resp, err := client.Do(req)
 		if err != nil {
-			log.Printf("URL get fail: %v\n", err)
+			log.Errorf("URL get fail: %v\n", err)
 			continue
 		}
 		defer resp.Body.Close()
 
 		contents, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			log.Println(err)
+			log.Errorln(err)
 			continue
 		}
 		resplen := int64(len(contents))
 
 		connState := resp.TLS
 		if connState == nil {
-			log.Println("no TLS connection state")
+			log.Errorln("no TLS connection state")
 			// Inform ledmanager about broken cloud connectivity
 			types.UpdateLedManagerConfig(10)
 			if ctx.FailureFunc != nil {
@@ -169,12 +152,9 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, reqlen int64, b *b
 			!stapledCheck(connState) {
 			if connState.OCSPResponse == nil {
 				// XXX remove debug check
-				if ctx.debug() {
-					log.Printf("no OCSP response for %s\n",
-						url)
-				}
+				log.Debugf("no OCSP response for %s\n", url)
 			} else {
-				log.Printf("OCSP stapled check failed for %s\n",
+				log.Errorf("OCSP stapled check failed for %s\n",
 					url)
 			}
 			//XXX OSCP is not implemented in cloud side so
@@ -197,20 +177,14 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, reqlen int64, b *b
 
 		switch resp.StatusCode {
 		case http.StatusOK:
-			if ctx.debug() {
-				log.Printf("sendOnIntf to %s StatusOK\n",
-					url)
-			}
+			log.Debugf("sendOnIntf to %s StatusOK\n", url)
 			return resp, contents, nil
 		default:
 			errStr := fmt.Sprintf("sendOnIntf to %s statuscode %d %s",
 				url, resp.StatusCode,
 				http.StatusText(resp.StatusCode))
-			log.Println(errStr)
-			if ctx.debug() {
-				log.Printf("received response %v\n",
-					resp)
-			}
+			log.Errorln(errStr)
+			log.Debugf("received response %v\n", resp)
 			// Get caller to schedule a retry based on StatusCode
 			return resp, nil, errors.New(errStr)
 		}
@@ -220,6 +194,6 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, reqlen int64, b *b
 	}
 	errStr := fmt.Sprintf("All attempts to connect to %s using intf %s failed",
 		url, intf)
-	log.Println(errStr)
+	log.Errorln(errStr)
 	return nil, nil, errors.New(errStr)
 }

@@ -340,7 +340,6 @@ func Run() {
 	devicenetwork.ProxyToEnv(clientCtx.DeviceNetworkStatus.ProxyConfig)
 	zedcloudCtx := zedcloud.ZedCloudContext{
 		DeviceNetworkStatus: clientCtx.DeviceNetworkStatus,
-		DebugPtr:            &debug,
 		FailureFunc:         zedcloud.ZedCloudFailure,
 		SuccessFunc:         zedcloud.ZedCloudSuccess,
 	}

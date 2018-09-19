@@ -528,7 +528,6 @@ func sendCtxInit() {
 	}
 	zedcloudCtx.DeviceNetworkStatus = &deviceNetworkStatus
 	zedcloudCtx.TlsConfig = tlsConfig
-	zedcloudCtx.DebugPtr = &debug
 	zedcloudCtx.FailureFunc = zedcloud.ZedCloudFailure
 	zedcloudCtx.SuccessFunc = zedcloud.ZedCloudSuccess
 

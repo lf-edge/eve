@@ -42,7 +42,7 @@ func maybeInit(ifname string) {
 		log.Fatal("no zedcloudmetric map\n")
 	}
 	if _, ok := metrics[ifname]; !ok {
-		log.Printf("create zedcloudmetric for %s\n", ifname)
+		log.Debugf("create zedcloudmetric for %s\n", ifname)
 		metrics[ifname] = zedcloudMetric{
 			UrlCounters: make(map[string]urlcloudMetrics),
 		}

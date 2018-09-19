@@ -31,8 +31,7 @@ func init() {
 // reset routine
 func Reset() {
 	if !IsAvailable() {
-		// XXX should we call reboot?
-		log.Printf("no zboot; can't do reset\n")
+		log.Infof("no zboot; can't do reset\n")
 		return
 	}
 	zbootMutex.Lock() // we are going to reboot
@@ -156,8 +155,8 @@ func IsPartitionState(partName string, partState string) bool {
 }
 
 func setPartitionState(partName string, partState string) {
-	log.Printf("setPartitionState(%s, %s)\n", partName, partState)
 
+	log.Infof("setPartitionState(%s, %s)\n", partName, partState)
 	validatePartitionName(partName)
 	validatePartitionState(partState)
 
@@ -287,18 +286,18 @@ func WriteToPartition(srcFilename string, partName string) error {
 
 	if !IsOtherPartition(partName) {
 		errStr := fmt.Sprintf("not other partition %s", partName)
-		log.Printf("WriteToPartition failed %s\n", errStr)
+		log.Errorf("WriteToPartition failed %s\n", errStr)
 		return errors.New(errStr)
 	}
 
 	devName := GetPartitionDevname(partName)
 	if devName == "" {
 		errStr := fmt.Sprintf("null devname for partition %s", partName)
-		log.Printf("WriteToPartition failed %s\n", errStr)
+		log.Errorf("WriteToPartition failed %s\n", errStr)
 		return errors.New(errStr)
 	}
 
-	log.Printf("WriteToPartition %s, %s: %v\n", partName, devName, srcFilename)
+	log.Infof("WriteToPartition %s, %s: %v\n", partName, devName, srcFilename)
 
 	zbootMutex.Lock()
 	ddCmd := exec.Command("dd", "if="+srcFilename, "of="+devName, "bs=8M")
@@ -316,24 +315,24 @@ func MarkOtherPartitionStateActive() error {
 	curPart := GetCurrentPartition()
 	otherPart := GetOtherPartition()
 
-	log.Printf("Check current partition %s, for inProgress state\n", curPart)
+	log.Infof("Check current partition %s, for inProgress state\n", curPart)
 	if ret := IsCurrentPartitionStateInProgress(); ret == false {
 		errStr := fmt.Sprintf("Current partition %s, is not inProgress",
 			curPart)
 		return errors.New(errStr)
 	}
 
-	log.Printf("Mark the current partition %s, active\n", curPart)
+	log.Infof("Mark the current partition %s, active\n", curPart)
 	setCurrentPartitionStateActive()
 
-	log.Printf("Check other partition %s for active state\n", otherPart)
+	log.Infof("Check other partition %s for active state\n", otherPart)
 	if ret := IsOtherPartitionStateActive(); ret == false {
 		errStr := fmt.Sprintf("Other partition %s, is not active",
 			otherPart)
 		return errors.New(errStr)
 	}
 
-	log.Printf("Mark other partition %s, unused\n", otherPart)
+	log.Infof("Mark other partition %s, unused\n", otherPart)
 	SetOtherPartitionStateUnused()
 	return nil
 }
@@ -366,7 +365,7 @@ func getVersion(part string, verFilename string) string {
 		}
 		versionStr := string(version)
 		versionStr = strings.TrimSpace(versionStr)
-		log.Printf("%s, readCurVersion %s\n", part, versionStr)
+		log.Infof("%s, readCurVersion %s\n", part, versionStr)
 		return versionStr
 	} else {
 		if !IsAvailable() {
@@ -384,7 +383,7 @@ func getVersion(part string, verFilename string) string {
 		err = syscall.Mount(devname, target, "squashfs",
 			syscall.MS_RDONLY, "")
 		if err != nil {
-			log.Printf("Mount of %s failed: %s\n", devname, err)
+			log.Errorf("Mount of %s failed: %s\n", devname, err)
 			return ""
 		}
 		defer syscall.Unmount(target, 0)
@@ -396,7 +395,7 @@ func getVersion(part string, verFilename string) string {
 		}
 		versionStr := string(version)
 		versionStr = strings.TrimSpace(versionStr)
-		log.Printf("%s, readOtherVersion %s\n", part, versionStr)
+		log.Infof("%s, readOtherVersion %s\n", part, versionStr)
 		return versionStr
 	}
 }
