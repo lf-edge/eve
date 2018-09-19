@@ -5,8 +5,8 @@ package types
 
 import (
 	"encoding/json"
+	log "github.com/sirupsen/logrus"
 	"io/ioutil"
-	"log"
 )
 
 type LedBlinkCounter struct {

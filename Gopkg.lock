@@ -179,7 +179,7 @@
     "zconfig",
     "zmet"
   ]
-  revision = "136dcbd52a5bfc4d857b5a7b92bf322acb980c5c"
+  revision = "cbedf85ae2defab80085ebe0d3d7904c44a2f0ef"
 
 [[projects]]
   branch = "master"
@@ -219,6 +219,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "315e71849103579bf125ad0495bb3474f3cc0fe66f6f632e8e3de64f9e968b14"
+  inputs-digest = "92a7c6d53ca9e922d478177d9740cb5a825fcbc7effc8b45d7f8280c7999d424"
   solver-name = "gps-cdcl"
   solver-version = 1

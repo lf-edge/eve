@@ -5,9 +5,11 @@ package agentlog
 
 import (
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/zboot"
-	"log"
 	"os"
+	runtimedebug "runtime/debug"
+	"time"
 )
 
 func initImpl(agentName string, logdir string, redirect bool) (*os.File, error) {
@@ -19,9 +21,19 @@ func initImpl(agentName string, logdir string, redirect bool) (*os.File, error) 
 	}
 	if redirect {
 		log.SetOutput(logf)
-		log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
+		// Report nano timestamps
+		formatter := log.JSONFormatter{
+			TimestampFormat: time.RFC3339Nano,
+		}
+		log.SetFormatter(&formatter)
+		log.RegisterExitHandler(printStack)
 	}
 	return logf, nil
+}
+
+func printStack() {
+	st := runtimedebug.Stack()
+	log.Error("fatal stack trace:\n%v\n", string(st))
 }
 
 func Init(agentName string) (*os.File, error) {

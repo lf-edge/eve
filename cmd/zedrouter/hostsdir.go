@@ -7,8 +7,8 @@ package zedrouter
 
 import (
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/types"
-	"log"
 	"net"
 	"os"
 )
@@ -42,7 +42,8 @@ func addIPToHostsConfiglet(cfgDirname string, hostname string, addrs []net.IP) {
 	cfgPathname := cfgDirname + "/" + hostname
 	file, err := os.Create(cfgPathname)
 	if err != nil {
-		log.Fatal(err)
+		log.Error(err)
+		return
 	}
 	defer file.Close()
 	for _, addr := range addrs {
@@ -57,7 +58,8 @@ func addToHostsConfiglet(cfgDirname string, hostname string, addrs []string) {
 	cfgPathname := cfgDirname + "/" + hostname
 	file, err := os.Create(cfgPathname)
 	if err != nil {
-		log.Fatal(err)
+		log.Error(err)
+		return
 	}
 	defer file.Close()
 	for _, addr := range addrs {
@@ -98,6 +100,7 @@ func updateHostsConfiglet(cfgDirname string,
 		log.Printf("updateHostsConfiglet: dir %s old %v, new %v\n",
 			cfgDirname, oldList, newList)
 	}
+	ensureDir(cfgDirname)
 	// Look for hosts which should be deleted
 	for _, ne := range oldList {
 		if !containsHostName(newList, ne.HostName) {
@@ -112,7 +115,8 @@ func updateHostsConfiglet(cfgDirname string,
 		cfgPathname := cfgDirname + "/" + ne.HostName
 		file, err := os.Create(cfgPathname)
 		if err != nil {
-			log.Fatal(err)
+			log.Error(err)
+			continue
 		}
 		defer file.Close()
 		for _, ip := range ne.IPs {

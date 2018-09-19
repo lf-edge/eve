@@ -19,7 +19,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"net"
 	"strings"
 )

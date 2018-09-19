@@ -9,10 +9,10 @@ package zedrouter
 import (
 	"errors"
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
 	"github.com/zededa/go-provision/devicenetwork"
 	"github.com/zededa/go-provision/types"
-	"log"
 	"net"
 	"syscall"
 )

@@ -8,8 +8,8 @@ package devicenetwork
 import (
 	"errors"
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
-	"log"
 	"net"
 	"reflect"
 )

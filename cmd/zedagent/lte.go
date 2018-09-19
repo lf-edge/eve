@@ -8,9 +8,9 @@ package zedagent
 import (
 	"encoding/json"
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/types"
 	"io/ioutil"
-	"log"
 	"os"
 )
 

@@ -6,10 +6,10 @@ package zedagent
 
 import (
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/types"
 	"io"
-	"log"
 	"os"
 	"time"
 )

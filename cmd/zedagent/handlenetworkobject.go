@@ -6,8 +6,8 @@
 package zedagent
 
 import (
+	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/cast"
-	"log"
 )
 
 // XXX rename to NetworkObjectStatus?

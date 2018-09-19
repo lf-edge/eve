@@ -12,9 +12,9 @@ package zedrouter
 import (
 	"fmt"
 	"github.com/satori/go.uuid"
+	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/pubsub"
-	"log"
 )
 
 // The allocated numbers

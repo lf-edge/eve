@@ -5,8 +5,8 @@ package cast
 
 import (
 	"encoding/json"
+	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/types"
-	"log"
 )
 
 // XXX template?

@@ -8,8 +8,8 @@ package zedrouter
 import (
 	"encoding/json"
 	"errors"
+	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/types"
-	"log"
 	"net"
 	"os/exec"
 	"strconv"

@@ -55,6 +55,10 @@ It has these top-level messages:
 	ZMetricLisp
 	ZMetricConn
 	ZMetricVpn
+	ZMetricFlowLink
+	ZMetricFlowEndPoint
+	ZMetricFlow
+	ZMetricLispGlobal
 	ZMetricService
 	ZMetricMsg
 	ZRegisterResp

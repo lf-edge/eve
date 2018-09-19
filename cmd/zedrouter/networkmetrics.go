@@ -9,8 +9,8 @@ package zedrouter
 
 import (
 	psutilnet "github.com/shirou/gopsutil/net"
+	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/types"
-	"log"
 	"strings"
 )
 

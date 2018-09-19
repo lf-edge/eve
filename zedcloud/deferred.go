@@ -7,8 +7,8 @@ package zedcloud
 
 import (
 	"bytes"
+	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/flextimer"
-	"log"
 	"time"
 )
 

@@ -7,9 +7,9 @@ package zedrouter
 
 import (
 	"errors"
+	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
-	"log"
 	"os/exec"
 	"strings"
 )
