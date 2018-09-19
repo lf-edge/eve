@@ -20,9 +20,7 @@ import (
 //		devicenetwork.AddrChange(&clientCtx, change)
 //
 func AddrChangeInit(ctx *DeviceNetworkContext) chan netlink.AddrUpdate {
-	if ctx.debug() {
-		log.Printf("AddrChangeInit()\n")
-	}
+	log.Debugf("AddrChangeInit()\n")
 	IfindexToAddrsInit()
 
 	addrchan := make(chan netlink.AddrUpdate)
@@ -56,14 +54,12 @@ func HandleAddressChange(ctx *DeviceNetworkContext, ifname string) {
 	status, _ := MakeDeviceNetworkStatus(*ctx.DeviceUplinkConfig,
 		*ctx.DeviceNetworkStatus)
 	if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, status) {
-		if ctx.debug() {
-			log.Printf("HandleAddressChange: change for %s from %v to %v\n",
-				ifname, *ctx.DeviceNetworkStatus, status)
-		}
+		log.Debugf("HandleAddressChange: change for %s from %v to %v\n",
+			ifname, *ctx.DeviceNetworkStatus, status)
 		*ctx.DeviceNetworkStatus = status
 		DoDNSUpdate(ctx)
 	} else {
-		log.Printf("HandleAddressChange: No change for %s\n", ifname)
+		log.Infof("HandleAddressChange: No change for %s\n", ifname)
 	}
 }
 
@@ -79,12 +75,9 @@ func IfindexToAddrsInit() {
 func IfindexToAddrsAdd(ctx *DeviceNetworkContext, index int, addr net.IPNet) bool {
 	addrs, ok := ifindexToAddrs[index]
 	if !ok {
-		if ctx.debug() {
-			log.Printf("IfindexToAddrsAdd add %v for %d\n",
-				addr, index)
-		}
+		log.Debugf("IfindexToAddrsAdd add %v for %d\n", addr, index)
 		ifindexToAddrs[index] = append(ifindexToAddrs[index], addr)
-		// log.Printf("ifindexToAddrs post add %v\n", ifindexToAddrs)
+		// log.Debugf("ifindexToAddrs post add %v\n", ifindexToAddrs)
 		return true
 	}
 	found := false
@@ -97,12 +90,9 @@ func IfindexToAddrsAdd(ctx *DeviceNetworkContext, index int, addr net.IPNet) boo
 		}
 	}
 	if !found {
-		if ctx.debug() {
-			log.Printf("IfindexToAddrsAdd add %v for %d\n",
-				addr, index)
-		}
+		log.Debugf("IfindexToAddrsAdd add %v for %d\n", addr, index)
 		ifindexToAddrs[index] = append(ifindexToAddrs[index], addr)
-		// log.Printf("ifindexToAddrs post add %v\n", ifindexToAddrs)
+		// log.Debugf("ifindexToAddrs post add %v\n", ifindexToAddrs)
 	}
 	return !found
 }
@@ -111,26 +101,23 @@ func IfindexToAddrsAdd(ctx *DeviceNetworkContext, index int, addr net.IPNet) boo
 func IfindexToAddrsDel(ctx *DeviceNetworkContext, index int, addr net.IPNet) bool {
 	addrs, ok := ifindexToAddrs[index]
 	if !ok {
-		log.Printf("IfindexToAddrsDel unknown index %d\n", index)
-		// XXX error?
+		log.Warnf("IfindexToAddrsDel unknown index %d\n", index)
 		return false
 	}
 	for i, a := range addrs {
 		// Equal if containment in both directions?
 		if a.IP.Equal(addr.IP) &&
 			a.Contains(addr.IP) && addr.Contains(a.IP) {
-			if ctx.debug() {
-				log.Printf("IfindexToAddrsDel del %v for %d\n",
-					addr, index)
-			}
+			log.Debugf("IfindexToAddrsDel del %v for %d\n",
+				addr, index)
 			ifindexToAddrs[index] = append(ifindexToAddrs[index][:i],
 				ifindexToAddrs[index][i+1:]...)
-			// log.Printf("ifindexToAddrs post remove %v\n", ifindexToAddrs)
+			// log.Debugf("ifindexToAddrs post remove %v\n", ifindexToAddrs)
 			// XXX should we check for zero and remove ifindex?
 			return true
 		}
 	}
-	log.Printf("IfindexToAddrsDel address not found for %d in\n",
+	log.Warnf("IfindexToAddrsDel address not found for %d in\n",
 		index, addrs)
 	return false
 }

@@ -22,10 +22,7 @@ func MaybeAddEIDConfig(ctx *zedmanagerContext,
 		log.Printf("EID config already exists for %s\n", key)
 		// XXX check displayName and EIDConfigDetails didn't change?
 	} else {
-		if debug {
-			log.Printf("EID config add for %s\n", key)
-		}
-
+		log.Debugf("EID config add for %s\n", key)
 		config := types.EIDConfig{
 			UUIDandVersion:   UUIDandVersion,
 			DisplayName:      displayName,

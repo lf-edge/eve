@@ -306,9 +306,6 @@ func publishNetworkServiceInfo(ctx *zedagentContext, serviceUUID string, infoMsg
 }
 
 func publishNetworkServiceInfoToZedCloud(serviceUUID string, infoMsg *zmet.ZInfoMsg, iteration int) {
-	if debug {
-		log.Printf("publishNetworkServiceInfoToZedCloud sending %v\n", infoMsg)
-	}
 	log.Printf("publishNetworkServiceInfoToZedCloud sending %v\n", infoMsg)
 	data, err := proto.Marshal(infoMsg)
 	if err != nil {
@@ -339,10 +336,7 @@ func createNetworkServiceMetrics(ctx *zedagentContext,
 		metricService := protoEncodeNetworkServiceMetricProto(status)
 		reportMetrics.Sm = append(reportMetrics.Sm, metricService)
 	}
-	if debug {
-		log.Println("network service metrics: ",
-			reportMetrics.Sm)
-	}
+	log.Debugln("network service metrics: ", reportMetrics.Sm)
 }
 
 func protoEncodeNetworkServiceMetricProto(status types.NetworkServiceStatus) *zmet.ZMetricService {

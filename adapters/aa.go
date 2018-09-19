@@ -31,20 +31,16 @@ type context struct {
 	aa       *types.AssignableAdapters
 	model    string
 	sub      *pubsub.Subscription
-	debugPtr *bool
-}
-
-func (ctx *context) debug() bool {
-	return (ctx.debugPtr != nil) && *ctx.debugPtr
 }
 
 func Subscribe(aa *types.AssignableAdapters, model string) *context {
 	return SubscribeWithDebug(aa, model, nil)
 }
 
+// XXX remove - no different than Subscribe
 func SubscribeWithDebug(aa *types.AssignableAdapters, model string,
 	debugPtr *bool) *context {
-	ctx := context{model: model, aa: aa, debugPtr: debugPtr}
+	ctx := context{model: model, aa: aa}
 
 	sub, err := pubsub.SubscribeWithDebug("", types.AssignableAdapters{},
 		false, &ctx, debugPtr)
@@ -68,10 +64,8 @@ func handleAAModify(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*context)
 	// Only care about my model
 	if key != ctx.model {
-		if ctx.debug() {
-			log.Printf("handleAAModify: ignoring %s, expecting %s\n",
-				key, ctx.model)
-		}
+		log.Debugf("handleAAModify: ignoring %s, expecting %s\n",
+			key, ctx.model)
 		return
 	}
 	log.Printf("handleAAModify found %s\n", key)
@@ -85,10 +79,8 @@ func handleAADelete(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*context)
 	// Only care about my model
 	if key != ctx.model {
-		if ctx.debug() {
-			log.Printf("handleAADelete: ignoring %s, expecting %s\n",
-				key, ctx.model)
-		}
+		log.Debugf("handleAADelete: ignoring %s, expecting %s\n",
+			key, ctx.model)
 		return
 	}
 	log.Printf("handleAADelete: found %s\n", ctx.model)

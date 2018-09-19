@@ -70,14 +70,9 @@ func parseTime(ts string) (time.Time, bool) {
 			ts = ts[:li] + "Z"
 		}
 	}
-	if debug {
-		log.Printf("Trying %s\n", ts)
-	}
 	err = t.UnmarshalText([]byte(ts))
 	if err != nil {
-		if debug {
-			log.Println(err)
-		}
+		log.Debugln(err)
 		return t, false
 	}
 	return t, true
@@ -104,9 +99,7 @@ func parseOldTime(date, timeStr string) (time.Time, bool) {
 	///convert newDateAndTime type string to type time.time
 	dt, err := time.Parse(layout, newDateAndTime)
 	if err != nil {
-		if debug {
-			log.Println(err)
-		}
+		log.Debugln(err)
 		return t, false
 	} else {
 		return dt, true

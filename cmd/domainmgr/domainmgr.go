@@ -263,9 +263,7 @@ func findActiveFileLocation(ctx *domainContext, filename string) bool {
 func publishDomainStatus(ctx *domainContext, status *types.DomainStatus) {
 
 	key := status.Key()
-	if debug {
-		log.Printf("publishDomainStatus(%s)\n", key)
-	}
+	log.Debugf("publishDomainStatus(%s)\n", key)
 	pub := ctx.pubDomainStatus
 	pub.Publish(key, status)
 }
@@ -273,9 +271,7 @@ func publishDomainStatus(ctx *domainContext, status *types.DomainStatus) {
 func unpublishDomainStatus(ctx *domainContext, status *types.DomainStatus) {
 
 	key := status.Key()
-	if debug {
-		log.Printf("unpublishDomainStatus(%s)\n", key)
-	}
+	log.Debugf("unpublishDomainStatus(%s)\n", key)
 	pub := ctx.pubDomainStatus
 	st, _ := pub.Get(key)
 	if st == nil {
@@ -378,9 +374,7 @@ func runHandler(ctx *domainContext, key string, c <-chan interface{}) {
 				closed = true
 			}
 		case <-ticker.C:
-			if debug {
-				log.Printf("runHandler(%s) timer\n", key)
-			}
+			log.Debugf("runHandler(%s) timer\n", key)
 			status := lookupDomainStatus(ctx, key)
 			if status != nil {
 				verifyStatus(ctx, status)
@@ -1305,9 +1299,7 @@ func xlStatus(domainName string, domainId int) error {
 // If we have a domain reboot issue the domainId
 // can change.
 func xlDomid(domainName string, domainId int) (int, error) {
-	if debug {
-		log.Printf("xlDomid %s %d\n", domainName, domainId)
-	}
+	log.Debugf("xlDomid %s %d\n", domainName, domainId)
 	cmd := "xl"
 	args := []string{
 		"domid",
@@ -1316,10 +1308,8 @@ func xlDomid(domainName string, domainId int) (int, error) {
 	// Avoid wrap since we are called periodically
 	stdoutStderr, err := exec.Command(cmd, args...).CombinedOutput()
 	if err != nil {
-		if debug {
-			log.Println("xl domid failed ", err)
-			log.Println("xl domid output ", string(stdoutStderr))
-		}
+		log.Debugln("xl domid failed ", err)
+		log.Debugln("xl domid output ", string(stdoutStderr))
 		return domainId, errors.New(fmt.Sprintf("xl domid failed: %s\n",
 			string(stdoutStderr)))
 	}

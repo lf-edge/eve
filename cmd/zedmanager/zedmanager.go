@@ -656,10 +656,7 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
 	status := cast.CastDeviceNetworkStatus(statusArg)
 	if key != "global" {
-		if debug {
-			log.Printf("handleDNSModify: ignoring %s\n",
-				key)
-		}
+		log.Debugf("handleDNSModify: ignoring %s\n", key)
 		return
 	}
 	log.Printf("handleDNSModify for %s\n", key)

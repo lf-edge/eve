@@ -26,11 +26,6 @@ type DeviceNetworkContext struct {
 	PubDeviceNetworkStatus *pubsub.Publication
 	Changed                bool
 	SubGlobalConfig        *pubsub.Subscription
-	DebugPtr               *bool
-}
-
-func (ctx *DeviceNetworkContext) debug() bool {
-	return (ctx.DebugPtr != nil) && *ctx.DebugPtr
 }
 
 func HandleDNCModify(ctxArg interface{}, key string, configArg interface{}) {
@@ -39,10 +34,8 @@ func HandleDNCModify(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*DeviceNetworkContext)
 
 	if key != ctx.ManufacturerModel {
-		if ctx.debug() {
-			log.Printf("HandleDNCModify: ignoring %s - expecting %s\n",
-				key, ctx.ManufacturerModel)
-		}
+		log.Debugf("HandleDNCModify: ignoring %s - expecting %s\n",
+			key, ctx.ManufacturerModel)
 		return
 	}
 	log.Printf("HandleDNCModify for %s\n", key)

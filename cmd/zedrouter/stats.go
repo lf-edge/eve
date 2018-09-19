@@ -140,9 +140,7 @@ func ipSecCmdParse(outStr string) ipSecCmdOut {
 			}
 		}
 	}
-	if debug {
-		log.Printf("ipSecCmdParse:%v\n", ipSecCmdOut)
-	}
+	log.Debugf("ipSecCmdParse:%v\n", ipSecCmdOut)
 	return ipSecCmdOut
 }
 
@@ -166,8 +164,8 @@ func swanCtlCmdParse(vpnStatus *types.ServiceVpnStatus, outStr string) uint32 {
 		vpnStatus.ActiveVpnConns[idx] = connInfo
 	}
 	if debug {
-		if bytes, err := json.Marshal(vpnStatus); err != nil {
-			log.Printf("swanCtlCmdParse(): %s\n", bytes)
+		if bytes, err := json.Marshal(vpnStatus); err == nil {
+			log.Debugf("swanCtlCmdParse(): %s\n", string(bytes))
 		}
 	}
 	return cmdOut.childCount
@@ -264,7 +262,7 @@ func swanCtlCmdOutPrint(cb *readBlock, depth int) {
 	if cb == nil {
 		return
 	}
-	log.Printf("%d-%d:%d,%d\n", depth, cb.childCount, cb.startLine, cb.endLine)
+	log.Debugf("%d-%d:%d,%d\n", depth, cb.childCount, cb.startLine, cb.endLine)
 	for _, childBlock := range cb.childBlocks {
 		swanCtlCmdOutPrint(childBlock, depth+1)
 	}

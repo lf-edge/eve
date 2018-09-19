@@ -51,9 +51,7 @@ func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
 			}
 		}
 	} else {
-		if debug {
-			log.Printf("appNetwork config add for %s\n", key)
-		}
+		log.Debugf("appNetwork config add for %s\n", key)
 		changed = true
 	}
 	if changed {

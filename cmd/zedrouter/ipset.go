@@ -17,9 +17,8 @@ import (
 // Create a pair of local ipsets called "ipv6.local" and "ipv4.local"
 // XXX should we add 169.254.0.0/16 as well?
 func createDefaultIpset() {
-	if debug {
-		log.Printf("createDefaultIpset()\n")
-	}
+
+	log.Debugf("createDefaultIpset()\n")
 	ipsetName := "local"
 	err := ipsetCreatePair(ipsetName, "hash:net")
 	if err != nil {
@@ -49,10 +48,9 @@ func createDefaultIpset() {
 // Would be more polite to return an error then to Fatal
 func createDefaultIpsetConfiglet(vifname string, nameToIPList []types.DnsNameToIP,
 	appIPAddr string) {
-	if debug {
-		log.Printf("createDefaultIpsetConfiglet: olifName %s nameToIPList %v appIPAddr %s\n",
-			vifname, nameToIPList, appIPAddr)
-	}
+
+	log.Debugf("createDefaultIpsetConfiglet: olifName %s nameToIPList %v appIPAddr %s\n",
+		vifname, nameToIPList, appIPAddr)
 	ipsetName := "eids." + vifname
 	err := ipsetCreatePair(ipsetName, "hash:ip")
 	if err != nil {
@@ -105,10 +103,9 @@ func createDefaultIpsetConfiglet(vifname string, nameToIPList []types.DnsNameToI
 
 func updateDefaultIpsetConfiglet(vifname string,
 	oldList []types.DnsNameToIP, newList []types.DnsNameToIP) {
-	if debug {
-		log.Printf("updateDefaultIpsetConfiglet: vifname %s old %v, new %v\n",
-			vifname, oldList, newList)
-	}
+
+	log.Debugf("updateDefaultIpsetConfiglet: vifname %s old %v, new %v\n",
+		vifname, oldList, newList)
 	ipsetName := "eids." + vifname
 	set4 := "ipv4." + ipsetName
 	set6 := "ipv6." + ipsetName
@@ -153,9 +150,8 @@ func updateDefaultIpsetConfiglet(vifname string,
 }
 
 func deleteDefaultIpsetConfiglet(vifname string, printOnError bool) {
-	if debug {
-		log.Printf("deleteDefaultIpsetConfiglet: vifname %s\n", vifname)
-	}
+
+	log.Debugf("deleteDefaultIpsetConfiglet: vifname %s\n", vifname)
 	ipsetName := "eids." + vifname
 	set4 := "ipv4." + ipsetName
 	set6 := "ipv6." + ipsetName

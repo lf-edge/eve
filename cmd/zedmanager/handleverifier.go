@@ -191,10 +191,8 @@ func lookupVerifyImageStatusAny(ctx *zedmanagerContext, safename string,
 	}
 	m = lookupVerifyImageStatusSha256(ctx, sha256)
 	if m != nil {
-		if debug {
-			log.Printf("lookupVerifyImageStatusAny: found based on sha %s\n",
-				sha256)
-		}
+		log.Debugf("lookupVerifyImageStatusAny: found based on sha %s\n",
+			sha256)
 		return m
 	}
 	return nil

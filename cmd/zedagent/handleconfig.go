@@ -189,10 +189,8 @@ func updateConfigTimer(tickerHandle interface{}) {
 func getLatestConfig(url string, iteration int, updateInprogress *bool,
 	getconfigCtx *getconfigContext) bool {
 
-	if debug {
-		log.Printf("getLastestConfig(%s, %d, %v)\n", url, iteration,
-			*updateInprogress)
-	}
+	log.Debugf("getLastestConfig(%s, %d, %v)\n", url, iteration,
+		*updateInprogress)
 
 	// Did we exceed the time limits?
 	timePassed := time.Since(getconfigCtx.lastReceivedConfigFromCloud)
@@ -304,9 +302,7 @@ func getLatestConfig(url string, iteration int, updateInprogress *bool,
 	writeReceivedProtoMessage(contents)
 
 	if !changed {
-		if debug {
-			log.Printf("Configuration from zedcloud is unchanged\n")
-		}
+		log.Debugf("Configuration from zedcloud is unchanged\n")
 		return false
 	}
 	return inhaleDeviceConfig(config, getconfigCtx, false)
@@ -412,10 +408,8 @@ func readDeviceConfigProtoMessage(contents []byte) (bool, *zconfig.EdgeDevConfig
 	configHash := h.Sum(nil)
 	same := bytes.Equal(configHash, prevConfigHash)
 	prevConfigHash = configHash
-	if debug {
-		log.Printf("readDeviceConfigProtoMessage: same %v config sha % x vs. % x\n",
-			same, prevConfigHash, configHash)
-	}
+	log.Debugf("readDeviceConfigProtoMessage: same %v config sha % x vs. % x\n",
+		same, prevConfigHash, configHash)
 	err := proto.Unmarshal(contents, config)
 	if err != nil {
 		log.Println("Unmarshalling failed: %v", err)
@@ -426,9 +420,7 @@ func readDeviceConfigProtoMessage(contents []byte) (bool, *zconfig.EdgeDevConfig
 
 // Returns a rebootFlag
 func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext, usingSaved bool) bool {
-	if debug {
-		log.Printf("Inhaling config %v\n", config)
-	}
+	log.Debugf("Inhaling config %v\n", config)
 
 	// if they match return
 	var devId = &zconfig.UUIDandVersion{}

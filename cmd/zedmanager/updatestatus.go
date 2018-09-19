@@ -26,10 +26,8 @@ func updateAIStatusSafename(ctx *zedmanagerContext, safename string) {
 				key, config.Key(), config)
 			continue
 		}
-		if debug {
-			log.Printf("Processing AppInstanceConfig for UUID %s\n",
-				config.UUIDandVersion.UUID)
-		}
+		log.Debugf("Processing AppInstanceConfig for UUID %s\n",
+			config.UUIDandVersion.UUID)
 		for _, sc := range config.StorageConfigList {
 			safename2 := types.UrlToSafename(sc.Name, sc.ImageSha256)
 			if safename == safename2 {
@@ -106,17 +104,13 @@ func removeAIStatusSafename(ctx *zedmanagerContext, safename string) {
 				key, status.Key(), status)
 			continue
 		}
-		if debug {
-			log.Printf("Processing AppInstanceStatus for UUID %s\n",
-				status.UUIDandVersion.UUID)
-		}
+		log.Debugf("Processing AppInstanceStatus for UUID %s\n",
+			status.UUIDandVersion.UUID)
 		for _, ss := range status.StorageStatusList {
 			safename2 := types.UrlToSafename(ss.Name, ss.ImageSha256)
 			if safename == safename2 {
-				if debug {
-					log.Printf("Found StorageStatus URL %s safename %s\n",
-						ss.Name, safename2)
-				}
+				log.Debugf("Found StorageStatus URL %s safename %s\n",
+					ss.Name, safename2)
 				removeAIStatus(ctx, &status)
 			}
 		}
@@ -473,9 +467,8 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		changed = true
 		return changed
 	}
-	if debug {
-		log.Printf("Done with AppNetworkStatus for %s\n", uuidStr)
-	}
+	log.Debugf("Done with AppNetworkStatus for %s\n", uuidStr)
+
 	// Make sure we have a DomainConfig
 	err := MaybeAddDomainConfig(ctx, config, ns)
 	if err != nil {
@@ -610,10 +603,7 @@ func doInactivate(ctx *zedmanagerContext, uuidStr string,
 		}
 		return changed
 	}
-	if debug {
-		log.Printf("Done with AppNetworkStatus removal for %s\n",
-			uuidStr)
-	}
+	log.Debugf("Done with AppNetworkStatus removal for %s\n", uuidStr)
 	status.Activated = false
 	status.ActivateInprogress = false
 	log.Printf("doInactivate done for %s\n", uuidStr)
@@ -649,9 +639,7 @@ func doUninstall(ctx *zedmanagerContext, uuidStr string,
 		log.Printf("Waiting for all EID frees for %s\n", uuidStr)
 		return changed, del
 	}
-	if debug {
-		log.Printf("Done with EID frees for %s\n", uuidStr)
-	}
+	log.Debugf("Done with EID frees for %s\n", uuidStr)
 	removedAll := true
 	for i, _ := range status.StorageStatusList {
 		ss := &status.StorageStatusList[i]
@@ -675,17 +663,13 @@ func doUninstall(ctx *zedmanagerContext, uuidStr string,
 		log.Printf("Waiting for all verify removes for %s\n", uuidStr)
 		return changed, del
 	}
-	if debug {
-		log.Printf("Done with all verify removes for %s\n", uuidStr)
-	}
+	log.Debugf("Done with all verify removes for %s\n", uuidStr)
 	removedAll = true
 	for i, _ := range status.StorageStatusList {
 		ss := &status.StorageStatusList[i]
 		safename := types.UrlToSafename(ss.Name, ss.ImageSha256)
-		if debug {
-			log.Printf("Found StorageStatus URL %s safename %s\n",
-				ss.Name, safename)
-		}
+		log.Debugf("Found StorageStatus URL %s safename %s\n",
+			ss.Name, safename)
 		// Decrease refcount if we had increased it
 		if ss.HasDownloaderRef {
 			MaybeRemoveDownloaderConfig(ctx, safename)
@@ -706,9 +690,7 @@ func doUninstall(ctx *zedmanagerContext, uuidStr string,
 		log.Printf("Waiting for all downloader removes for %s\n", uuidStr)
 		return changed, del
 	}
-	if debug {
-		log.Printf("Done with all verify removes for %s\n", uuidStr)
-	}
+	log.Debugf("Done with all verify removes for %s\n", uuidStr)
 
 	del = true
 	log.Printf("doUninstall done for %s\n", uuidStr)
@@ -737,9 +719,7 @@ func doInactivateHalt(ctx *zedmanagerContext, uuidStr string,
 		changed = true
 		return changed
 	}
-	if debug {
-		log.Printf("Done with AppNetworkStatus for %s\n", uuidStr)
-	}
+	log.Debugf("Done with AppNetworkStatus for %s\n", uuidStr)
 
 	// Make sure we have a DomainConfig
 	err := MaybeAddDomainConfig(ctx, config, ns)

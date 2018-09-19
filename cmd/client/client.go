@@ -204,10 +204,9 @@ func Run() {
 		DeviceNetworkStatus:    &types.DeviceNetworkStatus{},
 		PubDeviceUplinkConfig:  pubDeviceUplinkConfig,
 		PubDeviceNetworkStatus: nil,
-		DebugPtr:               &debug,
 	}
 
-	// Look for global config like debug
+	// Look for global config like log levels
 	subGlobalConfig, err := pubsub.SubscribeWithDebug("",
 		agentlog.GlobalConfig{}, false, &clientCtx, &debug)
 	if err != nil {

@@ -153,7 +153,6 @@ func Run() {
 	zedrouterCtx.DeviceNetworkStatus = &types.DeviceNetworkStatus{}
 	zedrouterCtx.PubDeviceUplinkConfig = pubDeviceUplinkConfig
 	zedrouterCtx.PubDeviceNetworkStatus = pubDeviceNetworkStatus
-	zedrouterCtx.DebugPtr = &debug
 
 	// Create publish before subscribing and activating subscriptions
 	// Also need to do this before we wait for IP addresses since
@@ -355,9 +354,7 @@ func Run() {
 	// This function is called from PBR when some uplink interface changes
 	// its IP address(es)
 	addrChangeUplinkFn := func(ifname string) {
-		if debug {
-			log.Printf("addrChangeUplinkFn(%s) called\n", ifname)
-		}
+		log.Debugf("addrChangeUplinkFn(%s) called\n", ifname)
 		devicenetwork.HandleAddressChange(&zedrouterCtx.DeviceNetworkContext,
 			ifname)
 	}
@@ -365,9 +362,7 @@ func Run() {
 	// This function is called from PBR when some non-uplink interface
 	// changes its IP address(es)
 	addrChangeNonUplinkFn := func(ifname string) {
-		if debug {
-			log.Printf("addrChangeNonUplinkFn(%s) called\n", ifname)
-		}
+		log.Debugf("addrChangeNonUplinkFn(%s) called\n", ifname)
 		// Even if ethN isn't individually assignable, it
 		// could be used for a bridge.
 		maybeUpdateBridgeIPAddr(&zedrouterCtx, ifname)
@@ -442,10 +437,7 @@ func Run() {
 		case change := <-routeChanges:
 			PbrRouteChange(zedrouterCtx.DeviceUplinkConfig, change)
 		case <-publishTimer.C:
-			if debug {
-				log.Println("publishTimer at",
-					time.Now())
-			}
+			log.Debugln("publishTimer at", time.Now())
 			err := pub.Publish("global",
 				getNetworkMetrics(&zedrouterCtx))
 			if err != nil {
@@ -453,9 +445,7 @@ func Run() {
 			}
 			publishNetworkServiceStatusAll(&zedrouterCtx)
 		case <-geoTimer.C:
-			if debug {
-				log.Println("geoTimer at", time.Now())
-			}
+			log.Debugln("geoTimer at", time.Now())
 			change := devicenetwork.UpdateDeviceNetworkGeo(
 				geoRedoTime, zedrouterCtx.DeviceNetworkStatus)
 			if change {
@@ -492,9 +482,8 @@ func maybeHandleDUC(ctx *zedrouterContext) {
 }
 
 func handleRestart(ctxArg interface{}, done bool) {
-	if debug {
-		log.Printf("handleRestart(%v)\n", done)
-	}
+
+	log.Debugf("handleRestart(%v)\n", done)
 	ctx := ctxArg.(*zedrouterContext)
 	if ctx.ready {
 		handleLispRestart(done, ctx.separateDataPlane)
@@ -653,10 +642,8 @@ func generateAdditionalInfo(status types.AppNetworkStatus, olConfig types.Overla
 				log.Fatal(err, "json Marshal AdditionalInfoDevice")
 			}
 			additionalInfo = string(b)
-			if debug {
-				log.Printf("Generated additional info device %s\n",
-					additionalInfo)
-			}
+			log.Debugf("Generated additional info device %s\n",
+				additionalInfo)
 		}
 	} else {
 		// Combine subset of the device and application information
@@ -674,10 +661,8 @@ func generateAdditionalInfo(status types.AppNetworkStatus, olConfig types.Overla
 			log.Fatal(err, "json Marshal AdditionalInfoApp")
 		}
 		additionalInfo = string(b)
-		if debug {
-			log.Printf("Generated additional info app %s\n",
-				additionalInfo)
-		}
+		log.Debugf("Generated additional info app %s\n",
+			additionalInfo)
 	}
 	return additionalInfo
 }
@@ -713,10 +698,8 @@ func updateLispConfiglets(ctx *zedrouterContext, separateDataPlane bool) {
 			}
 			additionalInfo := generateAdditionalInfo(status,
 				olStatus.OverlayNetworkConfig)
-			if debug {
-				log.Printf("updateLispConfiglets for %s isMgmt %v IID %d\n",
-					olIfname, status.IsZedmanager, IID)
-			}
+			log.Debugf("updateLispConfiglets for %s isMgmt %v IID %d\n",
+				olIfname, status.IsZedmanager, IID)
 			createLispConfiglet(lispRunDirname, status.IsZedmanager,
 				IID, olStatus.EID,
 				olStatus.AppIPAddr, olStatus.LispSignature,
@@ -812,10 +795,8 @@ func parseAndPublishLispServiceInfo(ctx *zedrouterContext, lispInfo *types.LispI
 		if cmp.Equal(status.LispStatus, lispStatus) {
 			continue
 		} else {
-			if debug {
-				difference := cmp.Diff(status.LispStatus, lispStatus)
-				log.Printf("parseAndPublishLispServiceInfo: Publish diff %s to zedcloud\n", difference)
-			}
+			log.Debugf("parseAndPublishLispServiceInfo: Publish diff %s to zedcloud\n",
+				cmp.Diff(status.LispStatus, lispStatus))
 		}
 		status.LispInfoStatus = lispStatus
 
@@ -893,10 +874,8 @@ func parseAndPublishLispMetrics(ctx *zedrouterContext, lispMetrics *types.LispMe
 		if cmp.Equal(status.LispMetrics, metrics) {
 			continue
 		} else {
-			if debug {
-				difference := cmp.Diff(status.LispMetrics, metrics)
-				log.Printf("parseAndPublishLispMetrics: Publish diff %s to zedcloud\n", difference)
-			}
+			log.Debugf("parseAndPublishLispMetrics: Publish diff %s to zedcloud\n",
+				cmp.Diff(status.LispMetrics, metrics))
 		}
 		status.LispMetrics = metrics
 
@@ -1251,11 +1230,11 @@ func handleCreate(ctx *zedrouterContext, key string,
 
 	for i, olConfig := range config.OverlayNetworkList {
 		olNum := i + 1
-		if debug {
-			log.Printf("olNum %d network %s ACLs %v\n",
-				olNum, olConfig.Network.String(), olConfig.ACLs)
-		}
-		netconfig := lookupNetworkObjectConfig(ctx, olConfig.Network.String())
+		log.Debugf("olNum %d network %s ACLs %v\n",
+			olNum, olConfig.Network.String(), olConfig.ACLs)
+
+		netconfig := lookupNetworkObjectConfig(ctx,
+			olConfig.Network.String())
 		if netconfig == nil {
 			// Checked for nil above
 			return
@@ -1424,11 +1403,10 @@ func handleCreate(ctx *zedrouterContext, key string,
 
 	for i, ulConfig := range config.UnderlayNetworkList {
 		ulNum := i + 1
-		if debug {
-			log.Printf("ulNum %d network %s ACLs %v\n",
-				ulNum, ulConfig.Network.String(), ulConfig.ACLs)
-		}
-		netconfig := lookupNetworkObjectConfig(ctx, ulConfig.Network.String())
+		log.Debugf("ulNum %d network %s ACLs %v\n",
+			ulNum, ulConfig.Network.String(), ulConfig.ACLs)
+		netconfig := lookupNetworkObjectConfig(ctx,
+			ulConfig.Network.String())
 		if netconfig == nil {
 			// Checked for nil above
 			return
@@ -1668,9 +1646,7 @@ func handleModify(ctx *zedrouterContext, key string,
 	// even for the same version.
 
 	appNum := status.AppNum
-	if debug {
-		log.Printf("handleModify appNum %d\n", appNum)
-	}
+	log.Debugf("handleModify appNum %d\n", appNum)
 
 	// Check for unsupported changes
 	if config.IsZedmanager != status.IsZedmanager {
@@ -1748,9 +1724,8 @@ func handleModify(ctx *zedrouterContext, key string,
 	// Look for ACL changes in overlay
 	for i, olConfig := range config.OverlayNetworkList {
 		olNum := i + 1
-		if debug {
-			log.Printf("handleModify olNum %d\n", olNum)
-		}
+		log.Debugf("handleModify olNum %d\n", olNum)
+
 		// Need to check that index exists
 		if len(status.OverlayNetworkList) < olNum {
 			log.Println("Missing status for overlay %d; can not modify\n",
@@ -1833,9 +1808,8 @@ func handleModify(ctx *zedrouterContext, key string,
 	// Look for ACL changes in underlay
 	for i, ulConfig := range config.UnderlayNetworkList {
 		ulNum := i + 1
-		if debug {
-			log.Printf("handleModify ulNum %d\n", ulNum)
-		}
+		log.Debugf("handleModify ulNum %d\n", ulNum)
+
 		// Need to check that index exists
 		if len(status.UnderlayNetworkList) < ulNum {
 			log.Println("Missing status for underlay %d; can not modify\n",
@@ -1936,10 +1910,8 @@ func handleDelete(ctx *zedrouterContext, key string,
 	appNum := status.AppNum
 	maxOlNum := status.OlNum
 	maxUlNum := status.UlNum
-	if debug {
-		log.Printf("handleDelete appNum %d maxOlNum %d maxUlNum %d\n",
-			appNum, maxOlNum, maxUlNum)
-	}
+	log.Debugf("handleDelete appNum %d maxOlNum %d maxUlNum %d\n",
+		appNum, maxOlNum, maxUlNum)
 
 	status.PendingDelete = true
 	publishAppNetworkStatus(ctx, status)
@@ -2060,9 +2032,8 @@ func handleDelete(ctx *zedrouterContext, key string,
 
 	// Delete everything for overlay
 	for olNum := 1; olNum <= maxOlNum; olNum++ {
-		if debug {
-			log.Printf("handleDelete olNum %d\n", olNum)
-		}
+		log.Debugf("handleDelete olNum %d\n", olNum)
+
 		// Need to check that index exists
 		if len(status.OverlayNetworkList) < olNum {
 			log.Println("Missing status for overlay %d; can not clean up\n",
@@ -2144,9 +2115,8 @@ func handleDelete(ctx *zedrouterContext, key string,
 
 	// Delete everything in underlay
 	for ulNum := 1; ulNum <= maxUlNum; ulNum++ {
-		if debug {
-			log.Printf("handleDelete ulNum %d\n", ulNum)
-		}
+		log.Debugf("handleDelete ulNum %d\n", ulNum)
+
 		// Need to check that index exists
 		if len(status.UnderlayNetworkList) < ulNum {
 			log.Println("Missing status for underlay %d; can not clean up\n",

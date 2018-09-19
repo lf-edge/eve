@@ -149,10 +149,8 @@ func getIpRuleCounters(counters []AclCounters, match AclCounters) *AclCounters {
 		if c.Piif != match.Piif || c.Poif != match.Poif {
 			continue
 		}
-		if debug {
-			log.Printf("getIpRuleCounters: matched counters %+v\n",
-				&counters[i])
-		}
+		log.Debugf("getIpRuleCounters: matched counters %+v\n",
+			&counters[i])
 		return &counters[i]
 	}
 	return nil
@@ -240,7 +238,7 @@ type AclCounters struct {
 func parseline(line string, table string, ipVer int) *AclCounters {
 	items := strings.Split(line, " ")
 	if len(items) < 4 {
-		// log.Printf("Too short: %s\n", line)
+		// log.Debugf("Too short: %s\n", line)
 		return nil
 	}
 	if items[0] != "-A" {
@@ -325,7 +323,7 @@ func parseline(line string, table string, ipVer int) *AclCounters {
 			continue
 		}
 
-		// log.Printf("Got more items %d %s\n", i, items[i])
+		// log.Debugf("Got more items %d %s\n", i, items[i])
 		ac.More = true
 		i += 1
 	}

@@ -8,8 +8,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-const debug = true // XXX remove?
-
 // Extend this structure with optional specific tags from
 // log.WithFields
 type Loginfo struct {
@@ -22,9 +20,6 @@ type Loginfo struct {
 func ParseLoginfo(line string) (Loginfo, bool) {
 	var output Loginfo
 	if err := json.Unmarshal([]byte(line), &output); err != nil {
-		if debug {
-			log.Printf("json Unmarshal in parseLoginfo: %s\n", err)
-		}
 		return output, false
 	}
 	return output, true

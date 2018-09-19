@@ -16,10 +16,9 @@ import (
 // Create the hosts file for the overlay DNS resolution
 // Would be more polite to return an error then to Fatal
 func createHostsConfiglet(cfgDirname string, nameToIPList []types.DnsNameToIP) {
-	if debug {
-		log.Printf("createHostsConfiglet: dir %s nameToIPList %v\n",
-			cfgDirname, nameToIPList)
-	}
+
+	log.Printf("createHostsConfiglet: dir %s nameToIPList %v\n",
+		cfgDirname, nameToIPList)
 	ensureDir(cfgDirname)
 
 	for _, ne := range nameToIPList {
@@ -96,10 +95,9 @@ func containsIP(nameToIPList []types.DnsNameToIP, ip net.IP) bool {
 
 func updateHostsConfiglet(cfgDirname string,
 	oldList []types.DnsNameToIP, newList []types.DnsNameToIP) {
-	if debug {
-		log.Printf("updateHostsConfiglet: dir %s old %v, new %v\n",
-			cfgDirname, oldList, newList)
-	}
+
+	log.Printf("updateHostsConfiglet: dir %s old %v, new %v\n",
+		cfgDirname, oldList, newList)
 	ensureDir(cfgDirname)
 	// Look for hosts which should be deleted
 	for _, ne := range oldList {
@@ -127,9 +125,8 @@ func updateHostsConfiglet(cfgDirname string,
 }
 
 func deleteHostsConfiglet(cfgDirname string, printOnError bool) {
-	if debug {
-		log.Printf("deleteHostsConfiglet: dir %s\n", cfgDirname)
-	}
+
+	log.Printf("deleteHostsConfiglet: dir %s\n", cfgDirname)
 	err := os.RemoveAll(cfgDirname)
 	if err != nil && printOnError {
 		log.Println("deleteHostsConfiglet: ", err)

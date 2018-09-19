@@ -51,10 +51,9 @@ func createDnsmasqConfiglet(bridgeName string, bridgeIPAddr string,
 	netconf *types.NetworkObjectConfig, hostsDir string,
 	ipsets []string, Ipv4Eid bool) {
 
-	if debug {
-		log.Printf("createDnsmasqConfiglet: %s netconf %v\n",
-			bridgeName, netconf)
-	}
+	log.Debugf("createDnsmasqConfiglet: %s netconf %v\n",
+		bridgeName, netconf)
+
 	cfgPathname := dnsmasqConfigPath(bridgeName)
 	// Delete if it exists
 	if _, err := os.Stat(cfgPathname); err == nil {
@@ -267,9 +266,8 @@ func removehostDnsmasq(bridgeName string, appMac string, appIPAddr string) {
 }
 
 func deleteDnsmasqConfiglet(bridgeName string) {
-	if debug {
-		log.Printf("deleteDnsmasqConfiglet(%s)\n", bridgeName)
-	}
+
+	log.Debugf("deleteDnsmasqConfiglet(%s)\n", bridgeName)
 	cfgPathname := dnsmasqConfigPath(bridgeName)
 	if err := os.Remove(cfgPathname); err != nil {
 		log.Println(err)
@@ -285,9 +283,8 @@ func deleteDnsmasqConfiglet(bridgeName string) {
 //    DMDIR=/opt/zededa/bin/
 //    ${DMDIR}/dnsmasq -b -C /var/run/zedrouter/dnsmasq.${BRIDGENAME}.conf
 func startDnsmasq(bridgeName string) {
-	if debug {
-		log.Printf("startDnsmasq(%s)\n", bridgeName)
-	}
+
+	log.Debugf("startDnsmasq(%s)\n", bridgeName)
 	cfgPathname := dnsmasqConfigPath(bridgeName)
 	name := "nohup"
 	//    XXX currently running as root with -d above
@@ -304,17 +301,14 @@ func startDnsmasq(bridgeName string) {
 	}
 	cmd := exec.Command(name, args...)
 	cmd.Stderr = logf
-	if debug {
-		log.Printf("Calling command %s %v\n", name, args)
-	}
+	log.Debugf("Calling command %s %v\n", name, args)
 	go cmd.Run()
 }
 
 //    pkill -u nobody -f dnsmasq.${BRIDGENAME}.conf
 func stopDnsmasq(bridgeName string, printOnError bool) {
-	if debug {
-		log.Printf("stopDnsmasq(%s)\n", bridgeName)
-	}
+
+	log.Debugf("stopDnsmasq(%s)\n", bridgeName)
 	cfgFilename := dnsmasqConfigFile(bridgeName)
 	// XXX currently running as root with -d above
 	pkillUserArgs("root", cfgFilename, printOnError)

@@ -21,10 +21,8 @@ func AddOrRefcountDownloaderConfig(ctx *zedmanagerContext, safename string,
 			safename, m.RefCount)
 		publishDownloaderConfig(ctx, m)
 	} else {
-		if debug {
-			log.Printf("AddOrRefcountDownloaderConfig: add for %s\n",
-				safename)
-		}
+		log.Debugf("AddOrRefcountDownloaderConfig: add for %s\n",
+			safename)
 		n := types.DownloaderConfig{
 			Safename:        safename,
 			DownloadURL:     ds.Fqdn + "/" + ds.Dpath + "/" + sc.Name,

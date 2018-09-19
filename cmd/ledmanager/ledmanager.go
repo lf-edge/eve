@@ -212,14 +212,9 @@ func TriggerBlinkOnDevice(countChange chan int, blinkFunc Blink200msFunc) {
 			log.Printf("Received counter update: %d\n",
 				counter)
 		default:
-			if debug {
-				log.Printf("Unchanged counter: %d\n",
-					counter)
-			}
+			log.Debugf("Unchanged counter: %d\n", counter)
 		}
-		if debug {
-			log.Println("Number of times LED will blink: ", counter)
-		}
+		log.Debugln("Number of times LED will blink: ", counter)
 		for i := 0; i < counter; i++ {
 			blinkFunc()
 			time.Sleep(200 * time.Millisecond)
@@ -241,9 +236,7 @@ func ExecuteDDCmd() {
 		log.Println("dd error: ", err)
 		return
 	}
-	if debug {
-		log.Printf("ddinfo: %s\n", stdout)
-	}
+	log.Debugf("ddinfo: %s\n", stdout)
 }
 
 const (

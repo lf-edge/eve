@@ -426,7 +426,8 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 
 	if debug {
 		if bytes, err := json.Marshal(vpnConfig); err == nil {
-			log.Printf("strongSwanConfigParse(): %s\n", string(bytes))
+			log.Debugf("strongSwanConfigParse(): %s\n",
+				string(bytes))
 		}
 	}
 	return vpnConfig, nil
@@ -434,9 +435,7 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 
 func strongSwanVpnStatusParse(opaqueStatus string) (types.VpnServiceConfig, error) {
 
-	if debug {
-		log.Printf("strongSwanVpnStatusParse: parsing %s\n", opaqueStatus)
-	}
+	log.Debugf("strongSwanVpnStatusParse: parsing %s\n", opaqueStatus)
 
 	cb := []byte(opaqueStatus)
 	vpnConfig := types.VpnServiceConfig{}
@@ -570,8 +569,8 @@ func strongSwanVpnActivate(vpnConfig types.VpnServiceConfig) error {
 	// check iptables rule status
 	if err := ipTablesRuleCheck(vpnConfig); err != nil {
 		log.Printf("%s for %s ipTables status", err.Error(), tunnelConfig.Name)
-		if err := ipTablesRuleCreate(vpnConfig); err != nil {
-			return err
+		if err2 := ipTablesRuleCreate(vpnConfig); err2 != nil {
+			return err2
 		}
 		return err
 	}
@@ -579,8 +578,8 @@ func strongSwanVpnActivate(vpnConfig types.VpnServiceConfig) error {
 	// check ipsec tunnel status
 	if err := ipSecTunnelStateCheck(vpnConfig.VpnRole, tunnelConfig.Name); err != nil {
 		log.Printf("%s for %s ipSec status", err.Error(), tunnelConfig.Name)
-		if err := ipSecServiceActivate(vpnConfig); err != nil {
-			return err
+		if err2 := ipSecServiceActivate(vpnConfig); err2 != nil {
+			return err2
 		}
 		return err
 	}
@@ -724,9 +723,7 @@ func strongSwanVpnStatusGet(status *types.NetworkServiceStatus) bool {
 
 	// if tunnel state have changed, update
 	if change = isVpnStatusChanged(status.VpnStatus, vpnStatus); change {
-		if debug {
-			log.Printf("vpn state change:%v\n", vpnStatus)
-		}
+		log.Debugf("vpn state change:%v\n", vpnStatus)
 		status.VpnStatus = vpnStatus
 	}
 	return change

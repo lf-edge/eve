@@ -68,9 +68,7 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 	//Fill DeviceLispConfig struct with LispInfo config...
 	var lispConfig = DeviceLispConfig{}
 
-	if debug {
-		log.Printf("handleLookupParam got config %v\n", devConfig)
-	}
+	log.Debugf("handleLookupParam got config %v\n", devConfig)
 	lispInfo := devConfig.LispInfo
 	if lispInfo == nil {
 		log.Printf("handleLookupParam: missing lispInfo\n")
@@ -84,9 +82,7 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 		// We normally don't hit this since the order in
 		// the DnsNameToIPList from the proto.Encode is random.
 		// Hence we check again after sorting.
-		if debug {
-			log.Printf("handleLookupParam: lispInfo sha is unchanged\n")
-		}
+		log.Debugf("handleLookupParam: lispInfo sha is unchanged\n")
 		return
 	}
 	lispConfig.LispInstance = lispInfo.LispInstance
@@ -125,9 +121,7 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 				lispConfig.DnsNameToIPList[j].HostName
 		})
 	if reflect.DeepEqual(prevLispConfig, lispConfig) {
-		if debug {
-			log.Printf("handleLookupParam: sorted lispInfo is unchanged\n")
-		}
+		log.Debugf("handleLookupParam: sorted lispInfo is unchanged\n")
 		return
 	}
 	prevLispConfig = lispConfig
@@ -174,18 +168,14 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 	// RFC 5952. The iid is printed as an integer.
 	sigdata := fmt.Sprintf("[%d]%s",
 		lispConfig.LispInstance, lispConfig.EID.String())
-	if debug {
-		log.Printf("sigdata (len %d) %s\n", len(sigdata), sigdata)
-	}
+	log.Debugf("sigdata (len %d) %s\n", len(sigdata), sigdata)
 
 	hasher := sha256.New()
 	hasher.Write([]byte(sigdata))
 	hash := hasher.Sum(nil)
-	if debug {
-		log.Printf("hash (len %d) % x\n", len(hash), hash)
-		log.Printf("base64 hash %s\n",
-			base64.StdEncoding.EncodeToString(hash))
-	}
+	log.Debugf("hash (len %d) % x\n", len(hash), hash)
+	log.Debugf("base64 hash %s\n",
+		base64.StdEncoding.EncodeToString(hash))
 	var signature string
 	switch deviceCert.PrivateKey.(type) {
 	default:
@@ -196,24 +186,19 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 		if err != nil {
 			log.Fatal("ecdsa.Sign: ", err)
 		}
-		if debug {
-			log.Printf("r.bytes %d s.bytes %d\n", len(r.Bytes()),
-				len(s.Bytes()))
-		}
+		log.Debugf("r.bytes %d s.bytes %d\n", len(r.Bytes()),
+			len(s.Bytes()))
 		sigres := r.Bytes()
 		sigres = append(sigres, s.Bytes()...)
 		signature = base64.StdEncoding.EncodeToString(sigres)
-		if debug {
-			log.Printf("sigres (len %d): % x\n",
-				len(sigres), sigres)
-			log.Println("signature:", signature)
-		}
+		log.Debugf("sigres (len %d): % x\n",
+			len(sigres), sigres)
+		log.Debugln("signature:", signature)
 	}
-	if debug {
-		log.Printf("MapServers %s\n", lispConfig.MapServers)
-		log.Printf("Lisp IID %d\n", lispConfig.LispInstance)
-		log.Printf("EID %s\n", lispConfig.EID)
-	}
+	log.Debugf("MapServers %s\n", lispConfig.MapServers)
+	log.Debugf("Lisp IID %d\n", lispConfig.LispInstance)
+	log.Debugf("EID %s\n", lispConfig.EID)
+
 	// write zedserverconfig file with hostname to EID mappings
 	f, err := os.Create(zedserverConfigFileName)
 	if err != nil {
@@ -281,10 +266,7 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 	if err != nil {
 		log.Println(err.Error())
 	}
-	if debug {
-		log.Printf("handlezedserverconfig output %s\n",
-			stdout)
-	}
+	log.Debugf("handlezedserverconfig output %s\n", stdout)
 }
 
 func publishAppNetworkConfig(getconfigCtx *getconfigContext,
