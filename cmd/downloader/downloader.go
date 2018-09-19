@@ -89,7 +89,7 @@ func Run() {
 	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("Starting %s\n", agentName)
+	log.Infof("Starting %s\n", agentName)
 
 	cms := zedcloud.GetCloudMetrics() // Need type of data
 	pub, err := pubsub.Publish(agentName, cms)
@@ -208,7 +208,7 @@ func Run() {
 	// Also ensure GlobalDownloadConfig has been read
 	for types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus) == 0 ||
 		ctx.globalConfig.MaxSpace == 0 {
-		log.Printf("Waiting for uplink addresses or Global Config\n")
+		log.Infof("Waiting for uplink addresses or Global Config\n")
 
 		select {
 		case change := <-subGlobalConfig.C:
@@ -221,7 +221,7 @@ func Run() {
 			subGlobalDownloadConfig.ProcessChange(change)
 		}
 	}
-	log.Printf("Have %d uplinks addresses to use\n",
+	log.Infof("Have %d uplinks addresses to use\n",
 		types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus))
 
 	ctx.dCtx = downloaderInit(&ctx)
@@ -249,7 +249,7 @@ func Run() {
 		case <-publishTimer.C:
 			err := pub.Publish("global", zedcloud.GetCloudMetrics())
 			if err != nil {
-				log.Println(err)
+				log.Errorln(err)
 			}
 		}
 	}
@@ -294,12 +294,12 @@ func lookupDownloaderStatus(ctx *downloaderContext, objType string,
 	pub := downloaderPublication(ctx, objType)
 	st, _ := pub.Get(key)
 	if st == nil {
-		log.Printf("lookupDownloaderStatus(%s) not found\n", key)
+		log.Infof("lookupDownloaderStatus(%s) not found\n", key)
 		return nil
 	}
 	status := cast.CastDownloaderStatus(st)
 	if status.Key() != key {
-		log.Printf("lookupDownloaderStatus key/UUID mismatch %s vs %s; ignored %+v\n",
+		log.Errorf("lookupDownloaderStatus key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
 		return nil
 	}
@@ -325,11 +325,11 @@ func handlersInit() {
 func handleDownloaderModify(ctxArg interface{}, objType string,
 	key string, configArg interface{}) {
 
-	log.Printf("handleDownloaderModify(%s)\n", key)
+	log.Infof("handleDownloaderModify(%s)\n", key)
 	ctx := ctxArg.(*downloaderContext)
 	config := cast.CastDownloaderConfig(configArg)
 	if config.Key() != key {
-		log.Printf("handleDownloaderModify key/UUID mismatch %s vs %s; ignored %+v\n",
+		log.Errorf("handleDownloaderModify key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, config.Key(), config)
 		return
 	}
@@ -341,33 +341,33 @@ func handleDownloaderModify(ctxArg interface{}, objType string,
 		go runHandler(ctx, objType, key, h1)
 		h = h1
 	}
-	log.Printf("Sending config to handler\n")
+	log.Debugf("Sending config to handler\n")
 	h <- configArg
-	log.Printf("handleDownloaderModify(%s) done\n", key)
+	log.Infof("handleDownloaderModify(%s) done\n", key)
 }
 
 func handleDownloaderDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	log.Printf("handleDownloaderDelete(%s)\n", key)
+	log.Infof("handleDownloaderDelete(%s)\n", key)
 	// Do we have a channel/goroutine?
 	h, ok := handlerMap[key]
 	if ok {
-		log.Printf("Closing channel\n")
+		log.Debugf("Closing channel\n")
 		close(h)
 		delete(handlerMap, key)
 	} else {
-		log.Printf("handleDownloaderDelete: unknown %s\n", key)
+		log.Debugf("handleDownloaderDelete: unknown %s\n", key)
 		return
 	}
-	log.Printf("handleDownloaderDelete(%s) done\n", key)
+	log.Infof("handleDownloaderDelete(%s) done\n", key)
 }
 
 // Server for each domU
 func runHandler(ctx *downloaderContext, objType string, key string,
 	c <-chan interface{}) {
 
-	log.Printf("runHandler starting\n")
+	log.Infof("runHandler starting\n")
 
 	closed := false
 	for !closed {
@@ -393,13 +393,13 @@ func runHandler(ctx *downloaderContext, objType string, key string,
 			}
 		}
 	}
-	log.Printf("runHandler(%s) DONE\n", key)
+	log.Infof("runHandler(%s) DONE\n", key)
 }
 
 func handleCreate(ctx *downloaderContext, objType string,
 	config types.DownloaderConfig, key string) {
 
-	log.Printf("handleCreate(%v) objType %s for %s\n",
+	log.Infof("handleCreate(%v) objType %s for %s\n",
 		config.Safename, objType, config.DownloadURL)
 
 	if objType == "" {
@@ -423,7 +423,7 @@ func handleCreate(ctx *downloaderContext, objType string,
 	if uint(kb) >= ctx.globalStatus.RemainingSpace {
 		errString := fmt.Sprintf("Would exceed remaining space %d vs %d\n",
 			kb, ctx.globalStatus.RemainingSpace)
-		log.Println(errString)
+		log.Errorln(errString)
 		status.PendingAdd = false
 		status.Size = 0
 		status.LastErr = errString
@@ -431,7 +431,7 @@ func handleCreate(ctx *downloaderContext, objType string,
 		status.RetryCount += 1
 		status.State = types.INITIAL
 		publishDownloaderStatus(ctx, &status)
-		log.Printf("handleCreate failed for %s\n", config.DownloadURL)
+		log.Errorf("handleCreate failed for %s\n", config.DownloadURL)
 		return
 	}
 
@@ -446,7 +446,7 @@ func handleCreate(ctx *downloaderContext, objType string,
 		// XXX odd to treat as error.
 		errString := fmt.Sprintf("RefCount==0; download deferred for %s\n",
 			config.DownloadURL)
-		log.Println(errString)
+		log.Errorln(errString)
 		status.PendingAdd = false
 		status.Size = 0
 		status.LastErr = errString
@@ -454,7 +454,7 @@ func handleCreate(ctx *downloaderContext, objType string,
 		status.RetryCount += 1
 		status.State = types.INITIAL
 		publishDownloaderStatus(ctx, &status)
-		log.Printf("handleCreate deferred for %s\n", config.DownloadURL)
+		log.Errorf("handleCreate deferred for %s\n", config.DownloadURL)
 		return
 	}
 
@@ -466,7 +466,7 @@ func handleCreate(ctx *downloaderContext, objType string,
 func handleModify(ctx *downloaderContext, key string,
 	config types.DownloaderConfig, status *types.DownloaderStatus) {
 
-	log.Printf("handleModify(%v) objType %s for %s\n",
+	log.Infof("handleModify(%v) objType %s for %s\n",
 		status.Safename, status.ObjType, status.DownloadURL)
 
 	if status.ObjType == "" {
@@ -476,7 +476,7 @@ func handleModify(ctx *downloaderContext, key string,
 	locDirname := objectDownloadDirname + "/" + status.ObjType
 
 	if config.DownloadURL != status.DownloadURL {
-		log.Printf("URL changed - not allowed %s -> %s\n",
+		log.Errorf("URL changed - not allowed %s -> %s\n",
 			config.DownloadURL, status.DownloadURL)
 		return
 	}
@@ -490,11 +490,11 @@ func handleModify(ctx *downloaderContext, key string,
 		} else {
 			reason = "recovering from previous error"
 		}
-		log.Printf("handleModify %s for %s\n",
+		log.Errorf("handleModify %s for %s\n",
 			reason, config.DownloadURL)
 		doDelete(ctx, key, locDirname, status)
 		handleCreate(ctx, status.ObjType, config, key)
-		log.Printf("handleModify done for %s\n", config.DownloadURL)
+		log.Infof("handleModify done for %s\n", config.DownloadURL)
 		return
 	}
 
@@ -503,27 +503,27 @@ func handleModify(ctx *downloaderContext, key string,
 	// If RefCount from zero to non-zero then do install
 	if status.RefCount == 0 && config.RefCount != 0 {
 		status.PendingModify = true
-		log.Printf("handleModify installing %s\n", config.DownloadURL)
+		log.Infof("handleModify installing %s\n", config.DownloadURL)
 		handleCreate(ctx, status.ObjType, config, key)
 		status.RefCount = config.RefCount
 		status.PendingModify = false
 		publishDownloaderStatus(ctx, status)
 	} else if status.RefCount != 0 && config.RefCount == 0 {
-		log.Printf("handleModify deleting %s\n", config.DownloadURL)
+		log.Infof("handleModify deleting %s\n", config.DownloadURL)
 		doDelete(ctx, key, locDirname, status)
 	} else if status.RefCount != config.RefCount {
-		log.Printf("handleModify RefCount change %s from %d to %d\n",
+		log.Infof("handleModify RefCount change %s from %d to %d\n",
 			config.DownloadURL, status.RefCount, config.RefCount)
 		status.RefCount = config.RefCount
 		publishDownloaderStatus(ctx, status)
 	}
-	log.Printf("handleModify done for %s\n", config.DownloadURL)
+	log.Infof("handleModify done for %s\n", config.DownloadURL)
 }
 
 func doDelete(ctx *downloaderContext, key string, locDirname string,
 	status *types.DownloaderStatus) {
 
-	log.Printf("doDelete(%v) for %s\n", status.Safename, status.DownloadURL)
+	log.Infof("doDelete(%v) for %s\n", status.Safename, status.DownloadURL)
 
 	deletefile(locDirname+"/pending", status)
 	deletefile(locDirname+"/verifier", status)
@@ -547,10 +547,10 @@ func deletefile(dirname string, status *types.DownloaderStatus) {
 	if _, err := os.Stat(dirname); err == nil {
 		filename := dirname + "/" + status.Safename
 		if _, err := os.Stat(filename); err == nil {
-			log.Printf("Deleting %s\n", filename)
+			log.Infof("Deleting %s\n", filename)
 			// Remove file
 			if err := os.Remove(filename); err != nil {
-				log.Printf("Failed to remove %s: err %s\n",
+				log.Errorf("Failed to remove %s: err %s\n",
 					filename, err)
 			}
 		}
@@ -560,7 +560,7 @@ func deletefile(dirname string, status *types.DownloaderStatus) {
 func handleDelete(ctx *downloaderContext, key string,
 	status *types.DownloaderStatus) {
 
-	log.Printf("handleDelete(%v) objType %s for %s\n",
+	log.Infof("handleDelete(%v) objType %s for %s\n",
 		status.Safename, status.ObjType, status.DownloadURL)
 
 	if status.ObjType == "" {
@@ -588,7 +588,7 @@ func handleDelete(ctx *downloaderContext, key string,
 
 	// Write out what we modified to DownloaderStatus aka delete
 	unpublishDownloaderStatus(ctx, status)
-	log.Printf("handleDelete done for %s, %s\n", status.DownloadURL, locDirname)
+	log.Infof("handleDelete done for %s, %s\n", status.DownloadURL, locDirname)
 }
 
 // helper functions
@@ -597,7 +597,7 @@ func downloaderInit(ctx *downloaderContext) *zedUpload.DronaCtx {
 
 	initializeDirs()
 
-	log.Printf("MaxSpace %d\n", ctx.globalConfig.MaxSpace)
+	log.Infof("MaxSpace %d\n", ctx.globalConfig.MaxSpace)
 
 	ctx.globalStatus.UsedSpace = 0
 	ctx.globalStatus.ReservedSpace = 0
@@ -622,7 +622,7 @@ func downloaderInit(ctx *downloaderContext) *zedUpload.DronaCtx {
 	dCtx, err := zedUpload.NewDronaCtx("zdownloader", 0)
 
 	if dCtx == nil {
-		log.Printf("context create fail %s\n", err)
+		log.Errorf("context create fail %s\n", err)
 		log.Fatal(err)
 	}
 
@@ -635,12 +635,12 @@ func handleGlobalDownloadConfigModify(ctxArg interface{}, key string,
 	ctx := ctxArg.(*downloaderContext)
 	config := cast.CastGlobalDownloadConfig(configArg)
 	if key != "global" {
-		log.Printf("handleGlobalDownloadConfigModify: unexpected key %s\n", key)
+		log.Errorf("handleGlobalDownloadConfigModify: unexpected key %s\n", key)
 		return
 	}
-	log.Printf("handleGlobalDownloadConfigModify for %s\n", key)
+	log.Infof("handleGlobalDownloadConfigModify for %s\n", key)
 	ctx.globalConfig = config
-	log.Printf("handleGlobalDownloadConfigModify done for %s\n", key)
+	log.Infof("handleGlobalDownloadConfigModify done for %s\n", key)
 }
 
 func initializeDirs() {
@@ -666,7 +666,7 @@ func createDownloadDirs(objTypes []string) {
 		for _, dirType := range workingDirTypes {
 			dirName := objectDownloadDirname + "/" + objType + "/" + dirType
 			if _, err := os.Stat(dirName); err != nil {
-				log.Printf("Create %s\n", dirName)
+				log.Debugf("Create %s\n", dirName)
 				if err := os.MkdirAll(dirName, 0700); err != nil {
 					log.Fatal(err)
 				}
@@ -701,13 +701,13 @@ func sizeFromDir(dirname string) uint64 {
 	}
 	for _, location := range locations {
 		filename := dirname + "/" + location.Name()
-		log.Printf("Looking in %s\n", filename)
+		log.Debugf("Looking in %s\n", filename)
 		if location.IsDir() {
 			size := sizeFromDir(filename)
-			log.Printf("Dir %s size %d\n", filename, size)
+			log.Debugf("Dir %s size %d\n", filename, size)
 			totalUsed += size
 		} else {
-			log.Printf("File %s Size %d\n", filename, location.Size())
+			log.Debugf("File %s Size %d\n", filename, location.Size())
 			totalUsed += uint64(location.Size())
 		}
 	}
@@ -719,7 +719,7 @@ func updateRemainingSpace(ctx *downloaderContext) {
 	ctx.globalStatus.RemainingSpace = ctx.globalConfig.MaxSpace -
 		ctx.globalStatus.UsedSpace - ctx.globalStatus.ReservedSpace
 
-	log.Printf("RemainingSpace %d, maxspace %d, usedspace %d, reserved %d\n",
+	log.Infof("RemainingSpace %d, maxspace %d, usedspace %d, reserved %d\n",
 		ctx.globalStatus.RemainingSpace, ctx.globalConfig.MaxSpace,
 		ctx.globalStatus.UsedSpace, ctx.globalStatus.ReservedSpace)
 	// Create and write
@@ -735,7 +735,7 @@ func publishDownloaderStatus(ctx *downloaderContext,
 
 	pub := downloaderPublication(ctx, status.ObjType)
 	key := status.Key()
-	log.Printf("publishDownloaderStatus(%s)\n", key)
+	log.Debugf("publishDownloaderStatus(%s)\n", key)
 	pub.Publish(key, status)
 }
 
@@ -744,10 +744,10 @@ func unpublishDownloaderStatus(ctx *downloaderContext,
 
 	pub := downloaderPublication(ctx, status.ObjType)
 	key := status.Key()
-	log.Printf("unpublishDownloaderStatus(%s)\n", key)
+	log.Debugf("unpublishDownloaderStatus(%s)\n", key)
 	st, _ := pub.Get(key)
 	if st == nil {
-		log.Printf("unpublishDownloaderStatus(%s) not found\n", key)
+		log.Errorf("unpublishDownloaderStatus(%s) not found\n", key)
 		return
 	}
 	pub.Unpublish(key)
@@ -817,9 +817,9 @@ func doCurl(url string, ifname string, maxsize uint64, destFilename string) erro
 	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
 
 	if err != nil {
-		log.Println("curl failed ", err)
+		log.Errorln("curl failed ", err)
 	} else {
-		log.Printf("curl done: output <%s>\n", string(stdoutStderr))
+		log.Infof("curl done: output <%s>\n", string(stdoutStderr))
 	}
 	return err
 }
@@ -838,13 +838,13 @@ func doS3(ctx *downloaderContext, syncOp zedUpload.SyncOpType,
 	// create Endpoint
 	dEndPoint, err := ctx.dCtx.NewSyncerDest(trType, region, dpath, auth)
 	if err != nil {
-		log.Printf("NewSyncerDest failed: %s\n", err)
+		log.Errorf("NewSyncerDest failed: %s\n", err)
 		return err
 	}
 	dEndPoint.WithSrcIpSelection(ipSrc)
 	var respChan = make(chan *zedUpload.DronaRequest)
 
-	log.Printf("syncOp for <%s>, <%s>, <%s>\n", dpath, region, filename)
+	log.Debugf("syncOp for <%s>, <%s>, <%s>\n", dpath, region, filename)
 	// create Request
 	// Round up from bytes to Mbytes
 	maxMB := (maxsize + 1024*1024 - 1) / (1024 * 1024)
@@ -878,13 +878,13 @@ func doSftp(ctx *downloaderContext, syncOp zedUpload.SyncOpType,
 	// create Endpoint
 	dEndPoint, err := ctx.dCtx.NewSyncerDest(trType, serverUrl, dpath, auth)
 	if err != nil {
-		log.Printf("NewSyncerDest failed: %s\n", err)
+		log.Errorf("NewSyncerDest failed: %s\n", err)
 		return err
 	}
 	dEndPoint.WithSrcIpSelection(ipSrc)
 	var respChan = make(chan *zedUpload.DronaRequest)
 
-	log.Printf("syncOp for <%s>, <%s>\n", dpath, filename)
+	log.Debugf("syncOp for <%s>, <%s>\n", dpath, filename)
 	// create Request
 	// Round up from bytes to Mbytes
 	maxMB := (maxsize + 1024*1024 - 1) / (1024 * 1024)
@@ -930,7 +930,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	}
 
 	if _, err := os.Stat(locFilename); err != nil {
-		log.Printf("Create %s\n", locFilename)
+		log.Debugf("Create %s\n", locFilename)
 		if err = os.MkdirAll(locFilename, 0755); err != nil {
 			log.Fatal(err)
 		}
@@ -940,17 +940,17 @@ func handleSyncOp(ctx *downloaderContext, key string,
 
 	locFilename = locFilename + "/" + config.Safename
 
-	log.Printf("Downloading <%s> to <%s> using %v freeuplink\n",
+	log.Infof("Downloading <%s> to <%s> using %v freeuplink\n",
 		config.DownloadURL, locFilename, config.UseFreeUplinks)
 
 	var addrCount int
 	if config.UseFreeUplinks {
 		addrCount = types.CountLocalAddrFree(ctx.deviceNetworkStatus, "")
-		log.Printf("Have %d free uplink addresses\n", addrCount)
+		log.Infof("Have %d free uplink addresses\n", addrCount)
 		err = errors.New("No free IP uplink addresses for download")
 	} else {
 		addrCount = types.CountLocalAddrAny(ctx.deviceNetworkStatus, "")
-		log.Printf("Have %d any uplink addresses\n", addrCount)
+		log.Infof("Have %d any uplink addresses\n", addrCount)
 		err = errors.New("No IP uplink addresses for download")
 	}
 	if addrCount == 0 {
@@ -974,12 +974,12 @@ func handleSyncOp(ctx *downloaderContext, key string,
 				addrIndex, "")
 		}
 		if err != nil {
-			log.Printf("GetLocalAddr failed: %s\n", err)
+			log.Errorf("GetLocalAddr failed: %s\n", err)
 			errStr = errStr + "\n" + err.Error()
 			continue
 		}
 		ifname := types.GetUplinkFromAddr(ctx.deviceNetworkStatus, ipSrc)
-		log.Printf("Using IP source %v if %s transport %v\n",
+		log.Infof("Using IP source %v if %s transport %v\n",
 			ipSrc, ifname, config.TransportMethod)
 		switch config.TransportMethod {
 		case zconfig.DsType_DsS3.String():
@@ -987,7 +987,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 				config.Password, config.Dpath, config.Region,
 				config.Size, ipSrc, filename, locFilename)
 			if err != nil {
-				log.Printf("Source IP %s failed: %s\n",
+				log.Errorf("Source IP %s failed: %s\n",
 					ipSrc.String(), err)
 				errStr = errStr + "\n" + err.Error()
 				// XXX don't know how much we downloaded!
@@ -1010,7 +1010,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 				config.Password, serverUrl, config.Dpath,
 				config.Size, ipSrc, filename, locFilename)
 			if err != nil {
-				log.Printf("Source IP %s failed: %s\n",
+				log.Errorf("Source IP %s failed: %s\n",
 					ipSrc.String(), err)
 				errStr = errStr + "\n" + err.Error()
 				// XXX don't know how much we downloaded!
@@ -1031,7 +1031,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 			err = doCurl(config.DownloadURL, ipSrc.String(),
 				config.Size, locFilename)
 			if err != nil {
-				log.Printf("Source IP %s failed: %s\n",
+				log.Errorf("Source IP %s failed: %s\n",
 					ipSrc.String(), err)
 				errStr = errStr + "\n" + err.Error()
 				zedcloud.ZedCloudFailure(ifname,
@@ -1050,7 +1050,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 			log.Fatal("unsupported transport method")
 		}
 	}
-	log.Printf("All source IP addresses failed. All errors:%s\n", errStr)
+	log.Errorf("All source IP addresses failed. All errors:%s\n", errStr)
 	handleSyncOpResponse(ctx, config, status, locFilename,
 		key, errStr)
 }
@@ -1074,14 +1074,14 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 		status.RetryCount += 1
 		status.State = types.INITIAL
 		publishDownloaderStatus(ctx, status)
-		log.Printf("handleSyncOpResponse failed for %s, <%s>\n",
+		log.Errorf("handleSyncOpResponse failed for %s, <%s>\n",
 			status.DownloadURL, errStr)
 		return
 	}
 
 	info, err := os.Stat(locFilename)
 	if err != nil {
-		log.Printf("handleSyncOpResponse Stat failed for %s <%s>\n",
+		log.Errorf("handleSyncOpResponse Stat failed for %s <%s>\n",
 			status.DownloadURL, err)
 		// Delete file
 		doDelete(ctx, key, locDirname, status)
@@ -1101,7 +1101,7 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 	ctx.globalStatus.UsedSpace += uint(types.RoundupToKB(status.Size))
 	updateRemainingSpace(ctx)
 
-	log.Printf("handleSyncOpResponse successful <%s> <%s>\n",
+	log.Infof("handleSyncOpResponse successful <%s> <%s>\n",
 		config.DownloadURL, locFilename)
 	// We do not clear any status.RetryCount, LastErr, etc. The caller
 	// should look at State == DOWNLOADED to determine it is done.
@@ -1117,31 +1117,31 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	ctx := ctxArg.(*downloaderContext)
 	status := cast.CastDeviceNetworkStatus(statusArg)
 	if key != "global" {
-		log.Printf("handleDNSModify: ignoring %s\n", key)
+		log.Infof("handleDNSModify: ignoring %s\n", key)
 		return
 	}
 
-	log.Printf("handleDNSModify for %s\n", key)
+	log.Infof("handleDNSModify for %s\n", key)
 	ctx.deviceNetworkStatus = status
-	log.Printf("handleDNSModify %d free uplinks addresses; %d any\n",
+	log.Infof("handleDNSModify %d free uplinks addresses; %d any\n",
 		types.CountLocalAddrFree(ctx.deviceNetworkStatus, ""),
 		types.CountLocalAddrAny(ctx.deviceNetworkStatus, ""))
 
 	devicenetwork.ProxyToEnv(ctx.deviceNetworkStatus.ProxyConfig)
-	log.Printf("handleDNSModify done for %s\n", key)
+	log.Infof("handleDNSModify done for %s\n", key)
 }
 
 func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 
 	ctx := ctxArg.(*downloaderContext)
-	log.Printf("handleDNSDelete for %s\n", key)
+	log.Infof("handleDNSDelete for %s\n", key)
 	if key != "global" {
-		log.Printf("handleDNSDelete: ignoring %s\n", key)
+		log.Infof("handleDNSDelete: ignoring %s\n", key)
 		return
 	}
 	ctx.deviceNetworkStatus = types.DeviceNetworkStatus{}
 	devicenetwork.ProxyToEnv(ctx.deviceNetworkStatus.ProxyConfig)
-	log.Printf("handleDNSDelete done for %s\n", key)
+	log.Infof("handleDNSDelete done for %s\n", key)
 }
 
 func handleGlobalConfigModify(ctxArg interface{}, key string,
@@ -1149,13 +1149,13 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*downloaderContext)
 	if key != "global" {
-		log.Printf("handleGlobalConfigModify: ignoring %s\n", key)
+		log.Infof("handleGlobalConfigModify: ignoring %s\n", key)
 		return
 	}
-	log.Printf("handleGlobalConfigModify for %s\n", key)
+	log.Infof("handleGlobalConfigModify for %s\n", key)
 	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
-	log.Printf("handleGlobalConfigModify done for %s\n", key)
+	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,
@@ -1163,11 +1163,11 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*downloaderContext)
 	if key != "global" {
-		log.Printf("handleGlobalConfigDelete: ignoring %s\n", key)
+		log.Infof("handleGlobalConfigDelete: ignoring %s\n", key)
 		return
 	}
-	log.Printf("handleGlobalConfigDelete for %s\n", key)
+	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
-	log.Printf("handleGlobalConfigDelete done for %s\n", key)
+	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
