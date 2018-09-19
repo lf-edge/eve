@@ -98,15 +98,15 @@ func Run() {
 		}
 	}
 
-	pubDeviceNetworkStatus, err := pubsub.PublishWithDebug(agentName,
-		types.DeviceNetworkStatus{}, &debug)
+	pubDeviceNetworkStatus, err := pubsub.Publish(agentName,
+		types.DeviceNetworkStatus{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	pubDeviceNetworkStatus.ClearRestarted()
 
-	pubDeviceUplinkConfig, err := pubsub.PublishWithDebug(agentName,
-		types.DeviceUplinkConfig{}, &debug)
+	pubDeviceUplinkConfig, err := pubsub.Publish(agentName,
+		types.DeviceUplinkConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -117,7 +117,7 @@ func Run() {
 	// Pick up (mostly static) AssignableAdapters before we process
 	// any Routes; Pbr needs to know which network adapters are assignable
 	aa := types.AssignableAdapters{}
-	subAa := adapters.SubscribeWithDebug(&aa, model, &debug)
+	subAa := adapters.Subscribe(&aa, model)
 
 	zedrouterCtx := zedrouterContext{
 		separateDataPlane:  false,
@@ -125,8 +125,8 @@ func Run() {
 	}
 
 	// Look for global config like debug
-	subGlobalConfig, err := pubsub.SubscribeWithDebug("",
-		agentlog.GlobalConfig{}, false, &zedrouterCtx, &debug)
+	subGlobalConfig, err := pubsub.Subscribe("",
+		agentlog.GlobalConfig{}, false, &zedrouterCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -158,30 +158,30 @@ func Run() {
 	// Also need to do this before we wait for IP addresses since
 	// zedagent waits for these to be published/exist, and zedagent
 	// runs the fallback timers after that wait.
-	pubNetworkObjectStatus, err := pubsub.PublishWithDebug(agentName,
-		types.NetworkObjectStatus{}, &debug)
+	pubNetworkObjectStatus, err := pubsub.Publish(agentName,
+		types.NetworkObjectStatus{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	zedrouterCtx.pubNetworkObjectStatus = pubNetworkObjectStatus
 
-	pubNetworkServiceStatus, err := pubsub.PublishWithDebug(agentName,
-		types.NetworkServiceStatus{}, &debug)
+	pubNetworkServiceStatus, err := pubsub.Publish(agentName,
+		types.NetworkServiceStatus{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	zedrouterCtx.pubNetworkServiceStatus = pubNetworkServiceStatus
 
-	pubAppNetworkStatus, err := pubsub.PublishWithDebug(agentName,
-		types.AppNetworkStatus{}, &debug)
+	pubAppNetworkStatus, err := pubsub.Publish(agentName,
+		types.AppNetworkStatus{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	zedrouterCtx.pubAppNetworkStatus = pubAppNetworkStatus
 	pubAppNetworkStatus.ClearRestarted()
 
-	pubLispDataplaneConfig, err := pubsub.PublishWithDebug(agentName,
-		types.LispDataplaneConfig{}, &debug)
+	pubLispDataplaneConfig, err := pubsub.Publish(agentName,
+		types.LispDataplaneConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -192,9 +192,9 @@ func Run() {
 
 	// Get the initial DeviceNetworkConfig
 	// Subscribe from "" means /var/tmp/zededa/
-	subDeviceNetworkConfig, err := pubsub.SubscribeWithDebug("",
+	subDeviceNetworkConfig, err := pubsub.Subscribe("",
 		types.DeviceNetworkConfig{}, false,
-		&zedrouterCtx.DeviceNetworkContext, &debug)
+		&zedrouterCtx.DeviceNetworkContext)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -207,9 +207,9 @@ func Run() {
 	// 1. zedagent
 	// 2. override file in /var/tmp/zededa/NetworkUplinkConfig/override.json
 	// 3. self-generated file derived from per-platform DeviceNetworkConfig
-	subDeviceUplinkConfigA, err := pubsub.SubscribeWithDebug("zedagent",
+	subDeviceUplinkConfigA, err := pubsub.Subscribe("zedagent",
 		types.DeviceUplinkConfig{}, false,
-		&zedrouterCtx.DeviceNetworkContext, &debug)
+		&zedrouterCtx.DeviceNetworkContext)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -218,9 +218,9 @@ func Run() {
 	zedrouterCtx.SubDeviceUplinkConfigA = subDeviceUplinkConfigA
 	subDeviceUplinkConfigA.Activate()
 
-	subDeviceUplinkConfigO, err := pubsub.SubscribeWithDebug("",
+	subDeviceUplinkConfigO, err := pubsub.Subscribe("",
 		types.DeviceUplinkConfig{}, false,
-		&zedrouterCtx.DeviceNetworkContext, &debug)
+		&zedrouterCtx.DeviceNetworkContext)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -229,9 +229,9 @@ func Run() {
 	zedrouterCtx.SubDeviceUplinkConfigO = subDeviceUplinkConfigO
 	subDeviceUplinkConfigO.Activate()
 
-	subDeviceUplinkConfigS, err := pubsub.SubscribeWithDebug(agentName,
+	subDeviceUplinkConfigS, err := pubsub.Subscribe(agentName,
 		types.DeviceUplinkConfig{}, false,
-		&zedrouterCtx.DeviceNetworkContext, &debug)
+		&zedrouterCtx.DeviceNetworkContext)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -276,8 +276,8 @@ func Run() {
 	handleInit(runDirname, pubDeviceNetworkStatus)
 
 	// Subscribe to network objects and services from zedagent
-	subNetworkObjectConfig, err := pubsub.SubscribeWithDebug("zedagent",
-		types.NetworkObjectConfig{}, false, &zedrouterCtx, &debug)
+	subNetworkObjectConfig, err := pubsub.Subscribe("zedagent",
+		types.NetworkObjectConfig{}, false, &zedrouterCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -286,8 +286,8 @@ func Run() {
 	zedrouterCtx.subNetworkObjectConfig = subNetworkObjectConfig
 	subNetworkObjectConfig.Activate()
 
-	subNetworkServiceConfig, err := pubsub.SubscribeWithDebug("zedagent",
-		types.NetworkServiceConfig{}, false, &zedrouterCtx, &debug)
+	subNetworkServiceConfig, err := pubsub.Subscribe("zedagent",
+		types.NetworkServiceConfig{}, false, &zedrouterCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -297,8 +297,8 @@ func Run() {
 	subNetworkServiceConfig.Activate()
 
 	// Subscribe to AppNetworkConfig from zedmanager and from zedagent
-	subAppNetworkConfig, err := pubsub.SubscribeWithDebug("zedmanager",
-		types.AppNetworkConfig{}, false, &zedrouterCtx, &debug)
+	subAppNetworkConfig, err := pubsub.Subscribe("zedmanager",
+		types.AppNetworkConfig{}, false, &zedrouterCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -309,8 +309,8 @@ func Run() {
 	subAppNetworkConfig.Activate()
 
 	// Subscribe to AppNetworkConfig from zedmanager
-	subAppNetworkConfigAg, err := pubsub.SubscribeWithDebug("zedagent",
-		types.AppNetworkConfig{}, false, &zedrouterCtx, &debug)
+	subAppNetworkConfigAg, err := pubsub.Subscribe("zedagent",
+		types.AppNetworkConfig{}, false, &zedrouterCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -319,8 +319,8 @@ func Run() {
 	zedrouterCtx.subAppNetworkConfigAg = subAppNetworkConfigAg
 	subAppNetworkConfigAg.Activate()
 
-	subLispInfoStatus, err := pubsub.SubscribeWithDebug("lisp-ztr",
-		types.LispInfoStatus{}, false, &zedrouterCtx, &debug)
+	subLispInfoStatus, err := pubsub.Subscribe("lisp-ztr",
+		types.LispInfoStatus{}, false, &zedrouterCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -329,8 +329,8 @@ func Run() {
 	zedrouterCtx.subLispInfoStatus = subLispInfoStatus
 	subLispInfoStatus.Activate()
 
-	subLispMetrics, err := pubsub.SubscribeWithDebug("lisp-ztr",
-		types.LispMetrics{}, false, &zedrouterCtx, &debug)
+	subLispMetrics, err := pubsub.Subscribe("lisp-ztr",
+		types.LispMetrics{}, false, &zedrouterCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -372,7 +372,7 @@ func Run() {
 
 	// Publish network metrics for zedagent every 10 seconds
 	nms := getNetworkMetrics(&zedrouterCtx) // Need type of data
-	pub, err := pubsub.PublishWithDebug(agentName, nms, &debug)
+	pub, err := pubsub.Publish(agentName, nms)
 	if err != nil {
 		log.Fatal(err)
 	}

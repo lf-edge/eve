@@ -152,7 +152,7 @@ func Run() {
 	model := hardware.GetHardwareModel()
 	log.Printf("HardwareModel %s\n", model)
 	aa := types.AssignableAdapters{}
-	subAa := adapters.SubscribeWithDebug(&aa, model, &debug)
+	subAa := adapters.Subscribe(&aa, model)
 
 	zedagentCtx := zedagentContext{assignableAdapters: &aa}
 	// Cross link
@@ -160,38 +160,38 @@ func Run() {
 	zedagentCtx.getconfigCtx = &getconfigCtx
 
 	// XXX placeholder for uplink config from zedcloud
-	pubDeviceUplinkConfig, err := pubsub.PublishWithDebug(agentName,
-		types.DeviceUplinkConfig{}, &debug)
+	pubDeviceUplinkConfig, err := pubsub.Publish(agentName,
+		types.DeviceUplinkConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	getconfigCtx.pubDeviceUplinkConfig = pubDeviceUplinkConfig
 
 	// Publish NetworkConfig and NetworkServiceConfig for zedmanager/zedrouter
-	pubNetworkObjectConfig, err := pubsub.PublishWithDebug(agentName,
-		types.NetworkObjectConfig{}, &debug)
+	pubNetworkObjectConfig, err := pubsub.Publish(agentName,
+		types.NetworkObjectConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	getconfigCtx.pubNetworkObjectConfig = pubNetworkObjectConfig
 
-	pubNetworkServiceConfig, err := pubsub.PublishWithDebug(agentName,
-		types.NetworkServiceConfig{}, &debug)
+	pubNetworkServiceConfig, err := pubsub.Publish(agentName,
+		types.NetworkServiceConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	getconfigCtx.pubNetworkServiceConfig = pubNetworkServiceConfig
 
-	pubAppInstanceConfig, err := pubsub.PublishWithDebug(agentName,
-		types.AppInstanceConfig{}, &debug)
+	pubAppInstanceConfig, err := pubsub.Publish(agentName,
+		types.AppInstanceConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	getconfigCtx.pubAppInstanceConfig = pubAppInstanceConfig
 	pubAppInstanceConfig.ClearRestarted()
 
-	pubAppNetworkConfig, err := pubsub.PublishWithDebug(agentName,
-		types.AppNetworkConfig{}, &debug)
+	pubAppNetworkConfig, err := pubsub.Publish(agentName,
+		types.AppNetworkConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -201,64 +201,64 @@ func Run() {
 	// XXX defer this until we have some config from cloud or saved copy
 	pubAppInstanceConfig.SignalRestarted()
 
-	pubCertObjConfig, err := pubsub.PublishWithDebug(agentName,
-		types.CertObjConfig{}, &debug)
+	pubCertObjConfig, err := pubsub.Publish(agentName,
+		types.CertObjConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	pubCertObjConfig.ClearRestarted()
 	getconfigCtx.pubCertObjConfig = pubCertObjConfig
 
-	pubCertObjStatus, err := pubsub.PublishWithDebug(agentName,
-		types.CertObjStatus{}, &debug)
+	pubCertObjStatus, err := pubsub.Publish(agentName,
+		types.CertObjStatus{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	pubCertObjStatus.ClearRestarted()
 	zedagentCtx.pubCertObjStatus = pubCertObjStatus
 
-	pubBaseOsConfig, err := pubsub.PublishWithDebug(agentName,
-		types.BaseOsConfig{}, &debug)
+	pubBaseOsConfig, err := pubsub.Publish(agentName,
+		types.BaseOsConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	pubBaseOsConfig.ClearRestarted()
 	getconfigCtx.pubBaseOsConfig = pubBaseOsConfig
 
-	pubBaseOsStatus, err := pubsub.PublishWithDebug(agentName,
-		types.BaseOsStatus{}, &debug)
+	pubBaseOsStatus, err := pubsub.Publish(agentName,
+		types.BaseOsStatus{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	pubBaseOsStatus.ClearRestarted()
 	zedagentCtx.pubBaseOsStatus = pubBaseOsStatus
 
-	pubBaseOsDownloadConfig, err := pubsub.PublishScopeWithDebug(agentName,
-		baseOsObj, types.DownloaderConfig{}, &debug)
+	pubBaseOsDownloadConfig, err := pubsub.PublishScope(agentName,
+		baseOsObj, types.DownloaderConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	pubBaseOsDownloadConfig.ClearRestarted()
 	zedagentCtx.pubBaseOsDownloadConfig = pubBaseOsDownloadConfig
 
-	pubCertObjDownloadConfig, err := pubsub.PublishScopeWithDebug(agentName,
-		certObj, types.DownloaderConfig{}, &debug)
+	pubCertObjDownloadConfig, err := pubsub.PublishScope(agentName,
+		certObj, types.DownloaderConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	pubCertObjDownloadConfig.ClearRestarted()
 	zedagentCtx.pubCertObjDownloadConfig = pubCertObjDownloadConfig
 
-	pubBaseOsVerifierConfig, err := pubsub.PublishScopeWithDebug(agentName,
-		baseOsObj, types.VerifyImageConfig{}, &debug)
+	pubBaseOsVerifierConfig, err := pubsub.PublishScope(agentName,
+		baseOsObj, types.VerifyImageConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	pubBaseOsVerifierConfig.ClearRestarted()
 	zedagentCtx.pubBaseOsVerifierConfig = pubBaseOsVerifierConfig
 
-	pubDatastoreConfig, err := pubsub.PublishWithDebug(agentName,
-		types.DatastoreConfig{}, &debug)
+	pubDatastoreConfig, err := pubsub.Publish(agentName,
+		types.DatastoreConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -266,8 +266,8 @@ func Run() {
 	pubDatastoreConfig.ClearRestarted()
 
 	// Look for global config like debug
-	subGlobalConfig, err := pubsub.SubscribeWithDebug("",
-		agentlog.GlobalConfig{}, false, &zedagentCtx, &debug)
+	subGlobalConfig, err := pubsub.Subscribe("",
+		agentlog.GlobalConfig{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -277,8 +277,8 @@ func Run() {
 	subGlobalConfig.Activate()
 
 	// Look for errors and status from zedrouter
-	subNetworkObjectStatus, err := pubsub.SubscribeWithDebug("zedrouter",
-		types.NetworkObjectStatus{}, false, &zedagentCtx, &debug)
+	subNetworkObjectStatus, err := pubsub.Subscribe("zedrouter",
+		types.NetworkObjectStatus{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -287,8 +287,8 @@ func Run() {
 	zedagentCtx.subNetworkObjectStatus = subNetworkObjectStatus
 	subNetworkObjectStatus.Activate()
 
-	subNetworkServiceStatus, err := pubsub.SubscribeWithDebug("zedrouter",
-		types.NetworkServiceStatus{}, false, &zedagentCtx, &debug)
+	subNetworkServiceStatus, err := pubsub.Subscribe("zedrouter",
+		types.NetworkServiceStatus{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -298,8 +298,8 @@ func Run() {
 	subNetworkServiceStatus.Activate()
 
 	// Look for AppInstanceStatus from zedmanager
-	subAppInstanceStatus, err := pubsub.SubscribeWithDebug("zedmanager",
-		types.AppInstanceStatus{}, false, &zedagentCtx, &debug)
+	subAppInstanceStatus, err := pubsub.Subscribe("zedmanager",
+		types.AppInstanceStatus{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -309,8 +309,8 @@ func Run() {
 	subAppInstanceStatus.Activate()
 
 	// Get DomainStatus from domainmgr
-	subDomainStatus, err := pubsub.SubscribeWithDebug("domainmgr",
-		types.DomainStatus{}, false, &zedagentCtx, &debug)
+	subDomainStatus, err := pubsub.Subscribe("domainmgr",
+		types.DomainStatus{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -321,8 +321,8 @@ func Run() {
 
 	// Look for CertObjConfig from ourselves! XXX introduce separate
 	// certmanager?
-	subCertObjConfig, err := pubsub.SubscribeWithDebug("zedagent",
-		types.CertObjConfig{}, false, &zedagentCtx, &debug)
+	subCertObjConfig, err := pubsub.Subscribe("zedagent",
+		types.CertObjConfig{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -332,8 +332,8 @@ func Run() {
 	subCertObjConfig.Activate()
 
 	// Look for BaseOsConfig from ourselves!
-	subBaseOsConfig, err := pubsub.SubscribeWithDebug("zedagent",
-		types.BaseOsConfig{}, false, &zedagentCtx, &debug)
+	subBaseOsConfig, err := pubsub.Subscribe("zedagent",
+		types.BaseOsConfig{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -343,8 +343,8 @@ func Run() {
 	subBaseOsConfig.Activate()
 
 	// Look for DatastoreConfig from ourselves!
-	subDatastoreConfig, err := pubsub.SubscribeWithDebug("zedagent",
-		types.DatastoreConfig{}, false, &zedagentCtx, &debug)
+	subDatastoreConfig, err := pubsub.Subscribe("zedagent",
+		types.DatastoreConfig{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -354,8 +354,8 @@ func Run() {
 	subDatastoreConfig.Activate()
 
 	// Look for DownloaderStatus from downloader
-	subBaseOsDownloadStatus, err := pubsub.SubscribeScopeWithDebug("downloader",
-		baseOsObj, types.DownloaderStatus{}, false, &zedagentCtx, &debug)
+	subBaseOsDownloadStatus, err := pubsub.SubscribeScope("downloader",
+		baseOsObj, types.DownloaderStatus{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -365,8 +365,8 @@ func Run() {
 	subBaseOsDownloadStatus.Activate()
 
 	// Look for DownloaderStatus from downloader
-	subCertObjDownloadStatus, err := pubsub.SubscribeScopeWithDebug("downloader",
-		certObj, types.DownloaderStatus{}, false, &zedagentCtx, &debug)
+	subCertObjDownloadStatus, err := pubsub.SubscribeScope("downloader",
+		certObj, types.DownloaderStatus{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -376,8 +376,8 @@ func Run() {
 	subCertObjDownloadStatus.Activate()
 
 	// Look for VerifyImageStatus from verifier
-	subBaseOsVerifierStatus, err := pubsub.SubscribeScopeWithDebug("verifier",
-		baseOsObj, types.VerifyImageStatus{}, false, &zedagentCtx, &debug)
+	subBaseOsVerifierStatus, err := pubsub.SubscribeScope("verifier",
+		baseOsObj, types.VerifyImageStatus{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -388,8 +388,8 @@ func Run() {
 	subBaseOsVerifierStatus.Activate()
 
 	// Look for VerifyImageStatus from verifier
-	subAppImgVerifierStatus, err := pubsub.SubscribeScopeWithDebug("verifier",
-		appImgObj, types.VerifyImageStatus{}, false, &zedagentCtx, &debug)
+	subAppImgVerifierStatus, err := pubsub.SubscribeScope("verifier",
+		appImgObj, types.VerifyImageStatus{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -399,8 +399,8 @@ func Run() {
 	subAppImgVerifierStatus.Activate()
 
 	// Look for DownloaderStatus from downloader for metric reporting
-	subAppImgDownloadStatus, err := pubsub.SubscribeScopeWithDebug("downloader",
-		appImgObj, types.DownloaderStatus{}, false, &zedagentCtx, &debug)
+	subAppImgDownloadStatus, err := pubsub.SubscribeScope("downloader",
+		appImgObj, types.DownloaderStatus{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -432,8 +432,8 @@ func Run() {
 	DNSctx := DNSContext{}
 	DNSctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
 
-	subDeviceNetworkStatus, err := pubsub.SubscribeWithDebug("zedrouter",
-		types.DeviceNetworkStatus{}, false, &DNSctx, &debug)
+	subDeviceNetworkStatus, err := pubsub.Subscribe("zedrouter",
+		types.DeviceNetworkStatus{}, false, &DNSctx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -493,31 +493,31 @@ func Run() {
 	}
 
 	// Subscribe to network metrics from zedrouter
-	subNetworkMetrics, err := pubsub.SubscribeWithDebug("zedrouter",
-		types.NetworkMetrics{}, true, &zedagentCtx, &debug)
+	subNetworkMetrics, err := pubsub.Subscribe("zedrouter",
+		types.NetworkMetrics{}, true, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
 	// Subscribe to cloud metrics from different agents
 	cms := zedcloud.GetCloudMetrics()
-	subClientMetrics, err := pubsub.SubscribeWithDebug("zedclient", cms,
-		true, &zedagentCtx, &debug)
+	subClientMetrics, err := pubsub.Subscribe("zedclient", cms,
+		true, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	subLogmanagerMetrics, err := pubsub.SubscribeWithDebug("logmanager",
-		cms, true, &zedagentCtx, &debug)
+	subLogmanagerMetrics, err := pubsub.Subscribe("logmanager",
+		cms, true, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	subDownloaderMetrics, err := pubsub.SubscribeWithDebug("downloader",
-		cms, true, &zedagentCtx, &debug)
+	subDownloaderMetrics, err := pubsub.Subscribe("downloader",
+		cms, true, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// Timer for deferred sends of info messages
-	deferredChan := zedcloud.InitDeferredWithDebug(&debug)
+	deferredChan := zedcloud.InitDeferred()
 
 	// Publish initial device info. Retries all addresses on all uplinks.
 	publishDevInfo(&zedagentCtx)

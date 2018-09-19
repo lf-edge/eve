@@ -52,9 +52,9 @@ type keyMap struct {
 // We always write to a file in order to have a checkpoint on restart
 // The special agent name "" implies always reading from the /var/run/zededa/
 // directory.
-const publishToSock = true     // XXX
-const subscribeFromDir = false // XXX
-const subscribeFromSock = true // XXX
+const publishToSock = true      // XXX
+const subscribeFromDir = true   // XXX
+const subscribeFromSock = false // XXX
 
 // For a subscription, if the agentName is empty we interpret that as
 // being directory in /var/tmp/zededa
@@ -138,16 +138,6 @@ func Publish(agentName string, topicType interface{}) (*Publication, error) {
 }
 
 func PublishScope(agentName string, agentScope string, topicType interface{}) (*Publication, error) {
-	return publishImpl(agentName, agentScope, topicType)
-}
-
-// XXX Remove
-func PublishWithDebug(agentName string, topicType interface{}, debugPtr *bool) (*Publication, error) {
-	return publishImpl(agentName, "", topicType)
-}
-
-// XXX Remove
-func PublishScopeWithDebug(agentName string, agentScope string, topicType interface{}, debugPtr *bool) (*Publication, error) {
 	return publishImpl(agentName, agentScope, topicType)
 }
 
@@ -773,20 +763,6 @@ func Subscribe(agentName string, topicType interface{}, activate bool,
 
 func SubscribeScope(agentName string, agentScope string, topicType interface{},
 	activate bool, ctx interface{}) (*Subscription, error) {
-
-	return subscribeImpl(agentName, agentScope, topicType, activate, ctx)
-}
-
-// XXX remove
-func SubscribeWithDebug(agentName string, topicType interface{}, activate bool,
-	ctx interface{}, debugPtr *bool) (*Subscription, error) {
-
-	return subscribeImpl(agentName, "", topicType, activate, ctx)
-}
-
-// XXX remove
-func SubscribeScopeWithDebug(agentName string, agentScope string, topicType interface{},
-	activate bool, ctx interface{}, debugPtr *bool) (*Subscription, error) {
 
 	return subscribeImpl(agentName, agentScope, topicType, activate, ctx)
 }

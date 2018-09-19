@@ -55,15 +55,6 @@ func InitDeferred() <-chan time.Time {
 	return defaultCtx.ticker.C
 }
 
-// XXX remove. Not using debugPtr any more
-func InitDeferredWithDebug(debugPtr *bool) <-chan time.Time {
-	if defaultCtx != nil {
-		log.Fatal("InitDeferred called twice")
-	}
-	defaultCtx = initImpl()
-	return defaultCtx.ticker.C
-}
-
 func initImpl() *DeferredContext {
 	ctx := new(DeferredContext)
 	ctx.deferredItems = make(map[string]deferredItemList)

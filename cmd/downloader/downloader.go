@@ -92,7 +92,7 @@ func Run() {
 	log.Printf("Starting %s\n", agentName)
 
 	cms := zedcloud.GetCloudMetrics() // Need type of data
-	pub, err := pubsub.PublishWithDebug(agentName, cms, &debug)
+	pub, err := pubsub.Publish(agentName, cms)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -108,8 +108,8 @@ func Run() {
 	ctx := downloaderContext{}
 
 	// Look for global config like debug
-	subGlobalConfig, err := pubsub.SubscribeWithDebug("",
-		agentlog.GlobalConfig{}, false, &ctx, &debug)
+	subGlobalConfig, err := pubsub.Subscribe("", agentlog.GlobalConfig{},
+		false, &ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -118,8 +118,8 @@ func Run() {
 	ctx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
-	subDeviceNetworkStatus, err := pubsub.SubscribeWithDebug("zedrouter",
-		types.DeviceNetworkStatus{}, false, &ctx, &debug)
+	subDeviceNetworkStatus, err := pubsub.Subscribe("zedrouter",
+		types.DeviceNetworkStatus{}, false, &ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -128,8 +128,8 @@ func Run() {
 	ctx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
-	subGlobalDownloadConfig, err := pubsub.SubscribeWithDebug("",
-		types.GlobalDownloadConfig{}, false, &ctx, &debug)
+	subGlobalDownloadConfig, err := pubsub.Subscribe("",
+		types.GlobalDownloadConfig{}, false, &ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -137,40 +137,40 @@ func Run() {
 	ctx.subGlobalDownloadConfig = subGlobalDownloadConfig
 	subGlobalDownloadConfig.Activate()
 
-	pubGlobalDownloadStatus, err := pubsub.PublishWithDebug(agentName,
-		types.GlobalDownloadStatus{}, &debug)
+	pubGlobalDownloadStatus, err := pubsub.Publish(agentName,
+		types.GlobalDownloadStatus{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.pubGlobalDownloadStatus = pubGlobalDownloadStatus
 
 	// Set up our publications before the subscriptions so ctx is set
-	pubAppImgStatus, err := pubsub.PublishScopeWithDebug(agentName, appImgObj,
-		types.DownloaderStatus{}, &debug)
+	pubAppImgStatus, err := pubsub.PublishScope(agentName, appImgObj,
+		types.DownloaderStatus{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.pubAppImgStatus = pubAppImgStatus
 	pubAppImgStatus.ClearRestarted()
 
-	pubBaseOsStatus, err := pubsub.PublishScopeWithDebug(agentName, baseOsObj,
-		types.DownloaderStatus{}, &debug)
+	pubBaseOsStatus, err := pubsub.PublishScope(agentName, baseOsObj,
+		types.DownloaderStatus{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.pubBaseOsStatus = pubBaseOsStatus
 	pubBaseOsStatus.ClearRestarted()
 
-	pubCertObjStatus, err := pubsub.PublishScopeWithDebug(agentName, certObj,
-		types.DownloaderStatus{}, &debug)
+	pubCertObjStatus, err := pubsub.PublishScope(agentName, certObj,
+		types.DownloaderStatus{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.pubCertObjStatus = pubCertObjStatus
 	pubCertObjStatus.ClearRestarted()
 
-	subAppImgConfig, err := pubsub.SubscribeScopeWithDebug("zedmanager",
-		appImgObj, types.DownloaderConfig{}, false, &ctx, &debug)
+	subAppImgConfig, err := pubsub.SubscribeScope("zedmanager",
+		appImgObj, types.DownloaderConfig{}, false, &ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -179,8 +179,8 @@ func Run() {
 	ctx.subAppImgConfig = subAppImgConfig
 	subAppImgConfig.Activate()
 
-	subBaseOsConfig, err := pubsub.SubscribeScopeWithDebug("zedagent",
-		baseOsObj, types.DownloaderConfig{}, false, &ctx, &debug)
+	subBaseOsConfig, err := pubsub.SubscribeScope("zedagent",
+		baseOsObj, types.DownloaderConfig{}, false, &ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -189,8 +189,8 @@ func Run() {
 	ctx.subBaseOsConfig = subBaseOsConfig
 	subBaseOsConfig.Activate()
 
-	subCertObjConfig, err := pubsub.SubscribeScopeWithDebug("zedagent",
-		certObj, types.DownloaderConfig{}, false, &ctx, &debug)
+	subCertObjConfig, err := pubsub.SubscribeScope("zedagent",
+		certObj, types.DownloaderConfig{}, false, &ctx)
 	if err != nil {
 		log.Fatal(err)
 	}

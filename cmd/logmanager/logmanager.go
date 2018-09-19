@@ -159,15 +159,15 @@ func Run() {
 		}
 	}
 	cms := zedcloud.GetCloudMetrics() // Need type of data
-	pub, err := pubsub.PublishWithDebug(agentName, cms, &debug)
+	pub, err := pubsub.Publish(agentName, cms)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	logmanagerCtx := logmanagerContext{}
 	// Look for global config like debug
-	subGlobalConfig, err := pubsub.SubscribeWithDebug("",
-		agentlog.GlobalConfig{}, false, &logmanagerCtx, &debug)
+	subGlobalConfig, err := pubsub.Subscribe("",
+		agentlog.GlobalConfig{}, false, &logmanagerCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -180,8 +180,8 @@ func Run() {
 	DNSctx := DNSContext{}
 	DNSctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
 
-	subDeviceNetworkStatus, err := pubsub.SubscribeWithDebug("zedrouter",
-		types.DeviceNetworkStatus{}, false, &DNSctx, &debug)
+	subDeviceNetworkStatus, err := pubsub.Subscribe("zedrouter",
+		types.DeviceNetworkStatus{}, false, &DNSctx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -204,7 +204,7 @@ func Run() {
 		DNSctx.usableAddressCount)
 
 	// Timer for deferred sends of info messages
-	deferredChan := zedcloud.InitDeferredWithDebug(&debug)
+	deferredChan := zedcloud.InitDeferred()
 
 	//Get servername, set logUrl, get device id and initialize zedcloudCtx
 	sendCtxInit()

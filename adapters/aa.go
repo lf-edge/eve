@@ -34,14 +34,8 @@ type context struct {
 }
 
 func Subscribe(aa *types.AssignableAdapters, model string) *context {
-	return SubscribeWithDebug(aa, model, nil)
-}
 
-// XXX remove - no different than Subscribe except call to pubsub!
-func SubscribeWithDebug(aa *types.AssignableAdapters, model string,
-	debugPtr *bool) *context {
 	ctx := context{model: model, aa: aa}
-
 	sub, err := pubsub.Subscribe("", types.AssignableAdapters{},
 		false, &ctx)
 	if err != nil {

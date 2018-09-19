@@ -72,8 +72,8 @@ func Run() {
 
 	identityCtx := identityContext{}
 
-	pubEIDStatus, err := pubsub.PublishWithDebug(agentName,
-		types.EIDStatus{}, &debug)
+	pubEIDStatus, err := pubsub.Publish(agentName,
+		types.EIDStatus{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -81,8 +81,8 @@ func Run() {
 	pubEIDStatus.ClearRestarted()
 
 	// Look for global config like debug
-	subGlobalConfig, err := pubsub.SubscribeWithDebug("",
-		agentlog.GlobalConfig{}, false, &identityCtx, &debug)
+	subGlobalConfig, err := pubsub.Subscribe("", agentlog.GlobalConfig{},
+		false, &identityCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -92,8 +92,8 @@ func Run() {
 	subGlobalConfig.Activate()
 
 	// Subscribe to EIDConfig from zedmanager
-	subEIDConfig, err := pubsub.SubscribeWithDebug("zedmanager",
-		types.EIDConfig{}, false, &identityCtx, &debug)
+	subEIDConfig, err := pubsub.Subscribe("zedmanager",
+		types.EIDConfig{}, false, &identityCtx)
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -133,12 +133,11 @@ func Run() {
 	// any DomainConfig
 	model := hardware.GetHardwareModel()
 	aa := types.AssignableAdapters{}
-	subAa := adapters.SubscribeWithDebug(&aa, model, &debug)
+	subAa := adapters.Subscribe(&aa, model)
 
 	domainCtx := domainContext{assignableAdapters: &aa}
 
-	pubDomainStatus, err := pubsub.PublishWithDebug(agentName,
-		types.DomainStatus{}, &debug)
+	pubDomainStatus, err := pubsub.Publish(agentName, types.DomainStatus{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -146,8 +145,8 @@ func Run() {
 	pubDomainStatus.ClearRestarted()
 
 	// Look for global config like debug
-	subGlobalConfig, err := pubsub.SubscribeWithDebug("",
-		agentlog.GlobalConfig{}, false, &domainCtx, &debug)
+	subGlobalConfig, err := pubsub.Subscribe("",
+		agentlog.GlobalConfig{}, false, domainCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -169,8 +168,8 @@ func Run() {
 	log.Printf("Have %d assignable adapters\n", len(aa.IoBundleList))
 
 	// Subscribe to DomainConfig from zedmanager
-	subDomainConfig, err := pubsub.SubscribeWithDebug("zedmanager",
-		types.DomainConfig{}, false, &domainCtx, &debug)
+	subDomainConfig, err := pubsub.Subscribe("zedmanager",
+		types.DomainConfig{}, false, &domainCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -180,8 +179,8 @@ func Run() {
 	domainCtx.subDomainConfig = subDomainConfig
 	subDomainConfig.Activate()
 
-	subDeviceNetworkStatus, err := pubsub.SubscribeWithDebug("zedrouter",
-		types.DeviceNetworkStatus{}, false, &domainCtx, &debug)
+	subDeviceNetworkStatus, err := pubsub.Subscribe("zedrouter",
+		types.DeviceNetworkStatus{}, false, &domainCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
