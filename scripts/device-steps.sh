@@ -504,13 +504,6 @@ if [ $SELF_REGISTER = 1 ]; then
 {"Uplink":["$intf"], "FreeUplinks":["$intf"]}
 EOF
     fi
-else
-    model=`$BINDIR/hardwaremodel`
-    MODELFILE=${model}.json
-    if [ ! -f "$DNCDIR/$MODELFILE" ] ; then
-	echo "Missing $DNCDIR/$MODELFILE - giving up"
-	exit 1
-    fi
 fi
 
 # Need a key for device-to-device map-requests
