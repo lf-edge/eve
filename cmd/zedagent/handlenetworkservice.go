@@ -395,8 +395,6 @@ func protoEncodeLispServiceMetric(status types.NetworkServiceMetrics,
 	}
 	metrics := status.LispMetrics
 
-	// XXX Uncomment the following code after vendoring in latest api to go-provision
-	/*
 	lispGlobalMetric := new(zmet.ZMetricLispGlobal)
 	lispGlobalMetric.ItrPacketSendError = &zmet.PktStat{
 		Packets: metrics.ItrPacketSendError.Pkts,
@@ -496,7 +494,6 @@ func protoEncodeLispServiceMetric(status types.NetworkServiceMetrics,
 		flowStats = append(flowStats, metricFlow)
 	}
 	serviceMetric.FlowStats = flowStats
-	*/
 
 	// Fill lisp metric stats also for now.
 	// We can deprecate the same later
