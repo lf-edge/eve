@@ -55,7 +55,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 
 func metricsTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
 	iteration := 0
-	log.Println("starting report metrics timer task")
+	log.Infoln("starting report metrics timer task")
 	publishMetrics(ctx, iteration)
 
 	interval := time.Duration(configItemCurrent.metricInterval) * time.Second
@@ -74,7 +74,7 @@ func metricsTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
 // Assumes the caller has verifier that the interval has changed
 func updateMetricsTimer(tickerHandle interface{}) {
 	interval := time.Duration(configItemCurrent.metricInterval) * time.Second
-	log.Printf("updateMetricsTimer() change to %v\n", interval)
+	log.Infof("updateMetricsTimer() change to %v\n", interval)
 	max := float64(interval)
 	min := max * 0.3
 	flextimer.UpdateRangeTicker(tickerHandle,
@@ -87,7 +87,7 @@ func ExecuteXlInfoCmd() map[string]string {
 	xlCmd := exec.Command("xl", "info")
 	stdout, err := xlCmd.Output()
 	if err != nil {
-		log.Println(err.Error())
+		log.Errorln(err.Error())
 	}
 	xlInfo := fmt.Sprintf("%s", stdout)
 	splitXlInfo := strings.Split(xlInfo, "\n")
@@ -118,7 +118,7 @@ func handleDomainStatusModify(ctxArg interface{}, key string,
 	status := cast.CastDomainStatus(statusArg)
 	ctx := ctxArg.(*zedagentContext)
 	if status.Key() != key {
-		log.Printf("handleDomainStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
+		log.Errorf("handleDomainStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
 		return
 	}
@@ -135,13 +135,13 @@ func handleDomainStatusModify(ctxArg interface{}, key string,
 	// Detect if any changes relevant to the device status report
 	old := lookupDomainStatus(ctx, key)
 	if old != nil {
-		log.Printf("handleDomainStatusModify change for %s domainname %s\n",
+		log.Infof("handleDomainStatusModify change for %s domainname %s\n",
 			key, status.DomainName)
 		if ioAdapterListChanged(*old, status) {
 			ctx.TriggerDeviceInfo = true
 		}
 	} else {
-		log.Printf("handleDomainStatusModify add for %s domainname %s\n",
+		log.Infof("handleDomainStatusModify add for %s domainname %s\n",
 			key, status.DomainName)
 		if ioAdapterListChanged(types.DomainStatus{}, status) {
 			ctx.TriggerDeviceInfo = true
@@ -173,10 +173,10 @@ func handleDomainStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	ctx := ctxArg.(*zedagentContext)
-	log.Printf("handleDomainStatusDelete for %s\n", key)
+	log.Infof("handleDomainStatusDelete for %s\n", key)
 	status := cast.CastDomainStatus(statusArg)
 	if status.Key() != key {
-		log.Printf("handleDomainStatusDelete key/UUID mismatch %s vs %s; ignored %+v\n",
+		log.Errorf("handleDomainStatusDelete key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
 		return
 	}
@@ -187,7 +187,7 @@ func handleDomainStatusDelete(ctxArg interface{}, key string,
 	}
 
 	if _, ok := appInterfaceAndNameList[status.DomainName]; ok {
-		log.Printf("appInterfaceAndnameList for %v\n",
+		log.Infof("appInterfaceAndnameList for %v\n",
 			status.DomainName)
 		delete(appInterfaceAndNameList, status.DomainName)
 	}
@@ -196,7 +196,7 @@ func handleDomainStatusDelete(ctxArg interface{}, key string,
 	// assigning away devices to /dev/null aka pciback means not visible
 	// at boot.
 	delete(domainStatus, key)
-	log.Printf("handleDomainStatusDelete done for %s\n", key)
+	log.Infof("handleDomainStatusDelete done for %s\n", key)
 }
 
 // Note that this function returns the entry even if Pending* is set.
@@ -204,12 +204,12 @@ func lookupDomainStatus(ctx *zedagentContext, key string) *types.DomainStatus {
 	sub := ctx.subDomainStatus
 	st, _ := sub.Get(key)
 	if st == nil {
-		log.Printf("lookupDomainStatus(%s) not found\n", key)
+		log.Infof("lookupDomainStatus(%s) not found\n", key)
 		return nil
 	}
 	status := cast.CastDomainStatus(st)
 	if status.Key() != key {
-		log.Printf("lookupDomainStatus key/UUID mismatch %s vs %s; ignored %+v\n",
+		log.Errorf("lookupDomainStatus key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
 		return nil
 	}
@@ -217,10 +217,10 @@ func lookupDomainStatus(ctx *zedagentContext, key string) *types.DomainStatus {
 }
 
 func ioAdapterListChanged(old types.DomainStatus, new types.DomainStatus) bool {
-	log.Printf("ioAdapterListChanged(%v, %v)\n",
+	log.Infof("ioAdapterListChanged(%v, %v)\n",
 		old.IoAdapterList, new.IoAdapterList)
 	if len(old.IoAdapterList) != len(new.IoAdapterList) {
-		log.Printf("ioAdapterListChanged length from %d to %d\n",
+		log.Infof("ioAdapterListChanged length from %d to %d\n",
 			len(old.IoAdapterList), len(new.IoAdapterList))
 		return true
 	}
@@ -230,12 +230,12 @@ func ioAdapterListChanged(old types.DomainStatus, new types.DomainStatus) bool {
 	}
 	for _, ad := range new.IoAdapterList {
 		if _, ok := adapterSet[ad]; !ok {
-			log.Printf("ioAdapterListChanged %v not in old set\n",
+			log.Infof("ioAdapterListChanged %v not in old set\n",
 				ad)
 			return true
 		}
 	}
-	log.Printf("ioAdapterListChanged: no change\n")
+	log.Infof("ioAdapterListChanged: no change\n")
 	return false
 }
 
@@ -352,7 +352,7 @@ func ExecuteXentopCmd() [][]string {
 
 			matched, err := regexp.MatchString("[A-Za-z0-9]+", finalOutput[f][out])
 			if err != nil {
-				log.Println(err)
+				log.Errorln(err)
 			} else if matched {
 
 				if finalOutput[f][out] == "no" {
@@ -414,7 +414,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 	// Memory related info for dom0
 	ram, err := mem.VirtualMemory()
 	if err != nil {
-		log.Printf("mem.VirtualMemory: %s\n", err)
+		log.Errorf("mem.VirtualMemory: %s\n", err)
 	} else {
 		ReportDeviceMetric.Memory.UsedMem = uint32(RoundToMbytes(ram.Used))
 		ReportDeviceMetric.Memory.AvailMem = uint32(RoundToMbytes(ram.Available))
@@ -524,7 +524,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 		u, err := disk.Usage(path)
 		if err != nil {
 			// Happens e.g., if we don't have a /persist
-			log.Printf("disk.Usage: %s\n", err)
+			log.Errorf("disk.Usage: %s\n", err)
 			continue
 		}
 		log.Debugf("Path %s total %d used %d free %d\n",
@@ -580,7 +580,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 
 	// Handle xentop failing above
 	if len(cpuStorageStat) == 0 {
-		log.Printf("No xentop? metrics: %s\n", ReportMetrics)
+		log.Errorf("No xentop? metrics: %s\n", ReportMetrics)
 		SendMetricsProtobuf(ReportMetrics, iteration)
 		return
 	}
@@ -602,7 +602,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 		domainName := cpuStorageStat[arr][1]
 		ds := LookupDomainStatus(domainName)
 		if ds == nil {
-			log.Printf("Did not find status for domainName %s\n",
+			log.Infof("Did not find status for domainName %s\n",
 				domainName)
 			// Note that it is included in the
 			// metrics without a name and uuid.
@@ -689,7 +689,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 			appDiskDetails := new(zmet.AppDiskMetric)
 			err := getDiskInfo(diskfile, appDiskDetails)
 			if err != nil {
-				log.Printf("getDiskInfo(%s) failed %v\n",
+				log.Errorf("getDiskInfo(%s) failed %v\n",
 					diskfile, err)
 				continue
 			}
@@ -753,7 +753,7 @@ func PublishDeviceInfoToZedCloud(pubBaseOsStatus *pubsub.Publication,
 	machineCmd := exec.Command("uname", "-m")
 	stdout, err := machineCmd.Output()
 	if err != nil {
-		log.Println(err.Error())
+		log.Errorln(err.Error())
 	} else {
 		machineArch = fmt.Sprintf("%s", stdout)
 		ReportDeviceInfo.MachineArch = *proto.String(strings.TrimSpace(machineArch))
@@ -762,7 +762,7 @@ func PublishDeviceInfoToZedCloud(pubBaseOsStatus *pubsub.Publication,
 	cpuCmd := exec.Command("uname", "-p")
 	stdout, err = cpuCmd.Output()
 	if err != nil {
-		log.Println(err.Error())
+		log.Errorln(err.Error())
 	} else {
 		cpuArch := fmt.Sprintf("%s", stdout)
 		ReportDeviceInfo.CpuArch = *proto.String(strings.TrimSpace(cpuArch))
@@ -771,7 +771,7 @@ func PublishDeviceInfoToZedCloud(pubBaseOsStatus *pubsub.Publication,
 	platformCmd := exec.Command("uname", "-p")
 	stdout, err = platformCmd.Output()
 	if err != nil {
-		log.Println(err.Error())
+		log.Errorln(err.Error())
 	} else {
 		platform := fmt.Sprintf("%s", stdout)
 		ReportDeviceInfo.Platform = *proto.String(strings.TrimSpace(platform))
@@ -783,7 +783,7 @@ func PublishDeviceInfoToZedCloud(pubBaseOsStatus *pubsub.Publication,
 		// than the set of CPUs assigned to dom0
 		ncpus, err := strconv.ParseUint(dict["nr_cpus"], 10, 32)
 		if err != nil {
-			log.Println("error while converting ncpus to int: ", err)
+			log.Errorln("error while converting ncpus to int: ", err)
 		} else {
 			ReportDeviceInfo.Ncpu = *proto.Uint32(uint32(ncpus))
 		}
@@ -796,7 +796,7 @@ func PublishDeviceInfoToZedCloud(pubBaseOsStatus *pubsub.Publication,
 
 	d, err := disk.Usage("/")
 	if err != nil {
-		log.Printf("disk.Usage: %s\n", err)
+		log.Errorf("disk.Usage: %s\n", err)
 	} else {
 		mbytes := RoundToMbytes(d.Total)
 		ReportDeviceInfo.Storage = *proto.Uint64(mbytes)
@@ -817,7 +817,7 @@ func PublishDeviceInfoToZedCloud(pubBaseOsStatus *pubsub.Publication,
 		u, err := disk.Usage(path)
 		if err != nil {
 			// Happens e.g., if we don't have a /persist
-			log.Printf("disk.Usage: %s\n", err)
+			log.Errorf("disk.Usage: %s\n", err)
 			continue
 		}
 		log.Debugf("Path %s total %d used %d free %d\n",
@@ -1003,7 +1003,7 @@ func PublishDeviceInfoToZedCloud(pubBaseOsStatus *pubsub.Publication,
 	ReportDeviceInfo.BootTime = bootTime
 	hostname, err := os.Hostname()
 	if err != nil {
-		log.Printf("HostName failed: %s\n", err)
+		log.Errorf("HostName failed: %s\n", err)
 	} else {
 		ReportDeviceInfo.HostName = hostname
 	}
@@ -1038,7 +1038,7 @@ func PublishDeviceInfoToZedCloud(pubBaseOsStatus *pubsub.Publication,
 	zedcloud.RemoveDeferred(deviceUUID)
 	err = SendProtobuf(statusUrl, data, iteration)
 	if err != nil {
-		log.Printf("PublishDeviceInfoToZedCloud failed: %s\n", err)
+		log.Errorf("PublishDeviceInfoToZedCloud failed: %s\n", err)
 		// Try sending later
 		zedcloud.SetDeferred(deviceUUID, data, statusUrl, zedcloudCtx,
 			true)
@@ -1082,7 +1082,7 @@ func setMetricAnyValue(item *zmet.MetricItem, val interface{}) {
 		}
 
 	default:
-		log.Printf("setMetricAnyValue unknown %T\n", t)
+		log.Errorf("setMetricAnyValue unknown %T\n", t)
 	}
 }
 
@@ -1174,7 +1174,7 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 		ReportAppInfo.State = zmet.ZSwState(aiStatus.State)
 		ds := LookupDomainStatusUUID(uuid)
 		if ds == nil {
-			log.Printf("Did not find DomainStatus for UUID %s\n",
+			log.Infof("Did not find DomainStatus for UUID %s\n",
 				uuid)
 			// XXX should we reschedule when we have a domainStatus?
 			// Avoid nil checks
@@ -1194,7 +1194,7 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 		}
 
 		if len(aiStatus.StorageStatusList) == 0 {
-			log.Printf("storage status detail is empty so ignoring")
+			log.Infof("storage status detail is empty so ignoring")
 		} else {
 			ReportAppInfo.SoftwareList = make([]*zmet.ZInfoSW, len(aiStatus.StorageStatusList))
 			for idx, sc := range aiStatus.StorageStatusList {
@@ -1215,7 +1215,7 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 		}
 		if ds.BootTime.IsZero() {
 			// If never booted or we didn't find a DomainStatus
-			log.Println("BootTime is empty")
+			log.Infoln("BootTime is empty")
 		} else {
 			bootTime, _ := ptypes.TimestampProto(ds.BootTime)
 			ReportAppInfo.BootTime = bootTime
@@ -1252,7 +1252,7 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 	zedcloud.RemoveDeferred(uuid)
 	err = SendProtobuf(statusUrl, data, iteration)
 	if err != nil {
-		log.Printf("PublishAppInfoToZedCloud failed: %s\n", err)
+		log.Errorf("PublishAppInfoToZedCloud failed: %s\n", err)
 		// Try sending later
 		zedcloud.SetDeferred(uuid, data, statusUrl, zedcloudCtx, true)
 	} else {
@@ -1268,7 +1268,7 @@ func SendProtobuf(url string, data []byte, iteration int) error {
 	resp, _, err := zedcloud.SendOnAllIntf(zedcloudCtx, url,
 		int64(len(data)), bytes.NewBuffer(data), iteration, true)
 	if resp != nil && resp.StatusCode >= 400 && resp.StatusCode < 500 {
-		log.Printf("SendProtoBuf: %s silently ignore code %d\n",
+		log.Infof("SendProtoBuf: %s silently ignore code %d\n",
 			url, resp.StatusCode)
 		return nil
 	}
@@ -1290,7 +1290,7 @@ func SendMetricsProtobuf(ReportMetrics *zmet.ZMetricMsg,
 		int64(len(data)), bytes.NewBuffer(data), iteration, false)
 	if err != nil {
 		// Hopefully next timeout will be more successful
-		log.Printf("SendMetricsProtobuf failed: %s\n", err)
+		log.Errorf("SendMetricsProtobuf failed: %s\n", err)
 		return
 	} else {
 		writeSentMetricsProtoMessage(data)
@@ -1301,7 +1301,7 @@ func SendMetricsProtobuf(ReportMetrics *zmet.ZMetricMsg,
 func findDisksPartitions() []string {
 	out, err := exec.Command("lsblk", "-nlo", "NAME").Output()
 	if err != nil {
-		log.Println(err)
+		log.Errorln(err)
 		return nil
 	}
 	res := strings.Split(string(out), "\n")
@@ -1314,13 +1314,13 @@ func findDisksPartitions() []string {
 func partitionSize(part string) uint64 {
 	out, err := exec.Command("lsblk", "-nbdo", "SIZE", "/dev/"+part).Output()
 	if err != nil {
-		log.Println(err)
+		log.Errorln(err)
 		return 0
 	}
 	res := strings.Split(string(out), "\n")
 	val, err := strconv.ParseUint(res[0], 10, 64)
 	if err != nil {
-		log.Println(err)
+		log.Errorln(err)
 		return 0
 	}
 	return val
@@ -1341,7 +1341,7 @@ func getCpuSecs() uint64 {
 		for i, f := range fields {
 			val, err := strconv.ParseFloat(f, 64)
 			if err != nil {
-				log.Println("Error: ", f, err)
+				log.Errorln("Error: ", f, err)
 			} else {
 				switch i {
 				case 0:
@@ -1354,7 +1354,7 @@ func getCpuSecs() uint64 {
 	}
 	cpus, err := cpu.Info()
 	if err != nil {
-		log.Printf("cpu.Info: %s\n", err)
+		log.Errorf("cpu.Info: %s\n", err)
 		// Assume 1 CPU
 		return uptime - idle
 	}
@@ -1368,7 +1368,7 @@ func getDefaultRouters(ifname string) []string {
 	var res []string
 	link, err := netlink.LinkByName(ifname)
 	if err != nil {
-		log.Printf("getDefaultRouters failed to find %s: %s\n",
+		log.Errorf("getDefaultRouters failed to find %s: %s\n",
 			ifname, err)
 		return res
 	}

@@ -71,7 +71,7 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 	log.Debugf("handleLookupParam got config %v\n", devConfig)
 	lispInfo := devConfig.LispInfo
 	if lispInfo == nil {
-		log.Printf("handleLookupParam: missing lispInfo\n")
+		log.Errorf("handleLookupParam: missing lispInfo\n")
 		return
 	}
 	configHash := computeConfigSha(lispInfo)
@@ -126,7 +126,7 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 	}
 	prevLispConfig = lispConfig
 
-	log.Printf("handleLookupParam: updated lispInfo %v\n", lispInfo)
+	log.Infof("handleLookupParam: updated lispInfo %v\n", lispInfo)
 
 	// Load device cert
 	deviceCert, err := tls.LoadX509KeyPair(deviceCertName,
@@ -137,7 +137,7 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 
 	ACLPromisc := false
 	if _, err := os.Stat(infraFileName); err == nil {
-		log.Printf("Setting ACLPromisc\n")
+		log.Debugf("Setting ACLPromisc\n")
 		ACLPromisc = true
 	}
 
@@ -158,7 +158,7 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 
 	// If we got a StatusNotFound the EID will be zero
 	if lispConfig.EID == nil {
-		log.Printf("Did not receive an EID\n")
+		log.Errorf("Did not receive an EID\n")
 		os.Remove(zedserverConfigFileName)
 		return
 	}
@@ -219,11 +219,11 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 
 	// Determine whether NAT is in use
 	if publicIP, err := addrStringToIP(lispConfig.ClientAddr); err != nil {
-		log.Printf("Failed to convert %s, error %s\n",
+		log.Errorf("Failed to convert %s, error %s\n",
 			lispConfig.ClientAddr, err)
 	} else {
 		nat := !IsMyAddress(publicIP)
-		log.Printf("NAT %v, publicIP %v\n", nat, publicIP)
+		log.Infof("NAT %v, publicIP %v\n", nat, publicIP)
 	}
 
 	// Write an AppNetworkConfig for the ZedManager application
@@ -264,7 +264,7 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 	cmd := exec.Command("/opt/zededa/bin/handlezedserverconfig.sh")
 	stdout, err := cmd.Output()
 	if err != nil {
-		log.Println(err.Error())
+		log.Errorln(err.Error())
 	}
 	log.Debugf("handlezedserverconfig output %s\n", stdout)
 }
@@ -273,18 +273,18 @@ func publishAppNetworkConfig(getconfigCtx *getconfigContext,
 	config types.AppNetworkConfig) {
 
 	key := config.Key()
-	log.Printf("publishAppNetworkConfig %s\n", key)
+	log.Debugf("publishAppNetworkConfig %s\n", key)
 	pub := getconfigCtx.pubAppNetworkConfig
 	pub.Publish(key, config)
 }
 
 func unpublishAppNetworkConfig(getconfigCtx *getconfigContext, key string) {
 
-	log.Printf("unpublishAppNetworkConfig %s\n", key)
+	log.Debugf("unpublishAppNetworkConfig %s\n", key)
 	pub := getconfigCtx.pubAppNetworkConfig
 	c, _ := pub.Get(key)
 	if c == nil {
-		log.Printf("unpublishAppNetworkConfig(%s) not found\n", key)
+		log.Errorf("unpublishAppNetworkConfig(%s) not found\n", key)
 		return
 	}
 	pub.Unpublish(key)

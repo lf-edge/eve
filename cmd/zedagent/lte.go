@@ -41,7 +41,7 @@ func readLTE(filename string, verbatim string) []types.MetricItem {
 	bytes, err := ioutil.ReadFile(filename)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			log.Printf("readLTE: %s\n", err)
+			log.Errorf("readLTE: %s\n", err)
 		}
 		return items
 	}
@@ -56,7 +56,7 @@ func readLTE(filename string, verbatim string) []types.MetricItem {
 	}
 	err = json.Unmarshal(bytes, &m)
 	if err != nil {
-		log.Printf("readLTE for %s: %s\n", filename, err)
+		log.Errorf("readLTE for %s: %s\n", filename, err)
 		return items
 	}
 	for k, v := range m {
@@ -76,7 +76,7 @@ func readLTE(filename string, verbatim string) []types.MetricItem {
 		case string:
 			info.Type = types.MetricItemOther
 		default:
-			log.Printf("Unknown %T from %s\n", t, filename)
+			log.Errorf("Unknown %T from %s\n", t, filename)
 		}
 
 		items = append(items, info)
@@ -119,7 +119,7 @@ func parseAny(val interface{}) interface{} {
 		v := val.(string)
 		return v
 	default:
-		log.Printf("parseAny unknown %T\n", t)
+		log.Errorf("parseAny unknown %T\n", t)
 		return fmt.Sprintf("unknown type %T", t)
 	}
 }
