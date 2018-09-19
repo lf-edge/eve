@@ -28,9 +28,9 @@ type context struct {
 	Found bool
 	C     <-chan string
 	// Private info
-	aa       *types.AssignableAdapters
-	model    string
-	sub      *pubsub.Subscription
+	aa    *types.AssignableAdapters
+	model string
+	sub   *pubsub.Subscription
 }
 
 func Subscribe(aa *types.AssignableAdapters, model string) *context {
