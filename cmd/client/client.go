@@ -204,7 +204,7 @@ func Run() {
 		PubDeviceNetworkStatus: nil,
 	}
 
-	// Look for global config like log levels
+	// Look for global config such as log levels
 	subGlobalConfig, err := pubsub.Subscribe("",
 		agentlog.GlobalConfig{}, false, &clientCtx)
 	if err != nil {

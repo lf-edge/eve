@@ -128,7 +128,7 @@ func Run() {
 	ctx.pubBaseOsStatus = pubBaseOsStatus
 	pubBaseOsStatus.ClearRestarted()
 
-	// Look for global config like debug
+	// Look for global config such as log levels
 	subGlobalConfig, err := pubsub.Subscribe("", agentlog.GlobalConfig{},
 		false, &ctx)
 	if err != nil {

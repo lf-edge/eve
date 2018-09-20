@@ -270,7 +270,7 @@ func Run() {
 	getconfigCtx.pubDatastoreConfig = pubDatastoreConfig
 	pubDatastoreConfig.ClearRestarted()
 
-	// Look for global config like debug
+	// Look for global config such as log levels
 	subGlobalConfig, err := pubsub.Subscribe("",
 		agentlog.GlobalConfig{}, false, &zedagentCtx)
 	if err != nil {

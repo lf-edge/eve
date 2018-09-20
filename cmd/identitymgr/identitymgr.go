@@ -85,7 +85,7 @@ func Run() {
 	identityCtx.pubEIDStatus = pubEIDStatus
 	pubEIDStatus.ClearRestarted()
 
-	// Look for global config like debug
+	// Look for global config such as log levels
 	subGlobalConfig, err := pubsub.Subscribe("", agentlog.GlobalConfig{},
 		false, &identityCtx)
 	if err != nil {

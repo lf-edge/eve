@@ -129,7 +129,7 @@ func Run() {
 		assignableAdapters: &aa,
 	}
 
-	// Look for global config like debug
+	// Look for global config such as log levels
 	subGlobalConfig, err := pubsub.Subscribe("",
 		agentlog.GlobalConfig{}, false, &zedrouterCtx)
 	if err != nil {

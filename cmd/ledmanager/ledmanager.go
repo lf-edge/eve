@@ -139,7 +139,7 @@ func Run() {
 	ctx.countChange = make(chan int)
 	go TriggerBlinkOnDevice(ctx.countChange, blinkFunc)
 
-	// Look for global config like debug
+	// Look for global config such as log levels
 	subGlobalConfig, err := pubsub.Subscribe("", agentlog.GlobalConfig{},
 		false, &ctx)
 	if err != nil {
