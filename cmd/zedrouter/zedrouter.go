@@ -873,6 +873,7 @@ func parseAndPublishLispMetrics(ctx *zedrouterContext, lispMetrics *types.LispMe
 			// assigning structures.
 			*metricEntry = *lispMetrics
 			metricEntry.EidStats = []types.EidStatistics{}
+			metricEntry.EidMaps = []types.EidMap{}
 			metricMap[iid] = metricEntry
 		}
 		metricEntry.EidStats = append(metricEntry.EidStats, dbMap)
@@ -918,6 +919,8 @@ func parseAndPublishLispMetrics(ctx *zedrouterContext, lispMetrics *types.LispMe
 				continue
 			}
 			metricsStatus.UUID = status.UUID
+			metricsStatus.DisplayName = status.DisplayName
+			metricsStatus.Type = status.Type
 		}
 		// XXX Check if there are changes in metrics
 		if (metricsStatus.LispMetrics != nil) &&
