@@ -151,7 +151,7 @@ func Run() {
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := pubsub.Subscribe("", agentlog.GlobalConfig{},
-		false, domainCtx)
+		false, &domainCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
