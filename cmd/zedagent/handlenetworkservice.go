@@ -470,7 +470,6 @@ func protoEncodeLispServiceMetric(status types.NetworkServiceMetrics,
 			rloc := rlocStat.Rloc
 			stat := rlocStat.Stats
 			flowEndPoint := &zmet.ZMetricFlowEndPoint{}
-			// ***** fill the rest
 			flowEndPoint.Stats = &zmet.PktStat{
 				Packets: stat.Pkts,
 				Bytes:   stat.Bytes,

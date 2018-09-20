@@ -873,6 +873,7 @@ func parseAndPublishLispMetrics(ctx *zedrouterContext, lispMetrics *types.LispMe
 			// assigning structures.
 			*metricEntry = *lispMetrics
 			metricEntry.EidStats = []types.EidStatistics{}
+			metricEntry.EidMaps = []types.EidMap{}
 			metricMap[iid] = metricEntry
 		}
 		metricEntry.EidStats = append(metricEntry.EidStats, dbMap)
@@ -912,21 +913,24 @@ func parseAndPublishLispMetrics(ctx *zedrouterContext, lispMetrics *types.LispMe
 			continue
 		}
 		metricsStatus := lookupNetworkServiceMetrics(ctx, status.Key())
+		if metricsStatus == nil {
+			metricsStatus = new(types.NetworkServiceMetrics)
+			if metricsStatus == nil {
+				continue
+			}
+			metricsStatus.UUID = status.UUID
+			metricsStatus.DisplayName = status.DisplayName
+			metricsStatus.Type = status.Type
+		}
 		// XXX Check if there are changes in metrics
-		if cmp.Equal(metricsStatus.LispMetrics, metrics) {
+		if (metricsStatus.LispMetrics != nil) &&
+			cmp.Equal(metricsStatus.LispMetrics, metrics) {
 			continue
 		} else {
 			if debug {
 				difference := cmp.Diff(metricsStatus.LispMetrics, metrics)
 				log.Printf("parseAndPublishLispMetrics: Publish diff %s to zedcloud\n", difference)
 			}
-		}
-		if metricsStatus == nil {
-			metricsStatus := new(types.NetworkServiceMetrics)
-			if metricsStatus == nil {
-				continue
-			}
-			metricsStatus.UUID = status.UUID
 		}
 		metricsStatus.LispMetrics = metrics
 
