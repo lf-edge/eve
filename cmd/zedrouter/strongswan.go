@@ -854,27 +854,44 @@ func publishVpnMetrics(ctx *zedrouterContext,
 	metrics.UUID = status.UUID
 	metrics.DisplayName = status.DisplayName
 	metrics.Type = status.Type
-	if vpnStatus.ActiveTunCount != 0 {
-		metrics.VpnMetrics = publishVpnConnMetrics(status.Type, vpnStatus)
+	// get older metrics, if any
+	oldMetrics := lookupNetworkServiceMetrics(ctx, metrics.Key())
+	vpnMetrics := new(types.VpnMetrics)
+	// for cumulative stats, take the old metrics stats
+	// and add the difference to the metrics
+	if oldMetrics != nil ||
+	   oldMetrics.VpnMetrics != nil {
+		vpnMetrics.InPkts.Bytes = oldMetrics.VpnMetrics.InPkts.Bytes
+		vpnMetrics.InPkts.Pkts = oldMetrics.VpnMetrics.InPkts.Pkts
+		vpnMetrics.OutPkts.Bytes = oldMetrics.VpnMetrics.OutPkts.Bytes
+		vpnMetrics.OutPkts.Pkts = oldMetrics.VpnMetrics.OutPkts.Pkts
 	}
+
+	publishVpnConnMetrics(ctx, status, oldMetrics, vpnMetrics, vpnStatus)
+	metrics.VpnMetrics = vpnMetrics
 	pub := ctx.pubNetworkServiceMetrics
 	pub.Publish(metrics.Key(), &metrics)
 	return
 }
 
-func publishVpnConnMetrics(svcType types.NetworkServiceType,
-	vpnStatus *types.ServiceVpnStatus) *types.VpnMetrics {
-	vpnMetrics := new(types.VpnMetrics)
+func publishVpnConnMetrics(ctx *zedrouterContext,
+	status *types.NetworkServiceStatus, oldMetrics *types.NetworkServiceMetrics,
+	vpnMetrics *types.VpnMetrics, vpnStatus *types.ServiceVpnStatus) {
+
+	if vpnStatus.ActiveTunCount == 0 {
+		return
+	}
 	vpnMetrics.VpnConns = make([]*types.VpnConnMetrics,
 		vpnStatus.ActiveTunCount)
 	for idx, connStatus := range vpnStatus.ActiveVpnConns {
 		connMetrics := new(types.VpnConnMetrics)
 		connMetrics.Id = connStatus.Id
 		connMetrics.Name = connStatus.Name
-		connMetrics.Type = svcType
+		connMetrics.Type = status.Type
 		connMetrics.EstTime = connStatus.EstTime
 		connMetrics.LEndPoint.IpAddr = connStatus.LInfo.IpAddr
 		connMetrics.REndPoint.IpAddr = connStatus.RInfo.IpAddr
+		oldConnMetrics := getVpnMetricsOldConnStats(oldMetrics, connStatus.Id)
 		for _, linkStatus := range connStatus.Links {
 			if linkStatus.State == types.VPN_INSTALLED {
 				lStats := linkStatus.LInfo
@@ -882,18 +899,60 @@ func publishVpnConnMetrics(svcType types.NetworkServiceType,
 				connMetrics.LEndPoint.LinkInfo.SubNet = lStats.SubNet
 				connMetrics.LEndPoint.PktStats.Bytes = lStats.Bytes
 				connMetrics.LEndPoint.PktStats.Pkts = lStats.Pkts
-				vpnMetrics.InPkts.Bytes += lStats.Bytes
-				vpnMetrics.InPkts.Pkts += lStats.Pkts
 				rStats := linkStatus.RInfo
 				connMetrics.REndPoint.LinkInfo.SpiId = rStats.SpiId
 				connMetrics.REndPoint.LinkInfo.SubNet = rStats.SubNet
 				connMetrics.REndPoint.PktStats.Bytes = rStats.Bytes
 				connMetrics.REndPoint.PktStats.Pkts = rStats.Pkts
-				vpnMetrics.OutPkts.Bytes += rStats.Bytes
-				vpnMetrics.OutPkts.Pkts += rStats.Pkts
+
+				// for new connection, add them straight
+				if oldConnMetrics == nil {
+					vpnMetrics.InPkts.Bytes += lStats.Bytes
+					vpnMetrics.InPkts.Pkts += lStats.Pkts
+					vpnMetrics.OutPkts.Bytes += rStats.Bytes
+					vpnMetrics.OutPkts.Pkts += rStats.Pkts
+				} else {
+					// for existing connection, add the difference
+					// if they have wrapped around, add them straight
+					if oldConnMetrics.LEndPoint.LinkInfo.SpiId == lStats.SpiId  &&
+						oldConnMetrics.REndPoint.LinkInfo.SpiId == rStats.SpiId {
+						olStats := oldConnMetrics.LEndPoint.PktStats
+						orStats := oldConnMetrics.REndPoint.PktStats
+						if lStats.Bytes >= olStats.Bytes {
+							lBytes := lStats.Bytes - olStats.Bytes
+							lPkts := lStats.Pkts - olStats.Pkts
+							vpnMetrics.InPkts.Bytes += lBytes
+							vpnMetrics.InPkts.Pkts += lPkts
+						} else {
+							vpnMetrics.InPkts.Bytes += lStats.Bytes
+							vpnMetrics.InPkts.Pkts += lStats.Pkts
+						}
+						if rStats.Bytes >= orStats.Bytes {
+							rBytes := rStats.Bytes - orStats.Bytes
+							rPkts := rStats.Pkts - orStats.Pkts
+							vpnMetrics.OutPkts.Bytes += rBytes
+							vpnMetrics.OutPkts.Pkts += rPkts
+						} else {
+							vpnMetrics.OutPkts.Bytes += rStats.Bytes
+							vpnMetrics.OutPkts.Pkts += rStats.Pkts
+						}
+					}
+				}
 			}
 		}
 		vpnMetrics.VpnConns[idx] = connMetrics
 	}
-	return vpnMetrics
+}
+
+func getVpnMetricsOldConnStats(oldMetrics *types.NetworkServiceMetrics,
+		id string) *types.VpnConnMetrics {
+	if oldMetrics == nil || oldMetrics.VpnMetrics == nil {
+		return nil
+	}
+	for _, connStatus := range oldMetrics.VpnMetrics.VpnConns {
+		if connStatus.Id == id {
+			return connStatus
+		}
+	}
+	return nil
 }
