@@ -168,7 +168,10 @@ func Run() {
 
 	// To better handle new hardware platforms log and blink if we
 	// don't have a DeviceNetworkConfig
-	// After some tries we fall back to default.json which is eth0
+	// After some tries we fall back to default.json which is eth0, wlan0
+	// and wwan0
+	// XXX if we have a /config/DeviceUplinkConfig/override.json
+	// we should proceed. Defer that until a DIM/DUM agent
 	tries := 0
 	for {
 		DNCFilename := fmt.Sprintf("%s/%s.json", DNCDirname, model)
@@ -183,8 +186,8 @@ func Run() {
 		time.Sleep(time.Second)
 		tries += 1
 		if tries == 120 { // Two minutes
-			log.Infof("Falling back to using default.json\n")
-			model = "default.json"
+			log.Infof("Falling back to using hardware model default\n")
+			model = "default"
 		}
 	}
 
