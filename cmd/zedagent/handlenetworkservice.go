@@ -451,8 +451,8 @@ func protoEncodeLispServiceMetric(status types.NetworkServiceMetrics,
 		}
 		lEndPoint := &zmet.ZMetricFlowEndPoint{}
 		flowLinks := []*zmet.ZMetricFlowLink{}
-		for _, eidMap := range metrics.EidMaps{
-			for _, eid := range eidMap.Eids{
+		for _, eidMap := range metrics.EidMaps {
+			for _, eid := range eidMap.Eids {
 				flowLink := &zmet.ZMetricFlowLink{}
 				flowLink.Link = new(zmet.ZMetricFlowLink_Eid)
 				if x, ok := flowLink.GetLink().(*zmet.ZMetricFlowLink_Eid); ok {
@@ -466,14 +466,14 @@ func protoEncodeLispServiceMetric(status types.NetworkServiceMetrics,
 
 		rEndPoint := []*zmet.ZMetricFlowEndPoint{}
 		eid := eidStat.Eid
-		for _, rlocStat := range eidStat.RlocStats{
+		for _, rlocStat := range eidStat.RlocStats {
 			rloc := rlocStat.Rloc
 			stat := rlocStat.Stats
 			flowEndPoint := &zmet.ZMetricFlowEndPoint{}
 			// ***** fill the rest
 			flowEndPoint.Stats = &zmet.PktStat{
 				Packets: stat.Pkts,
-				Bytes: stat.Bytes,
+				Bytes:   stat.Bytes,
 			}
 			flowEndPoint.Endpoint = new(zmet.ZMetricFlowEndPoint_Rloc)
 			if x, ok := flowEndPoint.GetEndpoint().(*zmet.ZMetricFlowEndPoint_Rloc); ok {
@@ -600,52 +600,58 @@ func protoEncodeVpnServiceFlowMetric(metrics types.NetworkServiceMetrics,
 		return
 	}
 
-	// XXX:FIXME uncomment when api is ready
-	/*
-		vpnMetrics := metrics.VpnMetrics
-		serviceMetrics.FlowStats = make([]*zmet.ZMetricFlow, len(vpnStatus.VpnConns))
-		for _, connStats := range vpnMetrics.VpnConns {
-			flowStats := new(zmet.ZMetricFlow)
-			flowStats.Id = connStats.Id
-			flowStats.Name = connStats.Name
-			flowStats.Type = connStats.Type
-			flowStats.EstTime = connStats.EstTime
-			lEndPoint := new (zmet.ZMetricFlowEndPoint)
-			rEndPoint := new (zmet.ZMetricFlowEndPoint)
-			lEndPoint.EndPoint = new(zmet.ZMetricFlowEndPoint_IpAddr)
-			if x, ok := lEndPoint.GetEndPoint().(*zmet.ZMetricFlowEndPoint_IpAddr); ok {
-				x.IpAddr = connStats.LEndPoint.IpAddr
-			}
-			rEndPoint.EndPoint = new(zmet.ZMetricFlowEndPoint_IpAddr)
-			if x, ok := rEndPoint.GetEndPoint().(*zmet.ZMetricFlowEndPoint_IpAddr); ok {
-				x.IpAddr = connStats.REndPoint.IpAddr
-			}
-			lLink := new(zmet.ZMetricLink)
-			rLink := new(zmet.ZMetricLink)
-			lLink.SpiId = connStats.LEndPoint.LinkInfo.SpiId
-			lLink.Link = new(zmet.ZMetricFlowLink_Subnet)
-			if x, ok := lLink.GetLink().(*zmet.ZMetricFlowLink_Link); ok {
-				x.SubNet = connStats.LEndPoint.LinkInfo.SubNet
-			}
-			rLink.SpiId = connStats.REndPoint.LinkInfo.SpiId
-			rLink.Link = new(zmet.ZMetricFlowLink_Subnet)
-			if x, ok := rLink.GetLink().(*zmet.ZMetricFlowLink_Link); ok {
-				x.SubNet = connStats.REndPoint.LinkInfo.SubNet
-			}
-			lendPoint.Link = llink
-			rendPoint.Link = rlink
-			lPktStats := new(zmet.PktStat)
-			rPktStats := new(zmet.PktStat)
-			lPktStats.Bytes = connStats.LEndPoint.PktStatss.Bytes
-			lPktStats.Packets = connStats.LEndPoint.PktStatss.Pkts
-			rPktStats.Bytes = connStats.REndPoint.PktStatss.Bytes
-			rPktStats.Packets = connStats.REndPoint.PktStatss.Pkts
-			lEndPoint.Stats = lPktStats
-			rEndPoint.Stats = lPktStats
-			flowStats.lEndPoint = lEndPoint
-			flowStats.rEndPoint = make([]*zmet.ZMetricFlowEndPoint, 1)
-			flowStats.rEndPoint[0] = rEndPoint
-			serviceMetrics.FlowStats[idx] = flowStats
-		}
-	*/
+	vpnMetrics := metrics.VpnMetrics
+	serviceMetrics.FlowStats = make([]*zmet.ZMetricFlow,
+		len(vpnMetrics.VpnConns))
+	for idx, connStats := range vpnMetrics.VpnConns {
+
+		flowStats := new(zmet.ZMetricFlow)
+		flowStats.Id = connStats.Id
+		flowStats.Name = connStats.Name
+		flowStats.Type = uint32(connStats.Type)
+		flowStats.EstTime = connStats.EstTime
+
+		lEndPoint := protoEncodeVpnMetricLinkIpAddr(connStats.LEndPoint)
+		lEndPoint.Stats = protoEncodeVpnMetricStats(connStats.LEndPoint.PktStats)
+		lLink := protoEncodeVpnMetricLink(connStats.LEndPoint.LinkInfo)
+		lEndPoint.Link = make([]*zmet.ZMetricFlowLink, 1)
+		lEndPoint.Link[0] = lLink
+
+		rEndPoint := protoEncodeVpnMetricLinkIpAddr(connStats.REndPoint)
+		rEndPoint.Stats = protoEncodeVpnMetricStats(connStats.REndPoint.PktStats)
+		rLink := protoEncodeVpnMetricLink(connStats.REndPoint.LinkInfo)
+		rEndPoint.Link = make([]*zmet.ZMetricFlowLink, 1)
+		rEndPoint.Link[0] = rLink
+
+		flowStats.LEndPoint = lEndPoint
+		flowStats.REndPoint = make([]*zmet.ZMetricFlowEndPoint, 1)
+		flowStats.REndPoint[0] = rEndPoint
+		serviceMetrics.FlowStats[idx] = flowStats
+	}
+}
+
+func protoEncodeVpnMetricLinkIpAddr(endPInfo types.VpnEndPointMetrics) *zmet.ZMetricFlowEndPoint {
+	endPoint := new(zmet.ZMetricFlowEndPoint)
+	endPoint.Endpoint = new(zmet.ZMetricFlowEndPoint_IpAddr)
+	if x, ok := endPoint.GetEndpoint().(*zmet.ZMetricFlowEndPoint_IpAddr); ok {
+		x.IpAddr = endPInfo.IpAddr
+	}
+	return endPoint
+}
+
+func protoEncodeVpnMetricLink(linkInfo types.VpnLinkMetrics) *zmet.ZMetricFlowLink {
+	link := new(zmet.ZMetricFlowLink)
+	link.SpiId = linkInfo.SpiId
+	link.Link = new(zmet.ZMetricFlowLink_SubNet)
+	if x, ok := link.GetLink().(*zmet.ZMetricFlowLink_SubNet); ok {
+		x.SubNet = linkInfo.SubNet
+	}
+	return link
+}
+
+func protoEncodeVpnMetricStats(linkStats types.PktStats) *zmet.PktStat {
+	pktStats := new(zmet.PktStat)
+	pktStats.Bytes = linkStats.Bytes
+	pktStats.Packets = linkStats.Pkts
+	return pktStats
 }

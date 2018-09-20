@@ -848,19 +848,30 @@ func matchConnStats(oldConn, newConn *types.VpnConnStatus) bool {
 	return true
 }
 
-func publishVpnMetrics(ctx *zedrouterContext, status *types.NetworkServiceStatus,
-	vpnStatus *types.ServiceVpnStatus) {
+func publishVpnMetrics(ctx *zedrouterContext,
+	status *types.NetworkServiceStatus, vpnStatus *types.ServiceVpnStatus) {
 	metrics := new(types.NetworkServiceMetrics)
 	metrics.UUID = status.UUID
 	metrics.DisplayName = status.DisplayName
 	metrics.Type = status.Type
+	if vpnStatus.ActiveTunCount != 0 {
+		metrics.VpnMetrics = publishVpnConnMetrics(status.Type, vpnStatus)
+	}
+	pub := ctx.pubNetworkServiceMetrics
+	pub.Publish(metrics.Key(), &metrics)
+	return
+}
+
+func publishVpnConnMetrics(svcType types.NetworkServiceType,
+	vpnStatus *types.ServiceVpnStatus) *types.VpnMetrics {
 	vpnMetrics := new(types.VpnMetrics)
-	vpnMetrics.VpnConns = make([]*types.VpnConnMetrics, vpnStatus.ActiveTunCount)
+	vpnMetrics.VpnConns = make([]*types.VpnConnMetrics,
+		vpnStatus.ActiveTunCount)
 	for idx, connStatus := range vpnStatus.ActiveVpnConns {
 		connMetrics := new(types.VpnConnMetrics)
 		connMetrics.Id = connStatus.Id
 		connMetrics.Name = connStatus.Name
-		connMetrics.Type = status.Type
+		connMetrics.Type = svcType
 		connMetrics.EstTime = connStatus.EstTime
 		connMetrics.LEndPoint.IpAddr = connStatus.LInfo.IpAddr
 		connMetrics.REndPoint.IpAddr = connStatus.RInfo.IpAddr
@@ -884,8 +895,5 @@ func publishVpnMetrics(ctx *zedrouterContext, status *types.NetworkServiceStatus
 		}
 		vpnMetrics.VpnConns[idx] = connMetrics
 	}
-	metrics.VpnMetrics = vpnMetrics
-	pub := ctx.pubNetworkServiceMetrics
-	pub.Publish(metrics.Key(), &metrics)
-	return
+	return vpnMetrics
 }
