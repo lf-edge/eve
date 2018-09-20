@@ -36,7 +36,7 @@ func ipSecStatusCmdGet(vpnStatus *types.ServiceVpnStatus) error {
 	cmd := exec.Command("ipsec", "statusall")
 	bytes, err := cmd.Output()
 	if err != nil {
-		log.Printf("%s for %s statusall\n", err.Error(), "ipsec")
+		log.Errorf("%s for %s statusall\n", err.Error(), "ipsec")
 		return err
 	}
 	ipSecCmdOut := ipSecCmdParse(string(bytes))
@@ -52,12 +52,12 @@ func swanCtlCmdGet(vpnStatus *types.ServiceVpnStatus) error {
 	cmd := exec.Command("swanctl", "-l")
 	bytes, err := cmd.Output()
 	if err != nil {
-		log.Printf("%s for %s -l\n", err.Error(), "swanctl")
+		log.Errorf("%s for %s -l\n", err.Error(), "swanctl")
 		return err
 	}
 	tunCount := swanCtlCmdParse(vpnStatus, string(bytes))
 	if vpnStatus.ActiveTunCount != tunCount {
-		log.Printf("Tunnel count mismatch (%d, %d)\n",
+		log.Infof("Tunnel count mismatch (%d, %d)\n",
 			vpnStatus.ActiveTunCount, tunCount)
 		return errors.New("active tunnel count mismatch")
 	}

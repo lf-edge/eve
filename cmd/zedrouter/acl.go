@@ -90,7 +90,7 @@ func compileNetworkIpsetsStatus(ctx *zedrouterContext,
 	for key, st := range items {
 		status := cast.CastAppNetworkStatus(st)
 		if status.Key() != key {
-			log.Printf("compileNetworkIpsetsStatus key/UUID mismatch %s vs %s; ignored %+v\n",
+			log.Errorf("compileNetworkIpsetsStatus key/UUID mismatch %s vs %s; ignored %+v\n",
 				key, status.Key(), status)
 			continue
 		}
@@ -131,7 +131,7 @@ func compileNetworkIpsetsConfig(ctx *zedrouterContext,
 	for key, c := range items {
 		config := cast.CastAppNetworkConfig(c)
 		if config.Key() != key {
-			log.Printf("compileNetworkIpsetsConfig key/UUID mismatch %s vs %s; ignored %+v\n",
+			log.Errorf("compileNetworkIpsetsConfig key/UUID mismatch %s vs %s; ignored %+v\n",
 				key, config.Key(), config)
 			continue
 		}
@@ -422,14 +422,14 @@ func aceToRules(bridgeName string, vifName string, ace types.ACE, ipVer int, bri
 			if ipsetName != "" {
 				errStr := fmt.Sprintf("ACE with eidset and host not supported: %+v",
 					ace)
-				log.Println(errStr)
+				log.Errorln(errStr)
 				return nil, errors.New(errStr)
 			}
 			// Ensure the sets exists; create if not
 			// need to feed it into dnsmasq as well; restart
 			err := ipsetCreatePair(match.Value, "hash:ip")
 			if err != nil {
-				log.Println("ipset create for ",
+				log.Errorln("ipset create for ",
 					match.Value, err)
 			}
 			switch ipVer {
@@ -442,7 +442,7 @@ func aceToRules(bridgeName string, vifName string, ace types.ACE, ipVer int, bri
 			if ipsetName != "" {
 				errStr := fmt.Sprintf("ACE with eidset and host not supported: %+v",
 					ace)
-				log.Println(errStr)
+				log.Errorln(errStr)
 				return nil, errors.New(errStr)
 			}
 			// Caller adds any EIDs/IPs to set
@@ -455,7 +455,7 @@ func aceToRules(bridgeName string, vifName string, ace types.ACE, ipVer int, bri
 		default:
 			errStr := fmt.Sprintf("Unsupported ACE match type: %s",
 				match.Type)
-			log.Println(errStr)
+			log.Errorln(errStr)
 			return nil, errors.New(errStr)
 		}
 	}
@@ -463,13 +463,13 @@ func aceToRules(bridgeName string, vifName string, ace types.ACE, ipVer int, bri
 	if fport != "" && protocol == "" {
 		errStr := fmt.Sprintf("ACE with fport %s and no protocol match: %+v",
 			fport, ace)
-		log.Println(errStr)
+		log.Errorln(errStr)
 		return nil, errors.New(errStr)
 	}
 	if lport != "" && protocol == "" {
 		errStr := fmt.Sprintf("ACE with lport %s and no protocol match: %+v",
 			lport, ace)
-		log.Println(errStr)
+		log.Errorln(errStr)
 		return nil, errors.New(errStr)
 	}
 
@@ -534,13 +534,13 @@ func aceToRules(bridgeName string, vifName string, ace types.ACE, ipVer int, bri
 			if lport == "" || protocol == "" {
 				errStr := fmt.Sprintf("PortMap without lport %s/protocol %d: %s",
 					lport, protocol)
-				log.Println(errStr)
+				log.Errorln(errStr)
 				return nil, errors.New(errStr)
 			}
 			if appIP == "" {
 				errStr := fmt.Sprintf("PortMap without appIP %s/protocol %d: %s",
 					lport, protocol)
-				log.Println(errStr)
+				log.Errorln(errStr)
 				return nil, errors.New(errStr)
 			}
 			targetPort := fmt.Sprintf("%d", action.TargetPort)
@@ -587,7 +587,7 @@ func aceToRules(bridgeName string, vifName string, ace types.ACE, ipVer int, bri
 		if actionCount > 1 {
 			errStr := fmt.Sprintf("ACL with combination of Drop, Limit and/or PortMap rejected: %v",
 				ace)
-			log.Println(errStr)
+			log.Errorln(errStr)
 			return nil, errors.New(errStr)
 		}
 	}

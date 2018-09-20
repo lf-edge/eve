@@ -17,7 +17,7 @@ import (
 // Would be more polite to return an error then to Fatal
 func createHostsConfiglet(cfgDirname string, nameToIPList []types.DnsNameToIP) {
 
-	log.Printf("createHostsConfiglet: dir %s nameToIPList %v\n",
+	log.Infof("createHostsConfiglet: dir %s nameToIPList %v\n",
 		cfgDirname, nameToIPList)
 	ensureDir(cfgDirname)
 
@@ -69,7 +69,7 @@ func addToHostsConfiglet(cfgDirname string, hostname string, addrs []string) {
 func removeFromHostsConfiglet(cfgDirname string, hostname string) {
 	cfgPathname := cfgDirname + "/" + hostname
 	if err := os.Remove(cfgPathname); err != nil {
-		log.Println("removeFromHostsConfiglet: ", err)
+		log.Errorln("removeFromHostsConfiglet: ", err)
 	}
 }
 
@@ -96,7 +96,7 @@ func containsIP(nameToIPList []types.DnsNameToIP, ip net.IP) bool {
 func updateHostsConfiglet(cfgDirname string,
 	oldList []types.DnsNameToIP, newList []types.DnsNameToIP) {
 
-	log.Printf("updateHostsConfiglet: dir %s old %v, new %v\n",
+	log.Infof("updateHostsConfiglet: dir %s old %v, new %v\n",
 		cfgDirname, oldList, newList)
 	ensureDir(cfgDirname)
 	// Look for hosts which should be deleted
@@ -104,7 +104,7 @@ func updateHostsConfiglet(cfgDirname string,
 		if !containsHostName(newList, ne.HostName) {
 			cfgPathname := cfgDirname + "/" + ne.HostName
 			if err := os.Remove(cfgPathname); err != nil {
-				log.Println("updateHostsConfiglet: ", err)
+				log.Errorln("updateHostsConfiglet: ", err)
 			}
 		}
 	}
@@ -126,9 +126,9 @@ func updateHostsConfiglet(cfgDirname string,
 
 func deleteHostsConfiglet(cfgDirname string, printOnError bool) {
 
-	log.Printf("deleteHostsConfiglet: dir %s\n", cfgDirname)
+	log.Infof("deleteHostsConfiglet: dir %s\n", cfgDirname)
 	err := os.RemoveAll(cfgDirname)
 	if err != nil && printOnError {
-		log.Println("deleteHostsConfiglet: ", err)
+		log.Errorln("deleteHostsConfiglet: ", err)
 	}
 }

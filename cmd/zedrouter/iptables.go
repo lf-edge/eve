@@ -27,7 +27,7 @@ func iptableCmdOut(dolog bool, args ...string) (string, error) {
 	if err != nil {
 		errStr := fmt.Sprintf("iptables command %s failed %s output %s",
 			args, err, out)
-		log.Println(errStr)
+		log.Errorln(errStr)
 		return "", errors.New(errStr)
 	}
 	return string(out), nil
@@ -50,7 +50,7 @@ func ip6tableCmdOut(dolog bool, args ...string) (string, error) {
 	if err != nil {
 		errStr := fmt.Sprintf("ip6tables command %s failed %s output %s",
 			args, err, out)
-		log.Println(errStr)
+		log.Errorln(errStr)
 		return "", errors.New(errStr)
 	}
 	return string(out), nil
@@ -88,7 +88,7 @@ func fetchIprulesCounters() []AclCounters {
 	// get for IPv4 filter, IPv6 filter, and IPv6 raw
 	out, err := iptableCmdOut(false, "-t", "filter", "-S", "FORWARD", "-v")
 	if err != nil {
-		log.Printf("fetchIprulesCounters: iptables -S failed %s\n", err)
+		log.Errorf("fetchIprulesCounters: iptables -S failed %s\n", err)
 	} else {
 		c := parseCounters(out, "filter", 4)
 		if c != nil {
@@ -98,7 +98,7 @@ func fetchIprulesCounters() []AclCounters {
 
 	out, err = iptableCmdOut(false, "-t", "raw", "-S", "PREROUTING", "-v")
 	if err != nil {
-		log.Printf("fetchIprulesCounters: iptables -S failed %s\n", err)
+		log.Errorf("fetchIprulesCounters: iptables -S failed %s\n", err)
 	} else {
 		c := parseCounters(out, "filter", 4)
 		if c != nil {
@@ -109,7 +109,7 @@ func fetchIprulesCounters() []AclCounters {
 	// Only needed to get dbo1x0 stats
 	out, err = ip6tableCmdOut(false, "-t", "filter", "-S", "OUTPUT", "-v")
 	if err != nil {
-		log.Printf("fetchIprulesCounters: iptables -S failed %s\n", err)
+		log.Errorf("fetchIprulesCounters: iptables -S failed %s\n", err)
 	} else {
 		c := parseCounters(out, "filter", 6)
 		if c != nil {
@@ -118,7 +118,7 @@ func fetchIprulesCounters() []AclCounters {
 	}
 	out, err = ip6tableCmdOut(false, "-t", "filter", "-S", "FORWARD", "-v")
 	if err != nil {
-		log.Printf("fetchIprulesCounters: ip6tables failed %s\n", err)
+		log.Errorf("fetchIprulesCounters: ip6tables failed %s\n", err)
 	} else {
 		c := parseCounters(out, "filter", 6)
 		if c != nil {
@@ -127,7 +127,7 @@ func fetchIprulesCounters() []AclCounters {
 	}
 	out, err = ip6tableCmdOut(false, "-t", "raw", "-S", "PREROUTING", "-v")
 	if err != nil {
-		log.Printf("fetchIprulesCounters: ip6tables -S failed %s\n", err)
+		log.Errorf("fetchIprulesCounters: ip6tables -S failed %s\n", err)
 	} else {
 		c := parseCounters(out, "filter", 6)
 		if c != nil {
@@ -307,14 +307,14 @@ func parseline(line string, table string, ipVer int) *AclCounters {
 		if items[i] == "-c" {
 			u, err := strconv.ParseUint(items[i+1], 10, 64)
 			if err != nil {
-				log.Printf("Bad counter value %s in line %s\n",
+				log.Errorf("Bad counter value %s in line %s\n",
 					items[i+1], line)
 			} else {
 				ac.Pkts = u
 			}
 			u, err = strconv.ParseUint(items[i+2], 10, 64)
 			if err != nil {
-				log.Printf("Bad counter value %s in line %s\n",
+				log.Errorf("Bad counter value %s in line %s\n",
 					items[i+2], line)
 			} else {
 				ac.Bytes = u

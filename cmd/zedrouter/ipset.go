@@ -31,14 +31,14 @@ func createDefaultIpset() {
 	for _, prefix := range prefixes {
 		err := ipsetAdd(set6, prefix)
 		if err != nil {
-			log.Println("ipset add ", set6, prefix, err)
+			log.Errorln("ipset add ", set6, prefix, err)
 		}
 	}
 	prefixes = []string{"0.0.0.0/32", "255.255.255.255/32", "224.0.0.0/4"}
 	for _, prefix := range prefixes {
 		err := ipsetAdd(set4, prefix)
 		if err != nil {
-			log.Println("ipset add ", set4, prefix, err)
+			log.Errorln("ipset add ", set4, prefix, err)
 		}
 	}
 }
@@ -64,7 +64,7 @@ func createDefaultIpsetConfiglet(vifname string, nameToIPList []types.DnsNameToI
 		// to avoid parsing in places like this?
 		appIP = net.ParseIP(appIPAddr)
 		if appIP == nil {
-			log.Printf("ipset failed to parse appIPAddr %s\n",
+			log.Errorf("ipset failed to parse appIPAddr %s\n",
 				appIPAddr)
 		}
 	}
@@ -78,7 +78,7 @@ func createDefaultIpsetConfiglet(vifname string, nameToIPList []types.DnsNameToI
 			}
 			err = ipsetAdd(set, ip.String())
 			if err != nil {
-				log.Println("ipset add ", set,
+				log.Errorln("ipset add ", set,
 					ip.String(), err)
 			}
 			// Is appIP in nameToIPList?
@@ -96,7 +96,7 @@ func createDefaultIpsetConfiglet(vifname string, nameToIPList []types.DnsNameToI
 		}
 		err = ipsetAdd(set, appIP.String())
 		if err != nil {
-			log.Println("ipset add ", set, appIP.String(), err)
+			log.Errorln("ipset add ", set, appIP.String(), err)
 		}
 	}
 }
@@ -122,7 +122,7 @@ func updateDefaultIpsetConfiglet(vifname string,
 				}
 				err := ipsetDel(set, ip.String())
 				if err != nil {
-					log.Println("ipset del ", set,
+					log.Errorln("ipset del ", set,
 						ip.String(), err)
 				}
 			}
@@ -141,7 +141,7 @@ func updateDefaultIpsetConfiglet(vifname string,
 				}
 				err := ipsetAdd(set, ip.String())
 				if err != nil {
-					log.Println("ipset add ", set,
+					log.Errorln("ipset add ", set,
 						ip.String(), err)
 				}
 			}
@@ -158,11 +158,11 @@ func deleteDefaultIpsetConfiglet(vifname string, printOnError bool) {
 
 	err := ipsetDestroy(set4)
 	if err != nil && printOnError {
-		log.Println("ipset destroy ", set4, err)
+		log.Errorln("ipset destroy ", set4, err)
 	}
 	err = ipsetDestroy(set6)
 	if err != nil && printOnError {
-		log.Println("ipset destroy ", set6, err)
+		log.Errorln("ipset destroy ", set6, err)
 	}
 }
 

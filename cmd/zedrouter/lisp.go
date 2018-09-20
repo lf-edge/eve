@@ -245,7 +245,7 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 			IID, EID, rlocString))
 	} else {
 		// Append to rlocString based on AppIPAddr
-		log.Printf("lisp: EID %s AppIPAddr %s\n",
+		log.Infof("lisp: EID %s AppIPAddr %s\n",
 			EID.String(), AppIPAddr.String())
 		if AppIPAddr != nil && !EID.Equal(AppIPAddr) {
 			one := fmt.Sprintf("    prefix {\n        instance-id = %d\n        eid-prefix = %s/32\n        ms-name = ms-%d\n    }\n",
@@ -312,7 +312,7 @@ func createLispEidConfiglet(lispRunDirname string,
 		}
 	}
 	// Append to rlocString based on AppIPAddr
-	log.Printf("lisp: EID %s AppIPAddr %s\n",
+	log.Infof("lisp: EID %s AppIPAddr %s\n",
 		EID.String(), AppIPAddr.String())
 	if AppIPAddr != nil && !EID.Equal(AppIPAddr) {
 		one := fmt.Sprintf("    prefix {\n        instance-id = %d\n        eid-prefix = %s/32\n        ms-name = ms-%d\n    }\n",
@@ -359,7 +359,7 @@ func deleteLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 		cfgPathnameEID = lispRunDirname + "/" + EID.String()
 	}
 	if err := os.Remove(cfgPathnameEID); err != nil {
-		log.Println(err)
+		log.Errorln(err)
 	}
 
 	// XXX can't delete IID file unless refcnt since other EIDs
@@ -378,7 +378,7 @@ func updateLisp(lispRunDirname string,
 		lispRunDirname, globalStatus.UplinkStatus)
 
 	if deferUpdate {
-		log.Printf("updateLisp deferred\n")
+		log.Infof("updateLisp deferred\n")
 		deferLispRunDirname = lispRunDirname
 		deferGlobalStatus = globalStatus
 		return
@@ -386,7 +386,7 @@ func updateLisp(lispRunDirname string,
 
 	tmpfile, err := ioutil.TempFile("/tmp/", "lisp")
 	if err != nil {
-		log.Println("TempFile ", err)
+		log.Errorln("TempFile ", err)
 		return
 	}
 	defer tmpfile.Close()
@@ -395,7 +395,7 @@ func updateLisp(lispRunDirname string,
 	log.Debugf("Copying from %s to %s\n", baseFilename, tmpfile.Name())
 	content, err := ioutil.ReadFile(baseFilename)
 	if err != nil {
-		log.Printf("Reading base configuration file %s failed: %s\n",
+		log.Errorf("Reading base configuration file %s failed: %s\n",
 			baseFilename, err)
 		return
 	}
@@ -409,7 +409,7 @@ func updateLisp(lispRunDirname string,
 	var cnt int64
 	files, err := ioutil.ReadDir(lispRunDirname)
 	if err != nil {
-		log.Println(err)
+		log.Errorln(err)
 		return
 	}
 	eidCount := 0
@@ -423,25 +423,25 @@ func updateLisp(lispRunDirname string,
 			filename, tmpfile.Name())
 		s, err := os.Open(filename)
 		if err != nil {
-			log.Println("os.Open ", filename, err)
+			log.Errorln("os.Open ", filename, err)
 			return
 		}
 		defer s.Close()
 		if cnt, err = io.Copy(tmpfile, s); err != nil {
-			log.Println("io.Copy ", filename, err)
+			log.Errorln("io.Copy ", filename, err)
 			return
 		}
 		log.Debugf("Copied %d bytes from %s\n", cnt, filename)
 	}
 	if err := tmpfile.Close(); err != nil {
-		log.Println("Close ", tmpfile.Name(), err)
+		log.Errorln("Close ", tmpfile.Name(), err)
 		return
 	}
 	// This seems safer; make sure it is stopped before rewriting file
 	stopLisp()
 
 	if err := os.Rename(tmpfile.Name(), destFilename); err != nil {
-		log.Println("Rename ", tmpfile.Name(), destFilename, err)
+		log.Errorln("Rename ", tmpfile.Name(), destFilename, err)
 		return
 	}
 	// XXX We write configuration to lisp.config.orig for debugging
@@ -457,12 +457,12 @@ func updateLisp(lispRunDirname string,
 	awk := wrap.Command("awk", "{print $NF}")
 	awk.Stdin, _ = grep.StdoutPipe()
 	if err := grep.Start(); err != nil {
-		log.Println("grep.Start failed: ", err)
+		log.Errorln("grep.Start failed: ", err)
 		return
 	}
 	intfs, err := awk.Output()
 	if err != nil {
-		log.Println("awk.Output failed: ", err)
+		log.Errorln("awk.Output failed: ", err)
 		return
 	}
 	_ = grep.Wait()
@@ -532,18 +532,18 @@ func restartLisp(upLinkStatus []types.NetworkUplink, devices string) {
 
 	log.Debugf("restartLisp: %v %s\n", upLinkStatus, devices)
 	if len(upLinkStatus) == 0 {
-		log.Printf("Can not restart lisp with no uplinks\n")
+		log.Errorf("Can not restart lisp with no uplinks\n")
 		return
 	}
 	// XXX hack to avoid hang in pslisp on Erik's laptop
 	if broken {
 		// Issue pkill -f lisp-core.pyo
-		log.Printf("Calling pkill -f lisp-core.pyo\n")
+		log.Infof("Calling pkill -f lisp-core.pyo\n")
 		cmd := wrap.Command("pkill", "-f", "lisp-core.pyo")
 		stdoutStderr, err := cmd.CombinedOutput()
 		if err != nil {
-			log.Println("pkill failed ", err)
-			log.Printf("pkill output %s\n", string(stdoutStderr))
+			log.Errorln("pkill failed ", err)
+			log.Errorf("pkill output %s\n", string(stdoutStderr))
 		}
 	}
 	// XXX how to restart with multiple uplinks?
@@ -570,7 +570,7 @@ func restartLisp(upLinkStatus []types.NetworkUplink, devices string) {
 		}
 	}
 	if !found {
-		log.Printf("Can not restart lisp - no usable IP addresses on free uplinks\n")
+		log.Errorf("Can not restart lisp - no usable IP addresses on free uplinks\n")
 		return
 	}
 
@@ -591,11 +591,11 @@ func restartLisp(upLinkStatus []types.NetworkUplink, devices string) {
 	cmd.Env = env
 	stdoutStderr, err := cmd.CombinedOutput()
 	if err != nil {
-		log.Println("RESTART-LISP failed ", err)
-		log.Printf("RESTART-LISP output %s\n", string(stdoutStderr))
+		log.Errorln("RESTART-LISP failed ", err)
+		log.Errorf("RESTART-LISP output %s\n", string(stdoutStderr))
 		return
 	}
-	log.Printf("restartLisp done: output %s\n", string(stdoutStderr))
+	log.Infof("restartLisp done: output %s\n", string(stdoutStderr))
 
 	// Save the restart as a bash command called RL
 	const RLTemplate = "#!/bin/bash\n" +
@@ -662,11 +662,11 @@ func isLispDataPlaneRunning() (bool, []string) {
 	out, err := cmd.Output()
 
 	if err != nil {
-		log.Printf("isLispDataPlaneRunning: %s process is not running: %s\n",
+		log.Infof("isLispDataPlaneRunning: %s process is not running: %s\n",
 			prog, err)
 		return false, []string{}
 	}
-	log.Printf("isLispDataPlaneRunning: Instances of %s is running.\n", prog)
+	log.Infof("isLispDataPlaneRunning: Instances of %s is running.\n", prog)
 	pids := strings.Split(string(out), "\n")
 
 	// The last entry returned by strings.Split is an empty string.
@@ -682,12 +682,12 @@ func stopLisp() {
 	// XXX hack to avoid hang in pslisp on Erik's laptop
 	if broken {
 		// Issue pkill -f lisp-core.pyo
-		log.Printf("Calling pkill -f lisp-core.pyo\n")
+		log.Infof("Calling pkill -f lisp-core.pyo\n")
 		cmd := wrap.Command("pkill", "-f", "lisp-core.pyo")
 		stdoutStderr, err := cmd.CombinedOutput()
 		if err != nil {
-			log.Println("pkill failed ", err)
-			log.Printf("pkill output %s\n", string(stdoutStderr))
+			log.Errorln("pkill failed ", err)
+			log.Errorf("pkill output %s\n", string(stdoutStderr))
 		}
 	}
 
@@ -697,13 +697,13 @@ func stopLisp() {
 	cmd.Env = env
 	stdoutStderr, err := cmd.CombinedOutput()
 	if err != nil {
-		log.Println("STOP-LISP failed ", err)
-		log.Printf("STOP-LISP output %s\n", string(stdoutStderr))
+		log.Errorln("STOP-LISP failed ", err)
+		log.Errorf("STOP-LISP output %s\n", string(stdoutStderr))
 		return
 	}
 	log.Debugf("stopLisp done: output %s\n", string(stdoutStderr))
 	if err = os.Remove(RLFilename); err != nil {
-		log.Println(err)
+		log.Errorln(err)
 		return
 	}
 	log.Debugf("Removed %s\n", RLFilename)

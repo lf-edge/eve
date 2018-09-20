@@ -58,7 +58,7 @@ func createDnsmasqConfiglet(bridgeName string, bridgeIPAddr string,
 	// Delete if it exists
 	if _, err := os.Stat(cfgPathname); err == nil {
 		if err := os.Remove(cfgPathname); err != nil {
-			log.Println(err)
+			log.Errorln(err)
 		}
 	}
 	file, err := os.Create(cfgPathname)
@@ -181,7 +181,7 @@ func createDnsmasqConfiglet(bridgeName string, bridgeIPAddr string,
 				router))
 		}
 	} else {
-		log.Printf("createDnsmasqConfiglet: no router\n")
+		log.Infof("createDnsmasqConfiglet: no router\n")
 		if !isIPv6 {
 			file.WriteString(fmt.Sprintf("dhcp-option=option:router\n"))
 		}
@@ -189,7 +189,7 @@ func createDnsmasqConfiglet(bridgeName string, bridgeIPAddr string,
 			// Handle isolated network by making sure
 			// we are not a DNS server. Can be overridden
 			// with the DnsServers above
-			log.Printf("createDnsmasqConfiglet: no DNS server\n")
+			log.Infof("createDnsmasqConfiglet: no DNS server\n")
 			file.WriteString(fmt.Sprintf("dhcp-option=option:dns-server\n"))
 		}
 	}
@@ -207,7 +207,7 @@ func createDnsmasqConfiglet(bridgeName string, bridgeIPAddr string,
 func addhostDnsmasq(bridgeName string, appMac string, appIPAddr string,
 	hostname string) {
 
-	log.Printf("addhostDnsmasq(%s, %s, %s, %s)\n", bridgeName, appMac,
+	log.Infof("addhostDnsmasq(%s, %s, %s, %s)\n", bridgeName, appMac,
 		appIPAddr, hostname)
 	ip := net.ParseIP(appIPAddr)
 	if ip == nil {
@@ -238,7 +238,7 @@ func addhostDnsmasq(bridgeName string, appMac string, appIPAddr string,
 }
 
 func removehostDnsmasq(bridgeName string, appMac string, appIPAddr string) {
-	log.Printf("removehostDnsmasq(%s, %s, %s)\n",
+	log.Infof("removehostDnsmasq(%s, %s, %s)\n",
 		bridgeName, appMac, appIPAddr)
 
 	ip := net.ParseIP(appIPAddr)
@@ -256,12 +256,12 @@ func removehostDnsmasq(bridgeName string, appMac string, appIPAddr string) {
 
 	cfgPathname := dhcphostsDir + "/" + appMac + suffix
 	if _, err := os.Stat(cfgPathname); err != nil {
-		log.Printf("removehostDnsmasq(%s, %s) failed: %s\n",
+		log.Infof("removehostDnsmasq(%s, %s) failed: %s\n",
 			bridgeName, appMac, err)
 		return
 	}
 	if err := os.Remove(cfgPathname); err != nil {
-		log.Println(err)
+		log.Errorln(err)
 	}
 }
 
@@ -270,11 +270,11 @@ func deleteDnsmasqConfiglet(bridgeName string) {
 	log.Debugf("deleteDnsmasqConfiglet(%s)\n", bridgeName)
 	cfgPathname := dnsmasqConfigPath(bridgeName)
 	if err := os.Remove(cfgPathname); err != nil {
-		log.Println(err)
+		log.Errorln(err)
 	}
 	dhcphostsDir := dnsmasqDhcpHostDir(bridgeName)
 	if err := os.RemoveAll(dhcphostsDir); err != nil {
-		log.Println(err)
+		log.Errorln(err)
 	}
 	// XXX also delete hostsDir?
 }

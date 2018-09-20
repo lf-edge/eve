@@ -48,7 +48,7 @@ func deleteRadvdConfiglet(cfgPathname string) {
 
 	log.Debugf("createRadvdConfiglet: %s\n", cfgPathname)
 	if err := os.Remove(cfgPathname); err != nil {
-		log.Println(err)
+		log.Errorln(err)
 	}
 }
 

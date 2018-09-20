@@ -136,7 +136,7 @@ func PbrRouteChange(deviceUplinkConfig *types.DeviceUplinkConfig,
 	ifname, _, err := IfindexToName(rt.LinkIndex)
 	if err != nil {
 		// We'll check on ifname when we see a linkchange
-		log.Printf("PbrRouteChange IfindexToName failed for %d: %s\n",
+		log.Errorf("PbrRouteChange IfindexToName failed for %d: %s\n",
 			rt.LinkIndex, err)
 	} else {
 		if devicenetwork.IsFreeUplink(*deviceUplinkConfig, ifname) {
@@ -170,24 +170,24 @@ func PbrRouteChange(deviceUplinkConfig *types.DeviceUplinkConfig,
 		log.Debugf("Received route del %v\n", rt)
 		if doFreeTable {
 			if err := netlink.RouteDel(&srt); err != nil {
-				log.Printf("Failed to remove %v from %d: %s\n",
+				log.Errorf("Failed to remove %v from %d: %s\n",
 					srt, srt.Table, err)
 			}
 		}
 		if err := netlink.RouteDel(&myrt); err != nil {
-			log.Printf("Failed to remove %v from %d: %s\n",
+			log.Errorf("Failed to remove %v from %d: %s\n",
 				myrt, myrt.Table, err)
 		}
 	} else if change.Type == syscall.RTM_NEWROUTE {
 		log.Debugf("Received route add %v\n", rt)
 		if doFreeTable {
 			if err := netlink.RouteAdd(&srt); err != nil {
-				log.Printf("Failed to add %v to %d: %s\n",
+				log.Errorf("Failed to add %v to %d: %s\n",
 					srt, srt.Table, err)
 			}
 		}
 		if err := netlink.RouteAdd(&myrt); err != nil {
-			log.Printf("Failed to add %v to %d: %s\n",
+			log.Errorf("Failed to add %v to %d: %s\n",
 				myrt, myrt.Table, err)
 		}
 	}
@@ -207,7 +207,7 @@ func PbrAddrChange(deviceUplinkConfig *types.DeviceUplinkConfig,
 		if changed {
 			_, linkType, err := IfindexToName(change.LinkIndex)
 			if err != nil {
-				log.Printf("XXX NewAddr IfindexToName(%d) failed %s\n",
+				log.Errorf("XXX NewAddr IfindexToName(%d) failed %s\n",
 					change.LinkIndex, err)
 			}
 			// XXX only call for uplinks and bridges?
@@ -217,7 +217,7 @@ func PbrAddrChange(deviceUplinkConfig *types.DeviceUplinkConfig,
 	} else if change.LinkIndex == 0 {
 		// XXX why?
 		if once {
-			log.Printf("XXX PbrAddrChange: index 0 for %s\n",
+			log.Errorf("XXX PbrAddrChange: index 0 for %s\n",
 				change.LinkAddress.String())
 			once = false
 		}
@@ -227,7 +227,7 @@ func PbrAddrChange(deviceUplinkConfig *types.DeviceUplinkConfig,
 		if changed {
 			_, linkType, err := IfindexToName(change.LinkIndex)
 			if err != nil {
-				log.Printf("XXX DelAddr IfindexToName(%d) failed %s\n",
+				log.Errorf("XXX DelAddr IfindexToName(%d) failed %s\n",
 					change.LinkIndex, err)
 			}
 			// XXX only call for uplinks and bridges?
@@ -238,7 +238,7 @@ func PbrAddrChange(deviceUplinkConfig *types.DeviceUplinkConfig,
 	if changed {
 		ifname, _, err := IfindexToName(change.LinkIndex)
 		if err != nil {
-			log.Printf("PbrAddrChange IfindexToName failed for %d: %s\n",
+			log.Errorf("PbrAddrChange IfindexToName failed for %d: %s\n",
 				change.LinkIndex, err)
 		} else if devicenetwork.IsUplink(*deviceUplinkConfig, ifname) {
 			log.Debugf("Address change for uplink: %v\n", change)
@@ -260,7 +260,7 @@ func PbrLinkChange(deviceUplinkConfig *types.DeviceUplinkConfig,
 	ifindex := change.Attrs().Index
 	ifname := change.Attrs().Name
 	linkType := change.Link.Type()
-	log.Printf("PbrLinkChange: index %d name %s type %s\n", ifindex, ifname,
+	log.Infof("PbrLinkChange: index %d name %s type %s\n", ifindex, ifname,
 		linkType)
 	switch change.Header.Type {
 	case syscall.RTM_NEWLINK:
@@ -376,7 +376,7 @@ func IfindexToNameAdd(index int, linkName string, linkType string) bool {
 	if !ok {
 		// Note that we get RTM_NEWLINK even for link changes
 		// hence we don't print unless the entry is new
-		log.Printf("IfindexToNameAdd index %d name %s type %s\n",
+		log.Infof("IfindexToNameAdd index %d name %s type %s\n",
 			index, linkName, linkType)
 		ifindexToName[index] = linkNameType{
 			linkName: linkName,
@@ -387,7 +387,7 @@ func IfindexToNameAdd(index int, linkName string, linkType string) bool {
 	} else if m.linkName != linkName {
 		// We get this when the vifs are created with "vif*" names
 		// and then changed to "bu*" etc.
-		log.Printf("IfindexToNameAdd name mismatch %s vs %s for %d\n",
+		log.Infof("IfindexToNameAdd name mismatch %s vs %s for %d\n",
 			m.linkName, linkName, index)
 		ifindexToName[index] = linkNameType{
 			linkName: linkName,
@@ -404,10 +404,10 @@ func IfindexToNameAdd(index int, linkName string, linkType string) bool {
 func IfindexToNameDel(index int, linkName string) bool {
 	m, ok := ifindexToName[index]
 	if !ok {
-		log.Printf("IfindexToNameDel unknown index %d\n", index)
+		log.Errorf("IfindexToNameDel unknown index %d\n", index)
 		return false
 	} else if m.linkName != linkName {
-		log.Printf("IfindexToNameDel name mismatch %s vs %s for %d\n",
+		log.Errorf("IfindexToNameDel name mismatch %s vs %s for %d\n",
 			m.linkName, linkName, index)
 		delete(ifindexToName, index)
 		// log.Debugf("ifindexToName post delete %v\n", ifindexToName)
@@ -434,7 +434,7 @@ func IfindexToName(index int) (string, string, error) {
 	}
 	linkName := link.Attrs().Name
 	linkType := link.Type()
-	log.Printf("IfindexToName(%d) fallback lookup done: %s, %s\n",
+	log.Errorf("IfindexToName(%d) fallback lookup done: %s, %s\n",
 		index, linkName, linkType)
 	return linkName, linkType, nil
 }
@@ -486,7 +486,7 @@ func IfindexToAddrsAdd(index int, addr net.IPNet) bool {
 func IfindexToAddrsDel(index int, addr net.IPNet) bool {
 	addrs, ok := ifindexToAddrs[index]
 	if !ok {
-		log.Printf("IfindexToAddrsDel unknown index %d\n", index)
+		log.Infof("IfindexToAddrsDel unknown index %d\n", index)
 		// XXX error?
 		return false
 	}
@@ -503,7 +503,7 @@ func IfindexToAddrsDel(index int, addr net.IPNet) bool {
 			return true
 		}
 	}
-	log.Printf("IfindexToAddrsDel address not found for %d in\n",
+	log.Infof("IfindexToAddrsDel address not found for %d in\n",
 		index, addrs)
 	return false
 }
@@ -543,7 +543,7 @@ func flushRoutesTable(table int, ifindex int) {
 			table, ifindex, rt)
 		if err := netlink.RouteDel(&rt); err != nil {
 			// XXX was Fatalf
-			log.Printf("flushRoutesTable - RouteDel %v failed %s\n",
+			log.Errorf("flushRoutesTable - RouteDel %v failed %s\n",
 				rt, err)
 		}
 	}
@@ -593,7 +593,7 @@ func moveRoutesTable(srcTable int, ifindex int, dstTable int) {
 		log.Debugf("moveRoutesTable(%d, %d, %d) adding %v\n",
 			srcTable, ifindex, dstTable, art)
 		if err := netlink.RouteAdd(&art); err != nil {
-			log.Printf("moveRoutesTable failed to add %v to %d: %s\n",
+			log.Errorf("moveRoutesTable failed to add %v to %d: %s\n",
 				art, art.Table, err)
 		}
 	}
@@ -651,7 +651,7 @@ func addSourceRule(ifindex int, p net.IPNet, bridge bool) {
 	// Avoid duplicate rules
 	_ = netlink.RuleDel(r)
 	if err := netlink.RuleAdd(r); err != nil {
-		log.Printf("RuleAdd %v failed with %s\n", r, err)
+		log.Errorf("RuleAdd %v failed with %s\n", r, err)
 		return
 	}
 }
@@ -681,7 +681,7 @@ func delSourceRule(ifindex int, p net.IPNet, bridge bool) {
 	}
 	log.Debugf("delSourceRule: RuleDel %v\n", r)
 	if err := netlink.RuleDel(r); err != nil {
-		log.Printf("RuleDel %v failed with %s\n", r, err)
+		log.Errorf("RuleDel %v failed with %s\n", r, err)
 		return
 	}
 }
