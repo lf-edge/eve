@@ -15,14 +15,14 @@ import (
 
 // Find all the config and config which refer to this safename.
 func updateAIStatusSafename(ctx *zedmanagerContext, safename string) {
-	log.Printf("updateAIStatusSafename for %s\n", safename)
 
+	log.Infof("updateAIStatusSafename for %s\n", safename)
 	sub := ctx.subAppInstanceConfig
 	items := sub.GetAll()
 	for key, c := range items {
 		config := cast.CastAppInstanceConfig(c)
 		if config.Key() != key {
-			log.Printf("updateAIStatusSafename key/UUID mismatch %s vs %s; ignored %+v\n",
+			log.Errorf("updateAIStatusSafename key/UUID mismatch %s vs %s; ignored %+v\n",
 				key, config.Key(), config)
 			continue
 		}
@@ -31,7 +31,7 @@ func updateAIStatusSafename(ctx *zedmanagerContext, safename string) {
 		for _, sc := range config.StorageConfigList {
 			safename2 := types.UrlToSafename(sc.Name, sc.ImageSha256)
 			if safename == safename2 {
-				log.Printf("Found StorageConfig URL %s safename %s\n",
+				log.Infof("Found StorageConfig URL %s safename %s\n",
 					sc.Name, safename2)
 				updateAIStatusUUID(ctx,
 					config.Key())
@@ -45,19 +45,19 @@ func updateAIStatusSafename(ctx *zedmanagerContext, safename string) {
 func updateAIStatusUUID(ctx *zedmanagerContext, uuidStr string) {
 	config := lookupAppInstanceConfig(ctx, uuidStr)
 	if config == nil {
-		log.Printf("updateAIStatusUUID for %s: Missing AppInstanceConfig\n",
+		log.Infof("updateAIStatusUUID for %s: Missing AppInstanceConfig\n",
 			uuidStr)
 		return
 	}
 	status := lookupAppInstanceStatus(ctx, uuidStr)
 	if status == nil {
-		log.Printf("updateAIStatusUUID for %s: Missing AppInstanceStatus\n",
+		log.Infof("updateAIStatusUUID for %s: Missing AppInstanceStatus\n",
 			uuidStr)
 		return
 	}
 	changed := doUpdate(ctx, uuidStr, *config, status)
 	if changed {
-		log.Printf("updateAIStatusUUID status change for %s\n",
+		log.Infof("updateAIStatusUUID status change for %s\n",
 			uuidStr)
 		publishAppInstanceStatus(ctx, status)
 	}
@@ -68,7 +68,7 @@ func updateAIStatusUUID(ctx *zedmanagerContext, uuidStr string) {
 func removeAIStatusUUID(ctx *zedmanagerContext, uuidStr string) {
 	status := lookupAppInstanceStatus(ctx, uuidStr)
 	if status == nil {
-		log.Printf("removeAIStatusUUID for %s: Missing AppInstanceStatus\n",
+		log.Infof("removeAIStatusUUID for %s: Missing AppInstanceStatus\n",
 			uuidStr)
 		return
 	}
@@ -79,12 +79,12 @@ func removeAIStatus(ctx *zedmanagerContext, status *types.AppInstanceStatus) {
 	uuidStr := status.Key()
 	changed, del := doRemove(ctx, uuidStr, status)
 	if changed {
-		log.Printf("removeAIStatus status change for %s\n",
+		log.Infof("removeAIStatus status change for %s\n",
 			uuidStr)
 		publishAppInstanceStatus(ctx, status)
 	}
 	if del {
-		log.Printf("removeAIStatus remove done for %s\n",
+		log.Infof("removeAIStatus remove done for %s\n",
 			uuidStr)
 		// Write out what we modified to AppInstanceStatus aka delete
 		unpublishAppInstanceStatus(ctx, status)
@@ -93,14 +93,14 @@ func removeAIStatus(ctx *zedmanagerContext, status *types.AppInstanceStatus) {
 
 // Find all the Status which refer to this safename.
 func removeAIStatusSafename(ctx *zedmanagerContext, safename string) {
-	log.Printf("removeAIStatusSafename for %s\n", safename)
 
+	log.Infof("removeAIStatusSafename for %s\n", safename)
 	pub := ctx.pubAppInstanceStatus
 	items := pub.GetAll()
 	for key, st := range items {
 		status := cast.CastAppInstanceStatus(st)
 		if status.Key() != key {
-			log.Printf("removeAIStatusSafename key/UUID mismatch %s vs %s; ignored %+v\n",
+			log.Errorf("removeAIStatusSafename key/UUID mismatch %s vs %s; ignored %+v\n",
 				key, status.Key(), status)
 			continue
 		}
@@ -120,7 +120,7 @@ func removeAIStatusSafename(ctx *zedmanagerContext, safename string) {
 func doUpdate(ctx *zedmanagerContext, uuidStr string,
 	config types.AppInstanceConfig, status *types.AppInstanceStatus) bool {
 
-	log.Printf("doUpdate for %s\n", uuidStr)
+	log.Infof("doUpdate for %s\n", uuidStr)
 
 	// The existence of Config is interpreted to mean the
 	// AppInstance should be INSTALLED. Activate is checked separately.
@@ -136,7 +136,7 @@ func doUpdate(ctx *zedmanagerContext, uuidStr string,
 			// If we have a !ReadOnly disk this will create a copy
 			err := MaybeAddDomainConfig(ctx, config, nil)
 			if err != nil {
-				log.Printf("Error from MaybeAddDomainConfig for %s: %s\n",
+				log.Errorf("Error from MaybeAddDomainConfig for %s: %s\n",
 					uuidStr, err)
 				status.State = types.INITIAL
 				status.Error = fmt.Sprintf("%s", err)
@@ -144,20 +144,20 @@ func doUpdate(ctx *zedmanagerContext, uuidStr string,
 				changed = true
 			}
 		}
-		log.Printf("Waiting for config.Activate for %s\n", uuidStr)
+		log.Infof("Waiting for config.Activate for %s\n", uuidStr)
 		return changed
 	}
-	log.Printf("Have config.Activate for %s\n", uuidStr)
+	log.Infof("Have config.Activate for %s\n", uuidStr)
 	c := doActivate(ctx, uuidStr, config, status)
 	changed = changed || c
-	log.Printf("doUpdate done for %s\n", uuidStr)
+	log.Infof("doUpdate done for %s\n", uuidStr)
 	return changed
 }
 
 func doInstall(ctx *zedmanagerContext, uuidStr string,
 	config types.AppInstanceConfig, status *types.AppInstanceStatus) (bool, bool) {
 
-	log.Printf("doInstall for %s\n", uuidStr)
+	log.Infof("doInstall for %s\n", uuidStr)
 	minState := types.MAXSTATE
 	allErrors := ""
 	var errorTime time.Time
@@ -167,7 +167,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		errString := fmt.Sprintf("Mismatch in storageConfig vs. Status length: %d vs %d\n",
 			len(config.StorageConfigList),
 			len(status.StorageStatusList))
-		log.Println(errString)
+		log.Errorln(errString)
 		status.State = types.INITIAL
 		status.Error = errString
 		status.ErrorTime = time.Now()
@@ -182,7 +182,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 			errString := fmt.Sprintf("Mismatch in storageConfig vs. Status:\n\t%s\n\t%s\n\t%s\n\t%s\n\n",
 				sc.Name, ss.Name,
 				sc.ImageSha256, ss.ImageSha256)
-			log.Println(errString)
+			log.Errorln(errString)
 			status.State = types.INITIAL
 			status.Error = errString
 			status.ErrorTime = time.Now()
@@ -195,7 +195,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		errString := fmt.Sprintf("Mismatch in OLList config vs. status length: %d vs %d\n",
 			len(config.OverlayNetworkList),
 			len(status.EIDList))
-		log.Println(errString)
+		log.Errorln(errString)
 		status.State = types.INITIAL
 		status.Error = errString
 		status.ErrorTime = time.Now()
@@ -206,23 +206,23 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 	for i, sc := range config.StorageConfigList {
 		ss := &status.StorageStatusList[i]
 		safename := types.UrlToSafename(sc.Name, sc.ImageSha256)
-		log.Printf("Found StorageConfig URL %s safename %s\n",
+		log.Infof("Found StorageConfig URL %s safename %s\n",
 			sc.Name, safename)
 
 		// Shortcut if image is already verified
 		vs := lookupVerifyImageStatusAny(ctx, safename,
 			sc.ImageSha256)
 		if vs != nil && !vs.Pending() && vs.State == types.DELIVERED {
-			log.Printf("doUpdate found verified image for %s sha %s\n",
+			log.Infof("doUpdate found verified image for %s sha %s\n",
 				safename, sc.ImageSha256)
 			if vs.Safename != safename {
 				// If found based on sha256
-				log.Printf("doUpdate found diff safename %s\n",
+				log.Infof("doUpdate found diff safename %s\n",
 					vs.Safename)
 			}
 			// If we don't already have a RefCount add one
 			if !ss.HasVerifierRef {
-				log.Printf("doUpdate !HasVerifierRef vs. RefCount %d for %s\n",
+				log.Infof("doUpdate !HasVerifierRef vs. RefCount %d for %s\n",
 					vs.RefCount, vs.Safename)
 				// We don't need certs since Status already
 				// exists
@@ -241,7 +241,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 			continue
 		}
 		if !ss.HasDownloaderRef {
-			log.Printf("doUpdate !HasDownloaderRef for %s\n",
+			log.Infof("doUpdate !HasDownloaderRef for %s\n",
 				safename)
 			dst, err := lookupDatastoreConfig(ctx, sc.DatastoreId,
 				sc.Name)
@@ -260,7 +260,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		}
 		ds := lookupDownloaderStatus(ctx, safename)
 		if ds == nil || ds.Pending() {
-			log.Printf("lookupDownloaderStatus %s failed\n",
+			log.Infof("lookupDownloaderStatus %s failed\n",
 				safename)
 			minState = types.DOWNLOAD_STARTED
 			continue
@@ -274,7 +274,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		}
 		switch ds.State {
 		case types.INITIAL:
-			log.Printf("Received error from downloader for %s: %s\n",
+			log.Errorf("Received error from downloader for %s: %s\n",
 				safename, ds.LastErr)
 			ss.Error = ds.LastErr
 			allErrors = appendError(allErrors, "downloader",
@@ -306,30 +306,30 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 	status.Error = allErrors
 	status.ErrorTime = errorTime
 	if minState == types.INITIAL {
-		log.Printf("Download error for %s\n", uuidStr)
+		log.Errorf("Download error for %s\n", uuidStr)
 		return changed, false
 	}
 
 	if minState < types.DOWNLOADED {
-		log.Printf("Waiting for all downloads for %s\n", uuidStr)
+		log.Infof("Waiting for all downloads for %s\n", uuidStr)
 		return changed, false
 	}
 	if waitingForCerts {
-		log.Printf("Waiting for certs for %s\n", uuidStr)
+		log.Infof("Waiting for certs for %s\n", uuidStr)
 		return changed, false
 	}
-	log.Printf("Done with downloads for %s\n", uuidStr)
+	log.Infof("Done with downloads for %s\n", uuidStr)
 	minState = types.MAXSTATE
 	for i, sc := range config.StorageConfigList {
 		ss := &status.StorageStatusList[i]
 		safename := types.UrlToSafename(sc.Name, sc.ImageSha256)
-		log.Printf("Found StorageConfig URL %s safename %s\n",
+		log.Infof("Found StorageConfig URL %s safename %s\n",
 			sc.Name, safename)
 
 		vs := lookupVerifyImageStatusAny(ctx, safename,
 			sc.ImageSha256)
 		if vs == nil || vs.Pending() {
-			log.Printf("lookupVerifyImageStatusAny %s sha %s failed\n",
+			log.Infof("lookupVerifyImageStatusAny %s sha %s failed\n",
 				safename, sc.ImageSha256)
 			minState = types.DOWNLOADED
 			continue
@@ -343,7 +343,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		}
 		switch vs.State {
 		case types.INITIAL:
-			log.Printf("Received error from verifier for %s: %s\n",
+			log.Errorf("Received error from verifier for %s: %s\n",
 				safename, vs.LastErr)
 			ss.Error = vs.LastErr
 			allErrors = appendError(allErrors, "verifier",
@@ -353,7 +353,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 			changed = true
 		default:
 			ss.ActiveFileLocation = finalDirname + "/" + vs.Safename
-			log.Printf("Update SSL ActiveFileLocation for %s: %s\n",
+			log.Infof("Update SSL ActiveFileLocation for %s: %s\n",
 				uuidStr, ss.ActiveFileLocation)
 			changed = true
 		}
@@ -366,15 +366,15 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 	status.Error = allErrors
 	status.ErrorTime = errorTime
 	if minState == types.INITIAL {
-		log.Printf("Verify error for %s\n", uuidStr)
+		log.Errorf("Verify error for %s\n", uuidStr)
 		return changed, false
 	}
 
 	if minState < types.DELIVERED {
-		log.Printf("Waiting for all verifications for %s\n", uuidStr)
+		log.Infof("Waiting for all verifications for %s\n", uuidStr)
 		return changed, false
 	}
-	log.Printf("Done with verifications for %s\n", uuidStr)
+	log.Infof("Done with verifications for %s\n", uuidStr)
 	// XXX could allocate EIDs before we download for better parallelism
 	// with zedcloud
 	// Make sure we have an EIDConfig for each overlay
@@ -388,30 +388,30 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		key := types.EidKey(config.UUIDandVersion, ec.IID)
 		es := lookupEIDStatus(ctx, key)
 		if es == nil || es.Pending() {
-			log.Printf("lookupEIDStatus %s failed\n",
+			log.Infof("lookupEIDStatus %s failed\n",
 				key)
 			eidsAllocated = false
 			continue
 		}
 		status.EIDList[i] = es.EIDStatusDetails
 		if status.EIDList[i].EID == nil {
-			log.Printf("Missing EID for %s\n", key)
+			log.Infof("Missing EID for %s\n", key)
 			eidsAllocated = false
 		} else {
-			log.Printf("Found EID %v for %s\n",
+			log.Infof("Found EID %v for %s\n",
 				status.EIDList[i].EID, key)
 			changed = true
 		}
 	}
 	if !eidsAllocated {
-		log.Printf("Waiting for all EID allocations for %s\n", uuidStr)
+		log.Infof("Waiting for all EID allocations for %s\n", uuidStr)
 		return changed, false
 	}
 	// Automatically move from DELIVERED to INSTALLED
 	status.State = types.INSTALLED
 	changed = true
-	log.Printf("Done with EID allocations for %s\n", uuidStr)
-	log.Printf("doInstall done for %s\n", uuidStr)
+	log.Infof("Done with EID allocations for %s\n", uuidStr)
+	log.Infof("doInstall done for %s\n", uuidStr)
 	return changed, true
 }
 
@@ -426,14 +426,14 @@ func lookupDatastoreConfig(ctx *zedmanagerContext,
 	if datastoreId == nilUUID {
 		errStr := fmt.Sprintf("lookupDatastoreConfig(%s) for %s: No datastore ID",
 			datastoreId.String(), name)
-		log.Println(errStr)
+		log.Errorln(errStr)
 		return nil, errors.New(errStr)
 	}
 	cfg, err := ctx.subDatastoreConfig.Get(datastoreId.String())
 	if err != nil {
 		errStr := fmt.Sprintf("lookupDatastoreConfig(%s) for %s: %v",
 			datastoreId.String(), name, err)
-		log.Println(errStr)
+		log.Errorln(errStr)
 		return nil, errors.New(errStr)
 	}
 	dst := cast.CastDatastoreConfig(cfg)
@@ -443,7 +443,7 @@ func lookupDatastoreConfig(ctx *zedmanagerContext,
 func doActivate(ctx *zedmanagerContext, uuidStr string,
 	config types.AppInstanceConfig, status *types.AppInstanceStatus) bool {
 
-	log.Printf("doActivate for %s\n", uuidStr)
+	log.Infof("doActivate for %s\n", uuidStr)
 	changed := false
 
 	// Track that we have cleanup work in case something fails
@@ -455,11 +455,11 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	// Check AppNetworkStatus
 	ns := lookupAppNetworkStatus(ctx, uuidStr)
 	if ns == nil || ns.Pending() {
-		log.Printf("Waiting for AppNetworkStatus for %s\n", uuidStr)
+		log.Infof("Waiting for AppNetworkStatus for %s\n", uuidStr)
 		return changed
 	}
 	if ns.Error != "" {
-		log.Printf("Received error from zedrouter for %s: %s\n",
+		log.Errorf("Received error from zedrouter for %s: %s\n",
 			uuidStr, ns.Error)
 		status.State = types.INITIAL
 		status.Error = ns.Error
@@ -472,13 +472,13 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	// Make sure we have a DomainConfig
 	err := MaybeAddDomainConfig(ctx, config, ns)
 	if err != nil {
-		log.Printf("Error from MaybeAddDomainConfig for %s: %s\n",
+		log.Errorf("Error from MaybeAddDomainConfig for %s: %s\n",
 			uuidStr, err)
 		status.State = types.INITIAL
 		status.Error = fmt.Sprintf("%s", err)
 		status.ErrorTime = time.Now()
 		changed = true
-		log.Printf("Waiting for DomainStatus Activated for %s\n",
+		log.Infof("Waiting for DomainStatus Activated for %s\n",
 			uuidStr)
 		return changed
 	}
@@ -486,20 +486,20 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	// Check DomainStatus; update AppInstanceStatus if error
 	ds := lookupDomainStatus(ctx, uuidStr)
 	if ds == nil || ds.Pending() {
-		log.Printf("Waiting for DomainStatus for %s\n", uuidStr)
+		log.Infof("Waiting for DomainStatus for %s\n", uuidStr)
 		return changed
 	}
 	// Look for xen errors.
 	if !ds.Activated {
 		if ds.LastErr != "" {
-			log.Printf("Received error from domainmgr for %s: %s\n",
+			log.Errorf("Received error from domainmgr for %s: %s\n",
 				uuidStr, ds.LastErr)
 			status.State = types.INITIAL
 			status.Error = ds.LastErr
 			status.ErrorTime = ds.LastErrTime
 			changed = true
 		}
-		log.Printf("Waiting for DomainStatus Activated for %s\n",
+		log.Infof("Waiting for DomainStatus Activated for %s\n",
 			uuidStr)
 		return changed
 	}
@@ -511,10 +511,10 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 			ss := &status.StorageStatusList[i]
 			if ss.ImageSha256 == disk.ImageSha256 {
 				found = true
-				log.Printf("Found SSL ActiveFileLocation for %s: %s\n",
+				log.Infof("Found SSL ActiveFileLocation for %s: %s\n",
 					uuidStr, disk.ActiveFileLocation)
 				if ss.ActiveFileLocation != disk.ActiveFileLocation {
-					log.Printf("Update SSL ActiveFileLocation for %s: %s\n",
+					log.Infof("Update SSL ActiveFileLocation for %s: %s\n",
 						uuidStr, disk.ActiveFileLocation)
 					ss.ActiveFileLocation = disk.ActiveFileLocation
 					changed = true
@@ -522,25 +522,25 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 			}
 		}
 		if !found {
-			log.Printf("No SSL ActiveFileLocation for %s: %s\n",
+			log.Infof("No SSL ActiveFileLocation for %s: %s\n",
 				uuidStr, disk.ActiveFileLocation)
 		}
 	}
-	log.Printf("Done with DomainStatus for %s\n", uuidStr)
+	log.Infof("Done with DomainStatus for %s\n", uuidStr)
 
 	if !status.Activated {
 		status.Activated = true
 		status.ActivateInprogress = false
 		changed = true
 	}
-	log.Printf("doActivate done for %s\n", uuidStr)
+	log.Infof("doActivate done for %s\n", uuidStr)
 	return changed
 }
 
 func doRemove(ctx *zedmanagerContext, uuidStr string,
 	status *types.AppInstanceStatus) (bool, bool) {
 
-	log.Printf("doRemove for %s\n", uuidStr)
+	log.Infof("doRemove for %s\n", uuidStr)
 
 	changed := false
 	del := false
@@ -553,14 +553,14 @@ func doRemove(ctx *zedmanagerContext, uuidStr string,
 		changed = changed || c
 		del = del || d
 	}
-	log.Printf("doRemove done for %s\n", uuidStr)
+	log.Infof("doRemove done for %s\n", uuidStr)
 	return changed, del
 }
 
 func doInactivate(ctx *zedmanagerContext, uuidStr string,
 	status *types.AppInstanceStatus) bool {
 
-	log.Printf("doInactivate for %s\n", uuidStr)
+	log.Infof("doInactivate for %s\n", uuidStr)
 	changed := false
 
 	// First halt the domain
@@ -569,11 +569,11 @@ func doInactivate(ctx *zedmanagerContext, uuidStr string,
 	// Check if DomainStatus gone; update AppInstanceStatus if error
 	ds := lookupDomainStatus(ctx, uuidStr)
 	if ds != nil {
-		log.Printf("Waiting for DomainStatus removal for %s\n", uuidStr)
+		log.Infof("Waiting for DomainStatus removal for %s\n", uuidStr)
 		// Look for xen errors.
 		if !ds.Activated {
 			if ds.LastErr != "" {
-				log.Printf("Received error from domainmgr for %s: %s\n",
+				log.Errorf("Received error from domainmgr for %s: %s\n",
 					uuidStr, ds.LastErr)
 				status.State = types.INITIAL
 				status.Error = ds.LastErr
@@ -584,17 +584,17 @@ func doInactivate(ctx *zedmanagerContext, uuidStr string,
 		return changed
 	}
 
-	log.Printf("Done with DomainStatus removal for %s\n", uuidStr)
+	log.Infof("Done with DomainStatus removal for %s\n", uuidStr)
 
 	unpublishAppNetworkConfig(ctx, uuidStr)
 
 	// Check if AppNetworkStatus gone
 	ns := lookupAppNetworkStatus(ctx, uuidStr)
 	if ns != nil {
-		log.Printf("Waiting for AppNetworkStatus removal for %s\n",
+		log.Infof("Waiting for AppNetworkStatus removal for %s\n",
 			uuidStr)
 		if ns.Error != "" {
-			log.Printf("Received error from zedrouter for %s: %s\n",
+			log.Errorf("Received error from zedrouter for %s: %s\n",
 				uuidStr, ns.Error)
 			status.State = types.INITIAL
 			status.Error = ns.Error
@@ -606,14 +606,14 @@ func doInactivate(ctx *zedmanagerContext, uuidStr string,
 	log.Debugf("Done with AppNetworkStatus removal for %s\n", uuidStr)
 	status.Activated = false
 	status.ActivateInprogress = false
-	log.Printf("doInactivate done for %s\n", uuidStr)
+	log.Infof("doInactivate done for %s\n", uuidStr)
 	return changed
 }
 
 func doUninstall(ctx *zedmanagerContext, uuidStr string,
 	status *types.AppInstanceStatus) (bool, bool) {
 
-	log.Printf("doUninstall for %s\n", uuidStr)
+	log.Infof("doUninstall for %s\n", uuidStr)
 	changed := false
 	del := false
 
@@ -627,7 +627,7 @@ func doUninstall(ctx *zedmanagerContext, uuidStr string,
 		key := types.EidKey(status.UUIDandVersion, es.IID)
 		es := lookupEIDStatus(ctx, key)
 		if es != nil {
-			log.Printf("lookupEIDStatus not gone on remove for %s\n",
+			log.Infof("lookupEIDStatus not gone on remove for %s\n",
 				key)
 			eidsFreed = false
 			continue
@@ -636,7 +636,7 @@ func doUninstall(ctx *zedmanagerContext, uuidStr string,
 		changed = true
 	}
 	if !eidsFreed {
-		log.Printf("Waiting for all EID frees for %s\n", uuidStr)
+		log.Infof("Waiting for all EID frees for %s\n", uuidStr)
 		return changed, del
 	}
 	log.Debugf("Done with EID frees for %s\n", uuidStr)
@@ -653,14 +653,14 @@ func doUninstall(ctx *zedmanagerContext, uuidStr string,
 		vs := lookupVerifyImageStatusSha256(ctx, ss.ImageSha256)
 		// XXX if additional refs it will not go away
 		if false && vs != nil {
-			log.Printf("lookupVerifyImageStatus %s not yet gone\n",
+			log.Infof("lookupVerifyImageStatus %s not yet gone\n",
 				ss.ImageSha256)
 			removedAll = false
 			continue
 		}
 	}
 	if !removedAll {
-		log.Printf("Waiting for all verify removes for %s\n", uuidStr)
+		log.Infof("Waiting for all verify removes for %s\n", uuidStr)
 		return changed, del
 	}
 	log.Debugf("Done with all verify removes for %s\n", uuidStr)
@@ -680,20 +680,20 @@ func doUninstall(ctx *zedmanagerContext, uuidStr string,
 		ds := lookupDownloaderStatus(ctx, ss.ImageSha256)
 		// XXX if additional refs it will not go away
 		if false && ds != nil {
-			log.Printf("lookupDownloaderStatus %s not yet gone\n",
+			log.Infof("lookupDownloaderStatus %s not yet gone\n",
 				safename)
 			removedAll = false
 			continue
 		}
 	}
 	if !removedAll {
-		log.Printf("Waiting for all downloader removes for %s\n", uuidStr)
+		log.Infof("Waiting for all downloader removes for %s\n", uuidStr)
 		return changed, del
 	}
 	log.Debugf("Done with all verify removes for %s\n", uuidStr)
 
 	del = true
-	log.Printf("doUninstall done for %s\n", uuidStr)
+	log.Infof("doUninstall done for %s\n", uuidStr)
 	return changed, del
 }
 
@@ -701,17 +701,17 @@ func doUninstall(ctx *zedmanagerContext, uuidStr string,
 func doInactivateHalt(ctx *zedmanagerContext, uuidStr string,
 	config types.AppInstanceConfig, status *types.AppInstanceStatus) bool {
 
-	log.Printf("doInactivateHalt for %s\n", uuidStr)
+	log.Infof("doInactivateHalt for %s\n", uuidStr)
 	changed := false
 
 	// Check AppNetworkStatus
 	ns := lookupAppNetworkStatus(ctx, uuidStr)
 	if ns == nil || ns.Pending() {
-		log.Printf("Waiting for AppNetworkStatus for %s\n", uuidStr)
+		log.Infof("Waiting for AppNetworkStatus for %s\n", uuidStr)
 		return changed
 	}
 	if ns.Error != "" {
-		log.Printf("Received error from zedrouter for %s: %s\n",
+		log.Errorf("Received error from zedrouter for %s: %s\n",
 			uuidStr, ns.Error)
 		status.State = types.INITIAL
 		status.Error = ns.Error
@@ -724,13 +724,13 @@ func doInactivateHalt(ctx *zedmanagerContext, uuidStr string,
 	// Make sure we have a DomainConfig
 	err := MaybeAddDomainConfig(ctx, config, ns)
 	if err != nil {
-		log.Printf("Error from MaybeAddDomainConfig for %s: %s\n",
+		log.Errorf("Error from MaybeAddDomainConfig for %s: %s\n",
 			uuidStr, err)
 		status.State = types.INITIAL
 		status.Error = fmt.Sprintf("%s", err)
 		status.ErrorTime = time.Now()
 		changed = true
-		log.Printf("Waiting for DomainStatus Activated for %s\n",
+		log.Infof("Waiting for DomainStatus Activated for %s\n",
 			uuidStr)
 		return changed
 	}
@@ -738,17 +738,17 @@ func doInactivateHalt(ctx *zedmanagerContext, uuidStr string,
 	// Check DomainStatus; update AppInstanceStatus if error
 	ds := lookupDomainStatus(ctx, uuidStr)
 	if ds == nil || ds.Pending() {
-		log.Printf("Waiting for DomainStatus for %s\n", uuidStr)
+		log.Infof("Waiting for DomainStatus for %s\n", uuidStr)
 		return changed
 	}
 	// Look for xen errors.
 	if ds.Activated {
-		log.Printf("Waiting for Not Activated for DomainStatus %s\n",
+		log.Infof("Waiting for Not Activated for DomainStatus %s\n",
 			uuidStr)
 		return changed
 	}
 	if ds.LastErr != "" {
-		log.Printf("Received error from domainmgr for %s: %s\n",
+		log.Errorf("Received error from domainmgr for %s: %s\n",
 			uuidStr, ds.LastErr)
 		status.State = types.INITIAL
 		status.Error = ds.LastErr
@@ -760,7 +760,7 @@ func doInactivateHalt(ctx *zedmanagerContext, uuidStr string,
 	status.Activated = false
 	status.ActivateInprogress = false
 	changed = true
-	log.Printf("doInactivateHalt done for %s\n", uuidStr)
+	log.Infof("doInactivateHalt done for %s\n", uuidStr)
 	return changed
 }
 
