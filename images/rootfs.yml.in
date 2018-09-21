@@ -18,6 +18,9 @@ onboot:
    - name: modprobe
      image: linuxkit/modprobe:v0.5
      command: ["modprobe", "-a", "nct6775", "w83627hf_wdt"]
+   - name: mount
+     image: linuxkit/mount:v0.5
+     command: ["/bin/sh", "-c", "/usr/bin/mountie $(/hostroot/sbin/findfs PARTLABEL=CONFIG) /var/config "]
 services:
    - name: ntpd
      image: linuxkit/openntpd:v0.5

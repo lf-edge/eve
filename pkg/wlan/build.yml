@@ -6,6 +6,7 @@ config:
     - /lib/modules:/lib/modules
     - /dev:/dev
     - /run:/run
+    - /var/config:/config
   net: host
   capabilities:
     - all

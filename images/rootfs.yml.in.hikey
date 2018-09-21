@@ -20,6 +20,9 @@ onboot:
      command: ["dd", "if=/dev/mmcblk0", "of=/dev/random", "conv=notrunc", "bs=1M", "count=256"]
      binds:
        - /dev:/dev
+   - name: mount
+     image: linuxkit/mount:v0.5
+     command: ["/bin/sh", "-c", "/usr/bin/mountie $(/hostroot/sbin/findfs PARTLABEL=CONFIG) /var/config "]
 services:
    - name: ntpd
      image: linuxkit/openntpd:v0.5

@@ -5,12 +5,6 @@
 # Start with a default content for resolv.conf
 echo 'nameserver 8.8.8.8' > /etc/resolv.conf
 
-# Mount /config
-CFGDEV=$(cgpt find -t 13307e62-cd9c-4920-8f9b-91b45828b798)
-if [ ! "x$CFGDEV" = "x" ]; then
-    mount $CFGDEV /config
-fi
-
 # Need to disable H/W TCP offload since it seems to mess us up
 for i in `cd /sys/class/net ; echo eth*` ; do
   ethtool -K $i gro off
