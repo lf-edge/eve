@@ -117,7 +117,7 @@ type zedcloudLogs struct {
 }
 
 func Run() {
-	logf, err := agentlog.InitWithDir(agentName, "/persist/log")
+	logf, err := agentlog.InitWithDirText(agentName, "/persist/log")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -805,8 +805,11 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 				continue
 			}
 			// XXX set iid to PID? From where?
-			logChan <- logEntry{source: r.source, content: line,
-				timestamp: lastTime}
+			logChan <- logEntry{source: r.source,
+				content:   line,
+				severity:  level.String(),
+				timestamp: lastTime,
+			}
 		}
 	}
 	// Update size
@@ -814,6 +817,14 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 	if err != nil {
 		log.Printf("Stat failed %s\n", err)
 		return
+	}
+	if fi.Size() < r.size {
+		log.Printf("File shrunk from %d to %d\n", r.size, fi.Size())
+		_, err = r.fileDesc.Seek(0, os.SEEK_SET)
+		if err != nil {
+			log.Printf("Seek failed %s\n", err)
+			return
+		}
 	}
 	r.size = fi.Size()
 }

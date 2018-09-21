@@ -15,7 +15,9 @@ import (
 	"time"
 )
 
-func initImpl(agentName string, logdir string, redirect bool) (*os.File, error) {
+func initImpl(agentName string, logdir string, redirect bool,
+	text bool) (*os.File, error) {
+
 	logfile := fmt.Sprintf("%s/%s.log", logdir, agentName)
 	logf, err := os.OpenFile(logfile, os.O_RDWR|os.O_CREATE|os.O_APPEND,
 		0666)
@@ -24,11 +26,19 @@ func initImpl(agentName string, logdir string, redirect bool) (*os.File, error) 
 	}
 	if redirect {
 		log.SetOutput(logf)
-		// Report nano timestamps
-		formatter := log.JSONFormatter{
-			TimestampFormat: time.RFC3339Nano,
+		if text {
+			// Report nano timestamps
+			formatter := log.TextFormatter{
+				TimestampFormat: time.RFC3339Nano,
+			}
+			log.SetFormatter(&formatter)
+		} else {
+			// Report nano timestamps
+			formatter := log.JSONFormatter{
+				TimestampFormat: time.RFC3339Nano,
+			}
+			log.SetFormatter(&formatter)
 		}
-		log.SetFormatter(&formatter)
 		log.RegisterExitHandler(printStack)
 
 		sigs := make(chan os.Signal, 1)
@@ -56,17 +66,17 @@ func printStack() {
 
 func Init(agentName string) (*os.File, error) {
 	logdir := GetCurrentLogdir()
-	return initImpl(agentName, logdir, true)
+	return initImpl(agentName, logdir, true, false)
 }
 
-func InitWithDir(agentName string, logdir string) (*os.File, error) {
-	return initImpl(agentName, logdir, true)
+func InitWithDirText(agentName string, logdir string) (*os.File, error) {
+	return initImpl(agentName, logdir, true, true)
 }
 
 // Setup and return a logf, but don't redirect our log.*
 func InitChild(agentName string) (*os.File, error) {
 	logdir := GetCurrentLogdir()
-	return initImpl(agentName, logdir, false)
+	return initImpl(agentName, logdir, false, false)
 }
 
 const baseLogdir = "/persist"
