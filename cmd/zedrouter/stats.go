@@ -163,7 +163,7 @@ func swanCtlCmdParse(vpnStatus *types.ServiceVpnStatus, outStr string) uint32 {
 		connInfo := populateConnInfo(cblock, outLines)
 		vpnStatus.ActiveVpnConns[idx] = connInfo
 	}
-	if debug {
+	if log.GetLevel() == log.DebugLevel {
 		if bytes, err := json.Marshal(vpnStatus); err == nil {
 			log.Debugf("swanCtlCmdParse(): %s\n", string(bytes))
 		}
@@ -253,7 +253,7 @@ func swanCtlCmdGetBlockInfo(cmdOut *readBlock, outLines []string) {
 			cblock.childBlocks[lidx-1].endLine = cblock.endLine
 		}
 	}
-	if debug {
+	if log.GetLevel() == log.DebugLevel {
 		swanCtlCmdOutPrint(cmdOut, 0)
 	}
 }

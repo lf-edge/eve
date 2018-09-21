@@ -234,9 +234,10 @@ func strongSwanConfigGet(ctx *zedrouterContext,
 			}
 		}
 	}
-	if debug {
+	if log.GetLevel() == log.DebugLevel {
 		if bytes, err := json.Marshal(vpnConfig); err == nil {
-			log.Printf("strongSwanVpnConfigGet(): %s\n", string(bytes))
+			log.Debugf("strongSwanVpnConfigGet(): %s\n",
+				string(bytes))
 		}
 	}
 	return vpnConfig, nil
@@ -397,9 +398,7 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 		return vpnConfig, errors.New("invalid vpn role: " + strongSwanConfig.VpnRole)
 	}
 
-	if debug {
-		log.Println(strongSwanConfig)
-	}
+	log.Debugln("strongSwanVpnConfigParse: ", strongSwanConfig)
 
 	// fill up our structure
 	vpnConfig.VpnRole = strongSwanConfig.VpnRole
@@ -432,7 +431,7 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 		vpnConfig.ClientConfigList[idx] = *clientConfig
 	}
 
-	if debug {
+	if log.GetLevel() == log.DebugLevel {
 		if bytes, err := json.Marshal(vpnConfig); err == nil {
 			log.Debugf("strongSwanConfigParse(): %s\n",
 				string(bytes))

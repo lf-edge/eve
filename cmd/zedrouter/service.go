@@ -371,7 +371,7 @@ func lookupNetworkServiceMetrics(ctx *zedrouterContext, key string) *types.Netwo
 	}
 	status := cast.CastNetworkServiceMetrics(st)
 	if status.Key() != key {
-		log.Printf("lookupNetworkServiceMetrics key/UUID mismatch %s vs %s; ignored %+v\n",
+		log.Errorf("lookupNetworkServiceMetrics key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
 		return nil
 	}

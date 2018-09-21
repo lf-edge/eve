@@ -818,10 +818,10 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 		return
 	}
 	if fi.Size() < r.size {
-		log.Printf("File shrunk from %d to %d\n", r.size, fi.Size())
+		log.Infof("File shrunk from %d to %d\n", r.size, fi.Size())
 		_, err = r.fileDesc.Seek(0, os.SEEK_SET)
 		if err != nil {
-			log.Printf("Seek failed %s\n", err)
+			log.Errorf("Seek failed %s\n", err)
 			return
 		}
 	}

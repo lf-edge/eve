@@ -327,10 +327,11 @@ func publishNetworkServiceInfoToZedCloud(serviceUUID string, infoMsg *zmet.ZInfo
 
 func handleNetworkServiceMetricsModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
-	log.Printf("handleNetworkServiceMetricsModify(%s)\n", key)
+
+	log.Infof("handleNetworkServiceMetricsModify(%s)\n", key)
 	metrics := cast.CastNetworkServiceMetrics(statusArg)
 	if metrics.Key() != key {
-		log.Printf("handleNetworkServiceMetricsModify key/UUID mismatch %s vs %s; ignored %+v\n",
+		log.Errorf("handleNetworkServiceMetricsModify key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, metrics.Key(), metrics)
 		return
 	}
@@ -340,14 +341,14 @@ func handleNetworkServiceMetricsModify(ctxArg interface{}, key string,
 func handleNetworkServiceMetricsDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Printf("handleNetworkServiceMetricsDelete(%s)\n", key)
+	log.Infof("handleNetworkServiceMetricsDelete(%s)\n", key)
 	metrics := cast.CastNetworkServiceMetrics(statusArg)
 	if metrics.Key() != key {
-		log.Printf("handleNetworkServiceMetricsDelete key/UUID mismatch %s vs %s; ignored %+v\n",
+		log.Errorf("handleNetworkServiceMetricsDelete key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, metrics.Key(), metrics)
 		return
 	}
-	log.Printf("handleNetworkServiceMetricsDelete(%s) done\n", key)
+	log.Infof("handleNetworkServiceMetricsDelete(%s) done\n", key)
 }
 
 func createNetworkServiceMetrics(ctx *zedagentContext, reportMetrics *zmet.ZMetricMsg) {

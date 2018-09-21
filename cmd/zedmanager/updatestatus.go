@@ -492,7 +492,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	}
 	// Look for xen errors.
 	if ds.LastErr != "" {
-		log.Printf("Received error from domainmgr for %s: %s\n",
+		log.Errorf("Received error from domainmgr for %s: %s\n",
 			uuidStr, ds.LastErr)
 		status.Error = ds.LastErr
 		status.ErrorTime = ds.LastErrTime
