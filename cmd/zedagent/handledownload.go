@@ -267,8 +267,7 @@ func checkStorageDownloadStatus(ctx *zedagentContext, objType string,
 			ret.Changed = true
 		}
 
-		switch ss.State {
-		case types.INITIAL:
+		if ds.LastErr != "" {
 			log.Printf("checkStorageDownloadStatus %s, downloader error, %s\n",
 				uuidStr, ds.LastErr)
 			ss.Error = ds.LastErr
@@ -277,6 +276,10 @@ func checkStorageDownloadStatus(ctx *zedagentContext, objType string,
 			ss.ErrorTime = ds.LastErrTime
 			ret.ErrorTime = ss.ErrorTime
 			ret.Changed = true
+		}
+		switch ss.State {
+		case types.INITIAL:
+			// Nothing to do
 		case types.DOWNLOAD_STARTED:
 			// Nothing to do
 		case types.DOWNLOADED:
@@ -387,7 +390,6 @@ func installDownloadedObject(objType string, safename string,
 		srcFilename += "/verified/" + status.ImageSha256 + "/" +
 			types.SafenameToFilename(safename)
 
-		// XXX do we need to handle types.INITIAL for failures?
 	default:
 		log.Printf("installDownloadedObject %s, still not ready (%d)\n",
 			safename, status.State)
@@ -427,7 +429,6 @@ func installDownloadedObject(objType string, safename string,
 		status.State = types.INSTALLED
 		log.Printf("installDownloadedObject(%s) done\n", safename)
 	} else {
-		status.State = types.INITIAL
 		status.Error = fmt.Sprintf("%s", ret)
 		status.ErrorTime = time.Now()
 	}

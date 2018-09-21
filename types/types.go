@@ -9,6 +9,8 @@ import (
 )
 
 // Enum names from OMA-TS-LWM2M_SwMgmt-V1_0-20151201-C
+// The ones starting with BOOTING are in addition to OMA and represent
+// operational/activated states.
 type SwState uint8
 
 const (
@@ -17,7 +19,13 @@ const (
 	DOWNLOADED
 	DELIVERED // Package integrity verified
 	INSTALLED // Available to be activated
-	MAXSTATE  //
+	BOOTING
+	RUNNING
+	HALTING // being halted
+	HALTED
+	REFRESHING // Refreshing due to config change
+	PURGING    // Purging due to config change
+	MAXSTATE   //
 )
 
 func UrlToSafename(url string, sha string) string {

@@ -39,7 +39,7 @@ func createRadvdConfiglet(cfgPathname string, olIfname string) {
 	}
 	file, err := os.Create(cfgPathname)
 	if err != nil {
-		log.Fatal("os.Create for ", cfgPathname, err)
+		log.Fatal("createRadvdConfiglet failed ", err)
 	}
 	defer file.Close()
 	file.WriteString(fmt.Sprintf(radvdTemplate, olIfname))

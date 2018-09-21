@@ -60,6 +60,7 @@ type logDirDeleteHandler func(ctx interface{}, logFileName string, source string
 
 type logmanagerContext struct {
 	subGlobalConfig *pubsub.Subscription
+	subDomainStatus *pubsub.Subscription
 }
 
 // Set from Makefile
@@ -116,7 +117,7 @@ type zedcloudLogs struct {
 }
 
 func Run() {
-	logf, err := agentlog.InitWithDir(agentName, "/persist/log")
+	logf, err := agentlog.InitWithDirText(agentName, "/persist/log")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -175,6 +176,17 @@ func Run() {
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
 	logmanagerCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
+
+	// Get DomainStatus from domainmgr
+	subDomainStatus, err := pubsub.SubscribeWithDebug("domainmgr",
+		types.DomainStatus{}, false, &logmanagerCtx, &debug)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subDomainStatus.ModifyHandler = handleDomainStatusModify
+	subDomainStatus.DeleteHandler = handleDomainStatusDelete
+	logmanagerCtx.subDomainStatus = subDomainStatus
+	subDomainStatus.Activate()
 
 	// Wait until we have at least one useable address?
 	DNSctx := DNSContext{}
@@ -270,6 +282,9 @@ func Run() {
 		select {
 		case change := <-subGlobalConfig.C:
 			subGlobalConfig.ProcessChange(change)
+
+		case change := <-subDomainStatus.C:
+			subDomainStatus.ProcessChange(change)
 
 		case change := <-logDirChanges:
 			HandleLogDirEvent(change, logDirName, &ctx,
@@ -593,6 +608,18 @@ func handleXenLogDirModify(context interface{},
 			return
 		}
 	}
+	// Look for guest-domainName.log and look it up to find app UUID
+	// change source to app UUID
+	if strings.HasPrefix(source, "guest-") {
+		domainName := strings.TrimPrefix(source, "guest-")
+		uuidStr := lookupDomainName(domainName)
+		if uuidStr != "" {
+			log.Infof("Changing %s to %s\n", source, uuidStr)
+			source = uuidStr
+		} else {
+			log.Infof("DomainName %s not found\n", domainName)
+		}
+	}
 	createXenLogger(ctx, filename, source)
 }
 
@@ -778,8 +805,11 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 				continue
 			}
 			// XXX set iid to PID? From where?
-			logChan <- logEntry{source: r.source, content: line,
-				timestamp: lastTime}
+			logChan <- logEntry{source: r.source,
+				content:   line,
+				severity:  level.String(),
+				timestamp: lastTime,
+			}
 		}
 	}
 	// Update size
@@ -787,6 +817,14 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 	if err != nil {
 		log.Printf("Stat failed %s\n", err)
 		return
+	}
+	if fi.Size() < r.size {
+		log.Printf("File shrunk from %d to %d\n", r.size, fi.Size())
+		_, err = r.fileDesc.Seek(0, os.SEEK_SET)
+		if err != nil {
+			log.Printf("Seek failed %s\n", err)
+			return
+		}
 	}
 	r.size = fi.Size()
 }

@@ -58,7 +58,7 @@ type BaseOsStatus struct {
 	PartitionState    string // From zboot
 
 	// Mininum state across all steps/StorageStatus.
-	// INITIAL implies error.
+	// Error* set implies error.
 	State SwState
 	// error strings across all steps/StorageStatus
 	Error     string
@@ -124,7 +124,7 @@ type CertObjStatus struct {
 	ConfigSha256      string
 	StorageStatusList []StorageStatus
 	// Mininum state across all steps/ StorageStatus.
-	// INITIAL implies error.
+	// Error* set implies error.
 	State SwState
 	// error strings across all steps/StorageStatus
 	Error     string

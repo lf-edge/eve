@@ -507,8 +507,8 @@ func lispCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 		strconv.FormatUint(uint64(iid), 10)
 	file, err := os.Create(cfgPathnameIID)
 	if err != nil {
-		//log.Fatal("os.Create for ", cfgPathnameIID, err)
-		log.Printf("os.Create for ", cfgPathnameIID, err)
+		//log.Fatal("lispCreate failed ", err)
+		log.Printf("lispCreate failed ", err)
 		return err
 	}
 	defer file.Close()

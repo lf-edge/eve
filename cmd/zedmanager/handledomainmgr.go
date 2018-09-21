@@ -199,6 +199,7 @@ func handleDomainStatusModify(ctxArg interface{}, key string,
 	}
 	log.Printf("handleDomainStatusModify for %s\n", key)
 	// Ignore if any Pending* flag is set
+	// XXX should we record DomainStatus.State even if Pending?
 	if status.Pending() {
 		log.Printf("handleDomainstatusModify skipped due to Pending* for %s\n",
 			key)

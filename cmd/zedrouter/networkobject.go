@@ -148,6 +148,7 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 		return err
 	}
 
+	// XXX mov this before set??
 	// Create a hosts directory for the new bridge
 	// Directory is /var/run/zedrouter/hosts.${BRIDGENAME}
 	hostsDirpath := globalRunDirname + "/hosts." + bridgeName
@@ -544,7 +545,7 @@ func doNetworkModify(ctx *zedrouterContext, config types.NetworkObjectConfig,
 	// Update ipsets and dns hosts.
 
 	bridgeName := status.BridgeName
-	if bridgeName != "" {
+	if bridgeName != "" && status.BridgeIPAddr != "" {
 		hostsDirpath := globalRunDirname + "/hosts." + bridgeName
 		updateHostsConfiglet(hostsDirpath, status.DnsNameToIPList,
 			config.DnsNameToIPList)
@@ -625,11 +626,6 @@ func doNetworkDelete(ctx *zedrouterContext,
 
 	deleteDnsmasqConfiglet(bridgeName)
 	stopDnsmasq(bridgeName, true)
-
-	// XXX shared! only delete unused when this app is gone.
-	// XXX or leave in place? Ditto in zedrouter.go
-	// hostsDirpath := globalRunDirname + "/hosts." + bridgeName
-	// deleteHostsConfiglet(hostsDirpath, true)
 
 	// For IPv6 and LISP, but LISP will become a service
 	isIPv6 := false
