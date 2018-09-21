@@ -60,6 +60,18 @@ func CastNetworkServiceStatus(in interface{}) types.NetworkServiceStatus {
 	return output
 }
 
+func CastNetworkServiceMetrics(in interface{}) types.NetworkServiceMetrics {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastNetworkServiceMetrics")
+	}
+	var output types.NetworkServiceMetrics
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "json Unmarshal in CastNetworkServiceSMetrics")
+	}
+	return output
+}
+
 func CastDeviceNetworkConfig(in interface{}) types.DeviceNetworkConfig {
 	b, err := json.Marshal(in)
 	if err != nil {

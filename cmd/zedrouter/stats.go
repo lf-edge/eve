@@ -436,11 +436,11 @@ func populateLinkInfo(linkBlock *readBlock, outLines []string) *types.VpnLinkSta
 			linkInfo.LInfo.SpiId = spiId
 			countStr := outArr[2]
 			if count, err := strconv.ParseUint(countStr, 10, 64); err == nil {
-				linkInfo.LInfo.BytesCount = count
+				linkInfo.LInfo.PktStats.Bytes = count
 			}
 			countStr = outArr[4]
 			if count, err := strconv.ParseUint(countStr, 10, 64); err == nil {
-				linkInfo.LInfo.PktsCount = count
+				linkInfo.LInfo.PktStats.Pkts = count
 			}
 		}
 	}
@@ -455,11 +455,11 @@ func populateLinkInfo(linkBlock *readBlock, outLines []string) *types.VpnLinkSta
 			linkInfo.RInfo.SpiId = spiId
 			countStr := outArr[2]
 			if count, err := strconv.ParseUint(countStr, 10, 64); err == nil {
-				linkInfo.RInfo.BytesCount = count
+				linkInfo.RInfo.PktStats.Bytes = count
 			}
 			countStr = outArr[4]
 			if count, err := strconv.ParseUint(countStr, 10, 64); err == nil {
-				linkInfo.RInfo.PktsCount = count
+				linkInfo.RInfo.PktStats.Pkts = count
 			}
 		}
 	}

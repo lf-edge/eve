@@ -108,6 +108,7 @@ type zedagentContext struct {
 	subBaseOsVerifierStatus  *pubsub.Subscription
 	subAppImgDownloadStatus  *pubsub.Subscription
 	subAppImgVerifierStatus  *pubsub.Subscription
+	subNetworkServiceMetrics *pubsub.Subscription
 	subGlobalConfig          *pubsub.Subscription
 }
 
@@ -296,6 +297,16 @@ func Run() {
 	subNetworkServiceStatus.DeleteHandler = handleNetworkServiceDelete
 	zedagentCtx.subNetworkServiceStatus = subNetworkServiceStatus
 	subNetworkServiceStatus.Activate()
+
+	subNetworkServiceMetrics, err := pubsub.Subscribe("zedrouter",
+		types.NetworkServiceMetrics{}, false, &zedagentCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subNetworkServiceMetrics.ModifyHandler = handleNetworkServiceMetricsModify
+	subNetworkServiceMetrics.DeleteHandler = handleNetworkServiceMetricsDelete
+	zedagentCtx.subNetworkServiceMetrics = subNetworkServiceMetrics
+	subNetworkServiceMetrics.Activate()
 
 	// Look for AppInstanceStatus from zedmanager
 	subAppInstanceStatus, err := pubsub.SubscribeWithDebug("zedmanager",
@@ -645,6 +656,9 @@ func Run() {
 
 		case change := <-subNetworkServiceStatus.C:
 			subNetworkServiceStatus.ProcessChange(change)
+
+		case change := <-subNetworkServiceMetrics.C:
+			subNetworkServiceMetrics.ProcessChange(change)
 		}
 	}
 }

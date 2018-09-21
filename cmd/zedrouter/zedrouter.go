@@ -45,18 +45,19 @@ var Version = "No version specified"
 
 type zedrouterContext struct {
 	// Experimental Zededa data plane enable/disable flag
-	separateDataPlane       bool
-	subNetworkObjectConfig  *pubsub.Subscription
-	subNetworkServiceConfig *pubsub.Subscription
-	pubNetworkObjectStatus  *pubsub.Publication
-	pubNetworkServiceStatus *pubsub.Publication
-	subAppNetworkConfig     *pubsub.Subscription
-	subAppNetworkConfigAg   *pubsub.Subscription // From zedagent for dom0
-	pubAppNetworkStatus     *pubsub.Publication
-	pubLispDataplaneConfig  *pubsub.Publication
-	subLispInfoStatus       *pubsub.Subscription
-	subLispMetrics          *pubsub.Subscription
-	assignableAdapters      *types.AssignableAdapters
+	separateDataPlane        bool
+	subNetworkObjectConfig   *pubsub.Subscription
+	subNetworkServiceConfig  *pubsub.Subscription
+	pubNetworkObjectStatus   *pubsub.Publication
+	pubNetworkServiceStatus  *pubsub.Publication
+	subAppNetworkConfig      *pubsub.Subscription
+	subAppNetworkConfigAg    *pubsub.Subscription // From zedagent for dom0
+	pubAppNetworkStatus      *pubsub.Publication
+	pubLispDataplaneConfig   *pubsub.Publication
+	subLispInfoStatus        *pubsub.Subscription
+	subLispMetrics           *pubsub.Subscription
+	assignableAdapters       *types.AssignableAdapters
+	pubNetworkServiceMetrics *pubsub.Publication
 	devicenetwork.DeviceNetworkContext
 	ready           bool
 	subGlobalConfig *pubsub.Subscription
@@ -187,6 +188,13 @@ func Run() {
 		log.Fatal(err)
 	}
 	zedrouterCtx.pubLispDataplaneConfig = pubLispDataplaneConfig
+
+	pubNetworkServiceMetrics, err := pubsub.Publish(agentName,
+		types.NetworkServiceMetrics{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedrouterCtx.pubNetworkServiceMetrics = pubNetworkServiceMetrics
 
 	appNumAllocatorInit(pubAppNetworkStatus)
 	bridgeNumAllocatorInit(pubNetworkObjectStatus)
@@ -861,11 +869,23 @@ func parseAndPublishLispMetrics(ctx *zedrouterContext, lispMetrics *types.LispMe
 		metricEntry, ok = metricMap[iid]
 		if !ok {
 			metricEntry = &types.LispMetrics{}
+			// Copy global statistics. We do it by directly
+			// assigning structures.
 			*metricEntry = *lispMetrics
 			metricEntry.EidStats = []types.EidStatistics{}
+			metricEntry.EidMaps = []types.EidMap{}
 			metricMap[iid] = metricEntry
 		}
 		metricEntry.EidStats = append(metricEntry.EidStats, dbMap)
+	}
+
+	// Copy IID to Eid maps to relevant IID LispMetric structurs
+	for _, eidMap := range lispMetrics.EidMaps {
+		iid := eidMap.IID
+		metricEntry, ok := metricMap[iid]
+		if ok {
+			metricEntry.EidMaps = append(metricEntry.EidMaps, eidMap)
+		}
 	}
 
 	// Update Lisp metrics in service instance status based on it's IID
@@ -882,26 +902,40 @@ func parseAndPublishLispMetrics(ctx *zedrouterContext, lispMetrics *types.LispMe
 		stMap[serviceIID] = status
 	}
 
-	// Populate the metrics that we have in NetworkServiceStatus objects
+	// Populate the metrics that we have in NetworkServiceMetrics objects
 	// of corresponding IID.
+	// We loop through NetworkServiceStatus objects to find the services
+	// that are currently active on device and then populate metrics in their
+	// respective NetworkServiceMetrics structures and publish them.
 	for iid, metrics := range metricMap {
 		status, ok := stMap[iid]
 		if !ok {
 			continue
 		}
+		metricsStatus := lookupNetworkServiceMetrics(ctx, status.Key())
+		if metricsStatus == nil {
+			metricsStatus = new(types.NetworkServiceMetrics)
+			if metricsStatus == nil {
+				continue
+			}
+			metricsStatus.UUID = status.UUID
+			metricsStatus.DisplayName = status.DisplayName
+			metricsStatus.Type = status.Type
+		}
 		// XXX Check if there are changes in metrics
-		if cmp.Equal(status.LispMetrics, metrics) {
+		if (metricsStatus.LispMetrics != nil) &&
+			cmp.Equal(metricsStatus.LispMetrics, metrics) {
 			continue
 		} else {
 			if debug {
-				difference := cmp.Diff(status.LispMetrics, metrics)
+				difference := cmp.Diff(metricsStatus.LispMetrics, metrics)
 				log.Printf("parseAndPublishLispMetrics: Publish diff %s to zedcloud\n", difference)
 			}
 		}
-		status.LispMetrics = metrics
+		metricsStatus.LispMetrics = metrics
 
 		// publish the changes
-		publishNetworkServiceStatus(ctx, &status, true)
+		publishNetworkServiceMetrics(ctx, metricsStatus, true)
 	}
 }
 
