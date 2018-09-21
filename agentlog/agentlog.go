@@ -8,7 +8,10 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/zboot"
 	"os"
+	"os/signal"
 	runtimedebug "runtime/debug"
+	"runtime/pprof"
+	"syscall"
 	"time"
 )
 
@@ -27,8 +30,23 @@ func initImpl(agentName string, logdir string, redirect bool) (*os.File, error) 
 		}
 		log.SetFormatter(&formatter)
 		log.RegisterExitHandler(printStack)
+
+		sigs := make(chan os.Signal, 1)
+		signal.Notify(sigs, syscall.SIGUSR1)
+		go printAllStacks(sigs)
 	}
 	return logf, nil
+}
+
+func printAllStacks(sigs chan os.Signal) {
+	for {
+		select {
+		case sig := <-sigs:
+			log.Infof("printAllStacks: received %v\n", sig)
+			// XXX log? different logger?
+			pprof.Lookup("goroutine").WriteTo(log.StandardLogger().Writer(), 2)
+		}
+	}
 }
 
 func printStack() {
