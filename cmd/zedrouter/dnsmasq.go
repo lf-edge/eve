@@ -63,7 +63,7 @@ func createDnsmasqConfiglet(bridgeName string, bridgeIPAddr string,
 	}
 	file, err := os.Create(cfgPathname)
 	if err != nil {
-		log.Fatal("os.Create for ", cfgPathname, err)
+		log.Fatal("createDnsmasqConfiglet failed ", err)
 	}
 	defer file.Close()
 
@@ -225,7 +225,7 @@ func addhostDnsmasq(bridgeName string, appMac string, appIPAddr string,
 
 	file, err := os.Create(cfgPathname)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("createDnsmasqConfiglet failed ", err)
 	}
 	defer file.Close()
 	if isIPv6 {

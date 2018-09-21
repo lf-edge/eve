@@ -363,6 +363,21 @@ func lookupNetworkServiceStatus(ctx *zedrouterContext, key string) *types.Networ
 	return &status
 }
 
+func lookupNetworkServiceMetrics(ctx *zedrouterContext, key string) *types.NetworkServiceMetrics {
+	pub := ctx.pubNetworkServiceMetrics
+	st, _ := pub.Get(key)
+	if st == nil {
+		return nil
+	}
+	status := cast.CastNetworkServiceMetrics(st)
+	if status.Key() != key {
+		log.Printf("lookupNetworkServiceMetrics key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, status.Key(), status)
+		return nil
+	}
+	return &status
+}
+
 // Entrypoint from networkobject to look for the service type and optional
 // adapter
 func getServiceInfo(ctx *zedrouterContext, appLink uuid.UUID) (types.NetworkServiceType, string, error) {
@@ -461,8 +476,16 @@ func publishNetworkServiceStatus(ctx *zedrouterContext, status *types.NetworkSer
 	change := false
 	switch status.Type {
 	case types.NST_STRONGSWAN:
-		change = strongSwanVpnStatusGet(status)
+		change = strongSwanVpnStatusGet(ctx, status)
 	}
+	if force == true || change == true {
+		pub.Publish(status.Key(), &status)
+	}
+}
+
+func publishNetworkServiceMetrics(ctx *zedrouterContext, status *types.NetworkServiceMetrics, force bool) {
+	pub := ctx.pubNetworkServiceMetrics
+	change := false
 	if force == true || change == true {
 		pub.Publish(status.Key(), &status)
 	}
@@ -483,8 +506,8 @@ func lispCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 		strconv.FormatUint(uint64(iid), 10)
 	file, err := os.Create(cfgPathnameIID)
 	if err != nil {
-		//log.Fatal("os.Create for ", cfgPathnameIID, err)
-		log.Infof("os.Create for ", cfgPathnameIID, err)
+		//log.Fatal("lispCreate failed ", err)
+		log.Infof("lispCreate failed ", err)
 		return err
 	}
 	defer file.Close()

@@ -309,7 +309,6 @@ func doBaseOsInstall(ctx *zedagentContext, uuidStr string,
 		changed = true
 		// Match the version string inside image?
 		if errString := checkInstalledVersion(*status); errString != "" {
-			status.State = types.INITIAL
 			status.Error = errString
 			status.ErrorTime = time.Now()
 		} else {
@@ -400,7 +399,7 @@ func checkBaseOsStorageDownloadStatus(ctx *zedagentContext, uuidStr string,
 
 	status.State = ret.MinState
 
-	if ret.MinState == types.INITIAL {
+	if ret.AllErrors != "" {
 		status.Error = ret.AllErrors
 		status.ErrorTime = ret.ErrorTime
 		log.Errorf("checkBaseOsStorageDownloadStatus(%s) for %s, Download error at %v: %v\n",
@@ -433,7 +432,7 @@ func checkBaseOsVerificationStatus(ctx *zedagentContext, uuidStr string,
 
 	status.State = ret.MinState
 
-	if ret.MinState == types.INITIAL {
+	if ret.AllErrors != "" {
 		status.Error = ret.AllErrors
 		status.ErrorTime = ret.ErrorTime
 		log.Errorf("checkBaseOsVerificationStatus(%s) for %s, Verification error at %v: %v\n",

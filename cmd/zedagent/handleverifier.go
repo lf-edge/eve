@@ -220,8 +220,7 @@ func checkStorageVerifierStatus(ctx *zedagentContext, objType string, uuidStr st
 			ss.State = vs.State
 			ret.Changed = true
 		}
-		switch vs.State {
-		case types.INITIAL:
+		if vs.LastErr != "" {
 			log.Errorf("checkStorageVerifierStatus(%s) verifier error for %s: %s\n",
 				uuidStr, safename, vs.LastErr)
 			ss.Error = vs.LastErr
@@ -230,6 +229,11 @@ func checkStorageVerifierStatus(ctx *zedagentContext, objType string, uuidStr st
 			ss.ErrorTime = vs.LastErrTime
 			ret.ErrorTime = vs.LastErrTime
 			ret.Changed = true
+			continue
+		}
+		switch vs.State {
+		case types.INITIAL:
+			// Nothing to do
 		default:
 			ss.ActiveFileLocation = objectDownloadDirname + "/" + objType + "/" + vs.Safename
 

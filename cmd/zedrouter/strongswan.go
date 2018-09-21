@@ -221,18 +221,22 @@ func strongSwanConfigGet(ctx *zedrouterContext,
 			errorStr := vpnConfig.GatewayConfig.SubnetBlock + ", appNet: " + appLink.SubnetBlock
 			return vpnConfig, errors.New("Subnet Mismatch: " + errorStr)
 		}
-		return vpnConfig, nil
-	}
-
-	// for clients
-	if appNetPresent {
-		for _, clientConfig := range vpnConfig.ClientConfigList {
-			if clientConfig.SubnetBlock != "" &&
-				clientConfig.SubnetBlock != appLink.SubnetBlock {
-				errorStr := clientConfig.SubnetBlock
-				errorStr = errorStr + ", appNet: " + appLink.SubnetBlock
-				return vpnConfig, errors.New("Subnet Mismatch: " + errorStr)
+	} else {
+		// for clients
+		if appNetPresent {
+			for _, clientConfig := range vpnConfig.ClientConfigList {
+				if clientConfig.SubnetBlock != "" &&
+					clientConfig.SubnetBlock != appLink.SubnetBlock {
+					errorStr := clientConfig.SubnetBlock
+					errorStr = errorStr + ", appNet: " + appLink.SubnetBlock
+					return vpnConfig, errors.New("Subnet Mismatch: " + errorStr)
+				}
 			}
+		}
+	}
+	if debug {
+		if bytes, err := json.Marshal(vpnConfig); err == nil {
+			log.Printf("strongSwanVpnConfigGet(): %s\n", string(bytes))
 		}
 	}
 	return vpnConfig, nil
@@ -391,6 +395,10 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 		}
 	default:
 		return vpnConfig, errors.New("invalid vpn role: " + strongSwanConfig.VpnRole)
+	}
+
+	if debug {
+		log.Println(strongSwanConfig)
 	}
 
 	// fill up our structure
@@ -704,7 +712,8 @@ func strongSwanValidateIpAddr(ipAddrStr string, isValid bool) error {
 	return nil
 }
 
-func strongSwanVpnStatusGet(status *types.NetworkServiceStatus) bool {
+func strongSwanVpnStatusGet(ctx *zedrouterContext,
+	status *types.NetworkServiceStatus) bool {
 	change := false
 	vpnConfig, err := strongSwanVpnStatusParse(status.OpaqueStatus)
 	if err != nil {
@@ -713,10 +722,10 @@ func strongSwanVpnStatusGet(status *types.NetworkServiceStatus) bool {
 	}
 	vpnStatus := new(types.ServiceVpnStatus)
 	if err := ipSecStatusCmdGet(vpnStatus); err != nil {
-		return false
+		return change
 	}
 	if err := swanCtlCmdGet(vpnStatus); err != nil {
-		return false
+		return change
 	}
 
 	vpnStatus.PolicyBased = vpnConfig.PolicyBased
@@ -726,6 +735,8 @@ func strongSwanVpnStatusGet(status *types.NetworkServiceStatus) bool {
 		log.Debugf("vpn state change:%v\n", vpnStatus)
 		status.VpnStatus = vpnStatus
 	}
+	// push the vpnMetrics here
+	publishVpnMetrics(ctx, status, vpnStatus)
 	return change
 }
 
@@ -734,7 +745,7 @@ func isVpnStatusChanged(oldStatus, newStatus *types.ServiceVpnStatus) bool {
 		return true
 	}
 	staleConnCount := 0
-	var stateChange, statsChange bool
+	stateChange := false
 	if oldStatus.ActiveTunCount != newStatus.ActiveTunCount ||
 		oldStatus.ConnectingTunCount != newStatus.ConnectingTunCount {
 		stateChange = true
@@ -763,9 +774,6 @@ func isVpnStatusChanged(oldStatus, newStatus *types.ServiceVpnStatus) bool {
 		for _, oldConn := range oldStatus.ActiveVpnConns {
 			if oldConn.Name == newConn.Name &&
 				oldConn.Id == newConn.Id {
-				if ret := matchConnStats(oldConn, newConn); !ret {
-					statsChange = true
-				}
 				if ret := matchConnState(oldConn, newConn); !ret {
 					stateChange = true
 				}
@@ -793,7 +801,7 @@ func isVpnStatusChanged(oldStatus, newStatus *types.ServiceVpnStatus) bool {
 			}
 		}
 	}
-	return stateChange || statsChange
+	return stateChange
 }
 
 func matchConnState(oldConn, newConn *types.VpnConnStatus) bool {
@@ -815,24 +823,112 @@ func matchConnState(oldConn, newConn *types.VpnConnStatus) bool {
 	return true
 }
 
-func matchConnStats(oldConn, newConn *types.VpnConnStatus) bool {
-	if oldConn.State != newConn.State ||
-		len(oldConn.Links) != len(newConn.Links) {
-		return false
+func publishVpnMetrics(ctx *zedrouterContext,
+	status *types.NetworkServiceStatus, vpnStatus *types.ServiceVpnStatus) {
+	metrics := new(types.NetworkServiceMetrics)
+	metrics.UUID = status.UUID
+	metrics.DisplayName = status.DisplayName
+	metrics.Type = status.Type
+
+	// get older metrics, if any
+	vpnMetrics := new(types.VpnMetrics)
+	oldMetrics := lookupNetworkServiceMetrics(ctx, metrics.Key())
+
+	// for cumulative stats, take the old metrics stats
+	// and add the difference to the metrics
+	if oldMetrics != nil && oldMetrics.VpnMetrics != nil {
+		vpnMetrics.InPkts = oldMetrics.VpnMetrics.InPkts
+		vpnMetrics.OutPkts = oldMetrics.VpnMetrics.OutPkts
 	}
-	for _, oldLinkInfo := range oldConn.Links {
-		for _, newLinkInfo := range newConn.Links {
-			if oldLinkInfo.Id == newLinkInfo.Id {
-				if oldLinkInfo.LInfo.BytesCount != newLinkInfo.LInfo.BytesCount ||
-					oldLinkInfo.LInfo.PktsCount != newLinkInfo.LInfo.PktsCount {
-					return false
-				}
-				if oldLinkInfo.RInfo.BytesCount != newLinkInfo.RInfo.BytesCount ||
-					oldLinkInfo.RInfo.PktsCount != newLinkInfo.RInfo.PktsCount {
-					return false
-				}
+
+	publishVpnConnMetrics(ctx, status, oldMetrics, vpnMetrics, vpnStatus)
+	metrics.VpnMetrics = vpnMetrics
+	pub := ctx.pubNetworkServiceMetrics
+	pub.Publish(metrics.Key(), &metrics)
+	return
+}
+
+func publishVpnConnMetrics(ctx *zedrouterContext,
+	status *types.NetworkServiceStatus, oldMetrics *types.NetworkServiceMetrics,
+	vpnMetrics *types.VpnMetrics, vpnStatus *types.ServiceVpnStatus) {
+
+	if len(vpnStatus.ActiveVpnConns) == 0 {
+		return
+	}
+	vpnMetrics.VpnConns = make([]*types.VpnConnMetrics,
+		len(vpnStatus.ActiveVpnConns))
+	for idx, connStatus := range vpnStatus.ActiveVpnConns {
+		connMetrics := new(types.VpnConnMetrics)
+		connMetrics.Id = connStatus.Id
+		connMetrics.Name = connStatus.Name
+		connMetrics.Type = status.Type
+		connMetrics.EstTime = connStatus.EstTime
+		connMetrics.LEndPoint.IpAddr = connStatus.LInfo.IpAddr
+		connMetrics.REndPoint.IpAddr = connStatus.RInfo.IpAddr
+
+		// get the last metrics
+		oldConnMetrics := getVpnMetricsOldConnStats(oldMetrics, connStatus.Id)
+		// loop through the current setof SAs
+		for _, linkStatus := range connStatus.Links {
+			if linkStatus.State != types.VPN_INSTALLED {
+				continue
 			}
+			lStats := linkStatus.LInfo
+			connMetrics.LEndPoint.LinkInfo.SpiId = lStats.SpiId
+			connMetrics.LEndPoint.LinkInfo.SubNet = lStats.SubNet
+			connMetrics.LEndPoint.PktStats = lStats.PktStats
+
+			rStats := linkStatus.RInfo
+			connMetrics.REndPoint.LinkInfo.SpiId = rStats.SpiId
+			connMetrics.REndPoint.LinkInfo.SubNet = rStats.SubNet
+			connMetrics.REndPoint.PktStats = rStats.PktStats
+
+			// increment cumulative stats
+			incrementVpnMetricsConnStats(vpnMetrics,
+				oldConnMetrics, linkStatus)
+		}
+		vpnMetrics.VpnConns[idx] = connMetrics
+	}
+}
+
+func getVpnMetricsOldConnStats(oldMetrics *types.NetworkServiceMetrics,
+	id string) *types.VpnConnMetrics {
+	if oldMetrics == nil || oldMetrics.VpnMetrics == nil {
+		return nil
+	}
+	for _, connStatus := range oldMetrics.VpnMetrics.VpnConns {
+		if connStatus.Id == id {
+			return connStatus
 		}
 	}
-	return true
+	return nil
+}
+
+// get the cumulative stats
+func incrementVpnMetricsConnStats(vpnMetrics *types.VpnMetrics,
+	oldConnMetrics *types.VpnConnMetrics, linkStatus *types.VpnLinkStatus) {
+
+	lStats := linkStatus.LInfo
+	rStats := linkStatus.RInfo
+
+	inPktStats := lStats.PktStats
+	outPktStats := rStats.PktStats
+
+	// existing connection
+	if oldConnMetrics != nil &&
+		oldConnMetrics.LEndPoint.LinkInfo.SpiId == lStats.SpiId &&
+		oldConnMetrics.REndPoint.LinkInfo.SpiId == rStats.SpiId {
+
+		oldInPktStats := oldConnMetrics.LEndPoint.PktStats
+		inPktStats.Bytes -= oldInPktStats.Bytes
+		inPktStats.Pkts -= oldInPktStats.Pkts
+
+		oldOutPktStats := oldConnMetrics.REndPoint.PktStats
+		outPktStats.Bytes -= oldOutPktStats.Bytes
+		outPktStats.Pkts -= oldOutPktStats.Pkts
+	}
+	vpnMetrics.InPkts.Bytes += inPktStats.Bytes
+	vpnMetrics.InPkts.Pkts += inPktStats.Pkts
+	vpnMetrics.OutPkts.Bytes += outPktStats.Bytes
+	vpnMetrics.OutPkts.Pkts += outPktStats.Pkts
 }

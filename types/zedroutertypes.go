@@ -591,6 +591,18 @@ func (status NetworkServiceStatus) Key() string {
 	return status.UUID.String()
 }
 
+type NetworkServiceMetrics struct {
+	UUID        uuid.UUID
+	DisplayName string
+	Type        NetworkServiceType
+	VpnMetrics  *VpnMetrics
+	LispMetrics *LispMetrics
+}
+
+func (metrics NetworkServiceMetrics) Key() string {
+	return metrics.UUID.String()
+}
+
 // Network metrics for overlay and underlay
 // Matches networkMetrics protobuf message
 type NetworkMetrics struct {
@@ -772,8 +784,14 @@ type EidStatistics struct {
 	RlocStats []LispRlocStatistics
 }
 
+type EidMap struct {
+	IID  uint64
+	Eids []net.IP
+}
+
 type LispMetrics struct {
 	// Encap Statistics
+	EidMaps            []EidMap
 	EidStats           []EidStatistics
 	ItrPacketSendError LispPktStat
 	InvalidEidError    LispPktStat
@@ -808,11 +826,10 @@ const (
 )
 
 type VpnLinkInfo struct {
-	SubNet     string // connecting subnet
-	SpiId      string // security parameter index
-	Direction  bool   // 0 - in, 1 - out
-	BytesCount uint64
-	PktsCount  uint64
+	SubNet    string // connecting subnet
+	SpiId     string // security parameter index
+	Direction bool   // 0 - in, 1 - out
+	PktStats  PktStats
 }
 
 type VpnLinkStatus struct {
@@ -860,4 +877,46 @@ type ServiceVpnStatus struct {
 	ActiveTunCount     uint32
 	ConnectingTunCount uint32
 	PolicyBased        bool
+}
+
+type PktStats struct {
+	Pkts  uint64
+	Bytes uint64
+}
+
+type LinkPktStats struct {
+	InPkts  PktStats
+	OutPkts PktStats
+}
+
+type VpnLinkMetrics struct {
+	SubNet string // connecting subnet
+	SpiId  string // security parameter index
+}
+
+type VpnEndPointMetrics struct {
+	IpAddr   string // end point ip address
+	LinkInfo VpnLinkMetrics
+	PktStats PktStats
+}
+
+type VpnConnMetrics struct {
+	Id        string // ipsec connection id
+	Name      string // connection name
+	EstTime   uint64 // established time
+	Type      NetworkServiceType
+	LEndPoint VpnEndPointMetrics
+	REndPoint VpnEndPointMetrics
+}
+
+type VpnMetrics struct {
+	UpTime         time.Time // service start time stamp
+	InPkts         PktStats
+	OutPkts        PktStats
+	IkePkts        LinkPktStats
+	NatPkts        LinkPktStats
+	EspPkts        LinkPktStats
+	ErrPkts        LinkPktStats
+	CarrierErrPkts LinkPktStats
+	VpnConns       []*VpnConnMetrics
 }

@@ -422,7 +422,6 @@ func updateVerifyErrStatus(ctx *verifierContext,
 	status.LastErr = lastErr
 	status.LastErrTime = time.Now()
 	status.PendingAdd = false
-	status.State = types.INITIAL
 	publishVerifyImageStatus(ctx, status)
 }
 
@@ -991,7 +990,6 @@ func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 		// XXX start gc timer instead, or run it all the time?
 		doDelete(status)
 		status.PendingModify = false
-		status.State = 0 // XXX INITIAL implies failure
 		publishVerifyImageStatus(ctx, status)
 		log.Infof("handleModify done for %s\n", config.Name)
 		return

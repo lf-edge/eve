@@ -138,7 +138,6 @@ func doUpdate(ctx *zedmanagerContext, uuidStr string,
 			if err != nil {
 				log.Errorf("Error from MaybeAddDomainConfig for %s: %s\n",
 					uuidStr, err)
-				status.State = types.INITIAL
 				status.Error = fmt.Sprintf("%s", err)
 				status.ErrorTime = time.Now()
 				changed = true
@@ -168,7 +167,6 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 			len(config.StorageConfigList),
 			len(status.StorageStatusList))
 		log.Errorln(errString)
-		status.State = types.INITIAL
 		status.Error = errString
 		status.ErrorTime = time.Now()
 		changed = true
@@ -183,7 +181,6 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 				sc.Name, ss.Name,
 				sc.ImageSha256, ss.ImageSha256)
 			log.Errorln(errString)
-			status.State = types.INITIAL
 			status.Error = errString
 			status.ErrorTime = time.Now()
 			changed = true
@@ -196,7 +193,6 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 			len(config.OverlayNetworkList),
 			len(status.EIDList))
 		log.Errorln(errString)
-		status.State = types.INITIAL
 		status.Error = errString
 		status.ErrorTime = time.Now()
 		changed = true
@@ -251,7 +247,6 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 					ss.Error)
 				ss.ErrorTime = time.Now()
 				changed = true
-				minState = types.INITIAL // Error
 				continue
 			}
 			AddOrRefcountDownloaderConfig(ctx, safename, &sc, dst)
@@ -272,8 +267,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 			ss.State = ds.State
 			changed = true
 		}
-		switch ds.State {
-		case types.INITIAL:
+		if ds.LastErr != "" {
 			log.Errorf("Received error from downloader for %s: %s\n",
 				safename, ds.LastErr)
 			ss.Error = ds.LastErr
@@ -282,6 +276,11 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 			ss.ErrorTime = ds.LastErrTime
 			errorTime = ds.LastErrTime
 			changed = true
+			continue
+		}
+		switch ds.State {
+		case types.INITIAL:
+			// Nothing to do
 		case types.DOWNLOAD_STARTED:
 			// Nothing to do
 		case types.DOWNLOADED:
@@ -305,8 +304,8 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 	status.State = minState
 	status.Error = allErrors
 	status.ErrorTime = errorTime
-	if minState == types.INITIAL {
-		log.Errorf("Download error for %s\n", uuidStr)
+	if allErrors != "" {
+		log.Errorf("Download error for %s: %s\n", uuidStr, allErrors)
 		return changed, false
 	}
 
@@ -341,8 +340,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 			ss.State = vs.State
 			changed = true
 		}
-		switch vs.State {
-		case types.INITIAL:
+		if vs.LastErr != "" {
 			log.Errorf("Received error from verifier for %s: %s\n",
 				safename, vs.LastErr)
 			ss.Error = vs.LastErr
@@ -351,6 +349,11 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 			ss.ErrorTime = vs.LastErrTime
 			errorTime = vs.LastErrTime
 			changed = true
+			continue
+		}
+		switch vs.State {
+		case types.INITIAL:
+			// Nothing to do
 		default:
 			ss.ActiveFileLocation = finalDirname + "/" + vs.Safename
 			log.Infof("Update SSL ActiveFileLocation for %s: %s\n",
@@ -365,8 +368,8 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 	status.State = minState
 	status.Error = allErrors
 	status.ErrorTime = errorTime
-	if minState == types.INITIAL {
-		log.Errorf("Verify error for %s\n", uuidStr)
+	if allErrors != "" {
+		log.Errorf("Verify error for %s: %s\n", uuidStr, allErrors)
 		return changed, false
 	}
 
@@ -461,7 +464,6 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	if ns.Error != "" {
 		log.Errorf("Received error from zedrouter for %s: %s\n",
 			uuidStr, ns.Error)
-		status.State = types.INITIAL
 		status.Error = ns.Error
 		status.ErrorTime = ns.ErrorTime
 		changed = true
@@ -474,7 +476,6 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	if err != nil {
 		log.Errorf("Error from MaybeAddDomainConfig for %s: %s\n",
 			uuidStr, err)
-		status.State = types.INITIAL
 		status.Error = fmt.Sprintf("%s", err)
 		status.ErrorTime = time.Now()
 		changed = true
@@ -490,16 +491,21 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		return changed
 	}
 	// Look for xen errors.
-	if !ds.Activated {
-		if ds.LastErr != "" {
-			log.Errorf("Received error from domainmgr for %s: %s\n",
-				uuidStr, ds.LastErr)
-			status.State = types.INITIAL
-			status.Error = ds.LastErr
-			status.ErrorTime = ds.LastErrTime
-			changed = true
-		}
-		log.Infof("Waiting for DomainStatus Activated for %s\n",
+	if ds.LastErr != "" {
+		log.Printf("Received error from domainmgr for %s: %s\n",
+			uuidStr, ds.LastErr)
+		status.Error = ds.LastErr
+		status.ErrorTime = ds.LastErrTime
+		changed = true
+	}
+	if ds.State != status.State {
+		log.Infof("Set State from DomainStatus from %d to %d\n",
+			status.State, ds.State)
+		status.State = ds.State
+	}
+
+	if ds.State < types.BOOTING {
+		log.Infof("Waiting for DomainStatus to BOOTING for %s\n",
 			uuidStr)
 		return changed
 	}
@@ -575,7 +581,6 @@ func doInactivate(ctx *zedmanagerContext, uuidStr string,
 			if ds.LastErr != "" {
 				log.Errorf("Received error from domainmgr for %s: %s\n",
 					uuidStr, ds.LastErr)
-				status.State = types.INITIAL
 				status.Error = ds.LastErr
 				status.ErrorTime = ds.LastErrTime
 				changed = true
@@ -596,7 +601,6 @@ func doInactivate(ctx *zedmanagerContext, uuidStr string,
 		if ns.Error != "" {
 			log.Errorf("Received error from zedrouter for %s: %s\n",
 				uuidStr, ns.Error)
-			status.State = types.INITIAL
 			status.Error = ns.Error
 			status.ErrorTime = ns.ErrorTime
 			changed = true
@@ -713,7 +717,6 @@ func doInactivateHalt(ctx *zedmanagerContext, uuidStr string,
 	if ns.Error != "" {
 		log.Errorf("Received error from zedrouter for %s: %s\n",
 			uuidStr, ns.Error)
-		status.State = types.INITIAL
 		status.Error = ns.Error
 		status.ErrorTime = ns.ErrorTime
 		changed = true
@@ -726,7 +729,6 @@ func doInactivateHalt(ctx *zedmanagerContext, uuidStr string,
 	if err != nil {
 		log.Errorf("Error from MaybeAddDomainConfig for %s: %s\n",
 			uuidStr, err)
-		status.State = types.INITIAL
 		status.Error = fmt.Sprintf("%s", err)
 		status.ErrorTime = time.Now()
 		changed = true
@@ -750,7 +752,6 @@ func doInactivateHalt(ctx *zedmanagerContext, uuidStr string,
 	if ds.LastErr != "" {
 		log.Errorf("Received error from domainmgr for %s: %s\n",
 			uuidStr, ds.LastErr)
-		status.State = types.INITIAL
 		status.Error = ds.LastErr
 		status.ErrorTime = ds.LastErrTime
 		changed = true

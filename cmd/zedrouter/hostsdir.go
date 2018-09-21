@@ -28,9 +28,10 @@ func createHostsConfiglet(cfgDirname string, nameToIPList []types.DnsNameToIP) {
 
 func ensureDir(dirname string) {
 	if _, err := os.Stat(dirname); err != nil {
-		err := os.Mkdir(dirname, 0755)
+		log.Infof("ensureDir creating %s\n", dirname)
+		err := os.MkdirAll(dirname, 0755)
 		if err != nil {
-			log.Fatal(err)
+			log.Fatalf("ensureDir failed %s\n", err)
 		}
 	}
 }
@@ -41,7 +42,7 @@ func addIPToHostsConfiglet(cfgDirname string, hostname string, addrs []net.IP) {
 	cfgPathname := cfgDirname + "/" + hostname
 	file, err := os.Create(cfgPathname)
 	if err != nil {
-		log.Error(err)
+		log.Error("addIPToHostsConfiglet failed ", err)
 		return
 	}
 	defer file.Close()
@@ -57,7 +58,7 @@ func addToHostsConfiglet(cfgDirname string, hostname string, addrs []string) {
 	cfgPathname := cfgDirname + "/" + hostname
 	file, err := os.Create(cfgPathname)
 	if err != nil {
-		log.Error(err)
+		log.Error("addIPToHostsConfiglet failed ", err)
 		return
 	}
 	defer file.Close()
@@ -113,7 +114,7 @@ func updateHostsConfiglet(cfgDirname string,
 		cfgPathname := cfgDirname + "/" + ne.HostName
 		file, err := os.Create(cfgPathname)
 		if err != nil {
-			log.Error(err)
+			log.Error("updateHostsConfiglet failed ", err)
 			continue
 		}
 		defer file.Close()

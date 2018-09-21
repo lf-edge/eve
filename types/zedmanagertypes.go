@@ -88,7 +88,7 @@ type AppInstanceStatus struct {
 	UnderlayNetworkList []UnderlayNetworkConfig
 	IoAdapterList       []IoAdapter
 	// Mininum state across all steps and all StorageStatus.
-	// INITIAL implies error.
+	// Error* set implies error.
 	State SwState
 	// All error strngs across all steps and all StorageStatus
 	Error     string
