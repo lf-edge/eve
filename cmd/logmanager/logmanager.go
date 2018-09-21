@@ -614,10 +614,10 @@ func handleXenLogDirModify(context interface{},
 		domainName := strings.TrimPrefix(source, "guest-")
 		uuidStr := lookupDomainName(domainName)
 		if uuidStr != "" {
-			log.Debugf("Changing %s to %s\n", source, uuidStr)
+			log.Infof("Changing %s to %s\n", source, uuidStr)
 			source = uuidStr
 		} else {
-			log.Debugf("DomainName %s not found\n", domainName)
+			log.Infof("DomainName %s not found\n", domainName)
 		}
 	}
 	createXenLogger(ctx, filename, source)
