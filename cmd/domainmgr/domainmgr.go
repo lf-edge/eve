@@ -402,7 +402,7 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 			status.LastErr = errStr
 			status.LastErrTime = time.Now()
 			status.Activated = false
-			status.Failed = true // XXX useful?
+			status.State = types.HALTED
 		}
 		status.DomainId = 0
 		publishDomainStatus(ctx, status)
@@ -469,6 +469,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		VifList:            config.VifList,
 		VirtualizationMode: config.VirtualizationMode,
 		EnableVnc:          config.EnableVnc,
+		State:		    types.INSTALLED,
 	}
 	status.DiskStatusList = make([]types.DiskStatus,
 		len(config.DiskConfigList))
@@ -519,7 +520,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 	}
 
 	if config.Activate {
-		doActivate(*config, &status, ctx.assignableAdapters)
+		doActivate(ctx, *config, &status, ctx.assignableAdapters)
 	}
 	// work done
 	status.PendingAdd = false
@@ -548,8 +549,9 @@ func cleanupAdapters(ctx *domainContext, ioAdapterList []types.IoAdapter,
 	}
 }
 
-func doActivate(config types.DomainConfig, status *types.DomainStatus,
-	aa *types.AssignableAdapters) {
+func doActivate(ctx *domainContext, config types.DomainConfig,
+	status *types.DomainStatus, aa *types.AssignableAdapters) {
+
 	log.Printf("doActivate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
@@ -630,6 +632,8 @@ func doActivate(config types.DomainConfig, status *types.DomainStatus,
 	status.DomainId = domainId
 	status.Activated = true
 	status.BootTime = time.Now()
+	status.State = types.BOOTING
+	publishDomainStatus(ctx, status)
 
 	// Disable offloads for all vifs
 	err = xlDisableVifOffload(status.DomainName, domainId,
@@ -648,6 +652,7 @@ func doActivate(config types.DomainConfig, status *types.DomainStatus,
 		return
 	}
 
+	status.State = types.RUNNING
 	// XXX dumping status to log
 	xlStatus(status.DomainName, status.DomainId)
 
@@ -660,7 +665,9 @@ func doActivate(config types.DomainConfig, status *types.DomainStatus,
 }
 
 // shutdown and wait for the domain to go away; if that fails destroy and wait
-func doInactivate(status *types.DomainStatus, aa *types.AssignableAdapters) {
+func doInactivate(ctx *domainContext, status *types.DomainStatus,
+	aa *types.AssignableAdapters) {
+
 	log.Printf("doInactivate(%v) for %s\n",
 		status.UUIDandVersion, status.DisplayName)
 	domainId, err := xlDomid(status.DomainName, status.DomainId)
@@ -669,6 +676,9 @@ func doInactivate(status *types.DomainStatus, aa *types.AssignableAdapters) {
 	}
 	maxDelay := time.Second * 600 // 10 minutes
 	if status.DomainId != 0 {
+		status.State = types.HALTING
+		publishDomainStatus(ctx, status)
+
 		switch status.VirtualizationMode {
 		case types.HVM:
 			// Do a short shutdown wait, then a shutdown -F
@@ -738,10 +748,19 @@ func doInactivate(status *types.DomainStatus, aa *types.AssignableAdapters) {
 	}
 	// If everything failed we leave it marked as Activated
 	if status.DomainId != 0 {
-		log.Printf("doInactivate(%v) done for %s\n",
+		log.Printf("doInactivate(%v) failed for %s\n",
 			status.UUIDandVersion, status.DisplayName)
+		// XXX error in status?
+		errStr := fmt.Sprintf("doInactivate(%s) failed to halt/destroy %d",
+			status.Key(), status.DomainId)
+		log.Errorln(errStr)
+		status.LastErr = errStr
+		status.LastErrTime = time.Now()
+	} else {
+		status.Activated = false
+		status.State = types.HALTED
 	}
-	status.Activated = false
+	publishDomainStatus(ctx, status)
 
 	// Do we need to delete any rw files that should
 	// not be preserved across reboots?
@@ -1108,7 +1127,7 @@ func handleModify(ctx *domainContext, key string,
 		}
 		status.VirtualizationMode = config.VirtualizationMode
 		status.EnableVnc = config.EnableVnc
-		doActivate(*config, status, ctx.assignableAdapters)
+		doActivate(ctx, *config, status, ctx.assignableAdapters)
 		changed = true
 	} else if !config.Activate {
 		if status.LastErr != "" {
@@ -1117,12 +1136,12 @@ func handleModify(ctx *domainContext, key string,
 			status.LastErr = ""
 			status.LastErrTime = time.Time{}
 			publishDomainStatus(ctx, status)
-			doInactivate(status, ctx.assignableAdapters)
+			doInactivate(ctx, status, ctx.assignableAdapters)
 			status.VirtualizationMode = config.VirtualizationMode
 			status.EnableVnc = config.EnableVnc
 			changed = true
 		} else if status.Activated {
-			doInactivate(status, ctx.assignableAdapters)
+			doInactivate(ctx, status, ctx.assignableAdapters)
 			status.VirtualizationMode = config.VirtualizationMode
 			status.EnableVnc = config.EnableVnc
 			changed = true
@@ -1205,7 +1224,7 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 	publishDomainStatus(ctx, status)
 
 	if status.Activated {
-		doInactivate(status, ctx.assignableAdapters)
+		doInactivate(ctx, status, ctx.assignableAdapters)
 	} else {
 		pciUnassign(status, ctx.assignableAdapters, true)
 	}

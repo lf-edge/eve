@@ -54,7 +54,7 @@ type VerifyImageStatus struct {
 	PendingModify bool
 	PendingDelete bool
 	ImageSha256   string  // sha256 of immutable image
-	State         SwState // DELIVERED, or INITIAL if failed
+	State         SwState // DELIVERED; LastErr* set if failed
 	LastErr       string  // Verification error
 	LastErrTime   time.Time
 	Size          int64

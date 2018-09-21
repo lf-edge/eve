@@ -125,7 +125,8 @@ func handleDomainStatusModify(ctxArg interface{}, key string,
 		return
 	}
 	// Ignore if any Pending* flag is set
-	if status.Pending() {
+	// XXX pass through for intermediate states
+	if false && status.Pending() {
 		if debug {
 			log.Printf("handleDomainstatusModify skipped due to Pending* for %s\n",
 				key)
@@ -1229,8 +1230,8 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 			// Avoid nil checks
 			ds = &types.DomainStatus{}
 		} else {
-			// XXX add failed? More states?
 			ReportAppInfo.Activated = aiStatus.Activated
+			ReportAppInfo.State = zmet.ZSwState(ds.State)
 		}
 
 		if !aiStatus.ErrorTime.IsZero() {

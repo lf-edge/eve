@@ -429,7 +429,6 @@ func handleCreate(ctx *downloaderContext, objType string,
 		status.LastErr = errString
 		status.LastErrTime = time.Now()
 		status.RetryCount += 1
-		status.State = types.INITIAL
 		publishDownloaderStatus(ctx, &status)
 		log.Printf("handleCreate failed for %s\n", config.DownloadURL)
 		return
@@ -452,7 +451,6 @@ func handleCreate(ctx *downloaderContext, objType string,
 		status.LastErr = errString
 		status.LastErrTime = time.Now()
 		status.RetryCount += 1
-		status.State = types.INITIAL
 		publishDownloaderStatus(ctx, &status)
 		log.Printf("handleCreate deferred for %s\n", config.DownloadURL)
 		return
@@ -1072,7 +1070,6 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 		status.LastErr = errStr
 		status.LastErrTime = time.Now()
 		status.RetryCount += 1
-		status.State = types.INITIAL
 		publishDownloaderStatus(ctx, status)
 		log.Printf("handleSyncOpResponse failed for %s, <%s>\n",
 			status.DownloadURL, errStr)
@@ -1090,7 +1087,6 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 		status.LastErr = fmt.Sprintf("%v", err)
 		status.LastErrTime = time.Now()
 		status.RetryCount += 1
-		status.State = types.INITIAL
 		publishDownloaderStatus(ctx, status)
 		return
 	}

@@ -165,13 +165,15 @@ func checkCertObjStorageDownloadStatus(ctx *zedagentContext, uuidStr string,
 
 	log.Printf("checkCertObjDownloadStatus %s, %v\n", uuidStr, ret.MinState)
 
-	if ret.MinState == types.INITIAL {
-		log.Printf("checkCertObjDownloadStatus for %s, Download error\n", uuidStr)
+	if ret.AllErrors != "" {
+		log.Printf("checkCertObjDownloadStatus for %s, Download error %s\n",
+			uuidStr, ret.AllErrors)
 		return ret.Changed, false
 	}
 
 	if ret.MinState < types.DOWNLOADED {
-		log.Printf("checkCertObjDownloaStatus %s, Waiting for downloads\n", uuidStr)
+		log.Printf("checkCertObjDownloaStatus %s, Waiting for downloads\n",
+			uuidStr)
 		return ret.Changed, false
 	}
 
