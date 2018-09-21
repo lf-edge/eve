@@ -914,8 +914,8 @@ func incrementVpnMetricsConnStats(vpnMetrics *types.VpnMetrics,
 	lStats := linkStatus.LInfo
 	rStats := linkStatus.RInfo
 
-	inPktStats := rStats.PktStats
-	outPktStats := lStats.PktStats
+	inPktStats := lStats.PktStats
+	outPktStats := rStats.PktStats
 
 	// existing connection
 	if oldConnMetrics != nil &&
