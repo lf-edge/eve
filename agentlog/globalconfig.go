@@ -104,7 +104,8 @@ func CastGlobalConfig(in interface{}) GlobalConfig {
 	}
 	var output GlobalConfig
 	if err := json.Unmarshal(b, &output); err != nil {
-		log.Fatal(err, "json Unmarshal in CastGlobalConfig")
+		// XXX file can be edited by hand
+		log.Error(err, "json Unmarshal in CastGlobalConfig")
 	}
 	return output
 }
