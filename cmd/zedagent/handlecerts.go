@@ -172,7 +172,7 @@ func checkCertObjStorageDownloadStatus(ctx *zedagentContext, uuidStr string,
 	}
 
 	if ret.MinState < types.DOWNLOADED {
-f		log.Infof("checkCertObjDownloaStatus %s, Waiting for downloads\n",
+		log.Infof("checkCertObjDownloaStatus %s, Waiting for downloads\n",
 			uuidStr)
 		return ret.Changed, false
 	}

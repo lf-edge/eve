@@ -547,9 +547,8 @@ func cleanupAdapters(ctx *domainContext, ioAdapterList []types.IoAdapter,
 	}
 }
 
-func doActivate(config types.DomainConfig, status *types.DomainStatus,
-	aa *types.AssignableAdapters) {
-	log.Infof("doActivate(%v) for %s\n",
+func doActivate(ctx *domainContext, config types.DomainConfig,
+	status *types.DomainStatus, aa *types.AssignableAdapters) {
 
 	log.Infof("doActivate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)

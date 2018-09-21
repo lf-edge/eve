@@ -178,8 +178,8 @@ func Run() {
 	subGlobalConfig.Activate()
 
 	// Get DomainStatus from domainmgr
-	subDomainStatus, err := pubsub.SubscribeWithDebug("domainmgr",
-		types.DomainStatus{}, false, &logmanagerCtx, &debug)
+	subDomainStatus, err := pubsub.Subscribe("domainmgr",
+		types.DomainStatus{}, false, &logmanagerCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
