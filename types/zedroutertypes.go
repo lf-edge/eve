@@ -829,8 +829,7 @@ type VpnLinkInfo struct {
 	SubNet    string // connecting subnet
 	SpiId     string // security parameter index
 	Direction bool   // 0 - in, 1 - out
-	Bytes     uint64
-	Pkts      uint64
+	PktStats  PktStats
 }
 
 type VpnLinkStatus struct {
