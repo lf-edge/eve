@@ -9,6 +9,10 @@ RUN apk add --no-cache \
 FROM scratch
 ENTRYPOINT []
 WORKDIR /
-COPY --from=build /lib/firmware/ath10k /lib/firmware/ath10k
+# FIXME: we're currently using ath10k firmware supplied
+# by Advantech. This is getting upstreamed and when it
+# does we should switch back to linux-firmware-ath10k from Alpine
+# COPY --from=build /lib/firmware/ath10k /lib/firmware/ath10k
+COPY ath10k /lib/firmware/ath10k
 COPY --from=build /lib/firmware/mrvl /lib/firmware/mrvl
 COPY --from=build /lib/firmware/rt2870.bin /lib/firmware/rt2870.bin
