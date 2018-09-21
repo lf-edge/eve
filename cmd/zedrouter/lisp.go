@@ -179,7 +179,7 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 		strconv.FormatUint(uint64(IID), 10)
 	file1, err := os.Create(cfgPathnameIID)
 	if err != nil {
-		log.Fatal("os.Create for ", cfgPathnameIID, err)
+		log.Fatal("createListConfiglet failed ", err)
 	}
 	defer file1.Close()
 
@@ -193,7 +193,7 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	}
 	file2, err := os.Create(cfgPathnameEID)
 	if err != nil {
-		log.Fatal("os.Create for ", cfgPathnameEID, err)
+		log.Fatal("createLispConfiglet failed ", err)
 	}
 	defer file2.Close()
 	rlocString := ""
@@ -276,7 +276,7 @@ func createLispEidConfiglet(lispRunDirname string,
 	cfgPathnameEID = lispRunDirname + "/" + EID.String()
 	file, err := os.Create(cfgPathnameEID)
 	if err != nil {
-		log.Fatal("os.Create for ", cfgPathnameEID, err)
+		log.Fatal("createLispEidConfiglet ", err)
 	}
 	defer file.Close()
 
@@ -456,9 +456,12 @@ func updateLisp(lispRunDirname string,
 	// XXX We write configuration to lisp.config.orig for debugging
 	// lispers.net lisp.config file overwrite issue.
 	if dat, err := ioutil.ReadFile(destFilename); err == nil {
-		f, _ := os.Create(destFilename + ".orig")
-		f.WriteString(string(dat))
-		f.Sync()
+		f, err := os.Create(destFilename + ".orig")
+		if err == nil {
+			f.WriteString(string(dat))
+			f.Sync()
+			f.Close()
+		}
 	}
 
 	// Determine the set of devices from the above config file

@@ -1822,7 +1822,6 @@ func handleModify(ctx *zedrouterContext, key string,
 		// XXX should we check that EID didn't change?
 
 		// Create LISP configlets for IID and EID/signature
-		// XXX shared with others???
 		updateLispConfiglet(lispRunDirname, false,
 			serviceStatus.LispStatus.IID, olConfig.EID,
 			olConfig.AppIPAddr, olConfig.LispSignature,
