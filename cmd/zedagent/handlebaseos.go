@@ -282,6 +282,7 @@ func doBaseOsInstall(ctx *zedagentContext, uuidStr string,
 	if !proceed {
 		return changed, proceed
 	}
+	proceed = false
 
 	// check for the download status change
 	downloadchange, downloaded :=
@@ -376,7 +377,7 @@ func validateAndAssignPartition(ctx *zedagentContext,
 
 	if config.Activate && status.PartitionLabel == "" {
 		log.Printf("validateAndAssignPartition(%s) assigning with partition %s\n",
-			config.BaseOsVersion, status.PartitionLabel)
+			config.BaseOsVersion, otherPartName)
 		status.PartitionLabel = otherPartName
 		status.PartitionState = zboot.GetPartitionState(otherPartName)
 		status.PartitionDevice = zboot.GetPartitionDevname(otherPartName)
