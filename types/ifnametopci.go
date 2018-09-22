@@ -27,12 +27,12 @@ func ifNameToPci(ifName string) (string, string, error) {
 	info, err := os.Lstat(devPath)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			log.Println(err)
+			log.Errorln(err)
 		}
 		return "", "", err
 	}
 	if (info.Mode() & os.ModeSymlink) == 0 {
-		log.Printf("Skipping non-symlink %s\n", devPath)
+		log.Errorf("Skipping non-symlink %s\n", devPath)
 		return "", "", errors.New(fmt.Sprintf("Not a symlink %s", devPath))
 	}
 	link, err := os.Readlink(devPath)

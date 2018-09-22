@@ -126,6 +126,11 @@ func Run() {
 	flag.Parse()
 	debug = *debugPtr
 	debugOverride = debug
+	if debugOverride {
+		log.SetLevel(log.DebugLevel)
+	} else {
+		log.SetLevel(log.InfoLevel)
+	}
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
@@ -139,7 +144,7 @@ func Run() {
 		log.Fatal(err)
 	}
 
-	log.Printf("Starting %s\n", agentName)
+	log.Infof("Starting %s\n", agentName)
 
 	// Tell ourselves to go ahead
 	// initialize the module specifig stuff
@@ -151,9 +156,9 @@ func Run() {
 	// Pick up (mostly static) AssignableAdapters before we report
 	// any device info
 	model := hardware.GetHardwareModel()
-	log.Printf("HardwareModel %s\n", model)
+	log.Debugf("HardwareModel %s\n", model)
 	aa := types.AssignableAdapters{}
-	subAa := adapters.SubscribeWithDebug(&aa, model, &debug)
+	subAa := adapters.Subscribe(&aa, model)
 
 	zedagentCtx := zedagentContext{assignableAdapters: &aa}
 	// Cross link
@@ -161,38 +166,38 @@ func Run() {
 	zedagentCtx.getconfigCtx = &getconfigCtx
 
 	// XXX placeholder for uplink config from zedcloud
-	pubDeviceUplinkConfig, err := pubsub.PublishWithDebug(agentName,
-		types.DeviceUplinkConfig{}, &debug)
+	pubDeviceUplinkConfig, err := pubsub.Publish(agentName,
+		types.DeviceUplinkConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	getconfigCtx.pubDeviceUplinkConfig = pubDeviceUplinkConfig
 
 	// Publish NetworkConfig and NetworkServiceConfig for zedmanager/zedrouter
-	pubNetworkObjectConfig, err := pubsub.PublishWithDebug(agentName,
-		types.NetworkObjectConfig{}, &debug)
+	pubNetworkObjectConfig, err := pubsub.Publish(agentName,
+		types.NetworkObjectConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	getconfigCtx.pubNetworkObjectConfig = pubNetworkObjectConfig
 
-	pubNetworkServiceConfig, err := pubsub.PublishWithDebug(agentName,
-		types.NetworkServiceConfig{}, &debug)
+	pubNetworkServiceConfig, err := pubsub.Publish(agentName,
+		types.NetworkServiceConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	getconfigCtx.pubNetworkServiceConfig = pubNetworkServiceConfig
 
-	pubAppInstanceConfig, err := pubsub.PublishWithDebug(agentName,
-		types.AppInstanceConfig{}, &debug)
+	pubAppInstanceConfig, err := pubsub.Publish(agentName,
+		types.AppInstanceConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	getconfigCtx.pubAppInstanceConfig = pubAppInstanceConfig
 	pubAppInstanceConfig.ClearRestarted()
 
-	pubAppNetworkConfig, err := pubsub.PublishWithDebug(agentName,
-		types.AppNetworkConfig{}, &debug)
+	pubAppNetworkConfig, err := pubsub.Publish(agentName,
+		types.AppNetworkConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -202,73 +207,73 @@ func Run() {
 	// XXX defer this until we have some config from cloud or saved copy
 	pubAppInstanceConfig.SignalRestarted()
 
-	pubCertObjConfig, err := pubsub.PublishWithDebug(agentName,
-		types.CertObjConfig{}, &debug)
+	pubCertObjConfig, err := pubsub.Publish(agentName,
+		types.CertObjConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	pubCertObjConfig.ClearRestarted()
 	getconfigCtx.pubCertObjConfig = pubCertObjConfig
 
-	pubCertObjStatus, err := pubsub.PublishWithDebug(agentName,
-		types.CertObjStatus{}, &debug)
+	pubCertObjStatus, err := pubsub.Publish(agentName,
+		types.CertObjStatus{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	pubCertObjStatus.ClearRestarted()
 	zedagentCtx.pubCertObjStatus = pubCertObjStatus
 
-	pubBaseOsConfig, err := pubsub.PublishWithDebug(agentName,
-		types.BaseOsConfig{}, &debug)
+	pubBaseOsConfig, err := pubsub.Publish(agentName,
+		types.BaseOsConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	pubBaseOsConfig.ClearRestarted()
 	getconfigCtx.pubBaseOsConfig = pubBaseOsConfig
 
-	pubBaseOsStatus, err := pubsub.PublishWithDebug(agentName,
-		types.BaseOsStatus{}, &debug)
+	pubBaseOsStatus, err := pubsub.Publish(agentName,
+		types.BaseOsStatus{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	pubBaseOsStatus.ClearRestarted()
 	zedagentCtx.pubBaseOsStatus = pubBaseOsStatus
 
-	pubBaseOsDownloadConfig, err := pubsub.PublishScopeWithDebug(agentName,
-		baseOsObj, types.DownloaderConfig{}, &debug)
+	pubBaseOsDownloadConfig, err := pubsub.PublishScope(agentName,
+		baseOsObj, types.DownloaderConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	pubBaseOsDownloadConfig.ClearRestarted()
 	zedagentCtx.pubBaseOsDownloadConfig = pubBaseOsDownloadConfig
 
-	pubCertObjDownloadConfig, err := pubsub.PublishScopeWithDebug(agentName,
-		certObj, types.DownloaderConfig{}, &debug)
+	pubCertObjDownloadConfig, err := pubsub.PublishScope(agentName,
+		certObj, types.DownloaderConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	pubCertObjDownloadConfig.ClearRestarted()
 	zedagentCtx.pubCertObjDownloadConfig = pubCertObjDownloadConfig
 
-	pubBaseOsVerifierConfig, err := pubsub.PublishScopeWithDebug(agentName,
-		baseOsObj, types.VerifyImageConfig{}, &debug)
+	pubBaseOsVerifierConfig, err := pubsub.PublishScope(agentName,
+		baseOsObj, types.VerifyImageConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	pubBaseOsVerifierConfig.ClearRestarted()
 	zedagentCtx.pubBaseOsVerifierConfig = pubBaseOsVerifierConfig
 
-	pubDatastoreConfig, err := pubsub.PublishWithDebug(agentName,
-		types.DatastoreConfig{}, &debug)
+	pubDatastoreConfig, err := pubsub.Publish(agentName,
+		types.DatastoreConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	getconfigCtx.pubDatastoreConfig = pubDatastoreConfig
 	pubDatastoreConfig.ClearRestarted()
 
-	// Look for global config like debug
-	subGlobalConfig, err := pubsub.SubscribeWithDebug("",
-		agentlog.GlobalConfig{}, false, &zedagentCtx, &debug)
+	// Look for global config such as log levels
+	subGlobalConfig, err := pubsub.Subscribe("",
+		agentlog.GlobalConfig{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -278,8 +283,8 @@ func Run() {
 	subGlobalConfig.Activate()
 
 	// Look for errors and status from zedrouter
-	subNetworkObjectStatus, err := pubsub.SubscribeWithDebug("zedrouter",
-		types.NetworkObjectStatus{}, false, &zedagentCtx, &debug)
+	subNetworkObjectStatus, err := pubsub.Subscribe("zedrouter",
+		types.NetworkObjectStatus{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -288,8 +293,8 @@ func Run() {
 	zedagentCtx.subNetworkObjectStatus = subNetworkObjectStatus
 	subNetworkObjectStatus.Activate()
 
-	subNetworkServiceStatus, err := pubsub.SubscribeWithDebug("zedrouter",
-		types.NetworkServiceStatus{}, false, &zedagentCtx, &debug)
+	subNetworkServiceStatus, err := pubsub.Subscribe("zedrouter",
+		types.NetworkServiceStatus{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -309,8 +314,8 @@ func Run() {
 	subNetworkServiceMetrics.Activate()
 
 	// Look for AppInstanceStatus from zedmanager
-	subAppInstanceStatus, err := pubsub.SubscribeWithDebug("zedmanager",
-		types.AppInstanceStatus{}, false, &zedagentCtx, &debug)
+	subAppInstanceStatus, err := pubsub.Subscribe("zedmanager",
+		types.AppInstanceStatus{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -320,8 +325,8 @@ func Run() {
 	subAppInstanceStatus.Activate()
 
 	// Get DomainStatus from domainmgr
-	subDomainStatus, err := pubsub.SubscribeWithDebug("domainmgr",
-		types.DomainStatus{}, false, &zedagentCtx, &debug)
+	subDomainStatus, err := pubsub.Subscribe("domainmgr",
+		types.DomainStatus{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -332,8 +337,8 @@ func Run() {
 
 	// Look for CertObjConfig from ourselves! XXX introduce separate
 	// certmanager?
-	subCertObjConfig, err := pubsub.SubscribeWithDebug("zedagent",
-		types.CertObjConfig{}, false, &zedagentCtx, &debug)
+	subCertObjConfig, err := pubsub.Subscribe("zedagent",
+		types.CertObjConfig{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -343,8 +348,8 @@ func Run() {
 	subCertObjConfig.Activate()
 
 	// Look for BaseOsConfig from ourselves!
-	subBaseOsConfig, err := pubsub.SubscribeWithDebug("zedagent",
-		types.BaseOsConfig{}, false, &zedagentCtx, &debug)
+	subBaseOsConfig, err := pubsub.Subscribe("zedagent",
+		types.BaseOsConfig{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -354,8 +359,8 @@ func Run() {
 	subBaseOsConfig.Activate()
 
 	// Look for DatastoreConfig from ourselves!
-	subDatastoreConfig, err := pubsub.SubscribeWithDebug("zedagent",
-		types.DatastoreConfig{}, false, &zedagentCtx, &debug)
+	subDatastoreConfig, err := pubsub.Subscribe("zedagent",
+		types.DatastoreConfig{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -365,8 +370,8 @@ func Run() {
 	subDatastoreConfig.Activate()
 
 	// Look for DownloaderStatus from downloader
-	subBaseOsDownloadStatus, err := pubsub.SubscribeScopeWithDebug("downloader",
-		baseOsObj, types.DownloaderStatus{}, false, &zedagentCtx, &debug)
+	subBaseOsDownloadStatus, err := pubsub.SubscribeScope("downloader",
+		baseOsObj, types.DownloaderStatus{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -376,8 +381,8 @@ func Run() {
 	subBaseOsDownloadStatus.Activate()
 
 	// Look for DownloaderStatus from downloader
-	subCertObjDownloadStatus, err := pubsub.SubscribeScopeWithDebug("downloader",
-		certObj, types.DownloaderStatus{}, false, &zedagentCtx, &debug)
+	subCertObjDownloadStatus, err := pubsub.SubscribeScope("downloader",
+		certObj, types.DownloaderStatus{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -387,8 +392,8 @@ func Run() {
 	subCertObjDownloadStatus.Activate()
 
 	// Look for VerifyImageStatus from verifier
-	subBaseOsVerifierStatus, err := pubsub.SubscribeScopeWithDebug("verifier",
-		baseOsObj, types.VerifyImageStatus{}, false, &zedagentCtx, &debug)
+	subBaseOsVerifierStatus, err := pubsub.SubscribeScope("verifier",
+		baseOsObj, types.VerifyImageStatus{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -399,8 +404,8 @@ func Run() {
 	subBaseOsVerifierStatus.Activate()
 
 	// Look for VerifyImageStatus from verifier
-	subAppImgVerifierStatus, err := pubsub.SubscribeScopeWithDebug("verifier",
-		appImgObj, types.VerifyImageStatus{}, false, &zedagentCtx, &debug)
+	subAppImgVerifierStatus, err := pubsub.SubscribeScope("verifier",
+		appImgObj, types.VerifyImageStatus{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -410,8 +415,8 @@ func Run() {
 	subAppImgVerifierStatus.Activate()
 
 	// Look for DownloaderStatus from downloader for metric reporting
-	subAppImgDownloadStatus, err := pubsub.SubscribeScopeWithDebug("downloader",
-		appImgObj, types.DownloaderStatus{}, false, &zedagentCtx, &debug)
+	subAppImgDownloadStatus, err := pubsub.SubscribeScope("downloader",
+		appImgObj, types.DownloaderStatus{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -422,7 +427,7 @@ func Run() {
 
 	// First we process the verifierStatus to avoid downloading
 	// an base image we already have in place
-	log.Printf("Handling initial verifier Status\n")
+	log.Infof("Handling initial verifier Status\n")
 	for !zedagentCtx.verifierRestarted {
 		select {
 		case change := <-subGlobalConfig.C:
@@ -431,7 +436,7 @@ func Run() {
 		case change := <-subBaseOsVerifierStatus.C:
 			subBaseOsVerifierStatus.ProcessChange(change)
 			if zedagentCtx.verifierRestarted {
-				log.Printf("Verifier reported restarted\n")
+				log.Infof("Verifier reported restarted\n")
 				break
 			}
 
@@ -443,8 +448,8 @@ func Run() {
 	DNSctx := DNSContext{}
 	DNSctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
 
-	subDeviceNetworkStatus, err := pubsub.SubscribeWithDebug("zedrouter",
-		types.DeviceNetworkStatus{}, false, &DNSctx, &debug)
+	subDeviceNetworkStatus, err := pubsub.Subscribe("zedrouter",
+		types.DeviceNetworkStatus{}, false, &DNSctx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -456,19 +461,19 @@ func Run() {
 	updateInprogress := zboot.IsCurrentPartitionStateInProgress()
 	time1 := time.Duration(configItemCurrent.resetIfCloudGoneTime)
 	t1 := time.NewTimer(time1 * time.Second)
-	log.Printf("Started timer for reset for %d seconds\n", time1)
+	log.Infof("Started timer for reset for %d seconds\n", time1)
 	time2 := time.Duration(configItemCurrent.fallbackIfCloudGoneTime)
-	log.Printf("Started timer for fallback (%v) reset for %d seconds\n",
+	log.Infof("Started timer for fallback (%v) reset for %d seconds\n",
 		updateInprogress, time2)
 	t2 := time.NewTimer(time2 * time.Second)
 
 	// Initial settings; redone below in case some
 	updateSshAccess(configItemCurrent.sshAccess)
 
-	log.Printf("Waiting until we have some uplinks with usable addresses\n")
+	log.Infof("Waiting until we have some uplinks with usable addresses\n")
 	waited := false
 	for DNSctx.usableAddressCount == 0 || !subAa.Found {
-		log.Printf("Waiting - have %d addresses; subAa %v\n",
+		log.Infof("Waiting - have %d addresses; subAa %v\n",
 			DNSctx.usableAddressCount, subAa.Found)
 		waited = true
 
@@ -483,19 +488,19 @@ func Run() {
 			subAa.ProcessChange(change)
 
 		case <-t1.C:
-			log.Printf("Exceeded outage for cloud connectivity - rebooting\n")
+			log.Errorf("Exceeded outage for cloud connectivity - rebooting\n")
 			execReboot(true)
 
 		case <-t2.C:
 			if updateInprogress {
-				log.Printf("Exceeded fallback outage for cloud connectivity - rebooting\n")
+				log.Errorf("Exceeded fallback outage for cloud connectivity - rebooting\n")
 				execReboot(true)
 			}
 		}
 	}
 	t1.Stop()
 	t2.Stop()
-	log.Printf("Have %d uplinks addresses to use; subAa %v\n",
+	log.Infof("Have %d uplinks addresses to use; subAa %v\n",
 		DNSctx.usableAddressCount, subAa.Found)
 	if waited {
 		// Inform ledmanager that we have uplink addresses
@@ -504,31 +509,31 @@ func Run() {
 	}
 
 	// Subscribe to network metrics from zedrouter
-	subNetworkMetrics, err := pubsub.SubscribeWithDebug("zedrouter",
-		types.NetworkMetrics{}, true, &zedagentCtx, &debug)
+	subNetworkMetrics, err := pubsub.Subscribe("zedrouter",
+		types.NetworkMetrics{}, true, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
 	// Subscribe to cloud metrics from different agents
 	cms := zedcloud.GetCloudMetrics()
-	subClientMetrics, err := pubsub.SubscribeWithDebug("zedclient", cms,
-		true, &zedagentCtx, &debug)
+	subClientMetrics, err := pubsub.Subscribe("zedclient", cms,
+		true, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	subLogmanagerMetrics, err := pubsub.SubscribeWithDebug("logmanager",
-		cms, true, &zedagentCtx, &debug)
+	subLogmanagerMetrics, err := pubsub.Subscribe("logmanager",
+		cms, true, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	subDownloaderMetrics, err := pubsub.SubscribeWithDebug("downloader",
-		cms, true, &zedagentCtx, &debug)
+	subDownloaderMetrics, err := pubsub.Subscribe("downloader",
+		cms, true, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// Timer for deferred sends of info messages
-	deferredChan := zedcloud.InitDeferredWithDebug(&debug)
+	deferredChan := zedcloud.InitDeferred()
 
 	// Publish initial device info. Retries all addresses on all uplinks.
 	publishDevInfo(&zedagentCtx)
@@ -536,7 +541,7 @@ func Run() {
 	// start the metrics/config fetch tasks
 	handleChannel := make(chan interface{})
 	go configTimerTask(handleChannel, &getconfigCtx)
-	log.Printf("Waiting for flexticker handle\n")
+	log.Infof("Waiting for flexticker handle\n")
 	configTickerHandle := <-handleChannel
 	go metricsTimerTask(&zedagentCtx, handleChannel)
 	metricsTickerHandle := <-handleChannel
@@ -548,7 +553,7 @@ func Run() {
 
 	for {
 		if publishDeviceInfo {
-			log.Printf("BaseOs triggered PublishDeviceInfo\n")
+			log.Infof("BaseOs triggered PublishDeviceInfo\n")
 			publishDevInfo(&zedagentCtx)
 			publishDeviceInfo = false
 		}
@@ -592,7 +597,7 @@ func Run() {
 			}
 			if DNSctx.triggerDeviceInfo {
 				// IP/DNS in device info could have changed
-				log.Printf("NetworkStatus triggered PublishDeviceInfo\n")
+				log.Infof("NetworkStatus triggered PublishDeviceInfo\n")
 				publishDevInfo(&zedagentCtx)
 				DNSctx.triggerDeviceInfo = false
 			}
@@ -601,7 +606,7 @@ func Run() {
 			subDomainStatus.ProcessChange(change)
 			// UsedByUUID could have changed ...
 			if zedagentCtx.TriggerDeviceInfo {
-				log.Printf("UsedByUUID triggered PublishDeviceInfo\n")
+				log.Infof("UsedByUUID triggered PublishDeviceInfo\n")
 				publishDevInfo(&zedagentCtx)
 				zedagentCtx.TriggerDeviceInfo = false
 			}
@@ -613,7 +618,7 @@ func Run() {
 			subNetworkMetrics.ProcessChange(change)
 			m, err := subNetworkMetrics.Get("global")
 			if err != nil {
-				log.Printf("subNetworkMetrics.Get failed: %s\n",
+				log.Errorf("subNetworkMetrics.Get failed: %s\n",
 					err)
 			} else {
 				networkMetrics = types.CastNetworkMetrics(m)
@@ -623,7 +628,7 @@ func Run() {
 			subClientMetrics.ProcessChange(change)
 			m, err := subClientMetrics.Get("global")
 			if err != nil {
-				log.Printf("subClientMetrics.Get failed: %s\n",
+				log.Errorf("subClientMetrics.Get failed: %s\n",
 					err)
 			} else {
 				clientMetrics = m
@@ -633,7 +638,7 @@ func Run() {
 			subLogmanagerMetrics.ProcessChange(change)
 			m, err := subLogmanagerMetrics.Get("global")
 			if err != nil {
-				log.Printf("subLogmanagerMetrics.Get failed: %s\n",
+				log.Errorf("subLogmanagerMetrics.Get failed: %s\n",
 					err)
 			} else {
 				logmanagerMetrics = m
@@ -643,7 +648,7 @@ func Run() {
 			subDownloaderMetrics.ProcessChange(change)
 			m, err := subDownloaderMetrics.Get("global")
 			if err != nil {
-				log.Printf("subDownloaderMetrics.Get failed: %s\n",
+				log.Errorf("subDownloaderMetrics.Get failed: %s\n",
 					err)
 			} else {
 				downloaderMetrics = m
@@ -671,7 +676,7 @@ func publishDevInfo(ctx *zedagentContext) {
 
 func handleVerifierRestarted(ctxArg interface{}, done bool) {
 	ctx := ctxArg.(*zedagentContext)
-	log.Printf("handleVerifierRestarted(%v)\n", done)
+	log.Infof("handleVerifierRestarted(%v)\n", done)
 	if done {
 		ctx.verifierRestarted = true
 	}
@@ -686,25 +691,25 @@ func initializeDirs() {
 
 	// create persistent holder directory
 	if _, err := os.Stat(persistDir); err != nil {
-		log.Printf("Create %s\n", persistDir)
+		log.Debugf("Create %s\n", persistDir)
 		if err := os.MkdirAll(persistDir, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(certificateDirname); err != nil {
-		log.Printf("Create %s\n", certificateDirname)
+		log.Debugf("Create %s\n", certificateDirname)
 		if err := os.MkdirAll(certificateDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(checkpointDirname); err != nil {
-		log.Printf("Create %s\n", checkpointDirname)
+		log.Debugf("Create %s\n", checkpointDirname)
 		if err := os.MkdirAll(checkpointDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
 	if _, err := os.Stat(objectDownloadDirname); err != nil {
-		log.Printf("Create %s\n", objectDownloadDirname)
+		log.Debugf("Create %s\n", objectDownloadDirname)
 		if err := os.MkdirAll(objectDownloadDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
@@ -718,7 +723,7 @@ func handleAppInstanceStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	status := cast.CastAppInstanceStatus(statusArg)
 	if status.Key() != key {
-		log.Printf("handleAppInstanceStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
+		log.Errorf("handleAppInstanceStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
 		return
 	}
@@ -744,45 +749,45 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	status := cast.CastDeviceNetworkStatus(statusArg)
 	ctx := ctxArg.(*DNSContext)
 	if key != "global" {
-		log.Printf("handleDNSModify: ignoring %s\n", key)
+		log.Infof("handleDNSModify: ignoring %s\n", key)
 		return
 	}
-	log.Printf("handleDNSModify for %s\n", key)
+	log.Infof("handleDNSModify for %s\n", key)
 	if cmp.Equal(deviceNetworkStatus, status) {
 		return
 	}
-	log.Printf("handleDNSModify: changed %v",
+	log.Infof("handleDNSModify: changed %v",
 		cmp.Diff(deviceNetworkStatus, status))
 	deviceNetworkStatus = status
 	// Did we (re-)gain the first usable address?
 	// XXX should we also trigger if the count increases?
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
 	if newAddrCount != 0 && ctx.usableAddressCount == 0 {
-		log.Printf("DeviceNetworkStatus from %d to %d addresses\n",
+		log.Infof("DeviceNetworkStatus from %d to %d addresses\n",
 			newAddrCount, ctx.usableAddressCount)
 		ctx.triggerGetConfig = true
 	}
 	ctx.usableAddressCount = newAddrCount
 	ctx.triggerDeviceInfo = true
 	devicenetwork.ProxyToEnv(deviceNetworkStatus.ProxyConfig)
-	log.Printf("handleDNSModify done for %s\n", key)
+	log.Infof("handleDNSModify done for %s\n", key)
 }
 
 func handleDNSDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Printf("handleDNSDelete for %s\n", key)
+	log.Infof("handleDNSDelete for %s\n", key)
 	ctx := ctxArg.(*DNSContext)
 
 	if key != "global" {
-		log.Printf("handleDNSDelete: ignoring %s\n", key)
+		log.Infof("handleDNSDelete: ignoring %s\n", key)
 		return
 	}
 	deviceNetworkStatus = types.DeviceNetworkStatus{}
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
 	ctx.usableAddressCount = newAddrCount
 	devicenetwork.ProxyToEnv(deviceNetworkStatus.ProxyConfig)
-	log.Printf("handleDNSDelete done for %s\n", key)
+	log.Infof("handleDNSDelete done for %s\n", key)
 }
 
 // Wrappers around handleBaseOsCreate/Modify/Delete
@@ -791,7 +796,7 @@ func handleBaseOsConfigModify(ctxArg interface{}, key string, configArg interfac
 	ctx := ctxArg.(*zedagentContext)
 	config := cast.CastBaseOsConfig(configArg)
 	if config.Key() != key {
-		log.Printf("handleBaseOsConfigModify key/UUID mismatch %s vs %s; ignored %+v\n", key, config.Key(), config)
+		log.Errorf("handleBaseOsConfigModify key/UUID mismatch %s vs %s; ignored %+v\n", key, config.Key(), config)
 		return
 	}
 	status := lookupBaseOsStatus(ctx, key)
@@ -800,21 +805,21 @@ func handleBaseOsConfigModify(ctxArg interface{}, key string, configArg interfac
 	} else {
 		handleBaseOsModify(ctx, key, &config, status)
 	}
-	log.Printf("handleBaseOsConfigModify(%s) done\n", key)
+	log.Infof("handleBaseOsConfigModify(%s) done\n", key)
 }
 
 func handleBaseOsConfigDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	log.Printf("handleBaseOsConfigDelete(%s)\n", key)
+	log.Infof("handleBaseOsConfigDelete(%s)\n", key)
 	ctx := ctxArg.(*zedagentContext)
 	status := lookupBaseOsStatus(ctx, key)
 	if status == nil {
-		log.Printf("handleBaseOsConfigDelete: unknown %s\n", key)
+		log.Infof("handleBaseOsConfigDelete: unknown %s\n", key)
 		return
 	}
 	handleBaseOsDelete(ctx, key, status)
-	log.Printf("handleBaseOsConfigDelete(%s) done\n", key)
+	log.Infof("handleBaseOsConfigDelete(%s) done\n", key)
 }
 
 // base os config/status event handlers
@@ -823,14 +828,14 @@ func handleBaseOsCreate(ctxArg interface{}, key string,
 	configArg interface{}) {
 	config := cast.CastBaseOsConfig(configArg)
 	if config.Key() != key {
-		log.Printf("handleBaseOsCreate key/UUID mismatch %s vs %s; ignored %+v\n",
+		log.Errorf("handleBaseOsCreate key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, config.Key(), config)
 		return
 	}
 	uuidStr := config.Key()
 	ctx := ctxArg.(*zedagentContext)
 
-	log.Printf("handleBaseOsCreate for %s\n", uuidStr)
+	log.Infof("handleBaseOsCreate for %s\n", uuidStr)
 	status := types.BaseOsStatus{
 		UUIDandVersion: config.UUIDandVersion,
 		BaseOsVersion:  config.BaseOsVersion,
@@ -851,7 +856,7 @@ func handleBaseOsCreate(ctxArg interface{}, key string,
 	err := validateBaseOsConfig(ctx, config)
 	if err != nil {
 		errStr := fmt.Sprintf("%v", err)
-		log.Println(errStr)
+		log.Errorln(errStr)
 		status.Error = errStr
 		status.ErrorTime = time.Now()
 		publishBaseOsStatus(ctx, &status)
@@ -869,23 +874,23 @@ func handleBaseOsModify(ctxArg interface{}, key string,
 	configArg interface{}, statusArg interface{}) {
 	config := cast.CastBaseOsConfig(configArg)
 	if config.Key() != key {
-		log.Printf("handleBaseOsModify key/UUID mismatch %s vs %s; ignored %+v\n",
+		log.Errorf("handleBaseOsModify key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, config.Key(), config)
 		return
 	}
 	status := cast.CastBaseOsStatus(statusArg)
 	if status.Key() != key {
-		log.Printf("handleBaseOsModify key/UUID mismatch %s vs %s; ignored %+v\n",
+		log.Errorf("handleBaseOsModify key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
 		return
 	}
 	uuidStr := config.Key()
 	ctx := ctxArg.(*zedagentContext)
 
-	log.Printf("handleBaseOsModify for %s\n", status.BaseOsVersion)
+	log.Infof("handleBaseOsModify for %s\n", status.BaseOsVersion)
 	if config.UUIDandVersion.Version == status.UUIDandVersion.Version &&
 		config.Activate == status.Activated {
-		log.Printf("Same version %v for %s\n",
+		log.Infof("Same version %v for %s\n",
 			config.UUIDandVersion.Version, uuidStr)
 		return
 	}
@@ -894,7 +899,7 @@ func handleBaseOsModify(ctxArg interface{}, key string,
 	err := validateBaseOsConfig(ctx, config)
 	if err != nil {
 		errStr := fmt.Sprintf("%v", err)
-		log.Println(errStr)
+		log.Errorln(errStr)
 		status.Error = errStr
 		status.ErrorTime = time.Now()
 		publishBaseOsStatus(ctx, &status)
@@ -913,13 +918,13 @@ func handleBaseOsDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 	status := configArg.(*types.BaseOsStatus)
 	if status.Key() != key {
-		log.Printf("handleBaseOsDelete key/UUID mismatch %s vs %s; ignored %+v\n",
+		log.Errorf("handleBaseOsDelete key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
 		return
 	}
 	ctx := ctxArg.(*zedagentContext)
 
-	log.Printf("handleBaseOsDelete for %s\n", status.BaseOsVersion)
+	log.Infof("handleBaseOsDelete for %s\n", status.BaseOsVersion)
 	removeBaseOsConfig(ctx, status.Key())
 }
 
@@ -929,7 +934,7 @@ func handleCertObjConfigModify(ctxArg interface{}, key string, configArg interfa
 	ctx := ctxArg.(*zedagentContext)
 	config := cast.CastCertObjConfig(configArg)
 	if config.Key() != key {
-		log.Printf("handleCertObjConfigModify key/UUID mismatch %s vs %s; ignored %+v\n", key, config.Key(), config)
+		log.Errorf("handleCertObjConfigModify key/UUID mismatch %s vs %s; ignored %+v\n", key, config.Key(), config)
 		return
 	}
 	status := lookupCertObjStatus(ctx, key)
@@ -938,28 +943,28 @@ func handleCertObjConfigModify(ctxArg interface{}, key string, configArg interfa
 	} else {
 		handleCertObjModify(ctx, key, &config, status)
 	}
-	log.Printf("handleCertObjConfigModify(%s) done\n", key)
+	log.Infof("handleCertObjConfigModify(%s) done\n", key)
 }
 
 func handleCertObjConfigDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	log.Printf("handleCertObjConfigDelete(%s)\n", key)
+	log.Infof("handleCertObjConfigDelete(%s)\n", key)
 	ctx := ctxArg.(*zedagentContext)
 	status := lookupCertObjStatus(ctx, key)
 	if status == nil {
-		log.Printf("handleCertObjConfigDelete: unknown %s\n", key)
+		log.Infof("handleCertObjConfigDelete: unknown %s\n", key)
 		return
 	}
 	handleCertObjDelete(ctx, key, status)
-	log.Printf("handleCertObjConfigDelete(%s) done\n", key)
+	log.Infof("handleCertObjConfigDelete(%s) done\n", key)
 }
 
 // certificate config/status event handlers
 // certificate config create event
 func handleCertObjCreate(ctx *zedagentContext, key string, config *types.CertObjConfig) {
 
-	log.Printf("handleCertObjCreate for %s\n", key)
+	log.Infof("handleCertObjCreate for %s\n", key)
 
 	status := types.CertObjStatus{
 		UUIDandVersion: config.UUIDandVersion,
@@ -985,11 +990,11 @@ func handleCertObjCreate(ctx *zedagentContext, key string, config *types.CertObj
 func handleCertObjModify(ctx *zedagentContext, key string, config *types.CertObjConfig, status *types.CertObjStatus) {
 
 	uuidStr := config.Key()
-	log.Printf("handleCertObjModify for %s\n", uuidStr)
+	log.Infof("handleCertObjModify for %s\n", uuidStr)
 
 	// XXX:FIXME, do we
 	if config.UUIDandVersion.Version == status.UUIDandVersion.Version {
-		log.Printf("Same version %v for %s\n",
+		log.Infof("Same version %v for %s\n",
 			config.UUIDandVersion.Version, key)
 		return
 	}
@@ -1005,7 +1010,7 @@ func handleCertObjDelete(ctx *zedagentContext, key string,
 	status *types.CertObjStatus) {
 
 	uuidStr := status.Key()
-	log.Printf("handleCertObjDelete for %s\n", uuidStr)
+	log.Infof("handleCertObjDelete for %s\n", uuidStr)
 	removeCertObjConfig(ctx, uuidStr)
 }
 
@@ -1014,12 +1019,12 @@ func handleDownloadStatusModify(ctxArg interface{}, key string,
 
 	status := cast.CastDownloaderStatus(statusArg)
 	if status.Key() != key {
-		log.Printf("handleDownloadStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
+		log.Errorf("handleDownloadStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
 		return
 	}
 	ctx := ctxArg.(*zedagentContext)
-	log.Printf("handleDownloadStatusModify for %s\n",
+	log.Infof("handleDownloadStatusModify for %s\n",
 		status.Safename)
 	updateDownloaderStatus(ctx, &status)
 }
@@ -1028,7 +1033,7 @@ func handleDownloadStatusModify(ctxArg interface{}, key string,
 func handleDownloadStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Printf("handleDownloadStatusDelete for %s\n", key)
+	log.Infof("handleDownloadStatusDelete for %s\n", key)
 	// Nothing to do
 }
 
@@ -1037,19 +1042,19 @@ func handleVerifierStatusModify(ctxArg interface{}, key string,
 
 	status := cast.CastVerifyImageStatus(statusArg)
 	if status.Key() != key {
-		log.Printf("handleVerifierStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
+		log.Errorf("handleVerifierStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
 		return
 	}
 	ctx := ctxArg.(*zedagentContext)
-	log.Printf("handleVerifierStatusModify for %s\n", status.Safename)
+	log.Infof("handleVerifierStatusModify for %s\n", status.Safename)
 	updateVerifierStatus(ctx, &status)
 }
 
 func handleVerifierStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Printf("handleVeriferStatusDelete for %s\n", key)
+	log.Infof("handleVeriferStatusDelete for %s\n", key)
 	// Nothing to do
 }
 
@@ -1057,14 +1062,14 @@ func handleDatastoreConfigModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
 	// XXX empty since we look at collection when we need it
-	log.Printf("handleDatastoreConfigModify for %s\n", key)
+	log.Infof("handleDatastoreConfigModify for %s\n", key)
 }
 
 func handleDatastoreConfigDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
 	// XXX empty since we look at collection when we need it
-	log.Printf("handleDatastoreConfigDelete for %s\n", key)
+	log.Infof("handleDatastoreConfigDelete for %s\n", key)
 }
 
 func appendError(allErrors string, prefix string, lasterr string) string {
@@ -1076,13 +1081,13 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*zedagentContext)
 	if key != "global" {
-		log.Printf("handleGlobalConfigModify: ignoring %s\n", key)
+		log.Infof("handleGlobalConfigModify: ignoring %s\n", key)
 		return
 	}
-	log.Printf("handleGlobalConfigModify for %s\n", key)
+	log.Infof("handleGlobalConfigModify for %s\n", key)
 	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
-	log.Printf("handleGlobalConfigModify done for %s\n", key)
+	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,
@@ -1090,11 +1095,11 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*zedagentContext)
 	if key != "global" {
-		log.Printf("handleGlobalConfigDelete: ignoring %s\n", key)
+		log.Infof("handleGlobalConfigDelete: ignoring %s\n", key)
 		return
 	}
-	log.Printf("handleGlobalConfigDelete for %s\n", key)
+	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
-	log.Printf("handleGlobalConfigDelete done for %s\n", key)
+	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }

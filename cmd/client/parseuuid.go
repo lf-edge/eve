@@ -21,13 +21,13 @@ func parseConfig(configUrl string, resp *http.Response, contents []byte) (uuid.U
 	var hardwaremodel string
 
 	if err := validateConfigMessage(configUrl, resp); err != nil {
-		log.Println("validateConfigMessage: ", err)
+		log.Errorln("validateConfigMessage: ", err)
 		return devUUID, hardwaremodel, err
 	}
 
 	config, err := readDeviceConfigProtoMessage(contents)
 	if err != nil {
-		log.Println("readDeviceConfigProtoMessage: ", err)
+		log.Errorln("readDeviceConfigProtoMessage: ", err)
 		return devUUID, hardwaremodel, err
 	}
 	// Check if we have an override from the device config
@@ -40,7 +40,7 @@ func parseConfig(configUrl string, resp *http.Response, contents []byte) (uuid.U
 	uuidStr := strings.TrimSpace(config.GetId().Uuid)
 	devUUID, err = uuid.FromString(uuidStr)
 	if err != nil {
-		log.Printf("uuid.FromString(%s): %s\n", uuidStr, err)
+		log.Errorf("uuid.FromString(%s): %s\n", uuidStr, err)
 		return devUUID, hardwaremodel, err
 	}
 	return devUUID, hardwaremodel, nil
@@ -76,7 +76,7 @@ func readDeviceConfigProtoMessage(contents []byte) (*zconfig.EdgeDevConfig, erro
 
 	err := proto.Unmarshal(contents, config)
 	if err != nil {
-		log.Println("Unmarshalling failed: %v", err)
+		log.Errorln("Unmarshalling failed: %v", err)
 		return nil, err
 	}
 	return config, nil

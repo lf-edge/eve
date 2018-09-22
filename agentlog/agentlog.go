@@ -9,8 +9,7 @@ import (
 	"github.com/zededa/go-provision/zboot"
 	"os"
 	"os/signal"
-	runtimedebug "runtime/debug"
-	"runtime/pprof"
+	"runtime"
 	"syscall"
 	"time"
 )
@@ -48,20 +47,36 @@ func initImpl(agentName string, logdir string, redirect bool,
 	return logf, nil
 }
 
+// Wait on channel then print all stacks.
 func printAllStacks(sigs chan os.Signal) {
 	for {
 		select {
 		case sig := <-sigs:
 			log.Infof("printAllStacks: received %v\n", sig)
-			// XXX log? different logger?
-			pprof.Lookup("goroutine").WriteTo(log.StandardLogger().Writer(), 2)
+			log.Warnf("SIGUSR1 triggered stack traces:\n%v\n",
+				getStacks(true))
 		}
 	}
 }
 
+// Print out our stack
 func printStack() {
-	st := runtimedebug.Stack()
-	log.Error("fatal stack trace:\n%v\n", string(st))
+	log.Error("fatal stack trace:\n%v\n", getStacks(false))
+}
+
+func getStacks(all bool) string {
+	var (
+		buf       []byte
+		stackSize int
+	)
+	bufferLen := 16384
+	for stackSize == len(buf) {
+		buf = make([]byte, bufferLen)
+		stackSize = runtime.Stack(buf, all)
+		bufferLen *= 2
+	}
+	buf = buf[:stackSize]
+	return string(buf)
 }
 
 func Init(agentName string) (*os.File, error) {

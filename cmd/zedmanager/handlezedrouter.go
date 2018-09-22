@@ -15,27 +15,27 @@ func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
 
 	key := aiConfig.Key()
 	displayName := aiConfig.DisplayName
-	log.Printf("MaybeAddAppNetworkConfig for %s displayName %s\n", key,
+	log.Infof("MaybeAddAppNetworkConfig for %s displayName %s\n", key,
 		displayName)
 
 	changed := false
 	m := lookupAppNetworkConfig(ctx, key)
 	if m != nil {
-		log.Printf("appNetwork config already exists for %s\n", key)
+		log.Infof("appNetwork config already exists for %s\n", key)
 		if len(aiConfig.OverlayNetworkList) != len(m.OverlayNetworkList) {
-			log.Println("Unsupported: Changed number of overlays for ",
+			log.Errorln("Unsupported: Changed number of overlays for ",
 				aiConfig.UUIDandVersion)
 			return
 		}
 		if len(aiConfig.UnderlayNetworkList) != len(m.UnderlayNetworkList) {
-			log.Println("Unsupported: Changed number of underlays for ",
+			log.Errorln("Unsupported: Changed number of underlays for ",
 				aiConfig.UUIDandVersion)
 			return
 		}
 		for i, new := range aiConfig.OverlayNetworkList {
 			old := m.OverlayNetworkList[i]
 			if !reflect.DeepEqual(new.ACLs, old.ACLs) {
-				log.Printf("Over ACLs changed from %v to %v\n",
+				log.Infof("Over ACLs changed from %v to %v\n",
 					old.ACLs, new.ACLs)
 				changed = true
 				break
@@ -44,16 +44,14 @@ func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
 		for i, new := range aiConfig.UnderlayNetworkList {
 			old := m.UnderlayNetworkList[i]
 			if !reflect.DeepEqual(new.ACLs, old.ACLs) {
-				log.Printf("Under ACLs changed from %v to %v\n",
+				log.Infof("Under ACLs changed from %v to %v\n",
 					old.ACLs, new.ACLs)
 				changed = true
 				break
 			}
 		}
 	} else {
-		if debug {
-			log.Printf("appNetwork config add for %s\n", key)
-		}
+		log.Debugf("appNetwork config add for %s\n", key)
 		changed = true
 	}
 	if changed {
@@ -83,7 +81,7 @@ func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
 		}
 		publishAppNetworkConfig(ctx, &nc)
 	}
-	log.Printf("MaybeAddAppNetworkConfig done for %s\n", key)
+	log.Infof("MaybeAddAppNetworkConfig done for %s\n", key)
 }
 
 func lookupAppNetworkConfig(ctx *zedmanagerContext, key string) *types.AppNetworkConfig {
@@ -91,12 +89,12 @@ func lookupAppNetworkConfig(ctx *zedmanagerContext, key string) *types.AppNetwor
 	pub := ctx.pubAppNetworkConfig
 	c, _ := pub.Get(key)
 	if c == nil {
-		log.Printf("lookupAppNetworkConfig(%s) not found\n", key)
+		log.Infof("lookupAppNetworkConfig(%s) not found\n", key)
 		return nil
 	}
 	config := cast.CastAppNetworkConfig(c)
 	if config.Key() != key {
-		log.Printf("lookupAppNetworkConfig key/UUID mismatch %s vs %s; ignored %+v\n",
+		log.Errorf("lookupAppNetworkConfig key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, config.Key(), config)
 		return nil
 	}
@@ -108,12 +106,12 @@ func lookupAppNetworkStatus(ctx *zedmanagerContext, key string) *types.AppNetwor
 	sub := ctx.subAppNetworkStatus
 	st, _ := sub.Get(key)
 	if st == nil {
-		log.Printf("lookupAppNetworkStatus(%s) not found\n", key)
+		log.Infof("lookupAppNetworkStatus(%s) not found\n", key)
 		return nil
 	}
 	status := cast.CastAppNetworkStatus(st)
 	if status.Key() != key {
-		log.Printf("lookupAppNetworkStatus key/UUID mismatch %s vs %s; ignored %+v\n",
+		log.Errorf("lookupAppNetworkStatus key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
 		return nil
 	}
@@ -124,7 +122,7 @@ func publishAppNetworkConfig(ctx *zedmanagerContext,
 	status *types.AppNetworkConfig) {
 
 	key := status.Key()
-	log.Printf("publishAppNetworkConfig(%s)\n", key)
+	log.Infof("publishAppNetworkConfig(%s)\n", key)
 	pub := ctx.pubAppNetworkConfig
 	pub.Publish(key, status)
 }
@@ -132,11 +130,11 @@ func publishAppNetworkConfig(ctx *zedmanagerContext,
 func unpublishAppNetworkConfig(ctx *zedmanagerContext, uuidStr string) {
 
 	key := uuidStr
-	log.Printf("unpublishAppNetworkConfig(%s)\n", key)
+	log.Infof("unpublishAppNetworkConfig(%s)\n", key)
 	pub := ctx.pubAppNetworkConfig
 	c, _ := pub.Get(key)
 	if c == nil {
-		log.Printf("unpublishAppNetworkConfig(%s) not found\n", key)
+		log.Errorf("unpublishAppNetworkConfig(%s) not found\n", key)
 		return
 	}
 	pub.Unpublish(key)
@@ -146,34 +144,32 @@ func handleAppNetworkStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	status := cast.CastAppNetworkStatus(statusArg)
 	ctx := ctxArg.(*zedmanagerContext)
-	log.Printf("handleAppNetworkStatusModify for %s\n", key)
+	log.Infof("handleAppNetworkStatusModify for %s\n", key)
 	if status.Key() != key {
-		log.Printf("handleAppNetworkStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
+		log.Errorf("handleAppNetworkStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
 		return
 	}
 	// Ignore if any Pending* flag is set
 	if status.Pending() {
-		log.Printf("handleAppNetworkStatusModify skipped due to Pending* for %s\n",
+		log.Infof("handleAppNetworkStatusModify skipped due to Pending* for %s\n",
 			key)
 		return
 	}
 	if status.IsZedmanager {
-		log.Printf("Ignoring IsZedmanager appNetwork status for %v\n",
+		log.Infof("Ignoring IsZedmanager appNetwork status for %v\n",
 			key)
 		return
 	}
 	updateAIStatusUUID(ctx, status.Key())
-
-	log.Printf("handleAppNetworkStatusModify done for %s\n",
-		key)
+	log.Infof("handleAppNetworkStatusModify done for %s\n", key)
 }
 
 func handleAppNetworkStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Printf("handleAppNetworkStatusDelete for %s\n", key)
+	log.Infof("handleAppNetworkStatusDelete for %s\n", key)
 	ctx := ctxArg.(*zedmanagerContext)
 	removeAIStatusUUID(ctx, key)
-	log.Printf("handleAppNetworkStatusDelete done for %s\n", key)
+	log.Infof("handleAppNetworkStatusDelete done for %s\n", key)
 }

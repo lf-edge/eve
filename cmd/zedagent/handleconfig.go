@@ -116,7 +116,6 @@ func handleConfigInit() {
 	}
 	zedcloudCtx.DeviceNetworkStatus = &deviceNetworkStatus
 	zedcloudCtx.TlsConfig = tlsConfig
-	zedcloudCtx.DebugPtr = &debug
 	zedcloudCtx.FailureFunc = zedcloud.ZedCloudFailure
 	zedcloudCtx.SuccessFunc = zedcloud.ZedCloudSuccess
 
@@ -129,7 +128,7 @@ func handleConfigInit() {
 	if err != nil {
 		log.Fatal("uuid.FromString", err, string(b))
 	}
-	log.Printf("Read UUID %s\n", devUUID)
+	log.Infof("Read UUID %s\n", devUUID)
 	zcdevUUID = devUUID
 }
 
@@ -159,13 +158,13 @@ func configTimerTask(handleChannel chan interface{},
 			rebootFlag = getLatestConfig(configUrl, iteration,
 				&updateInprogress, getconfigCtx)
 		} else {
-			log.Printf("rebootFlag set; not getting config\n")
+			log.Infof("rebootFlag set; not getting config\n")
 		}
 	}
 }
 
 func triggerGetConfig(tickerHandle interface{}) {
-	log.Printf("triggerGetConfig()\n")
+	log.Infof("triggerGetConfig()\n")
 	flextimer.TickNow(tickerHandle)
 }
 
@@ -173,7 +172,7 @@ func triggerGetConfig(tickerHandle interface{}) {
 // Assumes the caller has verifier that the interval has changed
 func updateConfigTimer(tickerHandle interface{}) {
 	interval := time.Duration(configItemCurrent.configInterval) * time.Second
-	log.Printf("updateConfigTimer() change to %v\n", interval)
+	log.Infof("updateConfigTimer() change to %v\n", interval)
 	max := float64(interval)
 	min := max * 0.3
 	flextimer.UpdateRangeTicker(tickerHandle,
@@ -189,17 +188,15 @@ func updateConfigTimer(tickerHandle interface{}) {
 func getLatestConfig(url string, iteration int, updateInprogress *bool,
 	getconfigCtx *getconfigContext) bool {
 
-	if debug {
-		log.Printf("getLastestConfig(%s, %d, %v)\n", url, iteration,
-			*updateInprogress)
-	}
+	log.Debugf("getLastestConfig(%s, %d, %v)\n", url, iteration,
+		*updateInprogress)
 
 	// Did we exceed the time limits?
 	timePassed := time.Since(getconfigCtx.lastReceivedConfigFromCloud)
 
 	resetLimit := time.Second * time.Duration(configItemCurrent.resetIfCloudGoneTime)
 	if timePassed > resetLimit {
-		log.Printf("Exceeded outage for cloud connectivity by %d seconds- rebooting\n",
+		log.Errorf("Exceeded outage for cloud connectivity by %d seconds- rebooting\n",
 			(timePassed-resetLimit)/time.Second)
 		execReboot(true)
 		return true
@@ -207,7 +204,7 @@ func getLatestConfig(url string, iteration int, updateInprogress *bool,
 	if *updateInprogress {
 		fallbackLimit := time.Second * time.Duration(configItemCurrent.fallbackIfCloudGoneTime)
 		if timePassed > fallbackLimit {
-			log.Printf("Exceeded fallback outage for cloud connectivity by %d seconds- rebooting\n",
+			log.Errorf("Exceeded fallback outage for cloud connectivity by %d seconds- rebooting\n",
 				(timePassed-fallbackLimit)/time.Second)
 			execReboot(true)
 			return true
@@ -216,7 +213,7 @@ func getLatestConfig(url string, iteration int, updateInprogress *bool,
 
 	resp, contents, err := zedcloud.SendOnAllIntf(zedcloudCtx, url, 0, nil, iteration, false)
 	if err != nil {
-		log.Printf("getLatestConfig failed: %s\n", err)
+		log.Errorf("getLatestConfig failed: %s\n", err)
 		if getconfigCtx.ledManagerCount == 4 {
 			// Inform ledmanager about loss of config from cloud
 			types.UpdateLedManagerConfig(3)
@@ -231,11 +228,11 @@ func getLatestConfig(url string, iteration int, updateInprogress *bool,
 
 			config, err := readSavedProtoMessage(checkpointDirname+"/lastconfig", false)
 			if err != nil {
-				log.Printf("getconfig: %v\n", err)
+				log.Errorf("getconfig: %v\n", err)
 				return false
 			}
 			if config != nil {
-				log.Printf("Using saved config %v\n", config)
+				log.Errorf("Using saved config %v\n", config)
 				getconfigCtx.readSavedConfig = true
 				return inhaleDeviceConfig(config, getconfigCtx,
 					true)
@@ -255,14 +252,14 @@ func getLatestConfig(url string, iteration int, updateInprogress *bool,
 			time.Duration(configItemCurrent.mintimeUpdateSuccess)
 		curPart := zboot.GetCurrentPartition()
 		if timePassed < successLimit {
-			log.Printf("getLastestConfig, curPart %s inprogress waiting for %d seconds\n",
+			log.Infof("getLastestConfig, curPart %s inprogress waiting for %d seconds\n",
 				curPart,
 				(successLimit-timePassed)/time.Second)
 		} else {
-			log.Printf("getLastestConfig, curPart %s inprogress; marking active\n",
+			log.Infof("getLastestConfig, curPart %s inprogress; marking active\n",
 				curPart)
 			if err := zboot.MarkOtherPartitionStateActive(); err != nil {
-				log.Println(err)
+				log.Errorln(err)
 			} else {
 				// Update and publish the change
 				baseOsGetActivationStatusAll(getconfigCtx.zedagentCtx)
@@ -280,7 +277,7 @@ func getLatestConfig(url string, iteration int, updateInprogress *bool,
 	zboot.WatchdogOK()
 
 	if err := validateConfigMessage(url, resp); err != nil {
-		log.Println("validateConfigMessage: ", err)
+		log.Errorln("validateConfigMessage: ", err)
 		// Inform ledmanager about cloud connectivity
 		types.UpdateLedManagerConfig(3)
 		getconfigCtx.ledManagerCount = 3
@@ -289,7 +286,7 @@ func getLatestConfig(url string, iteration int, updateInprogress *bool,
 
 	changed, config, err := readDeviceConfigProtoMessage(contents)
 	if err != nil {
-		log.Println("readDeviceConfigProtoMessage: ", err)
+		log.Errorln("readDeviceConfigProtoMessage: ", err)
 		// Inform ledmanager about cloud connectivity
 		types.UpdateLedManagerConfig(3)
 		getconfigCtx.ledManagerCount = 3
@@ -304,9 +301,7 @@ func getLatestConfig(url string, iteration int, updateInprogress *bool,
 	writeReceivedProtoMessage(contents)
 
 	if !changed {
-		if debug {
-			log.Printf("Configuration from zedcloud is unchanged\n")
-		}
+		log.Debugf("Configuration from zedcloud is unchanged\n")
 		return false
 	}
 	return inhaleDeviceConfig(config, getconfigCtx, false)
@@ -378,19 +373,19 @@ func readSavedProtoMessage(filename string, force bool) (*zconfig.EdgeDevConfig,
 	if !force && age > staleLimit {
 		errStr := fmt.Sprintf("savedProto too old: age %v limit %d\n",
 			age, staleLimit)
-		log.Println(errStr)
+		log.Errorln(errStr)
 		return nil, nil
 	}
 	contents, err := ioutil.ReadFile(filename)
 	if err != nil {
-		log.Println("readSavedProtoMessage", err)
+		log.Errorln("readSavedProtoMessage", err)
 		return nil, err
 	}
 	var config = &zconfig.EdgeDevConfig{}
 
 	err = proto.Unmarshal(contents, config)
 	if err != nil {
-		log.Println("readSavedProtoMessage Unmarshalling failed: %v",
+		log.Errorln("readSavedProtoMessage Unmarshalling failed: %v",
 			err)
 		return nil, err
 	}
@@ -412,13 +407,11 @@ func readDeviceConfigProtoMessage(contents []byte) (bool, *zconfig.EdgeDevConfig
 	configHash := h.Sum(nil)
 	same := bytes.Equal(configHash, prevConfigHash)
 	prevConfigHash = configHash
-	if debug {
-		log.Printf("readDeviceConfigProtoMessage: same %v config sha % x vs. % x\n",
-			same, prevConfigHash, configHash)
-	}
+	log.Debugf("readDeviceConfigProtoMessage: same %v config sha % x vs. % x\n",
+		same, prevConfigHash, configHash)
 	err := proto.Unmarshal(contents, config)
 	if err != nil {
-		log.Println("Unmarshalling failed: %v", err)
+		log.Errorln("Unmarshalling failed: %v", err)
 		return false, nil, err
 	}
 	return !same, config, nil
@@ -426,9 +419,7 @@ func readDeviceConfigProtoMessage(contents []byte) (bool, *zconfig.EdgeDevConfig
 
 // Returns a rebootFlag
 func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext, usingSaved bool) bool {
-	if debug {
-		log.Printf("Inhaling config %v\n", config)
-	}
+	log.Debugf("Inhaling config %v\n", config)
 
 	// if they match return
 	var devId = &zconfig.UUIDandVersion{}
@@ -437,7 +428,7 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCo
 	if devId != nil {
 		id, err := uuid.FromString(devId.Uuid)
 		if err != nil {
-			log.Printf("Invalid UUID %s from cloud: %s\n",
+			log.Errorf("Invalid UUID %s from cloud: %s\n",
 				devId.Uuid, err)
 			return false
 		}
@@ -448,7 +439,7 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCo
 			// not update the hostname nor LISP.
 			// XXX remove once zedcloud preserves state.
 			if id != zcdevUUID {
-				log.Printf("XXX Device UUID changed from %s to %s\n",
+				log.Infof("XXX Device UUID changed from %s to %s\n",
 					zcdevUUID.String(), id.String())
 				zcdevUUID = id
 			}

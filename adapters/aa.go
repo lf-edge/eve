@@ -28,26 +28,16 @@ type context struct {
 	Found bool
 	C     <-chan string
 	// Private info
-	aa       *types.AssignableAdapters
-	model    string
-	sub      *pubsub.Subscription
-	debugPtr *bool
-}
-
-func (ctx *context) debug() bool {
-	return (ctx.debugPtr != nil) && *ctx.debugPtr
+	aa    *types.AssignableAdapters
+	model string
+	sub   *pubsub.Subscription
 }
 
 func Subscribe(aa *types.AssignableAdapters, model string) *context {
-	return SubscribeWithDebug(aa, model, nil)
-}
 
-func SubscribeWithDebug(aa *types.AssignableAdapters, model string,
-	debugPtr *bool) *context {
-	ctx := context{model: model, aa: aa, debugPtr: debugPtr}
-
-	sub, err := pubsub.SubscribeWithDebug("", types.AssignableAdapters{},
-		false, &ctx, debugPtr)
+	ctx := context{model: model, aa: aa}
+	sub, err := pubsub.Subscribe("", types.AssignableAdapters{},
+		false, &ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -68,31 +58,26 @@ func handleAAModify(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*context)
 	// Only care about my model
 	if key != ctx.model {
-		if ctx.debug() {
-			log.Printf("handleAAModify: ignoring %s, expecting %s\n",
-				key, ctx.model)
-		}
+		log.Debugf("handleAAModify: ignoring %s, expecting %s\n",
+			key, ctx.model)
 		return
 	}
-	log.Printf("handleAAModify found %s\n", key)
+	log.Infof("handleAAModify found %s\n", key)
 	*ctx.aa = config
 	ctx.Found = true
-	log.Printf("handleAAModify done for %s\n", key)
+	log.Infof("handleAAModify done for %s\n", key)
 }
 
 func handleAADelete(ctxArg interface{}, key string, configArg interface{}) {
-	log.Printf("handleAADelete for %s\n", key)
 	ctx := ctxArg.(*context)
 	// Only care about my model
 	if key != ctx.model {
-		if ctx.debug() {
-			log.Printf("handleAADelete: ignoring %s, expecting %s\n",
-				key, ctx.model)
-		}
+		log.Debugf("handleAADelete: ignoring %s, expecting %s\n",
+			key, ctx.model)
 		return
 	}
-	log.Printf("handleAADelete: found %s\n", ctx.model)
+	log.Infof("handleAADelete: found %s\n", ctx.model)
 	ctx.Found = false
 	ctx.aa = &types.AssignableAdapters{}
-	log.Printf("handleAADelete done for %s\n", key)
+	log.Infof("handleAADelete done for %s\n", key)
 }

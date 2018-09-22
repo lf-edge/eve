@@ -91,8 +91,8 @@ func CastDeviceUplinkConfig(in interface{}) types.DeviceUplinkConfig {
 	}
 	var output types.DeviceUplinkConfig
 	if err := json.Unmarshal(b, &output); err != nil {
-		// XXX Comes from outside sources like USB stick?
-		log.Println(err, "json Unmarshal in CastDeviceUplinkConfig")
+		// Comes from outside sources like USB stick so don't Fatal
+		log.Errorln(err, "json Unmarshal in CastDeviceUplinkConfig")
 	}
 	return output
 }

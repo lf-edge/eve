@@ -28,7 +28,7 @@ const (
 func strongswanCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	status *types.NetworkServiceStatus) error {
 
-	log.Printf("strongswanCreate(%s)\n", config.DisplayName)
+	log.Infof("strongswanCreate(%s)\n", config.DisplayName)
 
 	// parse and structure the config
 	vpnConfig, err := strongSwanConfigGet(ctx, config)
@@ -43,7 +43,7 @@ func strongswanCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	}
 
 	status.OpaqueStatus = string(bytes)
-	log.Printf("StrongSwanCreate: %s\n", status.OpaqueStatus)
+	log.Infof("StrongSwanCreate: %s\n", status.OpaqueStatus)
 
 	// reset any previous config
 	if err := ipSecServiceInactivate(vpnConfig); err != nil {
@@ -52,7 +52,7 @@ func strongswanCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 
 	// create the ipsec config files, tunnel, routes  and filter-rules
 	if err := strongSwanVpnCreate(vpnConfig); err != nil {
-		log.Printf("%s StrongSwanVpn create\n", err.Error())
+		log.Errorf("%s StrongSwanVpn create\n", err.Error())
 		return err
 	}
 	return nil
@@ -60,32 +60,32 @@ func strongswanCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 
 func strongswanDelete(status *types.NetworkServiceStatus) {
 
-	log.Printf("strongswanDelete(%s)\n", status.DisplayName)
+	log.Infof("strongswanDelete(%s)\n", status.DisplayName)
 
 	vpnConfig, err := strongSwanVpnStatusParse(status.OpaqueStatus)
 	if err != nil {
-		log.Printf("strongswanDelete config absent\n")
+		log.Infof("strongswanDelete config absent\n")
 		return
 	}
 
 	if err := strongSwanVpnDelete(vpnConfig); err != nil {
-		log.Printf("%s StrongSwanVpn delete\n", err.Error())
+		log.Errorf("%s StrongSwanVpn delete\n", err.Error())
 	}
 }
 
 func strongswanActivate(config types.NetworkServiceConfig,
 	status *types.NetworkServiceStatus, netstatus *types.NetworkObjectStatus) error {
 
-	log.Printf("strongswanActivate(%s)\n", status.DisplayName)
+	log.Infof("strongswanActivate(%s)\n", status.DisplayName)
 
 	vpnConfig, err := strongSwanVpnStatusParse(status.OpaqueStatus)
 	if err != nil {
-		log.Printf("StrongSwanVpn config absent\n")
+		log.Errorf("StrongSwanVpn config absent\n")
 		return err
 	}
 
 	if err := strongSwanVpnActivate(vpnConfig); err != nil {
-		log.Printf("%s StrongSwanVpn activate\n", err.Error())
+		log.Errorf("%s StrongSwanVpn activate\n", err.Error())
 		return err
 	}
 	return nil
@@ -94,14 +94,14 @@ func strongswanActivate(config types.NetworkServiceConfig,
 func strongswanInactivate(status *types.NetworkServiceStatus,
 	netstatus *types.NetworkObjectStatus) {
 
-	log.Printf("strongswanInactivate(%s)\n", status.DisplayName)
+	log.Infof("strongswanInactivate(%s)\n", status.DisplayName)
 	vpnConfig, err := strongSwanVpnStatusParse(status.OpaqueStatus)
 	if err != nil {
-		log.Printf("StrongSwanVpn config absent\n")
+		log.Errorf("StrongSwanVpn config absent\n")
 	}
 
 	if err := strongSwanVpnInactivate(vpnConfig); err != nil {
-		log.Printf("%s StrongSwanVpn inactivate\n", err.Error())
+		log.Errorf("%s StrongSwanVpn inactivate\n", err.Error())
 		return
 	}
 }
@@ -234,22 +234,23 @@ func strongSwanConfigGet(ctx *zedrouterContext,
 			}
 		}
 	}
-	if debug {
+	if log.GetLevel() == log.DebugLevel {
 		if bytes, err := json.Marshal(vpnConfig); err == nil {
-			log.Printf("strongSwanVpnConfigGet(): %s\n", string(bytes))
+			log.Debugf("strongSwanVpnConfigGet(): %s\n",
+				string(bytes))
 		}
 	}
 	return vpnConfig, nil
 }
 
 func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, error) {
-	log.Printf("strongSwanVpnConfigParse(): parsing %s\n", opaqueConfig)
+	log.Infof("strongSwanVpnConfigParse(): parsing %s\n", opaqueConfig)
 	vpnConfig := types.VpnServiceConfig{}
 
 	cb := []byte(opaqueConfig)
 	strongSwanConfig := types.StrongSwanServiceConfig{}
 	if err := json.Unmarshal(cb, &strongSwanConfig); err != nil {
-		log.Printf("%s for strongSwanVpnConfigParse()\n", err.Error())
+		log.Errorf("%s for strongSwanVpnConfigParse()\n", err.Error())
 		return vpnConfig, err
 	}
 
@@ -397,9 +398,7 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 		return vpnConfig, errors.New("invalid vpn role: " + strongSwanConfig.VpnRole)
 	}
 
-	if debug {
-		log.Println(strongSwanConfig)
-	}
+	log.Debugln("strongSwanVpnConfigParse: ", strongSwanConfig)
 
 	// fill up our structure
 	vpnConfig.VpnRole = strongSwanConfig.VpnRole
@@ -432,9 +431,10 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 		vpnConfig.ClientConfigList[idx] = *clientConfig
 	}
 
-	if debug {
+	if log.GetLevel() == log.DebugLevel {
 		if bytes, err := json.Marshal(vpnConfig); err == nil {
-			log.Printf("strongSwanConfigParse(): %s\n", string(bytes))
+			log.Debugf("strongSwanConfigParse(): %s\n",
+				string(bytes))
 		}
 	}
 	return vpnConfig, nil
@@ -442,14 +442,12 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 
 func strongSwanVpnStatusParse(opaqueStatus string) (types.VpnServiceConfig, error) {
 
-	if debug {
-		log.Printf("strongSwanVpnStatusParse: parsing %s\n", opaqueStatus)
-	}
+	log.Debugf("strongSwanVpnStatusParse: parsing %s\n", opaqueStatus)
 
 	cb := []byte(opaqueStatus)
 	vpnConfig := types.VpnServiceConfig{}
 	if err := json.Unmarshal(cb, &vpnConfig); err != nil {
-		log.Printf("%s awsStrongSwanLocalConfig \n", err.Error())
+		log.Errorf("%s awsStrongSwanLocalConfig \n", err.Error())
 		return vpnConfig, err
 	}
 	return vpnConfig, nil
@@ -459,7 +457,7 @@ func strongSwanVpnCreate(vpnConfig types.VpnServiceConfig) error {
 
 	gatewayConfig := vpnConfig.GatewayConfig
 
-	log.Printf("StrongSwan IpSec Vpn Create %s:%v, %s:%s\n",
+	log.Errorf("StrongSwan IpSec Vpn Create %s:%v, %s:%s\n",
 		vpnConfig.VpnRole, vpnConfig.PolicyBased,
 		gatewayConfig.IpAddr, gatewayConfig.SubnetBlock)
 
@@ -512,7 +510,7 @@ func strongSwanVpnDelete(vpnConfig types.VpnServiceConfig) error {
 
 	gatewayConfig := vpnConfig.GatewayConfig
 
-	log.Printf("strongSwan IpSec Vpn Delete %s:%s, %s, %s\n",
+	log.Infof("strongSwan IpSec Vpn Delete %s:%s, %s, %s\n",
 		vpnConfig.VpnRole, vpnConfig.PolicyBased,
 		gatewayConfig.IpAddr, gatewayConfig.SubnetBlock)
 
@@ -559,13 +557,13 @@ func strongSwanVpnActivate(vpnConfig types.VpnServiceConfig) error {
 	if !vpnConfig.PolicyBased {
 		// check iplink interface existence
 		if err := ipLinkInfExists(tunnelConfig.Name); err != nil {
-			log.Printf("%s for %s ipLink status", err.Error(),
+			log.Errorf("%s for %s ipLink status", err.Error(),
 				tunnelConfig.Name)
 			return err
 		}
 		// check iplink interface status
 		if err := ipLinkIntfStateCheck(tunnelConfig.Name); err != nil {
-			log.Printf("%s for %s ipLink status", err.Error(),
+			log.Errorf("%s for %s ipLink status", err.Error(),
 				tunnelConfig.Name)
 			// issue ifup command for the tunnel
 			if err := issueIfUpCmd(tunnelConfig.Name); err != nil {
@@ -577,18 +575,18 @@ func strongSwanVpnActivate(vpnConfig types.VpnServiceConfig) error {
 
 	// check iptables rule status
 	if err := ipTablesRuleCheck(vpnConfig); err != nil {
-		log.Printf("%s for %s ipTables status", err.Error(), tunnelConfig.Name)
-		if err := ipTablesRuleCreate(vpnConfig); err != nil {
-			return err
+		log.Errorf("%s for %s ipTables status", err.Error(), tunnelConfig.Name)
+		if err2 := ipTablesRuleCreate(vpnConfig); err2 != nil {
+			return err2
 		}
 		return err
 	}
 
 	// check ipsec tunnel status
 	if err := ipSecTunnelStateCheck(vpnConfig.VpnRole, tunnelConfig.Name); err != nil {
-		log.Printf("%s for %s ipSec status", err.Error(), tunnelConfig.Name)
-		if err := ipSecServiceActivate(vpnConfig); err != nil {
-			return err
+		log.Errorf("%s for %s ipSec status", err.Error(), tunnelConfig.Name)
+		if err2 := ipSecServiceActivate(vpnConfig); err2 != nil {
+			return err2
 		}
 		return err
 	}
@@ -660,7 +658,7 @@ func checkForClientDups(config types.StrongSwanServiceConfig) error {
 }
 
 func isClientWildCard(client types.VpnClientConfig) bool {
-	log.Printf("isClientWildCard %s\n", client.IpAddr)
+	log.Infof("isClientWildCard %s\n", client.IpAddr)
 	if client.IpAddr == "" || client.IpAddr == AnyIpAddr ||
 		client.IpAddr == UpLinkIpAddrType {
 		return true
@@ -718,7 +716,7 @@ func strongSwanVpnStatusGet(ctx *zedrouterContext,
 	change := false
 	vpnConfig, err := strongSwanVpnStatusParse(status.OpaqueStatus)
 	if err != nil {
-		log.Printf("StrongSwanVpn config absent\n")
+		log.Infof("StrongSwanVpn config absent\n")
 		return change
 	}
 	vpnStatus := new(types.ServiceVpnStatus)
@@ -733,9 +731,7 @@ func strongSwanVpnStatusGet(ctx *zedrouterContext,
 
 	// if tunnel state have changed, update
 	if change = isVpnStatusChanged(status.VpnStatus, vpnStatus); change {
-		if debug {
-			log.Printf("vpn state change:%v\n", vpnStatus)
-		}
+		log.Debugf("vpn state change:%v\n", vpnStatus)
 		status.VpnStatus = vpnStatus
 	}
 	// push the vpnMetrics here

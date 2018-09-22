@@ -33,10 +33,10 @@ func UpdateLedManagerConfig(count int) {
 	}
 	err = ioutil.WriteFile(ledConfigFileName, b, 0644)
 	if err != nil {
-		log.Println("err: ", err, ledConfigFileName)
+		log.Errorln("err: ", err, ledConfigFileName)
 	} else {
 		if count != lastCount {
-			log.Printf("UpdateLedManagerConfig: set %d\n", count)
+			log.Infof("UpdateLedManagerConfig: set %d\n", count)
 			lastCount = count
 		}
 	}

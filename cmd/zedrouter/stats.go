@@ -36,7 +36,7 @@ func ipSecStatusCmdGet(vpnStatus *types.ServiceVpnStatus) error {
 	cmd := exec.Command("ipsec", "statusall")
 	bytes, err := cmd.Output()
 	if err != nil {
-		log.Printf("%s for %s statusall\n", err.Error(), "ipsec")
+		log.Errorf("%s for %s statusall\n", err.Error(), "ipsec")
 		return err
 	}
 	ipSecCmdOut := ipSecCmdParse(string(bytes))
@@ -52,12 +52,12 @@ func swanCtlCmdGet(vpnStatus *types.ServiceVpnStatus) error {
 	cmd := exec.Command("swanctl", "-l")
 	bytes, err := cmd.Output()
 	if err != nil {
-		log.Printf("%s for %s -l\n", err.Error(), "swanctl")
+		log.Errorf("%s for %s -l\n", err.Error(), "swanctl")
 		return err
 	}
 	tunCount := swanCtlCmdParse(vpnStatus, string(bytes))
 	if vpnStatus.ActiveTunCount != tunCount {
-		log.Printf("Tunnel count mismatch (%d, %d)\n",
+		log.Infof("Tunnel count mismatch (%d, %d)\n",
 			vpnStatus.ActiveTunCount, tunCount)
 		return errors.New("active tunnel count mismatch")
 	}
@@ -140,9 +140,7 @@ func ipSecCmdParse(outStr string) ipSecCmdOut {
 			}
 		}
 	}
-	if debug {
-		log.Printf("ipSecCmdParse:%v\n", ipSecCmdOut)
-	}
+	log.Debugf("ipSecCmdParse:%v\n", ipSecCmdOut)
 	return ipSecCmdOut
 }
 
@@ -165,9 +163,9 @@ func swanCtlCmdParse(vpnStatus *types.ServiceVpnStatus, outStr string) uint32 {
 		connInfo := populateConnInfo(cblock, outLines)
 		vpnStatus.ActiveVpnConns[idx] = connInfo
 	}
-	if debug {
-		if bytes, err := json.Marshal(vpnStatus); err != nil {
-			log.Printf("swanCtlCmdParse(): %s\n", bytes)
+	if log.GetLevel() == log.DebugLevel {
+		if bytes, err := json.Marshal(vpnStatus); err == nil {
+			log.Debugf("swanCtlCmdParse(): %s\n", string(bytes))
 		}
 	}
 	return cmdOut.childCount
@@ -255,7 +253,7 @@ func swanCtlCmdGetBlockInfo(cmdOut *readBlock, outLines []string) {
 			cblock.childBlocks[lidx-1].endLine = cblock.endLine
 		}
 	}
-	if debug {
+	if log.GetLevel() == log.DebugLevel {
 		swanCtlCmdOutPrint(cmdOut, 0)
 	}
 }
@@ -264,7 +262,7 @@ func swanCtlCmdOutPrint(cb *readBlock, depth int) {
 	if cb == nil {
 		return
 	}
-	log.Printf("%d-%d:%d,%d\n", depth, cb.childCount, cb.startLine, cb.endLine)
+	log.Debugf("%d-%d:%d,%d\n", depth, cb.childCount, cb.startLine, cb.endLine)
 	for _, childBlock := range cb.childBlocks {
 		swanCtlCmdOutPrint(childBlock, depth+1)
 	}

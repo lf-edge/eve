@@ -90,15 +90,13 @@ func compileNetworkIpsetsStatus(ctx *zedrouterContext,
 	for key, st := range items {
 		status := cast.CastAppNetworkStatus(st)
 		if status.Key() != key {
-			log.Printf("compileNetworkIpsetsStatus key/UUID mismatch %s vs %s; ignored %+v\n",
+			log.Errorf("compileNetworkIpsetsStatus key/UUID mismatch %s vs %s; ignored %+v\n",
 				key, status.Key(), status)
 			continue
 		}
 		if skipKey != "" && status.Key() == skipKey {
-			if debug {
-				log.Printf("compileNetworkIpsetsStatus skipping %s\n",
-					skipKey)
-			}
+			log.Debugf("compileNetworkIpsetsStatus skipping %s\n",
+				skipKey)
 			continue
 		}
 
@@ -133,7 +131,7 @@ func compileNetworkIpsetsConfig(ctx *zedrouterContext,
 	for key, c := range items {
 		config := cast.CastAppNetworkConfig(c)
 		if config.Key() != key {
-			log.Printf("compileNetworkIpsetsConfig key/UUID mismatch %s vs %s; ignored %+v\n",
+			log.Errorf("compileNetworkIpsetsConfig key/UUID mismatch %s vs %s; ignored %+v\n",
 				key, config.Key(), config)
 			continue
 		}
@@ -205,10 +203,9 @@ func compileOldAppInstanceIpsets(ctx *zedrouterContext,
 // Note that only bridgeName is set with ifMgmt
 func createACLConfiglet(bridgeName string, vifName string, isMgmt bool,
 	ACLs []types.ACE, bridgeIP string, appIP string) error {
-	if debug {
-		log.Printf("createACLConfiglet: ifname %s, vifName %s, ACLs %v, IP %s/%s\n",
-			bridgeName, vifName, ACLs, bridgeIP, appIP)
-	}
+
+	log.Debugf("createACLConfiglet: ifname %s, vifName %s, ACLs %v, IP %s/%s\n",
+		bridgeName, vifName, ACLs, bridgeIP, appIP)
 	ipVer := determineIpVer(isMgmt, bridgeIP)
 	rules, err := aclToRules(bridgeName, vifName, ACLs, ipVer,
 		bridgeIP, appIP)
@@ -246,21 +243,15 @@ func determineIpVer(isMgmt bool, bridgeIP string) int {
 func applyACLRules(rules IptablesRuleList, bridgeName string, vifName string,
 	isMgmt bool, ipVer int, appIP string) error {
 
-	if debug {
-		log.Printf("applyACLRules: bridgeName %s ipVer %d appIP %s with %d rules\n",
-			bridgeName, ipVer, appIP, len(rules))
-	}
+	log.Debugf("applyACLRules: bridgeName %s ipVer %d appIP %s with %d rules\n",
+		bridgeName, ipVer, appIP, len(rules))
 	var err error
 	for _, rule := range rules {
-		if debug {
-			log.Printf("createACLConfiglet: rule %v\n", rule)
-		}
+		log.Debugf("createACLConfiglet: rule %v\n", rule)
 		args := rulePrefix("-A", isMgmt, ipVer, vifName, appIP, rule)
 		if args == nil {
-			if debug {
-				log.Printf("createACLConfiglet: skipping rule %v\n",
-					rule)
-			}
+			log.Debugf("createACLConfiglet: skipping rule %v\n",
+				rule)
 			continue
 		}
 		args = append(args, rule...)
@@ -303,11 +294,8 @@ func aclToRules(bridgeName string, vifName string, ACLs []types.ACE, ipVer int,
 	bridgeIP string, appIP string) (IptablesRuleList, error) {
 
 	rulesList := IptablesRuleList{}
-
-	if debug {
-		log.Printf("aclToRules(%s, %s, %v, %d, %s, %s\n",
-			bridgeName, vifName, ACLs, ipVer, bridgeIP, appIP)
-	}
+	log.Debugf("aclToRules(%s, %s, %v, %d, %s, %s\n",
+		bridgeName, vifName, ACLs, ipVer, bridgeIP, appIP)
 
 	// XXX should we check isMgmt instead of bridgeIP?
 	if ipVer == 6 && bridgeIP != "" {
@@ -383,10 +371,10 @@ func aclToRules(bridgeName string, vifName string, ACLs []types.ACE, ipVer int,
 }
 
 func aclDropRules(bridgeName, vifName string) (IptablesRuleList, error) {
-	if debug {
-		log.Printf("aclDropRules: bridgeName %s, vifName %s\n",
-			bridgeName, vifName)
-	}
+
+	log.Debugf("aclDropRules: bridgeName %s, vifName %s\n",
+		bridgeName, vifName)
+
 	// Always match on interface. Note that rulesPrefix adds physdev-in
 	rulesList := IptablesRuleList{}
 	// Implicit drop at the end with log before it
@@ -434,14 +422,14 @@ func aceToRules(bridgeName string, vifName string, ace types.ACE, ipVer int, bri
 			if ipsetName != "" {
 				errStr := fmt.Sprintf("ACE with eidset and host not supported: %+v",
 					ace)
-				log.Println(errStr)
+				log.Errorln(errStr)
 				return nil, errors.New(errStr)
 			}
 			// Ensure the sets exists; create if not
 			// need to feed it into dnsmasq as well; restart
 			err := ipsetCreatePair(match.Value, "hash:ip")
 			if err != nil {
-				log.Println("ipset create for ",
+				log.Errorln("ipset create for ",
 					match.Value, err)
 			}
 			switch ipVer {
@@ -454,7 +442,7 @@ func aceToRules(bridgeName string, vifName string, ace types.ACE, ipVer int, bri
 			if ipsetName != "" {
 				errStr := fmt.Sprintf("ACE with eidset and host not supported: %+v",
 					ace)
-				log.Println(errStr)
+				log.Errorln(errStr)
 				return nil, errors.New(errStr)
 			}
 			// Caller adds any EIDs/IPs to set
@@ -467,7 +455,7 @@ func aceToRules(bridgeName string, vifName string, ace types.ACE, ipVer int, bri
 		default:
 			errStr := fmt.Sprintf("Unsupported ACE match type: %s",
 				match.Type)
-			log.Println(errStr)
+			log.Errorln(errStr)
 			return nil, errors.New(errStr)
 		}
 	}
@@ -475,13 +463,13 @@ func aceToRules(bridgeName string, vifName string, ace types.ACE, ipVer int, bri
 	if fport != "" && protocol == "" {
 		errStr := fmt.Sprintf("ACE with fport %s and no protocol match: %+v",
 			fport, ace)
-		log.Println(errStr)
+		log.Errorln(errStr)
 		return nil, errors.New(errStr)
 	}
 	if lport != "" && protocol == "" {
 		errStr := fmt.Sprintf("ACE with lport %s and no protocol match: %+v",
 			lport, ace)
-		log.Println(errStr)
+		log.Errorln(errStr)
 		return nil, errors.New(errStr)
 	}
 
@@ -546,13 +534,13 @@ func aceToRules(bridgeName string, vifName string, ace types.ACE, ipVer int, bri
 			if lport == "" || protocol == "" {
 				errStr := fmt.Sprintf("PortMap without lport %s/protocol %d: %s",
 					lport, protocol)
-				log.Println(errStr)
+				log.Errorln(errStr)
 				return nil, errors.New(errStr)
 			}
 			if appIP == "" {
 				errStr := fmt.Sprintf("PortMap without appIP %s/protocol %d: %s",
 					lport, protocol)
-				log.Println(errStr)
+				log.Errorln(errStr)
 				return nil, errors.New(errStr)
 			}
 			targetPort := fmt.Sprintf("%d", action.TargetPort)
@@ -599,7 +587,7 @@ func aceToRules(bridgeName string, vifName string, ace types.ACE, ipVer int, bri
 		if actionCount > 1 {
 			errStr := fmt.Sprintf("ACL with combination of Drop, Limit and/or PortMap rejected: %v",
 				ace)
-			log.Println(errStr)
+			log.Errorln(errStr)
 			return nil, errors.New(errStr)
 		}
 	}
@@ -618,15 +606,11 @@ func aceToRules(bridgeName string, vifName string, ace types.ACE, ipVer int, bri
 			[]string{"-j", "DROP"}...)
 		unlimitedInArgs = append(unlimitedInArgs,
 			[]string{"-j", "DROP"}...)
-		if debug {
-			log.Printf("unlimitedOutArgs %v\n", unlimitedOutArgs)
-			log.Printf("unlimitedInArgs %v\n", unlimitedInArgs)
-		}
+		log.Debugf("unlimitedOutArgs %v\n", unlimitedOutArgs)
+		log.Debugf("unlimitedInArgs %v\n", unlimitedInArgs)
 		rulesList = append(rulesList, unlimitedOutArgs, unlimitedInArgs)
 	}
-	if debug {
-		log.Printf("rulesList %v\n", rulesList)
-	}
+	log.Debugf("rulesList %v\n", rulesList)
 	return rulesList, nil
 }
 
@@ -755,10 +739,9 @@ func updateACLConfiglet(bridgeName string, vifName string, isMgmt bool,
 	oldACLs []types.ACE, newACLs []types.ACE, bridgeIP string,
 	appIP string) error {
 
-	if debug {
-		log.Printf("updateACLConfiglet: bridgeName %s, vifName %s, appIP %s, oldACLs %v newACLs %v\n",
-			bridgeName, vifName, appIP, oldACLs, newACLs)
-	}
+	log.Debugf("updateACLConfiglet: bridgeName %s, vifName %s, appIP %s, oldACLs %v newACLs %v\n",
+		bridgeName, vifName, appIP, oldACLs, newACLs)
+
 	ipVer := determineIpVer(isMgmt, bridgeIP)
 	oldRules, err := aclToRules(bridgeName, vifName, oldACLs, ipVer,
 		bridgeIP, appIP)
@@ -776,25 +759,20 @@ func updateACLConfiglet(bridgeName string, vifName string, isMgmt bool,
 func applyACLUpdate(isMgmt bool, ipVer int, vifName string, appIP string,
 	oldRules IptablesRuleList, newRules IptablesRuleList) error {
 
-	if debug {
-		log.Printf("applyACLUpdate: isMgmt %v ipVer %d vifName %s appIP %s oldRules %v newRules %v\n",
-			isMgmt, ipVer, vifName, appIP, oldRules, newRules)
-	}
+	log.Debugf("applyACLUpdate: isMgmt %v ipVer %d vifName %s appIP %s oldRules %v newRules %v\n",
+		isMgmt, ipVer, vifName, appIP, oldRules, newRules)
+
 	var err error
 	// Look for old which should be deleted
 	for _, rule := range oldRules {
 		if containsRule(newRules, rule) {
 			continue
 		}
-		if debug {
-			log.Printf("modifyACLConfiglet: delete rule %v\n", rule)
-		}
+		log.Debugf("modifyACLConfiglet: delete rule %v\n", rule)
 		args := rulePrefix("-D", isMgmt, ipVer, vifName, appIP, rule)
 		if args == nil {
-			if debug {
-				log.Printf("modifyACLConfiglet: skipping delete rule %v\n",
-					rule)
-			}
+			log.Debugf("modifyACLConfiglet: skipping delete rule %v\n",
+				rule)
 			continue
 		}
 		args = append(args, rule...)
@@ -819,15 +797,11 @@ func applyACLUpdate(isMgmt bool, ipVer int, vifName string, appIP string,
 		if containsRule(oldRules, rule) {
 			continue
 		}
-		if debug {
-			log.Printf("modifyACLConfiglet: add rule %v\n", rule)
-		}
+		log.Debugf("modifyACLConfiglet: add rule %v\n", rule)
 		args := rulePrefix("-I", isMgmt, ipVer, vifName, appIP, rule)
 		if args == nil {
-			if debug {
-				log.Printf("modifyACLConfiglet: skipping insert rule %v\n",
-					rule)
-			}
+			log.Debugf("modifyACLConfiglet: skipping insert rule %v\n",
+				rule)
 			continue
 		}
 		args = append(args, rule...)
@@ -848,10 +822,9 @@ func applyACLUpdate(isMgmt bool, ipVer int, vifName string, appIP string,
 func deleteACLConfiglet(bridgeName string, vifName string, isMgmt bool,
 	ACLs []types.ACE, bridgeIP string, appIP string) error {
 
-	if debug {
-		log.Printf("deleteACLConfiglet: ifname %s `ACLs %v\n",
-			bridgeName, vifName, ACLs)
-	}
+	log.Debugf("deleteACLConfiglet: ifname %s `ACLs %v\n",
+		bridgeName, vifName, ACLs)
+
 	ipVer := determineIpVer(isMgmt, bridgeIP)
 	rules, err := aclToRules(bridgeName, vifName, ACLs, ipVer,
 		bridgeIP, appIP)
@@ -859,15 +832,11 @@ func deleteACLConfiglet(bridgeName string, vifName string, isMgmt bool,
 		return err
 	}
 	for _, rule := range rules {
-		if debug {
-			log.Printf("deleteACLConfiglet: rule %v\n", rule)
-		}
+		log.Debugf("deleteACLConfiglet: rule %v\n", rule)
 		args := rulePrefix("-D", isMgmt, ipVer, vifName, appIP, rule)
 		if args == nil {
-			if debug {
-				log.Printf("deleteACLConfiglet: skipping rule %v\n",
-					rule)
-			}
+			log.Debugf("deleteACLConfiglet: skipping rule %v\n",
+				rule)
 			continue
 		}
 		args = append(args, rule...)

@@ -26,25 +26,25 @@ func handleNetworkServiceModify(ctxArg interface{}, key string, configArg interf
 	pub := ctx.pubNetworkServiceStatus
 	config := cast.CastNetworkServiceConfig(configArg)
 	if config.Key() != key {
-		log.Printf("handleNetworkServiceModify key/UUID mismatch %s vs %s; ignored %+v\n", key, config.Key(), config)
+		log.Errorf("handleNetworkServiceModify key/UUID mismatch %s vs %s; ignored %+v\n", key, config.Key(), config)
 		return
 	}
 	status := lookupNetworkServiceStatus(ctx, key)
 	if status != nil {
-		log.Printf("handleNetworkServiceModify(%s)\n", key)
+		log.Infof("handleNetworkServiceModify(%s)\n", key)
 		status.PendingModify = true
 		pub.Publish(status.Key(), *status)
 		doServiceModify(ctx, config, status)
 		status.PendingModify = false
 		publishNetworkServiceStatus(ctx, status, true)
-		log.Printf("handleNetworkServiceModify(%s) done\n", key)
+		log.Infof("handleNetworkServiceModify(%s) done\n", key)
 	} else {
 		handleNetworkServiceCreate(ctx, key, config)
 	}
 }
 
 func handleNetworkServiceCreate(ctx *zedrouterContext, key string, config types.NetworkServiceConfig) {
-	log.Printf("handleNetworkServiceCreate(%s)\n", key)
+	log.Infof("handleNetworkServiceCreate(%s)\n", key)
 
 	pub := ctx.pubNetworkServiceStatus
 	status := types.NetworkServiceStatus{
@@ -58,7 +58,7 @@ func handleNetworkServiceCreate(ctx *zedrouterContext, key string, config types.
 	pub.Publish(status.Key(), status)
 	err := doServiceCreate(ctx, config, &status)
 	if err != nil {
-		log.Printf("doServiceCreate(%s) failed: %s\n", key, err)
+		log.Infof("doServiceCreate(%s) failed: %s\n", key, err)
 		status.Error = err.Error()
 		status.ErrorTime = time.Now()
 		status.PendingAdd = false
@@ -69,7 +69,7 @@ func handleNetworkServiceCreate(ctx *zedrouterContext, key string, config types.
 	if config.Activate {
 		err := doServiceActivate(ctx, config, &status)
 		if err != nil {
-			log.Printf("doServiceActivate(%s) failed: %s\n", key, err)
+			log.Errorf("doServiceActivate(%s) failed: %s\n", key, err)
 			status.Error = err.Error()
 			status.ErrorTime = time.Now()
 		} else {
@@ -78,18 +78,18 @@ func handleNetworkServiceCreate(ctx *zedrouterContext, key string, config types.
 	}
 	status.PendingAdd = false
 	publishNetworkServiceStatus(ctx, &status, true)
-	log.Printf("handleNetworkServiceCreate(%s) done\n", key)
+	log.Infof("handleNetworkServiceCreate(%s) done\n", key)
 }
 
 func handleNetworkServiceDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	log.Printf("handleNetworkServiceDelete(%s)\n", key)
+	log.Infof("handleNetworkServiceDelete(%s)\n", key)
 	ctx := ctxArg.(*zedrouterContext)
 	pub := ctx.pubNetworkServiceStatus
 	status := lookupNetworkServiceStatus(ctx, key)
 	if status == nil {
-		log.Printf("handleNetworkServiceDelete: unknown %s\n", key)
+		log.Infof("handleNetworkServiceDelete: unknown %s\n", key)
 		return
 	}
 	status.PendingDelete = true
@@ -101,13 +101,13 @@ func handleNetworkServiceDelete(ctxArg interface{}, key string,
 	status.PendingDelete = false
 	publishNetworkServiceStatus(ctx, status, true)
 	pub.Unpublish(status.Key())
-	log.Printf("handleNetworkServiceDelete(%s) done\n", key)
+	log.Infof("handleNetworkServiceDelete(%s) done\n", key)
 }
 
 func doServiceCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	status *types.NetworkServiceStatus) error {
 
-	log.Printf("doServiceCreate NetworkService key %s type %d\n",
+	log.Infof("doServiceCreate NetworkService key %s type %d\n",
 		config.UUID, config.Type)
 	var err error
 
@@ -134,13 +134,13 @@ func doServiceCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 func doServiceModify(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	status *types.NetworkServiceStatus) {
 
-	log.Printf("doServiceModify NetworkService key %s\n", config.UUID)
+	log.Infof("doServiceModify NetworkService key %s\n", config.UUID)
 	if config.Type != status.Type ||
 		config.AppLink != status.AppLink ||
 		config.Adapter != status.Adapter {
 		errStr := fmt.Sprintf("doServiceModify NetworkService can't change key %s",
 			config.UUID)
-		log.Println(errStr)
+		log.Errorln(errStr)
 		status.Error = errStr
 		status.ErrorTime = time.Now()
 		return
@@ -149,7 +149,7 @@ func doServiceModify(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	if config.Activate && !status.Activated {
 		err := doServiceActivate(ctx, config, status)
 		if err != nil {
-			log.Printf("doServiceActivate(%s) failed: %s\n",
+			log.Errorf("doServiceActivate(%s) failed: %s\n",
 				config.Key(), err)
 			status.Error = err.Error()
 			status.ErrorTime = time.Now()
@@ -164,35 +164,35 @@ func doServiceModify(ctx *zedrouterContext, config types.NetworkServiceConfig,
 
 // Find ifname as a bridge Adapter and see if it can be updated
 func maybeUpdateBridgeIPAddr(ctx *zedrouterContext, ifname string) {
-	log.Printf("maybeUpdateBridgeIPAddr(%s)\n", ifname)
+	log.Infof("maybeUpdateBridgeIPAddr(%s)\n", ifname)
 	pub := ctx.pubNetworkServiceStatus
 	items := pub.GetAll()
 	for key, st := range items {
 		status := cast.CastNetworkServiceStatus(st)
 		if status.Key() != key {
-			log.Printf("maybeUpdateBridgeIPAddr key/UUID mismatch %s vs %s; ignored %+v\n",
+			log.Errorf("maybeUpdateBridgeIPAddr key/UUID mismatch %s vs %s; ignored %+v\n",
 				key, status.Key(), status)
 			continue
 		}
 
 		if status.Adapter != ifname {
-			log.Printf("maybeUpdateBridgeIPAddr(%s) wrong adapter %s\n",
+			log.Infof("maybeUpdateBridgeIPAddr(%s) wrong adapter %s\n",
 				ifname, status.Adapter)
 			continue
 		}
 		if status.Type != types.NST_BRIDGE {
-			log.Printf("maybeUpdateBridgeIPAddr(%s) not bridge %d\n",
+			log.Infof("maybeUpdateBridgeIPAddr(%s) not bridge %d\n",
 				ifname, status.Type)
 			continue
 		}
 		if !status.Activated {
-			log.Printf("maybeUpdateBridgeIPAddr(%s) not activated\n",
+			log.Errorf("maybeUpdateBridgeIPAddr(%s) not activated\n",
 				ifname)
 			continue
 		}
 		netstatus := lookupNetworkObjectStatus(ctx, status.AppLink.String())
 		if netstatus == nil {
-			log.Printf("maybeUpdateBridgeIPAddr(%s) no applink for %s\n",
+			log.Errorf("maybeUpdateBridgeIPAddr(%s) no applink for %s\n",
 				ifname, status.Key())
 			continue
 		}
@@ -203,7 +203,7 @@ func maybeUpdateBridgeIPAddr(ctx *zedrouterContext, ifname string) {
 func doServiceActivate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	status *types.NetworkServiceStatus) error {
 
-	log.Printf("doServiceActivate NetworkService key %s type %d\n",
+	log.Infof("doServiceActivate NetworkService key %s type %d\n",
 		config.UUID, config.Type)
 
 	// We must have an existing AppLink to activate
@@ -211,8 +211,7 @@ func doServiceActivate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	if netstatus == nil {
 		return errors.New(fmt.Sprintf("No AppLink for %s", config.UUID))
 	}
-
-	log.Printf("doServiceActivate found NetworkObjectStatus %s\n",
+	log.Infof("doServiceActivate found NetworkObjectStatus %s\n",
 		netstatus.Key())
 
 	// Check that Adapter is either "uplink", "freeuplink", or
@@ -276,17 +275,17 @@ func validateAdapter(adapter string, allowUplink bool) error {
 func doServiceInactivate(ctx *zedrouterContext,
 	status *types.NetworkServiceStatus) {
 
-	log.Printf("doServiceInactivate NetworkService key %s type %d\n",
+	log.Infof("doServiceInactivate NetworkService key %s type %d\n",
 		status.UUID, status.Type)
 	// We must have an existing AppLink to activate
 	netstatus := lookupNetworkObjectStatus(ctx, status.AppLink.String())
 	if netstatus == nil {
 		// Should have been caught at time of activate
-		log.Printf("No AppLink for %s", status.Key())
+		log.Infof("No AppLink for %s", status.Key())
 		return
 	}
 
-	log.Printf("doServiceInactivate found NetworkObjectStatus %s\n",
+	log.Infof("doServiceInactivate found NetworkObjectStatus %s\n",
 		netstatus.Key())
 
 	switch status.Type {
@@ -301,16 +300,16 @@ func doServiceInactivate(ctx *zedrouterContext,
 		natInactivate(status, netstatus)
 	case types.NST_LB:
 		errStr := "doServiceInactivate NetworkService LB not yet supported"
-		log.Println(errStr)
+		log.Errorln(errStr)
 	default:
 		errStr := fmt.Sprintf("doServiceInactivate NetworkService %d not yet supported",
 			status.Type)
-		log.Println(errStr)
+		log.Infoln(errStr)
 	}
 }
 
 func doServiceDelete(ctx *zedrouterContext, status *types.NetworkServiceStatus) {
-	log.Printf("doServiceDelete NetworkService key %s type %d\n",
+	log.Infof("doServiceDelete NetworkService key %s type %d\n",
 		status.UUID, status.Type)
 	// Anything to do except the inactivate already done?
 	switch status.Type {
@@ -324,11 +323,11 @@ func doServiceDelete(ctx *zedrouterContext, status *types.NetworkServiceStatus) 
 		natDelete(status)
 	case types.NST_LB:
 		errStr := "doServiceDelete NetworkService LB not yet supported"
-		log.Println(errStr)
+		log.Errorln(errStr)
 	default:
 		errStr := fmt.Sprintf("doServiceDelete NetworkService %d not yet supported",
 			status.Type)
-		log.Println(errStr)
+		log.Errorln(errStr)
 	}
 }
 
@@ -341,7 +340,7 @@ func lookupNetworkServiceConfig(ctx *zedrouterContext, key string) *types.Networ
 	}
 	config := cast.CastNetworkServiceConfig(c)
 	if config.Key() != key {
-		log.Printf("lookupNetworkServiceConfig key/UUID mismatch %s vs %s; ignored %+v\n",
+		log.Errorf("lookupNetworkServiceConfig key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, config.Key(), config)
 		return nil
 	}
@@ -357,7 +356,7 @@ func lookupNetworkServiceStatus(ctx *zedrouterContext, key string) *types.Networ
 	}
 	status := cast.CastNetworkServiceStatus(st)
 	if status.Key() != key {
-		log.Printf("lookupNetworkServiceStatus key/UUID mismatch %s vs %s; ignored %+v\n",
+		log.Errorf("lookupNetworkServiceStatus key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
 		return nil
 	}
@@ -372,7 +371,7 @@ func lookupNetworkServiceMetrics(ctx *zedrouterContext, key string) *types.Netwo
 	}
 	status := cast.CastNetworkServiceMetrics(st)
 	if status.Key() != key {
-		log.Printf("lookupNetworkServiceMetrics key/UUID mismatch %s vs %s; ignored %+v\n",
+		log.Errorf("lookupNetworkServiceMetrics key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
 		return nil
 	}
@@ -383,7 +382,7 @@ func lookupNetworkServiceMetrics(ctx *zedrouterContext, key string) *types.Netwo
 // adapter
 func getServiceInfo(ctx *zedrouterContext, appLink uuid.UUID) (types.NetworkServiceType, string, error) {
 	// Find any service which is associated with the appLink UUID
-	log.Printf("getServiceInfo(%s)\n", appLink.String())
+	log.Infof("getServiceInfo(%s)\n", appLink.String())
 	status := lookupAppLink(ctx, appLink)
 	if status == nil {
 		errStr := fmt.Sprintf("getServiceInfo: no NetworkServiceStatus for %s", appLink.String())
@@ -395,7 +394,7 @@ func getServiceInfo(ctx *zedrouterContext, appLink uuid.UUID) (types.NetworkServ
 // Entrypoint from networkobject to look for a bridge's IPv4 address
 func getBridgeServiceIPv4Addr(ctx *zedrouterContext, appLink uuid.UUID) (string, error) {
 	// Find any service which is associated with the appLink UUID
-	log.Printf("getBridgeServiceIPv4Addr(%s)\n", appLink.String())
+	log.Infof("getBridgeServiceIPv4Addr(%s)\n", appLink.String())
 	status := lookupAppLink(ctx, appLink)
 	if status == nil {
 		errStr := fmt.Sprintf("getBridgeServiceIPv4Addr(%s): no NetworkServiceStatus",
@@ -408,7 +407,7 @@ func getBridgeServiceIPv4Addr(ctx *zedrouterContext, appLink uuid.UUID) (string,
 		return "", errors.New(errStr)
 	}
 	if status.Adapter == "" {
-		log.Printf("getBridgeServiceIPv4Addr: bridge but no Adapter\n")
+		log.Infof("getBridgeServiceIPv4Addr: bridge but no Adapter\n")
 		return "", nil
 	}
 
@@ -423,28 +422,28 @@ func getBridgeServiceIPv4Addr(ctx *zedrouterContext, appLink uuid.UUID) (string,
 		return "", err
 	}
 	for _, addr := range addrs {
-		log.Printf("getBridgeServiceIPv4Addr: found addr %s\n",
+		log.Infof("getBridgeServiceIPv4Addr: found addr %s\n",
 			addr.IP.String())
 		return addr.IP.String(), nil
 	}
-	log.Printf("getBridgeServiceIPv4Addr: no IP address on %s yet\n",
+	log.Infof("getBridgeServiceIPv4Addr: no IP address on %s yet\n",
 		status.Adapter)
 	return "", nil
 }
 
 func lookupAppLink(ctx *zedrouterContext, appLink uuid.UUID) *types.NetworkServiceStatus {
-	log.Printf("lookupAppLink(%s)\n", appLink.String())
+	log.Infof("lookupAppLink(%s)\n", appLink.String())
 	pub := ctx.pubNetworkServiceStatus
 	items := pub.GetAll()
 	for key, st := range items {
 		status := cast.CastNetworkServiceStatus(st)
 		if status.Key() != key {
-			log.Printf("lookupAppLink key/UUID mismatch %s vs %s; ignored %+v\n",
+			log.Infof("lookupAppLink key/UUID mismatch %s vs %s; ignored %+v\n",
 				key, status.Key(), status)
 			continue
 		}
 		if status.AppLink == appLink {
-			log.Printf("lookupAppLink(%s) found %s\n",
+			log.Infof("lookupAppLink(%s) found %s\n",
 				appLink.String(), status.Key())
 			return &status
 		}
@@ -508,7 +507,7 @@ func lispCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	file, err := os.Create(cfgPathnameIID)
 	if err != nil {
 		//log.Fatal("lispCreate failed ", err)
-		log.Printf("lispCreate failed ", err)
+		log.Infof("lispCreate failed ", err)
 		return err
 	}
 	defer file.Close()
@@ -524,7 +523,7 @@ func lispCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	iidConfig := fmt.Sprintf(lispIIDtemplate, iid)
 	file.WriteString(iidConfig)
 
-	log.Printf("lispCreate(%s)\n", config.DisplayName)
+	log.Infof("lispCreate(%s)\n", config.DisplayName)
 	return nil
 }
 
@@ -557,11 +556,11 @@ func lispActivate(ctx *zedrouterContext,
 		"-i", netstatus.BridgeName, "-j", "DROP"}
 	err := ip6tableCmd(args...)
 	if err != nil {
-		log.Printf("%s\n", err)
+		log.Infof("%s\n", err)
 		return err
 	}
 
-	log.Printf("lispActivate(%s)\n", status.DisplayName)
+	log.Infof("lispActivate(%s)\n", status.DisplayName)
 	return nil
 }
 
@@ -584,7 +583,7 @@ func lispInactivate(ctx *zedrouterContext,
 	cfgPathnameIID := lispRunDirname + "/" +
 		strconv.FormatUint(uint64(status.LispStatus.IID), 10)
 	if err := os.Remove(cfgPathnameIID); err != nil {
-		log.Println(err)
+		log.Errorln(err)
 	}
 
 	for _, ans := range items {
@@ -608,10 +607,10 @@ func lispInactivate(ctx *zedrouterContext,
 		netstatus.BridgeName, "-j", "DROP"}
 	err := ip6tableCmd(args...)
 	if err != nil {
-		log.Printf("%s\n", err)
+		log.Errorf("%s\n", err)
 	}
 
-	log.Printf("lispInactivate(%s)\n", status.DisplayName)
+	log.Infof("lispInactivate(%s)\n", status.DisplayName)
 }
 
 func lispDelete(ctx *zedrouterContext, status *types.NetworkServiceStatus) {
@@ -624,12 +623,12 @@ func lispDelete(ctx *zedrouterContext, status *types.NetworkServiceStatus) {
 	netstatus := lookupNetworkObjectStatus(ctx, status.AppLink.String())
 	if netstatus == nil {
 		// Should have been caught at time of activate
-		log.Printf("No AppLink for %s", status.Key())
+		log.Infof("No AppLink for %s", status.Key())
 		return
 	}
 	lispInactivate(ctx, status, netstatus)
 
-	log.Printf("lispDelete(%s)\n", status.DisplayName)
+	log.Infof("lispDelete(%s)\n", status.DisplayName)
 }
 
 // ==== Bridge
@@ -640,7 +639,7 @@ func lispDelete(ctx *zedrouterContext, status *types.NetworkServiceStatus) {
 func bridgeCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	status *types.NetworkServiceStatus) error {
 
-	log.Printf("bridgeCreate(%s)\n", config.DisplayName)
+	log.Infof("bridgeCreate(%s)\n", config.DisplayName)
 	ib := types.LookupIoBundle(ctx.assignableAdapters, types.IoEth,
 		config.Adapter)
 	if ib == nil {
@@ -663,7 +662,7 @@ func bridgeActivate(config types.NetworkServiceConfig,
 	status *types.NetworkServiceStatus,
 	netstatus *types.NetworkObjectStatus) error {
 
-	log.Printf("bridgeActivate(%s)\n", status.DisplayName)
+	log.Infof("bridgeActivate(%s)\n", status.DisplayName)
 	// For now we only support passthrough
 	if netstatus.Dhcp != types.DT_PASSTHROUGH {
 		errStr := fmt.Sprintf("Unsupported DHCP type %d for bridge service for %s",
@@ -697,7 +696,7 @@ func bridgeActivate(config types.NetworkServiceConfig,
 			status.Adapter, netstatus.BridgeName, err)
 		return errors.New(errStr)
 	}
-	log.Printf("bridgeActivate: added %s to bridge %s\n",
+	log.Infof("bridgeActivate: added %s to bridge %s\n",
 		status.Adapter, netstatus.BridgeName)
 	return nil
 }
@@ -705,28 +704,28 @@ func bridgeActivate(config types.NetworkServiceConfig,
 func bridgeInactivate(status *types.NetworkServiceStatus,
 	netstatus *types.NetworkObjectStatus) {
 
-	log.Printf("bridgeInactivate(%s)\n", status.DisplayName)
+	log.Infof("bridgeInactivate(%s)\n", status.DisplayName)
 	// Find adapter
 	alink, _ := netlink.LinkByName(status.Adapter)
 	if alink == nil {
 		errStr := fmt.Sprintf("Unknown adapter %s",
 			status.Adapter)
-		log.Println(errStr)
+		log.Errorln(errStr)
 		return
 	}
 	// ip link set ${adapter} nomaster
 	if err := netlink.LinkSetNoMaster(alink); err != nil {
 		errStr := fmt.Sprintf("LinkSetMaster %s failed: %s",
 			status.Adapter, err)
-		log.Println(errStr)
+		log.Infoln(errStr)
 		return
 	}
-	log.Printf("bridgeInactivate: removed %s from bridge\n",
+	log.Infof("bridgeInactivate: removed %s from bridge\n",
 		status.Adapter)
 }
 
 func bridgeDelete(status *types.NetworkServiceStatus) {
-	log.Printf("bridgeDelete(%s)\n", status.DisplayName)
+	log.Infof("bridgeDelete(%s)\n", status.DisplayName)
 }
 
 // ==== Nat
@@ -734,7 +733,7 @@ func bridgeDelete(status *types.NetworkServiceStatus) {
 func natCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	status *types.NetworkServiceStatus) error {
 
-	log.Printf("natCreate(%s)\n", config.DisplayName)
+	log.Infof("natCreate(%s)\n", config.DisplayName)
 	return nil
 }
 
@@ -743,7 +742,7 @@ func natActivate(config types.NetworkServiceConfig,
 	status *types.NetworkServiceStatus,
 	netstatus *types.NetworkObjectStatus) error {
 
-	log.Printf("natActivate(%s)\n", status.DisplayName)
+	log.Infof("natActivate(%s)\n", status.DisplayName)
 	if netstatus.Subnet.IP == nil {
 		errStr := fmt.Sprintf("Missing subnet for NAT service for %s",
 			status.Key())
@@ -781,23 +780,23 @@ func getAdapters(ctx *zedrouterContext, adapter string) []string {
 func natInactivate(status *types.NetworkServiceStatus,
 	netstatus *types.NetworkObjectStatus) {
 
-	log.Printf("netInactivate(%s)\n", status.DisplayName)
+	log.Infof("netInactivate(%s)\n", status.DisplayName)
 	subnetStr := status.Subnet.String()
 	for _, a := range status.AdapterList {
 		err := iptableCmd("-t", "nat", "-D", "POSTROUTING", "-o", a,
 			"-s", subnetStr, "-j", "MASQUERADE")
 		if err != nil {
-			log.Println(err)
+			log.Errorln(err)
 		}
 	}
 	// Add to Pbr table
 	err := PbrNATDel(subnetStr)
 	if err != nil {
-		log.Println(err)
+		log.Errorln(err)
 	}
 }
 
 func natDelete(status *types.NetworkServiceStatus) {
 
-	log.Printf("natDelete(%s)\n", status.DisplayName)
+	log.Infof("natDelete(%s)\n", status.DisplayName)
 }

@@ -21,7 +21,7 @@ func lookupCertObjSafename(ctx *zedagentContext, safename string) *types.CertObj
 	for key, c := range items {
 		config := cast.CastCertObjConfig(c)
 		if config.Key() != key {
-			log.Printf("certObjHandleStatusUpdateSafename key/UUID mismatch %s vs %s; ignored %+v\n",
+			log.Errorf("certObjHandleStatusUpdateSafename key/UUID mismatch %s vs %s; ignored %+v\n",
 				key, config.Key(), config)
 			continue
 		}
@@ -40,21 +40,21 @@ func lookupCertObjSafename(ctx *zedagentContext, safename string) *types.CertObj
 // This only looks for one.
 func certObjHandleStatusUpdateSafename(ctx *zedagentContext, safename string) {
 
-	log.Printf("certObjHandleStatusUpdateSafename(%s)\n", safename)
+	log.Infof("certObjHandleStatusUpdateSafename(%s)\n", safename)
 	config := lookupCertObjSafename(ctx, safename)
 	if config == nil {
-		log.Printf("certObjHandleStatusUpdateSafename(%s) not found\n",
+		log.Infof("certObjHandleStatusUpdateSafename(%s) not found\n",
 			safename)
 		return
 	}
 	uuidStr := config.Key()
 	status := lookupCertObjStatus(ctx, uuidStr)
 	if status == nil {
-		log.Printf("certObjHandleStatusUpdateSafename(%s) no status\n",
+		log.Infof("certObjHandleStatusUpdateSafename(%s) no status\n",
 			safename)
 		return
 	}
-	log.Printf("certObjHandleStatusUpdateSafename(%s) found %s\n",
+	log.Infof("certObjHandleStatusUpdateSafename(%s) found %s\n",
 		safename, uuidStr)
 	certObjHandleStatusUpdate(ctx, config, status)
 }
@@ -63,11 +63,11 @@ func certObjHandleStatusUpdate(ctx *zedagentContext,
 	config *types.CertObjConfig, status *types.CertObjStatus) {
 
 	uuidStr := config.Key()
-	log.Printf("certObjHandleStatusUpdate(%s)\n", uuidStr)
+	log.Infof("certObjHandleStatusUpdate(%s)\n", uuidStr)
 
 	changed := doCertObjStatusUpdate(ctx, uuidStr, *config, status)
 	if changed {
-		log.Printf("certObjHandleStatusUpdate(%s) changed\n",
+		log.Infof("certObjHandleStatusUpdate(%s) changed\n",
 			uuidStr)
 		publishCertObjStatus(ctx, status)
 	}
@@ -76,7 +76,7 @@ func certObjHandleStatusUpdate(ctx *zedagentContext,
 func doCertObjStatusUpdate(ctx *zedagentContext, uuidStr string, config types.CertObjConfig,
 	status *types.CertObjStatus) bool {
 
-	log.Printf("doCertObjStatusUpdate(%s)\n", uuidStr)
+	log.Infof("doCertObjStatusUpdate(%s)\n", uuidStr)
 
 	changed, proceed := doCertObjInstall(ctx, uuidStr, config, status)
 	if !proceed {
@@ -86,26 +86,26 @@ func doCertObjStatusUpdate(ctx *zedagentContext, uuidStr string, config types.Ce
 	// call baseOs to pick up the certs
 	baseOsConfig := lookupBaseOsConfig(ctx, uuidStr)
 	if baseOsConfig == nil {
-		log.Printf("doCertObjStatusUdate(%s) no baseOsConfig\n",
+		log.Infof("doCertObjStatusUdate(%s) no baseOsConfig\n",
 			uuidStr)
 		return changed
 	}
 
 	baseOsStatus := lookupBaseOsStatus(ctx, uuidStr)
 	if baseOsStatus == nil {
-		log.Printf("doCertObjStatusUdate(%s) no baseOsStatus\n",
+		log.Infof("doCertObjStatusUdate(%s) no baseOsStatus\n",
 			uuidStr)
 		return changed
 	}
 	baseOsHandleStatusUpdate(ctx, baseOsConfig, baseOsStatus)
-	log.Printf("doCertObjStatusUdate(%s) done %v\n", uuidStr, changed)
+	log.Infof("doCertObjStatusUdate(%s) done %v\n", uuidStr, changed)
 	return changed
 }
 
 func doCertObjInstall(ctx *zedagentContext, uuidStr string, config types.CertObjConfig,
 	status *types.CertObjStatus) (bool, bool) {
 
-	log.Printf("doCertObjInstall(%s)\n", uuidStr)
+	log.Infof("doCertObjInstall(%s)\n", uuidStr)
 	changed := false
 
 	if len(config.StorageConfigList) != len(status.StorageStatusList) {
@@ -126,7 +126,7 @@ func doCertObjInstall(ctx *zedagentContext, uuidStr string, config types.CertObj
 			errString := fmt.Sprintf("%s, Storage config mismatch:\n\t%s\n\t%s\n\t%s\n\t%s\n\n", uuidStr,
 				sc.Name, ss.Name,
 				sc.ImageSha256, ss.ImageSha256)
-			log.Println(errString)
+			log.Errorln(errString)
 			status.Error = errString
 			status.ErrorTime = time.Now()
 			changed = true
@@ -149,7 +149,7 @@ func doCertObjInstall(ctx *zedagentContext, uuidStr string, config types.CertObj
 	}
 
 	publishCertObjStatus(ctx, status)
-	log.Printf("doCertObjInstall(%s) done %v\n", uuidStr, changed)
+	log.Infof("doCertObjInstall(%s) done %v\n", uuidStr, changed)
 	return changed, true
 }
 
@@ -163,43 +163,43 @@ func checkCertObjStorageDownloadStatus(ctx *zedagentContext, uuidStr string,
 	status.Error = ret.AllErrors
 	status.ErrorTime = ret.ErrorTime
 
-	log.Printf("checkCertObjDownloadStatus %s, %v\n", uuidStr, ret.MinState)
+	log.Infof("checkCertObjDownloadStatus %s, %v\n", uuidStr, ret.MinState)
 
 	if ret.AllErrors != "" {
-		log.Printf("checkCertObjDownloadStatus for %s, Download error %s\n",
+		log.Errorf("checkCertObjDownloadStatus for %s, Download error %s\n",
 			uuidStr, ret.AllErrors)
 		return ret.Changed, false
 	}
 
 	if ret.MinState < types.DOWNLOADED {
-		log.Printf("checkCertObjDownloaStatus %s, Waiting for downloads\n",
+		log.Infof("checkCertObjDownloaStatus %s, Waiting for downloads\n",
 			uuidStr)
 		return ret.Changed, false
 	}
 
 	// XXX can this ever happen?
 	if ret.WaitingForCerts {
-		log.Printf("checkCertObjDownloadStatus %s, Waiting for certs\n",
+		log.Infof("checkCertObjDownloadStatus %s, Waiting for certs\n",
 			uuidStr)
 		return ret.Changed, false
 	}
 
-	log.Printf("checkCertObjDownloadStatus for %s, Downloads done\n", uuidStr)
+	log.Infof("checkCertObjDownloadStatus for %s, Downloads done\n", uuidStr)
 	return ret.Changed, true
 }
 
 func removeCertObjConfig(ctx *zedagentContext, uuidStr string) {
 
-	log.Printf("removeCertObjConfig(%s)\n", uuidStr)
+	log.Infof("removeCertObjConfig(%s)\n", uuidStr)
 	status := lookupCertObjStatus(ctx, uuidStr)
 	if status == nil {
-		log.Printf("removeCertObjConfig(%s), no status\n", uuidStr)
+		log.Infof("removeCertObjConfig(%s), no status\n", uuidStr)
 		return
 	}
 
 	changed, del := doCertObjUninstall(ctx, uuidStr, status)
 	if changed {
-		log.Printf("removeCertObjConfig(%s) status changed\n", uuidStr)
+		log.Infof("removeCertObjConfig(%s) status changed\n", uuidStr)
 		publishCertObjStatus(ctx, status)
 	}
 
@@ -207,7 +207,7 @@ func removeCertObjConfig(ctx *zedagentContext, uuidStr string) {
 		// Write out what we modified to CertObj aka delete
 		unpublishCertObjStatus(ctx, status.Key())
 	}
-	log.Printf("removeCertObjConfig(%s) done\n", uuidStr)
+	log.Infof("removeCertObjConfig(%s) done\n", uuidStr)
 }
 
 func doCertObjUninstall(ctx *zedagentContext, uuidStr string,
@@ -216,13 +216,13 @@ func doCertObjUninstall(ctx *zedagentContext, uuidStr string,
 	var del, changed, removedAll bool
 
 	removedAll = true
-	log.Printf("doCertObjUninstall(%s)\n", uuidStr)
+	log.Infof("doCertObjUninstall(%s)\n", uuidStr)
 
 	for i, _ := range status.StorageStatusList {
 
 		ss := &status.StorageStatusList[i]
 		safename := types.UrlToSafename(ss.Name, ss.ImageSha256)
-		log.Printf("doCertObjUninstall(%s) safename %s\n",
+		log.Infof("doCertObjUninstall(%s) safename %s\n",
 			uuidStr, safename)
 		// Decrease refcount if we had increased it
 		if ss.HasDownloaderRef {
@@ -234,7 +234,7 @@ func doCertObjUninstall(ctx *zedagentContext, uuidStr string,
 		ds := lookupDownloaderStatus(ctx, certObj, safename)
 		// XXX if additional refs it will not go away
 		if false && ds != nil {
-			log.Printf("doCertObjUninstall(%s) download %s not yet gone\n",
+			log.Infof("doCertObjUninstall(%s) download %s not yet gone\n",
 				uuidStr, safename)
 			removedAll = false
 			continue
@@ -242,7 +242,7 @@ func doCertObjUninstall(ctx *zedagentContext, uuidStr string,
 	}
 
 	if !removedAll {
-		log.Printf("doCertObjUninstall(%s) waiting for download purge\n",
+		log.Infof("doCertObjUninstall(%s) waiting for download purge\n",
 			uuidStr)
 		return changed, del
 	}
@@ -260,12 +260,12 @@ func lookupCertObjConfig(ctx *zedagentContext, key string) *types.CertObjConfig 
 	sub := ctx.subCertObjConfig
 	c, _ := sub.Get(key)
 	if c == nil {
-		log.Printf("lookupCertObjConfig(%s) not found\n", key)
+		log.Infof("lookupCertObjConfig(%s) not found\n", key)
 		return nil
 	}
 	config := cast.CastCertObjConfig(c)
 	if config.Key() != key {
-		log.Printf("lookupCertObjConfig key/UUID mismatch %s vs %s; ignored %+v\n",
+		log.Errorf("lookupCertObjConfig key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, config.Key(), config)
 		return nil
 	}
@@ -276,12 +276,12 @@ func lookupCertObjStatus(ctx *zedagentContext, key string) *types.CertObjStatus 
 	pub := ctx.pubCertObjStatus
 	st, _ := pub.Get(key)
 	if st == nil {
-		log.Printf("lookupCertObjStatus(%s) not found\n", key)
+		log.Infof("lookupCertObjStatus(%s) not found\n", key)
 		return nil
 	}
 	status := cast.CastCertObjStatus(st)
 	if status.Key() != key {
-		log.Printf("lookupCertObjStatus key/UUID mismatch %s vs %s; ignored %+v\n",
+		log.Errorf("lookupCertObjStatus key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
 		return nil
 	}
@@ -291,18 +291,18 @@ func lookupCertObjStatus(ctx *zedagentContext, key string) *types.CertObjStatus 
 func publishCertObjStatus(ctx *zedagentContext, status *types.CertObjStatus) {
 
 	key := status.Key()
-	log.Printf("publishCertObjStatus(%s)\n", key)
+	log.Debugf("publishCertObjStatus(%s)\n", key)
 	pub := ctx.pubCertObjStatus
 	pub.Publish(key, status)
 }
 
 func unpublishCertObjStatus(ctx *zedagentContext, key string) {
 
-	log.Printf("unpublishCertObjStatus(%s)\n", key)
+	log.Debugf("unpublishCertObjStatus(%s)\n", key)
 	pub := ctx.pubCertObjStatus
 	st, _ := pub.Get(key)
 	if st == nil {
-		log.Printf("unpublishCertObjStatus(%s) not found\n", key)
+		log.Errorf("unpublishCertObjStatus(%s) not found\n", key)
 		return
 	}
 	pub.Unpublish(key)
@@ -317,7 +317,7 @@ func installCertObject(srcFilename string, dstDirname string, safename string) e
 	srcCnt := st.Size()
 	// create the destination directory
 	if _, err := os.Stat(dstDirname); err != nil {
-		log.Printf("Create %s\n", dstDirname)
+		log.Debugf("Create %s\n", dstDirname)
 		if err := os.MkdirAll(dstDirname, 0700); err != nil {
 			log.Fatal("installCertObject: ", err, dstDirname)
 		}
@@ -327,15 +327,15 @@ func installCertObject(srcFilename string, dstDirname string, safename string) e
 
 	// XXX needed? Check for truncated file and replace??
 	if _, err := os.Stat(dstFilename); err == nil {
-		// Remove amd replace
-		log.Printf("installCertObject: replacing %s\n",
+		// Remove and replace
+		log.Infof("installCertObject: replacing %s\n",
 			dstFilename)
 		if err := os.Remove(dstFilename); err != nil {
 			log.Fatalf("installCertObject failed %s\n", err)
 		}
 	}
 
-	log.Printf("installCertObject: writing %s to %s\n",
+	log.Infof("installCertObject: writing %s to %s\n",
 		srcFilename, dstFilename)
 
 	// XXX:FIXME its copy, not move
@@ -343,10 +343,10 @@ func installCertObject(srcFilename string, dstDirname string, safename string) e
 	// this should be on safename or, holder object uuid context
 	dstCnt, err := copyFile(srcFilename, dstFilename)
 	if err != nil {
-		log.Println("installCertObject: ", err, dstFilename)
+		log.Errorln("installCertObject: ", err, dstFilename)
 	}
 	if dstCnt != srcCnt {
-		log.Printf("installCertObject: mismatched copy len %d vs %d, %s\n",
+		log.Errorf("installCertObject: mismatched copy len %d vs %d, %s\n",
 			dstCnt, srcCnt, dstFilename)
 	}
 	return err

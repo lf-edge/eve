@@ -36,7 +36,7 @@ func bridgeNumAllocatorInit(pubNetworkObjectStatus *pubsub.Publication) {
 	for key, st := range items {
 		status := cast.CastNetworkObjectStatus(st)
 		if status.Key() != key {
-			log.Printf("bridgeNumAllocatorInit key/UUID mismatch %s vs %s; ignored %+v\n",
+			log.Errorf("bridgeNumAllocatorInit key/UUID mismatch %s vs %s; ignored %+v\n",
 				key, status.Key(), status)
 			continue
 		}
@@ -47,7 +47,7 @@ func bridgeNumAllocatorInit(pubNetworkObjectStatus *pubsub.Publication) {
 		// allocated; otherwise mark it as reserved.
 		// XXX however, on startup we are not likely to have any
 		// config yet.
-		log.Printf("Reserving bridgeNum %d for %s\n", bridgeNum, uuid)
+		log.Infof("Reserving bridgeNum %d for %s\n", bridgeNum, uuid)
 		ReservedBridgeNum[uuid] = bridgeNum
 		if AllocReservedBridgeNums.IsSet(bridgeNum) {
 			panic(fmt.Sprintf("AllocReservedBridgeNums already set for %d\n",
@@ -61,7 +61,7 @@ func bridgeNumAllocate(uuid uuid.UUID) int {
 	// Do we already have a number?
 	bridgeNum, ok := AllocatedBridgeNum[uuid]
 	if ok {
-		log.Printf("Found allocated bridgeNum %d for %s\n", bridgeNum, uuid)
+		log.Infof("Found allocated bridgeNum %d for %s\n", bridgeNum, uuid)
 		if !AllocReservedBridgeNums.IsSet(bridgeNum) {
 			panic(fmt.Sprintf("AllocReservedBridgeNums not set for %d\n", bridgeNum))
 		}
@@ -70,7 +70,7 @@ func bridgeNumAllocate(uuid uuid.UUID) int {
 	// Do we already have it in reserve?
 	bridgeNum, ok = ReservedBridgeNum[uuid]
 	if ok {
-		log.Printf("Found reserved bridgeNum %d for %s\n", bridgeNum, uuid)
+		log.Infof("Found reserved bridgeNum %d for %s\n", bridgeNum, uuid)
 		if !AllocReservedBridgeNums.IsSet(bridgeNum) {
 			panic(fmt.Sprintf("AllocReservedBridgeNums not set for %d\n", bridgeNum))
 		}
@@ -85,16 +85,17 @@ func bridgeNumAllocate(uuid uuid.UUID) int {
 	for i := 1; i < 256; i++ {
 		if !AllocReservedBridgeNums.IsSet(i) {
 			bridgeNum = i
-			log.Printf("Allocating bridgeNum %d for %s\n",
+			log.Infof("Allocating bridgeNum %d for %s\n",
 				bridgeNum, uuid)
 			break
 		}
 	}
 	if bridgeNum == 0 {
-		log.Printf("Failed to find free bridgeNum for %s. Reusing!\n", uuid)
+		log.Infof("Failed to find free bridgeNum for %s. Reusing!\n",
+			uuid)
 		// Unreserve first reserved
 		for r, i := range ReservedBridgeNum {
-			log.Printf("Unreserving %d for %s\n", i, r)
+			log.Infof("Unreserving %d for %s\n", i, r)
 			delete(ReservedBridgeNum, r)
 			AllocReservedBridgeNums.Clear(i)
 			return bridgeNumAllocate(uuid)

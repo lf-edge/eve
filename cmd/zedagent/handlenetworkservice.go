@@ -17,17 +17,17 @@ import (
 )
 
 func handleNetworkServiceModify(ctxArg interface{}, key string, statusArg interface{}) {
-	log.Printf("handleNetworkServiceStatusModify(%s)\n", key)
+	log.Infof("handleNetworkServiceStatusModify(%s)\n", key)
 	ctx := ctxArg.(*zedagentContext)
 	status := cast.CastNetworkServiceStatus(statusArg)
 	if status.Key() != key {
-		log.Printf("handleNetworkServiceModify key/UUID mismatch %s vs %s; ignored %+v\n", key, status.Key(), status)
+		log.Errorf("handleNetworkServiceModify key/UUID mismatch %s vs %s; ignored %+v\n", key, status.Key(), status)
 		return
 	}
 	// XXX look for error; copy to device error; need device error in proto
 	// XXX have handlemetrics read sub.GetAll() and look for errors?
 	if !status.ErrorTime.IsZero() {
-		log.Printf("Received NetworkService error %s\n", status.Error)
+		log.Errorf("Received NetworkService error %s\n", status.Error)
 	}
 	switch status.Type {
 	case types.NST_LISP:
@@ -36,16 +36,16 @@ func handleNetworkServiceModify(ctxArg interface{}, key string, statusArg interf
 		handleNetworkVpnServiceStatusModify(ctx, status)
 	default:
 	}
-	log.Printf("handleNetworkServiceModify(%s) done\n", key)
+	log.Infof("handleNetworkServiceModify(%s) done\n", key)
 }
 
 func handleNetworkServiceDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Printf("handleNetworkServiceDelete(%s)\n", key)
+	log.Infof("handleNetworkServiceDelete(%s)\n", key)
 	status := cast.CastNetworkServiceStatus(statusArg)
 	if status.Key() != key {
-		log.Printf("handleNetworkServiceDelete key/UUID mismatch %s vs %s; ignored %+v\n",
+		log.Errorf("handleNetworkServiceDelete key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
 		return
 	}
@@ -58,7 +58,7 @@ func handleNetworkServiceDelete(ctxArg interface{}, key string,
 		handleNetworkVpnServiceStatusDelete(ctx, status)
 	default:
 	}
-	log.Printf("handleNetworkServiceDelete(%s) done\n", key)
+	log.Infof("handleNetworkServiceDelete(%s) done\n", key)
 }
 
 func handleNetworkVpnServiceStatusModify(ctx *zedagentContext,
@@ -145,7 +145,7 @@ func prepareAndPublishLispServiceInfoMsg(ctx *zedagentContext,
 	if x, ok := infoMsg.GetInfoContent().(*zmet.ZInfoMsg_Sinfo); ok {
 		x.Sinfo = svcInfo
 	}
-	log.Printf("XXX Publish LispInfo message to zedcloud\n")
+	log.Debugf("Publish LispInfo message to zedcloud: %v\n", infoMsg)
 	publishNetworkServiceInfo(ctx, serviceUUID, infoMsg)
 }
 
@@ -306,10 +306,8 @@ func publishNetworkServiceInfo(ctx *zedagentContext, serviceUUID string, infoMsg
 }
 
 func publishNetworkServiceInfoToZedCloud(serviceUUID string, infoMsg *zmet.ZInfoMsg, iteration int) {
-	if debug {
-		log.Printf("publishNetworkServiceInfoToZedCloud sending %v\n", infoMsg)
-	}
-	log.Printf("publishNetworkServiceInfoToZedCloud sending %v\n", infoMsg)
+
+	log.Infof("publishNetworkServiceInfoToZedCloud sending %v\n", infoMsg)
 	data, err := proto.Marshal(infoMsg)
 	if err != nil {
 		log.Fatal("publishNetworkServiceInfoToZedCloud proto marshaling error: ", err)
@@ -318,7 +316,7 @@ func publishNetworkServiceInfoToZedCloud(serviceUUID string, infoMsg *zmet.ZInfo
 	zedcloud.RemoveDeferred(serviceUUID)
 	err = SendProtobuf(statusUrl, data, iteration)
 	if err != nil {
-		log.Printf("publishNetworkServiceInfoToZedCloud failed: %s\n", err)
+		log.Errorf("publishNetworkServiceInfoToZedCloud failed: %s\n", err)
 		// Try sending later
 		zedcloud.SetDeferred(serviceUUID, data, statusUrl, zedcloudCtx,
 			true)
@@ -329,10 +327,11 @@ func publishNetworkServiceInfoToZedCloud(serviceUUID string, infoMsg *zmet.ZInfo
 
 func handleNetworkServiceMetricsModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
-	log.Printf("handleNetworkServiceMetricsModify(%s)\n", key)
+
+	log.Infof("handleNetworkServiceMetricsModify(%s)\n", key)
 	metrics := cast.CastNetworkServiceMetrics(statusArg)
 	if metrics.Key() != key {
-		log.Printf("handleNetworkServiceMetricsModify key/UUID mismatch %s vs %s; ignored %+v\n",
+		log.Errorf("handleNetworkServiceMetricsModify key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, metrics.Key(), metrics)
 		return
 	}
@@ -342,14 +341,14 @@ func handleNetworkServiceMetricsModify(ctxArg interface{}, key string,
 func handleNetworkServiceMetricsDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Printf("handleNetworkServiceMetricsDelete(%s)\n", key)
+	log.Infof("handleNetworkServiceMetricsDelete(%s)\n", key)
 	metrics := cast.CastNetworkServiceMetrics(statusArg)
 	if metrics.Key() != key {
-		log.Printf("handleNetworkServiceMetricsDelete key/UUID mismatch %s vs %s; ignored %+v\n",
+		log.Errorf("handleNetworkServiceMetricsDelete key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, metrics.Key(), metrics)
 		return
 	}
-	log.Printf("handleNetworkServiceMetricsDelete(%s) done\n", key)
+	log.Infof("handleNetworkServiceMetricsDelete(%s) done\n", key)
 }
 
 func createNetworkServiceMetrics(ctx *zedagentContext, reportMetrics *zmet.ZMetricMsg) {
@@ -364,10 +363,7 @@ func createNetworkServiceMetrics(ctx *zedagentContext, reportMetrics *zmet.ZMetr
 		metricService := protoEncodeNetworkServiceMetricProto(metrics)
 		reportMetrics.Sm = append(reportMetrics.Sm, metricService)
 	}
-	if debug {
-		log.Println("network service metrics: ",
-			reportMetrics.Sm)
-	}
+	log.Debugln("network service metrics: ", reportMetrics.Sm)
 }
 
 func protoEncodeNetworkServiceMetricProto(status types.NetworkServiceMetrics) *zmet.ZMetricService {
@@ -381,7 +377,8 @@ func protoEncodeNetworkServiceMetricProto(status types.NetworkServiceMetrics) *z
 		protoEncodeVpnServiceMetric(status, serviceMetric)
 
 	case types.NST_LISP:
-		log.Printf("XXX Publish Lisp Service Metric to Zedcloud\n")
+		log.Debugf("Publish Lisp Service Metric to Zedcloud %v\n",
+			serviceMetric)
 		protoEncodeLispServiceMetric(status, serviceMetric)
 	}
 

@@ -17,9 +17,8 @@ import (
 // Create a pair of local ipsets called "ipv6.local" and "ipv4.local"
 // XXX should we add 169.254.0.0/16 as well?
 func createDefaultIpset() {
-	if debug {
-		log.Printf("createDefaultIpset()\n")
-	}
+
+	log.Debugf("createDefaultIpset()\n")
 	ipsetName := "local"
 	err := ipsetCreatePair(ipsetName, "hash:net")
 	if err != nil {
@@ -32,14 +31,14 @@ func createDefaultIpset() {
 	for _, prefix := range prefixes {
 		err := ipsetAdd(set6, prefix)
 		if err != nil {
-			log.Println("ipset add ", set6, prefix, err)
+			log.Errorln("ipset add ", set6, prefix, err)
 		}
 	}
 	prefixes = []string{"0.0.0.0/32", "255.255.255.255/32", "224.0.0.0/4"}
 	for _, prefix := range prefixes {
 		err := ipsetAdd(set4, prefix)
 		if err != nil {
-			log.Println("ipset add ", set4, prefix, err)
+			log.Errorln("ipset add ", set4, prefix, err)
 		}
 	}
 }
@@ -49,10 +48,9 @@ func createDefaultIpset() {
 // Would be more polite to return an error then to Fatal
 func createDefaultIpsetConfiglet(vifname string, nameToIPList []types.DnsNameToIP,
 	appIPAddr string) {
-	if debug {
-		log.Printf("createDefaultIpsetConfiglet: olifName %s nameToIPList %v appIPAddr %s\n",
-			vifname, nameToIPList, appIPAddr)
-	}
+
+	log.Debugf("createDefaultIpsetConfiglet: olifName %s nameToIPList %v appIPAddr %s\n",
+		vifname, nameToIPList, appIPAddr)
 	ipsetName := "eids." + vifname
 	err := ipsetCreatePair(ipsetName, "hash:ip")
 	if err != nil {
@@ -66,7 +64,7 @@ func createDefaultIpsetConfiglet(vifname string, nameToIPList []types.DnsNameToI
 		// to avoid parsing in places like this?
 		appIP = net.ParseIP(appIPAddr)
 		if appIP == nil {
-			log.Printf("ipset failed to parse appIPAddr %s\n",
+			log.Errorf("ipset failed to parse appIPAddr %s\n",
 				appIPAddr)
 		}
 	}
@@ -80,7 +78,7 @@ func createDefaultIpsetConfiglet(vifname string, nameToIPList []types.DnsNameToI
 			}
 			err = ipsetAdd(set, ip.String())
 			if err != nil {
-				log.Println("ipset add ", set,
+				log.Errorln("ipset add ", set,
 					ip.String(), err)
 			}
 			// Is appIP in nameToIPList?
@@ -98,17 +96,16 @@ func createDefaultIpsetConfiglet(vifname string, nameToIPList []types.DnsNameToI
 		}
 		err = ipsetAdd(set, appIP.String())
 		if err != nil {
-			log.Println("ipset add ", set, appIP.String(), err)
+			log.Errorln("ipset add ", set, appIP.String(), err)
 		}
 	}
 }
 
 func updateDefaultIpsetConfiglet(vifname string,
 	oldList []types.DnsNameToIP, newList []types.DnsNameToIP) {
-	if debug {
-		log.Printf("updateDefaultIpsetConfiglet: vifname %s old %v, new %v\n",
-			vifname, oldList, newList)
-	}
+
+	log.Debugf("updateDefaultIpsetConfiglet: vifname %s old %v, new %v\n",
+		vifname, oldList, newList)
 	ipsetName := "eids." + vifname
 	set4 := "ipv4." + ipsetName
 	set6 := "ipv6." + ipsetName
@@ -125,7 +122,7 @@ func updateDefaultIpsetConfiglet(vifname string,
 				}
 				err := ipsetDel(set, ip.String())
 				if err != nil {
-					log.Println("ipset del ", set,
+					log.Errorln("ipset del ", set,
 						ip.String(), err)
 				}
 			}
@@ -144,7 +141,7 @@ func updateDefaultIpsetConfiglet(vifname string,
 				}
 				err := ipsetAdd(set, ip.String())
 				if err != nil {
-					log.Println("ipset add ", set,
+					log.Errorln("ipset add ", set,
 						ip.String(), err)
 				}
 			}
@@ -153,20 +150,19 @@ func updateDefaultIpsetConfiglet(vifname string,
 }
 
 func deleteDefaultIpsetConfiglet(vifname string, printOnError bool) {
-	if debug {
-		log.Printf("deleteDefaultIpsetConfiglet: vifname %s\n", vifname)
-	}
+
+	log.Debugf("deleteDefaultIpsetConfiglet: vifname %s\n", vifname)
 	ipsetName := "eids." + vifname
 	set4 := "ipv4." + ipsetName
 	set6 := "ipv6." + ipsetName
 
 	err := ipsetDestroy(set4)
 	if err != nil && printOnError {
-		log.Println("ipset destroy ", set4, err)
+		log.Errorln("ipset destroy ", set4, err)
 	}
 	err = ipsetDestroy(set6)
 	if err != nil && printOnError {
-		log.Println("ipset destroy ", set6, err)
+		log.Errorln("ipset destroy ", set6, err)
 	}
 }
 

@@ -18,7 +18,7 @@ func getNetworkMetrics(ctx *zedrouterContext) types.NetworkMetrics {
 	metrics := []types.NetworkMetric{}
 	network, err := psutilnet.IOCounters(true)
 	if err != nil {
-		log.Println(err)
+		log.Errorln(err)
 		return types.NetworkMetrics{}
 	}
 	// Call iptables once to get counters

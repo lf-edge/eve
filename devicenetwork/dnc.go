@@ -26,26 +26,18 @@ type DeviceNetworkContext struct {
 	PubDeviceNetworkStatus *pubsub.Publication
 	Changed                bool
 	SubGlobalConfig        *pubsub.Subscription
-	DebugPtr               *bool
-}
-
-func (ctx *DeviceNetworkContext) debug() bool {
-	return (ctx.DebugPtr != nil) && *ctx.DebugPtr
 }
 
 func HandleDNCModify(ctxArg interface{}, key string, configArg interface{}) {
 
 	config := cast.CastDeviceNetworkConfig(configArg)
 	ctx := ctxArg.(*DeviceNetworkContext)
-
 	if key != ctx.ManufacturerModel {
-		if ctx.debug() {
-			log.Printf("HandleDNCModify: ignoring %s - expecting %s\n",
-				key, ctx.ManufacturerModel)
-		}
+		log.Debugf("HandleDNCModify: ignoring %s - expecting %s\n",
+			key, ctx.ManufacturerModel)
 		return
 	}
-	log.Printf("HandleDNCModify for %s\n", key)
+	log.Infof("HandleDNCModify for %s\n", key)
 	// Get old value
 	var oldConfig types.DeviceUplinkConfig
 	c, _ := ctx.PubDeviceUplinkConfig.Get("global")
@@ -57,22 +49,21 @@ func HandleDNCModify(ctxArg interface{}, key string, configArg interface{}) {
 	*ctx.DeviceNetworkConfig = config
 	uplinkConfig := MakeNetworkUplinkConfig(config)
 	if !reflect.DeepEqual(oldConfig, uplinkConfig) {
-		log.Printf("DeviceUplinkConfig change from %v to %v\n",
+		log.Infof("DeviceUplinkConfig change from %v to %v\n",
 			oldConfig, uplinkConfig)
 		ctx.PubDeviceUplinkConfig.Publish("global", uplinkConfig)
 	}
-	log.Printf("HandleDNCModify done for %s\n", key)
+	log.Infof("HandleDNCModify done for %s\n", key)
 }
 
 func HandleDNCDelete(ctxArg interface{}, key string, configArg interface{}) {
 
-	log.Printf("HandleDNCDelete for %s\n", key)
 	ctx := ctxArg.(*DeviceNetworkContext)
-
 	if key != ctx.ManufacturerModel {
-		log.Printf("HandleDNCDelete: ignoring %s\n", key)
+		log.Debugf("HandleDNCDelete: ignoring %s\n", key)
 		return
 	}
+	log.Infof("HandleDNCDelete for %s\n", key)
 	// Get old value
 	var oldConfig types.DeviceUplinkConfig
 	c, _ := ctx.PubDeviceUplinkConfig.Get("global")
@@ -85,11 +76,11 @@ func HandleDNCDelete(ctxArg interface{}, key string, configArg interface{}) {
 	*ctx.DeviceNetworkConfig = types.DeviceNetworkConfig{}
 	uplinkConfig := MakeNetworkUplinkConfig(*ctx.DeviceNetworkConfig)
 	if !reflect.DeepEqual(oldConfig, uplinkConfig) {
-		log.Printf("DeviceUplinkConfig change from %v to %v\n",
+		log.Infof("DeviceUplinkConfig change from %v to %v\n",
 			oldConfig, uplinkConfig)
 		ctx.PubDeviceUplinkConfig.Publish("global", uplinkConfig)
 	}
-	log.Printf("HandleDNCDelete done for %s\n", key)
+	log.Infof("HandleDNCDelete done for %s\n", key)
 }
 
 // Handle three different sources in this priority order:
@@ -102,7 +93,7 @@ func HandleDUCModify(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*DeviceNetworkContext)
 
 	curPriority := ctx.DeviceUplinkConfigPrio
-	log.Printf("HandleDUCModify for %s current priority %d\n",
+	log.Infof("HandleDUCModify for %s current priority %d\n",
 		key, curPriority)
 
 	var priority int
@@ -115,14 +106,14 @@ func HandleDUCModify(ctxArg interface{}, key string, configArg interface{}) {
 		priority = 1
 	}
 	if curPriority != 0 && priority > curPriority {
-		log.Printf("HandleDUCModify: ignoring lower priority %s\n",
+		log.Infof("HandleDUCModify: ignoring lower priority %s\n",
 			key)
 		return
 	}
 	ctx.DeviceUplinkConfigPrio = priority
 
 	if !reflect.DeepEqual(*ctx.DeviceUplinkConfig, uplinkConfig) {
-		log.Printf("DeviceUplinkConfig change from %v to %v\n",
+		log.Infof("DeviceUplinkConfig change from %v to %v\n",
 			*ctx.DeviceUplinkConfig, uplinkConfig)
 		UpdateDhcpClient(uplinkConfig,
 			*ctx.DeviceUplinkConfig)
@@ -131,21 +122,21 @@ func HandleDUCModify(ctxArg interface{}, key string, configArg interface{}) {
 	dnStatus, _ := MakeDeviceNetworkStatus(uplinkConfig,
 		*ctx.DeviceNetworkStatus)
 	if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, dnStatus) {
-		log.Printf("DeviceNetworkStatus change from %v to %v\n",
+		log.Infof("DeviceNetworkStatus change from %v to %v\n",
 			*ctx.DeviceNetworkStatus, dnStatus)
 		*ctx.DeviceNetworkStatus = dnStatus
 		DoDNSUpdate(ctx)
 	}
-	log.Printf("HandleDUCModify done for %s\n", key)
+	log.Infof("HandleDUCModify done for %s\n", key)
 }
 
 func HandleDUCDelete(ctxArg interface{}, key string, configArg interface{}) {
 
-	log.Printf("HandleDUCDelete for %s\n", key)
+	log.Infof("HandleDUCDelete for %s\n", key)
 	ctx := ctxArg.(*DeviceNetworkContext)
 
 	curPriority := ctx.DeviceUplinkConfigPrio
-	log.Printf("HandleDUCDelete for %s current priority %d\n",
+	log.Infof("HandleDUCDelete for %s current priority %d\n",
 		key, curPriority)
 
 	var priority int
@@ -158,7 +149,7 @@ func HandleDUCDelete(ctxArg interface{}, key string, configArg interface{}) {
 		priority = 1
 	}
 	if curPriority != priority {
-		log.Printf("HandleDUCDelete: not removing current priority %d for %s\n",
+		log.Infof("HandleDUCDelete: not removing current priority %d for %s\n",
 			curPriority, key)
 		return
 	}
@@ -168,7 +159,7 @@ func HandleDUCDelete(ctxArg interface{}, key string, configArg interface{}) {
 
 	uplinkConfig := types.DeviceUplinkConfig{}
 	if !reflect.DeepEqual(*ctx.DeviceUplinkConfig, uplinkConfig) {
-		log.Printf("DeviceUplinkConfig change from %v to %v\n",
+		log.Infof("DeviceUplinkConfig change from %v to %v\n",
 			*ctx.DeviceUplinkConfig, uplinkConfig)
 		UpdateDhcpClient(uplinkConfig,
 			*ctx.DeviceUplinkConfig)
@@ -176,12 +167,12 @@ func HandleDUCDelete(ctxArg interface{}, key string, configArg interface{}) {
 	}
 	dnStatus := types.DeviceNetworkStatus{}
 	if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, dnStatus) {
-		log.Printf("DeviceNetworkStatus change from %v to %v\n",
+		log.Infof("DeviceNetworkStatus change from %v to %v\n",
 			*ctx.DeviceNetworkStatus, dnStatus)
 		*ctx.DeviceNetworkStatus = dnStatus
 		DoDNSUpdate(ctx)
 	}
-	log.Printf("HandleDUCDelete done for %s\n", key)
+	log.Infof("HandleDUCDelete done for %s\n", key)
 }
 
 func DoDNSUpdate(ctx *DeviceNetworkContext) {
@@ -189,12 +180,12 @@ func DoDNSUpdate(ctx *DeviceNetworkContext) {
 	// address?
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*ctx.DeviceNetworkStatus)
 	if newAddrCount == 0 && ctx.UsableAddressCount != 0 {
-		log.Printf("DeviceNetworkStatus from %d to %d addresses\n",
+		log.Infof("DeviceNetworkStatus from %d to %d addresses\n",
 			ctx.UsableAddressCount, newAddrCount)
 		// Inform ledmanager that we have no addresses
 		types.UpdateLedManagerConfig(1)
 	} else if newAddrCount != 0 && ctx.UsableAddressCount == 0 {
-		log.Printf("DeviceNetworkStatus from %d to %d addresses\n",
+		log.Infof("DeviceNetworkStatus from %d to %d addresses\n",
 			ctx.UsableAddressCount, newAddrCount)
 		// Inform ledmanager that we have uplink addresses
 		types.UpdateLedManagerConfig(2)

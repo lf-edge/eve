@@ -52,8 +52,10 @@ func MakeDeviceNetworkStatus(globalConfig types.DeviceUplinkConfig, oldStatus ty
 		// XXX should we get statics?
 		link, err := netlink.LinkByName(u.IfName)
 		if err != nil {
-			log.Printf("MakeDeviceNetworkStatus LinkByName %s: %s\n", u.IfName, err)
-			err = errors.New(fmt.Sprintf("Uplink in config/global does not exist: %v", u))
+			log.Errorf("MakeDeviceNetworkStatus LinkByName %s: %s\n",
+				u.IfName, err)
+			err = errors.New(fmt.Sprintf("Uplink in config/global does not exist: %v",
+				u))
 			continue
 		}
 		addrs4, err := netlink.AddrList(link, netlink.FAMILY_V4)
@@ -67,13 +69,13 @@ func MakeDeviceNetworkStatus(globalConfig types.DeviceUplinkConfig, oldStatus ty
 		globalStatus.UplinkStatus[ix].AddrInfoList = make([]types.AddrInfo,
 			len(addrs4)+len(addrs6))
 		for i, addr := range addrs4 {
-			log.Printf("UplinkAddrs(%s) found IPv4 %v\n",
+			log.Infof("UplinkAddrs(%s) found IPv4 %v\n",
 				u.IfName, addr.IP)
 			globalStatus.UplinkStatus[ix].AddrInfoList[i].Addr = addr.IP
 		}
 		for i, addr := range addrs6 {
 			// We include link-locals since they can be used for LISP behind nats
-			log.Printf("UplinkAddrs(%s) found IPv6 %v\n",
+			log.Infof("UplinkAddrs(%s) found IPv6 %v\n",
 				u.IfName, addr.IP)
 			globalStatus.UplinkStatus[ix].AddrInfoList[i+len(addrs4)].Addr = addr.IP
 		}
@@ -133,7 +135,7 @@ func UpdateDeviceNetworkGeo(timelimit time.Duration, globalStatus *types.DeviceN
 			info, err := ipinfo.MyIPWithOptions(opt)
 			if err != nil {
 				// Ignore error
-				log.Printf("UpdateDeviceNetworkGeo MyIPInfo failed %s\n", err)
+				log.Infof("UpdateDeviceNetworkGeo MyIPInfo failed %s\n", err)
 				continue
 			}
 			// Note that if the global IP is unchanged we don't
@@ -141,7 +143,7 @@ func UpdateDeviceNetworkGeo(timelimit time.Duration, globalStatus *types.DeviceN
 			if info.IP == ai.Geo.IP {
 				continue
 			}
-			log.Printf("UpdateDeviceNetworkGeo MyIPInfo changed from %v to %v\n",
+			log.Infof("UpdateDeviceNetworkGeo MyIPInfo changed from %v to %v\n",
 				ai.Geo, *info)
 			ai.Geo = *info
 			ai.LastGeoTimestamp = time.Now()
@@ -188,7 +190,8 @@ func GetFreeUplinks(config types.DeviceUplinkConfig) []string {
 }
 
 func ProxyToEnv(config types.ProxyConfig) {
-	log.Printf("ProxyToEnv: %s, %s, %s, %s\n",
+
+	log.Infof("ProxyToEnv: %s, %s, %s, %s\n",
 		config.HttpsProxy, config.HttpProxy, config.FtpProxy,
 		config.NoProxy)
 	if config.HttpsProxy == "" {

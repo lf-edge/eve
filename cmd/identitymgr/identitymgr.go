@@ -61,6 +61,11 @@ func Run() {
 	flag.Parse()
 	debug = *debugPtr
 	debugOverride = debug
+	if debugOverride {
+		log.SetLevel(log.DebugLevel)
+	} else {
+		log.SetLevel(log.InfoLevel)
+	}
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
@@ -68,21 +73,21 @@ func Run() {
 	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("Starting %s\n", agentName)
+	log.Infof("Starting %s\n", agentName)
 
 	identityCtx := identityContext{}
 
-	pubEIDStatus, err := pubsub.PublishWithDebug(agentName,
-		types.EIDStatus{}, &debug)
+	pubEIDStatus, err := pubsub.Publish(agentName,
+		types.EIDStatus{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	identityCtx.pubEIDStatus = pubEIDStatus
 	pubEIDStatus.ClearRestarted()
 
-	// Look for global config like debug
-	subGlobalConfig, err := pubsub.SubscribeWithDebug("",
-		agentlog.GlobalConfig{}, false, &identityCtx, &debug)
+	// Look for global config such as log levels
+	subGlobalConfig, err := pubsub.Subscribe("", agentlog.GlobalConfig{},
+		false, &identityCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -92,8 +97,8 @@ func Run() {
 	subGlobalConfig.Activate()
 
 	// Subscribe to EIDConfig from zedmanager
-	subEIDConfig, err := pubsub.SubscribeWithDebug("zedmanager",
-		types.EIDConfig{}, false, &identityCtx, &debug)
+	subEIDConfig, err := pubsub.Subscribe("zedmanager",
+		types.EIDConfig{}, false, &identityCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -115,7 +120,7 @@ func Run() {
 }
 
 func handleRestart(ctxArg interface{}, done bool) {
-	log.Printf("handleRestart(%v)\n", done)
+	log.Infof("handleRestart(%v)\n", done)
 	ctx := ctxArg.(*identityContext)
 	if done {
 		// Since all work is done inline we can immediately say that
@@ -126,18 +131,18 @@ func handleRestart(ctxArg interface{}, done bool) {
 
 func publishEIDStatus(ctx *identityContext, key string, status *types.EIDStatus) {
 
-	log.Printf("publishEIDStatus(%s)\n", key)
+	log.Debugf("publishEIDStatus(%s)\n", key)
 	pub := ctx.pubEIDStatus
 	pub.Publish(key, status)
 }
 
 func unpublishEIDStatus(ctx *identityContext, key string) {
 
-	log.Printf("unpublishEIDStatus(%s)\n", key)
+	log.Debugf("unpublishEIDStatus(%s)\n", key)
 	pub := ctx.pubEIDStatus
 	st, _ := pub.Get(key)
 	if st == nil {
-		log.Printf("unpublishEIDStatus(%s) not found\n", key)
+		log.Errorf("unpublishEIDStatus(%s) not found\n", key)
 		return
 	}
 	pub.Unpublish(key)
@@ -148,11 +153,11 @@ func unpublishEIDStatus(ctx *identityContext, key string) {
 // Determine whether it is an create or modify
 func handleEIDConfigModify(ctxArg interface{}, key string, configArg interface{}) {
 
-	log.Printf("handleEIDConfigModify(%s)\n", key)
+	log.Infof("handleEIDConfigModify(%s)\n", key)
 	ctx := ctxArg.(*identityContext)
 	config := cast.CastEIDConfig(configArg)
 	if config.Key() != key {
-		log.Printf("handleEIDConfigModify key/UUID mismatch %s vs %s; ignored %+v\n",
+		log.Errorf("handleEIDConfigModify key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, config.Key(), config)
 		return
 	}
@@ -162,22 +167,22 @@ func handleEIDConfigModify(ctxArg interface{}, key string, configArg interface{}
 	} else {
 		handleModify(ctx, key, &config, status)
 	}
-	log.Printf("handleEIDConfigModify(%s) done\n", key)
+	log.Infof("handleEIDConfigModify(%s) done\n", key)
 }
 
 func handleEIDConfigDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	log.Printf("handleEIDConfigDelete(%s)\n", key)
+	log.Infof("handleEIDConfigDelete(%s)\n", key)
 	ctx := ctxArg.(*identityContext)
 	status := lookupEIDStatus(ctx, key)
 	if status == nil {
-		log.Printf("handleEIDConfigDelete: unknown %s\n",
+		log.Errorf("handleEIDConfigDelete: unknown %s\n",
 			key, status.Key(), status)
 		return
 	}
 	handleDelete(ctx, key, status)
-	log.Printf("handleEIDConfigDelete(%s) done\n", key)
+	log.Infof("handleEIDConfigDelete(%s) done\n", key)
 }
 
 // Callers must be careful to publish any changes to EIDStatus
@@ -186,12 +191,12 @@ func lookupEIDStatus(ctx *identityContext, key string) *types.EIDStatus {
 	pub := ctx.pubEIDStatus
 	st, _ := pub.Get(key)
 	if st == nil {
-		log.Printf("lookupEIDStatus(%s) not found\n", key)
+		log.Infof("lookupEIDStatus(%s) not found\n", key)
 		return nil
 	}
 	status := cast.CastEIDStatus(st)
 	if status.Key() != key {
-		log.Printf("lookupEIDStatus key/UUID mismatch %s vs %s; ignored %+v\n",
+		log.Errorf("lookupEIDStatus key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
 		return nil
 	}
@@ -203,12 +208,12 @@ func lookupEIDConfig(ctx *identityContext, key string) *types.EIDConfig {
 	sub := ctx.subEIDConfig
 	c, _ := sub.Get(key)
 	if c == nil {
-		log.Printf("lookupEIDConfig(%s) not found\n", key)
+		log.Infof("lookupEIDConfig(%s) not found\n", key)
 		return nil
 	}
 	config := cast.CastEIDConfig(c)
 	if config.Key() != key {
-		log.Printf("lookupEIDConfig key/UUID mismatch %s vs %s; ignored %+v\n",
+		log.Errorf("lookupEIDConfig key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, config.Key(), config)
 		return nil
 	}
@@ -216,7 +221,7 @@ func lookupEIDConfig(ctx *identityContext, key string) *types.EIDConfig {
 }
 
 func handleCreate(ctx *identityContext, key string, config *types.EIDConfig) {
-	log.Printf("handleCreate(%s) for %s\n", key, config.DisplayName)
+	log.Infof("handleCreate(%s) for %s\n", key, config.DisplayName)
 
 	// Start by marking with PendingAdd
 	status := types.EIDStatus{
@@ -246,18 +251,18 @@ func handleCreate(ctx *identityContext, key string, config *types.EIDConfig) {
 		limit := new(big.Int).Lsh(big.NewInt(1), 128)
 		serial, err := rand.Int(rand.Reader, limit)
 		if err != nil {
-			log.Printf("Generate serial failed: %s", err)
+			log.Errorf("Generate serial failed: %s", err)
 			return
 		}
 		// Give it a 20 year lifetime. XXX allow cloud to set lifetime?
 		notBefore := time.Now()
 		notAfter := notBefore.AddDate(20, 0, 0)
-		log.Printf("notAfter %v\n", notAfter)
+		log.Debugf("notAfter %v\n", notAfter)
 
 		// XXX allow cloud to set curve?
 		keypair, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 		if err != nil {
-			log.Printf("GenerateKey failed: %s", err)
+			log.Errorf("GenerateKey failed: %s", err)
 			return
 		}
 
@@ -281,7 +286,7 @@ func handleCreate(ctx *identityContext, key string, config *types.EIDConfig) {
 		b, err := x509.CreateCertificate(rand.Reader, &ct, &ct,
 			&keypair.PublicKey, keypair)
 		if err != nil {
-			log.Printf("Generate certificate failed: %s", err)
+			log.Errorf("Generate certificate failed: %s", err)
 			return
 		}
 		status.PemCert = pem.EncodeToMemory(
@@ -290,21 +295,21 @@ func handleCreate(ctx *identityContext, key string, config *types.EIDConfig) {
 		var publicDer []byte
 		publicPem, publicDer, err = extractPublicPem(&keypair.PublicKey)
 		if err != nil {
-			log.Printf("extractPublicPem failed: %s", err)
+			log.Errorf("extractPublicPem failed: %s", err)
 			// XXX any error cleanup?
 			return
 		}
 
 		eid := generateEID(config.IID, config.AllocationPrefix,
 			publicDer)
-		log.Printf("EID: (len %d) %s\n", len(eid), eid)
+		log.Debugf("EID: (len %d) %s\n", len(eid), eid)
 		status.EID = eid
 		status.CreateTime = time.Now()
 		signature, err := generateLispSignature(eid, config.IID, keypair)
 		if err != nil {
 			return
 		}
-		log.Println("signature:", signature)
+		log.Debugln("signature:", signature)
 		status.LispSignature = signature
 
 		// Generate the PemPrivateKey
@@ -315,17 +320,17 @@ func handleCreate(ctx *identityContext, key string, config *types.EIDConfig) {
 	} else {
 		block, _ := pem.Decode(config.PemCert)
 		if block == nil {
-			log.Println("failed to decode PEM block containing certificate")
+			log.Errorln("failed to decode PEM block containing certificate")
 			return
 		}
 		if block.Type != "CERTIFICATE" {
-			log.Println("failed to decode PEM block containing certificate. Type " +
+			log.Errorln("failed to decode PEM block containing certificate. Type " +
 				block.Type)
 			return
 		}
 		appCert, err := x509.ParseCertificate(block.Bytes)
 		if err != nil {
-			log.Println("ParseCerticate", err)
+			log.Errorln("ParseCerticate", err)
 			return
 		}
 		publicPem, _, err = extractPublicPem(appCert.PublicKey)
@@ -341,14 +346,14 @@ func handleCreate(ctx *identityContext, key string, config *types.EIDConfig) {
 	}
 	status.PendingAdd = false
 	publishEIDStatus(ctx, key, &status)
-	log.Printf("handleCreate(%s) done for %s\n", key, config.DisplayName)
+	log.Infof("handleCreate(%s) done for %s\n", key, config.DisplayName)
 }
 
 func extractPublicPem(pk interface{}) ([]byte, []byte, error) {
 	// Extract the publicKey to make it easier for eidregister
 	publicDer, err := x509.MarshalPKIXPublicKey(pk)
 	if err != nil {
-		log.Printf("MarshalPKIXPublicKey for %v failed:%v\n",
+		log.Errorf("MarshalPKIXPublicKey for %v failed:%v\n",
 			pk, err)
 		return nil, nil, err
 	}
@@ -358,7 +363,7 @@ func extractPublicPem(pk interface{}) ([]byte, []byte, error) {
 		Bytes: publicDer,
 	}
 	publicPem := pem.EncodeToMemory(publicKey)
-	log.Printf("public %s\n", string(publicPem))
+	log.Debugf("public %s\n", string(publicPem))
 	return publicPem, publicDer, nil
 }
 
@@ -368,13 +373,13 @@ func generateEID(iid uint32, allocationPrefix []byte, publicDer []byte) net.IP {
 	binary.BigEndian.PutUint32(iidData, iid)
 
 	hasher := sha256.New()
-	log.Printf("iidData % x\n", iidData)
+	log.Debugf("iidData % x\n", iidData)
 	hasher.Write(iidData)
-	log.Printf("AllocationPrefix % x\n", allocationPrefix)
+	log.Debugf("AllocationPrefix % x\n", allocationPrefix)
 	hasher.Write(allocationPrefix)
 	hasher.Write(publicDer)
 	sum := hasher.Sum(nil)
-	log.Printf("SUM: (len %d) % 2x\n", len(sum), sum)
+	log.Debugf("SUM: (len %d) % 2x\n", len(sum), sum)
 	// Truncate to get EidHashLen by taking the first
 	// EidHashLen/8 bytes from the left.
 	eid := net.IP(append(allocationPrefix, sum...)[0:16])
@@ -389,31 +394,31 @@ func generateLispSignature(eid net.IP, iid uint32,
 	// [iid]eid, where the eid uses the textual format defined in
 	// RFC 5952. The iid is printed as an integer.
 	sigdata := fmt.Sprintf("[%d]%s", iid, eid.String())
-	log.Printf("sigdata (len %d) %s\n", len(sigdata), sigdata)
+	log.Debugf("sigdata (len %d) %s\n", len(sigdata), sigdata)
 
 	hasher := sha256.New()
 	hasher.Write([]byte(sigdata))
 	hash := hasher.Sum(nil)
-	log.Printf("hash (len %d) % x\n", len(hash), hash)
-	log.Printf("base64 hash %s\n",
+	log.Debugf("hash (len %d) % x\n", len(hash), hash)
+	log.Debugf("base64 hash %s\n",
 		base64.StdEncoding.EncodeToString(hash))
 	r, s, err := ecdsa.Sign(rand.Reader, keypair, hash)
 	if err != nil {
-		log.Println("ecdsa.Sign: ", err)
+		log.Errorln("ecdsa.Sign: ", err)
 		return "", err
 	}
-	log.Printf("r.bytes %d s.bytes %d\n", len(r.Bytes()),
+	log.Debugf("r.bytes %d s.bytes %d\n", len(r.Bytes()),
 		len(s.Bytes()))
 	sigres := r.Bytes()
 	sigres = append(sigres, s.Bytes()...)
-	log.Printf("sigres (len %d): % x\n", len(sigres), sigres)
+	log.Debugf("sigres (len %d): % x\n", len(sigres), sigres)
 	return base64.StdEncoding.EncodeToString(sigres), nil
 }
 
 func encodePrivateKey(keypair *ecdsa.PrivateKey) ([]byte, error) {
 	b, err := x509.MarshalECPrivateKey(keypair)
 	if err != nil {
-		log.Printf("Unable to marshal ECDSA private key: %v", err)
+		log.Errorf("Unable to marshal ECDSA private key: %v", err)
 		return nil, err
 	}
 	var privateKey = &pem.Block{
@@ -429,10 +434,10 @@ func encodePrivateKey(keypair *ecdsa.PrivateKey) ([]byte, error) {
 func handleModify(ctx *identityContext, key string, config *types.EIDConfig,
 	status *types.EIDStatus) {
 
-	log.Printf("handleModify(%s) for %s\n", key, config.DisplayName)
+	log.Infof("handleModify(%s) for %s\n", key, config.DisplayName)
 
 	if config.UUIDandVersion.Version == status.UUIDandVersion.Version {
-		log.Printf("Same version %s for %s\n",
+		log.Infof("Same version %s for %s\n",
 			config.UUIDandVersion.Version, key)
 		return
 	}
@@ -440,7 +445,7 @@ func handleModify(ctx *identityContext, key string, config *types.EIDConfig,
 	// XXX report internal error?
 	// XXX switch to Equal?
 	if !reflect.DeepEqual(status.EIDAllocation, config.EIDAllocation) {
-		log.Printf("handleModify(%s) EIDAllocation changed for %s\n",
+		log.Errorf("handleModify(%s) EIDAllocation changed for %s\n",
 			key, config.DisplayName)
 		return
 	}
@@ -450,18 +455,18 @@ func handleModify(ctx *identityContext, key string, config *types.EIDConfig,
 	status.PendingModify = false
 	status.UUIDandVersion = config.UUIDandVersion
 	publishEIDStatus(ctx, key, status)
-	log.Printf("handleModify(%s) done for %s\n", key, config.DisplayName)
+	log.Infof("handleModify(%s) done for %s\n", key, config.DisplayName)
 }
 
 func handleDelete(ctx *identityContext, key string, status *types.EIDStatus) {
 
-	log.Printf("handleDelete(%s) for %s\n", key, status.DisplayName)
+	log.Infof("handleDelete(%s) for %s\n", key, status.DisplayName)
 
 	// No work to do other than deleting the status
 
 	// Write out what we modified aka delete
 	unpublishEIDStatus(ctx, key)
-	log.Printf("handleDelete(%s) done for %s\n", key, status.DisplayName)
+	log.Infof("handleDelete(%s) done for %s\n", key, status.DisplayName)
 }
 
 func handleGlobalConfigModify(ctxArg interface{}, key string,
@@ -469,13 +474,13 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*identityContext)
 	if key != "global" {
-		log.Printf("handleGlobalConfigModify: ignoring %s\n", key)
+		log.Infof("handleGlobalConfigModify: ignoring %s\n", key)
 		return
 	}
-	log.Printf("handleGlobalConfigModify for %s\n", key)
+	log.Infof("handleGlobalConfigModify for %s\n", key)
 	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
-	log.Printf("handleGlobalConfigModify done for %s\n", key)
+	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,
@@ -483,11 +488,11 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*identityContext)
 	if key != "global" {
-		log.Printf("handleGlobalConfigDelete: ignoring %s\n", key)
+		log.Infof("handleGlobalConfigDelete: ignoring %s\n", key)
 		return
 	}
-	log.Printf("handleGlobalConfigDelete for %s\n", key)
+	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
-	log.Printf("handleGlobalConfigDelete done for %s\n", key)
+	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }

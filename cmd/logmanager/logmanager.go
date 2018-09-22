@@ -149,8 +149,8 @@ func Run() {
 	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("Starting %s watching %s\n", agentName, logDirName)
-	log.Printf("watching %s\n", lispLogDirName)
+	log.Infof("Starting %s watching %s\n", agentName, logDirName)
+	log.Infof("watching %s\n", lispLogDirName)
 
 	// Make sure we have the last sent directory
 	dirname := fmt.Sprintf("/persist/%s", lastSentDirname)
@@ -160,15 +160,15 @@ func Run() {
 		}
 	}
 	cms := zedcloud.GetCloudMetrics() // Need type of data
-	pub, err := pubsub.PublishWithDebug(agentName, cms, &debug)
+	pub, err := pubsub.Publish(agentName, cms)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	logmanagerCtx := logmanagerContext{}
-	// Look for global config like debug
-	subGlobalConfig, err := pubsub.SubscribeWithDebug("",
-		agentlog.GlobalConfig{}, false, &logmanagerCtx, &debug)
+	// Look for global config such as log levels
+	subGlobalConfig, err := pubsub.Subscribe("",
+		agentlog.GlobalConfig{}, false, &logmanagerCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -178,8 +178,8 @@ func Run() {
 	subGlobalConfig.Activate()
 
 	// Get DomainStatus from domainmgr
-	subDomainStatus, err := pubsub.SubscribeWithDebug("domainmgr",
-		types.DomainStatus{}, false, &logmanagerCtx, &debug)
+	subDomainStatus, err := pubsub.Subscribe("domainmgr",
+		types.DomainStatus{}, false, &logmanagerCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -192,8 +192,8 @@ func Run() {
 	DNSctx := DNSContext{}
 	DNSctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
 
-	subDeviceNetworkStatus, err := pubsub.SubscribeWithDebug("zedrouter",
-		types.DeviceNetworkStatus{}, false, &DNSctx, &debug)
+	subDeviceNetworkStatus, err := pubsub.Subscribe("zedrouter",
+		types.DeviceNetworkStatus{}, false, &DNSctx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -202,7 +202,7 @@ func Run() {
 	DNSctx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
-	log.Printf("Waiting until we have some uplinks with usable addresses\n")
+	log.Infof("Waiting until we have some uplinks with usable addresses\n")
 	for DNSctx.usableAddressCount == 0 && !force {
 		select {
 		case change := <-subGlobalConfig.C:
@@ -212,11 +212,11 @@ func Run() {
 			subDeviceNetworkStatus.ProcessChange(change)
 		}
 	}
-	log.Printf("Have %d uplinks with usable addresses\n",
+	log.Infof("Have %d uplinks with usable addresses\n",
 		DNSctx.usableAddressCount)
 
 	// Timer for deferred sends of info messages
-	deferredChan := zedcloud.InitDeferredWithDebug(&debug)
+	deferredChan := zedcloud.InitDeferred()
 
 	//Get servername, set logUrl, get device id and initialize zedcloudCtx
 	sendCtxInit()
@@ -234,7 +234,7 @@ func Run() {
 	xenCtx := imageLoggerContext{}
 	lastSent := readLastSent(currentPartition)
 	lastSentStr, _ := lastSent.MarshalText()
-	log.Printf("Current partition logs were last sent at %s\n",
+	log.Debugf("Current partition logs were last sent at %s\n",
 		string(lastSentStr))
 
 	// Start sender of log events
@@ -252,13 +252,13 @@ func Run() {
 	var otherCtx = loggerContext{}
 
 	if otherLogDirname != "" {
-		log.Printf("Have logs from failed upgrade in %s\n",
+		log.Infof("Have logs from failed upgrade in %s\n",
 			otherLogDirname)
 		otherLoggerChan := make(chan logEntry)
 		otherPartition := zboot.GetOtherPartition()
 		lastSent := readLastSent(otherPartition)
 		lastSentStr, _ := lastSent.MarshalText()
-		log.Printf("Other partition logs were last sent at %s\n",
+		log.Debugf("Other partition logs were last sent at %s\n",
 			string(lastSentStr))
 
 		go processEvents(otherPartition, lastSent, otherLoggerChan)
@@ -277,7 +277,7 @@ func Run() {
 	xenLogDirChanges := make(chan string)
 	go watch.WatchStatus(xenLogDirname, xenLogDirChanges)
 
-	log.Println("called watcher...")
+	log.Debugln("called watcher...")
 	for {
 		select {
 		case change := <-subGlobalConfig.C:
@@ -309,7 +309,7 @@ func Run() {
 			log.Debugln("publishTimer at", time.Now())
 			err := pub.Publish("global", zedcloud.GetCloudMetrics())
 			if err != nil {
-				log.Println(err)
+				log.Errorln(err)
 			}
 		case change := <-deferredChan:
 			zedcloud.HandleDeferred(change)
@@ -322,32 +322,32 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	status := cast.CastDeviceNetworkStatus(statusArg)
 	ctx := ctxArg.(*DNSContext)
 	if key != "global" {
-		log.Printf("handleDNSModify: ignoring %s\n", key)
+		log.Infof("handleDNSModify: ignoring %s\n", key)
 		return
 	}
-	log.Printf("handleDNSModify for %s\n", key)
+	log.Infof("handleDNSModify for %s\n", key)
 	deviceNetworkStatus = status
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
 	ctx.usableAddressCount = newAddrCount
 	devicenetwork.ProxyToEnv(deviceNetworkStatus.ProxyConfig)
-	log.Printf("handleDNSModify done for %s; %d usable\n",
+	log.Infof("handleDNSModify done for %s; %d usable\n",
 		key, newAddrCount)
 }
 
 func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 
-	log.Printf("handleDNSDelete for %s\n", key)
+	log.Infof("handleDNSDelete for %s\n", key)
 	ctx := ctxArg.(*DNSContext)
 
 	if key != "global" {
-		log.Printf("handleDNSDelete: ignoring %s\n", key)
+		log.Infof("handleDNSDelete: ignoring %s\n", key)
 		return
 	}
 	deviceNetworkStatus = types.DeviceNetworkStatus{}
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
 	ctx.usableAddressCount = newAddrCount
 	devicenetwork.ProxyToEnv(deviceNetworkStatus.ProxyConfig)
-	log.Printf("handleDNSDelete done for %s\n", key)
+	log.Infof("handleDNSDelete done for %s\n", key)
 }
 
 // This runs as a separate go routine sending out data
@@ -355,7 +355,7 @@ func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 func processEvents(image string, prevLastSent time.Time,
 	logChan <-chan logEntry) {
 
-	log.Printf("processEvents(%s, %s)\n", image, prevLastSent.String())
+	log.Infof("processEvents(%s, %s)\n", image, prevLastSent.String())
 
 	reportLogs := new(zmet.LogBundle)
 	// XXX should we make the log interval configurable?
@@ -372,7 +372,7 @@ func processEvents(image string, prevLastSent time.Time,
 		case event, more := <-logChan:
 			sent := false
 			if !more {
-				log.Printf("processEvents(%s) end\n",
+				log.Infof("processEvents(%s) end\n",
 					image)
 				if messageCount > 0 {
 					sent = sendProtoStrForLogs(reportLogs, image,
@@ -434,20 +434,20 @@ func recordLastSent(image string) {
 	if err != nil {
 		file, err := os.Create(filename)
 		if err != nil {
-			log.Printf("recordLastSent: %s\n", err)
+			log.Infof("recordLastSent: %s\n", err)
 			return
 		}
 		file.Close()
 	}
 	_, err = os.Stat(filename)
 	if err != nil {
-		log.Printf("recordLastSent: %s\n", err)
+		log.Errorf("recordLastSent: %s\n", err)
 		return
 	}
 	now := time.Now()
 	err = os.Chtimes(filename, now, now)
 	if err != nil {
-		log.Printf("recordLastSent: %s\n", err)
+		log.Errorf("recordLastSent: %s\n", err)
 		return
 	}
 }
@@ -457,7 +457,7 @@ func readLastSent(image string) time.Time {
 	st, err := os.Stat(filename)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			log.Printf("readLastSent: %s\n", err)
+			log.Errorf("readLastSent: %s\n", err)
 		}
 		return time.Time{}
 	}
@@ -502,7 +502,7 @@ func sendProtoStrForLogs(reportLogs *zmet.LogBundle, image string,
 	}
 
 	if zedcloud.HasDeferred(image) {
-		log.Printf("SendProtoStrForLogs queued after existing for %s\n",
+		log.Infof("SendProtoStrForLogs queued after existing for %s\n",
 			image)
 		zedcloud.AddDeferred(image, data, logsUrl, zedcloudCtx, false)
 		reportLogs.Log = []*zmet.LogEntry{}
@@ -511,7 +511,7 @@ func sendProtoStrForLogs(reportLogs *zmet.LogBundle, image string,
 	_, _, err = zedcloud.SendOnAllIntf(zedcloudCtx, logsUrl,
 		int64(len(data)), buf, iteration, false)
 	if err != nil {
-		log.Printf("SendProtoStrForLogs %d bytes image %s failed: %s\n",
+		log.Errorf("SendProtoStrForLogs %d bytes image %s failed: %s\n",
 			len(data), image, err)
 		// Try sending later. The deferred state means processEvents
 		// will sleep until the timer takes care of sending this
@@ -543,7 +543,6 @@ func sendCtxInit() {
 	}
 	zedcloudCtx.DeviceNetworkStatus = &deviceNetworkStatus
 	zedcloudCtx.TlsConfig = tlsConfig
-	zedcloudCtx.DebugPtr = &debug
 	zedcloudCtx.FailureFunc = zedcloud.ZedCloudFailure
 	zedcloudCtx.SuccessFunc = zedcloud.ZedCloudSuccess
 
@@ -551,20 +550,20 @@ func sendCtxInit() {
 	for {
 		b, err := ioutil.ReadFile(uuidFileName)
 		if err != nil {
-			log.Println("ReadFile", err, uuidFileName)
+			log.Errorln("ReadFile", err, uuidFileName)
 			time.Sleep(time.Second)
 			continue
 		}
 		uuidStr := strings.TrimSpace(string(b))
 		devUUID, err = uuid.FromString(uuidStr)
 		if err != nil {
-			log.Println("uuid.FromString", err, string(b))
+			log.Errorln("uuid.FromString", err, string(b))
 			time.Sleep(time.Second)
 			continue
 		}
 		break
 	}
-	log.Printf("Read UUID %s\n", devUUID)
+	log.Infof("Read UUID %s\n", devUUID)
 }
 
 func HandleLogDirEvent(change string, logDirName string, ctx interface{},
@@ -625,17 +624,17 @@ func handleXenLogDirModify(context interface{},
 
 func createXenLogger(ctx *imageLoggerContext, filename string, source string) {
 
-	log.Printf("createXenLogger: add %s, source %s\n", filename, source)
+	log.Infof("createXenLogger: add %s, source %s\n", filename, source)
 
 	fileDesc, err := os.Open(filename)
 	if err != nil {
-		log.Printf("Log file ignored due to %s\n", err)
+		log.Errorf("Log file ignored due to %s\n", err)
 		return
 	}
 	// Start reading from the file with a reader.
 	reader := bufio.NewReader(fileDesc)
 	if reader == nil {
-		log.Printf("Log file ignored due to %s\n", err)
+		log.Errorf("Log file ignored due to %s\n", err)
 		return
 	}
 
@@ -651,7 +650,7 @@ func createXenLogger(ctx *imageLoggerContext, filename string, source string) {
 
 	lastSent := readLastSent(source)
 	lastSentStr, _ := lastSent.MarshalText()
-	log.Printf("createXenLogger: source %s last sent at %s\n",
+	log.Debugf("createXenLogger: source %s last sent at %s\n",
 		source, string(lastSentStr))
 
 	// process associated channel
@@ -673,7 +672,7 @@ func handleXenLogDirDelete(context interface{},
 	filename string, source string) {
 	ctx := context.(*imageLoggerContext)
 
-	log.Printf("handleLogDirDelete: delete %s, source %s\n", filename, source)
+	log.Infof("handleLogDirDelete: delete %s, source %s\n", filename, source)
 	for _, logger := range ctx.logfileReaders {
 		if logger.logfileReader.filename == filename {
 			// XXX:FIXME, delete the entry
@@ -695,17 +694,17 @@ func handleLogDirModify(context interface{}, filename string, source string) {
 
 func createLogger(ctx *loggerContext, filename, source string) {
 
-	log.Printf("createLogger: add %s, source %s\n", filename, source)
+	log.Infof("createLogger: add %s, source %s\n", filename, source)
 
 	fileDesc, err := os.Open(filename)
 	if err != nil {
-		log.Printf("Log file ignored due to %s\n", err)
+		log.Errorf("Log file ignored due to %s\n", err)
 		return
 	}
 	// Start reading from the file with a reader.
 	reader := bufio.NewReader(fileDesc)
 	if reader == nil {
-		log.Printf("Log file ignored due to %s\n", err)
+		log.Errorf("Log file ignored due to %s\n", err)
 		return
 	}
 	// XXX entry per image,source?
@@ -737,14 +736,14 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 	// Check if shrunk aka truncated
 	fi, err := r.fileDesc.Stat()
 	if err != nil {
-		log.Printf("Stat failed %s\n", err)
+		log.Errorf("Stat failed %s\n", err)
 		return
 	}
 	if fi.Size() < r.size {
-		log.Printf("File shrunk from %d to %d\n", r.size, fi.Size())
+		log.Infof("File shrunk from %d to %d\n", r.size, fi.Size())
 		_, err = r.fileDesc.Seek(0, os.SEEK_SET)
 		if err != nil {
-			log.Printf("Seek failed %s\n", err)
+			log.Errorf("Seek failed %s\n", err)
 			return
 		}
 	}
@@ -759,7 +758,7 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 			// this loop?
 			log.Debugln(err)
 			if err != io.EOF {
-				log.Printf(" > Failed!: %v\n", err)
+				log.Errorf(" > Failed!: %v\n", err)
 			}
 			break
 		}
@@ -778,7 +777,7 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 			}
 			level, err := log.ParseLevel(loginfo.Level)
 			if err != nil {
-				log.Printf("ParseLevel failed: %s\n", err)
+				log.Errorf("ParseLevel failed: %s\n", err)
 				level = log.DebugLevel
 			}
 			if dropEvent(r.source, level) {
@@ -815,14 +814,14 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 	// Update size
 	fi, err = r.fileDesc.Stat()
 	if err != nil {
-		log.Printf("Stat failed %s\n", err)
+		log.Errorf("Stat failed %s\n", err)
 		return
 	}
 	if fi.Size() < r.size {
-		log.Printf("File shrunk from %d to %d\n", r.size, fi.Size())
+		log.Infof("File shrunk from %d to %d\n", r.size, fi.Size())
 		_, err = r.fileDesc.Seek(0, os.SEEK_SET)
 		if err != nil {
-			log.Printf("Seek failed %s\n", err)
+			log.Errorf("Seek failed %s\n", err)
 			return
 		}
 	}
@@ -834,13 +833,13 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 func logReader(logFile string, source string, logChan chan<- logEntry) {
 	fileDesc, err := os.Open(logFile)
 	if err != nil {
-		log.Printf("Log file ignored due to %s\n", err)
+		log.Errorf("Log file ignored due to %s\n", err)
 		return
 	}
 	// Start reading from the file with a reader.
 	reader := bufio.NewReader(fileDesc)
 	if reader == nil {
-		log.Printf("Log file ignored due to %s\n", err)
+		log.Errorf("Log file ignored due to %s\n", err)
 		return
 	}
 	r := logfileReader{filename: logFile,
@@ -850,7 +849,7 @@ func logReader(logFile string, source string, logChan chan<- logEntry) {
 	}
 	// read entries until EOF
 	readLineToEvent(&r, logChan)
-	log.Printf("logReader done for %s\n", logFile)
+	log.Infof("logReader done for %s\n", logFile)
 }
 
 func handleGlobalConfigModify(ctxArg interface{}, key string,
@@ -858,16 +857,16 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*logmanagerContext)
 	if key != "global" {
-		log.Printf("handleGlobalConfigModify: ignoring %s\n", key)
+		log.Infof("handleGlobalConfigModify: ignoring %s\n", key)
 		return
 	}
-	log.Printf("handleGlobalConfigModify for %s\n", key)
+	log.Infof("handleGlobalConfigModify for %s\n", key)
 	status := agentlog.CastGlobalConfig(statusArg)
 	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	foundAgents := make(map[string]bool)
 	for agentName, perAgentSetting := range status.AgentSettings {
-		log.Printf("Processing agentName %s\n", agentName)
+		log.Debugf("Processing agentName %s\n", agentName)
 		foundAgents[agentName] = true
 		if perAgentSetting.RemoteLogLevel != "" {
 			addRemoteMap(agentName, perAgentSetting.RemoteLogLevel)
@@ -875,7 +874,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	}
 	// Any deletes?
 	delRemoteMapAgents(foundAgents)
-	log.Printf("handleGlobalConfigModify done for %s\n", key)
+	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,
@@ -883,14 +882,14 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*logmanagerContext)
 	if key != "global" {
-		log.Printf("handleGlobalConfigDelete: ignoring %s\n", key)
+		log.Infof("handleGlobalConfigDelete: ignoring %s\n", key)
 		return
 	}
-	log.Printf("handleGlobalConfigDelete for %s\n", key)
+	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	delRemoteMapAll()
-	log.Printf("handleGlobalConfigDelete done for %s\n", key)
+	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
 
 // Cache of loglevels per agent. Protected by mutex since accessed by
@@ -899,41 +898,41 @@ var remoteMapLock sync.Mutex
 var remoteMap map[string]log.Level = make(map[string]log.Level)
 
 func addRemoteMap(agentName string, logLevel string) {
-	log.Printf("addRemoteMap(%s, %s)\n", agentName, logLevel)
+	log.Infof("addRemoteMap(%s, %s)\n", agentName, logLevel)
 	level, err := log.ParseLevel(logLevel)
 	if err != nil {
-		log.Printf("addRemoteMap: ParseLevel failed: %s\n", err)
+		log.Errorf("addRemoteMap: ParseLevel failed: %s\n", err)
 		return
 	}
 	remoteMapLock.Lock()
 	defer remoteMapLock.Unlock()
 	remoteMap[agentName] = level
-	log.Printf("addRemoteMap after %v\n", remoteMap)
+	log.Infof("addRemoteMap after %v\n", remoteMap)
 }
 
 // Delete everything not in foundAgents
 func delRemoteMapAgents(foundAgents map[string]bool) {
-	log.Printf("delRemoteMapAgents(%v)\n", foundAgents)
+	log.Infof("delRemoteMapAgents(%v)\n", foundAgents)
 	remoteMapLock.Lock()
 	defer remoteMapLock.Unlock()
 	for agentName, _ := range remoteMap {
-		log.Printf("delRemoteMapAgents: processing %s\n", agentName)
+		log.Debugf("delRemoteMapAgents: processing %s\n", agentName)
 		if _, ok := foundAgents[agentName]; !ok {
 			delete(remoteMap, agentName)
 		}
 	}
-	log.Printf("delRemoteMapAgents after %v\n", remoteMap)
+	log.Infof("delRemoteMapAgents after %v\n", remoteMap)
 }
 
 func delRemoteMap(agentName string) {
-	log.Printf("delRemoteMap(%s)\n", agentName)
+	log.Infof("delRemoteMap(%s)\n", agentName)
 	remoteMapLock.Lock()
 	defer remoteMapLock.Unlock()
 	delete(remoteMap, agentName)
 }
 
 func delRemoteMapAll() {
-	log.Printf("delRemoteMapAll()\n")
+	log.Infof("delRemoteMapAll()\n")
 	remoteMapLock.Lock()
 	defer remoteMapLock.Unlock()
 	remoteMap = make(map[string]log.Level)
