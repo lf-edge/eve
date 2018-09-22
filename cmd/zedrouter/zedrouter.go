@@ -1239,6 +1239,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 		// appear later.
 		log.Infof("handleCreate(%v) for %s: missing networks\n",
 			config.UUIDandVersion, config.DisplayName)
+		status.PendingAdd = false
 		publishAppNetworkStatus(ctx, &status)
 		return
 	}
@@ -1276,6 +1277,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 			olConfig.Network.String())
 		if netconfig == nil {
 			// Checked for nil above
+			status.PendingAdd = false
 			return
 		}
 
@@ -1343,6 +1345,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 					olConfig.Network.String(),
 					olConfig.AppIPAddr.String())
 			}
+			status.PendingAdd = false
 			addError(ctx, &status, "handleCreate",
 				errors.New(errStr))
 			log.Infof("handleCreate done for %s\n",
@@ -1361,6 +1364,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 		//    ip route add ${EID}/32 dev ${bridgeName}
 		_, ipnet, err := net.ParseCIDR(EID.String() + subnetSuffix)
 		if err != nil {
+			status.PendingAdd = false
 			errStr := fmt.Sprintf("ParseCIDR %s failed: %v",
 				EID.String()+subnetSuffix, err)
 			addError(ctx, &status, "handleCreate",
@@ -1371,6 +1375,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 		}
 		rt := netlink.Route{Dst: ipnet, LinkIndex: oLink.Index}
 		if err := netlink.RouteAdd(&rt); err != nil {
+			status.PendingAdd = false
 			errStr := fmt.Sprintf("RouteAdd %s failed: %s",
 				EID, err)
 			addError(ctx, &status, "handleCreate",
@@ -1448,6 +1453,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 			ulConfig.Network.String())
 		if netconfig == nil {
 			// Checked for nil above
+			status.PendingAdd = false
 			return
 		}
 

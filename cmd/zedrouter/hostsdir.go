@@ -27,6 +27,7 @@ func createHostsConfiglet(cfgDirname string, nameToIPList []types.DnsNameToIP) {
 }
 
 func ensureDir(dirname string) {
+	log.Infof("ensureDir(%s)\n", dirname)
 	if _, err := os.Stat(dirname); err != nil {
 		log.Infof("ensureDir creating %s\n", dirname)
 		err := os.MkdirAll(dirname, 0755)
@@ -34,6 +35,7 @@ func ensureDir(dirname string) {
 			log.Fatalf("ensureDir failed %s\n", err)
 		}
 	}
+	log.Infof("ensureDir(%s) DONE\n", dirname)
 }
 
 // Create one file per hostname
