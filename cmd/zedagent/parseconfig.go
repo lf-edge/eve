@@ -433,6 +433,11 @@ func parseDatastoreConfig(config *zconfig.EdgeDevConfig,
 	log.Infof("parseDatastoreConfig: Applying updated datastore config shaa % x vs. % x:  %v\n",
 		datastoreConfigPrevConfigHash, configHash, stores)
 	publishDatastoreConfig(getconfigCtx, stores)
+
+	// XXX hack - wait for a while so we and zedmananger can pick up this
+	// before a BaseOsConfig or AppNetworkConfig using this is visible
+	// to them
+	time.Sleep(10 * time.Second)
 }
 
 func publishDatastoreConfig(ctx *getconfigContext,
