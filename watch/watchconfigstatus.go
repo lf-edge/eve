@@ -83,7 +83,7 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 	// log.Debugln("WatchConfigStatus added", configDir)
 
 	foundRestart, foundRestarted := watchReadDir(configDir, fileChanges,
-		false)
+		false, true)
 
 	if initialDelete {
 		statusFiles, err := ioutil.ReadDir(statusDir)
@@ -134,7 +134,7 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 				log.Fatal(err, "Add: ", configDir)
 			}
 			foundRestart, foundRestarted := watchReadDir(configDir,
-				fileChanges, true)
+				fileChanges, true, true)
 			if foundRestart {
 				fileChanges <- "M " + "restart"
 			}
@@ -145,10 +145,12 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 	}
 }
 
-// Only reads json files. Returns restart, restarted booleans if files of those
-// names were found.
+// Only reads json files if jsonOnly is set.
+// Returns restart, restarted booleans if files of those names were found.
 // XXX remove "restart" once no longer needed
-func watchReadDir(configDir string, fileChanges chan<- string, retry bool) (bool, bool) {
+func watchReadDir(configDir string, fileChanges chan<- string, retry bool,
+	jsonOnly bool) (bool, bool) {
+
 	foundRestart := false
 	foundRestarted := false
 	files, err := ioutil.ReadDir(configDir)
@@ -164,7 +166,7 @@ func watchReadDir(configDir string, fileChanges chan<- string, retry bool) (bool
 			if file.Name() == "restarted" {
 				foundRestarted = true
 			}
-			if file.Name() != "global" {
+			if jsonOnly && file.Name() != "global" {
 				continue
 			}
 		}
@@ -185,7 +187,7 @@ func watchReadDir(configDir string, fileChanges chan<- string, retry bool) (bool
 // Generates 'M' events for all existing and all creates/modify.
 // Generates 'D' events for all deletes.
 // Generates a 'R' event when the initial directories have been processed
-func WatchStatus(statusDir string, fileChanges chan<- string) {
+func WatchStatus(statusDir string, jsonOnly bool, fileChanges chan<- string) {
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
 		log.Fatal(err, ": NewWatcher")
@@ -230,7 +232,7 @@ func WatchStatus(statusDir string, fileChanges chan<- string) {
 	// log.Debugln("WatchStatus added", statusDir)
 
 	foundRestart, foundRestarted := watchReadDir(statusDir, fileChanges,
-		false)
+		false, jsonOnly)
 
 	// Hook to tell restart is done
 	fileChanges <- "R done"
@@ -266,7 +268,7 @@ func WatchStatus(statusDir string, fileChanges chan<- string) {
 				log.Fatal(err, "Add: ", statusDir)
 			}
 			foundRestart, foundRestarted := watchReadDir(statusDir,
-				fileChanges, true)
+				fileChanges, true, jsonOnly)
 			if foundRestart {
 				fileChanges <- "M " + "restart"
 			}

@@ -6,6 +6,7 @@
 package zedagent
 
 import (
+	"bytes"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
 	log "github.com/sirupsen/logrus"
@@ -314,12 +315,14 @@ func publishNetworkServiceInfoToZedCloud(serviceUUID string, infoMsg *zmet.ZInfo
 	}
 	statusUrl := serverName + "/" + statusApi
 	zedcloud.RemoveDeferred(serviceUUID)
-	err = SendProtobuf(statusUrl, data, iteration)
+	buf := bytes.NewBuffer(data)
+	size := int64(proto.Size(infoMsg))
+	err = SendProtobuf(statusUrl, buf, size, iteration)
 	if err != nil {
 		log.Errorf("publishNetworkServiceInfoToZedCloud failed: %s\n", err)
 		// Try sending later
-		zedcloud.SetDeferred(serviceUUID, data, statusUrl, zedcloudCtx,
-			true)
+		zedcloud.SetDeferred(serviceUUID, buf, size, statusUrl,
+			zedcloudCtx, true)
 	} else {
 		writeSentDeviceInfoProtoMessage(data)
 	}

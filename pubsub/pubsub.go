@@ -821,7 +821,7 @@ func (sub *Subscription) Activate() error {
 				break
 			}
 		}
-		go watch.WatchStatus(sub.dirName, sub.sendChan)
+		go watch.WatchStatus(sub.dirName, true, sub.sendChan)
 		return nil
 	} else if subscribeFromSock {
 		go sub.watchSock()
