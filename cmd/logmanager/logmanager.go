@@ -498,7 +498,6 @@ func sendProtoStrForLogs(reportLogs *zmet.LogBundle, image string,
 		log.Fatal("sendProtoStrForLogs malloc error:")
 	}
 
-	// XXX len(data) not useful; data can be zero padded.
 	if zedcloud.HasDeferred(image) {
 		log.Infof("SendProtoStrForLogs queued after existing for %s\n",
 			image)
@@ -510,7 +509,7 @@ func sendProtoStrForLogs(reportLogs *zmet.LogBundle, image string,
 		size, buf, iteration, false)
 	if err != nil {
 		log.Errorf("SendProtoStrForLogs %d bytes image %s failed: %s\n",
-			len(data), image, err)
+			size, image, err)
 		// Try sending later. The deferred state means processEvents
 		// will sleep until the timer takes care of sending this
 		// hence we'll keep things in order for a given image
@@ -519,7 +518,7 @@ func sendProtoStrForLogs(reportLogs *zmet.LogBundle, image string,
 		reportLogs.Log = []*zmet.LogEntry{}
 		return false
 	}
-	log.Debugf("Sent %d bytes image %s to %s\n", len(data), image, logsUrl)
+	log.Debugf("Sent %d bytes image %s to %s\n", size, image, logsUrl)
 	reportLogs.Log = []*zmet.LogEntry{}
 	return true
 }
@@ -706,8 +705,6 @@ func createLogger(ctx *loggerContext, filename, source string) {
 		log.Errorf("Log file ignored due to %s\n", err)
 		return
 	}
-	// XXX entry per image,source?
-	// XXX get prevSentToCloud
 	r := logfileReader{filename: filename,
 		source:   source,
 		fileDesc: fileDesc,
@@ -759,8 +756,6 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 	for {
 		line, err := r.reader.ReadString('\n')
 		if err != nil {
-			// XXX do we need to look for file truncation during
-			// this loop?
 			log.Debugln(err)
 			if err != io.EOF {
 				log.Errorf(" > Failed!: %v\n", err)
@@ -773,7 +768,6 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 		loginfo, ok := agentlog.ParseLoginfo(line)
 		if ok {
 			log.Debugf("Parsed json %+v\n", loginfo)
-			// XXX parse time
 			timestamp, ok := parseTime(loginfo.Time)
 			if !ok {
 				timestamp = time.Now()
