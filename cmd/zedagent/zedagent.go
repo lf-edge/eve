@@ -123,6 +123,8 @@ var publishDeviceInfo bool
 func Run() {
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
+	parsePtr := flag.String("p", "", "parse checkpoint file")
+	validatePtr := flag.Bool("V", false, "validate UTF-8 in checkpoint")
 	flag.Parse()
 	debug = *debugPtr
 	debugOverride = debug
@@ -131,8 +133,30 @@ func Run() {
 	} else {
 		log.SetLevel(log.InfoLevel)
 	}
+	parse := *parsePtr
+	validate := *validatePtr
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
+		return
+	}
+	if validate && parse == "" {
+		fmt.Printf("Setting -V requires -p\n")
+		os.Exit(1)
+	}
+	if parse != "" {
+		res, config := readValidateConfig(parse)
+		if !res {
+			fmt.Printf("Failed to parse %s\n", parse)
+			os.Exit(1)
+		}
+		fmt.Printf("parsed proto <%v>\n", config)
+		if validate {
+			valid := validateConfigUTF8(config)
+			if !valid {
+				fmt.Printf("Found some invalid UTF-8\n")
+				os.Exit(1)
+			}
+		}
 		return
 	}
 	logf, err := agentlog.Init(agentName)
