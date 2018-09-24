@@ -362,7 +362,7 @@ func writeProtoMessage(filename string, contents []byte) {
 func readSavedProtoMessage(filename string, force bool) (*zconfig.EdgeDevConfig, error) {
 	info, err := os.Stat(filename)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if os.IsNotExist(err) && !force {
 			return nil, nil
 		} else {
 			return nil, err
