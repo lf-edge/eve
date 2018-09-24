@@ -378,6 +378,34 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		return changed, false
 	}
 	log.Infof("Done with verifications for %s\n", uuidStr)
+
+	// Are we doing a purge?
+	// XXX when/how do we drop refcounts on old images?
+	switch status.PurgeInprogress {
+	case types.NONE:
+		// Nothing to do
+	case types.DOWNLOAD:
+		log.Infof("PurgeInprogress download/verifications done\n")
+		status.PurgeInprogress = types.BRING_DOWN
+		changed = true
+		// XXX how do we delete it all?
+	case types.BRING_DOWN:
+		// XXX PurgeInprogress BRING_DOWN
+		log.Infof("XXX PurgeInprogress BRING_DOWN\n")
+		if false {
+			status.PurgeInprogress = types.BRING_UP
+			changed = true
+		}
+	case types.BRING_UP:
+		// XXX PurgeInprogress BRING_UP
+		log.Infof("XXX PurgeInprogress BRING_UP\n")
+		if false {
+			status.PurgeInprogress = types.NONE
+			status.State = types.RUNNING
+			changed = true
+		}
+	}
+
 	// XXX could allocate EIDs before we download for better parallelism
 	// with zedcloud
 	// Make sure we have an EIDConfig for each overlay
@@ -539,6 +567,37 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		status.ActivateInprogress = false
 		changed = true
 	}
+	// Are we doing a restart?
+	switch status.RestartInprogress {
+	case types.NONE:
+		// Nothing to do
+	case types.BRING_DOWN:
+		dc := lookupDomainConfig(ctx, config.Key())
+		if dc == nil {
+			log.Errorf("No DomainConfig for RestartInprogress\n")
+		} else if dc.Activate {
+			log.Infof("DomainConfig !Activate for RestartInprogress\n")
+			dc.Activate = false
+			publishDomainConfig(ctx, dc)
+		} else if !ds.Activated {
+			log.Infof("DomainConfig RestartInprogress bring up\n")
+			status.RestartInprogress = types.BRING_UP
+			changed = true
+			dc.Activate = true
+			publishDomainConfig(ctx, dc)
+		} else {
+			log.Infof("DomainConfig RestartInprogress waiting for it to come down\n")
+		}
+	case types.BRING_UP:
+		if ds.Activated {
+			log.Infof("DomainConfig RestartInprogress came back up\n")
+			status.RestartInprogress = types.NONE
+			status.State = types.RUNNING
+			changed = true
+		} else {
+			log.Infof("DomainConfig RestartInprogress waiting for it to come up\n")
+		}
+	}
 	log.Infof("doActivate done for %s\n", uuidStr)
 	return changed
 }
@@ -694,7 +753,7 @@ func doUninstall(ctx *zedmanagerContext, uuidStr string,
 		log.Infof("Waiting for all downloader removes for %s\n", uuidStr)
 		return changed, del
 	}
-	log.Debugf("Done with all verify removes for %s\n", uuidStr)
+	log.Debugf("Done with all downloader removes for %s\n", uuidStr)
 
 	del = true
 	log.Infof("doUninstall done for %s\n", uuidStr)

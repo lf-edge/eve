@@ -96,6 +96,8 @@ type AppInstanceStatus struct {
 	IoAdapterList       []IoAdapter
 	RestartCmd          AppInstanceOpsCmd
 	PurgeCmd            AppInstanceOpsCmd
+	RestartInprogress   Inprogress
+	PurgeInprogress     Inprogress
 	// Mininum state across all steps and all StorageStatus.
 	// Error* set implies error.
 	State SwState
@@ -103,6 +105,15 @@ type AppInstanceStatus struct {
 	Error     string
 	ErrorTime time.Time
 }
+
+// Track more complicated workflows
+type Inprogress uint8
+const (
+	NONE          Inprogress = iota
+	DOWNLOAD      // Download and verify new images
+	BRING_DOWN
+	BRING_UP
+)
 
 func (status AppInstanceStatus) Key() string {
 	return status.UUIDandVersion.UUID.String()

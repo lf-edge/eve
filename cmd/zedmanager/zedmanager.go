@@ -499,31 +499,42 @@ func handleModify(ctx *zedmanagerContext, key string,
 	// Not checking the version here; assume the microservices can handle
 	// some updates.
 
-	// XXX detect significant changes which require a reboot and/or
+	// We detect significant changes which require a reboot and/or
 	// purge of disk changes
 	needPurge, needRestart := quantifyChanges(config, *status)
-	log.Infof("handleModify needRestart %v needPurge %v\n",
-		needRestart, needPurge)
 
-	if config.RestartCmd.Counter != status.RestartCmd.Counter {
-		log.Infof("handleModify(%v) for %s restartcmd from %d to %d\n",
+	if needRestart ||
+		config.RestartCmd.Counter != status.RestartCmd.Counter {
+
+		log.Infof("handleModify(%v) for %s restartcmd from %d to %d need %v\n",
 			config.UUIDandVersion, config.DisplayName,
-			status.RestartCmd.Counter, config.RestartCmd.Counter)
-		// Will restart even if we crash/power cycle since that
-		// would also restart the app. Hence we can update status here.
-		status.RestartCmd.Counter = config.RestartCmd.Counter
-		needRestart = true
+			status.RestartCmd.Counter, config.RestartCmd.Counter,
+			needRestart)
+		if status.Activated {
+			// Will restart even if we crash/power cycle since that
+			// would also restart the app. Hence we can update
+			// the status counter here.
+			status.RestartCmd.Counter = config.RestartCmd.Counter
+			status.RestartInprogress = types.BRING_DOWN
+			status.State = types.REFRESHING
+		} else {
+			log.Infof("handleModify(%v) for %s restartcmd ignored !Activated\n",
+				config.UUIDandVersion, config.DisplayName)
+			status.RestartCmd.Counter = config.RestartCmd.Counter
+		}
 	}
-	if config.PurgeCmd.Counter != status.PurgeCmd.Counter {
-		log.Infof("handleModify(%v) for %s restartcmd from %d to %d\n",
+	if needPurge || config.PurgeCmd.Counter != status.PurgeCmd.Counter {
+		log.Infof("handleModify(%v) for %s restartcmd from %d to %d need %v\n",
 			config.UUIDandVersion, config.DisplayName,
-			status.PurgeCmd.Counter, config.PurgeCmd.Counter)
+			status.PurgeCmd.Counter, config.PurgeCmd.Counter,
+			needPurge)
 		// XXX need to remember purge across power cycle
 		// But when we get the config after a device reboot
-		// we don't have history. Per App UUID file in /config or
-		// /persist??
+		// we don't have history. Add per App UUID file in /config or
+		// /persist with PurgeInprogress value?
 		status.PurgeCmd.Counter = config.PurgeCmd.Counter
-		needPurge = true
+		status.PurgeInprogress = types.DOWNLOAD
+		status.State = types.PURGING
 	}
 	status.UUIDandVersion = config.UUIDandVersion
 	publishAppInstanceStatus(ctx, status)
