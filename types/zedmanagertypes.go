@@ -53,6 +53,13 @@ type AppInstanceConfig struct {
 	OverlayNetworkList  []EIDOverlayConfig
 	UnderlayNetworkList []UnderlayNetworkConfig
 	IoAdapterList       []IoAdapter
+	RestartCmd          AppInstanceOpsCmd
+	PurgeCmd            AppInstanceOpsCmd
+}
+
+type AppInstanceOpsCmd struct {
+	Counter   uint32
+	ApplyTime string // XXX not currently used
 }
 
 type IoAdapter struct {
@@ -87,6 +94,8 @@ type AppInstanceStatus struct {
 	OverlayNetworkList  []EIDOverlayConfig
 	UnderlayNetworkList []UnderlayNetworkConfig
 	IoAdapterList       []IoAdapter
+	RestartCmd          AppInstanceOpsCmd
+	PurgeCmd            AppInstanceOpsCmd
 	// Mininum state across all steps and all StorageStatus.
 	// Error* set implies error.
 	State SwState

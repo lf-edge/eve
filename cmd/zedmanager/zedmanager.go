@@ -459,6 +459,8 @@ func handleCreate(ctx *zedmanagerContext, key string,
 		OverlayNetworkList:  config.OverlayNetworkList,
 		UnderlayNetworkList: config.UnderlayNetworkList,
 		IoAdapterList:       config.IoAdapterList,
+		RestartCmd:          config.RestartCmd,
+		PurgeCmd:            config.PurgeCmd,
 	}
 
 	status.StorageStatusList = make([]types.StorageStatus,
@@ -499,10 +501,30 @@ func handleModify(ctx *zedmanagerContext, key string,
 
 	// XXX detect significant changes which require a reboot and/or
 	// purge of disk changes
-	needPurge, needReboot := quantifyChanges(config, *status)
-	log.Infof("handleModify needReboot %v needPurge %v\n",
-		needReboot, needPurge)
+	needPurge, needRestart := quantifyChanges(config, *status)
+	log.Infof("handleModify needRestart %v needPurge %v\n",
+		needRestart, needPurge)
 
+	if config.RestartCmd.Counter != status.RestartCmd.Counter {
+		log.Infof("handleModify(%v) for %s restartcmd from %d to %d\n",
+			config.UUIDandVersion, config.DisplayName,
+			status.RestartCmd.Counter, config.RestartCmd.Counter)
+		// Will restart even if we crash/power cycle since that
+		// would also restart the app. Hence we can update status here.
+		status.RestartCmd.Counter = config.RestartCmd.Counter
+		needRestart = true
+	}
+	if config.PurgeCmd.Counter != status.PurgeCmd.Counter {
+		log.Infof("handleModify(%v) for %s restartcmd from %d to %d\n",
+			config.UUIDandVersion, config.DisplayName,
+			status.PurgeCmd.Counter, config.PurgeCmd.Counter)
+		// XXX need to remember purge across power cycle
+		// But when we get the config after a device reboot
+		// we don't have history. Per App UUID file in /config or
+		// /persist??
+		status.PurgeCmd.Counter = config.PurgeCmd.Counter
+		needPurge = true
+	}
 	status.UUIDandVersion = config.UUIDandVersion
 	publishAppInstanceStatus(ctx, status)
 
@@ -530,17 +552,17 @@ func handleDelete(ctx *zedmanagerContext, key string,
 	log.Infof("handleDelete done for %s\n", status.DisplayName)
 }
 
-// Returns needReboot, needPurge
+// Returns needRestart, needPurge
 // XXX return an enum instead?
 // If there is a change to the disks, adapters, or network interfaces
 // it returns needPurge.
-// If there is a change to the CPU etc resources it returns needReboot
+// If there is a change to the CPU etc resources it returns needRestart
 // Changes to ACLs don't result in either being returned.
 func quantifyChanges(config types.AppInstanceConfig,
 	status types.AppInstanceStatus) (bool, bool) {
 
 	needPurge := false
-	needReboot := false
+	needRestart := false
 	log.Infof("quantifyChanges for %s %s\n",
 		config.Key(), config.DisplayName)
 	if len(status.StorageStatusList) != len(config.StorageConfigList) {
@@ -650,11 +672,11 @@ func quantifyChanges(config types.AppInstanceConfig,
 	if !cmp.Equal(config.FixedResources, status.FixedResources) {
 		log.Infof("quantifyChanges FixedResources changed: %v\n",
 			cmp.Diff(config.FixedResources, status.FixedResources))
-		needReboot = true
+		needRestart = true
 	}
 	log.Infof("quantifyChanges for %s %s returns %v, %v\n",
-		config.Key(), config.DisplayName, needPurge, needReboot)
-	return needPurge, needReboot
+		config.Key(), config.DisplayName, needPurge, needRestart)
+	return needPurge, needRestart
 }
 
 func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {

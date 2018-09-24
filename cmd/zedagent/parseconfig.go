@@ -377,6 +377,16 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 		}
 		log.Infof("Got adapters %v\n", appInstance.IoAdapterList)
 
+		cmd := cfgApp.GetRestart()
+		if cmd != nil {
+			appInstance.RestartCmd.Counter = cmd.Counter
+			appInstance.RestartCmd.ApplyTime = cmd.OpsTime
+		}
+		cmd = cfgApp.GetPurge()
+		if cmd != nil {
+			appInstance.PurgeCmd.Counter = cmd.Counter
+			appInstance.PurgeCmd.ApplyTime = cmd.OpsTime
+		}
 		// get the certs for image sha verification
 		certInstance := getCertObjects(appInstance.UUIDandVersion,
 			appInstance.ConfigSha256, appInstance.StorageConfigList)
