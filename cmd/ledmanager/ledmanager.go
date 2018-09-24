@@ -138,7 +138,7 @@ func Run() {
 		initFunc()
 	}
 	ledChanges := make(chan string)
-	go watch.WatchStatus(ledConfigDirName, ledChanges)
+	go watch.WatchStatus(ledConfigDirName, true, ledChanges)
 	log.Debugln("called watcher...")
 
 	// Any state needed by handler functions

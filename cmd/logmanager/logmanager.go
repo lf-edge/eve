@@ -87,7 +87,6 @@ type logfileReader struct {
 	source   string
 	fileDesc *os.File
 	reader   *bufio.Reader
-	size     int64 // To detect file truncation
 }
 
 // These are for the case when we have a separate channel/image
@@ -263,19 +262,19 @@ func Run() {
 
 		go processEvents(otherPartition, lastSent, otherLoggerChan)
 
-		go watch.WatchStatus(otherLogDirname, otherLogDirChanges)
+		go watch.WatchStatus(otherLogDirname, false, otherLogDirChanges)
 		otherCtx = loggerContext{logChan: otherLoggerChan,
 			image: otherPartition}
 	}
 
 	logDirChanges := make(chan string)
-	go watch.WatchStatus(logDirName, logDirChanges)
+	go watch.WatchStatus(logDirName, false, logDirChanges)
 
 	lispLogDirChanges := make(chan string)
-	go watch.WatchStatus(lispLogDirName, lispLogDirChanges)
+	go watch.WatchStatus(lispLogDirName, false, lispLogDirChanges)
 
 	xenLogDirChanges := make(chan string)
-	go watch.WatchStatus(xenLogDirname, xenLogDirChanges)
+	go watch.WatchStatus(xenLogDirname, false, xenLogDirChanges)
 
 	log.Debugln("called watcher...")
 	for {
@@ -365,7 +364,6 @@ func processEvents(image string, prevLastSent time.Time,
 	flushTimer := flextimer.NewRangeTicker(time.Duration(min),
 		time.Duration(max))
 	messageCount := 0
-	byteCount := 0
 	dropped := 0
 	for {
 		select {
@@ -389,8 +387,8 @@ func processEvents(image string, prevLastSent time.Time,
 			}
 			HandleLogEvent(event, reportLogs, messageCount)
 			messageCount++
-			// Aproximate; excludes headers!
-			byteCount += len(event.content)
+			// Bytes before appending this one
+			byteCount := proto.Size(reportLogs)
 
 			if messageCount >= logMaxMessages ||
 				byteCount >= logMaxBytes {
@@ -400,7 +398,6 @@ func processEvents(image string, prevLastSent time.Time,
 				sent = sendProtoStrForLogs(reportLogs, image,
 					iteration)
 				messageCount = 0
-				byteCount = 0
 				iteration += 1
 			}
 			if sent {
@@ -412,11 +409,10 @@ func processEvents(image string, prevLastSent time.Time,
 				log.Debugf("processEvents(%s) flush at %s dropped %d messageCount %d bytecount %d\n",
 					image, time.Now().String(),
 					dropped, messageCount,
-					byteCount)
+					proto.Size(reportLogs))
 				sent := sendProtoStrForLogs(reportLogs, image,
 					iteration)
 				messageCount = 0
-				byteCount = 0
 				iteration += 1
 				if sent {
 					recordLastSent(image)
@@ -495,7 +491,8 @@ func sendProtoStrForLogs(reportLogs *zmet.LogBundle, image string,
 	if err != nil {
 		log.Fatal("sendProtoStrForLogs proto marshaling error: ", err)
 	}
-	log.Debugf("Log Details (len %d): %s\n", len(data), reportLogs)
+	size := int64(proto.Size(reportLogs))
+	log.Debugf("Log Details (size %d): %s\n", size, reportLogs)
 	buf := bytes.NewBuffer(data)
 	if buf == nil {
 		log.Fatal("sendProtoStrForLogs malloc error:")
@@ -504,23 +501,24 @@ func sendProtoStrForLogs(reportLogs *zmet.LogBundle, image string,
 	if zedcloud.HasDeferred(image) {
 		log.Infof("SendProtoStrForLogs queued after existing for %s\n",
 			image)
-		zedcloud.AddDeferred(image, data, logsUrl, zedcloudCtx, false)
+		zedcloud.AddDeferred(image, buf, size, logsUrl, zedcloudCtx, false)
 		reportLogs.Log = []*zmet.LogEntry{}
 		return false
 	}
 	_, _, err = zedcloud.SendOnAllIntf(zedcloudCtx, logsUrl,
-		int64(len(data)), buf, iteration, false)
+		size, buf, iteration, false)
 	if err != nil {
 		log.Errorf("SendProtoStrForLogs %d bytes image %s failed: %s\n",
-			len(data), image, err)
+			size, image, err)
 		// Try sending later. The deferred state means processEvents
 		// will sleep until the timer takes care of sending this
 		// hence we'll keep things in order for a given image
-		zedcloud.AddDeferred(image, data, logsUrl, zedcloudCtx, false)
+		zedcloud.AddDeferred(image, buf, size, logsUrl, zedcloudCtx,
+			false)
 		reportLogs.Log = []*zmet.LogEntry{}
 		return false
 	}
-	log.Debugf("Sent %d bytes image %s to %s\n", len(data), image, logsUrl)
+	log.Debugf("Sent %d bytes image %s to %s\n", size, image, logsUrl)
 	reportLogs.Log = []*zmet.LogEntry{}
 	return true
 }
@@ -707,8 +705,6 @@ func createLogger(ctx *loggerContext, filename, source string) {
 		log.Errorf("Log file ignored due to %s\n", err)
 		return
 	}
-	// XXX entry per image,source?
-	// XXX get prevSentToCloud
 	r := logfileReader{filename: filename,
 		source:   source,
 		fileDesc: fileDesc,
@@ -734,13 +730,19 @@ func handleLogDirDelete(ctx interface{}, filename string, source string) {
 // Read until EOF or error
 func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 	// Check if shrunk aka truncated
+	offset, err := r.fileDesc.Seek(0, os.SEEK_CUR)
+	if err != nil {
+		log.Errorf("Seek failed %s\n", err)
+		offset = 0
+	}
 	fi, err := r.fileDesc.Stat()
 	if err != nil {
 		log.Errorf("Stat failed %s\n", err)
 		return
 	}
-	if fi.Size() < r.size {
-		log.Infof("File shrunk from %d to %d\n", r.size, fi.Size())
+	if offset != 0 && offset > fi.Size() {
+		log.Infof("File %s shrunk from %d to %d\n",
+			r.filename, offset, fi.Size())
 		_, err = r.fileDesc.Seek(0, os.SEEK_SET)
 		if err != nil {
 			log.Errorf("Seek failed %s\n", err)
@@ -754,8 +756,6 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 	for {
 		line, err := r.reader.ReadString('\n')
 		if err != nil {
-			// XXX do we need to look for file truncation during
-			// this loop?
 			log.Debugln(err)
 			if err != io.EOF {
 				log.Errorf(" > Failed!: %v\n", err)
@@ -768,7 +768,6 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 		loginfo, ok := agentlog.ParseLoginfo(line)
 		if ok {
 			log.Debugf("Parsed json %+v\n", loginfo)
-			// XXX parse time
 			timestamp, ok := parseTime(loginfo.Time)
 			if !ok {
 				timestamp = time.Now()
@@ -811,21 +810,6 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 			}
 		}
 	}
-	// Update size
-	fi, err = r.fileDesc.Stat()
-	if err != nil {
-		log.Errorf("Stat failed %s\n", err)
-		return
-	}
-	if fi.Size() < r.size {
-		log.Infof("File shrunk from %d to %d\n", r.size, fi.Size())
-		_, err = r.fileDesc.Seek(0, os.SEEK_SET)
-		if err != nil {
-			log.Errorf("Seek failed %s\n", err)
-			return
-		}
-	}
-	r.size = fi.Size()
 }
 
 // Read unchanging files until EOF

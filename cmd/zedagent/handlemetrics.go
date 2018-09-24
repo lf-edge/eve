@@ -1037,12 +1037,14 @@ func PublishDeviceInfoToZedCloud(pubBaseOsStatus *pubsub.Publication,
 
 	statusUrl := serverName + "/" + statusApi
 	zedcloud.RemoveDeferred(deviceUUID)
-	err = SendProtobuf(statusUrl, data, iteration)
+	buf := bytes.NewBuffer(data)
+	size := int64(proto.Size(ReportInfo))
+	err = SendProtobuf(statusUrl, buf, size, iteration)
 	if err != nil {
 		log.Errorf("PublishDeviceInfoToZedCloud failed: %s\n", err)
 		// Try sending later
-		zedcloud.SetDeferred(deviceUUID, data, statusUrl, zedcloudCtx,
-			true)
+		zedcloud.SetDeferred(deviceUUID, buf, size, statusUrl,
+			zedcloudCtx, true)
 	} else {
 		writeSentDeviceInfoProtoMessage(data)
 	}
@@ -1251,11 +1253,14 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 	statusUrl := serverName + "/" + statusApi
 
 	zedcloud.RemoveDeferred(uuid)
-	err = SendProtobuf(statusUrl, data, iteration)
+	buf := bytes.NewBuffer(data)
+	size := int64(proto.Size(ReportInfo))
+	err = SendProtobuf(statusUrl, buf, size, iteration)
 	if err != nil {
 		log.Errorf("PublishAppInfoToZedCloud failed: %s\n", err)
 		// Try sending later
-		zedcloud.SetDeferred(uuid, data, statusUrl, zedcloudCtx, true)
+		zedcloud.SetDeferred(uuid, buf, size, statusUrl, zedcloudCtx,
+			true)
 	} else {
 		writeSentAppInfoProtoMessage(data)
 	}
@@ -1265,9 +1270,11 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 // send report on each uplink.
 // For each uplink we try different source IPs until we find a working one.
 // For any 400 error we give up (don't retry) by not returning an error
-func SendProtobuf(url string, data []byte, iteration int) error {
+func SendProtobuf(url string, buf *bytes.Buffer, size int64,
+	iteration int) error {
+
 	resp, _, err := zedcloud.SendOnAllIntf(zedcloudCtx, url,
-		int64(len(data)), bytes.NewBuffer(data), iteration, true)
+		size, buf, iteration, true)
 	if resp != nil && resp.StatusCode >= 400 && resp.StatusCode < 500 {
 		log.Infof("SendProtoBuf: %s silently ignore code %d\n",
 			url, resp.StatusCode)
@@ -1286,9 +1293,11 @@ func SendMetricsProtobuf(ReportMetrics *zmet.ZMetricMsg,
 		log.Fatal("SendInfoProtobufStr proto marshaling error: ", err)
 	}
 
+	buf := bytes.NewBuffer(data)
+	size := int64(proto.Size(ReportMetrics))
 	metricsUrl := serverName + "/" + metricsApi
 	_, _, err = zedcloud.SendOnAllIntf(zedcloudCtx, metricsUrl,
-		int64(len(data)), bytes.NewBuffer(data), iteration, false)
+		size, buf, iteration, false)
 	if err != nil {
 		// Hopefully next timeout will be more successful
 		log.Errorf("SendMetricsProtobuf failed: %s\n", err)

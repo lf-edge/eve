@@ -20,11 +20,12 @@ import (
 // Before or after sending success call:
 //	zedcloud.RemoveDeferred(key)
 // After failure call
-// 	zedcloud.SetDeferred(key, data, url, zedcloudCtx)
+// 	zedcloud.SetDeferred(key, buf, size, url, zedcloudCtx)
 // or AddDeferred to build a queue for each key
 
 type deferredItem struct {
-	data        []byte
+	buf        *bytes.Buffer
+	size	    int64
 	url         string
 	zedcloudCtx ZedCloudContext
 	ignore400   bool
@@ -80,17 +81,16 @@ func (ctx *DeferredContext) handleDeferred(event time.Time) {
 		event, len(ctx.deferredItems))
 	iteration := 0 // Do some load spreading
 	for key, l := range ctx.deferredItems {
-		log.Infof("Trying to send for %s len %d\n", key, len(l.list))
+		log.Infof("Trying to send for %s items %d\n", key, len(l.list))
 		failed := false
 		for i, item := range l.list {
-			if item.data == nil {
+			if item.buf == nil {
 				continue
 			}
-			log.Infof("Trying to send for %s item %d data len %d\n",
-				key, i, len(item.data))
+			log.Infof("Trying to send for %s item %d data size %d\n",
+				key, i, item.size)
 			resp, _, err := SendOnAllIntf(item.zedcloudCtx, item.url,
-				int64(len(item.data)), bytes.NewBuffer(item.data),
-				iteration, item.ignore400)
+				item.size, item.buf, iteration, item.ignore400)
 			if item.ignore400 && resp != nil &&
 				resp.StatusCode >= 400 && resp.StatusCode < 500 {
 				log.Infof("HandleDeferred: for %s ignore code %d\n",
@@ -101,7 +101,7 @@ func (ctx *DeferredContext) handleDeferred(event time.Time) {
 				failed = true
 				break
 			}
-			item.data = nil
+			item.buf = nil
 		}
 		if failed {
 			break
@@ -157,19 +157,20 @@ func (ctx *DeferredContext) removeDeferred(key string) {
 }
 
 // Replace any item for the specified key. If timer not running start it
-func SetDeferred(key string, data []byte, url string,
+func SetDeferred(key string, buf *bytes.Buffer, size int64, url string,
 	zedcloudCtx ZedCloudContext, ignore400 bool) {
 
 	if defaultCtx == nil {
 		log.Fatal("SetDeferred no defaultCtx")
 	}
-	defaultCtx.setDeferred(key, data, url, zedcloudCtx, ignore400)
+	defaultCtx.setDeferred(key, buf, size, url, zedcloudCtx, ignore400)
 }
 
-func (ctx *DeferredContext) setDeferred(key string, data []byte, url string,
-	zedcloudCtx ZedCloudContext, ignore400 bool) {
+func (ctx *DeferredContext) setDeferred(key string, buf *bytes.Buffer,
+	size int64, url string,	zedcloudCtx ZedCloudContext, ignore400 bool) {
 
-	log.Infof("SetDeferred(%s) map %d\n", key, len(ctx.deferredItems))
+	log.Infof("SetDeferred(%s) size %d map %d\n",
+		key, size, len(ctx.deferredItems))
 	if len(ctx.deferredItems) == 0 {
 		startTimer(ctx)
 	}
@@ -180,7 +181,8 @@ func (ctx *DeferredContext) setDeferred(key string, data []byte, url string,
 		log.Debugf("Adding key %s\n", key)
 	}
 	item := deferredItem{
-		data:        data,
+		buf:         buf,
+		size:	     size,
 		url:         url,
 		zedcloudCtx: zedcloudCtx,
 		ignore400:   ignore400,
@@ -191,30 +193,32 @@ func (ctx *DeferredContext) setDeferred(key string, data []byte, url string,
 }
 
 // Add to slice for this key
-func AddDeferred(key string, data []byte, url string,
+func AddDeferred(key string, buf *bytes.Buffer, size int64, url string,
 	zedcloudCtx ZedCloudContext, ignore400 bool) {
 
 	if defaultCtx == nil {
 		log.Fatal("SetDeferred no defaultCtx")
 	}
-	defaultCtx.addDeferred(key, data, url, zedcloudCtx, ignore400)
+	defaultCtx.addDeferred(key, buf, size, url, zedcloudCtx, ignore400)
 }
 
-func (ctx *DeferredContext) addDeferred(key string, data []byte, url string,
-	zedcloudCtx ZedCloudContext, ignore400 bool) {
+func (ctx *DeferredContext) addDeferred(key string, buf *bytes.Buffer,
+	size int64, url string,	zedcloudCtx ZedCloudContext, ignore400 bool) {
 
-	log.Infof("AddDeferred(%s) map %d\n", key, len(ctx.deferredItems))
+	log.Infof("AddDeferred(%s) size %d map %d\n", key,
+		size, len(ctx.deferredItems))
 	if len(ctx.deferredItems) == 0 {
 		startTimer(ctx)
 	}
 	l, ok := ctx.deferredItems[key]
 	if ok {
-		log.Debugf("Appening to key %s len %d\n", key, len(l.list))
+		log.Debugf("Appending to key %s have %d\n", key, len(l.list))
 	} else {
 		log.Debugf("Adding key %s\n", key)
 	}
 	item := deferredItem{
-		data:        data,
+		buf:         buf,
+		size:	     size,
 		url:         url,
 		zedcloudCtx: zedcloudCtx,
 		ignore400:   ignore400,
