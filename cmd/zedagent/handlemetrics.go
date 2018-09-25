@@ -1241,6 +1241,21 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 			ReportAppInfo.AssignedAdapters = append(ReportAppInfo.AssignedAdapters,
 				reportAA)
 		}
+		// Get vifs assigned to the application
+		// Mostly reporting the UP status
+		// XXX extract the assigned IP from dnsmasq aka
+		// NetworkObjectStatus by mapping vifName to mac address to IP?
+		interfaces, _ := psutilnet.Interfaces()
+		ifNames := ReadAppInterfaceList(ds.DomainName)
+		for _, ifname := range ifNames {
+			for _, interfaceDetail := range interfaces {
+				if ifname == interfaceDetail.Name {
+					networkInfo := getNetInfo(interfaceDetail)
+					ReportAppInfo.Network = append(ReportAppInfo.Network,
+						networkInfo)
+				}
+			}
+		}
 	}
 
 	ReportInfo.InfoContent = new(zmet.ZInfoMsg_Ainfo)
