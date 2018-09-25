@@ -173,7 +173,6 @@ func createMapCache(mapCache *MapCacheEntry) {
 		// XXX Should we log.Fatal here?
 		return
 	}
-	//v6 := isAddressIPv6(eid)
 	maskLen, _ := ipNet.Mask.Size()
 
 	//if (maskLen != 128) && ((maskLen != 0) || !v6) {
