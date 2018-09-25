@@ -24,8 +24,8 @@ import (
 // or AddDeferred to build a queue for each key
 
 type deferredItem struct {
-	buf        *bytes.Buffer
-	size	    int64
+	buf         *bytes.Buffer
+	size        int64
 	url         string
 	zedcloudCtx ZedCloudContext
 	ignore400   bool
@@ -167,7 +167,7 @@ func SetDeferred(key string, buf *bytes.Buffer, size int64, url string,
 }
 
 func (ctx *DeferredContext) setDeferred(key string, buf *bytes.Buffer,
-	size int64, url string,	zedcloudCtx ZedCloudContext, ignore400 bool) {
+	size int64, url string, zedcloudCtx ZedCloudContext, ignore400 bool) {
 
 	log.Infof("SetDeferred(%s) size %d map %d\n",
 		key, size, len(ctx.deferredItems))
@@ -182,7 +182,7 @@ func (ctx *DeferredContext) setDeferred(key string, buf *bytes.Buffer,
 	}
 	item := deferredItem{
 		buf:         buf,
-		size:	     size,
+		size:        size,
 		url:         url,
 		zedcloudCtx: zedcloudCtx,
 		ignore400:   ignore400,
@@ -203,7 +203,7 @@ func AddDeferred(key string, buf *bytes.Buffer, size int64, url string,
 }
 
 func (ctx *DeferredContext) addDeferred(key string, buf *bytes.Buffer,
-	size int64, url string,	zedcloudCtx ZedCloudContext, ignore400 bool) {
+	size int64, url string, zedcloudCtx ZedCloudContext, ignore400 bool) {
 
 	log.Infof("AddDeferred(%s) size %d map %d\n", key,
 		size, len(ctx.deferredItems))
@@ -218,7 +218,7 @@ func (ctx *DeferredContext) addDeferred(key string, buf *bytes.Buffer,
 	}
 	item := deferredItem{
 		buf:         buf,
-		size:	     size,
+		size:        size,
 		url:         url,
 		zedcloudCtx: zedcloudCtx,
 		ignore400:   ignore400,
