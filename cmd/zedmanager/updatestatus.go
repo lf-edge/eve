@@ -84,11 +84,36 @@ func removeAIStatus(ctx *zedmanagerContext, status *types.AppInstanceStatus) {
 			uuidStr)
 		publishAppInstanceStatus(ctx, status)
 	}
-	if uninstall && done {
-		log.Infof("removeAIStatus remove done for %s\n",
-			uuidStr)
+	if !done {
+		if uninstall {
+			log.Infof("removeAIStatus(%s) waiting for removal\n",
+				status.Key())
+		} else {
+			log.Infof("removeAIStatus(%s): PurgeInprogress waiting for removal\n",
+				status.Key())
+		}
+		return
+	}
+
+	if uninstall {
+		log.Infof("removeAIStatus(%s) remove done\n", uuidStr)
 		// Write out what we modified to AppInstanceStatus aka delete
 		unpublishAppInstanceStatus(ctx, status)
+		return
+	}
+	log.Infof("removeAIStatus(%s): PurgeInprogress bringing it up\n",
+		status.Key())
+	status.PurgeInprogress = types.BRING_UP
+	publishAppInstanceStatus(ctx, status)
+	config := lookupAppInstanceConfig(ctx, uuidStr)
+	if config != nil {
+		changed := doUpdate(ctx, uuidStr, *config, status)
+		if changed {
+			publishAppInstanceStatus(ctx, status)
+		}
+	} else {
+		log.Errorf("removeAIStatus(%s): PurgeInprogress no config!\n",
+			status.Key())
 	}
 }
 
