@@ -91,9 +91,9 @@ func updateDownloaderStatus(ctx *zedagentContext,
 	log.Infof("updateDownloaderStatus(%s/%s) to %v\n",
 		objType, key, status.State)
 
+	// Update Progress counter even if Pending
 	// XXX Ignore if any Pending* flag is set
-	// XXX get Progress if pending? Need code in baseos to check
-	if status.Pending() {
+	if false && status.Pending() {
 		log.Infof("updateDownloaderStatus for %s, Skipping due to Pending*\n", key)
 		return
 	}
@@ -253,10 +253,12 @@ func checkStorageDownloadStatus(ctx *zedagentContext, objType string,
 		}
 
 		ds := lookupDownloaderStatus(ctx, objType, safename)
-		if ds == nil || ds.Pending() {
+		if ds == nil {
 			log.Infof("LookupDownloaderStatus %s not yet\n",
 				safename)
 			ret.MinState = types.DOWNLOAD_STARTED
+			ss.State = types.DOWNLOAD_STARTED
+			ret.Changed = true
 			continue
 		}
 
@@ -270,6 +272,15 @@ func checkStorageDownloadStatus(ctx *zedagentContext, objType string,
 			ret.Changed = true
 		}
 
+		if ds.Progress != ss.Progress {
+			ss.Progress = ds.Progress
+			ret.Changed = true
+		}
+		if ds.Pending() {
+			log.Infof("checkStorageDownloadStatus(%s) Pending\n",
+				safename)
+			continue
+		}
 		if ds.LastErr != "" {
 			log.Errorf("checkStorageDownloadStatus %s, downloader error, %s\n",
 				uuidStr, ds.LastErr)
