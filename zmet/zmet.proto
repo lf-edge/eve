@@ -84,14 +84,12 @@ enum ZSwState {
   DOWNLOADED		= 3;	// Download completed, verification in-progress
   DELIVERED		= 4;	// Verification completed
   INSTALLED		= 5;	// Installed, ready for activation
-}
-
-enum ZDomState {
-  DomINVALID		= 0;
-  PREPARING		= 1; // Look at ZSwState
-  RUNNING		= 2; // DomU has been created, domId exists. This is not
-			     // domU xen state
-  ERROR			= 3; // Look at ErrInfo
+  BOOTING               = 6;    // booting. Booting and above means that App is activated.
+  RUNNING               = 7;    // running
+  HALTING               = 8;    // being halted
+  HALTED                = 9;    // Halted
+  REFRESHING            = 10;   // Refreshing due to config change
+  PURGING               = 11;   // Purging due to config change
 }
 
 // Deprecate since we can't determine it on the device
@@ -175,7 +173,7 @@ message ZInfoApp {
   bool systemApp = 6;
   string AppName = 7;
   repeated ZInfoSW softwareList = 8;
-  bool activated = 9;
+  bool activated = 9;                       // deprecated
   google.protobuf.Timestamp errorTime = 11; //deprecated, use ErrorInfo
 
   google.protobuf.Timestamp bootTime = 12;
@@ -183,7 +181,6 @@ message ZInfoApp {
   repeated ErrorInfo appErr = 14;
   ZSwState state = 15;
   repeated ZInfoNetwork network = 16;	// XXX add?
-  ZDomState runState = 17; 
 }
 
 // ipSec state information
@@ -193,27 +190,54 @@ enum ZInfoVpnState {
   VPN_CONNECTING  = 2;	// Connection is in-progress
   VPN_ESTABLISHED = 3;	// Connection established
   VPN_INSTALLED   = 4;	// SAs/Routes Installed
+  VPN_REKEYED     = 5;  // SAs Rekeyed
+  VPN_DELETED     = 10; // Connection deleted
 }
 
+// tunnel link details
+message ZInfoVpnLinkInfo {
+  string spiId = 1;   // Security Parameter Index
+  string subNet = 2;  // Associate Subnet
+  bool direction = 3; // 0 = local, 1 = remote
+}
+
+// Esp details
 message ZInfoVpnLink {
-  string ipAddr = 1;   // End point Ip Address
-  string subNet = 2;   // Associate Subnet
-  string spiId = 3;    // Security Parameter Index
-  bool direction = 4;  // 0 = in, 1 = out
+  string id = 1;       // esp id
+  string name = 2;     // connection name
+  string reqId = 3;    // request id
+  uint64 instTime = 4; // in seconds
+  string espInfo = 5;  // esp info
+  ZInfoVpnState state = 6; // esp state
+  ZInfoVpnLinkInfo lInfo = 10; // local
+  ZInfoVpnLinkInfo rInfo = 11; // remote
 }
 
+// ipsec left/right end-point info
+message ZInfoVpnEndPoint {
+  string id     = 1; // ipSec id
+  string ipAddr = 2; // Ip Address
+  uint32 port   = 3; // udp port
+}
+
+// Ike details
 message ZInfoVpnConn {
-  string reqId = 1;      // tunnel reqest id
-  string routeTable = 2; // "default" or "220" for VTI-based vs. Policy-based IPSEC VPN
-  repeated ZInfoVpnLink link = 10; // connection details
+  string id = 1;      // ike id
+  string name = 2;    // connection name
+  string version = 3; // ike-v1/v2
+  uint64 estTime = 4; // in seconds
+  string ikes = 5;    // ike proposals
+  ZInfoVpnState state = 6; // ike state
+  ZInfoVpnEndPoint lInfo = 7;  // local
+  ZInfoVpnEndPoint rInfo = 8;  // remote
+  repeated ZInfoVpnLink links = 10; // can be more than one
 }
 
+// ipsec level information
 message ZInfoVpn {
-  string id = 1;	// connection id
-  string name = 2;	// connection name
-  string ikeProposals = 3; // ike proposals
-  ZInfoVpnState state = 4;	// vpn connection state
-  repeated string listeningIpAddrs = 5; //listening on
+  uint64 upTime = 1; // in seconds
+  bool policyBased = 2; // Policy-based vs. VTI-based IPSEC VPN
+  repeated string listeningIpAddrs = 3; //listening on
   repeated ZInfoVpnConn conn = 10; // Connection Information
 }
 
@@ -232,7 +256,6 @@ message DatabaseMap {
 	uint64 IID = 1;
 	repeated MapCacheEntry MapCacheEntries = 2;
 }
-
 
 message DecapKey {
 	string Rloc = 1;
@@ -255,7 +278,7 @@ message ZInfoService {
   uint32 serviceType = 3;
   ZInfoSW softwareList = 4;
   bool activated = 5;
-  google.protobuf.Timestamp upTime = 6;
+  google.protobuf.Timestamp upTimeStamp = 6;
   repeated ZioBundle assignedAdapters = 7;
   repeated ErrorInfo svcErr = 8;
   repeated ZInfoNetwork network = 9;
@@ -491,6 +514,51 @@ message ZMetricVpn {
 	ZMetricConn EspStat = 4;
 }
 
+// flow stats
+message ZMetricFlowLink {
+  oneof Link {
+    string subNet = 1; // IpSec: Subnet
+    string eid = 2;    // LISP: EID
+  }
+  string spiId = 3;    // IpSec: SpiId
+}
+
+message ZMetricFlowEndPoint {
+  oneof Endpoint {
+    string ipAddr = 1; // IpSec: Endpoint Ip Address
+    string rloc = 2;   // LISP: RLOC
+  }
+  repeated ZMetricFlowLink link = 5;
+  PktStat stats = 10;  // traffic
+}
+
+message ZMetricFlow {
+  string id = 1;      // IpSec Conn-Id/Lisp
+  string name = 2;    // IpSec Tun-Name
+  uint32 type = 3;    // IpSec-Vpn or, LISP
+  uint64 iid  = 4;    // LISP: IID
+  uint64 estTime = 5; // in seconds
+  ZMetricFlowEndPoint lEndPoint = 10;
+  repeated ZMetricFlowEndPoint rEndPoint = 11;
+}
+
+message ZMetricLispGlobal {
+	// Encap/ITR Statistics
+	PktStat ItrPacketSendError = 2;
+	PktStat InvalidEidError = 3;
+
+	// Decap/ETR Statistics
+	PktStat NoDecryptKey = 4;
+	PktStat OuterHeaderError = 5;
+	PktStat BadInnerVersion = 6;
+	PktStat GoodPackets = 7;
+	PktStat ICVError = 8;
+	PktStat LispHeaderError = 9;
+	PktStat CheckSumError = 10;
+	PktStat DecapReInjectError = 11;
+	PktStat DecryptError = 12;
+}
+
 message ZMetricService {
   string serviceID = 1;
   string serviceName = 2;
@@ -500,6 +568,8 @@ message ZMetricService {
     ZMetricVpn  vpnm = 20;
     ZMetricLisp lispm = 21;
   }
+  repeated ZMetricFlow flowStats = 10;
+  ZMetricLispGlobal lispGlobalStats = 11;
 }
 
 message ZMetricMsg {

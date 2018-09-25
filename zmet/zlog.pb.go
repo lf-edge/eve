@@ -24,7 +24,9 @@ It has these top-level messages:
 	ZInfoStorage
 	ZInfoHypervisor
 	ZInfoApp
+	ZInfoVpnLinkInfo
 	ZInfoVpnLink
+	ZInfoVpnEndPoint
 	ZInfoVpnConn
 	ZInfoVpn
 	RlocState
@@ -53,6 +55,10 @@ It has these top-level messages:
 	ZMetricLisp
 	ZMetricConn
 	ZMetricVpn
+	ZMetricFlowLink
+	ZMetricFlowEndPoint
+	ZMetricFlow
+	ZMetricLispGlobal
 	ZMetricService
 	ZMetricMsg
 	ZRegisterResp
