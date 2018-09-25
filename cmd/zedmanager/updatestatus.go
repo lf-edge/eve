@@ -342,7 +342,12 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		// Odd; no StorageConfig in list
 		minState = types.DOWNLOADED
 	}
-	status.State = minState
+	switch status.State {
+	case types.RESTARTING, types.PURGING:
+		// Leave unchanged
+	default:
+		status.State = minState
+	}
 	status.Error = allErrors
 	status.ErrorTime = errorTime
 	if allErrors != "" {
@@ -406,7 +411,12 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		// Odd; no StorageConfig in list
 		minState = types.DELIVERED
 	}
-	status.State = minState
+	switch status.State {
+	case types.RESTARTING, types.PURGING:
+		// Leave unchanged
+	default:
+		status.State = minState
+	}
 	status.Error = allErrors
 	status.ErrorTime = errorTime
 	if allErrors != "" {
@@ -473,7 +483,12 @@ func doPrepare(ctx *zedmanagerContext, uuidStr string,
 		return changed, false
 	}
 	// Automatically move from DELIVERED to INSTALLED
-	status.State = types.INSTALLED
+	switch status.State {
+	case types.RESTARTING, types.PURGING:
+		// Leave unchanged
+	default:
+		status.State = types.INSTALLED
+	}
 	changed = true
 	log.Infof("Done with EID allocations for %s\n", uuidStr)
 	log.Infof("doPrepare done for %s\n", uuidStr)
@@ -575,7 +590,12 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	if ds.State != status.State {
 		log.Infof("Set State from DomainStatus from %d to %d\n",
 			status.State, ds.State)
-		status.State = ds.State
+		switch status.State {
+		case types.RESTARTING, types.PURGING:
+			// Leave unchanged
+		default:
+			status.State = ds.State
+		}
 	}
 
 	if ds.State < types.BOOTING {
