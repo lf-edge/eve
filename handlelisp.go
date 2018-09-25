@@ -12,7 +12,7 @@ import (
 	"github.com/zededa/lisp/dataplane/dptypes"
 	"github.com/zededa/lisp/dataplane/etr"
 	"github.com/zededa/lisp/dataplane/fib"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"net"
 	"strconv"
 )

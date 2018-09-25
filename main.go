@@ -20,7 +20,7 @@ import (
 	"github.com/zededa/lisp/dataplane/etr"
 	"github.com/zededa/lisp/dataplane/fib"
 	"github.com/zededa/lisp/dataplane/itr"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"net"
 	"os"
 	"os/signal"
@@ -30,7 +30,6 @@ import (
 
 const (
 	agentName  = "lisp-ztr"
-	dnsDirname = "/var/run/zedrouter/DeviceNetworkStatus"
 )
 
 var lispConfigDir string
@@ -46,6 +45,7 @@ var puntChannel chan []byte
 
 var Version = "No version specified"
 var debug = false
+var debugOverride bool
 
 func main() {
 	// Open/Create new log file
@@ -65,6 +65,12 @@ func main() {
 	lispersDotNetItr = lispConfigDir + "/lispers.net-itr"
 
 	debug = *debugPtr
+	debugOverride = debug
+	if debugOverride {
+		log.SetLevel(log.DebugLevel)
+	} else {
+		log.SetLevel(log.InfoLevel)
+	}
 	if *versionPtr {
 		log.Printf("%s: %s\n", os.Args[0], Version)
 		return
@@ -73,6 +79,7 @@ func main() {
 	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 		log.Fatal(err)
 	}
+
 	// Initialize pubsub channels
 	// We subsribe to Lisp configuration channel from zedrouter
 	// and wait for our configuration. Dataplane will only start
@@ -148,6 +155,32 @@ func main() {
 	handleConfig(configPipe, dataplaneContext)
 }
 
+func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	ctx := ctxArg.(*dptypes.DataplaneContext)
+	if key != "global" {
+		log.Printf("handleGlobalConfigModify: ignoring %s\n", key)
+		return
+	}
+	log.Printf("handleGlobalConfigModify for %s\n", key)
+	debug = agentlog.HandleGlobalConfig(ctx.SubGlobalConfig, agentName,
+		debugOverride)
+	log.Printf("handleGlobalConfigModify done for %s\n", key)
+}
+
+func handleGlobalConfigDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	ctx := ctxArg.(*dptypes.DataplaneContext)
+	if key != "global" {
+		log.Printf("handleGlobalConfigDelete: ignoring %s\n", key)
+		return
+	}
+	log.Printf("handleGlobalConfigDelete for %s\n", key)
+	debug = agentlog.HandleGlobalConfig(ctx.SubGlobalConfig, agentName,
+		debugOverride)
+	log.Printf("handleGlobalConfigDelete done for %s\n", key)
+}
+
 func handleExpModify(ctxArg interface{}, key string, statusArg interface{}) {
 	ctx := ctxArg.(*dptypes.DataplaneContext)
 
@@ -172,14 +205,14 @@ func initPubsubChannels() *dptypes.DataplaneContext {
 	dataplaneContext := &dptypes.DataplaneContext{}
 
 	// Create pubsub publish channels for LispInfo and Metrics
-	pubLispInfoStatus, err := pubsub.Publish("lisp-ztr",
+	pubLispInfoStatus, err := pubsub.Publish(agentName,
 		types.LispInfoStatus{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	dataplaneContext.PubLispInfoStatus = pubLispInfoStatus
 
-	pubLispMetrics, err := pubsub.Publish("lisp-ztr",
+	pubLispMetrics, err := pubsub.Publish(agentName,
 		types.LispMetrics{})
 	if err != nil {
 		log.Fatal(err)
@@ -195,6 +228,17 @@ func initPubsubChannels() *dptypes.DataplaneContext {
 	subLispConfig.DeleteHandler = handleExpDelete
 	dataplaneContext.SubLispConfig = subLispConfig
 	subLispConfig.Activate()
+
+	// Look for global config like debug
+	subGlobalConfig, err := pubsub.Subscribe("",
+		agentlog.GlobalConfig{}, false, dataplaneContext)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
+	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
+	dataplaneContext.SubGlobalConfig = subGlobalConfig
+	subGlobalConfig.Activate()
 
 	return dataplaneContext
 }
@@ -370,6 +414,7 @@ func handleConfig(c *net.UnixConn, dpContext *dptypes.DataplaneContext) {
 	}
 	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
 	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
+	dpContext.SubDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
 	// Create 8k bytes buffer for reading configuration messages.
@@ -382,6 +427,8 @@ func handleConfig(c *net.UnixConn, dpContext *dptypes.DataplaneContext) {
 				log.Println("Detected a change in DeviceNetworkStatus")
 			}
 			ManageEtrDNS(deviceNetworkStatus)
+		case change := <-dpContext.SubGlobalConfig.C:
+			dpContext.SubGlobalConfig.ProcessChange(change)
 		default:
 			n, err := c.Read(buf[:])
 			if err != nil {

@@ -14,7 +14,7 @@ import (
 	"github.com/zededa/lisp/dataplane/etr"
 	"github.com/zededa/lisp/dataplane/fib"
 	"github.com/zededa/lisp/dataplane/itr"
-	"log"
+	log "github.com/sirupsen/logrus"
 )
 
 type ThreadEntry struct {
