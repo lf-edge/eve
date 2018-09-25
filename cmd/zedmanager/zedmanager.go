@@ -516,7 +516,7 @@ func handleModify(ctx *zedmanagerContext, key string,
 			// the status counter here.
 			status.RestartCmd.Counter = config.RestartCmd.Counter
 			status.RestartInprogress = types.BRING_DOWN
-			status.State = types.REFRESHING
+			status.State = types.RESTARTING
 		} else {
 			log.Infof("handleModify(%v) for %s restartcmd ignored !Activated\n",
 				config.UUIDandVersion, config.DisplayName)

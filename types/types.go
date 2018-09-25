@@ -23,7 +23,7 @@ const (
 	RUNNING
 	HALTING // being halted
 	HALTED
-	REFRESHING // Refreshing due to config change
+	RESTARTING // Restarting due to config change or zcli
 	PURGING    // Purging due to config change
 	MAXSTATE   //
 )
