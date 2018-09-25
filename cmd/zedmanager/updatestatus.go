@@ -477,6 +477,17 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	log.Infof("doActivate for %s\n", uuidStr)
 	changed := false
 
+	// Are we doing a restart and it came down?
+	switch status.RestartInprogress {
+	case types.BRING_DOWN:
+		ds := lookupDomainStatus(ctx, config.Key())
+		if ds != nil && !ds.Activated {
+			log.Infof("RestartInprogress came down - set bring up\n")
+			status.RestartInprogress = types.BRING_UP
+			changed = true
+		}
+	}
+
 	// Track that we have cleanup work in case something fails
 	status.ActivateInprogress = true
 
@@ -576,17 +587,17 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		if dc == nil {
 			log.Errorf("No DomainConfig for RestartInprogress\n")
 		} else if dc.Activate {
-			log.Infof("DomainConfig !Activate for RestartInprogress\n")
+			log.Infof("Clear Activate for RestartInprogress\n")
 			dc.Activate = false
 			publishDomainConfig(ctx, dc)
 		} else if !ds.Activated {
-			log.Infof("DomainConfig RestartInprogress bring up\n")
+			log.Infof("Set Activate for RestartInprogress\n")
 			status.RestartInprogress = types.BRING_UP
 			changed = true
 			dc.Activate = true
 			publishDomainConfig(ctx, dc)
 		} else {
-			log.Infof("DomainConfig RestartInprogress waiting for it to come down\n")
+			log.Infof("RestartInprogress waiting for domain to come down\n")
 		}
 	case types.BRING_UP:
 		if ds.Activated {
