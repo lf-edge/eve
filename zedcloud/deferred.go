@@ -145,7 +145,7 @@ func (ctx *DeferredContext) removeDeferred(key string) {
 	_, ok := ctx.deferredItems[key]
 	if !ok {
 		// Normal case
-		log.Infof("removeDeferred: Non-existing key %s\n", key)
+		log.Debugf("removeDeferred: Non-existing key %s\n", key)
 		return
 	}
 	log.Debugf("Deleting key %s\n", key)

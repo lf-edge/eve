@@ -377,6 +377,16 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 		}
 		log.Infof("Got adapters %v\n", appInstance.IoAdapterList)
 
+		cmd := cfgApp.GetRestart()
+		if cmd != nil {
+			appInstance.RestartCmd.Counter = cmd.Counter
+			appInstance.RestartCmd.ApplyTime = cmd.OpsTime
+		}
+		cmd = cfgApp.GetPurge()
+		if cmd != nil {
+			appInstance.PurgeCmd.Counter = cmd.Counter
+			appInstance.PurgeCmd.ApplyTime = cmd.OpsTime
+		}
 		// get the certs for image sha verification
 		certInstance := getCertObjects(appInstance.UUIDandVersion,
 			appInstance.ConfigSha256, appInstance.StorageConfigList)
@@ -423,6 +433,11 @@ func parseDatastoreConfig(config *zconfig.EdgeDevConfig,
 	log.Infof("parseDatastoreConfig: Applying updated datastore config shaa % x vs. % x:  %v\n",
 		datastoreConfigPrevConfigHash, configHash, stores)
 	publishDatastoreConfig(getconfigCtx, stores)
+
+	// XXX hack - wait for a while so we and zedmananger can pick up this
+	// before a BaseOsConfig or AppNetworkConfig using this is visible
+	// to them
+	time.Sleep(10 * time.Second)
 }
 
 func publishDatastoreConfig(ctx *getconfigContext,

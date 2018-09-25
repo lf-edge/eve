@@ -1184,7 +1184,11 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 			ds = &types.DomainStatus{}
 		} else {
 			ReportAppInfo.Activated = aiStatus.Activated
-			ReportAppInfo.State = zmet.ZSwState(ds.State)
+			// XXX better compare? Pick REFRESHING and PURGING from
+			// aiStatus but HALTED from DomainStatus
+			if ds.State > aiStatus.State {
+				ReportAppInfo.State = zmet.ZSwState(ds.State)
+			}
 		}
 
 		if !aiStatus.ErrorTime.IsZero() {

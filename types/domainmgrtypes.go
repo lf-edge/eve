@@ -79,8 +79,8 @@ const (
 type DomainStatus struct {
 	UUIDandVersion     UUIDandVersion
 	DisplayName        string
-	State		   SwState // BOOTING and above?
-	Activated          bool // XXX remove??
+	State              SwState // BOOTING and above?
+	Activated          bool    // XXX remove??
 	AppNum             int
 	PendingAdd         bool
 	PendingModify      bool
