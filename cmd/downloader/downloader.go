@@ -858,12 +858,33 @@ func doS3(ctx *downloaderContext, syncOp zedUpload.SyncOpType,
 	}
 
 	req.Post()
-	resp := <-respChan
-	_, err = resp.GetUpStatus()
-	if resp.IsError() == false {
-		return nil
-	} else {
-		return err
+	for {
+		select {
+		case resp, ok := <-respChan:
+			if resp.IsDnUpdate() {
+				log.Infof("Update progress for %v: %v/%v",
+					resp.GetLocalName(),
+					resp.GetAsize(), 0)
+				// XXX resp.GetOsize())
+				// XXX publish updated percentage
+				continue
+			}
+			if !ok {
+				errStr := fmt.Sprintf("respChan EOF for <%s>, <%s>, <%s>",
+					dpath, region, filename)
+				log.Errorln(errStr)
+				return errors.New(errStr)
+			}
+			_, err = resp.GetUpStatus()
+			if resp.IsError() {
+				return err
+			} else {
+				log.Infof("Done for %v: size %v",
+					resp.GetLocalName(),
+					resp.GetAsize())
+				return nil
+			}
+		}
 	}
 }
 
