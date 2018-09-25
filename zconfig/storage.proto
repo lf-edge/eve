@@ -33,6 +33,9 @@ message DatastoreConfig {
 
 	// depending on datastore types, it could be bucket or path
 	string dpath = 5;
+
+	// Applies for some datastore types
+	string region = 6;
 }
 
 
