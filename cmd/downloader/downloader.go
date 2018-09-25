@@ -864,11 +864,16 @@ func doS3(ctx *downloaderContext, status *types.DownloaderStatus,
 		select {
 		case resp, ok := <-respChan:
 			if resp.IsDnUpdate() {
+				asize := resp.GetAsize()
+				osize := resp.GetOsize()
 				log.Infof("Update progress for %v: %v/%v",
-					resp.GetLocalName(),
-					resp.GetAsize(), 0)
-				// XXX resp.GetOsize())
-				status.Progress = uint(resp.GetAsize()) // XXX
+					resp.GetLocalName(), asize, osize)
+				if asize == 0 {
+					status.Progress = 0
+				} else {
+					percent := 100 * osize / asize
+					status.Progress = uint(percent)
+				}
 				publishDownloaderStatus(ctx, status)
 				continue
 			}
@@ -882,9 +887,9 @@ func doS3(ctx *downloaderContext, status *types.DownloaderStatus,
 			if resp.IsError() {
 				return err
 			} else {
-				log.Infof("Done for %v: size %v",
+				log.Infof("Done for %v: size %v/%v",
 					resp.GetLocalName(),
-					resp.GetAsize())
+					resp.GetAsize(), resp.GetOsize())
 				status.Progress = 100
 				publishDownloaderStatus(ctx, status)
 				return nil
@@ -930,11 +935,16 @@ func doSftp(ctx *downloaderContext, status *types.DownloaderStatus,
 		select {
 		case resp, ok := <-respChan:
 			if resp.IsDnUpdate() {
+				asize := resp.GetAsize()
+				osize := resp.GetOsize()
 				log.Infof("Update progress for %v: %v/%v",
-					resp.GetLocalName(),
-					resp.GetAsize(), 0)
-				// XXX resp.GetOsize())
-				status.Progress = uint(resp.GetAsize()) // XXX
+					resp.GetLocalName(), asize, osize)
+				if asize == 0 {
+					status.Progress = 0
+				} else {
+					percent := 100 * osize / asize
+					status.Progress = uint(percent)
+				}
 				publishDownloaderStatus(ctx, status)
 				continue
 			}
@@ -948,9 +958,9 @@ func doSftp(ctx *downloaderContext, status *types.DownloaderStatus,
 			if resp.IsError() {
 				return err
 			} else {
-				log.Infof("Done for %v: size %v",
+				log.Infof("Done for %v: size %v/%v",
 					resp.GetLocalName(),
-					resp.GetAsize())
+					resp.GetAsize(), resp.GetOsize())
 				status.Progress = 100
 				publishDownloaderStatus(ctx, status)
 				return nil
