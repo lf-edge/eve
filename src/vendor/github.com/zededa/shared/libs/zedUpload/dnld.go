@@ -21,6 +21,9 @@ const (
 	SyncOpDownloadWithSignature = 4
 
 	DefaultNumberOfHandlers = 10
+
+	StatsUpdateTicker = 5 * time.Second // timer for updating client for stats
+	FailPostTimeout   = 2 * time.Minute
 )
 
 //
@@ -139,11 +142,12 @@ func (ctx *DronaCtx) handleQuit() error {
 	return nil
 }
 
-// Do a wget to get the object
+// postSize:
+//  post the progress report we haven't completed the download/upload yet
 func (ctx *DronaCtx) postSize(req *DronaRequest, size, asize int64) {
-	//        req.setInprogress()
-	//        req.UpdateSize(size)
-	//       req.updateAsize(asize)
+	req.setInprogress()
+	req.updateOsize(size)
+	req.updateAsize(asize)
 	req.result <- req
 }
 
@@ -151,6 +155,8 @@ func (ctx *DronaCtx) postSize(req *DronaRequest, size, asize int64) {
 //   make sure the reply is always sent back
 //
 func (ctx *DronaCtx) postResponse(req *DronaRequest, status error) {
+	// status is already set up by action, we just have to clear inprogress flag
+	req.clearInprogress()
 	req.result <- req
 }
 
