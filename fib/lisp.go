@@ -6,7 +6,7 @@
 package fib
 
 import (
-	"log"
+	log "github.com/sirupsen/logrus"
 )
 
 func SetLispKeyId(hdr []byte, keyId byte) {

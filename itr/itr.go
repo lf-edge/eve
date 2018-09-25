@@ -17,7 +17,7 @@ import (
 	//"github.com/google/gopacket/pfring"
 	"github.com/zededa/lisp/dataplane/dptypes"
 	"github.com/zededa/lisp/dataplane/fib"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"math/rand"
 	"net"
 	"os/exec"
@@ -137,6 +137,20 @@ func StartItrThread(threadName string,
 	itrLocalData.Fd6 = fd6
 	itrLocalData.IvHigh = ivHigh
 	itrLocalData.IvLow = ivLow
+
+	itrLocalData.LayerParser = gopacket.NewDecodingLayerParser(
+			layers.LayerTypeEthernet, &itrLocalData.Eth, &itrLocalData.Ip4,
+			&itrLocalData.Ip6, &itrLocalData.Udp, &itrLocalData.Tcp)
+
+	if itrLocalData.LayerParser == nil {
+		log.Fatal("StartItrThread: ERROR: Packet decode parser creation failed\n")
+	}
+
+	// We do not want the parser exiting with error when it encounters
+	// a layer that it does not have parser for.
+	// XXX This option is not present in release v1.1.14 of gopacket.
+	// We'll have to move to the next release when available.
+	//itrLocalData.LayerParser.IgnoreUnsupported = true
 
 	//startWorking(threadName, ring, killChannel, puntChannel,
 	//startWorking(threadName, handle, killChannel, puntChannel,
@@ -348,15 +362,28 @@ eidLoop:
 				// XXX May be add a per thread stat here
 				continue
 			}
+			/*
 			packet := gopacket.NewPacket(
 				pktBuf[dptypes.MAXHEADERLEN:ci.CaptureLength+dptypes.MAXHEADERLEN],
 				layers.LinkTypeEthernet,
 				gopacket.DecodeOptions{Lazy: false, NoCopy: true})
+				*/
+
+			err = itrLocalData.LayerParser.DecodeLayers(
+				pktBuf[dptypes.MAXHEADERLEN:ci.CaptureLength+dptypes.MAXHEADERLEN],
+				&itrLocalData.DecodedLayers)
+				/*
+			if err != nil {
+				log.Printf("startWorking: Error decoding packets from %s: %s\n", ifname, err)
+				continue
+			}
+			*/
 
 			var srcAddr, dstAddr net.IP
 			var protocol layers.IPProtocol
 			var ipVersion byte
 
+			/*
 			if ip4Layer := packet.Layer(layers.LayerTypeIPv4); ip4Layer != nil{
 				ipVersion = dptypes.IPVERSION4
 				ipHeader := ip4Layer.(*layers.IPv4)
@@ -374,6 +401,28 @@ eidLoop:
 			} else {
 				// XXX May be have a global error stat here
 				continue
+			}
+			*/
+			for _, layerType := range itrLocalData.DecodedLayers {
+				switch layerType {
+				case layers.LayerTypeIPv4:
+					ipVersion = dptypes.IPVERSION4
+					ipHeader := &itrLocalData.Ip4
+
+					srcAddr  = ipHeader.SrcIP
+					dstAddr  = ipHeader.DstIP
+					protocol = ipHeader.Protocol
+					break
+				case layers.LayerTypeIPv6:
+					ipVersion = dptypes.IPVERSION6
+					ipHeader := &itrLocalData.Ip6
+
+					srcAddr  = ipHeader.SrcIP
+					dstAddr  = ipHeader.DstIP
+					protocol = ipHeader.NextHeader
+					break
+				default:
+				}
 			}
 
 			// Check if the source address of packet matches with any of the eids
@@ -422,9 +471,10 @@ eidLoop:
 					uint32(dstAddr[13])<<16 |
 					uint32(dstAddr[14])<<8 | uint32(dstAddr[15]))
 			}
-			transportLayer := packet.TransportLayer()
 
 			var ports uint32 = 0
+			/*
+			transportLayer := packet.TransportLayer()
 			if (protocol == layers.IPProtocolUDP) ||
 				(protocol == layers.IPProtocolTCP) {
 				// This is a byte array of the header
@@ -438,6 +488,17 @@ eidLoop:
 						uint32(transportContents[3]))
 				}
 			}
+			*/
+			switch protocol {
+			case layers.IPProtocolTCP:
+				srcPort := itrLocalData.Tcp.SrcPort
+				dstPort := itrLocalData.Tcp.DstPort
+				ports = uint32(srcPort << 16 | dstPort)
+			case layers.IPProtocolUDP:
+				srcPort := itrLocalData.Udp.SrcPort
+				dstPort := itrLocalData.Udp.DstPort
+				ports = uint32(srcPort << 16 | dstPort)
+			}
 
 			var hash32 uint32 = srcAddrBytes ^ dstAddrBytes ^ ports
 
@@ -445,7 +506,7 @@ eidLoop:
 				log.Printf("startWorking: Packet of length %d captured on interface %s\n",
 					pktLen, ifname)
 			}
-			LookupAndSend(packet, pktBuf[:],
+			LookupAndSend(pktBuf[:],
 				uint32(pktLen), ci.Timestamp, iid, hash32,
 				ifname, srcAddr, dstAddr,
 				puntChannel, itrLocalData)
@@ -460,7 +521,7 @@ eidLoop:
 // Perform lookup into mapcache database and forward if the lookup succeeds.
 // If not, buffer the packet and send a punt request to lispers.net for resolution.
 // Look for comments inside the function to understand more about what it does.
-func LookupAndSend(packet gopacket.Packet,
+func LookupAndSend(
 	pktBuf []byte,
 	capLen uint32,
 	timeStamp time.Time,
@@ -480,9 +541,12 @@ func LookupAndSend(packet gopacket.Packet,
 
 		// Add packet to channel in a non blocking fashion.
 		// Buffered packet channel is only 10 entries long.
+		pktCopy := make([]byte, capLen)
+		copy(pktCopy, pktBuf[dptypes.MAXHEADERLEN:capLen+dptypes.MAXHEADERLEN])
 		select {
 		case mapEntry.PktBuffer <- &dptypes.BufferedPacket{
-			Packet: packet,
+			//Packet: packet,
+			Packet: pktCopy,
 			Hash32: hash32,
 		}:
 			atomic.AddUint64(&mapEntry.BuffdPkts, 1)
@@ -515,15 +579,19 @@ func LookupAndSend(packet gopacket.Packet,
 				// Packet read into pktBuf buffer might have changed.
 				// It is not safe to pass it's pointer.
 				// Extract the packet data from buffered packet
+				/*
 				pktBytes := pkt.Packet.Data()
 				capLen = uint32(len(pktBytes))
+				*/
+				capLen = uint32(len(pkt.Packet))
 
 				// copy packet bytes into pktBuf at an offset of MAXHEADERLEN bytes
 				// ipv6 (40) + UDP (8) + LISP (8) - ETHERNET (14) + LISP IV (16) = 58
-				copy(pktBuf[dptypes.MAXHEADERLEN:], pktBytes)
+				//copy(pktBuf[dptypes.MAXHEADERLEN:], pktBytes)
+				copy(pktBuf[dptypes.MAXHEADERLEN:], pkt.Packet)
 
 				// Encapsulate and send packet out
-				fib.CraftAndSendLispPacket(pkt.Packet, pktBuf, capLen, timeStamp,
+				fib.CraftAndSendLispPacket(pktBuf, capLen, timeStamp,
 					pkt.Hash32, mapEntry, iid, itrLocalData)
 
 				// look golang atomic increment documentation to understand ^uint64(0)
@@ -552,13 +620,13 @@ func LookupAndSend(packet gopacket.Packet,
 			}
 			defaultMap, _ := fib.LookupAndAdd(iid, defaultPrefix, timeStamp)
 			if defaultMap.Resolved {
-				fib.CraftAndSendLispPacket(packet, pktBuf, capLen, timeStamp,
+				fib.CraftAndSendLispPacket(pktBuf, capLen, timeStamp,
 					hash32, defaultMap, iid, itrLocalData)
 			}
 		}
 	} else {
 		// Craft the LISP header, outer layers here and send packet out
-		fib.CraftAndSendLispPacket(packet, pktBuf, capLen, timeStamp,
+		fib.CraftAndSendLispPacket(pktBuf, capLen, timeStamp,
 			hash32, mapEntry, iid, itrLocalData)
 		//atomic.AddUint64(&mapEntry.Packets, 1)
 		//atomic.AddUint64(&mapEntry.Bytes, uint64(capLen))

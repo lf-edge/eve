@@ -22,7 +22,7 @@ import (
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/lisp/dataplane/dptypes"
 	"github.com/zededa/lisp/dataplane/fib"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"net"
 	"syscall"
 	"time"
@@ -539,10 +539,22 @@ func ProcessCapturedPkts(fd4 int, fd6 int,
 	handle *afpacket.TPacket,
 	killChannel chan bool) {
 
+	var eth layers.Ethernet
+	var ip4 layers.IPv4
+	var ip6 layers.IPv6
+	var udp layers.UDP
+
 	var pktBuf [65536]byte
 	if debug {
 		log.Printf("Started processing captured packets in ETR\n")
 	}
+
+	parser := gopacket.NewDecodingLayerParser(layers.LayerTypeEthernet,
+		&eth, &ip4, &ip6, &udp)
+	if parser == nil {
+		log.Fatal("ProcessCapturedPkts: gopacket parser creation failed\n")
+	}
+	decoded := []gopacket.LayerType{}
 
 	for {
 		//ci, err := ring.ReadPacketDataTo(pktBuf[:])
@@ -563,11 +575,19 @@ func ProcessCapturedPkts(fd4 int, fd6 int,
 		if debug {
 			log.Printf("ProcessCapturedPkts: Captured ETR packet of length %d\n", capLen)
 		}
+		/*
 		packet := gopacket.NewPacket(
 			pktBuf[:capLen],
 			layers.LinkTypeEthernet,
 			gopacket.DecodeOptions{Lazy: false, NoCopy: true})
+			*/
+		err = parser.DecodeLayers(pktBuf[:capLen], &decoded)
+		if err != nil {
+			log.Printf("ProcessCapturedPkts: Error decoding packet: %s\n", err)
+			continue
+		}
 
+		/*
 		appLayer := packet.ApplicationLayer()
 		if appLayer == nil {
 			continue
@@ -600,6 +620,38 @@ func ProcessCapturedPkts(fd4 int, fd6 int,
 			// We do not need this packet
 			fib.AddDecapStatistics("outer-header-error", 1, uint64(capLen), currUnixSeconds)
 			return
+		}
+		*/
+		var srcIP net.IP
+		var payload []byte
+		for _, layerType := range decoded {
+			switch layerType {
+			case layers.LayerTypeIPv4:
+				// ipv4 underlay
+				ipHdr := &ip4
+				// validate outer header checksum
+				csum := computeChecksum(
+					pktBuf[dptypes.ETHHEADERLEN : dptypes.ETHHEADERLEN+dptypes.IP4HEADERLEN])
+				if csum != 0xFFFF {
+					fib.AddDecapStatistics("checksum-error", 1, uint64(capLen), currUnixSeconds)
+					if debug {
+						log.Printf("ProcessCapturedPackets: Checksum error\n")
+					}
+					return
+				}
+
+				srcIP = ipHdr.SrcIP
+			case layers.LayerTypeIPv6:
+				// ipv6 underlay
+				ip6Hdr := &ip6
+				srcIP = ip6Hdr.SrcIP
+			case layers.LayerTypeUDP:
+				payload = udp.Payload
+			default:
+				// We do not need this packet
+				fib.AddDecapStatistics("outer-header-error", 1, uint64(capLen), currUnixSeconds)
+				return
+			}
 		}
 
 		decapKeys := fib.LookupDecapKeys(srcIP)

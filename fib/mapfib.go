@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/lisp/dataplane/dptypes"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"math/rand"
 	"net"
 	"os"
@@ -291,15 +291,19 @@ func UpdateMapCacheEntry(iid uint32, eid net.IP, rlocs []dptypes.Rloc) {
 				// i'll keep it this way for now.
 
 				// send the packet out
+				/*
 				pktBytes := pkt.Packet.Data()
 				capLen := len(pktBytes)
+				*/
+				capLen := uint32(len(pkt.Packet))
 
 				// copy packet bytes into pktBuf at an offset of MAXHEADERLEN bytes
 				// ipv6 (40) + UDP (8) + LISP (8) - ETHERNET (14) + LISP IV (16) = 58
-				copy(pktBuf[dptypes.MAXHEADERLEN:], pktBytes)
+				//copy(pktBuf[dptypes.MAXHEADERLEN:], pktBytes)
+				copy(pktBuf[dptypes.MAXHEADERLEN:], pkt.Packet)
 
 				// Send the packet out now
-				CraftAndSendLispPacket(pkt.Packet, pktBuf, uint32(capLen), timeStamp,
+				CraftAndSendLispPacket(pktBuf, uint32(capLen), timeStamp,
 					pkt.Hash32, entry, entry.InstanceId, itrLocalData)
 				if debug {
 					log.Printf("UpdateMapCacheEntry: Sending out buffered packet for map-cache "+
@@ -822,20 +826,20 @@ func dumpDatabaseState() {
 func StatsThread(puntChannel chan []byte,
 	ctx *dptypes.DataplaneContext) {
 	log.Printf("Starting statistics thread.\n")
+	ticker := time.NewTicker(STATSPUNTINTERVAL * time.Second)
 	for {
-		// We collect and transport statistic to lispers.net every 5 seconds
-		time.Sleep(STATSPUNTINTERVAL * time.Second)
+		for _ = range ticker.C {
+			// Send out encap & decap statistics to lispers.net
+			encapStats := sendEncapStatistics(puntChannel)
+			decapStats := sendDecapStatistics(puntChannel)
+			PublishLispMetrics(ctx, encapStats, decapStats)
 
-		// Send out encap & decap statistics to lispers.net
-		encapStats := sendEncapStatistics(puntChannel)
-		decapStats := sendDecapStatistics(puntChannel)
-		PublishLispMetrics(ctx, encapStats, decapStats)
-
-		// Keep dumping our encap & decap state to a file on disk
-		// Do it only when the debug flag is enabled
-		//if debug {
-		dumpDatabaseState()
-		//}
+			// Keep dumping our encap & decap state to a file on disk
+			// Do it only when the debug flag is enabled
+			//if debug {
+			dumpDatabaseState()
+			//}
+		}
 	}
 }
 
@@ -994,6 +998,16 @@ func PublishLispMetrics(ctx *dptypes.DataplaneContext,
 			Bytes: decapStatistics.ChecksumError.Bytes,
 		},
 	}
+	mapEntries := GetEidMaps()
+	var eidMaps []types.EidMap
+	for _, mapEntry := range mapEntries {
+		eidMap := types.EidMap {
+			IID: uint64(mapEntry.InstanceId),
+			Eids: mapEntry.Eids,
+		}
+		eidMaps = append(eidMaps, eidMap)
+	}
+	status.EidMaps = eidMaps
 
 	// Parse encap statistics
 	for _, entry := range encapStatistics.Entries {

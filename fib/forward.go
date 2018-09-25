@@ -15,14 +15,14 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/zededa/lisp/dataplane/dptypes"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"math/rand"
 	"sync/atomic"
 	"syscall"
 	"time"
 )
 
-func CraftAndSendLispPacket(packet gopacket.Packet,
+func CraftAndSendLispPacket(
 	pktBuf []byte,
 	capLen uint32,
 	timeStamp time.Time,
@@ -51,10 +51,10 @@ func CraftAndSendLispPacket(packet gopacket.Packet,
 	// Check the family and create appropriate IP header
 	switch rlocPtr.Family {
 	case dptypes.MAP_CACHE_FAMILY_IPV4:
-		craftAndSendIPv4LispPacket(packet, pktBuf, capLen, timeStamp,
+		craftAndSendIPv4LispPacket(pktBuf, capLen, timeStamp,
 			hash32, rlocPtr, iid, itrLocalData)
 	case dptypes.MAP_CACHE_FAMILY_IPV6:
-		craftAndSendIPv6LispPacket(packet, pktBuf, capLen, timeStamp,
+		craftAndSendIPv6LispPacket(pktBuf, capLen, timeStamp,
 			hash32, rlocPtr, iid, itrLocalData)
 	case dptypes.MAP_CACHE_FAMILY_UNKNOWN:
 		log.Printf("CraftAndSendLispPacket: Unkown family found for rloc %s\n",
@@ -210,7 +210,7 @@ func PrintHexBytes(data []byte) string {
 	return output
 }
 
-func craftAndSendIPv4LispPacket(packet gopacket.Packet,
+func craftAndSendIPv4LispPacket(
 	pktBuf []byte,
 	capLen uint32,
 	timeStamp time.Time,
@@ -384,7 +384,7 @@ func craftAndSendIPv4LispPacket(packet gopacket.Packet,
 	atomic.StoreInt64(rloc.LastPktTime, unixSeconds)
 }
 
-func craftAndSendIPv6LispPacket(packet gopacket.Packet,
+func craftAndSendIPv6LispPacket(
 	pktBuf []byte,
 	capLen uint32,
 	timeStamp time.Time,

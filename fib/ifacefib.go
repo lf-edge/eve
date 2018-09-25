@@ -6,7 +6,7 @@ package fib
 import (
 	"fmt"
 	"github.com/zededa/lisp/dataplane/dptypes"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"net"
 )
 
@@ -147,4 +147,21 @@ func GetIfaceEIDs() []string {
 		eids = append(eids, eidEntry)
 	}
 	return eids
+}
+
+func GetEidMaps() []dptypes.EIDEntry {
+	eidMap.LockMe.RLock()
+	defer eidMap.LockMe.RUnlock()
+
+	var eidMaps []dptypes.EIDEntry
+	for key, data := range eidMap.EidEntries {
+		eidMap := dptypes.EIDEntry {
+			InstanceId: key,
+		}
+		for _, eid := range data.Eids {
+			eidMap.Eids = append(eidMap.Eids, eid)
+		}
+		eidMaps = append(eidMaps, eidMap)
+	}
+	return eidMaps
 }

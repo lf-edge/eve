@@ -6,6 +6,7 @@ package dptypes
 import (
 	"crypto/cipher"
 	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
 	"net"
 	"sync"
 	"time"
@@ -78,7 +79,8 @@ type Rloc struct {
 }
 
 type BufferedPacket struct {
-	Packet gopacket.Packet
+	//Packet gopacket.Packet
+	Packet []byte
 	Hash32 uint32
 }
 
@@ -233,7 +235,6 @@ type EtrTable struct {
 
 type ITRLocalData struct {
 	// crypto initialization vector data (IV)
-	//IvHigh uint64
 	IvHigh uint32
 	IvLow  uint64
 
@@ -243,6 +244,15 @@ type ITRLocalData struct {
 
 	// ITR crypto source port to be used when sending crypto packets out
 	ItrCryptoPort int
+
+	// Decode headers
+	Eth layers.Ethernet
+	Ip4 layers.IPv4
+	Ip6 layers.IPv6
+	Udp layers.UDP
+	Tcp layers.TCP
+	LayerParser *gopacket.DecodingLayerParser
+	DecodedLayers []gopacket.LayerType
 }
 
 type ITRGlobalData struct {
@@ -260,5 +270,7 @@ type DataplaneContext struct {
 	PubLispInfoStatus *pubsub.Publication
 	PubLispMetrics    *pubsub.Publication
 	SubLispConfig     *pubsub.Subscription
+	SubDeviceNetworkStatus *pubsub.Subscription
+	SubGlobalConfig   *pubsub.Subscription
 	Experimental      bool
 }
