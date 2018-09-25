@@ -106,6 +106,7 @@ message ZInfoSW {
   ZSwState state = 4;		// State of Software Image download/install
   string target = 6;		// E.g., "disk", "kernel", "device-tree"
   string vdev = 7;		// E.g., "xvda"
+  uint32 progress = 8;		// Download progress; 0-100 percent
 }
 
 // Errors in response to the applicatioan of configuration
@@ -147,6 +148,7 @@ message ZInfoDevSW {
   string shortVersion = 7;   // From rootfs i.e., image
   string longVersion = 8;    // E.g., the yml file content from build
   ErrorInfo swErr = 9;
+  uint32 progress = 10;	     // Download progress; 0-100 percent
 }
 
 // Per filesystem/partition information
