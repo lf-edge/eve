@@ -77,7 +77,7 @@ func removeAIStatusUUID(ctx *zedmanagerContext, uuidStr string) {
 
 func removeAIStatus(ctx *zedmanagerContext, status *types.AppInstanceStatus) {
 	uuidStr := status.Key()
-	changed, del := doRemove(ctx, uuidStr, status)
+	changed, del := doRemove(ctx, uuidStr, status, true)
 	if changed {
 		log.Infof("removeAIStatus status change for %s\n",
 			uuidStr)
@@ -128,6 +128,27 @@ func doUpdate(ctx *zedmanagerContext, uuidStr string,
 	if !done {
 		return changed
 	}
+
+	// Are we doing a purge?
+	// XXX when/how do we drop refcounts on old images? GC?
+	if status.PurgeInprogress == types.DOWNLOAD {
+		log.Infof("PurgeInprogress download/verifications done\n")
+		status.PurgeInprogress = types.BRING_DOWN
+		changed = true
+		// Keep the verified images in place
+		_, done := doRemove(ctx, uuidStr, status, false)
+		if !done {
+			log.Infof("Waiting for purge removal\n")
+			return changed
+		}
+		status.PurgeInprogress = types.BRING_UP
+	}
+	c, done := doPrepare(ctx, uuidStr, config, status)
+	changed = changed || c
+	if !done {
+		return changed
+	}
+
 	if !config.Activate {
 		if status.Activated || status.ActivateInprogress {
 			c := doInactivateHalt(ctx, uuidStr, config, status)
@@ -147,7 +168,7 @@ func doUpdate(ctx *zedmanagerContext, uuidStr string,
 		return changed
 	}
 	log.Infof("Have config.Activate for %s\n", uuidStr)
-	c := doActivate(ctx, uuidStr, config, status)
+	c = doActivate(ctx, uuidStr, config, status)
 	changed = changed || c
 	log.Infof("doUpdate done for %s\n", uuidStr)
 	return changed
@@ -188,16 +209,6 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		}
 	}
 
-	if len(config.OverlayNetworkList) != len(status.EIDList) {
-		errString := fmt.Sprintf("Mismatch in OLList config vs. status length: %d vs %d\n",
-			len(config.OverlayNetworkList),
-			len(status.EIDList))
-		log.Errorln(errString)
-		status.Error = errString
-		status.ErrorTime = time.Now()
-		changed = true
-		return changed, false
-	}
 	waitingForCerts := false
 	for i, sc := range config.StorageConfigList {
 		ss := &status.StorageStatusList[i]
@@ -378,32 +389,25 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		return changed, false
 	}
 	log.Infof("Done with verifications for %s\n", uuidStr)
+	log.Infof("doInstall done for %s\n", uuidStr)
+	return changed, true
+}
 
-	// Are we doing a purge?
-	// XXX when/how do we drop refcounts on old images?
-	switch status.PurgeInprogress {
-	case types.NONE:
-		// Nothing to do
-	case types.DOWNLOAD:
-		log.Infof("PurgeInprogress download/verifications done\n")
-		status.PurgeInprogress = types.BRING_DOWN
+func doPrepare(ctx *zedmanagerContext, uuidStr string,
+	config types.AppInstanceConfig, status *types.AppInstanceStatus) (bool, bool) {
+
+	log.Infof("doPrepare for %s\n", uuidStr)
+	changed := false
+
+	if len(config.OverlayNetworkList) != len(status.EIDList) {
+		errString := fmt.Sprintf("Mismatch in OLList config vs. status length: %d vs %d\n",
+			len(config.OverlayNetworkList),
+			len(status.EIDList))
+		log.Errorln(errString)
+		status.Error = errString
+		status.ErrorTime = time.Now()
 		changed = true
-		// XXX how do we delete it all?
-	case types.BRING_DOWN:
-		// XXX PurgeInprogress BRING_DOWN
-		log.Infof("XXX PurgeInprogress BRING_DOWN\n")
-		if false {
-			status.PurgeInprogress = types.BRING_UP
-			changed = true
-		}
-	case types.BRING_UP:
-		// XXX PurgeInprogress BRING_UP
-		log.Infof("XXX PurgeInprogress BRING_UP\n")
-		if false {
-			status.PurgeInprogress = types.NONE
-			status.State = types.RUNNING
-			changed = true
-		}
+		return changed, false
 	}
 
 	// XXX could allocate EIDs before we download for better parallelism
@@ -442,7 +446,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 	status.State = types.INSTALLED
 	changed = true
 	log.Infof("Done with EID allocations for %s\n", uuidStr)
-	log.Infof("doInstall done for %s\n", uuidStr)
+	log.Infof("doPrepare done for %s\n", uuidStr)
 	return changed, true
 }
 
@@ -601,12 +605,22 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		}
 	case types.BRING_UP:
 		if ds.Activated {
-			log.Infof("DomainConfig RestartInprogress came back up\n")
+			log.Infof("RestartInprogress came back up\n")
 			status.RestartInprogress = types.NONE
 			status.State = types.RUNNING
 			changed = true
 		} else {
-			log.Infof("DomainConfig RestartInprogress waiting for it to come up\n")
+			log.Infof("RestartInprogress waiting for Activated\n")
+		}
+	}
+	if status.PurgeInprogress == types.BRING_UP {
+		if ds.Activated {
+			log.Infof("PurgeInprogress came back up\n")
+			status.PurgeInprogress = types.NONE
+			status.State = types.RUNNING
+			changed = true
+		} else {
+			log.Infof("PurgeInprogress waiting for Activated\n")
 		}
 	}
 	log.Infof("doActivate done for %s\n", uuidStr)
@@ -614,9 +628,9 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 }
 
 func doRemove(ctx *zedmanagerContext, uuidStr string,
-	status *types.AppInstanceStatus) (bool, bool) {
+	status *types.AppInstanceStatus, uninstall bool) (bool, bool) {
 
-	log.Infof("doRemove for %s\n", uuidStr)
+	log.Infof("doRemove for %s uninstall %v\n", uuidStr, uninstall)
 
 	changed := false
 	del := false
@@ -625,9 +639,15 @@ func doRemove(ctx *zedmanagerContext, uuidStr string,
 		changed = changed || c
 	}
 	if !status.Activated {
-		c, d := doUninstall(ctx, uuidStr, status)
+		c := doUnprepare(ctx, uuidStr, status)
 		changed = changed || c
-		del = del || d
+		if uninstall {
+			c, d := doUninstall(ctx, uuidStr, status)
+			changed = changed || c
+			del = del || d
+		} else {
+			del = true
+		}
 	}
 	log.Infof("doRemove done for %s\n", uuidStr)
 	return changed, del
@@ -684,12 +704,11 @@ func doInactivate(ctx *zedmanagerContext, uuidStr string,
 	return changed
 }
 
-func doUninstall(ctx *zedmanagerContext, uuidStr string,
-	status *types.AppInstanceStatus) (bool, bool) {
+func doUnprepare(ctx *zedmanagerContext, uuidStr string,
+	status *types.AppInstanceStatus) bool {
 
-	log.Infof("doUninstall for %s\n", uuidStr)
+	log.Infof("doUnprepare for %s\n", uuidStr)
 	changed := false
-	del := false
 
 	// Remove the EIDConfig for each overlay
 	for _, es := range status.EIDList {
@@ -711,9 +730,21 @@ func doUninstall(ctx *zedmanagerContext, uuidStr string,
 	}
 	if !eidsFreed {
 		log.Infof("Waiting for all EID frees for %s\n", uuidStr)
-		return changed, del
+		return changed
 	}
 	log.Debugf("Done with EID frees for %s\n", uuidStr)
+
+	log.Infof("doUnprepare done for %s\n", uuidStr)
+	return changed
+}
+
+func doUninstall(ctx *zedmanagerContext, uuidStr string,
+	status *types.AppInstanceStatus) (bool, bool) {
+
+	log.Infof("doUninstall for %s\n", uuidStr)
+	changed := false
+	del := false
+
 	removedAll := true
 	for i, _ := range status.StorageStatusList {
 		ss := &status.StorageStatusList[i]
