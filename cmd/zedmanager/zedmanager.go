@@ -524,7 +524,7 @@ func handleModify(ctx *zedmanagerContext, key string,
 		}
 	}
 	if needPurge || config.PurgeCmd.Counter != status.PurgeCmd.Counter {
-		log.Infof("handleModify(%v) for %s restartcmd from %d to %d need %v\n",
+		log.Infof("handleModify(%v) for %s purgecmd from %d to %d need %v\n",
 			config.UUIDandVersion, config.DisplayName,
 			status.PurgeCmd.Counter, config.PurgeCmd.Counter,
 			needPurge)

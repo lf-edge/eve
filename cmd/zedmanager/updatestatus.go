@@ -77,13 +77,14 @@ func removeAIStatusUUID(ctx *zedmanagerContext, uuidStr string) {
 
 func removeAIStatus(ctx *zedmanagerContext, status *types.AppInstanceStatus) {
 	uuidStr := status.Key()
-	changed, del := doRemove(ctx, uuidStr, status, true)
+	uninstall := (status.PurgeInprogress != types.BRING_DOWN)
+	changed, done := doRemove(ctx, uuidStr, status, uninstall)
 	if changed {
 		log.Infof("removeAIStatus status change for %s\n",
 			uuidStr)
 		publishAppInstanceStatus(ctx, status)
 	}
-	if del {
+	if uninstall && done {
 		log.Infof("removeAIStatus remove done for %s\n",
 			uuidStr)
 		// Write out what we modified to AppInstanceStatus aka delete
@@ -132,15 +133,19 @@ func doUpdate(ctx *zedmanagerContext, uuidStr string,
 	// Are we doing a purge?
 	// XXX when/how do we drop refcounts on old images? GC?
 	if status.PurgeInprogress == types.DOWNLOAD {
-		log.Infof("PurgeInprogress download/verifications done\n")
+		log.Infof("PurgeInprogress(%s) download/verifications done\n",
+			status.Key())
 		status.PurgeInprogress = types.BRING_DOWN
 		changed = true
 		// Keep the verified images in place
 		_, done := doRemove(ctx, uuidStr, status, false)
 		if !done {
-			log.Infof("Waiting for purge removal\n")
+			log.Infof("PurgeInprogress(%s) waiting for removal\n",
+				status.Key())
 			return changed
 		}
+		log.Infof("PurgeInprogress(%s) bringing it up\n",
+			status.Key())
 		status.PurgeInprogress = types.BRING_UP
 	}
 	c, done := doPrepare(ctx, uuidStr, config, status)
@@ -486,7 +491,8 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	case types.BRING_DOWN:
 		ds := lookupDomainStatus(ctx, config.Key())
 		if ds != nil && !ds.Activated {
-			log.Infof("RestartInprogress came down - set bring up\n")
+			log.Infof("RestartInprogress(%s) came down - set bring up\n",
+				status.Key())
 			status.RestartInprogress = types.BRING_UP
 			changed = true
 		}
@@ -589,38 +595,46 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	case types.BRING_DOWN:
 		dc := lookupDomainConfig(ctx, config.Key())
 		if dc == nil {
-			log.Errorf("No DomainConfig for RestartInprogress\n")
+			log.Errorf("RestartInprogress(%s) No DomainConfig\n",
+				status.Key())
 		} else if dc.Activate {
-			log.Infof("Clear Activate for RestartInprogress\n")
+			log.Infof("RestartInprogress(%s) Clear Activate\n",
+				status.Key())
 			dc.Activate = false
 			publishDomainConfig(ctx, dc)
 		} else if !ds.Activated {
-			log.Infof("Set Activate for RestartInprogress\n")
+			log.Infof("RestartInprogress(%s) Set Activate\n",
+				status.Key())
 			status.RestartInprogress = types.BRING_UP
 			changed = true
 			dc.Activate = true
 			publishDomainConfig(ctx, dc)
 		} else {
-			log.Infof("RestartInprogress waiting for domain to come down\n")
+			log.Infof("RestartInprogress(%s) waiting for domain down\n",
+				status.Key())
 		}
 	case types.BRING_UP:
 		if ds.Activated {
-			log.Infof("RestartInprogress came back up\n")
+			log.Infof("RestartInprogress(%s) activated\n",
+				status.Key())
 			status.RestartInprogress = types.NONE
 			status.State = types.RUNNING
 			changed = true
 		} else {
-			log.Infof("RestartInprogress waiting for Activated\n")
+			log.Infof("RestartInprogress(%s) waiting for Activated\n",
+				status.Key())
 		}
 	}
 	if status.PurgeInprogress == types.BRING_UP {
 		if ds.Activated {
-			log.Infof("PurgeInprogress came back up\n")
+			log.Infof("PurgeInprogress(%s) activated\n",
+				status.Key())
 			status.PurgeInprogress = types.NONE
 			status.State = types.RUNNING
 			changed = true
 		} else {
-			log.Infof("PurgeInprogress waiting for Activated\n")
+			log.Infof("PurgeInprogress(%s) waiting for Activated\n",
+				status.Key())
 		}
 	}
 	log.Infof("doActivate done for %s\n", uuidStr)
@@ -633,7 +647,7 @@ func doRemove(ctx *zedmanagerContext, uuidStr string,
 	log.Infof("doRemove for %s uninstall %v\n", uuidStr, uninstall)
 
 	changed := false
-	del := false
+	done := false
 	if status.Activated || status.ActivateInprogress {
 		c := doInactivate(ctx, uuidStr, status)
 		changed = changed || c
@@ -644,13 +658,13 @@ func doRemove(ctx *zedmanagerContext, uuidStr string,
 		if uninstall {
 			c, d := doUninstall(ctx, uuidStr, status)
 			changed = changed || c
-			del = del || d
+			done = done || d
 		} else {
-			del = true
+			done = true
 		}
 	}
 	log.Infof("doRemove done for %s\n", uuidStr)
-	return changed, del
+	return changed, done
 }
 
 func doInactivate(ctx *zedmanagerContext, uuidStr string,
