@@ -827,9 +827,11 @@ func doCurl(url string, ifname string, maxsize uint64, destFilename string) erro
 	return err
 }
 
-func doS3(ctx *downloaderContext, syncOp zedUpload.SyncOpType,
-	apiKey string, password string, dpath string, region string, maxsize uint64,
+func doS3(ctx *downloaderContext, status *types.DownloaderStatus,
+	syncOp zedUpload.SyncOpType, apiKey string, password string,
+	dpath string, region string, maxsize uint64,
 	ipSrc net.IP, filename string, locFilename string) error {
+
 	auth := &zedUpload.AuthInput{
 		AuthType: "s3",
 		Uname:    apiKey,
@@ -866,7 +868,8 @@ func doS3(ctx *downloaderContext, syncOp zedUpload.SyncOpType,
 					resp.GetLocalName(),
 					resp.GetAsize(), 0)
 				// XXX resp.GetOsize())
-				// XXX publish updated percentage
+				status.Progress = uint(resp.GetAsize()) // XXX
+				publishDownloaderStatus(ctx, status)
 				continue
 			}
 			if !ok {
@@ -882,15 +885,19 @@ func doS3(ctx *downloaderContext, syncOp zedUpload.SyncOpType,
 				log.Infof("Done for %v: size %v",
 					resp.GetLocalName(),
 					resp.GetAsize())
+				status.Progress = 100
+				publishDownloaderStatus(ctx, status)
 				return nil
 			}
 		}
 	}
 }
 
-func doSftp(ctx *downloaderContext, syncOp zedUpload.SyncOpType,
-	apiKey string, password string, serverUrl string, dpath string, maxsize uint64,
+func doSftp(ctx *downloaderContext, status *types.DownloaderStatus,
+	syncOp zedUpload.SyncOpType, apiKey string, password string,
+	serverUrl string, dpath string, maxsize uint64,
 	ipSrc net.IP, filename string, locFilename string) error {
+
 	auth := &zedUpload.AuthInput{
 		AuthType: "sftp",
 		Uname:    apiKey,
@@ -919,12 +926,36 @@ func doSftp(ctx *downloaderContext, syncOp zedUpload.SyncOpType,
 	}
 
 	req.Post()
-	resp := <-respChan
-	_, err = resp.GetUpStatus()
-	if resp.IsError() == false {
-		return nil
-	} else {
-		return err
+	for {
+		select {
+		case resp, ok := <-respChan:
+			if resp.IsDnUpdate() {
+				log.Infof("Update progress for %v: %v/%v",
+					resp.GetLocalName(),
+					resp.GetAsize(), 0)
+				// XXX resp.GetOsize())
+				status.Progress = uint(resp.GetAsize()) // XXX
+				publishDownloaderStatus(ctx, status)
+				continue
+			}
+			if !ok {
+				errStr := fmt.Sprintf("respChan EOF for <%s>, <%s>",
+					dpath, filename)
+				log.Errorln(errStr)
+				return errors.New(errStr)
+			}
+			_, err = resp.GetUpStatus()
+			if resp.IsError() {
+				return err
+			} else {
+				log.Infof("Done for %v: size %v",
+					resp.GetLocalName(),
+					resp.GetAsize())
+				status.Progress = 100
+				publishDownloaderStatus(ctx, status)
+				return nil
+			}
+		}
 	}
 }
 
@@ -1007,7 +1038,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 			ipSrc, ifname, config.TransportMethod)
 		switch config.TransportMethod {
 		case zconfig.DsType_DsS3.String():
-			err = doS3(ctx, syncOp, config.ApiKey,
+			err = doS3(ctx, status, syncOp, config.ApiKey,
 				config.Password, config.Dpath, config.Region,
 				config.Size, ipSrc, filename, locFilename)
 			if err != nil {
@@ -1030,7 +1061,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 			}
 		case zconfig.DsType_DsSFTP.String():
 			serverUrl := strings.Split(config.DownloadURL, "/")[0]
-			err = doSftp(ctx, syncOp, config.ApiKey,
+			err = doSftp(ctx, status, syncOp, config.ApiKey,
 				config.Password, serverUrl, config.Dpath,
 				config.Size, ipSrc, filename, locFilename)
 			if err != nil {

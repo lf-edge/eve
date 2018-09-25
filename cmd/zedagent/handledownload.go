@@ -91,7 +91,8 @@ func updateDownloaderStatus(ctx *zedagentContext,
 	log.Infof("updateDownloaderStatus(%s/%s) to %v\n",
 		objType, key, status.State)
 
-	// Ignore if any Pending* flag is set
+	// XXX Ignore if any Pending* flag is set
+	// XXX get Progress if pending? Need code in baseos to check
 	if status.Pending() {
 		log.Infof("updateDownloaderStatus for %s, Skipping due to Pending*\n", key)
 		return

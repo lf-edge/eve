@@ -299,6 +299,8 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 			log.Infof("lookupDownloaderStatus %s failed\n",
 				safename)
 			minState = types.DOWNLOAD_STARTED
+			ss.State = types.DOWNLOAD_STARTED
+			changed = true
 			continue
 		}
 		if minState > ds.State {
@@ -307,6 +309,15 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		if ds.State != ss.State {
 			ss.State = ds.State
 			changed = true
+		}
+		if ds.Progress != ss.Progress {
+			ss.Progress = ds.Progress
+			changed = true
+		}
+		if ds.Pending() {
+			log.Infof("lookupDownloaderStatus %s Pending\n",
+				safename)
+			continue
 		}
 		if ds.LastErr != "" {
 			log.Errorf("Received error from downloader for %s: %s\n",
