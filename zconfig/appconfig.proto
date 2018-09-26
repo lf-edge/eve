@@ -44,4 +44,6 @@ message AppInstanceConfig {
 	//    if disks section have changed will be purged automatically.
 	//    phase 1: we would purge all disks irrespective preserve flag
         InstanceOpsCmd purge = 10;
+	string userData = 11;
+	string metaData = 12;
 }

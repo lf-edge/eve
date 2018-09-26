@@ -23,7 +23,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='appconfig.proto',
   package='',
   syntax='proto3',
-  serialized_pb=_b('\n\x0f\x61ppconfig.proto\x1a\x0f\x64\x65vcommon.proto\x1a\rstorage.proto\x1a\x08vm.proto\x1a\x0fnetconfig.proto\"2\n\x0eInstanceOpsCmd\x12\x0f\n\x07\x63ounter\x18\x02 \x01(\r\x12\x0f\n\x07opsTime\x18\x04 \x01(\t\"\xa1\x02\n\x11\x41ppInstanceConfig\x12\'\n\x0euuidandversion\x18\x01 \x01(\x0b\x32\x0f.UUIDandVersion\x12\x13\n\x0b\x64isplayname\x18\x02 \x01(\t\x12!\n\x0e\x66ixedresources\x18\x03 \x01(\x0b\x32\t.VmConfig\x12\x16\n\x06\x64rives\x18\x04 \x03(\x0b\x32\x06.Drive\x12\x10\n\x08\x61\x63tivate\x18\x05 \x01(\x08\x12#\n\ninterfaces\x18\x06 \x03(\x0b\x32\x0f.NetworkAdapter\x12\x1a\n\x08\x61\x64\x61pters\x18\x07 \x03(\x0b\x32\x08.Adapter\x12 \n\x07restart\x18\t \x01(\x0b\x32\x0f.InstanceOpsCmd\x12\x1e\n\x05purge\x18\n \x01(\x0b\x32\x0f.InstanceOpsCmdB@\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1dgithub.com/zededa/api/zconfigb\x06proto3')
+  serialized_pb=_b('\n\x0f\x61ppconfig.proto\x1a\x0f\x64\x65vcommon.proto\x1a\rstorage.proto\x1a\x08vm.proto\x1a\x0fnetconfig.proto\"2\n\x0eInstanceOpsCmd\x12\x0f\n\x07\x63ounter\x18\x02 \x01(\r\x12\x0f\n\x07opsTime\x18\x04 \x01(\t\"\xc5\x02\n\x11\x41ppInstanceConfig\x12\'\n\x0euuidandversion\x18\x01 \x01(\x0b\x32\x0f.UUIDandVersion\x12\x13\n\x0b\x64isplayname\x18\x02 \x01(\t\x12!\n\x0e\x66ixedresources\x18\x03 \x01(\x0b\x32\t.VmConfig\x12\x16\n\x06\x64rives\x18\x04 \x03(\x0b\x32\x06.Drive\x12\x10\n\x08\x61\x63tivate\x18\x05 \x01(\x08\x12#\n\ninterfaces\x18\x06 \x03(\x0b\x32\x0f.NetworkAdapter\x12\x1a\n\x08\x61\x64\x61pters\x18\x07 \x03(\x0b\x32\x08.Adapter\x12 \n\x07restart\x18\t \x01(\x0b\x32\x0f.InstanceOpsCmd\x12\x1e\n\x05purge\x18\n \x01(\x0b\x32\x0f.InstanceOpsCmd\x12\x10\n\x08userData\x18\x0b \x01(\t\x12\x10\n\x08metaData\x18\x0c \x01(\tB@\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1dgithub.com/zededa/api/zconfigb\x06proto3')
   ,
   dependencies=[devcommon__pb2.DESCRIPTOR,storage__pb2.DESCRIPTOR,vm__pb2.DESCRIPTOR,netconfig__pb2.DESCRIPTOR,])
 
@@ -138,6 +138,20 @@ _APPINSTANCECONFIG = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='userData', full_name='AppInstanceConfig.userData', index=9,
+      number=11, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='metaData', full_name='AppInstanceConfig.metaData', index=10,
+      number=12, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -151,7 +165,7 @@ _APPINSTANCECONFIG = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=131,
-  serialized_end=420,
+  serialized_end=456,
 )
 
 _APPINSTANCECONFIG.fields_by_name['uuidandversion'].message_type = devcommon__pb2._UUIDANDVERSION

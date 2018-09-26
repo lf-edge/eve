@@ -91,4 +91,5 @@ message Drive {
 	DriveType drvtype = 8;
 	Target target = 9;
 	int64 maxsizebytes = 10;
+	int64 resizebytes = 11;
 }
