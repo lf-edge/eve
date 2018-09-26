@@ -15,6 +15,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"net"
 	"strconv"
+	"time"
 )
 
 // Parse the json RLOC message and extract ip addresses along
@@ -129,6 +130,9 @@ func parseRloc(rlocStr *Rloc) (dptypes.Rloc, bool) {
 		LastPktTime: new(int64),
 	}
 
+	defaultTime := time.Now()
+	unixSeconds := defaultTime.Unix()
+	*rlocEntry.LastPktTime = unixSeconds
 	v4Addr := rloc.To4()
 	if v4Addr == nil {
 		var destAddr [16]byte
