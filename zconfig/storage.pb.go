@@ -313,7 +313,9 @@ type Drive struct {
 	Drvtype      DriveType `protobuf:"varint,8,opt,name=drvtype,enum=DriveType" json:"drvtype,omitempty"`
 	Target       Target    `protobuf:"varint,9,opt,name=target,enum=Target" json:"target,omitempty"`
 	Maxsizebytes int64     `protobuf:"varint,10,opt,name=maxsizebytes" json:"maxsizebytes,omitempty"`
-	Resizebytes  int64     `protobuf:"varint,11,opt,name=resizebytes" json:"resizebytes,omitempty"`
+	// Initial image need to be resized to this size.
+	// A value of 0 will indicate that no resizing is required
+	Resizebytes int64 `protobuf:"varint,11,opt,name=resizebytes" json:"resizebytes,omitempty"`
 }
 
 func (m *Drive) Reset()                    { *m = Drive{} }

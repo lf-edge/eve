@@ -56,9 +56,15 @@ type AppInstanceConfig struct {
 	//
 	//    if disks section have changed will be purged automatically.
 	//    phase 1: we would purge all disks irrespective preserve flag
-	Purge    *InstanceOpsCmd `protobuf:"bytes,10,opt,name=purge" json:"purge,omitempty"`
-	UserData string          `protobuf:"bytes,11,opt,name=userData" json:"userData,omitempty"`
-	MetaData string          `protobuf:"bytes,12,opt,name=metaData" json:"metaData,omitempty"`
+	Purge *InstanceOpsCmd `protobuf:"bytes,10,opt,name=purge" json:"purge,omitempty"`
+	// App Instance initialization configuration data provided by user
+	// This will be used as "user-data" in cloud-init
+	// Empty string will indicate that cloud-init is not required
+	UserData string `protobuf:"bytes,11,opt,name=userData" json:"userData,omitempty"`
+	// App Instance identification data generateded by zedCloud
+	// This will be used as "meta-data" in cloud-init
+	// Empty string will indicate that cloud-init is not required
+	MetaData string `protobuf:"bytes,12,opt,name=metaData" json:"metaData,omitempty"`
 }
 
 func (m *AppInstanceConfig) Reset()                    { *m = AppInstanceConfig{} }
