@@ -46,6 +46,30 @@ message DeviceOpsCmd {
 	string opsTime = 4;
 }
 
+enum proxyProto {
+        PROXY_HTTP    = 0;
+        PROXY_HTTPS   = 1; 
+        PROXY_SOCKS   = 2;
+        PROXY_FTP     = 3;
+        PROXY_OTHER   = 255;
+}
+
+message ProxyServer {
+       proxyProto proto  = 1;
+       string     server = 2;
+       uint32     port   = 3;
+}
+
+message ProxyConfig {
+	// dedicated per protocol information
+       repeated ProxyServer proxies = 1;
+       string exceptions = 2;
+
+       // or pacfile can be in place of others
+       string pacfile = 3;
+}
+
+
 enum sWAdapterType {
 	IGNORE = 0;
 	VLAN = 1;
@@ -80,6 +104,9 @@ message SystemAdapter {
 
 	// if its static network we need ip address
 	string addr = 5;
+
+        // enterprise proxy
+        ProxyConfig entProxy = 6;
 }
 
 message EdgeDevConfig {
