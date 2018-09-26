@@ -70,8 +70,8 @@ func ManageItrThreads(interfaces Interfaces) {
 		itrConfig.ItrCryptoPortValid = false
 		if _, ok := tmpMap[name]; !ok {
 			// This thread has to die, break the bad news to it
-			log.Println("ManageItrThreads: Sending kill signal to", name)
-			//entry.killChannel <- true
+			log.Infof("ManageItrThreads: " +
+				"Sending kill signal to thread capturing pkts on: %s", name)
 			entry.umblical <- itrConfig
 
 			/*
@@ -99,20 +99,16 @@ func ManageItrThreads(interfaces Interfaces) {
 	for name, _ := range tmpMap {
 		if _, ok := threadTable[name]; !ok {
 			// This ITR thread has to be given birth to. Find a mom!!
-			//killChannel := make(chan bool, 1)
 			umblical := make(chan dptypes.ITRConfiguration, 1)
 
 			// Start the go thread here
 			//ring := itr.SetupPacketCapture(name, 65536)
 			handle := itr.SetupPacketCapture(name, 65536)
-			log.Println("ManageItrThreads: Creating new ITR thread for", name)
+			log.Infof("ManageItrThreads: Creating new ITR thread for capturing pkts on: %s", name)
 			threadTable[name] = ThreadEntry{
-				//killChannel: killChannel,
 				umblical: umblical,
 				handle:   handle,
 			}
-			//go itr.StartItrThread(name, ring, killChannel, puntChannel)
-			//go itr.StartItrThread(name, handle, killChannel, puntChannel)
 			go itr.StartItrThread(name, handle, umblical, puntChannel)
 
 			// ITR crypto port message could have come before the ITR thread creation.

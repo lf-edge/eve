@@ -60,7 +60,7 @@ func main() {
 	flag.StringVar(&lispConfigDir, "lisp", "/opt/zededa/lisp", "lispers.net path")
 	flag.Parse()
 
-	log.Printf("Dataplane: Using %s for LISP directory.\n", lispConfigDir)
+	log.Infof("Dataplane: Using %s for LISP directory.\n", lispConfigDir)
 	configHolePath = lispConfigDir + "/lisp-ipc-data-plane"
 	lispersDotNetItr = lispConfigDir + "/lispers.net-itr"
 
@@ -72,7 +72,7 @@ func main() {
 		log.SetLevel(log.InfoLevel)
 	}
 	if *versionPtr {
-		log.Printf("%s: %s\n", os.Args[0], Version)
+		log.Infof("%s: %s\n", os.Args[0], Version)
 		return
 	}
 
@@ -87,7 +87,7 @@ func main() {
 	// Experimental set to true.
 	dataplaneContext := initPubsubChannels()
 
-	log.Printf("Waiting for configuration from zedrouter\n")
+	log.Infof("Waiting for configuration from zedrouter")
 	for {
 		select {
 		case change := <-dataplaneContext.SubLispConfig.C:
@@ -99,7 +99,7 @@ func main() {
 		}
 	}
 
-	log.Printf("Starting %s\n", agentName)
+	log.Infof("Starting %s service", agentName)
 
 	// Initialize databases
 	fib.InitIfaceMaps()
@@ -117,19 +117,16 @@ func main() {
 	// and other configuration
 	if _, err := os.Stat(configHolePath); err == nil {
 		if err = os.Remove(configHolePath); err != nil {
-			log.Printf("Failed deleting the old lisp-ipc-data-plane socket: %s\n",
-				err)
+			log.Errorf("main: Failed deleting the old lisp-ipc-data-plane socket: %s", err)
 			return
 		}
-		log.Println("Removed old lisp-ipc-data-plane socket")
+		log.Infof("main: Removed old lisp-ipc-data-plane socket")
 	}
 
 	configPipe, err := net.ListenUnixgram("unixgram",
 		&net.UnixAddr{configHolePath, "unixgram"})
 	if err != nil {
-		log.Printf("Opening config hole: %s failed with err: %s\n",
-			configHolePath, err)
-		log.Printf("Opening config hole: %s failed with err: %s\n",
+		log.Errorf("main: Opening config hole: %s failed with err: %s",
 			configHolePath, err)
 		return
 	}
@@ -159,26 +156,26 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	ctx := ctxArg.(*dptypes.DataplaneContext)
 	if key != "global" {
-		log.Printf("handleGlobalConfigModify: ignoring %s\n", key)
+		log.Infof("handleGlobalConfigModify: ignoring %s", key)
 		return
 	}
-	log.Printf("handleGlobalConfigModify for %s\n", key)
+	log.Infof("handleGlobalConfigModify for %s", key)
 	debug = agentlog.HandleGlobalConfig(ctx.SubGlobalConfig, agentName,
 		debugOverride)
-	log.Printf("handleGlobalConfigModify done for %s\n", key)
+	log.Infof("handleGlobalConfigModify done for %s", key)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	ctx := ctxArg.(*dptypes.DataplaneContext)
 	if key != "global" {
-		log.Printf("handleGlobalConfigDelete: ignoring %s\n", key)
+		log.Infof("handleGlobalConfigDelete: ignoring %s", key)
 		return
 	}
-	log.Printf("handleGlobalConfigDelete for %s\n", key)
+	log.Infof("handleGlobalConfigDelete for %s", key)
 	debug = agentlog.HandleGlobalConfig(ctx.SubGlobalConfig, agentName,
 		debugOverride)
-	log.Printf("handleGlobalConfigDelete done for %s\n", key)
+	log.Infof("handleGlobalConfigDelete done for %s", key)
 }
 
 func handleExpModify(ctxArg interface{}, key string, statusArg interface{}) {
@@ -186,12 +183,12 @@ func handleExpModify(ctxArg interface{}, key string, statusArg interface{}) {
 
 	status := cast.CastLispDataplaneConfig(statusArg)
 	if key != "global" {
-		log.Printf("handleExpModify: ignoring %s\n", key)
+		log.Infof("handleExpModify: ignoring %s", key)
 		return
 	}
 	ctx.Experimental = status.Experimental
-	log.Printf("handleExpModify: Experimental status %v\n", ctx.Experimental)
-	log.Printf("handleExpModify: done\n")
+	log.Infof("handleExpModify: Experimental status %v", ctx.Experimental)
+	log.Infof("handleExpModify: done")
 }
 
 func handleExpDelete(ctxArg interface{}, key string, statusArg interface{}) {
@@ -245,7 +242,7 @@ func initPubsubChannels() *dptypes.DataplaneContext {
 
 func connectToLispersDotNet() net.Conn {
 	for {
-		log.Println("Trying for connection to lispers.net-itr")
+		log.Infof("connectToLispersDotNet: Trying for connection to lispers.net-itr")
 		if _, err := os.Stat(lispersDotNetItr); err != nil {
 			// lispers.net control plane has not created the server socket yet
 			// sleeping for 5 second before re-trying again
@@ -256,13 +253,13 @@ func connectToLispersDotNet() net.Conn {
 		lconn, err := net.DialUnix("unixgram", nil,
 			&net.UnixAddr{lispersDotNetItr, "unixgram"})
 		if err != nil {
-			log.Printf("Client connection to %s cannot be opened: %s\n",
+			log.Errorf("connectToLispersDotNet: Client connection to %s cannot be opened: %s",
 				lispersDotNetItr, err)
-			//return
 			time.Sleep(5000 * time.Millisecond)
 			continue
 		}
-		log.Printf("Connection established to %s\n", lispersDotNetItr)
+		log.Infof("connectToLispersDotNet: Connection established to %s",
+			lispersDotNetItr)
 		return lconn
 	}
 	return nil
@@ -284,14 +281,12 @@ func startPuntProcessor() {
 	// Create a channel of 100 punts to provide sufficient buffering.
 	puntChannel = make(chan []byte, 100)
 	if puntChannel == nil {
-		log.Fatal("Control thread's punt channel could not be allocated.\n")
-		return
+		log.Fatal("startPuntProcessor: Control thread's punt channel could not be allocated")
 	}
 
 	conn = connectToLispersDotNet()
 	if conn == nil {
-		log.Fatal("Connection to %s not possible.\n", lispersDotNetItr)
-		return
+		log.Fatal("startPuntProcessor: Connection to %s not possible", lispersDotNetItr)
 	}
 
 	// We could have restarted. We need to ask lispers.net for the databases again.
@@ -318,12 +313,12 @@ func startPuntProcessor() {
 			if err != nil {
 				// something bad happened while writing to lispers.net
 				// It could be temporary. We will keep going.
-				log.Printf("Error writing to punt channel %s: %s\n",
+				log.Errorf("Error writing to punt channel %s: %s",
 					lispersDotNetItr, err)
-				log.Printf("Retrying connection to lispers.net-itr\n")
+				log.Errorf("Retrying connection to lispers.net-itr")
 				conn = connectToLispersDotNet()
 				if conn == nil {
-					log.Printf("Connection to %s not possible.\n", lispersDotNetItr)
+					log.Errorf("Connection to %s not possible", lispersDotNetItr)
 					return
 				}
 				// This could be an indication that lispers.net has restarted.
@@ -365,7 +360,7 @@ func registerSignalHandler() {
 	go func() {
 		for {
 			sig := <-sigs
-			log.Println("Received signal:", sig)
+			log.Infof("Received signal: %v", sig)
 			switch sig {
 			case syscall.SIGUSR1:
 				fib.ShowMapCacheEntries()
@@ -385,23 +380,23 @@ func handleDNSModify(ctxArg interface{}, key string,
 	status := cast.CastDeviceNetworkStatus(statusArg)
 
 	if key != "global" {
-		log.Printf("ETR: handleDNSModify: ignoring %s\n", key)
+		log.Infof("ETR: handleDNSModify: ignoring %s", key)
 		return
 	}
-	log.Printf("ETR: handleDNSModify for %s\n", key)
+	log.Infof("ETR: handleDNSModify for %s", key)
 	deviceNetworkStatus = status
-	log.Printf("ETR: handleDNSModify done for %s\n", key)
+	log.Infof("ETR: handleDNSModify done for %s", key)
 }
 
 func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
-	log.Printf("ETR: handleDNSDelete for %s\n", key)
+	log.Infof("ETR: handleDNSDelete for %s", key)
 
 	if key != "global" {
-		log.Printf("ETR: handleDNSDelete: ignoring %s\n", key)
+		log.Infof("ETR: handleDNSDelete: ignoring %s", key)
 		return
 	}
 	deviceNetworkStatus = types.DeviceNetworkStatus{}
-	log.Printf("ETR: handleDNSDelete done for %s\n", key)
+	log.Infof("ETR: handleDNSDelete done for %s", key)
 }
 
 func handleConfig(c *net.UnixConn, dpContext *dptypes.DataplaneContext) {
@@ -423,16 +418,14 @@ func handleConfig(c *net.UnixConn, dpContext *dptypes.DataplaneContext) {
 		select {
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
-			if debug {
-				log.Println("Detected a change in DeviceNetworkStatus")
-			}
+			log.Debugf("handleConfig: Detected a change in DeviceNetworkStatus")
 			ManageEtrDNS(deviceNetworkStatus)
 		case change := <-dpContext.SubGlobalConfig.C:
 			dpContext.SubGlobalConfig.ProcessChange(change)
 		default:
 			n, err := c.Read(buf[:])
 			if err != nil {
-				log.Printf("Error reading from client: %s\n", err)
+				log.Errorf("handleConfig: Error reading from client: %s\n", err)
 				c.Close()
 				return
 			} else {
@@ -448,51 +441,34 @@ func handleLispMsg(msg []byte) {
 	var msgType Type
 	err := json.Unmarshal(msg, &msgType)
 	if err != nil {
-		log.Println("Error processing JSON message")
-		log.Println("Error:", err)
+		log.Errorf("handleLispMsg: Error processing JSON message: %s", err)
 		return
 	}
 
 	switch msgType.Type {
 	case MAPCACHETYPE:
-		if debug {
-			log.Println("Processing map-cache entry message")
-		}
+		log.Debugf("handleLispMsg: Processing map-cache entry message")
 		handleMapCache(msg)
 	case ENTIREMAPCACHE:
-		if debug {
-			log.Println("Processing Mapcache dump")
-		}
+		log.Debugf("handleLispMsg: Processing Mapcache dump")
 		handleMapCacheTable(msg)
 	case DATABASEMAPPINGSTYPE:
-		if debug {
-			log.Println("Processing database-mappings entry message")
-		}
+		log.Debugf("handleLispMsg: Processing database-mappings entry message")
 		handleDatabaseMappings(msg)
 	case INTERFACESTYPE:
-		if debug {
-			log.Println("Processing interfaces entry message")
-		}
+		log.Debugf("handleLispMsg: Processing interfaces entry message")
 		handleInterfaces(msg)
 	case DECAPKEYSTYPE:
-		if debug {
-			log.Println("Processing Decap Keys message")
-		}
+		log.Debugf("handleLispMsg: Processing Decap Keys message")
 		handleDecapKeys(msg)
 	case ETRNATPORT:
-		if debug {
-			log.Println("Processing ETR nat port message")
-		}
+		log.Debugf("handleLispMsg: Processing ETR nat port message")
 		handleEtrNatPort(msg)
 	case ITRCRYPTOPORT:
-		if debug {
-			log.Println("Processing ITR crypto port message")
-		}
+		log.Debugf("handleLispMsg: Processing ITR crypto port message")
 		handleItrCryptoPort(msg)
 	default:
-		if debug {
-			log.Println(string(msg))
-			log.Println("Unknown message type received")
-		}
+			log.Debugf("handleLispMsg: Unknown message (%s) type (%v) received",
+				string(msg), msgType.Type)
 	}
 }

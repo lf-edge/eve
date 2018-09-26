@@ -23,7 +23,7 @@ func parseRloc(rlocStr *Rloc) (dptypes.Rloc, bool) {
 	rloc := net.ParseIP(rlocStr.Rloc)
 	if rloc == nil {
 		// XXX Should we log.Fatal here?
-		log.Println("RLOC:", rlocStr.Rloc, "is invalid")
+		log.Errorf("parseRloc: RLOC: %s is invalid", rlocStr.Rloc)
 		return dptypes.Rloc{}, false
 	}
 	x, err := strconv.ParseUint(rlocStr.Port, 10, 32)
@@ -80,7 +80,7 @@ func parseRloc(rlocStr *Rloc) (dptypes.Rloc, bool) {
 		//encKey := []byte(key.EncKey)
 		encKey, err := hex.DecodeString(key.EncKey)
 		if err != nil {
-			log.Printf("parseRloc: Decoding encrypt key to binary from string failed: %s\n", err)
+			log.Errorf("parseRloc: Decoding encrypt key to binary from string failed: %s", err)
 			continue
 		}
 		// XXX lispers.net is sending 8 zeroes in the front
@@ -91,13 +91,13 @@ func parseRloc(rlocStr *Rloc) (dptypes.Rloc, bool) {
 		*/
 		icvKey, err := hex.DecodeString(key.IcvKey)
 		if err != nil {
-			log.Printf("parseRloc: Decoding ICV key to binary from string failed: %s\n", err)
+			log.Errorf("parseRloc: Decoding ICV key to binary from string failed: %s", err)
 			continue
 		}
 		encBlock, err := aes.NewCipher(encKey)
 		if err != nil {
-			log.Printf(
-				"parseRloc: Creating of Cipher block for ecnryption key %s failed\n",
+			log.Errorf(
+				"parseRloc: Creating of Cipher block for ecnryption key %s failed",
 				key.EncKey)
 			// XXX Should we log.Fatal here?
 			continue
@@ -109,10 +109,8 @@ func parseRloc(rlocStr *Rloc) (dptypes.Rloc, bool) {
 			IcvKey:   icvKey,
 			EncBlock: encBlock,
 		}
-		if debug {
-			log.Printf("Adding enc key 0x%x\n", keys[keyId-1].EncKey)
-			log.Printf("Adding icv key 0x%x\n", keys[keyId-1].IcvKey)
-		}
+		log.Debugf("Adding enc key 0x%x\n", keys[keyId-1].EncKey)
+		log.Debugf("Adding icv key 0x%x\n", keys[keyId-1].IcvKey)
 	}
 
 	// XXX We are not decoding the keys for now.
@@ -181,7 +179,7 @@ func createMapCache(mapCache *MapCacheEntry) {
 		// prefix length.
 		// If we do not find a more specific route (prefix length 128(v6) or 32(v4)), we forward
 		// our packets to the default route.
-		log.Println("createMapCache: Ignoring EID with mask length:", maskLen)
+		log.Infof("createMapCache: Ignoring EID with mask length: %v", maskLen)
 		return
 	}
 
@@ -218,7 +216,6 @@ func handleMapCacheTable(msg []byte) {
 	if err != nil {
 		log.Fatal("handleMapCacheTable: Error: Unknown json message format: %s: %s",
 			string(msg), err)
-		return
 	}
 
 	numEntries := len(mapCacheTable.MapCaches)
@@ -238,14 +235,11 @@ func handleMapCacheTable(msg []byte) {
 func handleMapCache(msg []byte) {
 	var mapCache MapCacheEntry
 
-	if debug {
-		log.Printf("Handling the following map-cache message:\n%s\n", string(msg))
-	}
+	log.Debugf("handleMapCache: Handling the following map-cache message:\n%s", string(msg))
 	err := json.Unmarshal(msg, &mapCache)
 	if err != nil {
 		log.Fatal("handleMapCache: Error: Unknown json message format: %s: %s",
 			string(msg), err)
-		return
 	}
 
 	createMapCache(&mapCache)
@@ -276,14 +270,12 @@ func parseDatabaseMappings(databaseMappings DatabaseMappings) map[uint32][]net.I
 func handleDatabaseMappings(msg []byte) {
 	var databaseMappings DatabaseMappings
 
-	if debug {
-		log.Printf("Handling the following Database map message:\n%s\n", string(msg))
-	}
+	log.Debugf("handleDatabaseMappings: Handling the following Database map message:\n%s\n",
+		string(msg))
 	err := json.Unmarshal(msg, &databaseMappings)
 	if err != nil {
 		log.Fatal("handleDatabaseMappings: Error: Unknown json message format: %s: %s",
 			string(msg), err)
-		return
 	}
 
 	// lispers.net sends database-mappings as an array of iid to individual eid
@@ -293,7 +285,7 @@ func handleDatabaseMappings(msg []byte) {
 	eidEntries := []dptypes.EIDEntry{}
 
 	if eidEntries == nil {
-		log.Println("handleDatabaseMappings: Allocation of EID entry slice failed")
+		log.Errorf("handleDatabaseMappings: Allocation of EID entry slice failed")
 		return
 	}
 
@@ -309,25 +301,21 @@ func handleDatabaseMappings(msg []byte) {
 func handleInterfaces(msg []byte) {
 	var interfaces Interfaces
 
-	if debug {
-		log.Printf("Handling the following Interfaces message:\n%s\n", string(msg))
-	}
+	log.Debugf("handleInterfaces: Handling the following Interfaces message:\n%s\n", string(msg))
 	err := json.Unmarshal(msg, &interfaces)
 	if err != nil {
 		log.Fatal("handleInterfaces: Error: Unknown json message format: %s: %s",
 			string(msg), err)
-		return
 	}
 	ifaces := []dptypes.Interface{}
 
 	if ifaces == nil {
-		log.Println("handleInterfaces: Allocation of Interface slice failed")
+		log.Errorf("handleInterfaces: Allocation of Interface slice failed")
 		return
 	}
 
 	for _, iface := range interfaces.Interfaces {
-		log.Println("Interface:", iface.Interface, ", Instance Id:", iface.InstanceId)
-		log.Println()
+		log.Infof("Interface: %s, Instance Id: %v", iface.Interface, iface.InstanceId)
 		//x := iface.InstanceId
 		x, err := strconv.ParseUint(iface.InstanceId, 10, 32)
 		if err != nil {
@@ -351,25 +339,23 @@ func handleInterfaces(msg []byte) {
 func handleDecapKeys(msg []byte) {
 	var decapMsg DecapKeys
 
-	if debug {
-		log.Printf("Handling the following Decaps message:\n%s\n", string(msg))
-	}
+	log.Debugf("handleDecapKeys: Handling the following Decaps message:\n%s\n",
+		string(msg))
 	err := json.Unmarshal(msg, &decapMsg)
 	if err != nil {
 		log.Fatal("handleDecapKeys: Error: Unknown json message format: %s: %s",
 			string(msg), err)
-		return
 	}
 
 	rloc := net.ParseIP(decapMsg.Rloc)
 	if rloc == nil {
-		log.Printf("handleDecapKeys: Unparsable decap IP address %s\n",
+		log.Errorf("handleDecapKeys: Unparsable decap IP address %s",
 			decapMsg.Rloc)
 		return
 	}
 	port, err := strconv.Atoi(decapMsg.Port)
 	if err != nil {
-		log.Printf("handleDecapKeys: Invalid decap port %s\n", decapMsg.Port)
+		log.Errorf("handleDecapKeys: Invalid decap port %s", decapMsg.Port)
 		return
 	}
 
@@ -378,6 +364,8 @@ func handleDecapKeys(msg []byte) {
 	for _, key := range decapMsg.Keys {
 		keyId, err := strconv.ParseUint(key.KeyId, 10, 32)
 		if err != nil {
+			log.Errorf("handleDecapKeys: Parsing key id failed (%v), skipping current decap key\n",
+				key.KeyId)
 			continue
 		}
 
@@ -392,9 +380,9 @@ func handleDecapKeys(msg []byte) {
 			}
 			if (len(key.DecKey) != CRYPTO_KEY_LEN) ||
 				(len(key.IcvKey) != CRYPTO_KEY_LEN) {
-				log.Printf(
+				log.Errorf(
 					"Error: Decap/ICV Key lengths should be 32, " +
-					"found encrypt key len %d & icv key length %d\n",
+					"found encrypt key len %d & icv key length %d",
 					len(key.DecKey), len(key.IcvKey))
 				continue
 			}
@@ -402,24 +390,24 @@ func handleDecapKeys(msg []byte) {
 		//decKey := []byte(key.DecKey)
 		decKey, err := hex.DecodeString(key.DecKey)
 		if err != nil {
-			log.Printf("handleDecapKeys: Decoding decrypt key "+
-				"from string to binary failed: %s\n",
+			log.Errorf("handleDecapKeys: Decoding decrypt key "+
+				"from string to binary failed: %s",
 				err)
 			continue
 		}
 		//icvKey := []byte(key.IcvKey)
 		icvKey, err := hex.DecodeString(key.IcvKey)
 		if err != nil {
-			log.Printf("handleDecapKeys: Decoding ICV key from "+
-				"string to binary failed: %s\n",
+			log.Errorf("handleDecapKeys: Decoding ICV key from "+
+				"string to binary failed: %s",
 				err)
 			continue
 		}
 		decBlock, err := aes.NewCipher(decKey)
 		if err != nil {
-			log.Printf(
+			log.Errorf(
 				"handleDecapKeys: Creating of Cipher block for "+
-					"decryption key %s failed\n",
+					"decryption key %s failed",
 				key.DecKey)
 			continue
 		}
@@ -429,12 +417,10 @@ func handleDecapKeys(msg []byte) {
 			IcvKey:   icvKey,
 			DecBlock: decBlock,
 		}
-		if debug {
-			log.Printf("handleDecapKeys: Adding Decap key[%d] 0x%x for Rloc %s\n",
-				keyId-1, keys[keyId-1].DecKey, decapMsg.Rloc)
-			log.Printf("handleDecapKeys: Adding Decap icv[%d] 0x%x for Rloc %s\n",
-				keyId-1, keys[keyId-1].IcvKey, decapMsg.Rloc)
-		}
+		log.Debugf("handleDecapKeys: Adding Decap key[%d] 0x%x for Rloc %s",
+			keyId-1, keys[keyId-1].DecKey, decapMsg.Rloc)
+		log.Debugf("handleDecapKeys: Adding Decap icv[%d] 0x%x for Rloc %s",
+			keyId-1, keys[keyId-1].IcvKey, decapMsg.Rloc)
 	}
 
 	// Parse and store the decap keys.
@@ -449,14 +435,11 @@ func handleDecapKeys(msg []byte) {
 func handleEtrNatPort(msg []byte) {
 	var etrNatPort EtrNatPort
 
-	if debug {
-		log.Printf("Handling the following ETR Nat port message:\n%s\n", string(msg))
-	}
+	log.Debugf("handleEtrNatPort: Handling the following ETR Nat port message:\n%s\n", string(msg))
 	err := json.Unmarshal(msg, &etrNatPort)
 	if err != nil {
 		log.Fatal("handleEtrNatPort: Error: Unknown json message format: %s: %s",
 			string(msg), err)
-		return
 	}
 	etr.HandleEtrEphPort(etrNatPort.Port)
 }
@@ -464,14 +447,11 @@ func handleEtrNatPort(msg []byte) {
 func handleItrCryptoPort(msg []byte) {
 	var itrCryptoPort ItrCryptoPort
 
-	if debug {
-		log.Printf("Handling the following ITR crypto port message:\n%s\n", string(msg))
-	}
+	log.Debugf("handleItrCryptoPort: Handling the following ITR crypto port message:\n%s\n", string(msg))
 	err := json.Unmarshal(msg, &itrCryptoPort)
 	if err != nil {
 		log.Fatal("handleItrCryptoPort: Error: Unknown json message format: %s: %s",
 			string(msg), err)
-		return
 	}
 	HandleItrCryptoPort(itrCryptoPort.Port)
 }
