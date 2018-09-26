@@ -93,13 +93,8 @@ func handleDownloaderStatusModify(ctxArg interface{}, key string,
 	ctx := ctxArg.(*zedmanagerContext)
 	log.Infof("handleDownloaderStatusModify for %s\n", status.Safename)
 
-	// XXX Ignore if any Pending* flag is set
-	// Passing in Progress percentage
-	if false && status.Pending() {
-		log.Infof("handleDownloaderStatusModify skipping due to Pending* for %s\n",
-			status.Safename)
-		return
-	}
+	// Handling even if Pending is set to process Progress updates
+
 	updateAIStatusSafename(ctx, key)
 	log.Infof("handleDownloaderStatusModify done for %s\n",
 		status.Safename)

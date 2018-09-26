@@ -92,11 +92,6 @@ func updateDownloaderStatus(ctx *zedagentContext,
 		objType, key, status.State)
 
 	// Update Progress counter even if Pending
-	// XXX Ignore if any Pending* flag is set
-	if false && status.Pending() {
-		log.Infof("updateDownloaderStatus for %s, Skipping due to Pending*\n", key)
-		return
-	}
 
 	switch objType {
 	case baseOsObj:

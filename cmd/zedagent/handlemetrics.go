@@ -122,13 +122,8 @@ func handleDomainStatusModify(ctxArg interface{}, key string,
 			key, status.Key(), status)
 		return
 	}
-	// Ignore if any Pending* flag is set
-	// XXX we pass through for intermediate states
-	if false && status.Pending() {
-		log.Debugf("handleDomainstatusModify skipped due to Pending* for %s\n",
-			key)
-		return
-	}
+	// Update Progress counter even if Pending
+
 	if domainStatus == nil {
 		log.Debugf("create Domain map\n")
 		domainStatus = make(map[string]types.DomainStatus)
