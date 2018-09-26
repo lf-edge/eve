@@ -736,7 +736,7 @@ func RoundFromKbytesToMbytes(byteCount uint64) uint64 {
 
 // This function is called per change, hence needs to try over all uplinks
 // send report on each uplink.
-func PublishDeviceInfoToZedCloud(pubBaseOsStatus *pubsub.Publication,
+func PublishDeviceInfoToZedCloud(subBaseOsStatus *pubsub.Subscription,
 	aa *types.AssignableAdapters, iteration int) {
 
 	var ReportInfo = &zmet.ZInfoMsg{}
@@ -855,7 +855,7 @@ func PublishDeviceInfoToZedCloud(pubBaseOsStatus *pubsub.Publication,
 	// Report BaseOs Status for the two partitions
 	getBaseOsStatus := func(partLabel string) *types.BaseOsStatus {
 		// Look for a matching IMGA/IMGB in baseOsStatus
-		items := pubBaseOsStatus.GetAll()
+		items := subBaseOsStatus.GetAll()
 		for _, st := range items {
 			bos := cast.CastBaseOsStatus(st)
 			if bos.PartitionLabel == partLabel {
@@ -901,7 +901,7 @@ func PublishDeviceInfoToZedCloud(pubBaseOsStatus *pubsub.Publication,
 	ReportDeviceInfo.SwList[0] = getSwInfo(zboot.GetCurrentPartition())
 	ReportDeviceInfo.SwList[1] = getSwInfo(zboot.GetOtherPartition())
 	// Report any other BaseOsStatus which might have errors
-	items := pubBaseOsStatus.GetAll()
+	items := subBaseOsStatus.GetAll()
 	for _, st := range items {
 		bos := cast.CastBaseOsStatus(st)
 		if bos.PartitionLabel != "" {
@@ -914,7 +914,6 @@ func PublishDeviceInfoToZedCloud(pubBaseOsStatus *pubsub.Publication,
 		swInfo.ShortVersion = bos.BaseOsVersion
 		swInfo.LongVersion = "" // XXX
 		if len(bos.StorageStatusList) > 0 {
-			// XXX when do we get called? Need check in ???
 			// Assume one - pick first StorageStatus
 			swInfo.DownloadProgress = uint32(bos.StorageStatusList[0].Progress)
 		}

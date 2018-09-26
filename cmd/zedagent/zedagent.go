@@ -98,6 +98,7 @@ type zedagentContext struct {
 	pubCertObjStatus         *pubsub.Publication
 	TriggerDeviceInfo        bool
 	subBaseOsConfig          *pubsub.Subscription
+	subBaseOsStatus          *pubsub.Subscription
 	subDatastoreConfig       *pubsub.Subscription
 	pubBaseOsStatus          *pubsub.Publication
 	pubBaseOsDownloadConfig  *pubsub.Publication
@@ -114,11 +115,6 @@ type zedagentContext struct {
 
 var debug = false
 var debugOverride bool // From command line arg
-
-// XXX used by baseOs code to indicate that something changed
-// Will not be needed once we have a separate baseosmgr since
-// we'll react to baseOsStatus changes.
-var publishDeviceInfo bool
 
 func Run() {
 	versionPtr := flag.Bool("v", false, "Version")
@@ -371,7 +367,7 @@ func Run() {
 	zedagentCtx.subCertObjConfig = subCertObjConfig
 	subCertObjConfig.Activate()
 
-	// Look for BaseOsConfig from ourselves!
+	// Look for BaseOsConfig and BaseOsStatus from ourselves!
 	subBaseOsConfig, err := pubsub.Subscribe("zedagent",
 		types.BaseOsConfig{}, false, &zedagentCtx)
 	if err != nil {
@@ -381,6 +377,16 @@ func Run() {
 	subBaseOsConfig.DeleteHandler = handleBaseOsConfigDelete
 	zedagentCtx.subBaseOsConfig = subBaseOsConfig
 	subBaseOsConfig.Activate()
+
+	subBaseOsStatus, err := pubsub.Subscribe("zedagent",
+		types.BaseOsStatus{}, false, &zedagentCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subBaseOsStatus.ModifyHandler = handleBaseOsStatusModify
+	subBaseOsStatus.DeleteHandler = handleBaseOsStatusDelete
+	zedagentCtx.subBaseOsStatus = subBaseOsStatus
+	subBaseOsStatus.Activate()
 
 	// Look for DatastoreConfig from ourselves!
 	subDatastoreConfig, err := pubsub.Subscribe("zedagent",
@@ -576,12 +582,6 @@ func Run() {
 	updateSshAccess(configItemCurrent.sshAccess)
 
 	for {
-		if publishDeviceInfo {
-			log.Infof("BaseOs triggered PublishDeviceInfo\n")
-			publishDevInfo(&zedagentCtx)
-			publishDeviceInfo = false
-		}
-
 		select {
 		case change := <-subGlobalConfig.C:
 			subGlobalConfig.ProcessChange(change)
@@ -693,7 +693,7 @@ func Run() {
 }
 
 func publishDevInfo(ctx *zedagentContext) {
-	PublishDeviceInfoToZedCloud(ctx.pubBaseOsStatus, ctx.assignableAdapters,
+	PublishDeviceInfoToZedCloud(ctx.subBaseOsStatus, ctx.assignableAdapters,
 		ctx.iteration)
 	ctx.iteration += 1
 }
@@ -950,6 +950,33 @@ func handleBaseOsDelete(ctxArg interface{}, key string,
 
 	log.Infof("handleBaseOsDelete for %s\n", status.BaseOsVersion)
 	removeBaseOsConfig(ctx, status.Key())
+}
+
+// Report BaseOsStatus to zedcloud
+
+func handleBaseOsStatusModify(ctxArg interface{}, key string, statusArg interface{}) {
+	ctx := ctxArg.(*zedagentContext)
+	status := cast.CastBaseOsStatus(statusArg)
+	if status.Key() != key {
+		log.Errorf("handleBaseOsStatusModify key/UUID mismatch %s vs %s; ignored %+v\n", key, status.Key(), status)
+		return
+	}
+	publishDevInfo(ctx)
+	log.Infof("handleBaseOsStatusModify(%s) done\n", key)
+}
+
+func handleBaseOsStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	log.Infof("handleBaseOsStatusDelete(%s)\n", key)
+	ctx := ctxArg.(*zedagentContext)
+	status := lookupBaseOsStatus(ctx, key)
+	if status == nil {
+		log.Infof("handleBaseOsStatusDelete: unknown %s\n", key)
+		return
+	}
+	publishDevInfo(ctx)
+	log.Infof("handleBaseOsStatusDelete(%s) done\n", key)
 }
 
 // Wrappers around handleCertObjCreate/Modify/Delete
