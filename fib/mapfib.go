@@ -86,20 +86,20 @@ func InitMapCache(debugFlag bool, lispDir string) {
 	// create required raw sockets
 	fd4, err = syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, syscall.IPPROTO_UDP)
 	if err != nil {
-		log.Printf("InitMapCache: FIB ipv4 raw socket creation failed.\n")
+		log.Errorf("InitMapCache: FIB ipv4 raw socket creation failed")
 	}
 	err = syscall.SetsockoptInt(fd4, syscall.SOL_SOCKET, syscall.IP_MTU_DISCOVER,
 		syscall.IP_PMTUDISC_DONT)
 	if err != nil {
-		log.Printf("InitMapCache: Disabling path mtu discovery failed.\n")
+		log.Errorf("InitMapCache: Disabling path mtu discovery failed")
 	}
 	err = syscall.SetsockoptInt(fd4, syscall.IPPROTO_IP, syscall.IP_HDRINCL, 0)
 	if err != nil {
-		log.Printf("InitMapCache: Disabling IP_HDRINCL failed.\n")
+		log.Errorf("InitMapCache: Disabling IP_HDRINCL failed")
 	}
 	fd6, err = syscall.Socket(syscall.AF_INET6, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
 	if err != nil {
-		log.Printf("InitMapCache: FIB ipv6 raw socket creation failed.\n")
+		log.Errorf("InitMapCache: FIB ipv6 raw socket creation failed")
 	}
 	// XXX We should close these sockets somewhere. Where?
 
@@ -145,10 +145,8 @@ func SetUplinkAddrs(ipv4 net.IP, ipv6 net.IP) {
 	}
 	uplinks.Ipv4 = ipv4
 	uplinks.Ipv6 = ipv6
-	if debug {
-		log.Printf("SetUplinkAddrs: Storing pointer %p with ip4 %s, ipv6 %s\n",
-			&uplinks, uplinks.Ipv4, uplinks.Ipv6)
-	}
+	log.Debug("SetUplinkAddrs: Storing pointer %p with ip4 %s, ipv6 %s",
+		&uplinks, uplinks.Ipv4, uplinks.Ipv6)
 	upLinks.UpLinks = uplinks
 }
 
@@ -187,9 +185,7 @@ func FlushMapCache() {
 // create and add an un-resolved entry for buffering packets.
 func LookupAndAdd(iid uint32,
 	eid net.IP, timeStamp time.Time) (*dptypes.MapCacheEntry, bool) {
-	if debug {
-		log.Printf("LookupAndAdd: Adding EID %s with IID %v\n", eid, iid)
-	}
+	log.Debugf("LookupAndAdd: Adding EID %s with IID %v", eid, iid)
 	key := makeMapCacheKey(iid, eid)
 
 	// we take a read lock and check if the entry that we are looking for
@@ -206,10 +202,8 @@ func LookupAndAdd(iid uint32,
 		var puntInterval time.Duration = 30000
 
 		if entry.Resolved == false {
-			if debug {
-				log.Printf("LookupAndAdd: Entry with EID %s, IID %v in unresolved state\n",
-					eid, iid)
-			}
+			log.Debugf("LookupAndAdd: Entry with EID %s, IID %v in unresolved state",
+				eid, iid)
 			puntInterval = 5000
 		}
 
@@ -222,10 +216,8 @@ func LookupAndAdd(iid uint32,
 		// if elapsed time is greater than 30000ms send a punt request
 		// XXX Is 30 seconds for punt too high?
 		if elapsed >= puntInterval {
-			if debug {
-				log.Printf("LookupAndAdd: Sending punt entry for EID %s, IID %v\n",
-					eid, iid)
-			}
+			log.Debugf("LookupAndAdd: Sending punt entry for EID %s, IID %v",
+				eid, iid)
 			punt = true
 			entry.LastPunt = timeStamp
 		}
@@ -254,10 +246,8 @@ func LookupAndAdd(iid uint32,
 			ResolveTime: currTime,
 		}
 		cache.MapCache[key] = &resolveEntry
-		if debug {
-			log.Printf("LookupAndAdd: Added new map-cache entry with EID %s, IID %v\n",
-				eid, iid)
-		}
+		log.Debugf("LookupAndAdd: Added new map-cache entry with EID %s, IID %v",
+			eid, iid)
 		return &resolveEntry, true
 	}
 }
@@ -265,10 +255,8 @@ func LookupAndAdd(iid uint32,
 // Add/update map cache entry. Along with that, process and send out any
 // buffered packets attached to this entry.
 func UpdateMapCacheEntry(iid uint32, eid net.IP, rlocs []dptypes.Rloc) {
-	if debug {
-		log.Printf("UpdateMapCacheEntry: Updating map-cache entry with EID %s, IID %v\n",
-			eid, iid)
-	}
+	log.Debugf("UpdateMapCacheEntry: Updating map-cache entry with EID %s, IID %v",
+		eid, iid)
 	entry := LookupAndUpdate(iid, eid, rlocs)
 
 	// Create a temporary IV to work with
@@ -305,10 +293,8 @@ func UpdateMapCacheEntry(iid uint32, eid net.IP, rlocs []dptypes.Rloc) {
 				// Send the packet out now
 				CraftAndSendLispPacket(pktBuf, uint32(capLen), timeStamp,
 					pkt.Hash32, entry, entry.InstanceId, itrLocalData)
-				if debug {
-					log.Printf("UpdateMapCacheEntry: Sending out buffered packet for map-cache "+
-						"entry with EID %s, IID %v\n", eid, iid)
-				}
+				log.Debugf("UpdateMapCacheEntry: Sending out buffered packet for map-cache "+
+					"entry with EID %s, IID %v", eid, iid)
 
 				// decrement buffered packet count and increment pkt, byte counts
 				atomic.AddUint64(&entry.BuffdPkts, ^uint64(0))
@@ -366,9 +352,7 @@ func compileRlocs(rlocs []dptypes.Rloc) ([]dptypes.Rloc, uint32) {
 
 		selectRlocs[i].WrLow = low
 		selectRlocs[i].WrHigh = high
-		if debug {
-			log.Println("compileRlocs: Adding weights:", low, high)
-		}
+		log.Debugf("compileRlocs: Adding weights: %v, %v", low, high)
 	}
 
 	return selectRlocs, totWeight
@@ -387,7 +371,7 @@ func LookupAndUpdate(iid uint32, eid net.IP, rlocs []dptypes.Rloc) *dptypes.MapC
 	defer cache.LockMe.Unlock()
 	entry, ok := cache.MapCache[key]
 
-	log.Printf("LookupAndUpdate: Adding map-cache entry with key IID %d, EID %s\n",
+	log.Infof("LookupAndUpdate: Adding map-cache entry with key IID %d, EID %s",
 		key.IID, key.Eid)
 
 	selectRlocs, totWeight = compileRlocs(rlocs)
@@ -415,18 +399,14 @@ func LookupAndUpdate(iid uint32, eid net.IP, rlocs []dptypes.Rloc) *dptypes.MapC
 		buffdPkts = entry.BuffdPkts
 		lastPunt = entry.LastPunt
 
-		if debug {
-			log.Printf("LookupAndUpdate: Deleting map-cache entry with EID %s, IID %v "+
-				"before adding new entry\n", key.Eid, key.IID)
-		}
+		log.Debugf("LookupAndUpdate: Deleting map-cache entry with EID %s, IID %v "+
+			"before adding new entry", key.Eid, key.IID)
 		delete(cache.MapCache, key)
 	} else if ok {
 		// Entry is in unresolved state. Update the RLOCs and mark the entry
 		// as resolved.
-		if debug {
-			log.Printf("LookupAndUpdate: Resolving unresolved entry with EID %s, IID %v\n",
-				key.Eid, key.IID)
-		}
+		log.Debugf("LookupAndUpdate: Resolving unresolved entry with EID %s, IID %v",
+			key.Eid, key.IID)
 		entry.Rlocs = selectRlocs
 		entry.RlocTotWeight = totWeight
 		entry.Resolved = resolved
@@ -525,10 +505,8 @@ func LookupDecapKeys(ip net.IP) *dptypes.DecapKeys {
 	if ok {
 		return decapKeys
 	}
-	if debug {
-		log.Printf("LookupDecapKeys: Decap keys cannot be found for %s\n",
-			ip.String())
-	}
+	log.Debugf("LookupDecapKeys: Decap keys cannot be found for %s",
+		ip.String())
 	return nil
 }
 
@@ -590,7 +568,7 @@ func ShowDecapKeys() {
 // in resolve state for more than 5 minutes. Resolve entries that are older than
 // 5 minutes will be deleted.
 func MapcacheScrubThread() {
-	log.Printf("Starting map-cache scrubber thread")
+	log.Infof("Starting map-cache scrubber thread")
 	// scrubber thread wakes up every 1 minute and scrubs
 	// map-cache entries in resolve status for more than 5 minutes.
 	for {
@@ -629,7 +607,7 @@ func MapcacheScrubThread() {
 		// take write lock and delete the stale entries
 		cache.LockMe.Lock()
 		for _, key := range delList {
-			log.Printf("MapcacheScrubThread: Removing resolve entry with iid %v, eid %s\n",
+			log.Infof("MapcacheScrubThread: Removing resolve entry with iid %v, eid %s",
 				key.IID, key.Eid)
 			delete(cache.MapCache, key)
 		}
@@ -674,11 +652,9 @@ func sendEncapStatistics(puntChannel chan []byte) *dptypes.LispStatistics {
 
 	// Send out ITR encap statistics to lispers.net
 	statsMsg, err := json.Marshal(lispStatistics)
-	if debug {
-		log.Println("sendEncapStatistics:" + string(statsMsg))
-	}
+	log.Debugf("sendEncapStatistics: %s", string(statsMsg))
 	if err != nil {
-		log.Printf("Error: Encoding encap statistics\n")
+		log.Errorf("Error: Encoding encap statistics")
 	} else {
 		puntChannel <- statsMsg
 	}
@@ -726,11 +702,9 @@ func sendDecapStatistics(puntChannel chan []byte) *dptypes.DecapStatistics {
 
 	// Send out ETR decap statistics to lispers.net
 	decapStatsMsg, err := json.Marshal(decapStatistics)
-	if debug {
-		log.Println("sendDecapStatistics:" + string(decapStatsMsg))
-	}
+	log.Debugf("sendDecapStatistics: %s", string(decapStatsMsg))
 	if err != nil {
-		log.Printf("Error: Encoding decap statistics\n")
+		log.Errorf("Error: Encoding decap statistics")
 	} else {
 		puntChannel <- decapStatsMsg
 	}
@@ -742,7 +716,7 @@ func dumpDatabaseState() {
 	dumpFile := lispLocation + DATABASEWRITEFILE
 	f, err := os.Create(dumpFile)
 	if err != nil {
-		log.Printf("dumpDatabaseState: Failed opening dump file (%s) with err: %s\n",
+		log.Errorf("dumpDatabaseState: Failed opening dump file (%s) with err: %s",
 			dumpFile, err)
 		return
 	}
@@ -825,7 +799,7 @@ func dumpDatabaseState() {
 // and punts map cache statistics to lispers.net.
 func StatsThread(puntChannel chan []byte,
 	ctx *dptypes.DataplaneContext) {
-	log.Printf("Starting statistics thread.\n")
+	log.Infof("Starting statistics thread")
 	ticker := time.NewTicker(STATSPUNTINTERVAL * time.Second)
 	for {
 		for _ = range ticker.C {
@@ -851,7 +825,7 @@ func publishLispInfoStatus(ctx *dptypes.DataplaneContext,
 	key := "global"
 	pub := ctx.PubLispInfoStatus
 	pub.Publish(key, *status)
-	log.Printf("publishLispInfoStatus: Done\n")
+	log.Infof("publishLispInfoStatus: Done")
 }
 
 func unpublishLispInfoStatus(ctx *dptypes.DataplaneContext,
@@ -863,11 +837,11 @@ func unpublishLispInfoStatus(ctx *dptypes.DataplaneContext,
 	pub := ctx.PubLispInfoStatus
 	st, _ := pub.Get(key)
 	if st == nil {
-		log.Printf("unpublishLispInfoStatus(%s) not found\n", key)
+		log.Errorf("unpublishLispInfoStatus(%s) not found", key)
 		return
 	}
 	pub.Unpublish(key)
-	log.Printf("unpublishLispInfoStatus: Done\n")
+	log.Infof("unpublishLispInfoStatus: Done")
 }
 
 func PublishLispInfoStatus(ctx *dptypes.DataplaneContext) {
@@ -944,7 +918,7 @@ func publishLispMetrics(ctx *dptypes.DataplaneContext,
 	key := "global"
 	pub := ctx.PubLispMetrics
 	pub.Publish(key, *status)
-	log.Printf("publishLispMetrics: Done\n")
+	log.Infof("publishLispMetrics: Done")
 }
 
 func unpublishLispMetrics(ctx *dptypes.DataplaneContext,
@@ -956,11 +930,11 @@ func unpublishLispMetrics(ctx *dptypes.DataplaneContext,
 	pub := ctx.PubLispMetrics
 	st, _ := pub.Get(key)
 	if st == nil {
-		log.Printf("unpublishLispMetrics(%s) not found\n", key)
+		log.Errorf("unpublishLispMetrics(%s) not found", key)
 		return
 	}
 	pub.Unpublish(key)
-	log.Printf("unpublishLispMetrics: Done\n")
+	log.Infof("unpublishLispMetrics: Done")
 }
 
 func PublishLispMetrics(ctx *dptypes.DataplaneContext,

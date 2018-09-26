@@ -57,7 +57,7 @@ func CraftAndSendLispPacket(
 		craftAndSendIPv6LispPacket(pktBuf, capLen, timeStamp,
 			hash32, rlocPtr, iid, itrLocalData)
 	case dptypes.MAP_CACHE_FAMILY_UNKNOWN:
-		log.Printf("CraftAndSendLispPacket: Unkown family found for rloc %s\n",
+		log.Errorf("CraftAndSendLispPacket: Unkown family found for rloc %s",
 			rlocPtr.Rloc)
 	}
 }
@@ -76,7 +76,7 @@ func encryptPayload(payload []byte,
 	var extraLen, padLen int = 0, 0
 
 	if len(encKey) == 0 {
-		log.Printf("encryptPayload: Invalid encrypt key lenght: %s\n", len(encKey))
+		log.Errorf("encryptPayload: Invalid encrypt key lenght: %s", len(encKey))
 		return false, 0
 	}
 
@@ -107,13 +107,11 @@ func encryptPayload(payload []byte,
 	//mode.CryptBlocks(packet[aes.BlockSize:], packet[aes.BlockSize:])
 	aesGcm, err := cipher.NewGCM(block)
 	if err != nil {
-		log.Printf("encryptPayload: Packet encryption failed: %s\n", err)
+		log.Errorf("encryptPayload: Packet encryption failed: %s", err)
 		return false, 0
 	}
 	plainText := packet[dptypes.GCMIVLENGTH:]
-	if debug {
-		log.Printf("encryptPayload: Plain text length is %d\n", len(plainText))
-	}
+	log.Debugf("encryptPayload: Plain text length is %d", len(plainText))
 	//aesGcm.Seal(packet[dptypes.GCMIVLENGTH:], packet[:dptypes.GCMIVLENGTH],
 	//	packet[dptypes.GCMIVLENGTH:], nil)
 	cipherText := aesGcm.Seal(plainText[:0], packet[:dptypes.GCMIVLENGTH],
@@ -122,10 +120,8 @@ func encryptPayload(payload []byte,
 	//	plainText, nil)
 	//copy(packet[dptypes.GCMIVLENGTH:], cipherText)
 	extraLen = len(cipherText) - len(plainText)
-	if debug {
-		log.Printf("encryptPayload: GCM extra length is %d, Padding length is %d\n",
-			extraLen, padLen)
-	}
+	log.Debugf("encryptPayload: GCM extra length is %d, Padding length is %d",
+		extraLen, padLen)
 	return true, extraLen + padLen
 }
 
@@ -133,16 +129,6 @@ func GenerateIVByteArray(ivHigh uint32, ivLow uint64, ivArray []byte) []byte {
 	// XXX Suggest if there is a better way of doing this.
 
 	// Write individual bytes from ivHigh and ivLow into IV byte array
-	// Doesn't look good, but couldn't find a more elegant way of doing it.
-	//for i := 0; i < 8; i++ {
-	/*
-		for i := 0; i < 4; i++ {
-			ivArray[i] = byte((ivHigh >> uint((4-i-1)*8)) & 0xff)
-		}
-		for i := 0; i < 8; i++ {
-			ivArray[4+i] = byte((ivLow >> uint((8-i-1)*8)) & 0xff)
-		}
-	*/
 	binary.BigEndian.PutUint32(ivArray[0:4], ivHigh)
 	binary.BigEndian.PutUint64(ivArray[4:12], ivLow)
 
@@ -170,9 +156,7 @@ func GetIVArray(itrLocalData *dptypes.ITRLocalData, ivArray []byte) []byte {
 
 func ComputeICV(buf []byte, icvKey []byte) []byte {
 	mac := hmac.New(sha256.New, icvKey)
-	if debug {
-		log.Printf("ICV: ICV will be computed on %s\n", PrintHexBytes(buf))
-	}
+	log.Debugf("ICV: ICV will be computed on %s", PrintHexBytes(buf))
 	mac.Write(buf)
 	icv := mac.Sum(nil)
 	// we only use the first 20 bytes as ICV
@@ -321,7 +305,8 @@ func craftAndSendIPv4LispPacket(
 	}
 
 	if err := gopacket.SerializeLayers(buf, opts, ip, udp); err != nil {
-		log.Printf("craftAndSendIPv4LispPacket: Failed serializing packet: %s", err)
+		// XXX May be add an error stat here
+		log.Errorf("craftAndSendIPv4LispPacket: Failed serializing packet: %s", err)
 		return
 	}
 
@@ -353,24 +338,23 @@ func craftAndSendIPv4LispPacket(
 
 	outputSlice := pktBuf[offset:offsetEnd]
 
-	if debug {
-		log.Printf("craftAndSendIPv4LispPacket: Writing %d bytes into ITR socket\n",
-			len(outputSlice))
-		if useCrypto {
-			log.Printf("craftAndSendIPv4LispPacket: ITR: LISP %s, IV %s, Crypto %s, ICV %s\n",
-				PrintHexBytes(outputSlice[28:36]),
-				PrintHexBytes(outputSlice[36:48]),
-				PrintHexBytes(outputSlice[38:len(outputSlice)-20]),
-				PrintHexBytes(outputSlice[len(outputSlice)-20:]))
-		} else {
-			log.Printf("craftAndSendIPv4LispPacket: ITR: LISP %s, PlainText %s\n",
-				PrintHexBytes(outputSlice[28:36]),
-				PrintHexBytes(outputSlice[36:]))
-		}
+	log.Debugf("craftAndSendIPv4LispPacket: Writing %d bytes into ITR socket",
+		len(outputSlice))
+	if useCrypto {
+		log.Debugf("craftAndSendIPv4LispPacket: ITR: LISP %s, IV %s, Crypto %s, ICV %s",
+			PrintHexBytes(outputSlice[28:36]),
+			PrintHexBytes(outputSlice[36:48]),
+			PrintHexBytes(outputSlice[38:len(outputSlice)-20]),
+			PrintHexBytes(outputSlice[len(outputSlice)-20:]))
+	} else {
+		log.Debugf("craftAndSendIPv4LispPacket: ITR: LISP %s, PlainText %s",
+			PrintHexBytes(outputSlice[28:36]),
+			PrintHexBytes(outputSlice[36:]))
 	}
 	err := syscall.Sendto(fd4, outputSlice, 0, &rloc.IPv4SockAddr)
 	if err != nil {
-		log.Printf("craftAndSendIPv4LispPacket: Packet send ERROR: %s", err)
+		// XXX May be add an error stat here
+		log.Errorf("craftAndSendIPv4LispPacket: Packet send ERROR: %s", err)
 		return
 	}
 
@@ -490,7 +474,8 @@ func craftAndSendIPv6LispPacket(
 	}
 
 	if err := gopacket.SerializeLayers(buf, opts, ip, udp); err != nil {
-		log.Printf("craftAndSendIPv6LispPacket: Failed serializing packet")
+		// XXX May be add an error stat here
+		log.Errorf("craftAndSendIPv6LispPacket: Failed serializing packet")
 		return
 	}
 
@@ -519,24 +504,24 @@ func craftAndSendIPv6LispPacket(
 	}
 	outputSlice := pktBuf[offset:offsetEnd]
 
-	if debug {
-		log.Printf("craftAndSendIPv6LispPacket: Writing %d bytes into ITR socket\n", len(outputSlice))
-		if useCrypto {
-			log.Printf("craftAndSendIPv6LispPacket: ITR: LISP %s, IV %s, Crypto %s, ICV %s\n",
-				PrintHexBytes(outputSlice[48:56]),
-				PrintHexBytes(outputSlice[56:68]),
-				PrintHexBytes(outputSlice[68:len(outputSlice)-20]),
-				PrintHexBytes(outputSlice[len(outputSlice)-20:]))
-		} else {
-			log.Printf("craftAndSendIPv6LispPacket: ITR: LISP %s, PlainText %s\n",
-				PrintHexBytes(outputSlice[48:56]),
-				PrintHexBytes(outputSlice[56:]))
-		}
+	log.Debugf("craftAndSendIPv6LispPacket: Writing %d bytes into ITR socket",
+		len(outputSlice))
+	if useCrypto {
+		log.Debugf("craftAndSendIPv6LispPacket: ITR: LISP %s, IV %s, Crypto %s, ICV %s",
+			PrintHexBytes(outputSlice[48:56]),
+			PrintHexBytes(outputSlice[56:68]),
+			PrintHexBytes(outputSlice[68:len(outputSlice)-20]),
+			PrintHexBytes(outputSlice[len(outputSlice)-20:]))
+	} else {
+		log.Debugf("craftAndSendIPv6LispPacket: ITR: LISP %s, PlainText %s",
+			PrintHexBytes(outputSlice[48:56]),
+			PrintHexBytes(outputSlice[56:]))
 	}
 	err := syscall.Sendto(fd6, outputSlice, 0, &rloc.IPv6SockAddr)
 
 	if err != nil {
-		log.Printf("craftAndSendIPv6LispPacket: Packet send ERROR: %s", err)
+		// XXX May be add an error stat here
+		log.Errorf("craftAndSendIPv6LispPacket: Packet send ERROR: %s", err)
 	}
 
 	// Increment RLOC packet & byte count statistics

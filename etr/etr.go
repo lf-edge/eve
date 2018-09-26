@@ -48,16 +48,16 @@ func InitETRStatus(debugFlag bool) {
 }
 
 func StartEtrNonNat() {
-	log.Println("StartEtrNonNat: Starting ETR thread on port 4341")
+	log.Infof("StartEtrNonNat: Starting ETR thread on port 4341")
 	// create a udp server socket and start listening on port 4341
 	// XXX Using ipv4 underlay for now. Will have to figure out v6 underlay case.
 	etrServer, err := net.ResolveUDPAddr("udp4", ":4341")
 	if err != nil {
-		log.Fatal("StartEtrNonNat: Error resolving ETR socket address: %s\n", err)
+		log.Fatal("StartEtrNonNat: Error resolving ETR socket address: %s", err)
 	}
 	serverConn, err := net.ListenUDP("udp4", etrServer)
 	if err != nil {
-		log.Printf("StartEtrNonNat: Unable to start ETR server on :4341: %s\n", err)
+		log.Errorf("StartEtrNonNat: Unable to start ETR server on :4341: %s", err)
 
 		// try after 2 seconds
 		go func() {
@@ -71,7 +71,7 @@ func StartEtrNonNat() {
 	fd4, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
 	if err != nil {
 		serverConn.Close()
-		log.Printf("StartEtrNonNat: Creating ETR IPv4 raw socket for packet injection failed: %s\n",
+		log.Errorf("StartEtrNonNat: Creating ETR IPv4 raw socket for packet injection failed: %s",
 			err)
 		return
 	}
@@ -84,7 +84,6 @@ func StartEtrNonNat() {
 		log.Fatal(
 			"StartEtrNonNat: Creating ETR IPv6 raw socket for packet injection failed: %s\n",
 			err)
-		return
 	}
 
 	// start processing packets. This loop should never end.
@@ -95,10 +94,8 @@ func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
 	ipv4Found, ipv6Found := false, false
 	ipv4Addr, ipv6Addr := net.IP{}, net.IP{}
 
-	if debug {
-		log.Printf("HandleDeviceNetworkChange: Free uplinks have changed" +
-			" new ipv4 & ipv6 source addresses will be picked\n")
-	}
+	log.Debugf("HandleDeviceNetworkChange: Free uplinks have changed" +
+		" new ipv4 & ipv6 source addresses will be picked")
 	links := types.GetUplinkFreeNoLocal(deviceNetworkStatus)
 
 	// Collect the interfaces that are still valid
@@ -117,18 +114,14 @@ func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
 				// This address is ipv6
 				ipv6Addr = addrInfo.Addr
 				ipv6Found = true
-				if debug {
-					log.Printf("HandleDeviceNetworkChange: Picked ipv6 source address %s\n",
-						ipv6Addr)
-				}
+				log.Debugf("HandleDeviceNetworkChange: Picked ipv6 source address %s",
+					ipv6Addr)
 			} else if ipv4Found == false {
 				// This address is ipv4
 				ipv4Addr = addrInfo.Addr
 				ipv4Found = true
-				if debug {
-					log.Printf("HandleDeviceNetworkChange: Picked ipv4 source address %s\n",
-						ipv6Addr)
-				}
+				log.Debugf("HandleDeviceNetworkChange: Picked ipv4 source address %s",
+					ipv6Addr)
 			}
 		}
 
@@ -147,10 +140,8 @@ func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
 			if EtrTable.EphPort != -1 {
 				//ring, fd = StartEtrNat(EtrTable.EphPort, link.IfName)
 				handle, fd4, fd6 = StartEtrNat(EtrTable.EphPort, link.IfName, killChannel)
-				if debug {
-					log.Printf("HandleDeviceNetworkChange: Creating ETR thread "+
-						"for UP link %s\n", link.IfName)
-				}
+				log.Debugf("HandleDeviceNetworkChange: Creating ETR thread "+
+					"for UP link %s", link.IfName)
 			}
 			EtrTable.EtrTable[link.IfName] = &dptypes.EtrRunStatus{
 				IfName: link.IfName,
@@ -160,10 +151,8 @@ func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
 				Fd6:    fd6,
 				KillChannel: killChannel,
 			}
-			if debug {
-				log.Printf("HandleDeviceNetworkChange: Creating ETR thread for UP link %s\n",
-					link.IfName)
-			}
+			log.Debugf("HandleDeviceNetworkChange: Creating ETR thread for UP link %s",
+				link.IfName)
 		}
 	}
 
@@ -180,7 +169,7 @@ func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
 		}
 	}
 
-	log.Printf("HandleDeviceNetworkChange: Setting Uplink v4 addr %s, v6 addr %s\n",
+	log.Infof("HandleDeviceNetworkChange: Setting Uplink v4 addr %s, v6 addr %s",
 		ipv4Addr, ipv6Addr)
 	fib.SetUplinkAddrs(ipv4Addr, ipv6Addr)
 }
@@ -200,10 +189,8 @@ func HandleEtrEphPort(ephPort int) {
 	for ifName, link := range EtrTable.EtrTable {
 		//if (link.Ring == nil) && (link.RingFD == -1) {
 		if (link.Handle == nil) && (link.Fd4 == -1) && (link.Fd6 == -1) {
-			if debug {
-				log.Printf("HandleEtrEphPort: Creating ETR thread for UP link %s\n",
-					link.IfName)
-			}
+			log.Debugf("HandleEtrEphPort: Creating ETR thread for UP link %s",
+				link.IfName)
 			//ring, fd := StartEtrNat(EtrTable.EphPort, link.IfName)
 			//ling.Ring = ring
 			handle, fd4, fd6 := StartEtrNat(EtrTable.EphPort, link.IfName, link.KillChannel)
@@ -225,18 +212,17 @@ func HandleEtrEphPort(ephPort int) {
 		ins, err := pcap.CompileBPFFilter(layers.LinkTypeEthernet,
 			1600, filter)
 		if err != nil {
-			log.Printf("SetupEtrPktCapture: Compiling BPF filter %s failed: %s\n", filter, err)
+			log.Errorf("SetupEtrPktCapture: Compiling BPF filter %s failed: %s", filter, err)
 		} else {
 			raw_ins := *(*[]bpf.RawInstruction)(unsafe.Pointer(&ins))
 			err = link.Handle.SetBPF(raw_ins)
 			if err != nil {
-				log.Printf("SetupEtrPktCapture: Setting BPF filter %s failed: %s\n", filter, err)
+				log.Errorf("SetupEtrPktCapture: Setting BPF filter %s failed: %s", filter, err)
 			}
 		}
 		//link.Handle.SetBPFFilter(filter)
 
-		log.Printf("HandleEtrEphPort: Changed ephemeral port BPF match for ETR %s\n",
-			ifName)
+		log.Infof("HandleEtrEphPort: Changed ephemeral port BPF match for ETR %s", ifName)
 	}
 }
 
@@ -247,14 +233,11 @@ func StartEtrNat(ephPort int,
 
 	//ring := SetupEtrPktCapture(ephPort, upLink)
 	//if ring == nil {
-	if debug {
-		log.Printf("StartEtrNat: ETR thread (%s) with ephemeral port %d\n",
-			upLink, ephPort)
-	}
+	log.Debugf("StartEtrNat: ETR thread (%s) with ephemeral port %d",
+		upLink, ephPort)
 	handle := SetupEtrPktCapture(ephPort, upLink)
 	if handle == nil {
 		log.Fatal("StartEtrNat: Unable to create ETR packet capture.\n")
-		return nil, -1, -1
 	}
 
 	// Create raw socket for forwarding decapsulated IPv4 packets
@@ -264,7 +247,6 @@ func StartEtrNat(ephPort int,
 		log.Fatal(
 			"StartEtrNat: Creating second ETR IPv4 raw socker for packet injection failed: %s\n",
 			err)
-		return nil, -1, -1
 	}
 
 	fd6, err := syscall.Socket(syscall.AF_INET6, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
@@ -276,7 +258,6 @@ func StartEtrNat(ephPort int,
 			"StartEtrNat: Creating second ETR IPv6 raw socket for packet injection failed: %s\n",
 			err)
 		syscall.Close(fd4)
-		return nil, -1, -1
 	}
 	//go ProcessCapturedPkts(fd, ring)
 	go ProcessCapturedPkts(fd4, fd6, handle, killChannel)
@@ -301,9 +282,7 @@ func verifyAndInject(fd4 int,
 	if iid == uint32(0xFFFFFF) {
 		return true
 	}
-	if debug {
-		log.Println("verifyAndInject: IID of input packet is:", iid)
-	}
+	log.Debugf("verifyAndInject: IID of input packet is: %v", iid)
 	packetOffset := dptypes.LISPHEADERLEN
 
 	gcmOverhead := 0
@@ -312,7 +291,7 @@ func verifyAndInject(fd4 int,
 	keyId := fib.GetLispKeyId(buf[0:8])
 	if keyId != 0 {
 		if decapKeys == nil {
-			log.Printf("verifyAndInject: Decap keys for RLOC have not arrived yet\n")
+			log.Errorf("verifyAndInject: Decap keys for RLOC have not arrived yet")
 			fib.AddDecapStatistics("no-decrypt-key", 1, uint64(n), currUnixSeconds)
 			return false
 		}
@@ -325,7 +304,7 @@ func verifyAndInject(fd4 int,
 		key := decapKeys.Keys[keyId-1]
 		icvKey := key.IcvKey
 		if icvKey == nil {
-			log.Printf("verifyAndInject: ETR Key id %d has nil ICV key value\n", keyId)
+			log.Errorf("verifyAndInject: ETR Key id %d has nil ICV key value", keyId)
 			return false
 		}
 		icv := fib.ComputeICV(buf[0:n-dptypes.ICVLEN], icvKey)
@@ -334,8 +313,8 @@ func verifyAndInject(fd4 int,
 
 		// Compare computed ICV with ICV that's present in the input packet
 		if !bytes.Equal(icv, pktIcv) {
-			log.Printf(
-				"verifyAndInject: Pkt ICV %x and calculated ICV %x do not match.\n",
+			log.Errorf(
+				"verifyAndInject: Pkt ICV %x and calculated ICV %x do not match",
 				pktIcv, icv)
 			fib.AddDecapStatistics("ICV-error", 1, uint64(n), currUnixSeconds)
 			return false
@@ -348,27 +327,25 @@ func verifyAndInject(fd4 int,
 		packet := buf[packetOffset : n-dptypes.ICVLEN]
 
 		if len(decapKeys.Keys) == 0 {
-			log.Printf(
-				"verifyAndInject: ETR has not received decap keys from lispers.net yet\n")
+			log.Errorf(
+				"verifyAndInject: ETR has not received decap keys from lispers.net yet")
 			return false
 		}
 
 		block := key.DecBlock
 		aesGcm, err := cipher.NewGCM(block)
 		if err != nil {
-			log.Printf("VerifyAndInject: GCM cipher creation failed: %s\n", err)
+			log.Errorf("VerifyAndInject: GCM cipher creation failed: %s", err)
 			return false
 		}
-		if debug {
-			log.Printf("verifyAndInject: LISP %s, IV %s, Cipher %s, ICV %s\n",
-				fib.PrintHexBytes(buf[:8]),
-				fib.PrintHexBytes(ivArray),
-				fib.PrintHexBytes(packet),
-				fib.PrintHexBytes(pktIcv))
-		}
+		log.Debugf("verifyAndInject: LISP %s, IV %s, Cipher %s, ICV %s",
+			fib.PrintHexBytes(buf[:8]),
+			fib.PrintHexBytes(ivArray),
+			fib.PrintHexBytes(packet),
+			fib.PrintHexBytes(pktIcv))
 		_, err = aesGcm.Open(packet[:0], ivArray, packet, nil)
 		if err != nil {
-			log.Printf("verifyAndInject: Packet decryption failed: %s\n", err)
+			log.Errorf("verifyAndInject: Packet decryption failed: %s", err)
 			return false
 		}
 		gcmOverhead = aesGcm.Overhead()
@@ -404,7 +381,7 @@ func verifyAndInject(fd4 int,
 			Addr:   destAddr,
 		})
 		if err != nil {
-			log.Printf("verifyAndInject: Failed decapsulating ETR packet: %s.\n", err)
+			log.Errorf("verifyAndInject: Failed decapsulating ETR packet: %s", err)
 			return false
 		}
 	} else {
@@ -425,7 +402,7 @@ func verifyAndInject(fd4 int,
 			Addr:   destAddr,
 		})
 		if err != nil {
-			log.Printf("verifyAndInject: Failed decapsulating ETR packet: %s.\n", err)
+			log.Errorf("verifyAndInject: Failed decapsulating ETR packet: %s", err)
 			return false
 		}
 	}
@@ -444,10 +421,8 @@ func SetupEtrPktCapture(ephemeralPort int, upLink string) *afpacket.TPacket {
 		promisc bool = true
 	)
 
-	if debug {
-		log.Printf("SetupEtrPktCapture: Setup ETR NAT capture on interface %s, "+
-			"ephemeral port %d\n", upLink, ephemeralPort)
-	}
+	log.Debugf("SetupEtrPktCapture: Setup ETR NAT capture on interface %s, "+
+		"ephemeral port %d", upLink, ephemeralPort)
 
 	frameSize := 65536
 	blockSize := frameSize * 128
@@ -462,10 +437,10 @@ func SetupEtrPktCapture(ephemeralPort int, upLink string) *afpacket.TPacket {
 		afpacket.OptBlockTimeout(1*time.Millisecond),
 		afpacket.OptTPacketVersion(afpacket.TPacketVersion3))
 	if err != nil {
-		//log.Printf("ETR packet capture on interface %s failed: %s\n",
+		//log.Errorf("ETR packet capture on interface %s failed: %s\n",
 		//	upLink, err)
-		log.Printf("SetupEtrPktCapture: Error: "+
-			"Opening afpacket interface %s: %s\n", upLink, err)
+		log.Errorf("SetupEtrPktCapture: Error: "+
+			"Opening afpacket interface %s: %s", upLink, err)
 		return nil
 	}
 
@@ -482,12 +457,12 @@ func SetupEtrPktCapture(ephemeralPort int, upLink string) *afpacket.TPacket {
 	ins, err := pcap.CompileBPFFilter(layers.LinkTypeEthernet,
 		1600, filter)
 	if err != nil {
-		log.Printf("SetupEtrPktCapture: Compiling BPF filter %s failed: %s\n", filter, err)
+		log.Errorf("SetupEtrPktCapture: Compiling BPF filter %s failed: %s", filter, err)
 	} else {
 		raw_ins := *(*[]bpf.RawInstruction)(unsafe.Pointer(&ins))
 		err = tPacket.SetBPF(raw_ins)
 		if err != nil {
-			log.Printf("SetupEtrPktCapture: Setting BPF filter %s failed: %s\n", filter, err)
+			log.Errorf("SetupEtrPktCapture: Setting BPF filter %s failed: %s", filter, err)
 		}
 	}
 	//tPacket.SetBPFFilter(filter)
@@ -499,7 +474,7 @@ func SetupEtrPktCapture(ephemeralPort int, upLink string) *afpacket.TPacket {
 
 		err = ring.Enable()
 		if err != nil {
-			log.Printf("SetupEtrPktCapture: Enabling pfring on interface %s failed: %s\n",
+			log.Errorf("SetupEtrPktCapture: Enabling pfring on interface %s failed: %s",
 				upLink, err)
 			return nil
 		}
@@ -512,24 +487,20 @@ func SetupEtrPktCapture(ephemeralPort int, upLink string) *afpacket.TPacket {
 func ProcessETRPkts(fd4 int, fd6 int, serverConn *net.UDPConn) bool {
 	// start processing packets. This loop should never end.
 	buf := make([]byte, 65536)
-	if debug {
-		log.Printf("Started processing captured packets in ETR\n")
-	}
+	log.Debugf("Started processing captured packets in ETR")
 
 	for {
 		n, saddr, err := serverConn.ReadFromUDP(buf)
-		if debug {
-			log.Println("ProcessETRPkts: Received", n, "bytes in ETR")
-		}
 		if err != nil {
-			log.Fatal("ProcessETRPkts: Fatal error during ETR processing\n")
-			return false
+			log.Fatal("ProcessETRPkts: Fatal error during ETR processing: %s", err)
 		}
+		log.Debugf("ProcessETRPkts: Received %v bytes in ETR", n)
 		currUnixSeconds := time.Now().Unix()
 		decapKeys := fib.LookupDecapKeys(saddr.IP)
 		ok := verifyAndInject(fd4, fd6, buf, n, decapKeys, currUnixSeconds)
 		if ok == false {
-			log.Printf("Failed consuming ETR packet with dest port 4341\n")
+			// XXX May be add an error stat here
+			log.Errorf("Failed consuming ETR packet with dest port 4341\n")
 		}
 	}
 }
@@ -544,10 +515,9 @@ func ProcessCapturedPkts(fd4 int, fd6 int,
 	var ip6 layers.IPv6
 	var udp layers.UDP
 
-	var pktBuf [65536]byte
-	if debug {
-		log.Printf("Started processing captured packets in ETR\n")
-	}
+	//var pktBuf [65536]byte
+	var pktBuf []byte = make([]byte, 65536)
+	log.Debugf("Started processing captured packets in ETR")
 
 	parser := gopacket.NewDecodingLayerParser(layers.LayerTypeEthernet,
 		&eth, &ip4, &ip6, &udp)
@@ -562,9 +532,9 @@ func ProcessCapturedPkts(fd4 int, fd6 int,
 		if err != nil {
 			select {
 			case <-killChannel:
-				log.Printf("ProcessCapturedPkts: Error capturing packets: %s\n", err)
-				log.Printf(
-					"ProcessCapturedPkts: It could be the ETR thread handle closure leading to this.\n")
+				log.Errorf("ProcessCapturedPkts: Error capturing packets: %s", err)
+				log.Errorf(
+					"ProcessCapturedPkts: It could be the ETR thread handle closure leading to this")
 				return
 			default:
 				continue
@@ -572,9 +542,7 @@ func ProcessCapturedPkts(fd4 int, fd6 int,
 		}
 		capLen := ci.CaptureLength
 		currUnixSeconds := ci.Timestamp.Unix()
-		if debug {
-			log.Printf("ProcessCapturedPkts: Captured ETR packet of length %d\n", capLen)
-		}
+		log.Debugf("ProcessCapturedPkts: Captured ETR packet of length %d", capLen)
 		/*
 		packet := gopacket.NewPacket(
 			pktBuf[:capLen],
@@ -582,10 +550,6 @@ func ProcessCapturedPkts(fd4 int, fd6 int,
 			gopacket.DecodeOptions{Lazy: false, NoCopy: true})
 			*/
 		err = parser.DecodeLayers(pktBuf[:capLen], &decoded)
-		if err != nil {
-			log.Printf("ProcessCapturedPkts: Error decoding packet: %s\n", err)
-			continue
-		}
 
 		/*
 		appLayer := packet.ApplicationLayer()
@@ -634,9 +598,7 @@ func ProcessCapturedPkts(fd4 int, fd6 int,
 					pktBuf[dptypes.ETHHEADERLEN : dptypes.ETHHEADERLEN+dptypes.IP4HEADERLEN])
 				if csum != 0xFFFF {
 					fib.AddDecapStatistics("checksum-error", 1, uint64(capLen), currUnixSeconds)
-					if debug {
-						log.Printf("ProcessCapturedPackets: Checksum error\n")
-					}
+					log.Debugf("ProcessCapturedPackets: Checksum error")
 					return
 				}
 
@@ -658,7 +620,7 @@ func ProcessCapturedPkts(fd4 int, fd6 int,
 
 		ok := verifyAndInject(fd4, fd6, payload, len(payload), decapKeys, currUnixSeconds)
 		if ok == false {
-			log.Printf("ProcessCapturedPkts: ETR Failed consuming packet from RLOC %s\n",
+			log.Errorf("ProcessCapturedPkts: ETR Failed consuming packet from RLOC %s",
 				srcIP.String())
 		}
 	}

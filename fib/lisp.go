@@ -11,7 +11,7 @@ import (
 
 func SetLispKeyId(hdr []byte, keyId byte) {
 	if keyId > 3 {
-		log.Printf("Invalid Lisp crypto key id %v\n", keyId)
+		log.Errorf("Invalid Lisp crypto key id %v", keyId)
 		return
 	}
 	hdr[0] = byte(hdr[0] | keyId)

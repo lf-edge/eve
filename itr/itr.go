@@ -43,9 +43,9 @@ func disableIntfHardwareFeatures(ifname string) {
 
 	_, err := exec.Command(cmd, args...).Output()
 	if err != nil {
-		log.Printf("disableIntfHardwareFeatures: Failed disabling hardware features on %s\n", ifname)
+		log.Errorf("disableIntfHardwareFeatures: Failed disabling hardware features on %s", ifname)
 	} else {
-		log.Printf("disableIntfHardwareFeatures: Disabled hardware features on %s\n", ifname)
+		log.Infof("disableIntfHardwareFeatures: Disabled hardware features on %s", ifname)
 	}
 }
 
@@ -56,13 +56,13 @@ func StartItrThread(threadName string,
 	umblical chan dptypes.ITRConfiguration,
 	puntChannel chan []byte) {
 
-	log.Println("StartItrThread: Starting ITR thread:", threadName)
+	log.Infof("StartItrThread: Starting ITR thread: %s", threadName)
 	// Kill channel will no longer be needed
 	// if we return from this function
 
 	//if ring == nil {
 	if handle == nil {
-		log.Printf("StartItrThread: Packet capture setup for interface %s failed\n",
+		log.Errorf("StartItrThread: Packet capture setup for interface %s failed",
 			threadName)
 	}
 	defer handle.Close()
@@ -73,16 +73,16 @@ func StartItrThread(threadName string,
 	// create raw socket pair for sending LISP packets out
 	fd4, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
 	if err != nil {
-		log.Printf("StartItrThread: "+
-			"Failed creating IPv4 raw socket for %s: %s\n",
+		log.Errorf("StartItrThread: "+
+			"Failed creating IPv4 raw socket for %s: %s",
 			threadName, err)
 		return
 	}
 	err = syscall.SetsockoptInt(
 		fd4, syscall.SOL_SOCKET, syscall.SO_SNDBUF, 65536)
 	if err != nil {
-		log.Printf("StartItrThread: Thread %s: "+
-			"Setting socket buffer size failed: %s\n",
+		log.Errorf("StartItrThread: Thread %s: "+
+			"Setting socket buffer size failed: %s",
 			threadName, err)
 	}
 	defer syscall.Close(fd4)
@@ -90,40 +90,40 @@ func StartItrThread(threadName string,
 	err = syscall.SetsockoptInt(fd4, syscall.SOL_SOCKET,
 		syscall.IP_MTU_DISCOVER, syscall.IP_PMTUDISC_DONT)
 	if err != nil {
-		log.Printf(
+		log.Errorf(
 			"StartItrThread: "+
-				"Disabling path MTU discovery for ipv4 socket failed: %s.\n",
+				"Disabling path MTU discovery for ipv4 socket failed: %s",
 			err)
 	}
 	/*
 		err = syscall.SetsockoptInt(fd4, syscall.IPPROTO_IP, syscall.IP_HDRINCL, 0)
 		if err != nil {
-			log.Printf("Disabling IP_HDRINCL failed: %s.\n", err)
+			log.Errorf("Disabling IP_HDRINCL failed: %s.", err)
 		}
 	*/
 
 	fd6, err := syscall.Socket(
 		syscall.AF_INET6, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
 	if err != nil {
-		log.Printf("StartItrThread: "+
-			"Failed creating IPv6 raw socket for %s: %s\n",
+		log.Errorf("StartItrThread: "+
+			"Failed creating IPv6 raw socket for %s: %s",
 			threadName, err)
 		return
 	}
 	err = syscall.SetsockoptInt(
 		fd6, syscall.SOL_SOCKET, syscall.SO_SNDBUF, 65536)
 	if err != nil {
-		log.Printf("StartItrThread: "+
-			"Thread %s: Setting socket buffer size failed: %s\n",
+		log.Errorf("StartItrThread: "+
+			"Thread %s: Setting socket buffer size failed: %s",
 			threadName, err)
 	}
 
 	err = syscall.SetsockoptInt(fd6, syscall.SOL_SOCKET,
 		syscall.IP_MTU_DISCOVER, syscall.IP_PMTUDISC_DONT)
 	if err != nil {
-		log.Printf(
+		log.Errorf(
 			"StartItrThread: "+
-				"Disabling path MTU discovery for ipv6 socket failed: %s.\n",
+				"Disabling path MTU discovery for ipv6 socket failed: %s",
 			err)
 	}
 	defer syscall.Close(fd6)
@@ -143,7 +143,7 @@ func StartItrThread(threadName string,
 			&itrLocalData.Ip6, &itrLocalData.Udp, &itrLocalData.Tcp)
 
 	if itrLocalData.LayerParser == nil {
-		log.Fatal("StartItrThread: ERROR: Packet decode parser creation failed\n")
+		log.Fatal("StartItrThread: ERROR: Packet decode parser creation failed")
 	}
 
 	// We do not want the parser exiting with error when it encounters
@@ -170,9 +170,7 @@ func SetupPacketCapture(ifname string, snapLen uint32) *pfring.Ring {
 	ring, err := pfring.NewRing(ifname, SNAPLENGTH, pfring.FlagPromisc)
 */
 func SetupPacketCapture(iface string, snapLen int) *afpacket.TPacket {
-	if debug {
-		log.Printf("SetupPacketCapture: Start capture from interface %s\n", iface)
-	}
+	log.Debugf("SetupPacketCapture: Start packet capture from interface %s", iface)
 	const (
 		// Memory map buffer size in mega bytes
 		mmapBufSize int = 24
@@ -194,10 +192,10 @@ func SetupPacketCapture(iface string, snapLen int) *afpacket.TPacket {
 		afpacket.OptBlockTimeout(1*time.Millisecond),
 		afpacket.OptTPacketVersion(afpacket.TPacketVersion3))
 	if err != nil {
-		//log.Printf("SetupPacketCapture: PF_RING creation for interface %s failed: %s\n",
+		//log.Errorf("SetupPacketCapture: PF_RING creation for interface %s failed: %s",
 		//	ifname, err)
-		log.Printf("SetupPacketCapture: Error: "+
-			"Opening afpacket interface %s: %s\n", iface, err)
+		log.Errorf("SetupPacketCapture: Error: "+
+			"Opening afpacket interface %s: %s", iface, err)
 		return nil
 	}
 
@@ -205,8 +203,8 @@ func SetupPacketCapture(iface string, snapLen int) *afpacket.TPacket {
 	/*
 		err = ring.SetBPFFilter("ip6")
 		if err != nil {
-			log.Print(
-				"SetupPacketCapture: Setting ipv6 BPF filter on interface %s failed: %s\n",
+			log.Errorf(
+				"SetupPacketCapture: Setting ipv6 BPF filter on interface %s failed: %s",
 				ifname, err)
 			ring.Close()
 			return nil
@@ -221,19 +219,17 @@ func SetupPacketCapture(iface string, snapLen int) *afpacket.TPacket {
 	} else {
 		filter = "inbound and (ip or ip6)"
 	}
-	if debug {
-		log.Printf("SetupPacketCapture: Compiling BPF filter (%s) for interface %s\n",
-			filter, iface)
-	}
+	log.Debugf("SetupPacketCapture: Compiling BPF filter (%s) for interface %s",
+		filter, iface)
 	ins, err := pcap.CompileBPFFilter(layers.LinkTypeEthernet,
 		1600, filter)
 	if err != nil {
-		log.Printf("SetupPacketCapture: Compiling BPF filter %s failed: %s\n", filter, err)
+		log.Errorf("SetupPacketCapture: Compiling BPF filter %s failed: %s", filter, err)
 	} else {
 		raw_ins := *(*[]bpf.RawInstruction)(unsafe.Pointer(&ins))
 		err = tPacket.SetBPF(raw_ins)
 		if err != nil {
-			log.Printf("SetupPacketCapture: Setting BPF filter %s failed: %s\n", filter, err)
+			log.Errorf("SetupPacketCapture: Setting BPF filter %s failed: %s", filter, err)
 		}
 	}
 	//err = tPacket.SetBPFFilter("ip6")
@@ -249,7 +245,7 @@ func SetupPacketCapture(iface string, snapLen int) *afpacket.TPacket {
 		// Enable ring. Packet inflow starts after this.
 		err = ring.Enable()
 		if err != nil {
-			log.Printf("SetupPacketCapture: Failed enabling PF_RING for interface %s: %s\n",
+			log.Errorf("SetupPacketCapture: Failed enabling PF_RING for interface %s: %s",
 				ifname, err)
 			ring.Close()
 			return nil
@@ -269,14 +265,12 @@ func startWorking(ifname string, handle *afpacket.TPacket,
 
 	iid := fib.LookupIfaceIID(ifname)
 	if iid == 0 {
-		log.Printf("startWorking: "+
-			"Interface %s's IID cannot be found\n", ifname)
+		log.Errorf("startWorking: "+
+			"Interface %s's IID cannot be found", ifname)
 		return
 	}
 
-	if debug {
-		log.Printf("startWorking: Capturing packets from interface %s\n", ifname)
-	}
+	log.Debugf("startWorking: Capturing packets from interface %s", ifname)
 
 	// We need the EIDs attached to this interfaces for further processing
 	// Keep looking for them every 100ms
@@ -288,7 +282,7 @@ eidLoop:
 		//case <-killChannel:
 		case itrConfig := <-umblical:
 			if itrConfig.Quit == true {
-				log.Printf(
+				log.Infof(
 					"startWorking: "+
 						"ITR thread %s received terminate from control module.",
 					ifname)
@@ -296,7 +290,7 @@ eidLoop:
 			}
 
 			if itrConfig.ItrCryptoPortValid == true {
-				log.Printf("startWorking: (%s) Changing ITR crpto port from %d to %d\n",
+				log.Infof("startWorking: (%s) Changing ITR crpto port from %d to %d",
 					ifname, itrLocalData.ItrCryptoPort, itrConfig.ItrCryptoPort)
 				itrLocalData.ItrCryptoPort = itrConfig.ItrCryptoPort
 			}
@@ -307,8 +301,8 @@ eidLoop:
 			if eids != nil {
 				break eidLoop
 			}
-			log.Println("startWorking: "+
-				"Re-trying EID lookup for interface", ifname)
+			log.Infof("startWorking: "+
+				"Re-trying EID lookup for interface %s", ifname)
 			continue
 		}
 	}
@@ -327,14 +321,14 @@ eidLoop:
 				// Channel becomes readable when it's closed.
 				// So we terminate the thread either when we see "true" coming in it or
 				// when the control thread closes our communication channel.
-				log.Printf(
+				log.Infof(
 					"startWorking: "+
 						"ITR thread %s received terminate from control module.",
 					ifname)
 				return
 			}
 			if itrConfig.ItrCryptoPortValid == true {
-				log.Printf("startWorking: (%s) Changing ITR crpto port from %d to %d\n",
+				log.Infof("startWorking: (%s) Changing ITR crpto port from %d to %d",
 					ifname, itrLocalData.ItrCryptoPort, itrConfig.ItrCryptoPort)
 				itrLocalData.ItrCryptoPort = itrConfig.ItrCryptoPort
 			}
@@ -345,15 +339,15 @@ eidLoop:
 				if err == afpacket.ErrTimeout {
 					continue
 				}
-				log.Printf(
+				log.Errorf(
 					"startWorking: "+
 						"Something wrong with "+
-						"packet capture from interface %s: %s\n",
+						"packet capture from interface %s: %s",
 					ifname, err)
-				log.Printf(
+				log.Errorf(
 					"startWorking: " +
 						"May be we are asked to " +
-						"terminate after the hosting domU died.\n")
+						"terminate after the hosting domU died.")
 				return
 			}
 
@@ -372,12 +366,6 @@ eidLoop:
 			err = itrLocalData.LayerParser.DecodeLayers(
 				pktBuf[dptypes.MAXHEADERLEN:ci.CaptureLength+dptypes.MAXHEADERLEN],
 				&itrLocalData.DecodedLayers)
-				/*
-			if err != nil {
-				log.Printf("startWorking: Error decoding packets from %s: %s\n", ifname, err)
-				continue
-			}
-			*/
 
 			var srcAddr, dstAddr net.IP
 			var protocol layers.IPProtocol
@@ -437,9 +425,9 @@ eidLoop:
 
 			if !matchFound {
 				// XXX May be add a per thread stat here
-				log.Printf(
-					"Thread: %s: Input packet with source address %s "+
-						"does not have matching EID of interface\n",
+				log.Debugf(
+					"startWorking: Thread: %s: Input packet with source address %s "+
+						"does not have matching EID of interface",
 					ifname, srcAddr)
 				continue
 			}
@@ -502,10 +490,8 @@ eidLoop:
 
 			var hash32 uint32 = srcAddrBytes ^ dstAddrBytes ^ ports
 
-			if debug {
-				log.Printf("startWorking: Packet of length %d captured on interface %s\n",
-					pktLen, ifname)
-			}
+			log.Debugf("startWorking: Packet of length %d captured on interface %s",
+				pktLen, ifname)
 			LookupAndSend(pktBuf[:],
 				uint32(pktLen), ci.Timestamp, iid, hash32,
 				ifname, srcAddr, dstAddr,
@@ -551,10 +537,8 @@ func LookupAndSend(
 		}:
 			atomic.AddUint64(&mapEntry.BuffdPkts, 1)
 		default:
-			if debug {
-				log.Println("LookupAndSend: "+
-					"Packet buffer channel full for EID", dstAddr)
-			}
+			log.Debugf("LookupAndSend: "+
+				"Packet buffer channel full for EID %s", dstAddr)
 			atomic.AddUint64(&mapEntry.TailDrops, 1)
 		}
 
@@ -642,13 +626,13 @@ func LookupAndSend(
 		}
 		puntMsg, err := json.Marshal(puntEntry)
 		if err != nil {
-			log.Printf("LookupAndSend: "+
-				"Marshaling punt entry failed %s: %s\n",
+			log.Errorf("LookupAndSend: "+
+				"Marshaling punt entry failed %s: %s",
 				puntEntry, err)
 		} else {
 			puntChannel <- puntMsg
-			log.Println("LookupAndSend:Sending punt entry at",
-				time.Now(), ":", string(puntMsg))
+			log.Infof("LookupAndSend:Sending punt entry at %s: %s",
+				time.Now(),string(puntMsg))
 		}
 	}
 	return
