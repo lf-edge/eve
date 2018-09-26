@@ -44,6 +44,12 @@ message AppInstanceConfig {
 	//    if disks section have changed will be purged automatically.
 	//    phase 1: we would purge all disks irrespective preserve flag
         InstanceOpsCmd purge = 10;
+	// App Instance initialization configuration data provided by user
+	// This will be used as "user-data" in cloud-init
+	// Empty string will indicate that cloud-init is not required
 	string userData = 11;
+	// App Instance identification data generateded by zedCloud
+	// This will be used as "meta-data" in cloud-init
+	// Empty string will indicate that cloud-init is not required
 	string metaData = 12;
 }
