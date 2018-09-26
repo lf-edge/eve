@@ -595,6 +595,9 @@ func Run() {
 		case change := <-subBaseOsConfig.C:
 			subBaseOsConfig.ProcessChange(change)
 
+		case change := <-subBaseOsStatus.C:
+			subBaseOsStatus.ProcessChange(change)
+
 		case change := <-subDatastoreConfig.C:
 			subDatastoreConfig.ProcessChange(change)
 
