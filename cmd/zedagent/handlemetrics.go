@@ -913,6 +913,11 @@ func PublishDeviceInfoToZedCloud(pubBaseOsStatus *pubsub.Publication,
 		swInfo.Status = zmet.ZSwState(bos.State)
 		swInfo.ShortVersion = bos.BaseOsVersion
 		swInfo.LongVersion = "" // XXX
+		if len(bos.StorageStatusList) > 0 {
+			// XXX when do we get called? Need check in ???
+			// Assume one - pick first StorageStatus
+			swInfo.DownloadProgress = uint32(bos.StorageStatusList[0].Progress)
+		}
 		if !bos.ErrorTime.IsZero() {
 			log.Debugf("reportMetrics sending error time %v error %v for %s\n",
 				bos.ErrorTime, bos.Error, bos.BaseOsVersion)
@@ -1204,14 +1209,16 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 			log.Infof("storage status detail is empty so ignoring")
 		} else {
 			ReportAppInfo.SoftwareList = make([]*zmet.ZInfoSW, len(aiStatus.StorageStatusList))
-			for idx, sc := range aiStatus.StorageStatusList {
+			for idx, ss := range aiStatus.StorageStatusList {
 				ReportSoftwareInfo := new(zmet.ZInfoSW)
 				ReportSoftwareInfo.SwVersion = aiStatus.UUIDandVersion.Version
-				ReportSoftwareInfo.SwHash = sc.ImageSha256
-				ReportSoftwareInfo.State = zmet.ZSwState(sc.State)
-				ReportSoftwareInfo.Target = sc.Target
+				ReportSoftwareInfo.SwHash = ss.ImageSha256
+				ReportSoftwareInfo.State = zmet.ZSwState(ss.State)
+				ReportSoftwareInfo.DownloadProgress = uint32(ss.Progress)
+
+				ReportSoftwareInfo.Target = ss.Target
 				for _, disk := range ds.DiskStatusList {
-					if disk.ImageSha256 == sc.ImageSha256 {
+					if disk.ImageSha256 == ss.ImageSha256 {
 						ReportSoftwareInfo.Vdev = disk.Vdev
 						break
 					}
