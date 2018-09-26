@@ -47,7 +47,18 @@ lisp map-cache {
     prefix {
         instance-id = %d
         eid-prefix = fd00::/8
-	send-map-request = yes
+        send-map-request = yes
+    }
+}
+`
+
+// Need to fill in IID and IPv4 mask
+const lispIPv4IIDtemplate = `
+lisp map-cache {
+    prefix {
+        instance-id = %d
+        eid-prefix = %s/8
+        send-map-request = yes
     }
 }
 `
@@ -309,6 +320,17 @@ func createLispEidConfiglet(lispRunDirname string,
 			}
 			one := fmt.Sprintf("    rloc {\n        address = %s\n        priority = %d\n    }\n", i.Addr, prio)
 			rlocString += one
+		}
+	}
+	if  AppIPAddr != nil && !EID.Equal(AppIPAddr) {
+		cfgPathnameIID := lispRunDirname + "/" +
+		strconv.FormatUint(uint64(IID), 10)
+		file1, err := os.OpenFile(cfgPathnameIID, os.O_APPEND | os.O_WRONLY, 0600)
+		if err == nil {
+			ipv4Mask := net.CIDRMask(8, 32)
+			ipv4Network := AppIPAddr.Mask(ipv4Mask)
+			file1.WriteString(fmt.Sprintf(lispIPv4IIDtemplate, IID, ipv4Network.String()))
+			file1.Close()
 		}
 	}
 	// Append to rlocString based on AppIPAddr
