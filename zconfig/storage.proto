@@ -90,8 +90,7 @@ message Drive {
 	bool preserve = 6;
 	DriveType drvtype = 8;
 	Target target = 9;
-	int64 maxsizebytes = 10;
 	// Initial image need to be resized to this size.
 	// A value of 0 will indicate that no resizing is required
-	int64 resizebytes = 11;
+	int64 maxsizebytes = 10;
 }

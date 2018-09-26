@@ -48,8 +48,4 @@ message AppInstanceConfig {
 	// This will be used as "user-data" in cloud-init
 	// Empty string will indicate that cloud-init is not required
 	string userData = 11;
-	// App Instance identification data generateded by zedCloud
-	// This will be used as "meta-data" in cloud-init
-	// Empty string will indicate that cloud-init is not required
-	string metaData = 12;
 }
