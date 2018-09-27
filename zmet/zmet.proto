@@ -304,7 +304,7 @@ message ZInfoNetworkObject {
   string ntpServer = 7;
   repeated string dnsServers = 8;
   string dhcpRangeLow = 9;
-  string dhcpRangeHugh = 10;
+  string dhcpRangeHigh = 10;
   // XXX DnsNameToIPList []DnsNameToIP // Used for DNS and ACL ipset
 
   // From NetworkObjectStatus
