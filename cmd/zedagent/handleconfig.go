@@ -48,6 +48,8 @@ type configItems struct {
 	usbAccess               bool   // domU has all PCI including USB controllers
 	sshAccess               bool
 	staleConfigTime         uint32 // On reboot use saved config if not stale
+	logLevel                string
+	remoteLogLevel          string
 	// XXX add max space for downloads?
 	// XXX add LTE uplink usage policy?
 }
@@ -62,7 +64,7 @@ type configItems struct {
 var configItemDefaults = configItems{configInterval: 60, metricInterval: 60,
 	resetIfCloudGoneTime: 7 * 24 * 3600, fallbackIfCloudGoneTime: 600,
 	mintimeUpdateSuccess: 300, usbAccess: true, sshAccess: true,
-	staleConfigTime: 600}
+	staleConfigTime: 600, logLevel: "info", remoteLogLevel: "warning"}
 
 // XXX shorter counters for testing fallback:
 // 	resetIfCloudGoneTime: 300, fallbackIfCloudGoneTime: 60,

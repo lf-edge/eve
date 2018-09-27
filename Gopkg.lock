@@ -189,7 +189,7 @@
     "libs/zedUpload/awsutil",
     "srvs/drona/sftp"
   ]
-  revision = "5b0bb7dbaf18c8653d405dda0dd67bbd83065020"
+  revision = "de81c16291c3f760b4b87ca71e88d10f8feda9b2"
 
 [[projects]]
   branch = "master"

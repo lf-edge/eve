@@ -1,4 +1,4 @@
-package aws
+package awsutil
 
 import (
 	"fmt"
@@ -16,19 +16,7 @@ func S3UploadFile(hctx *http.Client, region, key, secret, bucket, object, objloc
 	// to create a duplicate bucket
 	//_, ok := sc.IsBucketAvailable(bucket)
 
-	// Wait Until Bucket is checks if bucket is available
-	// else waits for 5*20 and finally returns false
-	ok := sc.WaitUntilBucketExists(bucket)
-
-	if !ok {
-		err = sc.CreateBucket(bucket)
-		if err != nil {
-			return location, err
-		}
-
-	}
-
-	location, err = sc.UploadFile(objloc, bucket, object, compression)
+	location, err = sc.UploadFile(objloc, bucket, object, compression, nil)
 	if err != nil {
 		return location, err
 	}
@@ -49,7 +37,7 @@ func S3DownloadFile(hctx *http.Client, region, key, secret, bucket, object, objl
 	   		return err
 	   	}
 	*/
-	err := sc.DownloadFile(objloc, bucket, object)
+	err := sc.DownloadFile(objloc, bucket, object, nil)
 	if err != nil {
 		return err
 	}
