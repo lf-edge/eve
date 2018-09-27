@@ -697,6 +697,7 @@ type AdditionalInfoApp struct {
 type StrongSwanServiceConfig struct {
 	VpnRole          string
 	PolicyBased      bool
+	IsClient         bool
 	VpnGatewayIpAddr string
 	VpnSubnetBlock   string
 	VpnLocalIpAddr   string
@@ -710,6 +711,7 @@ type StrongSwanServiceConfig struct {
 type VpnServiceConfig struct {
 	VpnRole          string
 	PolicyBased      bool
+	IsClient         bool
 	UpLinkConfig     NetLinkConfig
 	AppLinkConfig    NetLinkConfig
 	GatewayConfig    NetLinkConfig

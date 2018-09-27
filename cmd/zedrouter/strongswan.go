@@ -15,6 +15,7 @@ import (
 
 const (
 	AwsVpnClient      = "awsClient"
+	AzureVpnClient    = "azureClient"
 	OnPremVpnClient   = "onPremClient"
 	OnPremVpnServer   = "onPremServer"
 	UpLinkIpAddrType  = "upLink"
@@ -147,6 +148,7 @@ func strongSwanConfigGet(ctx *zedrouterContext,
 
 	// XXX:TBD  host names to ip addresses in the configuration
 	vpnConfig.VpnRole = vpnCloudConfig.VpnRole
+	vpnConfig.IsClient = vpnCloudConfig.IsClient
 	vpnConfig.PolicyBased = vpnCloudConfig.PolicyBased
 	vpnConfig.GatewayConfig = vpnCloudConfig.GatewayConfig
 	vpnConfig.UpLinkConfig = upLink
@@ -208,7 +210,7 @@ func strongSwanConfigGet(ctx *zedrouterContext,
 		vpnConfig.ClientConfigList[idx] = *clientConfig
 	}
 
-	if vpnConfig.VpnRole == OnPremVpnServer {
+	if !vpnConfig.IsClient {
 		if vpnConfig.GatewayConfig.IpAddr != upLink.IpAddr {
 			errorStr := vpnConfig.GatewayConfig.IpAddr
 			errorStr = errorStr + ", upLink: " + upLink.IpAddr
@@ -296,6 +298,7 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 	case AwsVpnClient:
 		// its always route based Vpn Service
 		strongSwanConfig.PolicyBased = false
+		strongSwanConfig.IsClient = true
 
 		if len(strongSwanConfig.ClientConfigList) > 1 {
 			return vpnConfig, errors.New("invalid client config")
@@ -336,10 +339,37 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 			}
 		}
 
+	case AzureVpnClient:
+		if len(strongSwanConfig.ClientConfigList) > 1 {
+			return vpnConfig, errors.New("invalid client config")
+		}
+		strongSwanConfig.IsClient = true
+		// server ip address/subnet is must
+		if strongSwanConfig.VpnGatewayIpAddr == "" ||
+			strongSwanConfig.VpnGatewayIpAddr == AnyIpAddr ||
+			strongSwanConfig.VpnGatewayIpAddr == UpLinkIpAddrType {
+			return vpnConfig, errors.New("vpn gateway not set")
+		}
+		if strongSwanConfig.VpnSubnetBlock == "" ||
+			strongSwanConfig.VpnSubnetBlock == AppLinkSubnetType {
+			return vpnConfig, errors.New("vpn subnet not set")
+		}
+		// flat configuration
+		if len(strongSwanConfig.ClientConfigList) == 0 {
+			// copy the parameters to the new structure
+			strongSwanConfig.ClientConfigList = make([]types.VpnClientConfig, 1)
+			clientConfig := new(types.VpnClientConfig)
+			clientConfig.IpAddr = AnyIpAddr
+			clientConfig.PreSharedKey = strongSwanConfig.PreSharedKey
+			clientConfig.SubnetBlock = strongSwanConfig.LocalSubnetBlock
+			strongSwanConfig.ClientConfigList[0] = *clientConfig
+		}
+
 	case OnPremVpnClient:
 		if len(strongSwanConfig.ClientConfigList) > 1 {
 			return vpnConfig, errors.New("invalid client config")
 		}
+		strongSwanConfig.IsClient = true
 		// server ip address is must
 		if strongSwanConfig.VpnGatewayIpAddr == "" ||
 			strongSwanConfig.VpnGatewayIpAddr == AnyIpAddr ||
@@ -365,6 +395,7 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 		}
 
 	case OnPremVpnServer:
+		strongSwanConfig.IsClient = false
 		// if not mentioned, assume upLink ip address
 		if strongSwanConfig.VpnGatewayIpAddr == "" {
 			strongSwanConfig.VpnGatewayIpAddr = UpLinkIpAddrType
@@ -403,6 +434,7 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 	// fill up our structure
 	vpnConfig.VpnRole = strongSwanConfig.VpnRole
 	vpnConfig.PolicyBased = strongSwanConfig.PolicyBased
+	vpnConfig.IsClient = strongSwanConfig.IsClient
 	vpnConfig.GatewayConfig.IpAddr = strongSwanConfig.VpnGatewayIpAddr
 	vpnConfig.GatewayConfig.SubnetBlock = strongSwanConfig.VpnSubnetBlock
 	vpnConfig.ClientConfigList = make([]types.VpnClientConfig,
