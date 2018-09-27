@@ -29,6 +29,7 @@ import (
 	"github.com/zededa/go-provision/zboot"
 	"github.com/zededa/go-provision/zedcloud"
 	"io/ioutil"
+	"net"
 	"os"
 	"os/exec"
 	"regexp"
@@ -1156,7 +1157,8 @@ func getNetInfo(interfaceDetail psutilnet.InterfaceStat) *zmet.ZInfoNetwork {
 // send report on each uplink.
 // When aiStatus is nil it means a delete and we send a message
 // containing only the UUID to inform zedcloud about the delete.
-func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
+func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
+	aiStatus *types.AppInstanceStatus,
 	aa *types.AssignableAdapters, iteration int) {
 	log.Debugf("PublishAppInfoToZedCloud uuid %s\n", uuid)
 	var ReportInfo = &zmet.ZInfoMsg{}
@@ -1244,17 +1246,22 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 		}
 		// Get vifs assigned to the application
 		// Mostly reporting the UP status
-		// XXX extract the assigned IP from dnsmasq aka
-		// NetworkObjectStatus by mapping vifName to mac address to IP?
+		// We extract the appIP from the dnsmasq assignment
 		interfaces, _ := psutilnet.Interfaces()
 		ifNames := ReadAppInterfaceList(ds.DomainName)
 		for _, ifname := range ifNames {
 			for _, interfaceDetail := range interfaces {
-				if ifname == interfaceDetail.Name {
-					networkInfo := getNetInfo(interfaceDetail)
-					ReportAppInfo.Network = append(ReportAppInfo.Network,
-						networkInfo)
+				if ifname != interfaceDetail.Name {
+					continue
 				}
+				networkInfo := getNetInfo(interfaceDetail)
+				ip := getAppIP(ctx, aiStatus.Key(), ifname)
+				if ip != nil {
+					networkInfo.IPAddrs = make([]string, 1)
+					networkInfo.IPAddrs[0] = *proto.String(ip.String())
+				}
+				ReportAppInfo.Network = append(ReportAppInfo.Network,
+					networkInfo)
 			}
 		}
 	}
@@ -1426,4 +1433,56 @@ func getDefaultRouters(ifname string) []string {
 		res = append(res, rt.Gw.String())
 	}
 	return res
+}
+
+// Use the ifname/vifname to find the MAC address, and use that to find
+// the allocated IP address.
+func getAppIP(ctx *zedagentContext, uuidStr string, ifname string) *net.IP {
+	log.Debugf("getAppIP(%s, %s)\n", uuidStr, ifname)
+	ds, ok := domainStatus[uuidStr]
+	if !ok {
+		log.Debugf("getAppIP(%s, %s) no DomainStatus\n",
+			uuidStr, ifname)
+		return nil
+	}
+	macAddr := ""
+	for _, v := range ds.VifList {
+		if v.Vif == ifname {
+			macAddr = v.Mac
+			break
+		}
+	}
+	if macAddr == "" {
+		log.Debugf("getAppIP(%s, %s) no macAddr\n",
+			uuidStr, ifname)
+		return nil
+	}
+	ip := lookupNetworkObjectStatusByMac(ctx, macAddr)
+	if ip == nil {
+		log.Debugf("getAppIP(%s, %s) no IP address\n",
+			uuidStr, ifname)
+		return nil
+	}
+	log.Debugf("getAppIP(%s, %s) found %s\n", uuidStr, ifname, ip.String())
+	return ip
+}
+
+func lookupNetworkObjectStatusByMac(ctx *zedagentContext,
+	macAddr string) *net.IP {
+
+	sub := ctx.subNetworkObjectStatus
+	items := sub.GetAll()
+	for key, st := range items {
+		status := cast.CastNetworkObjectStatus(st)
+		if status.Key() != key {
+			log.Errorf("lookupNetworkObjectStatusByMac: key/UUID mismatch %s vs %s; ignored %+v\n",
+				key, status.Key(), status)
+			continue
+		}
+		ip, ok := status.IPAssignments[macAddr]
+		if ok {
+			return &ip
+		}
+	}
+	return nil
 }

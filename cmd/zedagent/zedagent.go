@@ -756,7 +756,7 @@ func handleAppInstanceStatusModify(ctxArg interface{}, key string,
 	}
 	ctx := ctxArg.(*zedagentContext)
 	uuidStr := status.Key()
-	PublishAppInfoToZedCloud(uuidStr, &status, ctx.assignableAdapters,
+	PublishAppInfoToZedCloud(ctx, uuidStr, &status, ctx.assignableAdapters,
 		ctx.iteration)
 	ctx.iteration += 1
 }
@@ -766,7 +766,7 @@ func handleAppInstanceStatusDelete(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*zedagentContext)
 	uuidStr := key
-	PublishAppInfoToZedCloud(uuidStr, nil, ctx.assignableAdapters,
+	PublishAppInfoToZedCloud(ctx, uuidStr, nil, ctx.assignableAdapters,
 		ctx.iteration)
 	ctx.iteration += 1
 }
