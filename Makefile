@@ -15,6 +15,7 @@ GOTEST=$(GOCMD) test
 GODEP=$(GOTEST) -i
 GOFMT=gofmt -w
 GOPATH0=$(CURDIR)
+export GOPATH0
 
 # Package lists
 TOPLEVEL_PKG := .
