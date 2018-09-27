@@ -308,8 +308,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	subNetworkObjectStatus.ModifyHandler = handleNetworkObjectModify
-	subNetworkObjectStatus.DeleteHandler = handleNetworkObjectDelete
+	subNetworkObjectStatus.ModifyHandler = handleNetworkObjectStatusModify
+	subNetworkObjectStatus.DeleteHandler = handleNetworkObjectStatusDelete
 	zedagentCtx.subNetworkObjectStatus = subNetworkObjectStatus
 	subNetworkObjectStatus.Activate()
 
