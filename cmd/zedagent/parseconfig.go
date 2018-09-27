@@ -461,8 +461,12 @@ func publishDatastoreConfig(ctx *getconfigContext,
 		datastore.DsType = ds.DType.String()
 		datastore.ApiKey = ds.ApiKey
 		datastore.Password = ds.Password
-		// XXX add to device API to avoid hardcoding "us-west-2"
-		datastore.Region = "us-west-2"
+		datastore.Region = ds.Region
+		// XXX compatibility with unmodified zedcloud datastores
+		// default to "us-west-2"
+		if datastore.Region == "" {
+			datastore.Region = "us-west-2"
+		}
 		ctx.pubDatastoreConfig.Publish(datastore.Key(), &datastore)
 	}
 }
