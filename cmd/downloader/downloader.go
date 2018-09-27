@@ -868,10 +868,10 @@ func doS3(ctx *downloaderContext, status *types.DownloaderStatus,
 				osize := resp.GetOsize()
 				log.Infof("Update progress for %v: %v/%v",
 					resp.GetLocalName(), asize, osize)
-				if asize == 0 {
+				if osize == 0 {
 					status.Progress = 0
 				} else {
-					percent := 100 * osize / asize
+					percent := 100 * asize / osize
 					status.Progress = uint(percent)
 				}
 				publishDownloaderStatus(ctx, status)
@@ -939,10 +939,10 @@ func doSftp(ctx *downloaderContext, status *types.DownloaderStatus,
 				osize := resp.GetOsize()
 				log.Infof("Update progress for %v: %v/%v",
 					resp.GetLocalName(), asize, osize)
-				if asize == 0 {
+				if osize == 0 {
 					status.Progress = 0
 				} else {
-					percent := 100 * osize / asize
+					percent := 100 * asize / osize
 					status.Progress = uint(percent)
 				}
 				publishDownloaderStatus(ctx, status)
