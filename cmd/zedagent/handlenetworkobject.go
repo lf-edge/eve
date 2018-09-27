@@ -65,8 +65,7 @@ func prepareAndPublishNetworkInfoMsg(ctx *zedagentContext,
 		netInfo.DhcpRangeLow = status.DhcpRange.Start.String()
 	}
 	if status.DhcpRange.End != nil {
-		// XXX Should be High in API
-		netInfo.DhcpRangeHugh = status.DhcpRange.End.String()
+		netInfo.DhcpRangeHigh = status.DhcpRange.End.String()
 	}
 
 	netInfo.BridgeNum = uint32(status.BridgeNum)
