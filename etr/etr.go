@@ -485,6 +485,10 @@ func SetupEtrPktCapture(ephemeralPort int, upLink string) *afpacket.TPacket {
 }
 
 func ProcessETRPkts(fd4 int, fd6 int, serverConn *net.UDPConn) bool {
+	// close the raw sockets when we return from this function
+	defer syscall.Close(fd4)
+	defer syscall.Close(fd6)
+
 	// start processing packets. This loop should never end.
 	buf := make([]byte, 65536)
 	log.Debugf("Started processing captured packets in ETR")
@@ -509,6 +513,9 @@ func ProcessETRPkts(fd4 int, fd6 int, serverConn *net.UDPConn) bool {
 func ProcessCapturedPkts(fd4 int, fd6 int,
 	handle *afpacket.TPacket,
 	killChannel chan bool) {
+	// close the raw sockets when we decide to leave this function
+	defer syscall.Close(fd4)
+	defer syscall.Close(fd6)
 
 	var eth layers.Ethernet
 	var ip4 layers.IPv4

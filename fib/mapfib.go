@@ -279,15 +279,10 @@ func UpdateMapCacheEntry(iid uint32, eid net.IP, rlocs []dptypes.Rloc) {
 				// i'll keep it this way for now.
 
 				// send the packet out
-				/*
-				pktBytes := pkt.Packet.Data()
-				capLen := len(pktBytes)
-				*/
 				capLen := uint32(len(pkt.Packet))
 
 				// copy packet bytes into pktBuf at an offset of MAXHEADERLEN bytes
 				// ipv6 (40) + UDP (8) + LISP (8) - ETHERNET (14) + LISP IV (16) = 58
-				//copy(pktBuf[dptypes.MAXHEADERLEN:], pktBytes)
 				copy(pktBuf[dptypes.MAXHEADERLEN:], pkt.Packet)
 
 				// Send the packet out now
@@ -296,8 +291,10 @@ func UpdateMapCacheEntry(iid uint32, eid net.IP, rlocs []dptypes.Rloc) {
 				log.Debugf("UpdateMapCacheEntry: Sending out buffered packet for map-cache "+
 					"entry with EID %s, IID %v", eid, iid)
 
-				// decrement buffered packet count and increment pkt, byte counts
+				// decrement buffered packet count
 				atomic.AddUint64(&entry.BuffdPkts, ^uint64(0))
+
+				// XXX We do not show these counters. We might need these in future.
 				//atomic.AddUint64(&entry.Packets, 1)
 				//atomic.AddUint64(&entry.Bytes, uint64(capLen))
 			} else {

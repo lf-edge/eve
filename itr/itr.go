@@ -582,6 +582,7 @@ func LookupAndSend(
 				// We are trying to decrement the counter here by 1
 				atomic.AddUint64(&mapEntry.BuffdPkts, ^uint64(0))
 
+				// XXX We do not use these counters now. Might need in future.
 				// Increment packet, byte counts
 				//atomic.AddUint64(&mapEntry.Packets, 1)
 				//atomic.AddUint64(&mapEntry.Bytes, uint64(capLen))
@@ -592,10 +593,7 @@ func LookupAndSend(
 		} else {
 			// Look for the default route
 			// Prepare lookup key based on the packet family (IPv4 or IPv6)
-			isIPv6 := false
-			if dstAddr.To4() == nil {
-				isIPv6 = true
-			}
+			isIPv6 := (dstAddr.To4() == nil)
 			var defaultPrefix net.IP
 			if isIPv6 {
 				defaultPrefix = net.ParseIP("::")
