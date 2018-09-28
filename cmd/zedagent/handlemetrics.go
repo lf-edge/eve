@@ -1208,6 +1208,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 			for idx, ss := range aiStatus.StorageStatusList {
 				ReportSoftwareInfo := new(zmet.ZInfoSW)
 				ReportSoftwareInfo.SwVersion = aiStatus.UUIDandVersion.Version
+				ReportSoftwareInfo.ImageName = ss.Name
 				ReportSoftwareInfo.SwHash = ss.ImageSha256
 				ReportSoftwareInfo.State = zmet.ZSwState(ss.State)
 				ReportSoftwareInfo.DownloadProgress = uint32(ss.Progress)
