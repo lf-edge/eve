@@ -1141,6 +1141,15 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigModify for %s\n", key)
 	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
+	c, err := ctx.subGlobalConfig.Get("global")
+	if err == nil {
+		gc := cast.CastGlobalConfig(c)
+		if !cmp.Equal(globalConfig, gc) {
+			log.Infof("handleGlobalConfigModify: diff %v\n",
+				cmp.Diff(globalConfig, gc))
+			globalConfig = gc
+		}
+	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
 
@@ -1155,5 +1164,6 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
+	globalConfig = globalConfigDefaults
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }

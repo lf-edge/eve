@@ -158,6 +158,8 @@ func parseBaseOsConfig(getconfigCtx *getconfigContext,
 
 	// We need to publish the Activate=false first then those with
 	// true to avoid the subscriber seeing two activated
+	// XXX Unfortunately that makes no difference since the subscriber
+	// is likely to see the items in key order
 	expectActivate := false
 	for {
 		published := parseAndPublish(getconfigCtx, cfgOsList,
@@ -1004,6 +1006,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 					globalConfig.ConfigInterval,
 					newU32)
 				globalConfig.ConfigInterval = newU32
+				globalConfigChange = true
 				updateConfigTimer(ctx.configTickerHandle)
 			}
 		case "metricInterval":
@@ -1017,6 +1020,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 					globalConfig.MetricInterval,
 					newU32)
 				globalConfig.MetricInterval = newU32
+				globalConfigChange = true
 				updateMetricsTimer(ctx.metricsTickerHandle)
 			}
 		case "resetIfCloudGoneTime":
@@ -1030,6 +1034,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 					globalConfig.ResetIfCloudGoneTime,
 					newU32)
 				globalConfig.ResetIfCloudGoneTime = newU32
+				globalConfigChange = true
 			}
 		case "fallbackIfCloudGoneTime":
 			if newU32 == 0 {
@@ -1042,6 +1047,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 					globalConfig.FallbackIfCloudGoneTime,
 					newU32)
 				globalConfig.FallbackIfCloudGoneTime = newU32
+				globalConfigChange = true
 			}
 		case "mintimeUpdateSuccess":
 			if newU32 == 0 {
@@ -1054,6 +1060,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 					globalConfig.MintimeUpdateSuccess,
 					newU32)
 				globalConfig.MintimeUpdateSuccess = newU32
+				globalConfigChange = true
 			}
 		case "usbAccess":
 			if newBool != globalConfig.UsbAccess {
@@ -1062,6 +1069,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 					globalConfig.UsbAccess,
 					newBool)
 				globalConfig.UsbAccess = newBool
+				globalConfigChange = true
 				// Need to enable/disable login in domainMgr
 				// for PCI assignment
 				// XXX updateUsbAccess(globalConfig.UsbAccess)
@@ -1073,6 +1081,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 					globalConfig.SshAccess,
 					newBool)
 				globalConfig.SshAccess = newBool
+				globalConfigChange = true
 				updateSshAccess(globalConfig.SshAccess)
 			}
 		case "staleConfigTime":
@@ -1086,6 +1095,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 					globalConfig.StaleConfigTime,
 					newU32)
 				globalConfig.StaleConfigTime = newU32
+				globalConfigChange = true
 			}
 		case "defaultLogLevel":
 			if newString == "" {
@@ -1098,7 +1108,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 					globalConfig.DefaultLogLevel,
 					newString)
 				globalConfig.DefaultLogLevel = newString
-				globalConfigChange = false
+				globalConfigChange = true
 			}
 		case "defaultRemoteLogLevel":
 			if newString == "" {
@@ -1111,20 +1121,20 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 					globalConfig.DefaultRemoteLogLevel,
 					newString)
 				globalConfig.DefaultRemoteLogLevel = newString
-				globalConfigChange = false
+				globalConfigChange = true
 			}
 		default:
 			log.Errorf("Unknown configItem %s\n", item.Key)
 			// XXX send back error? Need device error for that
 		}
 	}
-	// XXX
-	// XXX save the logLevel and remoteLogLevel as default
-	// in current file. XXX read, modify, write or replace file?
-	// XXX save other values in GlobalConfig
-	// XXX parse GlobalConfig when starting to fill in what we write here
 	if globalConfigChange {
-		// XXX create GlobalConfig and publish
+		err := pubsub.PublishToDir("/persist/config/", "global",
+			&globalConfig)
+		if err != nil {
+			log.Errorf("PublishToDir for globalConfig failed %s\n",
+				err)
+		}
 	}
 }
 
