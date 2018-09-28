@@ -8,6 +8,36 @@ message ipRange {
 	string end = 2;
 }
 
+enum proxyProto {
+        PROXY_HTTP    = 0;
+        PROXY_HTTPS   = 1;
+        PROXY_SOCKS   = 2;
+        PROXY_FTP     = 3;
+        PROXY_OTHER   = 255;
+}
+
+message ProxyServer {
+       proxyProto proto  = 1;
+       string     server = 2;
+       uint32     port   = 3;
+}
+
+message ProxyConfig {
+       // enable network level proxy
+       bool networkProxyEnable = 1;
+
+       // dedicated per protocol information
+       repeated ProxyServer proxies = 2;
+
+       // exceptions seperated by commas
+       string exceptions = 3;
+
+       // or pacfile can be in place of others
+       // base64 encoded
+       string pacfile = 4;
+}
+
+
 // These are list of static mapping that can be added to network
 message ZnetStaticDNSEntry {
         string HostName   = 1;
