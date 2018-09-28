@@ -35,6 +35,8 @@ It has these top-level messages:
 	DecapKey
 	ZInfoLisp
 	ZInfoService
+	ZInfoNetworkObject
+	ZmetIPAssignmentEntry
 	ZInfoMsg
 	ZioBundle
 	CpuMetric

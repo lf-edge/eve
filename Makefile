@@ -14,6 +14,7 @@ GOINSTALL=$(GOCMD) install
 GOTEST=$(GOCMD) test
 GODEP=$(GOTEST) -i
 GOFMT=gofmt -w
+GOPATH0=$(CURDIR)
 
 # Package lists
 TOPLEVEL_PKG := .

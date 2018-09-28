@@ -17,6 +17,7 @@ enum ZInfoTypes {
   ZiHypervisor = 2;	// Deprecated
   ZiApp = 3;
   ZiService = 4;
+  ZiNetworkObject = 5;
 }
 
 // Manufacturing info, product name, model, version etc.
@@ -88,7 +89,7 @@ enum ZSwState {
   RUNNING               = 7;    // running
   HALTING               = 8;    // being halted
   HALTED                = 9;    // Halted
-  REFRESHING            = 10;   // Refreshing due to config change
+  RESTARTING            = 10;   // Restarting due to config change
   PURGING               = 11;   // Purging due to config change
 }
 
@@ -106,6 +107,7 @@ message ZInfoSW {
   ZSwState state = 4;		// State of Software Image download/install
   string target = 6;		// E.g., "disk", "kernel", "device-tree"
   string vdev = 7;		// E.g., "xvda"
+  uint32 downloadProgress = 8;	// Download progress; 0-100 percent
 }
 
 // Errors in response to the applicatioan of configuration
@@ -147,6 +149,7 @@ message ZInfoDevSW {
   string shortVersion = 7;   // From rootfs i.e., image
   string longVersion = 8;    // E.g., the yml file content from build
   ErrorInfo swErr = 9;
+  uint32 downloadProgress = 10; // Download progress; 0-100 percent
 }
 
 // Per filesystem/partition information
@@ -180,7 +183,7 @@ message ZInfoApp {
   repeated ZioBundle assignedAdapters = 13;
   repeated ErrorInfo appErr = 14;
   ZSwState state = 15;
-  repeated ZInfoNetwork network = 16;	// XXX add?
+  repeated ZInfoNetwork network = 16;	    // up/down; allocated IP
 }
 
 // ipSec state information
@@ -288,6 +291,41 @@ message ZInfoService {
   }
 }
 
+// Network Object information
+message ZInfoNetworkObject {
+  string networkID = 1;		// UUID
+
+  // From NetworkObjectConfig; do we need to include all of these?
+  uint32 networkType = 2;
+  uint32 dhcpType = 3;
+  string subnet = 4;
+  string gateway = 5;
+  string domainname = 6;
+  string ntpServer = 7;
+  repeated string dnsServers = 8;
+  string dhcpRangeLow = 9;
+  string dhcpRangeHigh = 10;
+  // XXX DnsNameToIPList []DnsNameToIP // Used for DNS and ACL ipset
+
+  // From NetworkObjectStatus
+  uint32 bridgeNum = 12;
+  string bridgeName = 13;
+  string bridgeIPAddr = 14;
+
+  repeated ZmetIPAssignmentEntry ipAssignments = 15;
+  repeated string bridgeIPSets = 16; // Union of all ipsets for the bridge
+  repeated string vifNames = 17; // Set of vifs on this bridge
+  bool ipv4Eid = 18; // Track if this is a CryptoEid with IPv4 EIDs
+
+  repeated ErrorInfo networkErr = 19;
+}
+
+// Map from MAC to IP addresses
+message ZmetIPAssignmentEntry {
+        string macAddress = 1;
+        repeated string ipAddress = 2;
+}
+
 message ZInfoMsg {
   ZInfoTypes ztype = 1;
   string devId = 2;
@@ -295,6 +333,7 @@ message ZInfoMsg {
   	ZInfoDevice dinfo = 3;
   	ZInfoApp ainfo = 5;
 	ZInfoService sinfo = 10;
+	ZInfoNetworkObject ninfo = 11;
    }
   google.protobuf.Timestamp atTimeStamp = 6;
 }
