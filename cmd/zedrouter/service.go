@@ -523,6 +523,22 @@ func lispCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	iidConfig := fmt.Sprintf(lispIIDtemplate, iid)
 	file.WriteString(iidConfig)
 
+	// Check if the network configuration has IPv4 subnet.
+	// If yes, we should write map-cache configuration (lisp.config)
+	// for IPv4 prefix also.
+	netstatus := lookupNetworkObjectStatus(ctx, config.AppLink.String())
+	if netstatus == nil {
+		return errors.New(fmt.Sprintf("No AppLink for %s", config.UUID))
+	}
+	if netstatus.Ipv4Eid {
+		ipv4Network := netstatus.Subnet.IP.Mask(netstatus.Subnet.Mask)
+		maskLen, _ := netstatus.Subnet.Mask.Size()
+		subnet := fmt.Sprintf("%s/%d",
+			ipv4Network.String(), maskLen)
+		file.WriteString(fmt.Sprintf(
+			lispIPv4IIDtemplate, iid, subnet))
+	}
+
 	log.Infof("lispCreate(%s)\n", config.DisplayName)
 	return nil
 }
