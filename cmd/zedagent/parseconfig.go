@@ -461,8 +461,12 @@ func publishDatastoreConfig(ctx *getconfigContext,
 		datastore.DsType = ds.DType.String()
 		datastore.ApiKey = ds.ApiKey
 		datastore.Password = ds.Password
-		// XXX add to device API to avoid hardcoding "us-west-2"
-		datastore.Region = "us-west-2"
+		datastore.Region = ds.Region
+		// XXX compatibility with unmodified zedcloud datastores
+		// default to "us-west-2"
+		if datastore.Region == "" {
+			datastore.Region = "us-west-2"
+		}
 		ctx.pubDatastoreConfig.Publish(datastore.Key(), &datastore)
 	}
 }
@@ -969,18 +973,23 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 	log.Infof("parseConfigItems: Applying updated config sha % x vs. % x: %v\n",
 		itemsPrevConfigHash, configHash, items)
 
+	globalConfigChange := false
 	for _, item := range items {
 		log.Infof("parseConfigItems key %s\n", item.Key)
 
 		var newU32 uint32
 		var newBool bool
+		var newString string
 		switch u := item.ConfigItemValue.(type) {
 		case *zconfig.ConfigItem_Uint32Value:
 			newU32 = u.Uint32Value
 		case *zconfig.ConfigItem_BoolValue:
 			newBool = u.BoolValue
+		case *zconfig.ConfigItem_StringValue:
+			newString = u.StringValue
 		default:
-			log.Errorf("parseConfigItems: currently only supporting uint32 and bool types\n")
+			log.Errorf("parseConfigItems: not supporting %T type\n",
+				u)
 			continue
 		}
 		switch item.Key {
@@ -1078,10 +1087,43 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 					newU32)
 				configItemCurrent.staleConfigTime = newU32
 			}
+		case "logLevel":
+			if newString == "" {
+				// Revert to default
+				newString = configItemDefaults.logLevel
+			}
+			if newString != configItemCurrent.logLevel {
+				log.Infof("parseConfigItems: %s change from %v to %v\n",
+					item.Key,
+					configItemCurrent.logLevel,
+					newString)
+				configItemCurrent.logLevel = newString
+				globalConfigChange = false
+			}
+		case "remoteLogLevel":
+			if newString == "" {
+				// Revert to default
+				newString = configItemDefaults.remoteLogLevel
+			}
+			if newString != configItemCurrent.remoteLogLevel {
+				log.Infof("parseConfigItems: %s change from %v to %v\n",
+					item.Key,
+					configItemCurrent.remoteLogLevel,
+					newString)
+				configItemCurrent.remoteLogLevel = newString
+				globalConfigChange = false
+			}
 		default:
 			log.Errorf("Unknown configItem %s\n", item.Key)
 			// XXX send back error? Need device error for that
 		}
+	}
+	// XXX save the logLevel and remoteLogLevel as default
+	// in current file. XXX read, modify, write or replace file?
+	// XXX save other values in GlobalConfig
+	// XXX parse GlobalConfig when starting to fill in what we write here
+	if globalConfigChange {
+		// XXX create GlobalConfig and publish
 	}
 }
 

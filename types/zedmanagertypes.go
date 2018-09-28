@@ -108,9 +108,10 @@ type AppInstanceStatus struct {
 
 // Track more complicated workflows
 type Inprogress uint8
+
 const (
-	NONE          Inprogress = iota
-	DOWNLOAD      // Download and verify new images
+	NONE     Inprogress = iota
+	DOWNLOAD            // Download and verify new images
 	BRING_DOWN
 	BRING_UP
 )
@@ -185,6 +186,7 @@ type StorageStatus struct {
 	Devtype            string
 	Target             string  // Default "" is interpreted as "disk"
 	State              SwState // DOWNLOADED etc
+	Progress           uint    // In percent i.e., 0-100
 	HasDownloaderRef   bool    // Reference against downloader to clean up
 	HasVerifierRef     bool    // Reference against verifier to clean up
 	ActiveFileLocation string  // Location of filestystem
