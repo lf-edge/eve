@@ -24,10 +24,9 @@ func GetLogLevel(sub *pubsub.Subscription, agentName string) (string, bool) {
 	if ok {
 		return as.LogLevel, true
 	}
-	// Do we have a default entry?
-	as, ok = gc.AgentSettings["default"]
-	if ok {
-		return as.LogLevel, true
+	// Do we have a default value?
+	if gc.DefaultLogLevel != "" {
+		return gc.DefaultLogLevel, true
 	}
 	return "", false
 }
@@ -45,10 +44,9 @@ func GetRemoteLogLevel(sub *pubsub.Subscription, agentName string) (string, bool
 	if ok {
 		return as.RemoteLogLevel, true
 	}
-	// Do we have a default entry?
-	as, ok = gc.AgentSettings["default"]
-	if ok {
-		return as.RemoteLogLevel, true
+	// Do we have a default value?
+	if gc.DefaultRemoteLogLevel != "" {
+		return gc.DefaultRemoteLogLevel, true
 	}
 	return "", false
 }

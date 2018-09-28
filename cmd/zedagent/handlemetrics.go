@@ -59,7 +59,7 @@ func metricsTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
 	log.Infoln("starting report metrics timer task")
 	publishMetrics(ctx, iteration)
 
-	interval := time.Duration(configItemCurrent.metricInterval) * time.Second
+	interval := time.Duration(globalConfig.MetricInterval) * time.Second
 	max := float64(interval)
 	min := max * 0.3
 	ticker := flextimer.NewRangeTicker(time.Duration(min), time.Duration(max))
@@ -71,10 +71,10 @@ func metricsTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
 	}
 }
 
-// Called when configItemCurrent changes
+// Called when globalConfig changes
 // Assumes the caller has verifier that the interval has changed
 func updateMetricsTimer(tickerHandle interface{}) {
-	interval := time.Duration(configItemCurrent.metricInterval) * time.Second
+	interval := time.Duration(globalConfig.MetricInterval) * time.Second
 	log.Infof("updateMetricsTimer() change to %v\n", interval)
 	max := float64(interval)
 	min := max * 0.3

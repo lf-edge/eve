@@ -996,121 +996,121 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 		case "configInterval":
 			if newU32 == 0 {
 				// Revert to default
-				newU32 = configItemDefaults.configInterval
+				newU32 = globalConfigDefaults.ConfigInterval
 			}
-			if newU32 != configItemCurrent.configInterval {
+			if newU32 != globalConfig.ConfigInterval {
 				log.Infof("parseConfigItems: %s change from %d to %d\n",
 					item.Key,
-					configItemCurrent.configInterval,
+					globalConfig.ConfigInterval,
 					newU32)
-				configItemCurrent.configInterval = newU32
+				globalConfig.ConfigInterval = newU32
 				updateConfigTimer(ctx.configTickerHandle)
 			}
 		case "metricInterval":
 			if newU32 == 0 {
 				// Revert to default
-				newU32 = configItemDefaults.metricInterval
+				newU32 = globalConfigDefaults.MetricInterval
 			}
-			if newU32 != configItemCurrent.metricInterval {
+			if newU32 != globalConfig.MetricInterval {
 				log.Infof("parseConfigItems: %s change from %d to %d\n",
 					item.Key,
-					configItemCurrent.metricInterval,
+					globalConfig.MetricInterval,
 					newU32)
-				configItemCurrent.metricInterval = newU32
+				globalConfig.MetricInterval = newU32
 				updateMetricsTimer(ctx.metricsTickerHandle)
 			}
 		case "resetIfCloudGoneTime":
 			if newU32 == 0 {
 				// Revert to default
-				newU32 = configItemDefaults.resetIfCloudGoneTime
+				newU32 = globalConfigDefaults.ResetIfCloudGoneTime
 			}
-			if newU32 != configItemCurrent.resetIfCloudGoneTime {
+			if newU32 != globalConfig.ResetIfCloudGoneTime {
 				log.Infof("parseConfigItems: %s change from %d to %d\n",
 					item.Key,
-					configItemCurrent.resetIfCloudGoneTime,
+					globalConfig.ResetIfCloudGoneTime,
 					newU32)
-				configItemCurrent.resetIfCloudGoneTime = newU32
+				globalConfig.ResetIfCloudGoneTime = newU32
 			}
 		case "fallbackIfCloudGoneTime":
 			if newU32 == 0 {
 				// Revert to default
-				newU32 = configItemDefaults.fallbackIfCloudGoneTime
+				newU32 = globalConfigDefaults.FallbackIfCloudGoneTime
 			}
-			if newU32 != configItemCurrent.fallbackIfCloudGoneTime {
+			if newU32 != globalConfig.FallbackIfCloudGoneTime {
 				log.Infof("parseConfigItems: %s change from %d to %d\n",
 					item.Key,
-					configItemCurrent.fallbackIfCloudGoneTime,
+					globalConfig.FallbackIfCloudGoneTime,
 					newU32)
-				configItemCurrent.fallbackIfCloudGoneTime = newU32
+				globalConfig.FallbackIfCloudGoneTime = newU32
 			}
 		case "mintimeUpdateSuccess":
 			if newU32 == 0 {
 				// Revert to default
-				newU32 = configItemDefaults.mintimeUpdateSuccess
+				newU32 = globalConfigDefaults.MintimeUpdateSuccess
 			}
-			if newU32 != configItemCurrent.mintimeUpdateSuccess {
+			if newU32 != globalConfig.MintimeUpdateSuccess {
 				log.Errorf("parseConfigItems: %s change from %d to %d\n",
 					item.Key,
-					configItemCurrent.mintimeUpdateSuccess,
+					globalConfig.MintimeUpdateSuccess,
 					newU32)
-				configItemCurrent.mintimeUpdateSuccess = newU32
+				globalConfig.MintimeUpdateSuccess = newU32
 			}
 		case "usbAccess":
-			if newBool != configItemCurrent.usbAccess {
+			if newBool != globalConfig.UsbAccess {
 				log.Infof("parseConfigItems: %s change from %v to %v\n",
 					item.Key,
-					configItemCurrent.usbAccess,
+					globalConfig.UsbAccess,
 					newBool)
-				configItemCurrent.usbAccess = newBool
+				globalConfig.UsbAccess = newBool
 				// Need to enable/disable login in domainMgr
 				// for PCI assignment
-				// XXX updateUsbAccess(configItemCurrent.usbAccess)
+				// XXX updateUsbAccess(globalConfig.UsbAccess)
 			}
 		case "sshAccess":
-			if newBool != configItemCurrent.sshAccess {
+			if newBool != globalConfig.SshAccess {
 				log.Infof("parseConfigItems: %s change from %v to %v\n",
 					item.Key,
-					configItemCurrent.sshAccess,
+					globalConfig.SshAccess,
 					newBool)
-				configItemCurrent.sshAccess = newBool
-				updateSshAccess(configItemCurrent.sshAccess)
+				globalConfig.SshAccess = newBool
+				updateSshAccess(globalConfig.SshAccess)
 			}
 		case "staleConfigTime":
 			if newU32 == 0 {
 				// Revert to default
-				newU32 = configItemDefaults.staleConfigTime
+				newU32 = globalConfigDefaults.StaleConfigTime
 			}
-			if newU32 != configItemCurrent.staleConfigTime {
+			if newU32 != globalConfig.StaleConfigTime {
 				log.Infof("parseConfigItems: %s change from %d to %d\n",
 					item.Key,
-					configItemCurrent.staleConfigTime,
+					globalConfig.StaleConfigTime,
 					newU32)
-				configItemCurrent.staleConfigTime = newU32
+				globalConfig.StaleConfigTime = newU32
 			}
-		case "logLevel":
+		case "defaultLogLevel":
 			if newString == "" {
 				// Revert to default
-				newString = configItemDefaults.logLevel
+				newString = globalConfigDefaults.DefaultLogLevel
 			}
-			if newString != configItemCurrent.logLevel {
+			if newString != globalConfig.DefaultLogLevel {
 				log.Infof("parseConfigItems: %s change from %v to %v\n",
 					item.Key,
-					configItemCurrent.logLevel,
+					globalConfig.DefaultLogLevel,
 					newString)
-				configItemCurrent.logLevel = newString
+				globalConfig.DefaultLogLevel = newString
 				globalConfigChange = false
 			}
-		case "remoteLogLevel":
+		case "defaultRemoteLogLevel":
 			if newString == "" {
 				// Revert to default
-				newString = configItemDefaults.remoteLogLevel
+				newString = globalConfigDefaults.DefaultRemoteLogLevel
 			}
-			if newString != configItemCurrent.remoteLogLevel {
+			if newString != globalConfig.DefaultRemoteLogLevel {
 				log.Infof("parseConfigItems: %s change from %v to %v\n",
 					item.Key,
-					configItemCurrent.remoteLogLevel,
+					globalConfig.DefaultRemoteLogLevel,
 					newString)
-				configItemCurrent.remoteLogLevel = newString
+				globalConfig.DefaultRemoteLogLevel = newString
 				globalConfigChange = false
 			}
 		default:
@@ -1118,6 +1118,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 			// XXX send back error? Need device error for that
 		}
 	}
+	// XXX
 	// XXX save the logLevel and remoteLogLevel as default
 	// in current file. XXX read, modify, write or replace file?
 	// XXX save other values in GlobalConfig

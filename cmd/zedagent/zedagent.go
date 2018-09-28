@@ -489,16 +489,16 @@ func Run() {
 	subDeviceNetworkStatus.Activate()
 
 	updateInprogress := zboot.IsCurrentPartitionStateInProgress()
-	time1 := time.Duration(configItemCurrent.resetIfCloudGoneTime)
+	time1 := time.Duration(globalConfig.ResetIfCloudGoneTime)
 	t1 := time.NewTimer(time1 * time.Second)
 	log.Infof("Started timer for reset for %d seconds\n", time1)
-	time2 := time.Duration(configItemCurrent.fallbackIfCloudGoneTime)
+	time2 := time.Duration(globalConfig.FallbackIfCloudGoneTime)
 	log.Infof("Started timer for fallback (%v) reset for %d seconds\n",
 		updateInprogress, time2)
 	t2 := time.NewTimer(time2 * time.Second)
 
 	// Initial settings; redone below in case some
-	updateSshAccess(configItemCurrent.sshAccess)
+	updateSshAccess(globalConfig.SshAccess)
 
 	log.Infof("Waiting until we have some uplinks with usable addresses\n")
 	waited := false
@@ -579,7 +579,7 @@ func Run() {
 	getconfigCtx.configTickerHandle = configTickerHandle
 	getconfigCtx.metricsTickerHandle = metricsTickerHandle
 
-	updateSshAccess(configItemCurrent.sshAccess)
+	updateSshAccess(globalConfig.SshAccess)
 
 	for {
 		select {
