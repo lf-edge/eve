@@ -108,6 +108,7 @@ message ZInfoSW {
   string target = 6;		// E.g., "disk", "kernel", "device-tree"
   string vdev = 7;		// E.g., "xvda"
   uint32 downloadProgress = 8;	// Download progress; 0-100 percent
+  string imageName = 9;         // Name of the disk image
 }
 
 // Errors in response to the applicatioan of configuration
