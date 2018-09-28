@@ -1208,6 +1208,7 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 				ReportSoftwareInfo := new(zmet.ZInfoSW)
 				ReportSoftwareInfo.SwVersion = aiStatus.UUIDandVersion.Version
 				ReportSoftwareInfo.SwHash = sc.ImageSha256
+				ReportSoftwareInfo.ImageName = sc.Name
 				ReportSoftwareInfo.State = zmet.ZSwState(sc.State)
 				ReportSoftwareInfo.Target = sc.Target
 				for _, disk := range ds.DiskStatusList {
