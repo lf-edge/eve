@@ -964,7 +964,7 @@ func PublishDeviceInfoToZedCloud(subBaseOsStatus *pubsub.Subscription,
 		_, _, err := types.IoBundleToPci(ib)
 		if err != nil {
 			if len(domainStatus) == 0 {
-				log.Debugf("Not reporting non-existent PCI device %d %s: %v\n",
+				log.Infof("Not reporting non-existent PCI device %d %s: %v\n",
 					ib.Type, ib.Name, err)
 				continue
 			}

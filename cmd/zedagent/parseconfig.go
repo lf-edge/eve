@@ -1062,27 +1062,27 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				globalConfig.MintimeUpdateSuccess = newU32
 				globalConfigChange = true
 			}
-		case "usbAccess":
-			if newBool != globalConfig.UsbAccess {
+		case "noUsbAccess": // XXX swap name
+			if newBool != globalConfig.NoUsbAccess {
 				log.Infof("parseConfigItems: %s change from %v to %v\n",
 					item.Key,
-					globalConfig.UsbAccess,
+					globalConfig.NoUsbAccess,
 					newBool)
-				globalConfig.UsbAccess = newBool
+				globalConfig.NoUsbAccess = newBool
 				globalConfigChange = true
 				// Need to enable/disable login in domainMgr
 				// for PCI assignment
-				// XXX updateUsbAccess(globalConfig.UsbAccess)
+				// XXX updateUsbAccess(!globalConfig.NoUsbAccess)
 			}
-		case "sshAccess":
-			if newBool != globalConfig.SshAccess {
+		case "noSshAccess": // XXX swap name
+			if newBool != globalConfig.NoSshAccess {
 				log.Infof("parseConfigItems: %s change from %v to %v\n",
 					item.Key,
-					globalConfig.SshAccess,
+					globalConfig.NoSshAccess,
 					newBool)
-				globalConfig.SshAccess = newBool
+				globalConfig.NoSshAccess = newBool
 				globalConfigChange = true
-				updateSshAccess(globalConfig.SshAccess)
+				updateSshAccess(!globalConfig.NoSshAccess)
 			}
 		case "staleConfigTime":
 			if newU32 == 0 {

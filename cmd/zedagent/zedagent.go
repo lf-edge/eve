@@ -498,7 +498,7 @@ func Run() {
 	t2 := time.NewTimer(time2 * time.Second)
 
 	// Initial settings; redone below in case some
-	updateSshAccess(globalConfig.SshAccess)
+	updateSshAccess(!globalConfig.NoSshAccess)
 
 	log.Infof("Waiting until we have some uplinks with usable addresses\n")
 	waited := false
@@ -579,7 +579,7 @@ func Run() {
 	getconfigCtx.configTickerHandle = configTickerHandle
 	getconfigCtx.metricsTickerHandle = metricsTickerHandle
 
-	updateSshAccess(globalConfig.SshAccess)
+	updateSshAccess(!globalConfig.NoSshAccess)
 
 	for {
 		select {

@@ -50,8 +50,8 @@ var globalConfigDefaults = types.GlobalConfig{
 	ResetIfCloudGoneTime:    7 * 24 * 3600,
 	FallbackIfCloudGoneTime: 600,
 	MintimeUpdateSuccess:    300,
-	UsbAccess:               true, // XXX change defaults
-	SshAccess:               true, // XXX change defaults
+	NoUsbAccess:             false, // XXX change defaults
+	NoSshAccess:             false, // XXX change defaults
 	StaleConfigTime:         600,
 	DefaultLogLevel:         "info", // XXX change default to warning?
 	DefaultRemoteLogLevel:   "warning",
