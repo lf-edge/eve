@@ -47,7 +47,18 @@ lisp map-cache {
     prefix {
         instance-id = %d
         eid-prefix = fd00::/8
-	send-map-request = yes
+        send-map-request = yes
+    }
+}
+`
+
+// Need to fill in IID and IPv4 mask
+const lispIPv4IIDtemplate = `
+lisp map-cache {
+    prefix {
+        instance-id = %d
+        eid-prefix = %s
+        send-map-request = yes
     }
 }
 `
