@@ -1147,7 +1147,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		if !cmp.Equal(globalConfig, gc) {
 			log.Infof("handleGlobalConfigModify: diff %v\n",
 				cmp.Diff(globalConfig, gc))
-			globalConfig = gc
+			applyGlobalConfig(gc)
 		}
 	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
@@ -1166,4 +1166,29 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		debugOverride)
 	globalConfig = globalConfigDefaults
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
+}
+
+// Check which values are set and which should come from defaults
+// Zero integers means to use default
+func applyGlobalConfig(newgc types.GlobalConfig) {
+
+	if newgc.ConfigInterval == 0 {
+		newgc.ConfigInterval = globalConfigDefaults.ConfigInterval
+	}
+	if newgc.MetricInterval == 0 {
+		newgc.MetricInterval = globalConfigDefaults.MetricInterval
+	}
+	if newgc.ResetIfCloudGoneTime == 0 {
+		newgc.ResetIfCloudGoneTime = globalConfigDefaults.ResetIfCloudGoneTime
+	}
+	if newgc.FallbackIfCloudGoneTime == 0 {
+		newgc.FallbackIfCloudGoneTime = globalConfigDefaults.FallbackIfCloudGoneTime
+	}
+	if newgc.MintimeUpdateSuccess == 0 {
+		newgc.MintimeUpdateSuccess = globalConfigDefaults.MintimeUpdateSuccess
+	}
+	if newgc.StaleConfigTime == 0 {
+		newgc.StaleConfigTime = globalConfigDefaults.StaleConfigTime
+	}
+	globalConfig = newgc
 }
