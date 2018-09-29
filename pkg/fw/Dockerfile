@@ -4,7 +4,8 @@ WORKDIR /
 RUN apk add --no-cache \
     linux-firmware-other \
     linux-firmware-ath10k \
-    linux-firmware-mrvl
+    linux-firmware-mrvl \
+    linux-firmware-rtlwifi
 
 FROM scratch
 ENTRYPOINT []
@@ -16,3 +17,4 @@ WORKDIR /
 COPY ath10k /lib/firmware/ath10k
 COPY --from=build /lib/firmware/mrvl /lib/firmware/mrvl
 COPY --from=build /lib/firmware/rt2870.bin /lib/firmware/rt2870.bin
+COPY --from=build /lib/firmware/rtlwifi /lib/firmware/rtlwifi
