@@ -995,7 +995,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 			continue
 		}
 		switch item.Key {
-		case "configInterval":
+		case "timer.config.interval":
 			if newU32 == 0 {
 				// Revert to default
 				newU32 = globalConfigDefaults.ConfigInterval
@@ -1009,7 +1009,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				globalConfigChange = true
 				updateConfigTimer(ctx.configTickerHandle)
 			}
-		case "metricInterval":
+		case "timer.metric.interval":
 			if newU32 == 0 {
 				// Revert to default
 				newU32 = globalConfigDefaults.MetricInterval
@@ -1023,7 +1023,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				globalConfigChange = true
 				updateMetricsTimer(ctx.metricsTickerHandle)
 			}
-		case "resetIfCloudGoneTime":
+		case "timer.reboot.no.network":
 			if newU32 == 0 {
 				// Revert to default
 				newU32 = globalConfigDefaults.ResetIfCloudGoneTime
@@ -1036,7 +1036,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				globalConfig.ResetIfCloudGoneTime = newU32
 				globalConfigChange = true
 			}
-		case "fallbackIfCloudGoneTime":
+		case "timer.update.fallback.no.network":
 			if newU32 == 0 {
 				// Revert to default
 				newU32 = globalConfigDefaults.FallbackIfCloudGoneTime
@@ -1049,7 +1049,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				globalConfig.FallbackIfCloudGoneTime = newU32
 				globalConfigChange = true
 			}
-		case "mintimeUpdateSuccess":
+		case "timer.test.baseimage.update":
 			if newU32 == 0 {
 				// Revert to default
 				newU32 = globalConfigDefaults.MintimeUpdateSuccess
@@ -1062,7 +1062,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				globalConfig.MintimeUpdateSuccess = newU32
 				globalConfigChange = true
 			}
-		case "noUsbAccess": // XXX swap name
+		case "debug.disable.usb": // XXX swap name to enable?
 			if newBool != globalConfig.NoUsbAccess {
 				log.Infof("parseConfigItems: %s change from %v to %v\n",
 					item.Key,
@@ -1074,7 +1074,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				// for PCI assignment
 				// XXX updateUsbAccess(!globalConfig.NoUsbAccess)
 			}
-		case "noSshAccess": // XXX swap name
+		case "debug.disable.ssh": // XXX swap name to enable?
 			if newBool != globalConfig.NoSshAccess {
 				log.Infof("parseConfigItems: %s change from %v to %v\n",
 					item.Key,
@@ -1084,7 +1084,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				globalConfigChange = true
 				updateSshAccess(!globalConfig.NoSshAccess)
 			}
-		case "staleConfigTime":
+		case "timer.use.config.checkpoint":
 			if newU32 == 0 {
 				// Revert to default
 				newU32 = globalConfigDefaults.StaleConfigTime
@@ -1097,7 +1097,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				globalConfig.StaleConfigTime = newU32
 				globalConfigChange = true
 			}
-		case "defaultLogLevel":
+		case "debug.default.loglevel":
 			if newString == "" {
 				// Revert to default
 				newString = globalConfigDefaults.DefaultLogLevel
@@ -1110,7 +1110,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				globalConfig.DefaultLogLevel = newString
 				globalConfigChange = true
 			}
-		case "defaultRemoteLogLevel":
+		case "debug.default.remote.loglevel":
 			if newString == "" {
 				// Revert to default
 				newString = globalConfigDefaults.DefaultRemoteLogLevel
