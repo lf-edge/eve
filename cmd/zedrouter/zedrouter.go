@@ -583,7 +583,7 @@ func publishDeviceNetworkStatus(ctx *zedrouterContext) {
 func publishLispDataplaneConfig(ctx *zedrouterContext,
 	status *types.LispDataplaneConfig) {
 	key := "global"
-	log.Errorf("publishLispDataplaneConfig(%s)\n", key)
+	log.Debugf("publishLispDataplaneConfig(%s)\n", key)
 	pub := ctx.pubLispDataplaneConfig
 	pub.Publish(key, status)
 }
