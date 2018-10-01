@@ -1597,6 +1597,8 @@ func maybeResizeDisk(diskfile string, maxsizebytes uint64) error {
 	if err != nil {
 		return err
 	}
+	log.Infof("maybeResizeDisk(%s) current %d to %d",
+			diskfile, currentSize, maxsizebytes)
 	if maxsizebytes < currentSize {
 		errStr := fmt.Sprintf("Can't shrink %s from %d to %d",
 			diskfile, currentSize, maxsizebytes)
