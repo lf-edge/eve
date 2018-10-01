@@ -292,8 +292,8 @@ func Run() {
 	pubDatastoreConfig.ClearRestarted()
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("",
-		agentlog.GlobalConfig{}, false, &zedagentCtx)
+	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
+		false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -489,16 +489,16 @@ func Run() {
 	subDeviceNetworkStatus.Activate()
 
 	updateInprogress := zboot.IsCurrentPartitionStateInProgress()
-	time1 := time.Duration(configItemCurrent.resetIfCloudGoneTime)
+	time1 := time.Duration(globalConfig.ResetIfCloudGoneTime)
 	t1 := time.NewTimer(time1 * time.Second)
 	log.Infof("Started timer for reset for %d seconds\n", time1)
-	time2 := time.Duration(configItemCurrent.fallbackIfCloudGoneTime)
+	time2 := time.Duration(globalConfig.FallbackIfCloudGoneTime)
 	log.Infof("Started timer for fallback (%v) reset for %d seconds\n",
 		updateInprogress, time2)
 	t2 := time.NewTimer(time2 * time.Second)
 
 	// Initial settings; redone below in case some
-	updateSshAccess(configItemCurrent.sshAccess)
+	updateSshAccess(!globalConfig.NoSshAccess)
 
 	log.Infof("Waiting until we have some uplinks with usable addresses\n")
 	waited := false
@@ -579,7 +579,7 @@ func Run() {
 	getconfigCtx.configTickerHandle = configTickerHandle
 	getconfigCtx.metricsTickerHandle = metricsTickerHandle
 
-	updateSshAccess(configItemCurrent.sshAccess)
+	updateSshAccess(!globalConfig.NoSshAccess)
 
 	for {
 		select {
@@ -1141,6 +1141,15 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigModify for %s\n", key)
 	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
+	c, err := ctx.subGlobalConfig.Get("global")
+	if err == nil {
+		gc := cast.CastGlobalConfig(c)
+		if !cmp.Equal(globalConfig, gc) {
+			log.Infof("handleGlobalConfigModify: diff %v\n",
+				cmp.Diff(globalConfig, gc))
+			applyGlobalConfig(gc)
+		}
+	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
 
@@ -1155,5 +1164,31 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
+	globalConfig = globalConfigDefaults
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
+}
+
+// Check which values are set and which should come from defaults
+// Zero integers means to use default
+func applyGlobalConfig(newgc types.GlobalConfig) {
+
+	if newgc.ConfigInterval == 0 {
+		newgc.ConfigInterval = globalConfigDefaults.ConfigInterval
+	}
+	if newgc.MetricInterval == 0 {
+		newgc.MetricInterval = globalConfigDefaults.MetricInterval
+	}
+	if newgc.ResetIfCloudGoneTime == 0 {
+		newgc.ResetIfCloudGoneTime = globalConfigDefaults.ResetIfCloudGoneTime
+	}
+	if newgc.FallbackIfCloudGoneTime == 0 {
+		newgc.FallbackIfCloudGoneTime = globalConfigDefaults.FallbackIfCloudGoneTime
+	}
+	if newgc.MintimeUpdateSuccess == 0 {
+		newgc.MintimeUpdateSuccess = globalConfigDefaults.MintimeUpdateSuccess
+	}
+	if newgc.StaleConfigTime == 0 {
+		newgc.StaleConfigTime = globalConfigDefaults.StaleConfigTime
+	}
+	globalConfig = newgc
 }

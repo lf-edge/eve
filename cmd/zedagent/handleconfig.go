@@ -37,23 +37,6 @@ const (
 	uuidFileName    = identityDirname + "/uuid"
 )
 
-// A value of zero means we should use the default
-// All times are in seconds.
-type configItems struct {
-	configInterval          uint32 // Try get of device config
-	metricInterval          uint32 // push metrics to cloud
-	resetIfCloudGoneTime    uint32 // reboot if no cloud connectivity
-	fallbackIfCloudGoneTime uint32 // ... and shorter during update
-	mintimeUpdateSuccess    uint32 // time before zedagent declares success
-	usbAccess               bool   // domU has all PCI including USB controllers
-	sshAccess               bool
-	staleConfigTime         uint32 // On reboot use saved config if not stale
-	logLevel                string
-	remoteLogLevel          string
-	// XXX add max space for downloads?
-	// XXX add LTE uplink usage policy?
-}
-
 // Really a constant
 // We do a GET of config every 60 seconds,
 // PUT of metrics every 60 seconds,
@@ -61,15 +44,20 @@ type configItems struct {
 // and during a post-update boot that time is reduced to 10 minutes.
 // On reboot if we can't get a config, then we use a saved one if
 // not older than 10 minutes.
-var configItemDefaults = configItems{configInterval: 60, metricInterval: 60,
-	resetIfCloudGoneTime: 7 * 24 * 3600, fallbackIfCloudGoneTime: 600,
-	mintimeUpdateSuccess: 300, usbAccess: true, sshAccess: true,
-	staleConfigTime: 600, logLevel: "info", remoteLogLevel: "warning"}
+var globalConfigDefaults = types.GlobalConfig{
+	ConfigInterval:          60,
+	MetricInterval:          60,
+	ResetIfCloudGoneTime:    7 * 24 * 3600,
+	FallbackIfCloudGoneTime: 600,
+	MintimeUpdateSuccess:    300,
+	NoUsbAccess:             false, // XXX change defaults
+	NoSshAccess:             false, // XXX change defaults
+	StaleConfigTime:         600,
+	DefaultLogLevel:         "info", // XXX change default to warning?
+	DefaultRemoteLogLevel:   "warning",
+}
 
-// XXX shorter counters for testing fallback:
-// 	resetIfCloudGoneTime: 300, fallbackIfCloudGoneTime: 60,
-
-var configItemCurrent = configItemDefaults
+var globalConfig = globalConfigDefaults
 
 type getconfigContext struct {
 	zedagentCtx                 *zedagentContext // Cross link
@@ -146,7 +134,7 @@ func configTimerTask(handleChannel chan interface{},
 	rebootFlag := getLatestConfig(configUrl, iteration,
 		&updateInprogress, getconfigCtx)
 
-	interval := time.Duration(configItemCurrent.configInterval) * time.Second
+	interval := time.Duration(globalConfig.ConfigInterval) * time.Second
 	max := float64(interval)
 	min := max * 0.3
 	ticker := flextimer.NewRangeTicker(time.Duration(min),
@@ -170,10 +158,10 @@ func triggerGetConfig(tickerHandle interface{}) {
 	flextimer.TickNow(tickerHandle)
 }
 
-// Called when configItemCurrent changes
+// Called when globalConfig changes
 // Assumes the caller has verifier that the interval has changed
 func updateConfigTimer(tickerHandle interface{}) {
-	interval := time.Duration(configItemCurrent.configInterval) * time.Second
+	interval := time.Duration(globalConfig.ConfigInterval) * time.Second
 	log.Infof("updateConfigTimer() change to %v\n", interval)
 	max := float64(interval)
 	min := max * 0.3
@@ -196,7 +184,7 @@ func getLatestConfig(url string, iteration int, updateInprogress *bool,
 	// Did we exceed the time limits?
 	timePassed := time.Since(getconfigCtx.lastReceivedConfigFromCloud)
 
-	resetLimit := time.Second * time.Duration(configItemCurrent.resetIfCloudGoneTime)
+	resetLimit := time.Second * time.Duration(globalConfig.ResetIfCloudGoneTime)
 	if timePassed > resetLimit {
 		log.Errorf("Exceeded outage for cloud connectivity by %d seconds- rebooting\n",
 			(timePassed-resetLimit)/time.Second)
@@ -204,7 +192,7 @@ func getLatestConfig(url string, iteration int, updateInprogress *bool,
 		return true
 	}
 	if *updateInprogress {
-		fallbackLimit := time.Second * time.Duration(configItemCurrent.fallbackIfCloudGoneTime)
+		fallbackLimit := time.Second * time.Duration(globalConfig.FallbackIfCloudGoneTime)
 		if timePassed > fallbackLimit {
 			log.Errorf("Exceeded fallback outage for cloud connectivity by %d seconds- rebooting\n",
 				(timePassed-fallbackLimit)/time.Second)
@@ -251,7 +239,7 @@ func getLatestConfig(url string, iteration int, updateInprogress *bool,
 		// at least N minutes to make sure we don't hit a watchdog.
 		timePassed := time.Since(getconfigCtx.startTime)
 		successLimit := time.Second *
-			time.Duration(configItemCurrent.mintimeUpdateSuccess)
+			time.Duration(globalConfig.MintimeUpdateSuccess)
 		curPart := zboot.GetCurrentPartition()
 		if timePassed < successLimit {
 			log.Infof("getLastestConfig, curPart %s inprogress waiting for %d seconds\n",
@@ -360,7 +348,7 @@ func writeProtoMessage(filename string, contents []byte) {
 }
 
 // If the file exists then read the config
-// Ignore if if older than staleConfigTime seconds
+// Ignore if if older than StaleConfigTime seconds
 func readSavedProtoMessage(filename string, force bool) (*zconfig.EdgeDevConfig, error) {
 	info, err := os.Stat(filename)
 	if err != nil {
@@ -371,7 +359,7 @@ func readSavedProtoMessage(filename string, force bool) (*zconfig.EdgeDevConfig,
 		}
 	}
 	age := time.Since(info.ModTime())
-	staleLimit := time.Second * time.Duration(configItemCurrent.staleConfigTime)
+	staleLimit := time.Second * time.Duration(globalConfig.StaleConfigTime)
 	if !force && age > staleLimit {
 		errStr := fmt.Sprintf("savedProto too old: age %v limit %d\n",
 			age, staleLimit)

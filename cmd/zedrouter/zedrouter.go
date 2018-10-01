@@ -131,8 +131,8 @@ func Run() {
 	}
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("",
-		agentlog.GlobalConfig{}, false, &zedrouterCtx)
+	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
+		false, &zedrouterCtx)
 	if err != nil {
 		log.Fatal(err)
 	}

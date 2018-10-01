@@ -1,31 +1,15 @@
 // Copyright (c) 2018 Zededa, Inc.
 // All rights reserved.
 
-// Code to dynamically be able to change settings such as debug flags and
-// log levels in running agents.
-// Intention is to also use the GlobalConfig for state we need to save across
-// reboots
+// Handle logLevel and remoteLogLevel for agents.
 
 package agentlog
 
 import (
-	"encoding/json"
 	log "github.com/sirupsen/logrus"
+	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/pubsub"
 )
-
-type perAgentSettings struct {
-	LogLevel       string // What we log to files
-	RemoteLogLevel string // What we log to zedcloud
-}
-
-// Agents subscribe to this info
-type GlobalConfig struct {
-	// "default" or agentName is the index to the map
-	AgentSettings map[string]perAgentSettings
-
-	// Any future globals such as timers we want to save across reboot
-}
 
 // Returns (value, ok)
 func GetLogLevel(sub *pubsub.Subscription, agentName string) (string, bool) {
@@ -34,16 +18,15 @@ func GetLogLevel(sub *pubsub.Subscription, agentName string) (string, bool) {
 		log.Infof("GetLogLevel failed %s\n", err)
 		return "", false
 	}
-	gc := CastGlobalConfig(m)
+	gc := cast.CastGlobalConfig(m)
 	// Do we have an entry for this agent?
 	as, ok := gc.AgentSettings[agentName]
 	if ok {
 		return as.LogLevel, true
 	}
-	// Do we have a default entry?
-	as, ok = gc.AgentSettings["default"]
-	if ok {
-		return as.LogLevel, true
+	// Do we have a default value?
+	if gc.DefaultLogLevel != "" {
+		return gc.DefaultLogLevel, true
 	}
 	return "", false
 }
@@ -55,16 +38,15 @@ func GetRemoteLogLevel(sub *pubsub.Subscription, agentName string) (string, bool
 		log.Infof("GetRemoteLogLevel failed %s\n", err)
 		return "", false
 	}
-	gc := CastGlobalConfig(m)
+	gc := cast.CastGlobalConfig(m)
 	// Do we have an entry for this agent?
 	as, ok := gc.AgentSettings[agentName]
 	if ok {
 		return as.RemoteLogLevel, true
 	}
-	// Do we have a default entry?
-	as, ok = gc.AgentSettings["default"]
-	if ok {
-		return as.RemoteLogLevel, true
+	// Do we have a default value?
+	if gc.DefaultRemoteLogLevel != "" {
+		return gc.DefaultRemoteLogLevel, true
 	}
 	return "", false
 }
@@ -95,17 +77,4 @@ func HandleGlobalConfig(sub *pubsub.Subscription, agentName string,
 	}
 	log.SetLevel(level)
 	return debug
-}
-
-func CastGlobalConfig(in interface{}) GlobalConfig {
-	b, err := json.Marshal(in)
-	if err != nil {
-		log.Fatal(err, "json Marshal in CastGlobalConfig")
-	}
-	var output GlobalConfig
-	if err := json.Unmarshal(b, &output); err != nil {
-		// File can be edited by hand. Don't Fatal
-		log.Error(err, "json Unmarshal in CastGlobalConfig")
-	}
-	return output
 }
