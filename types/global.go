@@ -17,10 +17,10 @@ type GlobalConfig struct {
 	MintimeUpdateSuccess    uint32 // time before zedagent declares success
 	StaleConfigTime         uint32 // On reboot use saved config if not stale
 
-	NoUsbAccess             bool   // domU has all PCI including USB controllers
-	NoSshAccess             bool
-	DefaultLogLevel         string
-	DefaultRemoteLogLevel   string
+	NoUsbAccess           bool // domU has all PCI including USB controllers
+	NoSshAccess           bool
+	DefaultLogLevel       string
+	DefaultRemoteLogLevel string
 	// XXX add max space for downloads?
 	// XXX add LTE uplink usage policy?
 
