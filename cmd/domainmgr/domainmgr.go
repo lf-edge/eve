@@ -18,6 +18,7 @@ import (
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/devicenetwork"
+	"github.com/zededa/go-provision/diskmetrics"
 	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/pidfile"
@@ -467,7 +468,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		VifList:            config.VifList,
 		VirtualizationMode: config.VirtualizationMode,
 		EnableVnc:          config.EnableVnc,
-		State:		    types.INSTALLED,
+		State:              types.INSTALLED,
 	}
 	status.DiskStatusList = make([]types.DiskStatus,
 		len(config.DiskConfigList))
@@ -504,14 +505,29 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 			} else {
 				log.Infof("Not preserve and target exists - assume rebooted and preserve\n")
 			}
-		} else if err := cp(ds.ActiveFileLocation, ds.FileLocation); err != nil {
-			log.Errorf("Copy failed from %s to %s: %s\n",
-				ds.FileLocation, ds.ActiveFileLocation, err)
-			status.PendingAdd = false
-			status.LastErr = fmt.Sprintf("%v", err)
-			status.LastErrTime = time.Now()
-			publishDomainStatus(ctx, &status)
-			return
+		} else {
+			if err := cp(ds.ActiveFileLocation, ds.FileLocation); err != nil {
+				log.Errorf("Copy failed from %s to %s: %s\n",
+					ds.FileLocation, ds.ActiveFileLocation, err)
+				status.PendingAdd = false
+				status.LastErr = fmt.Sprintf("%v", err)
+				status.LastErrTime = time.Now()
+				publishDomainStatus(ctx, &status)
+				return
+			}
+			// Do we need to expand disk?
+			err := maybeResizeDisk(ds.ActiveFileLocation,
+				ds.Maxsizebytes)
+			if err != nil {
+				errStr := fmt.Sprintf("handleCreate(%s) failed %v",
+					status.Key(), err)
+				log.Errorln(errStr)
+				status.LastErr = errStr
+				status.LastErrTime = time.Now()
+				status.PendingAdd = false
+				publishDomainStatus(ctx, &status)
+				return
+			}
 		}
 		log.Infof("Copy DONE from %s to %s\n",
 			ds.FileLocation, ds.ActiveFileLocation)
@@ -824,6 +840,7 @@ func configToStatus(config types.DomainConfig, aa *types.AssignableAdapters,
 		ds.ReadOnly = dc.ReadOnly
 		ds.Preserve = dc.Preserve
 		ds.Format = dc.Format
+		ds.Maxsizebytes = dc.Maxsizebytes
 		ds.Devtype = dc.Devtype
 		// map from i=1 to xvda, 2 to xvdb etc
 		xv := "xvd" + string(int('a')+i)
@@ -1570,4 +1587,30 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
+}
+
+func maybeResizeDisk(diskfile string, maxsizebytes uint64) error {
+	if maxsizebytes == 0 {
+		return nil
+	}
+	currentSize, err := getDiskVirtualSize(diskfile)
+	if err != nil {
+		return err
+	}
+	if maxsizebytes < currentSize {
+		errStr := fmt.Sprintf("Can't shrink %s from %d to %d",
+			diskfile, currentSize, maxsizebytes)
+		return errors.New(errStr)
+	}
+	// XXX do we need to check the Format? Here we try for all
+	err = diskmetrics.ResizeImg(diskfile, maxsizebytes)
+	return err
+}
+
+func getDiskVirtualSize(diskfile string) (uint64, error) {
+	imgInfo, err := diskmetrics.GetImgInfo(diskfile)
+	if err != nil {
+		return 0, err
+	}
+	return imgInfo.VirtualSize, nil
 }

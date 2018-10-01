@@ -88,6 +88,7 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 			disk.ReadOnly = sc.ReadOnly
 			disk.Preserve = sc.Preserve
 			disk.Format = sc.Format
+			disk.Maxsizebytes = sc.Maxsizebytes
 			disk.Devtype = sc.Devtype
 			i++
 		case "kernel":

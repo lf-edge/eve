@@ -472,6 +472,7 @@ func handleCreate(ctx *zedmanagerContext, key string,
 		ss.ReadOnly = sc.ReadOnly
 		ss.Preserve = sc.Preserve
 		ss.Format = sc.Format
+		ss.Maxsizebytes = sc.Maxsizebytes
 		ss.Devtype = sc.Devtype
 		ss.Target = sc.Target
 	}
@@ -602,6 +603,11 @@ func quantifyChanges(config types.AppInstanceConfig,
 			if ss.Format != sc.Format {
 				log.Infof("quantifyChanges storage Format changed from %v to %v\n",
 					ss.Format, sc.Format)
+				needPurge = true
+			}
+			if ss.Maxsizebytes != sc.Maxsizebytes {
+				log.Infof("quantifyChanges storage Maxsizebytes changed from %v to %v\n",
+					ss.Maxsizebytes, sc.Maxsizebytes)
 				needPurge = true
 			}
 			if ss.Devtype != sc.Devtype {
