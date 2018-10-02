@@ -492,7 +492,6 @@ func parseStorageConfigList(objType string,
 
 			image.Format = strings.ToLower(drive.Image.Iformat.String())
 			image.Size = uint64(drive.Image.SizeBytes)
-			image.Maxsizebytes = uint64(drive.Maxsizebytes)
 			image.ImageSignature = drive.Image.Siginfo.Signature
 			image.SignatureKey = drive.Image.Siginfo.Signercerturl
 
