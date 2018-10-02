@@ -24,7 +24,7 @@ type DomainConfig struct {
 	DiskConfigList    []DiskConfig
 	VifList           []VifInfo
 	IoAdapterList     []IoAdapter
-	CloudInitUserData string
+	CloudInitUserData string // base64-encoded
 }
 
 func (config DomainConfig) Key() string {

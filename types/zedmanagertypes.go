@@ -55,7 +55,7 @@ type AppInstanceConfig struct {
 	IoAdapterList       []IoAdapter
 	RestartCmd          AppInstanceOpsCmd
 	PurgeCmd            AppInstanceOpsCmd
-	CloudInitUserData   string
+	CloudInitUserData   string // base64-encoded
 }
 
 type AppInstanceOpsCmd struct {
