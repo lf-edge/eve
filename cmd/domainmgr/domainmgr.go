@@ -1591,6 +1591,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
 
+// Make sure the (virtual) size of the disk is at least maxsizebytes
 func maybeResizeDisk(diskfile string, maxsizebytes uint64) error {
 	if maxsizebytes == 0 {
 		return nil
@@ -1600,13 +1601,12 @@ func maybeResizeDisk(diskfile string, maxsizebytes uint64) error {
 		return err
 	}
 	log.Infof("maybeResizeDisk(%s) current %d to %d",
-			diskfile, currentSize, maxsizebytes)
+		diskfile, currentSize, maxsizebytes)
 	if maxsizebytes < currentSize {
-		errStr := fmt.Sprintf("Can't shrink %s from %d to %d",
-			diskfile, currentSize, maxsizebytes)
-		return errors.New(errStr)
+		log.Warnf("maybeResizeDisk(%s) already above maxsize  %d vs. %d",
+			diskfile, maxsizebytes, currentSize)
+		return nil
 	}
-	// XXX do we need to check the Format? Here we try for all
 	err = diskmetrics.ResizeImg(diskfile, maxsizebytes)
 	return err
 }
