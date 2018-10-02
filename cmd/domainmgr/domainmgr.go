@@ -474,6 +474,8 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		len(config.DiskConfigList))
 	publishDomainStatus(ctx, &status)
 
+	// XXX should we add CloudInit iso disk to Status?
+	// XXX where do we create iso?
 	if err := configToStatus(*config, ctx.assignableAdapters,
 		&status); err != nil {
 		log.Errorf("Failed to create DomainStatus from %v: %s\n",

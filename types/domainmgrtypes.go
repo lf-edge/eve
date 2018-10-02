@@ -21,9 +21,10 @@ type DomainConfig struct {
 	Activate       bool   // Actually start the domU as opposed to prepare
 	AppNum         int    // From networking; makes the name unique
 	VmConfig
-	DiskConfigList []DiskConfig
-	VifList        []VifInfo
-	IoAdapterList  []IoAdapter
+	DiskConfigList    []DiskConfig
+	VifList           []VifInfo
+	IoAdapterList     []IoAdapter
+	CloudInitUserData string
 }
 
 func (config DomainConfig) Key() string {

@@ -389,6 +389,12 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 			appInstance.PurgeCmd.Counter = cmd.Counter
 			appInstance.PurgeCmd.ApplyTime = cmd.OpsTime
 		}
+		userData := cfgApp.GetUserData()
+		if userData != "" {
+			log.Debugf("Received cloud-init userData %s\n",
+				userData)
+		}
+		appInstance.CloudInitUserData = userData
 		// get the certs for image sha verification
 		certInstance := getCertObjects(appInstance.UUIDandVersion,
 			appInstance.ConfigSha256, appInstance.StorageConfigList)
