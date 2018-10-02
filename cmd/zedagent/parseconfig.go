@@ -1082,7 +1082,8 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 					newBool)
 				globalConfig.NoSshAccess = newBool
 				globalConfigChange = true
-				updateSshAccess(!globalConfig.NoSshAccess)
+				updateSshAccess(!globalConfig.NoSshAccess,
+					false)
 			}
 		case "timer.use.config.checkpoint":
 			if newU32 == 0 {

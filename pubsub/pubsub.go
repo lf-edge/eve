@@ -900,7 +900,7 @@ func (sub *Subscription) connectAndRead() (string, string, string) {
 			if err != nil {
 				errStr := fmt.Sprintf("connectAndRead(%s): Dial failed %s",
 					name, err)
-				log.Errorln(errStr)
+				log.Warnln(errStr)
 				time.Sleep(10 * time.Second)
 				continue
 			}
