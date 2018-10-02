@@ -100,8 +100,14 @@ func updateDownloaderStatus(ctx *zedagentContext,
 	case certObj:
 		certObjHandleStatusUpdateSafename(ctx, status.Safename)
 
+	case appImgObj:
+		// We subscribe to get metrics about disk usage
+		log.Debugf("updateDownloaderStatus for %s, ignoring objType %s\n",
+			key, objType)
+		return
+
 	default:
-		log.Errorf("updateDownloaderStatus for %s, unsupported objType <%s>\n",
+		log.Errorf("updateDownloaderStatus for %s, unsupported objType %s\n",
 			key, objType)
 		return
 	}
