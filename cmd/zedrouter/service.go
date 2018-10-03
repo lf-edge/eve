@@ -403,11 +403,12 @@ func getBridgeServiceIPv4Addr(ctx *zedrouterContext, appLink uuid.UUID) (string,
 	}
 	if status.Type != types.NST_BRIDGE {
 		errStr := fmt.Sprintf("getBridgeServiceIPv4Addr(%s): service not a bridge; type %d",
-			status.Type)
+			appLink.String(), status.Type)
 		return "", errors.New(errStr)
 	}
 	if status.Adapter == "" {
-		log.Infof("getBridgeServiceIPv4Addr: bridge but no Adapter\n")
+		log.Infof("getBridgeServiceIPv4Addr(%s): bridge but no Adapter\n",
+			appLink.String())
 		return "", nil
 	}
 
@@ -422,12 +423,12 @@ func getBridgeServiceIPv4Addr(ctx *zedrouterContext, appLink uuid.UUID) (string,
 		return "", err
 	}
 	for _, addr := range addrs {
-		log.Infof("getBridgeServiceIPv4Addr: found addr %s\n",
-			addr.IP.String())
+		log.Infof("getBridgeServiceIPv4Addr(%s): found addr %s\n",
+			appLink.String(), addr.IP.String())
 		return addr.IP.String(), nil
 	}
-	log.Infof("getBridgeServiceIPv4Addr: no IP address on %s yet\n",
-		status.Adapter)
+	log.Infof("getBridgeServiceIPv4Addr(%s): no IP address on %s yet\n",
+		appLink.String(), status.Adapter)
 	return "", nil
 }
 
