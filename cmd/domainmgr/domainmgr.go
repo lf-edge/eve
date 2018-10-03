@@ -1680,7 +1680,7 @@ func createCloudInitISO(config types.DomainConfig) (*types.DiskStatus, error) {
 func mkisofs(output string, dir string) error {
 	log.Infof("mkisofs(%s, %s)\n", output, dir)
 
-	cmd := "mkisodfs"
+	cmd := "mkisofs"
 	args := []string{
 		"-output",
 		output,
