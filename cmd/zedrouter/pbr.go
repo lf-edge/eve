@@ -434,7 +434,7 @@ func IfindexToName(index int) (string, string, error) {
 	}
 	linkName := link.Attrs().Name
 	linkType := link.Type()
-	log.Errorf("IfindexToName(%d) fallback lookup done: %s, %s\n",
+	log.Warnf("IfindexToName(%d) fallback lookup done: %s, %s\n",
 		index, linkName, linkType)
 	return linkName, linkType, nil
 }

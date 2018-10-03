@@ -131,8 +131,8 @@ func Run() {
 	}
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("",
-		agentlog.GlobalConfig{}, false, &zedrouterCtx)
+	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
+		false, &zedrouterCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -583,7 +583,7 @@ func publishDeviceNetworkStatus(ctx *zedrouterContext) {
 func publishLispDataplaneConfig(ctx *zedrouterContext,
 	status *types.LispDataplaneConfig) {
 	key := "global"
-	log.Errorf("publishLispDataplaneConfig(%s)\n", key)
+	log.Debugf("publishLispDataplaneConfig(%s)\n", key)
 	pub := ctx.pubLispDataplaneConfig
 	pub.Publish(key, status)
 }
@@ -1643,7 +1643,7 @@ func getUlAddrs(ctx *zedrouterContext, ifnum int, appNum int,
 		// Assumption is that the config specifies a gateway/router
 		// in the same subnet as the static address.
 		appIPAddr = status.AppIPAddr.String()
-	} else {
+	} else if status.Mac != "" {
 		// XXX or change type of VifInfo.Mac to avoid parsing?
 		mac, err := net.ParseMAC(status.Mac)
 		if err != nil {
@@ -2190,16 +2190,18 @@ func handleDelete(ctx *zedrouterContext, key string,
 			continue
 		}
 
-		// XXX or change type of VifInfo.Mac?
-		mac, err := net.ParseMAC(ulStatus.Mac)
-		if err != nil {
-			log.Fatal("ParseMAC failed: ",
-				ulStatus.Mac, err)
-		}
-		err = releaseIPv4(ctx, netstatus, mac)
-		if err != nil {
-			// XXX publish error?
-			addError(ctx, status, "releaseIPv4", err)
+		if ulStatus.Mac != "" {
+			// XXX or change type of VifInfo.Mac?
+			mac, err := net.ParseMAC(ulStatus.Mac)
+			if err != nil {
+				log.Fatal("ParseMAC failed: ",
+					ulStatus.Mac, err)
+			}
+			err = releaseIPv4(ctx, netstatus, mac)
+			if err != nil {
+				// XXX publish error?
+				addError(ctx, status, "releaseIPv4", err)
+			}
 		}
 
 		appIPAddr := ulStatus.AssignedIPAddr
@@ -2208,7 +2210,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 				appIPAddr)
 		}
 
-		err = deleteACLConfiglet(bridgeName, ulStatus.Vif, false,
+		err := deleteACLConfiglet(bridgeName, ulStatus.Vif, false,
 			ulStatus.ACLs, ulStatus.BridgeIPAddr, appIPAddr)
 		if err != nil {
 			addError(ctx, status, "deleteACL", err)
