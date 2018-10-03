@@ -39,3 +39,18 @@ func GetImgInfo(diskfile string) (*ImgInfo, error) {
 	}
 	return &imgInfo, nil
 }
+
+func ResizeImg(diskfile string, newsize uint64) error {
+
+	if _, err := os.Stat(diskfile); err != nil {
+		return err
+	}
+	output, err := exec.Command("/usr/lib/xen/bin/qemu-img",
+		"resize", diskfile, fmt.Sprintf("%d", newsize)).CombinedOutput()
+	if err != nil {
+		errStr := fmt.Sprintf("qemu-img failed: %s, %s\n",
+			err, output)
+		return errors.New(errStr)
+	}
+	return nil
+}

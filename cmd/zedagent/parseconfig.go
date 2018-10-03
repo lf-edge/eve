@@ -389,6 +389,12 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 			appInstance.PurgeCmd.Counter = cmd.Counter
 			appInstance.PurgeCmd.ApplyTime = cmd.OpsTime
 		}
+		userData := cfgApp.GetUserData()
+		if userData != "" {
+			log.Debugf("Received cloud-init userData %s\n",
+				userData)
+		}
+		appInstance.CloudInitUserData = userData
 		// get the certs for image sha verification
 		certInstance := getCertObjects(appInstance.UUIDandVersion,
 			appInstance.ConfigSha256, appInstance.StorageConfigList)
@@ -507,6 +513,7 @@ func parseStorageConfigList(objType string,
 		}
 		image.ReadOnly = drive.Readonly
 		image.Preserve = drive.Preserve
+		image.Maxsizebytes = uint64(drive.Maxsizebytes)
 		image.Target = strings.ToLower(drive.Target.String())
 		image.Devtype = strings.ToLower(drive.Drvtype.String())
 		image.ImageSha256 = drive.Image.Sha256
