@@ -24,6 +24,7 @@ type GlobalConfig struct {
 	// XXX add max space for downloads?
 	// XXX add LTE uplink usage policy?
 
+	XXXTest bool
 	// Per agent settings of log levels; if set for an agent it
 	// overrides the Default*Level above
 	AgentSettings map[string]perAgentSettings
