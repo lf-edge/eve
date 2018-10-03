@@ -9,6 +9,7 @@
 package domainmgr
 
 import (
+	"encoding/base64"
 	"errors"
 	"flag"
 	"fmt"
@@ -474,8 +475,6 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		len(config.DiskConfigList))
 	publishDomainStatus(ctx, &status)
 
-	// XXX should we add CloudInit iso disk to Status?
-	// XXX where do we create iso?
 	if err := configToStatus(*config, ctx.assignableAdapters,
 		&status); err != nil {
 		log.Errorf("Failed to create DomainStatus from %v: %s\n",
@@ -865,6 +864,17 @@ func configToStatus(config types.DomainConfig, aa *types.AssignableAdapters,
 		}
 		ds.ActiveFileLocation = target
 	}
+	if config.CloudInitUserData != "" {
+		ds, err := createCloudInitISO(config)
+		if err != nil {
+			return err
+		}
+		if ds != nil {
+			status.DiskStatusList = append(status.DiskStatusList,
+				*ds)
+		}
+	}
+
 	for _, adapter := range config.IoAdapterList {
 		log.Debugf("configToStatus processing adapter %d %s\n",
 			adapter.Type, adapter.Name)
@@ -1023,14 +1033,13 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 	file.WriteString(fmt.Sprintf("boot = \"%s\"\n", "dc"))
 
 	diskString := ""
-	for i, dc := range config.DiskConfigList {
-		ds := status.DiskStatusList[i]
+	for i, ds := range status.DiskStatusList {
 		access := "rw"
-		if dc.ReadOnly {
+		if ds.ReadOnly {
 			access = "ro"
 		}
 		oneDisk := fmt.Sprintf("'%s,%s,%s,%s'",
-			ds.ActiveFileLocation, dc.Format, ds.Vdev, access)
+			ds.ActiveFileLocation, ds.Format, ds.Vdev, access)
 		log.Debugf("Processing disk %d: %s\n", i, oneDisk)
 		if diskString == "" {
 			diskString = oneDisk
@@ -1617,4 +1626,77 @@ func getDiskVirtualSize(diskfile string) (uint64, error) {
 		return 0, err
 	}
 	return imgInfo.VirtualSize, nil
+}
+
+// Create a isofs with user-data and meta-data and add it to DiskStatus
+func createCloudInitISO(config types.DomainConfig) (*types.DiskStatus, error) {
+
+	fileName := fmt.Sprintf("%s/%s.cidata",
+		rwImgDirname, config.UUIDandVersion.UUID.String())
+
+	dir, err := ioutil.TempDir("", "cloud-init")
+	if err != nil {
+		log.Fatalf("createCloudInitISO failed %s\n", err)
+	}
+	defer os.RemoveAll(dir)
+
+	metafile, err := os.Create(dir + "/meta-data")
+	if err != nil {
+		log.Fatalf("createCloudInitISO failed %s\n", err)
+	}
+	metafile.WriteString(fmt.Sprintf("instance-id: %s/%s\n",
+		config.UUIDandVersion.UUID.String(),
+		config.UUIDandVersion.Version))
+	metafile.WriteString(fmt.Sprintf("local-hostname: %s\n",
+		config.UUIDandVersion.UUID.String()))
+	metafile.Close()
+
+	userfile, err := os.Create(dir + "/user-data")
+	if err != nil {
+		log.Fatalf("createCloudInitISO failed %s\n", err)
+	}
+	ud, err := base64.StdEncoding.DecodeString(config.CloudInitUserData)
+	if err != nil {
+		errStr := fmt.Sprintf("createCloudInitISO failed %s\n", err)
+		return nil, errors.New(errStr)
+	}
+	userfile.WriteString(string(ud))
+	userfile.Close()
+
+	if err := mkisofs(fileName, dir); err != nil {
+		errStr := fmt.Sprintf("createCloudInitISO failed %s\n", err)
+		return nil, errors.New(errStr)
+	}
+
+	ds := new(types.DiskStatus)
+	ds.ActiveFileLocation = fileName
+	ds.Format = "raw"
+	ds.Vdev = "hdc"
+	ds.ReadOnly = true
+	return ds, nil
+}
+
+// mkisofs -output %s -volid cidata -joliet -rock %s, fileName, dir
+func mkisofs(output string, dir string) error {
+	log.Infof("mkisofs(%s, %s)\n", output, dir)
+
+	cmd := "mkisodfs"
+	args := []string{
+		"-output",
+		output,
+		"-volid",
+		"cidata",
+		"-joliet",
+		"-rock",
+		dir,
+	}
+	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
+	if err != nil {
+		errStr := fmt.Sprintf("mkisofs failed: %s\n",
+			string(stdoutStderr))
+		log.Errorln(errStr)
+		return errors.New(errStr)
+	}
+	log.Infof("mkisofs done\n")
+	return nil
 }
