@@ -1505,8 +1505,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 		// Check if we have a bridge service with an address
 		bridgeIP, err := getBridgeServiceIPv4Addr(ctx, ulConfig.Network)
 		if err != nil {
-			log.Infof("handleCreate getBridgeServiceIPv4Addr %s\n",
-				err)
+			log.Infof("handleCreate: %s\n", err)
 		} else if bridgeIP != "" {
 			bridgeIPAddr = bridgeIP
 		}

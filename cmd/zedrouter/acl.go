@@ -831,6 +831,11 @@ func deleteACLConfiglet(bridgeName string, vifName string, isMgmt bool,
 	if err != nil {
 		return err
 	}
+	dropRules, err := aclDropRules(bridgeName, vifName)
+	if err != nil {
+		return err
+	}
+	rules = append(rules, dropRules...)
 	for _, rule := range rules {
 		log.Debugf("deleteACLConfiglet: rule %v\n", rule)
 		args := rulePrefix("-D", isMgmt, ipVer, vifName, appIP, rule)
