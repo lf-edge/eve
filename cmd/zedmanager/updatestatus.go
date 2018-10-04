@@ -268,7 +268,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		// Shortcut if image is already verified
 		vs := lookupVerifyImageStatusAny(ctx, safename,
 			sc.ImageSha256)
-		if vs != nil && !vs.Pending() && vs.State == types.DELIVERED {
+		if vs != nil && vs.State == types.DELIVERED {
 			log.Infof("doUpdate found verified image for %s sha %s\n",
 				safename, sc.ImageSha256)
 			if vs.Safename != safename {
@@ -403,7 +403,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 
 		vs := lookupVerifyImageStatusAny(ctx, safename,
 			sc.ImageSha256)
-		if vs == nil || vs.Pending() {
+		if vs == nil {
 			log.Infof("lookupVerifyImageStatusAny %s sha %s failed\n",
 				safename, sc.ImageSha256)
 			minState = types.DOWNLOADED
@@ -415,6 +415,11 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		if vs.State != ss.State {
 			ss.State = vs.State
 			changed = true
+		}
+		if vs.Pending() {
+			log.Infof("lookupVerifyImageStatusAny %s Pending\n",
+				safename)
+			continue
 		}
 		if vs.LastErr != "" {
 			log.Errorf("Received error from verifier for %s: %s\n",
