@@ -166,8 +166,8 @@ func Run() {
 
 	logmanagerCtx := logmanagerContext{}
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("",
-		agentlog.GlobalConfig{}, false, &logmanagerCtx)
+	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
+		false, &logmanagerCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -845,7 +845,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	status := agentlog.CastGlobalConfig(statusArg)
+	status := cast.CastGlobalConfig(statusArg)
 	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	foundAgents := make(map[string]bool)

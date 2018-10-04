@@ -2,7 +2,7 @@ package zedUpload
 
 import (
 	"fmt"
-	"github.com/zededa/shared/libs/zedUpload/awsutil"
+	aws "github.com/zededa/shared/libs/zedUpload/awsutil"
 	"log"
 	"net"
 	"net/http"
@@ -69,13 +69,38 @@ func (ep *AwsTransportMethod) processS3Upload(req *DronaRequest) (error, int) {
 	if err != nil {
 		return err, 0
 	}
+	prgChan := make(aws.NotifChan)
+	defer close(prgChan)
+	if req.ackback {
+		go func(req *DronaRequest, prgNotif aws.NotifChan) {
+			ticker := time.NewTicker(StatsUpdateTicker)
+			var stats aws.UpdateStats
+			var ok bool
+			for {
+				select {
+				case stats, ok = <-prgNotif:
+					if !ok {
+						return
+					}
+				case <-ticker.C:
+					ep.ctx.postSize(req, stats.Size, stats.Asize)
+				}
+			}
+		}(req, prgChan)
+	}
+
 	// FiXME: strings.TrimSuffix needs to go away once final soultion is done.
 	// upload, always the compression file.
-	location, err := aws.S3UploadFile(ep.hClient, ep.region, ep.token, ep.apiKey,
-		ep.bucket, req.name, req.objloc, false)
+	sc := aws.NewAwsCtx(ep.token, ep.apiKey, ep.region, ep.hClient)
+	if sc == nil {
+		return fmt.Errorf("unable to create S3 context"), 0
+	}
+
+	location, err := sc.UploadFile(req.objloc, ep.bucket, req.name, false, prgChan)
 	if len(location) > 0 {
 		req.objloc = location
 	}
+
 	return err, int(fInfo.Size())
 }
 
@@ -94,15 +119,41 @@ func (ep *AwsTransportMethod) processS3Download(req *DronaRequest) (error, int) 
 		}
 	}
 
-	err := aws.S3DownloadFile(ep.hClient, ep.region, ep.token, pwd, ep.bucket, req.name, req.objloc)
-	if err == nil {
-		// check for download complete
-		st, err := os.Stat(req.objloc)
-		if err != nil {
-			return err, 0
-		}
-		csize = int(st.Size())
+	prgChan := make(aws.NotifChan)
+	defer close(prgChan)
+	if req.ackback {
+		go func(req *DronaRequest, prgNotif aws.NotifChan) {
+			ticker := time.NewTicker(StatsUpdateTicker)
+			var stats aws.UpdateStats
+			var ok bool
+			for {
+				select {
+				case stats, ok = <-prgNotif:
+					if !ok {
+						return
+					}
+				case <-ticker.C:
+					ep.ctx.postSize(req, stats.Size, stats.Asize)
+				}
+			}
+		}(req, prgChan)
 	}
+
+	sc := aws.NewAwsCtx(ep.token, pwd, ep.region, ep.hClient)
+	if sc == nil {
+		return fmt.Errorf("unable to create S3 context"), 0
+	}
+
+	err := sc.DownloadFile(req.objloc, ep.bucket, req.name, prgChan)
+	if err != nil {
+		return err, 0
+	}
+	// check for download complete
+	st, err := os.Stat(req.objloc)
+	if err != nil {
+		return err, 0
+	}
+	csize = int(st.Size())
 
 	return err, csize
 }
@@ -129,6 +180,7 @@ func (ep *AwsTransportMethod) NewRequest(opType SyncOpType, objname, objloc stri
 	dR.syncEp = ep
 	dR.operation = opType
 	dR.name = objname
+	dR.ackback = ackback
 
 	// FIXME:...we need this later
 	dR.localName = objname

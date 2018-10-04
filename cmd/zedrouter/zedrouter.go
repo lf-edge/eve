@@ -131,8 +131,8 @@ func Run() {
 	}
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("",
-		agentlog.GlobalConfig{}, false, &zedrouterCtx)
+	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
+		false, &zedrouterCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -583,7 +583,7 @@ func publishDeviceNetworkStatus(ctx *zedrouterContext) {
 func publishLispDataplaneConfig(ctx *zedrouterContext,
 	status *types.LispDataplaneConfig) {
 	key := "global"
-	log.Errorf("publishLispDataplaneConfig(%s)\n", key)
+	log.Debugf("publishLispDataplaneConfig(%s)\n", key)
 	pub := ctx.pubLispDataplaneConfig
 	pub.Publish(key, status)
 }
@@ -1216,7 +1216,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 			olConfig.Network.String(),
 			config.UUIDandVersion, config.DisplayName)
 		log.Infof("handleCreate failed: %s\n", errStr)
-		addError(ctx, &status, "lookupNetworkObjectStatus",
+		addError(ctx, &status, "handleCreate overlay",
 			errors.New(errStr))
 		allNetworksExist = false
 	}
@@ -1230,7 +1230,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 			ulConfig.Network.String(),
 			config.UUIDandVersion, config.DisplayName)
 		log.Infof("handleCreate failed: %s\n", errStr)
-		addError(ctx, &status, "lookupNetworkObjectStatus",
+		addError(ctx, &status, "handleCreate underlay",
 			errors.New(errStr))
 		allNetworksExist = false
 	}
@@ -1289,7 +1289,14 @@ func handleCreate(ctx *zedrouterContext, key string,
 			errStr := fmt.Sprintf("no network status for %s",
 				olConfig.Network.String())
 			err := errors.New(errStr)
-			addError(ctx, &status, "lookupNetworkObjectStatus", err)
+			addError(ctx, &status, "handlecreate overlay", err)
+			continue
+		}
+		if netstatus.Error != "" {
+			log.Errorf("handleCreate sees network error %s\n",
+				netstatus.Error)
+			addError(ctx, &status, "netstatus.Error",
+				errors.New(netstatus.Error))
 			continue
 		}
 		bridgeNum := netstatus.BridgeNum
@@ -1464,7 +1471,14 @@ func handleCreate(ctx *zedrouterContext, key string,
 			errStr := fmt.Sprintf("no status for %s",
 				ulConfig.Network.String())
 			err := errors.New(errStr)
-			addError(ctx, &status, "lookupNetworkObjectStatus", err)
+			addError(ctx, &status, "handleCreate underlay", err)
+			continue
+		}
+		if netstatus.Error != "" {
+			log.Errorf("handleCreate sees network error %s\n",
+				netstatus.Error)
+			addError(ctx, &status, "netstatus.Error",
+				errors.New(netstatus.Error))
 			continue
 		}
 		bridgeName := netstatus.BridgeName
@@ -1505,8 +1519,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 		// Check if we have a bridge service with an address
 		bridgeIP, err := getBridgeServiceIPv4Addr(ctx, ulConfig.Network)
 		if err != nil {
-			log.Infof("handleCreate getBridgeServiceIPv4Addr %s\n",
-				err)
+			log.Infof("handleCreate: %s\n", err)
 		} else if bridgeIP != "" {
 			bridgeIPAddr = bridgeIP
 		}
@@ -1643,7 +1656,7 @@ func getUlAddrs(ctx *zedrouterContext, ifnum int, appNum int,
 		// Assumption is that the config specifies a gateway/router
 		// in the same subnet as the static address.
 		appIPAddr = status.AppIPAddr.String()
-	} else {
+	} else if status.Mac != "" {
 		// XXX or change type of VifInfo.Mac to avoid parsing?
 		mac, err := net.ParseMAC(status.Mac)
 		if err != nil {
@@ -1796,9 +1809,10 @@ func handleModify(ctx *zedrouterContext, key string,
 			errStr := fmt.Sprintf("no network status for %s",
 				olConfig.Network.String())
 			err := errors.New(errStr)
-			addError(ctx, status, "lookupNetworkObjectStatus", err)
+			addError(ctx, status, "handleModify overlay", err)
 			continue
 		}
+		// We ignore any errors in netstatus
 
 		// XXX could there be a change to AssignedIPv6Address aka EID?
 		// If so updateACLConfiglet needs to know old and new
@@ -1880,9 +1894,11 @@ func handleModify(ctx *zedrouterContext, key string,
 			errStr := fmt.Sprintf("no network status for %s",
 				ulConfig.Network.String())
 			err := errors.New(errStr)
-			addError(ctx, status, "lookupNetworkObjectStatus", err)
+			addError(ctx, status, "handleModify underlay", err)
 			continue
 		}
+		// We ignore any errors in netstatus
+
 		// XXX could there be a change to AssignedIPAddress?
 		// If so updateNetworkACLConfiglet needs to know old and new
 		err := updateACLConfiglet(bridgeName, ulStatus.Vif, false,
@@ -2104,9 +2120,10 @@ func handleDelete(ctx *zedrouterContext, key string,
 			errStr := fmt.Sprintf("no network status for %s",
 				olStatus.Network.String())
 			err := errors.New(errStr)
-			addError(ctx, status, "lookupNetworkObjectStatus", err)
+			addError(ctx, status, "handleDelete overlay", err)
 			continue
 		}
+		// We ignore any errors in netstatus
 
 		removehostDnsmasq(bridgeName, olStatus.Mac,
 			olStatus.EID.String())
@@ -2186,20 +2203,23 @@ func handleDelete(ctx *zedrouterContext, key string,
 			errStr := fmt.Sprintf("no network status for %s",
 				ulStatus.Network.String())
 			err := errors.New(errStr)
-			addError(ctx, status, "lookupNetworkObjectStatus", err)
+			addError(ctx, status, "handleDelete underlay", err)
 			continue
 		}
+		// We ignore any errors in netstatus
 
-		// XXX or change type of VifInfo.Mac?
-		mac, err := net.ParseMAC(ulStatus.Mac)
-		if err != nil {
-			log.Fatal("ParseMAC failed: ",
-				ulStatus.Mac, err)
-		}
-		err = releaseIPv4(ctx, netstatus, mac)
-		if err != nil {
-			// XXX publish error?
-			addError(ctx, status, "releaseIPv4", err)
+		if ulStatus.Mac != "" {
+			// XXX or change type of VifInfo.Mac?
+			mac, err := net.ParseMAC(ulStatus.Mac)
+			if err != nil {
+				log.Fatal("ParseMAC failed: ",
+					ulStatus.Mac, err)
+			}
+			err = releaseIPv4(ctx, netstatus, mac)
+			if err != nil {
+				// XXX publish error?
+				addError(ctx, status, "releaseIPv4", err)
+			}
 		}
 
 		appIPAddr := ulStatus.AssignedIPAddr
@@ -2208,7 +2228,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 				appIPAddr)
 		}
 
-		err = deleteACLConfiglet(bridgeName, ulStatus.Vif, false,
+		err := deleteACLConfiglet(bridgeName, ulStatus.Vif, false,
 			ulStatus.ACLs, ulStatus.BridgeIPAddr, appIPAddr)
 		if err != nil {
 			addError(ctx, status, "deleteACL", err)

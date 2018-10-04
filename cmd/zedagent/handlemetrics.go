@@ -29,6 +29,7 @@ import (
 	"github.com/zededa/go-provision/zboot"
 	"github.com/zededa/go-provision/zedcloud"
 	"io/ioutil"
+	"net"
 	"os"
 	"os/exec"
 	"regexp"
@@ -58,7 +59,7 @@ func metricsTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
 	log.Infoln("starting report metrics timer task")
 	publishMetrics(ctx, iteration)
 
-	interval := time.Duration(configItemCurrent.metricInterval) * time.Second
+	interval := time.Duration(globalConfig.MetricInterval) * time.Second
 	max := float64(interval)
 	min := max * 0.3
 	ticker := flextimer.NewRangeTicker(time.Duration(min), time.Duration(max))
@@ -70,10 +71,10 @@ func metricsTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
 	}
 }
 
-// Called when configItemCurrent changes
+// Called when globalConfig changes
 // Assumes the caller has verifier that the interval has changed
 func updateMetricsTimer(tickerHandle interface{}) {
-	interval := time.Duration(configItemCurrent.metricInterval) * time.Second
+	interval := time.Duration(globalConfig.MetricInterval) * time.Second
 	log.Infof("updateMetricsTimer() change to %v\n", interval)
 	max := float64(interval)
 	min := max * 0.3
@@ -122,13 +123,8 @@ func handleDomainStatusModify(ctxArg interface{}, key string,
 			key, status.Key(), status)
 		return
 	}
-	// Ignore if any Pending* flag is set
-	// XXX we pass through for intermediate states
-	if false && status.Pending() {
-		log.Debugf("handleDomainstatusModify skipped due to Pending* for %s\n",
-			key)
-		return
-	}
+	// Update Progress counter even if Pending
+
 	if domainStatus == nil {
 		log.Debugf("create Domain map\n")
 		domainStatus = make(map[string]types.DomainStatus)
@@ -736,7 +732,7 @@ func RoundFromKbytesToMbytes(byteCount uint64) uint64 {
 
 // This function is called per change, hence needs to try over all uplinks
 // send report on each uplink.
-func PublishDeviceInfoToZedCloud(pubBaseOsStatus *pubsub.Publication,
+func PublishDeviceInfoToZedCloud(subBaseOsStatus *pubsub.Subscription,
 	aa *types.AssignableAdapters, iteration int) {
 
 	var ReportInfo = &zmet.ZInfoMsg{}
@@ -855,7 +851,7 @@ func PublishDeviceInfoToZedCloud(pubBaseOsStatus *pubsub.Publication,
 	// Report BaseOs Status for the two partitions
 	getBaseOsStatus := func(partLabel string) *types.BaseOsStatus {
 		// Look for a matching IMGA/IMGB in baseOsStatus
-		items := pubBaseOsStatus.GetAll()
+		items := subBaseOsStatus.GetAll()
 		for _, st := range items {
 			bos := cast.CastBaseOsStatus(st)
 			if bos.PartitionLabel == partLabel {
@@ -901,7 +897,7 @@ func PublishDeviceInfoToZedCloud(pubBaseOsStatus *pubsub.Publication,
 	ReportDeviceInfo.SwList[0] = getSwInfo(zboot.GetCurrentPartition())
 	ReportDeviceInfo.SwList[1] = getSwInfo(zboot.GetOtherPartition())
 	// Report any other BaseOsStatus which might have errors
-	items := pubBaseOsStatus.GetAll()
+	items := subBaseOsStatus.GetAll()
 	for _, st := range items {
 		bos := cast.CastBaseOsStatus(st)
 		if bos.PartitionLabel != "" {
@@ -913,6 +909,10 @@ func PublishDeviceInfoToZedCloud(pubBaseOsStatus *pubsub.Publication,
 		swInfo.Status = zmet.ZSwState(bos.State)
 		swInfo.ShortVersion = bos.BaseOsVersion
 		swInfo.LongVersion = "" // XXX
+		if len(bos.StorageStatusList) > 0 {
+			// Assume one - pick first StorageStatus
+			swInfo.DownloadProgress = uint32(bos.StorageStatusList[0].Progress)
+		}
 		if !bos.ErrorTime.IsZero() {
 			log.Debugf("reportMetrics sending error time %v error %v for %s\n",
 				bos.ErrorTime, bos.Error, bos.BaseOsVersion)
@@ -964,7 +964,7 @@ func PublishDeviceInfoToZedCloud(pubBaseOsStatus *pubsub.Publication,
 		_, _, err := types.IoBundleToPci(ib)
 		if err != nil {
 			if len(domainStatus) == 0 {
-				log.Debugf("Not reporting non-existent PCI device %d %s: %v\n",
+				log.Infof("Not reporting non-existent PCI device %d %s: %v\n",
 					ib.Type, ib.Name, err)
 				continue
 			}
@@ -1157,7 +1157,8 @@ func getNetInfo(interfaceDetail psutilnet.InterfaceStat) *zmet.ZInfoNetwork {
 // send report on each uplink.
 // When aiStatus is nil it means a delete and we send a message
 // containing only the UUID to inform zedcloud about the delete.
-func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
+func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
+	aiStatus *types.AppInstanceStatus,
 	aa *types.AssignableAdapters, iteration int) {
 	log.Debugf("PublishAppInfoToZedCloud uuid %s\n", uuid)
 	var ReportInfo = &zmet.ZInfoMsg{}
@@ -1204,14 +1205,17 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 			log.Infof("storage status detail is empty so ignoring")
 		} else {
 			ReportAppInfo.SoftwareList = make([]*zmet.ZInfoSW, len(aiStatus.StorageStatusList))
-			for idx, sc := range aiStatus.StorageStatusList {
+			for idx, ss := range aiStatus.StorageStatusList {
 				ReportSoftwareInfo := new(zmet.ZInfoSW)
 				ReportSoftwareInfo.SwVersion = aiStatus.UUIDandVersion.Version
-				ReportSoftwareInfo.SwHash = sc.ImageSha256
-				ReportSoftwareInfo.State = zmet.ZSwState(sc.State)
-				ReportSoftwareInfo.Target = sc.Target
+				ReportSoftwareInfo.ImageName = ss.Name
+				ReportSoftwareInfo.SwHash = ss.ImageSha256
+				ReportSoftwareInfo.State = zmet.ZSwState(ss.State)
+				ReportSoftwareInfo.DownloadProgress = uint32(ss.Progress)
+
+				ReportSoftwareInfo.Target = ss.Target
 				for _, disk := range ds.DiskStatusList {
-					if disk.ImageSha256 == sc.ImageSha256 {
+					if disk.ImageSha256 == ss.ImageSha256 {
 						ReportSoftwareInfo.Vdev = disk.Vdev
 						break
 					}
@@ -1240,6 +1244,26 @@ func PublishAppInfoToZedCloud(uuid string, aiStatus *types.AppInstanceStatus,
 			}
 			ReportAppInfo.AssignedAdapters = append(ReportAppInfo.AssignedAdapters,
 				reportAA)
+		}
+		// Get vifs assigned to the application
+		// Mostly reporting the UP status
+		// We extract the appIP from the dnsmasq assignment
+		interfaces, _ := psutilnet.Interfaces()
+		ifNames := ReadAppInterfaceList(ds.DomainName)
+		for _, ifname := range ifNames {
+			for _, interfaceDetail := range interfaces {
+				if ifname != interfaceDetail.Name {
+					continue
+				}
+				networkInfo := getNetInfo(interfaceDetail)
+				ip := getAppIP(ctx, aiStatus.Key(), ifname)
+				if ip != nil {
+					networkInfo.IPAddrs = make([]string, 1)
+					networkInfo.IPAddrs[0] = *proto.String(ip.String())
+				}
+				ReportAppInfo.Network = append(ReportAppInfo.Network,
+					networkInfo)
+			}
 		}
 	}
 
@@ -1410,4 +1434,56 @@ func getDefaultRouters(ifname string) []string {
 		res = append(res, rt.Gw.String())
 	}
 	return res
+}
+
+// Use the ifname/vifname to find the MAC address, and use that to find
+// the allocated IP address.
+func getAppIP(ctx *zedagentContext, uuidStr string, ifname string) *net.IP {
+	log.Debugf("getAppIP(%s, %s)\n", uuidStr, ifname)
+	ds, ok := domainStatus[uuidStr]
+	if !ok {
+		log.Debugf("getAppIP(%s, %s) no DomainStatus\n",
+			uuidStr, ifname)
+		return nil
+	}
+	macAddr := ""
+	for _, v := range ds.VifList {
+		if v.Vif == ifname {
+			macAddr = v.Mac
+			break
+		}
+	}
+	if macAddr == "" {
+		log.Debugf("getAppIP(%s, %s) no macAddr\n",
+			uuidStr, ifname)
+		return nil
+	}
+	ip := lookupNetworkObjectStatusByMac(ctx, macAddr)
+	if ip == nil {
+		log.Debugf("getAppIP(%s, %s) no IP address\n",
+			uuidStr, ifname)
+		return nil
+	}
+	log.Debugf("getAppIP(%s, %s) found %s\n", uuidStr, ifname, ip.String())
+	return ip
+}
+
+func lookupNetworkObjectStatusByMac(ctx *zedagentContext,
+	macAddr string) *net.IP {
+
+	sub := ctx.subNetworkObjectStatus
+	items := sub.GetAll()
+	for key, st := range items {
+		status := cast.CastNetworkObjectStatus(st)
+		if status.Key() != key {
+			log.Errorf("lookupNetworkObjectStatusByMac: key/UUID mismatch %s vs %s; ignored %+v\n",
+				key, status.Key(), status)
+			continue
+		}
+		ip, ok := status.IPAssignments[macAddr]
+		if ok {
+			return &ip
+		}
+	}
+	return nil
 }

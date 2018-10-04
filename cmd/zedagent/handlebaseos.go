@@ -699,7 +699,6 @@ func publishBaseOsStatus(ctx *zedagentContext, status *types.BaseOsStatus) {
 	log.Debugf("Publishing BaseOsStatus %s\n", key)
 	pub := ctx.pubBaseOsStatus
 	pub.Publish(key, status)
-	publishDeviceInfo = true
 }
 
 func unpublishBaseOsStatus(ctx *zedagentContext, key string) {
@@ -712,7 +711,6 @@ func unpublishBaseOsStatus(ctx *zedagentContext, key string) {
 		return
 	}
 	pub.Unpublish(key)
-	publishDeviceInfo = true
 }
 
 // Check the number of baseos and number of actvated

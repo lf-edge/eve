@@ -372,3 +372,17 @@ func CastLispMetrics(in interface{}) types.LispMetrics {
 	}
 	return output
 }
+
+
+func CastGlobalConfig(in interface{}) types.GlobalConfig {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastGlobalConfig")
+	}
+	var output types.GlobalConfig
+	if err := json.Unmarshal(b, &output); err != nil {
+		// File can be edited by hand. Don't Fatal
+		log.Error(err, "json Unmarshal in CastGlobalConfig")
+	}
+	return output
+}

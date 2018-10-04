@@ -179,7 +179,7 @@
     "zconfig",
     "zmet"
   ]
-  revision = "bd4aaaf5dbfaf741c764a7b25d5edf51228ca446"
+  revision = "b05d0403945cd44cca3e3d8414486ce49bf3f6a9"
 
 [[projects]]
   branch = "master"
@@ -189,7 +189,7 @@
     "libs/zedUpload/awsutil",
     "srvs/drona/sftp"
   ]
-  revision = "5b0bb7dbaf18c8653d405dda0dd67bbd83065020"
+  revision = "de81c16291c3f760b4b87ca71e88d10f8feda9b2"
 
 [[projects]]
   branch = "master"

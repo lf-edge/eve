@@ -158,6 +158,8 @@ func parseBaseOsConfig(getconfigCtx *getconfigContext,
 
 	// We need to publish the Activate=false first then those with
 	// true to avoid the subscriber seeing two activated
+	// XXX Unfortunately that makes no difference since the subscriber
+	// is likely to see the items in key order
 	expectActivate := false
 	for {
 		published := parseAndPublish(getconfigCtx, cfgOsList,
@@ -387,6 +389,12 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 			appInstance.PurgeCmd.Counter = cmd.Counter
 			appInstance.PurgeCmd.ApplyTime = cmd.OpsTime
 		}
+		userData := cfgApp.GetUserData()
+		if userData != "" {
+			log.Debugf("Received cloud-init userData %s\n",
+				userData)
+		}
+		appInstance.CloudInitUserData = userData
 		// get the certs for image sha verification
 		certInstance := getCertObjects(appInstance.UUIDandVersion,
 			appInstance.ConfigSha256, appInstance.StorageConfigList)
@@ -461,8 +469,12 @@ func publishDatastoreConfig(ctx *getconfigContext,
 		datastore.DsType = ds.DType.String()
 		datastore.ApiKey = ds.ApiKey
 		datastore.Password = ds.Password
-		// XXX add to device API to avoid hardcoding "us-west-2"
-		datastore.Region = "us-west-2"
+		datastore.Region = ds.Region
+		// XXX compatibility with unmodified zedcloud datastores
+		// default to "us-west-2"
+		if datastore.Region == "" {
+			datastore.Region = "us-west-2"
+		}
 		ctx.pubDatastoreConfig.Publish(datastore.Key(), &datastore)
 	}
 }
@@ -501,6 +513,7 @@ func parseStorageConfigList(objType string,
 		}
 		image.ReadOnly = drive.Readonly
 		image.Preserve = drive.Preserve
+		image.Maxsizebytes = uint64(drive.Maxsizebytes)
 		image.Target = strings.ToLower(drive.Target.String())
 		image.Devtype = strings.ToLower(drive.Drvtype.String())
 		image.ImageSha256 = drive.Image.Sha256
@@ -969,118 +982,166 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 	log.Infof("parseConfigItems: Applying updated config sha % x vs. % x: %v\n",
 		itemsPrevConfigHash, configHash, items)
 
+	globalConfigChange := false
 	for _, item := range items {
 		log.Infof("parseConfigItems key %s\n", item.Key)
 
 		var newU32 uint32
 		var newBool bool
+		var newString string
 		switch u := item.ConfigItemValue.(type) {
 		case *zconfig.ConfigItem_Uint32Value:
 			newU32 = u.Uint32Value
 		case *zconfig.ConfigItem_BoolValue:
 			newBool = u.BoolValue
+		case *zconfig.ConfigItem_StringValue:
+			newString = u.StringValue
 		default:
-			log.Errorf("parseConfigItems: currently only supporting uint32 and bool types\n")
+			log.Errorf("parseConfigItems: not supporting %T type\n",
+				u)
 			continue
 		}
 		switch item.Key {
-		case "configInterval":
+		case "timer.config.interval":
 			if newU32 == 0 {
 				// Revert to default
-				newU32 = configItemDefaults.configInterval
+				newU32 = globalConfigDefaults.ConfigInterval
 			}
-			if newU32 != configItemCurrent.configInterval {
+			if newU32 != globalConfig.ConfigInterval {
 				log.Infof("parseConfigItems: %s change from %d to %d\n",
 					item.Key,
-					configItemCurrent.configInterval,
+					globalConfig.ConfigInterval,
 					newU32)
-				configItemCurrent.configInterval = newU32
+				globalConfig.ConfigInterval = newU32
+				globalConfigChange = true
 				updateConfigTimer(ctx.configTickerHandle)
 			}
-		case "metricInterval":
+		case "timer.metric.interval":
 			if newU32 == 0 {
 				// Revert to default
-				newU32 = configItemDefaults.metricInterval
+				newU32 = globalConfigDefaults.MetricInterval
 			}
-			if newU32 != configItemCurrent.metricInterval {
+			if newU32 != globalConfig.MetricInterval {
 				log.Infof("parseConfigItems: %s change from %d to %d\n",
 					item.Key,
-					configItemCurrent.metricInterval,
+					globalConfig.MetricInterval,
 					newU32)
-				configItemCurrent.metricInterval = newU32
+				globalConfig.MetricInterval = newU32
+				globalConfigChange = true
 				updateMetricsTimer(ctx.metricsTickerHandle)
 			}
-		case "resetIfCloudGoneTime":
+		case "timer.reboot.no.network":
 			if newU32 == 0 {
 				// Revert to default
-				newU32 = configItemDefaults.resetIfCloudGoneTime
+				newU32 = globalConfigDefaults.ResetIfCloudGoneTime
 			}
-			if newU32 != configItemCurrent.resetIfCloudGoneTime {
+			if newU32 != globalConfig.ResetIfCloudGoneTime {
 				log.Infof("parseConfigItems: %s change from %d to %d\n",
 					item.Key,
-					configItemCurrent.resetIfCloudGoneTime,
+					globalConfig.ResetIfCloudGoneTime,
 					newU32)
-				configItemCurrent.resetIfCloudGoneTime = newU32
+				globalConfig.ResetIfCloudGoneTime = newU32
+				globalConfigChange = true
 			}
-		case "fallbackIfCloudGoneTime":
+		case "timer.update.fallback.no.network":
 			if newU32 == 0 {
 				// Revert to default
-				newU32 = configItemDefaults.fallbackIfCloudGoneTime
+				newU32 = globalConfigDefaults.FallbackIfCloudGoneTime
 			}
-			if newU32 != configItemCurrent.fallbackIfCloudGoneTime {
+			if newU32 != globalConfig.FallbackIfCloudGoneTime {
 				log.Infof("parseConfigItems: %s change from %d to %d\n",
 					item.Key,
-					configItemCurrent.fallbackIfCloudGoneTime,
+					globalConfig.FallbackIfCloudGoneTime,
 					newU32)
-				configItemCurrent.fallbackIfCloudGoneTime = newU32
+				globalConfig.FallbackIfCloudGoneTime = newU32
+				globalConfigChange = true
 			}
-		case "mintimeUpdateSuccess":
+		case "timer.test.baseimage.update":
 			if newU32 == 0 {
 				// Revert to default
-				newU32 = configItemDefaults.mintimeUpdateSuccess
+				newU32 = globalConfigDefaults.MintimeUpdateSuccess
 			}
-			if newU32 != configItemCurrent.mintimeUpdateSuccess {
+			if newU32 != globalConfig.MintimeUpdateSuccess {
 				log.Errorf("parseConfigItems: %s change from %d to %d\n",
 					item.Key,
-					configItemCurrent.mintimeUpdateSuccess,
+					globalConfig.MintimeUpdateSuccess,
 					newU32)
-				configItemCurrent.mintimeUpdateSuccess = newU32
+				globalConfig.MintimeUpdateSuccess = newU32
+				globalConfigChange = true
 			}
-		case "usbAccess":
-			if newBool != configItemCurrent.usbAccess {
+		case "debug.disable.usb": // XXX swap name to enable?
+			if newBool != globalConfig.NoUsbAccess {
 				log.Infof("parseConfigItems: %s change from %v to %v\n",
 					item.Key,
-					configItemCurrent.usbAccess,
+					globalConfig.NoUsbAccess,
 					newBool)
-				configItemCurrent.usbAccess = newBool
+				globalConfig.NoUsbAccess = newBool
+				globalConfigChange = true
 				// Need to enable/disable login in domainMgr
 				// for PCI assignment
-				// XXX updateUsbAccess(configItemCurrent.usbAccess)
+				// XXX updateUsbAccess(!globalConfig.NoUsbAccess)
 			}
-		case "sshAccess":
-			if newBool != configItemCurrent.sshAccess {
+		case "debug.disable.ssh": // XXX swap name to enable?
+			if newBool != globalConfig.NoSshAccess {
 				log.Infof("parseConfigItems: %s change from %v to %v\n",
 					item.Key,
-					configItemCurrent.sshAccess,
+					globalConfig.NoSshAccess,
 					newBool)
-				configItemCurrent.sshAccess = newBool
-				updateSshAccess(configItemCurrent.sshAccess)
+				globalConfig.NoSshAccess = newBool
+				globalConfigChange = true
+				updateSshAccess(!globalConfig.NoSshAccess,
+					false)
 			}
-		case "staleConfigTime":
+		case "timer.use.config.checkpoint":
 			if newU32 == 0 {
 				// Revert to default
-				newU32 = configItemDefaults.staleConfigTime
+				newU32 = globalConfigDefaults.StaleConfigTime
 			}
-			if newU32 != configItemCurrent.staleConfigTime {
+			if newU32 != globalConfig.StaleConfigTime {
 				log.Infof("parseConfigItems: %s change from %d to %d\n",
 					item.Key,
-					configItemCurrent.staleConfigTime,
+					globalConfig.StaleConfigTime,
 					newU32)
-				configItemCurrent.staleConfigTime = newU32
+				globalConfig.StaleConfigTime = newU32
+				globalConfigChange = true
+			}
+		case "debug.default.loglevel":
+			if newString == "" {
+				// Revert to default
+				newString = globalConfigDefaults.DefaultLogLevel
+			}
+			if newString != globalConfig.DefaultLogLevel {
+				log.Infof("parseConfigItems: %s change from %v to %v\n",
+					item.Key,
+					globalConfig.DefaultLogLevel,
+					newString)
+				globalConfig.DefaultLogLevel = newString
+				globalConfigChange = true
+			}
+		case "debug.default.remote.loglevel":
+			if newString == "" {
+				// Revert to default
+				newString = globalConfigDefaults.DefaultRemoteLogLevel
+			}
+			if newString != globalConfig.DefaultRemoteLogLevel {
+				log.Infof("parseConfigItems: %s change from %v to %v\n",
+					item.Key,
+					globalConfig.DefaultRemoteLogLevel,
+					newString)
+				globalConfig.DefaultRemoteLogLevel = newString
+				globalConfigChange = true
 			}
 		default:
 			log.Errorf("Unknown configItem %s\n", item.Key)
 			// XXX send back error? Need device error for that
+		}
+	}
+	if globalConfigChange {
+		err := pubsub.PublishToDir("/persist/config/", "global",
+			&globalConfig)
+		if err != nil {
+			log.Errorf("PublishToDir for globalConfig failed %s\n",
+				err)
 		}
 	}
 }

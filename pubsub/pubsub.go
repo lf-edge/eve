@@ -131,6 +131,9 @@ type Publication struct {
 	km         keyMap
 	sockName   string
 	listener   net.Listener
+	// Handle special case of file only info
+	publishToDir bool
+	dirName      string
 }
 
 func Publish(agentName string, topicType interface{}) (*Publication, error) {
@@ -423,12 +426,36 @@ func FixedDirName(name string) string {
 }
 
 func (pub *Publication) nameString() string {
-	if pub.agentScope == "" {
+	if pub.publishToDir {
+		return pub.dirName
+	} else if pub.agentScope == "" {
 		return fmt.Sprintf("%s/%s", pub.agentName, pub.topic)
 	} else {
 		return fmt.Sprintf("%s/%s/%s", pub.agentName, pub.agentScope,
 			pub.topic)
 	}
+}
+
+// One shot create directory and publish one key in that directory
+func PublishToDir(dirName string, key string, item interface{}) error {
+	topic := TypeToName(item)
+	pub := new(Publication)
+	pub.topicType = item
+	pub.dirName = dirName
+	pub.publishToDir = true
+	pub.topic = topic
+	pub.km = keyMap{key: NewLockedStringMap()}
+	name := pub.nameString()
+
+	if _, err := os.Stat(dirName); err != nil {
+		log.Infof("PublishToDir Create %s\n", dirName)
+		if err := os.MkdirAll(dirName, 0700); err != nil {
+			errStr := fmt.Sprintf("Publish(%s): %s",
+				name, err)
+			return errors.New(errStr)
+		}
+	}
+	return pub.Publish(key, item)
 }
 
 func (pub *Publication) Publish(key string, item interface{}) error {
@@ -458,7 +485,12 @@ func (pub *Publication) Publish(key string, item interface{}) error {
 	}
 	pub.updatersNotify()
 
-	dirName := PubDirName(name)
+	var dirName string
+	if pub.publishToDir {
+		dirName = pub.dirName
+	} else {
+		dirName = PubDirName(name)
+	}
 	fileName := dirName + "/" + key + ".json"
 	log.Debugf("Publish writing %s\n", fileName)
 
@@ -868,7 +900,7 @@ func (sub *Subscription) connectAndRead() (string, string, string) {
 			if err != nil {
 				errStr := fmt.Sprintf("connectAndRead(%s): Dial failed %s",
 					name, err)
-				log.Errorln(errStr)
+				log.Warnln(errStr)
 				time.Sleep(10 * time.Second)
 				continue
 			}

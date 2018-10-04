@@ -307,12 +307,14 @@ func (m *Image) GetSizeBytes() int64 {
 }
 
 type Drive struct {
-	Image        *Image    `protobuf:"bytes,1,opt,name=image" json:"image,omitempty"`
-	Readonly     bool      `protobuf:"varint,5,opt,name=readonly" json:"readonly,omitempty"`
-	Preserve     bool      `protobuf:"varint,6,opt,name=preserve" json:"preserve,omitempty"`
-	Drvtype      DriveType `protobuf:"varint,8,opt,name=drvtype,enum=DriveType" json:"drvtype,omitempty"`
-	Target       Target    `protobuf:"varint,9,opt,name=target,enum=Target" json:"target,omitempty"`
-	Maxsizebytes int64     `protobuf:"varint,10,opt,name=maxsizebytes" json:"maxsizebytes,omitempty"`
+	Image    *Image    `protobuf:"bytes,1,opt,name=image" json:"image,omitempty"`
+	Readonly bool      `protobuf:"varint,5,opt,name=readonly" json:"readonly,omitempty"`
+	Preserve bool      `protobuf:"varint,6,opt,name=preserve" json:"preserve,omitempty"`
+	Drvtype  DriveType `protobuf:"varint,8,opt,name=drvtype,enum=DriveType" json:"drvtype,omitempty"`
+	Target   Target    `protobuf:"varint,9,opt,name=target,enum=Target" json:"target,omitempty"`
+	// Initial image need to be resized to this size.
+	// A value of 0 will indicate that no resizing is required
+	Maxsizebytes int64 `protobuf:"varint,10,opt,name=maxsizebytes" json:"maxsizebytes,omitempty"`
 }
 
 func (m *Drive) Reset()                    { *m = Drive{} }

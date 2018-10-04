@@ -1,14 +1,20 @@
-package aws
+package awsutil
 
 import (
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
+	"log"
 	"net/http"
 	"time"
-	"log"
+)
+
+const (
+	S3_PART_SIZE        = 5 * 1024 * 1024
+	S3_PART_LEAVE_ERROR = true
 )
 
 type S3ctx struct {
@@ -49,8 +55,13 @@ func NewAwsCtx(id, secret, region string, hctx *http.Client) *S3ctx {
 	// FIXME: We need figoure out how to do this with SSL verification
 	cfg.WithDisableSSL(true)
 	ctx.ss3 = s3.New(session.New(), cfg)
-	ctx.up = s3manager.NewUploaderWithClient(ctx.ss3)
-	ctx.dn = s3manager.NewDownloaderWithClient(ctx.ss3)
+	ctx.up = s3manager.NewUploaderWithClient(ctx.ss3, func(u *s3manager.Uploader) {
+		u.PartSize = S3_PART_SIZE
+		u.LeavePartsOnError = S3_PART_LEAVE_ERROR
+	})
+	ctx.dn = s3manager.NewDownloaderWithClient(ctx.ss3, func(d *s3manager.Downloader) {
+		d.PartSize = S3_PART_SIZE
+	})
 
 	return &ctx
 }
@@ -121,6 +132,16 @@ func (s *S3ctx) GetObjectSize(bname, bkey string) (error, int64) {
 		Bucket: aws.String(bname),
 		Key:    aws.String(bkey)})
 	if err != nil {
+		if aerr, ok := err.(awserr.Error); ok {
+			switch aerr.Code() {
+			default:
+				log.Println("Get size error ", aerr.Error())
+			}
+		} else {
+			// Print the error, cast err to awserr.Error to get the Code and
+			// Message from an error.
+			log.Println("Get AWS Size error ", err.Error())
+		}
 		return err, 0
 	}
 

@@ -40,7 +40,8 @@ type DronaRequest struct {
 	sizelimit int64
 
 	// Filled by Drona, actual size
-	asize int64
+	asize      int64
+	objectSize int64
 
 	// Status of Download, we convert here to string because this
 	// field is going to be json marshalled
@@ -91,6 +92,12 @@ func (req *DronaRequest) setInprogress() {
 	req.inprogress = true
 }
 
+func (req *DronaRequest) setStatus(status error) {
+	req.Lock()
+	defer req.Unlock()
+	req.status = fmt.Sprintf("%v", status)
+}
+
 func (req *DronaRequest) clearInprogress() {
 	req.Lock()
 	defer req.Unlock()
@@ -104,11 +111,25 @@ func (req *DronaRequest) GetAsize() int64 {
 	return req.asize
 }
 
+// Return object actual synced down size
+func (req *DronaRequest) GetOsize() int64 {
+	req.Lock()
+	defer req.Unlock()
+	return req.objectSize
+}
+
 // Update the actual size
 func (req *DronaRequest) updateAsize(size int64) {
 	req.Lock()
 	defer req.Unlock()
 	req.asize = size
+}
+
+// Update the object size
+func (req *DronaRequest) updateOsize(size int64) {
+	req.Lock()
+	defer req.Unlock()
+	req.objectSize = size
 }
 
 // Return the if the object was downloaded with error

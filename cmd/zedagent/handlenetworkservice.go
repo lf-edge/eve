@@ -147,7 +147,7 @@ func prepareAndPublishLispServiceInfoMsg(ctx *zedagentContext,
 		x.Sinfo = svcInfo
 	}
 	log.Debugf("Publish LispInfo message to zedcloud: %v\n", infoMsg)
-	publishNetworkServiceInfo(ctx, serviceUUID, infoMsg)
+	publishInfo(ctx, serviceUUID, infoMsg)
 }
 
 func handleNetworkLispServiceStatusModify(ctx *zedagentContext, status types.NetworkServiceStatus) {
@@ -208,7 +208,7 @@ func prepareVpnServiceInfoMsg(ctx *zedagentContext, status types.NetworkServiceS
 		if x, ok := infoMsg.GetInfoContent().(*zmet.ZInfoMsg_Sinfo); ok {
 			x.Sinfo = svcInfo
 		}
-		publishNetworkServiceInfo(ctx, serviceUUID, infoMsg)
+		publishInfo(ctx, serviceUUID, infoMsg)
 		return
 	}
 
@@ -242,7 +242,7 @@ func prepareVpnServiceInfoMsg(ctx *zedagentContext, status types.NetworkServiceS
 	if x, ok := infoMsg.GetInfoContent().(*zmet.ZInfoMsg_Sinfo); ok {
 		x.Sinfo = svcInfo
 	}
-	publishNetworkServiceInfo(ctx, serviceUUID, infoMsg)
+	publishInfo(ctx, serviceUUID, infoMsg)
 }
 
 func publishVpnConnection(vpnInfo *zmet.ZInfoVpn,
@@ -301,12 +301,12 @@ func publishVpnConnection(vpnInfo *zmet.ZInfoVpn,
 	return vpnConnInfo
 }
 
-func publishNetworkServiceInfo(ctx *zedagentContext, serviceUUID string, infoMsg *zmet.ZInfoMsg) {
-	publishNetworkServiceInfoToZedCloud(serviceUUID, infoMsg, ctx.iteration)
+func publishInfo(ctx *zedagentContext, UUID string, infoMsg *zmet.ZInfoMsg) {
+	publishInfoToZedCloud(UUID, infoMsg, ctx.iteration)
 	ctx.iteration += 1
 }
 
-func publishNetworkServiceInfoToZedCloud(serviceUUID string, infoMsg *zmet.ZInfoMsg, iteration int) {
+func publishInfoToZedCloud(UUID string, infoMsg *zmet.ZInfoMsg, iteration int) {
 
 	log.Infof("publishNetworkServiceInfoToZedCloud sending %v\n", infoMsg)
 	data, err := proto.Marshal(infoMsg)
@@ -314,14 +314,14 @@ func publishNetworkServiceInfoToZedCloud(serviceUUID string, infoMsg *zmet.ZInfo
 		log.Fatal("publishNetworkServiceInfoToZedCloud proto marshaling error: ", err)
 	}
 	statusUrl := serverName + "/" + statusApi
-	zedcloud.RemoveDeferred(serviceUUID)
+	zedcloud.RemoveDeferred(UUID)
 	buf := bytes.NewBuffer(data)
 	size := int64(proto.Size(infoMsg))
 	err = SendProtobuf(statusUrl, buf, size, iteration)
 	if err != nil {
 		log.Errorf("publishNetworkServiceInfoToZedCloud failed: %s\n", err)
 		// Try sending later
-		zedcloud.SetDeferred(serviceUUID, buf, size, statusUrl,
+		zedcloud.SetDeferred(UUID, buf, size, statusUrl,
 			zedcloudCtx, true)
 	} else {
 		writeSentDeviceInfoProtoMessage(data)

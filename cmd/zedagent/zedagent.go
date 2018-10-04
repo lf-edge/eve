@@ -98,6 +98,7 @@ type zedagentContext struct {
 	pubCertObjStatus         *pubsub.Publication
 	TriggerDeviceInfo        bool
 	subBaseOsConfig          *pubsub.Subscription
+	subBaseOsStatus          *pubsub.Subscription
 	subDatastoreConfig       *pubsub.Subscription
 	pubBaseOsStatus          *pubsub.Publication
 	pubBaseOsDownloadConfig  *pubsub.Publication
@@ -114,11 +115,6 @@ type zedagentContext struct {
 
 var debug = false
 var debugOverride bool // From command line arg
-
-// XXX used by baseOs code to indicate that something changed
-// Will not be needed once we have a separate baseosmgr since
-// we'll react to baseOsStatus changes.
-var publishDeviceInfo bool
 
 func Run() {
 	versionPtr := flag.Bool("v", false, "Version")
@@ -296,8 +292,8 @@ func Run() {
 	pubDatastoreConfig.ClearRestarted()
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("",
-		agentlog.GlobalConfig{}, false, &zedagentCtx)
+	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
+		false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -312,8 +308,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	subNetworkObjectStatus.ModifyHandler = handleNetworkObjectModify
-	subNetworkObjectStatus.DeleteHandler = handleNetworkObjectDelete
+	subNetworkObjectStatus.ModifyHandler = handleNetworkObjectStatusModify
+	subNetworkObjectStatus.DeleteHandler = handleNetworkObjectStatusDelete
 	zedagentCtx.subNetworkObjectStatus = subNetworkObjectStatus
 	subNetworkObjectStatus.Activate()
 
@@ -371,7 +367,7 @@ func Run() {
 	zedagentCtx.subCertObjConfig = subCertObjConfig
 	subCertObjConfig.Activate()
 
-	// Look for BaseOsConfig from ourselves!
+	// Look for BaseOsConfig and BaseOsStatus from ourselves!
 	subBaseOsConfig, err := pubsub.Subscribe("zedagent",
 		types.BaseOsConfig{}, false, &zedagentCtx)
 	if err != nil {
@@ -381,6 +377,16 @@ func Run() {
 	subBaseOsConfig.DeleteHandler = handleBaseOsConfigDelete
 	zedagentCtx.subBaseOsConfig = subBaseOsConfig
 	subBaseOsConfig.Activate()
+
+	subBaseOsStatus, err := pubsub.Subscribe("zedagent",
+		types.BaseOsStatus{}, false, &zedagentCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subBaseOsStatus.ModifyHandler = handleBaseOsStatusModify
+	subBaseOsStatus.DeleteHandler = handleBaseOsStatusDelete
+	zedagentCtx.subBaseOsStatus = subBaseOsStatus
+	subBaseOsStatus.Activate()
 
 	// Look for DatastoreConfig from ourselves!
 	subDatastoreConfig, err := pubsub.Subscribe("zedagent",
@@ -483,16 +489,16 @@ func Run() {
 	subDeviceNetworkStatus.Activate()
 
 	updateInprogress := zboot.IsCurrentPartitionStateInProgress()
-	time1 := time.Duration(configItemCurrent.resetIfCloudGoneTime)
+	time1 := time.Duration(globalConfig.ResetIfCloudGoneTime)
 	t1 := time.NewTimer(time1 * time.Second)
 	log.Infof("Started timer for reset for %d seconds\n", time1)
-	time2 := time.Duration(configItemCurrent.fallbackIfCloudGoneTime)
+	time2 := time.Duration(globalConfig.FallbackIfCloudGoneTime)
 	log.Infof("Started timer for fallback (%v) reset for %d seconds\n",
 		updateInprogress, time2)
 	t2 := time.NewTimer(time2 * time.Second)
 
 	// Initial settings; redone below in case some
-	updateSshAccess(configItemCurrent.sshAccess)
+	updateSshAccess(!globalConfig.NoSshAccess, true)
 
 	log.Infof("Waiting until we have some uplinks with usable addresses\n")
 	waited := false
@@ -573,15 +579,9 @@ func Run() {
 	getconfigCtx.configTickerHandle = configTickerHandle
 	getconfigCtx.metricsTickerHandle = metricsTickerHandle
 
-	updateSshAccess(configItemCurrent.sshAccess)
+	updateSshAccess(!globalConfig.NoSshAccess, true)
 
 	for {
-		if publishDeviceInfo {
-			log.Infof("BaseOs triggered PublishDeviceInfo\n")
-			publishDevInfo(&zedagentCtx)
-			publishDeviceInfo = false
-		}
-
 		select {
 		case change := <-subGlobalConfig.C:
 			subGlobalConfig.ProcessChange(change)
@@ -594,6 +594,9 @@ func Run() {
 
 		case change := <-subBaseOsConfig.C:
 			subBaseOsConfig.ProcessChange(change)
+
+		case change := <-subBaseOsStatus.C:
+			subBaseOsStatus.ProcessChange(change)
 
 		case change := <-subDatastoreConfig.C:
 			subDatastoreConfig.ProcessChange(change)
@@ -693,7 +696,7 @@ func Run() {
 }
 
 func publishDevInfo(ctx *zedagentContext) {
-	PublishDeviceInfoToZedCloud(ctx.pubBaseOsStatus, ctx.assignableAdapters,
+	PublishDeviceInfoToZedCloud(ctx.subBaseOsStatus, ctx.assignableAdapters,
 		ctx.iteration)
 	ctx.iteration += 1
 }
@@ -753,7 +756,7 @@ func handleAppInstanceStatusModify(ctxArg interface{}, key string,
 	}
 	ctx := ctxArg.(*zedagentContext)
 	uuidStr := status.Key()
-	PublishAppInfoToZedCloud(uuidStr, &status, ctx.assignableAdapters,
+	PublishAppInfoToZedCloud(ctx, uuidStr, &status, ctx.assignableAdapters,
 		ctx.iteration)
 	ctx.iteration += 1
 }
@@ -763,7 +766,7 @@ func handleAppInstanceStatusDelete(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*zedagentContext)
 	uuidStr := key
-	PublishAppInfoToZedCloud(uuidStr, nil, ctx.assignableAdapters,
+	PublishAppInfoToZedCloud(ctx, uuidStr, nil, ctx.assignableAdapters,
 		ctx.iteration)
 	ctx.iteration += 1
 }
@@ -952,6 +955,33 @@ func handleBaseOsDelete(ctxArg interface{}, key string,
 	removeBaseOsConfig(ctx, status.Key())
 }
 
+// Report BaseOsStatus to zedcloud
+
+func handleBaseOsStatusModify(ctxArg interface{}, key string, statusArg interface{}) {
+	ctx := ctxArg.(*zedagentContext)
+	status := cast.CastBaseOsStatus(statusArg)
+	if status.Key() != key {
+		log.Errorf("handleBaseOsStatusModify key/UUID mismatch %s vs %s; ignored %+v\n", key, status.Key(), status)
+		return
+	}
+	publishDevInfo(ctx)
+	log.Infof("handleBaseOsStatusModify(%s) done\n", key)
+}
+
+func handleBaseOsStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	log.Infof("handleBaseOsStatusDelete(%s)\n", key)
+	ctx := ctxArg.(*zedagentContext)
+	status := lookupBaseOsStatus(ctx, key)
+	if status == nil {
+		log.Infof("handleBaseOsStatusDelete: unknown %s\n", key)
+		return
+	}
+	publishDevInfo(ctx)
+	log.Infof("handleBaseOsStatusDelete(%s) done\n", key)
+}
+
 // Wrappers around handleCertObjCreate/Modify/Delete
 
 func handleCertObjConfigModify(ctxArg interface{}, key string, configArg interface{}) {
@@ -1111,6 +1141,15 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigModify for %s\n", key)
 	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
+	c, err := ctx.subGlobalConfig.Get("global")
+	if err == nil {
+		gc := cast.CastGlobalConfig(c)
+		if !cmp.Equal(globalConfig, gc) {
+			log.Infof("handleGlobalConfigModify: diff %v\n",
+				cmp.Diff(globalConfig, gc))
+			applyGlobalConfig(gc)
+		}
+	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
 
@@ -1125,5 +1164,31 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
+	globalConfig = globalConfigDefaults
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
+}
+
+// Check which values are set and which should come from defaults
+// Zero integers means to use default
+func applyGlobalConfig(newgc types.GlobalConfig) {
+
+	if newgc.ConfigInterval == 0 {
+		newgc.ConfigInterval = globalConfigDefaults.ConfigInterval
+	}
+	if newgc.MetricInterval == 0 {
+		newgc.MetricInterval = globalConfigDefaults.MetricInterval
+	}
+	if newgc.ResetIfCloudGoneTime == 0 {
+		newgc.ResetIfCloudGoneTime = globalConfigDefaults.ResetIfCloudGoneTime
+	}
+	if newgc.FallbackIfCloudGoneTime == 0 {
+		newgc.FallbackIfCloudGoneTime = globalConfigDefaults.FallbackIfCloudGoneTime
+	}
+	if newgc.MintimeUpdateSuccess == 0 {
+		newgc.MintimeUpdateSuccess = globalConfigDefaults.MintimeUpdateSuccess
+	}
+	if newgc.StaleConfigTime == 0 {
+		newgc.StaleConfigTime = globalConfigDefaults.StaleConfigTime
+	}
+	globalConfig = newgc
 }

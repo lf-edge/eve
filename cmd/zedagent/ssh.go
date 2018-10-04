@@ -13,44 +13,46 @@ import (
 	"os/exec"
 )
 
-func updateSshAccess(enable bool) {
+func updateSshAccess(enable bool, initial bool) {
 	if enable {
-		enableSsh()
+		enableSsh(initial)
 	} else {
-		disableSsh()
+		disableSsh(initial)
 	}
 }
 
-func enableSsh() {
+// Avoid logging errors if initial
+func enableSsh(initial bool) {
 	// Delete these rules
 	// iptables -D OUTPUT -p tcp --sport 22 -j DROP
 	// iptables -D INPUT -p tcp --dport 22 -j DROP
 	// ip6tables -D OUTPUT -p tcp --sport 22 -j DROP
 	// ip6tables -D INPUT -p tcp --dport 22 -j DROP
-	iptableCmd("-D", "OUTPUT", "-p", "tcp", "--sport", "22", "-j", "DROP")
-	iptableCmd("-D", "INPUT", "-p", "tcp", "--dport", "22", "-j", "DROP")
-	ip6tableCmd("-D", "OUTPUT", "-p", "tcp", "--sport", "22", "-j", "DROP")
-	ip6tableCmd("-D", "INPUT", "-p", "tcp", "--dport", "22", "-j", "DROP")
-	iptableCmd("-D", "OUTPUT", "-p", "tcp", "--sport", "8080", "-j", "DROP")
-	iptableCmd("-D", "INPUT", "-p", "tcp", "--dport", "8080", "-j", "DROP")
-	ip6tableCmd("-D", "OUTPUT", "-p", "tcp", "--sport", "8080", "-j", "DROP")
-	ip6tableCmd("-D", "INPUT", "-p", "tcp", "--dport", "8080", "-j", "DROP")
+	iptableCmd(!initial, "-D", "OUTPUT", "-p", "tcp", "--sport", "22", "-j", "DROP")
+	iptableCmd(!initial, "-D", "INPUT", "-p", "tcp", "--dport", "22", "-j", "DROP")
+	ip6tableCmd(!initial, "-D", "OUTPUT", "-p", "tcp", "--sport", "22", "-j", "DROP")
+	ip6tableCmd(!initial, "-D", "INPUT", "-p", "tcp", "--dport", "22", "-j", "DROP")
+	iptableCmd(!initial, "-D", "OUTPUT", "-p", "tcp", "--sport", "8080", "-j", "DROP")
+	iptableCmd(!initial, "-D", "INPUT", "-p", "tcp", "--dport", "8080", "-j", "DROP")
+	ip6tableCmd(!initial, "-D", "OUTPUT", "-p", "tcp", "--sport", "8080", "-j", "DROP")
+	ip6tableCmd(!initial, "-D", "INPUT", "-p", "tcp", "--dport", "8080", "-j", "DROP")
 }
 
-func disableSsh() {
+// Avoid logging errors if initial
+func disableSsh(initial bool) {
 	// Add these rules
 	// iptables -A OUTPUT -p tcp --sport 22 -j DROP
 	// iptables -A INPUT -p tcp --dport 22 -j DROP
 	// ip6tables -A OUTPUT -p tcp --sport 22 -j DROP
 	// ip6tables -A INPUT -p tcp --dport 22 -j DROP
-	iptableCmd("-A", "OUTPUT", "-p", "tcp", "--sport", "22", "-j", "DROP")
-	iptableCmd("-A", "INPUT", "-p", "tcp", "--dport", "22", "-j", "DROP")
-	ip6tableCmd("-A", "OUTPUT", "-p", "tcp", "--sport", "22", "-j", "DROP")
-	ip6tableCmd("-A", "INPUT", "-p", "tcp", "--dport", "22", "-j", "DROP")
-	iptableCmd("-A", "OUTPUT", "-p", "tcp", "--sport", "8080", "-j", "DROP")
-	iptableCmd("-A", "INPUT", "-p", "tcp", "--dport", "8080", "-j", "DROP")
-	ip6tableCmd("-A", "OUTPUT", "-p", "tcp", "--sport", "8080", "-j", "DROP")
-	ip6tableCmd("-A", "INPUT", "-p", "tcp", "--dport", "8080", "-j", "DROP")
+	iptableCmd(!initial, "-A", "OUTPUT", "-p", "tcp", "--sport", "22", "-j", "DROP")
+	iptableCmd(!initial, "-A", "INPUT", "-p", "tcp", "--dport", "22", "-j", "DROP")
+	ip6tableCmd(!initial, "-A", "OUTPUT", "-p", "tcp", "--sport", "22", "-j", "DROP")
+	ip6tableCmd(!initial, "-A", "INPUT", "-p", "tcp", "--dport", "22", "-j", "DROP")
+	iptableCmd(!initial, "-A", "OUTPUT", "-p", "tcp", "--sport", "8080", "-j", "DROP")
+	iptableCmd(!initial, "-A", "INPUT", "-p", "tcp", "--dport", "8080", "-j", "DROP")
+	ip6tableCmd(!initial, "-A", "OUTPUT", "-p", "tcp", "--sport", "8080", "-j", "DROP")
+	ip6tableCmd(!initial, "-A", "INPUT", "-p", "tcp", "--dport", "8080", "-j", "DROP")
 }
 
 func iptableCmdOut(dolog bool, args ...string) (string, error) {
@@ -69,8 +71,8 @@ func iptableCmdOut(dolog bool, args ...string) (string, error) {
 	return string(out), nil
 }
 
-func iptableCmd(args ...string) error {
-	_, err := iptableCmdOut(true, args...)
+func iptableCmd(dolog bool, args ...string) error {
+	_, err := iptableCmdOut(dolog, args...)
 	return err
 }
 
@@ -90,7 +92,7 @@ func ip6tableCmdOut(dolog bool, args ...string) (string, error) {
 	return string(out), nil
 }
 
-func ip6tableCmd(args ...string) error {
-	_, err := ip6tableCmdOut(true, args...)
+func ip6tableCmd(dolog bool, args ...string) error {
+	_, err := ip6tableCmdOut(dolog, args...)
 	return err
 }

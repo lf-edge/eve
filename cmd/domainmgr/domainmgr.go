@@ -9,6 +9,7 @@
 package domainmgr
 
 import (
+	"encoding/base64"
 	"errors"
 	"flag"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/devicenetwork"
+	"github.com/zededa/go-provision/diskmetrics"
 	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/pidfile"
@@ -150,7 +152,7 @@ func Run() {
 	pubDomainStatus.ClearRestarted()
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("", agentlog.GlobalConfig{},
+	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
 		false, &domainCtx)
 	if err != nil {
 		log.Fatal(err)
@@ -467,7 +469,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		VifList:            config.VifList,
 		VirtualizationMode: config.VirtualizationMode,
 		EnableVnc:          config.EnableVnc,
-		State:		    types.INSTALLED,
+		State:              types.INSTALLED,
 	}
 	status.DiskStatusList = make([]types.DiskStatus,
 		len(config.DiskConfigList))
@@ -504,14 +506,29 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 			} else {
 				log.Infof("Not preserve and target exists - assume rebooted and preserve\n")
 			}
-		} else if err := cp(ds.ActiveFileLocation, ds.FileLocation); err != nil {
-			log.Errorf("Copy failed from %s to %s: %s\n",
-				ds.FileLocation, ds.ActiveFileLocation, err)
-			status.PendingAdd = false
-			status.LastErr = fmt.Sprintf("%v", err)
-			status.LastErrTime = time.Now()
-			publishDomainStatus(ctx, &status)
-			return
+		} else {
+			if err := cp(ds.ActiveFileLocation, ds.FileLocation); err != nil {
+				log.Errorf("Copy failed from %s to %s: %s\n",
+					ds.FileLocation, ds.ActiveFileLocation, err)
+				status.PendingAdd = false
+				status.LastErr = fmt.Sprintf("%v", err)
+				status.LastErrTime = time.Now()
+				publishDomainStatus(ctx, &status)
+				return
+			}
+			// Do we need to expand disk?
+			err := maybeResizeDisk(ds.ActiveFileLocation,
+				ds.Maxsizebytes)
+			if err != nil {
+				errStr := fmt.Sprintf("handleCreate(%s) failed %v",
+					status.Key(), err)
+				log.Errorln(errStr)
+				status.LastErr = errStr
+				status.LastErrTime = time.Now()
+				status.PendingAdd = false
+				publishDomainStatus(ctx, &status)
+				return
+			}
 		}
 		log.Infof("Copy DONE from %s to %s\n",
 			ds.FileLocation, ds.ActiveFileLocation)
@@ -824,6 +841,7 @@ func configToStatus(config types.DomainConfig, aa *types.AssignableAdapters,
 		ds.ReadOnly = dc.ReadOnly
 		ds.Preserve = dc.Preserve
 		ds.Format = dc.Format
+		ds.Maxsizebytes = dc.Maxsizebytes
 		ds.Devtype = dc.Devtype
 		// map from i=1 to xvda, 2 to xvdb etc
 		xv := "xvd" + string(int('a')+i)
@@ -846,6 +864,17 @@ func configToStatus(config types.DomainConfig, aa *types.AssignableAdapters,
 		}
 		ds.ActiveFileLocation = target
 	}
+	if config.CloudInitUserData != "" {
+		ds, err := createCloudInitISO(config)
+		if err != nil {
+			return err
+		}
+		if ds != nil {
+			status.DiskStatusList = append(status.DiskStatusList,
+				*ds)
+		}
+	}
+
 	for _, adapter := range config.IoAdapterList {
 		log.Debugf("configToStatus processing adapter %d %s\n",
 			adapter.Type, adapter.Name)
@@ -1004,14 +1033,13 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 	file.WriteString(fmt.Sprintf("boot = \"%s\"\n", "dc"))
 
 	diskString := ""
-	for i, dc := range config.DiskConfigList {
-		ds := status.DiskStatusList[i]
+	for i, ds := range status.DiskStatusList {
 		access := "rw"
-		if dc.ReadOnly {
+		if ds.ReadOnly {
 			access = "ro"
 		}
 		oneDisk := fmt.Sprintf("'%s,%s,%s,%s'",
-			ds.ActiveFileLocation, dc.Format, ds.Vdev, access)
+			ds.ActiveFileLocation, ds.Format, ds.Vdev, access)
 		log.Debugf("Processing disk %d: %s\n", i, oneDisk)
 		if diskString == "" {
 			diskString = oneDisk
@@ -1570,4 +1598,105 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
+}
+
+// Make sure the (virtual) size of the disk is at least maxsizebytes
+func maybeResizeDisk(diskfile string, maxsizebytes uint64) error {
+	if maxsizebytes == 0 {
+		return nil
+	}
+	currentSize, err := getDiskVirtualSize(diskfile)
+	if err != nil {
+		return err
+	}
+	log.Infof("maybeResizeDisk(%s) current %d to %d",
+		diskfile, currentSize, maxsizebytes)
+	if maxsizebytes < currentSize {
+		log.Warnf("maybeResizeDisk(%s) already above maxsize  %d vs. %d",
+			diskfile, maxsizebytes, currentSize)
+		return nil
+	}
+	err = diskmetrics.ResizeImg(diskfile, maxsizebytes)
+	return err
+}
+
+func getDiskVirtualSize(diskfile string) (uint64, error) {
+	imgInfo, err := diskmetrics.GetImgInfo(diskfile)
+	if err != nil {
+		return 0, err
+	}
+	return imgInfo.VirtualSize, nil
+}
+
+// Create a isofs with user-data and meta-data and add it to DiskStatus
+func createCloudInitISO(config types.DomainConfig) (*types.DiskStatus, error) {
+
+	fileName := fmt.Sprintf("%s/%s.cidata",
+		rwImgDirname, config.UUIDandVersion.UUID.String())
+
+	dir, err := ioutil.TempDir("", "cloud-init")
+	if err != nil {
+		log.Fatalf("createCloudInitISO failed %s\n", err)
+	}
+	defer os.RemoveAll(dir)
+
+	metafile, err := os.Create(dir + "/meta-data")
+	if err != nil {
+		log.Fatalf("createCloudInitISO failed %s\n", err)
+	}
+	metafile.WriteString(fmt.Sprintf("instance-id: %s/%s\n",
+		config.UUIDandVersion.UUID.String(),
+		config.UUIDandVersion.Version))
+	metafile.WriteString(fmt.Sprintf("local-hostname: %s\n",
+		config.UUIDandVersion.UUID.String()))
+	metafile.Close()
+
+	userfile, err := os.Create(dir + "/user-data")
+	if err != nil {
+		log.Fatalf("createCloudInitISO failed %s\n", err)
+	}
+	ud, err := base64.StdEncoding.DecodeString(config.CloudInitUserData)
+	if err != nil {
+		errStr := fmt.Sprintf("createCloudInitISO failed %s\n", err)
+		return nil, errors.New(errStr)
+	}
+	userfile.WriteString(string(ud))
+	userfile.Close()
+
+	if err := mkisofs(fileName, dir); err != nil {
+		errStr := fmt.Sprintf("createCloudInitISO failed %s\n", err)
+		return nil, errors.New(errStr)
+	}
+
+	ds := new(types.DiskStatus)
+	ds.ActiveFileLocation = fileName
+	ds.Format = "raw"
+	ds.Vdev = "hdc"
+	ds.ReadOnly = true
+	return ds, nil
+}
+
+// mkisofs -output %s -volid cidata -joliet -rock %s, fileName, dir
+func mkisofs(output string, dir string) error {
+	log.Infof("mkisofs(%s, %s)\n", output, dir)
+
+	cmd := "mkisofs"
+	args := []string{
+		"-output",
+		output,
+		"-volid",
+		"cidata",
+		"-joliet",
+		"-rock",
+		dir,
+	}
+	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
+	if err != nil {
+		errStr := fmt.Sprintf("mkisofs failed: %s\n",
+			string(stdoutStderr))
+		log.Errorln(errStr)
+		return errors.New(errStr)
+	}
+	log.Infof("mkisofs done\n")
+	return nil
 }
