@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-// Find all the config and config which refer to this safename.
+// Find all the config which refer to this safename.
 func updateAIStatusSafename(ctx *zedmanagerContext, safename string) {
 
 	log.Infof("updateAIStatusSafename for %s\n", safename)
@@ -137,8 +137,27 @@ func removeAIStatusSafename(ctx *zedmanagerContext, safename string) {
 			if safename == safename2 {
 				log.Debugf("Found StorageStatus URL %s safename %s\n",
 					ss.Name, safename2)
-				removeAIStatus(ctx, &status)
+				updateOrRemove(ctx, status)
 			}
+		}
+	}
+}
+
+// If we have an AIConfig we update it - the image might have disappeared.
+// Otherwise we proceeed with remove.
+func updateOrRemove(ctx *zedmanagerContext, status types.AppInstanceStatus) {
+	uuidStr := status.Key()
+	config := lookupAppInstanceConfig(ctx, uuidStr)
+	if config == nil || (status.PurgeInprogress == types.BRING_DOWN) {
+		log.Infof("updateOrRemove: remove for %s\n", uuidStr)
+		removeAIStatus(ctx, &status)
+	} else {
+		log.Infof("updateOrRemove: update for %s\n", uuidStr)
+		changed := doUpdate(ctx, uuidStr, *config, &status)
+		if changed {
+			log.Infof("updateOrRemove status change for %s\n",
+				uuidStr)
+			publishAppInstanceStatus(ctx, &status)
 		}
 	}
 }
