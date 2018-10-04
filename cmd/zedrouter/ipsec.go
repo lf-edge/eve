@@ -11,26 +11,30 @@ import (
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"os/exec"
+	"strconv"
 	"strings"
 )
 
 type vpnAclRule struct {
-	chain      string
-	proto      string
-	sport      string
-	dport      string
-	dir        string
-	intf       string
-	target     string
+	table  string
+	chain  string
+	proto  string
+	sport  string
+	dport  string
+	dir    string
+	intf   string
+	target string
 }
-var vpnCounterAcls = []vpnAclRule {
+
+var vpnCounterAcls = []vpnAclRule{
 	{chain: "INPUT", proto: "udp", sport: "500", target: "ACCEPT"},
-	{chain: "INPUT", proto: "udp", sport: "4500", target: "ACCEPT"},
-	{chain: "INPUT", proto: "esp", target: "ACCEPT"},
-	{chain: "OUTPUT", proto: "udp", dport: "4500", target: "ACCEPT"},
 	{chain: "OUTPUT", proto: "udp", dport: "500", target: "ACCEPT"},
+	{chain: "INPUT", proto: "udp", sport: "4500", target: "ACCEPT"},
+	{chain: "OUTPUT", proto: "udp", dport: "4500", target: "ACCEPT"},
+	{chain: "INPUT", proto: "esp", target: "ACCEPT"},
 	{chain: "OUTPUT", proto: "esp", target: "ACCEPT"},
 }
+
 const (
 	charonConfStr        = "# Options for charon IKE daemon\n"
 	charonNoRouteConfStr = "# Options for charon IKE daemon\ncharon {\n install_routes = no\n}\n"
@@ -53,12 +57,14 @@ const (
 		"\n\tdpdtimeout=30s" + "\n\tdpdaction=restart" +
 		"\n\tmark="
 
-	azureIpSecLeftTunAttribSpecStr = "\n\tauto=add" +
+	azureIpSecLeftTunAttribSpecStr = "\n\tauto=start" +
 		"\n\tauthby=secret" +
 		"\n\ttype=tunnel" + "\n\tkeyexchange=ikev2" +
+		"\n\tike=aes128-sha1-modp1024" + "\n\tesp=aes128-sha1" +
 		"\n\tleft=%any" + "\n\tleftsubnet="
 	azureIpSecRightTunAttribSpecStr = "\n\trightid=%any" +
-		"right="
+		"\n\tright="
+	azureIpSecRightSubnetSpecStr = "\n\trightsubnet="
 
 	ipSecClientTunAttribSpecStr = "\n\tleftfirewall=yes" + "\n\trightid=%any" +
 		"\n\ttype=tunnel" + "\n\tleftauth=psk" +
@@ -235,7 +241,7 @@ func ipTablesCounterRulesSet(policyBased bool,
 	tunnelName string, uplinkName string) error {
 	for _, acl := range vpnCounterAcls {
 		acl.intf = uplinkName
-		if err := iptableCounterRule(acl, true); err != nil {
+		if err := iptableCounterRuleOp(acl, true); err != nil {
 			return err
 		}
 	}
@@ -247,7 +253,7 @@ func ipTablesCounterRulesReset(policyBased bool,
 	tunnelName string, uplinkName string) error {
 	for _, acl := range vpnCounterAcls {
 		acl.intf = uplinkName
-		if err := iptableCounterRule(acl, false); err != nil {
+		if err := iptableCounterRuleOp(acl, false); err != nil {
 			return err
 		}
 	}
@@ -255,14 +261,21 @@ func ipTablesCounterRulesReset(policyBased bool,
 	return nil
 }
 
-func iptableCounterRule(acl vpnAclRule, set bool) error {
+func iptableCounterRuleOp(acl vpnAclRule, set bool) error {
 	if acl.chain == "" || acl.proto == "" {
-		return errors.New("Invalid counter acl")
+		err := errors.New("Invalid counter acl")
+		log.Errorf("%s for %s, %s %s rule create\n",
+			err.Error(), "iptables", acl.chain)
+		return err
 	}
 	var cmd []string
+	if acl.table != "" {
+		cmd = append(cmd, "-t")
+		cmd = append(cmd, acl.table)
+	}
 	if set {
 		cmd = append(cmd, "-I")
-		cmd = append(cmd, "1")
+		//cmd = append(cmd, "1")
 	} else {
 		cmd = append(cmd, "-D")
 	}
@@ -279,11 +292,11 @@ func iptableCounterRule(acl vpnAclRule, set bool) error {
 	}
 	if acl.intf != "" {
 		switch acl.chain {
-		case "INPUT": 
+		case "INPUT":
 			cmd = append(cmd, "-i")
-		case "OUTPUT": 
+		case "OUTPUT":
 			cmd = append(cmd, "-o")
-		case "FORWARD": 
+		case "FORWARD":
 			if acl.dir == "in" {
 				cmd = append(cmd, "-i")
 			} else if acl.dir == "out" {
@@ -307,6 +320,53 @@ func iptableCounterRule(acl vpnAclRule, set bool) error {
 		return err
 	}
 	return nil
+}
+
+func iptableCounterRuleStat(acl vpnAclRule) (types.PktStats, error) {
+	var stat types.PktStats
+	if acl.chain == "" || acl.proto == "" {
+		err := errors.New("Invalid counter acl")
+		log.Errorf("%s for %s, %s %s rule counter\n",
+			err.Error(), "iptables", acl.chain)
+		return stat, err
+	}
+	var cmd []string
+	if acl.table != "" {
+		cmd = append(cmd, "--t")
+		cmd = append(cmd, acl.table)
+	}
+	cmd = append(cmd, "-S")
+	cmd = append(cmd, acl.chain)
+	cmd = append(cmd, "-v")
+
+	out, err := iptableCmdOut(false, cmd...)
+	if err != nil {
+		log.Errorf("%s for %s, %s %s rule counter\n",
+			err.Error(), "iptables", acl.chain)
+		return stat, err
+	}
+	outLines := strings.Split(out, "\n")
+	for _, outLine := range outLines {
+		if !strings.Contains(outLine, acl.proto) ||
+			(acl.intf != "" && !strings.Contains(outLine, acl.intf)) ||
+			(acl.sport != "" && !strings.Contains(outLine, acl.sport)) ||
+			(acl.dport != "" && !strings.Contains(outLine, acl.dport)) {
+			continue
+		}
+		outArr := strings.Fields(outLine)
+		for idx, field := range outArr {
+			if field == "-c" {
+				if pkts, err := strconv.ParseUint(outArr[idx+1], 10, 64); err == nil {
+					stat.Pkts = pkts
+				}
+				if bytes, err := strconv.ParseUint(outArr[idx+2], 10, 64); err == nil {
+					stat.Bytes = bytes
+				}
+				return stat, nil
+			}
+		}
+	}
+	return stat, nil
 }
 
 // check iptables rule status
@@ -377,7 +437,6 @@ func ipRouteCreate(vpnConfig types.VpnServiceConfig) error {
 	if vpnConfig.IsClient {
 		clientConfig := vpnConfig.ClientConfigList[0]
 		tunnelConfig := clientConfig.TunnelConfig
-
 		cmd := exec.Command("ip", "route", "add", gatewayConfig.SubnetBlock,
 			"dev", tunnelConfig.Name, "metric", tunnelConfig.Metric)
 		if _, err := cmd.Output(); err != nil {
@@ -389,7 +448,7 @@ func ipRouteCreate(vpnConfig types.VpnServiceConfig) error {
 	} else {
 		// for server config, create all client subnet block routes
 		for _, clientConfig := range vpnConfig.ClientConfigList {
-			tunnelConfig := clientConfig.TunnelConfig
+			tunnelConfig := vpnConfig.ClientConfigList[0].TunnelConfig
 			cmd := exec.Command("ip", "route", "add", clientConfig.SubnetBlock,
 				"dev", tunnelConfig.Name, "metric", tunnelConfig.Metric)
 			if _, err := cmd.Output(); err != nil {
@@ -627,7 +686,7 @@ func ipSecServiceConfigCreate(vpnConfig types.VpnServiceConfig) error {
 		writeStr = writeStr + ipSecTunHdrStr + tunnelConfig.Name
 		writeStr = writeStr + azureIpSecLeftTunAttribSpecStr + clientConfig.SubnetBlock
 		writeStr = writeStr + azureIpSecRightTunAttribSpecStr + gatewayConfig.IpAddr
-		writeStr = writeStr + ipSecTunRightSpecStr + gatewayConfig.SubnetBlock
+		writeStr = writeStr + azureIpSecRightSubnetSpecStr + gatewayConfig.SubnetBlock
 		writeStr = writeStr + "\n"
 
 	case OnPremVpnClient:
@@ -641,6 +700,7 @@ func ipSecServiceConfigCreate(vpnConfig types.VpnServiceConfig) error {
 		writeStr = writeStr + ipSecClientTunRightSubnetSpecStr
 		writeStr = writeStr + gatewayConfig.SubnetBlock
 		writeStr = writeStr + ipSecClientTunDpdSpecStr
+		writeStr = writeStr + "\n"
 
 	case OnPremVpnServer:
 		writeStr = writeStr + ipSecSvrTunHdrSpecStr
@@ -660,7 +720,7 @@ func ipSecServiceConfigCreate(vpnConfig types.VpnServiceConfig) error {
 			tunnelConfig := clientConfig.TunnelConfig
 			writeStr = writeStr + ipSecSvrTunRightHdrSpecStr + tunnelConfig.Name
 			writeStr = writeStr + ipSecSvrTunRightSpecStr + clientConfig.IpAddr
-			writeStr = writeStr + ipSecSvrTunRightAttribSpecStr
+			writeStr = writeStr + ipSecSvrTunRightAttribSpecStr + "\n"
 		}
 
 	default:
@@ -710,11 +770,9 @@ func ipSecSecretConfigCreate(vpnConfig types.VpnServiceConfig) error {
 		} else {
 			secretStr = gatewayConfig.IpAddr + " " + clientConfig.IpAddr
 		}
-		secretStr = secretStr + " : PSK " + clientConfig.PreSharedKey
+		secretStr = secretStr + " : PSK " + "\"" + clientConfig.PreSharedKey + "\""
 		secretStr = secretStr + "\n"
-		if !strings.Contains(writeStr, secretStr) {
-			writeStr = writeStr + secretStr
-		}
+		writeStr = writeStr + secretStr
 	}
 	writeStr = writeStr + "\n"
 	filename := "/etc/ipsec.secrets"
