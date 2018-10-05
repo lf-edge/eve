@@ -355,7 +355,7 @@ func gcObjects(ctx *domainContext, dirName string) {
 			continue
 		}
 		expiry := status.LastUse.Add(vdiskGCTime)
-		if expiry.Before(time.Now()) {
+		if expiry.After(time.Now()) {
 			log.Infof("gcObjects: skipping recently used %v: %s\n",
 				status.LastUse, key)
 			continue

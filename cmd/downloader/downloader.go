@@ -740,7 +740,7 @@ func gcObjects(ctx *downloaderContext) {
 				continue
 			}
 			expiry := status.LastUse.Add(downloadGCTime)
-			if expiry.Before(time.Now()) {
+			if expiry.After(time.Now()) {
 				log.Infof("gcObjects: skipping recently used %v: %s\n",
 					status.LastUse, key)
 				continue
