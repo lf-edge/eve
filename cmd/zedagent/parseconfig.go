@@ -1102,17 +1102,30 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				updateSshAccess(!globalConfig.NoSshAccess,
 					false)
 			}
-		case "timer.use.config.checkpoint":
+		case "timer.gc.download":
 			if newU32 == 0 {
 				// Revert to default
-				newU32 = globalConfigDefaults.StaleConfigTime
+				newU32 = globalConfigDefaults.DownloadGCTime
 			}
-			if newU32 != globalConfig.StaleConfigTime {
+			if newU32 != globalConfig.DownloadGCTime {
 				log.Infof("parseConfigItems: %s change from %d to %d\n",
 					item.Key,
-					globalConfig.StaleConfigTime,
+					globalConfig.DownloadGCTime,
 					newU32)
-				globalConfig.StaleConfigTime = newU32
+				globalConfig.DownloadGCTime = newU32
+				globalConfigChange = true
+			}
+		case "timer.gc.vdisk":
+			if newU32 == 0 {
+				// Revert to default
+				newU32 = globalConfigDefaults.VdiskGCTime
+			}
+			if newU32 != globalConfig.VdiskGCTime {
+				log.Infof("parseConfigItems: %s change from %d to %d\n",
+					item.Key,
+					globalConfig.VdiskGCTime,
+					newU32)
+				globalConfig.VdiskGCTime = newU32
 				globalConfigChange = true
 			}
 		case "debug.default.loglevel":

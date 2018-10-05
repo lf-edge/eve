@@ -50,9 +50,6 @@ const (
 	imgCatalogDirname = downloadDirname + "/" + appImgObj
 	// Read-only images named based on sha256 hash each in its own directory
 	verifiedDirname = imgCatalogDirname + "/verified"
-
-	// XXX hard-coded at 60 minutes
-	gcImageTime = 60 * time.Minute
 )
 
 // Really a constant
@@ -83,7 +80,8 @@ type domainContext struct {
 }
 
 var debug = false
-var debugOverride bool // From command line arg
+var debugOverride bool                              // From command line arg
+var vdiskGCTime = time.Duration(3600) * time.Second // Unless from GlobalConfig
 
 func Run() {
 	handlersInit()
@@ -224,7 +222,7 @@ func Run() {
 
 	// We will cleanup zero RefCount objects after a while
 	// We run timer 10 times more often than the limit on LastUse
-	gc := time.NewTicker(gcImageTime / 10)
+	gc := time.NewTicker(vdiskGCTime / 10)
 
 	for {
 		select {
@@ -352,7 +350,7 @@ func gcObjects(ctx *domainContext, dirName string) {
 				status.RefCount, key)
 			continue
 		}
-		expiry := status.LastUse.Add(gcImageTime)
+		expiry := status.LastUse.Add(vdiskGCTime)
 		if expiry.Before(time.Now()) {
 			log.Infof("gcObjects: skipping recently used %v: %s\n",
 				status.LastUse, key)
@@ -371,39 +369,6 @@ func gcObjects(ctx *domainContext, dirName string) {
 			log.Errorln(err)
 		}
 		unpublishImageStatus(ctx, &status)
-	}
-}
-
-// XXX remove?
-// Periodic garbage collection looking at RefCount=0 files
-func gcObjectsXXX(ctx *domainContext, dirName string) {
-
-	log.Infof("gcObjects()\n")
-	files, err := ioutil.ReadDir(dirName)
-	if err != nil {
-		log.Fatal(err)
-	}
-	for _, file := range files {
-		filename := dirName + "/" + file.Name()
-		log.Infoln("gcObjects found existing", filename)
-		// XXX vs. using RefCount?
-		if findActiveFileLocation(ctx, filename) {
-			log.Infoln("gcObjects skipping Active file", filename)
-			continue
-		}
-		/* XXX		expiry := status.LastUse.Add(gcImageTime)
-		if expiry.Before(time.Now()) {
-			log.Infof("gcObjects: skipping recently used %v: %s\n",
-				status.LastUse, filename)
-			continue
-		}
-
-		log.Infoln("handleRestart removing", filename)
-		if err := os.Remove(filename); err != nil {
-			log.Errorln(err)
-		}
-		unpublishImageStatus(ctx, &status)
-		*/
 	}
 }
 
@@ -1768,8 +1733,12 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	var gcp *types.GlobalConfig
+	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
+	if gcp != nil && gcp.VdiskGCTime != 0 {
+		vdiskGCTime = time.Duration(gcp.VdiskGCTime) * time.Second
+	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
 
@@ -1782,7 +1751,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
-	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }

@@ -846,7 +846,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
 	status := cast.CastGlobalConfig(statusArg)
-	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	foundAgents := make(map[string]bool)
 	for agentName, perAgentSetting := range status.AgentSettings {
@@ -870,7 +870,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
-	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	delRemoteMapAll()
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)

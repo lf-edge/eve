@@ -56,8 +56,6 @@ const (
 	// If this file is present we don't delete verified files in handleDelete
 	tmpDirname       = "/var/tmp/zededa"
 	preserveFilename = tmpDirname + "/preserve"
-	// XXX hard-coded at 10 minutes
-	gcTime = 10 * time.Minute
 )
 
 // Go doesn't like this as a constant
@@ -78,7 +76,8 @@ type verifierContext struct {
 }
 
 var debug = false
-var debugOverride bool // From command line arg
+var debugOverride bool                                // From command line arg
+var downloadGCTime = time.Duration(600) * time.Second // Unless from GlobalConfig
 
 func Run() {
 	handlersInit()
@@ -169,7 +168,7 @@ func Run() {
 
 	// We will cleanup zero RefCount objects after a while
 	// We run timer 10 times more often than the limit on LastUse
-	gc := time.NewTicker(gcTime / 10)
+	gc := time.NewTicker(downloadGCTime / 10)
 
 	for {
 		select {
@@ -392,7 +391,7 @@ func clearInProgressDownloadDirs(objTypes []string) {
 }
 
 // If an object has a zero RefCount and dropped to zero more than
-// gcTime ago, then we delete the Status. That will result in the
+// downloadGCTime ago, then we delete the Status. That will result in the
 // user (zedmanager or zedagent) deleting the Config, unless a RefCount
 // increase is underway.
 // XXX Note that this runs concurrently with the handler.
@@ -416,7 +415,7 @@ func gcVerifiedObjects(ctx *verifierContext) {
 					status.RefCount, key)
 				continue
 			}
-			expiry := status.LastUse.Add(gcTime)
+			expiry := status.LastUse.Add(downloadGCTime)
 			if expiry.Before(time.Now()) {
 				log.Infof("gcVerifiedObjects: skipping recently used %v: %s\n",
 					status.LastUse, key)
@@ -1094,8 +1093,12 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	var gcp *types.GlobalConfig
+	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
+	if gcp != nil && gcp.DownloadGCTime != 0 {
+		downloadGCTime = time.Duration(gcp.DownloadGCTime) * time.Second
+	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
 
@@ -1108,7 +1111,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
-	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }

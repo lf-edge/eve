@@ -50,9 +50,11 @@ var globalConfigDefaults = types.GlobalConfig{
 	ResetIfCloudGoneTime:    7 * 24 * 3600,
 	FallbackIfCloudGoneTime: 600,
 	MintimeUpdateSuccess:    300,
-	NoUsbAccess:             false, // XXX change defaults
-	NoSshAccess:             false, // XXX change defaults
-	StaleConfigTime:         600,
+	NoUsbAccess:             false,  // XXX change defaults
+	NoSshAccess:             false,  // XXX change defaults
+	StaleConfigTime:         600,    // Use stale config for up to 10 minutes
+	DownloadGCTime:          600,    // 10 minutes
+	VdiskGCTime:             3600,   // 1 hour
 	DefaultLogLevel:         "info", // XXX change default to warning?
 	DefaultRemoteLogLevel:   "warning",
 }
