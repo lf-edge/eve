@@ -139,6 +139,36 @@ func handleVerifyImageStatusModify(ctxArg interface{}, key string,
 		return
 	}
 
+	// We handle two special cases in the handshake here
+	// 1. verifier added a status with RefCount=0 based on
+	// an existing file. We echo that with a config with RefCount=0
+	// 2. verifier set Expired in status when garbage collecting.
+	// If we have no RefCount we delete the config.
+
+	config := lookupVerifyImageConfig(ctx, status.Key())
+	if config == nil && status.RefCount == 0 {
+		log.Infof("handleVerifyImageStatusModify adding RefCount=0 config %s\n",
+			key)
+		n := types.VerifyImageConfig{
+			Safename:    status.Safename,
+			Name:        status.Safename,
+			ImageSha256: status.ImageSha256,
+			// XXX CertificateChain: status.CertificateChain,
+			// ImageSignature:   status.ImageSignature,
+			// SignatureKey:     status.SignatureKey,
+			RefCount: 0,
+		}
+		publishVerifyImageConfig(ctx, &n)
+		return
+	}
+	if config != nil && config.RefCount == 0 && status.Expired {
+		log.Infof("handleVerifyImageStatusModify expired - deleting config %s\n",
+			key)
+		unpublishVerifyImageConfig(ctx, config)
+		return
+	}
+
+	// Normal update work
 	updateAIStatusSafename(ctx, key)
 	log.Infof("handleVerifyImageStatusModify done for %s\n",
 		status.Safename)
@@ -201,7 +231,6 @@ func handleVerifyImageStatusDelete(ctxArg interface{}, key string,
 	ctx := ctxArg.(*zedmanagerContext)
 	removeAIStatusSafename(ctx, key)
 	// If we still publish a config with RefCount == 0 we delete it.
-	// That will result in the object being deleted in verifier.
 	config := lookupVerifyImageConfig(ctx, key)
 	if config != nil && config.RefCount == 0 {
 		log.Infof("handleVerifyImageStatusDelete delete config for %s\n",

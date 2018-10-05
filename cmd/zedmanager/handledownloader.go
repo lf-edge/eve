@@ -93,6 +93,40 @@ func handleDownloaderStatusModify(ctxArg interface{}, key string,
 
 	// Handling even if Pending is set to process Progress updates
 
+	// We handle two special cases in the handshake here
+	// 1. downloader added a status with RefCount=0 based on
+	// an existing file. We echo that with a config with RefCount=0
+	// 2. downloader set Expired in status when garbage collecting.
+	// If we have no RefCount we delete the config.
+
+	config := lookupDownloaderConfig(ctx, status.Key())
+	if config == nil && status.RefCount == 0 {
+		log.Infof("handleDownloaderStatusModify adding RefCount=0 config %s\n",
+			key)
+		n := types.DownloaderConfig{
+			Safename:    status.Safename,
+			DownloadURL: status.DownloadURL,
+			// XXX TransportMethod: status.TransportMethod,
+			// ApiKey:          status.ApiKey,
+			// Password:        status.Password,
+			// Dpath:           status.Dpath,
+			// Region:          status.Region,
+			UseFreeUplinks: status.UseFreeUplinks,
+			Size:           status.Size,
+			ImageSha256:    status.ImageSha256,
+			RefCount:       0,
+		}
+		publishDownloaderConfig(ctx, &n)
+		return
+	}
+	if config != nil && config.RefCount == 0 && status.Expired {
+		log.Infof("handleDownloaderStatusModify expired - deleting config %s\n",
+			key)
+		unpublishDownloaderConfig(ctx, config)
+		return
+	}
+
+	// Normal update case
 	updateAIStatusSafename(ctx, key)
 	log.Infof("handleDownloaderStatusModify done for %s\n",
 		status.Safename)
@@ -142,7 +176,6 @@ func handleDownloaderStatusDelete(ctxArg interface{}, key string,
 	ctx := ctxArg.(*zedmanagerContext)
 	removeAIStatusSafename(ctx, key)
 	// If we still publish a config with RefCount == 0 we delete it.
-	// That will result in the object being deleted in verifier.
 	config := lookupDownloaderConfig(ctx, key)
 	if config != nil && config.RefCount == 0 {
 		log.Infof("handleDownloaderStatusDelete delete config for %s\n",

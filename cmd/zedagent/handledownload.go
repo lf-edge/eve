@@ -93,23 +93,59 @@ func updateDownloaderStatus(ctx *zedagentContext,
 
 	// Update Progress counter even if Pending
 
+	switch status.ObjType {
+	case baseOsObj, certObj:
+		// break
+	case appImgObj:
+		// We subscribe to get metrics about disk usage
+		log.Debugf("updateDownloaderStatus for %s, ignoring objType %s\n",
+			key, objType)
+		return
+	default:
+		log.Errorf("updateDownloaderStatus for %s, unsupported objType %s\n",
+			key, objType)
+		return
+	}
+	// We handle two special cases in the handshake here
+	// 1. downloader added a status with RefCount=0 based on
+	// an existing file. We echo that with a config with RefCount=0
+	// 2. downloader set Expired in status when garbage collecting.
+	// If we have no RefCount we delete the config.
+
+	config := lookupDownloaderConfig(ctx, status.ObjType, status.Key())
+	if config == nil && status.RefCount == 0 {
+		log.Infof("updateDownloaderStatus adding RefCount=0 config %s\n",
+			key)
+		n := types.DownloaderConfig{
+			Safename:    status.Safename,
+			DownloadURL: status.DownloadURL,
+			// XXX TransportMethod: status.TransportMethod,
+			// ApiKey:          status.ApiKey,
+			// Password:        status.Password,
+			// Dpath:           status.Dpath,
+			// Region:          status.Region,
+			UseFreeUplinks: status.UseFreeUplinks,
+			Size:           status.Size,
+			ImageSha256:    status.ImageSha256,
+			RefCount:       0,
+		}
+		publishDownloaderConfig(ctx, status.ObjType, &n)
+		return
+	}
+	if config != nil && config.RefCount == 0 && status.Expired {
+		log.Infof("updateDownloaderStatus expired - deleting config %s\n",
+			key)
+		unpublishDownloaderConfig(ctx, status.ObjType, config)
+		return
+	}
+
+	// Normal update work
 	switch objType {
 	case baseOsObj:
 		baseOsHandleStatusUpdateSafename(ctx, status.Safename)
 
 	case certObj:
 		certObjHandleStatusUpdateSafename(ctx, status.Safename)
-
-	case appImgObj:
-		// We subscribe to get metrics about disk usage
-		log.Debugf("updateDownloaderStatus for %s, ignoring objType %s\n",
-			key, objType)
-		return
-
-	default:
-		log.Errorf("updateDownloaderStatus for %s, unsupported objType %s\n",
-			key, objType)
-		return
 	}
 	log.Infof("updateDownloaderStatus(%s/%s) done\n",
 		objType, key)
