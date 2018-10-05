@@ -1091,6 +1091,14 @@ func handleDownloadStatusDelete(ctxArg interface{}, key string,
 	status := cast.CastDownloaderStatus(statusArg)
 	log.Infof("handleDownloadStatusDelete RefCount %d for %s\n",
 		status.RefCount, key)
+	switch status.ObjType {
+	case baseOsObj, certObj:
+		// Nothing to do
+	default:
+		log.Infof("handleDownloadStatusDelete skip %s for %s\n",
+			status.ObjType, key)
+		return
+	}
 	// We know there are no references to this object any more
 	// so we can remove it
 	config := lookupDownloaderConfig(ctx, status.ObjType, status.Key())
@@ -1099,12 +1107,8 @@ func handleDownloadStatusDelete(ctxArg interface{}, key string,
 			key)
 		return
 	}
-	switch status.ObjType {
-	case baseOsObj, certObj:
-		log.Infof("handleDownloadStatusDelete delete config for %s\n",
-			key)
-		unpublishDownloaderConfig(ctx, status.ObjType, config)
-	}
+	log.Infof("handleDownloadStatusDelete delete config for %s\n", key)
+	unpublishDownloaderConfig(ctx, status.ObjType, config)
 }
 
 func handleVerifierStatusModify(ctxArg interface{}, key string,
@@ -1128,17 +1132,20 @@ func handleVerifierStatusDelete(ctxArg interface{}, key string,
 	ctx := ctxArg.(*zedagentContext)
 	log.Infof("handleVeriferStatusDelete RefCount %d for %s\n",
 		status.RefCount, key)
+	if status.ObjType != baseOsObj {
+		log.Infof("handleVeriferStatusDelete skip %s for %s\n",
+			status.ObjType, key)
+		return
+	}
+
 	config := lookupVerifierConfig(ctx, status.ObjType, status.Key())
 	if config == nil {
 		log.Infof("handleVerifierStatusDelete missing config for %s\n",
 			key)
 		return
 	}
-	if status.ObjType == baseOsObj {
-		log.Infof("handleVerifierStatusDelete delete config for %s\n",
-			key)
-		unpublishVerifierConfig(ctx, status.ObjType, config)
-	}
+	log.Infof("handleVerifierStatusDelete delete config for %s\n", key)
+	unpublishVerifierConfig(ctx, status.ObjType, config)
 }
 
 func handleDatastoreConfigModify(ctxArg interface{}, key string,
