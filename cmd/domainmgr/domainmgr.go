@@ -49,6 +49,9 @@ const (
 	imgCatalogDirname = downloadDirname + "/" + appImgObj
 	// Read-only images named based on sha256 hash each in its own directory
 	verifiedDirname = imgCatalogDirname + "/verified"
+
+	// XXX hard-coded at 60 minutes
+	gcImageTime = 60 * time.Minute
 )
 
 // Really a constant
@@ -75,6 +78,7 @@ type domainContext struct {
 	subDomainConfig        *pubsub.Subscription
 	pubDomainStatus        *pubsub.Publication
 	subGlobalConfig        *pubsub.Subscription
+	pubImageStatus         *pubsub.Publication
 }
 
 var debug = false
@@ -162,6 +166,16 @@ func Run() {
 	domainCtx.pubDomainStatus = pubDomainStatus
 	pubDomainStatus.ClearRestarted()
 
+	pubImageStatus, err := pubsub.Publish(agentName, types.ImageStatus{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	domainCtx.pubImageStatus = pubImageStatus
+	pubImageStatus.ClearRestarted()
+
+	// Publish existing images with RefCount zero
+	populateInitialImageStatus(&domainCtx, rwImgDirname)
+
 	// Look for global config such as log levels
 	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
 		false, &domainCtx)
@@ -207,6 +221,10 @@ func Run() {
 	domainCtx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
+	// We will cleanup zero RefCount objects after a while
+	// We run timer 10 times more often than the limit on LastUse
+	gc := time.NewTicker(gcImageTime / 10)
+
 	for {
 		select {
 		case change := <-subGlobalConfig.C:
@@ -220,39 +238,166 @@ func Run() {
 
 		case change := <-subAa.C:
 			subAa.ProcessChange(change)
+
+		case <-gc.C:
+			gcObjects(&domainCtx, rwImgDirname)
 		}
 	}
 }
 
-// XXX need to run this sometime after boot to clean up
-// Clean up any unused files in rwImgDirname
-// XXX but need to preserve ones that might become in use. Switch to manual
-// deletes from zedcloud i.e. explicit storage management?
 func handleRestart(ctxArg interface{}, done bool) {
 	log.Infof("handleRestart(%v)\n", done)
 	ctx := ctxArg.(*domainContext)
 	if done {
 		log.Infof("handleRestart: avoid cleanup\n")
 		ctx.pubDomainStatus.SignalRestarted()
-		// XXX
 		return
+	}
+}
 
-		files, err := ioutil.ReadDir(rwImgDirname)
-		if err != nil {
-			log.Fatal(err)
+// recursive scanning for verified objects,
+// to recreate the status files
+func populateInitialImageStatus(ctx *domainContext, dirName string) {
+
+	log.Infof("populateInitialImageStatus(%s)\n", dirName)
+	locations, err := ioutil.ReadDir(dirName)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, location := range locations {
+		filename := dirName + "/" + location.Name()
+		if location.IsDir() {
+			log.Debugf("populateInitialImageStatus: directory %s ignored\n", filename)
+			continue
 		}
-		for _, file := range files {
-			filename := rwImgDirname + "/" + file.Name()
-			log.Infoln("handleRestart found existing",
-				filename)
-			if !findActiveFileLocation(ctx, filename) {
-				log.Infoln("handleRestart removing",
-					filename)
-				if err := os.Remove(filename); err != nil {
-					log.Errorln(err)
-				}
-			}
+		info, _ := os.Stat(filename)
+		log.Debugf("populateInitialImageStatus: Processing %d Mbytes %s \n",
+			info.Size()/(1024*1024), filename)
+
+		status := types.ImageStatus{
+			FileLocation: filename,
+			Size:         uint64(info.Size()),
+			RefCount:     0,
+			LastUse:      time.Now(),
 		}
+
+		publishImageStatus(ctx, &status)
+	}
+}
+
+func addImageStatus(ctx *domainContext, fileLocation string) {
+
+	pub := ctx.pubImageStatus
+	st, _ := pub.Get(fileLocation)
+	if st == nil {
+		log.Infof("addImageStatus(%s) not found\n", fileLocation)
+		status := types.ImageStatus{
+			FileLocation: fileLocation,
+			Size:         0, // XXX
+			RefCount:     1,
+			LastUse:      time.Now(),
+		}
+		publishImageStatus(ctx, &status)
+	} else {
+		status := cast.CastImageStatus(st)
+		log.Infof("addImageStatus(%s) found RefCount %d LastUse %v\n",
+			fileLocation, status.RefCount, status.LastUse)
+
+		status.RefCount += 1
+		status.LastUse = time.Now()
+		publishImageStatus(ctx, &status)
+	}
+}
+
+// Decrement RefCount but leave published; update LastUse
+func delImageStatus(ctx *domainContext, fileLocation string) {
+
+	pub := ctx.pubImageStatus
+	st, _ := pub.Get(fileLocation)
+	if st == nil {
+		log.Errorf("delImageStatus(%s) not found\n", fileLocation)
+		return
+	}
+	status := cast.CastImageStatus(st)
+	log.Infof("delImageStatus(%s) found RefCount %d LastUse %v\n",
+		fileLocation, status.RefCount, status.LastUse)
+
+	status.RefCount -= 1
+	status.LastUse = time.Now()
+	publishImageStatus(ctx, &status)
+}
+
+// Periodic garbage collection looking at RefCount=0 files
+func gcObjects(ctx *domainContext, dirName string) {
+
+	log.Infof("gcObjects()\n")
+
+	pub := ctx.pubImageStatus
+	items := pub.GetAll()
+	for key, st := range items {
+		status := cast.CastImageStatus(st)
+		if status.Key() != key {
+			log.Errorf("gcObjects key/UUID mismatch %s vs %s; ignored %+v\n",
+				key, status.Key(), status)
+			continue
+		}
+		if status.RefCount != 0 {
+			log.Infof("gcObjects: skipping RefCount %d: %s\n",
+				status.RefCount, key)
+			continue
+		}
+		expiry := status.LastUse.Add(gcImageTime)
+		if expiry.Before(time.Now()) {
+			log.Infof("gcObjects: skipping recently used %v: %s\n",
+				status.LastUse, key)
+			continue
+		}
+		filename := status.FileLocation
+		if findActiveFileLocation(ctx, filename) {
+			log.Infoln("gcObjects skipping Active file", filename)
+			status.LastUse = time.Now()
+			publishImageStatus(ctx, &status)
+			continue
+		}
+		log.Infoln("handleRestart removing", filename)
+		if err := os.Remove(filename); err != nil {
+			log.Errorln(err)
+		}
+		unpublishImageStatus(ctx, &status)
+	}
+}
+
+// XXX remove?
+// Periodic garbage collection looking at RefCount=0 files
+func gcObjectsXXX(ctx *domainContext, dirName string) {
+
+	log.Infof("gcObjects()\n")
+	files, err := ioutil.ReadDir(dirName)
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, file := range files {
+		filename := dirName + "/" + file.Name()
+		log.Infoln("gcObjects found existing", filename)
+		// XXX vs. using RefCount?
+		if findActiveFileLocation(ctx, filename) {
+			log.Infoln("gcObjects skipping Active file", filename)
+			continue
+		}
+		/* XXX		expiry := status.LastUse.Add(gcImageTime)
+		if expiry.Before(time.Now()) {
+			log.Infof("gcObjects: skipping recently used %v: %s\n",
+				status.LastUse, filename)
+			continue
+		}
+
+		log.Infoln("handleRestart removing", filename)
+		if err := os.Remove(filename); err != nil {
+			log.Errorln(err)
+		}
+		unpublishImageStatus(ctx, &status)
+		*/
 	}
 }
 
@@ -293,6 +438,27 @@ func unpublishDomainStatus(ctx *domainContext, status *types.DomainStatus) {
 	st, _ := pub.Get(key)
 	if st == nil {
 		log.Errorf("unpublishDomainStatus(%s) not found\n", key)
+		return
+	}
+	pub.Unpublish(key)
+}
+
+func publishImageStatus(ctx *domainContext, status *types.ImageStatus) {
+
+	key := status.Key()
+	log.Debugf("publishImageStatus(%s)\n", key)
+	pub := ctx.pubImageStatus
+	pub.Publish(key, status)
+}
+
+func unpublishImageStatus(ctx *domainContext, status *types.ImageStatus) {
+
+	key := status.Key()
+	log.Debugf("unpublishImageStatus(%s)\n", key)
+	pub := ctx.pubImageStatus
+	st, _ := pub.Get(key)
+	if st == nil {
+		log.Errorf("unpublishImageStatus(%s) not found\n", key)
 		return
 	}
 	pub.Unpublish(key)
@@ -541,6 +707,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 				return
 			}
 		}
+		addImageStatus(ctx, ds.ActiveFileLocation)
 		log.Infof("Copy DONE from %s to %s\n",
 			ds.FileLocation, ds.ActiveFileLocation)
 	}
@@ -628,6 +795,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 			status.LastErrTime = time.Now()
 			return
 		}
+		addImageStatus(ctx, ds.ActiveFileLocation)
 		log.Infof("Copy DONE from %s to %s\n",
 			ds.FileLocation, ds.ActiveFileLocation)
 	}
@@ -794,6 +962,7 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus,
 				log.Errorln(err)
 				// XXX return? Cleanup status?
 			}
+			delImageStatus(ctx, ds.ActiveFileLocation)
 		}
 	}
 	pciUnassign(status, aa, false)
@@ -1285,6 +1454,7 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 				log.Errorln(err)
 				// XXX return? Cleanup status?
 			}
+			delImageStatus(ctx, ds.ActiveFileLocation)
 		}
 	}
 	status.PendingDelete = false
