@@ -1099,8 +1099,12 @@ func handleDownloadStatusDelete(ctxArg interface{}, key string,
 			key)
 		return
 	}
-	log.Infof("handleDownloadStatusDelete delete config for %s\n", key)
-	unpublishDownloaderConfig(ctx, status.ObjType, config)
+	switch status.ObjType {
+	case baseOsObj, certObj:
+		log.Infof("handleDownloadStatusDelete delete config for %s\n",
+			key)
+		unpublishDownloaderConfig(ctx, status.ObjType, config)
+	}
 }
 
 func handleVerifierStatusModify(ctxArg interface{}, key string,
@@ -1130,8 +1134,11 @@ func handleVerifierStatusDelete(ctxArg interface{}, key string,
 			key)
 		return
 	}
-	log.Infof("handleVerifierStatusDelete delete config for %s\n", key)
-	unpublishVerifierConfig(ctx, status.ObjType, config)
+	if status.ObjType == baseOsObj {
+		log.Infof("handleVerifierStatusDelete delete config for %s\n",
+			key)
+		unpublishVerifierConfig(ctx, status.ObjType, config)
+	}
 }
 
 func handleDatastoreConfigModify(ctxArg interface{}, key string,
