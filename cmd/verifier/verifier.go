@@ -421,8 +421,8 @@ func gcVerifiedObjects(ctx *verifierContext) {
 					status.LastUse, key)
 				continue
 			}
-			log.Infof("gcVerifiedObjects: expiring status for %s\n",
-				key)
+			log.Infof("gcVerifiedObjects: expiring status for %s; LastUse %v expiry %v now %v\n",
+				key, status.LastUse, expiry, time.Now())
 			status.Expired = true
 			publishVerifyImageStatus(ctx, &status)
 		}

@@ -308,6 +308,8 @@ func addImageStatus(ctx *domainContext, fileLocation string) {
 
 		status.RefCount += 1
 		status.LastUse = time.Now()
+		log.Infof("addImageStatus(%s) set RefCount %d LastUse %v\n",
+			filename, status.RefCount, status.LastUse)
 		publishImageStatus(ctx, &status)
 	}
 }
@@ -328,6 +330,8 @@ func delImageStatus(ctx *domainContext, fileLocation string) {
 
 	status.RefCount -= 1
 	status.LastUse = time.Now()
+	log.Infof("delImageStatus(%s) set RefCount %d LastUse %v\n",
+		filename, status.RefCount, status.LastUse)
 	publishImageStatus(ctx, &status)
 }
 
@@ -356,6 +360,9 @@ func gcObjects(ctx *domainContext, dirName string) {
 				status.LastUse, key)
 			continue
 		}
+		log.Infof("gcObjects: LastUse %v expiry %v now %v: %s\n",
+			status.LastUse, expiry, time.Now(), key)
+
 		filelocation := status.FileLocation
 		if findActiveFileLocation(ctx, filelocation) {
 			log.Infoln("gcObjects skipping Active file",
@@ -364,7 +371,7 @@ func gcObjects(ctx *domainContext, dirName string) {
 			publishImageStatus(ctx, &status)
 			continue
 		}
-		log.Infoln("handleRestart removing", filelocation)
+		log.Infoln("gcObjects removing", filelocation)
 		if err := os.Remove(filelocation); err != nil {
 			log.Errorln(err)
 		}

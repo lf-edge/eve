@@ -745,7 +745,8 @@ func gcObjects(ctx *downloaderContext) {
 					status.LastUse, key)
 				continue
 			}
-			log.Infof("gcObjects: expiring status for %s\n", key)
+			log.Infof("gcObjects: expiring status for %s; LastUse %v expiry %v now %v\n",
+				key, status.LastUse, expiry, time.Now())
 			status.Expired = true
 			publishDownloaderStatus(ctx, &status)
 		}
