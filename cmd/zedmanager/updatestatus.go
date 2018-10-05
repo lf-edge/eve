@@ -33,8 +33,7 @@ func updateAIStatusSafename(ctx *zedmanagerContext, safename string) {
 			if safename == safename2 {
 				log.Infof("Found StorageConfig URL %s safename %s\n",
 					sc.Name, safename2)
-				updateAIStatusUUID(ctx,
-					config.Key())
+				updateAIStatusUUID(ctx, config.Key())
 			}
 		}
 	}
