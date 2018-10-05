@@ -454,7 +454,7 @@ func Run() {
 			err := pub.Publish("global",
 				getNetworkMetrics(&zedrouterCtx))
 			if err != nil {
-				log.Errorln(err)
+				log.Errorf("getNetworkMetrics failed %s\n", err)
 			}
 			publishNetworkServiceStatusAll(&zedrouterCtx)
 		case <-geoTimer.C:
