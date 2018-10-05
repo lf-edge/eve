@@ -56,7 +56,8 @@ func swanCtlCmdGet(vpnStatus *types.ServiceVpnStatus) error {
 		return err
 	}
 	tunCount := swanCtlCmdParse(vpnStatus, string(bytes))
-	if vpnStatus.ActiveTunCount != tunCount {
+	totalTunCount := vpnStatus.ActiveTunCount + vpnStatus.ConnectingTunCount
+	if totalTunCount != tunCount {
 		log.Infof("Tunnel count mismatch (%d, %d)\n",
 			vpnStatus.ActiveTunCount, tunCount)
 		return errors.New("active tunnel count mismatch")
@@ -283,6 +284,9 @@ func populateConnInfo(cblock *readBlock, outLines []string) *types.VpnConnStatus
 		if strings.Contains(line, "ESTABLISHED") {
 			connInfo.State = types.VPN_ESTABLISHED
 		}
+		if strings.Contains(line, "CONNECTING") {
+			connInfo.State = types.VPN_CONNECTING
+		}
 		if strings.Contains(line, "IKEv1") {
 			connInfo.Version = "IKEv1"
 		}
@@ -332,6 +336,17 @@ func populateConnInfo(cblock *readBlock, outLines []string) *types.VpnConnStatus
 	line = outLines[lidx]
 	if lidx <= cblock.endLine && len(outLines[lidx]) != 0 {
 		outArr := strings.Fields(line)
+		if outArr[0] == "active:" {
+			ikes := ""
+			for idx, ike := range outArr {
+				if idx == 0 {
+					continue
+				}
+				ikes = ikes + "/" + ike
+			}
+			connInfo.Ikes = ikes
+			return connInfo
+		}
 		connInfo.Ikes = outArr[0]
 	}
 

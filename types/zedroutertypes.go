@@ -697,6 +697,7 @@ type AdditionalInfoApp struct {
 type StrongSwanServiceConfig struct {
 	VpnRole          string
 	PolicyBased      bool
+	IsClient         bool
 	VpnGatewayIpAddr string
 	VpnSubnetBlock   string
 	VpnLocalIpAddr   string
@@ -710,6 +711,7 @@ type StrongSwanServiceConfig struct {
 type VpnServiceConfig struct {
 	VpnRole          string
 	PolicyBased      bool
+	IsClient         bool
 	UpLinkConfig     NetLinkConfig
 	AppLinkConfig    NetLinkConfig
 	GatewayConfig    NetLinkConfig
@@ -910,13 +912,12 @@ type VpnConnMetrics struct {
 }
 
 type VpnMetrics struct {
-	UpTime         time.Time // service start time stamp
-	InPkts         PktStats
-	OutPkts        PktStats
-	IkePkts        LinkPktStats
-	NatPkts        LinkPktStats
-	EspPkts        LinkPktStats
-	ErrPkts        LinkPktStats
-	CarrierErrPkts LinkPktStats
-	VpnConns       []*VpnConnMetrics
+	UpTime     time.Time // service start time stamp
+	DataStat   LinkPktStats
+	IkeStat    LinkPktStats
+	NatTStat   LinkPktStats
+	EspStat    LinkPktStats
+	ErrStat    LinkPktStats
+	PhyErrStat LinkPktStats
+	VpnConns   []*VpnConnMetrics
 }
