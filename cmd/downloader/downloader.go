@@ -716,9 +716,7 @@ func clearInProgressDownloadDirs(objTypes []string) {
 // gcTime ago, then we delete the Status. That will result in the
 // user (zedmanager or zedagent) deleting the Config, unless a RefCount
 // increase is underway.
-// XXX By definition those should not have any goroutine in handlerMap but
-// we check that the key is not in handlerMap to make sure we don't
-// touch an object owned by a running goroutine.
+// XXX Note that this runs concurrently with the handler.
 func gcObjects(ctx *downloaderContext) {
 	log.Infof("gcObjects()\n")
 	publications := []*pubsub.Publication{
@@ -729,15 +727,6 @@ func gcObjects(ctx *downloaderContext) {
 	for _, pub := range publications {
 		items := pub.GetAll()
 		for key, st := range items {
-			// Check of thread is running
-			// XXX remove check? Or delete status
-			_, ok := handlerMap[key]
-			if ok {
-				log.Infof("gcObjects handler running for %s; XXX\n",
-					key)
-				// XXX continue
-			}
-
 			status := cast.CastDownloaderStatus(st)
 			if status.Key() != key {
 				log.Errorf("gcObjects key/UUID mismatch %s vs %s; ignored %+v\n",
