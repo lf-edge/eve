@@ -349,6 +349,16 @@ func gcObjects(ctx *domainContext, dirName string) {
 				key, status.Key(), status)
 			continue
 		}
+		// Make sure we update LastUse if it is still referenced
+		// by a DomainConfig
+		filelocation := status.FileLocation
+		if findActiveFileLocation(ctx, filelocation) {
+			log.Infoln("gcObjects skipping Active file",
+				filelocation)
+			status.LastUse = time.Now()
+			publishImageStatus(ctx, &status)
+			continue
+		}
 		if status.RefCount != 0 {
 			log.Infof("gcObjects: skipping RefCount %d: %s\n",
 				status.RefCount, key)
@@ -363,14 +373,6 @@ func gcObjects(ctx *domainContext, dirName string) {
 		log.Infof("gcObjects: LastUse %v expiry %v now %v: %s\n",
 			status.LastUse, expiry, time.Now(), key)
 
-		filelocation := status.FileLocation
-		if findActiveFileLocation(ctx, filelocation) {
-			log.Infoln("gcObjects skipping Active file",
-				filelocation)
-			status.LastUse = time.Now()
-			publishImageStatus(ctx, &status)
-			continue
-		}
 		log.Infoln("gcObjects removing", filelocation)
 		if err := os.Remove(filelocation); err != nil {
 			log.Errorln(err)

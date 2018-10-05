@@ -1036,7 +1036,7 @@ func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 
 func handleDelete(ctx *verifierContext, status *types.VerifyImageStatus) {
 
-	log.Infof("handleDelete(%v) objType %s refcount %d lastUse %v Expired %bv\n",
+	log.Infof("handleDelete(%v) objType %s refcount %d lastUse %v Expired %v\n",
 		status.Safename, status.ObjType, status.RefCount,
 		status.LastUse, status.Expired)
 
