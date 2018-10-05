@@ -163,6 +163,7 @@ type DiskStatus struct {
 
 // Track the active image files in rwImgDirname
 type ImageStatus struct {
+	Filename     string // Basename; used as key
 	FileLocation string // Local location of Image
 	RefCount     uint
 	LastUse      time.Time // When RefCount dropped to zero
@@ -170,5 +171,5 @@ type ImageStatus struct {
 }
 
 func (status ImageStatus) Key() string {
-	return status.FileLocation
+	return status.Filename
 }

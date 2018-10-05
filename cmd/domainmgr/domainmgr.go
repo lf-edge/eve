@@ -30,6 +30,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -266,17 +267,18 @@ func populateInitialImageStatus(ctx *domainContext, dirName string) {
 	}
 
 	for _, location := range locations {
-		filename := dirName + "/" + location.Name()
+		filelocation := dirName + "/" + location.Name()
 		if location.IsDir() {
-			log.Debugf("populateInitialImageStatus: directory %s ignored\n", filename)
+			log.Debugf("populateInitialImageStatus: directory %s ignored\n", filelocation)
 			continue
 		}
-		info, _ := os.Stat(filename)
+		info, _ := os.Stat(filelocation)
 		log.Debugf("populateInitialImageStatus: Processing %d Mbytes %s \n",
-			info.Size()/(1024*1024), filename)
+			info.Size()/(1024*1024), filelocation)
 
 		status := types.ImageStatus{
-			FileLocation: filename,
+			Filename:     location.Name(),
+			FileLocation: filelocation,
 			Size:         uint64(info.Size()),
 			RefCount:     0,
 			LastUse:      time.Now(),
@@ -288,11 +290,13 @@ func populateInitialImageStatus(ctx *domainContext, dirName string) {
 
 func addImageStatus(ctx *domainContext, fileLocation string) {
 
+	filename := filepath.Base(fileLocation)
 	pub := ctx.pubImageStatus
-	st, _ := pub.Get(fileLocation)
+	st, _ := pub.Get(filename)
 	if st == nil {
-		log.Infof("addImageStatus(%s) not found\n", fileLocation)
+		log.Infof("addImageStatus(%s) not found\n", filename)
 		status := types.ImageStatus{
+			Filename:     filename,
 			FileLocation: fileLocation,
 			Size:         0, // XXX
 			RefCount:     1,
@@ -302,7 +306,7 @@ func addImageStatus(ctx *domainContext, fileLocation string) {
 	} else {
 		status := cast.CastImageStatus(st)
 		log.Infof("addImageStatus(%s) found RefCount %d LastUse %v\n",
-			fileLocation, status.RefCount, status.LastUse)
+			filename, status.RefCount, status.LastUse)
 
 		status.RefCount += 1
 		status.LastUse = time.Now()
@@ -313,15 +317,16 @@ func addImageStatus(ctx *domainContext, fileLocation string) {
 // Decrement RefCount but leave published; update LastUse
 func delImageStatus(ctx *domainContext, fileLocation string) {
 
+	filename := filepath.Base(fileLocation)
 	pub := ctx.pubImageStatus
-	st, _ := pub.Get(fileLocation)
+	st, _ := pub.Get(filename)
 	if st == nil {
-		log.Errorf("delImageStatus(%s) not found\n", fileLocation)
+		log.Errorf("delImageStatus(%s) not found\n", filename)
 		return
 	}
 	status := cast.CastImageStatus(st)
 	log.Infof("delImageStatus(%s) found RefCount %d LastUse %v\n",
-		fileLocation, status.RefCount, status.LastUse)
+		filename, status.RefCount, status.LastUse)
 
 	status.RefCount -= 1
 	status.LastUse = time.Now()
@@ -353,15 +358,16 @@ func gcObjects(ctx *domainContext, dirName string) {
 				status.LastUse, key)
 			continue
 		}
-		filename := status.FileLocation
-		if findActiveFileLocation(ctx, filename) {
-			log.Infoln("gcObjects skipping Active file", filename)
+		filelocation := status.FileLocation
+		if findActiveFileLocation(ctx, filelocation) {
+			log.Infoln("gcObjects skipping Active file",
+				filelocation)
 			status.LastUse = time.Now()
 			publishImageStatus(ctx, &status)
 			continue
 		}
-		log.Infoln("handleRestart removing", filename)
-		if err := os.Remove(filename); err != nil {
+		log.Infoln("handleRestart removing", filelocation)
+		if err := os.Remove(filelocation); err != nil {
 			log.Errorln(err)
 		}
 		unpublishImageStatus(ctx, &status)
