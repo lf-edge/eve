@@ -42,8 +42,9 @@ const (
 
 	runDirname        = "/var/run/" + agentName
 	persistDir        = "/persist"
-	rwImgDirname      = persistDir + "/img" // We store images here
-	xenDirname        = runDirname + "/xen" // We store xen cfg files here
+	rwImgDirname      = persistDir + "/img"       // We store images here
+	xenDirname        = runDirname + "/xen"       // We store xen cfg files here
+	ciDirname         = runDirname + "/cloudinit" // For cloud-init images
 	downloadDirname   = persistDir + "/downloads"
 	imgCatalogDirname = downloadDirname + "/" + appImgObj
 	// Read-only images named based on sha256 hash each in its own directory
@@ -115,6 +116,11 @@ func Run() {
 	if err := os.RemoveAll(xenDirname); err != nil {
 		log.Fatal(err)
 	}
+	if _, err := os.Stat(ciDirname); err == nil {
+		if err := os.RemoveAll(ciDirname); err != nil {
+			log.Fatal(err)
+		}
+	}
 	if _, err := os.Stat(rwImgDirname); err != nil {
 		if err := os.MkdirAll(rwImgDirname, 0700); err != nil {
 			log.Fatal(err)
@@ -122,6 +128,11 @@ func Run() {
 	}
 	if _, err := os.Stat(xenDirname); err != nil {
 		if err := os.MkdirAll(xenDirname, 0700); err != nil {
+			log.Fatal(err)
+		}
+	}
+	if _, err := os.Stat(ciDirname); err != nil {
+		if err := os.MkdirAll(ciDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -1632,7 +1643,7 @@ func getDiskVirtualSize(diskfile string) (uint64, error) {
 func createCloudInitISO(config types.DomainConfig) (*types.DiskStatus, error) {
 
 	fileName := fmt.Sprintf("%s/%s.cidata",
-		rwImgDirname, config.UUIDandVersion.UUID.String())
+		ciDirname, config.UUIDandVersion.UUID.String())
 
 	dir, err := ioutil.TempDir("", "cloud-init")
 	if err != nil {
