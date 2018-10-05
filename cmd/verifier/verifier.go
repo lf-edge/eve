@@ -56,6 +56,8 @@ const (
 	// If this file is present we don't delete verified files in handleDelete
 	tmpDirname       = "/var/tmp/zededa"
 	preserveFilename = tmpDirname + "/preserve"
+	// XXX hard-coded at 10 minutes
+	gcTime = 10 * time.Minute
 )
 
 // Go doesn't like this as a constant
@@ -166,9 +168,8 @@ func Run() {
 	pubBaseOsStatus.SignalRestarted()
 
 	// We will cleanup zero RefCount objects after a while
-	// XXX hard-coded at 10 minutes
-	// XXX run periodically or restart after creating refCount=0 object?
-	gc := time.NewTimer(10 * time.Minute)
+	// We run timer 10 times more often than the limit on LastUse
+	gc := time.NewTicker(gcTime / 10)
 
 	for {
 		select {
@@ -263,7 +264,6 @@ func handleInitVerifiedObjects(ctx *verifierContext) {
 
 // recursive scanning for verified objects,
 // to recreate the status files
-// XXX Should redo verification!
 func populateInitialStatusFromVerified(ctx *verifierContext,
 	objType string, objDirname string, parentDirname string) {
 
@@ -291,9 +291,8 @@ func populateInitialStatusFromVerified(ctx *verifierContext,
 			log.Debugf("populateInitialStatusFromVerified: Processing %d Mbytes %s \n",
 				info.Size()/(1024*1024), filename)
 
-			// XXX should really re-verify the image on reboot/restart
-			// We don't know the URL; Pick a name which is unique
 			sha := parentDirname
+			// We don't know the URL; Pick a name which is unique
 			safename := location.Name() + "." + sha
 
 			status := types.VerifyImageStatus{
@@ -302,8 +301,30 @@ func populateInitialStatusFromVerified(ctx *verifierContext,
 				ImageSha256: sha,
 				State:       types.DELIVERED,
 				Size:        info.Size(),
+				RefCount:    0,
+				LastUse:     time.Now(),
 			}
 
+			// We re-verify the sha on reboot/restart
+			// XXX what about signature? Do we have the certs?
+			imageHash, err := computeShaFile(filename)
+			if err != nil {
+				log.Errorf("computeShaFile %s failed %s\n",
+					filename, err)
+				doDelete(&status)
+				continue
+			}
+
+			got := fmt.Sprintf("%x", imageHash)
+			if got != strings.ToLower(sha) {
+				log.Errorf("computed   %s\n", got)
+				log.Errorf("configured %s\n",
+					strings.ToLower(sha))
+				doDelete(&status)
+				continue
+			}
+
+			// Passed sha verification
 			publishVerifyImageStatus(ctx, &status)
 		}
 	}
@@ -333,11 +354,10 @@ func handleInitMarkedDeletePendingObjects(ctx *verifierContext) {
 	}
 }
 
-// XXX here vs. in downloader? Who owns which dirs?
-// Create object download directories
+// Create the object download directories we own
 func createDownloadDirs(objTypes []string) {
 
-	workingDirTypes := []string{"pending", "verifier", "verified"}
+	workingDirTypes := []string{"verifier", "verified"}
 
 	// now create the download dirs
 	for _, objType := range objTypes {
@@ -356,9 +376,9 @@ func createDownloadDirs(objTypes []string) {
 // clear in-progress object download directories
 func clearInProgressDownloadDirs(objTypes []string) {
 
-	inProgressDirTypes := []string{"pending", "verifier"}
+	inProgressDirTypes := []string{"verifier"}
 
-	// now cremove the in-progress dirs
+	// Now remove the in-progress dirs
 	for _, objType := range objTypes {
 		for _, dirType := range inProgressDirTypes {
 			dirName := objectDownloadDirname + "/" + objType + "/" + dirType
@@ -371,8 +391,11 @@ func clearInProgressDownloadDirs(objTypes []string) {
 	}
 }
 
-// Look for and delete objects and status where the RefCount is still zero
-// By definition those should not have any goroutine in handlerMap but
+// If an object has a zero RefCount and dropped to zero more than
+// gcTime ago, then we delete the Status. That will result in the
+// user (zedmanager or zedagent) deleting the Config, unless a RefCount
+// increase is underway.
+// XXX By definition those should not have any goroutine in handlerMap but
 // we check that the key is not in handlerMap to make sure we don't
 // touch an object owned by a running goroutine.
 func gcVerifiedObjects(ctx *verifierContext) {
@@ -385,11 +408,12 @@ func gcVerifiedObjects(ctx *verifierContext) {
 		items := pub.GetAll()
 		for key, st := range items {
 			// Check of thread is running
+			// XXX remove check? Or delete status
 			_, ok := handlerMap[key]
 			if ok {
-				log.Infof("gcVerifiedObjects handler running for %s; skipping\n",
+				log.Infof("gcVerifiedObjects handler running for %s; XXX\n",
 					key)
-				continue
+				// XXX continue
 			}
 
 			status := cast.CastVerifyImageStatus(st)
@@ -403,14 +427,18 @@ func gcVerifiedObjects(ctx *verifierContext) {
 					status.RefCount, key)
 				continue
 			}
-			log.Infof("gcVerifiedObjects: removing %s\n", key)
-			objType := status.ObjType
-			if objType == "" {
+			expiry := status.LastUse.Add(gcTime)
+			if expiry.Before(time.Now()) {
+				log.Infof("gcVerifiedObjects: skipping recently used %v: %s\n",
+					status.LastUse, key)
+				continue
+			}
+			log.Infof("gcVerifiedObjects: removing status for %s\n",
+				key)
+			if status.ObjType == "" {
 				log.Fatalf("gcVerifiedObjects: No ObjType for %s\n",
 					key)
 			}
-			// XXX force delete ...
-			doDelete(&status)
 			unpublishVerifyImageStatus(ctx, &status)
 		}
 	}
@@ -614,6 +642,7 @@ func handleCreate(ctx *verifierContext, objType string,
 		PendingAdd:  true,
 		State:       types.DOWNLOADED,
 		RefCount:    config.RefCount,
+		LastUse:     time.Now(),
 	}
 	publishVerifyImageStatus(ctx, &status)
 
@@ -716,20 +745,8 @@ func verifyObjectSha(ctx *verifierContext, config *types.VerifyImageConfig,
 	log.Infof("Verifying URL %s file %s\n",
 		config.Name, verifierFilename)
 
-	f, err := os.Open(verifierFilename)
+	imageHash, err := computeShaFile(verifierFilename)
 	if err != nil {
-		cerr := fmt.Sprintf("%v", err)
-		updateVerifyErrStatus(ctx, status, cerr)
-		log.Errorf("verifyObjectSha: %s failed %s\n",
-			config.Name, cerr)
-		return false
-	}
-	defer f.Close()
-
-	// compute sha256 of the image and match it
-	// with the one in config file...
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
 		cerr := fmt.Sprintf("%v", err)
 		updateVerifyErrStatus(ctx, status, cerr)
 		log.Errorf("verifyObjectSha %s failed %s\n",
@@ -737,8 +754,7 @@ func verifyObjectSha(ctx *verifierContext, config *types.VerifyImageConfig,
 		return false
 	}
 
-	imageHash := h.Sum(nil)
-	got := fmt.Sprintf("%x", h.Sum(nil))
+	got := fmt.Sprintf("%x", imageHash)
 	if got != strings.ToLower(config.ImageSha256) {
 		log.Errorf("computed   %s\n", got)
 		log.Errorf("configured %s\n", strings.ToLower(config.ImageSha256))
@@ -760,6 +776,19 @@ func verifyObjectSha(ctx *verifierContext, config *types.VerifyImageConfig,
 		return false
 	}
 	return true
+}
+
+func computeShaFile(filename string) ([]byte, error) {
+	f, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return nil, err
+	}
+	return h.Sum(nil), nil
 }
 
 func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.VerifyImageConfig, imageHash []byte) string {
@@ -921,7 +950,11 @@ func markObjectAsVerified(ctx *verifierContext, config *types.VerifyImageConfig,
 	}
 
 	if _, err := os.Stat(verifiedFilename); err == nil {
-		log.Fatal(verifiedFilename + ": file exists")
+		// XXX log.Fatal(verifiedFilename + ": file exists")
+		log.Warn(verifiedFilename + ": file exists")
+		if err := os.RemoveAll(verifiedFilename); err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	// XXX change log.Fatal to something else?
@@ -985,10 +1018,11 @@ func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 	}
 
 	if status.RefCount == 0 {
+		// GC timer will clean up by deleting status
+		// Then user (zedmanager/zedagent) will delete config
 		status.PendingModify = true
+		status.LastUse = time.Now()
 		publishVerifyImageStatus(ctx, status)
-		// XXX start gc timer instead, or run it all the time?
-		doDelete(status)
 		status.PendingModify = false
 		publishVerifyImageStatus(ctx, status)
 		log.Infof("handleModify done for %s\n", config.Name)
@@ -1017,19 +1051,17 @@ func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 
 func handleDelete(ctx *verifierContext, status *types.VerifyImageStatus) {
 
-	log.Infof("handleDelete(%v) objType %s\n",
-		status.Safename, status.ObjType)
+	log.Infof("handleDelete(%v) objType %s refcount %d lastUse %v\n",
+		status.Safename, status.ObjType, status.RefCount,
+		status.LastUse)
 
 	if status.ObjType == "" {
 		log.Fatalf("handleDelete: No ObjType for %s\n",
 			status.Safename)
 	}
 
-	// XXX start gc timer instead
 	doDelete(status)
 
-	// XXX set refCount=0
-	// Write out what we modified to VerifyImageStatus aka delete
 	unpublishVerifyImageStatus(ctx, status)
 	log.Infof("handleDelete done for %s\n", status.Safename)
 }
@@ -1043,10 +1075,17 @@ func doDelete(status *types.VerifyImageStatus) {
 
 	objType := status.ObjType
 	downloadDirname := objectDownloadDirname + "/" + objType
+	verifierDirname := downloadDirname + "/verifier/" + status.ImageSha256
 	verifiedDirname := downloadDirname + "/verified/" + status.ImageSha256
 
-	// XXX defer until gc
-	_, err := os.Stat(verifiedDirname)
+	_, err := os.Stat(verifierDirname)
+	if err == nil {
+		log.Infof("doDelete removing verifier %s\n", verifierDirname)
+		if err := os.RemoveAll(verifierDirname); err != nil {
+			log.Fatal(err)
+		}
+	}
+	_, err = os.Stat(verifiedDirname)
 	if err == nil && status.State == types.DELIVERED {
 		if _, err := os.Stat(preserveFilename); err != nil {
 			log.Infof("doDelete removing %s\n", verifiedDirname)

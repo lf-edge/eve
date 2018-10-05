@@ -119,13 +119,13 @@ func MaybeRemoveVerifierConfigSha256(ctx *zedagentContext, objType string,
 		m.Safename)
 
 	m.RefCount -= 1
-	if m.RefCount != 0 {
-		log.Infof("MaybeRemoveVerifierConfigSha256 remaining RefCount %d for %s\n",
+	if m.RefCount < 0 {
+		log.Fatalf("MaybeRemoveVerifyImageConfigSha256: negative RefCount %d for %s\n",
 			m.RefCount, sha256)
-		publishVerifierConfig(ctx, objType, m)
-		return
 	}
-	unpublishVerifierConfig(ctx, objType, m)
+	log.Infof("MaybeRemoveVerifierConfigSha256 remaining RefCount %d for %s\n",
+		m.RefCount, sha256)
+	publishVerifierConfig(ctx, objType, m)
 	log.Infof("MaybeRemoveVerifierConfigSha256 done for %s\n", sha256)
 }
 

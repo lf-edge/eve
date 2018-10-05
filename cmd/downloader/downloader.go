@@ -39,6 +39,9 @@ const (
 
 	persistDir            = "/persist"
 	objectDownloadDirname = persistDir + "/downloads"
+
+	// XXX hard-coded at 10 minutes
+	gcTime = 10 * time.Minute
 )
 
 // Go doesn't like this as a constant
@@ -231,6 +234,10 @@ func Run() {
 
 	ctx.dCtx = downloaderInit(&ctx)
 
+	// We will cleanup zero RefCount objects after a while
+	// We run timer 10 times more often than the limit on LastUse
+	gc := time.NewTicker(gcTime / 10)
+
 	for {
 		select {
 		case change := <-subGlobalConfig.C:
@@ -256,6 +263,9 @@ func Run() {
 			if err != nil {
 				log.Errorln(err)
 			}
+
+		case <-gc.C:
+			gcObjects(&ctx)
 		}
 	}
 }
@@ -416,6 +426,7 @@ func handleCreate(ctx *downloaderContext, objType string,
 		Safename:       config.Safename,
 		ObjType:        objType,
 		RefCount:       config.RefCount,
+		LastUse:        time.Now(),
 		DownloadURL:    config.DownloadURL,
 		UseFreeUplinks: config.UseFreeUplinks,
 		ImageSha256:    config.ImageSha256,
@@ -464,8 +475,10 @@ func handleCreate(ctx *downloaderContext, objType string,
 	handleSyncOp(ctx, key, config, &status)
 }
 
-// Allow to cancel by setting RefCount = 0. Same as delete? RefCount 0->1
-// means download. Ignore other changes?
+// XXX Allow to cancel by setting RefCount = 0? Such a change
+// would have to be detected outside of handler since the download is
+// single-threaded.
+// RefCount 0->1 means download. Ignore other changes?
 func handleModify(ctx *downloaderContext, key string,
 	config types.DownloaderConfig, status *types.DownloaderStatus) {
 
@@ -509,15 +522,15 @@ func handleModify(ctx *downloaderContext, key string,
 		log.Infof("handleModify installing %s\n", config.DownloadURL)
 		handleCreate(ctx, status.ObjType, config, key)
 		status.RefCount = config.RefCount
+		status.LastUse = time.Now()
 		status.PendingModify = false
 		publishDownloaderStatus(ctx, status)
-	} else if status.RefCount != 0 && config.RefCount == 0 {
-		log.Infof("handleModify deleting %s\n", config.DownloadURL)
-		doDelete(ctx, key, locDirname, status)
 	} else if status.RefCount != config.RefCount {
 		log.Infof("handleModify RefCount change %s from %d to %d\n",
 			config.DownloadURL, status.RefCount, config.RefCount)
 		status.RefCount = config.RefCount
+		status.LastUse = time.Now()
+		status.PendingModify = false
 		publishDownloaderStatus(ctx, status)
 	}
 	log.Infof("handleModify done for %s\n", config.DownloadURL)
@@ -529,8 +542,6 @@ func doDelete(ctx *downloaderContext, key string, locDirname string,
 	log.Infof("doDelete(%v) for %s\n", status.Safename, status.DownloadURL)
 
 	deletefile(locDirname+"/pending", status)
-	deletefile(locDirname+"/verifier", status)
-	// verifier handles the verified directory
 
 	status.State = types.INITIAL
 	ctx.globalStatus.UsedSpace -= uint(types.RoundupToKB(status.Size))
@@ -563,8 +574,9 @@ func deletefile(dirname string, status *types.DownloaderStatus) {
 func handleDelete(ctx *downloaderContext, key string,
 	status *types.DownloaderStatus) {
 
-	log.Infof("handleDelete(%v) objType %s for %s\n",
-		status.Safename, status.ObjType, status.DownloadURL)
+	log.Infof("handleDelete(%v) objType %s for %s RefCount %d LastUse %v\n",
+		status.Safename, status.ObjType, status.DownloadURL,
+		status.RefCount, status.LastUse)
 
 	if status.ObjType == "" {
 		log.Fatalf("handleDelete: No ObjType for %s\n",
@@ -591,7 +603,8 @@ func handleDelete(ctx *downloaderContext, key string,
 
 	// Write out what we modified to DownloaderStatus aka delete
 	unpublishDownloaderStatus(ctx, status)
-	log.Infof("handleDelete done for %s, %s\n", status.DownloadURL, locDirname)
+	log.Infof("handleDelete done for %s, %s\n", status.DownloadURL,
+		locDirname)
 }
 
 // helper functions
@@ -648,21 +661,19 @@ func handleGlobalDownloadConfigModify(ctxArg interface{}, key string,
 
 func initializeDirs() {
 
-	// Remove any files which didn't make it past the verifier.
-	// Though verifier owns it, remove them for calculating the
-	// total available space
-	// XXX instead rely on verifier status
+	// Remove any files which didn't make it to the verifier.
+	// XXX space calculation doesn't take into account files in verifier
+	// XXX get space report from verifier??
 	clearInProgressDownloadDirs(downloaderObjTypes)
 
 	// create the object download directories
 	createDownloadDirs(downloaderObjTypes)
 }
 
-// XXX here vs. in verifier? Who owns which dirs? Same as deletes from them.
-// create object download directories
+// Create the object download directories we own
 func createDownloadDirs(objTypes []string) {
 
-	workingDirTypes := []string{"pending", "verifier", "verified"}
+	workingDirTypes := []string{"pending"}
 
 	// now create the download dirs
 	for _, objType := range objTypes {
@@ -681,7 +692,7 @@ func createDownloadDirs(objTypes []string) {
 // clear in-progress object download directories
 func clearInProgressDownloadDirs(objTypes []string) {
 
-	inProgressDirTypes := []string{"pending", "verifier"}
+	inProgressDirTypes := []string{"pending"}
 
 	// now create the download dirs
 	for _, objType := range objTypes {
@@ -692,6 +703,59 @@ func clearInProgressDownloadDirs(objTypes []string) {
 					log.Fatal(err)
 				}
 			}
+		}
+	}
+}
+
+// If an object has a zero RefCount and dropped to zero more than
+// gcTime ago, then we delete the Status. That will result in the
+// user (zedmanager or zedagent) deleting the Config, unless a RefCount
+// increase is underway.
+// XXX By definition those should not have any goroutine in handlerMap but
+// we check that the key is not in handlerMap to make sure we don't
+// touch an object owned by a running goroutine.
+func gcObjects(ctx *downloaderContext) {
+	log.Infof("gcObjects()\n")
+	publications := []*pubsub.Publication{
+		ctx.pubAppImgStatus,
+		ctx.pubBaseOsStatus,
+		ctx.pubCertObjStatus,
+	}
+	for _, pub := range publications {
+		items := pub.GetAll()
+		for key, st := range items {
+			// Check of thread is running
+			// XXX remove check? Or delete status
+			_, ok := handlerMap[key]
+			if ok {
+				log.Infof("gcObjects handler running for %s; XXX\n",
+					key)
+				// XXX continue
+			}
+
+			status := cast.CastDownloaderStatus(st)
+			if status.Key() != key {
+				log.Errorf("gcObjects key/UUID mismatch %s vs %s; ignored %+v\n",
+					key, status.Key(), status)
+				continue
+			}
+			if status.RefCount != 0 {
+				log.Infof("gcObjects: skipping RefCount %d: %s\n",
+					status.RefCount, key)
+				continue
+			}
+			expiry := status.LastUse.Add(gcTime)
+			if expiry.Before(time.Now()) {
+				log.Infof("gcObjects: skipping recently used %v: %s\n",
+					status.LastUse, key)
+				continue
+			}
+			log.Infof("gcObjects: removing status for %s\n", key)
+			if status.ObjType == "" {
+				log.Fatalf("gcObjects: No ObjType for %s\n",
+					key)
+			}
+			unpublishDownloaderStatus(ctx, &status)
 		}
 	}
 }

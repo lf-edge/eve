@@ -43,16 +43,15 @@ func updateAIStatusSafename(ctx *zedmanagerContext, safename string) {
 // Update this AppInstanceStatus generate config updates to
 // the microservices
 func updateAIStatusUUID(ctx *zedmanagerContext, uuidStr string) {
-	config := lookupAppInstanceConfig(ctx, uuidStr)
-	if config == nil {
-		log.Infof("updateAIStatusUUID for %s: Missing AppInstanceConfig\n",
-			uuidStr)
-		return
-	}
 	status := lookupAppInstanceStatus(ctx, uuidStr)
 	if status == nil {
 		log.Infof("updateAIStatusUUID for %s: Missing AppInstanceStatus\n",
 			uuidStr)
+		return
+	}
+	config := lookupAppInstanceConfig(ctx, uuidStr)
+	if config == nil {
+		removeAIStatus(ctx, status)
 		return
 	}
 	changed := doUpdate(ctx, uuidStr, *config, status)
@@ -176,6 +175,7 @@ func doUpdate(ctx *zedmanagerContext, uuidStr string,
 
 	// Are we doing a purge?
 	// XXX when/how do we drop refcounts on old images? GC?
+	// XXX need to keep old StorageStatusList with Has*Ref
 	if status.PurgeInprogress == types.DOWNLOAD {
 		log.Infof("PurgeInprogress(%s) download/verifications done\n",
 			status.Key())

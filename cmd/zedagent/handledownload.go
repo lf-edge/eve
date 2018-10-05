@@ -126,15 +126,14 @@ func removeDownloaderConfig(ctx *zedagentContext, objType string, safename strin
 			objType, safename)
 		return
 	}
-
-	if config.RefCount > 1 {
-		config.RefCount -= 1
-		log.Infof("removeDownloaderConfig(%s/%s) decrementing refCount to %d\n",
+	config.RefCount -= 1
+	if config.RefCount < 0 {
+		log.Fatalf("removeDownloaderConfig(%s/%s): negative RefCount %d\n",
 			objType, safename, config.RefCount)
-		publishDownloaderConfig(ctx, objType, config)
-		return
 	}
-	unpublishDownloaderConfig(ctx, objType, config)
+	log.Infof("removeDownloaderConfig(%s/%s) decrementing refCount to %d\n",
+		objType, safename, config.RefCount)
+	publishDownloaderConfig(ctx, objType, config)
 	log.Infof("removeDownloaderConfig(%s/%s) done\n", objType, safename)
 }
 

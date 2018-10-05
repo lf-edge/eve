@@ -52,16 +52,13 @@ func MaybeRemoveDownloaderConfig(ctx *zedmanagerContext, safename string) {
 		return
 	}
 	m.RefCount -= 1
-	if m.RefCount != 0 {
-		log.Infof("MaybeRemoveDownloaderConfig remaining RefCount %d for %s\n",
+	if m.RefCount < 0 {
+		log.Fatalf("MaybeRemoveDownloaderConfig: negative RefCount %d for %s\n",
 			m.RefCount, safename)
-		publishDownloaderConfig(ctx, m)
-		return
 	}
-	log.Infof("MaybeRemoveDownloaderConfig RefCount zero for %s\n",
-		safename)
-	unpublishDownloaderConfig(ctx, m)
-	log.Infof("MaybeRemoveDownloaderConfig done for %s\n", safename)
+	log.Infof("MaybeRemoveDownloaderConfig remaining RefCount %d for %s\n",
+		m.RefCount, safename)
+	publishDownloaderConfig(ctx, m)
 }
 
 func publishDownloaderConfig(ctx *zedmanagerContext,
@@ -91,7 +88,8 @@ func handleDownloaderStatusModify(ctxArg interface{}, key string,
 		return
 	}
 	ctx := ctxArg.(*zedmanagerContext)
-	log.Infof("handleDownloaderStatusModify for %s\n", status.Safename)
+	log.Infof("handleDownloaderStatusModify for %s RefCount %d\n",
+		status.Safename, status.RefCount)
 
 	// Handling even if Pending is set to process Progress updates
 
@@ -143,5 +141,13 @@ func handleDownloaderStatusDelete(ctxArg interface{}, key string,
 	log.Infof("handleDownloaderStatusDelete for %s\n", key)
 	ctx := ctxArg.(*zedmanagerContext)
 	removeAIStatusSafename(ctx, key)
+	// If we still publish a config with RefCount == 0 we delete it.
+	// That will result in the object being deleted in verifier.
+	config := lookupDownloaderConfig(ctx, key)
+	if config != nil && config.RefCount == 0 {
+		log.Infof("handleDownloaderStatusDelete delete config for %s\n",
+			key)
+		unpublishDownloaderConfig(ctx, config)
+	}
 	log.Infof("handleDownloaderStatusDelete done for %s\n", key)
 }

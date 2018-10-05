@@ -92,16 +92,14 @@ func MaybeRemoveVerifyImageConfigSha256(ctx *zedmanagerContext, sha256 string) {
 		return
 	}
 	m.RefCount -= 1
-	if m.RefCount != 0 {
-		log.Infof("MaybeRemoveVerifyImageConfigSha256: RefCount to %d for %s\n",
+	if m.RefCount < 0 {
+		log.Fatalf("MaybeRemoveVerifyImageConfigSha256: negative RefCount %d for %s\n",
 			m.RefCount, sha256)
-		publishVerifyImageConfig(ctx, m)
-		return
 	}
-	log.Infof("MaybeRemoveVerifyImageConfigSha256: RefCount zero for %s\n",
-		sha256)
-	unpublishVerifyImageConfig(ctx, m)
+	log.Infof("MaybeRemoveVerifyImageConfigSha256: RefCount to %d for %s\n",
+		m.RefCount, sha256)
 	log.Infof("MaybeRemoveVerifyImageConfigSha256 done for %s\n", sha256)
+	publishVerifyImageConfig(ctx, m)
 }
 
 func publishVerifyImageConfig(ctx *zedmanagerContext,
@@ -132,7 +130,8 @@ func handleVerifyImageStatusModify(ctxArg interface{}, key string,
 		return
 	}
 	ctx := ctxArg.(*zedmanagerContext)
-	log.Infof("handleVerifyImageStatusModify for %s\n", status.Safename)
+	log.Infof("handleVerifyImageStatusModify for %s RefCount %d\n",
+		status.Safename, status.RefCount)
 	// Ignore if any Pending* flag is set
 	if status.Pending() {
 		log.Infof("handleVerifyImageStatusModify skipped due to Pending* for %s\n",
@@ -201,6 +200,14 @@ func handleVerifyImageStatusDelete(ctxArg interface{}, key string,
 	log.Infof("handleVerifyImageStatusDelete for %s\n", key)
 	ctx := ctxArg.(*zedmanagerContext)
 	removeAIStatusSafename(ctx, key)
+	// If we still publish a config with RefCount == 0 we delete it.
+	// That will result in the object being deleted in verifier.
+	config := lookupVerifyImageConfig(ctx, key)
+	if config != nil && config.RefCount == 0 {
+		log.Infof("handleVerifyImageStatusDelete delete config for %s\n",
+			key)
+		unpublishVerifyImageConfig(ctx, config)
+	}
 	log.Infof("handleVerifyImageStatusDelete done for %s\n", key)
 }
 

@@ -1087,8 +1087,20 @@ func handleDownloadStatusModify(ctxArg interface{}, key string,
 func handleDownloadStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Infof("handleDownloadStatusDelete for %s\n", key)
-	// Nothing to do
+	ctx := ctxArg.(*zedagentContext)
+	status := cast.CastDownloaderStatus(statusArg)
+	log.Infof("handleDownloadStatusDelete RefCount %d for %s\n",
+		status.RefCount, key)
+	// We know there are no references to this object any more
+	// so we can remove it
+	config := lookupDownloaderConfig(ctx, status.ObjType, status.Key())
+	if config == nil {
+		log.Infof("handleDownloadStatusDelete missing config for %s\n",
+			key)
+		return
+	}
+	log.Infof("handleDownloadStatusDelete delete config for %s\n", key)
+	unpublishDownloaderConfig(ctx, status.ObjType, config)
 }
 
 func handleVerifierStatusModify(ctxArg interface{}, key string,
@@ -1108,8 +1120,18 @@ func handleVerifierStatusModify(ctxArg interface{}, key string,
 func handleVerifierStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Infof("handleVeriferStatusDelete for %s\n", key)
-	// Nothing to do
+	status := cast.CastVerifyImageStatus(statusArg)
+	ctx := ctxArg.(*zedagentContext)
+	log.Infof("handleVeriferStatusDelete RefCount %d for %s\n",
+		status.RefCount, key)
+	config := lookupVerifierConfig(ctx, status.ObjType, status.Key())
+	if config == nil {
+		log.Infof("handleVerifierStatusDelete missing config for %s\n",
+			key)
+		return
+	}
+	log.Infof("handleVerifierStatusDelete delete config for %s\n", key)
+	unpublishVerifierConfig(ctx, status.ObjType, config)
 }
 
 func handleDatastoreConfigModify(ctxArg interface{}, key string,
