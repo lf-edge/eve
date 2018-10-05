@@ -1489,7 +1489,7 @@ func execReboot(state bool) {
 		poweroffCmd := exec.Command("poweroff")
 		_, err := poweroffCmd.Output()
 		if err != nil {
-			log.Errorln(err)
+			log.Errorf("poweroffCmd failed %s\n", err)
 		}
 	}
 }

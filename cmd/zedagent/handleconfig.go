@@ -251,7 +251,7 @@ func getLatestConfig(url string, iteration int, updateInprogress *bool,
 			log.Infof("getLastestConfig, curPart %s inprogress; marking active\n",
 				curPart)
 			if err := zboot.MarkOtherPartitionStateActive(); err != nil {
-				log.Errorln(err)
+				log.Errorf("mark other active failed %s\n", err)
 			} else {
 				// Update and publish the change
 				baseOsGetActivationStatusAll(getconfigCtx.zedagentCtx)

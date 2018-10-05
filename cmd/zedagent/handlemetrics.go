@@ -88,7 +88,8 @@ func ExecuteXlInfoCmd() map[string]string {
 	xlCmd := exec.Command("xl", "info")
 	stdout, err := xlCmd.Output()
 	if err != nil {
-		log.Errorln(err.Error())
+		log.Errorf("xl info failed %s\n", err)
+		return nil
 	}
 	xlInfo := fmt.Sprintf("%s", stdout)
 	splitXlInfo := strings.Split(xlInfo, "\n")
@@ -349,7 +350,8 @@ func ExecuteXentopCmd() [][]string {
 
 			matched, err := regexp.MatchString("[A-Za-z0-9]+", finalOutput[f][out])
 			if err != nil {
-				log.Errorln(err)
+				log.Errorf("regexp failed %s for %s\n",
+					err, finalOutput[f])
 			} else if matched {
 
 				if finalOutput[f][out] == "no" {
@@ -750,7 +752,7 @@ func PublishDeviceInfoToZedCloud(subBaseOsStatus *pubsub.Subscription,
 	machineCmd := exec.Command("uname", "-m")
 	stdout, err := machineCmd.Output()
 	if err != nil {
-		log.Errorln(err.Error())
+		log.Errorf("uname -m failed %s\n", err)
 	} else {
 		machineArch = fmt.Sprintf("%s", stdout)
 		ReportDeviceInfo.MachineArch = *proto.String(strings.TrimSpace(machineArch))
@@ -759,16 +761,16 @@ func PublishDeviceInfoToZedCloud(subBaseOsStatus *pubsub.Subscription,
 	cpuCmd := exec.Command("uname", "-p")
 	stdout, err = cpuCmd.Output()
 	if err != nil {
-		log.Errorln(err.Error())
+		log.Errorf("uname -p failed %s\n", err)
 	} else {
 		cpuArch := fmt.Sprintf("%s", stdout)
 		ReportDeviceInfo.CpuArch = *proto.String(strings.TrimSpace(cpuArch))
 	}
 
-	platformCmd := exec.Command("uname", "-p")
+	platformCmd := exec.Command("uname", "-i")
 	stdout, err = platformCmd.Output()
 	if err != nil {
-		log.Errorln(err.Error())
+		log.Errorf("uname -i failed %s\n", err)
 	} else {
 		platform := fmt.Sprintf("%s", stdout)
 		ReportDeviceInfo.Platform = *proto.String(strings.TrimSpace(platform))
@@ -1339,7 +1341,7 @@ func SendMetricsProtobuf(ReportMetrics *zmet.ZMetricMsg,
 func findDisksPartitions() []string {
 	out, err := exec.Command("lsblk", "-nlo", "NAME").Output()
 	if err != nil {
-		log.Errorln(err)
+		log.Errorf("lsblk -nlo failed %s\n", err)
 		return nil
 	}
 	res := strings.Split(string(out), "\n")
@@ -1352,13 +1354,13 @@ func findDisksPartitions() []string {
 func partitionSize(part string) uint64 {
 	out, err := exec.Command("lsblk", "-nbdo", "SIZE", "/dev/"+part).Output()
 	if err != nil {
-		log.Errorln(err)
+		log.Errorf("lsblk -nbdo failed %s\n", err)
 		return 0
 	}
 	res := strings.Split(string(out), "\n")
 	val, err := strconv.ParseUint(res[0], 10, 64)
 	if err != nil {
-		log.Errorln(err)
+		log.Errorf("parseUint(%s) failed %s\n", res[0], err)
 		return 0
 	}
 	return val

@@ -108,7 +108,7 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, reqlen int64, b *b
 			req, err = http.NewRequest("GET", "https://"+url, nil)
 		}
 		if err != nil {
-			log.Errorln(err)
+			log.Errorf("NewRequest failed %s\n", err)
 			continue
 		}
 		if b != nil {
@@ -132,7 +132,7 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, reqlen int64, b *b
 
 		contents, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			log.Errorln(err)
+			log.Errorf("ReadAll failed %s\n", err)
 			continue
 		}
 		resplen := int64(len(contents))
