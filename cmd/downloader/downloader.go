@@ -514,8 +514,10 @@ func handleModify(ctx *downloaderContext, key string,
 		return
 	}
 
-	// XXX do work; look for refcnt -> 0 and delete; cancel any running
-	// download
+	log.Infof("handleModify(%v) RefCount %d to %d, Expired %v %s for %s\n",
+		status.Safename, status.RefCount, config.RefCount,
+		status.Expired, status.DownloadURL)
+
 	// If RefCount from zero to non-zero then do install
 	if status.RefCount == 0 && config.RefCount != 0 {
 		status.PendingModify = true
@@ -523,13 +525,16 @@ func handleModify(ctx *downloaderContext, key string,
 		handleCreate(ctx, status.ObjType, config, key)
 		status.RefCount = config.RefCount
 		status.LastUse = time.Now()
+		status.Expired = false
 		status.PendingModify = false
 		publishDownloaderStatus(ctx, status)
 	} else if status.RefCount != config.RefCount {
-		log.Infof("handleModify RefCount change %s from %d to %d\n",
-			config.DownloadURL, status.RefCount, config.RefCount)
 		status.RefCount = config.RefCount
 		status.LastUse = time.Now()
+		status.Expired = false
+		status.PendingModify = false
+		publishDownloaderStatus(ctx, status)
+	} else {
 		status.PendingModify = false
 		publishDownloaderStatus(ctx, status)
 	}
@@ -574,9 +579,9 @@ func deletefile(dirname string, status *types.DownloaderStatus) {
 func handleDelete(ctx *downloaderContext, key string,
 	status *types.DownloaderStatus) {
 
-	log.Infof("handleDelete(%v) objType %s for %s RefCount %d LastUse %v\n",
+	log.Infof("handleDelete(%v) objType %s for %s RefCount %d LastUse %v Expired %v\n",
 		status.Safename, status.ObjType, status.DownloadURL,
-		status.RefCount, status.LastUse)
+		status.RefCount, status.LastUse, status.Expired)
 
 	if status.ObjType == "" {
 		log.Fatalf("handleDelete: No ObjType for %s\n",
@@ -750,12 +755,9 @@ func gcObjects(ctx *downloaderContext) {
 					status.LastUse, key)
 				continue
 			}
-			log.Infof("gcObjects: removing status for %s\n", key)
-			if status.ObjType == "" {
-				log.Fatalf("gcObjects: No ObjType for %s\n",
-					key)
-			}
-			unpublishDownloaderStatus(ctx, &status)
+			log.Infof("gcObjects: expiring status for %s\n", key)
+			status.Expired = true
+			publishDownloaderStatus(ctx, &status)
 		}
 	}
 }

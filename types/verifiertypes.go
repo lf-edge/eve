@@ -60,6 +60,7 @@ type VerifyImageStatus struct {
 	Size          int64
 	RefCount      uint
 	LastUse       time.Time // When RefCount dropped to zero
+	Expired       bool      // Handshake to client
 }
 
 func (status VerifyImageStatus) Key() string {

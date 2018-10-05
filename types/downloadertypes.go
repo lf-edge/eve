@@ -56,6 +56,7 @@ type DownloaderStatus struct {
 	PendingDelete  bool
 	RefCount       uint      // Zero means not downloaded
 	LastUse        time.Time // When RefCount dropped to zero
+	Expired        bool      // Handshake to client
 	DownloadURL    string
 	UseFreeUplinks bool
 	ImageSha256    string  // sha256 of immutable image

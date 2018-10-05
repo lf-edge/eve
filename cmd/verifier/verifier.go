@@ -433,13 +433,10 @@ func gcVerifiedObjects(ctx *verifierContext) {
 					status.LastUse, key)
 				continue
 			}
-			log.Infof("gcVerifiedObjects: removing status for %s\n",
+			log.Infof("gcVerifiedObjects: expiring status for %s\n",
 				key)
-			if status.ObjType == "" {
-				log.Fatalf("gcVerifiedObjects: No ObjType for %s\n",
-					key)
-			}
-			unpublishVerifyImageStatus(ctx, &status)
+			status.Expired = true
+			publishVerifyImageStatus(ctx, &status)
 		}
 	}
 }
@@ -1011,18 +1008,20 @@ func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 
 	// Always update RefCount
 	if status.RefCount != config.RefCount {
-		log.Infof("handleModify RefCount change %s from %d to %d\n",
-			config.Name, status.RefCount, config.RefCount)
+		log.Infof("handleModify RefCount change %s from %d to %d Expired %v\n",
+			config.Name, status.RefCount, config.RefCount,
+			status.Expired)
 		status.RefCount = config.RefCount
+		status.Expired = false
 		changed = true
 	}
 
 	if status.RefCount == 0 {
-		// GC timer will clean up by deleting status
-		// Then user (zedmanager/zedagent) will delete config
+		// GC timer will clean up by marking status Expired
+		// and some point in time.
+		// Then user (zedmanager/zedagent) will delete config.
 		status.PendingModify = true
 		status.LastUse = time.Now()
-		publishVerifyImageStatus(ctx, status)
 		status.PendingModify = false
 		publishVerifyImageStatus(ctx, status)
 		log.Infof("handleModify done for %s\n", config.Name)
@@ -1051,9 +1050,9 @@ func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 
 func handleDelete(ctx *verifierContext, status *types.VerifyImageStatus) {
 
-	log.Infof("handleDelete(%v) objType %s refcount %d lastUse %v\n",
+	log.Infof("handleDelete(%v) objType %s refcount %d lastUse %v Expired %bv\n",
 		status.Safename, status.ObjType, status.RefCount,
-		status.LastUse)
+		status.LastUse, status.Expired)
 
 	if status.ObjType == "" {
 		log.Fatalf("handleDelete: No ObjType for %s\n",
