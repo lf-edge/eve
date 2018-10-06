@@ -1216,7 +1216,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 			olConfig.Network.String(),
 			config.UUIDandVersion, config.DisplayName)
 		log.Infof("handleCreate failed: %s\n", errStr)
-		addError(ctx, &status, "lookupNetworkObjectStatus",
+		addError(ctx, &status, "handleCreate overlay",
 			errors.New(errStr))
 		allNetworksExist = false
 	}
@@ -1230,7 +1230,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 			ulConfig.Network.String(),
 			config.UUIDandVersion, config.DisplayName)
 		log.Infof("handleCreate failed: %s\n", errStr)
-		addError(ctx, &status, "lookupNetworkObjectStatus",
+		addError(ctx, &status, "handleCreate underlay",
 			errors.New(errStr))
 		allNetworksExist = false
 	}
@@ -1289,7 +1289,14 @@ func handleCreate(ctx *zedrouterContext, key string,
 			errStr := fmt.Sprintf("no network status for %s",
 				olConfig.Network.String())
 			err := errors.New(errStr)
-			addError(ctx, &status, "lookupNetworkObjectStatus", err)
+			addError(ctx, &status, "handlecreate overlay", err)
+			continue
+		}
+		if netstatus.Error != "" {
+			log.Errorf("handleCreate sees network error %s\n",
+				netstatus.Error)
+			addError(ctx, &status, "netstatus.Error",
+				errors.New(netstatus.Error))
 			continue
 		}
 		bridgeNum := netstatus.BridgeNum
@@ -1464,7 +1471,14 @@ func handleCreate(ctx *zedrouterContext, key string,
 			errStr := fmt.Sprintf("no status for %s",
 				ulConfig.Network.String())
 			err := errors.New(errStr)
-			addError(ctx, &status, "lookupNetworkObjectStatus", err)
+			addError(ctx, &status, "handleCreate underlay", err)
+			continue
+		}
+		if netstatus.Error != "" {
+			log.Errorf("handleCreate sees network error %s\n",
+				netstatus.Error)
+			addError(ctx, &status, "netstatus.Error",
+				errors.New(netstatus.Error))
 			continue
 		}
 		bridgeName := netstatus.BridgeName
@@ -1795,9 +1809,10 @@ func handleModify(ctx *zedrouterContext, key string,
 			errStr := fmt.Sprintf("no network status for %s",
 				olConfig.Network.String())
 			err := errors.New(errStr)
-			addError(ctx, status, "lookupNetworkObjectStatus", err)
+			addError(ctx, status, "handleModify overlay", err)
 			continue
 		}
+		// We ignore any errors in netstatus
 
 		// XXX could there be a change to AssignedIPv6Address aka EID?
 		// If so updateACLConfiglet needs to know old and new
@@ -1879,9 +1894,11 @@ func handleModify(ctx *zedrouterContext, key string,
 			errStr := fmt.Sprintf("no network status for %s",
 				ulConfig.Network.String())
 			err := errors.New(errStr)
-			addError(ctx, status, "lookupNetworkObjectStatus", err)
+			addError(ctx, status, "handleModify underlay", err)
 			continue
 		}
+		// We ignore any errors in netstatus
+
 		// XXX could there be a change to AssignedIPAddress?
 		// If so updateNetworkACLConfiglet needs to know old and new
 		err := updateACLConfiglet(bridgeName, ulStatus.Vif, false,
@@ -2103,9 +2120,10 @@ func handleDelete(ctx *zedrouterContext, key string,
 			errStr := fmt.Sprintf("no network status for %s",
 				olStatus.Network.String())
 			err := errors.New(errStr)
-			addError(ctx, status, "lookupNetworkObjectStatus", err)
+			addError(ctx, status, "handleDelete overlay", err)
 			continue
 		}
+		// We ignore any errors in netstatus
 
 		removehostDnsmasq(bridgeName, olStatus.Mac,
 			olStatus.EID.String())
@@ -2185,9 +2203,10 @@ func handleDelete(ctx *zedrouterContext, key string,
 			errStr := fmt.Sprintf("no network status for %s",
 				ulStatus.Network.String())
 			err := errors.New(errStr)
-			addError(ctx, status, "lookupNetworkObjectStatus", err)
+			addError(ctx, status, "handleDelete underlay", err)
 			continue
 		}
+		// We ignore any errors in netstatus
 
 		if ulStatus.Mac != "" {
 			// XXX or change type of VifInfo.Mac?
