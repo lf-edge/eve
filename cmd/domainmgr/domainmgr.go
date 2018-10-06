@@ -314,7 +314,7 @@ func addImageStatus(ctx *domainContext, fileLocation string) {
 	}
 }
 
-// Decrement RefCount but leave published; update LastUse
+// Remove from ImageStatus since fileLocation has been deleted
 func delImageStatus(ctx *domainContext, fileLocation string) {
 
 	filename := filepath.Base(fileLocation)
@@ -327,12 +327,7 @@ func delImageStatus(ctx *domainContext, fileLocation string) {
 	status := cast.CastImageStatus(st)
 	log.Infof("delImageStatus(%s) found RefCount %d LastUse %v\n",
 		filename, status.RefCount, status.LastUse)
-
-	status.RefCount -= 1
-	status.LastUse = time.Now()
-	log.Infof("delImageStatus(%s) set RefCount %d LastUse %v\n",
-		filename, status.RefCount, status.LastUse)
-	publishImageStatus(ctx, &status)
+	unpublishImageStatus(ctx, &status)
 }
 
 // Periodic garbage collection looking at RefCount=0 files
