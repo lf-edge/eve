@@ -275,6 +275,7 @@ func checkStorageDownloadStatus(ctx *zedagentContext, objType string,
 			dst, err := lookupDatastoreConfig(ctx, sc.DatastoreId,
 				sc.Name)
 			if err != nil {
+				// XXX DatastoreConfig missing - wait?
 				ss.Error = fmt.Sprintf("%v", err)
 				ret.AllErrors = appendError(ret.AllErrors, "datastore",
 					ss.Error)
