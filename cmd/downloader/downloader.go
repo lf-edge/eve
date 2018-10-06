@@ -719,7 +719,7 @@ func clearInProgressDownloadDirs(objTypes []string) {
 // increase is underway.
 // XXX Note that this runs concurrently with the handler.
 func gcObjects(ctx *downloaderContext) {
-	log.Infof("gcObjects()\n")
+	log.Debugf("gcObjects()\n")
 	publications := []*pubsub.Publication{
 		ctx.pubAppImgStatus,
 		ctx.pubBaseOsStatus,
@@ -735,13 +735,13 @@ func gcObjects(ctx *downloaderContext) {
 				continue
 			}
 			if status.RefCount != 0 {
-				log.Infof("gcObjects: skipping RefCount %d: %s\n",
+				log.Debugf("gcObjects: skipping RefCount %d: %s\n",
 					status.RefCount, key)
 				continue
 			}
 			timePassed := time.Since(status.LastUse)
 			if timePassed > downloadGCTime {
-				log.Infof("gcObjects: skipping recently used %s remains %d seconds\n",
+				log.Debugf("gcObjects: skipping recently used %s remains %d seconds\n",
 					key,
 					(timePassed-downloadGCTime)/time.Second)
 				continue

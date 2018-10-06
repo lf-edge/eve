@@ -333,7 +333,7 @@ func delImageStatus(ctx *domainContext, fileLocation string) {
 // Periodic garbage collection looking at RefCount=0 files
 func gcObjects(ctx *domainContext, dirName string) {
 
-	log.Infof("gcObjects()\n")
+	log.Debugf("gcObjects()\n")
 
 	pub := ctx.pubImageStatus
 	items := pub.GetAll()
@@ -348,27 +348,25 @@ func gcObjects(ctx *domainContext, dirName string) {
 		// by a DomainConfig
 		filelocation := status.FileLocation
 		if findActiveFileLocation(ctx, filelocation) {
-			log.Infoln("gcObjects skipping Active file",
+			log.Debugln("gcObjects skipping Active file",
 				filelocation)
 			status.LastUse = time.Now()
 			publishImageStatus(ctx, &status)
 			continue
 		}
 		if status.RefCount != 0 {
-			log.Infof("gcObjects: skipping RefCount %d: %s\n",
+			log.Debugf("gcObjects: skipping RefCount %d: %s\n",
 				status.RefCount, key)
 			continue
 		}
 		timePassed := time.Since(status.LastUse)
 		if timePassed > vdiskGCTime {
-			log.Infof("gcObjects: skipping recently used %s remains %d seconds\n",
+			log.Debugf("gcObjects: skipping recently used %s remains %d seconds\n",
 				key, (timePassed-vdiskGCTime)/time.Second)
 			continue
 		}
-		log.Infof("gcObjects: LastUse %v now %v: %s\n",
-			status.LastUse, time.Now(), key)
-
-		log.Infoln("gcObjects removing", filelocation)
+		log.Infof("gcObjects: removing %s LastUse %v now %v: %s\n",
+			filelocation, status.LastUse, time.Now(), key)
 		if err := os.Remove(filelocation); err != nil {
 			log.Errorln(err)
 		}
@@ -378,7 +376,7 @@ func gcObjects(ctx *domainContext, dirName string) {
 
 // Check if the filename is used as ActiveFileLocation
 func findActiveFileLocation(ctx *domainContext, filename string) bool {
-	log.Infof("findActiveFileLocation(%v)\n", filename)
+	log.Debugf("findActiveFileLocation(%v)\n", filename)
 	pub := ctx.pubDomainStatus
 	items := pub.GetAll()
 	for key, st := range items {

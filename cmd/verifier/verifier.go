@@ -396,7 +396,7 @@ func clearInProgressDownloadDirs(objTypes []string) {
 // increase is underway.
 // XXX Note that this runs concurrently with the handler.
 func gcVerifiedObjects(ctx *verifierContext) {
-	log.Infof("gcVerifiedObjects()\n")
+	log.Debugf("gcVerifiedObjects()\n")
 	publications := []*pubsub.Publication{
 		ctx.pubAppImgStatus,
 		ctx.pubBaseOsStatus,
@@ -411,13 +411,13 @@ func gcVerifiedObjects(ctx *verifierContext) {
 				continue
 			}
 			if status.RefCount != 0 {
-				log.Infof("gcVerifiedObjects: skipping RefCount %d: %s\n",
+				log.Debugf("gcVerifiedObjects: skipping RefCount %d: %s\n",
 					status.RefCount, key)
 				continue
 			}
 			timePassed := time.Since(status.LastUse)
 			if timePassed > downloadGCTime {
-				log.Infof("gcverifiedObjects: skipping recently used %s remains %d seconds\n",
+				log.Debugf("gcverifiedObjects: skipping recently used %s remains %d seconds\n",
 					key,
 					(timePassed-downloadGCTime)/time.Second)
 				continue
