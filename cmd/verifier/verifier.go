@@ -415,14 +415,15 @@ func gcVerifiedObjects(ctx *verifierContext) {
 					status.RefCount, key)
 				continue
 			}
-			expiry := status.LastUse.Add(downloadGCTime)
-			if expiry.After(time.Now()) {
-				log.Infof("gcVerifiedObjects: skipping recently used %v: %s\n",
-					status.LastUse, key)
+			timePassed := time.Since(status.LastUse)
+			if timePassed > downloadGCTime {
+				log.Infof("gcverifiedObjects: skipping recently used %s remains %d seconds\n",
+					key,
+					(timePassed-downloadGCTime)/time.Second)
 				continue
 			}
-			log.Infof("gcVerifiedObjects: expiring status for %s; LastUse %v expiry %v now %v\n",
-				key, status.LastUse, expiry, time.Now())
+			log.Infof("gcVerifiedObjects: expiring status for %s; LastUse %v now %v\n",
+				key, status.LastUse, time.Now())
 			status.Expired = true
 			publishVerifyImageStatus(ctx, &status)
 		}

@@ -364,14 +364,14 @@ func gcObjects(ctx *domainContext, dirName string) {
 				status.RefCount, key)
 			continue
 		}
-		expiry := status.LastUse.Add(vdiskGCTime)
-		if expiry.After(time.Now()) {
-			log.Infof("gcObjects: skipping recently used %v: %s\n",
-				status.LastUse, key)
+		timePassed := time.Since(status.LastUse)
+		if timePassed > vdiskGCTime {
+			log.Infof("gcObjects: skipping recently used %s remains %d seconds\n",
+				key, (timePassed-vdiskGCTime)/time.Second)
 			continue
 		}
-		log.Infof("gcObjects: LastUse %v expiry %v now %v: %s\n",
-			status.LastUse, expiry, time.Now(), key)
+		log.Infof("gcObjects: LastUse %v now %v: %s\n",
+			status.LastUse, time.Now(), key)
 
 		log.Infoln("gcObjects removing", filelocation)
 		if err := os.Remove(filelocation); err != nil {
