@@ -13,7 +13,6 @@ import (
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/api/zconfig"
-	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
@@ -394,16 +393,7 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 		if userData != "" {
 			log.Debugf("Received cloud-init userData %s\n",
 				userData)
-		} else {
-			ctx := getconfigCtx.zedagentCtx
-			test, ok := agentlog.GetXXXTest(ctx.subGlobalConfig)
-			if ok && test {
-				userData = "I2Nsb3VkLWNvbmZpZwpkYXRhc291cmNlOgogICBOb0Nsb3VkOgogICAgICBzZWVkZnJvbTogTm9uZQogICAgICBmc19sYWJlbDogY2lkYXRhCnVzZXJzOgogLSBuYW1lOiB1YnVudHUKICAgbG9jay1wYXNzd2Q6IGZhbHNlCiAgIHN1ZG86IEFMTD0oQUxMKSBOT1BBU1NXRDpBTEwKICAgcGFzc3dkOiAkMSRTYWx0U2FsdCRjeGNoeHFkRTk3cHl2Z1ByVS9pUkMvCiAtIG5hbWU6IHBwYWwKICAgZ2Vjb3M6IHBwYWwKICAgbG9jay1wYXNzd2Q6IGZhbHNlCiAgIHN1ZG86IEFMTD0oQUxMKSBOT1BBU1NXRDpBTEwKICAgc3NoLWF1dGhvcml6ZWQta2F5czoKICAgIC0gc3NoLXJzYSBBQUFBQjNOemFDMXljMkVBQUFBREFRQUJBQUFDQVFET045NjRDZURKN0VmSUdXdllGMVBMWktoZGVnL1VTSkpKVjl1QUhrUlZpU0lHVEVmcWJLQUdOSXBmVk5PaTlNKzNCVSt6YkV0V0dVWk5hSmYvZ0FSSTRLVTRISmNxY05CVGIrUUk1STZ0WStmM0QyeURhSmNDdGg0c0JIUzZmRjlZemRMeVlON3JUb29FZ2RJL0lvMll3amlGUGVHZS9aR0FmZHFYeUk2TnZ1eFlDWElzejg0VzFqbWlxQUc4YWVITUNsL3pSaW94bVc3cFcxT3VQMTdpRGx1NWo5NXNKU2tsbzA3WmNKVjZtK1dLWmxscjhTakFOL2JpeVhPNG5Mb00zdDEwYVV5VDMwTHdmazFHQkJMeEFWOE13SXpqSWcxQlQwQmJqYlEwSm9RZXRXVUxNUTJNK3NabjNRUkNmMEloMUpVeTFxcjA3KytUZ1VsMUJFQzBmL1VXd2xqbmxLZDdZWG0rVlNldjZINXU4cjhnc3NlWXdKeXI1NlJoUTM4UjJLZTFxUDJJWGc3L09kMzNDUjBsVG9MbWtrRXh2azc4UXBXdVQ1Yk9ZUzY5Q1dlYWRob0dGZndNZ1Rham02V2U0UUFTd055cHRXVFNBM3BkODluVmRQTjdTUFFTaXJSMEdoTE9iY2lIbGtlSHNFakFKd2VGc2lPSDZEd0RhamJDa214T084ZkhmcFJ2ZDAwOHMwck5UTncrUFZza21vaVp4ck05M1dXNHBCUmNCTkFkWjBwQ0hadUg2V2FSQUpVTXhqRkpWVVZmL3E4bEdxQ0sxbjZ0RlNRWUovV0JhSUx6cndQa0gwSHRnYjZSTGt4aDMwWHNNblhlcHdUcU1jSlVibjBWc2psb1VpbEUxZGNIQkp3Nkt5MzBSS01hK0tOR1h6ZmYwOXpaQlE9PSBwcGFsQHplZGVkYS5jb20KZmluYWxfbWVzc2FnZTogIlRoZSBzeXN0ZW0gaXMgZmluYWxseSB1cCwgYWZ0ZXIgJFVQVElNRSBzZWNvbmRzIgo="
-				log.Debugf("XXX testing cloud-init userData %s\n",
-					userData)
-			}
 		}
-
 		appInstance.CloudInitUserData = userData
 		// get the certs for image sha verification
 		certInstance := getCertObjects(appInstance.UUIDandVersion,
