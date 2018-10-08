@@ -101,7 +101,9 @@ type AppInstanceStatus struct {
 	PurgeInprogress     Inprogress
 	// Mininum state across all steps and all StorageStatus.
 	// Error* set implies error.
-	State SwState
+	State            SwState
+	MissingDatastore bool // If some DatastoreId not found
+	MissingNetwork   bool // If some Network UUID not found
 	// All error strngs across all steps and all StorageStatus
 	Error     string
 	ErrorTime time.Time
@@ -194,6 +196,7 @@ type StorageStatus struct {
 	HasVerifierRef     bool    // Reference against verifier to clean up
 	ActiveFileLocation string  // Location of filestystem
 	FinalObjDir        string  // Installation dir; may differ from verified
+	MissingDatastore   bool    // If DatastoreId not found
 	Error              string  // Download or verify error
 	ErrorTime          time.Time
 }
