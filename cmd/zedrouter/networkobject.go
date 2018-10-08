@@ -60,6 +60,9 @@ func handleNetworkObjectCreate(ctx *zedrouterContext, key string, config types.N
 	}
 	status.PendingAdd = false
 	publishNetworkObjectStatus(ctx, &status)
+	// Hooks for updating dependent objects
+	checkAndRecreateAppNetwork(ctx, config.UUID)
+	checkAndRecreateService(ctx, config.UUID)
 	log.Infof("handleNetworkObjectCreate(%s) done\n", key)
 }
 

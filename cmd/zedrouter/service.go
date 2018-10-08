@@ -209,9 +209,13 @@ func doServiceActivate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	// We must have an existing AppLink to activate
 	netstatus := lookupNetworkObjectStatus(ctx, config.AppLink.String())
 	if netstatus == nil {
+		// Remember to check when NetworkObjects are added
+		// XXX return error or not?
+		status.MissingNetwork = true
 		return errors.New(fmt.Sprintf("No AppLink %s for service %s",
 			config.AppLink.String(), config.UUID))
 	}
+	status.MissingNetwork = false
 	if netstatus.Error != "" {
 		errStr := fmt.Sprintf("AppLink %s has error %s",
 			config.AppLink.String(), netstatus.Error)
@@ -254,6 +258,50 @@ func doServiceActivate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	return err
 }
 
+// Called when a NetworkObject is added
+// Walk all NetworkServiceStatus looking for MissingNetwork, then
+// check if network UUID is the AppLink
+func checkAndRecreateService(ctx *zedrouterContext, network uuid.UUID) {
+
+	log.Infof("checlAndRecreateServer(%s)\n", network.String())
+	pub := ctx.pubNetworkServiceStatus
+	items := pub.GetAll()
+	for _, st := range items {
+		status := cast.CastNetworkServiceStatus(st)
+		if !status.MissingNetwork {
+			continue
+		}
+		if status.UUID != network {
+			continue
+		}
+		log.Infof("checkAndRecreateService(%s) missing for %s\n",
+			network.String(), status.Key())
+
+		config := lookupNetworkServiceConfig(ctx, status.Key())
+		if config == nil {
+			log.Warnf("checkAndRecreateService(%s) no config for %s\n",
+				network.String(), status.Key())
+			continue
+		}
+		if !config.Activate {
+			continue
+		}
+		log.Infof("checkAndRecreateService(%s) reactivate for %s\n",
+			network.String(), status.Key())
+		err := doServiceActivate(ctx, *config, &status)
+		if err != nil {
+			log.Infof("checkAndRecreateService srv %s failed %s\n",
+				status.Key(), err)
+			status.Error = err.Error()
+			status.ErrorTime = time.Now()
+		} else {
+			status.Activated = true
+			status.MissingNetwork = false
+		}
+		pub.Publish(status.Key(), status)
+	}
+}
+
 func validateAdapter(adapter string, allowUplink bool) error {
 	if adapter == "" {
 		errStr := fmt.Sprintf("Adapter not specified")
@@ -287,10 +335,12 @@ func doServiceInactivate(ctx *zedrouterContext,
 	// We must have an existing AppLink to activate
 	netstatus := lookupNetworkObjectStatus(ctx, status.AppLink.String())
 	if netstatus == nil {
+		status.MissingNetwork = true
 		// Should have been caught at time of activate
 		log.Infof("No AppLink for %s", status.Key())
 		return
 	}
+	status.MissingNetwork = false
 
 	log.Infof("doServiceInactivate found NetworkObjectStatus %s\n",
 		netstatus.Key())
@@ -536,8 +586,11 @@ func lispCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	// for IPv4 prefix also.
 	netstatus := lookupNetworkObjectStatus(ctx, config.AppLink.String())
 	if netstatus == nil {
+		// XXX return error or not?
+		status.MissingNetwork = true
 		return errors.New(fmt.Sprintf("No AppLink for %s", config.UUID))
 	}
+	status.MissingNetwork = false
 	if netstatus.Error != "" {
 		errStr := fmt.Sprintf("AppLink %s has error %s",
 			config.AppLink.String(), netstatus.Error)
@@ -651,10 +704,12 @@ func lispDelete(ctx *zedrouterContext, status *types.NetworkServiceStatus) {
 	// We will have to bring them together somehow to clear the lisp configlets, ACLs etc.
 	netstatus := lookupNetworkObjectStatus(ctx, status.AppLink.String())
 	if netstatus == nil {
+		status.MissingNetwork = true
 		// Should have been caught at time of activate
 		log.Infof("No AppLink for %s", status.Key())
 		return
 	}
+	status.MissingNetwork = false
 	lispInactivate(ctx, status, netstatus)
 
 	log.Infof("lispDelete(%s)\n", status.DisplayName)
