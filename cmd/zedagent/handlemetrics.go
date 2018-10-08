@@ -1341,7 +1341,7 @@ func SendMetricsProtobuf(ReportMetrics *zmet.ZMetricMsg,
 func findDisksPartitions() []string {
 	out, err := exec.Command("lsblk", "-nlo", "NAME").Output()
 	if err != nil {
-		log.Errorf("lsblk -nlo failed %s\n", err)
+		log.Errorf("lsblk -nlo NAME failed %s\n", err)
 		return nil
 	}
 	res := strings.Split(string(out), "\n")
@@ -1354,7 +1354,7 @@ func findDisksPartitions() []string {
 func partitionSize(part string) uint64 {
 	out, err := exec.Command("lsblk", "-nbdo", "SIZE", "/dev/"+part).Output()
 	if err != nil {
-		log.Errorf("lsblk -nbdo failed %s\n", err)
+		log.Errorf("lsblk -nbdo %s failed %s\n", "/dev/"+part, err)
 		return 0
 	}
 	res := strings.Split(string(out), "\n")
