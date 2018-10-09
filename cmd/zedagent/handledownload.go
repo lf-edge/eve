@@ -225,7 +225,7 @@ func checkStorageDownloadStatus(ctx *zedagentContext, objType string,
 		// Sanity check that length isn't zero
 		// XXX other sanity checks?
 		// Only meaningful for certObj
-		if ss.FinalObjDir != "" {
+		if objType == certObj && ss.FinalObjDir != "" {
 			dstFilename := ss.FinalObjDir + "/" + types.SafenameToFilename(safename)
 			st, err := os.Stat(dstFilename)
 			if err == nil && st.Size() != 0 {
