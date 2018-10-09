@@ -100,6 +100,11 @@ func updateVerifierStatus(ctx *zedagentContext,
 	switch status.ObjType {
 	case baseOsObj:
 		// break
+	case appImgObj:
+		// We subscribe to get metrics about disk usage
+		log.Debugf("updateVerifierStatus for %s, ignoring objType %s\n",
+			key, objType)
+		return
 	default:
 		log.Errorf("updateVerifierStatus for %s, unsupported objType %s\n",
 			key, objType)
