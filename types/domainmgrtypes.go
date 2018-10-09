@@ -94,6 +94,7 @@ type DomainStatus struct {
 	IoAdapterList      []IoAdapter
 	VirtualizationMode VmMode
 	EnableVnc          bool
+	TriedCount         int
 	LastErr            string // Xen error
 	LastErrTime        time.Time
 }
