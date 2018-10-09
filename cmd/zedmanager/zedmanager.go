@@ -20,6 +20,7 @@ import (
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"os"
+	"time"
 )
 
 const (
@@ -780,6 +781,13 @@ func checkAndRecreateAppInstance(ctx *zedmanagerContext, datastore uuid.UUID) {
 		}
 		log.Infof("checkAndRecreateAppInstance(%s) recreating for %s\n",
 			datastore.String(), status.DisplayName)
+		if status.Error != "" {
+			log.Infof("checkAndRecreateAppInstance(%s) remove error %s for %s\n",
+				datastore.String(), status.Error,
+				status.DisplayName)
+			status.Error = ""
+			status.ErrorTime = time.Time{}
+		}
 		handleCreate2(ctx, *config, status)
 	}
 }

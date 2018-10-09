@@ -288,6 +288,12 @@ func checkAndRecreateService(ctx *zedrouterContext, network uuid.UUID) {
 		}
 		log.Infof("checkAndRecreateService(%s) reactivate for %s\n",
 			network.String(), status.Key())
+		if status.Error != "" {
+			log.Infof("checkAndRecreateService(%s) remove error %s for %s\n",
+				network.String(), status.Error, status.Key())
+			status.Error = ""
+			status.ErrorTime = time.Time{}
+		}
 		err := doServiceActivate(ctx, *config, &status)
 		if err != nil {
 			log.Infof("checkAndRecreateService srv %s failed %s\n",

@@ -9,6 +9,7 @@ import (
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/cast"
+	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"time"
 )
@@ -207,7 +208,9 @@ func doUpdate(ctx *zedmanagerContext, uuidStr string,
 			if err != nil {
 				log.Errorf("Error from MaybeAddDomainConfig for %s: %s\n",
 					uuidStr, err)
+				status.ErrorSource = pubsub.TypeToName(types.DomainStatus{})
 				status.Error = fmt.Sprintf("%s", err)
+				status.ErrorSource = pubsub.TypeToName(types.DomainStatus{})
 				status.ErrorTime = time.Now()
 				changed = true
 			}
@@ -228,6 +231,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 	log.Infof("doInstall for %s\n", uuidStr)
 	minState := types.MAXSTATE
 	allErrors := ""
+	errorSource := ""
 	var errorTime time.Time
 	changed := false
 
@@ -305,6 +309,8 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 				ss.MissingDatastore = true
 				status.MissingDatastore = true
 				ss.Error = fmt.Sprintf("%v", err)
+				ss.ErrorSource = pubsub.TypeToName(types.DownloaderStatus{})
+				errorSource = ss.ErrorSource
 				allErrors = appendError(allErrors, "datastore",
 					ss.Error)
 				ss.ErrorTime = time.Now()
@@ -345,12 +351,19 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 			log.Errorf("Received error from downloader for %s: %s\n",
 				safename, ds.LastErr)
 			ss.Error = ds.LastErr
+			ss.ErrorSource = pubsub.TypeToName(types.DownloaderStatus{})
+			errorSource = ss.ErrorSource
 			allErrors = appendError(allErrors, "downloader",
 				ds.LastErr)
 			ss.ErrorTime = ds.LastErrTime
 			errorTime = ds.LastErrTime
 			changed = true
 			continue
+		} else if ss.ErrorSource == pubsub.TypeToName(types.DownloaderStatus{}) {
+			log.Infof("Clearing downloader error %s\n", ss.Error)
+			ss.Error = ""
+			ss.ErrorSource = ""
+			ss.ErrorTime = time.Time{}
 		}
 		switch ds.State {
 		case types.INITIAL:
@@ -387,6 +400,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		status.State = minState
 	}
 	status.Error = allErrors
+	status.ErrorSource = errorSource
 	status.ErrorTime = errorTime
 	if allErrors != "" {
 		log.Errorf("Download error for %s: %s\n", uuidStr, allErrors)
@@ -433,12 +447,19 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 			log.Errorf("Received error from verifier for %s: %s\n",
 				safename, vs.LastErr)
 			ss.Error = vs.LastErr
+			ss.ErrorSource = pubsub.TypeToName(types.VerifyImageStatus{})
+			errorSource = ss.ErrorSource
 			allErrors = appendError(allErrors, "verifier",
 				vs.LastErr)
 			ss.ErrorTime = vs.LastErrTime
 			errorTime = vs.LastErrTime
 			changed = true
 			continue
+		} else if ss.ErrorSource == pubsub.TypeToName(types.VerifyImageStatus{}) {
+			log.Infof("Clearing verifier error %s\n", ss.Error)
+			ss.Error = ""
+			ss.ErrorSource = ""
+			ss.ErrorTime = time.Time{}
 		}
 		switch vs.State {
 		case types.INITIAL:
@@ -461,6 +482,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		status.State = minState
 	}
 	status.Error = allErrors
+	status.ErrorSource = errorSource
 	status.ErrorTime = errorTime
 	if allErrors != "" {
 		log.Errorf("Verify error for %s: %s\n", uuidStr, allErrors)
@@ -597,9 +619,15 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		log.Errorf("Received error from zedrouter for %s: %s\n",
 			uuidStr, ns.Error)
 		status.Error = ns.Error
+		status.ErrorSource = pubsub.TypeToName(types.AppNetworkStatus{})
 		status.ErrorTime = ns.ErrorTime
 		changed = true
 		return changed
+	} else if status.ErrorSource == pubsub.TypeToName(types.AppNetworkStatus{}) {
+		log.Infof("Clearing zedrouter error %s\n", status.Error)
+		status.Error = ""
+		status.ErrorSource = ""
+		status.ErrorTime = time.Time{}
 	}
 	log.Debugf("Done with AppNetworkStatus for %s\n", uuidStr)
 
@@ -609,6 +637,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		log.Errorf("Error from MaybeAddDomainConfig for %s: %s\n",
 			uuidStr, err)
 		status.Error = fmt.Sprintf("%s", err)
+		status.ErrorSource = pubsub.TypeToName(types.DomainStatus{})
 		status.ErrorTime = time.Now()
 		changed = true
 		log.Infof("Waiting for DomainStatus Activated for %s\n",
@@ -627,8 +656,14 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		log.Errorf("Received error from domainmgr for %s: %s\n",
 			uuidStr, ds.LastErr)
 		status.Error = ds.LastErr
+		status.ErrorSource = pubsub.TypeToName(types.DomainStatus{})
 		status.ErrorTime = ds.LastErrTime
 		changed = true
+	} else if status.ErrorSource == pubsub.TypeToName(types.DomainStatus{}) {
+		log.Infof("Clearing domainmgr error %s\n", status.Error)
+		status.Error = ""
+		status.ErrorSource = ""
+		status.ErrorTime = time.Time{}
 	}
 	if ds.State != status.State {
 		log.Infof("Set State from DomainStatus from %d to %d\n",
@@ -774,8 +809,15 @@ func doInactivate(ctx *zedmanagerContext, uuidStr string,
 				log.Errorf("Received error from domainmgr for %s: %s\n",
 					uuidStr, ds.LastErr)
 				status.Error = ds.LastErr
+				status.ErrorSource = pubsub.TypeToName(types.DomainStatus{})
 				status.ErrorTime = ds.LastErrTime
 				changed = true
+			} else if status.ErrorSource == pubsub.TypeToName(types.DomainStatus{}) {
+				log.Infof("Clearing domainmgr error %s\n",
+					status.Error)
+				status.Error = ""
+				status.ErrorSource = ""
+				status.ErrorTime = time.Time{}
 			}
 		}
 		return changed
@@ -794,8 +836,14 @@ func doInactivate(ctx *zedmanagerContext, uuidStr string,
 			log.Errorf("Received error from zedrouter for %s: %s\n",
 				uuidStr, ns.Error)
 			status.Error = ns.Error
+			status.ErrorSource = pubsub.TypeToName(types.AppNetworkStatus{})
 			status.ErrorTime = ns.ErrorTime
 			changed = true
+		} else if status.ErrorSource == pubsub.TypeToName(types.AppNetworkStatus{}) {
+			log.Infof("Clearing zedrouter error %s\n", status.Error)
+			status.Error = ""
+			status.ErrorSource = ""
+			status.ErrorTime = time.Time{}
 		}
 		return changed
 	}
@@ -921,9 +969,15 @@ func doInactivateHalt(ctx *zedmanagerContext, uuidStr string,
 		log.Errorf("Received error from zedrouter for %s: %s\n",
 			uuidStr, ns.Error)
 		status.Error = ns.Error
+		status.ErrorSource = pubsub.TypeToName(types.AppNetworkStatus{})
 		status.ErrorTime = ns.ErrorTime
 		changed = true
 		return changed
+	} else if status.ErrorSource == pubsub.TypeToName(types.AppNetworkStatus{}) {
+		log.Infof("Clearing zedrouter error %s\n", status.Error)
+		status.Error = ""
+		status.ErrorSource = ""
+		status.ErrorTime = time.Time{}
 	}
 	log.Debugf("Done with AppNetworkStatus for %s\n", uuidStr)
 
@@ -956,8 +1010,14 @@ func doInactivateHalt(ctx *zedmanagerContext, uuidStr string,
 		log.Errorf("Received error from domainmgr for %s: %s\n",
 			uuidStr, ds.LastErr)
 		status.Error = ds.LastErr
+		status.ErrorSource = pubsub.TypeToName(types.DomainStatus{})
 		status.ErrorTime = ds.LastErrTime
 		changed = true
+	} else if status.ErrorSource == pubsub.TypeToName(types.DomainStatus{}) {
+		log.Infof("Clearing domainmgr error %s\n", status.Error)
+		status.Error = ""
+		status.ErrorSource = ""
+		status.ErrorTime = time.Time{}
 	}
 	// XXX network is still around! Need to call doInactivate in doRemove?
 	// XXX fix assymetry

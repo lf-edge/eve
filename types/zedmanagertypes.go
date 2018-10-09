@@ -104,9 +104,10 @@ type AppInstanceStatus struct {
 	State            SwState
 	MissingDatastore bool // If some DatastoreId not found
 	MissingNetwork   bool // If some Network UUID not found
-	// All error strngs across all steps and all StorageStatus
-	Error     string
-	ErrorTime time.Time
+	// All error strings across all steps and all StorageStatus
+	ErrorSource string
+	Error       string
+	ErrorTime   time.Time
 }
 
 // Track more complicated workflows
@@ -198,6 +199,7 @@ type StorageStatus struct {
 	FinalObjDir        string  // Installation dir; may differ from verified
 	MissingDatastore   bool    // If DatastoreId not found
 	Error              string  // Download or verify error
+	ErrorSource        string
 	ErrorTime          time.Time
 }
 

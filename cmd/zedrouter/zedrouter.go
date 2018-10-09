@@ -1629,11 +1629,19 @@ func checkAndRecreateAppNetwork(ctx *zedrouterContext, network uuid.UUID) {
 				network.String(), i, status.DisplayName)
 			matched = true
 		}
-		if matched {
-			log.Infof("checkAndRecreateAppNetwork(%s) recreating for %s\n",
-				network.String(), status.DisplayName)
-			handleCreate2(ctx, *config, status)
+		if !matched {
+			continue
 		}
+		log.Infof("checkAndRecreateAppNetwork(%s) recreating for %s\n",
+			network.String(), status.DisplayName)
+		if status.Error != "" {
+			log.Infof("checkAndRecreateAppNetwork(%s) remove error %s for %s\n",
+				network.String(), status.Error,
+				status.DisplayName)
+			status.Error = ""
+			status.ErrorTime = time.Time{}
+		}
+		handleCreate2(ctx, *config, status)
 	}
 }
 

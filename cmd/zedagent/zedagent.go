@@ -1176,6 +1176,13 @@ func checkAndRecreateBaseOs(ctx *zedagentContext, datastore uuid.UUID) {
 		}
 		log.Infof("checkAndRecreateBaseOs(%s) recreating for %s\n",
 			datastore.String(), status.BaseOsVersion)
+		if status.Error != "" {
+			log.Infof("checkAndRecreateBaseOs(%s) remove error %s for %s\n",
+				datastore.String(), status.Error,
+				status.BaseOsVersion)
+			status.Error = ""
+			status.ErrorTime = time.Time{}
+		}
 		handleBaseOsCreate2(ctx, *config, status)
 	}
 }
