@@ -301,6 +301,9 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 			dst, err := lookupDatastoreConfig(ctx, sc.DatastoreId,
 				sc.Name)
 			if err != nil {
+				// Remember to check when Datastores are added
+				ss.MissingDatastore = true
+				status.MissingDatastore = true
 				ss.Error = fmt.Sprintf("%v", err)
 				allErrors = appendError(allErrors, "datastore",
 					ss.Error)
@@ -308,6 +311,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 				changed = true
 				continue
 			}
+			ss.MissingDatastore = false
 			AddOrRefcountDownloaderConfig(ctx, safename, &sc, dst)
 			ss.HasDownloaderRef = true
 			changed = true
@@ -367,6 +371,11 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 			}
 		}
 	}
+	if status.MissingDatastore {
+		status.MissingDatastore = false
+		changed = true
+	}
+
 	if minState == types.MAXSTATE {
 		// Odd; no StorageConfig in list
 		minState = types.DOWNLOADED
