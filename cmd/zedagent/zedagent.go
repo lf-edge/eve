@@ -934,7 +934,8 @@ func handleBaseOsModify(ctxArg interface{}, key string,
 	uuidStr := config.Key()
 	ctx := ctxArg.(*zedagentContext)
 
-	log.Infof("handleBaseOsModify for %s\n", status.BaseOsVersion)
+	log.Infof("handleBaseOsModify for %s Activate %v\n",
+		config.BaseOsVersion, config.Activate)
 	if config.UUIDandVersion.Version == status.UUIDandVersion.Version &&
 		config.Activate == status.Activated {
 		log.Infof("Same version %v for %s\n",

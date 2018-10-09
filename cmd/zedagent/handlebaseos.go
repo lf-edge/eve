@@ -138,8 +138,8 @@ func baseOsHandleStatusUpdate(ctx *zedagentContext, config *types.BaseOsConfig,
 func doBaseOsStatusUpdate(ctx *zedagentContext, uuidStr string,
 	config types.BaseOsConfig, status *types.BaseOsStatus) bool {
 
-	log.Infof("doBaseOsStatusUpdate(%s) for %s\n",
-		config.BaseOsVersion, uuidStr)
+	log.Infof("doBaseOsStatusUpdate(%s) Activate %v for %s\n",
+		config.BaseOsVersion, config.Activate, uuidStr)
 
 	changed := false
 
