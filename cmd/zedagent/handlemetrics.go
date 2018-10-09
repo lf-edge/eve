@@ -504,6 +504,8 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 	// XXX should we get a new list of disks each time?
 	// XXX can we use part, err = disk.Partitions(false)
 	// and then p.MountPoint for the usage?
+	log.Debugf("Using savedDisks %v current %v\n",
+		savedDisks, findDisksPartitions())
 	for _, d := range savedDisks {
 		size := partitionSize(d)
 		log.Debugf("Disk/partition %s size %d\n", d, size)
@@ -803,7 +805,7 @@ func PublishDeviceInfoToZedCloud(subBaseOsStatus *pubsub.Subscription,
 	// Find all disks and partitions
 	disks := findDisksPartitions()
 	savedDisks = disks // Save for stats
-
+	log.Infof("Setting savedDisks %v\n", savedDisks)
 	for _, disk := range disks {
 		size := partitionSize(disk)
 		log.Debugf("Disk/partition %s size %d\n", disk, size)
