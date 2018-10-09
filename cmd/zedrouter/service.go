@@ -263,7 +263,7 @@ func doServiceActivate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 // check if network UUID is the AppLink
 func checkAndRecreateService(ctx *zedrouterContext, network uuid.UUID) {
 
-	log.Infof("checlAndRecreateServer(%s)\n", network.String())
+	log.Infof("checkAndRecreateServer(%s)\n", network.String())
 	pub := ctx.pubNetworkServiceStatus
 	items := pub.GetAll()
 	for _, st := range items {

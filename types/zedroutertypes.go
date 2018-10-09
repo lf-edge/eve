@@ -435,10 +435,10 @@ type OverlayNetworkConfig struct {
 type OverlayNetworkStatus struct {
 	OverlayNetworkConfig
 	VifInfo
-	BridgeMac      net.HardwareAddr
-	BridgeIPAddr   string // The address for DNS/DHCP service in zedrouter
-	HostName       string
-	MissingNetwork bool // If Network UUID not found
+	BridgeMac    net.HardwareAddr
+	BridgeIPAddr string // The address for DNS/DHCP service in zedrouter
+	HostName     string
+	// XXX MissingNetwork bool // If Network UUID not found
 }
 
 type DhcpType uint8
@@ -465,7 +465,7 @@ type UnderlayNetworkStatus struct {
 	BridgeIPAddr   string // The address for DNS/DHCP service in zedrouter
 	AssignedIPAddr string // Assigned to domU
 	HostName       string
-	MissingNetwork bool // If Network UUID not found
+	// XXX MissingNetwork bool // If Network UUID not found
 }
 
 type NetworkType uint8

@@ -161,11 +161,12 @@ func (status CertObjStatus) CheckPendingDelete() bool {
 
 // return value holder
 type RetStatus struct {
-	Changed         bool
-	MinState        SwState
-	WaitingForCerts bool
-	AllErrors       string
-	ErrorTime       time.Time
+	Changed          bool
+	MinState         SwState
+	WaitingForCerts  bool
+	MissingDatastore bool
+	AllErrors        string
+	ErrorTime        time.Time
 }
 
 // Mirrors proto definition for ConfigItem

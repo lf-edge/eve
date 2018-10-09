@@ -1591,7 +1591,7 @@ func handleCreate2(ctx *zedrouterContext, config types.AppNetworkConfig,
 // check if network UUID is there.
 func checkAndRecreateAppNetwork(ctx *zedrouterContext, network uuid.UUID) {
 
-	log.Infof("checlAndRecreateAppNetwork(%s)\n", network.String())
+	log.Infof("checkAndRecreateAppNetwork(%s)\n", network.String())
 	pub := ctx.pubAppNetworkStatus
 	items := pub.GetAll()
 	for _, st := range items {
