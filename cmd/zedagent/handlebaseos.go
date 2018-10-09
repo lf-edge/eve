@@ -399,6 +399,7 @@ func checkBaseOsStorageDownloadStatus(ctx *zedagentContext, uuidStr string,
 		config.StorageConfigList, status.StorageStatusList)
 
 	status.State = ret.MinState
+	status.MissingDatastore = ret.MissingDatastore
 
 	if ret.AllErrors != "" {
 		status.Error = ret.AllErrors

@@ -162,6 +162,7 @@ func checkCertObjStorageDownloadStatus(ctx *zedagentContext, uuidStr string,
 	status.State = ret.MinState
 	status.Error = ret.AllErrors
 	status.ErrorTime = ret.ErrorTime
+	status.MissingDatastore = ret.MissingDatastore
 
 	log.Infof("checkCertObjDownloadStatus %s, %v\n", uuidStr, ret.MinState)
 

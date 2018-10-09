@@ -204,6 +204,7 @@ func checkStorageDownloadStatus(ctx *zedagentContext, objType string,
 	ret.AllErrors = ""
 	ret.MinState = types.MAXSTATE
 	ret.WaitingForCerts = false
+	ret.MissingDatastore = false
 
 	for i, sc := range config {
 
@@ -275,7 +276,9 @@ func checkStorageDownloadStatus(ctx *zedagentContext, objType string,
 			dst, err := lookupDatastoreConfig(ctx, sc.DatastoreId,
 				sc.Name)
 			if err != nil {
-				// XXX DatastoreConfig missing - wait?
+				// Remember to check when Datastores are added
+				ss.MissingDatastore = true
+				ret.MissingDatastore = true
 				ss.Error = fmt.Sprintf("%v", err)
 				ret.AllErrors = appendError(ret.AllErrors, "datastore",
 					ss.Error)
@@ -284,6 +287,7 @@ func checkStorageDownloadStatus(ctx *zedagentContext, objType string,
 				ret.Changed = true
 				continue
 			}
+			ss.MissingDatastore = false
 			createDownloaderConfig(ctx, objType, safename, &sc, dst)
 			ss.HasDownloaderRef = true
 			ret.Changed = true

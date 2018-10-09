@@ -264,10 +264,6 @@ func parseNetworkObjectConfig(config *zconfig.EdgeDevConfig,
 		networkConfigPrevConfigHash, configHash, nets)
 	// Export NetworkObjectConfig to zedrouter
 	publishNetworkObjectConfig(getconfigCtx, nets)
-
-	// XXX hack - wait for a while so zedrouter can pick up this
-	// before it sees AppNetworkConfig using this network/service
-	time.Sleep(10 * time.Second)
 }
 
 var networkServicePrevConfigHash []byte
@@ -293,10 +289,6 @@ func parseNetworkServiceConfig(config *zconfig.EdgeDevConfig,
 
 	// Export NetworkServiceConfig to zedrouter
 	publishNetworkServiceConfig(getconfigCtx, svcs)
-
-	// XXX hack - wait for a while so zedrouter can pick up this
-	// before it sees AppNetworkConfig using this network/service
-	time.Sleep(10 * time.Second)
 }
 
 var appinstancePrevConfigHash []byte
@@ -442,11 +434,6 @@ func parseDatastoreConfig(config *zconfig.EdgeDevConfig,
 	log.Infof("parseDatastoreConfig: Applying updated datastore config shaa % x vs. % x:  %v\n",
 		datastoreConfigPrevConfigHash, configHash, stores)
 	publishDatastoreConfig(getconfigCtx, stores)
-
-	// XXX hack - wait for a while so we and zedmananger can pick up this
-	// before a BaseOsConfig or AppNetworkConfig using this is visible
-	// to them
-	time.Sleep(10 * time.Second)
 }
 
 func publishDatastoreConfig(ctx *getconfigContext,
@@ -573,15 +560,7 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 
 		ipspec := netEnt.GetIp()
 		switch config.Type {
-		case types.NT_CryptoEID:
-			// XXX hack waiting for cloud
-			if ipspec == nil {
-				log.Errorf("XXX CryptoEID publishNetworkObjectConfig: Missing ipspec for %s in %v\n",
-					id.String(), netEnt)
-				break
-			}
-			fallthrough
-		case types.NT_IPV4, types.NT_IPV6:
+		case types.NT_CryptoEID, types.NT_IPV4, types.NT_IPV6:
 			if ipspec == nil {
 				log.Errorf("publishNetworkObjectConfig: Missing ipspec for %s in %v\n",
 					id.String(), netEnt)

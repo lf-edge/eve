@@ -37,6 +37,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/google/go-cmp/cmp"
+	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/adapters"
 	"github.com/zededa/go-provision/agentlog"
@@ -853,6 +854,7 @@ func handleBaseOsConfigDelete(ctxArg interface{}, key string,
 // base os config create event
 func handleBaseOsCreate(ctxArg interface{}, key string,
 	configArg interface{}) {
+
 	config := cast.CastBaseOsConfig(configArg)
 	if config.Key() != key {
 		log.Errorf("handleBaseOsCreate key/UUID mismatch %s vs %s; ignored %+v\n",
@@ -878,6 +880,11 @@ func handleBaseOsCreate(ctxArg interface{}, key string,
 		ss.ImageSha256 = sc.ImageSha256
 		ss.Target = sc.Target
 	}
+	handleBaseOsCreate2(ctx, config, status)
+}
+
+func handleBaseOsCreate2(ctx *zedagentContext, config types.BaseOsConfig,
+	status types.BaseOsStatus) {
 
 	// Check total and activated counts
 	err := validateBaseOsConfig(ctx, config)
@@ -1119,15 +1126,58 @@ func handleVerifierStatusDelete(ctxArg interface{}, key string,
 func handleDatastoreConfigModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	// XXX empty since we look at collection when we need it
+	ctx := ctxArg.(*zedagentContext)
+	config := cast.CastDatastoreConfig(configArg)
+	checkAndRecreateBaseOs(ctx, config.UUID)
 	log.Infof("handleDatastoreConfigModify for %s\n", key)
 }
 
 func handleDatastoreConfigDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	// XXX empty since we look at collection when we need it
 	log.Infof("handleDatastoreConfigDelete for %s\n", key)
+}
+
+// Called when a DatastoreConfig is added
+// Walk all BaseOsStatus (XXX Cert?) looking for MissingDatastore, then
+// check if the DatastoreId matches.
+func checkAndRecreateBaseOs(ctx *zedagentContext, datastore uuid.UUID) {
+
+	log.Infof("checkAndRecreateBaseOs(%s)\n", datastore.String())
+	pub := ctx.pubBaseOsStatus
+	items := pub.GetAll()
+	for _, st := range items {
+		status := cast.CastBaseOsStatus(st)
+		if !status.MissingDatastore {
+			continue
+		}
+		log.Infof("checkAndRecreateBaseOs(%s) missing for %s\n",
+			datastore.String(), status.BaseOsVersion)
+
+		config := lookupBaseOsConfig(ctx, status.Key())
+		if config == nil {
+			log.Warnf("checkAndRecreatebaseOs(%s) no config for %s\n",
+				datastore.String(), status.BaseOsVersion)
+			continue
+		}
+
+		matched := false
+		for _, ss := range config.StorageConfigList {
+			if ss.DatastoreId != datastore {
+				continue
+			}
+			log.Infof("checkAndRecreateBaseOs(%s) found ss %s for %s\n",
+				datastore.String(), ss.Name,
+				status.BaseOsVersion)
+			matched = true
+		}
+		if !matched {
+			continue
+		}
+		log.Infof("checkAndRecreateBaseOs(%s) recreating for %s\n",
+			datastore.String(), status.BaseOsVersion)
+		handleBaseOsCreate2(ctx, *config, status)
+	}
 }
 
 func appendError(allErrors string, prefix string, lasterr string) string {
