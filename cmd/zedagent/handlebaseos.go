@@ -56,35 +56,47 @@ func baseOsHandleStatusUpdateSafename(ctx *zedagentContext, safename string) {
 	baseOsHandleStatusUpdate(ctx, config, status)
 }
 
+// Returns changed; caller needs to publish
 func baseOsGetActivationStatus(ctx *zedagentContext,
-	status *types.BaseOsStatus) {
+	status *types.BaseOsStatus) bool {
 
 	log.Infof("baseOsGetActivationStatus(%s): partitionLabel %s\n",
 		status.BaseOsVersion, status.PartitionLabel)
+
+	changed := false
 
 	// PartitionLabel can be empty here!
 	if status.PartitionLabel == "" {
 		if status.Activated {
 			status.Activated = false
-			publishBaseOsStatus(ctx, status)
+			changed = true
 		}
-		return
+		return changed
 	}
 
 	partName := status.PartitionLabel
 
 	// some partition specific attributes
-	status.PartitionState = zboot.GetPartitionState(partName)
-	status.PartitionDevice = zboot.GetPartitionDevname(partName)
-
+	ps := zboot.GetPartitionState(partName)
+	pd := zboot.GetPartitionDevname(partName)
+	if status.PartitionState != ps || status.PartitionDevice != pd {
+		status.PartitionState = ps
+		status.PartitionDevice = pd
+		changed = true
+	}
+	var act bool
 	// for otherPartition, its always false
 	if !zboot.IsCurrentPartition(partName) {
-		status.Activated = false
+		act = false
 	} else {
 		// if current Partition, get the status from zboot
-		status.Activated = zboot.IsCurrentPartitionStateActive()
+		act = zboot.IsCurrentPartitionStateActive()
 	}
-	publishBaseOsStatus(ctx, status)
+	if status.Activated != act {
+		status.Activated = act
+		changed = true
+	}
+	return changed
 }
 
 func baseOsGetActivationStatusAll(ctx *zedagentContext) {
@@ -96,7 +108,12 @@ func baseOsGetActivationStatusAll(ctx *zedagentContext) {
 				key, status.Key(), status)
 			continue
 		}
-		baseOsGetActivationStatus(ctx, &status)
+		changed := baseOsGetActivationStatus(ctx, &status)
+		if changed {
+			log.Infof("baseOsGetActivationStatusAll change for %s %s\n",
+				status.Key(), status.BaseOsVersion)
+			publishBaseOsStatus(ctx, &status)
+		}
 	}
 }
 
@@ -106,9 +123,10 @@ func baseOsHandleStatusUpdate(ctx *zedagentContext, config *types.BaseOsConfig,
 	uuidStr := config.Key()
 	log.Infof("baseOsHandleStatusUpdate(%s)\n", uuidStr)
 
-	baseOsGetActivationStatus(ctx, status)
+	changed := baseOsGetActivationStatus(ctx, status)
 
-	changed := doBaseOsStatusUpdate(ctx, uuidStr, *config, status)
+	c := doBaseOsStatusUpdate(ctx, uuidStr, *config, status)
+	changed = changed || c
 
 	if changed {
 		log.Infof("baseOsHandleStatusUpdate(%s) for %s, Status changed\n",
@@ -294,17 +312,15 @@ func doBaseOsInstall(ctx *zedagentContext, uuidStr string,
 
 	changed, proceed = validateAndAssignPartition(ctx, config, status)
 	if !proceed {
-		return changed, proceed
+		return changed, false
 	}
-	proceed = false
-
 	// check for the download status change
 	downloadchange, downloaded :=
 		checkBaseOsStorageDownloadStatus(ctx, uuidStr, config, status)
 
 	if !downloaded {
 		log.Infof(" %s, Still not downloaded\n", config.BaseOsVersion)
-		return changed || downloadchange, proceed
+		return changed || downloadchange, false
 	}
 
 	// check for the verification status change
@@ -314,17 +330,15 @@ func doBaseOsInstall(ctx *zedagentContext, uuidStr string,
 	if !verified {
 		log.Infof("doBaseOsInstall(%s) still not verified %s\n",
 			uuidStr, config.BaseOsVersion)
-		return changed || verifychange, proceed
+		return changed || verifychange, false
 	}
 
 	// XXX can we check the version before installing to the partition?
 	// XXX requires loopback mounting the image; not part of syscall.Mount
 	// Note that we dd as part of the installDownloadedObjects call
 	// in doBaseOsActivate
-
-	log.Infof("doBaseOsInstall(%s), Done %v\n",
-		config.BaseOsVersion, proceed)
-	return changed, proceed
+	log.Infof("doBaseOsInstall(%s), Done\n", config.BaseOsVersion)
+	return changed, true
 }
 
 // Returns changed, proceed as above
