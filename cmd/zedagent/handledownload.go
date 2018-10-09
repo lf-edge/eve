@@ -265,6 +265,7 @@ func checkStorageDownloadStatus(ctx *zedagentContext, objType string,
 					log.Infof("checkStorageDownloadStatus(%s) from vs set ss.State %d\n",
 						safename, vs.State)
 					ss.State = vs.State
+					ss.Progress = 100
 					ret.Changed = true
 				}
 				continue
@@ -358,7 +359,9 @@ func checkStorageDownloadStatus(ctx *zedagentContext, objType string,
 	}
 
 	if ret.MinState == types.MAXSTATE {
+		// No StorageStatus
 		ret.MinState = types.DOWNLOADED
+		ret.Changed = true
 	}
 
 	return ret
@@ -387,13 +390,13 @@ func lookupDatastoreConfig(ctx *zedagentContext,
 }
 
 func installDownloadedObjects(objType string, uuidStr string,
-	status []types.StorageStatus) bool {
+	status *[]types.StorageStatus) bool {
 
 	ret := true
 	log.Infof("installDownloadedObjects(%s)\n", uuidStr)
 
-	for i, _ := range status {
-		ss := &status[i]
+	for i, _ := range *status {
+		ss := &(*status)[i]
 
 		safename := types.UrlToSafename(ss.Name, ss.ImageSha256)
 
@@ -418,7 +421,8 @@ func installDownloadedObject(objType string, safename string,
 	var ret error
 	var srcFilename string = objectDownloadDirname + "/" + objType
 
-	log.Infof("installDownloadedObject(%s/%s, %v)\n", objType, safename, status.State)
+	log.Infof("installDownloadedObject(%s/%s, %v)\n",
+		objType, safename, status.State)
 
 	// if the object is in downloaded state,
 	// pick from pending directory
@@ -472,7 +476,7 @@ func installDownloadedObject(objType string, safename string,
 			errStr := fmt.Sprintf("installDownloadedObject %s, Unsupported Object Type %v",
 				safename, objType)
 			log.Errorln(errStr)
-			ret = errors.New(status.Error)
+			ret = errors.New(errStr)
 		}
 	} else {
 		errStr := fmt.Sprintf("installDownloadedObject %s, final dir not set %v\n", safename, objType)

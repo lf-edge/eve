@@ -154,7 +154,7 @@ func doBaseOsStatusUpdate(ctx *zedagentContext, uuidStr string,
 		// some partition specific attributes
 		status.PartitionState = zboot.GetPartitionState(curPartName)
 		status.PartitionDevice = zboot.GetPartitionDevname(curPartName)
-		status.State = types.INSTALLED
+		setProgressDone(status, types.INSTALLED)
 		status.Activated = true
 		return true
 	}
@@ -172,8 +172,7 @@ func doBaseOsStatusUpdate(ctx *zedagentContext, uuidStr string,
 		status.PartitionState = zboot.GetPartitionState(otherPartName)
 		status.PartitionDevice = zboot.GetPartitionDevname(otherPartName)
 		// Might be corrupt? XXX should we verify sha? But modified!!
-		status.State = types.DOWNLOADED
-		status.Progress = 100
+		setProgressDone(status, types.DOWNLOADED)
 		status.Activated = false
 		changed = true
 	}
@@ -204,6 +203,14 @@ func doBaseOsStatusUpdate(ctx *zedagentContext, uuidStr string,
 	log.Infof("doBaseOsStatusUpdate(%s) done for %s\n",
 		config.BaseOsVersion, uuidStr)
 	return changed
+}
+
+func setProgressDone(status *types.BaseOsStatus, state types.SwState) {
+	status.State = state
+	for i, _ := range status.StorageStatusList {
+		ss := &status.StorageStatusList[i]
+		ss.Progress = 100
+	}
 }
 
 // Returns changed boolean when the status was changed
@@ -255,7 +262,7 @@ func doBaseOsActivate(ctx *zedagentContext, uuidStr string,
 
 	// install the image at proper partition; dd etc
 	if installDownloadedObjects(baseOsObj, uuidStr,
-		status.StorageStatusList) {
+		&status.StorageStatusList) {
 
 		changed = true
 		// Match the version string inside image?
@@ -265,7 +272,7 @@ func doBaseOsActivate(ctx *zedagentContext, uuidStr string,
 			return changed
 		}
 		// move the state from DELIVERED to INSTALLED
-		status.State = types.INSTALLED
+		setProgressDone(status, types.INSTALLED)
 	}
 
 	// Remove any old log files for a previous instance

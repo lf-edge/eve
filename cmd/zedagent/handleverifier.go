@@ -243,6 +243,7 @@ func checkStorageVerifierStatus(ctx *zedagentContext, objType string, uuidStr st
 			sc.ImageSha256)
 		if vs == nil || vs.Pending() {
 			log.Infof("checkStorageVerifierStatus: %s not found\n", safename)
+			// Keep at current state
 			ret.MinState = types.DOWNLOADED
 			continue
 		}
