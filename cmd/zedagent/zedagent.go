@@ -456,6 +456,10 @@ func Run() {
 	zedagentCtx.subAppImgDownloadStatus = subAppImgDownloadStatus
 	subAppImgDownloadStatus.Activate()
 
+	// Run a periodic timer so we always update SillRunning
+	stillRunning := time.NewTicker(25 * time.Second)
+	agentlog.StillRunning(agentName)
+
 	// First we process the verifierStatus to avoid downloading
 	// an base image we already have in place
 	log.Infof("Handling initial verifier Status\n")
@@ -473,6 +477,9 @@ func Run() {
 
 		case change := <-subAa.C:
 			subAa.ProcessChange(change)
+
+		case <-stillRunning.C:
+			agentlog.StillRunning(agentName)
 		}
 	}
 
@@ -527,6 +534,9 @@ func Run() {
 				log.Errorf("Exceeded fallback outage for cloud connectivity - rebooting\n")
 				execReboot(true)
 			}
+
+		case <-stillRunning.C:
+			agentlog.StillRunning(agentName)
 		}
 	}
 	t1.Stop()
@@ -692,6 +702,9 @@ func Run() {
 
 		case change := <-subNetworkServiceMetrics.C:
 			subNetworkServiceMetrics.ProcessChange(change)
+
+		case <-stillRunning.C:
+			agentlog.StillRunning(agentName)
 		}
 	}
 }
