@@ -1354,7 +1354,7 @@ func findDisksPartitions() []string {
 func partitionSize(part string) uint64 {
 	out, err := exec.Command("lsblk", "-nbdo", "SIZE", "/dev/"+part).Output()
 	if err != nil {
-		log.Errorf("lsblk -nbdo %s failed %s\n", "/dev/"+part, err)
+		log.Errorf("lsblk -nbdo SIZE %s failed %s\n", "/dev/"+part, err)
 		return 0
 	}
 	res := strings.Split(string(out), "\n")
