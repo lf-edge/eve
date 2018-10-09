@@ -1087,7 +1087,9 @@ func handleDownloadStatusModify(ctxArg interface{}, key string,
 func handleDownloadStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Infof("handleDownloadStatusDelete for %s\n", key)
+	status := cast.CastDownloaderStatus(statusArg)
+	log.Infof("handleDownloadStatusDelete RefCount %d Expired %v for %s\n",
+		status.RefCount, status.Expired, key)
 	// Nothing to do
 }
 
@@ -1108,7 +1110,9 @@ func handleVerifierStatusModify(ctxArg interface{}, key string,
 func handleVerifierStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Infof("handleVeriferStatusDelete for %s\n", key)
+	status := cast.CastVerifyImageStatus(statusArg)
+	log.Infof("handleVeriferStatusDelete RefCount %d Expired %v for %s\n",
+		status.RefCount, status.Expired, key)
 	// Nothing to do
 }
 
@@ -1139,15 +1143,14 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	var gcp *types.GlobalConfig
+	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
-	c, err := ctx.subGlobalConfig.Get("global")
-	if err == nil {
-		gc := cast.CastGlobalConfig(c)
-		if !cmp.Equal(globalConfig, gc) {
+	if gcp != nil {
+		if !cmp.Equal(globalConfig, *gcp) {
 			log.Infof("handleGlobalConfigModify: diff %v\n",
-				cmp.Diff(globalConfig, gc))
-			applyGlobalConfig(gc)
+				cmp.Diff(globalConfig, *gcp))
+			applyGlobalConfig(*gcp)
 		}
 	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
@@ -1162,7 +1165,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
-	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	globalConfig = globalConfigDefaults
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
@@ -1189,6 +1192,12 @@ func applyGlobalConfig(newgc types.GlobalConfig) {
 	}
 	if newgc.StaleConfigTime == 0 {
 		newgc.StaleConfigTime = globalConfigDefaults.StaleConfigTime
+	}
+	if newgc.DownloadGCTime == 0 {
+		newgc.DownloadGCTime = globalConfigDefaults.DownloadGCTime
+	}
+	if newgc.VdiskGCTime == 0 {
+		newgc.VdiskGCTime = globalConfigDefaults.VdiskGCTime
 	}
 	globalConfig = newgc
 }

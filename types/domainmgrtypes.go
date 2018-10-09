@@ -160,3 +160,16 @@ type DiskStatus struct {
 	Vdev               string // Allocated
 	ActiveFileLocation string // Allocated; private copy if RW; FileLocation if RO
 }
+
+// Track the active image files in rwImgDirname
+type ImageStatus struct {
+	Filename     string // Basename; used as key
+	FileLocation string // Local location of Image
+	RefCount     uint
+	LastUse      time.Time // When RefCount dropped to zero
+	Size         uint64
+}
+
+func (status ImageStatus) Key() string {
+	return status.Filename
+}

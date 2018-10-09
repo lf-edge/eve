@@ -30,6 +30,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -42,8 +43,9 @@ const (
 
 	runDirname        = "/var/run/" + agentName
 	persistDir        = "/persist"
-	rwImgDirname      = persistDir + "/img" // We store images here
-	xenDirname        = runDirname + "/xen" // We store xen cfg files here
+	rwImgDirname      = persistDir + "/img"       // We store images here
+	xenDirname        = runDirname + "/xen"       // We store xen cfg files here
+	ciDirname         = runDirname + "/cloudinit" // For cloud-init images
 	downloadDirname   = persistDir + "/downloads"
 	imgCatalogDirname = downloadDirname + "/" + appImgObj
 	// Read-only images named based on sha256 hash each in its own directory
@@ -74,10 +76,12 @@ type domainContext struct {
 	subDomainConfig        *pubsub.Subscription
 	pubDomainStatus        *pubsub.Publication
 	subGlobalConfig        *pubsub.Subscription
+	pubImageStatus         *pubsub.Publication
 }
 
 var debug = false
-var debugOverride bool // From command line arg
+var debugOverride bool                              // From command line arg
+var vdiskGCTime = time.Duration(3600) * time.Second // Unless from GlobalConfig
 
 func Run() {
 	handlersInit()
@@ -115,6 +119,11 @@ func Run() {
 	if err := os.RemoveAll(xenDirname); err != nil {
 		log.Fatal(err)
 	}
+	if _, err := os.Stat(ciDirname); err == nil {
+		if err := os.RemoveAll(ciDirname); err != nil {
+			log.Fatal(err)
+		}
+	}
 	if _, err := os.Stat(rwImgDirname); err != nil {
 		if err := os.MkdirAll(rwImgDirname, 0700); err != nil {
 			log.Fatal(err)
@@ -122,6 +131,11 @@ func Run() {
 	}
 	if _, err := os.Stat(xenDirname); err != nil {
 		if err := os.MkdirAll(xenDirname, 0700); err != nil {
+			log.Fatal(err)
+		}
+	}
+	if _, err := os.Stat(ciDirname); err != nil {
+		if err := os.MkdirAll(ciDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -150,6 +164,16 @@ func Run() {
 	}
 	domainCtx.pubDomainStatus = pubDomainStatus
 	pubDomainStatus.ClearRestarted()
+
+	pubImageStatus, err := pubsub.Publish(agentName, types.ImageStatus{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	domainCtx.pubImageStatus = pubImageStatus
+	pubImageStatus.ClearRestarted()
+
+	// Publish existing images with RefCount zero
+	populateInitialImageStatus(&domainCtx, rwImgDirname)
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
@@ -196,6 +220,10 @@ func Run() {
 	domainCtx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
+	// We will cleanup zero RefCount objects after a while
+	// We run timer 10 times more often than the limit on LastUse
+	gc := time.NewTicker(vdiskGCTime / 10)
+
 	for {
 		select {
 		case change := <-subGlobalConfig.C:
@@ -209,45 +237,146 @@ func Run() {
 
 		case change := <-subAa.C:
 			subAa.ProcessChange(change)
+
+		case <-gc.C:
+			gcObjects(&domainCtx, rwImgDirname)
 		}
 	}
 }
 
-// XXX need to run this sometime after boot to clean up
-// Clean up any unused files in rwImgDirname
-// XXX but need to preserve ones that might become in use. Switch to manual
-// deletes from zedcloud i.e. explicit storage management?
 func handleRestart(ctxArg interface{}, done bool) {
 	log.Infof("handleRestart(%v)\n", done)
 	ctx := ctxArg.(*domainContext)
 	if done {
 		log.Infof("handleRestart: avoid cleanup\n")
 		ctx.pubDomainStatus.SignalRestarted()
-		// XXX
 		return
+	}
+}
 
-		files, err := ioutil.ReadDir(rwImgDirname)
-		if err != nil {
-			log.Fatal(err)
+// recursive scanning for verified objects,
+// to recreate the status files
+func populateInitialImageStatus(ctx *domainContext, dirName string) {
+
+	log.Infof("populateInitialImageStatus(%s)\n", dirName)
+	locations, err := ioutil.ReadDir(dirName)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, location := range locations {
+		filelocation := dirName + "/" + location.Name()
+		if location.IsDir() {
+			log.Debugf("populateInitialImageStatus: directory %s ignored\n", filelocation)
+			continue
 		}
-		for _, file := range files {
-			filename := rwImgDirname + "/" + file.Name()
-			log.Infoln("handleRestart found existing",
-				filename)
-			if !findActiveFileLocation(ctx, filename) {
-				log.Infoln("handleRestart removing",
-					filename)
-				if err := os.Remove(filename); err != nil {
-					log.Errorln(err)
-				}
-			}
+		info, _ := os.Stat(filelocation)
+		log.Debugf("populateInitialImageStatus: Processing %d Mbytes %s \n",
+			info.Size()/(1024*1024), filelocation)
+
+		status := types.ImageStatus{
+			Filename:     location.Name(),
+			FileLocation: filelocation,
+			Size:         uint64(info.Size()),
+			RefCount:     0,
+			LastUse:      time.Now(),
 		}
+
+		publishImageStatus(ctx, &status)
+	}
+}
+
+func addImageStatus(ctx *domainContext, fileLocation string) {
+
+	filename := filepath.Base(fileLocation)
+	pub := ctx.pubImageStatus
+	st, _ := pub.Get(filename)
+	if st == nil {
+		log.Infof("addImageStatus(%s) not found\n", filename)
+		status := types.ImageStatus{
+			Filename:     filename,
+			FileLocation: fileLocation,
+			Size:         0, // XXX
+			RefCount:     1,
+			LastUse:      time.Now(),
+		}
+		publishImageStatus(ctx, &status)
+	} else {
+		status := cast.CastImageStatus(st)
+		log.Infof("addImageStatus(%s) found RefCount %d LastUse %v\n",
+			filename, status.RefCount, status.LastUse)
+
+		status.RefCount += 1
+		status.LastUse = time.Now()
+		log.Infof("addImageStatus(%s) set RefCount %d LastUse %v\n",
+			filename, status.RefCount, status.LastUse)
+		publishImageStatus(ctx, &status)
+	}
+}
+
+// Remove from ImageStatus since fileLocation has been deleted
+func delImageStatus(ctx *domainContext, fileLocation string) {
+
+	filename := filepath.Base(fileLocation)
+	pub := ctx.pubImageStatus
+	st, _ := pub.Get(filename)
+	if st == nil {
+		log.Errorf("delImageStatus(%s) not found\n", filename)
+		return
+	}
+	status := cast.CastImageStatus(st)
+	log.Infof("delImageStatus(%s) found RefCount %d LastUse %v\n",
+		filename, status.RefCount, status.LastUse)
+	unpublishImageStatus(ctx, &status)
+}
+
+// Periodic garbage collection looking at RefCount=0 files
+func gcObjects(ctx *domainContext, dirName string) {
+
+	log.Debugf("gcObjects()\n")
+
+	pub := ctx.pubImageStatus
+	items := pub.GetAll()
+	for key, st := range items {
+		status := cast.CastImageStatus(st)
+		if status.Key() != key {
+			log.Errorf("gcObjects key/UUID mismatch %s vs %s; ignored %+v\n",
+				key, status.Key(), status)
+			continue
+		}
+		// Make sure we update LastUse if it is still referenced
+		// by a DomainConfig
+		filelocation := status.FileLocation
+		if findActiveFileLocation(ctx, filelocation) {
+			log.Debugln("gcObjects skipping Active file",
+				filelocation)
+			status.LastUse = time.Now()
+			publishImageStatus(ctx, &status)
+			continue
+		}
+		if status.RefCount != 0 {
+			log.Debugf("gcObjects: skipping RefCount %d: %s\n",
+				status.RefCount, key)
+			continue
+		}
+		timePassed := time.Since(status.LastUse)
+		if timePassed > vdiskGCTime {
+			log.Debugf("gcObjects: skipping recently used %s remains %d seconds\n",
+				key, (timePassed-vdiskGCTime)/time.Second)
+			continue
+		}
+		log.Infof("gcObjects: removing %s LastUse %v now %v: %s\n",
+			filelocation, status.LastUse, time.Now(), key)
+		if err := os.Remove(filelocation); err != nil {
+			log.Errorln(err)
+		}
+		unpublishImageStatus(ctx, &status)
 	}
 }
 
 // Check if the filename is used as ActiveFileLocation
 func findActiveFileLocation(ctx *domainContext, filename string) bool {
-	log.Infof("findActiveFileLocation(%v)\n", filename)
+	log.Debugf("findActiveFileLocation(%v)\n", filename)
 	pub := ctx.pubDomainStatus
 	items := pub.GetAll()
 	for key, st := range items {
@@ -282,6 +411,27 @@ func unpublishDomainStatus(ctx *domainContext, status *types.DomainStatus) {
 	st, _ := pub.Get(key)
 	if st == nil {
 		log.Errorf("unpublishDomainStatus(%s) not found\n", key)
+		return
+	}
+	pub.Unpublish(key)
+}
+
+func publishImageStatus(ctx *domainContext, status *types.ImageStatus) {
+
+	key := status.Key()
+	log.Debugf("publishImageStatus(%s)\n", key)
+	pub := ctx.pubImageStatus
+	pub.Publish(key, status)
+}
+
+func unpublishImageStatus(ctx *domainContext, status *types.ImageStatus) {
+
+	key := status.Key()
+	log.Debugf("unpublishImageStatus(%s)\n", key)
+	pub := ctx.pubImageStatus
+	st, _ := pub.Get(key)
+	if st == nil {
+		log.Errorf("unpublishImageStatus(%s) not found\n", key)
 		return
 	}
 	pub.Unpublish(key)
@@ -530,6 +680,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 				return
 			}
 		}
+		addImageStatus(ctx, ds.ActiveFileLocation)
 		log.Infof("Copy DONE from %s to %s\n",
 			ds.FileLocation, ds.ActiveFileLocation)
 	}
@@ -617,6 +768,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 			status.LastErrTime = time.Now()
 			return
 		}
+		addImageStatus(ctx, ds.ActiveFileLocation)
 		log.Infof("Copy DONE from %s to %s\n",
 			ds.FileLocation, ds.ActiveFileLocation)
 	}
@@ -783,6 +935,7 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus,
 				log.Errorln(err)
 				// XXX return? Cleanup status?
 			}
+			delImageStatus(ctx, ds.ActiveFileLocation)
 		}
 	}
 	pciUnassign(status, aa, false)
@@ -1274,6 +1427,7 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 				log.Errorln(err)
 				// XXX return? Cleanup status?
 			}
+			delImageStatus(ctx, ds.ActiveFileLocation)
 		}
 	}
 	status.PendingDelete = false
@@ -1581,8 +1735,12 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	var gcp *types.GlobalConfig
+	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
+	if gcp != nil && gcp.VdiskGCTime != 0 {
+		vdiskGCTime = time.Duration(gcp.VdiskGCTime) * time.Second
+	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
 
@@ -1595,7 +1753,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
-	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
@@ -1632,7 +1790,7 @@ func getDiskVirtualSize(diskfile string) (uint64, error) {
 func createCloudInitISO(config types.DomainConfig) (*types.DiskStatus, error) {
 
 	fileName := fmt.Sprintf("%s/%s.cidata",
-		rwImgDirname, config.UUIDandVersion.UUID.String())
+		ciDirname, config.UUIDandVersion.UUID.String())
 
 	dir, err := ioutil.TempDir("", "cloud-init")
 	if err != nil {

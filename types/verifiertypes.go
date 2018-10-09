@@ -22,10 +22,10 @@ import (
 // The key/index to this is the Safename which is allocated by ZedManager.
 // That is the filename in which we store the corresponding json files.
 type VerifyImageConfig struct {
-	Safename         string   // Also refers to the dirname in pending dir
-	Name             string   // For logging output
-	ImageSha256      string   // sha256 of immutable image
-	RefCount         uint     // Zero means can delete file
+	Safename         string // Also refers to the dirname in pending dir
+	Name             string // For logging output
+	ImageSha256      string // sha256 of immutable image
+	RefCount         uint
 	CertificateChain []string //name of intermediate certificates
 	ImageSignature   []byte   //signature of image
 	SignatureKey     string   //certificate containing public key
@@ -58,7 +58,9 @@ type VerifyImageStatus struct {
 	LastErr       string  // Verification error
 	LastErrTime   time.Time
 	Size          int64
-	RefCount      uint // Zero means deleted
+	RefCount      uint
+	LastUse       time.Time // When RefCount dropped to zero
+	Expired       bool      // Handshake to client
 }
 
 func (status VerifyImageStatus) Key() string {

@@ -454,7 +454,7 @@ func Run() {
 			err := pub.Publish("global",
 				getNetworkMetrics(&zedrouterCtx))
 			if err != nil {
-				log.Errorln(err)
+				log.Errorf("getNetworkMetrics failed %s\n", err)
 			}
 			publishNetworkServiceStatusAll(&zedrouterCtx)
 		case <-geoTimer.C:
@@ -2286,7 +2286,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
@@ -2300,7 +2300,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
-	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }

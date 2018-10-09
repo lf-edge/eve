@@ -815,13 +815,13 @@ func natInactivate(status *types.NetworkServiceStatus,
 		err := iptableCmd("-t", "nat", "-D", "POSTROUTING", "-o", a,
 			"-s", subnetStr, "-j", "MASQUERADE")
 		if err != nil {
-			log.Errorln(err)
+			log.Errorf("natInactivate: iptableCmd failed %s\n", err)
 		}
 	}
-	// Add to Pbr table
+	// Remove from Pbr table
 	err := PbrNATDel(subnetStr)
 	if err != nil {
-		log.Errorln(err)
+		log.Errorf("natInactivate: PbrNATDel failed %s\n", err)
 	}
 }
 
