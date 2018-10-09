@@ -315,22 +315,22 @@ func doBaseOsInstall(ctx *zedagentContext, uuidStr string,
 		return changed, false
 	}
 	// check for the download status change
-	downloadchange, downloaded :=
+	c, downloaded :=
 		checkBaseOsStorageDownloadStatus(ctx, uuidStr, config, status)
-
+	changed = changed || c
 	if !downloaded {
 		log.Infof(" %s, Still not downloaded\n", config.BaseOsVersion)
-		return changed || downloadchange, false
+		return changed, false
 	}
 
 	// check for the verification status change
-	verifychange, verified :=
+	c, verified :=
 		checkBaseOsVerificationStatus(ctx, uuidStr, config, status)
-
+	changed = changed || c
 	if !verified {
 		log.Infof("doBaseOsInstall(%s) still not verified %s\n",
 			uuidStr, config.BaseOsVersion)
-		return changed || verifychange, false
+		return changed, false
 	}
 
 	// XXX can we check the version before installing to the partition?
