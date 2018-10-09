@@ -168,14 +168,17 @@ func doBaseOsStatusUpdate(ctx *zedagentContext, uuidStr string,
 	if !config.Activate {
 		log.Infof("doBaseOsStatusUpdate(%s) for %s, Activate is not set\n",
 			config.BaseOsVersion, uuidStr)
-		changed = doBaseOsInactivate(uuidStr, status)
+		if status.Activated {
+			c := doBaseOsInactivate(uuidStr, status)
+			changed = changed || c
+		}
 		return changed
 	}
 
 	if status.Activated {
 		log.Infof("doBaseOsStatusUpdate(%s) for %s, is already activated\n",
 			config.BaseOsVersion, uuidStr)
-		return false
+		return changed
 	}
 
 	changed = doBaseOsActivate(ctx, uuidStr, config, status)
@@ -230,6 +233,21 @@ func doBaseOsActivate(ctx *zedagentContext, uuidStr string,
 
 	log.Infof("doBaseOsActivate: %s activating\n", uuidStr)
 	zboot.SetOtherPartitionStateUpdating()
+
+	// install the image at proper partition; dd etc
+	if installDownloadedObjects(baseOsObj, uuidStr,
+		status.StorageStatusList) {
+
+		changed = true
+		// Match the version string inside image?
+		if errString := checkInstalledVersion(*status); errString != "" {
+			status.Error = errString
+			status.ErrorTime = time.Now()
+			return changed
+		}
+		// move the state from DELIVERED to INSTALLED
+		status.State = types.INSTALLED
+	}
 
 	// Remove any old log files for a previous instance
 	logdir := fmt.Sprintf("/persist/%s/log", status.PartitionLabel)
@@ -302,24 +320,8 @@ func doBaseOsInstall(ctx *zedagentContext, uuidStr string,
 	// XXX can we check the version before installing to the partition?
 	// XXX requires loopback mounting the image; not part of syscall.Mount
 	// Note that we dd as part of the installDownloadedObjects call
+	// in doBaseOsActivate
 
-	// install the image at proper partition
-	if installDownloadedObjects(baseOsObj, uuidStr,
-		status.StorageStatusList) {
-
-		changed = true
-		// Match the version string inside image?
-		if errString := checkInstalledVersion(*status); errString != "" {
-			status.Error = errString
-			status.ErrorTime = time.Now()
-		} else {
-			// move the state from DELIVERED to INSTALLED
-			status.State = types.INSTALLED
-			proceed = true
-		}
-	}
-
-	publishBaseOsStatus(ctx, status)
 	log.Infof("doBaseOsInstall(%s), Done %v\n",
 		config.BaseOsVersion, proceed)
 	return changed, proceed
