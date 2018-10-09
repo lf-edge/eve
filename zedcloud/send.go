@@ -180,8 +180,8 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, reqlen int64, b *b
 			log.Debugf("sendOnIntf to %s StatusOK\n", url)
 			return resp, contents, nil
 		default:
-			errStr := fmt.Sprintf("sendOnIntf to %s statuscode %d %s",
-				url, resp.StatusCode,
+			errStr := fmt.Sprintf("sendOnIntf to %s reqlen %d statuscode %d %s",
+				url, reqlen, resp.StatusCode,
 				http.StatusText(resp.StatusCode))
 			log.Errorln(errStr)
 			log.Debugf("received response %v\n", resp)
