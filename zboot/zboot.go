@@ -57,11 +57,19 @@ func WatchdogOK() {
 	}
 }
 
+// Cache since it never changes on a running system
+// XXX lsblk seems to hang in kernel so avoid calling zboot curpart
+var currentPartition string
+
 // partition routines
 func GetCurrentPartition() string {
 	if !IsAvailable() {
 		return "IMGA"
 	}
+	if currentPartition != "" {
+		return currentPartition
+	}
+	log.Infof("calling zboot curpart - not in cache\n")
 	curPartCmd := exec.Command("zboot", "curpart")
 	zbootMutex.Lock()
 	ret, err := curPartCmd.Output()
@@ -73,6 +81,7 @@ func GetCurrentPartition() string {
 	partName := string(ret)
 	partName = strings.TrimSpace(partName)
 	validatePartitionName(partName)
+	currentPartition = partName
 	return partName
 }
 
@@ -171,11 +180,20 @@ func setPartitionState(partName string, partState string) {
 	}
 }
 
+// Cache - doesn't change in running system
+var partDev = make(map[string]string)
+
 func GetPartitionDevname(partName string) string {
 	validatePartitionName(partName)
 	if !IsAvailable() {
 		return ""
 	}
+	dev, ok := partDev[partName]
+	if ok {
+		return dev
+	}
+	log.Infof("calling zboot partdev %s - not in cache\n", partName)
+
 	getPartDevCmd := exec.Command("zboot", "partdev", partName)
 	zbootMutex.Lock()
 	ret, err := getPartDevCmd.Output()
@@ -186,6 +204,7 @@ func GetPartitionDevname(partName string) string {
 
 	devName := string(ret)
 	devName = strings.TrimSpace(devName)
+	partDev[partName] = devName
 	return devName
 }
 
