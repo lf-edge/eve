@@ -518,7 +518,7 @@ func handleModify(ctx *zedmanagerContext, key string,
 			config.UUIDandVersion, config.DisplayName,
 			status.RestartCmd.Counter, config.RestartCmd.Counter,
 			needRestart)
-		if status.Activated {
+		if config.Activate {
 			// Will restart even if we crash/power cycle since that
 			// would also restart the app. Hence we can update
 			// the status counter here.
@@ -526,7 +526,7 @@ func handleModify(ctx *zedmanagerContext, key string,
 			status.RestartInprogress = types.BRING_DOWN
 			status.State = types.RESTARTING
 		} else {
-			log.Infof("handleModify(%v) for %s restartcmd ignored !Activated\n",
+			log.Infof("handleModify(%v) for %s restartcmd ignored config !Activate\n",
 				config.UUIDandVersion, config.DisplayName)
 			status.RestartCmd.Counter = config.RestartCmd.Counter
 		}

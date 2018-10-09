@@ -295,6 +295,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 			}
 			if vs.State != ss.State {
 				ss.State = vs.State
+				ss.Progress = 100
 				changed = true
 			}
 			continue
@@ -428,7 +429,9 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		if vs == nil {
 			log.Infof("lookupVerifyImageStatusAny %s sha %s failed\n",
 				safename, sc.ImageSha256)
+			// Keep at current state
 			minState = types.DOWNLOADED
+			changed = true
 			continue
 		}
 		if minState > vs.State {
@@ -594,8 +597,10 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	// Are we doing a restart and it came down?
 	switch status.RestartInprogress {
 	case types.BRING_DOWN:
+		// If !status.Activated e.g, due to error, then
+		// need to bring down first.
 		ds := lookupDomainStatus(ctx, config.Key())
-		if ds != nil && !ds.Activated {
+		if ds != nil && !ds.Activated && ds.LastErr == "" {
 			log.Infof("RestartInprogress(%s) came down - set bring up\n",
 				status.Key())
 			status.RestartInprogress = types.BRING_UP
