@@ -37,13 +37,16 @@ const (
 	uuidFileName    = identityDirname + "/uuid"
 )
 
-// Really a constant
+// Default values until/unless we receive them from the cloud
 // We do a GET of config every 60 seconds,
 // PUT of metrics every 60 seconds,
-// if we don't hear anything from the cloud in a week, then we reboot,
+// If we don't hear anything from the cloud in a week, then we reboot,
 // and during a post-update boot that time is reduced to 10 minutes.
-// On reboot if we can't get a config, then we use a saved one if
+// On reboot if we can't get a config, then we use a saved one if the saved is
 // not older than 10 minutes.
+// A downloaded image which isn't used is garbage collected after 10 minutes.
+// If a instance has been removed its read/write vdisks are deleted after
+// one hour.
 var globalConfigDefaults = types.GlobalConfig{
 	ConfigInterval:          60,
 	MetricInterval:          60,
