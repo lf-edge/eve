@@ -171,8 +171,9 @@ func doBaseOsStatusUpdate(ctx *zedagentContext, uuidStr string,
 		// some partition specific attributes
 		status.PartitionState = zboot.GetPartitionState(otherPartName)
 		status.PartitionDevice = zboot.GetPartitionDevname(otherPartName)
-		// Might be corrupt?
+		// Might be corrupt? XXX should we verify sha? But modified!!
 		status.State = types.DOWNLOADED
+		status.Progress = 100
 		status.Activated = false
 		changed = true
 	}
