@@ -379,7 +379,7 @@ func validateAndAssignPartition(ctx *zedagentContext,
 	if zboot.IsOtherPartitionStateActive() {
 		if otherPartVersion == config.BaseOsVersion {
 			// Don't try to download what is already in otherPartVersion
-			log.Errorf("validateAndAssignPartition(%s) not overwriting other with same version since testing inprogress\n",
+			log.Infof("validateAndAssignPartition(%s) not overwriting other with same version since testing inprogress\n",
 				config.BaseOsVersion)
 			return changed, proceed
 		}
