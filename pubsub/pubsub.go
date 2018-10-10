@@ -66,23 +66,29 @@ type notify struct{}
 // The set of channels to which we need to send notifications
 type updaters struct {
 	lock    sync.Mutex
-	servers []chan<- notify
+	servers []notifyName
+}
+
+type notifyName struct {
+	name string // From pub.nameString()
+	ch   chan<- notify
 }
 
 var updaterList updaters
 
-func updatersAdd(updater chan notify) {
+func updatersAdd(updater chan notify, name string) {
 	updaterList.lock.Lock()
-	updaterList.servers = append(updaterList.servers, updater)
+	nn := notifyName{name: name, ch: updater}
+	updaterList.servers = append(updaterList.servers, nn)
 	updaterList.lock.Unlock()
 }
 
 func updatersRemove(updater chan notify) {
 	updaterList.lock.Lock()
-	servers := make([]chan<- notify, len(updaterList.servers))
+	servers := make([]notifyName, len(updaterList.servers))
 	found := false
 	for _, old := range updaterList.servers {
-		if old == updater {
+		if old.ch == updater {
 			found = true
 		} else {
 			servers = append(servers, old)
@@ -95,16 +101,21 @@ func updatersRemove(updater chan notify) {
 	updaterList.lock.Unlock()
 }
 
-// Send a notification to all the channels which does not yet
-// have one queued
-func (pub *Publication) updatersNotify() {
+// Send a notification to all the matching channels which does not yet
+// have one queued.
+func (pub *Publication) updatersNotify(name string) {
 	updaterList.lock.Lock()
-	for i, server := range updaterList.servers {
+	for i, nn := range updaterList.servers {
+		if nn.name != name {
+			log.Debugf("updaterNotify skipping %d name %s vs %s\n",
+				i, nn.name, name)
+			continue
+		}
 		select {
-		case server <- notify{}:
-			log.Debugf("updaterNotify sent to %d\n", i)
+		case nn.ch <- notify{}:
+			log.Debugf("updaterNotify sent to %s %d\n", name, i)
 		default:
-			log.Debugf("updaterNotify NOT sent to %d\n", i)
+			log.Debugf("updaterNotify NOT sent to %s %d\n", name, i)
 		}
 	}
 	updaterList.lock.Unlock()
@@ -300,7 +311,7 @@ func (pub *Publication) serveConnection(s net.Conn) {
 	// Insert our notification channel before we get the initial
 	// snapshot to avoid missing any updates/deletes.
 	updater := make(chan notify)
-	updatersAdd(updater)
+	updatersAdd(updater, name)
 	defer updatersRemove(updater)
 
 	// Get a local snapshot of the collection and the set of keys
@@ -332,7 +343,12 @@ func (pub *Publication) serveConnection(s net.Conn) {
 
 	// Handle any changes
 	for {
+		log.Debugf("serveConnection(%s) waiting for notification\n",
+			name)
 		<-updater
+		log.Debugf("serveConnection(%s) received for notification\n",
+			name)
+
 		// Update and determine which keys changed
 		keys := pub.determineDiffs(sendToPeer)
 
@@ -483,7 +499,7 @@ func (pub *Publication) Publish(key string, item interface{}) error {
 	if log.GetLevel() == log.DebugLevel {
 		pub.dump("after Publish")
 	}
-	pub.updatersNotify()
+	pub.updatersNotify(name)
 
 	var dirName string
 	if pub.publishToDir {
@@ -562,7 +578,7 @@ func (pub *Publication) Unpublish(key string) error {
 	if log.GetLevel() == log.DebugLevel {
 		pub.dump("after Unpublish")
 	}
-	pub.updatersNotify()
+	pub.updatersNotify(name)
 
 	dirName := PubDirName(name)
 	fileName := dirName + "/" + key + ".json"
@@ -598,7 +614,7 @@ func (pub *Publication) restartImpl(restarted bool) error {
 	}
 	pub.km.restarted = restarted
 	if restarted {
-		pub.updatersNotify()
+		pub.updatersNotify(name)
 	}
 
 	dirName := PubDirName(name)
