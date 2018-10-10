@@ -156,38 +156,11 @@ func parseBaseOsConfig(getconfigCtx *getconfigContext,
 		}
 	}
 
-	// We need to publish the Activate=false first then those with
-	// true to avoid the subscriber seeing two activated
-	// XXX Unfortunately that makes no difference since the subscriber
-	// is likely to see the items in key order
-	expectActivate := false
-	for {
-		published := parseAndPublish(getconfigCtx, cfgOsList,
-			expectActivate)
-		if expectActivate {
-			break
-		} else {
-			expectActivate = true
-			if published {
-				// XXX hack - wait for a bit for XXX ourselves
-				// to receive update!
-			}
-		}
-	}
-}
-
-// Returns true if something was updated
-func parseAndPublish(getconfigCtx *getconfigContext,
-	cfgOsList []*zconfig.BaseOSConfig, expectActivate bool) bool {
-
-	published := false
 	for _, cfgOs := range cfgOsList {
 		if cfgOs.GetBaseOSVersion() == "" {
 			// Empty slot - silently ignore
-			continue
-		}
-		if cfgOs.GetActivate() != expectActivate {
-			// Skip until next round
+			log.Debugf("parseBaseOsConfig ignoring empty %s\n",
+				cfgOs.Uuidandversion.Uuid)
 			continue
 		}
 		baseOs := new(types.BaseOsConfig)
@@ -215,14 +188,14 @@ func parseAndPublish(getconfigCtx *getconfigContext,
 
 		certInstance := getCertObjects(baseOs.UUIDandVersion,
 			baseOs.ConfigSha256, baseOs.StorageConfigList)
+		log.Debugf("parseBaseOsConfig publishing %v\n",
+			baseOs)
 		publishBaseOsConfig(getconfigCtx, baseOs)
 		if certInstance != nil {
 			publishCertObjConfig(getconfigCtx, certInstance,
 				baseOs.Key())
 		}
-		published = true
 	}
-	return published
 }
 
 func lookupBaseOsConfigPub(getconfigCtx *getconfigContext, key string) *types.BaseOsConfig {
