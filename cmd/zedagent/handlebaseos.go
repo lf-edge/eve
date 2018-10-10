@@ -210,6 +210,7 @@ func setProgressDone(status *types.BaseOsStatus, state types.SwState) {
 	for i, _ := range status.StorageStatusList {
 		ss := &status.StorageStatusList[i]
 		ss.Progress = 100
+		ss.State = state // XXX Cap at DELIVERED?
 	}
 }
 
