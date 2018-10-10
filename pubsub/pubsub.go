@@ -70,15 +70,16 @@ type updaters struct {
 }
 
 type notifyName struct {
-	name string // From pub.nameString()
-	ch   chan<- notify
+	name     string // From pub.nameString()
+	instance int
+	ch       chan<- notify
 }
 
 var updaterList updaters
 
-func updatersAdd(updater chan notify, name string) {
+func updatersAdd(updater chan notify, name string, instance int) {
 	updaterList.lock.Lock()
-	nn := notifyName{name: name, ch: updater}
+	nn := notifyName{name: name, instance: instance, ch: updater}
 	updaterList.servers = append(updaterList.servers, nn)
 	updaterList.lock.Unlock()
 }
@@ -105,17 +106,17 @@ func updatersRemove(updater chan notify) {
 // have one queued.
 func (pub *Publication) updatersNotify(name string) {
 	updaterList.lock.Lock()
-	for i, nn := range updaterList.servers {
+	for _, nn := range updaterList.servers {
 		if nn.name != name {
-			log.Debugf("updaterNotify skipping %d name %s vs %s\n",
-				i, nn.name, name)
 			continue
 		}
 		select {
 		case nn.ch <- notify{}:
-			log.Debugf("updaterNotify sent to %s %d\n", name, i)
+			log.Debugf("updaterNotify sent to %s/%d\n",
+				nn.name, nn.instance)
 		default:
-			log.Debugf("updaterNotify NOT sent to %s %d\n", name, i)
+			log.Debugf("updaterNotify NOT sent to %s/%d\n",
+				nn.name, nn.instance)
 		}
 	}
 	updaterList.lock.Unlock()
@@ -264,13 +265,15 @@ func (pub *Publication) populate() {
 // go routine which runs the AF_UNIX server.
 func (pub *Publication) publisher() {
 	name := pub.nameString()
+	instance := 0
 	for {
 		c, err := pub.listener.Accept()
 		if err != nil {
 			log.Errorf("publisher(%s) failed %s\n", name, err)
 			continue
 		}
-		go pub.serveConnection(c)
+		go pub.serveConnection(c, instance)
+		instance++
 	}
 }
 
@@ -278,9 +281,9 @@ func (pub *Publication) publisher() {
 // to send.
 type localCollection map[string]interface{}
 
-func (pub *Publication) serveConnection(s net.Conn) {
+func (pub *Publication) serveConnection(s net.Conn, instance int) {
 	name := pub.nameString()
-	log.Infof("serveConnection(%s)\n", name)
+	log.Infof("serveConnection(%s/%d)\n", name, instance)
 	defer s.Close()
 
 	// Track the set of keys/values we are sending to the peer
@@ -291,8 +294,8 @@ func (pub *Publication) serveConnection(s net.Conn) {
 	res, err := s.Read(buf)
 	if res == len(buf) {
 		// Likely truncated
-		log.Fatalf("serveConnection(%s) request likely truncated\n",
-			name)
+		log.Fatalf("serveConnection(%s/%d) request likely truncated\n",
+			name, instance)
 	}
 
 	request := strings.Split(string(buf[0:res]), " ")
@@ -304,14 +307,14 @@ func (pub *Publication) serveConnection(s net.Conn) {
 
 	_, err = s.Write([]byte(fmt.Sprintf("hello %s", pub.topic)))
 	if err != nil {
-		log.Errorf("serveConnection(%s) failed %s\n",
-			name, err)
+		log.Errorf("serveConnection(%s/%d) failed %s\n",
+			name, instance, err)
 		return
 	}
 	// Insert our notification channel before we get the initial
 	// snapshot to avoid missing any updates/deletes.
 	updater := make(chan notify)
-	updatersAdd(updater, name)
+	updatersAdd(updater, name, instance)
 	defer updatersRemove(updater)
 
 	// Get a local snapshot of the collection and the set of keys
@@ -321,21 +324,21 @@ func (pub *Publication) serveConnection(s net.Conn) {
 	// Send the keys we just determined; all since this is the initial
 	err = pub.serialize(s, keys, sendToPeer)
 	if err != nil {
-		log.Errorf("serveConnection(%s) serialize failed %s\n",
-			name, err)
+		log.Errorf("serveConnection(%s/%d) serialize failed %s\n",
+			name, instance, err)
 		return
 	}
 	err = pub.sendComplete(s)
 	if err != nil {
-		log.Errorf("serveConnection(%s) sendComplete failed %s\n",
-			name, err)
+		log.Errorf("serveConnection(%s/%d) sendComplete failed %s\n",
+			name, instance, err)
 		return
 	}
 	if pub.km.restarted && !sentRestarted {
 		err = pub.sendRestarted(s)
 		if err != nil {
-			log.Errorf("serveConnection(%s) sendRestarted failed %s\n",
-				name, err)
+			log.Errorf("serveConnection(%s/%d) sendRestarted failed %s\n",
+				name, instance, err)
 			return
 		}
 		sentRestarted = true
@@ -343,11 +346,13 @@ func (pub *Publication) serveConnection(s net.Conn) {
 
 	// Handle any changes
 	for {
-		log.Debugf("serveConnection(%s) waiting for notification\n",
-			name)
+		log.Debugf("serveConnection(%s/%d) waiting for notification\n",
+			name, instance)
+		startWait := time.Now()
 		<-updater
-		log.Debugf("serveConnection(%s) received for notification\n",
-			name)
+		waitTime := time.Since(startWait)
+		log.Debugf("serveConnection(%s/%d) received for notification waited %d seconds\n",
+			name, instance, waitTime/time.Second)
 
 		// Update and determine which keys changed
 		keys := pub.determineDiffs(sendToPeer)
@@ -355,16 +360,16 @@ func (pub *Publication) serveConnection(s net.Conn) {
 		// Send the updates and deletes for those keys
 		err = pub.serialize(s, keys, sendToPeer)
 		if err != nil {
-			log.Errorf("serveConnection(%s) serialize failed %s\n",
-				name, err)
+			log.Errorf("serveConnection(%s/%d) serialize failed %s\n",
+				name, instance, err)
 			return
 		}
 
 		if pub.km.restarted && !sentRestarted {
 			err = pub.sendRestarted(s)
 			if err != nil {
-				log.Errorf("serveConnection(%s) sendRestarted failed %s\n",
-					name, err)
+				log.Errorf("serveConnection(%s/%d) sendRestarted failed %s\n",
+					name, instance, err)
 				return
 			}
 			sentRestarted = true
