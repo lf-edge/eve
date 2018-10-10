@@ -872,12 +872,17 @@ func PublishDeviceInfoToZedCloud(subBaseOsStatus *pubsub.Subscription,
 		swInfo.PartitionState = zboot.GetPartitionState(partLabel)
 		swInfo.ShortVersion = zboot.GetShortVersion(partLabel)
 		swInfo.LongVersion = zboot.GetLongVersion(partLabel)
+		swInfo.DownloadProgress = 100
 		if bos := getBaseOsStatus(partLabel); bos != nil {
 			// Get current state/version which is different than
 			// what is on disk
 			swInfo.Status = zmet.ZSwState(bos.State)
 			swInfo.ShortVersion = bos.BaseOsVersion
 			swInfo.LongVersion = "" // XXX
+			if len(bos.StorageStatusList) > 0 {
+				// Assume one - pick first StorageStatus
+				swInfo.DownloadProgress = uint32(bos.StorageStatusList[0].Progress)
+			}
 			if !bos.ErrorTime.IsZero() {
 				log.Debugf("reportMetrics sending error time %v error %v for %s\n",
 					bos.ErrorTime, bos.Error,
@@ -891,8 +896,10 @@ func PublishDeviceInfoToZedCloud(subBaseOsStatus *pubsub.Subscription,
 		} else if swInfo.ShortVersion != "" {
 			// Must be factory install i.e. INSTALLED
 			swInfo.Status = zmet.ZSwState(types.INSTALLED)
+			swInfo.DownloadProgress = 100
 		} else {
 			swInfo.Status = zmet.ZSwState(types.INITIAL)
+			swInfo.DownloadProgress = 0
 		}
 		return swInfo
 	}
