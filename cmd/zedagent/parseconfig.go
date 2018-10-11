@@ -41,7 +41,7 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 	usingSaved bool) bool {
 
 	// XXX can this happen when usingSaved is set?
-	if parseOpCmds(config) {
+	if parseOpCmds(config, getconfigCtx) {
 		log.Infoln("Reboot flag set, skipping config processing")
 		// Make sure we tell apps to shut down
 		shutdownApps(getconfigCtx)
@@ -1260,17 +1260,19 @@ func computeConfigElementSha(h hash.Hash, msg proto.Message) {
 }
 
 // Returns a rebootFlag
-func parseOpCmds(config *zconfig.EdgeDevConfig) bool {
+func parseOpCmds(config *zconfig.EdgeDevConfig,
+	getconfigCtx *getconfigContext) bool {
 
 	scheduleBackup(config.GetBackup())
-	return scheduleReboot(config.GetReboot())
+	return scheduleReboot(config.GetReboot(), getconfigCtx)
 }
 
 var rebootPrevConfigHash []byte
 var rebootPrevReturn bool
 
 // Returns a rebootFlag
-func scheduleReboot(reboot *zconfig.DeviceOpsCmd) bool {
+func scheduleReboot(reboot *zconfig.DeviceOpsCmd,
+	getconfigCtx *getconfigContext) bool {
 
 	if reboot == nil {
 		log.Infof("scheduleReboot - removing %s\n",
@@ -1351,7 +1353,7 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd) bool {
 		log.Infof("Scheduling for reboot %d %d\n",
 			rebootConfig.Counter, reboot.Counter)
 
-		go handleReboot()
+		go handleReboot(getconfigCtx)
 		rebootPrevReturn = true
 		return true
 	}
@@ -1379,7 +1381,7 @@ func scheduleBackup(backup *zconfig.DeviceOpsCmd) {
 }
 
 // the timer channel handler
-func handleReboot() {
+func handleReboot(getconfigCtx *getconfigContext) {
 
 	rebootConfig := &zconfig.DeviceOpsCmd{}
 	var state bool
@@ -1395,6 +1397,7 @@ func handleReboot() {
 		state = rebootConfig.DesiredState
 	}
 
+	shutdownAppsGlobal(getconfigCtx.zedagentCtx)
 	execReboot(state)
 }
 

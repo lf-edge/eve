@@ -193,6 +193,7 @@ func getLatestConfig(url string, iteration int, updateInprogress *bool,
 	if timePassed > resetLimit {
 		log.Errorf("Exceeded outage for cloud connectivity by %d seconds- rebooting\n",
 			(timePassed-resetLimit)/time.Second)
+		shutdownAppsGlobal(getconfigCtx.zedagentCtx)
 		execReboot(true)
 		return true
 	}
@@ -201,6 +202,7 @@ func getLatestConfig(url string, iteration int, updateInprogress *bool,
 		if timePassed > fallbackLimit {
 			log.Errorf("Exceeded fallback outage for cloud connectivity by %d seconds- rebooting\n",
 				(timePassed-fallbackLimit)/time.Second)
+			shutdownAppsGlobal(getconfigCtx.zedagentCtx)
 			execReboot(true)
 			return true
 		}
