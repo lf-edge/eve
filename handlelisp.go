@@ -457,5 +457,5 @@ func handleItrCryptoPort(msg []byte) {
 		log.Fatal("handleItrCryptoPort: Error: Unknown json message format: %s: %s",
 			string(msg), err)
 	}
-	HandleItrCryptoPort(itrCryptoPort.Port)
+	HandleItrCryptoPort(uint(itrCryptoPort.Port))
 }

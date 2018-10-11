@@ -35,7 +35,7 @@ func DumpThreadTable() {
 	}
 }
 
-func HandleItrCryptoPort(port int) {
+func HandleItrCryptoPort(port uint) {
 	var itrConfig dptypes.ITRConfiguration
 
 	fib.PutItrCryptoPort(port)
