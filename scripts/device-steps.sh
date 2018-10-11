@@ -65,7 +65,7 @@ for AGENT in $AGENTS; do
 done
 # XXX Apply for all agents?
 echo "file = /var/run/zedagent.touch" >>$TMPDIR/watchdogall.conf
-echo "change = 120" >>$TMPDIR/watchdogall.conf
+echo "change = 600" >>$TMPDIR/watchdogall.conf
 
 # If watchdog was running we restart it in a way where it will
 # no fail due to killing the agents below.
