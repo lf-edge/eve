@@ -260,9 +260,6 @@ func craftAndSendIPv4LispPacket(
 		}
 	}
 
-	// Should we have a static per-thread entry for this header?
-	// XXX Can we have it globally and re-use?
-
 	// make sure the source port is one of the ephemeral one's
 	var srcPort uint16 = 0xC000
 	srcPort = (srcPort | (uint16(hash32) & 0x3FFF))

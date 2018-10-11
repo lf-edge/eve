@@ -381,7 +381,7 @@ func verifyAndInject(fd4 int,
 			Addr:   destAddr,
 		})
 		if err != nil {
-			log.Errorf("verifyAndInject: Failed decapsulating ETR packet: %s", err)
+			log.Errorf("verifyAndInject: Failed sending out ETR packet(Ipv6): %s", err)
 			return false
 		}
 	} else {
@@ -397,12 +397,20 @@ func verifyAndInject(fd4 int,
 			destAddr[i] = buf[destAddrOffset+i]
 		}
 
+		// Lisp crypto packets might have some padding added at tail end.
+		// Look for the total packet length in IPv4 header and slice the packet
+		// buffer accordingly. Leaving the padding works in case of IPv6 but,
+		// results in checksum errors in case of IPv4.
+		var totalLen int = int(buf[packetOffset + dptypes.IP4TOTALLENOFFSET])
+		totalLen = (totalLen << 8) | int(buf[packetOffset + dptypes.IP4TOTALLENOFFSET + 1])
+		packetEnd = packetOffset + totalLen
+
 		err := syscall.Sendto(fd4, buf[packetOffset:packetEnd], 0, &syscall.SockaddrInet4{
 			Port:   0,
 			Addr:   destAddr,
 		})
 		if err != nil {
-			log.Errorf("verifyAndInject: Failed decapsulating ETR packet: %s", err)
+			log.Errorf("verifyAndInject: Failed sending out ETR packet(IPv4): %s", err)
 			return false
 		}
 	}
