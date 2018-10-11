@@ -111,7 +111,9 @@ func encryptPayload(payload []byte,
 		return false, 0
 	}
 	plainText := packet[dptypes.GCMIVLENGTH:]
-	log.Debugf("encryptPayload: Plain text length is %d", len(plainText))
+	if debug {
+		log.Debugf("encryptPayload: Plain text length is %d", len(plainText))
+	}
 	//aesGcm.Seal(packet[dptypes.GCMIVLENGTH:], packet[:dptypes.GCMIVLENGTH],
 	//	packet[dptypes.GCMIVLENGTH:], nil)
 	cipherText := aesGcm.Seal(plainText[:0], packet[:dptypes.GCMIVLENGTH],
@@ -120,8 +122,10 @@ func encryptPayload(payload []byte,
 	//	plainText, nil)
 	//copy(packet[dptypes.GCMIVLENGTH:], cipherText)
 	extraLen = len(cipherText) - len(plainText)
-	log.Debugf("encryptPayload: GCM extra length is %d, Padding length is %d",
-		extraLen, padLen)
+	if debug {
+		log.Debugf("encryptPayload: GCM extra length is %d, Padding length is %d",
+			extraLen, padLen)
+	}
 	return true, extraLen + padLen
 }
 
@@ -156,7 +160,9 @@ func GetIVArray(itrLocalData *dptypes.ITRLocalData, ivArray []byte) []byte {
 
 func ComputeICV(buf []byte, icvKey []byte) []byte {
 	mac := hmac.New(sha256.New, icvKey)
-	log.Debugf("ICV: ICV will be computed on %s", PrintHexBytes(buf))
+	if debug {
+		log.Debugf("ICV: ICV will be computed on %s", PrintHexBytes(buf))
+	}
 	mac.Write(buf)
 	icv := mac.Sum(nil)
 	// we only use the first 20 bytes as ICV
@@ -335,18 +341,20 @@ func craftAndSendIPv4LispPacket(
 
 	outputSlice := pktBuf[offset:offsetEnd]
 
-	log.Debugf("craftAndSendIPv4LispPacket: Writing %d bytes into ITR socket",
-		len(outputSlice))
-	if useCrypto {
-		log.Debugf("craftAndSendIPv4LispPacket: ITR: LISP %s, IV %s, Crypto %s, ICV %s",
-			PrintHexBytes(outputSlice[28:36]),
-			PrintHexBytes(outputSlice[36:48]),
-			PrintHexBytes(outputSlice[38:len(outputSlice)-20]),
-			PrintHexBytes(outputSlice[len(outputSlice)-20:]))
-	} else {
-		log.Debugf("craftAndSendIPv4LispPacket: ITR: LISP %s, PlainText %s",
-			PrintHexBytes(outputSlice[28:36]),
-			PrintHexBytes(outputSlice[36:]))
+	if debug {
+		log.Debugf("craftAndSendIPv4LispPacket: Writing %d bytes into ITR socket",
+			len(outputSlice))
+		if useCrypto {
+			log.Debugf("craftAndSendIPv4LispPacket: ITR: LISP %s, IV %s, Crypto %s, ICV %s",
+				PrintHexBytes(outputSlice[28:36]),
+				PrintHexBytes(outputSlice[36:48]),
+				PrintHexBytes(outputSlice[38:len(outputSlice)-20]),
+				PrintHexBytes(outputSlice[len(outputSlice)-20:]))
+		} else {
+			log.Debugf("craftAndSendIPv4LispPacket: ITR: LISP %s, PlainText %s",
+				PrintHexBytes(outputSlice[28:36]),
+				PrintHexBytes(outputSlice[36:]))
+		}
 	}
 	err := syscall.Sendto(fd4, outputSlice, 0, &rloc.IPv4SockAddr)
 	if err != nil {
@@ -501,18 +509,20 @@ func craftAndSendIPv6LispPacket(
 	}
 	outputSlice := pktBuf[offset:offsetEnd]
 
-	log.Debugf("craftAndSendIPv6LispPacket: Writing %d bytes into ITR socket",
-		len(outputSlice))
-	if useCrypto {
-		log.Debugf("craftAndSendIPv6LispPacket: ITR: LISP %s, IV %s, Crypto %s, ICV %s",
-			PrintHexBytes(outputSlice[48:56]),
-			PrintHexBytes(outputSlice[56:68]),
-			PrintHexBytes(outputSlice[68:len(outputSlice)-20]),
-			PrintHexBytes(outputSlice[len(outputSlice)-20:]))
-	} else {
-		log.Debugf("craftAndSendIPv6LispPacket: ITR: LISP %s, PlainText %s",
-			PrintHexBytes(outputSlice[48:56]),
-			PrintHexBytes(outputSlice[56:]))
+	if debug {
+		log.Debugf("craftAndSendIPv6LispPacket: Writing %d bytes into ITR socket",
+			len(outputSlice))
+		if useCrypto {
+			log.Debugf("craftAndSendIPv6LispPacket: ITR: LISP %s, IV %s, Crypto %s, ICV %s",
+				PrintHexBytes(outputSlice[48:56]),
+				PrintHexBytes(outputSlice[56:68]),
+				PrintHexBytes(outputSlice[68:len(outputSlice)-20]),
+				PrintHexBytes(outputSlice[len(outputSlice)-20:]))
+		} else {
+			log.Debugf("craftAndSendIPv6LispPacket: ITR: LISP %s, PlainText %s",
+				PrintHexBytes(outputSlice[48:56]),
+				PrintHexBytes(outputSlice[56:]))
+		}
 	}
 	err := syscall.Sendto(fd6, outputSlice, 0, &rloc.IPv6SockAddr)
 

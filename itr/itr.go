@@ -490,8 +490,10 @@ eidLoop:
 
 			var hash32 uint32 = srcAddrBytes ^ dstAddrBytes ^ ports
 
-			log.Debugf("startWorking: Packet of length %d captured on interface %s",
-				pktLen, ifname)
+			if debug {
+				log.Debugf("startWorking: Packet of length %d captured on interface %s",
+					pktLen, ifname)
+			}
 			LookupAndSend(pktBuf[:],
 				uint32(pktLen), ci.Timestamp, iid, hash32,
 				ifname, srcAddr, dstAddr,
