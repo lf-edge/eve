@@ -504,6 +504,8 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 	// XXX should we get a new list of disks each time?
 	// XXX can we use part, err = disk.Partitions(false)
 	// and then p.MountPoint for the usage?
+	log.Debugf("Using savedDisks %v current %v\n",
+		savedDisks, findDisksPartitions())
 	for _, d := range savedDisks {
 		size := partitionSize(d)
 		log.Debugf("Disk/partition %s size %d\n", d, size)
@@ -803,7 +805,7 @@ func PublishDeviceInfoToZedCloud(subBaseOsStatus *pubsub.Subscription,
 	// Find all disks and partitions
 	disks := findDisksPartitions()
 	savedDisks = disks // Save for stats
-
+	log.Infof("Setting savedDisks %v\n", savedDisks)
 	for _, disk := range disks {
 		size := partitionSize(disk)
 		log.Debugf("Disk/partition %s size %d\n", disk, size)
@@ -870,12 +872,17 @@ func PublishDeviceInfoToZedCloud(subBaseOsStatus *pubsub.Subscription,
 		swInfo.PartitionState = zboot.GetPartitionState(partLabel)
 		swInfo.ShortVersion = zboot.GetShortVersion(partLabel)
 		swInfo.LongVersion = zboot.GetLongVersion(partLabel)
+		swInfo.DownloadProgress = 100
 		if bos := getBaseOsStatus(partLabel); bos != nil {
 			// Get current state/version which is different than
 			// what is on disk
 			swInfo.Status = zmet.ZSwState(bos.State)
 			swInfo.ShortVersion = bos.BaseOsVersion
 			swInfo.LongVersion = "" // XXX
+			if len(bos.StorageStatusList) > 0 {
+				// Assume one - pick first StorageStatus
+				swInfo.DownloadProgress = uint32(bos.StorageStatusList[0].Progress)
+			}
 			if !bos.ErrorTime.IsZero() {
 				log.Debugf("reportMetrics sending error time %v error %v for %s\n",
 					bos.ErrorTime, bos.Error,
@@ -889,8 +896,10 @@ func PublishDeviceInfoToZedCloud(subBaseOsStatus *pubsub.Subscription,
 		} else if swInfo.ShortVersion != "" {
 			// Must be factory install i.e. INSTALLED
 			swInfo.Status = zmet.ZSwState(types.INSTALLED)
+			swInfo.DownloadProgress = 100
 		} else {
 			swInfo.Status = zmet.ZSwState(types.INITIAL)
+			swInfo.DownloadProgress = 0
 		}
 		return swInfo
 	}
@@ -1341,7 +1350,7 @@ func SendMetricsProtobuf(ReportMetrics *zmet.ZMetricMsg,
 func findDisksPartitions() []string {
 	out, err := exec.Command("lsblk", "-nlo", "NAME").Output()
 	if err != nil {
-		log.Errorf("lsblk -nlo failed %s\n", err)
+		log.Errorf("lsblk -nlo NAME failed %s\n", err)
 		return nil
 	}
 	res := strings.Split(string(out), "\n")
@@ -1354,7 +1363,7 @@ func findDisksPartitions() []string {
 func partitionSize(part string) uint64 {
 	out, err := exec.Command("lsblk", "-nbdo", "SIZE", "/dev/"+part).Output()
 	if err != nil {
-		log.Errorf("lsblk -nbdo failed %s\n", err)
+		log.Errorf("lsblk -nbdo SIZE %s failed %s\n", "/dev/"+part, err)
 		return 0
 	}
 	res := strings.Split(string(out), "\n")

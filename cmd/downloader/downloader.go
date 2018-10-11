@@ -1230,6 +1230,7 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 	status.ModTime = time.Now()
 	status.PendingAdd = false
 	status.State = types.DOWNLOADED
+	status.Progress = 100	// Just in case
 	publishDownloaderStatus(ctx, status)
 }
 

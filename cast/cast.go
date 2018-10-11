@@ -356,7 +356,7 @@ func CastLispInfoStatus(in interface{}) types.LispInfoStatus {
 	}
 	var output types.LispInfoStatus
 	if err := json.Unmarshal(b, &output); err != nil {
-		log.Fatal(err, "json Unmarshal in CastLispInfoStatus")
+		log.Error(err, "json Unmarshal in CastLispInfoStatus")
 	}
 	return output
 }

@@ -18,7 +18,7 @@ import (
 )
 
 // mutex for zboot/dd APIs
-// XXX not useful since this can be invoked by different agents
+// XXX not bullet proof since this can be invoked by different agents/processes
 var zbootMutex *sync.Mutex
 
 func init() {
@@ -57,11 +57,20 @@ func WatchdogOK() {
 	}
 }
 
+// Cache since it never changes on a running system
+// XXX lsblk seems to hang in kernel so avoid calling zboot curpart more
+// than once per process.
+var currentPartition string
+
 // partition routines
 func GetCurrentPartition() string {
 	if !IsAvailable() {
 		return "IMGA"
 	}
+	if currentPartition != "" {
+		return currentPartition
+	}
+	log.Debugf("calling zboot curpart - not in cache\n")
 	curPartCmd := exec.Command("zboot", "curpart")
 	zbootMutex.Lock()
 	ret, err := curPartCmd.Output()
@@ -73,6 +82,7 @@ func GetCurrentPartition() string {
 	partName := string(ret)
 	partName = strings.TrimSpace(partName)
 	validatePartitionName(partName)
+	currentPartition = partName
 	return partName
 }
 
@@ -171,11 +181,20 @@ func setPartitionState(partName string, partState string) {
 	}
 }
 
+// Cache - doesn't change in running system
+var partDev = make(map[string]string)
+
 func GetPartitionDevname(partName string) string {
 	validatePartitionName(partName)
 	if !IsAvailable() {
 		return ""
 	}
+	dev, ok := partDev[partName]
+	if ok {
+		return dev
+	}
+	log.Debugf("calling zboot partdev %s - not in cache\n", partName)
+
 	getPartDevCmd := exec.Command("zboot", "partdev", partName)
 	zbootMutex.Lock()
 	ret, err := getPartDevCmd.Output()
@@ -186,6 +205,7 @@ func GetPartitionDevname(partName string) string {
 
 	devName := string(ret)
 	devName = strings.TrimSpace(devName)
+	partDev[partName] = devName
 	return devName
 }
 
@@ -355,7 +375,8 @@ func GetLongVersion(part string) string {
 	return ""
 }
 
-// XXX explore a loopback mount!
+// XXX explore a loopback mount to be able to read version
+// from a downloaded image file
 func getVersion(part string, verFilename string) string {
 	validatePartitionName(part)
 

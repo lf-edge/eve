@@ -11,6 +11,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/google/go-cmp/cmp"
+	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
@@ -19,6 +20,7 @@ import (
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"os"
+	"time"
 )
 
 const (
@@ -480,6 +482,11 @@ func handleCreate(ctx *zedmanagerContext, key string,
 		len(config.OverlayNetworkList))
 
 	publishAppInstanceStatus(ctx, &status)
+	handleCreate2(ctx, config, status)
+}
+
+func handleCreate2(ctx *zedmanagerContext, config types.AppInstanceConfig,
+	status types.AppInstanceStatus) {
 
 	uuidStr := status.Key()
 	changed := doUpdate(ctx, uuidStr, config, &status)
@@ -511,7 +518,7 @@ func handleModify(ctx *zedmanagerContext, key string,
 			config.UUIDandVersion, config.DisplayName,
 			status.RestartCmd.Counter, config.RestartCmd.Counter,
 			needRestart)
-		if status.Activated {
+		if config.Activate {
 			// Will restart even if we crash/power cycle since that
 			// would also restart the app. Hence we can update
 			// the status counter here.
@@ -519,7 +526,7 @@ func handleModify(ctx *zedmanagerContext, key string,
 			status.RestartInprogress = types.BRING_DOWN
 			status.State = types.RESTARTING
 		} else {
-			log.Infof("handleModify(%v) for %s restartcmd ignored !Activated\n",
+			log.Infof("handleModify(%v) for %s restartcmd ignored config !Activate\n",
 				config.UUIDandVersion, config.DisplayName)
 			status.RestartCmd.Counter = config.RestartCmd.Counter
 		}
@@ -724,15 +731,65 @@ func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 func handleDatastoreConfigModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	// XXX empty since we look at collection when we need it
+	ctx := ctxArg.(*zedmanagerContext)
+	config := cast.CastDatastoreConfig(configArg)
+	checkAndRecreateAppInstance(ctx, config.UUID)
 	log.Infof("handleDatastoreConfigModify for %s\n", key)
 }
 
 func handleDatastoreConfigDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	// XXX empty since we look at collection when we need it
 	log.Infof("handleDatastoreConfigDelete for %s\n", key)
+}
+
+// Called when a DatastoreConfig is added
+// Walk all BaseOsStatus (XXX Cert?) looking for MissingDatastore, then
+// check if the DatastoreId matches.
+func checkAndRecreateAppInstance(ctx *zedmanagerContext, datastore uuid.UUID) {
+
+	log.Infof("checkAndRecreateAppInstance(%s)\n", datastore.String())
+	pub := ctx.pubAppInstanceStatus
+	items := pub.GetAll()
+	for _, st := range items {
+		status := cast.CastAppInstanceStatus(st)
+		if !status.MissingDatastore {
+			continue
+		}
+		log.Infof("checkAndRecreateAppInstance(%s) missing for %s\n",
+			datastore.String(), status.DisplayName)
+
+		config := lookupAppInstanceConfig(ctx, status.Key())
+		if config == nil {
+			log.Warnf("checkAndRecreatebaseOs(%s) no config for %s\n",
+				datastore.String(), status.DisplayName)
+			continue
+		}
+
+		matched := false
+		for _, ss := range config.StorageConfigList {
+			if ss.DatastoreId != datastore {
+				continue
+			}
+			log.Infof("checkAndRecreateAppInstance(%s) found ss %s for %s\n",
+				datastore.String(), ss.Name,
+				status.DisplayName)
+			matched = true
+		}
+		if !matched {
+			continue
+		}
+		log.Infof("checkAndRecreateAppInstance(%s) recreating for %s\n",
+			datastore.String(), status.DisplayName)
+		if status.Error != "" {
+			log.Infof("checkAndRecreateAppInstance(%s) remove error %s for %s\n",
+				datastore.String(), status.Error,
+				status.DisplayName)
+			status.Error = ""
+			status.ErrorTime = time.Time{}
+		}
+		handleCreate2(ctx, *config, status)
+	}
 }
 
 func handleGlobalConfigModify(ctxArg interface{}, key string,

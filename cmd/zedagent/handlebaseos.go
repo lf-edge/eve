@@ -56,35 +56,47 @@ func baseOsHandleStatusUpdateSafename(ctx *zedagentContext, safename string) {
 	baseOsHandleStatusUpdate(ctx, config, status)
 }
 
+// Returns changed; caller needs to publish
 func baseOsGetActivationStatus(ctx *zedagentContext,
-	status *types.BaseOsStatus) {
+	status *types.BaseOsStatus) bool {
 
 	log.Infof("baseOsGetActivationStatus(%s): partitionLabel %s\n",
 		status.BaseOsVersion, status.PartitionLabel)
+
+	changed := false
 
 	// PartitionLabel can be empty here!
 	if status.PartitionLabel == "" {
 		if status.Activated {
 			status.Activated = false
-			publishBaseOsStatus(ctx, status)
+			changed = true
 		}
-		return
+		return changed
 	}
 
 	partName := status.PartitionLabel
 
 	// some partition specific attributes
-	status.PartitionState = zboot.GetPartitionState(partName)
-	status.PartitionDevice = zboot.GetPartitionDevname(partName)
-
+	ps := zboot.GetPartitionState(partName)
+	pd := zboot.GetPartitionDevname(partName)
+	if status.PartitionState != ps || status.PartitionDevice != pd {
+		status.PartitionState = ps
+		status.PartitionDevice = pd
+		changed = true
+	}
+	var act bool
 	// for otherPartition, its always false
 	if !zboot.IsCurrentPartition(partName) {
-		status.Activated = false
+		act = false
 	} else {
 		// if current Partition, get the status from zboot
-		status.Activated = zboot.IsCurrentPartitionStateActive()
+		act = zboot.IsCurrentPartitionStateActive()
 	}
-	publishBaseOsStatus(ctx, status)
+	if status.Activated != act {
+		status.Activated = act
+		changed = true
+	}
+	return changed
 }
 
 func baseOsGetActivationStatusAll(ctx *zedagentContext) {
@@ -96,7 +108,12 @@ func baseOsGetActivationStatusAll(ctx *zedagentContext) {
 				key, status.Key(), status)
 			continue
 		}
-		baseOsGetActivationStatus(ctx, &status)
+		changed := baseOsGetActivationStatus(ctx, &status)
+		if changed {
+			log.Infof("baseOsGetActivationStatusAll change for %s %s\n",
+				status.Key(), status.BaseOsVersion)
+			publishBaseOsStatus(ctx, &status)
+		}
 	}
 }
 
@@ -106,9 +123,10 @@ func baseOsHandleStatusUpdate(ctx *zedagentContext, config *types.BaseOsConfig,
 	uuidStr := config.Key()
 	log.Infof("baseOsHandleStatusUpdate(%s)\n", uuidStr)
 
-	baseOsGetActivationStatus(ctx, status)
+	changed := baseOsGetActivationStatus(ctx, status)
 
-	changed := doBaseOsStatusUpdate(ctx, uuidStr, *config, status)
+	c := doBaseOsStatusUpdate(ctx, uuidStr, *config, status)
+	changed = changed || c
 
 	if changed {
 		log.Infof("baseOsHandleStatusUpdate(%s) for %s, Status changed\n",
@@ -120,8 +138,8 @@ func baseOsHandleStatusUpdate(ctx *zedagentContext, config *types.BaseOsConfig,
 func doBaseOsStatusUpdate(ctx *zedagentContext, uuidStr string,
 	config types.BaseOsConfig, status *types.BaseOsStatus) bool {
 
-	log.Infof("doBaseOsStatusUpdate(%s) for %s\n",
-		config.BaseOsVersion, uuidStr)
+	log.Infof("doBaseOsStatusUpdate(%s) Activate %v for %s\n",
+		config.BaseOsVersion, config.Activate, uuidStr)
 
 	changed := false
 
@@ -136,7 +154,7 @@ func doBaseOsStatusUpdate(ctx *zedagentContext, uuidStr string,
 		// some partition specific attributes
 		status.PartitionState = zboot.GetPartitionState(curPartName)
 		status.PartitionDevice = zboot.GetPartitionDevname(curPartName)
-		status.State = types.INSTALLED
+		setProgressDone(status, types.INSTALLED)
 		status.Activated = true
 		return true
 	}
@@ -153,8 +171,8 @@ func doBaseOsStatusUpdate(ctx *zedagentContext, uuidStr string,
 		// some partition specific attributes
 		status.PartitionState = zboot.GetPartitionState(otherPartName)
 		status.PartitionDevice = zboot.GetPartitionDevname(otherPartName)
-		// Might be corrupt?
-		status.State = types.DOWNLOADED
+		// Might be corrupt? XXX should we verify sha? But modified!!
+		setProgressDone(status, types.DOWNLOADED)
 		status.Activated = false
 		changed = true
 	}
@@ -168,20 +186,32 @@ func doBaseOsStatusUpdate(ctx *zedagentContext, uuidStr string,
 	if !config.Activate {
 		log.Infof("doBaseOsStatusUpdate(%s) for %s, Activate is not set\n",
 			config.BaseOsVersion, uuidStr)
-		changed = doBaseOsInactivate(uuidStr, status)
+		if status.Activated {
+			c := doBaseOsInactivate(uuidStr, status)
+			changed = changed || c
+		}
 		return changed
 	}
 
 	if status.Activated {
 		log.Infof("doBaseOsStatusUpdate(%s) for %s, is already activated\n",
 			config.BaseOsVersion, uuidStr)
-		return false
+		return changed
 	}
 
 	changed = doBaseOsActivate(ctx, uuidStr, config, status)
 	log.Infof("doBaseOsStatusUpdate(%s) done for %s\n",
 		config.BaseOsVersion, uuidStr)
 	return changed
+}
+
+func setProgressDone(status *types.BaseOsStatus, state types.SwState) {
+	status.State = state
+	for i, _ := range status.StorageStatusList {
+		ss := &status.StorageStatusList[i]
+		ss.Progress = 100
+		ss.State = state // XXX Cap at DELIVERED?
+	}
 }
 
 // Returns changed boolean when the status was changed
@@ -231,6 +261,21 @@ func doBaseOsActivate(ctx *zedagentContext, uuidStr string,
 	log.Infof("doBaseOsActivate: %s activating\n", uuidStr)
 	zboot.SetOtherPartitionStateUpdating()
 
+	// install the image at proper partition; dd etc
+	if installDownloadedObjects(baseOsObj, uuidStr,
+		&status.StorageStatusList) {
+
+		changed = true
+		// Match the version string inside image?
+		if errString := checkInstalledVersion(*status); errString != "" {
+			status.Error = errString
+			status.ErrorTime = time.Now()
+			return changed
+		}
+		// move the state from DELIVERED to INSTALLED
+		setProgressDone(status, types.INSTALLED)
+	}
+
 	// Remove any old log files for a previous instance
 	logdir := fmt.Sprintf("/persist/%s/log", status.PartitionLabel)
 	log.Infof("Clearing old logs in %s\n", logdir)
@@ -276,53 +321,33 @@ func doBaseOsInstall(ctx *zedagentContext, uuidStr string,
 
 	changed, proceed = validateAndAssignPartition(ctx, config, status)
 	if !proceed {
-		return changed, proceed
+		return changed, false
 	}
-	proceed = false
-
 	// check for the download status change
-	downloadchange, downloaded :=
+	c, downloaded :=
 		checkBaseOsStorageDownloadStatus(ctx, uuidStr, config, status)
-
+	changed = changed || c
 	if !downloaded {
 		log.Infof(" %s, Still not downloaded\n", config.BaseOsVersion)
-		return changed || downloadchange, proceed
+		return changed, false
 	}
 
 	// check for the verification status change
-	verifychange, verified :=
+	c, verified :=
 		checkBaseOsVerificationStatus(ctx, uuidStr, config, status)
-
+	changed = changed || c
 	if !verified {
 		log.Infof("doBaseOsInstall(%s) still not verified %s\n",
 			uuidStr, config.BaseOsVersion)
-		return changed || verifychange, proceed
+		return changed, false
 	}
 
 	// XXX can we check the version before installing to the partition?
 	// XXX requires loopback mounting the image; not part of syscall.Mount
 	// Note that we dd as part of the installDownloadedObjects call
-
-	// install the image at proper partition
-	if installDownloadedObjects(baseOsObj, uuidStr,
-		status.StorageStatusList) {
-
-		changed = true
-		// Match the version string inside image?
-		if errString := checkInstalledVersion(*status); errString != "" {
-			status.Error = errString
-			status.ErrorTime = time.Now()
-		} else {
-			// move the state from DELIVERED to INSTALLED
-			status.State = types.INSTALLED
-			proceed = true
-		}
-	}
-
-	publishBaseOsStatus(ctx, status)
-	log.Infof("doBaseOsInstall(%s), Done %v\n",
-		config.BaseOsVersion, proceed)
-	return changed, proceed
+	// in doBaseOsActivate
+	log.Infof("doBaseOsInstall(%s), Done\n", config.BaseOsVersion)
+	return changed, true
 }
 
 // Returns changed, proceed as above
@@ -355,7 +380,7 @@ func validateAndAssignPartition(ctx *zedagentContext,
 	if zboot.IsOtherPartitionStateActive() {
 		if otherPartVersion == config.BaseOsVersion {
 			// Don't try to download what is already in otherPartVersion
-			log.Errorf("validateAndAssignPartition(%s) not overwriting other with same version since testing inprogress\n",
+			log.Infof("validateAndAssignPartition(%s) not overwriting other with same version since testing inprogress\n",
 				config.BaseOsVersion)
 			return changed, proceed
 		}
@@ -399,6 +424,7 @@ func checkBaseOsStorageDownloadStatus(ctx *zedagentContext, uuidStr string,
 		config.StorageConfigList, status.StorageStatusList)
 
 	status.State = ret.MinState
+	status.MissingDatastore = ret.MissingDatastore
 
 	if ret.AllErrors != "" {
 		status.Error = ret.AllErrors

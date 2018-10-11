@@ -48,8 +48,8 @@ func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffe
 			resp, contents, err := sendOnIntf(ctx, url, intf, reqlen, b)
 			if return400 && resp != nil &&
 				resp.StatusCode >= 400 && resp.StatusCode < 500 {
-				log.Infof("sendOnAllIntf: for %s ignore code %d\n",
-					url, resp.StatusCode)
+				log.Infof("sendOnAllIntf: for %s reqlen %d ignore code %d\n",
+					url, reqlen, resp.StatusCode)
 				return resp, nil, err
 			}
 			if err != nil {
@@ -72,8 +72,8 @@ func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffe
 func sendOnIntf(ctx ZedCloudContext, url string, intf string, reqlen int64, b *bytes.Buffer) (*http.Response, []byte, error) {
 
 	addrCount := types.CountLocalAddrAny(*ctx.DeviceNetworkStatus, intf)
-	log.Debugf("Connecting to %s using intf %s #sources %d\n",
-		url, intf, addrCount)
+	log.Debugf("Connecting to %s using intf %s #sources %d reqlen %d\n",
+		url, intf, addrCount, reqlen)
 
 	if addrCount == 0 {
 		if ctx.FailureFunc != nil {
@@ -180,8 +180,8 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, reqlen int64, b *b
 			log.Debugf("sendOnIntf to %s StatusOK\n", url)
 			return resp, contents, nil
 		default:
-			errStr := fmt.Sprintf("sendOnIntf to %s statuscode %d %s",
-				url, resp.StatusCode,
+			errStr := fmt.Sprintf("sendOnIntf to %s reqlen %d statuscode %d %s",
+				url, reqlen, resp.StatusCode,
 				http.StatusText(resp.StatusCode))
 			log.Errorln(errStr)
 			log.Debugf("received response %v\n", resp)

@@ -120,3 +120,31 @@ func GetOtherLogdir() string {
 	logdir := fmt.Sprintf("%s/%s/log", baseLogdir, partName)
 	return logdir
 }
+
+// Touch a file per agentName to signal the event loop is still running
+// Could be use by watchdog
+func StillRunning(agentName string) {
+
+	log.Debugf("StillRunning(%s)\n", agentName)
+	filename := fmt.Sprintf("/var/run/%s.touch", agentName)
+	_, err := os.Stat(filename)
+	if err != nil {
+		file, err := os.Create(filename)
+		if err != nil {
+			log.Infof("StillRunning: %s\n", err)
+			return
+		}
+		file.Close()
+	}
+	_, err = os.Stat(filename)
+	if err != nil {
+		log.Errorf("StilRunning: %s\n", err)
+		return
+	}
+	now := time.Now()
+	err = os.Chtimes(filename, now, now)
+	if err != nil {
+		log.Errorf("StillRunning: %s\n", err)
+		return
+	}
+}

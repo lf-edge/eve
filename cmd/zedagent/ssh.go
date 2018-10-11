@@ -65,7 +65,12 @@ func iptableCmdOut(dolog bool, args ...string) (string, error) {
 		out, err = exec.Command(cmd, args...).Output()
 	}
 	if err != nil {
-		log.Errorln("iptables command failed: ", args, err)
+		if dolog {
+			log.Errorln("iptables command failed: ", args, err)
+		} else {
+			log.Debugln("initial iptables command failed: ",
+				args, err)
+		}
 		return "", err
 	}
 	return string(out), nil
@@ -86,7 +91,12 @@ func ip6tableCmdOut(dolog bool, args ...string) (string, error) {
 		out, err = exec.Command(cmd, args...).Output()
 	}
 	if err != nil {
-		log.Errorln("ip6tables command failed: ", args, err)
+		if dolog {
+			log.Errorln("ip6tables command failed: ", args, err)
+		} else {
+			log.Errorln("initial ip6tables command failed: ",
+				args, err)
+		}
 		return "", err
 	}
 	return string(out), nil

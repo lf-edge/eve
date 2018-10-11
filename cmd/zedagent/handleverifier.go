@@ -100,6 +100,11 @@ func updateVerifierStatus(ctx *zedagentContext,
 	switch status.ObjType {
 	case baseOsObj:
 		// break
+	case appImgObj:
+		// We subscribe to get metrics about disk usage
+		log.Debugf("updateVerifierStatus for %s, ignoring objType %s\n",
+			key, objType)
+		return
 	default:
 		log.Errorf("updateVerifierStatus for %s, unsupported objType %s\n",
 			key, objType)
@@ -243,6 +248,7 @@ func checkStorageVerifierStatus(ctx *zedagentContext, objType string, uuidStr st
 			sc.ImageSha256)
 		if vs == nil || vs.Pending() {
 			log.Infof("checkStorageVerifierStatus: %s not found\n", safename)
+			// Keep at current state
 			ret.MinState = types.DOWNLOADED
 			continue
 		}

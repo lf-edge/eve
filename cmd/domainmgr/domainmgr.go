@@ -557,7 +557,16 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 		status.DomainId = 0
 		publishDomainStatus(ctx, status)
 	} else {
-		if domainId != status.DomainId {
+		if !status.Activated {
+			log.Errorf("verifyDomain(%s) domain came back alive; id  %d\n",
+				status.Key(), domainId)
+			status.LastErr = ""
+			status.LastErrTime = time.Time{}
+			status.DomainId = domainId
+			status.Activated = true
+			status.State = types.RUNNING
+			publishDomainStatus(ctx, status)
+		} else if domainId != status.DomainId {
 			log.Errorf("verifyDomain(%s) domainId changed from %d to %d\n",
 				status.Key(), status.DomainId, domainId)
 			status.DomainId = domainId
@@ -787,13 +796,24 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		return
 	}
 
-	// Invoke xl create
-	domainId, err := xlCreate(status.DomainName, filename)
-	if err != nil {
-		log.Errorf("xl create for %s: %s\n", status.DomainName, err)
-		status.LastErr = fmt.Sprintf("%v", err)
-		status.LastErrTime = time.Now()
-		return
+	var domainId int
+	// Invoke xl create; try 3 times with a timeout
+	for {
+		status.TriedCount += 1
+		var err error
+		domainId, err = xlCreate(status.DomainName, filename)
+		if err == nil {
+			break
+		}
+		if status.TriedCount >= 3 {
+			log.Errorf("xl create for %s: %s\n", status.DomainName, err)
+			status.LastErr = fmt.Sprintf("%v", err)
+			status.LastErrTime = time.Now()
+			return
+		}
+		log.Warnf("Retry xl create for %s: failed %s\n",
+			status.DomainName, err)
+		time.Sleep(5 * time.Second)
 	}
 	log.Infof("created domainId %d for %s\n", domainId, status.DomainName)
 	status.DomainId = domainId
@@ -1085,7 +1105,13 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 			rootDev = "/dev/xvda1"
 		}
 		extra = "console=hvc0 " + uuidStr + config.ExtraArgs
+		// XXX zedcloud should really set "pygrub"
 		bootLoader = config.BootLoader
+		if strings.HasSuffix(bootLoader, "pygrub") {
+			log.Warnf("Changing from %s to pygrub for %s\n",
+				bootLoader, config.Key())
+			bootLoader = "pygrub"
+		}
 	case types.HVM:
 		xen_type = "hvm"
 	}

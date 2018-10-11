@@ -41,7 +41,7 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 	usingSaved bool) bool {
 
 	// XXX can this happen when usingSaved is set?
-	if parseOpCmds(config) {
+	if parseOpCmds(config, getconfigCtx) {
 		log.Infoln("Reboot flag set, skipping config processing")
 		// Make sure we tell apps to shut down
 		shutdownApps(getconfigCtx)
@@ -156,38 +156,11 @@ func parseBaseOsConfig(getconfigCtx *getconfigContext,
 		}
 	}
 
-	// We need to publish the Activate=false first then those with
-	// true to avoid the subscriber seeing two activated
-	// XXX Unfortunately that makes no difference since the subscriber
-	// is likely to see the items in key order
-	expectActivate := false
-	for {
-		published := parseAndPublish(getconfigCtx, cfgOsList,
-			expectActivate)
-		if expectActivate {
-			break
-		} else {
-			expectActivate = true
-			if published {
-				// XXX hack - wait for a bit for XXX ourselves
-				// to receive update!
-			}
-		}
-	}
-}
-
-// Returns true if something was updated
-func parseAndPublish(getconfigCtx *getconfigContext,
-	cfgOsList []*zconfig.BaseOSConfig, expectActivate bool) bool {
-
-	published := false
 	for _, cfgOs := range cfgOsList {
 		if cfgOs.GetBaseOSVersion() == "" {
 			// Empty slot - silently ignore
-			continue
-		}
-		if cfgOs.GetActivate() != expectActivate {
-			// Skip until next round
+			log.Debugf("parseBaseOsConfig ignoring empty %s\n",
+				cfgOs.Uuidandversion.Uuid)
 			continue
 		}
 		baseOs := new(types.BaseOsConfig)
@@ -215,14 +188,14 @@ func parseAndPublish(getconfigCtx *getconfigContext,
 
 		certInstance := getCertObjects(baseOs.UUIDandVersion,
 			baseOs.ConfigSha256, baseOs.StorageConfigList)
+		log.Debugf("parseBaseOsConfig publishing %v\n",
+			baseOs)
 		publishBaseOsConfig(getconfigCtx, baseOs)
 		if certInstance != nil {
 			publishCertObjConfig(getconfigCtx, certInstance,
 				baseOs.Key())
 		}
-		published = true
 	}
-	return published
 }
 
 func lookupBaseOsConfigPub(getconfigCtx *getconfigContext, key string) *types.BaseOsConfig {
@@ -264,10 +237,6 @@ func parseNetworkObjectConfig(config *zconfig.EdgeDevConfig,
 		networkConfigPrevConfigHash, configHash, nets)
 	// Export NetworkObjectConfig to zedrouter
 	publishNetworkObjectConfig(getconfigCtx, nets)
-
-	// XXX hack - wait for a while so zedrouter can pick up this
-	// before it sees AppNetworkConfig using this network/service
-	time.Sleep(10 * time.Second)
 }
 
 var networkServicePrevConfigHash []byte
@@ -293,10 +262,6 @@ func parseNetworkServiceConfig(config *zconfig.EdgeDevConfig,
 
 	// Export NetworkServiceConfig to zedrouter
 	publishNetworkServiceConfig(getconfigCtx, svcs)
-
-	// XXX hack - wait for a while so zedrouter can pick up this
-	// before it sees AppNetworkConfig using this network/service
-	time.Sleep(10 * time.Second)
 }
 
 var appinstancePrevConfigHash []byte
@@ -442,11 +407,6 @@ func parseDatastoreConfig(config *zconfig.EdgeDevConfig,
 	log.Infof("parseDatastoreConfig: Applying updated datastore config shaa % x vs. % x:  %v\n",
 		datastoreConfigPrevConfigHash, configHash, stores)
 	publishDatastoreConfig(getconfigCtx, stores)
-
-	// XXX hack - wait for a while so we and zedmananger can pick up this
-	// before a BaseOsConfig or AppNetworkConfig using this is visible
-	// to them
-	time.Sleep(10 * time.Second)
 }
 
 func publishDatastoreConfig(ctx *getconfigContext,
@@ -573,15 +533,7 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 
 		ipspec := netEnt.GetIp()
 		switch config.Type {
-		case types.NT_CryptoEID:
-			// XXX hack waiting for cloud
-			if ipspec == nil {
-				log.Errorf("XXX CryptoEID publishNetworkObjectConfig: Missing ipspec for %s in %v\n",
-					id.String(), netEnt)
-				break
-			}
-			fallthrough
-		case types.NT_IPV4, types.NT_IPV6:
+		case types.NT_CryptoEID, types.NT_IPV4, types.NT_IPV6:
 			if ipspec == nil {
 				log.Errorf("publishNetworkObjectConfig: Missing ipspec for %s in %v\n",
 					id.String(), netEnt)
@@ -1308,17 +1260,19 @@ func computeConfigElementSha(h hash.Hash, msg proto.Message) {
 }
 
 // Returns a rebootFlag
-func parseOpCmds(config *zconfig.EdgeDevConfig) bool {
+func parseOpCmds(config *zconfig.EdgeDevConfig,
+	getconfigCtx *getconfigContext) bool {
 
 	scheduleBackup(config.GetBackup())
-	return scheduleReboot(config.GetReboot())
+	return scheduleReboot(config.GetReboot(), getconfigCtx)
 }
 
 var rebootPrevConfigHash []byte
 var rebootPrevReturn bool
 
 // Returns a rebootFlag
-func scheduleReboot(reboot *zconfig.DeviceOpsCmd) bool {
+func scheduleReboot(reboot *zconfig.DeviceOpsCmd,
+	getconfigCtx *getconfigContext) bool {
 
 	if reboot == nil {
 		log.Infof("scheduleReboot - removing %s\n",
@@ -1399,7 +1353,7 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd) bool {
 		log.Infof("Scheduling for reboot %d %d\n",
 			rebootConfig.Counter, reboot.Counter)
 
-		go handleReboot()
+		go handleReboot(getconfigCtx)
 		rebootPrevReturn = true
 		return true
 	}
@@ -1427,7 +1381,7 @@ func scheduleBackup(backup *zconfig.DeviceOpsCmd) {
 }
 
 // the timer channel handler
-func handleReboot() {
+func handleReboot(getconfigCtx *getconfigContext) {
 
 	rebootConfig := &zconfig.DeviceOpsCmd{}
 	var state bool
@@ -1443,6 +1397,7 @@ func handleReboot() {
 		state = rebootConfig.DesiredState
 	}
 
+	shutdownAppsGlobal(getconfigCtx.zedagentCtx)
 	execReboot(state)
 }
 
