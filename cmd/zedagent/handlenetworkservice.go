@@ -86,17 +86,17 @@ func prepareAndPublishLispServiceInfoMsg(ctx *zedagentContext,
 	svcInfo.ServiceType = uint32(status.Type)
 	svcInfo.Activated = status.Activated
 
-	var lispInfo *zmet.ZInfoLisp = nil
 	// XXX When a service instance is deleted it is ideal to send
 	// a flag such as deleted/gone inside ZInfoService message.
 	// Having a separate flag (indicating deletion) make is explicit
 	// and easy for the cloud process.
-	// For now we just send lispInfo as nil to indicate deletion to cloud.
-	if !deleted {
-		lispInfo = new(zmet.ZInfoLisp)
-	}
+	// For now we just send an empty lispInfo to indicate deletion to cloud.
+	// It can't be omitted since protobuf requires something to satisfy
+	// the oneof.
+
+	lispInfo := new(zmet.ZInfoLisp)
 	lispStatus := status.LispInfoStatus
-	if (lispStatus != nil) && (lispInfo != nil) {
+	if lispStatus != nil && !deleted {
 		lispInfo.ItrCryptoPort = lispStatus.ItrCryptoPort
 		lispInfo.EtrNatPort = lispStatus.EtrNatPort
 		for _, intf := range lispStatus.Interfaces {
@@ -237,7 +237,7 @@ func prepareVpnServiceInfoMsg(ctx *zedagentContext, status types.NetworkServiceS
 		x.Vinfo = vpnInfo
 	}
 
-	// prapare the final stuff
+	// prepare the final stuff
 	infoMsg.InfoContent = new(zmet.ZInfoMsg_Sinfo)
 	if x, ok := infoMsg.GetInfoContent().(*zmet.ZInfoMsg_Sinfo); ok {
 		x.Sinfo = svcInfo
