@@ -389,6 +389,13 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 			appInstance.PurgeCmd.Counter = cmd.Counter
 			appInstance.PurgeCmd.ApplyTime = cmd.OpsTime
 		}
+		userData := cfgApp.GetUserData()
+		if userData != "" {
+			log.Debugf("Received cloud-init userData %s\n",
+				userData)
+		}
+
+		appInstance.CloudInitUserData = userData
 		// get the certs for image sha verification
 		certInstance := getCertObjects(appInstance.UUIDandVersion,
 			appInstance.ConfigSha256, appInstance.StorageConfigList)
@@ -507,6 +514,7 @@ func parseStorageConfigList(objType string,
 		}
 		image.ReadOnly = drive.Readonly
 		image.Preserve = drive.Preserve
+		image.Maxsizebytes = uint64(drive.Maxsizebytes)
 		image.Target = strings.ToLower(drive.Target.String())
 		image.Devtype = strings.ToLower(drive.Drvtype.String())
 		image.ImageSha256 = drive.Image.Sha256
@@ -1098,6 +1106,32 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				globalConfig.StaleConfigTime = newU32
 				globalConfigChange = true
 			}
+		case "timer.gc.download":
+			if newU32 == 0 {
+				// Revert to default
+				newU32 = globalConfigDefaults.DownloadGCTime
+			}
+			if newU32 != globalConfig.DownloadGCTime {
+				log.Infof("parseConfigItems: %s change from %d to %d\n",
+					item.Key,
+					globalConfig.DownloadGCTime,
+					newU32)
+				globalConfig.DownloadGCTime = newU32
+				globalConfigChange = true
+			}
+		case "timer.gc.vdisk":
+			if newU32 == 0 {
+				// Revert to default
+				newU32 = globalConfigDefaults.VdiskGCTime
+			}
+			if newU32 != globalConfig.VdiskGCTime {
+				log.Infof("parseConfigItems: %s change from %d to %d\n",
+					item.Key,
+					globalConfig.VdiskGCTime,
+					newU32)
+				globalConfig.VdiskGCTime = newU32
+				globalConfigChange = true
+			}
 		case "debug.default.loglevel":
 			if newString == "" {
 				// Revert to default
@@ -1459,7 +1493,7 @@ func execReboot(state bool) {
 		poweroffCmd := exec.Command("poweroff")
 		_, err := poweroffCmd.Output()
 		if err != nil {
-			log.Errorln(err)
+			log.Errorf("poweroffCmd failed %s\n", err)
 		}
 	}
 }

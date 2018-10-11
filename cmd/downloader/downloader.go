@@ -39,6 +39,9 @@ const (
 
 	persistDir            = "/persist"
 	objectDownloadDirname = persistDir + "/downloads"
+
+	// XXX hard-coded at 10 minutes
+	gcTime = 10 * time.Minute
 )
 
 // Go doesn't like this as a constant
@@ -67,7 +70,8 @@ type downloaderContext struct {
 }
 
 var debug = false
-var debugOverride bool // From command line arg
+var debugOverride bool                                // From command line arg
+var downloadGCTime = time.Duration(600) * time.Second // Unless from GlobalConfig
 
 func Run() {
 	handlersInit()
@@ -231,6 +235,10 @@ func Run() {
 
 	ctx.dCtx = downloaderInit(&ctx)
 
+	// We will cleanup zero RefCount objects after a while
+	// We run timer 10 times more often than the limit on LastUse
+	gc := time.NewTicker(downloadGCTime / 10)
+
 	for {
 		select {
 		case change := <-subGlobalConfig.C:
@@ -256,6 +264,9 @@ func Run() {
 			if err != nil {
 				log.Errorln(err)
 			}
+
+		case <-gc.C:
+			gcObjects(&ctx)
 		}
 	}
 }
@@ -416,6 +427,7 @@ func handleCreate(ctx *downloaderContext, objType string,
 		Safename:       config.Safename,
 		ObjType:        objType,
 		RefCount:       config.RefCount,
+		LastUse:        time.Now(),
 		DownloadURL:    config.DownloadURL,
 		UseFreeUplinks: config.UseFreeUplinks,
 		ImageSha256:    config.ImageSha256,
@@ -464,8 +476,10 @@ func handleCreate(ctx *downloaderContext, objType string,
 	handleSyncOp(ctx, key, config, &status)
 }
 
-// Allow to cancel by setting RefCount = 0. Same as delete? RefCount 0->1
-// means download. Ignore other changes?
+// XXX Allow to cancel by setting RefCount = 0? Such a change
+// would have to be detected outside of handler since the download is
+// single-threaded.
+// RefCount 0->1 means download. Ignore other changes?
 func handleModify(ctx *downloaderContext, key string,
 	config types.DownloaderConfig, status *types.DownloaderStatus) {
 
@@ -501,23 +515,28 @@ func handleModify(ctx *downloaderContext, key string,
 		return
 	}
 
-	// XXX do work; look for refcnt -> 0 and delete; cancel any running
-	// download
+	log.Infof("handleModify(%v) RefCount %d to %d, Expired %v %s for %s\n",
+		status.Safename, status.RefCount, config.RefCount,
+		status.Expired, status.DownloadURL)
+
 	// If RefCount from zero to non-zero then do install
 	if status.RefCount == 0 && config.RefCount != 0 {
 		status.PendingModify = true
 		log.Infof("handleModify installing %s\n", config.DownloadURL)
 		handleCreate(ctx, status.ObjType, config, key)
 		status.RefCount = config.RefCount
+		status.LastUse = time.Now()
+		status.Expired = false
 		status.PendingModify = false
 		publishDownloaderStatus(ctx, status)
-	} else if status.RefCount != 0 && config.RefCount == 0 {
-		log.Infof("handleModify deleting %s\n", config.DownloadURL)
-		doDelete(ctx, key, locDirname, status)
 	} else if status.RefCount != config.RefCount {
-		log.Infof("handleModify RefCount change %s from %d to %d\n",
-			config.DownloadURL, status.RefCount, config.RefCount)
 		status.RefCount = config.RefCount
+		status.LastUse = time.Now()
+		status.Expired = false
+		status.PendingModify = false
+		publishDownloaderStatus(ctx, status)
+	} else {
+		status.PendingModify = false
 		publishDownloaderStatus(ctx, status)
 	}
 	log.Infof("handleModify done for %s\n", config.DownloadURL)
@@ -529,8 +548,6 @@ func doDelete(ctx *downloaderContext, key string, locDirname string,
 	log.Infof("doDelete(%v) for %s\n", status.Safename, status.DownloadURL)
 
 	deletefile(locDirname+"/pending", status)
-	deletefile(locDirname+"/verifier", status)
-	// verifier handles the verified directory
 
 	status.State = types.INITIAL
 	ctx.globalStatus.UsedSpace -= uint(types.RoundupToKB(status.Size))
@@ -563,8 +580,9 @@ func deletefile(dirname string, status *types.DownloaderStatus) {
 func handleDelete(ctx *downloaderContext, key string,
 	status *types.DownloaderStatus) {
 
-	log.Infof("handleDelete(%v) objType %s for %s\n",
-		status.Safename, status.ObjType, status.DownloadURL)
+	log.Infof("handleDelete(%v) objType %s for %s RefCount %d LastUse %v Expired %v\n",
+		status.Safename, status.ObjType, status.DownloadURL,
+		status.RefCount, status.LastUse, status.Expired)
 
 	if status.ObjType == "" {
 		log.Fatalf("handleDelete: No ObjType for %s\n",
@@ -591,7 +609,8 @@ func handleDelete(ctx *downloaderContext, key string,
 
 	// Write out what we modified to DownloaderStatus aka delete
 	unpublishDownloaderStatus(ctx, status)
-	log.Infof("handleDelete done for %s, %s\n", status.DownloadURL, locDirname)
+	log.Infof("handleDelete done for %s, %s\n", status.DownloadURL,
+		locDirname)
 }
 
 // helper functions
@@ -648,21 +667,19 @@ func handleGlobalDownloadConfigModify(ctxArg interface{}, key string,
 
 func initializeDirs() {
 
-	// Remove any files which didn't make it past the verifier.
-	// Though verifier owns it, remove them for calculating the
-	// total available space
-	// XXX instead rely on verifier status
+	// Remove any files which didn't make it to the verifier.
+	// XXX space calculation doesn't take into account files in verifier
+	// XXX get space report from verifier??
 	clearInProgressDownloadDirs(downloaderObjTypes)
 
 	// create the object download directories
 	createDownloadDirs(downloaderObjTypes)
 }
 
-// XXX here vs. in verifier? Who owns which dirs? Same as deletes from them.
-// create object download directories
+// Create the object download directories we own
 func createDownloadDirs(objTypes []string) {
 
-	workingDirTypes := []string{"pending", "verifier", "verified"}
+	workingDirTypes := []string{"pending"}
 
 	// now create the download dirs
 	for _, objType := range objTypes {
@@ -681,7 +698,7 @@ func createDownloadDirs(objTypes []string) {
 // clear in-progress object download directories
 func clearInProgressDownloadDirs(objTypes []string) {
 
-	inProgressDirTypes := []string{"pending", "verifier"}
+	inProgressDirTypes := []string{"pending"}
 
 	// now create the download dirs
 	for _, objType := range objTypes {
@@ -692,6 +709,47 @@ func clearInProgressDownloadDirs(objTypes []string) {
 					log.Fatal(err)
 				}
 			}
+		}
+	}
+}
+
+// If an object has a zero RefCount and dropped to zero more than
+// downloadGCTime ago, then we delete the Status. That will result in the
+// user (zedmanager or zedagent) deleting the Config, unless a RefCount
+// increase is underway.
+// XXX Note that this runs concurrently with the handler.
+func gcObjects(ctx *downloaderContext) {
+	log.Debugf("gcObjects()\n")
+	publications := []*pubsub.Publication{
+		ctx.pubAppImgStatus,
+		ctx.pubBaseOsStatus,
+		ctx.pubCertObjStatus,
+	}
+	for _, pub := range publications {
+		items := pub.GetAll()
+		for key, st := range items {
+			status := cast.CastDownloaderStatus(st)
+			if status.Key() != key {
+				log.Errorf("gcObjects key/UUID mismatch %s vs %s; ignored %+v\n",
+					key, status.Key(), status)
+				continue
+			}
+			if status.RefCount != 0 {
+				log.Debugf("gcObjects: skipping RefCount %d: %s\n",
+					status.RefCount, key)
+				continue
+			}
+			timePassed := time.Since(status.LastUse)
+			if timePassed > downloadGCTime {
+				log.Debugf("gcObjects: skipping recently used %s remains %d seconds\n",
+					key,
+					(timePassed-downloadGCTime)/time.Second)
+				continue
+			}
+			log.Infof("gcObjects: expiring status for %s; LastUse %v now %v\n",
+				key, status.LastUse, time.Now())
+			status.Expired = true
+			publishDownloaderStatus(ctx, &status)
 		}
 	}
 }
@@ -1216,8 +1274,12 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	var gcp *types.GlobalConfig
+	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
+	if gcp != nil && gcp.DownloadGCTime != 0 {
+		downloadGCTime = time.Duration(gcp.DownloadGCTime) * time.Second
+	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
 
@@ -1230,7 +1292,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
-	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }

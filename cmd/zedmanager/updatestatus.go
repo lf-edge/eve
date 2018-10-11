@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-// Find all the config and config which refer to this safename.
+// Find all the config which refer to this safename.
 func updateAIStatusSafename(ctx *zedmanagerContext, safename string) {
 
 	log.Infof("updateAIStatusSafename for %s\n", safename)
@@ -33,8 +33,7 @@ func updateAIStatusSafename(ctx *zedmanagerContext, safename string) {
 			if safename == safename2 {
 				log.Infof("Found StorageConfig URL %s safename %s\n",
 					sc.Name, safename2)
-				updateAIStatusUUID(ctx,
-					config.Key())
+				updateAIStatusUUID(ctx, config.Key())
 			}
 		}
 	}
@@ -43,16 +42,15 @@ func updateAIStatusSafename(ctx *zedmanagerContext, safename string) {
 // Update this AppInstanceStatus generate config updates to
 // the microservices
 func updateAIStatusUUID(ctx *zedmanagerContext, uuidStr string) {
-	config := lookupAppInstanceConfig(ctx, uuidStr)
-	if config == nil {
-		log.Infof("updateAIStatusUUID for %s: Missing AppInstanceConfig\n",
-			uuidStr)
-		return
-	}
 	status := lookupAppInstanceStatus(ctx, uuidStr)
 	if status == nil {
 		log.Infof("updateAIStatusUUID for %s: Missing AppInstanceStatus\n",
 			uuidStr)
+		return
+	}
+	config := lookupAppInstanceConfig(ctx, uuidStr)
+	if config == nil {
+		removeAIStatus(ctx, status)
 		return
 	}
 	changed := doUpdate(ctx, uuidStr, *config, status)
@@ -137,8 +135,27 @@ func removeAIStatusSafename(ctx *zedmanagerContext, safename string) {
 			if safename == safename2 {
 				log.Debugf("Found StorageStatus URL %s safename %s\n",
 					ss.Name, safename2)
-				removeAIStatus(ctx, &status)
+				updateOrRemove(ctx, status)
 			}
+		}
+	}
+}
+
+// If we have an AIConfig we update it - the image might have disappeared.
+// Otherwise we proceeed with remove.
+func updateOrRemove(ctx *zedmanagerContext, status types.AppInstanceStatus) {
+	uuidStr := status.Key()
+	config := lookupAppInstanceConfig(ctx, uuidStr)
+	if config == nil || (status.PurgeInprogress == types.BRING_DOWN) {
+		log.Infof("updateOrRemove: remove for %s\n", uuidStr)
+		removeAIStatus(ctx, &status)
+	} else {
+		log.Infof("updateOrRemove: update for %s\n", uuidStr)
+		changed := doUpdate(ctx, uuidStr, *config, &status)
+		if changed {
+			log.Infof("updateOrRemove status change for %s\n",
+				uuidStr)
+			publishAppInstanceStatus(ctx, &status)
 		}
 	}
 }
@@ -157,6 +174,7 @@ func doUpdate(ctx *zedmanagerContext, uuidStr string,
 
 	// Are we doing a purge?
 	// XXX when/how do we drop refcounts on old images? GC?
+	// XXX need to keep old StorageStatusList with Has*Ref
 	if status.PurgeInprogress == types.DOWNLOAD {
 		log.Infof("PurgeInprogress(%s) download/verifications done\n",
 			status.Key())
@@ -249,7 +267,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		// Shortcut if image is already verified
 		vs := lookupVerifyImageStatusAny(ctx, safename,
 			sc.ImageSha256)
-		if vs != nil && !vs.Pending() && vs.State == types.DELIVERED {
+		if vs != nil && vs.State == types.DELIVERED {
 			log.Infof("doUpdate found verified image for %s sha %s\n",
 				safename, sc.ImageSha256)
 			if vs.Safename != safename {
@@ -384,7 +402,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 
 		vs := lookupVerifyImageStatusAny(ctx, safename,
 			sc.ImageSha256)
-		if vs == nil || vs.Pending() {
+		if vs == nil {
 			log.Infof("lookupVerifyImageStatusAny %s sha %s failed\n",
 				safename, sc.ImageSha256)
 			minState = types.DOWNLOADED
@@ -396,6 +414,11 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		if vs.State != ss.State {
 			ss.State = vs.State
 			changed = true
+		}
+		if vs.Pending() {
+			log.Infof("lookupVerifyImageStatusAny %s Pending\n",
+				safename)
+			continue
 		}
 		if vs.LastErr != "" {
 			log.Errorf("Received error from verifier for %s: %s\n",

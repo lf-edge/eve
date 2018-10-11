@@ -22,7 +22,7 @@ type DownloaderConfig struct {
 	Size            uint64 // In bytes
 	ImageSha256     string // sha256 of immutable image
 	FinalObjDir     string // final Object Store
-	RefCount        uint   // Zero means can delete file/cancel download
+	RefCount        uint
 }
 
 func (config DownloaderConfig) Key() string {
@@ -54,7 +54,9 @@ type DownloaderStatus struct {
 	PendingAdd     bool
 	PendingModify  bool
 	PendingDelete  bool
-	RefCount       uint // Zero means not downloaded
+	RefCount       uint      // Zero means not downloaded
+	LastUse        time.Time // When RefCount dropped to zero
+	Expired        bool      // Handshake to client
 	DownloadURL    string
 	UseFreeUplinks bool
 	ImageSha256    string  // sha256 of immutable image

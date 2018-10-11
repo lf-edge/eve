@@ -16,6 +16,8 @@ type GlobalConfig struct {
 	FallbackIfCloudGoneTime uint32 // ... and shorter during update
 	MintimeUpdateSuccess    uint32 // time before zedagent declares success
 	StaleConfigTime         uint32 // On reboot use saved config if not stale
+	DownloadGCTime          uint32 // Garbage collect if no use
+	VdiskGCTime             uint32 // Garbage collect RW disk if no use
 
 	NoUsbAccess           bool // domU has all PCI including USB controllers
 	NoSshAccess           bool
@@ -24,6 +26,7 @@ type GlobalConfig struct {
 	// XXX add max space for downloads?
 	// XXX add LTE uplink usage policy?
 
+	XXXTest bool
 	// Per agent settings of log levels; if set for an agent it
 	// overrides the Default*Level above
 	AgentSettings map[string]perAgentSettings

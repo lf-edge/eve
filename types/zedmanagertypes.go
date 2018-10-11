@@ -55,6 +55,7 @@ type AppInstanceConfig struct {
 	IoAdapterList       []IoAdapter
 	RestartCmd          AppInstanceOpsCmd
 	PurgeCmd            AppInstanceOpsCmd
+	CloudInitUserData   string // base64-encoded
 }
 
 type AppInstanceOpsCmd struct {
@@ -168,9 +169,10 @@ type StorageConfig struct {
 	ReadOnly    bool
 	Preserve    bool // If set a rw disk will be preserved across
 	// boots (acivate/inactivate)
-	Format  string // Default "raw"; could be raw, qcow, qcow2, vhd
-	Devtype string // Default ""; could be e.g. "cdrom"
-	Target  string // Default "" is interpreted as "disk"
+	Maxsizebytes uint64 // Resize filesystem to this size if set
+	Format       string // Default "raw"; could be raw, qcow, qcow2, vhd
+	Devtype      string // Default ""; could be e.g. "cdrom"
+	Target       string // Default "" is interpreted as "disk"
 }
 
 func RoundupToKB(b uint64) uint64 {
@@ -182,6 +184,7 @@ type StorageStatus struct {
 	ImageSha256        string // sha256 of immutable image
 	ReadOnly           bool
 	Preserve           bool
+	Maxsizebytes       uint64 // Resize filesystem to this size if set
 	Format             string
 	Devtype            string
 	Target             string  // Default "" is interpreted as "disk"

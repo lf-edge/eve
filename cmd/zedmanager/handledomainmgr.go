@@ -54,12 +54,13 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 	}
 
 	dc := types.DomainConfig{
-		UUIDandVersion: aiConfig.UUIDandVersion,
-		DisplayName:    aiConfig.DisplayName,
-		Activate:       aiConfig.Activate,
-		AppNum:         AppNum,
-		VmConfig:       aiConfig.FixedResources,
-		IoAdapterList:  aiConfig.IoAdapterList,
+		UUIDandVersion:    aiConfig.UUIDandVersion,
+		DisplayName:       aiConfig.DisplayName,
+		Activate:          aiConfig.Activate,
+		AppNum:            AppNum,
+		VmConfig:          aiConfig.FixedResources,
+		IoAdapterList:     aiConfig.IoAdapterList,
+		CloudInitUserData: aiConfig.CloudInitUserData,
 	}
 
 	// Determine number of "disk" targets in list
@@ -88,6 +89,7 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 			disk.ReadOnly = sc.ReadOnly
 			disk.Preserve = sc.Preserve
 			disk.Format = sc.Format
+			disk.Maxsizebytes = sc.Maxsizebytes
 			disk.Devtype = sc.Devtype
 			i++
 		case "kernel":

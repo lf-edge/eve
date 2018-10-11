@@ -209,8 +209,15 @@ func doServiceActivate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	// We must have an existing AppLink to activate
 	netstatus := lookupNetworkObjectStatus(ctx, config.AppLink.String())
 	if netstatus == nil {
-		return errors.New(fmt.Sprintf("No AppLink for %s", config.UUID))
+		return errors.New(fmt.Sprintf("No AppLink %s for service %s",
+			config.AppLink.String(), config.UUID))
 	}
+	if netstatus.Error != "" {
+		errStr := fmt.Sprintf("AppLink %s has error %s",
+			config.AppLink.String(), netstatus.Error)
+		return errors.New(errStr)
+	}
+
 	log.Infof("doServiceActivate found NetworkObjectStatus %s\n",
 		netstatus.Key())
 
@@ -403,11 +410,12 @@ func getBridgeServiceIPv4Addr(ctx *zedrouterContext, appLink uuid.UUID) (string,
 	}
 	if status.Type != types.NST_BRIDGE {
 		errStr := fmt.Sprintf("getBridgeServiceIPv4Addr(%s): service not a bridge; type %d",
-			status.Type)
+			appLink.String(), status.Type)
 		return "", errors.New(errStr)
 	}
 	if status.Adapter == "" {
-		log.Infof("getBridgeServiceIPv4Addr: bridge but no Adapter\n")
+		log.Infof("getBridgeServiceIPv4Addr(%s): bridge but no Adapter\n",
+			appLink.String())
 		return "", nil
 	}
 
@@ -422,12 +430,12 @@ func getBridgeServiceIPv4Addr(ctx *zedrouterContext, appLink uuid.UUID) (string,
 		return "", err
 	}
 	for _, addr := range addrs {
-		log.Infof("getBridgeServiceIPv4Addr: found addr %s\n",
-			addr.IP.String())
+		log.Infof("getBridgeServiceIPv4Addr(%s): found addr %s\n",
+			appLink.String(), addr.IP.String())
 		return addr.IP.String(), nil
 	}
-	log.Infof("getBridgeServiceIPv4Addr: no IP address on %s yet\n",
-		status.Adapter)
+	log.Infof("getBridgeServiceIPv4Addr(%s): no IP address on %s yet\n",
+		appLink.String(), status.Adapter)
 	return "", nil
 }
 
@@ -529,6 +537,11 @@ func lispCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	netstatus := lookupNetworkObjectStatus(ctx, config.AppLink.String())
 	if netstatus == nil {
 		return errors.New(fmt.Sprintf("No AppLink for %s", config.UUID))
+	}
+	if netstatus.Error != "" {
+		errStr := fmt.Sprintf("AppLink %s has error %s",
+			config.AppLink.String(), netstatus.Error)
+		return errors.New(errStr)
 	}
 	if netstatus.Ipv4Eid {
 		ipv4Network := netstatus.Subnet.IP.Mask(netstatus.Subnet.Mask)
@@ -802,13 +815,13 @@ func natInactivate(status *types.NetworkServiceStatus,
 		err := iptableCmd("-t", "nat", "-D", "POSTROUTING", "-o", a,
 			"-s", subnetStr, "-j", "MASQUERADE")
 		if err != nil {
-			log.Errorln(err)
+			log.Errorf("natInactivate: iptableCmd failed %s\n", err)
 		}
 	}
-	// Add to Pbr table
+	// Remove from Pbr table
 	err := PbrNATDel(subnetStr)
 	if err != nil {
-		log.Errorln(err)
+		log.Errorf("natInactivate: PbrNATDel failed %s\n", err)
 	}
 }
 
