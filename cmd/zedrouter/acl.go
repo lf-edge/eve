@@ -275,6 +275,10 @@ func applyACLRules(rules IptablesRuleList, bridgeName string, vifName string,
 			"-p", "tcp", "-j", "CHECKSUM", "--checksum-fill")
 		ip6tableCmd("-t", "mangle", "-A", "PREROUTING", "-i", bridgeName,
 			"-p", "udp", "-j", "CHECKSUM", "--checksum-fill")
+		iptableCmd("-t", "mangle", "-A", "PREROUTING", "-i", bridgeName,
+			"-p", "tcp", "-j", "CHECKSUM", "--checksum-fill")
+		iptableCmd("-t", "mangle", "-A", "PREROUTING", "-i", bridgeName,
+			"-p", "udp", "-j", "CHECKSUM", "--checksum-fill")
 	}
 	// XXX isMgmt is painful; related to commenting out eidset accepts
 	// XXX won't need this when zedmanager is in a separate domU
