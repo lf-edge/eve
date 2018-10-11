@@ -185,7 +185,9 @@ func FlushMapCache() {
 // create and add an un-resolved entry for buffering packets.
 func LookupAndAdd(iid uint32,
 	eid net.IP, timeStamp time.Time) (*dptypes.MapCacheEntry, bool) {
-	log.Debugf("LookupAndAdd: Adding EID %s with IID %v", eid, iid)
+	if debug {
+		log.Debugf("LookupAndAdd: Adding EID %s with IID %v", eid, iid)
+	}
 	key := makeMapCacheKey(iid, eid)
 
 	// we take a read lock and check if the entry that we are looking for

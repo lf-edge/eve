@@ -282,11 +282,10 @@ func verifyAndInject(fd4 int,
 	if iid == uint32(0xFFFFFF) {
 		return true
 	}
-	log.Debugf("verifyAndInject: IID of input packet is: %v", iid)
+	if debug {
+		log.Debugf("verifyAndInject: IID of input packet is: %v", iid)
+	}
 	packetOffset := dptypes.LISPHEADERLEN
-
-	gcmOverhead := 0
-	icvLen := 0
 
 	keyId := fib.GetLispKeyId(buf[0:8])
 	if keyId != 0 {
@@ -338,18 +337,18 @@ func verifyAndInject(fd4 int,
 			log.Errorf("VerifyAndInject: GCM cipher creation failed: %s", err)
 			return false
 		}
-		log.Debugf("verifyAndInject: LISP %s, IV %s, Cipher %s, ICV %s",
-			fib.PrintHexBytes(buf[:8]),
-			fib.PrintHexBytes(ivArray),
-			fib.PrintHexBytes(packet),
-			fib.PrintHexBytes(pktIcv))
+		if debug {
+			log.Debugf("verifyAndInject: LISP %s, IV %s, Cipher %s, ICV %s",
+				fib.PrintHexBytes(buf[:8]),
+				fib.PrintHexBytes(ivArray),
+				fib.PrintHexBytes(packet),
+				fib.PrintHexBytes(pktIcv))
+		}
 		_, err = aesGcm.Open(packet[:0], ivArray, packet, nil)
 		if err != nil {
 			log.Errorf("verifyAndInject: Packet decryption failed: %s", err)
 			return false
 		}
-		gcmOverhead = aesGcm.Overhead()
-		icvLen = dptypes.ICVLEN
 	}
 
 	// Zededa's use case only has IPv4 & IPv6 EIDs. Check if the version
@@ -364,7 +363,6 @@ func verifyAndInject(fd4 int,
 		return false
 	}
 
-	packetEnd := n - gcmOverhead - icvLen
 	if version == dptypes.IPVERSION6 {
 		// dptypes.IP6DESTADDROFFSET (24) is the offset of
 		// destination ipv6 address in ipv6 header.
@@ -375,13 +373,22 @@ func verifyAndInject(fd4 int,
 			destAddr[i] = buf[destAddrOffset+i]
 		}
 
+		// Lisp crypto packets might have some padding added at tail end.
+		// Look for the payload length in IPv6 header and slice the packet
+		// buffer accordingly. Leaving the padding works in case of IPv6 but,
+		// we want to be ready when linux kernel behavior changes.
+		var payloadLen int = int(buf[packetOffset + dptypes.IP6PAYLOADLENOFFSET])
+		payloadLen = (payloadLen << 8) | int(buf[packetOffset + dptypes.IP6PAYLOADLENOFFSET + 1])
+		packetEnd := packetOffset + payloadLen + dptypes.IP6HEADERLEN
+
 		err := syscall.Sendto(fd6, buf[packetOffset:packetEnd], 0, &syscall.SockaddrInet6{
 			Port:   0,
 			ZoneId: 0,
 			Addr:   destAddr,
 		})
 		if err != nil {
-			log.Errorf("verifyAndInject: Failed decapsulating ETR packet: %s", err)
+			// XXX May be add an error stat here
+			log.Errorf("verifyAndInject: Failed sending out ETR packet(Ipv6): %s", err)
 			return false
 		}
 	} else {
@@ -397,12 +404,21 @@ func verifyAndInject(fd4 int,
 			destAddr[i] = buf[destAddrOffset+i]
 		}
 
+		// Lisp crypto packets might have some padding added at tail end.
+		// Look for the total packet length in IPv4 header and slice the packet
+		// buffer accordingly. Leaving the padding works in case of IPv6 but,
+		// results in checksum errors in case of IPv4.
+		var totalLen int = int(buf[packetOffset + dptypes.IP4TOTALLENOFFSET])
+		totalLen = (totalLen << 8) | int(buf[packetOffset + dptypes.IP4TOTALLENOFFSET + 1])
+		packetEnd := packetOffset + totalLen
+
 		err := syscall.Sendto(fd4, buf[packetOffset:packetEnd], 0, &syscall.SockaddrInet4{
 			Port:   0,
 			Addr:   destAddr,
 		})
 		if err != nil {
-			log.Errorf("verifyAndInject: Failed decapsulating ETR packet: %s", err)
+			// XXX May be add an error stat here
+			log.Errorf("verifyAndInject: Failed sending out ETR packet(IPv4): %s", err)
 			return false
 		}
 	}
@@ -498,7 +514,9 @@ func ProcessETRPkts(fd4 int, fd6 int, serverConn *net.UDPConn) bool {
 		if err != nil {
 			log.Fatal("ProcessETRPkts: Fatal error during ETR processing: %s", err)
 		}
-		log.Debugf("ProcessETRPkts: Received %v bytes in ETR", n)
+		if debug {
+			log.Debugf("ProcessETRPkts: Received %v bytes in ETR", n)
+		}
 		currUnixSeconds := time.Now().Unix()
 		decapKeys := fib.LookupDecapKeys(saddr.IP)
 		ok := verifyAndInject(fd4, fd6, buf, n, decapKeys, currUnixSeconds)
@@ -549,7 +567,9 @@ func ProcessCapturedPkts(fd4 int, fd6 int,
 		}
 		capLen := ci.CaptureLength
 		currUnixSeconds := ci.Timestamp.Unix()
-		log.Debugf("ProcessCapturedPkts: Captured ETR packet of length %d", capLen)
+		if debug {
+			log.Debugf("ProcessCapturedPkts: Captured ETR packet of length %d", capLen)
+		}
 		/*
 		packet := gopacket.NewPacket(
 			pktBuf[:capLen],
@@ -605,7 +625,9 @@ func ProcessCapturedPkts(fd4 int, fd6 int,
 					pktBuf[dptypes.ETHHEADERLEN : dptypes.ETHHEADERLEN+dptypes.IP4HEADERLEN])
 				if csum != 0xFFFF {
 					fib.AddDecapStatistics("checksum-error", 1, uint64(capLen), currUnixSeconds)
-					log.Debugf("ProcessCapturedPackets: Checksum error")
+					if debug {
+						log.Debugf("ProcessCapturedPackets: Checksum error")
+					}
 					return
 				}
 
