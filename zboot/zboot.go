@@ -18,7 +18,7 @@ import (
 )
 
 // mutex for zboot/dd APIs
-// XXX not useful since this can be invoked by different agents
+// XXX not bullet proof since this can be invoked by different agents/processes
 var zbootMutex *sync.Mutex
 
 func init() {
@@ -58,7 +58,8 @@ func WatchdogOK() {
 }
 
 // Cache since it never changes on a running system
-// XXX lsblk seems to hang in kernel so avoid calling zboot curpart
+// XXX lsblk seems to hang in kernel so avoid calling zboot curpart more
+// than once per process.
 var currentPartition string
 
 // partition routines
@@ -69,7 +70,7 @@ func GetCurrentPartition() string {
 	if currentPartition != "" {
 		return currentPartition
 	}
-	log.Infof("calling zboot curpart - not in cache\n")
+	log.Debugf("calling zboot curpart - not in cache\n")
 	curPartCmd := exec.Command("zboot", "curpart")
 	zbootMutex.Lock()
 	ret, err := curPartCmd.Output()
@@ -192,7 +193,7 @@ func GetPartitionDevname(partName string) string {
 	if ok {
 		return dev
 	}
-	log.Infof("calling zboot partdev %s - not in cache\n", partName)
+	log.Debugf("calling zboot partdev %s - not in cache\n", partName)
 
 	getPartDevCmd := exec.Command("zboot", "partdev", partName)
 	zbootMutex.Lock()
@@ -374,7 +375,8 @@ func GetLongVersion(part string) string {
 	return ""
 }
 
-// XXX explore a loopback mount!
+// XXX explore a loopback mount to be able to read version
+// from a downloaded image file
 func getVersion(part string, verFilename string) string {
 	validatePartitionName(part)
 
