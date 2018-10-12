@@ -196,18 +196,10 @@ func LookupAndAdd(iid uint32,
 	entry, ok := cache.MapCache[key]
 	cache.LockMe.RUnlock()
 
-	if ok {
-		// XXX Add code to take care of periodic punting of packets
-		// to control plane. When it is decided to make a periodic punt
-		// return true for the punt status
+	if ok && !entry.Resolved {
+		// When it is decided to make a punt, return true for the punt status
 		punt := false
-		var puntInterval time.Duration = 30000
-
-		if entry.Resolved == false {
-			log.Debugf("LookupAndAdd: Entry with EID %s, IID %v in unresolved state",
-				eid, iid)
-			puntInterval = 5000
-		}
+		var puntInterval time.Duration = 5000
 
 		// elapsed time is in Nano seconds
 		elapsed := timeStamp.Sub(entry.LastPunt)
@@ -218,12 +210,14 @@ func LookupAndAdd(iid uint32,
 		// if elapsed time is greater than 30000ms send a punt request
 		// XXX Is 30 seconds for punt too high?
 		if elapsed >= puntInterval {
-			log.Debugf("LookupAndAdd: Sending punt entry for EID %s, IID %v",
+			log.Infof("LookupAndAdd: Sending punt entry for EID %s, IID %v",
 				eid, iid)
 			punt = true
 			entry.LastPunt = timeStamp
 		}
 		return entry, punt
+	} else if ok {
+		return entry, false
 	}
 
 	// if the entry is not present already, we take write lock to map cache
@@ -248,8 +242,10 @@ func LookupAndAdd(iid uint32,
 			ResolveTime: currTime,
 		}
 		cache.MapCache[key] = &resolveEntry
-		log.Debugf("LookupAndAdd: Added new map-cache entry with EID %s, IID %v",
-			eid, iid)
+		if debug {
+			log.Debugf("LookupAndAdd: Added new map-cache entry with EID %s, IID %v",
+				eid, iid)
+		}
 		return &resolveEntry, true
 	}
 }
@@ -366,12 +362,6 @@ func LookupAndUpdate(iid uint32, eid net.IP, rlocs []dptypes.Rloc) *dptypes.MapC
 	var lastPunt time.Time
 
 	key := makeMapCacheKey(iid, eid)
-	cache.LockMe.Lock()
-	defer cache.LockMe.Unlock()
-	entry, ok := cache.MapCache[key]
-
-	log.Infof("LookupAndUpdate: Adding map-cache entry with key IID %d, EID %s",
-		key.IID, key.Eid)
 
 	selectRlocs, totWeight = compileRlocs(rlocs)
 
@@ -379,7 +369,26 @@ func LookupAndUpdate(iid uint32, eid net.IP, rlocs []dptypes.Rloc) *dptypes.MapC
 	// If RLOC list is empty we mark the map-cache entry as un-resolved.
 	if len(selectRlocs) == 0 {
 		resolved = false
+
+		// There are some packets that come from domU destined to bridge
+		// IP address. For such packets lispers.net will never have
+		// an answer.
+		// Check if the existing entry in map-cache table also has empty RLOC list.
+		// If yes, return from here.
+		cache.LockMe.RLock()
+		entry, ok := cache.MapCache[key]
+		cache.LockMe.RUnlock()
+
+		if ok && (len(entry.Rlocs) == 0) {
+			return entry
+		}
 	}
+	log.Infof("LookupAndUpdate: Adding map-cache entry with key IID %d, EID %s",
+		key.IID, key.Eid)
+
+	cache.LockMe.Lock()
+	defer cache.LockMe.Unlock()
+	entry, ok := cache.MapCache[key]
 
 	if ok && (entry.Resolved == true) {
 		// Delete the old map cache entry
@@ -398,14 +407,18 @@ func LookupAndUpdate(iid uint32, eid net.IP, rlocs []dptypes.Rloc) *dptypes.MapC
 		buffdPkts = entry.BuffdPkts
 		lastPunt = entry.LastPunt
 
-		log.Debugf("LookupAndUpdate: Deleting map-cache entry with EID %s, IID %v "+
-			"before adding new entry", key.Eid, key.IID)
+		if debug {
+			log.Debugf("LookupAndUpdate: Deleting map-cache entry with EID %s, IID %v "+
+				"before adding new entry", key.Eid, key.IID)
+		}
 		delete(cache.MapCache, key)
 	} else if ok {
 		// Entry is in unresolved state. Update the RLOCs and mark the entry
 		// as resolved.
-		log.Debugf("LookupAndUpdate: Resolving unresolved entry with EID %s, IID %v",
+		if debug {
+			log.Debugf("LookupAndUpdate: Resolving unresolved entry with EID %s, IID %v",
 			key.Eid, key.IID)
+		}
 		entry.Rlocs = selectRlocs
 		entry.RlocTotWeight = totWeight
 		entry.Resolved = resolved
