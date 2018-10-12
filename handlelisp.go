@@ -189,12 +189,15 @@ func createMapCache(mapCache *MapCacheEntry) {
 
 	// if the opcode is delete we do not have to parse
 	if mapCache.Opcode == "delete" {
+		log.Infof("Deleting map-cache entry for IID %v, EID %s", iid, eid.String())
 		fib.DeleteMapCacheEntry(iid, eid)
 		return
 	}
 
 	// If rlocs are empty bail
 	if len(mapCache.Rlocs) == 0 {
+		log.Infof("Received empty Rloc list for map-cache entry with IID %v, EID %s",
+			iid, eid.String())
 		return
 	}
 
