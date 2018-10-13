@@ -7,33 +7,43 @@ import (
 	"fmt"
 	"github.com/golang/protobuf/proto"
 	"github.com/satori/go.uuid"
+	log "github.com/sirupsen/logrus"
 	"github.com/zededa/api/zconfig"
-	"log"
+	"github.com/zededa/go-provision/hardware"
 	"mime"
 	"net/http"
 	"strings"
 )
 
-func parseUUID(configUrl string, resp *http.Response, contents []byte) (uuid.UUID, error) {
+// Return UUID and hardwaremodel
+func parseConfig(configUrl string, resp *http.Response, contents []byte) (uuid.UUID, string, error) {
 	var devUUID uuid.UUID
+	var hardwaremodel string
 
 	if err := validateConfigMessage(configUrl, resp); err != nil {
-		log.Println("validateConfigMessage: ", err)
-		return devUUID, err
+		log.Errorln("validateConfigMessage: ", err)
+		return devUUID, hardwaremodel, err
 	}
 
 	config, err := readDeviceConfigProtoMessage(contents)
 	if err != nil {
-		log.Println("readDeviceConfigProtoMessage: ", err)
-		return devUUID, err
+		log.Errorln("readDeviceConfigProtoMessage: ", err)
+		return devUUID, hardwaremodel, err
+	}
+	// Check if we have an override from the device config
+	manufacturer := config.GetManufacturer()
+	productName := config.GetProductName()
+	if manufacturer != "" && productName != "" {
+		hardwaremodel = hardware.FormatModel(manufacturer, productName,
+			"")
 	}
 	uuidStr := strings.TrimSpace(config.GetId().Uuid)
 	devUUID, err = uuid.FromString(uuidStr)
 	if err != nil {
-		log.Printf("uuid.FromString(%s): %s\n", uuidStr, err)
-		return devUUID, err
+		log.Errorf("uuid.FromString(%s): %s\n", uuidStr, err)
+		return devUUID, hardwaremodel, err
 	}
-	return devUUID, nil
+	return devUUID, hardwaremodel, nil
 }
 
 // From zedagent/handleconfig.go
@@ -66,7 +76,7 @@ func readDeviceConfigProtoMessage(contents []byte) (*zconfig.EdgeDevConfig, erro
 
 	err := proto.Unmarshal(contents, config)
 	if err != nil {
-		log.Println("Unmarshalling failed: %v", err)
+		log.Errorln("Unmarshalling failed: %v", err)
 		return nil, err
 	}
 	return config, nil

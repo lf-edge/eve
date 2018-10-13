@@ -4,7 +4,8 @@
 package types
 
 import (
-	"log"
+	"github.com/satori/go.uuid"
+	log "github.com/sirupsen/logrus"
 	"time"
 )
 
@@ -26,17 +27,20 @@ type BaseOsConfig struct {
 	ConfigSignature   string
 	OsParams          []OsVerParams // From GetLongVersion
 	StorageConfigList []StorageConfig
-	PartitionLabel    string // XXX Remove
 	RetryCount        int32
 	Activate          bool
 }
 
+func (config BaseOsConfig) Key() string {
+	return config.UUIDandVersion.UUID.String()
+}
+
 func (config BaseOsConfig) VerifyFilename(fileName string) bool {
-	uuid := config.UUIDandVersion.UUID
-	ret := uuid.String()+".json" == fileName
+	expect := config.Key() + ".json"
+	ret := expect == fileName
 	if !ret {
-		log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-			fileName, uuid.String())
+		log.Errorf("Mismatch between filename and contained uuid: %s vs. %s\n",
+			fileName, expect)
 	}
 	return ret
 }
@@ -54,19 +58,24 @@ type BaseOsStatus struct {
 	PartitionState    string // From zboot
 
 	// Mininum state across all steps/StorageStatus.
-	// INITIAL implies error.
-	State SwState
+	// Error* set implies error.
+	State            SwState
+	MissingDatastore bool // If some DatastoreId not found
 	// error strings across all steps/StorageStatus
 	Error     string
 	ErrorTime time.Time
 }
 
+func (status BaseOsStatus) Key() string {
+	return status.UUIDandVersion.UUID.String()
+}
+
 func (status BaseOsStatus) VerifyFilename(fileName string) bool {
-	uuid := status.UUIDandVersion.UUID
-	ret := uuid.String()+".json" == fileName
+	expect := status.Key() + ".json"
+	ret := expect == fileName
 	if !ret {
-		log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-			fileName, uuid.String())
+		log.Errorf("Mismatch between filename and contained uuid: %s vs. %s\n",
+			fileName, expect)
 	}
 	return ret
 }
@@ -88,42 +97,52 @@ func (status BaseOsStatus) CheckPendingDelete() bool {
 // the UUIDandVersion/Config Sha are just
 // copied from the holder object configuration
 // for indexing
-
+// XXX shouldn't it be keyed by safename
 type CertObjConfig struct {
 	UUIDandVersion    UUIDandVersion
 	ConfigSha256      string
 	StorageConfigList []StorageConfig
 }
 
+func (config CertObjConfig) Key() string {
+	return config.UUIDandVersion.UUID.String()
+}
+
 func (config CertObjConfig) VerifyFilename(fileName string) bool {
-	uuid := config.UUIDandVersion.UUID
-	ret := uuid.String()+".json" == fileName
+	expect := config.Key() + ".json"
+	ret := expect == fileName
 	if !ret {
-		log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-			fileName, uuid.String())
+		log.Errorf("Mismatch between filename and contained uuid: %s vs. %s\n",
+			fileName, expect)
 	}
 	return ret
 }
 
 // Indexed by UUIDandVersion as above
+// XXX shouldn't it be keyed by safename
 type CertObjStatus struct {
 	UUIDandVersion    UUIDandVersion
 	ConfigSha256      string
 	StorageStatusList []StorageStatus
 	// Mininum state across all steps/ StorageStatus.
-	// INITIAL implies error.
-	State SwState
+	// Error* set implies error.
+	State            SwState
+	MissingDatastore bool // If some DatastoreId not found
 	// error strings across all steps/StorageStatus
 	Error     string
 	ErrorTime time.Time
 }
 
+func (status CertObjStatus) Key() string {
+	return status.UUIDandVersion.UUID.String()
+}
+
 func (status CertObjStatus) VerifyFilename(fileName string) bool {
-	uuid := status.UUIDandVersion.UUID
-	ret := uuid.String()+".json" == fileName
+	expect := status.Key() + ".json"
+	ret := expect == fileName
 	if !ret {
-		log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-			fileName, uuid.String())
+		log.Errorf("Mismatch between filename and contained uuid: %s vs. %s\n",
+			fileName, expect)
 	}
 	return ret
 }
@@ -142,11 +161,12 @@ func (status CertObjStatus) CheckPendingDelete() bool {
 
 // return value holder
 type RetStatus struct {
-	Changed         bool
-	MinState        SwState
-	WaitingForCerts bool
-	AllErrors       string
-	ErrorTime       time.Time
+	Changed          bool
+	MinState         SwState
+	WaitingForCerts  bool
+	MissingDatastore bool
+	AllErrors        string
+	ErrorTime        time.Time
 }
 
 // Mirrors proto definition for ConfigItem
@@ -172,3 +192,17 @@ const (
 	MetricItemCounter                       // Monotonically increasing (until reboot)
 	MetricItemState                         // Toggles on and off; count transitions
 )
+
+type DatastoreConfig struct {
+	UUID     uuid.UUID
+	DsType   string
+	Fqdn     string
+	ApiKey   string
+	Password string
+	Dpath    string // depending on DsType, it could be bucket or path
+	Region   string
+}
+
+func (config DatastoreConfig) Key() string {
+	return config.UUID.String()
+}

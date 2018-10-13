@@ -18,7 +18,7 @@ echo ${BUILD_VERSION} >bin/linux_x86_64/versioninfo
 echo ${BUILD_VERSION} >bin/linux_arm64/versioninfo
 
 APPS="zedbox"
-APPS1="logmanager ledmanager downloader verifier client zedrouter domainmgr identitymgr zedmanager eidregister zedagent hardwaremodel"
+APPS1="logmanager ledmanager downloader verifier client zedrouter domainmgr identitymgr zedmanager zedagent hardwaremodel ipcmonitor"
 
 if /bin/true; then
     cmdline=""

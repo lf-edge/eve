@@ -31,7 +31,7 @@ import (
 // based on processing time ...
 
 // Ticker handle for caller
-type flexTickerHandle struct {
+type FlexTickerHandle struct {
 	C           <-chan time.Time
 	privateChan chan<- time.Time
 	configChan  chan<- flexTickerConfig
@@ -45,57 +45,57 @@ type flexTickerConfig struct {
 	randomFactor float64
 }
 
-func NewRangeTicker(minTime time.Duration, maxTime time.Duration) flexTickerHandle {
+func NewRangeTicker(minTime time.Duration, maxTime time.Duration) FlexTickerHandle {
 	initialConfig := flexTickerConfig{minTime: minTime,
 		maxTime: maxTime}
 	configChan := make(chan flexTickerConfig, 1)
 	tickChan := newFlexTicker(configChan)
 	configChan <- initialConfig
-	return flexTickerHandle{C: tickChan, privateChan: tickChan, configChan: configChan}
+	return FlexTickerHandle{C: tickChan, privateChan: tickChan, configChan: configChan}
 }
 
-func NewExpTicker(minTime time.Duration, maxTime time.Duration, randomFactor float64) flexTickerHandle {
+func NewExpTicker(minTime time.Duration, maxTime time.Duration, randomFactor float64) FlexTickerHandle {
 	initialConfig := flexTickerConfig{minTime: minTime,
 		maxTime: maxTime, exponential: true,
 		randomFactor: randomFactor}
 	configChan := make(chan flexTickerConfig, 1)
 	tickChan := newFlexTicker(configChan)
 	configChan <- initialConfig
-	return flexTickerHandle{C: tickChan, configChan: configChan}
+	return FlexTickerHandle{C: tickChan, configChan: configChan}
 }
 
-func (f flexTickerHandle) UpdateRangeTicker(minTime time.Duration, maxTime time.Duration) {
+func (f FlexTickerHandle) UpdateRangeTicker(minTime time.Duration, maxTime time.Duration) {
 	config := flexTickerConfig{minTime: minTime,
 		maxTime: maxTime}
 	f.configChan <- config
 }
 
 // Insert a tick now in addition to running timers
-func (f flexTickerHandle) TickNow() {
+func (f FlexTickerHandle) TickNow() {
 	f.privateChan <- time.Now()
 }
 
 // Note that the above member functions aren't always usable since the
-// flexTickerHandle type is not exported. Hence these functions help.
+// FlexTickerHandle type is not exported. Hence these functions help.
 func UpdateRangeTicker(hdl interface{}, minTime time.Duration,
 	maxTime time.Duration) {
-	f := hdl.(flexTickerHandle)
+	f := hdl.(FlexTickerHandle)
 	f.UpdateRangeTicker(minTime, maxTime)
 }
 
 func TickNow(hdl interface{}) {
-	f := hdl.(flexTickerHandle)
+	f := hdl.(FlexTickerHandle)
 	f.TickNow()
 }
 
-func (f flexTickerHandle) UpdateExpTicker(minTime time.Duration, maxTime time.Duration, randomFactor float64) {
+func (f FlexTickerHandle) UpdateExpTicker(minTime time.Duration, maxTime time.Duration, randomFactor float64) {
 	config := flexTickerConfig{minTime: minTime,
 		maxTime: maxTime, exponential: true,
 		randomFactor: randomFactor}
 	f.configChan <- config
 }
 
-func (f flexTickerHandle) StopTicker() {
+func (f FlexTickerHandle) StopTicker() {
 	f.configChan <- flexTickerConfig{}
 }
 

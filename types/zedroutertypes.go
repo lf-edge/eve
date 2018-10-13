@@ -7,7 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/eriknordmark/ipinfo"
-	"log"
+	"github.com/satori/go.uuid"
+	log "github.com/sirupsen/logrus"
 	"net"
 	"time"
 )
@@ -25,12 +26,16 @@ type AppNetworkConfig struct {
 	UnderlayNetworkList []UnderlayNetworkConfig
 }
 
+func (config AppNetworkConfig) Key() string {
+	return config.UUIDandVersion.UUID.String()
+}
+
 func (config AppNetworkConfig) VerifyFilename(fileName string) bool {
-	uuid := config.UUIDandVersion.UUID
-	ret := uuid.String()+".json" == fileName
+	expect := config.Key() + ".json"
+	ret := expect == fileName
 	if !ret {
-		log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-			fileName, uuid.String())
+		log.Errorf("Mismatch between filename and contained uuid: %s vs. %s\n",
+			fileName, expect)
 	}
 	return ret
 }
@@ -45,6 +50,10 @@ func (status AppNetworkStatus) CheckPendingModify() bool {
 
 func (status AppNetworkStatus) CheckPendingDelete() bool {
 	return status.PendingDelete
+}
+
+func (status AppNetworkStatus) Pending() bool {
+	return status.PendingAdd || status.PendingModify || status.PendingDelete
 }
 
 // Indexed by UUID
@@ -62,27 +71,61 @@ type AppNetworkStatus struct {
 	SeparateDataPlane   bool
 	OverlayNetworkList  []OverlayNetworkStatus
 	UnderlayNetworkList []UnderlayNetworkStatus
+	MissingNetwork      bool // If any Missing flag is set in the networks
+	// Any errros from provisioning the network
+	Error     string
+	ErrorTime time.Time
+}
+
+func (status AppNetworkStatus) Key() string {
+	return status.UUIDandVersion.UUID.String()
 }
 
 func (status AppNetworkStatus) VerifyFilename(fileName string) bool {
-	uuid := status.UUIDandVersion.UUID
-	ret := uuid.String()+".json" == fileName
+	expect := status.Key() + ".json"
+	ret := expect == fileName
 	if !ret {
-		log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-			fileName, uuid.String())
+		log.Errorf("Mismatch between filename and contained uuid: %s vs. %s\n",
+			fileName, expect)
 	}
 	return ret
 }
 
-// Global network config and status
+// Global network config. For backwards compatibility with build artifacts
+// XXX move to using DeviceUplinkConfig in build?
 type DeviceNetworkConfig struct {
 	Uplink      []string // ifname; all uplinks
 	FreeUplinks []string // subset used for image downloads
 }
 
+type DeviceUplinkConfig struct {
+	Uplinks []NetworkUplinkConfig
+	ProxyConfig
+}
+
+type ProxyConfig struct {
+	HttpsProxy string // HTTPS_PROXY environment variable
+	HttpProxy  string // HTTP_PROXY environment variable
+	FtpProxy   string // FTP_PROXY environment variable
+	SocksProxy string // SOCKS_PROXY environment variable
+	NoProxy    string // NO_PROXY environment variable
+}
+
+type NetworkUplinkConfig struct {
+	IfName     string
+	Free       bool
+	Dhcp       DhcpType // If DT_STATIC use below
+	AddrSubnet string   // In CIDR e.g., 192.168.1.44/24
+	Gateway    net.IP
+	DomainName string
+	NtpServer  net.IP
+	DnsServers []net.IP // If not set we use Gateway as DNS server
+}
+
 type NetworkUplink struct {
-	IfName       string
-	Free         bool
+	IfName string
+	Free   bool
+	NetworkObjectConfig
 	AddrInfoList []AddrInfo
 }
 
@@ -94,6 +137,7 @@ type AddrInfo struct {
 
 type DeviceNetworkStatus struct {
 	UplinkStatus []NetworkUplink
+	ProxyConfig
 }
 
 // Pick one of the uplinks
@@ -345,31 +389,223 @@ func ReportInterfaces(deviceNetworkStatus DeviceNetworkStatus) []string {
 	return names
 }
 
-type OverlayNetworkConfig struct {
+type MapServerType uint8
+
+const (
+	MST_INVALID MapServerType = iota
+	MST_MAPSERVER
+	MST_SUPPORT_SERVER
+	MST_LAST = 255
+)
+
+type MapServer struct {
+	ServiceType MapServerType
+	NameOrIp    string
+	Credential  string
+}
+
+type ServiceLispConfig struct {
+	MapServers    []MapServer
 	IID           uint32
-	EID           net.IP
+	Allocate      bool
+	ExportPrivate bool
+	EidPrefix     net.IP
+	EidPrefixLen  uint32
+
+	Experimental bool
+}
+
+type OverlayNetworkConfig struct {
+	EID           net.IP // Always EIDv6
 	LispSignature string
-	// Any additional LISP parameters?
 	ACLs          []ACE
-	NameToEidList []NameToEid // Used to populate DNS for the overlay
-	LispServers   []LispServerInfo
-	// Optional additional informat
+	AppMacAddr    net.HardwareAddr // If set use it for vif
+	AppIPAddr     net.IP           // EIDv4 or EIDv6
+	Network       uuid.UUID
+
+	// Optional additional information
 	AdditionalInfoDevice *AdditionalInfoDevice
+
+	// These field are only for isMgmt. XXX remove when isMgmt is removed
+	MgmtIID             uint32
+	MgmtDnsNameToIPList []DnsNameToIP // Used to populate DNS for the overlay
+	MgmtMapServers      []MapServer
 }
 
 type OverlayNetworkStatus struct {
 	OverlayNetworkConfig
 	VifInfo
+	BridgeMac    net.HardwareAddr
+	BridgeIPAddr string // The address for DNS/DHCP service in zedrouter
+	HostName     string
+	// XXX MissingNetwork bool // If Network UUID not found
 }
 
+type DhcpType uint8
+
+const (
+	DT_NOOP        DhcpType = iota
+	DT_STATIC               // Device static config
+	DT_PASSTHROUGH          // App passthrough e.g., to a bridge
+	DT_SERVER               // Local server for app network
+	DT_CLIENT               // Device client on external port
+)
+
 type UnderlayNetworkConfig struct {
+	AppMacAddr net.HardwareAddr // If set use it for vif
+	AppIPAddr  net.IP           // If set use DHCP to assign to app
+	Network    uuid.UUID
 	ACLs       []ACE
-	SshPortMap bool
 }
 
 type UnderlayNetworkStatus struct {
 	UnderlayNetworkConfig
 	VifInfo
+	BridgeMac      net.HardwareAddr
+	BridgeIPAddr   string // The address for DNS/DHCP service in zedrouter
+	AssignedIPAddr string // Assigned to domU
+	HostName       string
+	// XXX MissingNetwork bool // If Network UUID not found
+}
+
+type NetworkType uint8
+
+const (
+	NT_IPV4      NetworkType = 4
+	NT_IPV6                  = 6
+	NT_CryptoEID             = 14 // Either IPv6 or IPv4; adapter Addr
+	// determines whether IPv4 EIDs are in use.
+	// XXX Do we need a NT_DUAL/NT_IPV46? Implies two subnets/dhcp ranges?
+	// XXX how do we represent a bridge? NT_L2??
+)
+
+// Extracted from the protobuf NetworkConfig
+// Referenced using the UUID in Overlay/UnderlayNetworkConfig
+// Note that NetworkConfig can be referenced (by UUID) from NetworkService.
+// If there is no such reference the NetworkConfig ends up being local to the
+// host.
+type NetworkObjectConfig struct {
+	UUID            uuid.UUID
+	Type            NetworkType
+	Dhcp            DhcpType // If DT_STATIC or DT_SERVER use below
+	Subnet          net.IPNet
+	Gateway         net.IP
+	DomainName      string
+	NtpServer       net.IP
+	DnsServers      []net.IP // If not set we use Gateway as DNS server
+	DhcpRange       IpRange
+	DnsNameToIPList []DnsNameToIP // Used for DNS and ACL ipset
+}
+
+type IpRange struct {
+	Start net.IP
+	End   net.IP
+}
+
+func (config NetworkObjectConfig) Key() string {
+	return config.UUID.String()
+}
+
+type NetworkObjectStatus struct {
+	NetworkObjectConfig
+	PendingAdd    bool
+	PendingModify bool
+	PendingDelete bool
+	BridgeNum     int
+	BridgeName    string // bn<N>
+	BridgeIPAddr  string
+
+	// Used to populate DNS and eid ipset
+	DnsNameToIPList []DnsNameToIP
+
+	// Collection of address assignments; from MAC address to IP address
+	IPAssignments map[string]net.IP
+
+	// Union of all ipsets fed to dnsmasq for the linux bridge
+	BridgeIPSets []string
+
+	// Set of vifs on this bridge
+	VifNames []string
+
+	Ipv4Eid bool // Track if this is a CryptoEid with IPv4 EIDs
+
+	// Any errrors from provisioning the network
+	Error     string
+	ErrorTime time.Time
+}
+
+func (status NetworkObjectStatus) Key() string {
+	return status.UUID.String()
+}
+
+type NetworkServiceType uint8
+
+const (
+	NST_FIRST NetworkServiceType = iota
+	NST_STRONGSWAN
+	NST_LISP
+	NST_BRIDGE
+	NST_NAT // Default?
+	NST_LB  // What is this?
+	// XXX Add a NST_L3/NST_ROUTER to describe IP forwarding?
+	NST_LAST = 255
+)
+
+// Extracted from protobuf Service definition
+type NetworkServiceConfig struct {
+	UUID         uuid.UUID
+	Internal     bool // Internally created - not from zedcloud
+	DisplayName  string
+	Type         NetworkServiceType
+	Activate     bool
+	AppLink      uuid.UUID
+	Adapter      string // Ifname or group like "uplink", or empty
+	OpaqueConfig string
+	LispConfig   ServiceLispConfig
+}
+
+func (config NetworkServiceConfig) Key() string {
+	return config.UUID.String()
+}
+
+type NetworkServiceStatus struct {
+	UUID          uuid.UUID
+	PendingAdd    bool
+	PendingModify bool
+	PendingDelete bool
+	DisplayName   string
+	Type          NetworkServiceType
+	Activated     bool
+	AppLink       uuid.UUID
+	Adapter       string // Ifname or group like "uplink", or empty
+	OpaqueStatus  string
+	LispStatus    ServiceLispConfig
+	AdapterList   []string  // Recorded at time of activate
+	Subnet        net.IPNet // Recorded at time of activate
+
+	MissingNetwork bool // If AppLink UUID not found
+	// Any errrors from provisioning the service
+	Error          string
+	ErrorTime      time.Time
+	VpnStatus      *ServiceVpnStatus
+	LispInfoStatus *LispInfoStatus
+	LispMetrics    *LispMetrics
+}
+
+func (status NetworkServiceStatus) Key() string {
+	return status.UUID.String()
+}
+
+type NetworkServiceMetrics struct {
+	UUID        uuid.UUID
+	DisplayName string
+	Type        NetworkServiceType
+	VpnMetrics  *VpnMetrics
+	LispMetrics *LispMetrics
+}
+
+func (metrics NetworkServiceMetrics) Key() string {
+	return metrics.UUID.String()
 }
 
 // Network metrics for overlay and underlay
@@ -415,25 +651,31 @@ type ACE struct {
 	Actions []ACEAction
 }
 
-// The Type can be "ip" or "host" (aka domain name) for now. Matches remote.
-// For now these are bidirectional.
+// The Type can be "ip" or "host" (aka domain name), "eidset", "protocol",
+// "fport", or "lport" for now. The ip and host matches the remote IP/hostname.
 // The host matching is suffix-matching thus zededa.net matches *.zededa.net.
-// Can envision adding "protocol", "fport", "lport", and directionality at least
+// XXX Need "interface"... e.g. "uplink" or "eth1"? Implicit in network used?
+// For now the matches are bidirectional.
+// XXX Add directionality? Different ragte limits in different directions?
 // Value is always a string.
 // There is an implicit reject rule at the end.
-// The "eidset" type is special for the overlay. Matches all the EID which
-// are part of the NameToEidList.
+// The "eidset" type is special for the overlay. Matches all the IPs which
+// are part of the DnsNameToIPList.
 type ACEMatch struct {
 	Type  string
 	Value string
 }
 
 type ACEAction struct {
-	Drop       bool   // Otherwise accept
+	Drop bool // Otherwise accept
+
 	Limit      bool   // Is limiter enabled?
 	LimitRate  int    // Packets per unit
 	LimitUnit  string // "s", "m", "h", for second, minute, hour
 	LimitBurst int    // Packets
+
+	PortMap    bool // Is port mapping part of action?
+	TargetPort int  // Internal port
 }
 
 // Retrieved from geolocation service for device underlay connectivity
@@ -454,4 +696,233 @@ type AdditionalInfoApp struct {
 	DeviceIID   uint32
 	UnderlayIP  string
 	Hostname    string `json:",omitempty"` // From reverse DNS
+}
+
+// Input Opaque Config
+type StrongSwanServiceConfig struct {
+	VpnRole          string
+	PolicyBased      bool
+	IsClient         bool
+	VpnGatewayIpAddr string
+	VpnSubnetBlock   string
+	VpnLocalIpAddr   string
+	VpnRemoteIpAddr  string
+	PreSharedKey     string
+	LocalSubnetBlock string
+	ClientConfigList []VpnClientConfig
+}
+
+// structure for internal handling
+type VpnServiceConfig struct {
+	VpnRole          string
+	PolicyBased      bool
+	IsClient         bool
+	UpLinkConfig     NetLinkConfig
+	AppLinkConfig    NetLinkConfig
+	GatewayConfig    NetLinkConfig
+	ClientConfigList []VpnClientConfig
+}
+
+type NetLinkConfig struct {
+	Name        string
+	IpAddr      string
+	SubnetBlock string
+}
+
+type VpnClientConfig struct {
+	IpAddr       string
+	SubnetBlock  string
+	PreSharedKey string
+	TunnelConfig VpnTunnelConfig
+}
+
+type VpnTunnelConfig struct {
+	Name         string
+	Key          string
+	Mtu          string
+	Metric       string
+	LocalIpAddr  string
+	RemoteIpAddr string
+}
+
+type LispRlocState struct {
+	Rloc      net.IP
+	Reachable bool
+}
+
+type LispMapCacheEntry struct {
+	EID   net.IP
+	Rlocs []LispRlocState
+}
+
+type LispDatabaseMap struct {
+	IID             uint64
+	MapCacheEntries []LispMapCacheEntry
+}
+
+type LispDecapKey struct {
+	Rloc     net.IP
+	Port     uint64
+	KeyCount uint64
+}
+
+type LispInfoStatus struct {
+	ItrCryptoPort uint64
+	EtrNatPort    uint64
+	Interfaces    []string
+	DatabaseMaps  []LispDatabaseMap
+	DecapKeys     []LispDecapKey
+}
+
+type LispPktStat struct {
+	Pkts  uint64
+	Bytes uint64
+}
+
+type LispRlocStatistics struct {
+	Rloc                   net.IP
+	Stats                  LispPktStat
+	SecondsSinceLastPacket uint64
+}
+
+type EidStatistics struct {
+	IID       uint64
+	Eid       net.IP
+	RlocStats []LispRlocStatistics
+}
+
+type EidMap struct {
+	IID  uint64
+	Eids []net.IP
+}
+
+type LispMetrics struct {
+	// Encap Statistics
+	EidMaps            []EidMap
+	EidStats           []EidStatistics
+	ItrPacketSendError LispPktStat
+	InvalidEidError    LispPktStat
+
+	// Decap Statistics
+	NoDecryptKey       LispPktStat
+	OuterHeaderError   LispPktStat
+	BadInnerVersion    LispPktStat
+	GoodPackets        LispPktStat
+	ICVError           LispPktStat
+	LispHeaderError    LispPktStat
+	CheckSumError      LispPktStat
+	DecapReInjectError LispPktStat
+	DecryptError       LispPktStat
+}
+
+type LispDataplaneConfig struct {
+	Experimental bool
+}
+
+type VpnState uint8
+
+const (
+	VPN_INVALID VpnState = iota
+	VPN_INITIAL
+	VPN_CONNECTING
+	VPN_ESTABLISHED
+	VPN_INSTALLED
+	VPN_REKEYED
+	VPN_DELETED  VpnState = 10
+	VPN_MAXSTATE VpnState = 255
+)
+
+type VpnLinkInfo struct {
+	SubNet    string // connecting subnet
+	SpiId     string // security parameter index
+	Direction bool   // 0 - in, 1 - out
+	PktStats  PktStats
+}
+
+type VpnLinkStatus struct {
+	Id         string
+	Name       string
+	ReqId      string
+	InstTime   uint64 // installation time
+	ExpTime    uint64 // expiry time
+	RekeyTime  uint64 // rekey time
+	EspInfo    string
+	State      VpnState
+	LInfo      VpnLinkInfo
+	RInfo      VpnLinkInfo
+	MarkDelete bool
+}
+
+type VpnEndPoint struct {
+	Id     string // ipsec id
+	IpAddr string // end point ip address
+	Port   uint32 // udp port
+}
+
+type VpnConnStatus struct {
+	Id         string   // ipsec connection id
+	Name       string   // connection name
+	State      VpnState // vpn state
+	Version    string   // ike version
+	Ikes       string   // ike parameters
+	EstTime    uint64   // established time
+	ReauthTime uint64   // reauth time
+	LInfo      VpnEndPoint
+	RInfo      VpnEndPoint
+	Links      []*VpnLinkStatus
+	StartLine  uint32
+	EndLine    uint32
+	MarkDelete bool
+}
+
+type ServiceVpnStatus struct {
+	Version            string    // strongswan package version
+	UpTime             time.Time // service start time stamp
+	IpAddrs            string    // listening ip addresses, can be multiple
+	ActiveVpnConns     []*VpnConnStatus
+	StaleVpnConns      []*VpnConnStatus
+	ActiveTunCount     uint32
+	ConnectingTunCount uint32
+	PolicyBased        bool
+}
+
+type PktStats struct {
+	Pkts  uint64
+	Bytes uint64
+}
+
+type LinkPktStats struct {
+	InPkts  PktStats
+	OutPkts PktStats
+}
+
+type VpnLinkMetrics struct {
+	SubNet string // connecting subnet
+	SpiId  string // security parameter index
+}
+
+type VpnEndPointMetrics struct {
+	IpAddr   string // end point ip address
+	LinkInfo VpnLinkMetrics
+	PktStats PktStats
+}
+
+type VpnConnMetrics struct {
+	Id        string // ipsec connection id
+	Name      string // connection name
+	EstTime   uint64 // established time
+	Type      NetworkServiceType
+	LEndPoint VpnEndPointMetrics
+	REndPoint VpnEndPointMetrics
+}
+
+type VpnMetrics struct {
+	UpTime     time.Time // service start time stamp
+	DataStat   LinkPktStats
+	IkeStat    LinkPktStats
+	NatTStat   LinkPktStats
+	EspStat    LinkPktStats
+	ErrStat    LinkPktStats
+	PhyErrStat LinkPktStats
+	VpnConns   []*VpnConnMetrics
 }

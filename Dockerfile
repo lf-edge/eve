@@ -23,7 +23,7 @@ RUN echo Building: `cat /opt/zededa/bin/versioninfo`
 
 RUN go install github.com/zededa/go-provision/zedbox/...
 RUN cd /opt/zededa/bin ; ln -s /go/bin/* .
-RUN cd /opt/zededa/bin ; ln -s zedbox client; ln -s zedbox domainmgr; ln -s zedbox downloader; ln -s zedbox eidregister; ln -s zedbox hardwaremodel; ln -s zedbox identitymgr; ln -s zedbox ledmanager; ln -s zedbox logmanager; ln -s zedbox verifier; ln -s zedbox zedagent; ln -s zedbox zedmanager; ln -s zedbox zedrouter
+RUN cd /opt/zededa/bin ; ln -s zedbox client; ln -s zedbox domainmgr; ln -s zedbox downloader; ln -s zedbox hardwaremodel; ln -s zedbox identitymgr; ln -s zedbox ledmanager; ln -s zedbox logmanager; ln -s zedbox verifier; ln -s zedbox zedagent; ln -s zedbox zedmanager; ln -s zedbox zedrouter; ln -s zedbox ipcmonitor
 
 # Now building LISP
 FROM zededa/lisp:latest AS lisp
@@ -40,11 +40,10 @@ COPY --from=build /var/tmp/zededa/lisp.config.base /var/tmp/zededa/lisp.config.b
 # the default /config (since that is expected to be an empty mount point)
 COPY --from=build /config /opt/zededa/examples/config
 COPY --from=build /go/bin/* /opt/zededa/bin/
-COPY --from=lisp /lisp/dataplane /opt/zededa/bin/
+COPY --from=lisp /lisp/lisp-ztr /opt/zededa/bin/
 COPY --from=lisp /lisp /opt/zededa/lisp/
 COPY --from=lisp /usr/bin/pydoc /usr/bin/smtpd.py /usr/bin/python* /usr/bin/
 COPY --from=lisp /usr/lib/libpython* /usr/lib/libffi.so* /usr/lib/
 COPY --from=lisp /usr/lib/python2.7 /usr/lib/python2.7/
-COPY --from=lisp /lib /lib
 WORKDIR /opt/zededa/bin
 CMD /bin/ash

@@ -9,11 +9,6 @@ import (
 	"time"
 )
 
-const (
-	StatsUpdateTicker = 20 * time.Second // timer for updating client for stats
-	FailPostTimeout   = 2 * time.Minute
-)
-
 type SftpTransportMethod struct {
 	// required : transport type
 	transport SyncTransportType
@@ -60,6 +55,9 @@ func (ep *SftpTransportMethod) Action(req *DronaRequest) error {
 	}
 
 	req.asize = int64(size)
+	if err != nil {
+		req.status = fmt.Sprintf("%v", err)
+	}
 	return err
 }
 
@@ -187,6 +185,7 @@ func (ep *SftpTransportMethod) NewRequest(opType SyncOpType, objname, objloc str
 	dR.syncEp = ep
 	dR.operation = opType
 	dR.name = objname
+	dR.ackback = ackback
 
 	// FIXME:...we need this later
 	dR.localName = objname

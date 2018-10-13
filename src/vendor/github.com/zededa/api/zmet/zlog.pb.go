@@ -24,6 +24,19 @@ It has these top-level messages:
 	ZInfoStorage
 	ZInfoHypervisor
 	ZInfoApp
+	ZInfoVpnLinkInfo
+	ZInfoVpnLink
+	ZInfoVpnEndPoint
+	ZInfoVpnConn
+	ZInfoVpn
+	RlocState
+	MapCacheEntry
+	DatabaseMap
+	DecapKey
+	ZInfoLisp
+	ZInfoService
+	ZInfoNetworkObject
+	ZmetIPAssignmentEntry
 	ZInfoMsg
 	ZioBundle
 	CpuMetric
@@ -38,6 +51,17 @@ It has these top-level messages:
 	DiskMetric
 	AppDiskMetric
 	AppMetric
+	PktStat
+	RlocStats
+	EidStats
+	ZMetricLisp
+	ZMetricConn
+	ZMetricVpn
+	ZMetricFlowLink
+	ZMetricFlowEndPoint
+	ZMetricFlow
+	ZMetricLispGlobal
+	ZMetricService
 	ZMetricMsg
 	ZRegisterResp
 	ZRegisterMsg

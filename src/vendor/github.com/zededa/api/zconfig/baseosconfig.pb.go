@@ -21,7 +21,7 @@ type OSKeyTags struct {
 func (m *OSKeyTags) Reset()                    { *m = OSKeyTags{} }
 func (m *OSKeyTags) String() string            { return proto.CompactTextString(m) }
 func (*OSKeyTags) ProtoMessage()               {}
-func (*OSKeyTags) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{0} }
+func (*OSKeyTags) Descriptor() ([]byte, []int) { return fileDescriptor9, []int{0} }
 
 func (m *OSKeyTags) GetOSVerKey() string {
 	if m != nil {
@@ -45,7 +45,7 @@ type OSVerDetails struct {
 func (m *OSVerDetails) Reset()                    { *m = OSVerDetails{} }
 func (m *OSVerDetails) String() string            { return proto.CompactTextString(m) }
 func (*OSVerDetails) ProtoMessage()               {}
-func (*OSVerDetails) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{1} }
+func (*OSVerDetails) Descriptor() ([]byte, []int) { return fileDescriptor9, []int{1} }
 
 func (m *OSVerDetails) GetBaseOSParams() []*OSKeyTags {
 	if m != nil {
@@ -65,7 +65,7 @@ type BaseOSConfig struct {
 func (m *BaseOSConfig) Reset()                    { *m = BaseOSConfig{} }
 func (m *BaseOSConfig) String() string            { return proto.CompactTextString(m) }
 func (*BaseOSConfig) ProtoMessage()               {}
-func (*BaseOSConfig) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{2} }
+func (*BaseOSConfig) Descriptor() ([]byte, []int) { return fileDescriptor9, []int{2} }
 
 func (m *BaseOSConfig) GetUuidandversion() *UUIDandVersion {
 	if m != nil {
@@ -108,9 +108,9 @@ func init() {
 	proto.RegisterType((*BaseOSConfig)(nil), "BaseOSConfig")
 }
 
-func init() { proto.RegisterFile("baseosconfig.proto", fileDescriptor8) }
+func init() { proto.RegisterFile("baseosconfig.proto", fileDescriptor9) }
 
-var fileDescriptor8 = []byte{
+var fileDescriptor9 = []byte{
 	// 319 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x5c, 0x91, 0x41, 0x6b, 0xfa, 0x40,
 	0x10, 0xc5, 0xc9, 0xdf, 0x3f, 0xa2, 0x63, 0xac, 0xb0, 0xa7, 0x45, 0xa8, 0x15, 0xe9, 0xc1, 0xd3,

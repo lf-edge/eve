@@ -5,7 +5,8 @@ package types
 
 import (
 	"github.com/satori/go.uuid"
-	"log"
+	log "github.com/sirupsen/logrus"
+	"net"
 	"time"
 )
 
@@ -52,6 +53,14 @@ type AppInstanceConfig struct {
 	OverlayNetworkList  []EIDOverlayConfig
 	UnderlayNetworkList []UnderlayNetworkConfig
 	IoAdapterList       []IoAdapter
+	RestartCmd          AppInstanceOpsCmd
+	PurgeCmd            AppInstanceOpsCmd
+	CloudInitUserData   string // base64-encoded
+}
+
+type AppInstanceOpsCmd struct {
+	Counter   uint32
+	ApplyTime string // XXX not currently used
 }
 
 type IoAdapter struct {
@@ -59,12 +68,16 @@ type IoAdapter struct {
 	Name string // Short hand name such as "com"
 }
 
+func (config AppInstanceConfig) Key() string {
+	return config.UUIDandVersion.UUID.String()
+}
+
 func (config AppInstanceConfig) VerifyFilename(fileName string) bool {
-	uuid := config.UUIDandVersion.UUID
-	ret := uuid.String()+".json" == fileName
+	expect := config.Key() + ".json"
+	ret := expect == fileName
 	if !ret {
-		log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-			fileName, uuid.String())
+		log.Errorf("Mismatch between filename and contained uuid: %s vs. %s\n",
+			fileName, expect)
 	}
 	return ret
 }
@@ -74,23 +87,49 @@ type AppInstanceStatus struct {
 	UUIDandVersion     UUIDandVersion
 	DisplayName        string
 	Activated          bool
-	ActivateInprogress bool // Needed for cleanup after failure
+	ActivateInprogress bool     // Needed for cleanup after failure
+	FixedResources     VmConfig // CPU etc
 	StorageStatusList  []StorageStatus
 	EIDList            []EIDStatusDetails
+	// Copies of config to determine diffs
+	OverlayNetworkList  []EIDOverlayConfig
+	UnderlayNetworkList []UnderlayNetworkConfig
+	IoAdapterList       []IoAdapter
+	RestartCmd          AppInstanceOpsCmd
+	PurgeCmd            AppInstanceOpsCmd
+	RestartInprogress   Inprogress
+	PurgeInprogress     Inprogress
 	// Mininum state across all steps and all StorageStatus.
-	// INITIAL implies error.
-	State SwState
-	// All error strngs across all steps and all StorageStatus
-	Error     string
-	ErrorTime time.Time
+	// Error* set implies error.
+	State            SwState
+	MissingDatastore bool // If some DatastoreId not found
+	MissingNetwork   bool // If some Network UUID not found
+	// All error strings across all steps and all StorageStatus
+	ErrorSource string
+	Error       string
+	ErrorTime   time.Time
+}
+
+// Track more complicated workflows
+type Inprogress uint8
+
+const (
+	NONE     Inprogress = iota
+	DOWNLOAD            // Download and verify new images
+	BRING_DOWN
+	BRING_UP
+)
+
+func (status AppInstanceStatus) Key() string {
+	return status.UUIDandVersion.UUID.String()
 }
 
 func (status AppInstanceStatus) VerifyFilename(fileName string) bool {
-	uuid := status.UUIDandVersion.UUID
-	ret := uuid.String()+".json" == fileName
+	expect := status.Key() + ".json"
+	ret := expect == fileName
 	if !ret {
-		log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-			fileName, uuid.String())
+		log.Errorf("Mismatch between filename and contained uuid: %s vs. %s\n",
+			fileName, expect)
 	}
 	return ret
 }
@@ -109,9 +148,10 @@ func (status AppInstanceStatus) CheckPendingDelete() bool {
 
 type EIDOverlayConfig struct {
 	EIDConfigDetails
-	ACLs          []ACE
-	NameToEidList []NameToEid // Used to populate DNS for the overlay
-	LispServers   []LispServerInfo
+	ACLs       []ACE
+	AppMacAddr net.HardwareAddr // If set use it for vif
+	AppIPAddr  net.IP           // EIDv4 or EIDv6
+	Network    uuid.UUID
 }
 
 // If the Target is "" or "disk", then this becomes a vdisk for the domU
@@ -120,27 +160,22 @@ type EIDOverlayConfig struct {
 // - "ramdisk"
 // - "device_tree"
 type StorageConfig struct {
-	DownloadURL      string
+	DatastoreId      uuid.UUID
+	Name             string   // XXX Do depend on URL for clobber avoidance?
+	NameIsURL        bool     // If not we form URL based on datastore info
 	Size             uint64   // In bytes
-	TransportMethod  string   // Download method S3/HTTP/SFTP etc.
 	CertificateChain []string //name of intermediate certificates
 	ImageSignature   []byte   //signature of image
 	SignatureKey     string   //certificate containing public key
-	ApiKey           string
-	Password         string
-	Dpath            string
 
 	ImageSha256 string // sha256 of immutable image
 	ReadOnly    bool
 	Preserve    bool // If set a rw disk will be preserved across
 	// boots (acivate/inactivate)
-	Format  string // Default "raw"; could be raw, qcow, qcow2, vhd
-	Devtype string // Default ""; could be e.g. "cdrom"
-	Target  string // Default "" is interpreted as "disk"
-
-	// XXX FinalObjDir shouldn't be setable from the cloud. Local to
-	// device.
-	FinalObjDir string // installation dir, may differ from verified
+	Maxsizebytes uint64 // Resize filesystem to this size if set
+	Format       string // Default "raw"; could be raw, qcow, qcow2, vhd
+	Devtype      string // Default ""; could be e.g. "cdrom"
+	Target       string // Default "" is interpreted as "disk"
 }
 
 func RoundupToKB(b uint64) uint64 {
@@ -148,14 +183,23 @@ func RoundupToKB(b uint64) uint64 {
 }
 
 type StorageStatus struct {
-	DownloadURL        string
-	ImageSha256        string  // sha256 of immutable image
+	Name               string
+	ImageSha256        string // sha256 of immutable image
+	ReadOnly           bool
+	Preserve           bool
+	Maxsizebytes       uint64 // Resize filesystem to this size if set
+	Format             string
+	Devtype            string
 	Target             string  // Default "" is interpreted as "disk"
 	State              SwState // DOWNLOADED etc
+	Progress           uint    // In percent i.e., 0-100
 	HasDownloaderRef   bool    // Reference against downloader to clean up
 	HasVerifierRef     bool    // Reference against verifier to clean up
 	ActiveFileLocation string  // Location of filestystem
+	FinalObjDir        string  // Installation dir; may differ from verified
+	MissingDatastore   bool    // If DatastoreId not found
 	Error              string  // Download or verify error
+	ErrorSource        string
 	ErrorTime          time.Time
 }
 

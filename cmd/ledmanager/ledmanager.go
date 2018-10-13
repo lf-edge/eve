@@ -20,26 +20,28 @@ package ledmanager
 import (
 	"flag"
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/pidfile"
+	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
-	"github.com/zededa/go-provision/watch"
+	"github.com/zededa/go-provision/watch" // XXX remove
 	"io/ioutil"
-	"log"
 	"os"
 	"os/exec"
 	"time"
 )
 
 const (
-	agentName = "ledmanager"
+	agentName        = "ledmanager"
 	ledConfigDirName = "/var/tmp/ledmanager/config"
 )
 
 // State passed to handlers
 type ledManagerContext struct {
-	countChange chan int
+	countChange     chan int
+	subGlobalConfig *pubsub.Subscription
 }
 
 type Blink200msFunc func()
@@ -51,9 +53,16 @@ type modelToFuncs struct {
 	blinkFunc Blink200msFunc
 }
 
+// XXX introduce wildcard matching on mondel names?
 var mToF = []modelToFuncs{
 	modelToFuncs{
 		model:     "Supermicro.SYS-E100-9APP",
+		blinkFunc: ExecuteDDCmd},
+	modelToFuncs{
+		model:     "Supermicro.SYS-E100-9S",
+		blinkFunc: ExecuteDDCmd},
+	modelToFuncs{
+		model:     "Supermicro.SYS-E50-9AP",
 		blinkFunc: ExecuteDDCmd},
 	modelToFuncs{ // XXX temporary fix for old BIOS
 		model:     "Supermicro.Super Server",
@@ -71,10 +80,11 @@ var mToF = []modelToFuncs{
 	// Last in table as a default
 	modelToFuncs{
 		model:     "",
-		blinkFunc: DummyCmd},
+		blinkFunc: ExecuteDDCmd},
 }
 
 var debug bool
+var debugOverride bool // From command line arg
 
 // Set from Makefile
 var Version = "No version specified"
@@ -82,7 +92,7 @@ var Version = "No version specified"
 func Run() {
 	logf, err := agentlog.Init(agentName)
 	if err != nil {
-	       log.Fatal(err)
+		log.Fatal(err)
 	}
 	defer logf.Close()
 
@@ -90,6 +100,12 @@ func Run() {
 	debugPtr := flag.Bool("d", false, "Debug")
 	flag.Parse()
 	debug = *debugPtr
+	debugOverride = debug
+	if debugOverride {
+		log.SetLevel(log.DebugLevel)
+	} else {
+		log.SetLevel(log.InfoLevel)
+	}
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
@@ -97,10 +113,10 @@ func Run() {
 	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("Starting %s\n", agentName)
+	log.Infof("Starting %s\n", agentName)
 
 	model := hardware.GetHardwareModel()
-	log.Printf("Got HardwareModel %s\n", model)
+	log.Infof("Got HardwareModel %s\n", model)
 
 	var blinkFunc Blink200msFunc
 	var initFunc BlinkInitFunc
@@ -111,7 +127,7 @@ func Run() {
 			break
 		}
 		if m.model == "" {
-			log.Printf("No blink function for %s\n", model)
+			log.Infof("No blink function for %s\n", model)
 			blinkFunc = m.blinkFunc
 			initFunc = m.initFunc
 			break
@@ -122,16 +138,32 @@ func Run() {
 		initFunc()
 	}
 	ledChanges := make(chan string)
-	go watch.WatchStatus(ledConfigDirName, ledChanges)
-	log.Println("called watcher...")
+	go watch.WatchStatus(ledConfigDirName, true, ledChanges)
+	log.Debugln("called watcher...")
 
 	// Any state needed by handler functions
 	ctx := ledManagerContext{}
 	ctx.countChange = make(chan int)
 	go TriggerBlinkOnDevice(ctx.countChange, blinkFunc)
 
+	// Look for global config such as log levels
+	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
+		false, &ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
+	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
+	ctx.subGlobalConfig = subGlobalConfig
+	subGlobalConfig.Activate()
+
 	for {
 		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+
+		// XXX move to /var/tmp/zededa? Multiple publishers! Need
+		// diff pubsub support or everybody subscribes ...
 		case change := <-ledChanges:
 			{
 				watch.HandleStatusEvent(change, &ctx,
@@ -149,11 +181,13 @@ var oldCounter = 0
 
 func handleLedBlinkModify(ctxArg interface{}, configFilename string,
 	configArg interface{}) {
+	// XXX switch to using cast?
 	config := configArg.(*types.LedBlinkCounter)
 	ctx := ctxArg.(*ledManagerContext)
 
 	if configFilename != "ledconfig" {
-		log.Printf("handleLedBlinkModify: ignoring %s\n", configFilename)
+		log.Errorf("handleLedBlinkModify: ignoring %s\n",
+			configFilename)
 		return
 	}
 	// Supress work and logging if no change
@@ -161,25 +195,26 @@ func handleLedBlinkModify(ctxArg interface{}, configFilename string,
 		return
 	}
 	oldCounter = config.BlinkCounter
-	log.Printf("handleLedBlinkModify for %s\n", configFilename)
-	log.Println("value of blinkCount: ", config.BlinkCounter)
+	log.Infof("handleLedBlinkModify for %s\n", configFilename)
+	log.Infoln("value of blinkCount: ", config.BlinkCounter)
 	ctx.countChange <- config.BlinkCounter
-	log.Printf("handleLedBlinkModify done for %s\n", configFilename)
+	log.Infof("handleLedBlinkModify done for %s\n", configFilename)
 }
 
+// XXX add configArg?
 func handleLedBlinkDelete(ctxArg interface{}, configFilename string) {
-	log.Printf("handleLedBlinkDelete for %s\n", configFilename)
+	log.Infof("handleLedBlinkDelete for %s\n", configFilename)
 	ctx := ctxArg.(*ledManagerContext)
 
 	if configFilename != "ledconfig" {
-		log.Printf("handleLedBlinkDelete: ignoring %s\n", configFilename)
+		log.Errorf("handleLedBlinkDelete: ignoring %s\n", configFilename)
 		return
 	}
 	// XXX or should we tell the blink go routine to exit?
 	ctx.countChange <- 0
 	// Update our own input... XXX need something different when pubsub
 	types.UpdateLedManagerConfig(0)
-	log.Printf("handleLedBlinkDelete done for %s\n", configFilename)
+	log.Infof("handleLedBlinkDelete done for %s\n", configFilename)
 }
 
 func TriggerBlinkOnDevice(countChange chan int, blinkFunc Blink200msFunc) {
@@ -187,17 +222,12 @@ func TriggerBlinkOnDevice(countChange chan int, blinkFunc Blink200msFunc) {
 	for {
 		select {
 		case counter = <-countChange:
-			log.Printf("Received counter update: %d\n",
+			log.Debugf("Received counter update: %d\n",
 				counter)
 		default:
-			if debug {
-				log.Printf("Unchanged counter: %d\n",
-					counter)
-			}
+			log.Debugf("Unchanged counter: %d\n", counter)
 		}
-		if debug {
-			log.Println("Number of times LED will blink: ", counter)
-		}
+		log.Debugln("Number of times LED will blink: ", counter)
 		for i := 0; i < counter; i++ {
 			blinkFunc()
 			time.Sleep(200 * time.Millisecond)
@@ -216,12 +246,10 @@ func ExecuteDDCmd() {
 	cmd := exec.Command("dd", "if=/dev/sda", "of=/dev/null", "bs=4M", "count=22", "iflag=nocache")
 	stdout, err := cmd.Output()
 	if err != nil {
-		log.Println("dd error: ", err)
+		log.Errorln("dd error: ", err)
 		return
 	}
-	if debug {
-		log.Printf("ddinfo: %s\n", stdout)
-	}
+	log.Debugf("ddinfo: %s\n", stdout)
 }
 
 const (
@@ -233,7 +261,7 @@ const (
 // Disable existimg trigger
 // Write "none\n" to /sys/class/leds/wifi_active/trigger
 func InitWifiLedCmd() {
-	log.Printf("InitWifiLedCmd\n")
+	log.Infof("InitWifiLedCmd\n")
 	b := []byte("none")
 	err := ioutil.WriteFile(triggerFilename, b, 0644)
 	if err != nil {
@@ -254,4 +282,32 @@ func ExecuteWifiLedCmd() {
 	if err != nil {
 		log.Fatal(err, brightnessFilename)
 	}
+}
+
+func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*ledManagerContext)
+	if key != "global" {
+		log.Infof("handleGlobalConfigModify: ignoring %s\n", key)
+		return
+	}
+	log.Infof("handleGlobalConfigModify for %s\n", key)
+	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		debugOverride)
+	log.Infof("handleGlobalConfigModify done for %s\n", key)
+}
+
+func handleGlobalConfigDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*ledManagerContext)
+	if key != "global" {
+		log.Infof("handleGlobalConfigDelete: ignoring %s\n", key)
+		return
+	}
+	log.Infof("handleGlobalConfigDelete for %s\n", key)
+	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		debugOverride)
+	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }

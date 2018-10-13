@@ -4,7 +4,7 @@
 package types
 
 import (
-	"log"
+	log "github.com/sirupsen/logrus"
 	"time"
 )
 
@@ -21,17 +21,22 @@ type DomainConfig struct {
 	Activate       bool   // Actually start the domU as opposed to prepare
 	AppNum         int    // From networking; makes the name unique
 	VmConfig
-	DiskConfigList []DiskConfig
-	VifList        []VifInfo
-	IoAdapterList  []IoAdapter
+	DiskConfigList    []DiskConfig
+	VifList           []VifInfo
+	IoAdapterList     []IoAdapter
+	CloudInitUserData string // base64-encoded
+}
+
+func (config DomainConfig) Key() string {
+	return config.UUIDandVersion.UUID.String()
 }
 
 func (config DomainConfig) VerifyFilename(fileName string) bool {
-	uuid := config.UUIDandVersion.UUID
-	ret := uuid.String()+".json" == fileName
+	expect := config.Key() + ".json"
+	ret := expect == fileName
 	if !ret {
-		log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-			fileName, uuid.String())
+		log.Errorf("Mismatch between filename and contained uuid: %s vs. %s\n",
+			fileName, expect)
 	}
 	return ret
 }
@@ -67,35 +72,43 @@ type VmConfig struct {
 type VmMode uint8
 
 const (
-	PV VmMode = iota + 0	// Default
+	PV VmMode = iota + 0 // Default
 	HVM
 	// PVH
 )
 
 type DomainStatus struct {
-	UUIDandVersion UUIDandVersion
-	DisplayName    string
-	Activated      bool
-	AppNum         int
-	PendingAdd     bool
-	PendingModify  bool
-	PendingDelete  bool
-	DomainName     string // Name of Xen domain
-	DomainId       int
-	BootTime       time.Time
-	DiskStatusList []DiskStatus
-	VifList        []VifInfo
-	IoAdapterList  []IoAdapter
-	LastErr        string // Xen error
-	LastErrTime    time.Time
+	UUIDandVersion     UUIDandVersion
+	DisplayName        string
+	State              SwState // BOOTING and above?
+	Activated          bool    // XXX remove??
+	AppNum             int
+	PendingAdd         bool
+	PendingModify      bool
+	PendingDelete      bool
+	DomainName         string // Name of Xen domain
+	DomainId           int
+	BootTime           time.Time
+	DiskStatusList     []DiskStatus
+	VifList            []VifInfo
+	IoAdapterList      []IoAdapter
+	VirtualizationMode VmMode
+	EnableVnc          bool
+	TriedCount         int
+	LastErr            string // Xen error
+	LastErrTime        time.Time
+}
+
+func (status DomainStatus) Key() string {
+	return status.UUIDandVersion.UUID.String()
 }
 
 func (status DomainStatus) VerifyFilename(fileName string) bool {
-	uuid := status.UUIDandVersion.UUID
-	ret := uuid.String()+".json" == fileName
+	expect := status.Key() + ".json"
+	ret := expect == fileName
 	if !ret {
-		log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-			fileName, uuid.String())
+		log.Errorf("Mismatch between filename and contained uuid: %s vs. %s\n",
+			fileName, expect)
 	}
 	return ret
 }
@@ -110,6 +123,10 @@ func (status DomainStatus) CheckPendingModify() bool {
 
 func (status DomainStatus) CheckPendingDelete() bool {
 	return status.PendingDelete
+}
+
+func (status DomainStatus) Pending() bool {
+	return status.PendingAdd || status.PendingModify || status.PendingDelete
 }
 
 type VifInfo struct {
@@ -128,8 +145,9 @@ type DiskConfig struct {
 	ReadOnly    bool
 	Preserve    bool // If set a rw disk will be preserved across
 	// boots (acivate/inactivate)
-	Format  string // Default "raw"; could be raw, qcow, qcow2, vhd
-	Devtype string // Default ""; could be e.g. "cdrom"
+	Maxsizebytes uint64 // Resize filesystem to this size if set
+	Format       string // Default "raw"; could be raw, qcow, qcow2, vhd
+	Devtype      string // Default ""; could be e.g. "cdrom"
 }
 
 type DiskStatus struct {
@@ -137,8 +155,22 @@ type DiskStatus struct {
 	ReadOnly           bool
 	Preserve           bool
 	FileLocation       string // Local location of Image
+	Maxsizebytes       uint64 // Resize filesystem to this size if set
 	Format             string // From config
 	Devtype            string // From config
 	Vdev               string // Allocated
 	ActiveFileLocation string // Allocated; private copy if RW; FileLocation if RO
+}
+
+// Track the active image files in rwImgDirname
+type ImageStatus struct {
+	Filename     string // Basename; used as key
+	FileLocation string // Local location of Image
+	RefCount     uint
+	LastUse      time.Time // When RefCount dropped to zero
+	Size         uint64
+}
+
+func (status ImageStatus) Key() string {
+	return status.Filename
 }

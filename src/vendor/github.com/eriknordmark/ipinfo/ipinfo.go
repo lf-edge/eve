@@ -33,7 +33,7 @@ type Options struct {
 
 // MyIP provides information about the public IP address of the client.
 func MyIP() (*IPInfo, error) {
-	return getInfo(fmt.Sprintf("%s/json%s", ipinfoURI), nil)
+	return getInfo(fmt.Sprintf("%s/json", ipinfoURI), nil)
 }
 
 // ForeignIP provides information about the given IP address (IPv4 or IPv6)
@@ -61,7 +61,8 @@ func getInfo(url string, opt *Options) (*IPInfo, error) {
 		d.Timeout = opt.Timeout
 	}
 	transport := &http.Transport{
-		Dial: d.Dial,
+		Dial:  d.Dial,
+		Proxy: http.ProxyFromEnvironment,
 	}
 	client := &http.Client{Transport: transport}
 	response, err := client.Get(url)

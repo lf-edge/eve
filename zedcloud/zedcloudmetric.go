@@ -9,7 +9,8 @@ package zedcloud
 
 import (
 	"encoding/json"
-	"log"
+	log "github.com/sirupsen/logrus"
+	"sync"
 	"time"
 )
 
@@ -34,13 +35,14 @@ type urlcloudMetrics struct {
 type metricsMap map[string]zedcloudMetric
 
 var metrics metricsMap = make(metricsMap)
+var mutex = &sync.Mutex{}
 
 func maybeInit(ifname string) {
 	if metrics == nil {
 		log.Fatal("no zedcloudmetric map\n")
 	}
 	if _, ok := metrics[ifname]; !ok {
-		log.Printf("create zedcloudmetric for %s\n", ifname)
+		log.Debugf("create zedcloudmetric for %s\n", ifname)
 		metrics[ifname] = zedcloudMetric{
 			UrlCounters: make(map[string]urlcloudMetrics),
 		}
@@ -48,6 +50,7 @@ func maybeInit(ifname string) {
 }
 
 func ZedCloudFailure(ifname string, url string, reqLen int64, respLen int64) {
+	mutex.Lock()
 	maybeInit(ifname)
 	m := metrics[ifname]
 	m.FailureCount += 1
@@ -65,9 +68,11 @@ func ZedCloudFailure(ifname string, url string, reqLen int64, respLen int64) {
 	}
 	m.UrlCounters[url] = u
 	metrics[ifname] = m
+	mutex.Unlock()
 }
 
 func ZedCloudSuccess(ifname string, url string, reqLen int64, respLen int64) {
+	mutex.Lock()
 	maybeInit(ifname)
 	m := metrics[ifname]
 	m.SuccessCount += 1
@@ -83,6 +88,7 @@ func ZedCloudSuccess(ifname string, url string, reqLen int64, respLen int64) {
 	u.RecvByteCount += respLen
 	m.UrlCounters[url] = u
 	metrics[ifname] = m
+	mutex.Unlock()
 }
 
 func GetCloudMetrics() metricsMap {

@@ -1,65 +1,54 @@
-// Copyright (c) 2017 Zededa, Inc.
+// Copyright (c) 2017-2018 Zededa, Inc.
 // All rights reserved.
 
 package zedmanager
 
 import (
+	log "github.com/sirupsen/logrus"
+	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/types"
-	"log"
 )
 
-// Key is UUID
-var certObjStatus map[string]types.CertObjStatus
-
-func handleCertObjStatusModify(ctxArg interface{}, statusFilename string,
+func handleCertObjStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
-	status := statusArg.(*types.CertObjStatus)
-	if status == nil {
+
+	status := cast.CastCertObjStatus(statusArg)
+	ctx := ctxArg.(*zedmanagerContext)
+	uuidStr := status.Key()
+
+	log.Infof("handlCertObjStatusModify for %s\n", uuidStr)
+	if status.Key() != key {
+		log.Errorf("handleCertObjStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, status.Key(), status)
 		return
 	}
-	uuidStr := status.UUIDandVersion.UUID.String()
-
-	log.Printf("handlCertObjStatusModify for %s\n", uuidStr)
-
-	if certObjStatus == nil {
-		log.Printf("create CertObj Status map\n")
-		certObjStatus = make(map[string]types.CertObjStatus)
-	}
-
-	changed := false
-	if m, ok := certObjStatus[uuidStr]; ok {
-		if status.State != m.State {
-			if debug {
-				log.Printf("Cert obj status map changed from %v to %v\n",
-					m.State, status.State)
-			}
-			changed = true
-		}
-	} else {
-		if debug {
-			log.Printf("Cert objmap add for %v\n", status.State)
-		}
-		changed = true
-	}
-	if changed {
-		certObjStatus[uuidStr] = *status
-		updateAIStatusUUID(uuidStr)
-	}
-
-	log.Printf("handleCertObjrStatusModify done for %s\n", uuidStr)
+	updateAIStatusUUID(ctx, uuidStr)
+	log.Infof("handleCertObjStatusModify done for %s\n", uuidStr)
 }
 
-func handleCertObjStatusDelete(ctxArg interface{}, statusFilename string) {
-	log.Printf("handleCertObjtatusDelete for %s\n", statusFilename)
+func handleCertObjStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
 
-	key := statusFilename
-	if m, ok := certObjStatus[key]; !ok {
-		log.Printf("handleCertObjStatusDelete for %s - not found\n",
-			key)
-	} else {
-		state := m.State
-		delete(certObjStatus, key)
-		log.Printf("handleCertObjStatusDelete done for %s, in %v\n",
-			statusFilename, state)
+	ctx := ctxArg.(*zedmanagerContext)
+	log.Infof("handleCertObjtatusDelete for %s\n", key)
+	updateAIStatusUUID(ctx, key)
+	log.Infof("handleCertObjStatusDelete done for %s\n", key)
+}
+
+// Callers must be careful to publish any changes to NetworkObjectStatus
+func lookupCertObjStatus(ctx *zedmanagerContext, key string) *types.CertObjStatus {
+
+	sub := ctx.subCertObjStatus
+	st, _ := sub.Get(key)
+	if st == nil {
+		log.Infof("lookupCertObjStatus(%s) not found\n", key)
+		return nil
 	}
+	status := cast.CastCertObjStatus(st)
+	if status.Key() != key {
+		log.Errorf("lookupCertObjStatus key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, status.Key(), status)
+		return nil
+	}
+	return &status
 }

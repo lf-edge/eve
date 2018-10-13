@@ -6,7 +6,7 @@
 package types
 
 import (
-	"log"
+	log "github.com/sirupsen/logrus"
 	"time"
 )
 
@@ -22,21 +22,25 @@ import (
 // The key/index to this is the Safename which is allocated by ZedManager.
 // That is the filename in which we store the corresponding json files.
 type VerifyImageConfig struct {
-	Safename         string   // Also refers to the dirname in pending dir
-	DownloadURL      string   // For logging output
-	ImageSha256      string   // sha256 of immutable image
-	RefCount         uint     // Zero means can delete file
+	Safename         string // Also refers to the dirname in pending dir
+	Name             string // For logging output
+	ImageSha256      string // sha256 of immutable image
+	RefCount         uint
 	CertificateChain []string //name of intermediate certificates
 	ImageSignature   []byte   //signature of image
 	SignatureKey     string   //certificate containing public key
 }
 
+func (config VerifyImageConfig) Key() string {
+	return config.Safename
+}
+
 func (config VerifyImageConfig) VerifyFilename(fileName string) bool {
-	name := config.Safename
-	ret := name+".json" == fileName
+	expect := config.Key() + ".json"
+	ret := expect == fileName
 	if !ret {
-		log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
-			fileName, name)
+		log.Errorf("Mismatch between filename and contained Safename: %s vs. %s\n",
+			fileName, expect)
 	}
 	return ret
 }
@@ -50,19 +54,25 @@ type VerifyImageStatus struct {
 	PendingModify bool
 	PendingDelete bool
 	ImageSha256   string  // sha256 of immutable image
-	State         SwState // DELIVERED, or INITIAL if failed
+	State         SwState // DELIVERED; LastErr* set if failed
 	LastErr       string  // Verification error
 	LastErrTime   time.Time
 	Size          int64
-	RefCount      uint // Zero means deleted
+	RefCount      uint
+	LastUse       time.Time // When RefCount dropped to zero
+	Expired       bool      // Handshake to client
+}
+
+func (status VerifyImageStatus) Key() string {
+	return status.Safename
 }
 
 func (status VerifyImageStatus) VerifyFilename(fileName string) bool {
-	name := status.Safename
-	ret := name+".json" == fileName
+	expect := status.Key() + ".json"
+	ret := expect == fileName
 	if !ret {
-		log.Printf("Mismatch between filename and contained Safename: %s vs. %s\n",
-			fileName, name)
+		log.Errorf("Mismatch between filename and contained Safename: %s vs. %s\n",
+			fileName, expect)
 	}
 	return ret
 }
@@ -77,4 +87,8 @@ func (status VerifyImageStatus) CheckPendingModify() bool {
 
 func (status VerifyImageStatus) CheckPendingDelete() bool {
 	return status.PendingDelete
+}
+
+func (status VerifyImageStatus) Pending() bool {
+	return status.PendingAdd || status.PendingModify || status.PendingDelete
 }

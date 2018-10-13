@@ -7,11 +7,11 @@ package zedrouter
 
 import (
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/wrap"
 	"io"
 	"io/ioutil"
-	"log"
 	"net"
 	"os"
 	"strconv"
@@ -21,6 +21,9 @@ import (
 // Template per map server. Pass in (dns-name, authentication-key)
 // Use this for the Mgmt IID
 const lispMStemplateMgmt = `
+lisp map-resolver {
+	dns-name = %s
+}
 lisp map-server {
     dns-name = %s
     authentication-key = %s
@@ -44,7 +47,18 @@ lisp map-cache {
     prefix {
         instance-id = %d
         eid-prefix = fd00::/8
-		send-map-request = yes
+        send-map-request = yes
+    }
+}
+`
+
+// Need to fill in IID and IPv4 mask
+const lispIPv4IIDtemplate = `
+lisp map-cache {
+    prefix {
+        instance-id = %d
+        eid-prefix = %s
+        send-map-request = yes
     }
 }
 `
@@ -125,6 +139,7 @@ lisp interface {
 //        address = %s
 //        priority = %d
 // }
+// rlocs could also include additional IPv4 prefix stanzas
 const lispDBtemplate = `
 lisp database-mapping {
     prefix {
@@ -143,7 +158,6 @@ lisp database-mapping {
 %s
 }
 `
-
 const (
 	baseFilename = tmpDirname + "/lisp.config.base"
 
@@ -163,20 +177,20 @@ const (
 //
 // Would be more polite to return an error then to Fatal
 func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
-	EID net.IP, lispSignature string,
+	EID net.IP, AppIPAddr net.IP, lispSignature string,
 	globalStatus types.DeviceNetworkStatus,
 	tag string, olIfname string, additionalInfo string,
-	lispServers []types.LispServerInfo, separateDataPlane bool) {
-	if debug {
-		log.Printf("createLispConfiglet: %s %v %d %s %v %s %s %s %s %v\n",
-			lispRunDirname, isMgmt, IID, EID, lispSignature, globalStatus,
-			tag, olIfname, additionalInfo, lispServers)
-	}
+	mapservers []types.MapServer, separateDataPlane bool) {
+
+	log.Debugf("createLispConfiglet: %s %v %d %s %v %v %s %s %s %v\n",
+		lispRunDirname, isMgmt, IID, EID, lispSignature, globalStatus,
+		tag, olIfname, additionalInfo, mapservers)
+
 	cfgPathnameIID := lispRunDirname + "/" +
 		strconv.FormatUint(uint64(IID), 10)
 	file1, err := os.Create(cfgPathnameIID)
 	if err != nil {
-		log.Fatal("os.Create for ", cfgPathnameIID, err)
+		log.Fatal("createListConfiglet failed ", err)
 	}
 	defer file1.Close()
 
@@ -190,7 +204,7 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	}
 	file2, err := os.Create(cfgPathnameEID)
 	if err != nil {
-		log.Fatal("os.Create for ", cfgPathnameEID, err)
+		log.Fatal("createLispConfiglet failed ", err)
 	}
 	defer file2.Close()
 	rlocString := ""
@@ -225,10 +239,10 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 			rlocString += one
 		}
 	}
-	for _, ms := range lispServers {
+	for _, ms := range mapservers {
 		if isMgmt {
 			file1.WriteString(fmt.Sprintf(lispMStemplateMgmt,
-				ms.NameOrIp, ms.Credential))
+				ms.NameOrIp, ms.NameOrIp, ms.Credential))
 		} else {
 			file1.WriteString(fmt.Sprintf(lispMStemplate,
 				IID, ms.NameOrIp, ms.Credential))
@@ -241,36 +255,112 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 		file2.WriteString(fmt.Sprintf(lispDBtemplateMgmt,
 			IID, EID, rlocString))
 	} else {
+		// Append to rlocString based on AppIPAddr
+		log.Infof("lisp: EID %s AppIPAddr %s\n",
+			EID.String(), AppIPAddr.String())
+		if AppIPAddr != nil && !EID.Equal(AppIPAddr) {
+			one := fmt.Sprintf("    prefix {\n        instance-id = %d\n        eid-prefix = %s/32\n        ms-name = ms-%d\n    }\n",
+				IID, AppIPAddr.String(), IID)
+			rlocString += one
+		}
 		file2.WriteString(fmt.Sprintf(lispEIDtemplate,
 			tag, lispSignature, tag, additionalInfo, olIfname,
 			olIfname, IID))
 		file2.WriteString(fmt.Sprintf(lispDBtemplate,
 			IID, EID, IID, tag, tag, rlocString))
 	}
-	updateLisp(lispRunDirname, globalStatus.UplinkStatus, separateDataPlane)
+	updateLisp(lispRunDirname, &globalStatus, separateDataPlane)
+}
+
+func createLispEidConfiglet(lispRunDirname string,
+	IID uint32, EID net.IP, AppIPAddr net.IP, lispSignature string,
+	globalStatus types.DeviceNetworkStatus,
+	tag string, olIfname string, additionalInfo string,
+	mapservers []types.MapServer, separateDataPlane bool) {
+
+	log.Debugf("createLispEidConfiglet: %s %d %s %v %v %s %s %s %v\n",
+		lispRunDirname, IID, EID, lispSignature, globalStatus,
+		tag, olIfname, additionalInfo, mapservers)
+
+	var cfgPathnameEID string
+	cfgPathnameEID = lispRunDirname + "/" + EID.String()
+	file, err := os.Create(cfgPathnameEID)
+	if err != nil {
+		log.Fatal("createLispEidConfiglet ", err)
+	}
+	defer file.Close()
+
+	rlocString := ""
+	for _, u := range globalStatus.UplinkStatus {
+		// Skip interfaces which are not free or have no usable address
+		if !u.Free {
+			continue
+		}
+		if len(u.AddrInfoList) == 0 {
+			continue
+		}
+		found := false
+		for _, i := range u.AddrInfoList {
+			if !i.Addr.IsLinkLocalUnicast() {
+				found = true
+				break
+			}
+		}
+		if !found {
+			continue
+		}
+
+		one := fmt.Sprintf("    rloc {\n        interface = %s\n    }\n",
+			u.IfName)
+		rlocString += one
+		for _, i := range u.AddrInfoList {
+			prio := 0
+			if i.Addr.IsLinkLocalUnicast() {
+				prio = 2
+			}
+			one := fmt.Sprintf("    rloc {\n        address = %s\n        priority = %d\n    }\n", i.Addr, prio)
+			rlocString += one
+		}
+	}
+	// Append to rlocString based on AppIPAddr
+	log.Infof("lisp: EID %s AppIPAddr %s\n",
+		EID.String(), AppIPAddr.String())
+	if AppIPAddr != nil && !EID.Equal(AppIPAddr) {
+		one := fmt.Sprintf("    prefix {\n        instance-id = %d\n        eid-prefix = %s/32\n        ms-name = ms-%d\n    }\n",
+			IID, AppIPAddr.String(), IID)
+		rlocString += one
+	}
+	file.WriteString(fmt.Sprintf(lispEIDtemplate,
+		tag, lispSignature, tag, additionalInfo, olIfname,
+		olIfname, IID))
+	file.WriteString(fmt.Sprintf(lispDBtemplate,
+		IID, EID, IID, tag, tag, rlocString))
+	updateLisp(lispRunDirname, &globalStatus, separateDataPlane)
 }
 
 func updateLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
-	EID net.IP, lispSignature string,
+	EID net.IP, AppIPAddr net.IP, lispSignature string,
 	globalStatus types.DeviceNetworkStatus,
 	tag string, olIfname string, additionalInfo string,
-	lispServers []types.LispServerInfo,
+	mapservers []types.MapServer,
 	separateDataPlane bool) {
-	if debug {
-		log.Printf("updateLispConfiglet: %s %v %d %s %v %s %s %s %s %v\n",
-			lispRunDirname, isMgmt, IID, EID, lispSignature, globalStatus,
-			tag, olIfname, additionalInfo, lispServers)
-	}
-	createLispConfiglet(lispRunDirname, isMgmt, IID, EID, lispSignature,
-		globalStatus, tag, olIfname, additionalInfo, lispServers, separateDataPlane)
+
+	log.Debugf("updateLispConfiglet: %s %v %d %s %v %v %s %s %s %v\n",
+		lispRunDirname, isMgmt, IID, EID, lispSignature, globalStatus,
+		tag, olIfname, additionalInfo, mapservers)
+
+	createLispConfiglet(lispRunDirname, isMgmt, IID, EID, AppIPAddr,
+		lispSignature, globalStatus, tag, olIfname, additionalInfo,
+		mapservers, separateDataPlane)
 }
 
 func deleteLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
-	EID net.IP, globalStatus types.DeviceNetworkStatus, separateDataPlane bool) {
-	if debug {
-		log.Printf("deleteLispConfiglet: %s %d %s %v\n",
-			lispRunDirname, IID, EID, globalStatus)
-	}
+	EID net.IP, AppIPAddr net.IP, globalStatus types.DeviceNetworkStatus,
+	separateDataPlane bool) {
+
+	log.Debugf("deleteLispConfiglet: %s %d %s %v\n",
+		lispRunDirname, IID, EID, globalStatus)
+
 	var cfgPathnameEID string
 	if isMgmt {
 		// LISP gets confused if the management "lisp interface"
@@ -280,7 +370,7 @@ func deleteLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 		cfgPathnameEID = lispRunDirname + "/" + EID.String()
 	}
 	if err := os.Remove(cfgPathnameEID); err != nil {
-		log.Println(err)
+		log.Errorln(err)
 	}
 
 	// XXX can't delete IID file unless refcnt since other EIDs
@@ -288,38 +378,35 @@ func deleteLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	// cfgPathnameIID := lispRunDirname + "/" +
 	//	strconv.FormatUint(uint64(IID), 10)
 
-	updateLisp(lispRunDirname, globalStatus.UplinkStatus, separateDataPlane)
+	updateLisp(lispRunDirname, &globalStatus, separateDataPlane)
 }
 
 func updateLisp(lispRunDirname string,
-	upLinkStatus []types.NetworkUplink,
+	globalStatus *types.DeviceNetworkStatus,
 	separateDataPlane bool) {
-	if debug {
-		log.Printf("updateLisp: %s %v\n", lispRunDirname, upLinkStatus)
-	}
+
+	log.Debugf("updateLisp: %s %v\n",
+		lispRunDirname, globalStatus.UplinkStatus)
 
 	if deferUpdate {
-		log.Printf("updateLisp deferred\n")
+		log.Infof("updateLisp deferred\n")
 		deferLispRunDirname = lispRunDirname
-		deferUpLinkStatus = upLinkStatus
+		deferGlobalStatus = globalStatus
 		return
 	}
 
 	tmpfile, err := ioutil.TempFile("/tmp/", "lisp")
 	if err != nil {
-		log.Println("TempFile ", err)
+		log.Errorln("TempFile ", err)
 		return
 	}
 	defer tmpfile.Close()
 	defer os.Remove(tmpfile.Name())
 
-	if debug {
-		log.Printf("Copying from %s to %s\n",
-			baseFilename, tmpfile.Name())
-	}
+	log.Debugf("Copying from %s to %s\n", baseFilename, tmpfile.Name())
 	content, err := ioutil.ReadFile(baseFilename)
 	if err != nil {
-		log.Printf("Reading base configuration file %s failed: %s\n",
+		log.Errorf("Reading base configuration file %s failed: %s\n",
 			baseFilename, err)
 		return
 	}
@@ -329,24 +416,11 @@ func updateLisp(lispRunDirname string,
 	} else {
 		tmpfile.WriteString(fmt.Sprintf(baseConfig, "no"))
 	}
-	/*
-		s, err := os.Open(baseFilename)
-		if err != nil {
-			log.Println("os.Open ", baseFilename, err)
-			return
-		}
-		defer s.Close()
-		var cnt int64
-		if cnt, err = io.Copy(tmpfile, s); err != nil {
-			log.Println("io.Copy ", baseFilename, err)
-			return
-		}
-		fmt.Printf("Copied %d bytes from %s\n", cnt, baseFilename)
-	*/
+
 	var cnt int64
 	files, err := ioutil.ReadDir(lispRunDirname)
 	if err != nil {
-		log.Println(err)
+		log.Errorf("ReadDir %s failed %s\n", lispRunDirname, err)
 		return
 	}
 	eidCount := 0
@@ -356,34 +430,40 @@ func updateLisp(lispRunDirname string,
 			eidCount += 1
 		}
 		filename := lispRunDirname + "/" + file.Name()
-		if debug {
-			log.Printf("Copying from %s to %s\n",
-				filename, tmpfile.Name())
-		}
+		log.Debugf("Copying from %s to %s\n",
+			filename, tmpfile.Name())
 		s, err := os.Open(filename)
 		if err != nil {
-			log.Println("os.Open ", filename, err)
+			log.Errorln("os.Open ", filename, err)
 			return
 		}
 		defer s.Close()
 		if cnt, err = io.Copy(tmpfile, s); err != nil {
-			log.Println("io.Copy ", filename, err)
+			log.Errorln("io.Copy ", filename, err)
 			return
 		}
-		if debug {
-			log.Printf("Copied %d bytes from %s\n", cnt, filename)
-		}
+		log.Debugf("Copied %d bytes from %s\n", cnt, filename)
 	}
 	if err := tmpfile.Close(); err != nil {
-		log.Println("Close ", tmpfile.Name(), err)
+		log.Errorln("Close ", tmpfile.Name(), err)
 		return
 	}
 	// This seems safer; make sure it is stopped before rewriting file
 	stopLisp()
 
 	if err := os.Rename(tmpfile.Name(), destFilename); err != nil {
-		log.Println("Rename ", tmpfile.Name(), destFilename, err)
+		log.Errorln("Rename ", tmpfile.Name(), destFilename, err)
 		return
+	}
+	// XXX We write configuration to lisp.config.orig for debugging
+	// lispers.net lisp.config file overwrite issue.
+	if dat, err := ioutil.ReadFile(destFilename); err == nil {
+		f, err := os.Create(destFilename + ".orig")
+		if err == nil {
+			f.WriteString(string(dat))
+			f.Sync()
+			f.Close()
+		}
 	}
 
 	// Determine the set of devices from the above config file
@@ -391,52 +471,70 @@ func updateLisp(lispRunDirname string,
 	awk := wrap.Command("awk", "{print $NF}")
 	awk.Stdin, _ = grep.StdoutPipe()
 	if err := grep.Start(); err != nil {
-		log.Println("grep.Start failed: ", err)
+		log.Errorln("grep.Start failed: ", err)
 		return
 	}
 	intfs, err := awk.Output()
 	if err != nil {
-		log.Println("awk.Output failed: ", err)
+		log.Errorln("awk.Output failed: ", err)
 		return
 	}
 	_ = grep.Wait()
 	_ = awk.Wait()
 	devices := strings.TrimSpace(string(intfs))
 	devices = strings.Replace(devices, "\n", " ", -1)
-	if debug {
-		log.Printf("updateLisp: found %d EIDs devices <%v>\n",
-			eidCount, devices)
+	log.Debugf("updateLisp: found %d EIDs devices <%v>\n",
+		eidCount, devices)
+	freeUpLinks := types.GetUplinkFreeNoLocal(*globalStatus)
+	for _, u := range freeUpLinks {
+		devices += " " + u.IfName
 	}
 	// Check how many EIDs we have configured. If none we stop lisp
 	if eidCount == 0 {
 		stopLisp()
-		if separateDataPlane {
-			maybeStopLispDataPlane()
+
+		// XXX We have changed the design to have lisp-ztr dataplane
+		// always run and not do anything unless zedrouter sends `Experimental = true`
+		// configuration to lisp-ztr process via pubsub.
+		// When separateDataPlane flag is true zedrouter sends `Experimantal = true`
+		// to lisp-ztr dataplane.
+		// The below code that stops dataplane should be removed at some point of time.
+		if false {
+			if separateDataPlane {
+				maybeStopLispDataPlane()
+			}
 		}
 	} else {
-		if separateDataPlane {
-			maybeStartLispDataPlane()
+		// XXX We have changed the design to have lisp-ztr dataplane
+		// always run and not do anything unless zedrouter sends `Experimental = true`
+		// configuration to lisp-ztr process via pubsub.
+		// When separateDataPlane flag is true zedrouter sends `Experimantal = true`
+		// to lisp-ztr dataplane.
+		// The below code that stops dataplane should be removed at some point of time.
+		if false {
+			if separateDataPlane {
+				maybeStartLispDataPlane()
+			}
 		}
-		restartLisp(upLinkStatus, devices)
+		restartLisp(globalStatus.UplinkStatus, devices)
 	}
 }
 
 var deferUpdate = false
 var deferLispRunDirname = ""
-var deferUpLinkStatus []types.NetworkUplink = nil
+var deferGlobalStatus *types.DeviceNetworkStatus
 
 func handleLispRestart(done bool, separateDataPlane bool) {
-	if debug {
-		log.Printf("handleLispRestart(%v)\n", done)
-	}
+
+	log.Debugf("handleLispRestart(%v)\n", done)
 	if done {
 		if deferUpdate {
 			deferUpdate = false
 			if deferLispRunDirname != "" {
 				updateLisp(deferLispRunDirname,
-					deferUpLinkStatus, separateDataPlane)
+					deferGlobalStatus, separateDataPlane)
 				deferLispRunDirname = ""
-				deferUpLinkStatus = nil
+				deferGlobalStatus = nil
 			}
 		}
 	} else {
@@ -445,22 +543,21 @@ func handleLispRestart(done bool, separateDataPlane bool) {
 }
 
 func restartLisp(upLinkStatus []types.NetworkUplink, devices string) {
-	if debug {
-		log.Printf("restartLisp: %v %s\n", upLinkStatus, devices)
-	}
+
+	log.Debugf("restartLisp: %v %s\n", upLinkStatus, devices)
 	if len(upLinkStatus) == 0 {
-		log.Printf("Can not restart lisp with no uplinks\n")
+		log.Errorf("Can not restart lisp with no uplinks\n")
 		return
 	}
 	// XXX hack to avoid hang in pslisp on Erik's laptop
 	if broken {
 		// Issue pkill -f lisp-core.pyo
-		log.Printf("Calling pkill -f lisp-core.pyo\n")
+		log.Infof("Calling pkill -f lisp-core.pyo\n")
 		cmd := wrap.Command("pkill", "-f", "lisp-core.pyo")
 		stdoutStderr, err := cmd.CombinedOutput()
 		if err != nil {
-			log.Println("pkill failed ", err)
-			log.Printf("pkill output %s\n", string(stdoutStderr))
+			log.Errorln("pkill failed ", err)
+			log.Errorf("pkill output %s\n", string(stdoutStderr))
 		}
 	}
 	// XXX how to restart with multiple uplinks?
@@ -487,7 +584,7 @@ func restartLisp(upLinkStatus []types.NetworkUplink, devices string) {
 		}
 	}
 	if !found {
-		log.Printf("Can not restart lisp - no usable IP addresses on free uplinks\n")
+		log.Errorf("Can not restart lisp - no usable IP addresses on free uplinks\n")
 		return
 	}
 
@@ -508,14 +605,11 @@ func restartLisp(upLinkStatus []types.NetworkUplink, devices string) {
 	cmd.Env = env
 	stdoutStderr, err := cmd.CombinedOutput()
 	if err != nil {
-		log.Println("RESTART-LISP failed ", err)
-		log.Printf("RESTART-LISP output %s\n", string(stdoutStderr))
+		log.Errorln("RESTART-LISP failed ", err)
+		log.Errorf("RESTART-LISP output %s\n", string(stdoutStderr))
 		return
 	}
-	if debug {
-		log.Printf("restartLisp done: output %s\n",
-			string(stdoutStderr))
-	}
+	log.Infof("restartLisp done: output %s\n", string(stdoutStderr))
 
 	// Save the restart as a bash command called RL
 	const RLTemplate = "#!/bin/bash\n" +
@@ -533,28 +627,25 @@ func restartLisp(upLinkStatus []types.NetworkUplink, devices string) {
 		log.Fatal("WriteFile", err, RLFilename)
 		return
 	}
-	if debug {
-		log.Printf("Wrote %s\n", RLFilename)
-	}
+	log.Debugf("Wrote %s\n", RLFilename)
 }
 
 func maybeStartLispDataPlane() {
-	if debug {
-		log.Printf("maybeStartLispDataPlane: %s\n", "/opt/zededa/bin/dataplane")
-	}
+
+	log.Debugf("maybeStartLispDataPlane: %s\n", "/opt/zededa/bin/lisp-ztr")
 	isRunning, _ := isLispDataPlaneRunning()
 	if isRunning {
 		return
 	}
-	// Dataplane is currently running. Start it.
+	// Dataplane is currently not running. Start it.
 	cmd := "nohup"
 	args := []string{
-		"/opt/zededa/bin/dataplane",
+		"/opt/zededa/bin/lisp-ztr",
 	}
 	go wrap.Command(cmd, args...).Output()
 }
 
-// Stop if dataplane is running
+// Stop if dataplane(lisp-ztr) is running
 // return true if dataplane was running and we stopped it.
 // false otherwise
 func maybeStopLispDataPlane() bool {
@@ -585,14 +676,14 @@ func isLispDataPlaneRunning() (bool, []string) {
 	out, err := cmd.Output()
 
 	if err != nil {
-		log.Printf("isLispDataPlaneRunning: %s process is not running: %s\n",
+		log.Infof("isLispDataPlaneRunning: %s process is not running: %s\n",
 			prog, err)
 		return false, []string{}
 	}
-	log.Printf("isLispDataPlaneRunning: Instances of %s is running.\n", prog)
+	log.Infof("isLispDataPlaneRunning: Instances of %s is running.\n", prog)
 	pids := strings.Split(string(out), "\n")
 
-	// The last entry returns by strings.Split is empty string.
+	// The last entry returned by strings.Split is an empty string.
 	// splice the last entry out.
 	pids = pids[:len(pids)-1]
 
@@ -600,18 +691,17 @@ func isLispDataPlaneRunning() (bool, []string) {
 }
 
 func stopLisp() {
-	if debug {
-		log.Printf("stopLisp\n")
-	}
+
+	log.Debugf("stopLisp\n")
 	// XXX hack to avoid hang in pslisp on Erik's laptop
 	if broken {
 		// Issue pkill -f lisp-core.pyo
-		log.Printf("Calling pkill -f lisp-core.pyo\n")
+		log.Infof("Calling pkill -f lisp-core.pyo\n")
 		cmd := wrap.Command("pkill", "-f", "lisp-core.pyo")
 		stdoutStderr, err := cmd.CombinedOutput()
 		if err != nil {
-			log.Println("pkill failed ", err)
-			log.Printf("pkill output %s\n", string(stdoutStderr))
+			log.Errorln("pkill failed ", err)
+			log.Errorf("pkill output %s\n", string(stdoutStderr))
 		}
 	}
 
@@ -621,18 +711,14 @@ func stopLisp() {
 	cmd.Env = env
 	stdoutStderr, err := cmd.CombinedOutput()
 	if err != nil {
-		log.Println("STOP-LISP failed ", err)
-		log.Printf("STOP-LISP output %s\n", string(stdoutStderr))
+		log.Errorln("STOP-LISP failed ", err)
+		log.Errorf("STOP-LISP output %s\n", string(stdoutStderr))
 		return
 	}
-	if debug {
-		log.Printf("stopLisp done: output %s\n", string(stdoutStderr))
-	}
+	log.Debugf("stopLisp done: output %s\n", string(stdoutStderr))
 	if err = os.Remove(RLFilename); err != nil {
-		log.Println(err)
+		log.Errorln(err)
 		return
 	}
-	if debug {
-		log.Printf("Removed %s\n", RLFilename)
-	}
+	log.Debugf("Removed %s\n", RLFilename)
 }

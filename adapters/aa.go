@@ -5,73 +5,79 @@
 // Usage:
 //	model := hardware.GetHardwareModel()
 //	aa := types.AssignableAdapters{}
-//      changes, func, ctx := assignableadapters.Init(&aa, model)
+//      subAa := assignableadapters.Subscribe(&aa, model)
 // Then in select loop:
-//       event := changes { func(&ctx, event) }
+//	case change := <-subAa.C:
+//		subAa.ProcessChange(change)
+//
 // The aa is updated initially and when there is a change. On delete it
-// is set to its default value.
+// is set to its default value. aa.Found is set when the model has been found.
 
 package adapters
 
 import (
+	log "github.com/sirupsen/logrus"
+	"github.com/zededa/go-provision/cast"
+	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
-	"github.com/zededa/go-provision/watch"
-	"log"
 )
 
-// Context which is passed from Init to processEventFn by the user of
+// Context used for the underlaying pubsub subscription.
 // this package
 type context struct {
+	Found bool
+	C     <-chan string
+	// Private info
 	aa    *types.AssignableAdapters
 	model string
-	Found bool
+	sub   *pubsub.Subscription
 }
 
-type processEventFn func(ctx *context, event string)
+func Subscribe(aa *types.AssignableAdapters, model string) *context {
 
-const dirName = "/var/tmp/zededa/AssignableAdapters"
-
-func Init(aa *types.AssignableAdapters, model string) (chan string, processEventFn, context) {
 	ctx := context{model: model, aa: aa}
-	// Call go watch/subscribe
-	changes := make(chan string)
-	go watch.WatchStatus(dirName, changes)
-
-	return changes, processEvent, ctx
+	sub, err := pubsub.Subscribe("", types.AssignableAdapters{},
+		false, &ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	sub.ModifyHandler = handleAAModify
+	sub.DeleteHandler = handleAADelete
+	ctx.sub = sub
+	ctx.C = sub.C
+	sub.Activate()
+	return &ctx
 }
 
-func processEvent(ctx *context, event string) {
-	watch.HandleStatusEvent(event, ctx, dirName,
-		&types.AssignableAdapters{},
-		handleAAModify, handleAADelete, nil)
+func (ctx *context) ProcessChange(change string) {
+	ctx.sub.ProcessChange(change)
 }
 
 func handleAAModify(ctxArg interface{}, key string, configArg interface{}) {
-	config := configArg.(*types.AssignableAdapters)
+	config := cast.CastAssignableAdapters(configArg)
 	ctx := ctxArg.(*context)
 	// Only care about my model
 	if key != ctx.model {
-		log.Printf("handleAAModify: ignoring %s, expecting %s\n",
+		log.Debugf("handleAAModify: ignoring %s, expecting %s\n",
 			key, ctx.model)
 		return
 	}
-	log.Printf("handleAAModify found %s\n", key)
-	*ctx.aa = *config
+	log.Infof("handleAAModify found %s\n", key)
+	*ctx.aa = config
 	ctx.Found = true
-	log.Printf("handleAAModify done for %s\n", key)
+	log.Infof("handleAAModify done for %s\n", key)
 }
 
-func handleAADelete(ctxArg interface{}, key string) {
-	log.Printf("handleAADelete for %s\n", key)
+func handleAADelete(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*context)
 	// Only care about my model
 	if key != ctx.model {
-		log.Printf("handleAADelete: ignoring %s, expecting %s\n",
+		log.Debugf("handleAADelete: ignoring %s, expecting %s\n",
 			key, ctx.model)
 		return
 	}
-	log.Printf("handleAADelete: found %s\n", ctx.model)
+	log.Infof("handleAADelete: found %s\n", ctx.model)
 	ctx.Found = false
 	ctx.aa = &types.AssignableAdapters{}
-	log.Printf("handleAADelete done for %s\n", key)
+	log.Infof("handleAADelete done for %s\n", key)
 }

@@ -6,11 +6,12 @@
 package wrap
 
 import (
-	"log"
+	log "github.com/sirupsen/logrus"
 	"os/exec"
 )
 
 func Command(name string, arg ...string) *exec.Cmd {
-	log.Printf("Calling command %s %v\n", name, arg)
+
+	log.Infof("Calling command %s %v\n", name, arg)
 	return exec.Command(name, arg...)
 }

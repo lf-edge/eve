@@ -4,56 +4,58 @@
 package devicenetwork
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/eriknordmark/ipinfo"
+	log "github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
 	"github.com/zededa/go-provision/types"
-	"io/ioutil"
-	"log"
 	"net"
+	"os"
 	"time"
 )
 
-// Parse the file with DeviceNetworkConfig
-func GetDeviceNetworkConfig(configFilename string) (types.DeviceNetworkConfig, error) {
-	var globalConfig types.DeviceNetworkConfig
-	cb, err := ioutil.ReadFile(configFilename)
-	if err != nil {
-		return types.DeviceNetworkConfig{}, err
-	}
-	if err := json.Unmarshal(cb, &globalConfig); err != nil {
-		return types.DeviceNetworkConfig{}, err
-	}
-	// Workaround for old config with FreeUplinks not set
-	if len(globalConfig.FreeUplinks) == 0 {
-		log.Printf("Setting FreeUplinks from Uplink: %v\n",
-			globalConfig.Uplink)
-		globalConfig.FreeUplinks = globalConfig.Uplink
-	}
-	return globalConfig, nil
-}
+// Genetate NetworkUplinkConfig based on DeviceNetworkConfig
+func MakeNetworkUplinkConfig(globalConfig types.DeviceNetworkConfig) types.DeviceUplinkConfig {
+	var config types.DeviceUplinkConfig
 
-// Calculate local IP addresses to make a types.DeviceNetworkStatus
-func MakeDeviceNetworkStatus(globalConfig types.DeviceNetworkConfig, oldStatus types.DeviceNetworkStatus) (types.DeviceNetworkStatus, error) {
-	var globalStatus types.DeviceNetworkStatus
-	var err error = nil
-
-	globalStatus.UplinkStatus = make([]types.NetworkUplink,
+	config.Uplinks = make([]types.NetworkUplinkConfig,
 		len(globalConfig.Uplink))
 	for ix, u := range globalConfig.Uplink {
-		globalStatus.UplinkStatus[ix].IfName = u
+		config.Uplinks[ix].IfName = u
 		for _, f := range globalConfig.FreeUplinks {
 			if f == u {
-				globalStatus.UplinkStatus[ix].Free = true
+				config.Uplinks[ix].Free = true
 				break
 			}
 		}
-		link, err := netlink.LinkByName(u)
+		config.Uplinks[ix].Dhcp = types.DT_CLIENT
+	}
+	return config
+}
+
+// Calculate local IP addresses to make a types.DeviceNetworkStatus
+func MakeDeviceNetworkStatus(globalConfig types.DeviceUplinkConfig, oldStatus types.DeviceNetworkStatus) (types.DeviceNetworkStatus, error) {
+	var globalStatus types.DeviceNetworkStatus
+	var err error = nil
+
+	// Copy proxy settings
+	globalStatus.ProxyConfig = globalConfig.ProxyConfig
+	// Apply proxy before we do geolocation calls
+	ProxyToEnv(globalStatus.ProxyConfig)
+
+	globalStatus.UplinkStatus = make([]types.NetworkUplink,
+		len(globalConfig.Uplinks))
+	for ix, u := range globalConfig.Uplinks {
+		globalStatus.UplinkStatus[ix].IfName = u.IfName
+		globalStatus.UplinkStatus[ix].Free = u.Free
+		// XXX should we get statics?
+		link, err := netlink.LinkByName(u.IfName)
 		if err != nil {
-			log.Printf("MakeDeviceNetworkStatus LinkByName %s: %s\n", u, err)
-			err = errors.New(fmt.Sprintf("Uplink in config/global does not exist: %v", u))
+			log.Warnf("MakeDeviceNetworkStatus LinkByName %s: %s\n",
+				u.IfName, err)
+			err = errors.New(fmt.Sprintf("Uplink in config/global does not exist: %v",
+				u))
 			continue
 		}
 		addrs4, err := netlink.AddrList(link, netlink.FAMILY_V4)
@@ -67,14 +69,14 @@ func MakeDeviceNetworkStatus(globalConfig types.DeviceNetworkConfig, oldStatus t
 		globalStatus.UplinkStatus[ix].AddrInfoList = make([]types.AddrInfo,
 			len(addrs4)+len(addrs6))
 		for i, addr := range addrs4 {
-			log.Printf("UplinkAddrs(%s) found IPv4 %v\n",
-				u, addr.IP)
+			log.Infof("UplinkAddrs(%s) found IPv4 %v\n",
+				u.IfName, addr.IP)
 			globalStatus.UplinkStatus[ix].AddrInfoList[i].Addr = addr.IP
 		}
 		for i, addr := range addrs6 {
 			// We include link-locals since they can be used for LISP behind nats
-			log.Printf("UplinkAddrs(%s) found IPv6 %v\n",
-				u, addr.IP)
+			log.Infof("UplinkAddrs(%s) found IPv6 %v\n",
+				u.IfName, addr.IP)
 			globalStatus.UplinkStatus[ix].AddrInfoList[i+len(addrs4)].Addr = addr.IP
 		}
 	}
@@ -127,15 +129,13 @@ func UpdateDeviceNetworkGeo(timelimit time.Duration, globalStatus *types.DeviceN
 			}
 			// geoloc with short timeout
 			opt := ipinfo.Options{
-				Timeout: 5 * time.Second,
-				// XXX for test purpose use token
-				Token:    "e1277a86467b6b",
+				Timeout:  5 * time.Second,
 				SourceIp: ai.Addr,
 			}
 			info, err := ipinfo.MyIPWithOptions(opt)
 			if err != nil {
 				// Ignore error
-				log.Printf("UpdateDeviceNetworkGeo MyIPInfo failed %s\n", err)
+				log.Infof("UpdateDeviceNetworkGeo MyIPInfo failed %s\n", err)
 				continue
 			}
 			// Note that if the global IP is unchanged we don't
@@ -143,7 +143,7 @@ func UpdateDeviceNetworkGeo(timelimit time.Duration, globalStatus *types.DeviceN
 			if info.IP == ai.Geo.IP {
 				continue
 			}
-			log.Printf("UpdateDeviceNetworkGeo MyIPInfo changed from %v to %v\n",
+			log.Infof("UpdateDeviceNetworkGeo MyIPInfo changed from %v to %v\n",
 				ai.Geo, *info)
 			ai.Geo = *info
 			ai.LastGeoTimestamp = time.Now()
@@ -151,4 +151,72 @@ func UpdateDeviceNetworkGeo(timelimit time.Duration, globalStatus *types.DeviceN
 		}
 	}
 	return change
+}
+
+func lookupOnIfname(config types.DeviceUplinkConfig, ifname string) *types.NetworkUplinkConfig {
+	for _, c := range config.Uplinks {
+		if c.IfName == ifname {
+			return &c
+		}
+	}
+	return nil
+}
+
+func IsUplink(config types.DeviceUplinkConfig, ifname string) bool {
+	return lookupOnIfname(config, ifname) != nil
+}
+
+func IsFreeUplink(config types.DeviceUplinkConfig, ifname string) bool {
+	c := lookupOnIfname(config, ifname)
+	return c != nil && c.Free
+}
+
+func GetUplinks(config types.DeviceUplinkConfig) []string {
+	var result []string
+	for _, c := range config.Uplinks {
+		result = append(result, c.IfName)
+	}
+	return result
+}
+
+func GetFreeUplinks(config types.DeviceUplinkConfig) []string {
+	var result []string
+	for _, c := range config.Uplinks {
+		if c.Free {
+			result = append(result, c.IfName)
+		}
+	}
+	return result
+}
+
+func ProxyToEnv(config types.ProxyConfig) {
+
+	log.Infof("ProxyToEnv: %s, %s, %s, %s\n",
+		config.HttpsProxy, config.HttpProxy, config.FtpProxy,
+		config.NoProxy)
+	if config.HttpsProxy == "" {
+		os.Unsetenv("HTTPS_PROXY")
+	} else {
+		os.Setenv("HTTPS_PROXY", config.HttpsProxy)
+	}
+	if config.HttpProxy == "" {
+		os.Unsetenv("HTTP_PROXY")
+	} else {
+		os.Setenv("HTTP_PROXY", config.HttpProxy)
+	}
+	if config.FtpProxy == "" {
+		os.Unsetenv("FTP_PROXY")
+	} else {
+		os.Setenv("FTP_PROXY", config.FtpProxy)
+	}
+	if config.SocksProxy == "" {
+		os.Unsetenv("SOCKS_PROXY")
+	} else {
+		os.Setenv("SOCKS_PROXY", config.SocksProxy)
+	}
+	if config.NoProxy == "" {
+		os.Unsetenv("NO_PROXY")
+	} else {
+		os.Setenv("NO_PROXY", config.NoProxy)
+	}
 }

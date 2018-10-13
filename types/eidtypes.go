@@ -8,7 +8,7 @@ package types
 
 import (
 	"fmt"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"net"
 	"time"
 )
@@ -41,12 +41,16 @@ type EIDConfigDetails struct {
 	PemPrivateKey []byte
 }
 
-func (config EIDConfig) VerifyFilename(fileName string) bool {
-	expect := fmt.Sprintf("%s:%d.json",
+func (config EIDConfig) Key() string {
+	return fmt.Sprintf("%s:%d",
 		config.UUIDandVersion.UUID.String(), config.IID)
+}
+
+func (config EIDConfig) VerifyFilename(fileName string) bool {
+	expect := config.Key() + ".json"
 	ret := expect == fileName
 	if !ret {
-		log.Printf("Mismatch between filename and contained uuid/iid: %s vs. %s\n",
+		log.Errorf("Mismatch between filename and contained uuid/iid: %s vs. %s\n",
 			fileName, expect)
 	}
 	return ret
@@ -73,12 +77,20 @@ type EIDStatusDetails struct {
 	CreateTime    time.Time // When EID was created
 }
 
-func (status EIDStatus) VerifyFilename(fileName string) bool {
-	expect := fmt.Sprintf("%s:%d.json",
+func EidKey(uuidAndVers UUIDandVersion, iid uint32) string {
+	return fmt.Sprintf("%s:%d", uuidAndVers.UUID.String(), iid)
+}
+
+func (status EIDStatus) Key() string {
+	return fmt.Sprintf("%s:%d",
 		status.UUIDandVersion.UUID.String(), status.IID)
+}
+
+func (status EIDStatus) VerifyFilename(fileName string) bool {
+	expect := status.Key() + ".json"
 	ret := expect == fileName
 	if !ret {
-		log.Printf("Mismatch between filename and contained uuid/iid: %s vs. %s\n",
+		log.Errorf("Mismatch between filename and contained uuid/iid: %s vs. %s\n",
 			fileName, expect)
 	}
 	return ret
@@ -94,4 +106,8 @@ func (status EIDStatus) CheckPendingModify() bool {
 
 func (status EIDStatus) CheckPendingDelete() bool {
 	return status.PendingDelete
+}
+
+func (status EIDStatus) Pending() bool {
+	return status.PendingAdd || status.PendingModify || status.PendingDelete
 }

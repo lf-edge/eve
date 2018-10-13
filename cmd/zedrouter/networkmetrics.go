@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Zededa, Inc.
+// Copyright (c) 2018 Zededa, Inc.
 // All rights reserved.
 
 package zedrouter
@@ -9,15 +9,16 @@ package zedrouter
 
 import (
 	psutilnet "github.com/shirou/gopsutil/net"
+	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/types"
-	"log"
+	"strings"
 )
 
-func getNetworkMetrics() types.NetworkMetrics {
+func getNetworkMetrics(ctx *zedrouterContext) types.NetworkMetrics {
 	metrics := []types.NetworkMetric{}
 	network, err := psutilnet.IOCounters(true)
 	if err != nil {
-		log.Println(err)
+		log.Errorln(err)
 		return types.NetworkMetrics{}
 	}
 	// Call iptables once to get counters
@@ -35,11 +36,46 @@ func getNetworkMetrics() types.NetworkMetrics {
 			TxErrors: ni.Errout,
 			RxErrors: ni.Errin,
 		}
-		// Note that Tx is transmitted to bu/bo interface
-		metric.TxAclDrops = getIpRuleAclDrop(ac, ni.Name, false)
-		metric.RxAclDrops = getIpRuleAclDrop(ac, ni.Name, true)
-		metric.TxAclRateLimitDrops = getIpRuleAclRateLimitDrop(ac, ni.Name, false)
-		metric.RxAclRateLimitDrops = getIpRuleAclRateLimitDrop(ac, ni.Name, true)
+		var ntype types.NetworkType
+		bridgeName := ni.Name
+		vifName := ""
+		inout := true
+		if strings.HasPrefix(ni.Name, "dbo") {
+			// Special check for dbo1x0 goes away when disagg
+			ntype = types.NT_CryptoEID
+			inout = false // Swapped in and out counters
+		} else {
+			// If this a vif in a bridge?
+			bn := vifNameToBridgeName(ctx, ni.Name)
+			if bn != "" {
+				ntype = networkObjectType(ctx, bn)
+				if ntype != 0 {
+					vifName = ni.Name
+					bridgeName = bn
+				}
+			} else {
+				ntype = networkObjectType(ctx, ni.Name)
+				if ntype != 0 {
+					bridgeName = ni.Name
+				}
+			}
+		}
+		var ipVer int = 4
+		switch ntype {
+		case types.NT_IPV4:
+			ipVer = 4
+		case types.NT_IPV6, types.NT_CryptoEID:
+			// XXX IPv4 EIDs?
+			ipVer = 6
+		}
+		metric.TxAclDrops = getIpRuleAclDrop(ac, bridgeName, vifName,
+			ipVer, inout)
+		metric.RxAclDrops = getIpRuleAclDrop(ac, bridgeName, vifName,
+			ipVer, !inout)
+		metric.TxAclRateLimitDrops = getIpRuleAclRateLimitDrop(ac,
+			bridgeName, vifName, ipVer, inout)
+		metric.RxAclRateLimitDrops = getIpRuleAclRateLimitDrop(ac,
+			bridgeName, vifName, ipVer, !inout)
 		metrics = append(metrics, metric)
 	}
 	return types.NetworkMetrics{MetricList: metrics}

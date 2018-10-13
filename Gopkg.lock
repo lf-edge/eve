@@ -43,14 +43,14 @@
     "service/s3/s3manager",
     "service/sts"
   ]
-  revision = "47309c012812d9e9c488a54313e5cdfa7479df93"
-  version = "v1.14.1"
+  revision = "aff39e8473db578a1cec9ac2f829a56813c1d631"
+  version = "v1.14.14"
 
 [[projects]]
   branch = "master"
   name = "github.com/eriknordmark/ipinfo"
   packages = ["."]
-  revision = "beff5cd6527619bdfec41ba304a02088b25e7009"
+  revision = "b148f0155466cd0944ae7057fc0acca0c7eb1229"
 
 [[projects]]
   name = "github.com/fsnotify/fsnotify"
@@ -82,8 +82,8 @@
     "ptypes/duration",
     "ptypes/timestamp"
   ]
-  revision = "b4deda0973fb4c70b50d226b1af49f3da59f5265"
-  version = "v1.1.0"
+  revision = "aa810b61a9c79d51363740d207bb46cf8e620ed5"
+  version = "v1.2.0"
 
 [[projects]]
   name = "github.com/google/go-cmp"
@@ -117,7 +117,7 @@
   branch = "master"
   name = "github.com/nanobox-io/golang-scribble"
   packages = ["."]
-  revision = "f328a97d7ce2445d27e611065eb0483cbd97343b"
+  revision = "336beac0a992ed9abaf4ef8e7042ba7fe3335c06"
 
 [[projects]]
   name = "github.com/pkg/errors"
@@ -128,8 +128,8 @@
 [[projects]]
   name = "github.com/pkg/sftp"
   packages = ["."]
-  revision = "d2aa419835609d317c34baae11bc345d1f9971a7"
-  version = "1.7.0"
+  revision = "57673e38ea946592a59c26592b7e6fbda646975b"
+  version = "1.8.0"
 
 [[projects]]
   branch = "master"
@@ -152,10 +152,10 @@
   version = "v2.18.05"
 
 [[projects]]
-  branch = "master"
-  name = "github.com/shirou/w32"
+  name = "github.com/sirupsen/logrus"
   packages = ["."]
-  revision = "bb4de0191aa41b5507caa14b0650cdbddcd9280b"
+  revision = "3e01752db0189b9157070a0e1668a620f9a85da2"
+  version = "v1.0.6"
 
 [[projects]]
   name = "github.com/vishvananda/netlink"
@@ -179,7 +179,7 @@
     "zconfig",
     "zmet"
   ]
-  revision = "237541392e2fba662e79ce700fcc8eaa5dbee6e5"
+  revision = "b05d0403945cd44cca3e3d8414486ce49bf3f6a9"
 
 [[projects]]
   branch = "master"
@@ -189,7 +189,7 @@
     "libs/zedUpload/awsutil",
     "srvs/drona/sftp"
   ]
-  revision = "1d074bb9bb1f0d17b1c97f57459b84a67eff1382"
+  revision = "de81c16291c3f760b4b87ca71e88d10f8feda9b2"
 
 [[projects]]
   branch = "master"
@@ -199,11 +199,13 @@
     "ed25519",
     "ed25519/internal/edwards25519",
     "internal/chacha20",
+    "internal/subtle",
     "ocsp",
     "poly1305",
-    "ssh"
+    "ssh",
+    "ssh/terminal"
   ]
-  revision = "b47b1587369238182299fe4dad77d05b8b461e06"
+  revision = "a49355c7e3f8fe157a85be2f77e6e269a0f89602"
 
 [[projects]]
   branch = "master"
@@ -212,11 +214,11 @@
     "unix",
     "windows"
   ]
-  revision = "9527bec2660bd847c050fda93a0f0c6dee0800bb"
+  revision = "49385e6e15226593f68b26af201feec29d5bba22"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "26cbd3abbb6a42d8a97487bee020e458e7d9d0d216e2f14b630ab55893d9dd6d"
+  inputs-digest = "92a7c6d53ca9e922d478177d9740cb5a825fcbc7effc8b45d7f8280c7999d424"
   solver-name = "gps-cdcl"
   solver-version = 1

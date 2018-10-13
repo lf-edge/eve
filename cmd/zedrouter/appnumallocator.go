@@ -1,4 +1,4 @@
-// Copyright (c) 2017 Zededa, Inc.
+// Copyright (c) 2017-2018 Zededa, Inc.
 // All rights reserved.
 
 // Allocate a small integer for each application UUID.
@@ -12,14 +12,11 @@
 package zedrouter
 
 import (
-	"encoding/json"
 	"fmt"
 	"github.com/satori/go.uuid"
-	"github.com/zededa/go-provision/types"
-	"io/ioutil"
-	"log"
-	"os"
-	"strings"
+	log "github.com/sirupsen/logrus"
+	"github.com/zededa/go-provision/cast"
+	"github.com/zededa/go-provision/pubsub"
 )
 
 // The allocated numbers
@@ -38,54 +35,30 @@ func (bits *Bitmap) Clear(i int)      { bits[i/8] &^= 1 << uint(7-i%8) }
 
 var AllocReservedAppNums Bitmap
 
-// Read the existing appNums out of statusDir
+// Read the existing appNums out of what we published/checkpointed.
 // Store in reserved map since we will be asked to allocate them later.
 // Set bit in bitmap.
-func appNumAllocatorInit(statusDir string, configDir string) {
+func appNumAllocatorInit(pubAppNetworkStatus *pubsub.Publication) {
 	AllocatedAppNum = make(map[uuid.UUID]int)
 	ReservedAppNum = make(map[uuid.UUID]int)
 
-	statusFiles, err := ioutil.ReadDir(statusDir)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	for _, statusFile := range statusFiles {
-		fileName := statusFile.Name()
-		if !strings.HasSuffix(fileName, ".json") {
-			if debug {
-				log.Printf("Ignoring file <%s>\n", fileName)
-			}
-			continue
-		}
-		sb, err := ioutil.ReadFile(statusDir + "/" + fileName)
-		if err != nil {
-			log.Printf("%s for %s\n", err, fileName)
-			continue
-		}
-		status := types.AppNetworkStatus{}
-		if err := json.Unmarshal(sb, &status); err != nil {
-			log.Printf("%s AppNetworkStatus file: %s\n",
-				err, fileName)
-			continue
-		}
-		uuid := status.UUIDandVersion.UUID
-		if uuid.String()+".json" != fileName {
-			log.Printf("Mismatch between filename and contained uuid: %s vs. %s\n",
-				fileName, uuid.String())
+	items := pubAppNetworkStatus.GetAll()
+	for key, st := range items {
+		status := cast.CastAppNetworkStatus(st)
+		if status.Key() != key {
+			log.Errorf("appNumAllocatorInit key/UUID mismatch %s vs %s; ignored %+v\n",
+				key, status.Key(), status)
 			continue
 		}
 		appNum := status.AppNum
+		uuid := status.UUIDandVersion.UUID
+
 		// If we have a config for the UUID we should mark it as
 		// allocated; otherwise mark it as reserved.
-		if _, err := os.Stat(configDir + "/" + fileName); err != nil {
-			log.Printf("Reserving appNum %d for %s\n", appNum, uuid)
-			ReservedAppNum[uuid] = appNum
-		} else {
-			log.Printf("Allocating appNum %d for %s\n",
-				appNum, uuid)
-			AllocatedAppNum[uuid] = appNum
-		}
+		// XXX however, on startup we are not likely to have any
+		// config yet.
+		log.Infof("Reserving appNum %d for %s\n", appNum, uuid)
+		ReservedAppNum[uuid] = appNum
 		if AllocReservedAppNums.IsSet(appNum) {
 			panic(fmt.Sprintf("AllocReservedAppNums already set for %d\n",
 				appNum))
@@ -98,7 +71,7 @@ func appNumAllocate(uuid uuid.UUID, isZedmanager bool) int {
 	// Do we already have a number?
 	appNum, ok := AllocatedAppNum[uuid]
 	if ok {
-		log.Printf("Found allocated appNum %d for %s\n", appNum, uuid)
+		log.Infof("Found allocated appNum %d for %s\n", appNum, uuid)
 		if !AllocReservedAppNums.IsSet(appNum) {
 			panic(fmt.Sprintf("AllocReservedAppNums not set for %d\n", appNum))
 		}
@@ -107,7 +80,7 @@ func appNumAllocate(uuid uuid.UUID, isZedmanager bool) int {
 	// Do we already have it in reserve?
 	appNum, ok = ReservedAppNum[uuid]
 	if ok {
-		log.Printf("Found reserved appNum %d for %s\n", appNum, uuid)
+		log.Infof("Found reserved appNum %d for %s\n", appNum, uuid)
 		if !AllocReservedAppNums.IsSet(appNum) {
 			panic(fmt.Sprintf("AllocReservedAppNums not set for %d\n", appNum))
 		}
@@ -119,7 +92,7 @@ func appNumAllocate(uuid uuid.UUID, isZedmanager bool) int {
 	// Find a free number in bitmap; look for zero if isZedmanager
 	if isZedmanager && !AllocReservedAppNums.IsSet(0) {
 		appNum = 0
-		log.Printf("Allocating appNum %d for %s isZedmanager\n",
+		log.Infof("Allocating appNum %d for %s isZedmanager\n",
 			appNum, uuid)
 	} else {
 		// XXX could look for non-0xFF bytes first for efficiency
@@ -127,16 +100,16 @@ func appNumAllocate(uuid uuid.UUID, isZedmanager bool) int {
 		for i := 1; i < 256; i++ {
 			if !AllocReservedAppNums.IsSet(i) {
 				appNum = i
-				log.Printf("Allocating appNum %d for %s\n",
+				log.Infof("Allocating appNum %d for %s\n",
 					appNum, uuid)
 				break
 			}
 		}
 		if appNum == 0 {
-			log.Printf("Failed to find free appNum for %s. Reusing!\n", uuid)
+			log.Infof("Failed to find free appNum for %s. Reusing!\n", uuid)
 			// Unreserve first reserved
 			for r, i := range ReservedAppNum {
-				log.Printf("Unreserving %d for %s\n", i, r)
+				log.Infof("Unreserving %d for %s\n", i, r)
 				delete(ReservedAppNum, r)
 				AllocReservedAppNums.Clear(i)
 				return appNumAllocate(uuid, isZedmanager)

@@ -8,8 +8,8 @@ package pidfile
 import (
 	"errors"
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"io/ioutil"
-	"log"
 	"os"
 	"strconv"
 	"syscall"
@@ -35,7 +35,7 @@ func CheckAndCreatePidfile(agentName string) error {
 		}
 		return nil
 	}
-	log.Printf("checkAndCreatePidfile: found %s\n", filename)
+	log.Infof("checkAndCreatePidfile: found %s\n", filename)
 	// Check if process still exists
 	b, err := ioutil.ReadFile(filename)
 	if err != nil {
@@ -43,7 +43,7 @@ func CheckAndCreatePidfile(agentName string) error {
 	}
 	oldPid, err := strconv.Atoi(string(b))
 	if err != nil {
-		log.Printf("Atoi of %s failed %s; ignored\n", filename, err)
+		log.Errorf("Atoi of %s failed %s; ignored\n", filename, err)
 	} else {
 		// Does the old pid exist?
 		p, err := os.FindProcess(oldPid)

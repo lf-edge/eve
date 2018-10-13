@@ -8,9 +8,9 @@ import (
 	"github.com/zededa/go-provision/cmd/client"
 	"github.com/zededa/go-provision/cmd/domainmgr"
 	"github.com/zededa/go-provision/cmd/downloader"
-	"github.com/zededa/go-provision/cmd/eidregister"
 	"github.com/zededa/go-provision/cmd/hardwaremodel"
 	"github.com/zededa/go-provision/cmd/identitymgr"
+	"github.com/zededa/go-provision/cmd/ipcmonitor"
 	"github.com/zededa/go-provision/cmd/ledmanager"
 	"github.com/zededa/go-provision/cmd/logmanager"
 	"github.com/zededa/go-provision/cmd/verifier"
@@ -30,8 +30,6 @@ func main() {
 		domainmgr.Run()
 	case "downloader":
 		downloader.Run()
-	case "eidregister":
-		eidregister.Run()
 	case "hardwaremodel":
 		hardwaremodel.Run()
 	case "identitymgr":
@@ -48,6 +46,8 @@ func main() {
 		zedmanager.Run()
 	case "zedrouter":
 		zedrouter.Run()
+	case "ipcmonitor":
+		ipcmonitor.Run()
 	default:
 		fmt.Printf("Unknown package: %s\n", basename)
 	}

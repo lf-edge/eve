@@ -8,9 +8,9 @@ package zedcloud
 import (
 	"crypto/tls"
 	"crypto/x509"
+	log "github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ocsp"
 	"io/ioutil"
-	"log"
 	"strings"
 	"time"
 )
@@ -70,28 +70,23 @@ func stapledCheck(connState *tls.ConnectionState) bool {
 	issuer := connState.VerifiedChains[0][1]
 	resp, err := ocsp.ParseResponse(connState.OCSPResponse, issuer)
 	if err != nil {
-		log.Println("error parsing response: ", err)
+		log.Errorln("error parsing response: ", err)
 		return false
 	}
 	now := time.Now()
 	age := now.Unix() - resp.ProducedAt.Unix()
 	remain := resp.NextUpdate.Unix() - now.Unix()
-	// XXX ctx? who calls me?
-	if false {
-		log.Printf("OCSP age %d, remain %d\n", age, remain)
-	}
+	log.Debugf("OCSP age %d, remain %d\n", age, remain)
 	if remain < 0 {
-		log.Println("OCSP expired.")
+		log.Errorln("OCSP expired.")
 		return false
 	}
 	if resp.Status == ocsp.Good {
-		if false { // XXX
-			log.Println("Certificate Status Good.")
-		}
+		log.Debugln("Certificate Status Good.")
 	} else if resp.Status == ocsp.Unknown {
-		log.Println("Certificate Status Unknown")
+		log.Errorln("Certificate Status Unknown")
 	} else {
-		log.Println("Certificate Status Revoked")
+		log.Errorln("Certificate Status Revoked")
 	}
 	return resp.Status == ocsp.Good
 }

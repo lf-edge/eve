@@ -8,9 +8,10 @@ package zedagent
 import (
 	"encoding/json"
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/types"
 	"io/ioutil"
-	"log"
+	"os"
 )
 
 const (
@@ -39,15 +40,15 @@ func readLTE(filename string, verbatim string) []types.MetricItem {
 
 	bytes, err := ioutil.ReadFile(filename)
 	if err != nil {
-		log.Printf("readLTE: %s\n", err)
+		if !os.IsNotExist(err) {
+			log.Errorf("readLTE: %s\n", err)
+		}
 		return items
 	}
 	if verbatim != "" {
 		// Just return file content as a single string
-		if debug {
-			log.Printf("readLTE verbatim %s: %s\n",
-				verbatim, string(bytes))
-		}
+		log.Debugf("readLTE verbatim %s: %s\n",
+			verbatim, string(bytes))
 		info := types.MetricItem{Key: verbatim, Value: string(bytes)}
 		info.Type = types.MetricItemOther
 		items = append(items, info)
@@ -55,7 +56,7 @@ func readLTE(filename string, verbatim string) []types.MetricItem {
 	}
 	err = json.Unmarshal(bytes, &m)
 	if err != nil {
-		log.Printf("readLTE for %s: %s\n", filename, err)
+		log.Errorf("readLTE for %s: %s\n", filename, err)
 		return items
 	}
 	for k, v := range m {
@@ -75,7 +76,7 @@ func readLTE(filename string, verbatim string) []types.MetricItem {
 		case string:
 			info.Type = types.MetricItemOther
 		default:
-			log.Printf("Unknown %T from %s\n", t, filename)
+			log.Errorf("Unknown %T from %s\n", t, filename)
 		}
 
 		items = append(items, info)
@@ -118,7 +119,7 @@ func parseAny(val interface{}) interface{} {
 		v := val.(string)
 		return v
 	default:
-		log.Printf("parseAny unknown %T\n", t)
+		log.Errorf("parseAny unknown %T\n", t)
 		return fmt.Sprintf("unknown type %T", t)
 	}
 }
