@@ -399,7 +399,10 @@ func ipTablesRuleCheck(vpnConfig types.VpnServiceConfig) error {
 
 func ipTablesChainMatch(tableName string, chainName string,
 	matchString string) error {
-	cmd := exec.Command("iptables", "-S", chainName)
+
+	// XXX as long as zedagent also calls iptables we need to
+	// wait for the lock with -w 5
+	cmd := exec.Command("iptables", "-w", "5", "-S", chainName)
 	if tableName == "mangle" {
 		cmd = exec.Command("iptables",
 			"-t", tableName, "-S", chainName)
