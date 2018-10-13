@@ -1030,8 +1030,11 @@ func configToStatus(config types.DomainConfig, aa *types.AssignableAdapters,
 		target := location
 		if !dc.ReadOnly {
 			// Pick new location for a per-guest copy
-			dstFilename := fmt.Sprintf("%s/%s-%d.%s",
-				rwImgDirname, dc.ImageSha256, config.AppNum,
+			// Use App UUID to make sure name is the same even
+			// after adds and deletes of instances and device reboots
+			dstFilename := fmt.Sprintf("%s/%s-%s.%s",
+				rwImgDirname, dc.ImageSha256,
+				config.UUIDandVersion.UUID.String(),
 				dc.Format)
 			target = dstFilename
 		}
