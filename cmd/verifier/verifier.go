@@ -416,7 +416,7 @@ func gcVerifiedObjects(ctx *verifierContext) {
 				continue
 			}
 			timePassed := time.Since(status.LastUse)
-			if timePassed > downloadGCTime {
+			if timePassed < downloadGCTime {
 				log.Debugf("gcverifiedObjects: skipping recently used %s remains %d seconds\n",
 					key,
 					(timePassed-downloadGCTime)/time.Second)

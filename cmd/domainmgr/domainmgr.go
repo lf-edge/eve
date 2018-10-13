@@ -360,7 +360,7 @@ func gcObjects(ctx *domainContext, dirName string) {
 			continue
 		}
 		timePassed := time.Since(status.LastUse)
-		if timePassed > vdiskGCTime {
+		if timePassed < vdiskGCTime {
 			log.Debugf("gcObjects: skipping recently used %s remains %d seconds\n",
 				key, (timePassed-vdiskGCTime)/time.Second)
 			continue

@@ -740,7 +740,7 @@ func gcObjects(ctx *downloaderContext) {
 				continue
 			}
 			timePassed := time.Since(status.LastUse)
-			if timePassed > downloadGCTime {
+			if timePassed < downloadGCTime {
 				log.Debugf("gcObjects: skipping recently used %s remains %d seconds\n",
 					key,
 					(timePassed-downloadGCTime)/time.Second)
