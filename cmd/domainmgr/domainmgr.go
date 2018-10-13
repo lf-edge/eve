@@ -235,7 +235,6 @@ func Run() {
 	// We will cleanup zero RefCount objects after a while
 	// We run timer 10 times more often than the limit on LastUse
 	gc := time.NewTicker(vdiskGCTime / 10)
->>>>>>> 197d8a8a7ad9859c35715ed8a1d1a3242a44490e
 
 	for {
 		select {
