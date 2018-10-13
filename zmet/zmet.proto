@@ -14,7 +14,7 @@ option java_package = "com.zededa.cloud.uservice.proto";
 enum ZInfoTypes {
   ZiNop = 0;
   ZiDevice = 1;
-  ZiHypervisor = 2;	// Deprecated
+  // ZiHypervisor = 2;	// Deprecated
   ZiApp = 3;
   ZiService = 4;
   ZiNetworkObject = 5;
@@ -35,8 +35,8 @@ message ZInfoManufacturer {
 }
 
 message ZInfoNetwork {
-  string IPAddr = 1; // Deprecated. Returning first address for now
-  string gwAddr = 2; // Deprecated; routing is richer than a single gateway
+  // string IPAddr = 1; // Deprecated. Returning first address for now
+  // string gwAddr = 2; // Deprecated; routing is richer than a single gateway
   string macAddr = 3;
   string devName = 4; // eth0, eth1 etc.
   repeated string IPAddrs = 5; // All IP addresses with /N for subnet
@@ -354,20 +354,6 @@ enum ZmetricTypes {
   ZmNop = 0;
   ZmDevice = 1;
   ZmApp = 3;
-}
-
-message cpuMetric { // Deprecated
-  uint32 upTime = 2;
-  double cpuUtilization = 3;
-  double usr = 4;
-  double nice = 5;
-  double system = 6;
-  double io = 7;
-  double irq = 8;
-  double soft = 9;
-  double steal = 10;
-  double guest = 11;
-  double idle = 12;
 }
 
 message memoryMetric {

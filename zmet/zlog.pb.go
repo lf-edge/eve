@@ -38,7 +38,6 @@ It has these top-level messages:
 	ZmetIPAssignmentEntry
 	ZInfoMsg
 	ZioBundle
-	CpuMetric
 	MemoryMetric
 	NetworkMetric
 	ZedcloudMetric
