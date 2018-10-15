@@ -580,7 +580,8 @@ func lispActivate(ctx *zedrouterContext,
 		strconv.FormatUint(uint64(iid), 10)
 	file, err := os.Create(cfgPathnameIID)
 	if err != nil {
-		log.Fatal("lispActivate failed ", err)
+		log.Errorf("lispActivate failed ", err)
+		return err
 	}
 	defer file.Close()
 
@@ -595,7 +596,6 @@ func lispActivate(ctx *zedrouterContext,
 	iidConfig := fmt.Sprintf(lispIIDtemplate, iid)
 	file.WriteString(iidConfig)
 
-	status.MissingNetwork = false
 	if netstatus.Error != "" {
 		errStr := fmt.Sprintf("AppLink %s has error %s",
 			config.AppLink.String(), netstatus.Error)
