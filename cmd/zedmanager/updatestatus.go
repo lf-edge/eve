@@ -365,6 +365,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 			ss.Error = ""
 			ss.ErrorSource = ""
 			ss.ErrorTime = time.Time{}
+			changed = true
 		}
 		switch ds.State {
 		case types.INITIAL:
@@ -399,6 +400,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		// Leave unchanged
 	default:
 		status.State = minState
+		changed = true
 	}
 	status.Error = allErrors
 	status.ErrorSource = errorSource
@@ -463,6 +465,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 			ss.Error = ""
 			ss.ErrorSource = ""
 			ss.ErrorTime = time.Time{}
+			changed = true
 		}
 		switch vs.State {
 		case types.INITIAL:
@@ -483,6 +486,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		// Leave unchanged
 	default:
 		status.State = minState
+		changed = true
 	}
 	status.Error = allErrors
 	status.ErrorSource = errorSource
@@ -633,6 +637,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		status.Error = ""
 		status.ErrorSource = ""
 		status.ErrorTime = time.Time{}
+		changed = true
 	}
 	log.Debugf("Done with AppNetworkStatus for %s\n", uuidStr)
 
@@ -652,7 +657,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 
 	// Check DomainStatus; update AppInstanceStatus if error
 	ds := lookupDomainStatus(ctx, uuidStr)
-	if ds == nil || ds.Pending() {
+	if ds == nil {
 		log.Infof("Waiting for DomainStatus for %s\n", uuidStr)
 		return changed
 	}
@@ -669,6 +674,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		status.Error = ""
 		status.ErrorSource = ""
 		status.ErrorTime = time.Time{}
+		changed = true
 	}
 	if ds.State != status.State {
 		log.Infof("Set State from DomainStatus from %d to %d\n",
@@ -678,12 +684,17 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 			// Leave unchanged
 		default:
 			status.State = ds.State
+			changed = true
 		}
 	}
 
 	if ds.State < types.BOOTING {
 		log.Infof("Waiting for DomainStatus to BOOTING for %s\n",
 			uuidStr)
+		return changed
+	}
+	if ds.Pending() {
+		log.Infof("Waiting for DomainStatus !Pending for %s\n", uuidStr)
 		return changed
 	}
 	// Update ActiveFileLocation from DiskStatus
@@ -823,6 +834,7 @@ func doInactivate(ctx *zedmanagerContext, uuidStr string,
 				status.Error = ""
 				status.ErrorSource = ""
 				status.ErrorTime = time.Time{}
+				changed = true
 			}
 		}
 		return changed
@@ -849,6 +861,7 @@ func doInactivate(ctx *zedmanagerContext, uuidStr string,
 			status.Error = ""
 			status.ErrorSource = ""
 			status.ErrorTime = time.Time{}
+			changed = true
 		}
 		return changed
 	}
@@ -958,6 +971,7 @@ func doUninstall(ctx *zedmanagerContext, uuidStr string,
 }
 
 // Handle Activate=false which is different than doInactivate
+// Keep DomainConfig around so the vdisks stay around
 func doInactivateHalt(ctx *zedmanagerContext, uuidStr string,
 	config types.AppInstanceConfig, status *types.AppInstanceStatus) bool {
 
@@ -983,10 +997,12 @@ func doInactivateHalt(ctx *zedmanagerContext, uuidStr string,
 		status.Error = ""
 		status.ErrorSource = ""
 		status.ErrorTime = time.Time{}
+		changed = true
 	}
 	log.Debugf("Done with AppNetworkStatus for %s\n", uuidStr)
 
-	// Make sure we have a DomainConfig
+	// Make sure we have a DomainConfig. Clears dc.Activate based
+	// on the AppInstanceConfig's Activate
 	err := MaybeAddDomainConfig(ctx, config, ns)
 	if err != nil {
 		log.Errorf("Error from MaybeAddDomainConfig for %s: %s\n",
@@ -1001,16 +1017,22 @@ func doInactivateHalt(ctx *zedmanagerContext, uuidStr string,
 
 	// Check DomainStatus; update AppInstanceStatus if error
 	ds := lookupDomainStatus(ctx, uuidStr)
-	if ds == nil || ds.Pending() {
+	if ds == nil {
 		log.Infof("Waiting for DomainStatus for %s\n", uuidStr)
 		return changed
 	}
-	// Look for xen errors.
-	if ds.Activated {
-		log.Infof("Waiting for Not Activated for DomainStatus %s\n",
-			uuidStr)
-		return changed
+	if ds.State != status.State {
+		log.Infof("Set State from DomainStatus from %d to %d\n",
+			status.State, ds.State)
+		switch status.State {
+		case types.RESTARTING, types.PURGING:
+			// Leave unchanged
+		default:
+			status.State = ds.State
+			changed = true
+		}
 	}
+	// Look for xen errors.
 	if ds.LastErr != "" {
 		log.Errorf("Received error from domainmgr for %s: %s\n",
 			uuidStr, ds.LastErr)
@@ -1023,6 +1045,16 @@ func doInactivateHalt(ctx *zedmanagerContext, uuidStr string,
 		status.Error = ""
 		status.ErrorSource = ""
 		status.ErrorTime = time.Time{}
+		changed = true
+	}
+	if ds.Pending() {
+		log.Infof("Waiting for DomainStatus !Pending for %s\n", uuidStr)
+		return changed
+	}
+	if ds.Activated {
+		log.Infof("Waiting for Not Activated for DomainStatus %s\n",
+			uuidStr)
+		return changed
 	}
 	// XXX network is still around! Need to call doInactivate in doRemove?
 	// XXX fix assymetry
