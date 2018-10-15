@@ -222,11 +222,11 @@ func LookupAndAdd(iid uint32,
 		// convert elapsed time to milli seconds
 		elapsed = (elapsed / 1000000)
 
-		// if elapsed time is greater than 30000ms send a punt request
-		// XXX Is 30 seconds for punt too high?
+		// if elapsed time is greater than 5000ms send a punt request
+		// XXX Is 5 seconds for punt too high?
 		if elapsed >= puntInterval {
-			log.Infof("LookupAndAdd: Sending punt entry for EID %s, IID %v",
-				eid, iid)
+			log.Infof("LookupAndAdd: Sending punt entry at %s for EID %s, IID %v",
+				timeStamp, eid, iid)
 			punt = true
 			entry.LastPunt = timeStamp
 		}
