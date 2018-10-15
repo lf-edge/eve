@@ -271,7 +271,7 @@ func checkAndRecreateService(ctx *zedrouterContext, network uuid.UUID) {
 		if !status.MissingNetwork {
 			continue
 		}
-		if status.UUID != network {
+		if status.AppLink != network {
 			continue
 		}
 		log.Infof("checkAndRecreateService(%s) missing for %s\n",
@@ -561,6 +561,16 @@ func publishNetworkServiceMetrics(ctx *zedrouterContext, status *types.NetworkSe
 // those configlets to Activate
 func lispCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	status *types.NetworkServiceStatus) error {
+	return nil
+}
+
+func lispActivate(ctx *zedrouterContext,
+	config types.NetworkServiceConfig,
+	status *types.NetworkServiceStatus,
+	netstatus *types.NetworkObjectStatus) error {
+
+	log.Infof("lispActivate(%s)\n", config.DisplayName)
+
 	status.LispStatus = config.LispConfig
 
 	// XXX Create Lisp IID & map-server configlets here
@@ -570,9 +580,7 @@ func lispCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 		strconv.FormatUint(uint64(iid), 10)
 	file, err := os.Create(cfgPathnameIID)
 	if err != nil {
-		//log.Fatal("lispCreate failed ", err)
-		log.Infof("lispCreate failed ", err)
-		return err
+		log.Fatal("lispActivate failed ", err)
 	}
 	defer file.Close()
 
@@ -587,15 +595,6 @@ func lispCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	iidConfig := fmt.Sprintf(lispIIDtemplate, iid)
 	file.WriteString(iidConfig)
 
-	// Check if the network configuration has IPv4 subnet.
-	// If yes, we should write map-cache configuration (lisp.config)
-	// for IPv4 prefix also.
-	netstatus := lookupNetworkObjectStatus(ctx, config.AppLink.String())
-	if netstatus == nil {
-		// XXX return error or not?
-		status.MissingNetwork = true
-		return errors.New(fmt.Sprintf("No AppLink for %s", config.UUID))
-	}
 	status.MissingNetwork = false
 	if netstatus.Error != "" {
 		errStr := fmt.Sprintf("AppLink %s has error %s",
@@ -610,15 +609,6 @@ func lispCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 		file.WriteString(fmt.Sprintf(
 			lispIPv4IIDtemplate, iid, subnet))
 	}
-
-	log.Infof("lispCreate(%s)\n", config.DisplayName)
-	return nil
-}
-
-func lispActivate(ctx *zedrouterContext,
-	config types.NetworkServiceConfig,
-	status *types.NetworkServiceStatus,
-	netstatus *types.NetworkObjectStatus) error {
 
 	// Go through the AppNetworkStatus and create Lisp configlets that use
 	// this service.
@@ -642,7 +632,7 @@ func lispActivate(ctx *zedrouterContext,
 	// input from lisp bn<> bridge interfaces.
 	args := IptablesRule{"-t", "filter", "-I", "FORWARD", "1",
 		"-i", netstatus.BridgeName, "-j", "DROP"}
-	err := ip6tableCmd(args...)
+	err = ip6tableCmd(args...)
 	if err != nil {
 		log.Infof("%s\n", err)
 		return err
