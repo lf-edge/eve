@@ -137,6 +137,13 @@ func InitDecapTable() {
 // ensures that the pointer value is loaded from memory location rather from local storage
 // (register).
 func SetUplinkAddrs(ipv4 net.IP, ipv6 net.IP) {
+	// Get the current uplink address and compare
+	v4Addr := GetIPv4UplinkAddr()
+	v6Addr := GetIPv6UplinkAddr()
+	if v4Addr.Equal(ipv4) && v6Addr.Equal(ipv6) {
+		log.Infof("SetUplinkAddrs: No change in Uplink addresses")
+		return
+	}
 	upLinks.Lock()
 	defer upLinks.Unlock()
 	uplinks := new(dptypes.UplinkAddress)
@@ -145,8 +152,10 @@ func SetUplinkAddrs(ipv4 net.IP, ipv6 net.IP) {
 	}
 	uplinks.Ipv4 = ipv4
 	uplinks.Ipv6 = ipv6
-	log.Debug("SetUplinkAddrs: Storing pointer %p with ip4 %s, ipv6 %s",
-		&uplinks, uplinks.Ipv4, uplinks.Ipv6)
+	if debug {
+		log.Debug("SetUplinkAddrs: Storing pointer %p with ip4 %s, ipv6 %s",
+			&uplinks, uplinks.Ipv4, uplinks.Ipv6)
+	}
 	upLinks.UpLinks = uplinks
 }
 
@@ -154,6 +163,9 @@ func GetIPv4UplinkAddr() net.IP {
 	upLinks.RLock()
 	defer upLinks.RUnlock()
 	uplinks := upLinks.UpLinks
+	if uplinks == nil {
+		return net.IP{}
+	}
 	return uplinks.Ipv4
 }
 
@@ -161,6 +173,9 @@ func GetIPv6UplinkAddr() net.IP {
 	upLinks.RLock()
 	defer upLinks.RUnlock()
 	uplinks := upLinks.UpLinks
+	if uplinks == nil {
+		return net.IP{}
+	}
 	return uplinks.Ipv6
 }
 
@@ -365,6 +380,10 @@ func LookupAndUpdate(iid uint32, eid net.IP, rlocs []dptypes.Rloc) *dptypes.MapC
 
 	selectRlocs, totWeight = compileRlocs(rlocs)
 
+	cache.LockMe.RLock()
+	entry, ok := cache.MapCache[key]
+	cache.LockMe.RUnlock()
+
 	resolved := true
 	// If RLOC list is empty we mark the map-cache entry as un-resolved.
 	if len(selectRlocs) == 0 {
@@ -375,20 +394,12 @@ func LookupAndUpdate(iid uint32, eid net.IP, rlocs []dptypes.Rloc) *dptypes.MapC
 		// an answer.
 		// Check if the existing entry in map-cache table also has empty RLOC list.
 		// If yes, return from here.
-		cache.LockMe.RLock()
-		entry, ok := cache.MapCache[key]
-		cache.LockMe.RUnlock()
-
 		if ok && (len(entry.Rlocs) == 0) {
 			return entry
 		}
 	}
 	log.Infof("LookupAndUpdate: Adding map-cache entry with key IID %d, EID %s",
 		key.IID, key.Eid)
-
-	cache.LockMe.Lock()
-	defer cache.LockMe.Unlock()
-	entry, ok := cache.MapCache[key]
 
 	if ok && (entry.Resolved == true) {
 		// Delete the old map cache entry
@@ -411,7 +422,6 @@ func LookupAndUpdate(iid uint32, eid net.IP, rlocs []dptypes.Rloc) *dptypes.MapC
 			log.Debugf("LookupAndUpdate: Deleting map-cache entry with EID %s, IID %v "+
 				"before adding new entry", key.Eid, key.IID)
 		}
-		delete(cache.MapCache, key)
 	} else if ok {
 		// Entry is in unresolved state. Update the RLOCs and mark the entry
 		// as resolved.
@@ -419,6 +429,10 @@ func LookupAndUpdate(iid uint32, eid net.IP, rlocs []dptypes.Rloc) *dptypes.MapC
 			log.Debugf("LookupAndUpdate: Resolving unresolved entry with EID %s, IID %v",
 			key.Eid, key.IID)
 		}
+
+		cache.LockMe.Lock()
+		defer cache.LockMe.Unlock()
+
 		entry.Rlocs = selectRlocs
 		entry.RlocTotWeight = totWeight
 		entry.Resolved = resolved
@@ -441,6 +455,9 @@ func LookupAndUpdate(iid uint32, eid net.IP, rlocs []dptypes.Rloc) *dptypes.MapC
 		TailDrops:     tailDrops,
 		BuffdPkts:     buffdPkts,
 	}
+	cache.LockMe.Lock()
+	defer cache.LockMe.Unlock()
+	delete(cache.MapCache, key)
 	cache.MapCache[key] = &newEntry
 	return &newEntry
 }
