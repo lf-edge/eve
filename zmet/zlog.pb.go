@@ -22,7 +22,6 @@ It has these top-level messages:
 	ZInfoDevice
 	ZInfoDevSW
 	ZInfoStorage
-	ZInfoHypervisor
 	ZInfoApp
 	ZInfoVpnLinkInfo
 	ZInfoVpnLink
@@ -39,13 +38,11 @@ It has these top-level messages:
 	ZmetIPAssignmentEntry
 	ZInfoMsg
 	ZioBundle
-	CpuMetric
 	MemoryMetric
 	NetworkMetric
 	ZedcloudMetric
 	UrlcloudMetric
 	AppCpuMetric
-	DevCpuMetric
 	DeviceMetric
 	MetricItem
 	DiskMetric
