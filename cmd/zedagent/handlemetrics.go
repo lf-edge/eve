@@ -603,7 +603,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 		domainName := cpuStorageStat[arr][1]
 		ds := LookupDomainStatus(domainName)
 		if ds == nil {
-			log.Infof("Did not find status for domainName %s\n",
+			log.Infof("ReportMetrics: Did not find status for domainName %s\n",
 				domainName)
 			// Note that it is included in the
 			// metrics without a name and uuid.
@@ -1184,16 +1184,19 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 
 	ReportAppInfo.AppID = uuid
 	ReportAppInfo.SystemApp = false
+	ReportAppInfo.Activated = false
+	ReportAppInfo.State = zmet.ZSwState(types.HALTED)
 	if aiStatus != nil {
 		ReportAppInfo.AppName = aiStatus.DisplayName
 		ReportAppInfo.State = zmet.ZSwState(aiStatus.State)
 		ds := LookupDomainStatusUUID(uuid)
 		if ds == nil {
-			log.Infof("Did not find DomainStatus for UUID %s\n",
+			log.Infof("ReportAppInfo: Did not find DomainStatus for UUID %s\n",
 				uuid)
 			// XXX should we reschedule when we have a domainStatus?
 			// Avoid nil checks
 			ds = &types.DomainStatus{}
+			ReportAppInfo.State = zmet.ZSwState(types.HALTED)
 		} else {
 			ReportAppInfo.Activated = aiStatus.Activated
 			// XXX better compare? Pick REFRESHING and PURGING from
