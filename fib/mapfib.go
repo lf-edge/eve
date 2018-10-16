@@ -211,7 +211,10 @@ func LookupAndAdd(iid uint32,
 	entry, ok := cache.MapCache[key]
 	cache.LockMe.RUnlock()
 
-	if ok && !entry.Resolved {
+	if ok {
+		if entry.Resolved {
+			return entry, false
+		}
 		// When it is decided to make a punt, return true for the punt status
 		punt := false
 		var puntInterval time.Duration = 5000
@@ -231,8 +234,6 @@ func LookupAndAdd(iid uint32,
 			entry.LastPunt = timeStamp
 		}
 		return entry, punt
-	} else if ok {
-		return entry, false
 	}
 
 	// if the entry is not present already, we take write lock to map cache
