@@ -983,6 +983,14 @@ func PublishDeviceInfoToZedCloud(subBaseOsStatus *pubsub.Subscription,
 			log.Debugf("Reporting non-existent PCI device %d %s: %v\n",
 				ib.Type, ib.Name, err)
 		}
+		// XXX Define new AdapterStatus export from domainmgr
+		// with the current usage; include uplink tags
+		// XXX domainmgr can track the open USB controllers there
+		// and potentially also report USB devices
+		// XXX will we get insertion events??
+		// XXX Have domainmgr also report networking devices
+		// with a bundleName if they are part of a bundle.
+		// XXX extend ZioBundle report for those purposes.
 		reportAA := new(zmet.ZioBundle)
 		reportAA.Type = zmet.ZioType(ib.Type)
 		reportAA.Name = ib.Name
