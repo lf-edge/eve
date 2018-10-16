@@ -1193,10 +1193,9 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 		if ds == nil {
 			log.Infof("ReportAppInfo: Did not find DomainStatus for UUID %s\n",
 				uuid)
-			// XXX should we reschedule when we have a domainStatus?
-			// Avoid nil checks
+			// Expect zedmanager to send us update when DomainStatus
+			// appears. We avoid nil checks below by:
 			ds = &types.DomainStatus{}
-			ReportAppInfo.State = zmet.ZSwState(types.HALTED)
 		} else {
 			ReportAppInfo.Activated = aiStatus.Activated
 			// XXX better compare? Pick REFRESHING and PURGING from
