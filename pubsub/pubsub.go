@@ -313,7 +313,7 @@ func (pub *Publication) serveConnection(s net.Conn, instance int) {
 	}
 	// Insert our notification channel before we get the initial
 	// snapshot to avoid missing any updates/deletes.
-	updater := make(chan notify)
+	updater := make(chan notify, 1)
 	updatersAdd(updater, name, instance)
 	defer updatersRemove(updater)
 
@@ -351,7 +351,7 @@ func (pub *Publication) serveConnection(s net.Conn, instance int) {
 		startWait := time.Now()
 		<-updater
 		waitTime := time.Since(startWait)
-		log.Debugf("serveConnection(%s/%d) received for notification waited %d seconds\n",
+		log.Debugf("serveConnection(%s/%d) received notification waited %d seconds\n",
 			name, instance, waitTime/time.Second)
 
 		// Update and determine which keys changed
@@ -385,8 +385,8 @@ func (pub *Publication) determineDiffs(slaveCollection localCollection) []string
 	items := pub.GetAll()
 	// Look for deleted
 	for slaveKey, _ := range slaveCollection {
-		master, _ := pub.Get(slaveKey)
-		if master == nil {
+		_, ok := items[slaveKey]
+		if !ok {
 			log.Debugf("determineDiffs(%s): key %s deleted\n",
 				name, slaveKey)
 			delete(slaveCollection, slaveKey)
@@ -619,6 +619,8 @@ func (pub *Publication) restartImpl(restarted bool) error {
 	}
 	pub.km.restarted = restarted
 	if restarted {
+		// XXX lock on restarted to make sure it gets noticed?
+		// Implicit in updaters lock??
 		pub.updatersNotify(name)
 	}
 
