@@ -18,7 +18,6 @@ import (
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
-	"github.com/zededa/go-provision/adapters"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/devicenetwork"
@@ -58,6 +57,7 @@ type zedrouterContext struct {
 	subLispInfoStatus        *pubsub.Subscription
 	subLispMetrics           *pubsub.Subscription
 	assignableAdapters       *types.AssignableAdapters
+	subAssignableAdapters    *pubsub.Subscription
 	pubNetworkServiceMetrics *pubsub.Publication
 	devicenetwork.DeviceNetworkContext
 	ready           bool
@@ -123,13 +123,22 @@ func Run() {
 
 	// Pick up (mostly static) AssignableAdapters before we process
 	// any Routes; Pbr needs to know which network adapters are assignable
-	aa := types.AssignableAdapters{}
-	subAa := adapters.Subscribe(&aa, model)
 
+	aa := types.AssignableAdapters{}
 	zedrouterCtx := zedrouterContext{
 		separateDataPlane:  false,
 		assignableAdapters: &aa,
 	}
+
+	subAssignableAdapters, err := pubsub.Subscribe("domainmgr",
+		types.AssignableAdapters{}, false, &zedrouterCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	// No need for notification functions; we look at assignableAdapters
+	// on demand.
+	zedrouterCtx.subAssignableAdapters = subAssignableAdapters
+	subAssignableAdapters.Activate()
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
@@ -142,14 +151,14 @@ func Run() {
 	zedrouterCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
-	for !subAa.Found {
-		log.Infof("Waiting for AssignableAdapters %v\n", subAa.Found)
+	for !zedrouterCtx.assignableAdapters.Initialized {
+		log.Infof("Waiting for AssignableAdapters\n")
 		select {
 		case change := <-subGlobalConfig.C:
 			subGlobalConfig.ProcessChange(change)
 
-		case change := <-subAa.C:
-			subAa.ProcessChange(change)
+		case change := <-subAssignableAdapters.C:
+			subAssignableAdapters.ProcessChange(change)
 		}
 	}
 	log.Infof("Have %d assignable adapters\n", len(aa.IoBundleList))
@@ -263,6 +272,9 @@ func Run() {
 		select {
 		case change := <-subGlobalConfig.C:
 			subGlobalConfig.ProcessChange(change)
+
+		case change := <-subAssignableAdapters.C:
+			subAssignableAdapters.ProcessChange(change)
 
 		case change := <-subDeviceNetworkConfig.C:
 			subDeviceNetworkConfig.ProcessChange(change)
@@ -411,6 +423,9 @@ func Run() {
 		case change := <-subGlobalConfig.C:
 			subGlobalConfig.ProcessChange(change)
 
+		case change := <-subAssignableAdapters.C:
+			subAssignableAdapters.ProcessChange(change)
+
 		case change := <-subAppNetworkConfig.C:
 			subAppNetworkConfig.ProcessChange(change)
 		}
@@ -421,6 +436,9 @@ func Run() {
 		select {
 		case change := <-subGlobalConfig.C:
 			subGlobalConfig.ProcessChange(change)
+
+		case change := <-subAssignableAdapters.C:
+			subAssignableAdapters.ProcessChange(change)
 
 		case change := <-subAppNetworkConfig.C:
 			subAppNetworkConfig.ProcessChange(change)
@@ -472,10 +490,9 @@ func Run() {
 		case change := <-subNetworkServiceConfig.C:
 			subNetworkServiceConfig.ProcessChange(change)
 
-		case change := <-subAa.C:
-			subAa.ProcessChange(change)
 		case change := <-subLispInfoStatus.C:
 			subLispInfoStatus.ProcessChange(change)
+
 		case change := <-subLispMetrics.C:
 			subLispMetrics.ProcessChange(change)
 		}

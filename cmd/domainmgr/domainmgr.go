@@ -13,6 +13,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/google/go-cmp/cmp"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/adapters"
@@ -77,6 +78,7 @@ type domainContext struct {
 	pubDomainStatus        *pubsub.Publication
 	subGlobalConfig        *pubsub.Subscription
 	pubImageStatus         *pubsub.Publication
+	pubAssignableAdapters  *pubsub.Publication
 }
 
 var debug = false
@@ -150,13 +152,18 @@ func Run() {
 		}
 	}
 
+	domainCtx := domainContext{}
+
 	// Pick up (mostly static) AssignableAdapters before we process
 	// any DomainConfig
 	model := hardware.GetHardwareModel()
 	aa := types.AssignableAdapters{}
-	subAa := adapters.Subscribe(&aa, model)
-
-	domainCtx := domainContext{assignableAdapters: &aa}
+	var modifyFn adapters.ModifyHandler = handleAAModify
+	var deleteFn adapters.DeleteHandler = handleAADelete
+	subAa := adapters.Subscribe(&aa, model, &modifyFn, &deleteFn,
+		&domainCtx)
+	domainCtx.assignableAdapters = &aa
+	subAa.Activate()
 
 	pubDomainStatus, err := pubsub.Publish(agentName, types.DomainStatus{})
 	if err != nil {
@@ -175,6 +182,14 @@ func Run() {
 	// Publish existing images with RefCount zero
 	populateInitialImageStatus(&domainCtx, rwImgDirname)
 
+	pubAssignableAdapters, err := pubsub.Publish(agentName,
+		types.AssignableAdapters{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	domainCtx.pubAssignableAdapters = pubAssignableAdapters
+	pubAssignableAdapters.ClearRestarted()
+
 	// Look for global config such as log levels
 	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
 		false, &domainCtx)
@@ -186,8 +201,9 @@ func Run() {
 	domainCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
-	for !subAa.Found {
-		log.Infof("Waiting for AssignableAdapters %v\n", subAa.Found)
+	for !domainCtx.assignableAdapters.Initialized {
+		log.Infof("Waiting for AssignableAdapters %v\n",
+			domainCtx.assignableAdapters.Initialized)
 		select {
 		case change := <-subGlobalConfig.C:
 			subGlobalConfig.ProcessChange(change)
@@ -1943,4 +1959,143 @@ func mkisofs(output string, dir string) error {
 	}
 	log.Infof("mkisofs done\n")
 	return nil
+}
+
+func handleAAModify(ctxArg interface{}, config types.AssignableAdapters,
+	status *types.AssignableAdapters) {
+
+	ctx := ctxArg.(*domainContext)
+	log.Infof("handleAAModify()\n")
+	// Any deletes?
+	for _, statusIb := range (*status).IoBundleList {
+		configIb := types.LookupIoBundle(&config, statusIb.Type, statusIb.Name)
+		if configIb == nil {
+			handleIBDelete(ctx, statusIb, status)
+		}
+	}
+	// Any add or modify?
+	for _, configIb := range config.IoBundleList {
+		statusIb := types.LookupIoBundle(status, configIb.Type, configIb.Name)
+		if statusIb == nil {
+			handleIBCreate(ctx, configIb, status)
+		} else if !cmp.Equal(statusIb.Members, configIb.Members) ||
+			statusIb.Lookup != configIb.Lookup ||
+			statusIb.PciLong != configIb.PciLong ||
+			statusIb.PciShort != configIb.PciShort ||
+			statusIb.XenCfg != configIb.XenCfg {
+
+			handleIBModify(ctx, *statusIb, configIb, status)
+		}
+	}
+	pub := ctx.pubAssignableAdapters
+	pub.Publish("global", *status)
+	log.Infof("handleAAModify() done\n")
+}
+
+func handleAADelete(ctxArg interface{}, status *types.AssignableAdapters) {
+
+	ctx := ctxArg.(*domainContext)
+	log.Infof("handleAADelete()\n")
+	for _, statusIb := range (*status).IoBundleList {
+		handleIBDelete(ctx, statusIb, status)
+	}
+	pub := ctx.pubAssignableAdapters
+	pub.Unpublish("global")
+	log.Infof("handleAADelete() done\n")
+}
+
+// Process new IoBundles. Check if PCI device exists, and check if uplink.
+// Assign to pciback
+// XXX can we get USB insertion events somehow??
+// XXX how do we reverify when uplinks change?
+// XXX Who reports errors on uplink change? zedrouter!
+func handleIBCreate(ctx *domainContext, ib types.IoBundle,
+	status *types.AssignableAdapters) {
+
+	log.Infof("handleIbCreate(%d %s %v)\n", ib.Type, ib.Name, ib.Members)
+	if err := checkAndSetIoBundle(&ib); err != nil {
+		log.Warnf("Not reporting non-existent PCI device %d %s: %v\n",
+			ib.Type, ib.Name, err)
+		return
+	}
+	status.IoBundleList = append(status.IoBundleList, ib)
+}
+
+func checkAndSetIoBundle(ib *types.IoBundle) error {
+
+	// Check if uplink or part of uplink
+	ib.IsUplink = false
+	for _, m := range ib.Members {
+		if types.IsUplink(deviceNetworkStatus, m) {
+			log.Warnf("handleIbCreate(%d %s %v) part of uplink\n",
+				ib.Type, ib.Name, ib.Members)
+			ib.IsUplink = true
+		}
+	}
+	// For a PCI device we check if it exists in hardware/kernel
+	_, _, err := types.IoBundleToPci(ib)
+	if err != nil {
+		return err
+	}
+	// XXX USB GlobalConfig and ib.Type == USB check
+	if ib.PciShort != "" && !ib.IsPCIBack {
+		err := pciAssignableAdd(ib.PciLong)
+		if err != nil {
+			return err
+		}
+		ib.IsPCIBack = true
+	}
+	return nil
+}
+
+func handleIBDelete(ctx *domainContext, ib types.IoBundle,
+	status *types.AssignableAdapters) {
+
+	log.Infof("handleIbDelete(%d %s %v)\n", ib.Type, ib.Name, ib.Members)
+	if ib.IsPCIBack {
+		err := pciAssignableRem(ib.PciLong)
+		if err != nil {
+			log.Errorf("handleIbDelete(%d %s %v) pciAssignableRem failed %v\n",
+				ib.Type, ib.Name, ib.Members, err)
+		}
+		ib.IsPCIBack = true
+	}
+	replace := types.AssignableAdapters{Initialized: true,
+		IoBundleList: make([]types.IoBundle, len(status.IoBundleList)-1)}
+	for _, e := range status.IoBundleList {
+		if e.Type == ib.Type && e.Name == ib.Name {
+			continue
+		}
+		replace.IoBundleList = append(replace.IoBundleList, e)
+	}
+	*status = replace
+}
+
+func handleIBModify(ctx *domainContext, statusIb types.IoBundle, configIb types.IoBundle,
+	status *types.AssignableAdapters) {
+
+	log.Infof("handleIbModify(%d %s %v) from %v to %v\n",
+		statusIb.Type, statusIb.Name, statusIb.Members,
+		statusIb, configIb)
+
+	for i, _ := range status.IoBundleList {
+		e := &(*status).IoBundleList[i]
+		if e.Type != statusIb.Type || e.Name != statusIb.Name {
+			continue
+		}
+		// XXX can we have changes which require us to
+		// do pciAssignableRem for the old status?
+		if err := checkAndSetIoBundle(&configIb); err != nil {
+			log.Warnf("Not reporting non-existent PCI device %d %s: %v\n",
+				configIb.Type, configIb.Name, err)
+			return
+		}
+		e.IsUplink = configIb.IsUplink
+		e.IsPCIBack = configIb.IsPCIBack
+		// XXX TBD IsBridge, IsService
+		e.Lookup = configIb.Lookup
+		e.PciLong = configIb.PciLong
+		e.PciShort = configIb.PciShort
+		e.XenCfg = configIb.XenCfg
+	}
 }

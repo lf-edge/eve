@@ -17,6 +17,7 @@ import (
 )
 
 type AssignableAdapters struct {
+	Initialized  bool
 	IoBundleList []IoBundle
 }
 
@@ -31,6 +32,11 @@ type IoBundle struct {
 	PciLong  string // If adapter on some bus
 	PciShort string // If pci adapter
 	XenCfg   string // If template for the bundle
+
+	IsPCIBack bool // Assigned to pciback
+	IsUplink  bool // Whole or part of the bundle is an uplink
+	IsBridge  bool // Exclusively used by a bridge service. TBD
+	IsService bool // Used by a service. TBD.
 }
 
 // Should match definition in appconfig.proto
