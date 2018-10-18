@@ -183,6 +183,15 @@ func SetupPacketCapture(iface string, snapLen int) *afpacket.TPacket {
 	blockSize := frameSize * 128
 	numBlocks := 10
 
+	if iface != "dbo1x0" {
+		// Capture packets from domU network's sister interface.
+		// DomUs can some times send big packets. This can break MTU
+		// requirement of uplink interfaces. go-provision would create
+		// a sister interface to network bridge with a smaller MTU like 1280.
+		// Data plane should capture packets from the sister interface instead
+		// of the lisp network bridge directly.
+		iface = "s" + iface
+	}
 	tPacket, err := afpacket.NewTPacket(
 		afpacket.OptInterface(iface),
 		afpacket.OptFrameSize(frameSize),
@@ -213,12 +222,8 @@ func SetupPacketCapture(iface string, snapLen int) *afpacket.TPacket {
 		// Make PF_RING capture only transmitted packet
 		ring.SetDirection(pfring.TransmitOnly)
 	*/
-	filter := ""
-	if iface == "dbo1x0" {
-		filter = "ip or ip6"
-	} else {
-		filter = "inbound and (ip or ip6)"
-	}
+
+	filter := "ip or ip6"
 	log.Debugf("SetupPacketCapture: Compiling BPF filter (%s) for interface %s",
 		filter, iface)
 	ins, err := pcap.CompileBPFFilter(layers.LinkTypeEthernet,
