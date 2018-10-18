@@ -124,6 +124,14 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 	link := &netlink.Bridge{LinkAttrs: attrs}
 	netlink.LinkDel(link)
 
+	// Delete the sister dummy interface also
+	sattrs := netlink.NewLinkAttrs()
+	// "s" for sister
+	dummyIntfName := "s" + bridgeName
+	sattrs.Name = dummyIntfName
+	sLink := &netlink.Dummy{LinkAttrs: sattrs}
+	netlink.LinkDel(sLink)
+
 	//    ip link add ${bridgeName} type bridge
 	attrs = netlink.NewLinkAttrs()
 	attrs.Name = bridgeName
@@ -149,6 +157,58 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 	// Check if we have a bridge service
 	if err := setBridgeIPAddr(ctx, status); err != nil {
 		return err
+	}
+
+	// For the case of Lisp networks, we route all traffic coming from
+	// the bridge to a dummy interface with MTU 1280. This is done to
+	// get bigger packets fragmented before being captured by lisp dataplane.
+	if config.Type == types.NT_CryptoEID {
+		sattrs = netlink.NewLinkAttrs()
+		sattrs.Name = dummyIntfName
+		slinkMac := fmt.Sprintf("00:16:3e:06:01:%02x", bridgeNum)
+		hw, err = net.ParseMAC(slinkMac)
+		if err != nil {
+			log.Fatal("doNetworkCreate: ParseMAC failed: ", slinkMac, err)
+		}
+		sattrs.HardwareAddr = hw
+		// 1280 gives us a comfortable buffer to encapsulate
+		sattrs.MTU = 1280
+		slink := &netlink.Dummy{LinkAttrs: sattrs}
+		if err := netlink.LinkAdd(slink); err != nil {
+			errStr := fmt.Sprintf("doNetworkCreate: LinkAdd on %s failed: %s",
+				dummyIntfName, err)
+			return errors.New(errStr)
+		}
+
+		// ip link set ${dummy-interface} up
+		if err := netlink.LinkSetUp(slink); err != nil {
+			errStr := fmt.Sprintf("doNetworkCreate: LinkSetUp on %s failed: %s",
+				dummyIntfName, err)
+			return errors.New(errStr)
+		}
+
+		// Turn ARP off on our dummy link
+		if err := netlink.LinkSetARPOff(slink); err != nil {
+			errStr := fmt.Sprintf("doNetworkCreate: LinkSetARPOff on %s failed: %s",
+				dummyIntfName, err)
+			return errors.New(errStr)
+		}
+
+		// Setup a route for the current network's subnet to point
+		// out of the dummy interface
+		_, ipnet, err := net.ParseCIDR(status.Subnet.String())
+		if err != nil {
+			errStr := fmt.Sprintf("doNetworkCreate: ParseCIDR of %s failed",
+				status.Subnet.String())
+			return errors.New(errStr)
+		}
+		linkIndex := slink.Attrs().Index
+		rt := netlink.Route{Dst: ipnet, LinkIndex: linkIndex}
+		if err := netlink.RouteAdd(&rt); err != nil {
+			errStr := fmt.Sprintf("doNetworkCreate: RouteAdd %s failed",
+				status.Subnet.String())
+			return errors.New(errStr)
+		}
 	}
 
 	// XXX mov this before set??
@@ -626,6 +686,14 @@ func doNetworkDelete(ctx *zedrouterContext,
 	link := &netlink.Bridge{LinkAttrs: attrs}
 	// Remove link and associated addresses
 	netlink.LinkDel(link)
+
+	// Delete the sister dummy interface also
+	sattrs := netlink.NewLinkAttrs()
+	// "s" for sister
+	dummyIntfName := "s" + bridgeName
+	sattrs.Name = dummyIntfName
+	sLink := &netlink.Dummy{LinkAttrs: sattrs}
+	netlink.LinkDel(sLink)
 
 	deleteDnsmasqConfiglet(bridgeName)
 	stopDnsmasq(bridgeName, true)
