@@ -255,6 +255,22 @@ func doServiceActivate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 			config.Type)
 		err = errors.New(errStr)
 	}
+
+	// domU TCP is some times negotiating an MSS that makes ipsec/lisp
+	// encapsulated packets break MTU requirement. We mangle any TCP SYN
+	// packets with MSS greater than 1280 and set MSS to 1280 inside them.
+	switch config.Type {
+	case types.NST_STRONGSWAN, types.NST_LISP:
+		args := IptablesRule{"-t", "mangle", "-I", "POSTROUTING", "1",
+		"-o", netstatus.BridgeName, "-p", "tcp", "-m", "tcp", "--tcp-flags", "SYN,RST", "SYN",
+		"-m", "tcpmss", "--mss", "1281:1536", "-j", "TCPMSS", "--set-mss", "1280"}
+		err = iptableCmd(args...)
+		if err != nil {
+			fmt.Errorf("doServiceActivate: Failed adding TCP MSS rule to bridge %s: %s",
+				netstatus.BridgeName, err)
+		}
+	default:
+	}
 	return err
 }
 
@@ -368,6 +384,19 @@ func doServiceInactivate(ctx *zedrouterContext,
 		errStr := fmt.Sprintf("doServiceInactivate NetworkService %d not yet supported",
 			status.Type)
 		log.Infoln(errStr)
+	}
+
+	switch status.Type {
+	case types.NST_STRONGSWAN, types.NST_LISP:
+		args := IptablesRule{"-t", "mangle", "-D", "POSTROUTING",
+		"-o", netstatus.BridgeName, "-p", "tcp", "-m", "tcp", "--tcp-flags", "SYN,RST", "SYN",
+		"-m", "tcpmss", "--mss", "1281:1536", "-j", "TCPMSS", "--set-mss", "1280"}
+		err := iptableCmd(args...)
+		if err != nil {
+			fmt.Errorf("doServiceInactivate: Failed deleting TCP MSS rule to bridge %s: %s",
+				netstatus.BridgeName, err)
+		}
+	default:
 	}
 }
 
