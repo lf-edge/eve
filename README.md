@@ -29,6 +29,12 @@ If you're on MacOS the following steps should get you all the dependencies:
   $ brew install qemu
   ```
 
+Make sure that Docker is up and running on your system. On MacOS just start a docker Application, on Linux make sure docker service is running. Regardless of how you start Docker you can make sure that it is ready for you by running the following command and making sure that it returns both a version of the client AND a version of the server:
+
+```
+docker version
+```
+
 zenbuild requires beeing built in Git repository (the tools keep looking up git commit IDs). The easiest way is to clone zenbuild repository from GitHub:
 ```
 git clone https://github.com/zededa/zenbuild.git
