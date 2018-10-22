@@ -13,6 +13,11 @@ locally installed, but it also means your first build time will be much longer.
 
 If you're on MacOS the following steps should get you all the dependencies:
 
+  0. Get Go:
+
+  ```
+  https://golang.org/dl/
+  ```
   1. Get Docker:
 
   ```
