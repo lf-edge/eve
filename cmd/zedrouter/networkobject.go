@@ -15,6 +15,7 @@ import (
 	"github.com/zededa/go-provision/types"
 	"net"
 	"strconv"
+	"syscall"
 	"time"
 )
 
@@ -194,16 +195,35 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 			return errors.New(errStr)
 		}
 
+		ifindex := link.Attrs().Index
+		r := netlink.NewRule()
+		myTable := FreeTable + ifindex
+		r.Table = myTable
+		r.IifName = bridgeName
+		var destAddr string
+		if status.Ipv4Eid {
+			r.Family = syscall.AF_INET
+			destAddr = status.Subnet.String()
+		} else {
+			r.Family = syscall.AF_INET6
+			destAddr = "fd00::/8"
+		}
+		// Avoid duplicate rules
+		_ = netlink.RuleDel(r)
+		if err := netlink.RuleAdd(r); err != nil {
+			errStr := fmt.Sprintf("doNetworkCreate: RuleAdd %v failed with %s", r, err)
+			return errors.New(errStr)
+		}
 		// Setup a route for the current network's subnet to point
 		// out of the dummy interface
-		_, ipnet, err := net.ParseCIDR(status.Subnet.String())
+		_, ipnet, err := net.ParseCIDR(destAddr)
 		if err != nil {
 			errStr := fmt.Sprintf("doNetworkCreate: ParseCIDR of %s failed",
 				status.Subnet.String())
 			return errors.New(errStr)
 		}
 		linkIndex := slink.Attrs().Index
-		rt := netlink.Route{Dst: ipnet, LinkIndex: linkIndex}
+		rt := netlink.Route{Dst: ipnet, LinkIndex: linkIndex, Table: myTable, Flags: 0}
 		if err := netlink.RouteAdd(&rt); err != nil {
 			errStr := fmt.Sprintf("doNetworkCreate: RouteAdd %s failed",
 				status.Subnet.String())
@@ -681,19 +701,58 @@ func doNetworkDelete(ctx *zedrouterContext,
 			}
 		}
 	}
+	
+	if status.Type == types.NT_CryptoEID {
+		// delete ip rule created for packets coming in from this bridge
+		var destAddr string
+		intf, err := net.InterfaceByName(bridgeName)
+		if err == nil {
+			ifindex := intf.Index
+			r := netlink.NewRule()
+			r.Table = FreeTable + ifindex
+			r.IifName = bridgeName
+			if status.Ipv4Eid {
+				r.Family = syscall.AF_INET
+				destAddr = status.Subnet.String()
+			} else {
+				r.Family = syscall.AF_INET6
+				destAddr = "fd00::/8"
+			}
+			_ = netlink.RuleDel(r)
+		}
+
+		// Delete route for the current network's subnet 
+		_, ipnet, err := net.ParseCIDR(destAddr)
+		if err != nil {
+			log.Errorf("doNetworkDelete: ParseCIDR of %s failed",
+				status.Subnet.String())
+			return
+		}
+		if intf != nil {
+			linkIndex := intf.Index
+			myTable := FreeTable + linkIndex
+			rt := netlink.Route{Dst: ipnet, LinkIndex: linkIndex, Table: myTable, Flags: 0}
+			if err := netlink.RouteDel(&rt); err != nil {
+				log.Errorf("doNetworkDelete: RouteDel %s failed",
+					status.Subnet.String())
+				return
+			}
+		}
+
+		// Delete the sister dummy interface also
+		sattrs := netlink.NewLinkAttrs()
+		// "s" for sister
+		dummyIntfName := "s" + bridgeName
+		sattrs.Name = dummyIntfName
+		sLink := &netlink.Dummy{LinkAttrs: sattrs}
+		netlink.LinkDel(sLink)
+	}
+
 	attrs := netlink.NewLinkAttrs()
 	attrs.Name = bridgeName
 	link := &netlink.Bridge{LinkAttrs: attrs}
 	// Remove link and associated addresses
 	netlink.LinkDel(link)
-
-	// Delete the sister dummy interface also
-	sattrs := netlink.NewLinkAttrs()
-	// "s" for sister
-	dummyIntfName := "s" + bridgeName
-	sattrs.Name = dummyIntfName
-	sLink := &netlink.Dummy{LinkAttrs: sattrs}
-	netlink.LinkDel(sLink)
 
 	deleteDnsmasqConfiglet(bridgeName)
 	stopDnsmasq(bridgeName, true)
