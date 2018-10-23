@@ -159,7 +159,7 @@ $(INSTALLER_IMG).raw: images/installer.yml $(ROOTFS_IMG) config.img
 $(INSTALLER_IMG).iso: images/installer.yml $(ROOTFS_IMG) config.img
 	./makeiso.sh $< $@
 
-publish: Makefile bios/OVMF.fd config.img $(INSTALLER_IMG).iso $(ROOTFS_IMG) $(FALLBACK_IMG).img
+publish: Makefile bios/OVMF.fd config.img $(INSTALLER_IMG).iso $(INSTALLER_IMG).raw $(ROOTFS_IMG) $(FALLBACK_IMG).img
 	cp $^ build-pkgs/zenix
 	make -C build-pkgs BUILD-PKGS=zenix LINUXKIT_OPTS="--disable-content-trust --disable-cache --force" $(DEFAULT_PKG_TARGET)
 
