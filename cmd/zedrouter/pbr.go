@@ -716,7 +716,8 @@ func AddOverlayRuleAndRoute(bridgeName string, iifIndex int,
 	// Setup a route for the current network's subnet to point out of the given oifIndex
 	rt := netlink.Route{Dst: ipnet, LinkIndex: oifIndex, Table: myTable, Flags: 0}
 	if err := netlink.RouteAdd(&rt); err != nil {
-		errStr := fmt.Sprintf("AddOverlayRuleAndRoute: RouteAdd %s failed", ipnet.String())
+		errStr := fmt.Sprintf("AddOverlayRuleAndRoute: RouteAdd %s failed: %s",
+			ipnet.String(), err)
 		log.Errorln(errStr)
 		return errors.New(errStr)
 	}
