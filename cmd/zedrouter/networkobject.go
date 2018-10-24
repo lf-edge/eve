@@ -161,7 +161,9 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 
 	// For the case of Lisp networks, we route all traffic coming from
 	// the bridge to a dummy interface with MTU 1280. This is done to
-	// get bigger packets fragmented before being captured by lisp dataplane.
+	// get bigger packets fragmented and also to have the kernel generate
+	// ICMP packet too big for path MTU discovery before being captured by
+	// lisp dataplane.
 	if config.Type == types.NT_CryptoEID {
 		sattrs = netlink.NewLinkAttrs()
 		sattrs.Name = dummyIntfName
@@ -212,8 +214,8 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 		err = AddOverlayRuleAndRoute(bridgeName, iifIndex, oifIndex, ipnet) 
 		if err != nil {
 			errStr := fmt.Sprintf(
-				"doNetworkCreate: Lisp IP rule and route addition failed for bridge %s",
-				bridgeName)
+				"doNetworkCreate: Lisp IP rule and route addition failed for bridge %s: %s",
+				bridgeName, err)
 			return errors.New(errStr)
 		}
 	}
