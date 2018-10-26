@@ -1409,7 +1409,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 			netstatus.BridgeIPSets)
 
 		if restartDnsmasq && olStatus.BridgeIPAddr != "" {
-			stopDnsmasq(bridgeName, false)
+			stopDnsmasq(bridgeName, true)
 			createDnsmasqConfiglet(bridgeName,
 				olStatus.BridgeIPAddr, netconfig, hostsDirpath,
 				newIpsets, netstatus.Ipv4Eid)
@@ -1542,7 +1542,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 			netstatus.BridgeIPSets)
 
 		if restartDnsmasq && ulStatus.BridgeIPAddr != "" {
-			stopDnsmasq(bridgeName, false)
+			stopDnsmasq(bridgeName, true)
 			createDnsmasqConfiglet(bridgeName,
 				ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
 				newIpsets, false)
@@ -1814,7 +1814,7 @@ func handleModify(ctx *zedrouterContext, key string,
 
 		if restartDnsmasq && olStatus.BridgeIPAddr != "" {
 			hostsDirpath := runDirname + "/hosts." + bridgeName
-			stopDnsmasq(bridgeName, false)
+			stopDnsmasq(bridgeName, true)
 			createDnsmasqConfiglet(bridgeName,
 				olStatus.BridgeIPAddr, netconfig, hostsDirpath,
 				newIpsets, netstatus.Ipv4Eid)
@@ -1895,7 +1895,7 @@ func handleModify(ctx *zedrouterContext, key string,
 
 		if restartDnsmasq && ulStatus.BridgeIPAddr != "" {
 			hostsDirpath := runDirname + "/hosts." + bridgeName
-			stopDnsmasq(bridgeName, false)
+			stopDnsmasq(bridgeName, true)
 			createDnsmasqConfiglet(bridgeName,
 				ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
 				newIpsets, false)
@@ -2128,7 +2128,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 			netstatus.BridgeIPSets)
 
 		if restartDnsmasq && olStatus.BridgeIPAddr != "" {
-			stopDnsmasq(bridgeName, false)
+			stopDnsmasq(bridgeName, true)
 			createDnsmasqConfiglet(bridgeName,
 				olStatus.BridgeIPAddr, netconfig, hostsDirpath,
 				newIpsets, netstatus.Ipv4Eid)
@@ -2221,7 +2221,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 			netstatus.BridgeIPSets)
 
 		if restartDnsmasq && ulStatus.BridgeIPAddr != "" {
-			stopDnsmasq(bridgeName, false)
+			stopDnsmasq(bridgeName, true)
 			createDnsmasqConfiglet(bridgeName,
 				ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
 				newIpsets, false)
@@ -2249,9 +2249,10 @@ func pkillUserArgs(userName string, match string, printOnError bool) {
 		"-f",
 		match,
 	}
-	_, err := wrap.Command(cmd, args...).Output()
+	out, err := wrap.Command(cmd, args...).CombinedOutput()
 	if err != nil && printOnError {
-		log.Errorf("Command %v %v failed: %s\n", cmd, args, err)
+		log.Errorf("Command %v %v failed: %s output %s\n",
+			cmd, args, err, out)
 	}
 }
 

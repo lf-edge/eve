@@ -162,14 +162,13 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 			[]string{status.BridgeIPAddr})
 	}
 
+	// Start clean
 	deleteDnsmasqConfiglet(bridgeName)
 	stopDnsmasq(bridgeName, false)
 
 	if status.BridgeIPAddr != "" {
-		// No need to pass any ipsets, since the network is created
-		// before the applications which use it.
 		createDnsmasqConfiglet(bridgeName, status.BridgeIPAddr, &config,
-			hostsDirpath, nil, status.Ipv4Eid)
+			hostsDirpath, status.BridgeIPSets, status.Ipv4Eid)
 		startDnsmasq(bridgeName)
 	}
 
@@ -512,6 +511,8 @@ func updateBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus
 				status.Key())
 			return
 		}
+		log.Infof("updateBridgeIPAddr(%s) restarting dnsmasq\n",
+			status.Key())
 		bridgeName := status.BridgeName
 		deleteDnsmasqConfiglet(bridgeName)
 		stopDnsmasq(bridgeName, false)
