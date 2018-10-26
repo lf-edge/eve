@@ -11,6 +11,7 @@ import (
 	"github.com/zededa/go-provision/types"
 	"net"
 	"os"
+	"syscall"
 )
 
 // Create the hosts file for the overlay DNS resolution
@@ -28,18 +29,28 @@ func createHostsConfiglet(cfgDirname string, nameToIPList []types.DnsNameToIP) {
 
 func ensureDir(dirname string) {
 	log.Infof("ensureDir(%s)\n", dirname)
-	if _, err := os.Stat(dirname); err != nil {
+	st, err := os.Stat(dirname)
+	if err != nil {
 		log.Infof("ensureDir creating %s\n", dirname)
 		err := os.MkdirAll(dirname, 0755)
 		if err != nil {
 			log.Fatalf("ensureDir failed %s\n", err)
 		}
+		st, _ = os.Stat(dirname)
 	}
-	log.Infof("ensureDir(%s) DONE\n", dirname)
+	var inode uint64 = 0
+	stat, ok := st.Sys().(*syscall.Stat_t)
+	if ok {
+		inode = stat.Ino
+	}
+	log.Infof("ensureDir(%s) DONE inode %d\n", dirname, inode)
 }
 
 // Create one file per hostname
 func addIPToHostsConfiglet(cfgDirname string, hostname string, addrs []net.IP) {
+
+	log.Infof("addIPToHostsConfiglet(%s, %s, %v)\n", cfgDirname, hostname,
+		addrs)
 	ensureDir(cfgDirname)
 	cfgPathname := cfgDirname + "/" + hostname
 	file, err := os.Create(cfgPathname)
@@ -56,6 +67,7 @@ func addIPToHostsConfiglet(cfgDirname string, hostname string, addrs []net.IP) {
 
 // Create one file per hostname
 func addToHostsConfiglet(cfgDirname string, hostname string, addrs []string) {
+
 	log.Infof("addToHostsConfiglet(%s, %s, %v)\n", cfgDirname, hostname,
 		addrs)
 	ensureDir(cfgDirname)
@@ -142,6 +154,7 @@ func updateHostsConfiglet(cfgDirname string,
 func deleteHostsConfiglet(cfgDirname string, printOnError bool) {
 
 	log.Infof("deleteHostsConfiglet: dir %s\n", cfgDirname)
+	ensureDir(cfgDirname)
 	err := os.RemoveAll(cfgDirname)
 	if err != nil && printOnError {
 		log.Errorln("deleteHostsConfiglet: ", err)
