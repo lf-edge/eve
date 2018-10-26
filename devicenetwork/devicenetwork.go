@@ -52,7 +52,7 @@ func MakeDeviceNetworkStatus(globalConfig types.DeviceUplinkConfig, oldStatus ty
 		// XXX should we get statics?
 		link, err := netlink.LinkByName(u.IfName)
 		if err != nil {
-			log.Errorf("MakeDeviceNetworkStatus LinkByName %s: %s\n",
+			log.Warnf("MakeDeviceNetworkStatus LinkByName %s: %s\n",
 				u.IfName, err)
 			err = errors.New(fmt.Sprintf("Uplink in config/global does not exist: %v",
 				u))

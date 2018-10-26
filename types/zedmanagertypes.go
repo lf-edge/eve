@@ -55,6 +55,7 @@ type AppInstanceConfig struct {
 	IoAdapterList       []IoAdapter
 	RestartCmd          AppInstanceOpsCmd
 	PurgeCmd            AppInstanceOpsCmd
+	CloudInitUserData   string // base64-encoded
 }
 
 type AppInstanceOpsCmd struct {
@@ -100,10 +101,13 @@ type AppInstanceStatus struct {
 	PurgeInprogress     Inprogress
 	// Mininum state across all steps and all StorageStatus.
 	// Error* set implies error.
-	State SwState
-	// All error strngs across all steps and all StorageStatus
-	Error     string
-	ErrorTime time.Time
+	State            SwState
+	MissingDatastore bool // If some DatastoreId not found
+	MissingNetwork   bool // If some Network UUID not found
+	// All error strings across all steps and all StorageStatus
+	ErrorSource string
+	Error       string
+	ErrorTime   time.Time
 }
 
 // Track more complicated workflows
@@ -168,9 +172,10 @@ type StorageConfig struct {
 	ReadOnly    bool
 	Preserve    bool // If set a rw disk will be preserved across
 	// boots (acivate/inactivate)
-	Format  string // Default "raw"; could be raw, qcow, qcow2, vhd
-	Devtype string // Default ""; could be e.g. "cdrom"
-	Target  string // Default "" is interpreted as "disk"
+	Maxsizebytes uint64 // Resize filesystem to this size if set
+	Format       string // Default "raw"; could be raw, qcow, qcow2, vhd
+	Devtype      string // Default ""; could be e.g. "cdrom"
+	Target       string // Default "" is interpreted as "disk"
 }
 
 func RoundupToKB(b uint64) uint64 {
@@ -182,6 +187,7 @@ type StorageStatus struct {
 	ImageSha256        string // sha256 of immutable image
 	ReadOnly           bool
 	Preserve           bool
+	Maxsizebytes       uint64 // Resize filesystem to this size if set
 	Format             string
 	Devtype            string
 	Target             string  // Default "" is interpreted as "disk"
@@ -191,7 +197,9 @@ type StorageStatus struct {
 	HasVerifierRef     bool    // Reference against verifier to clean up
 	ActiveFileLocation string  // Location of filestystem
 	FinalObjDir        string  // Installation dir; may differ from verified
+	MissingDatastore   bool    // If DatastoreId not found
 	Error              string  // Download or verify error
+	ErrorSource        string
 	ErrorTime          time.Time
 }
 

@@ -209,8 +209,19 @@ func doServiceActivate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	// We must have an existing AppLink to activate
 	netstatus := lookupNetworkObjectStatus(ctx, config.AppLink.String())
 	if netstatus == nil {
-		return errors.New(fmt.Sprintf("No AppLink for %s", config.UUID))
+		// Remember to check when NetworkObjects are added
+		// XXX return error or not?
+		status.MissingNetwork = true
+		return errors.New(fmt.Sprintf("No AppLink %s for service %s",
+			config.AppLink.String(), config.UUID))
 	}
+	status.MissingNetwork = false
+	if netstatus.Error != "" {
+		errStr := fmt.Sprintf("AppLink %s has error %s",
+			config.AppLink.String(), netstatus.Error)
+		return errors.New(errStr)
+	}
+
 	log.Infof("doServiceActivate found NetworkObjectStatus %s\n",
 		netstatus.Key())
 
@@ -247,6 +258,56 @@ func doServiceActivate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	return err
 }
 
+// Called when a NetworkObject is added
+// Walk all NetworkServiceStatus looking for MissingNetwork, then
+// check if network UUID is the AppLink
+func checkAndRecreateService(ctx *zedrouterContext, network uuid.UUID) {
+
+	log.Infof("checkAndRecreateServer(%s)\n", network.String())
+	pub := ctx.pubNetworkServiceStatus
+	items := pub.GetAll()
+	for _, st := range items {
+		status := cast.CastNetworkServiceStatus(st)
+		if !status.MissingNetwork {
+			continue
+		}
+		if status.AppLink != network {
+			continue
+		}
+		log.Infof("checkAndRecreateService(%s) missing for %s\n",
+			network.String(), status.Key())
+
+		config := lookupNetworkServiceConfig(ctx, status.Key())
+		if config == nil {
+			log.Warnf("checkAndRecreateService(%s) no config for %s\n",
+				network.String(), status.Key())
+			continue
+		}
+		if !config.Activate {
+			continue
+		}
+		log.Infof("checkAndRecreateService(%s) reactivate for %s\n",
+			network.String(), status.Key())
+		if status.Error != "" {
+			log.Infof("checkAndRecreateService(%s) remove error %s for %s\n",
+				network.String(), status.Error, status.Key())
+			status.Error = ""
+			status.ErrorTime = time.Time{}
+		}
+		err := doServiceActivate(ctx, *config, &status)
+		if err != nil {
+			log.Infof("checkAndRecreateService srv %s failed %s\n",
+				status.Key(), err)
+			status.Error = err.Error()
+			status.ErrorTime = time.Now()
+		} else {
+			status.Activated = true
+			status.MissingNetwork = false
+		}
+		pub.Publish(status.Key(), status)
+	}
+}
+
 func validateAdapter(adapter string, allowUplink bool) error {
 	if adapter == "" {
 		errStr := fmt.Sprintf("Adapter not specified")
@@ -280,10 +341,12 @@ func doServiceInactivate(ctx *zedrouterContext,
 	// We must have an existing AppLink to activate
 	netstatus := lookupNetworkObjectStatus(ctx, status.AppLink.String())
 	if netstatus == nil {
+		status.MissingNetwork = true
 		// Should have been caught at time of activate
 		log.Infof("No AppLink for %s", status.Key())
 		return
 	}
+	status.MissingNetwork = false
 
 	log.Infof("doServiceInactivate found NetworkObjectStatus %s\n",
 		netstatus.Key())
@@ -403,11 +466,12 @@ func getBridgeServiceIPv4Addr(ctx *zedrouterContext, appLink uuid.UUID) (string,
 	}
 	if status.Type != types.NST_BRIDGE {
 		errStr := fmt.Sprintf("getBridgeServiceIPv4Addr(%s): service not a bridge; type %d",
-			status.Type)
+			appLink.String(), status.Type)
 		return "", errors.New(errStr)
 	}
 	if status.Adapter == "" {
-		log.Infof("getBridgeServiceIPv4Addr: bridge but no Adapter\n")
+		log.Infof("getBridgeServiceIPv4Addr(%s): bridge but no Adapter\n",
+			appLink.String())
 		return "", nil
 	}
 
@@ -422,12 +486,12 @@ func getBridgeServiceIPv4Addr(ctx *zedrouterContext, appLink uuid.UUID) (string,
 		return "", err
 	}
 	for _, addr := range addrs {
-		log.Infof("getBridgeServiceIPv4Addr: found addr %s\n",
-			addr.IP.String())
+		log.Infof("getBridgeServiceIPv4Addr(%s): found addr %s\n",
+			appLink.String(), addr.IP.String())
 		return addr.IP.String(), nil
 	}
-	log.Infof("getBridgeServiceIPv4Addr: no IP address on %s yet\n",
-		status.Adapter)
+	log.Infof("getBridgeServiceIPv4Addr(%s): no IP address on %s yet\n",
+		appLink.String(), status.Adapter)
 	return "", nil
 }
 
@@ -497,6 +561,16 @@ func publishNetworkServiceMetrics(ctx *zedrouterContext, status *types.NetworkSe
 // those configlets to Activate
 func lispCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	status *types.NetworkServiceStatus) error {
+	return nil
+}
+
+func lispActivate(ctx *zedrouterContext,
+	config types.NetworkServiceConfig,
+	status *types.NetworkServiceStatus,
+	netstatus *types.NetworkObjectStatus) error {
+
+	log.Infof("lispActivate(%s)\n", config.DisplayName)
+
 	status.LispStatus = config.LispConfig
 
 	// XXX Create Lisp IID & map-server configlets here
@@ -506,8 +580,7 @@ func lispCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 		strconv.FormatUint(uint64(iid), 10)
 	file, err := os.Create(cfgPathnameIID)
 	if err != nil {
-		//log.Fatal("lispCreate failed ", err)
-		log.Infof("lispCreate failed ", err)
+		log.Errorf("lispActivate failed ", err)
 		return err
 	}
 	defer file.Close()
@@ -523,12 +596,10 @@ func lispCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	iidConfig := fmt.Sprintf(lispIIDtemplate, iid)
 	file.WriteString(iidConfig)
 
-	// Check if the network configuration has IPv4 subnet.
-	// If yes, we should write map-cache configuration (lisp.config)
-	// for IPv4 prefix also.
-	netstatus := lookupNetworkObjectStatus(ctx, config.AppLink.String())
-	if netstatus == nil {
-		return errors.New(fmt.Sprintf("No AppLink for %s", config.UUID))
+	if netstatus.Error != "" {
+		errStr := fmt.Sprintf("AppLink %s has error %s",
+			config.AppLink.String(), netstatus.Error)
+		return errors.New(errStr)
 	}
 	if netstatus.Ipv4Eid {
 		ipv4Network := netstatus.Subnet.IP.Mask(netstatus.Subnet.Mask)
@@ -538,15 +609,6 @@ func lispCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 		file.WriteString(fmt.Sprintf(
 			lispIPv4IIDtemplate, iid, subnet))
 	}
-
-	log.Infof("lispCreate(%s)\n", config.DisplayName)
-	return nil
-}
-
-func lispActivate(ctx *zedrouterContext,
-	config types.NetworkServiceConfig,
-	status *types.NetworkServiceStatus,
-	netstatus *types.NetworkObjectStatus) error {
 
 	// Go through the AppNetworkStatus and create Lisp configlets that use
 	// this service.
@@ -564,16 +626,6 @@ func lispActivate(ctx *zedrouterContext,
 					status, lispRunDirname, netstatus.BridgeName)
 			}
 		}
-	}
-
-	// Add ACL filter rule in FORWARD chain to drop packets
-	// input from lisp bn<> bridge interfaces.
-	args := IptablesRule{"-t", "filter", "-I", "FORWARD", "1",
-		"-i", netstatus.BridgeName, "-j", "DROP"}
-	err := ip6tableCmd(args...)
-	if err != nil {
-		log.Infof("%s\n", err)
-		return err
 	}
 
 	log.Infof("lispActivate(%s)\n", status.DisplayName)
@@ -619,13 +671,6 @@ func lispInactivate(ctx *zedrouterContext,
 		}
 	}
 
-	args := IptablesRule{"-t", "filter", "-D", "FORWARD", "-i",
-		netstatus.BridgeName, "-j", "DROP"}
-	err := ip6tableCmd(args...)
-	if err != nil {
-		log.Errorf("%s\n", err)
-	}
-
 	log.Infof("lispInactivate(%s)\n", status.DisplayName)
 }
 
@@ -638,10 +683,12 @@ func lispDelete(ctx *zedrouterContext, status *types.NetworkServiceStatus) {
 	// We will have to bring them together somehow to clear the lisp configlets, ACLs etc.
 	netstatus := lookupNetworkObjectStatus(ctx, status.AppLink.String())
 	if netstatus == nil {
+		status.MissingNetwork = true
 		// Should have been caught at time of activate
 		log.Infof("No AppLink for %s", status.Key())
 		return
 	}
+	status.MissingNetwork = false
 	lispInactivate(ctx, status, netstatus)
 
 	log.Infof("lispDelete(%s)\n", status.DisplayName)
@@ -802,13 +849,13 @@ func natInactivate(status *types.NetworkServiceStatus,
 		err := iptableCmd("-t", "nat", "-D", "POSTROUTING", "-o", a,
 			"-s", subnetStr, "-j", "MASQUERADE")
 		if err != nil {
-			log.Errorln(err)
+			log.Errorf("natInactivate: iptableCmd failed %s\n", err)
 		}
 	}
-	// Add to Pbr table
+	// Remove from Pbr table
 	err := PbrNATDel(subnetStr)
 	if err != nil {
-		log.Errorln(err)
+		log.Errorf("natInactivate: PbrNATDel failed %s\n", err)
 	}
 }
 

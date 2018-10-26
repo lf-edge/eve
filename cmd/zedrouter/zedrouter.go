@@ -15,6 +15,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/google/go-cmp/cmp"
+	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
 	"github.com/zededa/go-provision/adapters"
@@ -454,7 +455,7 @@ func Run() {
 			err := pub.Publish("global",
 				getNetworkMetrics(&zedrouterCtx))
 			if err != nil {
-				log.Errorln(err)
+				log.Errorf("getNetworkMetrics failed %s\n", err)
 			}
 			publishNetworkServiceStatusAll(&zedrouterCtx)
 		case <-geoTimer.C:
@@ -581,7 +582,7 @@ func publishDeviceNetworkStatus(ctx *zedrouterContext) {
 func publishLispDataplaneConfig(ctx *zedrouterContext,
 	status *types.LispDataplaneConfig) {
 	key := "global"
-	log.Errorf("publishLispDataplaneConfig(%s)\n", key)
+	log.Debugf("publishLispDataplaneConfig(%s)\n", key)
 	pub := ctx.pubLispDataplaneConfig
 	pub.Publish(key, status)
 }
@@ -1012,6 +1013,12 @@ func handleCreate(ctx *zedrouterContext, key string,
 	}
 	publishAppNetworkStatus(ctx, &status)
 
+	handleCreate2(ctx, config, status)
+}
+
+func handleCreate2(ctx *zedrouterContext, config types.AppNetworkConfig,
+	status types.AppNetworkStatus) {
+
 	if config.IsZedmanager {
 		log.Infof("handleCreate: for %s IsZedmanager\n",
 			config.DisplayName)
@@ -1037,7 +1044,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 		olConfig := config.OverlayNetworkList[0]
 		olNum := 1
 		olIfname := "dbo" + strconv.Itoa(olNum) + "x" +
-			strconv.Itoa(appNum)
+			strconv.Itoa(status.AppNum)
 		// Assume there is no UUID for management overlay
 
 		// Create olIfname dummy interface with EID and fd00::/8 route
@@ -1054,7 +1061,8 @@ func handleCreate(ctx *zedrouterContext, key string,
 		attrs = netlink.NewLinkAttrs()
 		attrs.Name = olIfname
 		// Note: we ignore olConfig.AppMacAddr for IsMgmt
-		olIfMac := fmt.Sprintf("00:16:3e:02:%02x:%02x", olNum, appNum)
+		olIfMac := fmt.Sprintf("00:16:3e:02:%02x:%02x", olNum,
+			status.AppNum)
 		hw, err := net.ParseMAC(olIfMac)
 		if err != nil {
 			log.Fatal("ParseMAC failed: ", olIfMac, err)
@@ -1201,8 +1209,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 	}
 
 	// Check that Network exists for all overlays and underlays.
-	// XXX if not, for now just delete status and the periodic walk will
-	// retry
+	// We look for MissingNetwork when a NetworkObject is added
 	allNetworksExist := true
 	for _, olConfig := range config.OverlayNetworkList {
 		netconfig := lookupNetworkObjectConfig(ctx,
@@ -1210,11 +1217,12 @@ func handleCreate(ctx *zedrouterContext, key string,
 		if netconfig != nil {
 			continue
 		}
+		// XXX no olStatus yet!
 		errStr := fmt.Sprintf("Missing overlay network %s for %s/%s",
 			olConfig.Network.String(),
 			config.UUIDandVersion, config.DisplayName)
 		log.Infof("handleCreate failed: %s\n", errStr)
-		addError(ctx, &status, "lookupNetworkObjectStatus",
+		addError(ctx, &status, "handleCreate overlay",
 			errors.New(errStr))
 		allNetworksExist = false
 	}
@@ -1224,17 +1232,18 @@ func handleCreate(ctx *zedrouterContext, key string,
 		if netconfig != nil {
 			continue
 		}
+		// XXX no ulStatus yet!
 		errStr := fmt.Sprintf("Missing underlay network %s for %s/%s",
 			ulConfig.Network.String(),
 			config.UUIDandVersion, config.DisplayName)
 		log.Infof("handleCreate failed: %s\n", errStr)
-		addError(ctx, &status, "lookupNetworkObjectStatus",
+		addError(ctx, &status, "handleCreate underlay",
 			errors.New(errStr))
 		allNetworksExist = false
 	}
 	if !allNetworksExist {
-		// XXX would need special logic to retry if the networks
-		// appear later.
+		// XXX error or not?
+		status.MissingNetwork = true
 		log.Infof("handleCreate(%v) for %s: missing networks\n",
 			config.UUIDandVersion, config.DisplayName)
 		status.PendingAdd = false
@@ -1276,6 +1285,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 		if netconfig == nil {
 			// Checked for nil above
 			status.PendingAdd = false
+			publishAppNetworkStatus(ctx, &status)
 			return
 		}
 
@@ -1287,7 +1297,14 @@ func handleCreate(ctx *zedrouterContext, key string,
 			errStr := fmt.Sprintf("no network status for %s",
 				olConfig.Network.String())
 			err := errors.New(errStr)
-			addError(ctx, &status, "lookupNetworkObjectStatus", err)
+			addError(ctx, &status, "handlecreate overlay", err)
+			continue
+		}
+		if netstatus.Error != "" {
+			log.Errorf("handleCreate sees network error %s\n",
+				netstatus.Error)
+			addError(ctx, &status, "netstatus.Error",
+				errors.New(netstatus.Error))
 			continue
 		}
 		bridgeNum := netstatus.BridgeNum
@@ -1312,7 +1329,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 			appMac = olConfig.AppMacAddr.String()
 		} else {
 			appMac = fmt.Sprintf("00:16:3e:01:%02x:%02x",
-				olNum, appNum)
+				olNum, status.AppNum)
 		}
 		log.Infof("appMac %s\n", appMac)
 
@@ -1452,6 +1469,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 		if netconfig == nil {
 			// Checked for nil above
 			status.PendingAdd = false
+			publishAppNetworkStatus(ctx, &status)
 			return
 		}
 
@@ -1462,12 +1480,19 @@ func handleCreate(ctx *zedrouterContext, key string,
 			errStr := fmt.Sprintf("no status for %s",
 				ulConfig.Network.String())
 			err := errors.New(errStr)
-			addError(ctx, &status, "lookupNetworkObjectStatus", err)
+			addError(ctx, &status, "handleCreate underlay", err)
+			continue
+		}
+		if netstatus.Error != "" {
+			log.Errorf("handleCreate sees network error %s\n",
+				netstatus.Error)
+			addError(ctx, &status, "netstatus.Error",
+				errors.New(netstatus.Error))
 			continue
 		}
 		bridgeName := netstatus.BridgeName
 		vifName := "nbu" + strconv.Itoa(ulNum) + "x" +
-			strconv.Itoa(appNum)
+			strconv.Itoa(status.AppNum)
 		uLink, err := findBridge(bridgeName)
 		if err != nil {
 			status.PendingAdd = false
@@ -1486,7 +1511,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 		} else {
 			// Room to handle multiple underlays in 5th byte
 			appMac = fmt.Sprintf("00:16:3e:00:%02x:%02x",
-				ulNum, appNum)
+				ulNum, status.AppNum)
 		}
 		log.Infof("appMac %s\n", appMac)
 
@@ -1498,13 +1523,12 @@ func handleCreate(ctx *zedrouterContext, key string,
 		ulStatus.Mac = appMac
 		ulStatus.HostName = config.Key()
 
-		bridgeIPAddr, appIPAddr := getUlAddrs(ctx, ulNum-1, appNum,
-			ulStatus, netstatus)
+		bridgeIPAddr, appIPAddr := getUlAddrs(ctx, ulNum-1,
+			status.AppNum, ulStatus, netstatus)
 		// Check if we have a bridge service with an address
 		bridgeIP, err := getBridgeServiceIPv4Addr(ctx, ulConfig.Network)
 		if err != nil {
-			log.Infof("handleCreate getBridgeServiceIPv4Addr %s\n",
-				err)
+			log.Infof("handleCreate: %s\n", err)
 		} else if bridgeIP != "" {
 			bridgeIPAddr = bridgeIP
 		}
@@ -1558,6 +1582,65 @@ func handleCreate(ctx *zedrouterContext, key string,
 	status.PendingAdd = false
 	publishAppNetworkStatus(ctx, &status)
 	log.Infof("handleCreate done for %s\n", config.DisplayName)
+}
+
+// Called when a NetworkObject is added
+// Walk all AppNetworkStatus looking for MissingNetwork, then
+// check if network UUID is there.
+func checkAndRecreateAppNetwork(ctx *zedrouterContext, network uuid.UUID) {
+
+	log.Infof("checkAndRecreateAppNetwork(%s)\n", network.String())
+	pub := ctx.pubAppNetworkStatus
+	items := pub.GetAll()
+	for _, st := range items {
+		status := cast.CastAppNetworkStatus(st)
+		if !status.MissingNetwork {
+			continue
+		}
+		log.Infof("checkAndRecreateAppNetwork(%s) missing for %s\n",
+			network.String(), status.DisplayName)
+
+		if status.IsZedmanager {
+			continue
+		}
+		config := lookupAppNetworkConfig(ctx, status.Key())
+		if config == nil {
+			log.Warnf("checkAndRecreateAppNetwork(%s) no config for %s\n",
+				network.String(), status.DisplayName)
+			continue
+		}
+
+		matched := false
+		for i, olConfig := range config.OverlayNetworkList {
+			if olConfig.Network != network {
+				continue
+			}
+			log.Infof("checkAndRecreateAppNetwork(%s) found overlay %d for %s\n",
+				network.String(), i, status.DisplayName)
+			matched = true
+		}
+		for i, ulConfig := range config.UnderlayNetworkList {
+			if ulConfig.Network != network {
+				continue
+			}
+			log.Infof("checkAndRecreateAppNetwork(%s) found underlay %d for %s\n",
+				network.String(), i, status.DisplayName)
+			matched = true
+		}
+		if !matched {
+			continue
+		}
+		log.Infof("checkAndRecreateAppNetwork(%s) recreating for %s\n",
+			network.String(), status.DisplayName)
+		if status.Error != "" {
+			log.Infof("checkAndRecreateAppNetwork(%s) remove error %s for %s\n",
+				network.String(), status.Error,
+				status.DisplayName)
+			status.Error = ""
+			status.ErrorTime = time.Time{}
+		}
+		handleCreate2(ctx, *config, status)
+	}
 }
 
 func createAndStartLisp(ctx *zedrouterContext,
@@ -1641,7 +1724,7 @@ func getUlAddrs(ctx *zedrouterContext, ifnum int, appNum int,
 		// Assumption is that the config specifies a gateway/router
 		// in the same subnet as the static address.
 		appIPAddr = status.AppIPAddr.String()
-	} else {
+	} else if status.Mac != "" {
 		// XXX or change type of VifInfo.Mac to avoid parsing?
 		mac, err := net.ParseMAC(status.Mac)
 		if err != nil {
@@ -1794,9 +1877,10 @@ func handleModify(ctx *zedrouterContext, key string,
 			errStr := fmt.Sprintf("no network status for %s",
 				olConfig.Network.String())
 			err := errors.New(errStr)
-			addError(ctx, status, "lookupNetworkObjectStatus", err)
+			addError(ctx, status, "handleModify overlay", err)
 			continue
 		}
+		// We ignore any errors in netstatus
 
 		// XXX could there be a change to AssignedIPv6Address aka EID?
 		// If so updateACLConfiglet needs to know old and new
@@ -1878,9 +1962,11 @@ func handleModify(ctx *zedrouterContext, key string,
 			errStr := fmt.Sprintf("no network status for %s",
 				ulConfig.Network.String())
 			err := errors.New(errStr)
-			addError(ctx, status, "lookupNetworkObjectStatus", err)
+			addError(ctx, status, "handleModify underlay", err)
 			continue
 		}
+		// We ignore any errors in netstatus
+
 		// XXX could there be a change to AssignedIPAddress?
 		// If so updateNetworkACLConfiglet needs to know old and new
 		err := updateACLConfiglet(bridgeName, ulStatus.Vif, false,
@@ -2102,9 +2188,10 @@ func handleDelete(ctx *zedrouterContext, key string,
 			errStr := fmt.Sprintf("no network status for %s",
 				olStatus.Network.String())
 			err := errors.New(errStr)
-			addError(ctx, status, "lookupNetworkObjectStatus", err)
+			addError(ctx, status, "handleDelete overlay", err)
 			continue
 		}
+		// We ignore any errors in netstatus
 
 		removehostDnsmasq(bridgeName, olStatus.Mac,
 			olStatus.EID.String())
@@ -2184,20 +2271,23 @@ func handleDelete(ctx *zedrouterContext, key string,
 			errStr := fmt.Sprintf("no network status for %s",
 				ulStatus.Network.String())
 			err := errors.New(errStr)
-			addError(ctx, status, "lookupNetworkObjectStatus", err)
+			addError(ctx, status, "handleDelete underlay", err)
 			continue
 		}
+		// We ignore any errors in netstatus
 
-		// XXX or change type of VifInfo.Mac?
-		mac, err := net.ParseMAC(ulStatus.Mac)
-		if err != nil {
-			log.Fatal("ParseMAC failed: ",
-				ulStatus.Mac, err)
-		}
-		err = releaseIPv4(ctx, netstatus, mac)
-		if err != nil {
-			// XXX publish error?
-			addError(ctx, status, "releaseIPv4", err)
+		if ulStatus.Mac != "" {
+			// XXX or change type of VifInfo.Mac?
+			mac, err := net.ParseMAC(ulStatus.Mac)
+			if err != nil {
+				log.Fatal("ParseMAC failed: ",
+					ulStatus.Mac, err)
+			}
+			err = releaseIPv4(ctx, netstatus, mac)
+			if err != nil {
+				// XXX publish error?
+				addError(ctx, status, "releaseIPv4", err)
+			}
 		}
 
 		appIPAddr := ulStatus.AssignedIPAddr
@@ -2206,7 +2296,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 				appIPAddr)
 		}
 
-		err = deleteACLConfiglet(bridgeName, ulStatus.Vif, false,
+		err := deleteACLConfiglet(bridgeName, ulStatus.Vif, false,
 			ulStatus.ACLs, ulStatus.BridgeIPAddr, appIPAddr)
 		if err != nil {
 			addError(ctx, status, "deleteACL", err)
@@ -2265,7 +2355,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
@@ -2279,7 +2369,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
-	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }

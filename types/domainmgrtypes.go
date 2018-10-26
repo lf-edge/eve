@@ -21,9 +21,10 @@ type DomainConfig struct {
 	Activate       bool   // Actually start the domU as opposed to prepare
 	AppNum         int    // From networking; makes the name unique
 	VmConfig
-	DiskConfigList []DiskConfig
-	VifList        []VifInfo
-	IoAdapterList  []IoAdapter
+	DiskConfigList    []DiskConfig
+	VifList           []VifInfo
+	IoAdapterList     []IoAdapter
+	CloudInitUserData string // base64-encoded
 }
 
 func (config DomainConfig) Key() string {
@@ -93,6 +94,7 @@ type DomainStatus struct {
 	IoAdapterList      []IoAdapter
 	VirtualizationMode VmMode
 	EnableVnc          bool
+	TriedCount         int
 	LastErr            string // Xen error
 	LastErrTime        time.Time
 }
@@ -143,8 +145,9 @@ type DiskConfig struct {
 	ReadOnly    bool
 	Preserve    bool // If set a rw disk will be preserved across
 	// boots (acivate/inactivate)
-	Format  string // Default "raw"; could be raw, qcow, qcow2, vhd
-	Devtype string // Default ""; could be e.g. "cdrom"
+	Maxsizebytes uint64 // Resize filesystem to this size if set
+	Format       string // Default "raw"; could be raw, qcow, qcow2, vhd
+	Devtype      string // Default ""; could be e.g. "cdrom"
 }
 
 type DiskStatus struct {
@@ -152,8 +155,22 @@ type DiskStatus struct {
 	ReadOnly           bool
 	Preserve           bool
 	FileLocation       string // Local location of Image
+	Maxsizebytes       uint64 // Resize filesystem to this size if set
 	Format             string // From config
 	Devtype            string // From config
 	Vdev               string // Allocated
 	ActiveFileLocation string // Allocated; private copy if RW; FileLocation if RO
+}
+
+// Track the active image files in rwImgDirname
+type ImageStatus struct {
+	Filename     string // Basename; used as key
+	FileLocation string // Local location of Image
+	RefCount     uint
+	LastUse      time.Time // When RefCount dropped to zero
+	Size         uint64
+}
+
+func (status ImageStatus) Key() string {
+	return status.Filename
 }

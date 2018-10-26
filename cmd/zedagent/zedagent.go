@@ -37,6 +37,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/google/go-cmp/cmp"
+	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/adapters"
 	"github.com/zededa/go-provision/agentlog"
@@ -455,6 +456,10 @@ func Run() {
 	zedagentCtx.subAppImgDownloadStatus = subAppImgDownloadStatus
 	subAppImgDownloadStatus.Activate()
 
+	// Run a periodic timer so we always update SillRunning
+	stillRunning := time.NewTicker(25 * time.Second)
+	agentlog.StillRunning(agentName)
+
 	// First we process the verifierStatus to avoid downloading
 	// an base image we already have in place
 	log.Infof("Handling initial verifier Status\n")
@@ -472,6 +477,9 @@ func Run() {
 
 		case change := <-subAa.C:
 			subAa.ProcessChange(change)
+
+		case <-stillRunning.C:
+			agentlog.StillRunning(agentName)
 		}
 	}
 
@@ -498,7 +506,7 @@ func Run() {
 	t2 := time.NewTimer(time2 * time.Second)
 
 	// Initial settings; redone below in case some
-	updateSshAccess(!globalConfig.NoSshAccess)
+	updateSshAccess(!globalConfig.NoSshAccess, true)
 
 	log.Infof("Waiting until we have some uplinks with usable addresses\n")
 	waited := false
@@ -526,6 +534,9 @@ func Run() {
 				log.Errorf("Exceeded fallback outage for cloud connectivity - rebooting\n")
 				execReboot(true)
 			}
+
+		case <-stillRunning.C:
+			agentlog.StillRunning(agentName)
 		}
 	}
 	t1.Stop()
@@ -579,7 +590,7 @@ func Run() {
 	getconfigCtx.configTickerHandle = configTickerHandle
 	getconfigCtx.metricsTickerHandle = metricsTickerHandle
 
-	updateSshAccess(!globalConfig.NoSshAccess)
+	updateSshAccess(!globalConfig.NoSshAccess, true)
 
 	for {
 		select {
@@ -691,6 +702,9 @@ func Run() {
 
 		case change := <-subNetworkServiceMetrics.C:
 			subNetworkServiceMetrics.ProcessChange(change)
+
+		case <-stillRunning.C:
+			agentlog.StillRunning(agentName)
 		}
 	}
 }
@@ -853,6 +867,7 @@ func handleBaseOsConfigDelete(ctxArg interface{}, key string,
 // base os config create event
 func handleBaseOsCreate(ctxArg interface{}, key string,
 	configArg interface{}) {
+
 	config := cast.CastBaseOsConfig(configArg)
 	if config.Key() != key {
 		log.Errorf("handleBaseOsCreate key/UUID mismatch %s vs %s; ignored %+v\n",
@@ -878,6 +893,11 @@ func handleBaseOsCreate(ctxArg interface{}, key string,
 		ss.ImageSha256 = sc.ImageSha256
 		ss.Target = sc.Target
 	}
+	handleBaseOsCreate2(ctx, config, status)
+}
+
+func handleBaseOsCreate2(ctx *zedagentContext, config types.BaseOsConfig,
+	status types.BaseOsStatus) {
 
 	// Check total and activated counts
 	err := validateBaseOsConfig(ctx, config)
@@ -914,7 +934,8 @@ func handleBaseOsModify(ctxArg interface{}, key string,
 	uuidStr := config.Key()
 	ctx := ctxArg.(*zedagentContext)
 
-	log.Infof("handleBaseOsModify for %s\n", status.BaseOsVersion)
+	log.Infof("handleBaseOsModify for %s Activate %v\n",
+		config.BaseOsVersion, config.Activate)
 	if config.UUIDandVersion.Version == status.UUIDandVersion.Version &&
 		config.Activate == status.Activated {
 		log.Infof("Same version %v for %s\n",
@@ -1087,7 +1108,9 @@ func handleDownloadStatusModify(ctxArg interface{}, key string,
 func handleDownloadStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Infof("handleDownloadStatusDelete for %s\n", key)
+	status := cast.CastDownloaderStatus(statusArg)
+	log.Infof("handleDownloadStatusDelete RefCount %d Expired %v for %s\n",
+		status.RefCount, status.Expired, key)
 	// Nothing to do
 }
 
@@ -1108,22 +1131,74 @@ func handleVerifierStatusModify(ctxArg interface{}, key string,
 func handleVerifierStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Infof("handleVeriferStatusDelete for %s\n", key)
+	status := cast.CastVerifyImageStatus(statusArg)
+	log.Infof("handleVeriferStatusDelete RefCount %d Expired %v for %s\n",
+		status.RefCount, status.Expired, key)
 	// Nothing to do
 }
 
 func handleDatastoreConfigModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	// XXX empty since we look at collection when we need it
+	ctx := ctxArg.(*zedagentContext)
+	config := cast.CastDatastoreConfig(configArg)
+	checkAndRecreateBaseOs(ctx, config.UUID)
 	log.Infof("handleDatastoreConfigModify for %s\n", key)
 }
 
 func handleDatastoreConfigDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	// XXX empty since we look at collection when we need it
 	log.Infof("handleDatastoreConfigDelete for %s\n", key)
+}
+
+// Called when a DatastoreConfig is added
+// Walk all BaseOsStatus (XXX Cert?) looking for MissingDatastore, then
+// check if the DatastoreId matches.
+func checkAndRecreateBaseOs(ctx *zedagentContext, datastore uuid.UUID) {
+
+	log.Infof("checkAndRecreateBaseOs(%s)\n", datastore.String())
+	pub := ctx.pubBaseOsStatus
+	items := pub.GetAll()
+	for _, st := range items {
+		status := cast.CastBaseOsStatus(st)
+		if !status.MissingDatastore {
+			continue
+		}
+		log.Infof("checkAndRecreateBaseOs(%s) missing for %s\n",
+			datastore.String(), status.BaseOsVersion)
+
+		config := lookupBaseOsConfig(ctx, status.Key())
+		if config == nil {
+			log.Warnf("checkAndRecreatebaseOs(%s) no config for %s\n",
+				datastore.String(), status.BaseOsVersion)
+			continue
+		}
+
+		matched := false
+		for _, ss := range config.StorageConfigList {
+			if ss.DatastoreId != datastore {
+				continue
+			}
+			log.Infof("checkAndRecreateBaseOs(%s) found ss %s for %s\n",
+				datastore.String(), ss.Name,
+				status.BaseOsVersion)
+			matched = true
+		}
+		if !matched {
+			continue
+		}
+		log.Infof("checkAndRecreateBaseOs(%s) recreating for %s\n",
+			datastore.String(), status.BaseOsVersion)
+		if status.Error != "" {
+			log.Infof("checkAndRecreateBaseOs(%s) remove error %s for %s\n",
+				datastore.String(), status.Error,
+				status.BaseOsVersion)
+			status.Error = ""
+			status.ErrorTime = time.Time{}
+		}
+		handleBaseOsCreate2(ctx, *config, status)
+	}
 }
 
 func appendError(allErrors string, prefix string, lasterr string) string {
@@ -1139,15 +1214,14 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	var gcp *types.GlobalConfig
+	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
-	c, err := ctx.subGlobalConfig.Get("global")
-	if err == nil {
-		gc := cast.CastGlobalConfig(c)
-		if !cmp.Equal(globalConfig, gc) {
+	if gcp != nil {
+		if !cmp.Equal(globalConfig, *gcp) {
 			log.Infof("handleGlobalConfigModify: diff %v\n",
-				cmp.Diff(globalConfig, gc))
-			applyGlobalConfig(gc)
+				cmp.Diff(globalConfig, *gcp))
+			applyGlobalConfig(*gcp)
 		}
 	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
@@ -1162,7 +1236,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
-	debug = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	globalConfig = globalConfigDefaults
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
@@ -1189,6 +1263,12 @@ func applyGlobalConfig(newgc types.GlobalConfig) {
 	}
 	if newgc.StaleConfigTime == 0 {
 		newgc.StaleConfigTime = globalConfigDefaults.StaleConfigTime
+	}
+	if newgc.DownloadGCTime == 0 {
+		newgc.DownloadGCTime = globalConfigDefaults.DownloadGCTime
+	}
+	if newgc.VdiskGCTime == 0 {
+		newgc.VdiskGCTime = globalConfigDefaults.VdiskGCTime
 	}
 	globalConfig = newgc
 }

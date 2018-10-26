@@ -88,7 +88,8 @@ func ExecuteXlInfoCmd() map[string]string {
 	xlCmd := exec.Command("xl", "info")
 	stdout, err := xlCmd.Output()
 	if err != nil {
-		log.Errorln(err.Error())
+		log.Errorf("xl info failed %s\n", err)
+		return nil
 	}
 	xlInfo := fmt.Sprintf("%s", stdout)
 	splitXlInfo := strings.Split(xlInfo, "\n")
@@ -349,7 +350,8 @@ func ExecuteXentopCmd() [][]string {
 
 			matched, err := regexp.MatchString("[A-Za-z0-9]+", finalOutput[f][out])
 			if err != nil {
-				log.Errorln(err)
+				log.Errorf("regexp failed %s for %s\n",
+					err, finalOutput[f])
 			} else if matched {
 
 				if finalOutput[f][out] == "no" {
@@ -502,6 +504,8 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 	// XXX should we get a new list of disks each time?
 	// XXX can we use part, err = disk.Partitions(false)
 	// and then p.MountPoint for the usage?
+	log.Debugf("Using savedDisks %v current %v\n",
+		savedDisks, findDisksPartitions())
 	for _, d := range savedDisks {
 		size := partitionSize(d)
 		log.Debugf("Disk/partition %s size %d\n", d, size)
@@ -599,7 +603,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 		domainName := cpuStorageStat[arr][1]
 		ds := LookupDomainStatus(domainName)
 		if ds == nil {
-			log.Infof("Did not find status for domainName %s\n",
+			log.Infof("ReportMetrics: Did not find status for domainName %s\n",
 				domainName)
 			// Note that it is included in the
 			// metrics without a name and uuid.
@@ -750,7 +754,7 @@ func PublishDeviceInfoToZedCloud(subBaseOsStatus *pubsub.Subscription,
 	machineCmd := exec.Command("uname", "-m")
 	stdout, err := machineCmd.Output()
 	if err != nil {
-		log.Errorln(err.Error())
+		log.Errorf("uname -m failed %s\n", err)
 	} else {
 		machineArch = fmt.Sprintf("%s", stdout)
 		ReportDeviceInfo.MachineArch = *proto.String(strings.TrimSpace(machineArch))
@@ -759,16 +763,16 @@ func PublishDeviceInfoToZedCloud(subBaseOsStatus *pubsub.Subscription,
 	cpuCmd := exec.Command("uname", "-p")
 	stdout, err = cpuCmd.Output()
 	if err != nil {
-		log.Errorln(err.Error())
+		log.Errorf("uname -p failed %s\n", err)
 	} else {
 		cpuArch := fmt.Sprintf("%s", stdout)
 		ReportDeviceInfo.CpuArch = *proto.String(strings.TrimSpace(cpuArch))
 	}
 
-	platformCmd := exec.Command("uname", "-p")
+	platformCmd := exec.Command("uname", "-i")
 	stdout, err = platformCmd.Output()
 	if err != nil {
-		log.Errorln(err.Error())
+		log.Errorf("uname -i failed %s\n", err)
 	} else {
 		platform := fmt.Sprintf("%s", stdout)
 		ReportDeviceInfo.Platform = *proto.String(strings.TrimSpace(platform))
@@ -801,7 +805,7 @@ func PublishDeviceInfoToZedCloud(subBaseOsStatus *pubsub.Subscription,
 	// Find all disks and partitions
 	disks := findDisksPartitions()
 	savedDisks = disks // Save for stats
-
+	log.Infof("Setting savedDisks %v\n", savedDisks)
 	for _, disk := range disks {
 		size := partitionSize(disk)
 		log.Debugf("Disk/partition %s size %d\n", disk, size)
@@ -868,12 +872,17 @@ func PublishDeviceInfoToZedCloud(subBaseOsStatus *pubsub.Subscription,
 		swInfo.PartitionState = zboot.GetPartitionState(partLabel)
 		swInfo.ShortVersion = zboot.GetShortVersion(partLabel)
 		swInfo.LongVersion = zboot.GetLongVersion(partLabel)
+		swInfo.DownloadProgress = 100
 		if bos := getBaseOsStatus(partLabel); bos != nil {
 			// Get current state/version which is different than
 			// what is on disk
 			swInfo.Status = zmet.ZSwState(bos.State)
 			swInfo.ShortVersion = bos.BaseOsVersion
 			swInfo.LongVersion = "" // XXX
+			if len(bos.StorageStatusList) > 0 {
+				// Assume one - pick first StorageStatus
+				swInfo.DownloadProgress = uint32(bos.StorageStatusList[0].Progress)
+			}
 			if !bos.ErrorTime.IsZero() {
 				log.Debugf("reportMetrics sending error time %v error %v for %s\n",
 					bos.ErrorTime, bos.Error,
@@ -887,8 +896,10 @@ func PublishDeviceInfoToZedCloud(subBaseOsStatus *pubsub.Subscription,
 		} else if swInfo.ShortVersion != "" {
 			// Must be factory install i.e. INSTALLED
 			swInfo.Status = zmet.ZSwState(types.INSTALLED)
+			swInfo.DownloadProgress = 100
 		} else {
 			swInfo.Status = zmet.ZSwState(types.INITIAL)
+			swInfo.DownloadProgress = 0
 		}
 		return swInfo
 	}
@@ -1173,15 +1184,17 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 
 	ReportAppInfo.AppID = uuid
 	ReportAppInfo.SystemApp = false
+	ReportAppInfo.Activated = false
+	ReportAppInfo.State = zmet.ZSwState(types.HALTED)
 	if aiStatus != nil {
 		ReportAppInfo.AppName = aiStatus.DisplayName
 		ReportAppInfo.State = zmet.ZSwState(aiStatus.State)
 		ds := LookupDomainStatusUUID(uuid)
 		if ds == nil {
-			log.Infof("Did not find DomainStatus for UUID %s\n",
+			log.Infof("ReportAppInfo: Did not find DomainStatus for UUID %s\n",
 				uuid)
-			// XXX should we reschedule when we have a domainStatus?
-			// Avoid nil checks
+			// Expect zedmanager to send us update when DomainStatus
+			// appears. We avoid nil checks below by:
 			ds = &types.DomainStatus{}
 		} else {
 			ReportAppInfo.Activated = aiStatus.Activated
@@ -1339,7 +1352,7 @@ func SendMetricsProtobuf(ReportMetrics *zmet.ZMetricMsg,
 func findDisksPartitions() []string {
 	out, err := exec.Command("lsblk", "-nlo", "NAME").Output()
 	if err != nil {
-		log.Errorln(err)
+		log.Errorf("lsblk -nlo NAME failed %s\n", err)
 		return nil
 	}
 	res := strings.Split(string(out), "\n")
@@ -1352,13 +1365,13 @@ func findDisksPartitions() []string {
 func partitionSize(part string) uint64 {
 	out, err := exec.Command("lsblk", "-nbdo", "SIZE", "/dev/"+part).Output()
 	if err != nil {
-		log.Errorln(err)
+		log.Errorf("lsblk -nbdo SIZE %s failed %s\n", "/dev/"+part, err)
 		return 0
 	}
 	res := strings.Split(string(out), "\n")
 	val, err := strconv.ParseUint(res[0], 10, 64)
 	if err != nil {
-		log.Errorln(err)
+		log.Errorf("parseUint(%s) failed %s\n", res[0], err)
 		return 0
 	}
 	return val

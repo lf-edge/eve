@@ -434,7 +434,7 @@ func IfindexToName(index int) (string, string, error) {
 	}
 	linkName := link.Attrs().Name
 	linkType := link.Type()
-	log.Errorf("IfindexToName(%d) fallback lookup done: %s, %s\n",
+	log.Warnf("IfindexToName(%d) fallback lookup done: %s, %s\n",
 		index, linkName, linkType)
 	return linkName, linkType, nil
 }
@@ -684,4 +684,42 @@ func delSourceRule(ifindex int, p net.IPNet, bridge bool) {
 		log.Errorf("RuleDel %v failed with %s\n", r, err)
 		return
 	}
+}
+
+func AddOverlayRuleAndRoute(bridgeName string, iifIndex int,
+	oifIndex int, ipnet *net.IPNet) error {
+	log.Debugf("AddOverlayRuleAndRoute: IIF index %d, Prefix %s, OIF index %d",
+		iifIndex, ipnet.String(), oifIndex)
+
+	r := netlink.NewRule()
+	myTable := FreeTable + iifIndex
+	r.Table = myTable
+	r.IifName = bridgeName
+	if ipnet.IP.To4() != nil {
+		r.Family = syscall.AF_INET
+	} else {
+		r.Family = syscall.AF_INET6
+	}
+
+	// Avoid duplicate rules
+	_ = netlink.RuleDel(r)
+
+	// Add rule
+	if err := netlink.RuleAdd(r); err != nil {
+		errStr := fmt.Sprintf("AddOverlayRuleAndRoute: RuleAdd %v failed with %s", r, err)
+		log.Errorln(errStr)
+		return errors.New(errStr)
+	}
+
+	// Add a the required route to new table that we created above.
+
+	// Setup a route for the current network's subnet to point out of the given oifIndex
+	rt := netlink.Route{Dst: ipnet, LinkIndex: oifIndex, Table: myTable, Flags: 0}
+	if err := netlink.RouteAdd(&rt); err != nil {
+		errStr := fmt.Sprintf("AddOverlayRuleAndRoute: RouteAdd %s failed: %s",
+			ipnet.String(), err)
+		log.Errorln(errStr)
+		return errors.New(errStr)
+	}
+	return nil
 }

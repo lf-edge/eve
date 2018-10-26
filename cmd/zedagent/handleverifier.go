@@ -97,10 +97,50 @@ func updateVerifierStatus(ctx *zedagentContext,
 		return
 	}
 
-	if objType == baseOsObj {
-		baseOsHandleStatusUpdateSafename(ctx, status.Safename)
+	switch status.ObjType {
+	case baseOsObj:
+		// break
+	case appImgObj:
+		// We subscribe to get metrics about disk usage
+		log.Debugf("updateVerifierStatus for %s, ignoring objType %s\n",
+			key, objType)
+		return
+	default:
+		log.Errorf("updateVerifierStatus for %s, unsupported objType %s\n",
+			key, objType)
+		return
+	}
+	// We handle two special cases in the handshake here
+	// 1. verifier added a status with RefCount=0 based on
+	// an existing file. We echo that with a config with RefCount=0
+	// 2. verifier set Expired in status when garbage collecting.
+	// If we have no RefCount we delete the config.
+
+	config := lookupVerifierConfig(ctx, status.ObjType, status.Key())
+	if config == nil && status.RefCount == 0 {
+		log.Infof("updateVerifierStatus adding RefCount=0 config %s\n",
+			key)
+		n := types.VerifyImageConfig{
+			Safename:    status.Safename,
+			Name:        status.Safename,
+			ImageSha256: status.ImageSha256,
+			// XXX CertificateChain: status.CertificateChain,
+			// ImageSignature:   status.ImageSignature,
+			// SignatureKey:     status.SignatureKey,
+			RefCount: 0,
+		}
+		publishVerifierConfig(ctx, status.ObjType, &n)
+		return
+	}
+	if config != nil && config.RefCount == 0 && status.Expired {
+		log.Infof("updateVerifierStatus expired - deleting config %s\n",
+			key)
+		unpublishVerifierConfig(ctx, status.ObjType, config)
+		return
 	}
 
+	// Normal update work
+	baseOsHandleStatusUpdateSafename(ctx, status.Safename)
 	log.Infof("updateVerifierStatus(%s) done\n", key)
 }
 
@@ -119,13 +159,13 @@ func MaybeRemoveVerifierConfigSha256(ctx *zedagentContext, objType string,
 		m.Safename)
 
 	m.RefCount -= 1
-	if m.RefCount != 0 {
-		log.Infof("MaybeRemoveVerifierConfigSha256 remaining RefCount %d for %s\n",
+	if m.RefCount < 0 {
+		log.Fatalf("MaybeRemoveVerifyImageConfigSha256: negative RefCount %d for %s\n",
 			m.RefCount, sha256)
-		publishVerifierConfig(ctx, objType, m)
-		return
 	}
-	unpublishVerifierConfig(ctx, objType, m)
+	log.Infof("MaybeRemoveVerifierConfigSha256 remaining RefCount %d for %s\n",
+		m.RefCount, sha256)
+	publishVerifierConfig(ctx, objType, m)
 	log.Infof("MaybeRemoveVerifierConfigSha256 done for %s\n", sha256)
 }
 
@@ -208,6 +248,7 @@ func checkStorageVerifierStatus(ctx *zedagentContext, objType string, uuidStr st
 			sc.ImageSha256)
 		if vs == nil || vs.Pending() {
 			log.Infof("checkStorageVerifierStatus: %s not found\n", safename)
+			// Keep at current state
 			ret.MinState = types.DOWNLOADED
 			continue
 		}

@@ -421,7 +421,7 @@ func updateLisp(lispRunDirname string,
 	var cnt int64
 	files, err := ioutil.ReadDir(lispRunDirname)
 	if err != nil {
-		log.Errorln(err)
+		log.Errorf("ReadDir %s failed %s\n", lispRunDirname, err)
 		return
 	}
 	eidCount := 0

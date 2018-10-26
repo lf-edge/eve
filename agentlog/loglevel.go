@@ -9,7 +9,18 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/pubsub"
+	"github.com/zededa/go-provision/types"
 )
+
+func GetGlobalConfig(sub *pubsub.Subscription) *types.GlobalConfig {
+	m, err := sub.Get("global")
+	if err != nil {
+		log.Infof("GlobalConfig failed %s\n", err)
+		return nil
+	}
+	gc := cast.CastGlobalConfig(m)
+	return &gc
+}
 
 // Returns (value, ok)
 func GetLogLevel(sub *pubsub.Subscription, agentName string) (string, bool) {
@@ -54,11 +65,12 @@ func GetRemoteLogLevel(sub *pubsub.Subscription, agentName string) (string, bool
 // Update LogLevel setting based on GlobalConfig and debugOverride
 // Return debug bool
 func HandleGlobalConfig(sub *pubsub.Subscription, agentName string,
-	debugOverride bool) bool {
+	debugOverride bool) (bool, *types.GlobalConfig) {
 
 	log.Infof("HandleGlobalConfig(%s, %v)\n", agentName, debugOverride)
 	level := log.InfoLevel
 	debug := false
+	gcp := GetGlobalConfig(sub)
 	if debugOverride {
 		debug = true
 		level = log.DebugLevel
@@ -76,5 +88,16 @@ func HandleGlobalConfig(sub *pubsub.Subscription, agentName string,
 		}
 	}
 	log.SetLevel(level)
-	return debug
+	return debug, gcp
+}
+
+// Returns (value, ok)
+func GetXXXTest(sub *pubsub.Subscription) (bool, bool) {
+	m, err := sub.Get("global")
+	if err != nil {
+		log.Infof("GetXXXTest failed %s\n", err)
+		return false, false
+	}
+	gc := cast.CastGlobalConfig(m)
+	return gc.XXXTest, true
 }

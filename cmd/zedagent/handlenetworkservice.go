@@ -86,17 +86,17 @@ func prepareAndPublishLispServiceInfoMsg(ctx *zedagentContext,
 	svcInfo.ServiceType = uint32(status.Type)
 	svcInfo.Activated = status.Activated
 
-	var lispInfo *zmet.ZInfoLisp = nil
 	// XXX When a service instance is deleted it is ideal to send
 	// a flag such as deleted/gone inside ZInfoService message.
 	// Having a separate flag (indicating deletion) make is explicit
 	// and easy for the cloud process.
-	// For now we just send lispInfo as nil to indicate deletion to cloud.
-	if !deleted {
-		lispInfo = new(zmet.ZInfoLisp)
-	}
+	// For now we just send an empty lispInfo to indicate deletion to cloud.
+	// It can't be omitted since protobuf requires something to satisfy
+	// the oneof.
+
+	lispInfo := new(zmet.ZInfoLisp)
 	lispStatus := status.LispInfoStatus
-	if (lispStatus != nil) && (lispInfo != nil) {
+	if lispStatus != nil && !deleted {
 		lispInfo.ItrCryptoPort = lispStatus.ItrCryptoPort
 		lispInfo.EtrNatPort = lispStatus.EtrNatPort
 		for _, intf := range lispStatus.Interfaces {
@@ -237,7 +237,7 @@ func prepareVpnServiceInfoMsg(ctx *zedagentContext, status types.NetworkServiceS
 		x.Vinfo = vpnInfo
 	}
 
-	// prapare the final stuff
+	// prepare the final stuff
 	infoMsg.InfoContent = new(zmet.ZInfoMsg_Sinfo)
 	if x, ok := infoMsg.GetInfoContent().(*zmet.ZInfoMsg_Sinfo); ok {
 		x.Sinfo = svcInfo
@@ -331,14 +331,14 @@ func publishInfoToZedCloud(UUID string, infoMsg *zmet.ZInfoMsg, iteration int) {
 func handleNetworkServiceMetricsModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Infof("handleNetworkServiceMetricsModify(%s)\n", key)
+	log.Debugf("handleNetworkServiceMetricsModify(%s)\n", key)
 	metrics := cast.CastNetworkServiceMetrics(statusArg)
 	if metrics.Key() != key {
 		log.Errorf("handleNetworkServiceMetricsModify key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, metrics.Key(), metrics)
 		return
 	}
-	log.Printf("handleNetworkServiceMetricsModify(%s) done\n", key)
+	log.Debugf("handleNetworkServiceMetricsModify(%s) done\n", key)
 }
 
 func handleNetworkServiceMetricsDelete(ctxArg interface{}, key string,
@@ -578,19 +578,28 @@ func protoEncodeVpnServiceMetric(metrics types.NetworkServiceMetrics,
 		return
 	}
 
-	flowStats := metrics.VpnMetrics
+	stats := metrics.VpnMetrics
 	vpnMetric := new(zmet.ZMetricVpn)
-	vpnMetric.ConnStat.InPkts = new(zmet.PktStat)
-	vpnMetric.ConnStat.OutPkts = new(zmet.PktStat)
-	vpnMetric.ConnStat.InPkts.Packets = flowStats.InPkts.Pkts
-	vpnMetric.ConnStat.InPkts.Bytes = flowStats.InPkts.Bytes
-	vpnMetric.ConnStat.OutPkts.Packets = flowStats.OutPkts.Pkts
-	vpnMetric.ConnStat.OutPkts.Bytes = flowStats.OutPkts.Bytes
+	vpnMetric.ConnStat = protoEncodeVpnServiceStat(stats.DataStat)
+	vpnMetric.NatTStat = protoEncodeVpnServiceStat(stats.NatTStat)
+	vpnMetric.IkeStat = protoEncodeVpnServiceStat(stats.IkeStat)
+	vpnMetric.EspStat = protoEncodeVpnServiceStat(stats.EspStat)
 	serviceMetrics.ServiceContent = new(zmet.ZMetricService_Vpnm)
 	if x, ok := serviceMetrics.GetServiceContent().(*zmet.ZMetricService_Vpnm); ok {
 		x.Vpnm = vpnMetric
 	}
 	protoEncodeVpnServiceFlowMetric(metrics, serviceMetrics)
+}
+
+func protoEncodeVpnServiceStat(stats types.LinkPktStats) *zmet.ZMetricConn {
+	connStat := new(zmet.ZMetricConn)
+	connStat.InPkts = new(zmet.PktStat)
+	connStat.OutPkts = new(zmet.PktStat)
+	connStat.InPkts.Packets = stats.InPkts.Pkts
+	connStat.InPkts.Bytes = stats.InPkts.Bytes
+	connStat.OutPkts.Packets = stats.OutPkts.Pkts
+	connStat.OutPkts.Bytes = stats.OutPkts.Bytes
+	return connStat
 }
 
 func protoEncodeVpnServiceFlowMetric(metrics types.NetworkServiceMetrics,

@@ -60,6 +60,9 @@ func handleNetworkObjectCreate(ctx *zedrouterContext, key string, config types.N
 	}
 	status.PendingAdd = false
 	publishNetworkObjectStatus(ctx, &status)
+	// Hooks for updating dependent objects
+	checkAndRecreateAppNetwork(ctx, config.UUID)
+	checkAndRecreateService(ctx, config.UUID)
 	log.Infof("handleNetworkObjectCreate(%s) done\n", key)
 }
 
@@ -121,6 +124,14 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 	link := &netlink.Bridge{LinkAttrs: attrs}
 	netlink.LinkDel(link)
 
+	// Delete the sister dummy interface also
+	sattrs := netlink.NewLinkAttrs()
+	// "s" for sister
+	dummyIntfName := "s" + bridgeName
+	sattrs.Name = dummyIntfName
+	sLink := &netlink.Dummy{LinkAttrs: sattrs}
+	netlink.LinkDel(sLink)
+
 	//    ip link add ${bridgeName} type bridge
 	attrs = netlink.NewLinkAttrs()
 	attrs.Name = bridgeName
@@ -146,6 +157,67 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 	// Check if we have a bridge service
 	if err := setBridgeIPAddr(ctx, status); err != nil {
 		return err
+	}
+
+	// For the case of Lisp networks, we route all traffic coming from
+	// the bridge to a dummy interface with MTU 1280. This is done to
+	// get bigger packets fragmented and also to have the kernel generate
+	// ICMP packet too big for path MTU discovery before being captured by
+	// lisp dataplane.
+	if config.Type == types.NT_CryptoEID {
+		sattrs = netlink.NewLinkAttrs()
+		sattrs.Name = dummyIntfName
+		slinkMac := fmt.Sprintf("00:16:3e:06:01:%02x", bridgeNum)
+		hw, err = net.ParseMAC(slinkMac)
+		if err != nil {
+			log.Fatal("doNetworkCreate: ParseMAC failed: ", slinkMac, err)
+		}
+		sattrs.HardwareAddr = hw
+		// 1280 gives us a comfortable buffer to encapsulate
+		sattrs.MTU = 1280
+		slink := &netlink.Dummy{LinkAttrs: sattrs}
+		if err := netlink.LinkAdd(slink); err != nil {
+			errStr := fmt.Sprintf("doNetworkCreate: LinkAdd on %s failed: %s",
+				dummyIntfName, err)
+			return errors.New(errStr)
+		}
+
+		// ip link set ${dummy-interface} up
+		if err := netlink.LinkSetUp(slink); err != nil {
+			errStr := fmt.Sprintf("doNetworkCreate: LinkSetUp on %s failed: %s",
+				dummyIntfName, err)
+			return errors.New(errStr)
+		}
+
+		// Turn ARP off on our dummy link
+		if err := netlink.LinkSetARPOff(slink); err != nil {
+			errStr := fmt.Sprintf("doNetworkCreate: LinkSetARPOff on %s failed: %s",
+				dummyIntfName, err)
+			return errors.New(errStr)
+		}
+
+		var destAddr string
+		if status.Ipv4Eid {
+			destAddr = status.Subnet.String()
+		} else {
+			destAddr = "fd00::/8"
+		}
+
+		_, ipnet, err := net.ParseCIDR(destAddr)
+		if err != nil {
+			errStr := fmt.Sprintf("doNetworkCreate: ParseCIDR of %s failed",
+				status.Subnet.String())
+			return errors.New(errStr)
+		}
+		iifIndex := link.Attrs().Index
+		oifIndex := slink.Attrs().Index
+		err = AddOverlayRuleAndRoute(bridgeName, iifIndex, oifIndex, ipnet) 
+		if err != nil {
+			errStr := fmt.Sprintf(
+				"doNetworkCreate: Lisp IP rule and route addition failed for bridge %s: %s",
+				bridgeName, err)
+			return errors.New(errStr)
+		}
 	}
 
 	// XXX mov this before set??
@@ -619,6 +691,21 @@ func doNetworkDelete(ctx *zedrouterContext,
 			}
 		}
 	}
+	
+	// When bridge and sister interfaces are deleted, code in pbr.go
+	// takes care of deleting the corresponding route tables and ip rules.
+	if status.Type == types.NT_CryptoEID {
+
+		// "s" for sister
+		dummyIntfName := "s" + bridgeName
+
+		// Delete the sister dummy interface also
+		sattrs := netlink.NewLinkAttrs()
+		sattrs.Name = dummyIntfName
+		sLink := &netlink.Dummy{LinkAttrs: sattrs}
+		netlink.LinkDel(sLink)
+	}
+
 	attrs := netlink.NewLinkAttrs()
 	attrs.Name = bridgeName
 	link := &netlink.Bridge{LinkAttrs: attrs}

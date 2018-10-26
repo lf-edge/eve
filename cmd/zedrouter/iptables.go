@@ -19,6 +19,12 @@ func iptableCmdOut(dolog bool, args ...string) (string, error) {
 	cmd := "iptables"
 	var out []byte
 	var err error
+	// XXX as long as zedagent also calls iptables we need to
+	// wait for the lock with -w 5
+	args = append(args, "a", "b")
+	copy(args[2:], args[0:])
+	args[0] = "-w"
+	args[1] = "5"
 	if dolog {
 		out, err = wrap.Command(cmd, args...).CombinedOutput()
 	} else {
@@ -42,6 +48,12 @@ func ip6tableCmdOut(dolog bool, args ...string) (string, error) {
 	cmd := "ip6tables"
 	var out []byte
 	var err error
+	// XXX as long as zedagent also calls iptables we need to
+	// wait for the lock with -w 5
+	args = append(args, "a", "b")
+	copy(args[2:], args[0:])
+	args[0] = "-w"
+	args[1] = "5"
 	if dolog {
 		out, err = wrap.Command(cmd, args...).CombinedOutput()
 	} else {

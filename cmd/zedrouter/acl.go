@@ -275,6 +275,10 @@ func applyACLRules(rules IptablesRuleList, bridgeName string, vifName string,
 			"-p", "tcp", "-j", "CHECKSUM", "--checksum-fill")
 		ip6tableCmd("-t", "mangle", "-A", "PREROUTING", "-i", bridgeName,
 			"-p", "udp", "-j", "CHECKSUM", "--checksum-fill")
+		iptableCmd("-t", "mangle", "-A", "PREROUTING", "-i", bridgeName,
+			"-p", "tcp", "-j", "CHECKSUM", "--checksum-fill")
+		iptableCmd("-t", "mangle", "-A", "PREROUTING", "-i", bridgeName,
+			"-p", "udp", "-j", "CHECKSUM", "--checksum-fill")
 	}
 	// XXX isMgmt is painful; related to commenting out eidset accepts
 	// XXX won't need this when zedmanager is in a separate domU
@@ -831,6 +835,11 @@ func deleteACLConfiglet(bridgeName string, vifName string, isMgmt bool,
 	if err != nil {
 		return err
 	}
+	dropRules, err := aclDropRules(bridgeName, vifName)
+	if err != nil {
+		return err
+	}
+	rules = append(rules, dropRules...)
 	for _, rule := range rules {
 		log.Debugf("deleteACLConfiglet: rule %v\n", rule)
 		args := rulePrefix("-D", isMgmt, ipVer, vifName, appIP, rule)

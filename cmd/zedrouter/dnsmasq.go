@@ -65,7 +65,9 @@ func createDnsmasqConfiglet(bridgeName string, bridgeIPAddr string,
 	// Delete if it exists
 	if _, err := os.Stat(cfgPathname); err == nil {
 		if err := os.Remove(cfgPathname); err != nil {
-			log.Errorln(err)
+			errStr := fmt.Sprintf("createDnsmasqConfiglet %v",
+				err)
+			log.Errorln(errStr)
 		}
 	}
 	file, err := os.Create(cfgPathname)
@@ -277,7 +279,8 @@ func removehostDnsmasq(bridgeName string, appMac string, appIPAddr string) {
 			bridgeName, appMac, err)
 	} else {
 		if err := os.Remove(cfgPathname); err != nil {
-			log.Errorln(err)
+			errStr := fmt.Sprintf("removehostDnsmasq %v", err)
+			log.Errorln(errStr)
 		}
 	}
 	if dnsmasqStopStart {
@@ -289,13 +292,18 @@ func deleteDnsmasqConfiglet(bridgeName string) {
 
 	log.Debugf("deleteDnsmasqConfiglet(%s)\n", bridgeName)
 	cfgPathname := dnsmasqConfigPath(bridgeName)
-	if err := os.Remove(cfgPathname); err != nil {
-		log.Errorln(err)
+	if _, err := os.Stat(cfgPathname); err == nil {
+		if err := os.Remove(cfgPathname); err != nil {
+			errStr := fmt.Sprintf("deleteDnsmasqConfiglet %v",
+				err)
+			log.Errorln(errStr)
+		}
 	}
 	dhcphostsDir := dnsmasqDhcpHostDir(bridgeName)
 	ensureDir(dhcphostsDir)
 	if err := RemoveDirContent(dhcphostsDir); err != nil {
-		log.Errorln(err)
+		errStr := fmt.Sprintf("deleteDnsmasqConfiglet %v", err)
+		log.Errorln(errStr)
 	}
 }
 

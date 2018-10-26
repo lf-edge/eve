@@ -59,7 +59,8 @@ type BaseOsStatus struct {
 
 	// Mininum state across all steps/StorageStatus.
 	// Error* set implies error.
-	State SwState
+	State            SwState
+	MissingDatastore bool // If some DatastoreId not found
 	// error strings across all steps/StorageStatus
 	Error     string
 	ErrorTime time.Time
@@ -125,7 +126,8 @@ type CertObjStatus struct {
 	StorageStatusList []StorageStatus
 	// Mininum state across all steps/ StorageStatus.
 	// Error* set implies error.
-	State SwState
+	State            SwState
+	MissingDatastore bool // If some DatastoreId not found
 	// error strings across all steps/StorageStatus
 	Error     string
 	ErrorTime time.Time
@@ -159,11 +161,12 @@ func (status CertObjStatus) CheckPendingDelete() bool {
 
 // return value holder
 type RetStatus struct {
-	Changed         bool
-	MinState        SwState
-	WaitingForCerts bool
-	AllErrors       string
-	ErrorTime       time.Time
+	Changed          bool
+	MinState         SwState
+	WaitingForCerts  bool
+	MissingDatastore bool
+	AllErrors        string
+	ErrorTime        time.Time
 }
 
 // Mirrors proto definition for ConfigItem

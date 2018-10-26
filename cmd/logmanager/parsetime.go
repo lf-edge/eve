@@ -66,7 +66,7 @@ func parseTime(ts string) (time.Time, bool) {
 		ts = ts2[0] + "Z"
 	} else {
 		li := strings.LastIndex(ts, "-")
-		if li != 0 {
+		if li != -1 {
 			ts = ts[:li] + "Z"
 		}
 	}

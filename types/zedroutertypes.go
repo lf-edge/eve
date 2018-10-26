@@ -71,6 +71,7 @@ type AppNetworkStatus struct {
 	SeparateDataPlane   bool
 	OverlayNetworkList  []OverlayNetworkStatus
 	UnderlayNetworkList []UnderlayNetworkStatus
+	MissingNetwork      bool // If any Missing flag is set in the networks
 	// Any errros from provisioning the network
 	Error     string
 	ErrorTime time.Time
@@ -437,6 +438,7 @@ type OverlayNetworkStatus struct {
 	BridgeMac    net.HardwareAddr
 	BridgeIPAddr string // The address for DNS/DHCP service in zedrouter
 	HostName     string
+	// XXX MissingNetwork bool // If Network UUID not found
 }
 
 type DhcpType uint8
@@ -463,6 +465,7 @@ type UnderlayNetworkStatus struct {
 	BridgeIPAddr   string // The address for DNS/DHCP service in zedrouter
 	AssignedIPAddr string // Assigned to domU
 	HostName       string
+	// XXX MissingNetwork bool // If Network UUID not found
 }
 
 type NetworkType uint8
@@ -579,6 +582,8 @@ type NetworkServiceStatus struct {
 	LispStatus    ServiceLispConfig
 	AdapterList   []string  // Recorded at time of activate
 	Subnet        net.IPNet // Recorded at time of activate
+
+	MissingNetwork bool // If AppLink UUID not found
 	// Any errrors from provisioning the service
 	Error          string
 	ErrorTime      time.Time
@@ -697,6 +702,7 @@ type AdditionalInfoApp struct {
 type StrongSwanServiceConfig struct {
 	VpnRole          string
 	PolicyBased      bool
+	IsClient         bool
 	VpnGatewayIpAddr string
 	VpnSubnetBlock   string
 	VpnLocalIpAddr   string
@@ -710,6 +716,7 @@ type StrongSwanServiceConfig struct {
 type VpnServiceConfig struct {
 	VpnRole          string
 	PolicyBased      bool
+	IsClient         bool
 	UpLinkConfig     NetLinkConfig
 	AppLinkConfig    NetLinkConfig
 	GatewayConfig    NetLinkConfig
@@ -910,13 +917,12 @@ type VpnConnMetrics struct {
 }
 
 type VpnMetrics struct {
-	UpTime         time.Time // service start time stamp
-	InPkts         PktStats
-	OutPkts        PktStats
-	IkePkts        LinkPktStats
-	NatPkts        LinkPktStats
-	EspPkts        LinkPktStats
-	ErrPkts        LinkPktStats
-	CarrierErrPkts LinkPktStats
-	VpnConns       []*VpnConnMetrics
+	UpTime     time.Time // service start time stamp
+	DataStat   LinkPktStats
+	IkeStat    LinkPktStats
+	NatTStat   LinkPktStats
+	EspStat    LinkPktStats
+	ErrStat    LinkPktStats
+	PhyErrStat LinkPktStats
+	VpnConns   []*VpnConnMetrics
 }

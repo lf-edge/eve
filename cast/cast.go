@@ -356,7 +356,7 @@ func CastLispInfoStatus(in interface{}) types.LispInfoStatus {
 	}
 	var output types.LispInfoStatus
 	if err := json.Unmarshal(b, &output); err != nil {
-		log.Fatal(err, "json Unmarshal in CastLispInfoStatus")
+		log.Error(err, "json Unmarshal in CastLispInfoStatus")
 	}
 	return output
 }
@@ -383,6 +383,18 @@ func CastGlobalConfig(in interface{}) types.GlobalConfig {
 	if err := json.Unmarshal(b, &output); err != nil {
 		// File can be edited by hand. Don't Fatal
 		log.Error(err, "json Unmarshal in CastGlobalConfig")
+	}
+	return output
+}
+
+func CastImageStatus(in interface{}) types.ImageStatus {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastImageStatus")
+	}
+	var output types.ImageStatus
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "json Unmarshal in CastImageStatus")
 	}
 	return output
 }

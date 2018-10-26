@@ -54,12 +54,13 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 	}
 
 	dc := types.DomainConfig{
-		UUIDandVersion: aiConfig.UUIDandVersion,
-		DisplayName:    aiConfig.DisplayName,
-		Activate:       aiConfig.Activate,
-		AppNum:         AppNum,
-		VmConfig:       aiConfig.FixedResources,
-		IoAdapterList:  aiConfig.IoAdapterList,
+		UUIDandVersion:    aiConfig.UUIDandVersion,
+		DisplayName:       aiConfig.DisplayName,
+		Activate:          aiConfig.Activate,
+		AppNum:            AppNum,
+		VmConfig:          aiConfig.FixedResources,
+		IoAdapterList:     aiConfig.IoAdapterList,
+		CloudInitUserData: aiConfig.CloudInitUserData,
 	}
 
 	// Determine number of "disk" targets in list
@@ -88,6 +89,7 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 			disk.ReadOnly = sc.ReadOnly
 			disk.Preserve = sc.Preserve
 			disk.Format = sc.Format
+			disk.Maxsizebytes = sc.Maxsizebytes
 			disk.Devtype = sc.Devtype
 			i++
 		case "kernel":
@@ -198,13 +200,8 @@ func handleDomainStatusModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleDomainStatusModify for %s\n", key)
-	// Ignore if any Pending* flag is set
-	// XXX should we record DomainStatus.State even if Pending?
-	if status.Pending() {
-		log.Infof("handleDomainstatusModify skipped due to Pending* for %s\n",
-			key)
-		return
-	}
+	// Record DomainStatus.State even if Pending() to capture HALTING
+
 	updateAIStatusUUID(ctx, status.Key())
 	log.Infof("handleDomainStatusModify done for %s\n", key)
 }

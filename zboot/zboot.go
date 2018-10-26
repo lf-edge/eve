@@ -18,7 +18,7 @@ import (
 )
 
 // mutex for zboot/dd APIs
-// XXX not useful since this can be invoked by different agents
+// XXX not bullet proof since this can be invoked by different agents/processes
 var zbootMutex *sync.Mutex
 
 func init() {
@@ -34,10 +34,10 @@ func Reset() {
 		log.Infof("no zboot; can't do reset\n")
 		return
 	}
-	zbootMutex.Lock() // we are going to reboot
 	rebootCmd := exec.Command("zboot", "reset")
-	zbootMutex.Unlock()
+	zbootMutex.Lock() // we are going to reboot
 	_, err := rebootCmd.Output()
+	zbootMutex.Unlock()
 	if err != nil {
 		log.Fatalf("zboot reset: err %v\n", err)
 	}
@@ -48,24 +48,33 @@ func WatchdogOK() {
 	if !IsAvailable() {
 		return
 	}
-	zbootMutex.Lock()
 	watchDogCmd := exec.Command("zboot", "watchdog")
-	zbootMutex.Unlock()
+	zbootMutex.Lock()
 	_, err := watchDogCmd.Output()
+	zbootMutex.Unlock()
 	if err != nil {
 		log.Fatalf("zboot watchdog: err %v\n", err)
 	}
 }
+
+// Cache since it never changes on a running system
+// XXX lsblk seems to hang in kernel so avoid calling zboot curpart more
+// than once per process.
+var currentPartition string
 
 // partition routines
 func GetCurrentPartition() string {
 	if !IsAvailable() {
 		return "IMGA"
 	}
-	zbootMutex.Lock()
+	if currentPartition != "" {
+		return currentPartition
+	}
+	log.Debugf("calling zboot curpart - not in cache\n")
 	curPartCmd := exec.Command("zboot", "curpart")
-	zbootMutex.Unlock()
+	zbootMutex.Lock()
 	ret, err := curPartCmd.Output()
+	zbootMutex.Unlock()
 	if err != nil {
 		log.Fatalf("zboot curpart: err %v\n", err)
 	}
@@ -73,6 +82,7 @@ func GetCurrentPartition() string {
 	partName := string(ret)
 	partName = strings.TrimSpace(partName)
 	validatePartitionName(partName)
+	currentPartition = partName
 	return partName
 }
 
@@ -132,10 +142,10 @@ func GetPartitionState(partName string) string {
 			return "unused"
 		}
 	}
-	zbootMutex.Lock()
 	partStateCmd := exec.Command("zboot", "partstate", partName)
-	zbootMutex.Unlock()
+	zbootMutex.Lock()
 	ret, err := partStateCmd.Output()
+	zbootMutex.Unlock()
 	if err != nil {
 		log.Fatalf("zboot partstate %s: err %v\n", partName, err)
 	}
@@ -160,31 +170,42 @@ func setPartitionState(partName string, partState string) {
 	validatePartitionName(partName)
 	validatePartitionState(partState)
 
-	zbootMutex.Lock()
 	setPartStateCmd := exec.Command("zboot", "set_partstate",
 		partName, partState)
+	zbootMutex.Lock()
+	_, err := setPartStateCmd.Output()
 	zbootMutex.Unlock()
-	if _, err := setPartStateCmd.Output(); err != nil {
+	if err != nil {
 		log.Fatalf("zboot set_partstate %s %s: err %v\n",
 			partName, partState, err)
 	}
 }
+
+// Cache - doesn't change in running system
+var partDev = make(map[string]string)
 
 func GetPartitionDevname(partName string) string {
 	validatePartitionName(partName)
 	if !IsAvailable() {
 		return ""
 	}
-	zbootMutex.Lock()
+	dev, ok := partDev[partName]
+	if ok {
+		return dev
+	}
+	log.Debugf("calling zboot partdev %s - not in cache\n", partName)
+
 	getPartDevCmd := exec.Command("zboot", "partdev", partName)
-	zbootMutex.Unlock()
+	zbootMutex.Lock()
 	ret, err := getPartDevCmd.Output()
+	zbootMutex.Unlock()
 	if err != nil {
 		log.Fatalf("zboot partdev %s: err %v\n", partName, err)
 	}
 
 	devName := string(ret)
 	devName = strings.TrimSpace(devName)
+	partDev[partName] = devName
 	return devName
 }
 
@@ -299,10 +320,11 @@ func WriteToPartition(srcFilename string, partName string) error {
 
 	log.Infof("WriteToPartition %s, %s: %v\n", partName, devName, srcFilename)
 
-	zbootMutex.Lock()
 	ddCmd := exec.Command("dd", "if="+srcFilename, "of="+devName, "bs=8M")
+	zbootMutex.Lock()
+	_, err := ddCmd.Output()
 	zbootMutex.Unlock()
-	if _, err := ddCmd.Output(); err != nil {
+	if err != nil {
 		errStr := fmt.Sprintf("WriteToPartition %s failed %v\n", partName, err)
 		log.Fatal(errStr)
 		return err
@@ -353,7 +375,8 @@ func GetLongVersion(part string) string {
 	return ""
 }
 
-// XXX explore a loopback mount!
+// XXX explore a loopback mount to be able to read version
+// from a downloaded image file
 func getVersion(part string, verFilename string) string {
 	validatePartitionName(part)
 

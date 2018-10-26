@@ -63,6 +63,9 @@ cp $TMPDIR/watchdogled.conf $TMPDIR/watchdogall.conf
 for AGENT in $AGENTS; do
     echo "pidfile = /var/run/$AGENT.pid" >>$TMPDIR/watchdogall.conf
 done
+# XXX Apply for all agents?
+echo "file = /var/run/zedagent.touch" >>$TMPDIR/watchdogall.conf
+echo "change = 600" >>$TMPDIR/watchdogall.conf
 
 # If watchdog was running we restart it in a way where it will
 # no fail due to killing the agents below.

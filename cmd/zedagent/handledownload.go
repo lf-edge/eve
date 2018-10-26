@@ -93,17 +93,59 @@ func updateDownloaderStatus(ctx *zedagentContext,
 
 	// Update Progress counter even if Pending
 
+	switch status.ObjType {
+	case baseOsObj, certObj:
+		// break
+	case appImgObj:
+		// We subscribe to get metrics about disk usage
+		log.Debugf("updateDownloaderStatus for %s, ignoring objType %s\n",
+			key, objType)
+		return
+	default:
+		log.Errorf("updateDownloaderStatus for %s, unsupported objType %s\n",
+			key, objType)
+		return
+	}
+	// We handle two special cases in the handshake here
+	// 1. downloader added a status with RefCount=0 based on
+	// an existing file. We echo that with a config with RefCount=0
+	// 2. downloader set Expired in status when garbage collecting.
+	// If we have no RefCount we delete the config.
+
+	config := lookupDownloaderConfig(ctx, status.ObjType, status.Key())
+	if config == nil && status.RefCount == 0 {
+		log.Infof("updateDownloaderStatus adding RefCount=0 config %s\n",
+			key)
+		n := types.DownloaderConfig{
+			Safename:    status.Safename,
+			DownloadURL: status.DownloadURL,
+			// XXX TransportMethod: status.TransportMethod,
+			// ApiKey:          status.ApiKey,
+			// Password:        status.Password,
+			// Dpath:           status.Dpath,
+			// Region:          status.Region,
+			UseFreeUplinks: status.UseFreeUplinks,
+			Size:           status.Size,
+			ImageSha256:    status.ImageSha256,
+			RefCount:       0,
+		}
+		publishDownloaderConfig(ctx, status.ObjType, &n)
+		return
+	}
+	if config != nil && config.RefCount == 0 && status.Expired {
+		log.Infof("updateDownloaderStatus expired - deleting config %s\n",
+			key)
+		unpublishDownloaderConfig(ctx, status.ObjType, config)
+		return
+	}
+
+	// Normal update work
 	switch objType {
 	case baseOsObj:
 		baseOsHandleStatusUpdateSafename(ctx, status.Safename)
 
 	case certObj:
 		certObjHandleStatusUpdateSafename(ctx, status.Safename)
-
-	default:
-		log.Errorf("updateDownloaderStatus for %s, unsupported objType <%s>\n",
-			key, objType)
-		return
 	}
 	log.Infof("updateDownloaderStatus(%s/%s) done\n",
 		objType, key)
@@ -120,15 +162,14 @@ func removeDownloaderConfig(ctx *zedagentContext, objType string, safename strin
 			objType, safename)
 		return
 	}
-
-	if config.RefCount > 1 {
-		config.RefCount -= 1
-		log.Infof("removeDownloaderConfig(%s/%s) decrementing refCount to %d\n",
+	config.RefCount -= 1
+	if config.RefCount < 0 {
+		log.Fatalf("removeDownloaderConfig(%s/%s): negative RefCount %d\n",
 			objType, safename, config.RefCount)
-		publishDownloaderConfig(ctx, objType, config)
-		return
 	}
-	unpublishDownloaderConfig(ctx, objType, config)
+	log.Infof("removeDownloaderConfig(%s/%s) decrementing refCount to %d\n",
+		objType, safename, config.RefCount)
+	publishDownloaderConfig(ctx, objType, config)
 	log.Infof("removeDownloaderConfig(%s/%s) done\n", objType, safename)
 }
 
@@ -163,6 +204,7 @@ func checkStorageDownloadStatus(ctx *zedagentContext, objType string,
 	ret.AllErrors = ""
 	ret.MinState = types.MAXSTATE
 	ret.WaitingForCerts = false
+	ret.MissingDatastore = false
 
 	for i, sc := range config {
 
@@ -183,7 +225,7 @@ func checkStorageDownloadStatus(ctx *zedagentContext, objType string,
 		// Sanity check that length isn't zero
 		// XXX other sanity checks?
 		// Only meaningful for certObj
-		if ss.FinalObjDir != "" {
+		if objType == certObj && ss.FinalObjDir != "" {
 			dstFilename := ss.FinalObjDir + "/" + types.SafenameToFilename(safename)
 			st, err := os.Stat(dstFilename)
 			if err == nil && st.Size() != 0 {
@@ -223,6 +265,7 @@ func checkStorageDownloadStatus(ctx *zedagentContext, objType string,
 					log.Infof("checkStorageDownloadStatus(%s) from vs set ss.State %d\n",
 						safename, vs.State)
 					ss.State = vs.State
+					ss.Progress = 100
 					ret.Changed = true
 				}
 				continue
@@ -234,6 +277,9 @@ func checkStorageDownloadStatus(ctx *zedagentContext, objType string,
 			dst, err := lookupDatastoreConfig(ctx, sc.DatastoreId,
 				sc.Name)
 			if err != nil {
+				// Remember to check when Datastores are added
+				ss.MissingDatastore = true
+				ret.MissingDatastore = true
 				ss.Error = fmt.Sprintf("%v", err)
 				ret.AllErrors = appendError(ret.AllErrors, "datastore",
 					ss.Error)
@@ -242,6 +288,7 @@ func checkStorageDownloadStatus(ctx *zedagentContext, objType string,
 				ret.Changed = true
 				continue
 			}
+			ss.MissingDatastore = false
 			createDownloaderConfig(ctx, objType, safename, &sc, dst)
 			ss.HasDownloaderRef = true
 			ret.Changed = true
@@ -312,7 +359,9 @@ func checkStorageDownloadStatus(ctx *zedagentContext, objType string,
 	}
 
 	if ret.MinState == types.MAXSTATE {
+		// No StorageStatus
 		ret.MinState = types.DOWNLOADED
+		ret.Changed = true
 	}
 
 	return ret
@@ -341,13 +390,13 @@ func lookupDatastoreConfig(ctx *zedagentContext,
 }
 
 func installDownloadedObjects(objType string, uuidStr string,
-	status []types.StorageStatus) bool {
+	status *[]types.StorageStatus) bool {
 
 	ret := true
 	log.Infof("installDownloadedObjects(%s)\n", uuidStr)
 
-	for i, _ := range status {
-		ss := &status[i]
+	for i, _ := range *status {
+		ss := &(*status)[i]
 
 		safename := types.UrlToSafename(ss.Name, ss.ImageSha256)
 
@@ -372,7 +421,8 @@ func installDownloadedObject(objType string, safename string,
 	var ret error
 	var srcFilename string = objectDownloadDirname + "/" + objType
 
-	log.Infof("installDownloadedObject(%s/%s, %v)\n", objType, safename, status.State)
+	log.Infof("installDownloadedObject(%s/%s, %v)\n",
+		objType, safename, status.State)
 
 	// if the object is in downloaded state,
 	// pick from pending directory
@@ -426,7 +476,7 @@ func installDownloadedObject(objType string, safename string,
 			errStr := fmt.Sprintf("installDownloadedObject %s, Unsupported Object Type %v",
 				safename, objType)
 			log.Errorln(errStr)
-			ret = errors.New(status.Error)
+			ret = errors.New(errStr)
 		}
 	} else {
 		errStr := fmt.Sprintf("installDownloadedObject %s, final dir not set %v\n", safename, objType)
