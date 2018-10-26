@@ -11,6 +11,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/types"
+	"io/ioutil"
 	"net"
 	"os"
 	"os/exec"
@@ -291,12 +292,27 @@ func deleteDnsmasqConfiglet(bridgeName string) {
 	if err := os.Remove(cfgPathname); err != nil {
 		log.Errorln(err)
 	}
-	// XXX should we just delete the files in the directory?
 	dhcphostsDir := dnsmasqDhcpHostDir(bridgeName)
-	if err := os.RemoveAll(dhcphostsDir); err != nil {
+	ensureDir(dhcphostsDir)
+	if err := RemoveDirContent(dhcphostsDir); err != nil {
 		log.Errorln(err)
 	}
-	// XXX also delete hostsDir?
+}
+
+func RemoveDirContent(dir string) error {
+	files, err := ioutil.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, file := range files {
+		filename := dir + "/" + file.Name()
+		log.Infoln("RemoveDirConent found ", filename)
+		err = os.RemoveAll(filename)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Run this:

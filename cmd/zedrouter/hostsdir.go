@@ -155,7 +155,7 @@ func deleteHostsConfiglet(cfgDirname string, printOnError bool) {
 
 	log.Infof("deleteHostsConfiglet: dir %s\n", cfgDirname)
 	ensureDir(cfgDirname)
-	err := os.RemoveAll(cfgDirname)
+	err := RemoveDirContent(cfgDirname)
 	if err != nil && printOnError {
 		log.Errorln("deleteHostsConfiglet: ", err)
 	}
