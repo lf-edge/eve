@@ -6,6 +6,7 @@
 package zedrouter
 
 import (
+	"bufio"
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/agentlog"
@@ -13,6 +14,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"time"
 )
 
 const dnsmasqStatic = `
@@ -299,6 +301,9 @@ func startDnsmasq(bridgeName string) {
 	if err != nil {
 		log.Fatalf("startDnsmasq agentlog failed: %s\n", err)
 	}
+	w := bufio.NewWriter(logf)
+	ts := time.Now().Format(time.RFC3339Nano)
+	fmt.Fprintf(w, "%s Starting %s %v\n", ts, name, args)
 	cmd := exec.Command(name, args...)
 	cmd.Stderr = logf
 	log.Debugf("Calling command %s %v\n", name, args)
