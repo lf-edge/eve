@@ -211,7 +211,7 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 		}
 		iifIndex := link.Attrs().Index
 		oifIndex := slink.Attrs().Index
-		err = AddOverlayRuleAndRoute(bridgeName, iifIndex, oifIndex, ipnet) 
+		err = AddOverlayRuleAndRoute(bridgeName, iifIndex, oifIndex, ipnet)
 		if err != nil {
 			errStr := fmt.Sprintf(
 				"doNetworkCreate: Lisp IP rule and route addition failed for bridge %s: %s",
@@ -691,7 +691,7 @@ func doNetworkDelete(ctx *zedrouterContext,
 			}
 		}
 	}
-	
+
 	// When bridge and sister interfaces are deleted, code in pbr.go
 	// takes care of deleting the corresponding route tables and ip rules.
 	if status.Type == types.NT_CryptoEID {
