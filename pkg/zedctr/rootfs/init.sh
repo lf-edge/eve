@@ -25,4 +25,4 @@ if [ -f /opt/zededa/bin/device-steps.sh ]; then
     /opt/zededa/bin/device-steps.sh -w >/var/log/device-steps.log 2>&1
 fi
 
-tail -f /var/log/*.log
+tail -f /dev/null /var/log/*.log

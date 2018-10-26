@@ -78,7 +78,7 @@ build-pkgs: build-tools
 # Finally, we only forcefully rebuild the zedctr IF either docker pull brught a new image or ZTOOLS_TAG was given 
 zedctr-workaround:
 	@if [ -z "$$ZTOOLS_TAG" ]; then \
-	  docker pull `bash -c "./parse-pkgs.sh <(echo ZTOOLS_TAG)"` | tee /dev/tty | grep -q 'Downloaded newer image' ;\
+	  docker pull `bash -c "./parse-pkgs.sh <(echo ZTOOLS_TAG)"` | tee /dev/tty | grep -Eq 'Downloaded newer image|zededa/debug' ;\
 	else \
 	  date +%s > pkg/zedctr/trigger ;\
         fi ; if [ $$? -eq 0 ]; then \

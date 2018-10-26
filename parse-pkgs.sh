@@ -24,8 +24,8 @@ plugin_tag() {
   if (docker inspect "$1" || docker pull "$1") > /dev/null 2>&1 ; then
     echo $1
   else
-    echo "WARNING: couldn't fetch $1 plugin - disabling it in the final build" >&2
-    echo scratch
+    echo "WARNING: couldn't fetch $1 plugin - disabling it in the final build (enabling debugging)" >&2
+    echo $(linuxkit_tag pkg/debug)$ARCH
   fi
 }
 

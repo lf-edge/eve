@@ -13,6 +13,11 @@ locally installed, but it also means your first build time will be much longer.
 
 If you're on MacOS the following steps should get you all the dependencies:
 
+  0. Get Go:
+
+  ```
+  https://golang.org/dl/
+  ```
   1. Get Docker:
 
   ```
@@ -29,6 +34,18 @@ If you're on MacOS the following steps should get you all the dependencies:
   $ brew install qemu
   ```
 
+Make sure that Docker is up and running on your system. On MacOS just start a docker Application, on Linux make sure docker service is running. Regardless of how you start Docker you can make sure that it is ready for you by running the following command and making sure that it returns both a version of the client AND a version of the server:
+
+```
+docker version
+```
+
+zenbuild requires beeing built in Git repository (the tools keep looking up git commit IDs). The easiest way is to clone zenbuild repository from GitHub:
+```
+git clone https://github.com/zededa/zenbuild.git
+cd zenbuild
+```
+
 Build both the build-tools as well as the fallback image in the source directory:
 
 ```
@@ -43,7 +60,12 @@ hub. mkimage-raw-efi in particular will be built.
 
 Also, keep in mind that since the initial build fetches a LOT of bits
 over the network it may occasionally time out and fail. Typically
-re-running make fixes the issue.
+re-running make fixes the issue. If it doesn't you can attempt a local
+build of all the required zenbuild packages first by running:
+
+```
+make pkgs
+```
 
 Finally run the resulting image by typing `make run`. This will launch
 qemu with some default assumptions. Make sure to wait for the GRUB menu
