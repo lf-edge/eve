@@ -795,9 +795,10 @@ type Subscription struct {
 	km         keyMap
 	userCtx    interface{}
 	sock       net.Conn // For socket subscriptions
-	// Handle special case of file only info
-	subscribeFromDir bool
+
+	subscribeFromDir bool // Handle special case of file only info
 	dirName          string
+	persistent       bool
 }
 
 func (sub *Subscription) nameString() string {
@@ -821,17 +822,24 @@ func (sub *Subscription) nameString() string {
 func Subscribe(agentName string, topicType interface{}, activate bool,
 	ctx interface{}) (*Subscription, error) {
 
-	return subscribeImpl(agentName, "", topicType, activate, ctx)
+	return subscribeImpl(agentName, "", topicType, activate, ctx, false)
 }
 
 func SubscribeScope(agentName string, agentScope string, topicType interface{},
 	activate bool, ctx interface{}) (*Subscription, error) {
 
-	return subscribeImpl(agentName, agentScope, topicType, activate, ctx)
+	return subscribeImpl(agentName, agentScope, topicType, activate, ctx,
+		false)
+}
+
+func SubscribePersistent(agentName string, topicType interface{}, activate bool,
+	ctx interface{}) (*Subscription, error) {
+
+	return subscribeImpl(agentName, "", topicType, activate, ctx, true)
 }
 
 func subscribeImpl(agentName string, agentScope string, topicType interface{},
-	activate bool, ctx interface{}) (*Subscription, error) {
+	activate bool, ctx interface{}, persistent bool) (*Subscription, error) {
 
 	topic := TypeToName(topicType)
 	changes := make(chan string)
@@ -844,6 +852,7 @@ func subscribeImpl(agentName string, agentScope string, topicType interface{},
 	sub.topic = topic
 	sub.userCtx = ctx
 	sub.km = keyMap{key: NewLockedStringMap()}
+	sub.persistent = persistent
 	name := sub.nameString()
 
 	// Special case for files in /var/tmp/zededa/ and also
@@ -855,6 +864,9 @@ func subscribeImpl(agentName string, agentScope string, topicType interface{},
 	} else if agentName == "zedclient" {
 		sub.subscribeFromDir = true
 		sub.dirName = PubDirName(name)
+	} else if persistent {
+		sub.subscribeFromDir = true
+		sub.dirName = PersistentDirName(name)
 	} else {
 		sub.subscribeFromDir = subscribeFromDir
 		sub.dirName = PubDirName(name)
