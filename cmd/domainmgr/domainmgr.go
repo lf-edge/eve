@@ -556,7 +556,7 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 		publishDomainStatus(ctx, status)
 	} else {
 		if !status.Activated {
-			log.Errorf("verifyDomain(%s) domain came back alive; id  %d\n",
+			log.Warnf("verifyDomain(%s) domain came back alive; id  %d\n",
 				status.Key(), domainId)
 			status.LastErr = ""
 			status.LastErrTime = time.Time{}
@@ -565,7 +565,7 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 			status.State = types.RUNNING
 			publishDomainStatus(ctx, status)
 		} else if domainId != status.DomainId {
-			log.Errorf("verifyDomain(%s) domainId changed from %d to %d\n",
+			log.Warnf("verifyDomain(%s) domainId changed from %d to %d\n",
 				status.Key(), status.DomainId, domainId)
 			status.DomainId = domainId
 			publishDomainStatus(ctx, status)
