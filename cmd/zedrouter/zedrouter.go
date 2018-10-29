@@ -62,6 +62,7 @@ type zedrouterContext struct {
 	devicenetwork.DeviceNetworkContext
 	ready           bool
 	subGlobalConfig *pubsub.Subscription
+	pubUuidToNum    *pubsub.Publication
 }
 
 var debug = false
@@ -104,6 +105,13 @@ func Run() {
 			log.Fatal(err)
 		}
 	}
+
+	pubUuidToNum, err := pubsub.PublishPersistent(agentName,
+		types.UuidToNum{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	pubUuidToNum.ClearRestarted()
 
 	pubDeviceNetworkStatus, err := pubsub.Publish(agentName,
 		types.DeviceNetworkStatus{})
@@ -160,6 +168,7 @@ func Run() {
 	zedrouterCtx.DeviceNetworkStatus = &types.DeviceNetworkStatus{}
 	zedrouterCtx.PubDeviceUplinkConfig = pubDeviceUplinkConfig
 	zedrouterCtx.PubDeviceNetworkStatus = pubDeviceNetworkStatus
+	zedrouterCtx.pubUuidToNum = pubUuidToNum
 
 	// Create publish before subscribing and activating subscriptions
 	// Also need to do this before we wait for IP addresses since
@@ -201,8 +210,8 @@ func Run() {
 	}
 	zedrouterCtx.pubNetworkServiceMetrics = pubNetworkServiceMetrics
 
-	appNumAllocatorInit(pubAppNetworkStatus)
-	bridgeNumAllocatorInit(pubNetworkObjectStatus)
+	appNumAllocatorInit(&zedrouterCtx)
+	bridgeNumAllocatorInit(&zedrouterCtx)
 
 	// Get the initial DeviceNetworkConfig
 	// Subscribe from "" means /var/tmp/zededa/
@@ -998,7 +1007,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 
 	// Pick a local number to identify the application instance
 	// Used for IP addresses as well bridge and file names.
-	appNum := appNumAllocate(config.UUIDandVersion.UUID,
+	appNum := appNumAllocate(ctx, config.UUIDandVersion.UUID,
 		config.IsZedmanager)
 
 	// Start by marking with PendingAdd
@@ -2147,7 +2156,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 		// Write out what we modified to AppNetworkStatus aka delete
 		unpublishAppNetworkStatus(ctx, status)
 
-		appNumFree(status.UUIDandVersion.UUID)
+		appNumFree(ctx, status.UUIDandVersion.UUID)
 		log.Infof("handleDelete done for %s\n", status.DisplayName)
 		return
 	}
@@ -2326,7 +2335,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 	// Write out what we modified to AppNetworkStatus aka delete
 	unpublishAppNetworkStatus(ctx, status)
 
-	appNumFree(status.UUIDandVersion.UUID)
+	appNumFree(ctx, status.UUIDandVersion.UUID)
 	log.Infof("handleDelete done for %s\n", status.DisplayName)
 }
 

@@ -10,11 +10,9 @@
 package zedrouter
 
 import (
-	"fmt"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/cast"
-	"github.com/zededa/go-provision/pubsub"
 )
 
 // The allocated numbers
@@ -26,13 +24,41 @@ var ReservedBridgeNum map[uuid.UUID]int
 var AllocReservedBridgeNums Bitmap
 
 // Read the existing bridgeNums out of what we published/checkpointed.
+// Also read what we have persisted before a reboot
 // Store in reserved map since we will be asked to allocate them later.
 // Set bit in bitmap.
-func bridgeNumAllocatorInit(pubNetworkObjectStatus *pubsub.Publication) {
+func bridgeNumAllocatorInit(ctx *zedrouterContext) {
+
+	pubNetworkObjectStatus := ctx.pubNetworkObjectStatus
+	pubUuidToNum := ctx.pubUuidToNum
 	AllocatedBridgeNum = make(map[uuid.UUID]int)
 	ReservedBridgeNum = make(map[uuid.UUID]int)
 
-	items := pubNetworkObjectStatus.GetAll()
+	items := pubUuidToNum.GetAll()
+	for key, st := range items {
+		status := cast.CastUuidToNum(st)
+		if status.Key() != key {
+			log.Errorf("bridgeNumAllocatorInit key/UUID mismatch %s vs %s; ignored %+v\n",
+				key, status.Key(), status)
+			continue
+		}
+		log.Infof("bridgeNumAllocatorInit found %v\n", status)
+		bridgeNum := status.Number
+		uuid := status.UUID
+		// If we have a config for the UUID we should mark it as
+		// allocated; otherwise mark it as reserved.
+		// XXX however, on startup we are not likely to have any
+		// config yet.
+		if AllocReservedBridgeNums.IsSet(bridgeNum) {
+			log.Errorf("AllocReservedBridgeNums already set for %d\n",
+				bridgeNum)
+			continue
+		}
+		log.Infof("Reserving bridgeNum %d for %s\n", bridgeNum, uuid)
+		ReservedBridgeNum[uuid] = bridgeNum
+		AllocReservedBridgeNums.Set(bridgeNum)
+	}
+	items = pubNetworkObjectStatus.GetAll()
 	for key, st := range items {
 		status := cast.CastNetworkObjectStatus(st)
 		if status.Key() != key {
@@ -47,24 +73,28 @@ func bridgeNumAllocatorInit(pubNetworkObjectStatus *pubsub.Publication) {
 		// allocated; otherwise mark it as reserved.
 		// XXX however, on startup we are not likely to have any
 		// config yet.
+		if AllocReservedBridgeNums.IsSet(bridgeNum) {
+			log.Errorf("AllocReservedBridgeNums already set for %d\n",
+				bridgeNum)
+			continue
+		}
 		log.Infof("Reserving bridgeNum %d for %s\n", bridgeNum, uuid)
 		ReservedBridgeNum[uuid] = bridgeNum
-		if AllocReservedBridgeNums.IsSet(bridgeNum) {
-			panic(fmt.Sprintf("AllocReservedBridgeNums already set for %d\n",
-				bridgeNum))
-		}
 		AllocReservedBridgeNums.Set(bridgeNum)
 	}
 }
 
-func bridgeNumAllocate(uuid uuid.UUID) int {
+func bridgeNumAllocate(ctx *zedrouterContext, uuid uuid.UUID) int {
+
 	// Do we already have a number?
 	bridgeNum, ok := AllocatedBridgeNum[uuid]
 	if ok {
 		log.Infof("Found allocated bridgeNum %d for %s\n", bridgeNum, uuid)
 		if !AllocReservedBridgeNums.IsSet(bridgeNum) {
-			panic(fmt.Sprintf("AllocReservedBridgeNums not set for %d\n", bridgeNum))
+			log.Fatalf("AllocReservedBridgeNums not set for %d\n",
+				bridgeNum)
 		}
+		UuidToNumUpdate(ctx, uuid, bridgeNum)
 		return bridgeNum
 	}
 	// Do we already have it in reserve?
@@ -72,10 +102,13 @@ func bridgeNumAllocate(uuid uuid.UUID) int {
 	if ok {
 		log.Infof("Found reserved bridgeNum %d for %s\n", bridgeNum, uuid)
 		if !AllocReservedBridgeNums.IsSet(bridgeNum) {
-			panic(fmt.Sprintf("AllocReservedBridgeNums not set for %d\n", bridgeNum))
+			log.Fatalf("AllocReservedBridgeNums not set for %d\n",
+				bridgeNum)
 		}
 		AllocatedBridgeNum[uuid] = bridgeNum
 		delete(ReservedBridgeNum, uuid)
+		UuidToNumAllocate(ctx, uuid, bridgeNum, false,
+			"bridgeNum")
 		return bridgeNum
 	}
 
@@ -98,44 +131,48 @@ func bridgeNumAllocate(uuid uuid.UUID) int {
 			log.Infof("Unreserving %d for %s\n", i, r)
 			delete(ReservedBridgeNum, r)
 			AllocReservedBridgeNums.Clear(i)
-			return bridgeNumAllocate(uuid)
+			return bridgeNumAllocate(ctx, uuid)
 		}
-		panic("All 255 bridgeNums are in use!")
+		log.Fatal("All 255 bridgeNums are in use!")
 	}
 	AllocatedBridgeNum[uuid] = bridgeNum
 	if AllocReservedBridgeNums.IsSet(bridgeNum) {
-		panic(fmt.Sprintf("AllocReservedBridgeNums already set for %d\n",
-			bridgeNum))
+		log.Fatalf("AllocReservedBridgeNums already set for %d\n",
+			bridgeNum)
 	}
 	AllocReservedBridgeNums.Set(bridgeNum)
+	UuidToNumAllocate(ctx, uuid, bridgeNum, true, "bridgeNum")
 	return bridgeNum
 }
 
-func bridgeNumFree(uuid uuid.UUID) {
+func bridgeNumFree(ctx *zedrouterContext, uuid uuid.UUID) {
+
 	// Check that number exists in the allocated numbers
 	bridgeNum, ok := AllocatedBridgeNum[uuid]
 	reserved := false
 	if !ok {
 		bridgeNum, ok = ReservedBridgeNum[uuid]
 		if !ok {
-			panic(fmt.Sprintf("bridgeNumFree: not for %s\n", uuid))
+			log.Fatalf("bridgeNumFree: not for %s\n", uuid)
 		}
 		reserved = true
 	}
 	if !AllocReservedBridgeNums.IsSet(bridgeNum) {
-		panic(fmt.Sprintf("AllocReservedBridgeNums not set for %d\n",
-			bridgeNum))
+		log.Fatalf("AllocReservedBridgeNums not set for %d\n",
+			bridgeNum)
 	}
 	// Need to handle a free of a reserved number in which case
 	// we have nothing to do since it remains reserved.
 	if reserved {
+		UuidToNumFree(ctx, uuid)
 		return
 	}
 
 	_, ok = ReservedBridgeNum[uuid]
 	if ok {
-		panic(fmt.Sprintf("bridgeNumFree: already in reserved %s\n", uuid))
+		log.Fatalf("bridgeNumFree: already in reserved %s\n", uuid)
 	}
 	ReservedBridgeNum[uuid] = bridgeNum
 	delete(AllocatedBridgeNum, uuid)
+	UuidToNumFree(ctx, uuid)
 }

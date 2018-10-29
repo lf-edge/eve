@@ -4,8 +4,10 @@
 package types
 
 import (
+	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"strings"
+	"time"
 )
 
 // Enum names from OMA-TS-LWM2M_SwMgmt-V1_0-20151201-C
@@ -59,4 +61,19 @@ func UrlToFilename(urlName string) string {
 	comp := strings.Split(urlName, "/")
 	last := comp[len(comp)-1]
 	return last
+}
+
+// Used to retain UUID to integer maps across reboots.
+// Used for appNum and bridgeNum
+type UuidToNum struct {
+	UUID        uuid.UUID
+	Number      int
+	NumType     string // For logging
+	CreateTime  time.Time
+	LastUseTime time.Time
+	InUse       bool
+}
+
+func (info UuidToNum) Key() string {
+	return info.UUID.String()
 }
