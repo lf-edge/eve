@@ -143,24 +143,29 @@ type Publication struct {
 	km         keyMap
 	sockName   string
 	listener   net.Listener
-	// Handle special case of file only info
-	publishToDir bool
+
+	publishToDir bool // Handle special case of file only info
 	dirName      string
+	persistent   bool
 }
 
 func Publish(agentName string, topicType interface{}) (*Publication, error) {
-	return publishImpl(agentName, "", topicType)
+	return publishImpl(agentName, "", topicType, false)
+}
+
+func PublishPersistent(agentName string, topicType interface{}) (*Publication, error) {
+	return publishImpl(agentName, "", topicType, true)
 }
 
 func PublishScope(agentName string, agentScope string, topicType interface{}) (*Publication, error) {
-	return publishImpl(agentName, agentScope, topicType)
+	return publishImpl(agentName, agentScope, topicType, false)
 }
 
 // Init function to create directory and socket listener based on above settings
 // We read any checkpointed state from dirName and insert in pub.km as initial
 // values.
 func publishImpl(agentName string, agentScope string,
-	topicType interface{}) (*Publication, error) {
+	topicType interface{}, persistent bool) (*Publication, error) {
 
 	topic := TypeToName(topicType)
 	pub := new(Publication)
@@ -169,12 +174,19 @@ func publishImpl(agentName string, agentScope string,
 	pub.agentScope = agentScope
 	pub.topic = topic
 	pub.km = keyMap{key: NewLockedStringMap()}
+	pub.persistent = persistent
 	name := pub.nameString()
 
 	log.Infof("Publish(%s)\n", name)
 
-	// We always write to the directory as a checkpoint
-	dirName := PubDirName(name)
+	// We always write to the directory as a checkpoint, and only
+	// write to it when persistent is set?
+	if pub.persistent {
+		pub.dirName = PersistentDirName(name)
+	} else {
+		pub.dirName = PubDirName(name)
+	}
+	dirName := pub.dirName
 	if _, err := os.Stat(dirName); err != nil {
 		log.Infof("Publish Create %s\n", dirName)
 		if err := os.MkdirAll(dirName, 0700); err != nil {
@@ -215,7 +227,7 @@ func publishImpl(agentName string, agentScope string,
 // Only reads json files. Sets restarted if that file was found.
 func (pub *Publication) populate() {
 	name := pub.nameString()
-	dirName := PubDirName(name)
+	dirName := pub.dirName
 	foundRestarted := false
 
 	log.Infof("populate(%s)\n", name)
@@ -446,6 +458,10 @@ func FixedDirName(name string) string {
 	return fmt.Sprintf("%s/%s", fixedDir, name)
 }
 
+func PersistentDirName(name string) string {
+	return fmt.Sprintf("/persist/status/%s", name)
+}
+
 func (pub *Publication) nameString() string {
 	if pub.publishToDir {
 		return pub.dirName
@@ -506,13 +522,7 @@ func (pub *Publication) Publish(key string, item interface{}) error {
 	}
 	pub.updatersNotify(name)
 
-	var dirName string
-	if pub.publishToDir {
-		dirName = pub.dirName
-	} else {
-		dirName = PubDirName(name)
-	}
-	fileName := dirName + "/" + key + ".json"
+	fileName := pub.dirName + "/" + key + ".json"
 	log.Debugf("Publish writing %s\n", fileName)
 
 	// XXX already did a marshal in deepCopy; save that result?
@@ -585,8 +595,7 @@ func (pub *Publication) Unpublish(key string) error {
 	}
 	pub.updatersNotify(name)
 
-	dirName := PubDirName(name)
-	fileName := dirName + "/" + key + ".json"
+	fileName := pub.dirName + "/" + key + ".json"
 	log.Debugf("Unpublish deleting file %s\n", fileName)
 	if err := os.Remove(fileName); err != nil {
 		errStr := fmt.Sprintf("Unpublish(%s/%s): failed %s",
@@ -624,8 +633,7 @@ func (pub *Publication) restartImpl(restarted bool) error {
 		pub.updatersNotify(name)
 	}
 
-	dirName := PubDirName(name)
-	restartFile := dirName + "/" + "restarted"
+	restartFile := pub.dirName + "/" + "restarted"
 	if restarted {
 		f, err := os.OpenFile(restartFile, os.O_RDONLY|os.O_CREATE, 0600)
 		if err != nil {
