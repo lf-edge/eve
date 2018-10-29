@@ -661,20 +661,57 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		log.Infof("Waiting for DomainStatus for %s\n", uuidStr)
 		return changed
 	}
-	// Look for xen errors.
-	if ds.LastErr != "" {
-		log.Errorf("Received error from domainmgr for %s: %s\n",
-			uuidStr, ds.LastErr)
-		status.Error = ds.LastErr
-		status.ErrorSource = pubsub.TypeToName(types.DomainStatus{})
-		status.ErrorTime = ds.LastErrTime
-		changed = true
-	} else if status.ErrorSource == pubsub.TypeToName(types.DomainStatus{}) {
-		log.Infof("Clearing domainmgr error %s\n", status.Error)
-		status.Error = ""
-		status.ErrorSource = ""
-		status.ErrorTime = time.Time{}
-		changed = true
+	// Are we doing a restart?
+	if status.RestartInprogress == types.BRING_DOWN {
+		dc := lookupDomainConfig(ctx, config.Key())
+		if dc == nil {
+			log.Errorf("RestartInprogress(%s) No DomainConfig\n",
+				status.Key())
+		} else if dc.Activate {
+			log.Infof("RestartInprogress(%s) Clear Activate\n",
+				status.Key())
+			dc.Activate = false
+			publishDomainConfig(ctx, dc)
+		} else if !ds.Activated {
+			log.Infof("RestartInprogress(%s) Set Activate\n",
+				status.Key())
+			status.RestartInprogress = types.BRING_UP
+			changed = true
+			dc.Activate = true
+			publishDomainConfig(ctx, dc)
+		} else {
+			log.Infof("RestartInprogress(%s) waiting for domain down\n",
+				status.Key())
+		}
+	}
+	// Look for xen errors. Ignore if we are going down
+	if status.RestartInprogress != types.BRING_DOWN {
+		if ds.LastErr != "" {
+			log.Errorf("Received error from domainmgr for %s: %s\n",
+				uuidStr, ds.LastErr)
+			status.Error = ds.LastErr
+			status.ErrorSource = pubsub.TypeToName(types.DomainStatus{})
+			status.ErrorTime = ds.LastErrTime
+			changed = true
+		} else if status.ErrorSource == pubsub.TypeToName(types.DomainStatus{}) {
+			log.Infof("Clearing domainmgr error %s\n", status.Error)
+			status.Error = ""
+			status.ErrorSource = ""
+			status.ErrorTime = time.Time{}
+			changed = true
+		}
+	} else {
+		if ds.LastErr != "" {
+			log.Warnf("bringDown sees error from domainmgr for %s: %s\n",
+				uuidStr, ds.LastErr)
+		}
+		if status.ErrorSource == pubsub.TypeToName(types.DomainStatus{}) {
+			log.Infof("Clearing domainmgr error %s\n", status.Error)
+			status.Error = ""
+			status.ErrorSource = ""
+			status.ErrorTime = time.Time{}
+			changed = true
+		}
 	}
 	if ds.State != status.State {
 		log.Infof("Set State from DomainStatus from %d to %d\n",
@@ -728,31 +765,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		changed = true
 	}
 	// Are we doing a restart?
-	switch status.RestartInprogress {
-	case types.NONE:
-		// Nothing to do
-	case types.BRING_DOWN:
-		dc := lookupDomainConfig(ctx, config.Key())
-		if dc == nil {
-			log.Errorf("RestartInprogress(%s) No DomainConfig\n",
-				status.Key())
-		} else if dc.Activate {
-			log.Infof("RestartInprogress(%s) Clear Activate\n",
-				status.Key())
-			dc.Activate = false
-			publishDomainConfig(ctx, dc)
-		} else if !ds.Activated {
-			log.Infof("RestartInprogress(%s) Set Activate\n",
-				status.Key())
-			status.RestartInprogress = types.BRING_UP
-			changed = true
-			dc.Activate = true
-			publishDomainConfig(ctx, dc)
-		} else {
-			log.Infof("RestartInprogress(%s) waiting for domain down\n",
-				status.Key())
-		}
-	case types.BRING_UP:
+	if status.RestartInprogress == types.BRING_UP {
 		if ds.Activated {
 			log.Infof("RestartInprogress(%s) activated\n",
 				status.Key())
@@ -1032,15 +1045,12 @@ func doInactivateHalt(ctx *zedmanagerContext, uuidStr string,
 			changed = true
 		}
 	}
-	// Look for xen errors.
+	// Ignore errors during a halt
 	if ds.LastErr != "" {
-		log.Errorf("Received error from domainmgr for %s: %s\n",
+		log.Warnf("doInactivateHalt sees error from domainmgr for %s: %s\n",
 			uuidStr, ds.LastErr)
-		status.Error = ds.LastErr
-		status.ErrorSource = pubsub.TypeToName(types.DomainStatus{})
-		status.ErrorTime = ds.LastErrTime
-		changed = true
-	} else if status.ErrorSource == pubsub.TypeToName(types.DomainStatus{}) {
+	}
+	if status.ErrorSource == pubsub.TypeToName(types.DomainStatus{}) {
 		log.Infof("Clearing domainmgr error %s\n", status.Error)
 		status.Error = ""
 		status.ErrorSource = ""

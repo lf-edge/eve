@@ -1323,12 +1323,24 @@ func handleModify(ctx *domainContext, key string,
 
 	changed := false
 	if config.Activate && !status.Activated {
+		// XXX remove and use code below? Should see Actvate false to
+		// clear error
 		if status.LastErr != "" {
 			log.Errorf("handleModify(%v) existing error for %s\n",
 				config.UUIDandVersion, config.DisplayName)
 			status.PendingModify = false
 			publishDomainStatus(ctx, status)
 			return
+		}
+		// This has the effect of trying a boot again for any
+		// handleModify after an error.
+		if status.LastErr != "" {
+			log.Infof("handleModify(%v) ignoring existing error for %s\n",
+				config.UUIDandVersion, config.DisplayName)
+			status.LastErr = ""
+			status.LastErrTime = time.Time{}
+			publishDomainStatus(ctx, status)
+			doInactivate(ctx, status, ctx.assignableAdapters)
 		}
 		status.VirtualizationMode = config.VirtualizationMode
 		status.EnableVnc = config.EnableVnc
