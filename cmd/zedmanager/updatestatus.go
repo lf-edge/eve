@@ -714,12 +714,12 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		}
 	}
 	if ds.State != status.State {
-		log.Infof("Set State from DomainStatus from %d to %d\n",
-			status.State, ds.State)
 		switch status.State {
 		case types.RESTARTING, types.PURGING:
 			// Leave unchanged
 		default:
+			log.Infof("Set State from DomainStatus from %d to %d\n",
+				status.State, ds.State)
 			status.State = ds.State
 			changed = true
 		}
@@ -1035,12 +1035,12 @@ func doInactivateHalt(ctx *zedmanagerContext, uuidStr string,
 		return changed
 	}
 	if ds.State != status.State {
-		log.Infof("Set State from DomainStatus from %d to %d\n",
-			status.State, ds.State)
 		switch status.State {
 		case types.RESTARTING, types.PURGING:
 			// Leave unchanged
 		default:
+			log.Infof("Set State from DomainStatus from %d to %d\n",
+				status.State, ds.State)
 			status.State = ds.State
 			changed = true
 		}

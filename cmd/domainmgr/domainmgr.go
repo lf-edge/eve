@@ -548,9 +548,7 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 		if status.Activated {
 			errStr := fmt.Sprintf("verifyStatus(%s) failed %s",
 				status.Key(), err)
-			log.Errorln(errStr)
-			status.LastErr = errStr
-			status.LastErrTime = time.Now()
+			log.Warnln(errStr)
 			status.Activated = false
 			status.State = types.HALTED
 		}
