@@ -211,7 +211,7 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 		}
 		iifIndex := link.Attrs().Index
 		oifIndex := slink.Attrs().Index
-		err = AddOverlayRuleAndRoute(bridgeName, iifIndex, oifIndex, ipnet) 
+		err = AddOverlayRuleAndRoute(bridgeName, iifIndex, oifIndex, ipnet)
 		if err != nil {
 			errStr := fmt.Sprintf(
 				"doNetworkCreate: Lisp IP rule and route addition failed for bridge %s: %s",
@@ -234,14 +234,13 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 			[]string{status.BridgeIPAddr})
 	}
 
+	// Start clean
 	deleteDnsmasqConfiglet(bridgeName)
 	stopDnsmasq(bridgeName, false)
 
 	if status.BridgeIPAddr != "" {
-		// No need to pass any ipsets, since the network is created
-		// before the applications which use it.
 		createDnsmasqConfiglet(bridgeName, status.BridgeIPAddr, &config,
-			hostsDirpath, nil, status.Ipv4Eid)
+			hostsDirpath, status.BridgeIPSets, status.Ipv4Eid)
 		startDnsmasq(bridgeName)
 	}
 
@@ -584,6 +583,8 @@ func updateBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus
 				status.Key())
 			return
 		}
+		log.Infof("updateBridgeIPAddr(%s) restarting dnsmasq\n",
+			status.Key())
 		bridgeName := status.BridgeName
 		deleteDnsmasqConfiglet(bridgeName)
 		stopDnsmasq(bridgeName, false)
@@ -690,7 +691,7 @@ func doNetworkDelete(ctx *zedrouterContext,
 			}
 		}
 	}
-	
+
 	// When bridge and sister interfaces are deleted, code in pbr.go
 	// takes care of deleting the corresponding route tables and ip rules.
 	if status.Type == types.NT_CryptoEID {

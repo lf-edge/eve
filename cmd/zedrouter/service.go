@@ -820,6 +820,10 @@ func natActivate(config types.NetworkServiceConfig,
 		if err != nil {
 			return err
 		}
+		err = PbrRouteAddDefault(netstatus.BridgeName, a)
+		if err != nil {
+			return err
+		}
 	}
 	// Add to Pbr table
 	err := PbrNATAdd(subnetStr)
@@ -850,6 +854,10 @@ func natInactivate(status *types.NetworkServiceStatus,
 			"-s", subnetStr, "-j", "MASQUERADE")
 		if err != nil {
 			log.Errorf("natInactivate: iptableCmd failed %s\n", err)
+		}
+		err = PbrRouteDeleteDefault(netstatus.BridgeName, a)
+		if err != nil {
+			log.Errorf("natInactivate: PbrRouteDeleteDefault failed %s\n", err)
 		}
 	}
 	// Remove from Pbr table
