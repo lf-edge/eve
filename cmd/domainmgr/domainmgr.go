@@ -214,18 +214,6 @@ func Run() {
 	}
 	log.Infof("Have %d assignable adapters\n", len(aa.IoBundleList))
 
-	// XXX should we init the pci ids up front? Delete the ones which
-	// do not exist? React to changes in adapters in aaChanges below?
-	// XXX avoid uplinks - react to uplink changes and assign away
-	// non-uplinks ...
-	// XXX knob to leave USB controllers alone for USB stick
-	// XXX build collection with the "lookup" ones we found so we
-	// can report those.
-	// XXX can we disable USB storage earlier? BIOS?
-	if err := pciAssignableAddAll(&aa); err != nil {
-		log.Errorf("pciAssignableAddAll: failed %v\n", err)
-	}
-
 	// Subscribe to DomainConfig from zedmanager
 	subDomainConfig, err := pubsub.Subscribe("zedmanager",
 		types.DomainConfig{}, false, &domainCtx)
@@ -788,6 +776,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 				return
 			}
 		}
+		// XXX Record assignment in AssignableAdapters and publish
 	}
 
 	// Do we need to copy any rw files? Preserve ones are copied upon
@@ -1030,6 +1019,7 @@ func pciUnassign(status *types.DomainStatus, aa *types.AssignableAdapters,
 				return
 			}
 		}
+		// XXX Remove assignment from AssignableAdapters and publish
 	}
 }
 
@@ -1762,45 +1752,6 @@ func pciAssignableRem(long string) error {
 		return errors.New(errStr)
 	}
 	log.Infof("xl pci-assignable-rem done\n")
-	return nil
-}
-
-// Take away all assignable devices so dom0 will not react to e.g. a USB stick
-func pciAssignableAddAll(aa *types.AssignableAdapters) error {
-	for i, _ := range aa.IoBundleList {
-		ib := &aa.IoBundleList[i]
-		// Does it exist?
-		// Then save the PCI ID before we assign it away
-		long, short, err := types.IoBundleToPci(ib)
-		if err != nil {
-			log.Errorf("IoBundleToPci failed: %v\n", err)
-			continue
-		}
-		ib.PciLong = long
-		ib.PciShort = short
-		if ib.PciShort != "" {
-			err := pciAssignableAdd(ib.PciLong)
-			if err != nil {
-				log.Errorf("pciAssignableAdd failed: %v\n", err)
-				continue
-			}
-		}
-	}
-	return nil
-}
-
-// Re-assign all assignable devices to dom0
-func pciAssignableRemAll(aa *types.AssignableAdapters) error {
-	for i, _ := range aa.IoBundleList {
-		ib := &aa.IoBundleList[i]
-		if ib.PciShort != "" {
-			err := pciAssignableRem(ib.PciLong)
-			if err != nil {
-				log.Errorf("pciAssignableAdd failed: %v\n", err)
-				continue
-			}
-		}
-	}
 	return nil
 }
 
