@@ -628,16 +628,6 @@ func lispActivate(ctx *zedrouterContext,
 		}
 	}
 
-	// Add ACL filter rule in FORWARD chain to drop packets
-	// input from lisp bn<> bridge interfaces.
-	args := IptablesRule{"-t", "filter", "-I", "FORWARD", "1",
-		"-i", netstatus.BridgeName, "-j", "DROP"}
-	err = ip6tableCmd(args...)
-	if err != nil {
-		log.Infof("%s\n", err)
-		return err
-	}
-
 	log.Infof("lispActivate(%s)\n", status.DisplayName)
 	return nil
 }
@@ -679,13 +669,6 @@ func lispInactivate(ctx *zedrouterContext,
 					ctx.separateDataPlane)
 			}
 		}
-	}
-
-	args := IptablesRule{"-t", "filter", "-D", "FORWARD", "-i",
-		netstatus.BridgeName, "-j", "DROP"}
-	err := ip6tableCmd(args...)
-	if err != nil {
-		log.Errorf("%s\n", err)
 	}
 
 	log.Infof("lispInactivate(%s)\n", status.DisplayName)
@@ -837,6 +820,10 @@ func natActivate(config types.NetworkServiceConfig,
 		if err != nil {
 			return err
 		}
+		err = PbrRouteAddDefault(netstatus.BridgeName, a)
+		if err != nil {
+			return err
+		}
 	}
 	// Add to Pbr table
 	err := PbrNATAdd(subnetStr)
@@ -867,6 +854,10 @@ func natInactivate(status *types.NetworkServiceStatus,
 			"-s", subnetStr, "-j", "MASQUERADE")
 		if err != nil {
 			log.Errorf("natInactivate: iptableCmd failed %s\n", err)
+		}
+		err = PbrRouteDeleteDefault(netstatus.BridgeName, a)
+		if err != nil {
+			log.Errorf("natInactivate: PbrRouteDeleteDefault failed %s\n", err)
 		}
 	}
 	// Remove from Pbr table

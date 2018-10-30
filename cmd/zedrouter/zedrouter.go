@@ -534,8 +534,6 @@ var broken = false
 
 func handleInit(runDirname string, pubDeviceNetworkStatus *pubsub.Publication) {
 
-	globalRunDirname = runDirname
-
 	// XXX should this be in the lisp code?
 	lispRunDirname = runDirname + "/lisp"
 	if _, err := os.Stat(lispRunDirname); err != nil {
@@ -1184,7 +1182,7 @@ func handleCreate2(ctx *zedrouterContext, config types.AppNetworkConfig,
 		// Directory is /var/run/zedrouter/hosts.${OLIFNAME}
 		// Each hostname in a separate file in directory to facilitate
 		// adds and deletes
-		hostsDirpath := globalRunDirname + "/hosts." + olIfname
+		hostsDirpath := runDirname + "/hosts." + olIfname
 		deleteHostsConfiglet(hostsDirpath, false)
 		createHostsConfiglet(hostsDirpath, olConfig.MgmtDnsNameToIPList)
 
@@ -1421,7 +1419,7 @@ func handleCreate2(ctx *zedrouterContext, config types.AppNetworkConfig,
 
 		// Write our EID hostname in a separate file in directory to
 		// facilitate adds and deletes
-		hostsDirpath := globalRunDirname + "/hosts." + bridgeName
+		hostsDirpath := runDirname + "/hosts." + bridgeName
 		addToHostsConfiglet(hostsDirpath, config.DisplayName,
 			[]string{EID.String()})
 
@@ -1445,7 +1443,7 @@ func handleCreate2(ctx *zedrouterContext, config types.AppNetworkConfig,
 			netstatus.BridgeIPSets)
 
 		if restartDnsmasq && olStatus.BridgeIPAddr != "" {
-			stopDnsmasq(bridgeName, false)
+			stopDnsmasq(bridgeName, true)
 			createDnsmasqConfiglet(bridgeName,
 				olStatus.BridgeIPAddr, netconfig, hostsDirpath,
 				newIpsets, netstatus.Ipv4Eid)
@@ -1555,7 +1553,7 @@ func handleCreate2(ctx *zedrouterContext, config types.AppNetworkConfig,
 		ulStatus.BridgeIPAddr = bridgeIPAddr
 		// XXX appIPAddr is "" if bridge service
 		ulStatus.AssignedIPAddr = appIPAddr
-		hostsDirpath := globalRunDirname + "/hosts." + bridgeName
+		hostsDirpath := runDirname + "/hosts." + bridgeName
 		if appIPAddr != "" {
 			addToHostsConfiglet(hostsDirpath, config.DisplayName,
 				[]string{appIPAddr})
@@ -1585,7 +1583,7 @@ func handleCreate2(ctx *zedrouterContext, config types.AppNetworkConfig,
 			netstatus.BridgeIPSets)
 
 		if restartDnsmasq && ulStatus.BridgeIPAddr != "" {
-			stopDnsmasq(bridgeName, false)
+			stopDnsmasq(bridgeName, true)
 			createDnsmasqConfiglet(bridgeName,
 				ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
 				newIpsets, false)
@@ -1916,8 +1914,8 @@ func handleModify(ctx *zedrouterContext, key string,
 			netstatus.BridgeIPSets)
 
 		if restartDnsmasq && olStatus.BridgeIPAddr != "" {
-			hostsDirpath := globalRunDirname + "/hosts." + bridgeName
-			stopDnsmasq(bridgeName, false)
+			hostsDirpath := runDirname + "/hosts." + bridgeName
+			stopDnsmasq(bridgeName, true)
 			createDnsmasqConfiglet(bridgeName,
 				olStatus.BridgeIPAddr, netconfig, hostsDirpath,
 				newIpsets, netstatus.Ipv4Eid)
@@ -1999,8 +1997,8 @@ func handleModify(ctx *zedrouterContext, key string,
 			netstatus.BridgeIPSets)
 
 		if restartDnsmasq && ulStatus.BridgeIPAddr != "" {
-			hostsDirpath := globalRunDirname + "/hosts." + bridgeName
-			stopDnsmasq(bridgeName, false)
+			hostsDirpath := runDirname + "/hosts." + bridgeName
+			stopDnsmasq(bridgeName, true)
 			createDnsmasqConfiglet(bridgeName,
 				ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
 				newIpsets, false)
@@ -2143,7 +2141,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 		netlink.LinkDel(oLink)
 
 		// Delete overlay hosts file
-		hostsDirpath := globalRunDirname + "/hosts." + olIfname
+		hostsDirpath := runDirname + "/hosts." + olIfname
 		deleteHostsConfiglet(hostsDirpath, true)
 
 		// Default ipset
@@ -2224,7 +2222,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 		}
 
 		// Delete underlay hosts file for this app
-		hostsDirpath := globalRunDirname + "/hosts." + bridgeName
+		hostsDirpath := runDirname + "/hosts." + bridgeName
 		removeFromHostsConfiglet(hostsDirpath, status.DisplayName)
 
 		deleteDefaultIpsetConfiglet(olStatus.Vif, true)
@@ -2234,7 +2232,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 			netstatus.BridgeIPSets)
 
 		if restartDnsmasq && olStatus.BridgeIPAddr != "" {
-			stopDnsmasq(bridgeName, false)
+			stopDnsmasq(bridgeName, true)
 			createDnsmasqConfiglet(bridgeName,
 				olStatus.BridgeIPAddr, netconfig, hostsDirpath,
 				newIpsets, netstatus.Ipv4Eid)
@@ -2322,7 +2320,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 		}
 
 		// Delete underlay hosts file for this app
-		hostsDirpath := globalRunDirname + "/hosts." + bridgeName
+		hostsDirpath := runDirname + "/hosts." + bridgeName
 		removeFromHostsConfiglet(hostsDirpath,
 			status.DisplayName)
 		// Look for added or deleted ipsets
@@ -2330,7 +2328,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 			netstatus.BridgeIPSets)
 
 		if restartDnsmasq && ulStatus.BridgeIPAddr != "" {
-			stopDnsmasq(bridgeName, false)
+			stopDnsmasq(bridgeName, true)
 			createDnsmasqConfiglet(bridgeName,
 				ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
 				newIpsets, false)
@@ -2358,9 +2356,10 @@ func pkillUserArgs(userName string, match string, printOnError bool) {
 		"-f",
 		match,
 	}
-	_, err := wrap.Command(cmd, args...).Output()
+	out, err := wrap.Command(cmd, args...).CombinedOutput()
 	if err != nil && printOnError {
-		log.Errorf("Command %v %v failed: %s\n", cmd, args, err)
+		log.Errorf("Command %v %v failed: %s output %s\n",
+			cmd, args, err, out)
 	}
 }
 

@@ -239,6 +239,7 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 			rlocString += one
 		}
 	}
+	// XXX if !isMgmt need to preserve mapservers from network. How?
 	for _, ms := range mapservers {
 		if isMgmt {
 			file1.WriteString(fmt.Sprintf(lispMStemplateMgmt,

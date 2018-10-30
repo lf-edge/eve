@@ -5,5 +5,6 @@
     { "Type": 1, "Name": "eth3", "Members": [ "eth3" ], "Lookup": true },
     { "Type": 1, "Name": "eth4", "Members": [ "eth4" ], "Lookup": true },
     { "Type": 1, "Name": "eth5", "Members": [ "eth5" ], "Lookup": true },
+    { "Type": 1, "Name": "wlan0", "Members": [ "wlan0" ], "PciLong": "0000:02:00.0", "PciShort": "02:00.0" },
     { "Type": 2, "Name": "USB", "Members": [ "USB0", "USB1" ], "PciLong": "0000:00:15.0", "PciShort": "00:15.0"}
 ] }
