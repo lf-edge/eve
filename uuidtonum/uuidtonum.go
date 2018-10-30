@@ -4,6 +4,8 @@
 package uuidtonum
 
 import (
+	"errors"
+	"fmt"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/cast"
@@ -103,4 +105,24 @@ func UuidToNumFree(pub *pubsub.Publication, uuid uuid.UUID) {
 	u.InUse = false
 	u.LastUseTime = time.Now()
 	pub.Publish(u.Key(), u)
+}
+
+func UuidToNumGet(pub *pubsub.Publication, uuid uuid.UUID,
+	numType string) (int, error) {
+
+	key := uuid.String()
+	log.Infof("UuidToNumGet(%s, %s)\n", key, numType)
+	i, err := pub.Get(key)
+	if err != nil {
+		return 0, err
+	}
+	u := cast.CastUuidToNum(i)
+	if u.Key() != key {
+		errStr := fmt.Sprintf("UuidToNumGet key/UUID mismatch %s vs %s; ignored %+v",
+			key, u.Key(), u)
+		log.Errorln(errStr)
+		return 0, errors.New(errStr)
+	}
+	log.Infof("UuidToNumGet(%s, %s) found %v\n", key, numType, u)
+	return u.Number, nil
 }

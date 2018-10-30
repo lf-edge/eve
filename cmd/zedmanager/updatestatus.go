@@ -11,6 +11,7 @@ import (
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
+	"github.com/zededa/go-provision/uuidtonum"
 	"time"
 )
 
@@ -784,6 +785,11 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 			status.PurgeInprogress = types.NONE
 			status.State = types.RUNNING
 			changed = true
+			// Update persistent counter
+			uuidtonum.UuidToNumAllocate(ctx.pubUuidToNum,
+				status.UUIDandVersion.UUID,
+				int(status.PurgeCmd.Counter),
+				false, "purgeCmdCounter")
 		} else {
 			log.Infof("PurgeInprogress(%s) waiting for Activated\n",
 				status.Key())
