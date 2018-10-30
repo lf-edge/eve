@@ -93,14 +93,6 @@ func Run() {
 	ctx := zedmanagerContext{}
 
 	// Create publish before subscribing and activating subscriptions
-	pubUuidToNum, err := pubsub.PublishPersistent(agentName,
-		types.UuidToNum{})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.pubUuidToNum = pubUuidToNum
-	pubUuidToNum.ClearRestarted()
-
 	pubAppInstanceStatus, err := pubsub.Publish(agentName,
 		types.AppInstanceStatus{})
 	if err != nil {
@@ -148,6 +140,14 @@ func Run() {
 	}
 	pubAppImgVerifierConfig.ClearRestarted()
 	ctx.pubAppImgVerifierConfig = pubAppImgVerifierConfig
+
+	pubUuidToNum, err := pubsub.PublishPersistent(agentName,
+		types.UuidToNum{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubUuidToNum = pubUuidToNum
+	pubUuidToNum.ClearRestarted()
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
@@ -478,9 +478,9 @@ func handleCreate(ctx *zedmanagerContext, key string,
 	// Do we have a PurgeCmd counter from before the reboot?
 	c, err := uuidtonum.UuidToNumGet(ctx.pubUuidToNum,
 		config.UUIDandVersion.UUID, "purgeCmdCounter")
-	if err != nil {
+	if err == nil {
 		if uint32(c) == status.PurgeCmd.Counter {
-			log.Infof("handleCreate(%v) for %s found magtching purge counter %d\n",
+			log.Infof("handleCreate(%v) for %s found matching purge counter %d\n",
 				config.UUIDandVersion, config.DisplayName, c)
 		} else {
 			log.Warnf("handleCreate(%v) for %s found different purge counter %d vs. %d\n",
@@ -492,6 +492,9 @@ func handleCreate(ctx *zedmanagerContext, key string,
 		}
 	} else {
 		// Save this PurgeCmd.Counter as the baseline
+		log.Infof("handleCreate(%v) for %s saving purge counter %d\n",
+			config.UUIDandVersion, config.DisplayName,
+			config.PurgeCmd.Counter)
 		uuidtonum.UuidToNumAllocate(ctx.pubUuidToNum,
 			config.UUIDandVersion.UUID, int(config.PurgeCmd.Counter),
 			true, "purgeCmdCounter")

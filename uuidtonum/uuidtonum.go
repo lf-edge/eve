@@ -39,7 +39,13 @@ func UuidToNumUpdate(pub *pubsub.Publication, uuid uuid.UUID, number int) {
 		return
 	}
 	u.LastUseTime = time.Now()
-	pub.Publish(u.Key(), u)
+	log.Infof("UuidToNumUpdate(%s) publishing updated %v\n",
+		uuid.String(), u)
+	if err := pub.Publish(u.Key(), u); err != nil {
+		// XXX fatal
+		log.Errorf("UuidToNumUpdate(%s) publish failed %v\n",
+			uuid.String(), err)
+	}
 }
 
 // Update LastUseTime; set CreateTime if no entry, set InUse
@@ -59,6 +65,8 @@ func UuidToNumAllocate(pub *pubsub.Publication, uuid uuid.UUID,
 			NumType:     numType,
 			Number:      number,
 		}
+		log.Infof("UuidToNumAllocate(%s) publishing created %v\n",
+			uuid.String(), u)
 		pub.Publish(u.Key(), u)
 		return
 	}
@@ -88,7 +96,13 @@ func UuidToNumAllocate(pub *pubsub.Publication, uuid uuid.UUID,
 	}
 	u.InUse = true
 	u.LastUseTime = time.Now()
-	pub.Publish(u.Key(), u)
+	log.Infof("UuidToNumAllocate(%s) publishing updated %v\n",
+		uuid.String(), u)
+	if err := pub.Publish(u.Key(), u); err != nil {
+		// XXX fatal
+		log.Errorf("UuidToNumAllocate(%s) publish failed %v\n",
+			uuid.String(), err)
+	}
 }
 
 // Clear InUse
@@ -104,8 +118,16 @@ func UuidToNumFree(pub *pubsub.Publication, uuid uuid.UUID) {
 	u := cast.CastUuidToNum(i)
 	u.InUse = false
 	u.LastUseTime = time.Now()
-	pub.Publish(u.Key(), u)
+	log.Infof("UuidToNumFree(%s) publishing updated %v\n",
+		uuid.String(), u)
+	if err := pub.Publish(u.Key(), u); err != nil {
+		// XXX fatal
+		log.Errorf("UuidToNumFree(%s) publish failed %v\n",
+			uuid.String(), err)
+	}
 }
+
+// XXX add UuidToNumDelete() to unpublish. Needed by GC
 
 func UuidToNumGet(pub *pubsub.Publication, uuid uuid.UUID,
 	numType string) (int, error) {
