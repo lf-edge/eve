@@ -58,6 +58,8 @@ func bridgeNumAllocatorInit(ctx *zedrouterContext) {
 		log.Infof("Reserving bridgeNum %d for %s\n", bridgeNum, uuid)
 		ReservedBridgeNum[uuid] = bridgeNum
 		AllocReservedBridgeNums.Set(bridgeNum)
+		// Clear InUse
+		uuidtonum.UuidToNumFree(ctx.pubUuidToNum, uuid)
 	}
 	items = pubNetworkObjectStatus.GetAll()
 	for key, st := range items {
@@ -75,13 +77,16 @@ func bridgeNumAllocatorInit(ctx *zedrouterContext) {
 		// XXX however, on startup we are not likely to have any
 		// config yet.
 		if AllocReservedBridgeNums.IsSet(bridgeNum) {
-			log.Errorf("AllocReservedBridgeNums already set for %d\n",
+			log.Infof("AllocReservedBridgeNums2 already set for %d\n",
 				bridgeNum)
 			continue
 		}
 		log.Infof("Reserving bridgeNum %d for %s\n", bridgeNum, uuid)
 		ReservedBridgeNum[uuid] = bridgeNum
 		AllocReservedBridgeNums.Set(bridgeNum)
+		// Don't set InUse
+		uuidtonum.UuidToNumReserve(ctx.pubUuidToNum, uuid, bridgeNum,
+			"bridgeNum")
 	}
 }
 
@@ -132,6 +137,7 @@ func bridgeNumAllocate(ctx *zedrouterContext, uuid uuid.UUID) int {
 			log.Infof("Unreserving %d for %s\n", i, r)
 			delete(ReservedBridgeNum, r)
 			AllocReservedBridgeNums.Clear(i)
+			uuidtonum.UuidToNumFree(ctx.pubUuidToNum, r)
 			return bridgeNumAllocate(ctx, uuid)
 		}
 		log.Fatal("All 255 bridgeNums are in use!")
@@ -164,7 +170,7 @@ func bridgeNumFree(ctx *zedrouterContext, uuid uuid.UUID) {
 			bridgeNum)
 	}
 	// Need to handle a free of a reserved number in which case
-	// we have nothing to do since it remains reserved.
+	// we have nothing to do since it remains reserved. Clear InUse
 	if reserved {
 		uuidtonum.UuidToNumFree(ctx.pubUuidToNum, uuid)
 		return
@@ -177,5 +183,4 @@ func bridgeNumFree(ctx *zedrouterContext, uuid uuid.UUID) {
 	ReservedBridgeNum[uuid] = bridgeNum
 	delete(AllocatedBridgeNum, uuid)
 	uuidtonum.UuidToNumFree(ctx.pubUuidToNum, uuid)
-	// XXX when do we garbage collect and call UuidToNumDelete()?
 }

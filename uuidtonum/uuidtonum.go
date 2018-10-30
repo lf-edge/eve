@@ -105,6 +105,32 @@ func UuidToNumAllocate(pub *pubsub.Publication, uuid uuid.UUID,
 	}
 }
 
+// Reserve without setting InUse
+func UuidToNumReserve(pub *pubsub.Publication, uuid uuid.UUID,
+	number int, numType string) {
+
+	log.Infof("UuidToNumReserve(%s, %d)\n", uuid.String(), number)
+	i, err := pub.Get(uuid.String())
+	if err == nil {
+		u := cast.CastUuidToNum(i)
+		// XXX Fatal?
+		log.Errorf("UuidToNumReserve(%s) already exists %v\n",
+			uuid.String(), u)
+		return
+	}
+	now := time.Now()
+	u := types.UuidToNum{UUID: uuid,
+		CreateTime:  now,
+		LastUseTime: now,
+		InUse:       false,
+		NumType:     numType,
+		Number:      number,
+	}
+	log.Infof("UuidToNumReserve(%s) publishing created %v\n",
+		uuid.String(), u)
+	pub.Publish(u.Key(), u)
+}
+
 // Clear InUse
 func UuidToNumFree(pub *pubsub.Publication, uuid uuid.UUID) {
 

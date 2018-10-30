@@ -69,6 +69,8 @@ func appNumAllocatorInit(ctx *zedrouterContext) {
 		log.Infof("Reserving appNum %d for %s\n", appNum, uuid)
 		ReservedAppNum[uuid] = appNum
 		AllocReservedAppNums.Set(appNum)
+		// Clear InUse
+		uuidtonum.UuidToNumFree(ctx.pubUuidToNum, uuid)
 	}
 	items = pubAppNetworkStatus.GetAll()
 	for key, st := range items {
@@ -86,13 +88,16 @@ func appNumAllocatorInit(ctx *zedrouterContext) {
 		// XXX however, on startup we are not likely to have any
 		// config yet.
 		if AllocReservedAppNums.IsSet(appNum) {
-			log.Errorf("AllocReservedAppNums already set for %d\n",
+			log.Infof("AllocReservedAppNums2 already set for %d\n",
 				appNum)
 			continue
 		}
 		log.Infof("Reserving appNum %d for %s\n", appNum, uuid)
 		ReservedAppNum[uuid] = appNum
 		AllocReservedAppNums.Set(appNum)
+		// Don't set InUse
+		uuidtonum.UuidToNumReserve(ctx.pubUuidToNum, uuid, appNum,
+			"appNum")
 	}
 }
 
@@ -148,6 +153,7 @@ func appNumAllocate(ctx *zedrouterContext,
 				log.Infof("Unreserving %d for %s\n", i, r)
 				delete(ReservedAppNum, r)
 				AllocReservedAppNums.Clear(i)
+				uuidtonum.UuidToNumFree(ctx.pubUuidToNum, r)
 				return appNumAllocate(ctx, uuid, isZedmanager)
 			}
 			log.Fatal("All 255 appNums are in use!")
@@ -181,7 +187,7 @@ func appNumFree(ctx *zedrouterContext, uuid uuid.UUID) {
 			appNum)
 	}
 	// Need to handle a free of a reserved number in which case
-	// we have nothing to do since it remains reserved.
+	// we have nothing to do since it remains reserved. Clear InUse
 	if reserved {
 		uuidtonum.UuidToNumFree(ctx.pubUuidToNum, uuid)
 		return
