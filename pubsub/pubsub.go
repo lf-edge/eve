@@ -17,6 +17,7 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
+	"path"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -204,7 +205,15 @@ func publishImpl(agentName string, agentScope string,
 
 	if publishToSock {
 		sockName := SockName(name)
-		if _, err := os.Stat(sockName); err == nil {
+		baseName := path.Base(sockName)
+		if _, err := os.Stat(baseName); err != nil {
+			log.Infof("Publish Create %s\n", baseName)
+			if err := os.MkdirAll(baseName, 0700); err != nil {
+				errStr := fmt.Sprintf("Publish(%s): %s",
+					name, err)
+				return nil, errors.New(errStr)
+			}
+		} else if _, err := os.Stat(sockName); err == nil {
 			if err := os.Remove(sockName); err != nil {
 				errStr := fmt.Sprintf("Publish(%s): %s",
 					name, err)
