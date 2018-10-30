@@ -127,7 +127,21 @@ func UuidToNumFree(pub *pubsub.Publication, uuid uuid.UUID) {
 	}
 }
 
-// XXX add UuidToNumDelete() to unpublish. Needed by GC
+func UuidToNumDelete(pub *pubsub.Publication, uuid uuid.UUID) {
+
+	log.Infof("UuidToNumDelete(%s)\n", uuid.String())
+	_, err := pub.Get(uuid.String())
+	if err != nil {
+		// XXX fatal
+		log.Errorf("UuidToNumDelete(%s) does not exist\n", uuid.String())
+		return
+	}
+	if err := pub.Unpublish(uuid.String()); err != nil {
+		// XXX fatal
+		log.Errorf("UuidToNumDelete(%s) unpublish failed %v\n",
+			uuid.String(), err)
+	}
+}
 
 func UuidToNumGet(pub *pubsub.Publication, uuid uuid.UUID,
 	numType string) (int, error) {

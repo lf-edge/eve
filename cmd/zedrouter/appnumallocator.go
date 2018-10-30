@@ -194,4 +194,5 @@ func appNumFree(ctx *zedrouterContext, uuid uuid.UUID) {
 	ReservedAppNum[uuid] = appNum
 	delete(AllocatedAppNum, uuid)
 	uuidtonum.UuidToNumFree(ctx.pubUuidToNum, uuid)
+	// XXX when do we garbage collect and call UuidToNumDelete()?
 }
