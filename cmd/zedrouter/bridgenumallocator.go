@@ -13,6 +13,7 @@ import (
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/cast"
+	"github.com/zededa/go-provision/uuidtonum"
 )
 
 // The allocated numbers
@@ -94,7 +95,7 @@ func bridgeNumAllocate(ctx *zedrouterContext, uuid uuid.UUID) int {
 			log.Fatalf("AllocReservedBridgeNums not set for %d\n",
 				bridgeNum)
 		}
-		UuidToNumUpdate(ctx, uuid, bridgeNum)
+		uuidtonum.UuidToNumUpdate(ctx.pubUuidToNum, uuid, bridgeNum)
 		return bridgeNum
 	}
 	// Do we already have it in reserve?
@@ -107,8 +108,8 @@ func bridgeNumAllocate(ctx *zedrouterContext, uuid uuid.UUID) int {
 		}
 		AllocatedBridgeNum[uuid] = bridgeNum
 		delete(ReservedBridgeNum, uuid)
-		UuidToNumAllocate(ctx, uuid, bridgeNum, false,
-			"bridgeNum")
+		uuidtonum.UuidToNumAllocate(ctx.pubUuidToNum, uuid, bridgeNum,
+			false, "bridgeNum")
 		return bridgeNum
 	}
 
@@ -141,7 +142,8 @@ func bridgeNumAllocate(ctx *zedrouterContext, uuid uuid.UUID) int {
 			bridgeNum)
 	}
 	AllocReservedBridgeNums.Set(bridgeNum)
-	UuidToNumAllocate(ctx, uuid, bridgeNum, true, "bridgeNum")
+	uuidtonum.UuidToNumAllocate(ctx.pubUuidToNum, uuid, bridgeNum, true,
+		"bridgeNum")
 	return bridgeNum
 }
 
@@ -164,7 +166,7 @@ func bridgeNumFree(ctx *zedrouterContext, uuid uuid.UUID) {
 	// Need to handle a free of a reserved number in which case
 	// we have nothing to do since it remains reserved.
 	if reserved {
-		UuidToNumFree(ctx, uuid)
+		uuidtonum.UuidToNumFree(ctx.pubUuidToNum, uuid)
 		return
 	}
 
@@ -174,5 +176,5 @@ func bridgeNumFree(ctx *zedrouterContext, uuid uuid.UUID) {
 	}
 	ReservedBridgeNum[uuid] = bridgeNum
 	delete(AllocatedBridgeNum, uuid)
-	UuidToNumFree(ctx, uuid)
+	uuidtonum.UuidToNumFree(ctx.pubUuidToNum, uuid)
 }

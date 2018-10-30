@@ -15,6 +15,7 @@ import (
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/cast"
+	"github.com/zededa/go-provision/uuidtonum"
 )
 
 // The allocated numbers
@@ -106,7 +107,7 @@ func appNumAllocate(ctx *zedrouterContext,
 			log.Fatalf("AllocReservedAppNums not set for %d\n",
 				appNum)
 		}
-		UuidToNumUpdate(ctx, uuid, appNum)
+		uuidtonum.UuidToNumUpdate(ctx.pubUuidToNum, uuid, appNum)
 		return appNum
 	}
 	// Do we already have it in reserve?
@@ -119,7 +120,8 @@ func appNumAllocate(ctx *zedrouterContext,
 		}
 		AllocatedAppNum[uuid] = appNum
 		delete(ReservedAppNum, uuid)
-		UuidToNumAllocate(ctx, uuid, appNum, false, "appNum")
+		uuidtonum.UuidToNumAllocate(ctx.pubUuidToNum, uuid, appNum,
+			false, "appNum")
 		return appNum
 	}
 
@@ -157,7 +159,8 @@ func appNumAllocate(ctx *zedrouterContext,
 			appNum)
 	}
 	AllocReservedAppNums.Set(appNum)
-	UuidToNumAllocate(ctx, uuid, appNum, true, "appNum")
+	uuidtonum.UuidToNumAllocate(ctx.pubUuidToNum, uuid, appNum, true,
+		"appNum")
 	return appNum
 }
 
@@ -180,7 +183,7 @@ func appNumFree(ctx *zedrouterContext, uuid uuid.UUID) {
 	// Need to handle a free of a reserved number in which case
 	// we have nothing to do since it remains reserved.
 	if reserved {
-		UuidToNumFree(ctx, uuid)
+		uuidtonum.UuidToNumFree(ctx.pubUuidToNum, uuid)
 		return
 	}
 
@@ -190,5 +193,5 @@ func appNumFree(ctx *zedrouterContext, uuid uuid.UUID) {
 	}
 	ReservedAppNum[uuid] = appNum
 	delete(AllocatedAppNum, uuid)
-	UuidToNumFree(ctx, uuid)
+	uuidtonum.UuidToNumFree(ctx.pubUuidToNum, uuid)
 }

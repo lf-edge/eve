@@ -1,21 +1,21 @@
 // Copyright (c) 2018 Zededa, Inc.
 // All rights reserved.
 
-package zedrouter
+package uuidtonum
 
 import (
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/cast"
+	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"time"
 )
 
 // Update LastUseTime; assert InUse true
-func UuidToNumUpdate(ctx *zedrouterContext, uuid uuid.UUID, number int) {
+func UuidToNumUpdate(pub *pubsub.Publication, uuid uuid.UUID, number int) {
 
 	log.Infof("UuidToNumUpdate(%s, %d)\n", uuid.String(), number)
-	pub := ctx.pubUuidToNum
 	i, err := pub.Get(uuid.String())
 	if err != nil {
 		// XXX fatal
@@ -42,12 +42,11 @@ func UuidToNumUpdate(ctx *zedrouterContext, uuid uuid.UUID, number int) {
 
 // Update LastUseTime; set CreateTime if no entry, set InUse
 // If mustCreate is set the entry should not exist.
-func UuidToNumAllocate(ctx *zedrouterContext, uuid uuid.UUID,
+func UuidToNumAllocate(pub *pubsub.Publication, uuid uuid.UUID,
 	number int, mustCreate bool, numType string) {
 
 	log.Infof("UuidToNumAllocate(%s, %d, %v)\n", uuid.String(), number,
 		mustCreate)
-	pub := ctx.pubUuidToNum
 	i, err := pub.Get(uuid.String())
 	if err != nil {
 		now := time.Now()
@@ -91,11 +90,9 @@ func UuidToNumAllocate(ctx *zedrouterContext, uuid uuid.UUID,
 }
 
 // Clear InUse
-func UuidToNumFree(ctx *zedrouterContext, uuid uuid.UUID) {
+func UuidToNumFree(pub *pubsub.Publication, uuid uuid.UUID) {
 
 	log.Infof("UuidToNumFree(%s)\n", uuid.String())
-
-	pub := ctx.pubUuidToNum
 	i, err := pub.Get(uuid.String())
 	if err != nil {
 		// XXX fatal
