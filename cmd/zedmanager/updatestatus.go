@@ -175,8 +175,9 @@ func doUpdate(ctx *zedmanagerContext, uuidStr string,
 	}
 
 	// Are we doing a purge?
-	// XXX when/how do we drop refcounts on old images? GC?
+	// XXX when/how do we drop refcounts on old images? PurgeCmdDone()
 	// XXX need to keep old StorageStatusList with Has*Ref
+	// XXX different images in config and status will result in failure
 	if status.PurgeInprogress == types.DOWNLOAD {
 		log.Infof("PurgeInprogress(%s) download/verifications done\n",
 			status.Key())
@@ -250,6 +251,14 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		ss := &status.StorageStatusList[i]
 		if ss.Name != sc.Name ||
 			ss.ImageSha256 != sc.ImageSha256 {
+			// XXX refresh --purge hits this error check.
+			// XXX need to update the StorageStatusList to have
+			// superset, remove above check, and check for inclusion
+			// here. When purge is done we can delete the extra
+			// StorageStatus which should result in dropping
+			// those references.
+			// XXX introduce a hook for PurgeCmdDone() for this
+			// purpose.
 			// Report to zedcloud
 			errString := fmt.Sprintf("Mismatch in storageConfig vs. Status:\n\t%s\n\t%s\n\t%s\n\t%s\n\n",
 				sc.Name, ss.Name,
@@ -625,6 +634,10 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		log.Infof("Waiting for AppNetworkStatus for %s\n", uuidStr)
 		return changed
 	}
+	if !ns.Activated {
+		log.Infof("Waiting for AppNetworkStatus Activated for %s\n", uuidStr)
+		return changed
+	}
 	if ns.Error != "" {
 		log.Errorf("Received error from zedrouter for %s: %s\n",
 			uuidStr, ns.Error)
@@ -861,13 +874,31 @@ func doInactivate(ctx *zedmanagerContext, uuidStr string,
 
 	log.Infof("Done with DomainStatus removal for %s\n", uuidStr)
 
-	unpublishAppNetworkConfig(ctx, uuidStr)
-
-	// Check if AppNetworkStatus gone
+	uninstall := (status.PurgeInprogress != types.BRING_DOWN)
+	if uninstall {
+		unpublishAppNetworkConfig(ctx, uuidStr)
+	} else {
+		m := lookupAppNetworkConfig(ctx, status.Key())
+		if m != nil {
+			log.Infof("doInactivate: Clearing Activate for AppNetworkConfig for %s\n",
+				uuidStr)
+			m.Activate = false
+			publishAppNetworkConfig(ctx, m)
+		} else {
+			log.Warnf("doInactivte: No AppNetworkConfig for %s\n",
+				uuidStr)
+		}
+	}
+	// Check if AppNetworkStatus gone or !Activated
 	ns := lookupAppNetworkStatus(ctx, uuidStr)
-	if ns != nil {
-		log.Infof("Waiting for AppNetworkStatus removal for %s\n",
-			uuidStr)
+	if ns != nil && (uninstall || ns.Activated) {
+		if uninstall {
+			log.Infof("Waiting for AppNetworkStatus removal for %s\n",
+				uuidStr)
+		} else {
+			log.Infof("Waiting for AppNetworkStatus !Activated for %s\n",
+				uuidStr)
+		}
 		if ns.Error != "" {
 			log.Errorf("Received error from zedrouter for %s: %s\n",
 				uuidStr, ns.Error)
@@ -991,6 +1022,7 @@ func doUninstall(ctx *zedmanagerContext, uuidStr string,
 
 // Handle Activate=false which is different than doInactivate
 // Keep DomainConfig around so the vdisks stay around
+// Keep AppInstanceConfig around and with Activate set.
 func doInactivateHalt(ctx *zedmanagerContext, uuidStr string,
 	config types.AppInstanceConfig, status *types.AppInstanceStatus) bool {
 
@@ -1003,6 +1035,7 @@ func doInactivateHalt(ctx *zedmanagerContext, uuidStr string,
 		log.Infof("Waiting for AppNetworkStatus for %s\n", uuidStr)
 		return changed
 	}
+	// XXX should we make it not Activated?
 	if ns.Error != "" {
 		log.Errorf("Received error from zedrouter for %s: %s\n",
 			uuidStr, ns.Error)
@@ -1073,7 +1106,7 @@ func doInactivateHalt(ctx *zedmanagerContext, uuidStr string,
 		return changed
 	}
 	// XXX network is still around! Need to call doInactivate in doRemove?
-	// XXX fix assymetry
+	// XXX fix assymetry?
 	status.Activated = false
 	status.ActivateInprogress = false
 	changed = true

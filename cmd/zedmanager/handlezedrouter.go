@@ -32,6 +32,11 @@ func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
 				aiConfig.UUIDandVersion)
 			return
 		}
+		if m.Activate != aiConfig.Activate {
+			log.Infof("MaybeAddAppNetworkConfig Activate changed from %v to %v\n",
+				m.Activate, aiConfig.Activate)
+			changed = true
+		}
 		for i, new := range aiConfig.OverlayNetworkList {
 			old := m.OverlayNetworkList[i]
 			if !reflect.DeepEqual(new.ACLs, old.ACLs) {
@@ -59,6 +64,7 @@ func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
 			UUIDandVersion: aiConfig.UUIDandVersion,
 			DisplayName:    aiConfig.DisplayName,
 			IsZedmanager:   false,
+			Activate:       aiConfig.Activate,
 		}
 		nc.OverlayNetworkList = make([]types.OverlayNetworkConfig,
 			len(aiStatus.EIDList))

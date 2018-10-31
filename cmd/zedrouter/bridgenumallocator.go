@@ -182,5 +182,5 @@ func bridgeNumFree(ctx *zedrouterContext, uuid uuid.UUID) {
 	}
 	ReservedBridgeNum[uuid] = bridgeNum
 	delete(AllocatedBridgeNum, uuid)
-	uuidtonum.UuidToNumFree(ctx.pubUuidToNum, uuid)
+	uuidtonum.UuidToNumDelete(ctx.pubUuidToNum, uuid)
 }
