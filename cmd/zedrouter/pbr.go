@@ -66,6 +66,119 @@ func PbrInit(ctx *zedrouterContext, addrChange addrChangeFnType,
 	return routechan, addrchan, linkchan
 }
 
+// Add a default route for the bridgeName table to the specific uplink
+func PbrRouteAddDefault(bridgeName string, uplink string) error {
+	log.Infof("PbrRouteAddDefault(%s, %s)\n", bridgeName, uplink)
+
+	ifindex, err := IfnameToIndex(uplink)
+	if err != nil {
+		errStr := fmt.Sprintf("IfnameToIndex(%s) failed: %s",
+			uplink, err)
+		log.Errorln(errStr)
+		return errors.New(errStr)
+	}
+	rt := getDefaultIPv4Route(ifindex)
+	if rt == nil {
+		log.Warnf("PbrRouteAddDefault(%s, %s) no default route\n",
+			bridgeName, uplink)
+		return nil
+	}
+	// Add to ifindex specific table
+	ifindex, err = IfnameToIndex(bridgeName)
+	if err != nil {
+		errStr := fmt.Sprintf("IfnameToIndex(%s) failed: %s",
+			bridgeName, err)
+		log.Errorln(errStr)
+		return errors.New(errStr)
+	}
+	MyTable := FreeTable + ifindex
+	myrt := *rt
+	myrt.Table = MyTable
+	// Clear any RTNH_F_LINKDOWN etc flags since add doesn't like them
+	if rt.Flags != 0 {
+		myrt.Flags = 0
+	}
+	log.Infof("PbrRouteAddDefault(%s, %s) adding %v\n",
+		bridgeName, uplink, myrt)
+	if err := netlink.RouteAdd(&myrt); err != nil {
+		errStr := fmt.Sprintf("Failed to add %v to %d: %s",
+			myrt, myrt.Table, err)
+		log.Errorln(errStr)
+		return errors.New(errStr)
+	}
+	return nil
+}
+
+// Delete the default route for the bridgeName table to the specific uplink
+func PbrRouteDeleteDefault(bridgeName string, uplink string) error {
+	log.Infof("PbrRouteAddDefault(%s, %s)\n", bridgeName, uplink)
+
+	ifindex, err := IfnameToIndex(uplink)
+	if err != nil {
+		errStr := fmt.Sprintf("IfnameToIndex(%s) failed: %s",
+			uplink, err)
+		log.Errorln(errStr)
+		return errors.New(errStr)
+	}
+	rt := getDefaultIPv4Route(ifindex)
+	if rt == nil {
+		log.Warnf("PbrRouteDeleteDefault(%s, %s) no default route\n",
+			bridgeName, uplink)
+		return nil
+	}
+	// Remove from ifindex specific table
+	ifindex, err = IfnameToIndex(bridgeName)
+	if err != nil {
+		errStr := fmt.Sprintf("IfnameToIndex(%s) failed: %s",
+			bridgeName, err)
+		log.Errorln(errStr)
+		return errors.New(errStr)
+	}
+	MyTable := FreeTable + ifindex
+	myrt := *rt
+	myrt.Table = MyTable
+	// Clear any RTNH_F_LINKDOWN etc flags since del might not like them
+	if rt.Flags != 0 {
+		myrt.Flags = 0
+	}
+	log.Infof("PbrRouteDeleteDefault(%s, %s) deleting %v\n",
+		bridgeName, uplink, myrt)
+	if err := netlink.RouteDel(&myrt); err != nil {
+		errStr := fmt.Sprintf("Failed to delete %v from %d: %s",
+			myrt, myrt.Table, err)
+		log.Errorln(errStr)
+		return errors.New(errStr)
+	}
+	return nil
+}
+
+// Return the first default route for one interface. XXX or return all?
+func getDefaultIPv4Route(ifindex int) *netlink.Route {
+	table := syscall.RT_TABLE_MAIN
+	// Default route is nil Dst.
+	filter := netlink.Route{Table: table, LinkIndex: ifindex, Dst: nil}
+	fflags := netlink.RT_FILTER_TABLE
+	fflags |= netlink.RT_FILTER_OIF
+	fflags |= netlink.RT_FILTER_DST
+	log.Infof("getDefaultIPv4Route(%d) filter %v\n", ifindex, filter)
+	routes, err := netlink.RouteListFiltered(syscall.AF_INET,
+		&filter, fflags)
+	if err != nil {
+		log.Fatal("RouteList failed: %v\n", err)
+	}
+	log.Debugf("getDefaultIPv4Route(%d) - got %d matches\n",
+		ifindex, len(routes))
+	for _, rt := range routes {
+		if rt.LinkIndex != ifindex {
+			continue
+		}
+		log.Debugf("getDefaultIPv4Route(%d) returning %v\n",
+			ifindex, rt)
+		return &rt
+	}
+	return nil
+}
+
 // XXX The PbrNAT functions are no-ops for now.
 // The prefix for the NAT linux bridge interface is in its own pbr table
 // XXX put the default route(s) for the selected Adapter for the service
@@ -445,7 +558,15 @@ func IfnameToIndex(ifname string) (int, error) {
 			return i, nil
 		}
 	}
-	return -1, errors.New(fmt.Sprintf("Unknown ifname %s", ifname))
+	// Try a lookup to handle race
+	link, err := netlink.LinkByName(ifname)
+	if err != nil {
+		return -1, errors.New(fmt.Sprintf("Unknown ifname %s", ifname))
+	}
+	index := link.Attrs().Index
+	log.Warnf("IfnameToIndex(%s) fallback lookup done: %d, %s\n",
+		ifname, index, link.Type())
+	return index, nil
 }
 
 // ===== map from ifindex to list of IP addresses
