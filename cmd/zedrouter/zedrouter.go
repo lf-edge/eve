@@ -1585,6 +1585,8 @@ func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
 
 		maybeRemoveStaleIpsets(staleIpsets)
 	}
+	status.Activated = true
+	publishAppNetworkStatus(ctx, status)
 	log.Infof("doActivate done for %s\n", config.DisplayName)
 }
 

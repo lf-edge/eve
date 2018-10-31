@@ -53,6 +53,9 @@ func appNumAllocatorInit(ctx *zedrouterContext) {
 				key, status.Key(), status)
 			continue
 		}
+		if status.NumType != "appNum" {
+			continue
+		}
 		log.Infof("appNumAllocatorInit found %v\n", status)
 		appNum := status.Number
 		uuid := status.UUID

@@ -43,6 +43,9 @@ func bridgeNumAllocatorInit(ctx *zedrouterContext) {
 				key, status.Key(), status)
 			continue
 		}
+		if status.NumType != "bridgeNum" {
+			continue
+		}
 		log.Infof("bridgeNumAllocatorInit found %v\n", status)
 		bridgeNum := status.Number
 		uuid := status.UUID
