@@ -4,6 +4,10 @@ PATH := ${CURDIR}/bin:${PATH}
 GOPATH := ${CURDIR}
 GO = $(shell which go) # XXX: Provide more precise method.
 
+ifndef GO
+$(error go executable was not found)
+endif
+
 # Export some of them to subshells
 export PATH
 export GOPATH
