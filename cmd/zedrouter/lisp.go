@@ -68,7 +68,7 @@ lisp map-cache {
 const lispEIDtemplateMgmt = `
 lisp json {
     json-name = signature
-    json-string = { "signature" : "%s" }
+    json-string = { "signature-eid": "%s", "signature" : "%s" }
 }
 
 lisp json {
@@ -115,7 +115,7 @@ lisp database-mapping {
 const lispEIDtemplate = `
 lisp json {
     json-name = signature-%s
-    json-string = { "signature" : "%s" }
+    json-string = { "signature-eid":"%s", "signature" : "%s" }
 }
 
 lisp json {
@@ -250,8 +250,9 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	}
 	file1.WriteString(fmt.Sprintf(lispIIDtemplate, IID))
 	if isMgmt {
+		signatureEid := fmt.Sprintf("[%d]%s", IID, EID)
 		file2.WriteString(fmt.Sprintf(lispEIDtemplateMgmt,
-			lispSignature, additionalInfo, olIfname, IID))
+			signatureEid, lispSignature, additionalInfo, olIfname, IID))
 		file2.WriteString(fmt.Sprintf(lispDBtemplateMgmt,
 			IID, EID, rlocString))
 	} else {
@@ -263,8 +264,9 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 				IID, AppIPAddr.String(), IID)
 			rlocString += one
 		}
+		signatureEid := fmt.Sprintf("[%d]%s", IID, EID.String())
 		file2.WriteString(fmt.Sprintf(lispEIDtemplate,
-			tag, lispSignature, tag, additionalInfo, olIfname,
+			tag, signatureEid, lispSignature, tag, additionalInfo, olIfname,
 			olIfname, IID))
 		file2.WriteString(fmt.Sprintf(lispDBtemplate,
 			IID, EID, IID, tag, tag, rlocString))
@@ -330,8 +332,9 @@ func createLispEidConfiglet(lispRunDirname string,
 			IID, AppIPAddr.String(), IID)
 		rlocString += one
 	}
+	signatureEid := fmt.Sprintf("[%d]%s", IID, EID.String())
 	file.WriteString(fmt.Sprintf(lispEIDtemplate,
-		tag, lispSignature, tag, additionalInfo, olIfname,
+		tag, signatureEid, lispSignature, tag, additionalInfo, olIfname,
 		olIfname, IID))
 	file.WriteString(fmt.Sprintf(lispDBtemplate,
 		IID, EID, IID, tag, tag, rlocString))
