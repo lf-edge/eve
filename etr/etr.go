@@ -632,7 +632,7 @@ func ProcessCapturedPkts(fd4 int, fd6 int,
 					if debug {
 						log.Debugf("ProcessCapturedPackets: Checksum error")
 					}
-					return
+					continue
 				}
 
 				srcIP = ipHdr.SrcIP
