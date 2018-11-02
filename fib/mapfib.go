@@ -46,16 +46,16 @@ var fd6 int
 func InitItrCryptoPort() {
 	itrGlobalData.LockMe.Lock()
 	defer itrGlobalData.LockMe.Unlock()
-	itrGlobalData.ItrCryptoPort = -1
+	itrGlobalData.ItrCryptoPort = 0
 }
 
-func GetItrCryptoPort() int {
+func GetItrCryptoPort() uint {
 	itrGlobalData.LockMe.RLock()
 	defer itrGlobalData.LockMe.RUnlock()
 	return itrGlobalData.ItrCryptoPort
 }
 
-func PutItrCryptoPort(port int) {
+func PutItrCryptoPort(port uint) {
 	itrGlobalData.LockMe.Lock()
 	defer itrGlobalData.LockMe.Unlock()
 	itrGlobalData.ItrCryptoPort = port

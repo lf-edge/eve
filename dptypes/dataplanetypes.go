@@ -245,7 +245,7 @@ type ITRLocalData struct {
 	Fd6 int
 
 	// ITR crypto source port to be used when sending crypto packets out
-	ItrCryptoPort int
+	ItrCryptoPort uint
 
 	// Decode headers
 	Eth layers.Ethernet
@@ -258,12 +258,12 @@ type ITRLocalData struct {
 }
 
 type ITRGlobalData struct {
-	ItrCryptoPort int
+	ItrCryptoPort uint
 	LockMe        sync.RWMutex
 }
 
 type ITRConfiguration struct {
-	ItrCryptoPort      int
+	ItrCryptoPort      uint
 	ItrCryptoPortValid bool
 	Quit               bool
 }

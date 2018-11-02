@@ -293,7 +293,7 @@ func craftAndSendIPv4LispPacket(
 		SetLispKeyId(lispHdr, keyId)
 
 		srcPort := itrLocalData.ItrCryptoPort
-		if srcPort != -1 {
+		if srcPort != 0 {
 			udp.SrcPort = layers.UDPPort(uint16(srcPort))
 		}
 		// UDP length changes with crypto
@@ -464,7 +464,7 @@ func craftAndSendIPv6LispPacket(
 
 		//srcPort := GetItrCryptoPort()
 		srcPort := itrLocalData.ItrCryptoPort
-		if srcPort != -1 {
+		if srcPort != 0 {
 			udp.SrcPort = layers.UDPPort(uint16(srcPort))
 		}
 		// UDP length changes with crypto
