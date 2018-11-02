@@ -114,14 +114,14 @@ func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
 				// This address is ipv6
 				ipv6Addr = addrInfo.Addr
 				ipv6Found = true
-				log.Debugf("HandleDeviceNetworkChange: Picked ipv6 source address %s",
+				log.Infof("HandleDeviceNetworkChange: Picked ipv6 source address %s",
 					ipv6Addr)
 			} else if ipv4Found == false {
 				// This address is ipv4
 				ipv4Addr = addrInfo.Addr
 				ipv4Found = true
-				log.Debugf("HandleDeviceNetworkChange: Picked ipv4 source address %s",
-					ipv6Addr)
+				log.Infof("HandleDeviceNetworkChange: Picked ipv4 source address %s",
+					ipv4Addr)
 			}
 		}
 
@@ -151,7 +151,7 @@ func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
 				Fd6:    fd6,
 				KillChannel: killChannel,
 			}
-			log.Debugf("HandleDeviceNetworkChange: Creating ETR thread for UP link %s",
+			log.Infof("HandleDeviceNetworkChange: Creating ETR thread for UP link %s",
 				link.IfName)
 		}
 	}
@@ -166,6 +166,7 @@ func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
 			//link.Ring.Close()
 			link.Handle.Close()
 			delete(EtrTable.EtrTable, key)
+			log.Infof("HandleDeviceNetworkChange: Stopping ETR thread for UP link %s", key)
 		}
 	}
 
@@ -189,7 +190,7 @@ func HandleEtrEphPort(ephPort int) {
 	for ifName, link := range EtrTable.EtrTable {
 		//if (link.Ring == nil) && (link.RingFD == -1) {
 		if (link.Handle == nil) && (link.Fd4 == -1) && (link.Fd6 == -1) {
-			log.Debugf("HandleEtrEphPort: Creating ETR thread for UP link %s",
+			log.Infof("HandleEtrEphPort: Creating ETR thread for UP link %s",
 				link.IfName)
 			//ring, fd := StartEtrNat(EtrTable.EphPort, link.IfName)
 			//ling.Ring = ring
@@ -211,18 +212,20 @@ func HandleEtrEphPort(ephPort int) {
 		// For AF_PACKET socket case old filter is replaced with new one.
 		ins, err := pcap.CompileBPFFilter(layers.LinkTypeEthernet,
 			1600, filter)
+		log.Infof("HandleEtrEphPort: Applying BPF filter %s on interface %s", filter, ifName)
 		if err != nil {
-			log.Errorf("SetupEtrPktCapture: Compiling BPF filter %s failed: %s", filter, err)
+			log.Errorf("HandleEtrEphPort: Compiling BPF filter %s failed: %s", filter, err)
 		} else {
 			raw_ins := *(*[]bpf.RawInstruction)(unsafe.Pointer(&ins))
 			err = link.Handle.SetBPF(raw_ins)
 			if err != nil {
-				log.Errorf("SetupEtrPktCapture: Setting BPF filter %s failed: %s", filter, err)
+				log.Errorf("HandleEtrEphPort: Setting BPF filter %s failed: %s", filter, err)
 			}
 		}
 		//link.Handle.SetBPFFilter(filter)
 
-		log.Infof("HandleEtrEphPort: Changed ephemeral port BPF match for ETR %s", ifName)
+		log.Infof("HandleEtrEphPort: Changed ephemeral port BPF match for interface %s to %d",
+			ifName, ephPort)
 	}
 }
 
@@ -233,7 +236,7 @@ func StartEtrNat(ephPort int,
 
 	//ring := SetupEtrPktCapture(ephPort, upLink)
 	//if ring == nil {
-	log.Debugf("StartEtrNat: ETR thread (%s) with ephemeral port %d",
+	log.Infof("StartEtrNat: ETR thread (%s) with ephemeral port %d",
 		upLink, ephPort)
 	handle := SetupEtrPktCapture(ephPort, upLink)
 	if handle == nil {
@@ -472,6 +475,7 @@ func SetupEtrPktCapture(ephemeralPort int, upLink string) *afpacket.TPacket {
 
 	ins, err := pcap.CompileBPFFilter(layers.LinkTypeEthernet,
 		1600, filter)
+	log.Infof("SetupEtrPktCapture: Applying BPF filter %s on interface %s", filter, upLink)
 	if err != nil {
 		log.Errorf("SetupEtrPktCapture: Compiling BPF filter %s failed: %s", filter, err)
 	} else {
@@ -542,7 +546,7 @@ func ProcessCapturedPkts(fd4 int, fd6 int,
 
 	//var pktBuf [65536]byte
 	var pktBuf []byte = make([]byte, 65536)
-	log.Debugf("Started processing captured packets in ETR")
+	log.Infof("Started processing captured packets in ETR")
 
 	parser := gopacket.NewDecodingLayerParser(layers.LayerTypeEthernet,
 		&eth, &ip4, &ip6, &udp)
@@ -641,7 +645,7 @@ func ProcessCapturedPkts(fd4 int, fd6 int,
 			default:
 				// We do not need this packet
 				fib.AddDecapStatistics("outer-header-error", 1, uint64(capLen), currUnixSeconds)
-				return
+				continue
 			}
 		}
 
