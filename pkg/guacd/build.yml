@@ -1,0 +1,12 @@
+image: guacd
+org: zededa
+network: yes
+config:
+  binds:
+    - /dev:/dev
+    - /etc/resolv.conf:/etc/resolv.conf
+    - /run:/run
+    - /var/config:/config
+  net: host
+  capabilities:
+    - all

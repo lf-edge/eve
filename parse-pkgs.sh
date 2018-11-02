@@ -58,6 +58,7 @@ DOM0ZTOOLS_TAG=$(linuxkit_tag pkg/dom0-ztools)$ARCH
 QREXECLIB_TAG=$(linuxkit_tag pkg/qrexec-lib)$ARCH
 WWAN_TAG=$(linuxkit_tag pkg/wwan)$ARCH
 WLAN_TAG=$(linuxkit_tag pkg/wlan)$ARCH
+GUACD_TAG=$(linuxkit_tag pkg/guacd)$ARCH
 GPTTOOLS_TAG=$(linuxkit_tag pkg/gpt-tools)$ARCH
 WATCHDOG_TAG=$(linuxkit_tag pkg/watchdog)$ARCH
 MKFLASH_TAG=$(linuxkit_tag pkg/mkflash)$ARCH
@@ -86,6 +87,7 @@ sed -e "s#ZENBUILD_VERSION#"$ZENBUILD_VERSION"#" \
     -e "s#QREXECLIB_TAG#"$QREXECLIB_TAG"#" \
     -e "s#WWAN_TAG#"$WWAN_TAG"#" \
     -e "s#WLAN_TAG#"$WLAN_TAG"#" \
+    -e "s#GUACD_TAG#"$GUACD_TAG"#" \
     -e "s#GRUB_TAG#"$GRUB_TAG"#" \
     -e "s#DTREES_TAG#"$DTREES_TAG"#" \
     -e "s#GPTTOOLS_TAG#"$GPTTOOLS_TAG"#" \
