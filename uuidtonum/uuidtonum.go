@@ -20,30 +20,23 @@ func UuidToNumUpdate(pub *pubsub.Publication, uuid uuid.UUID, number int) {
 	log.Infof("UuidToNumUpdate(%s, %d)\n", uuid.String(), number)
 	i, err := pub.Get(uuid.String())
 	if err != nil {
-		// XXX fatal
-		log.Errorf("UuidToNumUpdate(%s) does not exist\n",
+		log.Fatalf("UuidToNumUpdate(%s) does not exist\n",
 			uuid.String())
-		return
 	}
 	u := cast.CastUuidToNum(i)
 	if !u.InUse {
-		// XXX fatal
-		log.Errorf("UuidToNumUpdate(%s) not InUse %v\n",
+		log.Fatalf("UuidToNumUpdate(%s) not InUse %v\n",
 			uuid.String(), u)
-		return
 	}
 	if u.Number != number {
-		// XXX fatal
-		log.Errorf("UuidToNumUpdate(%s) number mismatch %v vs. %d\n",
+		log.Fatalf("UuidToNumUpdate(%s) number mismatch %v vs. %d\n",
 			uuid.String(), u, number)
-		return
 	}
 	u.LastUseTime = time.Now()
 	log.Infof("UuidToNumUpdate(%s) publishing updated %v\n",
 		uuid.String(), u)
 	if err := pub.Publish(u.Key(), u); err != nil {
-		// XXX fatal
-		log.Errorf("UuidToNumUpdate(%s) publish failed %v\n",
+		log.Fatalf("UuidToNumUpdate(%s) publish failed %v\n",
 			uuid.String(), err)
 	}
 }
@@ -72,26 +65,19 @@ func UuidToNumAllocate(pub *pubsub.Publication, uuid uuid.UUID,
 	}
 	u := cast.CastUuidToNum(i)
 	if u.NumType != numType {
-		// XXX fatal
-		log.Errorf("UuidToNumAllocate(%s) wrong numType %s vs. %s\n",
+		log.Fatalf("UuidToNumAllocate(%s) wrong numType %s vs. %s\n",
 			uuid.String(), u.NumType, numType)
-		return
 	}
 	if u.Number != number {
-		// XXX fatal
-		log.Errorf("UuidToNumAllocate(%s) number mismatch %v vs. %d\n",
+		log.Fatalf("UuidToNumAllocate(%s) number mismatch %v vs. %d\n",
 			uuid.String(), u, number)
-		return
 	}
 	if mustCreate {
-		// XXX fatal
-		log.Errorf("UuidToNumAllocate(%s) already exists %v\n",
+		log.Fatalf("UuidToNumAllocate(%s) already exists %v\n",
 			uuid.String(), u)
-		return
 	}
 	if u.InUse {
-		// XXX fatal
-		log.Errorf("UuidToNumAllocate(%s) already InUse %v\n",
+		log.Fatalf("UuidToNumAllocate(%s) already InUse %v\n",
 			uuid.String(), u)
 	}
 	u.InUse = true
@@ -99,36 +85,9 @@ func UuidToNumAllocate(pub *pubsub.Publication, uuid uuid.UUID,
 	log.Infof("UuidToNumAllocate(%s) publishing updated %v\n",
 		uuid.String(), u)
 	if err := pub.Publish(u.Key(), u); err != nil {
-		// XXX fatal
-		log.Errorf("UuidToNumAllocate(%s) publish failed %v\n",
+		log.Fatalf("UuidToNumAllocate(%s) publish failed %v\n",
 			uuid.String(), err)
 	}
-}
-
-// Reserve without setting InUse
-func UuidToNumReserve(pub *pubsub.Publication, uuid uuid.UUID,
-	number int, numType string) {
-
-	log.Infof("UuidToNumReserve(%s, %d)\n", uuid.String(), number)
-	i, err := pub.Get(uuid.String())
-	if err == nil {
-		u := cast.CastUuidToNum(i)
-		// XXX Fatal?
-		log.Errorf("UuidToNumReserve(%s) already exists %v\n",
-			uuid.String(), u)
-		return
-	}
-	now := time.Now()
-	u := types.UuidToNum{UUID: uuid,
-		CreateTime:  now,
-		LastUseTime: now,
-		InUse:       false,
-		NumType:     numType,
-		Number:      number,
-	}
-	log.Infof("UuidToNumReserve(%s) publishing created %v\n",
-		uuid.String(), u)
-	pub.Publish(u.Key(), u)
 }
 
 // Clear InUse
@@ -137,9 +96,7 @@ func UuidToNumFree(pub *pubsub.Publication, uuid uuid.UUID) {
 	log.Infof("UuidToNumFree(%s)\n", uuid.String())
 	i, err := pub.Get(uuid.String())
 	if err != nil {
-		// XXX fatal
-		log.Errorf("UuidToNumFree(%s) does not exist\n", uuid.String())
-		return
+		log.Fatalf("UuidToNumFree(%s) does not exist\n", uuid.String())
 	}
 	u := cast.CastUuidToNum(i)
 	u.InUse = false
@@ -147,8 +104,7 @@ func UuidToNumFree(pub *pubsub.Publication, uuid uuid.UUID) {
 	log.Infof("UuidToNumFree(%s) publishing updated %v\n",
 		uuid.String(), u)
 	if err := pub.Publish(u.Key(), u); err != nil {
-		// XXX fatal
-		log.Errorf("UuidToNumFree(%s) publish failed %v\n",
+		log.Fatalf("UuidToNumFree(%s) publish failed %v\n",
 			uuid.String(), err)
 	}
 }
@@ -158,13 +114,11 @@ func UuidToNumDelete(pub *pubsub.Publication, uuid uuid.UUID) {
 	log.Infof("UuidToNumDelete(%s)\n", uuid.String())
 	_, err := pub.Get(uuid.String())
 	if err != nil {
-		// XXX fatal
-		log.Errorf("UuidToNumDelete(%s) does not exist\n", uuid.String())
-		return
+		log.Fatalf("UuidToNumDelete(%s) does not exist\n",
+			uuid.String())
 	}
 	if err := pub.Unpublish(uuid.String()); err != nil {
-		// XXX fatal
-		log.Errorf("UuidToNumDelete(%s) unpublish failed %v\n",
+		log.Fatalf("UuidToNumDelete(%s) unpublish failed %v\n",
 			uuid.String(), err)
 	}
 }
@@ -187,4 +141,37 @@ func UuidToNumGet(pub *pubsub.Publication, uuid uuid.UUID,
 	}
 	log.Infof("UuidToNumGet(%s, %s) found %v\n", key, numType, u)
 	return u.Number, nil
+}
+
+func UuidToNumGetOldestUnused(pub *pubsub.Publication,
+	numType string) (uuid.UUID, int, error) {
+
+	log.Infof("UuidToNumGetOldestUnused(%s)\n", numType)
+
+	// Will have a LastUseTime of zero
+	oldest := new(types.UuidToNum)
+	items := pub.GetAll()
+	for key, st := range items {
+		status := cast.CastUuidToNum(st)
+		if status.Key() != key {
+			log.Errorf("UuidToNumGetOldestUnused key/UUID mismatch %s vs %s; ignored %+v\n",
+				key, status.Key(), status)
+			continue
+		}
+		if status.NumType != numType || status.InUse {
+			continue
+		}
+		if oldest.LastUseTime.Before(status.LastUseTime) {
+			log.Infof("UuidToNumGetOldestUnused(%s) found older %v\n",
+				numType, status)
+			oldest = &status
+		}
+	}
+	if oldest.LastUseTime.IsZero() {
+		errStr := fmt.Sprintf("UuidToNumGetOldestUnused(%s) none found",
+			numType)
+		return uuid.UUID{}, 0, errors.New(errStr)
+	}
+	log.Infof("UuidToNumGetOldestUnused(%s) found %v\n", numType, oldest)
+	return oldest.UUID, oldest.Number, nil
 }
