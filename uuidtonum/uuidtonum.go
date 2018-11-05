@@ -14,33 +14,6 @@ import (
 	"time"
 )
 
-// Update LastUseTime; assert InUse true
-func UuidToNumUpdate(pub *pubsub.Publication, uuid uuid.UUID, number int) {
-
-	log.Infof("UuidToNumUpdate(%s, %d)\n", uuid.String(), number)
-	i, err := pub.Get(uuid.String())
-	if err != nil {
-		log.Fatalf("UuidToNumUpdate(%s) does not exist\n",
-			uuid.String())
-	}
-	u := cast.CastUuidToNum(i)
-	if !u.InUse {
-		log.Fatalf("UuidToNumUpdate(%s) not InUse %v\n",
-			uuid.String(), u)
-	}
-	if u.Number != number {
-		log.Fatalf("UuidToNumUpdate(%s) number mismatch %v vs. %d\n",
-			uuid.String(), u, number)
-	}
-	u.LastUseTime = time.Now()
-	log.Infof("UuidToNumUpdate(%s) publishing updated %v\n",
-		uuid.String(), u)
-	if err := pub.Publish(u.Key(), u); err != nil {
-		log.Fatalf("UuidToNumUpdate(%s) publish failed %v\n",
-			uuid.String(), err)
-	}
-}
-
 // Update LastUseTime; set CreateTime if no entry, set InUse
 // If mustCreate is set the entry should not exist.
 func UuidToNumAllocate(pub *pubsub.Publication, uuid uuid.UUID,

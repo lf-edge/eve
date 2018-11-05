@@ -105,7 +105,8 @@ func appNumAllocate(ctx *zedrouterContext,
 				appNum)
 		}
 		// Set InUse and update time
-		uuidtonum.UuidToNumUpdate(ctx.pubUuidToNum, uuid, appNum)
+		uuidtonum.UuidToNumAllocate(ctx.pubUuidToNum, uuid, appNum,
+			false, "appNum")
 		return appNum
 	}
 

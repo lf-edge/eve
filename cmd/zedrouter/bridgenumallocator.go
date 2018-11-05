@@ -95,7 +95,8 @@ func bridgeNumAllocate(ctx *zedrouterContext, uuid uuid.UUID) int {
 				bridgeNum)
 		}
 		// Set InUse and update time
-		uuidtonum.UuidToNumUpdate(ctx.pubUuidToNum, uuid, bridgeNum)
+		uuidtonum.UuidToNumAllocate(ctx.pubUuidToNum, uuid, bridgeNum,
+			false, "bridgeNum")
 		return bridgeNum
 	}
 
