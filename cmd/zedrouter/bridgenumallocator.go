@@ -90,8 +90,8 @@ func bridgeNumAllocate(ctx *zedrouterContext, uuid uuid.UUID) int {
 	if err == nil {
 		log.Infof("Found allocated bridgeNum %d for %s\n",
 			bridgeNum, uuid)
-		if !AllocReservedAppNumBits.IsSet(bridgeNum) {
-			log.Fatalf("AllocReservedAppNumBits not set for %d\n",
+		if !AllocReservedBridgeNumBits.IsSet(bridgeNum) {
+			log.Fatalf("AllocReservedBridgeNumBits not set for %d\n",
 				bridgeNum)
 		}
 		// Set InUse and update time
