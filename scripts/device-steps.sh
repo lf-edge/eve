@@ -419,6 +419,7 @@ fi
 if [ $SELF_REGISTER = 1 ]; then
     rm -f $TMPDIR/zedrouterconfig.json
     
+    # XXX doesn't this need to be in /config to survive a power-failure?
     touch $TMPDIR/self-register-failed
     echo "Self-registering our device certificate at " `date`
     if [ ! \( -f $CONFIGDIR/onboard.cert.pem -a -f $CONFIGDIR/onboard.key.pem \) ]; then
