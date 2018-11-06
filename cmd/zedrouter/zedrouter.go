@@ -1015,14 +1015,14 @@ func handleCreate(ctx *zedrouterContext, key string,
 		UUIDandVersion: config.UUIDandVersion,
 		AppNum:         appNum,
 		PendingAdd:     true,
-		OlNum:          len(config.OverlayNetworkList),
-		UlNum:          len(config.UnderlayNetworkList),
 		DisplayName:    config.DisplayName,
 		IsZedmanager:   config.IsZedmanager,
 	}
 	publishAppNetworkStatus(ctx, &status)
 
 	if config.Activate {
+		status.OlNum = len(config.OverlayNetworkList)
+		status.UlNum = len(config.UnderlayNetworkList)
 		doActivate(ctx, config, &status)
 	}
 	status.PendingAdd = false
@@ -1901,7 +1901,7 @@ func handleModify(ctx *zedrouterContext, key string,
 
 		// XXX could there be a change to AssignedIPv6Address aka EID?
 		// If so updateACLConfiglet needs to know old and new
-
+		// XXX Could olStatus.Vif not be set? Means we didn't add
 		err := updateACLConfiglet(bridgeName, olStatus.Vif, false,
 			olStatus.ACLs, olConfig.ACLs, olStatus.BridgeIPAddr,
 			olConfig.EID.String())
@@ -1986,6 +1986,7 @@ func handleModify(ctx *zedrouterContext, key string,
 
 		// XXX could there be a change to AssignedIPAddress?
 		// If so updateNetworkACLConfiglet needs to know old and new
+		// XXX Could ulStatus.Vif not be set? Means we didn't add
 		err := updateACLConfiglet(bridgeName, ulStatus.Vif, false,
 			ulStatus.ACLs, ulConfig.ACLs, ulStatus.BridgeIPAddr,
 			appIPAddr)
@@ -2228,6 +2229,7 @@ func doInactivate(ctx *zedrouterContext, status *types.AppNetworkStatus) {
 			olStatus.EID.String())
 
 		// Delete ACLs
+		// XXX Could olStatus.Vif not be set? Means we didn't add
 		err := deleteACLConfiglet(bridgeName, olStatus.Vif, false,
 			olStatus.ACLs, olStatus.BridgeIPAddr,
 			olStatus.EID.String())
@@ -2327,6 +2329,7 @@ func doInactivate(ctx *zedrouterContext, status *types.AppNetworkStatus) {
 				appIPAddr)
 		}
 
+		// XXX Could ulStatus.Vif not be set? Means we didn't add
 		err := deleteACLConfiglet(bridgeName, ulStatus.Vif, false,
 			ulStatus.ACLs, ulStatus.BridgeIPAddr, appIPAddr)
 		if err != nil {
