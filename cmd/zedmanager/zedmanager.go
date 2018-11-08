@@ -503,8 +503,13 @@ func handleCreate(ctx *zedmanagerContext, key string,
 		len(config.StorageConfigList))
 	for i, sc := range config.StorageConfigList {
 		ss := &status.StorageStatusList[i]
+		ss.DatastoreId = sc.DatastoreId
 		ss.Name = sc.Name
 		ss.ImageSha256 = sc.ImageSha256
+		ss.Size = sc.Size
+		ss.CertificateChain = sc.CertificateChain
+		ss.ImageSignature = sc.ImageSignature
+		ss.SignatureKey = sc.SignatureKey
 		ss.ReadOnly = sc.ReadOnly
 		ss.Preserve = sc.Preserve
 		ss.Format = sc.Format
