@@ -3,27 +3,18 @@
 
 // Allocate a small integer for each application UUID.
 // The number can not exceed 255 since we use the as IPv4 subnet numbers.
-// Remember which UUIDs have which appnum's even after the number is freed so
-// that a subsequent allocation is likely to get the same number; thus
-// keep the allocated numbers in reserve.
-// When there are no free numbers then reuse the reserved numbers.
+// Persist the numbers across reboots using uuidtonum package
+// When there are no free numbers then reuse the unused numbers.
 // We try to give the application with IsZedmanager=true appnum zero.
 
 package zedrouter
 
 import (
-	"fmt"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/cast"
-	"github.com/zededa/go-provision/pubsub"
+	"github.com/zededa/go-provision/uuidtonum"
 )
-
-// The allocated numbers
-var AllocatedAppNum map[uuid.UUID]int
-
-// The reserved numbers for uuids found it config or deleted.
-var ReservedAppNum map[uuid.UUID]int
 
 // Bitmap of the reserved and allocated
 // Keeps 256 bits indexed by 0 to 255.
@@ -33,16 +24,49 @@ func (bits *Bitmap) IsSet(i int) bool { return bits[i/8]&(1<<uint(7-i%8)) != 0 }
 func (bits *Bitmap) Set(i int)        { bits[i/8] |= 1 << uint(7-i%8) }
 func (bits *Bitmap) Clear(i int)      { bits[i/8] &^= 1 << uint(7-i%8) }
 
-var AllocReservedAppNums Bitmap
+var AllocReservedAppNumBits Bitmap
 
 // Read the existing appNums out of what we published/checkpointed.
+// Also read what we have persisted before a reboot
 // Store in reserved map since we will be asked to allocate them later.
 // Set bit in bitmap.
-func appNumAllocatorInit(pubAppNetworkStatus *pubsub.Publication) {
-	AllocatedAppNum = make(map[uuid.UUID]int)
-	ReservedAppNum = make(map[uuid.UUID]int)
+func appNumAllocatorInit(ctx *zedrouterContext) {
 
-	items := pubAppNetworkStatus.GetAll()
+	pubAppNetworkStatus := ctx.pubAppNetworkStatus
+	pubUuidToNum := ctx.pubUuidToNum
+
+	items := pubUuidToNum.GetAll()
+	for key, st := range items {
+		status := cast.CastUuidToNum(st)
+		if status.Key() != key {
+			log.Errorf("appNumAllocatorInit key/UUID mismatch %s vs %s; ignored %+v\n",
+				key, status.Key(), status)
+			continue
+		}
+		if status.NumType != "appNum" {
+			continue
+		}
+		log.Infof("appNumAllocatorInit found %v\n", status)
+		appNum := status.Number
+		uuid := status.UUID
+
+		// If we have a config for the UUID we should mark it as
+		// allocated; otherwise mark it as reserved.
+		// XXX however, on startup we are not likely to have any
+		// config yet.
+		if AllocReservedAppNumBits.IsSet(appNum) {
+			log.Errorf("AllocReservedAppNumBits already set for %s num %d\n",
+				uuid.String(), appNum)
+			continue
+		}
+		log.Infof("Reserving appNum %d for %s\n", appNum, uuid)
+		AllocReservedAppNumBits.Set(appNum)
+		// Clear InUse
+		uuidtonum.UuidToNumFree(ctx.pubUuidToNum, uuid)
+	}
+	// In case zedrouter process restarted we fill in InUse from
+	// AppNetworkStatus
+	items = pubAppNetworkStatus.GetAll()
 	for key, st := range items {
 		status := cast.CastAppNetworkStatus(st)
 		if status.Key() != key {
@@ -57,40 +81,37 @@ func appNumAllocatorInit(pubAppNetworkStatus *pubsub.Publication) {
 		// allocated; otherwise mark it as reserved.
 		// XXX however, on startup we are not likely to have any
 		// config yet.
-		log.Infof("Reserving appNum %d for %s\n", appNum, uuid)
-		ReservedAppNum[uuid] = appNum
-		if AllocReservedAppNums.IsSet(appNum) {
-			panic(fmt.Sprintf("AllocReservedAppNums already set for %d\n",
-				appNum))
+		if !AllocReservedAppNumBits.IsSet(appNum) {
+			log.Fatalf("AllocReservedAppNumBits not set for %s num %d\n",
+				uuid.String(), appNum)
+			continue
 		}
-		AllocReservedAppNums.Set(appNum)
+		log.Infof("Marking InUse appNum %d for %s\n", appNum, uuid)
+		// Set InUse
+		uuidtonum.UuidToNumAllocate(ctx.pubUuidToNum, uuid, appNum,
+			false, "appNum")
 	}
 }
 
-func appNumAllocate(uuid uuid.UUID, isZedmanager bool) int {
+func appNumAllocate(ctx *zedrouterContext,
+	uuid uuid.UUID, isZedmanager bool) int {
+
 	// Do we already have a number?
-	appNum, ok := AllocatedAppNum[uuid]
-	if ok {
+	appNum, err := uuidtonum.UuidToNumGet(ctx.pubUuidToNum, uuid, "appNum")
+	if err == nil {
 		log.Infof("Found allocated appNum %d for %s\n", appNum, uuid)
-		if !AllocReservedAppNums.IsSet(appNum) {
-			panic(fmt.Sprintf("AllocReservedAppNums not set for %d\n", appNum))
+		if !AllocReservedAppNumBits.IsSet(appNum) {
+			log.Fatalf("AllocReservedAppNumBits not set for %d\n",
+				appNum)
 		}
-		return appNum
-	}
-	// Do we already have it in reserve?
-	appNum, ok = ReservedAppNum[uuid]
-	if ok {
-		log.Infof("Found reserved appNum %d for %s\n", appNum, uuid)
-		if !AllocReservedAppNums.IsSet(appNum) {
-			panic(fmt.Sprintf("AllocReservedAppNums not set for %d\n", appNum))
-		}
-		AllocatedAppNum[uuid] = appNum
-		delete(ReservedAppNum, uuid)
+		// Set InUse and update time
+		uuidtonum.UuidToNumAllocate(ctx.pubUuidToNum, uuid, appNum,
+			false, "appNum")
 		return appNum
 	}
 
 	// Find a free number in bitmap; look for zero if isZedmanager
-	if isZedmanager && !AllocReservedAppNums.IsSet(0) {
+	if isZedmanager && !AllocReservedAppNumBits.IsSet(0) {
 		appNum = 0
 		log.Infof("Allocating appNum %d for %s isZedmanager\n",
 			appNum, uuid)
@@ -98,7 +119,7 @@ func appNumAllocate(uuid uuid.UUID, isZedmanager bool) int {
 		// XXX could look for non-0xFF bytes first for efficiency
 		appNum = 0
 		for i := 1; i < 256; i++ {
-			if !AllocReservedAppNums.IsSet(i) {
+			if !AllocReservedAppNumBits.IsSet(i) {
 				appNum = i
 				log.Infof("Allocating appNum %d for %s\n",
 					appNum, uuid)
@@ -106,51 +127,38 @@ func appNumAllocate(uuid uuid.UUID, isZedmanager bool) int {
 			}
 		}
 		if appNum == 0 {
-			log.Infof("Failed to find free appNum for %s. Reusing!\n", uuid)
-			// Unreserve first reserved
-			for r, i := range ReservedAppNum {
-				log.Infof("Unreserving %d for %s\n", i, r)
-				delete(ReservedAppNum, r)
-				AllocReservedAppNums.Clear(i)
-				return appNumAllocate(uuid, isZedmanager)
+			log.Infof("Failed to find free appNum for %s. Reusing!\n",
+				uuid)
+			uuid, appNum, err := uuidtonum.UuidToNumGetOldestUnused(ctx.pubUuidToNum, "appNum")
+			if err != nil {
+				log.Fatal("All 255 appNums are in use!")
 			}
-			panic("All 255 appNums are in use!")
+			uuidtonum.UuidToNumDelete(ctx.pubUuidToNum, uuid)
+			AllocReservedAppNumBits.Clear(appNum)
 		}
 	}
-	AllocatedAppNum[uuid] = appNum
-	if AllocReservedAppNums.IsSet(appNum) {
-		panic(fmt.Sprintf("AllocReservedAppNums already set for %d\n",
-			appNum))
+	if AllocReservedAppNumBits.IsSet(appNum) {
+		log.Fatalf("AllocReservedAppNumBits already set for %d\n",
+			appNum)
 	}
-	AllocReservedAppNums.Set(appNum)
+	AllocReservedAppNumBits.Set(appNum)
+	uuidtonum.UuidToNumAllocate(ctx.pubUuidToNum, uuid, appNum, true,
+		"appNum")
 	return appNum
 }
 
-func appNumFree(uuid uuid.UUID) {
-	// Check that number exists in the allocated numbers
-	appNum, ok := AllocatedAppNum[uuid]
-	reserved := false
-	if !ok {
-		appNum, ok = ReservedAppNum[uuid]
-		if !ok {
-			panic(fmt.Sprintf("appNumFree: not for %s\n", uuid))
-		}
-		reserved = true
-	}
-	if !AllocReservedAppNums.IsSet(appNum) {
-		panic(fmt.Sprintf("AllocReservedAppNums not set for %d\n",
-			appNum))
-	}
-	// Need to handle a free of a reserved number in which case
-	// we have nothing to do since it remains reserved.
-	if reserved {
-		return
-	}
+func appNumFree(ctx *zedrouterContext, uuid uuid.UUID) {
 
-	_, ok = ReservedAppNum[uuid]
-	if ok {
-		panic(fmt.Sprintf("appNumFree: already in reserved %s\n", uuid))
+	appNum, err := uuidtonum.UuidToNumGet(ctx.pubUuidToNum, uuid, "appNum")
+	if err != nil {
+		log.Fatalf("appNumFree: num not found for %s\n",
+			uuid.String())
 	}
-	ReservedAppNum[uuid] = appNum
-	delete(AllocatedAppNum, uuid)
+	// Check that number exists in the allocated numbers
+	if !AllocReservedAppNumBits.IsSet(appNum) {
+		log.Fatalf("appNumFree: AllocReservedAppNumBits not set for %d\n",
+			appNum)
+	}
+	AllocReservedAppNumBits.Clear(appNum)
+	uuidtonum.UuidToNumDelete(ctx.pubUuidToNum, uuid)
 }

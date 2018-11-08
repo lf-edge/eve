@@ -20,6 +20,7 @@ import (
 type AppNetworkConfig struct {
 	UUIDandVersion      UUIDandVersion
 	DisplayName         string
+	Activate            bool
 	IsZedmanager        bool
 	SeparateDataPlane   bool
 	OverlayNetworkList  []OverlayNetworkConfig
@@ -60,6 +61,7 @@ func (status AppNetworkStatus) Pending() bool {
 type AppNetworkStatus struct {
 	UUIDandVersion UUIDandVersion
 	AppNum         int
+	Activated      bool
 	PendingAdd     bool
 	PendingModify  bool
 	PendingDelete  bool

@@ -11,6 +11,7 @@ import (
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
+	"github.com/zededa/go-provision/uuidtonum"
 	"time"
 )
 
@@ -174,8 +175,9 @@ func doUpdate(ctx *zedmanagerContext, uuidStr string,
 	}
 
 	// Are we doing a purge?
-	// XXX when/how do we drop refcounts on old images? GC?
+	// XXX when/how do we drop refcounts on old images? PurgeCmdDone()
 	// XXX need to keep old StorageStatusList with Has*Ref
+	// XXX different images in config and status will result in failure
 	if status.PurgeInprogress == types.DOWNLOAD {
 		log.Infof("PurgeInprogress(%s) download/verifications done\n",
 			status.Key())
@@ -249,6 +251,14 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		ss := &status.StorageStatusList[i]
 		if ss.Name != sc.Name ||
 			ss.ImageSha256 != sc.ImageSha256 {
+			// XXX refresh --purge hits this error check.
+			// XXX need to update the StorageStatusList to have
+			// superset, remove above check, and check for inclusion
+			// here. When purge is done we can delete the extra
+			// StorageStatus which should result in dropping
+			// those references.
+			// XXX introduce a hook for PurgeCmdDone() for this
+			// purpose.
 			// Report to zedcloud
 			errString := fmt.Sprintf("Mismatch in storageConfig vs. Status:\n\t%s\n\t%s\n\t%s\n\t%s\n\n",
 				sc.Name, ss.Name,
@@ -624,6 +634,10 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		log.Infof("Waiting for AppNetworkStatus for %s\n", uuidStr)
 		return changed
 	}
+	if !ns.Activated {
+		log.Infof("Waiting for AppNetworkStatus Activated for %s\n", uuidStr)
+		return changed
+	}
 	if ns.Error != "" {
 		log.Errorf("Received error from zedrouter for %s: %s\n",
 			uuidStr, ns.Error)
@@ -661,28 +675,65 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		log.Infof("Waiting for DomainStatus for %s\n", uuidStr)
 		return changed
 	}
-	// Look for xen errors.
-	if ds.LastErr != "" {
-		log.Errorf("Received error from domainmgr for %s: %s\n",
-			uuidStr, ds.LastErr)
-		status.Error = ds.LastErr
-		status.ErrorSource = pubsub.TypeToName(types.DomainStatus{})
-		status.ErrorTime = ds.LastErrTime
-		changed = true
-	} else if status.ErrorSource == pubsub.TypeToName(types.DomainStatus{}) {
-		log.Infof("Clearing domainmgr error %s\n", status.Error)
-		status.Error = ""
-		status.ErrorSource = ""
-		status.ErrorTime = time.Time{}
-		changed = true
+	// Are we doing a restart?
+	if status.RestartInprogress == types.BRING_DOWN {
+		dc := lookupDomainConfig(ctx, config.Key())
+		if dc == nil {
+			log.Errorf("RestartInprogress(%s) No DomainConfig\n",
+				status.Key())
+		} else if dc.Activate {
+			log.Infof("RestartInprogress(%s) Clear Activate\n",
+				status.Key())
+			dc.Activate = false
+			publishDomainConfig(ctx, dc)
+		} else if !ds.Activated {
+			log.Infof("RestartInprogress(%s) Set Activate\n",
+				status.Key())
+			status.RestartInprogress = types.BRING_UP
+			changed = true
+			dc.Activate = true
+			publishDomainConfig(ctx, dc)
+		} else {
+			log.Infof("RestartInprogress(%s) waiting for domain down\n",
+				status.Key())
+		}
+	}
+	// Look for xen errors. Ignore if we are going down
+	if status.RestartInprogress != types.BRING_DOWN {
+		if ds.LastErr != "" {
+			log.Errorf("Received error from domainmgr for %s: %s\n",
+				uuidStr, ds.LastErr)
+			status.Error = ds.LastErr
+			status.ErrorSource = pubsub.TypeToName(types.DomainStatus{})
+			status.ErrorTime = ds.LastErrTime
+			changed = true
+		} else if status.ErrorSource == pubsub.TypeToName(types.DomainStatus{}) {
+			log.Infof("Clearing domainmgr error %s\n", status.Error)
+			status.Error = ""
+			status.ErrorSource = ""
+			status.ErrorTime = time.Time{}
+			changed = true
+		}
+	} else {
+		if ds.LastErr != "" {
+			log.Warnf("bringDown sees error from domainmgr for %s: %s\n",
+				uuidStr, ds.LastErr)
+		}
+		if status.ErrorSource == pubsub.TypeToName(types.DomainStatus{}) {
+			log.Infof("Clearing domainmgr error %s\n", status.Error)
+			status.Error = ""
+			status.ErrorSource = ""
+			status.ErrorTime = time.Time{}
+			changed = true
+		}
 	}
 	if ds.State != status.State {
-		log.Infof("Set State from DomainStatus from %d to %d\n",
-			status.State, ds.State)
 		switch status.State {
 		case types.RESTARTING, types.PURGING:
 			// Leave unchanged
 		default:
+			log.Infof("Set State from DomainStatus from %d to %d\n",
+				status.State, ds.State)
 			status.State = ds.State
 			changed = true
 		}
@@ -728,31 +779,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		changed = true
 	}
 	// Are we doing a restart?
-	switch status.RestartInprogress {
-	case types.NONE:
-		// Nothing to do
-	case types.BRING_DOWN:
-		dc := lookupDomainConfig(ctx, config.Key())
-		if dc == nil {
-			log.Errorf("RestartInprogress(%s) No DomainConfig\n",
-				status.Key())
-		} else if dc.Activate {
-			log.Infof("RestartInprogress(%s) Clear Activate\n",
-				status.Key())
-			dc.Activate = false
-			publishDomainConfig(ctx, dc)
-		} else if !ds.Activated {
-			log.Infof("RestartInprogress(%s) Set Activate\n",
-				status.Key())
-			status.RestartInprogress = types.BRING_UP
-			changed = true
-			dc.Activate = true
-			publishDomainConfig(ctx, dc)
-		} else {
-			log.Infof("RestartInprogress(%s) waiting for domain down\n",
-				status.Key())
-		}
-	case types.BRING_UP:
+	if status.RestartInprogress == types.BRING_UP {
 		if ds.Activated {
 			log.Infof("RestartInprogress(%s) activated\n",
 				status.Key())
@@ -771,6 +798,11 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 			status.PurgeInprogress = types.NONE
 			status.State = types.RUNNING
 			changed = true
+			// Update persistent counter
+			uuidtonum.UuidToNumAllocate(ctx.pubUuidToNum,
+				status.UUIDandVersion.UUID,
+				int(status.PurgeCmd.Counter),
+				false, "purgeCmdCounter")
 		} else {
 			log.Infof("PurgeInprogress(%s) waiting for Activated\n",
 				status.Key())
@@ -842,13 +874,31 @@ func doInactivate(ctx *zedmanagerContext, uuidStr string,
 
 	log.Infof("Done with DomainStatus removal for %s\n", uuidStr)
 
-	unpublishAppNetworkConfig(ctx, uuidStr)
-
-	// Check if AppNetworkStatus gone
+	uninstall := (status.PurgeInprogress != types.BRING_DOWN)
+	if uninstall {
+		unpublishAppNetworkConfig(ctx, uuidStr)
+	} else {
+		m := lookupAppNetworkConfig(ctx, status.Key())
+		if m != nil {
+			log.Infof("doInactivate: Clearing Activate for AppNetworkConfig for %s\n",
+				uuidStr)
+			m.Activate = false
+			publishAppNetworkConfig(ctx, m)
+		} else {
+			log.Warnf("doInactivte: No AppNetworkConfig for %s\n",
+				uuidStr)
+		}
+	}
+	// Check if AppNetworkStatus gone or !Activated
 	ns := lookupAppNetworkStatus(ctx, uuidStr)
-	if ns != nil {
-		log.Infof("Waiting for AppNetworkStatus removal for %s\n",
-			uuidStr)
+	if ns != nil && (uninstall || ns.Activated) {
+		if uninstall {
+			log.Infof("Waiting for AppNetworkStatus removal for %s\n",
+				uuidStr)
+		} else {
+			log.Infof("Waiting for AppNetworkStatus !Activated for %s\n",
+				uuidStr)
+		}
 		if ns.Error != "" {
 			log.Errorf("Received error from zedrouter for %s: %s\n",
 				uuidStr, ns.Error)
@@ -972,6 +1022,7 @@ func doUninstall(ctx *zedmanagerContext, uuidStr string,
 
 // Handle Activate=false which is different than doInactivate
 // Keep DomainConfig around so the vdisks stay around
+// Keep AppInstanceConfig around and with Activate set.
 func doInactivateHalt(ctx *zedmanagerContext, uuidStr string,
 	config types.AppInstanceConfig, status *types.AppInstanceStatus) bool {
 
@@ -984,6 +1035,7 @@ func doInactivateHalt(ctx *zedmanagerContext, uuidStr string,
 		log.Infof("Waiting for AppNetworkStatus for %s\n", uuidStr)
 		return changed
 	}
+	// XXX should we make it not Activated?
 	if ns.Error != "" {
 		log.Errorf("Received error from zedrouter for %s: %s\n",
 			uuidStr, ns.Error)
@@ -1022,25 +1074,22 @@ func doInactivateHalt(ctx *zedmanagerContext, uuidStr string,
 		return changed
 	}
 	if ds.State != status.State {
-		log.Infof("Set State from DomainStatus from %d to %d\n",
-			status.State, ds.State)
 		switch status.State {
 		case types.RESTARTING, types.PURGING:
 			// Leave unchanged
 		default:
+			log.Infof("Set State from DomainStatus from %d to %d\n",
+				status.State, ds.State)
 			status.State = ds.State
 			changed = true
 		}
 	}
-	// Look for xen errors.
+	// Ignore errors during a halt
 	if ds.LastErr != "" {
-		log.Errorf("Received error from domainmgr for %s: %s\n",
+		log.Warnf("doInactivateHalt sees error from domainmgr for %s: %s\n",
 			uuidStr, ds.LastErr)
-		status.Error = ds.LastErr
-		status.ErrorSource = pubsub.TypeToName(types.DomainStatus{})
-		status.ErrorTime = ds.LastErrTime
-		changed = true
-	} else if status.ErrorSource == pubsub.TypeToName(types.DomainStatus{}) {
+	}
+	if status.ErrorSource == pubsub.TypeToName(types.DomainStatus{}) {
 		log.Infof("Clearing domainmgr error %s\n", status.Error)
 		status.Error = ""
 		status.ErrorSource = ""
@@ -1057,7 +1106,7 @@ func doInactivateHalt(ctx *zedmanagerContext, uuidStr string,
 		return changed
 	}
 	// XXX network is still around! Need to call doInactivate in doRemove?
-	// XXX fix assymetry
+	// XXX fix assymetry?
 	status.Activated = false
 	status.ActivateInprogress = false
 	changed = true

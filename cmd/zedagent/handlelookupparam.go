@@ -235,6 +235,7 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 		UUIDandVersion:    uv,
 		DisplayName:       "zedmanager",
 		IsZedmanager:      true,
+		Activate:          true,
 		SeparateDataPlane: lispInfo.Experimental,
 	}
 
