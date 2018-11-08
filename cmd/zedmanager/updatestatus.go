@@ -285,7 +285,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 			// StorageStatus which should result in dropping
 			// those references.
 			// XXX introduce a hook for PurgeCmdDone() for this
-			// purpose.
+			// purpose. Where?
 			log.Warnln(errString)
 			newSs := types.StorageStatus{
 				Name:         sc.Name,
