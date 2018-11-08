@@ -281,11 +281,6 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 				changed = true
 				return changed, false
 			}
-			// XXX When purge is done we can delete the extra
-			// StorageStatus which should result in dropping
-			// those references.
-			// XXX introduce a hook for PurgeCmdDone() for this
-			// purpose. Where?
 			log.Warnln(errString)
 			newSs := types.StorageStatus{
 				Name:         sc.Name,
@@ -829,18 +824,52 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 				status.Key())
 			status.PurgeInprogress = types.NONE
 			status.State = types.RUNNING
+			_ = purgeCmdDone(ctx, config, status)
 			changed = true
-			// Update persistent counter
-			uuidtonum.UuidToNumAllocate(ctx.pubUuidToNum,
-				status.UUIDandVersion.UUID,
-				int(status.PurgeCmd.Counter),
-				false, "purgeCmdCounter")
 		} else {
 			log.Infof("PurgeInprogress(%s) waiting for Activated\n",
 				status.Key())
 		}
 	}
 	log.Infof("doActivate done for %s\n", uuidStr)
+	return changed
+}
+
+func purgeCmdDone(ctx *zedmanagerContext, config types.AppInstanceConfig,
+	status *types.AppInstanceStatus) bool {
+
+	log.Infof("purgeCmdDone(%s) for %s\n", config.Key(), config.DisplayName)
+
+	changed := false
+	// Process the StorageStatusList items which are not in StorageConfigList
+	for _, ss := range status.StorageStatusList {
+		found := false
+		for _, sc := range config.StorageConfigList {
+			if ss.Name == sc.Name &&
+				ss.ImageSha256 == sc.ImageSha256 {
+				log.Debugf("purgeCmdDone(%s) found SC %s %s\n",
+					config.Key(), sc.Name, sc.ImageSha256)
+				found = true
+			}
+		}
+		if found {
+			continue
+		}
+		log.Debugf("purgeCmdDone(%s) unused SS %s %s\n",
+			config.Key(), ss.Name, ss.ImageSha256)
+		// Decrease refcount if we had increased it
+		if ss.HasVerifierRef {
+			MaybeRemoveVerifyImageConfigSha256(ctx, ss.ImageSha256)
+			ss.HasVerifierRef = false
+			changed = true
+		}
+	}
+
+	// Update persistent counter
+	uuidtonum.UuidToNumAllocate(ctx.pubUuidToNum,
+		status.UUIDandVersion.UUID,
+		int(status.PurgeCmd.Counter),
+		false, "purgeCmdCounter")
 	return changed
 }
 
