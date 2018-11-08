@@ -589,6 +589,7 @@ func handleModify(ctx *zedmanagerContext, key string,
 	status.OverlayNetworkList = config.OverlayNetworkList
 	status.UnderlayNetworkList = config.UnderlayNetworkList
 	status.IoAdapterList = config.IoAdapterList
+	publishAppInstanceStatus(ctx, status)
 	log.Infof("handleModify done for %s\n", config.DisplayName)
 }
 

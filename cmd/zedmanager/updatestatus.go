@@ -241,33 +241,65 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		errString := fmt.Sprintf("Mismatch in storageConfig vs. Status length: %d vs %d\n",
 			len(config.StorageConfigList),
 			len(status.StorageStatusList))
-		log.Errorln(errString)
-		status.Error = errString
-		status.ErrorTime = time.Now()
-		changed = true
-		return changed, false
-	}
-	for i, sc := range config.StorageConfigList {
-		ss := &status.StorageStatusList[i]
-		if ss.Name != sc.Name ||
-			ss.ImageSha256 != sc.ImageSha256 {
-			// XXX refresh --purge hits this error check.
-			// XXX need to update the StorageStatusList to have
-			// superset, remove above check, and check for inclusion
-			// here. When purge is done we can delete the extra
-			// StorageStatus which should result in dropping
-			// those references.
-			// XXX introduce a hook for PurgeCmdDone() for this
-			// purpose.
-			// Report to zedcloud
-			errString := fmt.Sprintf("Mismatch in storageConfig vs. Status:\n\t%s\n\t%s\n\t%s\n\t%s\n\n",
-				sc.Name, ss.Name,
-				sc.ImageSha256, ss.ImageSha256)
+		if status.PurgeInprogress == types.NONE {
 			log.Errorln(errString)
 			status.Error = errString
 			status.ErrorTime = time.Now()
 			changed = true
 			return changed, false
+		}
+		log.Warnln(errString)
+	}
+	for i, sc := range config.StorageConfigList {
+		if i >= len(status.StorageStatusList) {
+			newSs := types.StorageStatus{
+				Name:         sc.Name,
+				ImageSha256:  sc.ImageSha256,
+				ReadOnly:     sc.ReadOnly,
+				Preserve:     sc.Preserve,
+				Format:       sc.Format,
+				Maxsizebytes: sc.Maxsizebytes,
+				Devtype:      sc.Devtype,
+				Target:       sc.Target,
+			}
+			log.Infof("Adding new StorageStatus %v\n", newSs)
+			status.StorageStatusList = append(status.StorageStatusList, newSs)
+			changed = true
+			continue
+		}
+		ss := &status.StorageStatusList[i]
+		if ss.Name != sc.Name ||
+			ss.ImageSha256 != sc.ImageSha256 {
+			errString := fmt.Sprintf("Mismatch in storageConfig vs. Status:\n\t%s\n\t%s\n\t%s\n\t%s\n\n",
+				sc.Name, ss.Name,
+				sc.ImageSha256, ss.ImageSha256)
+			if status.PurgeInprogress == types.NONE {
+				// Report to zedcloud
+				log.Errorln(errString)
+				status.Error = errString
+				status.ErrorTime = time.Now()
+				changed = true
+				return changed, false
+			}
+			// XXX When purge is done we can delete the extra
+			// StorageStatus which should result in dropping
+			// those references.
+			// XXX introduce a hook for PurgeCmdDone() for this
+			// purpose.
+			log.Warnln(errString)
+			newSs := types.StorageStatus{
+				Name:         sc.Name,
+				ImageSha256:  sc.ImageSha256,
+				ReadOnly:     sc.ReadOnly,
+				Preserve:     sc.Preserve,
+				Format:       sc.Format,
+				Maxsizebytes: sc.Maxsizebytes,
+				Devtype:      sc.Devtype,
+				Target:       sc.Target,
+			}
+			log.Infof("Adding changed StorageStatus %v\n", newSs)
+			status.StorageStatusList = append(status.StorageStatusList, newSs)
+			changed = true
 		}
 	}
 
