@@ -2230,11 +2230,17 @@ func doInactivate(ctx *zedrouterContext, status *types.AppNetworkStatus) {
 
 		// Delete ACLs
 		// XXX Could olStatus.Vif not be set? Means we didn't add
-		err := deleteACLConfiglet(bridgeName, olStatus.Vif, false,
-			olStatus.ACLs, olStatus.BridgeIPAddr,
-			olStatus.EID.String())
-		if err != nil {
-			addError(ctx, status, "deleteACL", err)
+		if olStatus.Vif != "" {
+			err := deleteACLConfiglet(bridgeName, olStatus.Vif, false,
+				olStatus.ACLs, olStatus.BridgeIPAddr,
+				olStatus.EID.String())
+			if err != nil {
+				addError(ctx, status, "deleteACL", err)
+			}
+		} else {
+			log.Warnf("doInactivate(%s): no vifName for bridge %s for %s\n",
+				status.UUIDandVersion, bridgeName,
+				status.DisplayName)
 		}
 
 		// Delete underlay hosts file for this app
@@ -2330,10 +2336,16 @@ func doInactivate(ctx *zedrouterContext, status *types.AppNetworkStatus) {
 		}
 
 		// XXX Could ulStatus.Vif not be set? Means we didn't add
-		err := deleteACLConfiglet(bridgeName, ulStatus.Vif, false,
-			ulStatus.ACLs, ulStatus.BridgeIPAddr, appIPAddr)
-		if err != nil {
-			addError(ctx, status, "deleteACL", err)
+		if ulStatus.Vif != "" {
+			err := deleteACLConfiglet(bridgeName, ulStatus.Vif, false,
+				ulStatus.ACLs, ulStatus.BridgeIPAddr, appIPAddr)
+			if err != nil {
+				addError(ctx, status, "deleteACL", err)
+			}
+		} else {
+			log.Warnf("doInactivate(%s): no vifName for bridge %s for %s\n",
+				status.UUIDandVersion, bridgeName,
+				status.DisplayName)
 		}
 
 		// Delete underlay hosts file for this app
