@@ -15,6 +15,7 @@ import (
 )
 
 // Update LastUseTime; set CreateTime if no entry, set InUse
+// The number can be updated as part of this.
 // If mustCreate is set the entry should not exist.
 func UuidToNumAllocate(pub *pubsub.Publication, uuid uuid.UUID,
 	number int, mustCreate bool, numType string) {
@@ -40,10 +41,6 @@ func UuidToNumAllocate(pub *pubsub.Publication, uuid uuid.UUID,
 	if u.NumType != numType {
 		log.Fatalf("UuidToNumAllocate(%s) wrong numType %s vs. %s\n",
 			uuid.String(), u.NumType, numType)
-	}
-	if u.Number != number {
-		log.Fatalf("UuidToNumAllocate(%s) number mismatch %v vs. %d\n",
-			uuid.String(), u, number)
 	}
 	if mustCreate {
 		log.Fatalf("UuidToNumAllocate(%s) already exists %v\n",
