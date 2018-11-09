@@ -44,6 +44,8 @@ func updateAIStatusSafename(ctx *zedmanagerContext, safename string) {
 // Update this AppInstanceStatus generate config updates to
 // the microservices
 func updateAIStatusUUID(ctx *zedmanagerContext, uuidStr string) {
+
+	log.Infof("updateAIStatusUUID(%s)\n", uuidStr)
 	status := lookupAppInstanceStatus(ctx, uuidStr)
 	if status == nil {
 		log.Infof("updateAIStatusUUID for %s: Missing AppInstanceStatus\n",
@@ -51,7 +53,7 @@ func updateAIStatusUUID(ctx *zedmanagerContext, uuidStr string) {
 		return
 	}
 	config := lookupAppInstanceConfig(ctx, uuidStr)
-	if config == nil {
+	if config == nil || (status.PurgeInprogress == types.BRING_DOWN) {
 		removeAIStatus(ctx, status)
 		return
 	}
@@ -66,6 +68,8 @@ func updateAIStatusUUID(ctx *zedmanagerContext, uuidStr string) {
 // Remove this AppInstanceStatus and generate config removes for
 // the microservices
 func removeAIStatusUUID(ctx *zedmanagerContext, uuidStr string) {
+
+	log.Infof("removeAIStatusUUID(%s)\n", uuidStr)
 	status := lookupAppInstanceStatus(ctx, uuidStr)
 	if status == nil {
 		log.Infof("removeAIStatusUUID for %s: Missing AppInstanceStatus\n",
@@ -147,6 +151,7 @@ func removeAIStatusSafename(ctx *zedmanagerContext, safename string) {
 // Otherwise we proceeed with remove.
 func updateOrRemove(ctx *zedmanagerContext, status types.AppInstanceStatus) {
 	uuidStr := status.Key()
+	log.Infof("updateOrRemove(%s)\n", uuidStr)
 	config := lookupAppInstanceConfig(ctx, uuidStr)
 	if config == nil || (status.PurgeInprogress == types.BRING_DOWN) {
 		log.Infof("updateOrRemove: remove for %s\n", uuidStr)
