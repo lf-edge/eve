@@ -5,10 +5,14 @@ RUN apk add --no-cache \
   dosfstools \
   libarchive-tools \
   sgdisk \
+  e2fsprogs \
+  util-linux \
   coreutils
 
 WORKDIR /
-COPY make-flash .
+COPY make-raw install /
 COPY /efi-files /efifs
 
-ENTRYPOINT [ "/make-flash" ]
+RUN echo "mtools_skip_check=1" >> /etc/mtools.conf
+
+ENTRYPOINT [ "/make-raw" ]

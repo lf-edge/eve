@@ -1,4 +1,4 @@
 org: zededa
-image: mkflash
+image: mkimage-raw-efi
 network: yes
 

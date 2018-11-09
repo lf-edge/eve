@@ -1,0 +1,67 @@
+#!/bin/sh
+set -x
+
+function root_dev {
+   local MAJOR
+   local MINOR
+   local DEV=$(readlink -f /dev/root 2>/dev/null)
+   if [ -z "$DEV" ] ; then
+      MAJOR=$(( $(stat -c '%d' /hostfs ) / 256))
+      MINOR=$(( $(stat -c '%d' /hostfs ) - $MAJOR * 256 ))
+   else
+      MAJOR=$(( 0x$(stat -c '%t' $DEV) + 0 ))
+      MINOR=$(( 0x$(stat -c '%T' $DEV) + 0 ))
+   fi
+   DEV_MM="$MAJOR:$MINOR"
+   echo $(grep -l $DEV_MM /sys/block/*/dev /sys/block/*/*/dev | cut -f4 -d/)
+}
+
+# lets see if we're told on which disk to install...
+INSTALL_DEV=`cat /proc/cmdline | tr ' ' '\012' | sed -ne '/^zenix_install_disk=/s#^.*=##p'` 
+
+# ...if not we will try to guess, and...
+if [ -z "$INSTALL_DEV" ] ; then
+   # now lets see what sources of installation material are there
+   FREE_DISKS=$(lsblk -anlb -o "TYPE,NAME,SIZE" | grep "^disk" | awk '$3 { print $2;}' | grep -v $(root_dev))
+
+   # if there's more than one free disk, install on the first one but warn about all of them
+   echo $FREE_DISKS | awk '{ if (NF > 1) { printf("WARNING: found multiple free disks %s, installing on the first one\n", $0); } }'
+   INSTALL_DEV=$(set ${FREE_DISKS:-""} ; echo $1)
+fi
+
+# ...if we didn't find a single free disk - bail
+if [ -z "$INSTALL_DEV" ] ; then
+  echo "WARNING: didn't find a single free disk out of $ALL_DISKS"
+  exit 1
+fi
+
+# now lets figure out whether we have installation material
+CONFIG_PARTS=$(lsblk -anl -o "NAME,PARTLABEL" | sed -ne '/CONFIG$/s#CONFIG##p')
+for p in $CONFIG_PARTS ; do
+   [ -f /sys/block/$(root_dev)/$p/dev ] && CONFIG_PART=$p
+done
+if [ -z "$CONFIG_PART" ] ; then
+   [ -f /bits/config.img ] && ln -s /bits/config.img /parts/config.img
+else
+   ln -s /dev/$CONFIG_PART /parts/config.img
+fi
+[ -f /bits/rootfs*.img ] && ln -s /bits/rootfs*.img /parts/rootfs.img
+# and the ultimate default is not to install anything
+for i in config.img rootfs.img ; do
+  [ -L /parts/$i ] || ln -s /dev/null /parts/$i
+done
+
+# we may be asked to pause before install procedure
+grep -q zenix_pause_before_install /proc/cmdline && sleep 100000
+
+# do the install
+/bin/sh -xc "/make-raw /dev/$INSTALL_DEV"
+
+# we also maybe asked to pause after
+PAUSE_AFTER_SYNC=5
+grep -q zenix_pause_after_install /proc/cmdline && PAUSE_AFTER_SYNC=100000
+
+sync
+sleep $PAUSE_AFTER_SYNC
+sync
+poweroff -f

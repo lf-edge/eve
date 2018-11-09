@@ -89,7 +89,7 @@ the SD card and tell the UEFI bootloader to boot the GRUB payload from
 the SD card. Here's what you need to do:
 ```
 cp images/rootfs.yml.in.hikey images/rootfs.yml.in
-vi blobs/wpa_supplicant.conf
+vi conf/wpa_supplicant.conf
   # put your WIFI passwords in and/or add your own networks
 make ZARCH=aarch64 MEDIA_SIZE=1024 fallback_aarch64.raw
 sudo dd if=fallback_aarch64.raw of=/dev/rdiskXXX bs=1m

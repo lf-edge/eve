@@ -151,9 +151,11 @@ $(FALLBACK_IMG).qcow2: $(FALLBACK_IMG).raw
 $(FALLBACK_IMG).raw: $(ROOTFS_IMG) config.img
 	tar c $^ | ./makeflash.sh -C ${MEDIA_SIZE} $@
 
-$(INSTALLER_IMG).raw: images/installer.yml $(ROOTFS_IMG) config.img
-	./makerootfs.sh $< $(ROOTFS_FORMAT) $(ROOTFS_IMG)_installer.img
-	tar c $(ROOTFS_IMG)_installer.img | ./makeflash.sh -C 350 $@ 2
+$(ROOTFS_IMG)_installer.img: images/installer.yml $(ROOTFS_IMG) config.img
+	./makerootfs.sh $< $(ROOTFS_FORMAT) $@
+
+$(INSTALLER_IMG).raw: $(ROOTFS_IMG)_installer.img config.img
+	tar c $^ | ./makeflash.sh -C 350 $@ "efi imga conf_win"
 	rm $(ROOTFS_IMG)_installer.img
 
 $(INSTALLER_IMG).iso: images/installer.yml $(ROOTFS_IMG) config.img

@@ -61,7 +61,7 @@ WLAN_TAG=$(linuxkit_tag pkg/wlan)$ARCH
 GUACD_TAG=$(linuxkit_tag pkg/guacd)$ARCH
 GPTTOOLS_TAG=$(linuxkit_tag pkg/gpt-tools)$ARCH
 WATCHDOG_TAG=$(linuxkit_tag pkg/watchdog)$ARCH
-MKFLASH_TAG=$(linuxkit_tag pkg/mkflash)$ARCH
+MKRAW_TAG=$(linuxkit_tag pkg/mkimage-raw-efi)$ARCH
 DEBUG_TAG=$(linuxkit_tag pkg/debug)$ARCH
 
 # Plugin tags: the following tags will default to
@@ -92,6 +92,6 @@ sed -e "s#ZENBUILD_VERSION#"$ZENBUILD_VERSION"#" \
     -e "s#DTREES_TAG#"$DTREES_TAG"#" \
     -e "s#GPTTOOLS_TAG#"$GPTTOOLS_TAG"#" \
     -e "s#WATCHDOG_TAG#"$WATCHDOG_TAG"#" \
-    -e "s#MKFLASH_TAG#"$MKFLASH_TAG"#" \
+    -e "s#MKRAW_TAG#"$MKRAW_TAG"#" \
     -e "s#DEBUG_TAG#"$DEBUG_TAG"#" \
     $1
