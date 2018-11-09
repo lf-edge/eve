@@ -16,5 +16,5 @@ CONFIG_SIZE_KB=1024
 echo "mtools_skip_check=1" >> /etc/mtools.conf
 
 dd if=/dev/zero of=$CONFIG_FILE bs=1024 count=$CONFIG_SIZE_KB
-mkfs.vfat -v $CONFIG_FILE $CONFIG_SIZE_KB 
+mkfs.vfat -n ZEDEDA -v $CONFIG_FILE $CONFIG_SIZE_KB 
 mcopy -i $CONFIG_FILE -s /conf/* ::/
