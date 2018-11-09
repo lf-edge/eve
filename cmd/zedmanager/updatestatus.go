@@ -259,7 +259,6 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 				log.Infof("Found new StorageStatus %v\n", nss)
 				continue
 			}
-			// XXX also trigger verifierStatus check?
 			newSs := types.StorageStatus{
 				DatastoreId:      sc.DatastoreId,
 				Name:             sc.Name,
@@ -300,7 +299,6 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 			log.Infof("Found new StorageStatus %v\n", nss)
 			continue
 		}
-		// XXX also trigger verifierStatus check
 		newSs := types.StorageStatus{
 			DatastoreId:      sc.DatastoreId,
 			Name:             sc.Name,
@@ -325,12 +323,6 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 	waitingForCerts := false
 	for i, _ := range status.StorageStatusList {
 		ss := &status.StorageStatusList[i]
-		// XXX		c := findOrRequestStorageStatus(ctx, ss, &minState)
-		// XXX		if c {
-		// XXX			changed = c
-		// XXX		}
-		// XXX func findOrRequestStorageStatus(ctx *zedmanagerContext,
-		// XXX		ss *types.StorageStatus, minStatep *int) bool {
 		safename := types.UrlToSafename(ss.Name, ss.ImageSha256)
 		log.Infof("Found StorageConfig URL %s safename %s\n",
 			ss.Name, safename)
