@@ -28,6 +28,8 @@ services:
      image: WWAN_TAG
    - name: wlan
      image: WLAN_TAG
+   - name: guacd
+     image: GUACD_TAG
    - name: zededa-tools
      image: ZEDEDA_TAG
 files:
