@@ -35,24 +35,7 @@ services:
 files:
    - path: /containers/services/zededa-tools/lower/opt/zededa/bin/versioninfo
      contents: 'ZENBUILD_VERSION'
-   - path: /boot/kernel.hikey
-     source: blobs/kernel.hikey
-     mode: "0660"
-   - path: /EFI/BOOT/grub.cfg
-     source: blobs/grub.cfg
-     mode: "0660"
-   - path: /lib/firmware/ti-connectivity/wl18xx-fw-4.bin
-     source: blobs/ti-connectivity/wl18xx-fw-4.bin
-     mode: "0660"
-   - path: /lib/firmware/ti-connectivity/wl18xx-fw-2.bin
-     source: blobs/ti-connectivity/wl18xx-fw-2.bin
-     mode: "0660"
-   - path: /lib/firmware/ti-connectivity/wl18xx-fw-3.bin
-     source: blobs/ti-connectivity/wl18xx-fw-3.bin
-     mode: "0660"
-   - path: /containers/services/wlan/lower/etc/wpa_supplicant/wpa_supplicant.conf
-     source: blobs/wpa_supplicant.conf
-     mode: "0660"
 trust:
   org:
     - linuxkit
+
