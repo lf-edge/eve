@@ -486,9 +486,12 @@ func handleCreate(ctx *zedmanagerContext, key string,
 			log.Warnf("handleCreate(%v) for %s found different purge counter %d vs. %d\n",
 				config.UUIDandVersion, config.DisplayName, c,
 				config.PurgeCmd.Counter)
-			status.PurgeCmd.Counter = uint32(c)
-			// XXX where/when do we act? Ideally before we
-			// have booted domU once.
+			// XXX status.PurgeCmd.Counter = uint32(c)
+			status.PurgeCmd.Counter = config.PurgeCmd.Counter
+			status.PurgeInprogress = types.DOWNLOAD
+			status.State = types.PURGING
+			// We persist the PurgeCmd Counter when
+			// PurgeInprogress is done
 		}
 	} else {
 		// Save this PurgeCmd.Counter as the baseline
