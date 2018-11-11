@@ -1,4 +1,4 @@
-FROM alpine:latest as build
+FROM alpine:3.8 as build
 
 ADD guacamole-server-0.9.14.tar.gz / 
 ADD uuid-1.6.2.tar.gz /
@@ -11,7 +11,7 @@ RUN cd /guacamole-server-0.9.14 ;\
     ./configure --prefix=/usr/ --with-vnc --disable-guacenc --disable-dependency-tracking && \
      make && make install
 
-FROM alpine:latest
+FROM alpine:3.8
 
 RUN apk add cairo jpeg libpng openssl libvncserver
 COPY --from=build /usr/sbin/guacd /usr/sbin/guacd
