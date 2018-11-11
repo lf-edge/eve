@@ -545,7 +545,7 @@ func handleModify(ctx *zedmanagerContext, key string,
 	log.Infof("handleModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
-	// XXX handle at least ACL and activate changes. What else?
+	// We handle at least ACL and activate changes. XXX What else?
 	// Not checking the version here; assume the microservices can handle
 	// some updates.
 
@@ -614,7 +614,6 @@ func handleDelete(ctx *zedmanagerContext, key string,
 }
 
 // Returns needRestart, needPurge
-// XXX return an enum instead?
 // If there is a change to the disks, adapters, or network interfaces
 // it returns needPurge.
 // If there is a change to the CPU etc resources it returns needRestart
