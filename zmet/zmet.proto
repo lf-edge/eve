@@ -45,6 +45,7 @@ message ZInfoNetwork {
   bool up = 8;      // operational up/down status.
   GeoLoc location = 9;
   bool uplink = 10; // Uplink interface
+  ErrorInfo networkErr = 11; // For instance bad proxy config
 }
 
 // From an IP address-based geolocation service
