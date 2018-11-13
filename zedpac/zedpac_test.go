@@ -1728,7 +1728,7 @@ return false;
     throw 'testing error handling, url: ' + url + ' host: ' + host;
 }`, 
      []case_table{
-              { "http://foobar.example.com/x", "foobar.example.com", "Javascript call failed: testing error handling" },
+              { "http://foobar.example.com/x", "foobar.example.com", "zedpac: failed to compute proxy value, javascript log: Javascript call failed: testing error handling, url: http://foobar.example.com/x host: foobar.example.com." },
             },
       },
 
@@ -1737,19 +1737,21 @@ return false;
     throw new Error('testing error handling, url: ' + url + ' host: ' + host);
 }`, 
      []case_table{
-              { "http://foobar.example.com/x", "foobar.example.com", "Javascript call failed: Error: testing error handling" },
+              { "http://foobar.example.com/x", "foobar.example.com", "zedpac: failed to compute proxy value, javascript log: Javascript call failed: Error: testing error handling, url: http://foobar.example.com/x host: foobar.example.com\n    at FindProxyForURL (eval:2) preventsyield." },
             },
       },
     }
 
-    for pidx, pac := range pacs {
+    for _, pac := range pacs {
         for _, test := range pac.tests {
             if result, err := Find_proxy_sync(pac.pac, test.url, test.host); err == nil {
                if result != test.expect {
-                  t.Errorf("Got incorrect proxy: %s, expected '%s'.", result, test.expect)
+                  t.Errorf("Got incorrect proxy: '%s', expected '%s'", result, test.expect)
                }
             } else {
-               t.Errorf("Find_proxy_sync failed with error code %s on the following pac (at index %d): %s", err.Error(), pidx, pac.pac)
+               if err.Error() != test.expect {
+                  t.Errorf("Got incorrect ERROR returned: '%s', expected '%s'", err.Error(), test.expect)
+               }
             }
         }
     }
