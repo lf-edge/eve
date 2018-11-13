@@ -45,7 +45,7 @@ func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffe
 			log.Debugf("sendOnAllIntf non-free %v\n", intfs)
 		}
 		for _, intf := range intfs {
-			resp, contents, err := sendOnIntf(ctx, url, intf, reqlen, b)
+			resp, contents, err := SendOnIntf(ctx, url, intf, reqlen, b)
 			if return400 && resp != nil &&
 				resp.StatusCode >= 400 && resp.StatusCode < 500 {
 				log.Infof("sendOnAllIntf: for %s reqlen %d ignore code %d\n",
@@ -69,7 +69,7 @@ func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffe
 // use []byte contents return.
 // If we get a http response, we return that even if it was an error
 // to allow the caller to look at StatusCode
-func sendOnIntf(ctx ZedCloudContext, url string, intf string, reqlen int64, b *bytes.Buffer) (*http.Response, []byte, error) {
+func SendOnIntf(ctx ZedCloudContext, url string, intf string, reqlen int64, b *bytes.Buffer) (*http.Response, []byte, error) {
 
 	addrCount := types.CountLocalAddrAny(*ctx.DeviceNetworkStatus, intf)
 	log.Debugf("Connecting to %s using intf %s #sources %d reqlen %d\n",
@@ -177,10 +177,10 @@ func sendOnIntf(ctx ZedCloudContext, url string, intf string, reqlen int64, b *b
 
 		switch resp.StatusCode {
 		case http.StatusOK:
-			log.Debugf("sendOnIntf to %s StatusOK\n", url)
+			log.Debugf("SendOnIntf to %s StatusOK\n", url)
 			return resp, contents, nil
 		default:
-			errStr := fmt.Sprintf("sendOnIntf to %s reqlen %d statuscode %d %s",
+			errStr := fmt.Sprintf("SendOnIntf to %s reqlen %d statuscode %d %s",
 				url, reqlen, resp.StatusCode,
 				http.StatusText(resp.StatusCode))
 			log.Errorln(errStr)
