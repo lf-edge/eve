@@ -42,7 +42,6 @@ import (
 	"github.com/zededa/go-provision/adapters"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
-	"github.com/zededa/go-provision/devicenetwork"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
@@ -810,7 +809,6 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	}
 	ctx.usableAddressCount = newAddrCount
 	ctx.triggerDeviceInfo = true
-	devicenetwork.ProxyToEnv(deviceNetworkStatus.ProxyConfig)
 	log.Infof("handleDNSModify done for %s\n", key)
 }
 
@@ -827,7 +825,6 @@ func handleDNSDelete(ctxArg interface{}, key string,
 	deviceNetworkStatus = types.DeviceNetworkStatus{}
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
 	ctx.usableAddressCount = newAddrCount
-	devicenetwork.ProxyToEnv(deviceNetworkStatus.ProxyConfig)
 	log.Infof("handleDNSDelete done for %s\n", key)
 }
 
