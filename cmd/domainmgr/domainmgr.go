@@ -862,7 +862,7 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus,
 	if err == nil && domainId != status.DomainId {
 		status.DomainId = domainId
 	}
-	maxDelay := time.Second * 600 // 10 minutes
+	maxDelay := time.Second * 60 // 1 minute
 	if status.DomainId != 0 {
 		status.State = types.HALTING
 		publishDomainStatus(ctx, status)
