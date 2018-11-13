@@ -62,8 +62,7 @@ func MakeDeviceNetworkStatus(globalConfig types.DeviceUplinkConfig, oldStatus ty
 			addrs6 = nil
 		}
 		// Get DNS info from dhcpcd
-		// Avoid if static XXX are we called more than once?
-		// XXX handle error?
+		// XXX put error in status? Local only error so ignore?
 		GetDnsInfo(&globalStatus.UplinkStatus[ix])
 		globalStatus.UplinkStatus[ix].AddrInfoList = make([]types.AddrInfo,
 			len(addrs4)+len(addrs6))

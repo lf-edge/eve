@@ -30,6 +30,8 @@ func GetDnsInfo(us *types.NetworkUplink) error {
 	}
 	log.Debugf("dhcpcd -U got %v\n", string(stdout))
 	lines := strings.Split(string(stdout), "\n")
+	us.DomainName = ""
+	us.DnsServers = []net.IP{}
 	for _, line := range lines {
 		items := strings.Split(line, "=")
 		if len(items) != 2 {
@@ -40,13 +42,11 @@ func GetDnsInfo(us *types.NetworkUplink) error {
 		switch items[0] {
 		case "domain_name":
 			dn := trimQuotes(items[1])
-			// XXX already set? Multiple calls?
 			log.Infof("getDnsInfo(%s) DomainName %s\n", us.IfName,
 				dn)
 			us.DomainName = dn
 		case "domain_name_servers":
 			servers := trimQuotes(items[1])
-			// XXX already set? Multiple calls?
 			log.Infof("getDnsInfo(%s) DnsServers %s\n", us.IfName,
 				servers)
 			// XXX multiple? How separated?
@@ -55,8 +55,7 @@ func GetDnsInfo(us *types.NetworkUplink) error {
 				log.Errorf("Failed to parse %s\n", servers)
 				continue
 			}
-			// XXX us.DnsServers = append(us.DnsServers, ip)
-			us.DnsServers = []net.IP{ip}
+			us.DnsServers = append(us.DnsServers, ip)
 		}
 	}
 	return nil
