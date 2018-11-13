@@ -8,45 +8,54 @@ import (
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/types"
+	"github.com/zededa/go-provision/zedcloud"
 )
 
 // Caller should loop over interfaces
 // Download a wpad file if so configured
-func CheckAndGetNetworkProxy(config *types.ProxyConfig) error {
+func CheckAndGetNetworkProxy(status *types.DeviceNetworkStatus,
+	proxyConfig *types.ProxyConfig) error {
 
 	log.Infof("CheckAndGetNetworkProxy: enable %v, url %s, %s, %s\n",
-		config.NetworkProxyEnable, config.NetworkProxyURL)
+		proxyConfig.NetworkProxyEnable, proxyConfig.NetworkProxyURL)
 
-	if config.Pacfile != "" {
+	// XXX make per interface
+	ifname := "eth0"
+	if proxyConfig.Pacfile != "" {
 		log.Infof("CheckAndGetNetworkProxy: already have Pacfile\n")
 		return nil
 	}
-	if !config.NetworkProxyEnable {
+	if !proxyConfig.NetworkProxyEnable {
 		log.Infof("CheckAndGetNetworkProxy: not enabled\n")
 		return nil
 	}
-	if config.NetworkProxyURL != "" {
-		pac, err := getFile(config.NetworkProxyURL)
+	if proxyConfig.NetworkProxyURL != "" {
+		pac, err := getFile(status, proxyConfig.NetworkProxyURL, ifname)
 		if err != nil {
 			errStr := fmt.Sprintf("Failed to fetch %s: %s",
-				config.NetworkProxyURL, err)
+				proxyConfig.NetworkProxyURL, err)
 			log.Errorln(errStr)
 			return errors.New(errStr)
 		}
 		log.Infof("CheckAndGetNetworkProxy: fetched from URL %s: %s\n",
-			config.NetworkProxyURL, pac)
-		// XXX write to status
-		config.Pacfile = pac
+			proxyConfig.NetworkProxyURL, pac)
+		proxyConfig.Pacfile = pac
 		return nil
 	}
 	// XXX try http://wpad.%s/wpad.dat", dn
 	// starting with DomainName and truncating it
-	// XXX need DomainName set
-	// XXX need per interface
 	return nil
 }
 
-func getFile(url string) (string, error) {
-	// XXX
-	return "", nil
+var ctx = zedcloud.ZedCloudContext{
+	FailureFunc: zedcloud.ZedCloudFailure,
+	SuccessFunc: zedcloud.ZedCloudSuccess,
+}
+
+func getFile(status *types.DeviceNetworkStatus, url string,
+	ifname string) (string, error) {
+
+	ctx.DeviceNetworkStatus = status
+	_, contents, err := zedcloud.SendOnIntf(ctx, url, ifname, 0, nil)
+	return string(contents), err
 }

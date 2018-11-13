@@ -64,7 +64,7 @@ func MakeDeviceNetworkStatus(globalConfig types.DeviceUplinkConfig, oldStatus ty
 		// Get DNS info from dhcpcd
 		// Avoid if static XXX are we called more than once?
 		// XXX handle error?
-		getDnsInfo(&globalStatus.UplinkStatus[ix])
+		GetDnsInfo(&globalStatus.UplinkStatus[ix])
 		globalStatus.UplinkStatus[ix].AddrInfoList = make([]types.AddrInfo,
 			len(addrs4)+len(addrs6))
 		for i, addr := range addrs4 {
@@ -99,7 +99,7 @@ func MakeDeviceNetworkStatus(globalConfig types.DeviceUplinkConfig, oldStatus ty
 	// Attempt to get a wpad.dat file if so configured
 	// Result is updating the Pacfile
 	// XXX put error in status?
-	CheckAndGetNetworkProxy(&globalStatus.ProxyConfig)
+	CheckAndGetNetworkProxy(&globalStatus, &globalStatus.ProxyConfig)
 	// Apply proxy before we do geolocation calls
 	ProxyToEnv(globalStatus.ProxyConfig)
 
