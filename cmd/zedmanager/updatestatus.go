@@ -324,7 +324,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 	for i, _ := range status.StorageStatusList {
 		ss := &status.StorageStatusList[i]
 		safename := types.UrlToSafename(ss.Name, ss.ImageSha256)
-		log.Infof("Found StorageConfig URL %s safename %s\n",
+		log.Infof("Found StorageStatus URL %s safename %s\n",
 			ss.Name, safename)
 
 		// Shortcut if image is already verified
@@ -482,7 +482,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 	for i, _ := range status.StorageStatusList {
 		ss := &status.StorageStatusList[i]
 		safename := types.UrlToSafename(ss.Name, ss.ImageSha256)
-		log.Infof("Found StorageConfig URL %s safename %s\n",
+		log.Infof("Found StorageStatus URL %s safename %s\n",
 			ss.Name, safename)
 
 		vs := lookupVerifyImageStatusAny(ctx, safename,
@@ -905,6 +905,13 @@ func purgeCmdDone(ctx *zedmanagerContext, config types.AppInstanceConfig,
 			ss.HasVerifierRef = false
 			changed = true
 		}
+		// Decrease refcount if we had increased it
+		if ss.HasDownloaderRef {
+			safename := types.UrlToSafename(ss.Name, ss.ImageSha256)
+			MaybeRemoveDownloaderConfig(ctx, safename)
+			ss.HasDownloaderRef = false
+			changed = true
+		}
 	}
 
 	// Update persistent counter
@@ -1066,7 +1073,6 @@ func doUninstall(ctx *zedmanagerContext, uuidStr string,
 	changed := false
 	del := false
 
-	removedAll := true
 	for i, _ := range status.StorageStatusList {
 		ss := &status.StorageStatusList[i]
 		// Decrease refcount if we had increased it
@@ -1075,22 +1081,8 @@ func doUninstall(ctx *zedmanagerContext, uuidStr string,
 			ss.HasVerifierRef = false
 			changed = true
 		}
-
-		vs := lookupVerifyImageStatusSha256(ctx, ss.ImageSha256)
-		// XXX if additional refs it will not go away
-		if false && vs != nil {
-			log.Infof("lookupVerifyImageStatus %s not yet gone\n",
-				ss.ImageSha256)
-			removedAll = false
-			continue
-		}
-	}
-	if !removedAll {
-		log.Infof("Waiting for all verify removes for %s\n", uuidStr)
-		return changed, del
 	}
 	log.Debugf("Done with all verify removes for %s\n", uuidStr)
-	removedAll = true
 	for i, _ := range status.StorageStatusList {
 		ss := &status.StorageStatusList[i]
 		safename := types.UrlToSafename(ss.Name, ss.ImageSha256)
@@ -1102,19 +1094,6 @@ func doUninstall(ctx *zedmanagerContext, uuidStr string,
 			ss.HasDownloaderRef = false
 			changed = true
 		}
-
-		ds := lookupDownloaderStatus(ctx, ss.ImageSha256)
-		// XXX if additional refs it will not go away
-		if false && ds != nil {
-			log.Infof("lookupDownloaderStatus %s not yet gone\n",
-				safename)
-			removedAll = false
-			continue
-		}
-	}
-	if !removedAll {
-		log.Infof("Waiting for all downloader removes for %s\n", uuidStr)
-		return changed, del
 	}
 	log.Debugf("Done with all downloader removes for %s\n", uuidStr)
 
