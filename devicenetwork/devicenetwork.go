@@ -39,11 +39,6 @@ func MakeDeviceNetworkStatus(globalConfig types.DeviceUplinkConfig, oldStatus ty
 	var globalStatus types.DeviceNetworkStatus
 	var err error = nil
 
-	// Copy proxy settings
-	globalStatus.ProxyConfig = globalConfig.ProxyConfig
-	// Apply proxy before we do geolocation calls
-	ProxyToEnv(globalStatus.ProxyConfig)
-
 	globalStatus.UplinkStatus = make([]types.NetworkUplink,
 		len(globalConfig.Uplinks))
 	for ix, u := range globalConfig.Uplinks {
@@ -66,6 +61,10 @@ func MakeDeviceNetworkStatus(globalConfig types.DeviceUplinkConfig, oldStatus ty
 		if err != nil {
 			addrs6 = nil
 		}
+		// Get DNS info from dhcpcd
+		// Avoid if static XXX are we called more than once?
+		// XXX handle error?
+		getDnsInfo(&globalStatus.UplinkStatus[ix])
 		globalStatus.UplinkStatus[ix].AddrInfoList = make([]types.AddrInfo,
 			len(addrs4)+len(addrs6))
 		for i, addr := range addrs4 {
@@ -95,6 +94,15 @@ func MakeDeviceNetworkStatus(globalConfig types.DeviceUplinkConfig, oldStatus ty
 			ai.LastGeoTimestamp = oai.LastGeoTimestamp
 		}
 	}
+	// Copy proxy settings
+	globalStatus.ProxyConfig = globalConfig.ProxyConfig
+	// Attempt to get a wpad.dat file if so configured
+	// Result is updating the Pacfile
+	// XXX put error in status?
+	CheckAndGetNetworkProxy(&globalStatus.ProxyConfig)
+	// Apply proxy before we do geolocation calls
+	ProxyToEnv(globalStatus.ProxyConfig)
+
 	// Immediate check
 	UpdateDeviceNetworkGeo(time.Second, &globalStatus)
 	return globalStatus, err
