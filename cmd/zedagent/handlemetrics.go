@@ -1118,9 +1118,6 @@ func getNetInfo(interfaceDetail psutilnet.InterfaceStat) *zmet.ZInfoNetwork {
 		networkInfo.DefaultRouters[index] = *proto.String(dr)
 	}
 
-	// XXX fill in ZInfoDNS dns
-	// XXX from correct resolv conf file - static map from intf to file?
-	// XXX in /hostfs/containers/services/dhcpcd/tmp/upper/run/dhcpcd/resolv.conf/eth0.dhcp; place in
 	for _, fl := range interfaceDetail.Flags {
 		if fl == "up" {
 			networkInfo.Up = true
@@ -1131,6 +1128,14 @@ func getNetInfo(interfaceDetail psutilnet.InterfaceStat) *zmet.ZInfoNetwork {
 	uplink := types.GetUplink(deviceNetworkStatus, interfaceDetail.Name)
 	if uplink != nil {
 		networkInfo.Uplink = true
+		// fill in ZInfoDNS
+		networkInfo.Dns = new(zmet.ZInfoDNS)
+		networkInfo.Dns.DNSdomain = uplink.DomainName
+		for _, server := range uplink.DnsServers {
+			networkInfo.Dns.DNSservers = append(networkInfo.Dns.DNSservers,
+				server.String())
+		}
+
 		// XXX we potentially have geoloc information for each IP
 		// address.
 		// For now fill in using the first IP address which has location
