@@ -12,7 +12,7 @@ import (
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/types"
-// XXX import cycle	"github.com/zededa/go-provision/devicenetwork"
+	// XXX import cycle	"github.com/zededa/go-provision/devicenetwork"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -100,10 +100,13 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 
 		var transport *http.Transport
 		var reqUrl string
+		var useTLS bool
 		if strings.HasPrefix(destUrl, "http:") {
 			reqUrl = destUrl
+			useTLS = false
 		} else {
 			reqUrl = "https://" + destUrl
+			useTLS = true
 		}
 		// XXX Get the transport header with proxy information filled
 		var proxyUrl *url.URL
@@ -125,7 +128,7 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 		}
 
 		client := &http.Client{Transport: transport}
-		
+
 		var req *http.Request
 		if b != nil {
 			req, err = http.NewRequest("POST", reqUrl, b)
@@ -163,29 +166,10 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 		}
 		resplen := int64(len(contents))
 
-		connState := resp.TLS
-		if connState == nil {
-			log.Errorln("no TLS connection state")
-			// Inform ledmanager about broken cloud connectivity
-			types.UpdateLedManagerConfig(10)
-			if ctx.FailureFunc != nil {
-				ctx.FailureFunc(intf, destUrl, reqlen, resplen)
-			}
-			continue
-		}
-
-		if connState.OCSPResponse == nil ||
-			!stapledCheck(connState) {
-			if connState.OCSPResponse == nil {
-				// XXX remove debug check
-				log.Debugf("no OCSP response for %s\n", destUrl)
-			} else {
-				log.Errorf("OCSP stapled check failed for %s\n",
-					destUrl)
-			}
-			//XXX OSCP is not implemented in cloud side so
-			// commenting out it for now.
-			if false {
+		if useTLS {
+			connState := resp.TLS
+			if connState == nil {
+				log.Errorln("no TLS connection state")
 				// Inform ledmanager about broken cloud connectivity
 				types.UpdateLedManagerConfig(10)
 				if ctx.FailureFunc != nil {
@@ -193,6 +177,30 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 						resplen)
 				}
 				continue
+			}
+
+			if connState.OCSPResponse == nil ||
+				!stapledCheck(connState) {
+
+				if connState.OCSPResponse == nil {
+					// XXX remove debug check
+					log.Debugf("no OCSP response for %s\n",
+						destUrl)
+				} else {
+					log.Errorf("OCSP stapled check failed for %s\n",
+						destUrl)
+				}
+				//XXX OSCP is not implemented in cloud side so
+				// commenting out it for now.
+				if false {
+					// Inform ledmanager about broken cloud connectivity
+					types.UpdateLedManagerConfig(10)
+					if ctx.FailureFunc != nil {
+						ctx.FailureFunc(intf, destUrl,
+							reqlen, resplen)
+					}
+					continue
+				}
 			}
 		}
 		// Even if we got e.g., a 404 we consider the connection a
