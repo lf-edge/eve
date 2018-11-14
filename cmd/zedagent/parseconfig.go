@@ -608,7 +608,8 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 				netEnt.Id)
 
 			proxyConfig := types.ProxyConfig{
-				ProxyEnable: netProxyConfig.NetworkProxyEnable,
+				NetworkProxyEnable: netProxyConfig.NetworkProxyEnable,
+				NetworkProxyURL: netProxyConfig.NetworkProxyURL,
 				Pacfile: netProxyConfig.Pacfile,
 			}
 			proxyConfig.Exceptions = netProxyConfig.Exceptions

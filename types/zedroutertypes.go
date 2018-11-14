@@ -124,7 +124,6 @@ type ProxyEntry struct {
 }
 
 type ProxyConfig struct {
-	ProxyEnable bool
 	Proxies     []ProxyEntry
 	Exceptions  string
 	Pacfile     string
