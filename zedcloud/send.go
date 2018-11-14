@@ -12,11 +12,12 @@ import (
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/types"
-	"github.com/zededa/go-provision/devicenetwork"
+// XXX import cycle	"github.com/zededa/go-provision/devicenetwork"
 	"io/ioutil"
 	"net"
 	"net/http"
 	"net/http/httptrace"
+	"net/url"
 )
 
 // XXX should we add some Init() function to create this?
@@ -99,8 +100,9 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 		var transport *http.Transport
 		reqUrl := "https://" + destUrl
 		// XXX Get the transport header with proxy information filled
-		proxyUrl, err := devicenetwork.LookupProxy(
-			ctx.DeviceNetworkStatus, intf, reqUrl)
+		var proxyUrl *url.URL
+		// XXX import cycle proxyUrl, err := devicenetwork.LookupProxy(
+		//	ctx.DeviceNetworkStatus, intf, reqUrl)
 		if err == nil && proxyUrl != nil {
 			log.Debugf("sendOnIntf: For input URL %s, proxy found is %s",
 				reqUrl, proxyUrl.String())
