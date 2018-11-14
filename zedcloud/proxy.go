@@ -9,7 +9,7 @@
 // The API is not subject to the Go 1 compatibility promise and may change at
 // any time.
 //package httpproxy
-package devicenetwork
+package zedcloud
 
 import (
 	//"errors"

@@ -12,12 +12,10 @@ import (
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/types"
-	// XXX import cycle	"github.com/zededa/go-provision/devicenetwork"
 	"io/ioutil"
 	"net"
 	"net/http"
 	"net/http/httptrace"
-	"net/url"
 	"strings"
 )
 
@@ -109,9 +107,8 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 			useTLS = true
 		}
 		// XXX Get the transport header with proxy information filled
-		var proxyUrl *url.URL
-		// XXX import cycle proxyUrl, err := devicenetwork.LookupProxy(
-		//	ctx.DeviceNetworkStatus, intf, reqUrl)
+		proxyUrl, err := LookupProxy(ctx.DeviceNetworkStatus,
+			intf, reqUrl)
 		if err == nil && proxyUrl != nil {
 			log.Debugf("sendOnIntf: For input URL %s, proxy found is %s",
 				reqUrl, proxyUrl.String())
