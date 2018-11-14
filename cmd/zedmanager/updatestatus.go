@@ -892,9 +892,11 @@ func purgeCmdDone(ctx *zedmanagerContext, config types.AppInstanceConfig,
 
 	changed := false
 	// Process the StorageStatusList items which are not in StorageConfigList
+	newSs := []types.StorageStatus{}
 	for _, ss := range status.StorageStatusList {
 		sc := lookupStorageConfig(&config, ss)
 		if sc != nil {
+			newSs = append(newSs, ss)
 			continue
 		}
 		log.Debugf("purgeCmdDone(%s) unused SS %s %s\n",
@@ -913,7 +915,9 @@ func purgeCmdDone(ctx *zedmanagerContext, config types.AppInstanceConfig,
 			changed = true
 		}
 	}
-
+	log.Infof("purgeCmdDone(%s) storageStatus from %d to %d\n",
+		config.Key(), len(status.StorageStatusList), len(newSs))
+	status.StorageStatusList = newSs
 	// Update persistent counter
 	uuidtonum.UuidToNumAllocate(ctx.pubUuidToNum,
 		status.UUIDandVersion.UUID,
